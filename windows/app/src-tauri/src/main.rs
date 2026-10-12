@@ -675,8 +675,10 @@ fn do_model_download(app: &AppHandle, st: &App) -> Result<Value, String> {
 // running code
 
 /// The sandbox's own folder (%LOCALAPPDATA%\Packages\blitzen.sandbox\AC\Blitzen): Windows gives the AppContainer
-/// read, write and run access there, at the low integrity level it runs at. Python, the compiler and every run's
-/// temporary folder live here; nothing else on the PC is open to the sandbox.
+/// read, write and run access there, at the low integrity level it runs at. Each run's temporary folder lives here.
+/// (Python and the compiler do not: Windows will not load a program's libraries from a low-integrity folder into a
+/// normal process, so the compiler could not start from here. They live in Blitzen's data folder, "tools", which
+/// the sandbox may only read and run.)
 fn sandbox_root(st: &App) -> Result<PathBuf, String> {
     let mut g = st.sbx.lock().unwrap();
     if let Some(p) = g.clone() {
@@ -684,7 +686,14 @@ fn sandbox_root(st: &App) -> Result<PathBuf, String> {
     }
     let sid = sandbox::container()?;
     let p = sandbox::folder(&sid)?.join("Blitzen");
-    for d in ["runtimes", "runs"] {
+    // 0.1.1 to 0.1.4 kept Python and the compiler here
+    let old = p.join("runtimes");
+    if old.exists() {
+        std::thread::spawn(move || {
+            let _ = fs::remove_dir_all(old);
+        });
+    }
+    for d in ["runs"] {
         fs::create_dir_all(p.join(d)).map_err(|e| format!("could not create the sandbox folder {}: {e}", p.display()))?;
     }
     if let Ok(rd) = fs::read_dir(p.join("runs")) {
@@ -696,7 +705,20 @@ fn sandbox_root(st: &App) -> Result<PathBuf, String> {
     Ok(p)
 }
 fn runtimes(st: &App) -> Result<PathBuf, String> {
-    Ok(sandbox_root(st)?.join("runtimes"))
+    let t = st.data.join("tools");
+    fs::create_dir_all(&t).map_err(|e| e.to_string())?;
+    Ok(t)
+}
+
+/// Gives the sandbox read and run access to a tool's folder (once; remembered in the settings).
+fn granted(st: &App, sid: &sandbox::Sid, dir: &Path) -> Result<(), String> {
+    let key = dir.to_string_lossy().to_string();
+    if st.cfg().granted.contains(&key) {
+        return Ok(());
+    }
+    sandbox::grant(sid, dir, false)?;
+    st.save(|c| c.granted.push(key));
+    Ok(())
 }
 fn python_exe(st: &App) -> Result<PathBuf, String> {
     Ok(runtimes(st)?.join("python").join("python.exe"))
@@ -763,6 +785,10 @@ fn do_run_code(st: &App, lang: &str, code: &str) -> Result<Value, String> {
         _ => return Ok(json!({"ok": false, "error": format!("Blitzen does not run {lang} in the app")})),
     };
     let sid = sandbox::container()?;
+    if lang == "python" {
+        // Python runs inside the sandbox, so the sandbox needs to read its folder
+        granted(st, &sid, tool.parent().unwrap())?;
+    }
     let dir = sandbox_root(st)?.join("runs").join(random_hex(12));
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let result = (|| -> Result<Value, String> {
