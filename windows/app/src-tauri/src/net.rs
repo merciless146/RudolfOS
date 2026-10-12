@@ -185,25 +185,43 @@ pub fn download(url: &str, dest: &Path, size: u64, sha256: &str, progress: &dyn 
     Err(format!("could not download {name}"))
 }
 
-/// Unpacks a .zip or .tar.gz with Windows' own tar.exe.
+/// Unpacks a .zip (checking afterwards that every file is there with its size) or a .tar.gz.
 pub fn unpack(archive: &Path, into: &Path) -> Result<(), String> {
     fs::create_dir_all(into).map_err(|e| e.to_string())?;
-    let tar = std::env::var("SystemRoot")
-        .map(|r| format!("{r}\\System32\\tar.exe"))
-        .unwrap_or_else(|_| "tar.exe".into());
-    let out = crate::sys::hidden(&tar)
-        .arg("-xf")
-        .arg(archive)
-        .arg("-C")
-        .arg(into)
-        .output()
-        .map_err(|e| format!("tar: {e}"))?;
-    if !out.status.success() {
-        return Err(format!(
-            "could not unpack {}: {}",
-            archive.display(),
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
+    let name = archive.display().to_string();
+    let f = File::open(archive).map_err(|e| format!("{name}: {e}"))?;
+    if name.to_lowercase().ends_with(".zip") {
+        let mut zip = zip::ZipArchive::new(f).map_err(|e| format!("{name}: {e}"))?;
+        let mut files = Vec::new();
+        for i in 0..zip.len() {
+            let mut e = zip.by_index(i).map_err(|e| format!("{name}: {e}"))?;
+            let Some(rel) = e.enclosed_name() else { continue };
+            let out = into.join(rel);
+            if e.is_dir() {
+                fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
+                continue;
+            }
+            if let Some(d) = out.parent() {
+                fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
+            }
+            let mut w = File::create(&out).map_err(|e| format!("could not write {}: {e}", out.display()))?;
+            std::io::copy(&mut e, &mut w).map_err(|e| format!("could not write {}: {e}", out.display()))?;
+            files.push((out, e.size()));
+        }
+        for (p, size) in &files {
+            let got = fs::metadata(p).map(|m| m.len()).ok();
+            if got != Some(*size) {
+                return Err(format!(
+                    "{} is {} after unpacking (it should be {size} bytes). Windows Security may have removed it: see Protection history.",
+                    p.display(),
+                    got.map(|g| format!("{g} bytes")).unwrap_or_else(|| "missing".into())
+                ));
+            }
+        }
+    } else {
+        tar::Archive::new(flate2::read::GzDecoder::new(f))
+            .unpack(into)
+            .map_err(|e| format!("could not unpack {name}: {e}"))?;
     }
     Ok(())
 }
