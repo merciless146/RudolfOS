@@ -1,0 +1,6 @@
+{"name": "file", "version": "5.45-3", "kind": "cli", "icon": "🔎",
+ "title": "file", "summary": "Tell what kind of data a file holds",
+ "license": "BSD-2-Clause", "homepage": "https://www.darwinsys.com/file/",
+ "debs": ["file", "libmagic1t64", "libmagic-mgc"], "commands": ["file"],
+ "keep": {"usr/lib/file/magic.mgc": "share/magic.mgc"},
+ "env": {"MAGIC": "$PKG/share/magic.mgc"}}

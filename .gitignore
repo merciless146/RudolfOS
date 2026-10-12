@@ -1,0 +1,18 @@
+# never commit signing keys
+keys/
+*.pem
+*.key
+# build products
+iso/out/
+iso/rootfs/
+iso/layers/
+iso/isotree/
+iso/repo/
+iso/work/
+iso/src/
+iso/initramfs/bin/
+*.iso
+*.iso.part*
+*.sfs
+*.tar.xz
+__pycache__/

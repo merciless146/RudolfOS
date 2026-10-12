@@ -1,0 +1,118 @@
+# Rudolf OS automatic security releases. Copy to .github/workflows/rudolf-release.yml in the repository that
+# holds the iso/ folder. Setup (once): see iso/systools/RELEASES.md.
+#
+# Every 6 hours: look for a newer stable Chromium and a newer Linux 6.18.y; if there is one, build only the
+# changed layers on top of the latest release, sign the release list, publish the files as a GitHub release
+# and the list to the "beta" channel on GitHub Pages. "Promote" (Run workflow, promote = the serial) copies a
+# tested beta release to "stable", which is where Rudolf OS computers look by default.
+#
+# First run: when the beta channel is still empty, the workflow seeds both channels from the disc image
+# attached to the GitHub release "disc-1.1" (the .iso, or its .partNN pieces), so release 1 is exactly the
+# system on the disc. A release list that would expire within 5 days is re-signed (same files, new date).
+name: Rudolf OS release
+on:
+  schedule: [{cron: '17 */6 * * *'}]
+  workflow_dispatch:
+    inputs:
+      promote: {description: 'Serial of a beta release to make stable (empty: build a new release)', required: false, default: ''}
+      urgent: {description: 'Mark the new release urgent (exploited security hole)', type: boolean, default: false}
+permissions: {contents: write, pages: write}
+concurrency: {group: rudolf-release, cancel-in-progress: false}
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools nasm bc flex bison libelf-dev libssl-dev kmod jq python3-cryptography >/dev/null
+      - name: Signing key
+        env: {KEY: '${{ secrets.RPK_SIGNING_KEY }}'}
+        run: test -n "$KEY" && printf '%s\n' "$KEY" > "$RUNNER_TEMP/rpk.key" && chmod 600 "$RUNNER_TEMP/rpk.key"
+      - name: Debian 13 base for the Linux terminal (rebuilt every 4 weeks)
+        if: inputs.promote == ''
+        env: {GH_TOKEN: '${{ github.token }}', KEYFILE: '${{ runner.temp }}/rpk.key'}
+        run: |
+          B=$(gh release download debian-13 -p debian.txt -O - 2>/dev/null | sed -n 's/^built //p')
+          [ -n "$B" ] && [ $(( ($(date +%s) - $(date -d "$B" +%s)) / 86400 )) -lt 28 ] && { echo "Debian base from $B is current"; exit 0; }
+          bash iso/systools/mkdebian.sh deb "$KEYFILE"
+          gh release view debian-13 >/dev/null 2>&1 || gh release create debian-13 --title "Debian 13 base for Rudolf OS" --notes "Downloaded by Rudolf OS when the Linux terminal is set up. Built from Debian's official minimal image; signed with the release key."
+          gh release upload debian-13 deb/debian-13-rudolf.tar.xz deb/debian.txt deb/debian.txt.sig --clobber
+      - name: Blitzen model list (signs a model uploaded by hand to the release "blitzen-1")
+        if: inputs.promote == ''
+        env: {GH_TOKEN: '${{ github.token }}', KEYFILE: '${{ runner.temp }}/rpk.key'}
+        run: |
+          gh release view blitzen-1 >/dev/null 2>&1 || { echo "no blitzen-1 release yet"; exit 0; }
+          M=$(gh release view blitzen-1 --json assets -q '.assets[].name' | grep '\.gguf$' | head -1)
+          [ -n "$M" ] || { echo "no model uploaded yet"; exit 0; }
+          L=$(gh release download blitzen-1 -p blitzen.txt -O - 2>/dev/null | sed -n 's/^file //p')
+          [ "$L" = "$M" ] && { echo "Blitzen list for $M is current"; exit 0; }
+          mkdir -p blz && gh release download blitzen-1 -p "$M" -D blz
+          bash iso/systools/mkblitzen-list.sh "blz/$M" "$KEYFILE" "Blitzen 1" Apache-2.0
+          gh release upload blitzen-1 blz/blitzen.txt blz/blitzen.txt.sig --clobber
+      - name: Pages branch
+        run: |
+          git fetch origin gh-pages:gh-pages 2>/dev/null || true
+          git worktree add "$RUNNER_TEMP/pages" gh-pages 2>/dev/null || { git worktree add --detach "$RUNNER_TEMP/pages"; (cd "$RUNNER_TEMP/pages" && git checkout --orphan gh-pages && git rm -rqf .); }
+      - name: Seed the channels from the disc image (first run only)
+        id: seed
+        if: inputs.promote == ''
+        env: {GH_TOKEN: '${{ github.token }}', KEYFILE: '${{ runner.temp }}/rpk.key', DISC_TAG: disc-1.1}
+        run: |
+          [ -f "$RUNNER_TEMP/pages/beta/manifest.txt" ] && exit 0
+          mkdir -p disc && gh release download "$DISC_TAG" -D disc -p 'rudolf-os-*'
+          ISO=disc/disc.iso; ls disc/*.iso >/dev/null 2>&1 && mv disc/*.iso "$ISO" || cat $(ls disc/*.iso.part* | sort) > "$ISO"
+          SUM=$(ls disc/*.sha256 2>/dev/null | head -1); [ -z "$SUM" ] || [ "$(sha256sum < "$ISO" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$SUM")" ] || { echo "disc image checksum does not match"; exit 1; }
+          python3 iso/systools/iso_extract.py "$ISO" disc/x BOOT/VMLINUZ RUDOLF/BASE.SFS RUDOLF/CHROMIUM.SFS RUDOLF/DESKTOP.SFS RUDOLF/MODULES.SFS RUDOLF/RELEASE
+          mkdir -p disc/l; for n in base chromium desktop modules; do mv disc/x/${n^^}.SFS disc/l/$n.sfs; done
+          r() { sed -n "s/^$1 //p" disc/x/RELEASE; }; S=$(r serial)
+          python3 iso/systools/make_release.py --layers disc/l --kernel disc/x/VMLINUZ --out seed --key "$KEYFILE" --serial "$S" \
+            --version "$(r version)" --chromium "$(r chromium)" --kernel-version "$(r kernel)" --notes "$(r version) disc release" \
+            --file-base "https://github.com/${{ github.repository }}/releases/download/r$S"
+          gh release create "r$S" seed/files/$S/* --title "Rudolf OS system release $S" --notes "Rudolf OS $(r version) as on the disc image"
+          cd "$RUNNER_TEMP/pages" && mkdir -p beta stable && cp "$GITHUB_WORKSPACE"/seed/channel/manifest.* beta/ && cp beta/manifest.* stable/ && touch .nojekyll
+          git add -A && git -c user.name=rudolf-release -c user.email=release@localhost commit -qm "seed: release $S from the disc image" && git push -q origin gh-pages
+          echo "seeded=1" >> "$GITHUB_OUTPUT"
+      - name: Promote beta to stable
+        if: inputs.promote != ''
+        run: |
+          cd "$RUNNER_TEMP/pages"; S='${{ inputs.promote }}'
+          grep -q "^serial $S$" beta/manifest.txt || { echo "beta is not release $S"; exit 1; }
+          mkdir -p stable && cp beta/manifest.txt beta/manifest.sig stable/
+          git add -A && git -c user.name=rudolf-release -c user.email=release@localhost commit -qm "stable: release $S" && git push -q origin gh-pages
+      - name: Previous release
+        if: inputs.promote == '' && steps.seed.outputs.seeded != '1'
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          mkdir -p prev && cp "$RUNNER_TEMP/pages/beta/manifest.txt" prev/
+          TAG=r$(sed -n 's/^serial //p' prev/manifest.txt)
+          gh release download "$TAG" -D prev -p 'vmlinuz' -p '*.sfs'
+      - name: Build the release
+        id: build
+        if: inputs.promote == '' && steps.seed.outputs.seeded != '1'
+        env:
+          PREV: ${{ github.workspace }}/prev
+          OUT: ${{ github.workspace }}/out
+          KEYFILE: ${{ runner.temp }}/rpk.key
+          CHROMIUM_FROM: snap
+          URGENT: ${{ inputs.urgent && '1' || '' }}
+        run: |
+          export SERIAL=$(date -u +%Y%m%d%H)
+          export FILE_BASE="https://github.com/${{ github.repository }}/releases/download/r$SERIAL"
+          export KERNEL_VERSION=$(curl -fsSL https://www.kernel.org/releases.json | jq -r '.releases[].version' | grep '^6\.18\.' | sort -V | tail -1)
+          echo "serial=$SERIAL" >> "$GITHUB_OUTPUT"
+          bash iso/systools/ci_release.sh
+      - name: Publish
+        if: inputs.promote == '' && steps.build.outputs.released == '1'
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          S=${{ steps.build.outputs.serial }}
+          gh release create "r$S" out/files/$S/* --title "Rudolf OS system release $S" --notes "${{ steps.build.outputs.notes }}"
+          mkdir -p "$RUNNER_TEMP/pages/beta" && cp out/channel/manifest.txt out/channel/manifest.sig "$RUNNER_TEMP/pages/beta/"
+          cd "$RUNNER_TEMP/pages" && git add -A && git -c user.name=rudolf-release -c user.email=release@localhost commit -qm "beta: release $S" && git push -q origin gh-pages
+      - name: Keep the release lists from expiring
+        if: always() && steps.seed.outcome != 'failure'
+        env: {KEYFILE: '${{ runner.temp }}/rpk.key'}
+        run: |
+          cd "$RUNNER_TEMP/pages"; git pull -q --ff-only origin gh-pages 2>/dev/null || true
+          for c in beta stable; do python3 "$GITHUB_WORKSPACE/iso/systools/refresh_manifest.py" "$c" "$KEYFILE"; done
+          git add -A; git diff --cached --quiet || { git -c user.name=rudolf-release -c user.email=release@localhost commit -qm "re-sign release lists" && git push -q origin gh-pages; }

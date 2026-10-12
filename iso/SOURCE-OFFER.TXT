@@ -1,0 +1,43 @@
+RUDOLF OS 1.1 - SOURCE CODE
+============================
+
+This disc contains programs licensed under the GNU General Public License
+(GPL) and the GNU Lesser General Public License (LGPL), among others. You are
+entitled to the complete corresponding source code of those programs.
+
+ON THIS DISC (folder SOURCE)
+  RUDOLF.TXZ    Rudolf OS: desktop modules, Rudolf Boot loader, rudolfd,
+                rudolf-display, init scripts, kernel configuration script and
+                every build script used to make this disc (GPL-2.0-or-later).
+  BUSYBOX.TXZ   BusyBox 1.36.1, unmodified (GPL-2.0).
+  WIFI.TXZ      wpa_supplicant/hostapd 2.12-devel (BSD-3-Clause, with the small
+                changes in wifibuild.sh applied) and libnl 3.9.0 (LGPL-2.1),
+                as built into wpa_supplicant and wpa_cli.
+  BUSYBOX.CFG   The BusyBox build configuration used.
+  LINUX.CFG     The Linux kernel build configuration used.
+  PACKAGES.TXT  Every Ubuntu 24.04 binary package that files on this disc were
+                taken from, with its exact version and source package.
+
+UPSTREAM SOURCES (unmodified)
+  Linux 6.18.55       https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+                      tag v6.18.55 (also https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.55.tar.xz)
+  BusyBox 1.36.1      https://busybox.net/downloads/busybox-1.36.1.tar.bz2
+  Chromium            Playwright Chromium build 1194; source https://chromium.googlesource.com/chromium/src
+                      (licence texts of every component: LICENSES\CHROMIUM.TXT)
+  Ubuntu packages     https://launchpad.net/ubuntu/+source/<source package>/<version>
+                      using the names and versions listed in SOURCE\PACKAGES.TXT
+
+WRITTEN OFFER
+  For at least three years from the date you received this disc, whoever
+  gave you this copy of Rudolf OS will, on request, give anyone a complete
+  machine-readable copy of the source code of every GPL or LGPL licensed
+  program on this disc, for no more than the cost of physically performing
+  the distribution, on a medium customarily used for software interchange.
+  This offer is made under section 3(b) of the GNU General Public License
+  version 2 and section 6 of the GNU Lesser General Public License.
+
+  If you pass copies of this disc on, keep this file and the SOURCE folder
+  with them, or make the same offer yourself.
+
+HOW TO REBUILD
+  Unpack RUDOLF.TXZ and read BUILD.TXT inside it.

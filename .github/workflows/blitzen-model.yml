@@ -1,0 +1,85 @@
+# Publishes Blitzen's model as the release "blitzen-1", where Rudolf OS downloads it from (Start > Blitzen > Download).
+# Run it by hand: Actions > Blitzen model > Run workflow.
+#
+# By default it fetches IBM's Granite 4.0 1B Instruct (Apache 2.0) as GGUF Q4_K_M from Hugging Face: the untuned
+# base model, until the fine-tuned Blitzen is trained (see the Blitzen model plan). To publish another model, give its
+# Hugging Face repository and a file-name pattern, or a direct https:// address.
+#
+# It writes blitzen.txt (model, file, size, SHA-256, licence) and signs it with the RPK_SIGNING_KEY secret, then checks
+# the signature against iso/trusted-keys.txt (the keys the disc trusts) before uploading anything.
+name: Blitzen model
+on:
+  workflow_dispatch:
+    inputs:
+      hf_repo:
+        description: 'Hugging Face repository with GGUF files'
+        default: 'ibm-granite/granite-4.0-1b-GGUF'
+      pattern:
+        description: 'Which file: part of its name'
+        default: 'Q4_K_M'
+      url:
+        description: 'Or a direct https:// address of a .gguf file (overrides the two above)'
+        default: ''
+      name:
+        description: 'Model name shown in Rudolf OS'
+        default: 'Blitzen (Granite 4.0 1B, untuned)'
+      licence:
+        description: 'Licence of the model'
+        default: 'Apache-2.0'
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq jq python3-cryptography >/dev/null
+      - name: Signing key
+        env: {KEY: '${{ secrets.RPK_SIGNING_KEY }}'}
+        run: |
+          test -n "$KEY" || { echo "::error::Add the RPK_SIGNING_KEY secret first (Settings > Secrets and variables > Actions)"; exit 1; }
+          printf '%s\n' "$KEY" > "$RUNNER_TEMP/rpk.key" && chmod 600 "$RUNNER_TEMP/rpk.key"
+      - name: Download the model
+        env: {HF_REPO: '${{ inputs.hf_repo }}', PATTERN: '${{ inputs.pattern }}', URL: '${{ inputs.url }}'}
+        run: |
+          mkdir -p blz
+          if [ -n "$URL" ]; then
+            case "$URL" in https://*.gguf|https://*.gguf\?*) ;; *) echo "::error::url must be an https:// address of a .gguf file"; exit 1;; esac
+            F=$(basename "${URL%%\?*}")
+          else
+            F=$(curl -fsSL "https://huggingface.co/api/models/$HF_REPO" | jq -r '.siblings[].rfilename' | grep -i '\.gguf$' | grep -i -- "$PATTERN" | head -1)
+            [ -n "$F" ] || { echo "::error::no .gguf matching '$PATTERN' in $HF_REPO"; exit 1; }
+            URL="https://huggingface.co/$HF_REPO/resolve/main/$F"
+          fi
+          case "$F" in *[!A-Za-z0-9._-]*) echo "::error::unexpected file name $F"; exit 1;; esac
+          echo "Downloading $F"
+          curl -fL --retry 3 -o "blz/$F" "$URL"
+          head -c 4 "blz/$F" | grep -q GGUF || { echo "::error::$F is not a GGUF file"; exit 1; }
+          ls -la blz
+          echo "MODEL=$F" >> "$GITHUB_ENV"
+      - name: Write and sign the model list
+        run: |
+          bash iso/systools/mkblitzen-list.sh "blz/$MODEL" "$RUNNER_TEMP/rpk.key" "${{ inputs.name }}" "${{ inputs.licence }}" blz
+          python3 - <<'PY'
+          import base64
+          from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+          msg=open('blz/blitzen.txt','rb').read(); sig=open('blz/blitzen.txt.sig','rb').read(); ok=False
+          for l in open('iso/trusted-keys.txt'):
+              l=l.strip()
+              if not l or l.startswith('#'): continue
+              try: Ed25519PublicKey.from_public_bytes(base64.b64decode(l)).verify(sig,msg); ok=True
+              except Exception: pass
+          assert ok, 'the signature does not match a key in iso/trusted-keys.txt: check RPK_SIGNING_KEY'
+          print('signature matches a trusted key')
+          PY
+          rm -f "$RUNNER_TEMP/rpk.key"
+      - name: Publish as the release blitzen-1
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          gh release view blitzen-1 >/dev/null 2>&1 || gh release create blitzen-1 --title "Blitzen model" \
+            --notes "The model Rudolf OS downloads for Blitzen (Start > Blitzen > Download). blitzen.txt names the file and its SHA-256 and is signed with the release key; Rudolf OS refuses anything else."
+          # remove an older model file so only the one the list names is offered
+          gh release view blitzen-1 --json assets -q '.assets[].name' | grep '\.gguf$' | grep -vx "$MODEL" | while read -r a; do gh release delete-asset blitzen-1 "$a" -y; done
+          gh release upload blitzen-1 "blz/$MODEL" blz/blitzen.txt blz/blitzen.txt.sig --clobber
+          cat blz/blitzen.txt

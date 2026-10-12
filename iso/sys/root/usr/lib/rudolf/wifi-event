@@ -1,0 +1,17 @@
+#!/bin/sh
+# Called by wpa_cli -a when Wi-Fi joins or leaves a network: get an address by DHCP, or drop it.
+#   wifi-event IF CONNECTED|DISCONNECTED     GPL-2.0-or-later.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+IF=$1; P=/run/rudolf/udhcpc-$IF.pid
+stop() { [ -f $P ] && kill "$(cat $P)" 2>/dev/null; rm -f $P; }
+case "$2" in
+CONNECTED)
+	stop
+	udhcpc -b -i "$IF" -t 6 -T 2 -A 5 -p $P -s /usr/lib/rudolf/udhcpc.sh >/dev/null 2>&1
+	echo "wifi connected" >> /run/rudolf/events ;;
+DISCONNECTED)
+	stop
+	ip addr flush dev "$IF" 2>/dev/null
+	echo "wifi disconnected" >> /run/rudolf/events ;;
+esac
+exit 0

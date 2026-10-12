@@ -1,0 +1,13 @@
+{
+ "manifest_version": 3,
+ "name": "Ruffle for Oracle",
+ "version": "1.0",
+ "description": "Plays Flash content on websites in the Oracle browser with Ruffle, the same Flash Player emulator the Rudolf OS Flash Player app uses.",
+ "permissions": ["scripting", "storage"],
+ "host_permissions": ["<all_urls>"],
+ "background": {"service_worker": "sw.js"},
+ "content_scripts": [
+  {"matches": ["http://127.0.0.1/*"], "js": ["bridge.js"], "run_at": "document_start", "all_frames": false},
+  {"matches": ["<all_urls>"], "exclude_matches": ["http://127.0.0.1/*"], "js": ["detect.js"], "run_at": "document_idle", "all_frames": true}
+ ]
+}
