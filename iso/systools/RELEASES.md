@@ -32,7 +32,8 @@ it to `gh-pages/stable/`, which is where computers look.
    openssl pkey -in rudolf-signing.pem -outform DER | tail -c 32 | base64           # value for the secret
    ```
    Put the public key in `iso/trusted-keys.txt` (computers trust only the keys listed there; the build copies
-   it to `/etc/rudolf/rpk-keys`). Add the secret value as the repository secret `RPK_SIGNING_KEY`
+   it to `/etc/rudolf/rpk-keys`). Add the secret value (or the whole PEM file; the workflows convert it and
+   check it against `iso/trusted-keys.txt`) as the repository secret `RPK_SIGNING_KEY`
    (Settings > Secrets and variables > Actions).
 3. Settings > Pages: deploy from the `gh-pages` branch, folder `/ (root)`. The stable address is then
    `https://OWNER.github.io/REPO/stable`.
