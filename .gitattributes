@@ -1,0 +1,5 @@
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+windows/stage1/*.txt text eol=crlf
+*.ico binary
+*.png binary
