@@ -31,8 +31,9 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-24.04
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Tools
         run: sudo apt-get update -qq && sudo apt-get install -y -qq jq python3-cryptography >/dev/null
       - name: Signing key

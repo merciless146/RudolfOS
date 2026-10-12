@@ -21,20 +21,22 @@ concurrency: {group: rudolf-release, cancel-in-progress: false}
 jobs:
   release:
     runs-on: ubuntu-24.04
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Tools
         run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools nasm bc flex bison libelf-dev libssl-dev kmod jq python3-cryptography >/dev/null
       - name: Signing key
         env: {KEY: '${{ secrets.RPK_SIGNING_KEY }}'}
-        run: test -n "$KEY" && printf '%s\n' "$KEY" > "$RUNNER_TEMP/rpk.key" && chmod 600 "$RUNNER_TEMP/rpk.key"
+        run: test -n "$KEY" || { echo "::error title=Missing secret::Add RPK_SIGNING_KEY under Settings > Secrets and variables > Actions > Repository secrets"; exit 1; }; printf '%s\n' "$KEY" > "$RUNNER_TEMP/rpk.key" && chmod 600 "$RUNNER_TEMP/rpk.key"
       - name: Debian 13 base for the Linux terminal (rebuilt every 4 weeks)
         if: inputs.promote == ''
         env: {GH_TOKEN: '${{ github.token }}', KEYFILE: '${{ runner.temp }}/rpk.key'}
         run: |
           B=$(gh release download debian-13 -p debian.txt -O - 2>/dev/null | sed -n 's/^built //p')
           [ -n "$B" ] && [ $(( ($(date +%s) - $(date -d "$B" +%s)) / 86400 )) -lt 28 ] && { echo "Debian base from $B is current"; exit 0; }
-          bash iso/systools/mkdebian.sh deb "$KEYFILE"
+          # as root: the image keeps Debian's own file owners (root, and 1000 for the home folder)
+          sudo -E bash iso/systools/mkdebian.sh deb "$KEYFILE"
           gh release view debian-13 >/dev/null 2>&1 || gh release create debian-13 --title "Debian 13 base for Rudolf OS" --notes "Downloaded by Rudolf OS when the Linux terminal is set up. Built from Debian's official minimal image; signed with the release key."
           gh release upload debian-13 deb/debian-13-rudolf.tar.xz deb/debian.txt deb/debian.txt.sig --clobber
       - name: Blitzen model list (signs a model uploaded by hand to the release "blitzen-1")
@@ -113,6 +115,7 @@ jobs:
         if: always() && steps.seed.outcome != 'failure'
         env: {KEYFILE: '${{ runner.temp }}/rpk.key'}
         run: |
+          [ -d "$RUNNER_TEMP/pages" ] && [ -f "$KEYFILE" ] || { echo "nothing to re-sign: an earlier step did not finish"; exit 0; }
           cd "$RUNNER_TEMP/pages"; git pull -q --ff-only origin gh-pages 2>/dev/null || true
           for c in beta stable; do python3 "$GITHUB_WORKSPACE/iso/systools/refresh_manifest.py" "$c" "$KEYFILE"; done
           git add -A; git diff --cached --quiet || { git -c user.name=rudolf-release -c user.email=release@localhost commit -qm "re-sign release lists" && git push -q origin gh-pages; }
