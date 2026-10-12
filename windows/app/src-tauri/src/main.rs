@@ -712,6 +712,17 @@ fn clang_exe(st: &App) -> Result<Option<PathBuf>, String> {
     }))
 }
 
+/// clang-NN.exe, the real compiler next to llvm-mingw's clang++.exe launcher.
+fn real_clang(bin: &Path) -> Option<PathBuf> {
+    fs::read_dir(bin).ok()?.flatten().map(|e| e.path()).find(|p| {
+        let n = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+        n.strip_prefix("clang-")
+            .and_then(|r| r.strip_suffix(".exe"))
+            .map(|v| !v.is_empty() && v.chars().all(|c| c.is_ascii_digit()))
+            .unwrap_or(false)
+    })
+}
+
 fn sandbox_env(dir: &Path, path: &[&Path]) -> Vec<(String, String)> {
     let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
     let d = dir.to_string_lossy().to_string();
@@ -763,12 +774,29 @@ fn do_run_code(st: &App, lang: &str, code: &str) -> Result<Value, String> {
             return Ok(json!({"ok": true, "code": o.code, "timeout": o.timeout, "out": o.out}));
         }
         fs::write(dir.join("main.cpp"), code).map_err(|e| e.to_string())?;
-        let args: Vec<String> = ["-std=c++17", "-O1", "-static", "-o", "main.exe", "main.cpp"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        // llvm-mingw's clang++.exe is a launcher that cannot find clang-NN.exe when the folder path contains a dot (as
+        // ...\Packages\blitzen.sandbox\... does), so start the real compiler with the launcher's settings directly.
+        let compiler = real_clang(tool.parent().unwrap()).unwrap_or_else(|| tool.clone());
+        let args: Vec<String> = [
+            "--driver-mode=g++",
+            "-target",
+            "x86_64-w64-mingw32",
+            "-rtlib=compiler-rt",
+            "-unwindlib=libunwind",
+            "-stdlib=libc++",
+            "-fuse-ld=lld",
+            "-std=c++17",
+            "-O1",
+            "-static",
+            "-o",
+            "main.exe",
+            "main.cpp",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         // compile outside the AppContainer (with the same time, memory and process limits); only the program runs inside
-        let c = sandbox::run(&sid, &tool, &args, &dir, &env, 60, 2 << 30, false)?;
+        let c = sandbox::run(&sid, &compiler, &args, &dir, &env, 60, 2 << 30, false)?;
         if c.code != 0 || !dir.join("main.exe").exists() {
             // the compiler itself failing (not the code): say so, so the page does not ask the model to "fix" good code
             let tool_root = tool
