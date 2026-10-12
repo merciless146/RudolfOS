@@ -1,0 +1,35 @@
+#!/bin/sh
+# Cyberdeck test mode: makes a faster PC behave roughly like the Rudolf Cyberdeck's Intel N100
+# (4 cores, no hyper-threading, about 2.4 GHz on a desktop core). It cannot slow the graphics
+# card down, so game frame rates still have to be measured on the Radxa X4 itself.
+#   decktest on | off | status
+# GPL-2.0-or-later.
+CAP_KHZ=2400000
+C=/sys/devices/system/cpu
+case "$1" in
+on)
+	[ -w $C/smt/control ] && echo off > $C/smt/control 2>/dev/null
+	n=0
+	for d in $C/cpu[0-9]*; do
+		i=${d##*cpu}
+		[ "$i" = 0 ] && { n=1; continue; }
+		[ -e $d/online ] || continue
+		if [ $n -lt 4 ] && [ "$(cat $d/online)" = 1 ]; then n=$((n + 1)); else echo 0 > $d/online 2>/dev/null; fi
+	done
+	for p in $C/cpufreq/policy*; do
+		[ -e $p/cpuinfo_max_freq ] || continue
+		m=$(cat $p/cpuinfo_max_freq); [ "$m" -gt $CAP_KHZ ] && m=$CAP_KHZ
+		echo $m > $p/scaling_max_freq 2>/dev/null
+	done
+	echo on > /run/rudolf/decktest;;
+off)
+	[ -w $C/smt/control ] && echo on > $C/smt/control 2>/dev/null
+	for d in $C/cpu[0-9]*; do [ -e $d/online ] && echo 1 > $d/online 2>/dev/null; done
+	for p in $C/cpufreq/policy*; do [ -e $p/cpuinfo_max_freq ] && cat $p/cpuinfo_max_freq > $p/scaling_max_freq 2>/dev/null; done
+	rm -f /run/rudolf/decktest;;
+status)
+	online=$(cat $C/online 2>/dev/null)
+	max=$(cat $C/cpufreq/policy0/scaling_max_freq 2>/dev/null)
+	echo "{\"on\":$([ -e /run/rudolf/decktest ] && echo true || echo false),\"cpus\":$(grep -c ^processor /proc/cpuinfo),\"online\":\"$online\",\"maxkhz\":${max:-0},\"memkb\":$(sed -n 's/^MemTotal: *\([0-9]*\).*/\1/p' /proc/meminfo)}";;
+*) echo "usage: decktest on|off|status"; exit 2;;
+esac

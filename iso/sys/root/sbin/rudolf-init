@@ -1,0 +1,69 @@
+#!/bin/sh
+# Rudolf OS system start (PID 1 after the initramfs). GPL-2.0-or-later.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export HOME=/root
+mount -t tmpfs -o mode=0755,nosuid tmpfs /run
+mount -t tmpfs -o mode=1777,nosuid tmpfs /tmp
+mkdir -p /run/rudolf /run/xvfb /tmp/.X11-unix /dev/shm /media
+chmod 1777 /tmp/.X11-unix
+mount -t tmpfs -o mode=1777 tmpfs /dev/shm
+hostname rudolf
+ip link set lo up
+hwclock -s -u 2>/dev/null
+mdev -s
+mdev -d 2>/dev/null
+grep -q rudolf.debug=1 /proc/cmdline && ( while :; do setsid sh -c 'exec sh -l </dev/ttyS0 >/dev/ttyS0 2>&1'; sleep 1; done ) &
+[ -s /etc/rudolf/check.txt ] && cp /etc/rudolf/check.txt /run/rudolf/check.txt
+
+# saved data
+if mountpoint -q /persist; then
+	touch /run/rudolf/persistent
+	mkdir -p /persist/home/rudolf /persist/etc /persist/os
+	chown 1000:1000 /persist/home/rudolf
+	mount --bind /persist/home/rudolf /home/rudolf
+	[ -f /persist/etc/asound.conf ] && cp /persist/etc/asound.conf /etc/asound.conf
+	[ -f /persist/etc/rudolf-display ] && cp /persist/etc/rudolf-display /etc/rudolf-display
+	[ -f /persist/etc/decktest ] && /usr/lib/rudolf/decktest on
+	[ -f /persist/proxy ] && cp /persist/proxy /run/rudolf/proxy
+	# native apps (Flatpak: Sober for Roblox) live on the data partition
+	mkdir -p /persist/flatpak && mount --bind /persist/flatpak /var/lib/flatpak
+	[ -s /persist/etc/machine-id ] || dbus-uuidgen > /persist/etc/machine-id 2>/dev/null
+	cp /persist/etc/machine-id /etc/machine-id 2>/dev/null
+else
+	mount -t tmpfs -o mode=0700,uid=1000,gid=1000 tmpfs /home/rudolf
+fi
+mkdir -p /home/rudolf/Downloads && chown 1000:1000 /home/rudolf/Downloads
+
+[ -s /etc/machine-id ] || dbus-uuidgen > /etc/machine-id 2>/dev/null
+
+# graphics card driver first, so the screen the desktop starts on is the final one
+# (it replaces the firmware framebuffer, usually at the screen's native resolution).
+# Recovery mode, "nomodeset" and rudolf.nogpu=1 keep the basic firmware framebuffer.
+NOGPU=; grep -qE 'rudolf.recovery=1|rudolf.nogpu=1|nomodeset' /proc/cmdline && NOGPU=1
+if [ -z "$NOGPU" ]; then
+	FB0=$(cat /sys/class/graphics/fb0/name 2>/dev/null)
+	for d in /sys/bus/pci/devices/*; do
+		case "$(cat $d/class 2>/dev/null)" in 0x03*) modprobe -q -b "$(cat $d/modalias)" 2>/dev/null;; esac
+	done
+	if grep -qE '^(i915|xe|amdgpu|radeon|nouveau|bochs|qxl|vmwgfx|gma500_gfx|ast|mgag200) ' /proc/modules; then
+		# the driver replaces the firmware framebuffer; wait (up to 6 s) for its own fb0
+		for i in $(seq 60); do N=$(cat /sys/class/graphics/fb0/name 2>/dev/null); [ -n "$N" ] && [ "$N" != "$FB0" ] && break; sleep 0.1; done
+		sleep 0.3
+		cat /sys/class/graphics/fb0/name > /run/rudolf/gpu 2>/dev/null
+	fi
+fi
+
+# load drivers for hardware that was found (Wi-Fi and others built as modules)
+for m in $(cat /sys/bus/*/devices/*/modalias 2>/dev/null | sort -u); do
+	case "$m" in pci:*bc03sc*) [ -n "$NOGPU" ] && continue;; esac   # graphics: handled above
+	modprobe -q -b "$m" 2>/dev/null
+done &
+
+# wired network: DHCP on every cable that is plugged in
+( sleep 1; for i in /sys/class/net/*; do n=${i##*/}; [ "$n" = lo ] && continue; [ -e $i/wireless ] && continue; [ -e $i/device ] || continue
+	ip link set "$n" up; udhcpc -b -i "$n" -s /usr/lib/rudolf/udhcpc.sh >/dev/null 2>&1; done ) &
+# Wi-Fi: start when the adapter's driver is up, and join saved networks
+/usr/lib/rudolf/wifi.sh boot >/dev/null 2>&1 &
+
+rudolfd > /run/rudolf/rudolfd.log 2>&1 &
+exec /usr/lib/rudolf/session

@@ -1,0 +1,1893 @@
+/*
+ * rudolfd - Rudolf OS system service.
+ *
+ * Serves the Rudolf OS web desktop on http://127.0.0.1:8080/ and gives it a
+ * small JSON API for the things a web page cannot do by itself: power off,
+ * restart, suspend, battery and brightness, network interfaces and DHCP,
+ * disks and USB drives (browse, read, write), screenshots of the real
+ * screen, keyboard layout, pointer speed, sound card choice, clock, OS
+ * updates with rollback, factory reset and installing to an internal disk.
+ *
+ * Every /api/ request must carry the X-Rudolf-Token header. The token is
+ * random per boot and is only written into the page this server delivers,
+ * so other web sites opened inside Rudolf OS cannot drive the API.
+ *
+ * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
+ */
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <strings.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <poll.h>
+#include <dirent.h>
+#include <signal.h>
+#include <time.h>
+#include <ctype.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <sys/statvfs.h>
+#include <sys/sysinfo.h>
+#include <sys/reboot.h>
+#include <sys/time.h>
+#include <grp.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+#include <linux/fb.h>
+#include <zlib.h>
+
+#define WWW      "/usr/share/rudolf/www"
+#define PERSIST  "/persist"
+#define RUN      "/run/rudolf"
+#define MAXBODY  (512u << 20)
+
+static char token[33];
+static char boot_mode[16] = "bios", media_mode[16] = "cd";
+static int live = 1, recovery = 0;
+
+/* ------------------------------------------------------------- helpers */
+static long long now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1000LL + t.tv_nsec / 1000000; }
+
+static char *slurp(const char *path, size_t *len)
+{
+	FILE *f = fopen(path, "rb");
+	if (!f) return NULL;
+	size_t cap = 4096, n = 0;
+	char *b = malloc(cap + 1);
+	size_t r;
+	while ((r = fread(b + n, 1, cap - n, f)) > 0) { n += r; if (n == cap) { cap *= 2; b = realloc(b, cap + 1); } }
+	fclose(f);
+	b[n] = 0;
+	if (len) *len = n;
+	return b;
+}
+
+static void trim(char *s) { size_t n = strlen(s); while (n && (s[n - 1] == '\n' || s[n - 1] == ' ' || s[n - 1] == '\r')) s[--n] = 0; }
+
+static long long read_ll(const char *path, long long def)
+{
+	char *s = slurp(path, NULL);
+	if (!s) return def;
+	long long v = atoll(s);
+	free(s);
+	return v;
+}
+
+static int write_str(const char *path, const char *s)
+{
+	int f = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (f < 0) return -1;
+	ssize_t r = write(f, s, strlen(s));
+	close(f);
+	return r < 0 ? -1 : 0;
+}
+
+/* growable string for JSON replies */
+typedef struct { char *b; size_t n, cap; } str;
+static void sadd(str *s, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void sadd(str *s, const char *fmt, ...)
+{
+	va_list ap;
+	for (;;) {
+		if (!s->b) { s->cap = 1024; s->b = malloc(s->cap); s->n = 0; }
+		va_start(ap, fmt);
+		int r = vsnprintf(s->b + s->n, s->cap - s->n, fmt, ap);
+		va_end(ap);
+		if ((size_t)r < s->cap - s->n) { s->n += r; return; }
+		s->cap = (s->cap + r) * 2;
+		s->b = realloc(s->b, s->cap);
+	}
+}
+static void sjson(str *s, const char *v)
+{
+	sadd(s, "\"");
+	for (const unsigned char *p = (const unsigned char *)(v ? v : ""); *p; p++) {
+		if (*p == '"' || *p == '\\') sadd(s, "\\%c", *p);
+		else if (*p < 0x20) sadd(s, "\\u%04x", *p);
+		else sadd(s, "%c", *p);
+	}
+	sadd(s, "\"");
+}
+
+static int run(const char *cmd) { int r = system(cmd); return WIFEXITED(r) ? WEXITSTATUS(r) : -1; }
+
+static char *run_out(const char *cmd)
+{
+	FILE *p = popen(cmd, "r");
+	if (!p) return strdup("");
+	str s = {0};
+	char buf[4096];
+	size_t r;
+	sadd(&s, "%s", "");
+	while ((r = fread(buf, 1, sizeof buf - 1, p)) > 0) { buf[r] = 0; sadd(&s, "%s", buf); }
+	pclose(p);
+	return s.b;
+}
+
+/* only plain names: letters, digits and - _ . : */
+static int safe_word(const char *s, size_t max)
+{
+	if (!s || !*s || strlen(s) > max) return 0;
+	for (; *s; s++) if (!isalnum((unsigned char)*s) && !strchr("-_.:", *s)) return 0;
+	return 1;
+}
+
+/* paths for the disk browser must stay inside /media */
+/* the folders Linux apps share with drive C: (kept in step by the desktop) */
+static int shared_path(const char *p)
+{
+	static const char *const R[] = {"/home/rudolf/Documents", "/home/rudolf/Pictures", "/home/rudolf/Downloads", "/home/rudolf/Games", NULL};
+	for (int i = 0; R[i]; i++) { size_t l = strlen(R[i]); if (!strncmp(p, R[i], l) && (!p[l] || p[l] == '/')) return 1; }
+	return 0;
+}
+static int safe_media_path(const char *p)
+{
+	if (!p || (strncmp(p, "/media/", 7) && !shared_path(p)) || strstr(p, "/../") || strstr(p, "/./") || strlen(p) > 1024) return 0;
+	size_t n = strlen(p);
+	if (n >= 3 && !strcmp(p + n - 3, "/..")) return 0;
+	return 1;
+}
+
+static void urldecode(char *s)
+{
+	char *o = s;
+	for (; *s; s++) {
+		if (*s == '+') *o++ = ' ';
+		else if (*s == '%' && isxdigit((unsigned char)s[1]) && isxdigit((unsigned char)s[2])) {
+			char h[3] = { s[1], s[2], 0 };
+			*o++ = (char)strtol(h, NULL, 16);
+			s += 2;
+		} else *o++ = *s;
+	}
+	*o = 0;
+}
+
+static char *qparam(const char *query, const char *name)
+{
+	/* a few buffers in turn, so values asked for one after another stay valid together */
+	static char vals[8][2048]; static int vi; char *val = vals[vi++ & 7];
+	size_t nl = strlen(name);
+	const char *p = query;
+	while (p && *p) {
+		if (!strncmp(p, name, nl) && p[nl] == '=') {
+			const char *e = strchr(p + nl + 1, '&');
+			size_t l = e ? (size_t)(e - p - nl - 1) : strlen(p + nl + 1);
+			if (l >= sizeof vals[0]) l = sizeof vals[0] - 1;
+			memcpy(val, p + nl + 1, l);
+			val[l] = 0;
+			urldecode(val);
+			return val;
+		}
+		p = strchr(p, '&');
+		if (p) p++;
+	}
+	return NULL;
+}
+
+/* ------------------------------------------------------------- HTTP */
+struct req {
+	int fd;
+	char method[8], path[2048], query[2048];
+	char tok[64], range[64];
+	char *body; size_t blen;
+};
+
+static void send_all(int fd, const void *b, size_t n)
+{
+	const char *p = b;
+	while (n) {
+		ssize_t w = write(fd, p, n);
+		if (w < 0) { if (errno == EINTR) continue; if (errno == EAGAIN) { struct pollfd pf = { fd, POLLOUT, 0 }; poll(&pf, 1, 5000); continue; } return; }
+		p += w; n -= w;
+	}
+}
+
+static void reply(int fd, int code, const char *ctype, const void *body, size_t n, const char *extra)
+{
+	char h[512];
+	const char *msg = code == 200 ? "OK" : code == 206 ? "Partial Content" : code == 400 ? "Bad Request" : code == 403 ? "Forbidden" : code == 404 ? "Not Found" : code == 413 ? "Too Large" : "Error";
+	int l = snprintf(h, sizeof h, "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n%s\r\n", code, msg, ctype, n, extra ? extra : "");
+	send_all(fd, h, l);
+	if (n) send_all(fd, body, n);
+}
+static void reply_json(int fd, str *s) { reply(fd, 200, "application/json", s->b, s->n, NULL); free(s->b); }
+static void reply_err(int fd, int code, const char *m)
+{
+	str s = {0};
+	sadd(&s, "{\"ok\":false,\"error\":");
+	sjson(&s, m);
+	sadd(&s, "}");
+	reply(fd, code, "application/json", s.b, s.n, NULL);
+	free(s.b);
+}
+static void reply_ok(int fd, const char *m)
+{
+	str s = {0};
+	sadd(&s, "{\"ok\":true,\"message\":");
+	sjson(&s, m ? m : "");
+	sadd(&s, "}");
+	reply_json(fd, &s);
+}
+
+static const char *mime(const char *p)
+{
+	const char *e = strrchr(p, '.');
+	if (!e) return "application/octet-stream";
+	e++;
+	static const char *m[][2] = { {"html","text/html; charset=utf-8"},{"htm","text/html; charset=utf-8"},{"js","text/javascript"},{"mjs","text/javascript"},{"css","text/css"},{"json","application/json"},{"txt","text/plain; charset=utf-8"},{"png","image/png"},{"jpg","image/jpeg"},{"jpeg","image/jpeg"},{"gif","image/gif"},{"svg","image/svg+xml"},{"webp","image/webp"},{"wasm","application/wasm"},{"pdf","application/pdf"},{"mp3","audio/mpeg"},{"ogg","audio/ogg"},{"wav","audio/wav"},{"mp4","video/mp4"},{"webm","video/webm"},{"woff2","font/woff2"},{"woff","font/woff"},{"ttf","font/ttf"},{"ico","image/x-icon"},{"md","text/markdown; charset=utf-8"} };
+	for (size_t i = 0; i < sizeof m / sizeof m[0]; i++) if (!strcasecmp(e, m[i][0])) return m[i][1];
+	return "application/octet-stream";
+}
+
+/* the page Rudolf OS boots from: an installed update unless recovering */
+static void www_root(char *out, size_t n)
+{
+	struct stat st;
+	if (!recovery && !access(PERSIST "/os/current/index.html", R_OK) && !stat(PERSIST "/os/current/index.html", &st) && st.st_size > 100000 && access(PERSIST "/os/disabled", F_OK))
+		snprintf(out, n, PERSIST "/os/current");
+	else snprintf(out, n, WWW);
+}
+
+static void serve_file(struct req *r, const char *path)
+{
+	int f = open(path, O_RDONLY | O_CLOEXEC);
+	struct stat st;
+	if (f < 0 || fstat(f, &st) || S_ISDIR(st.st_mode)) { if (f >= 0) close(f); reply_err(r->fd, 404, "not found"); return; }
+	off_t start = 0, end = st.st_size - 1;
+	int partial = 0;
+	if (r->range[0] && !strncmp(r->range, "bytes=", 6)) {
+		long long a = -1, b = -1;
+		if (sscanf(r->range + 6, "%lld-%lld", &a, &b) >= 1 && a >= 0 && a < st.st_size) {
+			start = a; if (b >= a && b < st.st_size) end = b;
+			partial = 1;
+		}
+	}
+	char h[600];
+	/* shared libraries (Ruffle, PDF.js) are also loaded by Oracle's sandboxed pages, which have no origin */
+	const char *cors = strstr(path, "/lib/") || !strncmp(path, "/pkg/", 5) ? "Access-Control-Allow-Origin: *\r\n" : "";
+	int l = snprintf(h, sizeof h, "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %lld\r\nAccept-Ranges: bytes\r\n%s%s%sCache-Control: no-cache\r\nConnection: close\r\n\r\n",
+		partial ? 206 : 200, partial ? "Partial Content" : "OK", mime(path), (long long)(end - start + 1),
+		partial ? "Content-Range: bytes " : "", "", cors);
+	if (partial) {
+		l -= 0;
+		l = snprintf(h, sizeof h, "HTTP/1.1 206 Partial Content\r\nContent-Type: %s\r\nContent-Length: %lld\r\nAccept-Ranges: bytes\r\nContent-Range: bytes %lld-%lld/%lld\r\n%sConnection: close\r\n\r\n",
+			mime(path), (long long)(end - start + 1), (long long)start, (long long)end, (long long)st.st_size, cors);
+	}
+	send_all(r->fd, h, l);
+	if (!strcmp(r->method, "HEAD")) { close(f); return; }
+	lseek(f, start, SEEK_SET);
+	char buf[65536];
+	off_t left = end - start + 1;
+	while (left > 0) {
+		ssize_t n = read(f, buf, left > (off_t)sizeof buf ? sizeof buf : (size_t)left);
+		if (n <= 0) break;
+		send_all(r->fd, buf, n);
+		left -= n;
+	}
+	close(f);
+}
+
+/* Chromium keeps localStorage in memory and writes it to disk late; after a power cut or a
+ * hurried shutdown recent settings and accounts could be lost. The desktop therefore also
+ * sends a copy to rudolfd (POST /api/lsync), which writes it atomically to LSFILE; the copy
+ * is handed back inside the page and restored when it is newer than what Chromium kept. */
+#define LSFILE "/home/rudolf/.rudolf-ls.json"
+static const char LSJS[] =
+	"(function(){var G='__rudolf_ls_gen',S=localStorage,P=Storage.prototype,si=P.setItem,ri=P.removeItem,cl=P.clear,t=0;"
+	"try{var e=document.getElementById('rudolf-ls'),L=e&&JSON.parse(e.textContent);"
+	"if(L&&L.data&&L.gen>(+S.getItem(G)||0)){var ks=[];for(var i=0;i<S.length;i++)ks.push(S.key(i));"
+	"ks.forEach(function(k){if(k!=G&&!(k in L.data))ri.call(S,k)});for(var k in L.data)si.call(S,k,L.data[k]);si.call(S,G,String(L.gen))}}catch(x){}"
+	"function push(){t=0;try{var d={};for(var i=0;i<S.length;i++){var k=S.key(i);if(k!=G)d[k]=S.getItem(k)}"
+	"var g=(+S.getItem(G)||0)+1;si.call(S,G,String(g));"
+	"return fetch('/api/lsync',{method:'POST',headers:{'X-Rudolf-Token':RUDOLFD.token},body:JSON.stringify({gen:g,data:d})}).catch(function(){})}catch(x){return Promise.resolve()}}"
+	"function sch(o){if(o===S&&!t)t=setTimeout(push,1500)}"
+	"P.setItem=function(k,v){si.call(this,k,v);if(k!=G)sch(this)};P.removeItem=function(k){ri.call(this,k);sch(this)};P.clear=function(){cl.call(this);sch(this)};"
+	"window.__rudolfLsFlush=function(){if(t)clearTimeout(t);return push()};"
+	"addEventListener('pagehide',function(){if(t){clearTimeout(t);push()}})})();";
+
+static void serve_index(struct req *r, const char *root)
+{
+	char p[512];
+	snprintf(p, sizeof p, "%s/index.html", root);
+	size_t n;
+	char *html = slurp(p, &n);
+	if (!html) { reply_err(r->fd, 404, "Rudolf OS page missing"); return; }
+	size_t lsn = 0;
+	char *ls = slurp(LSFILE, &lsn);
+	if (ls && (lsn < 2 || ls[0] != '{')) { free(ls); ls = NULL; lsn = 0; }
+	size_t cap = 4096 + sizeof LSJS + lsn * 6;
+	char *inj = malloc(cap), *q = inj;
+	/* the error reporter sends uncaught page errors to /api/clientlog so they can be read from the console */
+	q += snprintf(q, cap, "<script type=\"application/json\" id=\"rudolf-ls\">");
+	for (size_t i = 0; ls && i < lsn; i++) {   /* '<' escaped so the data can never end the script element */
+		if (ls[i] == '<') { memcpy(q, "\\u003c", 6); q += 6; } else *q++ = ls[i];
+	}
+	q += sprintf(q, "</script><script>window.RUDOLFD={token:\"%s\",base:\"\",boot:\"%s\",media:\"%s\",live:%d,recovery:%d};"
+		"(function(){var n=0;function s(m){if(++n>200)return;try{fetch('/api/clientlog',{method:'POST',headers:{'X-Rudolf-Token':RUDOLFD.token},body:new Date().toISOString()+' '+String(m).slice(0,3000)})}catch(e){}}"
+		"addEventListener('error',function(e){s('error: '+e.message+' @'+(e.filename||'').split('/').pop()+':'+e.lineno+':'+e.colno)});"
+		"addEventListener('unhandledrejection',function(e){var r=e.reason;s('promise: '+(r&&r.stack||r))});window.__rdlog=s})();%s</script>",
+		token, boot_mode, media_mode, live, recovery, LSJS);
+	size_t il = q - inj;
+	free(ls);
+	char *h = strstr(html, "<head>");
+	size_t at = h ? (size_t)(h - html) + 6 : 0;
+	char *out = malloc(n + il + 1);
+	memcpy(out, html, at); memcpy(out + at, inj, il); memcpy(out + at + il, html + at, n - at);
+	reply(r->fd, 200, "text/html; charset=utf-8", out, n + il, NULL);
+	free(out); free(html); free(inj);
+}
+
+/* ------------------------------------------------------------- system info */
+static void cpu_times(unsigned long long *busy, unsigned long long *total)
+{
+	FILE *f = fopen("/proc/stat", "r");
+	unsigned long long u = 0, ni = 0, s = 0, id = 0, io = 0, irq = 0, sirq = 0, st = 0;
+	if (f) { if (fscanf(f, "cpu %llu %llu %llu %llu %llu %llu %llu %llu", &u, &ni, &s, &id, &io, &irq, &sirq, &st) < 4) {} fclose(f); }
+	*busy = u + ni + s + irq + sirq + st;
+	*total = *busy + id + io;
+}
+
+static void battery(str *s)
+{
+	DIR *d = opendir("/sys/class/power_supply");
+	struct dirent *e;
+	int first = 1;
+	sadd(s, "[");
+	while (d && (e = readdir(d))) {
+		if (e->d_name[0] == '.') continue;
+		char p[256], t[64] = "";
+		snprintf(p, sizeof p, "/sys/class/power_supply/%s/type", e->d_name);
+		char *ty = slurp(p, NULL);
+		if (!ty) continue;
+		trim(ty);
+		snprintf(t, sizeof t, "%s", ty);
+		free(ty);
+		snprintf(p, sizeof p, "/sys/class/power_supply/%s/capacity", e->d_name);
+		long long cap = read_ll(p, -1);
+		snprintf(p, sizeof p, "/sys/class/power_supply/%s/status", e->d_name);
+		char *stt = slurp(p, NULL);
+		if (stt) trim(stt);
+		snprintf(p, sizeof p, "/sys/class/power_supply/%s/online", e->d_name);
+		long long online = read_ll(p, -1);
+		sadd(s, "%s{\"name\":", first ? "" : ",");
+		sjson(s, e->d_name);
+		sadd(s, ",\"type\":");
+		sjson(s, t);
+		sadd(s, ",\"capacity\":%lld,\"online\":%lld,\"status\":", cap, online);
+		sjson(s, stt ? stt : "");
+		sadd(s, "}");
+		free(stt);
+		first = 0;
+	}
+	if (d) closedir(d);
+	sadd(s, "]");
+}
+
+static int backlight_dir(char *out, size_t n)
+{
+	DIR *d = opendir("/sys/class/backlight");
+	struct dirent *e;
+	int ok = 0;
+	while (d && (e = readdir(d))) {
+		if (e->d_name[0] == '.') continue;
+		snprintf(out, n, "/sys/class/backlight/%s", e->d_name);
+		ok = 1;
+		if (strstr(e->d_name, "intel") || strstr(e->d_name, "amdgpu")) break;
+	}
+	if (d) closedir(d);
+	return ok;
+}
+
+static void api_info(struct req *r)
+{
+	str s = {0};
+	struct sysinfo si; sysinfo(&si);
+	char *model = run_out("grep -m1 'model name' /proc/cpuinfo | cut -d: -f2-");
+	trim(model);
+	char *kern = run_out("uname -r"); trim(kern);
+	char *prod = slurp("/sys/class/dmi/id/product_name", NULL); if (prod) trim(prod);
+	char *vend = slurp("/sys/class/dmi/id/sys_vendor", NULL); if (vend) trim(vend);
+	char *ver = slurp("/usr/share/rudolf/VERSION", NULL); if (ver) trim(ver);
+	struct statvfs sv;
+	long long ptotal = -1, pfree = -1;
+	if (!statvfs(PERSIST, &sv) && !live) { ptotal = (long long)sv.f_blocks * sv.f_frsize; pfree = (long long)sv.f_bavail * sv.f_frsize; }
+	char bl[256];
+	sadd(&s, "{\"ok\":true,\"version\":"); sjson(&s, ver ? ver : "25");
+	sadd(&s, ",\"kernel\":"); sjson(&s, kern);
+	sadd(&s, ",\"cpu\":"); sjson(&s, *model == ' ' ? model + 1 : model);
+	sadd(&s, ",\"threads\":%ld,\"memTotal\":%llu,\"memFree\":%llu,\"uptime\":%ld", sysconf(_SC_NPROCESSORS_ONLN), (unsigned long long)si.totalram * si.mem_unit, (unsigned long long)si.freeram * si.mem_unit, si.uptime);
+	sadd(&s, ",\"vendor\":"); sjson(&s, vend ? vend : "");
+	sadd(&s, ",\"product\":"); sjson(&s, prod ? prod : "");
+	sadd(&s, ",\"boot\":"); sjson(&s, boot_mode);
+	sadd(&s, ",\"media\":"); sjson(&s, media_mode);
+	sadd(&s, ",\"live\":%s,\"recovery\":%s,\"persistTotal\":%lld,\"persistFree\":%lld,\"backlight\":%s,\"updateInstalled\":%s}", live ? "true" : "false", recovery ? "true" : "false", ptotal, pfree,
+		backlight_dir(bl, sizeof bl) ? "true" : "false", access(PERSIST "/os/current/index.html", R_OK) ? "false" : "true");
+	free(model); free(kern); free(prod); free(vend); free(ver);
+	reply_json(r->fd, &s);
+}
+
+static void api_stats(struct req *r)
+{
+	unsigned long long b, t, pb = 0, pt = 0;
+	cpu_times(&b, &t);
+	FILE *pf = fopen(RUN "/cpu.prev", "r");
+	if (pf) { if (fscanf(pf, "%llu %llu", &pb, &pt) != 2) pb = pt = 0; fclose(pf); }
+	double cpu = (t > pt && pt) ? 100.0 * (b - pb) / (t - pt) : 0;
+	char cb[64]; snprintf(cb, sizeof cb, "%llu %llu\n", b, t); write_str(RUN "/cpu.prev", cb);
+	struct sysinfo si; sysinfo(&si);
+	str s = {0};
+	sadd(&s, "{\"ok\":true,\"cpu\":%.1f,\"load\":%.2f,\"memTotal\":%llu,\"memFree\":%llu,\"memAvailable\":", cpu, si.loads[0] / 65536.0, (unsigned long long)si.totalram * si.mem_unit, (unsigned long long)si.freeram * si.mem_unit);
+	char *ma = run_out("awk '/MemAvailable/{print $2*1024}' /proc/meminfo"); trim(ma);
+	sadd(&s, "%s", *ma ? ma : "0");
+	free(ma);
+	sadd(&s, ",\"battery\":"); battery(&s);
+	char bl[256];
+	if (backlight_dir(bl, sizeof bl)) {
+		char p[300];
+		snprintf(p, sizeof p, "%s/brightness", bl); long long cur = read_ll(p, 0);
+		snprintf(p, sizeof p, "%s/max_brightness", bl); long long mx = read_ll(p, 1);
+		sadd(&s, ",\"brightness\":%lld", mx > 0 ? cur * 100 / mx : -1);
+	} else sadd(&s, ",\"brightness\":null");
+	char *temp = run_out("cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | sort -n | tail -1"); trim(temp);
+	sadd(&s, ",\"tempC\":%s", *temp ? temp : "null");
+	if (*temp) { s.n -= strlen(temp); sadd(&s, "%.1f", atof(temp) / 1000.0); }
+	free(temp);
+	char *procs = run_out("ps -o pid,rss,comm 2>/dev/null | tail -n +2 | sort -k2 -n -r | head -12");
+	sadd(&s, ",\"processes\":"); sjson(&s, procs); free(procs);
+	sadd(&s, "}");
+	reply_json(r->fd, &s);
+}
+
+/* ------------------------------------------------------------- network */
+static void api_net(struct req *r)
+{
+	str s = {0};
+	sadd(&s, "{\"ok\":true,\"interfaces\":[");
+	DIR *d = opendir("/sys/class/net");
+	struct dirent *e;
+	int first = 1;
+	while (d && (e = readdir(d))) {
+		if (e->d_name[0] == '.' || !strcmp(e->d_name, "lo")) continue;
+		char p[256];
+		snprintf(p, sizeof p, "/sys/class/net/%s/operstate", e->d_name);
+		char *st = slurp(p, NULL); if (st) trim(st);
+		snprintf(p, sizeof p, "/sys/class/net/%s/address", e->d_name);
+		char *mac = slurp(p, NULL); if (mac) trim(mac);
+		snprintf(p, sizeof p, "/sys/class/net/%s/wireless", e->d_name);
+		int wifi = !access(p, F_OK);
+		snprintf(p, sizeof p, "/sys/class/net/%s/statistics/rx_bytes", e->d_name);
+		long long rx = read_ll(p, 0);
+		snprintf(p, sizeof p, "/sys/class/net/%s/statistics/tx_bytes", e->d_name);
+		long long tx = read_ll(p, 0);
+		char cmd[256];
+		snprintf(cmd, sizeof cmd, "ip -4 -o addr show dev %s 2>/dev/null | awk '{print $4}' | head -1", e->d_name);
+		char *ip = run_out(cmd); trim(ip);
+		sadd(&s, "%s{\"name\":", first ? "" : ","); sjson(&s, e->d_name);
+		sadd(&s, ",\"state\":"); sjson(&s, st ? st : "");
+		sadd(&s, ",\"mac\":"); sjson(&s, mac ? mac : "");
+		sadd(&s, ",\"ip\":"); sjson(&s, ip);
+		sadd(&s, ",\"wireless\":%s,\"rx\":%lld,\"tx\":%lld}", wifi ? "true" : "false", rx, tx);
+		free(st); free(mac); free(ip);
+		first = 0;
+	}
+	if (d) closedir(d);
+	char *gw = run_out("ip route 2>/dev/null | awk '/default/{print $3; exit}'"); trim(gw);
+	char *dns = run_out("awk '/nameserver/{print $2}' /etc/resolv.conf 2>/dev/null | head -2 | tr '\\n' ' '"); trim(dns);
+	sadd(&s, "],\"gateway\":"); sjson(&s, gw);
+	sadd(&s, ",\"dns\":"); sjson(&s, dns);
+	sadd(&s, ",\"wifiTools\":%s}", access("/usr/sbin/wpa_supplicant", X_OK) ? "false" : "true");
+	free(gw); free(dns);
+	reply_json(r->fd, &s);
+}
+
+/* ------------------------------------------------------------- disks */
+static void api_disks(struct req *r)
+{
+	char *out = run_out("for d in /sys/block/*; do n=${d##*/}; case $n in loop*|ram*|zram*) continue;; esac; "
+		"s=$(cat $d/size); rm=$(cat $d/removable); m=$(cat $d/device/model 2>/dev/null | tr -s ' '); "
+		"echo \"D|$n|$s|$rm|$m\"; for p in $d/$n*; do [ -e \"$p/partition\" ] || continue; pn=${p##*/}; "
+		"ps=$(cat $p/size); mp=$(awk -v d=/dev/$pn '$1==d{print $2; exit}' /proc/mounts); "
+		"fs=$(blkid /dev/$pn 2>/dev/null | sed -n 's/.*TYPE=\"\\([^\"]*\\)\".*/\\1/p'); "
+		"lb=$(blkid /dev/$pn 2>/dev/null | sed -n 's/.* LABEL=\"\\([^\"]*\\)\".*/\\1/p'); echo \"P|$pn|$ps|$fs|$lb|$mp\"; done; done");
+	str s = {0};
+	sadd(&s, "{\"ok\":true,\"disks\":[");
+	int fd = 1, fp = 1;
+	char *save, *line = strtok_r(out, "\n", &save);
+	while (line) {
+		char *f[6] = {0};
+		int k = 0;
+		char *sv2, *t = strtok_r(line, "|", &sv2);
+		while (t && k < 6) { f[k++] = t; t = strtok_r(NULL, "|", &sv2); }
+		if (f[0] && !strcmp(f[0], "D") && k >= 4) {
+			if (!fd) sadd(&s, "]}");
+			sadd(&s, "%s{\"name\":", fd ? "" : ","); sjson(&s, f[1]);
+			sadd(&s, ",\"bytes\":%lld,\"removable\":%s,\"model\":", atoll(f[2]) * 512, f[3][0] == '1' ? "true" : "false");
+			sjson(&s, k > 4 ? f[4] : "");
+			sadd(&s, ",\"partitions\":[");
+			fd = 0; fp = 1;
+		} else if (f[0] && !strcmp(f[0], "P") && k >= 3 && !fd) {
+			sadd(&s, "%s{\"name\":", fp ? "" : ","); sjson(&s, f[1]);
+			sadd(&s, ",\"bytes\":%lld,\"fs\":", atoll(f[2]) * 512); sjson(&s, k > 3 ? f[3] : "");
+			sadd(&s, ",\"label\":"); sjson(&s, k > 4 ? f[4] : "");
+			sadd(&s, ",\"mount\":"); sjson(&s, k > 5 ? f[5] : "");
+			sadd(&s, "}");
+			fp = 0;
+		}
+		line = strtok_r(NULL, "\n", &save);
+	}
+	if (!fd) sadd(&s, "]}");
+	sadd(&s, "]}");
+	free(out);
+	reply_json(r->fd, &s);
+}
+
+static void api_mount(struct req *r, int mount)
+{
+	char *dev = qparam(r->query, "dev");
+	if (!safe_word(dev, 32)) { reply_err(r->fd, 400, "bad device"); return; }
+	char cmd[512];
+	if (mount) snprintf(cmd, sizeof cmd, "mkdir -p /media/%s && (mount -o rw /dev/%s /media/%s 2>/dev/null || mount -o ro /dev/%s /media/%s)", dev, dev, dev, dev, dev);
+	else snprintf(cmd, sizeof cmd, "sync; umount /media/%s && rmdir /media/%s", dev, dev);
+	if (run(cmd)) reply_err(r->fd, 500, mount ? "could not mount this partition" : "could not unmount (files in use?)");
+	else reply_ok(r->fd, mount ? "mounted" : "safe to remove");
+}
+
+static void api_fs(struct req *r, const char *op)
+{
+	char *p = qparam(r->query, "path");
+	char path[1100];
+	if (!p || !safe_media_path(p)) { reply_err(r->fd, 403, "only /media/... and the shared folders are reachable"); return; }
+	snprintf(path, sizeof path, "%s", p);
+	if (!strcmp(op, "list")) {
+		DIR *d = opendir(path);
+		if (!d) { reply_err(r->fd, 404, "no such folder"); return; }
+		str s = {0};
+		sadd(&s, "{\"ok\":true,\"items\":[");
+		struct dirent *e;
+		int first = 1;
+		while ((e = readdir(d))) {
+			if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+			char fp[2200];
+			struct stat st;
+			snprintf(fp, sizeof fp, "%s/%s", path, e->d_name);
+			if (stat(fp, &st)) continue;
+			sadd(&s, "%s{\"name\":", first ? "" : ","); sjson(&s, e->d_name);
+			sadd(&s, ",\"dir\":%s,\"size\":%lld,\"mtime\":%lld}", S_ISDIR(st.st_mode) ? "true" : "false", (long long)st.st_size, (long long)st.st_mtime * 1000);
+			first = 0;
+		}
+		closedir(d);
+		sadd(&s, "]}");
+		reply_json(r->fd, &s);
+	} else if (!strcmp(op, "read")) serve_file(r, path);
+	else if (!strcmp(op, "write")) {
+		char tmp[1200];
+		snprintf(tmp, sizeof tmp, "%s.rudolf-tmp", path);
+		int f = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+		if (f < 0) { reply_err(r->fd, 500, "cannot write here (read-only drive?)"); return; }
+		ssize_t w = r->blen ? write(f, r->body, r->blen) : 0;
+		fsync(f); close(f);
+		if (w != (ssize_t)r->blen || rename(tmp, path)) { unlink(tmp); reply_err(r->fd, 500, "write failed (drive full?)"); return; }
+		if (shared_path(path)) { if (chown(path, 1000, 1000)) {} }
+		const char *mt = qparam(r->query, "mtime"); if (mt && atoll(mt) > 0) { struct timespec ts[2] = {{atoll(mt) / 1000, (atoll(mt) % 1000) * 1000000}, {atoll(mt) / 1000, (atoll(mt) % 1000) * 1000000}}; utimensat(AT_FDCWD, path, ts, 0); }
+		{ struct stat st2; str s2 = {0}; if (!stat(path, &st2)) { sadd(&s2, "{\"ok\":true,\"message\":\"saved\",\"mtime\":%lld,\"size\":%lld}", (long long)st2.st_mtim.tv_sec * 1000 + st2.st_mtim.tv_nsec / 1000000, (long long)st2.st_size); reply_json(r->fd, &s2); } else reply_ok(r->fd, "saved"); }
+	} else if (!strcmp(op, "mkdir")) { if (mkdir(path, 0755) && errno != EEXIST) reply_err(r->fd, 500, strerror(errno)); else { if (shared_path(path)) { if (chown(path, 1000, 1000)) {} } reply_ok(r->fd, "created"); } }
+	else if (!strcmp(op, "tree")) {
+		/* every file and folder below path (for keeping drive C: in step): relative path, size, mtime in ms */
+		str s = {0}; sadd(&s, "{\"ok\":true,\"items\":["); int n = 0;
+		char stack[64][1100]; int sp = 0; snprintf(stack[sp++], sizeof stack[0], "%s", path);
+		size_t base = strlen(path);
+		while (sp && n < 20000) {
+			char dir[1100]; snprintf(dir, sizeof dir, "%s", stack[--sp]);
+			DIR *d = opendir(dir); if (!d) continue; struct dirent *e;
+			while ((e = readdir(d)) && n < 20000) {
+				if (e->d_name[0] == '.' || strstr(e->d_name, ".rudolf-tmp")) continue;
+				char fp[2200]; struct stat st; snprintf(fp, sizeof fp, "%s/%s", dir, e->d_name);
+				if (lstat(fp, &st) || S_ISLNK(st.st_mode)) continue;
+				int isd = S_ISDIR(st.st_mode);
+				sadd(&s, "%s{\"p\":", n ? "," : ""); sjson(&s, fp + base + 1);
+				sadd(&s, ",\"dir\":%s,\"size\":%lld,\"mtime\":%lld}", isd ? "true" : "false", (long long)st.st_size, (long long)st.st_mtim.tv_sec * 1000 + st.st_mtim.tv_nsec / 1000000);
+				n++; if (isd && sp < 64 && strlen(fp) < 1090) snprintf(stack[sp++], sizeof stack[0], "%s", fp);
+			}
+			closedir(d);
+		}
+		sadd(&s, "]}"); reply_json(r->fd, &s);
+	}
+	else if (!strcmp(op, "delete")) {
+		struct stat st;
+		if (stat(path, &st)) { reply_err(r->fd, 404, "not found"); return; }
+		int rc = S_ISDIR(st.st_mode) ? rmdir(path) : unlink(path);
+		if (rc) reply_err(r->fd, 500, strerror(errno)); else reply_ok(r->fd, "deleted");
+	} else reply_err(r->fd, 404, "unknown file operation");
+}
+
+/* ------------------------------------------------------------- screenshot */
+static void put32(uint8_t *p, uint32_t v) { p[0] = v >> 24; p[1] = v >> 16; p[2] = v >> 8; p[3] = v; }
+/* RGB rows with a PNG filter byte in front of each. From the X server when Xorg draws the screen
+ * (graphics-card display path), otherwise straight from the framebuffer. */
+static uint8_t *grab_x(int *pw, int *ph, size_t *pn)
+{
+	FILE *p = popen("DISPLAY=:0 rudolf-display --shot 2>/dev/null", "r");
+	if (!p) return NULL;
+	int w = 0, h = 0, mx = 0;
+	if (fscanf(p, "P6 %d %d %d", &w, &h, &mx) != 3 || w <= 0 || h <= 0 || w > 16384 || h > 16384) { pclose(p); return NULL; }
+	fgetc(p);
+	size_t n = (size_t)(w * 3 + 1) * h;
+	uint8_t *raw = malloc(n);
+	for (int y = 0; y < h; y++) { uint8_t *o = raw + (size_t)y * (w * 3 + 1); *o = 0; if (fread(o + 1, 3, w, p) != (size_t)w) { free(raw); pclose(p); return NULL; } }
+	pclose(p);
+	*pw = w; *ph = h; *pn = n; return raw;
+}
+static uint8_t *grab_fb(int *pw, int *ph, size_t *pn, const char **err)
+{
+	int f = open("/dev/fb0", O_RDONLY);
+	struct fb_var_screeninfo v; struct fb_fix_screeninfo fx;
+	if (f < 0 || ioctl(f, FBIOGET_VSCREENINFO, &v) || ioctl(f, FBIOGET_FSCREENINFO, &fx) || v.bits_per_pixel != 32) { if (f >= 0) close(f); *err = "no 32-bit framebuffer"; return NULL; }
+	size_t len = (size_t)fx.line_length * v.yres;
+	uint8_t *fb = mmap(NULL, len, PROT_READ, MAP_SHARED, f, 0);
+	if (fb == MAP_FAILED) { close(f); *err = "mmap failed"; return NULL; }
+	int w = v.xres, h = v.yres, ro = v.red.offset;
+	size_t rawn = (size_t)(w * 3 + 1) * h;
+	uint8_t *raw = malloc(rawn);
+	for (int y = 0; y < h; y++) {
+		uint8_t *o = raw + (size_t)y * (w * 3 + 1);
+		uint32_t *s = (uint32_t *)(fb + (size_t)y * fx.line_length);
+		*o++ = 0;
+		for (int x = 0; x < w; x++) {
+			uint32_t c = s[x];
+			if (ro == 0) c = (c & 0xFF00) | (c >> 16 & 0xFF) | (c & 0xFF) << 16;
+			*o++ = c >> 16; *o++ = c >> 8; *o++ = c;
+		}
+	}
+	munmap(fb, len); close(f);
+	*pw = w; *ph = h; *pn = rawn; return raw;
+}
+static void api_screenshot(struct req *r)
+{
+	int w = 0, h = 0; size_t rawn = 0; const char *err = "screenshot failed";
+	char *mode = slurp(RUN "/display-mode", NULL);
+	uint8_t *raw = mode && !strncmp(mode, "gpu", 3) ? grab_x(&w, &h, &rawn) : NULL;
+	free(mode);
+	if (!raw) raw = grab_fb(&w, &h, &rawn, &err);
+	if (!raw) { reply_err(r->fd, 500, err); return; }
+	uLongf zn = compressBound(rawn);
+	uint8_t *z = malloc(zn);
+	compress2(z, &zn, raw, rawn, 6);
+	free(raw);
+	size_t pn = 8 + 25 + 12 + zn + 12;
+	uint8_t *png = malloc(pn), *p = png;
+	memcpy(p, "\x89PNG\r\n\x1a\n", 8); p += 8;
+	put32(p, 13); memcpy(p + 4, "IHDR", 4); put32(p + 8, w); put32(p + 12, h); p[16] = 8; p[17] = 2; p[18] = 0; p[19] = 0; p[20] = 0;
+	put32(p + 21, crc32(0, p + 4, 17)); p += 25;
+	put32(p, zn); memcpy(p + 4, "IDAT", 4); memcpy(p + 8, z, zn); put32(p + 8 + zn, crc32(0, p + 4, zn + 4)); p += 12 + zn;
+	put32(p, 0); memcpy(p + 4, "IEND", 4); put32(p + 8, crc32(0, p + 4, 4)); p += 12;
+	reply(r->fd, 200, "image/png", png, p - png, NULL);
+	free(z); free(png);
+}
+
+/* ------------------------------------------------------------- background jobs (install, wifi)
+ * Connections are served by forked processes, so job state lives in files. */
+static int job_running(void) { return !access(RUN "/job.name", F_OK) && access(RUN "/job.status", F_OK); }
+static void start_job(const char *name, const char *cmd)
+{
+	unlink(RUN "/job.status"); unlink(RUN "/job.log");
+	write_str(RUN "/job.name", name);
+	FILE *f = fopen(RUN "/job.sh", "w");
+	if (!f) return;
+	fprintf(f, "%s > " RUN "/job.log 2>&1\necho $? > " RUN "/job.status\n", cmd);
+	fclose(f);
+	run("setsid sh " RUN "/job.sh </dev/null >/dev/null 2>&1 &");
+}
+static void reap(void) { while (waitpid(-1, NULL, WNOHANG) > 0) {} }
+static void api_job(struct req *r)
+{
+	str s = {0};
+	char *log = slurp(RUN "/job.log", NULL), *name = slurp(RUN "/job.name", NULL);
+	long long st = read_ll(RUN "/job.status", -1);
+	sadd(&s, "{\"ok\":true,\"name\":"); sjson(&s, name ? name : "");
+	sadd(&s, ",\"running\":%s,\"status\":%lld,\"log\":", job_running() ? "true" : "false", st);
+	if (log && strlen(log) > 8000) sjson(&s, log + strlen(log) - 8000); else sjson(&s, log ? log : "");
+	sadd(&s, "}");
+	free(log); free(name);
+	reply_json(r->fd, &s);
+}
+
+/* ------------------------------------------------------------- Wi-Fi (wifi.sh drives wpa_supplicant)
+ * Names and passwords go to wifi.sh through a root-only file, never through a shell command line. */
+static void api_wifi(struct req *r, const char *what)
+{
+	char *i = qparam(r->query, "if");
+	if (i && *i && !safe_word(i, 16)) { reply_err(r->fd, 400, "bad interface"); return; }
+	const char *ifn = i && *i ? i : "\"\"";
+	char cmd[300];
+	if (!strcmp(what, "status") || !strcmp(what, "scan") || !strcmp(what, "disconnect") || !strcmp(what, "reconnect")) {
+		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh %s %s 2>&1", what, ifn);
+		char *o = run_out(cmd); str s = {0}; sadd(&s, "{\"ok\":true,\"raw\":"); sjson(&s, o ? o : ""); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(what, "country")) {
+		char *c = qparam(r->query, "cc");
+		if (!c || strlen(c) != 2 || !isupper((unsigned char)c[0]) || !isupper((unsigned char)c[1])) { if (!c || strcmp(c, "00")) { reply_err(r->fd, 400, "bad country"); return; } }
+		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh country %s %s 2>&1", ifn, c);
+		char *o = run_out(cmd); trim(o); reply_ok(r->fd, o); free(o); return;
+	}
+	if (!strcmp(what, "connect") || !strcmp(what, "forget")) {
+		if (!r->body || !r->blen || r->blen > 600) { reply_err(r->fd, 400, "bad request"); return; }
+		const char *f = !strcmp(what, "connect") ? RUN "/wifi.req" : RUN "/wifi-forget.req";
+		unlink(f);
+		int fd = open(f, O_WRONLY | O_CREAT | O_EXCL, 0600);
+		if (fd < 0 || write(fd, r->body, r->blen) != (ssize_t)r->blen) { if (fd >= 0) close(fd); reply_err(r->fd, 500, "could not write the request"); return; }
+		close(fd);
+		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh %s %s %s", what, ifn, f);
+		if (!strcmp(what, "connect")) { if (job_running()) { reply_err(r->fd, 409, "busy, try again in a moment"); unlink(f); return; } start_job("wifi", cmd); reply_ok(r->fd, "connecting"); return; }
+		strncat(cmd, " 2>&1", sizeof cmd - strlen(cmd) - 1);
+		char *o = run_out(cmd); trim(o); reply_ok(r->fd, o); free(o); return;
+	}
+	reply_err(r->fd, 404, "unknown Wi-Fi action");
+}
+
+/* ------------------------------------------------------------- Linux apps from Flathub
+ * Any verified Flathub app (or any Flathub app, when an admin allows unverified ones) can be installed
+ * system-wide into /var/lib/flatpak on RUDOLFDATA. rudolf-apps reads the catalogue Flatpak downloads and
+ * the launchers installed apps export; rudolf-display manages their windows (/run/rudolf/windows). */
+#ifndef FLATHUB_REPO
+#define FLATHUB_REPO "https://dl.flathub.org/repo/flathub.flatpakrepo"
+#endif
+#define CATALOG "/var/lib/flatpak/rudolf-catalog.json"
+#define APPSTREAM_GZ "/var/lib/flatpak/appstream/flathub/x86_64/active/appstream.xml.gz"
+#define APPSCONF PERSIST "/os/apps.conf"
+static int app_id_ok(const char *id)
+{
+	if (!id || strlen(id) < 3 || strlen(id) > 200 || !strchr(id, '.') || id[0] == '.' || id[0] == '-') return 0;
+	for (const char *c = id; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("._-", *c)) return 0;
+	return 1;
+}
+static int apps_setting(const char *key)
+{
+	char *t = slurp(APPSCONF, NULL); int v = 0; char k[40]; snprintf(k, sizeof k, "%s=1", key);
+	if (t) { v = strstr(t, k) != NULL; free(t); } return v;
+}
+/* verified on Flathub, according to the catalogue */
+static int app_verified(const char *id)
+{
+	char *c = slurp(CATALOG, NULL); if (!c) return 0;
+	char pat[260]; snprintf(pat, sizeof pat, "{\"id\":\"%s\",", id);
+	char *a = strstr(c, pat), *e = a ? strchr(a, '}') : NULL; int v = 0;
+	if (a && e) { *e = 0; v = strstr(a, "\"verified\":true") != NULL; }
+	free(c); return v;
+}
+static void catalog_fresh(void)
+{
+	struct stat a, c;
+	if (stat(APPSTREAM_GZ, &a)) return;
+	if (!stat(CATALOG, &c) && c.st_mtime >= a.st_mtime) return;
+	run("/usr/bin/rudolf-apps catalog " CATALOG " >/dev/null 2>&1");
+}
+static void reply_cmd_json(struct req *r, const char *cmd, const char *fail)
+{
+	char *o = run_out(cmd);
+	if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, fail); return; }
+	reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o);
+}
+static void api_apps(struct req *r, const char *what)
+{
+	char cmd[2400];
+	int fp = !access("/usr/bin/flatpak", X_OK), persist = !access(RUN "/persistent", F_OK);
+	if (!strcmp(what, "status")) {
+		struct statvfs v; long long freeb = statvfs("/var/lib/flatpak", &v) ? 0 : (long long)v.f_bavail * v.f_frsize;
+		struct stat st; long long age = stat(APPSTREAM_GZ, &st) ? -1 : (long long)(time(NULL) - st.st_mtime);
+		str s = {0}; sadd(&s, "{\"ok\":true,\"flatpak\":%s,\"persistent\":%s,\"free\":%lld,\"catalogAge\":%lld,\"auto\":%s,\"unverified\":%s}",
+			fp ? "true" : "false", persist ? "true" : "false", freeb, age, apps_setting("auto") || access(APPSCONF, F_OK) ? "true" : "false", apps_setting("unverified") ? "true" : "false");
+		reply_json(r->fd, &s); return;
+	}
+	if (!fp) { reply_err(r->fd, 404, "this Rudolf OS cannot run Linux apps"); return; }
+	if (!strcmp(what, "catalog")) {
+		catalog_fresh();
+		if (access(CATALOG, R_OK)) { reply_err(r->fd, 404, "the app catalogue has not been downloaded yet"); return; }
+		serve_file(r, CATALOG); return;
+	}
+	if (!strcmp(what, "installed")) { reply_cmd_json(r, "/usr/bin/rudolf-apps installed 2>/dev/null", "could not list the installed apps"); return; }
+	if (!strcmp(what, "windows")) {
+		char *w = slurp(RUN "/windows", NULL); str s = {0}; sadd(&s, "{\"ok\":true,\"windows\":["); int n = 0;
+		char *m = slurp(RUN "/wm", NULL); unsigned long shown = 0; if (m && !strncmp(m, "win ", 4)) shown = strtoul(m + 4, NULL, 16);
+		for (char *sv, *l = w ? strtok_r(w, "\n", &sv) : NULL; l; l = strtok_r(NULL, "\n", &sv)) {
+			char *f[5] = {0}; int k = 0; char *sp2; for (char *t = strtok_r(l, "\t", &sp2); t && k < 5; t = strtok_r(NULL, "\t", &sp2)) f[k++] = t;
+			if (k < 4) continue;
+			sadd(&s, "%s{\"win\":", n++ ? "," : ""); sjson(&s, f[0]); sadd(&s, ",\"web\":%s,\"shown\":%s,\"class\":", !strcmp(f[1], "1") ? "true" : "false", strtoul(f[0], NULL, 16) == shown ? "true" : "false");
+			sjson(&s, f[2]); sadd(&s, ",\"instance\":"); sjson(&s, f[3]); sadd(&s, ",\"title\":"); sjson(&s, k > 4 ? f[4] : ""); sadd(&s, "}");
+		}
+		sadd(&s, "],\"mode\":"); if (m) m[strcspn(m, "\n")] = 0; sjson(&s, m ? m : "desktop"); sadd(&s, "}");
+		free(w); free(m); reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(what, "show") || !strcmp(what, "close")) {
+		const char *wq = qparam(r->query, "win"); char *e; unsigned long x = wq ? strtoul(wq, &e, 16) : 0;
+		if (!x || *e) { reply_err(r->fd, 400, "bad window"); return; }
+		char b[64]; snprintf(b, sizeof b, "%s %lx\n", !strcmp(what, "show") ? "win" : "close", x);
+		write_str(!strcmp(what, "show") ? RUN "/wm" : RUN "/wmcmd", b); reply_ok(r->fd, "ok"); return;
+	}
+	if (!strcmp(what, "desktop")) { write_str(RUN "/wm", "desktop"); reply_ok(r->fd, "ok"); return; }
+	if (!strcmp(what, "settings")) {
+		if (!persist) { reply_err(r->fd, 409, "settings are kept only on an installed Rudolf OS"); return; }
+		const char *a = qparam(r->query, "auto"); int au = a ? !strcmp(a, "1") : apps_setting("auto") || access(APPSCONF, F_OK);
+		const char *u = qparam(r->query, "unverified"); int un = u ? !strcmp(u, "1") : apps_setting("unverified");
+		char b[64]; snprintf(b, sizeof b, "auto=%d\nunverified=%d\n", au, un); write_str(APPSCONF, b); reply_ok(r->fd, "saved"); return;
+	}
+	const char *idq = qparam(r->query, "id"); char id[220] = ""; if (idq) snprintf(id, sizeof id, "%s", idq);
+	if (!strcmp(what, "icon")) {
+		/* an installed app's launcher icon, else the catalogue's cached icon */
+		const char *ic = qparam(r->query, "icon"); char icon[220]; snprintf(icon, sizeof icon, "%s", ic && app_id_ok(ic) ? ic : id);
+		if (!app_id_ok(icon) && !app_id_ok(id)) { reply_err(r->fd, 400, "bad app"); return; }
+		static const char *const SZ[] = {"128x128", "256x256", "scalable", "96x96", "64x64", "512x512", "48x48", NULL};
+		char f[600];
+		for (int i = 0; SZ[i]; i++) for (int k = 0; k < 2; k++) {
+			snprintf(f, sizeof f, "/var/lib/flatpak/exports/share/icons/hicolor/%s/apps/%s.%s", SZ[i], icon, k ? "svg" : "png");
+			if (!access(f, R_OK)) { serve_file(r, f); return; }
+		}
+		if (app_id_ok(id)) for (int i = 0; i < 2; i++) {
+			snprintf(f, sizeof f, "/var/lib/flatpak/appstream/flathub/x86_64/active/icons/%s/%s.png", i ? "64x64" : "128x128", id);
+			if (!access(f, R_OK)) { serve_file(r, f); return; }
+		}
+		reply_err(r->fd, 404, "no icon"); return;
+	}
+	if (!strcmp(what, "refresh")) {
+		if (!persist) { reply_err(r->fd, 409, "Linux apps need Rudolf OS installed (or a RUDOLFDATA partition)"); return; }
+		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
+		start_job("catalog", "sh -c 'set -e; echo \"Adding the Flathub app source...\"; flatpak remotes --system --columns=name | grep -qx flathub || flatpak remote-add --system flathub " FLATHUB_REPO "; "
+			"echo \"Downloading the app catalogue...\"; flatpak update --system --appstream flathub; /usr/bin/rudolf-apps catalog " CATALOG "'");
+		reply_ok(r->fd, "started"); return;
+	}
+	if (!strcmp(what, "update")) {
+		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
+		start_job("apps-update", "sh -c 'flatpak update --system -y --noninteractive && flatpak uninstall --system -y --noninteractive --unused; echo Done.'");
+		reply_ok(r->fd, "started"); return;
+	}
+	if (!app_id_ok(id)) { reply_err(r->fd, 400, "bad app"); return; }
+	if (!strcmp(what, "info")) { snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-apps info %s --remote 2>/dev/null", id); reply_cmd_json(r, cmd, "no details for this app"); return; }
+	if (!strcmp(what, "install") || !strcmp(what, "uninstall")) {
+		if (!persist) { reply_err(r->fd, 409, "Linux apps need Rudolf OS installed (or a RUDOLFDATA partition)"); return; }
+		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
+		if (!strcmp(what, "install")) {
+			if (!app_verified(id) && !apps_setting("unverified") && strcmp(id, "org.vinegarhq.Sober")) { reply_err(r->fd, 403, "this app is not verified on Flathub; an administrator can allow unverified apps in App Store > Installed"); return; }
+			snprintf(cmd, sizeof cmd, "sh -c 'set -e; flatpak remotes --system --columns=name | grep -qx flathub || flatpak remote-add --system flathub " FLATHUB_REPO "; "
+				"echo \"Downloading %s and anything it needs...\"; flatpak install --system -y --noninteractive flathub %s; echo Done.'", id, id);
+		} else snprintf(cmd, sizeof cmd, "sh -c 'set -e; flatpak uninstall --system -y --noninteractive %s; flatpak uninstall --system -y --noninteractive --unused; echo Done.'", id);
+		start_job(what, cmd); reply_ok(r->fd, "started"); return;
+	}
+	if (!strcmp(what, "run")) {
+		/* started as the desktop user through its launcher (the app's own command and options) */
+		const char *dq = qparam(r->query, "desktop"); char desk[220]; snprintf(desk, sizeof desk, "%s", dq && app_id_ok(dq) ? dq : id);
+		run("mkdir -p " RUN "/apps; chown rudolf:rudolf " RUN "/apps; chmod 755 " RUN "/apps");
+		char argf[300] = "";
+		const char *fq = qparam(r->query, "file");
+		if (fq && *fq) {
+			if (!safe_media_path(fq)) { reply_err(r->fd, 403, "only files in Documents, Pictures, Downloads or on drives can be opened"); return; }
+			static unsigned seq; snprintf(argf, sizeof argf, RUN "/apps/arg-%d-%u", (int)getpid(), ++seq);
+			write_str(argf, fq); if (chown(argf, 1000, 1000)) {}
+		}
+		snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh rudolf -c 'set -a; . " RUN "/session.env; set +a; exec /usr/bin/rudolf-apps launch %s %s' </dev/null >>" RUN "/apps/%s.log 2>&1 &",
+			desk, argf, id);
+		run(cmd); reply_ok(r->fd, "started"); return;
+	}
+	if (!strcmp(what, "log")) { char f[300]; snprintf(f, sizeof f, RUN "/apps/%s.log", id); char *l = slurp(f, NULL); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, l ? (strlen(l) > 8000 ? l + strlen(l) - 8000 : l) : ""); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return; }
+	reply_err(r->fd, 404, "unknown app action");
+}
+
+/* ------------------------------------------------------------- the desktop portal's questions
+ * rudolf-portal (running as the desktop user) leaves requests in /run/rudolf/portal/req/<n>.json:
+ * file dialogs, links to open, notifications. The desktop collects them here and answers into
+ * /run/rudolf/portal/resp/<n>.json. While a dialog is open the desktop is shown; afterwards the
+ * window that asked comes back. */
+#define PORTALD RUN "/portal"
+static void api_portal(struct req *r, const char *what)
+{
+	if (!strcmp(what, "poll")) {
+		DIR *d = opendir(PORTALD "/req"); str s = {0}; sadd(&s, "{\"ok\":true,\"requests\":["); int n = 0; struct dirent *e;
+		while (d && (e = readdir(d)) && n < 20) {
+			size_t l = strlen(e->d_name); if (l < 6 || strcmp(e->d_name + l - 5, ".json")) continue;
+			char f[400]; snprintf(f, sizeof f, PORTALD "/req/%s", e->d_name);
+			char *t = slurp(f, NULL); if (!t || t[0] != '{') { free(t); continue; }
+			sadd(&s, "%s{\"id\":", n++ ? "," : ""); char id[64]; snprintf(id, sizeof id, "%.*s", (int)(l - 5), e->d_name); sjson(&s, id); sadd(&s, ",\"req\":%s}", t); free(t);
+		}
+		if (d) closedir(d);
+		sadd(&s, "]}"); reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(what, "answer")) {
+		const char *iq = qparam(r->query, "id"); char id[64];
+		if (!iq || !safe_word(iq, 40)) { reply_err(r->fd, 400, "bad request id"); return; }
+		snprintf(id, sizeof id, "%s", iq);
+		if (r->blen < 2 || r->blen > 65536 || r->body[0] != '{') { reply_err(r->fd, 400, "bad answer"); return; }
+		char f[300], t[320], q[300]; snprintf(f, sizeof f, PORTALD "/resp/%s.json", id); snprintf(t, sizeof t, "%s.tmp", f); snprintf(q, sizeof q, PORTALD "/req/%s.json", id);
+		int fd = open(t, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+		if (fd < 0 || write(fd, r->body, r->blen) != (ssize_t)r->blen) { if (fd >= 0) close(fd); reply_err(r->fd, 500, "could not answer"); return; }
+		close(fd); if (chown(t, 1000, 1000)) {} rename(t, f); unlink(q);
+		/* back to the window that asked */
+		const char *back = qparam(r->query, "back");
+		if (back && *back) { char *e; unsigned long x = strtoul(back, &e, 16); if (x && !*e) { char b[40]; snprintf(b, sizeof b, "win %lx\n", x); write_str(RUN "/wm", b); } }
+		reply_ok(r->fd, "ok"); return;
+	}
+	reply_err(r->fd, 404, "unknown portal action");
+}
+
+/* ------------------------------------------------------------- browser window for sign-in sites
+ * Oracle shows websites inside the desktop page. Sites that refuse that (Gmail, Outlook, banks: their
+ * sign-in needs first-party cookies) open in a second Chromium as a real browser window, with its own
+ * profile in the user's home. rudolf-display shows it above the desktop and leaves the taskbar visible;
+ * the taskbar button or Super+Esc returns to the desktop. */
+#define WEBPROFILE "/home/rudolf/.config/rudolf-web"
+static int web_running(void) { return run("pgrep -f 'chrom[e].*--class=RudolfWeb' >/dev/null 2>&1") == 0; }
+static int web_url_ok(const char *u)
+{
+	if (!u || strlen(u) > 2000 || (strncmp(u, "https://", 8) && strncmp(u, "http://", 7))) return 0;
+	for (const unsigned char *c = (const unsigned char *)u; *c; c++) if (*c <= 0x20 || *c >= 0x7f || strchr("'\"\\`$", *c)) return 0;
+	return 1;
+}
+static void api_web(struct req *r, const char *what)
+{
+	char cmd[3200];
+	if (!strcmp(what, "status")) {
+		char *m = slurp(RUN "/wm", NULL); int run_ = web_running();
+		str s = {0}; sadd(&s, "{\"ok\":true,\"running\":%s,\"shown\":%s}", run_ ? "true" : "false", run_ && m && !strncmp(m, "web", 3) ? "true" : "false");
+		free(m); reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(what, "open")) {
+		const char *u = qparam(r->query, "url"); if (!web_url_ok(u)) { reply_err(r->fd, 400, "that address cannot be opened"); return; }
+		char *gl = slurp(RUN "/glflags", NULL), *px = slurp(RUN "/proxy", NULL);
+		if (gl) gl[strcspn(gl, "\n'")] = 0; if (px) px[strcspn(px, "\n' ")] = 0;
+		/* starting it again while it runs just opens the address as a new tab in the running window */
+		snprintf(cmd, sizeof cmd, "mkdir -p " WEBPROFILE "; chown rudolf:rudolf /home/rudolf/.config " WEBPROFILE " 2>/dev/null; "
+			"setsid su -s /bin/sh rudolf -c 'set -a; . " RUN "/session.env; set +a; FONTCONFIG_FILE=/etc/fonts/fonts.conf GOOGLE_API_KEY=no GOOGLE_DEFAULT_CLIENT_ID=no GOOGLE_DEFAULT_CLIENT_SECRET=no; export FONTCONFIG_FILE GOOGLE_API_KEY GOOGLE_DEFAULT_CLIENT_ID GOOGLE_DEFAULT_CLIENT_SECRET; "
+			"exec /opt/chromium/chrome --class=RudolfWeb --user-data-dir=" WEBPROFILE " --no-first-run --no-default-browser-check "
+			"--password-store=basic --disable-session-crashed-bubble --disable-features=Translate,MediaRouter,Vulkan --disable-vulkan-surface %s %s%s \"%s\"' "
+			"</dev/null >>" RUN "/web.log 2>&1 &", gl ? gl : "", px && *px ? "--proxy-server=" : "", px && *px ? px : "", u);
+		free(gl); free(px);
+		write_str(RUN "/wm", "web"); run(cmd);
+		reply_ok(r->fd, "opened"); return;
+	}
+	if (!strcmp(what, "show")) { if (!web_running()) { reply_err(r->fd, 404, "the browser window is closed"); return; } write_str(RUN "/wm", "web"); reply_ok(r->fd, "ok"); return; }
+	if (!strcmp(what, "hide")) { write_str(RUN "/wm", "desktop"); reply_ok(r->fd, "ok"); return; }
+	if (!strcmp(what, "close")) { run("pkill -f 'chrom[e].*--class=RudolfWeb'; for i in 1 2 3 4 5 6 7 8; do pgrep -f 'chrom[e].*--class=RudolfWeb' >/dev/null || break; sleep 1; done; pkill -9 -f 'chrom[e].*--class=RudolfWeb'; pkill -9 -f 'chrom[e].*rudolf-web'"); write_str(RUN "/wm", "desktop"); reply_ok(r->fd, "closed"); return; }
+	if (!strcmp(what, "strut")) {
+		const char *sd = qparam(r->query, "side"); char side[8]; snprintf(side, sizeof side, "%s", sd && !strcmp(sd, "top") ? "top" : "bottom");
+		const char *sz = qparam(r->query, "size"); int n = sz ? atoi(sz) : 0; if (n < 0 || n > 200) n = 0;
+		char b[32]; snprintf(b, sizeof b, "%s %d\n", side, n); write_str(RUN "/strut", b);
+		char *m = slurp(RUN "/wm", NULL); write_str(RUN "/wm", m && *m ? m : "desktop\n"); free(m);   /* the window manager re-reads both */
+		reply_ok(r->fd, "ok"); return;
+	}
+	reply_err(r->fd, 404, "unknown browser window action");
+}
+
+/* ------------------------------------------------------------- printing
+ * PDF: the page WordPro builds is printed by a headless Chromium (the one on the disc), running as the
+ * desktop user. Printers: rudolf-print talks IPP Everywhere / AirPrint to network printers (no CUPS). */
+static int print_uri_ok(const char *u)
+{
+	if (!u || strlen(u) > 300 || (strncmp(u, "ipp://", 6) && strncmp(u, "ipps://", 7))) return 0;
+	for (; *u; u++) if (!isalnum((unsigned char)*u) && !strchr(":/._-~%[]", *u)) return 0;
+	return 1;
+}
+static int print_tmp(char *d)
+{
+	strcpy(d, "/tmp/rprint-XXXXXX"); if (!mkdtemp(d)) return -1;
+	char cmd[200]; snprintf(cmd, sizeof cmd, "chown rudolf:rudolf %s 2>/dev/null; chmod 700 %s", d, d); run(cmd); return 0;
+}
+static void api_print(struct req *r, const char *what)
+{
+	char cmd[2000], d[32], f[96];
+	if (!strcmp(what, "pdf")) {
+		if (r->blen < 16 || r->blen > (64u << 20)) { reply_err(r->fd, 400, "no document"); return; }
+		if (print_tmp(d)) { reply_err(r->fd, 500, "no room for the print job"); return; }
+		snprintf(f, sizeof f, "%s/doc.html", d);
+		int fd = open(f, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+		if (fd < 0 || write(fd, r->body, r->blen) != (ssize_t)r->blen) { if (fd >= 0) close(fd); reply_err(r->fd, 500, "could not store the document"); return; }
+		close(fd);
+		snprintf(cmd, sizeof cmd, "chown rudolf:rudolf %s; su -s /bin/sh rudolf -c 'FONTCONFIG_FILE=/etc/fonts/fonts.conf timeout 120 /opt/chromium/chrome"
+			" --headless=new --disable-gpu --no-first-run --no-default-browser-check --disable-extensions --disable-sync --mute-audio"
+			" --no-pdf-header-footer --run-all-compositor-stages-before-draw --virtual-time-budget=4000 --user-data-dir=%s/profile"
+			" --print-to-pdf=%s/out.pdf file://%s/doc.html' >%s/log.txt 2>&1", f, d, d, d, d);
+		run(cmd);
+		size_t n = 0; snprintf(f, sizeof f, "%s/out.pdf", d); char *pdf = slurp(f, &n);
+		if (!pdf || n < 64 || memcmp(pdf, "%PDF", 4)) reply_err(r->fd, 500, "the PDF could not be made");
+		else reply(r->fd, 200, "application/pdf", pdf, n, NULL);
+		free(pdf); snprintf(cmd, sizeof cmd, "rm -rf %s", d); run(cmd); return;
+	}
+	if (access("/usr/bin/rudolf-print", X_OK)) { reply_err(r->fd, 404, "this Rudolf OS cannot print"); return; }
+	if (!strcmp(what, "find")) {
+		char *o = run_out("/usr/bin/rudolf-print find 2>/dev/null");
+		if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "printer search failed"); return; }
+		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
+	}
+	char uri[320]; { const char *u = qparam(r->query, "uri"); if (!print_uri_ok(u)) { reply_err(r->fd, 400, "a printer address looks like ipp://192.168.1.20/ipp/print"); return; } snprintf(uri, sizeof uri, "%s", u); }
+	if (!strcmp(what, "info")) {
+		snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-print info '%s' 2>/dev/null", uri);
+		char *o = run_out(cmd); if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "the printer could not be asked"); return; }
+		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
+	}
+	if (!strcmp(what, "job")) {
+		static const char *const FMT[] = {"application/pdf", "image/pwg-raster", "image/urf", NULL};
+		char fmt[40] = "", opt[400] = ""; const char *q = qparam(r->query, "format");
+		for (int i = 0; FMT[i]; i++) if (q && !strcmp(q, FMT[i])) snprintf(fmt, sizeof fmt, "%s", FMT[i]);
+		if (!*fmt) { reply_err(r->fd, 400, "unknown document format"); return; }
+		static const char *const K[] = {"copies", "sides", "color", "media", "pages", NULL};
+		for (int i = 0; K[i]; i++) { q = qparam(r->query, K[i]); if (q && *q && safe_word(q, 60)) { size_t l = strlen(opt); snprintf(opt + l, sizeof opt - l, " %s=%s", K[i], q); } }
+		if (r->blen < 16) { reply_err(r->fd, 400, "no document"); return; }
+		if (print_tmp(d)) { reply_err(r->fd, 500, "no room for the print job"); return; }
+		snprintf(f, sizeof f, "%s/title.txt", d); q = qparam(r->query, "title");
+		{ char t[160]; snprintf(t, sizeof t, "%s", q && *q ? q : "Document"); for (char *c = t; *c; c++) if ((unsigned char)*c < 32) *c = ' '; write_str(f, t); }
+		snprintf(f, sizeof f, "%s/doc", d);
+		int fd = open(f, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+		if (fd < 0 || write(fd, r->body, r->blen) != (ssize_t)r->blen) { if (fd >= 0) close(fd); reply_err(r->fd, 500, "could not store the print job (is the memory full?)"); return; }
+		close(fd);
+		snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-print send '%s' %s/doc %s%s title-file=%s/title.txt 2>/dev/null", uri, d, fmt, opt, d);
+		char *o = run_out(cmd); snprintf(cmd, sizeof cmd, "rm -rf %s", d); run(cmd);
+		if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "sending to the printer failed"); return; }
+		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
+	}
+	reply_err(r->fd, 404, "unknown print action");
+}
+
+/* ------------------------------------------------------------- native apps (Flatpak)
+ * Only apps on this list can be installed or started through rudolfd. They come from Flathub
+ * and are installed system-wide into /var/lib/flatpak (the RUDOLFDATA partition), never shipped
+ * on the disc. Sober is a closed-source runtime for Roblox by the Vinegar project. */
+static const char *const NATIVE_APPS[] = { "org.vinegarhq.Sober", NULL };
+#ifndef FLATHUB_REPO
+#define FLATHUB_REPO "https://dl.flathub.org/repo/flathub.flatpakrepo"
+#endif
+static int native_ok(const char *id)
+{
+	if (!id) return 0;
+	for (int i = 0; NATIVE_APPS[i]; i++) if (!strcmp(id, NATIVE_APPS[i])) return 1;
+	return 0;
+}
+/* The app is started with setsid; that process becomes bubblewrap (the sandbox monitor) and lives
+ * until the app exits, so its pid (recorded at start) tells whether the app is running. */
+static int native_pid(void)
+{
+	char *t = slurp(RUN "/native.pid", NULL);
+	int pid = t ? atoi(t) : 0; free(t);
+	if (pid <= 1 || kill(pid, 0)) return 0;
+	char path[64], cl[256] = {0}; snprintf(path, sizeof path, "/proc/%d/cmdline", pid);
+	int f = open(path, O_RDONLY); if (f < 0) return 0;
+	ssize_t n = read(f, cl, sizeof cl - 1); close(f);
+	for (ssize_t i = 0; i < n; i++) if (!cl[i]) cl[i] = ' ';
+	return strstr(cl, "bwrap") || strstr(cl, "flatpak") || strstr(cl, "su ") ? pid : 0;
+}
+static void api_native_status(struct req *r)
+{
+	char *id = qparam(r->query, "id");
+	str s = {0};
+	int fp = !access("/usr/bin/flatpak", X_OK), persist = !access(RUN "/persistent", F_OK);
+	sadd(&s, "{\"ok\":true,\"flatpak\":%s,\"persistent\":%s,\"gpu\":", fp ? "true" : "false", persist ? "true" : "false");
+	char *g = slurp(RUN "/gpu", NULL); if (g) { char *nl = strchr(g, '\n'); if (nl) *nl = 0; } sjson(&s, g ? g : ""); free(g);
+	struct statvfs v; long long freeb = statvfs("/var/lib/flatpak", &v) ? 0 : (long long)v.f_bavail * v.f_frsize;
+	sadd(&s, ",\"free\":%lld", freeb);
+	if (fp && native_ok(id)) {
+		char cmd[256]; snprintf(cmd, sizeof cmd, "flatpak info --system %s 2>/dev/null | sed -n 's/^ *Version: //p;s/^ *Installed: //p'", id);
+		char *o = run_out(cmd);
+		sadd(&s, ",\"installed\":%s,\"info\":", o && *o ? "true" : "false"); sjson(&s, o ? o : ""); free(o);
+		sadd(&s, ",\"running\":%s", native_pid() ? "true" : "false");
+	}
+	sadd(&s, "}");
+	reply_json(r->fd, &s);
+}
+static void api_native(struct req *r, const char *what)
+{
+	char *id = qparam(r->query, "id");
+	if (!native_ok(id)) { reply_err(r->fd, 400, "this app is not available"); return; }
+	if (access("/usr/bin/flatpak", X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no Flatpak support"); return; }
+	char cmd[1024];
+	if (!strcmp(what, "install") || !strcmp(what, "update") || !strcmp(what, "uninstall")) {
+		if (access(RUN "/persistent", F_OK)) { reply_err(r->fd, 409, "install Rudolf OS (or add a RUDOLFDATA partition) first: apps need somewhere to be kept"); return; }
+		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
+		if (!strcmp(what, "install"))
+			snprintf(cmd, sizeof cmd, "sh -c 'set -e; echo \"Adding the Flathub app source...\"; flatpak remotes --system --columns=name | grep -qx flathub || flatpak remote-add --system flathub " FLATHUB_REPO "; "
+				"echo \"Downloading %s and its runtime (this can take a while)...\"; flatpak install --system -y --noninteractive flathub %s; echo Done.'", id, id);
+		else if (!strcmp(what, "update"))
+			snprintf(cmd, sizeof cmd, "sh -c 'set -e; flatpak update --system -y --noninteractive; echo Done.'");
+		else
+			snprintf(cmd, sizeof cmd, "sh -c 'set -e; flatpak uninstall --system -y --noninteractive %s; flatpak uninstall --system -y --noninteractive --unused; echo Done.'", id);
+		start_job(what, cmd);
+		reply_ok(r->fd, "started");
+		return;
+	}
+	if (!strcmp(what, "run")) {
+		/* started as the desktop user with the session's display and buses; rudolf-display shows it full screen */
+		snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh rudolf -c 'set -a; . " RUN "/session.env; set +a; exec flatpak run %s' "
+			"</dev/null >>" RUN "/native.log 2>&1 & echo $! > " RUN "/native.pid", id);
+		if (native_pid()) { write_str(RUN "/wm", "game"); reply_ok(r->fd, "already running"); return; }
+		{ char chk[160]; snprintf(chk, sizeof chk, "flatpak info --system %s >/dev/null 2>&1", id);
+		  if (run(chk)) { reply_err(r->fd, 404, "this app is not installed"); return; } }
+		run(cmd);
+		write_str(RUN "/wm", "game");
+		reply_ok(r->fd, "started");
+		return;
+	}
+	if (!strcmp(what, "show")) { write_str(RUN "/wm", "game"); reply_ok(r->fd, "ok"); return; }
+	if (!strcmp(what, "stop")) { int pid = native_pid(); if (pid) { kill(-pid, SIGTERM); kill(pid, SIGTERM); } write_str(RUN "/wm", "desktop"); reply_ok(r->fd, pid ? "stopped" : "not running"); return; }
+	if (!strcmp(what, "log")) { char *l = slurp(RUN "/native.log", NULL); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, l ? (strlen(l) > 8000 ? l + strlen(l) - 8000 : l) : ""); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return; }
+	reply_err(r->fd, 404, "unknown action");
+}
+
+
+/* ------------------------------------------------------------- packages (rpk)
+ * rpk does the work (see rpk.c); rudolfd starts it as a job for long tasks, runs programs from
+ * packages as the desktop user, and serves web-app packages from /pkg/<name>/www/. */
+static int pkg_names_ok(const char *s)
+{
+	if (!s || !*s || strlen(s) > 400) return 0;
+	for (; *s; s++) if (!islower((unsigned char)*s) && !isdigit((unsigned char)*s) && !strchr("-_,", *s)) return 0;
+	return 1;
+}
+static void b64(str *s, const unsigned char *d, size_t n)
+{
+	static const char T[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	char q[5] = {0};
+	for (size_t i = 0; i < n; i += 3) {
+		unsigned v = d[i] << 16 | (i + 1 < n ? d[i + 1] << 8 : 0) | (i + 2 < n ? d[i + 2] : 0);
+		q[0] = T[v >> 18 & 63]; q[1] = T[v >> 12 & 63]; q[2] = i + 1 < n ? T[v >> 6 & 63] : '='; q[3] = i + 2 < n ? T[v & 63] : '=';
+		sadd(s, "%s", q);
+	}
+}
+/* ------------------------------------------------------------- Emu's game library (/home/rudolf/Games)
+ * games/info: folders made, space used and free; games/import: copy games in (games-import.sh, a job). */
+static void api_games(struct req *r, const char *what)
+{
+	if (!strcmp(what, "info")) {
+		run("mkdir -p /home/rudolf/Games/SNES/Saves /home/rudolf/Games/SNES/States /home/rudolf/Games/DS/Saves /home/rudolf/Games/DS/States && chown -R 1000:1000 /home/rudolf/Games");
+		char *u = run_out("du -sk /home/rudolf/Games 2>/dev/null | cut -f1"); trim(u);
+		struct statvfs v; long long fr = statvfs("/home/rudolf/Games", &v) ? 0 : (long long)v.f_bavail * v.f_frsize;
+		str s = {0}; sadd(&s, "{\"ok\":true,\"used\":%lld,\"free\":%lld,\"persistent\":%s}", atoll(u) * 1024, fr, access(RUN "/persistent", F_OK) ? "false" : "true");
+		free(u); reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(what, "import")) {
+		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
+		if (!r->body || !r->blen || r->blen > 65536) { reply_err(r->fd, 400, "choose some games"); return; }
+		/* every line must be a path the file endpoints may read */
+		char *b = malloc(r->blen + 1); memcpy(b, r->body, r->blen); b[r->blen] = 0;
+		for (char *sv, *l = strtok_r(b, "\n", &sv); l; l = strtok_r(NULL, "\n", &sv)) if (*l && !safe_media_path(l)) { free(b); reply_err(r->fd, 403, "games can be added from USB drives and the shared folders only"); return; }
+		free(b);
+		unlink(RUN "/games.list");
+		int f = open(RUN "/games.list", O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+		if (f < 0 || write(f, r->body, r->blen) != (ssize_t)r->blen) { if (f >= 0) close(f); reply_err(r->fd, 500, "could not write the request"); return; }
+		close(f); start_job("games-import", "/usr/lib/rudolf/games-import.sh " RUN "/games.list");
+		reply_ok(r->fd, "started"); return;
+	}
+	reply_err(r->fd, 404, "unknown games action");
+}
+/* ------------------------------------------------------------- Debian 13 (rudolf-debian) and its terminal
+ * The terminal is a long-poll: term/read waits up to 20 s for output; term/write sends keys. */
+#define DEBIAN_BIN "/usr/bin/rudolf-debian"
+static int term_id_ok(const char *id) { if (!id || !*id || strlen(id) > 32) return 0; for (const char *c = id; *c; c++) if (!isalnum((unsigned char)*c)) return 0; return 1; }
+static int term_conn(const char *id)
+{
+	int s = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0); if (s < 0) return -1;
+	struct sockaddr_un a = {.sun_family = AF_UNIX}; snprintf(a.sun_path, sizeof a.sun_path, "/run/rudolf/term/%s.sock", id);
+	if (connect(s, (struct sockaddr *)&a, sizeof a)) { close(s); return -1; }
+	struct timeval tv = {30, 0}; setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+	return s;
+}
+static size_t read_all(int s, unsigned char **out)
+{
+	size_t cap = 65536, n = 0; unsigned char *b = malloc(cap); ssize_t r;
+	while ((r = read(s, b + n, cap - n)) > 0) { n += r; if (n == cap) { cap *= 2; b = realloc(b, cap); } }
+	*out = b; return n;
+}
+static void spawn_debian(char *const argv[])
+{
+	pid_t p = fork();
+	if (!p) { int n = open("/dev/null", O_RDWR); dup2(n, 0); dup2(n, 1); dup2(n, 2); execv(DEBIAN_BIN, argv); _exit(127); }
+	if (p > 0) waitpid(p, NULL, 0);
+}
+static void api_term(struct req *r, const char *what)
+{
+	if (access(DEBIAN_BIN, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no Linux terminal"); return; }
+	if (!strcmp(what, "open")) {
+		static const char A[] = "abcdefghijklmnopqrstuvwxyz0123456789"; char id[16]; unsigned char rb[12];
+		int f = open("/dev/urandom", O_RDONLY | O_CLOEXEC); if (f < 0 || read(f, rb, sizeof rb) != sizeof rb) { if (f >= 0) close(f); reply_err(r->fd, 500, "no randomness"); return; } close(f);
+		for (int i = 0; i < 12; i++) id[i] = A[rb[i] % 36]; id[12] = 0;
+		char cmd[200]; snprintf(cmd, sizeof cmd, DEBIAN_BIN " pty %s 2>&1", id);
+		char *o = run_out(cmd); trim(o);
+		if (strcmp(o, id)) { reply_err(r->fd, 500, *o ? o : "the terminal did not start"); free(o); return; }
+		free(o); str s = {0}; sadd(&s, "{\"ok\":true,\"id\":\"%s\"}", id); reply_json(r->fd, &s); return;
+	}
+	char id[40]; const char *iq = qparam(r->query, "id");
+	if (!term_id_ok(iq)) { reply_err(r->fd, 400, "bad terminal"); return; }
+	snprintf(id, sizeof id, "%s", iq);
+	int s = term_conn(id);
+	if (s < 0) { str j = {0}; sadd(&j, "{\"ok\":true,\"gone\":true}"); reply_json(r->fd, &j); return; }
+	char line[96];
+	if (!strcmp(what, "read")) {
+		/* qparam returns one shared buffer: take each value before asking for the next */
+		const char *o = qparam(r->query, "off"); long long off = o ? atoll(o) : 0;
+		const char *w = qparam(r->query, "wait"); int wt = w ? atoi(w) : 20;
+		snprintf(line, sizeof line, "R %lld %d\n", off, wt); send_all(s, line, strlen(line));
+		unsigned char *b; size_t n = read_all(s, &b); close(s);
+		unsigned char *nl = memchr(b, '\n', n); str j = {0};
+		if (!nl) sadd(&j, "{\"ok\":true,\"off\":%lld,\"data\":\"\"}", off);
+		else if (b[0] == 'X') sadd(&j, "{\"ok\":true,\"exit\":%d}", atoi((char *)b + 2));
+		else { *nl = 0; sadd(&j, "{\"ok\":true,\"off\":%lld,\"data\":\"", atoll((char *)b)); b64(&j, nl + 1, n - (nl + 1 - b)); sadd(&j, "\"}"); }
+		free(b); reply_json(r->fd, &j); return;
+	}
+	if (!strcmp(what, "write")) {
+		if (r->blen > 65536) { close(s); reply_err(r->fd, 413, "too much input"); return; }
+		snprintf(line, sizeof line, "W %zu\n", r->blen); send_all(s, line, strlen(line)); if (r->blen) send_all(s, r->body, r->blen);
+	} else if (!strcmp(what, "resize")) {
+		const char *rw = qparam(r->query, "rows"); int rows = rw ? atoi(rw) : 0;
+		const char *cl = qparam(r->query, "cols"); int cols = cl ? atoi(cl) : 0;
+		snprintf(line, sizeof line, "S %d %d\n", rows, cols); send_all(s, line, strlen(line));
+	} else if (!strcmp(what, "close")) send_all(s, "K\n", 2);
+	else { close(s); reply_err(r->fd, 404, "unknown terminal action"); return; }
+	char ok[8]; if (read(s, ok, sizeof ok) < 0) {} close(s); reply_ok(r->fd, "ok");
+}
+static void api_debian(struct req *r, const char *what)
+{
+	if (access(DEBIAN_BIN, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS cannot run Debian"); return; }
+	if (!strcmp(what, "status")) {
+		const char *sz = qparam(r->query, "size");
+		char *o = run_out(sz && !strcmp(sz, "1") ? DEBIAN_BIN " status --size 2>/dev/null" : DEBIAN_BIN " status 2>/dev/null");
+		str s = {0}; sadd(&s, "{\"ok\":true");
+		for (char *sv, *l = strtok_r(o, "\n", &sv); l; l = strtok_r(NULL, "\n", &sv)) {
+			char *e = strchr(l, '='); if (!e) continue; *e = 0;
+			int num = e[1] && strspn(e + 1, "0123456789") == strlen(e + 1);
+			sadd(&s, ",\"%s\":", l); if (num) sadd(&s, "%s", e + 1); else sjson(&s, e + 1);
+		}
+		sadd(&s, ",\"job\":"); char *jn = slurp(RUN "/job.name", NULL); if (jn) trim(jn);
+		sjson(&s, job_running() && jn ? jn : ""); free(jn); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(what, "setup") || !strcmp(what, "update") || !strcmp(what, "remove")) {
+		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
+		if (!strcmp(what, "setup")) {
+			if (!r->body || r->blen < 4 || r->blen > 200) { reply_err(r->fd, 400, "choose a password of at least 4 characters"); return; }
+			unlink(RUN "/debian.pw");
+			int f = open(RUN "/debian.pw", O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+			if (f < 0 || write(f, r->body, r->blen) != (ssize_t)r->blen) { if (f >= 0) close(f); reply_err(r->fd, 500, "could not write the request"); return; }
+			close(f); start_job("debian-setup", DEBIAN_BIN " setup " RUN "/debian.pw");
+		} else if (!strcmp(what, "update")) start_job("debian-update", DEBIAN_BIN " update");
+		else start_job("debian-remove", DEBIAN_BIN " remove");
+		reply_ok(r->fd, "started"); return;
+	}
+	if (!strcmp(what, "apps")) { reply_cmd_json(r, DEBIAN_BIN " apps 2>/dev/null", "could not list the Debian apps"); return; }
+	if (!strcmp(what, "launch")) {
+		char idc[220] = "", filec[1100] = ""; const char *q1 = qparam(r->query, "id"); if (q1) snprintf(idc, sizeof idc, "%s", q1);
+		const char *q2 = qparam(r->query, "file"); if (q2) snprintf(filec, sizeof filec, "%s", q2);
+		const char *id = idc, *file = filec;
+		if (!*id || strlen(id) > 200 || strspn(id, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-+") != strlen(id)) { reply_err(r->fd, 400, "bad app"); return; }
+		if (file && *file && (strncmp(file, "/home/rudolf/", 13) || strstr(file, "/../"))) { reply_err(r->fd, 400, "bad file"); return; }
+		char a0[] = "rudolf-debian", a1[] = "launch"; char idb[220], fb[1100]; snprintf(idb, sizeof idb, "%s", id); snprintf(fb, sizeof fb, "%s", file ? file : "");
+		char *argv[] = {a0, a1, idb, *fb ? fb : NULL, NULL};
+		spawn_debian(argv); reply_ok(r->fd, "started"); return;
+	}
+	if (!strcmp(what, "icon")) {
+		const char *pth = qparam(r->query, "path");
+		if (!pth || strncmp(pth, "/persist/debian/usr/share/", 26) || strstr(pth, "..")) { reply_err(r->fd, 400, "bad icon"); return; }
+		serve_file(r, pth); return;
+	}
+	if (!strcmp(what, "settings")) {
+		const char *u = qparam(r->query, "url");
+		if (!u || (*u && strncmp(u, "https://", 8) && strncmp(u, "http://127.0.0.1", 16))) { reply_err(r->fd, 400, "bad address"); return; }
+		for (const char *q = u; *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/:._-~%+", *q)) { reply_err(r->fd, 400, "bad address"); return; }
+		char b[600]; snprintf(b, sizeof b, "url=%s\n", u);
+		if (!*u) unlink(PERSIST "/os/debian.conf"); else if (write_str(PERSIST "/os/debian.conf", b)) { reply_err(r->fd, 409, "settings are kept only on an installed Rudolf OS"); return; }
+		reply_ok(r->fd, "saved"); return;
+	}
+	reply_err(r->fd, 404, "unknown Debian action");
+}
+/* ------------------------------------------------------------- Blitzen (rudolf-ai + llama-server)
+ * ai/status, ai/download (job), ai/load, ai/unload, ai/remove, ai/settings?url=; ai/chat: the request body
+ * (an OpenAI-style chat request) goes to the engine with its key, and the engine's streamed answer comes back as
+ * it is written; ai/run?lang=python|cpp: the body is a program, run in the Debian sandbox with no network and a
+ * time limit; ai/install?what=python|cpp: install python3 or g++ into Debian (a job). */
+#define AI_BIN "/usr/bin/rudolf-ai"
+static void ai_touch(void) { int f = open(RUN "/ai/last", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600); if (f >= 0) close(f); }
+static int ai_connect(void)
+{
+	int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0); if (s < 0) return -1;
+	struct sockaddr_in a = {.sin_family = AF_INET, .sin_port = htons(8099), .sin_addr.s_addr = htonl(INADDR_LOOPBACK)};
+	if (connect(s, (struct sockaddr *)&a, sizeof a)) { close(s); return -1; }
+	struct timeval tv = {120, 0}; setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+	return s;
+}
+static void api_ai(struct req *r, const char *what)
+{
+	if (access(AI_BIN, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no Blitzen"); return; }
+	if (!strcmp(what, "status")) {
+		char *o = run_out(AI_BIN " status 2>/dev/null");
+		str s = {0}; sadd(&s, "{\"ok\":true");
+		for (char *sv, *l = strtok_r(o, "\n", &sv); l; l = strtok_r(NULL, "\n", &sv)) {
+			char *e = strchr(l, '='); if (!e) continue; *e = 0;
+			int num = e[1] && strspn(e + 1, "0123456789") == strlen(e + 1);
+			sadd(&s, ",\"%s\":", l); if (num) sadd(&s, "%s", e + 1); else sjson(&s, e + 1);
+		}
+		sadd(&s, ",\"debian\":%s,\"python\":%s,\"cpp\":%s", access("/persist/debian/.rudolf-ready", F_OK) ? "false" : "true",
+		     access("/persist/debian/usr/bin/python3", F_OK) ? "false" : "true", access("/persist/debian/usr/bin/g++", F_OK) ? "false" : "true");
+		sadd(&s, ",\"job\":"); char *jn = slurp(RUN "/job.name", NULL); if (jn) trim(jn);
+		sjson(&s, job_running() && jn ? jn : ""); free(jn); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(what, "download") || !strcmp(what, "install")) {
+		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
+		if (!strcmp(what, "download")) { start_job("blitzen-download", AI_BIN " download"); reply_ok(r->fd, "started"); return; }
+		const char *w = qparam(r->query, "what");
+		if (access("/persist/debian/.rudolf-ready", F_OK)) { reply_err(r->fd, 409, "set up Linux (Debian) first: Start > Terminal (Linux)"); return; }
+		if (w && !strcmp(w, "python")) start_job("blitzen-python", "/usr/bin/rudolf-debian run --root -- sh -c 'apt-get update && apt-get install -y python3'");
+		else if (w && !strcmp(w, "cpp")) start_job("blitzen-cpp", "/usr/bin/rudolf-debian run --root -- sh -c 'apt-get update && apt-get install -y g++'");
+		else { reply_err(r->fd, 400, "install what?"); return; }
+		reply_ok(r->fd, "started"); return;
+	}
+	if (!strcmp(what, "load") || !strcmp(what, "unload") || !strcmp(what, "remove")) {
+		char cmd[100]; snprintf(cmd, sizeof cmd, AI_BIN " %s 2>&1", what);
+		char *o = run_out(cmd); trim(o);
+		if (!strcmp(o, "ready") || !strcmp(o, "stopped") || !strcmp(o, "removed")) reply_ok(r->fd, o);
+		else { char *m = strstr(o, "rudolf-ai: "); reply_err(r->fd, 409, m ? m + 11 : (*o ? o : "Blitzen did not start")); }
+		free(o); return;
+	}
+	if (!strcmp(what, "settings")) {
+		const char *u = qparam(r->query, "url");
+		if (!u || (*u && strncmp(u, "https://", 8) && strncmp(u, "http://127.0.0.1", 16))) { reply_err(r->fd, 400, "bad address"); return; }
+		for (const char *q = u; *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/:._-~%+", *q)) { reply_err(r->fd, 400, "bad address"); return; }
+		char *old = slurp(PERSIST "/os/blitzen.conf", NULL); str c = {0};
+		if (old) for (char *sv, *l = strtok_r(old, "\n", &sv); l; l = strtok_r(NULL, "\n", &sv)) if (strncmp(l, "url=", 4)) sadd(&c, "%s\n", l);
+		if (*u) sadd(&c, "url=%s\n", u);
+		free(old);
+		if (write_str(PERSIST "/os/blitzen.conf", c.b ? c.b : "")) { free(c.b); reply_err(r->fd, 409, "settings are kept only on an installed Rudolf OS"); return; }
+		free(c.b); reply_ok(r->fd, "saved"); return;
+	}
+	if (!strcmp(what, "chat")) {
+		if (!r->body || !r->blen || r->blen > 262144) { reply_err(r->fd, 400, "nothing to ask"); return; }
+		char *o = run_out(AI_BIN " load 2>&1"); trim(o);
+		if (strcmp(o, "ready")) { char *m = strstr(o, "rudolf-ai: "); reply_err(r->fd, 409, m ? m + 11 : (*o ? o : "Blitzen did not start")); free(o); return; }
+		free(o);
+		char *key = slurp(RUN "/ai/key", NULL); if (key) trim(key);
+		int s = key ? ai_connect() : -1;
+		if (s < 0) { free(key); reply_err(r->fd, 502, "Blitzen is not answering"); return; }
+		ai_touch();
+		char h[400]; snprintf(h, sizeof h, "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer %s\r\nContent-Type: application/json\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n", key, r->blen);
+		memset(key, 0, strlen(key)); free(key);
+		send_all(s, h, strlen(h)); send_all(s, r->body, r->blen);
+		/* the engine's whole reply (status line, headers, chunked stream) goes to the page as it arrives;
+		 * the page's connection ends with it */
+		char buf[16384]; ssize_t n; time_t t0 = time(NULL);
+		while ((n = read(s, buf, sizeof buf)) > 0) { send_all(r->fd, buf, n); if (time(NULL) - t0 > 30) { ai_touch(); t0 = time(NULL); } }
+		close(s); ai_touch(); return;
+	}
+	if (!strcmp(what, "run")) {
+		const char *lq = qparam(r->query, "lang"); char lang[16]; snprintf(lang, sizeof lang, "%s", lq ? lq : "");
+		int py = !strcmp(lang, "python"), cpp = !strcmp(lang, "cpp");
+		if (!py && !cpp) { reply_err(r->fd, 400, "Blitzen runs Python and C++ here (BlockLua and JavaScript run in the page)"); return; }
+		if (!r->body || r->blen > 200000) { reply_err(r->fd, 400, "no program"); return; }
+		if (access("/persist/debian/.rudolf-ready", F_OK)) { str j = {0}; sadd(&j, "{\"ok\":false,\"missing\":\"debian\",\"error\":\"Running %s needs Linux (Debian): Start > Terminal (Linux) sets it up\"}", py ? "Python" : "C++"); reply_json(r->fd, &j); return; }
+		if (access(py ? "/persist/debian/usr/bin/python3" : "/persist/debian/usr/bin/g++", F_OK)) { str j = {0}; sadd(&j, "{\"ok\":false,\"missing\":\"%s\",\"error\":\"%s is not installed in Debian yet\"}", lang, py ? "Python" : "The C++ compiler (g++)"); reply_json(r->fd, &j); return; }
+		/* a fresh folder in the home folder (shared with Debian), owned by the user */
+		unsigned char rb[8]; char id[20]; int rf = open("/dev/urandom", O_RDONLY | O_CLOEXEC); if (rf < 0 || read(rf, rb, 8) != 8) { if (rf >= 0) close(rf); reply_err(r->fd, 500, "no randomness"); return; } close(rf);
+		for (int i = 0; i < 8; i++) sprintf(id + 2 * i, "%02x", rb[i]);
+		char dir[200], file[260]; mkdir("/home/rudolf/.cache", 0755); if (chown("/home/rudolf/.cache", 1000, 1000)) {}
+		mkdir("/home/rudolf/.cache/blitzen", 0755); if (chown("/home/rudolf/.cache/blitzen", 1000, 1000)) {}
+		snprintf(dir, sizeof dir, "/home/rudolf/.cache/blitzen/%s", id);
+		if (mkdir(dir, 0755) || chown(dir, 1000, 1000)) { reply_err(r->fd, 500, "could not make a folder to run in"); return; }
+		snprintf(file, sizeof file, "%s/%s", dir, py ? "main.py" : "main.cpp");
+		int f = open(file, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);
+		if (f < 0 || (r->blen && write(f, r->body, r->blen) != (ssize_t)r->blen)) { if (f >= 0) close(f); reply_err(r->fd, 500, "could not write the program"); return; }
+		close(f); if (chown(file, 1000, 1000)) {}
+		char cmd[800];
+		/* the exit status comes back through a file: BusyBox sh has no PIPESTATUS */
+		char st[260]; snprintf(st, sizeof st, "%s/.status", dir);
+		if (py) snprintf(cmd, sizeof cmd, "(/usr/bin/rudolf-debian run --nonet --cwd %s -- timeout -k 2 10 python3 -I main.py </dev/null 2>&1; echo $? > %s) | head -c 65536", dir, st);
+		else snprintf(cmd, sizeof cmd, "(/usr/bin/rudolf-debian run --nonet --cwd %s -- sh -c 'timeout -k 2 30 g++ -std=c++17 -O1 -Wall -o prog main.cpp && timeout -k 2 10 ./prog' </dev/null 2>&1; echo $? > %s) | head -c 65536", dir, st);
+		char *out = run_out(cmd); long long code = read_ll(st, -1);
+		str j = {0}; sadd(&j, "{\"ok\":true,\"code\":%lld,\"timeout\":%s,\"out\":", code, code == 124 || code == 137 ? "true" : "false"); sjson(&j, out ? out : ""); sadd(&j, "}");
+		free(out); char rm[260]; snprintf(rm, sizeof rm, "rm -rf %s", dir); run(rm);
+		reply_json(r->fd, &j); return;
+	}
+	reply_err(r->fd, 404, "unknown Blitzen action");
+}
+/* runs "rpk run NAME ARGS..." as the desktop user with the request body as its input */
+static void api_pkg_exec(struct req *r)
+{
+	char nm[48], args[2048];
+	char *q = qparam(r->query, "name"); if (!q || !pkg_names_ok(q) || strchr(q, ',') || strlen(q) > 40) { reply_err(r->fd, 400, "bad package name"); return; }
+	snprintf(nm, sizeof nm, "%s", q);
+	q = qparam(r->query, "args"); snprintf(args, sizeof args, "%s", q ? q : "");
+	char *argv[66]; int n = 0; argv[n++] = "/usr/bin/rpk"; argv[n++] = "run"; argv[n++] = nm;
+	if (*args) for (char *t = args, *e; t && n < 64; t = e) { e = strchr(t, '\x1f'); if (e) *e++ = 0; argv[n++] = t; }
+	argv[n] = NULL;
+	int in[2], out[2], er[2];
+	if (pipe(in) || pipe(out) || pipe(er)) { reply_err(r->fd, 500, "cannot start"); return; }
+	signal(SIGCHLD, SIG_DFL);
+	pid_t pid = fork();
+	if (pid < 0) { reply_err(r->fd, 500, "cannot start"); return; }
+	if (!pid) {
+		setsid(); dup2(in[0], 0); dup2(out[1], 1); dup2(er[1], 2);
+		for (int fd = 3; fd < 256; fd++) close(fd);
+		if (chdir("/home/rudolf")) { if (chdir("/tmp")) {} }
+		if (setgroups(0, NULL) || setgid(1000) || setuid(1000)) _exit(126);
+		clearenv(); setenv("HOME", "/home/rudolf", 1); setenv("USER", "rudolf", 1); setenv("LANG", "C.UTF-8", 1); setenv("PATH", "/usr/bin:/bin", 1);
+		execv(argv[0], argv); _exit(127);
+	}
+	close(in[0]); close(out[1]); close(er[1]);
+	fcntl(in[1], F_SETFL, O_NONBLOCK); fcntl(out[0], F_SETFL, O_NONBLOCK); fcntl(er[0], F_SETFL, O_NONBLOCK);
+	size_t sent = 0, on = 0, en = 0, ocap = 1 << 16, ecap = 1 << 14; unsigned char *ob = malloc(ocap), *eb = malloc(ecap);
+	int fin = r->blen ? in[1] : (close(in[1]), -1), fo = out[0], fe = er[0], killed = 0;
+	time_t until = time(NULL) + 30;
+	while (fo >= 0 || fe >= 0) {
+		struct pollfd pf[3]; int k = 0;
+		if (fin >= 0) { pf[k].fd = fin; pf[k].events = POLLOUT; k++; }
+		if (fo >= 0) { pf[k].fd = fo; pf[k].events = POLLIN; k++; }
+		if (fe >= 0) { pf[k].fd = fe; pf[k].events = POLLIN; k++; }
+		if (time(NULL) > until) { kill(-pid, SIGKILL); killed = 1; break; }
+		if (poll(pf, k, 1000) < 0 && errno != EINTR) break;
+		for (int i = 0; i < k; i++) {
+			if (!pf[i].revents) continue;
+			if (pf[i].fd == fin) { ssize_t w = write(fin, r->body + sent, r->blen - sent); if (w > 0) sent += w; if (w < 0 && errno != EAGAIN) sent = r->blen; if (sent >= r->blen) { close(fin); fin = -1; } }
+			else if (pf[i].fd == fo) {
+				if (on + 65536 > ocap && ocap < (8u << 20)) { ocap *= 2; ob = realloc(ob, ocap); }
+				ssize_t g = on + 65536 <= ocap ? read(fo, ob + on, 65536) : -2;
+				if (g > 0) on += g; else if (g == -2) { kill(-pid, SIGKILL); killed = 2; close(fo); fo = -1; } else if (g == 0 || errno != EAGAIN) { close(fo); fo = -1; }
+			} else {
+				char tmp[4096]; ssize_t g = read(fe, tmp, sizeof tmp);
+				if (g > 0) { size_t c = en + g < ecap - 1 ? (size_t)g : ecap - 1 - en; memcpy(eb + en, tmp, c); en += c; } else if (g == 0 || errno != EAGAIN) { close(fe); fe = -1; }
+			}
+		}
+	}
+	if (fin >= 0) close(fin); if (fo >= 0) close(fo); if (fe >= 0) close(fe);
+	int st = 0; waitpid(pid, &st, 0);
+	str s = {0}; eb[en] = 0;
+	sadd(&s, "{\"ok\":true,\"code\":%d,\"stopped\":", WIFEXITED(st) ? WEXITSTATUS(st) : -1);
+	sjson(&s, killed == 1 ? "it ran for more than 30 seconds" : killed == 2 ? "its output passed 8 MB" : "");
+	sadd(&s, ",\"err\":"); sjson(&s, (char *)eb); sadd(&s, ",\"out64\":\""); b64(&s, ob, on); sadd(&s, "\"}");
+	free(ob); free(eb);
+	reply_json(r->fd, &s);
+}
+static void api_pkg(struct req *r, const char *what)
+{
+	if (access("/usr/bin/rpk", X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no package manager"); return; }
+	char cmd[1200], *q;
+	if (!strcmp(what, "exec")) { api_pkg_exec(r); return; }
+	if (!strcmp(what, "run")) {
+		q = qparam(r->query, "name"); if (!q || !pkg_names_ok(q) || strchr(q, ',')) { reply_err(r->fd, 400, "bad package name"); return; }
+		if (native_pid()) { write_str(RUN "/wm", "game"); reply_err(r->fd, 409, "another full-screen app is running"); return; }
+		snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh rudolf -c 'set -a; . " RUN "/session.env; set +a; exec /usr/bin/rpk run %s' "
+			"</dev/null >>" RUN "/native.log 2>&1 & echo $! > " RUN "/native.pid", q);
+		run(cmd); write_str(RUN "/wm", "game"); reply_ok(r->fd, "started"); return;
+	}
+	if (!strcmp(what, "source") || !strcmp(what, "key")) {
+		const char *op = qparam(r->query, "op"); char o[16]; snprintf(o, sizeof o, "%s", op ? op : "");
+		q = qparam(r->query, "v");
+		if (!q || !*q || strlen(q) > 400) { reply_err(r->fd, 400, "missing address"); return; }
+		for (const char *c = q; *c; c++) if (!isalnum((unsigned char)*c) && !strchr(!strcmp(what, "key") ? "+/=" : "/:._-~%+", *c)) { reply_err(r->fd, 400, "that has characters rpk does not accept"); return; }
+		if (!strcmp(what, "source") && strcmp(o, "add") && strcmp(o, "remove")) { reply_err(r->fd, 400, "op is add or remove"); return; }
+		snprintf(cmd, sizeof cmd, "/usr/bin/rpk %s %s '%s' 2>&1", what, !strcmp(what, "key") ? "add" : o, q);
+		char *out = run_out(cmd); reply_ok(r->fd, out); free(out); return;
+	}
+	if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
+	if (!strcmp(what, "refresh") || !strcmp(what, "update")) { start_job("packages", !strcmp(what, "refresh") ? "/usr/bin/rpk refresh" : "/usr/bin/rpk update"); reply_ok(r->fd, "started"); return; }
+	if (!strcmp(what, "install") || !strcmp(what, "remove")) {
+		q = qparam(r->query, "name"); if (!q || !pkg_names_ok(q)) { reply_err(r->fd, 400, "bad package name"); return; }
+		char names[420]; snprintf(names, sizeof names, "%s", q); for (char *c = names; *c; c++) if (*c == ',') *c = ' ';
+		snprintf(cmd, sizeof cmd, "/usr/bin/rpk %s %s", what, names); start_job("packages", cmd); reply_ok(r->fd, "started"); return;
+	}
+	if (!strcmp(what, "installfile")) {
+		if (r->blen < 4096) { reply_err(r->fd, 400, "that is not a package file"); return; }
+		const char *dir = access(RUN "/persistent", F_OK) ? RUN "/pkg/tmp" : PERSIST "/pkg/tmp";
+		snprintf(cmd, sizeof cmd, "mkdir -p %s", dir); run(cmd);
+		char path[300]; snprintf(path, sizeof path, "%s/upload.rpk", dir);
+		int f = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+		if (f < 0 || write(f, r->body, r->blen) != (ssize_t)r->blen) { if (f >= 0) close(f); reply_err(r->fd, 500, "could not save the file (is the disk full?)"); return; }
+		close(f);
+		snprintf(cmd, sizeof cmd, "/usr/bin/rpk install-file %s; s=$?; rm -f %s; exit $s", path, path); start_job("packages", cmd); reply_ok(r->fd, "started"); return;
+	}
+	reply_err(r->fd, 404, "unknown package action");
+}
+
+/* ------------------------------------------------------------- dispatcher */
+static int restart_browser(void) { return run("pkill -f 'chrom[e].*--rudolf-kiosk' >/dev/null 2>&1"); }
+
+static void api(struct req *r)
+{
+	const char *p = r->path + 5;   /* after /api/ */
+	int post = !strcmp(r->method, "POST");
+	if (!strcmp(p, "ping")) { reply_ok(r->fd, "rudolfd"); return; }
+	if (!strcmp(p, "info")) { api_info(r); return; }
+	if (!strcmp(p, "stats")) { api_stats(r); return; }
+	if (!strcmp(p, "net")) { api_net(r); return; }
+	if (!strcmp(p, "disks")) { api_disks(r); return; }
+	if (!strcmp(p, "job")) { api_job(r); return; }
+	if (!strcmp(p, "screenshot")) { api_screenshot(r); return; }
+	if (!strcmp(p, "heartbeat")) {
+		write_str(RUN "/heartbeat", "1");
+		/* the first heartbeat after a start: the desktop works, so an update being tried is kept */
+		if (access(RUN "/bootok", F_OK)) { write_str(RUN "/bootok", "1"); if (!access("/usr/bin/rudolf-update", X_OK)) run("/usr/bin/rudolf-update boot-ok >>" RUN "/update.log 2>&1"); }
+		reply_ok(r->fd, "ok"); return;
+	}
+	if (!strcmp(p, "events")) {
+		char *ev = slurp(RUN "/events", NULL);
+		unlink(RUN "/events");
+		str s = {0}; sadd(&s, "{\"ok\":true,\"events\":"); sjson(&s, ev ? ev : ""); sadd(&s, "}");
+		free(ev); reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(p, "log")) { char *l = run_out("dmesg | tail -200"); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, l); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return; }
+	if (!strcmp(p, "native/status")) { api_native_status(r); return; }
+	if (!strcmp(p, "sys/status")) { char *o = access("/usr/bin/rudolf-update", X_OK) ? NULL : run_out("/usr/bin/rudolf-update status 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 404, "this Rudolf OS has no system updates"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
+	if (!strcmp(p, "pkg/status")) { if (access("/usr/bin/rpk", X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no package manager"); return; } char *o = run_out("/usr/bin/rpk status 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 500, "rpk failed"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
+	if (!strcmp(p, "clientlog")) { char *c = slurp(RUN "/page.log", NULL); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, c ? c : ""); sadd(&s, "}"); free(c); reply_json(r->fd, &s); return; }
+	if (!strcmp(p, "check")) { char *c = slurp(RUN "/check.txt", NULL); str s = {0}; sadd(&s, "{\"ok\":true,\"result\":"); sjson(&s, c ? c : ""); sadd(&s, "}"); free(c); reply_json(r->fd, &s); return; }
+	if (!strcmp(p, "downloads")) {
+		char *l = run_out("ls -l --full-time /home/rudolf/Downloads 2>/dev/null | tail -n +2");
+		str s = {0}; sadd(&s, "{\"ok\":true,\"list\":"); sjson(&s, l); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return;
+	}
+	if (!strncmp(p, "download/", 9)) {
+		char *n = r->path + 14;
+		urldecode(n);
+		if (strchr(n, '/') || n[0] == '.') { reply_err(r->fd, 400, "bad name"); return; }
+		char fp[600]; snprintf(fp, sizeof fp, "/home/rudolf/Downloads/%s", n); serve_file(r, fp); return;
+	}
+	if (!strncmp(p, "fs/", 3)) {
+		if (strcmp(p + 3, "list") && strcmp(p + 3, "read") && !post) { reply_err(r->fd, 400, "use POST"); return; }
+		api_fs(r, p + 3); return;
+	}
+	if (!strcmp(p, "decktest")) {
+		/* Cyberdeck test mode: approximate the Intel N100's CPU on a faster PC (see /usr/lib/rudolf/decktest) */
+		char *on = qparam(r->query, "on");
+		if (on) {
+			if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+			int en = !strcmp(on, "1");
+			run(en ? "/usr/lib/rudolf/decktest on" : "/usr/lib/rudolf/decktest off");
+			if (!live) { if (en) { mkdir(PERSIST "/etc", 0755); write_str(PERSIST "/etc/decktest", "1"); } else unlink(PERSIST "/etc/decktest"); }
+			reply_ok(r->fd, en ? "Cyberdeck test mode is on" : "Cyberdeck test mode is off"); return;
+		}
+		char *o = run_out("/usr/lib/rudolf/decktest status");
+		str s = {0}; sadd(&s, "{\"ok\":true,\"deck\":%s}", o && *o == '{' ? o : "null"); free(o);
+		reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(p, "display")) {
+		/* graphics path: "soft" (software display), "games" (Xorg on the graphics card; the desktop
+		   still renders in software) or "full" (Xorg, and the desktop also uses the graphics card).
+		   Takes effect when Rudolf OS restarts. */
+		char *m = qparam(r->query, "mode");
+		if (m) {
+			if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+			if (strcmp(m, "soft") && strcmp(m, "games") && strcmp(m, "full")) { reply_err(r->fd, 400, "bad mode"); return; }
+			char b[16]; snprintf(b, sizeof b, "%s\n", m);
+			write_str("/etc/rudolf-display", b);
+			if (!live) { mkdir(PERSIST "/etc", 0755); write_str(PERSIST "/etc/rudolf-display", b); }
+			reply_ok(r->fd, live ? "saved until Rudolf OS restarts (not installed, so it is not kept)" : "saved; restart Rudolf OS to use it"); return;
+		}
+		str s = {0};
+		char *want = slurp("/etc/rudolf-display", NULL), *cur = slurp(RUN "/display-mode", NULL), *why = slurp(RUN "/display-reason", NULL), *gpu = slurp(RUN "/gpu", NULL);
+		char *strip[] = { want, cur, gpu };
+		for (int i = 0; i < 3; i++) if (strip[i]) { char *nl = strchr(strip[i], '\n'); if (nl) *nl = 0; }
+		sadd(&s, "{\"ok\":true,\"setting\":"); sjson(&s, want && *want ? want : "games");
+		sadd(&s, ",\"active\":"); sjson(&s, cur ? cur : "soft");
+		sadd(&s, ",\"reason\":"); sjson(&s, why ? why : "");
+		sadd(&s, ",\"gpu\":"); sjson(&s, gpu ? gpu : "");
+		sadd(&s, ",\"xorg\":%s}", access("/usr/bin/Xorg", X_OK) ? "false" : "true");
+		free(want); free(cur); free(why); free(gpu);
+		reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(p, "wifi/status")) { api_wifi(r, "status"); return; }
+	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+	/* ---- actions ---- */
+	if (!strcmp(p, "power")) {
+		char *a = qparam(r->query, "action");
+		if (!a) { reply_err(r->fd, 400, "action?"); return; }
+		if (!strcmp(a, "suspend")) { reply_ok(r->fd, "suspending"); sync(); write_str("/sys/power/state", "mem"); return; }
+		if (strcmp(a, "poweroff") && strcmp(a, "reboot")) { reply_err(r->fd, 400, "unknown action"); return; }
+		reply_ok(r->fd, a);
+		write_str(RUN "/power", a);
+		/* let Chromium shut down cleanly so it writes local storage to disk (up to 25 s) */
+		run("pkill -TERM -f 'chrom[e].*--rudolf-kiosk'");
+		for (int i = 0; i < 50 && !run("pgrep -f 'chrom[e].*--rudolf-kiosk' >/dev/null 2>&1"); i++) usleep(500000);
+		run("pkill -KILL -f '/opt/chromium/chrome' >/dev/null 2>&1");
+		sync();
+		run("umount -a -r 2>/dev/null");
+		reboot(!strcmp(a, "reboot") ? RB_AUTOBOOT : RB_POWER_OFF);
+		return;
+	}
+	if (!strncmp(p, "native/", 7)) { api_native(r, p + 7); return; }
+	if (!strncmp(p, "pkg/", 4)) { api_pkg(r, p + 4); return; }
+	if (!strncmp(p, "print/", 6)) { api_print(r, p + 6); return; }
+	if (!strncmp(p, "apps/", 5)) { api_apps(r, p + 5); return; }
+	if (!strncmp(p, "debian/", 7)) { api_debian(r, p + 7); return; }
+	if (!strncmp(p, "ai/", 3)) { api_ai(r, p + 3); return; }
+	if (!strncmp(p, "games/", 6)) { api_games(r, p + 6); return; }
+	if (!strncmp(p, "term/", 5)) { api_term(r, p + 5); return; }
+	if (!strncmp(p, "portal/", 7)) { api_portal(r, p + 7); return; }
+	if (!strncmp(p, "web/", 4)) { api_web(r, p + 4); return; }
+	if (!strncmp(p, "sys/", 4)) {
+		const char *w = p + 4; char cmd[700];
+		if (access("/usr/bin/rudolf-update", X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no system updates"); return; }
+		if (!strcmp(w, "check") || !strcmp(w, "download")) {
+			if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
+			snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update %s", w); start_job("system-update", cmd); reply_ok(r->fd, "started"); return;
+		}
+		if (!strcmp(w, "rollback")) { char *o = run_out("/usr/bin/rudolf-update rollback 2>&1"); reply_ok(r->fd, o); free(o); return; }
+		if (!strcmp(w, "set")) {
+			const char *k = qparam(r->query, "k"); char kk[8]; snprintf(kk, sizeof kk, "%s", k ? k : "");
+			const char *v = qparam(r->query, "v"); if (!v) v = "";
+			if (strcmp(kk, "url") && strcmp(kk, "auto")) { reply_err(r->fd, 400, "k is url or auto"); return; }
+			for (const char *c = v; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("/:._-~%+", *c)) { reply_err(r->fd, 400, "bad character"); return; }
+			snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update set %s '%s' 2>&1", kk, v);
+			char *o = run_out(cmd); if (o && *o) { reply_err(r->fd, 400, o); free(o); return; } free(o); reply_ok(r->fd, "saved"); return;
+		}
+		reply_err(r->fd, 404, "unknown update action"); return;
+	}
+	if (!strcmp(p, "lsync")) {
+		if (r->blen < 2 || r->blen > (16u << 20) || r->body[0] != '{' || r->body[r->blen - 1] != '}') { reply_err(r->fd, 400, "bad data"); return; }
+		int f = open(LSFILE ".tmp", O_WRONLY | O_CREAT | O_TRUNC, 0600);
+		if (f < 0 || write(f, r->body, r->blen) != (ssize_t)r->blen || fsync(f)) { if (f >= 0) close(f); unlink(LSFILE ".tmp"); reply_err(r->fd, 500, "could not save"); return; }
+		close(f);
+		if (rename(LSFILE ".tmp", LSFILE)) { reply_err(r->fd, 500, "could not save"); return; }
+		reply_ok(r->fd, "saved"); return;
+	}
+	if (!strcmp(p, "clientlog")) {   /* desktop errors, kept for the Event Viewer and diagnostics */
+		struct stat st;
+		if (!stat(RUN "/page.log", &st) && st.st_size > 262144) rename(RUN "/page.log", RUN "/page.log.1");
+		int f = open(RUN "/page.log", O_WRONLY | O_CREAT | O_APPEND, 0600);
+		if (f >= 0) { size_t n = r->blen > 4096 ? 4096 : r->blen; if (n && write(f, r->body, n) < 0) {} if (write(f, "\n", 1) < 0) {} close(f); }
+		reply_ok(r->fd, "ok"); return;
+	}
+	if (!strcmp(p, "brightness")) {
+		char bl[256], f[300];
+		char *v = qparam(r->query, "value");
+		if (!v || !backlight_dir(bl, sizeof bl)) { reply_err(r->fd, 404, "this screen has no adjustable backlight"); return; }
+		snprintf(f, sizeof f, "%s/max_brightness", bl);
+		long long mx = read_ll(f, 100), val = atoll(v) * mx / 100;
+		if (val < mx / 20) val = mx / 20;
+		char b[32]; snprintf(b, sizeof b, "%lld", val);
+		snprintf(f, sizeof f, "%s/brightness", bl);
+		if (write_str(f, b)) reply_err(r->fd, 500, "could not set brightness"); else reply_ok(r->fd, "ok");
+		return;
+	}
+	if (!strcmp(p, "net/dhcp")) {
+		char *i = qparam(r->query, "if");
+		if (!safe_word(i, 16)) { reply_err(r->fd, 400, "bad interface"); return; }
+		char cmd[256]; snprintf(cmd, sizeof cmd, "ip link set %s up; udhcpc -i %s -n -q -t 5 -s /usr/lib/rudolf/udhcpc.sh >/dev/null 2>&1", i, i);
+		if (run(cmd)) reply_err(r->fd, 500, "no DHCP answer on this network"); else reply_ok(r->fd, "connected");
+		return;
+	}
+	if (!strcmp(p, "net/static")) {
+		char i[20] = "", a[64] = "", g[64] = "", d[64] = "";
+		char *x;
+		if ((x = qparam(r->query, "if"))) snprintf(i, sizeof i, "%s", x);
+		if ((x = qparam(r->query, "addr"))) snprintf(a, sizeof a, "%s", x);
+		if ((x = qparam(r->query, "gw"))) snprintf(g, sizeof g, "%s", x);
+		if ((x = qparam(r->query, "dns"))) snprintf(d, sizeof d, "%s", x);
+		if (!safe_word(i, 16) || !*a || strspn(a, "0123456789./") != strlen(a) || strspn(g, "0123456789.") != strlen(g) || strspn(d, "0123456789.") != strlen(d)) { reply_err(r->fd, 400, "bad address"); return; }
+		char cmd[512];
+		snprintf(cmd, sizeof cmd, "ip addr flush dev %s && ip addr add %s dev %s && ip link set %s up%s%s%s", i, a, i, i, *g ? " && ip route replace default via " : "", g, "");
+		int rc = run(cmd);
+		if (*d) { char rs[96]; snprintf(rs, sizeof rs, "nameserver %s\n", d); write_str("/etc/resolv.conf", rs); }
+		if (rc) reply_err(r->fd, 500, "could not apply the address"); else reply_ok(r->fd, "applied");
+		return;
+	}
+	if (!strncmp(p, "wifi/", 5)) { api_wifi(r, p + 5); return; }
+	if (!strcmp(p, "keyboard")) {
+		char *l = qparam(r->query, "layout"), *v = qparam(r->query, "variant");
+		if (!safe_word(l, 16) || (v && *v && !safe_word(v, 24))) { reply_err(r->fd, 400, "bad layout"); return; }
+		char cmd[200]; snprintf(cmd, sizeof cmd, "DISPLAY=:0 setxkbmap -layout %s%s%s", l, v && *v ? " -variant " : "", v && *v ? v : "");
+		if (run(cmd)) reply_err(r->fd, 500, "unknown layout"); else reply_ok(r->fd, "layout set");
+		return;
+	}
+	if (!strcmp(p, "pointer")) {
+		char *sp = qparam(r->query, "speed"); double s = sp ? atof(sp) : 1;
+		char *ac = qparam(r->query, "accel"); double a = ac ? atof(ac) : 1;
+		if (s < 0.2) s = 0.2; if (s > 5) s = 5; if (a < 1) a = 1; if (a > 3) a = 3;
+		char b[64]; snprintf(b, sizeof b, "%.3f %.3f\n", s, a); write_str(RUN "/pointer", b);
+		reply_ok(r->fd, "ok"); return;
+	}
+	if (!strcmp(p, "audio")) {
+		char *c = qparam(r->query, "card");
+		if (c) {
+			if (strspn(c, "0123456789") != strlen(c) || !*c) { reply_err(r->fd, 400, "bad card"); return; }
+			char b[128]; snprintf(b, sizeof b, "defaults.pcm.card %s\ndefaults.ctl.card %s\n", c, c);
+			write_str("/etc/asound.conf", b);
+			mkdir(PERSIST "/etc", 0755);
+			if (!live) write_str(PERSIST "/etc/asound.conf", b);
+			/* with the sound server running, switch its default output; otherwise the browser
+			   must restart to pick up the new ALSA default */
+			char cmd[96]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/sound default %s >/dev/null 2>&1", c);
+			if (!access("/run/user/1000/pulse/native", F_OK) && !run(cmd)) { reply_ok(r->fd, "sound card selected"); return; }
+			restart_browser();
+			reply_ok(r->fd, "sound card selected; Rudolf OS restarts its browser"); return;
+		}
+		char *cards = slurp("/proc/asound/cards", NULL);
+		str s = {0}; sadd(&s, "{\"ok\":true,\"cards\":"); sjson(&s, cards ? cards : ""); sadd(&s, "}"); free(cards); reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(p, "proxy")) {
+		char *sv = qparam(r->query, "server");
+		if (sv && *sv && (strlen(sv) > 200 || strpbrk(sv, " ;'\"`$\\|&<>"))) { reply_err(r->fd, 400, "bad proxy"); return; }
+		write_str(RUN "/proxy", sv ? sv : "");
+		if (!live) write_str(PERSIST "/proxy", sv ? sv : "");
+		restart_browser(); reply_ok(r->fd, "proxy saved; the browser restarts"); return;
+	}
+	if (!strcmp(p, "time")) {
+		char *e = qparam(r->query, "epoch");
+		if (!e) { reply_err(r->fd, 400, "epoch?"); return; }
+		struct timeval tv = { atoll(e) / 1000, (atoll(e) % 1000) * 1000 };
+		if (settimeofday(&tv, NULL)) { reply_err(r->fd, 500, "could not set the clock"); return; }
+		run("hwclock -w -u >/dev/null 2>&1"); reply_ok(r->fd, "clock set"); return;
+	}
+	if (!strcmp(p, "update")) {
+		if (live) { reply_err(r->fd, 400, "updates need an installed system or a data partition"); return; }
+		if (r->blen < 100000 || !memmem(r->body, r->blen > 4096 ? 4096 : r->blen, "<html", 5)) { reply_err(r->fd, 400, "this is not a Rudolf OS page"); return; }
+		run("mkdir -p " PERSIST "/os/new && rm -rf " PERSIST "/os/previous && [ -d " PERSIST "/os/current ] && mv " PERSIST "/os/current " PERSIST "/os/previous; true");
+		int f = open(PERSIST "/os/new/index.html", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+		if (f < 0 || write(f, r->body, r->blen) != (ssize_t)r->blen) { if (f >= 0) close(f); reply_err(r->fd, 500, "could not save the update"); return; }
+		fsync(f); close(f);
+		run("mv " PERSIST "/os/new " PERSIST "/os/current; rm -f " PERSIST "/os/disabled; sync");
+		reply_ok(r->fd, "update installed; restart to use it"); return;
+	}
+	if (!strcmp(p, "rollback")) {
+		int rc = run("[ -d " PERSIST "/os/previous ] && rm -rf " PERSIST "/os/current && mv " PERSIST "/os/previous " PERSIST "/os/current || { rm -rf " PERSIST "/os/current; true; }; sync");
+		reply_ok(r->fd, rc ? "rolled back" : "returned to the previous version"); return;
+	}
+	if (!strcmp(p, "say")) {
+		char *t = qparam(r->query, "text"), *l = qparam(r->query, "lang");
+		char lang[16] = "en";
+		if (l && safe_word(l, 12)) snprintf(lang, sizeof lang, "%s", l);
+		if (!t || access("/usr/bin/espeak-ng", X_OK)) { reply_err(r->fd, 404, "no speech engine"); return; }
+		write_str(RUN "/say.txt", t);
+		char cmd[200]; snprintf(cmd, sizeof cmd, "espeak-ng -v %s -s 170 -f " RUN "/say.txt --stdout 2>/dev/null", lang);
+		FILE *pp = popen(cmd, "r");
+		if (!pp) { reply_err(r->fd, 500, "speech failed"); return; }
+		str w = {0}; char buf[8192]; size_t n;
+		while ((n = fread(buf, 1, sizeof buf, pp)) > 0) { if (!w.b) { w.cap = 65536; w.b = malloc(w.cap); w.n = 0; } if (w.n + n > w.cap) { w.cap = (w.n + n) * 2; w.b = realloc(w.b, w.cap); } memcpy(w.b + w.n, buf, n); w.n += n; }
+		pclose(pp);
+		reply(r->fd, 200, "audio/wav", w.b, w.n, NULL); free(w.b); return;
+	}
+	if (!strcmp(p, "time/sync")) {
+		if (run("ntpd -n -q -p pool.ntp.org >/dev/null 2>&1 || ntpd -n -q -p time.google.com >/dev/null 2>&1")) { reply_err(r->fd, 500, "no time server answered (offline?)"); return; }
+		run("hwclock -w -u >/dev/null 2>&1"); reply_ok(r->fd, "clock set from the internet"); return;
+	}
+	if (!strcmp(p, "restart-browser")) { reply_ok(r->fd, "restarting"); restart_browser(); return; }
+	if (!strcmp(p, "factory-reset")) {
+		if (live) { reply_err(r->fd, 400, "nothing is saved in live mode"); return; }
+		write_str(PERSIST "/.factory-reset", "1"); sync();
+		reply_ok(r->fd, "all saved data will be erased at the next start"); return;
+	}
+	if (!strcmp(p, "install")) {
+		char *d = qparam(r->query, "disk"), *c = qparam(r->query, "confirm");
+		if (!safe_word(d, 16) || !c || strcmp(c, d)) { reply_err(r->fd, 400, "confirm by sending the disk name twice"); return; }
+		if (job_running()) { reply_err(r->fd, 409, "another job is running"); return; }
+		char cmd[256]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/install.sh /dev/%s", d);
+		start_job("install", cmd); reply_ok(r->fd, "installing"); return;
+	}
+	if (!strcmp(p, "mount")) { api_mount(r, 1); return; }
+	if (!strcmp(p, "umount")) { api_mount(r, 0); return; }
+	reply_err(r->fd, 404, "unknown API");
+}
+
+static void handle(int fd)
+{
+	struct req r;
+	memset(&r, 0, sizeof r);
+	r.fd = fd;
+	char hdr[16384];
+	size_t n = 0;
+	char *end = NULL;
+	struct pollfd pf = { fd, POLLIN, 0 };
+	while (n < sizeof hdr - 1) {
+		if (poll(&pf, 1, 10000) <= 0) return;
+		ssize_t k = read(fd, hdr + n, sizeof hdr - 1 - n);
+		if (k <= 0) return;
+		n += k; hdr[n] = 0;
+		if ((end = strstr(hdr, "\r\n\r\n"))) break;
+	}
+	if (!end) return;
+	*end = 0;
+	char *body0 = end + 4;
+	size_t have = n - (body0 - hdr);
+	char url[4096] = "";
+	if (sscanf(hdr, "%7s %4095s", r.method, url) != 2) return;
+	char *q = strchr(url, '?');
+	if (q) { *q = 0; snprintf(r.query, sizeof r.query, "%s", q + 1); }
+	snprintf(r.path, sizeof r.path, "%s", url);
+	size_t clen = 0;
+	for (char *l = strstr(hdr, "\r\n"); l; l = strstr(l + 2, "\r\n")) {
+		char *h = l + 2;
+		if (!strncasecmp(h, "Content-Length:", 15)) clen = strtoul(h + 15, NULL, 10);
+		else if (!strncasecmp(h, "X-Rudolf-Token:", 15)) { char *v = h + 15; while (*v == ' ') v++; snprintf(r.tok, sizeof r.tok, "%.*s", (int)strcspn(v, "\r"), v); }
+		else if (!strncasecmp(h, "Range:", 6)) { char *v = h + 6; while (*v == ' ') v++; snprintf(r.range, sizeof r.range, "%.*s", (int)strcspn(v, "\r"), v); }
+	}
+	if (clen > MAXBODY) { reply_err(fd, 413, "too large"); return; }
+	if (clen) {
+		r.body = malloc(clen + 1);
+		memcpy(r.body, body0, have > clen ? clen : have);
+		r.blen = have > clen ? clen : have;
+		while (r.blen < clen) {
+			if (poll(&pf, 1, 30000) <= 0) break;
+			ssize_t k = read(fd, r.body + r.blen, clen - r.blen);
+			if (k <= 0) break;
+			r.blen += k;
+		}
+		r.body[r.blen] = 0;
+	}
+	if (strstr(r.path, "..")) { reply_err(fd, 400, "bad path"); goto out; }
+	if (!strncmp(r.path, "/api/", 5)) {
+		if (strcmp(r.tok, token)) { reply_err(fd, 403, "missing token"); goto out; }
+		api(&r);
+		goto out;
+	}
+	char root[256];
+	www_root(root, sizeof root);
+	if (!strcmp(r.path, "/") || !strcmp(r.path, "/index.html")) { serve_index(&r, root); goto out; }
+	char fp[2400];
+	if (!strncmp(r.path, "/pkg/", 5)) {
+		/* web-app packages: only files under www/ (or web/ for add-ons) of a mounted package */
+		snprintf(fp, sizeof fp, "%s", r.path); urldecode(fp);
+		const char *sl = strchr(fp + 5, '/');
+		if (strstr(fp, "..") || !sl || (strncmp(sl, "/www/", 5) && strncmp(sl, "/web/", 5))) { reply_err(fd, 404, "not found"); goto out; }
+		serve_file(&r, fp); goto out;
+	}
+	snprintf(fp, sizeof fp, "%s%s", root, r.path);
+	urldecode(fp);
+	if (access(fp, R_OK)) snprintf(fp, sizeof fp, WWW "%s", r.path), urldecode(fp);
+	if (strstr(fp, "..")) { reply_err(fd, 400, "bad path"); goto out; }
+	serve_file(&r, fp);
+out:
+	free(r.body);
+}
+
+int main(int argc, char **argv)
+{
+	(void)argc; (void)argv;
+	signal(SIGPIPE, SIG_IGN);
+	mkdir(RUN, 0755);
+	int rf = open("/dev/urandom", O_RDONLY);
+	unsigned char rb[16];
+	if (rf < 0 || read(rf, rb, 16) != 16) { for (int i = 0; i < 16; i++) rb[i] = rand(); }
+	if (rf >= 0) close(rf);
+	for (int i = 0; i < 16; i++) sprintf(token + i * 2, "%02x", rb[i]);
+	char *cl = slurp("/proc/cmdline", NULL);
+	if (cl) {
+		if (strstr(cl, "rudolf.recovery=1")) recovery = 1;
+		if (strstr(cl, "rudolf.media=disk")) snprintf(media_mode, sizeof media_mode, "disk");
+		free(cl);
+	}
+	if (!access("/sys/firmware/efi", F_OK)) snprintf(boot_mode, sizeof boot_mode, "uefi");
+	live = access(RUN "/persistent", F_OK) != 0;
+	int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0), one = 1;
+	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+	struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons(8080), .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
+	if (bind(s, (struct sockaddr *)&a, sizeof a) || listen(s, 64)) { perror("rudolfd: bind 127.0.0.1:8080"); return 1; }
+	fprintf(stderr, "rudolfd: serving Rudolf OS on http://127.0.0.1:8080/ (%s, %s)\n", live ? "live" : "persistent", boot_mode);
+	for (;;) {
+		struct pollfd pf = { s, POLLIN, 0 };
+		reap();
+		if (poll(&pf, 1, 1000) <= 0) continue;
+		int c = accept4(s, NULL, NULL, SOCK_CLOEXEC);
+		if (c < 0) continue;
+		setsockopt(c, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+		/* each connection in its own process so a slow download never blocks the desktop */
+		pid_t p = fork();
+		if (p == 0) { close(s); handle(c); shutdown(c, SHUT_WR); close(c); _exit(0); }
+		close(c);
+		/* state that must survive in the parent */
+	}
+}

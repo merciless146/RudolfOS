@@ -1,0 +1,132 @@
+#!/bin/sh
+# Rudolf OS display session: Xorg on the graphics card or Xvfb + framebuffer bridge, then Chromium kiosk.
+# Restarts the browser if it crashes or stops responding. GPL-2.0-or-later.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export DISPLAY=:0
+LOG=/run/rudolf/session.log
+exec >>$LOG 2>&1
+if [ ! -e /dev/fb0 ]; then
+	echo "no framebuffer" > /dev/console
+	echo "Rudolf OS needs a graphics screen (VESA or UEFI GOP). Try 'Screen resolution' in the boot menu." > /dev/console
+	exec sh < /dev/console > /dev/console 2>&1
+fi
+# ---- display path ------------------------------------------------------------------------
+# "gpu":  Xorg on the graphics card (fast; Linux apps such as Sober render on the GPU).
+# "soft": Xvfb in memory, copied to the framebuffer by rudolf-display (works everywhere).
+# The graphics-card path is used when a graphics driver loaded and Settings allow it; if Xorg
+# does not start, or stops later, Rudolf OS falls back to the software display.
+SETTING=$(cat /etc/rudolf-display 2>/dev/null); SETTING=${SETTING:-games}
+MODE=soft; REASON=""; XPID=""
+start_soft() {
+	set -- $(rudolf-display --size)
+	W=${1:-1024}; H=${2:-768}
+	Xvfb :0 -screen 0 ${W}x${H}x24 -fbdir /run/xvfb -nolisten tcp -ac -dpi 96 -nocursor +extension XFIXES +extension XTEST &
+	XPID=$!
+	for i in $(seq 50); do [ -e /tmp/.X11-unix/X0 ] && break; sleep 0.1; done
+	DISPARGS=/run/xvfb/Xvfb_screen0; MODE=soft
+}
+start_gpu() {
+	rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
+	Xorg :0 vt1 -config /usr/lib/rudolf/xorg.conf -nolisten tcp -ac -noreset -novtswitch -dpi 96 \
+		-logfile /run/rudolf/Xorg.log -verbose 3 &
+	XPID=$!
+	for i in $(seq 150); do [ -e /tmp/.X11-unix/X0 ] && break; kill -0 $XPID 2>/dev/null || break; sleep 0.1; done
+	if [ -e /tmp/.X11-unix/X0 ] && kill -0 $XPID 2>/dev/null && S=$(rudolf-display --xsize 2>/dev/null); then
+		set -- $S; W=$1; H=$2; DISPARGS=--input; MODE=gpu
+		grep -q 'glamor X acceleration enabled\|glamor initialized' /run/rudolf/Xorg.log || REASON="Xorg is running but without glamor acceleration (see Xorg.log)"
+		return 0
+	fi
+	REASON="Xorg did not start (see /run/rudolf/Xorg.log)"
+	kill $XPID 2>/dev/null; sleep 0.5; kill -9 $XPID 2>/dev/null
+	rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
+	return 1
+}
+if grep -qE 'rudolf.recovery=1|rudolf.nogpu=1|nomodeset|rudolf.softdisplay=1' /proc/cmdline; then REASON="started in recovery or safe graphics mode"
+elif [ "$SETTING" = soft ]; then REASON="Settings: software display"
+elif [ ! -x /usr/bin/Xorg ]; then REASON="this Rudolf OS build has no Xorg"
+elif [ ! -s /run/rudolf/gpu ]; then REASON="no graphics card driver is loaded"
+else start_gpu; fi
+[ $MODE = gpu ] || start_soft
+echo $MODE > /run/rudolf/display-mode; echo "$REASON" > /run/rudolf/display-reason
+echo "$(date) display: $MODE ${W}x${H} $REASON"
+echo "$W $H" > /run/rudolf/screen
+rudolf-display $DISPARGS &
+DISP=$!
+# per-user runtime directory and D-Bus session bus (used by Flatpak apps such as Sober)
+export XDG_RUNTIME_DIR=/run/user/1000
+mkdir -p $XDG_RUNTIME_DIR && chown 1000:1000 $XDG_RUNTIME_DIR && chmod 700 $XDG_RUNTIME_DIR
+if [ -x /usr/bin/dbus-daemon ]; then
+	su -s /bin/sh rudolf -c "dbus-daemon --session --fork --nopidfile --address=unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+fi
+# sound server (PulseAudio) for the desktop and Linux apps; Chromium falls back to ALSA without it
+/usr/lib/rudolf/sound start && export PULSE_SERVER=unix:$XDG_RUNTIME_DIR/pulse/native
+# an update being tried must bring the desktop up within 4 minutes; if not, restart, and after two
+# failed starts the start-up script goes back to the previous system
+if grep -q 'rudolf.trying=1' /proc/cmdline; then
+	( sleep 240; [ -e /run/rudolf/bootok ] || { echo "update did not start: restarting" >> /run/rudolf/update.log; sync; reboot -f; } ) &
+fi
+# installed rpk packages are read-only images; mount them before the desktop starts
+[ -x /usr/bin/rpk ] && /usr/bin/rpk mount-all >>/run/rudolf/rpk.log 2>&1
+echo "DISPLAY=$DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_CURRENT_DESKTOP=Rudolf" > /run/rudolf/session.env
+# Linux apps: the folders they share with drive C:, and the desktop portal (file dialogs, links,
+# notifications) on the session bus; its questions reach the desktop through /run/rudolf/portal
+for d in Documents Pictures Downloads; do [ -d /home/rudolf/$d ] || { mkdir -p /home/rudolf/$d; chown rudolf:rudolf /home/rudolf/$d; }; done
+mkdir -p /run/rudolf/portal/req /run/rudolf/portal/resp /run/rudolf/apps && chown -R rudolf:rudolf /run/rudolf/portal /run/rudolf/apps
+[ -x /usr/bin/rudolf-portal ] && [ -n "$DBUS_SESSION_BUS_ADDRESS" ] && su -s /bin/sh rudolf -c "set -a; . /run/rudolf/session.env; set +a; exec setsid /usr/bin/rudolf-portal" </dev/null >>/run/rudolf/portal.log 2>&1 &
+PROFILE=/home/rudolf/.rudolf-browser
+# Chromium writes an index next to an unpacked extension, so it needs a copy the user owns
+EXT=/run/rudolf/frames
+rm -rf $EXT; cp -a /usr/lib/rudolf/frames $EXT; chown -R rudolf:rudolf $EXT
+# Ruffle for Oracle: plays Flash content on websites in Oracle's tabs
+RUF=/run/rudolf/ruffle-ext
+rm -rf $RUF; cp -a /usr/lib/rudolf/ruffle-ext $RUF; chown -R rudolf:rudolf $RUF
+LOGPOLL=0
+DBG=""
+grep -q 'rudolf.debug=1' /proc/cmdline && DBG="--enable-logging=stderr --v=0 --remote-debugging-port=9222"
+export FONTCONFIG_FILE=/etc/fonts/fonts.conf
+# the desktop renders in software unless Settings say "full" and Xorg is on the graphics card;
+# if the GPU process fails, Chromium falls back to SwiftShader by itself
+GLFLAGS="--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist --disable-gpu-compositing"
+[ $MODE = gpu ] && [ "$SETTING" = full ] && GLFLAGS="--use-gl=angle --use-angle=gl-egl --enable-unsafe-swiftshader --ignore-gpu-blocklist"
+echo "$GLFLAGS" > /run/rudolf/glflags   # the browser window for sign-in sites (rudolfd web/open) uses the same
+while :; do
+	[ -e /run/rudolf/power ] && sleep 30
+	PROXY=""
+	EXTRA=""; [ -s /run/rudolf/browser-flags ] && EXTRA=$(cat /run/rudolf/browser-flags)
+	[ -s /run/rudolf/proxy ] && PROXY="--proxy-server=$(cat /run/rudolf/proxy)"
+	rm -f /run/rudolf/heartbeat
+	su -s /bin/sh rudolf -c "exec /opt/chromium/chrome --rudolf-kiosk --class=RudolfDesktop --kiosk --start-fullscreen \
+		--window-position=0,0 --window-size=$W,$H --user-data-dir=$PROFILE \
+		--no-first-run --no-default-browser-check --noerrdialogs --disable-infobars \
+		--disable-session-crashed-bubble --disable-translate --password-store=basic \
+		--disable-features=Translate,MediaRouter,DialMediaRouteProvider,OptimizationHints,PrivacySandboxSettings4,Vulkan,WebGPUService,SkiaGraphite,OptimizationGuideOnDeviceModel --disable-vulkan-surface \
+		$GLFLAGS \
+		--autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream \
+		--auto-select-desktop-capture-source=Entire --enable-features=SharedArrayBuffer \
+		--load-extension=$EXT,$RUF --disable-gpu-watchdog --disk-cache-size=67108864 $PROXY $DBG $EXTRA \
+		http://127.0.0.1:8080/" &
+	B=$!
+	START=$(cut -d. -f1 /proc/uptime)
+	# watchdog: the desktop sends a heartbeat every few seconds
+	while kill -0 $B 2>/dev/null; do
+		sleep 10
+		NOW=$(cut -d. -f1 /proc/uptime)
+		if [ $((NOW - START)) -gt 120 ]; then
+			if [ -e /run/rudolf/heartbeat ]; then
+				MT=$(stat -c %Y /run/rudolf/heartbeat); AGE=$(( $(date +%s) - MT ))
+				if [ $AGE -gt 60 ]; then echo "$(date) desktop not responding for ${AGE}s - restarting browser"; pkill -f 'chrom[e].*--rudolf-kiosk'; sleep 3; pkill -9 -f 'chrom[e].*--rudolf-kiosk'; fi
+			fi
+		fi
+		if [ $MODE = gpu ] && ! kill -0 $XPID 2>/dev/null; then
+			echo "$(date) Xorg stopped - switching to the software display"
+			REASON="Xorg stopped unexpectedly (see /run/rudolf/Xorg.log)"; kill $DISP 2>/dev/null
+			pkill -f 'chrom[e].*--rudolf-kiosk'; start_soft
+			echo soft > /run/rudolf/display-mode; echo "$REASON" > /run/rudolf/display-reason
+			GLFLAGS="--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist --disable-gpu-compositing"
+			rudolf-display $DISPARGS & DISP=$!
+		fi
+		kill -0 $DISP 2>/dev/null || { rudolf-display $DISPARGS & DISP=$!; }
+	done
+	echo "$(date) browser exited"
+	sleep 1
+done

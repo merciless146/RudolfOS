@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sudoku</title>
+<!-- Sudoku for Rudolf OS (rpk web app). GPL-2.0-or-later. Puzzles are generated here, each with one solution. -->
+<style>
+:root{--bg:#f8fafc;--card:#fff;--ink:#0f172a;--mut:#64748b;--line:#cbd5e1;--thick:#334155;--given:#0f172a;--mine:#2563eb;--sel:#dbeafe;--same:#eff6ff;--bad:#dc2626;--badbg:#fee2e2;--btn:#e2e8f0}
+:root.dark{--bg:#0f172a;--card:#111827;--ink:#e2e8f0;--mut:#94a3b8;--line:#334155;--thick:#94a3b8;--given:#f1f5f9;--mine:#60a5fa;--sel:#1e3a5f;--same:#172554;--bad:#f87171;--badbg:#450a0a;--btn:#1e293b}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px system-ui,sans-serif}
+body{display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px;user-select:none}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
+button,select{font:inherit;color:inherit;background:var(--btn);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+#t{font-variant-numeric:tabular-nums;color:var(--mut);min-width:52px;text-align:right}
+#g{display:grid;grid-template-columns:repeat(9,1fr);width:min(92vw,62vh,460px);aspect-ratio:1;border:2px solid var(--thick);background:var(--card);border-radius:6px;overflow:hidden}
+.c{display:flex;align-items:center;justify-content:center;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-size:clamp(16px,4.6vmin,28px);cursor:pointer;position:relative}
+.c:nth-child(9n){border-right:0}.c:nth-child(n+73){border-bottom:0}
+.c.r3{border-right:2px solid var(--thick)}.c.b3{border-bottom:2px solid var(--thick)}
+.c.given{font-weight:700;color:var(--given)}.c.mine{color:var(--mine)}
+.c.same{background:var(--same)}.c.sel{background:var(--sel)}.c.bad{color:var(--bad);background:var(--badbg)}
+.notes{position:absolute;inset:2px;display:grid;grid-template-columns:repeat(3,1fr);font-size:clamp(8px,1.5vmin,11px);color:var(--mut);text-align:center;align-items:center}
+#pad{display:grid;grid-template-columns:repeat(9,1fr);gap:6px;width:min(92vw,62vh,460px)}
+#pad button{padding:10px 0;font-size:18px}
+#msg{min-height:20px;color:var(--mut)}
+.on{outline:2px solid var(--mine)}
+</style></head><body>
+<div class="bar"><select id="lv" aria-label="Level"><option value="36">Easy</option><option value="30" selected>Medium</option><option value="25">Hard</option></select>
+<button id="new">New game</button><button id="note" aria-pressed="false">Notes</button><button id="hint">Hint</button><span id="t">0:00</span></div>
+<div id="g" role="grid" aria-label="Sudoku grid"></div>
+<div id="pad"></div>
+<div class="bar"><button id="del">Erase</button><button id="undo">Undo</button></div>
+<div id="msg" aria-live="polite"></div>
+<script>
+if(/[?&]theme=dark/.test(location.search))document.documentElement.classList.add('dark');
+const $=s=>document.querySelector(s),G=$('#g'),pad=$('#pad');
+let sol=[],cur=[],giv=[],notes=[],sel=-1,noteMode=false,hist=[],t0=0,timer=0,done=false;
+const rc=i=>[Math.floor(i/9),i%9],box=i=>{const[r,c]=rc(i);return Math.floor(r/3)*3+Math.floor(c/3)};
+const peers=i=>{const[r,c]=rc(i),b=box(i),o=[];for(let j=0;j<81;j++)if(j!=i){const[r2,c2]=rc(j);if(r2==r||c2==c||box(j)==b)o.push(j)}return o};
+const PEERS=[...Array(81)].map((_,i)=>peers(i));
+const ok=(g,i,v)=>PEERS[i].every(j=>g[j]!=v);
+const shuf=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+function fill(g){const i=g.indexOf(0);if(i<0)return true;for(const v of shuf([1,2,3,4,5,6,7,8,9]))if(ok(g,i,v)){g[i]=v;if(fill(g))return true;g[i]=0}return false}
+function count(g,lim){/* number of solutions, stopping at lim */let best=-1,bc=10;for(let i=0;i<81;i++)if(!g[i]){let n=0;for(let v=1;v<10;v++)if(ok(g,i,v))n++;if(n<bc){bc=n;best=i;if(n<2)break}}
+ if(best<0)return 1;let s=0;for(let v=1;v<10&&s<lim;v++)if(ok(g,best,v)){g[best]=v;s+=count(g,lim-s);g[best]=0}return s}
+function make(keep){const g=Array(81).fill(0);fill(g);sol=g.slice();const p=g.slice();
+ for(const i of shuf([...Array(81).keys()])){if(p.filter(Boolean).length<=keep)break;const v=p[i];p[i]=0;if(count(p.slice(),2)!=1)p[i]=v}return p}
+function newGame(){done=false;$('#msg').textContent='Making a puzzle…';setTimeout(()=>{const p=make(+$('#lv').value);cur=p.slice();giv=p.map(Boolean);notes=[...Array(81)].map(()=>new Set());hist=[];sel=-1;t0=Date.now();
+ clearInterval(timer);timer=setInterval(tick,1000);tick();$('#msg').textContent='';draw()},20)}
+function tick(){if(done)return;const s=Math.floor((Date.now()-t0)/1000);$('#t').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function draw(){G.innerHTML='';const sv=sel>=0?cur[sel]:0;
+ for(let i=0;i<81;i++){const d=document.createElement('div'),[r,c]=rc(i);d.className='c'+(c==2||c==5?' r3':'')+(r==2||r==5?' b3':'')+(giv[i]?' given':cur[i]?' mine':'');d.setAttribute('role','gridcell');
+  if(i==sel)d.classList.add('sel');else if(sv&&cur[i]==sv)d.classList.add('same');
+  if(cur[i]&&!giv[i]&&!ok(cur,i,cur[i]))d.classList.add('bad');
+  if(cur[i])d.textContent=cur[i];else if(notes[i].size){const n=document.createElement('div');n.className='notes';for(let v=1;v<10;v++){const s=document.createElement('span');s.textContent=notes[i].has(v)?v:'';n.appendChild(s)}d.appendChild(n)}
+  d.setAttribute('aria-label','Row '+(r+1)+' column '+(c+1)+(cur[i]?', '+cur[i]:', empty'));d.onclick=()=>{sel=i;draw()};G.appendChild(d)}
+ $('#note').classList.toggle('on',noteMode);$('#note').setAttribute('aria-pressed',noteMode)}
+function put(v){if(sel<0||giv[sel]||done)return;hist.push([sel,cur[sel],new Set(notes[sel])]);
+ if(noteMode&&v){cur[sel]=0;notes[sel].has(v)?notes[sel].delete(v):notes[sel].add(v)}else{cur[sel]=cur[sel]==v?0:v;notes[sel].clear();if(v)PEERS[sel].forEach(j=>notes[j].delete(v))}
+ draw();if(cur.every((v,i)=>v==sol[i])){done=true;clearInterval(timer);$('#msg').textContent='Solved in '+$('#t').textContent+'. Well done!'}}
+for(let v=1;v<10;v++){const b=document.createElement('button');b.textContent=v;b.onclick=()=>put(v);pad.appendChild(b)}
+$('#del').onclick=()=>put(0);$('#new').onclick=newGame;$('#lv').onchange=newGame;$('#note').onclick=()=>{noteMode=!noteMode;draw()};
+$('#undo').onclick=()=>{const h=hist.pop();if(!h)return;cur[h[0]]=h[1];notes[h[0]]=h[2];draw()};
+$('#hint').onclick=()=>{if(done)return;const e=[...Array(81).keys()].filter(i=>!giv[i]&&cur[i]!=sol[i]);if(!e.length)return;const i=sel>=0&&e.includes(sel)?sel:e[Math.floor(Math.random()*e.length)];sel=i;hist.push([i,cur[i],new Set(notes[i])]);cur[i]=sol[i];notes[i].clear();draw();if(cur.every((v,k)=>v==sol[k])){done=true;clearInterval(timer);$('#msg').textContent='Solved.'}};
+addEventListener('keydown',e=>{if(e.key>='1'&&e.key<='9')put(+e.key);else if(e.key=='Backspace'||e.key=='Delete'||e.key=='0')put(0);else if(e.key=='n')noteMode=!noteMode,draw();
+ else if(e.key.startsWith('Arrow')){e.preventDefault();if(sel<0)sel=0;else{const[r,c]=rc(sel),d={ArrowUp:[-1,0],ArrowDown:[1,0],ArrowLeft:[0,-1],ArrowRight:[0,1]}[e.key];sel=((r+d[0]+9)%9)*9+(c+d[1]+9)%9}draw()}});
+newGame();
+</script></body></html>

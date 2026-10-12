@@ -1,0 +1,64 @@
+#!/bin/sh
+# Rudolf OS sound server. PulseAudio runs as the desktop user and opens every sound card; the
+# desktop (Chromium) and Linux apps such as Sober play through it. If it cannot start, Chromium
+# falls back to ALSA directly, as before.
+#   sound start       start PulseAudio (called by the session)
+#   sound default N   make card N the default output (Settings > Sound)
+#   sound status      print the server state, cards and outputs
+# GPL-2.0-or-later.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export XDG_RUNTIME_DIR=/run/user/1000
+SOCK=$XDG_RUNTIME_DIR/pulse/native
+PA=/run/rudolf/pulse.pa
+LOG=/run/rudolf/pulse.log
+asuser() { su -s /bin/sh rudolf -c "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR PULSE_SERVER=unix:$SOCK $1"; }
+cards() { sed -n 's/^ *\([0-9][0-9]*\) \[.*/\1/p' /proc/asound/cards 2>/dev/null; }
+set_default() {
+	S=$(asuser "pactl list short sinks" 2>/dev/null | awk -v p="alsa_output.card$1." 'index($2,p)==1{print $2; exit}')
+	[ -n "$S" ] && asuser "pactl set-default-sink $S" && echo "default output: $S"
+}
+case "$1" in
+start)
+	[ -x /usr/bin/pulseaudio ] || exit 0
+	grep -q 'rudolf.nosound=1' /proc/cmdline && exit 0
+	{
+		echo ".fail"
+		echo "load-module module-device-restore"
+		echo "load-module module-stream-restore"
+		echo "load-module module-card-restore"
+		echo "load-module module-augment-properties"
+		echo ".nofail"
+		for n in $(cards); do echo "load-module module-alsa-card device_id=$n name=card$n tsched=1 deferred_volume=0"; done
+		echo ".fail"
+		echo "load-module module-native-protocol-unix auth-anonymous=1"
+		echo "load-module module-default-device-restore"
+		echo "load-module module-always-sink"
+		echo "load-module module-intended-roles"
+		echo "load-module module-suspend-on-idle"
+		echo "load-module module-position-event-sounds"
+		echo "load-module module-switch-on-port-available"
+	} > $PA
+	: > $LOG; chown rudolf $LOG
+	asuser "pulseaudio --daemonize=yes -n -F $PA --exit-idle-time=-1 --log-target=file:$LOG" || echo "pulseaudio failed to start" >> $LOG
+	for i in $(seq 50); do [ -S $SOCK ] && break; sleep 0.1; done
+	[ -S $SOCK ] || exit 1
+	# ALSA starts every card muted at its lowest volume and nothing else restores the mixer, so
+	# open each output fully (volume is set in the desktop and in each app) and the inputs at 80%
+	for k in $(asuser "pactl list short sinks" 2>/dev/null | awk '{print $2}'); do
+		asuser "pactl set-sink-mute $k 0"; asuser "pactl set-sink-volume $k 100%"
+	done
+	for k in $(asuser "pactl list short sources" 2>/dev/null | awk '$2 !~ /\.monitor$/ {print $2}'); do
+		asuser "pactl set-source-mute $k 0"; asuser "pactl set-source-volume $k 80%"
+	done
+	N=$(sed -n 's/^defaults.pcm.card \([0-9]*\)/\1/p' /etc/asound.conf 2>/dev/null)
+	[ -n "$N" ] && set_default "$N"
+	exit 0;;
+default)
+	[ -S $SOCK ] || exit 1
+	set_default "$2";;
+status)
+	[ -S $SOCK ] || { echo "sound server not running"; exit 1; }
+	asuser "pactl info" | grep -E 'Server Name|Server Version|Default Sink|Default Source'
+	echo; asuser "pactl list short cards"; echo; asuser "pactl list short sinks";;
+*) echo "usage: sound start|default N|status"; exit 2;;
+esac

@@ -1,0 +1,3 @@
+# Release and package signing keys this Rudolf OS trusts (Ed25519 public keys, base64, one per line).
+# Copied into the system as /etc/rudolf/rpk-keys. Never put a private key here.
+UqTqXIW8vtITjwoMix+MkFVZ0GAee9+kOS1WBIs/3mo=

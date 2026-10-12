@@ -1,0 +1,82 @@
+Building Rudolf OS 1.1
+=======================
+
+Host: Ubuntu 24.04 x86-64 with gcc, make, nasm, python3, node, bc, flex,
+bison, libelf headers, libssl-dev, xz-utils, the X11/GTK runtime packages
+listed in packages-versions.txt, xvfb and Playwright's Chromium build 1194
+(Chromium 141.0.7390.37) in /opt/pw-browsers/chromium-1194.
+
+Layout of this archive
+  desktop/       Rudolf OS desktop: base_v24.html plus the V25 modules
+                 (core25.js, shell25.js, files25.js, apps25a.js, apps25b.js,
+                 a11y25.js, settings25.js, styles25.css) and build19.py, which
+                 joins them into index.html.
+  libs/          pinyin table and OpenDyslexic font used by build19.py.
+  iso/           everything that turns index.html into the bootable image:
+    boot/rboot.asm      Rudolf Boot (BIOS loader, El Torito / hybrid USB)
+    boot/mbr.asm        hybrid MBR for USB sticks and hard disks
+    kconfig.sh          Linux configuration on top of x86_64_defconfig
+    sys/                rudolfd.c, rudolf-display.c, initramfs init, root overlay
+    mkrootfs.sh         assembles the root file system
+    mkimage.py          writes the FAT EFI image and the hybrid ISO 9660 image
+    build_iso.sh        runs every step and writes out/rudolf-os-1.1.iso
+    qt/                 QEMU test helpers (QMP + serial)
+
+Steps
+  1. Desktop:   cd desktop && python3 build19.py      (writes index.html; edit
+                the output path O in build19.py first)
+     Copy index.html to iso/www/index.html together with lib/pdf.mjs and
+     lib/pdf.worker.mjs from pdf.js 4.10.38 (legacy build).
+  2. Sources:   put Linux v6.18.55 in iso/src/linux, BusyBox 1_36_1 in
+                iso/src/busybox and squashfs-tools 4.7.5 in iso/src/squashfs-tools.
+  3. BusyBox:   cp SOURCE/BUSYBOX.CFG iso/src/busybox/.config &&
+                make -C iso/src/busybox -j$(nproc)
+  3b. Speech:  eSpeak NG 1.52.0 in iso/src/espeak-ng, built with
+                cmake -B build -DCMAKE_INSTALL_PREFIX=/usr -DUSE_MBROLA=OFF
+                  -DUSE_LIBSONIC=OFF -DUSE_LIBPCAUDIO=OFF -DUSE_ASYNC=OFF
+                  -DUSE_KLATT=OFF -DUSE_SPEECHPLAYER=OFF -DBUILD_SHARED_LIBS=OFF
+                cmake --build build && DESTDIR=$PWD/inst cmake --install build
+                The Japanese reading list www/lib/ja-yomi.txt is made from
+                pykakasi's src/data with systools/mkyomi.py.
+  3b. Wi-Fi:   bash wifibuild.sh builds wpa_supplicant, wpa_cli and hostapd (tests
+                only) into src/wifi from src/hostap (hostap 2.12-devel, as kept by
+                github.com/LineageOS/android_external_wpa_supplicant_8, branch
+                lineage-24.0) and src/libnl (libnl 3.9.0, linked statically).
+                Firmware: src/linux-firmware (sparse checkout, add rtw89 rtw88
+                intel/iwlwifi mediatek/WIFI_* mediatek/mt7925 rtlwifi rt2870.bin
+                ath10k/QCA6174/hw3.0); mkrootfs.sh copies only the files the built
+                Wi-Fi modules ask for (systools/wififw.py). The signed regulatory
+                database comes from src/wireless-regdb
+                (github.com/sforshee/wireless-regdb).
+  3c. Debian:  systools/mkdebian.sh OUTDIR KEYFILE makes the signed Debian 13 base
+                (debian-13-rudolf.tar.xz, debian.txt, debian.txt.sig) from Debian's
+                official minimal image (github.com/debuerreotype/docker-debian-artifacts,
+                branch dist-amd64). Publish the three files as the GitHub release
+                "debian-13" (the release workflow does this monthly). The Terminal
+                uses xterm.js 5.5.0 (MIT), bundled into www/lib/xterm.js with esbuild.
+  3d. Emu:     systools/mkemu.sh builds the SNES and DS cores as WebAssembly into
+                www/lib/emu (clang 18 with wasi-sysroot-22 and its builtins in
+                src/wasi, from github.com/WebAssembly/wasi-sdk). Sources:
+                src/lakesnes (github.com/angelo-wf/LakeSnes, MIT), src/desmume-wasm
+                (github.com/44670/desmume-wasm, GPL-2.0+) and src/zlib (v1.3.1).
+                It also writes desktop/emusnes26.js and src/emu-src.tar.xz.
+                qt/ndstest/build.sh makes the small DS test program the tests use.
+  3e. Blitzen: systools/mkllama.sh builds the model engine (llama.cpp's
+                llama-server, static, AVX2; github.com/ggml-org/llama.cpp, tag b11559,
+                MIT) and src/llama-src.tar.xz. sys/rudolf-ai.c starts it as the "ai"
+                user. systools/mkfengari.sh bundles Fengari into www/lib.
+                The model is not on the disc: train it (see the Blitzen plan), convert
+                it to GGUF Q4_K_M, then systools/mkblitzen-list.sh MODEL.gguf KEY
+                "Blitzen 1" Apache-2.0 writes blitzen.txt + .sig; publish the three
+                files as the GitHub release "blitzen-1". qt/mktinymodel.py makes the
+                tiny test model the QEMU test uses (qt/mkai.sh, upd_t.py phase Z).
+  4. Initramfs: copy busybox, sys/initramfs/init and the splash image into
+                iso/initramfs (see initramfs.list for the device nodes).
+  5. Kernel:    cd iso && ./kconfig.sh src/linux "$PWD/initramfs $PWD/initramfs.list"
+                make -C src/linux -j$(nproc) bzImage modules
+                make -C src/linux modules_install INSTALL_MOD_PATH=$PWD/modules
+  6. Image:     cd iso && ./build_iso.sh
+
+Testing
+  qt/boot.sh NAME bios|uefi cd|usb starts the image in QEMU (SeaBIOS or OVMF)
+  with a QMP socket for screenshots/keys and a serial console.

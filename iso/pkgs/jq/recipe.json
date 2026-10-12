@@ -1,0 +1,4 @@
+{"name": "jq", "version": "1.7.1-3", "kind": "cli", "icon": "🧾",
+ "title": "jq", "summary": "Read, filter and reshape JSON data",
+ "license": "MIT", "homepage": "https://jqlang.org",
+ "debs": ["jq", "libjq1", "libonig5"], "commands": ["jq"]}
