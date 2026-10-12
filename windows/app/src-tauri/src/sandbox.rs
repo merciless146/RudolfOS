@@ -184,8 +184,19 @@ pub struct Output {
     pub out: String,
 }
 
-/// Runs `exe args` in `dir` inside the sandbox, with only the variables in `env`, for at most `secs` seconds.
-pub fn run(sid: &Sid, exe: &Path, args: &[String], dir: &Path, env: &[(String, String)], secs: u32, mem: usize) -> Result<Output, String> {
+/// Runs `exe args` in `dir` with only the variables in `env`, for at most `secs` seconds and `mem` bytes, inside the
+/// AppContainer when `contain` is set. (`contain: false` is for the compiler: it starts further programs, which
+/// Windows refuses inside an AppContainer, and it only reads the source, it never runs it.)
+pub fn run(
+    sid: &Sid,
+    exe: &Path,
+    args: &[String],
+    dir: &Path,
+    env: &[(String, String)],
+    secs: u32,
+    mem: usize,
+    contain: bool,
+) -> Result<Output, String> {
     let out_path = dir.join("blitzen-output.txt");
     let mut cmdline = quote(&exe.to_string_lossy());
     for a in args {
@@ -249,15 +260,19 @@ pub fn run(sid: &Sid, exe: &Path, args: &[String], dir: &Path, env: &[(String, S
         let mut caps: SECURITY_CAPABILITIES = std::mem::zeroed();
         caps.AppContainerSid = sid.0;
         let handles: [HANDLE; 2] = [hout, hin];
-        let ok1 = UpdateProcThreadAttribute(
-            list,
-            0,
-            ATTR_SECURITY_CAPABILITIES,
-            &caps as *const _ as *const c_void,
-            std::mem::size_of::<SECURITY_CAPABILITIES>(),
-            null_mut(),
-            null(),
-        );
+        let ok1 = if contain {
+            UpdateProcThreadAttribute(
+                list,
+                0,
+                ATTR_SECURITY_CAPABILITIES,
+                &caps as *const _ as *const c_void,
+                std::mem::size_of::<SECURITY_CAPABILITIES>(),
+                null_mut(),
+                null(),
+            )
+        } else {
+            1
+        };
         let ok2 = UpdateProcThreadAttribute(
             list,
             0,

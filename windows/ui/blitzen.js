@@ -75,6 +75,9 @@ async function stream(messages, opt, onText, signal) {
   return {text, tokens: n, ms: end - t0, first: first ? first - t0 : end - t0, tps: n > 1 && first ? (n - 1) / ((end - first) / 1000) : 0};
 }
 
+/* errors from the app arrive as plain strings, errors from the page as Error objects */
+const errText = e => (e && typeof e == 'object' && e.message) ? e.message : (typeof e == 'string' && e) ? e : 'Blitzen could not answer (' + String(e) + ')';
+
 /* ---------- answers ---------- */
 const LNAME = {lua: 'BlockLua / Lua', js: 'JavaScript', cpp: 'C++', python: 'Python', html: 'HTML', text: 'Text'};
 function langOf(l) { l = (l || '').toLowerCase(); return /^(lua|blocklua)$/.test(l) ? 'lua' : /^(js|javascript|mjs|node)$/.test(l) ? 'js' : /^(cpp|c\+\+|cc|cxx|hpp|c)$/.test(l) ? 'cpp' : /^(py|python|python3)$/.test(l) ? 'python' : /^html?$/.test(l) ? 'html' : l || 'text' }
@@ -204,7 +207,7 @@ async function answer(label, o = {}) {
   catch (e) {
     setBusy(false);
     if (e.name == 'AbortError') { st.textContent = 'Stopped.'; const t = el.querySelector('.body').textContent; if (t && t != '…') chat.msgs.push({role: 'assistant', content: t}); else el.remove(); return null }
-    el.querySelector('.body').innerHTML = `<div class='err'>${esc(e.message)}</div>`; st.textContent = ''; return null;
+    el.querySelector('.body').innerHTML = `<div class='err'>${esc(errText(e))}</div>`; st.textContent = ''; return null;
   }
   setBusy(false); const text = o.blocks ? '```lua\n' + res.text.trim() + '\n```' : res.text;
   chat.msgs.push({role: 'assistant', content: text}); draw(el, text); saveChat();
