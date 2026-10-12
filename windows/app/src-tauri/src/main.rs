@@ -96,23 +96,27 @@ pub struct App {
     setup: Mutex<()>,
     last_use: Mutex<Instant>,
     pending: Mutex<Option<Value>>,
+    sbx: Mutex<Option<PathBuf>>,
 }
 
 impl App {
     fn new(app: &AppHandle) -> Result<App, String> {
         let data = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
         let docs = app.path().document_dir().map_err(|e| e.to_string())?.join("Blitzen");
-        for d in ["engine", "models", "runtimes", "runs", "downloads", "logs"] {
+        for d in ["engine", "models", "downloads", "logs"] {
             fs::create_dir_all(data.join(d)).map_err(|e| e.to_string())?;
         }
         let cfg = fs::read_to_string(data.join("config.json"))
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
-        // runs left over from last time
-        if let Ok(rd) = fs::read_dir(data.join("runs")) {
-            for e in rd.flatten() {
-                let _ = fs::remove_dir_all(e.path());
+        // version 0.1.0 kept Python, the compiler and the runs here, where the sandbox could not use them
+        for old in ["runtimes", "runs"] {
+            let o = data.join(old);
+            if o.exists() {
+                std::thread::spawn(move || {
+                    let _ = fs::remove_dir_all(o);
+                });
             }
         }
         Ok(App {
@@ -125,6 +129,7 @@ impl App {
             setup: Mutex::new(()),
             last_use: Mutex::new(Instant::now()),
             pending: Mutex::new(None),
+            sbx: Mutex::new(None),
         })
     }
     fn cfg(&self) -> Config {
@@ -669,30 +674,42 @@ fn do_model_download(app: &AppHandle, st: &App) -> Result<Value, String> {
 // ---------------------------------------------------------------------------------------------------------------
 // running code
 
-fn runtimes(st: &App) -> PathBuf {
-    st.data.join("runtimes")
-}
-fn python_exe(st: &App) -> PathBuf {
-    runtimes(st).join("python").join("python.exe")
-}
-fn clang_exe(st: &App) -> Option<PathBuf> {
-    fs::read_dir(runtimes(st))
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.file_name().map(|n| n.to_string_lossy().starts_with("llvm-mingw")).unwrap_or(false))
-        .map(|p| p.join("bin").join("clang++.exe"))
-        .find(|p| p.exists())
-}
-
-fn granted(st: &App, sid: &sandbox::Sid, dir: &Path) -> Result<(), String> {
-    let key = dir.to_string_lossy().to_string();
-    if st.cfg().granted.contains(&key) {
-        return Ok(());
+/// The sandbox's own folder (%LOCALAPPDATA%\Packages\blitzen.sandbox\AC\Blitzen): Windows gives the AppContainer
+/// read, write and run access there, at the low integrity level it runs at. Python, the compiler and every run's
+/// temporary folder live here; nothing else on the PC is open to the sandbox.
+fn sandbox_root(st: &App) -> Result<PathBuf, String> {
+    let mut g = st.sbx.lock().unwrap();
+    if let Some(p) = g.clone() {
+        return Ok(p);
     }
-    sandbox::grant(sid, dir, false)?;
-    st.save(|c| c.granted.push(key));
-    Ok(())
+    let sid = sandbox::container()?;
+    let p = sandbox::folder(&sid)?.join("Blitzen");
+    for d in ["runtimes", "runs"] {
+        fs::create_dir_all(p.join(d)).map_err(|e| format!("could not create the sandbox folder {}: {e}", p.display()))?;
+    }
+    if let Ok(rd) = fs::read_dir(p.join("runs")) {
+        for e in rd.flatten() {
+            let _ = fs::remove_dir_all(e.path());
+        }
+    }
+    *g = Some(p.clone());
+    Ok(p)
+}
+fn runtimes(st: &App) -> Result<PathBuf, String> {
+    Ok(sandbox_root(st)?.join("runtimes"))
+}
+fn python_exe(st: &App) -> Result<PathBuf, String> {
+    Ok(runtimes(st)?.join("python").join("python.exe"))
+}
+fn clang_exe(st: &App) -> Result<Option<PathBuf>, String> {
+    let rt = runtimes(st)?;
+    Ok(fs::read_dir(rt).ok().and_then(|rd| {
+        rd.flatten()
+            .map(|e| e.path())
+            .filter(|p| p.file_name().map(|n| n.to_string_lossy().starts_with("llvm-mingw")).unwrap_or(false))
+            .map(|p| p.join("bin").join("clang++.exe"))
+            .find(|p| p.exists())
+    }))
 }
 
 fn sandbox_env(dir: &Path, path: &[&Path]) -> Vec<(String, String)> {
@@ -722,29 +739,22 @@ fn do_run_code(st: &App, lang: &str, code: &str) -> Result<Value, String> {
     let missing = |l: &str, what: &str| json!({"ok": false, "missing": l, "error": format!("{what} is not set up yet. Blitzen downloads it once and keeps it on this PC.")});
     let tool: PathBuf = match lang {
         "python" => {
-            let p = python_exe(st);
+            let p = python_exe(st)?;
             if !p.exists() {
                 return Ok(missing("python", "Python"));
             }
             p
         }
-        "cpp" => match clang_exe(st) {
+        "cpp" => match clang_exe(st)? {
             Some(p) => p,
             None => return Ok(missing("cpp", "The C++ compiler")),
         },
         _ => return Ok(json!({"ok": false, "error": format!("Blitzen does not run {lang} in the app")})),
     };
-    let tool_dir = if lang == "python" {
-        tool.parent().unwrap().to_path_buf()
-    } else {
-        tool.parent().unwrap().parent().unwrap().to_path_buf()
-    };
     let sid = sandbox::container()?;
-    granted(st, &sid, &tool_dir)?;
-    let dir = st.data.join("runs").join(random_hex(12));
+    let dir = sandbox_root(st)?.join("runs").join(random_hex(12));
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let result = (|| -> Result<Value, String> {
-        sandbox::grant(&sid, &dir, true)?;
         let bin = tool.parent().unwrap();
         let env = sandbox_env(&dir, &[bin]);
         if lang == "python" {
@@ -772,7 +782,7 @@ fn do_run_code(st: &App, lang: &str, code: &str) -> Result<Value, String> {
 
 fn do_runner_setup(app: &AppHandle, st: &App, lang: &str) -> Result<(), String> {
     let _g = st.setup.lock().unwrap();
-    let rt = runtimes(st);
+    let rt = runtimes(st)?;
     let dl = st.data.join("downloads");
     let (into_name, archive, url, size, sha) = match lang {
         "python" => {
@@ -831,18 +841,14 @@ fn do_runner_setup(app: &AppHandle, st: &App, lang: &str) -> Result<(), String> 
     net::unpack(&file, &rt)?;
     let _ = fs::remove_file(&file);
     let ready = if lang == "python" {
-        python_exe(st).exists()
+        python_exe(st)?.exists()
     } else {
-        clang_exe(st).is_some()
+        clang_exe(st)?.is_some()
     };
     if !ready {
         return Err("the download did not contain what Blitzen expected".into());
     }
-    let tool_dir = rt.join(&into_name);
-    let key = tool_dir.to_string_lossy().to_string();
-    st.save(|c| c.granted.retain(|g| g != &key));
-    let _ = app.emit("download://progress", json!({"pct": 100, "text": "Giving the sandbox access…"}));
-    granted(st, &sandbox::container()?, &tool_dir)?;
+    let _ = app.emit("download://progress", json!({"pct": 100, "text": "Ready."}));
     Ok(())
 }
 

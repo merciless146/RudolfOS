@@ -70,6 +70,34 @@ pub fn container() -> Result<Sid, String> {
     }
 }
 
+/// The folder Windows keeps for the sandbox (%LOCALAPPDATA%\Packages\<name>\AC): open to the AppContainer for
+/// reading, writing and running, and labelled with the low integrity level it runs at.
+pub fn folder(sid: &Sid) -> Result<std::path::PathBuf, String> {
+    use windows_sys::Win32::Security::Authorization::ConvertSidToStringSidW;
+    use windows_sys::Win32::Security::Isolation::GetAppContainerFolderPath;
+    use windows_sys::Win32::System::Com::CoTaskMemFree;
+    unsafe {
+        let mut s: *mut u16 = null_mut();
+        if ConvertSidToStringSidW(sid.0, &mut s) == 0 {
+            return Err(format!("could not read the sandbox's identity (error {})", GetLastError()));
+        }
+        let mut p: *mut u16 = null_mut();
+        let hr = GetAppContainerFolderPath(s, &mut p);
+        LocalFree(s as _);
+        if hr < 0 || p.is_null() {
+            return Err(format!("could not find the sandbox's folder (error 0x{:08x})", hr as u32));
+        }
+        let mut n = 0;
+        while *p.add(n) != 0 {
+            n += 1;
+        }
+        let path = String::from_utf16_lossy(std::slice::from_raw_parts(p, n));
+        CoTaskMemFree(p as _);
+        Ok(std::path::PathBuf::from(path))
+    }
+}
+
+#[allow(dead_code)]
 /// Lets the sandbox read and run (`write`: also change) a folder and everything in it.
 pub fn grant(sid: &Sid, path: &Path, write: bool) -> Result<(), String> {
     let mut p = wide(path.as_os_str());
