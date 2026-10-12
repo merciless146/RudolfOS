@@ -21,13 +21,14 @@ concurrency: {group: rudolf-release, cancel-in-progress: false}
 jobs:
   release:
     runs-on: ubuntu-24.04
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Tools
         run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools nasm bc flex bison libelf-dev libssl-dev kmod jq python3-cryptography >/dev/null
       - name: Signing key
         env: {KEY: '${{ secrets.RPK_SIGNING_KEY }}'}
-        run: test -n "$KEY" && printf '%s\n' "$KEY" > "$RUNNER_TEMP/rpk.key" && chmod 600 "$RUNNER_TEMP/rpk.key"
+        run: test -n "$KEY" || { echo "::error title=Missing secret::Add RPK_SIGNING_KEY under Settings > Secrets and variables > Actions > Repository secrets"; exit 1; }; printf '%s\n' "$KEY" > "$RUNNER_TEMP/rpk.key" && chmod 600 "$RUNNER_TEMP/rpk.key"
       - name: Debian 13 base for the Linux terminal (rebuilt every 4 weeks)
         if: inputs.promote == ''
         env: {GH_TOKEN: '${{ github.token }}', KEYFILE: '${{ runner.temp }}/rpk.key'}
