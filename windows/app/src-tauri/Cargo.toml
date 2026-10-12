@@ -1,6 +1,6 @@
 [package]
 name = "blitzen"
-version = "0.1.1"
+version = "0.1.2"
 description = "Blitzen, the offline coding assistant"
 license = "GPL-2.0-or-later"
 edition = "2021"

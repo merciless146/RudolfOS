@@ -759,7 +759,7 @@ fn do_run_code(st: &App, lang: &str, code: &str) -> Result<Value, String> {
         let env = sandbox_env(&dir, &[bin]);
         if lang == "python" {
             fs::write(dir.join("main.py"), code).map_err(|e| e.to_string())?;
-            let o = sandbox::run(&sid, &tool, &["-I".into(), "-B".into(), "main.py".into()], &dir, &env, 10, 1 << 30)?;
+            let o = sandbox::run(&sid, &tool, &["-I".into(), "-B".into(), "main.py".into()], &dir, &env, 10, 1 << 30, true)?;
             return Ok(json!({"ok": true, "code": o.code, "timeout": o.timeout, "out": o.out}));
         }
         fs::write(dir.join("main.cpp"), code).map_err(|e| e.to_string())?;
@@ -767,13 +767,25 @@ fn do_run_code(st: &App, lang: &str, code: &str) -> Result<Value, String> {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let c = sandbox::run(&sid, &tool, &args, &dir, &env, 60, 2 << 30)?;
+        // compile outside the AppContainer (with the same time, memory and process limits); only the program runs inside
+        let c = sandbox::run(&sid, &tool, &args, &dir, &env, 60, 2 << 30, false)?;
         if c.code != 0 || !dir.join("main.exe").exists() {
+            // the compiler itself failing (not the code): say so, so the page does not ask the model to "fix" good code
+            let tool_root = tool
+                .parent()
+                .and_then(|p| p.parent())
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if c.out.contains("Permission denied") || (!tool_root.is_empty() && c.out.contains(&tool_root)) {
+                return Ok(
+                    json!({"ok": false, "error": format!("Blitzen could not run the C++ compiler, so this code was not checked:\n{}", c.out.trim())}),
+                );
+            }
             return Ok(
                 json!({"ok": true, "code": if c.code == 0 { 1 } else { c.code }, "timeout": c.timeout, "out": format!("compile error:\n{}", c.out)}),
             );
         }
-        let o = sandbox::run(&sid, &dir.join("main.exe"), &[], &dir, &env, 10, 1 << 30)?;
+        let o = sandbox::run(&sid, &dir.join("main.exe"), &[], &dir, &env, 10, 1 << 30, true)?;
         Ok(json!({"ok": true, "code": o.code, "timeout": o.timeout, "out": o.out}))
     })();
     let _ = fs::remove_dir_all(&dir);
