@@ -41,6 +41,7 @@ jobs:
         run: |
           test -n "$KEY" || { echo "::error::Add the RPK_SIGNING_KEY secret first (Settings > Secrets and variables > Actions)"; exit 1; }
           printf '%s\n' "$KEY" > "$RUNNER_TEMP/rpk.key" && chmod 600 "$RUNNER_TEMP/rpk.key"
+          python3 iso/systools/keycheck.py "$RUNNER_TEMP/rpk.key" iso/trusted-keys.txt
       - name: Download the model
         env: {HF_REPO: '${{ inputs.hf_repo }}', PATTERN: '${{ inputs.pattern }}', URL: '${{ inputs.url }}'}
         run: |
