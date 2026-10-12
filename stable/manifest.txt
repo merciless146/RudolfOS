@@ -1,0 +1,14 @@
+rudolf-system 1
+serial 2026101203
+version 1.1
+released 2026-10-12
+expires 2026-10-26
+urgent 0
+chromium 141.0.7390.37
+kernel 6.18.55-rudolf
+notes 1.1 disc release
+L	vmlinuz	9929728	24a28d147dacf7192d6a3c04db119b3c61208860b02aaab5b725a0b9a9d963e9	https://github.com/merciless146/RudolfOS/releases/download/r2026101203/vmlinuz
+L	base	201687040	a50408ad9770c360ebcaee2ea7e5ffdef18e53bd82b08aa4e602a64c2505a255	https://github.com/merciless146/RudolfOS/releases/download/r2026101203/base.sfs
+L	chromium	106856448	dca504df88dd36fb9363f913df570abefa1dc1956a4cc0d3a02bc93e31490dde	https://github.com/merciless146/RudolfOS/releases/download/r2026101203/chromium.sfs
+L	desktop	24911872	3126cf6195f3feb1a4a8fa362cee999695f697cec51db6d13263039132c9461d	https://github.com/merciless146/RudolfOS/releases/download/r2026101203/desktop.sfs
+L	modules	10240000	46d78dc701baeb1025f9193fce149f5e61d3fad5334f209dff65983950d01e07	https://github.com/merciless146/RudolfOS/releases/download/r2026101203/modules.sfs
