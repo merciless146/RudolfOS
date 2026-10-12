@@ -777,6 +777,23 @@ fn do_run_code(st: &App, lang: &str, code: &str) -> Result<Value, String> {
         // llvm-mingw's clang++.exe is a launcher that cannot find clang-NN.exe when the folder path contains a dot (as
         // ...\Packages\blitzen.sandbox\... does), so start the real compiler with the launcher's settings directly.
         let compiler = real_clang(tool.parent().unwrap()).unwrap_or_else(|| tool.clone());
+        // the compiler's libraries: if one is gone (removed after unpacking), offer to set the compiler up again
+        let bin_dir = tool.parent().unwrap();
+        for need in ["libLLVM-", "libclang-cpp"] {
+            let found = fs::read_dir(bin_dir)
+                .map(|rd| {
+                    rd.flatten().any(|e| {
+                        let n = e.file_name().to_string_lossy().to_string();
+                        n.starts_with(need) && n.to_lowercase().ends_with(".dll")
+                    })
+                })
+                .unwrap_or(false);
+            if !found {
+                return Ok(
+                    json!({"ok": false, "missing": "cpp", "error": format!("Part of the C++ compiler is missing ({need}….dll in {}). Windows Security may have removed it: check Protection history, then set the compiler up again.", bin_dir.display())}),
+                );
+            }
+        }
         let args: Vec<String> = [
             "--driver-mode=g++",
             "-target",
@@ -1191,6 +1208,13 @@ fn tray(app: &tauri::App) -> tauri::Result<()> {
 }
 
 fn main() {
+    // no Windows error boxes (such as "a DLL was not found") from Blitzen or the programs it checks: errors are shown in the page
+    unsafe {
+        windows_sys::Win32::System::Diagnostics::Debug::SetErrorMode(
+            windows_sys::Win32::System::Diagnostics::Debug::SEM_FAILCRITICALERRORS
+                | windows_sys::Win32::System::Diagnostics::Debug::SEM_NOOPENFILEERRORBOX,
+        );
+    }
     let argv: Vec<String> = std::env::args().collect();
     let pending = ask_from_args(&argv);
     tauri::Builder::default()
