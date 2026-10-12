@@ -1,0 +1,85 @@
+# Blitzen Plus for Windows: builds the Stage 1 zip (setup script + page) and the Blitzen app (Tauri, NSIS installer).
+# On a pull request it only builds; on main (or Run workflow) it publishes both as the release "blitzen-plus".
+# The model is not part of it: the app downloads the signed list "blitzen-win-plus" (Blitzen model workflow).
+name: Blitzen for Windows
+on:
+  pull_request:
+    paths: ['windows/**', 'desktop/blitzpacks26.js', 'desktop/blk2lua26.js', 'iso/trusted-keys.txt', '.github/workflows/blitzen-windows.yml']
+  push:
+    branches: [main]
+    paths: ['windows/**', 'desktop/blitzpacks26.js', 'desktop/blk2lua26.js', 'iso/trusted-keys.txt', '.github/workflows/blitzen-windows.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  stage1:
+    runs-on: ubuntu-24.04
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Stage 1 zip
+        run: |
+          bash windows/sync-ui.sh
+          D=out/Blitzen-Plus-Stage1
+          mkdir -p "$D/ui"
+          cp windows/stage1/* "$D/"
+          cp windows/ui/index.html windows/ui/style.css windows/ui/*.js windows/ui/fengari-LICENSE.txt "$D/ui/"
+          file "$D/setup-blitzen.ps1" "$D/Setup Blitzen.cmd" | grep -q CRLF || { echo "::error::the Windows scripts lost their CRLF line endings"; exit 1; }
+          (cd out && zip -qr -X ../Blitzen-Plus-Stage1.zip Blitzen-Plus-Stage1)
+          unzip -l Blitzen-Plus-Stage1.zip
+      - uses: actions/upload-artifact@v4
+        with: {name: stage1, path: Blitzen-Plus-Stage1.zip}
+
+  app:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - uses: Swatinem/rust-cache@v2
+        with: {workspaces: windows/app/src-tauri}
+      - name: Shared page files
+        shell: bash
+        run: bash windows/sync-ui.sh
+      - name: Build the app and installer
+        shell: bash
+        working-directory: windows/app/src-tauri
+        run: |
+          set -o pipefail
+          if ! npx --yes @tauri-apps/cli@2 build --ci 2>&1 | tee build.log; then
+            python ../../ci-report.py build.log
+            exit 1
+          fi
+          ls -la target/release/bundle/nsis
+          cp target/release/bundle/nsis/*-setup.exe ../../../Blitzen-Setup.exe
+      - uses: actions/upload-artifact@v4
+        with: {name: app, path: Blitzen-Setup.exe}
+
+  release:
+    needs: [stage1, app]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with: {path: dist, merge-multiple: true}
+      - name: Publish the release blitzen-plus
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          cd dist
+          sha256sum Blitzen-Setup.exe Blitzen-Plus-Stage1.zip > SHA256SUMS
+          cat SHA256SUMS
+          cat > notes.md <<'EOF'
+          Blitzen Plus for Windows: the offline coding assistant, on a PC with an NVIDIA card (8 GB or more works best).
+
+          **Blitzen-Setup.exe**: the Blitzen app. Installs for your user only; Windows SmartScreen may warn on first run (More info > Run anyway) because the installer is not code-signed. Open Settings > Download the model; it downloads the engine and the model (about 5 GB) and checks both. Python and C++ answers run in a sandbox with no network, 10 seconds and 1 GB.
+
+          **Blitzen-Plus-Stage1.zip**: the browser-only version: unblock and extract it, then run "Setup Blitzen.cmd".
+
+          SHA256SUMS lists both files' SHA-256.
+          EOF
+          gh release view blitzen-plus >/dev/null 2>&1 || gh release create blitzen-plus --title "Blitzen Plus for Windows" --notes-file notes.md
+          gh release edit blitzen-plus --notes-file notes.md
+          gh release upload blitzen-plus Blitzen-Setup.exe Blitzen-Plus-Stage1.zip SHA256SUMS --clobber

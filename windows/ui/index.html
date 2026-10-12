@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blitzen</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563eb'/%3E%3Cpath d='M18 3 7 18h7l-2 11 11-15h-7z' fill='%23fde047'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <span class="logo">⚡ Blitzen</span>
+  <select id="lang" aria-label="Language">
+    <option value="">Auto</option><option value="blocklua">BlockLua</option><option value="js">JavaScript</option><option value="cpp">C++</option><option value="python">Python</option>
+  </select>
+  <label class="chk"><input type="checkbox" id="check" checked> Check code by running it</label>
+  <span class="grow"></span>
+  <button id="histBtn" title="Earlier chats">History</button>
+  <button id="newBtn" title="Start a new chat">New chat</button>
+  <button id="setBtn" title="Model, hardware and speed" hidden>Settings</button>
+</header>
+<div id="hist" class="panel" hidden></div>
+<div id="settings" class="panel" hidden></div>
+<main id="log" role="log" aria-live="polite"></main>
+<footer>
+  <div class="in">
+    <textarea id="q" rows="3" placeholder="Ask Blitzen… (Enter sends, Shift+Enter makes a new line)" aria-label="Your question"></textarea>
+    <div class="btns"><button id="go" class="pri">Send</button><button id="stop" hidden>Stop</button></div>
+  </div>
+  <div id="st" class="st"></div>
+</footer>
+<script src="blitzpacks26.js"></script>
+<script src="blk2lua26.js"></script>
+<script src="fengari-web.js"></script>
+<script src="blitzen.js"></script>
+</body>
+</html>

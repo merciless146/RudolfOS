@@ -1,16 +1,22 @@
-# Publishes Blitzen's model as the release "blitzen-1", where Rudolf OS downloads it from (Start > Blitzen > Download).
+# Publishes a Blitzen model list, signed with the release key, as a GitHub release.
 # Run it by hand: Actions > Blitzen model > Run workflow.
 #
-# By default it fetches IBM's Granite 4.0 1B Instruct (Apache 2.0) as GGUF Q4_K_M from Hugging Face: the untuned
-# base model, until the fine-tuned Blitzen is trained (see the Blitzen model plan). To publish another model, give its
-# Hugging Face repository and a file-name pattern, or a direct https:// address.
+#   release blitzen-1         Rudolf OS's model (Start > Blitzen > Download). Default: IBM's Granite 4.0 1B Instruct
+#                             (Apache 2.0) as GGUF Q4_K_M, the untuned base model until the fine-tuned Blitzen is trained.
+#   release blitzen-win-plus  Blitzen Plus for Windows: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF, pattern q4_k_m, Apache-2.0.
 #
 # It writes blitzen.txt (model, file, size, SHA-256, licence) and signs it with the RPK_SIGNING_KEY secret, then checks
-# the signature against iso/trusted-keys.txt (the keys the disc trusts) before uploading anything.
+# the signature against iso/trusted-keys.txt (the keys the disc and the Windows app trust) before uploading anything.
+# A model file of 2 GB or more (GitHub's limit for a release file), or a model split into parts, is not uploaded: the
+# list names each file's Hugging Face address, size and SHA-256 instead ("part" lines), and Blitzen checks every
+# file against the signed list after downloading it.
 name: Blitzen model
 on:
   workflow_dispatch:
     inputs:
+      release:
+        description: 'Release to publish to: blitzen-1 (Rudolf OS) or blitzen-win-plus (Windows)'
+        default: 'blitzen-1'
       hf_repo:
         description: 'Hugging Face repository with GGUF files'
         default: 'ibm-granite/granite-4.0-1b-GGUF'
@@ -21,7 +27,7 @@ on:
         description: 'Or a direct https:// address of a .gguf file (overrides the two above)'
         default: ''
       name:
-        description: 'Model name shown in Rudolf OS'
+        description: 'Model name shown in Blitzen'
         default: 'Blitzen (Granite 4.0 1B, untuned)'
       licence:
         description: 'Licence of the model'
@@ -34,6 +40,11 @@ jobs:
     env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
       - uses: actions/checkout@v5
+      - name: Check the inputs
+        env: {REL: '${{ inputs.release }}', NAME: '${{ inputs.name }}', LIC: '${{ inputs.licence }}'}
+        run: |
+          case "$REL" in blitzen-1|blitzen-win-*) ;; *) echo "::error::release must be blitzen-1 or start with blitzen-win-"; exit 1;; esac
+          case "$NAME$LIC" in *[\"\`\$\\]*) echo "::error::the name and licence must not contain quotes, backslashes or \$"; exit 1;; esac
       - name: Tools
         run: sudo apt-get update -qq && sudo apt-get install -y -qq jq python3-cryptography >/dev/null
       - name: Signing key
@@ -41,32 +52,59 @@ jobs:
         run: |
           test -n "$KEY" || { echo "::error::Add the RPK_SIGNING_KEY secret first (Settings > Secrets and variables > Actions)"; exit 1; }
           printf '%s\n' "$KEY" > "$RUNNER_TEMP/rpk.key" && chmod 600 "$RUNNER_TEMP/rpk.key"
-          python3 iso/systools/keycheck.py "$RUNNER_TEMP/rpk.key" iso/trusted-keys.txt
       - name: Download the model
         env: {HF_REPO: '${{ inputs.hf_repo }}', PATTERN: '${{ inputs.pattern }}', URL: '${{ inputs.url }}'}
         run: |
           mkdir -p blz
+          : > blz.parts   # one line per file: NAME URL EXPECTED_SHA256 (empty when not published)
           if [ -n "$URL" ]; then
             case "$URL" in https://*.gguf|https://*.gguf\?*) ;; *) echo "::error::url must be an https:// address of a .gguf file"; exit 1;; esac
-            F=$(basename "${URL%%\?*}")
+            echo "$(basename "${URL%%\?*}") $URL -" >> blz.parts
           else
-            F=$(curl -fsSL "https://huggingface.co/api/models/$HF_REPO" | jq -r '.siblings[].rfilename' | grep -i '\.gguf$' | grep -i -- "$PATTERN" | head -1)
-            [ -n "$F" ] || { echo "::error::no .gguf matching '$PATTERN' in $HF_REPO"; exit 1; }
-            URL="https://huggingface.co/$HF_REPO/resolve/main/$F"
+            curl -fsSL "https://huggingface.co/api/models/$HF_REPO/tree/main" > tree.json
+            jq -r --arg p "$PATTERN" '.[] | select(.type=="file") | select(.path|test("\\.gguf$";"i")) | select(.path|ascii_downcase|contains($p|ascii_downcase)) | "\(.path) \(.lfs.oid // "-")"' tree.json | sort > match.txt
+            [ -s match.txt ] || { echo "::error::no .gguf matching '$PATTERN' in $HF_REPO"; exit 1; }
+            # a model split into parts (NAME-00001-of-00002.gguf): every part of the first matching set
+            SET=$(head -1 match.txt | cut -d' ' -f1 | sed -E 's/-[0-9]{5}-of-[0-9]{5}\.gguf$//')
+            while read -r P SHA; do
+              B=$(printf '%s' "$P" | sed -E 's/-[0-9]{5}-of-[0-9]{5}\.gguf$//')
+              [ "$B" = "$SET" ] && { [ "$P" = "$SET" ] || printf '%s' "$P" | grep -Eq -- '-[0-9]{5}-of-[0-9]{5}\.gguf$'; } || continue
+              echo "$(basename "$P") https://huggingface.co/$HF_REPO/resolve/main/$P $SHA" >> blz.parts
+            done < match.txt
           fi
-          case "$F" in *[!A-Za-z0-9._-]*) echo "::error::unexpected file name $F"; exit 1;; esac
-          echo "Downloading $F"
-          curl -fL --retry 3 -o "blz/$F" "$URL"
-          head -c 4 "blz/$F" | grep -q GGUF || { echo "::error::$F is not a GGUF file"; exit 1; }
+          cat blz.parts
+          while read -r F U SHA; do
+            case "$F" in *[!A-Za-z0-9._-]*) echo "::error::unexpected file name $F"; exit 1;; esac
+            echo "Downloading $F"
+            curl -fL --retry 3 -o "blz/$F" "$U"
+            if [ "$SHA" != "-" ]; then
+              GOT=$(sha256sum "blz/$F" | cut -d' ' -f1)
+              [ "$GOT" = "$SHA" ] || { echo "::error::$F: SHA-256 $GOT does not match the $SHA Hugging Face publishes"; exit 1; }
+              echo "$F matches Hugging Face's SHA-256"
+            fi
+          done < blz.parts
+          FIRST=$(head -1 blz.parts | cut -d' ' -f1)
+          head -c 4 "blz/$FIRST" | grep -q GGUF || { echo "::error::$FIRST is not a GGUF file"; exit 1; }
           ls -la blz
-          echo "MODEL=$F" >> "$GITHUB_ENV"
+          # link instead of upload when a file is 2 GB or more, or the model has parts
+          LINK=; if [ "$(wc -l < blz.parts)" -gt 1 ]; then LINK=1; fi
+          while read -r F U SHA; do if [ "$(stat -c %s "blz/$F")" -ge 2000000000 ]; then LINK=1; fi; done < blz.parts
+          { echo "MODEL=$FIRST"; echo "LINK=$LINK"; } >> "$GITHUB_ENV"
       - name: Write and sign the model list
+        env: {NAME: '${{ inputs.name }}', LIC: '${{ inputs.licence }}'}
         run: |
-          bash iso/systools/mkblitzen-list.sh "blz/$MODEL" "$RUNNER_TEMP/rpk.key" "${{ inputs.name }}" "${{ inputs.licence }}" blz
+          if [ -n "$LINK" ]; then
+            export BLZ_NOCOPY=1
+            BLZ_EXTRA=$(while read -r F U SHA; do echo "part $F $(stat -c %s "blz/$F") $(sha256sum "blz/$F" | cut -d' ' -f1) $U"; done < blz.parts)
+            if [ "$(wc -l < blz.parts)" -eq 1 ]; then BLZ_EXTRA="url $(head -1 blz.parts | cut -d' ' -f2)"$'\n'"$BLZ_EXTRA"; fi
+            export BLZ_EXTRA
+          fi
+          mkdir -p out
+          bash iso/systools/mkblitzen-list.sh "blz/$MODEL" "$RUNNER_TEMP/rpk.key" "$NAME" "$LIC" out
           python3 - <<'PY'
           import base64
           from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-          msg=open('blz/blitzen.txt','rb').read(); sig=open('blz/blitzen.txt.sig','rb').read(); ok=False
+          msg=open('out/blitzen.txt','rb').read(); sig=open('out/blitzen.txt.sig','rb').read(); ok=False
           for l in open('iso/trusted-keys.txt'):
               l=l.strip()
               if not l or l.startswith('#'): continue
@@ -76,12 +114,21 @@ jobs:
           print('signature matches a trusted key')
           PY
           rm -f "$RUNNER_TEMP/rpk.key"
-      - name: Publish as the release blitzen-1
-        env: {GH_TOKEN: '${{ github.token }}'}
+          ls -la out
+      - name: Publish the release
+        env: {GH_TOKEN: '${{ github.token }}', REL: '${{ inputs.release }}'}
         run: |
-          gh release view blitzen-1 >/dev/null 2>&1 || gh release create blitzen-1 --title "Blitzen model" \
-            --notes "The model Rudolf OS downloads for Blitzen (Start > Blitzen > Download). blitzen.txt names the file and its SHA-256 and is signed with the release key; Rudolf OS refuses anything else."
-          # remove an older model file so only the one the list names is offered
-          gh release view blitzen-1 --json assets -q '.assets[].name' | grep '\.gguf$' | grep -vx "$MODEL" | while read -r a; do gh release delete-asset blitzen-1 "$a" -y; done
-          gh release upload blitzen-1 "blz/$MODEL" blz/blitzen.txt blz/blitzen.txt.sig --clobber
-          cat blz/blitzen.txt
+          if [ "$REL" = blitzen-1 ]; then
+            T="Blitzen model"; N="The model Rudolf OS downloads for Blitzen (Start > Blitzen > Download). blitzen.txt names the file and its SHA-256 and is signed with the release key; Rudolf OS refuses anything else."
+          else
+            T="Blitzen model for Windows ($REL)"; N="The model list Blitzen for Windows downloads. blitzen.txt names each model file, its size, SHA-256 and address, and is signed with the release key; Blitzen refuses a list or a file that does not match."
+          fi
+          gh release view "$REL" >/dev/null 2>&1 || gh release create "$REL" --title "$T" --notes "$N"
+          # remove older model files so only what the list names is offered
+          gh release view "$REL" --json assets -q '.assets[].name' | grep '\.gguf$' | while read -r a; do
+            if [ -z "$LINK" ] && [ "$a" = "$MODEL" ]; then continue; fi
+            gh release delete-asset "$REL" "$a" -y
+          done
+          if [ -n "$LINK" ]; then gh release upload "$REL" out/blitzen.txt out/blitzen.txt.sig --clobber
+          else gh release upload "$REL" "out/$MODEL" out/blitzen.txt out/blitzen.txt.sig --clobber; fi
+          cat out/blitzen.txt

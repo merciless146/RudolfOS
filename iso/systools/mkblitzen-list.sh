@@ -8,8 +8,12 @@
 set -e
 M=$1; KEY=$2; NAME=$3; LIC=$4; OUT=${5:-$(dirname "$M")}
 [ -f "$M" ] && [ -f "$KEY" ] && [ -n "$NAME" ] && [ -n "$LIC" ] || { echo "usage: $0 MODEL.gguf KEYFILE \"MODEL NAME\" LICENCE [OUTDIR]"; exit 1; }
-mkdir -p "$OUT"; F=$(basename "$M"); [ "$(cd "$(dirname "$M")" && pwd)" = "$(cd "$OUT" && pwd)" ] || cp "$M" "$OUT/$F"
+# BLZ_NOCOPY=1: the model is not uploaded (too big for a release; the list links to it), so do not copy it.
+# BLZ_EXTRA: more lines for the list, e.g. "url ..." or "part FILE SIZE SHA256 URL" (one per part of a split model).
+mkdir -p "$OUT"; F=$(basename "$M")
+[ -n "$BLZ_NOCOPY" ] || [ "$(cd "$(dirname "$M")" && pwd)" = "$(cd "$OUT" && pwd)" ] || cp "$M" "$OUT/$F"
 printf 'model %s\nfile %s\nsize %s\nsha256 %s\nlicence %s\nbuilt %s\n' "$NAME" "$F" "$(stat -c %s "$M")" "$(sha256sum "$M" | cut -d' ' -f1)" "$LIC" "$(date -u +%F)" > "$OUT/blitzen.txt"
+[ -z "$BLZ_EXTRA" ] || printf '%s\n' "$BLZ_EXTRA" >> "$OUT/blitzen.txt"
 python3 - "$KEY" "$OUT/blitzen.txt" <<'PY'
 import sys,base64
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
