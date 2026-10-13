@@ -25,7 +25,7 @@ disk_of() { case $1 in mmcblk*p[0-9]*|nvme*p[0-9]*) echo "${1%p[0-9]*}";; sd*) e
 
 # 1 when the disk is a USB drive, an SD card or otherwise removable (not the computer's own disk)
 removable() {
-	d=/sys/block/$1
+	local d=/sys/block/$1
 	[ "$(cat $d/removable 2>/dev/null)" = 1 ] && return 0
 	case "$(readlink -f $d/device 2>/dev/null)" in
 	*/usb*) return 0;;
@@ -36,6 +36,7 @@ removable() {
 
 # Rudolf OS's own disc, stick or data partition
 system_disk() {
+	local p n b
 	for p in /sys/block/$1/$1* /sys/block/$1; do
 		n=${p##*/}; [ -e /dev/$n ] || continue
 		b=$(blkid /dev/$n 2>/dev/null)
@@ -46,7 +47,7 @@ system_disk() {
 }
 
 mount_part() {
-	p=$1; mp=/media/$p
+	local p=$1 mp=/media/$1 fs t
 	grep -q "^/dev/$p " /proc/mounts && return 0
 	fs=$(blkid /dev/$p 2>/dev/null | sed -n 's/.* TYPE="\([^"]*\)".*/\1/p')
 	[ -n "$fs" ] || return 1
@@ -58,7 +59,7 @@ mount_part() {
 }
 
 drive_json() {
-	p=$1; d=$(disk_of $p)
+	local p=$1 d b fs lb sz model ro; d=$(disk_of $p)
 	b=$(blkid /dev/$p 2>/dev/null)
 	fs=$(echo "$b" | sed -n 's/.* TYPE="\([^"]*\)".*/\1/p')
 	lb=$(echo "$b" | sed -n 's/.* LABEL="\([^"]*\)".*/\1/p' | clean)
@@ -69,7 +70,8 @@ drive_json() {
 }
 
 block_add() {
-	p=$MDEV; d=$(disk_of $p)
+	local p=$MDEV d j; d=$(disk_of $p)
+	[ -f $RUN/drives/$p ] && return 0   # already mounted and announced (a "change" event)
 	removable $d || return 0
 	system_disk $d && return 0
 	# a disk with partitions: its partitions are what gets mounted
@@ -81,7 +83,7 @@ block_add() {
 }
 
 block_remove() {
-	p=$MDEV
+	local p=$MDEV j
 	[ -f $RUN/drives/$p ] || return 0
 	j=$(cat $RUN/drives/$p); rm -f $RUN/drives/$p
 	umount -l /media/$p 2>/dev/null; rmdir /media/$p 2>/dev/null
@@ -91,7 +93,7 @@ block_remove() {
 # ---------------------------------------------------------------- USB devices
 # what a USB device is, from its interface classes: prints "kind|name|vid:pid|driver(0/1)"
 usb_identify() {
-	s=$1
+	local s=$1 vid pid dc cls drv kb ms joy net wl i c sc pr n kind name
 	vid=$(cat $s/idVendor 2>/dev/null); pid=$(cat $s/idProduct 2>/dev/null)
 	[ -n "$vid" ] || return 1
 	dc=$(cat $s/bDeviceClass 2>/dev/null)
@@ -133,7 +135,7 @@ usb_identify() {
 usb_json() { IFS='|' read -r kind name id drv; printf '{"t":"usb","kind":"%s","name":"%s","id":"%s","driver":%s}' "$kind" "$name" "$id" "$( [ "$drv" = 1 ] && echo 1 || echo 0)"; }
 
 usb_add() {
-	s=/sys$DEVPATH; key=$(echo "$DEVPATH" | tr '/' '_')
+	local s=/sys$DEVPATH key info j; key=$(echo "$DEVPATH" | tr '/' '_')
 	sleep 2   # the device's interfaces and drivers appear after the device itself
 	info=$(usb_identify $s) || return 0
 	echo "$info" > $RUN/usb/$key
@@ -142,6 +144,7 @@ usb_add() {
 }
 
 usb_remove() {
+	local key info j
 	key=$(echo "$DEVPATH" | tr '/' '_')
 	[ -f $RUN/usb/$key ] || return 0
 	info=$(cat $RUN/usb/$key); rm -f $RUN/usb/$key
@@ -183,10 +186,10 @@ esac
 [ -n "$MDEV$DEVPATH" ] || exit 0
 case "$SUBSYSTEM" in
 block)
-	case "$ACTION" in remove) block_remove;; *) ( block_add ) & ;; esac;;
+	case "$ACTION" in remove) block_remove;; add|change) ( block_add ) & ;; esac;;
 usb)
 	[ "$DEVTYPE" = usb_device ] || exit 0
 	# devices already there at start-up are recorded but not announced (the desktop also ignores events from before it started)
-	case "$ACTION" in remove) usb_remove;; *) ( usb_add ) & ;; esac;;
+	case "$ACTION" in remove) usb_remove;; add) ( usb_add ) & ;; esac;;
 esac
 exit 0

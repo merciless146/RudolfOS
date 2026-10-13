@@ -1518,6 +1518,7 @@ static void api(struct req *r)
 	if (!strcmp(p, "stats")) { api_stats(r); return; }
 	if (!strcmp(p, "net")) { api_net(r); return; }
 	if (!strcmp(p, "disks")) { api_disks(r); return; }
+	if (!strcmp(p, "devices")) { char *o = run_out("/usr/lib/rudolf/devplug list 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 500, "could not list the devices"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
 	if (!strcmp(p, "job")) { api_job(r); return; }
 	if (!strcmp(p, "screenshot")) { api_screenshot(r); return; }
 	if (!strcmp(p, "heartbeat")) {
@@ -1785,7 +1786,6 @@ static void api(struct req *r)
 	if (!strcmp(p, "mount")) { api_mount(r, 1); return; }
 	if (!strcmp(p, "umount")) { api_mount(r, 0); return; }
 	/* plugged-in devices (Settings > Devices) and "Eject" for a USB drive or SD card */
-	if (!strcmp(p, "devices")) { char *o = run_out("/usr/lib/rudolf/devplug list 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 500, "could not list the devices"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
 	if (!strcmp(p, "eject")) {
 		if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 		char *dev = qparam(r->query, "dev");
