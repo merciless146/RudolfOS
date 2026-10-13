@@ -42,7 +42,7 @@ textarea{flex:1;border:0;outline:0;resize:none;font:14px "Courier New",monospace
 .blk i{font-style:normal;font-weight:700;color:#000080}.blk input{width:80px}
 pre.code{margin:0;font:13px monospace;user-select:text}
 #off{position:fixed;inset:0;background:#000;color:#ff8c00;display:none;align-items:center;justify-content:center;text-align:center;font:20px "Courier New",monospace;z-index:999999}
-@media(max-width:600px){.win:not(.max){max-width:96vw}}
+@media(max-width:600px){.win:not(.max){max-width:calc(96*var(--vw1,1vw))}}
 #desk{display:flex;flex-direction:column;flex-wrap:wrap;align-content:flex-start}body.top #bar{top:0;bottom:auto}body.top #desk{inset:34px 0 0 0}body.top #menu{top:32px;bottom:auto}
 body.left #bar,body.right #bar{top:0;bottom:0;height:auto;width:150px;flex-direction:column;align-items:stretch;padding:3px;box-sizing:border-box}body.left #bar{left:0;right:auto}body.right #bar{right:0;left:auto}body.left #desk{inset:0 0 0 154px}body.right #desk{inset:0 154px 0 0}body.left #tasks,body.right #tasks{flex-direction:column;overflow-y:auto}body.left #tasks button,body.right #tasks button{flex:0 0 22px}body.left #menu{left:154px;top:4px;bottom:auto}body.right #menu{left:auto;right:154px;top:4px;bottom:auto}body.left #start,body.right #start{align-self:flex-start}select,input{font-family:inherit}
 body.left #bar,body.right #bar{width:max-content}body.left #desk{inset:0 0 0 var(--bw,70px)}body.right #desk{inset:0 var(--bw,70px) 0 0}body.left #menu{left:var(--bw,70px)}body.right #menu{right:var(--bw,70px)}#tasks{contain:inline-size}#tray{white-space:nowrap}
@@ -59,7 +59,7 @@ body.left #bar,body.right #bar{width:max-content}body.left #desk{inset:0 0 0 var
 label.ck{display:flex;gap:8px;align-items:flex-start;line-height:1.35}
 .cbsw{display:flex;gap:4px;margin:-2px 0 10px 140px}.cbsw span{width:34px;height:20px;border-radius:3px;border:1px solid #0003}
 .sdlg>div{max-width:400px}
-#vkb{position:fixed;left:50%;transform:translateX(-50%);z-index:1000005;background:#e5e7eb;border:1px solid #9ca3af;border-radius:10px;padding:6px 8px 8px;box-shadow:0 8px 28px #0007;width:min(760px,98vw);box-sizing:border-box;user-select:none;font-size:15px;color:#111}
+#vkb{position:fixed;left:50%;transform:translateX(-50%);z-index:1000005;background:#e5e7eb;border:1px solid #9ca3af;border-radius:10px;padding:6px 8px 8px;box-shadow:0 8px 28px #0007;width:min(760px,calc(98*var(--vw1,1vw)));box-sizing:border-box;user-select:none;font-size:15px;color:#111}
 #vkb .vk-h{display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:4px}
 #vkb .vk-r{display:flex;gap:3px;margin-bottom:3px;justify-content:center}
 #vkb button{font:inherit;min-width:0;padding:0}
@@ -104,7 +104,7 @@ html[data-img] .ic:not(.sel) span{background:rgba(8,12,22,.58);color:#fff;border
 .mmtb .ctl button{min-width:30px}.mmpad .sh{display:none}.mmpad.gba .sh{display:inline-flex;min-width:44px;height:30px;border-radius:12px 12px 6px 6px}
 .gltabs button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
 
-.cmenu{outline:none;user-select:none;max-height:80vh;overflow:auto}.cmenu .cmi{display:flex;gap:8px;align-items:center;padding:5px 10px 5px 6px}.cmenu .cmi i{width:18px;text-align:center;font-style:normal;flex:none}.cmenu .cmi span{flex:1;white-space:nowrap}.cmenu .cmi kbd{opacity:.6;font:11px sans-serif;margin-left:14px}
+.cmenu{outline:none;user-select:none;max-height:calc(80*var(--vh1,1vh));overflow:auto}.cmenu .cmi{display:flex;gap:8px;align-items:center;padding:5px 10px 5px 6px}.cmenu .cmi i{width:18px;text-align:center;font-style:normal;flex:none}.cmenu .cmi span{flex:1;white-space:nowrap}.cmenu .cmi kbd{opacity:.6;font:11px sans-serif;margin-left:14px}
 .ctx.cmenu .cmi:hover{background:transparent;color:inherit}.ctx.cmenu .cmi.hi{background:var(--ac);color:#fff}.ctx.cmenu .cmi.dis,.ctx.cmenu .cmi.dis:hover{opacity:.45;cursor:default;background:transparent;color:inherit}.cmenu .cmh{font-weight:600;font-size:12px;color:#6b7280;padding:4px 10px 4px 30px;cursor:default;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rband{position:fixed;border:1px solid var(--ac,#2563eb);background:rgba(37,99,235,.15);z-index:999999;pointer-events:none}
 .rtoast{position:fixed;left:50%;bottom:64px;transform:translateX(-50%);background:#111827;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;z-index:1000001;box-shadow:0 6px 20px rgba(0,0,0,.3);animation:rtf 3.5s forwards;pointer-events:none}
@@ -495,7 +495,7 @@ select,input[type=text],input[type=number],input:not([type]){border:1px solid va
 #menu li{border-radius:6px;padding:7px 10px}#menu li:hover{background:var(--ac);color:#fff}#menu hr{border-top:1px solid var(--bd);border-bottom:0;margin:4px 0}
 .ic.sel span{background:var(--ac);outline:0;border-radius:3px}.ic span{text-shadow:0 1px 2px rgba(0,0,0,.6)}
 #login{position:fixed;inset:0;z-index:1000001;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 30% 20%,#1e3a8a,#0b1020 70%);color:#fff;font-family:Tahoma,Arial,sans-serif;user-select:none}
-#login .lb{width:min(320px,88vw);background:#ffffff14;border:1px solid #ffffff30;border-radius:14px;padding:26px 24px;backdrop-filter:blur(6px);display:flex;flex-direction:column;gap:8px}
+#login .lb{width:min(320px,calc(88*var(--vw1,1vw)));background:#ffffff14;border:1px solid #ffffff30;border-radius:14px;padding:26px 24px;backdrop-filter:blur(6px);display:flex;flex-direction:column;gap:8px}
 #login .lt{font:700 22px Tahoma,Arial;text-align:center}#login .lav{font-size:54px;text-align:center;line-height:1.1}
 #login label{font-size:12px;opacity:.85}#login input{background:#fff;color:#111;border:0;border-radius:6px;padding:9px 10px;font-size:15px;outline:2px solid transparent}
 #login input:focus{outline-color:#60a5fa}#login button{background:var(--ac);color:#fff;border:0;border-radius:6px;padding:10px;font-size:15px;margin-top:6px}
@@ -528,7 +528,7 @@ select,input[type=text],input[type=number],input:not([type]){border:1px solid va
 .r2>input[type=color]{width:52px}
 .term input{background:none!important;border:0!important;padding:0!important;border-radius:0!important;color:#fff}
 @media(max-width:600px){.sn{flex:1 1 100%;display:flex;border-right:0;border-bottom:1px solid var(--bd);padding:6px}.sn div{flex:1;text-align:center;margin:0 2px;padding:7px 2px;font-size:12px}.sc{flex:1 1 100%}}
-#menu{max-height:calc(100vh - 70px);overflow:auto}
+#menu{max-height:calc(calc(100*var(--vh1,1vh)) - 70px);overflow:auto}
 </style><style>#vol{background:#1f2937;border:0;border-radius:5px;padding:3px 7px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff}#vol:hover{background:#374151}
 .vp{position:fixed;z-index:1000001;background:#fff;color:#111;border:1px solid var(--bd);border-radius:10px;box-shadow:0 10px 26px rgba(0,0,0,.3);padding:10px 12px;width:210px;font-size:12px}.vp input[type=range]{padding:0;border:0;background:none}
 #login .ls{text-align:center;color:#6b7280;font-size:11px;margin:-4px 0 10px}
@@ -621,7 +621,7 @@ select,input[type=text],input[type=number],input:not([type]){border:1px solid va
 @keyframes wnjump{0%{transform:translateY(0)}35%{transform:translateY(-24px) scale(1.04)}65%{transform:translateY(0) scale(.97,1.04)}100%{transform:translateY(0)}}
 @keyframes wnwave{0%,100%{transform:rotate(0)}50%{transform:rotate(-28deg)}}
 @keyframes wnzzz{0%,100%{opacity:.3;transform:translateY(0)}50%{opacity:1;transform:translateY(-6px)}}
-.wn-bub{position:absolute;right:6px;bottom:104px;width:280px;max-width:calc(100vw - 40px);max-height:min(420px,60vh);overflow:auto;background:#fffbe0;border:2px solid #c79a00;border-radius:12px;padding:10px 12px 8px;box-shadow:0 6px 18px #0004;font-size:13px;line-height:1.4;color:#3b2f00}
+.wn-bub{position:absolute;right:6px;bottom:104px;width:280px;max-width:calc(calc(100*var(--vw1,1vw)) - 40px);max-height:min(420px,calc(60*var(--vh1,1vh)));overflow:auto;background:#fffbe0;border:2px solid #c79a00;border-radius:12px;padding:10px 12px 8px;box-shadow:0 6px 18px #0004;font-size:13px;line-height:1.4;color:#3b2f00}
 .wn-bub::after{content:'';position:absolute;right:30px;bottom:-12px;width:18px;height:18px;background:#fffbe0;border-right:2px solid #c79a00;border-bottom:2px solid #c79a00;transform:rotate(45deg);border-radius:0 0 4px 0}
 .wn-x{position:absolute;right:8px;top:4px;cursor:pointer;color:#8a6d00;text-decoration:none;font-size:12px}.wn-x:hover{color:#000}.wn-t{padding-right:14px}.wn-b{display:flex;flex-direction:column;gap:4px;margin-top:8px}
 .wn-b button,.wn-fi button{text-align:left;padding:4px 9px;border:1px solid #c79a00;background:#fff;border-radius:6px;cursor:pointer;font-size:12.5px;color:#3b2f00}.wn-b button:hover,.wn-fi button:hover{background:#ffe9a0}.wn-b button.p,.wn-fi button.p{background:#f2bd00;font-weight:600}
@@ -653,9 +653,10 @@ const dirOf=a=>node(a.slice(0,-1));
 let z=10,wins=[],cur=null;
 function win(title,icon,w,h,opts={}){
  const el=document.createElement('div');el.className='win raise';
- const dw=innerWidth,n=wins.length;
+ /* display scaling zooms the page: innerWidth is in unzoomed pixels, window sizes in zoomed ones */
+ const zf=parseFloat(document.documentElement.style.zoom)||1,dw=innerWidth/zf,n=wins.length;
  // the free area is the desktop above (or below) the taskbar; keep new windows inside it
- const wDesk=$('#desk'),wBar=$('#bar'),avail=wBar&&wDesk&&wBar.offsetTop>wDesk.offsetTop+100?wBar.offsetTop-wDesk.offsetTop:(wDesk?wDesk.clientHeight:innerHeight-46);
+ const wDesk=$('#desk'),wBar=$('#bar'),avail=wBar&&wDesk&&wBar.offsetTop>wDesk.offsetTop+100?wBar.offsetTop-wDesk.offsetTop:(wDesk?wDesk.clientHeight:innerHeight/zf-46);
  w=Math.min(w,dw-8);h=Math.min(h,avail-8);
  el.style.cssText=`width:${w}px;height:${h}px;left:${Math.max(0,Math.min(40+n*26,dw-w-4))}px;top:${Math.max(0,Math.min(20+n*26,avail-h-4))}px`;
  el.innerHTML=`<div class="tb"><span>${icon}</span><span class="t">${title}</span><button class="mn">_</button><button class="mx">□</button><button class="cl">✕</button></div><div class="body"></div>`;
@@ -6600,10 +6601,14 @@ Object.assign(DEFS.disp,{accent:'#2563eb',nl:false,nlv:40,nlsched:false,darkui:t
 ['accent','nl','nlv','nlsched','darkui','icons','tbgroup','rot'].forEach(k=>{if(!DKEYS.includes(k))DKEYS.push(k);if(S[k]===undefined)S[k]=DEFS.disp[k];if(SC&&SC[k]===undefined)SC[k]=cln(S[k])});
 if(S.rmotion===false&&window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)S.rmotion=true;
 /* ---------- themes ---------- */
+/* display scaling zooms the page, and Chromium zooms vh/vw sizes too, so "the whole screen" would be 1.25-1.5x the
+   screen: the desktop's CSS uses --vh1/--vw1 (1% of what is really visible) instead */
+function scaleVars(){const H=document.documentElement,zf=parseFloat(H.style.zoom)||1;H.style.setProperty('--vh1',innerHeight/zf/100+'px');H.style.setProperty('--vw1',innerWidth/zf/100+'px')}
+addEventListener('resize',()=>scaleVars());
 function themeApply(){const H=document.documentElement,B=document.body;let dark=false;try{dark=S.darkui!==false&&(window.dynResolve?dynResolve().mode=='dark':S.dm=='dark')}catch(e){dark=S.dm=='dark'}
  H.classList.toggle('dark',dark);H.classList.toggle('hc',S.cb=='contrast');H.classList.toggle('rmotion',!!S.rmotion);H.classList.toggle('rtrans',!!S.rtrans);H.classList.toggle('touch',!!S.touch);H.classList.toggle('dysfont',!!S.dysfont);
  B.style.setProperty('--ac',S.accent||'#2563eb');H.style.setProperty('--ac',S.accent||'#2563eb');
- const z=Math.max(75,Math.min(250,+S.scale||100));H.style.zoom=z==100?'':z/100;
+ const z=Math.max(75,Math.min(250,+S.scale||100));H.style.zoom=z==100?'':z/100;scaleVars();
  H.style.setProperty('--capsz',(S.capsz||100)/100+'em');H.style.setProperty('--capbg',S.capbg||'#000');H.style.setProperty('--capfg',S.capfg||'#fff');
  let nl=$('#nightl');const nlOn=S.nl&&(!S.nlsched||(()=>{const h=new Date().getHours();return h>=20||h<7})());if(nlOn){if(!nl){nl=document.createElement('div');nl.id='nightl';nl.setAttribute('aria-hidden','true');document.body.appendChild(nl)}nl.style.opacity=(S.nlv||40)/100*.55}else if(nl)nl.remove();
  B.style.transform=S.rot?`rotate(${S.rot}deg)`:'';
@@ -7331,6 +7336,10 @@ function wpExtend(W,MENUS,K){const ed=()=>K.ed,root=()=>K.root,esc=s=>String(s).
  const NM={};keys.forEach(k=>{NM[k]=MENUS[k];if(k=='Table')NM.Review=R.Review});Object.keys(MENUS).forEach(k=>delete MENUS[k]);Object.assign(MENUS,NM);
  setTimeout(()=>{applyView();goalUpd()},200)}
 
+/* resize a window, keeping it inside the free desktop area above the taskbar (small screens, display scaling) */
+function winFit(W,w,h){const D=$('#desk'),B=$('#bar');if(!D){W.el.style.width=w+'px';W.el.style.height=h+'px';return}
+ const av=B&&B.offsetTop>D.offsetTop+100?B.offsetTop-D.offsetTop:D.clientHeight,ww=Math.min(w,D.clientWidth-8),hh=Math.min(h,av-8);
+ W.el.style.width=ww+'px';W.el.style.height=hh+'px';W.el.style.left=Math.max(0,Math.min(W.el.offsetLeft,D.clientWidth-ww-4))+'px';W.el.style.top=Math.max(0,Math.min(W.el.offsetTop,av-hh-4))+'px'}
 /* ===== V25 misc: calculator Standard/Scientific modes, OS name beside Start, Command Prompt rename ===== */
 const CALC_STD=['C','⌫','%','÷','7','8','9','×','4','5','6','−','1','2','3','+','±','0','.','='];
 function calcModes(W,cg){if(!W||!cg)return;cg.querySelectorAll('button').forEach(b=>{b.dataset.k=b.textContent});
@@ -7339,7 +7348,7 @@ function calcModes(W,cg){if(!W||!cg)return;cg.querySelectorAll('button').forEach
  const set=(m,resize)=>{const std=m=='std';W.body.classList.toggle('calc-std',std);bar.querySelectorAll('button').forEach(b=>{const on=b.dataset.m==m;b.classList.toggle('on',on);b.setAttribute('aria-selected',on)});
   cg.querySelectorAll('button').forEach(b=>{const i=CALC_STD.indexOf(b.dataset.k);b.style.order=std&&i>=0?i:'';b.hidden=std&&i<0});
   try{svj('bd95calcmode',m)}catch(e){}
-  if(resize&&!W.max){W.el.style.width=(std?290:340)+'px';W.el.style.height=(std?440:480)+'px'}};
+  if(resize&&!W.max)winFit(W,std?290:340,std?440:480)};
  bar.querySelectorAll('button').forEach(b=>{b.onmousedown=e=>e.preventDefault();b.onclick=()=>{set(b.dataset.m,1);W.el.focus({preventScroll:true})}});
  set(ld('bd95calcmode','sci')=='std'?'std':'sci',1)}
 /* OS name and version beside the Start button */
@@ -9243,11 +9252,11 @@ function rfPick(input) {
   if (document.querySelector('.rfpick')) return;
   const multi = input.multiple, accept = input.accept || '';
   const o = document.createElement('div'); o.className = 'rmodal rfpick';
-  o.innerHTML = `<div class='rmbox' role='dialog' aria-modal='true' aria-label='Choose ${multi ? 'files' : 'a file'}' style='width:min(680px,94vw);max-width:none;display:flex;flex-direction:column;gap:8px'>
+  o.innerHTML = `<div class='rmbox' role='dialog' aria-modal='true' aria-label='Choose ${multi ? 'files' : 'a file'}' style='width:min(680px,calc(94*var(--vw1,1vw)));max-width:none;box-sizing:border-box;max-height:calc(100*var(--vh1,1vh) - 12px);overflow:auto;display:flex;flex-direction:column;gap:8px'>
     <h3 style='margin:0'>Choose ${multi ? 'files' : 'a file'}</h3>
     <div class='rfplaces' style='display:flex;flex-wrap:wrap;gap:4px'></div>
     <div style='display:flex;gap:6px;align-items:center'><button class='rfup' title='Up one folder' aria-label='Up one folder'>⬆</button><input class='rfpath' readonly aria-label='Folder' style='flex:1'></div>
-    <div class='rflist' role='listbox' ${multi ? "aria-multiselectable='true'" : ''} tabindex='0' style='height:min(340px,50vh);overflow:auto;border:1px solid var(--bd,#ccc);background:var(--wbg,#fff)'></div>
+    <div class='rflist' role='listbox' ${multi ? "aria-multiselectable='true'" : ''} tabindex='0' style='height:min(340px,calc(50*var(--vh1,1vh)));overflow:auto;border:1px solid var(--bd,#ccc);background:var(--wbg,#fff)'></div>
     <label style='font-size:12px'><input type='checkbox' class='rfall'> Show all files${accept ? ' (not only ' + rfEsc(accept.replace(/,/g, ', ')) + ')' : ''}</label>
     <div class='rmmsg rfmsg' aria-live='polite'></div>
     <div class='rmrow'><button class='rfcancel'>Cancel</button><button class='rfok pri' disabled>Open</button></div></div>`;
