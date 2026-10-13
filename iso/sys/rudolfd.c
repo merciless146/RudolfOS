@@ -959,8 +959,16 @@ static void api_web(struct req *r, const char *what)
 {
 	char cmd[3200];
 	if (!strcmp(what, "status")) {
-		char *m = slurp(RUN "/wm", NULL); int run_ = web_running();
-		str s = {0}; sadd(&s, "{\"ok\":true,\"running\":%s,\"shown\":%s}", run_ ? "true" : "false", run_ && m && !strncmp(m, "web", 3) ? "true" : "false");
+		char *m = slurp(RUN "/wm", NULL); int run_ = web_running(), shown = run_ && m && !strncmp(m, "web", 3);
+		/* rudolf-display shows a new window as "win ID": shown too when that window is the browser window
+		   (/run/rudolf/windows: "ID<tab>is-web<tab>..." per line) */
+		if (run_ && m && !strncmp(m, "win ", 4)) {
+			char id[32]; snprintf(id, sizeof id, "%.20s", m + 4); id[strcspn(id, " \n")] = 0;
+			char *w = slurp(RUN "/windows", NULL);
+			for (char *l = w; l && *l && !shown; ) { char *nl = strchr(l, '\n'); size_t n = strlen(id); if (!strncmp(l, id, n) && l[n] == '\t' && l[n + 1] == '1') shown = 1; l = nl ? nl + 1 : NULL; }
+			free(w);
+		}
+		str s = {0}; sadd(&s, "{\"ok\":true,\"running\":%s,\"shown\":%s}", run_ ? "true" : "false", shown ? "true" : "false");
 		free(m); reply_json(r->fd, &s); return;
 	}
 	if (!strcmp(what, "open")) {
