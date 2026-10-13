@@ -1,14 +1,14 @@
 rudolf-system 1
-serial 2026101300
-version 1.1.261013
+serial 2026101304
+version 1.1.2.261013
 released 2026-10-13
 expires 2026-10-27
 urgent 0
 chromium 155.0.8059.39
 kernel 6.18.56-rudolf
-notes desktop update
-L	vmlinuz	9933824	1cc713f617bb36f48cdc287a1327cfdd5ccf4ce7c49eca0e78894025eb550702	https://github.com/merciless146/RudolfOS/releases/download/r2026101300/vmlinuz
-L	base	201687040	a50408ad9770c360ebcaee2ea7e5ffdef18e53bd82b08aa4e602a64c2505a255	https://github.com/merciless146/RudolfOS/releases/download/r2026101300/base.sfs
-L	chromium	129585152	3ae18d786ada55880a1dadc2f6bb09a5d530acb4b2c63cda07808562ff9ec461	https://github.com/merciless146/RudolfOS/releases/download/r2026101300/chromium.sfs
-L	desktop	24915968	bc182b2c498fd6a8cf30812711d34242b82dd8a144c3a887e412b7f70bed7ed7	https://github.com/merciless146/RudolfOS/releases/download/r2026101300/desktop.sfs
-L	modules	10321920	fac0f3aa1bcbcc2cf5b0124ab4306996fe78a622c91e43957e16a8bb9425e3b6	https://github.com/merciless146/RudolfOS/releases/download/r2026101300/modules.sfs
+notes 1.1.2: signing in to websites works (Oracle moves sign-in pages to a real browser window); choose the screen resolution and frame rate; fixes for small screens and display scaling
+L	vmlinuz	10138624	04e9494e74212a6c87aaba67b16d6184092860346aebe6f80a82c77179561a31	https://github.com/merciless146/RudolfOS/releases/download/r2026101304/vmlinuz
+L	base	201703424	7368b09515c1aba8952c1729a6ac20d28f23938bbb868fac2b965f75f580a19f	https://github.com/merciless146/RudolfOS/releases/download/r2026101304/base.sfs
+L	chromium	129585152	3ae18d786ada55880a1dadc2f6bb09a5d530acb4b2c63cda07808562ff9ec461	https://github.com/merciless146/RudolfOS/releases/download/r2026101304/chromium.sfs
+L	desktop	24924160	9b297f1de2ec6860387daa7cc2019f07f60c7365250900d7efbd34f9dad5df12	https://github.com/merciless146/RudolfOS/releases/download/r2026101304/desktop.sfs
+L	modules	10252288	05428ce11d16c24af4e04da805166eac197d2013a960179794ecf9d95c1cdc2c	https://github.com/merciless146/RudolfOS/releases/download/r2026101304/modules.sfs
