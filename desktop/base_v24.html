@@ -883,7 +883,7 @@ const ext=n=>{const m=/\.([^.]+)$/.exec(n);return m?m[1].toUpperCase():''};
 const fType=(n,v)=>{if(isDir(v))return'Folder';const e=ext(n);return({LUA:'Lua script',SWF:'Flash movie',GB:'Game Boy ROM',GBC:'Game Boy Color ROM',GBA:'Game Boy Advance ROM',PAK:'Quake data archive',BSP:'Quake map',DEM:'Quake demo',MDL:'Quake model',WAD:'Quake texture archive',CFG:'Configuration',ZIP:'ZIP archive',SAV:'Game save',PKG:'Package record',BAT:'Batch file',DOC:'Document',PNG:'Picture',JPG:'Picture',JPEG:'Picture',GIF:'Picture',WEBP:'Picture',HTM:'Web page',HTML:'Web page',TXT:'Text file'})[e]||(e?e+' file':'File')};
 const fIcon=(n,v)=>{if(isDir(v))return'📁';const e=ext(n);return({LUA:'🌙',SWF:'⚡',GB:'🎮',GBC:'🎮',GBA:'🎮',PAK:'🔫',BSP:'🗺️',DEM:'🎞️',ZIP:'📦',SAV:'💾',PKG:'📦',BAT:'⚙️',DOC:'📄',PNG:'🖼️',JPG:'🖼️',JPEG:'🖼️',GIF:'🖼️',WEBP:'🖼️',HTM:'🌐',HTML:'🌐',TXT:'📝'})[e]||'📃'};
 const sizeOf=v=>isDir(v)?-1:(typeof v=='string'?(v.startsWith('rudolfrom:')?(+v.split(':')[2]||0):v.startsWith('data:')?Math.round((v.length-v.indexOf(',')-1)*.75):new Blob([v]).size):0);
-const fmtB=b=>b<0?'':b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(2)+' MB';
+const fmtB=b=>b<0?'':b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':b<1073741824?(b/1048576).toFixed(2)+' MB':(b/1073741824).toFixed(1)+' GB';
 const clone=v=>JSON.parse(JSON.stringify(v));
 const uniq=(d,name)=>{if(!(name in d))return name;const m=/^(.*?)(\.[^.]*)?$/.exec(name),b=m[1],e=m[2]||'';let i=1,c;do{c=b+(i==1?' - COPY':' - COPY '+i)+e;i++}while(c in d);return c};
 const validName=n=>n&&!/[\\\/:*?"<>|]/.test(n)&&n!='.'&&n!='..'&&n.length<=60;

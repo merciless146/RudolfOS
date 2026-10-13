@@ -17,7 +17,7 @@ if [ "${REBUILD_ROOT:-1}" = 1 ] || [ ! -f layers/base.sfs ]; then bash mkrootfs.
 echo "== packages"; bash pkgtools/build_repo.sh
 # the system in four layers (the start-up script mounts them as one); the kernel is BOOT/VMLINUZ
 for n in base chromium desktop modules; do cp layers/$n.sfs $T/RUDOLF/$(echo $n | tr a-z A-Z).SFS; done
-echo "rudolf-$VER" > $T/RUDOLF/ID
+cp initramfs/etc/rudolf-id $T/RUDOLF/ID   # must match the ID built into the kernel's initramfs (rudolf-1.1 for every 1.1.x)
 # which release this disc is: updates must be newer (serial) to install
 CHROMV=$(rootfs/opt/chromium/chrome --version 2>/dev/null | awk '{print $2}')
 printf 'serial %s\nversion %s\nreleased %s\nchromium %s\nkernel %s\nnotes %s\n' "${SERIAL:-$(date -u +%Y%m%d%H)}" "$VER" "$(date -u +%F)" "${CHROMV:-141.0.7390.37}" "$(ls modules/lib/modules | head -1)" "${NOTES:-disc release}" > $T/RUDOLF/RELEASE

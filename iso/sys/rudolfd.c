@@ -556,8 +556,9 @@ static void api_mount(struct req *r, int mount)
 	char *dev = qparam(r->query, "dev");
 	if (!safe_word(dev, 32)) { reply_err(r->fd, 400, "bad device"); return; }
 	char cmd[512];
-	if (mount) snprintf(cmd, sizeof cmd, "mkdir -p /media/%s && (mount -o rw /dev/%s /media/%s 2>/dev/null || mount -o ro /dev/%s /media/%s)", dev, dev, dev, dev, dev);
-	else snprintf(cmd, sizeof cmd, "sync; umount /media/%s && rmdir /media/%s", dev, dev);
+	/* mounted without device files, set-user-ID or programs run from the drive (devplug: also SD cards, NTFS) */
+	if (mount) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/devplug mount %s", dev);
+	else snprintf(cmd, sizeof cmd, "sync; umount /media/%s && rmdir /media/%s; rm -f /run/rudolf/drives/%s", dev, dev, dev);
 	if (run(cmd)) reply_err(r->fd, 500, mount ? "could not mount this partition" : "could not unmount (files in use?)");
 	else reply_ok(r->fd, mount ? "mounted" : "safe to remove");
 }
@@ -1697,8 +1698,11 @@ static void api(struct req *r)
 	if (!strcmp(p, "pointer")) {
 		char *sp = qparam(r->query, "speed"); double s = sp ? atof(sp) : 1;
 		char *ac = qparam(r->query, "accel"); double a = ac ? atof(ac) : 1;
+		/* touchpad: tap to click, natural (reversed) scrolling, ignore the touchpad while typing */
+		char *tp = qparam(r->query, "tap"), *na = qparam(r->query, "natural"), *ty = qparam(r->query, "typing");
+		int tap = tp ? atoi(tp) != 0 : 1, nat = na ? atoi(na) != 0 : 0, typ = ty ? atoi(ty) != 0 : 1;
 		if (s < 0.2) s = 0.2; if (s > 5) s = 5; if (a < 1) a = 1; if (a > 3) a = 3;
-		char b[64]; snprintf(b, sizeof b, "%.3f %.3f\n", s, a); write_str(RUN "/pointer", b);
+		char b[64]; snprintf(b, sizeof b, "%.3f %.3f %d %d %d\n", s, a, tap, nat, typ); write_str(RUN "/pointer", b);
 		reply_ok(r->fd, "ok"); return;
 	}
 	if (!strcmp(p, "audio")) {
@@ -1780,6 +1784,17 @@ static void api(struct req *r)
 	}
 	if (!strcmp(p, "mount")) { api_mount(r, 1); return; }
 	if (!strcmp(p, "umount")) { api_mount(r, 0); return; }
+	/* plugged-in devices (Settings > Devices) and "Eject" for a USB drive or SD card */
+	if (!strcmp(p, "devices")) { char *o = run_out("/usr/lib/rudolf/devplug list 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 500, "could not list the devices"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
+	if (!strcmp(p, "eject")) {
+		if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+		char *dev = qparam(r->query, "dev");
+		if (!safe_word(dev, 32) || strchr(dev, '.') || strchr(dev, ':')) { reply_err(r->fd, 400, "bad device"); return; }
+		char cmd[160]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/devplug eject %s 2>" RUN "/eject.err", dev);
+		if (run(cmd)) { char *e = slurp(RUN "/eject.err", NULL); if (e) trim(e); reply_err(r->fd, 409, e && *e ? e : "could not eject it"); free(e); }
+		else reply_ok(r->fd, "safe to remove");
+		return;
+	}
 	reply_err(r->fd, 404, "unknown API");
 }
 

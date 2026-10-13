@@ -414,7 +414,7 @@ static int cmd_status(void)
 	printf("{\"ok\":true,\"persistent\":%s,\"booted\":", access("/run/rudolf/persistent", F_OK) ? "false" : "true"); jstr(bs);
 	printf(",\"trying\":%s", strstr(slurp("/proc/cmdline", NULL) ?: "", "rudolf.trying=1") ? "true" : "false");
 	printf(",\"current\":{\"serial\":%lld,\"version\":", atoll(kv(&r, "serial"))); jstr(kv(&r, "version"));
-	printf(",\"chromium\":"); jstr(kv(&r, "chromium")); printf(",\"kernel\":"); jstr(kv(&r, "kernel")); printf(",\"released\":"); jstr(kv(&r, "released")); printf("}");
+	printf(",\"chromium\":"); jstr(kv(&r, "chromium")); printf(",\"kernel\":"); jstr(kv(&r, "kernel")); printf(",\"released\":"); jstr(kv(&r, "released")); printf(",\"notes\":"); jstr(kv(&r, "notes")); printf("}");
 	printf(",\"state\":{\"good\":"); jstr(kv(&st, "good")); printf(",\"prev\":"); jstr(kv(&st, "prev")); printf(",\"next\":"); jstr(kv(&st, "next"));
 	printf(",\"tries\":%d,\"failed\":", atoi(kv(&st, "tries"))); jstr(kv(&st, "failed")); printf("}");
 	printf(",\"slots\":{\"a\":"); slot_json("a"); printf(",\"b\":"); slot_json("b"); printf("}");

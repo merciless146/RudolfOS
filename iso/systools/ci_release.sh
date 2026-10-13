@@ -1,8 +1,12 @@
 #!/bin/bash
 # Build the next Rudolf OS system release from the previous one (run by the GitHub Actions workflow on
 # ubuntu-24.04, the same system the disc images are built on). Only what changed is rebuilt:
-#   kernel + modules  when a newer 6.18.y is out          chromium  when a newer stable Chromium is out
-#   desktop           when iso/www changed in the repo     base      reused (full rebuilds come from build_iso.sh)
+#   kernel + modules  when a newer 6.18.y is out, or kconfig.sh / the initramfs changed
+#   chromium          when a newer stable Chromium is out
+#   desktop           when iso/www changed in the repo
+#   base              when the system programs (rudolf-display, rudolfd, rudolf-update) or sys/root changed:
+#                     the previous base layer with those rebuilt and the files of sys/root copied over it
+#                     (everything else in it comes from build_iso.sh's full builds)
 # Every new Chromium must start inside the real base layer before it is released; otherwise the previous
 # Chromium layer is kept and the release notes say so. GPL-2.0-or-later.
 #
@@ -35,20 +39,51 @@ try_chromium() {
 	[ "$OK" -ge 1 ] || { echo "Chromium $NV from $1 did not start inside Rudolf OS"; return 1; }
 	$MK "$W/cs" "$W/new/chromium.sfs" $SQ; CH=$NV; NOTES+=("Chromium $NV"); return 0
 }
-try_chromium "${CHROMIUM_FROM:-snap}" || { [ "${CHROMIUM_FROM:-snap}" != playwright ] && try_chromium playwright; } || NOTES+=("Chromium unchanged: the new build failed the start test")
+# CHROMIUM_FROM=none skips Chromium (local test builds)
+[ "${CHROMIUM_FROM:-snap}" = none ] || try_chromium "${CHROMIUM_FROM:-snap}" || { [ "${CHROMIUM_FROM:-snap}" != playwright ] && try_chromium playwright; } || NOTES+=("Chromium unchanged: the new build failed the start test")
 
 # ---- kernel and modules
-if [ -n "$KERNEL_VERSION" ] && [ "$KERNEL_VERSION-rudolf" != "$KV" ]; then
-	git clone -q --depth 1 -b "v$KERNEL_VERSION" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$W/linux"
+# what the kernel is built from besides its version: when it changes, the kernel is rebuilt
+KSRC=$(cat kconfig.sh initramfs.list initramfs/init initramfs/etc/rudolf-id sys/rudolf-kexec.c | sha256sum | cut -c1-16)
+PKSRC=$(unsquashfs -cat "$PREV/modules.sfs" "usr/lib/modules/$KV/rudolf-ksrc" 2>/dev/null || true)
+[ -n "$KERNEL_VERSION" ] || KERNEL_VERSION=${KV%-rudolf}
+if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
+	# LINUX_SRC: an unpacked kernel tree of that version to build in instead of downloading one (local test builds)
+	if [ -n "$LINUX_SRC" ]; then ln -s "$(realpath "$LINUX_SRC")" "$W/linux"; else git clone -q --depth 1 -b "v$KERNEL_VERSION" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$W/linux"; fi
 	[ -x initramfs/bin/busybox ] || { git clone -q --depth 1 -b 1_36_1 https://git.busybox.net/busybox "$W/bb"; cp systools/busybox.config "$W/bb/.config"; make -C "$W/bb" -s -j$(nproc) >/dev/null; mkdir -p initramfs/bin; cp "$W/bb/busybox" initramfs/bin/; }
 	gcc -Os -static -nostdlib -fno-builtin -fno-stack-protector -fno-asynchronous-unwind-tables -o initramfs/bin/rudolf-kexec sys/rudolf-kexec.c && strip initramfs/bin/rudolf-kexec
 	./kconfig.sh "$W/linux" "$HERE/initramfs $HERE/initramfs.list"
 	make -C "$W/linux" -s -j$(nproc) bzImage modules
-	make -C "$W/linux" -s modules_install INSTALL_MOD_PATH="$W/mods" >/dev/null
-	KR=$(ls "$W/mods/lib/modules"); depmod -b "$W/mods" "$KR"
+	make -C "$W/linux" -s modules_install INSTALL_MOD_PATH="$W/mods" DEPMOD=true >/dev/null
+	# the module index in busybox's format (modules.dep.bb), which the system's busybox modprobe reads, as on the disc
+	KR=$(ls "$W/mods/lib/modules"); cp initramfs/bin/busybox "$W/mods/depmod"; sudo chroot "$W/mods" /depmod "$KR"; rm -f "$W/mods/depmod"
+	[ -s "$W/mods/lib/modules/$KR/modules.dep.bb" ] || { echo "no module index"; exit 1; }
+	echo "$KSRC" > "$W/mods/lib/modules/$KR/rudolf-ksrc"
 	mkdir -p "$W/ms/usr/lib"; cp -a "$W/mods/lib/modules" "$W/ms/usr/lib/"
 	$MK "$W/ms" "$W/new/modules.sfs" $SQ; cp "$W/linux/arch/x86/boot/bzImage" "$W/new/vmlinuz"
-	KV=$KR; NOTES+=("Linux $KERNEL_VERSION")
+	[ "$KR" = "$KV" ] && NOTES+=("Linux $KERNEL_VERSION with new drivers") || NOTES+=("Linux $KERNEL_VERSION"); KV=$KR
+fi
+
+# ---- base: the system programs and sys/root
+BSRC=$( (cat sys/rudolf-display.c sys/rudolfd.c sys/rudolf-update.c trusted-keys.txt VERSION; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
+if [ "$BSRC" != "$PBSRC" ]; then
+	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
+	B=$W/bbin; mkdir -p "$B"
+	# the same commands as mkrootfs.sh, on the same Ubuntu 24.04 the base layer's libraries come from
+	gcc -O2 -o "$B/rudolf-display" sys/rudolf-display.c -lX11 /usr/lib/x86_64-linux-gnu/libXtst.so.6 /usr/lib/x86_64-linux-gnu/libXfixes.so.3
+	gcc -O2 -o "$B/rudolfd" sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+	gcc -O2 -o "$B/rudolf-update" sys/rudolf-update.c -lcrypto -ldl
+	for b in rudolf-display rudolfd rudolf-update; do
+		for l in $(ldd "$B/$b" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$b needs $l, which the base layer does not have"; exit 1; }; done
+		sudo install -m 0755 "$B/$b" "$W/broot/usr/bin/$b"
+	done
+	sudo cp -a sys/root/. "$W/broot/"
+	sudo mkdir -p "$W/broot/etc/rudolf"; sudo cp trusted-keys.txt "$W/broot/etc/rudolf/rpk-keys"
+	sudo cp VERSION "$W/broot/usr/share/rudolf/VERSION"
+	echo "$BSRC" | sudo tee "$W/broot/usr/share/rudolf/base-src" >/dev/null
+	sudo $MK "$W/broot" "$W/new/base.sfs" $SQ; sudo chown "$(id -u)" "$W/new/base.sfs"; sudo rm -rf "$W/broot"
+	NOTES+=("system programs")
 fi
 
 # ---- desktop (byte-identical when iso/www did not change)
@@ -58,6 +93,12 @@ if ! cmp -s "$W/desk.sfs" "$W/new/desktop.sfs"; then cp "$W/desk.sfs" "$W/new/de
 CHANGED=0; for f in vmlinuz base.sfs chromium.sfs desktop.sfs modules.sfs; do cmp -s "$PREV/$f" "$W/new/$f" || CHANGED=1; done
 if [ $CHANGED = 0 ]; then echo "nothing changed: no release"; echo "released=0" >> "${GITHUB_OUTPUT:-/dev/null}"; exit 0; fi
 NOTE=$(printf '%s, ' "${NOTES[@]}"); NOTE=${NOTE%, }; NOTE=${NOTE:-security fixes}
+# the first release of a new version says what is new in it (CHANGELOG.md, the "Summary:" line)
+if [ "$(pv version | cut -d. -f1-3)" != "$(cat VERSION)" ] && [ "$(pv version)" != "$(cat VERSION)" ]; then
+	SUM=$(awk -v v="$(cat VERSION)" '$1=="##"&&$2==v{f=1;next} /^## /{f=0} f&&/^Summary:/{sub(/^Summary: */,"");print;exit}' ../CHANGELOG.md 2>/dev/null)
+	[ -n "$SUM" ] && NOTE="$(cat VERSION): $SUM"
+fi
+NOTE=$(printf '%s' "$NOTE" | tr -d '\n\r' | cut -c1-290)
 python3 systools/make_release.py --layers "$W/new" --kernel "$W/new/vmlinuz" --out "$OUT" --key "$KEYFILE" --serial "$SERIAL" \
 	--version "$(cat VERSION).$(date -u +%y%m%d)" --chromium "$CH" --kernel-version "$KV" --notes "$NOTE" --file-base "$FILE_BASE" ${URGENT:+--urgent}
 echo "released=1" >> "${GITHUB_OUTPUT:-/dev/null}"; echo "notes=$NOTE" >> "${GITHUB_OUTPUT:-/dev/null}"

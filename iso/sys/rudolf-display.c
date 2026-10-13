@@ -179,24 +179,61 @@ static int sync_screen(void)
 }
 
 /* ------------------------------------------------------------ input */
+/* Every keyboard, mouse, touchpad and touchscreen in /dev/input is read here and passed to X through XTest.
+ * Touchpads (laptops): the finger moves the pointer (relative, with sub-pixel precision), a tap clicks (one
+ * finger: left, two: right, three: middle), two fingers scroll both ways, a click on a clickpad is a right
+ * click with two fingers down or in the pad's bottom-right corner, and taps and motion are ignored for a moment
+ * after typing (palm rest). Settings come from /run/rudolf/pointer (written by rudolfd from Settings):
+ *   speed accel tap natural typing      e.g. "1.000 1.000 1 0 1"
+ * Game controllers are left to games. The devices found are listed in /run/rudolf/inputs for Settings. */
 #define MAXDEV 32
 struct dev {
-	int fd; char path[64];
-	int touchpad, touchscreen;
+	int fd; char path[64]; char name[96];
+	int touchpad, touchscreen, buttonpad, kind;   /* kind: 1 keyboard 2 mouse 3 touchpad 4 touchscreen 5 other */
 	int absx_min, absx_max, absy_min, absy_max;
-	int ax, ay, lastx, lasty, have_last, touching, fingers;
-	long long touch_t; int moved;
-	int scroll_acc;
+	int ax, ay, lastx, lasty, have_last, touching, fingers, maxf;
+	long long touch_t; int moved, travel, clicked, pressed_btn;
+	int scroll_x, scroll_y;
 } devs[MAXDEV];
 static int ndev;
+static int tap_enabled = 1, natural_scroll = 0, typing_guard = 1;
+static long long last_key_ms = -100000;
+static double rem_x, rem_y;   /* fractions of a pixel not yet moved */
 
 static long long now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1000LL + t.tv_nsec / 1000000; }
 #define TESTBIT(b, a) ((a[(b) / 8] >> ((b) % 8)) & 1)
+
+static void write_inputs(void)
+{
+	static const char *const K[] = {"", "keyboard", "mouse", "touchpad", "touchscreen", "other"};
+	FILE *f = fopen("/run/rudolf/inputs.new", "w");
+	if (!f) return;
+	for (int i = 0; i < ndev; i++) if (devs[i].kind >= 1 && devs[i].kind <= 4) fprintf(f, "%s|%s\n", K[devs[i].kind], devs[i].name);
+	fclose(f); rename("/run/rudolf/inputs.new", "/run/rudolf/inputs");
+}
+
+/* what an input device is, from what it can report */
+static int classify(struct dev *v, const uint8_t *evb, const uint8_t *keyb, const uint8_t *relb, const uint8_t *absb, const uint8_t *prop)
+{
+	if (TESTBIT(EV_KEY, evb) && (TESTBIT(BTN_GAMEPAD, keyb) || TESTBIT(BTN_JOYSTICK, keyb) || TESTBIT(BTN_TRIGGER_HAPPY1, keyb))) return 0;   /* controllers: games read them */
+	if (TESTBIT(EV_ABS, evb) && TESTBIT(ABS_X, absb) && TESTBIT(ABS_Y, absb)) {
+		int finger = TESTBIT(EV_KEY, evb) && TESTBIT(BTN_TOOL_FINGER, keyb);
+		int touch = TESTBIT(EV_KEY, evb) && (TESTBIT(BTN_TOUCH, keyb) || TESTBIT(BTN_LEFT, keyb) || TESTBIT(BTN_STYLUS, keyb));
+		if (finger && !TESTBIT(INPUT_PROP_DIRECT, prop)) { v->touchpad = 1; v->buttonpad = TESTBIT(INPUT_PROP_BUTTONPAD, prop); return 3; }
+		if (touch) { v->touchscreen = 1; return 4; }   /* touchscreens, pens, and absolute pointers such as QEMU's tablet */
+		return 0;
+	}
+	if (TESTBIT(EV_REL, evb) && TESTBIT(REL_X, relb)) return 2;
+	if (TESTBIT(EV_KEY, evb) && TESTBIT(KEY_A, keyb) && TESTBIT(KEY_Z, keyb)) return 1;
+	if (TESTBIT(EV_KEY, evb)) return 5;   /* power button, media keys... */
+	return 0;
+}
 
 static void scan_devices(void)
 {
 	DIR *d = opendir("/dev/input");
 	struct dirent *e;
+	int added = 0;
 	if (!d) return;
 	while ((e = readdir(d))) {
 		if (strncmp(e->d_name, "event", 5)) continue;
@@ -206,24 +243,27 @@ static void scan_devices(void)
 		if (known || ndev >= MAXDEV) continue;
 		int fd = open(p, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 		if (fd < 0) continue;
-		uint8_t evb[EV_MAX / 8 + 1] = {0}, keyb[KEY_MAX / 8 + 1] = {0}, absb[ABS_MAX / 8 + 1] = {0}, prop[INPUT_PROP_MAX / 8 + 1] = {0};
+		uint8_t evb[EV_MAX / 8 + 1] = {0}, keyb[KEY_MAX / 8 + 1] = {0}, relb[REL_MAX / 8 + 1] = {0}, absb[ABS_MAX / 8 + 1] = {0}, prop[INPUT_PROP_MAX / 8 + 1] = {0};
 		ioctl(fd, EVIOCGBIT(0, sizeof evb), evb);
 		ioctl(fd, EVIOCGBIT(EV_KEY, sizeof keyb), keyb);
+		ioctl(fd, EVIOCGBIT(EV_REL, sizeof relb), relb);
 		ioctl(fd, EVIOCGBIT(EV_ABS, sizeof absb), absb);
 		ioctl(fd, EVIOCGPROP(sizeof prop), prop);
-		if (!TESTBIT(EV_KEY, evb) && !TESTBIT(EV_REL, evb)) { close(fd); continue; }
-		struct dev *v = &devs[ndev++];
-		memset(v, 0, sizeof *v);
-		v->fd = fd; strcpy(v->path, p);
-		if (TESTBIT(EV_ABS, evb) && TESTBIT(ABS_X, absb) && TESTBIT(ABS_Y, absb)) {
+		struct dev nd; memset(&nd, 0, sizeof nd);
+		nd.kind = classify(&nd, evb, keyb, relb, absb, prop);
+		if (!nd.kind) { close(fd); continue; }
+		nd.fd = fd; strcpy(nd.path, p);
+		ioctl(fd, EVIOCGNAME(sizeof nd.name - 1), nd.name);
+		for (char *c = nd.name; *c; c++) if (*c == '|' || *c == '\n') *c = ' ';
+		if (nd.touchpad || nd.touchscreen) {
 			struct input_absinfo ax, ay;
 			ioctl(fd, EVIOCGABS(ABS_X), &ax); ioctl(fd, EVIOCGABS(ABS_Y), &ay);
-			v->absx_min = ax.minimum; v->absx_max = ax.maximum; v->absy_min = ay.minimum; v->absy_max = ay.maximum;
-			if (TESTBIT(INPUT_PROP_DIRECT, prop) || !TESTBIT(BTN_TOOL_FINGER, keyb)) v->touchscreen = 1;
-			else v->touchpad = 1;
+			nd.absx_min = ax.minimum; nd.absx_max = ax.maximum; nd.absy_min = ay.minimum; nd.absy_max = ay.maximum;
 		}
+		devs[ndev++] = nd; added = 1;
 	}
 	closedir(d);
+	if (added) write_inputs();
 }
 
 static void btn(int b, int down) { XTestFakeButtonEvent(dpy, b, down, CurrentTime); }
@@ -234,7 +274,69 @@ static void rel_move(double dx, double dy)
 	double f = speed;
 	double m = dx * dx + dy * dy;
 	if (accel > 1.0 && m > 16) f *= accel;
-	XTestFakeRelativeMotionEvent(dpy, (int)(dx * f), (int)(dy * f), CurrentTime);
+	rem_x += dx * f; rem_y += dy * f;
+	int ix = (int)rem_x, iy = (int)rem_y;   /* whole pixels now, the rest later: slow finger movement still moves */
+	rem_x -= ix; rem_y -= iy;
+	if (ix || iy) XTestFakeRelativeMotionEvent(dpy, ix, iy, CurrentTime);
+}
+
+static int typing_now(void) { return typing_guard && now_ms() - last_key_ms < 300; }
+
+static void touchpad_key(struct dev *v, int c, int down)
+{
+	if (c == BTN_TOOL_FINGER || c == BTN_TOOL_DOUBLETAP || c == BTN_TOOL_TRIPLETAP || c == BTN_TOOL_QUADTAP) {
+		int n = c == BTN_TOOL_FINGER ? 1 : c == BTN_TOOL_DOUBLETAP ? 2 : c == BTN_TOOL_TRIPLETAP ? 3 : 4;
+		if (down) v->fingers = n; else if (v->fingers == n) v->fingers = n > 1 ? n - 1 : 0;
+		if (v->fingers > v->maxf && v->touching) v->maxf = v->fingers;
+		v->have_last = 0;   /* the reported position jumps when a finger is added or lifted */
+		return;
+	}
+	if (c == BTN_TOUCH) {
+		if (down) { v->touching = 1; v->touch_t = now_ms(); v->moved = 0; v->travel = 0; v->clicked = 0; v->have_last = 0; v->maxf = v->fingers > 0 ? v->fingers : 1; }
+		else {
+			v->touching = 0;
+			if (tap_enabled && !v->moved && !v->clicked && now_ms() - v->touch_t < 220 && !typing_now())
+				click(v->maxf >= 3 ? 2 : v->maxf == 2 ? 3 : 1);
+			v->scroll_x = v->scroll_y = 0;
+		}
+		return;
+	}
+	if (c == BTN_LEFT || c == BTN_RIGHT || c == BTN_MIDDLE) {
+		if (down) {
+			int b = c == BTN_RIGHT ? 3 : c == BTN_MIDDLE ? 2 : 1;
+			if (b == 1) {
+				int rx = v->absx_max - v->absx_min, ry = v->absy_max - v->absy_min;
+				int corner = v->buttonpad && rx > 0 && ry > 0 && v->ax > v->absx_min + rx * 3 / 5 && v->ay > v->absy_min + ry * 4 / 5;
+				if (v->fingers >= 2 || corner) b = 3;
+			}
+			v->pressed_btn = b; v->clicked = 1; btn(b, 1);
+		} else if (v->pressed_btn) { btn(v->pressed_btn, 0); v->pressed_btn = 0; }
+	}
+}
+
+static void touchpad_frame(struct dev *v)
+{
+	if (!v->touching) return;
+	if (v->have_last) {
+		int dx = v->ax - v->lastx, dy = v->ay - v->lasty;
+		int rx = v->absx_max - v->absx_min; if (rx <= 0) rx = 1000;
+		v->travel += abs(dx) + abs(dy);
+		if (v->travel > rx / 60 + 2) v->moved = 1;   /* a tap may wobble a little; more than that is a movement */
+		if (!typing_now()) {
+			if (v->fingers >= 2) {
+				int step = rx / 25 + 1, dir = natural_scroll ? -1 : 1;
+				v->scroll_y += dy * dir; v->scroll_x += dx * dir;
+				while (v->scroll_y > step) { click(5); v->scroll_y -= step; }
+				while (v->scroll_y < -step) { click(4); v->scroll_y += step; }
+				while (v->scroll_x > step) { click(7); v->scroll_x -= step; }
+				while (v->scroll_x < -step) { click(6); v->scroll_x += step; }
+			} else if (!v->pressed_btn || v->fingers == 1) {
+				double k = 1.4 * xw / rx;   /* a full pad width is about 1.4 screen widths */
+				rel_move(dx * k, dy * k);
+			}
+		}
+	}
+	v->lastx = v->ax; v->lasty = v->ay; v->have_last = 1;
 }
 
 static void handle_event(struct dev *v, struct input_event *e)
@@ -242,6 +344,7 @@ static void handle_event(struct dev *v, struct input_event *e)
 	if (e->type == EV_KEY) {
 		int c = e->code, down = e->value != 0;
 		if (e->value == 2) return; /* autorepeat: X repeats by itself */
+		if (v->touchpad) { touchpad_key(v, c, down); return; }
 		if (c == KEY_LEFTMETA || c == KEY_RIGHTMETA) meta_down = down;
 		if (c == KEY_ESC && meta_down) {
 			if (down) { wm_set(0); fit_windows(); }
@@ -252,20 +355,9 @@ static void handle_event(struct dev *v, struct input_event *e)
 			return;
 		}
 		if (c == KEY_POWER && down) { int f = open("/run/rudolf/events", O_WRONLY | O_APPEND | O_CREAT, 0644); if (f >= 0) { dprintf(f, "power %lld\n", now_ms()); close(f); } return; }
-		if (v->touchpad || v->touchscreen) {
-			if (c == BTN_TOUCH) {
-				if (down) { v->touching = 1; v->touch_t = now_ms(); v->moved = 0; v->have_last = 0; if (v->touchscreen) { btn(1, 1); } }
-				else {
-					v->touching = 0;
-					if (v->touchscreen) btn(1, 0);
-					else if (!v->moved && now_ms() - v->touch_t < 200) click(v->fingers >= 2 ? 3 : 1);
-				}
-				return;
-			}
-			if (c == BTN_TOOL_DOUBLETAP) { v->fingers = down ? 2 : (v->fingers == 2 ? 1 : v->fingers); return; }
-			if (c == BTN_TOOL_TRIPLETAP) { v->fingers = down ? 3 : 1; return; }
-			if (c == BTN_TOOL_FINGER) { if (down && v->fingers < 1) v->fingers = 1; if (!down) v->fingers = 0; return; }
-			if (c == BTN_LEFT) { btn(v->fingers >= 2 ? 3 : 1, down); return; }
+		if (v->touchscreen) {
+			if (c == BTN_TOUCH) { btn(1, down); return; }
+			if (c == BTN_TOOL_FINGER || c == BTN_TOOL_DOUBLETAP || c == BTN_TOOL_TRIPLETAP || c == BTN_TOOL_PEN || c == BTN_TOOL_RUBBER) return;
 		}
 		switch (c) {
 		case BTN_LEFT: btn(1, down); return;
@@ -274,7 +366,11 @@ static void handle_event(struct dev *v, struct input_event *e)
 		case BTN_SIDE: case BTN_BACK: btn(8, down); return;
 		case BTN_EXTRA: case BTN_FORWARD: btn(9, down); return;
 		}
-		if (c < 256) XTestFakeKeyEvent(dpy, c + 8, down, CurrentTime);
+		if (c < 256) {
+			if (down && v->kind == 1 && c != KEY_LEFTCTRL && c != KEY_RIGHTCTRL && c != KEY_LEFTSHIFT && c != KEY_RIGHTSHIFT && c != KEY_LEFTALT && c != KEY_RIGHTALT && c != KEY_LEFTMETA && c != KEY_RIGHTMETA)
+				last_key_ms = now_ms();
+			XTestFakeKeyEvent(dpy, c + 8, down, CurrentTime);
+		}
 	} else if (e->type == EV_REL) {
 		if (e->code == REL_X) rel_move(e->value, 0);
 		else if (e->code == REL_Y) rel_move(0, e->value);
@@ -287,22 +383,7 @@ static void handle_event(struct dev *v, struct input_event *e)
 		if (v->touchscreen) {
 			int rx = v->absx_max - v->absx_min, ry = v->absy_max - v->absy_min;
 			if (rx > 0 && ry > 0) XTestFakeMotionEvent(dpy, -1, (long)(v->ax - v->absx_min) * xw / rx, (long)(v->ay - v->absy_min) * xh / ry, CurrentTime);
-		} else if (v->touchpad && v->touching) {
-			if (v->have_last) {
-				int dx = v->ax - v->lastx, dy = v->ay - v->lasty;
-				int rx = v->absx_max - v->absx_min; if (rx <= 0) rx = 1000;
-				/* scale so that a full pad width is about 1.4 screen widths */
-				double k = 1.4 * xw / rx;
-				if (abs(dx) + abs(dy) > 2) v->moved = 1;
-				if (v->fingers >= 2) {
-					v->scroll_acc += dy;
-					int step = rx / 40 + 1;
-					while (v->scroll_acc > step) { click(5); v->scroll_acc -= step; }
-					while (v->scroll_acc < -step) { click(4); v->scroll_acc += step; }
-				} else rel_move(dx * k, dy * k);
-			}
-			v->lastx = v->ax; v->lasty = v->ay; v->have_last = 1;
-		}
+		} else if (v->touchpad) touchpad_frame(v);
 		XFlush(dpy);
 	}
 }
@@ -311,8 +392,10 @@ static void read_settings(void)
 {
 	FILE *f = fopen("/run/rudolf/pointer", "r");
 	if (!f) return;
-	double s = 1, a = 1;
-	if (fscanf(f, "%lf %lf", &s, &a) == 2 && s > 0.1 && s < 10) { speed = s; accel = a; }
+	double s = 1, a = 1; int tap = 1, nat = 0, typ = 1;
+	int n = fscanf(f, "%lf %lf %d %d %d", &s, &a, &tap, &nat, &typ);
+	if (n >= 2 && s > 0.1 && s < 10) { speed = s; accel = a; }
+	if (n >= 5) { tap_enabled = tap != 0; natural_scroll = nat != 0; typing_guard = typ != 0; }
 	fclose(f);
 }
 
@@ -600,7 +683,7 @@ int main(int argc, char **argv)
 			if (!(pf[i].revents & (POLLIN | POLLERR | POLLHUP))) continue;
 			struct input_event ev[64];
 			ssize_t n = read(devs[i].fd, ev, sizeof ev);
-			if (n < 0 && errno != EAGAIN) { close(devs[i].fd); devs[i] = devs[--ndev]; i--; continue; }
+			if (n < 0 && errno != EAGAIN) { close(devs[i].fd); devs[i] = devs[--ndev]; i--; write_inputs(); continue; }
 			for (int k = 0; k < n / (ssize_t)sizeof ev[0]; k++) handle_event(&devs[i], &ev[k]);
 		}
 		while (XPending(dpy)) {

@@ -50,7 +50,7 @@ async function zipToVfs(zipData,dest){const z=await JSZip.loadAsync(typeof zipDa
  fsSave();return n}
 /* ---------- the File Explorer window ---------- */
 function explorer(start){const W=win('File Explorer','📁',900,560);W.app='explorer';
- const mkPane=p=>({path:Array.isArray(p)&&isDir(node(p))?p.slice():(USER?homePath():['C:']),back:[],fwd:[],sel:new Set(),anchor:null,view:S.xview||'list',filt:'',deep:false,sk:'name',sd:1,remote:null,special:null});
+ const mkPane=p=>({path:Array.isArray(p)&&isDir(node(p))?p.slice():(USER?homePath():['C:']),back:[],fwd:[],sel:new Set(),anchor:null,view:S.xview||'list',filt:'',deep:false,sk:'name',sd:1,remote:p&&p.remote?p.remote:null,special:null});
  let tabs=[{panes:[mkPane(start)],act:0}],ti=0,undo=[],preview=!!S.xprev;
  const T=()=>tabs[ti],P=()=>T().panes[T().act];
  W.body.style.background='var(--wbg,#fff)';W.body.classList.add('xp25');
@@ -71,7 +71,9 @@ function explorer(start){const W=win('File Explorer','📁',900,560);W.app='expl
   if(USER){sec('Home');item('🏠',USER.n,at(homePath()),()=>go(pn,homePath()));[['🖥️','Desktop','DESKTOP'],['📄','Documents','DOCUMENTS'],['🖼️','Pictures','PICTURES'],['🎵','Music','MUSIC'],['🎬','Videos','VIDEOS'],['⬇️','Downloads','DOWNLOADS']].forEach(([i,l,s])=>{const p=homePath(s);if(isDir(node(p)))item(i,l,at(p),()=>go(pn,p),e=>dropTo(p,e.ctrlKey))});
    item('🕘','Recent',pn.special=='recent',()=>{pn.back.push(pn.path);pn.special='recent';pn.remote=null;draw()});const fv=favList();if(fv.length){sec('Favourites');fv.forEach(p=>item('⭐',p.at(-1),at(p),()=>go(pn,p),e=>dropTo(p,e.ctrlKey)))}}
   sec('This computer');item('💽','Rudolf OS (C:)',at(['C:']),()=>go(pn,['C:']),e=>dropTo(['C:'],e.ctrlKey));item('📦','Programs',at(['C:','PROGRAMS']),()=>go(pn,['C:','PROGRAMS']));item('🗑️','Trash',false,()=>trash(),e=>{const it=FC.drag||[];FC.drag=null;if(it.length){trashPut(it);EXPL.forEach(f=>f())}});
-  if(RD){sec('Drives');const box=document.createElement('div');side.appendChild(box);item('🎮','Games (Emu library)',pn.remote&&pn.remote.dev=='games',()=>openRemote(pn,{dev:'games',root:'/home/rudolf/Games',path:'/home/rudolf/Games',label:'Games'}));rd('disks').then(r=>{r.disks.forEach(dk=>{if(dk.partitions.some(x=>x.label=='RUDOLFDATA'||x.fs=='iso9660'))return;dk.partitions.filter(x=>x.fs&&x.fs!='swap').forEach(pt=>{const lab=(pt.label||pt.name)+' ('+fmtB(pt.bytes)+')';const d=item(dk.removable?'🔌':'💽',lab,pn.remote&&pn.remote.dev==pt.name,async()=>{try{if(!pt.mount){await rdPost('mount?dev='+pt.name);pt.mount='/media/'+pt.name}openRemote(pn,{dev:pt.name,root:pt.mount,path:pt.mount,label:lab})}catch(e){say(e.message,true)}});box.appendChild(d)})})}).catch(()=>{})}
+  if(RD){sec('Drives');const box=document.createElement('div');side.appendChild(box);item('🎮','Games (Emu library)',pn.remote&&pn.remote.dev=='games',()=>openRemote(pn,{dev:'games',root:'/home/rudolf/Games',path:'/home/rudolf/Games',label:'Games'}));rd('disks').then(r=>{r.disks.forEach(dk=>{if(dk.partitions.some(x=>x.label=='RUDOLFDATA'||x.fs=='iso9660'))return;dk.partitions.filter(x=>x.fs&&x.fs!='swap').forEach(pt=>{const lab=(pt.label||pt.name)+' ('+fmtB(pt.bytes)+')';const d=item(dk.removable?'🔌':'💽',lab,pn.remote&&pn.remote.dev==pt.name,async()=>{try{if(!pt.mount){await rdPost('mount?dev='+pt.name);pt.mount='/media/'+pt.name}openRemote(pn,{dev:pt.name,root:pt.mount,path:pt.mount,label:lab})}catch(e){say(e.message,true)}});if(dk.model)d.title=dk.model;
+     if(dk.removable&&pt.mount){const ej=document.createElement('button');ej.className='xej';ej.textContent='⏏';ej.title='Eject '+(pt.label||pt.name)+' (safe to remove)';ej.setAttribute('aria-label',ej.title);ej.style.cssText='margin-left:auto;border:0;background:none;cursor:pointer;padding:0 4px';ej.onclick=async e=>{e.stopPropagation();try{await rdPost('eject?dev='+dk.name);say((pt.label||pt.name)+' can be removed now.')}catch(er){say(er.message,true)}};d.style.display='flex';d.appendChild(ej)}
+     box.appendChild(d)})})}).catch(()=>{})}
   if(window.showDirectoryPicker){sec('Folders on this device');item('📂','Import a folder…',false,()=>hostImport());item('💾','Export selection to a folder…',false,()=>hostExport())}}
  /* ---- panes ---- */
  function names(pn){const d=dirOfP(pn)||{};let k=Object.keys(d);if(pn.filt&&!pn.deep)k=k.filter(n=>n.toLowerCase().includes(pn.filt.toLowerCase()));const key=n=>pn.sk=='name'?n.toLowerCase():pn.sk=='type'?fType(n,d[n]):pn.sk=='date'?((fileMeta([...pn.path,n])||{}).m||0):sizeOf(d[n]);
@@ -223,6 +225,8 @@ function wire(pn,el,r){const k=pkey(r.p);
  ad.onkeydown=e=>{if(e.key=='Enter'){const p=resolve(ad.value.trim()||'C:\\',['C:']);if(!go(P(),p))ad.value=P().path.join('\\')}};
  let srT=0;q('.sr').oninput=e=>{clearTimeout(srT);srT=setTimeout(()=>{P().filt=e.target.value;draw();q('.sr').focus()},200)};q('.deep').onchange=e=>{P().deep=e.target.checked;draw()};
  W.el.addEventListener('keydown',e=>{if(e.target.closest('.xc'))return;if((e.ctrlKey||e.metaKey)&&['t','w'].includes(e.key.toLowerCase())){e.preventDefault();keys(e,P())}});
- EXPL.add(draw);W.refresh=draw;W.onclose=()=>{EXPL.delete(draw)};
+ EXPL.add(draw);W.refresh=draw;const onDrive=e=>{const v=e.detail||{};if(v.a!='add')tabs.forEach(t=>t.panes.forEach(pn=>{if(pn.remote&&pn.remote.dev==v.dev){pn.remote=null;pn.path=USER?homePath():['C:']}}));draw()};
+ addEventListener('rudolf-drive',onDrive);
+ W.onclose=()=>{EXPL.delete(draw);removeEventListener('rudolf-drive',onDrive)};
  W.openPath=p=>{go(P(),p)};
  draw();setTimeout(()=>{const c=panesEl.querySelector('.xc');c&&c.focus()},30);return W}

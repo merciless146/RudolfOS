@@ -1,5 +1,5 @@
 import base64,json,os,sys
-B='base_v24.html';O='/mnt/user-data/outputs/blockdos.html'
+B='base_v24.html';O=sys.argv[1] if len(sys.argv)>1 else '/mnt/user-data/outputs/blockdos.html'   # e.g. python3 build19.py ../iso/www/index.html
 s=open(B).read()
 def rep(a,b,n=1):
     global s
@@ -9,9 +9,10 @@ L=lambda f:open(os.path.join(here,f)).read()
 pinyin=open(os.path.join(here,'../libs/pinyin.min.json')).read()
 od=base64.b64encode(open(os.path.join(here,'../libs/od/compiled/OpenDyslexic-Regular.woff2'),'rb').read()).decode()
 odb=base64.b64encode(open(os.path.join(here,'../libs/od/compiled/OpenDyslexic-Bold.woff2'),'rb').read()).decode()
-mods=['core25.js','shell25.js','files25.js','apps25a.js','apps25b.js','a11y25.js','settings25.js','notey25.js','wp25.js','misc25.js','native25.js','props25.js','oext25.js','pkg25.js','sysupd25.js','tts25.js','print25.js','mail25.js','web25.js','linux26.js','wifi26.js','term26.js','emusnes26.js','emu26.js','blk2lua26.js','blitzpacks26.js','blitzen26.js','picker26.js']
+mods=['core25.js','shell25.js','files25.js','apps25a.js','apps25b.js','a11y25.js','settings25.js','notey25.js','wp25.js','misc25.js','native25.js','props25.js','oext25.js','pkg25.js','sysupd25.js','tts25.js','print25.js','mail25.js','web25.js','linux26.js','wifi26.js','term26.js','emusnes26.js','emu26.js','blk2lua26.js','blitzpacks26.js','blitzen26.js','picker26.js','devices26.js']
 if os.path.exists(os.path.join(here,'i18n25.js')):mods.append('i18n25.js')
-code='const PINYIN_JSON='+json.dumps(pinyin)+';\n'+'\n'.join(L(m) for m in mods)
+changes=open(os.path.join(here,'../CHANGELOG.md')).read()   # "What's new" and the notice after an update
+code='const PINYIN_JSON='+json.dumps(pinyin)+';\nconst RCHANGES='+json.dumps(changes).replace('</','<\\/')+';\n'+'\n'.join(L(m) for m in mods)
 anchor="(function(){const d=document.createElement('div');d.className='ic tr';"
 rep(anchor,code+'\n'+anchor)
 css=L('styles25.css')+"\n@font-face{font-family:'OpenDyslexic';src:url(data:font/woff2;base64,"+od+") format('woff2');font-weight:400}@font-face{font-family:'OpenDyslexic';src:url(data:font/woff2;base64,"+odb+") format('woff2');font-weight:700}\n"
