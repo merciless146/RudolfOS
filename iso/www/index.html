@@ -6883,14 +6883,14 @@ function liveSet(c,k,v){S[k]=v;try{a11yApply()}catch(e){}c.dispatchEvent(new Eve
  <label>Icon colours</label><div>${ckH('did','Match icons to the wallpaper',!!S.icdyn)}<div class='msg' id='didm'>Icons take the colour opposite the wallpaper’s main colour on the colour wheel, light on dark wallpapers and dark on light ones, and follow the dynamic wallpaper from day to night.</div></div>
  <label>Taskbar</label><div>${ckH('dtg','Group windows of the same app',S.tbgroup!==false)}</div></div>
  <h4 class='sh4'>Night light</h4><div class='r2'><label>Night light</label><div>${ckH('dnl','Warmer colours to reduce eye strain',!!S.nl)}<br>${ckH('dns','Only from 8 PM to 7 AM',!!S.nlsched)}</div><label for='dnv'>Strength</label><input type='range' id='dnv' min='10' max='100' value='${S.nlv||40}'></div>
- <h4 class='sh4'>Screen</h4><div class='r2'><label for='dsc'>Display scaling</label><select id='dsc'>${[75,90,100,110,125,150,175,200].map(v=>optH(v,v+'%'+(v==100?' (default)':''),S.scale||100)).join('')}</select><label for='drt'>Rotation</label><select id='drt'>${optH(0,'Normal',S.rot||0)}${optH(90,'90° (portrait)',S.rot)}${optH(180,'180°',S.rot)}${optH(270,'270° (portrait, flipped)',S.rot)}</select><label>Resolution</label><div class='msg' id='dres'></div></div>`);
+ <h4 class='sh4'>Screen</h4><div class='r2'><label for='dsc'>Display scaling</label><select id='dsc'>${[75,90,100,110,125,150,175,200].map(v=>optH(v,v+'%'+(v==100?' (default)':''),S.scale||100)).join('')}</select><label for='drt'>Rotation</label><select id='drt'>${optH(0,'Normal',S.rot||0)}${optH(90,'90° (portrait)',S.rot)}${optH(180,'180°',S.rot)}${optH(270,'270° (portrait, flipped)',S.rot)}</select><label for='dres'>Resolution</label><div id='dresbox'></div><label for='dfps'>Frame rate</label><div id='dfpsbox'></div></div>`);
  const q=s=>d.querySelector(s);const set=(k,v)=>liveSet(c,k,v);
  q('#dac').oninput=e=>set('accent',e.target.value);d.querySelectorAll('.swb').forEach(b=>b.onclick=()=>{q('#dac').value=b.dataset.c;set('accent',b.dataset.c)});
  q('#ddk').onchange=e=>set('darkui',e.target.checked);q('#dic').onchange=e=>set('icons',e.target.value);const prev=()=>{const pv=q('.icprev');if(!pv)return;pv.style.background=document.documentElement.style.background||getComputedStyle(document.documentElement).background;pv.innerHTML=['folder','globe','word','music','gear','paint','calc','trash'].map(k=>`<img src='${icSvg(k)}' alt=''>`).join('');const m=q('#didm');if(m&&S.icdyn&&ICDYN)m.innerHTML=`Wallpaper colour <span class='icsw' style='background:${ICDYN.primary}'></span> → icons <span class='icsw' style='background:${icHsl2hex(ICDYN.h+180,70,ICDYN.dark?66:42)}'></span> (${ICDYN.dark?'dark':'light'} wallpaper).`};
  q('#dis').onchange=e=>{set('icstyle',e.target.value);icRefresh();setTimeout(prev,200)};q('#did').onchange=e=>{set('icdyn',e.target.checked);icRefresh();setTimeout(prev,300)};prev();if(S.icdyn&&!ICDYN)setTimeout(prev,400);q('#dtg').onchange=e=>{set('tbgroup',e.target.checked);tbRefresh()};
  q('#dnl').onchange=e=>set('nl',e.target.checked);q('#dns').onchange=e=>set('nlsched',e.target.checked);q('#dnv').oninput=e=>set('nlv',+e.target.value);
  q('#dsc').onchange=e=>set('scale',+e.target.value);q('#drt').onchange=e=>set('rot',+e.target.value);
- q('#dres').textContent=`${screen.width}×${screen.height} at ${devicePixelRatio*100}% · ${RD?'chosen at start-up (BIOS: “Screen resolution” in the boot menu; UEFI: set by the firmware)':'set by your device'}`}})();
+ screenUi(q('#dresbox'),q('#dfpsbox'))}})();
 /* ---------- Accessibility additions ---------- */
 (function(){const o=accPanelS;accPanelS=function(c,W){o(c,W);const d=sp(c,`<h4 class='sh4'>Vision</h4><div class='r2'>
  <label>Screen reader</label><div>${ckH('asr','Read the focused item, windows and notifications aloud (Ctrl+Alt+Z)',S.sr)}<div class='msg'>Tab and the arrow keys move; F6 jumps between the taskbar, desktop and the active window; Ctrl stops speech.</div></div>
@@ -9561,6 +9561,78 @@ function signinPanel(c) {
   draw();
 }
 if (RD) setTimeout(siPush, 2500);
+
+/* ===== V26 screen resolution and frame rate (Settings › Display, Rudolf OS 1.1.2) =====
+   rudolfd's screen API (/usr/lib/rudolf/screenctl). A new setting restarts the display (a few seconds, the
+   desktop page reloads); afterwards the desktop asks "Keep this?" and goes back by itself after 15 seconds, and
+   screenctl does the same after 90 seconds if the screen shows nothing at all.
+   - software display: the desktop is drawn at the chosen size and rudolf-display scales it to the screen,
+     keeping its shape (black bars); the screen itself refreshes about 60 times a second (firmware mode)
+   - Xorg: the monitor's own mode of that size and refresh rate, or the nearest one scaled with black bars ===== */
+const SCR_RES = ['1920x1080', '1366x768', '1280x720', '1024x576'];
+const SCR_FPS = [120, 90, 60, 30];
+const scrX = r => String(r).replace('x', '×');
+/* the refresh rates the monitor offers at a size (Xorg), or null when not known */
+function scrRates(st, res) {
+  if (!st || st.display != 'gpu' || !st.modes || !st.modes.modes) return null;
+  const [w, h] = (res == 'auto' ? st.modes.native : res).split('x').map(Number);
+  const m = st.modes.modes.find(m => m.w == w && m.h == h) || st.modes.modes.find(m => st.modes.native == m.w + 'x' + m.h);
+  return m ? m.hz : null;
+}
+/* is a frame rate available at a resolution, and if not, why */
+function scrFpsWhy(st, res, f) {
+  if (!st) return '';
+  if (st.display != 'gpu') return f > 60 ? 'this screen is driven by the firmware, which refreshes it about 60 times a second; the graphics-card display (Settings › Display › Graphics) can go faster' : '';
+  const hz = scrRates(st, res);
+  if (!hz || f == 60) return '';
+  return hz.some(x => Math.abs(x - f) <= 2) ? '' : 'the monitor does not offer ' + f + ' Hz at this resolution';
+}
+function screenUi(resBox, fpsBox) {
+  if (!RD) { resBox.innerHTML = `<div class='msg'>${screen.width}×${screen.height} at ${devicePixelRatio * 100}% · set by your device</div>`; fpsBox.innerHTML = `<div class='msg'>Set by your device.</div>`; return }
+  resBox.innerHTML = `<div class='msg'>Loading…</div>`; fpsBox.innerHTML = '';
+  rd('screen').then(st => {
+    const panel = st.display == 'gpu' && st.modes ? st.modes.native : st.actual.panel || (st.actual.w + 'x' + st.actual.h);
+    const native = (r) => st.display == 'gpu' && st.modes ? st.modes.modes.some(m => m.w + 'x' + m.h == r) : r == panel;
+    resBox.innerHTML = `<select id='dres' aria-describedby='dresm'>${optH('auto', `Automatic (${scrX(panel)}, the screen’s own)`, st.res)}${SCR_RES.map(r => optH(r, scrX(r) + (native(r) ? '' : ' (scaled)'), st.res)).join('')}</select>
+      <div class='msg' id='dresm'></div>`;
+    fpsBox.innerHTML = `<select id='dfps' aria-describedby='dfpsm'></select><div class='msg' id='dfpsm'></div>
+      <div class='rmrow' style='justify-content:flex-start;margin-top:6px'><button class='dsap pri' disabled>Apply</button><span class='msg dsmsg'></span></div>`;
+    const R = resBox.querySelector('#dres'), F = fpsBox.querySelector('#dfps'), A = fpsBox.querySelector('.dsap');
+    const a = st.actual, now = a.w ? `Now ${scrX(a.w + 'x' + a.h)}${a.hz ? ' at ' + Math.round(a.hz) + (st.display == 'gpu' ? ' Hz' : ' frames a second') : ''}${a.kind == 'scaled' ? `, scaled to the ${scrX(a.panel)} screen with black bars where the shapes differ` : ''}.` : '';
+    resBox.querySelector('#dresm').textContent = now + (st.persistent ? '' : ' Not installed: the setting lasts until Rudolf OS restarts.');
+    const fill = () => {
+      const keep = F.value || String(st.fps);
+      F.innerHTML = SCR_FPS.map(f => { const why = scrFpsWhy(st, R.value, f); return `<option value='${f}'${why ? ' disabled' : ''} title='${why}'>${f} fps${why ? ' (not available)' : f == 60 ? ' (default)' : f == 30 ? ' (saves power)' : ''}</option>` }).join('');
+      F.value = [...F.options].some(o => o.value == keep && !o.disabled) ? keep : '60';
+      const off = SCR_FPS.filter(f => scrFpsWhy(st, R.value, f));
+      fpsBox.querySelector('#dfpsm').textContent = off.length ? off.join(' and ') + ' fps: ' + scrFpsWhy(st, R.value, off[0]) + '.' : '';
+      A.disabled = R.value == st.res && F.value == String(st.fps);
+    };
+    R.onchange = fill; F.onchange = fill; fill();
+    A.onclick = () => sdlg({body: resBox.closest('.win') || document.body}, 'Change the display?', `The screen goes dark for a few seconds while the display starts again with ${R.value == 'auto' ? 'the screen’s own resolution' : scrX(R.value)} at ${F.value} fps. Your files are saved; open Linux apps and the browser window for sign-in sites are closed. If the picture does not come back, wait: the previous setting returns by itself.`,
+      [['Cancel'], ['Change', async () => {
+        try { if (typeof fsFlush == 'function') fsFlush() } catch (e) {}
+        try { await rdPost(`screen?res=${R.value}&fps=${F.value}`); fpsBox.querySelector('.dsmsg').textContent = 'Starting the display again…' }
+        catch (e) { fpsBox.querySelector('.dsmsg').textContent = e.message }
+      }, 1]]);
+  }).catch(e => { resBox.innerHTML = `<div class='msg'>${e.message}</div>` });
+}
+/* after a change: keep it, or go back after 15 seconds */
+async function screenPending() {
+  let st; try { st = await rd('screen') } catch (e) { return }
+  if (!st.pending || document.getElementById('scrkeep')) return;
+  const o = document.createElement('div'); o.id = 'scrkeep'; o.className = 'rmodal'; o.style.zIndex = 2147483000;
+  o.innerHTML = `<div class='rmbox' role='alertdialog' aria-modal='true' aria-labelledby='scrkh'><h3 id='scrkh' style='margin-top:0'>Keep this display setting?</h3>
+    <p>${scrX(st.actual.w + 'x' + st.actual.h)}${st.actual.hz ? ' at ' + Math.round(st.actual.hz) + (st.display == 'gpu' ? ' Hz' : ' fps') : ''}. The previous setting comes back in <b class='scrn'>15</b> seconds.</p>
+    <div class='rmrow'><button class='scrb'>Go back</button><button class='scrk pri'>Keep</button></div></div>`;
+  document.body.appendChild(o); o.querySelector('.scrk').focus();
+  let n = 15; const iv = setInterval(() => { n--; o.querySelector('.scrn').textContent = n; if (n <= 0) back() }, 1000);
+  const done = () => { clearInterval(iv); o.remove() };
+  const back = () => { done(); rdPost('screen/revert').catch(() => {}) };
+  o.querySelector('.scrb').onclick = back;
+  o.querySelector('.scrk').onclick = () => { done(); rdPost('screen/keep').then(() => notify('Display', 'The new setting is kept.', {toast: 3000})).catch(() => {}) };
+}
+if (RD) setTimeout(screenPending, 2500);
 
 (function(){const d=document.createElement('div');d.className='ic tr';d.innerHTML='<b>🗑️</b><span>Trash</span>';let t=0;
  d.onclick=()=>{document.querySelectorAll('.ic').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');if((Date.now()-t<(window.__mouse?dblMs():450)||window.__mouse&&S.msingle))trash();t=Date.now()};

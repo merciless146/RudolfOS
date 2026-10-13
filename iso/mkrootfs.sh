@@ -95,7 +95,7 @@ cp -L /usr/sbin/mke2fs usr/sbin/ && copy_deps /usr/sbin/mke2fs
 cp -a /etc/mke2fs.conf etc/ 2>/dev/null || true
 
 # ---------- Rudolf OS system programs and scripts
-gcc -O2 -o usr/bin/rudolf-display "$SYS/rudolf-display.c" -lX11 /usr/lib/x86_64-linux-gnu/libXtst.so.6 /usr/lib/x86_64-linux-gnu/libXfixes.so.3
+gcc -O2 -o usr/bin/rudolf-display "$SYS/rudolf-display.c" -lX11 /usr/lib/x86_64-linux-gnu/libXtst.so.6 /usr/lib/x86_64-linux-gnu/libXfixes.so.3 /usr/lib/x86_64-linux-gnu/libXrandr.so.2 -lm
 gcc -O2 -o usr/bin/rudolfd "$SYS/rudolfd.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
 gcc -O2 -o usr/bin/rpk "$SYS/rpk.c" -lcrypto
 gcc -O2 -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl

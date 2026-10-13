@@ -14,6 +14,13 @@
  *                                  feed input and manage windows; Xorg draws screen and cursor
  *   rudolf-display --xsize         print "WIDTH HEIGHT" of the X screen
  *   rudolf-display --shot          write the X screen to stdout as a PPM image
+ *   rudolf-display --modes         JSON: the screen modes and refresh rates of the monitor (Xorg)
+ *   rudolf-display --mode WxH|auto HZ   set the monitor's mode (Xorg); when the monitor has no WxH mode, the
+ *                                  desktop keeps that size and is scaled to the monitor with black bars
+ *
+ * The software display scales too: when Xvfb was started at another size than the framebuffer (Settings >
+ * Display > Resolution), the picture is scaled smoothly and keeps its shape (black bars fill the rest).
+ * RUDOLF_FPS (30 or 60) sets how often the screen is updated.
  *
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
@@ -29,6 +36,7 @@
 #include <dirent.h>
 #include <signal.h>
 #include <time.h>
+#include <math.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -37,6 +45,7 @@
 #include <linux/kd.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include "rrcompat.h"
 
 /* XTest / XFixes prototypes (headers are not needed at run time) */
 extern int XTestFakeKeyEvent(Display *, unsigned int, Bool, unsigned long);
@@ -75,6 +84,18 @@ static uint32_t *cimg; static int cw, ch, chx, chy;
 static int curx = -1, cury = -1, drawn_x, drawn_y, drawn_w, drawn_h, cursor_drawn;
 static double accel = 1.0, speed = 1.0;
 
+/* scaling (software display): the X picture is shown in the rectangle sx0,sy0 sdw x sdh of the framebuffer,
+   keeping its shape; the rest stays black. outb holds the scaled picture (framebuffer-sized). */
+static int scaled, sx0, sy0, sdw, sdh;
+static int *col_x, *row_y; static uint16_t *col_f, *row_f;
+static uint32_t *outb; static uint8_t *srow_dirty;
+/* where the X screen is on the physical panel, for touchscreens: the panel is pw x ph and shows the X screen
+   in mx0,my0 mw x mh (software display: as above; Xorg: /run/rudolf/screen-map, written by --mode) */
+static int pw, ph, mx0, my0, mw, mh;
+static int frame_ms = 16;
+/* the part of the X screen the desktop uses (Xorg, when the monitor has no mode of the chosen size) */
+static int area_x, area_y, area_w, area_h;
+
 static uint32_t be32(const uint8_t *p) { return (uint32_t)p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3]; }
 
 static void fb_open(void)
@@ -109,13 +130,19 @@ static void fb_row(int y, int x0, int x1, const uint32_t *src)
 	for (int x = x0; x < x1; x++) put_px(row, x, src[x]);
 }
 
+/* what is on the screen without the cursor, in framebuffer coordinates */
+static inline int bg_w(void) { return scaled ? fbw : xw < fbw ? xw : fbw; }
+static inline int bg_h(void) { return scaled ? fbh : xh < fbh ? xh : fbh; }
+static inline const uint32_t *bg_row(int y) { return scaled ? outb + (size_t)y * fbw : (const uint32_t *)(shadow + (size_t)y * xw * 4); }
+
 static void restore_cursor_area(void)
 {
 	if (!cursor_drawn) return;
+	int W = bg_w(), H = bg_h();
 	for (int y = drawn_y; y < drawn_y + drawn_h; y++) {
-		if (y < 0 || y >= xh) continue;
-		int x0 = drawn_x < 0 ? 0 : drawn_x, x1 = drawn_x + drawn_w > xw ? xw : drawn_x + drawn_w;
-		if (x0 < x1) fb_row(y, x0, x1, (uint32_t *)(shadow + (size_t)y * xw * 4));
+		if (y < 0 || y >= H) continue;
+		int x0 = drawn_x < 0 ? 0 : drawn_x, x1 = drawn_x + drawn_w > W ? W : drawn_x + drawn_w;
+		if (x0 < x1) fb_row(y, x0, x1, bg_row(y));
 	}
 	cursor_drawn = 0;
 }
@@ -123,15 +150,17 @@ static void restore_cursor_area(void)
 static void draw_cursor(void)
 {
 	if (!cimg || curx < 0) return;
-	int ox = curx - chx, oy = cury - chy;
+	/* the pointer's place on the framebuffer; the cursor image itself is not scaled, so it stays sharp */
+	int px = scaled ? sx0 + (int)((long)curx * sdw / xw) : curx, py = scaled ? sy0 + (int)((long)cury * sdh / xh) : cury;
+	int ox = px - chx, oy = py - chy, W = bg_w(), H = bg_h();
 	for (int j = 0; j < ch; j++) {
 		int y = oy + j;
-		if (y < 0 || y >= xh || y >= fbh) continue;
-		uint32_t *srow = (uint32_t *)(shadow + (size_t)y * xw * 4);
+		if (y < 0 || y >= H) continue;
+		const uint32_t *srow = bg_row(y);
 		uint8_t *frow = fbmem + (size_t)y * fbstride;
 		for (int i = 0; i < cw; i++) {
 			int x = ox + i;
-			if (x < 0 || x >= xw || x >= fbw) continue;
+			if (x < 0 || x >= W) continue;
 			uint32_t p = cimg[j * cw + i], a = p >> 24;
 			if (!a) continue;
 			uint32_t b = srow[x];
@@ -156,9 +185,77 @@ static void fetch_cursor(void)
 	XFree(ci);
 }
 
+/* the scaling tables: for each framebuffer column and row inside the picture, the X pixel to its left/above and
+   the weight (0..256) of the next one */
+static void scale_axis(int n, int src, int *pos, uint16_t *w)
+{
+	for (int i = 0; i < n; i++) {
+		double f = (i + 0.5) * src / n - 0.5; if (f < 0) f = 0;
+		int p = (int)f; if (p > src - 2) { p = src - 2; f = src - 1; }
+		pos[i] = p; w[i] = (uint16_t)((f - p) * 256 + 0.5);
+	}
+}
+static void scale_setup(void)
+{
+	scaled = (xw != fbw || xh != fbh) && xw >= 2 && xh >= 2;
+	pw = xw; ph = xh; mx0 = my0 = 0; mw = xw; mh = xh;
+	if (!scaled) return;
+	if ((long)fbw * xh <= (long)fbh * xw) { sdw = fbw; sdh = (int)((long)fbw * xh / xw); } else { sdh = fbh; sdw = (int)((long)fbh * xw / xh); }
+	sx0 = (fbw - sdw) / 2; sy0 = (fbh - sdh) / 2;
+	pw = fbw; ph = fbh; mx0 = sx0; my0 = sy0; mw = sdw; mh = sdh;
+	col_x = malloc(sizeof(int) * sdw); col_f = malloc(2 * sdw); row_y = malloc(sizeof(int) * sdh); row_f = malloc(2 * sdh);
+	scale_axis(sdw, xw, col_x, col_f); scale_axis(sdh, xh, row_y, row_f);
+	outb = calloc((size_t)fbw * fbh, 4); srow_dirty = calloc(xh, 1);
+	for (int y = 0; y < fbh; y++) fb_row(y, 0, fbw, outb + (size_t)y * fbw);   /* black bars */
+	fprintf(stderr, "rudolf-display: %dx%d shown at %dx%d+%d+%d on the %dx%d screen\n", xw, xh, sdw, sdh, sx0, sy0, fbw, fbh);
+}
+/* blend two pixels: w = 0 (all a) .. 256 (all b) */
+static inline uint32_t mix(uint32_t a, uint32_t b, uint32_t w)
+{
+	uint32_t rb = ((a & 0xFF00FF) * (256 - w) + (b & 0xFF00FF) * w) >> 8 & 0xFF00FF;
+	uint32_t g = ((a & 0x00FF00) * (256 - w) + (b & 0x00FF00) * w) >> 8 & 0x00FF00;
+	return rb | g;
+}
+/* one framebuffer row of the scaled picture (bilinear) */
+static void scale_row(int j)
+{
+	int y0 = row_y[j]; uint32_t wy = row_f[j];
+	const uint32_t *a = (const uint32_t *)(shadow + (size_t)y0 * xw * 4), *b = (const uint32_t *)(shadow + (size_t)(y0 + 1) * xw * 4);
+	uint32_t *o = outb + (size_t)(sy0 + j) * fbw + sx0;
+	for (int i = 0; i < sdw; i++) {
+		int x = col_x[i]; uint32_t wx = col_f[i];
+		o[i] = mix(mix(a[x], a[x + 1], wx), mix(b[x], b[x + 1], wx), wy);
+	}
+}
+static int sync_scaled(void)
+{
+	int changed = 0, band = 8;
+	memset(srow_dirty, 0, xh);
+	for (int y0 = 0; y0 < xh; y0 += band) {
+		int y1 = y0 + band > xh ? xh : y0 + band, dirty = 0;
+		for (int y = y0; y < y1 && !dirty; y++) if (memcmp(xpix + (size_t)y * xstride, shadow + (size_t)y * xw * 4, (size_t)xw * 4)) dirty = 1;
+		if (!dirty) continue;
+		changed = 1;
+		for (int y = y0; y < y1; y++) { memcpy(shadow + (size_t)y * xw * 4, xpix + (size_t)y * xstride, (size_t)xw * 4); srow_dirty[y] = 1; }
+	}
+	if (!changed) return 0;
+	int hit_cursor = 0;
+	for (int j = 0; j < sdh; j++) {
+		int y = row_y[j];
+		if (!srow_dirty[y] && !srow_dirty[y + 1]) continue;
+		scale_row(j);
+		int fy = sy0 + j;
+		fb_row(fy, sx0, sx0 + sdw, outb + (size_t)fy * fbw);
+		if (cursor_drawn && fy >= drawn_y && fy < drawn_y + drawn_h) hit_cursor = 1;
+	}
+	if (hit_cursor) { cursor_drawn = 0; draw_cursor(); }
+	return 1;
+}
+
 /* copy changed 8-line bands from the X image to the framebuffer */
 static int sync_screen(void)
 {
+	if (scaled) return sync_scaled();
 	int changed = 0, band = 8;
 	int hh = xh < fbh ? xh : fbh, ww = xw < fbw ? xw : fbw;
 	for (int y0 = 0; y0 < hh; y0 += band) {
@@ -382,14 +479,35 @@ static void handle_event(struct dev *v, struct input_event *e)
 	} else if (e->type == EV_SYN && e->code == SYN_REPORT) {
 		if (v->touchscreen) {
 			int rx = v->absx_max - v->absx_min, ry = v->absy_max - v->absy_min;
-			if (rx > 0 && ry > 0) XTestFakeMotionEvent(dpy, -1, (long)(v->ax - v->absx_min) * xw / rx, (long)(v->ay - v->absy_min) * xh / ry, CurrentTime);
+			if (rx > 0 && ry > 0) {
+				/* the touch's place on the panel, then on the X screen (the panel may show it scaled, with bars) */
+				long px = (long)(v->ax - v->absx_min) * (pw > 0 ? pw : xw) / rx, py = (long)(v->ay - v->absy_min) * (ph > 0 ? ph : xh) / ry;
+				long X = mw > 0 ? (px - mx0) * xw / mw : px, Y = mh > 0 ? (py - my0) * xh / mh : py;
+				if (X < 0) X = 0; if (X >= xw) X = xw - 1; if (Y < 0) Y = 0; if (Y >= xh) Y = xh - 1;
+				XTestFakeMotionEvent(dpy, -1, (int)X, (int)Y, CurrentTime);
+			}
 		} else if (v->touchpad) touchpad_frame(v);
 		XFlush(dpy);
 	}
 }
 
+/* Xorg: where the X screen is on the panel (screen-map) and the part the desktop uses (screen-area) */
+static void read_map(void)
+{
+	FILE *f = fopen("/run/rudolf/screen-map", "r");
+	int a[6];
+	if (f && fscanf(f, "%d %d %d %d %d %d", &a[0], &a[1], &a[2], &a[3], &a[4], &a[5]) == 6 && a[0] > 0 && a[1] > 0 && a[4] > 0 && a[5] > 0) { pw = a[0]; ph = a[1]; mx0 = a[2]; my0 = a[3]; mw = a[4]; mh = a[5]; }
+	else if (!scaled) { pw = xw; ph = xh; mx0 = my0 = 0; mw = xw; mh = xh; }
+	if (f) fclose(f);
+	f = fopen("/run/rudolf/screen-area", "r");
+	if (!f || fscanf(f, "%d %d %d %d", &a[0], &a[1], &a[2], &a[3]) != 4 || a[2] <= 0 || a[3] <= 0) a[0] = a[1] = a[2] = a[3] = 0;
+	area_x = a[0]; area_y = a[1]; area_w = a[2]; area_h = a[3];
+	if (f) fclose(f);
+}
+
 static void read_settings(void)
 {
+	read_map();
 	FILE *f = fopen("/run/rudolf/pointer", "r");
 	if (!f) return;
 	double s = 1, a = 1; int tap = 1, nat = 0, typ = 1;
@@ -499,7 +617,9 @@ static void fit_windows(void)
 {
 	Window root = DefaultRootWindow(dpy), r, p, *kids = NULL, desktop = 0, chromium = 0, tr;
 	unsigned n = 0;
-	int sw = DisplayWidth(dpy, DefaultScreen(dpy)), sh = DisplayHeight(dpy, DefaultScreen(dpy));
+	int sw = DisplayWidth(dpy, DefaultScreen(dpy)), sh = DisplayHeight(dpy, DefaultScreen(dpy)), ax = 0, ay = 0;
+	/* Xorg on a monitor without a mode of the chosen size: the desktop and its windows use that part of the screen */
+	if (area_w > 0 && area_h > 0 && area_x + area_w <= sw && area_y + area_h <= sh) { ax = area_x; ay = area_y; sw = area_w; sh = area_h; }
 	wm_read(); wm_commands();
 	if (!XQueryTree(dpy, root, &r, &p, &kids, &n)) return;
 	Window apps[MAXWIN]; int napps = 0, fresh = -1;
@@ -516,23 +636,23 @@ static void fit_windows(void)
 		XWindowAttributes wa;
 		if (!XGetWindowAttributes(dpy, kids[i], &wa) || wa.override_redirect || wa.map_state != IsViewable) continue;
 		if (kids[i] == desktop) {
-			if (wa.x || wa.y || wa.width != sw || wa.height != sh) XMoveResizeWindow(dpy, kids[i], 0, 0, sw, sh);
+			if (wa.x != ax || wa.y != ay || wa.width != sw || wa.height != sh) XMoveResizeWindow(dpy, kids[i], ax, ay, sw, sh);
 			continue;
 		}
 		if (XGetTransientForHint(dpy, kids[i], &tr) && tr) {
 			/* dialog: centre it */
-			int x = (sw - wa.width) / 2, y = (sh - wa.height) / 2;
-			if (wa.width < sw && wa.height < sh && (abs(wa.x - x) > 1 || abs(wa.y - y) > 1)) XMoveWindow(dpy, kids[i], x < 0 ? 0 : x, y < 0 ? 0 : y);
+			int x = ax + (sw - wa.width) / 2, y = ay + (sh - wa.height) / 2;
+			if (wa.width < sw && wa.height < sh && (abs(wa.x - x) > 1 || abs(wa.y - y) > 1)) XMoveWindow(dpy, kids[i], x < ax ? ax : x, y < ay ? ay : y);
 			continue;
 		}
 		if (napps >= MAXWIN) continue;
 		apps[napps++] = kids[i];
 		int seen = 0; for (int k = 0; k < nknown; k++) if (known[k] == kids[i]) seen = 1;
 		if (!seen) fresh = napps - 1;
-		if (is_game(kids[i])) { if (wa.x || wa.y || wa.width != sw || wa.height != sh) XMoveResizeWindow(dpy, kids[i], 0, 0, sw, sh); }
+		if (is_game(kids[i])) { if (wa.x != ax || wa.y != ay || wa.width != sw || wa.height != sh) XMoveResizeWindow(dpy, kids[i], ax, ay, sw, sh); }
 		else {
-			int y = wm_strut_top, h = sh - wm_strut_top - wm_strut_bottom;
-			if (wa.x || wa.y != y || wa.width != sw || wa.height != h) XMoveResizeWindow(dpy, kids[i], 0, y, sw, h);
+			int y = ay + wm_strut_top, h = sh - wm_strut_top - wm_strut_bottom;
+			if (wa.x != ax || wa.y != y || wa.width != sw || wa.height != h) XMoveResizeWindow(dpy, kids[i], ax, y, sw, h);
 		}
 	}
 	memcpy(known, apps, napps * sizeof(Window)); nknown = napps;
@@ -627,6 +747,115 @@ static int shot(void)
 	return 0;
 }
 
+/* ------------------------------------------------------------ screen modes (Xorg, RandR) */
+static double mode_hz(const XRRModeInfo *m)
+{
+	double v = m->vTotal;
+	if (m->modeFlags & RR_DoubleScan) v *= 2;
+	if (m->modeFlags & RR_Interlace) v /= 2;
+	return m->hTotal && v > 0 ? (double)m->dotClock / (m->hTotal * v) : 0;
+}
+static const XRRModeInfo *mode_info(XRRScreenResources *r, RRMode id) { for (int i = 0; i < r->nmode; i++) if (r->modes[i].id == id) return &r->modes[i]; return NULL; }
+/* the monitor: the first connected output (one that is lit, if any) */
+static XRROutputInfo *rr_output(XRRScreenResources *r, RROutput *out)
+{
+	XRROutputInfo *best = NULL;
+	for (int i = 0; i < r->noutput; i++) {
+		XRROutputInfo *o = XRRGetOutputInfo(dpy, r, r->outputs[i]);
+		if (!o) continue;
+		if (o->connection == RR_Connected && o->nmode > 0 && (!best || (o->crtc && !best->crtc))) { if (best) XRRFreeOutputInfo(best); best = o; *out = r->outputs[i]; }
+		else XRRFreeOutputInfo(o);
+	}
+	return best;
+}
+/* the monitor's own (preferred) mode */
+static const XRRModeInfo *rr_native(XRRScreenResources *r, XRROutputInfo *o)
+{
+	const XRRModeInfo *n = NULL;
+	if (o->npreferred > 0) n = mode_info(r, o->modes[0]);
+	for (int i = 0; !n && i < o->nmode; i++) { const XRRModeInfo *m = mode_info(r, o->modes[i]); if (m && (!n || (long)m->width * m->height > (long)n->width * n->height)) n = m; }
+	return n;
+}
+static int rr_open(XRRScreenResources **r, XRROutputInfo **o, RROutput *out)
+{
+	int ev, er;
+	if (!(dpy = open_display())) return 2;
+	if (!XRRQueryExtension(dpy, &ev, &er)) { fprintf(stderr, "rudolf-display: no RandR\n"); return 2; }
+	*r = XRRGetScreenResourcesCurrent(dpy, DefaultRootWindow(dpy));
+	if (!*r || !(*o = rr_output(*r, out))) { fprintf(stderr, "rudolf-display: no monitor found\n"); return 2; }
+	return 0;
+}
+/* --modes: {"output":..,"native":"WxH","current":{"w":..,"h":..,"hz":..},"modes":[{"w":..,"h":..,"hz":[..]},..]} */
+static int list_modes(void)
+{
+	XRRScreenResources *r; XRROutputInfo *o; RROutput out;
+	if (rr_open(&r, &o, &out)) return 2;
+	const XRRModeInfo *n = rr_native(r, o), *cur = NULL;
+	if (o->crtc) { XRRCrtcInfo *c = XRRGetCrtcInfo(dpy, r, o->crtc); if (c) { cur = mode_info(r, c->mode); XRRFreeCrtcInfo(c); } }
+	printf("{\"ok\":true,\"output\":\"%.40s\",\"native\":\"%ux%u\"", o->name, n ? n->width : 0, n ? n->height : 0);
+	if (cur) printf(",\"current\":{\"w\":%u,\"h\":%u,\"hz\":%.2f}", cur->width, cur->height, mode_hz(cur));
+	printf(",\"modes\":[");
+	int first = 1;
+	for (int i = 0; i < o->nmode; i++) {
+		const XRRModeInfo *m = mode_info(r, o->modes[i]); if (!m) continue;
+		int dup = 0; for (int k = 0; k < i; k++) { const XRRModeInfo *p = mode_info(r, o->modes[k]); if (p && p->width == m->width && p->height == m->height) dup = 1; }
+		if (dup) continue;
+		printf("%s{\"w\":%u,\"h\":%u,\"hz\":[", first ? "" : ",", m->width, m->height); first = 0;
+		int f2 = 1;
+		for (int k = i; k < o->nmode; k++) { const XRRModeInfo *p = mode_info(r, o->modes[k]); if (p && p->width == m->width && p->height == m->height) { printf("%s%.2f", f2 ? "" : ",", mode_hz(p)); f2 = 0; } }
+		printf("]}");
+	}
+	printf("]}\n");
+	return 0;
+}
+static XFixed dbl_fixed(double d) { return (XFixed)(d * 65536.0 + (d < 0 ? -0.5 : 0.5)); }
+static void write_file(const char *path, const char *text) { FILE *f = fopen(path, "w"); if (f) { fputs(text, f); fclose(f); } }
+/* --mode WxH|auto HZ: the monitor's mode of that size with the nearest refresh rate; without one, the monitor's
+   own size, with the desktop scaled to it (RandR transform) and placed in the middle of a screen of the
+   monitor's shape (black bars). Writes /run/rudolf/screen-map, screen-area and screen-actual. */
+static int set_mode(const char *res, double hz)
+{
+	XRRScreenResources *r; XRROutputInfo *o; RROutput out;
+	if (rr_open(&r, &o, &out)) return 2;
+	const XRRModeInfo *n = rr_native(r, o), *pick = NULL;
+	if (!n) return 2;
+	unsigned W = 0, H = 0;
+	if (!res || sscanf(res, "%ux%u", &W, &H) != 2 || W < 320 || H < 200 || W > 8192 || H > 8192) { W = n->width; H = n->height; }
+	if (hz < 10 || hz > 500) hz = 60;
+	for (int i = 0; i < o->nmode; i++) {
+		const XRRModeInfo *m = mode_info(r, o->modes[i]);
+		if (m && m->width == W && m->height == H && !(m->modeFlags & RR_Interlace) && (!pick || fabs(mode_hz(m) - hz) < fabs(mode_hz(pick) - hz))) pick = m;
+	}
+	int scale = !pick;
+	unsigned SW = W, SH = H; double sc = 1; int ox = 0, oy = 0;
+	if (scale) {
+		/* the native size, at the refresh rate nearest to the one asked for */
+		for (int i = 0; i < o->nmode; i++) { const XRRModeInfo *m = mode_info(r, o->modes[i]); if (m && m->width == n->width && m->height == n->height && !(m->modeFlags & RR_Interlace) && (!pick || fabs(mode_hz(m) - hz) < fabs(mode_hz(pick) - hz))) pick = m; }
+		/* the X screen has the monitor's shape and contains the desktop's W x H in its middle */
+		sc = (double)W / n->width > (double)H / n->height ? (double)W / n->width : (double)H / n->height;
+		SW = (unsigned)(n->width * sc + 0.5); SH = (unsigned)(n->height * sc + 0.5);
+		if (SW < W) SW = W; if (SH < H) SH = H;
+		ox = (SW - W) / 2; oy = (SH - H) / 2;
+	}
+	RRCrtc crtc = o->crtc ? o->crtc : o->ncrtc ? o->crtcs[0] : 0;
+	if (!crtc) { fprintf(stderr, "rudolf-display: the monitor has no display controller\n"); return 2; }
+	XTransform t = {{{dbl_fixed(sc), 0, 0}, {0, dbl_fixed(sc), 0}, {0, 0, dbl_fixed(1)}}};
+	XGrabServer(dpy);
+	XRRSetCrtcConfig(dpy, r, crtc, CurrentTime, 0, 0, None, RR_Rotate_0, NULL, 0);
+	XRRSetCrtcTransform(dpy, crtc, &t, scale ? "bilinear" : "nearest", NULL, 0);
+	unsigned long mmw = o->mm_width ? o->mm_width : SW * 254 / 960, mmh = o->mm_height ? o->mm_height : SH * 254 / 960;
+	XRRSetScreenSize(dpy, DefaultRootWindow(dpy), SW, SH, (int)mmw, (int)mmh);
+	Status st = XRRSetCrtcConfig(dpy, r, crtc, CurrentTime, 0, 0, pick->id, RR_Rotate_0, &out, 1);
+	XUngrabServer(dpy); XSync(dpy, False);
+	char b[160];
+	/* touch: the panel (the mode's size) shows the whole X screen */
+	snprintf(b, sizeof b, "%u %u 0 0 %u %u\n", pick->width, pick->height, pick->width, pick->height); write_file("/run/rudolf/screen-map", b);
+	if (scale) { snprintf(b, sizeof b, "%d %d %u %u\n", ox, oy, W, H); write_file("/run/rudolf/screen-area", b); } else unlink("/run/rudolf/screen-area");
+	snprintf(b, sizeof b, "%u %u %.2f %s %ux%u\n", W, H, mode_hz(pick), scale ? "scaled" : "native", pick->width, pick->height); write_file("/run/rudolf/screen-actual", b);
+	printf("%s", b);
+	return st == 0 ? 0 : 1;
+}
+
 int main(int argc, char **argv)
 {
 	if (argc > 1 && !strcmp(argv[1], "--size")) { fb_open(); printf("%d %d\n", fbw, fbh); return 0; }
@@ -635,6 +864,9 @@ int main(int argc, char **argv)
 		printf("%d %d\n", DisplayWidth(dpy, DefaultScreen(dpy)), DisplayHeight(dpy, DefaultScreen(dpy))); return 0;
 	}
 	if (argc > 1 && !strcmp(argv[1], "--shot")) return shot();
+	if (argc > 1 && !strcmp(argv[1], "--modes")) return list_modes();
+	if (argc > 3 && !strcmp(argv[1], "--mode")) return set_mode(argv[2], atof(argv[3]));
+	{ const char *e = getenv("RUDOLF_FPS"); int f = e ? atoi(e) : 0; if (f >= 10 && f <= 240) frame_ms = 1000 / f; }
 	if (argc < 2) { fprintf(stderr, "usage: rudolf-display XWD-FILE | --input | --size | --xsize | --shot\n"); return 1; }
 	int input_only = !strcmp(argv[1], "--input");
 	int fev = 0, ferr;
@@ -657,6 +889,7 @@ int main(int argc, char **argv)
 		xpix = xmap + hsize + ncol * 12;
 		shadow = calloc((size_t)xw * xh, 4);
 		memset(shadow, 0xFF, (size_t)xw * xh * 4); /* force first full copy */
+		scale_setup();
 		if (!(dpy = open_display())) return 2;
 		if (XFixesQueryExtension(dpy, &fev, &ferr)) XFixesSelectCursorInput(dpy, DefaultRootWindow(dpy), 1);
 		fetch_cursor();
@@ -678,7 +911,7 @@ int main(int argc, char **argv)
 		for (int i = 0; i < ndev; i++) pf[i].fd = devs[i].fd, pf[i].events = POLLIN;
 		pf[ndev].fd = ConnectionNumber(dpy); pf[ndev].events = POLLIN;
 		int idle = t - last_change > 1000;
-		poll(pf, ndev + 1, input_only ? 250 : idle ? 30 : 15);
+		poll(pf, ndev + 1, input_only ? 250 : idle ? (frame_ms > 30 ? frame_ms : 30) : frame_ms);
 		for (int i = 0; i < ndev; i++) {
 			if (!(pf[i].revents & (POLLIN | POLLERR | POLLHUP))) continue;
 			struct input_event ev[64];
@@ -701,7 +934,10 @@ int main(int argc, char **argv)
 		if (XQueryPointer(dpy, DefaultRootWindow(dpy), &r, &c, &rx, &ry, &wx, &wy, &m) && (rx != curx || ry != cury)) {
 			restore_cursor_area(); curx = rx; cury = ry; draw_cursor(); last_change = t;
 		}
-		if (sync_screen()) last_change = t;
+		/* the screen is updated at most frame_ms apart (Settings > Display > Frame rate) */
+		static long long last_sync;
+		long long t2 = now_ms();
+		if (t2 - last_sync >= frame_ms - 1) { last_sync = t2; if (sync_screen()) last_change = t; }
 	}
 	if (ttyfd >= 0) { ioctl(ttyfd, KDSKBMODE, K_UNICODE); ioctl(ttyfd, KDSETMODE, KD_TEXT); }
 	return 0;

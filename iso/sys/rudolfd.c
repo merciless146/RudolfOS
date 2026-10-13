@@ -1599,6 +1599,22 @@ static void api(struct req *r)
 		free(want); free(cur); free(why); free(gpu);
 		reply_json(r->fd, &s); return;
 	}
+	if (!strncmp(p, "screen", 6)) {
+		/* Settings > Display: resolution and frame rate (/usr/lib/rudolf/screenctl) */
+		const char *a = p + 6; char cmd[200];
+		if (!*a && !post) { char *o = run_out("/usr/lib/rudolf/screenctl status 2>/dev/null"); if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "the screen settings could not be read"); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
+		if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+		if (!*a) {
+			const char *res = qparam(r->query, "res"), *fps = qparam(r->query, "fps");
+			if (!safe_word(res, 12) || !safe_word(fps, 4)) { reply_err(r->fd, 400, "resolution and frame rate?"); return; }
+			snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/screenctl set %s %s", res, fps);
+			if (run(cmd)) { reply_err(r->fd, 400, "that resolution or frame rate is not offered"); return; }
+			reply_ok(r->fd, "the display starts again with the new setting"); return;
+		}
+		if (!strcmp(a, "/keep")) { run("/usr/lib/rudolf/screenctl keep"); reply_ok(r->fd, "kept"); return; }
+		if (!strcmp(a, "/revert")) { run("/usr/lib/rudolf/screenctl revert"); reply_ok(r->fd, "the previous setting comes back"); return; }
+		reply_err(r->fd, 404, "unknown screen action"); return;
+	}
 	if (!strcmp(p, "wifi/status")) { api_wifi(r, "status"); return; }
 	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 	/* ---- actions ---- */
