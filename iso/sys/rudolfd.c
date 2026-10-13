@@ -515,7 +515,11 @@ static void api_disks(struct req *r)
 {
 	char *out = run_out("for d in /sys/block/*; do n=${d##*/}; case $n in loop*|ram*|zram*) continue;; esac; "
 		"s=$(cat $d/size); rm=$(cat $d/removable); m=$(cat $d/device/model 2>/dev/null | tr -s ' '); "
-		"echo \"D|$n|$s|$rm|$m\"; for p in $d/$n*; do [ -e \"$p/partition\" ] || continue; pn=${p##*/}; "
+		/* USB drives and SD cards count as removable (many USB sticks say they are not) */
+		"case $(readlink -f $d/device) in */usb*) rm=1;; */mmc*) [ \"$(cat $d/device/type 2>/dev/null)\" = SD ] && rm=1;; esac; "
+		"echo \"D|$n|$s|$rm|$m\"; np=1; for p in $d/$n*; do [ -e \"$p/partition\" ] && np=0; done; "
+		/* a disk without partitions whose whole disk holds a file system (many USB sticks and SD cards) is listed as its own partition */
+		"for p in $d/$n* $d; do if [ \"$p\" = \"$d\" ]; then [ $np = 1 ] && blkid /dev/$n >/dev/null 2>&1 || continue; else [ -e \"$p/partition\" ] || continue; fi; pn=${p##*/}; "
 		"ps=$(cat $p/size); mp=$(awk -v d=/dev/$pn '$1==d{print $2; exit}' /proc/mounts); "
 		"fs=$(blkid /dev/$pn 2>/dev/null | sed -n 's/.*TYPE=\"\\([^\"]*\\)\".*/\\1/p'); "
 		"lb=$(blkid /dev/$pn 2>/dev/null | sed -n 's/.* LABEL=\"\\([^\"]*\\)\".*/\\1/p'); echo \"P|$pn|$ps|$fs|$lb|$mp\"; done; done");
@@ -524,10 +528,11 @@ static void api_disks(struct req *r)
 	int fd = 1, fp = 1;
 	char *save, *line = strtok_r(out, "\n", &save);
 	while (line) {
+		/* split on "|" keeping empty fields (a partition without a label still has its mount point after it) */
 		char *f[6] = {0};
 		int k = 0;
-		char *sv2, *t = strtok_r(line, "|", &sv2);
-		while (t && k < 6) { f[k++] = t; t = strtok_r(NULL, "|", &sv2); }
+		char *t = line;
+		while (t && k < 6) { f[k++] = t; t = strchr(t, '|'); if (t) *t++ = 0; }
 		if (f[0] && !strcmp(f[0], "D") && k >= 4) {
 			if (!fd) sadd(&s, "]}");
 			sadd(&s, "%s{\"name\":", fd ? "" : ","); sjson(&s, f[1]);
