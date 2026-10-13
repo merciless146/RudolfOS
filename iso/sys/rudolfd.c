@@ -1615,6 +1615,7 @@ static void api(struct req *r)
 		if (!strcmp(a, "/revert")) { run("/usr/lib/rudolf/screenctl revert"); reply_ok(r->fd, "the previous setting comes back"); return; }
 		reply_err(r->fd, 404, "unknown screen action"); return;
 	}
+	if (!strcmp(p, "web/status")) { api_web(r, "status"); return; }   /* the taskbar asks whether the browser window is open */
 	if (!strcmp(p, "wifi/status")) { api_wifi(r, "status"); return; }
 	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 	/* ---- actions ---- */
