@@ -3,6 +3,18 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.1.2 (2026-10-13)
+Summary: signing in to websites works (Oracle moves sign-in pages to a real browser window); choose the screen resolution and frame rate; fixes for small screens and display scaling
+- Fixed: signing in to websites in Oracle did not last: the site accepted the password, then asked again. Oracle shows websites inside the desktop, where Chromium drops their sign-in cookies. Sites that need a sign-in now move to a real browser window (🌐 in the taskbar switches between it and the desktop).
+- New: Oracle notices when a page asks for a password and offers to open it in the browser window, or does it by itself when you send a sign-in or press "Sign in with Google / Microsoft / Apple…". Nothing you type is read.
+- New: Settings > Oracle sign-in: your sign-in sites, and whether Oracle asks first. Google, Microsoft, Yahoo, banks and payment sites always open in the browser window.
+- Security: sign-in sites, banks and payment sites keep their own protection against being shown inside other pages.
+- New: Flash content plays in the browser window too (Ruffle).
+- New: Settings > Display > Resolution: Automatic, 1920×1080, 1366×768, 1280×720 or 1024×576. On a screen of another shape the picture keeps its shape, with black bars, and is scaled smoothly; touchscreens still touch the right spot.
+- New: Settings > Display > Frame rate: 120, 90, 60 or 30 fps. 90 and 120 need a monitor that offers them and the graphics-card display; 30 saves power.
+- New: after changing the resolution or frame rate, "Keep this display setting?" — the previous setting comes back by itself after 15 seconds, or after 90 seconds if the screen shows nothing.
+- Fixed: with display scaling above 100%, the Start menu ran off the top of the screen, and windows, the Calculator and the file picker could be larger than small screens such as 1024×576.
+
 ## 1.1.1 (2026-10-13)
 Summary: choosing files no longer freezes some PCs; laptop touchpads work; plugged-in devices are recognised and USB drives open in File Explorer
 - Fixed: choosing a file (Files > Upload, Open a file, From computer, Import) froze the whole screen on some PCs, so the computer had to be switched off. Rudolf OS now uses its own file picker, which lists Downloads, Documents, Pictures and every drive.
