@@ -1,6 +1,6 @@
 /* ===== V25 core: rudolfd link, storage, accounts, encryption, lock screen, elevation, guest, parental controls, backup ===== */
 window.__v25=1;
-const RVER='1.1',RVERDATE='2026-10-11';
+const RVER='1.1.1',RVERDATE='2026-10-13';
 /* ---------- rudolfd (only present on the bootable build) ---------- */
 const RD=window.RUDOLFD||null;
 async function rd(path,opt){opt=opt||{};if(!RD)throw new Error('This needs the installed Rudolf OS (bootable disc or USB).');
@@ -9,7 +9,7 @@ async function rd(path,opt){opt=opt||{};if(!RD)throw new Error('This needs the i
  if(!r.ok)throw new Error('HTTP '+r.status);return r}
 const rdPost=(p,body)=>rd(p,{method:'POST',body});
 if(RD){const hb=()=>rdPost('heartbeat').catch(()=>{});hb();setInterval(hb,8000);
- setInterval(async()=>{try{const e=await rd('events');if(/power/.test(e.events||''))A.off&&A.off()}catch(x){}},2500)}
+ setInterval(async()=>{try{const e=await rd('events');if(/^power /m.test(e.events||''))A.off&&A.off();if(typeof devEvents=='function')devEvents(e.events)}catch(x){}},2500)}
 /* ---------- notifications used by every V25 module (the shell adds a centre on top) ---------- */
 function notify(title,body,opt){opt=opt||{};try{if(window.__notifCentre)return __notifCentre.add(title,body,opt)}catch(e){}
  const d=document.createElement('div');d.className='rtoast';d.textContent=title+(body?' — '+body:'');document.body.appendChild(d);setTimeout(()=>d.remove(),4000)}

@@ -20,6 +20,11 @@ twice is dropped and the previous system starts instead.
 Promote a tested beta release: Actions > Rudolf OS release > Run workflow, promote = its serial. That copies
 it to `gh-pages/stable/`, which is where computers look.
 
+A new version (iso/VERSION and a new section at the top of CHANGELOG.md): Run workflow with disc = the version
+(for example 1.1.1). After building the release it also publishes the disc image `disc-<version>`
+(systools/mkdisc.sh): the kernel and system layers of the newest beta release on top of the earlier disc
+(disc_from), whose packages, licences and sources are kept. The release notes come from CHANGELOG.md.
+
 ## One-time setup
 
 1. Put this source tree in a GitHub repository with the folder `iso/` at the top level, and copy

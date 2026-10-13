@@ -1,0 +1,195 @@
+#!/bin/sh
+# Rudolf OS: devices plugged in and out. GPL-2.0-or-later.
+#
+# mdev (the device manager) runs this for every USB device and every disk or SD card partition it sees
+# (/etc/mdev.conf). It works out what the device is, mounts USB drives and SD cards under /media/<name>, and
+# tells the desktop through /run/rudolf/events, one line per event:
+#   dev {"a":"add","t":"drive","dev":"sdb1","label":"STICK","bytes":16000000000,"fs":"vfat","path":"/media/sdb1","model":"SanDisk Ultra"}
+#   dev {"a":"add","t":"usb","kind":"Mouse","name":"Logitech USB Receiver","id":"046d:c52b","driver":1}
+# The desktop shows a notification and refreshes File Explorer. Internal disks are not mounted by themselves
+# (File Explorer mounts them when opened), so a Windows disk is never touched unless you ask.
+#
+#   devplug                  from mdev (ACTION, MDEV, SUBSYSTEM, DEVTYPE, DEVPATH in the environment)
+#   devplug list             JSON of the connected USB devices, drives and input devices (Settings > Devices)
+#   devplug mount DEV        mount a partition under /media/DEV (File Explorer)
+#   devplug eject DISK       unmount every partition of a disk and power it off, so it can be pulled out
+RUN=/run/rudolf
+mkdir -p $RUN/usb $RUN/drives /media 2>/dev/null
+
+clean() { tr -d '"\\\000-\037' | tr -s ' ' | sed 's/^ //; s/ $//' | cut -c1-80; }
+event() { echo "dev $1" >> $RUN/events; }
+rd() { [ -r "$1" ] && clean < "$1"; }
+
+# ---------------------------------------------------------------- drives
+disk_of() { case $1 in mmcblk*p[0-9]*|nvme*p[0-9]*) echo "${1%p[0-9]*}";; sd*) echo "$1" | sed 's/[0-9]*$//';; *) echo "$1";; esac; }
+
+# 1 when the disk is a USB drive, an SD card or otherwise removable (not the computer's own disk)
+removable() {
+	local d=/sys/block/$1
+	[ "$(cat $d/removable 2>/dev/null)" = 1 ] && return 0
+	case "$(readlink -f $d/device 2>/dev/null)" in
+	*/usb*) return 0;;
+	*/mmc*) [ "$(cat $d/device/type 2>/dev/null)" = SD ] && return 0;;   # SD cards, not a laptop's built-in eMMC
+	esac
+	return 1
+}
+
+# Rudolf OS's own disc, stick or data partition
+system_disk() {
+	local p n b
+	for p in /sys/block/$1/$1* /sys/block/$1; do
+		n=${p##*/}; [ -e /dev/$n ] || continue
+		b=$(blkid /dev/$n 2>/dev/null)
+		case "$b" in *LABEL=\"RUDOLFDATA\"*|*TYPE=\"iso9660\"*) return 0;; esac
+	done
+	grep -q "^/dev/$1" /proc/mounts && ! grep -q "^/dev/$1[^ ]* /media/" /proc/mounts && return 0
+	return 1
+}
+
+mount_part() {
+	local p=$1 mp=/media/$1 fs t
+	grep -q "^/dev/$p " /proc/mounts && return 0
+	fs=$(blkid /dev/$p 2>/dev/null | sed -n 's/.* TYPE="\([^"]*\)".*/\1/p')
+	[ -n "$fs" ] || return 1
+	case $fs in swap|crypto_LUKS|LVM2_member|linux_raid_member|BitLocker) return 1;; esac
+	t=""; [ "$fs" = ntfs ] && t="-t ntfs3"
+	mkdir -p $mp
+	mount $t -o rw,nosuid,nodev,noexec /dev/$p $mp 2>/dev/null || mount $t -o ro,nosuid,nodev,noexec /dev/$p $mp 2>/dev/null || { rmdir $mp; return 1; }
+	return 0
+}
+
+drive_json() {
+	local p=$1 d b fs lb sz model ro; d=$(disk_of $p)
+	b=$(blkid /dev/$p 2>/dev/null)
+	fs=$(echo "$b" | sed -n 's/.* TYPE="\([^"]*\)".*/\1/p')
+	lb=$(echo "$b" | sed -n 's/.* LABEL="\([^"]*\)".*/\1/p' | clean)
+	sz=$(( $(cat /sys/class/block/$p/size 2>/dev/null || echo 0) * 512 ))
+	model=$( (cat /sys/block/$d/device/vendor /sys/block/$d/device/model 2>/dev/null; cat /sys/block/$d/device/name 2>/dev/null) | tr '\n' ' ' | clean)
+	ro=$(grep "^/dev/$p " /proc/mounts | awk '{print $4}' | grep -q '^ro' && echo true || echo false)
+	printf '{"t":"drive","dev":"%s","label":"%s","bytes":%s,"fs":"%s","path":"/media/%s","model":"%s","readonly":%s}' "$p" "$lb" "$sz" "$fs" "$p" "$model" "$ro"
+}
+
+block_add() {
+	local p=$MDEV d j; d=$(disk_of $p)
+	[ -f $RUN/drives/$p ] && return 0   # already mounted and announced (a "change" event)
+	removable $d || return 0
+	system_disk $d && return 0
+	# a disk with partitions: its partitions are what gets mounted
+	[ "$p" = "$d" ] && ls /sys/block/$d/ 2>/dev/null | grep -q "^$d.*[0-9]$" && return 0
+	for i in 1 2 3 4 5 6; do blkid /dev/$p >/dev/null 2>&1 && break; sleep 0.5; done
+	mount_part $p || return 0
+	j=$(drive_json $p); echo "$j" > $RUN/drives/$p
+	event "{\"a\":\"add\",${j#\{}"
+}
+
+block_remove() {
+	local p=$MDEV j
+	[ -f $RUN/drives/$p ] || return 0
+	j=$(cat $RUN/drives/$p); rm -f $RUN/drives/$p
+	umount -l /media/$p 2>/dev/null; rmdir /media/$p 2>/dev/null
+	event "{\"a\":\"remove\",${j#\{}"
+}
+
+# ---------------------------------------------------------------- USB devices
+# what a USB device is, from its interface classes: prints "kind|name|vid:pid|driver(0/1)"
+usb_identify() {
+	local s=$1 vid pid dc cls drv kb ms joy net wl i c sc pr n kind name
+	vid=$(cat $s/idVendor 2>/dev/null); pid=$(cat $s/idProduct 2>/dev/null)
+	[ -n "$vid" ] || return 1
+	dc=$(cat $s/bDeviceClass 2>/dev/null)
+	[ "$dc" = 09 ] && return 1                       # hubs
+	cls=""; drv=0; kb=0; ms=0; joy=0; net=""; wl=0
+	for i in $s/*:*; do
+		[ -f $i/bInterfaceClass ] || continue
+		c=$(cat $i/bInterfaceClass); sc=$(cat $i/bInterfaceSubClass); pr=$(cat $i/bInterfaceProtocol)
+		cls="$cls $c"
+		[ -e $i/driver ] && drv=1
+		[ "$c" = 03 ] && [ "$pr" = 01 ] && kb=1
+		[ "$c" = 03 ] && [ "$pr" = 02 ] && ms=1
+		[ "$c" = ff ] && [ "$sc" = 5d ] && joy=1          # Xbox controllers
+		ls $i/input/*/ 2>/dev/null | grep -q '^js' && joy=1
+		for n in $i/net/*; do [ -e "$n" ] && net=1 && [ -e "$n/wireless" -o -e "$n/phy80211" ] && wl=1; done
+	done
+	[ -n "$cls" ] || cls=" $dc"
+	has() { case " $cls " in *" $1 "*) return 0;; esac; return 1; }
+	if has 08; then kind="USB drive"
+	elif has 01; then kind="Audio device"
+	elif has 0e; then kind="Camera"
+	elif [ $joy = 1 ]; then kind="Game controller"
+	elif [ $kb = 1 ] && [ $ms = 1 ]; then kind="Keyboard and mouse"
+	elif [ $kb = 1 ]; then kind="Keyboard"
+	elif [ $ms = 1 ]; then kind="Mouse"
+	elif has 03; then kind="Input device"
+	elif has 06; then kind="Phone or camera"
+	elif has 07; then kind="Printer"
+	elif has e0; then kind="Bluetooth adapter"
+	elif [ $wl = 1 ]; then kind="Wi-Fi adapter"
+	elif [ -n "$net" ] || has 02 || has 0a; then kind="Network adapter"
+	elif has 0b; then kind="Smart card reader"
+	else kind="USB device"; fi
+	name=$(printf '%s %s' "$(rd $s/manufacturer)" "$(rd $s/product)" | clean)
+	[ -n "$name" ] || name="$kind ($vid:$pid)"
+	echo "$kind|$name|$vid:$pid|$drv"
+}
+
+usb_json() { IFS='|' read -r kind name id drv; printf '{"t":"usb","kind":"%s","name":"%s","id":"%s","driver":%s}' "$kind" "$name" "$id" "$( [ "$drv" = 1 ] && echo 1 || echo 0)"; }
+
+usb_add() {
+	local s=/sys$DEVPATH key info j; key=$(echo "$DEVPATH" | tr '/' '_')
+	sleep 2   # the device's interfaces and drivers appear after the device itself
+	info=$(usb_identify $s) || return 0
+	echo "$info" > $RUN/usb/$key
+	case "$info" in "USB drive|"*) return 0;; esac   # the drive's own events say more
+	j=$(echo "$info" | usb_json); event "{\"a\":\"add\",${j#\{}"
+}
+
+usb_remove() {
+	local key info j
+	key=$(echo "$DEVPATH" | tr '/' '_')
+	[ -f $RUN/usb/$key ] || return 0
+	info=$(cat $RUN/usb/$key); rm -f $RUN/usb/$key
+	case "$info" in "USB drive|"*) return 0;; esac
+	j=$(echo "$info" | usb_json); event "{\"a\":\"remove\",${j#\{}"
+}
+
+# ---------------------------------------------------------------- commands
+case "$1" in
+list)
+	printf '{"ok":true,"usb":['; f=1
+	for s in /sys/bus/usb/devices/*; do
+		[ -f $s/idVendor ] || continue
+		case ${s##*/} in usb*) continue;; esac
+		info=$(usb_identify $s) || continue
+		[ $f = 1 ] || printf ','; f=0; echo "$info" | usb_json
+	done
+	printf '],"drives":['; f=1
+	for j in $RUN/drives/*; do [ -f "$j" ] || continue; [ $f = 1 ] || printf ','; f=0; cat "$j" | tr -d '\n'; done
+	printf '],"inputs":['; f=1
+	[ -f $RUN/inputs ] && while IFS='|' read -r k n; do [ $f = 1 ] || printf ','; f=0; printf '{"kind":"%s","name":"%s"}' "$k" "$(echo "$n" | clean)"; done < $RUN/inputs
+	printf ']}\n'
+	exit 0;;
+mount)
+	p=$2; case "$p" in ""|*[!a-z0-9]*) echo "bad device" >&2; exit 2;; esac
+	mount_part $p || { echo "could not mount $p" >&2; exit 1; }
+	j=$(drive_json $p); echo "$j" > $RUN/drives/$p; exit 0;;
+eject)
+	d=$2; case "$d" in ""|*[!a-z0-9]*) echo "bad device" >&2; exit 2;; esac
+	system_disk $d && { echo "this is Rudolf OS's own disk" >&2; exit 1; }
+	sync
+	for m in $(grep "^/dev/$d" /proc/mounts | awk '{print $2}'); do umount "$m" 2>/dev/null || { echo "a file on the drive is still open" >&2; exit 1; }; rmdir "$m" 2>/dev/null; done
+	for j in $RUN/drives/$d*; do [ -f "$j" ] || continue; p=${j##*/}; event "{\"a\":\"eject\",$(cut -c2- $j)"; rm -f "$j"; done
+	[ -w /sys/block/$d/device/delete ] && echo 1 > /sys/block/$d/device/delete
+	exit 0;;
+esac
+
+# from mdev
+[ -n "$MDEV$DEVPATH" ] || exit 0
+case "$SUBSYSTEM" in
+block)
+	case "$ACTION" in remove) block_remove;; add|change) ( block_add ) & ;; esac;;
+usb)
+	[ "$DEVTYPE" = usb_device ] || exit 0
+	# devices already there at start-up are recorded but not announced (the desktop also ignores events from before it started)
+	case "$ACTION" in remove) usb_remove;; add) ( usb_add ) & ;; esac;;
+esac
+exit 0
