@@ -15,11 +15,24 @@ fi
 # "soft": Xvfb in memory, copied to the framebuffer by rudolf-display (works everywhere).
 # The graphics-card path is used when a graphics driver loaded and Settings allow it; if Xorg
 # does not start, or stops later, Rudolf OS falls back to the software display.
-SETTING=$(cat /etc/rudolf-display 2>/dev/null); SETTING=${SETTING:-games}
-MODE=soft; REASON=""; XPID=""
+# Settings > Display > Resolution and Frame rate (/etc/rudolf-screen: "auto|WxH FPS"); recovery and safe
+# graphics mode always use the screen's own resolution at 60 frames a second
+read_screen() {
+	RES=auto; FPS=60
+	[ -s /etc/rudolf-screen ] && read RES FPS < /etc/rudolf-screen
+	grep -qE 'rudolf.recovery=1|rudolf.nogpu=1|nomodeset|rudolf.softdisplay=1' /proc/cmdline && { RES=auto; FPS=60; }
+	case "$RES" in auto|[0-9]*x[0-9]*) ;; *) RES=auto;; esac
+	case "$FPS" in 30|60|90|120) ;; *) FPS=60;; esac
+}
 start_soft() {
 	set -- $(rudolf-display --size)
-	W=${1:-1024}; H=${2:-768}
+	FBW=${1:-1024}; FBH=${2:-768}; W=$FBW; H=$FBH
+	# another resolution: Xvfb renders at that size and rudolf-display scales it to the screen, keeping its shape
+	case "$RES" in [0-9]*x[0-9]*) W=${RES%x*}; H=${RES#*x};; esac
+	# the firmware's screen refreshes about 60 times a second: faster updates cannot be seen
+	SFPS=$FPS; [ "$SFPS" -gt 60 ] && SFPS=60; export RUDOLF_FPS=$SFPS
+	S=native; [ "$W" = "$FBW" ] && [ "$H" = "$FBH" ] || S=scaled
+	echo "$W $H $SFPS $S ${FBW}x${FBH}" > /run/rudolf/screen-actual
 	Xvfb :0 -screen 0 ${W}x${H}x24 -fbdir /run/xvfb -nolisten tcp -ac -dpi 96 -nocursor +extension XFIXES +extension XTEST &
 	XPID=$!
 	for i in $(seq 50); do [ -e /tmp/.X11-unix/X0 ] && break; sleep 0.1; done
@@ -31,8 +44,19 @@ start_gpu() {
 		-logfile /run/rudolf/Xorg.log -verbose 3 &
 	XPID=$!
 	for i in $(seq 150); do [ -e /tmp/.X11-unix/X0 ] && break; kill -0 $XPID 2>/dev/null || break; sleep 0.1; done
-	if [ -e /tmp/.X11-unix/X0 ] && kill -0 $XPID 2>/dev/null && S=$(rudolf-display --xsize 2>/dev/null); then
-		set -- $S; W=$1; H=$2; DISPARGS=--input; MODE=gpu
+	if [ -e /tmp/.X11-unix/X0 ] && kill -0 $XPID 2>/dev/null && rudolf-display --xsize >/dev/null 2>&1; then
+		# the chosen resolution and refresh rate: the monitor's mode of that size; a size the monitor does not
+		# have is scaled by the software display instead (Xorg's own scaling does not work on every card)
+		rudolf-display --mode "$RES" "$FPS"; RC=$?
+		if [ $RC = 3 ]; then
+			REASON="the monitor has no $RES mode, so the software display scales the desktop"
+			kill $XPID 2>/dev/null; for i in $(seq 20); do kill -0 $XPID 2>/dev/null || break; sleep 0.5; done; kill -9 $XPID 2>/dev/null
+			rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
+			return 1
+		fi
+		[ $RC = 0 ] || echo "$(date) could not set the screen mode $RES at $FPS Hz"
+		S=$(rudolf-display --xsize 2>/dev/null); set -- $S; W=$1; H=$2; DISPARGS=--input; MODE=gpu
+		unset RUDOLF_FPS
 		grep -q 'glamor X acceleration enabled\|glamor initialized' /run/rudolf/Xorg.log || REASON="Xorg is running but without glamor acceleration (see Xorg.log)"
 		return 0
 	fi
@@ -41,17 +65,42 @@ start_gpu() {
 	rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
 	return 1
 }
-if grep -qE 'rudolf.recovery=1|rudolf.nogpu=1|nomodeset|rudolf.softdisplay=1' /proc/cmdline; then REASON="started in recovery or safe graphics mode"
-elif [ "$SETTING" = soft ]; then REASON="Settings: software display"
-elif [ ! -x /usr/bin/Xorg ]; then REASON="this Rudolf OS build has no Xorg"
-elif [ ! -s /run/rudolf/gpu ]; then REASON="no graphics card driver is loaded"
-else start_gpu; fi
-[ $MODE = gpu ] || start_soft
-echo $MODE > /run/rudolf/display-mode; echo "$REASON" > /run/rudolf/display-reason
-echo "$(date) display: $MODE ${W}x${H} $REASON"
-echo "$W $H" > /run/rudolf/screen
-rudolf-display $DISPARGS &
-DISP=$!
+display_up() {
+	SETTING=$(cat /etc/rudolf-display 2>/dev/null); SETTING=${SETTING:-games}
+	MODE=soft; REASON=""; XPID=""
+	read_screen; rm -f /run/rudolf/screen-actual
+	if grep -qE 'rudolf.recovery=1|rudolf.nogpu=1|nomodeset|rudolf.softdisplay=1' /proc/cmdline; then REASON="started in recovery or safe graphics mode"
+	elif [ "$SETTING" = soft ]; then REASON="Settings: software display"
+	elif [ ! -x /usr/bin/Xorg ]; then REASON="this Rudolf OS build has no Xorg"
+	elif [ ! -s /run/rudolf/gpu ]; then REASON="no graphics card driver is loaded"
+	else start_gpu; fi
+	[ $MODE = gpu ] || start_soft
+	echo $MODE > /run/rudolf/display-mode; echo "$REASON" > /run/rudolf/display-reason
+	echo "$(date) display: $MODE ${W}x${H} $RES $FPS fps $REASON"
+	echo "$W $H" > /run/rudolf/screen
+	rudolf-display $DISPARGS &
+	DISP=$!
+	# the desktop renders in software unless Settings say "full" and Xorg is on the graphics card;
+	# if the GPU process fails, Chromium falls back to SwiftShader by itself
+	GLFLAGS="--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist --disable-gpu-compositing"
+	[ $MODE = gpu ] && [ "$SETTING" = full ] && GLFLAGS="--use-gl=angle --use-angle=gl-egl --enable-unsafe-swiftshader --ignore-gpu-blocklist"
+	echo "$GLFLAGS" > /run/rudolf/glflags   # the browser window for sign-in sites (rudolfd web/open) uses the same
+}
+# a new resolution or frame rate from Settings: the display starts again (the desktop page reloads)
+display_restart() {
+	echo "$(date) display: restarting for a new resolution or frame rate"
+	pkill -f 'chrom[e].*--class=RudolfWeb'; pkill -f 'chrom[e].*--rudolf-kiosk'
+	for i in 1 2 3 4 5 6; do pgrep -f 'chrom[e].*--rudolf-kiosk' >/dev/null || break; sleep 1; done
+	pkill -9 -f 'chrom[e].*--rudolf-kiosk'; pkill -9 -f 'chrom[e].*--class=RudolfWeb'
+	kill $DISP 2>/dev/null; kill $XPID 2>/dev/null
+	# Xorg takes a few seconds to give the screen back; a new one cannot start before the old one has gone
+	for i in $(seq 20); do kill -0 $XPID 2>/dev/null || pgrep -x Xorg >/dev/null || pgrep -x Xvfb >/dev/null || break; sleep 0.5; done
+	kill -9 $XPID 2>/dev/null; pkill -9 -x Xorg; pkill -9 -x Xvfb; sleep 0.5
+	rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
+	display_up
+}
+rm -f /run/rudolf/screen-restart
+display_up
 # per-user runtime directory and D-Bus session bus (used by Flatpak apps such as Sober)
 export XDG_RUNTIME_DIR=/run/user/1000
 mkdir -p $XDG_RUNTIME_DIR && chown 1000:1000 $XDG_RUNTIME_DIR && chmod 700 $XDG_RUNTIME_DIR
@@ -84,11 +133,6 @@ LOGPOLL=0
 DBG=""
 grep -q 'rudolf.debug=1' /proc/cmdline && DBG="--enable-logging=stderr --v=0 --remote-debugging-port=9222"
 export FONTCONFIG_FILE=/etc/fonts/fonts.conf
-# the desktop renders in software unless Settings say "full" and Xorg is on the graphics card;
-# if the GPU process fails, Chromium falls back to SwiftShader by itself
-GLFLAGS="--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist --disable-gpu-compositing"
-[ $MODE = gpu ] && [ "$SETTING" = full ] && GLFLAGS="--use-gl=angle --use-angle=gl-egl --enable-unsafe-swiftshader --ignore-gpu-blocklist"
-echo "$GLFLAGS" > /run/rudolf/glflags   # the browser window for sign-in sites (rudolfd web/open) uses the same
 while :; do
 	[ -e /run/rudolf/power ] && sleep 30
 	PROXY=""
@@ -109,7 +153,8 @@ while :; do
 	START=$(cut -d. -f1 /proc/uptime)
 	# watchdog: the desktop sends a heartbeat every few seconds
 	while kill -0 $B 2>/dev/null; do
-		sleep 10
+		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] && break; done
+		if [ -e /run/rudolf/screen-restart ]; then rm -f /run/rudolf/screen-restart; display_restart; break; fi
 		NOW=$(cut -d. -f1 /proc/uptime)
 		if [ $((NOW - START)) -gt 120 ]; then
 			if [ -e /run/rudolf/heartbeat ]; then

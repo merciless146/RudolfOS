@@ -40,11 +40,11 @@ function rfPick(input) {
   if (document.querySelector('.rfpick')) return;
   const multi = input.multiple, accept = input.accept || '';
   const o = document.createElement('div'); o.className = 'rmodal rfpick';
-  o.innerHTML = `<div class='rmbox' role='dialog' aria-modal='true' aria-label='Choose ${multi ? 'files' : 'a file'}' style='width:min(680px,94vw);max-width:none;display:flex;flex-direction:column;gap:8px'>
+  o.innerHTML = `<div class='rmbox' role='dialog' aria-modal='true' aria-label='Choose ${multi ? 'files' : 'a file'}' style='width:min(680px,calc(94*var(--vw1,1vw)));max-width:none;box-sizing:border-box;max-height:calc(100*var(--vh1,1vh) - 12px);overflow:auto;display:flex;flex-direction:column;gap:8px'>
     <h3 style='margin:0'>Choose ${multi ? 'files' : 'a file'}</h3>
     <div class='rfplaces' style='display:flex;flex-wrap:wrap;gap:4px'></div>
     <div style='display:flex;gap:6px;align-items:center'><button class='rfup' title='Up one folder' aria-label='Up one folder'>⬆</button><input class='rfpath' readonly aria-label='Folder' style='flex:1'></div>
-    <div class='rflist' role='listbox' ${multi ? "aria-multiselectable='true'" : ''} tabindex='0' style='height:min(340px,50vh);overflow:auto;border:1px solid var(--bd,#ccc);background:var(--wbg,#fff)'></div>
+    <div class='rflist' role='listbox' ${multi ? "aria-multiselectable='true'" : ''} tabindex='0' style='height:min(340px,calc(50*var(--vh1,1vh)));overflow:auto;border:1px solid var(--bd,#ccc);background:var(--wbg,#fff)'></div>
     <label style='font-size:12px'><input type='checkbox' class='rfall'> Show all files${accept ? ' (not only ' + rfEsc(accept.replace(/,/g, ', ')) + ')' : ''}</label>
     <div class='rmmsg rfmsg' aria-live='polite'></div>
     <div class='rmrow'><button class='rfcancel'>Cancel</button><button class='rfok pri' disabled>Open</button></div></div>`;

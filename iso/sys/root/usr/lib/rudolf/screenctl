@@ -1,0 +1,44 @@
+#!/bin/sh
+# Rudolf OS: screen resolution and frame rate (Settings > Display). GPL-2.0-or-later.
+#   screenctl status          JSON: the setting, what the screen really shows, the monitor's modes (Xorg)
+#   screenctl set RES FPS     RES: auto, 1920x1080, 1366x768, 1280x720 or 1024x576; FPS: 30, 60, 90 or 120.
+#                             The display starts again with it; unless "keep" follows within 90 seconds, the
+#                             previous setting comes back (a monitor that cannot show the mode stays usable)
+#   screenctl keep            keep the new setting (saved on installed systems)
+#   screenctl revert          go back to the previous setting
+RUN=/run/rudolf; CUR=/etc/rudolf-screen; PREV=$RUN/screen-prev
+cur() { [ -s $CUR ] && cat $CUR || echo "auto 60"; }
+restart() { touch $RUN/screen-restart; }
+case "$1" in
+status)
+	read RES FPS <<E
+$(cur)
+E
+	A=""; [ -s $RUN/screen-actual ] && A=$(cat $RUN/screen-actual)
+	set -- $A
+	M=$(cat $RUN/display-mode 2>/dev/null); MODES=null
+	[ "$M" = gpu ] && MODES=$(DISPLAY=:0 rudolf-display --modes 2>/dev/null | grep '^{' || echo null)
+	PEND=false; [ -e $PREV ] && PEND=true
+	PERS=false; [ -e $RUN/persistent ] && PERS=true
+	printf '{"ok":true,"res":"%s","fps":%s,"actual":{"w":%s,"h":%s,"hz":%s,"kind":"%s","panel":"%s"},"display":"%s","modes":%s,"pending":%s,"previous":"%s","persistent":%s}\n' \
+		"$RES" "$FPS" "${1:-0}" "${2:-0}" "${3:-0}" "${4:-native}" "${5:-}" "${M:-soft}" "$MODES" "$PEND" "$(cat $PREV 2>/dev/null)" "$PERS";;
+set)
+	case "$2" in auto|1920x1080|1366x768|1280x720|1024x576) ;; *) echo "unknown resolution" >&2; exit 2;; esac
+	case "$3" in 30|60|90|120) ;; *) echo "unknown frame rate" >&2; exit 2;; esac
+	[ -e $PREV ] || cur > $PREV
+	echo "$2 $3" > $CUR
+	T=$(date +%s%N); echo $T > $RUN/screen-token
+	restart
+	# nobody confirmed this change (the screen may show nothing): the previous setting comes back; a newer
+	# change has its own timer
+	( sleep 90; [ "$(cat $RUN/screen-token 2>/dev/null)" = "$T" ] && [ -e $PREV ] && /usr/lib/rudolf/screenctl revert ) </dev/null >/dev/null 2>&1 &
+	exit 0;;
+keep)
+	rm -f $PREV $RUN/screen-token
+	[ -e $RUN/persistent ] && { mkdir -p /persist/etc; cp $CUR /persist/etc/rudolf-screen 2>/dev/null || cur > /persist/etc/rudolf-screen; }
+	exit 0;;
+revert)
+	[ -e $PREV ] || exit 0
+	rm -f $RUN/screen-token; mv $PREV $CUR; restart; exit 0;;
+*) echo "usage: screenctl status | set RES FPS | keep | revert" >&2; exit 2;;
+esac

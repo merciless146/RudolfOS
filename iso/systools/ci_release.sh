@@ -65,13 +65,13 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 fi
 
 # ---- base: the system programs and sys/root
-BSRC=$( (cat sys/rudolf-display.c sys/rudolfd.c sys/rudolf-update.c trusted-keys.txt VERSION; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolfd.c sys/rudolf-update.c trusted-keys.txt VERSION; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
 	B=$W/bbin; mkdir -p "$B"
 	# the same commands as mkrootfs.sh, on the same Ubuntu 24.04 the base layer's libraries come from
-	gcc -O2 -o "$B/rudolf-display" sys/rudolf-display.c -lX11 /usr/lib/x86_64-linux-gnu/libXtst.so.6 /usr/lib/x86_64-linux-gnu/libXfixes.so.3
+	gcc -O2 -o "$B/rudolf-display" sys/rudolf-display.c -lX11 /usr/lib/x86_64-linux-gnu/libXtst.so.6 /usr/lib/x86_64-linux-gnu/libXfixes.so.3 /usr/lib/x86_64-linux-gnu/libXrandr.so.2 -lm
 	gcc -O2 -o "$B/rudolfd" sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
 	gcc -O2 -o "$B/rudolf-update" sys/rudolf-update.c -lcrypto -ldl
 	for b in rudolf-display rudolfd rudolf-update; do

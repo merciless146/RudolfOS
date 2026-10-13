@@ -23,6 +23,7 @@ if mountpoint -q /persist; then
 	mount --bind /persist/home/rudolf /home/rudolf
 	[ -f /persist/etc/asound.conf ] && cp /persist/etc/asound.conf /etc/asound.conf
 	[ -f /persist/etc/rudolf-display ] && cp /persist/etc/rudolf-display /etc/rudolf-display
+	[ -f /persist/etc/rudolf-screen ] && cp /persist/etc/rudolf-screen /etc/rudolf-screen
 	[ -f /persist/etc/decktest ] && /usr/lib/rudolf/decktest on
 	[ -f /persist/proxy ] && cp /persist/proxy /run/rudolf/proxy
 	# native apps (Flatpak: Sober for Roblox) live on the data partition

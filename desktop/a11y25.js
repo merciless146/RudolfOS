@@ -7,10 +7,14 @@ Object.assign(DEFS.disp,{accent:'#2563eb',nl:false,nlv:40,nlsched:false,darkui:t
 ['accent','nl','nlv','nlsched','darkui','icons','tbgroup','rot'].forEach(k=>{if(!DKEYS.includes(k))DKEYS.push(k);if(S[k]===undefined)S[k]=DEFS.disp[k];if(SC&&SC[k]===undefined)SC[k]=cln(S[k])});
 if(S.rmotion===false&&window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)S.rmotion=true;
 /* ---------- themes ---------- */
+/* display scaling zooms the page, and Chromium zooms vh/vw sizes too, so "the whole screen" would be 1.25-1.5x the
+   screen: the desktop's CSS uses --vh1/--vw1 (1% of what is really visible) instead */
+function scaleVars(){const H=document.documentElement,zf=parseFloat(H.style.zoom)||1;H.style.setProperty('--vh1',innerHeight/zf/100+'px');H.style.setProperty('--vw1',innerWidth/zf/100+'px')}
+addEventListener('resize',()=>scaleVars());
 function themeApply(){const H=document.documentElement,B=document.body;let dark=false;try{dark=S.darkui!==false&&(window.dynResolve?dynResolve().mode=='dark':S.dm=='dark')}catch(e){dark=S.dm=='dark'}
  H.classList.toggle('dark',dark);H.classList.toggle('hc',S.cb=='contrast');H.classList.toggle('rmotion',!!S.rmotion);H.classList.toggle('rtrans',!!S.rtrans);H.classList.toggle('touch',!!S.touch);H.classList.toggle('dysfont',!!S.dysfont);
  B.style.setProperty('--ac',S.accent||'#2563eb');H.style.setProperty('--ac',S.accent||'#2563eb');
- const z=Math.max(75,Math.min(250,+S.scale||100));H.style.zoom=z==100?'':z/100;
+ const z=Math.max(75,Math.min(250,+S.scale||100));H.style.zoom=z==100?'':z/100;scaleVars();
  H.style.setProperty('--capsz',(S.capsz||100)/100+'em');H.style.setProperty('--capbg',S.capbg||'#000');H.style.setProperty('--capfg',S.capfg||'#fff');
  let nl=$('#nightl');const nlOn=S.nl&&(!S.nlsched||(()=>{const h=new Date().getHours();return h>=20||h<7})());if(nlOn){if(!nl){nl=document.createElement('div');nl.id='nightl';nl.setAttribute('aria-hidden','true');document.body.appendChild(nl)}nl.style.opacity=(S.nlv||40)/100*.55}else if(nl)nl.remove();
  B.style.transform=S.rot?`rotate(${S.rot}deg)`:'';

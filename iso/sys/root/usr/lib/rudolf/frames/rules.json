@@ -1,1 +1,2 @@
-[{"id":1,"priority":1,"action":{"type":"modifyHeaders","responseHeaders":[{"header":"x-frame-options","operation":"remove"},{"header":"content-security-policy","operation":"remove"}]},"condition":{"resourceTypes":["sub_frame"]}}]
+[{"id":1,"priority":1,"action":{"type":"modifyHeaders","responseHeaders":[{"header":"x-frame-options","operation":"remove"},{"header":"content-security-policy","operation":"remove"}]},"condition":{"resourceTypes":["sub_frame"]}},
+{"id":2,"priority":3,"action":{"type":"allow"},"condition":{"regexFilter":"^https?://([^/:]*\\.)?([a-z0-9-]*bank|bankof[a-z0-9-]*|[a-z0-9-]*creditunion|[a-z0-9-]*fcu)\\.[a-z]{2,}(\\.[a-z]{2})?(:[0-9]+)?/","isUrlFilterCaseSensitive":false,"resourceTypes":["sub_frame"]}}]

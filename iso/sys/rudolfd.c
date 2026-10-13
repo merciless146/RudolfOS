@@ -959,8 +959,16 @@ static void api_web(struct req *r, const char *what)
 {
 	char cmd[3200];
 	if (!strcmp(what, "status")) {
-		char *m = slurp(RUN "/wm", NULL); int run_ = web_running();
-		str s = {0}; sadd(&s, "{\"ok\":true,\"running\":%s,\"shown\":%s}", run_ ? "true" : "false", run_ && m && !strncmp(m, "web", 3) ? "true" : "false");
+		char *m = slurp(RUN "/wm", NULL); int run_ = web_running(), shown = run_ && m && !strncmp(m, "web", 3);
+		/* rudolf-display shows a new window as "win ID": shown too when that window is the browser window
+		   (/run/rudolf/windows: "ID<tab>is-web<tab>..." per line) */
+		if (run_ && m && !strncmp(m, "win ", 4)) {
+			char id[32]; snprintf(id, sizeof id, "%.20s", m + 4); id[strcspn(id, " \n")] = 0;
+			char *w = slurp(RUN "/windows", NULL);
+			for (char *l = w; l && *l && !shown; ) { char *nl = strchr(l, '\n'); size_t n = strlen(id); if (!strncmp(l, id, n) && l[n] == '\t' && l[n + 1] == '1') shown = 1; l = nl ? nl + 1 : NULL; }
+			free(w);
+		}
+		str s = {0}; sadd(&s, "{\"ok\":true,\"running\":%s,\"shown\":%s}", run_ ? "true" : "false", shown ? "true" : "false");
 		free(m); reply_json(r->fd, &s); return;
 	}
 	if (!strcmp(what, "open")) {
@@ -971,7 +979,9 @@ static void api_web(struct req *r, const char *what)
 		snprintf(cmd, sizeof cmd, "mkdir -p " WEBPROFILE "; chown rudolf:rudolf /home/rudolf/.config " WEBPROFILE " 2>/dev/null; "
 			"setsid su -s /bin/sh rudolf -c 'set -a; . " RUN "/session.env; set +a; FONTCONFIG_FILE=/etc/fonts/fonts.conf GOOGLE_API_KEY=no GOOGLE_DEFAULT_CLIENT_ID=no GOOGLE_DEFAULT_CLIENT_SECRET=no; export FONTCONFIG_FILE GOOGLE_API_KEY GOOGLE_DEFAULT_CLIENT_ID GOOGLE_DEFAULT_CLIENT_SECRET; "
 			"exec /opt/chromium/chrome --class=RudolfWeb --user-data-dir=" WEBPROFILE " --no-first-run --no-default-browser-check "
-			"--password-store=basic --disable-session-crashed-bubble --disable-features=Translate,MediaRouter,Vulkan --disable-vulkan-surface %s %s%s \"%s\"' "
+			"--password-store=basic --disable-session-crashed-bubble --disable-features=Translate,MediaRouter,Vulkan --disable-vulkan-surface "
+			/* Ruffle plays Flash here too; the web frames extension is not loaded, so sites keep their protections */
+			"--load-extension=" RUN "/ruffle-ext %s %s%s \"%s\"' "
 			"</dev/null >>" RUN "/web.log 2>&1 &", gl ? gl : "", px && *px ? "--proxy-server=" : "", px && *px ? px : "", u);
 		free(gl); free(px);
 		write_str(RUN "/wm", "web"); run(cmd);
@@ -1597,6 +1607,23 @@ static void api(struct req *r)
 		free(want); free(cur); free(why); free(gpu);
 		reply_json(r->fd, &s); return;
 	}
+	if (!strncmp(p, "screen", 6)) {
+		/* Settings > Display: resolution and frame rate (/usr/lib/rudolf/screenctl) */
+		const char *a = p + 6; char cmd[200];
+		if (!*a && !post) { char *o = run_out("/usr/lib/rudolf/screenctl status 2>/dev/null"); if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "the screen settings could not be read"); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
+		if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+		if (!*a) {
+			const char *res = qparam(r->query, "res"), *fps = qparam(r->query, "fps");
+			if (!safe_word(res, 12) || !safe_word(fps, 4)) { reply_err(r->fd, 400, "resolution and frame rate?"); return; }
+			snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/screenctl set %s %s", res, fps);
+			if (run(cmd)) { reply_err(r->fd, 400, "that resolution or frame rate is not offered"); return; }
+			reply_ok(r->fd, "the display starts again with the new setting"); return;
+		}
+		if (!strcmp(a, "/keep")) { run("/usr/lib/rudolf/screenctl keep"); reply_ok(r->fd, "kept"); return; }
+		if (!strcmp(a, "/revert")) { run("/usr/lib/rudolf/screenctl revert"); reply_ok(r->fd, "the previous setting comes back"); return; }
+		reply_err(r->fd, 404, "unknown screen action"); return;
+	}
+	if (!strcmp(p, "web/status")) { api_web(r, "status"); return; }   /* the taskbar asks whether the browser window is open */
 	if (!strcmp(p, "wifi/status")) { api_wifi(r, "status"); return; }
 	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 	/* ---- actions ---- */
