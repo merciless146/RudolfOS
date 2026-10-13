@@ -4,7 +4,8 @@
    screenctl does the same after 90 seconds if the screen shows nothing at all.
    - software display: the desktop is drawn at the chosen size and rudolf-display scales it to the screen,
      keeping its shape (black bars); the screen itself refreshes about 60 times a second (firmware mode)
-   - Xorg: the monitor's own mode of that size and refresh rate, or the nearest one scaled with black bars ===== */
+   - Xorg: the monitor's own mode of that size and refresh rate; a size the monitor does not have is shown by the
+     software display, scaled (Xorg's own scaling does not work on every graphics card) ===== */
 const SCR_RES = ['1920x1080', '1366x768', '1280x720', '1024x576'];
 const SCR_FPS = [120, 90, 60, 30];
 const scrX = r => String(r).replace('x', '×');
@@ -16,9 +17,11 @@ function scrRates(st, res) {
   return m ? m.hz : null;
 }
 /* is a frame rate available at a resolution, and if not, why */
+const scrHas = (st, res) => res == 'auto' || !!(st && st.modes && st.modes.modes && st.modes.modes.some(m => m.w + 'x' + m.h == res));
 function scrFpsWhy(st, res, f) {
   if (!st) return '';
   if (st.display != 'gpu') return f > 60 ? 'this screen is driven by the firmware, which refreshes it about 60 times a second; the graphics-card display (Settings › Display › Graphics) can go faster' : '';
+  if (!scrHas(st, res)) return f > 60 ? 'the monitor has no mode of this size, so the software display scales it, at up to 60 frames a second' : '';
   const hz = scrRates(st, res);
   if (!hz || f == 60) return '';
   return hz.some(x => Math.abs(x - f) <= 2) ? '' : 'the monitor does not offer ' + f + ' Hz at this resolution';
@@ -29,7 +32,7 @@ function screenUi(resBox, fpsBox) {
   rd('screen').then(st => {
     const panel = st.display == 'gpu' && st.modes ? st.modes.native : st.actual.panel || (st.actual.w + 'x' + st.actual.h);
     const native = (r) => st.display == 'gpu' && st.modes ? st.modes.modes.some(m => m.w + 'x' + m.h == r) : r == panel;
-    resBox.innerHTML = `<select id='dres' aria-describedby='dresm'>${optH('auto', `Automatic (${scrX(panel)}, the screen’s own)`, st.res)}${SCR_RES.map(r => optH(r, scrX(r) + (native(r) ? '' : ' (scaled)'), st.res)).join('')}</select>
+    resBox.innerHTML = `<select id='dres' aria-describedby='dresm'>${optH('auto', `Automatic (${scrX(panel)}, the screen’s own)`, st.res)}${SCR_RES.map(r => optH(r, scrX(r) + (native(r) ? '' : st.display == 'gpu' ? ' (scaled by the software display)' : ' (scaled)'), st.res)).join('')}</select>
       <div class='msg' id='dresm'></div>`;
     fpsBox.innerHTML = `<select id='dfps' aria-describedby='dfpsm'></select><div class='msg' id='dfpsm'></div>
       <div class='rmrow' style='justify-content:flex-start;margin-top:6px'><button class='dsap pri' disabled>Apply</button><span class='msg dsmsg'></span></div>`;

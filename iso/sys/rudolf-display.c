@@ -15,8 +15,9 @@
  *   rudolf-display --xsize         print "WIDTH HEIGHT" of the X screen
  *   rudolf-display --shot          write the X screen to stdout as a PPM image
  *   rudolf-display --modes         JSON: the screen modes and refresh rates of the monitor (Xorg)
- *   rudolf-display --mode WxH|auto HZ   set the monitor's mode (Xorg); when the monitor has no WxH mode, the
- *                                  desktop keeps that size and is scaled to the monitor with black bars
+ *   rudolf-display --mode WxH|auto HZ   set the monitor's mode of that size with the nearest refresh rate (Xorg);
+ *                                  exit status 3 when the monitor has no mode of that size (the session then
+ *                                  uses the software display, which scales)
  *
  * The software display scales too: when Xvfb was started at another size than the framebuffer (Settings >
  * Display > Resolution), the picture is scaled smoothly and keeps its shape (black bars fill the rest).
@@ -90,11 +91,9 @@ static int scaled, sx0, sy0, sdw, sdh;
 static int *col_x, *row_y; static uint16_t *col_f, *row_f;
 static uint32_t *outb; static uint8_t *srow_dirty;
 /* where the X screen is on the physical panel, for touchscreens: the panel is pw x ph and shows the X screen
-   in mx0,my0 mw x mh (software display: as above; Xorg: /run/rudolf/screen-map, written by --mode) */
+   in mx0,my0 mw x mh (the software display's scaling; Xorg shows it on the whole panel) */
 static int pw, ph, mx0, my0, mw, mh;
 static int frame_ms = 16;
-/* the part of the X screen the desktop uses (Xorg, when the monitor has no mode of the chosen size) */
-static int area_x, area_y, area_w, area_h;
 
 static uint32_t be32(const uint8_t *p) { return (uint32_t)p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3]; }
 
@@ -491,19 +490,8 @@ static void handle_event(struct dev *v, struct input_event *e)
 	}
 }
 
-/* Xorg: where the X screen is on the panel (screen-map) and the part the desktop uses (screen-area) */
-static void read_map(void)
-{
-	FILE *f = fopen("/run/rudolf/screen-map", "r");
-	int a[6];
-	if (f && fscanf(f, "%d %d %d %d %d %d", &a[0], &a[1], &a[2], &a[3], &a[4], &a[5]) == 6 && a[0] > 0 && a[1] > 0 && a[4] > 0 && a[5] > 0) { pw = a[0]; ph = a[1]; mx0 = a[2]; my0 = a[3]; mw = a[4]; mh = a[5]; }
-	else if (!scaled) { pw = xw; ph = xh; mx0 = my0 = 0; mw = xw; mh = xh; }
-	if (f) fclose(f);
-	f = fopen("/run/rudolf/screen-area", "r");
-	if (!f || fscanf(f, "%d %d %d %d", &a[0], &a[1], &a[2], &a[3]) != 4 || a[2] <= 0 || a[3] <= 0) a[0] = a[1] = a[2] = a[3] = 0;
-	area_x = a[0]; area_y = a[1]; area_w = a[2]; area_h = a[3];
-	if (f) fclose(f);
-}
+/* Xorg shows the X screen on the whole panel; the software display may scale it (scale_setup) */
+static void read_map(void) { if (!scaled) { pw = xw; ph = xh; mx0 = my0 = 0; mw = xw; mh = xh; } }
 
 static void read_settings(void)
 {
@@ -618,8 +606,6 @@ static void fit_windows(void)
 	Window root = DefaultRootWindow(dpy), r, p, *kids = NULL, desktop = 0, chromium = 0, tr;
 	unsigned n = 0;
 	int sw = DisplayWidth(dpy, DefaultScreen(dpy)), sh = DisplayHeight(dpy, DefaultScreen(dpy)), ax = 0, ay = 0;
-	/* Xorg on a monitor without a mode of the chosen size: the desktop and its windows use that part of the screen */
-	if (area_w > 0 && area_h > 0 && area_x + area_w <= sw && area_y + area_h <= sh) { ax = area_x; ay = area_y; sw = area_w; sh = area_h; }
 	wm_read(); wm_commands();
 	if (!XQueryTree(dpy, root, &r, &p, &kids, &n)) return;
 	Window apps[MAXWIN]; int napps = 0, fresh = -1;
@@ -781,6 +767,9 @@ static int rr_open(XRRScreenResources **r, XRROutputInfo **o, RROutput *out)
 	int ev, er;
 	if (!(dpy = open_display())) return 2;
 	if (!XRRQueryExtension(dpy, &ev, &er)) { fprintf(stderr, "rudolf-display: no RandR\n"); return 2; }
+	/* the server accepts transforms (scaling) only from clients that said they speak RandR 1.3 or later */
+	int ma = 1, mi = 5; XRRQueryVersion(dpy, &ma, &mi);
+	if (ma < 1 || (ma == 1 && mi < 3)) fprintf(stderr, "rudolf-display: RandR %d.%d cannot scale\n", ma, mi);
 	*r = XRRGetScreenResourcesCurrent(dpy, DefaultRootWindow(dpy));
 	if (!*r || !(*o = rr_output(*r, out))) { fprintf(stderr, "rudolf-display: no monitor found\n"); return 2; }
 	return 0;
@@ -808,11 +797,16 @@ static int list_modes(void)
 	printf("]}\n");
 	return 0;
 }
-static XFixed dbl_fixed(double d) { return (XFixed)(d * 65536.0 + (d < 0 ? -0.5 : 0.5)); }
+static int mode_errors;
+static int mode_error(Display *d, XErrorEvent *e)
+{
+	char t[120]; XGetErrorText(d, e->error_code, t, sizeof t);
+	fprintf(stderr, "rudolf-display: --mode: X error %s (request %d.%d)\n", t, e->request_code, e->minor_code); mode_errors++; return 0;
+}
 static void write_file(const char *path, const char *text) { FILE *f = fopen(path, "w"); if (f) { fputs(text, f); fclose(f); } }
-/* --mode WxH|auto HZ: the monitor's mode of that size with the nearest refresh rate; without one, the monitor's
-   own size, with the desktop scaled to it (RandR transform) and placed in the middle of a screen of the
-   monitor's shape (black bars). Writes /run/rudolf/screen-map, screen-area and screen-actual. */
+/* --mode WxH|auto HZ: the monitor's mode of that size with the nearest refresh rate. Writes
+   /run/rudolf/screen-actual. A size the monitor does not have is not scaled here (Xorg's scaling is not
+   dependable on every graphics card): exit status 3, and the session uses the software display instead. */
 static int set_mode(const char *res, double hz)
 {
 	XRRScreenResources *r; XRROutputInfo *o; RROutput out;
@@ -826,34 +820,22 @@ static int set_mode(const char *res, double hz)
 		const XRRModeInfo *m = mode_info(r, o->modes[i]);
 		if (m && m->width == W && m->height == H && !(m->modeFlags & RR_Interlace) && (!pick || fabs(mode_hz(m) - hz) < fabs(mode_hz(pick) - hz))) pick = m;
 	}
-	int scale = !pick;
-	unsigned SW = W, SH = H; double sc = 1; int ox = 0, oy = 0;
-	if (scale) {
-		/* the native size, at the refresh rate nearest to the one asked for */
-		for (int i = 0; i < o->nmode; i++) { const XRRModeInfo *m = mode_info(r, o->modes[i]); if (m && m->width == n->width && m->height == n->height && !(m->modeFlags & RR_Interlace) && (!pick || fabs(mode_hz(m) - hz) < fabs(mode_hz(pick) - hz))) pick = m; }
-		/* the X screen has the monitor's shape and contains the desktop's W x H in its middle */
-		sc = (double)W / n->width > (double)H / n->height ? (double)W / n->width : (double)H / n->height;
-		SW = (unsigned)(n->width * sc + 0.5); SH = (unsigned)(n->height * sc + 0.5);
-		if (SW < W) SW = W; if (SH < H) SH = H;
-		ox = (SW - W) / 2; oy = (SH - H) / 2;
-	}
+	if (!pick) { fprintf(stderr, "rudolf-display: the monitor has no %ux%u mode\n", W, H); return 3; }
 	RRCrtc crtc = o->crtc ? o->crtc : o->ncrtc ? o->crtcs[0] : 0;
 	if (!crtc) { fprintf(stderr, "rudolf-display: the monitor has no display controller\n"); return 2; }
-	XTransform t = {{{dbl_fixed(sc), 0, 0}, {0, dbl_fixed(sc), 0}, {0, 0, dbl_fixed(1)}}};
+	XSetErrorHandler(mode_error);
 	XGrabServer(dpy);
 	XRRSetCrtcConfig(dpy, r, crtc, CurrentTime, 0, 0, None, RR_Rotate_0, NULL, 0);
-	XRRSetCrtcTransform(dpy, crtc, &t, scale ? "bilinear" : "nearest", NULL, 0);
-	unsigned long mmw = o->mm_width ? o->mm_width : SW * 254 / 960, mmh = o->mm_height ? o->mm_height : SH * 254 / 960;
-	XRRSetScreenSize(dpy, DefaultRootWindow(dpy), SW, SH, (int)mmw, (int)mmh);
+	unsigned long mmw = o->mm_width ? o->mm_width : W * 254 / 960, mmh = o->mm_height ? o->mm_height : H * 254 / 960;
+	XRRSetScreenSize(dpy, DefaultRootWindow(dpy), W, H, (int)mmw, (int)mmh);
 	Status st = XRRSetCrtcConfig(dpy, r, crtc, CurrentTime, 0, 0, pick->id, RR_Rotate_0, &out, 1);
+	XSetWindowBackground(dpy, DefaultRootWindow(dpy), BlackPixel(dpy, DefaultScreen(dpy)));
+	XClearWindow(dpy, DefaultRootWindow(dpy));
 	XUngrabServer(dpy); XSync(dpy, False);
 	char b[160];
-	/* touch: the panel (the mode's size) shows the whole X screen */
-	snprintf(b, sizeof b, "%u %u 0 0 %u %u\n", pick->width, pick->height, pick->width, pick->height); write_file("/run/rudolf/screen-map", b);
-	if (scale) { snprintf(b, sizeof b, "%d %d %u %u\n", ox, oy, W, H); write_file("/run/rudolf/screen-area", b); } else unlink("/run/rudolf/screen-area");
-	snprintf(b, sizeof b, "%u %u %.2f %s %ux%u\n", W, H, mode_hz(pick), scale ? "scaled" : "native", pick->width, pick->height); write_file("/run/rudolf/screen-actual", b);
+	snprintf(b, sizeof b, "%u %u %.2f native %ux%u\n", W, H, mode_hz(pick), pick->width, pick->height); write_file("/run/rudolf/screen-actual", b);
 	printf("%s", b);
-	return st == 0 ? 0 : 1;
+	return st == 0 && !mode_errors ? 0 : 1;
 }
 
 int main(int argc, char **argv)

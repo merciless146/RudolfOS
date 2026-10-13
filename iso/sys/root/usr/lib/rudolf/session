@@ -45,10 +45,17 @@ start_gpu() {
 	XPID=$!
 	for i in $(seq 150); do [ -e /tmp/.X11-unix/X0 ] && break; kill -0 $XPID 2>/dev/null || break; sleep 0.1; done
 	if [ -e /tmp/.X11-unix/X0 ] && kill -0 $XPID 2>/dev/null && rudolf-display --xsize >/dev/null 2>&1; then
-		# the chosen resolution and refresh rate (the monitor's own mode when it has one of that size)
-		rudolf-display --mode "$RES" "$FPS" || echo "$(date) could not set the screen mode $RES at $FPS Hz"
+		# the chosen resolution and refresh rate: the monitor's mode of that size; a size the monitor does not
+		# have is scaled by the software display instead (Xorg's own scaling does not work on every card)
+		rudolf-display --mode "$RES" "$FPS"; RC=$?
+		if [ $RC = 3 ]; then
+			REASON="the monitor has no $RES mode, so the software display scales the desktop"
+			kill $XPID 2>/dev/null; for i in $(seq 20); do kill -0 $XPID 2>/dev/null || break; sleep 0.5; done; kill -9 $XPID 2>/dev/null
+			rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
+			return 1
+		fi
+		[ $RC = 0 ] || echo "$(date) could not set the screen mode $RES at $FPS Hz"
 		S=$(rudolf-display --xsize 2>/dev/null); set -- $S; W=$1; H=$2; DISPARGS=--input; MODE=gpu
-		[ -s /run/rudolf/screen-area ] && { set -- $(cat /run/rudolf/screen-area); W=$3; H=$4; }
 		unset RUDOLF_FPS
 		grep -q 'glamor X acceleration enabled\|glamor initialized' /run/rudolf/Xorg.log || REASON="Xorg is running but without glamor acceleration (see Xorg.log)"
 		return 0
@@ -61,7 +68,7 @@ start_gpu() {
 display_up() {
 	SETTING=$(cat /etc/rudolf-display 2>/dev/null); SETTING=${SETTING:-games}
 	MODE=soft; REASON=""; XPID=""
-	read_screen; rm -f /run/rudolf/screen-map /run/rudolf/screen-area /run/rudolf/screen-actual
+	read_screen; rm -f /run/rudolf/screen-actual
 	if grep -qE 'rudolf.recovery=1|rudolf.nogpu=1|nomodeset|rudolf.softdisplay=1' /proc/cmdline; then REASON="started in recovery or safe graphics mode"
 	elif [ "$SETTING" = soft ]; then REASON="Settings: software display"
 	elif [ ! -x /usr/bin/Xorg ]; then REASON="this Rudolf OS build has no Xorg"
@@ -85,7 +92,10 @@ display_restart() {
 	pkill -f 'chrom[e].*--class=RudolfWeb'; pkill -f 'chrom[e].*--rudolf-kiosk'
 	for i in 1 2 3 4 5 6; do pgrep -f 'chrom[e].*--rudolf-kiosk' >/dev/null || break; sleep 1; done
 	pkill -9 -f 'chrom[e].*--rudolf-kiosk'; pkill -9 -f 'chrom[e].*--class=RudolfWeb'
-	kill $DISP 2>/dev/null; kill $XPID 2>/dev/null; sleep 1; kill -9 $XPID 2>/dev/null
+	kill $DISP 2>/dev/null; kill $XPID 2>/dev/null
+	# Xorg takes a few seconds to give the screen back; a new one cannot start before the old one has gone
+	for i in $(seq 20); do kill -0 $XPID 2>/dev/null || pgrep -x Xorg >/dev/null || pgrep -x Xvfb >/dev/null || break; sleep 0.5; done
+	kill -9 $XPID 2>/dev/null; pkill -9 -x Xorg; pkill -9 -x Xvfb; sleep 0.5
 	rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
 	display_up
 }

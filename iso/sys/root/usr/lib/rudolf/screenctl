@@ -27,16 +27,18 @@ set)
 	case "$3" in 30|60|90|120) ;; *) echo "unknown frame rate" >&2; exit 2;; esac
 	[ -e $PREV ] || cur > $PREV
 	echo "$2 $3" > $CUR
+	T=$(date +%s%N); echo $T > $RUN/screen-token
 	restart
-	# nobody confirmed (the screen may show nothing): the previous setting comes back
-	( sleep 90; [ -e $PREV ] && /usr/lib/rudolf/screenctl revert ) </dev/null >/dev/null 2>&1 &
+	# nobody confirmed this change (the screen may show nothing): the previous setting comes back; a newer
+	# change has its own timer
+	( sleep 90; [ "$(cat $RUN/screen-token 2>/dev/null)" = "$T" ] && [ -e $PREV ] && /usr/lib/rudolf/screenctl revert ) </dev/null >/dev/null 2>&1 &
 	exit 0;;
 keep)
-	rm -f $PREV
+	rm -f $PREV $RUN/screen-token
 	[ -e $RUN/persistent ] && { mkdir -p /persist/etc; cp $CUR /persist/etc/rudolf-screen 2>/dev/null || cur > /persist/etc/rudolf-screen; }
 	exit 0;;
 revert)
 	[ -e $PREV ] || exit 0
-	mv $PREV $CUR; restart; exit 0;;
+	rm -f $RUN/screen-token; mv $PREV $CUR; restart; exit 0;;
 *) echo "usage: screenctl status | set RES FPS | keep | revert" >&2; exit 2;;
 esac
