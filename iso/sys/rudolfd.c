@@ -971,7 +971,9 @@ static void api_web(struct req *r, const char *what)
 		snprintf(cmd, sizeof cmd, "mkdir -p " WEBPROFILE "; chown rudolf:rudolf /home/rudolf/.config " WEBPROFILE " 2>/dev/null; "
 			"setsid su -s /bin/sh rudolf -c 'set -a; . " RUN "/session.env; set +a; FONTCONFIG_FILE=/etc/fonts/fonts.conf GOOGLE_API_KEY=no GOOGLE_DEFAULT_CLIENT_ID=no GOOGLE_DEFAULT_CLIENT_SECRET=no; export FONTCONFIG_FILE GOOGLE_API_KEY GOOGLE_DEFAULT_CLIENT_ID GOOGLE_DEFAULT_CLIENT_SECRET; "
 			"exec /opt/chromium/chrome --class=RudolfWeb --user-data-dir=" WEBPROFILE " --no-first-run --no-default-browser-check "
-			"--password-store=basic --disable-session-crashed-bubble --disable-features=Translate,MediaRouter,Vulkan --disable-vulkan-surface %s %s%s \"%s\"' "
+			"--password-store=basic --disable-session-crashed-bubble --disable-features=Translate,MediaRouter,Vulkan --disable-vulkan-surface "
+			/* Ruffle plays Flash here too; the web frames extension is not loaded, so sites keep their protections */
+			"--load-extension=" RUN "/ruffle-ext %s %s%s \"%s\"' "
 			"</dev/null >>" RUN "/web.log 2>&1 &", gl ? gl : "", px && *px ? "--proxy-server=" : "", px && *px ? px : "", u);
 		free(gl); free(px);
 		write_str(RUN "/wm", "web"); run(cmd);

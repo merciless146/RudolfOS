@@ -1498,11 +1498,13 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
   if(/^data:/i.test(u))return{html:'<body>Data URLs are not supported.</body>',title:'Data'};
   return doc('Cannot open page','Oracle cannot open <code>'+esc(u)+'</code>.')}
  function mkTab(u){const fr=document.createElement('iframe');fr.referrerPolicy='strict-origin-when-cross-origin';fr.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;display:none';fh.appendChild(fr);const t={id:++nid,h:[u||'about:home'],i:0,fr,title:'New tab',zoom:1};t.fr.onload=()=>{if(t.pend&&t.i>=0&&cur()==t.h[t.i]&&t===T())st.textContent='Loaded '+t.h[t.i]+' (if the page is blank, the site blocks embedding: use ↗)'};tabs.push(t);return t}
- function loadTab(t){const u=t.h[t.i];let r=page(u);if(r.ext&&!r.frame&&typeof webWants=='function'&&webWants(u)){webOpen(u);r={title:webHost(u)+' (browser window)',html:webNote(u)}}t.title=r.title||u;const fr=t.fr;t.pend=!!r.ext;
+ function loadTab(t){const u=t.h[t.i];let r=page(u);if(r.ext&&!r.frame&&typeof webWants=='function'&&webWants(u)){webOpen(u);r={title:webHost(u)+' (browser window)',html:webNote(u)}}t.title=r.title||u;const fr=t.fr;t.pend=!!r.ext;if(t.siBar){t.siBar.remove();t.siBar=null}
+  /* sites that need a sign-in open in the real browser window (signin26.js, web25.js) */
+  if(r.ext&&typeof siWants=='function'&&siWants(u)){t.title=webHost(u);hist.push([t.title,u]);hist=hist.slice(-200);store('bd95hist',hist);webOpen(u);siNote(t,u);return}
   if(r.ext){fr.removeAttribute('srcdoc');fr.setAttribute('sandbox','allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-downloads allow-presentation allow-modals');fr.setAttribute('allow','autoplay; fullscreen; encrypted-media; picture-in-picture; clipboard-write');fr.src=r.frame||u;if(navigator.onLine===false)st.textContent='You appear to be offline.'}else{fr.removeAttribute('src');fr.setAttribute('allow','autoplay; geolocation; clipboard-write');fr.setAttribute('sandbox','allow-scripts');t.src=r.html;fr.srcdoc=r.html}
   if(!/^about:(blank|source|bookmarks|history)/.test(u)&&!r.ext){hist.push([t.title,u]);hist=hist.slice(-200);store('bd95hist',hist)}else if(r.ext){hist.push([t.title,u]);hist=hist.slice(-200);store('bd95hist',hist)}
   fr.style.zoom=t.zoom;if(t===T())sync()}
- function sync(){const t=T();tabs.forEach(x=>x.fr.style.display=x===t?'block':'none');const u=cur();ad.value=u.startsWith('about:home')?'':u;src=t.src||src;q('.ex').style.display=/^https?:/i.test(u)?'':'none';q('.st').textContent=bms.some(b=>b[1]==u)?'★':'☆';q('.bk').disabled=t.i<1;q('.fw').disabled=t.i>=t.h.length-1;
+ function sync(){const t=T();tabs.forEach(x=>{x.fr.style.display=x===t?'block':'none';if(x.siBar)x.siBar.style.display=x===t?'flex':'none'});const u=cur();ad.value=u.startsWith('about:home')?'':u;src=t.src||src;q('.ex').style.display=/^https?:/i.test(u)?'':'none';q('.st').textContent=bms.some(b=>b[1]==u)?'★':'☆';q('.bk').disabled=t.i<1;q('.fw').disabled=t.i>=t.h.length-1;
   q('.otabs').innerHTML='';tabs.forEach((x,k)=>{const d=document.createElement('div');d.className='otab'+(k==ci?' on':'');d.title=x.title;d.innerHTML='<span>'+esc(x.title||'New tab')+'</span><u title="Close tab">✕</u>';d.onclick=e=>{if(e.target.tagName=='U'){closeTab(k);return}ci=k;sync()};d.onauxclick=()=>closeTab(k);q('.otabs').appendChild(d)});
   const pl=document.createElement('button');pl.textContent='+';pl.title='New tab (Ctrl+T)';pl.style.cssText='margin:0 0 0 2px;padding:2px 9px;border:0;background:transparent';pl.onclick=()=>newTab();q('.otabs').appendChild(pl);
   const b=q('.obm');b.innerHTML='';bms.forEach(x=>{const e=document.createElement('button');e.textContent=x[0];e.title=x[1];e.onclick=()=>nav(x[1]);b.appendChild(e)});W.setTitle(!t.title||t.title=='Oracle'?'Oracle':t.title+' - Oracle')}
@@ -1518,7 +1520,12 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
  function zoom(d){const t=T();t.zoom=d?Math.max(.5,Math.min(3,+(t.zoom+d).toFixed(2))):1;t.fr.style.zoom=t.zoom;st.textContent='Zoom '+Math.round(t.zoom*100)+'%'}
  q('.mn').onclick=e=>{e.stopPropagation();const o=W.body.querySelector('.odd');if(o){o.remove();return}const d=document.createElement('div');d.className='odd';MENU.forEach(([n,f])=>{const r=document.createElement('div');r.textContent=n;r.onclick=()=>{d.remove();f()};d.appendChild(r)});W.body.style.position='relative';W.body.appendChild(d);const kill=()=>{d.remove();document.removeEventListener('pointerdown',kill,true)};setTimeout(()=>document.addEventListener('pointerdown',ev=>{if(!d.contains(ev.target))kill()},true),0)};
  W.el.addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey;if(c&&e.key=='t'){e.preventDefault();newTab()}else if(c&&e.key=='w'){e.preventDefault();closeTab(ci)}else if(c&&e.key=='l'){e.preventDefault();ad.focus()}else if(e.key=='F5'||(c&&e.key=='r')){e.preventDefault();loadTab(T())}else if(e.altKey&&e.key=='ArrowLeft'){e.preventDefault();go(-1)}else if(e.altKey&&e.key=='ArrowRight'){e.preventDefault();go(1)}else if(c&&(e.key=='+'||e.key=='=')){e.preventDefault();zoom(.1)}else if(c&&e.key=='-'){e.preventDefault();zoom(-.1)}else if(c&&e.key=='0'){e.preventDefault();zoom(0)}});
- const onm=e=>{const t=tabs.find(x=>x.fr.contentWindow===e.source);if(!t||!e.data)return;if(typeof e.data.go=='string'){const u=norm(e.data.go);if(/^https?:/i.test(u)&&/duckduckgo\.com\/\?q=/.test(u)){if(window.__sys&&fwCheck(u))return;try{window.open(u,'_blank','noopener')}catch(x){}return}if(t!==T()){ci=tabs.indexOf(t)}nav(u)}
+ function siNote(t,u){const fr=t.fr;t.pend=false;fr.removeAttribute('src');fr.setAttribute('sandbox','allow-scripts');t.src='';fr.srcdoc=webNote(u);if(t===T())sync()}
+ const tabOfWin=w=>{for(let i=0;i<6&&w;i++){const t=tabs.find(x=>x.fr.contentWindow===w);if(t)return t;let p=null;try{p=w.parent}catch(x){}if(!p||p===w)break;w=p}return null};
+ const SIO={cur:t=>t.h[t.i],note:siNote,T:()=>T(),bar:(t,b)=>{fh.appendChild(b);b.style.display=t===T()?'flex':'none'},
+  setUrl:(t,u,title)=>{if(t.h[t.i]==u)return;t.h[t.i]=u;let h='';try{h=new URL(u).hostname}catch(x){}t.title=title||h||u;if(t===T()&&document.activeElement!==ad)sync()}};
+ const onm=e=>{if(e.data&&typeof e.data.__rudolfSignin=='string'){const t=tabOfWin(e.source);if(t&&typeof siMessage=='function')siMessage(e.data,t,e.source,e.origin,SIO);return}
+  const t=tabs.find(x=>x.fr.contentWindow===e.source);if(!t||!e.data)return;if(typeof e.data.go=='string'){const u=norm(e.data.go);if(/^https?:/i.test(u)&&/duckduckgo\.com\/\?q=/.test(u)){if(window.__sys&&fwCheck(u))return;try{window.open(u,'_blank','noopener')}catch(x){}return}if(t!==T()){ci=tabs.indexOf(t)}nav(u)}
   else if(e.data.act=='app'){if(e.data.v=='media'||e.data.v=='wordpro'){const w0=wins.find(x=>x.tb.title==(e.data.v=='media'?'Media Player':'WordPro'));w0?w0.focus():A[e.data.v]()}}else if(e.data.act=='ext'){if(/^https?:/i.test(e.data.v)){if(window.__sys&&fwCheck(e.data.v))return;try{window.open(e.data.v,'_blank','noopener')}catch(x){}}}else if(e.data.act=='wsearch'){netSearch(e.data.v).then(r=>{try{e.source.postMessage({wsres:r},'*')}catch(x){}})}else if(e.data.act=='dlreq'){netDlAsk(W,e.data.v,()=>{nav('about:downloads')})}else if(e.data.act=='rmbm'){bms.splice(+e.data.v,1);store('bd95bm',bms);loadTab(t);sync()}else if(e.data.act=='clrh'){hist=[];store('bd95hist',hist);loadTab(t)}else if(e.data.act=='cldl'){DLS.length=0;saveDl();loadTab(t)}};
  addEventListener('message',onm);window.__dlHook=()=>{const t=T();if(t&&t.h[t.i]=='about:downloads')loadTab(t)};W.onclose=()=>{removeEventListener('message',onm);window.__dlHook=null};
  newTab(url||'about:home')}
@@ -6851,7 +6858,7 @@ function settings(sec){if(SW&&wins.includes(SW)){SW.focus();SW.show(sec||SW.sec)
  LAUNCHING='settings';const W=SW=win('Settings','⚙️',860,640);LAUNCHING=null;W.app='settings';W.body.style.position='relative';
  W.body.innerHTML="<div class='sg'><div class='sn' role='tablist' aria-label='Settings pages'></div><div class='sc' role='tabpanel'></div></div>";
  const nav=W.body.querySelector('.sn'),box=W.body.querySelector('.sc');
- const SEC={disp:['🖥️','Display Properties',dispPanelS],vol:['🔊','Volume Controls',volPanelS],mm:['🎮','Multimedia Settings',mmPanelS],net:['📶','Network Settings',netPanelS],sys:['🕒','System Settings',sysPanelS],kbd:['⌨️','Keyboard',kbdPanel],mouse:['🖱️','Mouse and touchpad',mousePanel],devs:['🔌','Devices',devPanel],acc:['♿','Accessibility',accPanelS],priv:['🔏','Privacy',privPanel],sec:['🛡️','Security Settings',secPanelS],usr:['👤','User Settings',usrPanelS],stor:['💾','Storage and backup',storPanel],apps:['🧩','Apps',appsPanel],notif:['🔔','Notifications',notifPanel],upd:['🔄','Update and recovery',updPanel],about:['ℹ️','About',aboutPanel]};
+ const SEC={disp:['🖥️','Display Properties',dispPanelS],vol:['🔊','Volume Controls',volPanelS],mm:['🎮','Multimedia Settings',mmPanelS],net:['📶','Network Settings',netPanelS],web:['🔐','Oracle sign-in',signinPanel],sys:['🕒','System Settings',sysPanelS],kbd:['⌨️','Keyboard',kbdPanel],mouse:['🖱️','Mouse and touchpad',mousePanel],devs:['🔌','Devices',devPanel],acc:['♿','Accessibility',accPanelS],priv:['🔏','Privacy',privPanel],sec:['🛡️','Security Settings',secPanelS],usr:['👤','User Settings',usrPanelS],stor:['💾','Storage and backup',storPanel],apps:['🧩','Apps',appsPanel],notif:['🔔','Notifications',notifPanel],upd:['🔄','Update and recovery',updPanel],about:['ℹ️','About',aboutPanel]};
  const go=(k)=>{W.sec=k;nav.querySelectorAll('div').forEach(d=>{d.classList.toggle('on',d.dataset.k==k);d.setAttribute('aria-selected',d.dataset.k==k)});box.innerHTML='';SEC[k][2](box,W);box.scrollTop=0;kbFix(box)};
  W.rt=()=>{nav.querySelectorAll('div').forEach(d=>{d.textContent=SEC[d.dataset.k][0]+'  '+SEC[d.dataset.k][1]});trTree(W.el)};
  W.guard=(next)=>{const cur=W.sec;if(!cur||!secDirty(cur)||!box.isConnected)return next();
@@ -9458,6 +9465,102 @@ async function updNotice() {
 
 /* applied after sign-in and whenever settings change */
 (function () { const o = applySet; applySet = function () { const r = o.apply(this, arguments); try { if (USER) { pointerApply(); setTimeout(updNotice, 4000) } } catch (e) {} return r } })();
+
+/* ===== V26 Oracle sign-in sites (Rudolf OS 1.1.2) =====
+   Oracle shows websites as frames inside the desktop page. Chromium treats a frame's cookies as third-party, so a
+   site's sign-in cookie is dropped and signing in starts over; Google and Microsoft refuse outright. Sites that
+   need a sign-in therefore go to the real browser window (web25.js), where cookies work:
+   - before a page loads: the built-in sign-in sites, banks and payment sites, and the sites added in Settings
+   - while a page is open: the "web frames" extension (/usr/lib/rudolf/frames, signin.js) reports a password
+     field (Oracle asks, or moves the site when "Ask first" is off), a sign-in form being sent or a
+     "Sign in with..." window (Oracle moves the site at once). It never reads what is typed.
+   The sites on these lists keep their frame protections (the extension removes them for other sites). ===== */
+const SI_BANKS = ['chase.com', 'wellsfargo.com', 'citi.com', 'capitalone.com', 'americanexpress.com', 'discover.com', 'schwab.com', 'fidelity.com', 'vanguard.com',
+  'ally.com', 'sofi.com', 'robinhood.com', 'coinbase.com', 'paypal.com', 'venmo.com', 'cash.app', 'stripe.com', 'wise.com', 'revolut.com', 'santander.com',
+  'barclays.co.uk', 'hsbc.com', 'natwest.com', 'monzo.com', 'n26.com', 'klarna.com', 'irs.gov', 'ssa.gov', 'login.gov', 'id.me', 'healthcare.gov'];
+const SI_SLD = /^(co|com|net|org|gov|ac|edu|ne|or|go)$/;
+/* the site a host name belongs to: mail.example.co.uk → example.co.uk */
+function siDomain(h) {
+  const p = String(h || '').toLowerCase().replace(/^www\./, '').split('.').filter(Boolean);
+  if (p.length < 3) return p.join('.');
+  return p.slice(SI_SLD.test(p[p.length - 2]) && p[p.length - 1].length == 2 ? -3 : -2).join('.');
+}
+const siBank = h => { const d = siDomain(h), first = d.split('.')[0]; return SI_BANKS.includes(d) || /bank$|^bankof|creditunion|fcu$/.test(first) };
+const siUser = () => (S.webSites || []).filter(d => typeof d == 'string');
+const siAsk = () => S.siAsk !== false;
+/* every site that signs in in the real browser window */
+const siAll = () => [...new Set(WEB_SITES.concat(siUser(), SI_BANKS))];
+function siWants(u) {
+  if (!RD) return false;
+  const h = webHost(u); if (!h) return false;
+  return webWants(u) || siBank(h);
+}
+/* tell the web frames extension which sites keep their frame protections */
+function siPush() { try { window.postMessage({__rudolfFrames: 'sites', sites: siAll()}, location.origin) } catch (e) {} }
+function siAdd(h) {
+  const d = siDomain(h); if (!d || !/^[a-z0-9.-]+\.[a-z0-9-]+$/.test(d)) return '';
+  if (!siUser().includes(d) && !WEB_SITES.some(w => d == w || d.endsWith('.' + w))) { S.webSites = siUser().concat(d); persistS(); siPush() }
+  return d;
+}
+function siRemove(d) { S.webSites = siUser().filter(x => x != d); persistS(); siPush() }
+
+/* a message from the extension inside an Oracle tab. o: {cur(t), note(t,u), setUrl(t,u,title), bar(t,el), T()} */
+function siMessage(d, t, src, origin, o) {
+  if (!RD || !d || typeof d.__rudolfSignin != 'string') return;
+  let href = '';
+  try { const x = new URL(String(d.href)); if (/^https?:$/.test(x.protocol) && (!d.direct || x.origin == origin)) href = x.href } catch (e) {}
+  if (!href) return;
+  const site = d.direct ? href : o.cur(t);
+  if (!/^https?:/i.test(site)) return;
+  const host = webHost(site);
+  if (d.__rudolfSignin == 'url') {
+    if (!d.direct) return;
+    o.setUrl(t, href, String(d.title || '').slice(0, 120));
+    if (siWants(href)) siMove(t, href, o);
+    return;
+  }
+  t.siStay = t.siStay || new Set();
+  if (t.siStay.has(host)) { if (d.__rudolfSignin == 'submit') try { src.postMessage({__rudolfSignin: 'stay'}, '*') } catch (e) {} return }
+  if (d.__rudolfSignin == 'submit' || d.__rudolfSignin == 'popup' || !siAsk() || siWants(site)) { siMove(t, site, o); return }
+  if (d.__rudolfSignin == 'pw' && !t.siBar) siBar(t, site, host, src, o);
+}
+function siMove(t, u, o) {
+  if (t.siBar) { t.siBar.remove(); t.siBar = null }
+  if (window.__sys && typeof fwCheck == 'function') { const g = fwCheck(u); if (g) { notify('Blocked by the firewall', g.why, {kind: 'error'}); return } }
+  webOpen(u); o.note(t, u);
+}
+/* the bar above a tab whose page asks for a password */
+function siBar(t, site, host, src, o) {
+  const b = document.createElement('div'); b.className = 'sibar'; b.setAttribute('role', 'alert');
+  b.style.cssText = 'position:absolute;left:0;right:0;top:0;z-index:3;display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:7px 10px;background:#fef3c7;color:#1f2937;border-bottom:1px solid #f59e0b;font:13px system-ui,sans-serif';
+  const e = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
+  b.innerHTML = `<span style='flex:1;min-width:200px'>🔐 <b>${e(host)}</b> needs a real browser window to sign in; inside Oracle the sign-in would not be kept.</span>
+    <button class='si-open pri'>Open in browser window</button><button class='si-always'>Always for this site</button><button class='si-no' title='Stay in Oracle'>Not now</button>`;
+  b.querySelector('.si-open').onclick = () => siMove(t, site, o);
+  b.querySelector('.si-always').onclick = () => { const d = siAdd(host); siMove(t, site, o); if (d) notify('Oracle', d + ' will always open in the browser window.', {toast: 4000}) };
+  b.querySelector('.si-no').onclick = () => { t.siStay = t.siStay || new Set(); t.siStay.add(host); try { src.postMessage({__rudolfSignin: 'stay'}, '*') } catch (x) {} b.remove(); t.siBar = null };
+  t.siBar = b; o.bar(t, b);
+}
+
+/* Settings › Oracle sign-in */
+function signinPanel(c) {
+  const e = s => String(s).replace(/[&<>"']/g, x => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[x]);
+  const draw = () => {
+    const mine = siUser();
+    c.innerHTML = `<h3>Oracle sign-in</h3>
+<p class='msg'>Websites in Oracle are shown inside the desktop, where they cannot keep you signed in. Sites that need a sign-in open in a real browser window instead (🌐 in the taskbar switches between it and the desktop).</p>
+<div class='r2'><label>When a page asks for a password</label><div>${ckH('siask', 'Ask first (otherwise the site moves to the browser window by itself)', siAsk())}<div class='msg'>Sending a sign-in, or a “Sign in with Google / Microsoft / Apple…” button, always moves the site.</div></div></div>
+<h4 class='sh4'>Your sign-in sites</h4><div class='sil'>${mine.length ? mine.map(d => `<div style='display:flex;gap:8px;align-items:center;padding:3px 0'><span style='flex:1'>${e(d)}</span><button data-rm='${e(d)}' aria-label='Remove ${e(d)}'>Remove</button></div>`).join('') : "<div class='msg'>None yet. Choose “Always for this site” when Oracle asks, or add one here.</div>"}</div>
+<div class='rmrow' style='justify-content:flex-start'><input class='sin' placeholder='example.com' aria-label='Site to add' style='flex:0 1 240px'><button class='sia'>Add</button><span class='msg sim'></span></div>
+<details style='margin-top:10px'><summary>Built-in sign-in sites, banks and payment sites (${WEB_SITES.length + SI_BANKS.length})</summary><div class='msg' style='margin-top:6px;line-height:1.6'>${WEB_SITES.concat(SI_BANKS).map(e).join(' · ')}<br>Also any site whose name ends in “bank” or is a credit union.</div></details>`;
+    c.querySelector('#siask').onchange = ev => { S.siAsk = ev.target.checked; persistS() };
+    c.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { siRemove(b.dataset.rm); draw() });
+    const add = () => { let v = c.querySelector('.sin').value.trim(); try { if (/^https?:/i.test(v)) v = new URL(v).hostname } catch (x) {} const d = siAdd(v.toLowerCase()); if (d) draw(); else c.querySelector('.sim').textContent = 'That is not a web address such as example.com.' };
+    c.querySelector('.sia').onclick = add; c.querySelector('.sin').onkeydown = ev => { if (ev.key == 'Enter') add() };
+  };
+  draw();
+}
+if (RD) setTimeout(siPush, 2500);
 
 (function(){const d=document.createElement('div');d.className='ic tr';d.innerHTML='<b>🗑️</b><span>Trash</span>';let t=0;
  d.onclick=()=>{document.querySelectorAll('.ic').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');if((Date.now()-t<(window.__mouse?dblMs():450)||window.__mouse&&S.msingle))trash();t=Date.now()};

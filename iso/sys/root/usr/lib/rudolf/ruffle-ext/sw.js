@@ -1,7 +1,8 @@
 /* Ruffle for Oracle (Rudolf OS). GPL-2.0-or-later.
    The desktop sends its settings through bridge.js: on/off, where to load Ruffle from (the same sources as
    the Flash Player app, so one copy of Ruffle serves both) and the Ruffle options. */
-const DEF = {on: true, urls: ['https://unpkg.com/@ruffle-rs/ruffle', 'https://cdn.jsdelivr.net/npm/@ruffle-rs/ruffle'], config: {autoplay: 'auto'}};
+/* the copy built into Rudolf OS first (used by the browser window for sign-in sites, which has no desktop to send settings) */
+const DEF = {on: true, urls: ['http://127.0.0.1:8080/lib/ruffle/ruffle.js', 'https://unpkg.com/@ruffle-rs/ruffle', 'https://cdn.jsdelivr.net/npm/@ruffle-rs/ruffle'], config: {autoplay: 'auto'}};
 async function cfg() { const {ruffle} = await chrome.storage.local.get('ruffle'); return Object.assign({}, DEF, ruffle || {}); }
 /* Old pages check navigator.plugins for Flash before they add it; this entry makes them add it, then Ruffle plays it */
 async function sync() {
