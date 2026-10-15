@@ -1,14 +1,14 @@
 rudolf-system 1
-serial 2026101304
-version 1.1.2.261013
-released 2026-10-13
-expires 2026-10-27
+serial 2026101511
+version 1.1.2.261015
+released 2026-10-15
+expires 2026-10-29
 urgent 0
-chromium 155.0.8059.39
-kernel 6.18.56-rudolf
-notes 1.1.2: signing in to websites works (Oracle moves sign-in pages to a real browser window); choose the screen resolution and frame rate; fixes for small screens and display scaling
-L	vmlinuz	10138624	04e9494e74212a6c87aaba67b16d6184092860346aebe6f80a82c77179561a31	https://github.com/merciless146/RudolfOS/releases/download/r2026101304/vmlinuz
-L	base	201703424	7368b09515c1aba8952c1729a6ac20d28f23938bbb868fac2b965f75f580a19f	https://github.com/merciless146/RudolfOS/releases/download/r2026101304/base.sfs
-L	chromium	129585152	3ae18d786ada55880a1dadc2f6bb09a5d530acb4b2c63cda07808562ff9ec461	https://github.com/merciless146/RudolfOS/releases/download/r2026101304/chromium.sfs
-L	desktop	24924160	9b297f1de2ec6860387daa7cc2019f07f60c7365250900d7efbd34f9dad5df12	https://github.com/merciless146/RudolfOS/releases/download/r2026101304/desktop.sfs
-L	modules	10252288	05428ce11d16c24af4e04da805166eac197d2013a960179794ecf9d95c1cdc2c	https://github.com/merciless146/RudolfOS/releases/download/r2026101304/modules.sfs
+chromium 155.0.8059.79
+kernel 6.18.57-rudolf
+notes Chromium 155.0.8059.79, Linux 6.18.57
+L	vmlinuz	10159104	97fc18f51946430a999c671afc98124ad9e02e7adcbd71ef0ee3ac7d8e645866	https://github.com/merciless146/RudolfOS/releases/download/r2026101511/vmlinuz
+L	base	201703424	7368b09515c1aba8952c1729a6ac20d28f23938bbb868fac2b965f75f580a19f	https://github.com/merciless146/RudolfOS/releases/download/r2026101511/base.sfs
+L	chromium	129650688	9fc92ddcc36b25c7f1c1c22c6cfc19d41293cdb5d2e82b06cfcaf91aa81f69e7	https://github.com/merciless146/RudolfOS/releases/download/r2026101511/chromium.sfs
+L	desktop	24924160	9b297f1de2ec6860387daa7cc2019f07f60c7365250900d7efbd34f9dad5df12	https://github.com/merciless146/RudolfOS/releases/download/r2026101511/desktop.sfs
+L	modules	10260480	5133b3af411f6f94a5f7c75e016701cc3c05e15d66886f965d23d2b47dba3eed	https://github.com/merciless146/RudolfOS/releases/download/r2026101511/modules.sfs
