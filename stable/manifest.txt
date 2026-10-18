@@ -1,14 +1,14 @@
 rudolf-system 1
-serial 2026101818
-version 1.2.0.261018
+serial 2026101820
+version 1.2.1.261018
 released 2026-10-18
 expires 2026-11-01
 urgent 0
 chromium 155.0.8059.79
 kernel 6.18.57-rudolf
-notes system programs
-L	vmlinuz	10159104	97fc18f51946430a999c671afc98124ad9e02e7adcbd71ef0ee3ac7d8e645866	https://github.com/merciless146/RudolfOS/releases/download/r2026101818/vmlinuz
-L	base	201715712	731ba83797a5db8d3621001506de653fcd19030529a1114695ca1f71a77a90b5	https://github.com/merciless146/RudolfOS/releases/download/r2026101818/base.sfs
-L	chromium	129650688	9fc92ddcc36b25c7f1c1c22c6cfc19d41293cdb5d2e82b06cfcaf91aa81f69e7	https://github.com/merciless146/RudolfOS/releases/download/r2026101818/chromium.sfs
-L	desktop	24956928	01cf9bd144355ff9178d8d7b210fee98506ba98151c344537ecb43d37125a5d3	https://github.com/merciless146/RudolfOS/releases/download/r2026101818/desktop.sfs
-L	modules	10260480	5133b3af411f6f94a5f7c75e016701cc3c05e15d66886f965d23d2b47dba3eed	https://github.com/merciless146/RudolfOS/releases/download/r2026101818/modules.sfs
+notes 1.2.1: download files of any size from websites, up to 4 GB by default; large files stay on the disk and open from C:\DOWNLOADS
+L	vmlinuz	10159104	97fc18f51946430a999c671afc98124ad9e02e7adcbd71ef0ee3ac7d8e645866	https://github.com/merciless146/RudolfOS/releases/download/r2026101820/vmlinuz
+L	base	201715712	1726ac030682218b40e1673142ce368b6012e30029510e5767ca169ecc53475a	https://github.com/merciless146/RudolfOS/releases/download/r2026101820/base.sfs
+L	chromium	129650688	9fc92ddcc36b25c7f1c1c22c6cfc19d41293cdb5d2e82b06cfcaf91aa81f69e7	https://github.com/merciless146/RudolfOS/releases/download/r2026101820/chromium.sfs
+L	desktop	24965120	2067e212d31229f3dabea5ad494ab1b6a5d55b8d665af85ed81a0611f9e1d552	https://github.com/merciless146/RudolfOS/releases/download/r2026101820/desktop.sfs
+L	modules	10260480	5133b3af411f6f94a5f7c75e016701cc3c05e15d66886f965d23d2b47dba3eed	https://github.com/merciless146/RudolfOS/releases/download/r2026101820/modules.sfs
