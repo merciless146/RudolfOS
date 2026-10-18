@@ -163,7 +163,7 @@ const green = p => p[1] > 150 && p[0] < 60 && p[2] < 60;
   await inTab(u => u.includes('/files'), `document.getElementById('f').click();1`, true);
   ok('a download from a real tab is saved in C:\\DOWNLOADS (signed in: the cookie came along)', await until(`!!(fs['C:'].DOWNLOADS&&fs['C:'].DOWNLOADS['NOTES.TXT']=='notes for alice')`, 10000), await ev(`JSON.stringify(DLS.slice(-1))`));
   await inTab(u => u.includes('/files'), `document.getElementById('b').click();1`, true);
-  ok('a download over the size limit is stopped, with a reason', await until(`DLS.length&&DLS[DLS.length-1].n=='BIG.ZIP'&&DLS[DLS.length-1].st=='blocked'`, 10000), await ev(`JSON.stringify(DLS.slice(-1))`));
+  ok('a download over 1.5 MB is kept on the disk (1.2.1)', await until(`DLS.length&&DLS[DLS.length-1].n=='BIG.ZIP'&&DLS[DLS.length-1].st=='saved'&&isDlRef(fs['C:'].DOWNLOADS['BIG.ZIP'])`, 20000), await ev(`JSON.stringify(DLS.slice(-1))`));
 
   // --- without the browser window: what asked for it opens in Oracle; the sign-in settings say so
   const nw = await ev('wins.length');

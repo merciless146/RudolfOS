@@ -144,7 +144,7 @@ addEventListener('message', e => {
     else if (ev == 'fs') h.fs && h.fs(!!m.on);
     else if (ev == 'blocked') { if (m.main) h.blocked(String(m.url || ''), String(m.why || '')) }
     else if (ev == 'flash') h.flash && h.flash();
-    else if (ev == 'download') h.download && h.download(String(m.url || ''), {name: String(m.name || ''), data: typeof m.data == 'string' && m.data.startsWith('data:') ? m.data : '', big: !!m.big, why: String(m.why || '')});
+    else if (ev == 'download') h.download && h.download(String(m.url || ''), {name: String(m.name || ''), data: typeof m.data == 'string' && m.data.startsWith('data:') ? m.data : '', big: !!m.big, why: String(m.why || ''), started: !!m.started});
     else if (ev == 'dialog') h.dialog(String(m.kind || 'alert'), String(m.text || ''), String(m.def || '')).then(r => rtSend('dialog', m.tid, {did: m.did, ok: r.ok, text: r.text}));
     else if (ev == 'perm') h.perm(String(m.perm || ''), String(m.url || '')).then(a => rtSend('perm', m.tid, {pid: m.pid, allow: a}));
   } catch (x) { console.warn('real tab event', ev, x) }

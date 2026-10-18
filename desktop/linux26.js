@@ -53,8 +53,8 @@ function lxOwner(){const o=ld('bd95lxowner',null);if(!o&&USER){svj('bd95lxowner'
    a file changed on both sides keeps the app's version and saves the desktop's as "(conflict)" */
 async function lxSyncFolder(key,real){const base='/home/rudolf/'+real,dk=homePath(key);let root=node(dk);if(!isDir(root))return 0;
  const SK='bd95lxsync:'+uid(),st=ld(SK,{});let n=0;
- const tree=(await lxApi('fs/tree?path='+encodeURIComponent(base))).items;const R=new Map(tree.map(i=>[real+'/'+i.p,i]));
- const D=new Map();(function walk(o,rel){Object.keys(o).forEach(k=>{const p=rel?rel+'/'+k:k,v=o[k];D.set(real+'/'+p,{dir:isDir(v),v});if(isDir(v))walk(v,p)})})(root,'');
+ const tree=(await lxApi('fs/tree?path='+encodeURIComponent(base))).items;const dk2=window.__dl27?ld(DLRK,{}):{},R=new Map(tree.filter(i=>!String(i.p).split('/').some(x=>x.startsWith('.'))&&!(base+'/'+i.p in dk2)).map(i=>[real+'/'+i.p,i]));
+ const D=new Map();(function walk(o,rel){Object.keys(o).forEach(k=>{const p=rel?rel+'/'+k:k,v=o[k];if(typeof v=='string'&&v.startsWith('rudolfdisk:'))return;D.set(real+'/'+p,{dir:isDir(v),v});if(isDir(v))walk(v,p)})})(root,'');
  const dset=(p,v)=>{const parts=p.split('/').slice(1),name=parts.pop();let o=root;for(const s of parts){if(!isDir(o[s]))o[s]={};o=o[s]}o[name]=v};
  const ddel=p=>{const parts=p.split('/').slice(1),name=parts.pop();let o=root;for(const s of parts){o=o[s];if(!isDir(o))return}delete o[name]};
  const rpath=p=>'/home/rudolf/'+p;

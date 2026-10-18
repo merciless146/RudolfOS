@@ -881,9 +881,9 @@ const EXPL=new Set(),FC={op:null,items:[]};
 function fsSave(){try{localStorage.setItem('blockdos95',JSON.stringify(fs));return true}catch(e){return false}}
 const PROT=['C:/PROGRAMS','C:/WINDOWS'];const pkey=a=>a.join('/');const isProt=a=>a.length<=1||PROT.includes(pkey(a))||(window.__sys&&a.length>=2&&a[1]=='PROGRAMS'&&a[2]!='EMUZIPS'&&!isAdmin());
 const ext=n=>{const m=/\.([^.]+)$/.exec(n);return m?m[1].toUpperCase():''};
-const fType=(n,v)=>{if(isDir(v))return'Folder';const e=ext(n);return({LUA:'Lua script',SWF:'Flash movie',GB:'Game Boy ROM',GBC:'Game Boy Color ROM',GBA:'Game Boy Advance ROM',PAK:'Quake data archive',BSP:'Quake map',DEM:'Quake demo',MDL:'Quake model',WAD:'Quake texture archive',CFG:'Configuration',ZIP:'ZIP archive',SAV:'Game save',PKG:'Package record',BAT:'Batch file',DOC:'Document',PNG:'Picture',JPG:'Picture',JPEG:'Picture',GIF:'Picture',WEBP:'Picture',HTM:'Web page',HTML:'Web page',TXT:'Text file'})[e]||(e?e+' file':'File')};
-const fIcon=(n,v)=>{if(isDir(v))return'📁';const e=ext(n);return({LUA:'🌙',SWF:'⚡',GB:'🎮',GBC:'🎮',GBA:'🎮',PAK:'🔫',BSP:'🗺️',DEM:'🎞️',ZIP:'📦',SAV:'💾',PKG:'📦',BAT:'⚙️',DOC:'📄',PNG:'🖼️',JPG:'🖼️',JPEG:'🖼️',GIF:'🖼️',WEBP:'🖼️',HTM:'🌐',HTML:'🌐',TXT:'📝'})[e]||'📃'};
-const sizeOf=v=>isDir(v)?-1:(typeof v=='string'?(v.startsWith('rudolfrom:')?(+v.split(':')[2]||0):v.startsWith('data:')?Math.round((v.length-v.indexOf(',')-1)*.75):new Blob([v]).size):0);
+const fType=(n,v)=>{if(isDir(v))return'Folder';if(typeof v=='string'&&v.startsWith('rudolfdisk:'))return fType(n,'')+' · on the disk';const e=ext(n);return({LUA:'Lua script',SWF:'Flash movie',GB:'Game Boy ROM',GBC:'Game Boy Color ROM',GBA:'Game Boy Advance ROM',PAK:'Quake data archive',BSP:'Quake map',DEM:'Quake demo',MDL:'Quake model',WAD:'Quake texture archive',CFG:'Configuration',ZIP:'ZIP archive',SAV:'Game save',PKG:'Package record',BAT:'Batch file',DOC:'Document',PNG:'Picture',JPG:'Picture',JPEG:'Picture',GIF:'Picture',WEBP:'Picture',HTM:'Web page',HTML:'Web page',TXT:'Text file'})[e]||(e?e+' file':'File')};
+const fIcon=(n,v)=>{if(isDir(v))return'📁';if(typeof v=='string'&&v.startsWith('rudolfdisk:'))return'💽';const e=ext(n);return({LUA:'🌙',SWF:'⚡',GB:'🎮',GBC:'🎮',GBA:'🎮',PAK:'🔫',BSP:'🗺️',DEM:'🎞️',ZIP:'📦',SAV:'💾',PKG:'📦',BAT:'⚙️',DOC:'📄',PNG:'🖼️',JPG:'🖼️',JPEG:'🖼️',GIF:'🖼️',WEBP:'🖼️',HTM:'🌐',HTML:'🌐',TXT:'📝'})[e]||'📃'};
+const sizeOf=v=>isDir(v)?-1:(typeof v=='string'?(v.startsWith('rudolfrom:')?(+v.split(':')[2]||0):v.startsWith('rudolfdisk:')?(+(/"s":(\d+)/.exec(v)||[])[1]||0):v.startsWith('data:')?Math.round((v.length-v.indexOf(',')-1)*.75):new Blob([v]).size):0);
 const fmtB=b=>b<0?'':b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':b<1073741824?(b/1048576).toFixed(2)+' MB':(b/1073741824).toFixed(1)+' GB';
 const clone=v=>JSON.parse(JSON.stringify(v));
 const uniq=(d,name)=>{if(!(name in d))return name;const m=/^(.*?)(\.[^.]*)?$/.exec(name),b=m[1],e=m[2]||'';let i=1,c;do{c=b+(i==1?' - COPY':' - COPY '+i)+e;i++}while(c in d);return c};
@@ -1168,7 +1168,7 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
   blocked:(u,why)=>{t.blk=Date.now();notify('Blocked by the firewall',why+' ('+rtHost(u)+')',{kind:'error'});if(t===T())st.textContent='Blocked by the firewall: '+rtHost(u)},
   fs:()=>{},
   flash:()=>{if(t===T())st.textContent='⚡ Flash content on this page is played by Ruffle'},
-  download:(u,o)=>{if(!window.__sys)return;const named=o.name?'https://x/'+encodeURIComponent(o.name):u;
+  download:(u,o)=>{if(!window.__sys)return;if(o.started&&window.__dl27&&dlOn()){const rec=dlNative(u,o);if(t===T())st.textContent='Downloading '+rec.n+'…';return}const named=o.name?'https://x/'+encodeURIComponent(o.name):u;
    if(window.__net&&netExeUrl(named)&&NETC.dl.exe=='ask'){if(!W.el.classList.contains('act'))W.focus();netDlAsk(W,u,()=>{});return}
    const rec=dlStart(u,{name:o.name,data:o.data,big:o.big,done:r=>{const ok=r.st=='saved';notify(ok?'Downloaded':'Download '+(r.st=='quarantined'?'quarantined':'stopped'),r.n+(ok?' is in C:\\DOWNLOADS.':' – '+(r.why||'it could not be saved.')),{kind:ok?'':'error',action:()=>browser('about:downloads')})}});
    if(t===T())st.textContent='Downloading '+rec.n+'…'}});
@@ -2345,7 +2345,7 @@ function fwCheck(u){if(!/^https?:/i.test(u))return null;if(window.__net&&!netUp(
  if(f.mode=='lock')why='All internet access is blocked by the firewall.';else if(hostMatch(h,f.block))why='This site is on the blocked list.';else if(f.mode=='trusted'&&!hostMatch(h,f.trust))why='This site is not on the trusted list.';
  if(why){logEvt('fw','Blocked '+h+' — '+why);return{why,host:h}}return null}
 /* ---------- file type policy + antivirus ---------- */
-const RECOG=new Set('TXT MD CSV LOG INI JSON XML HTM HTML DOC LUA BAT PNG JPG JPEG GIF BMP WEBP SVG MP3 WAV OGG M4A MP4 WEBM'.split(' '));
+const RECOG=new Set('TXT MD CSV LOG INI JSON XML HTM HTML DOC LUA BAT PNG JPG JPEG GIF BMP WEBP SVG MP3 WAV OGG M4A MP4 WEBM PDF ZIP TAR GZ TGZ 7Z MKV MOV M4V OGV OPUS AAC FLAC AVIF TTF OTF WOFF WOFF2 SRT VTT EPUB'.split(' '));
 const HIGHRISK=new Set('EXE COM DLL MSI SCR PIF CMD VBS VBE WSF HTA PS1 SH JAR APK DMG PKG DEB RPM LNK JS REG SYS DRV BIN ISO CPL'.split(' '));
 function typeGate(nm){const e=ext(String(nm).toUpperCase());if(e&&HIGHRISK.has(e))return`Files of type .${e} can run programs on the computer and are not allowed.`;
  if(!e||!RECOG.has(e)){if(!SECC.pol.unk)return`Rudolf OS does not recognize ${e?'.'+e+' ':'this kind of '}files, so they are blocked. An administrator can change this in Security Settings.`}return''}
@@ -2377,20 +2377,21 @@ const TEXTX=/^(TXT|MD|CSV|LOG|INI|JSON|XML|HTM|HTML|DOC|LUA|BAT)$/;
 function dlStart(u,opt){opt=opt||{};let nm='DOWNLOAD';try{nm=decodeURIComponent(opt.name||new URL(u).pathname.split('/').pop()||'download')}catch(e){}nm=nm.toUpperCase().replace(/[\\\/:*?"<>|]/g,'_').slice(0,60)||'DOWNLOAD';
  const rec={n:nm,u,t:Date.now(),sz:0,st:'wait',why:'',exe:!!opt.exe,by:opt.by||''};DLS.push(rec);if(DLS.length>100)DLS.shift();saveDl();
  const fin=(st,why)=>{rec.st=st;rec.why=why||'';saveDl();window.__dlHook&&window.__dlHook();if(opt.done)try{opt.done(rec)}catch(e){}};
- if(opt.big){fin('blocked','The file is larger than 1.5 MB.');return rec}
+ const nat=()=>window.__dl27&&dlOn()&&!opt.data;
+ if(opt.big){if(nat()){dlHandOff(u,rec);return rec}fin('blocked','The file is larger than 1.5 MB.');return rec}
  const tg=(opt.exe&&HIGHRISK.has(ext(nm)))?'':typeGate(nm);if(tg){logEvt('av',`Blocked download ${nm}: ${tg}`);fin('blocked',tg);return rec}
  /* opt.data: the file as a real tab fetched it (with the site's cookies), as a data: URL */
- (opt.data?fetch(opt.data):fetch(u,{credentials:'omit'})).then(r=>{if(!r.ok)throw 0;return r.blob()}).then(async b=>{rec.sz=b.size;if(b.size>1.5*1048576)return fin('blocked','The file is larger than 1.5 MB.');
+ const ac=new AbortController();let handed=false;(opt.data?fetch(opt.data):fetch(u,{credentials:'omit',signal:ac.signal})).then(r=>{if(!r.ok)throw 0;if(nat()&&+r.headers.get('content-length')>1.5*1048576){handed=true;ac.abort();dlHandOff(u,rec);throw 0}return r.blob()}).then(async b=>{rec.sz=b.size;if(b.size>1.5*1048576){if(nat()){handed=true;dlHandOff(u,rec);return}return fin('blocked','The file is larger than 1.5 MB.')}
   const e=ext(nm),val=await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);TEXTX.test(e)?fr.readAsText(b):fr.readAsDataURL(b)});
   const g=opt.exe?netExeScan(nm,val):secIngress(nm,val,'download');if(!g.ok)return fin(g.q?'quarantined':'blocked',g.msg);
   const C=fs['C:'];if(!C.DOWNLOADS||typeof C.DOWNLOADS!='object')C.DOWNLOADS={};const d=C.DOWNLOADS;let n2=nm;if(n2 in d){const m=/^(.*?)(\.[^.]*)?$/.exec(nm);for(let i=2;;i++){n2=m[1]+' ('+i+')'+(m[2]||'');if(!(n2 in d))break}}
-  d[n2]=val;if(!fsSave()){delete d[n2];return fin('failed','The disk is full.')}rec.path=n2;fin('saved')}).catch(()=>fin('failed','The download could not be completed (the server refused it or cannot be reached).'));
+  d[n2]=val;if(!fsSave()){delete d[n2];return fin('failed','The disk is full.')}rec.path=n2;fin('saved')}).catch(()=>{if(handed)return;if(nat()){handed=true;dlHandOff(u,rec);return}fin('failed','The download could not be completed (the server refused it or cannot be reached).')});
  return rec}
 function secPage(u,doc,lk,esc){
- if(u=='about:downloads'){const st={saved:['✅','Saved to C:\\DOWNLOADS'],wait:['⏳','Downloading…'],blocked:['⛔','Blocked'],quarantined:['☣️','Quarantined by antivirus'],failed:['⚠️','Failed']};
+ if(u=='about:downloads'){const st={saved:['✅','Saved to C:\\DOWNLOADS'],wait:['⏳','Downloading…'],check:['🔎','Checking…'],approve:['🛡️','Waiting for an administrator to approve it'],blocked:['⛔','Blocked'],quarantined:['☣️','Quarantined by antivirus'],failed:['⚠️','Failed']};
   const rows=DLS.slice().reverse().map(d=>{const s=st[d.st]||st.failed,dt=new Date(d.t),when=sysDateStr(dt)+' '+dt.toLocaleTimeString(window.__a11y?LOC():[],{hour:'numeric',minute:'2-digit',timeZone:S.tz});
-   return`<tr><td style='font-size:20px'>${s[0]}</td><td><b>${esc(d.n)}</b><div style='color:#6b7280;font-size:12px;word-break:break-all'>${esc(d.u)}</div><div style='color:#6b7280;font-size:12px'>${esc(when)}${d.sz?' · '+(d.sz>1024?Math.round(d.sz/1024)+' KB':d.sz+' bytes'):''}</div></td><td>${esc(s[1])}${d.why?`<div style='color:#b91c1c;font-size:12px'>${esc(d.why)}</div>`:''}${d.exe&&d.st=='saved'?`<div style='color:#92400e;font-size:12px'>Program file — approved by ${esc(d.by)}. It cannot be run in Rudolf OS.</div>`:''}${d.st=='saved'?`<div>${lk('file:///C:/DOWNLOADS/'+encodeURIComponent(d.path||d.n),'Open')}</div>`:''}</td></tr>`}).join('');
-  return doc('Downloads',`<h2 style='margin:0 0 6px'>Downloads</h2><p style='color:#6b7280;margin-top:0'>Every download is checked by the firewall, the file-type rules and the antivirus before it is saved.</p><p>${DLS.length?`<a href='#' onclick='act("cldl");return false'>Clear list</a> · `:''}${lk('about:files?p=C:/DOWNLOADS','Open Downloads folder')}</p>${rows?`<table style='width:100%;border-collapse:collapse'>${rows.replace(/<tr>/g,"<tr style='border-top:1px solid #e5e7eb'>")}</table>`:`<p style='color:#6b7280'>No downloads yet.</p>`}`,"function act(a,v){parent.postMessage({act:a,v:v},'*')}")}
+   return`<tr><td style='font-size:20px'>${s[0]}</td><td><b>${esc(d.n)}</b><div style='color:#6b7280;font-size:12px;word-break:break-all'>${esc(d.u)}</div><div style='color:#6b7280;font-size:12px'>${esc(when)}${d.sz?' · '+(d.sz>1024?Math.round(d.sz/1024)+' KB':d.sz+' bytes'):''}</div></td><td>${esc(s[1])}${d.why?`<div style='color:#b91c1c;font-size:12px'>${esc(d.why)}</div>`:''}${d.exe&&d.st=='saved'?`<div style='color:#92400e;font-size:12px'>Program file — approved by ${esc(d.by)}. It cannot be run in Rudolf OS.</div>`:''}${d.st=='saved'&&d.disk?`<div style='color:#6b7280;font-size:12px'>Kept on the disk (larger than 1.5 MB)${d.av=='part'?'. The antivirus checked its first and last 4 MB.':d.av=='off'?'. The antivirus was off.':''}</div>`:''}${d.st=='saved'?`<div>${lk('file:///C:/DOWNLOADS/'+encodeURIComponent(d.path||d.n),'Open')}</div>`:''}</td></tr>`}).join('');
+  return doc('Downloads',`<h2 style='margin:0 0 6px'>Downloads</h2><p style='color:#6b7280;margin-top:0'>Every download is checked by the firewall, the file-type rules and the antivirus before it is saved. Files larger than 1.5 MB are kept on the disk, up to the limit in Settings ▸ Network.</p><p>${DLS.length?`<a href='#' onclick='act("cldl");return false'>Clear list</a> · `:''}${lk('about:files?p=C:/DOWNLOADS','Open Downloads folder')}</p>${rows?`<table style='width:100%;border-collapse:collapse'>${rows.replace(/<tr>/g,"<tr style='border-top:1px solid #e5e7eb'>")}</table>`:`<p style='color:#6b7280'>No downloads yet.</p>`}`,"function act(a,v){parent.postMessage({act:a,v:v},'*')}")}
  if(/^https?:/i.test(u)){const b=fwCheck(u);if(b)return doc(b.net?'No internet connection':'Blocked by firewall',`<div style='text-align:center;margin-top:30px'><div style='font-size:56px'>${b.net?'📡':'🛡️'}</div><h2 style='margin:6px 0'>${b.net?'You are offline':'This page is blocked'}</h2><p>${esc(b.why)}</p><p style='color:#6b7280'>${esc(b.host)}</p><p style='color:#6b7280;font-size:13px'>${b.net?'Network connections are managed in Settings ▸ Network Settings.':'An administrator can change this in Settings ▸ Security Settings.'}</p><p>${lk('about:home','Go to the home page')}</p></div>`);
   if(isDlUrl(u)){if(window.__net&&netExeUrl(u)&&NETC.dl.exe=='ask')return netDlPage(u,esc,lk,doc);dlStart(u);return doc('Downloading',`<p style='margin-top:30px;text-align:center'>Starting download…</p>`,"setTimeout(function(){go('about:downloads')},60)")}}
  return null}
@@ -2880,7 +2881,7 @@ function mmPkg(id){const I=MMI[id];return `PACKAGE=${id}\nNAME=${I.name}\nINSTAL
 function mmFiles(id,on){const P=fs['C:'].PROGRAMS,I=(P.INSTALLERS=isDir(P.INSTALLERS)?P.INSTALLERS:{}),f=MMI[id];
  if(on){I[f.launcher]=mmLauncher(id);I[f.pkg]=mmPkg(id)}else{delete I[f.launcher];delete I[f.pkg]}fsSave();EXPL.forEach(x=>x())}
 function mmRecog(){const on=id=>mmReady(id);const set=(e,v)=>v?RECOG.add(e):RECOG.delete(e);
- set('SWF',on('ruffle'));set('GB',on('gb'));set('GBC',on('gb'));set('SAV',on('gb'));set('ZIP',(on('ruffle')||on('gb'))&&MMC.set.zipOn)}
+ set('SWF',on('ruffle'));set('GB',on('gb'));set('GBC',on('gb'));set('SAV',on('gb'))}
 function mmMenu(){const ul=$('#menu ul');if(!ul)return;[['gbplayer','🦤 Emu','gb'],['flash','⚡ Flash Player','ruffle']].forEach(([a,t,id])=>{let li=ul.querySelector(`li[data-a=${a}]`);
   if(mmReady(id)){if(!li){li=document.createElement('li');li.dataset.a=a;li.textContent=t;const ref=ul.querySelector('li[data-a=paint]');ul.insertBefore(li,ref||null)}}else if(li)li.remove()});}
 /* --- messages --- */
@@ -3111,14 +3112,14 @@ mmRecog();mmEnsure();setTimeout(mmMenu,0);
 /* ===== v19: Network Settings, taskbar network indicator, web-search relay, executable download permission ===== */
 const NETK='bd95net';
 const NETD={conns:[{id:'eth0',name:'Ethernet',type:'wired',ssid:'',sec:'open',pw:'',auto:true,ipm:'dhcp',ip:'',mask:'',gw:'',dns:''}],active:'eth0',
- search:{prov:'wikipedia',url:'',key:'',relay:'auto',relayUrl:'https://api.allorigins.win/raw?url={urlenc}',n:10},dl:{exe:'ask'}};
+ search:{prov:'wikipedia',url:'',key:'',relay:'auto',relayUrl:'https://api.allorigins.win/raw?url={urlenc}',n:10},dl:{exe:'ask',max:4096}};
 const netClone=v=>JSON.parse(JSON.stringify(v));
 function netCleanConn(c,i){if(!c||typeof c!='object')return null;const s=x=>String(x==null?'':x);return{id:s(c.id||('c'+i+Date.now())).slice(0,32),name:s(c.name).slice(0,32)||('Connection '+(i+1)),type:c.type=='wifi'?'wifi':'wired',ssid:s(c.ssid).slice(0,32),sec:['open','wpa2','wpa3'].includes(c.sec)?c.sec:'open',pw:s(c.pw).slice(0,63),auto:c.auto!==false,ipm:c.ipm=='manual'?'manual':'dhcp',ip:s(c.ip),mask:s(c.mask),gw:s(c.gw),dns:s(c.dns)}}
 function netLoadCfg(){const v=ld(NETK,null),d=netClone(NETD);if(v&&typeof v=='object'){
   if(Array.isArray(v.conns)){const seen=new Set();d.conns=v.conns.map(netCleanConn).filter(c=>c&&!seen.has(c.id)&&seen.add(c.id))}
   d.active=v.active===null?null:(d.conns.some(c=>c.id===v.active)?v.active:(v.active===undefined?d.active:null));
   if(v.search&&typeof v.search=='object')for(const k in d.search)if(typeof v.search[k]==typeof d.search[k])d.search[k]=v.search[k];
-  if(v.dl&&(v.dl.exe=='ask'||v.dl.exe=='block'))d.dl.exe=v.dl.exe}
+  if(v.dl&&(v.dl.exe=='ask'||v.dl.exe=='block'))d.dl.exe=v.dl.exe;if(v.dl&&[100,500,1024,2048,4096,8192,16384].includes(+v.dl.max))d.dl.max=+v.dl.max}
  if(d.active&&!d.conns.some(c=>c.id===d.active))d.active=null;return d}
 let NETC=netLoadCfg(),NETW=null;const NETST={state:NETC.active?'connected':'off',inet:null,msg:''};
 const netSave=()=>svj(NETK,NETC);
@@ -3232,12 +3233,12 @@ function netPanelS(c,W){const adm=isAdmin();if(!(CUST.net&&CUST.net.dirty()))NET
 <h4 class='sh4'>Web search (Oracle)</h4><div class='r2'><label>Search service</label>${sel('prov',[['wikipedia','Wikipedia'],['ddg','DuckDuckGo Instant Answers'],['custom','Custom JSON search API']])}<label>Custom address</label><input data-k='url' placeholder='https://search.example/search?q={q}&format=json'${D}><label>API key</label><input data-k='key' type='password' autocomplete='off' placeholder='Used for {key} in the address'${D}><label>Results</label>${sel('n',[[5,'5'],[10,'10'],[20,'20']])}
 <label>CORS relay</label>${sel('relay',[['auto','Automatic (use if the direct request fails)'],['always','Always use the relay'],['off','Never use a relay']])}<label>Relay address</label><input data-k='relayUrl' placeholder='https://relay.example/?url={urlenc}'${D}><label>Test</label><div><button id='nts'>Test search</button></div></div>
 <div class='msg' style='color:#6b7280;margin-top:0'>Oracle asks the search service directly over HTTPS. Many services do not allow browser requests; the relay forwards the request through another server as a workaround, so it can see what you search for. Requests obey the firewall.</div>
-<h4 class='sh4'>Downloads</h4><div class='r2'><label>Program files</label>${sel('exe',[['ask','Ask for permission (administrator approval)'],['block','Always block']])}</div>
+<h4 class='sh4'>Downloads</h4><div class='r2'><label>Program files</label>${sel('exe',[['ask','Ask for permission (administrator approval)'],['block','Always block']])}<label>Largest download</label>${sel('dlmax',[[100,'100 MB'],[500,'500 MB'],[1024,'1 GB'],[2048,'2 GB'],[4096,'4 GB'],[8192,'8 GB'],[16384,'16 GB']])}</div>
 <div class='msg' id='nsm'></div>
 <div class='msg' style='color:#6b7280'>Connections here are profiles that control whether Rudolf OS may use the network. Actual connectivity is provided by the device you are using; the OS cannot join real Wi‑Fi networks itself.</div>`;
  const q=s=>c.querySelector(s),nsm=q('#nsm'),nfm=q('#nfm');const PW=maskInput(q('#fp'));
  const say=(el,t,ok)=>{el.textContent=t;el.className='msg '+(ok?'ok':'bad')};
- const bindMap={prov:['search','prov'],url:['search','url'],key:['search','key'],n:['search','n'],relay:['search','relay'],relayUrl:['search','relayUrl'],exe:['dl','exe']};
+ const bindMap={prov:['search','prov'],url:['search','url'],key:['search','key'],n:['search','n'],relay:['search','relay'],relayUrl:['search','relayUrl'],exe:['dl','exe'],dlmax:['dl','max']};
  const loadK=()=>c.querySelectorAll('[data-k]').forEach(e=>{const[a,b]=bindMap[e.dataset.k];e.value=NETW[a][b]});loadK();
  c.addEventListener('input',e=>{const k=e.target.dataset&&e.target.dataset.k;if(!k||!adm)return;const[a,b]=bindMap[k];NETW[a][b]=typeof NETD[a][b]=='number'?parseInt(e.target.value):e.target.value});
  c.addEventListener('change',e=>{const k=e.target.dataset&&e.target.dataset.k;if(!k||!adm)return;const[a,b]=bindMap[k];NETW[a][b]=typeof NETD[a][b]=='number'?parseInt(e.target.value):e.target.value});

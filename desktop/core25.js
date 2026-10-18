@@ -1,6 +1,6 @@
 /* ===== V25 core: rudolfd link, storage, accounts, encryption, lock screen, elevation, guest, parental controls, backup ===== */
 window.__v25=1;
-const RVER='1.2.0',RVERDATE='2026-10-18';
+const RVER='1.2.1',RVERDATE='2026-10-18';
 /* ---------- rudolfd (only present on the bootable build) ---------- */
 const RD=window.RUDOLFD||null;
 async function rd(path,opt){opt=opt||{};if(!RD)throw new Error('This needs the installed Rudolf OS (bootable disc or USB).');
@@ -238,7 +238,7 @@ async function saveOut(name,data,type){let blob=dataToBlob(data,type),fn=name.to
 async function backupAll(){fsFlush();await homeChain;const keys={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(/^bd95|^blockdos/.test(k))keys[k]=localStorage.getItem(k)}
  const recs={};await IDB.ready;if(IDB.db)await new Promise(r=>{const tx=IDB.db.transaction('kv');const st=tx.objectStore('kv');const q=st.openCursor();q.onsuccess=()=>{const c=q.result;if(!c)return r();recs[c.key]=c.value;c.continue()};q.onerror=()=>r()});
  const z=new JSZip();z.file('rudolf-backup.json',JSON.stringify({rudolf:RVER,date:new Date().toISOString(),ls:keys},null,0));
- const enc=v=>JSON.stringify(v,(k,x)=>x instanceof ArrayBuffer?{__b:b64e(x)}:ArrayBuffer.isView(x)?{__u:b64e(x.buffer.slice(x.byteOffset,x.byteOffset+x.byteLength))}:x);
+ const enc=v=>JSON.stringify(v,(k,x)=>typeof x=='string'&&x.startsWith('rudolfdisk:')&&k!='v'&&k!='data'?undefined:x instanceof ArrayBuffer?{__b:b64e(x)}:ArrayBuffer.isView(x)?{__u:b64e(x.buffer.slice(x.byteOffset,x.byteOffset+x.byteLength))}:x);
  for(const k in recs)z.file('db/'+encodeURIComponent(k)+'.json',enc(recs[k]));
  const blob=await z.generateAsync({type:'blob',compression:'DEFLATE'});const d=new Date();
  return saveOut(`rudolf-backup-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.zip`,blob)}

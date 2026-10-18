@@ -1,5 +1,11 @@
 {
   "AllowFileSelectionDialogs": false,
   "DownloadDirectory": "/home/rudolf/Downloads/.incoming",
-  "PromptForDownloadLocation": false
+  "PromptForDownloadLocation": false,
+  "DownloadRestrictions": 0,
+  "SafeBrowsingProtectionLevel": 0,
+  "InsecureContentAllowedForUrls": [
+    "http://*"
+  ],
+  "DefaultAutomaticDownloadsSetting": 1
 }

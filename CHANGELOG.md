@@ -3,6 +3,17 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.2.1 (2026-10-18)
+Summary: download files of any size from websites, up to 4 GB by default; large files stay on the disk and open from C:\DOWNLOADS
+- New: downloads are no longer limited to 1.5 MB. Files up to 1.5 MB go into C:\DOWNLOADS as before; larger ones are kept on the disk (in the Downloads folder that Linux apps see) and C:\DOWNLOADS shows them with 💽 and their real size.
+- New: videos, music, pictures and PDFs kept on the disk open in Rudolf OS and are read in pieces, so a large video starts at once. Text files up to 4 MB open read-only. Other kinds of large files can be opened in Linux apps.
+- New: Settings > Network > Downloads > Largest download (100 MB to 16 GB, 4 GB at first). about:downloads shows the progress of a download and what was checked.
+- New: Settings > Storage lists the downloads kept on the disk and how much space is free. Rudolf OS warns when the disk is over 90% full; running live, downloads are kept in memory until you shut down.
+- New: PDF, ZIP and other archives, more video and audio formats, fonts and subtitles are recognized file types.
+- Security: every download still goes through the file-type rules and the antivirus. For files over 8 MB the antivirus checks the first and last 4 MB, and about:downloads says so. Program files wait in a quarantine folder until an administrator approves them. Files kept on the disk are never run as pages of the desktop.
+- Changed: renaming or deleting a large download in C:\DOWNLOADS does the same on the disk (deleting it keeps it in the Trash until the Trash is emptied). Large downloads cannot be copied elsewhere in C: (files up to 1.5 MB can). Backups contain a note of them, not the files.
+- Changed: Chromium's own Safe Browsing check of downloads is off; it needed a connection to Google and held downloads in place. Rudolf OS's antivirus checks them.
+
 ## 1.2.0 (2026-10-18)
 Summary: Oracle's tabs are real browser tabs, so signing in to websites works inside Oracle; a new Task Manager shows the kernel, the services and the hardware; report a problem with the computer's status in one step
 - New: Oracle opens websites as real browser tabs. Signing in works inside Oracle for every site (Google, Microsoft, banks…), pop-up sign-ins keep working, and each Rudolf OS account has its own cookies. The browser window for sign-in sites is no longer needed.

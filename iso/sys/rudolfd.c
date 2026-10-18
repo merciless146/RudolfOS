@@ -245,7 +245,7 @@ static const char *mime(const char *p)
 	const char *e = strrchr(p, '.');
 	if (!e) return "application/octet-stream";
 	e++;
-	static const char *m[][2] = { {"html","text/html; charset=utf-8"},{"htm","text/html; charset=utf-8"},{"js","text/javascript"},{"mjs","text/javascript"},{"css","text/css"},{"json","application/json"},{"txt","text/plain; charset=utf-8"},{"png","image/png"},{"jpg","image/jpeg"},{"jpeg","image/jpeg"},{"gif","image/gif"},{"svg","image/svg+xml"},{"webp","image/webp"},{"wasm","application/wasm"},{"pdf","application/pdf"},{"mp3","audio/mpeg"},{"ogg","audio/ogg"},{"wav","audio/wav"},{"mp4","video/mp4"},{"webm","video/webm"},{"woff2","font/woff2"},{"woff","font/woff"},{"ttf","font/ttf"},{"ico","image/x-icon"},{"md","text/markdown; charset=utf-8"},{"swbn","application/webbundle"},{"webmanifest","application/manifest+json"} };
+	static const char *m[][2] = { {"html","text/html; charset=utf-8"},{"htm","text/html; charset=utf-8"},{"js","text/javascript"},{"mjs","text/javascript"},{"css","text/css"},{"json","application/json"},{"txt","text/plain; charset=utf-8"},{"png","image/png"},{"jpg","image/jpeg"},{"jpeg","image/jpeg"},{"gif","image/gif"},{"svg","image/svg+xml"},{"webp","image/webp"},{"wasm","application/wasm"},{"pdf","application/pdf"},{"mp3","audio/mpeg"},{"ogg","audio/ogg"},{"wav","audio/wav"},{"mp4","video/mp4"},{"webm","video/webm"},{"mkv","video/x-matroska"},{"mov","video/quicktime"},{"m4v","video/mp4"},{"ogv","video/ogg"},{"m4a","audio/mp4"},{"aac","audio/aac"},{"flac","audio/flac"},{"opus","audio/ogg"},{"bmp","image/bmp"},{"avif","image/avif"},{"woff2","font/woff2"},{"woff","font/woff"},{"ttf","font/ttf"},{"ico","image/x-icon"},{"md","text/markdown; charset=utf-8"},{"swbn","application/webbundle"},{"webmanifest","application/manifest+json"} };
 	for (size_t i = 0; i < sizeof m / sizeof m[0]; i++) if (!strcasecmp(e, m[i][0])) return m[i][1];
 	return "application/octet-stream";
 }
@@ -259,7 +259,9 @@ static void www_root(char *out, size_t n)
 	else snprintf(out, n, WWW);
 }
 
-static void serve_file(struct req *r, const char *path)
+/* dl = a downloaded file (/dlf/): it is never run as a page of this origin (the desktop's), so pages and scripts
+   come as plain text and everything carries a sandbox */
+static void serve_file_as(struct req *r, const char *path, int dl)
 {
 	int f = open(path, O_RDONLY | O_CLOEXEC);
 	struct stat st;
@@ -275,14 +277,16 @@ static void serve_file(struct req *r, const char *path)
 	}
 	char h[600];
 	/* shared libraries (Ruffle, PDF.js) are also loaded by Oracle's sandboxed pages, which have no origin */
-	const char *cors = strstr(path, "/lib/") || !strncmp(path, "/pkg/", 5) ? "Access-Control-Allow-Origin: *\r\n" : "";
+	const char *cors = dl ? "Content-Security-Policy: sandbox\r\nX-Content-Type-Options: nosniff\r\n" : strstr(path, "/lib/") || !strncmp(path, "/pkg/", 5) ? "Access-Control-Allow-Origin: *\r\n" : "";
+	const char *mt = mime(path);
+	if (dl && (!strncmp(mt, "text/html", 9) || !strcmp(mt, "text/javascript") || (strstr(mt, "xml") && strcmp(mt, "image/svg+xml")))) mt = "text/plain; charset=utf-8";
 	int l = snprintf(h, sizeof h, "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %lld\r\nAccept-Ranges: bytes\r\n%s%s%sCache-Control: no-cache\r\nConnection: close\r\n\r\n",
-		partial ? 206 : 200, partial ? "Partial Content" : "OK", mime(path), (long long)(end - start + 1),
+		partial ? 206 : 200, partial ? "Partial Content" : "OK", mt, (long long)(end - start + 1),
 		partial ? "Content-Range: bytes " : "", "", cors);
 	if (partial) {
 		l -= 0;
 		l = snprintf(h, sizeof h, "HTTP/1.1 206 Partial Content\r\nContent-Type: %s\r\nContent-Length: %lld\r\nAccept-Ranges: bytes\r\nContent-Range: bytes %lld-%lld/%lld\r\n%sConnection: close\r\n\r\n",
-			mime(path), (long long)(end - start + 1), (long long)start, (long long)end, (long long)st.st_size, cors);
+			mt, (long long)(end - start + 1), (long long)start, (long long)end, (long long)st.st_size, cors);
 	}
 	send_all(r->fd, h, l);
 	if (!strcmp(r->method, "HEAD")) { close(f); return; }
@@ -297,6 +301,7 @@ static void serve_file(struct req *r, const char *path)
 	}
 	close(f);
 }
+static void serve_file(struct req *r, const char *path) { serve_file_as(r, path, 0); }
 
 /* Chromium keeps localStorage in memory and writes it to disk late; after a power cut or a
  * hurried shutdown recent settings and accounts could be lost. The desktop therefore also
@@ -1875,18 +1880,43 @@ static void api_dl(struct req *r, const char *what, int post)
 		char lf[128]; snprintf(lf, sizeof lf, RUN "/dlf/%s", id); write_str(lf, p);
 		str s = {0}; sadd(&s, "{\"ok\":true,\"url\":\"/dlf/%s\"}", id); reply_json(r->fd, &s); return;
 	}
+	if (!strcmp(what, "read")) {
+		/* bytes of a downloaded file for the antivirus: from=incoming|quarantine|home, off (negative = from the end), len <= 8 MB */
+		char *name = qparam(r->query, "name"), *from = qparam(r->query, "from"), *os = qparam(r->query, "off"), *ls = qparam(r->query, "len");
+		if (!dl_name_ok(name)) { reply_err(r->fd, 400, "which file?"); return; }
+		const char *dir = from && !strcmp(from, "quarantine") ? QUARANTINE : from && !strcmp(from, "home") ? DLHOME : INCOMING;
+		char fp[600]; snprintf(fp, sizeof fp, "%s/%s", dir, name);
+		int f = open(fp, O_RDONLY | O_NOFOLLOW); struct stat st;
+		if (f < 0 || fstat(f, &st) || !S_ISREG(st.st_mode)) { if (f >= 0) close(f); reply_err(r->fd, 404, "the file is not there any more"); return; }
+		long long off = os ? atoll(os) : 0, len = ls ? atoll(ls) : 8 << 20;
+		if (len < 0 || len > 8 << 20) len = 8 << 20;
+		if (off < 0) off = st.st_size + off < 0 ? 0 : st.st_size + off;
+		if (off > st.st_size) off = st.st_size;
+		if (len > st.st_size - off) len = st.st_size - off;
+		char *b = malloc(len + 1); ssize_t got = 0;
+		if (b && lseek(f, off, SEEK_SET) == off) while (got < len) { ssize_t k = read(f, b + got, len - got); if (k <= 0) break; got += k; }
+		close(f);
+		if (!b) { reply_err(r->fd, 500, "no memory"); return; }
+		reply(r->fd, 200, "application/octet-stream", b, got, NULL); free(b); return;
+	}
 	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 	if (!strcmp(what, "file")) {
 		/* to=keep (incoming -> Downloads), quar (incoming -> quarantine), release (quarantine -> Downloads),
-		   del (from=incoming|quarantine); as = another name for keep/release */
+		   del (from=incoming|quarantine|home), rename (from=home, as=new name), quar from home; as = another name for keep/release */
 		char *name = qparam(r->query, "name"), *to = qparam(r->query, "to"), *from = qparam(r->query, "from"), *as = qparam(r->query, "as");
 		if (!dl_name_ok(name) || !to) { reply_err(r->fd, 400, "which file?"); return; }
-		const char *src_dir = !strcmp(to, "release") || (from && !strcmp(from, "quarantine")) ? QUARANTINE : INCOMING;
+		const char *src_dir = !strcmp(to, "release") || (from && !strcmp(from, "quarantine")) ? QUARANTINE : from && !strcmp(from, "home") ? DLHOME : INCOMING;
+		if (!strcmp(src_dir, DLHOME) && strcmp(to, "del") && strcmp(to, "rename") && strcmp(to, "quar")) { reply_err(r->fd, 400, "to?"); return; }
 		char src[600]; snprintf(src, sizeof src, "%s/%s", src_dir, name);
 		struct stat st; if (lstat(src, &st) || !S_ISREG(st.st_mode)) { reply_err(r->fd, 404, "the file is not there any more"); return; }
 		char dst[700] = "";
 		if (!strcmp(to, "del")) { if (unlink(src)) { reply_err(r->fd, 500, strerror(errno)); return; } reply_ok(r->fd, "deleted"); return; }
-		if (!strcmp(to, "keep") || !strcmp(to, "release")) dl_unique(DLHOME, dl_name_ok(as) ? as : name, dst, sizeof dst);
+		if (!strcmp(to, "rename")) {
+			if (strcmp(src_dir, DLHOME) || !dl_name_ok(as)) { reply_err(r->fd, 400, "which name?"); return; }
+			snprintf(dst, sizeof dst, "%s/%s", DLHOME, as);
+			if (!access(dst, F_OK)) { reply_err(r->fd, 409, "a file with that name is already there"); return; }
+		}
+		else if (!strcmp(to, "keep") || !strcmp(to, "release")) dl_unique(DLHOME, dl_name_ok(as) ? as : name, dst, sizeof dst);
 		else if (!strcmp(to, "quar")) { mkdir(QUARANTINE, 0700); if (chown(QUARANTINE, 1000, 1000)) {} dl_unique(QUARANTINE, name, dst, sizeof dst); }
 		else { reply_err(r->fd, 400, "to?"); return; }
 		if (rename(src, dst)) { reply_err(r->fd, 500, strerror(errno)); return; }
@@ -2269,7 +2299,7 @@ static void handle(int fd)
 		if (strlen(id) != 32 || strspn(id, "0123456789abcdef") != 32) { reply_err(fd, 404, "not found"); goto out; }
 		snprintf(lf, sizeof lf, RUN "/dlf/%s", id);
 		char *p = slurp(lf, NULL); if (!p) { reply_err(fd, 404, "not found"); goto out; }
-		trim(p); serve_file(&r, p); free(p); goto out;
+		trim(p); serve_file_as(&r, p, 1); free(p); goto out;
 	}
 	char root[256];
 	www_root(root, sizeof root);

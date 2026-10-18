@@ -24,9 +24,10 @@ class H(http.server.BaseHTTPRequestHandler):
     def route(s,post,body):
         u=urllib.parse.urlparse(s.path);p=u.path;q=dict(urllib.parse.parse_qsl(u.query))
         if p in('/','/index.html'): return s.send(200,'text/html; charset=utf-8',page())
+        if p.startswith('/dlf/') or p.startswith('/api/dl/'): return s.fwd(post,body)
         if not p.startswith('/api/'):
             f=os.path.join(W,p.lstrip('/'))
-            if os.path.isfile(f): return s.send(200,'application/webbundle' if f.endswith('.swbn') else 'application/json' if f.endswith('.json') else 'text/javascript' if f.endswith('.js') else 'text/plain',open(f,'rb').read())
+            if os.path.isfile(f): return s.send(200,'application/webbundle' if f.endswith('.swbn') else 'application/json' if f.endswith('.json') else 'text/javascript' if f.endswith(('.js','.mjs')) else 'text/plain',open(f,'rb').read())
             return s.send(404,'text/plain',b'')
         a=p[5:]
         if a=='lsync' and post:
@@ -59,6 +60,24 @@ class H(http.server.BaseHTTPRequestHandler):
             except Exception as e: return s.j({'ok':False,'error':str(e)},502)
         if a=='clipboard': return s.j({'ok':True,'text':'text from the X clipboard'})
         return s.j({'ok':True,'events':'','items':[],'disks':[],'usb':[],'drives':[],'inputs':[]})
+    def fwd(s,post,body):
+        # downloads (1.2.1): passed to the test rudolfd as they are, in pieces (Range) for /dlf/
+        h={'X-Rudolf-Token':'testtoken'}
+        if s.headers.get('Range'): h['Range']=s.headers.get('Range')
+        rq=UR.Request('http://127.0.0.1:8181'+s.path,data=(body if post else None),headers=h,method='POST' if post else s.command)
+        try: rs=UR.urlopen(rq,timeout=60)
+        except UE.HTTPError as e: rs=e
+        s.send_response(rs.status if hasattr(rs,'status') else rs.code)
+        for k in ('Content-Type','Content-Length','Content-Range','Accept-Ranges','Content-Security-Policy','X-Content-Type-Options'):
+            if rs.headers.get(k): s.send_header(k,rs.headers.get(k))
+        s.end_headers()
+        if s.command=='HEAD': return
+        try:
+            while True:
+                b=rs.read(262144)
+                if not b: break
+                s.wfile.write(b)
+        except (BrokenPipeError,ConnectionResetError): pass
     def do_GET(s): s.route(False,b'')
     def do_HEAD(s): s.route(False,b'')
     def do_POST(s):
