@@ -1517,7 +1517,7 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
   fs:()=>{},
   flash:()=>{if(t===T())st.textContent='⚡ Flash content on this page is played by Ruffle'}});
  /* a website that the firewall or the network would stop gets Oracle's own page instead (page(): secPage) */
- const rtStop=u=>{if(!window.__sys)return false;if(window.__net&&!netUp())return true;const f=SECC.fw,h=rtHost(u);return !!(f.on&&(f.mode=='lock'||hostMatch(h,f.block)||(f.mode=='trusted'&&!hostMatch(h,f.trust))))};
+ const rtStop=u=>{if(!window.__sys)return false;if(window.__net&&!netUp()&&!/^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/i.test(rtHost(u)))return true;const f=SECC.fw,h=rtHost(u);return !!(f.on&&(f.mode=='lock'||hostMatch(h,f.block)||(f.mode=='trusted'&&!hostMatch(h,f.trust))))};
  function rtLoad(t){const u=t.h[t.i];
   if(!/^https?:/i.test(u)||typeof rtOn!='function'||!rtOn()||rtStop(u)){if(t.real){t.real=false;if(t===T())sync()}return false}
   if(t.siBar){t.siBar.remove();t.siBar=null}
