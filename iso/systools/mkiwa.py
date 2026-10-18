@@ -4,6 +4,11 @@
   mkiwa.py key KEYFILE                      make a new Ed25519 key (raw 32-byte seed, base64) and print its bundle ID
   mkiwa.py id KEYFILE                       print the bundle ID of a key
   mkiwa.py build DIR OUT.swbn KEYFILE       bundle every file under DIR and sign it
+  mkiwa.py derive RELEASEKEY OUTKEY         the shell's key, derived from the release signing key (raw seed, base64):
+                                            HKDF-SHA256, so it is a separate key and the release key cannot be
+                                            worked out from it; the same release key always gives the same bundle ID
+  mkiwa.py update DIR URL OUT.json          the update list Chromium reads ({"versions":[{"version","src"}]}),
+                                            with the version from DIR/.well-known/manifest.webmanifest
 
 The format follows the Web Bundles draft ("b2") and the Isolated Web App integrity block, version 2:
   OUT.swbn = integrity block (CBOR) + web bundle (CBOR)
@@ -93,6 +98,17 @@ if __name__ == '__main__':
         print(bundle_id(pubkey(k)))
     elif len(a) == 2 and a[0] == 'id':
         print(bundle_id(pubkey(load_key(a[1]))))
+    elif len(a) == 3 and a[0] == 'derive':
+        from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+        from cryptography.hazmat.primitives import hashes
+        src = base64.b64decode(open(a[1]).read().strip())[:32]
+        seed = HKDF(algorithm=hashes.SHA256(), length=32, salt=b'rudolf-os', info=b'isolated web app: rudolf os shell v1').derive(src)
+        fd = os.open(a[2], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600); os.write(fd, base64.b64encode(seed) + b'\n'); os.close(fd)
+        print(bundle_id(pubkey(load_key(a[2]))))
+    elif len(a) == 4 and a[0] == 'update':
+        import json
+        v = json.load(open(os.path.join(a[1], '.well-known', 'manifest.webmanifest')))['version']
+        open(a[3], 'w').write(json.dumps({'versions': [{'version': v, 'src': a[2]}]}) + '\n'); print(v)
     elif len(a) == 4 and a[0] == 'build':
         out, bid = sign(web_bundle(collect(a[1])), load_key(a[3]))
         open(a[2], 'wb').write(out); print(bid, len(out), 'bytes')

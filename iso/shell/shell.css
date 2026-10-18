@@ -1,0 +1,4 @@
+html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+#desk { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; }
+#starting { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: #cbd5e1; font: 15px system-ui, sans-serif; }
+.tab { position: fixed; border: 0; background: #fff; display: none; }

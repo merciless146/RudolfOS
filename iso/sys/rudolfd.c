@@ -244,7 +244,7 @@ static const char *mime(const char *p)
 	const char *e = strrchr(p, '.');
 	if (!e) return "application/octet-stream";
 	e++;
-	static const char *m[][2] = { {"html","text/html; charset=utf-8"},{"htm","text/html; charset=utf-8"},{"js","text/javascript"},{"mjs","text/javascript"},{"css","text/css"},{"json","application/json"},{"txt","text/plain; charset=utf-8"},{"png","image/png"},{"jpg","image/jpeg"},{"jpeg","image/jpeg"},{"gif","image/gif"},{"svg","image/svg+xml"},{"webp","image/webp"},{"wasm","application/wasm"},{"pdf","application/pdf"},{"mp3","audio/mpeg"},{"ogg","audio/ogg"},{"wav","audio/wav"},{"mp4","video/mp4"},{"webm","video/webm"},{"woff2","font/woff2"},{"woff","font/woff"},{"ttf","font/ttf"},{"ico","image/x-icon"},{"md","text/markdown; charset=utf-8"} };
+	static const char *m[][2] = { {"html","text/html; charset=utf-8"},{"htm","text/html; charset=utf-8"},{"js","text/javascript"},{"mjs","text/javascript"},{"css","text/css"},{"json","application/json"},{"txt","text/plain; charset=utf-8"},{"png","image/png"},{"jpg","image/jpeg"},{"jpeg","image/jpeg"},{"gif","image/gif"},{"svg","image/svg+xml"},{"webp","image/webp"},{"wasm","application/wasm"},{"pdf","application/pdf"},{"mp3","audio/mpeg"},{"ogg","audio/ogg"},{"wav","audio/wav"},{"mp4","video/mp4"},{"webm","video/webm"},{"woff2","font/woff2"},{"woff","font/woff"},{"ttf","font/ttf"},{"ico","image/x-icon"},{"md","text/markdown; charset=utf-8"},{"swbn","application/webbundle"},{"webmanifest","application/manifest+json"} };
 	for (size_t i = 0; i < sizeof m / sizeof m[0]; i++) if (!strcasecmp(e, m[i][0])) return m[i][1];
 	return "application/octet-stream";
 }
