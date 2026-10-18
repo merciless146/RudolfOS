@@ -1,4 +1,4 @@
-/* ===== V26 Oracle sign-in sites (Rudolf OS 1.1.2) =====
+/* ===== V26 Oracle sign-in sites (Rudolf OS 1.1.2; 1.2: see tabs26.js) =====
    Oracle shows websites as frames inside the desktop page. Chromium treats a frame's cookies as third-party, so a
    site's sign-in cookie is dropped and signing in starts over; Google and Microsoft refuse outright. Sites that
    need a sign-in therefore go to the real browser window (web25.js), where cookies work:

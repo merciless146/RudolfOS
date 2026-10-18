@@ -1,6 +1,7 @@
 # a stand-in for rudolfd with the 1.2 endpoints: the page (with rudolfd's real localStorage copy script), /iwa/,
-# idbm/* (database mirror), shell, shell/switch, clipboard, lsync. State lives in STATE (a folder).
-import http.server,json,sys,os,re,glob,urllib.parse
+# idbm/* (database mirror), shell, shell/switch, clipboard, lsync; system, processes, stats, net, info, proc/end and
+# service/restart are passed to a real rudolfd (a test copy on port 8181, see host.sh). State lives in STATE (a folder).
+import http.server,json,sys,os,re,glob,urllib.parse,urllib.request as UR,urllib.error as UE
 W,STATE,PROF=sys.argv[1],sys.argv[2],sys.argv[3]
 os.makedirs(STATE+'/idb',exist_ok=True)
 SRC=open('/home/claude/rudolfos/iso/sys/rudolfd.c').read()
@@ -49,6 +50,13 @@ class H(http.server.BaseHTTPRequestHandler):
             inst=any(sid.encode() in open(x,'rb').read() for x in glob.glob(PROF+'/Default/iwa/*/main.swbn'))
             return s.j({'ok':True,'id':sid,'installed':inst,'ready':flag('ready'),'active':flag('active'),'failed':False,'on':True})
         if a=='shell/switch': open(STATE+'/switch','w').write('1');return s.j({'ok':True,'message':'ok'})
+        # the system and process information comes from a real rudolfd (host.sh runs a test copy on port 8181)
+        if a in ('system','processes','stats','net','info') or a in ('proc/end','service/restart'):
+            q2=('?'+u.query) if u.query else ''
+            rq=UR.Request('http://127.0.0.1:8181/api/'+a+q2,data=(body if post else None),headers={'X-Rudolf-Token':'testtoken'},method='POST' if post else 'GET')
+            try: rs=UR.urlopen(rq,timeout=20);return s.send(rs.status,'application/json',rs.read())
+            except UE.HTTPError as e: return s.send(e.code,'application/json',e.read())
+            except Exception as e: return s.j({'ok':False,'error':str(e)},502)
         if a=='clipboard': return s.j({'ok':True,'text':'text from the X clipboard'})
         return s.j({'ok':True,'events':'','items':[],'disks':[],'usb':[],'drives':[],'inputs':[]})
     def do_GET(s): s.route(False,b'')

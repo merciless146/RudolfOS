@@ -14,6 +14,7 @@ stop() {
 	[ -f $WORK/mock.pid ] && kill $(cat $WORK/mock.pid) 2>/dev/null || true
 	[ -f $WORK/xvfb.pid ] && kill $(cat $WORK/xvfb.pid) 2>/dev/null || true
 	[ -f $WORK/site.pid ] && kill $(cat $WORK/site.pid) 2>/dev/null || true
+	[ -f $WORK/rudolfd.pid ] && kill $(cat $WORK/rudolfd.pid) 2>/dev/null || true
 	rm -f $WORK/*.pid /etc/chromium/policies/managed/rudolf-shell.json
 }
 case "$1" in
@@ -37,6 +38,12 @@ setsid Xvfb :77 -screen 0 1280x800x24 -nolisten tcp >$WORK/xvfb.log 2>&1 & echo 
 setsid python3 $HERE/site.py 8099 >$WORK/site.log 2>&1 & echo $! > $WORK/site.pid
 setsid python3 $HERE/rudolfd_mock.py $WWW $STATE $PROF >$WORK/mock.log 2>&1 & echo $! > $WORK/mock.pid
 gcc -O2 -o $WORK/rudolf-launch $REPO/iso/sys/rudolf-launch.c
+# a test copy of the real rudolfd for the system and process information: fixed token, port 8181, its own run folder
+sed -e 's/for (int i = 0; i < 16; i++) sprintf(token + i \* 2, "%02x", rb\[i\]);/strcpy(token, "testtoken");/' -e 's/htons(8080)/htons(8181)/' \
+	-e 's#define RUN      "/run/rudolf"#define RUN "/tmp/rdt-run"#' $REPO/iso/sys/rudolfd.c > $WORK/rudolfd_t.c
+gcc -O2 -o $WORK/rudolfd_t $WORK/rudolfd_t.c -Wl,-Bstatic -lz -Wl,-Bdynamic 2>/dev/null
+mkdir -p /run/user/1000
+setsid $WORK/rudolfd_t >$WORK/rudolfd.log 2>&1 & echo $! > $WORK/rudolfd.pid
 sleep 1
 # the extensions, copied as the session does (Chromium writes into an extension's folder); with the shell the
 # session loads only Ruffle's

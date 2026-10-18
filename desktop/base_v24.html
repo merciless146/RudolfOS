@@ -1152,7 +1152,8 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
  function mkTab(u){const fr=document.createElement('iframe');fr.referrerPolicy='strict-origin-when-cross-origin';fr.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;display:none';fh.appendChild(fr);const t={id:++nid,h:[u||'about:home'],i:0,fr,title:'New tab',zoom:1,real:false,rt:null,rb:false,rf:false};t.fr.onload=()=>{if(t.pend&&t.i>=0&&cur()==t.h[t.i]&&t===T())st.textContent='Loaded '+t.h[t.i]+' (if the page is blank, the site blocks embedding: use ↗)'};tabs.push(t);return t}
  /* Rudolf OS 1.2: inside the shell a website is a real browser tab (tabs26.js) */
  const rtHost=u=>{try{return new URL(u).hostname}catch(e){return''}};
- const rtWhere=t=>({el:fh,shown:()=>t===T()&&t.real&&!W.min&&W.el.isConnected&&W.el.style.display!='none',z:()=>+W.el.style.zIndex||0});
+ const rtWhere=t=>({el:fh,shown:()=>t===T()&&t.real&&!W.min&&W.el.isConnected&&W.el.style.display!='none',z:()=>+W.el.style.zIndex||0,
+  /* for Task Manager */W,title:()=>t.title,url:()=>t.h[t.i],show:()=>{W.focus();const k=tabs.indexOf(t);if(k>=0){ci=k;sync()}},end:()=>{const k=tabs.indexOf(t);if(k>=0)closeTab(k)}});
  const rtH=t=>({
   nav:(u,b,f)=>{t.rb=b;t.rf=f;t.ru=u;if(t.h[t.i]!==u){t.h[t.i]=u;hist.push([t.title,u]);hist=hist.slice(-200);store('bd95hist',hist)}if(t===T())sync()},
   load:(on,err)=>{t.loading=on;if(t===T()&&!(t.blk>Date.now()-3000))st.textContent=on?'Loading…':err?'This page could not be loaded ('+err.replace(/^net::/,'')+').':'Done'},

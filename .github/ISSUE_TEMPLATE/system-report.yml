@@ -1,0 +1,40 @@
+# The form Rudolf OS opens for "Report a problem" (Task Manager, or Start › Report a problem): the desktop fills it in
+# through the address (desktop/tm26.js: sysReportUrl); the person checks it, signs in to GitHub and submits it.
+# The workflow .github/workflows/system-reports.yml then files it in the system-reports database.
+# The field ids (what, version, status, report) are what the desktop fills in; the labels are what the workflow reads.
+name: System report
+description: Report a problem from Rudolf OS, with the state of the computer when it happened.
+title: "[Report] "
+labels: ["system-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Rudolf OS has filled in this form: check it, change anything you like, and submit it.
+        **Everything here is public.** The system report leaves out names, files, web addresses and network addresses, but remove anything else you do not want to share.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What were you doing, and what went wrong? Steps to make it happen again help most.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Rudolf OS version
+      description: Filled in by Rudolf OS (Settings › About shows it too).
+  - type: textarea
+    id: status
+    attributes:
+      label: Status at the time
+      description: Filled in by Rudolf OS when you chose "Report a problem".
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Full system report
+      description: Filled in by Rudolf OS. If it is empty, paste the report from the clipboard (Rudolf OS put it there), or use Task Manager › Copy system report.
+      render: text

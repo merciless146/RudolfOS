@@ -37,6 +37,7 @@
 #include <sys/mman.h>
 #include <sys/statvfs.h>
 #include <sys/sysinfo.h>
+#include <sys/utsname.h>
 #include <sys/reboot.h>
 #include <sys/time.h>
 #include <grp.h>
@@ -1624,6 +1625,204 @@ static void api_pkg(struct req *r, const char *what)
 	reply_err(r->fd, 404, "unknown package action");
 }
 
+/* ------------------------------------------------------------- Task Manager (1.2) */
+/* the kernel, the hardware and the services, for Task Manager's System and Hardware tabs and system reports.
+   Lists that are many lines (drivers, kernel messages, devices) are plain text, one item a line. Nothing that
+   identifies the person or their network (no addresses, network names or serial numbers). */
+static long long meminfo_kb(const char *key)
+{
+	FILE *f = fopen("/proc/meminfo", "r"); char line[256]; long long v = -1; size_t n = strlen(key);
+	while (f && fgets(line, sizeof line, f)) if (!strncmp(line, key, n) && line[n] == ':') { v = atoll(line + n + 1) * 1024; break; }
+	if (f) fclose(f);
+	return v;
+}
+static void jtext(str *s, const char *key, char *v) { sadd(s, ",\"%s\":", key); if (v) trim(v); sjson(s, v ? v : ""); free(v); }
+static int running(const char *pat) { char c[256]; snprintf(c, sizeof c, "pgrep -f '%s' >/dev/null 2>&1", pat); return !run(c); }
+static void api_system(struct req *r)
+{
+	str s = {0};
+	struct utsname u; uname(&u);
+	struct sysinfo si; sysinfo(&si);
+	sadd(&s, "{\"ok\":true,\"time\":%lld,\"kernel\":{\"release\":", (long long)time(NULL)); sjson(&s, u.release);
+	sadd(&s, ",\"version\":"); sjson(&s, u.version);
+	sadd(&s, ",\"machine\":"); sjson(&s, u.machine);
+	sadd(&s, ",\"uptime\":%ld,\"load\":[%.2f,%.2f,%.2f],\"procs\":%d", si.uptime, si.loads[0] / 65536.0, si.loads[1] / 65536.0, si.loads[2] / 65536.0, si.procs);
+	jtext(&s, "cmdline", slurp("/proc/cmdline", NULL));
+	sadd(&s, ",\"boot\":"); sjson(&s, boot_mode); sadd(&s, ",\"media\":"); sjson(&s, media_mode);
+	sadd(&s, ",\"live\":%s,\"recovery\":%s", live ? "true" : "false", recovery ? "true" : "false");
+	jtext(&s, "modules", run_out("awk '{print $1}' /proc/modules 2>/dev/null | sort"));
+	/* the kernel's own warnings and errors (levels 0-4), newest last */
+	jtext(&s, "messages", run_out("dmesg -r 2>/dev/null | grep '^<[0-4]>' | sed 's/^<[0-9]>//' | tail -60"));
+	sadd(&s, "},\"memory\":{\"total\":%lld,\"available\":%lld,\"cached\":%lld,\"buffers\":%lld,\"swapTotal\":%lld,\"swapFree\":%lld",
+		meminfo_kb("MemTotal"), meminfo_kb("MemAvailable"), meminfo_kb("Cached"), meminfo_kb("Buffers"), meminfo_kb("SwapTotal"), meminfo_kb("SwapFree"));
+	/* compressed swap in memory (zram): what was stored, what it takes */
+	{ unsigned long long o = 0, c = 0, m = 0; FILE *f = fopen("/sys/block/zram0/mm_stat", "r"); if (f) { if (fscanf(f, "%llu %llu %llu", &o, &c, &m) != 3) o = c = m = 0; fclose(f); }
+	  sadd(&s, ",\"zramStored\":%llu,\"zramUsed\":%llu}", o, m); }
+	sadd(&s, ",\"cpu\":{\"model\":");
+	{ char *m = run_out("grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//'"); trim(m); sjson(&s, m); free(m); }
+	{ char *f = run_out("awk -F: '/cpu MHz/{s+=$2;n++}END{if(n)printf \"%.0f\",s/n}' /proc/cpuinfo"); trim(f); sadd(&s, ",\"threads\":%ld,\"mhz\":%s", sysconf(_SC_NPROCESSORS_ONLN), *f ? f : "null"); free(f); }
+	{ char *t = run_out("cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | sort -n | tail -1"); trim(t); if (*t) sadd(&s, ",\"tempC\":%.1f}", atof(t) / 1000.0); else sadd(&s, ",\"tempC\":null}"); free(t); }
+	sadd(&s, ",\"battery\":"); battery(&s);
+	jtext(&s, "machine", run_out("echo \"$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null) $(cat /sys/class/dmi/id/product_name 2>/dev/null)\""));
+	jtext(&s, "firmware", run_out("cat /sys/class/dmi/id/bios_vendor /sys/class/dmi/id/bios_version 2>/dev/null | tr '\\n' ' '"));
+	/* graphics: card, PCI vendor:device, driver; then how the screen is driven (graphics card or software display) */
+	jtext(&s, "gpu", run_out("for d in /sys/class/drm/card[0-9]; do [ -e $d/device/vendor ] || continue; dr=$(readlink $d/device/driver 2>/dev/null); echo \"${d##*/} $(cat $d/device/vendor):$(cat $d/device/device) ${dr##*/}\"; done"));
+	jtext(&s, "display", run_out("echo \"$(cat " RUN "/display-mode 2>/dev/null) | $(cat " RUN "/screen-actual 2>/dev/null) | $(cat " RUN "/display-reason 2>/dev/null)\""));
+	jtext(&s, "audio", slurp("/proc/asound/cards", NULL));
+	jtext(&s, "input", run_out("sed -n 's/^N: Name=\"\\(.*\\)\"$/\\1/p' /proc/bus/input/devices 2>/dev/null"));
+	/* network adapters: name, state, speed (Mb/s), bytes received, bytes sent, kind */
+	jtext(&s, "net", run_out("for d in /sys/class/net/*; do n=${d##*/}; [ $n = lo ] && continue; echo \"$n $(cat $d/operstate 2>/dev/null) $(cat $d/speed 2>/dev/null || echo -) $(cat $d/statistics/rx_bytes) $(cat $d/statistics/tx_bytes) $([ -d $d/wireless ] && echo wifi || echo wired)\"; done"));
+	/* storage: device, size, used, where (bytes) */
+	jtext(&s, "storage", run_out("df -kP 2>/dev/null | awk 'NR>1 && $1 ~ /^\\/dev\\//{print $1, $2*1024, $3*1024, $6}'"));
+	{
+		char *url = slurp(RUN "/desktop-url", NULL);
+		int shell = url && strstr(url, "isolated-app://") != NULL; free(url);
+		sadd(&s, ",\"services\":{\"rudolfd\":true,\"display\":%s,\"sound\":%s,\"wifi\":%s,\"shell\":%s,\"shellFailed\":%s,\"webWindow\":%s,\"linuxApps\":%s,\"x\":%s}",
+			running("[r]udolf-display") ? "true" : "false", running("[p]ulseaudio") ? "true" : "false", running("[w]pa_supplicant") ? "true" : "false",
+			shell && running("[r]udolf-launch") ? "true" : "false", access(RUN "/shell-failed", F_OK) ? "false" : "true",
+			running("[c]lass=RudolfWeb") ? "true" : "false", running("[r]udolf-debian") ? "true" : "false", running("X[v]fb|X[o]rg") ? "true" : "false");
+	}
+	jtext(&s, "session", run_out("tail -25 " RUN "/session.log 2>/dev/null"));
+	sadd(&s, "}");
+	reply_json(r->fd, &s);
+}
+
+/* every process: pid, parent, owner, name, state, memory (RSS), CPU share since the last look, what it is (tag),
+   whether it may be ended (protected), and its command line (shortened). Tags: kernel, desktop (the desktop's
+   Chromium and rudolf-launch), web (Chromium pages: the desktop and Oracle's tabs), gpu, network, audio, chromium
+   (Chromium's other helpers), webwindow (the browser window for sign-in sites), app (the person's programs), system. */
+#define MAXP 4096
+struct pinfo { int pid, ppid, uid; char name[32], state; long long rss; unsigned long long ticks; char cmd[400]; const char *tag; int prot; };
+static int read_proc(int pid, struct pinfo *p)
+{
+	char path[64], buf[1024];
+	snprintf(path, sizeof path, "/proc/%d/stat", pid);
+	int f = open(path, O_RDONLY); if (f < 0) return 0;
+	ssize_t n = read(f, buf, sizeof buf - 1); close(f); if (n <= 0) return 0; buf[n] = 0;
+	char *a = strchr(buf, '('), *b = strrchr(buf, ')'); if (!a || !b) return 0;
+	memset(p, 0, sizeof *p); p->pid = pid;
+	size_t nl = b - a - 1; if (nl >= sizeof p->name) nl = sizeof p->name - 1; memcpy(p->name, a + 1, nl);
+	unsigned long long ut = 0, st = 0; int ppid = 0; char state = '?';
+	if (sscanf(b + 2, "%c %d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu %llu", &state, &ppid, &ut, &st) < 4) return 0;
+	p->state = state; p->ppid = ppid; p->ticks = ut + st;
+	snprintf(path, sizeof path, "/proc/%d/statm", pid);
+	FILE *m = fopen(path, "r"); long long sz = 0, res = 0; if (m) { if (fscanf(m, "%lld %lld", &sz, &res) != 2) res = 0; fclose(m); }
+	p->rss = res * sysconf(_SC_PAGESIZE);
+	snprintf(path, sizeof path, "/proc/%d/status", pid);
+	FILE *u = fopen(path, "r"); p->uid = -1; if (u) { char l[256]; while (fgets(l, sizeof l, u)) if (!strncmp(l, "Uid:", 4)) { p->uid = atoi(l + 4); break; } fclose(u); }
+	snprintf(path, sizeof path, "/proc/%d/cmdline", pid);
+	f = open(path, O_RDONLY);
+	if (f >= 0) { n = read(f, p->cmd, sizeof p->cmd - 1); close(f); if (n > 0) { for (ssize_t i = 0; i < n; i++) if (!p->cmd[i]) p->cmd[i] = ' '; p->cmd[n] = 0; trim(p->cmd); } }
+	return 1;
+}
+static int nprocs(struct pinfo *ps)
+{
+	DIR *d = opendir("/proc"); struct dirent *e; int n = 0;
+	while (d && (e = readdir(d)) && n < MAXP) { int pid = atoi(e->d_name); if (pid > 0 && read_proc(pid, &ps[n])) n++; }
+	if (d) closedir(d);
+	return n;
+}
+static struct pinfo *pfind(struct pinfo *ps, int n, int pid) { for (int i = 0; i < n; i++) if (ps[i].pid == pid) return &ps[i]; return NULL; }
+static void tag_procs(struct pinfo *ps, int n)
+{
+	int me = getppid();   /* rudolfd (each request is a child of it) */
+	for (int i = 0; i < n; i++) {
+		struct pinfo *p = &ps[i]; const char *c = p->cmd;
+		int chrome = strstr(c, "/chrome") != NULL || !strcmp(p->name, "chrome");
+		if (!*c || p->pid == 2 || p->ppid == 2) { p->tag = "kernel"; p->prot = 1; continue; }
+		if (p->pid == 1 || p->pid == me || p->pid == getpid() || !strcmp(p->name, "rudolfd") || !strcmp(p->name, "rudolf-display") || !strcmp(p->name, "Xorg") || !strcmp(p->name, "Xvfb") || strstr(c, "/usr/lib/rudolf/session")) { p->tag = "system"; p->prot = 1; continue; }
+		if (!strcmp(p->name, "rudolf-launch")) { p->tag = "desktop"; p->prot = 1; continue; }
+		if (chrome && strstr(c, "--class=RudolfWeb")) { p->tag = "webwindow"; continue; }
+		if (chrome && strstr(c, "--rudolf-kiosk") && !strstr(c, "--type=")) { p->tag = "desktop"; p->prot = 1; continue; }
+		if (chrome) {
+			if (strstr(c, "--type=renderer")) p->tag = strstr(c, "--extension-process") ? "chromium" : "web";
+			else if (strstr(c, "--type=gpu-process")) p->tag = "gpu";
+			else if (strstr(c, "NetworkService")) p->tag = "network";
+			else if (strstr(c, "AudioService")) p->tag = "audio";
+			else p->tag = "chromium";
+			continue;
+		}
+		p->tag = p->uid == 1000 ? "app" : "system";
+	}
+	/* Chromium's helpers belong to the browser window for sign-in sites when that is their ancestor */
+	for (int i = 0; i < n; i++) {
+		struct pinfo *p = &ps[i];
+		if (strcmp(p->tag, "web") && strcmp(p->tag, "gpu") && strcmp(p->tag, "network") && strcmp(p->tag, "audio") && strcmp(p->tag, "chromium")) continue;
+		struct pinfo *q = p;
+		for (int k = 0; k < 8 && q; k++) { q = pfind(ps, n, q->ppid); if (q && q->tag && !strcmp(q->tag, "webwindow") ) { p->tag = "webwindow"; break; } }
+	}
+}
+static void api_processes(struct req *r)
+{
+	struct pinfo *ps = calloc(MAXP, sizeof *ps); if (!ps) { reply_err(r->fd, 500, "out of memory"); return; }
+	int n = nprocs(ps); tag_procs(ps, n);
+	unsigned long long busy, total; cpu_times(&busy, &total);
+	/* the CPU share since the previous look (kept in a file: each request runs in its own process) */
+	unsigned long long ptotal = 0; char *prev = slurp(RUN "/procs.prev", NULL);
+	if (prev) ptotal = strtoull(prev, NULL, 10);
+	str nx = {0}; sadd(&nx, "%llu\n", total);
+	str s = {0}; sadd(&s, "{\"ok\":true,\"threads\":%ld,\"items\":[", sysconf(_SC_NPROCESSORS_ONLN));
+	for (int i = 0; i < n; i++) {
+		struct pinfo *p = &ps[i];
+		double cpu = -1;
+		if (prev && total > ptotal) {
+			char key[32]; snprintf(key, sizeof key, "\n%d ", p->pid);
+			char *at = strstr(prev, key);
+			if (at) { unsigned long long t0 = strtoull(at + strlen(key), NULL, 10); if (p->ticks >= t0) cpu = 100.0 * (p->ticks - t0) / (total - ptotal); }
+		}
+		sadd(&nx, "%d %llu\n", p->pid, p->ticks);
+		const char *user = p->uid == 0 ? "root" : p->uid == 1000 ? "rudolf" : "";
+		sadd(&s, "%s{\"pid\":%d,\"ppid\":%d,\"user\":", i ? "," : "", p->pid, p->ppid);
+		if (*user) sjson(&s, user); else sadd(&s, "\"%d\"", p->uid);
+		sadd(&s, ",\"name\":"); sjson(&s, p->name);
+		sadd(&s, ",\"state\":\"%c\",\"rss\":%lld,\"cpu\":", p->state, p->rss);
+		if (cpu >= 0) sadd(&s, "%.1f", cpu); else sadd(&s, "null");
+		sadd(&s, ",\"tag\":\"%s\",\"prot\":%s,\"cmd\":", p->tag, p->prot ? "true" : "false");
+		/* Chromium's command lines are long and the same: its kind is enough */
+		char cmd[200]; const char *t = strstr(p->cmd, "--type=");
+		if (strstr(p->cmd, "/chrome")) { snprintf(cmd, sizeof cmd, "chrome %.*s", t ? (int)strcspn(t, " ") : 0, t ? t : ""); }
+		else snprintf(cmd, sizeof cmd, "%s", p->cmd);
+		sjson(&s, cmd); sadd(&s, "}");
+	}
+	sadd(&s, "]");
+	/* the memory of each page (the desktop and Oracle's tabs), measured by rudolf-launch while Task Manager looks */
+	write_str("/run/user/1000/rudolf-tabmem.want", "1");
+	char *pg = slurp("/run/user/1000/rudolf-tabmem.json", NULL);
+	if (pg && pg[0] == '{') { trim(pg); sadd(&s, ",\"pages\":%s", pg); }
+	free(pg);
+	sadd(&s, "}");
+	write_str(RUN "/procs.prev", nx.b ? nx.b : ""); free(nx.b); free(prev); free(ps);
+	reply_json(r->fd, &s);
+}
+/* ending a process (Task Manager). The desktop asks for an administrator's password first; the processes that keep
+   Rudolf OS running are refused here whatever the caller says. */
+static void api_proc_end(struct req *r)
+{
+	char *a = qparam(r->query, "pid"); int pid = a ? atoi(a) : 0;
+	char *f = qparam(r->query, "force"); int force = f && *f == '1';
+	if (pid <= 1) { reply_err(r->fd, 400, "which process?"); return; }
+	struct pinfo *ps = calloc(MAXP, sizeof *ps); if (!ps) { reply_err(r->fd, 500, "out of memory"); return; }
+	int n = nprocs(ps); tag_procs(ps, n);
+	struct pinfo *p = pfind(ps, n, pid);
+	if (!p) { free(ps); reply_err(r->fd, 404, "that process has already ended"); return; }
+	if (p->prot) { free(ps); reply_err(r->fd, 403, "Rudolf OS needs this process to keep running, so it cannot be ended"); return; }
+	char name[32]; snprintf(name, sizeof name, "%s", p->name); free(ps);
+	if (kill(pid, force ? SIGKILL : SIGTERM)) { reply_err(r->fd, 500, strerror(errno)); return; }
+	str s = {0}; sadd(&s, "{\"ok\":true,\"message\":"); sjson(&s, name); sadd(&s, "}"); reply_json(r->fd, &s);
+}
+/* restarting a service: sound (PulseAudio), wifi (reconnect), display (rudolf-display; the session starts it again) */
+static void api_service(struct req *r)
+{
+	char *n = qparam(r->query, "name");
+	if (!n) { reply_err(r->fd, 400, "which service?"); return; }
+	int rc = -1;
+	if (!strcmp(n, "sound")) rc = run("/usr/lib/rudolf/sound restart >>" RUN "/sound.log 2>&1");
+	else if (!strcmp(n, "wifi")) rc = run("/usr/lib/rudolf/wifi.sh reconnect >/dev/null 2>&1");
+	else if (!strcmp(n, "display")) rc = run("pkill -x rudolf-display >/dev/null 2>&1; true");
+	else { reply_err(r->fd, 404, "unknown service"); return; }
+	if (rc) reply_err(r->fd, 500, "it did not start again"); else reply_ok(r->fd, n);
+}
+
 /* ------------------------------------------------------------- dispatcher */
 static int restart_browser(void) { return run("pkill -f 'chrom[e].*--rudolf-kiosk' >/dev/null 2>&1"); }
 
@@ -1634,6 +1833,8 @@ static void api(struct req *r)
 	if (!strcmp(p, "ping")) { reply_ok(r->fd, "rudolfd"); return; }
 	if (!strcmp(p, "info")) { api_info(r); return; }
 	if (!strcmp(p, "stats")) { api_stats(r); return; }
+	if (!strcmp(p, "system")) { api_system(r); return; }
+	if (!strcmp(p, "processes")) { api_processes(r); return; }
 	if (!strcmp(p, "net")) { api_net(r); return; }
 	if (!strcmp(p, "disks")) { api_disks(r); return; }
 	if (!strcmp(p, "devices")) { char *o = run_out("/usr/lib/rudolf/devplug list 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 500, "could not list the devices"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
@@ -1733,6 +1934,8 @@ static void api(struct req *r)
 	if (!strcmp(p, "wifi/status")) { api_wifi(r, "status"); return; }
 	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 	/* ---- actions ---- */
+	if (!strcmp(p, "proc/end")) { api_proc_end(r); return; }
+	if (!strcmp(p, "service/restart")) { api_service(r); return; }
 	if (!strcmp(p, "power")) {
 		char *a = qparam(r->query, "action");
 		if (!a) { reply_err(r->fd, 400, "action?"); return; }

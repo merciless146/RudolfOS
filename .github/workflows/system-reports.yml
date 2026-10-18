@@ -1,0 +1,25 @@
+# Rudolf OS system reports: files every issue made with the "System report" form (label system-report) in the
+# system-reports database, a branch of this repository: reports/<issue>.json (the record), index.json (all of them,
+# newest first) and README.md (a table to read on GitHub). Adds labels for sorting (version, area) and, when the
+# issue is new, a comment with what was filed. Runs again when the issue is edited, closed or reopened.
+# See docs/system-reports.md. The issue text is only read as data (never run).
+name: System reports
+on:
+  issues:
+    types: [opened, edited, closed, reopened, labeled]
+permissions: {contents: write, issues: write}
+concurrency: {group: system-reports, cancel-in-progress: false}
+jobs:
+  file:
+    if: contains(github.event.issue.labels.*.name, 'system-report')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const run = require('./.github/scripts/system-reports.js');
+            await run({github, context, core});

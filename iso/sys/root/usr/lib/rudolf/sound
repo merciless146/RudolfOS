@@ -4,6 +4,7 @@
 # falls back to ALSA directly, as before.
 #   sound start       start PulseAudio (called by the session)
 #   sound default N   make card N the default output (Settings > Sound)
+#   sound restart     stop it and start it again (Task Manager)
 #   sound status      print the server state, cards and outputs
 # GPL-2.0-or-later.
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -60,5 +61,10 @@ status)
 	[ -S $SOCK ] || { echo "sound server not running"; exit 1; }
 	asuser "pactl info" | grep -E 'Server Name|Server Version|Default Sink|Default Source'
 	echo; asuser "pactl list short cards"; echo; asuser "pactl list short sinks";;
-*) echo "usage: sound start|default N|status"; exit 2;;
+restart)
+	# Task Manager: the sound server stopped answering; Chromium reconnects by itself
+	pkill -u rudolf -x pulseaudio; for i in 1 2 3 4 5; do pgrep -u rudolf -x pulseaudio >/dev/null || break; sleep 1; done
+	pkill -9 -u rudolf -x pulseaudio; rm -f $SOCK
+	exec "$0" start;;
+*) echo "usage: sound start|restart|default N|status"; exit 2;;
 esac

@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -57,6 +58,79 @@ static long num_field(const char *msg, const char *key)
 	return p ? strtol(p + strlen(k), NULL, 10) : -1;
 }
 static int open_id, tries, ready;
+
+/* ---- the memory each page uses, for Task Manager (Chromium does not say which process belongs to which tab).
+   While rudolfd asks (it touches WANT when Task Manager looks), every 2 seconds: list the targets, attach to each
+   page (the desktop and Oracle's tabs), ask for its JavaScript memory, and write {url, used} to OUT. */
+#define WANT "/run/user/1000/rudolf-tabmem.want"
+#define OUTF "/run/user/1000/rudolf-tabmem.json"
+#define MAXT 64
+static struct { char target[64], session[64], url[512]; long long used; int attach_id, heap_id, seen; } tm[MAXT];
+static int tm_list_id;
+static long long tm_last;
+static int tm_slot(const char *target)
+{
+	int free_i = -1;
+	for (int i = 0; i < MAXT; i++) { if (!strcmp(tm[i].target, target)) return i; if (free_i < 0 && !tm[i].target[0]) free_i = i; }
+	if (free_i >= 0) { memset(&tm[free_i], 0, sizeof tm[free_i]); snprintf(tm[free_i].target, sizeof tm[free_i].target, "%s", target); tm[free_i].used = -1; }
+	return free_i;
+}
+static void tm_write(void)
+{
+	FILE *f = fopen(OUTF ".tmp", "w"); if (!f) return;
+	fprintf(f, "{\"time\":%lld,\"pages\":[", (long long)time(NULL));
+	int first = 1;
+	for (int i = 0; i < MAXT; i++) if (tm[i].target[0] && tm[i].used >= 0) { fprintf(f, "%s{\"url\":\"%s\",\"used\":%lld}", first ? "" : ",", tm[i].url, tm[i].used); first = 0; }
+	fprintf(f, "]}\n"); fclose(f); rename(OUTF ".tmp", OUTF);
+}
+static void send_session(const char *session, const char *method, const char *params, int *id_out)
+{
+	char m[512];
+	*id_out = next_id;
+	int n = snprintf(m, sizeof m, "{\"id\":%d,\"sessionId\":\"%s\",\"method\":\"%s\",\"params\":%s}", next_id++, session, method, params ? params : "{}");
+	if (n > 0 && n < (int)sizeof m && write(to_chrome, m, n + 1) < 0) {}
+}
+static void tm_tick(long long now)
+{
+	struct stat st;
+	if (stat(WANT, &st) || time(NULL) - st.st_mtime > 15 || now - tm_last < 2000 || !shell_target[0]) return;
+	tm_last = now;
+	tm_write();
+	for (int i = 0; i < MAXT; i++) tm[i].seen = 0;
+	tm_list_id = next_id; send_cmd("Target.getTargets", NULL);
+}
+/* a reply to the memory probe: 1 when handled */
+static int tm_handle(const char *msg, long id)
+{
+	if (id <= 0) return 0;
+	if (id == tm_list_id) {
+		for (const char *q = strstr(msg, "{\"targetId\""); q; q = strstr(q + 1, "{\"targetId\"")) {
+			const char *e = strchr(q, '}'); if (!e) break;
+			char one[1024], t[64], ty[32], url[512]; size_t n = (size_t)(e - q + 1) < sizeof one - 1 ? (size_t)(e - q + 1) : sizeof one - 1;
+			memcpy(one, q, n); one[n] = 0;
+			field(one, "type", ty, sizeof ty); field(one, "url", url, sizeof url); field(one, "targetId", t, sizeof t);
+			if ((strcmp(ty, "webview") && strcmp(ty, "page")) || !strncmp(url, "isolated-app://", 15) || !t[0]) continue;
+			int k = tm_slot(t); if (k < 0) continue;
+			tm[k].seen = 1; snprintf(tm[k].url, sizeof tm[k].url, "%s", url);
+			{ size_t ul = strlen(tm[k].url); while (ul && tm[k].url[ul - 1] == '\\') tm[k].url[--ul] = 0; }   /* a cut-off escape */
+			if (!tm[k].session[0]) { char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%s\",\"flatten\":true}", t); tm[k].attach_id = next_id; send_cmd("Target.attachToTarget", p); }
+			else send_session(tm[k].session, "Runtime.getHeapUsage", NULL, &tm[k].heap_id);
+		}
+		for (int i = 0; i < MAXT; i++) if (tm[i].target[0] && !tm[i].seen) tm[i].target[0] = 0;   /* gone */
+		return 1;
+	}
+	for (int i = 0; i < MAXT; i++) {
+		if (!tm[i].target[0]) continue;
+		if (id == tm[i].attach_id) {
+			tm[i].attach_id = 0;
+			field(msg, "sessionId", tm[i].session, sizeof tm[i].session);
+			if (tm[i].session[0]) send_session(tm[i].session, "Runtime.getHeapUsage", NULL, &tm[i].heap_id);
+			return 1;
+		}
+		if (id == tm[i].heap_id) { tm[i].heap_id = 0; long long u = num_field(msg, "usedSize"); if (u >= 0) tm[i].used = u; return 1; }
+	}
+	return 0;
+}
 static long long retry_at;
 static long long now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1000LL + t.tv_nsec / 1000000; }
 static void open_shell(void)
@@ -70,6 +144,8 @@ static void handle(const char *msg)
 {
 	char v[256], t[64];
 	if (debug) fprintf(stderr, "launch << %.300s\n", msg);
+	if (tm_handle(msg, strstr(msg, "\"method\"") ? 0 : num_field(msg, "id"))) return;
+	if (strstr(msg, "\"sessionId\"")) return;   /* events from the pages attached for the memory probe */
 	/* Chromium refused (not ready yet): try again in a second, for up to a minute */
 	if (open_id && num_field(msg, "id") == open_id && strstr(msg, "\"error\"")) {
 		if (tries < 60) retry_at = now_ms() + 1000; else fprintf(stderr, "rudolf-launch: the shell could not be opened\n");
@@ -179,6 +255,7 @@ int main(int argc, char **argv)
 			if (blen >= sizeof buf - 1) blen = 0;        /* a message too large to matter (none expected) */
 		}
 		if (retry_at && now_ms() >= retry_at) { retry_at = 0; open_shell(); }
+		tm_tick(now_ms());
 		if (!ready && now_ms() - t0 > 20000 && !open_id) { ready = 1; open_shell(); }   /* no page event: try anyway */
 		int st;
 		if (waitpid(pid, &st, WNOHANG) == pid) return WIFEXITED(st) ? WEXITSTATUS(st) : 1;
