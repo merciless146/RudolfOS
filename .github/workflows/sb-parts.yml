@@ -1,0 +1,25 @@
+# Secure Boot parts (Rudolf OS 1.2.2): fetch Ubuntu's Microsoft-signed shim and MokManager, systemd-boot, the
+# kernel-bundle stub, and (for tests) OVMF with Secure Boot and sbsign, and keep them in the draft release
+# "sb-parts". The release builds take the shipped parts from there and check them against
+# iso/boot/sb/parts.txt, so a disc only ever carries the pinned files. Run it again (Run workflow) to look for
+# a newer shim; then update the pins in iso/boot/sb/parts.txt.
+name: Secure Boot parts
+on:
+  workflow_dispatch:
+  push:
+    branches: [rudolf-1.2.2]
+    paths: ['.github/workflows/sb-parts.yml', 'iso/systools/sb_fetch.sh']
+permissions: {contents: write}
+jobs:
+  fetch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Fetch
+        run: sudo apt-get update -qq && bash iso/systools/sb_fetch.sh parts
+      - name: Keep them in the draft release sb-parts
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          gh release view sb-parts >/dev/null 2>&1 || gh release create sb-parts --draft --title "Secure Boot parts" --notes "Fetched by the workflow Secure Boot parts from Ubuntu 24.04 packages. Not a Rudolf OS release."
+          (cd parts && tar -czf licences.tar.gz licences)
+          gh release upload sb-parts parts/*.efi parts/*.stub parts/*.fd parts/sbsign parts/sbverify parts/sb-parts.txt parts/licences.tar.gz --clobber
