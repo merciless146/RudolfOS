@@ -18,6 +18,8 @@ node tm_t.js                                     # Task Manager and system repor
 node pl_t3.js $WORK/xin                          # pointer capture for games, with real X input
 node mv_t.js STEP                                # the move of the databases into the shell and back (phase 2)
 node sr_t.js                                     # the system-reports workflow script, against a stand-in for GitHub
+node dl_t.js                                     # 1.2.1 downloads of any size (35 checks; MEDIA=folder with clip.webm and big.pdf,
+                                                 # PDFLIB=a disc's www/lib for PDF Viewer, both set before host.sh)
 ./host.sh stop
 ```
 
@@ -37,4 +39,4 @@ python3 v120_t.py NAME path/to/rudolf-os.iso     # diagnostic start; real keyboa
 
 It waits for the one-time move into the shell, then checks real tabs, cookies, downloads, Ctrl+T/W/Q through
 rudolf-display, pointer capture with QEMU's relative mouse, fullscreen, Task Manager (processes, End process, System,
-Hardware) and the system report (31 checks).
+Hardware) and the system report (34 checks, with a large download kept on the disk).

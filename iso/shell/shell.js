@@ -17,7 +17,7 @@
 'use strict';
 const DESK_URL = 'http://127.0.0.1:8080/';
 const DESK_ORIGIN = 'http://127.0.0.1:8080';
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 const CAPS = ['tabs'];
 const desk = document.getElementById('desk');
 const starting = document.getElementById('starting');
@@ -97,7 +97,7 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
      dialog {did, kind, text, def}   perm {pid, perm, url}   blocked {url, why, main}   gone {why}
      fs {on}                    the page is "fullscreen" (the stand-in, see fsStandIn): its frame fills the screen
      flash                      Ruffle was loaded for Flash content in the page
-     download {url, name, data | big | why}   a file the page downloads (data: a data: URL), see download() */
+     download {url, started}    the page started a download (Chromium saves it; the desktop files it) */
 const TABS = new Map();
 const NONCE = 'rudolf' + crypto.getRandomValues(new Uint32Array(2)).join('');
 let FW = {on: false}, RUFFLE = {on: false, urls: [], config: {}};
@@ -182,7 +182,7 @@ function tabEvents(t) {
   });
   f.addEventListener('permissionrequest', e => {
     const p = e.permission;
-    if (p == 'download') { try { e.request.deny() } catch (x) {} download(t, e.request && e.request.url || ''); return }
+    if (p == 'download') { const u = e.request && e.request.url || ''; try { e.request.allow() } catch (x) {} toTab(t.tid, 'download', {url: /^https?:/i.test(u) ? u : t.url, started: true}); return }
     if (p == 'fullscreen' || p == 'pointerLock') { try { e.request.allow() } catch (x) {} return }
     if (p == 'media' || p == 'geolocation') {
       try { e.preventDefault() } catch (x) {}
@@ -193,32 +193,9 @@ function tabEvents(t) {
     try { e.request.deny() } catch (x) {}
   });
 }
-/* ---- downloads go to Rudolf OS's own Downloads folder (C:\DOWNLOADS), through the desktop's checks (file types,
-   antivirus, the size limit), not to Chromium's. The page fetches the file itself, so the site's cookies come with
-   it (a file behind a sign-in); the shell collects it and hands it to the desktop. When the page cannot fetch it
-   (another site's file without permission), the desktop tries on its own. */
-const DL_MAX = 1.5 * 1048576;
-let DLN = 0;
-function download(t, url) {
-  if (!/^(https?|blob|data):/i.test(url)) return;
-  const id = ++DLN, send = o => toTab(t.tid, 'download', Object.assign({url: /^https?:/i.test(url) ? url : t.url}, o));
-  const code = `(()=>{const W=window.__rudolfDl=window.__rudolfDl||{};W[${id}]={wait:1};(async()=>{try{
-const r=await fetch(${JSON.stringify(url)},{credentials:'include'});if(!r.ok)throw new Error('HTTP '+r.status);
-let n=+r.headers.get('content-length')||0,name='';const cd=r.headers.get('content-disposition')||'',m=/filename\\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd);
-if(m)try{name=decodeURIComponent(m[1]||m[2])}catch(e){name=m[1]||m[2]}
-if(n>${DL_MAX}){W[${id}]={ok:false,big:true,name};return}const b=await r.blob();if(b.size>${DL_MAX}){W[${id}]={ok:false,big:true,name};return}
-const d=await new Promise((res,rej)=>{const f=new FileReader();f.onload=()=>res(f.result);f.onerror=rej;f.readAsDataURL(b)});W[${id}]={ok:true,name,data:d}}
-catch(e){W[${id}]={ok:false,why:String(e&&e.message||e)}}})();return 1})()`;
-  t.f.executeScript({code}).then(() => {
-    const until = Date.now() + 120000;
-    const poll = () => t.f.executeScript({code: `(()=>{const W=window.__rudolfDl||{},r=W[${id}];if(r&&!r.wait)delete W[${id}];return r||null})()`}).then(r => {
-      const v = r && r[0];
-      if (v && !v.wait) return send(v.ok ? {name: String(v.name || ''), data: v.data} : {name: String(v.name || ''), big: !!v.big, why: String(v.why || '')});
-      if (Date.now() < until) setTimeout(poll, 400); else send({why: 'timeout'});
-    }, () => send({why: 'page'}));
-    poll();
-  }, () => send({why: 'page'}));
-}
+/* ---- downloads: Chromium saves the file (with the site's cookies, straight to disk, any size) in its download folder,
+   Downloads/.incoming (set by policy); the desktop checks it there and files it (dl27.js). The shell only says that
+   a download started, so Oracle can show it at once. */
 let NEWN = 0, DLGN = 0, PERMN = 0;
 const DLG = new Map(), PERM = new Map();
 

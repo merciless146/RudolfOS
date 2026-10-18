@@ -41,7 +41,7 @@ function fileProps(path){const v=node(path);if(v==null)return;const W=win('Prope
 /* ---------- ZIP helpers ---------- */
 const MIMEX={PNG:'image/png',JPG:'image/jpeg',JPEG:'image/jpeg',GIF:'image/gif',WEBP:'image/webp',SVG:'image/svg+xml',BMP:'image/bmp',MP3:'audio/mpeg',OGG:'audio/ogg',WAV:'audio/wav',MP4:'video/mp4',WEBM:'video/webm',PDF:'application/pdf',ZIP:'application/zip',WASM:'application/wasm',TTF:'font/ttf',OTF:'font/otf',WOFF:'font/woff',WOFF2:'font/woff2'};
 const TEXTE=/^(TXT|LUA|MD|CSV|JSON|HTML?|CSS|JS|BAT|CFG|INI|XML|LOG|RSHEET|RDECK|SVG|DOC)$/;
-async function vfsToZip(paths){const z=new JSZip();const add=(p,v,pre)=>{if(isDir(v)){const f=z.folder(pre+p.at(-1));for(const k in v)add([...p,k],v[k],pre+p.at(-1)+'/')}else{if(typeof v=='string'&&v.startsWith('data:'))z.file(pre+p.at(-1),dataToBlob(v));else z.file(pre+p.at(-1),String(v))}};paths.forEach(p=>add(p,node(p),''));return z.generateAsync({type:'blob',compression:'DEFLATE'})}
+async function vfsToZip(paths){const z=new JSZip();const add=(p,v,pre)=>{if(isDir(v)){const f=z.folder(pre+p.at(-1));for(const k in v)add([...p,k],v[k],pre+p.at(-1)+'/')}else if(typeof v=='string'&&v.startsWith('rudolfdisk:')){}else{if(typeof v=='string'&&v.startsWith('data:'))z.file(pre+p.at(-1),dataToBlob(v));else z.file(pre+p.at(-1),String(v))}};paths.forEach(p=>add(p,node(p),''));return z.generateAsync({type:'blob',compression:'DEFLATE'})}
 async function blobToDataURL(b){return new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(b)})}
 async function zipToVfs(zipData,dest){const z=await JSZip.loadAsync(typeof zipData=='string'?dataToBlob(zipData):zipData);let n=0;
  for(const name of Object.keys(z.files)){const f=z.files[name];const parts=name.split('/').filter(Boolean).map(x=>x.toUpperCase().replace(/[\\:*?"<>|]/g,'_').slice(0,60));if(!parts.length)continue;let d=dest;for(const p of parts.slice(0,-1)){if(!isDir(d[p]))d[p]={};d=d[p]}
@@ -175,7 +175,7 @@ function wire(pn,el,r){const k=pkey(r.p);
   if(typeof v=='string'&&/^data:image\//.test(v)){const im=document.createElement('img');im.src=v;im.alt=p.at(-1);prevEl.appendChild(im)}
   else if(typeof v=='string'&&/^data:audio\//.test(v)){const a=document.createElement('audio');a.controls=true;a.src=v;prevEl.appendChild(a)}
   else if(typeof v=='string'&&/^data:video\//.test(v)){const a=document.createElement('video');a.controls=true;a.src=v;a.style.maxWidth='100%';prevEl.appendChild(a)}
-  else if(typeof v=='string'&&!v.startsWith('data:')&&!v.startsWith('rudolfrom:')){const pre=document.createElement('pre');pre.textContent=v.slice(0,4000)+(v.length>4000?'\n…':'');prevEl.appendChild(pre)}
+  else if(typeof v=='string'&&!v.startsWith('data:')&&!v.startsWith('rudolfrom:')&&!v.startsWith('rudolfdisk:')){const pre=document.createElement('pre');pre.textContent=v.slice(0,4000)+(v.length>4000?'\n…':'');prevEl.appendChild(pre)}
   else{const d=document.createElement('div');d.textContent=fType(p.at(-1),v);prevEl.appendChild(d)}
   const m=fileMeta(p);const inf=document.createElement('div');inf.className='xpinf';inf.textContent=`${fmtB(sizeOf(v))}${m&&m.m?' · modified '+new Date(m.m).toLocaleString():''}`;prevEl.appendChild(inf)}
  function updStat(){const pn=P();if(pn.remote)return;const n=rowsFor(pn).length;storageInfo().then(si=>{say(`${n} item(s)${pn.sel.size?' · '+pn.sel.size+' selected':''}  ·  Storage: ${fmtB(si.used)}${si.quota?' of '+fmtB(si.quota):''} used`)})}

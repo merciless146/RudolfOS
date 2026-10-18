@@ -2,6 +2,8 @@
 #   /login     a sign-in form; signing in sets a first-party cookie      /me   who is signed in
 #   /popup     opens a sign-in style pop-up (/child) that answers its opener and closes itself
 #   /files     links to /file (a download for signed-in visitors only) and /big.zip (2 MB, over the limit)
+#   /gen/NAME?mb=N&kind=zero|eicar-head|eicar-tail|mz   a generated download of N MB (1.2.1, files kept on the disk)
+#   /media/NAME   a file from the folder MEDIA (environment), e.g. a video or a PDF
 #   /flash     a page with a Flash movie (blue.swf: a blue 300x200 frame; Ruffle should play it)      /     a plain green page
 import http.server, sys, urllib.parse
 GREEN = "<body style='margin:0;background:rgb(0,200,0);height:100vh'>"
@@ -35,6 +37,23 @@ class H(http.server.BaseHTTPRequestHandler):
         if p == '/big.zip':
             b = b'\0' * (2 * 1048576)
             s.send_response(200); s.send_header('Content-Type', 'application/zip'); s.send_header('Content-Length', str(len(b))); s.end_headers(); s.wfile.write(b); return
+        if p.startswith('/gen/'):
+            q = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(s.path).query)); n = int(float(q.get('mb', '1')) * 1048576); k = q.get('kind', 'zero')
+            E = b'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*'
+            head = E if k == 'eicar-head' else b'MZ' if k == 'mz' else b''; tail = E if k == 'eicar-tail' else b''
+            s.send_response(200); s.send_header('Content-Type', 'application/octet-stream'); s.send_header('Content-Disposition', 'attachment; filename="' + p[5:] + '"')
+            s.send_header('Content-Length', str(n)); s.end_headers()
+            try:
+                s.wfile.write(head); left = n - len(head) - len(tail); z = b'\0' * 1048576
+                while left > 0: c = min(left, len(z)); s.wfile.write(z[:c]); left -= c
+                s.wfile.write(tail)
+            except (BrokenPipeError, ConnectionResetError): pass
+            return
+        if p.startswith('/media/'):
+            f = __import__('os').path.join(__import__('os').environ.get('MEDIA', '/tmp'), __import__('os').path.basename(p))
+            b = open(f, 'rb').read()
+            s.send_response(200); s.send_header('Content-Type', 'application/octet-stream'); s.send_header('Content-Disposition', 'attachment; filename="' + __import__('os').path.basename(p) + '"')
+            s.send_header('Content-Length', str(len(b))); s.end_headers(); s.wfile.write(b); return
         return s.send("<title>Green</title>" + GREEN + "<p>green</p>")
     def do_POST(s):
         n = int(s.headers.get('Content-Length', 0) or 0); q = dict(urllib.parse.parse_qsl(s.rfile.read(n).decode()))

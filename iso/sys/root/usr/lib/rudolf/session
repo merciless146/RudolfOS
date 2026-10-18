@@ -120,6 +120,11 @@ echo "DISPLAY=$DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
 # Linux apps: the folders they share with drive C:, and the desktop portal (file dialogs, links,
 # notifications) on the session bus; its questions reach the desktop through /run/rudolf/portal
 for d in Documents Pictures Downloads; do [ -d /home/rudolf/$d ] || { mkdir -p /home/rudolf/$d; chown rudolf:rudolf /home/rudolf/$d; }; done
+# website downloads arrive in Downloads/.incoming (Chromium's download folder, set by policy) and the desktop files
+# them after its checks (rudolfd: /api/dl/*); a download left unfinished by a restart is removed
+mkdir -p /home/rudolf/Downloads/.incoming /home/rudolf/Downloads/.quarantine
+chown rudolf:rudolf /home/rudolf/Downloads/.incoming /home/rudolf/Downloads/.quarantine; chmod 700 /home/rudolf/Downloads/.quarantine
+rm -f /home/rudolf/Downloads/.incoming/*.crdownload /run/rudolf/dlf/* 2>/dev/null
 mkdir -p /run/rudolf/portal/req /run/rudolf/portal/resp /run/rudolf/apps && chown -R rudolf:rudolf /run/rudolf/portal /run/rudolf/apps
 [ -x /usr/bin/rudolf-portal ] && [ -n "$DBUS_SESSION_BUS_ADDRESS" ] && su -s /bin/sh rudolf -c "set -a; . /run/rudolf/session.env; set +a; exec setsid /usr/bin/rudolf-portal" </dev/null >>/run/rudolf/portal.log 2>&1 &
 PROFILE=/home/rudolf/.rudolf-browser
