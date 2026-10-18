@@ -1,6 +1,6 @@
 /* ===== V25 core: rudolfd link, storage, accounts, encryption, lock screen, elevation, guest, parental controls, backup ===== */
 window.__v25=1;
-const RVER='1.1.2',RVERDATE='2026-10-13';
+const RVER='1.2.0',RVERDATE='2026-10-18';
 /* ---------- rudolfd (only present on the bootable build) ---------- */
 const RD=window.RUDOLFD||null;
 async function rd(path,opt){opt=opt||{};if(!RD)throw new Error('This needs the installed Rudolf OS (bootable disc or USB).');
@@ -15,12 +15,66 @@ function notify(title,body,opt){opt=opt||{};try{if(window.__notifCentre)return _
  const d=document.createElement('div');d.className='rtoast';d.textContent=title+(body?' — '+body:'');document.body.appendChild(d);setTimeout(()=>d.remove(),4000)}
 /* ---------- IndexedDB key/value store ---------- */
 var IDB={db:null};
-IDB.ready=new Promise(res=>{try{const q=indexedDB.open('rudolfos',1);q.onupgradeneeded=()=>q.result.createObjectStore('kv');q.onsuccess=()=>{IDB.db=q.result;res(true)};q.onerror=()=>res(false);q.onblocked=()=>res(false)}catch(e){res(false)}});
+IDB.open=new Promise(res=>{try{const q=indexedDB.open('rudolfos',1);q.onupgradeneeded=()=>q.result.createObjectStore('kv');q.onsuccess=()=>{IDB.db=q.result;res(true)};q.onerror=()=>res(false);q.onblocked=()=>res(false)}catch(e){res(false)}});
+/* ---------- the databases, mirrored in rudolfd (Rudolf OS 1.2) ----------
+   Files (drive C:), game ROMs and saves live in IndexedDB. The desktop runs in the shell (Oracle's real tabs) or as
+   a plain page, and the two have separate storage, so every write also goes to rudolfd's mirror (/api/idbm/), one
+   record per key. At start a desktop whose copy is older than the mirror loads the mirror first; the first desktop
+   to use the mirror copies everything into it and then tells rudolfd the shell may be used. The generation this
+   copy has seen is kept in the database itself (IDBM_GEN), not in localStorage, which rudolfd shares between them. */
+const IDBM_STORES=[['rudolfos','kv'],['bd95vault','rom'],['bd95vault','sav']],IDBM_GEN='__idbm_gen';
+const IDBM={on:false,queue:new Map(),busy:false,gen:0};
+function idbmName(db,st,key){/* FNV-1a, 64 bits, of the record's place: the file name in the mirror */
+ let h=0xcbf29ce484222325n;const b=new TextEncoder().encode(db+'\0'+st+'\0'+JSON.stringify(key));
+ for(const c of b){h^=BigInt(c);h=(h*0x100000001b3n)&0xffffffffffffffffn}return h.toString(16).padStart(16,'0')}
+/* values -> JSON: binary data becomes base64 (copied at once, so later changes do not leak in) */
+function idbmEnc(v,jobs){if(v===null||typeof v!='object')return v;
+ const bin=(tag,u8,extra)=>{const o=Object.assign({$:tag,b:''},extra);jobs.push([o,new Blob([u8])]);return o};
+ if(v instanceof ArrayBuffer)return bin('ab',new Uint8Array(v));
+ if(ArrayBuffer.isView(v))return bin('ta',new Uint8Array(v.buffer,v.byteOffset,v.byteLength),{t:v.constructor.name});
+ if(v instanceof Blob){const o={$:'blob',t:v.type,n:v.name||null,b:''};jobs.push([o,v]);return o}
+ if(v instanceof Date)return{$:'d',v:+v};
+ if(v instanceof Map)return{$:'map',v:[...v].map(([a,b])=>[idbmEnc(a,jobs),idbmEnc(b,jobs)])};
+ if(v instanceof Set)return{$:'set',v:[...v].map(x=>idbmEnc(x,jobs))};
+ if(Array.isArray(v))return v.map(x=>idbmEnc(x,jobs));
+ const o={};for(const k of Object.keys(v))o[k]=idbmEnc(v[k],jobs);return'$'in v?{$:'o',v:o}:o}
+const idbmB64=blob=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).replace(/^data:[^,]*,/,''));r.onerror=()=>rej(r.error);r.readAsDataURL(blob)});
+async function idbmJSON(db,st,key,v){const jobs=[],enc=idbmEnc(v,jobs);for(const[o,b]of jobs)o.b=await idbmB64(b);return JSON.stringify({db,store:st,key,v:enc})}
+async function idbmDec(v){if(v===null||typeof v!='object')return v;if(Array.isArray(v)){const a=[];for(const x of v)a.push(await idbmDec(x));return a}
+ const bytes=async b=>new Uint8Array(await (await fetch('data:application/octet-stream;base64,'+b)).arrayBuffer());
+ switch(v.$){case'ab':return(await bytes(v.b)).buffer;case'ta':{const u=await bytes(v.b),C=self[v.t]||Uint8Array;return new C(u.buffer,0,u.byteLength/(C.BYTES_PER_ELEMENT||1))}
+  case'blob':{const u=await bytes(v.b);return v.n?new File([u],v.n,{type:v.t}):new Blob([u],{type:v.t})}case'd':return new Date(v.v);
+  case'map':{const m=new Map();for(const[a,b]of v.v)m.set(await idbmDec(a),await idbmDec(b));return m}case'set':{const t=new Set();for(const x of v.v)t.add(await idbmDec(x));return t}
+  case'o':v=v.v}const o={};for(const k of Object.keys(v))o[k]=await idbmDec(v[k]);return o}
+/* writes go out one at a time; several writes to the same record send only the newest */
+function idbmQueue(db,st,key,v,del){if(!IDBM.on||(db=='rudolfos'&&key===IDBM_GEN))return;IDBM.queue.set(idbmName(db,st,key),{db,st,key,v,del});idbmPump()}
+async function idbmPump(){if(IDBM.busy)return;IDBM.busy=true;try{while(IDBM.queue.size){const[f,r]=IDBM.queue.entries().next().value;IDBM.queue.delete(f);
+ try{const body=r.del?'':await idbmJSON(r.db,r.st,r.key,r.v);const j=await rdPost('idbm/'+(r.del?'del':'put')+'?f='+f,body);if(j&&j.gen)idbmSetGen(j.gen)}catch(e){console.warn('mirror',e)}}}finally{IDBM.busy=false}}
+function idbmRaw(db,st,mode,fn){return new Promise((res,rej)=>{const q=indexedDB.open(db,1);q.onupgradeneeded=()=>{for(const[d,s]of IDBM_STORES)if(d==db&&!q.result.objectStoreNames.contains(s))q.result.createObjectStore(s)};
+ q.onsuccess=()=>{const t=q.result.transaction(st,mode);let out;t.oncomplete=()=>{q.result.close();res(out)};t.onerror=t.onabort=()=>{q.result.close();rej(t.error)};out=fn(t.objectStore(st))};q.onerror=()=>rej(q.error)})}
+function idbmSetGen(g){IDBM.gen=g;if(IDB.db)try{IDB.db.transaction('kv','readwrite').objectStore('kv').put(g,IDBM_GEN)}catch(e){}}
+async function idbmSync(){
+ const meta=await rd('idbm/meta');
+ const local=await new Promise(r=>{try{const t=IDB.db.transaction('kv').objectStore('kv').get(IDBM_GEN);t.onsuccess=()=>r(+t.result||0);t.onerror=()=>r(0)}catch(e){r(0)}});
+ if(meta.gen>local){/* the mirror is newer (the other storage was used last): load it */
+  const list=await rd('idbm/list');document.documentElement.classList.add('idbm-loading');
+  for(const[db,st]of IDBM_STORES)await idbmRaw(db,st,'readwrite',s=>s.clear());
+  for(const f of list.items){try{const r=await (await fetch('/api/idbm/get?f='+f,{headers:{'X-Rudolf-Token':RD.token}})).json();const v=await idbmDec(r.v);await idbmRaw(r.db,r.store,'readwrite',s=>s.put(v,r.key))}catch(e){console.warn('mirror load',f,e)}}
+  IDBM.gen=list.gen;await new Promise(r=>{const t=IDB.db.transaction('kv','readwrite');t.objectStore('kv').put(list.gen,IDBM_GEN);t.oncomplete=r;t.onerror=r});
+  document.documentElement.classList.remove('idbm-loading');
+ }else if(!meta.ready){/* first use of the mirror: copy everything into it */
+  for(const[db,st]of IDBM_STORES){const keys=await idbmRaw(db,st,'readonly',s=>s.getAllKeys()).then(r=>r.result||[]).catch(()=>[]);
+   for(const k of keys){if(db=='rudolfos'&&k===IDBM_GEN)continue;const v=await idbmRaw(db,st,'readonly',s=>s.get(k)).then(r=>r.result);
+    const j=await rdPost('idbm/put?f='+idbmName(db,st,k),await idbmJSON(db,st,k,v));if(j&&j.gen)IDBM.gen=j.gen}}
+  if(IDBM.gen)idbmSetGen(IDBM.gen);await rdPost('idbm/ready');IDBM.justCopied=true;
+ }else IDBM.gen=local;
+ IDBM.on=true}
+IDB.ready=IDB.open.then(ok=>ok&&RD?idbmSync().catch(e=>{console.warn('mirror',e);IDBM.on=true}).then(()=>ok):ok);
 function kvGet(k){return IDB.ready.then(()=>IDB.db?new Promise(r=>{try{const t=IDB.db.transaction('kv').objectStore('kv').get(k);t.onsuccess=()=>r(t.result);t.onerror=()=>r(undefined)}catch(e){r(undefined)}}):undefined)}
 function kvPutNow(k,v){/* synchronous structured clone at call time; completes in the background */
- if(!IDB.db)return Promise.resolve(false);return new Promise(r=>{try{const tx=IDB.db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>r(true);tx.onerror=tx.onabort=()=>{storageFull();r(false)}}catch(e){storageFull();r(false)}})}
+ if(!IDB.db)return Promise.resolve(false);return new Promise(r=>{try{const tx=IDB.db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);idbmQueue('rudolfos','kv',k,v);tx.oncomplete=()=>r(true);tx.onerror=tx.onabort=()=>{storageFull();r(false)}}catch(e){storageFull();r(false)}})}
 const kvSet=(k,v)=>IDB.ready.then(()=>kvPutNow(k,v));
-function kvDel(k){return IDB.ready.then(()=>IDB.db&&new Promise(r=>{try{const tx=IDB.db.transaction('kv','readwrite');tx.objectStore('kv').delete(k);tx.oncomplete=()=>r(true);tx.onerror=()=>r(false)}catch(e){r(false)}}))}
+function kvDel(k){return IDB.ready.then(()=>IDB.db&&new Promise(r=>{try{const tx=IDB.db.transaction('kv','readwrite');tx.objectStore('kv').delete(k);idbmQueue('rudolfos','kv',k,null,true);tx.oncomplete=()=>r(true);tx.onerror=()=>r(false)}catch(e){r(false)}}))}
 let lastFullWarn=0;function storageFull(){if(Date.now()-lastFullWarn<20000)return;lastFullWarn=Date.now();notify('Storage is full','Some changes could not be saved. Delete large files or empty the Trash.',{kind:'error'})}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch(e){}
 async function storageInfo(){let e={};try{e=await navigator.storage.estimate()}catch(x){}return{used:e.usage||0,quota:e.quota||0}}

@@ -13,6 +13,8 @@ let WEB_ON=false,WEB_SHOWN=false,WEB_TOLD=false,WEB_POLL=null;
 const webNativeOpen=window.open.bind(window);
 async function webOpen(u){
  if(!RD){try{webNativeOpen(u,'_blank','noopener')}catch(e){}return}
+ /* Rudolf OS 1.2 inside the shell: Oracle's real tabs keep sign-ins, so the browser window is not needed */
+ if(typeof rtOn=='function'&&rtOn()){browser(u);return}
  if(window.__sys&&typeof fwCheck=='function'){const g=fwCheck(u);if(g){notify('Blocked by the firewall',g.why,{kind:'error'});return}}
  let href;try{href=new URL(u).href}catch(e){return notify('Cannot open',String(u),{kind:'error'})}
  href=href.replace(/'/g,'%27').replace(/`/g,'%60').replace(/\$/g,'%24').replace(/\\/g,'%5C').replace(/"/g,'%22');

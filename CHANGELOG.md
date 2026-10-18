@@ -3,6 +3,18 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.2.0 (2026-10-18)
+Summary: Oracle's tabs are real browser tabs, so signing in to websites works inside Oracle; a new Task Manager shows the kernel, the services and the hardware; report a problem with the computer's status in one step
+- New: Oracle opens websites as real browser tabs. Signing in works inside Oracle for every site (Google, Microsoft, banks…), pop-up sign-ins keep working, and each Rudolf OS account has its own cookies. The browser window for sign-in sites is no longer needed.
+- New: Rudolf OS moves to its new desktop host by itself once, shortly after starting (a few seconds; your files, ROMs, game saves and settings move along). If it cannot start, the desktop runs as before. Settings > Oracle sign-in > Real browser tabs turns it off.
+- New: downloads from websites go to C:\DOWNLOADS through the firewall, file-type and antivirus checks, also files that need you to be signed in.
+- New: a website or a video can go fullscreen; Esc brings it back. Games can capture the mouse pointer.
+- Fixed: Ctrl+W, Ctrl+Q, Ctrl+T and Ctrl+N could close or quit the desktop or open a browser window over it. Ctrl+W now closes an Oracle tab, Ctrl+T opens one, and Ctrl+Q does nothing harmful. Linux apps get these keys unchanged.
+- New: Task Manager: Processes (every process grouped by what it is, with CPU and memory, and End process), Performance (CPU, memory and network), System (Rudolf OS, the desktop's host, the services with Restart, the kernel, its drivers and warnings), Hardware (processor, graphics, display, storage, network adapters, sound, input devices, battery). Apps lists Oracle's real tabs with the memory each page uses.
+- New: Report a problem (Task Manager, or Start): opens a ready-filled report on the Rudolf OS issue tracker on GitHub, with the state of the computer at that moment. It leaves out your name, files, web and network addresses and Wi-Fi names; you review it before sending, or save it to send later.
+- Security: ending a system process or restarting a service asks for an administrator's password; the processes Rudolf OS needs cannot be ended. Websites in Oracle keep their own protection against being shown inside other pages.
+- Known limits: a few websites forbid the script that makes fullscreen work and stay in their window; downloads are limited to 1.5 MB as before.
+
 ## 1.1.2 (2026-10-13)
 Summary: signing in to websites works (Oracle moves sign-in pages to a real browser window); choose the screen resolution and frame rate; fixes for small screens and display scaling
 - Fixed: signing in to websites in Oracle did not last: the site accepted the password, then asked again. Oracle shows websites inside the desktop, where Chromium drops their sign-in cookies. Sites that need a sign-in now move to a real browser window (🌐 in the taskbar switches between it and the desktop).

@@ -129,6 +129,25 @@ rm -rf $EXT; cp -a /usr/lib/rudolf/frames $EXT; chown -R rudolf:rudolf $EXT
 # Ruffle for Oracle: plays Flash content on websites in Oracle's tabs
 RUF=/run/rudolf/ruffle-ext
 rm -rf $RUF; cp -a /usr/lib/rudolf/ruffle-ext $RUF; chown -R rudolf:rudolf $RUF
+# ---- the shell (Rudolf OS 1.2): an Isolated Web App around the desktop that gives Oracle real browser tabs.
+# Chromium installs it by policy from rudolfd (/iwa/, in the desktop layer). The session starts it instead of the
+# desktop page once it is installed and the desktop has handed its data over (/home/rudolf/.rudolf-shell-ready),
+# unless recovery mode, Settings (/etc/rudolf-shell "off") or a failed start (/run/rudolf/shell-failed) say no.
+SHELLID=$(cat /usr/share/rudolf/www/iwa/id 2>/dev/null)
+SHELLPOL=/etc/chromium/policies/managed/rudolf-shell.json
+case "$SHELLID" in
+[a-z2-7]*) mkdir -p ${SHELLPOL%/*}
+	printf '{"IsolatedWebAppInstallForceList":[{"update_manifest_url":"http://127.0.0.1:8080/iwa/update.json","web_bundle_id":"%s"}]}\n' "$SHELLID" > $SHELLPOL;;
+*) rm -f $SHELLPOL;;
+esac
+shell_usable() {
+	[ ${#SHELLID} = 56 ] || return 1
+	grep -q 'rudolf.recovery=1' /proc/cmdline && return 1
+	[ "$(cat /etc/rudolf-shell 2>/dev/null)" = off ] && return 1
+	[ -e /run/rudolf/shell-failed ] && return 1
+	[ -e /home/rudolf/.rudolf-shell-ready ] || return 1
+	grep -lqs "$SHELLID" $PROFILE/Default/iwa/*/main.swbn || return 1
+}
 LOGPOLL=0
 DBG=""
 grep -q 'rudolf.debug=1' /proc/cmdline && DBG="--enable-logging=stderr --v=0 --remote-debugging-port=9222"
@@ -139,24 +158,39 @@ while :; do
 	EXTRA=""; [ -s /run/rudolf/browser-flags ] && EXTRA=$(cat /run/rudolf/browser-flags)
 	[ -s /run/rudolf/proxy ] && PROXY="--proxy-server=$(cat /run/rudolf/proxy)"
 	rm -f /run/rudolf/heartbeat
-	su -s /bin/sh rudolf -c "exec /opt/chromium/chrome --rudolf-kiosk --class=RudolfDesktop --kiosk --start-fullscreen \
+	START=http://127.0.0.1:8080/; SHELLON=0; LAUNCH=""
+	# Chromium opens the shell only when the browser itself asks: rudolf-launch does that over a private pipe
+	if shell_usable && [ -x /usr/bin/rudolf-launch ]; then START=""; SHELLON=1; LAUNCH="/usr/bin/rudolf-launch $SHELLID"; fi
+	echo "${START:-isolated-app://$SHELLID/}" > /run/rudolf/desktop-url
+	# the web frames extension lets websites load inside the desktop page's frames (it removes their frame protections)
+	# and spots sign-in pages; with the shell, Oracle's tabs are real pages and it is left out
+	EXTS=$EXT,$RUF; [ $SHELLON = 1 ] && EXTS=$RUF
+	su -s /bin/sh rudolf -c "exec $LAUNCH /opt/chromium/chrome --rudolf-kiosk --class=RudolfDesktop --kiosk --start-fullscreen \
 		--window-position=0,0 --window-size=$W,$H --user-data-dir=$PROFILE \
 		--no-first-run --no-default-browser-check --noerrdialogs --disable-infobars \
 		--disable-session-crashed-bubble --disable-translate --password-store=basic \
 		--disable-features=Translate,MediaRouter,DialMediaRouteProvider,OptimizationHints,PrivacySandboxSettings4,Vulkan,WebGPUService,SkiaGraphite,OptimizationGuideOnDeviceModel --disable-vulkan-surface \
 		$GLFLAGS \
 		--autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream \
-		--auto-select-desktop-capture-source=Entire --enable-features=SharedArrayBuffer \
-		--load-extension=$EXT,$RUF --disable-gpu-watchdog --disk-cache-size=67108864 $PROXY $DBG $EXTRA \
-		http://127.0.0.1:8080/" &
+		--auto-select-desktop-capture-source=Entire --enable-features=SharedArrayBuffer,IsolatedWebApps \
+		--load-extension=$EXTS --disable-gpu-watchdog --disk-cache-size=67108864 $PROXY $DBG $EXTRA \
+		$START" &
 	B=$!
-	START=$(cut -d. -f1 /proc/uptime)
+	START_T=$(cut -d. -f1 /proc/uptime)
 	# watchdog: the desktop sends a heartbeat every few seconds
 	while kill -0 $B 2>/dev/null; do
-		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] && break; done
+		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] || [ -e /run/rudolf/shell-switch ] && break; done
 		if [ -e /run/rudolf/screen-restart ]; then rm -f /run/rudolf/screen-restart; display_restart; break; fi
+		# the desktop has handed its data over (or Settings changed): start the browser again, with the shell if it can
+		if [ -e /run/rudolf/shell-switch ]; then rm -f /run/rudolf/shell-switch; echo "$(date) starting the browser again (shell)"
+			pkill -f 'chrom[e].*--rudolf-kiosk'; for i in 1 2 3 4 5 6; do kill -0 $B 2>/dev/null || break; sleep 1; done; pkill -9 -f 'chrom[e].*--rudolf-kiosk'; break; fi
 		NOW=$(cut -d. -f1 /proc/uptime)
-		if [ $((NOW - START)) -gt 120 ]; then
+		# the shell did not bring the desktop up: use the desktop page by itself from now on (until restart)
+		if [ $SHELLON = 1 ] && [ $((NOW - START_T)) -gt 90 ] && [ ! -e /run/rudolf/heartbeat ]; then
+			echo "$(date) the shell did not start the desktop - using the desktop page directly"
+			touch /run/rudolf/shell-failed; pkill -f 'chrom[e].*--rudolf-kiosk'; sleep 3; pkill -9 -f 'chrom[e].*--rudolf-kiosk'
+		fi
+		if [ $((NOW - START_T)) -gt 120 ]; then
 			if [ -e /run/rudolf/heartbeat ]; then
 				MT=$(stat -c %Y /run/rudolf/heartbeat); AGE=$(( $(date +%s) - MT ))
 				if [ $AGE -gt 60 ]; then echo "$(date) desktop not responding for ${AGE}s - restarting browser"; pkill -f 'chrom[e].*--rudolf-kiosk'; sleep 3; pkill -9 -f 'chrom[e].*--rudolf-kiosk'; fi

@@ -15,6 +15,7 @@
  *   rudolf-display --xsize         print "WIDTH HEIGHT" of the X screen
  *   rudolf-display --shot          write the X screen to stdout as a PPM image
  *   rudolf-display --modes         JSON: the screen modes and refresh rates of the monitor (Xorg)
+ *   rudolf-display --clip-get      print the text on the clipboard (CLIPBOARD, shared by Chromium and Linux apps)
  *   rudolf-display --mode WxH|auto HZ   set the monitor's mode of that size with the nearest refresh rate (Xorg);
  *                                  exit status 3 when the monitor has no mode of that size (the session then
  *                                  uses the software display, which scales)
@@ -30,6 +31,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -435,6 +437,54 @@ static void touchpad_frame(struct dev *v)
 	v->lastx = v->ax; v->lasty = v->ay; v->have_last = 1;
 }
 
+/* Chromium keeps some shortcuts for itself and acts on them before the page sees them: Ctrl+W and Ctrl+F4 close
+   the desktop's window (the desktop starts again, open windows are lost), Ctrl+Q quits Chromium, Ctrl+T and Ctrl+N
+   open browser windows over the desktop. While the desktop's Chromium window (class RudolfDesktop) has the
+   keyboard, those keys arrive as F20 (W, F4), F21 (T), F22 (N) and F23 (Q), still with Ctrl held; the desktop and
+   Oracle's real tabs read Ctrl+F20 as Ctrl+W and so on (shell26.js: DESK_SUB). Linux apps and the browser window
+   for sign-in sites get the keys unchanged. */
+static int mod_ctrl, mod_alt;
+static unsigned char key_sub[256];
+static int desk_focused(void)
+{
+	static long long at; static int was;
+	long long t = now_ms();
+	if (t - at < 250) return was;
+	at = t; was = 0;
+	Window w = None, r, p, *ch; int rv; unsigned n;
+	XGetInputFocus(dpy, &w, &rv);
+	for (int i = 0; i < 12 && w != None && w != PointerRoot; i++) {
+		XClassHint h = {0};
+		if (XGetClassHint(dpy, w, &h)) {
+			was = h.res_class && !strcmp(h.res_class, "RudolfDesktop");   /* the session starts it with --class=RudolfDesktop */
+			if (h.res_name) XFree(h.res_name);
+			if (h.res_class) XFree(h.res_class);
+			return was;
+		}
+		if (!XQueryTree(dpy, w, &r, &p, &ch, &n)) break;
+		if (ch) XFree(ch);
+		if (p == r) break;
+		w = p;
+	}
+	return was;
+}
+static int desk_key(int c, int down)
+{
+	if (c == KEY_LEFTCTRL || c == KEY_RIGHTCTRL) mod_ctrl = down ? mod_ctrl | (c == KEY_LEFTCTRL ? 1 : 2) : mod_ctrl & ~(c == KEY_LEFTCTRL ? 1 : 2);
+	if (c == KEY_LEFTALT || c == KEY_RIGHTALT) mod_alt = down ? mod_alt | (c == KEY_LEFTALT ? 1 : 2) : mod_alt & ~(c == KEY_LEFTALT ? 1 : 2);
+	if (c >= 256) return c;
+	if (!down) { int s = key_sub[c]; key_sub[c] = 0; return s ? s : c; }
+	int s = 0;
+	if (mod_ctrl && !mod_alt) switch (c) {
+	case KEY_W: case KEY_F4: s = KEY_F20; break;
+	case KEY_T: s = KEY_F21; break;
+	case KEY_N: s = KEY_F22; break;
+	case KEY_Q: s = KEY_F23; break;
+	}
+	if (s && desk_focused()) { key_sub[c] = s; return s; }
+	return c;
+}
+
 static void handle_event(struct dev *v, struct input_event *e)
 {
 	if (e->type == EV_KEY) {
@@ -465,7 +515,7 @@ static void handle_event(struct dev *v, struct input_event *e)
 		if (c < 256) {
 			if (down && v->kind == 1 && c != KEY_LEFTCTRL && c != KEY_RIGHTCTRL && c != KEY_LEFTSHIFT && c != KEY_RIGHTSHIFT && c != KEY_LEFTALT && c != KEY_RIGHTALT && c != KEY_LEFTMETA && c != KEY_RIGHTMETA)
 				last_key_ms = now_ms();
-			XTestFakeKeyEvent(dpy, c + 8, down, CurrentTime);
+			XTestFakeKeyEvent(dpy, desk_key(c, down) + 8, down, CurrentTime);
 		}
 	} else if (e->type == EV_REL) {
 		if (e->code == REL_X) rel_move(e->value, 0);
@@ -838,6 +888,30 @@ static int set_mode(const char *res, double hz)
 	return st == 0 && !mode_errors ? 0 : 1;
 }
 
+/* --clip-get: ask the clipboard's owner for its text (UTF8_STRING) and print it */
+static int clip_get(void)
+{
+	if (!(dpy = open_display())) return 2;
+	Atom clip = XInternAtom(dpy, "CLIPBOARD", False), utf8 = XInternAtom(dpy, "UTF8_STRING", False), prop = XInternAtom(dpy, "RUDOLF_CLIP", False);
+	if (XGetSelectionOwner(dpy, clip) == None) return 0;          /* nothing copied */
+	Window w = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, 1, 1, 0, 0, 0);
+	XConvertSelection(dpy, clip, utf8, prop, w, CurrentTime); XFlush(dpy);
+	for (int i = 0; i < 200; i++) {                               /* up to 2 seconds */
+		while (XPending(dpy)) {
+			XEvent e; XNextEvent(dpy, &e);
+			if (e.type != SelectionNotify || e.xselection.requestor != w) continue;
+			if (e.xselection.property == None) return 0;
+			Atom type; int fmt; unsigned long n, left; unsigned char *data = NULL;
+			if (XGetWindowProperty(dpy, w, prop, 0, 4 << 20, False, AnyPropertyType, &type, &fmt, &n, &left, &data) == Success && data) {
+				fwrite(data, 1, n * (fmt / 8), stdout); XFree(data);
+			}
+			return 0;
+		}
+		usleep(10000);
+	}
+	return 1;
+}
+
 int main(int argc, char **argv)
 {
 	if (argc > 1 && !strcmp(argv[1], "--size")) { fb_open(); printf("%d %d\n", fbw, fbh); return 0; }
@@ -847,6 +921,14 @@ int main(int argc, char **argv)
 	}
 	if (argc > 1 && !strcmp(argv[1], "--shot")) return shot();
 	if (argc > 1 && !strcmp(argv[1], "--modes")) return list_modes();
+	if (argc > 1 && !strcmp(argv[1], "--clip-get")) return clip_get();
+	/* where the pointer is (for tests and support): "x y" */
+	if (argc > 1 && !strcmp(argv[1], "--pointer")) {
+		if (!(dpy = open_display())) return 2;
+		Window r, c; int rx, ry, wx, wy; unsigned m;
+		if (!XQueryPointer(dpy, DefaultRootWindow(dpy), &r, &c, &rx, &ry, &wx, &wy, &m)) return 1;
+		printf("%d %d\n", rx, ry); return 0;
+	}
 	if (argc > 3 && !strcmp(argv[1], "--mode")) return set_mode(argv[2], atof(argv[3]));
 	{ const char *e = getenv("RUDOLF_FPS"); int f = e ? atoi(e) : 0; if (f >= 10 && f <= 240) frame_ms = 1000 / f; }
 	if (argc < 2) { fprintf(stderr, "usage: rudolf-display XWD-FILE | --input | --size | --xsize | --shot\n"); return 1; }

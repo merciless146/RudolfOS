@@ -1,4 +1,4 @@
-/* ===== V26 Oracle sign-in sites (Rudolf OS 1.1.2) =====
+/* ===== V26 Oracle sign-in sites (Rudolf OS 1.1.2; 1.2: see tabs26.js) =====
    Oracle shows websites as frames inside the desktop page. Chromium treats a frame's cookies as third-party, so a
    site's sign-in cookie is dropped and signing in starts over; Google and Microsoft refuse outright. Sites that
    need a sign-in therefore go to the real browser window (web25.js), where cookies work:
@@ -28,7 +28,7 @@ function siWants(u) {
   return webWants(u) || siBank(h);
 }
 /* tell the web frames extension which sites keep their frame protections */
-function siPush() { try { window.postMessage({__rudolfFrames: 'sites', sites: siAll()}, location.origin) } catch (e) {} }
+function siPush() { if (typeof rtOn == 'function' && rtOn()) return; try { window.postMessage({__rudolfFrames: 'sites', sites: siAll()}, location.origin) } catch (e) {} }
 function siAdd(h) {
   const d = siDomain(h); if (!d || !/^[a-z0-9.-]+\.[a-z0-9-]+$/.test(d)) return '';
   if (!siUser().includes(d) && !WEB_SITES.some(w => d == w || d.endsWith('.' + w))) { S.webSites = siUser().concat(d); persistS(); siPush() }
@@ -74,18 +74,39 @@ function siBar(t, site, host, src, o) {
   t.siBar = b; o.bar(t, b);
 }
 
+/* the shell's state (rudolfd /api/shell), shown in Settings */
+const SI_SHELL = {};
+function siShellText() {
+  const st = SI_SHELL;
+  if (!RD) return 'Needs Rudolf OS started from its disc, USB drive or hard disk.';
+  if (!st.id) return 'Checking…';
+  if (st.on === false) return 'Off: websites in Oracle are shown the 1.1 way, and sites that need a sign-in open in the browser window.';
+  if (st.active) return 'On: Oracle opens websites as real tabs.';
+  if (st.failed) return 'The real tabs did not start, so the desktop runs without them until Rudolf OS starts again.';
+  if (!st.installed) return 'Being installed in the background…';
+  if (!st.ready) return 'Getting your files ready for the move…';
+  return 'Ready: starts with the desktop next time.';
+}
+
 /* Settings › Oracle sign-in */
 function signinPanel(c) {
   const e = s => String(s).replace(/[&<>"']/g, x => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[x]);
   const draw = () => {
     const mine = siUser();
     c.innerHTML = `<h3>Oracle sign-in</h3>
-<p class='msg'>Websites in Oracle are shown inside the desktop, where they cannot keep you signed in. Sites that need a sign-in open in a real browser window instead (🌐 in the taskbar switches between it and the desktop).</p>
+<h4 class='sh4'>Real browser tabs</h4><div class='r2'><label>Oracle's tabs</label><div>${ckH('sishell', 'Open websites as real browser tabs (signing in works inside Oracle)', SI_SHELL.on !== false)}<div class='msg sishm'>${siShellText()}</div><div class='rmrow sishr' style='justify-content:flex-start' hidden><button class='sishgo'>Restart the desktop now</button></div></div></div>
+${typeof rtOn == 'function' && rtOn() ? "<p class='msg'>Oracle's tabs are real browser tabs now: signing in works inside Oracle, for every site. The settings below are used only when real tabs are off or cannot start.</p><details><summary>Without real tabs</summary>" : ''}<p class='msg'>Websites in Oracle are shown inside the desktop, where they cannot keep you signed in. Sites that need a sign-in open in a real browser window instead (🌐 in the taskbar switches between it and the desktop).</p>
 <div class='r2'><label>When a page asks for a password</label><div>${ckH('siask', 'Ask first (otherwise the site moves to the browser window by itself)', siAsk())}<div class='msg'>Sending a sign-in, or a “Sign in with Google / Microsoft / Apple…” button, always moves the site.</div></div></div>
 <h4 class='sh4'>Your sign-in sites</h4><div class='sil'>${mine.length ? mine.map(d => `<div style='display:flex;gap:8px;align-items:center;padding:3px 0'><span style='flex:1'>${e(d)}</span><button data-rm='${e(d)}' aria-label='Remove ${e(d)}'>Remove</button></div>`).join('') : "<div class='msg'>None yet. Choose “Always for this site” when Oracle asks, or add one here.</div>"}</div>
 <div class='rmrow' style='justify-content:flex-start'><input class='sin' placeholder='example.com' aria-label='Site to add' style='flex:0 1 240px'><button class='sia'>Add</button><span class='msg sim'></span></div>
-<details style='margin-top:10px'><summary>Built-in sign-in sites, banks and payment sites (${WEB_SITES.length + SI_BANKS.length})</summary><div class='msg' style='margin-top:6px;line-height:1.6'>${WEB_SITES.concat(SI_BANKS).map(e).join(' · ')}<br>Also any site whose name ends in “bank” or is a credit union.</div></details>`;
+<details style='margin-top:10px'><summary>Built-in sign-in sites, banks and payment sites (${WEB_SITES.length + SI_BANKS.length})</summary><div class='msg' style='margin-top:6px;line-height:1.6'>${WEB_SITES.concat(SI_BANKS).map(e).join(' · ')}<br>Also any site whose name ends in “bank” or is a credit union.</div></details>${typeof rtOn == 'function' && rtOn() ? '</details>' : ''}`;
     c.querySelector('#siask').onchange = ev => { S.siAsk = ev.target.checked; persistS() };
+    c.querySelector('#sishell').onchange = async ev => {
+      try { await rdPost('shell?on=' + (ev.target.checked ? 1 : 0)); SI_SHELL.on = ev.target.checked; c.querySelector('.sishm').textContent = 'Saved: this takes effect when the desktop starts again.'; c.querySelector('.sishr').hidden = false }
+      catch (e) { c.querySelector('.sishm').textContent = e.message }
+    };
+    c.querySelector('.sishgo').onclick = () => { try { if (typeof fsFlush == 'function') fsFlush() } catch (e) {} setTimeout(() => rdPost('shell/switch').catch(() => {}), 500) };
+    if (RD) rd('shell').then(st => { Object.assign(SI_SHELL, st); const m = c.querySelector('.sishm'); if (m && !m.textContent.startsWith('Saved')) m.textContent = siShellText(); const b = c.querySelector('#sishell'); if (b) b.checked = st.on }).catch(() => {});
     c.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { siRemove(b.dataset.rm); draw() });
     const add = () => { let v = c.querySelector('.sin').value.trim(); try { if (/^https?:/i.test(v)) v = new URL(v).hostname } catch (x) {} const d = siAdd(v.toLowerCase()); if (d) draw(); else c.querySelector('.sim').textContent = 'That is not a web address such as example.com.' };
     c.querySelector('.sia').onclick = add; c.querySelector('.sin').onkeydown = ev => { if (ev.key == 'Enter') add() };

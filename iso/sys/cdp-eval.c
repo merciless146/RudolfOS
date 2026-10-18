@@ -42,7 +42,10 @@ int main(int argc, char **argv)
 		if (he && cl && n >= (size_t)(he + 4 - buf) + strtoul(cl + 15, NULL, 10)) break;
 	}
 	buf[n] = 0; close(s);
-	char *p = strstr(buf, "\"type\": \"page\"");
+	/* the desktop page: a page of its own, or (Rudolf OS 1.2) a frame inside the shell; its address comes before its
+	   socket in each entry of the list */
+	char *p = strstr(buf, "\"url\": \"http://127.0.0.1:8080/");
+	if (!p) p = strstr(buf, "\"type\": \"page\"");
 	char *w = p ? strstr(p, "\"webSocketDebuggerUrl\": \"ws://") : NULL;
 	if (!w) { char *any = strstr(buf, "ws://127.0.0.1:9222/devtools/page/"); if (!any) { fprintf(stderr, "no page\n"); return 2; } w = any - 30; }
 	char *path = strstr(w, "/devtools/page/"), *e = strchr(path, '"');

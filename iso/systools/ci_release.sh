@@ -65,7 +65,7 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 fi
 
 # ---- base: the system programs and sys/root
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolfd.c sys/rudolf-update.c trusted-keys.txt VERSION; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolfd.c sys/rudolf-update.c sys/cdp-eval.c trusted-keys.txt VERSION; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -74,7 +74,9 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 -o "$B/rudolf-display" sys/rudolf-display.c -lX11 /usr/lib/x86_64-linux-gnu/libXtst.so.6 /usr/lib/x86_64-linux-gnu/libXfixes.so.3 /usr/lib/x86_64-linux-gnu/libXrandr.so.2 -lm
 	gcc -O2 -o "$B/rudolfd" sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
 	gcc -O2 -o "$B/rudolf-update" sys/rudolf-update.c -lcrypto -ldl
-	for b in rudolf-display rudolfd rudolf-update; do
+	gcc -O2 -o "$B/rudolf-launch" sys/rudolf-launch.c
+	gcc -O2 -static -o "$B/cdp-eval" sys/cdp-eval.c
+	for b in rudolf-display rudolfd rudolf-update rudolf-launch cdp-eval; do
 		for l in $(ldd "$B/$b" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$b needs $l, which the base layer does not have"; exit 1; }; done
 		sudo install -m 0755 "$B/$b" "$W/broot/usr/bin/$b"
 	done
@@ -86,8 +88,19 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	NOTES+=("system programs")
 fi
 
-# ---- desktop (byte-identical when iso/www did not change)
-mkdir -p "$W/ds/usr/share/rudolf"; cp -a www "$W/ds/usr/share/rudolf/www"; $MK "$W/ds" "$W/desk.sfs" $SQ
+# ---- desktop (byte-identical when iso/www and iso/shell did not change)
+mkdir -p "$W/ds/usr/share/rudolf"; cp -a www "$W/ds/usr/share/rudolf/www"
+# the shell (an Isolated Web App that gives Oracle real tabs), signed with a key derived from the release key;
+# Chromium installs it from these files (policy written by the session). Ed25519 signatures are deterministic,
+# so an unchanged shell gives the same bytes.
+if [ -d shell ]; then
+	I="$W/ds/usr/share/rudolf/www/iwa"; mkdir -p "$I"
+	python3 systools/mkiwa.py derive "$KEYFILE" "$W/iwa.key" > "$I/id"
+	python3 systools/mkiwa.py build shell "$I/shell.swbn" "$W/iwa.key" >/dev/null
+	python3 systools/mkiwa.py update shell http://127.0.0.1:8080/iwa/shell.swbn "$I/update.json" >/dev/null
+	rm -f "$W/iwa.key"
+fi
+$MK "$W/ds" "$W/desk.sfs" $SQ
 if ! cmp -s "$W/desk.sfs" "$W/new/desktop.sfs"; then cp "$W/desk.sfs" "$W/new/desktop.sfs"; NOTES+=("desktop update"); fi
 
 CHANGED=0; for f in vmlinuz base.sfs chromium.sfs desktop.sfs modules.sfs; do cmp -s "$PREV/$f" "$W/new/$f" || CHANGED=1; done
