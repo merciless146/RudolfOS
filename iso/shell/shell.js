@@ -56,11 +56,18 @@ addEventListener('focus', () => { if (!document.activeElement || document.active
 
 /* pointer capture for games (Quake): movement, buttons and the wheel go to the desktop while captured */
 let captured = false;
-document.addEventListener('pointerlockchange', () => { captured = document.pointerLockElement === desk; toDesk({rudolfShell: 'lockchange', locked: captured}) });
-let lockDebug = 0;   /* 'lock' with debug: the first moves go to the shell's notes, as the shell sees them */
+document.addEventListener('pointerlockchange', () => { captured = document.pointerLockElement === desk; lockSum = [0, 0]; toDesk({rudolfShell: 'lockchange', locked: captured}) });
+let lockDebug = 0, lockSum = [0, 0];   /* 'lock' with debug: the first moves go to the shell's notes, as the shell sees them */
 document.addEventListener('mousemove', e => {
   if (lockDebug > 0) { lockDebug--; note('move', e.movementX, e.movementY, e.screenX, e.screenY, e.isTrusted, document.pointerLockElement === desk) }
-  if (captured) toDesk({rudolfShell: 'mm', dx: e.movementX, dy: e.movementY});
+  if (!captured) return;
+  /* While the pointer is captured, Chromium moves the hidden pointer back to the middle of the screen now and then and
+     reports that as one movement undoing everything since the last time; a game would jump back. That movement is
+     left out: it exactly cancels the movement collected since the pointer was last put back (and is not small). */
+  const dx = e.movementX, dy = e.movementY;
+  if (dx === -lockSum[0] && dy === -lockSum[1] && Math.abs(dx) + Math.abs(dy) >= 24) { lockSum = [0, 0]; return }
+  lockSum = [lockSum[0] + dx, lockSum[1] + dy];
+  toDesk({rudolfShell: 'mm', dx, dy});
 });
 document.addEventListener('mousedown', e => { if (captured) { e.preventDefault(); toDesk({rudolfShell: 'mb', b: e.button, down: true}) } });
 document.addEventListener('mouseup', e => { if (captured) toDesk({rudolfShell: 'mb', b: e.button, down: false}) });
