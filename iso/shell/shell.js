@@ -7,6 +7,10 @@
                                                                    the desktop answers {rudolfShell: 'ready'}
                        {rudolfShell: 'newwindow', url}              the desktop asked for a new browser window
      desktop -> shell  {rudolfShell: 'ping', id}  ->  {rudolfShell: 'pong', id}
+                       {rudolfShell: 'lock', id}  ->  {rudolfShell: 'locked', id, ok}   pointer capture for games: the
+                       pointer cannot be captured inside the desktop's frame, so the shell captures it on the frame
+                       and sends {rudolfShell: 'mm', dx, dy}, {'mb', b, down}, {'mw', dy}; {'lockchange', locked}
+                       {rudolfShell: 'unlock'}
    Only the desktop frame (http://127.0.0.1:8080) is listened to. */
 'use strict';
 const DESK_URL = 'http://127.0.0.1:8080/';
@@ -42,8 +46,18 @@ desk.addEventListener('loadabort', e => {
 });
 addEventListener('focus', () => desk.focus());
 
+/* pointer capture for games (Quake): movement, buttons and the wheel go to the desktop while captured */
+let captured = false;
+document.addEventListener('pointerlockchange', () => { captured = document.pointerLockElement === desk; toDesk({rudolfShell: 'lockchange', locked: captured}) });
+document.addEventListener('mousemove', e => { if (captured) toDesk({rudolfShell: 'mm', dx: e.movementX, dy: e.movementY}) });
+document.addEventListener('mousedown', e => { if (captured) { e.preventDefault(); toDesk({rudolfShell: 'mb', b: e.button, down: true}) } });
+document.addEventListener('mouseup', e => { if (captured) toDesk({rudolfShell: 'mb', b: e.button, down: false}) });
+document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw', dy: e.deltaY}) }, {passive: true});
+
 const handlers = {
   ready: () => { ready = true; clearInterval(helloTimer) },
+  lock: async (m, reply) => { try { await desk.requestPointerLock(); reply({rudolfShell: 'locked', id: m.id, ok: true}) } catch (e) { reply({rudolfShell: 'locked', id: m.id, ok: false, error: String(e && e.message || e)}) } },
+  unlock: () => { if (document.pointerLockElement) document.exitPointerLock() },
   ping: (m, reply) => reply({rudolfShell: 'pong', id: m.id}),
 };
 addEventListener('message', e => {

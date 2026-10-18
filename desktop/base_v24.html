@@ -4172,12 +4172,12 @@ return self}
 
 /* ===== Game Boy Advance support + ROM vault (IndexedDB) ===== */
 const RV={p:null},RVPFX='rudolfrom:';
-function rvDB(){if(RV.p)return RV.p;RV.p=new Promise((res,rej)=>{let q;try{q=indexedDB.open('bd95vault',1)}catch(e){rej(e);return}
+function rvDB(){if(RV.p)return RV.p;RV.p=(typeof IDB!='undefined'&&IDB.ready||Promise.resolve()).then(()=>new Promise((res,rej)=>{let q;try{q=indexedDB.open('bd95vault',1)}catch(e){rej(e);return}
  q.onupgradeneeded=()=>{const db=q.result;if(!db.objectStoreNames.contains('rom'))db.createObjectStore('rom');if(!db.objectStoreNames.contains('sav'))db.createObjectStore('sav')};
- q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error||new Error('Browser storage is not available.'))});RV.p.catch(()=>{RV.p=null});return RV.p}
+ q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error||new Error('Browser storage is not available.'))}));RV.p.catch(()=>{RV.p=null});return RV.p}
 function rvReq(store,mode,fn){return rvDB().then(db=>new Promise((res,rej)=>{const t=db.transaction(store,mode),r=fn(t.objectStore(store));
  t.oncomplete=()=>res(r&&r.result);t.onerror=()=>rej(t.error||new Error('Storage error'));t.onabort=()=>rej(t.error||new Error('Storage is full'))}))}
-const rvPut=(st,k,v)=>rvReq(st,'readwrite',s=>s.put(v,k)),rvGet=(st,k)=>rvReq(st,'readonly',s=>s.get(k)),rvDel=(st,k)=>rvReq(st,'readwrite',s=>s.delete(k)),rvKeys=st=>rvReq(st,'readonly',s=>s.getAllKeys());
+const rvPut=(st,k,v)=>rvReq(st,'readwrite',s=>{if(typeof idbmQueue=='function')idbmQueue('bd95vault',st,k,v);return s.put(v,k)}),rvGet=(st,k)=>rvReq(st,'readonly',s=>s.get(k)),rvDel=(st,k)=>rvReq(st,'readwrite',s=>{if(typeof idbmQueue=='function')idbmQueue('bd95vault',st,k,null,true);return s.delete(k)}),rvKeys=st=>rvReq(st,'readonly',s=>s.getAllKeys());
 const isStub=n=>typeof n=='string'&&n.startsWith(RVPFX);
 const stubId=n=>n.slice(RVPFX.length).split(':')[0];
 async function rvStore(u){const id='r'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);await rvPut('rom',id,u.buffer.slice(u.byteOffset,u.byteOffset+u.length));return RVPFX+id+':'+u.length}
@@ -4697,7 +4697,7 @@ function quakeApp(opt){opt=opt||{};qEnsure();
   const dt=last?Math.min(0.25,(t-last)/1000):0.016;last=t;if(!Q.alive()){stop(Q.state().error);return}
   Q.frame();if(!Q.alive()){stop(Q.state().error);return}feed(dt);draw();fc++;if(t-ft>1000){fps=Math.round(fc*1000/(t-ft));fc=0;ft=t;W.fps=fps;stat()}};
  const stat=()=>{if(!Q||!running)return;const s=Q.state();W.say((Q.mapname()||'Menu')+' · '+fps+' fps · '+s.w+'×'+s.h+(W.gpu?' · '+W.gpu+' filter':'')+(locked?' · mouse captured (Esc releases)':' · click the screen to capture the mouse'))};
- const stop=err=>{if(!running&&!Q)return;running=false;cancelAnimationFrame(raf);raf=0;try{if(Q&&Q.alive())Q.shutdown()}catch(e){}Q=null;QAPP.Q=null;try{document.exitPointerLock&&document.pointerLockElement==cv&&document.exitPointerLock()}catch(e){}
+ const stop=err=>{if(!running&&!Q)return;running=false;cancelAnimationFrame(raf);raf=0;try{if(Q&&Q.alive())Q.shutdown()}catch(e){}Q=null;QAPP.Q=null;try{document.exitPointerLock&&document.pointerLockElement==cv&&document.exitPointerLock()}catch(e){}try{if(typeof SHELL!='undefined'&&SHELL)shellUnlock()}catch(e){}
   cv.style.display='none';if(gcv)gcv.style.display='none';info.style.display='';fillGames();q('.qp').textContent='▶ Play';
   if(err&&err!='quit'){info.innerHTML='<b>The engine stopped:</b><br>'+gEsc(err);W.say('Quake stopped: '+err,true);sfx('error')}else W.say(err=='quit'?'Quake has quit.':'Stopped.')};
  W.play=async(extra)=>{if(running)return true;const why=qSupport();if(why){W.say(why,true);info.textContent=why;return false}
@@ -4728,7 +4728,7 @@ function quakeApp(opt){opt=opt||{};qEnsure();
  document.addEventListener('keydown',kd);document.addEventListener('keyup',kd);
  const lockEl=()=>document.pointerLockElement;
  const onLock=()=>{locked=lockEl()==cv||lockEl()==gcv;stat()};document.addEventListener('pointerlockchange',onLock);
- const tgt=[cv];const hook=el=>{el.addEventListener('mousedown',e=>{if(!running)return;el.focus();if(!locked){try{const p=el.requestPointerLock&&el.requestPointerLock();p&&p.catch&&p.catch(()=>{})}catch(x){}}Q.key(RudolfQuake.MOUSE[window.lhb?lhb(e.button):e.button]||200,true);e.preventDefault()});
+ const tgt=[cv];const hook=el=>{el.addEventListener('mousedown',e=>{if(!running)return;el.focus();if(!locked){if(typeof SHELL!='undefined'&&SHELL&&typeof shellLock=='function'){/* inside the shell, which captures the pointer for the frame */shellLock({move:(dx,dy)=>{if(running)Q.mouse(...(window.qScale?qScale(dx,dy):[dx,dy]))},button:(b,d)=>{if(running)Q.key(RudolfQuake.MOUSE[window.lhb?lhb(b):b]||200,d)},wheel:dy=>{if(!running)return;const k=dy<0?239:240;Q.key(k,true);Q.key(k,false)},change:l=>{locked=l;stat()}})}else try{const p=el.requestPointerLock&&el.requestPointerLock();p&&p.catch&&p.catch(()=>{})}catch(x){}}Q.key(RudolfQuake.MOUSE[window.lhb?lhb(e.button):e.button]||200,true);e.preventDefault()});
   el.addEventListener('mouseup',e=>{if(running)Q.key(RudolfQuake.MOUSE[window.lhb?lhb(e.button):e.button]||200,false)});
   el.addEventListener('mousemove',e=>{if(!running)return;if(locked||e.buttons==0)Q.mouse(...(window.qScale?qScale(e.movementX||0,e.movementY||0):[e.movementX||0,e.movementY||0]))});
   el.addEventListener('wheel',e=>{if(!running)return;e.preventDefault();const k=e.deltaY<0?239:240;Q.key(k,true);Q.key(k,false)},{passive:false});

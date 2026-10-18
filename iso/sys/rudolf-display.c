@@ -15,6 +15,7 @@
  *   rudolf-display --xsize         print "WIDTH HEIGHT" of the X screen
  *   rudolf-display --shot          write the X screen to stdout as a PPM image
  *   rudolf-display --modes         JSON: the screen modes and refresh rates of the monitor (Xorg)
+ *   rudolf-display --clip-get      print the text on the clipboard (CLIPBOARD, shared by Chromium and Linux apps)
  *   rudolf-display --mode WxH|auto HZ   set the monitor's mode of that size with the nearest refresh rate (Xorg);
  *                                  exit status 3 when the monitor has no mode of that size (the session then
  *                                  uses the software display, which scales)
@@ -838,6 +839,30 @@ static int set_mode(const char *res, double hz)
 	return st == 0 && !mode_errors ? 0 : 1;
 }
 
+/* --clip-get: ask the clipboard's owner for its text (UTF8_STRING) and print it */
+static int clip_get(void)
+{
+	if (!(dpy = open_display())) return 2;
+	Atom clip = XInternAtom(dpy, "CLIPBOARD", False), utf8 = XInternAtom(dpy, "UTF8_STRING", False), prop = XInternAtom(dpy, "RUDOLF_CLIP", False);
+	if (XGetSelectionOwner(dpy, clip) == None) return 0;          /* nothing copied */
+	Window w = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, 1, 1, 0, 0, 0);
+	XConvertSelection(dpy, clip, utf8, prop, w, CurrentTime); XFlush(dpy);
+	for (int i = 0; i < 200; i++) {                               /* up to 2 seconds */
+		while (XPending(dpy)) {
+			XEvent e; XNextEvent(dpy, &e);
+			if (e.type != SelectionNotify || e.xselection.requestor != w) continue;
+			if (e.xselection.property == None) return 0;
+			Atom type; int fmt; unsigned long n, left; unsigned char *data = NULL;
+			if (XGetWindowProperty(dpy, w, prop, 0, 4 << 20, False, AnyPropertyType, &type, &fmt, &n, &left, &data) == Success && data) {
+				fwrite(data, 1, n * (fmt / 8), stdout); XFree(data);
+			}
+			return 0;
+		}
+		usleep(10000);
+	}
+	return 1;
+}
+
 int main(int argc, char **argv)
 {
 	if (argc > 1 && !strcmp(argv[1], "--size")) { fb_open(); printf("%d %d\n", fbw, fbh); return 0; }
@@ -847,6 +872,7 @@ int main(int argc, char **argv)
 	}
 	if (argc > 1 && !strcmp(argv[1], "--shot")) return shot();
 	if (argc > 1 && !strcmp(argv[1], "--modes")) return list_modes();
+	if (argc > 1 && !strcmp(argv[1], "--clip-get")) return clip_get();
 	if (argc > 3 && !strcmp(argv[1], "--mode")) return set_mode(argv[2], atof(argv[3]));
 	{ const char *e = getenv("RUDOLF_FPS"); int f = e ? atoi(e) : 0; if (f >= 10 && f <= 240) frame_ms = 1000 / f; }
 	if (argc < 2) { fprintf(stderr, "usage: rudolf-display XWD-FILE | --input | --size | --xsize | --shot\n"); return 1; }

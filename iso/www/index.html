@@ -4523,12 +4523,12 @@ return self}
 
 /* ===== Game Boy Advance support + ROM vault (IndexedDB) ===== */
 const RV={p:null},RVPFX='rudolfrom:';
-function rvDB(){if(RV.p)return RV.p;RV.p=new Promise((res,rej)=>{let q;try{q=indexedDB.open('bd95vault',1)}catch(e){rej(e);return}
+function rvDB(){if(RV.p)return RV.p;RV.p=(typeof IDB!='undefined'&&IDB.ready||Promise.resolve()).then(()=>new Promise((res,rej)=>{let q;try{q=indexedDB.open('bd95vault',1)}catch(e){rej(e);return}
  q.onupgradeneeded=()=>{const db=q.result;if(!db.objectStoreNames.contains('rom'))db.createObjectStore('rom');if(!db.objectStoreNames.contains('sav'))db.createObjectStore('sav')};
- q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error||new Error('Browser storage is not available.'))});RV.p.catch(()=>{RV.p=null});return RV.p}
+ q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error||new Error('Browser storage is not available.'))}));RV.p.catch(()=>{RV.p=null});return RV.p}
 function rvReq(store,mode,fn){return rvDB().then(db=>new Promise((res,rej)=>{const t=db.transaction(store,mode),r=fn(t.objectStore(store));
  t.oncomplete=()=>res(r&&r.result);t.onerror=()=>rej(t.error||new Error('Storage error'));t.onabort=()=>rej(t.error||new Error('Storage is full'))}))}
-const rvPut=(st,k,v)=>rvReq(st,'readwrite',s=>s.put(v,k)),rvGet=(st,k)=>rvReq(st,'readonly',s=>s.get(k)),rvDel=(st,k)=>rvReq(st,'readwrite',s=>s.delete(k)),rvKeys=st=>rvReq(st,'readonly',s=>s.getAllKeys());
+const rvPut=(st,k,v)=>rvReq(st,'readwrite',s=>{if(typeof idbmQueue=='function')idbmQueue('bd95vault',st,k,v);return s.put(v,k)}),rvGet=(st,k)=>rvReq(st,'readonly',s=>s.get(k)),rvDel=(st,k)=>rvReq(st,'readwrite',s=>{if(typeof idbmQueue=='function')idbmQueue('bd95vault',st,k,null,true);return s.delete(k)}),rvKeys=st=>rvReq(st,'readonly',s=>s.getAllKeys());
 const isStub=n=>typeof n=='string'&&n.startsWith(RVPFX);
 const stubId=n=>n.slice(RVPFX.length).split(':')[0];
 async function rvStore(u){const id='r'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);await rvPut('rom',id,u.buffer.slice(u.byteOffset,u.byteOffset+u.length));return RVPFX+id+':'+u.length}
@@ -5048,7 +5048,7 @@ function quakeApp(opt){opt=opt||{};qEnsure();
   const dt=last?Math.min(0.25,(t-last)/1000):0.016;last=t;if(!Q.alive()){stop(Q.state().error);return}
   Q.frame();if(!Q.alive()){stop(Q.state().error);return}feed(dt);draw();fc++;if(t-ft>1000){fps=Math.round(fc*1000/(t-ft));fc=0;ft=t;W.fps=fps;stat()}};
  const stat=()=>{if(!Q||!running)return;const s=Q.state();W.say((Q.mapname()||'Menu')+' · '+fps+' fps · '+s.w+'×'+s.h+(W.gpu?' · '+W.gpu+' filter':'')+(locked?' · mouse captured (Esc releases)':' · click the screen to capture the mouse'))};
- const stop=err=>{if(!running&&!Q)return;running=false;cancelAnimationFrame(raf);raf=0;try{if(Q&&Q.alive())Q.shutdown()}catch(e){}Q=null;QAPP.Q=null;try{document.exitPointerLock&&document.pointerLockElement==cv&&document.exitPointerLock()}catch(e){}
+ const stop=err=>{if(!running&&!Q)return;running=false;cancelAnimationFrame(raf);raf=0;try{if(Q&&Q.alive())Q.shutdown()}catch(e){}Q=null;QAPP.Q=null;try{document.exitPointerLock&&document.pointerLockElement==cv&&document.exitPointerLock()}catch(e){}try{if(typeof SHELL!='undefined'&&SHELL)shellUnlock()}catch(e){}
   cv.style.display='none';if(gcv)gcv.style.display='none';info.style.display='';fillGames();q('.qp').textContent='▶ Play';
   if(err&&err!='quit'){info.innerHTML='<b>The engine stopped:</b><br>'+gEsc(err);W.say('Quake stopped: '+err,true);sfx('error')}else W.say(err=='quit'?'Quake has quit.':'Stopped.')};
  W.play=async(extra)=>{if(running)return true;const why=qSupport();if(why){W.say(why,true);info.textContent=why;return false}
@@ -5079,7 +5079,7 @@ function quakeApp(opt){opt=opt||{};qEnsure();
  document.addEventListener('keydown',kd);document.addEventListener('keyup',kd);
  const lockEl=()=>document.pointerLockElement;
  const onLock=()=>{locked=lockEl()==cv||lockEl()==gcv;stat()};document.addEventListener('pointerlockchange',onLock);
- const tgt=[cv];const hook=el=>{el.addEventListener('mousedown',e=>{if(!running)return;el.focus();if(!locked){try{const p=el.requestPointerLock&&el.requestPointerLock();p&&p.catch&&p.catch(()=>{})}catch(x){}}Q.key(RudolfQuake.MOUSE[window.lhb?lhb(e.button):e.button]||200,true);e.preventDefault()});
+ const tgt=[cv];const hook=el=>{el.addEventListener('mousedown',e=>{if(!running)return;el.focus();if(!locked){if(typeof SHELL!='undefined'&&SHELL&&typeof shellLock=='function'){/* inside the shell, which captures the pointer for the frame */shellLock({move:(dx,dy)=>{if(running)Q.mouse(...(window.qScale?qScale(dx,dy):[dx,dy]))},button:(b,d)=>{if(running)Q.key(RudolfQuake.MOUSE[window.lhb?lhb(b):b]||200,d)},wheel:dy=>{if(!running)return;const k=dy<0?239:240;Q.key(k,true);Q.key(k,false)},change:l=>{locked=l;stat()}})}else try{const p=el.requestPointerLock&&el.requestPointerLock();p&&p.catch&&p.catch(()=>{})}catch(x){}}Q.key(RudolfQuake.MOUSE[window.lhb?lhb(e.button):e.button]||200,true);e.preventDefault()});
   el.addEventListener('mouseup',e=>{if(running)Q.key(RudolfQuake.MOUSE[window.lhb?lhb(e.button):e.button]||200,false)});
   el.addEventListener('mousemove',e=>{if(!running)return;if(locked||e.buttons==0)Q.mouse(...(window.qScale?qScale(e.movementX||0,e.movementY||0):[e.movementX||0,e.movementY||0]))});
   el.addEventListener('wheel',e=>{if(!running)return;e.preventDefault();const k=e.deltaY<0?239:240;Q.key(k,true);Q.key(k,false)},{passive:false});
@@ -5352,12 +5352,66 @@ function notify(title,body,opt){opt=opt||{};try{if(window.__notifCentre)return _
  const d=document.createElement('div');d.className='rtoast';d.textContent=title+(body?' — '+body:'');document.body.appendChild(d);setTimeout(()=>d.remove(),4000)}
 /* ---------- IndexedDB key/value store ---------- */
 var IDB={db:null};
-IDB.ready=new Promise(res=>{try{const q=indexedDB.open('rudolfos',1);q.onupgradeneeded=()=>q.result.createObjectStore('kv');q.onsuccess=()=>{IDB.db=q.result;res(true)};q.onerror=()=>res(false);q.onblocked=()=>res(false)}catch(e){res(false)}});
+IDB.open=new Promise(res=>{try{const q=indexedDB.open('rudolfos',1);q.onupgradeneeded=()=>q.result.createObjectStore('kv');q.onsuccess=()=>{IDB.db=q.result;res(true)};q.onerror=()=>res(false);q.onblocked=()=>res(false)}catch(e){res(false)}});
+/* ---------- the databases, mirrored in rudolfd (Rudolf OS 1.2) ----------
+   Files (drive C:), game ROMs and saves live in IndexedDB. The desktop runs in the shell (Oracle's real tabs) or as
+   a plain page, and the two have separate storage, so every write also goes to rudolfd's mirror (/api/idbm/), one
+   record per key. At start a desktop whose copy is older than the mirror loads the mirror first; the first desktop
+   to use the mirror copies everything into it and then tells rudolfd the shell may be used. The generation this
+   copy has seen is kept in the database itself (IDBM_GEN), not in localStorage, which rudolfd shares between them. */
+const IDBM_STORES=[['rudolfos','kv'],['bd95vault','rom'],['bd95vault','sav']],IDBM_GEN='__idbm_gen';
+const IDBM={on:false,queue:new Map(),busy:false,gen:0};
+function idbmName(db,st,key){/* FNV-1a, 64 bits, of the record's place: the file name in the mirror */
+ let h=0xcbf29ce484222325n;const b=new TextEncoder().encode(db+'\0'+st+'\0'+JSON.stringify(key));
+ for(const c of b){h^=BigInt(c);h=(h*0x100000001b3n)&0xffffffffffffffffn}return h.toString(16).padStart(16,'0')}
+/* values -> JSON: binary data becomes base64 (copied at once, so later changes do not leak in) */
+function idbmEnc(v,jobs){if(v===null||typeof v!='object')return v;
+ const bin=(tag,u8,extra)=>{const o=Object.assign({$:tag,b:''},extra);jobs.push([o,new Blob([u8])]);return o};
+ if(v instanceof ArrayBuffer)return bin('ab',new Uint8Array(v));
+ if(ArrayBuffer.isView(v))return bin('ta',new Uint8Array(v.buffer,v.byteOffset,v.byteLength),{t:v.constructor.name});
+ if(v instanceof Blob){const o={$:'blob',t:v.type,n:v.name||null,b:''};jobs.push([o,v]);return o}
+ if(v instanceof Date)return{$:'d',v:+v};
+ if(v instanceof Map)return{$:'map',v:[...v].map(([a,b])=>[idbmEnc(a,jobs),idbmEnc(b,jobs)])};
+ if(v instanceof Set)return{$:'set',v:[...v].map(x=>idbmEnc(x,jobs))};
+ if(Array.isArray(v))return v.map(x=>idbmEnc(x,jobs));
+ const o={};for(const k of Object.keys(v))o[k]=idbmEnc(v[k],jobs);return'$'in v?{$:'o',v:o}:o}
+const idbmB64=blob=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).replace(/^data:[^,]*,/,''));r.onerror=()=>rej(r.error);r.readAsDataURL(blob)});
+async function idbmJSON(db,st,key,v){const jobs=[],enc=idbmEnc(v,jobs);for(const[o,b]of jobs)o.b=await idbmB64(b);return JSON.stringify({db,store:st,key,v:enc})}
+async function idbmDec(v){if(v===null||typeof v!='object')return v;if(Array.isArray(v)){const a=[];for(const x of v)a.push(await idbmDec(x));return a}
+ const bytes=async b=>new Uint8Array(await (await fetch('data:application/octet-stream;base64,'+b)).arrayBuffer());
+ switch(v.$){case'ab':return(await bytes(v.b)).buffer;case'ta':{const u=await bytes(v.b),C=self[v.t]||Uint8Array;return new C(u.buffer,0,u.byteLength/(C.BYTES_PER_ELEMENT||1))}
+  case'blob':{const u=await bytes(v.b);return v.n?new File([u],v.n,{type:v.t}):new Blob([u],{type:v.t})}case'd':return new Date(v.v);
+  case'map':{const m=new Map();for(const[a,b]of v.v)m.set(await idbmDec(a),await idbmDec(b));return m}case'set':{const t=new Set();for(const x of v.v)t.add(await idbmDec(x));return t}
+  case'o':v=v.v}const o={};for(const k of Object.keys(v))o[k]=await idbmDec(v[k]);return o}
+/* writes go out one at a time; several writes to the same record send only the newest */
+function idbmQueue(db,st,key,v,del){if(!IDBM.on||(db=='rudolfos'&&key===IDBM_GEN))return;IDBM.queue.set(idbmName(db,st,key),{db,st,key,v,del});idbmPump()}
+async function idbmPump(){if(IDBM.busy)return;IDBM.busy=true;try{while(IDBM.queue.size){const[f,r]=IDBM.queue.entries().next().value;IDBM.queue.delete(f);
+ try{const body=r.del?'':await idbmJSON(r.db,r.st,r.key,r.v);const j=await rdPost('idbm/'+(r.del?'del':'put')+'?f='+f,body);if(j&&j.gen)idbmSetGen(j.gen)}catch(e){console.warn('mirror',e)}}}finally{IDBM.busy=false}}
+function idbmRaw(db,st,mode,fn){return new Promise((res,rej)=>{const q=indexedDB.open(db,1);q.onupgradeneeded=()=>{for(const[d,s]of IDBM_STORES)if(d==db&&!q.result.objectStoreNames.contains(s))q.result.createObjectStore(s)};
+ q.onsuccess=()=>{const t=q.result.transaction(st,mode);let out;t.oncomplete=()=>{q.result.close();res(out)};t.onerror=t.onabort=()=>{q.result.close();rej(t.error)};out=fn(t.objectStore(st))};q.onerror=()=>rej(q.error)})}
+function idbmSetGen(g){IDBM.gen=g;if(IDB.db)try{IDB.db.transaction('kv','readwrite').objectStore('kv').put(g,IDBM_GEN)}catch(e){}}
+async function idbmSync(){
+ const meta=await rd('idbm/meta');
+ const local=await new Promise(r=>{try{const t=IDB.db.transaction('kv').objectStore('kv').get(IDBM_GEN);t.onsuccess=()=>r(+t.result||0);t.onerror=()=>r(0)}catch(e){r(0)}});
+ if(meta.gen>local){/* the mirror is newer (the other storage was used last): load it */
+  const list=await rd('idbm/list');document.documentElement.classList.add('idbm-loading');
+  for(const[db,st]of IDBM_STORES)await idbmRaw(db,st,'readwrite',s=>s.clear());
+  for(const f of list.items){try{const r=await (await fetch('/api/idbm/get?f='+f,{headers:{'X-Rudolf-Token':RD.token}})).json();const v=await idbmDec(r.v);await idbmRaw(r.db,r.store,'readwrite',s=>s.put(v,r.key))}catch(e){console.warn('mirror load',f,e)}}
+  IDBM.gen=list.gen;await new Promise(r=>{const t=IDB.db.transaction('kv','readwrite');t.objectStore('kv').put(list.gen,IDBM_GEN);t.oncomplete=r;t.onerror=r});
+  document.documentElement.classList.remove('idbm-loading');
+ }else if(!meta.ready){/* first use of the mirror: copy everything into it */
+  for(const[db,st]of IDBM_STORES){const keys=await idbmRaw(db,st,'readonly',s=>s.getAllKeys()).then(r=>r.result||[]).catch(()=>[]);
+   for(const k of keys){if(db=='rudolfos'&&k===IDBM_GEN)continue;const v=await idbmRaw(db,st,'readonly',s=>s.get(k)).then(r=>r.result);
+    const j=await rdPost('idbm/put?f='+idbmName(db,st,k),await idbmJSON(db,st,k,v));if(j&&j.gen)IDBM.gen=j.gen}}
+  if(IDBM.gen)idbmSetGen(IDBM.gen);await rdPost('idbm/ready');IDBM.justCopied=true;
+ }else IDBM.gen=local;
+ IDBM.on=true}
+IDB.ready=IDB.open.then(ok=>ok&&RD?idbmSync().catch(e=>{console.warn('mirror',e);IDBM.on=true}).then(()=>ok):ok);
 function kvGet(k){return IDB.ready.then(()=>IDB.db?new Promise(r=>{try{const t=IDB.db.transaction('kv').objectStore('kv').get(k);t.onsuccess=()=>r(t.result);t.onerror=()=>r(undefined)}catch(e){r(undefined)}}):undefined)}
 function kvPutNow(k,v){/* synchronous structured clone at call time; completes in the background */
- if(!IDB.db)return Promise.resolve(false);return new Promise(r=>{try{const tx=IDB.db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>r(true);tx.onerror=tx.onabort=()=>{storageFull();r(false)}}catch(e){storageFull();r(false)}})}
+ if(!IDB.db)return Promise.resolve(false);return new Promise(r=>{try{const tx=IDB.db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);idbmQueue('rudolfos','kv',k,v);tx.oncomplete=()=>r(true);tx.onerror=tx.onabort=()=>{storageFull();r(false)}}catch(e){storageFull();r(false)}})}
 const kvSet=(k,v)=>IDB.ready.then(()=>kvPutNow(k,v));
-function kvDel(k){return IDB.ready.then(()=>IDB.db&&new Promise(r=>{try{const tx=IDB.db.transaction('kv','readwrite');tx.objectStore('kv').delete(k);tx.oncomplete=()=>r(true);tx.onerror=()=>r(false)}catch(e){r(false)}}))}
+function kvDel(k){return IDB.ready.then(()=>IDB.db&&new Promise(r=>{try{const tx=IDB.db.transaction('kv','readwrite');tx.objectStore('kv').delete(k);idbmQueue('rudolfos','kv',k,null,true);tx.oncomplete=()=>r(true);tx.onerror=()=>r(false)}catch(e){r(false)}}))}
 let lastFullWarn=0;function storageFull(){if(Date.now()-lastFullWarn<20000)return;lastFullWarn=Date.now();notify('Storage is full','Some changes could not be saved. Delete large files or empty the Trash.',{kind:'error'})}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch(e){}
 async function storageInfo(){let e={};try{e=await navigator.storage.estimate()}catch(x){}return{used:e.usage||0,quota:e.quota||0}}
@@ -6958,7 +7012,7 @@ function notifPanel(c){c.innerHTML=`<h3>Notifications</h3><div class='r2'><label
 /* ---------- Update and recovery page ---------- */
 function updPanel(c){c.innerHTML=`<h3>Update and recovery</h3><p><b>Rudolf OS ${RVER}</b> (${RVERDATE}) · <a href='#' class='wnl'>What's new</a></p><div class='updx'></div>`;c.querySelector('.wnl').onclick=e=>{e.preventDefault();helpApp('new')};const x=c.querySelector('.updx');
  if(!RD){x.innerHTML=`<p class='msg'>This copy of Rudolf OS runs in your web browser and is updated when its page is updated. To run Rudolf OS on a computer of its own, use the bootable image (rudolf-os-${RVER}.iso) — see <a href='#' class='hi'>Install Rudolf OS on a computer</a>.</p><h4 class='sh4'>Reset</h4><p class='msg'>Erase all accounts, files and settings stored by Rudolf OS in this browser.</p><button class='rst'>Reset Rudolf OS…</button>`;
-  x.querySelector('.hi').onclick=e=>{e.preventDefault();helpApp('install')};x.querySelector('.rst').onclick=async()=>{if(!await elevate('Erase everything Rudolf OS stores in this browser.'))return;sdlg(SW,'Reset Rudolf OS','All accounts, files and settings will be deleted. This cannot be undone.',[['Cancel'],['Erase everything',async()=>{try{indexedDB.deleteDatabase('rudolfos')}catch(e){}Object.keys(localStorage).filter(k=>/^bd95|^blockdos/.test(k)).forEach(k=>localStorage.removeItem(k));location.reload()},1]])};return}
+  x.querySelector('.hi').onclick=e=>{e.preventDefault();helpApp('install')};x.querySelector('.rst').onclick=async()=>{if(!await elevate('Erase everything Rudolf OS stores in this browser.'))return;sdlg(SW,'Reset Rudolf OS','All accounts, files and settings will be deleted. This cannot be undone.',[['Cancel'],['Erase everything',async()=>{try{indexedDB.deleteDatabase('rudolfos');indexedDB.deleteDatabase('bd95vault');if(RD)rdPost('idbm/clear').catch(()=>{})}catch(e){}Object.keys(localStorage).filter(k=>/^bd95|^blockdos/.test(k)).forEach(k=>localStorage.removeItem(k));location.reload()},1]])};return}
  x.innerHTML=`<div class='msg ui'>Loading…</div><h4 class='sh4'>Install Rudolf OS on this computer</h4><p class='msg'>Copies Rudolf OS to an internal disk and adds a RUDOLFDATA partition for your files. <b>Everything on the chosen disk is erased.</b></p><div class='dsk'></div><pre class='jl' style='display:none;max-height:160px;overflow:auto;white-space:pre-wrap;word-break:break-word;background:#0f172a;color:#e2e8f0;padding:8px;border-radius:6px'></pre>
  <h4 class='sh4'>Update</h4><p class='msg'>Install a newer Rudolf OS page (index.html) from a file. The previous version is kept so you can roll back.</p><div class='rmrow' style='justify-content:flex-start'><button class='uf'>Update from a file…</button><button class='rb'>Roll back to the previous version</button><button class='rbr'>Restart the desktop</button></div>
  <h4 class='sh4'>Recovery</h4><p class='msg'>Choose <i>Recovery mode</i> in the boot menu to start with the built-in version and default settings. <i>Check this disc</i> verifies every file.</p><div class='chk msg'></div><div class='rmrow' style='justify-content:flex-start'><button class='fr'>Factory reset…</button></div>`;
@@ -9551,18 +9605,39 @@ function siBar(t, site, host, src, o) {
   t.siBar = b; o.bar(t, b);
 }
 
+/* the shell's state (rudolfd /api/shell), shown in Settings */
+const SI_SHELL = {};
+function siShellText() {
+  const st = SI_SHELL;
+  if (!RD) return 'Needs Rudolf OS started from its disc, USB drive or hard disk.';
+  if (!st.id) return 'Checking…';
+  if (st.on === false) return 'Off: websites in Oracle are shown the 1.1 way, and sites that need a sign-in open in the browser window.';
+  if (st.active) return 'On: Oracle opens websites as real tabs.';
+  if (st.failed) return 'The real tabs did not start, so the desktop runs without them until Rudolf OS starts again.';
+  if (!st.installed) return 'Being installed in the background…';
+  if (!st.ready) return 'Getting your files ready for the move…';
+  return 'Ready: starts with the desktop next time.';
+}
+
 /* Settings › Oracle sign-in */
 function signinPanel(c) {
   const e = s => String(s).replace(/[&<>"']/g, x => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[x]);
   const draw = () => {
     const mine = siUser();
     c.innerHTML = `<h3>Oracle sign-in</h3>
+<h4 class='sh4'>Real browser tabs</h4><div class='r2'><label>Oracle's tabs</label><div>${ckH('sishell', 'Open websites as real browser tabs (signing in works inside Oracle)', SI_SHELL.on !== false)}<div class='msg sishm'>${siShellText()}</div><div class='rmrow sishr' style='justify-content:flex-start' hidden><button class='sishgo'>Restart the desktop now</button></div></div></div>
 <p class='msg'>Websites in Oracle are shown inside the desktop, where they cannot keep you signed in. Sites that need a sign-in open in a real browser window instead (🌐 in the taskbar switches between it and the desktop).</p>
 <div class='r2'><label>When a page asks for a password</label><div>${ckH('siask', 'Ask first (otherwise the site moves to the browser window by itself)', siAsk())}<div class='msg'>Sending a sign-in, or a “Sign in with Google / Microsoft / Apple…” button, always moves the site.</div></div></div>
 <h4 class='sh4'>Your sign-in sites</h4><div class='sil'>${mine.length ? mine.map(d => `<div style='display:flex;gap:8px;align-items:center;padding:3px 0'><span style='flex:1'>${e(d)}</span><button data-rm='${e(d)}' aria-label='Remove ${e(d)}'>Remove</button></div>`).join('') : "<div class='msg'>None yet. Choose “Always for this site” when Oracle asks, or add one here.</div>"}</div>
 <div class='rmrow' style='justify-content:flex-start'><input class='sin' placeholder='example.com' aria-label='Site to add' style='flex:0 1 240px'><button class='sia'>Add</button><span class='msg sim'></span></div>
 <details style='margin-top:10px'><summary>Built-in sign-in sites, banks and payment sites (${WEB_SITES.length + SI_BANKS.length})</summary><div class='msg' style='margin-top:6px;line-height:1.6'>${WEB_SITES.concat(SI_BANKS).map(e).join(' · ')}<br>Also any site whose name ends in “bank” or is a credit union.</div></details>`;
     c.querySelector('#siask').onchange = ev => { S.siAsk = ev.target.checked; persistS() };
+    c.querySelector('#sishell').onchange = async ev => {
+      try { await rdPost('shell?on=' + (ev.target.checked ? 1 : 0)); SI_SHELL.on = ev.target.checked; c.querySelector('.sishm').textContent = 'Saved: this takes effect when the desktop starts again.'; c.querySelector('.sishr').hidden = false }
+      catch (e) { c.querySelector('.sishm').textContent = e.message }
+    };
+    c.querySelector('.sishgo').onclick = () => { try { if (typeof fsFlush == 'function') fsFlush() } catch (e) {} setTimeout(() => rdPost('shell/switch').catch(() => {}), 500) };
+    if (RD) rd('shell').then(st => { Object.assign(SI_SHELL, st); const m = c.querySelector('.sishm'); if (m && !m.textContent.startsWith('Saved')) m.textContent = siShellText(); const b = c.querySelector('#sishell'); if (b) b.checked = st.on }).catch(() => {});
     c.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { siRemove(b.dataset.rm); draw() });
     const add = () => { let v = c.querySelector('.sin').value.trim(); try { if (/^https?:/i.test(v)) v = new URL(v).hostname } catch (x) {} const d = siAdd(v.toLowerCase()); if (d) draw(); else c.querySelector('.sim').textContent = 'That is not a web address such as example.com.' };
     c.querySelector('.sia').onclick = add; c.querySelector('.sin').onkeydown = ev => { if (ev.key == 'Enter') add() };
@@ -9673,6 +9748,55 @@ addEventListener('message', e => {
   if (m.id && SHELL_WAIT.has(m.id)) { SHELL_WAIT.get(m.id)(m); SHELL_WAIT.delete(m.id); return }
   if (m.rudolfShell == 'newwindow' && /^https?:/i.test(m.url || '')) { if (typeof webOpen == 'function') webOpen(m.url); return }
 });
+
+/* pointer capture for games inside the shell (the frame cannot capture the pointer itself): h = {move(dx,dy),
+   button(b,down), wheel(dy), change(locked)}. Resolves true when the pointer is captured. */
+let SHELL_PTR = null;
+async function shellLock(h) { SHELL_PTR = h; try { const r = await shellAsk('lock'); return !!r.ok } catch (e) { return false } }
+function shellUnlock() { shellSend({rudolfShell: 'unlock'}) }
+addEventListener('message', e => {
+  if (!SHELL || e.source !== SHELL || !SHELL_PTR) return;
+  const m = e.data || {};
+  if (m.rudolfShell == 'mm') SHELL_PTR.move && SHELL_PTR.move(m.dx | 0, m.dy | 0);
+  else if (m.rudolfShell == 'mb') SHELL_PTR.button && SHELL_PTR.button(m.b | 0, !!m.down);
+  else if (m.rudolfShell == 'mw') SHELL_PTR.wheel && SHELL_PTR.wheel(+m.dy || 0);
+  else if (m.rudolfShell == 'lockchange') { SHELL_PTR.change && SHELL_PTR.change(!!m.locked); if (!m.locked) SHELL_PTR = null }
+});
+
+/* the clipboard inside the shell: reading goes through rudolfd (the X clipboard, shared with Linux apps);
+   writing falls back to the copy command when the frame is not allowed to write */
+function shellClipboard() {
+  if (!navigator.clipboard || navigator.clipboard.__rudolf) return;
+  const C = navigator.clipboard, w0 = C.writeText && C.writeText.bind(C);
+  const copyCmd = t => { const a = document.createElement('textarea'); a.value = t; a.setAttribute('readonly', ''); a.style.cssText = 'position:fixed;left:-9999px;top:0'; document.body.appendChild(a); a.select(); let ok = false; try { ok = document.execCommand('copy') } catch (e) {} a.remove(); if (!ok) throw new DOMException('Copying is not allowed here', 'NotAllowedError') };
+  try {
+    Object.defineProperty(C, 'readText', {configurable: true, value: async () => (await rd('clipboard')).text || ''});
+    Object.defineProperty(C, 'writeText', {configurable: true, value: async t => { try { if (w0) return await w0(t) } catch (e) {} copyCmd(String(t)) }});
+    Object.defineProperty(C, '__rudolf', {value: true});
+  } catch (e) {}
+}
+
+/* Rudolf OS 1.2's one-time move to the shell. On the plain desktop page, once the databases are in rudolfd's
+   mirror and Chromium has installed the shell, the browser starts again with the shell: by itself right after
+   start-up, otherwise when the person agrees. */
+async function shellOffer() {
+  if (!RD || SHELL) return;
+  let st; try { st = await rd('shell') } catch (e) { return }
+  if (!st.id || !st.on || st.failed || st.active || !st.ready) return;
+  if (!st.installed) { if ((shellOffer.n = (shellOffer.n || 0) + 1) < 20) setTimeout(shellOffer, 10000); return }   // still installing
+  const quiet = performance.now() < 120000 && !(typeof wins != 'undefined' && wins.length);
+  const go = () => { try { if (typeof fsFlush == 'function') fsFlush() } catch (e) {} ; setTimeout(() => rdPost('shell/switch').catch(() => {}), 600) };
+  if (quiet) {
+    const o = document.createElement('div'); o.className = 'rmodal'; o.style.zIndex = 2147483000;
+    o.innerHTML = "<div class='rmbox' role='status'><h3 style='margin-top:0'>Real browser tabs are ready</h3><p>Rudolf OS is starting its browser again so websites in Oracle open as real tabs. This takes a few seconds and happens once.</p></div>";
+    document.body.appendChild(o); go();
+  } else notify('Real browser tabs are ready', 'Oracle can open websites as real tabs, where signing in works. Click to restart the desktop now (your files are saved).', {action: go, toast: 15000});
+}
+if (RD) {
+  /* inside the shell: the clipboard workaround; on the plain page: the move to the shell, after the databases are in the mirror */
+  setTimeout(() => { if (SHELL) shellClipboard(); else IDB.ready.then(() => setTimeout(shellOffer, 1500)) }, 4000);
+  addEventListener('message', e => { if (SHELL && e.source === SHELL && e.data && e.data.rudolfShell == 'hello') shellClipboard() });
+}
 
 (function(){const d=document.createElement('div');d.className='ic tr';d.innerHTML='<b>🗑️</b><span>Trash</span>';let t=0;
  d.onclick=()=>{document.querySelectorAll('.ic').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');if((Date.now()-t<(window.__mouse?dblMs():450)||window.__mouse&&S.msingle))trash();t=Date.now()};

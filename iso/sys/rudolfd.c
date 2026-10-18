@@ -942,6 +942,109 @@ static void api_portal(struct req *r, const char *what)
 	reply_err(r->fd, 404, "unknown portal action");
 }
 
+/* ------------------------------------------------------------- the desktop's databases, mirrored on disk
+ * The desktop keeps its files (drive C:), game ROMs and saves in IndexedDB. Rudolf OS 1.2 runs the desktop inside
+ * the shell, whose storage is separate from the plain desktop page's, so every write is also sent here and kept
+ * as one file per record; a desktop whose copy is older than the mirror (the shell's first start, or the plain
+ * page after the shell failed) loads it. Like the localStorage copy (LSFILE), it also survives power cuts.
+ *   GET  idbm/meta          {"gen":N,"count":M,"ready":bool}     ready: the plain page has written everything
+ *   GET  idbm/list          {"gen":N,"items":["<16 hex>",...]}
+ *   GET  idbm/get?f=HEX     one record (JSON written by the desktop: {"db","store","key","v"})
+ *   POST idbm/put?f=HEX     store a record (body)             -> {"gen":N}
+ *   POST idbm/del?f=HEX     forget a record                   -> {"gen":N}
+ *   POST idbm/clear         forget everything (factory reset)  -> {"gen":N}
+ *   POST idbm/ready         the full copy is complete: the shell may be used */
+#define IDBM "/home/rudolf/.rudolf-idb"
+#define SHELL_READY "/home/rudolf/.rudolf-shell-ready"
+static int idbm_name(const char *f) { if (!f || strlen(f) != 16) return 0; for (int i = 0; i < 16; i++) if (!isxdigit((unsigned char)f[i]) || isupper((unsigned char)f[i])) return 0; return 1; }
+static long idbm_gen(void) { char *g = slurp(IDBM "/gen", NULL); long v = g ? atol(g) : 0; free(g); return v; }
+static long idbm_bump(void) { long v = idbm_gen() + 1; char b[32]; snprintf(b, sizeof b, "%ld\n", v); write_str(IDBM "/gen.tmp", b); rename(IDBM "/gen.tmp", IDBM "/gen"); return v; }
+static void api_idbm(struct req *r, const char *what, int post)
+{
+	mkdir(IDBM, 0700);
+	const char *f = qparam(r->query, "f");
+	char path[256]; str s = {0};
+	if (!strcmp(what, "meta") || !strcmp(what, "list")) {
+		DIR *d = opendir(IDBM); int n = 0, first = 1;
+		sadd(&s, "{\"ok\":true,\"gen\":%ld,\"ready\":%s", idbm_gen(), access(SHELL_READY, F_OK) ? "false" : "true");
+		if (!strcmp(what, "list")) sadd(&s, ",\"items\":[");
+		struct dirent *e;
+		while (d && (e = readdir(d))) {
+			size_t l = strlen(e->d_name);
+			if (l != 21 || strcmp(e->d_name + 16, ".json")) continue;
+			n++;
+			if (!strcmp(what, "list")) { sadd(&s, "%s\"%.16s\"", first ? "" : ",", e->d_name); first = 0; }
+		}
+		if (d) closedir(d);
+		if (!strcmp(what, "list")) sadd(&s, "]");
+		sadd(&s, ",\"count\":%d}", n); reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(what, "get")) {
+		if (!idbm_name(f)) { reply_err(r->fd, 400, "bad record"); return; }
+		snprintf(path, sizeof path, IDBM "/%s.json", f); size_t n; char *b = slurp(path, &n);
+		if (!b) { reply_err(r->fd, 404, "no such record"); return; }
+		reply(r->fd, 200, "application/json", b, n, NULL); free(b); return;
+	}
+	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+	if (!strcmp(what, "put")) {
+		if (!idbm_name(f) || !r->body || r->blen < 2 || r->body[0] != '{') { reply_err(r->fd, 400, "bad record"); return; }
+		char tmp[256]; snprintf(tmp, sizeof tmp, IDBM "/.%s.tmp", f); snprintf(path, sizeof path, IDBM "/%s.json", f);
+		int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+		if (fd < 0 || write(fd, r->body, r->blen) != (ssize_t)r->blen || fsync(fd)) { if (fd >= 0) close(fd); unlink(tmp); reply_err(r->fd, 507, "the disk is full"); return; }
+		close(fd); rename(tmp, path);
+	} else if (!strcmp(what, "del")) {
+		if (!idbm_name(f)) { reply_err(r->fd, 400, "bad record"); return; }
+		snprintf(path, sizeof path, IDBM "/%s.json", f); unlink(path);
+	} else if (!strcmp(what, "clear")) {
+		run("find " IDBM " -maxdepth 1 -name '*.json' -delete");
+		unlink(SHELL_READY);
+	} else if (!strcmp(what, "ready")) {
+		write_str(SHELL_READY, "1\n"); reply_ok(r->fd, "ready"); return;
+	} else { reply_err(r->fd, 404, "unknown mirror action"); return; }
+	sadd(&s, "{\"ok\":true,\"gen\":%ld}", idbm_bump()); reply_json(r->fd, &s);
+}
+
+/* ------------------------------------------------------------- the shell (Rudolf OS 1.2)
+ *   GET  shell              {"id","installed","ready","active","failed","on"}
+ *   POST shell?on=0|1       Settings: use the shell (real browser tabs in Oracle) or not, from the next start
+ *   POST shell/switch       start the browser again now (with the shell, when it can be used) */
+static void api_shell(struct req *r, const char *what, int post)
+{
+	char *id = slurp(WWW "/iwa/id", NULL); if (id) id[strcspn(id, "\n")] = 0;
+	if (!*what && !post) {
+		char cmd[256]; int inst = 0;
+		if (id && strlen(id) == 56 && strspn(id, "abcdefghijklmnopqrstuvwxyz234567") == 56) {
+			snprintf(cmd, sizeof cmd, "grep -lqs %s /home/rudolf/.rudolf-browser/Default/iwa/*/main.swbn", id); inst = run(cmd) == 0;
+		}
+		char *url = slurp(RUN "/desktop-url", NULL), *off = slurp("/etc/rudolf-shell", NULL);
+		str s = {0}; sadd(&s, "{\"ok\":true,\"id\":"); sjson(&s, id ? id : "");
+		sadd(&s, ",\"installed\":%s,\"ready\":%s,\"active\":%s,\"failed\":%s,\"on\":%s}", inst ? "true" : "false",
+			access(SHELL_READY, F_OK) ? "false" : "true", url && !strncmp(url, "isolated-app://", 15) ? "true" : "false",
+			access(RUN "/shell-failed", F_OK) ? "false" : "true", off && !strncmp(off, "off", 3) ? "false" : "true");
+		free(url); free(off); free(id); reply_json(r->fd, &s); return;
+	}
+	free(id);
+	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+	if (!*what) {
+		const char *on = qparam(r->query, "on"); if (!on) { reply_err(r->fd, 400, "on?"); return; }
+		const char *v = !strcmp(on, "0") ? "off\n" : "on\n";
+		write_str("/etc/rudolf-shell", v);
+		if (!live) { mkdir(PERSIST "/etc", 0755); write_str(PERSIST "/etc/rudolf-shell", v); }
+		if (!strcmp(on, "1")) unlink(RUN "/shell-failed");
+		reply_ok(r->fd, "saved"); return;
+	}
+	if (!strcmp(what, "/switch")) { write_str(RUN "/shell-switch", "1\n"); reply_ok(r->fd, "the browser starts again"); return; }
+	reply_err(r->fd, 404, "unknown shell action");
+}
+
+/* the text on the clipboard (the X CLIPBOARD selection, shared with Linux apps): the desktop inside the shell
+   cannot read the clipboard itself */
+static void api_clipboard(struct req *r)
+{
+	char *o = run_out("su -s /bin/sh rudolf -c 'DISPLAY=:0 timeout 3 rudolf-display --clip-get' 2>/dev/null");
+	str s = {0}; sadd(&s, "{\"ok\":true,\"text\":"); sjson(&s, o ? o : ""); sadd(&s, "}"); free(o); reply_json(r->fd, &s);
+}
+
 /* ------------------------------------------------------------- browser window for sign-in sites
  * Oracle shows websites inside the desktop page. Sites that refuse that (Gmail, Outlook, banks: their
  * sign-in needs first-party cookies) open in a second Chromium as a real browser window, with its own
@@ -1623,6 +1726,9 @@ static void api(struct req *r)
 		if (!strcmp(a, "/revert")) { run("/usr/lib/rudolf/screenctl revert"); reply_ok(r->fd, "the previous setting comes back"); return; }
 		reply_err(r->fd, 404, "unknown screen action"); return;
 	}
+	if (!strncmp(p, "idbm/", 5)) { api_idbm(r, p + 5, post); return; }
+	if (!strcmp(p, "shell") || !strncmp(p, "shell/", 6)) { api_shell(r, p + 5, post); return; }
+	if (!strcmp(p, "clipboard")) { api_clipboard(r); return; }
 	if (!strcmp(p, "web/status")) { api_web(r, "status"); return; }   /* the taskbar asks whether the browser window is open */
 	if (!strcmp(p, "wifi/status")) { api_wifi(r, "status"); return; }
 	if (!post) { reply_err(r->fd, 400, "use POST"); return; }

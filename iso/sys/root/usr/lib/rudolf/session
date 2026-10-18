@@ -176,8 +176,11 @@ while :; do
 	START_T=$(cut -d. -f1 /proc/uptime)
 	# watchdog: the desktop sends a heartbeat every few seconds
 	while kill -0 $B 2>/dev/null; do
-		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] && break; done
+		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] || [ -e /run/rudolf/shell-switch ] && break; done
 		if [ -e /run/rudolf/screen-restart ]; then rm -f /run/rudolf/screen-restart; display_restart; break; fi
+		# the desktop has handed its data over (or Settings changed): start the browser again, with the shell if it can
+		if [ -e /run/rudolf/shell-switch ]; then rm -f /run/rudolf/shell-switch; echo "$(date) starting the browser again (shell)"
+			pkill -f 'chrom[e].*--rudolf-kiosk'; for i in 1 2 3 4 5 6; do kill -0 $B 2>/dev/null || break; sleep 1; done; pkill -9 -f 'chrom[e].*--rudolf-kiosk'; break; fi
 		NOW=$(cut -d. -f1 /proc/uptime)
 		# the shell did not bring the desktop up: use the desktop page by itself from now on (until restart)
 		if [ $SHELLON = 1 ] && [ $((NOW - START_T)) -gt 90 ] && [ ! -e /run/rudolf/heartbeat ]; then
