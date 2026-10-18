@@ -130,9 +130,10 @@ rm -rf $EXT; cp -a /usr/lib/rudolf/frames $EXT; chown -R rudolf:rudolf $EXT
 RUF=/run/rudolf/ruffle-ext
 rm -rf $RUF; cp -a /usr/lib/rudolf/ruffle-ext $RUF; chown -R rudolf:rudolf $RUF
 # ---- the shell (Rudolf OS 1.2): an Isolated Web App around the desktop that gives Oracle real browser tabs.
-# Chromium installs it by policy from rudolfd (/iwa/, in the desktop layer). The session starts it instead of the
-# desktop page once it is installed and the desktop has handed its data over (/home/rudolf/.rudolf-shell-ready),
-# unless recovery mode, Settings (/etc/rudolf-shell "off") or a failed start (/run/rudolf/shell-failed) say no.
+# Chromium installs it from its file (/usr/share/rudolf/www/iwa, in the desktop layer; see SHELLINST). The session
+# starts it instead of the desktop page once it is installed and the desktop has handed its data over
+# (/home/rudolf/.rudolf-shell-ready), unless recovery mode, Settings (/etc/rudolf-shell "off") or a failed start
+# (/run/rudolf/shell-failed) say no.
 SHELLID=$(cat /usr/share/rudolf/www/iwa/id 2>/dev/null)
 SHELLPOL=/etc/chromium/policies/managed/rudolf-shell.json
 case "$SHELLID" in
@@ -140,6 +141,16 @@ case "$SHELLID" in
 	printf '{"IsolatedWebAppInstallForceList":[{"update_manifest_url":"http://127.0.0.1:8080/iwa/update.json","web_bundle_id":"%s"}]}\n' "$SHELLID" > $SHELLPOL;;
 *) rm -f $SHELLPOL;;
 esac
+# The releases take Chromium from Ubuntu, whose Chromium reads its policies from /etc/chromium-browser
+mkdir -p /etc/chromium-browser
+[ -L /etc/chromium-browser/policies ] || { rm -rf /etc/chromium-browser/policies; ln -s /etc/chromium/policies /etc/chromium-browser/policies; }
+# Newer Chromium (155 and later) installs an Isolated Web App by policy only when Google lists it (its "managed
+# allowlist"), so the shell is installed from its file, in Isolated Web App developer mode; the policy above stays
+# for the Chromium versions without that list. Not in recovery mode, and not when Settings turned the shell off.
+SHELLINST=""; SHELLFEAT=""
+if [ ${#SHELLID} = 56 ] && [ "$(cat /etc/rudolf-shell 2>/dev/null)" != off ] && ! grep -q 'rudolf.recovery=1' /proc/cmdline && [ -r /usr/share/rudolf/www/iwa/shell.swbn ]; then
+	SHELLINST="--install-isolated-web-app-from-file=/usr/share/rudolf/www/iwa/shell.swbn"; SHELLFEAT=",IsolatedWebAppDevMode"
+fi
 shell_usable() {
 	[ ${#SHELLID} = 56 ] || return 1
 	grep -q 'rudolf.recovery=1' /proc/cmdline && return 1
@@ -172,7 +183,7 @@ while :; do
 		--disable-features=Translate,MediaRouter,DialMediaRouteProvider,OptimizationHints,PrivacySandboxSettings4,Vulkan,WebGPUService,SkiaGraphite,OptimizationGuideOnDeviceModel --disable-vulkan-surface \
 		$GLFLAGS \
 		--autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream \
-		--auto-select-desktop-capture-source=Entire --enable-features=SharedArrayBuffer,IsolatedWebApps \
+		--auto-select-desktop-capture-source=Entire --enable-features=SharedArrayBuffer,IsolatedWebApps$SHELLFEAT $SHELLINST \
 		--load-extension=$EXTS --disable-gpu-watchdog --disk-cache-size=67108864 $PROXY $DBG $EXTRA \
 		$START" &
 	B=$!

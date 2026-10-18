@@ -13,6 +13,7 @@ Summary: Oracle's tabs are real browser tabs, so signing in to websites works in
 - New: Task Manager: Processes (every process grouped by what it is, with CPU and memory, and End process), Performance (CPU, memory and network), System (Rudolf OS, the desktop's host, the services with Restart, the kernel, its drivers and warnings), Hardware (processor, graphics, display, storage, network adapters, sound, input devices, battery). Apps lists Oracle's real tabs with the memory each page uses.
 - New: Report a problem (Task Manager, or Start): opens a ready-filled report on the Rudolf OS issue tracker on GitHub, with the state of the computer at that moment. It leaves out your name, files, web and network addresses and Wi-Fi names; you review it before sending, or save it to send later.
 - Security: ending a system process or restarting a service asks for an administrator's password; the processes Rudolf OS needs cannot be ended. Websites in Oracle keep their own protection against being shown inside other pages.
+- Fixed: with the newer Chromium that security updates bring, Rudolf OS's browser settings were not applied, so the system's own file dialog (which froze some PCs) could open again, and real tabs could not start. Both work again.
 - Known limits: a few websites forbid the script that makes fullscreen work and stay in their window; downloads are limited to 1.5 MB as before.
 
 ## 1.1.2 (2026-10-13)
