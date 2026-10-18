@@ -2,7 +2,7 @@
  "name": "Rudolf OS",
  "short_name": "Rudolf OS",
  "description": "The Rudolf OS desktop with real browser tabs for Oracle.",
- "version": "1.2.0",
+ "version": "1.2.1",
  "start_url": "/",
  "display": "standalone",
  "icons": [{"src": "/icon.png", "sizes": "256x256", "type": "image/png"}],

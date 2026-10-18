@@ -1,3 +1,5 @@
 {
-  "AllowFileSelectionDialogs": false
+  "AllowFileSelectionDialogs": false,
+  "DownloadDirectory": "/home/rudolf/Downloads/.incoming",
+  "PromptForDownloadLocation": false
 }
