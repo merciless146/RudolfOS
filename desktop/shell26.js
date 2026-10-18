@@ -74,7 +74,7 @@ function fsStandIn(notify) {
 /* pointer capture for games inside the shell (the frame cannot capture the pointer itself): h = {move(dx,dy),
    button(b,down), wheel(dy), change(locked)}. Resolves true when the pointer is captured. */
 let SHELL_PTR = null;
-async function shellLock(h) { SHELL_PTR = h; try { const r = await shellAsk('lock'); return !!r.ok } catch (e) { return false } }
+async function shellLock(h, debug) { SHELL_PTR = h; try { const r = await shellAsk('lock', debug ? {debug: true} : null); return !!r.ok } catch (e) { return false } }
 function shellUnlock() { shellSend({rudolfShell: 'unlock'}) }
 addEventListener('message', e => {
   if (!SHELL || e.source !== SHELL || !SHELL_PTR) return;

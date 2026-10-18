@@ -57,7 +57,11 @@ addEventListener('focus', () => { if (!document.activeElement || document.active
 /* pointer capture for games (Quake): movement, buttons and the wheel go to the desktop while captured */
 let captured = false;
 document.addEventListener('pointerlockchange', () => { captured = document.pointerLockElement === desk; toDesk({rudolfShell: 'lockchange', locked: captured}) });
-document.addEventListener('mousemove', e => { if (captured) toDesk({rudolfShell: 'mm', dx: e.movementX, dy: e.movementY}) });
+let lockDebug = 0;   /* 'lock' with debug: the first moves go to the shell's notes, as the shell sees them */
+document.addEventListener('mousemove', e => {
+  if (lockDebug > 0) { lockDebug--; note('move', e.movementX, e.movementY, e.screenX, e.screenY, e.isTrusted, document.pointerLockElement === desk) }
+  if (captured) toDesk({rudolfShell: 'mm', dx: e.movementX, dy: e.movementY});
+});
 document.addEventListener('mousedown', e => { if (captured) { e.preventDefault(); toDesk({rudolfShell: 'mb', b: e.button, down: true}) } });
 document.addEventListener('mouseup', e => { if (captured) toDesk({rudolfShell: 'mb', b: e.button, down: false}) });
 document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw', dy: e.deltaY}) }, {passive: true});
@@ -354,7 +358,7 @@ function onTab(m) {
 
 const handlers = {
   ready: () => { ready = true; clearInterval(helloTimer) },
-  lock: async (m, reply) => { try { await desk.requestPointerLock(); reply({rudolfShell: 'locked', id: m.id, ok: true}) } catch (e) { reply({rudolfShell: 'locked', id: m.id, ok: false, error: String(e && e.message || e)}) } },
+  lock: async (m, reply) => { if (m.debug) lockDebug = 20; try { await desk.requestPointerLock(); reply({rudolfShell: 'locked', id: m.id, ok: true}) } catch (e) { reply({rudolfShell: 'locked', id: m.id, ok: false, error: String(e && e.message || e)}) } },
   unlock: () => { if (document.pointerLockElement) document.exitPointerLock() },
   ping: (m, reply) => reply({rudolfShell: 'pong', id: m.id}),
   tab: m => onTab(m),

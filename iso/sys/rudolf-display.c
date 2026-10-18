@@ -922,6 +922,13 @@ int main(int argc, char **argv)
 	if (argc > 1 && !strcmp(argv[1], "--shot")) return shot();
 	if (argc > 1 && !strcmp(argv[1], "--modes")) return list_modes();
 	if (argc > 1 && !strcmp(argv[1], "--clip-get")) return clip_get();
+	/* where the pointer is (for tests and support): "x y" */
+	if (argc > 1 && !strcmp(argv[1], "--pointer")) {
+		if (!(dpy = open_display())) return 2;
+		Window r, c; int rx, ry, wx, wy; unsigned m;
+		if (!XQueryPointer(dpy, DefaultRootWindow(dpy), &r, &c, &rx, &ry, &wx, &wy, &m)) return 1;
+		printf("%d %d\n", rx, ry); return 0;
+	}
 	if (argc > 3 && !strcmp(argv[1], "--mode")) return set_mode(argv[2], atof(argv[3]));
 	{ const char *e = getenv("RUDOLF_FPS"); int f = e ? atoi(e) : 0; if (f >= 10 && f <= 240) frame_ms = 1000 / f; }
 	if (argc < 2) { fprintf(stderr, "usage: rudolf-display XWD-FILE | --input | --size | --xsize | --shot\n"); return 1; }

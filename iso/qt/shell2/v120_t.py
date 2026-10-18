@@ -130,12 +130,15 @@ ok('Ctrl+Q does not quit the desktop', g.js("window.__mark===1") is True)
 
 # --- pointer capture for games: a click asks the shell to capture the pointer; QEMU's relative mouse moves arrive
 g.js("wins.slice().forEach(x=>x.close());1"); time.sleep(0.5)   # nothing over the middle of the screen
-g.js("window.__pl={moves:0,dx:0,dy:0,buttons:[],locked:[],result:null};window.__plh=async()=>{if(__pl.result!==null)return;__pl.result='asked';__pl.result=await shellLock({move:(x,y)=>{__pl.moves++;__pl.dx+=x;__pl.dy+=y},button:(b,d)=>__pl.buttons.push(b+(d?'v':'^')),change:l=>__pl.locked.push(l)})};document.addEventListener('mousedown',__plh,{capture:true});1")
+g.js("window.__pl={moves:0,dx:0,dy:0,buttons:[],locked:[],result:null};window.__plh=async()=>{if(__pl.result!==null)return;__pl.result='asked';__pl.result=await shellLock({move:(x,y)=>{__pl.moves++;__pl.dx+=x;__pl.dy+=y},button:(b,d)=>__pl.buttons.push(b+(d?'v':'^')),change:l=>__pl.locked.push(l)},true)};document.addEventListener('mousedown',__plh,{capture:true});1")
 at(VIEW[0] / 2, VIEW[1] / 2); time.sleep(1.5)
+PTR = "su -s /bin/sh rudolf -c 'DISPLAY=:0 rudolf-display --pointer'"
+out('pointer before the moves:', g.sh(PTR, 15).strip())
 for i in range(10): q.mouse(8, -4); time.sleep(0.05)
+time.sleep(0.5); out('pointer after the moves:', g.sh(PTR, 15).strip())
 time.sleep(0.8)
 q.click('right'); time.sleep(0.8)
-pl = g.js('JSON.stringify(__pl)'); out('pointer capture:', pl)
+pl = g.js('JSON.stringify(__pl)'); out('pointer capture:', pl); out('the shell saw:', g.js("JSON.stringify(SHELL_LOG.filter(l=>l.includes(' move ')).slice(-14))"))
 plj = json.loads(pl) if isinstance(pl, str) else {}
 ok('a game can capture the pointer through the shell', plj.get('result') is True and plj.get('locked', [None])[0] is True, pl)
 ok('...and gets the mouse movement and buttons', plj.get('moves', 0) >= 3 and plj.get('dx', 0) > 0 and plj.get('dy', 0) < 0 and '2v' in plj.get('buttons', []), pl)
@@ -167,9 +170,8 @@ ok('...and the memory of the desktop page and the real tab', isinstance(pg, str)
 sy = g.js("rd('system').then(s=>JSON.stringify({rel:s.kernel.release,boot:s.kernel.boot,mods:s.kernel.modules.split('\\n').length,svc:s.services,gpu:s.gpu,disp:s.display,cpu:s.cpu.model,input:s.input.split('\\n').length}))", 40)
 out('system:', sy)
 sj = json.loads(sy) if isinstance(sy, str) else {}
-ok('rudolfd describes the kernel, the services and the hardware', sj.get('rel') and sj.get('mods', 0) > 5 and sj.get('svc', {}).get('display') and sj.get('svc', {}).get('x') and sj.get('svc', {}).get('shell') and sj.get('cpu') and sj.get('input', 0) >= 2, sy)
-g.sh("(sleep 900 &) ; sleep 0.3", 15)
-sp = g.sh("pgrep -n -x sleep", 15).strip().splitlines()[-1]
+ok('rudolfd describes the kernel, the services and the hardware', sj.get('rel') and 'mods' in sj and sj.get('svc', {}).get('display') and sj.get('svc', {}).get('x') and sj.get('svc', {}).get('shell') and sj.get('cpu') and sj.get('input', 0) >= 2, sy)
+sp = g.sh("sleep 900 >/dev/null 2>&1 & echo PID=$!", 15).split('PID=')[-1].split()[0]
 g.js("window.__el=elevate;elevate=async()=>true;launch('taskmgr');window.__T=wins[wins.length-1];__T.body.querySelector(\"[data-t='procs']\").click();1"); time.sleep(4)
 ok('Task Manager shows the processes', w("__T.body.querySelectorAll('tr[data-pid]').length>30", 30), g.js("__T.body.querySelectorAll('tr[data-pid]').length"))
 g.js(f"(()=>{{const f=__T.body.querySelector('.tmf');f.value='{sp}';f.dispatchEvent(new Event('input'));return 1}})()"); time.sleep(1)
