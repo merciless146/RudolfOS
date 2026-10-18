@@ -1314,7 +1314,7 @@ function ensureWelcome(){
  if(!fs['C:']['WELCOME.HTM']){fs['C:']['WELCOME.HTM']="<title>Welcome</title><body style='font-family:Tahoma,Arial;padding:24px'><h2>Welcome to Oracle</h2><p>This is a local HTML file stored on your Rudolf OS drive. Open it in Notepad (File Explorer → right-click → Edit in Notepad) to change it, then reload.</p><p><button onclick=\"alert('Scripts work in local pages!')\">Try a script</button></p></body>";fsSave()}}
 ensureWelcome();
 /* ===== v2: Oracle browser ===== */
-function browser(url){const W=win('Oracle','🌐',820,560),BS=String.fromCharCode(92),R=fs['C:'];
+function browser(url,bo){bo=bo||{};const W=win('Oracle','🌐',820,560),BS=String.fromCharCode(92),R=fs['C:'];
  ensureWelcome();
  const load=k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},store=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
  let bms=load('bd95bm');if(!Array.isArray(bms)||bms.some(b=>/Oracle/i.test(b[0])))bms=[['Home','about:home'],['README','file:///C:/README.TXT'],['Welcome','file:///C:/WELCOME.HTM'],['Files','about:files?p=C:'],['Flathub','https://flathub.org/'],['About','about:oracle']];else if(!localStorage.getItem('bd95bmfh')&&!bms.some(b=>/flathub\.org/i.test(b[1]))){const i=bms.findIndex(b=>b[0]=='About');bms.splice(i<0?bms.length:i,0,['Flathub','https://flathub.org/']);store('bd95bm',bms)}try{localStorage.setItem('bd95bmfh','1')}catch(e){}
@@ -1498,29 +1498,60 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
   if(/^https?:/i.test(u)){const sp_=special(u);if(sp_)return sp_;const k=mkind(u);if(k)return mediaDoc(u.split('/').pop().split('?')[0]||u,k,u);const em=embedOf(u);if(em)return{ext:1,title:em.title,frame:em.frame};return{ext:1,title:u.replace(/^https?:\/\//,'').split('/')[0]}}
   if(/^data:/i.test(u))return{html:'<body>Data URLs are not supported.</body>',title:'Data'};
   return doc('Cannot open page','Oracle cannot open <code>'+esc(u)+'</code>.')}
- function mkTab(u){const fr=document.createElement('iframe');fr.referrerPolicy='strict-origin-when-cross-origin';fr.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;display:none';fh.appendChild(fr);const t={id:++nid,h:[u||'about:home'],i:0,fr,title:'New tab',zoom:1};t.fr.onload=()=>{if(t.pend&&t.i>=0&&cur()==t.h[t.i]&&t===T())st.textContent='Loaded '+t.h[t.i]+' (if the page is blank, the site blocks embedding: use ↗)'};tabs.push(t);return t}
- function loadTab(t){const u=t.h[t.i];let r=page(u);if(r.ext&&!r.frame&&typeof webWants=='function'&&webWants(u)){webOpen(u);r={title:webHost(u)+' (browser window)',html:webNote(u)}}t.title=r.title||u;const fr=t.fr;t.pend=!!r.ext;if(t.siBar){t.siBar.remove();t.siBar=null}
+ function mkTab(u){const fr=document.createElement('iframe');fr.referrerPolicy='strict-origin-when-cross-origin';fr.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;display:none';fh.appendChild(fr);const t={id:++nid,h:[u||'about:home'],i:0,fr,title:'New tab',zoom:1,real:false,rt:null,rb:false,rf:false};t.fr.onload=()=>{if(t.pend&&t.i>=0&&cur()==t.h[t.i]&&t===T())st.textContent='Loaded '+t.h[t.i]+' (if the page is blank, the site blocks embedding: use ↗)'};tabs.push(t);return t}
+ /* Rudolf OS 1.2: inside the shell a website is a real browser tab (tabs26.js) */
+ const rtHost=u=>{try{return new URL(u).hostname}catch(e){return''}};
+ const rtWhere=t=>({el:fh,shown:()=>t===T()&&t.real&&!W.min&&W.el.isConnected&&W.el.style.display!='none',z:()=>+W.el.style.zIndex||0});
+ const rtH=t=>({
+  nav:(u,b,f)=>{t.rb=b;t.rf=f;t.ru=u;if(t.h[t.i]!==u){t.h[t.i]=u;hist.push([t.title,u]);hist=hist.slice(-200);store('bd95hist',hist)}if(t===T())sync()},
+  load:(on,err)=>{t.loading=on;if(t===T()&&!(t.blk>Date.now()-3000))st.textContent=on?'Loading…':err?'This page could not be loaded ('+err.replace(/^net::/,'')+').':'Done'},
+  title:x=>{t.title=x||rtHost(t.h[t.i])||t.h[t.i];sync()},
+  focus:()=>{const k=tabs.indexOf(t);if(!W.el.classList.contains('act'))W.focus();if(k>=0&&k!==ci){ci=k;sync()}},
+  close:()=>{const k=tabs.indexOf(t);if(k>=0)closeTab(k)},
+  keys:k=>key(k),
+  newwin:(u,nt,popup)=>{if(popup||tabs.length>=12)browser(u,{adopt:nt});else{adoptTab(u,nt);sync()}},
+  gone:why=>{if(t===T())st.textContent='This page stopped working'+(why=='unresponsive'?' (not responding)':'')+'. Reload (F5) to start it again.'},
+  dialog:(k,x,d)=>{if(!W.el.classList.contains('act'))W.focus();return rtDialog(W,k,x,d)},
+  perm:(p,u)=>rtPerm(W,p,u),
+  blocked:(u,why)=>{t.blk=Date.now();notify('Blocked by the firewall',why+' ('+rtHost(u)+')',{kind:'error'});if(t===T())st.textContent='Blocked by the firewall: '+rtHost(u)},
+  fs:()=>{},
+  flash:()=>{if(t===T())st.textContent='⚡ Flash content on this page is played by Ruffle'}});
+ /* a website that the firewall or the network would stop gets Oracle's own page instead (page(): secPage) */
+ const rtStop=u=>{if(!window.__sys)return false;if(window.__net&&!netUp())return true;const f=SECC.fw,h=rtHost(u);return !!(f.on&&(f.mode=='lock'||hostMatch(h,f.block)||(f.mode=='trusted'&&!hostMatch(h,f.trust))))};
+ function rtLoad(t){const u=t.h[t.i];
+  if(!/^https?:/i.test(u)||typeof rtOn!='function'||!rtOn()||rtStop(u)){if(t.real){t.real=false;if(t===T())sync()}return false}
+  if(t.siBar){t.siBar.remove();t.siBar=null}
+  const fr=t.fr;fr.removeAttribute('src');fr.removeAttribute('srcdoc');t.src='';t.pend=false;t.real=true;
+  if(!t.rt||t.ru!==u)t.title=rtHost(u)||u;
+  hist.push([t.title,u]);hist=hist.slice(-200);store('bd95hist',hist);
+  if(!t.rt){t.rt=rtOpen(u,rtWhere(t),rtH(t));if(t.zoom!=1)rtCmd(t.rt,'zoom',{z:t.zoom})}else if(t.ru!==u)rtGo(t.rt,u);else rtCmd(t.rt,'reload');
+  t.ru=u;if(t===T()){st.textContent='Loading '+u;sync()}return true}
+ /* a window a page opened (sign-in pop-ups and the like): the shell already holds it, opener and all */
+ function adoptTab(u,nt){const t=mkTab(u);ci=tabs.length-1;t.real=true;t.ru=u;t.title=rtHost(u)||'New tab';t.rt=rtOpen(u,rtWhere(t),rtH(t),nt);return t}
+ function loadTab(t){if(rtLoad(t))return;const u=t.h[t.i];let r=page(u);if(r.ext&&!r.frame&&typeof webWants=='function'&&webWants(u)){webOpen(u);r={title:webHost(u)+' (browser window)',html:webNote(u)}}t.title=r.title||u;const fr=t.fr;t.pend=!!r.ext;if(t.siBar){t.siBar.remove();t.siBar=null}
   /* sites that need a sign-in open in the real browser window (signin26.js, web25.js) */
   if(r.ext&&typeof siWants=='function'&&siWants(u)){t.title=webHost(u);hist.push([t.title,u]);hist=hist.slice(-200);store('bd95hist',hist);webOpen(u);siNote(t,u);return}
   if(r.ext){fr.removeAttribute('srcdoc');fr.setAttribute('sandbox','allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-downloads allow-presentation allow-modals');fr.setAttribute('allow','autoplay; fullscreen; encrypted-media; picture-in-picture; clipboard-write');fr.src=r.frame||u;if(navigator.onLine===false)st.textContent='You appear to be offline.'}else{fr.removeAttribute('src');fr.setAttribute('allow','autoplay; geolocation; clipboard-write');fr.setAttribute('sandbox','allow-scripts');t.src=r.html;fr.srcdoc=r.html}
   if(!/^about:(blank|source|bookmarks|history)/.test(u)&&!r.ext){hist.push([t.title,u]);hist=hist.slice(-200);store('bd95hist',hist)}else if(r.ext){hist.push([t.title,u]);hist=hist.slice(-200);store('bd95hist',hist)}
   fr.style.zoom=t.zoom;if(t===T())sync()}
- function sync(){const t=T();tabs.forEach(x=>{x.fr.style.display=x===t?'block':'none';if(x.siBar)x.siBar.style.display=x===t?'flex':'none'});const u=cur();ad.value=u.startsWith('about:home')?'':u;src=t.src||src;q('.ex').style.display=/^https?:/i.test(u)?'':'none';q('.st').textContent=bms.some(b=>b[1]==u)?'★':'☆';q('.bk').disabled=t.i<1;q('.fw').disabled=t.i>=t.h.length-1;
+ function sync(){const t=T();tabs.forEach(x=>{x.fr.style.display=x===t&&!x.real?'block':'none';if(x.siBar)x.siBar.style.display=x===t?'flex':'none'});const u=cur();if(document.activeElement!==ad)ad.value=u.startsWith('about:home')?'':u;src=t.src||src;q('.ex').style.display=/^https?:/i.test(u)&&!t.real?'':'none';q('.st').textContent=bms.some(b=>b[1]==u)?'★':'☆';q('.bk').disabled=t.i<1&&!(t.real&&t.rb);q('.fw').disabled=t.i>=t.h.length-1&&!(t.real&&t.rf);
   q('.otabs').innerHTML='';tabs.forEach((x,k)=>{const d=document.createElement('div');d.className='otab'+(k==ci?' on':'');d.title=x.title;d.innerHTML='<span>'+esc(x.title||'New tab')+'</span><u title="Close tab">✕</u>';d.onclick=e=>{if(e.target.tagName=='U'){closeTab(k);return}ci=k;sync()};d.onauxclick=()=>closeTab(k);q('.otabs').appendChild(d)});
   const pl=document.createElement('button');pl.textContent='+';pl.title='New tab (Ctrl+T)';pl.style.cssText='margin:0 0 0 2px;padding:2px 9px;border:0;background:transparent';pl.onclick=()=>newTab();q('.otabs').appendChild(pl);
   const b=q('.obm');b.innerHTML='';bms.forEach(x=>{const e=document.createElement('button');e.textContent=x[0];e.title=x[1];e.onclick=()=>nav(x[1]);b.appendChild(e)});W.setTitle(!t.title||t.title=='Oracle'?'Oracle':t.title+' - Oracle')}
  function nav(u){const t=T();u=norm(u);t.h=t.h.slice(0,t.i+1);t.h.push(u);t.i++;loadTab(t)}
- function newTab(u){if(tabs.length>=12){st.textContent='Too many tabs open.';return}const t=mkTab(u?norm(u):u);ci=tabs.length-1;loadTab(t);if(!u||u=='about:home')setTimeout(()=>ad.focus(),50)}
- function closeTab(k){const t=tabs[k];if(tabs.length<2){W.close();return}t.fr.remove();tabs.splice(k,1);ci=Math.min(ci>k?ci-1:ci,tabs.length-1);sync()}
- const go=d=>{const t=T();t.i=Math.max(0,Math.min(t.h.length-1,t.i+d));loadTab(t)};
+ function newTab(u){if(tabs.length>=12){st.textContent='Too many tabs open.';return}const t=mkTab(u?norm(u):u);ci=tabs.length-1;loadTab(t);if(!u||u=='about:home')setTimeout(()=>{if(typeof rtBlur=='function')rtBlur();ad.focus()},50)}
+ function closeTab(k){const t=tabs[k];if(tabs.length<2){W.close();return}t.fr.remove();if(t.rt)rtClose(t.rt);tabs.splice(k,1);ci=Math.min(ci>k?ci-1:ci,tabs.length-1);sync()}
+ const go=d=>{const t=T();if(t.real&&t.rt&&(d<0?t.rb:t.rf)){rtCmd(t.rt,d<0?'back':'forward');return}t.i=Math.max(0,Math.min(t.h.length-1,t.i+d));loadTab(t)};
  q('.bk').onclick=()=>go(-1);q('.fw').onclick=()=>go(1);q('.rl').onclick=()=>loadTab(T());q('.hm').onclick=()=>nav('about:home');
  ad.onkeydown=e=>{if(e.key=='Enter')nav(ad.value);else if(e.key=='Escape'){ad.value=cur().startsWith('about:home')?'':cur();ad.blur()}};ad.onfocus=()=>ad.select();
  q('.st').onclick=()=>{const u=cur(),k=bms.findIndex(b=>b[1]==u);if(k>=0)bms.splice(k,1);else{if(u=='about:home'||u=='about:blank')return;bms.push([(T().title||u).slice(0,18),u])}store('bd95bm',bms);sync();if(/^about:bookmarks/.test(u))loadTab(T())};
  q('.ex').onclick=()=>{try{window.open(cur(),'_blank','noopener')}catch(e){st.textContent='Pop-ups are blocked.'}};
  const MENU=[['New tab',()=>newTab()],['History',()=>nav('about:history')],['View downloads',()=>nav('about:downloads')],['Bookmarks',()=>nav('about:bookmarks')],['Zoom in',()=>zoom(.1)],['Zoom out',()=>zoom(-.1)],['Reset zoom',()=>zoom(0)],['View source',()=>{const s=T().src||'';src=s;nav('about:source')}],['Extensions',()=>nav('about:extensions')],['About Oracle',()=>nav('about:oracle')]];
- function zoom(d){const t=T();t.zoom=d?Math.max(.5,Math.min(3,+(t.zoom+d).toFixed(2))):1;t.fr.style.zoom=t.zoom;st.textContent='Zoom '+Math.round(t.zoom*100)+'%'}
+ function zoom(d){const t=T();t.zoom=d?Math.max(.5,Math.min(3,+(t.zoom+d).toFixed(2))):1;t.fr.style.zoom=t.zoom;if(t.rt)rtCmd(t.rt,'zoom',{z:t.zoom});st.textContent='Zoom '+Math.round(t.zoom*100)+'%'}
  q('.mn').onclick=e=>{e.stopPropagation();const o=W.body.querySelector('.odd');if(o){o.remove();return}const d=document.createElement('div');d.className='odd';MENU.forEach(([n,f])=>{const r=document.createElement('div');r.textContent=n;r.onclick=()=>{d.remove();f()};d.appendChild(r)});W.body.style.position='relative';W.body.appendChild(d);const kill=()=>{d.remove();document.removeEventListener('pointerdown',kill,true)};setTimeout(()=>document.addEventListener('pointerdown',ev=>{if(!d.contains(ev.target))kill()},true),0)};
- W.el.addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey;if(c&&e.key=='t'){e.preventDefault();newTab()}else if(c&&e.key=='w'){e.preventDefault();closeTab(ci)}else if(c&&e.key=='l'){e.preventDefault();ad.focus()}else if(e.key=='F5'||(c&&e.key=='r')){e.preventDefault();loadTab(T())}else if(e.altKey&&e.key=='ArrowLeft'){e.preventDefault();go(-1)}else if(e.altKey&&e.key=='ArrowRight'){e.preventDefault();go(1)}else if(c&&(e.key=='+'||e.key=='=')){e.preventDefault();zoom(.1)}else if(c&&e.key=='-'){e.preventDefault();zoom(-.1)}else if(c&&e.key=='0'){e.preventDefault();zoom(0)}});
+ /* Oracle's shortcuts: pressed in Oracle, or inside a real tab (the shell passes them on) */
+ function key(a){if(a=='ct')newTab();else if(a=='cn')browser();else if(a=='cw')closeTab(ci);else if(a=='cl'){if(typeof rtBlur=='function')rtBlur();ad.focus()}else if(a=='cr'||a=='f5')loadTab(T());else if(a=='back')go(-1);else if(a=='fwd')go(1);else if(a=='z+')zoom(.1);else if(a=='z-')zoom(-.1);else if(a=='z0')zoom(0);else if((a=='ntab'||a=='ptab')&&tabs.length>1){ci=(ci+(a=='ntab'?1:tabs.length-1))%tabs.length;sync()}}
+ W.el.addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey,k=e.key;let a='';if(c&&!e.shiftKey&&!e.altKey&&/^[twlrn]$/i.test(k))a='c'+k.toLowerCase();else if(k=='F5')a='f5';else if(e.altKey&&k=='ArrowLeft')a='back';else if(e.altKey&&k=='ArrowRight')a='fwd';else if(c&&(k=='+'||k=='='))a='z+';else if(c&&k=='-')a='z-';else if(c&&k=='0')a='z0';else if(c&&k=='Tab')a=e.shiftKey?'ptab':'ntab';if(a){e.preventDefault();key(a)}});
  function siNote(t,u){const fr=t.fr;t.pend=false;fr.removeAttribute('src');fr.setAttribute('sandbox','allow-scripts');t.src='';fr.srcdoc=webNote(u);if(t===T())sync()}
  const tabOfWin=w=>{for(let i=0;i<6&&w;i++){const t=tabs.find(x=>x.fr.contentWindow===w);if(t)return t;let p=null;try{p=w.parent}catch(x){}if(!p||p===w)break;w=p}return null};
  const SIO={cur:t=>t.h[t.i],note:siNote,T:()=>T(),bar:(t,b)=>{fh.appendChild(b);b.style.display=t===T()?'flex':'none'},
@@ -1528,8 +1559,8 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
  const onm=e=>{if(e.data&&typeof e.data.__rudolfSignin=='string'){const t=tabOfWin(e.source);if(t&&typeof siMessage=='function')siMessage(e.data,t,e.source,e.origin,SIO);return}
   const t=tabs.find(x=>x.fr.contentWindow===e.source);if(!t||!e.data)return;if(typeof e.data.go=='string'){const u=norm(e.data.go);if(/^https?:/i.test(u)&&/duckduckgo\.com\/\?q=/.test(u)){if(window.__sys&&fwCheck(u))return;try{window.open(u,'_blank','noopener')}catch(x){}return}if(t!==T()){ci=tabs.indexOf(t)}nav(u)}
   else if(e.data.act=='app'){if(e.data.v=='media'||e.data.v=='wordpro'){const w0=wins.find(x=>x.tb.title==(e.data.v=='media'?'Media Player':'WordPro'));w0?w0.focus():A[e.data.v]()}}else if(e.data.act=='ext'){if(/^https?:/i.test(e.data.v)){if(window.__sys&&fwCheck(e.data.v))return;try{window.open(e.data.v,'_blank','noopener')}catch(x){}}}else if(e.data.act=='wsearch'){netSearch(e.data.v).then(r=>{try{e.source.postMessage({wsres:r},'*')}catch(x){}})}else if(e.data.act=='dlreq'){netDlAsk(W,e.data.v,()=>{nav('about:downloads')})}else if(e.data.act=='rmbm'){bms.splice(+e.data.v,1);store('bd95bm',bms);loadTab(t);sync()}else if(e.data.act=='clrh'){hist=[];store('bd95hist',hist);loadTab(t)}else if(e.data.act=='cldl'){DLS.length=0;saveDl();loadTab(t)}};
- addEventListener('message',onm);window.__dlHook=()=>{const t=T();if(t&&t.h[t.i]=='about:downloads')loadTab(t)};W.onclose=()=>{removeEventListener('message',onm);window.__dlHook=null};
- newTab(url||'about:home')}
+ addEventListener('message',onm);window.__dlHook=()=>{const t=T();if(t&&t.h[t.i]=='about:downloads')loadTab(t)};W.onclose=()=>{removeEventListener('message',onm);window.__dlHook=null;tabs.forEach(x=>x.rt&&rtClose(x.rt))};
+ if(bo.adopt&&typeof rtOpen=='function'){adoptTab(url,bo.adopt);sync()}else newTab(url||'about:home')}
 
 /* ===== Rudolf OS: nomenclature migration, Trash, tray volume ===== */
 (function(){const C=fs['C:'];let ch=0;
@@ -9726,10 +9757,10 @@ if (RD) setTimeout(screenPending, 2500);
    give Oracle real browser tabs. The shell says hello after every load; SHELL is then its window, and
    shellAsk(op, data) sends it a request and resolves with its answer. Without the shell (older systems, a normal
    browser, or the session's fallback) SHELL stays null and everything works as before. ===== */
-let SHELL = null, SHELL_VER = '', SHELL_N = 0, SHELL_ORIGIN = '';
+let SHELL = null, SHELL_VER = '', SHELL_N = 0, SHELL_ORIGIN = '', SHELL_CAPS = [];
 /* the shell's address: isolated-app://<its ID>/ (the ID is published next to the shell's bundle) */
 if (RD) fetch('/iwa/id').then(r => r.ok ? r.text() : '').then(t => { t = t.trim(); if (/^[a-z2-7]{56}$/.test(t)) SHELL_ORIGIN = 'isolated-app://' + t }).catch(() => {});
-const SHELL_WAIT = new Map();
+const SHELL_WAIT = new Map(), SHELL_LOG = [];   // SHELL_LOG: the shell's notes (what went wrong), for support
 function shellSend(m) { if (SHELL) try { SHELL.postMessage(m, '*') } catch (e) {} }
 function shellAsk(op, data) {
   if (!SHELL) return Promise.reject(new Error('no shell'));
@@ -9744,10 +9775,55 @@ addEventListener('message', e => {
   const m = e.data;
   if (!m || typeof m.rudolfShell != 'string' || e.source == null) return;
   if (!SHELL_ORIGIN || e.origin !== SHELL_ORIGIN) return;           // only Rudolf OS's own shell
-  if (m.rudolfShell == 'hello') { SHELL = e.source; SHELL_VER = String(m.version || ''); document.documentElement.classList.add('inshell'); shellSend({rudolfShell: 'ready'}); return }
+  if (m.rudolfShell == 'hello') { if (!SHELL) fsStandIn(on => { SHELL_FS = on; return true }); SHELL = e.source; SHELL_VER = String(m.version || ''); SHELL_CAPS = Array.isArray(m.caps) ? m.caps.map(String) : []; document.documentElement.classList.add('inshell'); shellSend({rudolfShell: 'ready'}); return }
+  if (m.rudolfShell == 'log') { SHELL_LOG.push(new Date().toISOString().slice(11, 19) + ' ' + String(m.m || '').slice(0, 500)); if (SHELL_LOG.length > 50) SHELL_LOG.shift(); return }
   if (m.id && SHELL_WAIT.has(m.id)) { SHELL_WAIT.get(m.id)(m); SHELL_WAIT.delete(m.id); return }
   if (m.rudolfShell == 'newwindow' && /^https?:/i.test(m.url || '')) { if (typeof webOpen == 'function') webOpen(m.url); return }
 });
+
+/* Chromium acts on Ctrl+W, Ctrl+T, Ctrl+N and Ctrl+Q before a page sees them (closing or quitting the desktop's
+   window), so rudolf-display hands them to the desktop's window as Ctrl+F20..F23 (rudolf-display.c: desk_key).
+   Here they become the keys the desktop's apps listen for again. Also on the plain desktop page (no shell). */
+const DESK_SUB = {F20: ['w', 'KeyW'], F21: ['t', 'KeyT'], F22: ['n', 'KeyN'], F23: ['q', 'KeyQ']};
+for (const type of ['keydown', 'keyup']) addEventListener(type, e => {
+  const s = e.ctrlKey && e.isTrusted && DESK_SUB[e.code]; if (!s) return;   // (the code: X may have no key name for F20..F23)
+  e.preventDefault(); e.stopImmediatePropagation();
+  (e.target || document).dispatchEvent(new KeyboardEvent(type, {key: e.shiftKey ? s[0].toUpperCase() : s[0], code: s[1], ctrlKey: true, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey, repeat: e.repeat, bubbles: true, cancelable: true, composed: true}));
+}, true);
+
+/* fullscreen inside the shell. Controlled Frame does not let its page go fullscreen, but the shell's window already
+   fills the screen, so the desktop gets a stand-in: requestFullscreen() makes the element fill the page,
+   document.fullscreenElement and the fullscreenchange events behave as usual, and Esc leaves. While something is
+   fullscreen, Oracle's real tabs are hidden (SHELL_FS). The same function as the shell's (iso/shell/shell.js). */
+let SHELL_FS = false;
+function fsStandIn(notify) {
+  if (window.__rudolfFs) return; window.__rudolfFs = 1;
+  const D = Document.prototype, E = Element.prototype; let cur = null;
+  const css = document.createElement('style');
+  css.textContent = '.rudolf-fs{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;z-index:2147483647!important;transform:none!important;border:0!important;border-radius:0!important;box-sizing:border-box!important;background:#000}video.rudolf-fs{object-fit:contain!important}html.rudolf-fs-on,html.rudolf-fs-on body{overflow:hidden!important}';
+  const fire = el => { for (const n of ['fullscreenchange', 'webkitfullscreenchange']) try { (el && el.isConnected ? el : document).dispatchEvent(new Event(n, {bubbles: true, composed: true})) } catch (e) {} };
+  const enter = function () {
+    const el = this;
+    if (!(el instanceof Element)) return Promise.reject(new TypeError('Not an element'));
+    if (cur !== el && !notify(true)) return Promise.reject(new TypeError('Permissions check failed'));
+    if (!css.isConnected) (document.head || document.documentElement).appendChild(css);
+    if (cur && cur !== el) cur.classList.remove('rudolf-fs');
+    cur = el; el.classList.add('rudolf-fs'); document.documentElement.classList.add('rudolf-fs-on');
+    setTimeout(() => fire(el), 0); return Promise.resolve();
+  };
+  const exit = function () {
+    if (!cur) return Promise.reject(new TypeError('Document not active'));
+    const el = cur; cur = null; el.classList.remove('rudolf-fs'); document.documentElement.classList.remove('rudolf-fs-on');
+    notify(false); setTimeout(() => fire(el), 0); return Promise.resolve();
+  };
+  E.requestFullscreen = enter; E.webkitRequestFullscreen = E.webkitRequestFullScreen = function () { enter.call(this).catch(() => {}) };
+  D.exitFullscreen = exit; D.webkitExitFullscreen = D.webkitCancelFullScreen = function () { exit.call(this).catch(() => {}) };
+  for (const k of ['fullscreenElement', 'webkitFullscreenElement', 'webkitCurrentFullScreenElement']) Object.defineProperty(D, k, {configurable: true, get() { return cur }});
+  for (const k of ['fullscreen', 'webkitIsFullScreen']) Object.defineProperty(D, k, {configurable: true, get() { return !!cur }});
+  for (const k of ['fullscreenEnabled', 'webkitFullscreenEnabled']) Object.defineProperty(D, k, {configurable: true, get() { return true }});
+  addEventListener('keydown', e => { if (cur && e.key == 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); exit.call(document) } }, true);
+  setInterval(() => { if (cur && !cur.isConnected) exit.call(document).catch(() => {}) }, 1000);
+}
 
 /* pointer capture for games inside the shell (the frame cannot capture the pointer itself): h = {move(dx,dy),
    button(b,down), wheel(dy), change(locked)}. Resolves true when the pointer is captured. */
@@ -9797,6 +9873,158 @@ if (RD) {
   setTimeout(() => { if (SHELL) shellClipboard(); else IDB.ready.then(() => setTimeout(shellOffer, 1500)) }, 4000);
   addEventListener('message', e => { if (SHELL && e.source === SHELL && e.data && e.data.rudolfShell == 'hello') shellClipboard() });
 }
+
+/* ===== V26 Oracle's real browser tabs (Rudolf OS 1.2) =====
+   Inside the shell (shell26.js), a website in an Oracle tab is a real browser page: a Controlled Frame that the
+   shell keeps over the tab's area of the Oracle window. The desktop says where that area is, many times a second,
+   and which parts of it are covered by the desktop (menus, other windows, dialogs), so those parts are cut out of
+   the page and the desktop shows through. Each Rudolf OS account has its own cookies and site storage.
+   rtOn() is false outside the shell; Oracle then shows websites in frames as in 1.1. ===== */
+const RT = new Map();          // tid -> {el (the tab's area), shown() -> bool, z() -> number, h (Oracle's handlers)}
+let RT_N = 0, RT_RAF = 0, RT_FW = '';
+const rtOn = () => !!(SHELL && SHELL_CAPS.includes('tabs'));
+/* whose tab: each account gets its own partition (cookies, site storage) */
+function rtPart() {
+  const n = String(typeof USER != 'undefined' && USER && USER.n || 'guest').toLowerCase();
+  let h = 0x811c9dc5; for (let i = 0; i < n.length; i++) { h ^= n.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
+  return 'u' + h.toString(36);
+}
+const rtSend = (op, tid, o) => shellSend(Object.assign({rudolfShell: 'tab', op, tid}, o || {}));
+/* a new real tab. h: {nav(url, back, fwd), load(on, error), title(t), focus(), close(), keys(k), newwin(url, ntid, popup),
+   gone(why), dialog(kind, text, def) -> Promise<{ok, text}>, perm(perm, url) -> Promise<bool>, blocked(url, why), fs(on), flash()} */
+function rtOpen(url, where, h, adopt) {
+  const tid = 'o' + (++RT_N) + '-' + Date.now().toString(36);
+  RT.set(tid, Object.assign({h, last: ''}, where));
+  rtFw(true); rtRuffle();
+  rtSend('open', tid, {url, part: rtPart(), adopt});
+  rtLoop();
+  return tid;
+}
+const rtGo = (tid, url) => rtSend('go', tid, {url});
+const rtCmd = (tid, op, o) => rtSend(op, tid, o);
+function rtClose(tid) { if (!RT.has(tid)) return; RT.delete(tid); rtSend('close', tid) }
+
+/* ---- what covers a tab. Candidates are the desktop's top-level pieces (windows, the taskbar, the Start menu,
+   menus, notifications, dialogs) and what the tab's own window puts over it; a candidate that overlaps the tab
+   covers it when the topmost element at a few points of the overlap belongs to it. */
+const rtR = r => [Math.round(r.left), Math.round(r.top), Math.round(r.right) - Math.round(r.left), Math.round(r.bottom) - Math.round(r.top)];
+function rtSub(list, o) {
+  const out = [], ox2 = o[0] + o[2], oy2 = o[1] + o[3];
+  for (const [x, y, w, h] of list) {
+    const x2 = x + w, y2 = y + h;
+    if (o[0] >= x2 || ox2 <= x || o[1] >= y2 || oy2 <= y) { out.push([x, y, w, h]); continue }
+    if (o[1] > y) out.push([x, y, w, o[1] - y]);
+    if (oy2 < y2) out.push([x, oy2, w, y2 - oy2]);
+    const ty = Math.max(y, o[1]), by = Math.min(y2, oy2);
+    if (o[0] > x) out.push([x, ty, o[0] - x, by - ty]);
+    if (ox2 < x2) out.push([ox2, ty, x2 - ox2, by - ty]);
+  }
+  return out;
+}
+function rtCover(el) {
+  const R = rtR(el.getBoundingClientRect());
+  if (R[2] < 2 || R[3] < 2) return null;
+  const own = el.closest('.win'), cands = new Set();
+  for (const c of document.body.children) { cands.add(c); for (const d of c.children) cands.add(d) }
+  const dk = document.getElementById('desk'); if (dk) for (const c of dk.children) cands.add(c);
+  if (own) for (const c of own.querySelector('.body') ? own.querySelector('.body').children : []) cands.add(c);
+  const occ = [];
+  for (const c of cands) {
+    if (c === el || c.contains(el) || el.contains(c) || /^(SCRIPT|STYLE|LINK|META)$/.test(c.tagName)) continue;
+    const r = c.getBoundingClientRect();
+    const x = Math.max(R[0], Math.floor(r.left)), y = Math.max(R[1], Math.floor(r.top)), x2 = Math.min(R[0] + R[2], Math.ceil(r.right)), y2 = Math.min(R[1] + R[3], Math.ceil(r.bottom));
+    if (x2 - x < 1 || y2 - y < 1) continue;
+    const ix = Math.min(2, (x2 - x) / 4), iy = Math.min(2, (y2 - y) / 4);
+    const pts = [[(x + x2) / 2, (y + y2) / 2], [x + ix, y + iy], [x2 - ix, y + iy], [x + ix, y2 - iy], [x2 - ix, y2 - iy]];
+    if (pts.some(([px, py]) => { const hit = document.elementFromPoint(px, py); return hit && c.contains(hit) })) occ.push([x, y, x2 - x, y2 - y]);
+  }
+  let vis = [R];
+  for (const o of occ) vis = rtSub(vis, o);
+  return {r: R, vis: occ.length ? vis.filter(v => v[2] > 0 && v[3] > 0).map(([x, y, w, h]) => [x - R[0], y - R[1], w, h]) : null};
+}
+/* every frame while there are tabs: tell the shell where each one is, when that changed */
+function rtLoop() {
+  if (RT_RAF || !RT.size) return;
+  const step = () => {
+    RT_RAF = 0; if (!RT.size) return;
+    if (!document.hidden) for (const [tid, t] of RT) {
+      let c = null;
+      try { if (t.shown() && !SHELL_FS) c = rtCover(t.el) } catch (e) {}
+      const z = c ? t.z() : 0;
+      const k = JSON.stringify([c, z]);
+      if (k !== t.last) { t.last = k; rtSend('place', tid, c ? {r: c.r, vis: c.vis, z} : {r: null}) }
+    }
+    RT_RAF = requestAnimationFrame(step);
+  };
+  RT_RAF = requestAnimationFrame(step);
+}
+/* the firewall applies to every request a tab makes, so the shell gets its rules */
+function rtFw(force) {
+  if (!SHELL || typeof SECC == 'undefined' || !window.__sys) return;
+  const f = SECC.fw, k = JSON.stringify(f);
+  if (k === RT_FW && !force) return;
+  RT_FW = k; shellSend({rudolfShell: 'tab', op: 'fw', rules: {on: !!f.on, mode: f.mode, block: f.block, trust: f.trust}});
+}
+setInterval(() => { if (RT.size) { rtFw(); rtRuffle() } }, 2000);
+/* Ruffle for Flash content in real tabs: the same settings the "Ruffle for Oracle" extension gets (oext25.js) */
+let RT_RUF = '';
+function rtRuffle() {
+  if (!SHELL || typeof oextWant != 'function') return;
+  let c; try { c = oextWant() } catch (e) { return }
+  const k = JSON.stringify(c); if (k === RT_RUF) return;
+  RT_RUF = k; shellSend({rudolfShell: 'tab', op: 'ruffle', cfg: c});
+}
+
+/* a page's alert, confirm or prompt, shown over its Oracle window */
+function rtDialog(W, kind, text, def) {
+  return new Promise(res => {
+    const o = document.createElement('div'); o.className = 'dlg sdlg'; o.setAttribute('role', 'alertdialog');
+    o.innerHTML = `<div style='max-width:420px'><div class='sdm' style='white-space:pre-wrap;word-break:break-word;max-height:50vh;overflow:auto'></div>${kind == 'prompt' ? "<input class='rtp' style='width:100%;margin-top:10px;box-sizing:border-box'>" : ''}<div style='text-align:right;margin-top:14px;display:flex;gap:6px;justify-content:flex-end'>${kind == 'alert' ? '' : "<button class='rtc'>Cancel</button>"}<button class='rto' style='background:var(--ac);color:#fff'>OK</button></div></div>`;
+    o.querySelector('.sdm').textContent = text;
+    const inp = o.querySelector('.rtp'); if (inp) inp.value = def || '';
+    const done = ok => { o.remove(); res({ok, text: inp ? inp.value : ''}) };
+    o.querySelector('.rto').onclick = () => done(true);
+    if (o.querySelector('.rtc')) o.querySelector('.rtc').onclick = () => done(false);
+    o.addEventListener('keydown', e => { if (e.key == 'Enter') done(true); else if (e.key == 'Escape') done(kind == 'alert') });
+    W.body.style.position = 'relative'; W.body.appendChild(o);
+    (inp || o.querySelector('.rto')).focus();
+  });
+}
+/* a page asking for the camera, the microphone or the location: asked once per site while Oracle is open */
+const RT_PERM = new Map();
+function rtPerm(W, perm, url) {
+  let host = ''; try { host = new URL(url).host } catch (e) {}
+  const k = perm + ' ' + host;
+  if (RT_PERM.has(k)) return Promise.resolve(RT_PERM.get(k));
+  const what = perm == 'media' ? 'use your camera or microphone' : 'know your location';
+  return new Promise(res => sdlg(W, 'Allow ' + (host || 'this site') + '?', (host || 'This site') + ' wants to ' + what + '.',
+    [['Block', () => { RT_PERM.set(k, false); res(false) }], ['Allow', () => { RT_PERM.set(k, true); res(true) }, 1]]));
+}
+
+/* events from the shell */
+addEventListener('message', e => {
+  if (!SHELL || e.source !== SHELL) return;
+  const m = e.data; if (!m || m.rudolfShell != 'tabev') return;
+  const t = RT.get(m.tid); if (!t) return;
+  const h = t.h, ev = m.ev;
+  try {
+    if (ev == 'nav' && /^https?:/i.test(m.url || '')) h.nav(m.url, !!m.back, !!m.fwd);
+    else if (ev == 'load') h.load(!!m.loading, m.error || '');
+    else if (ev == 'title') h.title(String(m.title || ''));
+    else if (ev == 'focus') h.focus();
+    else if (ev == 'close') h.close();
+    else if (ev == 'keys') h.keys(String(m.k || ''));
+    else if (ev == 'newwin' && typeof m.ntid == 'string') h.newwin(String(m.url || ''), m.ntid, !!m.popup);
+    else if (ev == 'gone') h.gone(String(m.why || ''));
+    else if (ev == 'fs') h.fs && h.fs(!!m.on);
+    else if (ev == 'blocked') { if (m.main) h.blocked(String(m.url || ''), String(m.why || '')) }
+    else if (ev == 'flash') h.flash && h.flash();
+    else if (ev == 'dialog') h.dialog(String(m.kind || 'alert'), String(m.text || ''), String(m.def || '')).then(r => rtSend('dialog', m.tid, {did: m.did, ok: r.ok, text: r.text}));
+    else if (ev == 'perm') h.perm(String(m.perm || ''), String(m.url || '')).then(a => rtSend('perm', m.tid, {pid: m.pid, allow: a}));
+  } catch (x) { console.warn('real tab event', ev, x) }
+});
+/* keyboard focus back to the desktop (Ctrl+L in a real tab goes to Oracle's address bar) */
+function rtBlur() { if (SHELL) shellSend({rudolfShell: 'tab', op: 'blur'}) }
 
 (function(){const d=document.createElement('div');d.className='ic tr';d.innerHTML='<b>🗑️</b><span>Trash</span>';let t=0;
  d.onclick=()=>{document.querySelectorAll('.ic').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');if((Date.now()-t<(window.__mouse?dblMs():450)||window.__mouse&&S.msingle))trash();t=Date.now()};

@@ -9,7 +9,7 @@ L=lambda f:open(os.path.join(here,f)).read()
 pinyin=open(os.path.join(here,'../libs/pinyin.min.json')).read()
 od=base64.b64encode(open(os.path.join(here,'../libs/od/compiled/OpenDyslexic-Regular.woff2'),'rb').read()).decode()
 odb=base64.b64encode(open(os.path.join(here,'../libs/od/compiled/OpenDyslexic-Bold.woff2'),'rb').read()).decode()
-mods=['core25.js','shell25.js','files25.js','apps25a.js','apps25b.js','a11y25.js','settings25.js','notey25.js','wp25.js','misc25.js','native25.js','props25.js','oext25.js','pkg25.js','sysupd25.js','tts25.js','print25.js','mail25.js','web25.js','linux26.js','wifi26.js','term26.js','emusnes26.js','emu26.js','blk2lua26.js','blitzpacks26.js','blitzen26.js','picker26.js','devices26.js','signin26.js','display26.js','shell26.js']
+mods=['core25.js','shell25.js','files25.js','apps25a.js','apps25b.js','a11y25.js','settings25.js','notey25.js','wp25.js','misc25.js','native25.js','props25.js','oext25.js','pkg25.js','sysupd25.js','tts25.js','print25.js','mail25.js','web25.js','linux26.js','wifi26.js','term26.js','emusnes26.js','emu26.js','blk2lua26.js','blitzpacks26.js','blitzen26.js','picker26.js','devices26.js','signin26.js','display26.js','shell26.js','tabs26.js']
 if os.path.exists(os.path.join(here,'i18n25.js')):mods.append('i18n25.js')
 changes=open(os.path.join(here,'../CHANGELOG.md')).read()   # "What's new" and the notice after an update
 code='const PINYIN_JSON='+json.dumps(pinyin)+';\nconst RCHANGES='+json.dumps(changes).replace('</','<\\/')+';\n'+'\n'.join(L(m) for m in mods)
@@ -43,7 +43,7 @@ rep("relabel();W.el.focus({preventScroll:true})}","relabel();try{calcModes(W,cg)
 # WordPro additions and print/export CSS for watermarks and checklists
 rep("const mb=q('.wp-mb');Object.keys(MENUS)","try{wpExtend(W,MENUS,{get ed(){return ed},get root(){return root},get sheet(){return sheet},q,touch,sched,rs,insertHTML,dialog,say,blocks,textNodes,docText,words,layout,get meta(){return meta},get path(){return p},get dirty(){return dirty},doSave:()=>doSave()});W.printDoc=printDoc}catch(e){console.warn('WordPro additions',e)}\n const mb=q('.wp-mb');Object.keys(MENUS)")
 rep("  try{const f=document.createElement('iframe');f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0';f.srcdoc=html;","  if(typeof wpPrint=='function'&&wpPrint(W,html,{size:meta.size,land:meta.land,title:p?p.at(-1):'Untitled'}))return;\n  try{const f=document.createElement('iframe');f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0';f.srcdoc=html;")
-rep("function loadTab(t){const u=t.h[t.i],r=page(u);","function loadTab(t){const u=t.h[t.i];let r=page(u);if(r.ext&&!r.frame&&typeof webWants=='function'&&webWants(u)){webOpen(u);r={title:webHost(u)+' (browser window)',html:webNote(u)}}")
+rep("function loadTab(t){if(rtLoad(t))return;const u=t.h[t.i],r=page(u);","function loadTab(t){if(rtLoad(t))return;const u=t.h[t.i];let r=page(u);if(r.ext&&!r.frame&&typeof webWants=='function'&&webWants(u)){webOpen(u);r={title:webHost(u)+' (browser window)',html:webNote(u)}}")
 rep("const metaCss=()=>","const metaCss=()=>(typeof wpWmCss=='function'?wpWmCss(meta):'')+")
 s=s.replace('Rudolf Prompt','Command Prompt')
 s=s.replace("<title>Rudolf OS</title>","<title>Rudolf OS</title>",1)

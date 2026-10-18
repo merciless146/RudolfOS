@@ -8,7 +8,8 @@
  * private pipe on file descriptors 3 and 4 that only this process holds; no network port), then over that pipe:
  *   - opens isolated-app://SHELL-ID/ as a window and makes it fullscreen,
  *   - closes the starting tab,
- *   - opens the shell again whenever its window is closed (Ctrl+W and the like).
+ *   - lets the shell capture the pointer (games) without a prompt,
+ *   - opens the shell again whenever its window is closed.
  * It exits with Chromium. If the shell never brings the desktop up, the session's watchdog notices (no
  * heartbeat) and starts the desktop page without the shell.
  *
@@ -158,6 +159,12 @@ int main(int argc, char **argv)
 	sigaction(SIGHUP, &sa, NULL);
 	long long t0 = now_ms();
 	send_cmd("Target.setDiscoverTargets", "{\"discover\":true}");   /* the shell is opened once the first page has loaded */
+	/* the shell captures the pointer for games without Chromium asking the person first */
+	{
+		char p[256];
+		snprintf(p, sizeof p, "{\"permission\":{\"name\":\"pointer-lock\"},\"setting\":\"granted\",\"origin\":\"isolated-app://%s\"}", id);
+		send_cmd("Browser.setPermission", p);
+	}
 	for (;;) {
 		struct pollfd pf = {from_chrome, POLLIN, 0};
 		int r = poll(&pf, 1, 1000);

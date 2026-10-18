@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -436,6 +437,54 @@ static void touchpad_frame(struct dev *v)
 	v->lastx = v->ax; v->lasty = v->ay; v->have_last = 1;
 }
 
+/* Chromium keeps some shortcuts for itself and acts on them before the page sees them: Ctrl+W and Ctrl+F4 close
+   the desktop's window (the desktop starts again, open windows are lost), Ctrl+Q quits Chromium, Ctrl+T and Ctrl+N
+   open browser windows over the desktop. While the desktop's Chromium window (class RudolfDesktop) has the
+   keyboard, those keys arrive as F20 (W, F4), F21 (T), F22 (N) and F23 (Q), still with Ctrl held; the desktop and
+   Oracle's real tabs read Ctrl+F20 as Ctrl+W and so on (shell26.js: DESK_SUB). Linux apps and the browser window
+   for sign-in sites get the keys unchanged. */
+static int mod_ctrl, mod_alt;
+static unsigned char key_sub[256];
+static int desk_focused(void)
+{
+	static long long at; static int was;
+	long long t = now_ms();
+	if (t - at < 250) return was;
+	at = t; was = 0;
+	Window w = None, r, p, *ch; int rv; unsigned n;
+	XGetInputFocus(dpy, &w, &rv);
+	for (int i = 0; i < 12 && w != None && w != PointerRoot; i++) {
+		XClassHint h = {0};
+		if (XGetClassHint(dpy, w, &h)) {
+			was = h.res_class && !strcmp(h.res_class, "RudolfDesktop");   /* the session starts it with --class=RudolfDesktop */
+			if (h.res_name) XFree(h.res_name);
+			if (h.res_class) XFree(h.res_class);
+			return was;
+		}
+		if (!XQueryTree(dpy, w, &r, &p, &ch, &n)) break;
+		if (ch) XFree(ch);
+		if (p == r) break;
+		w = p;
+	}
+	return was;
+}
+static int desk_key(int c, int down)
+{
+	if (c == KEY_LEFTCTRL || c == KEY_RIGHTCTRL) mod_ctrl = down ? mod_ctrl | (c == KEY_LEFTCTRL ? 1 : 2) : mod_ctrl & ~(c == KEY_LEFTCTRL ? 1 : 2);
+	if (c == KEY_LEFTALT || c == KEY_RIGHTALT) mod_alt = down ? mod_alt | (c == KEY_LEFTALT ? 1 : 2) : mod_alt & ~(c == KEY_LEFTALT ? 1 : 2);
+	if (c >= 256) return c;
+	if (!down) { int s = key_sub[c]; key_sub[c] = 0; return s ? s : c; }
+	int s = 0;
+	if (mod_ctrl && !mod_alt) switch (c) {
+	case KEY_W: case KEY_F4: s = KEY_F20; break;
+	case KEY_T: s = KEY_F21; break;
+	case KEY_N: s = KEY_F22; break;
+	case KEY_Q: s = KEY_F23; break;
+	}
+	if (s && desk_focused()) { key_sub[c] = s; return s; }
+	return c;
+}
+
 static void handle_event(struct dev *v, struct input_event *e)
 {
 	if (e->type == EV_KEY) {
@@ -466,7 +515,7 @@ static void handle_event(struct dev *v, struct input_event *e)
 		if (c < 256) {
 			if (down && v->kind == 1 && c != KEY_LEFTCTRL && c != KEY_RIGHTCTRL && c != KEY_LEFTSHIFT && c != KEY_RIGHTSHIFT && c != KEY_LEFTALT && c != KEY_RIGHTALT && c != KEY_LEFTMETA && c != KEY_RIGHTMETA)
 				last_key_ms = now_ms();
-			XTestFakeKeyEvent(dpy, c + 8, down, CurrentTime);
+			XTestFakeKeyEvent(dpy, desk_key(c, down) + 8, down, CurrentTime);
 		}
 	} else if (e->type == EV_REL) {
 		if (e->code == REL_X) rel_move(e->value, 0);

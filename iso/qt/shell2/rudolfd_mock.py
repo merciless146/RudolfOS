@@ -17,14 +17,15 @@ def flag(n): return os.path.exists(STATE+'/'+n)
 class H(http.server.BaseHTTPRequestHandler):
     def log_message(s,f,*a): open(STATE+'/log','a').write((f%a)+'\n')
     def send(s,code,ct,b):
-        s.send_response(code);s.send_header('Content-Type',ct);s.send_header('Content-Length',str(len(b)));s.end_headers();s.wfile.write(b)
+        s.send_response(code);s.send_header('Content-Type',ct);s.send_header('Content-Length',str(len(b)));s.end_headers()
+        if s.command!='HEAD': s.wfile.write(b)
     def j(s,o,code=200): s.send(code,'application/json',json.dumps(o).encode())
     def route(s,post,body):
         u=urllib.parse.urlparse(s.path);p=u.path;q=dict(urllib.parse.parse_qsl(u.query))
         if p in('/','/index.html'): return s.send(200,'text/html; charset=utf-8',page())
         if not p.startswith('/api/'):
             f=os.path.join(W,p.lstrip('/'))
-            if os.path.isfile(f): return s.send(200,'application/webbundle' if f.endswith('.swbn') else 'application/json' if f.endswith('.json') else 'text/plain',open(f,'rb').read())
+            if os.path.isfile(f): return s.send(200,'application/webbundle' if f.endswith('.swbn') else 'application/json' if f.endswith('.json') else 'text/javascript' if f.endswith('.js') else 'text/plain',open(f,'rb').read())
             return s.send(404,'text/plain',b'')
         a=p[5:]
         if a=='lsync' and post:
@@ -51,6 +52,7 @@ class H(http.server.BaseHTTPRequestHandler):
         if a=='clipboard': return s.j({'ok':True,'text':'text from the X clipboard'})
         return s.j({'ok':True,'events':'','items':[],'disks':[],'usb':[],'drives':[],'inputs':[]})
     def do_GET(s): s.route(False,b'')
+    def do_HEAD(s): s.route(False,b'')
     def do_POST(s):
         n=int(s.headers.get('Content-Length',0) or 0);s.route(True,s.rfile.read(n))
 http.server.ThreadingHTTPServer(('127.0.0.1',8080),H).serve_forever()
