@@ -12,10 +12,12 @@ set -e
 OUT=$(realpath -m "$1"); [ -n "$1" ] || { echo "usage: $0 OUTDIR"; exit 1; }
 W=$(mktemp -d); mkdir -p "$OUT"
 cd "$W"
-apt-get download shim-signed systemd-boot-efi ovmf sbsigntools >/dev/null
+for p in shim-signed systemd-boot-efi ovmf sbsigntools; do
+	apt-get download "$p" > log 2>&1 || { echo "::error title=sb_fetch::apt-get download $p: $(tail -2 log | tr '\n' ' ')"; apt-cache policy "$p" | sed 's/^/::warning::/'; exit 1; }
+done
 for d in *.deb; do dpkg-deb -x "$d" x; done
 find x -type f \( -name '*.efi*' -o -name '*.fd' -o -name 'sbsign' -o -name 'sbverify' \) | sort
-pick() { local f; f=$(find x -type f -path "*$1" | head -1); [ -n "$f" ] || { echo "not found in the packages: $1"; exit 1; }; cp "$f" "$OUT/$2"; }
+pick() { local f; f=$(find x -type f -path "*$1" | head -1); [ -n "$f" ] || { echo "::error title=sb_fetch::not found in the packages: $1"; exit 1; }; cp "$f" "$OUT/$2"; }
 pick shim/shimx64.efi.signed.latest shimx64.efi
 pick shim/mmx64.efi mmx64.efi
 pick boot/efi/systemd-bootx64.efi systemd-bootx64.efi
