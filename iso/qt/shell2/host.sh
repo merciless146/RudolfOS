@@ -38,12 +38,13 @@ setsid python3 $HERE/site.py 8099 >$WORK/site.log 2>&1 & echo $! > $WORK/site.pi
 setsid python3 $HERE/rudolfd_mock.py $WWW $STATE $PROF >$WORK/mock.log 2>&1 & echo $! > $WORK/mock.pid
 gcc -O2 -o $WORK/rudolf-launch $REPO/iso/sys/rudolf-launch.c
 sleep 1
-# the extensions, copied as the session does (Chromium writes into an extension's folder)
+# the extensions, copied as the session does (Chromium writes into an extension's folder); with the shell the
+# session loads only Ruffle's
 EXT=$WORK/ext; rm -rf $EXT; mkdir -p $EXT; cp -a $REPO/iso/sys/root/usr/lib/rudolf/frames $REPO/iso/sys/root/usr/lib/rudolf/ruffle-ext $EXT/
 # the installed shell is only replaced when its version changes: start from a fresh profile after editing it
 setsid $WORK/rudolf-launch $ID $CHROME --no-sandbox --rudolf-kiosk --class=RudolfDesktop --kiosk --start-fullscreen --window-position=0,0 --window-size=1280,800 \
 	--user-data-dir=$PROF --no-first-run --no-default-browser-check --noerrdialogs --disable-infobars --password-store=basic \
-	--no-proxy-server --remote-debugging-port=9333 --load-extension=$EXT/frames,$EXT/ruffle-ext \
+	--no-proxy-server --remote-debugging-port=9333 --load-extension=$EXT/ruffle-ext \
 	--enable-features=SharedArrayBuffer,IsolatedWebApps --autoplay-policy=no-user-gesture-required \
 	--use-fake-ui-for-media-stream --disable-gpu --host-resolver-rules="MAP *.test 127.0.0.1" ${EXTRA:-} >$WORK/chrome.log 2>&1 &
 echo "started: shell $ID"

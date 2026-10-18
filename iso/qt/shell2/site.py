@@ -1,6 +1,7 @@
 # Test websites for Oracle's real tabs (host.sh maps *.test to this machine): python3 site.py PORT
 #   /login     a sign-in form; signing in sets a first-party cookie      /me   who is signed in
 #   /popup     opens a sign-in style pop-up (/child) that answers its opener and closes itself
+#   /files     links to /file (a download for signed-in visitors only) and /big.zip (2 MB, over the limit)
 #   /flash     a page with a Flash movie (blue.swf: a blue 300x200 frame; Ruffle should play it)      /     a plain green page
 import http.server, sys, urllib.parse
 GREEN = "<body style='margin:0;background:rgb(0,200,0);height:100vh'>"
@@ -25,6 +26,15 @@ class H(http.server.BaseHTTPRequestHandler):
         if p == '/movie.swf':
             b = open(__import__('os').path.join(__import__('os').path.dirname(__file__), 'blue.swf'), 'rb').read()
             s.send_response(200); s.send_header('Content-Type', 'application/x-shockwave-flash'); s.send_header('Content-Length', str(len(b))); s.end_headers(); s.wfile.write(b); return
+        if p == '/files': return s.send("<title>Files</title>" + GREEN + "<a id=f href='/file'>notes</a> <a id=b href='/big.zip'>big</a>")
+        if p == '/file':   # only for a signed-in visitor (the download must carry the site's cookie)
+            if not s.who(): s.send_response(403); s.send_header('Content-Length', '0'); s.end_headers(); return
+            b = ('notes for ' + s.who()).encode()
+            s.send_response(200); s.send_header('Content-Type', 'text/plain'); s.send_header('Content-Disposition', 'attachment; filename="notes.txt"')
+            s.send_header('Content-Length', str(len(b))); s.end_headers(); s.wfile.write(b); return
+        if p == '/big.zip':
+            b = b'\0' * (2 * 1048576)
+            s.send_response(200); s.send_header('Content-Type', 'application/zip'); s.send_header('Content-Length', str(len(b))); s.end_headers(); s.wfile.write(b); return
         return s.send("<title>Green</title>" + GREEN + "<p>green</p>")
     def do_POST(s):
         n = int(s.headers.get('Content-Length', 0) or 0); q = dict(urllib.parse.parse_qsl(s.rfile.read(n).decode()))

@@ -15,7 +15,8 @@ function rtPart() {
 }
 const rtSend = (op, tid, o) => shellSend(Object.assign({rudolfShell: 'tab', op, tid}, o || {}));
 /* a new real tab. h: {nav(url, back, fwd), load(on, error), title(t), focus(), close(), keys(k), newwin(url, ntid, popup),
-   gone(why), dialog(kind, text, def) -> Promise<{ok, text}>, perm(perm, url) -> Promise<bool>, blocked(url, why), fs(on), flash()} */
+   gone(why), dialog(kind, text, def) -> Promise<{ok, text}>, perm(perm, url) -> Promise<bool>, blocked(url, why), fs(on), flash(),
+   download(url, {name, data, big, why})} */
 function rtOpen(url, where, h, adopt) {
   const tid = 'o' + (++RT_N) + '-' + Date.now().toString(36);
   RT.set(tid, Object.assign({h, last: ''}, where));
@@ -143,6 +144,7 @@ addEventListener('message', e => {
     else if (ev == 'fs') h.fs && h.fs(!!m.on);
     else if (ev == 'blocked') { if (m.main) h.blocked(String(m.url || ''), String(m.why || '')) }
     else if (ev == 'flash') h.flash && h.flash();
+    else if (ev == 'download') h.download && h.download(String(m.url || ''), {name: String(m.name || ''), data: typeof m.data == 'string' && m.data.startsWith('data:') ? m.data : '', big: !!m.big, why: String(m.why || '')});
     else if (ev == 'dialog') h.dialog(String(m.kind || 'alert'), String(m.text || ''), String(m.def || '')).then(r => rtSend('dialog', m.tid, {did: m.did, ok: r.ok, text: r.text}));
     else if (ev == 'perm') h.perm(String(m.perm || ''), String(m.url || '')).then(a => rtSend('perm', m.tid, {pid: m.pid, allow: a}));
   } catch (x) { console.warn('real tab event', ev, x) }

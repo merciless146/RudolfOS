@@ -28,7 +28,7 @@ function siWants(u) {
   return webWants(u) || siBank(h);
 }
 /* tell the web frames extension which sites keep their frame protections */
-function siPush() { try { window.postMessage({__rudolfFrames: 'sites', sites: siAll()}, location.origin) } catch (e) {} }
+function siPush() { if (typeof rtOn == 'function' && rtOn()) return; try { window.postMessage({__rudolfFrames: 'sites', sites: siAll()}, location.origin) } catch (e) {} }
 function siAdd(h) {
   const d = siDomain(h); if (!d || !/^[a-z0-9.-]+\.[a-z0-9-]+$/.test(d)) return '';
   if (!siUser().includes(d) && !WEB_SITES.some(w => d == w || d.endsWith('.' + w))) { S.webSites = siUser().concat(d); persistS(); siPush() }
@@ -95,11 +95,11 @@ function signinPanel(c) {
     const mine = siUser();
     c.innerHTML = `<h3>Oracle sign-in</h3>
 <h4 class='sh4'>Real browser tabs</h4><div class='r2'><label>Oracle's tabs</label><div>${ckH('sishell', 'Open websites as real browser tabs (signing in works inside Oracle)', SI_SHELL.on !== false)}<div class='msg sishm'>${siShellText()}</div><div class='rmrow sishr' style='justify-content:flex-start' hidden><button class='sishgo'>Restart the desktop now</button></div></div></div>
-<p class='msg'>Websites in Oracle are shown inside the desktop, where they cannot keep you signed in. Sites that need a sign-in open in a real browser window instead (🌐 in the taskbar switches between it and the desktop).</p>
+${typeof rtOn == 'function' && rtOn() ? "<p class='msg'>Oracle's tabs are real browser tabs now: signing in works inside Oracle, for every site. The settings below are used only when real tabs are off or cannot start.</p><details><summary>Without real tabs</summary>" : ''}<p class='msg'>Websites in Oracle are shown inside the desktop, where they cannot keep you signed in. Sites that need a sign-in open in a real browser window instead (🌐 in the taskbar switches between it and the desktop).</p>
 <div class='r2'><label>When a page asks for a password</label><div>${ckH('siask', 'Ask first (otherwise the site moves to the browser window by itself)', siAsk())}<div class='msg'>Sending a sign-in, or a “Sign in with Google / Microsoft / Apple…” button, always moves the site.</div></div></div>
 <h4 class='sh4'>Your sign-in sites</h4><div class='sil'>${mine.length ? mine.map(d => `<div style='display:flex;gap:8px;align-items:center;padding:3px 0'><span style='flex:1'>${e(d)}</span><button data-rm='${e(d)}' aria-label='Remove ${e(d)}'>Remove</button></div>`).join('') : "<div class='msg'>None yet. Choose “Always for this site” when Oracle asks, or add one here.</div>"}</div>
 <div class='rmrow' style='justify-content:flex-start'><input class='sin' placeholder='example.com' aria-label='Site to add' style='flex:0 1 240px'><button class='sia'>Add</button><span class='msg sim'></span></div>
-<details style='margin-top:10px'><summary>Built-in sign-in sites, banks and payment sites (${WEB_SITES.length + SI_BANKS.length})</summary><div class='msg' style='margin-top:6px;line-height:1.6'>${WEB_SITES.concat(SI_BANKS).map(e).join(' · ')}<br>Also any site whose name ends in “bank” or is a credit union.</div></details>`;
+<details style='margin-top:10px'><summary>Built-in sign-in sites, banks and payment sites (${WEB_SITES.length + SI_BANKS.length})</summary><div class='msg' style='margin-top:6px;line-height:1.6'>${WEB_SITES.concat(SI_BANKS).map(e).join(' · ')}<br>Also any site whose name ends in “bank” or is a credit union.</div></details>${typeof rtOn == 'function' && rtOn() ? '</details>' : ''}`;
     c.querySelector('#siask').onchange = ev => { S.siAsk = ev.target.checked; persistS() };
     c.querySelector('#sishell').onchange = async ev => {
       try { await rdPost('shell?on=' + (ev.target.checked ? 1 : 0)); SI_SHELL.on = ev.target.checked; c.querySelector('.sishm').textContent = 'Saved: this takes effect when the desktop starts again.'; c.querySelector('.sishr').hidden = false }

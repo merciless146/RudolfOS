@@ -162,6 +162,9 @@ while :; do
 	# Chromium opens the shell only when the browser itself asks: rudolf-launch does that over a private pipe
 	if shell_usable && [ -x /usr/bin/rudolf-launch ]; then START=""; SHELLON=1; LAUNCH="/usr/bin/rudolf-launch $SHELLID"; fi
 	echo "${START:-isolated-app://$SHELLID/}" > /run/rudolf/desktop-url
+	# the web frames extension lets websites load inside the desktop page's frames (it removes their frame protections)
+	# and spots sign-in pages; with the shell, Oracle's tabs are real pages and it is left out
+	EXTS=$EXT,$RUF; [ $SHELLON = 1 ] && EXTS=$RUF
 	su -s /bin/sh rudolf -c "exec $LAUNCH /opt/chromium/chrome --rudolf-kiosk --class=RudolfDesktop --kiosk --start-fullscreen \
 		--window-position=0,0 --window-size=$W,$H --user-data-dir=$PROFILE \
 		--no-first-run --no-default-browser-check --noerrdialogs --disable-infobars \
@@ -170,7 +173,7 @@ while :; do
 		$GLFLAGS \
 		--autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream \
 		--auto-select-desktop-capture-source=Entire --enable-features=SharedArrayBuffer,IsolatedWebApps \
-		--load-extension=$EXT,$RUF --disable-gpu-watchdog --disk-cache-size=67108864 $PROXY $DBG $EXTRA \
+		--load-extension=$EXTS --disable-gpu-watchdog --disk-cache-size=67108864 $PROXY $DBG $EXTRA \
 		$START" &
 	B=$!
 	START_T=$(cut -d. -f1 /proc/uptime)

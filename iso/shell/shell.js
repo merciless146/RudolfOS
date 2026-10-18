@@ -85,7 +85,8 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
      newwin {url, ntid, popup}  the page opened a window: a new tab ntid already holds it (opener kept)
      dialog {did, kind, text, def}   perm {pid, perm, url}   blocked {url, why, main}   gone {why}
      fs {on}                    the page is "fullscreen" (the stand-in, see fsStandIn): its frame fills the screen
-     flash                      Ruffle was loaded for Flash content in the page */
+     flash                      Ruffle was loaded for Flash content in the page
+     download {url, name, data | big | why}   a file the page downloads (data: a data: URL), see download() */
 const TABS = new Map();
 const NONCE = 'rudolf' + crypto.getRandomValues(new Uint32Array(2)).join('');
 let FW = {on: false}, RUFFLE = {on: false, urls: [], config: {}};
@@ -170,7 +171,8 @@ function tabEvents(t) {
   });
   f.addEventListener('permissionrequest', e => {
     const p = e.permission;
-    if (p == 'fullscreen' || p == 'download' || p == 'pointerLock') { try { e.request.allow() } catch (x) {} return }
+    if (p == 'download') { try { e.request.deny() } catch (x) {} download(t, e.request && e.request.url || ''); return }
+    if (p == 'fullscreen' || p == 'pointerLock') { try { e.request.allow() } catch (x) {} return }
     if (p == 'media' || p == 'geolocation') {
       try { e.preventDefault() } catch (x) {}
       const pid = ++PERMN; PERM.set(pid, e.request);
@@ -179,6 +181,32 @@ function tabEvents(t) {
     }
     try { e.request.deny() } catch (x) {}
   });
+}
+/* ---- downloads go to Rudolf OS's own Downloads folder (C:\DOWNLOADS), through the desktop's checks (file types,
+   antivirus, the size limit), not to Chromium's. The page fetches the file itself, so the site's cookies come with
+   it (a file behind a sign-in); the shell collects it and hands it to the desktop. When the page cannot fetch it
+   (another site's file without permission), the desktop tries on its own. */
+const DL_MAX = 1.5 * 1048576;
+let DLN = 0;
+function download(t, url) {
+  if (!/^(https?|blob|data):/i.test(url)) return;
+  const id = ++DLN, send = o => toTab(t.tid, 'download', Object.assign({url: /^https?:/i.test(url) ? url : t.url}, o));
+  const code = `(()=>{const W=window.__rudolfDl=window.__rudolfDl||{};W[${id}]={wait:1};(async()=>{try{
+const r=await fetch(${JSON.stringify(url)},{credentials:'include'});if(!r.ok)throw new Error('HTTP '+r.status);
+let n=+r.headers.get('content-length')||0,name='';const cd=r.headers.get('content-disposition')||'',m=/filename\\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd);
+if(m)try{name=decodeURIComponent(m[1]||m[2])}catch(e){name=m[1]||m[2]}
+if(n>${DL_MAX}){W[${id}]={ok:false,big:true,name};return}const b=await r.blob();if(b.size>${DL_MAX}){W[${id}]={ok:false,big:true,name};return}
+const d=await new Promise((res,rej)=>{const f=new FileReader();f.onload=()=>res(f.result);f.onerror=rej;f.readAsDataURL(b)});W[${id}]={ok:true,name,data:d}}
+catch(e){W[${id}]={ok:false,why:String(e&&e.message||e)}}})();return 1})()`;
+  t.f.executeScript({code}).then(() => {
+    const until = Date.now() + 120000;
+    const poll = () => t.f.executeScript({code: `(()=>{const W=window.__rudolfDl||{},r=W[${id}];if(r&&!r.wait)delete W[${id}];return r||null})()`}).then(r => {
+      const v = r && r[0];
+      if (v && !v.wait) return send(v.ok ? {name: String(v.name || ''), data: v.data} : {name: String(v.name || ''), big: !!v.big, why: String(v.why || '')});
+      if (Date.now() < until) setTimeout(poll, 400); else send({why: 'timeout'});
+    }, () => send({why: 'page'}));
+    poll();
+  }, () => send({why: 'page'}));
 }
 let NEWN = 0, DLGN = 0, PERMN = 0;
 const DLG = new Map(), PERM = new Map();

@@ -157,6 +157,21 @@ const green = p => p[1] > 150 && p[0] < 60 && p[2] < 60;
   ok('with display scaling the page still sits exactly in the tab area', green(p[0]) && green(p[1]) && !green(p[2]) && !green(p[3]), p);
   await ev(`document.documentElement.style.zoom='';1`); await wait(400);
 
+  // --- downloads go to C:\DOWNLOADS through Oracle's checks, with the site's cookies
+  await ev(`__W.body.querySelector('.ad').value='http://site.test:8099/files';__W.body.querySelector('.ad').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));1`);
+  await tabUntil(u => u.includes('/files'), 'document.readyState=="complete"');
+  await inTab(u => u.includes('/files'), `document.getElementById('f').click();1`, true);
+  ok('a download from a real tab is saved in C:\\DOWNLOADS (signed in: the cookie came along)', await until(`!!(fs['C:'].DOWNLOADS&&fs['C:'].DOWNLOADS['NOTES.TXT']=='notes for alice')`, 10000), await ev(`JSON.stringify(DLS.slice(-1))`));
+  await inTab(u => u.includes('/files'), `document.getElementById('b').click();1`, true);
+  ok('a download over the size limit is stopped, with a reason', await until(`DLS.length&&DLS[DLS.length-1].n=='BIG.ZIP'&&DLS[DLS.length-1].st=='blocked'`, 10000), await ev(`JSON.stringify(DLS.slice(-1))`));
+
+  // --- without the browser window: what asked for it opens in Oracle; the sign-in settings say so
+  const nw = await ev('wins.length');
+  await ev(`window.open('http://site.test:8099/');1`);
+  ok('a new browser window asked for by the desktop opens in Oracle', await until(`wins.length==${nw + 1}&&wins[wins.length-1].tb.title.includes('Oracle')`, 5000), await ev(`JSON.stringify(wins.map(w=>w.tb.title))`));
+  await ev(`wins[wins.length-1].close();1`);
+  ok('Settings › Oracle sign-in says sign-ins work in real tabs', await ev(`(()=>{const c=document.createElement('div');signinPanel(c);return c.textContent.includes('real browser tabs now')})()`));
+
   // --- cookies are kept, and each account has its own
   await ev(`__W.close();1`); await wait(500);
   ok('closing Oracle closes its real tabs', await ev('RT.size==0') && !(await list()).some(t => t.type == 'webview' && t.url.includes('site.test')));

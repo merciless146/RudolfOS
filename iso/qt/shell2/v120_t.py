@@ -99,6 +99,20 @@ ok('a site sets its cookie', w("__W.body.querySelector('.otab.on').title=='cooki
 g.js("__W.close();browser('http://localhost:8099/cookie.html');window.__W=wins[wins.length-1];__W.el.style.left='60px';__W.el.style.top='40px';1")
 ok('...and still has it in a new Oracle window', w("__W.body.querySelector('.otab.on').title=='cookie:sid=alice'", 30), g.js("__W.body.querySelector('.otab.on').title"))
 
+# --- a download goes to C:\DOWNLOADS through Oracle's checks (Chromium's own download is not used)
+g.sh("cd /tmp/www && printf 'hello from the guest' > notes.txt && printf '<title>Files</title><body style=\"margin:0;background:rgb(0,200,0);height:100vh\"><a id=f href=\"/notes.txt\" download>notes</a>' > files.html", 15)
+g.js("__W.body.querySelector('.ad').value='http://localhost:8099/files.html';__W.body.querySelector('.ad').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));1")
+w("__W.body.querySelector('.otab.on').title=='Files'", 30); time.sleep(1.5)
+r = json.loads(fh())
+at(r[0] + 20, r[1] + 10); time.sleep(3)
+ok('a download from a real tab lands in C:\\DOWNLOADS', w("!!(fs['C:'].DOWNLOADS&&fs['C:'].DOWNLOADS['NOTES.TXT']=='hello from the guest')", 20), g.js("JSON.stringify(DLS.slice(-1))"))
+ok('...and not in Chromium\'s download folder', 'notes' not in g.sh('ls /home/rudolf/Downloads 2>/dev/null', 15))
+ok('the web frames extension is left out with the shell', '/run/rudolf/frames' not in g.sh("ps -o args | grep '[r]udolf-kiosk' | head -1 | cut -c1-3000", 15))
+nw = g.js('wins.length')
+g.js("window.open('http://localhost:8099/green.html');1"); time.sleep(2)
+ok('a new browser window asked for by the desktop opens in Oracle', g.js('wins.length') == nw + 1 and g.sh("ps -o args | grep -c '[c]lass=RudolfWeb'", 15).strip().splitlines()[-1:] == ['0'], g.js('JSON.stringify(wins.map(w=>w.tb.title))'))
+g.js("wins[wins.length-1].close();1")
+
 # --- Ctrl+T and Ctrl+W with QEMU's keyboard: Chromium would act on them itself (closing the desktop's window);
 #     rudolf-display hands them over as Ctrl+F21 / Ctrl+F20, and Oracle opens and closes tabs
 r = json.loads(fh())
