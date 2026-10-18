@@ -1,14 +1,14 @@
 rudolf-system 1
-serial 2026101511
-version 1.1.2.261015
-released 2026-10-15
-expires 2026-10-29
+serial 2026101817
+version 1.2.0.261018
+released 2026-10-18
+expires 2026-11-01
 urgent 0
 chromium 155.0.8059.79
 kernel 6.18.57-rudolf
-notes Chromium 155.0.8059.79, Linux 6.18.57
-L	vmlinuz	10159104	97fc18f51946430a999c671afc98124ad9e02e7adcbd71ef0ee3ac7d8e645866	https://github.com/merciless146/RudolfOS/releases/download/r2026101511/vmlinuz
-L	base	201703424	7368b09515c1aba8952c1729a6ac20d28f23938bbb868fac2b965f75f580a19f	https://github.com/merciless146/RudolfOS/releases/download/r2026101511/base.sfs
-L	chromium	129650688	9fc92ddcc36b25c7f1c1c22c6cfc19d41293cdb5d2e82b06cfcaf91aa81f69e7	https://github.com/merciless146/RudolfOS/releases/download/r2026101511/chromium.sfs
-L	desktop	24924160	9b297f1de2ec6860387daa7cc2019f07f60c7365250900d7efbd34f9dad5df12	https://github.com/merciless146/RudolfOS/releases/download/r2026101511/desktop.sfs
-L	modules	10260480	5133b3af411f6f94a5f7c75e016701cc3c05e15d66886f965d23d2b47dba3eed	https://github.com/merciless146/RudolfOS/releases/download/r2026101511/modules.sfs
+notes 1.2.0: Oracle's tabs are real browser tabs, so signing in to websites works inside Oracle; a new Task Manager shows the kernel, the services and the hardware; report a problem with the computer's status in one step
+L	vmlinuz	10159104	97fc18f51946430a999c671afc98124ad9e02e7adcbd71ef0ee3ac7d8e645866	https://github.com/merciless146/RudolfOS/releases/download/r2026101817/vmlinuz
+L	base	201715712	ee1fb2a196e5a77d711f3874282d0ebc307ad73818ae78970c20f0561b49e193	https://github.com/merciless146/RudolfOS/releases/download/r2026101817/base.sfs
+L	chromium	129650688	9fc92ddcc36b25c7f1c1c22c6cfc19d41293cdb5d2e82b06cfcaf91aa81f69e7	https://github.com/merciless146/RudolfOS/releases/download/r2026101817/chromium.sfs
+L	desktop	24956928	01cf9bd144355ff9178d8d7b210fee98506ba98151c344537ecb43d37125a5d3	https://github.com/merciless146/RudolfOS/releases/download/r2026101817/desktop.sfs
+L	modules	10260480	5133b3af411f6f94a5f7c75e016701cc3c05e15d66886f965d23d2b47dba3eed	https://github.com/merciless146/RudolfOS/releases/download/r2026101817/modules.sfs
