@@ -16,3 +16,4 @@ iso/initramfs/bin/
 *.sfs
 *.tar.xz
 __pycache__/
+iso/qt/qemu-*.log
