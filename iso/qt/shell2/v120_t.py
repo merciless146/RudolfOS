@@ -115,6 +115,7 @@ q.key('ctrl', 'q'); time.sleep(2)
 ok('Ctrl+Q does not quit the desktop', g.js("window.__mark===1") is True)
 
 # --- pointer capture for games: a click asks the shell to capture the pointer; QEMU's relative mouse moves arrive
+g.js("wins.slice().forEach(x=>x.close());1"); time.sleep(0.5)   # nothing over the middle of the screen
 g.js("window.__pl={moves:0,dx:0,dy:0,buttons:[],locked:[],result:null};window.__plh=async()=>{if(__pl.result!==null)return;__pl.result='asked';__pl.result=await shellLock({move:(x,y)=>{__pl.moves++;__pl.dx+=x;__pl.dy+=y},button:(b,d)=>__pl.buttons.push(b+(d?'v':'^')),change:l=>__pl.locked.push(l)})};document.addEventListener('mousedown',__plh,{capture:true});1")
 at(VIEW[0] / 2, VIEW[1] / 2); time.sleep(1.5)
 for i in range(10): q.mouse(8, -4); time.sleep(0.05)
