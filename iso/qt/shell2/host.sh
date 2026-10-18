@@ -15,7 +15,7 @@ stop() {
 	[ -f $WORK/xvfb.pid ] && kill $(cat $WORK/xvfb.pid) 2>/dev/null || true
 	[ -f $WORK/site.pid ] && kill $(cat $WORK/site.pid) 2>/dev/null || true
 	[ -f $WORK/rudolfd.pid ] && kill $(cat $WORK/rudolfd.pid) 2>/dev/null || true
-	rm -f $WORK/*.pid /etc/chromium/policies/managed/rudolf-shell.json
+	rm -f $WORK/*.pid /etc/chromium/policies/managed/rudolf-shell.json /etc/chromium-browser/policies/managed/rudolf-shell.json
 }
 case "$1" in
 stop) stop; exit 0;;
@@ -34,6 +34,7 @@ python3 $REPO/iso/systools/mkiwa.py build $REPO/iso/shell $WWW/iwa/shell.swbn $K
 python3 $REPO/iso/systools/mkiwa.py update $REPO/iso/shell http://127.0.0.1:8080/iwa/shell.swbn $WWW/iwa/update.json >/dev/null
 mkdir -p /etc/chromium/policies/managed
 printf '{"IsolatedWebAppInstallForceList":[{"update_manifest_url":"http://127.0.0.1:8080/iwa/update.json","web_bundle_id":"%s"}]}\n' $ID > /etc/chromium/policies/managed/rudolf-shell.json
+mkdir -p /etc/chromium-browser/policies/managed; cp /etc/chromium/policies/managed/rudolf-shell.json /etc/chromium-browser/policies/managed/   # Ubuntu's Chromium reads policies here
 setsid Xvfb :77 -screen 0 1280x800x24 -nolisten tcp >$WORK/xvfb.log 2>&1 & echo $! > $WORK/xvfb.pid
 setsid python3 $HERE/site.py 8099 >$WORK/site.log 2>&1 & echo $! > $WORK/site.pid
 setsid python3 $HERE/rudolfd_mock.py $WWW $STATE $PROF >$WORK/mock.log 2>&1 & echo $! > $WORK/mock.pid
@@ -48,10 +49,12 @@ sleep 1
 # the extensions, copied as the session does (Chromium writes into an extension's folder); with the shell the
 # session loads only Ruffle's
 EXT=$WORK/ext; rm -rf $EXT; mkdir -p $EXT; cp -a $REPO/iso/sys/root/usr/lib/rudolf/frames $REPO/iso/sys/root/usr/lib/rudolf/ruffle-ext $EXT/
-# the installed shell is only replaced when its version changes: start from a fresh profile after editing it
+# as the session: the policy, and the install from the file in developer mode (Chromium 155 and later; see the
+# session). The installed shell is only replaced when its version changes: start from a fresh profile after editing it
 setsid $WORK/rudolf-launch $ID $CHROME --no-sandbox --rudolf-kiosk --class=RudolfDesktop --kiosk --start-fullscreen --window-position=0,0 --window-size=1280,800 \
 	--user-data-dir=$PROF --no-first-run --no-default-browser-check --noerrdialogs --disable-infobars --password-store=basic \
 	--no-proxy-server --remote-debugging-port=9333 --load-extension=$EXT/ruffle-ext \
-	--enable-features=SharedArrayBuffer,IsolatedWebApps --autoplay-policy=no-user-gesture-required \
+	--enable-features=SharedArrayBuffer,IsolatedWebApps,IsolatedWebAppDevMode --install-isolated-web-app-from-file=$WWW/iwa/shell.swbn \
+	--autoplay-policy=no-user-gesture-required \
 	--use-fake-ui-for-media-stream --disable-gpu --host-resolver-rules="MAP *.test 127.0.0.1" ${EXTRA:-} >$WORK/chrome.log 2>&1 &
 echo "started: shell $ID"
