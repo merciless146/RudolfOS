@@ -12,7 +12,7 @@ set -e
 OUT=$(realpath -m "$1"); [ -n "$1" ] || { echo "usage: $0 OUTDIR"; exit 1; }
 W=$(mktemp -d); mkdir -p "$OUT"
 cd "$W"
-for p in shim-signed systemd-boot-efi ovmf sbsigntools; do
+for p in shim-signed systemd-boot-efi ovmf sbsigntool; do
 	apt-get download "$p" > log 2>&1 || { echo "::error title=sb_fetch::apt-get download $p: $(tail -2 log | tr '\n' ' ')"; apt-cache policy "$p" | sed 's/^/::warning::/'; exit 1; }
 done
 for d in *.deb; do dpkg-deb -x "$d" x; done
