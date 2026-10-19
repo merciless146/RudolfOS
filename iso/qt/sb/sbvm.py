@@ -35,10 +35,16 @@ class VM:
             try: os.unlink(p)
             except OSError: pass
         code = os.path.join(parts, 'OVMF_CODE_4M.secboot.fd')
-        a = [os.path.join(q, 'build', 'qemu-system-x86_64'), '-L', os.path.join(q, 'pc-bios'),
-             '-machine', 'q35,smm=on', '-global', 'driver=cfi.pflash01,property=secure,value=on',
-             '-drive', f'if=pflash,format=raw,unit=0,file={code},readonly=on',
-             '-drive', f'if=pflash,format=raw,unit=1,file={s.vars}',
+        if secure:
+            fw = ['-machine', 'q35,smm=on', '-global', 'driver=cfi.pflash01,property=secure,value=on',
+                  '-drive', f'if=pflash,format=raw,unit=0,file={code},readonly=on',
+                  '-drive', f'if=pflash,format=raw,unit=1,file={s.vars}']
+        else:   # a UEFI computer without Secure Boot: QEMU's own OVMF build (no keys)
+            plain = os.path.join(s.dir, 'ovmf.fd')
+            if not os.path.exists(plain):
+                subprocess.run(f'bzcat {os.path.join(q, "pc-bios", "edk2-x86_64-code.fd.bz2")} > {plain}', shell=True, check=True)
+            fw = ['-machine', 'q35', '-drive', f'if=pflash,format=raw,readonly=on,file={plain}']
+        a = [os.path.join(q, 'build', 'qemu-system-x86_64'), '-L', os.path.join(q, 'pc-bios')] + fw + [
              '-m', str(mem), '-smp', '2', '-accel', 'tcg,thread=multi', '-vga', 'std', '-display', 'none',
              '-qmp', f'unix:{s.qmp_path},server,nowait', '-serial', f'unix:{s.ser_path},server,nowait',
              '-device', 'e1000,netdev=n0', '-netdev', 'hubport,id=n0,hubid=0', '-usb', '-device', 'usb-tablet']
