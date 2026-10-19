@@ -100,7 +100,7 @@ try:
     st3 = js("rd('keepfiles').then(j=>JSON.stringify(j))")
     ok('...and no more offer', isinstance(st3, str) and not json.loads(st3).get('possible'), st3)
     ok('the start-up options are listed once', (lambda c: len(c) == len(set(c)))(last(sh('cat /proc/cmdline')).split()), last(sh('cat /proc/cmdline')))
-    tm = js("getSys(true).then(s=>JSON.stringify({d:tmDrawn(s),p:tmPages(),r:s.renderer,n:s.net}))")
+    tm = js("rd('system').then(s=>JSON.stringify({d:tmDrawn(s),p:tmPages(),r:s.renderer,n:s.net}))")
     ok('Task Manager says what draws the screen and pages', isinstance(tm, str) and 'processor' in tm, tm)
     ok('AMD microcode is on the system (and built into the kernel, checked on the build)', 'microcode_amd_fam19h.bin' in sh('ls /usr/lib/firmware/amd-ucode/ 2>&1'), sh('ls /usr/lib/firmware/amd-ucode/ 2>&1'))
     vm.shot('end')
