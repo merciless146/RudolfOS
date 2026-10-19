@@ -46,6 +46,7 @@
 #include <arpa/inet.h>
 #include <linux/fb.h>
 #include <linux/fs.h>
+#include <linux/blkpg.h>
 #include <zlib.h>
 
 #define WWW      "/usr/share/rudolf/www"
@@ -1674,11 +1675,14 @@ static void api_system(struct req *r)
 	jtext(&s, "firmware", run_out("cat /sys/class/dmi/id/bios_vendor /sys/class/dmi/id/bios_version 2>/dev/null | tr '\\n' ' '"));
 	/* graphics: card, PCI vendor:device, driver; then how the screen is driven (graphics card or software display) */
 	jtext(&s, "gpu", run_out("for d in /sys/class/drm/card[0-9]; do [ -e $d/device/vendor ] || continue; dr=$(readlink $d/device/driver 2>/dev/null); echo \"${d##*/} $(cat $d/device/vendor):$(cat $d/device/device) ${dr##*/}\"; done"));
+	/* what draws (1.2.4): the renderer glamor uses on the graphics card, and NVIDIA's GSP firmware (nouveau) */
+	jtext(&s, "renderer", run_out("sed -n 's/.*glamor X acceleration enabled on \\(.*\\)$/\\1/p' " RUN "/Xorg.log 2>/dev/null | head -1"));
+	jtext(&s, "gsp", run_out("grep -q '^nouveau ' /proc/modules && { dmesg 2>/dev/null | grep -i 'nouveau' | grep -iE 'gsp|firmware' | sed 's/^\\[[^]]*\\] *//' | tail -2; } || true"));
 	jtext(&s, "display", run_out("echo \"$(cat " RUN "/display-mode 2>/dev/null) | $(cat " RUN "/screen-actual 2>/dev/null) | $(cat " RUN "/display-reason 2>/dev/null)\""));
 	jtext(&s, "audio", slurp("/proc/asound/cards", NULL));
 	jtext(&s, "input", run_out("sed -n 's/^N: Name=\"\\(.*\\)\"$/\\1/p' /proc/bus/input/devices 2>/dev/null"));
-	/* network adapters: name, state, speed (Mb/s), bytes received, bytes sent, kind */
-	jtext(&s, "net", run_out("for d in /sys/class/net/*; do n=${d##*/}; [ $n = lo ] && continue; echo \"$n $(cat $d/operstate 2>/dev/null) $(cat $d/speed 2>/dev/null || echo -) $(cat $d/statistics/rx_bytes) $(cat $d/statistics/tx_bytes) $([ -d $d/wireless ] && echo wifi || echo wired)\"; done"));
+	/* network adapters: name, state, speed (Mb/s), bytes received, bytes sent, kind, driver (1.2.4) */
+	jtext(&s, "net", run_out("for d in /sys/class/net/*; do n=${d##*/}; [ $n = lo ] && continue; dr=$(readlink $d/device/driver 2>/dev/null); echo \"$n $(cat $d/operstate 2>/dev/null) $(cat $d/speed 2>/dev/null || echo -) $(cat $d/statistics/rx_bytes) $(cat $d/statistics/tx_bytes) $([ -d $d/wireless ] && echo wifi || echo wired) ${dr##*/}\"; done"));
 	/* storage: device, size, used, where (bytes) */
 	jtext(&s, "storage", run_out("df -kP 2>/dev/null | awk 'NR>1 && $1 ~ /^\\/dev\\//{print $1, $2*1024, $3*1024, $6}'"));
 	{
@@ -2036,6 +2040,30 @@ static void api(struct req *r)
 	if (!strcmp(p, "processes")) { api_processes(r); return; }
 	if (!strcmp(p, "net")) { api_net(r); return; }
 	if (!strcmp(p, "disks")) { api_disks(r); return; }
+	if (!strcmp(p, "install/images")) {
+		/* disc images downloaded to the Downloads folder, for Install from a newer image (1.2.4) */
+		str s = {0}; sadd(&s, "{\"ok\":true,\"images\":[");
+		DIR *dd = opendir("/home/rudolf/Downloads"); struct dirent *e; int n = 0;
+		while (dd && (e = readdir(dd))) {
+			size_t l = strlen(e->d_name);
+			if (l < 5 || strcasecmp(e->d_name + l - 4, ".iso") || e->d_name[0] == '.') continue;
+			char fp[600]; snprintf(fp, sizeof fp, "/home/rudolf/Downloads/%s", e->d_name); struct stat st;
+			if (stat(fp, &st) || !S_ISREG(st.st_mode)) continue;
+			sadd(&s, "%s{\"path\":", n++ ? "," : ""); sjson(&s, fp); sadd(&s, ",\"name\":"); sjson(&s, e->d_name); sadd(&s, ",\"bytes\":%lld}", (long long)st.st_size);
+		}
+		if (dd) closedir(dd);
+		sadd(&s, "]}"); reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(p, "keepfiles")) {
+		/* {"possible":bool,"disk","freeBytes","reason","pending":bool} (keepfiles.sh check) */
+		char *o = run_out("/usr/lib/rudolf/keepfiles.sh check 2>/dev/null");
+		char *nl = o ? strchr(o, '\n') : NULL; if (nl) *nl = 0;
+		str s = {0}; int ok = o && !strncmp(o, "ok ", 3);
+		sadd(&s, "{\"ok\":true,\"possible\":%s,\"pending\":%s", ok ? "true" : "false", access(RUN "/keepfiles-pending", F_OK) ? "false" : "true");
+		if (ok) { char d[64] = ""; long long mb = 0; sscanf(o + 3, "%63s %lld", d, &mb); sadd(&s, ",\"disk\":"); sjson(&s, d); sadd(&s, ",\"freeBytes\":%lld", mb * 1048576); }
+		else { sadd(&s, ",\"reason\":"); sjson(&s, o && !strncmp(o, "no ", 3) ? o + 3 : "unknown"); }
+		sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
+	}
 	if (!strcmp(p, "devices")) { char *o = run_out("/usr/lib/rudolf/devplug list 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 500, "could not list the devices"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
 	if (!strcmp(p, "job")) { api_job(r); return; }
 	if (!strcmp(p, "screenshot")) { api_screenshot(r); return; }
@@ -2148,6 +2176,8 @@ static void api(struct req *r)
 		run("pkill -TERM -f 'chrom[e].*--rudolf-kiosk'");
 		for (int i = 0; i < 50 && !run("pgrep -f 'chrom[e].*--rudolf-kiosk' >/dev/null 2>&1"); i++) usleep(500000);
 		run("pkill -KILL -f '/opt/chromium/chrome' >/dev/null 2>&1");
+		/* a RUDOLFDATA partition made during this live session (1.2.4): the session's files move onto it now */
+		if (!access(RUN "/keepfiles-pending", F_OK)) run("/usr/lib/rudolf/keepfiles.sh finish >" RUN "/keepfiles.log 2>&1");
 		sync();
 		run("umount -a -r 2>/dev/null");
 		reboot(!strcmp(a, "reboot") ? RB_AUTOBOOT : RB_POWER_OFF);
@@ -2322,8 +2352,20 @@ static void api(struct req *r)
 		char *d = qparam(r->query, "disk"), *c = qparam(r->query, "confirm");
 		if (!safe_word(d, 16) || !c || strcmp(c, d)) { reply_err(r->fd, 400, "confirm by sending the disk name twice"); return; }
 		if (job_running()) { reply_err(r->fd, 409, "another job is running"); return; }
-		char cmd[256]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/install.sh /dev/%s", d);
+		/* image (1.2.4): a downloaded disc image in the home folder to install instead of the running drive's */
+		char *img = qparam(r->query, "image");
+		if (img && *img) {
+			int okp = !strncmp(img, "/home/rudolf/", 13) && !strstr(img, "..") && strlen(img) < 200;
+			for (const char *q = img; okp && *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/._-", *q)) okp = 0;
+			if (!okp) { reply_err(r->fd, 400, "the image must be a file in the home folder (letters, digits, . _ - only)"); return; }
+		}
+		char cmd[512]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/install.sh /dev/%s%s%s", d, img && *img ? " " : "", img && *img ? img : "");
 		start_job("install", cmd); reply_ok(r->fd, "installing"); return;
+	}
+	/* keep files on the drive Rudolf OS runs from (1.2.4): add RUDOLFDATA after the image (keepfiles.sh) */
+	if (!strcmp(p, "keepfiles")) {
+		if (job_running()) { reply_err(r->fd, 409, "another job is running"); return; }
+		start_job("keepfiles", "/usr/lib/rudolf/keepfiles.sh make"); reply_ok(r->fd, "adding the RUDOLFDATA partition"); return;
 	}
 	if (!strcmp(p, "mount")) { api_mount(r, 1); return; }
 	if (!strcmp(p, "umount")) { api_mount(r, 0); return; }
@@ -2418,9 +2460,25 @@ out:
 	free(r.body);
 }
 
+/* rudolfd --addpart DISK N START SECTORS (1.2.4, keepfiles.sh): tell the kernel about one new partition of a disk
+   whose other partitions are in use (the running system), which re-reading the whole table cannot do */
+static int addpart(int argc, char **argv)
+{
+	if (argc != 6) { fprintf(stderr, "usage: rudolfd --addpart DISK N START SECTORS\n"); return 2; }
+	int fd = open(argv[2], O_RDONLY | O_CLOEXEC);
+	if (fd < 0) { perror(argv[2]); return 1; }
+	struct blkpg_partition bp = {0};
+	bp.pno = atoi(argv[3]); bp.start = atoll(argv[4]) * 512; bp.length = atoll(argv[5]) * 512;
+	struct blkpg_ioctl_arg a = {.op = BLKPG_ADD_PARTITION, .datalen = sizeof bp, .data = &bp};
+	int rc = ioctl(fd, BLKPG, &a);
+	if (rc) perror("BLKPG_ADD_PARTITION");
+	close(fd);
+	return rc ? 1 : 0;
+}
+
 int main(int argc, char **argv)
 {
-	(void)argc; (void)argv;
+	if (argc > 1 && !strcmp(argv[1], "--addpart")) return addpart(argc, argv);
 	signal(SIGPIPE, SIG_IGN);
 	mkdir(RUN, 0755);
 	int rf = open("/dev/urandom", O_RDONLY);

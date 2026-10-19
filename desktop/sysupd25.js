@@ -20,6 +20,7 @@ function sysuRestart(){if(!(SW&&wins.includes(SW))){settings('upd');return setTi
   const cur=s.current||{},st=s.state||{},av=s.available,nx=st.next&&s.slots[st.next]&&s.slots[st.next].complete?s.slots[st.next]:null;
   let line,cls='';
   if(!s.persistent){line='Security updates need Rudolf OS installed on this computer, or a USB drive with a RUDOLFDATA partition (see Install below).';cls='warn'}
+  else if(s.trying&&st.good==s.booted){line=`<b>Kept:</b> Rudolf OS ${pkgEsc(cur.version||RVER)} started successfully and is now the system this computer starts.`;cls='ok'}
   else if(s.trying)line='Trying the new version: it is kept as soon as the desktop has started.';
   else if(nx){line=`<b>Ready:</b> Rudolf OS ${pkgEsc(nx.version)} starts when the computer restarts.`;cls='ok'}
   else if(av){line=`<b>Update available:</b> Rudolf OS ${pkgEsc(av.version)}${av.notes?' · '+pkgEsc(av.notes):''}${av.urgent?' · <b>urgent security fix</b>':''}`;cls=av.urgent?'warn':''}

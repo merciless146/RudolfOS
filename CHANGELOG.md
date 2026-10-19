@@ -3,6 +3,18 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.2.4 (2026-10-19)
+Summary: a USB stick written from the image can keep your files; Secure Boot key enrolment works on more computers; clearer graphics and network status
+- New: a USB stick written with Rufus or Etcher can keep your files, settings and apps. After you sign in, Rudolf OS offers to use the stick's free space (Settings › Storage and backup › Keep files on this drive); restart once and everything you made so far moves onto it. App Store apps such as Roblox (Sober) need this.
+- Fixed: on some computers (ASUS among them) the blue Secure Boot screen refused rudolf.cer with "Unsupported Format". The boot files now carry their lowercase names. On older discs, Settings › Security Settings › Prepare Secure Boot always works.
+- New: "Install here…" can install a newer disc image you downloaded (Install from), so an older stick can install a Secure Boot ready system. Only images signed by Rudolf OS are accepted.
+- New: Task Manager › System and the system report say what draws the screen (the graphics card and its name, or the processor), what web pages are drawn with, and the NVIDIA GSP firmware state.
+- New: a wired network running slower than its chip (100 Mb/s on gigabit Ethernet) is pointed out, with a hint about the cable or router port.
+- New: AMD processors get AMD's latest microcode at every start (security fixes such as SRSO), without a BIOS update.
+- New: the disc download has join.ps1 for Windows: it joins the parts, checks them and names a missing or damaged part. JOIN-PARTS.TXT has PowerShell commands, and warns never to keep the image on the stick being written.
+- Changed: Settings › Update and recovery says when an update has been kept after a successful start.
+- Changed: the README covers the UEFI boot menu, keeping files, installing from a downloaded image and what to do when Windows says the stick is not accessible.
+
 ## 1.2.3 (2026-10-19)
 Summary: graphics acceleration for NVIDIA GeForce 20, 30 and 40 series cards, and fixes found on a real computer
 - New: NVIDIA GeForce RTX 20, 30 and 40 series (and GTX 16) cards draw with the graphics card instead of the processor. Rudolf OS now carries NVIDIA's GSP firmware and Mesa's NVK driver, which these cards need for any acceleration with the open driver. The first start after the update can take a few seconds longer while the card starts its firmware. If the card cannot use it, Rudolf OS draws with the processor as before.

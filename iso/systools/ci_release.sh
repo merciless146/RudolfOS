@@ -63,7 +63,19 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 	# local test builds only (never set in the workflow): also trust the test release key, so that a test
 	# release's layers pass the start-up check
 	[ -n "$RUDOLF_TEST_KEYS" ] && cat "$RUDOLF_TEST_KEYS" >> initramfs/etc/rudolf-keys
-	./kconfig.sh "$W/linux" "$HERE/initramfs $HERE/initramfs.list"
+	# firmware the kernel and its drivers need that the base layer lacks (1.2.3: NVIDIA GSP, Realtek Ethernet;
+	# 1.2.4: AMD microcode, built into the kernel), pinned by firmware-extra.txt. LINUX_FIRMWARE: a linux-firmware
+	# checkout to take it from (local test builds).
+	FW=$LINUX_FIRMWARE
+	if [ -z "$FW" ]; then
+		FW=$W/linux-firmware
+		for u in https://gitlab.com/kernel-firmware/linux-firmware.git https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git; do
+			rm -rf "$FW"; git clone -q --depth 1 --filter=blob:none --no-checkout "$u" "$FW" || continue
+			git -C "$FW" sparse-checkout set --no-cone /WHENCE '/rtl_nic/' '/amd-ucode/' '/nvidia/*/gsp/*-570.144.bin' && git -C "$FW" checkout -q && break
+		done
+	fi
+	rm -rf "$W/fw"; python3 systools/fwextra.py copy firmware-extra.txt "$FW" "$W/fw"
+	UCODE_DIR="$W/fw" ./kconfig.sh "$W/linux" "$HERE/initramfs $HERE/initramfs.list"
 	make -C "$W/linux" -s -j$(nproc) bzImage modules
 	make -C "$W/linux" -s modules_install INSTALL_MOD_PATH="$W/mods" DEPMOD=true >/dev/null
 	# the module index in busybox's format (modules.dep.bb), which the system's busybox modprobe reads, as on the disc
@@ -71,17 +83,7 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 	[ -s "$W/mods/lib/modules/$KR/modules.dep.bb" ] || { echo "no module index"; exit 1; }
 	echo "$KSRC" > "$W/mods/lib/modules/$KR/rudolf-ksrc"
 	mkdir -p "$W/ms/usr/lib"; cp -a "$W/mods/lib/modules" "$W/ms/usr/lib/"
-	# firmware the drivers of this kernel need that the base layer lacks (1.2.3: NVIDIA GSP, Realtek Ethernet),
-	# pinned by firmware-extra.txt. LINUX_FIRMWARE: a linux-firmware checkout to take it from (local test builds).
-	FW=$LINUX_FIRMWARE
-	if [ -z "$FW" ]; then
-		FW=$W/linux-firmware
-		for u in https://gitlab.com/kernel-firmware/linux-firmware.git https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git; do
-			rm -rf "$FW"; git clone -q --depth 1 --filter=blob:none --no-checkout "$u" "$FW" || continue
-			git -C "$FW" sparse-checkout set --no-cone /WHENCE '/rtl_nic/' '/nvidia/*/gsp/*-570.144.bin' && git -C "$FW" checkout -q && break
-		done
-	fi
-	python3 systools/fwextra.py copy firmware-extra.txt "$FW" "$W/ms/usr/lib/firmware"
+	mkdir -p "$W/ms/usr/lib/firmware" && cp -a "$W/fw/." "$W/ms/usr/lib/firmware/"
 	$MK "$W/ms" "$W/new/modules.sfs" $SQ
 	# signed with the Rudolf OS Secure Boot key: the disc's boot menu starts it (inside the kernel bundle), and a
 	# Rudolf OS kernel under Secure Boot hands over (kexec) only to a kernel with this signature

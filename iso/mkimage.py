@@ -90,7 +90,10 @@ def fat_image(out, files, label=b'RUDOLF EFI '):
         used, res = set(), []
         for name in sorted(d):
             if is83(name):
-                sn = n83(name); res.append((name, sn, b'')); used.add(sn); continue
+                sn = n83(name)
+                # a name with small letters gets a long-name entry too (1.2.4): without it the firmware shows
+                # RUDOLF.CER, and shim's MokManager rejects the key on firmware that does not lowercase ".CER"
+                res.append((name, sn, b'' if name == name.upper() else lfn(name, sn))); used.add(sn); continue
             b, _, e = name.upper().rpartition('.') if '.' in name else (name.upper(), '', '')
             b = ''.join(c for c in b if c.isalnum())[:6] or 'FILE'
             e = ''.join(c for c in e if c.isalnum())[:3]

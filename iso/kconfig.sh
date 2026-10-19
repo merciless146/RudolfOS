@@ -63,6 +63,14 @@ y KEXEC_SIG KEXEC_BZIMAGE_VERIFY_SIG SIGNED_PE_FILE_VERIFICATION
 y SECURITY SECURITYFS SECURITY_LOCKDOWN_LSM SECURITY_LOCKDOWN_LSM_EARLY LOCK_DOWN_KERNEL_FORCE_NONE
 $C --set-str LSM "lockdown,landlock,yama"
 y MD BLK_DEV_DM DM_VERITY CRYPTO_SHA256 EFIVAR_FS
+# processor microcode (1.2.4): AMD's updates built into the kernel, so the start applies them before anything
+# else runs (fixes such as SRSO's "IBPB-extending microcode not applied"). UCODE_DIR: a folder holding
+# amd-ucode/ (the pinned files of firmware-extra.txt); without it the kernel has none, as before.
+y MICROCODE MICROCODE_AMD MICROCODE_INTEL
+if [ -n "$UCODE_DIR" ] && [ -d "$UCODE_DIR/amd-ucode" ]; then
+	$C --set-str EXTRA_FIRMWARE "$(cd "$UCODE_DIR" && ls amd-ucode/microcode_amd*.bin | tr '\n' ' ' | sed 's/ $//')"
+	$C --set-str EXTRA_FIRMWARE_DIR "$UCODE_DIR"
+fi
 # speed up the build
 n DEBUG_INFO DEBUG_INFO_DWARF5 DEBUG_INFO_DWARF4 DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT DEBUG_INFO_BTF KALLSYMS_ALL FTRACE
 $C --enable DEBUG_INFO_NONE

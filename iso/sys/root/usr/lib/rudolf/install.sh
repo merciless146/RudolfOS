@@ -3,20 +3,36 @@
 # Layout: the Rudolf OS image (boots on BIOS and UEFI) followed by an ext4
 # partition labelled RUDOLFDATA that keeps your files, settings and updates.
 set -e
+#   install.sh DISK [IMAGE]   IMAGE (1.2.4): a downloaded rudolf-os-*.iso to install instead of the running
+#                             drive's own image, so an older stick can install a newer, Secure Boot ready system
 DEV="$1"
 [ -b "$DEV" ] || { echo "No such disk: $DEV"; exit 2; }
 MEDIA=$(cat /etc/rudolf/media 2>/dev/null)
-case "$MEDIA" in "$DEV"|"$DEV"[0-9]*|"$DEV"p[0-9]*) echo "That is the drive Rudolf OS is running from. Choose another disk."; exit 3;; esac
+case "$MEDIA" in "$DEV"|"$DEV"[0-9]*|"$DEV"p[0-9]*) echo "That is the drive Rudolf OS is running from. Choose another disk (or use Settings > Storage and backup > Keep files on this drive)."; exit 3;; esac
+SRC=$MEDIA
+if [ -n "$2" ]; then
+	SRC=$2
+	case "$SRC" in *..*) echo "Bad file name."; exit 7;; /home/rudolf/*.iso|/home/rudolf/*.ISO) ;; *) echo "The image must be a .iso file in your home folder."; exit 7;; esac
+	[ -f "$SRC" ] || { echo "No such file: $SRC"; exit 7; }
+	# only a Rudolf OS disc image whose release list is signed with a key this Rudolf OS trusts
+	mkdir -p /mnt/instsrc; umount /mnt/instsrc 2>/dev/null
+	mount -t iso9660 -o ro,loop "$SRC" /mnt/instsrc || { echo "That file is not a disc image."; exit 7; }
+	OK=1; [ -e /mnt/instsrc/rudolf/id ] || OK=0
+	V=$(rudolf-update verify-manifest /mnt/instsrc/rudolf/manifest.txt /mnt/instsrc/rudolf/manifest.sig 2>&1) || OK=0
+	umount /mnt/instsrc
+	[ $OK = 1 ] || { echo "That file is not a Rudolf OS disc image signed by Rudolf OS ($V)."; exit 7; }
+	echo "Installing from $(basename "$SRC"): $(echo "$V" | sed -n 's/^version //p')"
+fi
 grep -q "^$DEV" /proc/mounts && { echo "$DEV is in use. Unmount its partitions first."; exit 4; }
 N=${DEV##*/}
 SECTORS=$(cat /sys/block/$N/size)
 # size of the Rudolf OS image: ISO9660 volume space size (2048-byte blocks)
-BLOCKS=$(dd if="$MEDIA" bs=2048 skip=16 count=1 2>/dev/null | dd bs=1 skip=80 count=4 2>/dev/null | od -An -tu4 | tr -d ' ')
+BLOCKS=$(dd if="$SRC" bs=2048 skip=16 count=1 2>/dev/null | dd bs=1 skip=80 count=4 2>/dev/null | od -An -tu4 | tr -d ' ')
 IMG=$((BLOCKS * 4))
 NEED=$((IMG + 1024 * 2048))
 [ "$SECTORS" -gt "$NEED" ] || { echo "The disk is too small (needs at least $((NEED / 2048)) MiB)."; exit 5; }
 echo "Step 1/4: copying Rudolf OS ($((IMG / 2048)) MiB) to $DEV ..."
-dd if="$MEDIA" of="$DEV" bs=2048 count="$BLOCKS" conv=fsync 2>&1 | tail -1
+dd if="$SRC" of="$DEV" bs=2048 count="$BLOCKS" conv=fsync 2>&1 | tail -1
 echo "Step 2/4: removing old partition tables ..."
 dd if=/dev/zero of="$DEV" bs=512 seek=$((SECTORS - 2048)) count=2048 conv=fsync 2>/dev/null
 START=$(( (IMG + 2047) / 2048 * 2048 ))

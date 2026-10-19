@@ -18,6 +18,17 @@ const TM_GPU = {'0x8086': 'Intel', '0x1002': 'AMD', '0x10de': 'NVIDIA', '0x1234'
 const tmE = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
 const tmLines = t => String(t || '').split('\n').map(x => x.trim()).filter(Boolean);
 const tmDur = s => { s = Math.max(0, s | 0); const d = s / 86400 | 0, h = s % 86400 / 3600 | 0, m = s % 3600 / 60 | 0; return (d ? d + ' d ' : '') + (d || h ? h + ' h ' : '') + m + ' min' };
+/* what draws (1.2.4): glamor's renderer on the graphics card (Xorg), and what Chromium draws pages with (WebGL) */
+let TMGL = null;
+const tmGL = () => { if (TMGL != null) return TMGL; try { const g = document.createElement('canvas').getContext('webgl'); const x = g && g.getExtension('WEBGL_debug_renderer_info');
+  TMGL = g ? String(x ? g.getParameter(x.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER)) : 'no WebGL'; } catch (e) { TMGL = 'unknown'; } return TMGL; };
+const tmSoftGL = r => /llvmpipe|swiftshader|software|softpipe/i.test(r || '');
+const tmDrawn = s => !s ? '—' : s.renderer ? 'the graphics card (' + s.renderer + ')' : /^gpu/.test(String(s.display || '')) ? 'the processor: Xorg runs without acceleration' : 'the processor (software display)';
+const tmPages = () => { const r = tmGL(); return r + (tmSoftGL(r) ? ' (the processor)' : ''); };
+/* a wired link slower than its chip (1.2.4): these drivers are for gigabit (or faster) chips; 10 or 100 Mb/s
+   usually means the cable (a 2-pair cable) or the router port */
+const TM_GIGE = /^(r8169|e1000e|igb|igc|tg3|alx|atl1c|bnx2|r8125|atlantic|ixgbe|bnxt_en|cdc_ncm|r8152|ax88179_178a)$/;
+const tmSlow = (kind, state, sp, drv) => kind == 'wired' && state == 'up' && +sp > 0 && +sp < 1000 && TM_GIGE.test(drv || '');
 const tmDisp = d => String(d || '').split('|').map(x => x.trim()).filter(Boolean).join(' · ') || 'not reported';
 function tmGpu(line) {   /* "card0 0x8086:0x46a6 i915" */
   const [card, id = '', drv = ''] = line.split(/\s+/), v = id.split(':')[0];
@@ -179,7 +190,7 @@ function taskmgr26() {
     const sv = s && s.services || {};
     B.appendChild(kv([['Runs in', !RD ? 'a web browser' : SHELL ? 'the shell (Oracle has real browser tabs)' : sv.shellFailed ? 'the plain page: the shell did not start (fallback)' : 'the plain page (real tabs are off or not ready)'],
       SHELL && ['Shell', 'version ' + SHELL_VER + ' · ' + (SHELL_CAPS.join(', ') || '—')], SHELL && ['Real tabs open', String(typeof RT != 'undefined' ? RT.size : 0)],
-      ['Display', s ? tmDisp(s.display) : '—'], ['Desktop size', innerWidth + '×' + innerHeight + ' · scale ' + devicePixelRatio]]));
+      ['Display', s ? tmDisp(s.display) : '—'], RD && ['Drawn by', tmDrawn(s)], ['Pages drawn with', tmPages()], s && s.gsp && ['NVIDIA GSP', s.gsp], ['Desktop size', innerWidth + '×' + innerHeight + ' · scale ' + devicePixelRatio]]));
     if (SHELL_LOG.length) B.appendChild(details('The shell\'s notes (' + SHELL_LOG.length + ')', SHELL_LOG));
     if (RD && s && s.services) {
       B.appendChild(h4('Services'));
@@ -217,7 +228,7 @@ function taskmgr26() {
     B.appendChild(h4('Graphics and display')); B.appendChild(kv([...tmLines(s.gpu).map(l => [l.split(' ')[0], tmGpu(l)]), ['Display', tmDisp(s.display)]]));
     if ((s.battery || []).length) { B.appendChild(h4('Battery')); B.appendChild(kv(s.battery.map(b => ['Battery', b.capacity + '%' + (b.status ? ', ' + b.status : '')]))) }
     B.appendChild(h4('Storage')); B.appendChild(kv(tmLines(s.storage).map(l => { const [d, sz, us, at] = l.split(' '); return [d + ' (' + at + ')', `${fmtB(+us)} used of ${fmtB(+sz)}`] })));
-    B.appendChild(h4('Network adapters')); B.appendChild(kv(tmLines(s.net).map(l => { const [n, state, sp, rx, tx, kind] = l.split(' '); return [n + (kind == 'wifi' ? ' (Wi-Fi)' : ' (wired)'), `${state}${sp && sp != '-' && +sp > 0 ? ', ' + sp + ' Mb/s' : ''} · received ${fmtB(+rx)}, sent ${fmtB(+tx)}`] })));
+    B.appendChild(h4('Network adapters')); B.appendChild(kv(tmLines(s.net).map(l => { const [n, state, sp, rx, tx, kind, drv] = l.split(' '); return [n + (kind == 'wifi' ? ' (Wi-Fi)' : ' (wired)'), `${state}${sp && sp != '-' && +sp > 0 ? ', ' + sp + ' Mb/s' : ''} · received ${fmtB(+rx)}, sent ${fmtB(+tx)}${tmSlow(kind, state, sp, drv) ? ' · slower than this chip can go: check the cable (use one for gigabit, Cat5e or better) or the router port' : ''}`] })));
     B.appendChild(h4('Sound')); B.appendChild(kv(tmLines(s.audio).filter(l => /^\d/.test(l)).map(l => ['Card ' + l.split(' ')[0], l.replace(/^\d+\s*/, '')])));
     B.appendChild(details('Input devices (' + tmLines(s.input).length + ')', tmLines(s.input)));
   }
@@ -272,6 +283,9 @@ async function sysReport(problem) {
     ['Secure Boot', !RD ? '—' : typeof sbSummary == 'function' ? sbSummary(sbs) : '—'],
     ['Desktop', !RD ? 'browser version' : SHELL ? 'shell ' + SHELL_VER + ' (real tabs)' : sv.shellFailed ? 'plain page (shell failed)' : 'plain page'],
     ['Display', sys ? tmDisp(sys.display) : '—'],
+    ['Drawn by', RD ? tmDrawn(sys) : 'browser'],
+    ['Pages drawn with', tmPages()],
+    ...(sys && sys.gsp ? [['NVIDIA GSP', sys.gsp.replace(/\n/g, ' / ')]] : []),
     ['Desktop size', innerWidth + 'x' + innerHeight + ' @' + devicePixelRatio],
     ['Uptime', k.uptime != null ? tmDur(k.uptime) : '—'],
     ['CPU', st ? st.cpu.toFixed(0) + '% now, load ' + (k.load || [st.load]).join(' ') : '—'],
@@ -291,7 +305,7 @@ async function sysReport(problem) {
     out.push('== Computer', 'Machine: ' + (sys.machine.trim() || '?'), 'Firmware: ' + (sys.firmware.trim() || '?'), 'Processor: ' + c.model + ', ' + c.threads + ' threads' + (c.mhz ? ', ' + c.mhz + ' MHz' : ''),
       ...tmLines(sys.gpu).map(l => 'Graphics: ' + tmGpu(l)), ...tmLines(sys.audio).filter(l => /^\d/.test(l)).map(l => 'Sound: ' + l.replace(/^\d+\s*/, '')),
       ...tmLines(sys.storage).map(l => { const [d, sz, us, at] = l.split(' '); return `Storage: ${d} ${at} ${fmtB(+us)} used of ${fmtB(+sz)}` }),
-      ...tmLines(sys.net).map(l => { const [n, s1, sp, , , kind] = l.split(' '); return `Network: ${n} ${kind} ${s1}${sp && sp != '-' && +sp > 0 ? ' ' + sp + ' Mb/s' : ''}` }),
+      ...tmLines(sys.net).map(l => { const [n, s1, sp, , , kind, drv] = l.split(' '); return `Network: ${n} ${kind} ${s1}${sp && sp != '-' && +sp > 0 ? ' ' + sp + ' Mb/s' : ''}${drv ? ' (' + drv + ')' : ''}${tmSlow(kind, s1, sp, drv) ? ' - slower than the chip: cable or port?' : ''}` }),
       'Input: ' + tmLines(sys.input).join('; '), '');
     out.push('== Kernel', 'Linux: ' + k.release + ' ' + k.machine, 'Options: ' + k.cmdline, 'Drivers: ' + tmLines(k.modules).length,
       `Memory: total ${fmtB(m.total)}, available ${fmtB(m.available)}, cached ${fmtB(m.cached)}` + (m.zramStored ? `, compressed swap ${fmtB(m.zramStored)} in ${fmtB(m.zramUsed)}` : ''), '');
