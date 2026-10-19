@@ -64,6 +64,62 @@ def fat_image(out, files, label=b'RUDOLF EFI '):
         assert len(b) <= 8 and len(e) <= 3, name
         return b.encode().ljust(8) + e.encode().ljust(3)
 
+    def is83(name):
+        b, dot, e = name.partition('.')
+        ok = lambda x, n: 0 < len(x) <= n and all(c.isalnum() or c in '_-~' for c in x)
+        return ok(b, 8) and (not dot or (ok(e, 3) and '.' not in e))
+
+    # long names (VFAT): systemd-boot reads loader/loader.conf and loader/entries/*.conf (Rudolf OS 1.2.2)
+    def lfn(name, short):
+        ck = 0
+        for c in short:
+            ck = ((ck >> 1) | ((ck & 1) << 7)) + c & 0xFF
+        u = list(name.encode('utf-16-le'))
+        chars = [u[i] | (u[i + 1] << 8) for i in range(0, len(u), 2)]
+        n = (len(chars) + 12) // 13
+        chars += [0] + [0xFFFF] * (n * 13 - len(chars) - 1) if len(chars) % 13 else []
+        out = []
+        for i in range(n, 0, -1):
+            ch = chars[(i - 1) * 13:i * 13]
+            e = struct.pack('<B5HBBB6HH2H', i | (0x40 if i == n else 0), *ch[0:5], 0x0F, 0, ck, *ch[5:11], 0, *ch[11:13])
+            out.append(e)
+        return b''.join(out)
+
+    def names(d):
+        """(name, short 8.3 bytes, long-name entries) for each entry of a directory"""
+        used, res = set(), []
+        for name in sorted(d):
+            if is83(name):
+                sn = n83(name); res.append((name, sn, b'')); used.add(sn); continue
+            b, _, e = name.upper().rpartition('.') if '.' in name else (name.upper(), '', '')
+            b = ''.join(c for c in b if c.isalnum())[:6] or 'FILE'
+            e = ''.join(c for c in e if c.isalnum())[:3]
+            for k in range(1, 100):
+                sn = (b + '~%d' % k).encode().ljust(8)[:8] + e.encode().ljust(3)
+                if sn not in used:
+                    break
+            used.add(sn); res.append((name, sn, lfn(name, sn)))
+        return res
+
+    def write_dir(d, self_cl, parent_cl):
+        ents = []
+        if self_cl is not None:
+            ents.append(entry(n83('.'), 0x10, self_cl, 0))
+            ents.append(entry(n83('..'), 0x10, parent_cl or 0, 0))
+        for name, sn, ln in names(d):
+            v = d[name]
+            if isinstance(v, dict):
+                need = (2 + sum(1 + len(x[2]) // 32 for x in names(v))) * 32
+                cl, _ = alloc(need)
+                ents.append(ln + entry(sn, 0x10, cl, 0))
+                clusters_data[cl] = write_dir(v, cl, self_cl)
+            else:
+                sz = os.path.getsize(v)
+                cl, _ = alloc(sz)
+                ents.append(ln + entry(sn, 0x20, cl, sz))
+                clusters_data[cl] = ('file', v)
+        return b''.join(ents)
+
     # build a tree
     tree = {}
     for h, p in files:
@@ -72,23 +128,6 @@ def fat_image(out, files, label=b'RUDOLF EFI '):
         for x in parts[:-1]:
             d = d.setdefault(x, {})
         d[parts[-1]] = h
-
-    def write_dir(d, self_cl, parent_cl):
-        ents = []
-        if self_cl is not None:
-            ents.append(entry(n83('.'), 0x10, self_cl, 0))
-            ents.append(entry(n83('..'), 0x10, parent_cl or 0, 0))
-        for name, v in sorted(d.items()):
-            if isinstance(v, dict):
-                cl, _ = alloc(csize)
-                ents.append(entry(n83(name), 0x10, cl, 0))
-                clusters_data[cl] = write_dir(v, cl, self_cl)
-            else:
-                sz = os.path.getsize(v)
-                cl, _ = alloc(sz)
-                ents.append(entry(n83(name), 0x20, cl, sz))
-                clusters_data[cl] = ('file', v)
-        return b''.join(ents)
 
     root = entry(label, 0x08, 0, 0) + write_dir(tree, None, None)
     assert len(root) <= rootsec * 512

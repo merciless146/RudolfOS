@@ -165,10 +165,12 @@ function taskmgr26() {
   async function drawSystem() {
     const s = await getSys(); if (tab != 'system') return; B.innerHTML = '';
     const up = typeof sysuStatus == 'function' ? await sysuStatus().catch(() => null) : null;
+    const sbs = typeof sbStatus == 'function' ? await sbStatus(true) : null;
     const rb = document.createElement('div'); rb.className = 'rmrow'; rb.style.justifyContent = 'flex-end'; rb.innerHTML = "<button class='tmrf'>Refresh</button>"; rb.querySelector('.tmrf').onclick = () => getSys(true).then(() => draw(true)); B.appendChild(rb);
     B.appendChild(h4('Rudolf OS'));
     B.appendChild(kv([['Version', RVER + ' (' + RVERDATE + ')'], up && ['Installed release', [up.version, up.serial, up.channel].filter(Boolean).join(' · ')],
       ['Started from', !RD ? 'a web browser' : s && s.kernel ? `${s.kernel.boot.toUpperCase()}, ${{cd: 'disc', usb: 'USB drive', disk: 'hard disk'}[s.kernel.media] || s.kernel.media}${s.kernel.live ? ' (live: changes are not kept)' : ''}${s.kernel.recovery ? ', recovery mode' : ''}` : '—'],
+      RD && ['Secure Boot', typeof sbSummary == 'function' ? sbSummary(sbs) : '—'],
       s && s.kernel && ['Running for', tmDur(s.kernel.uptime)], s && s.kernel && ['Load (1, 5, 15 min)', s.kernel.load.join(', ')]]));
     B.appendChild(h4('The desktop'));
     const sv = s && s.services || {};
@@ -258,11 +260,13 @@ async function sysReport(problem) {
   if (wf && typeof wf.raw == 'string') { for (const m of wf.raw.matchAll(/^\s*ssid[=:]\s*(.+)$/gim)) nets.push(m[1].trim()); for (const m of wf.raw.matchAll(/^saved=[^\t]*\t([^\t\n]+)/gm)) nets.push(m[1].trim()) }   /* wifi.sh status: the current and the saved networks */
   try { (NETC.list || NETC.known || []).forEach(n => n && typeof n.ssid == 'string' && nets.push(n.ssid)) } catch (e) {}
   const k = sys && sys.kernel || {}, m = sys && sys.memory || {}, c = sys && sys.cpu || {}, sv = sys && sys.services || {};
+  const sbs = typeof sbStatus == 'function' ? await sbStatus(true) : null;
   const yes = b => b ? 'running' : 'not running';
   const key = [
     ['Rudolf OS', RVER + ' (' + RVERDATE + ')' + (up ? ' · release ' + [up.version, up.serial, up.channel].filter(Boolean).join(' ') : '')],
     ['Created', new Date().toISOString().replace(/\.\d+Z$/, 'Z')],
     ['Started from', !RD ? 'web browser' : `${(k.boot || info && info.boot || '?').toUpperCase()}, ${k.media || info && info.media || '?'}${(k.live ?? (info && info.live)) ? ', live' : ', installed'}${k.recovery ? ', recovery' : ''}`],
+    ['Secure Boot', !RD ? '—' : typeof sbSummary == 'function' ? sbSummary(sbs) : '—'],
     ['Desktop', !RD ? 'browser version' : SHELL ? 'shell ' + SHELL_VER + ' (real tabs)' : sv.shellFailed ? 'plain page (shell failed)' : 'plain page'],
     ['Display', sys ? tmDisp(sys.display) : '—'],
     ['Desktop size', innerWidth + 'x' + innerHeight + ' @' + devicePixelRatio],

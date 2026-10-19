@@ -45,6 +45,7 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <linux/fb.h>
+#include <linux/fs.h>
 #include <zlib.h>
 
 #define WWW      "/usr/share/rudolf/www"
@@ -54,7 +55,7 @@
 
 static char token[33];
 static char boot_mode[16] = "bios", media_mode[16] = "cd";
-static int live = 1, recovery = 0;
+static int live = 1, recovery = 0, secureboot = 0;   /* secureboot: the start-up found Secure Boot on (1.2.2) */
 
 /* ------------------------------------------------------------- helpers */
 static long long now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1000LL + t.tv_nsec / 1000000; }
@@ -254,7 +255,8 @@ static const char *mime(const char *p)
 static void www_root(char *out, size_t n)
 {
 	struct stat st;
-	if (!recovery && !access(PERSIST "/os/current/index.html", R_OK) && !stat(PERSIST "/os/current/index.html", &st) && st.st_size > 100000 && access(PERSIST "/os/disabled", F_OK))
+	/* with Secure Boot on, only the checked system's own page: the data partition is not checked (1.2.2) */
+	if (!recovery && !secureboot && !access(PERSIST "/os/current/index.html", R_OK) && !stat(PERSIST "/os/current/index.html", &st) && st.st_size > 100000 && access(PERSIST "/os/disabled", F_OK))
 		snprintf(out, n, PERSIST "/os/current");
 	else snprintf(out, n, WWW);
 }
@@ -1926,6 +1928,100 @@ static void api_dl(struct req *r, const char *what, int post)
 	reply_err(r->fd, 404, "unknown download action");
 }
 
+/* ------------------------------------------------------------- Secure Boot (1.2.2) */
+/* The state of Secure Boot, and "Prepare Secure Boot": a request to shim's MokManager to enroll the Rudolf OS
+   certificate at the next start (what mokutil --import does, with the simple password hash): MokNew holds the
+   certificate as an EFI signature list, MokAuth the SHA-256 of that list followed by the one-time password in
+   UCS-2. MokManager asks for the password before it enrolls anything. */
+#define EFIV "/sys/firmware/efi/efivars"
+#define SHIMG "605dab50-e046-4300-abb6-3dd810dd8b23"
+#define SBCERT "/usr/share/rudolf/rudolf-sb.crt"
+static unsigned char *sb_cert(size_t *n)
+{
+	char *p = slurp(SBCERT, NULL); if (!p) return NULL;
+	char *b = strstr(p, "-----BEGIN CERTIFICATE-----"), *e = b ? strstr(b, "-----END CERTIFICATE-----") : NULL;
+	if (!b || !e) { free(p); return NULL; }
+	b += 27; *e = 0;
+	static const char *T = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	unsigned char *o = malloc(strlen(b)); size_t k = 0; unsigned v = 0; int bits = 0;
+	for (; *b; b++) { const char *q = strchr(T, *b); if (!q || !*b) continue; v = (v << 6) | (q - T); bits += 6; if (bits >= 8) { bits -= 8; o[k++] = v >> bits; } }
+	free(p); *n = k; return o;
+}
+static unsigned char *efivar(const char *name, size_t *n)
+{
+	char f[200]; snprintf(f, sizeof f, EFIV "/%s", name); size_t l = 0; char *d = slurp(f, &l);
+	if (!d || l < 4) { free(d); return NULL; }
+	memmove(d, d + 4, l - 4); *n = l - 4; return (unsigned char *)d;
+}
+static int sb_enrolled(void)
+{
+	size_t cn, ln; unsigned char *c = sb_cert(&cn), *l = efivar("MokListRT-" SHIMG, &ln); int r = 0;
+	if (c && l && cn > 100) r = memmem(l, ln, c, cn) != NULL;
+	free(c); free(l); return r;
+}
+static void unimmutable(const char *path)
+{
+	int f = open(path, O_RDONLY); if (f < 0) return;
+	int fl = 0; if (!ioctl(f, FS_IOC_GETFLAGS, &fl)) { fl &= ~FS_IMMUTABLE_FL; ioctl(f, FS_IOC_SETFLAGS, &fl); }
+	close(f);
+}
+static int efivar_write(const char *name, const unsigned char *d, size_t n)
+{
+	char f[200]; snprintf(f, sizeof f, EFIV "/%s", name);
+	if (!access(f, F_OK)) { unimmutable(f); unlink(f); }
+	unsigned char *b = malloc(n + 4); if (!b) return -1;
+	uint32_t at = 7; memcpy(b, &at, 4); memcpy(b + 4, d, n);   /* non-volatile, boot and run time */
+	int o = open(f, O_WRONLY | O_CREAT | O_TRUNC, 0644); int ok = o >= 0 && write(o, b, n + 4) == (ssize_t)(n + 4);
+	if (o >= 0) close(o);
+	free(b); return ok ? 0 : -1;
+}
+static void api_secureboot(struct req *r, const char *what, int post)
+{
+	int efi = !access("/sys/firmware/efi", F_OK);
+	char f[200]; snprintf(f, sizeof f, EFIV "/MokNew-" SHIMG);
+	if (!strcmp(what, "status")) {
+		str s = {0}; char *lk = slurp("/sys/kernel/security/lockdown", NULL), *uv = slurp("/etc/rudolf/unverified", NULL), *en = slurp("/etc/rudolf/boot-entry", NULL);
+		size_t sl = 0; unsigned char *fw = efi ? efivar("SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c", &sl) : NULL;
+		sadd(&s, "{\"ok\":true,\"efi\":%s,\"on\":%s,\"firmware\":%s,\"enrolled\":%s,\"pending\":%s,\"certificate\":%s", efi ? "true" : "false", secureboot ? "true" : "false",
+			fw && sl ? (fw[0] ? "true" : "false") : "null", efi && sb_enrolled() ? "true" : "false", efi && !access(f, F_OK) ? "true" : "false", access(SBCERT, R_OK) ? "false" : "true");
+		jtext(&s, "lockdown", lk); jtext(&s, "unverified", uv); jtext(&s, "entry", en);
+		free(fw); sadd(&s, "}"); reply_json(r->fd, &s); return;
+	}
+	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+	if (!efi) { reply_err(r->fd, 400, "this computer started without UEFI; Secure Boot is a UEFI feature"); return; }
+	if (!strcmp(what, "cancel")) {
+		char a[200]; snprintf(a, sizeof a, EFIV "/MokAuth-" SHIMG);
+		if (!access(f, F_OK)) { unimmutable(f); unlink(f); }
+		if (!access(a, F_OK)) { unimmutable(a); unlink(a); }
+		reply_ok(r->fd, "cancelled"); return;
+	}
+	if (!strcmp(what, "prepare")) {
+		if (sb_enrolled()) { reply_err(r->fd, 409, "the Rudolf OS key is already enrolled"); return; }
+		size_t cn; unsigned char *c = sb_cert(&cn); if (!c || cn < 100) { free(c); reply_err(r->fd, 500, "the Rudolf OS certificate is missing"); return; }
+		/* EFI_SIGNATURE_LIST: type X.509, list size, header size 0, signature size; one entry: owner (shim) + DER */
+		static const unsigned char X509[16] = {0xa1, 0x59, 0xc0, 0xa5, 0xe4, 0x94, 0xa7, 0x4a, 0x87, 0xb5, 0xab, 0x15, 0x5c, 0x2b, 0xf0, 0x72};
+		static const unsigned char OWNER[16] = {0x50, 0xab, 0x5d, 0x60, 0x46, 0xe0, 0x00, 0x43, 0xab, 0xb6, 0x3d, 0xd8, 0x10, 0xdd, 0x8b, 0x23};
+		size_t ln = 28 + 16 + cn; unsigned char *l = calloc(1, ln);
+		uint32_t ls = ln, hs = 0, ss = 16 + cn;
+		memcpy(l, X509, 16); memcpy(l + 16, &ls, 4); memcpy(l + 20, &hs, 4); memcpy(l + 24, &ss, 4); memcpy(l + 28, OWNER, 16); memcpy(l + 44, c, cn); free(c);
+		/* a one-time password of 8 digits (MokManager asks for it) */
+		unsigned char rb[8]; int rf = open("/dev/urandom", O_RDONLY); if (rf < 0 || read(rf, rb, 8) != 8) { if (rf >= 0) close(rf); free(l); reply_err(r->fd, 500, "no randomness"); return; } close(rf);
+		char pw[9]; for (int i = 0; i < 8; i++) pw[i] = '0' + rb[i] % 10; pw[8] = 0;
+		/* MokAuth = SHA-256(list || password in UCS-2), with the system's sha256sum */
+		char tf[64]; snprintf(tf, sizeof tf, RUN "/mokauth.%d", getpid());
+		int t = open(tf, O_WRONLY | O_CREAT | O_TRUNC, 0600); int ok = t >= 0 && write(t, l, ln) == (ssize_t)ln;
+		for (int i = 0; ok && i < 8; i++) { unsigned char u[2] = {(unsigned char)pw[i], 0}; ok = write(t, u, 2) == 2; }
+		if (t >= 0) close(t);
+		char cmd[120]; snprintf(cmd, sizeof cmd, "sha256sum %s", tf); char *h = ok ? run_out(cmd) : NULL; unlink(tf);
+		unsigned char auth[32]; for (int i = 0; ok && i < 32; i++) { unsigned v; if (!h || sscanf(h + 2 * i, "%2x", &v) != 1) ok = 0; else auth[i] = v; }
+		free(h);
+		if (!ok || efivar_write("MokNew-" SHIMG, l, ln) || efivar_write("MokAuth-" SHIMG, auth, 32)) { free(l); reply_err(r->fd, 500, "the request could not be stored in the firmware"); return; }
+		free(l);
+		str s = {0}; sadd(&s, "{\"ok\":true,\"password\":\"%s\"}", pw); reply_json(r->fd, &s); return;
+	}
+	reply_err(r->fd, 404, "unknown Secure Boot action");
+}
+
 /* ------------------------------------------------------------- dispatcher */
 static int restart_browser(void) { return run("pkill -f 'chrom[e].*--rudolf-kiosk' >/dev/null 2>&1"); }
 
@@ -2032,6 +2128,7 @@ static void api(struct req *r)
 	}
 	if (!strncmp(p, "idbm/", 5)) { api_idbm(r, p + 5, post); return; }
 	if (!strncmp(p, "dl/", 3)) { api_dl(r, p + 3, post); return; }
+	if (!strncmp(p, "secureboot/", 11)) { api_secureboot(r, p + 11, post); return; }
 	if (!strcmp(p, "shell") || !strncmp(p, "shell/", 6)) { api_shell(r, p + 5, post); return; }
 	if (!strcmp(p, "clipboard")) { api_clipboard(r); return; }
 	if (!strcmp(p, "web/status")) { api_web(r, "status"); return; }   /* the taskbar asks whether the browser window is open */
@@ -2338,6 +2435,7 @@ int main(int argc, char **argv)
 		free(cl);
 	}
 	if (!access("/sys/firmware/efi", F_OK)) snprintf(boot_mode, sizeof boot_mode, "uefi");
+	{ char *sb = slurp("/etc/rudolf/secureboot", NULL); secureboot = sb && sb[0] == '1'; free(sb); }
 	live = access(RUN "/persistent", F_OK) != 0;
 	int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0), one = 1;
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);

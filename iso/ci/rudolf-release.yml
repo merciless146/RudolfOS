@@ -16,25 +16,41 @@ on:
     inputs:
       promote: {description: 'Serial of a beta release to make stable (empty: build a new release)', required: false, default: ''}
       urgent: {description: 'Mark the new release urgent (exploited security hole)', type: boolean, default: false}
+      disc: {description: 'Also publish a disc image of the newest beta release as this version (for example 1.1.1); empty: no disc', required: false, default: ''}
+      disc_from: {description: 'The earlier disc image it is made from (its packages, licences and sources are kept)', required: false, default: 'disc-1.1'}
 permissions: {contents: write, pages: write}
 concurrency: {group: rudolf-release, cancel-in-progress: false}
 jobs:
   release:
     runs-on: ubuntu-24.04
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools nasm bc flex bison libelf-dev libssl-dev kmod jq python3-cryptography >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools nasm bc flex bison libelf-dev libssl-dev kmod jq python3-cryptography libx11-dev libxtst6 libxfixes3 libxrandr2 libxrandr-dev zlib1g-dev sbsigntool >/dev/null
       - name: Signing key
         env: {KEY: '${{ secrets.RPK_SIGNING_KEY }}'}
-        run: test -n "$KEY" && printf '%s\n' "$KEY" > "$RUNNER_TEMP/rpk.key" && chmod 600 "$RUNNER_TEMP/rpk.key"
+        run: |
+          test -n "$KEY" || { echo "::error title=Missing secret::Add RPK_SIGNING_KEY under Settings > Secrets and variables > Actions > Repository secrets"; exit 1; }
+          printf '%s\n' "$KEY" > "$RUNNER_TEMP/rpk.key" && chmod 600 "$RUNNER_TEMP/rpk.key"
+          # the tools read the raw 32-byte key in base64; a PEM file (openssl genpkey) is converted here,
+          # and the key must match a public key in iso/trusted-keys.txt
+          python3 iso/systools/keycheck.py "$RUNNER_TEMP/rpk.key" iso/trusted-keys.txt
+      - name: Secure Boot key (1.2.2)
+        if: inputs.promote == ''
+        env: {KEY: '${{ secrets.RUDOLF_SB_KEY }}'}
+        run: |
+          test -n "$KEY" || { echo "::error title=Missing secret::Add RUDOLF_SB_KEY (the whole rudolf-sb.key made by iso/systools/mksbkey.sh) under Settings > Secrets and variables > Actions > Repository secrets"; exit 1; }
+          printf '%s\n' "$KEY" > "$RUNNER_TEMP/sb.key" && chmod 600 "$RUNNER_TEMP/sb.key"
+          python3 iso/systools/sbkeycheck.py "$RUNNER_TEMP/sb.key" iso/boot/sb/rudolf-sb.crt
       - name: Debian 13 base for the Linux terminal (rebuilt every 4 weeks)
         if: inputs.promote == ''
         env: {GH_TOKEN: '${{ github.token }}', KEYFILE: '${{ runner.temp }}/rpk.key'}
         run: |
           B=$(gh release download debian-13 -p debian.txt -O - 2>/dev/null | sed -n 's/^built //p')
           [ -n "$B" ] && [ $(( ($(date +%s) - $(date -d "$B" +%s)) / 86400 )) -lt 28 ] && { echo "Debian base from $B is current"; exit 0; }
-          bash iso/systools/mkdebian.sh deb "$KEYFILE"
+          # as root: the image keeps Debian's own file owners (root, and 1000 for the home folder)
+          sudo -E env BASH_ENV="$BASH_ENV" bash iso/systools/mkdebian.sh deb "$KEYFILE"
           gh release view debian-13 >/dev/null 2>&1 || gh release create debian-13 --title "Debian 13 base for Rudolf OS" --notes "Downloaded by Rudolf OS when the Linux terminal is set up. Built from Debian's official minimal image; signed with the release key."
           gh release upload debian-13 deb/debian-13-rudolf.tar.xz deb/debian.txt deb/debian.txt.sig --clobber
       - name: Blitzen model list (signs a model uploaded by hand to the release "blitzen-1")
@@ -93,6 +109,7 @@ jobs:
           PREV: ${{ github.workspace }}/prev
           OUT: ${{ github.workspace }}/out
           KEYFILE: ${{ runner.temp }}/rpk.key
+          SB_KEY: ${{ runner.temp }}/sb.key
           CHROMIUM_FROM: snap
           URGENT: ${{ inputs.urgent && '1' || '' }}
         run: |
@@ -109,10 +126,41 @@ jobs:
           gh release create "r$S" out/files/$S/* --title "Rudolf OS system release $S" --notes "${{ steps.build.outputs.notes }}"
           mkdir -p "$RUNNER_TEMP/pages/beta" && cp out/channel/manifest.txt out/channel/manifest.sig "$RUNNER_TEMP/pages/beta/"
           cd "$RUNNER_TEMP/pages" && git add -A && git -c user.name=rudolf-release -c user.email=release@localhost commit -qm "beta: release $S" && git push -q origin gh-pages
+      - name: Disc image
+        if: inputs.promote == '' && inputs.disc != ''
+        env: {GH_TOKEN: '${{ github.token }}', VER: '${{ inputs.disc }}', FROM: '${{ inputs.disc_from }}'}
+        run: |
+          case "$VER" in [0-9]*.[0-9]*) ;; *) echo "::error::disc must be a version such as 1.1.1"; exit 1;; esac
+          [ "$VER" = "$(cat iso/VERSION)" ] || echo "::warning::iso/VERSION is $(cat iso/VERSION), the disc is called $VER"
+          gh release view "disc-$VER" >/dev/null 2>&1 && { echo "::error::the release disc-$VER exists already"; exit 1; }
+          # the newest beta release (the one just built, or the previous one when nothing changed)
+          (cd "$RUNNER_TEMP/pages" && git pull -q --ff-only origin gh-pages 2>/dev/null || true)
+          S=$(sed -n 's/^serial //p' "$RUNNER_TEMP/pages/beta/manifest.txt")
+          mkdir -p rel old && cp "$RUNNER_TEMP/pages/beta/manifest.txt" "$RUNNER_TEMP/pages/beta/manifest.sig" rel/ && gh release download "r$S" -D rel -p vmlinuz -p '*.sfs'
+          bash iso/systools/sb_parts_get.sh sbparts
+          gh release download "$FROM" -D old -p 'rudolf-os-*'
+          ISO=old/old.iso; ls old/*.iso >/dev/null 2>&1 && mv old/*.iso "$ISO" || cat $(ls old/*.iso.part* | sort) > "$ISO"
+          SUM=$(ls old/*.sha256 | head -1); [ "$(sha256sum < "$ISO" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$SUM")" ] || { echo "::error::$FROM: the disc image does not match its checksum"; exit 1; }
+          SB_PARTS=$PWD/sbparts SB_KEY="$RUNNER_TEMP/sb.key" bash iso/systools/mkdisc.sh "$ISO" rel "$VER" dout
+          cd dout && rm -rf tree
+          split -b 30408704 -d -a 2 "rudolf-os-$VER.iso" "rudolf-os-$VER.iso.part" && rm "rudolf-os-$VER.iso"
+          N=$(ls rudolf-os-$VER.iso.part* | wc -l)
+          printf '%s\r\n' "Rudolf OS $VER disc image, in $N parts (GitHub's limit for one file)." "" \
+            "Windows (Command Prompt, in the folder with the parts):" "  copy /b rudolf-os-$VER.iso.part* rudolf-os-$VER.iso" "  certutil -hashfile rudolf-os-$VER.iso SHA256" "" \
+            "Linux or macOS (Terminal):" "  cat rudolf-os-$VER.iso.part* > rudolf-os-$VER.iso" "  sha256sum -c rudolf-os-$VER.iso.sha256" "" \
+            "The checksum must match rudolf-os-$VER.iso.sha256. Then see README.TXT to make a bootable USB stick or DVD." > JOIN-PARTS.TXT
+          sed 's/$/\r/' ../iso/README.TXT > README.TXT
+          git -C .. archive --format=tar --prefix=rudolf-os-$VER/ HEAD desktop iso libs LICENSE README.md CHANGELOG.md | xz -9 > "rudolf-os-$VER-source.tar.xz"
+          { echo "Rudolf OS $VER: download every rudolf-os-$VER.iso.part file and the .sha256, then join them as JOIN-PARTS.TXT says."
+            echo; echo "Computers that already run Rudolf OS get these changes as an update (Settings > Update and recovery)."
+            echo; echo "## What's new"; awk -v v="$VER" '$1=="##"&&$2==v{f=1;next} /^## /{f=0} f&&/^- /' ../CHANGELOG.md; } > notes.md
+          gh release create "disc-$VER" rudolf-os-$VER.iso.part* "rudolf-os-$VER.iso.sha256" JOIN-PARTS.TXT README.TXT "rudolf-os-$VER-source.tar.xz" --title "Rudolf OS $VER" --notes-file notes.md
+          cat "rudolf-os-$VER.iso.sha256"
       - name: Keep the release lists from expiring
         if: always() && steps.seed.outcome != 'failure'
         env: {KEYFILE: '${{ runner.temp }}/rpk.key'}
         run: |
+          [ -d "$RUNNER_TEMP/pages" ] && [ -f "$KEYFILE" ] || { echo "nothing to re-sign: an earlier step did not finish"; exit 0; }
           cd "$RUNNER_TEMP/pages"; git pull -q --ff-only origin gh-pages 2>/dev/null || true
           for c in beta stable; do python3 "$GITHUB_WORKSPACE/iso/systools/refresh_manifest.py" "$c" "$KEYFILE"; done
           git add -A; git diff --cached --quiet || { git -c user.name=rudolf-release -c user.email=release@localhost commit -qm "re-sign release lists" && git push -q origin gh-pages; }

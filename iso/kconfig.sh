@@ -50,6 +50,20 @@ m CFG80211 MAC80211 IWLWIFI IWLMVM IWLDVM RTW88 RTW88_8822BE RTW88_8822CE RTW88_
 y FW_LOADER
 # power, ACPI
 y ACPI ACPI_BATTERY ACPI_AC ACPI_BUTTON ACPI_VIDEO ACPI_FAN ACPI_THERMAL BACKLIGHT_CLASS_DEVICE SUSPEND CPU_FREQ X86_INTEL_PSTATE X86_AMD_PSTATE RTC_DRV_CMOS HWMON SENSORS_CORETEMP SENSORS_K10TEMP
+# Secure Boot (1.2.2): modules are signed at build time with a key made for that build only (and thrown away),
+# and unsigned ones are refused; kexec starts only kernels signed with the Rudolf OS Secure Boot key, which is
+# built in as a trusted key (SB_CERT: iso/boot/sb/rudolf-sb.crt, or a test certificate for local builds); with
+# Secure Boot on the start-up locks the kernel down (integrity, see initramfs/init); dm-verity checks the system layers as they are read;
+# efivarfs lets the start-up read the boot menu's choice and the Secure Boot state
+y MODULE_SIG MODULE_SIG_FORCE MODULE_SIG_ALL MODULE_SIG_SHA256
+$C --set-str MODULE_SIG_HASH sha256
+$C --set-str MODULE_SIG_KEY "certs/signing_key.pem"
+y SYSTEM_TRUSTED_KEYRING SECONDARY_TRUSTED_KEYRING
+$C --set-str SYSTEM_TRUSTED_KEYS "${SB_CERT:?SB_CERT: the Secure Boot certificate (PEM)}"
+y KEXEC_SIG KEXEC_BZIMAGE_VERIFY_SIG SIGNED_PE_FILE_VERIFICATION
+y SECURITY SECURITYFS SECURITY_LOCKDOWN_LSM SECURITY_LOCKDOWN_LSM_EARLY LOCK_DOWN_KERNEL_FORCE_NONE
+$C --set-str LSM "lockdown,landlock,yama"
+y MD BLK_DEV_DM DM_VERITY CRYPTO_SHA256 EFIVAR_FS
 # speed up the build
 n DEBUG_INFO DEBUG_INFO_DWARF5 DEBUG_INFO_DWARF4 DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT DEBUG_INFO_BTF KALLSYMS_ALL FTRACE
 $C --enable DEBUG_INFO_NONE

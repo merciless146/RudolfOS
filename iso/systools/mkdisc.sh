@@ -5,7 +5,8 @@
 # Used by the release workflow (input "disc"). GPL-2.0-or-later.
 #
 #   mkdisc.sh OLD.iso RELEASE-DIR VERSION OUT-DIR
-# RELEASE-DIR holds manifest.txt and vmlinuz, base.sfs, chromium.sfs, desktop.sfs, modules.sfs.
+# RELEASE-DIR holds manifest.txt, manifest.sig and vmlinuz, base.sfs, chromium.sfs, desktop.sfs, modules.sfs.
+# SB_PARTS, SB_KEY (and SB_CERT, SBSIGN): the Secure Boot parts and signing key (systools/mkefi.sh).
 # Writes OUT-DIR/rudolf-os-VERSION.iso and its .sha256.
 set -e
 OLD=$1; REL=$2; VER=$3; OUT=$4
@@ -17,7 +18,14 @@ for f in vmlinuz base.sfs chromium.sfs desktop.sfs modules.sfs; do [ -f "$REL/$f
 echo "== kernel and system layers from release $(sed -n 's/^serial //p' "$REL/manifest.txt")"
 cp "$REL/vmlinuz" "$T/BOOT/VMLINUZ"
 for n in base chromium desktop modules; do cp "$REL/$n.sfs" "$T/RUDOLF/${n^^}.SFS"; done
-python3 "$HERE/mkimage.py" fat "$T/EFI/EFIBOOT.IMG" "$REL/vmlinuz:EFI/BOOT/BOOTX64.EFI"
+# the UEFI boot image with shim, the menu and the signed kernel bundle (Secure Boot, 1.2.2): SB_PARTS (the files
+# of the draft release sb-parts) and SB_KEY are needed, see systools/mkefi.sh
+bash "$HERE/systools/mkefi.sh" "$REL/vmlinuz" "$VER" "${SB_PARTS:?SB_PARTS: the folder with the Secure Boot parts}" "$T/EFI/EFIBOOT.IMG"
+nasm -f bin -o "$T/BOOT/RBOOT.BIN" "$HERE/boot/rboot.asm"
+# the signed release list of these layers: the start-up checks every block against its hashes
+[ -f "$REL/manifest.sig" ] || { echo "$REL/manifest.sig is missing (the start-up needs the signed release list)"; exit 1; }
+cp "$REL/manifest.txt" "$T/RUDOLF/MANIFEST.TXT"; cp "$REL/manifest.sig" "$T/RUDOLF/MANIFEST.SIG"
+[ -d "$SB_PARTS/licences" ] && for f in "$SB_PARTS"/licences/*.copyright; do case $(basename "$f") in shim*) n=SHIM;; systemd*) n=SDBOOT;; *) continue;; esac; sed 's/$/\r/' "$f" > "$T/LICENSES/$n.TXT"; done
 m() { sed -n "s/^$1 //p" "$REL/manifest.txt"; }
 # which release this disc is (updates must be newer); the ID stays the one the kernel's start-up looks for
 printf 'serial %s\nversion %s\nreleased %s\nchromium %s\nkernel %s\nnotes %s\n' "$(m serial)" "$VER" "$(m released)" "$(m chromium)" "$(m kernel)" "$VER disc release" > "$T/RUDOLF/RELEASE"

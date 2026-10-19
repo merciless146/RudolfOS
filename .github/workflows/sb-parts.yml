@@ -1,0 +1,32 @@
+# Secure Boot parts (Rudolf OS 1.2.2): Ubuntu's Microsoft-signed shim and MokManager, systemd-boot and the
+# kernel-bundle stub, and (for tests) OVMF with Secure Boot and sbsign, kept in the draft release "sb-parts".
+# Disc builds take the shipped parts from there and check them against iso/boot/sb/parts.txt.
+#   Weekly: only looks; a newer shim or menu than the pinned one gives a warning (Microsoft revokes old shims,
+#           and a disc with a revoked one no longer starts with Secure Boot on).
+#   Run workflow: stores the newest parts in sb-parts. Then put their hashes (sb-parts.txt in that release)
+#           into iso/boot/sb/parts.txt, test, and make a new disc.
+name: Secure Boot parts
+on:
+  schedule: [{cron: '41 5 * * 1'}]
+  workflow_dispatch:
+permissions: {contents: write}
+jobs:
+  fetch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Fetch
+        run: sudo apt-get update -qq && bash iso/systools/sb_fetch.sh parts
+      - name: Compare with the pinned parts
+        run: |
+          for f in shimx64.efi mmx64.efi systemd-bootx64.efi linuxx64.efi.stub; do
+            new=$(grep " $f\$" parts/sb-parts.txt | cut -d' ' -f1); pin=$(grep " $f\$" iso/boot/sb/parts.txt | cut -d' ' -f1)
+            [ "$new" = "$pin" ] || echo "::warning title=Secure Boot parts::$f: Ubuntu has a newer one ($(head -4 parts/sb-parts.txt | tr '\n' ' ')). Run this workflow by hand to store it, then update iso/boot/sb/parts.txt."
+          done
+      - name: Keep them in the draft release sb-parts
+        if: github.event_name == 'workflow_dispatch'
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          gh release view sb-parts >/dev/null 2>&1 || gh release create sb-parts --draft --title "Secure Boot parts" --notes "Fetched by the workflow Secure Boot parts from Ubuntu 24.04 packages. Not a Rudolf OS release."
+          (cd parts && tar -czf licences.tar.gz licences)
+          gh release upload sb-parts parts/*.efi parts/*.stub parts/*.fd parts/sbsign parts/sbverify parts/sb-parts.txt parts/licences.tar.gz --clobber

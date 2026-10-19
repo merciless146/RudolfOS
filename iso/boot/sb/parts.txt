@@ -1,0 +1,8 @@
+# The Secure Boot parts a Rudolf OS disc ships (Rudolf OS 1.2.2), from Ubuntu 24.04's packages, kept in the
+# draft release "sb-parts" by the workflow "Secure Boot parts". The disc build refuses any other file.
+# shim-signed 1.58+15.8-0ubuntu1, systemd-boot-efi 255.4-1ubuntu8.18. To take a newer shim (for example when
+# Microsoft revokes this one), run that workflow and put the new hashes here.
+6fe6e1bcbe6cf6baec8e056d40361ca1aa715cc04ddcc2855351de060b84350b  shimx64.efi
+d2fa8e52fddc99dad94a0009fee23cb2478c28373b777d50b2f784eb4e96f88e  mmx64.efi
+7249f158361155d814533d6771aa9734ae7a5041fd4bfbc5990479baf9571a22  systemd-bootx64.efi
+799551ebda600e8358612a1d15805df5311210243a6ee69178aa27ff0a195d4e  linuxx64.efi.stub

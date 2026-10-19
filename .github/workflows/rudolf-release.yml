@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools nasm bc flex bison libelf-dev libssl-dev kmod jq python3-cryptography libx11-dev libxtst6 libxfixes3 libxrandr2 libxrandr-dev zlib1g-dev >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools nasm bc flex bison libelf-dev libssl-dev kmod jq python3-cryptography libx11-dev libxtst6 libxfixes3 libxrandr2 libxrandr-dev zlib1g-dev sbsigntool >/dev/null
       - name: Signing key
         env: {KEY: '${{ secrets.RPK_SIGNING_KEY }}'}
         run: |
@@ -36,6 +36,13 @@ jobs:
           # the tools read the raw 32-byte key in base64; a PEM file (openssl genpkey) is converted here,
           # and the key must match a public key in iso/trusted-keys.txt
           python3 iso/systools/keycheck.py "$RUNNER_TEMP/rpk.key" iso/trusted-keys.txt
+      - name: Secure Boot key (1.2.2)
+        if: inputs.promote == ''
+        env: {KEY: '${{ secrets.RUDOLF_SB_KEY }}'}
+        run: |
+          test -n "$KEY" || { echo "::error title=Missing secret::Add RUDOLF_SB_KEY (the whole rudolf-sb.key made by iso/systools/mksbkey.sh) under Settings > Secrets and variables > Actions > Repository secrets"; exit 1; }
+          printf '%s\n' "$KEY" > "$RUNNER_TEMP/sb.key" && chmod 600 "$RUNNER_TEMP/sb.key"
+          python3 iso/systools/sbkeycheck.py "$RUNNER_TEMP/sb.key" iso/boot/sb/rudolf-sb.crt
       - name: Debian 13 base for the Linux terminal (rebuilt every 4 weeks)
         if: inputs.promote == ''
         env: {GH_TOKEN: '${{ github.token }}', KEYFILE: '${{ runner.temp }}/rpk.key'}
@@ -102,6 +109,7 @@ jobs:
           PREV: ${{ github.workspace }}/prev
           OUT: ${{ github.workspace }}/out
           KEYFILE: ${{ runner.temp }}/rpk.key
+          SB_KEY: ${{ runner.temp }}/sb.key
           CHROMIUM_FROM: snap
           URGENT: ${{ inputs.urgent && '1' || '' }}
         run: |
@@ -128,11 +136,12 @@ jobs:
           # the newest beta release (the one just built, or the previous one when nothing changed)
           (cd "$RUNNER_TEMP/pages" && git pull -q --ff-only origin gh-pages 2>/dev/null || true)
           S=$(sed -n 's/^serial //p' "$RUNNER_TEMP/pages/beta/manifest.txt")
-          mkdir -p rel old && cp "$RUNNER_TEMP/pages/beta/manifest.txt" rel/ && gh release download "r$S" -D rel -p vmlinuz -p '*.sfs'
+          mkdir -p rel old && cp "$RUNNER_TEMP/pages/beta/manifest.txt" "$RUNNER_TEMP/pages/beta/manifest.sig" rel/ && gh release download "r$S" -D rel -p vmlinuz -p '*.sfs'
+          bash iso/systools/sb_parts_get.sh sbparts
           gh release download "$FROM" -D old -p 'rudolf-os-*'
           ISO=old/old.iso; ls old/*.iso >/dev/null 2>&1 && mv old/*.iso "$ISO" || cat $(ls old/*.iso.part* | sort) > "$ISO"
           SUM=$(ls old/*.sha256 | head -1); [ "$(sha256sum < "$ISO" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$SUM")" ] || { echo "::error::$FROM: the disc image does not match its checksum"; exit 1; }
-          bash iso/systools/mkdisc.sh "$ISO" rel "$VER" dout
+          SB_PARTS=$PWD/sbparts SB_KEY="$RUNNER_TEMP/sb.key" bash iso/systools/mkdisc.sh "$ISO" rel "$VER" dout
           cd dout && rm -rf tree
           split -b 30408704 -d -a 2 "rudolf-os-$VER.iso" "rudolf-os-$VER.iso.part" && rm "rudolf-os-$VER.iso"
           N=$(ls rudolf-os-$VER.iso.part* | wc -l)

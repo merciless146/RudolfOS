@@ -40,11 +40,17 @@ A new version (iso/VERSION and a new section at the top of CHANGELOG.md): Run wo
    it to `/etc/rudolf/rpk-keys`). Add the secret value (or the whole PEM file; the workflows convert it and
    check it against `iso/trusted-keys.txt`) as the repository secret `RPK_SIGNING_KEY`
    (Settings > Secrets and variables > Actions).
-3. Settings > Pages: deploy from the `gh-pages` branch, folder `/ (root)`. The stable address is then
+3. Secure Boot key (Rudolf OS 1.2.2 and later), on your own computer, in a folder outside the repository:
+   `sh iso/systools/mksbkey.sh` (OpenSSL; Git Bash on Windows). Put the whole of `rudolf-sb.key` into the
+   repository secret `RUDOLF_SB_KEY` and commit `rudolf-sb.crt` as `iso/boot/sb/rudolf-sb.crt`. The build
+   checks the secret against that certificate (`systools/sbkeycheck.py`), signs the boot menu and the kernel
+   with it, and puts the certificate on the disc for people to enroll. Keep `rudolf-sb.key` offline and
+   backed up: losing it means every computer must enroll a new key.
+4. Settings > Pages: deploy from the `gh-pages` branch, folder `/ (root)`. The stable address is then
    `https://OWNER.github.io/REPO/stable`.
-4. Build the disc image with that address and a serial:
+5. Build the disc image with that address and a serial:
    `UPDATE_URL=https://OWNER.github.io/REPO/stable SERIAL=$(date -u +%Y%m%d%H) ./build_iso.sh`
-5. Create a GitHub release with the tag `disc-1.1` and attach the disc image (`rudolf-os-1.1.iso`, or its
+6. Create a GitHub release with the tag `disc-1.1` and attach the disc image (`rudolf-os-1.1.iso`, or its
    `.partNN` pieces, plus `rudolf-os-1.1.iso.sha256`).
 6. Actions > Rudolf OS release > Run workflow (promote empty). The first run finds the channels empty, takes
    the system out of the disc image, signs it as release `r<serial>` and publishes it to both `beta` and
