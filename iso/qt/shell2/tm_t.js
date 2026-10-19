@@ -42,6 +42,8 @@ const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 
   // --- System and Hardware
   await tabTo('system');
   ok('System shows Rudolf OS, the desktop\'s host, services and the kernel', await until(`['Started from','the shell (Oracle has real browser tabs)','Services','Kernel','Linux','Kernel warnings'].every(k=>__T.body.textContent.includes(k))`, 10000), await ev(`__T.body.textContent.slice(0,300)`));
+  ok('System shows the installed release (1.2.3)', await until(`__T.body.textContent.includes('1.2.2.261019 · serial 2026101902 · stable channel · slot a (trial start)')`, 5000), await ev(`(__T.body.textContent.match(/Installed release.{0,90}/)||[''])[0]`));
+  ok('PDF text keeps dashes, quotes and table columns (1.2.3)', await ev(`pdfEsc('Version\\t1.2.2 \\u2014 \\u201cok\\u201d \\u2192 x \\u00b7 1920\\u00d71080')==='Version   1.2.2 \\x97 \\x93ok\\x94 -> x \\xb7 1920\\xd71080'`), await ev(`JSON.stringify(pdfEsc('Version\\t1.2.2 \\u2014 \\u201cok\\u201d'))`));
   await tabTo('hw');
   ok('Hardware shows the processor, storage and network adapters', await until(`['Processor','Xeon','Storage','Network adapters'].every(k=>__T.body.textContent.includes(k))`, 10000), await ev(`__T.body.textContent.slice(0,300)`));
   // --- the system report
@@ -49,7 +51,7 @@ const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 
   const rep = await ev(`sysReport('Sound stops after sleep').then(r=>JSON.stringify(r))`);
   const r = JSON.parse(rep);
   console.log(r.text.split('\n').slice(0, 24).join('\n'));
-  ok('the report has the computer\'s status at that moment', ['Problem: Sound stops after sleep', '== Status', 'Rudolf OS: ', 'Started from: ', 'Desktop: shell', 'Display: ', 'Memory: ', 'CPU: ', 'Services: ', '== Computer', '== Kernel', '== Processes'].every(k => r.text.includes(k)), r.summary);
+  ok('the report has the computer\'s status at that moment', ['Problem: Sound stops after sleep', '== Status', 'Rudolf OS: ', 'release 1.2.2.261019 · serial 2026101902', 'Started from: ', 'Desktop: shell', 'Display: ', 'Memory: ', 'CPU: ', 'Services: ', '== Computer', '== Kernel', '== Processes'].every(k => r.text.includes(k)), r.summary);
   ok('...without network or e-mail addresses', !/10\.1\.2\.3|aa:bb:cc|alice@example/.test(r.text) && r.text.includes('x.x.x.x'));
   const url = await ev(`sysReportUrl(${rep},'Sound stops',false)`);
   const U = new URL(url);

@@ -50,7 +50,7 @@ SB_CERT=$(realpath "${SB_CERT:-boot/sb/rudolf-sb.crt}"); export SB_CERT
 [ -n "$SB_KEY" ] && [ -f "$SB_KEY" ] || { echo "SB_KEY: the Secure Boot signing key is needed"; exit 1; }
 python3 systools/sbkeycheck.py "$SB_KEY" "$SB_CERT"
 SBSIGN=${SBSIGN:-sbsign}
-KSRC=$(cat kconfig.sh initramfs.list initramfs/init initramfs/etc/rudolf-id sys/rudolf-kexec.c sys/rudolf-verity.c trusted-keys.txt "$SB_CERT" ${RUDOLF_TEST_KEYS:+"$RUDOLF_TEST_KEYS"} | sha256sum | cut -c1-16)
+KSRC=$(cat kconfig.sh firmware-extra.txt systools/fwextra.py initramfs.list initramfs/init initramfs/etc/rudolf-id sys/rudolf-kexec.c sys/rudolf-verity.c trusted-keys.txt "$SB_CERT" ${RUDOLF_TEST_KEYS:+"$RUDOLF_TEST_KEYS"} | sha256sum | cut -c1-16)
 PKSRC=$(unsquashfs -cat "$PREV/modules.sfs" "usr/lib/modules/$KV/rudolf-ksrc" 2>/dev/null || true)
 [ -n "$KERNEL_VERSION" ] || KERNEL_VERSION=${KV%-rudolf}
 if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
@@ -71,6 +71,17 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 	[ -s "$W/mods/lib/modules/$KR/modules.dep.bb" ] || { echo "no module index"; exit 1; }
 	echo "$KSRC" > "$W/mods/lib/modules/$KR/rudolf-ksrc"
 	mkdir -p "$W/ms/usr/lib"; cp -a "$W/mods/lib/modules" "$W/ms/usr/lib/"
+	# firmware the drivers of this kernel need that the base layer lacks (1.2.3: NVIDIA GSP, Realtek Ethernet),
+	# pinned by firmware-extra.txt. LINUX_FIRMWARE: a linux-firmware checkout to take it from (local test builds).
+	FW=$LINUX_FIRMWARE
+	if [ -z "$FW" ]; then
+		FW=$W/linux-firmware
+		for u in https://gitlab.com/kernel-firmware/linux-firmware.git https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git; do
+			rm -rf "$FW"; git clone -q --depth 1 --filter=blob:none --no-checkout "$u" "$FW" || continue
+			git -C "$FW" sparse-checkout set --no-cone /WHENCE '/rtl_nic/' '/nvidia/*/gsp/*-570.144.bin' && git -C "$FW" checkout -q && break
+		done
+	fi
+	python3 systools/fwextra.py copy firmware-extra.txt "$FW" "$W/ms/usr/lib/firmware"
 	$MK "$W/ms" "$W/new/modules.sfs" $SQ
 	# signed with the Rudolf OS Secure Boot key: the disc's boot menu starts it (inside the kernel bundle), and a
 	# Rudolf OS kernel under Secure Boot hands over (kexec) only to a kernel with this signature
@@ -81,7 +92,7 @@ fi
 # ---- base: the system programs and sys/root
 # the Secure Boot certificate, for Settings > Security > Prepare Secure Boot (rudolfd enrolls it through MokManager)
 mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/rudolf-sb.crt
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolfd.c sys/rudolf-update.c sys/cdp-eval.c trusted-keys.txt VERSION; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolfd.c sys/rudolf-update.c sys/cdp-eval.c trusted-keys.txt systools/addnvk.sh VERSION; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -97,6 +108,8 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		sudo install -m 0755 "$B/$b" "$W/broot/usr/bin/$b"
 	done
 	sudo cp -a sys/root/. "$W/broot/"
+	# NVK and the Vulkan loader: OpenGL on GeForce 20 series and newer (Zink on NVK) (1.2.3)
+	systools/addnvk.sh "$W/broot"
 	sudo mkdir -p "$W/broot/etc/rudolf"; sudo cp trusted-keys.txt "$W/broot/etc/rudolf/rpk-keys"
 	sudo cp VERSION "$W/broot/usr/share/rudolf/VERSION"
 	echo "$BSRC" | sudo tee "$W/broot/usr/share/rudolf/base-src" >/dev/null

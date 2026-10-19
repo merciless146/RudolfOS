@@ -58,6 +58,8 @@ class H(http.server.BaseHTTPRequestHandler):
             try: rs=UR.urlopen(rq,timeout=20);return s.send(rs.status,'application/json',rs.read())
             except UE.HTTPError as e: return s.send(e.code,'application/json',e.read())
             except Exception as e: return s.j({'ok':False,'error':str(e)},502)
+        # rudolf-update status (1.2.3): a release running in slot a on a trial start
+        if a=='sys/status': return s.j({'ok':True,'persistent':True,'booted':'a','trying':True,'current':{'serial':2026101902,'version':'1.2.2.261019','chromium':'','kernel':'6.18.57-rudolf','released':'','notes':''},'state':{'good':'disc','prev':'','next':'a','tries':1,'failed':''},'slots':{'a':{'complete':True,'serial':2026101902,'version':'1.2.2.261019','released':''},'b':{'complete':False,'serial':0,'version':'','released':''}},'url':'https://merciless146.github.io/RudolfOS/os/stable','auto':False,'checked':0,'available':None})
         if a=='clipboard': return s.j({'ok':True,'text':'text from the X clipboard'})
         return s.j({'ok':True,'events':'','items':[],'disks':[],'usb':[],'drives':[],'inputs':[]})
     def fwd(s,post,body):
