@@ -38,10 +38,15 @@ def guest(vm):
     return g
 
 
-def wait_shell(g, t=900):
+def wait_shell(g, t=900, delay=45):
+    # the firmware also reads the serial line: nothing may be typed there before Linux runs (a key would open
+    # the firmware's setup), so the first try comes after the firmware and the boot menu
+    time.sleep(delay)
     end = time.time() + t
     while time.time() < end:
-        if 'ready' in g.sh('echo ready', 8): return True
+        try:
+            if 'ready' in g.sh('echo ready', 8): return True
+        except OSError: pass
         time.sleep(4)
     return False
 
@@ -52,6 +57,21 @@ def wait_desktop(g, t=600):
         r = g.js('typeof RVER=="string"&&!!document.body&&RVER', 20)
         if isinstance(r, str): return True
         time.sleep(5)
+    return False
+
+
+def wait_blue(vm, tag, t=240):
+    """wait until shim's or MokManager's blue screen shows (its frame is dark blue around the middle)"""
+    from PIL import Image
+    end = time.time() + t
+    while time.time() < end:
+        f = vm.shot(tag)
+        try:
+            im = Image.open(f).convert('RGB'); w, h = im.size
+            px = [im.getpixel((int(w * x), int(h * y))) for x, y in ((0.25, 0.3), (0.75, 0.7), (0.3, 0.75))]
+            if all(b > 120 and r < 40 and g < 40 for r, g, b in px): return True
+        except Exception: pass
+        time.sleep(1)
     return False
 
 
@@ -68,7 +88,7 @@ def reboot(g):
 
 # ---------------------------------------------------------------- A: enrolment
 vm = sbvm.VM('sbA', PARTS, [ISO, persist, TD])
-time.sleep(25); f = vm.shot('shim')
+ok('A: shim refuses the unenrolled boot menu (Verification failed)', wait_blue(vm, 'shim'))
 # shim: "Verification failed" -> OK -> MokManager: press a key -> Enroll key from disk
 keys(vm, 'ret', 2.5, 'spc', 2.5); vm.shot('mok')
 keys(vm, 'down', 'ret', 2); vm.shot('volumes')          # the disc's UEFI image is the only volume
@@ -95,8 +115,17 @@ st = g.js("rd('secureboot/status').then(s=>JSON.stringify(s))")
 s = json.loads(st) if isinstance(st, str) and st.startswith('{') else {}
 ok('B: rudolfd reports Secure Boot on, the key enrolled, the lockdown', s.get('on') is True and s.get('enrolled') is True and 'integrity' in s.get('lockdown', ''), st)
 ok('B: Task Manager says so', 'on, kernel locked down' in str(g.js("sbStatus(true).then(sbSummary)")), g.js("sbStatus(true).then(sbSummary)"))
-ok('B: Settings > Security says so', str(g.js("(async()=>{const c=document.createElement('div');secPanelS(c,{});await new Promise(r=>setTimeout(r,3000));return c.querySelector('.sb28 .sbt').textContent})()", 30)).startswith('On.'))
-rep = g.js("sysReport().then(r=>r.text||r)", 90)
+# the desktop moves into the shell once after its first start (Chromium restarts): wait for it again
+time.sleep(20); wait_desktop(g)
+def js2(e, t=60):
+    for _ in range(3):
+        r = g.js(e, t)
+        if not (isinstance(r, tuple) and r[0] == 'ERR'): return r
+        time.sleep(15); wait_desktop(g)
+    return r
+st = js2("(async()=>{const W=win('Security','x',600,500);secPanelS(W.body,W);await new Promise(r=>setTimeout(r,4000));const t=W.body.querySelector('.sb28 .sbt');W.close();return t?t.textContent:'no section'})()")
+ok('B: Settings > Security says so', str(st).startswith('On.'), st)
+rep = js2("sysReport().then(r=>typeof r=='string'?r:(r.text||JSON.stringify(r)))", 90)
 ok('B: the system report has a Secure Boot line', 'Secure Boot: on' in str(rep), str(rep)[:200])
 sh("mkdir -p /persist/os/current && (echo '<!-- planted -->'; head -c 120000 /dev/zero | tr '\\0' x) > /persist/os/current/index.html")
 page = sh('(command -v curl >/dev/null && curl -s http://127.0.0.1:8080/ || wget -qO- http://127.0.0.1:8080/) | head -c 2000')
@@ -132,7 +161,8 @@ wait_desktop(g)
 pw = g.js("rdPost('secureboot/prepare').then(r=>r.password,e=>'ERR '+e.message)", 60)
 ok('E: Prepare Secure Boot stores the request and gives a one-time password', isinstance(pw, str) and pw.isdigit() and len(pw) == 8, pw)
 ok('E: ...and the request is waiting', json.loads(g.js("rd('secureboot/status').then(s=>JSON.stringify(s))")).get('pending') is True)
-reboot(g); time.sleep(20); vm.shot('mok-request')
+reboot(g)
+ok('E: at the next start MokManager offers the request', wait_blue(vm, 'mok-request'))
 keys(vm, 'spc', 2.5); vm.shot('mok-menu')                # Press any key -> Continue boot / Enroll MOK / ...
 keys(vm, 'down', 'ret', 2); vm.shot('mok-enroll')        # Enroll MOK -> View key 0 / Continue
 keys(vm, 'down', 'ret', 2)                               # Continue -> No / Yes
@@ -148,7 +178,7 @@ vm.stop()
 
 # ---------------------------------------------------------------- F: Secure Boot off
 vm = sbvm.VM('sbF', PARTS, [ISO, persist, TD], secure=False)
-g = guest(vm)
+g = guest(vm); time.sleep(30); vm.shot('start')
 ok('F: with Secure Boot off (no keys), Rudolf OS starts through the same chain', wait_shell(g))
 sh = lambda c, t=30: g.sh(c, t).strip()
 ok('F: the start-up saw Secure Boot off, no lockdown', sh('cat /etc/rudolf/secureboot') == '0' and '[none]' in (sh('cat /sys/kernel/security/lockdown 2>/dev/null') or '[none]'))
