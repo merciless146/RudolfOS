@@ -72,28 +72,31 @@ try:
         t = line.split()
         if t and t[0] == 'F': want[t[2]] = t[1]
     pick = ['nvidia/ga102/gsp/gsp-570.144.bin', 'nvidia/tu102/gsp/gsp-570.144.bin', 'rtl_nic/rtl8168h-2.fw']
-    got = sh('cd /usr/lib/firmware && sha256sum ' + ' '.join(pick), 180)
-    ok('the GSP and Ethernet firmware is there, as pinned', all(want[p] + '  ' + p in got for p in pick), got)
-    links = sh('cd /usr/lib/firmware/nvidia && for f in ga104/gsp/gsp-570.144.bin ga104/gsp/booter_load-570.144.bin ad104/gsp/gsp-570.144.bin tu104/gsp/bootloader-570.144.bin gb203/gsp/fmc-570.144.bin; do [ -r $f ] && echo ok $f || echo missing $f; done')
-    ok('...other chips find it through the links (with the base layer\'s booter files)', 'missing' not in links and links.count('ok') == 5, links)
-    ok('the modules layer is checked by dm-verity', 'rudolf-modules' in sh('ls /dev/mapper; dmsetup ls 2>/dev/null'), sh('ls /dev/mapper'))
-    # ---- start-up options and the medium
+    # (short commands: the serial shell's echo of a long line wraps and garbles the answer)
+    got = {p: sh('sha256sum /usr/lib/firmware/' + p, 180).split(' ')[0] for p in pick}
+    ok('the GSP and Ethernet firmware is there, as pinned', all(got[p] == want[p] for p in pick), got)
+    lk = {f: sh(f'[ -r /usr/lib/firmware/nvidia/{f} ] && echo yes || echo no') for f in
+          ('ga104/gsp/gsp-570.144.bin', 'ga104/gsp/booter_load-570.144.bin', 'ad104/gsp/gsp-570.144.bin', 'tu104/gsp/bootloader-570.144.bin', 'gb203/gsp/fmc-570.144.bin')}
+    ok('...other chips find it through the links (with the base layer\'s booter files)', all(v.endswith('yes') for v in lk.values()), lk)
+    dm = sh('for d in /sys/block/dm-*; do cat $d/dm/name; done')
+    ok('the modules layer is checked by dm-verity', 'rudolf-modules' in dm, dm)
     cl = sh('cat /proc/cmdline').split()
     ok('each start-up option once', len(cl) == len(set(cl)), ' '.join(cl))
-    ok('rudolfd knows it is a USB stick', '"media":"usb"' in sh('cat /etc/rudolf/media; wget -qO- http://127.0.0.1:8080/api/info 2>/dev/null | head -c 600; grep -o \'"media":"[a-z]*"\' /run/rudolf/rudolfd.log | head -1'), sh('cat /etc/rudolf/media'))
+    ok('the system started from /dev/sd* (the USB stick)', sh('cat /etc/rudolf/media').startswith('/dev/sd'), sh('cat /etc/rudolf/media'))
     ok('the desktop is 1.2.3', wait_desktop(g) and js('RVER') == '1.2.3', js('RVER'))
-    ok('Task Manager: started from a USB drive', 'USB drive' in str(js("rd('info').then(i=>i.media)")) or js("rd('info').then(i=>i.media)") == 'usb', js("rd('info').then(i=>i.media)"))
+    ok('rudolfd and Task Manager: started from a USB drive', js("rd('info').then(i=>i.media)") == 'usb', js("rd('info').then(i=>i.media)"))
     rel = js("sysuStatus().then(s=>tmRel(s))")
     ok('Task Manager: the installed release (from the disc)', isinstance(rel, str) and rel.startswith('1.2.3.') and 'from the disc' in rel, rel)
     rep = str(js("sysReport().then(r=>typeof r=='string'?r:r.text)", 90))
     line = next((l for l in rep.split('\n') if l.startswith('Started from')), '')
     ok('the system report: USB drive, release', 'usb' in line and 'release 1.2.3.' in rep, line + ' | ' + next((l for l in rep.split('\n') if l.startswith('Rudolf OS:')), ''))
     # ---- an update slot (the same release, as a trial start): kexec with the options of this start
-    sh('S=/persist/os/system; mkdir -p $S/a && cp /live/media/boot/vmlinuz $S/a/vmlinuz 2>/dev/null || cp /live/media/BOOT/VMLINUZ $S/a/vmlinuz; '
-       'cp /live/media/rudolf/manifest.txt $S/a/manifest.txt; cp /live/media/rudolf/manifest.sig $S/a/manifest.sig; '
-       'cp /live/media/rudolf/release $S/a/RELEASE; echo 1 > $S/a/complete; '
-       'printf "good=disc\\nprev=\\nnext=a\\ntries=2\\nfailed=\\n" > $S/state; sync; ls -la $S/a', 120)
-    g.s.write(b'sync; reboot -f\n'); time.sleep(5)
+    for c in ('mkdir -p /persist/os/system/a', 'cd /persist/os/system/a', 'cp /live/media/boot/vmlinuz vmlinuz',
+              'cp /live/media/rudolf/manifest.txt /live/media/rudolf/manifest.sig .', 'cp /live/media/rudolf/release RELEASE',
+              'echo 1 > complete', 'printf "good=disc\\nnext=a\\ntries=2\\n" > ../state', 'cd /; sync'):
+        sh(c, 120)
+    out(sh('ls /persist/os/system/a; cat /persist/os/system/state'))
+    g.s.s.send(b'sync; reboot -f\n'); time.sleep(5)
     ok('the update slot starts (kexec)', wait_shell(g, delay=60))
     cl = sh('cat /proc/cmdline').split()
     ok('...as slot a on a trial start', 'rudolf.slot=a' in cl and 'rudolf.trying=1' in cl, ' '.join(cl))
