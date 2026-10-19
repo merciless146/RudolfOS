@@ -73,7 +73,7 @@ try:
         if t and t[0] == 'F': want[t[2]] = t[1]
     pick = ['nvidia/ga102/gsp/gsp-570.144.bin', 'nvidia/tu102/gsp/gsp-570.144.bin', 'rtl_nic/rtl8168h-2.fw']
     # (short commands: the serial shell's echo of a long line wraps and garbles the answer)
-    got = {p: sh('sha256sum /usr/lib/firmware/' + p, 180).split(' ')[0] for p in pick}
+    got = {p: sh('sha256sum /usr/lib/firmware/' + p, 180).split('\n')[-1].split(' ')[0] for p in pick}
     ok('the GSP and Ethernet firmware is there, as pinned', all(got[p] == want[p] for p in pick), got)
     lk = {f: sh(f'[ -r /usr/lib/firmware/nvidia/{f} ] && echo yes || echo no') for f in
           ('ga104/gsp/gsp-570.144.bin', 'ga104/gsp/booter_load-570.144.bin', 'ad104/gsp/gsp-570.144.bin', 'tu104/gsp/bootloader-570.144.bin', 'gb203/gsp/fmc-570.144.bin')}
