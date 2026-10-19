@@ -1,14 +1,18 @@
 rudolf-system 1
-serial 2026101820
-version 1.2.1.261018
-released 2026-10-18
-expires 2026-11-01
+serial 2026101902
+version 1.2.2.261019
+released 2026-10-19
+expires 2026-11-02
 urgent 0
 chromium 155.0.8059.79
 kernel 6.18.57-rudolf
-notes 1.2.1: download files of any size from websites, up to 4 GB by default; large files stay on the disk and open from C:\DOWNLOADS
-L	vmlinuz	10159104	97fc18f51946430a999c671afc98124ad9e02e7adcbd71ef0ee3ac7d8e645866	https://github.com/merciless146/RudolfOS/releases/download/r2026101820/vmlinuz
-L	base	201715712	1726ac030682218b40e1673142ce368b6012e30029510e5767ca169ecc53475a	https://github.com/merciless146/RudolfOS/releases/download/r2026101820/base.sfs
-L	chromium	129650688	9fc92ddcc36b25c7f1c1c22c6cfc19d41293cdb5d2e82b06cfcaf91aa81f69e7	https://github.com/merciless146/RudolfOS/releases/download/r2026101820/chromium.sfs
-L	desktop	24965120	2067e212d31229f3dabea5ad494ab1b6a5d55b8d665af85ed81a0611f9e1d552	https://github.com/merciless146/RudolfOS/releases/download/r2026101820/desktop.sfs
-L	modules	10260480	5133b3af411f6f94a5f7c75e016701cc3c05e15d66886f965d23d2b47dba3eed	https://github.com/merciless146/RudolfOS/releases/download/r2026101820/modules.sfs
+notes 1.2.2: Rudolf OS starts with Secure Boot on: enroll its key once, and the computer starts only signed, checked software
+L	vmlinuz	10447480	06151444a1114d83948e78c663ebd01325337a84405f28dbc4c3e3addd330a55	https://github.com/merciless146/RudolfOS/releases/download/r2026101902/vmlinuz
+L	base	203317248	07093aa9a3101c4ffe00dfa6ac52be10603f91281e6c2a628e240ded4d8943ea	https://github.com/merciless146/RudolfOS/releases/download/r2026101902/base.sfs
+L	chromium	130678784	ca13c03fe31d909a98d1bd66068ce366919e43366dea700da7fc749ccde205a3	https://github.com/merciless146/RudolfOS/releases/download/r2026101902/chromium.sfs
+L	desktop	25165824	c6d180f7d5ba734904bf48dd6d869ed0bb8f8862c4905c8e82dcd80780f81f10	https://github.com/merciless146/RudolfOS/releases/download/r2026101902/desktop.sfs
+L	modules	10407936	672f9f42d4c9e292a14208f5f205480444db7a09b0556f239b4f8dc0bc4e9d16	https://github.com/merciless146/RudolfOS/releases/download/r2026101902/modules.sfs
+V	base	49248	1c89e0ede2ad5e6706af4a0c9c63de8b62d5850c2ebb0da9b88728201f812384	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
+V	chromium	31653	0fbe5743f705cd8bcc904b05d38f0db2a7ee26efd27c1fc8fb68e69c75f05dea	da3143e0b76e95a8fb9b20d6cd921581143496db9de69f0900a337920b32f7f8
+V	desktop	6095	280ec0d8847f70e72c2dc7ab5acd4968c6266d6ad5d60de4b1e494eea544a0e7	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
+V	modules	2520	4ae0d7d52a84a3a0b8e4a8d7294a938e5c42e34e69ee9d509e7fa94f333e525e	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
