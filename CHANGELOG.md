@@ -3,6 +3,15 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.2.2 (2026-10-18)
+Summary: Rudolf OS starts with Secure Boot on: enroll its key once, and the computer starts only signed, checked software
+- New: Secure Boot. UEFI computers no longer need Secure Boot turned off. The first time, a blue screen asks to enroll the Rudolf OS key (Enroll key from disk › EFI › rudolf › rudolf.cer); after that Rudolf OS starts as before. Already running Rudolf OS? Settings › Security Settings › Prepare Secure Boot does it with a one-time password, then turn Secure Boot on in the firmware settings.
+- New: UEFI computers have a boot menu: Start, Recovery mode, Check this disc or USB drive, Start from memory, and Debug start (only with Secure Boot off).
+- Security: every system file is checked as it is read (dm-verity) against the signed release list, with Secure Boot on or off; a damaged or changed layer is caught.
+- Security: with Secure Boot on, the kernel is locked down: only signed drivers and signed updated kernels start, and nothing can write to kernel memory. An update whose files fail the check is dropped and the previous system starts.
+- New: Task Manager › System and the system report show whether Secure Boot is on, the lockdown and whether the system layers were checked.
+- Note: to use Secure Boot, write the 1.2.2 disc image to the USB stick or disc; an older stick keeps working with Secure Boot off. Computers that started in BIOS (legacy) mode are not affected.
+
 ## 1.2.1 (2026-10-18)
 Summary: download files of any size from websites, up to 4 GB by default; large files stay on the disk and open from C:\DOWNLOADS
 - New: downloads are no longer limited to 1.5 MB. Files up to 1.5 MB go into C:\DOWNLOADS as before; larger ones are kept on the disk (in the Downloads folder that Linux apps see) and C:\DOWNLOADS shows them with 💽 and their real size.

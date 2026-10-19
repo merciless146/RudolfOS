@@ -13,6 +13,8 @@ import os, re, subprocess, sys, tempfile
 
 SBAT_RUDOLF = 'rudolf,1,Rudolf OS,rudolf,{v},https://github.com/merciless146/RudolfOS\n'
 CMDLINE = 'rudolf.boot=uefi'
+# local tests only (never in the workflow): extra fixed options, for example rudolf.debug=1 for the serial shell
+TEST_CMDLINE = os.environ.get('RUDOLF_UKI_TEST_CMDLINE', '')
 
 
 def sections(path):
@@ -34,7 +36,7 @@ def main():
     stub_sbat = stub_sbat.rstrip(b'\0')
     with tempfile.TemporaryDirectory() as t:
         osrel = os.path.join(t, 'osrel'); open(osrel, 'w').write(f'NAME="Rudolf OS"\nID=rudolf\nVERSION_ID="{ver}"\nPRETTY_NAME="Rudolf OS {ver}"\n')
-        cmd = os.path.join(t, 'cmdline'); open(cmd, 'w').write(CMDLINE + '\0')
+        cmd = os.path.join(t, 'cmdline'); open(cmd, 'w').write((CMDLINE + ' ' + TEST_CMDLINE).strip() + '\0')
         sbat = os.path.join(t, 'sbat'); open(sbat, 'wb').write(stub_sbat + (b'' if stub_sbat.endswith(b'\n') else b'\n') + SBAT_RUDOLF.format(v=ver).encode())
         args = ['objcopy', '--remove-section', '.sbat']
         vma = align(end)

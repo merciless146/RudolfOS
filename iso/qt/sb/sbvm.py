@@ -41,15 +41,15 @@ class VM:
              '-drive', f'if=pflash,format=raw,unit=1,file={s.vars}',
              '-m', str(mem), '-smp', '2', '-accel', 'tcg,thread=multi', '-vga', 'std', '-display', 'none',
              '-qmp', f'unix:{s.qmp_path},server,nowait', '-serial', f'unix:{s.ser_path},server,nowait',
-             '-device', 'e1000,netdev=n0', '-netdev', 'user,id=n0', '-usb', '-device', 'usb-tablet']
+             '-device', 'e1000,netdev=n0', '-netdev', 'hubport,id=n0,hubid=0', '-usb', '-device', 'usb-tablet']
         for i, d in enumerate(drives):
             if d.endswith('.iso'):
-                a += ['-drive', f'file={d},media=cdrom,readonly=on,if=none,id=cd{i}', '-device', f'ide-cd,drive=cd{i}']
+                a += ['-drive', f'file={d},media=cdrom,readonly=on,if=none,id=cd{i}', '-device', f'ide-cd,drive=cd{i},bus=ide.{i}']
             else:
-                a += ['-drive', f'file={d},format=raw,if=none,id=hd{i}', '-device', f'ide-hd,drive=hd{i}']
+                a += ['-drive', f'file={d},format=raw,if=none,id=hd{i}', '-device', f'ide-hd,drive=hd{i},bus=ide.{i}']
         a += list(extra)
         s.log = open(os.path.join(s.dir, 'qemu.log'), 'w')
-        s.p = subprocess.Popen(a, stdout=s.log, stderr=subprocess.STDOUT)
+        s.p = subprocess.Popen(a, stdout=s.log, stderr=subprocess.STDOUT, start_new_session=True)
         for _ in range(50):
             if os.path.exists(s.qmp_path): break
             time.sleep(0.2)

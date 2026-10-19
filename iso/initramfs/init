@@ -102,6 +102,13 @@ SYSD=/mnt/persist/os/system
 st_get() { sed -n "s/^$1=//p" $SYSD/state 2>/dev/null; }
 st_write() { { echo "good=$GOOD"; echo "prev=$PREV"; echo "next=$NEXT"; echo "tries=$TRIES"; echo "failed=$FAILED"; } > $SYSD/state.new && sync && mv $SYSD/state.new $SYSD/state && sync; }
 slot_ok() { [ -s $SYSD/$1/vmlinuz ] && [ -e $SYSD/$1/complete ]; }
+# a slot whose system cannot start (a layer damaged or failing its check): never again, back to the previous one
+slot_bad() {
+	GOOD=$(st_get good); PREV=$(st_get prev); NEXT=$(st_get next); TRIES=$(st_get tries); FAILED=$SLOT
+	[ "$NEXT" = "$SLOT" ] && { NEXT=""; TRIES=0; }
+	[ "$GOOD" = "$SLOT" ] && GOOD=$PREV
+	st_write; say "Rudolf OS: this update cannot start; restarting with the previous system."; sync; sleep 5; reboot -f
+}
 if [ -z "$SLOT" ] && [ -n "$PERSIST" ] && [ -f $SYSD/state ] && ! has rudolf.recovery=1; then
 	GOOD=$(st_get good); PREV=$(st_get prev); NEXT=$(st_get next); TRIES=$(st_get tries); FAILED=$(st_get failed)
 	T=""; TRY=""
@@ -154,16 +161,16 @@ for L in desktop chromium modules base; do
 	fi
 	mkdir -p /mnt/l/$L
 	LOOP=$(losetup -f)
-	losetup -r "$LOOP" "$F" || { say "Rudolf OS: the system layer '$L' cannot be read."; [ -n "$SLOT" ] && { sync; reboot -f; }; fail; }
+	losetup -r "$LOOP" "$F" || { say "Rudolf OS: the system layer '$L' cannot be read."; [ -n "$SLOT" ] && slot_bad; fail; }
 	DEV=""; WHY="no signed release list"
 	if [ -n "$MAN" ]; then DEV=$(rudolf-verity open "$MAN" "$MSIG" /etc/rudolf-keys "$L" "$LOOP" 2>/tmp/verity.err) || DEV=""; [ -s /tmp/verity.err ] && WHY=$(sed 's/^rudolf-verity: //' /tmp/verity.err | head -1); fi
 	if [ -n "$DEV" ] && mount -t squashfs -o ro "$DEV" /mnt/l/$L 2>/dev/null; then :
 	elif [ $SB = 1 ]; then
 		say "Rudolf OS: the system layer '$L' did not pass the check ($WHY). With Secure Boot on, only a checked system starts."
-		[ -n "$SLOT" ] && { sync; reboot -f; }; fail
+		[ -n "$SLOT" ] && slot_bad; fail
 	else
 		[ -n "$DEV" ] && WHY="it does not match its signed hash"
-		mount -t squashfs -o ro "$LOOP" /mnt/l/$L || { say "Rudolf OS: the system layer '$L' is damaged."; [ -n "$SLOT" ] && { sync; reboot -f; }; fail; }
+		mount -t squashfs -o ro "$LOOP" /mnt/l/$L || { say "Rudolf OS: the system layer '$L' is damaged."; [ -n "$SLOT" ] && slot_bad; fail; }
 		UNV="$UNV$L: $WHY\n"
 	fi
 	LOWER="$LOWER${LOWER:+:}/mnt/l/$L"
