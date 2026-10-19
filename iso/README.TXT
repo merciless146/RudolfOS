@@ -13,8 +13,9 @@ WHAT YOU NEED
 * Graphics that support VESA (older PCs) or UEFI GOP (newer PCs). Almost
   every graphics card does.
 * A CD/DVD drive, or a USB port and a USB stick of 512 MB or more.
-* UEFI computers: SECURE BOOT MUST BE TURNED OFF in the firmware settings.
-  Rudolf OS is not signed by Microsoft.
+* UEFI computers: Secure Boot can stay on (Rudolf OS 1.2.2 and later). The
+  first time, the computer asks you to enroll the Rudolf OS key once: see
+  SECURE BOOT below.
 
 
 MAKING A BOOTABLE DISC OR STICK
@@ -242,11 +243,29 @@ Test the bare board with Radxa's PD30W adapter and any HDMI monitor first.
 Settings > Display > Cyberdeck test makes a faster PC behave roughly like
 the N100's processor (not its graphics), for a first look at speed.
 
+SECURE BOOT
+-----------
+With Secure Boot on, a PC starts only software signed by a key it trusts.
+Rudolf OS starts through "shim" (signed by Microsoft); shim trusts the
+Rudolf OS key once you have enrolled it. Do this once per computer:
+1. Start from the Rudolf OS disc or USB stick. The screen says
+   "Verification failed" - press Enter. A blue screen appears:
+   "Perform MOK management".
+2. Choose "Enroll key from disk", then the Rudolf OS drive, then the folders
+   EFI, rudolf, and the file rudolf.cer.
+3. Choose "Continue", then "Yes", then "Reboot".
+Rudolf OS now starts with Secure Boot on: only signed software, the kernel
+locked down, and every system file checked as it is read. Already running
+Rudolf OS with Secure Boot off? Settings > Security Settings > Prepare
+Secure Boot does steps 1-2 for you (with a one-time password); then turn
+Secure Boot on in the firmware settings.
+
 PROBLEMS?
 ---------
 Black screen after the menu: choose "Recovery mode" (starts without the
   graphics card driver), or "Screen resolution" and pick 1024x768.
-No boot menu on a UEFI PC: turn off Secure Boot, or turn on "CSM/Legacy".
+"Verification failed" or a blue MokManager screen on a UEFI PC: enroll the
+  Rudolf OS key (SECURE BOOT below), or turn Secure Boot off.
 Desktop does not appear: start with D pressed in the boot menu and note the
   messages; "Recovery mode" may help after a failed update.
 Files on the disc damaged: choose "Check disc".

@@ -13,6 +13,7 @@ echo "== root file system"
 # key that signs this disc's package list (kept out of the disc and the source archive); the system trusts
 # only trusted-keys.txt, so the disc's packages are accepted by their checksums in the disc's own list
 [ -f keys/rpk-signing.key ] || python3 pkgtools/rpk-tool.py keygen keys
+mkdir -p sys/root/usr/share/rudolf; cp "${SB_CERT:-boot/sb/rudolf-sb.crt}" sys/root/usr/share/rudolf/rudolf-sb.crt   # for Prepare Secure Boot
 mkdir -p sys/root/etc/rudolf; cp trusted-keys.txt sys/root/etc/rudolf/rpk-keys   # trust only the keys listed in trusted-keys.txt
 if [ "${REBUILD_ROOT:-1}" = 1 ] || [ ! -f layers/base.sfs ]; then bash mkrootfs.sh rootfs www >/dev/null 2>&1; rm -rf layers; bash systools/mklayers.sh rootfs layers; fi
 echo "== packages"; bash pkgtools/build_repo.sh
