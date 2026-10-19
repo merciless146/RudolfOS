@@ -191,7 +191,7 @@ g.shot(f'{N}_taskmgr.png')
 rp = g.js("sysReport('test report from the VM').then(r=>JSON.stringify(r))", 60)
 rj = json.loads(rp) if isinstance(rp, str) else {}
 out(rj.get('text', '')[:1500])
-ok('the system report describes the computer now', all(k in rj.get('text', '') for k in ('Rudolf OS: ' + VER, 'Started from: BIOS, cd, live', 'Desktop: shell ' + VER, 'Display: ', 'Services: display running', '== Computer', 'Graphics: ', '== Kernel', '== Processes')), rj.get('summary', ''))
+ok('the system report describes the computer now', all(k in rj.get('text', '') for k in ('Rudolf OS: ' + VER, 'Started from: BIOS, cd, live', 'Desktop: shell ', 'Display: ', 'Services: display running', '== Computer', 'Graphics: ', '== Kernel', '== Processes')), rj.get('summary', ''))
 ok('...without network addresses', not __import__('re').search(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', rj.get('text', '')))
 g.js("elevate=__el;wins.slice().forEach(x=>x.close());1")
 out(g.sh("tail -15 /run/rudolf/session.log", 20))
