@@ -2054,7 +2054,7 @@ static void api(struct req *r)
 		if (dd) closedir(dd);
 		sadd(&s, "]}"); reply_json(r->fd, &s); return;
 	}
-	if (!strcmp(p, "keepfiles")) {
+	if (!strcmp(p, "keepfiles") && !post) {
 		/* {"possible":bool,"disk","freeBytes","reason","pending":bool} (keepfiles.sh check) */
 		char *o = run_out("/usr/lib/rudolf/keepfiles.sh check 2>/dev/null");
 		char *nl = o ? strchr(o, '\n') : NULL; if (nl) *nl = 0;
