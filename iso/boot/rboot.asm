@@ -882,8 +882,8 @@ s_logo2: db ' \_______/', 0
 s_logo3: db '  ( o   o )    Rudolf OS', 0
 s_choose: db 'Choose how to start:', 0
 s_help:  db 'Up/Down to choose, Enter to start, 1-5 for a shortcut.', 0
-s_help2: db 'UEFI computers start Rudolf OS directly (no menu).', 0
-s_foot:  db 'GPL-2.0-or-later  -  Secure Boot must be off on UEFI computers', 0
+s_help2: db 'UEFI computers show their own menu; Secure Boot can stay on.', 0
+s_foot:  db 'GPL-2.0-or-later', 0
 s_cnt:   db 'Starting automatically in '
 s_cnt_n: db '5 seconds...', 0
 s_nomode: db 'text mode (no VESA)', 0

@@ -18,6 +18,25 @@ echo 1 > /proc/sys/kernel/printk 2>/dev/null
 CMD=$(cat /proc/cmdline)
 has() { case " $CMD " in *" $1 "*) return 0;; esac; return 1; }
 say() { echo "$*" > /dev/console; }
+# Secure Boot (1.2.2): the firmware says whether it is on (the kernel then also locks itself down). With it on,
+# nothing unchecked may start: a problem ends in a restart, never in a shell.
+mount -t efivarfs efivarfs /sys/firmware/efi/efivars 2>/dev/null
+efv() { [ -r "/sys/firmware/efi/efivars/$1" ] && tail -c +5 "/sys/firmware/efi/efivars/$1"; }
+SB=0; [ "$(efv SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c | od -An -tu1 | tr -d ' \n')" = 1 ] && SB=1
+has rudolf.sb=1 && SB=1   # a kernel started by kexec from a Secure Boot start
+# with Secure Boot on, the kernel is locked down before anything else runs: no unsigned modules or kernels, no
+# writing to kernel memory (mainline Linux leaves this to the start-up)
+if [ $SB = 1 ]; then mount -t securityfs securityfs /sys/kernel/security 2>/dev/null; echo integrity > /sys/kernel/security/lockdown 2>/dev/null; fi
+fail() { if [ $SB = 1 ]; then say "Press Enter to restart."; read x < /dev/console; sync; reboot -f; fi; exec sh; }
+# the UEFI boot menu (systemd-boot) says which entry was started; its options are not taken from the menu, so
+# that nobody can add their own (Secure Boot)
+ENTRY=$(efv LoaderEntrySelected-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f | tr -d '\000')
+case "$ENTRY" in
+	rudolf-recovery*) CMD="$CMD rudolf.recovery=1";;
+	rudolf-check*) CMD="$CMD rudolf.check=1";;
+	rudolf-ram*) CMD="$CMD rudolf.toram=1";;
+	rudolf-debug*) [ $SB = 1 ] && say "Rudolf OS: debug start is not available with Secure Boot on; starting normally." || CMD="$CMD rudolf.debug=1";;
+esac
 if [ -e /dev/fb0 ]; then
 	set -- $(tr , ' ' < /sys/class/graphics/fb0/virtual_size)
 	printf 'IMG_LEFT=%d\nIMG_TOP=%d\n' $(( (${1:-640} - 640) / 2 )) $(( (${2:-360} - 360) / 2 )) > /tmp/splash.ini
@@ -48,8 +67,8 @@ until find_media || find_media_any; do
 		say ""
 		say "Rudolf OS could not find its disc or USB drive."
 		say "The drive may be unplugged, or its controller is not supported."
-		say "Type 'reboot' to restart. A shell follows for diagnosis."
-		exec sh
+		[ $SB = 1 ] || say "Type 'reboot' to restart. A shell follows for diagnosis."
+		fail
 	fi
 	sleep 0.5
 done
@@ -96,7 +115,7 @@ if [ -z "$SLOT" ] && [ -n "$PERSIST" ] && [ -f $SYSD/state ] && ! has rudolf.rec
 	case "$T" in a|b) ;; *) T="";; esac
 	if [ -n "$T" ] && slot_ok "$T"; then
 		cp $SYSD/$T/vmlinuz /tmp/vmlinuz
-		NC="$(cat /proc/cmdline) rudolf.slot=$T"; [ -n "$TRY" ] && NC="$NC rudolf.trying=1"
+		NC="$CMD rudolf.slot=$T"; [ -n "$TRY" ] && NC="$NC rudolf.trying=1"; [ $SB = 1 ] && NC="$NC rudolf.sb=1 lockdown=integrity"
 		cd /; umount /mnt/persist; umount /mnt/media 2>/dev/null; sync
 		rudolf-kexec /tmp/vmlinuz "$NC"
 		# kexec failed: count it as a failed start and carry on with the disc's own system
@@ -107,6 +126,20 @@ if [ -z "$SLOT" ] && [ -n "$PERSIST" ] && [ -f $SYSD/state ] && ! has rudolf.rec
 fi
 
 # ---- system layers: the slot's, or the disc's (a slot may point to an unchanged disc layer)
+# Each is mapped through dm-verity with the root hash from the signed release list (1.2.2): the slot's list (or,
+# for a slot made by an older Rudolf OS, the saved list of the same release), else the disc's. With Secure Boot
+# on, a layer that cannot be checked does not start; with it off, it starts unchecked and Task Manager says so.
+MAN=""; MSIG=""
+if [ -n "$SLOT" ]; then
+	RS=$(sed -n 's/^serial //p' $SYSD/$SLOT/RELEASE 2>/dev/null)
+	for m in $SYSD/$SLOT/manifest $SYSD/available; do
+		[ -s $m.txt ] && [ -s $m.sig ] || continue
+		[ "$m" = $SYSD/available ] && [ "$(sed -n 's/^serial //p' $m.txt)" != "$RS" ] && continue
+		MAN=$m.txt; MSIG=$m.sig; break
+	done
+elif [ -n "$MEDIA" ] && [ -s /mnt/media/rudolf/manifest.txt ]; then MAN=/mnt/media/rudolf/manifest.txt; MSIG=/mnt/media/rudolf/manifest.sig
+fi
+UNV=""
 mkdir -p /mnt/l
 LOWER=""
 for L in desktop chromium modules base; do
@@ -114,19 +147,30 @@ for L in desktop chromium modules base; do
 	if [ -n "$SLOT" ] && [ -s $SYSD/$SLOT/$L.sfs ]; then F=$SYSD/$SLOT/$L.sfs
 	elif [ -n "$MEDIA" ] && [ -s /mnt/media/rudolf/$L.sfs ]; then F=/mnt/media/rudolf/$L.sfs
 	fi
-	[ -n "$F" ] || { say "Rudolf OS: the system layer '$L' is missing."; exec sh; }
+	[ -n "$F" ] || { say "Rudolf OS: the system layer '$L' is missing."; fail; }
 	if has rudolf.toram=1; then
 		[ -d /mnt/ram ] || { mkdir -p /mnt/ram && mount -t tmpfs -o size=90% tmpfs /mnt/ram; }
 		cp "$F" /mnt/ram/$L.sfs && F=/mnt/ram/$L.sfs
 	fi
 	mkdir -p /mnt/l/$L
 	LOOP=$(losetup -f)
-	losetup -r "$LOOP" "$F" && mount -t squashfs -o ro "$LOOP" /mnt/l/$L || { say "Rudolf OS: the system layer '$L' is damaged."; [ -n "$SLOT" ] && { sync; reboot -f; }; exec sh; }
+	losetup -r "$LOOP" "$F" || { say "Rudolf OS: the system layer '$L' cannot be read."; [ -n "$SLOT" ] && { sync; reboot -f; }; fail; }
+	DEV=""; WHY="no signed release list"
+	if [ -n "$MAN" ]; then DEV=$(rudolf-verity open "$MAN" "$MSIG" /etc/rudolf-keys "$L" "$LOOP" 2>/tmp/verity.err) || DEV=""; [ -s /tmp/verity.err ] && WHY=$(sed 's/^rudolf-verity: //' /tmp/verity.err | head -1); fi
+	if [ -n "$DEV" ] && mount -t squashfs -o ro "$DEV" /mnt/l/$L 2>/dev/null; then :
+	elif [ $SB = 1 ]; then
+		say "Rudolf OS: the system layer '$L' did not pass the check ($WHY). With Secure Boot on, only a checked system starts."
+		[ -n "$SLOT" ] && { sync; reboot -f; }; fail
+	else
+		[ -n "$DEV" ] && WHY="it does not match its signed hash"
+		mount -t squashfs -o ro "$LOOP" /mnt/l/$L || { say "Rudolf OS: the system layer '$L' is damaged."; [ -n "$SLOT" ] && { sync; reboot -f; }; fail; }
+		UNV="$UNV$L: $WHY\n"
+	fi
 	LOWER="$LOWER${LOWER:+:}/mnt/l/$L"
 done
 mount -t tmpfs -o mode=0755 tmpfs /mnt/rw
 mkdir -p /mnt/rw/upper /mnt/rw/work
-mount -t overlay overlay -o lowerdir=$LOWER,upperdir=/mnt/rw/upper,workdir=/mnt/rw/work /newroot || { say "Rudolf OS: overlay mount failed."; exec sh; }
+mount -t overlay overlay -o lowerdir=$LOWER,upperdir=/mnt/rw/upper,workdir=/mnt/rw/work /newroot || { say "Rudolf OS: overlay mount failed."; fail; }
 
 mkdir -p /newroot/live/media /newroot/persist /newroot/run
 [ -n "$MEDIA" ] && mount --move /mnt/media /newroot/live/media
@@ -135,8 +179,13 @@ mkdir -p /newroot/etc/rudolf
 echo "$MEDIA" > /newroot/etc/rudolf/media
 echo "$PERSIST" > /newroot/etc/rudolf/persist
 echo "${SLOT:-disc}" > /newroot/etc/rudolf/slot
+echo "$SB" > /newroot/etc/rudolf/secureboot
+printf "%b" "$UNV" > /newroot/etc/rudolf/unverified
+echo "$ENTRY" > /newroot/etc/rudolf/boot-entry
 [ -e /tmp/check-result ] && cp /tmp/check-result /newroot/etc/rudolf/check.txt
 mount --move /dev /newroot/dev
 mount --move /proc /newroot/proc
+# the menu's choice, added to the start-up options the system reads (/proc/cmdline)
+if [ "$CMD" != "$(cat /newroot/proc/cmdline)" ]; then echo "$CMD" > /newroot/etc/rudolf/cmdline && mount --bind /newroot/etc/rudolf/cmdline /newroot/proc/cmdline; fi
 mount --move /sys /newroot/sys
 exec switch_root /newroot /sbin/rudolf-init

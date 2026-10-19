@@ -44,7 +44,13 @@ try_chromium() {
 
 # ---- kernel and modules
 # what the kernel is built from besides its version: when it changes, the kernel is rebuilt
-KSRC=$(cat kconfig.sh initramfs.list initramfs/init initramfs/etc/rudolf-id sys/rudolf-kexec.c | sha256sum | cut -c1-16)
+# Secure Boot (1.2.2): the certificate built into the kernel as trusted (kexec), and the key that signs the kernel
+# (SB_KEY: the secret RUDOLF_SB_KEY; local test builds pass a test key and certificate)
+SB_CERT=$(realpath "${SB_CERT:-boot/sb/rudolf-sb.crt}"); export SB_CERT
+[ -n "$SB_KEY" ] && [ -f "$SB_KEY" ] || { echo "SB_KEY: the Secure Boot signing key is needed"; exit 1; }
+python3 systools/sbkeycheck.py "$SB_KEY" "$SB_CERT"
+SBSIGN=${SBSIGN:-sbsign}
+KSRC=$(cat kconfig.sh initramfs.list initramfs/init initramfs/etc/rudolf-id sys/rudolf-kexec.c sys/rudolf-verity.c trusted-keys.txt "$SB_CERT" ${RUDOLF_TEST_KEYS:+"$RUDOLF_TEST_KEYS"} | sha256sum | cut -c1-16)
 PKSRC=$(unsquashfs -cat "$PREV/modules.sfs" "usr/lib/modules/$KV/rudolf-ksrc" 2>/dev/null || true)
 [ -n "$KERNEL_VERSION" ] || KERNEL_VERSION=${KV%-rudolf}
 if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
@@ -52,6 +58,11 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 	if [ -n "$LINUX_SRC" ]; then ln -s "$(realpath "$LINUX_SRC")" "$W/linux"; else git clone -q --depth 1 -b "v$KERNEL_VERSION" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$W/linux"; fi
 	[ -x initramfs/bin/busybox ] || { git clone -q --depth 1 -b 1_36_1 https://git.busybox.net/busybox "$W/bb"; cp systools/busybox.config "$W/bb/.config"; make -C "$W/bb" -s -j$(nproc) >/dev/null; mkdir -p initramfs/bin; cp "$W/bb/busybox" initramfs/bin/; }
 	gcc -Os -static -nostdlib -fno-builtin -fno-stack-protector -fno-asynchronous-unwind-tables -o initramfs/bin/rudolf-kexec sys/rudolf-kexec.c && strip initramfs/bin/rudolf-kexec
+	gcc -Os -static -o initramfs/bin/rudolf-verity sys/rudolf-verity.c && strip initramfs/bin/rudolf-verity
+	cp trusted-keys.txt initramfs/etc/rudolf-keys
+	# local test builds only (never set in the workflow): also trust the test release key, so that a test
+	# release's layers pass the start-up check
+	[ -n "$RUDOLF_TEST_KEYS" ] && cat "$RUDOLF_TEST_KEYS" >> initramfs/etc/rudolf-keys
 	./kconfig.sh "$W/linux" "$HERE/initramfs $HERE/initramfs.list"
 	make -C "$W/linux" -s -j$(nproc) bzImage modules
 	make -C "$W/linux" -s modules_install INSTALL_MOD_PATH="$W/mods" DEPMOD=true >/dev/null
@@ -60,7 +71,10 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 	[ -s "$W/mods/lib/modules/$KR/modules.dep.bb" ] || { echo "no module index"; exit 1; }
 	echo "$KSRC" > "$W/mods/lib/modules/$KR/rudolf-ksrc"
 	mkdir -p "$W/ms/usr/lib"; cp -a "$W/mods/lib/modules" "$W/ms/usr/lib/"
-	$MK "$W/ms" "$W/new/modules.sfs" $SQ; cp "$W/linux/arch/x86/boot/bzImage" "$W/new/vmlinuz"
+	$MK "$W/ms" "$W/new/modules.sfs" $SQ
+	# signed with the Rudolf OS Secure Boot key: the disc's boot menu starts it (inside the kernel bundle), and a
+	# Rudolf OS kernel under Secure Boot hands over (kexec) only to a kernel with this signature
+	"$SBSIGN" --key "$SB_KEY" --cert "$SB_CERT" --output "$W/new/vmlinuz" "$W/linux/arch/x86/boot/bzImage"
 	[ "$KR" = "$KV" ] && NOTES+=("Linux $KERNEL_VERSION with new drivers") || NOTES+=("Linux $KERNEL_VERSION"); KV=$KR
 fi
 
@@ -100,9 +114,11 @@ if [ -d shell ]; then
 	python3 systools/mkiwa.py update shell http://127.0.0.1:8080/iwa/shell.swbn "$I/update.json" >/dev/null
 	rm -f "$W/iwa.key"
 fi
-$MK "$W/ds" "$W/desk.sfs" $SQ
+$MK "$W/ds" "$W/desk.sfs" $SQ; python3 systools/verity.py add "$W/desk.sfs" desktop >/dev/null
 if ! cmp -s "$W/desk.sfs" "$W/new/desktop.sfs"; then cp "$W/desk.sfs" "$W/new/desktop.sfs"; NOTES+=("desktop update"); fi
 
+# every layer carries its dm-verity hash tree (1.2.2); the same data always gives the same tree
+for n in base chromium desktop modules; do python3 systools/verity.py add "$W/new/$n.sfs" $n >/dev/null; done
 CHANGED=0; for f in vmlinuz base.sfs chromium.sfs desktop.sfs modules.sfs; do cmp -s "$PREV/$f" "$W/new/$f" || CHANGED=1; done
 if [ $CHANGED = 0 ]; then echo "nothing changed: no release"; echo "released=0" >> "${GITHUB_OUTPUT:-/dev/null}"; exit 0; fi
 NOTE=$(printf '%s, ' "${NOTES[@]}"); NOTE=${NOTE%, }; NOTE=${NOTE:-security fixes}

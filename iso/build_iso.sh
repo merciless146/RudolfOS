@@ -7,7 +7,8 @@ T=$HERE/isotree; rm -rf "$T"; mkdir -p $T/BOOT $T/EFI $T/RUDOLF $T/LICENSES $T/S
 echo "== boot loader"; nasm -f bin -o boot/rboot.bin boot/rboot.asm; nasm -f bin -o boot/mbr.bin boot/mbr.asm
 cp boot/rboot.bin $T/BOOT/RBOOT.BIN
 cp src/linux/arch/x86/boot/bzImage $T/BOOT/VMLINUZ
-echo "== EFI image"; python3 mkimage.py fat $T/EFI/EFIBOOT.IMG src/linux/arch/x86/boot/bzImage:EFI/BOOT/BOOTX64.EFI
+echo "== EFI image (Secure Boot ready: shim, the menu and the signed kernel bundle; SB_PARTS and SB_KEY, see systools/mkefi.sh)"
+bash systools/mkefi.sh src/linux/arch/x86/boot/bzImage "$VER" "${SB_PARTS:?SB_PARTS: the folder with the Secure Boot parts}" $T/EFI/EFIBOOT.IMG
 echo "== root file system"
 # key that signs this disc's package list (kept out of the disc and the source archive); the system trusts
 # only trusted-keys.txt, so the disc's packages are accepted by their checksums in the disc's own list
@@ -16,7 +17,10 @@ mkdir -p sys/root/etc/rudolf; cp trusted-keys.txt sys/root/etc/rudolf/rpk-keys  
 if [ "${REBUILD_ROOT:-1}" = 1 ] || [ ! -f layers/base.sfs ]; then bash mkrootfs.sh rootfs www >/dev/null 2>&1; rm -rf layers; bash systools/mklayers.sh rootfs layers; fi
 echo "== packages"; bash pkgtools/build_repo.sh
 # the system in four layers (the start-up script mounts them as one); the kernel is BOOT/VMLINUZ
-for n in base chromium desktop modules; do cp layers/$n.sfs $T/RUDOLF/$(echo $n | tr a-z A-Z).SFS; done
+for n in base chromium desktop modules; do python3 systools/verity.py add layers/$n.sfs $n >/dev/null; cp layers/$n.sfs $T/RUDOLF/$(echo $n | tr a-z A-Z).SFS; done
+# the signed release list the start-up checks the layers against (1.2.2); RELEASE_KEY: the release signing key
+# (raw base64, as the workflow uses). Without it the layers start unchecked, and not at all with Secure Boot on.
+if [ -n "$RELEASE_KEY" ]; then mkdir -p "$OUT/rl"; python3 systools/make_release.py --layers layers --kernel src/linux/arch/x86/boot/bzImage --out "$OUT/rl" --key "$RELEASE_KEY" --serial "${SERIAL:-$(date -u +%Y%m%d%H)}" --version "$VER" >/dev/null; cp "$OUT/rl/channel/manifest.txt" $T/RUDOLF/MANIFEST.TXT; cp "$OUT/rl/channel/manifest.sig" $T/RUDOLF/MANIFEST.SIG; rm -rf "$OUT/rl"; else echo "warning: no RELEASE_KEY, the layers cannot be checked at start-up"; fi
 cp initramfs/etc/rudolf-id $T/RUDOLF/ID   # must match the ID built into the kernel's initramfs (rudolf-1.1 for every 1.1.x)
 # which release this disc is: updates must be newer (serial) to install
 CHROMV=$(rootfs/opt/chromium/chrome --version 2>/dev/null | awk '{print $2}')

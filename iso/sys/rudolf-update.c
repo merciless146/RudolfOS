@@ -370,6 +370,9 @@ static int cmd_download(void)
 	}
 	char rel[1200]; snprintf(rel, sizeof rel, "serial %lld\nversion %s\nreleased %s\nchromium %s\nkernel %s\nnotes %s\n", m.serial, m.version, m.released, m.chromium, m.kernel, m.notes);
 	char rp[400]; snprintf(rp, sizeof rp, "%s/RELEASE", tn); write_file(rp, rel);
+	/* the signed release list goes with the slot: the start-up checks the layers against its hashes (1.2.2) */
+	{ char d1[420], d2[420]; snprintf(d1, sizeof d1, "%s/manifest.txt", tn); snprintf(d2, sizeof d2, "%s/manifest.sig", tn);
+	  char *a1[] = {"cp", ap, d1, NULL}, *a2[] = {"cp", sig, d2, NULL}; if (spawn(a1) || spawn(a2)) die("could not keep the release list with the slot"); }
 	snprintf(rp, sizeof rp, "%s/complete", tn); write_file(rp, "1\n");
 	sync();
 	{ char *a[] = {"rm", "-rf", tp, NULL}; spawn(a); } if (rename(tn, tp)) die("could not finish the slot");

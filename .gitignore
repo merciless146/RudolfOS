@@ -17,3 +17,4 @@ iso/initramfs/bin/
 *.tar.xz
 __pycache__/
 iso/qt/qemu-*.log
+iso/initramfs/etc/rudolf-keys

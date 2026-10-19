@@ -49,6 +49,15 @@ def main():
         ref = (o.file_base.rstrip('/') + '/' + fn) if o.file_base else f'../files/{o.serial}/{fn}'
         rows.append('\t'.join(['L', n, str(os.path.getsize(dst)), sha(dst), ref]))
         print(f'{n}: {os.path.getsize(dst)//1024} KB')
+    # the dm-verity root hash of each layer that carries its hash tree (1.2.2; systools/verity.py): the start-up
+    # checks every block against it
+    sys.path.insert(0, HERE); import verity
+    for n in NAMES[1:]:
+        try:
+            d, root = verity.info(os.path.join(fd, n + '.sfs'), n)
+            rows.append('\t'.join(['V', n, str(d), root.hex(), verity.salt_for(n).hex()]))
+        except SystemExit as e:
+            print(f'{n}: no hash tree ({e}); the start-up cannot check it')
     today = datetime.date.today()
     for v in (o.version, o.chromium, o.kernel_version, o.notes):
         if '\n' in v or '\t' in v: sys.exit('no tabs or new lines in the release text')
