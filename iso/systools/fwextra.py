@@ -11,10 +11,11 @@ install script makes them; a git checkout has none). What is listed:
     acceleration at all (no 3D, so Xorg has no glamor and everything is drawn by the processor). The booter
     files already sit in the base layer; these are the large GSP images and their boot loaders.
   - Realtek Ethernet (r8169) firmware: small fixes the driver loads for most of its chips.
+  - AMD processor microcode (1.2.4): built into the kernel too (kconfig.sh, UCODE_DIR) so it applies at start-up.
 """
 import hashlib, os, re, shutil, sys
 
-PATTERNS = [r'rtl_nic/.+',
+PATTERNS = [r'rtl_nic/.+', r'amd-ucode/microcode_amd(_fam[0-9a-f]+h)?\.bin',
             r'nvidia/[^/]+/gsp/(gsp|bootloader|gen_bootloader|scrubber|fmc)-570\.144\.bin',
             r'nvidia/[^/]+/gsp', r'nvidia/ad10[3-7]', r'nvidia/gb102', r'nvidia/gb20[3-7]']   # whole-folder links (ga104/gsp -> ../ga102/gsp, ad104 -> ad102, gb203 -> gb202)
 

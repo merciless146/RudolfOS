@@ -1,5 +1,5 @@
-RUDOLF OS 1.1 - READ ME
-========================
+RUDOLF OS - READ ME
+====================
 
 Rudolf OS is a desktop operating system that starts straight from this disc
 (CD, DVD or USB stick). It runs "live" without touching the computer's hard
@@ -20,22 +20,32 @@ WHAT YOU NEED
 
 MAKING A BOOTABLE DISC OR STICK
 -------------------------------
-The file rudolf-os-1.1.iso is a "hybrid" image: the same file works for
-discs and USB sticks, and for both BIOS and UEFI computers.
+The file rudolf-os-VERSION.iso (for example rudolf-os-1.2.4.iso) is a
+"hybrid" image: the same file works for discs and USB sticks, and for both
+BIOS and UEFI computers. GitHub delivers it in parts: JOIN-PARTS.TXT (and
+the script join.ps1 for Windows) joins them and checks the result.
 
 CD or DVD: burn the .iso as a disc image ("Burn disc image" in Windows,
   Disk Utility / "Burn" on macOS, Brasero/K3b/xorriso on Linux). Do not copy
   the .iso file onto the disc as a normal file. The image fits on a 700 MB CD.
 
 USB stick (all data on the stick is erased):
-  Windows: use Rufus and choose "DD Image mode" when asked, or balenaEtcher.
+  Windows: use Rufus and choose "Write in DD Image mode" when asked (the
+  default "ISO Image mode" does not work), or balenaEtcher.
   macOS / Linux: use balenaEtcher, or
-      sudo dd if=rudolf-os-1.1.iso of=/dev/sdX bs=4M conv=fsync
+      sudo dd if=rudolf-os-VERSION.iso of=/dev/sdX bs=4M conv=fsync
   (replace /dev/sdX with the stick, NOT your hard disk).
+  Keep the .iso file on your computer, never on the stick you write it
+  to: writing erases the whole stick, including the file being read.
+  Afterwards Windows may say the stick "is not accessible" or offer to
+  format it: that is normal (Windows cannot read Rudolf OS's partitions).
+  Click Cancel, never Format.
 
-Check the download first: the file rudolf-os-1.1.iso.sha256 holds the
-expected SHA-256 checksum (Windows: certutil -hashfile rudolf-os-1.1.iso
-SHA256; macOS/Linux: sha256sum -c rudolf-os-1.1.iso.sha256).
+Check the download first: the file rudolf-os-VERSION.iso.sha256 holds the
+expected SHA-256 checksum (Windows PowerShell: Get-FileHash
+rudolf-os-VERSION.iso -Algorithm SHA256; Command Prompt: certutil -hashfile
+rudolf-os-VERSION.iso SHA256; macOS/Linux: sha256sum -c
+rudolf-os-VERSION.iso.sha256). join.ps1 does this for you.
 
 
 STARTING
@@ -53,21 +63,43 @@ BIOS computers show the blue "Rudolf Boot" menu (5 second countdown):
   Boot from hard disk    leaves Rudolf OS and starts the installed system
   Press D for diagnostic messages on screen and the serial port.
 
-UEFI computers start Rudolf OS directly at the firmware's screen resolution.
+UEFI computers show a short menu (4 seconds): Start Rudolf OS, Recovery
+mode, Check this disc or USB drive, Start from memory, and Debug start
+(only with Secure Boot off). With Secure Boot on, the very first start asks
+you to enroll the Rudolf OS key once: see SECURE BOOT below.
 
 The first start asks for a language, a user name and a password. On a live
-system nothing is kept after shutdown unless Rudolf OS is installed (below)
-or you use "Back up everything" in Settings > Storage and backup.
+system nothing is kept after shutdown: see KEEPING YOUR FILES below.
+
+
+KEEPING YOUR FILES
+------------------
+A stick written from the image runs "live": your files, settings and apps
+are lost when you shut down. To keep them on the same stick, sign in and
+answer "Keep my files..." when Rudolf OS offers it (or use Settings >
+Storage and backup > Keep files on this drive). Rudolf OS adds a RUDOLFDATA
+partition in the stick's free space after the image (at least 1 GB is
+needed); restart once, and everything you made so far moves onto it. Apps
+from the App Store, such as Roblox (Sober), need this (or an installed
+Rudolf OS).
 
 
 INSTALLING
 ----------
-Settings > Update and recovery > "Install here..." copies the system to a hard
-disk or USB stick and adds a data partition, so your files and settings are
-kept. THE WHOLE TARGET DISK IS ERASED. Afterwards remove the CD and restart.
+Settings > Update and recovery > "Install here..." copies Rudolf OS to
+another disk (an internal disk or a second USB stick) and adds a data
+partition, so your files and settings are kept there. THE WHOLE TARGET DISK
+IS ERASED. Your files on the drive you started from are not copied over.
+Afterwards remove the stick or disc and choose the disk in the computer's
+boot menu (for example F8 on ASUS computers, F12 on many others).
 
-You can also make the USB stick itself keep your files: start from the
-stick, then use Install and pick the same stick.
+"Install from" picks what is installed: the Rudolf OS on the drive you
+started from, or a newer disc image (rudolf-os-VERSION.iso) you downloaded
+into C:\DOWNLOADS - only images signed by Rudolf OS are accepted. Use a
+1.2.2 or newer image if the computer should start with Secure Boot on.
+
+You cannot install onto the drive Rudolf OS is running from; to keep files
+on that drive, see KEEPING YOUR FILES above.
 
 Updates of the desktop can be installed from Settings > Update and recovery;
 the previous version is kept and "Roll back" restores it. "Recovery mode" in
@@ -257,6 +289,13 @@ Rudolf OS key once you have enrolled it. Do this once per computer:
 2. Choose "Enroll key from disk", then the Rudolf OS drive, then the folders
    EFI, rudolf, and the file rudolf.cer.
 3. Choose "Continue", then "Yes", then "Reboot".
+If the blue screen says "Unsupported Format" when you pick rudolf.cer (some
+firmware, with discs older than 1.2.4), choose Continue boot or switch off;
+turn Secure Boot off ("OS Type: Other OS" on ASUS), start Rudolf OS, use
+Settings > Security Settings > Prepare Secure Boot (it shows a one-time
+password), turn Secure Boot back on, and at the next start choose "Enroll
+MOK", "Continue", "Yes", type the password and choose "Reboot". The blue
+screen waits only 10 seconds for a key press at first.
 Rudolf OS now starts with Secure Boot on: only signed software, the kernel
 locked down, and every system file checked as it is read. Already running
 Rudolf OS with Secure Boot off? Settings > Security Settings > Prepare

@@ -146,15 +146,23 @@ jobs:
           split -b 30408704 -d -a 2 "rudolf-os-$VER.iso" "rudolf-os-$VER.iso.part" && rm "rudolf-os-$VER.iso"
           N=$(ls rudolf-os-$VER.iso.part* | wc -l)
           printf '%s\r\n' "Rudolf OS $VER disc image, in $N parts (GitHub's limit for one file)." "" \
-            "Windows (Command Prompt, in the folder with the parts):" "  copy /b rudolf-os-$VER.iso.part* rudolf-os-$VER.iso" "  certutil -hashfile rudolf-os-$VER.iso SHA256" "" \
+            "Windows, the easy way: put join.ps1 in the folder with the parts and the .sha256, right-click it and" \
+            "choose Run with PowerShell (or: powershell -ExecutionPolicy Bypass -File .\\join.ps1). It joins the parts," \
+            "checks the result and says which part to download again if one is missing or damaged." "" \
+            "Windows PowerShell (the usual terminal on Windows 11):" "  cmd /c copy /b rudolf-os-$VER.iso.part* rudolf-os-$VER.iso" \
+            "  Get-FileHash rudolf-os-$VER.iso -Algorithm SHA256" "" \
+            "Windows Command Prompt:" "  copy /b rudolf-os-$VER.iso.part* rudolf-os-$VER.iso" "  certutil -hashfile rudolf-os-$VER.iso SHA256" "" \
             "Linux or macOS (Terminal):" "  cat rudolf-os-$VER.iso.part* > rudolf-os-$VER.iso" "  sha256sum -c rudolf-os-$VER.iso.sha256" "" \
-            "The checksum must match rudolf-os-$VER.iso.sha256. Then see README.TXT to make a bootable USB stick or DVD." > JOIN-PARTS.TXT
+            "The checksum must match rudolf-os-$VER.iso.sha256. Then see README.TXT to make a bootable USB stick or DVD." "" \
+            "Keep the joined .iso on your computer, never on the USB stick you are going to write it to: writing" \
+            "erases the whole stick, including the file it is reading. In Rufus choose 'Write in DD Image mode'." > JOIN-PARTS.TXT
+          sed 's/$/\r/' ../iso/systools/join.ps1 > join.ps1
           sed 's/$/\r/' ../iso/README.TXT > README.TXT
           git -C .. archive --format=tar --prefix=rudolf-os-$VER/ HEAD desktop iso libs LICENSE README.md CHANGELOG.md | xz -9 > "rudolf-os-$VER-source.tar.xz"
           { echo "Rudolf OS $VER: download every rudolf-os-$VER.iso.part file and the .sha256, then join them as JOIN-PARTS.TXT says."
             echo; echo "Computers that already run Rudolf OS get these changes as an update (Settings > Update and recovery)."
             echo; echo "## What's new"; awk -v v="$VER" '$1=="##"&&$2==v{f=1;next} /^## /{f=0} f&&/^- /' ../CHANGELOG.md; } > notes.md
-          gh release create "disc-$VER" rudolf-os-$VER.iso.part* "rudolf-os-$VER.iso.sha256" JOIN-PARTS.TXT README.TXT "rudolf-os-$VER-source.tar.xz" --title "Rudolf OS $VER" --notes-file notes.md
+          gh release create "disc-$VER" rudolf-os-$VER.iso.part* "rudolf-os-$VER.iso.sha256" JOIN-PARTS.TXT join.ps1 README.TXT "rudolf-os-$VER-source.tar.xz" --title "Rudolf OS $VER" --notes-file notes.md
           cat "rudolf-os-$VER.iso.sha256"
       - name: Keep the release lists from expiring
         if: always() && steps.seed.outcome != 'failure'

@@ -453,6 +453,13 @@ int main(int argc, char **argv)
 	}
 	load_keys();
 	if (!strcmp(c, "status")) return cmd_status();
+	/* verify-manifest LIST SIG (1.2.4, install.sh): is this a release list signed with a trusted key? */
+	if (!strcmp(c, "verify-manifest") && argc == 4) {
+		size_t ml, sl; char *mt = slurp(argv[2], &ml), *sg = slurp(argv[3], &sl);
+		if (!mt || !sg || sl != 64 || !verify((unsigned char *)mt, ml, (unsigned char *)sg)) { say("not signed by Rudolf OS"); return 1; }
+		man_t m; char *cp = strdup(mt); if (parse_manifest(cp, &m)) { say("not a Rudolf OS release list"); return 1; }
+		printf("serial %lld\nversion %s\n", m.serial, m.version); return 0;
+	}
 	if (access("/run/rudolf/persistent", F_OK) && !getenv("RU_SYSD")) { say("Updates need Rudolf OS installed (or a USB drive with a RUDOLFDATA partition)."); return 2; }
 	mkdirs(SYSD); { char d[300]; snprintf(d, sizeof d, "%s", CONFP); char *s = strrchr(d, '/'); if (s) { *s = 0; mkdirs(d); } }
 	if (!strcmp(c, "check")) return cmd_check(0);
