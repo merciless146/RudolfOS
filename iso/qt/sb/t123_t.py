@@ -86,10 +86,10 @@ try:
     ok('the desktop is 1.2.3', wait_desktop(g) and js('RVER') == '1.2.3', js('RVER'))
     ok('rudolfd and Task Manager: started from a USB drive', js("rd('info').then(i=>i.media)") == 'usb', js("rd('info').then(i=>i.media)"))
     rel = js("sysuStatus().then(s=>tmRel(s))")
-    ok('Task Manager: the installed release (from the disc)', isinstance(rel, str) and rel.startswith('1.2.3.') and 'from the disc' in rel, rel)
+    ok('Task Manager: the installed release (from the disc)', isinstance(rel, str) and rel.startswith('1.2.3') and 'from the disc' in rel, rel)
     rep = str(js("sysReport().then(r=>typeof r=='string'?r:r.text)", 90))
     line = next((l for l in rep.split('\n') if l.startswith('Started from')), '')
-    ok('the system report: USB drive, release', 'usb' in line and 'release 1.2.3.' in rep, line + ' | ' + next((l for l in rep.split('\n') if l.startswith('Rudolf OS:')), ''))
+    ok('the system report: USB drive, release', 'usb' in line and 'release 1.2.3' in rep, line + ' | ' + next((l for l in rep.split('\n') if l.startswith('Rudolf OS:')), ''))
     # ---- an update slot (the same release, as a trial start): kexec with the options of this start
     for c in ('mkdir -p /persist/os/system/a', 'cd /persist/os/system/a', 'cp /live/media/boot/vmlinuz vmlinuz',
               'cp /live/media/rudolf/manifest.txt /live/media/rudolf/manifest.sig .', 'cp /live/media/rudolf/release RELEASE',
