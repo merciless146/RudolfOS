@@ -71,7 +71,7 @@ try:
     ok('the desktop is 1.2.4', wait_desktop(g) and js('RVER') == '1.2.4', js('RVER'))
     st = js("rd('keepfiles').then(j=>JSON.stringify(j))")
     st = json.loads(st) if isinstance(st, str) else {}
-    ok('Rudolf OS offers to keep files on the stick, with its free space', st.get('possible') and 6e9 < st.get('freeBytes', 0) < 8e9, st)
+    ok('Rudolf OS offers to keep files on the stick, with its free space', st.get('possible') and 7e9 < st.get('freeBytes', 0) < 8.6e9, st)
     # something made in the live session
     sh('echo made-live > /home/rudolf/t124-marker; chown 1000:1000 /home/rudolf/t124-marker')
     js("localStorage.setItem('t124','kept');1")
