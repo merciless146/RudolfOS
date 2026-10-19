@@ -2434,6 +2434,16 @@ int main(int argc, char **argv)
 		if (strstr(cl, "rudolf.media=disk")) snprintf(media_mode, sizeof media_mode, "disk");
 		free(cl);
 	}
+	/* what the system started from, by the device the initramfs found it on (1.2.3): a disc image written to a
+	   USB stick is not a disc; a UEFI start says nothing about it on the start-up options */
+	{ char *md = slurp("/etc/rudolf/media", NULL);
+	  if (md && !strncmp(md, "/dev/", 5)) {
+		char *nl = strchr(md, '\n'); if (nl) *nl = 0;
+		char sp[300], rp[4096]; snprintf(sp, sizeof sp, "/sys/class/block/%s", md + 5);
+		if (!strncmp(md + 5, "sr", 2)) snprintf(media_mode, sizeof media_mode, "cd");
+		else if (realpath(sp, rp)) snprintf(media_mode, sizeof media_mode, "%s", strstr(rp, "/usb") ? "usb" : strstr(rp, "/mmc") ? "sd" : "disk");
+	  }
+	  free(md); }
 	if (!access("/sys/firmware/efi", F_OK)) snprintf(boot_mode, sizeof boot_mode, "uefi");
 	{ char *sb = slurp("/etc/rudolf/secureboot", NULL); secureboot = sb && sb[0] == '1'; free(sb); }
 	live = access(RUN "/persistent", F_OK) != 0;

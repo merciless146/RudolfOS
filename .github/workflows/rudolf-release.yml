@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools nasm bc flex bison libelf-dev libssl-dev kmod jq python3-cryptography libx11-dev libxtst6 libxfixes3 libxrandr2 libxrandr-dev zlib1g-dev sbsigntool >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools nasm bc flex bison libelf-dev libssl-dev kmod jq python3-cryptography libx11-dev libxtst6 libxfixes3 libxrandr2 libxrandr-dev zlib1g-dev sbsigntool mesa-vulkan-drivers libvulkan1 >/dev/null
       - name: Signing key
         env: {KEY: '${{ secrets.RPK_SIGNING_KEY }}'}
         run: |

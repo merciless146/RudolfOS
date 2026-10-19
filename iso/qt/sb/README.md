@@ -20,3 +20,10 @@ SB_PARTS=$S/sbparts QEMU=path/to/qemu python3 sb_t.py $S/disc/rudolf-os-1.2.2.is
 
 `sbvm.py` starts such a computer (`VM(name, parts, drives, secure=True)`); its screenshots are in the folder
 named after the VM.
+
+## t123_t.py (Rudolf OS 1.2.3)
+
+`python3 t123_t.py DISC.iso` (same SB_PARTS / QEMU and debug test disc as sb_t.py): a UEFI computer with Secure
+Boot off starting from a USB stick (the disc image on xHCI USB storage). Checks the NVIDIA GSP and Realtek firmware
+in the modules layer (pinned checksums, the links of other chips), the start medium (usb), the installed release
+in Task Manager and the report, and an update slot started by kexec with each start-up option once (14 checks).

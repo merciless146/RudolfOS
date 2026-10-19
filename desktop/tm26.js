@@ -8,6 +8,9 @@
    details (no names, files, web addresses, network addresses or network names). "Report a problem" sends it to the
    Rudolf OS issue tracker on GitHub as a new issue that the person reviews and submits (.github/ISSUE_TEMPLATE/
    system-report.yml); a GitHub workflow files it in the system-reports database (.github/workflows). ===== */
+/* the installed system release (rudolf-update status: current = the release running; booted = slot a, b or the disc) */
+const tmRel = up => { if (!up || !up.current) return ''; const c = up.current, ch = (String(up.url || '').match(/\/(stable|beta)\/?$/) || [])[1];
+  return [c.version, c.serial && 'serial ' + c.serial, ch && ch + ' channel', up.booted == 'disc' ? 'from the disc' : up.booted && 'slot ' + up.booted + (up.trying ? ' (trial start)' : '')].filter(Boolean).join(' · '); };
 const TM_KIND = {desktop: 'Desktop', web: 'Web pages (desktop and Oracle tabs)', gpu: 'Graphics', network: 'Network', audio: 'Sound', chromium: 'Browser helpers',
   webwindow: 'Browser window for sign-in sites', app: 'Apps', system: 'System services', kernel: 'Kernel'};
 const TM_ORDER = ['desktop', 'web', 'gpu', 'network', 'audio', 'chromium', 'webwindow', 'app', 'system', 'kernel'];
@@ -168,8 +171,8 @@ function taskmgr26() {
     const sbs = typeof sbStatus == 'function' ? await sbStatus(true) : null;
     const rb = document.createElement('div'); rb.className = 'rmrow'; rb.style.justifyContent = 'flex-end'; rb.innerHTML = "<button class='tmrf'>Refresh</button>"; rb.querySelector('.tmrf').onclick = () => getSys(true).then(() => draw(true)); B.appendChild(rb);
     B.appendChild(h4('Rudolf OS'));
-    B.appendChild(kv([['Version', RVER + ' (' + RVERDATE + ')'], up && ['Installed release', [up.version, up.serial, up.channel].filter(Boolean).join(' · ')],
-      ['Started from', !RD ? 'a web browser' : s && s.kernel ? `${s.kernel.boot.toUpperCase()}, ${{cd: 'disc', usb: 'USB drive', disk: 'hard disk'}[s.kernel.media] || s.kernel.media}${s.kernel.live ? ' (live: changes are not kept)' : ''}${s.kernel.recovery ? ', recovery mode' : ''}` : '—'],
+    B.appendChild(kv([['Version', RVER + ' (' + RVERDATE + ')'], up && ['Installed release', tmRel(up) || '—'],
+      ['Started from', !RD ? 'a web browser' : s && s.kernel ? `${s.kernel.boot.toUpperCase()}, ${{cd: 'disc', usb: 'USB drive', sd: 'SD card', disk: 'internal disk or USB drive'}[s.kernel.media] || s.kernel.media}${s.kernel.live ? ' (live: changes are not kept)' : ''}${s.kernel.recovery ? ', recovery mode' : ''}` : '—'],
       RD && ['Secure Boot', typeof sbSummary == 'function' ? sbSummary(sbs) : '—'],
       s && s.kernel && ['Running for', tmDur(s.kernel.uptime)], s && s.kernel && ['Load (1, 5, 15 min)', s.kernel.load.join(', ')]]));
     B.appendChild(h4('The desktop'));
@@ -263,9 +266,9 @@ async function sysReport(problem) {
   const sbs = typeof sbStatus == 'function' ? await sbStatus(true) : null;
   const yes = b => b ? 'running' : 'not running';
   const key = [
-    ['Rudolf OS', RVER + ' (' + RVERDATE + ')' + (up ? ' · release ' + [up.version, up.serial, up.channel].filter(Boolean).join(' ') : '')],
+    ['Rudolf OS', RVER + ' (' + RVERDATE + ')' + (tmRel(up) ? ' · release ' + tmRel(up) : '')],
     ['Created', new Date().toISOString().replace(/\.\d+Z$/, 'Z')],
-    ['Started from', !RD ? 'web browser' : `${(k.boot || info && info.boot || '?').toUpperCase()}, ${k.media || info && info.media || '?'}${(k.live ?? (info && info.live)) ? ', live' : ', installed'}${k.recovery ? ', recovery' : ''}`],
+    ['Started from', !RD ? 'web browser' : `${(k.boot || info && info.boot || '?').toUpperCase()}, ${k.media || info && info.media || '?'}${(k.live ?? (info && info.live)) ? ', live (changes are not kept)' : ', changes kept (RUDOLFDATA)'}${k.recovery ? ', recovery' : ''}`],
     ['Secure Boot', !RD ? '—' : typeof sbSummary == 'function' ? sbSummary(sbs) : '—'],
     ['Desktop', !RD ? 'browser version' : SHELL ? 'shell ' + SHELL_VER + ' (real tabs)' : sv.shellFailed ? 'plain page (shell failed)' : 'plain page'],
     ['Display', sys ? tmDisp(sys.display) : '—'],

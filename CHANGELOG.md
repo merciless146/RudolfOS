@@ -3,6 +3,16 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.2.3 (2026-10-19)
+Summary: graphics acceleration for NVIDIA GeForce 20, 30 and 40 series cards, and fixes found on a real computer
+- New: NVIDIA GeForce RTX 20, 30 and 40 series (and GTX 16) cards draw with the graphics card instead of the processor. Rudolf OS now carries NVIDIA's GSP firmware and Mesa's NVK driver, which these cards need for any acceleration with the open driver. The first start after the update can take a few seconds longer while the card starts its firmware. If the card cannot use it, Rudolf OS draws with the processor as before.
+- New: the firmware for Realtek Ethernet chips (the r8169 driver) is included.
+- Fixed: Task Manager › System › Installed release and the system report now show the release that is running (version, serial, channel, slot).
+- Fixed: Task Manager says "USB drive" or "SD card" when Rudolf OS started from one; it said "disc" for a disc image written to a USB stick.
+- Fixed: saving a window as PDF no longer turns dashes, quotes and table columns into "?".
+- Fixed: the start-up options in Task Manager and the system report no longer list the same options twice.
+- Note: the update is larger than usual (about 75 MB) because of the NVIDIA firmware.
+
 ## 1.2.2 (2026-10-18)
 Summary: Rudolf OS starts with Secure Boot on: enroll its key once, and the computer starts only signed, checked software
 - New: Secure Boot. UEFI computers no longer need Secure Boot turned off. The first time, a blue screen asks to enroll the Rudolf OS key (Enroll key from disk › EFI › rudolf › rudolf.cer); after that Rudolf OS starts as before. Already running Rudolf OS? Settings › Security Settings › Prepare Secure Boot does it with a one-time password, then turn Secure Boot on in the firmware settings.

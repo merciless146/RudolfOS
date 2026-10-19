@@ -101,7 +101,7 @@ function iconProps(d){
   const st=row(t,'Storage','Checking…');const mode=row(t,'Running',RD?'Checking…':'In a web browser');
   if(navigator.storage&&navigator.storage.estimate&&!RD)navigator.storage.estimate().then(e=>{st.textContent=`${fmtB(e.usage||0)} used of ${fmtB(e.quota||0)} available to Rudolf OS`}).catch(()=>st.textContent='—');
   if(RD)rd('info').then(i=>{const dev=[i.vendor,i.product].filter(Boolean).join(' ');if(dev)row(t,'Device',dev);cpu.textContent=(i.cpu||'Processor')+' · '+(i.threads||navigator.hardwareConcurrency)+' threads';if(i.memTotal)mem.textContent=fmtB(i.memTotal);
-   mode.textContent=(i.live?'Live from '+(i.media=='disk'?'a USB drive':'a disc'):'Installed on this computer')+(i.boot?' · '+String(i.boot).toUpperCase():'');if(i.kernel)row(t,'Kernel',i.kernel);
+   mode.textContent=(i.live?'Live from '+({cd:'a disc',usb:'a USB drive',sd:'an SD card'}[i.media]||'a USB drive or disk'):'Installed on this computer')+(i.boot?' · '+String(i.boot).toUpperCase():'');if(i.kernel)row(t,'Kernel',i.kernel);
    if(i.uptime){const h=Math.floor(i.uptime/3600),m=Math.floor(i.uptime%3600/60);row(t,'Up time',h?`${h} h ${m} min`:`${m} min`)}}).catch(()=>{mode.textContent='Installed system'});
   if(RD)rd('disks').then(r=>{const l=(r.disks||r||[]);st.textContent=Array.isArray(l)&&l.length?l.length+' drive'+(l.length==1?'':'s')+' (see File Explorer)':'—'}).catch(()=>st.textContent='—')}
  let curTab='General';

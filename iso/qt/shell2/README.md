@@ -14,7 +14,7 @@ python3 ../../systools/mkiwa.py key $KEY        # once
 gcc -O2 -o $WORK/xin xin.c /usr/lib/x86_64-linux-gnu/libXtst.so.6 -lX11
 ./host.sh start fresh && node wait.js 90         # fresh: a new profile (the installed shell changes only with its version)
 node tab_t.js $WORK/xin $WORK/shots              # Oracle's real tabs, end to end (42 checks)
-node tm_t.js                                     # Task Manager and system reports (18 checks)
+node tm_t.js                                     # Task Manager and system reports (20 checks)
 node pl_t3.js $WORK/xin                          # pointer capture for games, with real X input
 node mv_t.js STEP                                # the move of the databases into the shell and back (phase 2)
 node sr_t.js                                     # the system-reports workflow script, against a stand-in for GitHub

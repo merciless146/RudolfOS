@@ -274,7 +274,11 @@ async function shCmd(c,a,inp,P){const R=x=>resolve(x,P.cwd),txt=p=>{const v=node
   return'usage: pkg list | pkg info NAME | pkg install NAME | pkg remove NAME\n'}}
  throw new Error('unknown command')}
 /* ===================== Save as PDF / Print ===================== */
-function pdfEsc(s){return s.replace(/[\\()]/g,'\\$&').replace(/[^\x20-\x7e\xa0-\xff]/g,'?')}
+/* text for the PDF's built-in fonts (WinAnsiEncoding): the punctuation Windows-1252 has above 0x7f is mapped to its
+   byte, a few other signs to plain text, tabs (table cells) to spaces; anything else becomes '?' (1.2.3) */
+const PDF_WIN={'\u20ac':128,'\u201a':130,'\u0192':131,'\u201e':132,'\u2026':133,'\u2020':134,'\u2021':135,'\u02c6':136,'\u2030':137,'\u0160':138,'\u2039':139,'\u0152':140,'\u017d':142,'\u2018':145,'\u2019':146,'\u201c':147,'\u201d':148,'\u2022':149,'\u2013':150,'\u2014':151,'\u02dc':152,'\u2122':153,'\u0161':154,'\u203a':155,'\u0153':156,'\u017e':158,'\u0178':159};
+const PDF_TXT={'\u2192':'->','\u2190':'<-','\u2194':'<->','\u21d2':'=>','\u2212':'-','\u2010':'-','\u2011':'-','\u2012':'-','\u2015':'-','\u2264':'<=','\u2265':'>=','\u2260':'!=','\u2248':'~','\u2713':'v','\u2714':'v','\u2717':'x','\u2718':'x','\u2715':'x','\u00a0':' ','\u2009':' ','\u200a':' ','\u2002':' ','\u2003':' ','\u202f':' ','\u200b':'','\ufe0f':'','\u2032':"'",'\u2033':'"'};
+function pdfEsc(s){return String(s).replace(/\t+/g,'   ').replace(/[\\()]/g,'\\$&').replace(/[^\x20-\x7e\xa1-\xff]/gu,c=>c in PDF_WIN?String.fromCharCode(PDF_WIN[c]):c in PDF_TXT?PDF_TXT[c]:'?')}
 function pdfFromText(title,text){const W=595,H=842,M=56,fs=11,lh=15,maxc=Math.floor((W-2*M)/(fs*0.5));const lines=[];String(text).replace(/\r/g,'').split('\n').forEach(l=>{if(!l){lines.push('');return}while(l.length>maxc){let k=l.lastIndexOf(' ',maxc);if(k<20)k=maxc;lines.push(l.slice(0,k));l=l.slice(k).replace(/^ /,'')}lines.push(l)});
  const per=Math.floor((H-2*M-30)/lh),pages=[];for(let i=0;i<Math.max(1,lines.length);i+=per)pages.push(lines.slice(i,i+per));
  const objs=[];const add=s=>{objs.push(s);return objs.length};const font=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');const fontB=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');

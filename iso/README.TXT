@@ -190,7 +190,10 @@ made by the Vinegar team (not by Roblox Corporation; use at your own risk).
 * App Store > Roblox (Sober) > Get. The download is about 1 GB from Flathub.
 * Open "Roblox" from the Start menu. Super+Esc returns to the desktop.
 * Games and Linux apps run on the graphics card (Intel, AMD or NVIDIA)
-  through Xorg, with sound through the Rudolf OS sound server.
+  through Xorg, with sound through the Rudolf OS sound server. NVIDIA
+  GeForce GTX 16 / RTX 20 series and newer use NVIDIA's GSP firmware and
+  Mesa's NVK driver (1.2.3); older NVIDIA cards have little or no
+  acceleration with the open driver.
 * Settings > Display > Graphics card chooses how the graphics card is used.
   If it cannot be used, Rudolf OS falls back to the software display, where
   games are slow. If the screen goes black, choose "Recovery mode".

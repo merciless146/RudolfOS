@@ -16,6 +16,9 @@ mkdir -p /dev/pts /run /mnt/media /mnt/ro /mnt/rw /mnt/persist /newroot
 mount -t devpts devpts /dev/pts
 echo 1 > /proc/sys/kernel/printk 2>/dev/null
 CMD=$(cat /proc/cmdline)
+# each option once (1.2.3): a kernel started by kexec puts its built-in options before the ones it is given,
+# which already hold them
+CMD=$(echo "$CMD" | awk '{o=""; for(i=1;i<=NF;i++) if(!s[$i]++) o=o (o==""?"":" ") $i; print o}')
 has() { case " $CMD " in *" $1 "*) return 0;; esac; return 1; }
 say() { echo "$*" > /dev/console; }
 # Secure Boot (1.2.2): the firmware says whether it is on (the kernel then also locks itself down). With it on,
