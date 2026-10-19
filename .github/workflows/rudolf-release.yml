@@ -156,7 +156,7 @@ jobs:
             "The checksum must match rudolf-os-$VER.iso.sha256. Then see README.TXT to make a bootable USB stick or DVD." "" \
             "Keep the joined .iso on your computer, never on the USB stick you are going to write it to: writing" \
             "erases the whole stick, including the file it is reading. In Rufus choose 'Write in DD Image mode'." > JOIN-PARTS.TXT
-          sed 's/$/\r/' ../iso/systools/join.ps1 > join.ps1
+          cp ../iso/systools/join.ps1 join.ps1   # CRLF already (.gitattributes)
           sed 's/$/\r/' ../iso/README.TXT > README.TXT
           git -C .. archive --format=tar --prefix=rudolf-os-$VER/ HEAD desktop iso libs LICENSE README.md CHANGELOG.md | xz -9 > "rudolf-os-$VER-source.tar.xz"
           { echo "Rudolf OS $VER: download every rudolf-os-$VER.iso.part file and the .sha256, then join them as JOIN-PARTS.TXT says."
