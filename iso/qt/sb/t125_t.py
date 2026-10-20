@@ -39,7 +39,8 @@ def sh(c, t=60): return g.sh(c, t)
 def js(e, t=60):
     for _ in range(3):
         r = g.js(e, t)
-        if not (isinstance(r, tuple) and r[0] == 'ERR'): return r
+        # ERR: no page to talk to; EXC ReferenceError: the page is (re)loading, e.g. while the desktop moves into its shell
+        if not (isinstance(r, tuple) and (r[0] == 'ERR' or (r[0] == 'EXC' and 'ReferenceError' in str(r[1])))): return r
         time.sleep(15); wait_desktop()
     return r
 def jsj(e, t=60):
@@ -85,7 +86,11 @@ try:
     ok('starts, keeping files on RUDOLFDATA', wait_shell() and last(sh('[ -e /run/rudolf/persistent ] && echo kept || echo live')) == 'kept', sh('grep persist /proc/mounts'))
     ok('the desktop is 1.2.5', wait_desktop() and js('RVER') == '1.2.5', js('RVER'))
     js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();svj('bd95setup',1);const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()=='Guest');if(b)b.click();return 1})()")
-    ok('signed in', until('!!USER', 120)); js("USER.r='admin';window.elevate=async()=>true;1")
+    ok('signed in', until('!!USER', 120))
+    def ready():   # the desktop's own functions are there (after a reload the page has to be set up again)
+        if not until("typeof rdPost=='function'&&typeof lxApi=='function'&&!!USER", 120): wait_desktop()
+        js("USER.r='admin';window.elevate=async()=>true;1")
+    ready()
     sh('ip link set eth0 down 2>/dev/null; ip route del default 2>/dev/null; true')
     s = jsj("lxApi('apps/size?id=org.rudolf.TestApp').then(j=>JSON.stringify(j),e=>JSON.stringify({err:e.message}))")
     ok('no network: apps/size says "none"', s.get('ok') and s.get('link') == 'none', s)
@@ -93,6 +98,7 @@ try:
     out(sh("modprobe mac80211_hwsim radios=2 2>&1; sleep 2; ls /sys/class/net", 30))
     A = last(sh("findfs LABEL=RUDOLFAUX"))
     out(sh(f"mkdir -p /mnt/aux; grep -q ' /mnt/aux ' /proc/mounts || mount {A} /mnt/aux; /mnt/aux/hostapd -B -P /run/hostapd.pid /mnt/aux/ap-mixed.conf >/run/hostapd.log 2>&1; sleep 2; ip addr add 10.42.0.1/24 dev wlan1; busybox udhcpd /mnt/aux/udhcpd.conf; busybox httpd -p 10.42.0.1:8099 -h /mnt/aux; tail -2 /run/hostapd.log", 40))
+    ready()
     r = js("rdPost('wifi/connect?if=wlan0','RudolfTest\\ncorrect horse battery\\npsk').then(()=>'ok',e=>e.message)")
     j = job(120); joined = r == 'ok' and j.get('status') == 0 and '10.42.0.' in wait_sh('ip -4 -o addr show dev wlan0', '10.42.0.', 60)
     if not joined:   # what the Wi-Fi service saw, for the record
