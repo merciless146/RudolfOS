@@ -29,7 +29,7 @@ function wifiPanel(wf,ifn){
  const connect=async(ssid,pw,kind,hidden)=>{busy=true;open='';showCur();q('.wfl').querySelectorAll('button').forEach(b=>b.disabled=true);
   const sec=kind=='saved'?'saved':(hidden?'hidden-':'')+(kind=='psk'?'psk':kind=='owe'?'owe':'open');
   try{await rdPost('wifi/connect'+qs,ssid+'\n'+(pw||'')+'\n'+sec);notify('Wi-Fi','Connecting to '+ssid+'…',{quiet:true});
-   let j;for(let i=0;i<60;i++){await new Promise(r=>setTimeout(r,1000));j=await rd('job');if(!j.running&&j.name=='wifi')break;if(i%3==2)refresh()}
+   let j;for(let i=0;i<100;i++){await new Promise(r=>setTimeout(r,1000));j=await rd('job');if(!j.running&&j.name=='wifi')break;if(i%3==2)refresh()}
    const msg=(j.log||'').trim().split('\n').pop()||'';if(j.status==0)notify('Wi-Fi',msg||('Connected to '+ssid));else notify('Wi-Fi',msg||'Could not connect',{kind:'error'})}
   catch(e){notify('Wi-Fi',e.message,{kind:'error'})}busy=false;await refresh();scan(true)};
  const pwForm=(row,ssid,kind,hidden)=>{const f=document.createElement('div');f.className='wfpw';f.innerHTML=`${hidden?"<input class='wfn' placeholder='Network name' autocomplete='off'>":''}<div class='wfpr'><input type='password' class='wfp' placeholder='Password' autocomplete='off'${kind=='open'||kind=='owe'?' style="display:none"':''}><label${kind=='open'||kind=='owe'?' style="display:none"':''}><input type='checkbox' class='wfsh'> Show</label>${hidden?"<select class='wfk'><option value='psk'>WPA2/WPA3 password</option><option value='open'>No password</option></select>":''}</div><div class='msg wfe'></div><div class='rmrow' style='justify-content:flex-start'><button class='wfgo'>Connect</button><button class='wfx'>Cancel</button></div>`;
