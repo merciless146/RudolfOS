@@ -112,8 +112,15 @@ jobs:
           SB_KEY: ${{ runner.temp }}/sb.key
           CHROMIUM_FROM: snap
           URGENT: ${{ inputs.urgent && '1' || '' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # the hour (YYYYMMDDHH); a second build in the same hour, or one after a release that already took a later
+          # number, takes the next free number (each release needs its own tag, and updates need a larger serial)
           export SERIAL=$(date -u +%Y%m%d%H)
+          P=$(sed -n 's/^serial //p' "$PREV/manifest.txt" 2>/dev/null)
+          if [ -n "$P" ] && [ "$SERIAL" -le "$P" ]; then SERIAL=$((P + 1)); fi
+          while gh release view "r$SERIAL" --repo "${{ github.repository }}" >/dev/null 2>&1; do SERIAL=$((SERIAL + 1)); done
+          echo "release serial $SERIAL"
           export FILE_BASE="https://github.com/${{ github.repository }}/releases/download/r$SERIAL"
           export KERNEL_VERSION=$(curl -fsSL https://www.kernel.org/releases.json | jq -r '.releases[].version' | grep '^6\.18\.' | sort -V | tail -1)
           echo "serial=$SERIAL" >> "$GITHUB_OUTPUT"
