@@ -95,8 +95,11 @@ try:
     js("(()=>{const b=document.querySelector('.boot30');b.querySelector('.bmd').value='rudolf-recovery.conf';b.querySelector('.bmt').value='2';b.querySelector('.bms').click();return 1})()")
     ok('Save stores both in the firmware', until("/Saved/.test(document.querySelector('.boot30 .bmm').textContent)", 30) and var('LoaderEntryDefault') == 'rudolf-recovery.conf' and var('LoaderConfigTimeout') == '2',
        [var('LoaderEntryDefault'), var('LoaderConfigTimeout')])
-    ok('after a restart the menu starts the chosen entry by itself', restart() and var('LoaderEntrySelected') == 'rudolf-recovery.conf', var('LoaderEntrySelected'))
-    ok('...and the choices are still there', var('LoaderEntryDefault') == 'rudolf-recovery.conf' and var('LoaderConfigTimeout') == '2')
+    # the restart itself uses the debug entry (the same start as the test disc's normal one, with its serial shell;
+    # recovery mode would start a different desktop)
+    r = js("rdPost('bootmenu/set?default=rudolf-debug.conf').then(()=>'saved',e=>e.message)")
+    ok('after a restart the menu starts the chosen entry by itself', r == 'saved' and restart() and var('LoaderEntrySelected') == 'rudolf-debug.conf', [r, var('LoaderEntrySelected')])
+    ok('...and the choices are still there', var('LoaderEntryDefault') == 'rudolf-debug.conf' and var('LoaderConfigTimeout') == '2')
     r = js("rdPost('bootmenu/set?default=&timeout=').then(()=>'saved',e=>e.message)")
     ok('"As on the disc" removes them again', r == 'saved' and var('LoaderEntryDefault') == '' and var('LoaderConfigTimeout') == '', [var('LoaderEntryDefault'), var('LoaderConfigTimeout')])
     # the Power dialog: Restart into Windows (the stand-in prints, waits 3 s and restarts the computer)
