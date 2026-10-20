@@ -15,7 +15,7 @@ function nativeConsent(a){return new Promise(res=>{const o=document.createElemen
  o.innerHTML=`<div class='natbox' role='dialog' aria-modal='true' aria-labelledby='natt'><h3 id='natt'></h3><ul>
  <li><b>Unofficial.</b> Sober is made by the Vinegar team, not by Roblox Corporation or by Rudolf OS. Roblox does not support it and may change or block it at any time.</li>
  <li><b>Your Roblox account.</b> Playing through an unofficial player is at your own risk. Never type your Roblox password anywhere except the Roblox sign-in screen inside the game.</li>
- <li><b>Download.</b> About 1 GB from Flathub. Connect a network cable first (Wi-Fi is not supported yet).</li>
+ <li><b>Download.</b> About 1 GB from Flathub, over Wi-Fi or a network cable. If the connection drops, the download continues when you press Get again.</li>
  <li><b>Speed.</b> Roblox runs on the graphics card when Rudolf OS can use it (Settings → Display → Graphics card). On small computers such as an Intel N100, lower the graphics quality in Roblox’s settings.</li>
  <li><b>Playing.</b> Roblox opens full screen. Press <kbd>Super</kbd>+<kbd>Esc</kbd> to come back to the desktop.</li></ul>
  <label class='natok'><input type='checkbox'> I understand</label><div class='stbtn' style='justify-content:flex-end'><button class='c'>Cancel</button><button class='pri g' disabled>Get</button></div></div>`;
@@ -41,13 +41,13 @@ function nativeCard(B,a,instOnly){const d=document.createElement('div');d.classN
    btn('Details',async()=>{try{const r=await rdPost('native/log?id='+a.id);lg.hidden=!lg.hidden;lg.textContent=r.log||'Nothing logged yet.'}catch(e){notify(a.name,e.message)}})}
   else{let why='';if(!s.persistent)why='Install Rudolf OS on this computer first (Settings → Update and recovery): apps need a place to be kept.';
    else if(s.free&&s.free<2.5e9)why='Needs about 2.5 GB of free space; '+(s.free/1e9).toFixed(1)+' GB is free.';
-   st.textContent=why||'Not installed. Needs an internet connection by network cable.';
+   st.textContent=why||'Not installed. Needs an internet connection (about 1 GB to download).';
    if(!why)btn('Get',async()=>{if(await nativeConsent(a)&&await elevate('Install '+a.name+' from Flathub'))job('install')},1);btn('About',()=>helpApp('roblox'))}}
  async function job(what){try{await rdPost('native/'+what+'?id='+a.id)}catch(e){notify(a.name,e.message,{kind:'error'});return}
   busy=1;bx.innerHTML='';lg.hidden=false;lg.textContent='';st.textContent={install:'Downloading and installing. This can take a while…',update:'Updating…',uninstall:'Removing…'}[what];
   const iv=setInterval(async()=>{let j;try{j=await rd('job')}catch(e){return}lg.textContent=(j.log||'').slice(-6000);lg.scrollTop=lg.scrollHeight;
    if(!j.running&&j.status>=0){clearInterval(iv);const ok=j.status==0;
-    notify(a.name,ok?{install:'Installed. It is in the Start menu as '+a.short+'.',update:'Up to date.',uninstall:'Removed.'}[what]:'That did not finish. The App Store shows what went wrong.',{kind:ok?'info':'error',action:ok&&what=='install'?()=>nativeOpen(a):undefined});
+    notify(a.name,ok?{install:'Installed. It is in the Start menu as '+a.short+'.',update:'Up to date.',uninstall:'Removed.'}[what]:'That did not finish. The App Store shows what went wrong; press Get to continue the download.',{kind:ok?'info':'error',action:ok&&what=='install'?()=>nativeOpen(a):undefined});
     if(ok)lg.hidden=true;busy=0;refresh(1)}},1200)}
  refresh();const tick=setInterval(()=>{if(!d.isConnected)return clearInterval(tick);if(!busy&&!document.hidden)refresh()},4000);return d}
 function nativeStoreCards(B,instOnly){NATIVE.forEach(a=>nativeCard(B,a,instOnly))}
@@ -59,7 +59,7 @@ nativeRegister();
 if(RD)setTimeout(()=>NATIVE.forEach(a=>rd('native/status?id='+a.id).then(s=>{if(s.flatpak)nativeSetCache(a.id,!!s.installed)}).catch(()=>{})),5000);
 /* Help */
 HELP.splice(HELP.findIndex(h=>h[0]=='apps')+1,0,['roblox','Roblox (Sober)',()=>`<p>Rudolf OS can run Roblox through <b>Sober</b>, an unofficial Roblox player for Linux made by the Vinegar team. Sober is not made or supported by Roblox Corporation; Roblox can change or block it at any time, and you play at your own risk.</p>
-<h4>What you need</h4><ul><li>Rudolf OS installed on the computer (<button data-set='upd'>Settings → Update and recovery</button>), or a USB drive with a RUDOLFDATA partition. Apps are not kept when you run from the disc alone.</li><li>A 64-bit Intel or AMD processor from about 2008 or later (SSE4.1), and 4 GB of memory or more.</li><li>An internet connection by network cable, and about 2.5 GB of free space.</li></ul>
+<h4>What you need</h4><ul><li>Rudolf OS installed on the computer (<button data-set='upd'>Settings → Update and recovery</button>), or a USB drive with a RUDOLFDATA partition. Apps are not kept when you run from the disc alone.</li><li>A 64-bit Intel or AMD processor from about 2008 or later (SSE4.1), and 4 GB of memory or more.</li><li>An internet connection (Wi-Fi or a network cable) and about 2.5 GB of free space. Over Wi-Fi the App Store says how much it will download before it starts.</li></ul>
 <h4>Get and play</h4><ol><li>Open the <button data-app='store'>🛍️ App Store</button>, find <b>Roblox (Sober)</b> and click <b>Get</b>. The download is about 1 GB.</li><li>When it is installed, open <b>Roblox</b> from the Start menu or click <b>Play</b> in the App Store.</li><li>Sign in on the Roblox screen inside the game.</li></ol>
 <h4>While playing</h4><ul><li><kbd>Super</kbd>+<kbd>Esc</kbd> goes back to the Rudolf OS desktop. The game keeps running; open Roblox from the Start menu again to return to it.</li><li>To quit, leave the game from its own menu, or click <b>Close</b> in the App Store.</li></ul>
 <h4>Graphics and sound</h4><ul><li>Roblox runs on the graphics card through Xorg when <button data-set='disp'>Settings → Display → Graphics card</button> allows it. If the graphics card cannot be used, Rudolf OS uses the software display, where games are slow.</li><li>On a small computer such as the Intel N100 in the Rudolf Cyberdeck, set Roblox’s graphics quality low (Esc → Settings in the game). Shift+F5 in a game shows its frame rate.</li><li>Game sound plays through the Rudolf OS sound server; choose the output in <button data-set='vol'>Settings → Sound</button>.</li><li>Wi-Fi is not supported yet.</li></ul>

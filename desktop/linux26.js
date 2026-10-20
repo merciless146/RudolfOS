@@ -142,7 +142,7 @@ async function flatStoreTab(B){B.innerHTML='';const msg=t=>{B.innerHTML=`<p clas
  let cat;try{cat=(await lxApi('apps/catalog')).apps||[]}catch(e){cat=null}
  if(!cat){B.innerHTML=`<div class='lxempty'><p>Thousands of Linux desktop apps, such as LibreOffice, GIMP and VLC, are available from Flathub. First Rudolf OS downloads Flathub's app list (about 10 MB).</p><button class='pri lxdl'>Download the app list</button><pre class='jl' hidden></pre></div>`;
   B.querySelector('.lxdl').onclick=async e=>{e.target.disabled=true;const pre=B.querySelector('pre');pre.hidden=false;try{await lxApi('apps/refresh')}catch(er){pre.textContent=er.message;e.target.disabled=false;return}
-   const j=await lxJobWait(l=>{pre.textContent+=l+'\n'});if(j.status==0)flatStoreTab(B);else{pre.textContent+='\nThat did not work. Is the network cable connected?';e.target.disabled=false}};return}
+   const j=await lxJobWait(l=>{pre.textContent+=l+'\n'});if(j.status==0)flatStoreTab(B);else{pre.textContent+='\nThat did not work. Is this computer connected to the internet (Settings › Network)?';e.target.disabled=false}};return}
  LX.cat=cat;await lxInstalled();const inst=new Set((LX.inst||[]).map(a=>a.id));
  B.innerHTML=`<div class='lxbar'><input type='search' class='lxq' placeholder='Search Linux apps' aria-label='Search Linux apps'><select class='lxc' aria-label='Category'>${LX_CATS.map(([k,n])=>`<option value='${k}'>${n}</option>`).join('')}</select><label class='ck'><input type='checkbox' class='lxv' checked> Verified only</label></div><div class='lxlist'></div><p class='msg lxfoot'></p>`;
  const L=B.querySelector('.lxlist'),Q=B.querySelector('.lxq'),C=B.querySelector('.lxc'),V=B.querySelector('.lxv');let limit=60;
@@ -164,7 +164,7 @@ async function flatAppPage(B,a,back){B.innerHTML=`<button class='lxback'>‹ All
   else btn('Get',async()=>{if(await flatConsent(a,info)&&await elevate('Install '+a.name+' from Flathub'))job('install')},1)}
  async function job(what){act.innerHTML=`<pre class='jl'></pre>`;const pre=act.querySelector('pre');try{await lxApi('apps/'+what+'?id='+encodeURIComponent(a.id))}catch(e){pre.textContent=e.message;setTimeout(buttons,3000);return}
   const j=await lxJobWait(l=>{pre.textContent+=l+'\n';pre.scrollTop=pre.scrollHeight});await lxInstalled(true);
-  notify(a.name,j.status==0?(what=='install'?'Installed. It is in the Start menu.':'Uninstalled.'):'That did not finish: '+((j.log||'').trim().split('\n').pop()||'error'),{kind:j.status==0?'info':'error',action:j.status==0&&what=='install'?()=>{const x=lxLaunchers().find(l=>l.app==a.id);x&&lxRun(x)}:undefined});buttons()}
+  notify(a.name,j.status==0?(what=='install'?'Installed. It is in the Start menu.':'Uninstalled.'):'That did not finish: '+((j.log||'').trim().split('\n').pop()||'error')+(what=='install'?'. Press Get to continue the download.':''),{kind:j.status==0?'info':'error',action:j.status==0&&what=='install'?()=>{const x=lxLaunchers().find(l=>l.app==a.id);x&&lxRun(x)}:undefined});buttons()}
  buttons();
  try{info=await lxApi('apps/info?id='+encodeURIComponent(a.id))}catch(e){B.querySelector('.lxdesc').textContent=e.message;return}
  if(!B.isConnected)return;B.querySelector('.lxdesc').textContent=info.description||'';

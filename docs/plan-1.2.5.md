@@ -21,6 +21,19 @@ and tested in QEMU before the next starts; 1.2.5 goes to stable and gets a disc 
 
 ## 7. Blitzen: Lua, Luau and Pilot.lua
 
+> **Stage A as built** (branch `rudolf-1.2.5-a`). Differences from the plan below:
+> - Luau is built with clang 18 and the WASI libraries (as Emu's cores), not Emscripten: one `lib/luau.wasm`
+>   (4.3 MB) holds the VM, the compiler and the type checker (Luau's Analysis library; there is no separate
+>   `luau-analyze.wasm`). Luau's parser and checker use C++ exceptions, which wasi-sdk ships without, so
+>   `systools/mkluau.sh` also builds LLVM 18's libcxxabi and libunwind for WebAssembly exceptions.
+> - Roblox scripts are checked against **Roblox-lite** (`lib/roblox-lite.d.luau`, `lib/roblox-enum.d.luau`,
+>   written for Rudolf OS: the types Pilot.lua uses, with `game`, `workspace` and `script` left open) rather
+>   than luau-lsp's full Roblox definitions (several MB).
+> - Pilot.lua's definitions are copied from the community LSP (MIT, `lib/pilot.d.luau`); the stand-in parts
+>   (`lib/pilot-parts.luau`) print what they are asked to do. A Screen does not draw into a canvas and sensors
+>   have no "parts" panel yet; a run is marked "simulated".
+> - Not done yet: the model-quality runs (15 prompts per language through the real model).
+
 Blitzen's language list (`BLZ_LANGS` in `desktop/blitzen26.js`) is Auto, BlockLua, JavaScript, C++, Python. Lua
 is reachable only as BlockLua, whose reference card pushes the model toward one-statement-per-line block shapes.
 1.2.5 adds three languages:

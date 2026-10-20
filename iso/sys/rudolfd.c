@@ -806,6 +806,10 @@ static void catalog_fresh(void)
 	if (!stat(CATALOG, &c) && c.st_mtime >= a.st_mtime) return;
 	run("/usr/bin/rudolf-apps catalog " CATALOG " >/dev/null 2>&1");
 }
+/* 1.2.5: a Flatpak download that stops (Wi-Fi drops, the router restarts) is tried again up to three times;
+ * Flatpak keeps the objects it already fetched, so each try continues where the last one stopped */
+#define FP_INSTALL "n=0; until flatpak install --system -y --noninteractive flathub %s; do n=$((n+1)); [ $n -lt 3 ] || exit 1; " \
+	"echo \"The download stopped. Trying again in 10 seconds; what was already downloaded is kept...\"; sleep 10; done; echo Done."
 static void reply_cmd_json(struct req *r, const char *cmd, const char *fail)
 {
 	char *o = run_out(cmd);
@@ -886,13 +890,14 @@ static void api_apps(struct req *r, const char *what)
 	}
 	if (!app_id_ok(id)) { reply_err(r->fd, 400, "bad app"); return; }
 	if (!strcmp(what, "info")) { snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-apps info %s --remote 2>/dev/null", id); reply_cmd_json(r, cmd, "no details for this app"); return; }
+	if (!strcmp(what, "size")) { snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/appsize.sh %s 2>/dev/null", id); reply_cmd_json(r, cmd, "the download size is not known"); return; }
 	if (!strcmp(what, "install") || !strcmp(what, "uninstall")) {
 		if (!persist) { reply_err(r->fd, 409, "Linux apps need Rudolf OS installed (or a RUDOLFDATA partition)"); return; }
 		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
 		if (!strcmp(what, "install")) {
 			if (!app_verified(id) && !apps_setting("unverified") && strcmp(id, "org.vinegarhq.Sober")) { reply_err(r->fd, 403, "this app is not verified on Flathub; an administrator can allow unverified apps in App Store > Installed"); return; }
 			snprintf(cmd, sizeof cmd, "sh -c 'set -e; flatpak remotes --system --columns=name | grep -qx flathub || flatpak remote-add --system flathub " FLATHUB_REPO "; "
-				"echo \"Downloading %s and anything it needs...\"; flatpak install --system -y --noninteractive flathub %s; echo Done.'", id, id);
+				"echo \"Downloading %s and anything it needs...\"; " FP_INSTALL "'", id, id);
 		} else snprintf(cmd, sizeof cmd, "sh -c 'set -e; flatpak uninstall --system -y --noninteractive %s; flatpak uninstall --system -y --noninteractive --unused; echo Done.'", id);
 		start_job(what, cmd); reply_ok(r->fd, "started"); return;
 	}
@@ -1237,7 +1242,7 @@ static void api_native(struct req *r, const char *what)
 		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
 		if (!strcmp(what, "install"))
 			snprintf(cmd, sizeof cmd, "sh -c 'set -e; echo \"Adding the Flathub app source...\"; flatpak remotes --system --columns=name | grep -qx flathub || flatpak remote-add --system flathub " FLATHUB_REPO "; "
-				"echo \"Downloading %s and its runtime (this can take a while)...\"; flatpak install --system -y --noninteractive flathub %s; echo Done.'", id, id);
+				"echo \"Downloading %s and its runtime (this can take a while)...\"; " FP_INSTALL "'", id, id);
 		else if (!strcmp(what, "update"))
 			snprintf(cmd, sizeof cmd, "sh -c 'set -e; flatpak update --system -y --noninteractive; echo Done.'");
 		else
@@ -1258,6 +1263,7 @@ static void api_native(struct req *r, const char *what)
 		reply_ok(r->fd, "started");
 		return;
 	}
+	if (!strcmp(what, "size")) { snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/appsize.sh %s 2>/dev/null", id); reply_cmd_json(r, cmd, "the download size is not known"); return; }
 	if (!strcmp(what, "show")) { write_str(RUN "/wm", "game"); reply_ok(r->fd, "ok"); return; }
 	if (!strcmp(what, "stop")) { int pid = native_pid(); if (pid) { kill(-pid, SIGTERM); kill(pid, SIGTERM); } write_str(RUN "/wm", "desktop"); reply_ok(r->fd, pid ? "stopped" : "not running"); return; }
 	if (!strcmp(what, "log")) { char *l = slurp(RUN "/native.log", NULL); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, l ? (strlen(l) > 8000 ? l + strlen(l) - 8000 : l) : ""); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return; }

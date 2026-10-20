@@ -21,7 +21,8 @@ function wifiPanel(wf,ifn){
   const d=c.querySelector('.wfdis');if(d)d.onclick=()=>rdPost('wifi/disconnect'+qs).then(refresh).catch(e=>notify('Wi-Fi',e.message,{kind:'error'}));
   const r=c.querySelector('.wfrc');if(r)r.onclick=()=>rdPost('wifi/reconnect'+qs).then(()=>setTimeout(refresh,3000)).catch(e=>notify('Wi-Fi',e.message,{kind:'error'}));
   const sv=q('.wfsv');sv.innerHTML=st.saved.length?'':'<div class="msg">No saved networks yet.</div>';
-  st.saved.forEach(x=>{const r=document.createElement('div');r.className='acr wfrow';r.innerHTML=`<span style='flex:1'></span><button>Forget</button>`;r.firstChild.textContent=x.ssid+(/CURRENT/.test(x.flags)?'  ✓ connected':'');
+  st.saved.forEach(x=>{const r=document.createElement('div');r.className='acr wfrow';r.innerHTML=`<span style='flex:1'></span><label class='ck wfmt' title='Ask before large downloads on this network (a phone hotspot or a capped plan)'><input type='checkbox'> Metered</label><button>Forget</button>`;r.firstChild.textContent=x.ssid+(/CURRENT/.test(x.flags)?'  ✓ connected':'');
+   {const mc=r.querySelector('.wfmt input');mc.checked=typeof appMetered=='function'&&appMetered().includes(x.ssid);mc.onchange=()=>appSetMetered(x.ssid,mc.checked)}
    r.lastChild.onclick=e=>{const b=e.target;if(!b.dataset.sure){b.dataset.sure=1;b.textContent='Tap again to forget';b.classList.add('pri');setTimeout(()=>{if(b.isConnected){delete b.dataset.sure;b.textContent='Forget';b.classList.remove('pri')}},4000);return}rdPost('wifi/forget'+qs,x.ssid).then(m=>{notify('Wi-Fi',m.message);refresh()}).catch(e=>notify('Wi-Fi',e.message,{kind:'error'}))};sv.appendChild(r)});
   if(st.country&&!q('.wfcc').value)q('.wfcc').value=st.country};
  const refresh=async()=>{try{st=wfStatus((await rd('wifi/status'+qs)).raw);showCur()}catch(e){}};
