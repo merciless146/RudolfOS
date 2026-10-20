@@ -345,3 +345,10 @@ body.emu-borderless #bar{display:none!important}
 .blzhl{max-height:180px;overflow:auto;border-bottom:1px solid rgba(127,127,127,.25);padding:6px 8px;display:flex;flex-wrap:wrap;gap:4px}
 .blzctx summary{font-size:11px;opacity:.75;cursor:pointer}.blzctx pre{max-height:140px;overflow:auto;font-size:11px;white-space:pre-wrap}
 .blzerr{color:#b91c1c}.blzdots{opacity:.6}.blzask{white-space:nowrap}
+
+/* 1.2.5: App Store › Games, Wi-Fi › Metered */
+.gmlab{display:inline-block;font-size:11px;padding:1px 6px;border-radius:8px;background:#e0e7ff;color:#3730a3;vertical-align:1px}
+.gmlab.gmany{background:#dcfce7;color:#166534}.gmlab.gmslow{background:#fee2e2;color:#991b1b}
+.gmnote{background:#fff7ed;border:1px solid #fdba74;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:13px}
+.gmnote button{margin-left:4px}.gmsz{font-size:12px}
+.wfmt{font-size:12px;margin-right:6px}

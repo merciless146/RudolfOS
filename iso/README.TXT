@@ -142,10 +142,17 @@ LINUX APPS (FROM FLATHUB)
 App Store > Linux apps lists the desktop apps on Flathub (LibreOffice, GIMP,
 Inkscape, VLC, Firefox, VS Code and thousands more).
 * Rudolf OS must be installed (or the USB stick must have a RUDOLFDATA
-  partition), with a network cable. The first app also downloads the shared
-  parts it needs (often a few hundred MB); the App Store shows the size first.
+  partition), connected to the internet by Wi-Fi or a network cable. The
+  first app also downloads the shared parts it needs (often a few hundred MB).
+  Over Wi-Fi the App Store asks before a download of more than 500 MB; on a
+  network marked Metered (Settings > Network > Saved networks) before anything
+  over 50 MB. A download that stops continues where it stopped.
 * Only apps verified by Flathub can be installed, unless an administrator
   allows others (App Store > Installed).
+* App Store > Games lists Roblox, Steam, Minecraft (Prism Launcher), RetroArch
+  and the built-in games, each marked "Needs the graphics card" or "Runs
+  anywhere". Steam on Flathub is not verified: an administrator allows it in
+  App Store > Installed.
 * Installed apps are in the Start menu. They open above the desktop with
   their own taskbar button; click elsewhere on the taskbar, or press
   Super+Esc, to return to the desktop. Super+Tab steps through open apps.
@@ -218,7 +225,8 @@ ROBLOX (THROUGH SOBER)
 Rudolf OS can download and run Sober, an unofficial Roblox player for Linux
 made by the Vinegar team (not by Roblox Corporation; use at your own risk).
 * Rudolf OS must be installed on the computer (or the USB stick must have a
-  RUDOLFDATA partition), with a network cable and about 2.5 GB free.
+  RUDOLFDATA partition), connected to the internet (Wi-Fi or a network
+  cable), with about 2.5 GB free.
 * App Store > Roblox (Sober) > Get. The download is about 1 GB from Flathub.
 * Open "Roblox" from the Start menu. Super+Esc returns to the desktop.
 * Games and Linux apps run on the graphics card (Intel, AMD or NVIDIA)
