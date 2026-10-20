@@ -11,7 +11,8 @@ FLATHUB=https://dl.flathub.org/repo/flathub.flatpakrepo
 bytes() { awk -v s="$1" 'BEGIN{n=s+0; u=s; sub(/^[0-9.]+[^A-Za-z]*/, "", u); m=1
 	if (u ~ /^kB/) m=1e3; else if (u ~ /^MB/) m=1e6; else if (u ~ /^GB/) m=1e9; else if (u ~ /^KiB/) m=1024; else if (u ~ /^MiB/) m=1048576; else if (u ~ /^GiB/) m=1073741824
 	printf "%.0f", n*m}'; }
-field() { printf '%s\n' "$2" | sed -n "s/^ *$1: *//p" | head -n 1; }
+# Flatpak 1.14+ says "Download Size:" and "Installed Size:", older ones "Download:" and "Installed:"
+field() { printf '%s\n' "$2" | sed -n "s/^ *$1\( [Ss]ize\)\{0,1\}: *//p" | head -n 1; }
 # the connection the default route uses
 DEV=$(awk '$2 == "00000000" { print $1; exit }' /proc/net/route 2>/dev/null)
 if [ -z "$DEV" ]; then LINK=none; elif [ -d "/sys/class/net/$DEV/wireless" ]; then LINK=wifi; else LINK=wired; fi
