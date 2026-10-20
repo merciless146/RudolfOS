@@ -1,18 +1,18 @@
 rudolf-system 1
-serial 2026102012
+serial 2026102013
 version 1.2.5.261020
 released 2026-10-20
 expires 2026-11-03
 urgent 0
 chromium 155.0.8059.79
 kernel 6.18.57-rudolf
-notes 1.2.5: Linux apps and Roblox install over Wi-Fi; a Games page in the App Store; Blitzen writes Lua, Luau (Roblox) and Pilot.lua
-L	vmlinuz	10693240	5e68b35252c54bacccfd8ceaa4f8078ff08b9aa7691080b8eb376761565d34d5	https://github.com/merciless146/RudolfOS/releases/download/r2026102012/vmlinuz
-L	base	205819904	54da9d5d8350533717733496a9a276c1b782fdcf2023fe1b2bd7875214ecace7	https://github.com/merciless146/RudolfOS/releases/download/r2026102012/base.sfs
-L	chromium	130678784	ca13c03fe31d909a98d1bd66068ce366919e43366dea700da7fc749ccde205a3	https://github.com/merciless146/RudolfOS/releases/download/r2026102012/chromium.sfs
-L	desktop	26087424	37e40ae2de18b9c3908a341879f6e4b2af45bd73ee849f48771e10e9f58d1d19	https://github.com/merciless146/RudolfOS/releases/download/r2026102012/desktop.sfs
-L	modules	77594624	fc9cc7d9f4b67ef522a9487d784c4672ae086cf58ce54323abe325d516f884bf	https://github.com/merciless146/RudolfOS/releases/download/r2026102012/modules.sfs
+notes desktop update
+L	vmlinuz	10693240	5e68b35252c54bacccfd8ceaa4f8078ff08b9aa7691080b8eb376761565d34d5	https://github.com/merciless146/RudolfOS/releases/download/r2026102013/vmlinuz
+L	base	205819904	54da9d5d8350533717733496a9a276c1b782fdcf2023fe1b2bd7875214ecace7	https://github.com/merciless146/RudolfOS/releases/download/r2026102013/base.sfs
+L	chromium	130678784	ca13c03fe31d909a98d1bd66068ce366919e43366dea700da7fc749ccde205a3	https://github.com/merciless146/RudolfOS/releases/download/r2026102013/chromium.sfs
+L	desktop	26087424	70228044a1e35e9dd412073895bd5fbdfe5064946636c7e9f4e38cd286a060b6	https://github.com/merciless146/RudolfOS/releases/download/r2026102013/desktop.sfs
+L	modules	77594624	fc9cc7d9f4b67ef522a9487d784c4672ae086cf58ce54323abe325d516f884bf	https://github.com/merciless146/RudolfOS/releases/download/r2026102013/modules.sfs
 V	base	49854	0779bc1098622095e3eef98c73faf0508c849335a9f6ab6e6bb1d00211cda9a4	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
 V	chromium	31653	0fbe5743f705cd8bcc904b05d38f0db2a7ee26efd27c1fc8fb68e69c75f05dea	da3143e0b76e95a8fb9b20d6cd921581143496db9de69f0900a337920b32f7f8
-V	desktop	6318	44d78af37461958d5dcab008aa66d89157d4e791cac377974c7f577eaffdd1bd	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
+V	desktop	6318	6ef4709176a2eb89ade1eadf5d3dab8f43c58305b66cc417ab0d1be788cf6c61	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
 V	modules	18794	67d28e5954b7e8cb4238f3bb4f7936bf49b06fbba080d4300f870d2070a7f38d	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
