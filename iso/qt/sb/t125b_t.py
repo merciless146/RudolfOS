@@ -1,18 +1,31 @@
 # Rudolf OS 1.2.5 stage B in QEMU: the boot menu's default entry and wait, and "Restart into Windows" (UEFI,
 # Secure Boot off, EFI variables kept across restarts).
-#   python3 t125b_t.py DISC.iso WIN.img [NEW.img]
+#   python3 t125b_t.py DISC.iso WIN.img NEWDIR
 # DISC.iso: a test disc (mkdisc.sh with RUDOLF_UKI_TEST_CMDLINE=rudolf.debug=1: a serial shell).
 # WIN.img: mkwindisk.py's stand-in Windows disk: an EFI system partition with \EFI\Microsoft\Boot\bootmgfw.efi
 #   (winstub.c: prints RUDOLF-WINDOWS-STANDIN, waits 3 s, restarts) and RUDOLF/BOOTOPT.BIN, the firmware entry
 #   Windows Setup would add, which the test stores as Boot0042.
-# NEW.img (optional): an ext4 disk labelled RUDOLFB with a newer rudolfd and index.html, put in place after each
-#   start (to test them on a disc whose layers are older; the RAM overlay forgets them at the next restart).
-import os, sys, time, json
+# NEWDIR: a folder with a newer rudolfd (static) and index.html, put in place after each start (to test them on a
+#   disc whose layers are older; the RAM overlay forgets them at each restart). The test adds two small helper
+#   scripts and makes it a disk labelled RUDOLFB: the serial shell garbles long command lines, so they stay short.
+import os, sys, time, json, re
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
 import sbvm
 from guest import Guest
-ISO, WIN = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2]); NEW = os.path.abspath(sys.argv[3]) if len(sys.argv) > 3 else None
+import subprocess, shutil
+ISO, WIN, NEWDIR = (os.path.abspath(x) for x in sys.argv[1:4])
+NEW = os.path.abspath('new125b.img'); D = os.path.abspath('new125b'); shutil.rmtree(D, ignore_errors=True); shutil.copytree(NEWDIR, D)
+open(f'{D}/v.sh', 'w').write('#!/bin/sh\n# an EFI variable as text: V=[value], V=[] when it is not set\nf=/sys/firmware/efi/efivars/$1-${2:-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f}\n'
+                             'if [ -e $f ]; then echo "V=[$(tail -c +5 $f | tr -d \'\\000\')]"; else echo "V=[]"; fi\n')
+open(f'{D}/bo.sh', 'w').write('#!/bin/sh\n# the Windows Boot Manager entry, as Windows Setup adds it: Boot0042\nmkdir -p /mnt/win; grep -q " /mnt/win " /proc/mounts || mount -o ro $(findfs LABEL=WINSTANDIN) /mnt/win\n'
+                              "printf '\\007\\000\\000\\000' > /tmp/bo; cat /mnt/win/RUDOLF/BOOTOPT.BIN >> /tmp/bo\n"
+                              'dd if=/tmp/bo of=/sys/firmware/efi/efivars/Boot0042-8be4df61-93ca-11d2-aa0d-00e098032b8c bs=4096 2>/dev/null; ls /sys/firmware/efi/efivars | grep -c Boot0042\n')
+open(f'{D}/up.sh', 'w').write('#!/bin/sh\n# the newer page and rudolfd, until the next restart\ncp /mnt/new/index.html /usr/share/rudolf/www/index.html\npkill -x rudolfd; sleep 1\n'
+                              '(/mnt/new/rudolfd > /run/rudolf/rudolfd.log 2>&1 &)\nfor i in 1 2 3 4 5 6 7 8 9 10; do wget -q -O /dev/null http://127.0.0.1:8080/ && break; sleep 1; done\necho restarted $i\n')
+for f in ('v.sh', 'bo.sh', 'up.sh', 'rudolfd'): os.chmod(f'{D}/{f}', 0o755)
+if os.path.exists(NEW): os.remove(NEW)
+subprocess.run(['truncate', '-s', '32M', NEW], check=True); subprocess.run(['mkfs.ext4', '-q', '-F', '-L', 'RUDOLFB', '-d', D, NEW], check=True)
 PARTS = os.environ['SB_PARTS']; LOG = open('t125b.txt', 'w'); R = []
 LG = '4a67b082-0a4c-41cf-b6c7-440b29bb8c4f'; GG = '8be4df61-93ca-11d2-aa0d-00e098032b8c'; EV = '/sys/firmware/efi/efivars'
 
@@ -23,7 +36,7 @@ def ok(n, c, d=''):
     R.append(bool(c)); out(('PASS ' if c else 'FAIL ') + n + (' - ' + str(d)[:300] if d != '' else ''))
 def last(t): return t.strip().split('\n')[-1].strip() if t.strip() else ''
 
-drives = [ISO, WIN] + ([NEW] if NEW else [])
+drives = [ISO, WIN, NEW]
 vm = sbvm.VM('t125b', PARTS, drives, secure=False, nvram=True, mem=3072)
 from ser import Ser
 g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q
@@ -57,14 +70,13 @@ def until(e, t=90):
         time.sleep(3)
     return False
 def var(name, guid=LG):   # an EFI variable's value as text (UTF-16 shown as ASCII), or '' when it is not set
-    return last(sh(f"f={EV}/{name}-{guid}; [ -e $f ] && tail -c +5 $f | tr -d '\\000' || echo ''", 20))
+    m = re.search(r'V=\[([^\]\n]*)\]', sh(f'/mnt/new/v.sh {name} {guid}', 20)); return m.group(1) if m else None
 def started():
     """after a start: the serial shell, the newer rudolfd and page when given, the desktop signed in"""
     if not wait_shell(): return False
-    if NEW:
-        sh("mkdir -p /mnt/new; grep -q ' /mnt/new ' /proc/mounts || mount -o ro $(findfs LABEL=RUDOLFB) /mnt/new; "
-           "cp /mnt/new/index.html /usr/share/rudolf/www/index.html; pkill -x rudolfd; sleep 1; "
-           "(/mnt/new/rudolfd > /run/rudolf/rudolfd.log 2>&1 &); for i in 1 2 3 4 5 6 7 8 9 10; do wget -q -O /dev/null http://127.0.0.1:8080/ && break; sleep 1; done; echo restarted", 60)
+    if True:
+        sh('mkdir -p /mnt/new', 10); sh('grep -q " /mnt/new " /proc/mounts || mount -o ro $(findfs LABEL=RUDOLFB) /mnt/new', 20)
+        out('new rudolfd:', last(sh('/mnt/new/up.sh', 60)))
         # reload the page from the new rudolfd (a reload that came too early shows Chromium's error page: try again)
         for _ in range(4):
             g.js("location.replace('http://127.0.0.1:8080/');1", 10); time.sleep(15)
@@ -72,16 +84,14 @@ def started():
     if not wait_desktop(): return False
     js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();svj('bd95setup',1);const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()=='Guest');if(b)b.click();return 1})()")
     until('!!USER', 120); js("USER.r='admin';window.elevate=async()=>true;1")
-    return True
+    return until("typeof rdPost=='function'&&typeof bootSection=='function'", 60)
 def restart():
     js("rdPost('power?action=reboot').catch(()=>0);1"); time.sleep(8); return started()
 
 try:
     ok('starts (UEFI, the debug entry has the serial shell)', started())
     # the Windows Boot Manager entry Windows Setup would have added (Boot0042), from the stand-in disk
-    p = last(sh('findfs LABEL=WINSTANDIN'))
-    out(sh(f"mkdir -p /mnt/win; mount -o ro {p} /mnt/win; ls -R /mnt/win | head; printf '\\007\\000\\000\\000' > /tmp/bo; cat /mnt/win/RUDOLF/BOOTOPT.BIN >> /tmp/bo; "
-           f"dd if=/tmp/bo of={EV}/Boot0042-{GG} bs=4096 2>&1 | tail -1; ls {EV} | grep -c Boot0042", 30))
+    out('Boot0042 written:', last(sh('/mnt/new/bo.sh', 30)))
     m = js("rd('bootmenu').then(m=>JSON.stringify(m))"); m = json.loads(m) if isinstance(m, str) else {}
     ok('bootmenu: UEFI, started from systemd-boot, with its entries', m.get('uefi') and m.get('loader') and 'rudolf-start.conf' in m.get('entries', []) and 'rudolf-recovery.conf' in m.get('entries', []), m)
     ok('...which entry started', m.get('selected') in m.get('entries', []) and m.get('selected', '').startswith('rudolf-'), m.get('selected'))
@@ -106,7 +116,7 @@ try:
     r = js("rdPost('bootmenu/set?default=&timeout=').then(()=>'saved',e=>e.message)")
     ok('"As on the disc" removes them again', r == 'saved' and var('LoaderEntryDefault') == '' and var('LoaderConfigTimeout') == '', [var('LoaderEntryDefault'), var('LoaderConfigTimeout')])
     # the Power dialog: Restart into Windows (the stand-in prints, waits 3 s and restarts the computer)
-    sh(f"[ -e {EV}/Boot0042-{GG} ] || {{ mount -o ro $(findfs LABEL=WINSTANDIN) /mnt/win 2>/dev/null; dd if=/tmp/bo of={EV}/Boot0042-{GG} bs=4096 2>/dev/null; }}; true", 20)
+    sh('/mnt/new/bo.sh', 30)
     js("shutdownDlg();1")
     ok('the Power dialog has Restart into Windows', until("!!document.querySelector('.rmodal .bmwin')", 30))
     SEEN.clear(); js("document.querySelector('.rmodal .bmwin').click();1"); time.sleep(5)
