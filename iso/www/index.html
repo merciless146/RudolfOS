@@ -10790,23 +10790,24 @@ async function luauDefs(kind){if(kind!='pilot'&&kind!='roblox')return [];
 async function luauCheck(code,o={}){let mod,defs;const kind=o.kind||'luau',strict=o.strict??(kind=='pilot');
  try{mod=await luauModule();defs=await luauDefs(kind)}catch(e){return{ok:false,error:'The Luau checker could not be loaded ('+e.message+').'}}
  if(!LUAU.checker)LUAU.checker=luauWorker();const w=LUAU.checker,id=++LUAU.seq;
- return new Promise(res=>{let defError='';const tm=setTimeout(()=>{w.terminate();if(LUAU.checker==w)LUAU.checker=null;res({ok:false,error:'The checker took too long.'})},o.limit||20000);
+ return new Promise(res=>{let defError='';const tm=setTimeout(()=>{w.terminate();if(LUAU.checker==w){LUAU.checker=null;LUAU.checkerKind=null}res({ok:false,error:'The checker took too long.'})},o.limit||(LUAU.checkerKind==kind?20000:120000));
   w.onmessage=e=>{const d=e.data;if(d.id!=id)return;if(d.defError!==undefined){defError+=d.defError;return}clearTimeout(tm);
-   if(d.crash){w.terminate();if(LUAU.checker==w)LUAU.checker=null;return res({ok:false,error:'The checker stopped: '+d.crash})}
+   if(d.crash){w.terminate();if(LUAU.checker==w){LUAU.checker=null;LUAU.checkerKind=null}return res({ok:false,error:'The checker stopped: '+d.crash})}
    const problems=[];for(const l of (d.out||'').split('\n')){if(!l)continue;const m=/^(\d+):(\d+): (.*)$/.exec(l);
     if(m)problems.push({line:+m[1],col:+m[2],msg:m[3]});else if(problems.length)problems.at(-1).msg+='\n'+l;else problems.push({line:0,col:0,msg:l})}
    if(kind=='pilot'&&o.nilOk!==false)for(let i=problems.length-1;i>=0;i--)if(/could be nil/.test(problems[i].msg))problems.splice(i,1);
-   res({ok:true,problems,defError,out:problems.map(p=>(p.line?'line '+p.line+': ':'')+p.msg).join('\n')})};
-  w.onerror=e=>{clearTimeout(tm);w.terminate();if(LUAU.checker==w)LUAU.checker=null;res({ok:false,error:'The checker could not start ('+(e.message||'error')+').'})};
+   LUAU.checkerKind=kind;res({ok:true,problems,defError,out:problems.map(p=>(p.line?'line '+p.line+': ':'')+p.msg).join('\n')})};
+  w.onerror=e=>{clearTimeout(tm);w.terminate();if(LUAU.checker==w){LUAU.checker=null;LUAU.checkerKind=null}res({ok:false,error:'The checker could not start ('+(e.message||'error')+').'})};
   w.postMessage({op:'check',id,mod,kind,defs,src:String(code),strict})})}
 /* Blitzen's Luau and Pilot.lua: check the types first (a type error is a failure the model can fix), then run;
    a Roblox game script is only checked, since it needs Roblox to run */
-async function luauBlitzen(code,lang){const dia=luauDialect(code),kind=lang=='pilot'||dia=='pilot'?'pilot':dia=='roblox'?'roblox':'luau';
+async function luauBlitzen(code,lang){let notChecked='';const dia=luauDialect(code),kind=lang=='pilot'||dia=='pilot'?'pilot':dia=='roblox'?'roblox':'luau';
  if(!/^\s*--!nocheck/m.test(code)){const ck=await luauCheck(code,{kind});
   if(ck.ok&&ck.problems.length)return{ok:true,code:1,types:true,out:'Type check ('+({pilot:'Pilot.lua',roblox:'Roblox',luau:'Luau'})[kind]+'):\n'+ck.out+'\n'};
+  if(!ck.ok&&kind!='roblox')notChecked='(not type-checked: '+ck.error+')\n';
   if(kind=='roblox')return ck.ok?{ok:true,code:0,checkedOnly:true,out:'The types check out. It is a Roblox game script (game, workspace, script…), so it runs only in Roblox.\n'}:{ok:false,error:ck.error}}
  else if(kind=='roblox')return{ok:false,error:'A Roblox game script runs only in Roblox.'};
- const r=await luauRun(code,{pilot:kind=='pilot'});if(kind=='pilot'&&r.ok)r.out='(simulated: Waste of Space is not running; the parts below are stand-ins)\n'+r.out;return r}
+ const r=await luauRun(code,{pilot:kind=='pilot'});if(r.ok)r.out=notChecked+(kind=='pilot'?'(simulated: Waste of Space is not running; the parts below are stand-ins)\n':'')+r.out;return r}
 
 /* ===================== Linux apps over Wi-Fi (1.2.5) =====================
    Apps from Flathub install over any connection. Before a large download the App Store says how much it is:
