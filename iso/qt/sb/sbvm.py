@@ -22,7 +22,7 @@ def esp_disk(fat_img, out, size_mb=64):
 
 
 class VM:
-    def __init__(s, name, parts, drives, secure=True, vars_from=None, mem=3072, extra=()):
+    def __init__(s, name, parts, drives, secure=True, vars_from=None, mem=3072, extra=(), nvram=False):
         s.name = name; s.dir = os.path.abspath(name); os.makedirs(s.dir, exist_ok=True)
         q = os.environ.get('QEMU') or os.path.join(QT, '..', 'src', 'qemu')
         s.vars = os.path.join(s.dir, 'vars.fd')
@@ -39,6 +39,13 @@ class VM:
             fw = ['-machine', 'q35,smm=on', '-global', 'driver=cfi.pflash01,property=secure,value=on',
                   '-drive', f'if=pflash,format=raw,unit=0,file={code},readonly=on',
                   '-drive', f'if=pflash,format=raw,unit=1,file={s.vars}']
+        elif nvram:   # without Secure Boot, but with EFI variables that last across restarts (1.2.5: the boot menu test)
+            plain = os.path.join(s.dir, 'ovmf.fd'); nv = os.path.join(s.dir, 'nvram.fd')
+            if not os.path.exists(plain):
+                subprocess.run(f'bzcat {os.path.join(q, "pc-bios", "edk2-x86_64-code.fd.bz2")} > {plain}', shell=True, check=True)
+            if not os.path.exists(nv):
+                subprocess.run(f'bzcat {os.path.join(q, "pc-bios", "edk2-i386-vars.fd.bz2")} > {nv}', shell=True, check=True)
+            fw = ['-machine', 'q35', '-drive', f'if=pflash,format=raw,unit=0,readonly=on,file={plain}', '-drive', f'if=pflash,format=raw,unit=1,file={nv}']
         else:   # a UEFI computer without Secure Boot: QEMU's own OVMF build (no keys)
             plain = os.path.join(s.dir, 'ovmf.fd')
             if not os.path.exists(plain):

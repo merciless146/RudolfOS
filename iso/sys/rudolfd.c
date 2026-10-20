@@ -1985,6 +1985,108 @@ static int efivar_write(const char *name, const unsigned char *d, size_t n)
 	if (o >= 0) close(o);
 	free(b); return ok ? 0 : -1;
 }
+/* ------------------------------------------------------------- boot menu (1.2.5)
+ * The UEFI boot menu (systemd-boot) keeps its choices in EFI variables, so nothing on the disc or stick changes:
+ * LoaderEntryDefault (which entry starts when nobody chooses) and LoaderConfigTimeout (how long the menu waits).
+ * systemd-boot lists its entries in LoaderEntries and the one that started in LoaderEntrySelected.
+ * Windows usually sits on another drive, where systemd-boot cannot start it from its own menu; the firmware can:
+ * "Restart into Windows" sets BootNext to the firmware's Windows Boot Manager entry (Boot####), once. */
+#define LOADERG "4a67b082-0a4c-41cf-b6c7-440b29bb8c4f"
+#define GLOBALG "8be4df61-93ca-11d2-aa0d-00e098032b8c"
+/* UTF-16LE (ASCII only) to a C string; stops at a NUL */
+static void u16s(const unsigned char *d, size_t n, char *o, size_t on)
+{
+	size_t k = 0;
+	for (size_t i = 0; i + 1 < n && k + 1 < on; i += 2) { if (!d[i] && !d[i + 1]) break; o[k++] = d[i + 1] ? '?' : d[i]; }
+	o[k] = 0;
+}
+static size_t su16(const char *s, unsigned char *o)
+{
+	size_t k = 0; for (; *s; s++) { o[k++] = (unsigned char)*s; o[k++] = 0; } o[k++] = 0; o[k++] = 0; return k;
+}
+static int boot_entry_ok(const char *e)
+{
+	if (!e || !*e || strlen(e) > 80) return 0;
+	for (const char *c = e; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("-_.", *c)) return 0;
+	return 1;
+}
+/* a firmware boot entry: its title, and whether it starts Windows */
+static int boot_option(unsigned n, char *title, size_t tl)
+{
+	char v[80]; snprintf(v, sizeof v, "Boot%04X-" GLOBALG, n); size_t l = 0; unsigned char *d = efivar(v, &l);
+	if (!d || l < 8) { free(d); return -1; }
+	u16s(d + 6, l - 6, title, tl);
+	char low[600]; size_t k = 0;   /* the device path, as lower-case ASCII, to look for the Windows loader */
+	for (size_t i = 6; i + 1 < l && k + 1 < sizeof low; i += 2) if (!d[i + 1] && d[i]) low[k++] = tolower(d[i]);
+	low[k] = 0; free(d);
+	return strstr(low, "bootmgfw.efi") || strstr(title, "Windows Boot Manager") ? 1 : 0;
+}
+static void api_bootmenu(struct req *r, const char *what, int post)
+{
+	int efi = !access("/sys/firmware/efi", F_OK);
+	if (!strcmp(what, "") && !post) {
+		str s = {0}; sadd(&s, "{\"ok\":true,\"uefi\":%s", efi ? "true" : "false");
+		if (efi) {
+			size_t l = 0; unsigned char *d = efivar("LoaderEntries-" LOADERG, &l); char e[100];
+			sadd(&s, ",\"loader\":%s,\"entries\":[", d ? "true" : "false");
+			for (size_t i = 0, first = 1; d && i + 1 < l;) {
+				u16s(d + i, l - i, e, sizeof e); size_t el = strlen(e);
+				if (el) { if (!first) sadd(&s, ","); sjson(&s, e); first = 0; }
+				i += (el + 1) * 2;
+			}
+			free(d); sadd(&s, "]");
+			const char *one[][2] = { {"selected", "LoaderEntrySelected-" LOADERG}, {"default", "LoaderEntryDefault-" LOADERG}, {"timeout", "LoaderConfigTimeout-" LOADERG} };
+			for (int i = 0; i < 3; i++) { d = efivar(one[i][1], &l); e[0] = 0; if (d) u16s(d, l, e, sizeof e); free(d); sadd(&s, ",\"%s\":", one[i][0]); sjson(&s, e); }
+			sadd(&s, ",\"windows\":[");
+			int first = 1; DIR *dd = opendir(EFIV); struct dirent *de;
+			while (dd && (de = readdir(dd))) {
+				unsigned n; char t[200];
+				if (strlen(de->d_name) != 4 + 4 + 1 + 36 || sscanf(de->d_name, "Boot%4X-", &n) != 1 || strcmp(de->d_name + 9, GLOBALG)) continue;
+				if (boot_option(n, t, sizeof t) != 1) continue;
+				sadd(&s, "%s{\"n\":\"%04X\",\"title\":", first ? "" : ",", n); sjson(&s, t); sadd(&s, "}"); first = 0;
+			}
+			if (dd) closedir(dd);
+			sadd(&s, "]");
+		}
+		sadd(&s, "}"); reply_json(r->fd, &s); return;
+	}
+	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+	if (!efi) { reply_err(r->fd, 409, "this computer started in BIOS mode"); return; }
+	if (!strcmp(what, "set")) {
+		/* default=ID (an entry systemd-boot listed) or empty for the disc's own; timeout=0..10 or empty */
+		char *def = qparam(r->query, "default"), *to = qparam(r->query, "timeout");
+		unsigned char b[200];
+		if (def) {
+			if (!*def) { char f[200]; snprintf(f, sizeof f, EFIV "/LoaderEntryDefault-" LOADERG); unimmutable(f); unlink(f); }
+			else {
+				size_t l = 0; unsigned char *d = efivar("LoaderEntries-" LOADERG, &l); int found = 0; char e[100];
+				for (size_t i = 0; d && i + 1 < l;) { u16s(d + i, l - i, e, sizeof e); if (!strcmp(e, def)) found = 1; i += (strlen(e) + 1) * 2; if (!*e) break; }
+				free(d);
+				if (!boot_entry_ok(def) || !found) { reply_err(r->fd, 400, "that is not an entry of the boot menu"); return; }
+				if (efivar_write("LoaderEntryDefault-" LOADERG, b, su16(def, b))) { reply_err(r->fd, 500, "the firmware did not store the choice"); return; }
+			}
+		}
+		if (to) {
+			if (!*to) { char f[200]; snprintf(f, sizeof f, EFIV "/LoaderConfigTimeout-" LOADERG); unimmutable(f); unlink(f); }
+			else {
+				char *end; long t = strtol(to, &end, 10);
+				if (*end || t < 0 || t > 10) { reply_err(r->fd, 400, "the wait is 0 to 10 seconds"); return; }
+				char ts[8]; snprintf(ts, sizeof ts, "%ld", t);
+				if (efivar_write("LoaderConfigTimeout-" LOADERG, b, su16(ts, b))) { reply_err(r->fd, 500, "the firmware did not store the wait"); return; }
+			}
+		}
+		reply_ok(r->fd, "saved"); return;
+	}
+	if (!strcmp(what, "windows")) {
+		/* the next start only: the firmware starts this Windows Boot Manager entry, then BootNext is gone */
+		char *n = qparam(r->query, "n"), t[200]; unsigned v;
+		if (!n || strlen(n) != 4 || sscanf(n, "%4X", &v) != 1 || boot_option(v, t, sizeof t) != 1) { reply_err(r->fd, 400, "that is not a Windows entry"); return; }
+		unsigned char b[2] = { v & 255, v >> 8 };
+		if (efivar_write("BootNext-" GLOBALG, b, 2)) { reply_err(r->fd, 500, "the firmware did not store it"); return; }
+		reply_ok(r->fd, "Windows starts at the next restart"); return;
+	}
+	reply_err(r->fd, 404, "unknown boot menu action");
+}
 static void api_secureboot(struct req *r, const char *what, int post)
 {
 	int efi = !access("/sys/firmware/efi", F_OK);
@@ -2163,6 +2265,8 @@ static void api(struct req *r)
 	if (!strncmp(p, "idbm/", 5)) { api_idbm(r, p + 5, post); return; }
 	if (!strncmp(p, "dl/", 3)) { api_dl(r, p + 3, post); return; }
 	if (!strncmp(p, "secureboot/", 11)) { api_secureboot(r, p + 11, post); return; }
+	if (!strcmp(p, "bootmenu")) { api_bootmenu(r, "", post); return; }
+	if (!strncmp(p, "bootmenu/", 9)) { api_bootmenu(r, p + 9, post); return; }
 	if (!strcmp(p, "shell") || !strncmp(p, "shell/", 6)) { api_shell(r, p + 5, post); return; }
 	if (!strcmp(p, "clipboard")) { api_clipboard(r); return; }
 	if (!strcmp(p, "web/status")) { api_web(r, "status"); return; }   /* the taskbar asks whether the browser window is open */

@@ -104,6 +104,13 @@ is reachable only as BlockLua, whose reference card pushes the model toward one-
 - Tests: host harness for the page and its labels; QEMU installs one game.
 
 ## 3. Windows in the Rudolf OS boot menu
+
+> **Stage B as built** (branch `rudolf-1.2.5-b`). systemd-boot finds Windows only on the EFI partition it was started
+> from, and a Rudolf OS stick never has Windows there (Windows is on the computer's own drive). So Windows is
+> started through the firmware instead: **Restart into Windows** (Power dialog and Settings) sets `BootNext` to the
+> firmware's own Windows Boot Manager entry, once; Secure Boot checks it as the firmware always does.
+> `auto-entries yes` is set as planned, for a menu on a drive that also holds Windows. The test stand-in is unsigned,
+> so the Windows start is tested with Secure Boot off; with it on the firmware would refuse the stand-in.
 - UEFI: at disc build time, `iso/boot/sb/loader/loader.conf` gets `auto-entries yes`, so systemd-boot lists
   **Windows Boot Manager** when it finds `\EFI\Microsoft\Boot\bootmgfw.efi` on any ESP, below the Rudolf OS
   entries. With Secure Boot on it is started by the firmware's own check (Microsoft-signed).
