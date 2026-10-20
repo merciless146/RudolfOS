@@ -12,6 +12,7 @@ Summary: Linux apps and Roblox install over Wi-Fi; a Games page; Restart into Wi
 - New: Settings › Network › Saved networks: mark a network Metered (a phone hotspot, a capped plan) and the App Store asks before any download over 50 MB on it.
 - New: an app download that stops (the Wi-Fi drops, the router restarts) is tried again by itself, and Get continues where it stopped instead of starting over.
 - New: App Store › Games: Roblox, Steam, Minecraft (Prism Launcher), RetroArch and the games built into Rudolf OS, each with its download size and whether it needs the graphics card. When Rudolf OS draws with the processor, the page says which games will be slow and why.
+- Fixed: joining a Wi-Fi network for the first time after starting could fail with "out of range, or the password is wrong" on slower computers, because Rudolf OS gave up after 20 seconds while it was still scanning. It now waits up to a minute.
 - New: Restart into Windows (in the Power dialog and in Settings › Update and recovery) on a computer that also has Windows: the computer starts Windows Boot Manager once, then comes back to the Rudolf OS menu as before. It works with Secure Boot on.
 - New: Settings › Update and recovery › Boot menu: choose what the UEFI boot menu starts when nobody chooses (for example Start from memory) and how long it waits. The choice is kept in the computer's firmware, so the disc or stick is not changed.
 

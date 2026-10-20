@@ -73,7 +73,7 @@ connect)
 	if [ "$SEC" = saved ]; then
 		ID=$(echo $OLD | awk '{print $1}'); [ -n "$ID" ] || { echo "$SSID is not saved."; exit 1; }
 		W select_network "$ID" >/dev/null
-		for i in $(seq 40); do sleep 0.5; [ "$(W status | sed -n 's/^wpa_state=//p')" = COMPLETED ] && break; done
+		for i in $(seq 120); do sleep 0.5; [ "$(W status | sed -n 's/^wpa_state=//p')" = COMPLETED ] && break; done
 		W enable_network all >/dev/null
 		[ "$(W status | sed -n 's/^wpa_state=//p')" = COMPLETED ] || { echo "Could not join $SSID (out of range, or its password changed: forget it and connect again)."; exit 1; }
 		for i in $(seq 20); do ip -4 -o addr show dev "$IF" | grep -q inet && break; sleep 0.5; done
@@ -90,8 +90,10 @@ connect)
 	case "$SEC" in hidden*) W set_network "$ID" scan_ssid 1 >/dev/null ;; esac
 	PSK=
 	W select_network "$ID" >/dev/null
+	# up to 60 seconds: the first join after the Wi-Fi service starts scans every channel first, and WPA3 (SAE) is
+	# slow on small processors (1.2.5: 20 seconds was not always enough, and a join still under way was abandoned)
 	OK=; WRONG=
-	for i in $(seq 40); do
+	for i in $(seq 120); do
 		sleep 0.5
 		S=$(W status | sed -n 's/^wpa_state=//p')
 		[ "$S" = COMPLETED ] && { OK=1; break; }
