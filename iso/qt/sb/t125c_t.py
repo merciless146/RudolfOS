@@ -86,7 +86,9 @@ try:
         nd = last(sh('findfs LABEL=RUDOLFB', 10))
         if nd.startswith('/dev/'): break
         time.sleep(3)
-    out('test disk:', nd, sh(f'mount -o ro {nd} /mnt/new; ls /mnt/new', 20)[-200:])
+    # Rudolf OS mounts plugged-in drives itself (devplug, under /media): use that mount when it is there
+    sh(f'mount -o ro {nd} /mnt/new 2>/dev/null || mount --bind /media/{nd[5:]} /mnt/new', 20)
+    out('test disk:', nd, sh('ls /mnt/new', 20)[-200:])
     out('new rudolfd:', last(sh('/mnt/new/up.sh', 60)))
     for _ in range(4):
         g.js("location.replace('http://127.0.0.1:8080/');1", 10); time.sleep(15)
