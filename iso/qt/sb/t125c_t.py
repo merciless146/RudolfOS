@@ -13,6 +13,9 @@ import os, sys, time, json, re, subprocess, shutil
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE)
 sys.path.insert(0, HERE); sys.path.insert(0, QT); sys.path.insert(0, os.path.join(QT, '..'))
 import sbvm, mkimage
+def J(v, d):
+    try: return json.loads(v) if isinstance(v, str) else d
+    except ValueError: return d
 from guest import Guest
 from ser import Ser
 ISO, NEWDIR = (os.path.abspath(x) for x in sys.argv[1:3])
@@ -78,14 +81,20 @@ vm = sbvm.VM('t125c1', PARTS, [ISO], secure=False, mem=3072, extra=['-device', '
 g = session(vm); sh, js, until, wait_shell, desktop = helpers(g)
 try:
     ok('the first computer starts from the disc', wait_shell())
-    sh('mkdir -p /mnt/new', 10); sh('mount -o ro $(findfs LABEL=RUDOLFB) /mnt/new', 20); out('new rudolfd:', last(sh('/mnt/new/up.sh', 60)))
+    sh('mkdir -p /mnt/new', 10)
+    for _ in range(30):   # USB drives can appear a little after the shell
+        nd = last(sh('findfs LABEL=RUDOLFB', 10))
+        if nd.startswith('/dev/'): break
+        time.sleep(3)
+    out('test disk:', nd, sh(f'mount -o ro {nd} /mnt/new; ls /mnt/new', 20)[-200:])
+    out('new rudolfd:', last(sh('/mnt/new/up.sh', 60)))
     for _ in range(4):
         g.js("location.replace('http://127.0.0.1:8080/');1", 10); time.sleep(15)
         if until("typeof stkSection=='function'", 90): break
     ok('the desktop (with the new page) is up', desktop() and js("typeof stkSection") == 'function')
     sh("echo made-in-the-first-session > /home/rudolf/stick-marker.txt; chown 1000:1000 /home/rudolf/stick-marker.txt", 20)
-    info = json.loads(js("rd('info').then(i=>JSON.stringify(i))") or '{}'); disks = json.loads(js("rd('disks').then(d=>JSON.stringify(d.disks))") or '[]')
-    t = json.loads(js("rd('info').then(async i=>JSON.stringify(stkTargets((await rd('disks')).disks,i).map(k=>[k.name,k.bytes,k.model])))") or '[]')
+    info = J(js("rd('info').then(i=>JSON.stringify(i))"), {}); disks = J(js("rd('disks').then(d=>JSON.stringify(d.disks))"), [])
+    t = J(js("rd('info').then(async i=>JSON.stringify(stkTargets((await rd('disks')).disks,i).map(k=>[k.name,k.bytes,k.model])))"), [])
     out('started from', info.get('mediaDev'), '| drives:', [(d['name'], d['bytes'], d['removable']) for d in disks])
     ok('Make a stick offers the 4 GB USB drive only (not the disc, the 64 MB drive or the test disk)', len(t) == 1 and 4.2e9 < t[0][1] < 4.4e9, t)
     dev = t[0][0] if t else 'sdz'
@@ -93,7 +102,7 @@ try:
     ok('making the stick starts', r == 'making the stick', r)
     j = {}; end = time.time() + 1500
     while time.time() < end:
-        j = json.loads(js("rd('job').then(j=>JSON.stringify(j))") or '{}')
+        j = J(js("rd('job').then(j=>JSON.stringify(j))"), {})
         if not j.get('running') and j.get('status', -1) >= 0: break
         time.sleep(10)
     log = j.get('log') or ''; out(log[-1200:])
@@ -103,10 +112,10 @@ try:
     r = js(f"rdPost('mkstick?disk={dev}&confirm=sdq&image=&files=0').then(r=>r.message,e=>e.message)")
     ok('a mistyped confirmation is refused', r == 'confirm by sending the drive name twice', r)
     r = js("rdPost('mkstick?disk=sr0&confirm=sr0&image=&files=0').then(r=>r.message,e=>e.message)"); time.sleep(8)
-    jl = json.loads(js("rd('job').then(j=>JSON.stringify(j))") or '{}')
+    jl = J(js("rd('job').then(j=>JSON.stringify(j))"), {})
     ok('the drive Rudolf OS runs from is refused', jl.get('status', 0) != 0 and ('not a USB stick' in (jl.get('log') or '') or 'running from' in (jl.get('log') or '')), (jl.get('log') or '')[-200:])
     # 3. a backup to the 64 MB drive
-    bp = json.loads(js("rd('info').then(async i=>JSON.stringify(stkBackupParts((await rd('disks')).disks,i).map(x=>x.part)))") or '[]')
+    bp = J(js("rd('info').then(async i=>JSON.stringify(stkBackupParts((await rd('disks')).disks,i).map(x=>x.part)))"), [])
     bk = [x for x in bp if x.get('label') == 'BACKUPS']
     ok('Back up lists the BACKUPS drive', len(bk) == 1, bp)
     if bk:
