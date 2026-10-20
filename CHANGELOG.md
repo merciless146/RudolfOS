@@ -3,6 +3,12 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.2.5 (2026-10-19)
+Summary: Blitzen writes Lua, Luau (Roblox) and Pilot.lua (Waste of Space)
+- New: Blitzen has three more languages. Lua is plain Lua 5.3, without the BlockLua rules. Luau is Roblox's Lua (types, continue, +=, string interpolation): Blitzen checks the types with Luau's own checker, then runs the program on this computer. Roblox game scripts are checked but not run, since they need Roblox. Pilot.lua is for Waste of Space microcontrollers: every part call is checked against Pilot.lua's definitions, then the program runs with stand-in parts that say what they were asked to do.
+- New: when Luau code has a type error, Blitzen sees the error and its line and fixes the program, as it already did for programs that fail when run.
+- New: Code Editor opens .LUAU files and runs them (Luau and Pilot.lua), and "Ask Blitzen" picks Luau or Pilot.lua for them.
+
 ## 1.2.4 (2026-10-19)
 Summary: a USB stick written from the image can keep your files; Secure Boot key enrolment works on more computers; clearer graphics and network status
 - New: a USB stick written with Rufus or Etcher can keep your files, settings and apps. After you sign in, Rudolf OS offers to use the stick's free space (Settings › Storage and backup › Keep files on this drive); restart once and everything you made so far moves onto it. App Store apps such as Roblox (Sober) need this.
