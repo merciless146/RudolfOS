@@ -235,14 +235,16 @@ async function saveOut(name,data,type){let blob=dataToBlob(data,type),fn=name.to
  try{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fn;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000);
   if(RD)notify('Downloaded',fn+' is in the Downloads folder of this computer.');return true}catch(e){notify('Download is not available here','',{kind:'error'});return false}}
 /* ---------- backup and restore of the whole system ---------- */
-async function backupAll(){fsFlush();await homeChain;const keys={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(/^bd95|^blockdos/.test(k))keys[k]=localStorage.getItem(k)}
+/* the backup as a zip (1.2.5: also written to a USB stick, stick30.js) */
+async function backupBlob(){fsFlush();await homeChain;const keys={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(/^bd95|^blockdos/.test(k))keys[k]=localStorage.getItem(k)}
  const recs={};await IDB.ready;if(IDB.db)await new Promise(r=>{const tx=IDB.db.transaction('kv');const st=tx.objectStore('kv');const q=st.openCursor();q.onsuccess=()=>{const c=q.result;if(!c)return r();recs[c.key]=c.value;c.continue()};q.onerror=()=>r()});
  const z=new JSZip();z.file('rudolf-backup.json',JSON.stringify({rudolf:RVER,date:new Date().toISOString(),ls:keys},null,0));
  const enc=v=>JSON.stringify(v,(k,x)=>typeof x=='string'&&x.startsWith('rudolfdisk:')&&k!='v'&&k!='data'?undefined:x instanceof ArrayBuffer?{__b:b64e(x)}:ArrayBuffer.isView(x)?{__u:b64e(x.buffer.slice(x.byteOffset,x.byteOffset+x.byteLength))}:x);
  for(const k in recs)z.file('db/'+encodeURIComponent(k)+'.json',enc(recs[k]));
- const blob=await z.generateAsync({type:'blob',compression:'DEFLATE'});const d=new Date();
+ return z.generateAsync({type:'blob',compression:'DEFLATE'})}
+async function backupAll(){const blob=await backupBlob();const d=new Date();
  return saveOut(`rudolf-backup-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.zip`,blob)}
-async function restoreAll(file){if(!await elevate('Restore a backup. Everything on this Rudolf OS is replaced by the backup.'))return false;
+async function restoreAll(file,firstStart){if(!firstStart&&!await elevate('Restore a backup. Everything on this Rudolf OS is replaced by the backup.'))return false;
  const z=await JSZip.loadAsync(file);const m=z.file('rudolf-backup.json');if(!m)throw new Error('This is not a Rudolf OS backup.');const meta=JSON.parse(await m.async('string'));
  const dec=s=>JSON.parse(s,(k,x)=>x&&x.__b?b64d(x.__b).buffer:x&&x.__u?b64d(x.__u):x);
  await IDB.ready;for(const f of Object.keys(z.files).filter(n=>n.startsWith('db/')&&n.endsWith('.json'))){await kvSet(decodeURIComponent(f.slice(3,-5)),dec(await z.file(f).async('string')))}

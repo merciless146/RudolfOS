@@ -31,9 +31,16 @@ BLOCKS=$(dd if="$SRC" bs=2048 skip=16 count=1 2>/dev/null | dd bs=1 skip=80 coun
 IMG=$((BLOCKS * 4))
 NEED=$((IMG + 1024 * 2048))
 [ "$SECTORS" -gt "$NEED" ] || { echo "The disk is too small (needs at least $((NEED / 2048)) MiB)."; exit 5; }
-echo "Step 1/4: copying Rudolf OS ($((IMG / 2048)) MiB) to $DEV ..."
+echo "Step 1/5: copying Rudolf OS ($((IMG / 2048)) MiB) to $DEV ..."
 dd if="$SRC" of="$DEV" bs=2048 count="$BLOCKS" conv=fsync 2>&1 | tail -1
-echo "Step 2/4: removing old partition tables ..."
+# read the copy back from the drive itself (not from memory) and compare it with the source (1.2.5)
+echo "Step 2/5: checking the copy ..."
+sync; blockdev --flushbufs "$DEV" 2>/dev/null; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
+A=$(dd if="$SRC" bs=2048 count="$BLOCKS" 2>/dev/null | sha256sum | cut -c1-64)
+B=$(dd if="$DEV" bs=2048 count="$BLOCKS" 2>/dev/null | sha256sum | cut -c1-64)
+[ "$A" = "$B" ] || { echo "The copy on $DEV does not match Rudolf OS: the drive may be failing or was unplugged. Try another drive."; exit 9; }
+echo "The copy matches (SHA-256 ${A%${A#????????????????}})."
+echo "Step 3/5: removing old partition tables ..."
 dd if=/dev/zero of="$DEV" bs=512 seek=$((SECTORS - 2048)) count=2048 conv=fsync 2>/dev/null
 START=$(( (IMG + 2047) / 2048 * 2048 ))
 SIZE=$((SECTORS - START - 2048))
@@ -44,13 +51,13 @@ blockdev --rereadpt "$DEV" 2>/dev/null || true
 sleep 2; mdev -s
 case "$N" in *[0-9]) P="${DEV}p3";; *) P="${DEV}3";; esac
 [ -b "$P" ] || { echo "The new data partition did not appear ($P)."; exit 6; }
-echo "Step 3/4: creating the RUDOLFDATA partition ($((SIZE / 2048)) MiB) ..."
+echo "Step 4/5: creating the RUDOLFDATA partition ($((SIZE / 2048)) MiB) ..."
 mke2fs -q -F -t ext4 -L RUDOLFDATA -m 1 "$P"
-echo "Step 4/4: finishing ..."
+echo "Step 5/5: finishing ..."
 mkdir -p /mnt/newdata && mount "$P" /mnt/newdata
 mkdir -p /mnt/newdata/home/rudolf /mnt/newdata/os /mnt/newdata/etc
 chown 1000:1000 /mnt/newdata/home/rudolf
 echo "installed $(date)" > /mnt/newdata/etc/installed
 umount /mnt/newdata
 sync
-echo "Rudolf OS is installed on $DEV. Remove the disc or USB drive and restart."
+[ -n "$MKSTICK" ] || echo "Rudolf OS is installed on $DEV. Remove the disc or USB drive and restart."

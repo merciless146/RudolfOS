@@ -439,6 +439,8 @@ static void api_info(struct req *r)
 	sadd(&s, ",\"product\":"); sjson(&s, prod ? prod : "");
 	sadd(&s, ",\"boot\":"); sjson(&s, boot_mode);
 	sadd(&s, ",\"media\":"); sjson(&s, media_mode);
+	/* the device Rudolf OS started from (1.2.5: Make a USB stick leaves its whole drive out of the list) */
+	{ char *md = slurp("/etc/rudolf/media", NULL); if (md) { md[strcspn(md, "\n")] = 0; } sadd(&s, ",\"mediaDev\":"); sjson(&s, md ? md : ""); free(md); }
 	sadd(&s, ",\"live\":%s,\"recovery\":%s,\"persistTotal\":%lld,\"persistFree\":%lld,\"backlight\":%s,\"updateInstalled\":%s}", live ? "true" : "false", recovery ? "true" : "false", ptotal, pfree,
 		backlight_dir(bl, sizeof bl) ? "true" : "false", access(PERSIST "/os/current/index.html", R_OK) ? "false" : "true");
 	free(model); free(kern); free(prod); free(vend); free(ver);
@@ -2471,6 +2473,20 @@ static void api(struct req *r)
 		}
 		char cmd[512]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/install.sh /dev/%s%s%s", d, img && *img ? " " : "", img && *img ? img : "");
 		start_job("install", cmd); reply_ok(r->fd, "installing"); return;
+	}
+	/* make a Rudolf OS USB stick (1.2.5, mkstick.sh): disk and confirm (the same name twice), image (empty for this
+	   Rudolf OS, or a downloaded image in the home folder), files=1 to copy this session's files and settings too */
+	if (!strcmp(p, "mkstick")) {
+		char *d = qparam(r->query, "disk"), *c = qparam(r->query, "confirm"), *img = qparam(r->query, "image"), *fl = qparam(r->query, "files");
+		if (!safe_word(d, 16) || !c || strcmp(c, d)) { reply_err(r->fd, 400, "confirm by sending the drive name twice"); return; }
+		if (job_running()) { reply_err(r->fd, 409, "another job is running"); return; }
+		if (img && *img) {
+			int okp = !strncmp(img, "/home/rudolf/", 13) && !strstr(img, "..") && strlen(img) < 200;
+			for (const char *q = img; okp && *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/._-", *q)) okp = 0;
+			if (!okp) { reply_err(r->fd, 400, "the image must be a file in the home folder (letters, digits, . _ - only)"); return; }
+		}
+		char cmd[600]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/mkstick.sh /dev/%s '%s' %d", d, img ? img : "", fl && !strcmp(fl, "1"));
+		start_job("mkstick", cmd); reply_ok(r->fd, "making the stick"); return;
 	}
 	/* keep files on the drive Rudolf OS runs from (1.2.4): add RUDOLFDATA after the image (keepfiles.sh) */
 	if (!strcmp(p, "keepfiles")) {

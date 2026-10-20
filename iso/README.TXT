@@ -79,6 +79,17 @@ The first start asks for a language, a user name and a password. On a live
 system nothing is kept after shutdown: see KEEPING YOUR FILES below.
 
 
+MAKING MORE STICKS
+------------------
+A running Rudolf OS can make another Rudolf OS USB stick: Settings > Storage
+and backup > Make a Rudolf OS USB stick. Choose the stick (2 GB or more;
+everything on it is erased), type its size to confirm, and optionally copy
+your files and settings. The stick is read back and checked, and keeps files
+from its first start. Back up to a USB stick (same page) writes a backup that
+a new Rudolf OS can restore from its first-start screen.
+If both sticks stay plugged in, start the computer with only one of them.
+
+
 KEEPING YOUR FILES
 ------------------
 A stick written from the image runs "live": your files, settings and apps
