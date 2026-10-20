@@ -64,8 +64,11 @@ def started():
     if NEW:
         sh("mkdir -p /mnt/new; grep -q ' /mnt/new ' /proc/mounts || mount -o ro $(findfs LABEL=RUDOLFB) /mnt/new; "
            "cp /mnt/new/index.html /usr/share/rudolf/www/index.html; pkill -x rudolfd; sleep 1; "
-           "(/mnt/new/rudolfd > /run/rudolf/rudolfd.log 2>&1 &); sleep 2; echo restarted", 40)
-        g.js('location.reload();1', 10); time.sleep(10)
+           "(/mnt/new/rudolfd > /run/rudolf/rudolfd.log 2>&1 &); for i in 1 2 3 4 5 6 7 8 9 10; do wget -q -O /dev/null http://127.0.0.1:8080/ && break; sleep 1; done; echo restarted", 60)
+        # reload the page from the new rudolfd (a reload that came too early shows Chromium's error page: try again)
+        for _ in range(4):
+            g.js("location.replace('http://127.0.0.1:8080/');1", 10); time.sleep(15)
+            if wait_desktop(90) and g.js('typeof rdPost=="function"', 20) is True: break
     if not wait_desktop(): return False
     js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();svj('bd95setup',1);const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()=='Guest');if(b)b.click();return 1})()")
     until('!!USER', 120); js("USER.r='admin';window.elevate=async()=>true;1")
