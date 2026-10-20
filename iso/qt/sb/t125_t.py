@@ -94,7 +94,12 @@ try:
     A = last(sh("findfs LABEL=RUDOLFAUX"))
     out(sh(f"mkdir -p /mnt/aux; grep -q ' /mnt/aux ' /proc/mounts || mount {A} /mnt/aux; /mnt/aux/hostapd -B -P /run/hostapd.pid /mnt/aux/ap-mixed.conf >/run/hostapd.log 2>&1; sleep 2; ip addr add 10.42.0.1/24 dev wlan1; busybox udhcpd /mnt/aux/udhcpd.conf; busybox httpd -p 10.42.0.1:8099 -h /mnt/aux; tail -2 /run/hostapd.log", 40))
     r = js("rdPost('wifi/connect?if=wlan0','RudolfTest\\ncorrect horse battery\\npsk').then(()=>'ok',e=>e.message)")
-    ok('joins RudolfTest over Wi-Fi', r == 'ok' and job(120).get('status') == 0 and '10.42.0.' in wait_sh('ip -4 -o addr show dev wlan0', '10.42.0.', 60), sh('ip -4 -o addr; ip route', 20))
+    j = job(120); joined = r == 'ok' and j.get('status') == 0 and '10.42.0.' in wait_sh('ip -4 -o addr show dev wlan0', '10.42.0.', 60)
+    if not joined:   # what the Wi-Fi service saw, for the record
+        out('connect:', r, j.get('status'), (j.get('log') or '')[-600:])
+        out(sh('wpa_cli -p /run/rudolf/wpa -i wlan0 status; wpa_cli -p /run/rudolf/wpa -i wlan0 scan_results | head -5', 30))
+        out(sh('ps -eo pid,args | grep -E "wpa_|udhcpc" | grep -v grep; tail -5 /run/hostapd.log', 30))
+    ok('joins RudolfTest over Wi-Fi', joined, sh('ip -4 -o addr; ip route', 20))
     ok('...and the default route is the Wi-Fi', 'dev wlan0' in wait_sh('ip route show default', 'wlan0', 30), sh('ip route', 20))
     out(sh("flatpak remote-delete --system --force flathub 2>/dev/null; flatpak remote-add --system --no-gpg-verify flathub http://10.42.0.1:8099/repo && flatpak remotes --system", 60))
     r = js("lxApi('apps/refresh').then(()=>'ok',e=>e.message)"); j = job(300)
