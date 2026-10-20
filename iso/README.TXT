@@ -67,6 +67,13 @@ UEFI computers show a short menu (4 seconds): Start Rudolf OS, Recovery
 mode, Check this disc or USB drive, Start from memory, and Debug start
 (only with Secure Boot off). With Secure Boot on, the very first start asks
 you to enroll the Rudolf OS key once: see SECURE BOOT below.
+Settings > Update and recovery > Boot menu chooses which of these starts
+when nobody picks one, and how long the menu waits (kept in the computer's
+firmware, not on the stick).
+
+WINDOWS ON THE SAME COMPUTER: Power > Restart into Windows (or Settings >
+Update and recovery) starts Windows once; the next start is Rudolf OS again.
+On a BIOS computer, choose "Boot from hard disk" in the Rudolf Boot menu.
 
 The first start asks for a language, a user name and a password. On a live
 system nothing is kept after shutdown: see KEEPING YOUR FILES below.

@@ -4,7 +4,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.2.5 (2026-10-19)
-Summary: Linux apps and Roblox install over Wi-Fi; a Games page in the App Store; Blitzen writes Lua, Luau (Roblox) and Pilot.lua
+Summary: Linux apps and Roblox install over Wi-Fi; a Games page; Restart into Windows; Blitzen writes Lua, Luau (Roblox) and Pilot.lua
 - New: Blitzen has three more languages. Lua is plain Lua 5.3, without the BlockLua rules. Luau is Roblox's Lua (types, continue, +=, string interpolation): Blitzen checks the types with Luau's own checker, then runs the program on this computer. Roblox game scripts are checked but not run, since they need Roblox. Pilot.lua is for Waste of Space microcontrollers: every part call is checked against Pilot.lua's definitions, then the program runs with stand-in parts that say what they were asked to do.
 - New: when Luau code has a type error, Blitzen sees the error and its line and fixes the program, as it already did for programs that fail when run.
 - New: Code Editor opens .LUAU files and runs them (Luau and Pilot.lua), and "Ask Blitzen" picks Luau or Pilot.lua for them.
@@ -12,6 +12,8 @@ Summary: Linux apps and Roblox install over Wi-Fi; a Games page in the App Store
 - New: Settings › Network › Saved networks: mark a network Metered (a phone hotspot, a capped plan) and the App Store asks before any download over 50 MB on it.
 - New: an app download that stops (the Wi-Fi drops, the router restarts) is tried again by itself, and Get continues where it stopped instead of starting over.
 - New: App Store › Games: Roblox, Steam, Minecraft (Prism Launcher), RetroArch and the games built into Rudolf OS, each with its download size and whether it needs the graphics card. When Rudolf OS draws with the processor, the page says which games will be slow and why.
+- New: Restart into Windows (in the Power dialog and in Settings › Update and recovery) on a computer that also has Windows: the computer starts Windows Boot Manager once, then comes back to the Rudolf OS menu as before. It works with Secure Boot on.
+- New: Settings › Update and recovery › Boot menu: choose what the UEFI boot menu starts when nobody chooses (for example Start from memory) and how long it waits. The choice is kept in the computer's firmware, so the disc or stick is not changed.
 
 ## 1.2.4 (2026-10-19)
 Summary: a USB stick written from the image can keep your files; Secure Boot key enrolment works on more computers; clearer graphics and network status
