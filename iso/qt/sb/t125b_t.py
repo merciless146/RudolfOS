@@ -71,9 +71,9 @@ def until(e, t=90):
     return False
 def var(name, guid=LG):   # an EFI variable's value as text (UTF-16 shown as ASCII), or '' when it is not set
     m = re.search(r'V=\[([^\]\n]*)\]', sh(f'/mnt/new/v.sh {name} {guid}', 20)); return m.group(1) if m else None
-def started():
+def started(delay=40):
     """after a start: the serial shell, the newer rudolfd and page when given, the desktop signed in"""
-    if not wait_shell(): return False
+    if not wait_shell(delay=delay): return False
     if True:
         sh('mkdir -p /mnt/new', 10); sh('grep -q " /mnt/new " /proc/mounts || mount -o ro $(findfs LABEL=RUDOLFB) /mnt/new', 20)
         out('new rudolfd:', last(sh('/mnt/new/up.sh', 60)))
@@ -97,30 +97,29 @@ try:
     ok('...which entry started', m.get('selected') in m.get('entries', []) and m.get('selected', '').startswith('rudolf-'), m.get('selected'))
     ok('...and the Windows Boot Manager entry', m.get('windows') == [{'n': '0042', 'title': 'Windows Boot Manager'}], m.get('windows'))
     first = m.get('selected')
-    # Settings › Update and recovery › Boot menu
-    js("settings('upd');1")
-    ok('Settings shows the boot menu choices', until("!!document.querySelector('.boot30 .bmd')&&document.querySelectorAll('.boot30 .bmd option').length>=4", 60), js("(document.querySelector('.boot30')||{}).innerText"))
-    ok('...and Restart into Windows', until("[...document.querySelectorAll('.boot30 button')].some(b=>b.textContent=='Restart into Windows')", 20))
+    # (the page's Boot menu section and the Power dialog button are tested against a stand-in rudolfd: shell2/boot_t.js)
     r = js("rdPost('bootmenu/set?default=nonsense.conf').then(()=>'saved',e=>e.message)")
     ok('an entry the menu does not have is refused', r == 'that is not an entry of the boot menu', r)
     r = js("rdPost('bootmenu/set?timeout=60').then(()=>'saved',e=>e.message)")
     ok('...and a wait over 10 seconds', r == 'the wait is 0 to 10 seconds', r)
-    js("(()=>{const b=document.querySelector('.boot30');b.querySelector('.bmd').value='rudolf-recovery.conf';b.querySelector('.bmt').value='2';b.querySelector('.bms').click();return 1})()")
-    ok('Save stores both in the firmware', until("/Saved/.test(document.querySelector('.boot30 .bmm').textContent)", 30) and var('LoaderEntryDefault') == 'rudolf-recovery.conf' and var('LoaderConfigTimeout') == '2',
-       [var('LoaderEntryDefault'), var('LoaderConfigTimeout')])
+    r = js("rdPost('bootmenu/set?default=rudolf-recovery.conf&timeout=2').then(()=>'saved',e=>e.message)")
+    ok('both are stored in the firmware', r == 'saved' and var('LoaderEntryDefault') == 'rudolf-recovery.conf' and var('LoaderConfigTimeout') == '2', [r, var('LoaderEntryDefault'), var('LoaderConfigTimeout')])
+    m = js("rd('bootmenu').then(m=>JSON.stringify([m.default,m.timeout]))")
+    ok('...and bootmenu reports them', m == '["rudolf-recovery.conf","2"]', m)
     # the restart itself uses the debug entry (the same start as the test disc's normal one, with its serial shell;
     # recovery mode would start a different desktop)
     r = js("rdPost('bootmenu/set?default=rudolf-debug.conf').then(()=>'saved',e=>e.message)")
     ok('after a restart the menu starts the chosen entry by itself', r == 'saved' and restart() and var('LoaderEntrySelected') == 'rudolf-debug.conf', [r, var('LoaderEntrySelected')])
     ok('...and the choices are still there', var('LoaderEntryDefault') == 'rudolf-debug.conf' and var('LoaderConfigTimeout') == '2')
     r = js("rdPost('bootmenu/set?default=&timeout=').then(()=>'saved',e=>e.message)")
-    ok('"As on the disc" removes them again', r == 'saved' and var('LoaderEntryDefault') == '' and var('LoaderConfigTimeout') == '', [var('LoaderEntryDefault'), var('LoaderConfigTimeout')])
-    # the Power dialog: Restart into Windows (the stand-in prints, waits 3 s and restarts the computer)
+    ok('"As on the disc" removes them again', r == 'saved' and var('LoaderEntryDefault') == '' and var('LoaderConfigTimeout') == '', [r, var('LoaderEntryDefault'), var('LoaderConfigTimeout')])
     sh('/mnt/new/bo.sh', 30)
-    js("shutdownDlg();1")
-    ok('the Power dialog has Restart into Windows', until("!!document.querySelector('.rmodal .bmwin')", 30))
-    SEEN.clear(); js("document.querySelector('.rmodal .bmwin').click();1"); time.sleep(5)
-    back = started()
+    r = js("rdPost('bootmenu/windows?n=0042').then(r=>r.message,e=>e.message)")
+    ok('Restart into Windows sets the next start (BootNext 0042)', r == 'Windows starts at the next restart' and var('BootNext', GG) == 'B', [r, repr(var('BootNext', GG))])
+    r = js("rdPost('bootmenu/windows?n=0001').then(r=>r.message,e=>e.message)")
+    ok('...and only to a Windows entry', r == 'that is not a Windows entry', r)
+    SEEN.clear(); js("rdPost('power?action=reboot').catch(()=>0);1"); time.sleep(5)
+    back = started(delay=150)   # the stand-in's start comes first: read the serial port all that time
     ser = ''.join(SEEN)
     ok('the firmware started Windows Boot Manager (the stand-in)', 'RUDOLF-WINDOWS-STANDIN' in ser.replace('\x1b', '').replace('\r', ''), ser[-300:])
     ok('...once: the next start is Rudolf OS again', back and var('BootNext', GG) == '', var('BootNext', GG))

@@ -6,7 +6,7 @@
 const BOOT_TITLES={'rudolf-start.conf':'Start Rudolf OS','rudolf-recovery.conf':'Recovery mode','rudolf-check.conf':'Check this disc or USB drive','rudolf-ram.conf':'Start from memory','rudolf-debug.conf':'Debug start','auto-windows':'Windows Boot Manager'};
 const bootTitle=id=>BOOT_TITLES[id]||id.replace(/\.conf$/,'');
 /* the entries worth offering as the default (not the firmware-setup or reboot items systemd-boot adds) */
-const bootChoices=m=>(m.entries||[]).filter(e=>/^rudolf-.*\.conf$/.test(e)&&e!='rudolf-debug.conf'||e=='auto-windows');
+const bootChoices=m=>(m.entries||[]).filter(e=>/^rudolf-.*\.conf$/.test(e)&&!['rudolf-debug.conf','rudolf-start.conf'].includes(e)||e=='auto-windows');   // Start Rudolf OS is "As on the disc"
 function bootRestart(){try{fsFlush()}catch(e){}rdPost('power?action=reboot').catch(()=>{})}
 async function bootWindows(w){
  if(!await elevate('Restart into Windows: the computer starts '+w.title+' once, then this menu again as before.'))return false;
