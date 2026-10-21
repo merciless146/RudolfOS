@@ -2150,6 +2150,14 @@ static void api(struct req *r)
 	if (!strcmp(p, "processes")) { api_processes(r); return; }
 	if (!strcmp(p, "net")) { api_net(r); return; }
 	if (!strcmp(p, "disks")) { api_disks(r); return; }
+	/* the hardware check's download test (1.2.5): rudolf-update speedtest prints "bytes N" and "ms N" */
+	if (!strcmp(p, "speedtest")) {
+		char *o = run_out("/usr/bin/rudolf-update speedtest 2>&1"); long long by = 0, ms = 0; char *q;
+		if (o && (q = strstr(o, "bytes "))) by = atoll(q + 6);
+		if (o && (q = strstr(o, "ms "))) ms = atoll(q + 3);
+		if (by <= 0) { reply_err(r->fd, 502, o && *o ? strtok(o, "\n") : "the update server could not be reached"); free(o); return; }
+		str s = {0}; sadd(&s, "{\"ok\":true,\"bytes\":%lld,\"ms\":%lld}", by, ms); free(o); reply_json(r->fd, &s); return;
+	}
 	if (!strcmp(p, "install/images")) {
 		/* disc images downloaded to the Downloads folder, for Install from a newer image (1.2.4) */
 		str s = {0}; sadd(&s, "{\"ok\":true,\"images\":[");
@@ -2280,7 +2288,12 @@ static void api(struct req *r)
 	if (!strcmp(p, "power")) {
 		char *a = qparam(r->query, "action");
 		if (!a) { reply_err(r->fd, 400, "action?"); return; }
-		if (!strcmp(a, "suspend")) { reply_ok(r->fd, "suspending"); sync(); write_str("/sys/power/state", "mem"); return; }
+		if (!strcmp(a, "suspend")) {
+			/* wake=N (1-60, 1.2.5's hardware check): the real-time clock wakes the computer after N seconds */
+			char *w = qparam(r->query, "wake"); int ws = w ? atoi(w) : 0;
+			if (ws > 0 && ws <= 60) { char b[24]; write_str("/sys/class/rtc/rtc0/wakealarm", "0"); snprintf(b, sizeof b, "+%d", ws); if (write_str("/sys/class/rtc/rtc0/wakealarm", b)) { reply_err(r->fd, 409, "this computer cannot wake itself (no wake alarm)"); return; } }
+			reply_ok(r->fd, "suspending"); sync(); write_str("/sys/power/state", "mem"); return;
+		}
 		if (strcmp(a, "poweroff") && strcmp(a, "reboot")) { reply_err(r->fd, 400, "unknown action"); return; }
 		reply_ok(r->fd, a);
 		write_str(RUN "/power", a);

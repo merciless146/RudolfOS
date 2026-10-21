@@ -4,7 +4,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.2.5 (2026-10-19)
-Summary: make a Rudolf OS USB stick from Rudolf OS; apps install over Wi-Fi; a Games page; Restart into Windows; Blitzen writes Luau and Pilot.lua
+Summary: make a Rudolf OS USB stick from Rudolf OS; check this computer's hardware; apps over Wi-Fi; a Games page; Restart into Windows; Blitzen writes Luau and Pilot.lua
 - New: Blitzen has three more languages. Lua is plain Lua 5.3, without the BlockLua rules. Luau is Roblox's Lua (types, continue, +=, string interpolation): Blitzen checks the types with Luau's own checker, then runs the program on this computer. Roblox game scripts are checked but not run, since they need Roblox. Pilot.lua is for Waste of Space microcontrollers: every part call is checked against Pilot.lua's definitions, then the program runs with stand-in parts that say what they were asked to do.
 - New: when Luau code has a type error, Blitzen sees the error and its line and fixes the program, as it already did for programs that fail when run.
 - New: Code Editor opens .LUAU files and runs them (Luau and Pilot.lua), and "Ask Blitzen" picks Luau or Pilot.lua for them.
@@ -15,6 +15,7 @@ Summary: make a Rudolf OS USB stick from Rudolf OS; apps install over Wi-Fi; a G
 - New: Settings › Storage and backup › Make a Rudolf OS USB stick: puts this Rudolf OS (with its installed updates), or a downloaded image, on a USB stick or memory card of 2 GB or more. The copy is read back and checked, the stick keeps files from its first start, and it can take your files and settings with it. No Windows, Rufus or joining of parts is needed any more.
 - New: Back up to a USB stick (Settings › Storage and backup): the backup is written straight to a plugged-in drive, with a checksum, and read back. On a new Rudolf OS, the first-start screen has Restore from a backup on a USB stick, which finds it there and refuses a damaged one.
 - Changed: Install here reads the copy back and compares it before it finishes.
+- New: Task Manager › Hardware › Check this computer…: a guided check of about a minute: sound (a tone: did you hear it?), microphone (a level meter), network (wired speed with the cable hint, Wi-Fi networks in range, a download from the update server), USB (plug in a stick), graphics (what draws the screen, frames per second) and, if you like, sleep for 10 seconds. The results go into the system report, so a problem report shows them (nothing personal is in it).
 - Fixed: joining a Wi-Fi network for the first time after starting could fail with "out of range, or the password is wrong" on slower computers, because Rudolf OS gave up after 20 seconds while it was still scanning. It now waits up to a minute.
 - New: Restart into Windows (in the Power dialog and in Settings › Update and recovery) on a computer that also has Windows: the computer starts Windows Boot Manager once, then comes back to the Rudolf OS menu as before. It works with Secure Boot on.
 - New: Settings › Update and recovery › Boot menu: choose what the UEFI boot menu starts when nobody chooses (for example Start from memory) and how long it waits. The choice is kept in the computer's firmware, so the disc or stick is not changed.
