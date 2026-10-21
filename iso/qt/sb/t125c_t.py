@@ -30,7 +30,7 @@ def last(t): return t.strip().split('\n')[-1].strip() if t.strip() else ''
 NEW = os.path.abspath('new125c.img'); D = os.path.abspath('new125c'); shutil.rmtree(D, ignore_errors=True); shutil.copytree(NEWDIR, D)
 open(f'{D}/up.sh', 'w').write('#!/bin/sh\n# the newer page, scripts and rudolfd, until the next restart\ncp /mnt/new/index.html /usr/share/rudolf/www/index.html\n'
                               'cp /mnt/new/install.sh /mnt/new/mkstick.sh /usr/lib/rudolf/; chmod 755 /usr/lib/rudolf/install.sh /usr/lib/rudolf/mkstick.sh\n'
-                              'pkill -x rudolfd; sleep 1\n(/mnt/new/rudolfd > /run/rudolf/rudolfd.log 2>&1 &)\n'
+                              'cp /mnt/new/rudolfd /usr/lib/rudolf/rudolfd-new; chmod 755 /usr/lib/rudolf/rudolfd-new\npkill -x rudolfd; sleep 1\n(/usr/lib/rudolf/rudolfd-new > /run/rudolf/rudolfd.log 2>&1 &)\n'
                               'for i in 1 2 3 4 5 6 7 8 9 10; do wget -q -O /dev/null http://127.0.0.1:8080/ && break; sleep 1; done\necho restarted $i\n')
 for f in ('up.sh', 'rudolfd', 'install.sh', 'mkstick.sh'): os.chmod(f'{D}/{f}', 0o755)
 for f in (NEW,):
@@ -89,7 +89,7 @@ try:
     # Rudolf OS mounts plugged-in drives itself (devplug, under /media): use that mount when it is there
     sh(f'mount -o ro {nd} /mnt/new 2>/dev/null || mount --bind /media/{nd[5:]} /mnt/new', 20)
     out('test disk:', nd, sh('ls /mnt/new', 20)[-200:])
-    out('new rudolfd:', last(sh('/mnt/new/up.sh', 60)))
+    out('new rudolfd:', last(sh('sh /mnt/new/up.sh', 60)))   # the drive may be mounted noexec
     for _ in range(4):
         g.js("location.replace('http://127.0.0.1:8080/');1", 10); time.sleep(15)
         if until("typeof stkSection=='function'", 90): break
