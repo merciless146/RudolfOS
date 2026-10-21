@@ -79,6 +79,14 @@ The first start asks for a language, a user name and a password. On a live
 system nothing is kept after shutdown: see KEEPING YOUR FILES below.
 
 
+CHECKING THE HARDWARE
+---------------------
+Task Manager > Hardware > Check this computer... checks sound, the
+microphone, the network (and the download speed from the update server),
+USB ports, graphics and sleep in about a minute. The result is added to the
+system report that "Report a problem" sends.
+
+
 MAKING MORE STICKS
 ------------------
 A running Rudolf OS can make another Rudolf OS USB stick: Settings > Storage

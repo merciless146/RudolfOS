@@ -53,6 +53,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('the App Store has a Games tab after Get apps', tabs == 'Get apps,Games,Linux apps,Installed,Built-in apps', tabs);
   await p.evaluate(() => __S.body.querySelector(".tmtabs [data-t='games']").click());
   await p.waitForFunction(() => __S.body.querySelectorAll('.gmc').length >= 5, null, {timeout: 10000}).catch(() => 0);
+  await p.waitForFunction(() => /to download/.test(__S.body.textContent), null, {timeout: 10000}).catch(() => 0);   // the sizes arrive after the cards
   let g = await p.evaluate(() => ({note: !__S.body.querySelector('.gmnote').hidden && __S.body.querySelector('.gmnote').textContent, cards: [...__S.body.querySelectorAll('.stc')].map(c => c.querySelector('b').textContent + ' | ' + [...c.querySelectorAll('.gmlab')].map(x => x.textContent).join() + ' | ' + ((c.querySelector('.gmsz') || {}).textContent || ''))}));
   ok('games: Roblox, Steam, Prism, RetroArch and the built-in ones', ['Roblox (Sober)', 'Steam', 'Prism Launcher (Minecraft)', 'RetroArch', 'Emu', 'Quake Engine', 'Board Games', 'Card Games'].every(n => g.cards.some(c => c.startsWith(n + ' |'))), g.cards);
   ok('...each labelled', g.cards.every(c => /Needs the graphics card|Runs anywhere/.test(c)) && /^Roblox.*Needs the graphics card/.test(g.cards[0]) && g.cards.some(c => /^RetroArch \| Runs anywhere/.test(c)), g.cards);

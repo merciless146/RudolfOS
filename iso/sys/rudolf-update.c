@@ -293,6 +293,29 @@ static void url_join(const char *base, const char *file, char *out, size_t n)
 
 static int lockf_(void) { char p[300]; snprintf(p, sizeof p, "%s/.lock", SYSD); mkdirs(SYSD); int f = open(p, O_CREAT | O_RDWR | O_CLOEXEC, 0600); return f >= 0 && !flock(f, LOCK_EX | LOCK_NB) ? 0 : -1; }
 
+/* speedtest (1.2.5, Task Manager's hardware check): how fast the update server answers here. Downloads the newest
+   release's kernel (about 10 MB) into nothing; prints bytes and ms */
+static int cmd_speedtest(void)
+{
+	kv_t cf; kv_read(CONFP, &cf, '='); const char *url = kv(&cf, "url");
+	char def[300] = ""; if (!*url) { char *d = slurp("/etc/rudolf/update-url", NULL); if (d) { snprintf(def, sizeof def, "%s", d); char *nl = strchr(def, '\n'); if (nl) *nl = 0; free(d); } url = def; }
+	if (!*url) { say("No update address is set."); return 2; }
+	char mu[400], tmp[] = "/tmp/rudolf-speed-XXXXXX"; int fd = mkstemp(tmp); if (fd < 0) return 1; close(fd);
+	snprintf(mu, sizeof mu, "%s/manifest.txt", url);
+	if (http_to_file(mu, tmp)) { unlink(tmp); say("Could not reach the update server."); return 3; }
+	size_t ml; char *t = slurp(tmp, &ml); unlink(tmp); man_t m;
+	if (!t || parse_manifest(t, &m)) { free(t); say("The update server did not send a release list."); return 3; }
+	lay_t *y = mlayer(&m, "vmlinuz"); if (!y) { free(t); return 3; }
+	char u[600]; url_join(url, y->file, u, sizeof u); free(t);
+	FILE *f = fopen("/dev/null", "wb"); if (!f) return 1;
+	long long want = y->size;   /* the whole kernel, about 10 MB: any server, with or without libcurl */
+	struct timespec a, b; clock_gettime(CLOCK_MONOTONIC, &a);
+	int r = http_get(u, f, 0, -1);
+	clock_gettime(CLOCK_MONOTONIC, &b); fclose(f);
+	if (r) { say("The download from the update server failed."); return 3; }
+	printf("bytes %lld\nms %lld\n", want, (long long)((b.tv_sec - a.tv_sec) * 1000 + (b.tv_nsec - a.tv_nsec) / 1000000));
+	return 0;
+}
 static int cmd_check(int quiet)
 {
 	kv_t cf; kv_read(CONFP, &cf, '='); const char *url = kv(&cf, "url");
@@ -451,6 +474,7 @@ int main(int argc, char **argv)
 		char ru[600]; snprintf(ru, sizeof ru, "%s.rzs", argv[2]); long long got = 0;
 		int r = delta_fetch(argv[2], ru, sd, n, argv[3], atoll(argv[4]), &got); say("result %d, downloaded %lld bytes", r, got); return r != 0;
 	}
+	if (!strcmp(c, "speedtest")) return cmd_speedtest();
 	load_keys();
 	if (!strcmp(c, "status")) return cmd_status();
 	/* verify-manifest LIST SIG (1.2.4, install.sh): is this a release list signed with a trusted key? */

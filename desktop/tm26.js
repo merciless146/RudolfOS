@@ -222,6 +222,9 @@ function taskmgr26() {
     if (!RD) return needRD();
     const s = await getSys(); if (tab != 'hw') return; B.innerHTML = '';
     if (!s || s.error) { B.textContent = s ? s.error : '—'; return }
+    /* 1.2.5: the guided check (hwcheck30.js) */
+    if (typeof hwCheck == 'function') { const d = document.createElement('div'); d.className = 'rmrow'; d.style.justifyContent = 'flex-start'; d.innerHTML = `<button class='pri hwcgo'>Check this computer…</button><span class='msg'></span>`;
+      d.lastChild.textContent = ' ' + (hwcLast() ? 'Last check: ' + hwcSummary() : 'Sound, microphone, network, USB, graphics and sleep, in about a minute.'); d.firstChild.onclick = () => hwCheck(); B.appendChild(d) }
     const c = s.cpu || {};
     B.appendChild(h4('Computer')); B.appendChild(kv([['Model', s.machine.trim() || 'not reported'], ['Firmware', s.firmware.trim() || 'not reported'], ['Started with', (s.kernel.boot || '').toUpperCase()]]));
     B.appendChild(h4('Processor')); B.appendChild(kv([['Model', c.model], ['Threads', c.threads], ['Speed now', c.mhz ? c.mhz + ' MHz' : null], ['Temperature', c.tempC == null ? 'not reported' : c.tempC + ' °C'], ['Memory', fmtB(s.memory.total)]]));
@@ -297,6 +300,7 @@ async function sysReport(problem) {
     ['Services', sys ? `display ${yes(sv.display)}, sound ${yes(sv.sound)}, wifi ${yes(sv.wifi)}, X ${yes(sv.x)}, linux apps ${yes(sv.linuxApps)}` : '—'],
     ['Windows', wins.length + (typeof RT != 'undefined' && RT.size ? ', real tabs ' + RT.size : '')],
     ['Kernel warnings', sys ? String(tmLines(k.messages).length) : '—'],
+    ['Hardware check', typeof hwcSummary == 'function' ? hwcSummary() : '—'],
   ];
   const out = ['Rudolf OS system report', ''];
   if (problem) out.push('Problem: ' + problem.replace(/\s+/g, ' ').trim(), '');

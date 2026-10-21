@@ -141,6 +141,11 @@ is reachable only as BlockLua, whose reference card pushes the model toward one-
 - Tests: QEMU with a second virtual stick: back up, factory reset, restore; a damaged backup is refused.
 
 ## 2. Hardware check in Task Manager
+
+> **Stage D as built** (branch `rudolf-1.2.5-d`): `desktop/hwcheck30.js`. Sound plays on the output in use (other
+> outputs are chosen in Settings › Sound and checked again); the download test is `rudolf-update speedtest` (the newest
+> release's kernel, about 10 MB, from the update server) through rudolfd's `speedtest`; sleep uses the real-time clock's
+> wake alarm (`power?action=suspend&wake=10`). The result is kept and is one line of the system report.
 Task Manager › Hardware › **Check this computer…**: a guided check of about a minute, one step per screen.
 - **Sound**: a tone on each output (speakers, headphones, HDMI/DisplayPort): "Did you hear it?"
 - **Microphone**: a 3-second level meter.
