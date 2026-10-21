@@ -47,7 +47,8 @@ def wait_shell(t=900, delay=40):
     while time.time() < end:
         if time.time() - t0 < delay: SEEN.append(g.s.read(2)); continue
         try:
-            if 'ready' in g.sh('echo ready', 8): return True
+            o = g.sh('echo ready', 8); SEEN.append(o)   # whatever came before the shell answered is kept too
+            if 'ready' in o: return True
         except OSError: pass
         time.sleep(3)
     return False
@@ -121,6 +122,7 @@ try:
     SEEN.clear(); js("rdPost('power?action=reboot').catch(()=>0);1"); time.sleep(5)
     back = started(delay=150)   # the stand-in's start comes first: read the serial port all that time
     ser = ''.join(SEEN)
+    out('firmware said:', ' | '.join(sorted(set(re.findall(r'BdsDxe:[^\r\n\x1b]{0,120}', ser))))[:800] or '(no BdsDxe lines)', '| serial bytes', len(ser))
     ok('the firmware started Windows Boot Manager (the stand-in)', 'RUDOLF-WINDOWS-STANDIN' in ser.replace('\x1b', '').replace('\r', ''), ser[-300:])
     ok('...once: the next start is Rudolf OS again', back and var('BootNext', GG) == '', var('BootNext', GG))
     vm.shot('end')
