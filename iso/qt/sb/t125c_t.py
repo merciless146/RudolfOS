@@ -100,6 +100,7 @@ try:
     out('started from', info.get('mediaDev'), '| drives:', [(d['name'], d['bytes'], d['removable']) for d in disks])
     ok('Make a stick offers the 4 GB USB drive only (not the disc, the 64 MB drive or the test disk)', len(t) == 1 and 4.2e9 < t[0][1] < 4.4e9, t)
     dev = t[0][0] if t else 'sdz'
+    MD = (info.get('mediaDev') or '/dev/sr0')[5:]   # the drive Rudolf OS started from (here the disc: sr0)
     r = js(f"rdPost('mkstick?disk={dev}&confirm={dev}&image=&files=1').then(r=>r.message,e=>e.message)")
     ok('making the stick starts', r == 'making the stick', r)
     j = {}; end = time.time() + 1500
@@ -113,9 +114,9 @@ try:
     ok('...with the file made in this session copied', 'Copying your files and settings' in log)
     r = js(f"rdPost('mkstick?disk={dev}&confirm=sdq&image=&files=0').then(r=>r.message,e=>e.message)")
     ok('a mistyped confirmation is refused', r == 'confirm by sending the drive name twice', r)
-    r = js("rdPost('mkstick?disk=sr0&confirm=sr0&image=&files=0').then(r=>r.message,e=>e.message)"); time.sleep(8)
+    r = js(f"rdPost('mkstick?disk={MD}&confirm={MD}&image=&files=0').then(r=>r.message,e=>e.message)"); time.sleep(8)
     jl = J(js("rd('job').then(j=>JSON.stringify(j))"), {})
-    ok('the drive Rudolf OS runs from is refused', jl.get('status', 0) != 0 and ('not a USB stick' in (jl.get('log') or '') or 'running from' in (jl.get('log') or '')), (jl.get('log') or '')[-200:])
+    ok('the drive Rudolf OS runs from is refused', jl.get('status', 0) != 0 and 'running from' in (jl.get('log') or ''), (jl.get('log') or '')[-200:])
     # 3. a backup to the 64 MB drive
     bp = J(js("rd('info').then(async i=>JSON.stringify(stkBackupParts((await rd('disks')).disks,i).map(x=>x.part)))"), [])
     bk = [x for x in bp if x.get('label') == 'BACKUPS']
@@ -123,10 +124,13 @@ try:
     if bk:
         r = js("(async()=>{const i=await rd('info');const p=stkBackupParts((await rd('disks')).disks,i).find(x=>x.part.label=='BACKUPS').part;try{return await stkBackupTo(p)}catch(e){return 'ERR '+e.message}})()", 300)
         ok('a backup is written and read back', isinstance(r, str) and r.startswith('rudolf-backup-'), r)
-        bdev = bk[0]['name']
-        o = sh(f"mkdir -p /mnt/bk; mount -o ro /dev/{bdev} /mnt/bk && cd /mnt/bk/RUDOLF-BACKUP && sha256sum -c *.sha256; cd /; umount /mnt/bk", 60)
+        bdev = bk[0]['name']; mp = bk[0].get('mount') or ''
+        # Rudolf OS mounted the drive itself when it was plugged in: the backup uses that mount and leaves it
+        o = sh(f"cd {mp}/RUDOLF-BACKUP && sha256sum -c *.sha256; cd /" if mp else f"mkdir -p /mnt/bk; mount -o ro /dev/{bdev} /mnt/bk && cd /mnt/bk/RUDOLF-BACKUP && sha256sum -c *.sha256; cd /; umount /mnt/bk", 60)
         ok('...its checksum file checks out on the drive itself', ': OK' in o, o[-200:])
-        ok('...and the drive was unmounted after', f'/dev/{bdev} ' not in sh('cat /proc/mounts', 20))
+        mounted = f'/dev/{bdev} ' in sh('cat /proc/mounts', 20)
+        ok('...and the drive is left as it was (mounted by Rudolf OS, or not mounted)', mounted == bool(mp), [mp, mounted])
+        ok('a Rudolf OS stick\'s own partitions are not offered for backups', not any(x.get('label') in ('RUDOLF EFI', 'RUDOLFDATA') for x in bp), [x.get('label') for x in bp])
     vm.shot('made')
 finally:
     vm.stop()

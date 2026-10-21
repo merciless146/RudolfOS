@@ -10,6 +10,8 @@ set -e
 DEV=$1; IMG=$2; FILES=$3
 N=${DEV##*/}
 [ -b "$DEV" ] && [ -r /sys/block/$N/size ] || { echo "No such drive: $DEV"; exit 2; }
+MEDIA=$(cat /etc/rudolf/media 2>/dev/null)
+case "$MEDIA" in "$DEV"|"$DEV"[0-9]*|"$DEV"p[0-9]*) echo "That is the drive Rudolf OS is running from. Choose another USB stick."; exit 3;; esac
 # a USB stick or a memory card, of 2 GB or more (internal disks: Settings > Update and recovery > Install here)
 RM=$(cat /sys/block/$N/removable)
 case $(readlink -f /sys/block/$N/device) in */usb*) RM=1;; */mmc*) RM=1;; esac

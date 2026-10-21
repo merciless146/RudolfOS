@@ -10940,8 +10940,9 @@ const stkGB=b=>(b/1e9).toFixed(1)+' GB';
 const stkDisk=dev=>{const m=String(dev||'').replace(/^\/dev\//,'');return /^(nvme\d+n\d+|mmcblk\d+)p\d+$/.test(m)?m.replace(/p\d+$/,''):/^(sd|vd)[a-z]+\d+$/.test(m)?m.replace(/\d+$/,''):m};
 /* drives a stick can be made on: USB sticks and memory cards of 2 GB or more, not the one Rudolf OS runs from */
 function stkTargets(disks,info){const own=stkDisk(info&&info.mediaDev);return (disks||[]).filter(k=>k.removable&&k.bytes>=2e9&&k.name!=own)}
-/* partitions a backup can be written to (or read from): on removable drives, a file system other than Rudolf OS's own */
-function stkBackupParts(disks,info){const own=stkDisk(info&&info.mediaDev),out=[];(disks||[]).filter(k=>k.removable&&k.name!=own).forEach(k=>k.partitions.forEach(p=>{if(p.fs&&!['iso9660','swap'].includes(p.fs)&&p.label!='RUDOLFDATA')out.push({disk:k,part:p})}));return out}
+/* partitions a backup can be written to (or read from): on removable drives, a file system other than Rudolf OS's own
+   (not a Rudolf OS stick's image, boot partition or RUDOLFDATA) */
+function stkBackupParts(disks,info){const own=stkDisk(info&&info.mediaDev),out=[];(disks||[]).filter(k=>k.removable&&k.name!=own).forEach(k=>k.partitions.forEach(p=>{if(p.fs&&!['iso9660','swap'].includes(p.fs)&&!['RUDOLFDATA','RUDOLF EFI'].includes(p.label))out.push({disk:k,part:p})}));return out}
 async function stkJob(pre,onLine){let seen=0;for(;;){await new Promise(r=>setTimeout(r,1000));let j;try{j=await rd('job')}catch(e){continue}const ls=(j.log||'').split('\n');pre.textContent=j.log||'';pre.scrollTop=pre.scrollHeight;if(onLine)for(;seen<ls.length-1;seen++)onLine(ls[seen]);if(!j.running&&j.status>=0)return j}}
 /* the confirmation: the administrator types the size shown, so the wrong drive is not erased by a slip */
 function stkConfirm(k){return new Promise(res=>{const o=document.createElement('div');o.className='natdlg';const sz=stkGB(k.bytes);
