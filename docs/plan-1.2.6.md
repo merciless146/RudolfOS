@@ -11,7 +11,8 @@ Version: `iso/VERSION` 1.2.6, `RVER` 1.2.6.
 | 2 | Make a Rudolf OS USB stick refuses a stick that is already formatted | bug | small | A |
 | 3 | CHANGELOG 1.2.5: date and component versions | bug | tiny | A |
 | 4 | Tests that would have caught 1 and 2 | tests | small | A |
-| – | Features (to choose) | feature | – | B and on |
+| 5 | More USB Wi-Fi adapters: Atheros AR9271, MediaTek MT7601U, MT7610U and MT7612U | feature | small | B |
+| – | Further features (to choose) | feature | – | B and on |
 
 Stage A changes the disc writer, the start-up script (initramfs) and one system script. That means it needs a
 release build and the Secure Boot tests, not only page tests. Like every stage, it has one pull request, is built
@@ -106,6 +107,40 @@ disc-1.2.5 both show it: every other file matches, and `boot/rboot.bin` fails.
   changed. This is a note in `RELEASES.md`, not a code change.
 
 ---
+
+## 5. More USB Wi-Fi adapters (stage B)
+
+**Now.** Rudolf OS already drives most current USB Wi-Fi adapters:
+- Realtek RTL8188/8192 (`rtl8xxxu`), RTL8811AU/8812AU, RTL8821CU, RTL8822BU/CU, RTL8852BU, RTL8851BU (`rtw88`, `rtw89`);
+- MediaTek MT7921AU and MT7925U;
+- Ralink RT2800 (`rt2800usb`).
+
+A plugged-in adapter appears in Settings › Network like a built-in card, and Devices lists it as a "Wi-Fi adapter".
+
+**Missing** (`kconfig.sh` line 48), so these adapters show as a plain USB device and Settings says "No Wi-Fi adapter was found":
+
+| Driver | Chip | Typical adapters | Firmware (linux-firmware) |
+|--------|------|------------------|---------------------------|
+| `ATH9K_HTC` | Atheros AR9271, AR7010 | TP-Link TL-WN722N v1, many "Linux-friendly" 2.4 GHz adapters | `htc_9271.fw`, `htc_7010.fw` |
+| `MT7601U` | MediaTek MT7601U | low-cost 150 Mb/s nano adapters | `mt7601u.bin` |
+| `MT76x0U` | MediaTek MT7610U | AC600 dual-band adapters | `mediatek/mt7610u.bin` |
+| `MT76x2U` | MediaTek MT7612U | AC1200 adapters, among them Alfa AWUS036ACM | `mediatek/mt7662u.bin`, `mt7662u_rom_patch.bin` |
+
+**Change.**
+- Add the four options to the `m` line in `kconfig.sh`. Each one depends on USB and MAC80211 (already there) and pulls in its common parts by itself (`ATH9K_HW`, `ATH9K_COMMON`, `MT76x02_USB`, and so on).
+- The firmware needs nothing extra. Each driver declares its files with `MODULE_FIRMWARE`, and `systools/wififw.py` copies exactly those from linux-firmware into the modules layer. Licences come along with linux-firmware's `WHENCE` entries, as for the others.
+- Expected cost: roughly 0.5 MB of modules and 0.3 MB of firmware.
+- `devplug` already names these as "Wi-Fi adapter" (by their network interface), and `wifi.sh` uses the first wireless interface. With a built-in card and a dongle both present, `wifi.sh` still takes the first one; picking the adapter is a separate, later item.
+- CHANGELOG: "New: more USB Wi-Fi adapters work (Atheros AR9271, MediaTek MT7601U, MT7610U, MT7612U)."
+
+**Test.** QEMU has no USB Wi-Fi device, so the test checks the built release instead (`t126b_t.py` on the test disc's serial shell):
+- each new module is in the modules layer and loads (`modprobe`; without hardware it loads and stays idle);
+- `modinfo` lists the USB IDs for one known adapter per driver (for example `usb:v0CF3p9271` for the AR9271);
+- each declared firmware file is in `/lib/firmware`.
+
+The existing `MAC80211_HWSIM` Wi-Fi test still passes. If you have one of these adapters, a short check on a real PC (join a network, run the hardware check's network step) completes it.
+
+**Risk.** These drivers are mainline and long-standing. AR9271 and MT7612U are the usual recommendation for Linux, so the main risk is size, which is small.
 
 ## Features: to choose
 
