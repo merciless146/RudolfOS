@@ -1,9 +1,16 @@
-# Rudolf OS 1.2.6 update plan
+# Rudolf OS 1.2.6 and 1.2.7 update plan
 
-1.2.6 starts with fixes for what came up after 1.2.5 went to stable (serial 2026102311): two bugs a user meets
-in normal use, and a release-notes slip. These go first, in **stage A**, so they can reach stable on their own
-before any new feature. New features follow in later stages once they are chosen (see "Features: to choose").
-Version: `iso/VERSION` 1.2.6, `RVER` 1.2.6.
+1.2.6 started with fixes for what came up after 1.2.5 went to stable (serial 2026102311): two bugs a user meets
+in normal use, and a release-notes slip. They went first, in **stage A**, so they could reach stable on their own.
+
+> **Stage A is released as 1.2.6**: PR #32 (with the tidy-ups in PR #34), stable serial 2026102517 (2026-10-25),
+> disc `disc-1.2.6`, whose own checksum list passes with the boot loader included.
+
+The features (items 5 to 9) follow in **stages B and C** and ship as **1.2.7** (`iso/VERSION` 1.2.7, `RVER` 1.2.7),
+since 1.2.6 is out:
+- **Stage B:** the kernel's new USB Wi-Fi drivers, and two changes to the desktop page (Luau, Files).
+- **Stage C:** the hardware check's new steps, with the webcam driver they need, and joining a downloaded disc
+  image. Both add to rudolfd.
 
 | # | Item | Kind | Size | Stage |
 |---|------|------|------|-------|
@@ -12,11 +19,14 @@ Version: `iso/VERSION` 1.2.6, `RVER` 1.2.6.
 | 3 | CHANGELOG 1.2.5: date and component versions | bug | tiny | A |
 | 4 | Tests that would have caught 1 and 2 | tests | small | A |
 | 5 | More USB Wi-Fi adapters: Atheros AR9271, MediaTek MT7601U, MT7610U and MT7612U | feature | small | B |
-| – | Further features (to choose) | feature | – | B and on |
+| 6 | Faster first Luau type check | feature | small | B |
+| 7 | Copy folders from a USB drive or memory card (Files) | feature | small | B |
+| 8 | Hardware check: keyboard, touchpad or mouse, camera, battery, screen (and the webcam driver) | feature | medium | C |
+| 9 | Make a stick or Install from the downloaded parts, without joining them by hand | feature | small | C |
 
 Stage A changes the disc writer, the start-up script (initramfs) and one system script. That means it needs a
 release build and the Secure Boot tests, not only page tests. Like every stage, it has one pull request, is built
-to beta, and is tested in QEMU. Stage A can be promoted to stable as 1.2.6 by itself if the features take longer.
+to beta, and is tested in QEMU. Stage A was promoted to stable as 1.2.6 by itself.
 
 ---
 
@@ -142,27 +152,148 @@ The existing `MAC80211_HWSIM` Wi-Fi test still passes. If you have one of these 
 
 **Risk.** These drivers are mainline and long-standing. AR9271 and MT7612U are the usual recommendation for Linux, so the main risk is size, which is small.
 
-## Features: to choose
+## 6. Faster first Luau type check (stage B)
 
-These came up while building 1.2.5. They are candidates, not commitments: pick the ones for 1.2.6, and add others.
+**Now** (`desktop/luau30.js`). The type checker runs in one Web Worker (`LUAU.checker`), kept between checks.
+- The first check of a kind loads `luau.wasm` (4.3 MB), then defines that kind's types: Roblox-lite and its
+  `Enum` for `roblox`; those plus `pilot.d.luau` for `pilot`. The first check is allowed 120 s, later ones 20 s.
+- Changing kind (a Pilot.lua check after a Roblox one, or back) loads and defines everything again, because the
+  Worker holds one kind at a time (`checkerKind`).
+- On a slow computer, the first Pilot.lua check in Blitzen or Code Editor takes up to two minutes, and the
+  program says "(not type-checked: …)" if the time runs out.
 
-| Candidate | What | Size |
-|-----------|------|------|
-| Faster first Luau check | Keep the type checker's definitions loaded between checks, and warm it in the background when Blitzen opens. At the moment the first Pilot.lua or Roblox check can take up to two minutes on a slow computer. | small |
-| Copy folders from a phone or another computer | Files › Import from another device only takes single files ("Copy folders one file at a time for now"). | small |
-| Hardware check: more steps | Keyboard (press every key), touchpad or mouse, camera, battery health (design vs full charge), screen dead-pixel colours. | medium |
-| Make a stick from a downloaded image, without joining parts | Pick the 18 `.part` files from Downloads and write them in order, checking the `.sha256`. | small |
+**Change.**
+- **One Worker per kind** (`LUAU.checkers[kind]`), each kept once loaded. That costs about 30 MB of memory per
+  kind in use. Switching kinds no longer starts over.
+- **Warm-up.** The checker for a kind is started in the background, after the page is idle (`requestIdleCallback`,
+  at most one at a time), when:
+  - Blitzen opens with Luau or Pilot.lua chosen, or a pack for them is opened;
+  - Code Editor opens a `.LUAU` file (Luau, or Pilot.lua when the file uses `GetPart`).
+
+  It defines the types with an empty program, so the first real check only checks.
+- **Compile once.** `luauModule()` keeps the compiled `WebAssembly.Module` and gives it to each Worker, so
+  `luau.wasm` is compiled once per session, not once per kind.
+- **Waiting.** While a warm-up is still running, a check waits for it (with the 120 s limit counted from the
+  warm-up's start) rather than starting a second load.
+
+**Test.**
+- `shell2/luau_t.js` gets three timings: a warm-up made at idle, then a Pilot.lua check (expected under 3 s on the
+  host); a Roblox check after it; and a Pilot.lua check again, with no reload (the Worker's `define` count stays 1
+  per kind).
+- `luau_pw.js` (Code Editor): opening a `.LUAU` file starts the warm-up.
+
+## 7. Copy folders from a USB drive or memory card (stage B)
+
+**Now** (`desktop/files25.js`, `remoteImport`).
+- A plugged-in drive (USB stick, memory card, external disk, under `/media`) opens in Files as a remote place.
+- *Copy into Downloads* takes single files only: a folder gives "Copy folders one file at a time for now." Each
+  file has a 256 MB limit.
+- Rudolf OS does not mount phones (devplug lists them as "Phone or camera"), so this item is about drives. The old
+  "from a phone or another computer" wording was wrong.
+
+**Change.**
+- A selected folder is walked through rudolfd's `fs/list` and copied with its subfolders into Downloads. The folder
+  keeps its name, made unique as for files.
+- Before copying, the walk counts the files and adds up their sizes. It stops early if the copy would not fit
+  (`navigator.storage.estimate()`, leaving 10 % free) or holds more than 5 000 files, and says which.
+- A progress line in the status bar shows "Copying 120 of 431 files (34 MB)…", with Cancel. A cancelled copy keeps
+  what was copied so far and says so.
+- File names follow the same rules as single files (upper case, `\ : * ? " < > |` replaced). Files over 256 MB are
+  left out and listed at the end, as are files that cannot be read.
+- One `fsSave()` at the end, not one per file.
+
+**Test.** `shell2/files_t.js` (new) uses the stand-in rudolfd with a drive holding a tree three folders deep, 40
+files, one file over 256 MB and one unreadable file. It checks:
+- the copy, with the folder layout, names and content;
+- the two files left out, and listed;
+- Cancel halfway;
+- the "does not fit" refusal, with a small storage estimate.
+
+## 8. Hardware check: more steps, and the webcam driver (stage C)
+
+**Now** (`desktop/hwcheck30.js`). Six steps: sound, microphone, network, USB, graphics, sleep. Two gaps:
+- **No webcam driver.** The kernel has no UVC driver (`kconfig.sh` has no `MEDIA_SUPPORT` and no
+  `USB_VIDEO_CLASS`), so no webcam works in Rudolf OS, built-in laptop cameras included. Devices lists one as
+  "Camera" and nothing can use it.
+- **No battery health.** rudolfd's battery reading (`/sys/class/power_supply`) gives only `capacity`, `status`
+  and `online`.
+
+**Change.**
+- **Kernel.** Add `MEDIA_SUPPORT`, `MEDIA_USB_SUPPORT`, `MEDIA_CAMERA_SUPPORT`, `VIDEO_DEV` and `USB_VIDEO_CLASS`
+  as modules (uvcvideo needs no firmware), so Chromium's camera access (`getUserMedia`) works. Webcams then work
+  in web pages and Linux apps too: a CHANGELOG line of its own.
+- **rudolfd.** `GET battery` also reports `energy_full` and `energy_full_design` (or the `charge_*` pair on
+  batteries that report charge), `cycle_count` when there is one, and the maker and model.
+- **Five new steps**, after graphics and before sleep. Each can be skipped, and each result goes into the system
+  report as the existing ones do:
+  1. **Keyboard.** A keyboard drawn on screen (the chosen layout from Settings › Keyboard). Each key lights when
+     pressed; "Every key works" or "These did not answer: …" after the user says they are done. The function and
+     Rudolf keys that rudolf-display takes for itself (Ctrl+W/T/N/Q) are shown as reserved, not as failures.
+  2. **Touchpad or mouse.** A box to draw in: the pointer trail, the left and right buttons, and scrolling with the
+     wheel or two fingers. Each of the four lights when seen.
+  3. **Camera.** Lists the cameras (`enumerateDevices`) and shows the first one live, with a switch for the next.
+     The result is "Camera works" if frames arrive, or "No camera was found". With no camera at all the step is
+     skipped by itself. Nothing is recorded or saved.
+  4. **Battery.** Only on computers with a battery. Shows "Health: 87 % of its design capacity
+     (52.1 of 60.0 Wh), 312 charge cycles", with a note below 70 % ("holds noticeably less than new"). Shows
+     "Charging" or "On battery" from `status`.
+  5. **Screen.** Full screen, one colour at a time (black, white, red, green, blue), a tap or key for the next, to
+     spot dead or stuck pixels. The user answers "Looks even" or "I saw spots".
+
+**Test.**
+- `shell2/hw_t.js` (page, stand-in rudolfd): the five steps' results with stand-in key, pointer and battery
+  readings.
+- `sb/t127c_t.py` (QEMU, extending `t125d_t.py`):
+  - QEMU's USB webcam (`-device usb-video`) as a UVC camera, giving frames through the new driver;
+  - keyboard and tablet input sent through QMP;
+  - a battery from QEMU's `acpi` test battery, if the build has one, or else the page test only.
+
+## 9. Make a stick or Install from the downloaded parts (stage C)
+
+**Now.** disc-1.2.x comes as 18 parts (GitHub's file size limit). Before *Make a Rudolf OS USB stick* or *Install
+from* can use it, the user has to join the parts with the commands in `JOIN-PARTS.TXT`, and Rudolf OS has no way
+to do that from the desktop. rudolfd's `install/images` lists only whole `.iso` files in Downloads.
+
+**Change.**
+- `install/images` also lists **sets of parts**: `NAME.iso.part00` … `partNN` with no gaps, and `NAME.iso.sha256`
+  next to them. Each set shows as "rudolf-os-1.2.7.iso (18 parts, not joined)".
+- Choosing one runs a job, `install/join`:
+  - check the free space (the image size plus 64 MB);
+  - join the parts in order into `Downloads/NAME.iso.joining`;
+  - compare its SHA-256 with the `.sha256` file;
+  - rename it to `NAME.iso`.
+
+  The job log shows progress, and a damaged or missing part is named ("part 07 does not match: download it
+  again") using the same checks as `join.ps1`. The image then goes on, as today, to the Make a stick or Install
+  from step that was chosen. That step still checks the image's signed release list itself.
+- After a successful join, the dialog offers to delete the parts (548 MB).
+
+**Test.**
+- `shell2/stick_t.js`: the set is listed and offered; a missing part is reported.
+- `sb/t127c_t.py` (QEMU): the real disc-1.2.6 parts (or a test disc split the same way) in Downloads are joined,
+  checked, and a stick is made from the result, then started.
+- A part with one byte changed is named, and nothing is written to the stick.
 
 ## Release steps (each stage)
-1. Branch `rudolf-1.2.6-<stage>`, implement, host tests, local release build from the published beta.
+1. Branch `rudolf-1.2.6-a`, `rudolf-1.2.7-b`, `rudolf-1.2.7-c`; implement, host tests, local release build from the
+   published beta.
 2. Test disc (debug, test keys) and the stage's QEMU tests.
 3. Pull request; after merge, build to beta and check the published files.
 4. Before promoting: run the regression suites and the stage tests on that exact beta serial. If a scheduled build
    replaced it, test again.
-5. Promote to stable; disc `disc-1.2.6` from `disc-1.2.5`, then check it. The check of the disc's own list must now
-   pass with no skipped file.
+5. Promote to stable, then make the disc and check it: `disc-1.2.6` from `disc-1.2.5` (done), and after stage C
+   `disc-1.2.7` from `disc-1.2.6`. The check of the disc's own list must pass with no skipped file.
 
 ## Risks
+- **Memory (item 6):** a Worker per kind holds about 30 MB each. Only kinds actually used are started, and a
+  checker idle for 10 minutes is ended.
+- **Camera privacy (item 8):** the page already grants media access without asking (`--use-fake-ui-for-media-stream`
+  in the session). With a working webcam that becomes real, so Settings › Privacy gets a "Camera" switch.
+  Web pages that are not part of Rudolf OS ask first, through Chromium's own permission prompt for those sites
+  (the session flag stays for the desktop page only, if Chromium allows it per origin; otherwise the switch is
+  the control). To be settled in stage C before the driver is enabled.
+- **Disk space (item 9):** joining needs the image's size again in free space. It is checked first, and the parts
+  can be deleted after.
 - **The init change runs on every start.** The check code only runs with `rudolf.check=1`, but a syntax error in
   `init` would stop every start. Mitigation: `sh -n` on the host, and every QEMU test starts the new init.
 - **The `devplug` busy mark left behind** (a crash while writing) would stop that disk from auto-mounting until the
