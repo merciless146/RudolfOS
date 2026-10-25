@@ -124,13 +124,14 @@ try:
     def mounts(): return [l.split()[:2] for l in sh('cat /proc/mounts', 20).split('\n') if l.startswith(f'/dev/{dev}')]
     ok('Rudolf OS has mounted the shop stick by itself', [f'/dev/{dev}1', f'/media/{dev}1'] in mounts(), mounts())
     # a file open on the stick: refused, and the stick is left as it was
-    sh(f'(sleep 300 < /media/{dev}1/WELCOME.TXT &) ; sleep 1; echo held', 20)
+    sh(f'(sleep 300 < /media/{dev}1/WELCOME.TXT & echo $! > /tmp/holder.pid) ; sleep 1; echo held', 20)
     r = js(f"rdPost('mkstick?disk={dev}&confirm={dev}&image=&files=0').then(r=>r.message,e=>e.message)")
     j = job(120); log = j.get('log') or ''
     ok('with a file open on it, making the stick is refused and says what to do', j.get('status', 0) != 0 and 'still open' in log and 'Close File Explorer' in log, log[-300:])
     ok('...the stick is left as it was (still mounted, its file there)', [f'/dev/{dev}1', f'/media/{dev}1'] in mounts() and 'the files that came' in sh(f'cat /media/{dev}1/WELCOME.TXT', 20), mounts())
     ok('...and it is not marked busy any more', last(sh(f'ls /run/rudolf/busy/ 2>/dev/null | grep -c {dev}', 20)) == '0')
-    sh('pkill -f "sleep 300"; sleep 1', 20)
+    sh('kill $(cat /tmp/holder.pid); sleep 2', 20)
+    out('after letting go of the file:', sh(f'ls -l /proc/[0-9]*/fd 2>/dev/null | grep -c /media/{dev}1; ls -l /proc/[0-9]*/cwd 2>/dev/null | grep /media/{dev}1; grep {dev} /proc/mounts', 30)[-400:])
     r = js(f"rdPost('mkstick?disk={dev}&confirm={dev}&image=&files=1').then(r=>r.message,e=>e.message)")
     ok('making the stick starts', r == 'making the stick', r)
     seen = []; end = time.time() + 1500; j = {}
