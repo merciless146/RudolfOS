@@ -19,6 +19,10 @@ twice is dropped and the previous system starts instead.
 
 Promote a tested beta release: Actions > Rudolf OS release > Run workflow, promote = its serial. That copies
 it to `gh-pages/stable/`, which is where computers look.
+Promote the serial that was tested, not "the beta": scheduled builds publish a new beta whenever Chromium or the
+kernel changes (1.2.5: 2026102102 was tested, 2026102311 had replaced it). Before promoting, check
+`git show origin/gh-pages:beta/manifest.txt | grep ^serial`; if it changed since the tests, test that serial (the
+stage tests and the regression suites) or promote the tested one.
 
 A new version (iso/VERSION and a new section at the top of CHANGELOG.md): Run workflow with disc = the version
 (for example 1.1.1). After building the release it also publishes the disc image `disc-<version>`

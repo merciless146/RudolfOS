@@ -18,10 +18,12 @@ case $(readlink -f /sys/block/$N/device) in */usb*) RM=1;; */mmc*) RM=1;; esac
 [ "$RM" = 1 ] || { echo "$N is not a USB stick or memory card. To put Rudolf OS on an internal disk, use Install here."; exit 8; }
 SECTORS=$(cat /sys/block/$N/size)
 [ "$SECTORS" -ge 3900000 ] || { echo "The stick is too small: Rudolf OS needs at least 2 GB."; exit 5; }
+# nothing on the stick is mounted by itself until it is finished (install.sh unmounts what was; 1.2.6)
+BUSY=/run/rudolf/busy/$N; mkdir -p /run/rudolf/busy; : > $BUSY; trap "rm -f $BUSY" EXIT
 MKSTICK=1 /usr/lib/rudolf/install.sh "$DEV" $IMG
 case "$N" in *[0-9]) P="${DEV}p3";; *) P="${DEV}3";; esac
 mkdir -p /mnt/newstick && mount -t ext4 "$P" /mnt/newstick || { echo "The new stick's RUDOLFDATA partition could not be opened."; exit 6; }
-trap 'umount /mnt/newstick 2>/dev/null' EXIT
+trap "umount /mnt/newstick 2>/dev/null; rm -f $BUSY" EXIT
 FREE=$(df -k /mnt/newstick | awk 'NR==2 {print $4}')
 # the updates installed on this Rudolf OS, so the new stick starts the same version (not with a downloaded image)
 if [ -z "$IMG" ] && [ -d /persist/os/system ] && mountpoint -q /persist; then
@@ -45,5 +47,5 @@ if [ "$FILES" = 1 ]; then
 	[ -f $W ] && cp $W /mnt/newstick/etc/wifi.conf && chmod 600 /mnt/newstick/etc/wifi.conf
 fi
 echo "made-by-mkstick $(date)" >> /mnt/newstick/etc/installed
-sync; umount /mnt/newstick; trap - EXIT; sync
+sync; umount /mnt/newstick; trap "rm -f $BUSY" EXIT; sync
 echo "Done: the Rudolf OS USB stick is ready on $DEV. You can remove it now."

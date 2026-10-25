@@ -47,9 +47,11 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("settings('stor')"); await p.waitForFunction(() => !!document.querySelector('.stk30 .stkl'), null, {timeout: 15000}).catch(() => 0);
   const rows = await q("[...document.querySelectorAll('.stk30 .stkl .acr')].map(r=>r.firstChild.textContent)");
   ok('Make a stick lists only USB drives of 2 GB or more, not the running one', JSON.stringify(rows) == JSON.stringify(['🔌 sdb — SanDisk Ultra — 32.0 GB']), rows);
-  ok('...and offers this Rudolf OS (with its updates) or a downloaded image', await q("[...document.querySelectorAll('.stk30 .stks option')].map(o=>o.textContent).join('|')") == `This Rudolf OS ${'1.2.5'} (with its updates)|rudolf-os-1.2.6.iso (Downloads)`, await q("[...document.querySelectorAll('.stk30 .stks option')].map(o=>o.textContent).join('|')"));
+  ok('...and offers this Rudolf OS (with its updates) or a downloaded image', await q("[...document.querySelectorAll('.stk30 .stks option')].map(o=>o.textContent).join('|')") == `This Rudolf OS ${await q('RVER')} (with its updates)|rudolf-os-1.2.6.iso (Downloads)`, await q("[...document.querySelectorAll('.stk30 .stks option')].map(o=>o.textContent).join('|')"));
   await q("document.querySelector('.stk30 .stkf').checked=true;document.querySelector('.stk30 .stkl button').click()"); await wait(500);
   ok('the administrator must type the size', await q("!!document.querySelector('.natdlg .stki')&&document.querySelector('.natdlg .g').disabled"));
+  { const e = await q("document.querySelector('.natdlg .stke').textContent");   // 1.2.6
+    ok('...and it names what is on the drive now', /“BACKUPS” \(vfat\)/.test(e) && /closes it first/.test(e), e); }
   await q("(()=>{const i=document.querySelector('.natdlg .stki');i.value='16.0 GB';i.dispatchEvent(new Event('input'));return 1})()");
   ok('...a wrong size keeps the button off', await q("document.querySelector('.natdlg .g').disabled"));
   await q("(()=>{const i=document.querySelector('.natdlg .stki');i.value='32.0 gb';i.dispatchEvent(new Event('input'));document.querySelector('.natdlg .g').click();return 1})()"); await wait(2500);

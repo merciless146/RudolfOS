@@ -3,14 +3,16 @@
 
     mkimage.py fat  OUT.img  FILE:/PATH/IN/FAT [...]
     mkimage.py iso  OUT.iso  TREE_DIR  --mbr mbr.bin --boot BOOT/RBOOT.BIN
-                    --kernel BOOT/VMLINUZ --efi EFI/EFIBOOT.IMG --label RUDOLF_OS
+                    --kernel BOOT/VMLINUZ --efi EFI/EFIBOOT.IMG --label RUDOLF_OS [--sums RUDOLF/SHA256]
+--sums names the disc's checksum list (sha256sum format, lowercase paths). The boot loader is patched with the
+kernel's place on the disc while the image is written, so its line in that list is rewritten to match (1.2.6).
 
 The ISO boots from CD/DVD on BIOS (Rudolf Boot) and UEFI (El Torito EFI
 entry), and the same file written to a USB stick boots on BIOS (hybrid MBR
 that loads Rudolf Boot) and UEFI (MBR partition of type 0xEF that covers
 the FAT image). GPL-2.0-or-later.
 """
-import os, sys, struct, time, math
+import os, sys, struct, time, math, hashlib
 
 SEC = 2048
 
@@ -209,7 +211,15 @@ def dir_record(lba, size, isdir, ident, t):
     return r + b'\0' * pad
 
 
-def build_iso(out, tree, mbr, boot_rel, kernel_rel, efi_rel, label):
+def patch_boot(data, kern):
+    b = bytearray(data)
+    j = b.find(b'RBTB')
+    assert j >= 0
+    struct.pack_into('<II', b, j + 4, kern.lba, kern.size)
+    return bytes(b)
+
+
+def build_iso(out, tree, mbr, boot_rel, kernel_rel, efi_rel, label, sums_rel=None):
     t = time.gmtime()
     root = Node('', tree, True, None)
     nodes = {}
@@ -280,6 +290,17 @@ def build_iso(out, tree, mbr, boot_rel, kernel_rel, efi_rel, label):
     boot = nodes[boot_rel.upper()]
     kern = nodes[kernel_rel.upper()]
     efi = nodes[efi_rel.upper()]
+    if sums_rel:   # the boot loader's line in the checksum list: as the file will be on the disc
+        sums = nodes[sums_rel.upper()].path
+        bl = boot_rel.lower().strip('/')
+        h = hashlib.sha256(patch_boot(open(boot.path, 'rb').read(), kern)).hexdigest()
+        old = open(sums, 'rb').read(); lines = old.split(b'\n'); hit = 0
+        for i, ln in enumerate(lines):
+            if ln.endswith(b'  ' + bl.encode()):
+                lines[i] = h.encode() + b'  ' + bl.encode(); hit += 1
+        new = b'\n'.join(lines)
+        assert hit == 1 and len(new) == len(old), 'the checksum list has no single line for ' + bl
+        open(sums, 'wb').write(new)
 
     with open(out, 'wb') as f:
         f.truncate(total * SEC)
@@ -358,11 +379,7 @@ def build_iso(out, tree, mbr, boot_rel, kernel_rel, efi_rel, label):
             with open(n.path, 'rb') as src:
                 data = src.read() if n is boot else None
                 if n is boot:
-                    b = bytearray(data)
-                    j = b.find(b'RBTB')
-                    assert j >= 0
-                    struct.pack_into('<II', b, j + 4, kern.lba, kern.size)
-                    f.write(b)
+                    f.write(patch_boot(data, kern))
                 else:
                     while True:
                         b = src.read(4 << 20)
@@ -381,4 +398,4 @@ if __name__ == '__main__':
         print('FAT image', a[1], n, 'sectors')
     elif a[0] == 'iso':
         opt = dict(zip(a[3::2], a[4::2]))
-        build_iso(a[1], a[2], opt['--mbr'], opt['--boot'], opt['--kernel'], opt['--efi'], opt.get('--label', 'RUDOLF_OS'))
+        build_iso(a[1], a[2], opt['--mbr'], opt['--boot'], opt['--kernel'], opt['--efi'], opt.get('--label', 'RUDOLF_OS'), opt.get('--sums'))

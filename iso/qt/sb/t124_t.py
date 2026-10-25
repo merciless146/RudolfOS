@@ -68,7 +68,7 @@ def js(e, t=60):
 try:
     ok('starts live from the written stick', wait_shell(g))
     ok('...live: nothing kept yet', last(sh('[ -e /run/rudolf/persistent ] && echo kept || echo live')) == 'live')
-    ok('the desktop is 1.2.4', wait_desktop(g) and js('RVER') == '1.2.4', js('RVER'))
+    ok('the desktop is 1.2.4 or newer', wait_desktop(g) and tuple(int(x) for x in str(js('RVER')).split('.')[:3]) >= (1, 2, 4), js('RVER'))
     st = js("rd('keepfiles').then(j=>JSON.stringify(j))")
     st = json.loads(st) if isinstance(st, str) else {}
     ok('Rudolf OS offers to keep files on the stick, with its free space', st.get('possible') and 7e9 < st.get('freeBytes', 0) < 8.6e9, st)
