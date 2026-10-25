@@ -3,6 +3,12 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.2.7 (2026-10-26)
+Summary: more USB Wi-Fi adapters work; Luau and Pilot.lua checks are ready straight away; Files copies whole folders from a USB drive
+- New: more USB Wi-Fi adapters work: Atheros AR9271 and AR7010 (TP-Link TL-WN722N v1 and many others), MediaTek MT7601U, MT7610U and MT7612U (among them Alfa AWUS036ACM). Plug one in and it appears in Settings › Network.
+- Changed: Blitzen and Code Editor get the Luau type checker ready in the background as soon as Luau or Pilot.lua is chosen, or a .LUAU file is opened, so the first check no longer waits for it to load (up to two minutes on a slower computer). Switching between Luau, Roblox and Pilot.lua scripts no longer loads it again.
+- New: Files › a USB drive or memory card › Copy into Rudolf OS copies whole folders, with everything in them, into Downloads. It shows how far it has got and can be cancelled; files over 256 MB and files that cannot be read are left out and listed; a folder that does not fit is refused before anything is copied.
+
 ## 1.2.6 (2026-10-25)
 Summary: Check this disc no longer reports a good disc as damaged; Make a Rudolf OS USB stick works with a stick that is already formatted
 - Fixed: "Check this disc or USB drive for errors" (in the start menu) said every disc and stick was damaged, because of one file (boot/rboot.bin) that is changed while the disc image is written. A 1.2.6 disc or stick passes. The result now says how many files were checked and names the damaged ones (Settings › Update and recovery shows the last result).

@@ -59,6 +59,14 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('a Lua answer runs in Fengari, with the Lua card', o == 'a,b,c' && /LUA 5\.3 ON RUDOLF OS/.test(asked.at(-1).messages[0].content), o);
   // Code Editor: .LUAU files
   ok('Code Editor: .LUAU is Luau', await p.evaluate(() => codeLang('GAME.LUAU') == 'luau'));
+  // 1.2.7: the checker a window is about to need is started ahead of time
+  await p.evaluate(() => { for (const k of Object.keys(LUAU.checkers)) luauDropChecker(k, LUAU.checkers[k]); return 1 });
+  await p.evaluate(`(async()=>{const W=await __W;const s=W.body.querySelector('.blzlang');s.value='pilot';s.dispatchEvent(new Event('change'));return 1})()`);
+  o = await p.waitForFunction(() => LUAU.checkers.pilot && LUAU.checkers.pilot.done, null, {timeout: 60000}).then(() => true, () => false);
+  ok('1.2.7: choosing Pilot.lua in Blitzen starts its checker ahead of time', o && await p.evaluate(() => !LUAU.checkers.roblox));
+  await p.evaluate(() => { const d = node(['C:']); d['GAME.LUAU'] = 'local p = game:GetService("Players")\nprint(p)'; codeEditor(['C:', 'GAME.LUAU']); return 1 });
+  o = await p.waitForFunction(() => LUAU.checkers.roblox && LUAU.checkers.roblox.done, null, {timeout: 60000}).then(() => true, () => false);
+  ok('...and opening a Roblox .LUAU file in Code Editor starts the Roblox one, keeping Pilot.lua\'s', o && await p.evaluate(() => !!LUAU.checkers.pilot && LUAU.defines.pilot >= 1));
   await b.close(); srv.close();
   console.log(R.filter(x => x).length + '/' + R.length + ' passed'); process.exit(R.every(x => x) ? 0 : 1);
 })().catch(e => { console.error(e); process.exit(1) });

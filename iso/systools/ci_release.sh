@@ -71,7 +71,7 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 		FW=$W/linux-firmware
 		for u in https://gitlab.com/kernel-firmware/linux-firmware.git https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git; do
 			rm -rf "$FW"; git clone -q --depth 1 --filter=blob:none --no-checkout "$u" "$FW" || continue
-			git -C "$FW" sparse-checkout set --no-cone /WHENCE '/rtl_nic/' '/amd-ucode/' '/nvidia/*/gsp/*-570.144.bin' && git -C "$FW" checkout -q && break
+			git -C "$FW" sparse-checkout set --no-cone /WHENCE '/rtl_nic/' '/amd-ucode/' '/nvidia/*/gsp/*-570.144.bin' /htc_9271.fw /htc_7010.fw '/ath9k_htc/' /mediatek/mt7601u.bin /mediatek/mt7610u.bin /mediatek/mt7662.bin /mediatek/mt7662_rom_patch.bin && git -C "$FW" checkout -q && break
 		done
 	fi
 	rm -rf "$W/fw"; python3 systools/fwextra.py copy firmware-extra.txt "$FW" "$W/fw"
