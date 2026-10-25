@@ -35,9 +35,11 @@ try:
     kr = last(sh('uname -r', 20)); out('kernel', kr)
     for mod, uid, name, fws in DRV:
         v, p = uid.split(':')
-        info = sh(f'modinfo {mod} 2>&1 | grep -E "^(filename|firmware|alias):" | grep -iE "filename|firmware|v{v}p{p}"', 30)
-        ok(f'{mod}: in the modules layer', re.search(r'filename:\s+\S+/' + mod + r'\.ko', info), info[-200:])
-        ok(f'...claims {name} ({uid})', re.search(rf'alias:\s+usb:v{v.upper()}p{p.upper()}', info, re.I), info[-200:])
+        # short commands: the serial shell garbles long lines
+        fn = last(sh(f'modinfo -F filename {mod}', 30))
+        ok(f'{mod}: in the modules layer', fn.endswith('/' + mod + '.ko'), fn)
+        n = last(sh(f'modinfo -F alias {mod} | grep -ic v{v}p{p}', 30))
+        ok(f'...claims {name} ({uid})', n.isdigit() and int(n) >= 1, n)
         o = sh(f'modprobe {mod} 2>&1; lsmod | grep -c "^{mod} "', 30)
         ok('...loads (and waits for an adapter)', last(o) == '1', o[-200:])
         miss = [f for f in fws if last(sh(f"[ -e /lib/firmware/{f} ] || [ -e /usr/lib/firmware/{f} ] && echo yes || echo no", 20)) != "yes"]
