@@ -23,8 +23,13 @@ if [ -n "$2" ]; then
 	[ $OK = 1 ] || { echo "That file is not a Rudolf OS disc image signed by Rudolf OS ($V)."; exit 7; }
 	echo "Installing from $(basename "$SRC"): $(echo "$V" | sed -n 's/^version //p')"
 fi
-grep -q "^$DEV" /proc/mounts && { echo "$DEV is in use. Unmount its partitions first."; exit 4; }
 N=${DEV##*/}
+# a USB drive Rudolf OS mounted by itself (under /media) is unmounted first, and nothing on it is mounted while it is
+# written (1.2.6: a stick formatted in the shop was refused as "in use")
+BUSY=/run/rudolf/busy/$N
+if [ ! -e $BUSY ]; then mkdir -p /run/rudolf/busy; : > $BUSY; trap "rm -f $BUSY" EXIT; fi
+/usr/lib/rudolf/devplug release $N 2>/dev/null || { echo "$DEV is in use: a file on it is still open. Close File Explorer and any app using the drive, then try again."; exit 4; }
+grep -qE "^${DEV}p?[0-9]* " /proc/mounts && { echo "$DEV is in use (mounted at $(grep -E "^${DEV}p?[0-9]* " /proc/mounts | awk '{print $2}' | head -1)). Unmount it first."; exit 4; }
 SECTORS=$(cat /sys/block/$N/size)
 # size of the Rudolf OS image: ISO9660 volume space size (2048-byte blocks)
 BLOCKS=$(dd if="$SRC" bs=2048 skip=16 count=1 2>/dev/null | dd bs=1 skip=80 count=4 2>/dev/null | od -An -tu4 | tr -d ' ')

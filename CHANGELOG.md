@@ -3,7 +3,14 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
-## 1.2.5 (2026-10-19)
+## 1.2.6 (2026-10-25)
+Summary: Check this disc no longer reports a good disc as damaged; Make a Rudolf OS USB stick works with a stick that is already formatted
+- Fixed: "Check this disc or USB drive for errors" (in the start menu) said every disc and stick was damaged, because of one file (boot/rboot.bin) that is changed while the disc image is written. A 1.2.6 disc or stick passes. The result now says how many files were checked and names the damaged ones (Settings › Update and recovery shows the last result).
+- Fixed: on a computer with an update installed, the check ran twice (once before the update started, once after) and the first result was lost. It now runs once. A disc or stick made before 1.2.6 still runs its own check first and shows the false error there; the second check, from this update, gives the right answer and is the one Settings shows.
+- Fixed: Make a Rudolf OS USB stick and Install here refused a USB stick that Rudolf OS had opened by itself when it was plugged in (any stick formatted in the shop), with "is in use. Unmount its partitions first". Rudolf OS now closes the drive itself, and nothing on it is opened again while it is written. If a file on it is still open, the message says to close File Explorer or the app using it.
+- Changed: the erase question before making a stick names what is on the drive now (its name and format).
+
+## 1.2.5 (2026-10-23)
 Summary: make a Rudolf OS USB stick from Rudolf OS; check this computer's hardware; apps over Wi-Fi; a Games page; Restart into Windows; Blitzen writes Luau and Pilot.lua
 - New: Blitzen has three more languages. Lua is plain Lua 5.3, without the BlockLua rules. Luau is Roblox's Lua (types, continue, +=, string interpolation): Blitzen checks the types with Luau's own checker, then runs the program on this computer. Roblox game scripts are checked but not run, since they need Roblox. Pilot.lua is for Waste of Space microcontrollers: every part call is checked against Pilot.lua's definitions, then the program runs with stand-in parts that say what they were asked to do.
 - New: when Luau code has a type error, Blitzen sees the error and its line and fixes the program, as it already did for programs that fail when run.
@@ -19,6 +26,7 @@ Summary: make a Rudolf OS USB stick from Rudolf OS; check this computer's hardwa
 - Fixed: joining a Wi-Fi network for the first time after starting could fail with "out of range, or the password is wrong" on slower computers, because Rudolf OS gave up after 20 seconds while it was still scanning. It now waits up to a minute.
 - New: Restart into Windows (in the Power dialog and in Settings › Update and recovery) on a computer that also has Windows: the computer starts Windows Boot Manager once, then comes back to the Rudolf OS menu as before. It works with Secure Boot on.
 - New: Settings › Update and recovery › Boot menu: choose what the UEFI boot menu starts when nobody chooses (for example Start from memory) and how long it waits. The choice is kept in the computer's firmware, so the disc or stick is not changed.
+- Updated: Chromium 156 and Linux 6.18.58 (security fixes).
 
 ## 1.2.4 (2026-10-19)
 Summary: a USB stick written from the image can keep your files; Secure Boot key enrolment works on more computers; clearer graphics and network status

@@ -39,7 +39,7 @@ echo "== checksums"
 (cd "$T" && find . -type f ! -path ./RUDOLF/SHA256 | sed 's#^\./##' | sort | while read -r f; do l=$(echo "$f" | tr 'A-Z' 'a-z'); echo "$(sha256sum "$f" | cut -d' ' -f1)  $l"; done) > "$T/RUDOLF/SHA256"
 echo "== boot loader and ISO"
 B=$(mktemp -d); nasm -f bin -o "$B/mbr.bin" "$HERE/boot/mbr.asm"
-python3 "$HERE/mkimage.py" iso "$OUT/rudolf-os-$VER.iso" "$T" --mbr "$B/mbr.bin" --boot BOOT/RBOOT.BIN --kernel BOOT/VMLINUZ --efi EFI/EFIBOOT.IMG --label "RUDOLF_OS_${VER//./_}"
+python3 "$HERE/mkimage.py" iso "$OUT/rudolf-os-$VER.iso" "$T" --mbr "$B/mbr.bin" --boot BOOT/RBOOT.BIN --kernel BOOT/VMLINUZ --efi EFI/EFIBOOT.IMG --label "RUDOLF_OS_${VER//./_}" --sums RUDOLF/SHA256
 rm -rf "$B" "$T"
 (cd "$OUT" && sha256sum "rudolf-os-$VER.iso" > "rudolf-os-$VER.iso.sha256")
 ls -la "$OUT"

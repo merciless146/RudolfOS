@@ -13,6 +13,8 @@
 #   devplug list             JSON of the connected USB devices, drives and input devices (Settings > Devices)
 #   devplug mount DEV        mount a partition under /media/DEV (File Explorer)
 #   devplug eject DISK       unmount every partition of a disk and power it off, so it can be pulled out
+#   devplug release DISK     unmount what this script mounted from a disk (under /media), before the disk is written
+#                            (1.2.6). While /run/rudolf/busy/DISK exists, nothing on that disk is mounted.
 RUN=/run/rudolf
 mkdir -p $RUN/usb $RUN/drives /media 2>/dev/null
 
@@ -72,11 +74,13 @@ drive_json() {
 block_add() {
 	local p=$MDEV d j; d=$(disk_of $p)
 	[ -f $RUN/drives/$p ] && return 0   # already mounted and announced (a "change" event)
+	[ -e $RUN/busy/$d ] && return 0     # being written (a stick being made, Install here)
 	removable $d || return 0
 	system_disk $d && return 0
 	# a disk with partitions: its partitions are what gets mounted
 	[ "$p" = "$d" ] && ls /sys/block/$d/ 2>/dev/null | grep -q "^$d.*[0-9]$" && return 0
 	for i in 1 2 3 4 5 6; do blkid /dev/$p >/dev/null 2>&1 && break; sleep 0.5; done
+	[ -e $RUN/busy/$d ] && return 0
 	mount_part $p || return 0
 	j=$(drive_json $p); echo "$j" > $RUN/drives/$p
 	event "{\"a\":\"add\",${j#\{}"
@@ -179,6 +183,13 @@ eject)
 	for m in $(grep "^/dev/$d" /proc/mounts | awk '{print $2}'); do umount "$m" 2>/dev/null || { echo "a file on the drive is still open" >&2; exit 1; }; rmdir "$m" 2>/dev/null; done
 	for j in $RUN/drives/$d*; do [ -f "$j" ] || continue; p=${j##*/}; event "{\"a\":\"eject\",$(cut -c2- $j)"; rm -f "$j"; done
 	[ -w /sys/block/$d/device/delete ] && echo 1 > /sys/block/$d/device/delete
+	exit 0;;
+release)
+	d=$2; case "$d" in ""|*[!a-z0-9]*) echo "bad device" >&2; exit 2;; esac
+	system_disk $d && { echo "this is Rudolf OS's own disk" >&2; exit 1; }
+	sync
+	for m in $(grep -E "^/dev/${d}p?[0-9]* /media/" /proc/mounts | awk '{print $2}'); do umount "$m" 2>/dev/null || { echo "a file on the drive is still open" >&2; exit 1; }; rmdir "$m" 2>/dev/null; done
+	for j in $RUN/drives/$d*; do [ -f "$j" ] || continue; event "{\"a\":\"remove\",$(cut -c2- $j)"; rm -f "$j"; done
 	exit 0;;
 esac
 

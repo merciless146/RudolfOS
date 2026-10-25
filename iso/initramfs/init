@@ -76,17 +76,6 @@ until find_media || find_media_any; do
 	sleep 0.5
 done
 
-if has rudolf.check=1; then
-	clear > /dev/console
-	say "Checking the Rudolf OS files on $MEDIA (this takes a few minutes)..."
-	cd /mnt/media
-	if sha256sum -c rudolf/sha256 > /tmp/check.txt 2>&1; then R="All files are intact."; else R="ERRORS FOUND - this disc or USB drive is damaged. Make a new one."; fi
-	cd /
-	say ""; say "$R"; grep -v ': OK$' /tmp/check.txt > /dev/console
-	say ""; say "Press Enter to continue."; read x < /dev/console
-	echo "$R" > /tmp/check-result
-fi
-
 # saved data (first: it holds the system slots)
 PERSIST=""
 if ! has rudolf.nopersist=1; then
@@ -133,6 +122,41 @@ if [ -z "$SLOT" ] && [ -n "$PERSIST" ] && [ -f $SYSD/state ] && ! has rudolf.rec
 		say "Rudolf OS: could not start the updated system; starting the one on the disc."
 		[ -n "$TRY" ] && { FAILED=$T; NEXT=""; TRIES=0; st_write; }
 	fi
+fi
+
+# the media check (start menu: Check this disc or USB drive for errors). It runs here, after the choice of system,
+# so it runs once, in the kernel that starts the system: the disc's, or an installed update's after the handover
+# (1.2.6: it ran in both, and the result of the first was lost)
+if has rudolf.check=1 && [ -z "$MEDIA" ]; then
+	echo "No Rudolf OS disc or USB drive was found to check." > /tmp/check-result
+elif has rudolf.check=1; then
+	clear > /dev/console
+	say "Checking the Rudolf OS files on $MEDIA (this takes a few minutes)..."
+	cd /mnt/media
+	grep -v "  boot/rboot.bin$" rudolf/sha256 > /tmp/sums 2>/dev/null
+	sha256sum -c /tmp/sums > /tmp/check.txt 2>&1
+	# the boot loader is patched with the kernel's place on the disc (RBTB + 8 bytes) when the image is written: 1.2.6
+	# discs list it patched, older ones as it was built (those 8 bytes zero), so both are accepted (1.2.6)
+	W=$(sed -n 's#^\([0-9a-f]\{64\}\)  boot/rboot.bin$#\1#p' rudolf/sha256 2>/dev/null)
+	if [ -n "$W" ]; then
+		H=$(sha256sum boot/rboot.bin 2>/dev/null | cut -c1-64)
+		if [ -n "$H" ] && [ "$H" != "$W" ]; then
+			O=$(od -An -v -tx1 boot/rboot.bin | awk '{for (i = 1; i <= NF; i++) b[n++] = $i} END {for (i = 0; i + 3 < n; i++) if (b[i] == "52" && b[i+1] == "42" && b[i+2] == "54" && b[i+3] == "42") {print i; exit}}')
+			cp boot/rboot.bin /tmp/rboot.bin
+			[ -n "$O" ] && dd if=/dev/zero of=/tmp/rboot.bin bs=1 seek=$((O + 4)) count=8 conv=notrunc 2>/dev/null
+			H=$(sha256sum /tmp/rboot.bin | cut -c1-64); rm -f /tmp/rboot.bin
+		fi
+		[ "$H" = "$W" ] && echo "boot/rboot.bin: OK" >> /tmp/check.txt || echo "boot/rboot.bin: FAILED" >> /tmp/check.txt
+	fi
+	N=$(grep -c . rudolf/sha256 2>/dev/null); B=$(grep -c ': FAILED$' /tmp/check.txt)
+	if [ ! -s rudolf/sha256 ] || [ "$N" = 0 ]; then R="ERRORS FOUND - the list of files (rudolf/sha256) is missing. Make a new disc or USB drive."
+	elif [ "$B" = 0 ]; then R="All $N files are intact."
+	else F=$(grep ': FAILED$' /tmp/check.txt | sed 's/: FAILED$//' | head -3 | tr '\n' ' '); [ "$B" -gt 3 ] && F="$F..."
+		R="ERRORS FOUND in $B of $N files (${F% }) - this disc or USB drive is damaged. Make a new one."; fi
+	cd /
+	say ""; say "$R"; grep -v -e ': OK$' -e '^sha256sum: WARNING' /tmp/check.txt > /dev/console
+	say ""; say "Press Enter to continue."; read x < /dev/console
+	echo "$R" > /tmp/check-result
 fi
 
 # ---- system layers: the slot's, or the disc's (a slot may point to an unchanged disc layer)

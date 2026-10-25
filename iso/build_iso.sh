@@ -80,6 +80,6 @@ cp rootfs/usr/share/doc/rudolf/packages-versions.txt $T/SOURCE/PACKAGES.TXT
 cp rootfs/usr/share/doc/rudolf/third-party-licences.txt $T/LICENSES/THIRDPTY.TXT
 cp rootfs/usr/share/doc/rudolf/chromium-credits.txt $T/LICENSES/CHROMIUM.TXT
 echo "== checksums"; (cd $T && find . -type f ! -path ./RUDOLF/SHA256 | sed 's#^\./##' | sort | while read f; do l=$(echo "$f" | tr 'A-Z' 'a-z'); echo "$(sha256sum "$f" | cut -d' ' -f1)  $l"; done) > $T/RUDOLF/SHA256
-echo "== ISO"; python3 mkimage.py iso "$OUT/rudolf-os-$VER.iso" $T --mbr boot/mbr.bin --boot BOOT/RBOOT.BIN --kernel BOOT/VMLINUZ --efi EFI/EFIBOOT.IMG --label RUDOLF_OS_${VER//./_}
+echo "== ISO"; python3 mkimage.py iso "$OUT/rudolf-os-$VER.iso" $T --mbr boot/mbr.bin --boot BOOT/RBOOT.BIN --kernel BOOT/VMLINUZ --efi EFI/EFIBOOT.IMG --label RUDOLF_OS_${VER//./_} --sums RUDOLF/SHA256
 (cd "$OUT" && sha256sum rudolf-os-$VER.iso > rudolf-os-$VER.iso.sha256)
 ls -la "$OUT"
