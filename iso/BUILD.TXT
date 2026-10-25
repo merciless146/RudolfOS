@@ -70,8 +70,9 @@ Steps
                 "Blitzen 1" Apache-2.0 writes blitzen.txt + .sig; publish the three
                 files as the GitHub release "blitzen-1". qt/mktinymodel.py makes the
                 tiny test model the QEMU test uses (qt/mkai.sh, upd_t.py phase Z).
-  4. Initramfs: copy busybox, sys/initramfs/init and the splash image into
-                iso/initramfs (see initramfs.list for the device nodes).
+  4. Initramfs: iso/initramfs holds the start-up script (init) and the splash image;
+                copy busybox into iso/initramfs/bin (see initramfs.list for the device
+                nodes). Edit iso/initramfs/init itself: it is the one that is built.
   5. Kernel:    cd iso && ./kconfig.sh src/linux "$PWD/initramfs $PWD/initramfs.list"
                 make -C src/linux -j$(nproc) bzImage modules
                 make -C src/linux modules_install INSTALL_MOD_PATH=$PWD/modules

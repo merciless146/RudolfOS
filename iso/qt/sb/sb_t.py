@@ -4,6 +4,9 @@
 # (so a serial shell answers; a real disc has no such option). TESTDATA.img: an ext4 image labelled TESTDATA with
 # unsigned-vmlinuz (the kernel without its signature) and other.crt (a second certificate, PEM).
 # SB_PARTS: the files of the draft release sb-parts; QEMU: the QEMU source tree with build/.
+# SB_CERT (optional): the test certificate the disc was signed with. A disc made from a published beta carries the
+# real release certificate in its base layer while its boot files carry the test key, so rudolfd rightly says the
+# key enrolled is not its own; with SB_CERT given, B then expects that.
 #   A  Secure Boot on: shim refuses the menu until the key is enrolled; enrolment from the disc (MokManager)
 #   B  then Rudolf OS starts: lockdown, every layer through dm-verity, Settings / Task Manager say so,
 #      /dev/mem refused, the desktop page on RUDOLFDATA ignored
@@ -113,7 +116,13 @@ ok('B: signed drivers load', int(sh('lsmod | wc -l') or 0) >= 1)
 ok('B: the desktop starts', wait_desktop(g))
 st = g.js("rd('secureboot/status').then(s=>JSON.stringify(s))")
 s = json.loads(st) if isinstance(st, str) and st.startswith('{') else {}
-ok('B: rudolfd reports Secure Boot on, the key enrolled, the lockdown', s.get('on') is True and s.get('enrolled') is True and 'integrity' in s.get('lockdown', ''), st)
+import hashlib
+TC = os.environ.get('SB_CERT'); mine = True
+if TC:   # is the certificate built into this system the one the disc was signed with?
+    mine = hashlib.sha256(open(TC, 'rb').read()).hexdigest() in sh('sha256sum /usr/share/rudolf/rudolf-sb.crt')
+    if not mine: out('B: this system carries the release certificate and its boot files the test key (a disc made from a published beta)')
+ok('B: rudolfd reports Secure Boot on, the key enrolled, the lockdown' if mine else 'B: rudolfd reports Secure Boot on, the lockdown, and that the key enrolled (the test key) is not the release key',
+   s.get('on') is True and s.get('enrolled') is mine and 'integrity' in s.get('lockdown', ''), st)
 ok('B: Task Manager says so', 'on, kernel locked down' in str(g.js("sbStatus(true).then(sbSummary)")), g.js("sbStatus(true).then(sbSummary)"))
 # the desktop moves into the shell once after its first start (Chromium restarts): wait for it again
 time.sleep(20); wait_desktop(g)
