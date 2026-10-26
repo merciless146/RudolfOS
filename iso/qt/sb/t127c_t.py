@@ -126,7 +126,10 @@ finally:
     vm.stop()
 with open(STICK, 'rb') as f:
     head = f.read(os.path.getsize(IMG))
-ok('the stick holds the downloaded image, byte for byte', hashlib.sha256(head).hexdigest() == SHA)
+# install.sh adds RUDOLFDATA as the third entry of the partition table (16 bytes at 478): the rest is the image
+img = open(IMG, 'rb').read()
+ok('the stick holds the downloaded image, byte for byte (but its RUDOLFDATA partition entry)', head[:478] + head[494:] == img[:478] + img[494:] and head[478:494] != img[478:494])
+del img
 with open('stickimg127c.iso', 'wb') as f: f.write(head)
 with open('stickimg127c.iso', 'rb') as f:
     lba, size = iso_extract.find(f, 'EFI/EFIBOOT.IMG'); f.seek(lba * 2048); efi = f.read(size)
