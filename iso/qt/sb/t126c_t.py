@@ -218,6 +218,7 @@ if OLD:
             time.sleep(10)
         ok('...Make a stick offers it, as an older Rudolf OS stick', len(t) == 1 and t[0][2], t)
         dev = t[0][0] if t else 'sdz'
+        until("typeof rdPost=='function'", 120)
         r = js(f"rdPost('mkstick?disk={dev}&confirm={dev}&image=&files=0').then(r=>r.message,e=>e.message)")
         j = {}; end = time.time() + 1500
         while time.time() < end:
@@ -225,7 +226,7 @@ if OLD:
             if not j.get('running') and j.get('status', -1) >= 0: break
             time.sleep(10)
         log = j.get('log') or ''; out(log[-600:])
-        ok('...and makes the new stick on it (1.2.6 refused it)', r == 'making the stick' and j.get('status') == 0 and 'stick is ready' in log and 'in use' not in log, [r, j.get('status'), log[-300:]])
+        ok('...and makes the new stick on it (1.2.6 refused it)', j.get('status') == 0 and 'stick is ready' in log and 'in use' not in log, [r, j.get('status'), log[-300:]])   # (the page may reload while the answer comes back; the job is what counts)
     finally:
         vm.stop()
 out('%d/%d passed' % (sum(R), len(R)))

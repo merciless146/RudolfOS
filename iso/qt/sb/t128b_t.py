@@ -167,12 +167,16 @@ ok('...RUDOLFDATA is intact, and the start-up noted what it wrote', fsck == 0 an
 vm = sbvm.VM('t128b3', PARTS, [DRIVE], secure=False, mem=3072); g = session(vm); sh = lambda c, t=60: g.sh(c, t); js = jsf(g)
 try:
     up = wait_shell(g)
-    ok('3. the drive starts from its new boot files (shim, the menu, the signed kernel) and the installed update', up and last(sh('cat /etc/rudolf/slot', 20)) == 'a' and last(sh('ls /live/media/rudolf/bootonly', 20)) == '/live/media/rudolf/bootonly', sh('cat /etc/rudolf/slot; ls /live/media/rudolf/', 20)[-200:])
+    ok('3. the drive starts from its new boot files (shim, the menu, the signed kernel) and the installed update', up and last(sh('cat /etc/rudolf/slot', 20)) == 'a' and last(sh('[ -e /live/media/rudolf/bootonly ] && echo bootonly', 20)) == 'bootonly', sh('cat /etc/rudolf/slot; ls /live/media/rudolf/', 20)[-200:])
     ok('...the file in the home folder is still there', last(sh('cat /home/rudolf/keepme.txt', 20)) == 'my homework')
     page(g, js)
     info = J(js("rd('info').then(i=>JSON.stringify(i))"), {})
     ok('...rudolfd says the boot files start with Secure Boot now, and what was written', info.get('bootSecure') == 1 and (info.get('bootFiles', {}).get('result') or '').startswith('written'), [info.get('bootSecure'), info.get('bootFiles')])
-    t = js("(async()=>{wins.slice().forEach(w=>w.close());settings('sec');await new Promise(r=>setTimeout(r,4000));return document.querySelector('.sb28')?.innerText||''})()", 90)
+    t = ''
+    for _ in range(4):
+        t = js("(async()=>{wins.slice().forEach(w=>w.close());settings('sec');await new Promise(r=>setTimeout(r,6000));return document.querySelector('.sb28')?.innerText||''})()", 90)
+        if isinstance(t, str) and 'Off' in t: break
+        time.sleep(10)
     ok('...and Settings offers Prepare Secure Boot (no more "made before Secure Boot")', isinstance(t, str) and 'Prepare Secure Boot' in t and 'made before Rudolf OS supported Secure Boot' not in t, t)
 finally:
     vm.stop()
