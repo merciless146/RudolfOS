@@ -65,6 +65,7 @@ try:
     ok('rudolf-fscheck: the data partition is mounted, ext4 with extents', kv.get('persist') == 'mounted' and kv.get('persist_kind') == 'ext4' and 'extent' in kv.get('persist_features', ''), {k: kv.get(k) for k in ('persist', 'persist_kind', 'persist_features')})
     ok('...temporary files work on it and in Flatpak\'s repository, /var/tmp and /tmp', all(kv.get(k) == 'ok' for k in ('tmpfile_persist', 'tmpfile_flatpak', 'tmpfile_flatpak_repo', 'tmpfile_var_tmp', 'tmpfile_tmp')), {k: v for k, v in kv.items() if k.startswith('tmpfile')})
     ok('...user namespaces work', kv.get('userns') == 'ok', kv.get('userns'))
+    ok('...and a sandbox may mount its own /proc (1.2.8)', kv.get('proc_mount') == 'ok', kv.get('proc_mount'))
     ok('...the Debian folder\'s owner is reported as wrong', 'expected 200000' in kv.get('debian_owner', ''), kv.get('debian_owner'))
     ok('...and the Debian sandbox names the step that failed and why (before 1.2.7: only "did not start")', re.search(r'did not start: .+ failed \(.+\)', kv.get('debian', '')), kv.get('debian'))
     # the page: Settings > Apps > Linux > Check, and the system report

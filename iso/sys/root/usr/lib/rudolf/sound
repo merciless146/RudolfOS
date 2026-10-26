@@ -8,6 +8,7 @@
 #   sound status      print the server state, cards and outputs
 # GPL-2.0-or-later.
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+RCMD=/etc/rudolf/cmdline; [ -s $RCMD ] || RCMD=/proc/cmdline   # the start-up options (1.2.8: not /proc/cmdline, see initramfs/init)
 export XDG_RUNTIME_DIR=/run/user/1000
 SOCK=$XDG_RUNTIME_DIR/pulse/native
 PA=/run/rudolf/pulse.pa
@@ -21,7 +22,7 @@ set_default() {
 case "$1" in
 start)
 	[ -x /usr/bin/pulseaudio ] || exit 0
-	grep -q 'rudolf.nosound=1' /proc/cmdline && exit 0
+	grep -q 'rudolf.nosound=1' $RCMD && exit 0
 	{
 		echo ".fail"
 		echo "load-module module-device-restore"

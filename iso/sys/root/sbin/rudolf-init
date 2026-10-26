@@ -1,6 +1,7 @@
 #!/bin/sh
 # Rudolf OS system start (PID 1 after the initramfs). GPL-2.0-or-later.
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+RCMD=/etc/rudolf/cmdline; [ -s $RCMD ] || RCMD=/proc/cmdline   # the start-up options (1.2.8: not /proc/cmdline, see initramfs/init)
 export HOME=/root
 mount -t tmpfs -o mode=0755,nosuid tmpfs /run
 mount -t tmpfs -o mode=1777,nosuid tmpfs /tmp
@@ -13,7 +14,7 @@ ip link set lo up
 hwclock -s -u 2>/dev/null
 mdev -s
 mdev -d 2>/dev/null
-grep -q rudolf.debug=1 /proc/cmdline && ( while :; do setsid sh -c 'exec sh -l </dev/ttyS0 >/dev/ttyS0 2>&1'; sleep 1; done ) &
+grep -q rudolf.debug=1 $RCMD && ( while :; do setsid sh -c 'exec sh -l </dev/ttyS0 >/dev/ttyS0 2>&1'; sleep 1; done ) &
 [ -s /etc/rudolf/check.txt ] && cp /etc/rudolf/check.txt /run/rudolf/check.txt
 
 # saved data
@@ -47,7 +48,7 @@ mkdir -p /home/rudolf/Downloads && chown 1000:1000 /home/rudolf/Downloads
 # graphics card driver first, so the screen the desktop starts on is the final one
 # (it replaces the firmware framebuffer, usually at the screen's native resolution).
 # Recovery mode, "nomodeset" and rudolf.nogpu=1 keep the basic firmware framebuffer.
-NOGPU=; grep -qE 'rudolf.recovery=1|rudolf.nogpu=1|nomodeset' /proc/cmdline && NOGPU=1
+NOGPU=; grep -qE 'rudolf.recovery=1|rudolf.nogpu=1|nomodeset' $RCMD && NOGPU=1
 if [ -z "$NOGPU" ]; then
 	FB0=$(cat /sys/class/graphics/fb0/name 2>/dev/null)
 	for d in /sys/bus/pci/devices/*; do

@@ -272,7 +272,11 @@ echo "$ENTRY" > /newroot/etc/rudolf/boot-entry
 [ -e /tmp/check-result ] && cp /tmp/check-result /newroot/etc/rudolf/check.txt
 mount --move /dev /newroot/dev
 mount --move /proc /newroot/proc
-# the menu's choice, added to the start-up options the system reads (/proc/cmdline)
-if [ "$CMD" != "$(cat /newroot/proc/cmdline)" ]; then echo "$CMD" > /newroot/etc/rudolf/cmdline && mount --bind /newroot/etc/rudolf/cmdline /newroot/proc/cmdline; fi
+# the start-up options the system uses (with the menu's choice, each option once): /etc/rudolf/cmdline. 1.2.8: no
+# longer mounted over /proc/cmdline. A mount over a file in /proc makes the kernel refuse every new /proc mount in a
+# user namespace ("mount_too_revealing"): the Debian sandbox and Flatpak's bubblewrap could not start ("mounting /proc
+# failed (Operation not permitted)") on every computer running an installed update, whose kernel (started by kexec)
+# always had options given twice, so this mount was always made there (since 1.2.3).
+echo "$CMD" > /newroot/etc/rudolf/cmdline
 mount --move /sys /newroot/sys
 exec switch_root /newroot /sbin/rudolf-init
