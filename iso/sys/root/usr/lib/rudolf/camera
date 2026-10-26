@@ -6,7 +6,7 @@
 # blacklist for module aliases, so the file itself is what is kept from it. Kept on RUDOLFDATA (/persist/etc/camera-off);
 # "start" (rudolf-init, before drivers are loaded) puts it back in place after a restart.
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
-KO=$(find /lib/modules/$(uname -r) -name 'uvcvideo.ko*' 2>/dev/null | head -1)
+KO=$(find /lib/modules/$(uname -r)/ -name 'uvcvideo.ko*' 2>/dev/null | head -1); [ -n "$KO" ] && KO=$(readlink -f "$KO")   # as /proc/mounts names it (/lib is /usr/lib)
 cover() { [ -n "$KO" ] && ! grep -q " $KO " /proc/mounts && mount --bind /dev/null "$KO"; : > /run/rudolf/camera-off; }
 case "$1" in
 off)

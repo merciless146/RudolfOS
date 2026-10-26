@@ -148,7 +148,9 @@ finally:
 # ---- 2. the next start writes them
 vm = sbvm.VM('t128b2', PARTS, [DRIVE], secure=False, mem=3072, extra=OLDK)
 try:
-    time.sleep(60); vm.shot('writing')
+    time.sleep(30)
+    try: vm.shot('writing')
+    except OSError: pass   # it may have finished and restarted already
     ok('2. the next start writes the new boot files and restarts by itself', wait_exit(vm, 900))
 finally:
     vm.stop()
