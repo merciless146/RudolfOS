@@ -36,10 +36,12 @@ try:
     for mod, uid, name, fws in DRV:
         v, p = uid.split(':')
         # short commands: the serial shell garbles long lines
-        fn = last(sh(f'modinfo -F filename {mod}', 30))
+        # the module index Rudolf OS uses is busybox's (modules.dep.bb, with the aliases): what loads a driver when
+        # an adapter is plugged in (mdev runs modprobe with the device's alias)
+        fn = last(sh(f'find /lib/modules/{kr} -name {mod}.ko', 30))
         ok(f'{mod}: in the modules layer', fn.endswith('/' + mod + '.ko'), fn)
-        n = last(sh(f'modinfo -F alias {mod} | grep -ic v{v}p{p}', 30))
-        ok(f'...claims {name} ({uid})', n.isdigit() and int(n) >= 1, n)
+        n = last(sh(f'grep -ic "/{mod}.ko .*v{v}p{p}" /lib/modules/{kr}/modules.dep.bb', 30))
+        ok(f'...plugging in {name} ({uid}) loads it (the alias is in the index)', n.isdigit() and int(n) >= 1, n)
         o = sh(f'modprobe {mod} 2>&1; lsmod | grep -c "^{mod} "', 30)
         ok('...loads (and waits for an adapter)', last(o) == '1', o[-200:])
         miss = [f for f in fws if last(sh(f"[ -e /lib/firmware/{f} ] || [ -e /usr/lib/firmware/{f} ] && echo yes || echo no", 20)) != "yes"]
