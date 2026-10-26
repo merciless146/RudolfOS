@@ -163,6 +163,13 @@ const SYSK='bd95sys';let SYSC=Object.assign({guest:true,ssmin:10,lockss:true,loc
 (function(){const box=$('#lg')&&$('#lg').parentElement;if(!box)return;const b=document.createElement('button');b.id='lgguest';b.textContent='Guest';b.title='Sign in as a guest. Nothing is kept after you sign out.';b.style.marginLeft='6px';$('#lg').after(b);
  const upd=()=>{b.style.display=SYSC.guest?'':'none'};upd();window.__guestUpd=upd;
  b.onclick=async()=>{const g={n:'Guest',r:'guest',id:'guest',h:''};USER=g;await userLogin(g,null);LG.style.display='none';le.textContent='';LP.clear();sfx('login');userUI()}})();
+/* Power button on the login screen (1.2.7): shut down, restart or sleep without signing in, as on other systems.
+   The login screen never has a session behind it (Switch user signs out first), so nothing is left unsaved. */
+(function(){const L=$('#login');if(!L||!RD)return;const b=document.createElement('button');b.id='lgpower';b.type='button';b.textContent='⏻';
+ b.title='Shut down, restart or sleep';b.setAttribute('aria-label','Power: shut down, restart or sleep');
+ b.style.cssText='position:absolute;right:22px;bottom:22px;width:48px;height:48px;border-radius:50%;padding:0;margin:0;font-size:22px;line-height:48px;background:#ffffff1f;border:1px solid #ffffff40';
+ b.onmouseenter=()=>b.style.background='#ffffff33';b.onmouseleave=()=>b.style.background='#ffffff1f';
+ b.onclick=e=>{e.stopPropagation();shutdownDlg()};L.appendChild(b)})();
 /* ---------- shutdown dialog (power button, Start → Shut down) ---------- */
 function shutdownDlg(){const o=document.createElement('div');o.className='rmodal';o.innerHTML=`<div class='rmbox' role='dialog' aria-label='Power'><h3>Power</h3><p>What do you want the computer to do?</p><div class='rmrow'><button data-a='poweroff'>⏻ Shut down</button><button data-a='reboot'>↻ Restart</button><button data-a='suspend'>☾ Sleep</button><button data-a='x'>Cancel</button></div><div class='rmmsg'></div></div>`;document.body.appendChild(o);
  o.querySelector('button').focus();o.onclick=async e=>{const a=e.target.dataset&&e.target.dataset.a;if(!a)return;if(a=='x'){o.remove();showLogin();return}
