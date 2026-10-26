@@ -5,6 +5,9 @@ in normal use, and a release-notes slip. They went first, in **stage A**, so the
 
 > **Stage A is released as 1.2.6**: PR #32 (with the tidy-ups in PR #34), stable serial 2026102517 (2026-10-25),
 > disc `disc-1.2.6`, whose own checksum list passes with the boot loader included.
+>
+> **Stage B is released as 1.2.7**: PR #36 and #37, stable serial 2026102605 (2026-10-26). No disc yet:
+> `disc-1.2.7` follows stage C.
 
 The features (items 5 to 9) follow in **stages B and C** and ship as **1.2.7** (`iso/VERSION` 1.2.7, `RVER` 1.2.7),
 since 1.2.6 is out:
