@@ -13,9 +13,10 @@ const DISKS = [
   {name: 'sdd', bytes: 1e9, removable: true, model: 'Tiny stick', partitions: []}];
 const api = (a, q, body) => {
   M.calls.push(a + (q ? '?' + q : '')); const p = new URLSearchParams(q || '');
-  if (a == 'info') return {ok: true, mediaDev: '/dev/sda1', live: false, updateInstalled: true, media: 'usb', boot: 'uefi'};
+  if (a == 'info') return {ok: true, mediaDev: '/dev/sda1', live: false, updateInstalled: true, media: 'usb', boot: 'uefi', bootSecure: M.bs};
+  if (a == 'secureboot/status') return {ok: true, efi: true, on: false, firmware: true, enrolled: false, pending: false, certificate: true, lockdown: '', unverified: ''};
   if (a == 'disks') return {ok: true, disks: DISKS.map(d => ({...d, partitions: d.partitions.map(x => ({...x, mount: M.mounted.has(x.name) ? '/media/' + x.name : x.mount}))}))};
-  if (a == 'install/images') return {ok: true, images: [{path: '/home/rudolf/Downloads/rudolf-os-1.2.6.iso', name: 'rudolf-os-1.2.6.iso', bytes: 6e8}]};
+  if (a == 'install/images') return {ok: true, images: M.parts ? [{path: '/home/rudolf/Downloads/rudolf-os-1.2.6.iso', name: 'rudolf-os-1.2.6.iso', bytes: 547356672, parts: 18}] : [{path: '/home/rudolf/Downloads/rudolf-os-1.2.6.iso', name: 'rudolf-os-1.2.6.iso', bytes: 6e8}]};
   if (a == 'mkstick') { M.mk = Object.fromEntries(p); return {ok: true, message: 'making the stick'} }
   if (a == 'job') return {ok: true, running: false, status: 0, name: 'mkstick', log: 'Step 1/5: copying\nStep 2/5: checking the copy ...\nThe copy matches\nDone: the Rudolf OS USB stick is ready on /dev/sdb. You can remove it now.\n'};
   if (a == 'mount') { M.mounted.add(p.get('dev')); return {ok: true, message: 'mounted'} }
@@ -79,6 +80,28 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   M.corrupt = false; await q("document.querySelector('.natdlg .strl button').click()");
   await p.waitForNavigation({timeout: 20000}).catch(() => 0); await wait(3000);
   ok('...a good one is restored (its settings are back, no first-start screen)', await q("localStorage.getItem('bd95marker')") == 'from-the-backup' && await q("!document.getElementById('oobe')||!!localStorage.getItem('bd95setup')"), await q("localStorage.getItem('bd95marker')"));
+  // 1.2.7: an image still in parts, its checksum from C:\DOWNLOADS, and boot files from before Secure Boot
+  M.parts = true; M.bs = 0; M.mk = null;
+  await q("(()=>{['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});USER=USER||ACCTS[0];USER.r='admin';window.elevate=async()=>true;return 1})()");   // the restore above reloaded the page
+  const H = 'ab'.repeat(32);
+  await q(`(()=>{const D=node(downloadsPath());D['RUDOLF-OS-1.2.6.ISO.SHA256']='data:application/octet-stream;base64,'+btoa('${H}  rudolf-os-1.2.6.iso\\n');wins.slice().forEach(w=>w.close());settings('stor');return 1})()`);
+  await p.waitForFunction(() => !!document.querySelector('.stk30 .stkl .acr'), null, {timeout: 15000}).catch(() => 0);
+  const opts = await q("[...document.querySelectorAll('.stk30 .stks option')].map(o=>o.textContent).join('|')");
+  ok('1.2.7: an image still in parts is offered as such', /rudolf-os-1\.2\.6\.iso \(18 parts, not joined yet\) \(Downloads\)/.test(opts), opts);
+  const note = () => q("(()=>{const e=document.querySelector('.stk30 .stkbo');return e&&!e.hidden?e.textContent:''})()");
+  ok('...with boot files from before Secure Boot, "This Rudolf OS" says a stick made from it will not start with Secure Boot', /made before Rudolf OS supported Secure Boot \(1\.2\.2\).*choose a downloaded image/.test(await note()), await note());
+  await q("(()=>{const s=document.querySelector('.stk30 .stks');s.value='/home/rudolf/Downloads/rudolf-os-1.2.6.iso';s.dispatchEvent(new Event('change'));return 1})()");
+  ok('...the note goes when the downloaded image is chosen', await note() == '');
+  await q("document.querySelector('.stk30 .stkf').checked=false;document.querySelector('.stk30 .stkl button').click()"); await wait(800);
+  await q("(()=>{const i=document.querySelector('.natdlg .stki');i.value='32.0 GB';i.dispatchEvent(new Event('input'));document.querySelector('.natdlg .g').click();return 1})()"); await wait(2500);
+  ok('...and the stick is made from it, with the SHA-256 from its .sha256 (kept in C:\\DOWNLOADS)', M.mk && M.mk.image == '/home/rudolf/Downloads/rudolf-os-1.2.6.iso' && M.mk.sha == H, M.mk);
+  await q("(()=>{wins.slice().forEach(w=>w.close());settings('sec');return 1})()");
+  await p.waitForFunction(() => !!document.querySelector('.sb28 .sbt') && document.querySelector('.sb28 .sbt').textContent.length > 10, null, {timeout: 15000}).catch(() => 0);
+  const sb = await q("(()=>{const b=document.querySelector('.sb28');return b?b.querySelector('.sbt').textContent+' | '+[...b.querySelectorAll('button')].map(x=>x.textContent).join(','):''})()");
+  ok('...and Security says why Secure Boot cannot work from these boot files, offering a stick instead of Prepare', /made before Rudolf OS supported Secure Boot/.test(sb) && /Make a USB stick/.test(sb) && !/Prepare Secure Boot…/.test(sb), sb);
+  M.bs = 1; await q("(()=>{wins.slice().forEach(w=>w.close());settings('stor');return 1})()");
+  await p.waitForFunction(() => !!document.querySelector('.stk30 .stks'), null, {timeout: 15000}).catch(() => 0); await wait(500);
+  ok('...with boot files that support it, no note', await note() == '');
   await b.close(); srv.close();
   console.log(R.filter(x => x).length + '/' + R.length + ' passed'); process.exit(R.every(x => x) ? 0 : 1);
 })().catch(e => { console.error(e); process.exit(1) });

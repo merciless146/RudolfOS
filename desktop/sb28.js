@@ -24,7 +24,9 @@ async function sbPrepare(W,redraw){
  document.body.appendChild(o);o.querySelector('.rs').focus()}
 async function sbSection(c,W){
  const box=document.createElement('div');box.className='sb28';c.appendChild(box);
- const draw=async force=>{const s=await sbStatus(force);box.innerHTML="<h4 class='sh4'>Secure Boot</h4><p class='msg sbt'></p><div class='rmrow' style='justify-content:flex-start'></div>";
+ const draw=async force=>{const s=await sbStatus(force);const inf=await rd('info').catch(()=>({}));
+  /* 1.2.7: boot files from before Secure Boot (rudolfd info.bootSecure 0): no shim on the drive, so a request would wait for nothing */
+  const old=inf&&inf.bootSecure===0,OLD='This computer started from a disc made before Rudolf OS supported Secure Boot (1.2.2). Its boot files are not signed, so the computer refuses them with Secure Boot on, and the blue key screen never appears. Make a Rudolf OS USB stick from a downloaded image of 1.2.2 or newer (Settings › Storage and backup), or install from one (Update and recovery › Install here), then prepare Secure Boot from there.';box.innerHTML="<h4 class='sh4'>Secure Boot</h4><p class='msg sbt'></p><div class='rmrow' style='justify-content:flex-start'></div>";
   const t=box.querySelector('.sbt'),row=box.querySelector('.rmrow'),adm=isAdmin();
   const btn=(l,f,pri)=>{const b=document.createElement('button');b.textContent=l;if(pri)b.className='pri';b.disabled=!adm;b.onclick=f;row.appendChild(b)};
   if(!RD){t.textContent='Secure Boot applies to the installed Rudolf OS (bootable disc or USB drive).';return}
@@ -32,7 +34,8 @@ async function sbSection(c,W){
   if(!s.efi){t.textContent='This computer started in BIOS (legacy) mode, which has no Secure Boot. Start it in UEFI mode to use Secure Boot.';return}
   if(s.on)t.textContent='On. The computer started only software signed for Rudolf OS, the kernel is locked down'+(sbLock(s)&&sbLock(s)!='none'?'':' (lockdown is not reported)')+(s.unverified?'. Some system layers could not be checked: '+s.unverified.replace(/\n/g,'; '):', and every system layer is checked as it is read.');
   else if(s.enrolled)t.textContent='Off, but ready: the Rudolf OS key is enrolled. Turn Secure Boot on in the computer\'s firmware settings (often F2, F10, Del or Esc while it starts).';
-  else if(s.pending){t.textContent='Off. The Rudolf OS key will be offered for enrolment at the next start (the blue MokManager screen); you need the one-time password that was shown.';btn('Restart now',sbRestart,1);btn('Cancel the request',async()=>{if(!await elevate('Cancel the Secure Boot request.'))return;try{await rdPost('secureboot/cancel')}catch(e){}draw(true)})}
+  else if(s.pending){t.textContent=old?'Off. A request to enroll the Rudolf OS key is waiting, but it cannot be acted on: '+OLD:'Off. The Rudolf OS key will be offered for enrolment at the next start (the blue MokManager screen); you need the one-time password that was shown.';if(!old)btn('Restart now',sbRestart,1);btn('Cancel the request',async()=>{if(!await elevate('Cancel the Secure Boot request.'))return;try{await rdPost('secureboot/cancel')}catch(e){}draw(true)})}
+  else if(old){t.textContent='Off. '+OLD;btn('Make a USB stick…',()=>settings('stor'),1)}
   else{t.textContent='Off. With Secure Boot on, the computer starts only signed software, so nothing can be slipped in before Rudolf OS starts. Rudolf OS needs its key enrolled once: prepare it here, then confirm it at the next start. This works on every computer, also where the blue screen\'s “Enroll key from disk” does not accept rudolf.cer.';btn('Prepare Secure Boot…',()=>sbPrepare(W,()=>draw(true)),1)}
   if(!adm&&row.children.length){const n=document.createElement('span');n.className='msg';n.textContent=' An administrator can change this.';row.appendChild(n)}};
  draw()}

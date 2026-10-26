@@ -74,6 +74,16 @@ static char *slurp(const char *path, size_t *len)
 	if (len) *len = n;
 	return b;
 }
+static int boot_secure(void)
+{
+	static int cached = -2; if (cached != -2) return cached;
+	size_t n = 0; char *img = NULL;
+	const char *paths[] = {"/live/media/efi/efiboot.img", "/live/media/EFI/EFIBOOT.IMG", NULL};
+	for (int i = 0; paths[i] && !img; i++) img = slurp(paths[i], &n);
+	if (!img) return cached = -1;
+	cached = memmem(img, n, "RUDOLF  CER", 11) && memmem(img, n, "GRUBX64 EFI", 11) ? 1 : 0;
+	free(img); return cached;
+}
 
 static void trim(char *s) { size_t n = strlen(s); while (n && (s[n - 1] == '\n' || s[n - 1] == ' ' || s[n - 1] == '\r')) s[--n] = 0; }
 
@@ -441,6 +451,10 @@ static void api_info(struct req *r)
 	sadd(&s, ",\"media\":"); sjson(&s, media_mode);
 	/* the device Rudolf OS started from (1.2.5: Make a USB stick leaves its whole drive out of the list) */
 	{ char *md = slurp("/etc/rudolf/media", NULL); if (md) { md[strcspn(md, "\n")] = 0; } sadd(&s, ",\"mediaDev\":"); sjson(&s, md ? md : ""); free(md); }
+	/* 1.2.7: whether the drive Rudolf OS started from has boot files that start with Secure Boot (a disc from 1.2.2 on:
+	   shim, the signed boot menu and EFI/rudolf/rudolf.cer in its EFI image). Updates never replace these, so a
+	   computer installed from an older disc and updated still has the old, unsigned ones. 1 yes, 0 no, -1 unknown. */
+	sadd(&s, ",\"bootSecure\":%d", boot_secure());
 	sadd(&s, ",\"live\":%s,\"recovery\":%s,\"persistTotal\":%lld,\"persistFree\":%lld,\"backlight\":%s,\"updateInstalled\":%s}", live ? "true" : "false", recovery ? "true" : "false", ptotal, pfree,
 		backlight_dir(bl, sizeof bl) ? "true" : "false", access(PERSIST "/os/current/index.html", R_OK) ? "false" : "true");
 	free(model); free(kern); free(prod); free(vend); free(ver);
@@ -714,6 +728,14 @@ static void api_screenshot(struct req *r)
 /* ------------------------------------------------------------- background jobs (install, wifi)
  * Connections are served by forked processes, so job state lives in files. */
 static int job_running(void) { return !access(RUN "/job.name", F_OK) && access(RUN "/job.status", F_OK); }
+/* 1.2.7: sha=<64 hex> (from the image's .sha256, which the page reads) for an image still in parts: passed to
+   joinparts.sh through the environment. Anything else is ignored. */
+static const char *img_sha_env(struct req *r)
+{
+	static char env[100]; env[0] = 0; char *h = qparam(r->query, "sha");
+	if (h && strlen(h) == 64) { int ok = 1; for (const char *c = h; *c; c++) if (!isxdigit((unsigned char)*c)) ok = 0; if (ok) { snprintf(env, sizeof env, "RUDOLF_IMG_SHA=%s ", h); for (char *c = env; *c; c++) *c = tolower((unsigned char)*c); memcpy(env, "RUDOLF_IMG_SHA", 14); } }
+	return env;
+}
 static void start_job(const char *name, const char *cmd)
 {
 	unlink(RUN "/job.status"); unlink(RUN "/job.log");
@@ -2170,6 +2192,33 @@ static void api(struct req *r)
 			sadd(&s, "%s{\"path\":", n++ ? "," : ""); sjson(&s, fp); sadd(&s, ",\"name\":"); sjson(&s, e->d_name); sadd(&s, ",\"bytes\":%lld}", (long long)st.st_size);
 		}
 		if (dd) closedir(dd);
+		/* 1.2.7: an image downloaded in parts (NAME.iso.part00, part01, ... with no gaps), not joined yet; install.sh
+		   joins it (joinparts.sh) when it is chosen. path is the image it becomes. */
+		dd = opendir("/home/rudolf/Downloads");
+		char seen[64][200]; int ns = 0;
+		while (dd && (e = readdir(dd))) {
+			size_t l = strlen(e->d_name);
+			if (l < 12 || l >= 200 || e->d_name[0] == '.' || strncasecmp(e->d_name + l - 7, ".part", 5) || !isdigit((unsigned char)e->d_name[l - 2]) || !isdigit((unsigned char)e->d_name[l - 1])) continue;
+			char base[200]; snprintf(base, sizeof base, "%.*s", (int)(l - 7), e->d_name);
+			size_t bl = strlen(base); if (bl < 5 || strcasecmp(base + bl - 4, ".iso")) continue;
+			int dup = 0; for (int i = 0; i < ns; i++) if (!strcmp(seen[i], base)) dup = 1;
+			if (dup || ns >= 64) continue;
+			snprintf(seen[ns++], 200, "%s", base);
+			char fp[600]; struct stat st; snprintf(fp, sizeof fp, "/home/rudolf/Downloads/%s", base);
+			if (!stat(fp, &st)) continue;   /* already joined: listed above */
+			/* count part00, part01, ... until one is missing (either case for "part") */
+			int np = 0; long long tot = 0;
+			for (;; np++) {
+				char pp[640]; struct stat ps; int found = 0;
+				for (int c = 0; c < 2 && !found; c++) { snprintf(pp, sizeof pp, "/home/rudolf/Downloads/%s.%s%02d", base, c ? "PART" : "part", np); if (!stat(pp, &ps) && S_ISREG(ps.st_mode)) found = 1; }
+				if (!found) break;
+				tot += ps.st_size;
+			}
+			if (!np) continue;
+			sadd(&s, "%s{\"path\":", n++ ? "," : ""); sjson(&s, fp); sadd(&s, ",\"name\":"); sjson(&s, base);
+			sadd(&s, ",\"bytes\":%lld,\"parts\":%d}", tot, np);
+		}
+		if (dd) closedir(dd);
 		sadd(&s, "]}"); reply_json(r->fd, &s); return;
 	}
 	if (!strcmp(p, "keepfiles") && !post) {
@@ -2484,7 +2533,7 @@ static void api(struct req *r)
 			for (const char *q = img; okp && *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/._-", *q)) okp = 0;
 			if (!okp) { reply_err(r->fd, 400, "the image must be a file in the home folder (letters, digits, . _ - only)"); return; }
 		}
-		char cmd[512]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/install.sh /dev/%s%s%s", d, img && *img ? " " : "", img && *img ? img : "");
+		char cmd[600]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/install.sh /dev/%s%s%s", img_sha_env(r), d, img && *img ? " " : "", img && *img ? img : "");
 		start_job("install", cmd); reply_ok(r->fd, "installing"); return;
 	}
 	/* make a Rudolf OS USB stick (1.2.5, mkstick.sh): disk and confirm (the same name twice), image (empty for this
@@ -2498,7 +2547,7 @@ static void api(struct req *r)
 			for (const char *q = img; okp && *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/._-", *q)) okp = 0;
 			if (!okp) { reply_err(r->fd, 400, "the image must be a file in the home folder (letters, digits, . _ - only)"); return; }
 		}
-		char cmd[600]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/mkstick.sh /dev/%s '%s' %d", d, img ? img : "", fl && !strcmp(fl, "1"));
+		char cmd[700]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/mkstick.sh /dev/%s '%s' %d", img_sha_env(r), d, img ? img : "", fl && !strcmp(fl, "1"));
 		start_job("mkstick", cmd); reply_ok(r->fd, "making the stick"); return;
 	}
 	/* keep files on the drive Rudolf OS runs from (1.2.4): add RUDOLFDATA after the image (keepfiles.sh) */
