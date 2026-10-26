@@ -94,7 +94,7 @@ fi
 # ---- base: the system programs and sys/root
 # the Secure Boot certificate, for Settings > Security > Prepare Secure Boot (rudolfd enrolls it through MokManager)
 mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/rudolf-sb.crt
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolfd.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c trusted-keys.txt systools/addnvk.sh VERSION; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolfd.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c trusted-keys.txt systools/addnvk.sh VERSION; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -108,9 +108,10 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	# 1.2.7: the Debian sandbox and the Linux self-check, rebuilt here too (before, only a full build made rudolf-debian)
 	gcc -O2 -o "$B/rudolf-debian" sys/rudolf-debian.c -lcrypto -ldl
 	gcc -O2 -o "$B/rudolf-fscheck" sys/rudolf-fscheck.c
-	# 1.2.9: the desktop portal for Linux apps (never rebuilt here before either)
+	# 1.2.9: the desktop portal and the app catalogue reader for Linux apps (never rebuilt here before either)
 	gcc -O2 -o "$B/rudolf-portal" sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0)
-	for b in rudolf-display rudolfd rudolf-update rudolf-launch cdp-eval rudolf-debian rudolf-fscheck rudolf-portal; do
+	gcc -O2 -o "$B/rudolf-apps" sys/rudolf-apps.c -lz
+	for b in rudolf-display rudolfd rudolf-update rudolf-launch cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-apps; do
 		for l in $(ldd "$B/$b" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$b needs $l, which the base layer does not have"; exit 1; }; done
 		sudo install -m 0755 "$B/$b" "$W/broot/usr/bin/$b"
 	done

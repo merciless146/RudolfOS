@@ -4,9 +4,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.2.9 (2026-10-26)
-Summary: signing in to Roblox in Sober (and web pages inside other Linux apps) works
+Summary: the App Store's Linux app list downloads again; signing in to Roblox in Sober (and web pages inside other Linux apps) works
 - Fixed: Sober could not sign in to Roblox: its sign-in window stayed blank with "No such interface org.freedesktop.portal.ProxyResolver", then "Something went wrong". Linux apps from the App Store ask Rudolf OS which proxy to use for each address; Rudolf OS now answers (its own proxy from Settings › Network, or none), and says whether the computer is online.
-- Fixed: release updates now rebuild the desktop portal for Linux apps too (before, only a full build did).
+- Fixed: App Store › Linux apps › Download the app list stopped with "Segmentation fault" and "Is this computer connected to the internet?". Flathub's catalogue has empty entries (such as an empty paragraph), and the program that reads it crashed on them.
+- Fixed: release updates now rebuild the desktop portal and the app catalogue reader for Linux apps too (before, only a full build did).
 
 ## 1.2.8 (2026-10-26)
 Summary: the Linux terminal and App Store apps work on computers running an installed update; new boot files for an installed computer without erasing it (Secure Boot on computers installed from an older disc); webcams work, with a camera switch in Settings › Privacy; the hardware check tests the keyboard, touchpad, camera, battery and screen

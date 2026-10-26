@@ -96,7 +96,9 @@ static node *parse_el(char **pp)
 	int self = gt > te && gt[-1] == '/';
 	n->attrs = strndup(te, gt - te - (self ? 1 : 0));
 	p = *gt ? gt + 1 : gt;
-	if (self) { *pp = p; return n; }
+	/* 1.2.9: an empty element (<p/>, <em/>, <value key="..."/>) has empty text, not none: Flathub's catalogue has them,
+	   and every use of the text (inline words, descriptions, values) crashed on it ("Segmentation fault") */
+	if (self) { n->text = strdup(""); *pp = p; return n; }
 	str text = {0}; node **last = &n->kid;
 	for (;;) {
 		char *lt = strchr(p, '<');
