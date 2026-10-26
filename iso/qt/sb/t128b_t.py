@@ -140,7 +140,8 @@ try:
     ok('...pending: its SHA-256, the RUDOLFDATA start and size', f'sha={BSHA}' in p and f'start={START}' in p and f'blocks={BBYTES // 2048}' in p, p[-200:])
     info = J(js("rd('info').then(i=>JSON.stringify(i))"), {})
     ok('...and rudolfd says so (Settings shows "written the next time the computer starts")', info.get('bootFiles', {}).get('pending') is True)
-    js("rdPost('power?action=reboot').then(()=>1,()=>0)")
+    try: g.js("rdPost('power?action=reboot').then(()=>1,()=>0)", 20)
+    except OSError: pass   # QEMU (-no-reboot) may have ended before the answer came back
     ok('...restart', wait_exit(vm, 180))
 finally:
     vm.stop()
