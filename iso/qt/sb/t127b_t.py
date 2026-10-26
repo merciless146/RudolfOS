@@ -46,8 +46,8 @@ try:
         ok('...loads (and waits for an adapter)', last(o) == '1', o[-200:])
         miss = [f for f in fws if last(sh(f"[ -e /lib/firmware/{f} ] || [ -e /usr/lib/firmware/{f} ] && echo yes || echo no", 20)) != "yes"]
         ok(f'...its firmware is there ({", ".join(fws)})', not miss, miss)
-    o = sh('dmesg | grep -iE "ath9k_htc|mt7601u|mt76x[02]u" | grep -iE "error|fail|unknown symbol" | head -3', 20)
-    ok('no driver errors while loading', not re.search(r'error|fail|unknown symbol', o, re.I), o[-300:])
+    n = last(sh('dmesg | grep -iE "ath9k|mt76|mt7601" | grep -ciE "err|fail|symbol"', 20))
+    ok('no driver errors while loading', n == '0', n)
 finally:
     vm.stop()
 out('%d/%d passed' % (sum(R), len(R)))
