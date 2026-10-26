@@ -58,7 +58,7 @@ try:
         except OSError: pass
         time.sleep(4)
     ok('starts, keeping files on the older data partition', up and last(sh('mountpoint -q /persist && echo kept', 20)) == 'kept')
-    o = sh('cat /run/rudolf/repairs 2>&1; ls -d /persist/flatpak/repo/tmp 2>&1', 20)
+    o = sh('cat /run/rudolf/repairs', 20) + '\n' + sh('ls -d /persist/flatpak/repo/tmp', 20)
     ok('the start-up repair made Flatpak\'s missing tmp folder again, and said so', 'repaired: /persist/flatpak/repo/tmp' in o and re.search(r'^/persist/flatpak/repo/tmp\s*$', o, re.M), o[-300:])
     o = sh('/usr/bin/rudolf-fscheck', 120); out(o[-1500:])
     kv = dict(l.split('=', 1) for l in o.replace('\r', '').split('\n') if '=' in l and not l.startswith(('echo', '/usr')))
