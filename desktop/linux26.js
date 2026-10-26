@@ -126,6 +126,10 @@ ${save?`<label class='lxnm'>Name <input class='nm'></label>`:''}<div class='rmro
  draw();(nm||q('.ok')).focus()})}
 /* ---------- App Store › Linux apps ---------- */
 const LX_CATS=[['','All'],['Office','Office'],['Graphics','Graphics'],['AudioVideo','Audio & video'],['Game','Games'],['Development','Programming'],['Education','Education'],['Network','Internet'],['Utility','Tools'],['Science','Science'],['System','System']];
+/* 1.3.0: the game genres Flathub uses (freedesktop categories); an app with any of them is a game, also when it does not
+   list "Game" itself */
+const LX_GENRES=[['ActionGame','Action'],['AdventureGame','Adventure'],['ArcadeGame','Arcade'],['BoardGame','Board'],['BlocksGame','Blocks and falling pieces'],['CardGame','Card'],['KidsGame','For children'],['LogicGame','Logic and puzzles'],['RolePlaying','Role-playing'],['Shooter','Shooters'],['Simulation','Simulation'],['SportsGame','Sports'],['StrategyGame','Strategy'],['Emulator','Emulators']];
+const lxIsGame=a=>(a.cats||[]).some(c=>c=='Game'||LX_GENRES.some(([g])=>g==c));
 const LX_PICKS=['org.libreoffice.LibreOffice','org.gimp.GIMP','org.inkscape.Inkscape','org.videolan.VLC','org.mozilla.firefox','com.visualstudio.code','org.kde.krita','org.audacityteam.Audacity','com.obsproject.Studio','org.blender.Blender'];
 function lxPerms(p){const out=[];if(!p)return out;const has=(k,v)=>(p[k]||'').split(';').includes(v);
  if(has('shared','network'))out.push(['Uses the internet',0]);if(has('sockets','pulseaudio'))out.push(['Plays and records sound',0]);if(has('sockets','cups'))out.push(['Prints',0]);
@@ -147,7 +151,7 @@ async function flatStoreTab(B){B.innerHTML='';const msg=t=>{B.innerHTML=`<p clas
  B.innerHTML=`<div class='lxbar'><input type='search' class='lxq' placeholder='Search Linux apps' aria-label='Search Linux apps'><select class='lxc' aria-label='Category'>${LX_CATS.map(([k,n])=>`<option value='${k}'>${n}</option>`).join('')}</select><label class='ck'><input type='checkbox' class='lxv' checked> Verified only</label></div><div class='lxlist'></div><p class='msg lxfoot'></p>`;
  const L=B.querySelector('.lxlist'),Q=B.querySelector('.lxq'),C=B.querySelector('.lxc'),V=B.querySelector('.lxv');let limit=60;
  const io=new IntersectionObserver(es=>es.forEach(en=>{if(en.isIntersecting){const el=en.target;io.unobserve(el);lxImg(el,el.dataset.id)}}),{root:B});
- function draw(){const q=Q.value.trim().toLowerCase(),c=C.value;let l=cat.filter(a=>(!V.checked||a.verified||inst.has(a.id))&&(!c||(a.cats||[]).includes(c))&&(!q||(a.name+' '+a.summary+' '+a.id+' '+(a.dev||'')).toLowerCase().includes(q)));
+ function draw(){const q=Q.value.trim().toLowerCase(),c=C.value;let l=cat.filter(a=>(!V.checked||a.verified||inst.has(a.id))&&(!c||(c=='Game'?lxIsGame(a):(a.cats||[]).includes(c)))&&(!q||(a.name+' '+a.summary+' '+a.id+' '+(a.dev||'')).toLowerCase().includes(q)));
   const pick=a=>{const i=LX_PICKS.indexOf(a.id);return i<0?99:i};l.sort((a,b)=>(q||c?0:pick(a)-pick(b))||(b.verified-a.verified)||a.name.localeCompare(b.name));
   L.innerHTML='';l.slice(0,limit).forEach(a=>{const d=document.createElement('div');d.className='stc lxrow';d.tabIndex=0;
    d.innerHTML=`<div class='sti lxi' data-id='${lxEsc(a.id)}'>🐧</div><div style='flex:1;min-width:0'><b>${lxEsc(a.name)}</b>${a.verified?` <span class='lxver' title='Verified by Flathub: published by the app's own developer'>✔ verified</span>`:''}${inst.has(a.id)?` <span class='natbadge'>Installed</span>`:''}<div class='std'>${lxEsc(a.summary)}</div></div>`;
@@ -155,7 +159,7 @@ async function flatStoreTab(B){B.innerHTML='';const msg=t=>{B.innerHTML=`<p clas
   B.querySelector('.lxfoot').textContent=l.length>limit?`Showing ${limit} of ${l.length}. Search to find more.`:`${l.length} app${l.length==1?'':'s'}. From Flathub; apps run in a sandbox.`;
   if(l.length>limit){const m=document.createElement('button');m.textContent='Show more';m.onclick=()=>{limit+=60;draw()};L.appendChild(m)}}
  let t;Q.oninput=()=>{clearTimeout(t);t=setTimeout(()=>{limit=60;draw()},200)};C.onchange=V.onchange=()=>{limit=60;draw()};draw();Q.focus()}
-async function flatAppPage(B,a,back){B.innerHTML=`<button class='lxback'>‹ All Linux apps</button><div class='lxhead'><div class='sti lxbig'>🐧</div><div><h3>${lxEsc(a.name)}</h3><div class='msg'>${lxEsc(a.dev||'')}${a.verified?' · <span class=lxver>✔ verified</span>':' · not verified'}</div><div class='lxact'></div></div></div><div class='lxshots'></div><p class='lxsum'><b>${lxEsc(a.summary)}</b></p><div class='lxdesc msg'>Loading details…</div><div class='lxfacts msg'></div>`;
+async function flatAppPage(B,a,back,backLabel){B.innerHTML=`<button class='lxback'>‹ ${lxEsc(backLabel||'All Linux apps')}</button><div class='lxhead'><div class='sti lxbig'>🐧</div><div><h3>${lxEsc(a.name)}</h3><div class='msg'>${lxEsc(a.dev||'')}${a.verified?' · <span class=lxver>✔ verified</span>':' · not verified'}</div><div class='lxact'></div></div></div><div class='lxshots'></div><p class='lxsum'><b>${lxEsc(a.summary)}</b></p><div class='lxdesc msg'>Loading details…</div><div class='lxfacts msg'></div>`;
  B.querySelector('.lxback').onclick=back;lxImg(B.querySelector('.lxbig'),a.id);const act=B.querySelector('.lxact');
  const btn=(l,f,pri)=>{const b=document.createElement('button');b.textContent=l;if(pri)b.className='pri';b.onclick=f;act.appendChild(b);return b};
  let info=null;

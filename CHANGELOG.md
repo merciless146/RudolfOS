@@ -3,6 +3,12 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.3.0 (2026-10-26)
+Summary: App Store › Games lists every game on Flathub, with search and genres; Command Prompt and Lua show the real Rudolf OS version
+- New: App Store › Games lists every game in Flathub's app list under "All games on Flathub", with a search box, genres (action, arcade, board, emulators, puzzles, role-playing, simulation, sports, strategy and more) and "Verified only". Installed games come first.
+- Fixed: Linux apps › Games left out games that list only their genre (for example "Action") and not "Game".
+- Fixed: Command Prompt said "Rudolf OS [Version 1.1]" (when it opens and for VER), and Lua's sys.version() said "Rudolf OS 1.0", whatever the version. Both now give the version that is installed.
+
 ## 1.2.9 (2026-10-26)
 Summary: the App Store's Linux app list downloads again; signing in to Roblox in Sober (and web pages inside other Linux apps) works
 - Fixed: Sober could not sign in to Roblox: its sign-in window stayed blank with "No such interface org.freedesktop.portal.ProxyResolver", then "Something went wrong". Linux apps from the App Store ask Rudolf OS which proxy to use for each address; Rudolf OS now answers (its own proxy from Settings › Network, or none), and says whether the computer is online.
