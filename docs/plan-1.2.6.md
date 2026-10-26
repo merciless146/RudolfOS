@@ -12,8 +12,8 @@ since 1.2.6 is out:
   pull request opened, testing 1.2.6 on a real laptop (ASUS Vivobook Go 14, E1404FA, AMD Ryzen 3 7320U, 3.3 GB,
   installed from a pre-1.2.2 disc and updated) found items 10 to 16. Setting up Secure Boot there needs items 9 to 13,
   so they join stage B, together with item 9 (moved from stage C). All of them ship in the same 1.2.7 update.
-- **Stage C:** the hardware check's new steps, with the webcam driver they need, and joining a downloaded disc
-  image. Both add to rudolfd.
+- **Stage C:** the hardware check's new steps, with the webcam driver they need (item 8), and new boot files on an
+  installed drive keeping its files (item 17).
 
 | # | Item | Kind | Size | Stage |
 |---|------|------|------|-------|
@@ -33,6 +33,8 @@ since 1.2.6 is out:
 | 14 | Linux terminal: "the Debian sandbox did not start" on an installation updated from an old disc | bug | medium | B |
 | 15 | App Store: Flatpak downloads fail with `open(O_TMPFILE): No such file or directory` on the same installation | bug | medium | B |
 | 16 | Those two errors say nothing about why; a Linux self-check for the system report | bug | small | B |
+| 17 | New boot files on a drive Rudolf OS is installed on, keeping its files (no reinstall for Secure Boot) | feature | medium | C |
+| 18 | Install here and Make a stick from a downloaded image stopped without a word (since 1.2.4) | bug | tiny | B |
 
 Stage A changes the disc writer, the start-up script (initramfs) and one system script. That means it needs a
 release build and the Secure Boot tests, not only page tests. Like every stage, it has one pull request, is built
@@ -482,6 +484,68 @@ On the laptop, Task Manager says the screen is drawn by the graphics card (radeo
 SwiftShader (the processor). That is the default: the desktop page renders in software unless Settings ›
 Display Properties › Graphics is set to "Use it for games and the desktop" (`session`, `GLFLAGS`). On this AMD laptop
 that setting is worth trying (one restart). Nothing changes in 1.2.7.
+
+## 17. New boot files on an installed drive, keeping its files (stage C)
+
+**Why.** Updates replace the system (kernel and layers, in `/persist/os`) but never the drive's boot files: the
+disc image written at the start of the drive by Install here. A drive installed from a disc before 1.2.2 therefore
+cannot start with Secure Boot on, however up to date it is. Today the only way is to reinstall from a stick, which
+erases the data partition (files, settings, Flatpak apps, the Debian setup). Found on the Vivobook (item 11).
+
+**The space problem (measured).** Install here puts RUDOLFDATA right after the image, rounded up to 1 MiB:
+
+| Disc | Image |
+|------|-------|
+| 1.1 | 400 MiB |
+| 1.1.2, 1.2.0 | 446 MiB |
+| 1.2.2 | 451 MiB |
+| 1.2.3 to 1.2.4 | 518 to 519 MiB |
+| 1.2.5, 1.2.6 | 522 MiB |
+
+So a 1.2.6 image does not fit in front of the data partition of a drive installed from 1.1 to 1.2.2, the drives
+that need this most. Moving an ext4 file system's start means copying all of it, which is slow and unsafe on a laptop
+battery; that is not done.
+
+**The plan: a boot area that fits, with the full system on the data partition.**
+- The release gets a small **boot image** (an ISO 9660 image in the same hybrid layout, signed release list, Secure
+  Boot boot files from the release, the start-up script and kernel, no system layers): about 60 MiB. It fits in front
+  of every data partition Install here has made. It is a published release file next to the disc parts.
+- Before anything is written, the full system of that release is installed into `/persist/os` (a normal update
+  slot), and a **factory copy** of the layers goes to `/persist/os/factory` (needs about 450 MiB free; checked). The
+  start-up script, finding no layers in the boot image, starts the slot, or the factory copy if no slot starts. This
+  keeps "start the version on the drive" working when an update is broken.
+- **Writing.** Not over the drive Rudolf OS is running from while it runs: the boot image is staged on the data
+  partition and written by the start-up script at the next start, before the image area is used (the same place as
+  the disc check): written, read back and compared, the data partition's entry put back in the partition table at the
+  same start and size, then a restart. If the comparison fails, it is written again from the staged copy; the staged
+  copy is kept until a start from the new boot area succeeds.
+- **From another drive:** Settings › Update and recovery › Install here gets a second choice when the chosen disk
+  already has RUDOLFDATA: "Replace the boot files only (keep files)". The same steps, written directly.
+- **Power loss** while the boot area is written leaves the drive unable to start, but the data partition is untouched:
+  a stick's Install here › Replace the boot files only repairs it. The page says this before it starts and asks for
+  the charger.
+- **Secure Boot:** the boot image's boot files are the release's signed ones, so the same `rudolf.cer` is enrolled
+  once through MokManager.
+- **Settings › Security › Secure Boot**, when the boot files are older (item 11), offers "Get new boot files…"
+  instead of only "Make a USB stick…".
+
+**Tests.**
+- QEMU: a drive installed from the 1.2.0 disc image (446 MiB) and updated, with files, Flatpak's folder and a Debian
+  folder. The boot files are replaced from the running system. The next start writes them; files are still there,
+  `info.bootSecure` is 1, and with Secure Boot on (test keys enrolled) it starts.
+- The same from a stick (Install here › Replace the boot files only).
+- A write interrupted (QEMU stopped mid-write) leaves RUDOLFDATA intact, and the stick repairs it.
+- A broken slot falls back to the factory copy.
+
+**Risks.** It touches the start-up script and the partition table of drives with people's files on them. It ships in
+stage C only after these tests pass. Until then, the reinstall steps (stick with "copy my files", then Install here)
+stay the way to do it.
+
+## 18. Install here and Make a stick from a downloaded image stopped without a word (since 1.2.4; stage B)
+
+`install.sh` runs with `set -e` and unmounted `/mnt/instsrc` before mounting the image there. With nothing mounted,
+`umount` fails and the script ended with no message and nothing written. No test had made a stick from a downloaded
+image until `t127c_t.py`. Fixed: `umount ... || true`.
 
 ## Order of work in stage B (the additions)
 
