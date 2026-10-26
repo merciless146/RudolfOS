@@ -1070,7 +1070,7 @@ static void api_camera(struct req *r, int post)
 		} else {
 			unlink(CAM_CONF); unlink(PERSIST "/etc/camera-off");
 			/* load it for cameras already plugged in */
-			run("for m in $(cat /sys/bus/usb/devices/*/modalias 2>/dev/null | grep 'ic0Esc01' | sort -u); do modprobe -q \"$m\"; done");
+			run("for m in $(cat /sys/bus/usb/devices/*/modalias 2>/dev/null | grep 'ic0Eisc01' | sort -u); do modprobe -q \"$m\"; done");
 			reply_ok(r->fd, "the camera is on");
 		}
 		return;
