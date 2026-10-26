@@ -404,6 +404,11 @@ static void battery(str *s)
 		sjson(s, t);
 		sadd(s, ",\"capacity\":%lld,\"online\":%lld,\"status\":", cap, online);
 		sjson(s, stt ? stt : "");
+		/* health (1.2.8, Settings > Hardware check): energy in uWh, or charge in uAh on batteries that report charge */
+		{ static const char *k[] = {"energy_full", "energy_full_design", "charge_full", "charge_full_design", "cycle_count", "energy_now", "power_now", "voltage_min_design"};
+		  for (unsigned i = 0; i < sizeof k / sizeof *k; i++) { snprintf(p, sizeof p, "/sys/class/power_supply/%s/%s", e->d_name, k[i]); long long v = read_ll(p, -1); if (v >= 0) sadd(s, ",\"%s\":%lld", k[i], v); }
+		  static const char *t2[] = {"manufacturer", "model_name", "technology"};
+		  for (unsigned i = 0; i < sizeof t2 / sizeof *t2; i++) { snprintf(p, sizeof p, "/sys/class/power_supply/%s/%s", e->d_name, t2[i]); char *v = slurp(p, NULL); if (v) { trim(v); sadd(s, ",\"%s\":", t2[i]); sjson(s, v); free(v); } } }
 		sadd(s, "}");
 		free(stt);
 		first = 0;
@@ -1046,6 +1051,34 @@ static void api_idbm(struct req *r, const char *what, int post)
  *   GET  shell              {"id","installed","ready","active","failed","on"}
  *   POST shell?on=0|1       Settings: use the shell (real browser tabs in Oracle) or not, from the next start
  *   POST shell/switch       start the browser again now (with the shell, when it can be used) */
+/* the camera (1.2.8): Settings > Privacy > Camera. Off unloads the webcam driver (uvcvideo) and keeps it from loading
+ * again (/etc/modprobe.d, kept on RUDOLFDATA), so nothing on this computer can use the camera, websites and Linux apps
+ * included, until it is switched on. GET camera: {on, cameras (video devices now), loaded} */
+#define CAM_CONF "/etc/modprobe.d/rudolf-camera.conf"
+static void api_camera(struct req *r, int post)
+{
+	if (post) {
+		const char *on = qparam(r->query, "on"); if (!on || (strcmp(on, "0") && strcmp(on, "1"))) { reply_err(r->fd, 400, "on=0 or on=1"); return; }
+		if (!strcmp(on, "0")) {
+			mkdir("/etc/modprobe.d", 0755); write_str(CAM_CONF, "blacklist uvcvideo\n");
+			if (!live) { mkdir(PERSIST "/etc", 0755); write_str(PERSIST "/etc/camera-off", "1\n"); }
+			if (run("rmmod uvcvideo 2>/dev/null; ! grep -q '^uvcvideo ' /proc/modules")) { reply_err(r->fd, 409, "the camera is in use: close the app using it, then try again"); return; }
+			reply_ok(r->fd, "the camera is off");
+		} else {
+			unlink(CAM_CONF); unlink(PERSIST "/etc/camera-off");
+			/* load it for cameras already plugged in */
+			run("for m in $(cat /sys/bus/usb/devices/*/modalias 2>/dev/null | grep 'ic0Esc01' | sort -u); do modprobe -q \"$m\"; done");
+			reply_ok(r->fd, "the camera is on");
+		}
+		return;
+	}
+	int n = 0; DIR *d = opendir("/sys/class/video4linux"); struct dirent *e;
+	while (d && (e = readdir(d))) if (!strncmp(e->d_name, "video", 5)) n++;
+	if (d) closedir(d);
+	char *m = slurp("/proc/modules", NULL); int loaded = m && (!strncmp(m, "uvcvideo ", 9) || strstr(m, "\nuvcvideo ")); free(m);
+	str s = {0}; sadd(&s, "{\"ok\":true,\"on\":%s,\"devices\":%d,\"loaded\":%s}", access(CAM_CONF, F_OK) ? "true" : "false", n, loaded ? "true" : "false");
+	reply_json(r->fd, &s);
+}
 static void api_shell(struct req *r, const char *what, int post)
 {
 	char *id = slurp(WWW "/iwa/id", NULL); if (id) id[strcspn(id, "\n")] = 0;
@@ -2337,6 +2370,7 @@ static void api(struct req *r)
 	if (!strcmp(p, "bootmenu")) { api_bootmenu(r, "", post); return; }
 	if (!strncmp(p, "bootmenu/", 9)) { api_bootmenu(r, p + 9, post); return; }
 	if (!strcmp(p, "shell") || !strncmp(p, "shell/", 6)) { api_shell(r, p + 5, post); return; }
+	if (!strcmp(p, "camera")) { api_camera(r, post); return; }
 	if (!strcmp(p, "clipboard")) { api_clipboard(r); return; }
 	if (!strcmp(p, "web/status")) { api_web(r, "status"); return; }   /* the taskbar asks whether the browser window is open */
 	if (!strcmp(p, "wifi/status")) { api_wifi(r, "status"); return; }
