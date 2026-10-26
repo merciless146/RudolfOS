@@ -131,7 +131,7 @@ try:
     c = J(js("rd('crashes').then(r=>JSON.stringify(r.crashes))"), [])
     ok('4. rudolfd lists the crash of a Rudolf OS program (from the kernel log), for the system report', any(x.get('program', '').startswith('rudolf-crashtes') and x.get('kind') == 'segmentation fault' and x.get('where', '').startswith('rudolf-crashtest') for x in c), c)
     rep = js("sysReport('').then(r=>r.text)", 180)
-    ok('...and the system report has it', isinstance(rep, str) and re.search(r'== Crashes \(Rudolf OS programs since start-up\)\nrudolf-crashtes: segmentation fault', rep), (re.search(r'== Crashes[^]*?\n\n', rep or '') or [''])[0] if isinstance(rep, str) else rep)
+    ok('...and the system report has it', isinstance(rep, str) and re.search(r'== Crashes \(Rudolf OS programs since start-up\)\nrudolf-crashtes: segmentation fault', rep), (re.search(r'== Crashes[\s\S]*?\n\n', rep or '') or [''])[0] if isinstance(rep, str) else rep)
 finally:
     vm.stop()
 
