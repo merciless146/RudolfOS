@@ -86,13 +86,15 @@ over by kexec; `t127d_t.py` and a new Debian sandbox start test run in that mode
 - the result goes into this plan's as-built notes.
 
 ### As built (stage B)
-- **Item 3, narrowed.** The start-up cannot tell which of two Rudolf OS drives the firmware started from (it finds a
-  USB stick, `sd*`, before an NVMe drive, and the images are alike), so "only the start drive's RUDOLFDATA, else live"
-  would have started an installed laptop without its files whenever a stick written by Rufus was plugged in. As
-  built: the start drive's own RUDOLFDATA when it has one, else the first found, as before; and a slot's kernel gets
-  the drive and data partition the disc's kernel chose (`rudolf.mediadev=`, `rudolf.persist=UUID`), so the two
-  kernels never disagree. A stick with its own files on an NVMe laptop now uses them (1.2.9 took the laptop's).
-  Telling the firmware's start drive apart (UEFI BootCurrent, per-drive disk signatures) is left for later.
+- **Item 3, as built.** The planned rule ("only the start drive's RUDOLFDATA, else live") would have started an
+  installed laptop without its files whenever a stick written by Rufus was plugged in, so: the start drive's own
+  RUDOLFDATA when it has one, else the first found, as before. And the start drive is now the one the firmware used:
+  `t130` showed the start-up took the internal NVMe drive even when the firmware started from the stick (NVMe is ready
+  first). The start-up reads the firmware's boot entry (UEFI `BootCurrent` → `Boot####`) and, when it names a USB or
+  an internal (NVMe, SATA, SCSI) device path, waits up to 8 s for a Rudolf OS drive of that kind
+  (`/etc/rudolf/bootvia`). BIOS starts and short boot entries: as before. A slot's kernel gets the drive and data
+  partition the disc's kernel chose (`rudolf.mediadev=`, `rudolf.persist=UUID`). (systemd-boot sets no
+  `LoaderDevicePartUUID` for the image's MBR partition table, so that could not be used.)
 - **Item 4.** rudolfd marks a job that ends by a signal or prints "Segmentation fault"/"Aborted" as `crashed`, with
   the kernel's crash lines for Rudolf OS programs since the job started; `GET crashes` lists them since start-up.
 - **Item 6.** `rudolf-debian passwd FILE`, rudolfd `debian/passwd` (password in the body), Settings button.

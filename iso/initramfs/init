@@ -47,10 +47,24 @@ if [ -e /dev/fb0 ]; then
 fi
 ID=$(cat /etc/rudolf-id)
 
+# 1.3.0: what kind of drive the firmware started from, from its boot entry (UEFI BootCurrent -> Boot####): a USB
+# device path node (03 05) or an internal one (NVMe 03 17, SATA 03 12, SCSI 03 02). The start-up used to take the
+# first Rudolf OS drive it found, so a laptop started from a stick could run from its internal drive (an NVMe drive is
+# ready before a USB stick), and the other way round. Unknown (BIOS, or a short boot entry): as before.
+BOOTVIA=""
+BC=$(efv BootCurrent-8be4df61-93ca-11d2-aa0d-00e098032b8c | od -An -tx1 | tr -d ' \n')
+if [ ${#BC} = 4 ]; then
+	BE=$(efv Boot$(echo "${BC#??}${BC%??}" | tr a-f A-F)-8be4df61-93ca-11d2-aa0d-00e098032b8c | od -An -tx1 | tr -s ' \n' ' ')
+	case "$BE" in *" 03 05 06 00 "*|*" 03 0f "*) BOOTVIA=usb;; *" 03 17 10 00 "*|*" 03 12 0a 00 "*|*" 03 02 08 00 "*) BOOTVIA=internal;; esac
+fi
+is_usb() { case "$(readlink -f /sys/class/block/${1##*/} 2>/dev/null)" in */usb*) return 0;; esac; return 1; }
+# a drive of the other kind is passed over while the firmware's kind may still appear (USB sticks need a few seconds)
+wrong_kind() { [ -n "$BOOTVIA" ] && [ "${i:-0}" -lt 16 ] || return 1; case "$1" in /dev/sr*) return 1;; esac; if is_usb "$1"; then [ "$BOOTVIA" = internal ]; else [ "$BOOTVIA" = usb ]; fi; }
 find_media() {
 	# partitions before whole disks: mounting a whole disk would lock out its RUDOLFDATA partition
 	for d in /dev/sr* /dev/sd?1 /dev/nvme?n?p1 /dev/vd?1 /dev/mmcblk?p1 /dev/sd? /dev/nvme?n? /dev/vd? /dev/mmcblk?; do
 		[ -b "$d" ] || continue
+		wrong_kind "$d" && continue
 		mount -t iso9660 -o ro "$d" /mnt/media 2>/dev/null || continue
 		if [ "$(cat /mnt/media/rudolf/id 2>/dev/null)" = "$ID" ]; then MEDIA=$d; return 0; fi
 		umount /mnt/media
@@ -86,9 +100,8 @@ done
 #  - a slot's kernel: the one the disc's kernel chose (rudolf.persist=UUID, passed on at the handover);
 #  - started from a drive: that drive's own (partition 3, as Install here, Make a stick and Keep files on this drive
 #    make it), when it has one;
-#  - otherwise as before: the first one found. (The start-up cannot tell which of two Rudolf OS drives the firmware
-#    started from, and it finds a USB stick first: running live whenever a stick without files is plugged in would
-#    take an installed computer's files away. See docs/plan-1.3.0.md, item 3.)
+#  - otherwise as before: the first one found (a stick written by Rufus has none: running it live would take an
+#    installed computer's files away whenever one is plugged in). Which drive is the start drive: see BOOTVIA above.
 disk_of() { case "$1" in /dev/nvme*p[0-9]*|/dev/mmcblk*p[0-9]*) echo "${1%p[0-9]*}";; /dev/[sv]d[a-z][0-9]*) echo "${1%%[0-9]*}";; *) echo "$1";; esac; }
 part3() { case "$1" in *[0-9]) echo "${1}p3";; *) echo "${1}3";; esac; }
 is_data() { [ -b "$1" ] && [ "$(blkid "$1" 2>/dev/null | sed -n 's/.* LABEL="\([^"]*\)".*/\1/p')" = RUDOLFDATA ]; }
@@ -287,6 +300,7 @@ mkdir -p /newroot/live/media /newroot/persist /newroot/run
 [ -n "$PERSIST" ] && mount --move /mnt/persist /newroot/persist
 mkdir -p /newroot/etc/rudolf
 echo "$MEDIA" > /newroot/etc/rudolf/media
+echo "$BOOTVIA" > /newroot/etc/rudolf/bootvia
 echo "$PERSIST" > /newroot/etc/rudolf/persist
 echo "${SLOT:-disc}" > /newroot/etc/rudolf/slot
 echo "$SB" > /newroot/etc/rudolf/secureboot

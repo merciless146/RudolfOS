@@ -10,9 +10,10 @@
 #      starts its update by kexec, which keeps the same drive and data partition; the Debian sandbox starts and runs
 #      a program, can mount its own /proc; a new Linux password is set; a crashing Rudolf OS program is reported
 #   B. the same drive and a Rudolf OS USB stick with its own RUDOLFDATA (home: "stick"), started from the stick: the
-#      stick's files (1.2.9 took the first RUDOLFDATA found, the internal drive's on a laptop with NVMe)
-#   C. the same drive and a stick holding only the disc image (as Rufus writes it): the internal drive's files and
-#      update, as before (the start-up finds the stick first and cannot tell which drive the firmware started)
+#      stick, from the firmware's boot entry (USB), and its files (1.2.9 took the first Rudolf OS drive and the first
+#      RUDOLFDATA found: on a laptop with NVMe, the internal drive's, which is ready before the stick)
+#   C. the same drive and a stick holding only the disc image (as Rufus writes it), started from the stick: the
+#      internal drive's files and installed update, as before
 import os, sys, time, json, re, subprocess, shutil, struct, hashlib
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
@@ -97,6 +98,7 @@ vm = sbvm.VM('t130a', PARTS, [], secure=False, mem=3072, extra=NVME(INT)); g = s
 try:
     up = wait_shell(g)
     ok('A. the internal NVMe drive starts its installed update by kexec (slot a)', up and last(sh('cat /etc/rudolf/slot', 20)) == 'a', sh('cat /etc/rudolf/slot', 20)[-60:])
+    ok('...the firmware\'s boot entry says it started from an internal drive (NVMe)', last(sh('cat /etc/rudolf/bootvia', 20)) == 'internal', sh('cat /etc/rudolf/bootvia', 20)[-40:])
     ok('...with its own drive and data partition (passed on at the handover)', last(sh('cat /etc/rudolf/media', 20)) == '/dev/nvme0n1p1' and last(sh('cat /etc/rudolf/persist', 20)) == '/dev/nvme0n1p3' and last(sh('cat /home/rudolf/whoami.txt', 20)) == 'internal', sh('cat /etc/rudolf/media /etc/rudolf/persist', 20)[-80:])
     o = sh('grep -o "rudolf.persist=[^ ]*" /etc/rudolf/cmdline', 20); u = last(sh('blkid /dev/nvme0n1p3 | sed -n "s/.* UUID=.\\([^\\"]*\\).*/\\1/p"', 20))
     ok('...the handover named them (rudolf.mediadev=, rudolf.persist=UUID)', u and f'rudolf.persist={u}' in o and 'rudolf.mediadev=/dev/nvme0n1p1' in sh('cat /etc/rudolf/cmdline', 20), [o[-80:], u])
@@ -141,7 +143,8 @@ vm = sbvm.VM('t130b', PARTS, [], secure=False, mem=3072, extra=NVME(INT) + USB(S
 try:
     up = wait_shell(g)
     m = last(sh('cat /etc/rudolf/media', 20)); p = last(sh('cat /etc/rudolf/persist', 20)); w = last(sh('cat /home/rudolf/whoami.txt', 20))
-    ok('B. started from a stick with its own files, on a computer with Rudolf OS installed: the stick\'s files, not the internal drive\'s', up and m.startswith('/dev/sd') and p == m[:-1] + '3' and w == 'stick', [m, p, w])
+    bv = last(sh('cat /etc/rudolf/bootvia', 20))
+    ok('B. started from a stick (the firmware\'s boot entry says USB) with its own files, on a computer with Rudolf OS installed: the stick, its files, not the internal drive\'s (the NVMe drive is ready first)', up and bv == 'usb' and m.startswith('/dev/sd') and p == m[:-1] + '3' and w == 'stick', [bv, m, p, w])
     ok('...and the stick\'s own system (not the internal drive\'s installed update)', last(sh('cat /etc/rudolf/slot', 20)) == 'disc')
 finally:
     vm.stop()
@@ -153,7 +156,7 @@ vm = sbvm.VM('t130c', PARTS, [], secure=False, mem=3072, extra=NVME(INT) + USB(R
 try:
     up = wait_shell(g)
     p = last(sh('cat /etc/rudolf/persist', 20)); w = last(sh('cat /home/rudolf/whoami.txt', 20)); sl = last(sh('cat /etc/rudolf/slot', 20))
-    ok('C. a stick without files plugged in: the internal drive\'s files and installed update, as before', up and p == '/dev/nvme0n1p3' and w == 'internal' and sl == 'a', [p, w, sl])
+    ok('C. started from a stick without files (as Rufus writes it): the internal drive\'s files and installed update, as before', up and p == '/dev/nvme0n1p3' and w == 'internal' and sl == 'a', [p, w, sl, last(sh('cat /etc/rudolf/media /etc/rudolf/bootvia', 20))])
     ok('...and the update\'s kernel stays with the same start drive (rudolf.mediadev)', last(sh('cat /etc/rudolf/media', 20)) == last(sh('grep -o "rudolf.mediadev=[^ ]*" /etc/rudolf/cmdline | cut -d= -f2', 20)))
 finally:
     vm.stop()

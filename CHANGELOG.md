@@ -5,7 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.3.0 (2026-10-26)
 Summary: App Store › Games lists every game on Flathub, with search and genres; a USB stick uses its own files on a computer where Rudolf OS is installed; crashes are reported as crashes; the Linux password can be changed
-- Fixed: a Rudolf OS USB stick with its own files, started on a computer where Rudolf OS is installed, could start with the computer's files instead (on a laptop with an NVMe drive it always did). A start now uses the data partition of the drive it started from when that drive has one; otherwise it works as before.
+- Fixed: a Rudolf OS USB stick started on a computer where Rudolf OS is installed could run from the computer's own drive instead, with its files (on a laptop with an NVMe drive it usually did, because that drive is ready first). Rudolf OS now starts from the kind of drive the computer's firmware started (a USB stick or an internal drive), and uses that drive's files when it has its own; otherwise it works as before.
 - New: when a part of Rudolf OS crashes during a task (as the app list reader did in 1.2.8), the task says so, with Report a problem, instead of guessing ("Is this computer connected to the internet?"). The system report lists such crashes.
 - New: Settings › Apps › Linux › Change the Linux password… sets a new password for Debian (the one sudo asks for). Before, it could only be chosen when Debian was set up.
 - Changed: updates rebuild every Rudolf OS program, so fixes to the package tool, the assistant and printing reach installed computers too.
