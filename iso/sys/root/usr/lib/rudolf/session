@@ -2,6 +2,7 @@
 # Rudolf OS display session: Xorg on the graphics card or Xvfb + framebuffer bridge, then Chromium kiosk.
 # Restarts the browser if it crashes or stops responding. GPL-2.0-or-later.
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+RCMD=/etc/rudolf/cmdline; [ -s $RCMD ] || RCMD=/proc/cmdline   # the start-up options (1.2.8: not /proc/cmdline, see initramfs/init)
 export DISPLAY=:0
 LOG=/run/rudolf/session.log
 exec >>$LOG 2>&1
@@ -20,7 +21,7 @@ fi
 read_screen() {
 	RES=auto; FPS=60
 	[ -s /etc/rudolf-screen ] && read RES FPS < /etc/rudolf-screen
-	grep -qE 'rudolf.recovery=1|rudolf.nogpu=1|nomodeset|rudolf.softdisplay=1' /proc/cmdline && { RES=auto; FPS=60; }
+	grep -qE 'rudolf.recovery=1|rudolf.nogpu=1|nomodeset|rudolf.softdisplay=1' $RCMD && { RES=auto; FPS=60; }
 	case "$RES" in auto|[0-9]*x[0-9]*) ;; *) RES=auto;; esac
 	case "$FPS" in 30|60|90|120) ;; *) FPS=60;; esac
 }
@@ -69,7 +70,7 @@ display_up() {
 	SETTING=$(cat /etc/rudolf-display 2>/dev/null); SETTING=${SETTING:-games}
 	MODE=soft; REASON=""; XPID=""
 	read_screen; rm -f /run/rudolf/screen-actual
-	if grep -qE 'rudolf.recovery=1|rudolf.nogpu=1|nomodeset|rudolf.softdisplay=1' /proc/cmdline; then REASON="started in recovery or safe graphics mode"
+	if grep -qE 'rudolf.recovery=1|rudolf.nogpu=1|nomodeset|rudolf.softdisplay=1' $RCMD; then REASON="started in recovery or safe graphics mode"
 	elif [ "$SETTING" = soft ]; then REASON="Settings: software display"
 	elif [ ! -x /usr/bin/Xorg ]; then REASON="this Rudolf OS build has no Xorg"
 	elif [ ! -s /run/rudolf/gpu ]; then REASON="no graphics card driver is loaded"
@@ -111,7 +112,7 @@ fi
 /usr/lib/rudolf/sound start && export PULSE_SERVER=unix:$XDG_RUNTIME_DIR/pulse/native
 # an update being tried must bring the desktop up within 4 minutes; if not, restart, and after two
 # failed starts the start-up script goes back to the previous system
-if grep -q 'rudolf.trying=1' /proc/cmdline; then
+if grep -q 'rudolf.trying=1' $RCMD; then
 	( sleep 240; [ -e /run/rudolf/bootok ] || { echo "update did not start: restarting" >> /run/rudolf/update.log; sync; reboot -f; } ) &
 fi
 # installed rpk packages are read-only images; mount them before the desktop starts
@@ -153,12 +154,12 @@ mkdir -p /etc/chromium-browser
 # allowlist"), so the shell is installed from its file, in Isolated Web App developer mode; the policy above stays
 # for the Chromium versions without that list. Not in recovery mode, and not when Settings turned the shell off.
 SHELLINST=""; SHELLFEAT=""
-if [ ${#SHELLID} = 56 ] && [ "$(cat /etc/rudolf-shell 2>/dev/null)" != off ] && ! grep -q 'rudolf.recovery=1' /proc/cmdline && [ -r /usr/share/rudolf/www/iwa/shell.swbn ]; then
+if [ ${#SHELLID} = 56 ] && [ "$(cat /etc/rudolf-shell 2>/dev/null)" != off ] && ! grep -q 'rudolf.recovery=1' $RCMD && [ -r /usr/share/rudolf/www/iwa/shell.swbn ]; then
 	SHELLINST="--install-isolated-web-app-from-file=/usr/share/rudolf/www/iwa/shell.swbn"; SHELLFEAT=",IsolatedWebAppDevMode"
 fi
 shell_usable() {
 	[ ${#SHELLID} = 56 ] || return 1
-	grep -q 'rudolf.recovery=1' /proc/cmdline && return 1
+	grep -q 'rudolf.recovery=1' $RCMD && return 1
 	[ "$(cat /etc/rudolf-shell 2>/dev/null)" = off ] && return 1
 	[ -e /run/rudolf/shell-failed ] && return 1
 	[ -e /home/rudolf/.rudolf-shell-ready ] || return 1
@@ -166,7 +167,7 @@ shell_usable() {
 }
 LOGPOLL=0
 DBG=""
-grep -q 'rudolf.debug=1' /proc/cmdline && DBG="--enable-logging=stderr --v=0 --remote-debugging-port=9222"
+grep -q 'rudolf.debug=1' $RCMD && DBG="--enable-logging=stderr --v=0 --remote-debugging-port=9222"
 export FONTCONFIG_FILE=/etc/fonts/fonts.conf
 while :; do
 	[ -e /run/rudolf/power ] && sleep 30

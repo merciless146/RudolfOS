@@ -1722,7 +1722,7 @@ static void api_system(struct req *r)
 	sadd(&s, ",\"version\":"); sjson(&s, u.version);
 	sadd(&s, ",\"machine\":"); sjson(&s, u.machine);
 	sadd(&s, ",\"uptime\":%ld,\"load\":[%.2f,%.2f,%.2f],\"procs\":%d", si.uptime, si.loads[0] / 65536.0, si.loads[1] / 65536.0, si.loads[2] / 65536.0, si.procs);
-	jtext(&s, "cmdline", slurp("/proc/cmdline", NULL));
+	jtext(&s, "cmdline", (access("/etc/rudolf/cmdline", F_OK) ? slurp("/proc/cmdline", NULL) : slurp("/etc/rudolf/cmdline", NULL)));
 	sadd(&s, ",\"boot\":"); sjson(&s, boot_mode); sadd(&s, ",\"media\":"); sjson(&s, media_mode);
 	sadd(&s, ",\"live\":%s,\"recovery\":%s", live ? "true" : "false", recovery ? "true" : "false");
 	jtext(&s, "modules", run_out("awk '{print $1}' /proc/modules 2>/dev/null | sort"));
@@ -2730,7 +2730,7 @@ int main(int argc, char **argv)
 	if (rf < 0 || read(rf, rb, 16) != 16) { for (int i = 0; i < 16; i++) rb[i] = rand(); }
 	if (rf >= 0) close(rf);
 	for (int i = 0; i < 16; i++) sprintf(token + i * 2, "%02x", rb[i]);
-	char *cl = slurp("/proc/cmdline", NULL);
+	char *cl = (access("/etc/rudolf/cmdline", F_OK) ? slurp("/proc/cmdline", NULL) : slurp("/etc/rudolf/cmdline", NULL));
 	if (cl) {
 		if (strstr(cl, "rudolf.recovery=1")) recovery = 1;
 		if (strstr(cl, "rudolf.media=disk")) snprintf(media_mode, sizeof media_mode, "disk");

@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -56,6 +57,28 @@ static void tmpfile_in(const char *key, const char *dir)
 	if (f < 0) { char b[300]; snprintf(b, sizeof b, "failed: %s", strerror(errno)); kv(key, b); return; }
 	close(f); kv(key, "ok");
 }
+/* a new /proc in a user namespace, as the Debian sandbox and Flatpak's bubblewrap mount it (1.2.8): the kernel refuses
+ * it while anything is mounted over a file in /proc ("mount_too_revealing"); 1.2.3 to 1.2.7 mounted the start-up
+ * options over /proc/cmdline on computers running an installed update */
+static void proc_mount(void)
+{
+	char cov[600] = ""; size_t n = 0; FILE *f = fopen("/proc/self/mountinfo", "r"); char l[1024];
+	while (f && fgets(l, sizeof l, f)) { char mp[512]; if (sscanf(l, "%*s %*s %*s %*s %511s", mp) == 1 && !strncmp(mp, "/proc/", 6) && strncmp(mp, "/proc/sys/fs/binfmt_misc", 24))
+		n += snprintf(cov + n, n < sizeof cov ? sizeof cov - n : 0, "%s%s", n ? " " : "", mp); }
+	if (f) fclose(f);
+	pid_t p = fork();
+	if (!p) {
+		if (unshare(CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID)) _exit(100 + (errno & 0x7f));
+		pid_t c = fork();
+		if (!c) { mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL); _exit(mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL) ? (errno & 0x7f) + 1 : 0); }
+		int st = 0; waitpid(c, &st, 0); _exit(WIFEXITED(st) ? WEXITSTATUS(st) : 99);
+	}
+	int st = 0; waitpid(p, &st, 0); int c = WIFEXITED(st) ? WEXITSTATUS(st) : 99; char b[800];
+	if (!c) snprintf(b, sizeof b, "ok");
+	else if (c >= 100) snprintf(b, sizeof b, "not tried: %s", strerror(c - 100));
+	else snprintf(b, sizeof b, "refused: %s%s%s", c < 99 ? strerror(c - 1) : "?", *cov ? "; mounted over files in /proc: " : "", cov);
+	kv("proc_mount", b);
+}
 static void userns(void)
 {
 	pid_t p = fork();
@@ -92,6 +115,7 @@ int main(void)
 	tmpfile_in("tmpfile_debian", "/persist/debian/tmp");
 	struct stat st; kv("flatpak_repo", stat("/var/lib/flatpak/repo", &st) ? "not made yet" : stat("/var/lib/flatpak/repo/tmp", &st) ? "tmp folder missing" : "ok");
 	userns();
+	proc_mount();
 	debian();
 	return 0;
 }

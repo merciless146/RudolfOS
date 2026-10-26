@@ -121,6 +121,13 @@ vm = sbvm.VM('t128b1', PARTS, [DRIVE], secure=False, mem=3072, extra=OLDK); g = 
 try:
     up = wait_shell(g)
     ok('1. the old drive starts (1.2.0\'s kernel, then the installed 1.2.8 update in slot a)', up and last(sh('cat /etc/rudolf/slot', 20)) == 'a' and last(sh('cat /etc/rudolf/persist', 20)) == '/dev/sda3', sh('cat /etc/rudolf/slot /etc/rudolf/media /etc/rudolf/persist', 20)[-120:])
+    # 1.2.8: started by kexec (as every computer running an installed update), the start-up options were mounted over
+    # /proc/cmdline (1.2.3-1.2.7), so the kernel refused a new /proc to the Debian sandbox and Flatpak
+    o = sh('grep -c " /proc/cmdline " /proc/self/mountinfo', 20)
+    ok('...nothing is mounted over /proc/cmdline (1.2.7 mounted the start-up options there after a kexec)', last(o) == '0', o[-100:])
+    o = sh('/usr/bin/rudolf-fscheck | grep proc_mount', 60)
+    ok('...so a sandbox may mount its own /proc (the Debian sandbox: "mounting /proc failed (Operation not permitted)")', last(o) == 'proc_mount=ok', o[-200:])
+    ok('...and the start-up options, with the debug option, are in /etc/rudolf/cmdline', 'rudolf.debug=1' in sh('cat /etc/rudolf/cmdline', 20) and 'rudolf.slot=a' in sh('cat /etc/rudolf/cmdline', 20))
     page(g, js)
     # the test release is signed with the test key, which this test system's update tool does not trust by itself
     if TPUB: sh(f'echo {TPUB} >> /etc/rudolf/rpk-keys; echo added', 20)
@@ -169,6 +176,8 @@ try:
     up = wait_shell(g)
     ok('3. the drive starts from its new boot files (shim, the menu, the signed kernel) and the installed update', up and last(sh('cat /etc/rudolf/slot', 20)) == 'a' and last(sh('[ -e /live/media/rudolf/bootonly ] && echo bootonly', 20)) == 'bootonly', sh('cat /etc/rudolf/slot; ls /live/media/rudolf/', 20)[-200:])
     ok('...the file in the home folder is still there', last(sh('cat /home/rudolf/keepme.txt', 20)) == 'my homework')
+    o = sh('/usr/bin/rudolf-fscheck | grep proc_mount', 60)
+    ok('...a sandbox may mount its own /proc here too', last(o) == 'proc_mount=ok', o[-200:])
     page(g, js)
     info = J(js("rd('info').then(i=>JSON.stringify(i))"), {})
     ok('...rudolfd says the boot files start with Secure Boot now, and what was written', info.get('bootSecure') == 1 and (info.get('bootFiles', {}).get('result') or '').startswith('written'), [info.get('bootSecure'), info.get('bootFiles')])

@@ -104,8 +104,8 @@ addEventListener('keydown',e=>{if(RD&&e.ctrlKey&&e.altKey&&(e.key=='t'||e.key=='
 /* ---------- Linux check (1.2.7): what Linux apps and the terminal need, from rudolf-fscheck (rudolfd debian/check) ---------- */
 const LXCHK=[['persist','Data partition'],['persist_fs','File system'],['persist_kind','Kind'],['persist_features','Features'],['persist_inode_size','Inode size'],['persist_opts','Mounted with'],
  ['tmpfile_persist','Temporary files on the data partition'],['tmpfile_flatpak','…in Flatpak\'s folder'],['tmpfile_flatpak_repo','…in Flatpak\'s repository'],['tmpfile_var_tmp','…in /var/tmp'],['tmpfile_tmp','…in /tmp'],['tmpfile_debian','…in Debian'],
- ['flatpak_repo','Flatpak repository'],['debian_owner','Debian folder owner'],['userns','User namespaces'],['max_user_namespaces','User namespaces allowed'],['debian','Debian sandbox']];
-const lxBad=v=>/^(failed|missing|not mounted|tmp folder missing)|did not start|did not finish|not available|expected 200000/.test(String(v||''));
+ ['flatpak_repo','Flatpak repository'],['debian_owner','Debian folder owner'],['userns','User namespaces'],['proc_mount','A new /proc for sandboxes'],['max_user_namespaces','User namespaces allowed'],['debian','Debian sandbox']];
+const lxBad=v=>/^(failed|missing|not mounted|tmp folder missing|refused)|did not start|did not finish|not available|expected 200000/.test(String(v||''));
 async function lxCheck(){try{return await lxApi('debian/check')}catch(e){return{error:e.message}}}
 /* text lines for the system report */
 function lxCheckLines(r){if(!r||r.error)return['Linux check: '+(r&&r.error||'not available')];return LXCHK.filter(([k])=>r[k]!=null&&r[k]!=='').map(([k,l])=>`Linux check: ${l.replace(/^…/,'temporary files ')}: ${r[k]}`)}
