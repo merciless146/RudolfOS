@@ -1420,6 +1420,16 @@ static void api_debian(struct req *r, const char *what)
 		sadd(&s, ",\"job\":"); char *jn = slurp(RUN "/job.name", NULL); if (jn) trim(jn);
 		sjson(&s, job_running() && jn ? jn : ""); free(jn); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
 	}
+	/* 1.2.7: what Linux apps and the terminal need (rudolf-fscheck), as JSON strings */
+	if (!strcmp(what, "check")) {
+		char *o = run_out("/usr/bin/rudolf-fscheck 2>&1");
+		str s = {0}; sadd(&s, "{\"ok\":true");
+		for (char *sv, *l = strtok_r(o, "\n", &sv); l; l = strtok_r(NULL, "\n", &sv)) {
+			char *e = strchr(l, '='); if (!e) continue; *e = 0;
+			sadd(&s, ",\"%s\":", l); sjson(&s, e + 1);
+		}
+		sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
+	}
 	if (!strcmp(what, "setup") || !strcmp(what, "update") || !strcmp(what, "remove")) {
 		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
 		if (!strcmp(what, "setup")) {

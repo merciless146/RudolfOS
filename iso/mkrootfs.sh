@@ -103,6 +103,7 @@ gcc -O2 -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl
 gcc -O2 -o usr/bin/rudolf-print "$SYS/rudolf-print.c" -ldl
 gcc -O2 -o usr/bin/rudolf-apps "$SYS/rudolf-apps.c" -lz
 gcc -O2 -o usr/bin/rudolf-debian "$SYS/rudolf-debian.c" -lcrypto -ldl
+gcc -O2 -o usr/bin/rudolf-fscheck "$SYS/rudolf-fscheck.c"
 gcc -O2 -o usr/bin/rudolf-ai "$SYS/rudolf-ai.c" -lcrypto -ldl
 # Blitzen's model engine (systools/mkllama.sh: llama.cpp's llama-server, static); the model is downloaded later
 mkdir -p usr/lib/rudolf; [ -x "$SRC/llama-build/bin/llama-server" ] && cp "$SRC/llama-build/bin/llama-server" usr/lib/rudolf/

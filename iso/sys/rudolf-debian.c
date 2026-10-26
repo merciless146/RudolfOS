@@ -114,21 +114,35 @@ static pid_t keeper_pid(void)
 	int f = open(x, O_RDONLY); if (f < 0) return 0; ssize_t n = read(f, buf, sizeof buf - 1); close(f);
 	return n > 0 && !strncmp(buf, "debian-init", 11) ? p : 0;
 }
+/* 1.2.7: a failing step tells the starter which one and why (errno), through the "ready" pipe: 2, step, errno.
+   Before, every failure gave the same "the Debian sandbox did not start". */
+static int g_ready = -1;
+#define KFAIL(n) do { int e_ = errno; unsigned char b_[3] = {2, (unsigned char)(n), (unsigned char)(e_ > 255 ? 255 : e_)}; if (g_ready >= 0 && write(g_ready, b_, 3)) {} _exit(n); } while (0)
+static const char *kstep(int n)
+{
+	switch (n) {
+	case 2: return "new namespaces (unshare)"; case 3: return "fork"; case 4: return "passing the process id";
+	case 10: return "making mounts private"; case 11: return "binding the Debian folder"; case 12: return "mounting /proc";
+	case 13: return "mounting /dev"; case 14: return "mounting /dev/pts"; case 15: return "entering the Debian folder";
+	case 16: return "pivot_root"; case 17: return "entering the new root"; case 18: return "the ready signal";
+	default: return "an unknown step";
+	}
+}
 static void keeper_main(void)   /* pid 1 inside: set up the file system, then reap */
 {
 	prctl(PR_SET_NAME, "debian-init");
-	if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL)) _exit(10);
-	if (mount(ROOT, ROOT, NULL, MS_BIND | MS_REC, NULL)) _exit(11);
-	if (mount("proc", ROOT "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL)) _exit(12);
+	if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL)) KFAIL(10);
+	if (mount(ROOT, ROOT, NULL, MS_BIND | MS_REC, NULL)) KFAIL(11);
+	if (mount("proc", ROOT "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL)) KFAIL(12);
 	bindmnt("/sys", ROOT "/sys", 1);
 	/* /dev: a small one, as in Flatpak's sandbox */
 	mkdirs(ROOT "/dev", 0755);
-	if (mount("tmpfs", ROOT "/dev", "tmpfs", MS_NOSUID | MS_NOEXEC, "mode=755,size=1m")) _exit(13);
+	if (mount("tmpfs", ROOT "/dev", "tmpfs", MS_NOSUID | MS_NOEXEC, "mode=755,size=1m")) KFAIL(13);
 	const char *nodes[] = {"null", "zero", "full", "random", "urandom", "tty", NULL};
 	char a[256], b[256];
 	for (int i = 0; nodes[i]; i++) { snprintf(a, sizeof a, "/dev/%s", nodes[i]); snprintf(b, sizeof b, ROOT "/dev/%s", nodes[i]); bindmnt(a, b, 0); }
 	mkdirs(ROOT "/dev/pts", 0755);
-	if (mount("devpts", ROOT "/dev/pts", "devpts", MS_NOSUID | MS_NOEXEC, "newinstance,ptmxmode=0666,mode=620")) _exit(14);
+	if (mount("devpts", ROOT "/dev/pts", "devpts", MS_NOSUID | MS_NOEXEC, "newinstance,ptmxmode=0666,mode=620")) KFAIL(14);
 	symlink("pts/ptmx", ROOT "/dev/ptmx");
 	mkdirs(ROOT "/dev/shm", 01777); mount("tmpfs", ROOT "/dev/shm", "tmpfs", MS_NOSUID | MS_NODEV, "mode=1777");
 	symlink("/proc/self/fd", ROOT "/dev/fd"); symlink("/proc/self/fd/0", ROOT "/dev/stdin");
@@ -145,13 +159,13 @@ static void keeper_main(void)   /* pid 1 inside: set up the file system, then re
 	if (access("/etc/resolv.conf", F_OK)) write_str("/etc/resolv.conf", "");
 	bindmnt("/etc/resolv.conf", ROOT "/etc/resolv.conf", 0);
 	sethostname("rudolf", 6);
-	if (chdir(ROOT)) _exit(15);
+	if (chdir(ROOT)) KFAIL(15);
 	mkdir(".oldroot", 0700);
-	if (syscall(SYS_pivot_root, ".", ".oldroot")) _exit(16);
-	if (chdir("/")) _exit(17);
+	if (syscall(SYS_pivot_root, ".", ".oldroot")) KFAIL(16);
+	if (chdir("/")) KFAIL(17);
 	umount2("/.oldroot", MNT_DETACH); rmdir("/.oldroot");
 	/* ready: tell the starter, then reap whatever ends inside */
-	int fd = 3; char c = 1; if (write(fd, &c, 1) != 1) _exit(18); close(fd);
+	int fd = 3; char c = 1; if (write(fd, &c, 1) != 1) KFAIL(18); close(fd);
 	for (int i = 0; i < 1024; i++) close(i);
 	open("/dev/null", O_RDWR); dup2(0, 1); dup2(0, 2);
 	signal(SIGTERM, SIG_DFL); signal(SIGINT, SIG_IGN); signal(SIGHUP, SIG_IGN);
@@ -166,19 +180,20 @@ static pid_t start(void)
 	pid_t p = fork_userns();
 	if (!p) {
 		/* inside the user namespace: new mount, PID, IPC and host-name namespaces; the next child is PID 1 */
-		close(r[0]); close(q2[0]);
-		if (unshare(CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWIPC | CLONE_NEWUTS)) _exit(2);
-		pid_t q = fork(); if (q < 0) _exit(3);
-		if (!q) { close(q2[1]); dup2(r[1], 3); if (r[1] != 3) close(r[1]); setsid(); keeper_main(); }
+		close(r[0]); close(q2[0]); g_ready = r[1];
+		if (unshare(CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWIPC | CLONE_NEWUTS)) KFAIL(2);
+		pid_t q = fork(); if (q < 0) KFAIL(3);
+		if (!q) { close(q2[1]); dup2(r[1], 3); if (r[1] != 3) close(r[1]); g_ready = 3; setsid(); keeper_main(); }
 		/* this process is still in the outer PID namespace, so q is the keeper's PID as Rudolf OS sees it */
-		if (write(q2[1], &q, sizeof q) != sizeof q) _exit(4);
+		if (write(q2[1], &q, sizeof q) != sizeof q) KFAIL(4);
 		_exit(0);
 	}
 	close(r[1]); close(q2[1]);
 	pid_t q = 0; if (read(q2[0], &q, sizeof q) != sizeof q) q = 0; close(q2[0]);
 	int st; waitpid(p, &st, 0);
-	char c; ssize_t n = read(r[0], &c, 1); close(r[0]);
-	if (n != 1 || q <= 0) die("the Debian sandbox did not start");
+	unsigned char c[3] = {0}; ssize_t n = read(r[0], c, 3); close(r[0]);
+	if (n >= 3 && c[0] == 2) die("the Debian sandbox did not start: %s failed (%s)", kstep(c[1]), strerror(c[2]));
+	if (n < 1 || c[0] != 1 || q <= 0) die("the Debian sandbox did not start (%s)", q <= 0 ? "no process" : "no ready signal");
 	char s[32]; snprintf(s, sizeof s, "%d\n", q); write_str(INITPID, s);
 	k = keeper_pid(); if (!k) die("the Debian sandbox did not start");
 	return k;
