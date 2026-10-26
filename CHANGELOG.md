@@ -4,7 +4,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.3.0 (2026-10-26)
-Summary: App Store › Games lists every game on Flathub, with search and genres; Command Prompt and Lua show the real Rudolf OS version
+Summary: App Store › Games lists every game on Flathub, with search and genres; a USB stick uses its own files on a computer where Rudolf OS is installed; crashes are reported as crashes; the Linux password can be changed
+- Fixed: a Rudolf OS USB stick with its own files, started on a computer where Rudolf OS is installed, could start with the computer's files instead (on a laptop with an NVMe drive it always did). A start now uses the data partition of the drive it started from when that drive has one; otherwise it works as before.
+- New: when a part of Rudolf OS crashes during a task (as the app list reader did in 1.2.8), the task says so, with Report a problem, instead of guessing ("Is this computer connected to the internet?"). The system report lists such crashes.
+- New: Settings › Apps › Linux › Change the Linux password… sets a new password for Debian (the one sudo asks for). Before, it could only be chosen when Debian was set up.
+- Changed: updates rebuild every Rudolf OS program, so fixes to the package tool, the assistant and printing reach installed computers too.
 - New: App Store › Games lists every game in Flathub's app list under "All games on Flathub", with a search box, genres (action, arcade, board, emulators, puzzles, role-playing, simulation, sports, strategy and more) and "Verified only". Installed games come first.
 - Fixed: Linux apps › Games left out games that list only their genre (for example "Action") and not "Game".
 - Fixed: Command Prompt said "Rudolf OS [Version 1.1]" (when it opens and for VER), and Lua's sys.version() said "Rudolf OS 1.0", whatever the version. Both now give the version that is installed.
