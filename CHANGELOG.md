@@ -4,7 +4,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.2.10 (2026-10-26)
-Summary: Command Prompt and Lua show the real Rudolf OS version
+Summary: App Store › Games lists every game on Flathub, with search and genres; Command Prompt and Lua show the real Rudolf OS version
+- New: App Store › Games lists every game in Flathub's app list under "All games on Flathub", with a search box, genres (action, arcade, board, emulators, puzzles, role-playing, simulation, sports, strategy and more) and "Verified only". Installed games come first.
+- Fixed: Linux apps › Games left out games that list only their genre (for example "Action") and not "Game".
 - Fixed: Command Prompt said "Rudolf OS [Version 1.1]" (when it opens and for VER), and Lua's sys.version() said "Rudolf OS 1.0", whatever the version. Both now give the version that is installed.
 
 ## 1.2.9 (2026-10-26)
