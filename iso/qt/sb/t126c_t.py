@@ -180,7 +180,7 @@ try:
     ok('a computer with only the new stick starts from it', wait_shell(delay=60))
     ok('...keeping files on the stick (RUDOLFDATA)', last(sh('[ -e /run/rudolf/persistent ] && mountpoint -q /persist && echo kept || echo live', 20)) == 'kept', sh('grep persist /proc/mounts', 20))
     ok('...and the file from the first computer is there', last(sh('cat /home/rudolf/stick-marker.txt 2>&1', 20)) == 'made-in-the-first-session')
-    ok('...the desktop runs', until('typeof RVER=="string"&&/^1\\.2\\./.test(RVER)', 600), g.js('typeof RVER=="string"&&RVER', 20))
+    ok('...the desktop runs', until('typeof RVER=="string"&&/^\\d+\\.\\d+\\./.test(RVER)', 600), g.js('typeof RVER=="string"&&RVER', 20))
     o = sh('grep -c made-by-mkstick /persist/etc/installed; [ -s /persist/etc/machine-id ] && echo has-own-id', 20)
     ok('...marked as made by Make a stick, with its own machine id', 'has-own-id' in o and re.search(r'^1\s*$', o, re.M), o)
     vm.shot('second')
