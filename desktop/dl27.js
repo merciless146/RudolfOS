@@ -58,12 +58,12 @@ async function dlScanBig(name,from,size,NM,prog){const hits=[];const h=await dlR
  for(const s of parts){if(/EICAR-STANDARD-ANTIVIRUS-TEST-FILE/.test(s))hits.push('EICAR-Test-File');try{SIGS.forEach(([n,r])=>{if(r.test(s))hits.push(n)})}catch(e){}}
  return[...new Set(hits)]}
 function dlUniq(d,nm){let n2=nm;if(n2 in d){const m=/^(.*?)(\.[^.]*)?$/.exec(nm);for(let i=2;;i++){n2=m[1]+' ('+i+')'+(m[2]||'');if(!(n2 in d))break}}return n2}
-/* a Rudolf OS release's own disc files (1.2.7): rudolf-os-X.Y.Z.iso, its .partNN parts and its .sha256, from this
+/* a Rudolf OS release's own disc files (1.2.7): rudolf-os-X.Y.Z.iso (1.2.8: or its boot image, rudolf-os-X.Y.Z-boot.iso), its .partNN parts and its .sha256, from this
    project's GitHub releases (repository id 1414456577, in the release-asset address GitHub redirects to). They pass the
    file-type rules (which block .partNN and .sha256 as unknown and .iso as a program type); the antivirus still scans
    them, and Make a stick / Install from accept only images whose release list Rudolf OS's key signed. */
 const DL_REPO_ID='1414456577',DL_REPO='/merciless146/RudolfOS/releases/download/';
-function dlRelFile(name,u){if(!/^rudolf-os-\d+\.\d+\.\d+\.iso(\.part\d{2}|\.sha256)?$/i.test(String(name||'')))return false;
+function dlRelFile(name,u){if(!/^rudolf-os-\d+\.\d+\.\d+(-boot)?\.iso(\.part\d{2}|\.sha256)?$/i.test(String(name||'')))return false;
  let x;try{x=new URL(String(u||''))}catch(e){return false}if(x.protocol!='https:')return false;
  const h=x.hostname.toLowerCase(),p=decodeURIComponent(x.pathname);
  return ((h=='release-assets.githubusercontent.com'||h=='objects.githubusercontent.com')&&p.split('/').includes(DL_REPO_ID))||(h=='github.com'&&p.startsWith(DL_REPO))}

@@ -460,6 +460,9 @@ static void api_info(struct req *r)
 	   shim, the signed boot menu and EFI/rudolf/rudolf.cer in its EFI image). Updates never replace these, so a
 	   computer installed from an older disc and updated still has the old, unsigned ones. 1 yes, 0 no, -1 unknown. */
 	sadd(&s, ",\"bootSecure\":%d", boot_secure());
+	/* 1.2.8: new boot files staged for the next start (bootfiles.sh), and what the start-up did with the last ones */
+	{ char *res = slurp(PERSIST "/os/bootimg/result", NULL); if (res) trim(res);
+	  sadd(&s, ",\"bootFiles\":{\"pending\":%s,\"result\":", access(PERSIST "/os/bootimg/pending", F_OK) ? "false" : "true"); sjson(&s, res ? res : ""); sadd(&s, "}"); free(res); }
 	sadd(&s, ",\"live\":%s,\"recovery\":%s,\"persistTotal\":%lld,\"persistFree\":%lld,\"backlight\":%s,\"updateInstalled\":%s}", live ? "true" : "false", recovery ? "true" : "false", ptotal, pfree,
 		backlight_dir(bl, sizeof bl) ? "true" : "false", access(PERSIST "/os/current/index.html", R_OK) ? "false" : "true");
 	free(model); free(kern); free(prod); free(vend); free(ver);
@@ -2232,7 +2235,7 @@ static void api(struct req *r)
 			if (l < 5 || strcasecmp(e->d_name + l - 4, ".iso") || e->d_name[0] == '.') continue;
 			char fp[600]; snprintf(fp, sizeof fp, "/home/rudolf/Downloads/%s", e->d_name); struct stat st;
 			if (stat(fp, &st) || !S_ISREG(st.st_mode)) continue;
-			sadd(&s, "%s{\"path\":", n++ ? "," : ""); sjson(&s, fp); sadd(&s, ",\"name\":"); sjson(&s, e->d_name); sadd(&s, ",\"bytes\":%lld}", (long long)st.st_size);
+			sadd(&s, "%s{\"path\":", n++ ? "," : ""); sjson(&s, fp); sadd(&s, ",\"name\":"); sjson(&s, e->d_name); sadd(&s, ",\"bytes\":%lld,\"boot\":%s}", (long long)st.st_size, l > 9 && !strcasecmp(e->d_name + l - 9, "-boot.iso") ? "true" : "false");
 		}
 		if (dd) closedir(dd);
 		/* 1.2.7: an image downloaded in parts (NAME.iso.part00, part01, ... with no gaps), not joined yet; install.sh
@@ -2259,7 +2262,7 @@ static void api(struct req *r)
 			}
 			if (!np) continue;
 			sadd(&s, "%s{\"path\":", n++ ? "," : ""); sjson(&s, fp); sadd(&s, ",\"name\":"); sjson(&s, base);
-			sadd(&s, ",\"bytes\":%lld,\"parts\":%d}", tot, np);
+			sadd(&s, ",\"bytes\":%lld,\"parts\":%d,\"boot\":%s}", tot, np, bl > 9 && !strcasecmp(base + bl - 9, "-boot.iso") ? "true" : "false");
 		}
 		if (dd) closedir(dd);
 		sadd(&s, "]}"); reply_json(r->fd, &s); return;
@@ -2577,8 +2580,26 @@ static void api(struct req *r)
 			for (const char *q = img; okp && *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/._-", *q)) okp = 0;
 			if (!okp) { reply_err(r->fd, 400, "the image must be a file in the home folder (letters, digits, . _ - only)"); return; }
 		}
+		/* 1.2.8: bootonly=1 replaces only the boot files in front of the disk's RUDOLFDATA, keeping it (bootfiles.sh) */
+		char *bo = qparam(r->query, "bootonly");
+		if (bo && !strcmp(bo, "1")) {
+			char cmd[600]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/bootfiles.sh write /dev/%s '%s'", img_sha_env(r), d, img && *img ? img : "");
+			start_job("bootfiles", cmd); reply_ok(r->fd, "writing the boot files"); return;
+		}
 		char cmd[600]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/install.sh /dev/%s%s%s", img_sha_env(r), d, img && *img ? " " : "", img && *img ? img : "");
 		start_job("install", cmd); reply_ok(r->fd, "installing"); return;
+	}
+	/* new boot files for the drive Rudolf OS runs from (1.2.8): checked and kept on RUDOLFDATA, written by the start-up
+	   at the next start (bootfiles.sh stage); image: a downloaded disc image or boot image in the home folder */
+	if (!strcmp(p, "bootfiles")) {
+		if (live) { reply_err(r->fd, 400, "Rudolf OS is not keeping files on this drive"); return; }
+		if (job_running()) { reply_err(r->fd, 409, "another job is running"); return; }
+		char *img = qparam(r->query, "image");
+		int okp = img && !strncmp(img, "/home/rudolf/", 13) && !strstr(img, "..") && strlen(img) < 200;
+		for (const char *q = img; okp && *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/._-", *q)) okp = 0;
+		if (!okp) { reply_err(r->fd, 400, "the image must be a file in the home folder (letters, digits, . _ - only)"); return; }
+		char cmd[600]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/bootfiles.sh stage '%s'", img_sha_env(r), img);
+		start_job("bootfiles", cmd); reply_ok(r->fd, "checking the image"); return;
 	}
 	/* make a Rudolf OS USB stick (1.2.5, mkstick.sh): disk and confirm (the same name twice), image (empty for this
 	   Rudolf OS, or a downloaded image in the home folder), files=1 to copy this session's files and settings too */
