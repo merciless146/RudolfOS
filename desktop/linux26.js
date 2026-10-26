@@ -126,7 +126,7 @@ ${save?`<label class='lxnm'>Name <input class='nm'></label>`:''}<div class='rmro
  draw();(nm||q('.ok')).focus()})}
 /* ---------- App Store › Linux apps ---------- */
 const LX_CATS=[['','All'],['Office','Office'],['Graphics','Graphics'],['AudioVideo','Audio & video'],['Game','Games'],['Development','Programming'],['Education','Education'],['Network','Internet'],['Utility','Tools'],['Science','Science'],['System','System']];
-/* 1.2.10: the game genres Flathub uses (freedesktop categories); an app with any of them is a game, also when it does not
+/* 1.3.0: the game genres Flathub uses (freedesktop categories); an app with any of them is a game, also when it does not
    list "Game" itself */
 const LX_GENRES=[['ActionGame','Action'],['AdventureGame','Adventure'],['ArcadeGame','Arcade'],['BoardGame','Board'],['BlocksGame','Blocks and falling pieces'],['CardGame','Card'],['KidsGame','For children'],['LogicGame','Logic and puzzles'],['RolePlaying','Role-playing'],['Shooter','Shooters'],['Simulation','Simulation'],['SportsGame','Sports'],['StrategyGame','Strategy'],['Emulator','Emulators']];
 const lxIsGame=a=>(a.cats||[]).some(c=>c=='Game'||LX_GENRES.some(([g])=>g==c));

@@ -1,4 +1,4 @@
-// App Store › Games 1.2.10: every game in Flathub's app list (a game is an app with "Game" or a game genre), with a
+// App Store › Games 1.3.0: every game in Flathub's app list (a game is an app with "Game" or a game genre), with a
 // search box, genres and "Verified only", and Linux apps' Games category finding the same games. Stand-in rudolfd.
 // node gmall_t.js [CHROME]   (build iso/www/index.html first)
 const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');

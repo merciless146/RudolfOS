@@ -1,4 +1,4 @@
-// Command Prompt and Lua (1.2.9): the version they print is Rudolf OS's own (RVER), not "1.1" / "1.0" as before.
+// Command Prompt and Lua (1.3.0): the version they print is Rudolf OS's own (RVER), not "1.1" / "1.0" as before.
 // node cmd_t.js [CHROME]   (build iso/www/index.html first)
 const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
 const WWW = path.join(__dirname, '../../..', 'iso/www');

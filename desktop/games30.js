@@ -1,6 +1,6 @@
 /* ===================== Games in the App Store (1.2.5) =====================
    A Games tab: Roblox (Sober) and Linux games from Flathub (Steam, Prism Launcher for Minecraft, RetroArch), and the
-   games built into Rudolf OS, and (1.2.10) every game on Flathub with a search box and genres. Each says how much it downloads and whether it needs the graphics card. On a computer
+   games built into Rudolf OS, and (1.3.0) every game on Flathub with a search box and genres. Each says how much it downloads and whether it needs the graphics card. On a computer
    where Rudolf OS draws with the processor (Task Manager › System › Drawn by), a note says which will be slow. */
 const GAMES_FLAT=[
  {id:'com.valvesoftware.Steam',name:'Steam',icon:'🚂',gpu:1,size:1.5e9,desc:'Valve’s game store and launcher. Many Windows games run through its Proton layer. Steam on Flathub is packaged by the community, not by Valve: an administrator allows it in App Store › Installed (unverified apps).'},
@@ -41,7 +41,7 @@ async function gamesFlatPage(B,g,back,W){if(!RD)return notify(g.name,'Linux game
  const b=document.createElement('button');b.dataset.t='games';b.textContent='Games';tabs.querySelector("[data-t='get']").after(b);
  const show=()=>{tabs.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));gamesTab(B,show,W)};b.onclick=show;W.showGames=show;return W}}
 
-/* 1.2.10: every game in Flathub's app list, with a search box and genres, as App Store › Linux apps has for all apps */
+/* 1.3.0: every game in Flathub's app list, with a search box and genres, as App Store › Linux apps has for all apps */
 async function gamesAll(box,B,back){if(!box)return;const msg=t=>{box.innerHTML=`<p class='msg'>${t}</p>`};
  if(!RD)return msg('Linux games run when Rudolf OS is started from its disc, USB drive or hard disk.');
  let s;try{s=await lxApi('apps/status')}catch(e){return msg(lxEsc(e.message))}

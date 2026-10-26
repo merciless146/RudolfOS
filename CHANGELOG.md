@@ -3,7 +3,7 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
-## 1.2.10 (2026-10-26)
+## 1.3.0 (2026-10-26)
 Summary: App Store › Games lists every game on Flathub, with search and genres; Command Prompt and Lua show the real Rudolf OS version
 - New: App Store › Games lists every game in Flathub's app list under "All games on Flathub", with a search box, genres (action, arcade, board, emulators, puzzles, role-playing, simulation, sports, strategy and more) and "Verified only". Installed games come first.
 - Fixed: Linux apps › Games left out games that list only their genre (for example "Action") and not "Game".
