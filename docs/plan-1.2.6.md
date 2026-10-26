@@ -491,6 +491,21 @@ that setting is worth trying (one restart). Nothing changes in 1.2.7.
 3. Release steps as usual: one pull request (#36, which these join); local release build and test disc; the stage
    tests and the regression suites; beta; the same tests on that serial; promote. disc-1.2.7 still waits for stage C.
 
+### As built (stage B additions)
+- **Item 12 changed from the plan:** downloads stay in `C:\DOWNLOADS` (large files on the disk, with a reference
+  there, as before); Files' "Downloads", dropped files and Copy into Rudolf OS all use that folder (`downloadsPath()`),
+  and a one-time notice says where they are.
+- **Item 9:** `joinparts.sh` is run by `install.sh` (and so by Make a stick); the page passes the `.sha256`'s hash as
+  `sha=`, which rudolfd gives as `RUDOLF_IMG_SHA`. Test: `t127c_t.py` (the real disc-1.2.6 image in release-sized parts).
+- **Item 11:** rudolfd's `info.bootSecure` looks for `RUDOLF  CER` and `GRUBX64 EFI` in the running disc's
+  `EFIBOOT.IMG`.
+- **Items 14–16:** `rudolf-fscheck` (rudolfd `debian/check`), Settings › Apps › Linux › Check and the system report.
+  `rudolf-debian` reports the step that failed. The start-up repair makes Flatpak's `repo/tmp` and `/var/tmp`; the
+  old chown "repair" of `/persist/debian` was removed (it must stay owned by 200000). The cause on the laptop is not
+  known yet: the Check's result after the update will tell. Test: `t127d_t.py`.
+- **Found while doing this:** release builds never rebuilt `rudolf-debian` (not in `ci_release.sh`'s list); it and
+  `rudolf-fscheck` are now built there.
+
 ## Release steps (each stage)
 1. Branch `rudolf-1.2.6-a`, `rudolf-1.2.7-b`, `rudolf-1.2.7-c`; implement, host tests, local release build from the
    published beta.
