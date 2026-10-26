@@ -185,8 +185,9 @@ eject)
 	[ -w /sys/block/$d/device/delete ] && echo 1 > /sys/block/$d/device/delete
 	exit 0;;
 release)
+	# no refusal of Rudolf OS disks here (1.2.7): an older Rudolf OS stick is one, and this only ever unmounts what
+	# devplug mounted under /media (never a Rudolf OS disk). The drive Rudolf OS runs from is refused by the callers.
 	d=$2; case "$d" in ""|*[!a-z0-9]*) echo "bad device" >&2; exit 2;; esac
-	system_disk $d && { echo "this is Rudolf OS's own disk" >&2; exit 1; }
 	sync
 	for m in $(grep -E "^/dev/${d}p?[0-9]* /media/" /proc/mounts | awk '{print $2}'); do umount "$m" 2>/dev/null || { echo "a file on the drive is still open" >&2; exit 1; }; rmdir "$m" 2>/dev/null; done
 	for j in $RUN/drives/$d*; do [ -f "$j" ] || continue; event "{\"a\":\"remove\",$(cut -c2- $j)"; rm -f "$j"; done

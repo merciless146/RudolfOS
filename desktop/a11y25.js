@@ -164,7 +164,7 @@ DESK.addEventListener('dragover',e=>{const w=e.target.closest&&e.target.closest(
 DESK.addEventListener('dragleave',e=>{const w=e.target.closest&&e.target.closest('.win');w&&w.classList.remove('droptarget')},true);
 DESK.addEventListener('drop',async e=>{const w=e.target.closest&&e.target.closest('.win');if(!w)return;w.classList.remove('droptarget');const W=wins.find(o=>o.el===w);if(!W||W.app=='explorer')return;
  if(FC.drag&&FC.drag.length){e.preventDefault();e.stopPropagation();const items=FC.drag;FC.drag=null;items.forEach(p=>__dropFileOnWindow(W,p));return}
- const fl=e.dataTransfer&&[...e.dataTransfer.files];if(!fl||!fl.length)return;e.preventDefault();e.stopPropagation();const d=node(homePath('DOWNLOADS'))||node(['C:']);
+ const fl=e.dataTransfer&&[...e.dataTransfer.files];if(!fl||!fl.length)return;e.preventDefault();e.stopPropagation();const d=node(downloadsPath())||node(['C:']);
  for(const f of fl){if(f.size>64*1048576)continue;const nm=uniq(d,f.name.toUpperCase().replace(/[\\\/:*?"<>|]/g,'_').slice(0,60));const E=ext(nm);d[nm]=TEXTE.test(E)&&E!='SVG'?await f.text():await blobToDataURL(f);fsSave();__dropFileOnWindow(W,[...homePath('DOWNLOADS'),nm])}EXPL.forEach(f=>f())},true);
 /* ---------- touch: keyboard on focus, three-finger gestures ---------- */
 let lastPtrType='mouse';addEventListener('pointerdown',e=>{lastPtrType=e.pointerType},true);
