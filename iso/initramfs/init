@@ -74,14 +74,15 @@ find_media() {
 SLOT=$(sed -n 's/.*rudolf\.slot=\([ab]\).*/\1/p' /proc/cmdline)
 # a slot's kernel may be newer than the disc: any Rudolf OS disc will do, and none is needed
 [ -n "$SLOT" ] && ID=any
-find_media_any() { [ "$ID" = any ] || return 1; for d in /dev/sr* /dev/sd?1 /dev/nvme?n?p1 /dev/vd?1 /dev/mmcblk?p1; do [ -b "$d" ] || continue; mount -t iso9660 -o ro "$d" /mnt/media 2>/dev/null || continue; [ -e /mnt/media/rudolf/id ] && { MEDIA=$d; return 0; }; umount /mnt/media; done; return 1; }
+find_media_any() { [ "$ID" = any ] || return 1; for d in /dev/sr* /dev/sd?1 /dev/nvme?n?p1 /dev/vd?1 /dev/mmcblk?p1; do [ -b "$d" ] || continue; [ -n "$MDEV" ] && [ "$d" != "$MDEV" ] && [ "${i:-0}" -lt 16 ] && continue; wrong_kind "$d" && continue; mount -t iso9660 -o ro "$d" /mnt/media 2>/dev/null || continue; [ -e /mnt/media/rudolf/id ] && { MEDIA=$d; return 0; }; umount /mnt/media; done; return 1; }
 # 1.3.0: a slot's kernel first tries the drive the disc's kernel started from (rudolf.mediadev=, passed on at the
 # handover): with another Rudolf OS stick plugged in, "any Rudolf OS disc" could otherwise be that stick
 MDEV=$(echo " $CMD " | sed -n 's/.* rudolf\.mediadev=\([^ ]*\) .*/\1/p')
 find_media_given() { [ -n "$SLOT" ] && [ -n "$MDEV" ] && [ -b "$MDEV" ] || return 1; mount -t iso9660 -o ro "$MDEV" /mnt/media 2>/dev/null || return 1; [ -e /mnt/media/rudolf/id ] && { MEDIA=$MDEV; return 0; }; umount /mnt/media; return 1; }
 i=0
 until find_media_given || find_media || find_media_any; do
-	[ -n "$SLOT" ] && [ $i -ge 6 ] && { MEDIA=""; break; }
+	# (1.3.0: a slot's kernel told which drive to use waits for it as the disc's kernel did: a USB stick takes a few seconds)
+	[ -n "$SLOT" ] && [ $i -ge 6 ] && { [ -z "$MDEV" ] || [ $i -ge 16 ]; } && { MEDIA=""; break; }
 	i=$((i + 1))
 	[ $i -eq 6 ] && say "Rudolf OS: still looking for the Rudolf OS disc or USB drive..."
 	if [ $i -ge 40 ]; then
