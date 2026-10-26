@@ -120,6 +120,18 @@ disc-1.2.5 both show it: every other file matches, and `boot/rboot.bin` fails.
 
 ## 5. More USB Wi-Fi adapters (stage B)
 
+> **As built** (branch `rudolf-1.2.7-b`). Differences from the plan below:
+> - **Firmware.** `wififw.py` runs only in the full disc build, so a release build does not pick firmware up by
+>   itself. A release build takes firmware from the pinned list in `firmware-extra.txt` (`fwextra.py`). The eight
+>   files and three links are pinned there with their SHA-256: `htc_9271.fw`, `htc_7010.fw`,
+>   `ath9k_htc/htc_*-1.4.0.fw`, `mediatek/mt7601u.bin`, `mediatek/mt7610u.bin`, `mediatek/mt7662.bin` and
+>   `mt7662_rom_patch.bin`. They are added to the CI build's sparse linux-firmware checkout.
+> - **Kernel options.** `MT76x0U` and `MT76x2U` have lower case in their names, and `scripts/config` upper-cases
+>   names unless given `--keep-case`. So `kconfig.sh` has an `mk` helper for them; with `m` they would have been
+>   left out without a word. No other option in the file is affected.
+> - **mt76x2u firmware names.** The driver asks for `mt7662.bin` and `mt7662_rom_patch.bin`, not the `mt7662u…`
+>   names in the table below.
+
 **Now.** Rudolf OS already drives most current USB Wi-Fi adapters:
 - Realtek RTL8188/8192 (`rtl8xxxu`), RTL8811AU/8812AU, RTL8821CU, RTL8822BU/CU, RTL8852BU, RTL8851BU (`rtw88`, `rtw89`);
 - MediaTek MT7921AU and MT7925U;
@@ -154,6 +166,18 @@ The existing `MAC80211_HWSIM` Wi-Fi test still passes. If you have one of these 
 
 ## 6. Faster first Luau type check (stage B)
 
+> **As built.**
+> - The compiled `WebAssembly.Module` was already shared, so "compile once" needed no change.
+> - The new parts:
+>   - a checker per kind;
+>   - a `warm` message;
+>   - replies dispatched by id: the old code replaced the Worker's `onmessage` on each check, so two checks at once
+>     could mix up their answers;
+>   - an idle end after 10 minutes.
+> - Tests:
+>   - `luau_t.js` 29/29, with a warm Pilot.lua check in 7 ms against a 1.1 s load on the host;
+>   - `blz_t.js` 14/14 (Blitzen's picker, and Code Editor with a Roblox `.LUAU` file).
+
 **Now** (`desktop/luau30.js`). The type checker runs in one Web Worker (`LUAU.checker`), kept between checks.
 - The first check of a kind loads `luau.wasm` (4.3 MB), then defines that kind's types: Roblox-lite and its
   `Enum` for `roblox`; those plus `pilot.d.luau` for `pilot`. The first check is allowed 120 s, later ones 20 s.
@@ -183,6 +207,11 @@ The existing `MAC80211_HWSIM` Wi-Fi test still passes. If you have one of these 
 - `luau_pw.js` (Code Editor): opening a `.LUAU` file starts the warm-up.
 
 ## 7. Copy folders from a USB drive or memory card (stage B)
+
+> **As built.**
+> - rudolfd already had `fs/tree` (every file below a folder, in one call), so no rudolfd change.
+> - The copy goes to Downloads, or to C: when there is no Downloads folder; the notice says which.
+> - Test: `files_t.js` 8/8.
 
 **Now** (`desktop/files25.js`, `remoteImport`).
 - A plugged-in drive (USB stick, memory card, external disk, under `/media`) opens in Files as a remote place.

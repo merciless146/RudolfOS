@@ -12,12 +12,17 @@ install script makes them; a git checkout has none). What is listed:
     files already sit in the base layer; these are the large GSP images and their boot loaders.
   - Realtek Ethernet (r8169) firmware: small fixes the driver loads for most of its chips.
   - AMD processor microcode (1.2.4): built into the kernel too (kconfig.sh, UCODE_DIR) so it applies at start-up.
+  - USB Wi-Fi adapters whose drivers came in 1.2.7 (ath9k_htc, mt7601u, mt76x0u, mt76x2u). The firmware of the
+    older Wi-Fi drivers sits in the base layer (wififw.py, at the full build).
 """
 import hashlib, os, re, shutil, sys
 
 PATTERNS = [r'rtl_nic/.+', r'amd-ucode/microcode_amd(_fam[0-9a-f]+h)?\.bin',
             r'nvidia/[^/]+/gsp/(gsp|bootloader|gen_bootloader|scrubber|fmc)-570\.144\.bin',
-            r'nvidia/[^/]+/gsp', r'nvidia/ad10[3-7]', r'nvidia/gb102', r'nvidia/gb20[3-7]']   # whole-folder links (ga104/gsp -> ../ga102/gsp, ad104 -> ad102, gb203 -> gb202)
+            r'nvidia/[^/]+/gsp', r'nvidia/ad10[3-7]', r'nvidia/gb102', r'nvidia/gb20[3-7]',   # whole-folder links (ga104/gsp -> ../ga102/gsp, ad104 -> ad102, gb203 -> gb202)
+            # USB Wi-Fi adapters (1.2.7): Atheros AR9271/AR7010 (ath9k_htc), MediaTek MT7601U, MT7610U, MT7612U (mt76x2u)
+            r'htc_(9271|7010)\.fw', r'ath9k_htc/htc_(9271|7010)-1\.4\.0\.fw', r'(mediatek/)?mt7601u\.bin', r'mediatek/mt7610u\.bin',
+            r'(mediatek/)?mt7662(_rom_patch)?\.bin']
 
 
 def want(p):

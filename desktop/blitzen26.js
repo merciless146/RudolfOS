@@ -102,6 +102,8 @@ function blzChatUI(W){
   <div class='msg blzst'></div>`;
  const q=s=>W.body.querySelector(s),log=q('.blzlog'),ta=q('.blzq'),stEl=q('.blzst'),langSel=q('.blzlang');
  const chat={msgs:[],file:null};let busy=false;
+ /* 1.2.7: Luau and Pilot.lua answers are type-checked; start that checker while the question is being written */
+ const warm=()=>{const v=langSel.value;if(typeof luauWarm=='function'&&(v=='luau'||v=='pilot'))luauWarm(v)};langSel.addEventListener('change',warm);setTimeout(warm,0);
  q('.blzrun').onchange=e=>svj('bd95blzcheck',e.target.checked);
  const scroll=()=>{log.scrollTop=log.scrollHeight};
  const bubble=(role,label)=>{const d=document.createElement('div');d.className='blzm '+(role=='user'?'blzu':'blza');d.innerHTML=`<div class='blzwho'>${label||(role=='user'?'You':'⚡ Blitzen')}</div><div class='blzbody'></div>`;log.appendChild(d);scroll();return d};
@@ -159,7 +161,7 @@ function blzChatUI(W){
   const fx=await answer(`⚡ Blitzen · fix ${tries+1} of ${BLZ.retries}`,{pack:{lua:langSel.value=='lua'?'lua':'blocklua',luau:'luau',pilot:'pilot',js:'js',python:'python',cpp:'cpp'}[c.dataset.lang]});await check(fx,tries+1)}
  async function ask(text,o={}){text=String(text||'').trim();if(!text||busy)return;
   if(blzGameRunning()){stEl.textContent='Close the game first: Blitzen needs the memory a game is using.';return}
-  if(o.lang!==undefined)langSel.value=o.lang;
+  if(o.lang!==undefined){langSel.value=o.lang;warm()}
   if(!chat.msgs.length)log.innerHTML='';chat.msgs.push({role:'user',content:text+(o.context?'\n\n'+o.context:'')});
   const u=bubble('user');u.querySelector('.blzbody').innerHTML=blzMd(text)+(o.context?`<details class='blzctx'><summary>with ${lxEsc(o.contextName||'context')}</summary><pre></pre></details>`:'');if(o.context)u.querySelector('.blzctx pre').textContent=o.context;
   ta.value='';const el=await answer(null,{blocks:o.blocks,pack:o.blocks?'blocklua':o.pack});

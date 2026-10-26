@@ -86,3 +86,14 @@ L nvidia/gb203 gb202
 L nvidia/gb205 gb202
 L nvidia/gb206 gb202
 L nvidia/gb207 gb202
+F b5c123f9a8f2b0388eddd630860c100b4fe889ccdb4fcf24bc88b0fe2df3e59e htc_9271.fw
+F 45cc9e5e9450f0b494bbff81c382b080885d6dd86d816b22d322c58eb1b47114 htc_7010.fw
+F 737850aaf66ca13f82e0f5ca5e758f606f840c2f23c291350ab916bbf88e6f75 ath9k_htc/htc_7010-1.4.0.fw
+F 78f7d592a95b419a02fde7440f30c606fc31a871cf0ce150ced40d4857173eb0 ath9k_htc/htc_9271-1.4.0.fw
+F 4511b1d840e22aea2bf5fdca419c91c0d94cbfb291b9ac4f8be6d9100d1a7046 mediatek/mt7601u.bin
+F 5a4268e9021bb587426ba624b425f1e660bfc82cd63b36ad3ce6fb9ce6751760 mediatek/mt7610u.bin
+F f7e52492f58088cae50e51a54cca68e4abc5b74f7d0b6b731dbb4c04465a94b6 mediatek/mt7662.bin
+F 6f0e871268f6e4d99196d90d89bcc09fe493d010366260a2cfcaa5dd66095f8c mediatek/mt7662_rom_patch.bin
+L mt7601u.bin mediatek/mt7601u.bin
+L mt7662.bin mediatek/mt7662.bin
+L mt7662_rom_patch.bin mediatek/mt7662_rom_patch.bin

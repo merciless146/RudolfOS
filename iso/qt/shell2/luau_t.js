@@ -78,5 +78,22 @@ print(Enum.Material.Plastic)`;
   ok('...and its type errors are found', r.code == 1 && /line 2/.test(r.out), r.out);
   // dialects
   ok('dialects: Pilot.lua, Roblox, Luau, Lua', ev(`[luauDialect('local s = GetPart("Screen")'),luauDialect('local p = game:GetService("Players")'),luauDialect('local x: number = 1'),luauDialect('local n = 0\\nn += 1'),luauDialect('print("hi")\\nlocal t = {}')].join()`) == 'pilot,roblox,luau,luau,lua', ev(`[luauDialect('local s = GetPart("Screen")'),luauDialect('local p = game:GetService("Players")'),luauDialect('local x: number = 1'),luauDialect('local n = 0\\nn += 1'),luauDialect('print("hi")\\nlocal t = {}')].join()`));
+  // 1.2.7: a checker per kind, loaded and defined once, warmed ahead of time
+  let D = JSON.parse(ev('JSON.stringify(LUAU.defines)'));
+  ok('1.2.7: switching between Luau, Pilot.lua and Roblox checks loads each kind once', D.luau == 1 && D.pilot == 1 && D.roblox == 1, D);
+  ev(`for (const k of Object.keys(LUAU.checkers)) luauDropChecker(k, LUAU.checkers[k]); LUAU.defines = {}`);
+  ev(`luauWarm('pilot')`); let t1 = Date.now();
+  while (!ev(`!!(LUAU.checkers.pilot && LUAU.checkers.pilot.done)`) && Date.now() - t1 < 120000) await new Promise(r => setTimeout(r, 100));
+  const warmMs = Date.now() - t1; t1 = Date.now();
+  r = await ev(`luauCheck('local s = GetPart("Screen")\\nprint(s)', {kind: 'pilot'})`);
+  const checkMs = Date.now() - t1;
+  ok('...a warm-up loads the Pilot.lua checker ahead of time, and the first check then only checks', r.ok && checkMs < 3000 && warmMs > checkMs, {warmMs, checkMs, r});
+  r = await ev(`Promise.all([luauCheck('local a: number = "x"', {kind: 'pilot'}), luauCheck('local b: string = "y"', {kind: 'pilot'})])`);
+  ok('...two checks at once each get their own answer', r[0].ok && r[0].problems.length == 1 && r[1].ok && r[1].problems.length == 0, r);
+  r = await ev(`luauCheck('local n: number = 1', {kind: 'luau'})`);
+  D = JSON.parse(ev('JSON.stringify(LUAU.defines)'));
+  ok('...and a Luau check meanwhile does not drop the Pilot.lua checker', r.ok && D.pilot == 1 && ev(`!!LUAU.checkers.pilot`), D);
+  ev(`LUAU.idleMs = 50; luauIdle('luau', LUAU.checkers.luau)`); await new Promise(r => setTimeout(r, 300));
+  ok('...a checker left idle is ended', ev(`!LUAU.checkers.luau && !!LUAU.checkers.pilot`));
   console.log(R.filter(x => x).length + '/' + R.length + ' passed'); process.exit(R.every(x => x) ? 0 : 1);
 })();

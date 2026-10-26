@@ -201,11 +201,45 @@ function wire(pn,el,r){const k=pkey(r.p);
    bar.querySelector('.rim').onclick=()=>remoteImport(pn,cur());bar.querySelector('.rpu').onclick=()=>remoteUpload(pn);bar.querySelector('.rmk').onclick=()=>remoteMkdir(pn);
    bar.querySelector('.rdl').onclick=async()=>{const c=cur();if(!c.length)return say('Select files on the drive first.',true);for(const i of c){try{await rdPost('fs/delete?path='+encodeURIComponent(pn.remote.path+'/'+i.name))}catch(e){say(e.message,true)}}draw()};
    bar.querySelector('.rej').onclick=async()=>{try{await rdPost('umount?dev='+pn.remote.dev);say('You can now remove the drive.');go(pn,homePath())}catch(e){say(e.message,true)}};
-   say(items.length+' item(s) on '+pn.remote.label)}catch(e){box.innerHTML='';const d=document.createElement('div');d.className='xempty';d.textContent='Could not read the drive: '+e.message;box.appendChild(d)}}
- async function remoteImport(pn,list){const dest=node(homePath('DOWNLOADS'))||node(['C:']);const out=[];for(const it of list){if(it.dir){say('Copy folders one file at a time for now.',true);continue}if(it.size>256*1048576){say(it.name+' is too large.',true);continue}
-   say('Copying '+it.name+'…');const r=await rd('fs/read?path='+encodeURIComponent(pn.remote.path+'/'+it.name));const b=await r.blob();const nm=uniq(dest,it.name.toUpperCase().replace(/[\\:*?"<>|]/g,'_').slice(0,60));const e=ext(nm);
-   dest[nm]=TEXTE.test(e)&&e!='SVG'&&b.size<4*1048576?await b.text():await blobToDataURL(new Blob([b],{type:MIMEX[e]||b.type||'application/octet-stream'}));out.push([...homePath('DOWNLOADS'),nm])}
-  if(out.length){fsSave();EXPL.forEach(f=>f());notify('Copied into Downloads',out.map(p=>p.at(-1)).join(', '))}return out}
+   if(pn.msg){say(pn.msg,pn.msgBad);pn.msg=null}else say(items.length+' item(s) on '+pn.remote.label)}catch(e){box.innerHTML='';const d=document.createElement('div');d.className='xempty';d.textContent='Could not read the drive: '+e.message;box.appendChild(d)}}
+ /* copy from a drive into Downloads: files, and (1.2.7) folders with everything in them (rudolfd's fs/tree). The whole
+    copy is counted first: more than 5,000 files, or more than fits in this browser's storage, is refused before
+    anything is copied; files over 256 MB are left out and listed; Cancel keeps what was copied so far. */
+ async function remoteImport(pn,list){const DP=node(homePath('DOWNLOADS'))?homePath('DOWNLOADS'):['C:'],dest=node(DP);const out=[],skip=[],FN=n=>n.toUpperCase().replace(/[\\:*?"<>|]/g,'_').slice(0,60);
+  const jobs=[];   // {src, parts: names below dest, size}; folders: {dir:true, parts}
+  try{for(const it of list){const base=pn.remote.path+'/'+it.name;
+    if(!it.dir){jobs.push({src:base,parts:[it.name],size:it.size});continue}
+    jobs.push({dir:true,parts:[it.name]});say('Counting what is in '+it.name+'…');
+    const tr=await rd('fs/tree?path='+encodeURIComponent(base));
+    for(const e of tr.items||[]){const parts=[it.name,...e.p.split('/')];if(e.dir)jobs.push({dir:true,parts});else jobs.push({src:base+'/'+e.p,parts,size:e.size})}}}
+  catch(e){say('Could not read the drive: '+e.message,true);return out}
+  const fl=jobs.filter(j=>!j.dir),big=fl.filter(j=>j.size>256*1048576),todo=fl.filter(j=>j.size<=256*1048576);
+  big.forEach(j=>skip.push(j.parts.join('/')+' (over 256 MB)'));
+  const total=todo.reduce((a,j)=>a+j.size,0);
+  if(todo.length>5000){say(`That is ${todo.length} files: copy at most 5,000 at a time (a folder further down, say).`,true);return out}
+  if(list.some(i=>i.dir)){const si=await storageInfo();if(si.quota&&total*1.4>(si.quota*0.9-si.used)){say(`That is ${fmtB(total)}: it does not fit in this computer's Rudolf OS storage (${fmtB(Math.max(0,si.quota*0.9-si.used))} free). Copy a smaller folder, or keep it on the drive.`,true);return out}}
+  // folders first, each name made unique once (at the top) and then followed down
+  const map=new Map();
+  const ensure=parts=>{const k=parts.join('/');if(map.has(k))return map.get(k);const par=parts.length>1?ensure(parts.slice(0,-1)):{d:dest,p:DP};
+   const nm=uniq(par.d,FN(parts.at(-1)));par.d[nm]={};const v={d:par.d[nm],p:[...par.p,nm]};map.set(k,v);if(parts.length==1)out.push(v.p);return v};
+  jobs.filter(j=>j.dir).forEach(j=>ensure(j.parts));
+  let cancel=false,done=0,bytes=0;const cx=document.createElement('button');cx.textContent='Cancel';cx.className='rcx';cx.onclick=()=>{cancel=true};
+  if(todo.length>1)stat.after(cx);
+  try{for(const j of todo){if(cancel)break;
+    say(todo.length>1?`Copying ${done+1} of ${todo.length} files (${fmtB(bytes)})…`:'Copying '+j.parts.at(-1)+'…');
+    let b;try{const r=await rd('fs/read?path='+encodeURIComponent(j.src));b=await r.blob()}catch(e){skip.push(j.parts.join('/')+' (could not be read)');continue}
+    const par=j.parts.length>1?ensure(j.parts.slice(0,-1)):{d:dest,p:DP};const nm=uniq(par.d,FN(j.parts.at(-1)));const e=ext(nm);
+    par.d[nm]=TEXTE.test(e)&&e!='SVG'&&b.size<4*1048576?await b.text():await blobToDataURL(new Blob([b],{type:MIMEX[e]||b.type||'application/octet-stream'}));
+    if(j.parts.length==1)out.push([...par.p,nm]);done++;bytes+=b.size}}
+  finally{cx.remove()}
+  if(out.length||done){fsSave();EXPL.forEach(f=>f());
+   const what=out.map(p=>p.at(-1)).join(', ');
+   notify(cancel?'Copying stopped':'Copied into '+(DP.length>1?'Downloads':DP[0]),(cancel?`${done} of ${todo.length} files were copied: `:'')+what+(skip.length?` · left out: ${skip.slice(0,5).join(', ')}${skip.length>5?' and '+(skip.length-5)+' more':''}`:''))}
+  /* the result stays in the status bar after the drive's list is drawn again */
+  const msg=[cancel?`Stopped: ${done} of ${todo.length} files copied.`:todo.length>1?`Copied ${done} files (${fmtB(bytes)}) into ${DP.at(-1)}.`:'',
+   skip.length?`Left out ${skip.length}: ${skip.slice(0,3).join(', ')}${skip.length>3?'…':''}`:''].filter(Boolean).join(' ');
+  if(msg){pn.msg=msg;pn.msgBad=!!skip.length;say(msg,!!skip.length)}
+  return out}
  async function remoteUpload(pn){if(!FC.items.length)return say('Copy files in Rudolf OS first, then paste them here.',true);for(const p of FC.items){const v=node(p);if(v==null||isDir(v))continue;say('Writing '+p.at(-1)+'…');try{await rd('fs/write?path='+encodeURIComponent(pn.remote.path+'/'+p.at(-1).toLowerCase()),{method:'POST',body:dataToBlob(v)})}catch(e){say(e.message,true);return}}draw()}
  async function remoteUploadFiles(pn,fl){for(const f of fl){try{await rd('fs/write?path='+encodeURIComponent(pn.remote.path+'/'+f.name),{method:'POST',body:f})}catch(e){say(e.message,true)}}draw()}
  async function remoteMkdir(pn){const n='New folder '+new Date().toLocaleTimeString().replace(/:/g,'.');try{await rdPost('fs/mkdir?path='+encodeURIComponent(pn.remote.path+'/'+n));draw()}catch(e){say(e.message,true)}}
