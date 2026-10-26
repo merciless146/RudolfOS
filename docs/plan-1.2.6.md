@@ -8,9 +8,12 @@ in normal use, and a release-notes slip. They went first, in **stage A**, so the
 
 The features (items 5 to 9) follow in **stages B and C** and ship as **1.2.7** (`iso/VERSION` 1.2.7, `RVER` 1.2.7),
 since 1.2.6 is out:
-- **Stage B:** the kernel's new USB Wi-Fi drivers, and two changes to the desktop page (Luau, Files).
-- **Stage C:** the hardware check's new steps, with the webcam driver they need, and joining a downloaded disc
-  image. Both add to rudolfd.
+- **Stage B:** the kernel's new USB Wi-Fi drivers, and two changes to the desktop page (Luau, Files). After the stage B
+  pull request opened, testing 1.2.6 on a real laptop (ASUS Vivobook Go 14, E1404FA, AMD Ryzen 3 7320U, 3.3 GB,
+  installed from a pre-1.2.2 disc and updated) found items 10 to 16. Setting up Secure Boot there needs items 9 to 13,
+  so they join stage B, together with item 9 (moved from stage C). All of them ship in the same 1.2.7 update.
+- **Stage C:** the hardware check's new steps, with the webcam driver they need (item 8), and new boot files on an
+  installed drive keeping its files (item 17).
 
 | # | Item | Kind | Size | Stage |
 |---|------|------|------|-------|
@@ -22,7 +25,16 @@ since 1.2.6 is out:
 | 6 | Faster first Luau type check | feature | small | B |
 | 7 | Copy folders from a USB drive or memory card (Files) | feature | small | B |
 | 8 | Hardware check: keyboard, touchpad or mouse, camera, battery, screen (and the webcam driver) | feature | medium | C |
-| 9 | Make a stick or Install from the downloaded parts, without joining them by hand | feature | small | C |
+| 9 | Make a stick or Install from the downloaded parts, without joining them by hand | feature | small | **B** (moved from C) |
+| 10 | Make a stick refuses an older Rudolf OS stick ("a file on it is still open") | bug (1.2.6) | tiny | B |
+| 11 | "This Rudolf OS" copies boot files that cannot start with Secure Boot, without saying so | bug | small | B |
+| 12 | Downloads are saved to `C:\DOWNLOADS`, but Files' Downloads is `C:\USERS\<name>\DOWNLOADS` | bug | small | B |
+| 13 | Download protection blocks a Rudolf OS release's own files (`.partNN`, `.sha256`, `.iso`) | bug | small | B |
+| 14 | Linux terminal: "the Debian sandbox did not start" on an installation updated from an old disc | bug | medium | B |
+| 15 | App Store: Flatpak downloads fail with `open(O_TMPFILE): No such file or directory` on the same installation | bug | medium | B |
+| 16 | Those two errors say nothing about why; a Linux self-check for the system report | bug | small | B |
+| 17 | New boot files on a drive Rudolf OS is installed on, keeping its files (no reinstall for Secure Boot) | feature | medium | C |
+| 18 | Install here and Make a stick from a downloaded image stopped without a word (since 1.2.4) | bug | tiny | B |
 
 Stage A changes the disc writer, the start-up script (initramfs) and one system script. That means it needs a
 release build and the Secure Boot tests, not only page tests. Like every stage, it has one pull request, is built
@@ -277,7 +289,7 @@ files, one file over 256 MB and one unreadable file. It checks:
   - keyboard and tablet input sent through QMP;
   - a battery from QEMU's `acpi` test battery, if the build has one, or else the page test only.
 
-## 9. Make a stick or Install from the downloaded parts (stage C)
+## 9. Make a stick or Install from the downloaded parts (stage B, moved from C)
 
 **Now.** disc-1.2.x comes as 18 parts (GitHub's file size limit). Before *Make a Rudolf OS USB stick* or *Install
 from* can use it, the user has to join the parts with the commands in `JOIN-PARTS.TXT`, and Rudolf OS has no way
@@ -302,6 +314,261 @@ to do that from the desktop. rudolfd's `install/images` lists only whole `.iso` 
 - `sb/t127c_t.py` (QEMU): the real disc-1.2.6 parts (or a test disc split the same way) in Downloads are joined,
   checked, and a stick is made from the result, then started.
 - A part with one byte changed is named, and nothing is written to the stick.
+
+> **Changes to item 9 for the real laptop** (found there):
+> - **The `.sha256` is not on the disk.** Downloads of 1.5 MB or less stay only in the browser's storage
+>   (`C:\DOWNLOADS`), and the 86-byte `.sha256` is one of them. So the page reads the expected hash from it (from the
+>   browser's storage or from the disk) and passes it to `install/join`. With no `.sha256` at all, the join goes on.
+>   The stick or installation still checks the image's signed release list; the dialog says the parts were joined
+>   without a checksum.
+> - **Part names.** Large downloads are kept on the disk under the name the browser gave them (`rudolf-os-1.2.6.iso.part00`).
+>   The page shows them in capitals. Names are matched without case.
+> - **What to choose.** Make a stick's "Rudolf OS to put on it" lists the set as "rudolf-os-1.2.6.iso (18 parts, not
+>   joined yet)". Choosing it joins first, in the same job log, then makes the stick.
+
+## 10. Make a stick refuses an older Rudolf OS stick (1.2.6 regression; stage B)
+
+**What happens** (real laptop, 1.2.6): Make the stick… on "sda — SanDisk 3.2Gen1 — 61.5 GB (an older Rudolf OS
+stick)" stops at once with "/dev/sda is in use: a file on it is still open. Close File Explorer…". Nothing on the stick
+is open.
+
+**Why.** Item 2 (1.2.6) added `devplug release DISK` before writing. Its first line refuses any `system_disk`, which
+means any disk with an iso9660 or RUDOLFDATA partition. Every Rudolf OS stick is one. `install.sh` reads the refusal
+as "busy" and gives the open-file message. Before 1.2.6, such a stick was simply written, since `devplug` never mounts
+it. `t126c_t.py` used only a blank stick and a shop-formatted one.
+
+**Fix.**
+- `devplug release` drops the `system_disk` refusal. It only ever unmounts mounts under `/media`, which `devplug`
+  made itself and never makes for a Rudolf OS disk. The drive Rudolf OS runs from is already refused before it, by
+  `install.sh` and `mkstick.sh` (`/etc/rudolf/media`).
+- `install.sh` tells "could not unmount" apart from "nothing to unmount": `release` exits 0 when there is nothing to
+  do, and 1 only when an unmount fails.
+
+**Test.** `t126c_t.py` gets a third stick: an older Rudolf OS stick (the 1.2.5 test disc written to a 4 GB image, with
+its RUDOLFDATA). Make a stick must succeed on it. The tests on the blank and shop-formatted sticks stay.
+
+## 11. "This Rudolf OS" copies boot files that cannot start with Secure Boot (stage B)
+
+**What happens.**
+- Make a stick's first choice, "This Rudolf OS 1.2.6", copies the disc image of the drive Rudolf OS started from, plus
+  the installed updates.
+- On the laptop, that image comes from a pre-1.2.2 disc: its EFI partition has only `EFI/BOOT/BOOTX64.EFI`, unsigned,
+  with no shim and no `EFI/rudolf/`.
+- Updates replace the system (kernel and layers) but never the boot files. So the new stick would carry the same
+  boot files, and the firmware refuses them with Secure Boot on ("Secure Boot Violation").
+- The same goes for Install here from "this Rudolf OS".
+
+**Fix.**
+- rudolfd `info` reports `bootSecure`: whether the start-up drive's EFI partition has `EFI/rudolf/rudolf.cer` and a
+  signed `EFI/BOOT/grubx64.efi` (checked with the certificate in the base layer).
+- When it is false, Make a stick and Install here say so under "This Rudolf OS": "This computer started from a disc
+  made before Rudolf OS supported Secure Boot (1.2.2). A stick made from it will not start with Secure Boot on. Choose
+  a downloaded image instead." The choice stays available.
+- Settings › Security › Prepare Secure Boot says the same, instead of making a MOK request that nothing will act on
+  (no shim on the drive). The laptop got such a request.
+
+**Test.** `stick_t.js`: `bootSecure` false gives the note and the Security wording; true gives neither. `t127c_t.py`
+(QEMU, item 9's test): on the 1.2.6 test disc, rudolfd reports `bootSecure` true.
+
+## 12. Downloads in one place (stage B)
+
+**What happens.**
+- Oracle saves downloads to **`C:\DOWNLOADS`** (`dl27.js`, `dlCDir`). Files over 1.5 MB stay on the disk in
+  `/home/rudolf/Downloads`, with a reference in that folder.
+- Files' sidebar "Downloads", the Downloads page's "Open Downloads folder" and Files' import all use
+  **`C:\USERS\<name>\DOWNLOADS`** (`homePath('DOWNLOADS')`).
+- So everything downloaded seems to vanish. On the laptop, the 18 parts were found only by typing `C:\DOWNLOADS`.
+
+**Fix.**
+- Downloads go to the signed-in account's own Downloads (`homePath('DOWNLOADS')`), the folder Files shows. With
+  nobody signed in, they go to `C:\DOWNLOADS`, as now.
+- **Existing downloads.** Anything already in `C:\DOWNLOADS` (the browser-storage files, and the references to files
+  on the disk) is moved once, at the first sign-in after the update, into that account's Downloads, after a notice
+  ("12 downloads were in C:\DOWNLOADS; they are now in your Downloads").
+- The files on the disk do not move. `/home/rudolf/Downloads` is still where large downloads live (the references
+  point there), so the stick and install tools find them as before.
+- "Open Downloads folder" opens the same folder.
+
+**Test.** `dl_t.js` (host):
+- a download, small and large, appears in the account's Downloads, the folder the sidebar opens;
+- an existing `C:\DOWNLOADS` with three items moves on first sign-in, and the references still open.
+
+## 13. Download protection and a Rudolf OS release's own files (stage B)
+
+**What happens.**
+- `typeGate` blocks every file type outside `RECOG` unless an administrator ticks "Allow saving file types Rudolf OS
+  does not recognize". So `.part00`–`.part17` and `.sha256` are refused.
+- `.ISO` is in `HIGHRISK`, so a joined image could not be downloaded at all.
+- On the laptop the setting had to be turned on, and it was first left unapplied, so the parts were blocked.
+
+**Fix.**
+- A Rudolf OS release file is let through without changing that setting, when two things hold:
+  - its name is `rudolf-os-<version>.iso.partNN`, `rudolf-os-<version>.iso.sha256` or `rudolf-os-<version>.iso`;
+  - it comes from this project's GitHub releases. The download record keeps the address the file came from, which on
+    the laptop was `https://release-assets.githubusercontent.com/github-production-release-asset/1414456577/…`, and
+    1414456577 is this repository's id (`gh api repos/merciless146/RudolfOS --jq .id`). So the check is: that host
+    (or `objects.githubusercontent.com`, GitHub's older one) and that id in the path.
+- Nothing about them is trusted because of this. Make a stick and Install from still accept only images whose release
+  list is signed with a key Rudolf OS trusts. The antivirus still scans them.
+- Other `.iso` files stay blocked. The activity log says "allowed: a Rudolf OS disc image part from the Rudolf OS
+  releases".
+
+**Test.** `dl_t.js`:
+- the three names from the release address are kept;
+- the same names from another site are blocked;
+- `random.iso` from the release address is blocked.
+
+## 14. The Linux terminal does not start on an updated installation (stage B)
+
+**What happens** (laptop, 1.2.6, slot a, kernel 6.18.58, RUDOLFDATA 116 GB): Debian 13.7 is set up (149 MB), and
+Open Terminal says "rudolf-debian: the Debian sandbox did not start". `rudolf-debian` gives that one message for every
+failure inside the sandbox's start: `_exit` codes 2–4 and 10–18 cover unshare, the mounts, `pivot_root` and the ready
+signal. So the cause is unknown. The same 1.2.6 starts the terminal in QEMU, on a RUDOLFDATA made by a 1.2.x
+installer.
+
+**Plan.**
+1. **Reproduce.** In QEMU, install from `disc-1.1.2` (or `disc-1.2.0`, whichever matches the laptop: its boot
+   partition has only `EFI/BOOT`) onto a virtual NVMe disk with Install here. Then update through a stand-in stable
+   channel to 1.2.6, as the laptop did, and set up Linux. The candidate causes, each checked there:
+   - RUDOLFDATA made by the older installer: file system features (`dumpe2fs`; for example ext2/ext3 without
+     `extent`/`huge_file`, a 128-byte inode size), and mount options;
+   - folders the newer start-up expects under `/persist` and that only newer installers make;
+   - `/persist/debian` left from an earlier setup, with other owners or modes.
+2. **Report the cause** (item 16): the sandbox start passes its `_exit` code and `errno` back to the starter, which
+   prints "the Debian sandbox did not start: pivot_root failed (Invalid argument)".
+3. **Fix what step 1 finds.** Most likely a repair at start-up (`rudolf-init`), so an existing installation is fixed
+   by the update itself without erasing anything: making missing folders, correcting owners, or enabling a missing
+   ext4 feature, if the cause is the file system. Erasing or reformatting is never done by itself. If only a
+   reformat would fix it, Settings says so and offers Back up first.
+
+**Test.** `t127d_t.py` (QEMU):
+- install from the old disc, update to 1.2.7, then Open Terminal runs `echo ok` in Debian;
+- the same on a fresh 1.2.7 installation;
+- with a forced failure (a test-only switch), the message names the failing step.
+
+## 15. Flatpak downloads fail with `O_TMPFILE` on the same installation (stage B)
+
+**What happens.** App Store › Linux apps › Download the app list, and Games › Roblox (Sober), both fail:
+"While pulling appstream2/x86_64 from remote flathub: open(O_TMPFILE): No such file or directory". Flatpak's
+repository is `/var/lib/flatpak`, a bind of `/persist/flatpak` (`rudolf-init`). `O_TMPFILE` gives ENOENT when the
+directory it is given is missing, or when the file system under it cannot make unnamed files. So this points at the
+same RUDOLFDATA as item 14, which is why the two are looked at together.
+
+**Plan.** The same reproduction as item 14:
+- check `/persist/flatpak/repo/tmp` and the file system's support for `O_TMPFILE` (a three-line test program in the
+  base layer, `rudolf-fscheck`);
+- fix it in the same start-up repair;
+- the App Store shows "Linux apps cannot be stored on this computer's data partition: <cause>. See Settings › Apps ›
+  Linux › Check." instead of only Flatpak's message.
+
+**Test.** `t127d_t.py`: after the update, App Store › Linux apps downloads the stand-in Flathub catalogue
+(`qt/mkflat.sh`) and installs a small app, as `t125_t.py` does on a fresh installation.
+
+## 16. A Linux self-check (stage B)
+
+- Settings › Apps › Linux › **Check** runs `rudolf-fscheck` and the sandbox start with its reasons. It shows a short
+  list:
+  - the data partition's file system and mount options;
+  - unnamed temporary files (OK or failed);
+  - user namespaces (OK or failed);
+  - the Debian sandbox (started, or failed at <step> with <error>);
+  - Flatpak's repository (folders present and writable).
+- The system report (Task Manager › System, Copy system report / Report a problem) gets the same lines, so a report
+  from a computer like the laptop says what is wrong.
+
+**Test.** `tm_t.js`: the report has the Linux check lines; `t127d_t.py`: Check on the repaired installation is all OK.
+
+## Not a bug: web pages drawn by the processor
+
+On the laptop, Task Manager says the screen is drawn by the graphics card (radeonsi), while web pages are drawn with
+SwiftShader (the processor). That is the default: the desktop page renders in software unless Settings ›
+Display Properties › Graphics is set to "Use it for games and the desktop" (`session`, `GLFLAGS`). On this AMD laptop
+that setting is worth trying (one restart). Nothing changes in 1.2.7.
+
+## 17. New boot files on an installed drive, keeping its files (stage C)
+
+**Why.** Updates replace the system (kernel and layers, in `/persist/os`) but never the drive's boot files: the
+disc image written at the start of the drive by Install here. A drive installed from a disc before 1.2.2 therefore
+cannot start with Secure Boot on, however up to date it is. Today the only way is to reinstall from a stick, which
+erases the data partition (files, settings, Flatpak apps, the Debian setup). Found on the Vivobook (item 11).
+
+**The space problem (measured).** Install here puts RUDOLFDATA right after the image, rounded up to 1 MiB:
+
+| Disc | Image |
+|------|-------|
+| 1.1 | 400 MiB |
+| 1.1.2, 1.2.0 | 446 MiB |
+| 1.2.2 | 451 MiB |
+| 1.2.3 to 1.2.4 | 518 to 519 MiB |
+| 1.2.5, 1.2.6 | 522 MiB |
+
+So a 1.2.6 image does not fit in front of the data partition of a drive installed from 1.1 to 1.2.2, the drives
+that need this most. Moving an ext4 file system's start means copying all of it, which is slow and unsafe on a laptop
+battery; that is not done.
+
+**The plan: a boot area that fits, with the full system on the data partition.**
+- The release gets a small **boot image** (an ISO 9660 image in the same hybrid layout, signed release list, Secure
+  Boot boot files from the release, the start-up script and kernel, no system layers): about 60 MiB. It fits in front
+  of every data partition Install here has made. It is a published release file next to the disc parts.
+- Before anything is written, the full system of that release is installed into `/persist/os` (a normal update
+  slot), and a **factory copy** of the layers goes to `/persist/os/factory` (needs about 450 MiB free; checked). The
+  start-up script, finding no layers in the boot image, starts the slot, or the factory copy if no slot starts. This
+  keeps "start the version on the drive" working when an update is broken.
+- **Writing.** Not over the drive Rudolf OS is running from while it runs: the boot image is staged on the data
+  partition and written by the start-up script at the next start, before the image area is used (the same place as
+  the disc check): written, read back and compared, the data partition's entry put back in the partition table at the
+  same start and size, then a restart. If the comparison fails, it is written again from the staged copy; the staged
+  copy is kept until a start from the new boot area succeeds.
+- **From another drive:** Settings › Update and recovery › Install here gets a second choice when the chosen disk
+  already has RUDOLFDATA: "Replace the boot files only (keep files)". The same steps, written directly.
+- **Power loss** while the boot area is written leaves the drive unable to start, but the data partition is untouched:
+  a stick's Install here › Replace the boot files only repairs it. The page says this before it starts and asks for
+  the charger.
+- **Secure Boot:** the boot image's boot files are the release's signed ones, so the same `rudolf.cer` is enrolled
+  once through MokManager.
+- **Settings › Security › Secure Boot**, when the boot files are older (item 11), offers "Get new boot files…"
+  instead of only "Make a USB stick…".
+
+**Tests.**
+- QEMU: a drive installed from the 1.2.0 disc image (446 MiB) and updated, with files, Flatpak's folder and a Debian
+  folder. The boot files are replaced from the running system. The next start writes them; files are still there,
+  `info.bootSecure` is 1, and with Secure Boot on (test keys enrolled) it starts.
+- The same from a stick (Install here › Replace the boot files only).
+- A write interrupted (QEMU stopped mid-write) leaves RUDOLFDATA intact, and the stick repairs it.
+- A broken slot falls back to the factory copy.
+
+**Risks.** It touches the start-up script and the partition table of drives with people's files on them. It ships in
+stage C only after these tests pass. Until then, the reinstall steps (stick with "copy my files", then Install here)
+stay the way to do it.
+
+## 18. Install here and Make a stick from a downloaded image stopped without a word (since 1.2.4; stage B)
+
+`install.sh` runs with `set -e` and unmounted `/mnt/instsrc` before mounting the image there. With nothing mounted,
+`umount` fails and the script ended with no message and nothing written. No test had made a stick from a downloaded
+image until `t127c_t.py`. Fixed: `umount ... || true`.
+
+## Order of work in stage B (the additions)
+
+1. Items 10, 12 and 13 (small), then 9 and 11, so the laptop can make its 1.2.6 stick (or 1.2.7) and set up Secure
+   Boot once the update arrives.
+2. Item 16's reporting, then the reproduction of 14 and 15, their start-up repair, and their tests.
+3. Release steps as usual: one pull request (#36, which these join); local release build and test disc; the stage
+   tests and the regression suites; beta; the same tests on that serial; promote. disc-1.2.7 still waits for stage C.
+
+### As built (stage B additions)
+- **Item 12 changed from the plan:** downloads stay in `C:\DOWNLOADS` (large files on the disk, with a reference
+  there, as before); Files' "Downloads", dropped files and Copy into Rudolf OS all use that folder (`downloadsPath()`),
+  and a one-time notice says where they are.
+- **Item 9:** `joinparts.sh` is run by `install.sh` (and so by Make a stick); the page passes the `.sha256`'s hash as
+  `sha=`, which rudolfd gives as `RUDOLF_IMG_SHA`. Test: `t127c_t.py` (the real disc-1.2.6 image in release-sized parts).
+- **Item 11:** rudolfd's `info.bootSecure` looks for `RUDOLF  CER` and `GRUBX64 EFI` in the running disc's
+  `EFIBOOT.IMG`.
+- **Items 14–16:** `rudolf-fscheck` (rudolfd `debian/check`), Settings › Apps › Linux › Check and the system report.
+  `rudolf-debian` reports the step that failed. The start-up repair makes Flatpak's `repo/tmp` and `/var/tmp`; the
+  old chown "repair" of `/persist/debian` was removed (it must stay owned by 200000). The cause on the laptop is not
+  known yet: the Check's result after the update will tell. Test: `t127d_t.py`.
+- **Found while doing this:** release builds never rebuilt `rudolf-debian` (not in `ci_release.sh`'s list); it and
+  `rudolf-fscheck` are now built there.
 
 ## Release steps (each stage)
 1. Branch `rudolf-1.2.6-a`, `rudolf-1.2.7-b`, `rudolf-1.2.7-c`; implement, host tests, local release build from the

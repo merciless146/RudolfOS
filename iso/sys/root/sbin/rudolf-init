@@ -6,6 +6,7 @@ mount -t tmpfs -o mode=0755,nosuid tmpfs /run
 mount -t tmpfs -o mode=1777,nosuid tmpfs /tmp
 mkdir -p /run/rudolf /run/xvfb /tmp/.X11-unix /dev/shm /media
 chmod 1777 /tmp/.X11-unix
+mkdir -p /var/tmp; chmod 1777 /tmp /var/tmp
 mount -t tmpfs -o mode=1777 tmpfs /dev/shm
 hostname rudolf
 ip link set lo up
@@ -29,6 +30,9 @@ if mountpoint -q /persist; then
 	[ -f /persist/proxy ] && cp /persist/proxy /run/rudolf/proxy
 	# native apps (Flatpak: Sober for Roblox) live on the data partition
 	mkdir -p /persist/flatpak && mount --bind /persist/flatpak /var/lib/flatpak
+	# 1.2.7: Flatpak's repository has its own tmp folder (OSTree makes its temporary files there), which an
+	# installation updated from an older disc may lack; nothing is erased here (Settings > Apps > Linux > Check)
+	[ -d /persist/flatpak/repo ] && [ ! -d /persist/flatpak/repo/tmp ] && mkdir -p /persist/flatpak/repo/tmp && echo "repaired: /persist/flatpak/repo/tmp" >> /run/rudolf/repairs
 	[ -s /persist/etc/machine-id ] || dbus-uuidgen > /persist/etc/machine-id 2>/dev/null
 	cp /persist/etc/machine-id /etc/machine-id 2>/dev/null
 else

@@ -4,7 +4,15 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.2.7 (2026-10-26)
-Summary: more USB Wi-Fi adapters work; a power button on the login screen; Luau and Pilot.lua checks are ready straight away; Files copies whole folders from a USB drive
+Summary: a disc image downloaded in parts can be made into a USB stick without joining it by hand; making a stick over an older Rudolf OS stick works again; a check for Linux apps and the terminal; more USB Wi-Fi adapters work; a power button on the login screen; Luau and Pilot.lua checks are ready straight away; Files copies whole folders from a USB drive
+- New: Make a USB stick and Install here accept a Rudolf OS disc image downloaded from GitHub in parts (rudolf-os-X.Y.Z.iso.part00, part01, ...). The parts are joined in order, checked against the .sha256 downloaded with them, and then written; a missing, short or damaged part is named and nothing is written. The joined image stays in Downloads.
+- Fixed: Make a USB stick refused to erase a stick that held an older Rudolf OS ("a file on it is still open"). (1.2.6)
+- Fixed: Install here and Make a USB stick with a downloaded disc image stopped at once without a message, and wrote nothing. (1.2.4)
+- Changed: downloads are in one place, C:\DOWNLOADS, which Files' "Downloads" now opens. Large files are kept on the disk and shown there.
+- Changed: the disc files of a Rudolf OS release (the .iso, its parts and .sha256) downloaded from the Rudolf OS releases on GitHub are no longer blocked as unknown or program files. The same names from anywhere else still are.
+- New: Settings › Security › Secure Boot, Make a USB stick and Install here say when this Rudolf OS started from boot files older than Secure Boot support (a disc before 1.2.2), and how to get newer ones: make a stick from a newer disc image.
+- New: Settings › Apps › Linux › Check: what Linux apps and the terminal need from this computer (the data partition, temporary files, user namespaces, Flatpak's folders, the Debian sandbox), with what is wrong. It is also in the system report. When the Debian sandbox does not start, it now says which step failed and why.
+- Fixed: Flatpak apps could not be installed ("open(O_TMPFILE): No such file or directory") when Flatpak's repository had lost its tmp folder; it is made again at start-up. /var/tmp is made at start-up too.
 - New: more USB Wi-Fi adapters work: Atheros AR9271 and AR7010 (TP-Link TL-WN722N v1 and many others), MediaTek MT7601U, MT7610U and MT7612U (among them Alfa AWUS036ACM). Plug one in and it appears in Settings › Network.
 - Changed: Blitzen and Code Editor get the Luau type checker ready in the background as soon as Luau or Pilot.lua is chosen, or a .LUAU file is opened, so the first check no longer waits for it to load (up to two minutes on a slower computer). Switching between Luau, Roblox and Pilot.lua scripts no longer loads it again.
 - New: the login screen has a power button (bottom right) to shut down, restart or put the computer to sleep without signing in.

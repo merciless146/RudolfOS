@@ -322,6 +322,8 @@ async function sysReport(problem) {
     if (pr.pages && pr.pages.pages) out.push('Page memory: ' + pr.pages.pages.map(p => (p.url.startsWith(location.origin) ? 'desktop' : 'tab') + ' ' + fmtB(p.used)).join(', '));
     out.push('');
   }
+  /* 1.2.7: what Linux apps and the terminal need (Settings › Apps › Linux › Check) */
+  if (RD && typeof lxCheck == 'function') { const lc = await lxCheck(); out.push('== Linux apps and terminal', ...lxCheckLines(lc).map(l => l.replace(/^Linux check: /, '')), ''); }
   if (sys && tmLines(k.messages).length) out.push('== Kernel warnings and errors (latest)', ...tmLines(k.messages).slice(-20), '');
   if (sys && tmLines(sys.session).length) out.push('== Session log (latest)', ...tmLines(sys.session).slice(-15), '');
   if (SHELL_LOG.length) out.push('== Shell notes', ...SHELL_LOG.slice(-15), '');

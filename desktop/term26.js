@@ -101,15 +101,27 @@ regApp('terminal',{name:'Terminal',icon:'🐧',kw:'terminal linux debian apt she
  const before=ul.querySelector('li[data-a=settings]')||ul.querySelector('li[data-a=run]');const li=document.createElement('li');li.className='rapp dtv';li.dataset.v25='terminal';li.tabIndex=0;li.textContent='🐧 Terminal (Linux)';
  li.onclick=e=>{e.stopPropagation();$('#menu').style.display='none';terminalApp()};li.onkeydown=e=>{if(e.key=='Enter')li.click()};ul.insertBefore(li,before)}}
 addEventListener('keydown',e=>{if(RD&&e.ctrlKey&&e.altKey&&(e.key=='t'||e.key=='T')&&USER&&USER.r!='guest'){e.preventDefault();terminalApp()}});
+/* ---------- Linux check (1.2.7): what Linux apps and the terminal need, from rudolf-fscheck (rudolfd debian/check) ---------- */
+const LXCHK=[['persist','Data partition'],['persist_fs','File system'],['persist_kind','Kind'],['persist_features','Features'],['persist_inode_size','Inode size'],['persist_opts','Mounted with'],
+ ['tmpfile_persist','Temporary files on the data partition'],['tmpfile_flatpak','…in Flatpak\'s folder'],['tmpfile_flatpak_repo','…in Flatpak\'s repository'],['tmpfile_var_tmp','…in /var/tmp'],['tmpfile_tmp','…in /tmp'],['tmpfile_debian','…in Debian'],
+ ['flatpak_repo','Flatpak repository'],['debian_owner','Debian folder owner'],['userns','User namespaces'],['max_user_namespaces','User namespaces allowed'],['debian','Debian sandbox']];
+const lxBad=v=>/^(failed|missing|not mounted|tmp folder missing)|did not start|did not finish|not available|expected 200000/.test(String(v||''));
+async function lxCheck(){try{return await lxApi('debian/check')}catch(e){return{error:e.message}}}
+/* text lines for the system report */
+function lxCheckLines(r){if(!r||r.error)return['Linux check: '+(r&&r.error||'not available')];return LXCHK.filter(([k])=>r[k]!=null&&r[k]!=='').map(([k,l])=>`Linux check: ${l.replace(/^…/,'temporary files ')}: ${r[k]}`)}
+async function lxCheckShow(box){box.innerHTML="<div class='msg'>Checking…</div>";const r=await lxCheck();
+ if(r.error){box.innerHTML='';const m=document.createElement('div');m.className='msg';m.textContent='The check could not run: '+r.error;box.appendChild(m);return r}
+ const bad=LXCHK.filter(([k])=>lxBad(r[k]));box.innerHTML=`<p class='msg'></p><table class='tmt'><tbody></tbody></table>`;box.firstChild.textContent=bad.length?`${bad.length} problem(s): ${bad.map(([,l])=>l.replace(/^…/,'temporary files ')).join(', ')}. Copy the system report (Task Manager › System) to report it.`:'Everything Linux apps and the terminal need is working.';
+ const tb=box.querySelector('tbody');LXCHK.forEach(([k,l])=>{if(r[k]==null||r[k]==='')return;const row=tb.insertRow();row.insertCell().textContent=l;const c=row.insertCell();c.textContent=(lxBad(r[k])?'⚠️ ':'')+r[k]});return r}
 /* ---------- Settings › Apps › Linux (Debian) ---------- */
 {const _ap=appsPanel;appsPanel=function(c,W){_ap(c,W);if(!RD)return;
  const d=sp(c,`<h4 class='sh4'>Linux (Debian 13)</h4><div class='dset'><div class='msg'>Checking…</div></div>`);const b=d.querySelector('.dset');
  const draw=async()=>{const st=await debStatus(true);if(!st){b.innerHTML="<div class='msg'>This Rudolf OS cannot run Debian.</div>";return}
-  if(!st.installed){b.innerHTML=`<div class='msg'>Debian is not set up. It adds a Linux terminal with APT.</div><div class='rmrow' style='justify-content:flex-start'><button class='dsu'>Set up Debian…</button></div>`;b.querySelector('.dsu').onclick=()=>terminalApp();return}
+  if(!st.installed){b.innerHTML=`<div class='msg'>Debian is not set up. It adds a Linux terminal with APT.</div><div class='rmrow' style='justify-content:flex-start'><button class='dsu'>Set up Debian…</button><button class='dck'>Check</button></div><div class='dckr'></div>`;b.querySelector('.dsu').onclick=()=>terminalApp();b.querySelector('.dck').onclick=()=>lxCheckShow(b.querySelector('.dckr'));return}
   const auto=ld('bd95debauto',true);
   b.innerHTML=`<table class='tmt'><tbody><tr><td>Version</td><td>Debian ${lxEsc(st.version)}</td></tr><tr><td>Space used</td><td>${fmtB(st.size||0)}</td></tr><tr><td>Free on the data partition</td><td>${fmtB(st.free||0)}</td></tr><tr><td>Apps with a window</td><td>${DEB.apps.length}</td></tr></tbody></table>
   <label class='chk'><input type='checkbox' class='dau'${auto?' checked':''}> Install Debian's updates automatically once a day</label>
-  <div class='rmrow' style='justify-content:flex-start'><button class='dop'>Open Terminal</button><button class='dup'>Update now</button><button class='drm'>Remove Debian…</button></div><div class='msg dmsg'></div>`;
+  <div class='rmrow' style='justify-content:flex-start'><button class='dop'>Open Terminal</button><button class='dup'>Update now</button><button class='drm'>Remove Debian…</button><button class='dck'>Check</button></div><div class='msg dmsg'></div><div class='dckr'></div>`;b.querySelector('.dck').onclick=()=>lxCheckShow(b.querySelector('.dckr'));
   const msg=b.querySelector('.dmsg');b.querySelector('.dau').onchange=e=>svj('bd95debauto',e.target.checked);b.querySelector('.dop').onclick=()=>terminalApp();
   b.querySelector('.dup').onclick=async()=>{if(!isAdmin()&&!await elevate('Update Debian'))return;try{await lxApi('debian/update')}catch(e){return msg.textContent=e.message}msg.textContent='Updating Debian…';const j=await lxJobWait();msg.textContent=j.status==0?'Debian is up to date.':'The update did not finish: '+((j.log||'').trim().split('\n').pop()||'');debApps()};
   b.querySelector('.drm').onclick=async()=>{if(!await elevate('Remove Debian and every program installed in it (your Documents, Pictures and Downloads stay)'))return;try{await lxApi('debian/remove')}catch(e){return msg.textContent=e.message}msg.textContent='Removing…';const j=await lxJobWait();await debStatus();DEB.apps=[];svj(DEB_AK,[]);lxRegister();msg.textContent=j.status==0?'Debian was removed.':'Removing failed.';setTimeout(draw,800)}};

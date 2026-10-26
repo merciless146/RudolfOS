@@ -58,8 +58,21 @@ async function dlScanBig(name,from,size,NM,prog){const hits=[];const h=await dlR
  for(const s of parts){if(/EICAR-STANDARD-ANTIVIRUS-TEST-FILE/.test(s))hits.push('EICAR-Test-File');try{SIGS.forEach(([n,r])=>{if(r.test(s))hits.push(n)})}catch(e){}}
  return[...new Set(hits)]}
 function dlUniq(d,nm){let n2=nm;if(n2 in d){const m=/^(.*?)(\.[^.]*)?$/.exec(nm);for(let i=2;;i++){n2=m[1]+' ('+i+')'+(m[2]||'');if(!(n2 in d))break}}return n2}
+/* a Rudolf OS release's own disc files (1.2.7): rudolf-os-X.Y.Z.iso, its .partNN parts and its .sha256, from this
+   project's GitHub releases (repository id 1414456577, in the release-asset address GitHub redirects to). They pass the
+   file-type rules (which block .partNN and .sha256 as unknown and .iso as a program type); the antivirus still scans
+   them, and Make a stick / Install from accept only images whose release list Rudolf OS's key signed. */
+const DL_REPO_ID='1414456577',DL_REPO='/merciless146/RudolfOS/releases/download/';
+function dlRelFile(name,u){if(!/^rudolf-os-\d+\.\d+\.\d+\.iso(\.part\d{2}|\.sha256)?$/i.test(String(name||'')))return false;
+ let x;try{x=new URL(String(u||''))}catch(e){return false}if(x.protocol!='https:')return false;
+ const h=x.hostname.toLowerCase(),p=decodeURIComponent(x.pathname);
+ return ((h=='release-assets.githubusercontent.com'||h=='objects.githubusercontent.com')&&p.split('/').includes(DL_REPO_ID))||(h=='github.com'&&p.startsWith(DL_REPO))}
+/* the antivirus part of the small-file check, for a release file (its type is allowed above) */
+function dlAvOnly(nm,val){if(!SECC.av.on)return{ok:true};const th=avScan(nm,val,true);if(!th.length)return{ok:true};
+ logEvt('av',`Blocked ${nm} (download): ${th.join(', ')}`);return{ok:false,msg:`Antivirus blocked ${nm}: ${th.join(', ')}.`}}
 function dlCDir(){const C=fs['C:'];if(!C.DOWNLOADS||typeof C.DOWNLOADS!='object')C.DOWNLOADS={};return C.DOWNLOADS}
-async function dlIngest(it,rec){let name=it.name,from='incoming';const NM=dlCName(name),e=ext(NM),prog=HIGHRISK.has(e),size=it.size;
+async function dlIngest(it,rec){let name=it.name,from='incoming';const NM=dlCName(name),e=ext(NM),rel=dlRelFile(name,rec.u),prog=!rel&&HIGHRISK.has(e),size=it.size;
+ if(rel)logEvt('av',`Allowed ${NM}: a Rudolf OS disc file from the Rudolf OS releases`);
  const del=()=>rdPost('dl/file?name='+encodeURIComponent(name)+'&from='+from+'&to=del').catch(()=>{});
  if(size>dlMax()){await del();return dlDone(rec,'blocked','The file is larger than '+fmtB(dlMax())+', the limit set in Settings ▸ Network ▸ Downloads.')}
  if(prog){if(!(window.__net&&NETC.dl.exe=='ask')){await del();logEvt('av','Blocked download '+NM+': program file');return dlDone(rec,'blocked',typeGate(NM)||'Program files are blocked in Settings ▸ Network ▸ Downloads.')}
@@ -67,11 +80,11 @@ async function dlIngest(it,rec){let name=it.name,from='incoming';const NM=dlCNam
   const ok=await new Promise(res=>{DLN.ask=DLN.ask.then(()=>elevate(`${NM} is a program file${rec.u?' from '+dlHost(rec.u):''}. Allow it to be kept in Downloads? Rudolf OS can store it but cannot run it.`)).then(res,()=>res(false))});
   if(!ok){await del();logEvt('av','Program download not approved: '+NM);return dlDone(rec,'blocked','An administrator did not approve this program file.')}
   rec.exe=true;rec.by=USER&&isAdmin()?USER.n:'an administrator';rec.st='check'}
- else{const tg=typeGate(NM);if(tg){await del();logEvt('av',`Blocked download ${NM}: ${tg}`);return dlDone(rec,'blocked',tg)}}
+ else if(!rel){const tg=typeGate(NM);if(tg){await del();logEvt('av',`Blocked download ${NM}: ${tg}`);return dlDone(rec,'blocked',tg)}}
  if(size<=DL_SMALL){/* small: into C:\DOWNLOADS, checked as before */
   const u8=await dlRead(name,from,0,size||1),b=new Blob([u8],{type:(typeof MIMEX!='undefined'&&MIMEX[e])||'application/octet-stream'});
   const val=await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);TEXTX.test(e)?fr.readAsText(b):fr.readAsDataURL(b)});
-  const g=prog?netExeScan(NM,val):secIngress(NM,val,'download');await del();if(!g.ok)return dlDone(rec,g.q?'quarantined':'blocked',g.msg);
+  const g=prog?netExeScan(NM,val):rel?dlAvOnly(NM,val):secIngress(NM,val,'download');await del();if(!g.ok)return dlDone(rec,g.q?'quarantined':'blocked',g.msg);
   const d=dlCDir(),n2=dlUniq(d,NM);d[n2]=val;if(!fsSave()){delete d[n2];return dlDone(rec,'failed','The disk is full.')}return dlDone(rec,'saved','',{path:n2})}
  /* large: stays on the disk */
  let av='off';if(SECC.av.on){const th=await dlScanBig(name,from,size,NM,prog);av=size>DL_AVPART*2?'part':'full';
@@ -87,8 +100,11 @@ async function dlSpaceCheck(){try{const s=await rd('dl/space');if(s.total>0&&s.f
 /* ---------- references: where they are, and the disk files that go with them ---------- */
 function dlRefsAdd(p){const k=ld(DLRK,{});k[p]={w:'fs',u:'',miss:0};svj(DLRK,k)}
 function dlWalk(n,path,out){for(const k in n){const v=n[k];if(isDir(v))dlWalk(v,path.concat(k),out);else if(isDlRef(v))out.push({path:path.concat(k),v})}return out}
+/* 1.2.7: Files' "Downloads" is C:\DOWNLOADS now; say once where an account's own DOWNLOADS folder went */
+function dlHomeNote(){try{if(!USER||USER.r=='guest')return;const k='bd95dlnote:'+uid();if(ld(k,0))return;svj(k,1);const h=node(homePath('DOWNLOADS'));
+ if(isDir(h)&&Object.keys(h).length)notify('Downloads',`Downloads now opens C:\\DOWNLOADS, where Oracle saves what you download. What was in your own Downloads folder is still there: ${USER.n} › DOWNLOADS.`,{action:()=>explorer(homePath('DOWNLOADS'))})}catch(e){}}
 let dlRecBusy=false;
-async function dlReconcile(){if(dlRecBusy||!dlOn()||typeof FSLOADED!='undefined'&&!FSLOADED||!isDir(fs['C:']))return;dlRecBusy=true;
+async function dlReconcile(){if(dlRecBusy||!dlOn()||typeof FSLOADED!='undefined'&&!FSLOADED||!isDir(fs['C:']))return;dlRecBusy=true;dlHomeNote();
  try{const all=dlWalk(fs['C:'],['C:'],[]),D=dlCDir();let changed=false,moved=0;
   /* references outside C:\DOWNLOADS go back; copies of the same file are dropped */
   const inD=new Map();all.filter(x=>x.path.length==3&&x.path[1]=='DOWNLOADS').forEach(x=>{const i=dlRefInfo(x.v);if(!i)return;if(inD.has(i.p)){delete D[x.path[2]];changed=true;moved++}else inD.set(i.p,x)});

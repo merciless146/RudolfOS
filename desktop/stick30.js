@@ -22,19 +22,31 @@ function stkConfirm(k){return new Promise(res=>{const o=document.createElement('
  o.querySelector('.stkd').textContent=`${k.name} — ${k.model||'USB drive'} — ${sz}`;const pl=(k.partitions||[]).filter(p=>p.fs).map(p=>p.label?`“${p.label}” (${p.fs})`:p.fs);o.querySelector('.stke').textContent=pl.length?`Everything on it is erased: ${pl.join(', ')}, with its files and name. If it is open in File Explorer, Rudolf OS closes it first.`:'Everything on it is erased.';const i=o.querySelector('.stki'),g=o.querySelector('.g');
  i.oninput=()=>g.disabled=i.value.trim().replace(/\s+/g,' ').toUpperCase()!=sz.toUpperCase();const done=v=>{o.remove();res(v)};o.querySelector('.c').onclick=()=>done(false);g.onclick=()=>done(true);
  o.onkeydown=e=>{e.stopPropagation();if(e.key=='Escape')done(false);if(e.key=='Enter'&&!g.disabled)done(true)};document.body.appendChild(o);i.focus()})}
+/* 1.2.7: a downloaded image still in parts is listed as such (install.sh joins it), with the expected SHA-256 from its
+   .sha256: a file that small stays in the browser's storage, in C:\DOWNLOADS, where rudolfd cannot read it */
+function imgLabel(x){return x.parts?`${x.name} (${x.parts} parts, not joined yet)`:x.name}
+function imgSha(path){const b=String(path||'').split('/').pop();if(!b)return'';const D=node(downloadsPath())||{};
+ const k=Object.keys(D).find(n=>n.toUpperCase()==(b+'.sha256').toUpperCase());let v=k?D[k]:'';if(typeof v!='string'||isDlRefSafe(v))return'';
+ if(v.startsWith('data:'))try{v=atob(v.split(',')[1])}catch(e){return''}
+ const lines=v.split(/\r?\n/),m=lines.map(l=>/^([0-9a-fA-F]{64})\s+\*?(\S+)/.exec(l)).filter(Boolean);
+ const hit=m.find(x=>x[2].toUpperCase()==b.toUpperCase())||(m.length==1?m[0]:null);return hit?hit[1].toLowerCase():''}
+const isDlRefSafe=v=>typeof isDlRef=='function'&&isDlRef(v);
+/* 1.2.7: the drive Rudolf OS started from has boot files from before Secure Boot (rudolfd info.bootSecure 0) */
+const STK_BOOTOLD='This computer started from a disc made before Rudolf OS supported Secure Boot (1.2.2). A stick made from it will not start with Secure Boot on: choose a downloaded image instead.';
 async function stkSection(c){if(!RD)return;const box=document.createElement('div');box.className='stk30';c.appendChild(box);
  let info={},disks=[],imgs=[];try{info=await rd('info');disks=(await rd('disks')).disks||[]}catch(e){}try{imgs=(await rd('install/images')).images||[]}catch(e){}
  const adm=isAdmin(),tg=stkTargets(disks,info),bp=stkBackupParts(disks,info);
  box.innerHTML=`<h4 class='sh4'>Make a Rudolf OS USB stick</h4><p class='msg'>Puts Rudolf OS on a USB stick or memory card (2 GB or more) that starts on any computer and keeps its files. Everything on that drive is erased.</p>
- <div class='r2'><label>Rudolf OS to put on it</label><select class='stks'><option value=''>This Rudolf OS ${lxEsc(RVER)}${info.updateInstalled?' (with its updates)':''}</option>${imgs.map(x=>`<option value='${lxEsc(x.path)}'>${lxEsc(x.name)} (Downloads)</option>`).join('')}</select></div>
+ <div class='r2'><label>Rudolf OS to put on it</label><select class='stks'><option value=''>This Rudolf OS ${lxEsc(RVER)}${info.updateInstalled?' (with its updates)':''}</option>${imgs.map(x=>`<option value='${lxEsc(x.path)}'>${lxEsc(imgLabel(x))} (Downloads)</option>`).join('')}</select></div><p class='msg stkbo' hidden></p>
  <label class='ck'><input type='checkbox' class='stkf'> Also copy my files and settings (Linux apps are not copied)</label><div class='stkl'></div><pre class='jl stkj' hidden></pre>
  <h4 class='sh4'>Back up to a USB stick</h4><p class='msg'>The same backup as “Back up everything…”, written straight to a plugged-in drive (in its ${STK.BDIR} folder, with a checksum). A new Rudolf OS can restore it when it first starts.</p><div class='stkb'></div><div class='msg stkbm'></div>`;
  const q=s=>box.querySelector(s),L=q('.stkl'),pre=q('.stkj');
+ const bo=()=>{const e=q('.stkbo');e.hidden=!(info.bootSecure===0&&!q('.stks').value);e.textContent=STK_BOOTOLD};q('.stks').addEventListener('change',bo);bo();
  if(!tg.length)L.innerHTML="<p class='msg'>Plug in a USB stick or memory card of 2 GB or more (not the one Rudolf OS runs from), then open this page again.</p>";
  tg.forEach(k=>{const r=document.createElement('div');r.className='acr';r.innerHTML=`<span style='flex:1'></span><button>Make the stick…</button>`;r.firstChild.textContent=`🔌 ${k.name} — ${k.model||'USB drive'} — ${stkGB(k.bytes)}${k.partitions.some(p=>p.fs=='iso9660')?' (an older Rudolf OS stick)':''}`;
   const b=r.lastChild;b.disabled=!adm;b.onclick=async()=>{if(!await elevate(`Make a Rudolf OS USB stick on ${k.name} (${k.model||''}, ${stkGB(k.bytes)}). Everything on it is erased.`))return;if(!await stkConfirm(k))return;
    L.querySelectorAll('button').forEach(x=>x.disabled=true);pre.hidden=false;pre.textContent='';
-   try{await rdPost(`mkstick?disk=${k.name}&confirm=${k.name}&image=${encodeURIComponent(q('.stks').value)}&files=${q('.stkf').checked?1:0}`)}catch(e){pre.textContent=e.message;L.querySelectorAll('button').forEach(x=>x.disabled=!adm);return}
+   try{await rdPost(`mkstick?disk=${k.name}&confirm=${k.name}&image=${encodeURIComponent(q('.stks').value)}&files=${q('.stkf').checked?1:0}${imgSha(q('.stks').value)?'&sha='+imgSha(q('.stks').value):''}`)}catch(e){pre.textContent=e.message;L.querySelectorAll('button').forEach(x=>x.disabled=!adm);return}
    const j=await stkJob(pre);const ok=j.status==0;
    notify(ok?'The Rudolf OS USB stick is ready':'The stick could not be made',ok?`${k.name} can be removed. Start a computer from it with its boot menu (often F12).`:((j.log||'').trim().split('\n').pop()||'See Settings › Storage and backup.'),{kind:ok?'info':'error'});
    if(ok)r.firstChild.textContent+=' — ready';L.querySelectorAll('button').forEach(x=>x.disabled=!adm)};L.appendChild(r)});

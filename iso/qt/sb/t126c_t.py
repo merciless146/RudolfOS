@@ -7,6 +7,7 @@
 #   (to test them on a disc whose layers are older); the test adds small helper scripts and makes it a disk.
 # The computer has three USB drives: the 4 GB stick to make (formatted, mounted by Rudolf OS), a 64 MB FAT drive
 # "BACKUPS", and the test disk.
+#   (3., with OLDISO: an older Rudolf OS stick is made into a new one)
 #   1. Rudolf OS started from the disc makes a stick on the 4 GB drive (with "copy my files"): first refused while a
 #      file on it is open (and the stick is left as it was), then made: the image is read back and compared,
 #      RUDOLFDATA is added, a file made in this session is on it, and nothing on it is mounted during or after
@@ -185,4 +186,46 @@ try:
     vm.shot('second')
 finally:
     vm.stop()
+
+# ---- 3. (1.2.7) an older Rudolf OS stick is made into a new one. OLDISO: an older disc image (for example 1.2.0), written
+# to the start of a 4 GB stick as Rufus or Etcher would. Rudolf OS does not mount such a stick by itself; 1.2.6
+# refused it ("a file on it is still open").
+OLD = os.environ.get('OLDISO')
+if OLD:
+    OST = os.path.abspath('oldstick126c.img')
+    if os.path.exists(OST): os.remove(OST)
+    subprocess.run(['truncate', '-s', '4G', OST], check=True)
+    subprocess.run(['dd', f'if={OLD}', f'of={OST}', 'bs=4M', 'conv=notrunc', 'status=none'], check=True)
+    vm = sbvm.VM('t126c3', PARTS, [ISO], secure=False, mem=3072, extra=['-device', 'qemu-xhci,id=xh'] + usb(0, OST) + usb(2, NEW))
+    g = session(vm); sh, js, until, wait_shell, desktop = helpers(g)
+    try:
+        ok('3. a computer with an older Rudolf OS stick plugged in starts', wait_shell())
+        sh('mkdir -p /mnt/new', 10)
+        for _ in range(30):
+            nd = last(sh('findfs LABEL=RUDOLFB', 10))
+            if nd.startswith('/dev/'): break
+            time.sleep(3)
+        sh(f'mount -o ro {nd} /mnt/new 2>/dev/null || mount --bind /media/{nd[5:]} /mnt/new', 20)
+        out('new rudolfd:', last(sh('sh /mnt/new/up.sh', 60)))
+        for _ in range(4):
+            g.js("location.replace('http://127.0.0.1:8080/');1", 10); time.sleep(15)
+            if until("typeof stkSection=='function'", 90): break
+        ok('...the desktop (with the new page) is up', desktop())
+        t = []
+        for _ in range(6):
+            t = J(js("rd('info').then(async i=>JSON.stringify(stkTargets((await rd('disks')).disks,i).map(k=>[k.name,k.bytes,k.partitions.some(p=>p.fs=='iso9660')])))"), [])
+            if t: break
+            time.sleep(10)
+        ok('...Make a stick offers it, as an older Rudolf OS stick', len(t) == 1 and t[0][2], t)
+        dev = t[0][0] if t else 'sdz'
+        r = js(f"rdPost('mkstick?disk={dev}&confirm={dev}&image=&files=0').then(r=>r.message,e=>e.message)")
+        j = {}; end = time.time() + 1500
+        while time.time() < end:
+            j = J(js("rd('job').then(j=>JSON.stringify(j))"), {})
+            if not j.get('running') and j.get('status', -1) >= 0: break
+            time.sleep(10)
+        log = j.get('log') or ''; out(log[-600:])
+        ok('...and makes the new stick on it (1.2.6 refused it)', r == 'making the stick' and j.get('status') == 0 and 'stick is ready' in log and 'in use' not in log, log[-300:])
+    finally:
+        vm.stop()
 out('%d/%d passed' % (sum(R), len(R)))

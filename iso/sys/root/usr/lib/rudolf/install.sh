@@ -13,9 +13,12 @@ SRC=$MEDIA
 if [ -n "$2" ]; then
 	SRC=$2
 	case "$SRC" in *..*) echo "Bad file name."; exit 7;; /home/rudolf/*.iso|/home/rudolf/*.ISO) ;; *) echo "The image must be a .iso file in your home folder."; exit 7;; esac
+	# a disc image downloaded in parts (1.2.7): joined first, into the same name (joinparts.sh)
+	[ -f "$SRC" ] || /usr/lib/rudolf/joinparts.sh "$SRC" || exit 7
 	[ -f "$SRC" ] || { echo "No such file: $SRC"; exit 7; }
 	# only a Rudolf OS disc image whose release list is signed with a key this Rudolf OS trusts
-	mkdir -p /mnt/instsrc; umount /mnt/instsrc 2>/dev/null
+	# (1.2.7: "|| true": with set -e, umount of a folder with nothing mounted ended the install without a word)
+	mkdir -p /mnt/instsrc; umount /mnt/instsrc 2>/dev/null || true
 	mount -t iso9660 -o ro,loop "$SRC" /mnt/instsrc || { echo "That file is not a disc image."; exit 7; }
 	OK=1; [ -e /mnt/instsrc/rudolf/id ] || OK=0
 	V=$(rudolf-update verify-manifest /mnt/instsrc/rudolf/manifest.txt /mnt/instsrc/rudolf/manifest.sig 2>&1) || OK=0

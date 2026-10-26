@@ -46,7 +46,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const pick = async (name) => { await q(`(()=>{const W=wins.find(w=>w.app=='explorer');const r=W.body.querySelector('tr[data-k="R:${name}"]');r.click();W.body.querySelector('.rim').click();return 1})()`) };
   const done = () => p.waitForFunction(() => { const W = wins.find(w => w.app == 'explorer'); return W && !W.body.querySelector('.rcx') && /Copied|Left out|Stopped|does not fit|at most/.test(W.body.querySelector('.stat').textContent) }, null, {timeout: 60000}).catch(() => 0);
   const st = () => q("wins.find(w=>w.app=='explorer').body.querySelector('.stat').textContent");
-  const dl = () => q("JSON.stringify(node(homePath('DOWNLOADS'))||node(['C:'])||{})").then(JSON.parse);
+  const dl = () => q("JSON.stringify(node(['C:','DOWNLOADS'])||{})").then(JSON.parse);   // 1.2.7: where downloads are
   await open();
   ok('the drive opens in Files with its folders', await q("!!wins.find(w=>w.app=='explorer').body.querySelector('tr[data-k=\"R:Trip\"]')"));
   // 1. a whole folder
