@@ -50,6 +50,11 @@ m CFG80211 MAC80211 IWLWIFI IWLMVM IWLDVM RTW88 RTW88_8822BE RTW88_8822CE RTW88_
 # options with lower case in their names (scripts/config upper-cases names unless told not to)
 mk MT76x0U MT76x2U
 y FW_LOADER
+# webcams (1.2.8): USB Video Class cameras, built-in laptop cameras included (no firmware needed); Chromium's camera
+# access (getUserMedia) then works, and Settings > Privacy > Camera decides whether pages may use it
+y MEDIA_SUPPORT MEDIA_SUPPORT_FILTER MEDIA_USB_SUPPORT MEDIA_CAMERA_SUPPORT
+m VIDEO_DEV USB_VIDEO_CLASS
+y USB_VIDEO_CLASS_INPUT_EVDEV
 # power, ACPI
 y ACPI ACPI_BATTERY ACPI_AC ACPI_BUTTON ACPI_VIDEO ACPI_FAN ACPI_THERMAL BACKLIGHT_CLASS_DEVICE SUSPEND CPU_FREQ X86_INTEL_PSTATE X86_AMD_PSTATE RTC_DRV_CMOS HWMON SENSORS_CORETEMP SENSORS_K10TEMP
 # Secure Boot (1.2.2): modules are signed at build time with a key made for that build only (and thrown away),

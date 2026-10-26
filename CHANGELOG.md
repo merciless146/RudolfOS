@@ -3,6 +3,16 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.2.8 (2026-10-27)
+Summary: new boot files for an installed computer without erasing it (Secure Boot on computers installed from an older disc); webcams work, with a camera switch in Settings › Privacy; the hardware check tests the keyboard, touchpad, camera, battery and screen
+- New: Settings › Security › Secure Boot › Get new boot files: a computer installed from a disc older than 1.2.2 can start with Secure Boot on without being reinstalled. Download the boot image (rudolf-os-X.Y.Z-boot.iso and its .sha256) from the Rudolf OS releases; Rudolf OS checks it, keeps a copy, and writes it at the next start in front of your files, which stay as they are. The installed system then starts from the installed update.
+- New: Install here › Replace the boot files only: the same for another drive Rudolf OS is installed on, from a USB stick, for example to repair one whose boot files were damaged.
+- New: the disc releases have a boot image (rudolf-os-X.Y.Z-boot.iso, about 27 MB) next to the disc image.
+- New: webcams work (USB Video Class, built-in laptop cameras included), in the Camera app, in websites (which still ask first) and in Linux apps.
+- New: Settings › Privacy › Camera: one switch that turns the camera off for everything; its driver is not loaded until it is switched on again, also after a restart.
+- New: the hardware check (Task Manager › Hardware) has five more steps: every key of the keyboard (as laid out in the chosen layout), the touchpad or mouse (moving, both buttons, scrolling), the camera, the battery's health (its capacity compared with new, and its charge cycles) and the screen (one colour at a time, to spot dead pixels).
+- Changed: a factory reset of a drive that has boot files only keeps its installed system (everything else is erased as before).
+
 ## 1.2.7 (2026-10-26)
 Summary: a disc image downloaded in parts can be made into a USB stick without joining it by hand; making a stick over an older Rudolf OS stick works again; a check for Linux apps and the terminal; more USB Wi-Fi adapters work; a power button on the login screen; Luau and Pilot.lua checks are ready straight away; Files copies whole folders from a USB drive
 - New: Make a USB stick and Install here accept a Rudolf OS disc image downloaded from GitHub in parts (rudolf-os-X.Y.Z.iso.part00, part01, ...). The parts are joined in order, checked against the .sha256 downloaded with them, and then written; a missing, short or damaged part is named and nothing is written. The joined image stays in Downloads.

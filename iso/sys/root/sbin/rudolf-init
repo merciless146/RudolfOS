@@ -26,6 +26,8 @@ if mountpoint -q /persist; then
 	[ -f /persist/etc/rudolf-display ] && cp /persist/etc/rudolf-display /etc/rudolf-display
 	[ -f /persist/etc/rudolf-screen ] && cp /persist/etc/rudolf-screen /etc/rudolf-screen
 	[ -f /persist/etc/rudolf-shell ] && cp /persist/etc/rudolf-shell /etc/rudolf-shell
+	# 1.2.8: the camera switched off in Settings > Privacy: its driver is not loaded
+	[ -f /persist/etc/camera-off ] && /usr/lib/rudolf/camera start
 	[ -f /persist/etc/decktest ] && /usr/lib/rudolf/decktest on
 	[ -f /persist/proxy ] && cp /persist/proxy /run/rudolf/proxy
 	# native apps (Flatpak: Sober for Roblox) live on the data partition

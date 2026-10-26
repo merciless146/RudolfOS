@@ -570,6 +570,29 @@ image until `t127c_t.py`. Fixed: `umount ... || true`.
 - **Found while doing this:** release builds never rebuilt `rudolf-debian` (not in `ci_release.sh`'s list); it and
   `rudolf-fscheck` are now built there.
 
+### As built (stage C, 1.2.8)
+Stage C ships as **1.2.8** (1.2.7 went to stable with stage B). Branch `rudolf-1.2.8-c`.
+- **Item 8, camera privacy:** the plan's worry (websites given the camera silently) does not hold with the shell:
+  Oracle's tabs pass every camera or microphone request to the desktop, which asks per site (`tabs26.js` rtPerm), and
+  the session's `--use-fake-ui-for-media-stream` only answers Chromium's own prompt after that. A Chromium policy
+  (`VideoCaptureAllowed`) was tried and does not work together with that flag. So Settings › Privacy › Camera is one
+  switch that unloads `uvcvideo` and blacklists it (`/etc/modprobe.d`, kept as `/persist/etc/camera-off`): nothing
+  can use the camera, websites and Linux apps included, until it is switched on.
+- **Item 8, tests:** QEMU 10.2 has no USB camera (`usb-video`), so `t128a_t.py` checks the driver, its class alias,
+  loading, the switch (also after a restart) and the camera step without a camera; `hw_t.js` checks all five steps
+  with Chromium's fake camera and a stand-in battery. A real webcam completes it.
+- **Item 17, changed from the plan:** no factory copy of the layers. The boot image is built by `mkdisc.sh` next to
+  each disc image (no layers, sources or licence texts: about 27 MB, one file) and published in the disc release.
+  Before it is staged, the running update's slot (and the previous one) gets any layer it still takes from the old
+  disc image, checked against its signed list; a previous slot that cannot be made whole is dropped from `prev`. A
+  drive whose system is its own image (no installed update) is refused for a boot image. A factory reset on a
+  boot-only drive keeps `/persist/os`. The start-up writes the staged image before anything uses the area (three
+  tries, read back each time), keeping the partition table's RUDOLFDATA entry. Make a stick and Install here refuse
+  a boot image (it has no system).
+- **Item 17, tests:** `t128b_t.py` (a drive made as Install here made it from the 1.2.0 disc, with the 1.2.8 update
+  in a slot: staged, written at the next start, started from the new boot files; and Replace the boot files only from
+  the 1.2.8 disc for a second drive), `bootf_t.js` (page), `qt/host/bootfiles_t.sh` (busybox: slots, fit, writing).
+
 ## Release steps (each stage)
 1. Branch `rudolf-1.2.6-a`, `rudolf-1.2.7-b`, `rudolf-1.2.7-c`; implement, host tests, local release build from the
    published beta.

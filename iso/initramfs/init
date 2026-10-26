@@ -84,8 +84,56 @@ if ! has rudolf.nopersist=1; then
 		PERSIST=$P
 		if [ -e /mnt/persist/.factory-reset ]; then
 			say "Rudolf OS: erasing saved data (factory reset)..."
-			find /mnt/persist -mindepth 1 -maxdepth 1 ! -name lost+found -exec rm -rf {} +
+			# 1.2.8: a drive with boot files only (no system on its image) keeps its installed system
+			if [ -e /mnt/media/rudolf/bootonly ]; then find /mnt/persist -mindepth 1 -maxdepth 1 ! -name lost+found ! -name os -exec rm -rf {} +; rm -rf /mnt/persist/os/current /mnt/persist/os/bootimg
+			else find /mnt/persist -mindepth 1 -maxdepth 1 ! -name lost+found -exec rm -rf {} +; fi
 		fi
+	fi
+fi
+
+# ---- new boot files (1.2.8, Settings > Security > Secure Boot > Get new boot files): an image staged on RUDOLFDATA
+# (bootfiles.sh stage) is written over the area in front of it, on the same disk, before anything uses that area.
+# The RUDOLFDATA entry of the partition table is kept; the copy is read back and compared; then a restart.
+BI=/mnt/persist/os/bootimg
+if [ -n "$PERSIST" ] && [ -s $BI/pending ] && [ -s $BI/boot.iso ] && ! has rudolf.recovery=1; then
+	bgv() { sed -n "s/^$1=//p" $BI/pending; }
+	case "$PERSIST" in /dev/nvme*p3|/dev/mmcblk*p3) BD=${PERSIST%p3};; /dev/[sv]d[a-z]3) BD=${PERSIST%3};; *) BD="";; esac
+	BS=$(bgv start); BB=$(bgv blocks); BH=$(bgv sha); WHY=""
+	[ -n "$BD" ] && [ -b "$BD" ] || WHY="the drive could not be found"
+	if [ -z "$WHY" ]; then
+		E=$(dd if=$BD bs=1 skip=478 count=16 2>/dev/null | od -An -tx1 | tr -d ' \n')
+		CS=$(dd if=$BD bs=1 skip=486 count=4 2>/dev/null | od -An -tu4 | tr -d ' \n')
+		[ "$CS" != "$BS" ] && WHY="the partition table changed"
+	fi
+	[ -z "$WHY" ] && [ $((BB * 4)) -gt "${BS:-0}" ] && WHY="it does not fit"
+	[ -z "$WHY" ] && [ "$(sha256sum $BI/boot.iso | cut -c1-64)" != "$BH" ] && WHY="the kept copy is damaged"
+	if [ -n "$WHY" ]; then
+		say "Rudolf OS: the new boot files were not written ($WHY)."; echo "not written: $WHY" > $BI/result; rm -f $BI/pending $BI/boot.iso; sync; sleep 4
+	else
+		clear > /dev/console
+		say "Rudolf OS: writing the new boot files (Rudolf OS $(bgv version))."
+		say "Do not switch the computer off. This takes about a minute."
+		umount /mnt/media 2>/dev/null
+		h2b() { for h in $(echo "$1" | sed 's/../& /g'); do printf "\\$(printf %03o 0x$h)"; done; }
+		WANT=$({ dd if=$BI/boot.iso bs=478 count=1 2>/dev/null; h2b "$E"; dd if=$BI/boot.iso bs=2048 count=$BB 2>/dev/null | tail -c +495; } | sha256sum | cut -c1-64)
+		OKW=""
+		for t in 1 2 3; do
+			dd if=$BI/boot.iso of=$BD bs=2048 count=$BB conv=fsync 2>/dev/null
+			h2b "$E" | dd of=$BD bs=1 seek=478 conv=notrunc,fsync 2>/dev/null
+			sync; blockdev --flushbufs $BD 2>/dev/null; echo 3 > /proc/sys/vm/drop_caches
+			[ "$(dd if=$BD bs=2048 count=$BB 2>/dev/null | sha256sum | cut -c1-64)" = "$WANT" ] && { OKW=1; break; }
+			say "Rudolf OS: the copy does not match; writing it again ($t)."
+		done
+		if [ -n "$OKW" ]; then
+			echo "written $(date -u +%Y-%m-%dT%H:%MZ): Rudolf OS $(bgv version) (serial $(bgv serial))" > $BI/result; rm -f $BI/pending $BI/boot.iso
+			say "Rudolf OS: the new boot files are written. Restarting."
+		else
+			echo "failed $(date -u +%Y-%m-%dT%H:%MZ): the copy did not match three times" > $BI/result; rm -f $BI/pending
+			say "Rudolf OS: the new boot files could not be written correctly; the drive may be failing."
+			say "Your files are safe. If the computer does not start, start it from a Rudolf OS USB stick and use"
+			say "Install here > Replace the boot files only. Press Enter to restart."; read x < /dev/console
+		fi
+		cd /; umount /mnt/persist; sync; sleep 2; reboot -f
 	fi
 fi
 
@@ -180,6 +228,11 @@ for L in desktop chromium modules base; do
 	F=""
 	if [ -n "$SLOT" ] && [ -s $SYSD/$SLOT/$L.sfs ]; then F=$SYSD/$SLOT/$L.sfs
 	elif [ -n "$MEDIA" ] && [ -s /mnt/media/rudolf/$L.sfs ]; then F=/mnt/media/rudolf/$L.sfs
+	fi
+	if [ -z "$F" ] && [ -e /mnt/media/rudolf/bootonly ]; then
+		say "Rudolf OS: this drive has boot files only (1.2.8), and its installed system could not start."
+		say "Start from a Rudolf OS USB stick and use Settings > Update and recovery > Install here."
+		fail
 	fi
 	[ -n "$F" ] || { say "Rudolf OS: the system layer '$L' is missing."; fail; }
 	if has rudolf.toram=1; then

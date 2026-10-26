@@ -21,6 +21,8 @@ if [ -n "$2" ]; then
 	mkdir -p /mnt/instsrc; umount /mnt/instsrc 2>/dev/null || true
 	mount -t iso9660 -o ro,loop "$SRC" /mnt/instsrc || { echo "That file is not a disc image."; exit 7; }
 	OK=1; [ -e /mnt/instsrc/rudolf/id ] || OK=0
+	# 1.2.8: a boot image has no system of its own: it only replaces the boot files of an installed drive
+	[ -e /mnt/instsrc/rudolf/bootonly ] && { umount /mnt/instsrc; echo "That is a boot image (boot files only, no system). To install Rudolf OS choose a whole disc image; a boot image is for Replace the boot files only."; exit 7; }
 	V=$(rudolf-update verify-manifest /mnt/instsrc/rudolf/manifest.txt /mnt/instsrc/rudolf/manifest.sig 2>&1) || OK=0
 	umount /mnt/instsrc
 	[ $OK = 1 ] || { echo "That file is not a Rudolf OS disc image signed by Rudolf OS ($V)."; exit 7; }

@@ -34,7 +34,7 @@ const isDlRefSafe=v=>typeof isDlRef=='function'&&isDlRef(v);
 /* 1.2.7: the drive Rudolf OS started from has boot files from before Secure Boot (rudolfd info.bootSecure 0) */
 const STK_BOOTOLD='This computer started from a disc made before Rudolf OS supported Secure Boot (1.2.2). A stick made from it will not start with Secure Boot on: choose a downloaded image instead.';
 async function stkSection(c){if(!RD)return;const box=document.createElement('div');box.className='stk30';c.appendChild(box);
- let info={},disks=[],imgs=[];try{info=await rd('info');disks=(await rd('disks')).disks||[]}catch(e){}try{imgs=(await rd('install/images')).images||[]}catch(e){}
+ let info={},disks=[],imgs=[];try{info=await rd('info');disks=(await rd('disks')).disks||[]}catch(e){}try{imgs=((await rd('install/images')).images||[]).filter(x=>!x.boot)}catch(e){}
  const adm=isAdmin(),tg=stkTargets(disks,info),bp=stkBackupParts(disks,info);
  box.innerHTML=`<h4 class='sh4'>Make a Rudolf OS USB stick</h4><p class='msg'>Puts Rudolf OS on a USB stick or memory card (2 GB or more) that starts on any computer and keeps its files. Everything on that drive is erased.</p>
  <div class='r2'><label>Rudolf OS to put on it</label><select class='stks'><option value=''>This Rudolf OS ${lxEsc(RVER)}${info.updateInstalled?' (with its updates)':''}</option>${imgs.map(x=>`<option value='${lxEsc(x.path)}'>${lxEsc(imgLabel(x))} (Downloads)</option>`).join('')}</select></div><p class='msg stkbo' hidden></p>
@@ -89,3 +89,33 @@ function stkRestoreDlg(){return new Promise(async res=>{const o=document.createE
 if(typeof storPanel=='function'){const _sp=storPanel;storPanel=function(c){const r=_sp.apply(this,arguments);try{stkSection(c)}catch(e){}return r}}
 {const _fr=firstRun;firstRun=function(){const r=_fr.apply(this,arguments);const o=document.getElementById('oobe');if(o&&RD&&!o.querySelector('.oorest')){const b=document.createElement('button');b.className='oorest';b.textContent='Restore from a backup on a USB stick…';
  b.style.cssText='position:absolute;left:50%;bottom:18px;transform:translateX(-50%)';b.onclick=()=>stkRestoreDlg();o.appendChild(b)}return r}}
+/* ===== 1.2.8: new boot files, keeping the drive's files =====
+   Settings › Security › Secure Boot › Get new boot files… (the drive Rudolf OS runs from: bootfiles.sh stage, written
+   by the start-up at the next start) and Install here › Replace the boot files only… (another drive, from a stick:
+   bootfiles.sh write). The image is a downloaded Rudolf OS boot image (rudolf-os-X.Y.Z-boot.iso, which fits in front of
+   RUDOLFDATA on every drive Install here made) or a whole disc image that fits. */
+const BF_RELEASES='https://github.com/merciless146/RudolfOS/releases';
+/* a job's log in BOX until it ends: resolves with its status */
+function bfJob(box){box.style.display='block';return new Promise(res=>{const iv=setInterval(async()=>{let j;try{j=await rd('job')}catch(e){return}box.textContent=j.log||'';box.scrollTop=box.scrollHeight;if(!j.running&&j.status>=0){clearInterval(iv);res(j.status)}},1000)})}
+/* the images in Downloads, boot images first */
+async function bfImages(){let im=[];try{im=(await rd('install/images')).images||[]}catch(e){}return im.sort((a,b)=>(b.boot?1:0)-(a.boot?1:0))}
+async function bootFilesDlg(done){
+ const inf=await rd('info').catch(()=>({}));const o=document.createElement('div');o.className='rmodal bfdlg';
+ o.innerHTML=`<div class='rmbox' role='dialog' aria-label='New boot files' style='max-width:560px'><h3>New boot files for this drive</h3><div class='bfb'></div><pre class='bfl' style='display:none;max-height:180px;overflow:auto;font-size:11px;background:#111;color:#ddd;padding:6px;white-space:pre-wrap'></pre><div class='rmrow bfr'></div></div>`;
+ document.body.appendChild(o);const B=o.querySelector('.bfb'),R=o.querySelector('.bfr'),L=o.querySelector('.bfl');
+ const btn=(l,f,pri)=>{const b=document.createElement('button');b.textContent=l;if(pri)b.className='pri';b.onclick=f;R.appendChild(b);return b};const close=()=>{o.remove();done&&done()};
+ const ready=()=>{B.innerHTML=`<p>The new boot files are written the next time the computer starts, before anything else (about a minute). Keep it plugged in to power, and do not switch it off while it says <b>Writing the new boot files</b>.</p><p>Then prepare Secure Boot here and turn it on in the firmware settings.</p>`;R.innerHTML='';btn('Later',close);btn('Restart now',()=>{close();sbRestart()},1)};
+ if(inf.bootFiles&&inf.bootFiles.pending)return ready();
+ const im=await bfImages();
+ B.innerHTML=`<p>Rudolf OS can replace this drive's boot files with newer ones that start with Secure Boot on. Your files, settings and apps stay as they are: only the area in front of them is written.</p>
+<ol style='margin:4px 0 8px 18px;padding:0'><li>In Oracle, open the Rudolf OS releases and download <b>rudolf-os-X.Y.Z-boot.iso</b> and its <b>.sha256</b> from the newest disc release.</li><li>Choose it here.</li></ol>
+<div class='r2'><label>Image</label><select class='bfs'></select></div><p class='msg bfm'></p>`;
+ const sel=B.querySelector('.bfs'),M=B.querySelector('.bfm');
+ if(!im.length){sel.innerHTML='<option value="">No image in Downloads yet</option>';sel.disabled=true}
+ else im.forEach(x=>{const op=document.createElement('option');op.value=x.path;op.textContent=imgLabel(x)+' ('+fmtB(x.bytes)+')';sel.appendChild(op)});
+ const note=()=>{const v=sel.value,x=im.find(y=>y.path==v);M.textContent=!x?'':(x.boot?'A boot image: the system keeps coming from the installed update.':'A whole disc image: it is used only if it fits in front of your files (the boot image always does).')+(imgSha(v)?' Its .sha256 is in Downloads and is checked.':' No .sha256 was found in Downloads: its signature is still checked.')};sel.onchange=note;note();
+ if(inf.bootFiles&&inf.bootFiles.result){const p=document.createElement('p');p.className='msg';p.textContent='Last time: '+inf.bootFiles.result;B.appendChild(p)}
+ btn('Cancel',close);btn('Open the releases in Oracle',()=>{close();try{browser(BF_RELEASES)}catch(e){}});
+ const go=btn('Prepare the new boot files',async()=>{if(!sel.value)return;if(!await elevate('Replace this drive\'s boot files at the next start (your files are kept)'))return;
+  R.innerHTML='';try{await rdPost('bootfiles?image='+encodeURIComponent(sel.value)+(imgSha(sel.value)?'&sha='+imgSha(sel.value):''))}catch(e){M.textContent=e.message;btn('Close',close);return}
+  const st=await bfJob(L);if(st==0)ready();else{M.textContent='Nothing was changed: see the messages above.';btn('Close',close,1)}},1);go.disabled=!im.length}

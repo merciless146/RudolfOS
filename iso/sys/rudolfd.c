@@ -404,6 +404,11 @@ static void battery(str *s)
 		sjson(s, t);
 		sadd(s, ",\"capacity\":%lld,\"online\":%lld,\"status\":", cap, online);
 		sjson(s, stt ? stt : "");
+		/* health (1.2.8, Settings > Hardware check): energy in uWh, or charge in uAh on batteries that report charge */
+		{ static const char *k[] = {"energy_full", "energy_full_design", "charge_full", "charge_full_design", "cycle_count", "energy_now", "power_now", "voltage_min_design"};
+		  for (unsigned i = 0; i < sizeof k / sizeof *k; i++) { snprintf(p, sizeof p, "/sys/class/power_supply/%s/%s", e->d_name, k[i]); long long v = read_ll(p, -1); if (v >= 0) sadd(s, ",\"%s\":%lld", k[i], v); }
+		  static const char *t2[] = {"manufacturer", "model_name", "technology"};
+		  for (unsigned i = 0; i < sizeof t2 / sizeof *t2; i++) { snprintf(p, sizeof p, "/sys/class/power_supply/%s/%s", e->d_name, t2[i]); char *v = slurp(p, NULL); if (v) { trim(v); sadd(s, ",\"%s\":", t2[i]); sjson(s, v); free(v); } } }
 		sadd(s, "}");
 		free(stt);
 		first = 0;
@@ -455,6 +460,9 @@ static void api_info(struct req *r)
 	   shim, the signed boot menu and EFI/rudolf/rudolf.cer in its EFI image). Updates never replace these, so a
 	   computer installed from an older disc and updated still has the old, unsigned ones. 1 yes, 0 no, -1 unknown. */
 	sadd(&s, ",\"bootSecure\":%d", boot_secure());
+	/* 1.2.8: new boot files staged for the next start (bootfiles.sh), and what the start-up did with the last ones */
+	{ char *res = slurp(PERSIST "/os/bootimg/result", NULL); if (res) trim(res);
+	  sadd(&s, ",\"bootFiles\":{\"pending\":%s,\"result\":", access(PERSIST "/os/bootimg/pending", F_OK) ? "false" : "true"); sjson(&s, res ? res : ""); sadd(&s, "}"); free(res); }
 	sadd(&s, ",\"live\":%s,\"recovery\":%s,\"persistTotal\":%lld,\"persistFree\":%lld,\"backlight\":%s,\"updateInstalled\":%s}", live ? "true" : "false", recovery ? "true" : "false", ptotal, pfree,
 		backlight_dir(bl, sizeof bl) ? "true" : "false", access(PERSIST "/os/current/index.html", R_OK) ? "false" : "true");
 	free(model); free(kern); free(prod); free(vend); free(ver);
@@ -1046,6 +1054,25 @@ static void api_idbm(struct req *r, const char *what, int post)
  *   GET  shell              {"id","installed","ready","active","failed","on"}
  *   POST shell?on=0|1       Settings: use the shell (real browser tabs in Oracle) or not, from the next start
  *   POST shell/switch       start the browser again now (with the shell, when it can be used) */
+/* the camera (1.2.8): Settings > Privacy > Camera. Off unloads the webcam driver (uvcvideo) and keeps it from loading
+ * again (/usr/lib/rudolf/camera: its file covered, kept on RUDOLFDATA), so nothing on this computer can use the camera,
+ * websites and Linux apps included, until it is switched on. GET camera: {on, devices (video devices now), loaded} */
+static void api_camera(struct req *r, int post)
+{
+	if (post) {
+		const char *on = qparam(r->query, "on"); if (!on || (strcmp(on, "0") && strcmp(on, "1"))) { reply_err(r->fd, 400, "on=0 or on=1"); return; }
+		char cmd[64]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/camera %s 2>&1", strcmp(on, "0") ? "on" : "off");
+		FILE *p = popen(cmd, "r"); char out[200] = ""; if (p) { if (!fgets(out, sizeof out, p)) out[0] = 0; int st = pclose(p); trim(out);
+			if (WIFEXITED(st) && !WEXITSTATUS(st)) { reply_ok(r->fd, out); return; } }
+		reply_err(r->fd, 409, *out ? out : "the camera could not be switched"); return;
+	}
+	int n = 0; DIR *d = opendir("/sys/class/video4linux"); struct dirent *e;
+	while (d && (e = readdir(d))) if (!strncmp(e->d_name, "video", 5)) n++;
+	if (d) closedir(d);
+	char *m = slurp("/proc/modules", NULL); int loaded = m && (!strncmp(m, "uvcvideo ", 9) || strstr(m, "\nuvcvideo ")); free(m);
+	str s = {0}; sadd(&s, "{\"ok\":true,\"on\":%s,\"devices\":%d,\"loaded\":%s}", access(RUN "/camera-off", F_OK) ? "true" : "false", n, loaded ? "true" : "false");
+	reply_json(r->fd, &s);
+}
 static void api_shell(struct req *r, const char *what, int post)
 {
 	char *id = slurp(WWW "/iwa/id", NULL); if (id) id[strcspn(id, "\n")] = 0;
@@ -2199,7 +2226,7 @@ static void api(struct req *r)
 			if (l < 5 || strcasecmp(e->d_name + l - 4, ".iso") || e->d_name[0] == '.') continue;
 			char fp[600]; snprintf(fp, sizeof fp, "/home/rudolf/Downloads/%s", e->d_name); struct stat st;
 			if (stat(fp, &st) || !S_ISREG(st.st_mode)) continue;
-			sadd(&s, "%s{\"path\":", n++ ? "," : ""); sjson(&s, fp); sadd(&s, ",\"name\":"); sjson(&s, e->d_name); sadd(&s, ",\"bytes\":%lld}", (long long)st.st_size);
+			sadd(&s, "%s{\"path\":", n++ ? "," : ""); sjson(&s, fp); sadd(&s, ",\"name\":"); sjson(&s, e->d_name); sadd(&s, ",\"bytes\":%lld,\"boot\":%s}", (long long)st.st_size, l > 9 && !strcasecmp(e->d_name + l - 9, "-boot.iso") ? "true" : "false");
 		}
 		if (dd) closedir(dd);
 		/* 1.2.7: an image downloaded in parts (NAME.iso.part00, part01, ... with no gaps), not joined yet; install.sh
@@ -2226,7 +2253,7 @@ static void api(struct req *r)
 			}
 			if (!np) continue;
 			sadd(&s, "%s{\"path\":", n++ ? "," : ""); sjson(&s, fp); sadd(&s, ",\"name\":"); sjson(&s, base);
-			sadd(&s, ",\"bytes\":%lld,\"parts\":%d}", tot, np);
+			sadd(&s, ",\"bytes\":%lld,\"parts\":%d,\"boot\":%s}", tot, np, bl > 9 && !strcasecmp(base + bl - 9, "-boot.iso") ? "true" : "false");
 		}
 		if (dd) closedir(dd);
 		sadd(&s, "]}"); reply_json(r->fd, &s); return;
@@ -2337,6 +2364,7 @@ static void api(struct req *r)
 	if (!strcmp(p, "bootmenu")) { api_bootmenu(r, "", post); return; }
 	if (!strncmp(p, "bootmenu/", 9)) { api_bootmenu(r, p + 9, post); return; }
 	if (!strcmp(p, "shell") || !strncmp(p, "shell/", 6)) { api_shell(r, p + 5, post); return; }
+	if (!strcmp(p, "camera")) { api_camera(r, post); return; }
 	if (!strcmp(p, "clipboard")) { api_clipboard(r); return; }
 	if (!strcmp(p, "web/status")) { api_web(r, "status"); return; }   /* the taskbar asks whether the browser window is open */
 	if (!strcmp(p, "wifi/status")) { api_wifi(r, "status"); return; }
@@ -2543,8 +2571,26 @@ static void api(struct req *r)
 			for (const char *q = img; okp && *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/._-", *q)) okp = 0;
 			if (!okp) { reply_err(r->fd, 400, "the image must be a file in the home folder (letters, digits, . _ - only)"); return; }
 		}
+		/* 1.2.8: bootonly=1 replaces only the boot files in front of the disk's RUDOLFDATA, keeping it (bootfiles.sh) */
+		char *bo = qparam(r->query, "bootonly");
+		if (bo && !strcmp(bo, "1")) {
+			char cmd[600]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/bootfiles.sh write /dev/%s '%s'", img_sha_env(r), d, img && *img ? img : "");
+			start_job("bootfiles", cmd); reply_ok(r->fd, "writing the boot files"); return;
+		}
 		char cmd[600]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/install.sh /dev/%s%s%s", img_sha_env(r), d, img && *img ? " " : "", img && *img ? img : "");
 		start_job("install", cmd); reply_ok(r->fd, "installing"); return;
+	}
+	/* new boot files for the drive Rudolf OS runs from (1.2.8): checked and kept on RUDOLFDATA, written by the start-up
+	   at the next start (bootfiles.sh stage); image: a downloaded disc image or boot image in the home folder */
+	if (!strcmp(p, "bootfiles")) {
+		if (live) { reply_err(r->fd, 400, "Rudolf OS is not keeping files on this drive"); return; }
+		if (job_running()) { reply_err(r->fd, 409, "another job is running"); return; }
+		char *img = qparam(r->query, "image");
+		int okp = img && !strncmp(img, "/home/rudolf/", 13) && !strstr(img, "..") && strlen(img) < 200;
+		for (const char *q = img; okp && *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/._-", *q)) okp = 0;
+		if (!okp) { reply_err(r->fd, 400, "the image must be a file in the home folder (letters, digits, . _ - only)"); return; }
+		char cmd[600]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/bootfiles.sh stage '%s'", img_sha_env(r), img);
+		start_job("bootfiles", cmd); reply_ok(r->fd, "checking the image"); return;
 	}
 	/* make a Rudolf OS USB stick (1.2.5, mkstick.sh): disk and confirm (the same name twice), image (empty for this
 	   Rudolf OS, or a downloaded image in the home folder), files=1 to copy this session's files and settings too */

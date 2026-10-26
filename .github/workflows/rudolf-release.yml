@@ -146,9 +146,10 @@ jobs:
           S=$(sed -n 's/^serial //p' "$RUNNER_TEMP/pages/beta/manifest.txt")
           mkdir -p rel old && cp "$RUNNER_TEMP/pages/beta/manifest.txt" "$RUNNER_TEMP/pages/beta/manifest.sig" rel/ && gh release download "r$S" -D rel -p vmlinuz -p '*.sfs'
           bash iso/systools/sb_parts_get.sh sbparts
-          gh release download "$FROM" -D old -p 'rudolf-os-*'
+          # the disc image only (1.2.8: releases also hold a boot image, rudolf-os-X-boot.iso)
+          FV=${FROM#disc-}; gh release download "$FROM" -D old -p "rudolf-os-$FV.iso" -p "rudolf-os-$FV.iso.part*" -p "rudolf-os-$FV.iso.sha256"
           ISO=old/old.iso; ls old/*.iso >/dev/null 2>&1 && mv old/*.iso "$ISO" || cat $(ls old/*.iso.part* | sort) > "$ISO"
-          SUM=$(ls old/*.sha256 | head -1); [ "$(sha256sum < "$ISO" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$SUM")" ] || { echo "::error::$FROM: the disc image does not match its checksum"; exit 1; }
+          SUM=old/rudolf-os-$FV.iso.sha256; [ "$(sha256sum < "$ISO" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$SUM")" ] || { echo "::error::$FROM: the disc image does not match its checksum"; exit 1; }
           SB_PARTS=$PWD/sbparts SB_KEY="$RUNNER_TEMP/sb.key" bash iso/systools/mkdisc.sh "$ISO" rel "$VER" dout
           cd dout && rm -rf tree
           split -b 30408704 -d -a 2 "rudolf-os-$VER.iso" "rudolf-os-$VER.iso.part" && rm "rudolf-os-$VER.iso"
@@ -169,9 +170,10 @@ jobs:
           git -C .. archive --format=tar --prefix=rudolf-os-$VER/ HEAD desktop iso libs LICENSE README.md CHANGELOG.md | xz -9 > "rudolf-os-$VER-source.tar.xz"
           { echo "Rudolf OS $VER: download every rudolf-os-$VER.iso.part file and the .sha256, then join them as JOIN-PARTS.TXT says."
             echo; echo "Computers that already run Rudolf OS get these changes as an update (Settings > Update and recovery)."
+            echo; echo "Boot files only: rudolf-os-$VER-boot.iso (and its .sha256) gives a computer where Rudolf OS is installed new boot files, for example to start with Secure Boot on, without erasing it: download it in Rudolf OS, then Settings > Security > Secure Boot > Get new boot files."
             echo; echo "## What's new"; awk -v v="$VER" '$1=="##"&&$2==v{f=1;next} /^## /{f=0} f&&/^- /' ../CHANGELOG.md; } > notes.md
-          gh release create "disc-$VER" rudolf-os-$VER.iso.part* "rudolf-os-$VER.iso.sha256" JOIN-PARTS.TXT join.ps1 README.TXT "rudolf-os-$VER-source.tar.xz" --title "Rudolf OS $VER" --notes-file notes.md
-          cat "rudolf-os-$VER.iso.sha256"
+          gh release create "disc-$VER" rudolf-os-$VER.iso.part* "rudolf-os-$VER.iso.sha256" "rudolf-os-$VER-boot.iso" "rudolf-os-$VER-boot.iso.sha256" JOIN-PARTS.TXT join.ps1 README.TXT "rudolf-os-$VER-source.tar.xz" --title "Rudolf OS $VER" --notes-file notes.md
+          cat "rudolf-os-$VER.iso.sha256" "rudolf-os-$VER-boot.iso.sha256"
       - name: Keep the release lists from expiring
         if: always() && steps.seed.outcome != 'failure'
         env: {KEYFILE: '${{ runner.temp }}/rpk.key'}

@@ -1,0 +1,25 @@
+#!/bin/sh
+# The camera switch (1.2.8, Settings > Privacy > Camera). GPL-2.0-or-later.
+#   camera off|on|start
+# Off: the webcam driver (uvcvideo) is unloaded and its file is covered (a bind mount of /dev/null), so nothing can
+# load it again, a camera plugged in later included, until it is switched on. busybox's modprobe does not take a
+# blacklist for module aliases, so the file itself is what is kept from it. Kept on RUDOLFDATA (/persist/etc/camera-off);
+# "start" (rudolf-init, before drivers are loaded) puts it back in place after a restart.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+KO=$(find /lib/modules/$(uname -r)/ -name 'uvcvideo.ko*' 2>/dev/null | head -1); [ -n "$KO" ] && KO=$(readlink -f "$KO")   # as /proc/mounts names it (/lib is /usr/lib)
+cover() { [ -n "$KO" ] && ! grep -q " $KO " /proc/mounts && mount --bind /dev/null "$KO"; : > /run/rudolf/camera-off; }
+case "$1" in
+off)
+	cover
+	[ -d /persist/etc ] && mountpoint -q /persist && echo 1 > /persist/etc/camera-off
+	rmmod uvcvideo 2>/dev/null; grep -q '^uvcvideo ' /proc/modules && { echo "the camera is in use: close the app using it, then try again"; exit 1; }
+	echo "the camera is off";;
+on)
+	[ -n "$KO" ] && grep -q " $KO " /proc/mounts && umount "$KO"
+	rm -f /run/rudolf/camera-off /persist/etc/camera-off
+	# cameras plugged in now: their driver loads
+	for m in $(cat /sys/bus/usb/devices/*/modalias 2>/dev/null | grep 'ic0Eisc01' | sort -u); do modprobe -q "$m"; done
+	echo "the camera is on";;
+start) [ -f /persist/etc/camera-off ] && cover;;
+*) echo "usage: camera off|on|start"; exit 2;;
+esac

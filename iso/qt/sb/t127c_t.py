@@ -130,10 +130,9 @@ with open(STICK, 'rb') as f:
 img = open(IMG, 'rb').read()
 ok('the stick holds the downloaded image, byte for byte (but its RUDOLFDATA partition entry)', head[:478] + head[494:] == img[:478] + img[494:] and head[478:494] != img[478:494])
 del img
-with open('stickimg127c.iso', 'wb') as f: f.write(head)
-with open('stickimg127c.iso', 'rb') as f:
+import io
+with io.BytesIO(head) as f:
     lba, size = iso_extract.find(f, 'EFI/EFIBOOT.IMG'); f.seek(lba * 2048); efi = f.read(size)
     lba, size = iso_extract.find(f, 'RUDOLF/RELEASE'); f.seek(lba * 2048); rel = f.read(size).decode()
-os.remove('stickimg127c.iso')
 ok(f'...with Secure Boot boot files (EFI/rudolf/rudolf.cer, grubx64.efi) and version {VER}', b'RUDOLF  CER' in efi and b'GRUBX64 EFI' in efi and f'version {VER}' in rel, rel[:80])
 out('%d/%d passed' % (sum(R), len(R)))
