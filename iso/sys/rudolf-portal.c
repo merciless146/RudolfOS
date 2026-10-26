@@ -6,6 +6,8 @@
  *   OpenURI       OpenURI, OpenFile, OpenDirectory -> Oracle / the browser window / Files
  *   Notification  AddNotification, RemoveNotification -> Rudolf notifications
  *   Settings      ReadAll, Read, ReadOne         -> colour scheme
+ *   ProxyResolver Lookup                         -> the proxy set in Rudolf OS, or none (1.2.8)
+ *   NetworkMonitor GetStatus, GetAvailable, ...   -> online (1.2.8)
  * and as org.freedesktop.Notifications for apps that notify directly (libnotify).
  * Questions go to the desktop through rudolfd: a JSON file per request in /run/rudolf/portal/req,
  * the answer comes back in /run/rudolf/portal/resp. Files are handed over by path, so an app can use
@@ -181,13 +183,32 @@ static void portal_method(GDBusConnection *c, const char *sender, const char *pa
 			else if (!strcmp(method, "ReadOne")) g_dbus_method_invocation_return_value(inv, g_variant_new("(v)", val));
 			else g_dbus_method_invocation_return_value(inv, g_variant_new("(v)", g_variant_new_variant(val)));
 		}
+	} else if (!strcmp(iface, "org.freedesktop.portal.ProxyResolver")) {
+		/* 1.2.8: GLib inside a Flatpak sandbox asks the portal for the proxy of every address (GProxyResolverPortal);
+		   without this interface each request fails ("No such interface ...ProxyResolver"), so Sober's sign-in page
+		   (WebKitGTK) stayed blank and signing in to Roblox failed. The answer: Rudolf OS's proxy (Settings > Network,
+		   /run/rudolf/proxy, as Chromium's --proxy-server takes it), or a direct connection. */
+		char *t = NULL; const char *px = "direct://"; char buf[512];
+		if (g_file_get_contents("/run/rudolf/proxy", &t, NULL, NULL)) { g_strstrip(t);
+			if (*t) { if (strstr(t, "://")) snprintf(buf, sizeof buf, "%s", t); else snprintf(buf, sizeof buf, "http://%s", t); px = buf; } }
+		const char *list[] = {px, NULL};
+		g_dbus_method_invocation_return_value(inv, g_variant_new("(^as)", list)); g_free(t);
+	} else if (!strcmp(iface, "org.freedesktop.portal.NetworkMonitor")) {
+		/* 1.2.8: online, not metered, full connectivity (GNetworkMonitorPortal); Rudolf OS shows the real state itself */
+		if (!strcmp(method, "GetAvailable") || !strcmp(method, "CanReach")) g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", TRUE));
+		else if (!strcmp(method, "GetMetered")) g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", FALSE));
+		else if (!strcmp(method, "GetConnectivity")) g_dbus_method_invocation_return_value(inv, g_variant_new("(u)", 4));
+		else { GVariantBuilder b; g_variant_builder_init(&b, G_VARIANT_TYPE("a{sv}"));
+			g_variant_builder_add(&b, "{sv}", "available", g_variant_new_boolean(TRUE)); g_variant_builder_add(&b, "{sv}", "metered", g_variant_new_boolean(FALSE));
+			g_variant_builder_add(&b, "{sv}", "connectivity", g_variant_new_uint32(4));
+			g_dbus_method_invocation_return_value(inv, g_variant_new("(@a{sv})", g_variant_builder_end(&b))); }
 	} else g_dbus_method_invocation_return_dbus_error(inv, "org.freedesktop.DBus.Error.UnknownMethod", "not supported");
 	g_string_free(j, TRUE); g_free(app);
 }
 static GVariant *portal_prop(GDBusConnection *c, const char *sender, const char *path, const char *iface, const char *prop, GError **e, gpointer u)
 {
 	(void)c; (void)sender; (void)path; (void)e; (void)u;
-	if (!strcmp(prop, "version")) return g_variant_new_uint32(!strcmp(iface, "org.freedesktop.portal.OpenURI") ? 4 : !strcmp(iface, "org.freedesktop.portal.FileChooser") ? 3 : !strcmp(iface, "org.freedesktop.portal.Settings") ? 2 : 1);
+	if (!strcmp(prop, "version")) return g_variant_new_uint32(!strcmp(iface, "org.freedesktop.portal.OpenURI") ? 4 : !strcmp(iface, "org.freedesktop.portal.FileChooser") ? 3 : !strcmp(iface, "org.freedesktop.portal.Settings") ? 2 : !strcmp(iface, "org.freedesktop.portal.NetworkMonitor") ? 3 : 1);
 	if (!strcmp(prop, "SupportedOptions")) return g_variant_new("a{sv}", NULL);
 	return NULL;
 }
@@ -232,6 +253,17 @@ static const char XML[] =
 	"<method name='Read'><arg type='s' direction='in'/><arg type='s' direction='in'/><arg type='v' direction='out'/></method>"
 	"<method name='ReadOne'><arg type='s' direction='in'/><arg type='s' direction='in'/><arg type='v' direction='out'/></method>"
 	"<signal name='SettingChanged'><arg type='s'/><arg type='s'/><arg type='v'/></signal>"
+	"<property name='version' type='u' access='read'/></interface>"
+	"<interface name='org.freedesktop.portal.ProxyResolver'>"
+	"<method name='Lookup'><arg type='s' direction='in'/><arg type='as' direction='out'/></method>"
+	"<property name='version' type='u' access='read'/></interface>"
+	"<interface name='org.freedesktop.portal.NetworkMonitor'>"
+	"<method name='GetAvailable'><arg type='b' direction='out'/></method>"
+	"<method name='GetMetered'><arg type='b' direction='out'/></method>"
+	"<method name='GetConnectivity'><arg type='u' direction='out'/></method>"
+	"<method name='GetStatus'><arg type='a{sv}' direction='out'/></method>"
+	"<method name='CanReach'><arg type='s' direction='in'/><arg type='u' direction='in'/><arg type='b' direction='out'/></method>"
+	"<signal name='changed'/>"
 	"<property name='version' type='u' access='read'/></interface>"
 	"</node>";
 static const char REQ_XML[] = "<node><interface name='org.freedesktop.portal.Request'><method name='Close'/>"
