@@ -3,6 +3,11 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.2.9 (2026-10-26)
+Summary: signing in to Roblox in Sober (and web pages inside other Linux apps) works
+- Fixed: Sober could not sign in to Roblox: its sign-in window stayed blank with "No such interface org.freedesktop.portal.ProxyResolver", then "Something went wrong". Linux apps from the App Store ask Rudolf OS which proxy to use for each address; Rudolf OS now answers (its own proxy from Settings › Network, or none), and says whether the computer is online.
+- Fixed: release updates now rebuild the desktop portal for Linux apps too (before, only a full build did).
+
 ## 1.2.8 (2026-10-27)
 Summary: the Linux terminal and App Store apps work on computers running an installed update; new boot files for an installed computer without erasing it (Secure Boot on computers installed from an older disc); webcams work, with a camera switch in Settings › Privacy; the hardware check tests the keyboard, touchpad, camera, battery and screen
 - Fixed: the Linux terminal (Debian) could not be set up or started, with "the Debian sandbox did not start: mounting /proc failed (Operation not permitted)", on every computer running an installed update (since 1.2.3). The start-up options were mounted over /proc/cmdline there, and the kernel then refuses a sandbox its own /proc. Flatpak apps from the App Store were refused the same way. Settings › Apps › Linux › Check now tests this too ("A new /proc for sandboxes").
