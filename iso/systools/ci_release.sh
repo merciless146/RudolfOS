@@ -143,7 +143,10 @@ CHANGED=0; for f in vmlinuz base.sfs chromium.sfs desktop.sfs modules.sfs; do cm
 if [ $CHANGED = 0 ]; then echo "nothing changed: no release"; echo "released=0" >> "${GITHUB_OUTPUT:-/dev/null}"; exit 0; fi
 NOTE=$(printf '%s, ' "${NOTES[@]}"); NOTE=${NOTE%, }; NOTE=${NOTE:-security fixes}
 # the first release of a new version says what is new in it (CHANGELOG.md, the "Summary:" line)
-if [ "$(pv version | cut -d. -f1-3)" != "$(cat VERSION)" ] && [ "$(pv version)" != "$(cat VERSION)" ]; then
+# (1.2.7: also every release while stable is still an older version, so a second beta of the same version, which
+# is the one promoted, does not fall back to "system programs, desktop update"; STABLE_MANIFEST: stable's list)
+SV=$(sed -n 's/^version //p' "${STABLE_MANIFEST:-/nonexistent}" 2>/dev/null | cut -d. -f1-3)
+if { [ "$(pv version | cut -d. -f1-3)" != "$(cat VERSION)" ] && [ "$(pv version)" != "$(cat VERSION)" ]; } || { [ -n "$SV" ] && [ "$SV" != "$(cat VERSION)" ]; }; then
 	SUM=$(awk -v v="$(cat VERSION)" '$1=="##"&&$2==v{f=1;next} /^## /{f=0} f&&/^Summary:/{sub(/^Summary: */,"");print;exit}' ../CHANGELOG.md 2>/dev/null)
 	[ -n "$SUM" ] && NOTE="$(cat VERSION): $SUM"
 fi
