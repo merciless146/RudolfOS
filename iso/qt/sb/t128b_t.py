@@ -21,7 +21,7 @@ import sbvm, iso_extract
 from guest import Guest
 from ser import Ser
 OLD, REL, BOOT, DISC = (os.path.abspath(x) for x in sys.argv[1:5])
-PARTS = os.environ['SB_PARTS']; LOG = open('t128b.txt', 'w'); R = []
+PARTS = os.environ['SB_PARTS']; TPUB = open(os.environ['TEST_RPK_PUB']).read().strip() if os.environ.get('TEST_RPK_PUB') else ''; LOG = open('t128b.txt', 'w'); R = []
 def out(*a):
     s = ' '.join(str(x) for x in a); print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
 def ok(n, c, d=''):
@@ -122,6 +122,8 @@ try:
     up = wait_shell(g)
     ok('1. the old drive starts (1.2.0\'s kernel, then the installed 1.2.8 update in slot a)', up and last(sh('cat /etc/rudolf/slot', 20)) == 'a' and last(sh('cat /etc/rudolf/persist', 20)) == '/dev/sda3', sh('cat /etc/rudolf/slot /etc/rudolf/media /etc/rudolf/persist', 20)[-120:])
     page(g, js)
+    # the test release is signed with the test key, which this test system's update tool does not trust by itself
+    if TPUB: sh(f'echo {TPUB} >> /etc/rudolf/rpk-keys; echo added', 20)
     info = J(js("rd('info').then(i=>JSON.stringify(i))"), {})
     ok('...rudolfd says its boot files predate Secure Boot (bootSecure 0), nothing staged', info.get('bootSecure') == 0 and info.get('bootFiles', {}).get('pending') is False, [info.get('bootSecure'), info.get('bootFiles')])
     ims = J(js("rd('install/images').then(r=>JSON.stringify(r.images))"), [])
@@ -184,6 +186,7 @@ vm = sbvm.VM('t128b4', PARTS, [DISC, BD], secure=False, mem=3072, extra=['-devic
 try:
     up = wait_shell(g)
     page(g, js)
+    if TPUB: sh(f'echo {TPUB} >> /etc/rudolf/rpk-keys; echo added', 20)
     out(g.q.cmd('device_add', driver='usb-storage', bus='xh.0', drive='hp', id='hpdev')); time.sleep(15)
     ok('4. the 1.2.8 disc starts, and the second drive is plugged in', up and last(sh('findfs LABEL=RUDOLFDATA', 20)).startswith('/dev/sd'))
     dk = J(js("rd('disks').then(r=>JSON.stringify(r.disks.filter(d=>d.partitions.some(p=>p.label=='RUDOLFDATA')).map(d=>d.name)))"), [])

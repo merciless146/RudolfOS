@@ -1055,31 +1055,22 @@ static void api_idbm(struct req *r, const char *what, int post)
  *   POST shell?on=0|1       Settings: use the shell (real browser tabs in Oracle) or not, from the next start
  *   POST shell/switch       start the browser again now (with the shell, when it can be used) */
 /* the camera (1.2.8): Settings > Privacy > Camera. Off unloads the webcam driver (uvcvideo) and keeps it from loading
- * again (/etc/modprobe.d, kept on RUDOLFDATA), so nothing on this computer can use the camera, websites and Linux apps
- * included, until it is switched on. GET camera: {on, cameras (video devices now), loaded} */
-#define CAM_CONF "/etc/modprobe.d/rudolf-camera.conf"
+ * again (/usr/lib/rudolf/camera: its file covered, kept on RUDOLFDATA), so nothing on this computer can use the camera,
+ * websites and Linux apps included, until it is switched on. GET camera: {on, devices (video devices now), loaded} */
 static void api_camera(struct req *r, int post)
 {
 	if (post) {
 		const char *on = qparam(r->query, "on"); if (!on || (strcmp(on, "0") && strcmp(on, "1"))) { reply_err(r->fd, 400, "on=0 or on=1"); return; }
-		if (!strcmp(on, "0")) {
-			mkdir("/etc/modprobe.d", 0755); write_str(CAM_CONF, "blacklist uvcvideo\n");
-			if (!live) { mkdir(PERSIST "/etc", 0755); write_str(PERSIST "/etc/camera-off", "1\n"); }
-			if (run("rmmod uvcvideo 2>/dev/null; ! grep -q '^uvcvideo ' /proc/modules")) { reply_err(r->fd, 409, "the camera is in use: close the app using it, then try again"); return; }
-			reply_ok(r->fd, "the camera is off");
-		} else {
-			unlink(CAM_CONF); unlink(PERSIST "/etc/camera-off");
-			/* load it for cameras already plugged in */
-			run("for m in $(cat /sys/bus/usb/devices/*/modalias 2>/dev/null | grep 'ic0Eisc01' | sort -u); do modprobe -q \"$m\"; done");
-			reply_ok(r->fd, "the camera is on");
-		}
-		return;
+		char cmd[64]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/camera %s 2>&1", strcmp(on, "0") ? "on" : "off");
+		FILE *p = popen(cmd, "r"); char out[200] = ""; if (p) { if (!fgets(out, sizeof out, p)) out[0] = 0; int st = pclose(p); trim(out);
+			if (WIFEXITED(st) && !WEXITSTATUS(st)) { reply_ok(r->fd, out); return; } }
+		reply_err(r->fd, 409, *out ? out : "the camera could not be switched"); return;
 	}
 	int n = 0; DIR *d = opendir("/sys/class/video4linux"); struct dirent *e;
 	while (d && (e = readdir(d))) if (!strncmp(e->d_name, "video", 5)) n++;
 	if (d) closedir(d);
 	char *m = slurp("/proc/modules", NULL); int loaded = m && (!strncmp(m, "uvcvideo ", 9) || strstr(m, "\nuvcvideo ")); free(m);
-	str s = {0}; sadd(&s, "{\"ok\":true,\"on\":%s,\"devices\":%d,\"loaded\":%s}", access(CAM_CONF, F_OK) ? "true" : "false", n, loaded ? "true" : "false");
+	str s = {0}; sadd(&s, "{\"ok\":true,\"on\":%s,\"devices\":%d,\"loaded\":%s}", access(RUN "/camera-off", F_OK) ? "true" : "false", n, loaded ? "true" : "false");
 	reply_json(r->fd, &s);
 }
 static void api_shell(struct req *r, const char *what, int post)

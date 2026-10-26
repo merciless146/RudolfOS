@@ -225,7 +225,7 @@ if OLD:
             if not j.get('running') and j.get('status', -1) >= 0: break
             time.sleep(10)
         log = j.get('log') or ''; out(log[-600:])
-        ok('...and makes the new stick on it (1.2.6 refused it)', r == 'making the stick' and j.get('status') == 0 and 'stick is ready' in log and 'in use' not in log, log[-300:])
+        ok('...and makes the new stick on it (1.2.6 refused it)', r == 'making the stick' and j.get('status') == 0 and 'stick is ready' in log and 'in use' not in log, [r, j.get('status'), log[-300:]])
     finally:
         vm.stop()
 out('%d/%d passed' % (sum(R), len(R)))
