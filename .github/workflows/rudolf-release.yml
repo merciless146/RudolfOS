@@ -107,6 +107,7 @@ jobs:
         if: inputs.promote == '' && steps.seed.outputs.seeded != '1'
         env:
           PREV: ${{ github.workspace }}/prev
+          STABLE_MANIFEST: ${{ runner.temp }}/pages/stable/manifest.txt
           OUT: ${{ github.workspace }}/out
           KEYFILE: ${{ runner.temp }}/rpk.key
           SB_KEY: ${{ runner.temp }}/sb.key
