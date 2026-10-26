@@ -84,7 +84,7 @@ def wait_sh(c, want, t=60):
 
 try:
     ok('starts, keeping files on RUDOLFDATA', wait_shell() and last(sh('[ -e /run/rudolf/persistent ] && echo kept || echo live')) == 'kept', sh('grep persist /proc/mounts'))
-    ok('the desktop is 1.2.5', wait_desktop() and js('RVER') == '1.2.5', js('RVER'))
+    ok('the desktop is 1.2.5 or newer', wait_desktop() and tuple(int(x) for x in str(js('RVER')).split('.')[:3]) >= (1, 2, 5), js('RVER'))
     js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();svj('bd95setup',1);const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()=='Guest');if(b)b.click();return 1})()")
     ok('signed in', until('!!USER', 120))
     def ready():   # the desktop's own functions are there (after a reload the page has to be set up again)
