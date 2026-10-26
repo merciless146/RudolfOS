@@ -610,7 +610,7 @@ static long long du(const char *path)
 }
 int main(int argc, char **argv)
 {
-	if (argc < 2) { fprintf(stderr, "usage: rudolf-debian status|setup|start|stop|run|pty|apps|launch|update|remove\n"); return 1; }
+	if (argc < 2) { fprintf(stderr, "usage: rudolf-debian status|setup|passwd|start|stop|run|pty|apps|launch|update|remove\n"); return 1; }
 	const char *c = argv[1];
 	if (getuid() != 0) die("run as root");
 	umask(022);
@@ -629,6 +629,19 @@ int main(int argc, char **argv)
 	if (!strcmp(c, "pty")) { if (argc < 3) die("pty ID"); return cmd_pty(argv[2], argc > 3 && !strcmp(argv[3], "--root")); }
 	if (!strcmp(c, "apps")) return cmd_apps();
 	if (!strcmp(c, "launch")) { if (argc < 3) die("launch APP-ID [FILE]"); return cmd_launch(argv[2], argc > 3 ? argv[3] : NULL); }
+	/* 1.3.0: a new Linux password (Settings > Apps > Linux > Change the Linux password), for root and rudolf, as at setup */
+	if (!strcmp(c, "passwd")) {
+		if (argc < 3) die("passwd PASSWORD-FILE");
+		if (!installed()) { unlink(argv[2]); die("Debian is not set up"); }
+		char *pw = slurp(argv[2], NULL); unlink(argv[2]); if (!pw) die("no password given");
+		char *nl = strchr(pw, '\n'); if (nl) *nl = 0;
+		if (strlen(pw) < 4 || strchr(pw, ':')) { memset(pw, 0, strlen(pw)); free(pw); die("the password needs at least 4 characters and no :"); }
+		char in[300]; snprintf(in, sizeof in, "root:%s\nrudolf:%s\n", pw, pw); memset(pw, 0, strlen(pw)); free(pw);
+		char *a1[] = {"/usr/sbin/chpasswd", NULL};
+		int r = run_in(1, in, a1); memset(in, 0, sizeof in);
+		if (r) die("could not set the password");
+		say("done the Linux password is changed"); return 0;
+	}
 	if (!strcmp(c, "update")) {
 		if (!installed()) die("Debian is not set up");
 		char *a[] = {"/bin/sh", "-c", "apt-get update && apt-get -y -o Dpkg::Options::=--force-confold upgrade && apt-get clean", NULL};
