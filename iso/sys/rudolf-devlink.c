@@ -17,7 +17,7 @@
  * status.json, pending.json and answer.NNNNNN (the Allow prompt), stop.
  *
  * GitHub's REST API through libcurl, loaded when needed as rudolf-update does. On a test disc (start-up option
- * rudolf.debug=1) /run/rudolf/devlink-api may name a stand-in server instead; the host test sets
+ * rudolf.debug=1) /run/rudolf/devlink-api or DIR/test-api may name a stand-in server instead; the host test sets
  * RUDOLF_DEVLINK_TEST=1 and the RUDOLF_DEVLINK_* variables. */
 #define _GNU_SOURCE
 #include <ctype.h>
@@ -579,11 +579,14 @@ static void setup(void)
 		if ((v = getenv("RUDOLF_DEVLINK_DIR"))) snprintf(DIR_, sizeof DIR_, "%s", v);
 		if ((v = getenv("RUDOLF_DEVLINK_RUN"))) snprintf(RUND, sizeof RUND, "%s", v);
 		if ((v = getenv("RUDOLF_DEVLINK_RD"))) snprintf(RDURL, sizeof RDURL, "%s", v);
-	} else if (dbg) {
-		/* a test disc: a stand-in for GitHub, named by the test */
-		char *a = slurp("/run/rudolf/devlink-api", NULL); if (a) { trim(a); if (!strncmp(a, "http", 4)) snprintf(API, sizeof API, "%s", a); free(a); }
 	}
 	mkdir(DIR_, 0700); chmod(DIR_, 0700);
+	if (!TESTMODE && dbg) {
+		/* a test disc: a stand-in for GitHub, named by the test (DIR/test-api lasts across a restart) */
+		char tp[300]; path2(tp, sizeof tp, DIR_, "test-api");
+		char *a = slurp("/run/rudolf/devlink-api", NULL); if (!a) a = slurp(tp, NULL);
+		if (a) { trim(a); if (!strncmp(a, "http", 4)) snprintf(API, sizeof API, "%s", a); free(a); }
+	}
 }
 
 int main(int argc, char **argv)
