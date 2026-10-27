@@ -136,6 +136,34 @@ firmware skips the drive (likely the hybrid ISO layout: an MBR whose first parti
 Install here and Get new boot files: a proper boot entry for the drive, written by Rudolf OS as "Restart into
 Windows" already writes `BootNext`. Test it there, with restarts, without the stick.
 
+## As built (stages A and B)
+
+- **`iso/sys/rudolf-devlink.c`** as planned: GitHub's contents API with libcurl (loaded when needed), polling every
+  5 s with ETag, commands one at a time in id order, `running=ID` in the state file so a command cut short by a
+  restart is reported as interrupted instead of run again, back-off on network errors (5 s doubling to 2 min), a
+  revoked token (401) switches the link off. Built by every release (`ci_release.sh`, `mkrootfs.sh`); the
+  every-program check covers it.
+- **Files** go through the contents API in one request each (not the Git data API): screenshots and `get` files up to
+  25 MB. Whether GitHub takes the largest of those in one request is for stage C to show.
+- **`check`** refuses a wrong token, a public repository, and a token GitHub reports cannot push; it also refuses
+  anything that is not token-shaped before GitHub is asked. A fine-grained token's push permission is not always
+  in GitHub's answer; when it is missing, the first result written says so.
+- **rudolfd** `devlink`, `devlink/on` (choices in the query, the token only in the body; kept as `token`, 0600, in
+  `/persist/devlink`), `off`, `forget`, `answer`, `log`. At start-up it starts the link again only when "stay on
+  across a restart" was ticked, the files are kept on the drive and the time is not up; otherwise it marks it off.
+- **The banner** is part of the desktop page: fixed at the top, above every desktop window and the login screen
+  (z-index at the maximum). It is not drawn by the display layer, so a Linux app in fullscreen (an X window) can
+  cover it; the start-up messages and the boot menu do not mention the link. Both are left for later.
+- **Ask first** prompt: the full command text, Refuse has the focus, 10 minutes then refused. End now needs no
+  password (stopping is always allowed); switching on asks for an administrator's password every time.
+- **Test discs** (`rudolf.debug=1`) may point the link at a stand-in: `/run/rudolf/devlink-api` or
+  `/persist/devlink/test-api` (the second lasts across a restart). Released discs ignore both.
+- **Tests:** `qt/host/devlink_t.py` 39/39 against `qt/ghstub.py` (a stand-in for GitHub and rudolfd);
+  `qt/shell2/dl140_t.js` 17/17 (the desktop); `qt/sb/t140_t.py` end to end in QEMU. This QEMU has no user-mode
+  networking, so the test machine reaches the stand-in through `qt/sertun.c` and `qt/sertun.py`, a relay over a
+  second serial port (test scaffolding only, not in Rudolf OS; its frames carry a marker because the firmware writes
+  its screen to that port too).
+
 ## Release steps
 1. Stage A and B on the branch `rudolf-1.4.0`: implement, host and QEMU tests, local release build, test disc.
 2. Pull request with the results; after the merge, a beta, checked; the owner promotes 1.4.0.
