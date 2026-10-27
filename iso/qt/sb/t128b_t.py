@@ -21,6 +21,8 @@ import sbvm, iso_extract
 from guest import Guest
 from ser import Ser
 OLD, REL, BOOT, DISC = (os.path.abspath(x) for x in sys.argv[1:5])
+# the release under test: its version as written in REL's manifest (1.2.8 when this test was made)
+VER = next('.'.join(l.split()[1].split('.')[:3]) for l in open(f'{REL}/manifest.txt') if l.startswith('version '))
 PARTS = os.environ['SB_PARTS']; TPUB = open(os.environ['TEST_RPK_PUB']).read().strip() if os.environ.get('TEST_RPK_PUB') else ''; LOG = open('t128b.txt', 'w'); R = []
 def out(*a):
     s = ' '.join(str(x) for x in a); print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
@@ -141,7 +143,7 @@ try:
     ok('a boot image that does not match its .sha256 is refused, nothing kept', j.get('status') == 8 and 'does not match its .sha256' in log and last(sh('ls /persist/os/bootimg/ 2>/dev/null | wc -l', 20)) == '0', log[-200:])
     r = js(f"rdPost('bootfiles?image=/home/rudolf/Downloads/rudolf-os-1.2.8-boot.iso&sha={BSHA}').then(r=>r.message,e=>e.message)")
     j = job(js); log = j.get('log') or ''; out(log[-900:])
-    ok('Get new boot files: the image checked (signature, Secure Boot boot files, fit) and kept for the next start', j.get('status') == 0 and 'boot files only' in log and 'Ready: the new boot files (Rudolf OS 1.2.8)' in log, log[-300:])
+    ok('Get new boot files: the image checked (signature, Secure Boot boot files, fit) and kept for the next start', j.get('status') == 0 and 'boot files only' in log and f'Ready: the new boot files (Rudolf OS {VER})' in log, log[-300:])
     ok('...slot b, which took a layer from the old image, is no longer offered to go back to', 'Slot b (the previous system) is no longer kept' in log and last(sh('grep -c "^prev=$" /persist/os/system/state', 20)) == '1', sh('cat /persist/os/system/state', 20)[-120:])
     p = sh('cat /persist/os/bootimg/pending', 20)
     ok('...pending: its SHA-256, the RUDOLFDATA start and size', f'sha={BSHA}' in p and f'start={START}' in p and f'blocks={BBYTES // 2048}' in p, p[-200:])
@@ -168,7 +170,7 @@ img = open(BOOT, 'rb').read()
 ok('...the boot image is at the start of the drive, byte for byte (but RUDOLFDATA\'s partition entry)', head[:478] + head[494:] == img[:478] + img[494:])
 ok('...RUDOLFDATA\'s partition entry is as it was', mbr[478:494] == bytes([0, 0xfe, 0xff, 0xff, 0x83, 0xfe, 0xff, 0xff]) + struct.pack('<II', START, 1600 * 2048))
 r, fsck = debugfs(DRIVE, 'cat /os/bootimg/result')
-ok('...RUDOLFDATA is intact, and the start-up noted what it wrote', fsck == 0 and 'written' in r and '1.2.8' in r, [fsck, r])
+ok('...RUDOLFDATA is intact, and the start-up noted what it wrote', fsck == 0 and 'written' in r and VER in r, [fsck, r])
 
 # ---- 3. the drive alone, from its new boot files
 vm = sbvm.VM('t128b3', PARTS, [DRIVE], secure=False, mem=3072); g = session(vm); sh = lambda c, t=60: g.sh(c, t); js = jsf(g)
@@ -209,7 +211,7 @@ try:
     dev = dk[0] if dk else 'sdz'
     js(f"rdPost('install?disk={dev}&confirm={dev}&bootonly=1').then(r=>r.message,e=>e.message)")
     j = job(js); log = j.get('log') or ''
-    ok('a whole disc image (this disc\'s own) does not fit in front of that drive\'s files: refused, the boot image named', j.get('status') == 5 and 'does not fit in front of your files' in log and 'rudolf-os-1.2.8-boot.iso' in log, log[-300:])
+    ok('a whole disc image (this disc\'s own) does not fit in front of that drive\'s files: refused, the boot image named', j.get('status') == 5 and 'does not fit in front of your files' in log and f'rudolf-os-{VER}-boot.iso' in log, log[-300:])
     nd = last(sh('findfs LABEL=RUDOLFB', 20)); sh(f'mkdir -p /mnt/b; mount -o ro {nd} /mnt/b; mkdir -p /home/rudolf/Downloads; cp /mnt/b/*.iso /home/rudolf/Downloads/; echo copied', 120)
     js(f"rdPost('install?disk={dev}&confirm={dev}&bootonly=1&image=/home/rudolf/Downloads/rudolf-os-1.2.8-boot.iso&sha={BSHA}').then(r=>r.message,e=>e.message)")
     j = job(js); log = j.get('log') or ''; out(log[-600:])

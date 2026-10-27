@@ -145,7 +145,8 @@ sh('rm -rf /persist/os/current')
 reboot(g); time.sleep(12); vm.shot('menu')
 keys(vm, 'down', 'ret')                                  # Recovery mode
 ok('C: Recovery mode from the UEFI menu starts', wait_shell(g))
-ok('C: ...and the system knows it (rudolf.recovery=1)', 'rudolf.recovery=1' in sh('cat /proc/cmdline') and sh('cat /etc/rudolf/boot-entry').startswith('rudolf-recovery'), sh('cat /proc/cmdline; cat /etc/rudolf/boot-entry'))
+# 1.2.8: the start-up options the system uses (with the menu's choice) are in /etc/rudolf/cmdline, no longer over /proc/cmdline
+ok('C: ...and the system knows it (rudolf.recovery=1)', 'rudolf.recovery=1' in sh('cat /etc/rudolf/cmdline') and sh('cat /etc/rudolf/boot-entry').startswith('rudolf-recovery'), sh('cat /etc/rudolf/cmdline; cat /etc/rudolf/boot-entry').replace('\n', ' | '))
 
 # ---------------------------------------------------------------- D: update slots that must not start
 sh('mkdir -p /mnt/td && mount -o ro LABEL=TESTDATA /mnt/td 2>/dev/null || mount -o ro $(findfs LABEL=TESTDATA) /mnt/td')

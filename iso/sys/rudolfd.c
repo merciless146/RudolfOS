@@ -748,6 +748,8 @@ static void start_job(const char *name, const char *cmd)
 {
 	unlink(RUN "/job.status"); unlink(RUN "/job.log");
 	write_str(RUN "/job.name", name);
+	/* 1.3.0: the kernel's last crash line now, so a crash during this job can be told apart from older ones */
+	run("dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -1 > " RUN "/job.kmark");
 	FILE *f = fopen(RUN "/job.sh", "w");
 	if (!f) return;
 	fprintf(f, "%s > " RUN "/job.log 2>&1\necho $? > " RUN "/job.status\n", cmd);
@@ -755,6 +757,28 @@ static void start_job(const char *name, const char *cmd)
 	run("setsid sh " RUN "/job.sh </dev/null >/dev/null 2>&1 &");
 }
 static void reap(void) { while (waitpid(-1, NULL, WNOHANG) > 0) {} }
+/* 1.3.0: crashes of Rudolf OS's own programs, from the kernel's log ("rudolf-apps[9979]: segfault at 0 ip ... in
+ * libc.so.6[18badd,...]"): program, seconds after start-up, and where (library + offset). after: only lines that come
+ * after this one (the last crash line when a job started). Other programs' crashes are not reported. */
+static int crash_list(str *s, const char *after, int max)
+{
+	char *l = run_out("dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -200");
+	int n = 0, past = !after || !*after;
+	for (char *line = l ? strtok(l, "\n") : NULL; line; line = strtok(NULL, "\n")) {
+		if (!past) { if (!strcmp(line, after)) past = 1; continue; }
+		double t = 0; char prog[64] = ""; const char *b = strchr(line, ']'); if (line[0] == '[') sscanf(line + 1, "%lf", &t);
+		if (!b) continue; b++; while (*b == ' ') b++;
+		if (!strncmp(b, "traps: ", 7)) b += 7;
+		size_t k = strcspn(b, "["); if (k == 0 || k >= sizeof prog) continue; snprintf(prog, sizeof prog, "%.*s", (int)k, b);
+		if (strncmp(prog, "rudolf", 6) && strcmp(prog, "rpk") && strcmp(prog, "cdp-eval")) continue;
+		char where[160] = ""; const char *in = strstr(b, " in "); if (in) { in += 4; size_t w = strcspn(in, "[ "); const char *o = in[w] == '[' ? in + w + 1 : NULL;
+			snprintf(where, sizeof where, "%.*s%s%.*s", (int)w, in, o ? "+" : "", o ? (int)strcspn(o, ",]") : 0, o ? o : ""); }
+		const char *kind = strstr(b, "segfault") ? "segmentation fault" : strstr(b, "general protection") ? "general protection fault" : "trap";
+		if (n < max) { sadd(s, "%s{\"program\":", n ? "," : ""); sjson(s, prog); sadd(s, ",\"at\":%.0f,\"kind\":", t); sjson(s, kind); sadd(s, ",\"where\":"); sjson(s, where); sadd(s, "}"); }
+		n++;
+	}
+	free(l); return n;
+}
 static void api_job(struct req *r)
 {
 	str s = {0};
@@ -763,6 +787,12 @@ static void api_job(struct req *r)
 	sadd(&s, "{\"ok\":true,\"name\":"); sjson(&s, name ? name : "");
 	sadd(&s, ",\"running\":%s,\"status\":%lld,\"log\":", job_running() ? "true" : "false", st);
 	if (log && strlen(log) > 8000) sjson(&s, log + strlen(log) - 8000); else sjson(&s, log ? log : "");
+	/* 1.3.0: a job ended by a signal (shell status 128+n), or a crash of one of Rudolf OS's programs during it: the
+	   page says so instead of guessing (the App Store asked "Is this computer connected to the internet?") */
+	if (st > 128 || (log && (strstr(log, "Segmentation fault") || strstr(log, "Aborted") || strstr(log, "Illegal instruction")))) {
+		char *mk = slurp(RUN "/job.kmark", NULL); if (mk) trim(mk);
+		sadd(&s, ",\"crashed\":true,\"crashes\":["); crash_list(&s, mk ? mk : "", 3); sadd(&s, "]"); free(mk);
+	}
 	sadd(&s, "}");
 	free(log); free(name);
 	reply_json(r->fd, &s);
@@ -1457,14 +1487,17 @@ static void api_debian(struct req *r, const char *what)
 		}
 		sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
 	}
-	if (!strcmp(what, "setup") || !strcmp(what, "update") || !strcmp(what, "remove")) {
+	if (!strcmp(what, "setup") || !strcmp(what, "passwd") || !strcmp(what, "update") || !strcmp(what, "remove")) {
 		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
-		if (!strcmp(what, "setup")) {
+		if (!strcmp(what, "setup") || !strcmp(what, "passwd")) {
 			if (!r->body || r->blen < 4 || r->blen > 200) { reply_err(r->fd, 400, "choose a password of at least 4 characters"); return; }
 			unlink(RUN "/debian.pw");
 			int f = open(RUN "/debian.pw", O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
 			if (f < 0 || write(f, r->body, r->blen) != (ssize_t)r->blen) { if (f >= 0) close(f); reply_err(r->fd, 500, "could not write the request"); return; }
-			close(f); start_job("debian-setup", DEBIAN_BIN " setup " RUN "/debian.pw");
+			close(f);
+			/* 1.3.0: passwd sets a new Linux password (the same file, the same checks) */
+			if (!strcmp(what, "passwd")) start_job("debian-passwd", DEBIAN_BIN " passwd " RUN "/debian.pw");
+			else start_job("debian-setup", DEBIAN_BIN " setup " RUN "/debian.pw");
 		} else if (!strcmp(what, "update")) start_job("debian-update", DEBIAN_BIN " update");
 		else start_job("debian-remove", DEBIAN_BIN " remove");
 		reply_ok(r->fd, "started"); return;
@@ -2270,6 +2303,7 @@ static void api(struct req *r)
 	}
 	if (!strcmp(p, "devices")) { char *o = run_out("/usr/lib/rudolf/devplug list 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 500, "could not list the devices"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
 	if (!strcmp(p, "job")) { api_job(r); return; }
+	if (!strcmp(p, "crashes")) { str s = {0}; sadd(&s, "{\"ok\":true,\"crashes\":["); crash_list(&s, "", 20); sadd(&s, "]}"); reply_json(r->fd, &s); return; }
 	if (!strcmp(p, "screenshot")) { api_screenshot(r); return; }
 	if (!strcmp(p, "heartbeat")) {
 		write_str(RUN "/heartbeat", "1");

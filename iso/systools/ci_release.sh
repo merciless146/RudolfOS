@@ -92,9 +92,12 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 fi
 
 # ---- base: the system programs and sys/root
+# 1.3.0: every program in sys/ is built here or into the start-up image, or a fix to it would reach no one by update
+# (rudolf-debian until 1.2.7, rudolf-portal and rudolf-apps until 1.2.9 were left out)
+for c in sys/*.c; do grep -q "gcc[^#]*$c\b" "$0" || { echo "$c is not built by $0: add it (base programs) so updates carry it"; exit 1; }; done
 # the Secure Boot certificate, for Settings > Security > Prepare Secure Boot (rudolfd enrolls it through MokManager)
 mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/rudolf-sb.crt
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolfd.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c trusted-keys.txt systools/addnvk.sh VERSION; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolfd.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c trusted-keys.txt systools/addnvk.sh VERSION; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -111,7 +114,11 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	# 1.2.9: the desktop portal and the app catalogue reader for Linux apps (never rebuilt here before either)
 	gcc -O2 -o "$B/rudolf-portal" sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0)
 	gcc -O2 -o "$B/rudolf-apps" sys/rudolf-apps.c -lz
-	for b in rudolf-display rudolfd rudolf-update rudolf-launch cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-apps; do
+	# 1.3.0: the package tool, the assistant and printing too (the same commands as mkrootfs.sh)
+	gcc -O2 -o "$B/rpk" sys/rpk.c -lcrypto
+	gcc -O2 -o "$B/rudolf-ai" sys/rudolf-ai.c -lcrypto -ldl
+	gcc -O2 -o "$B/rudolf-print" sys/rudolf-print.c -ldl
+	for b in rudolf-display rudolfd rudolf-update rudolf-launch cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-apps rpk rudolf-ai rudolf-print; do
 		for l in $(ldd "$B/$b" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$b needs $l, which the base layer does not have"; exit 1; }; done
 		sudo install -m 0755 "$B/$b" "$W/broot/usr/bin/$b"
 	done

@@ -51,7 +51,7 @@ async function gamesAll(box,B,back){if(!box)return;const msg=t=>{box.innerHTML=`
  if(!box.isConnected)return;
  if(!cat){box.innerHTML=`<p class='msg'>Thousands of games are on Flathub. First Rudolf OS downloads Flathub's app list (about 10 MB).</p><button class='pri gmdlb'>Download the app list</button><pre class='jl' hidden></pre>`;
   box.querySelector('.gmdlb').onclick=async e=>{e.target.disabled=true;const pre=box.querySelector('pre');pre.hidden=false;try{await lxApi('apps/refresh')}catch(er){pre.textContent=er.message;e.target.disabled=false;return}
-   const j=await lxJobWait(l=>{pre.textContent+=l+'\n'});if(j.status==0){LX.cat=null;gamesAll(box,B,back)}else{pre.textContent+='\nThat did not work. Settings › Apps › Linux › Check says why.';e.target.disabled=false}};return}
+   const j=await lxJobWait(l=>{pre.textContent+=l+'\n'});if(j.status==0){LX.cat=null;gamesAll(box,B,back)}else{pre.textContent+='\n'+(j.crashed?jobCrashText(j):'That did not work. Settings › Apps › Linux › Check says why.');e.target.disabled=false}};return}
  await lxInstalled();const inst=new Set((LX.inst||[]).map(a=>a.id));const games=cat.filter(lxIsGame);
  const genres=LX_GENRES.filter(([g])=>games.some(a=>(a.cats||[]).includes(g)));
  box.innerHTML=`<div class='lxbar'><input type='search' class='lxq gmq' placeholder='Search games' aria-label='Search games'><select class='lxc gmg' aria-label='Genre'><option value=''>All genres</option>${genres.map(([k,n])=>`<option value='${k}'>${n}</option>`).join('')}</select><label class='ck'><input type='checkbox' class='lxv gmv' checked> Verified only</label></div><div class='lxlist gml'></div><p class='msg lxfoot gmfoot'></p>`;

@@ -93,7 +93,11 @@ try:
     # restart through Rudolf OS: the browser stops, the session's files move onto RUDOLFDATA
     js("rdPost('power?action=reboot').catch(()=>0);1")
     time.sleep(10)
-    ok('starts again', wait_shell(g, delay=50))
+    up = wait_shell(g, delay=50)
+    if not up:   # where it stopped: the screen, and what the serial line still has
+        for i in range(3): vm.shot(f'restart-fail{i}'); time.sleep(5)
+        out('serial: ' + repr(g.s.read(2.0)[-1500:]))
+    ok('starts again', up)
     ok('...now keeping files (RUDOLFDATA mounted)', last(sh('[ -e /run/rudolf/persistent ] && mountpoint -q /persist && echo kept || echo live')) == 'kept', sh('cat /proc/mounts | grep persist'))
     ok('...with the file made while live', last(sh('cat /home/rudolf/t124-marker 2>&1')) == 'made-live', sh('ls -la /home/rudolf | head'))
     ok('...and the desktop\'s saved data', wait_desktop(g) and js("localStorage.getItem('t124')") == 'kept', js("localStorage.getItem('t124')"))

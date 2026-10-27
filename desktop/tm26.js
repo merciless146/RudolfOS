@@ -324,6 +324,9 @@ async function sysReport(problem) {
   }
   /* 1.2.7: what Linux apps and the terminal need (Settings › Apps › Linux › Check) */
   if (RD && typeof lxCheck == 'function') { const lc = await lxCheck(); out.push('== Linux apps and terminal', ...lxCheckLines(lc).map(l => l.replace(/^Linux check: /, '')), ''); }
+  /* 1.3.0: crashes of Rudolf OS's own programs since start-up (from the kernel's log): which program, when, where */
+  if (RD) { let c = null; try { c = await rd('crashes') } catch (e) {}
+    if (c && c.crashes) out.push('== Crashes (Rudolf OS programs since start-up)', ...(c.crashes.length ? c.crashes.map(x => `${x.program}: ${x.kind} in ${x.where || '?'} (${Math.round(x.at / 60)} min after start-up)`) : ['none']), ''); }
   if (sys && tmLines(k.messages).length) out.push('== Kernel warnings and errors (latest)', ...tmLines(k.messages).slice(-20), '');
   if (sys && tmLines(sys.session).length) out.push('== Session log (latest)', ...tmLines(sys.session).slice(-15), '');
   if (SHELL_LOG.length) out.push('== Shell notes', ...SHELL_LOG.slice(-15), '');
