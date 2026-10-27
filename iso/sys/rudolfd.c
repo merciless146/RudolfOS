@@ -2231,6 +2231,138 @@ static void api_secureboot(struct req *r, const char *what, int post)
 /* ------------------------------------------------------------- dispatcher */
 static int restart_browser(void) { return run("pkill -f 'chrom[e].*--rudolf-kiosk' >/dev/null 2>&1"); }
 
+/* ------------------------------------------------------------- the development link (1.4.0)
+ * rudolf-devlink runs commands from a private GitHub repository the owner chose (see rudolf-devlink.c and
+ * docs/plan-1.4.0.md). Here: switching it on (the desktop asks for an administrator's password first; the token is
+ * checked with GitHub, then kept root-only and never sent back), off, forgetting the token, the Allow prompt, the
+ * log, and starting it again after a restart when the owner ticked that and its time is not up. */
+#define DLBIN "/usr/bin/rudolf-devlink"
+#define DLRUN RUN "/devlink"
+static void dl_dir(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/devlink-store" : PERSIST "/devlink"); }
+static char *dl_cfg(const char *key)
+{
+	char d[128], p[160]; dl_dir(d, sizeof d); snprintf(p, sizeof p, "%s/config", d);
+	char *c = slurp(p, NULL); if (!c) return NULL;
+	char k[64]; snprintf(k, sizeof k, "%s=", key); char *v = NULL;
+	for (char *l = strtok(c, "\n"); l; l = strtok(NULL, "\n")) if (!strncmp(l, k, strlen(k))) { v = strdup(l + strlen(k)); break; }
+	free(c); return v;
+}
+static int dl_cfg_on(const char *key) { char *v = dl_cfg(key); int r = v && *v == '1'; free(v); return r; }
+static void dl_cfg_write(const char *repo, long long until, int restart, int ask, int home, int on)
+{
+	char d[128], p[160], t[160]; dl_dir(d, sizeof d); mkdir(d, 0700); snprintf(p, sizeof p, "%s/config", d); snprintf(t, sizeof t, "%s/config.new", d);
+	str s = {0}; sadd(&s, "on=%d\nrepo=%s\nuntil=%lld\nrestart=%d\nask=%d\nhome=%d\n", on, repo, until, restart, ask, home);
+	int f = open(t, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600); if (f >= 0) { if (write(f, s.b, s.n) < 0) {} fsync(f); close(f); rename(t, p); }
+	free(s.b);
+}
+static void dl_set_off(void)
+{
+	char *repo = dl_cfg("repo"), *u = dl_cfg("until");
+	dl_cfg_write(repo ? repo : "", u ? atoll(u) : 0, dl_cfg_on("restart"), dl_cfg_on("ask"), dl_cfg_on("home"), 0);
+	free(repo); free(u);
+}
+static int dl_pid(void) { long long p = read_ll(DLRUN "/pid", 0); return p > 1 && !kill((pid_t)p, 0) ? (int)p : 0; }
+static int dl_repo_ok(const char *r)
+{
+	if (!r || !*r || strlen(r) > 100 || strstr(r, "..")) return 0;
+	const char *sl = strchr(r, '/'); if (!sl || sl == r || !sl[1] || strchr(sl + 1, '/')) return 0;
+	for (const char *c = r; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("-_./", *c)) return 0;
+	return 1;
+}
+static void dl_start(void)
+{
+	mkdir(DLRUN, 0755); unlink(DLRUN "/stop"); unlink(DLRUN "/status.json");
+	pid_t p = fork();
+	if (p == 0) {
+		setsid();
+		if (fork() == 0) {
+			int n = open("/dev/null", O_RDWR), l = open(DLRUN "/daemon.log", O_WRONLY | O_CREAT | O_APPEND, 0600);
+			dup2(n, 0); dup2(l >= 0 ? l : n, 1); dup2(l >= 0 ? l : n, 2);
+			char te[64]; snprintf(te, sizeof te, "RUDOLF_TOKEN=%s", token);
+			char *env[] = { te, "PATH=/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root", NULL };
+			char *argv[] = { DLBIN, "run", NULL };
+			execve(DLBIN, argv, env); _exit(127);
+		}
+		_exit(0);
+	}
+	if (p > 0) waitpid(p, NULL, 0);
+	for (int i = 0; i < 20 && !dl_pid(); i++) usleep(100000);
+}
+static void dl_stop(void)
+{
+	mkdir(DLRUN, 0755); write_str(DLRUN "/stop", "1");
+	int p = dl_pid(); if (p) { kill(p, SIGTERM); for (int i = 0; i < 50 && !kill(p, 0); i++) usleep(100000); }
+	unlink(DLRUN "/pending.json");
+}
+/* at start-up: on again only when the owner ticked "stay on across a restart" and its time is not up */
+static void dl_boot(void)
+{
+	if (!dl_cfg_on("on")) return;
+	char *u = dl_cfg("until"); long long until = u ? atoll(u) : 0; free(u);
+	if (dl_cfg_on("restart") && !access(RUN "/persistent", F_OK) && until > (long long)time(NULL) && !access(DLBIN, X_OK)) { fprintf(stderr, "rudolfd: the development link stays on until %lld\n", until); dl_start(); }
+	else dl_set_off();
+}
+static int id6(const char *s) { if (!s || strlen(s) != 6) return 0; for (int i = 0; i < 6; i++) if (!isdigit((unsigned char)s[i])) return 0; return 1; }
+static void api_devlink(struct req *r, const char *what, int post)
+{
+	char d[128]; dl_dir(d, sizeof d);
+	if (!*what && !post) {
+		char *repo = dl_cfg("repo"), *u = dl_cfg("until"), *st = slurp(DLRUN "/status.json", NULL), *pend = slurp(DLRUN "/pending.json", NULL);
+		char tp[160]; snprintf(tp, sizeof tp, "%s/token", d); int pid = dl_pid(); long long until = u ? atoll(u) : 0;
+		str s = {0}; sadd(&s, "{\"ok\":true,\"available\":%s,\"on\":%s,\"repo\":", access(DLBIN, X_OK) ? "false" : "true", pid ? "true" : "false"); sjson(&s, repo ? repo : "");
+		sadd(&s, ",\"until\":%lld,\"secondsLeft\":%lld,\"restart\":%s,\"ask\":%s,\"home\":%s,\"hasToken\":%s,\"persistent\":%s", until, pid && until > time(NULL) ? until - (long long)time(NULL) : 0,
+		     dl_cfg_on("restart") ? "true" : "false", dl_cfg_on("ask") || !repo ? "true" : "false", dl_cfg_on("home") ? "true" : "false", access(tp, F_OK) ? "false" : "true", access(RUN "/persistent", F_OK) ? "false" : "true");
+		if (st) { trim(st); sadd(&s, ",\"status\":%s", st[0] == '{' ? st : "null"); }
+		if (pend && pid) { trim(pend); sadd(&s, ",\"pending\":%s", pend[0] == '{' ? pend : "null"); }
+		sadd(&s, "}"); free(repo); free(u); free(st); free(pend); reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(what, "on") && post) {
+		if (access(DLBIN, X_OK)) { reply_err(r->fd, 501, "this Rudolf OS has no development link"); return; }
+		char *repo = qparam(r->query, "repo"), *h = qparam(r->query, "hours");
+		int hours = h ? atoi(h) : 0;
+		if (!dl_repo_ok(repo)) { reply_err(r->fd, 400, "write the repository as owner/name (letters, digits, - _ .)"); return; }
+		if (hours != 1 && hours != 2 && hours != 4 && hours != 8) { reply_err(r->fd, 400, "for 1, 2, 4 or 8 hours"); return; }
+		char *rs = qparam(r->query, "restart"), *as = qparam(r->query, "ask"), *hs = qparam(r->query, "home");
+		int restart = rs && *rs == '1', askf = !as || *as != '0', home = hs && *hs == '1';
+		if (restart && access(RUN "/persistent", F_OK)) { reply_err(r->fd, 400, "staying on across a restart needs the files kept on this drive (RUDOLFDATA)"); return; }
+		mkdir(d, 0700); chmod(d, 0700);
+		char tp[160], tn[170]; snprintf(tp, sizeof tp, "%s/token", d); snprintf(tn, sizeof tn, "%s/token.new", d);
+		/* a new token in the body, or the one kept when switching on again */
+		size_t bl = r->body ? r->blen : 0; while (bl && isspace((unsigned char)r->body[bl - 1])) bl--;
+		const char *bt = r->body ? r->body : ""; while (bl && isspace((unsigned char)*bt)) { bt++; bl--; }
+		if (bl) {
+			if (bl > 255) { reply_err(r->fd, 400, "that is not a GitHub token"); return; }
+			int f = open(tn, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600); if (f < 0 || write(f, bt, bl) != (ssize_t)bl) { if (f >= 0) close(f); reply_err(r->fd, 500, "the token could not be stored"); return; }
+			fsync(f); close(f);
+		} else if (access(tp, F_OK)) { reply_err(r->fd, 400, "paste the token from GitHub"); return; }
+		else { char *o = slurp(tp, NULL); write_str(tn, ""); chmod(tn, 0600); write_str(tn, o ? o : ""); free(o); }
+		char cmdl[400]; snprintf(cmdl, sizeof cmdl, DLBIN " check '%s' '%s' 2>&1", repo, tn);
+		char *o = run_out(cmdl); if (o) trim(o);
+		if (!o || strcmp(o, "ok")) { unlink(tn); reply_err(r->fd, 400, o && *o ? o : "the token could not be checked"); free(o); return; }
+		free(o);
+		dl_stop(); rename(tn, tp); chmod(tp, 0600);
+		dl_cfg_write(repo, (long long)time(NULL) + hours * 3600LL, restart, askf, home, 1);
+		dl_start();
+		if (!dl_pid()) { reply_err(r->fd, 500, "the development link did not start"); return; }
+		reply_ok(r->fd, "on"); return;
+	}
+	if (!strcmp(what, "off") && post) { dl_stop(); dl_set_off(); reply_ok(r->fd, "off"); return; }
+	if (!strcmp(what, "forget") && post) { char tp[160]; dl_stop(); dl_set_off(); snprintf(tp, sizeof tp, "%s/token", d); unlink(tp); reply_ok(r->fd, "the token is deleted"); return; }
+	if (!strcmp(what, "answer") && post) {
+		char *id = qparam(r->query, "id"), *a = qparam(r->query, "a");
+		char *pend = slurp(DLRUN "/pending.json", NULL); char want[32]; snprintf(want, sizeof want, "\"id\":\"%s\"", id ? id : "");
+		if (!id6(id) || !a || (strcmp(a, "allow") && strcmp(a, "refuse")) || !pend || !strstr(pend, want)) { free(pend); reply_err(r->fd, 409, "that command is no longer waiting"); return; }
+		free(pend); char ap[160]; snprintf(ap, sizeof ap, DLRUN "/answer.%s", id); write_str(ap, a); reply_ok(r->fd, a); return;
+	}
+	if (!strcmp(what, "log") && !post) {
+		char lp[160]; snprintf(lp, sizeof lp, "%s/log", d); char *l = slurp(lp, NULL); const char *t = l ? l : "";
+		/* the last 200 lines */
+		int n = 0; const char *q = t + strlen(t); while (q > t && n <= 200) { q--; if (*q == '\n') n++; } if (n > 200) q++;
+		str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, q); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return;
+	}
+	reply_err(r->fd, 404, "unknown request");
+}
+
 static void api(struct req *r)
 {
 	const char *p = r->path + 5;   /* after /api/ */
@@ -2303,6 +2435,7 @@ static void api(struct req *r)
 	}
 	if (!strcmp(p, "devices")) { char *o = run_out("/usr/lib/rudolf/devplug list 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 500, "could not list the devices"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
 	if (!strcmp(p, "job")) { api_job(r); return; }
+	if (!strncmp(p, "devlink", 7) && (!p[7] || p[7] == '/')) { api_devlink(r, p[7] ? p + 8 : "", post); return; }
 	if (!strcmp(p, "crashes")) { str s = {0}; sadd(&s, "{\"ok\":true,\"crashes\":["); crash_list(&s, "", 20); sadd(&s, "]}"); reply_json(r->fd, &s); return; }
 	if (!strcmp(p, "screenshot")) { api_screenshot(r); return; }
 	if (!strcmp(p, "heartbeat")) {
@@ -2783,6 +2916,7 @@ int main(int argc, char **argv)
 	if (!access("/sys/firmware/efi", F_OK)) snprintf(boot_mode, sizeof boot_mode, "uefi");
 	{ char *sb = slurp("/etc/rudolf/secureboot", NULL); secureboot = sb && sb[0] == '1'; free(sb); }
 	live = access(RUN "/persistent", F_OK) != 0;
+	dl_boot();
 	int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0), one = 1;
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
 	struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons(8080), .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };

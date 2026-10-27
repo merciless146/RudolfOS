@@ -101,6 +101,7 @@ gcc -O2 -o usr/bin/rudolfd "$SYS/rudolfd.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
 gcc -O2 -o usr/bin/rpk "$SYS/rpk.c" -lcrypto
 gcc -O2 -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl
 gcc -O2 -o usr/bin/rudolf-print "$SYS/rudolf-print.c" -ldl
+gcc -O2 -o usr/bin/rudolf-devlink "$SYS/rudolf-devlink.c" -lcrypto -ldl
 gcc -O2 -o usr/bin/rudolf-apps "$SYS/rudolf-apps.c" -lz
 gcc -O2 -o usr/bin/rudolf-debian "$SYS/rudolf-debian.c" -lcrypto -ldl
 gcc -O2 -o usr/bin/rudolf-fscheck "$SYS/rudolf-fscheck.c"

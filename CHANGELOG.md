@@ -3,6 +3,15 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.4.0 (2026-10-27)
+Summary: the development link: let a developer you choose run tests on this computer through a private GitHub repository you own, while you watch and allow each command
+- New: Settings › Security › Development link. While it is on, a developer you choose (for example a Claude session) can run tests on this computer: run commands with full control, take screenshots, send files from it and bring files to it, and restart it. Commands and results go through a private GitHub repository you own; only people and sessions you give that repository to can use it.
+- It is off unless you switch it on, which asks for an administrator's password. It ends by itself after 1, 2, 4 or 8 hours, and stays on across a restart only if you tick that. A red banner across the top of the screen shows while it is on, with the time left and End now.
+- Ask first (on unless you untick it): every command waits on the screen, with its full text, until you press Allow or Refuse.
+- The GitHub token you paste is checked with GitHub (a private repository it can write to), kept where only the system can read it and never shown again; revoking it on GitHub ends all access. Files in home folders are not sent unless you allow it.
+- Settings shows a log of every command, its result and whether you allowed it (30 days). The system report says whether the link is on.
+- Use it on a test computer only, never on one with personal files.
+
 ## 1.3.1 (2026-10-27)
 Summary: fixes 1.3.0 running an older Rudolf OS USB stick's system and files, instead of the computer's own, on computers started through such a stick
 - Fixed: on a computer where Rudolf OS is installed but which starts through an older Rudolf OS USB stick that keeps its own files (for example because the computer's firmware does not start its internal drive), the 1.3.0 update ran the stick's older system and files. The desktop then said, for example, "Rudolf OS 1.1", and Wi-Fi and settings were the stick's. The update now always runs from the drive that holds it, with that drive's files, whatever drive the computer started from. Nothing on either drive was changed or erased.
