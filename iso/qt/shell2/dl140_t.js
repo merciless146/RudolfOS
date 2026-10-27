@@ -31,7 +31,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 (async () => {
   const b = await chromium.launch({executablePath: process.argv[2] || undefined}); const p = await b.newPage(); p.on('pageerror', e => /toUpperCase/.test(e.message) || console.log('page error:', e.message));
   const q = s => p.evaluate(s);
-  await p.goto('http://127.0.0.1:8099/'); await p.waitForFunction(() => typeof dlSection == 'function' && typeof secPanelS == 'function', null, {timeout: 30000});
+  await p.goto('http://127.0.0.1:8099/'); await p.waitForFunction(() => typeof devlSection == 'function' && typeof secPanelS == 'function', null, {timeout: 30000});
   await q("(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});wins.slice().forEach(w=>w.close());USER=USER||ACCTS[0];USER.r='admin';window.ELEV=[];window.elevate=async r=>{ELEV.push([r,window.__elevTrust]);return true};return 1})()");
   const open = async () => { await q("(()=>{wins.slice().forEach(w=>w.close());settings('sec');return 1})()"); await p.waitForSelector('.dl40 .dls', {timeout: 8000}).catch(() => 0); await wait(800) };
   await open();

@@ -72,7 +72,7 @@ def jsf(g):
     return js
 def page(g):
     end = time.time() + 600
-    while time.time() < end and g.js('typeof rdPost=="function"&&typeof dlPoll=="function"', 20) is not True: time.sleep(5)
+    while time.time() < end and g.js('typeof rdPost=="function"&&typeof devlPoll=="function"', 20) is not True: time.sleep(5)
     g.js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()=='Guest');if(b)b.click();return 1})()")
 def J(v, d):
     try: return json.loads(v) if isinstance(v, str) else d
