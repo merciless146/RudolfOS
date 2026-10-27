@@ -4,12 +4,16 @@
 # OLD-DISC.iso: a disc from before 1.3.0 (1.2.6): the installed drive's boot files. Its start-up passes nothing on to
 #   the update's kernel (no rudolf.mediadev=, no rudolf.persist=).
 # OLD-STICK.iso: another older disc (1.2.0), written to a USB stick with its own RUDOLFDATA (home: "stick"), no update.
+# (B's stick is OLD-DISC.iso too: it needs the Debug start entry, which discs from 1.2.2 on have.)
 # REL-DIR: the release under test (manifest.txt/.sig and the five files), installed in slot a of the internal drive.
 # The internal drive is a virtio disk: the firmware's boot entry for it names neither USB nor NVMe/SATA/SCSI, as on
 # laptops whose firmware keeps a short boot entry (HD() only), so the start-up cannot tell which kind it started from.
 # 1.3.0 took the first Rudolf OS drive found (the stick, /dev/sda1) and its own RUDOLFDATA: the laptop ran the stick's
 # 1.1 system and files ("Rudolf OS 1.1", "checked never", no Wi-Fi). 1.3.1: the data partition that holds the slot,
 # and the image on that drive.
+# B. The laptop's own case: its firmware starts only the old stick (the internal drive is not bootable there), whose
+#    start-up (from before 1.3.0) takes the internal drive's data partition (the first found) and hands over to the
+#    update installed there. 1.3.0's kernel then saw "started from USB" and took the stick's drive and files.
 import os, sys, time, re, subprocess, shutil, struct
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
@@ -27,13 +31,20 @@ man = open(f'{REL}/manifest.txt').read(); mv = lambda k: re.search(rf'^{k} (.*)$
 VER = '.'.join(mv('version').split('.')[:3]); DMB = 1200
 
 
-def make_drive(path, image, who, slot=False):
-    """the disc image, then RUDOLFDATA as partition 3, as Install here and Make a stick make them"""
+def make_drive(path, image, who, slot=False, debug=False):
+    """the disc image, then RUDOLFDATA as partition 3, as Install here and Make a stick make them. debug: the boot
+    menu starts Debug start by itself (a released disc has no serial console otherwise; the entry adds
+    rudolf.debug=1, which the start-up passes on to the update's kernel)"""
     start = (os.path.getsize(image) + 1048575) // 1048576 * 2048
     if os.path.exists(path): os.remove(path)
     with open(path, 'wb') as f:
         with open(image, 'rb') as o: shutil.copyfileobj(o, f)
         f.truncate((start + DMB * 2048 + 2048) * 512)
+    if debug:
+        with open(path, 'r+b') as f:
+            head = f.read(64 << 20); i = head.find(b'default rudolf-start.conf')
+            assert i > 0 and head.count(b'default rudolf-start.conf') == 1, 'the boot menu settings (loader.conf) were not found'
+            f.seek(i); f.write(b'default rudolf-debug.conf')
     T = os.path.abspath(path + '.tree'); shutil.rmtree(T, ignore_errors=True); os.makedirs(f'{T}/home/rudolf'); os.makedirs(f'{T}/etc')
     open(f'{T}/home/rudolf/whoami.txt', 'w').write(who + '\n'); subprocess.run(['chown', '-R', '1000:1000', f'{T}/home/rudolf'], check=True)
     if slot:
@@ -65,7 +76,7 @@ def wait_shell(g, delay=45, limit=900):
 
 
 INT = os.path.abspath('int131.img'); STK = os.path.abspath('oldstick131.img')
-make_drive(INT, OLD, 'internal', slot=True); make_drive(STK, OLDSTICK, 'stick')
+make_drive(INT, OLD, 'internal', slot=True, debug=True); make_drive(STK, OLDSTICK, 'stick')
 VIRTIO = ['-drive', f'file={INT},format=raw,if=none,id=vd', '-device', 'virtio-blk-pci,drive=vd,bootindex=0']
 USB = ['-device', 'qemu-xhci,id=xh', '-drive', f'file={STK},format=raw,if=none,id=us', '-device', 'usb-storage,bus=xh.0,drive=us,removable=on']
 
@@ -92,4 +103,26 @@ for n in (1, 2):
             g.s.s.send(b'sync; reboot -f\n'); time.sleep(5)
     finally:
         vm.stop()
+# ---- B. started from the old stick; the update is installed on the internal NVMe drive
+make_drive(INT, OLD, 'internal', slot=True); make_drive(STK, OLD, 'stick', debug=True)
+NVME = ['-drive', f'file={INT},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf131']
+USBB = ['-device', 'qemu-xhci,id=xh', '-drive', f'file={STK},format=raw,if=none,id=us', '-device', 'usb-storage,bus=xh.0,drive=us,removable=on,bootindex=0']
+vm = sbvm.VM('t131b', PARTS, [], secure=False, mem=3072, extra=NVME + USBB); g = session(vm); sh = lambda c, t=60: g.sh(c, t)
+try:
+    up = wait_shell(g)
+    st = sh('for f in slot media persist bootvia; do echo "$f=$(cat /etc/rudolf/$f)"; done; echo "who=$(cat /home/rudolf/whoami.txt)"; grep -o "RVER=.[0-9.]*" /usr/share/rudolf/www/index.html | head -1', 30) if up else ''
+    kv = dict(l.split('=', 1) for l in st.split('\n') if '=' in l and not l.startswith('RVER'))
+    rv = (re.search(r"RVER=.([0-9.]+)", st) or [None, ''])[1]
+    out('start B:', ' | '.join(f'{k}={v}' for k, v in kv.items()), '| RVER', rv)
+    if up and kv.get('slot') != 'a':
+        # the old stick's own start-up chose the stick's data (the first found here): it never hands over, so this
+        # start says nothing about the update's kernel
+        out('NOTE B: the old stick\'s start-up took the stick\'s own data partition here, so the update was not started; B not judged')
+    else:
+        ok('B. started from the old stick, its start-up hands over to the update on the internal drive', up and kv.get('slot') == 'a', kv.get('slot'))
+        ok('...the firmware\'s boot entry says USB', kv.get('bootvia') == 'usb', kv.get('bootvia'))
+        ok('...the update runs with the internal drive\'s files and image (not the stick\'s)', kv.get('persist') == '/dev/nvme0n1p3' and kv.get('media') == '/dev/nvme0n1p1' and kv.get('who') == 'internal', [kv.get('persist'), kv.get('media'), kv.get('who')])
+        ok(f'...and its own system: {VER}', rv == VER, rv)
+finally:
+    vm.stop()
 out(f'{sum(R)}/{len(R)} passed')
