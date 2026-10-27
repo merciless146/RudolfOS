@@ -94,7 +94,9 @@ fi
 # ---- base: the system programs and sys/root
 # 1.3.0: every program in sys/ is built here or into the start-up image, or a fix to it would reach no one by update
 # (rudolf-debian until 1.2.7, rudolf-portal and rudolf-apps until 1.2.9 were left out)
-for c in sys/*.c; do grep -q "gcc[^#]*$c\b" "$0" || { echo "$c is not built by $0: add it (base programs) so updates carry it"; exit 1; }; done
+# (this script, read from here: the start-up cd above makes a relative $0 point nowhere)
+SELF=systools/ci_release.sh; [ -r "$SELF" ] || { echo "cannot read $SELF from $(pwd)"; exit 1; }
+for c in sys/*.c; do grep -q "gcc[^#]*$c\b" "$SELF" || { echo "$c is not built by $SELF: add it (base programs) so updates carry it"; exit 1; }; done
 # the Secure Boot certificate, for Settings > Security > Prepare Secure Boot (rudolfd enrolls it through MokManager)
 mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/rudolf-sb.crt
 BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolfd.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c trusted-keys.txt systools/addnvk.sh VERSION; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
