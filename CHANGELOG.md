@@ -4,8 +4,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.3.1 (2026-10-27)
-Summary: fixes 1.3.0 starting an older Rudolf OS USB stick's system and files, instead of the computer's own, when such a stick was plugged in
-- Fixed: on a computer where Rudolf OS is installed, the first start of the 1.3.0 update could run the system and files of another Rudolf OS USB stick that was plugged in (for example an older 1.1 stick that keeps files). The desktop then said "Rudolf OS 1.1", and Wi-Fi and settings were the stick's. The update now always starts from the drive that holds it, with that drive's files, also on computers whose boot files are older than 1.3.0. Nothing on either drive was changed or erased.
+Summary: fixes 1.3.0 running an older Rudolf OS USB stick's system and files, instead of the computer's own, on computers started through such a stick
+- Fixed: on a computer where Rudolf OS is installed but which starts through an older Rudolf OS USB stick that keeps its own files (for example because the computer's firmware does not start its internal drive), the 1.3.0 update ran the stick's older system and files. The desktop then said, for example, "Rudolf OS 1.1", and Wi-Fi and settings were the stick's. The update now always runs from the drive that holds it, with that drive's files, whatever drive the computer started from. Nothing on either drive was changed or erased.
 
 ## 1.3.0 (2026-10-26)
 Summary: App Store › Games lists every game on Flathub, with search and genres; a USB stick uses its own files on a computer where Rudolf OS is installed; crashes are reported as crashes; the Linux password can be changed

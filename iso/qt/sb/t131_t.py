@@ -6,14 +6,13 @@
 # OLD-STICK.iso: another older disc (1.2.0), written to a USB stick with its own RUDOLFDATA (home: "stick"), no update.
 # (B's stick is OLD-DISC.iso too: it needs the Debug start entry, which discs from 1.2.2 on have.)
 # REL-DIR: the release under test (manifest.txt/.sig and the five files), installed in slot a of the internal drive.
-# The internal drive is a virtio disk: the firmware's boot entry for it names neither USB nor NVMe/SATA/SCSI, as on
-# laptops whose firmware keeps a short boot entry (HD() only), so the start-up cannot tell which kind it started from.
-# 1.3.0 took the first Rudolf OS drive found (the stick, /dev/sda1) and its own RUDOLFDATA: the laptop ran the stick's
-# 1.1 system and files ("Rudolf OS 1.1", "checked never", no Wi-Fi). 1.3.1: the data partition that holds the slot,
-# and the image on that drive.
+# A. started from the installed drive. It is a virtio disk: the firmware's boot entry for it names neither USB nor
+#    NVMe/SATA/SCSI (as firmware with short boot entries, HD() only, would), so the start-up cannot tell which kind
+#    of drive it started from. The update must still use the drive that holds it (1.3.0 does too: a guard).
 # B. The laptop's own case: its firmware starts only the old stick (the internal drive is not bootable there), whose
 #    start-up (from before 1.3.0) takes the internal drive's data partition (the first found) and hands over to the
-#    update installed there. 1.3.0's kernel then saw "started from USB" and took the stick's drive and files.
+#    update installed there. 1.3.0's kernel then saw "started from USB" and took the stick's drive, files and older
+#    system (the laptop showed "Rudolf OS 1.1"; here the stick's 1.2.6). 1.3.1: the internal drive's.
 import os, sys, time, re, subprocess, shutil, struct
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
@@ -86,9 +85,9 @@ for n in (1, 2):
         up = wait_shell(g)
         if not up:
             for i in range(3): vm.shot(f'fail{i}'); time.sleep(5)
-        st = sh('for f in slot media persist bootvia; do echo "$f=$(cat /etc/rudolf/$f)"; done; echo "who=$(cat /home/rudolf/whoami.txt)"; grep -o "RVER=.[0-9.]*" /usr/share/rudolf/www/index.html | head -1; echo "cmd=$(cat /etc/rudolf/cmdline)"', 30) if up else ''
+        st = sh('for f in slot media persist bootvia; do echo "$f=$(cat /etc/rudolf/$f)"; done; echo "who=$(cat /home/rudolf/whoami.txt)"; echo "cmd=$(cat /etc/rudolf/cmdline)"', 30) if up else ''
         kv = dict(l.split('=', 1) for l in st.split('\n') if '=' in l and not l.startswith('RVER'))
-        rv = (re.search(r"RVER=.([0-9.]+)", st) or [None, ''])[1]
+        rv = last(sh("grep -o \"RVER='[0-9.]*'\" /usr/share/rudolf/www/index.html | head -1 | tr -dc 0-9.; echo", 90)) if up else ''
         out(f'start {n}:', ' | '.join(f'{k}={v}' for k, v in kv.items() if k != 'cmd'), '| RVER', rv)
         ok(f'{n}. the installed drive (boot files from before 1.3.0) starts its update by kexec, a stick of its own plugged in', up and kv.get('slot') == 'a', kv.get('slot'))
         ok('...the firmware\'s boot entry does not say the kind of drive (as on the laptop)', kv.get('bootvia', 'x') == '', kv.get('bootvia'))
@@ -110,9 +109,9 @@ USBB = ['-device', 'qemu-xhci,id=xh', '-drive', f'file={STK},format=raw,if=none,
 vm = sbvm.VM('t131b', PARTS, [], secure=False, mem=3072, extra=NVME + USBB); g = session(vm); sh = lambda c, t=60: g.sh(c, t)
 try:
     up = wait_shell(g)
-    st = sh('for f in slot media persist bootvia; do echo "$f=$(cat /etc/rudolf/$f)"; done; echo "who=$(cat /home/rudolf/whoami.txt)"; grep -o "RVER=.[0-9.]*" /usr/share/rudolf/www/index.html | head -1', 30) if up else ''
+    st = sh('for f in slot media persist bootvia; do echo "$f=$(cat /etc/rudolf/$f)"; done; echo "who=$(cat /home/rudolf/whoami.txt)"', 30) if up else ''
     kv = dict(l.split('=', 1) for l in st.split('\n') if '=' in l and not l.startswith('RVER'))
-    rv = (re.search(r"RVER=.([0-9.]+)", st) or [None, ''])[1]
+    rv = last(sh("grep -o \"RVER='[0-9.]*'\" /usr/share/rudolf/www/index.html | head -1 | tr -dc 0-9.; echo", 90)) if up else ''
     out('start B:', ' | '.join(f'{k}={v}' for k, v in kv.items()), '| RVER', rv)
     if up and kv.get('slot') != 'a':
         # the old stick's own start-up chose the stick's data (the first found here): it never hands over, so this
