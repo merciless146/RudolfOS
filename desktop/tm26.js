@@ -284,6 +284,7 @@ async function sysReport(problem) {
     ['Created', new Date().toISOString().replace(/\.\d+Z$/, 'Z')],
     ['Started from', !RD ? 'web browser' : `${(k.boot || info && info.boot || '?').toUpperCase()}, ${k.media || info && info.media || '?'}${(k.live ?? (info && info.live)) ? ', live (changes are not kept)' : ', changes kept (RUDOLFDATA)'}${k.recovery ? ', recovery' : ''}`],
     ['Secure Boot', !RD ? '—' : typeof sbSummary == 'function' ? sbSummary(sbs) : '—'],
+    ['Development link', !RD ? '—' : typeof dlSummary == 'function' ? dlSummary(await rd('devlink').catch(() => null)) : '—'],
     ['Desktop', !RD ? 'browser version' : SHELL ? 'shell ' + SHELL_VER + ' (real tabs)' : sv.shellFailed ? 'plain page (shell failed)' : 'plain page'],
     ['Display', sys ? tmDisp(sys.display) : '—'],
     ['Drawn by', RD ? tmDrawn(sys) : 'browser'],
