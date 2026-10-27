@@ -163,6 +163,10 @@ Windows" already writes `BootNext`. Test it there, with restarts, without the st
   networking, so the test machine reaches the stand-in through `qt/sertun.c` and `qt/sertun.py`, a relay over a
   second serial port (test scaffolding only, not in Rudolf OS; its frames carry a marker because the firmware writes
   its screen to that port too).
+- **Found by the full-system test (v120):** the link's desktop code first named its status check `dlPoll`, the name
+  of the downloads' checker since 1.2.7; the later definition replaced the earlier one, and downloads from real tabs
+  never finished. The link's desktop functions are now `devl*`, and `desktop/build19.py` stops the build when two
+  modules define the same top-level function.
 
 ## Release steps
 1. Stage A and B on the branch `rudolf-1.4.0`: implement, host and QEMU tests, local release build, test disc.
