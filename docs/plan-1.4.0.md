@@ -40,7 +40,7 @@ Commands (`cmd/NNNNNN.json`):
 | kind | what it does | limits |
 |------|--------------|--------|
 | `sh` | runs a shell script as root, with a time limit; stdout, stderr and the exit status come back | 10 min default, 60 min at most; 1 MB of output, the rest cut and said so |
-| `screenshot` | a PNG of the real screen (rudolfd's `screenshot` route, as Task Manager uses) | one per command |
+| `screenshot` | a PNG of the real screen (rudolfd's `screenshot` route) | one per command |
 | `get` | sends a file from the laptop | 25 MB at most; nothing under `/home` unless the owner allowed it when switching the link on |
 | `put` | brings a file to the laptop (a test kernel, a script) from the repository or a GitHub release of RudolfOS | 512 MB at most; written under `/persist/devlink/files` only |
 | `restart` | restarts the computer; the link comes back by itself if it was set to stay on across a restart | — |
