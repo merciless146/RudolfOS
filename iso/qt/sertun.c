@@ -1,7 +1,8 @@
 /* sertun - test scaffolding (not part of Rudolf OS): TCP connections from inside a QEMU guest to the host over a
  * serial port, for test machines without a network (this QEMU has no user-mode networking). The guest side listens
- * on 127.0.0.1:PORT and relays one connection at a time over the serial device in frames ([type][len:4 BE][data];
- * type 'O' open, 'D' data, 'C' close); sertun.py on the host opens the matching connection there.
+ * on 127.0.0.1:PORT and relays one connection at a time over the serial device in frames ("STN" [type][len:4 BE][data];
+ * type 'O' open, 'D' data, 'C' close). The marker lets the host side skip what else the port carries (the firmware
+ * writes its screen to every serial port at start-up); sertun.py on the host opens the matching connection there.
  *   sertun /dev/ttyS1 PORT        (static: gcc -O2 -static -o sertun sertun.c) */
 #include <arpa/inet.h>
 #include <errno.h>
@@ -20,7 +21,7 @@
 static int T;
 static int wall(int fd, const void *b, size_t n) { const char *p = b; while (n) { ssize_t k = write(fd, p, n); if (k < 0) { if (errno == EINTR || errno == EAGAIN) { usleep(1000); continue; } return -1; } p += k; n -= k; } return 0; }
 static int rall(int fd, void *b, size_t n) { char *p = b; while (n) { ssize_t k = read(fd, p, n); if (k <= 0) { if (k < 0 && (errno == EINTR || errno == EAGAIN)) { usleep(1000); continue; } return -1; } p += k; n -= k; } return 0; }
-static void frame(char t, const void *d, uint32_t n) { unsigned char h[5] = { t, n >> 24, n >> 16, n >> 8, n }; wall(T, h, 5); if (n) wall(T, d, n); }
+static void frame(char t, const void *d, uint32_t n) { unsigned char h[8] = { 'S', 'T', 'N', t, n >> 24, n >> 16, n >> 8, n }; wall(T, h, 8); if (n) wall(T, d, n); }
 
 int main(int argc, char **argv)
 {
@@ -44,8 +45,11 @@ int main(int argc, char **argv)
 				if (k > 0) frame('D', b, k); else { open_c = 0; shutdown(c, SHUT_RD); frame('C', NULL, 0); }
 			}
 			if (p[0].revents & POLLIN) {
-				unsigned char h[5]; if (rall(T, h, 5)) return 1;
-				uint32_t n = (uint32_t)h[1] << 24 | h[2] << 16 | h[3] << 8 | h[4]; if (n > sizeof b) return 1;
+				/* skip to the marker */
+				unsigned char h[5], m = 0; int got = 0;
+				while (got < 3) { if (rall(T, &m, 1)) return 1; got = m == "STN"[got] ? got + 1 : m == 'S'; }
+				if (rall(T, h, 5)) return 1;
+				uint32_t n = (uint32_t)h[1] << 24 | h[2] << 16 | h[3] << 8 | h[4]; if (n > sizeof b) continue;
 				if (n && rall(T, b, n)) return 1;
 				if (h[0] == 'D' && open_c) wall(c, b, n);
 				else if (h[0] == 'C') host_open = 0;
