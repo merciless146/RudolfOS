@@ -132,7 +132,7 @@ def js2(e, t=60):
         if not (isinstance(r, tuple) and r[0] == 'ERR'): return r
         time.sleep(15); wait_desktop(g)
     return r
-st = js2("(async()=>{const W=win('Security','x',600,500);secPanelS(W.body,W);await new Promise(r=>setTimeout(r,4000));const t=W.body.querySelector('.sb28 .sbt');W.close();return t?t.textContent:'no section'})()")
+st = js2("(async()=>{const W=win('Security','x',600,500);secPanelS(W.body,W);let t=null;for(let i=0;i<40&&!(t&&t.textContent);i++){await new Promise(r=>setTimeout(r,500));t=W.body.querySelector('.sb28 .sbt')}W.close();return t?t.textContent:'no section'})()")
 ok('B: Settings > Security says so', str(st).startswith('On.'), st)
 rep = js2("sysReport().then(r=>typeof r=='string'?r:(r.text||JSON.stringify(r)))", 90)
 ok('B: the system report has a Secure Boot line', 'Secure Boot: on' in str(rep), str(rep)[:200])
