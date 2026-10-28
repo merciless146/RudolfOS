@@ -57,6 +57,9 @@ SIZE=$((SECTORS - START - 2048))
 le32() { printf "\\$(printf %03o $(($1 & 255)))\\$(printf %03o $((($1 >> 8) & 255)))\\$(printf %03o $((($1 >> 16) & 255)))\\$(printf %03o $((($1 >> 24) & 255)))"; }
 { printf '\000\376\377\377\203\376\377\377'; le32 $START; le32 $SIZE; } | dd of="$DEV" bs=1 seek=$((446 + 32)) conv=notrunc 2>/dev/null
 sync
+# 1.4.1: an internal drive gets the installed layout (firmware can start it), a stick keeps the image's table
+. /usr/lib/rudolf/layout.sh
+if [ -n "$MKSTICK" ]; then layout_stick "$DEV" "$BLOCKS"; else layout_apply "$DEV" "$BLOCKS"; fi
 blockdev --rereadpt "$DEV" 2>/dev/null || true
 sleep 2; mdev -s
 case "$N" in *[0-9]) P="${DEV}p3";; *) P="${DEV}3";; esac

@@ -2115,6 +2115,67 @@ static int boot_option(unsigned n, char *title, size_t tl)
 	low[k] = 0; free(d);
 	return strstr(low, "bootmgfw.efi") || strstr(title, "Windows Boot Manager") ? 1 : 0;
 }
+/* 1.4.1: the installed drive's own firmware boot entry. Firmware does not add one for a drive Rudolf OS is installed
+ * on (the ASUS Vivobook Go listed only its old Windows and Ubuntu entries and the USB stick), so at every start on a
+ * UEFI computer: when the drive holding RUDOLFDATA has the installed layout (initramfs/init, layout.sh: partition 1
+ * empty, 2 the EFI system partition, 3 RUDOLFDATA, a disk signature of its own), a "Rudolf OS" entry
+ * HD(2,MBR,signature,start,size)/\EFI\BOOT\BOOTX64.EFI (shim: it works with Secure Boot too) is made or corrected, and
+ * put first in BootOrder. Other entries named "Rudolf OS ..." (left over, or for the same drive under an older
+ * signature) are removed; nothing else is touched. Nothing is written when all is already so. */
+static void boot_entry_ensure(void)
+{
+	if (access("/sys/firmware/efi/efivars", F_OK) || access(RUN "/persistent", F_OK)) return;
+	char *p = slurp("/etc/rudolf/persist", NULL); if (!p) return; trim(p);
+	char disk[64] = ""; size_t pl = strlen(p);
+	if (!strncmp(p, "/dev/nvme", 9) || !strncmp(p, "/dev/mmcblk", 11)) { if (pl > 2 && !strcmp(p + pl - 2, "p3")) snprintf(disk, sizeof disk, "%.*s", (int)(pl - 2), p); }
+	else if (pl > 1 && p[pl - 1] == '3') snprintf(disk, sizeof disk, "%.*s", (int)(pl - 1), p);
+	free(p); if (!*disk) return;
+	char sp[128], rp[4096]; snprintf(sp, sizeof sp, "/sys/block/%s", disk + 5);
+	if (!realpath(sp, rp) || strstr(rp, "/usb") || strstr(rp, "/mmc")) return;
+	snprintf(sp, sizeof sp, "/sys/block/%s/removable", disk + 5); if (read_ll(sp, 0) == 1) return;
+	unsigned char m[512]; int f = open(disk, O_RDONLY | O_CLOEXEC); if (f < 0) return;
+	ssize_t got = pread(f, m, 512, 0); close(f); if (got != 512 || m[510] != 0x55 || m[511] != 0xaa) return;
+	static const unsigned char zero[16];
+	if (memcmp(m + 446, zero, 16) || m[446 + 16 + 4] != 0xef || m[446 + 32 + 4] != 0x83 || !memcmp(m + 440, zero, 4)) return;
+	uint32_t st, sz; memcpy(&st, m + 446 + 16 + 8, 4); memcpy(&sz, m + 446 + 16 + 12, 4);
+	/* the load option: attributes (active), the device path's length, the title, the device path */
+	unsigned char opt[256]; size_t k = 0; uint32_t att = 1; memcpy(opt, &att, 4); k = 6;
+	k += su16("Rudolf OS", opt + k);
+	unsigned char *dp = opt + k;
+	unsigned char hd[42] = {4, 1, 42, 0, 2, 0, 0, 0}; uint64_t st64 = st, sz64 = sz;
+	memcpy(hd + 8, &st64, 8); memcpy(hd + 16, &sz64, 8); memcpy(hd + 24, m + 440, 4); hd[40] = 1; hd[41] = 1;
+	memcpy(dp, hd, 42); size_t dl = 42;
+	unsigned char fp[64]; size_t fl = su16("\\EFI\\BOOT\\BOOTX64.EFI", fp);
+	dp[dl] = 4; dp[dl + 1] = 4; dp[dl + 2] = (unsigned char)(4 + fl); dp[dl + 3] = 0; memcpy(dp + dl + 4, fp, fl); dl += 4 + fl;
+	dp[dl] = 0x7f; dp[dl + 1] = 0xff; dp[dl + 2] = 4; dp[dl + 3] = 0; dl += 4;
+	uint16_t dl16 = (uint16_t)dl; memcpy(opt + 4, &dl16, 2); k += dl;
+	/* ours, and the other "Rudolf OS ..." entries */
+	int mine = -1, same = 0, rm[32], nrm = 0, used[256] = {0};
+	for (unsigned n = 0; n < 256; n++) {
+		char v[80], t[100]; snprintf(v, sizeof v, "Boot%04X-" GLOBALG, n); size_t l = 0; unsigned char *d = efivar(v, &l);
+		if (!d) continue;
+		used[n] = 1; t[0] = 0; if (l > 6) u16s(d + 6, l - 6, t, sizeof t);
+		if (!strncmp(t, "Rudolf OS", 9)) {
+			if (mine < 0 && !strcmp(t, "Rudolf OS")) { mine = n; same = l == k && !memcmp(d, opt, k); }
+			else if (nrm < 32) rm[nrm++] = n;
+		}
+		free(d);
+	}
+	if (mine < 0) { for (unsigned n = 0; n < 256; n++) if (!used[n]) { mine = n; break; } if (mine < 0) return; }
+	char v[80]; snprintf(v, sizeof v, "Boot%04X-" GLOBALG, mine);
+	if (!same) { if (efivar_write(v, opt, k)) { fprintf(stderr, "rudolfd: the boot entry %s could not be written\n", v); return; } fprintf(stderr, "rudolfd: boot entry Boot%04X \"Rudolf OS\" for %s\n", mine, disk); }
+	for (int i = 0; i < nrm; i++) { char f2[200]; snprintf(f2, sizeof f2, EFIV "/Boot%04X-" GLOBALG, rm[i]); unimmutable(f2); unlink(f2); fprintf(stderr, "rudolfd: removed the old boot entry Boot%04X\n", rm[i]); }
+	/* BootOrder: ours first, the removed ones out, the rest as they were */
+	size_t ol = 0; unsigned char *o = efivar("BootOrder-" GLOBALG, &ol);
+	uint16_t nw[300]; size_t nn = 0; nw[nn++] = (uint16_t)mine;
+	for (size_t i = 0; o && i + 1 < ol && nn < 300; i += 2) {
+		uint16_t e; memcpy(&e, o + i, 2); int skip = e == mine;
+		for (int j = 0; j < nrm; j++) if (e == rm[j]) skip = 1;
+		if (!skip) nw[nn++] = e;
+	}
+	if (!o || ol != nn * 2 || memcmp(o, nw, ol)) { if (!efivar_write("BootOrder-" GLOBALG, (unsigned char *)nw, nn * 2)) fprintf(stderr, "rudolfd: Boot%04X first in the boot order\n", mine); }
+	free(o);
+}
 static void api_bootmenu(struct req *r, const char *what, int post)
 {
 	int efi = !access("/sys/firmware/efi", F_OK);
@@ -2917,6 +2978,7 @@ int main(int argc, char **argv)
 	{ char *sb = slurp("/etc/rudolf/secureboot", NULL); secureboot = sb && sb[0] == '1'; free(sb); }
 	live = access(RUN "/persistent", F_OK) != 0;
 	dl_boot();
+	boot_entry_ensure();
 	int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0), one = 1;
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
 	struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons(8080), .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
