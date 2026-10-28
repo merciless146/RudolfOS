@@ -2118,10 +2118,55 @@ static int boot_option(unsigned n, char *title, size_t tl)
 /* 1.4.1: the installed drive's own firmware boot entry. Firmware does not add one for a drive Rudolf OS is installed
  * on (the ASUS Vivobook Go listed only its old Windows and Ubuntu entries and the USB stick), so at every start on a
  * UEFI computer: when the drive holding RUDOLFDATA has the installed layout (initramfs/init, layout.sh: partition 1
- * empty, 2 the EFI system partition, 3 RUDOLFDATA, a disk signature of its own), a "Rudolf OS" entry
- * HD(2,MBR,signature,start,size)/\EFI\BOOT\BOOTX64.EFI (shim: it works with Secure Boot too) is made or corrected, and
- * put first in BootOrder. Other entries named "Rudolf OS ..." (left over, or for the same drive under an older
+ * empty, 2 the EFI system partition, 3 RUDOLFDATA, a disk signature of its own), a "Rudolf OS" entry naming the
+ * drive (disk_devpath; firmware then starts \EFI\BOOT\BOOTX64.EFI, the shim, so it works with Secure Boot too), or for a
+ * controller not known there HD(2,MBR,signature,start,size)/\EFI\BOOT\BOOTX64.EFI, is made or corrected, and put first
+ * in BootOrder. Other entries named "Rudolf OS ..." (left over, or for the same drive under an older
  * signature) are removed; nothing else is touched. Nothing is written when all is already so. */
+/* The drive itself as UEFI names it, the way firmware's own entries for a drive do ("UEFI QEMU NVMe Ctrl ..."):
+ * PciRoot(uid)/Pci(dev,fn)/.../NVMe(nsid,EUI-64) or .../Sata(port,0xFFFF,0), with no file. Firmware starts such an
+ * entry by looking for \EFI\BOOT\BOOTX64.EFI on the drive, through whichever partitions it found: EDK2's partition
+ * driver takes the image's El Torito catalogue before the MBR, so it never makes the HD(2,MBR,...) node a partition
+ * path would name (OVMF skipped that entry). RP is the drive's /sys/devices path. Returns the length, 0 if unknown. */
+static size_t disk_devpath(const char *rp, const char *dev, unsigned char *o, size_t on)
+{
+	const char *q = strstr(rp, "/pci"); if (!q || on < 128) return 0;
+	unsigned seg = 0, bus = 0; if (sscanf(q, "/pci%x:%x", &seg, &bus) != 2) return 0;
+	char f[300], *h; snprintf(f, sizeof f, "/sys/devices/pci%04x:%02x/firmware_node/uid", seg, bus);
+	uint32_t uid = (uint32_t)read_ll(f, 0), eisa = 0x0a0341d0;   /* PciRoot(): Acpi(PNP0A03,uid), as EDK2 names it */
+	/* firmware that names its PCI root otherwise (PNP0A08) shows it in its own entries: take theirs */
+	for (unsigned n = 0; n < 256; n++) {
+		char v[80]; snprintf(v, sizeof v, "Boot%04X-" GLOBALG, n); size_t l = 0; unsigned char *d = efivar(v, &l);
+		if (!d) continue;
+		size_t i = 6; while (i + 1 < l && (d[i] || d[i + 1])) i += 2; i += 2;
+		uint32_t e2, u2;
+		if (i + 12 <= l && d[i] == 2 && d[i + 1] == 1 && d[i + 2] == 12 && !d[i + 3]) { memcpy(&e2, d + i + 4, 4); memcpy(&u2, d + i + 8, 4); if (u2 == uid && (e2 & 0xffff) == 0x41d0) eisa = e2; }
+		free(d);
+	}
+	size_t k = 0;
+	o[k++] = 2; o[k++] = 1; o[k++] = 12; o[k++] = 0; memcpy(o + k, &eisa, 4); memcpy(o + k + 4, &uid, 4); k += 8;
+	/* each PCI device on the way: /0000:00:02.2/0000:01:00.0/ */
+	const char *s = strchr(q + 1, '/'); unsigned d0, b0, dv, fn; int n;
+	while (s && sscanf(s, "/%x:%x:%x.%x%n", &d0, &b0, &dv, &fn, &n) == 4 && s[n] == '/') {
+		if (k + 6 > on - 40) return 0;
+		o[k++] = 1; o[k++] = 1; o[k++] = 6; o[k++] = 0; o[k++] = (unsigned char)fn; o[k++] = (unsigned char)dv; s += n;
+	}
+	if (k == 12) return 0;
+	const char *nm = dev + 5;
+	if (!strncmp(nm, "nvme", 4)) {
+		snprintf(f, sizeof f, "/sys/block/%s/nsid", nm); uint32_t ns = (uint32_t)read_ll(f, 0); if (!ns) return 0;
+		unsigned char eui[8] = {0}; snprintf(f, sizeof f, "/sys/block/%s/eui", nm);
+		if ((h = slurp(f, NULL))) { unsigned b[8]; if (sscanf(h, "%x %x %x %x %x %x %x %x", b, b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7) == 8) for (int i = 0; i < 8; i++) eui[i] = (unsigned char)b[i]; free(h); }
+		o[k++] = 3; o[k++] = 0x17; o[k++] = 16; o[k++] = 0; memcpy(o + k, &ns, 4); memcpy(o + k + 4, eui, 8); k += 12;
+	} else if (strstr(rp, "/ata")) {
+		const char *a = strstr(rp, "/ata"); unsigned an; if (sscanf(a, "/ata%u/", &an) != 1) return 0;
+		snprintf(f, sizeof f, "/sys/class/ata_port/ata%u/port_no", an); long long pn = read_ll(f, 0); if (pn < 1) return 0;
+		uint16_t port = (uint16_t)(pn - 1), pm = 0xffff, lun = 0;
+		o[k++] = 3; o[k++] = 0x12; o[k++] = 10; o[k++] = 0; memcpy(o + k, &port, 2); memcpy(o + k + 2, &pm, 2); memcpy(o + k + 4, &lun, 2); k += 6;
+	} else return 0;
+	o[k++] = 0x7f; o[k++] = 0xff; o[k++] = 4; o[k++] = 0;
+	return k;
+}
 static void boot_entry_ensure(void)
 {
 	if (access("/sys/firmware/efi/efivars", F_OK) || access(RUN "/persistent", F_OK)) return;
@@ -2144,10 +2189,13 @@ static void boot_entry_ensure(void)
 	unsigned char *dp = opt + k;
 	unsigned char hd[42] = {4, 1, 42, 0, 2, 0, 0, 0}; uint64_t st64 = st, sz64 = sz;
 	memcpy(hd + 8, &st64, 8); memcpy(hd + 16, &sz64, 8); memcpy(hd + 24, m + 440, 4); hd[40] = 1; hd[41] = 1;
-	memcpy(dp, hd, 42); size_t dl = 42;
 	unsigned char fp[64]; size_t fl = su16("\\EFI\\BOOT\\BOOTX64.EFI", fp);
-	dp[dl] = 4; dp[dl + 1] = 4; dp[dl + 2] = (unsigned char)(4 + fl); dp[dl + 3] = 0; memcpy(dp + dl + 4, fp, fl); dl += 4 + fl;
-	dp[dl] = 0x7f; dp[dl + 1] = 0xff; dp[dl + 2] = 4; dp[dl + 3] = 0; dl += 4;
+	size_t dl = disk_devpath(rp, disk, dp, sizeof opt - k), whole = dl > 0;
+	if (!dl) {   /* a controller not named above: the partition and the file */
+		memcpy(dp, hd, 42); dl = 42;
+		dp[dl] = 4; dp[dl + 1] = 4; dp[dl + 2] = (unsigned char)(4 + fl); dp[dl + 3] = 0; memcpy(dp + dl + 4, fp, fl); dl += 4 + fl;
+		dp[dl] = 0x7f; dp[dl + 1] = 0xff; dp[dl + 2] = 4; dp[dl + 3] = 0; dl += 4;
+	}
 	uint16_t dl16 = (uint16_t)dl; memcpy(opt + 4, &dl16, 2); k += dl;
 	/* ours, and the other "Rudolf OS ..." entries */
 	int mine = -1, same = 0, rm[32], nrm = 0, used[256] = {0};
@@ -2158,14 +2206,14 @@ static void boot_entry_ensure(void)
 		if (!strncmp(t, "Rudolf OS", 9)) {
 			/* ours when it still names this drive's partition 2 and the start file: firmware may store the path in
 			   its own, longer form (the whole device path in front of HD(...)) */
-			if (mine < 0 && !strcmp(t, "Rudolf OS")) { mine = n; same = (l == k && !memcmp(d, opt, k)) || (l >= 6 && (d[0] & 1) && memmem(d, l, hd, 42) && memmem(d, l, fp, fl)); }
+			if (mine < 0 && !strcmp(t, "Rudolf OS")) { mine = n; same = (l == k && !memcmp(d, opt, k)) || (!whole && l >= 6 && (d[0] & 1) && memmem(d, l, hd, 42) && memmem(d, l, fp, fl)); }
 			else if (nrm < 32) rm[nrm++] = n;
 		}
 		free(d);
 	}
 	if (mine < 0) { for (unsigned n = 0; n < 256; n++) if (!used[n]) { mine = n; break; } if (mine < 0) return; }
 	char v[80]; snprintf(v, sizeof v, "Boot%04X-" GLOBALG, mine);
-	if (!same) { int had = used[mine]; if (efivar_write(v, opt, k)) { fprintf(stderr, "rudolfd: the boot entry %s could not be written\n", v); return; } fprintf(stderr, "rudolfd: boot entry Boot%04X \"Rudolf OS\" for %s (%s)\n", mine, disk, had ? "it named another partition or file" : "new"); }
+	if (!same) { int had = used[mine]; if (efivar_write(v, opt, k)) { fprintf(stderr, "rudolfd: the boot entry %s could not be written\n", v); return; } fprintf(stderr, "rudolfd: boot entry Boot%04X \"Rudolf OS\" for %s (%s)\n", mine, disk, had ? "it named another path" : "new"); }
 	for (int i = 0; i < nrm; i++) { char f2[200]; snprintf(f2, sizeof f2, EFIV "/Boot%04X-" GLOBALG, rm[i]); unimmutable(f2); unlink(f2); fprintf(stderr, "rudolfd: removed the old boot entry Boot%04X\n", rm[i]); }
 	/* BootOrder: ours first, the removed ones out, the rest as they were */
 	size_t ol = 0; unsigned char *o = efivar("BootOrder-" GLOBALG, &ol);

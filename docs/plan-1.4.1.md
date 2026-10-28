@@ -87,6 +87,14 @@ shim, so it also works with Secure Boot), first in BootOrder; an older Rudolf OS
 replaced, other entries are left alone. rudolfd already writes EFI variables (Restart into Windows, Prepare Secure
 Boot); this uses the same code. Without EFI (BIOS starts) nothing is written.
 
+*As built:* the entry names the drive itself, as the firmware's own drive entries do
+(`PciRoot(0)/Pci(2,2)/Pci(0,0)/NVMe(1,EUI-64)` on the Vivobook, or `.../Sata(port,0xFFFF,0)`), with no partition or
+file: firmware then starts `\EFI\BOOT\BOOTX64.EFI` from whatever partitions it found on the drive. The first version
+named `HD(2,MBR,...)`, and OVMF skipped it at every start: EDK2's partition driver takes the image's El Torito
+catalogue before the MBR, so no `HD(2,MBR,...)` node ever exists on that drive (the stick shows the same: its entry
+ends in a CD-ROM node). The PCI root is named `PNP0A03` as EDK2 does, or as the firmware's own entries name it. A
+controller other than NVMe or SATA still gets the `HD(2,...)` form.
+
 **6. The development link and old commands.** `rudolf-devlink` keeps the last command done on the data partition;
 on another data partition (or after forgetting it) it started from command 000001 again. Now it also reads which
 results are already in the repository (`res/`, one listing per check) and treats every command that has a result as

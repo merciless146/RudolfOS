@@ -95,7 +95,10 @@ try:
     be = boot_entries(); order = efi('BootOrder'); m = re.search(r'Boot([0-9A-F]{4})=Rudolf OS(?! \()', be)
     ok('...rudolfd made the "Rudolf OS" boot entry, first in the boot order', m and order[:4] == m.group(1), [be, order])
     sig = mbr[440:444].hex(); ent = last(sh(f'tail -c +5 {E}/Boot{m.group(1) if m else "XXXX"}-{G} 2>/dev/null | od -An -tx1 -v | tr -d " \\n"', 20))
-    ok('...naming partition 2 by the drive\'s new signature, and the shim (\\EFI\\BOOT\\BOOTX64.EFI)', sig in ent and '0401' in ent and '5c0045004600490' in ent, ent[:160])
+    fwn = re.search(r'Boot([0-9A-F]{4})=UEFI QEMU NVMe', be)
+    fw = last(sh(f'tail -c +5 {E}/Boot{fwn.group(1) if fwn else "XXXX"}-{G} 2>/dev/null | od -An -tx1 -v | tr -d " \\n"', 20))
+    fwp = fw[fw.find('02010c00'):] if '02010c00' in fw else 'none'
+    ok('...naming the drive itself, as the firmware\'s own entry for it does (PciRoot/Pci/NVMe, no partition or file)', ent.endswith(fwp) and len(fwp) > 20, [ent[:200], fwp])
     mine = m.group(1) if m else ''
     # 3. the next start through that entry; rudolfd writes nothing when all is already so
     out('NOTE before the restart: BootOrder', efi('BootOrder'))
