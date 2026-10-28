@@ -146,6 +146,13 @@ ok('it ends by itself when its time is up, and is off', d.poll() is not None and
 config(on=0); d = start(); d.wait(10)
 ok('it does not run when it is switched off', d.poll() is not None and statusj().get('state') == 'off', statusj())
 
+# ---- 1.4.1: another data partition (no record of what was done): commands with a result are not run again
+os.remove(f'{DIR}/state'); open(f'{T}/ran-again', 'w').close(); os.remove(f'{T}/ran-again')
+cmd(20, kind='sh', script=f'echo new'); config(); d = start(); r = result(20)
+ok('with no record of what was done, only the command without a result runs (1.4.1)', r and r['stdout'] == 'new\n' and 'last=000020' in open(f'{DIR}/state').read(), (r, open(f'{DIR}/state').read()))
+ok('...the earlier ones (restarts among them) are not run again', ctl('/_powered')['powered'] == 1 and json.loads(files()['res/000001.json'])['stdout'] == 'hello\n', ctl('/_powered'))
+os.kill(d.pid, signal.SIGTERM); d.wait(15)
+
 # ---- the token
 leaks = [k for k, v in files().items() if TOKEN.encode() in v]
 for root, _, fs in os.walk(T):
