@@ -4,7 +4,7 @@
 F=$(cd "$(dirname "$0")/../../sys/root/usr/lib/rudolf" && pwd)/bootfiles.sh
 T=$(mktemp -d); cd "$T" || exit 1
 P=0; N=0; ok() { N=$((N + 1)); if [ "$1" = 0 ]; then P=$((P + 1)); echo "PASS $2"; else echo "FAIL $2 ${3:-}"; fi; }
-BF_LIB=1 . "$F"
+export RUDOLF_LIB=$(dirname "$F"); BF_LIB=1 . "$F"
 # an old disc image's layers (OLD), a good slot a that takes 'chromium' from it, and a previous slot b whose 'desktop'
 # does not match the old image (it cannot start without it any more)
 mkdir -p old/rudolf sys/a sys/b
@@ -48,6 +48,7 @@ d=bytearray(open('disk.img','rb').read(512)); d[482]=0x83; open('disk.img','r+b'
 img=bytearray(os.urandom(2*1048576)); img[478:494]=b'\0'*16; open('img.iso','wb').write(img)
 PY
 BLOCKS=1024; BYTES=$((BLOCKS * 2048)); out=$(write_area disk.img img.iso 2>&1)
-echo "$out" | grep -q "The copy matches" && [ "$(dd if=disk.img bs=1 skip=486 count=4 2>/dev/null | od -An -tu4 | tr -d ' ')" = $((446 * 2048)) ] && cmp -s -n 478 disk.img img.iso; ok $? "write_area: the image written, RUDOLFDATA's entry kept, the copy compared" "$out"
+echo "$out" | grep -q "The copy matches" && [ "$(dd if=disk.img bs=1 skip=486 count=4 2>/dev/null | od -An -tu4 | tr -d ' ')" = $((446 * 2048)) ] && cmp -s -n 440 disk.img img.iso; ok $? "write_area: the image written, RUDOLFDATA's entry kept, the copy compared" "$out"
+[ "$(dd if=disk.img bs=1 skip=446 count=16 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 00000000000000000000000000000000 ] && [ "$(dd if=disk.img bs=1 skip=440 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n')" != "$(dd if=img.iso bs=1 skip=440 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n')" ]; ok $? "...an internal drive then gets the installed layout: partition 1 cleared, a disk signature of its own (1.4.1)"
 cd /; rm -rf "$T"
 echo "$P/$N passed"; [ $P = $N ]

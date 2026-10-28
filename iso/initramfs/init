@@ -60,25 +60,45 @@ fi
 is_usb() { case "$(readlink -f /sys/class/block/${1##*/} 2>/dev/null)" in */usb*) return 0;; esac; return 1; }
 # a drive of the other kind is passed over while the firmware's kind may still appear (USB sticks need a few seconds)
 wrong_kind() { [ -n "$BOOTVIA" ] && [ "${i:-0}" -lt 16 ] || return 1; case "$1" in /dev/sr*) return 1;; esac; if is_usb "$1"; then [ "$BOOTVIA" = internal ]; else [ "$BOOTVIA" = usb ]; fi; }
+# 1.4.1: an installed drive's partition table is valid for UEFI firmware: no partition over the Rudolf OS image (the
+# disc image's partition 1 starts at sector 0 and holds the EFI system partition, which firmware takes for an invalid
+# table, so the ASUS Vivobook Go could not start from its drive). The image is still at the start of the drive, so it
+# is read from the whole disk, through a read-only loop device: mounting the whole disk itself would claim it and lock
+# out its RUDOLFDATA partition. MEDIA stays the drive (/dev/nvme0n1); MLOOP is the loop device in use.
+whole() { case "$1" in /dev/sr*) return 1;; esac; [ -b "$1" ] && [ ! -e "/sys/class/block/${1##*/}/partition" ]; }
+MLOOP=""
+mount_media() {
+	if whole "$1"; then
+		MLOOP=$(losetup -f) && losetup -r "$MLOOP" "$1" 2>/dev/null || { MLOOP=""; return 1; }
+		mount -t iso9660 -o ro "$MLOOP" /mnt/media 2>/dev/null && return 0
+		losetup -d "$MLOOP"; MLOOP=""; return 1
+	fi
+	mount -t iso9660 -o ro "$1" /mnt/media 2>/dev/null
+}
+umount_media() { umount /mnt/media 2>/dev/null; [ -n "$MLOOP" ] && losetup -d "$MLOOP" 2>/dev/null; MLOOP=""; }
 find_media() {
-	# partitions before whole disks: mounting a whole disk would lock out its RUDOLFDATA partition
+	# partitions before whole disks
 	for d in /dev/sr* /dev/sd?1 /dev/nvme?n?p1 /dev/vd?1 /dev/mmcblk?p1 /dev/sd? /dev/nvme?n? /dev/vd? /dev/mmcblk?; do
 		[ -b "$d" ] || continue
 		wrong_kind "$d" && continue
-		mount -t iso9660 -o ro "$d" /mnt/media 2>/dev/null || continue
+		mount_media "$d" || continue
 		if [ "$(cat /mnt/media/rudolf/id 2>/dev/null)" = "$ID" ]; then MEDIA=$d; return 0; fi
-		umount /mnt/media
+		umount_media
 	done
 	return 1
 }
 SLOT=$(sed -n 's/.*rudolf\.slot=\([ab]\).*/\1/p' /proc/cmdline)
 # a slot's kernel may be newer than the disc: any Rudolf OS disc will do, and none is needed
 [ -n "$SLOT" ] && ID=any
-find_media_any() { [ "$ID" = any ] || return 1; for d in /dev/sr* /dev/sd?1 /dev/nvme?n?p1 /dev/vd?1 /dev/mmcblk?p1; do [ -b "$d" ] || continue; [ -n "$MDEV" ] && [ "$d" != "$MDEV" ] && [ "${i:-0}" -lt 16 ] && continue; wrong_kind "$d" && continue; mount -t iso9660 -o ro "$d" /mnt/media 2>/dev/null || continue; [ -e /mnt/media/rudolf/id ] && { MEDIA=$d; return 0; }; umount /mnt/media; done; return 1; }
+# (1.4.1: and whole drives with the installed layout, partition 3 and no partition 1, after the partitions)
+inst_layout() { whole "$1" && case "$1" in *[0-9]) [ ! -b "${1}p1" ] && [ -b "${1}p3" ];; *) [ ! -b "${1}1" ] && [ -b "${1}3" ];; esac; }
+find_media_any() { [ "$ID" = any ] || return 1; for d in /dev/sr* /dev/sd?1 /dev/nvme?n?p1 /dev/vd?1 /dev/mmcblk?p1 /dev/sd? /dev/nvme?n? /dev/vd? /dev/mmcblk?; do [ -b "$d" ] || continue; whole "$d" && ! inst_layout "$d" && continue; [ -n "$MDEV" ] && [ "$d" != "$MDEV" ] && [ "${i:-0}" -lt 16 ] && continue; wrong_kind "$d" && continue; mount_media "$d" || continue; [ -e /mnt/media/rudolf/id ] && { MEDIA=$d; return 0; }; umount_media; done; return 1; }
 # 1.3.0: a slot's kernel first tries the drive the disc's kernel started from (rudolf.mediadev=, passed on at the
 # handover): with another Rudolf OS stick plugged in, "any Rudolf OS disc" could otherwise be that stick
-MDEV=$(echo " $CMD " | sed -n 's/.* rudolf\.mediadev=\([^ ]*\) .*/\1/p')
-find_media_given() { [ -n "$SLOT" ] && [ -n "$MDEV" ] && [ -b "$MDEV" ] || return 1; mount -t iso9660 -o ro "$MDEV" /mnt/media 2>/dev/null || return 1; [ -e /mnt/media/rudolf/id ] && { MEDIA=$MDEV; return 0; }; umount /mnt/media; return 1; }
+# (1.4.1: a whole drive is passed on as rudolf.mediadisk=: a slot's kernel from before 1.4.1 would mount it directly
+# and lock out RUDOLFDATA; it ignores that option, finds no media and takes RUDOLFDATA by rudolf.persist=)
+MDEV=$(echo " $CMD " | sed -n 's/.* rudolf\.media\(dev\|disk\)=\([^ ]*\) .*/\2/p')
+find_media_given() { [ -n "$SLOT" ] && [ -n "$MDEV" ] && [ -b "$MDEV" ] || return 1; mount_media "$MDEV" || return 1; [ -e /mnt/media/rudolf/id ] && { MEDIA=$MDEV; return 0; }; umount_media; return 1; }
 i=0
 until find_media_given || find_media || find_media_any; do
 	# (1.3.0: a slot's kernel told which drive to use waits for it as the disc's kernel did: a USB stick takes a few seconds)
@@ -138,10 +158,11 @@ if ! has rudolf.nopersist=1; then
 	# Rudolf OS drive that happens to be plugged in, when the disc's kernel did not say which (older boot files)
 	if [ -n "$SLOT" ] && [ -z "$MDEV" ] && [ -n "$PERSIST" ]; then
 		D=$(disk_of "$PERSIST"); case "$D" in *[0-9]) PM=${D}p1;; *) PM=${D}1;; esac
+		[ -b "$PM" ] || { inst_layout "$D" && PM=$D; }
 		if [ "$PM" != "$MEDIA" ] && [ -b "$PM" ]; then
-			[ -n "$MEDIA" ] && umount /mnt/media 2>/dev/null
-			if mount -t iso9660 -o ro "$PM" /mnt/media 2>/dev/null && [ -e /mnt/media/rudolf/id ]; then MEDIA=$PM
-			else umount /mnt/media 2>/dev/null; [ -n "$MEDIA" ] && mount -t iso9660 -o ro "$MEDIA" /mnt/media; fi
+			[ -n "$MEDIA" ] && umount_media
+			if mount_media "$PM" && [ -e /mnt/media/rudolf/id ]; then MEDIA=$PM
+			else umount_media; [ -n "$MEDIA" ] && mount_media "$MEDIA"; fi
 		fi
 	fi
 	if [ -n "$PERSIST" ]; then
@@ -176,7 +197,7 @@ if [ -n "$PERSIST" ] && [ -s $BI/pending ] && [ -s $BI/boot.iso ] && ! has rudol
 		clear > /dev/console
 		say "Rudolf OS: writing the new boot files (Rudolf OS $(bgv version))."
 		say "Do not switch the computer off. This takes about a minute."
-		umount /mnt/media 2>/dev/null
+		umount_media
 		h2b() { for h in $(echo "$1" | sed 's/../& /g'); do printf "\\$(printf %03o 0x$h)"; done; }
 		WANT=$({ dd if=$BI/boot.iso bs=478 count=1 2>/dev/null; h2b "$E"; dd if=$BI/boot.iso bs=2048 count=$BB 2>/dev/null | tail -c +495; } | sha256sum | cut -c1-64)
 		OKW=""
@@ -188,6 +209,19 @@ if [ -n "$PERSIST" ] && [ -s $BI/pending ] && [ -s $BI/boot.iso ] && ! has rudol
 			say "Rudolf OS: the copy does not match; writing it again ($t)."
 		done
 		if [ -n "$OKW" ]; then
+			# 1.4.1: an internal drive gets the installed layout (no partition 1 over the image: the firmware can start it)
+			# and a disk signature of its own (the image's is the same on every drive made from it); rudolfd adds the
+			# boot entry for it at the next start. A USB stick keeps the image's table: firmware starts it as a CD.
+			# (the same rule as /usr/lib/rudolf/layout.sh)
+			case "$(readlink -f /sys/block/${BD##*/})" in */usb*|*/mmc*) RMV=1;; *) RMV=$(cat /sys/block/${BD##*/}/removable 2>/dev/null);; esac
+			if [ "$RMV" != 1 ]; then
+				dd if=/dev/zero of=$BD bs=1 seek=446 count=16 conv=notrunc,fsync 2>/dev/null
+				SG=00000000; while [ "$SG" = 00000000 ]; do SG=$(dd if=/dev/urandom bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n'); done
+				h2b "$SG" | dd of=$BD bs=1 seek=440 conv=notrunc,fsync 2>/dev/null; sync
+			elif [ "$(dd if=$BD bs=1 skip=446 count=16 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 00000000000000000000000000000000 ]; then
+				# a stick written from an installed drive's image: partition 1 back (start 0, the image's size)
+				N1=$((BB * 4)); h2b "80feffff17feffff00000000$(printf %02x%02x%02x%02x $((N1 & 255)) $(((N1 >> 8) & 255)) $(((N1 >> 16) & 255)) $(((N1 >> 24) & 255)))" | dd of=$BD bs=1 seek=446 conv=notrunc,fsync 2>/dev/null; sync
+			fi
 			echo "written $(date -u +%Y-%m-%dT%H:%MZ): Rudolf OS $(bgv version) (serial $(bgv serial))" > $BI/result; rm -f $BI/pending $BI/boot.iso
 			say "Rudolf OS: the new boot files are written. Restarting."
 		else
@@ -227,11 +261,11 @@ if [ -z "$SLOT" ] && [ -n "$PERSIST" ] && [ -f $SYSD/state ] && ! has rudolf.rec
 		cp $SYSD/$T/vmlinuz /tmp/vmlinuz
 		NC="$CMD rudolf.slot=$T"; [ -n "$TRY" ] && NC="$NC rudolf.trying=1"; [ $SB = 1 ] && NC="$NC rudolf.sb=1 lockdown=integrity"
 		# 1.3.0: the same drive and data partition for the slot's kernel
-		[ -n "$MEDIA" ] && NC="$NC rudolf.mediadev=$MEDIA"; PU=$(blkid "$PERSIST" 2>/dev/null | sed -n 's/.* UUID="\([^"]*\)".*/\1/p'); [ -n "$PU" ] && NC="$NC rudolf.persist=$PU"
-		cd /; umount /mnt/persist; umount /mnt/media 2>/dev/null; sync
+		if whole "$MEDIA"; then NC="$NC rudolf.mediadisk=$MEDIA"; elif [ -n "$MEDIA" ]; then NC="$NC rudolf.mediadev=$MEDIA"; fi; PU=$(blkid "$PERSIST" 2>/dev/null | sed -n 's/.* UUID="\([^"]*\)".*/\1/p'); [ -n "$PU" ] && NC="$NC rudolf.persist=$PU"
+		cd /; umount /mnt/persist; umount_media; sync
 		rudolf-kexec /tmp/vmlinuz "$NC"
 		# kexec failed: count it as a failed start and carry on with the disc's own system
-		mount -t ext4 -o rw,noatime "$PERSIST" /mnt/persist; mount -t iso9660 -o ro "$MEDIA" /mnt/media
+		mount -t ext4 -o rw,noatime "$PERSIST" /mnt/persist; [ -n "$MEDIA" ] && mount_media "$MEDIA"
 		say "Rudolf OS: could not start the updated system; starting the one on the disc."
 		[ -n "$TRY" ] && { FAILED=$T; NEXT=""; TRIES=0; st_write; }
 	fi

@@ -3,6 +3,11 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.4.1 (2026-10-28)
+Summary: a computer where Rudolf OS is installed starts from its own drive, without a USB stick (after Get new boot files, or a new Install here)
+- Fixed: some computers (the ASUS Vivobook Go among them) could not start Rudolf OS from the drive it was installed on, only from a USB stick. Install here copied the disc image's partition table, which suits a stick but which a computer's firmware takes for an invalid table on an internal drive. Install here and Get new boot files (Settings › Security › Secure Boot) now give an internal drive a table the firmware accepts, a disk ID of its own, and a "Rudolf OS" entry first in the computer's boot order. An installed drive keeps its files; USB sticks are made as before.
+- Fixed: the development link ran every earlier command again when it was switched on with another data partition (for example on a USB stick). Commands that already have a result are not run again.
+
 ## 1.4.0 (2026-10-27)
 Summary: the development link: let a developer you choose run tests on this computer through a private GitHub repository you own, while you watch and allow each command
 - New: Settings › Security › Development link. While it is on, a developer you choose (for example a Claude session) can run tests on this computer: run commands with full control, take screenshots, send files from it and bring files to it, and restart it. Commands and results go through a private GitHub repository you own; only people and sessions you give that repository to can use it.

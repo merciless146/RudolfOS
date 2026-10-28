@@ -109,7 +109,7 @@ write_area() {
 		hex2bin "$E" | dd of="$D" bs=1 seek=478 conv=notrunc,fsync 2>/dev/null
 		sync; blockdev --flushbufs "$D" 2>/dev/null; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
 		GOT=$(dd if="$D" bs=2048 count=$BLOCKS 2>/dev/null | sha256sum | cut -c1-64)
-		[ "$GOT" = "$WANT" ] && { echo "The copy matches."; return 0; }
+		[ "$GOT" = "$WANT" ] && { echo "The copy matches."; . "${RUDOLF_LIB:-/usr/lib/rudolf}/layout.sh" || die "layout.sh is missing" 9; layout_apply "$D" "$BLOCKS"; return 0; }
 		echo "The copy on $D does not match (try $try)."
 	done
 	die "The new boot files could not be written correctly: the drive may be failing. Your files are untouched; start from a Rudolf OS USB stick and use Install here > Replace the boot files only to try again." 9

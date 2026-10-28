@@ -482,6 +482,21 @@ static int load(void)
 static int expired(void) { char *u = cfg("until"); long long v = u ? atoll(u) : 0; free(u); return time(NULL) >= v; }
 static int stop_asked(void) { char p[300]; path2(p, sizeof p, RUND, "stop"); return !access(p, F_OK); }
 
+/* the ids that have a result in res/ (NNNNNN.json); -1 when the listing could not be read (then nothing is skipped) */
+static int results_done(char (**out)[8])
+{
+	char url[400]; snprintf(url, sizeof url, "%s/repos/%s/contents/res?ref=link", API, REPO);
+	buf m = {0}; long code = http("GET", url, 1, NULL, NULL, 0, NULL, NULL, &m, NULL, 4u << 20, 60);
+	int n = 0, cap = 64; char (*d)[8] = malloc(cap * sizeof *d);
+	if (code == 200 && d) for (char *q = m.b; q && (q = strstr(q, "\"name\"")); q += 6) {
+		char *v = jget(q, "name");
+		if (v && strlen(v) == 11 && !strcmp(v + 6, ".json")) { v[6] = 0; if (id_ok(v)) { if (n == cap) { cap *= 2; char (*nd)[8] = realloc(d, cap * sizeof *d); if (!nd) { free(v); break; } d = nd; } snprintf(d[n++], 8, "%s", v); } }
+		free(v);
+	}
+	free(m.b); *out = d;
+	return code == 200 || code == 404 ? n : -1;
+}
+
 static int link_run(void)
 {
 	signal(SIGTERM, onsig); signal(SIGINT, onsig); signal(SIGPIPE, SIG_IGN);
@@ -515,7 +530,13 @@ static int link_run(void)
 			qsort(names, n, sizeof *names, cmp);
 			char sp[300]; path2(sp, sizeof sp, DIR_, "state"); char *st = slurp(sp, NULL); char last[8] = "000000"; if (st) { char *q = strstr(st, "last="); if (q) snprintf(last, sizeof last, "%.6s", q + 5); free(st); }
 			int go = 1;
+			/* 1.4.1: commands that already have a result in the repository are done, whatever this data partition
+			   remembers (on another one, or after the record was lost, every command since 000001 ran again) */
+			char (*done)[8] = NULL; int nd = -1;
+			for (int i = 0; i < n && nd < 0; i++) if (strcmp(names[i], last) > 0) nd = results_done(&done);
 			for (int i = 0; i < n; i++) {
+				int had = 0; for (int k = 0; k < nd; k++) if (!strcmp(done[k], names[i])) had = 1;
+				if (had && strcmp(names[i], last) > 0) { snprintf(last, sizeof last, "%s", names[i]); done_upto(last); }
 				if (go && !STOP && strcmp(names[i], last) > 0 && !expired() && !stop_asked()) {
 					char cu[500]; snprintf(cu, sizeof cu, "%s/repos/%s/contents/cmd/%s.json?ref=link", API, REPO, names[i]);
 					buf j = {0}; long cc = http("GET", cu, 1, "application/vnd.github.raw", NULL, 0, NULL, NULL, &j, NULL, 4u << 20, 120);
@@ -528,6 +549,7 @@ static int link_run(void)
 				}
 				free(names[i]);
 			}
+			free(done);
 			if (!go) break;
 			status("on", last, "");
 		} else if (code != 304) {
