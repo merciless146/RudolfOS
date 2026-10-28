@@ -97,7 +97,7 @@ try:
     sig = mbr[440:444].hex(); ent = last(sh(f'tail -c +5 {E}/Boot{m.group(1) if m else "XXXX"}-{G} 2>/dev/null | od -An -tx1 -v | tr -d " \\n"', 20))
     fwn = re.search(r'Boot([0-9A-F]{4})=UEFI QEMU NVMe', be)
     fw = last(sh(f'tail -c +5 {E}/Boot{fwn.group(1) if fwn else "XXXX"}-{G} 2>/dev/null | od -An -tx1 -v | tr -d " \\n"', 20))
-    fwp = fw[fw.find('02010c00'):] if '02010c00' in fw else 'none'
+    fwp = fw[fw.find('02010c00'):fw.find('7fff0400') + 8] if '02010c00' in fw and '7fff0400' in fw else 'none'
     ok('...naming the drive itself, as the firmware\'s own entry for it does (PciRoot/Pci/NVMe, no partition or file)', ent.endswith(fwp) and len(fwp) > 20, [ent[:200], fwp])
     mine = m.group(1) if m else ''
     # 3. the next start through that entry; rudolfd writes nothing when all is already so
