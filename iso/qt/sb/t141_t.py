@@ -98,11 +98,15 @@ try:
     ok('...naming partition 2 by the drive\'s new signature, and the shim (\\EFI\\BOOT\\BOOTX64.EFI)', sig in ent and '0401' in ent and '5c0045004600490' in ent, ent[:160])
     mine = m.group(1) if m else ''
     # 3. the next start through that entry; rudolfd writes nothing when all is already so
+    out('NOTE before the restart: BootOrder', efi('BootOrder'))
     pre = last(sh(f'tail -c +5 {E}/Boot{mine}-{G} 2>/dev/null | od -An -tx1 -v | tr -d " \\n"', 20)) if mine else ''
     sh('sync; reboot -f', 10)
     time.sleep(5)
     up = wait_shell(delay=40)
     cur = efi('BootCurrent'); st = state()
+    out('NOTE after the restart: BootOrder', efi('BootOrder'), '| entries:', boot_entries().replace('\n', ' ; ')[:600])
+    for n in sorted(set(re.findall(r'Boot([0-9A-F]{4})=', boot_entries()))):
+        out('NOTE', n, last(sh(f'tail -c +5 {E}/Boot{n}-{G} | od -An -tx1 -v | tr -d " \\n"', 20))[:300])
     ok('3. the next start came from the "Rudolf OS" entry (BootCurrent)', up and mine and cur == mine, [cur, mine])
     ok('...the same system, files and drive', st.get('slot') == 'a' and st.get('who') == 'internal' and st.get('media') == '/dev/nvme0n1')
     post = last(sh(f'tail -c +5 {E}/Boot{mine}-{G} 2>/dev/null | od -An -tx1 -v | tr -d " \\n"', 20)) if mine else ''
