@@ -24,35 +24,39 @@ and Secure Boot cannot be used (the stick's 1.1 start files are not signed).
 
 | # | Item | Kind | Stage |
 |---|------|------|-------|
-| 1 | Confirm on the laptop which partition table its firmware starts from (before any code) | check | A |
-| 2 | Installed drives get that table: the EFI system partition and RUDOLFDATA only, no partition over the ISO | bug | B |
+| 1 | ~~Confirm the firmware on the laptop first~~: tried, inconclusive (see below); it is now checked with 1.4.1 itself in stage C | check | A (done) |
+| 2 | Installed drives get a valid MBR: the EFI system partition and RUDOLFDATA only, no partition over the ISO (GPT if the laptop refuses it) | bug | B |
 | 3 | The start-up finds the system on such a drive (the ISO through a read-only loop over the whole disk) | bug | B |
 | 4 | Installed drives get a disk signature of their own | bug | B |
 | 5 | Install here and Get new boot files add a "Rudolf OS" boot entry for the drive, first in the boot order | feature | B |
-| 6 | Tests in QEMU; the laptop converted with Get new boot files, then started without the stick | tests | B, C |
-| 7 | Then Secure Boot on the laptop: Prepare Secure Boot, MokManager, Secure Boot on | check | C |
+| 6 | The development link skips commands that already have a result (a new data partition replayed them all) | bug | B |
+| 7 | Tests in QEMU; on the laptop: Get new boot files, then a start without the stick | tests | B, C |
+| 8 | Then Secure Boot on the laptop: Prepare Secure Boot, MokManager, Secure Boot on | check | C |
 
 ---
 
-## Stage A: confirm the cause on the laptop first (through the development link)
+## Stage A: what the check on the laptop showed (2026-10-27 evening, commands 000007-000013)
 
-Nothing is built until the laptop has shown which table its firmware accepts. Each step is a link command the owner
-allows; each is undone afterwards.
+The plan was to make the internal drive's table valid by hand and start once from it, before writing code. It did
+not answer the question, and it taught three things:
 
-1. **Valid MBR (layout A).** Back up the first sector of `nvme0n1` to RUDOLFDATA. Clear partition entry 1 (bytes
-   446-461) and give the disk its own signature (bytes 440-443); entries 2 (EFI) and 3 (RUDOLFDATA) stay. Point
-   Boot0004 at the new signature, set BootNext, unplug the stick, restart.
-   - The firmware starts the drive: layout A works. The drive's own start files are still 1.1's, and that start-up
-     finds no partition 1, mounts the whole disk and then cannot mount RUDOLFDATA. So it runs live: a 1.1 desktop
-     without your files. That is expected, and proof enough. Plug the stick back in and restart; the stick starts as
-     before (its start-up takes RUDOLFDATA, and 1.3.1's update kernel keeps the stick's image when the drive has no
-     partition 1).
-   - The firmware goes to its setup screen again: layout A is not enough; go to step 2.
-   - Afterwards, restore the backed-up sector (unless the drive is to stay that way until 1.4.1, see below).
-2. **GPT (layout B)**, only if A failed: a protective MBR and a GPT with the EFI system partition and RUDOLFDATA at
-   the same sectors (back up the first and last 34 sectors first). Same test, same restore.
+- **The stick's 1.1 start-up and the drive share an image ID** (`rudolf-1.1`: the drive was installed from that
+  stick). With partition 1 gone, the 1.1 start-up would mount the whole drive as its media and lock RUDOLFDATA out.
+  So the test also changed the drive's image ID (`rudolf-1.T`), after backing up the two sectors to RUDOLFDATA
+  (`/persist/devlink/stageA`).
+- **Both test starts went through the stick**, and the stick's 1.1 start-up then took the **stick's own RUDOLFDATA**
+  (before, it always found the internal drive's first): the laptop came up as the stick's 1.1 system, without the
+  link. Whether the firmware accepts the corrected table is still unknown. To get the link back, the stick's 1.1
+  system downloaded 1.4.0 onto the stick's own data, and the link was switched on there.
+- **The development link replayed every old command** in that session: its record of what was done is kept on the
+  data partition, and the stick's had none. The owner allowed them one by one; the two restarts restarted the
+  computer, the sector change stopped at its own check (the drive was no longer as expected) and wrote nothing.
+  Item 6.
+- Command 000013 restored both sectors from the backups (byte for byte), and the laptop starts as before: through
+  the stick, 1.4.0 from the internal drive (slot b), the owner's files.
 
-The rest of the plan uses the layout that works, called "the installed layout" below.
+So the firmware is checked with 1.4.1 itself (stage C): its start-up handles a drive without partition 1, so a start
+from the drive gives the real system, and a fallback through the stick still finds the owner's files.
 
 ## Stage B: implementation
 
@@ -83,6 +87,11 @@ shim, so it also works with Secure Boot), first in BootOrder; an older Rudolf OS
 replaced, other entries are left alone. rudolfd already writes EFI variables (Restart into Windows, Prepare Secure
 Boot); this uses the same code. Without EFI (BIOS starts) nothing is written.
 
+**6. The development link and old commands.** `rudolf-devlink` keeps the last command done on the data partition;
+on another data partition (or after forgetting it) it started from command 000001 again. Now it also reads which
+results are already in the repository (`res/`, one listing per check) and treats every command that has a result as
+done. A command is only run when it has no result yet.
+
 ## Tests
 
 - QEMU's firmware (OVMF) starts the hybrid table anyway, so it cannot show the laptop's problem. The QEMU tests
@@ -95,15 +104,17 @@ Boot); this uses the same code. Without EFI (BIOS starts) nothing is written.
 ## Stage C: on the laptop (the owner, with the development link)
 
 1. Update to 1.4.1 through the stick (as now).
+   - The stick's own RUDOLFDATA is renamed (a link command, allowed by the owner) so the stick's 1.1 start-up can
+     never take it again: a start through the stick then always finds the internal drive's files.
 2. Download `rudolf-os-1.4.1-boot.iso` and its `.sha256`; Settings › Security › Secure Boot › Get new boot files.
    The next start writes them, the installed layout and the boot entry, then restarts.
 3. Unplug the stick before that restart. The laptop should start Rudolf OS 1.4.1 from its own drive, with your
    files. If it does not: plug the stick back in, start through it, and the link shows why.
 4. Then Prepare Secure Boot, confirm the key in MokManager, and switch Secure Boot on in the firmware.
-5. The results go into this plan's as-built notes; the leftover Boot0004 entry from stage A is removed.
+5. The results go into this plan's as-built notes; the leftover boot entries from stage A (Boot0004 to Boot0007) are removed.
 
 ## Release steps
-1. Stage A with the owner (the link), before code.
+1. Stage A: done (inconclusive, see above).
 2. Stage B on the branch `rudolf-1.4.1`: implement, QEMU tests, local test release; a pull request with the results.
 3. After the merge: a beta, checked; the owner promotes 1.4.1; disc-1.4.1 from disc-1.3.1 (the boot image is what
    the laptop needs).
