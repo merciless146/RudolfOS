@@ -167,7 +167,9 @@ finally:
 with open(DRIVE, 'rb') as f:
     head = f.read(BBYTES); mbr = head[:512]
 img = open(BOOT, 'rb').read()
-ok('...the boot image is at the start of the drive, byte for byte (but RUDOLFDATA\'s partition entry)', head[:478] + head[494:] == img[:478] + img[494:])
+# 1.4.1: an internal drive also gets the installed layout (layout.sh): partition 1 cleared, a disk signature of its own
+ok('...the boot image is at the start of the drive, byte for byte (but the disk signature and partitions 1 and 3)', head[:440] + head[444:446] + head[462:478] + head[494:] == img[:440] + img[444:446] + img[462:478] + img[494:])
+ok('...with the installed layout: partition 1 cleared, a disk signature of its own', head[446:462] == bytes(16) and head[440:444] not in (img[440:444], bytes(4)), [head[440:462].hex()])
 ok('...RUDOLFDATA\'s partition entry is as it was', mbr[478:494] == bytes([0, 0xfe, 0xff, 0xff, 0x83, 0xfe, 0xff, 0xff]) + struct.pack('<II', START, 1600 * 2048))
 r, fsck = debugfs(DRIVE, 'cat /os/bootimg/result')
 ok('...RUDOLFDATA is intact, and the start-up noted what it wrote', fsck == 0 and 'written' in r and VER in r, [fsck, r])
