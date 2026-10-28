@@ -62,7 +62,7 @@ with open(DRV, 'r+b') as f:
 os.remove('data141')
 mbr0 = open(DRV, 'rb').read(512)
 
-NVME = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf141,bootindex=0']
+NVME = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf141']   # no bootindex: QEMU would make the firmware put its own entry first at every start
 vm = sbvm.VM('t141', PARTS, [], secure=False, nvram=True, mem=3072, extra=NVME)
 g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3); sh = lambda c, t=60: g.sh(c, t)
 def wait_shell(delay=45, limit=900):
@@ -98,12 +98,15 @@ try:
     ok('...naming partition 2 by the drive\'s new signature, and the shim (\\EFI\\BOOT\\BOOTX64.EFI)', sig in ent and '0401' in ent and '5c0045004600490' in ent, ent[:160])
     mine = m.group(1) if m else ''
     # 3. the next start through that entry; rudolfd writes nothing when all is already so
+    pre = last(sh(f'tail -c +5 {E}/Boot{mine}-{G} 2>/dev/null | od -An -tx1 -v | tr -d " \\n"', 20)) if mine else ''
     sh('sync; reboot -f', 10)
     time.sleep(5)
     up = wait_shell(delay=40)
     cur = efi('BootCurrent'); st = state()
     ok('3. the next start came from the "Rudolf OS" entry (BootCurrent)', up and mine and cur == mine, [cur, mine])
     ok('...the same system, files and drive', st.get('slot') == 'a' and st.get('who') == 'internal' and st.get('media') == '/dev/nvme0n1')
+    post = last(sh(f'tail -c +5 {E}/Boot{mine}-{G} 2>/dev/null | od -An -tx1 -v | tr -d " \\n"', 20)) if mine else ''
+    if pre != post: out('NOTE the firmware changed the entry: before', pre[:400], 'after', post[:400])
     ok('...and rudolfd wrote nothing to the firmware this time (all was already so)', last(sh('grep -c "boot entry Boot\\|first in the boot order\\|removed the old boot entry" /run/rudolf/rudolfd.log', 20)) == '0', sh('cat /run/rudolf/rudolfd.log', 20)[-300:])
     # 4. a rollback to slot b (1.4.0): its start-up knows nothing of the installed layout
     sh('printf "good=a\\nprev=b\\nnext=b\\ntries=2\\nfailed=\\n" > /persist/os/system/state; sync; reboot -f', 10)

@@ -2156,14 +2156,16 @@ static void boot_entry_ensure(void)
 		if (!d) continue;
 		used[n] = 1; t[0] = 0; if (l > 6) u16s(d + 6, l - 6, t, sizeof t);
 		if (!strncmp(t, "Rudolf OS", 9)) {
-			if (mine < 0 && !strcmp(t, "Rudolf OS")) { mine = n; same = l == k && !memcmp(d, opt, k); }
+			/* ours when it still names this drive's partition 2 and the start file: firmware may store the path in
+			   its own, longer form (the whole device path in front of HD(...)) */
+			if (mine < 0 && !strcmp(t, "Rudolf OS")) { mine = n; same = (l == k && !memcmp(d, opt, k)) || (l >= 6 && (d[0] & 1) && memmem(d, l, hd, 42) && memmem(d, l, fp, fl)); }
 			else if (nrm < 32) rm[nrm++] = n;
 		}
 		free(d);
 	}
 	if (mine < 0) { for (unsigned n = 0; n < 256; n++) if (!used[n]) { mine = n; break; } if (mine < 0) return; }
 	char v[80]; snprintf(v, sizeof v, "Boot%04X-" GLOBALG, mine);
-	if (!same) { if (efivar_write(v, opt, k)) { fprintf(stderr, "rudolfd: the boot entry %s could not be written\n", v); return; } fprintf(stderr, "rudolfd: boot entry Boot%04X \"Rudolf OS\" for %s\n", mine, disk); }
+	if (!same) { int had = used[mine]; if (efivar_write(v, opt, k)) { fprintf(stderr, "rudolfd: the boot entry %s could not be written\n", v); return; } fprintf(stderr, "rudolfd: boot entry Boot%04X \"Rudolf OS\" for %s (%s)\n", mine, disk, had ? "it named another partition or file" : "new"); }
 	for (int i = 0; i < nrm; i++) { char f2[200]; snprintf(f2, sizeof f2, EFIV "/Boot%04X-" GLOBALG, rm[i]); unimmutable(f2); unlink(f2); fprintf(stderr, "rudolfd: removed the old boot entry Boot%04X\n", rm[i]); }
 	/* BootOrder: ours first, the removed ones out, the rest as they were */
 	size_t ol = 0; unsigned char *o = efivar("BootOrder-" GLOBALG, &ol);
