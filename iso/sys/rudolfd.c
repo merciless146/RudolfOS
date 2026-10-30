@@ -59,7 +59,6 @@ static char boot_mode[16] = "bios", media_mode[16] = "cd";
 static int live = 1, recovery = 0, secureboot = 0;   /* secureboot: the start-up found Secure Boot on (1.2.2) */
 
 /* ------------------------------------------------------------- helpers */
-static long long now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1000LL + t.tv_nsec / 1000000; }
 
 static char *slurp(const char *path, size_t *len)
 {

@@ -147,17 +147,17 @@ fi
 # ---------- native Linux apps: Flatpak 1.18 + OSTree + bubblewrap (built by build_iso.sh), D-Bus, GnuPG
 FPS=$SRC/fp/stage
 if [ -x "$FPS/usr/bin/flatpak" ]; then
-	cp -a "$FPS/usr/bin/flatpak" "$FPS/usr/bin/bwrap" "$FPS/usr/bin/ostree" usr/bin/
+	cp -a "$FPS/usr/bin/flatpak" "$FPS/usr/bin/bwrap" usr/bin/
 	mkdir -p usr/libexec usr/share/dbus-1 etc/profile.d etc/flatpak/remotes.d var/lib/flatpak
 	cp -a "$FPS/usr/libexec/." usr/libexec/
 	cp -a "$FPS/usr/lib/x86_64-linux-gnu/"libflatpak.so* "$FPS/usr/lib/x86_64-linux-gnu/"libostree-1.so* usr/lib/x86_64-linux-gnu/
 	cp -a "$FPS/usr/share/flatpak" usr/share/
 	cp -a "$FPS/usr/share/dbus-1/." usr/share/dbus-1/
 	cp -a "$FPS/etc/profile.d/." etc/profile.d/ 2>/dev/null || true
-	copy_deps usr/bin/flatpak usr/bin/bwrap usr/bin/ostree usr/libexec/flatpak-* usr/libexec/revokefs-fuse \
+	copy_deps usr/bin/flatpak usr/bin/bwrap usr/libexec/flatpak-* usr/libexec/revokefs-fuse \
 		usr/lib/x86_64-linux-gnu/libflatpak.so.0 usr/lib/x86_64-linux-gnu/libostree-1.so.1
 fi
-for b in dbus-daemon dbus-uuidgen dbus-send dbus-run-session gpg gpgv gpgconf gpg-agent fusermount3; do
+for b in dbus-daemon dbus-uuidgen gpg gpgv gpgconf gpg-agent fusermount3; do
 	[ -x /usr/bin/$b ] && cp -L /usr/bin/$b usr/bin/ && copy_deps usr/bin/$b
 done
 mkdir -p usr/share/dbus-1 var/lib/dbus
@@ -189,8 +189,7 @@ fi
 # ---------- sound server: PulseAudio 16.1 (built by sndbuild.sh)
 SNS=$SRC/snd/stage
 if [ -x "$SNS/usr/bin/pulseaudio" ]; then
-	cp -a "$SNS/usr/bin/pulseaudio" "$SNS/usr/bin/pactl" "$SNS/usr/bin/pacat" usr/bin/
-	ln -sf pacat usr/bin/paplay; ln -sf pacat usr/bin/parecord
+	cp -a "$SNS/usr/bin/pulseaudio" "$SNS/usr/bin/pactl" usr/bin/
 	mkdir -p usr/lib/x86_64-linux-gnu etc/pulse usr/share/pulseaudio
 	cp -a "$SNS/usr/lib/x86_64-linux-gnu/"libpulse.so* "$SNS/usr/lib/x86_64-linux-gnu/"libpulse-simple.so* usr/lib/x86_64-linux-gnu/
 	cp -a "$SNS/usr/lib/x86_64-linux-gnu/pulseaudio" usr/lib/x86_64-linux-gnu/
@@ -198,7 +197,7 @@ if [ -x "$SNS/usr/bin/pulseaudio" ]; then
 	# only the session starts the sound server
 	printf "\nautospawn = no\n" >> etc/pulse/client.conf
 	cp -a "$SNS/usr/share/pulseaudio/." usr/share/pulseaudio/
-	copy_deps usr/bin/pulseaudio usr/bin/pactl usr/bin/pacat usr/lib/x86_64-linux-gnu/pulseaudio/*.so usr/lib/x86_64-linux-gnu/pulseaudio/modules/*.so
+	copy_deps usr/bin/pulseaudio usr/bin/pactl usr/lib/x86_64-linux-gnu/pulseaudio/*.so usr/lib/x86_64-linux-gnu/pulseaudio/modules/*.so
 fi
 [ -d /usr/share/alsa ] && [ ! -d usr/share/alsa/ucm2 ] && cp -a /usr/share/alsa/. usr/share/alsa/ 2>/dev/null || true
 

@@ -15,7 +15,6 @@ const TM_KIND = {desktop: 'Desktop', web: 'Web pages (desktop and Oracle tabs)',
   webwindow: 'Browser window for sign-in sites', app: 'Apps', system: 'System services', kernel: 'Kernel'};
 const TM_ORDER = ['desktop', 'web', 'gpu', 'network', 'audio', 'chromium', 'webwindow', 'app', 'system', 'kernel'];
 const TM_GPU = {'0x8086': 'Intel', '0x1002': 'AMD', '0x10de': 'NVIDIA', '0x1234': 'QEMU standard VGA (virtual)', '0x1af4': 'virtio (virtual)', '0x1b36': 'QEMU (virtual)', '0x15ad': 'VMware (virtual)', '0x80ee': 'VirtualBox (virtual)', '0x1414': 'Hyper-V (virtual)'};
-const tmE = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
 const tmLines = t => String(t || '').split('\n').map(x => x.trim()).filter(Boolean);
 const tmDur = s => { s = Math.max(0, s | 0); const d = s / 86400 | 0, h = s % 86400 / 3600 | 0, m = s % 3600 / 60 | 0; return (d ? d + ' d ' : '') + (d || h ? h + ' h ' : '') + m + ' min' };
 /* what draws (1.2.4): glamor's renderer on the graphics card (Xorg), and what Chromium draws pages with (WebGL) */

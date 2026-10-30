@@ -9,7 +9,6 @@ async function sysuJob(what,onLine){await rdPost('sys/'+what);let seen=0;
  for(;;){await new Promise(r=>setTimeout(r,700));const j=await rd('job');const ls=(j.log||'').split('\n');
   if(onLine)for(;seen<ls.length-1;seen++)onLine(ls[seen]);if(!j.running){if(onLine&&ls[seen])onLine(ls[seen]);await sysuStatus();return j.status}}}
 const sysuWhen=t=>{if(!t)return'never';const d=new Date(t*1000),n=new Date();return(d.toDateString()==n.toDateString()?'today':d.toLocaleDateString())+' at '+d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})};
-const sysuMB=b=>b>=1048576?Math.round(b/1048576)+' MB':Math.max(1,Math.round(b/1024))+' KB';
 function sysuRestart(){if(!(SW&&wins.includes(SW))){settings('upd');return setTimeout(sysuRestart,400)}sdlg(SW,'Restart to finish the update','Rudolf OS restarts now and starts the updated system. Save your work first.',[['Later'],['Restart now',()=>rdPost('power?action=reboot').catch(e=>notify('Restart',e.message,{kind:'error'})),1]])}
 /* ---------- Settings > Update and recovery ---------- */
 {const _up=updPanel;updPanel=function(c){_up(c);if(!RD)return;const x=c.querySelector('.updx');if(!x)return;

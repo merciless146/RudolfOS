@@ -14,6 +14,8 @@
 # SERIAL, FILE_BASE (where devices download the files), CHROMIUM_FROM (snap|playwright), KERNEL_VERSION.
 set -e
 HERE=$(cd "$(dirname "$0")/.." && pwd); cd "$HERE"
+# 1.4.4: nothing unused gets into a release (unused desktop functions, unused C functions, build output in sys/root)
+python3 systools/deadcheck.py
 W=$(realpath -m work); rm -rf "$W"; mkdir -p "$W/new"
 export SOURCE_DATE_EPOCH=1760000000
 pv() { sed -n "s/^$1 //p" "$PREV/manifest.txt"; }
@@ -103,7 +105,7 @@ mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/ru
 # came only from full local builds, so GLX (off since 1.1) could not be turned on by an update
 XREV=f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2
 XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | cut -c1-16)
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolfd.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c trusted-keys.txt systools/addnvk.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolfd.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c trusted-keys.txt systools/addnvk.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -148,6 +150,9 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		NOTES+=("X server with GLX")
 	fi
 	sudo cp -a sys/root/. "$W/broot/"
+	# 1.4.4: what no longer belongs in the base layer (systools/base-remove.txt)
+	grep -v '^#' systools/base-remove.txt | while read -r x; do [ -n "$x" ] || continue; case "$x" in /*|*..*) echo "base-remove.txt: bad path $x"; exit 1;; esac
+		if [ -e "$W/broot/$x" ] || [ -L "$W/broot/$x" ]; then sudo rm -rf "$W/broot/$x"; echo "removed from the base layer: $x"; fi; done
 	# NVK and the Vulkan loader: OpenGL on GeForce 20 series and newer (Zink on NVK) (1.2.3)
 	systools/addnvk.sh "$W/broot"
 	sudo mkdir -p "$W/broot/etc/rudolf"; sudo cp trusted-keys.txt "$W/broot/etc/rudolf/rpk-keys"
