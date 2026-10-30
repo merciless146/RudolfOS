@@ -9,7 +9,8 @@
 #    image, then the installed layout (partition 1 cleared, a disk signature of its own), and restarts.
 # 2. It starts from its new boot files: the image read from the whole drive (a loop device), RUDOLFDATA, slot a; rudolfd
 #    adds the "Rudolf OS" boot entry, first in the boot order.
-# 3. The next start comes from that entry (BootCurrent).
+# 3. The next start comes from that entry (BootCurrent). 3b (1.4.2): when firmware skips it, it takes the path of the
+#    firmware's own entry for the drive that the start came through.
 # 4. A rollback to slot b (1.4.0): its start-up ignores rudolf.mediadisk=, finds no media and still takes RUDOLFDATA.
 # QEMU's firmware also starts the image's hybrid table, so the laptop's own refusal is not shown here (that is checked
 # on the laptop); this test shows the layout is written right and that every start-up gets along with it.
@@ -115,6 +116,24 @@ try:
     post = last(sh(f'tail -c +5 {E}/Boot{mine}-{G} 2>/dev/null | od -An -tx1 -v | tr -d " \\n"', 20)) if mine else ''
     if pre != post: out('NOTE the firmware changed the entry: before', pre[:400], 'after', post[:400])
     ok('...and rudolfd wrote nothing to the firmware this time (all was already so)', last(sh('grep -c "boot entry Boot\\|first in the boot order\\|removed the old boot entry" /run/rudolf/rudolfd.log', 20)) == '0', sh('cat /run/rudolf/rudolfd.log', 20)[-300:])
+    # 3b. (1.4.2) firmware that will not start our entry (the Vivobook's AMI skipped it and started the entry made by
+    #     hand in its setup): an entry naming the drive and a file that is not there stands in for it. The firmware
+    #     falls through to its own entry for the drive; rudolfd takes that entry's path, and the next start uses ours.
+    if mine and fwp != 'none':
+        fn = '\\EFI\\NOPE.EFI'.encode('utf-16-le') + b'\0\0'
+        bad = bytes.fromhex(fwp[:-8]) + bytes([4, 4, 4 + len(fn), 0]) + fn + bytes.fromhex('7fff0400')
+        opt = struct.pack('<IIH', 7, 1, len(bad)) + 'Rudolf OS'.encode('utf-16-le') + b'\0\0' + bad
+        oct_ = ''.join('\\%03o' % b for b in opt)
+        sh(f'f={E}/Boot{mine}-{G}; chattr -i $f 2>/dev/null; rm -f $f; printf "{oct_}" > $f; sync; reboot -f', 10)
+        time.sleep(5)
+        up = wait_shell(delay=40)
+        cur = efi('BootCurrent'); ent = last(sh(f'tail -c +5 {E}/Boot{mine}-{G} 2>/dev/null | od -An -tx1 -v | tr -d " \\n"', 20))
+        ok('3b. firmware that skips our entry: the start came through its own entry for the drive', up and fwn and cur == fwn.group(1), [cur, mine])
+        ok('...and rudolfd gave ours that entry\'s path', ent.endswith(fwp) and 'NOPE' not in ent and 'started from' in sh('cat /run/rudolf/rudolfd.log', 20), [ent[:200], sh('cat /run/rudolf/rudolfd.log', 20)[-300:]])
+        sh('sync; reboot -f', 10)
+        time.sleep(5)
+        up = wait_shell(delay=40); cur = efi('BootCurrent')
+        ok('...so the next start came through ours, and rudolfd left it as it was', up and cur == mine and last(sh('grep -c "boot entry Boot" /run/rudolf/rudolfd.log', 20)) == '0', [cur, mine, sh('cat /run/rudolf/rudolfd.log', 20)[-300:]])
     # 4. a rollback to slot b (1.4.0): its start-up knows nothing of the installed layout
     sh('printf "good=a\\nprev=b\\nnext=b\\ntries=2\\nfailed=\\n" > /persist/os/system/state; sync; reboot -f', 10)
     time.sleep(5)
