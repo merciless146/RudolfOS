@@ -5,7 +5,7 @@
 # 1.4.1 start-up took the first RUDOLFDATA found, the stick's, whose slot a held 1.4.0, and started 1.4.0's layers
 # with the 1.4.1 kernel, which refused 1.4.0's drivers (each build signs its own): no Wi-Fi, no graphics driver.
 # Here: the release's kernel is started directly (-kernel), as the handover does, with rudolf.slot=a. A drive with a
-# data partition whose slot a holds PREV-REL (home: "stick") is a virtio disk, found first; the internal NVMe drive
+# data partition whose slot a holds PREV-REL (home: "stick") is an NVMe drive on the lower PCI address, found first; the internal NVMe drive
 # holds REL in slot a (home: "internal").
 import os, sys, time, re, subprocess, shutil, struct
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE)
@@ -50,7 +50,7 @@ def make_drive(path, who, rel):
 
 INT = os.path.abspath('int142.img'); STK = os.path.abspath('stick142.img')
 make_drive(INT, 'internal', REL); make_drive(STK, 'stick', PREV)
-EXTRA = ['-drive', f'file={STK},format=raw,if=none,id=vd', '-device', 'virtio-blk-pci,drive=vd,addr=0x4',
+EXTRA = ['-drive', f'file={STK},format=raw,if=none,id=vd', '-device', 'nvme,drive=vd,serial=stick142,addr=0x4',
          '-drive', f'file={INT},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf142,addr=0x9',
          '-kernel', f'{REL}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.trying=1 rudolf.debug=1']
 vm = sbvm.VM('t142', PARTS, [], secure=False, mem=3072, extra=EXTRA)
@@ -64,15 +64,15 @@ try:
         time.sleep(4)
     if not up:
         for i in range(3): vm.shot(f'fail{i}'); time.sleep(5)
-    st = sh('for f in slot media persist; do echo "$f=$(cat /etc/rudolf/$f)"; done; echo "who=$(cat /home/rudolf/whoami.txt)"; echo "first=$(findfs LABEL=RUDOLFDATA)"; modprobe cfg80211 2>/dev/null; echo "mods=$(grep -c "^cfg80211 " /proc/modules)"; echo "cmd=$(cat /proc/cmdline)"', 30) if up else ''
+    st = sh('for f in slot media persist; do echo "$f=$(cat /etc/rudolf/$f)"; done; echo "who=$(cat /home/rudolf/whoami.txt)"; F=$(findfs LABEL=RUDOLFDATA); echo "first=$F"; D=${F%p3}; echo "firstser=$(cat /sys/block/${D#/dev/}/device/serial 2>/dev/null | tr -d ' ')"; P=$(cat /etc/rudolf/persist); D=${P%p3}; echo "perser=$(cat /sys/block/${D#/dev/}/device/serial 2>/dev/null | tr -d ' ')"; modprobe cfg80211 2>/dev/null; echo "mods=$(grep -c "^cfg80211 " /proc/modules)"; echo "cmd=$(cat /proc/cmdline)"', 30) if up else ''
     kv = dict(l.split('=', 1) for l in st.split('\n') if '=' in l)
     rv = last(sh("grep -o \"RVER='[0-9.]*'\" /usr/share/rudolf/www/index.html | head -1 | tr -dc 0-9.; echo", 90)) if up else ''
     out('start:', ' | '.join(f'{k}={v}' for k, v in kv.items()), '| RVER', rv)
     ok('1. the update\'s kernel, started with nothing passed on (rudolf.slot=a only), comes up', up and kv.get('slot') == 'a', kv.get('slot'))
-    if kv.get('first') != '/dev/vda3':
+    if kv.get('firstser') != 'stick142':
         out(f'NOTE the first RUDOLFDATA found was {kv.get("first")}, not the other drive\'s: the case is not exercised')
-    ok('...the other drive\'s data partition (slot a: ' + PVER + ') is the first one found', kv.get('first') == '/dev/vda3', kv.get('first'))
-    ok('...the start-up took the data partition whose slot a is this kernel\'s own (the internal drive)', kv.get('persist') == '/dev/nvme0n1p3' and kv.get('who') == 'internal', [kv.get('persist'), kv.get('who')])
+    ok('...the other drive\'s data partition (slot a: ' + PVER + ') is the first one found', kv.get('firstser') == 'stick142', [kv.get('first'), kv.get('firstser')])
+    ok('...the start-up took the data partition whose slot a is this kernel\'s own (the internal drive)', kv.get('perser') == 'rudolf142' and kv.get('who') == 'internal', [kv.get('persist'), kv.get('perser'), kv.get('who')])
     ok(f'...and runs its own system ({VER}), not the other drive\'s ({PVER})', rv == VER, rv)
     ok('...with its drivers (cfg80211, the Wi-Fi core, loads: its signature is this build\'s)', kv.get('mods') == '1', kv.get('mods'))
 finally:
