@@ -219,9 +219,13 @@ int main(int argc, char **argv)
 		close(a[0]); close(a[1]); close(b[0]); close(b[1]);
 		if (dup2(r, 3) < 0 || dup2(w, 4) < 0) _exit(127);
 		close(r); close(w);
-		char **args = calloc(argc + 4, sizeof *args); int n = 0;
+		char **args = calloc(argc + 5, sizeof *args); int n = 0;
 		for (int i = 2; i < argc; i++) args[n++] = argv[i];
 		args[n++] = "--remote-debugging-pipe";
+		/* 1.4.2: the pipe makes Chromium report itself as controlled by automation (navigator.webdriver true), and
+		   Google's sign-in refuses such a browser ("This browser or app may not be secure"). Oracle's tabs are
+		   the person's own browsing: the pipe only opens the shell, so pages are not told. */
+		args[n++] = "--disable-blink-features=AutomationControlled";
 		args[n++] = "about:blank";
 		args[n] = NULL;
 		execv(args[0], args);

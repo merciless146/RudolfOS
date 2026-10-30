@@ -4,8 +4,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.4.2 (2026-10-30)
-Summary: fixes 1.4.1 starting without its drivers (no Wi-Fi, slow screen) when an older Rudolf OS USB stick with its own files started the computer; the Rudolf OS boot entry works on more computers
+Summary: Google sign-in works in Oracle again; fixes 1.4.1 starting without its drivers (no Wi-Fi, slow screen) when an older Rudolf OS USB stick with its own files started the computer; the Rudolf OS boot entry works on more computers
 - Fixed: on a computer started through an older Rudolf OS USB stick that keeps its own files, the 1.4.1 update could start with the stick's older system instead of its own. Its drivers were then refused (each release signs its own), so there was no Wi-Fi and the screen was drawn without the graphics card, slowly. The update now starts only with its own system, from whichever drive holds it.
+- Fixed: Google refused to sign in from Oracle ("This browser or app may not be secure"), because Oracle's tabs said they were controlled by automation software. They no longer do.
 - Fixed: on some computers (the ASUS Vivobook Go among them) the firmware skipped the "Rudolf OS" boot entry and started the drive through another entry, such as one made in its setup. Rudolf OS now takes the path of the entry that started it from the drive, so its own entry works on the next start.
 
 ## 1.4.1 (2026-10-28)
