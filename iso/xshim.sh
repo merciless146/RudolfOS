@@ -38,11 +38,11 @@ cp "$X/MesaLib/dist/src/gbm/main/gbm.h" "$P/include/"; pc gbm 25.2.8 gbm "$L/lib
 cp -r "$X/MesaLib/dist/include/EGL" "$X/MesaLib/dist/include/KHR" "$P/include/"
 # OpenGL and the DRI driver interface (1.4.3: GLX), headers from Mesa 21.3.7. The X server's GLX loads Mesa's
 # DRI driver (dri/radeonsi_dri.so and others: Mesa 25.2 still exports __driDriverGetExtensions_*) from
-# /usr/lib/x86_64-linux-gnu/dri, which Rudolf OS ships for glamor. It links no OpenGL library.
+# /usr/lib/x86_64-linux-gnu/dri, which Rudolf OS ships for glamor, and is linked with glvnd's libGL.so.1.
 mkdir -p "$P/include/GL/internal"
 cp "$X/MesaLib/dist/include/GL/gl.h" "$X/MesaLib/dist/include/GL/glext.h" "$P/include/GL/"
 cp "$X/MesaLib/dist/include/GL/internal/dri_interface.h" "$P/include/GL/internal/"
-pc gl 21.3.7 "" "" ""
+pc gl 21.3.7 GL "$L/libGL.so.1" ""   # libglx.so calls glXGetProcAddressARB: glvnd's libGL (shipped with libGLX.so.0)
 pc dri 21.3.7 "" "" ""
 sed -i 's|^includedir=.*|&\ndridriverdir=/usr/lib/x86_64-linux-gnu/dri|' "$P/lib/pkgconfig/dri.pc"
 # libepoxy (headers generated from the Khronos registry; host runtime 1.5.10)

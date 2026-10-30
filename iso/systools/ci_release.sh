@@ -135,6 +135,8 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		systools/xfetch.sh "$XREV"
 		bash xbuild.sh > "$W/xbuild.log" 2>&1 || { tail -40 "$W/xbuild.log"; echo "the X server did not build"; exit 1; }
 		XS=src/xorg/stage
+		# GLX is linked with glvnd's libGL.so.1 and libGLX.so.0 (libGLdispatch.so.0 is there for glamor already)
+		for l in libGL.so.1 libGLX.so.0; do sudo cp -L "/usr/lib/x86_64-linux-gnu/$l" "$W/broot/usr/lib/x86_64-linux-gnu/$l"; done
 		[ -x "$XS/usr/bin/Xorg" ] && [ -f "$XS/usr/lib/xorg/modules/extensions/libglx.so" ] || { echo "the X server build has no Xorg or GLX module"; exit 1; }
 		for f in "$XS/usr/bin/Xorg" $(find "$XS/usr/lib/xorg/modules" -name '*.so'); do
 			for l in $(LD_LIBRARY_PATH="$XS/usr/lib/x86_64-linux-gnu" ldd "$f" | awk '/=>/{print $3}'); do case "$l" in *libxcvt*) continue;; /*) ;; *) echo "$f: a library it needs is missing on the build machine"; exit 1;; esac; [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$f needs $l, which the base layer does not have"; exit 1; }; done
