@@ -141,8 +141,12 @@ try:
     sh('printf "good=a\\nprev=b\\nnext=b\\ntries=2\\nfailed=\\n" > /persist/os/system/state; sync; reboot -f', 10)
     time.sleep(5)
     up = wait_shell(delay=40); st = state()
-    ok('4. an older slot (1.4.0) starts from the converted drive, with its files (rudolf.persist=; the media option it does not know is ignored)', up and st.get('slot') == 'b' and st.get('persist') == '/dev/nvme0n1p3' and st.get('who') == 'internal', st)
-    ok('...without mounting the whole drive (no media), so RUDOLFDATA stays usable', st.get('media', 'x') == '' and last(sh('touch /persist/t141-w && echo writable', 20)) == 'writable', [st.get('media'), st.get('mnt')])
+    PV = tuple(int(x) for x in mv(PREV, 'version').split('.')[:3])
+    ok(f'4. an older slot ({".".join(map(str, PV))}) starts from the converted drive, with its files (rudolf.persist=)', up and st.get('slot') == 'b' and st.get('persist') == '/dev/nvme0n1p3' and st.get('who') == 'internal', st)
+    if PV < (1, 4, 1):
+        ok('...without mounting the whole drive (no media: it does not know rudolf.mediadisk=), so RUDOLFDATA stays usable', st.get('media', 'x') == '' and last(sh('touch /persist/t141-w && echo writable', 20)) == 'writable', [st.get('media'), st.get('mnt')])
+    else:
+        ok('...reading the image from the whole drive through a loop device, RUDOLFDATA still usable', st.get('media') == '/dev/nvme0n1' and st.get('mnt', '').startswith('/dev/loop') and last(sh('touch /persist/t141-w && echo writable', 20)) == 'writable', [st.get('media'), st.get('mnt')])
 finally:
     vm.stop()
 os.remove(DRV)
