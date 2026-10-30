@@ -1,4 +1,4 @@
-# Rudolf OS 1.4.4: cleanup, the volume and brightness keys, the network indicator, the Settings layout and the screen saver (plan)
+# Rudolf OS 1.4.4: cleanup, the volume and brightness keys, the network indicator, the Settings layout, the screen saver, the taskbar and power saving (plan)
 
 A pass over everything Rudolf OS builds and ships, looking for code and files that nothing uses (2026-10-30, on
 1.4.2). The system programs are clean: no unused functions in `iso/sys/*.c` (gcc `-Wunused-function`, and every
@@ -165,10 +165,10 @@ page where nobody would look for them. Saved values keep their keys, so nothing 
 | 16 | **Natural scrolling** and **Horizontal speed** | Accessibility › Pointer assistance › Scrolling: they save `S.natscroll` and `S.hscroll`, which nothing reads | removed; natural scrolling is Mouse and touchpad's (`S.ptr.natural`, which rudolf-display applies) |
 | 17 | **Pointer speed**, twice | Mouse and touchpad (`S.ptr.speed`: the real pointer, through rudolf-display) and Accessibility › Mouse and pointer (`S.msens`: only games that capture the mouse inside the desktop, such as Quake) | one, in Mouse and touchpad, applied to both; `S.msens` follows it (a person's old Accessibility value is taken over once if they had changed it and not the other) |
 | 18 | Primary button, double-click speed, scroll speed, single-click opening | Accessibility › Mouse and pointer | Mouse and touchpad (cursor size and colour, pointer helpers, mouse keys and dwell click stay in Accessibility) |
-| 19 | Language | Accessibility › Language and region | System Settings, renamed **Date, time and language** |
-| 20 | Set the clock from the internet | Network Settings › Clock | Date, time and language › Clock |
+| 19 | Language | Accessibility › Language and region | System Settings › **Date, time and language** (System Settings keeps its name: it also gets **Power and battery**, part 6) |
+| 20 | Set the clock from the internet | Network Settings › Clock | System Settings › Date, time and language › Clock |
 | 21 | Web search (Oracle), Downloads | Network Settings | the Oracle page, renamed from "Oracle sign-in" to **Oracle** (real tabs, sign-in sites, web search, downloads) |
-| 22 | Screen saver, Sleep | User Settings › Sign-in options | Display Properties › **Screen saver** (part 5) and **Sleep** under Screen; the password after the screen saver goes with the screen saver; Lock stays in Sign-in options |
+| 22 | Screen saver, Sleep | User Settings › Sign-in options | Display Properties › **Screen saver** (part 5), with the password after the screen saver; **Sleep** goes to System Settings › Power and battery (part 6); Lock stays in Sign-in options |
 | 23 | Cyberdeck test mode; Update from a file and its Roll back (the desktop page) | Display Properties; Update and recovery › Update | About › **For developers** (next to "Roll back system…" for real updates, a second roll-back on the same page was confusing) |
 | 24 | Speech and hearing | Accessibility: "Hearing and speech" and "Hearing and voice", captions in three places | **Vision** (screen reader, text-to-speech voice, magnifier, motion, reading), **Hearing** (visual sound alerts, live captions, caption style), **Voice control** |
 | 25 | Taskbar | Display Properties: in Appearance and again in Colours and theme | one Taskbar group |
@@ -218,11 +218,71 @@ the Start after times (with a stand-in clock), On/Off, Preview, the password aft
 carried over; t144k checks rudolfd's `idle` against input sent to QEMU. On the Vivobook: each style, and that it
 does not start during Oolite.
 
+# Part 6: the taskbar's clock, quick settings and battery; power saving
+
+Checked in the code (2026-10-30):
+- **The calendar shows another time than the taskbar.** The taskbar clock (`clk2`, `base_v24.html`) uses the time
+  zone set in System Settings (`S.tz`) and the 24-hour setting (`S.h24`). The calendar that opens from it
+  (`shell25.js`) formats the time and date with `toLocaleTimeString([], …)`, without either: Chromium's own zone and
+  format. With a time zone set, the two differ by hours (and the calendar may mark the wrong day as today); with
+  24-hour on, they differ in format. The lock screen and the screen saver's clock do the same as the calendar.
+- **Quick settings (the ☰ panel) has a volume and a brightness slider** besides the toggles, and the battery as a
+  line of text at the bottom. The taskbar already has its own volume control (the 🔊 icon and its popup); brightness
+  has none.
+- **There is no power management** beyond "Sleep after" (in User Settings): no power modes, nothing for the lid,
+  the screen is never turned off, no battery saver. Task Manager on the Vivobook lists two batteries: the laptop's
+  (45 %, charging) and a second one at -1 % (a device that reports a battery it does not have).
+
+## Items
+
+| # | What | Where |
+|---|---|---|
+| 28 | **One clock.** A shared formatter (`clockParts(d)`: time, date, weekday and today's date in the set time zone, 12- or 24-hour, the date format of System Settings) used by the taskbar clock (digital and analog), the calendar (its time, date and which day is today), the lock screen, the screen saver's clock (part 5) and the notification times | `desktop/` (new module `clock31.js`; `shell25.js`, `core25.js`) |
+| 29 | **Quick settings** without the volume and brightness sliders and the battery line: its toggles, the network line (part 3), Lock, Settings and Power | `desktop/shell25.js` |
+| 30 | **Brightness on the taskbar**: a ☀ icon next to the volume icon, its brightness shown in the icon, with a popup like the volume one (a slider, 5-100 %, and the percentage); the mouse wheel over either icon changes it by 5 %. Shown only on installed Rudolf OS when the screen has an adjustable backlight (rudolfd `info.backlight`); it follows the brightness keys (part 2) | `desktop/` (`osd31.js` with part 2) |
+| 31 | **The battery on the taskbar**, next to the workspace buttons: an icon filled to the level (green; amber at 20 % or less; red at 10 % or less), a lightning bolt while charging, the percentage beside it; its tooltip says the state and the time left or to full (from the battery's energy and power, when it reports them); a click opens System Settings › Power and battery. Only the computer's own battery: of rudolfd's `stats.battery`, the ones of type Battery with scope System and a level of 0-100 (the Vivobook's -1 % device battery is left out, also in Task Manager). Updated every 30 s and at once when the charger is plugged in or out (rudolfd watches the power supply and writes `power ac`/`power battery` to the events). No battery: no icon. In the browser version, from `navigator.getBattery()` as quick settings did | `desktop/`; `iso/sys/rudolfd.c` |
+| 32 | **System Settings › Power and battery** (installed Rudolf OS; what the computer cannot do is shown greyed out with the reason): | `desktop/` (new module `power31.js`); `iso/sys/rudolfd.c` (`power/*`), `iso/sys/rudolf-display.c` |
+
+Power and battery:
+- **Battery**: the level, charging or not, the time left or to full, its health (capacity now against new, from
+  `energy_full`/`energy_full_design`) and charge cycles, when the battery reports them.
+- **Power mode**: Power saver, Balanced (the default) or Performance. It sets the firmware's platform profile
+  (`/sys/firmware/acpi/platform_profile`: low-power, balanced, performance; ASUS laptops have it through
+  `asus-nb-wmi`, part 2) and the processors' energy preference (`energy_performance_preference` of `amd-pstate` or
+  `intel_pstate`: power, balance_performance, performance), whichever the computer has. Separate choices on battery
+  and when plugged in.
+- **Battery saver**: on now, or on by itself at 10, 20 or 30 % (or never); off by itself when the charger is
+  plugged in. While it is on: Power saver mode, the screen 30 % dimmer (not below 10 %), the desktop's animations
+  and transparency reduced, the screen saver at 10 frames a second, update checks and the app catalogue refresh
+  waiting until it is off, and Wi-Fi power saving on (`iw dev wlan0 set power_save on`). The battery icon shows a
+  leaf while it is on.
+- **Turn the screen off after**: Never, 1, 2, 5, 10, 15 or 30 minutes without input, on battery and plugged in
+  (rudolf-display: DPMS off on Xorg, the framebuffer blanked on the software display; any input turns it back on).
+- **Sleep after** (from User Settings): Never, 5, 10, 15, 30, 60 minutes, on battery and plugged in.
+- **When the lid is closed**: Sleep, Turn the screen off, or Do nothing, on battery and plugged in (rudolf-display
+  reads the lid switch, which it ignores today, and writes `lid closed`/`lid open` to the events; rudolfd acts).
+- **When the power button is pressed**: Ask (the Shut down dialog, as now), Sleep, or Shut down.
+- **Battery care** (where the firmware supports it: `charge_control_end_threshold`, ASUS and others): stop charging
+  at 60, 80 (recommended when the laptop is mostly plugged in) or 100 %.
+- Each choice is kept on RUDOLFDATA (`/persist/etc/power.conf`) and applied by rudolfd at every start and whenever
+  the charger is plugged in or out, so it holds without anyone signed in.
+
+## Tests
+
+| Test | What it shows |
+|---|---|
+| page test (`taskbar144_t.js`, a stand-in rudolfd) | with a time zone 9 hours from the browser's and 24-hour on and off: the taskbar, the calendar, the lock screen and the screen saver show the same time and date, and the calendar marks the right day; quick settings has no volume, brightness or battery; the brightness icon and popup (only with a backlight; the wheel; the keys' events move it); the battery icon at 45 % charging, 15 % (amber), 8 % (red), no battery (no icon), the -1 % device battery ignored, plug and unplug events; Power and battery's choices sent to rudolfd |
+| host: rudolfd's `power/*` against a stand-in `/sys` (platform profile, energy preference, battery, charge threshold, backlight) | each mode writes what it should; what the computer lacks is reported, not failed; battery saver on and off at the level and on plugging in; the settings file kept and applied again at start |
+| t144k (QEMU) | QEMU's machine has no battery or lid: `power/status` says so and no battery icon shows; the power button through QEMU's ACPI power button (`system_powerdown`): Ask shows the Shut down dialog, Sleep sleeps the machine and a key wakes it; the screen off after 1 minute (rudolf-display's DPMS state) and on again at a key; the power mode where the machine has no platform profile shows greyed out with the reason |
+| The Vivobook (after release) | the battery icon (45 %, charging) and no -1 % one; the three power modes (platform profile and energy preference read back); battery saver at 20 % (on battery); the screen off after a minute; closing the lid sleeps and opening it wakes; charging stops at 80 % with Battery care on; the taskbar and the calendar show the same time |
+
 ## Release
 
 Branch `rudolf-1.4.4`, after 1.4.3 is out. Version 1.4.4. The kernel is rebuilt (item 7), so the release carries a
 new kernel and modules. The changes list: "New: the volume and brightness keys work on laptops (ASUS, Lenovo, HP,
 Dell, Acer), with an on-screen indicator, and Settings › Volume Controls has the system volume. Fixed: the taskbar
 said Ethernet was connected on computers using Wi-Fi. New: eight screen savers, drawn by the processor, set in
-Display Properties › Screen saver. Changed: Settings is reorganised (each page and what moved). Removed unused
+Display Properties › Screen saver. Changed: Settings is reorganised (each page and what moved). Fixed: the
+calendar showed another time than the taskbar. New: the battery and brightness on the taskbar; power modes, battery
+saver, screen off, the lid and the power button, and battery care in System Settings › Power and battery. Removed unused
 programs and code." A beta, the checks above, promote; no disc needed.
