@@ -143,10 +143,22 @@ if ! has rudolf.nopersist=1; then
 		PERSIST=$P
 	fi
 	# 1.3.1: a slot's kernel needs the data partition that holds its slot (the disc's kernel found it there): if the
-	# first one found does not, any other that does (internal drives first)
-	if [ -n "$SLOT" ] && [ ! -e /mnt/persist/os/system/$SLOT/complete ]; then
+	# first one found does not, any other that does (internal drives first).
+	# 1.4.2: and the slot there must be this kernel's own (its build string, in the kernel file's uncompressed header).
+	# On the Vivobook, boot files from 1.1 on the stick passed nothing on; the 1.4.1 kernel took the stick's
+	# RUDOLFDATA, whose slot a held 1.4.0, and started with 1.4.0's drivers, which it refused (each build signs its own):
+	# no Wi-Fi, no graphics. A slot that is not this kernel's only counts when no data partition has the right one.
+	KV=$(uname -v 2>/dev/null)
+	slot_here() { [ -e /mnt/persist/os/system/$SLOT/complete ] && { [ -z "$KV" ] || head -c 65536 /mnt/persist/os/system/$SLOT/vmlinuz 2>/dev/null | grep -qF "$KV"; }; }
+	if [ -n "$SLOT" ] && ! slot_here; then
 		[ -n "$PERSIST" ] && umount /mnt/persist; PERSIST=""
 		for P in /dev/nvme?n?p3 /dev/mmcblk?p3 /dev/vd?3 /dev/sd?3; do
+			is_data "$P" || continue
+			mount -t ext4 -o rw,noatime "$P" /mnt/persist 2>/dev/null || continue
+			slot_here && { PERSIST=$P; break; }
+			umount /mnt/persist
+		done
+		[ -z "$PERSIST" ] && for P in /dev/nvme?n?p3 /dev/mmcblk?p3 /dev/vd?3 /dev/sd?3; do
 			is_data "$P" || continue
 			mount -t ext4 -o rw,noatime "$P" /mnt/persist 2>/dev/null || continue
 			[ -e /mnt/persist/os/system/$SLOT/complete ] && { PERSIST=$P; break; }
