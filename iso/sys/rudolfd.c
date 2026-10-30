@@ -2184,7 +2184,7 @@ static void boot_entry_ensure(void)
 	if (memcmp(m + 446, zero, 16) || m[446 + 16 + 4] != 0xef || m[446 + 32 + 4] != 0x83 || !memcmp(m + 440, zero, 4)) return;
 	uint32_t st, sz; memcpy(&st, m + 446 + 16 + 8, 4); memcpy(&sz, m + 446 + 16 + 12, 4);
 	/* the load option: attributes (active), the device path's length, the title, the device path */
-	unsigned char opt[256]; size_t k = 0; uint32_t att = 1; memcpy(opt, &att, 4); k = 6;
+	unsigned char opt[600]; size_t k = 0; uint32_t att = 1; memcpy(opt, &att, 4); k = 6;
 	k += su16("Rudolf OS", opt + k);
 	unsigned char *dp = opt + k;
 	unsigned char hd[42] = {4, 1, 42, 0, 2, 0, 0, 0}; uint64_t st64 = st, sz64 = sz;
@@ -2196,6 +2196,22 @@ static void boot_entry_ensure(void)
 		dp[dl] = 4; dp[dl + 1] = 4; dp[dl + 2] = (unsigned char)(4 + fl); dp[dl + 3] = 0; memcpy(dp + dl + 4, fp, fl); dl += 4 + fl;
 		dp[dl] = 0x7f; dp[dl + 1] = 0xff; dp[dl + 2] = 4; dp[dl + 3] = 0; dl += 4;
 	}
+	/* 1.4.2: firmware may not start the drive's path as written. The Vivobook's (AMI) skipped it at every start and
+	   changed it, and started the entry made by hand in its setup, which names the drive the same way and goes on
+	   to the image's El Torito catalogue (CDROM(...)) and \EFI\BOOT\BOOTX64.EFI. So when this system was started by
+	   another entry (BootCurrent) whose path begins with the drive's own, that is the path that works: ours takes it. */
+	size_t pre = whole ? dl - 4 : 0, ll = 0; unsigned char learned[400]; int cur = -1;
+	{ size_t l = 0; unsigned char *c = efivar("BootCurrent-" GLOBALG, &l); if (c && l >= 2) cur = c[0] | c[1] << 8; free(c); }
+	if (pre && cur >= 0) {
+		char v[80]; snprintf(v, sizeof v, "Boot%04X-" GLOBALG, cur); size_t l = 0; unsigned char *d = efivar(v, &l);
+		size_t i = 6; while (d && i + 1 < l && (d[i] || d[i + 1])) i += 2;
+		if (d && i + 1 < l) {
+			char t[100]; u16s(d + 6, l - 6, t, sizeof t); uint16_t pl; memcpy(&pl, d + 4, 2); i += 2;
+			if (strncmp(t, "Rudolf OS", 9) && i + pl <= l && pl > pre && pl <= sizeof learned && k + pl <= sizeof opt && !memcmp(d + i, dp, pre)) { memcpy(learned, d + i, pl); ll = pl; }
+		}
+		free(d);
+	}
+	if (ll) { memcpy(dp, learned, ll); dl = ll; }
 	uint16_t dl16 = (uint16_t)dl; memcpy(opt + 4, &dl16, 2); k += dl;
 	/* ours, and the other "Rudolf OS ..." entries */
 	int mine = -1, same = 0, rm[32], nrm = 0, used[256] = {0};
@@ -2206,14 +2222,20 @@ static void boot_entry_ensure(void)
 		if (!strncmp(t, "Rudolf OS", 9)) {
 			/* ours when it still names this drive's partition 2 and the start file: firmware may store the path in
 			   its own, longer form (the whole device path in front of HD(...)) */
-			if (mine < 0 && !strcmp(t, "Rudolf OS")) { mine = n; same = (l == k && !memcmp(d, opt, k)) || (!whole && l >= 6 && (d[0] & 1) && memmem(d, l, hd, 42) && memmem(d, l, fp, fl)); }
+			if (mine < 0 && !strcmp(t, "Rudolf OS")) {
+				mine = n; same = (l == k && !memcmp(d, opt, k)) || (!whole && l >= 6 && (d[0] & 1) && memmem(d, l, hd, 42) && memmem(d, l, fp, fl));
+				/* 1.4.2: one that names this drive is kept as it is unless another entry started this system (then
+				   ours takes that one's path, above): it may be the path learned at an earlier start */
+				size_t i = 6; while (i + 1 < l && (d[i] || d[i + 1])) i += 2; i += 2;
+				if (!same && whole && !ll && (d[0] & 1) && i + pre <= l && !memcmp(d + i, dp, pre)) same = 1;
+			}
 			else if (nrm < 32) rm[nrm++] = n;
 		}
 		free(d);
 	}
 	if (mine < 0) { for (unsigned n = 0; n < 256; n++) if (!used[n]) { mine = n; break; } if (mine < 0) return; }
 	char v[80]; snprintf(v, sizeof v, "Boot%04X-" GLOBALG, mine);
-	if (!same) { int had = used[mine]; if (efivar_write(v, opt, k)) { fprintf(stderr, "rudolfd: the boot entry %s could not be written\n", v); return; } fprintf(stderr, "rudolfd: boot entry Boot%04X \"Rudolf OS\" for %s (%s)\n", mine, disk, had ? "it named another path" : "new"); }
+	if (!same) { int had = used[mine]; if (efivar_write(v, opt, k)) { fprintf(stderr, "rudolfd: the boot entry %s could not be written\n", v); return; } fprintf(stderr, "rudolfd: boot entry Boot%04X \"Rudolf OS\" for %s (%s%s)\n", mine, disk, had ? "it named another path" : "new", ll ? ", the path of the entry this system started from" : ""); }
 	for (int i = 0; i < nrm; i++) { char f2[200]; snprintf(f2, sizeof f2, EFIV "/Boot%04X-" GLOBALG, rm[i]); unimmutable(f2); unlink(f2); fprintf(stderr, "rudolfd: removed the old boot entry Boot%04X\n", rm[i]); }
 	/* BootOrder: ours first, the removed ones out, the rest as they were */
 	size_t ol = 0; unsigned char *o = efivar("BootOrder-" GLOBALG, &ol);

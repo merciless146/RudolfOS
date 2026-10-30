@@ -127,3 +127,27 @@ done. A command is only run when it has no result yet.
 3. After the merge: a beta, checked; the owner promotes 1.4.1; disc-1.4.1 from disc-1.3.1 (the boot image is what
    the laptop needs).
 4. Stage C.
+
+## Stage C, as it went (2026-10-29)
+
+1. **Update to 1.4.1.** The laptop updated itself, but its first 1.4.1 start ran without drivers (no Wi-Fi, no
+   graphics driver): the stick's 1.1 boot files handed over with `rudolf.slot=a` only, and the 1.4.1 start-up took
+   the first RUDOLFDATA found, the stick's (it held a 1.4.0 slot a since the stage A recovery). The 1.4.1 kernel
+   refused 1.4.0's drivers, which are signed by another build. Rolled back; fixed in 1.4.2 (initramfs/init: a slot's
+   kernel takes the data partition whose slot is its own build; test t142).
+2. **The stick's RUDOLFDATA renamed RUDOLFSTICK** (development link: the laptop has no e2label/tune2fs, so the label
+   was written into the superblock with its crc32c, after a copy was saved in `/persist/devlink`). 1.4.1 then started
+   properly from the laptop's own drive and was kept.
+3. **Get new boot files** with the 1.4.1 boot image (fetched by the link from the release, checked against its
+   .sha256, staged). Written at the next start, with the installed layout. The stick's 1.1 start-up then found no
+   data partition (it cannot read the new layout): the stick no longer starts this laptop as it is.
+4. **Started without the stick.** The firmware had no entry for the drive; one was added in its setup (Boot › Add
+   New Boot Option, "Drive", `EFI\BOOT\BOOTX64.EFI` on the KINGSTON drive). Its path:
+   `PciRoot(0)/Pci(2,2)/Pci(0,0)/NVMe(1,EUI 00-26-B7-38-22-72-47-D5)/CDROM(1,0x52EC,0x1E000)/\EFI\BOOT\BOOTX64.EFI`:
+   AMI also takes the image's El Torito catalogue. rudolfd's "Rudolf OS" entry names the same drive (same prefix,
+   same EUI byte order) but the firmware skipped it and changed it at every start; 1.4.2 takes the path of the entry
+   the system started from (t141 3b).
+5. **Secure Boot**: the firmware's db has Microsoft Corporation UEFI CA 2011, so shim is accepted. The Rudolf OS key
+   was enrolled (Prepare Secure Boot, MokManager), Secure Boot turned on: 1.4.1 runs locked down (integrity), all
+   drivers loaded.
+6. **The leftover entries Boot0004-Boot0007** were removed by rudolfd at the first start from the drive.
