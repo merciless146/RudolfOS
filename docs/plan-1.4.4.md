@@ -1,4 +1,4 @@
-# Rudolf OS 1.4.4: cleanup, the volume and brightness keys, and the network indicator (plan)
+# Rudolf OS 1.4.4: cleanup, the volume and brightness keys, the network indicator, the Settings layout and the screen saver (plan)
 
 A pass over everything Rudolf OS builds and ships, looking for code and files that nothing uses (2026-10-30, on
 1.4.2). The system programs are clean: no unused functions in `iso/sys/*.c` (gcc `-Wunused-function`, and every
@@ -154,9 +154,75 @@ is on Wi-Fi; it has no Ethernet port at all. Found in the code (2026-10-30):
 | t144k (QEMU, above) | its network card (e1000, wired, no Wi-Fi): the icon says wired, connected; no `sit0` in `/sys/class/net` |
 | The Vivobook (after release) | the icon says Wi-Fi with the network's name; Task Manager › Hardware lists only `wlan0` |
 
+# Part 4: the Settings layout
+
+Every Settings page opened in the desktop with a stand-in rudolfd, and what each control does checked in the code
+(2026-10-30). Two settings do nothing, two controls with the same name do different things, and several are on a
+page where nobody would look for them. Saved values keep their keys, so nothing a person set is lost by a move.
+
+| # | What | Now | Then |
+|---|---|---|---|
+| 16 | **Natural scrolling** and **Horizontal speed** | Accessibility › Pointer assistance › Scrolling: they save `S.natscroll` and `S.hscroll`, which nothing reads | removed; natural scrolling is Mouse and touchpad's (`S.ptr.natural`, which rudolf-display applies) |
+| 17 | **Pointer speed**, twice | Mouse and touchpad (`S.ptr.speed`: the real pointer, through rudolf-display) and Accessibility › Mouse and pointer (`S.msens`: only games that capture the mouse inside the desktop, such as Quake) | one, in Mouse and touchpad, applied to both; `S.msens` follows it (a person's old Accessibility value is taken over once if they had changed it and not the other) |
+| 18 | Primary button, double-click speed, scroll speed, single-click opening | Accessibility › Mouse and pointer | Mouse and touchpad (cursor size and colour, pointer helpers, mouse keys and dwell click stay in Accessibility) |
+| 19 | Language | Accessibility › Language and region | System Settings, renamed **Date, time and language** |
+| 20 | Set the clock from the internet | Network Settings › Clock | Date, time and language › Clock |
+| 21 | Web search (Oracle), Downloads | Network Settings | the Oracle page, renamed from "Oracle sign-in" to **Oracle** (real tabs, sign-in sites, web search, downloads) |
+| 22 | Screen saver, Sleep | User Settings › Sign-in options | Display Properties › **Screen saver** (part 5) and **Sleep** under Screen; the password after the screen saver goes with the screen saver; Lock stays in Sign-in options |
+| 23 | Cyberdeck test mode; Update from a file and its Roll back (the desktop page) | Display Properties; Update and recovery › Update | About › **For developers** (next to "Roll back system…" for real updates, a second roll-back on the same page was confusing) |
+| 24 | Speech and hearing | Accessibility: "Hearing and speech" and "Hearing and voice", captions in three places | **Vision** (screen reader, text-to-speech voice, magnifier, motion, reading), **Hearing** (visual sound alerts, live captions, caption style), **Voice control** |
+| 25 | Taskbar | Display Properties: in Appearance and again in Colours and theme | one Taskbar group |
+| 26 | Backups | Storage: "Back up everything", "Back up to a USB stick", "Make a USB stick… also copy my files" apart | one **Backup** group, each with a line saying when to use it |
+| 27 | Master volume | Volume Controls (the desktop's own mix) | renamed **Desktop sounds**, under part 2's System volume |
+
+Settings' search finds each control under its new page. The page test (`settings144_t.js`, with a stand-in
+rudolfd) opens every page and checks the list of controls against the table above, that each moved control still
+changes the same saved value, that Pointer speed reaches both rudolfd's `pointer` and the in-page mouse capture, and
+that item 16's two settings are gone.
+
+# Part 5: the screen saver
+
+Today: one screen saver (a starfield with the time), set only by Settings › User Settings › Screen saver (Off, 2, 5,
+10, 15 or 30 minutes), drawn on a page canvas, which Chromium draws with the graphics card. 1.4.4 gives it its own
+section in **Display Properties › Screen saver**:
+
+- **Screen saver**: On or Off (a saved "Off" or a time from before stays as it was).
+- **Start after**: 1, 2, 3, 5, 10, 15, 20, 30, 45 or 60 minutes without input.
+- **Style**: eight presets, each with a live preview in the page and **Preview** (full screen until a key or the
+  pointer moves):
+  1. **Starfield**: today's, flying through stars.
+  2. **Clock**: a large clock and the date, drifting slowly so it never stays in one place.
+  3. **Rudolf**: the Rudolf OS logo bouncing off the screen edges, changing colour at each bounce.
+  4. **Code rain**: falling columns of characters.
+  5. **Mystify**: two outlines of joined lines that bounce and change colour, leaving trails.
+  6. **Bubbles**: soft bubbles rising and drifting.
+  7. **Aurora**: slow bands of colour waving across a night sky.
+  8. **Fireworks**: rockets bursting into falling sparks.
+- **Show the time**: over any style except Clock (on by default).
+- **Ask for the password when it ends** (from User Settings; Lock stays there).
+
+**Drawn by the processor.** Each style draws into a canvas made with `getContext('2d', {willReadFrequently:
+true})`, which Chromium keeps in memory and draws with the processor (Skia's software renderer) instead of on the
+graphics card; no WebGL, no CSS animations or filters. To keep the processor's load small: at most 30 frames a
+second, at most 1280 pixels wide (larger screens show it scaled up), no drawing while it is hidden. Only the
+finished picture goes to the screen, as everything on the desktop does. The page test checks that every style
+makes its canvas this way (and none other), and measures its frame time in a CPU-only Chromium.
+
+**When it starts.** As now, not while something is full screen, the mouse is captured or media plays. On installed
+Rudolf OS the time without input comes from rudolf-display, which sees every key and pointer movement, also in
+games and Linux apps (the desktop page sees only its own), so it never starts over a game being played; rudolfd's
+`idle` gives the milliseconds since the last input. In the browser version, as now.
+
+Tests: the page test runs each preset for two seconds (frames drawn, the canvas is a software one, nothing thrown),
+the Start after times (with a stand-in clock), On/Off, Preview, the password after it, and the old saved value
+carried over; t144k checks rudolfd's `idle` against input sent to QEMU. On the Vivobook: each style, and that it
+does not start during Oolite.
+
 ## Release
 
 Branch `rudolf-1.4.4`, after 1.4.3 is out. Version 1.4.4. The kernel is rebuilt (item 7), so the release carries a
 new kernel and modules. The changes list: "New: the volume and brightness keys work on laptops (ASUS, Lenovo, HP,
 Dell, Acer), with an on-screen indicator, and Settings › Volume Controls has the system volume. Fixed: the taskbar
-said Ethernet was connected on computers using Wi-Fi. Removed unused programs and code." A beta, the checks above, promote; no disc needed.
+said Ethernet was connected on computers using Wi-Fi. New: eight screen savers, drawn by the processor, set in
+Display Properties › Screen saver. Changed: Settings is reorganised (each page and what moved). Removed unused
+programs and code." A beta, the checks above, promote; no disc needed.
