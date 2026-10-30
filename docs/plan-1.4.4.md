@@ -1,4 +1,4 @@
-# Rudolf OS 1.4.4: cleanup, and the volume and brightness keys (plan)
+# Rudolf OS 1.4.4: cleanup, the volume and brightness keys, and the network indicator (plan)
 
 A pass over everything Rudolf OS builds and ships, looking for code and files that nothing uses (2026-10-30, on
 1.4.2). The system programs are clean: no unused functions in `iso/sys/*.c` (gcc `-Wunused-function`, and every
@@ -122,9 +122,41 @@ the game.
 | new `t144k_t.py` (QEMU) | the volume keys sent as real key presses (QEMU's `volumeup`, `volumedown`, `audiomute`, through the PS/2 keyboard, as a laptop's keyboard or hotkey driver sends them): the sound server's volume and mute change; the indicator appears in the desktop; the keys do not reach X (a test X client sees none). The brightness keys from a test input device (uinput, as `asus-nb-wmi` creates one): with QEMU's screen, which has no backlight, the indicator says so and nothing fails. Settings › Volume Controls › System volume moves with the keys and sets the same level. The kernel has `asus-nb-wmi` and the other drivers as modules |
 | The Vivobook (after release) | Task Manager › Hardware lists "Asus WMI hotkeys"; F1 mutes and unmutes, F2/F3 change the volume of the desktop and of a Flatpak app (Oolite) alike, F4/F5 change the brightness, each with the indicator |
 
+# Part 3: the network indicator
+
+On the Vivobook, the taskbar's network icon says **"Ethernet — connected"**, with a wired icon, while the laptop
+is on Wi-Fi; it has no Ethernet port at all. Found in the code (2026-10-30):
+- **The indicator never looks at the real network.** `netUpd()` (desktop, `base_v24.html`) draws it from the
+  browser version's simulated connections (`NETC`, saved as `bd95net`), whose default is one wired connection named
+  "Ethernet", active. On installed Rudolf OS nothing replaces that, so the icon shows the simulated "Ethernet" as
+  connected whenever the browser is online, through whatever network.
+- **The simulation is on Settings › Network Settings too.** "Connections" and "Add a connection" (name, type, SSID,
+  security, password, addresses) are the browser version's simulation; on installed Rudolf OS they change nothing,
+  next to the real Wi-Fi and Manual address sections.
+- **`sit0` is listed as a wired adapter.** It is the kernel's IPv6-in-IPv4 tunnel device (`IPV6_SIT`, on in the
+  default configuration), not hardware; Task Manager shows "sit0 (wired)", and when Wi-Fi was missing, Network
+  Settings showed it as the only network hardware.
+
+## Items
+
+| # | What | Where |
+|---|---|---|
+| 12 | rudolfd `net`: each interface also says `"virtual"` (no `/sys/class/net/X/device`: tunnels, bridges, VPNs) and which one carries the default route (`"default":true`); `wifi` gives the network name (SSID) of a wireless interface that is connected | `iso/sys/rudolfd.c` |
+| 13 | The taskbar indicator on installed Rudolf OS: from rudolfd's `net`, every 10 s, at once on `wifi connected`/`wifi disconnected` events (1.4.4's `events/wait`), and when the browser goes on- or offline. The interface with the default route decides: wireless, with its signal and "Wi-Fi — connected (SSID)"; wired, with "Ethernet — connected (eth0, 1000 Mb/s)"; none, "Not connected". The internet check (`generate_204`) stays as it is ("connected, no internet access detected"). The popup lists the real adapters. In the browser version all of this is as before | `desktop/` (new module `net31.js`, replacing `netUpd` on installed Rudolf OS) |
+| 14 | Settings › Network Settings on installed Rudolf OS: "Connections" and "Add a connection" are hidden (the Wi-Fi and Manual address sections above them are the real ones); a line says so for anyone who remembers them. The browser version keeps them | `desktop/settings25.js` |
+| 15 | Virtual interfaces are left out of Network hardware, Task Manager's adapters, the hardware check and the system report (rudolfd's `virtual`); and the kernel no longer has the IPv6-in-IPv4 tunnel (`n IPV6_SIT`), so `sit0` is not created at all (Rudolf OS has no use for it) | `desktop/settings25.js`, `tm26.js`, `hwcheck30.js`; `iso/kconfig.sh` |
+
+## Tests
+
+| Test | What it shows |
+|---|---|
+| `dl140_t.js`-style page test with a stand-in rudolfd (`net31_t.js`) | wireless with a default route: the Wi-Fi icon, "Wi-Fi — connected (Home)"; wired: the wired icon and "Ethernet"; none: "Not connected"; a `wifi disconnected` event changes the icon within a second; a virtual interface is never shown; Network Settings has no "Connections" on installed Rudolf OS and still has them in the browser version |
+| t144k (QEMU, above) | its network card (e1000, wired, no Wi-Fi): the icon says wired, connected; no `sit0` in `/sys/class/net` |
+| The Vivobook (after release) | the icon says Wi-Fi with the network's name; Task Manager › Hardware lists only `wlan0` |
+
 ## Release
 
 Branch `rudolf-1.4.4`, after 1.4.3 is out. Version 1.4.4. The kernel is rebuilt (item 7), so the release carries a
 new kernel and modules. The changes list: "New: the volume and brightness keys work on laptops (ASUS, Lenovo, HP,
-Dell, Acer), with an on-screen indicator, and Settings › Volume Controls has the system volume. Removed unused
-programs and code." A beta, the checks above, promote; no disc needed.
+Dell, Acer), with an on-screen indicator, and Settings › Volume Controls has the system volume. Fixed: the taskbar
+said Ethernet was connected on computers using Wi-Fi. Removed unused programs and code." A beta, the checks above, promote; no disc needed.
