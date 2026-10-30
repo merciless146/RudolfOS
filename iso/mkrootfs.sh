@@ -177,7 +177,7 @@ if [ -x "$XS/usr/bin/Xorg" ]; then
 	mkdir -p usr/lib/x86_64-linux-gnu/dri usr/lib/x86_64-linux-gnu/gbm usr/share/glvnd/egl_vendor.d usr/share/drirc.d
 	cp -a $ML/dri/. usr/lib/x86_64-linux-gnu/dri/
 	cp -a $ML/gbm/dri_gbm.so usr/lib/x86_64-linux-gnu/gbm/
-	cp -L $ML/libEGL.so.1 $ML/libEGL_mesa.so.0 $ML/libGLdispatch.so.0 $ML/libgbm.so.1 $ML/libepoxy.so.0 usr/lib/x86_64-linux-gnu/
+	cp -L $ML/libEGL.so.1 $ML/libEGL_mesa.so.0 $ML/libGLdispatch.so.0 $ML/libGL.so.1 $ML/libGLX.so.0 $ML/libgbm.so.1 $ML/libepoxy.so.0 usr/lib/x86_64-linux-gnu/
 	for l in $ML/libgallium-*.so; do cp -L "$l" usr/lib/x86_64-linux-gnu/; done
 	cp /usr/share/glvnd/egl_vendor.d/50_mesa.json usr/share/glvnd/egl_vendor.d/
 	cp -a /usr/share/drirc.d/. usr/share/drirc.d/ 2>/dev/null || true

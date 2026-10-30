@@ -3,6 +3,10 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.4.3 (2026-10-30)
+Summary: games and apps that draw with OpenGL through X11, such as Oolite, start again
+- Fixed: apps and games that draw with OpenGL in an X11 window (Oolite among them, and many games made with SDL) stopped as soon as they started, because the display server offered no OpenGL to them ("GLX is not supported"). It now does, with the computer's own graphics driver.
+
 ## 1.4.2 (2026-10-30)
 Summary: Google sign-in works in Oracle again; fixes 1.4.1 starting without its drivers (no Wi-Fi, slow screen) when an older Rudolf OS USB stick with its own files started the computer; the Rudolf OS boot entry works on more computers
 - Fixed: on a computer started through an older Rudolf OS USB stick that keeps its own files, the 1.4.1 update could start with the stick's older system instead of its own. Its drivers were then refused (each release signs its own), so there was no Wi-Fi and the screen was drawn without the graphics card, slowly. The update now starts only with its own system, from whichever drive holds it.

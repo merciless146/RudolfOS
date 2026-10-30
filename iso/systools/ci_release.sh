@@ -99,7 +99,11 @@ SELF=systools/ci_release.sh; [ -r "$SELF" ] || { echo "cannot read $SELF from $(
 for c in sys/*.c; do grep -q "gcc[^#]*$c\b" "$SELF" || { echo "$c is not built by $SELF: add it (base programs) so updates carry it"; exit 1; }; done
 # the Secure Boot certificate, for Settings > Security > Prepare Secure Boot (rudolfd enrolls it through MokManager)
 mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/rudolf-sb.crt
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolfd.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c trusted-keys.txt systools/addnvk.sh VERSION; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+# 1.4.3: the X server is rebuilt when its build changes (xshim.sh, xbuild.sh, the pinned X source commit); before, it
+# came only from full local builds, so GLX (off since 1.1) could not be turned on by an update
+XREV=f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2
+XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolfd.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c trusted-keys.txt systools/addnvk.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -126,6 +130,23 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		for l in $(ldd "$B/$b" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$b needs $l, which the base layer does not have"; exit 1; }; done
 		sudo install -m 0755 "$B/$b" "$W/broot/usr/bin/$b"
 	done
+	# the X server (1.4.3: with GLX), when its build changed
+	if [ "$(cat "$W/broot/usr/lib/xorg/rudolf-xsrc" 2>/dev/null)" != "$XSRC" ]; then
+		systools/xfetch.sh "$XREV"
+		bash xbuild.sh > "$W/xbuild.log" 2>&1 || { tail -40 "$W/xbuild.log"; echo "the X server did not build"; exit 1; }
+		XS=src/xorg/stage
+		# GLX is linked with glvnd's libGL.so.1 and libGLX.so.0 (libGLdispatch.so.0 is there for glamor already)
+		for l in libGL.so.1 libGLX.so.0; do sudo cp -L "/usr/lib/x86_64-linux-gnu/$l" "$W/broot/usr/lib/x86_64-linux-gnu/$l"; done
+		[ -x "$XS/usr/bin/Xorg" ] && [ -f "$XS/usr/lib/xorg/modules/extensions/libglx.so" ] || { echo "the X server build has no Xorg or GLX module"; exit 1; }
+		for f in "$XS/usr/bin/Xorg" $(find "$XS/usr/lib/xorg/modules" -name '*.so'); do
+			for l in $(LD_LIBRARY_PATH="$XS/usr/lib/x86_64-linux-gnu" ldd "$f" | awk '/=>/{print $3}'); do case "$l" in *libxcvt*) continue;; /*) ;; *) echo "$f: a library it needs is missing on the build machine"; exit 1;; esac; [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$f needs $l, which the base layer does not have"; exit 1; }; done
+		done
+		sudo install -m 0755 "$XS/usr/bin/Xorg" "$W/broot/usr/bin/Xorg"
+		sudo rm -rf "$W/broot/usr/lib/xorg/modules"; sudo cp -a "$XS/usr/lib/xorg/modules" "$W/broot/usr/lib/xorg/"
+		sudo cp -a "$XS/usr/lib/x86_64-linux-gnu/"libxcvt.so* "$W/broot/usr/lib/x86_64-linux-gnu/"
+		echo "$XSRC" | sudo tee "$W/broot/usr/lib/xorg/rudolf-xsrc" >/dev/null
+		NOTES+=("X server with GLX")
+	fi
 	sudo cp -a sys/root/. "$W/broot/"
 	# NVK and the Vulkan loader: OpenGL on GeForce 20 series and newer (Zink on NVK) (1.2.3)
 	systools/addnvk.sh "$W/broot"
