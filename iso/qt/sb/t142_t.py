@@ -68,7 +68,7 @@ try:
         time.sleep(4)
     if not up:
         for i in range(3): vm.shot(f'fail{i}'); time.sleep(5)
-    st = sh('for f in slot media persist; do echo "$f=$(cat /etc/rudolf/$f)"; done; echo "who=$(cat /home/rudolf/whoami.txt)"; F=$(findfs LABEL=RUDOLFDATA); echo "first=$F"; mkdir -p /tmp/f; mount -o ro $F /tmp/f 2>/dev/null; echo "firstwho=$(cat /tmp/f/home/rudolf/whoami.txt)"; umount /tmp/f 2>/dev/null; modprobe cfg80211 2>/dev/null; echo "mods=$(grep -c "^cfg80211 " /proc/modules)"; echo "cmd=$(cat /proc/cmdline)"', 30) if up else ''
+    st = sh('for f in slot media persist; do echo "$f=$(cat /etc/rudolf/$f)"; done; echo "who=$(cat /home/rudolf/whoami.txt)"; F=$(findfs LABEL=RUDOLFDATA); echo "first=$F"; if [ "$F" = "$(cat /etc/rudolf/persist)" ]; then echo "firstwho=$(cat /home/rudolf/whoami.txt)"; else mkdir -p /tmp/f; mount -o ro $F /tmp/f 2>/dev/null; echo "firstwho=$(cat /tmp/f/home/rudolf/whoami.txt)"; umount /tmp/f 2>/dev/null; fi; modprobe cfg80211 2>/dev/null; echo "mods=$(grep -c "^cfg80211 " /proc/modules)"; echo "cmd=$(cat /proc/cmdline)"', 30) if up else ''
     kv = dict(l.split('=', 1) for l in st.split('\n') if '=' in l)
     rv = last(sh("grep -o \"RVER='[0-9.]*'\" /usr/share/rudolf/www/index.html | head -1 | tr -dc 0-9.; echo", 90)) if up else ''
     out('start:', ' | '.join(f'{k}={v}' for k, v in kv.items()), '| RVER', rv)
