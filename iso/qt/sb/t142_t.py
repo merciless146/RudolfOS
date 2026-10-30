@@ -25,12 +25,16 @@ mv = lambda d, k: re.search(rf'^{k} (.*)$', man(d), re.M).group(1)
 VER = '.'.join(mv(REL, 'version').split('.')[:3]); PVER = '.'.join(mv(PREV, 'version').split('.')[:3]); DMB = 1500
 
 
-def make_drive(path, who, rel):
-    start = (os.path.getsize(OLD) + 1048575) // 1048576 * 2048
+def make_drive(path, who, rel, image=True):
+    """image=False: RUDOLFDATA only, no disc image in front of it, so the start-up waits for a disc image and finds the
+    stick's (as on the laptop: media /dev/sda1), by which time the stick's RUDOLFDATA is the first one found"""
+    start = (os.path.getsize(OLD) + 1048575) // 1048576 * 2048 if image else 2048
     if os.path.exists(path): os.remove(path)
     with open(path, 'wb') as f:
-        with open(OLD, 'rb') as o: shutil.copyfileobj(o, f)
+        if image:
+            with open(OLD, 'rb') as o: shutil.copyfileobj(o, f)
         f.truncate((start + DMB * 2048 + 2048) * 512)
+        if not image: f.seek(510); f.write(b'\x55\xaa')
     T = os.path.abspath(path + '.tree'); shutil.rmtree(T, ignore_errors=True); os.makedirs(f'{T}/home/rudolf'); os.makedirs(f'{T}/etc')
     open(f'{T}/home/rudolf/whoami.txt', 'w').write(who + '\n'); subprocess.run(['chown', '-R', '1000:1000', f'{T}/home/rudolf'], check=True)
     a = f'{T}/os/system/a'; os.makedirs(a)
@@ -49,7 +53,7 @@ def make_drive(path, who, rel):
 
 
 INT = os.path.abspath('int142.img'); STK = os.path.abspath('stick142.img')
-make_drive(INT, 'internal', REL); make_drive(STK, 'stick', PREV)
+make_drive(INT, 'internal', REL, image=False); make_drive(STK, 'stick', PREV)
 EXTRA = ['-device', 'qemu-xhci,id=xh', '-drive', f'file={STK},format=raw,if=none,id=us', '-device', 'usb-storage,bus=xh.0,drive=us,removable=on',
          '-drive', f'file={INT},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf142',
          '-kernel', f'{REL}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.trying=1 rudolf.debug=1']
