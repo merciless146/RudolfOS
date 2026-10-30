@@ -57,8 +57,8 @@ try:
         time.sleep(3)
     out('display:', mode, '|', last(sh('cat /run/rudolf/display-reason 2>/dev/null; echo', 10)))
     if mode == 'gpu':
-        xl = sh("grep -E 'Initializing extension GLX|GLX: |AIGLX' /run/rudolf/Xorg.log", 20)
-        out('Xorg.log:', xl.strip().replace('\n', ' | ')[:500])
+        xl = sh("grep -iE 'glx|dri|LoadModule|Loading|Failed|undefined' /run/rudolf/Xorg.log | grep -v 'kbd\\|mouse\\|libinput'", 20)
+        out('Xorg.log:', xl.strip().replace('\n', ' | ')[:3000])
         ok('2. Xorg (on the graphics card) offers GLX', 'Initializing extension GLX' in xl, xl[-300:])
         ok('...with an OpenGL provider for the screen (Mesa\'s driver)', re.search(r'GLX: Initialized \w+ GL provider', xl) is not None, xl[-300:])
     else:
