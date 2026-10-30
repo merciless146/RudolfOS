@@ -1,10 +1,12 @@
-# Rudolf OS 1.4.4: cleanup (plan)
+# Rudolf OS 1.4.4: cleanup, and the volume and brightness keys (plan)
 
 A pass over everything Rudolf OS builds and ships, looking for code and files that nothing uses (2026-10-30, on
 1.4.2). The system programs are clean: no unused functions in `iso/sys/*.c` (gcc `-Wunused-function`, and every
 non-static function is called), and every rudolfd API route has a caller (`lsync` is called by the script rudolfd
 injects into the page). What is left is small. 1.4.4 removes it and adds a build check so it does not come back.
-Nothing a person uses changes.
+Nothing a person uses changes by the cleanup. 1.4.4 also makes the volume and brightness keys work (part 2).
+
+# Part 1: cleanup
 
 ## Items
 
@@ -81,7 +83,48 @@ conditions below hold; each is noted in the code where it starts.
   Retire when no supported install can still have boot files older than 1.3 (Get new boot files replaces them).
 - **The software display (Xvfb)**: the display when there is no usable graphics driver; not a leftover.
 
+# Part 2: the volume and brightness keys
+
+On the ASUS Vivobook Go, F1 (mute), F2 and F3 (volume down and up), F4 and F5 (brightness down and up) do nothing.
+Found through the development link (2026-10-30, 1.4.2):
+- **The keys never arrive.** Recording every input device for 40 seconds while they were pressed showed no key
+  events at all. On ASUS laptops these keys are not sent by the keyboard but by the firmware (ACPI WMI events), and
+  the kernel turns them into key presses only with the `asus-nb-wmi` driver, which Rudolf OS's kernel does not have
+  (`kconfig.sh` builds none of the laptop platform drivers; only `mxm-wmi` is there by default). Other makers do the
+  same through their own drivers: Lenovo (`ideapad-laptop`, `thinkpad_acpi`), HP (`hp-wmi`), Dell (`dell-wmi`), Acer
+  (`acer-wmi`).
+- **Nothing would act on them.** `rudolf-display` passes every key below 256 to the X server; the desktop has no
+  handler for the volume keys (XF86AudioRaiseVolume…) or the brightness keys (XF86MonBrightnessUp…).
+- **There is no system volume.** Settings › Volume Controls sets the desktop's own mix (inside the desktop page);
+  apps with their own sound (Flatpak apps such as Oolite, Linux apps) play through the sound server and do not follow
+  it. The sound server's output on the Vivobook: `alsa_output.card1.analog-stereo`, at 100 %.
+- **Brightness can be set already**: rudolfd's `brightness?value=` writes `/sys/class/backlight/amdgpu_bl1`
+  (19005 of 65535, 29 %); only Settings › Display Properties uses it.
+
+## Items
+
+| # | What | Where |
+|---|---|---|
+| 7 | The laptop hotkey drivers, as modules loaded by modalias at start-up (as the graphics and Wi-Fi drivers are): `ASUS_WMI ASUS_NB_WMI IDEAPAD_LAPTOP THINKPAD_ACPI HP_WMI DELL_WMI ACER_WMI` (with what they need: `ACPI_WMI`, `INPUT_SPARSEKMAP`, `LEDS_CLASS`, `HOTPLUG_PCI`, `ACPI_PLATFORM_PROFILE`). `kconfig.sh` checks after `olddefconfig` that each one ended up as a module, so a missing dependency fails the build instead of dropping the driver without a word. The kernel's command line gets `video.brightness_switch_enabled=0`: otherwise the ACPI video driver also changes the brightness by itself on some laptops, and every press would count twice. | `iso/kconfig.sh` |
+| 8 | `/usr/lib/rudolf/hotkey` (new): `hotkey volume up|down|mute`, `hotkey mic mute`, `hotkey brightness up|down`, `hotkey volume get`, `hotkey volume set N`. Volume: the sound server's default output (`pactl` as the desktop user), in 5 % steps, 0-100 % (never above 100 %); up or down also unmutes. Brightness: the first backlight in `/sys/class/backlight`, in 5 % steps of its range, never below 5 % (as rudolfd's `brightness` does). Each change writes the new level to `/run/rudolf/events` (`osd volume 45`, `osd volume muted`, `osd brightness 60`, `osd brightness none` when the screen has no adjustable backlight). | `iso/sys/root/usr/lib/rudolf/hotkey` |
+| 9 | `rudolf-display`: `KEY_MUTE`, `KEY_VOLUMEDOWN`, `KEY_VOLUMEUP`, `KEY_MICMUTE`, `KEY_BRIGHTNESSDOWN`, `KEY_BRIGHTNESSUP` from any device run `hotkey` (in the background, never waiting for it) and are not passed to the X server, so they work the same whether the desktop, a game or a Linux app is in front, and nothing acts on them twice. Held down, they repeat where the device repeats them (a keyboard does; hotkey drivers send single presses). | `iso/sys/rudolf-display.c` |
+| 10 | rudolfd: `GET volume` (level and mute, through `hotkey volume get`) and `POST volume?set=N|mute=0/1`; `GET events/wait` waits (up to 25 s) until `/run/rudolf/events` has something and returns it at once, so the desktop hears of a key press within a moment rather than at its next 2.5-second check. | `iso/sys/rudolfd.c` |
+| 11 | The desktop: a volume or brightness indicator (icon, bar and percentage, near the top of the screen, for 1.5 s) on each `osd` event; the taskbar's volume icon shows the system volume and mute; Settings › Volume Controls gets **System volume** (a slider and Mute, the same as the keys), above the desktop's own mix, which stays for per-app levels; Settings › Display Properties' brightness slider follows the keys. In the browser version of Rudolf OS (no rudolfd) all of this is as before. | `desktop/` (new module `osd31.js`; `settings25.js`, `shell25.js`) |
+
+The indicator shows on the desktop. While a game covers the screen, the keys still work, but it is not shown over
+the game.
+
+## Tests
+
+| Test | What it shows |
+|---|---|
+| host: `hotkey` with a stand-in `pactl` and a stand-in backlight folder | the steps, the limits (0 %, 100 %, never below 5 % brightness), unmute on up and down, the `osd` lines, "no backlight" |
+| new `t144k_t.py` (QEMU) | the volume keys sent as real key presses (QEMU's `volumeup`, `volumedown`, `audiomute`, through the PS/2 keyboard, as a laptop's keyboard or hotkey driver sends them): the sound server's volume and mute change; the indicator appears in the desktop; the keys do not reach X (a test X client sees none). The brightness keys from a test input device (uinput, as `asus-nb-wmi` creates one): with QEMU's screen, which has no backlight, the indicator says so and nothing fails. Settings › Volume Controls › System volume moves with the keys and sets the same level. The kernel has `asus-nb-wmi` and the other drivers as modules |
+| The Vivobook (after release) | Task Manager › Hardware lists "Asus WMI hotkeys"; F1 mutes and unmutes, F2/F3 change the volume of the desktop and of a Flatpak app (Oolite) alike, F4/F5 change the brightness, each with the indicator |
+
 ## Release
 
-Branch `rudolf-1.4.4`, after 1.4.3 is out. Version 1.4.4; the changes list says "Removed unused programs and code;
-nothing you use changes." A beta, the checks above, promote; no disc needed.
+Branch `rudolf-1.4.4`, after 1.4.3 is out. Version 1.4.4. The kernel is rebuilt (item 7), so the release carries a
+new kernel and modules. The changes list: "New: the volume and brightness keys work on laptops (ASUS, Lenovo, HP,
+Dell, Acer), with an on-screen indicator, and Settings › Volume Controls has the system volume. Removed unused
+programs and code." A beta, the checks above, promote; no disc needed.
