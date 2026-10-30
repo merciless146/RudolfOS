@@ -101,6 +101,9 @@ try:
     fwp = fw[fw.find('02010c00'):fw.find('7fff0400') + 8] if '02010c00' in fw and '7fff0400' in fw else 'none'
     ok('...naming the drive itself, as the firmware\'s own entry for it does (PciRoot/Pci/NVMe, no partition or file)', ent.endswith(fwp) and len(fwp) > 20, [ent[:200], fwp])
     mine = m.group(1) if m else ''
+    # 1.4.2: the desktop's Chromium does not tell pages it is controlled by automation (Google's sign-in refuses that)
+    ca = sh('for p in /proc/[0-9]*; do tr "\\000" " " < $p/cmdline 2>/dev/null | grep -q "^/opt/chromium/chrome .*RudolfDesktop" && tr "\\000" " " < $p/cmdline; done | head -1', 30)
+    ok('...the desktop\'s Chromium hides automation from pages (--disable-blink-features=AutomationControlled)', ca.strip() != '' and ('AutomationControlled' in ca or 'remote-debugging-pipe' not in ca), ca[-300:])
     # 3. the next start through that entry; rudolfd writes nothing when all is already so
     out('NOTE before the restart: BootOrder', efi('BootOrder'))
     pre = last(sh(f'tail -c +5 {E}/Boot{mine}-{G} 2>/dev/null | od -An -tx1 -v | tr -d " \\n"', 20)) if mine else ''
