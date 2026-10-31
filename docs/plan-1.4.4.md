@@ -287,7 +287,7 @@ worked again.
 
 | # | What | Where |
 |---|---|---|
-| 33 | **Never earlier than the release.** At start, before anything uses the network, `rudolf-init` sets the clock to the running release's build date when it reads earlier than that (the date is in `/usr/share/rudolf/VERSION`'s release; a clock cannot honestly be older than the system it runs). | `iso/sys/root/sbin/rudolf-init` |
+| 33 | **Never earlier than the release.** At start, before anything uses the network, `rudolf-init` sets the clock to the running release's build date when it reads earlier than that (the date written into the base layer when it is built, `/usr/share/rudolf/released`; a clock cannot honestly be older than the system it runs). | `iso/sys/root/sbin/rudolf-init` |
 | 34 | **From the internet by itself.** rudolfd sets the clock with `ntpd` (pool.ntp.org, then time.google.com) once the network is up after a start, at each `wifi connected` and when a wired link comes up, and every 12 hours; the result goes to the hardware clock (`hwclock -w -u`). An HTTPS failure about a certificate while the clock is more than a day off what the time servers say is retried after the sync. | `iso/sys/rudolfd.c` |
 | 35 | **The button stays**, in System Settings › Date, time and language › Clock (part 4), with the last automatic sync shown next to it ("set from the internet at 18:59"). | `desktop/` |
 
