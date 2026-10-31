@@ -1,4 +1,4 @@
-# Rudolf OS 1.4.4: cleanup, the volume and brightness keys, the network indicator, the Settings layout, the screen saver, the taskbar and power saving (plan)
+# Rudolf OS 1.4.4: cleanup, the volume and brightness keys, the network indicator, the Settings layout, the screen saver, the taskbar and power saving, and the clock (plan)
 
 A pass over everything Rudolf OS builds and ships, looking for code and files that nothing uses (2026-10-30, on
 1.4.2). The system programs are clean: no unused functions in `iso/sys/*.c` (gcc `-Wunused-function`, and every
@@ -276,6 +276,27 @@ Power and battery:
 | t144k (QEMU) | QEMU's machine has no battery or lid: `power/status` says so and no battery icon shows; the power button through QEMU's ACPI power button (`system_powerdown`): Ask shows the Shut down dialog, Sleep sleeps the machine and a key wakes it; the screen off after 1 minute (rudolf-display's DPMS state) and on again at a key; the power mode where the machine has no platform profile shows greyed out with the reason |
 | The Vivobook (after release) | the battery icon (45 %, charging) and no -1 % one; the three power modes (platform profile and energy preference read back); battery saver at 20 % (on battery); the screen off after a minute; closing the lid sleeps and opening it wakes; charging stops at 80 % with Battery care on; the taskbar and the calendar show the same time |
 
+# Part 7: the clock sets itself
+
+Found on the Vivobook (2026-10-30, 1.4.2): its clock had gone back to 2016-01-01 (the hardware clock reset, most
+likely when the battery ran flat). Every HTTPS connection then failed ("SSL peer certificate or SSH remote key was not
+OK", since no certificate is valid in 2016): updates could not be checked and the development link could not switch
+on. Rudolf OS sets the clock from the internet only when someone presses Settings › Network Settings › Clock › Set
+the clock from the internet (rudolfd `time/sync`, BusyBox `ntpd`, which needs no certificates); it did, and all
+worked again.
+
+| # | What | Where |
+|---|---|---|
+| 33 | **Never earlier than the release.** At start, before anything uses the network, `rudolf-init` sets the clock to the running release's build date when it reads earlier than that (the date is in `/usr/share/rudolf/VERSION`'s release; a clock cannot honestly be older than the system it runs). | `iso/sys/root/sbin/rudolf-init` |
+| 34 | **From the internet by itself.** rudolfd sets the clock with `ntpd` (pool.ntp.org, then time.google.com) once the network is up after a start, at each `wifi connected` and when a wired link comes up, and every 12 hours; the result goes to the hardware clock (`hwclock -w -u`). An HTTPS failure about a certificate while the clock is more than a day off what the time servers say is retried after the sync. | `iso/sys/rudolfd.c` |
+| 35 | **The button stays**, in System Settings › Date, time and language › Clock (part 4), with the last automatic sync shown next to it ("set from the internet at 18:59"). | `desktop/` |
+
+Tests: host, `rudolf-init`'s floor with a stand-in clock (earlier: set to the release date; later: left alone);
+t144k (QEMU) starts with the machine's clock set to 2016 (`-rtc base=2016-01-01`): after the start the clock is at
+least the release date; QEMU has no internet, so the time servers do not answer and that is logged, not failed. On
+the Vivobook: the clock after a start with the hardware clock wrong (set back in the BIOS), and the update check
+right after.
+
 ## Release
 
 Branch `rudolf-1.4.4`, after 1.4.3 is out. Version 1.4.4. The kernel is rebuilt (item 7), so the release carries a
@@ -283,6 +304,7 @@ new kernel and modules. The changes list: "New: the volume and brightness keys w
 Dell, Acer), with an on-screen indicator, and Settings › Volume Controls has the system volume. Fixed: the taskbar
 said Ethernet was connected on computers using Wi-Fi. New: eight screen savers, drawn by the processor, set in
 Display Properties › Screen saver. Changed: Settings is reorganised (each page and what moved). Fixed: the
-calendar showed another time than the taskbar. New: the battery and brightness on the taskbar; power modes, battery
+calendar showed another time than the taskbar. Fixed: the clock now sets itself from the internet, and never falls back before the release (a reset clock
+broke updates). New: the battery and brightness on the taskbar; power modes, battery
 saver, screen off, the lid and the power button, and battery care in System Settings › Power and battery. Removed unused
 programs and code." A beta, the checks above, promote; no disc needed.
