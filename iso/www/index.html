@@ -3482,12 +3482,12 @@ function netLoadCfg(){const v=ld(NETK,null),d=netClone(NETD);if(v&&typeof v=='ob
 let NETC=netLoadCfg(),NETW=null;const NETST={state:NETC.active?'connected':'off',inet:null,msg:''};
 const netSave=()=>svj(NETK,NETC);
 const netConn=id=>NETC.conns.find(c=>c.id===id);
-const netUp=()=>!!(NETC.active&&netConn(NETC.active)&&NETST.state=='connected'&&navigator.onLine!==false);
+const netUp=()=>window.__net31?window.__net31.up&&navigator.onLine!==false:!!(NETC.active&&netConn(NETC.active)&&NETST.state=='connected'&&navigator.onLine!==false);
 const netOnline=()=>netUp()&&NETST.inet!==false;
 /* --- indicator --- */
 const NETIC={wifi:"<path d='M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0' stroke='C' stroke-width='2' stroke-linecap='round' fill='none'/><circle cx='12' cy='19.5' r='1.7' fill='C'/>",
  wired:"<rect x='6' y='3' width='12' height='9' rx='1.5' stroke='C' stroke-width='2' fill='none'/><path d='M9 12v3h6v-3M12 15v5M9 7v2M12 7v2M15 7v2' stroke='C' stroke-width='2' stroke-linecap='round' fill='none'/>"};
-function netUpd(){const B=$('#net');if(!B)return;const a=netConn(NETC.active),type=a?a.type:(NETC.conns.some(c=>c.type=='wifi')||!NETC.conns.length?'wifi':'wired');
+function netUpd(){if(window.__net31)return net31Upd();const B=$('#net');if(!B)return;const a=netConn(NETC.active),type=a?a.type:(NETC.conns.some(c=>c.type=='wifi')||!NETC.conns.length?'wifi':'wired');
  let st='off',txt='Not connected to a network';
  if(a&&NETST.state=='connecting'){st='busy';txt='Connecting to '+a.name+'…'}
  else if(netUp()){if(NETST.inet===false){st='limited';txt=a.name+' — connected, no internet access detected'}else{st='on';txt=a.name+' — connected'+(a.type=='wifi'&&a.ssid?' ('+a.ssid+')':'')}}
@@ -3510,7 +3510,7 @@ function netPopFill(p){const a=netConn(NETC.active);p.querySelector('.nps').text
  const L=p.querySelector('.npl');L.innerHTML='';NETC.conns.forEach(c=>{const r=document.createElement('div');r.className='npr'+(c.id===NETC.active?' on':'');r.innerHTML="<span></span><b></b><i></i>";r.children[0].textContent=c.type=='wifi'?'📶':'🔌';r.children[1].textContent=c.name;r.children[2].textContent=c.id===NETC.active?(NETST.state=='connecting'?'Connecting…':'Connected'):'';
   r.onclick=()=>{c.id===NETC.active?netDisconnect():netConnect(c.id)};L.appendChild(r)});
  if(!NETC.conns.length)L.innerHTML="<div style='color:#6b7280'>No saved connections.</div>"}
-function netPop(){const old=document.querySelector('.np');if(old){old.remove();return}const B=$('#net'),p=document.createElement('div');p.className='np';p.style.width='250px';
+function netPop(){if(window.__net31)return net31Pop();const old=document.querySelector('.np');if(old){old.remove();return}const B=$('#net'),p=document.createElement('div');p.className='np';p.style.width='250px';
  p.innerHTML=`<div style='font-weight:700;margin-bottom:2px'>Network</div><div class='nps' style='color:#4b5563;margin-bottom:6px'></div><div class='npl'></div><div style='margin-top:8px;display:flex;gap:6px;justify-content:space-between'><button class='npd'>Disconnect</button><button class='npo'>Network Settings…</button></div><div style='color:#6b7280;margin-top:6px;font-size:11px'>Click a connection to connect or disconnect.</div>`;
  document.body.appendChild(p);netPopFill(p);const r=B.getBoundingClientRect(),b=document.body.className;let x=r.left+r.width/2-p.offsetWidth/2,y=r.top-p.offsetHeight-8;
  if(/top/.test(b))y=r.bottom+8;if(/left/.test(b)){x=r.right+8;y=r.top}if(/right/.test(b)){x=r.left-p.offsetWidth-8;y=r.top}
@@ -5839,7 +5839,7 @@ function qsToggle(){if($('#qsp'))return qsClose();const n=$('#ncp');n&&n.remove(
  const qv=p.querySelector('.qv'),qvv=p.querySelector('.qvv');qv.value=m.on?m.vol:0;qvv.textContent=qv.value+'%';qv.oninput=()=>{m.vol=+qv.value;m.on=m.vol>0;qvv.textContent=qv.value+'%';trayVol()};
  const info=p.querySelector('.qsinfo');
  (async()=>{const bits=[];try{if(RD){const s=await rd('stats');const b=(s.battery||[]).find(x=>x.type=='Battery');if(b)bits.push(`🔋 ${b.capacity}% ${b.status}`);if(s.brightness!=null&&s.brightness>=0){const r=p.querySelector('.qbl');r.style.display='';const qb=p.querySelector('.qb');qb.value=s.brightness;qb.onchange=()=>rdPost('brightness?value='+qb.value).catch(e=>notify(e.message,''))}
-   const n=await rd('net');const up=n.interfaces.filter(i=>i.ip);bits.push(up.length?'🌐 '+up.map(i=>i.name+' '+i.ip).join(', '):'🌐 Not connected')}
+   const n=await rd('net');const up=n.interfaces.filter(i=>i.ip&&!i.virtual);bits.push(up.length?'🌐 '+up.map(i=>i.name+' '+i.ip).join(', '):'🌐 Not connected')}
   else{if(navigator.getBattery){const b=await navigator.getBattery();bits.push(`🔋 ${Math.round(b.level*100)}%${b.charging?' charging':''}`)}bits.push(navigator.onLine?'🌐 Online':'🌐 Offline')}}catch(e){}info.textContent=bits.join('   ')})();
  p.querySelector('.qlock').onclick=()=>{qsClose();lockScreen()};p.querySelector('.qset').onclick=()=>{qsClose();settings()};p.querySelector('.qoff').onclick=()=>{qsClose();A.off()};
  document.body.appendChild(p);flyClose(p,QSB)}
@@ -7156,8 +7156,8 @@ function aboutPanel(c){c.innerHTML=`<h3>About</h3><div style='display:flex;gap:1
  const d=sp(c,`<h4 class='sh4'>Wi-Fi</h4><div class='wf'></div><h4 class='sh4'>Network hardware</h4><table class='tmt nh'><tbody></tbody></table><div class='msg ng'></div><h4 class='sh4'>Manual address</h4><div class='r2'><label>Interface</label><select class='nif'></select><label>Address/prefix</label><input class='nad' placeholder='192.168.1.50/24'><label>Gateway</label><input class='ngw' placeholder='192.168.1.1'><label>DNS server</label><input class='ndn' placeholder='1.1.1.1'></div><div class='rmrow' style='justify-content:flex-start'><button class='nst'>Apply manual address</button><button class='ndh'>Use automatic (DHCP)</button></div>
  <h4 class='sh4'>Proxy</h4><div class='r2'><label>Proxy server</label><input class='npx' placeholder='host:port (empty = none)'></div><button class='npa'>Save proxy</button><h4 class='sh4'>Clock</h4><button class='nts'>Set the clock from the internet</button>`);
  /* the installed system controls the real hardware: the simulated connection list and form above are hidden, and these real settings come first */
- {let hide=false;[...c.children].forEach(e=>{if(e===d)return;if(e.classList&&(e.classList.contains('lockbar')||e.classList.contains('stat')))hide=true;if(e.tagName=='H4'&&/Web search/.test(e.textContent))hide=false;if(hide)e.style.display='none'});const h=c.querySelector('h3');if(h)h.after(d)}
- const q=s=>d.querySelector(s);const load=async()=>{try{const n=await rd('net');const tb=q('.nh tbody');tb.innerHTML='';n.interfaces.forEach(i=>{const r=tb.insertRow();r.insertCell().textContent=(i.wireless?'📶 ':'🔌 ')+i.name;r.insertCell().textContent=i.state;r.insertCell().textContent=i.ip||'no address';r.insertCell().textContent='↓'+fmtB(i.rx)+' ↑'+fmtB(i.tx)});q('.ng').textContent=`Gateway ${n.gateway||'—'} · DNS ${n.dns||'—'}`;q('.nif').innerHTML=n.interfaces.map(i=>optH(i.name,i.name,'')).join('');
+ {let hide=false;[...c.children].forEach(e=>{if(e===d)return;if(e.classList&&(e.classList.contains('lockbar')||e.classList.contains('stat')))hide=true;if(e.tagName=='H4'&&/Web search/.test(e.textContent))hide=false;if(hide)e.style.display='none'});const h=c.querySelector('h3');if(h)h.after(d);d.insertAdjacentHTML('beforeend',`<div class='msg nsim' style='color:#6b7280;margin-top:10px'>The saved "Connections" and "Add a connection" of the browser version are not shown here: on this computer, Wi-Fi and Manual address above set up the real network.</div>`)}
+ const q=s=>d.querySelector(s);const load=async()=>{try{const n=await rd('net');const tb=q('.nh tbody');tb.innerHTML='';n.interfaces.filter(i=>!i.virtual).forEach(i=>{const r=tb.insertRow();r.insertCell().textContent=(i.wireless?'📶 ':'🔌 ')+i.name;r.insertCell().textContent=i.state;r.insertCell().textContent=i.ip||'no address';r.insertCell().textContent='↓'+fmtB(i.rx)+' ↑'+fmtB(i.tx)});q('.ng').textContent=`Gateway ${n.gateway||'—'} · DNS ${n.dns||'—'}`;q('.nif').innerHTML=n.interfaces.filter(i=>!i.virtual).map(i=>optH(i.name,i.name,'')).join('');
   const wl=n.interfaces.filter(i=>i.wireless);const wf=q('.wf');if(!wl.length)wf.innerHTML='<div class="msg">No Wi-Fi adapter was found. If your computer has one, it may need a driver Rudolf OS does not include yet (a USB Wi-Fi adapter with a Realtek, MediaTek or Intel chip usually works). Or use a network cable.</div>';else if(!n.wifiTools)wf.innerHTML='<div class="msg">A Wi-Fi adapter was found, but this system has no Wi-Fi tools. Update Rudolf OS, or use a network cable.</div>';
   else if(!wf.querySelector('.wfcur'))wifiPanel(wf,'')}catch(e){q('.ng').textContent=e.message}};load();
  q('.nst').onclick=()=>rdPost(`net/static?if=${q('.nif').value}&addr=${encodeURIComponent(q('.nad').value)}&gw=${encodeURIComponent(q('.ngw').value)}&dns=${encodeURIComponent(q('.ndn').value)}`).then(r=>{notify('Network',r.message);load()}).catch(e=>notify('Network',e.message,{kind:'error'}));
@@ -10254,7 +10254,7 @@ function taskmgr26() {
         const s = await rd('stats'); L.cpu = s.cpu; L.mem = s.memTotal - s.memAvailable; L.memT = s.memTotal; L.temp = s.tempC; L.bat = s.battery;
         if (tab == 'apps' || tab == 'procs') procs = await rd('processes');
         if (tab == 'perf') {
-          const n = await rd('net'); const now = performance.now(), tot = n.interfaces.filter(i => i.name != 'lo' && !/^ifb/.test(i.name)).reduce((a, i) => a + i.rx + i.tx, 0);
+          const n = await rd('net'); const now = performance.now(), tot = n.interfaces.filter(i => i.name != 'lo' && !i.virtual).reduce((a, i) => a + i.rx + i.tx, 0);
           L.net = netPrev ? Math.max(0, (tot - netPrev.b) / ((now - netPrev.t) / 1000)) : 0; netPrev = {b: tot, t: now};
         }
       } else { L.cpu = Math.min(100, (window.__lagAvg || 0) / 5 * 10); if (performance.memory) { L.mem = performance.memory.usedJSHeapSize; L.memT = performance.memory.jsHeapSizeLimit } }
@@ -11503,6 +11503,43 @@ if(RD){
   V.insertAdjacentElement('afterend',briBtn);briBtn.onclick=briPop;
   briBtn.addEventListener('wheel',e=>{e.preventDefault();rdPost('brightness/step?d='+(e.deltaY<0?'up':'down')).then(j=>{SV.bl=j.brightness;briUpd()}).catch(()=>{})},{passive:false});
   briGet()}).catch(()=>{})}
+
+/* ===== 1.4.4 (net31): the taskbar's network icon on installed Rudolf OS shows the real network (rudolfd's net): the
+   interface with the default route decides, Wi-Fi with its network name and signal, wired with its speed. Before,
+   it showed the browser version's simulated "Ethernet" connection, also on a laptop on Wi-Fi without an Ethernet port.
+   The browser version keeps the simulation. ===== */
+let N31={ifs:[],cur:null};   // the real adapters (no virtual ones), the one carrying the default route (or the first one with an address)
+function net31Pick(n){const ifs=(n.interfaces||[]).filter(i=>!i.virtual);let cur=ifs.find(i=>i.default&&i.ip)||ifs.find(i=>i.ip&&i.state=='up')||null;return{ifs,cur}}
+function net31Desc(i){if(!i)return'';if(i.wireless)return'Wi-Fi — connected'+(i.ssid?' ('+(typeof wfDecode=='function'?wfDecode(i.ssid):i.ssid)+')':'');
+ return'Ethernet — connected ('+i.name+(i.speed>0?', '+(i.speed>=1000?i.speed/1000+' Gb/s':i.speed+' Mb/s'):'')+')'}
+const net31Bars=r=>r==null?3:r>=-60?3:r>=-70?2:1;
+async function net31Poll(){if(!RD)return;let n;try{n=await rd('net')}catch(e){return}const was=window.__net31&&window.__net31.up,o=net31Pick(n);N31=o;
+ window.__net31={up:!!o.cur};netUpd();if(o.cur&&!was)netProbe();else if(!o.cur)NETST.inet=null}
+/* the icon (netUpd hands over to this once the real network is known) */
+function net31Upd(){const B=$('#net');if(!B)return;const i=N31.cur,type=i?(i.wireless?'wifi':'wired'):N31.ifs.some(x=>x.wireless)||!N31.ifs.length?'wifi':'wired';
+ let st='off',txt='Not connected';
+ if(i&&navigator.onLine!==false){if(NETST.inet===false){st='limited';txt=net31Desc(i).replace(' — connected',' — connected, no internet access detected')}else{st='on';txt=net31Desc(i)}}
+ else if(i){txt='The device is offline'}
+ const col=st=='on'?'#34d399':st=='limited'?'#fbbf24':'#9ca3af',dim='#4b5563';
+ let svg;
+ if(type=='wifi'){const b=st=='off'?3:net31Bars(i&&i.rssi),arc=['M8.5 16a5 5 0 0 1 7 0','M5 12.5a10 10 0 0 1 14 0','M2 9a15 15 0 0 1 20 0'];
+  svg=arc.map((d,k)=>`<path d='${d}' stroke='${k<b?col:dim}' stroke-width='2' stroke-linecap='round' fill='none'/>`).join('')+`<circle cx='12' cy='19.5' r='1.7' fill='${col}'/>`}
+ else svg=NETIC.wired.replace(/C/g,col);
+ B.innerHTML=`<svg width='22' height='22' viewBox='0 0 24 24'>${svg}${st=='off'?"<path d='M3 3l18 18' stroke='#ef4444' stroke-width='2.4' stroke-linecap='round'/>":''}${st=='limited'?"<circle cx='19' cy='5' r='4.2' fill='#f59e0b'/><path d='M19 3v2.6' stroke='#111' stroke-width='1.6' stroke-linecap='round'/><circle cx='19' cy='7.2' r='.9' fill='#111'/>":''}</svg>`;
+ B.title=txt+(i&&i.wireless&&i.rssi!=null?' · signal '+['weak','fair','good'][net31Bars(i.rssi)-1]:'');B.setAttribute('aria-label',B.title);B.dataset.st=st;B.dataset.type=type;
+ const p=document.querySelector('.np31');if(p)net31Fill(p)}
+/* the popup: the real adapters */
+function net31Fill(p){const i=N31.cur;p.querySelector('.nps').textContent=i?(NETST.inet===false?'Connected — no internet access detected':'Connected'):'Not connected';
+ const L=p.querySelector('.npl');L.innerHTML='';
+ N31.ifs.forEach(a=>{const r=document.createElement('div');r.className='npr'+(a===i?' on':'');r.style.cursor='default';r.innerHTML="<span></span><b></b><i></i>";
+  r.children[0].textContent=a.wireless?'📶':'🔌';r.children[1].textContent=a.wireless?'Wi-Fi'+(a.ssid&&a.ip?' · '+(typeof wfDecode=='function'?wfDecode(a.ssid):a.ssid):''):'Ethernet ('+a.name+')';
+  r.children[2].textContent=a.ip?'Connected':a.state=='up'?'No address':a.wireless?'Not connected':'No cable';L.appendChild(r)});
+ if(!N31.ifs.length)L.innerHTML="<div style='color:#6b7280'>No network adapter was found.</div>"}
+function net31Pop(){const old=document.querySelector('.np');if(old){old.remove();return}const B=$('#net'),p=document.createElement('div');p.className='np np31';p.style.width='260px';
+ p.innerHTML=`<div style='font-weight:700;margin-bottom:2px'>Network</div><div class='nps' style='color:#4b5563;margin-bottom:6px'></div><div class='npl'></div><div style='margin-top:8px;display:flex;gap:6px;justify-content:flex-end'><button class='npo'>Network Settings…</button></div>`;
+ document.body.appendChild(p);net31Fill(p);flyPlace(p,B);p.querySelector('.npo').onclick=()=>{p.remove();settings('net')};net31Poll()}
+if(RD){net31Poll();setInterval(()=>{if(!document.hidden)net31Poll()},10000);
+ evOn(t=>{if(/^wifi (dis)?connected/m.test(t))net31Poll()});addEventListener('online',net31Poll);addEventListener('offline',net31Poll)}
 
 (function(){const d=document.createElement('div');d.className='ic tr';d.innerHTML='<b>🗑️</b><span>Trash</span>';let t=0;
  d.onclick=()=>{document.querySelectorAll('.ic').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');if((Date.now()-t<(window.__mouse?dblMs():450)||window.__mouse&&S.msingle))trash();t=Date.now()};

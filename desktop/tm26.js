@@ -59,7 +59,7 @@ function taskmgr26() {
         const s = await rd('stats'); L.cpu = s.cpu; L.mem = s.memTotal - s.memAvailable; L.memT = s.memTotal; L.temp = s.tempC; L.bat = s.battery;
         if (tab == 'apps' || tab == 'procs') procs = await rd('processes');
         if (tab == 'perf') {
-          const n = await rd('net'); const now = performance.now(), tot = n.interfaces.filter(i => i.name != 'lo' && !/^ifb/.test(i.name)).reduce((a, i) => a + i.rx + i.tx, 0);
+          const n = await rd('net'); const now = performance.now(), tot = n.interfaces.filter(i => i.name != 'lo' && !i.virtual).reduce((a, i) => a + i.rx + i.tx, 0);
           L.net = netPrev ? Math.max(0, (tot - netPrev.b) / ((now - netPrev.t) / 1000)) : 0; netPrev = {b: tot, t: now};
         }
       } else { L.cpu = Math.min(100, (window.__lagAvg || 0) / 5 * 10); if (performance.memory) { L.mem = performance.memory.usedJSHeapSize; L.memT = performance.memory.jsHeapSizeLimit } }

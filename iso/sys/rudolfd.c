@@ -504,6 +504,9 @@ static void api_stats(struct req *r)
 static void api_net(struct req *r)
 {
 	str s = {0};
+	/* 1.4.4: which interface carries the default route, which ones are virtual (no device: tunnels, bridges, VPNs),
+	   a wired link's speed, a connected Wi-Fi adapter's network name and signal (the taskbar's network icon) */
+	char *defif = run_out("ip route 2>/dev/null | awk '/^default/{for(i=1;i<NF;i++)if($i==\"dev\"){print $(i+1);exit}}'"); trim(defif);
 	sadd(&s, "{\"ok\":true,\"interfaces\":[");
 	DIR *d = opendir("/sys/class/net");
 	struct dirent *e;
@@ -528,7 +531,21 @@ static void api_net(struct req *r)
 		sadd(&s, ",\"state\":"); sjson(&s, st ? st : "");
 		sadd(&s, ",\"mac\":"); sjson(&s, mac ? mac : "");
 		sadd(&s, ",\"ip\":"); sjson(&s, ip);
-		sadd(&s, ",\"wireless\":%s,\"rx\":%lld,\"tx\":%lld}", wifi ? "true" : "false", rx, tx);
+		sadd(&s, ",\"wireless\":%s,\"rx\":%lld,\"tx\":%lld", wifi ? "true" : "false", rx, tx);
+		snprintf(p, sizeof p, "/sys/class/net/%s/device", e->d_name);
+		sadd(&s, ",\"virtual\":%s,\"default\":%s", access(p, F_OK) ? "true" : "false", !strcmp(defif, e->d_name) ? "true" : "false");
+		snprintf(p, sizeof p, "/sys/class/net/%s/speed", e->d_name);
+		if (!wifi) sadd(&s, ",\"speed\":%lld", st && !strcmp(st, "up") ? read_ll(p, -1) : -1LL);
+		if (wifi && st && !strcmp(st, "up") && safe_word(e->d_name, 16)) {
+			snprintf(cmd, sizeof cmd, "wpa_cli -p /run/rudolf/wpa -i %s status 2>/dev/null | sed -n 's/^ssid=//p' | head -1", e->d_name);
+			char *ss = run_out(cmd); trim(ss);
+			snprintf(cmd, sizeof cmd, "wpa_cli -p /run/rudolf/wpa -i %s signal_poll 2>/dev/null | sed -n 's/^RSSI=//p' | head -1", e->d_name);
+			char *rs = run_out(cmd); trim(rs);
+			sadd(&s, ",\"ssid\":"); sjson(&s, ss);
+			if (*rs && strspn(rs, "-0123456789") == strlen(rs)) sadd(&s, ",\"rssi\":%s", rs);
+			free(ss); free(rs);
+		}
+		sadd(&s, "}");
 		free(st); free(mac); free(ip);
 		first = 0;
 	}
@@ -538,7 +555,7 @@ static void api_net(struct req *r)
 	sadd(&s, "],\"gateway\":"); sjson(&s, gw);
 	sadd(&s, ",\"dns\":"); sjson(&s, dns);
 	sadd(&s, ",\"wifiTools\":%s}", access("/usr/sbin/wpa_supplicant", X_OK) ? "false" : "true");
-	free(gw); free(dns);
+	free(gw); free(dns); free(defif);
 	reply_json(r->fd, &s);
 }
 
@@ -1781,7 +1798,8 @@ static void api_system(struct req *r)
 	jtext(&s, "audio", slurp("/proc/asound/cards", NULL));
 	jtext(&s, "input", run_out("sed -n 's/^N: Name=\"\\(.*\\)\"$/\\1/p' /proc/bus/input/devices 2>/dev/null"));
 	/* network adapters: name, state, speed (Mb/s), bytes received, bytes sent, kind, driver (1.2.4) */
-	jtext(&s, "net", run_out("for d in /sys/class/net/*; do n=${d##*/}; [ $n = lo ] && continue; dr=$(readlink $d/device/driver 2>/dev/null); echo \"$n $(cat $d/operstate 2>/dev/null) $(cat $d/speed 2>/dev/null || echo -) $(cat $d/statistics/rx_bytes) $(cat $d/statistics/tx_bytes) $([ -d $d/wireless ] && echo wifi || echo wired) ${dr##*/}\"; done"));
+	/* 1.4.4: network hardware only: virtual interfaces (no device: tunnels such as sit0, bridges, VPNs) are left out */
+	jtext(&s, "net", run_out("for d in /sys/class/net/*; do n=${d##*/}; [ $n = lo ] && continue; [ -e $d/device ] || continue; dr=$(readlink $d/device/driver 2>/dev/null); echo \"$n $(cat $d/operstate 2>/dev/null) $(cat $d/speed 2>/dev/null || echo -) $(cat $d/statistics/rx_bytes) $(cat $d/statistics/tx_bytes) $([ -d $d/wireless ] && echo wifi || echo wired) ${dr##*/}\"; done"));
 	/* storage: device, size, used, where (bytes) */
 	jtext(&s, "storage", run_out("df -kP 2>/dev/null | awk 'NR>1 && $1 ~ /^\\/dev\\//{print $1, $2*1024, $3*1024, $6}'"));
 	{

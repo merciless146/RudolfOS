@@ -187,7 +187,7 @@ function qsToggle(){if($('#qsp'))return qsClose();const n=$('#ncp');n&&n.remove(
  const qv=p.querySelector('.qv'),qvv=p.querySelector('.qvv');qv.value=m.on?m.vol:0;qvv.textContent=qv.value+'%';qv.oninput=()=>{m.vol=+qv.value;m.on=m.vol>0;qvv.textContent=qv.value+'%';trayVol()};
  const info=p.querySelector('.qsinfo');
  (async()=>{const bits=[];try{if(RD){const s=await rd('stats');const b=(s.battery||[]).find(x=>x.type=='Battery');if(b)bits.push(`🔋 ${b.capacity}% ${b.status}`);if(s.brightness!=null&&s.brightness>=0){const r=p.querySelector('.qbl');r.style.display='';const qb=p.querySelector('.qb');qb.value=s.brightness;qb.onchange=()=>rdPost('brightness?value='+qb.value).catch(e=>notify(e.message,''))}
-   const n=await rd('net');const up=n.interfaces.filter(i=>i.ip);bits.push(up.length?'🌐 '+up.map(i=>i.name+' '+i.ip).join(', '):'🌐 Not connected')}
+   const n=await rd('net');const up=n.interfaces.filter(i=>i.ip&&!i.virtual);bits.push(up.length?'🌐 '+up.map(i=>i.name+' '+i.ip).join(', '):'🌐 Not connected')}
   else{if(navigator.getBattery){const b=await navigator.getBattery();bits.push(`🔋 ${Math.round(b.level*100)}%${b.charging?' charging':''}`)}bits.push(navigator.onLine?'🌐 Online':'🌐 Offline')}}catch(e){}info.textContent=bits.join('   ')})();
  p.querySelector('.qlock').onclick=()=>{qsClose();lockScreen()};p.querySelector('.qset').onclick=()=>{qsClose();settings()};p.querySelector('.qoff').onclick=()=>{qsClose();A.off()};
  document.body.appendChild(p);flyClose(p,QSB)}
