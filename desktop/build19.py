@@ -9,7 +9,7 @@ L=lambda f:open(os.path.join(here,f)).read()
 pinyin=open(os.path.join(here,'../libs/pinyin.min.json')).read()
 od=base64.b64encode(open(os.path.join(here,'../libs/od/compiled/OpenDyslexic-Regular.woff2'),'rb').read()).decode()
 odb=base64.b64encode(open(os.path.join(here,'../libs/od/compiled/OpenDyslexic-Bold.woff2'),'rb').read()).decode()
-mods=['core25.js','shell25.js','files25.js','apps25a.js','apps25b.js','a11y25.js','settings25.js','notey25.js','wp25.js','misc25.js','native25.js','props25.js','oext25.js','pkg25.js','sysupd25.js','tts25.js','print25.js','mail25.js','web25.js','linux26.js','wifi26.js','term26.js','emusnes26.js','emu26.js','blk2lua26.js','blitzpacks26.js','blitzen26.js','picker26.js','devices26.js','signin26.js','display26.js','shell26.js','tabs26.js','tm26.js','dl27.js','sb28.js','keep29.js','luau30.js','apps30.js','games30.js','boot30.js','stick30.js','hwcheck30.js','devlink40.js','osd31.js','net31.js']
+mods=['core25.js','shell25.js','files25.js','apps25a.js','apps25b.js','a11y25.js','settings25.js','notey25.js','wp25.js','misc25.js','native25.js','props25.js','oext25.js','pkg25.js','sysupd25.js','tts25.js','print25.js','mail25.js','web25.js','linux26.js','wifi26.js','term26.js','emusnes26.js','emu26.js','blk2lua26.js','blitzpacks26.js','blitzen26.js','picker26.js','devices26.js','signin26.js','display26.js','shell26.js','tabs26.js','tm26.js','dl27.js','sb28.js','keep29.js','luau30.js','apps30.js','games30.js','boot30.js','stick30.js','hwcheck30.js','devlink40.js','osd31.js','net31.js','settings31.js']
 if os.path.exists(os.path.join(here,'i18n25.js')):mods.append('i18n25.js')
 # 1.4.0: a top-level function defined in two modules replaces the earlier one without a word (the development
 # link's dlPoll replaced the downloads' dlPoll, so downloads from real tabs never finished): stop the build instead
@@ -39,9 +39,6 @@ rep(".map(a=>({n:String(a.n),h:a.h,r:a.r==='admin'?'admin':'user'}))",".map(a=>(
 rep("localStorage.setItem('bd95cells',","localStorage.setItem(cellKey(),",2)
 # pen pressure in Paint
 rep("x.lineWidth=sz;x.lineCap=x.lineJoin='round';x.beginPath();x.moveTo(lx,ly)","x.lineWidth=e.pointerType=='pen'&&e.pressure?Math.max(1,sz*e.pressure*2):sz;x.lineCap=x.lineJoin='round';x.beginPath();x.moveTo(lx,ly)")
-# natural scrolling and horizontal speed
-rep("document.addEventListener('wheel',e=>{if(e.defaultPrevented||e.ctrlKey)return;const f=scrF();if(Math.abs(f-1)<0.05)return;","document.addEventListener('wheel',e=>{if(e.defaultPrevented||e.ctrlKey)return;const f=scrF(),nat=S.natscroll?-1:1,hf=Math.pow(2,((+S.hscroll||5)-5)/2.5);if(Math.abs(f-1)<0.05&&nat==1&&Math.abs(hf-1)<0.05)return;")
-rep("el.scrollBy({left:e.deltaX*k*f,top:e.deltaY*k*f})","el.scrollBy({left:e.deltaX*k*f*hf*nat,top:e.deltaY*k*f*nat})")
 # Notepad gets its own icon (spiral notepad and pencil)
 rep("win('Notepad','📝'","win('Notepad','🗒️'")
 rep("['📝','Notepad',notepad]","['🗒️','Notepad',notepad]")
@@ -60,11 +57,16 @@ rep("$('#vol').addEventListener('wheel',e=>{e.preventDefault();const m=S.snd.mas
 rep("const m=S.snd&&S.snd.master;cmenu(e.clientX,e.clientY,[[m&&m.on?'Mute':'Unmute',","if(RD&&SV.v!=null){cmenu(e.clientX,e.clientY,[[SV.m?'Unmute':'Mute',()=>sysVolSet({muted:SV.m?0:1})],['Volume controls…',()=>settings('vol')]],{title:'Sound'});return}const m=S.snd&&S.snd.master;cmenu(e.clientX,e.clientY,[[m&&m.on?'Mute':'Unmute',")
 rep("secFooter(c,W,'vol',()=>W.show('vol',1))}","sysVolPanel(c);secFooter(c,W,'vol',()=>W.show('vol',1))}")
 rep("function dispPanelS(c,W){dispPanel0(c);","function dispPanelS(c,W){dispPanel0(c);briPanel(c);",2)
+rep("The master volume scales all of them.","${RD?'“All desktop sounds” scales all of them, inside the system volume.':'The master volume scales all of them.'}",2)
 rep("<div class='vr2 vm'><label><input type='checkbox' data-k='master' data-t='on'${m.on?' checked':''}> <b>Master volume</b>","<div class='vr2 vm'><label><input type='checkbox' data-k='master' data-t='on'${m.on?' checked':''}> <b>${RD?'All desktop sounds':'Master volume'}</b>")
 # 1.4.4: the network icon, its popup and "connected" follow the real network on installed Rudolf OS (net31.js)
 rep("const netUp=()=>!!(NETC.active&&","const netUp=()=>window.__net31?window.__net31.up&&navigator.onLine!==false:!!(NETC.active&&")
 rep("function netUpd(){const B=$('#net');if(!B)return;","function netUpd(){if(window.__net31)return net31Upd();const B=$('#net');if(!B)return;")
 rep("function netPop(){const old=document.querySelector('.np');","function netPop(){if(window.__net31)return net31Pop();const old=document.querySelector('.np');")
+# 1.4.4: Network Settings drawn again into the same box (or Web search on the Oracle page): the old dirty check looked for fields no longer there
+rep("CUST.net={dirty:()=>c.isConnected&&dirty()","CUST.net={dirty:()=>c.isConnected&&!!c.querySelector('#fn')&&dirty()")
+# 1.4.4: Settings draws every page into the same box: an earlier page's footer stops updating itself once it is gone
+rep("['input','change','click'].forEach(ev=>c.addEventListener(ev,()=>setTimeout(upd,0)));upd();f.upd=upd;return f}","['input','change','click'].forEach(ev=>c.addEventListener(ev,()=>setTimeout(()=>{if(f.isConnected)upd()},0)));upd();f.upd=upd;return f}")
 s=s.replace('Rudolf Prompt','Command Prompt')
 s=s.replace("<title>Rudolf OS</title>","<title>Rudolf OS</title>",1)
 open(O,'w').write(s);print(len(s))

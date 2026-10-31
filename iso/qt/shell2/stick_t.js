@@ -59,11 +59,11 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('...then the stick is made: the drive, this Rudolf OS, with the files', M.mk && M.mk.disk == 'sdb' && M.mk.confirm == 'sdb' && M.mk.image == '' && M.mk.files == '1', M.mk);
   ok('...and the log and the result are shown', await q("/stick is ready/.test(document.querySelector('.stk30 .stkj').textContent)&&/— ready$/.test(document.querySelector('.stk30 .stkl .acr').firstChild.textContent)"));
   // back up to the stick
-  const bk = await q("[...document.querySelectorAll('.stk30 .stkb .acr')].map(r=>r.firstChild.textContent)");
+  const bk = await q("[...document.querySelectorAll('.stkbg .stkb .acr')].map(r=>r.firstChild.textContent)");
   ok('Back up lists the drives to back up to (not Rudolf OS\'s own, not internal disks)', JSON.stringify(bk) == JSON.stringify(['🔌 BACKUPS — SanDisk Ultra — 32.0 GB (vfat)']), bk);
-  M.calls = []; await q("document.querySelector('.stk30 .stkb button').click()");
-  await p.waitForFunction(() => /Backed up to|could not/.test(document.querySelector('.stk30 .stkbm').textContent), null, {timeout: 20000}).catch(() => 0);
-  const msg = await q("document.querySelector('.stk30 .stkbm').textContent"); const names = [...FILES.keys()];
+  M.calls = []; await q("document.querySelector('.stkbg .stkb button').click()");
+  await p.waitForFunction(() => /Backed up to|could not/.test(document.querySelector('.stkbg .stkbm').textContent), null, {timeout: 20000}).catch(() => 0);
+  const msg = await q("document.querySelector('.stkbg .stkbm').textContent"); const names = [...FILES.keys()];
   ok('the backup is written to RUDOLF-BACKUP with its checksum, and read back', /Backed up to BACKUPS: RUDOLF-BACKUP\/rudolf-backup-\d{8}-\d{4}\.zip/.test(msg) && names.length == 2 && names.every(n => n.startsWith('/media/sdb1/RUDOLF-BACKUP/')), [msg, names]);
   const zip = names.find(n => n.endsWith('.zip')), sum = String(FILES.get(zip + '.sha256'));
   ok('...the checksum is the backup\'s SHA-256', sum.split(/\s+/)[0] == require('crypto').createHash('sha256').update(FILES.get(zip)).digest('hex') && sum.includes(path.basename(zip)), sum);
