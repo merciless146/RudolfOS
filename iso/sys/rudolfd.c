@@ -2779,7 +2779,12 @@ static void api(struct req *r)
 	if (!strcmp(p, "brightness")) {
 		char bl[256], f[300];
 		char *v = qparam(r->query, "value");
-		if (!v || !backlight_dir(bl, sizeof bl)) { reply_err(r->fd, 404, "this screen has no adjustable backlight"); return; }
+		if (!backlight_dir(bl, sizeof bl)) { reply_err(r->fd, 404, "this screen has no adjustable backlight"); return; }
+		if (!v) {   /* 1.4.4: GET brightness: the level now, 0-100 (the taskbar's brightness icon) */
+			snprintf(f, sizeof f, "%s/max_brightness", bl); long long mx = read_ll(f, 1);
+			snprintf(f, sizeof f, "%s/brightness", bl); long long cur = read_ll(f, 0);
+			str js = {0}; sadd(&js, "{\"ok\":true,\"brightness\":%lld}", mx > 0 ? (cur * 100 + mx / 2) / mx : 0); reply_json(r->fd, &js); return;
+		}
 		snprintf(f, sizeof f, "%s/max_brightness", bl);
 		long long mx = read_ll(f, 100), val = atoll(v) * mx / 100;
 		if (val < mx / 20) val = mx / 20;
