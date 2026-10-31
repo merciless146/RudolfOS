@@ -150,14 +150,22 @@ if ! has rudolf.nopersist=1; then
 	# no Wi-Fi, no graphics. A slot that is not this kernel's only counts when no data partition has the right one.
 	KV=$(uname -v 2>/dev/null)
 	slot_here() { [ -e /mnt/persist/os/system/$SLOT/complete ] && { [ -z "$KV" ] || head -c 65536 /mnt/persist/os/system/$SLOT/vmlinuz 2>/dev/null | grep -qF "$KV"; }; }
-	if [ -n "$SLOT" ] && ! slot_here; then
-		[ -n "$PERSIST" ] && umount /mnt/persist; PERSIST=""
+	# 1.4.4: with nothing passed on (older boot files), every data partition is looked at, not only the first one
+	# found: two may hold this kernel's own build (1.4.3 kept 1.4.2's kernel, so the stick's 1.4.2 matched as well as
+	# the drive's 1.4.3), and the newest release among them is taken (internal drives first when equal)
+	HINT=$(echo " $CMD " | sed -n 's/.* rudolf\.persist=\([^ ]*\) .*/\1/p')
+	if [ -n "$SLOT" ] && { [ -z "$HINT" ] || ! slot_here; }; then
+		[ -n "$PERSIST" ] && umount /mnt/persist; PERSIST=""; BEST=""; BS=-1
 		for P in /dev/nvme?n?p3 /dev/mmcblk?p3 /dev/vd?3 /dev/sd?3; do
 			is_data "$P" || continue
 			mount -t ext4 -o rw,noatime "$P" /mnt/persist 2>/dev/null || continue
-			slot_here && { PERSIST=$P; break; }
+			if slot_here; then
+				SV=$(sed -n 's/^serial //p' /mnt/persist/os/system/$SLOT/RELEASE 2>/dev/null); case "$SV" in ''|*[!0-9]*) SV=0;; esac
+				[ "$SV" -gt "$BS" ] && { BEST=$P; BS=$SV; }
+			fi
 			umount /mnt/persist
 		done
+		[ -n "$BEST" ] && mount -t ext4 -o rw,noatime "$BEST" /mnt/persist 2>/dev/null && PERSIST=$BEST
 		[ -z "$PERSIST" ] && for P in /dev/nvme?n?p3 /dev/mmcblk?p3 /dev/vd?3 /dev/sd?3; do
 			is_data "$P" || continue
 			mount -t ext4 -o rw,noatime "$P" /mnt/persist 2>/dev/null || continue
