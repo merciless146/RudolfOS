@@ -43,6 +43,7 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <linux/fb.h>
 #include <linux/input.h>
 #include <linux/kd.h>
@@ -485,10 +486,56 @@ static int desk_key(int c, int down)
 	return c;
 }
 
+/* 1.4.4: the volume and brightness keys run /usr/lib/rudolf/hotkey (the sound server's volume, the backlight, an
+   indicator in the desktop) instead of going to the X server: the same whether the desktop, a game or a Linux app is
+   in front, and nothing acts on them twice. Run in the background (a double fork, so no child is left to reap). */
+static void hotkey(const char *what, const char *how)
+{
+	pid_t p = fork();
+	if (p == 0) {
+		if (fork() == 0) { setsid(); execl("/bin/sh", "sh", "/usr/lib/rudolf/hotkey", what, how, (char *)NULL); _exit(127); }
+		_exit(0);
+	}
+	if (p > 0) waitpid(p, NULL, 0);
+}
+static int hotkey_key(int c, int value)
+{
+	static long long last;
+	const char *w = NULL, *h = NULL;
+	switch (c) {
+	case KEY_MUTE: w = "volume"; h = "mute"; break;
+	case KEY_VOLUMEDOWN: w = "volume"; h = "down"; break;
+	case KEY_VOLUMEUP: w = "volume"; h = "up"; break;
+	case KEY_MICMUTE: w = "mic"; h = "mute"; break;
+	case KEY_BRIGHTNESSDOWN: w = "brightness"; h = "down"; break;
+	case KEY_BRIGHTNESSUP: w = "brightness"; h = "up"; break;
+	default: return 0;
+	}
+	/* a press runs it; held down, the keyboard's repeats do too, at most every 120 ms (not mute: it would flicker) */
+	long long t = now_ms();
+	if (value == 1 || (value == 2 && strcmp(h, "mute") && t - last >= 120)) { last = t; hotkey(w, h); }
+	return 1;
+}
+/* 1.4.4: when the last input came (any key, movement or touch, from any device, also in games), for rudolfd's idle
+   time (the screen saver must not start during a game the desktop page cannot see being played): written at most
+   once a second, as CLOCK_MONOTONIC milliseconds */
+static void mark_input(void)
+{
+	static long long wrote;
+	long long t = now_ms();
+	if (t - wrote < 1000) return;
+	wrote = t;
+	int f = open("/run/rudolf/input-ms.new", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (f < 0) return;
+	if (dprintf(f, "%lld\n", t) > 0) { close(f); rename("/run/rudolf/input-ms.new", "/run/rudolf/input-ms"); } else close(f);
+}
+
 static void handle_event(struct dev *v, struct input_event *e)
 {
+	if (e->type == EV_KEY || e->type == EV_REL || e->type == EV_ABS) mark_input();
 	if (e->type == EV_KEY) {
 		int c = e->code, down = e->value != 0;
+		if (hotkey_key(c, e->value)) return;
 		if (e->value == 2) return; /* autorepeat: X repeats by itself */
 		if (v->touchpad) { touchpad_key(v, c, down); return; }
 		if (c == KEY_LEFTMETA || c == KEY_RIGHTMETA) meta_down = down;

@@ -2576,6 +2576,14 @@ static void api(struct req *r)
 		if (access(RUN "/bootok", F_OK)) { write_str(RUN "/bootok", "1"); if (!access("/usr/bin/rudolf-update", X_OK)) run("/usr/bin/rudolf-update boot-ok >>" RUN "/update.log 2>&1"); }
 		reply_ok(r->fd, "ok"); return;
 	}
+	/* 1.4.4: events/wait waits (up to 25 s) until there are events, so the desktop hears of a key press (the volume
+	   and brightness indicator), the charger or Wi-Fi at once instead of at its next check; each connection has its
+	   own process, so waiting here holds nothing up */
+	if (!strcmp(p, "events/wait")) {
+		struct stat st;
+		for (int i = 0; i < 250; i++) { if (!stat(RUN "/events", &st) && st.st_size > 0) break; usleep(100000); }
+		p = "events";
+	}
 	if (!strcmp(p, "events")) {
 		char *ev = slurp(RUN "/events", NULL);
 		unlink(RUN "/events");
@@ -2736,6 +2744,37 @@ static void api(struct req *r)
 		int f = open(RUN "/page.log", O_WRONLY | O_CREAT | O_APPEND, 0600);
 		if (f >= 0) { size_t n = r->blen > 4096 ? 4096 : r->blen; if (n && write(f, r->body, n) < 0) {} if (write(f, "\n", 1) < 0) {} close(f); }
 		reply_ok(r->fd, "ok"); return;
+	}
+	/* 1.4.4: the system volume (the sound server's default output, through /usr/lib/rudolf/hotkey, as the keys do):
+	   GET volume; POST volume?set=N (0-100), ?muted=0|1 or ?step=up|down|mute */
+	if (!strcmp(p, "volume")) {
+		char cmd[96]; const char *v;
+		if (!post) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume get 2>/dev/null");
+		else if ((v = qparam(r->query, "set")) && *v && strspn(v, "0123456789") == strlen(v) && strlen(v) <= 3) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume set %s 2>/dev/null", v);
+		else if ((v = qparam(r->query, "muted")) && (!strcmp(v, "0") || !strcmp(v, "1"))) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume muted %s 2>/dev/null", v);
+		else if ((v = qparam(r->query, "step")) && (!strcmp(v, "up") || !strcmp(v, "down") || !strcmp(v, "mute"))) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume %s >/dev/null 2>&1; /usr/lib/rudolf/hotkey volume get 2>/dev/null", v);
+		else { reply_err(r->fd, 400, "set=0-100, muted=0|1 or step=up|down|mute"); return; }
+		char *o = run_out(cmd); trim(o); int lv = -1; char mu[8] = "";
+		if (sscanf(o, "%d %7s", &lv, mu) < 1) { free(o); reply_err(r->fd, 503, "the sound server is not running"); return; }
+		str js = {0}; sadd(&js, "{\"ok\":true,\"volume\":%d,\"muted\":%s}", lv, strcmp(mu, "muted") ? "false" : "true");
+		free(o); reply_json(r->fd, &js); return;
+	}
+	/* 1.4.4: brightness/step?d=up|down (the mouse wheel over the taskbar's brightness icon), as the keys */
+	if (!strcmp(p, "brightness/step")) {
+		const char *d = qparam(r->query, "d");
+		if (!post || !d || (strcmp(d, "up") && strcmp(d, "down"))) { reply_err(r->fd, 400, "POST with d=up or down"); return; }
+		char cmd[96]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey brightness %s 2>/dev/null", d);
+		char *o = run_out(cmd); trim(o); int lv = atoi(o);
+		if (!strcmp(o, "none") || !*o) { free(o); reply_err(r->fd, 404, "this screen has no adjustable backlight"); return; }
+		str js = {0}; sadd(&js, "{\"ok\":true,\"brightness\":%d}", lv); free(o); reply_json(r->fd, &js); return;
+	}
+	/* 1.4.4: idle: milliseconds since the last input of any kind, from any device (rudolf-display), so the screen saver
+	   and the screen-off time count input in games and Linux apps too */
+	if (!strcmp(p, "idle")) {
+		long long last = read_ll(RUN "/input-ms", -1); struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
+		long long now = t.tv_sec * 1000LL + t.tv_nsec / 1000000;
+		str js = {0}; if (last < 0) sadd(&js, "{\"ok\":true,\"idle\":null}"); else sadd(&js, "{\"ok\":true,\"idle\":%lld}", now > last ? now - last : 0);
+		reply_json(r->fd, &js); return;
 	}
 	if (!strcmp(p, "brightness")) {
 		char bl[256], f[300];

@@ -16,7 +16,9 @@ y KEXEC KEXEC_FILE
 # boot, firmware interfaces, framebuffer
 y EFI EFI_STUB EFI_MIXED EFI_PARTITION MSDOS_PARTITION BLK_DEV_INITRD RD_XZ RD_GZIP
 y CMDLINE_BOOL
-$C --set-str CMDLINE "quiet loglevel=3 consoleblank=0 vt.global_cursor_default=0"
+# (1.4.4: video.brightness_switch_enabled=0: the ACPI video driver must not change the brightness by itself on the
+# brightness keys, as rudolf-display does it; otherwise every press would count twice on some laptops)
+$C --set-str CMDLINE "quiet loglevel=3 consoleblank=0 vt.global_cursor_default=0 video.brightness_switch_enabled=0"
 $C --set-str INITRAMFS_SOURCE "$2"
 y INITRAMFS_COMPRESSION_XZ KERNEL_XZ
 y SYSFB_SIMPLEFB DRM DRM_SIMPLEDRM DRM_FBDEV_EMULATION FB FRAMEBUFFER_CONSOLE FB_VESA FB_EFI DRM_PANEL_ORIENTATION_QUIRKS FIRMWARE_EDID
@@ -28,6 +30,15 @@ n CPU_FREQ_DEFAULT_GOV_USERSPACE
 y CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
 # GPU drivers (modules, loaded by modalias at start-up) for hardware-accelerated graphics
 m DRM_I915 DRM_XE DRM_AMDGPU DRM_RADEON DRM_NOUVEAU DRM_BOCHS DRM_QXL DRM_VMWGFX DRM_GMA500 DRM_AST DRM_MGAG200
+# 1.4.4: laptop hotkey drivers. On many laptops the volume and brightness keys come from the firmware (ACPI WMI
+# events), not the keyboard; only these drivers turn them into key presses (the ASUS Vivobook Go's F1-F5 did nothing).
+# Modules, loaded by modalias at start-up like the graphics drivers; checked below, so a missing dependency fails the
+# build instead of dropping a driver without a word
+HOTKEYS="ASUS_WMI ASUS_NB_WMI IDEAPAD_LAPTOP THINKPAD_ACPI HP_WMI DELL_WMI ACER_WMI"
+y X86_PLATFORM_DEVICES ACPI_WMI INPUT_SPARSEKMAP NEW_LEDS LEDS_CLASS HOTPLUG_PCI ACPI_PLATFORM_PROFILE RFKILL DELL_SMBIOS
+m $HOTKEYS
+# 1.4.4: no IPv6-in-IPv4 tunnel: its sit0 device was listed as a wired network adapter, and Rudolf OS has no use for it
+n IPV6_SIT
 y DRM_AMDGPU_SI DRM_AMDGPU_CIK DRM_AMD_DC DRM_NOUVEAU_SVM
 # filesystems
 y SQUASHFS SQUASHFS_XZ SQUASHFS_ZLIB SQUASHFS_FILE_DIRECT ISO9660_FS JOLIET ZISOFS OVERLAY_FS EXT4_FS VFAT_FS MSDOS_FS EXFAT_FS NTFS3_FS TMPFS DEVTMPFS DEVTMPFS_MOUNT NLS_CODEPAGE_437 NLS_ISO8859_1 NLS_UTF8 FAT_DEFAULT_UTF8 UDF_FS
@@ -83,3 +94,7 @@ fi
 n DEBUG_INFO DEBUG_INFO_DWARF5 DEBUG_INFO_DWARF4 DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT DEBUG_INFO_BTF KALLSYMS_ALL FTRACE
 $C --enable DEBUG_INFO_NONE
 make olddefconfig >/dev/null
+# 1.4.4: every hotkey driver is there, as a module (a dependency missing from x86_64_defconfig would drop it)
+for o in $HOTKEYS; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig (a dependency is missing)"; exit 1; }; done
+grep -q "^CONFIG_IPV6_SIT=y\|^CONFIG_IPV6_SIT=m" .config && { echo "kconfig.sh: IPV6_SIT is still on"; exit 1; }
+true
