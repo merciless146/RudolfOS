@@ -201,7 +201,7 @@ function lockScreen(reason,adminOnly){if(!USER||LOCKED)return;LOCKED=true;$('#me
  const o=document.createElement('div');o.id='lockov';o.setAttribute('role','dialog');o.setAttribute('aria-label','Locked');
  o.innerHTML=`<div class='lkclock'></div><div class='lkdate'></div><div class='lkbox'><div class='lkav'>👤</div><div class='lkn'></div><div class='lkr'></div><input class='lkp' aria-label='Password' placeholder='Password'><div class='lkm'></div><div class='rmrow'><button class='lks'>Switch user</button><button class='lku pri'>Unlock</button></div></div>`;
  o.querySelector('.lkn').textContent=USER.n;o.querySelector('.lkr').textContent=reason||'';const P=maskInput(o.querySelector('.lkp'));if(USER.r=='guest'&&!adminOnly)o.querySelector('.lkp').style.display='none';
- const tick=()=>{const d=sysNow?sysNow():new Date();o.querySelector('.lkclock').textContent=d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});o.querySelector('.lkdate').textContent=d.toLocaleDateString([], {weekday:'long',month:'long',day:'numeric'})};tick();const iv=setInterval(tick,1000);
+ const tick=()=>{const c=clockParts();o.querySelector('.lkclock').textContent=c.time;o.querySelector('.lkdate').textContent=c.longNoYear};tick();const iv=setInterval(tick,1000);
  document.body.appendChild(o);setTimeout(()=>o.querySelector('.lkp').focus(),50);
  const un=async()=>{let ok=false;if(adminOnly)ok=await elevate(reason||'Unlock this account');else ok=USER.r=='guest'||await pwCheck(USER,P.get());
   if(ok){clearInterval(iv);o.remove();LOCKED=false;lastInput=Date.now();sfx('login');if(adminOnly&&window.__parentalExtend)__parentalExtend()}else{o.querySelector('.lkm').textContent='Wrong password.';P.clear();sfx('error')}};
@@ -216,7 +216,8 @@ async function idleNow(){let m=Date.now()-lastInput;if(RD){try{const j=await rd(
 async function idleCheck(){if(!USER)return;const idle=(await idleNow())/60000;
  if(SYSC.sson&&SYSC.ssmin>0&&idle>=SYSC.ssmin&&!LOCKED&&!SAVER&&!document.fullscreenElement&&!document.pointerLockElement&&!(window.__mediaPlaying&&__mediaPlaying()))saverStart();
  if(SYSC.lockmin>0&&idle>=SYSC.lockmin&&!LOCKED){saverStop();lockScreen()}
- if(RD&&SYSC.suspmin>0&&idle>=SYSC.suspmin&&!(window.__mediaPlaying&&__mediaPlaying())){lastInput=Date.now();lockScreen();rdPost('power?action=suspend').catch(()=>{})}}
+ const sm=RD&&PWR&&PWR.now&&PWR.now.sleep!=null?PWR.now.sleep:SYSC.suspmin;   /* (1.4.4) Power and battery's, for the power source in use */
+ if(RD&&sm>0&&idle>=sm&&!(window.__mediaPlaying&&__mediaPlaying())){lastInput=Date.now();lockScreen();rdPost('power?action=suspend').catch(()=>{})}}
 setInterval(idleCheck,15000);
 /* ---------- parental controls: allowed apps and a daily time limit ---------- */
 const APPCAT=[['browser','Oracle Browser',/^Oracle/],['explorer','File Explorer',/^File Explorer|^Exploring/],['notepad','Notepad',/Notepad/],['prompt','Rudolf Prompt',/^Rudolf Prompt/],['blocklua','BlockLua Builder',/^BlockLua/],['calc','Calculator',/^Calculator/],['wordlite','WordLite',/^WordLite/],['wordpro','WordPro',/^WordPro/],['paint','Paint',/^Paint/],['boards','Board Games',/^Board Games|^Checkers|^Chess/],['poker','Card Games',/^Card Games/],['galaxy','WOS Galaxy Map',/^WOS Galaxy Map/],['media','Media Player',/^Media Player/],['gameboy','Emu',/^Emu|Emu$|Game Boy|GBA|\.GBA?C?\b/i],['flash','Flash Player',/Flash/],['quake','Quake Engine',/^Quake/],['gpulab','GPU Lab',/^GPU Lab/],['settings','Settings',/^Settings|^Display Properties/]];

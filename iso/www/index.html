@@ -865,7 +865,7 @@ W.body.oninput=()=>{S.is=+q('is').value;q('isv').textContent=S.is+'%';S.bs=q('bs
 applySet();
 /* ===== clock + resize ===== */
 function clk2(){const t=$('#tray'),n=window.__sys?sysNow():new Date();let h,m,s;try{const f=new Intl.DateTimeFormat('en-US',{timeZone:S.tz,hourCycle:'h23',hour:'numeric',minute:'numeric',second:'numeric'}).formatToParts(n).reduce((o,p)=>(o[p.type]=+p.value,o),{});h=f.hour;m=f.minute;s=f.second}catch(e){h=n.getHours();m=n.getMinutes();s=n.getSeconds()}
-const p2=x=>String(x).padStart(2,'0'),dig=S.h24?p2(h)+':'+p2(m):((h%12)||12)+':'+p2(m)+' '+(h<12?'AM':'PM');
+const dig=clockParts(n).time;
 if(S.ck=='analog'){const z=/left|right/.test(S.tb)?52:34,a=(v,l,w,c)=>`<line x1='26' y1='26' x2='${26+l*Math.sin(v)}' y2='${26-l*Math.cos(v)}' stroke='${c}' stroke-width='${w}' stroke-linecap='round'/>`;let k='';for(let i=0;i<12;i++){const v=i*Math.PI/6;k+=`<line x1='${26+21*Math.sin(v)}' y1='${26-21*Math.cos(v)}' x2='${26+24*Math.sin(v)}' y2='${26-24*Math.cos(v)}' stroke='#000'/>`}
 t.style.cssText='height:auto;line-height:0;padding:2px';t.innerHTML=`<svg width='${z}' height='${z}' viewBox='0 0 52 52' style='display:block;margin:auto'><circle cx='26' cy='26' r='25' fill='#fff' stroke='#000'/>${k}${a((h%12+m/60)*Math.PI/6,13,3,'#000')}${a(m*Math.PI/30,19,2,'#000')}${a(s*Math.PI/30,21,1,'#f00')}</svg>`}
 else{t.style.cssText='';if(window.__sys){t.textContent=dig;const sm=document.createElement('small');sm.textContent=sysDateStr(n);t.appendChild(sm)}else t.textContent=dig}
@@ -5584,7 +5584,7 @@ function lockScreen(reason,adminOnly){if(!USER||LOCKED)return;LOCKED=true;$('#me
  const o=document.createElement('div');o.id='lockov';o.setAttribute('role','dialog');o.setAttribute('aria-label','Locked');
  o.innerHTML=`<div class='lkclock'></div><div class='lkdate'></div><div class='lkbox'><div class='lkav'>👤</div><div class='lkn'></div><div class='lkr'></div><input class='lkp' aria-label='Password' placeholder='Password'><div class='lkm'></div><div class='rmrow'><button class='lks'>Switch user</button><button class='lku pri'>Unlock</button></div></div>`;
  o.querySelector('.lkn').textContent=USER.n;o.querySelector('.lkr').textContent=reason||'';const P=maskInput(o.querySelector('.lkp'));if(USER.r=='guest'&&!adminOnly)o.querySelector('.lkp').style.display='none';
- const tick=()=>{const d=sysNow?sysNow():new Date();o.querySelector('.lkclock').textContent=d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});o.querySelector('.lkdate').textContent=d.toLocaleDateString([], {weekday:'long',month:'long',day:'numeric'})};tick();const iv=setInterval(tick,1000);
+ const tick=()=>{const c=clockParts();o.querySelector('.lkclock').textContent=c.time;o.querySelector('.lkdate').textContent=c.longNoYear};tick();const iv=setInterval(tick,1000);
  document.body.appendChild(o);setTimeout(()=>o.querySelector('.lkp').focus(),50);
  const un=async()=>{let ok=false;if(adminOnly)ok=await elevate(reason||'Unlock this account');else ok=USER.r=='guest'||await pwCheck(USER,P.get());
   if(ok){clearInterval(iv);o.remove();LOCKED=false;lastInput=Date.now();sfx('login');if(adminOnly&&window.__parentalExtend)__parentalExtend()}else{o.querySelector('.lkm').textContent='Wrong password.';P.clear();sfx('error')}};
@@ -5599,7 +5599,8 @@ async function idleNow(){let m=Date.now()-lastInput;if(RD){try{const j=await rd(
 async function idleCheck(){if(!USER)return;const idle=(await idleNow())/60000;
  if(SYSC.sson&&SYSC.ssmin>0&&idle>=SYSC.ssmin&&!LOCKED&&!SAVER&&!document.fullscreenElement&&!document.pointerLockElement&&!(window.__mediaPlaying&&__mediaPlaying()))saverStart();
  if(SYSC.lockmin>0&&idle>=SYSC.lockmin&&!LOCKED){saverStop();lockScreen()}
- if(RD&&SYSC.suspmin>0&&idle>=SYSC.suspmin&&!(window.__mediaPlaying&&__mediaPlaying())){lastInput=Date.now();lockScreen();rdPost('power?action=suspend').catch(()=>{})}}
+ const sm=RD&&PWR&&PWR.now&&PWR.now.sleep!=null?PWR.now.sleep:SYSC.suspmin;   /* (1.4.4) Power and battery's, for the power source in use */
+ if(RD&&sm>0&&idle>=sm&&!(window.__mediaPlaying&&__mediaPlaying())){lastInput=Date.now();lockScreen();rdPost('power?action=suspend').catch(()=>{})}}
 setInterval(idleCheck,15000);
 /* ---------- parental controls: allowed apps and a daily time limit ---------- */
 const APPCAT=[['browser','Oracle Browser',/^Oracle/],['explorer','File Explorer',/^File Explorer|^Exploring/],['notepad','Notepad',/Notepad/],['prompt','Command Prompt',/^Command Prompt/],['blocklua','BlockLua Builder',/^BlockLua/],['calc','Calculator',/^Calculator/],['wordlite','WordLite',/^WordLite/],['wordpro','WordPro',/^WordPro/],['paint','Paint',/^Paint/],['boards','Board Games',/^Board Games|^Checkers|^Chess/],['poker','Card Games',/^Card Games/],['galaxy','WOS Galaxy Map',/^WOS Galaxy Map/],['media','Media Player',/^Media Player/],['gameboy','Emu',/^Emu|Emu$|Game Boy|GBA|\.GBA?C?\b/i],['flash','Flash Player',/Flash/],['quake','Quake Engine',/^Quake/],['gpulab','GPU Lab',/^GPU Lab/],['settings','Settings',/^Settings|^Display Properties/]];
@@ -5651,6 +5652,19 @@ async function restoreAll(file,firstStart){if(!firstStart&&!await elevate('Resto
  await IDB.ready;for(const f of Object.keys(z.files).filter(n=>n.startsWith('db/')&&n.endsWith('.json'))){await kvSet(decodeURIComponent(f.slice(3,-5)),dec(await z.file(f).async('string')))}
  Object.keys(localStorage).filter(k=>/^bd95|^blockdos/.test(k)).forEach(k=>localStorage.removeItem(k));for(const k in meta.ls)localStorage.setItem(k,meta.ls[k]);
  notify('Backup restored','Rudolf OS restarts now.');setTimeout(()=>location.reload(),1500);return true}
+
+/* ===== 1.4.4 (clock31): one clock. clockParts(d) gives the time and date in the time zone set in System Settings
+   (S.tz), 12- or 24-hour (S.h24), with System Settings' date format, for the taskbar clock, the calendar, the lock
+   screen, the screen saver, the desktop widgets and the notification times. Before, all but the taskbar used
+   Chromium's own zone and format (on the Vivobook the calendar said 11:38 PM while the taskbar said 17:38). ===== */
+function clockParts(d){d=d||(typeof sysNow=='function'?sysNow():new Date());const o={};
+ try{new Intl.DateTimeFormat('en-US',{timeZone:S.tz,hourCycle:'h23',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric'}).formatToParts(d).forEach(p=>o[p.type]=+p.value)}
+ catch(e){o.year=d.getFullYear();o.month=d.getMonth()+1;o.day=d.getDate();o.hour=d.getHours();o.minute=d.getMinutes();o.second=d.getSeconds()}
+ const h=o.hour%24,m=o.minute,p2=x=>String(x).padStart(2,'0');let long;
+ try{long=new Intl.DateTimeFormat([],{timeZone:S.tz,weekday:'long',year:'numeric',month:'long',day:'numeric'}).format(d)}catch(e){long=d.toLocaleDateString([],{weekday:'long',year:'numeric',month:'long',day:'numeric'})}
+ const iso=`${o.year}-${p2(o.month)}-${p2(o.day)}`;
+ return{y:o.year,mo:o.month-1,d:o.day,h,m,s:o.second,iso,long,longNoYear:long.replace(/,? \d{4}$/,'').replace(/ \d{4},/,','),
+  time:S.h24?p2(h)+':'+p2(m):((h%12)||12)+':'+p2(m)+' '+(h<12?'AM':'PM'),date:typeof sysDateStr=='function'?sysDateStr(d):iso}}
 
 /* ===== V25 shell: app registry, shortcuts, Alt+Tab, overview, workspaces, Start search, notifications,
    quick settings, calendar flyout, taskbar pins/groups, session restore, window memory, desktop files, widgets ===== */
@@ -5821,7 +5835,7 @@ window.__notifCentre={add(title,body,opt){opt=opt||{};const n={id:Date.now()+Mat
  if(!opt.quiet&&!S.dnd&&opt.sound!==false)try{sfx('notify')}catch(e){}return n}};
 function ncToggle(force){let p=$('#ncp');if(p&&!force){p.remove();return}if(p)p.remove();qsClose();p=document.createElement('div');p.id='ncp';p.className='flyout';p.setAttribute('role','dialog');p.setAttribute('aria-label','Notifications');
  p.innerHTML=`<div class='fh'><b>Notifications</b><span style='flex:1'></span><label class='ck'><input type='checkbox' class='dnd'> Do not disturb</label><button class='clr'>Clear all</button></div><div class='nl'></div>`;
- const nl=p.querySelector('.nl');const draw=()=>{nl.innerHTML='';if(!NC.length){nl.innerHTML=`<div class='nempty'>No new notifications</div>`;return}NC.forEach(n=>{const d=document.createElement('div');d.className='nitem '+n.k;d.innerHTML=`<div class='nt'><b></b><small></small><button class='nx' aria-label='Dismiss'>✕</button></div><div class='nb'></div>`;d.querySelector('b').textContent=n.t;d.querySelector('small').textContent=new Date(n.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});d.querySelector('.nb').textContent=n.b;
+ const nl=p.querySelector('.nl');const draw=()=>{nl.innerHTML='';if(!NC.length){nl.innerHTML=`<div class='nempty'>No new notifications</div>`;return}NC.forEach(n=>{const d=document.createElement('div');d.className='nitem '+n.k;d.innerHTML=`<div class='nt'><b></b><small></small><button class='nx' aria-label='Dismiss'>✕</button></div><div class='nb'></div>`;d.querySelector('b').textContent=n.t;d.querySelector('small').textContent=clockParts(new Date(n.at)).time;d.querySelector('.nb').textContent=n.b;
   d.querySelector('.nx').onclick=e=>{e.stopPropagation();NC=NC.filter(x=>x!==n);svj(NCK(),NC);draw()};d.onclick=()=>{n.act&&n.act()};nl.appendChild(d)})};draw();
  p.querySelector('.dnd').checked=!!S.dnd;p.querySelector('.dnd').onchange=e=>{S.dnd=e.target.checked;if(SC)SC.dnd=S.dnd;persistS();ncBadge()};
  p.querySelector('.clr').onclick=()=>{NC=[];svj(NCK(),[]);draw()};document.body.appendChild(p);ncUnread=0;ncBadge();flyClose(p,NCB)}
@@ -5832,27 +5846,24 @@ function flyClose(p,btn){setTimeout(()=>{const k=e=>{if(!p.contains(e.target)&&e
 /* ---------- quick settings ---------- */
 function qsClose(){const p=$('#qsp');p&&p.remove()}
 function qsToggle(){if($('#qsp'))return qsClose();const n=$('#ncp');n&&n.remove();const p=document.createElement('div');p.id='qsp';p.className='flyout';p.setAttribute('role','dialog');p.setAttribute('aria-label','Quick settings');
- const m=S.snd&&S.snd.master||{vol:50,on:true};
  const T=[['dm','🌙','Dark mode',()=>S.dm=='dark',v=>{S.dm=v?'dark':'light';if(SC)SC.dm=S.dm;window.__dyn&&dynFix();themeApply()}],['nl','🌅','Night light',()=>!!S.nl,v=>{S.nl=v;themeApply()}],['dnd','🔕','Do not disturb',()=>!!S.dnd,v=>{S.dnd=v;ncBadge()}],
   ['sr','🗣️','Screen reader',()=>!!S.sr,v=>{S.sr=v;window.__srApply&&__srApply()}],['mag','🔍','Magnifier',()=>!!S.mag,v=>{S.mag=v;window.__magApply&&__magApply()}],['hc','◐','High contrast',()=>S.cb=='contrast',v=>{S.cb=v?'contrast':'none';a11yApply()}],['vk','⌨️','On-screen keyboard',()=>!!S.vk,v=>{S.vk=v;a11yApply()}],['tm','🖐️','Touch mode',()=>!!S.touch,v=>{S.touch=v;themeApply()}]];
- p.innerHTML=`<div class='qsg'></div><div class='qsr'><span>🔊</span><input type='range' min='0' max='100' class='qv' aria-label='Volume'><span class='qvv'></span></div><div class='qsr qbl' style='display:none'><span>☀️</span><input type='range' min='5' max='100' class='qb' aria-label='Brightness'></div><div class='qsinfo'></div><div class='qsf'><button class='qlock'>🔒 Lock</button><button class='qset'>⚙️ Settings</button><button class='qoff'>⏻ Power</button></div>`;
+ p.innerHTML=`<div class='qsg'></div><div class='qsinfo'></div><div class='qsf'><button class='qlock'>🔒 Lock</button><button class='qset'>⚙️ Settings</button><button class='qoff'>⏻ Power</button></div>`;
  const g=p.querySelector('.qsg');T.forEach(([k,i,l,get,set])=>{const b=document.createElement('button');b.className='qst'+(get()?' on':'');b.setAttribute('aria-pressed',get());b.innerHTML=`<i></i><span></span>`;b.querySelector('i').textContent=i;b.querySelector('span').textContent=l;
   b.onclick=()=>{set(!get());if(SC)SC[k]=S[k];persistS();b.classList.toggle('on',get());b.setAttribute('aria-pressed',get())};g.appendChild(b)});
- const qv=p.querySelector('.qv'),qvv=p.querySelector('.qvv');qv.value=m.on?m.vol:0;qvv.textContent=qv.value+'%';qv.oninput=()=>{m.vol=+qv.value;m.on=m.vol>0;qvv.textContent=qv.value+'%';trayVol()};
  const info=p.querySelector('.qsinfo');
- (async()=>{const bits=[];try{if(RD){const s=await rd('stats');const b=(s.battery||[]).find(x=>x.type=='Battery');if(b)bits.push(`🔋 ${b.capacity}% ${b.status}`);if(s.brightness!=null&&s.brightness>=0){const r=p.querySelector('.qbl');r.style.display='';const qb=p.querySelector('.qb');qb.value=s.brightness;qb.onchange=()=>rdPost('brightness?value='+qb.value).catch(e=>notify(e.message,''))}
-   const n=await rd('net');const up=n.interfaces.filter(i=>i.ip&&!i.virtual);bits.push(up.length?'🌐 '+up.map(i=>i.name+' '+i.ip).join(', '):'🌐 Not connected')}
-  else{if(navigator.getBattery){const b=await navigator.getBattery();bits.push(`🔋 ${Math.round(b.level*100)}%${b.charging?' charging':''}`)}bits.push(navigator.onLine?'🌐 Online':'🌐 Offline')}}catch(e){}info.textContent=bits.join('   ')})();
+ /* 1.4.4: volume and brightness have their own taskbar icons, the battery too: here only the network */
+ (async()=>{let t='';try{if(RD){if(typeof net31Poll=='function')await net31Poll();t=N31.cur?'🌐 '+net31Desc(N31.cur):'🌐 Not connected'}else t=navigator.onLine?'🌐 Online':'🌐 Offline'}catch(e){}info.textContent=t})();
  p.querySelector('.qlock').onclick=()=>{qsClose();lockScreen()};p.querySelector('.qset').onclick=()=>{qsClose();settings()};p.querySelector('.qoff').onclick=()=>{qsClose();A.off()};
  document.body.appendChild(p);flyClose(p,QSB)}
 QSB.onclick=e=>{e.stopPropagation();qsToggle()};
 /* ---------- calendar flyout from the clock ---------- */
 $('#tray').addEventListener('click',e=>{e.stopPropagation();let p=$('#calp');if(p){p.remove();return}p=document.createElement('div');p.id='calp';p.className='flyout';p.setAttribute('role','dialog');p.setAttribute('aria-label','Calendar');
- let d=sysNow?sysNow():new Date(),y=d.getFullYear(),mo=d.getMonth();
- const draw=()=>{const f=new Date(y,mo,1),days=new Date(y,mo+1,0).getDate(),st=(f.getDay()+6)%7,today=sysNow?sysNow():new Date();
-  let h=`<div class='cbig'>${today.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div><div class='cdate'>${today.toLocaleDateString([], {weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div><div class='fh'><button class='cp' aria-label='Previous month'>◀</button><b style='flex:1;text-align:center'>${f.toLocaleDateString([], {month:'long',year:'numeric'})}</b><button class='cn' aria-label='Next month'>▶</button></div><table class='calt'><tr>${['Mo','Tu','We','Th','Fr','Sa','Su'].map(x=>`<th>${x}</th>`).join('')}</tr><tr>`;
-  const ev=window.calEvents?calEvents():[];for(let i=0;i<st;i++)h+='<td></td>';for(let dd=1;dd<=days;dd++){const key=`${y}-${String(mo+1).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;const isT=dd==today.getDate()&&mo==today.getMonth()&&y==today.getFullYear();const has=ev.some(e=>e.d==key);h+=`<td class='${isT?'tod':''}${has?' hasev':''}' data-d='${key}'>${dd}</td>`;if((st+dd)%7==0)h+='</tr><tr>'}h+='</tr></table>';
-  const up=ev.filter(e=>e.d>=today.toISOString().slice(0,10)).sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t)).slice(0,4);h+=`<div class='cev'>${up.length?up.map(e=>`<div>📅 ${e.d} ${e.t||''} — <span></span></div>`).join(''):'<div style="opacity:.7">No upcoming events</div>'}</div><button class='copen'>Open Calendar</button>`;
+ let cp0=clockParts(),y=cp0.y,mo=cp0.mo;
+ const draw=()=>{const f=new Date(y,mo,1),days=new Date(y,mo+1,0).getDate(),st=(f.getDay()+6)%7,today=clockParts();
+  let h=`<div class='cbig'>${today.time}</div><div class='cdate'>${today.long}</div><div class='fh'><button class='cp' aria-label='Previous month'>◀</button><b style='flex:1;text-align:center'>${f.toLocaleDateString([], {month:'long',year:'numeric'})}</b><button class='cn' aria-label='Next month'>▶</button></div><table class='calt'><tr>${['Mo','Tu','We','Th','Fr','Sa','Su'].map(x=>`<th>${x}</th>`).join('')}</tr><tr>`;
+  const ev=window.calEvents?calEvents():[];for(let i=0;i<st;i++)h+='<td></td>';for(let dd=1;dd<=days;dd++){const key=`${y}-${String(mo+1).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;const isT=dd==today.d&&mo==today.mo&&y==today.y;const has=ev.some(e=>e.d==key);h+=`<td class='${isT?'tod':''}${has?' hasev':''}' data-d='${key}'>${dd}</td>`;if((st+dd)%7==0)h+='</tr><tr>'}h+='</tr></table>';
+  const up=ev.filter(e=>e.d>=today.iso).sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t)).slice(0,4);h+=`<div class='cev'>${up.length?up.map(e=>`<div>📅 ${e.d} ${e.t||''} — <span></span></div>`).join(''):'<div style="opacity:.7">No upcoming events</div>'}</div><button class='copen'>Open Calendar</button>`;
   p.innerHTML=h;p.querySelectorAll('.cev span').forEach((s,i)=>s.textContent=up[i].title);p.querySelector('.cp').onclick=ev2=>{ev2.stopPropagation();mo--;if(mo<0){mo=11;y--}draw()};p.querySelector('.cn').onclick=ev2=>{ev2.stopPropagation();mo++;if(mo>11){mo=0;y++}draw()};
   p.querySelector('.copen').onclick=()=>{p.remove();launch('calendar')};p.querySelectorAll('td[data-d]').forEach(td=>td.ondblclick=()=>{p.remove();launch('calendar');setTimeout(()=>window.__calGo&&__calGo(td.dataset.d),300)})};draw();document.body.appendChild(p);flyClose(p,$('#tray'))});
 /* ---------- tray API for background apps ---------- */
@@ -5910,8 +5921,8 @@ function wgDraw(){wgTimers.forEach(clearInterval);wgTimers=[];DESK.querySelector
  WG.forEach((w,i)=>{const el=document.createElement('div');el.className='wgt wgt-'+w.t;el.style.left=w.x+'px';el.style.top=w.y+'px';el.setAttribute('role','region');el.setAttribute('aria-label',WTYPES[w.t][1]+' widget');el.innerHTML=`<div class='wgh'><span></span><button aria-label='Remove widget'>✕</button></div><div class='wgb'></div>`;el.querySelector('.wgh span').textContent=WTYPES[w.t][0]+' '+WTYPES[w.t][1];
   el.querySelector('.wgh button').onclick=()=>{WG.splice(i,1);wgSave();wgDraw()};const b=el.querySelector('.wgb');
   const h=el.querySelector('.wgh');let sx,sy,ox,oy,on=0;h.onpointerdown=e=>{if(e.target.tagName=='BUTTON')return;on=1;sx=e.clientX;sy=e.clientY;ox=w.x;oy=w.y;h.setPointerCapture(e.pointerId)};h.onpointermove=e=>{if(!on)return;w.x=Math.max(0,ox+e.clientX-sx);w.y=Math.max(0,oy+e.clientY-sy);el.style.left=w.x+'px';el.style.top=w.y+'px'};h.onpointerup=()=>{if(on){on=0;wgSave()}};
-  if(w.t=='clock'){const f=()=>{const d=sysNow?sysNow():new Date();b.innerHTML=`<div class='wgbig'>${d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div><div>${d.toLocaleDateString([], {weekday:'long',month:'long',day:'numeric'})}</div>`};f();wgTimers.push(setInterval(f,10000))}
-  else if(w.t=='cal'){const d=sysNow?sysNow():new Date(),f=new Date(d.getFullYear(),d.getMonth(),1),st=(f.getDay()+6)%7,n=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();let h2=`<b>${f.toLocaleDateString([], {month:'long',year:'numeric'})}</b><table class='calt'><tr>${'MTWTFSS'.split('').map(x=>`<th>${x}</th>`).join('')}</tr><tr>`;for(let k=0;k<st;k++)h2+='<td></td>';for(let k=1;k<=n;k++){h2+=`<td class='${k==d.getDate()?'tod':''}'>${k}</td>`;if((st+k)%7==0)h2+='</tr><tr>'}b.innerHTML=h2+'</tr></table>'}
+  if(w.t=='clock'){const f=()=>{const c=clockParts();b.innerHTML=`<div class='wgbig'>${c.time}</div><div>${c.longNoYear}</div>`};f();wgTimers.push(setInterval(f,10000))}
+  else if(w.t=='cal'){const c=clockParts(),f=new Date(c.y,c.mo,1),st=(f.getDay()+6)%7,n=new Date(c.y,c.mo+1,0).getDate();let h2=`<b>${f.toLocaleDateString([], {month:'long',year:'numeric'})}</b><table class='calt'><tr>${'MTWTFSS'.split('').map(x=>`<th>${x}</th>`).join('')}</tr><tr>`;for(let k=0;k<st;k++)h2+='<td></td>';for(let k=1;k<=n;k++){h2+=`<td class='${k==c.d?'tod':''}'>${k}</td>`;if((st+k)%7==0)h2+='</tr><tr>'}b.innerHTML=h2+'</tr></table>'}
   else if(w.t=='note'){const ta=document.createElement('textarea');ta.value=w.txt||'';ta.placeholder='Type a note…';ta.setAttribute('aria-label','Sticky note');ta.oninput=()=>{w.txt=ta.value;clearTimeout(ta._t);ta._t=setTimeout(wgSave,500)};b.appendChild(ta)}
   else if(w.t=='mon'){const f=async()=>{let cpu='—',mem='—';try{if(RD){const s=await rd('stats');cpu=s.cpu.toFixed(0)+'%';mem=Math.round((s.memTotal-s.memAvailable)/1048576)+' / '+Math.round(s.memTotal/1048576)+' MB'}else{const lag=window.__lagAvg||0;cpu=Math.min(100,Math.round(lag*2))+'% (estimate)';if(performance.memory)mem=Math.round(performance.memory.usedJSHeapSize/1048576)+' MB used'}}catch(e){}b.innerHTML=`<div>CPU: <b>${cpu}</b></div><div>Memory: <b>${mem}</b></div><div>Windows: <b>${wins.length}</b></div>`};f();wgTimers.push(setInterval(f,3000))}
   else if(w.t=='weather'){b.textContent='Loading…';weatherNow().then(t=>b.innerHTML=t).catch(()=>b.textContent='Weather needs an internet connection.')}
@@ -8054,7 +8065,8 @@ ${st.failed?`<div class='msg warn'>The update in slot ${pkgEsc(st.failed.toUpper
   q('.usave').onclick=async()=>{const v=q('.uurl').value.trim();if(v&&!/^https?:\/\//.test(v))return notify('Updates','The address starts with https://',{kind:'error'});if(!await elevate('Change where Rudolf OS gets updates'))return;try{await rdPost('sys/set?k=url&v='+encodeURIComponent(v));notify('Updates','Saved. Checking for updates…');job('check')}catch(e){notify('Updates',e.message,{kind:'error'})}}};
  draw()}}
 /* ---------- daily check and download ---------- */
-async function sysuTick(){if(!RD||!USER||window.LOCKED)return;const s=await sysuStatus();if(!s||!s.persistent||!s.auto||!s.url)return;
+async function sysuTick(){if(!RD||!USER||window.LOCKED||window.__bsaver)return;   /* (1.4.4) not while battery saver is on */
+ const s=await sysuStatus();if(!s||!s.persistent||!s.auto||!s.url)return;
  const st=s.state||{},ready=st.next&&s.slots[st.next]&&s.slots[st.next].complete;
  if(ready){if(!sysuTick.told){sysuTick.told=1;notify('Security update ready','Restart to finish installing Rudolf OS '+s.slots[st.next].version+'.',{action:sysuRestart,kind:'info'})}return}
  if(Date.now()/1000-(s.checked||0)<20*3600&&!(s.available&&!ready))return;
@@ -10426,7 +10438,7 @@ function taskmgr26() {
     B.appendChild(h4('Computer')); B.appendChild(kv([['Model', s.machine.trim() || 'not reported'], ['Firmware', s.firmware.trim() || 'not reported'], ['Started with', (s.kernel.boot || '').toUpperCase()]]));
     B.appendChild(h4('Processor')); B.appendChild(kv([['Model', c.model], ['Threads', c.threads], ['Speed now', c.mhz ? c.mhz + ' MHz' : null], ['Temperature', c.tempC == null ? 'not reported' : c.tempC + ' °C'], ['Memory', fmtB(s.memory.total)]]));
     B.appendChild(h4('Graphics and display')); B.appendChild(kv([...tmLines(s.gpu).map(l => [l.split(' ')[0], tmGpu(l)]), ['Display', tmDisp(s.display)]]));
-    if ((s.battery || []).length) { B.appendChild(h4('Battery')); B.appendChild(kv(s.battery.map(b => ['Battery', b.capacity + '%' + (b.status ? ', ' + b.status : '')]))) }
+    if (batOwn(s.battery).length) { B.appendChild(h4('Battery')); B.appendChild(kv(batOwn(s.battery).map(b => ['Battery', b.capacity + '%' + (b.status ? ', ' + b.status : '')]))) }
     B.appendChild(h4('Storage')); B.appendChild(kv(tmLines(s.storage).map(l => { const [d, sz, us, at] = l.split(' '); return [d + ' (' + at + ')', `${fmtB(+us)} used of ${fmtB(+sz)}`] })));
     B.appendChild(h4('Network adapters')); B.appendChild(kv(tmLines(s.net).map(l => { const [n, state, sp, rx, tx, kind, drv] = l.split(' '); return [n + (kind == 'wifi' ? ' (Wi-Fi)' : ' (wired)'), `${state}${sp && sp != '-' && +sp > 0 ? ', ' + sp + ' Mb/s' : ''} · received ${fmtB(+rx)}, sent ${fmtB(+tx)}${tmSlow(kind, state, sp, drv) ? ' · slower than this chip can go: check the cable (use one for gigabit, Cat5e or better) or the router port' : ''}`] })));
     B.appendChild(h4('Sound')); B.appendChild(kv(tmLines(s.audio).filter(l => /^\d/.test(l)).map(l => ['Card ' + l.split(' ')[0], l.replace(/^\d+\s*/, '')])));
@@ -10492,7 +10504,7 @@ async function sysReport(problem) {
     ['CPU', st ? st.cpu.toFixed(0) + '% now, load ' + (k.load || [st.load]).join(' ') : '—'],
     ['Memory', st ? `${fmtB(st.memTotal - st.memAvailable)} used of ${fmtB(st.memTotal)}` + (m.swapTotal ? ', swap ' + fmtB(m.swapTotal - m.swapFree) + ' used' : '') : performance.memory ? fmtB(performance.memory.usedJSHeapSize) + ' JS heap' : '—'],
     ['Temperature', st && st.tempC != null ? st.tempC + ' C' : 'not reported'],
-    ['Battery', st && st.battery && st.battery.length ? st.battery.map(b => b.capacity + '% ' + (b.status || '')).join(', ') : 'none'],
+    ['Battery', st && batOwn(st.battery).length ? batOwn(st.battery).map(b => b.capacity + '% ' + (b.status || '')).join(', ') : 'none'],
     ['Storage', info && info.persistTotal > 0 ? fmtB(info.persistFree) + ' free of ' + fmtB(info.persistTotal) : 'live (not installed)'],
     ['Network', typeof netUp == 'function' ? (netUp() ? 'connected' : 'not connected') : (navigator.onLine ? 'online' : 'offline')],
     ['Services', sys ? `display ${yes(sv.display)}, sound ${yes(sv.sound)}, wifi ${yes(sv.wifi)}, X ${yes(sv.x)}, linux apps ${yes(sv.linuxApps)}` : '—'],
@@ -11335,7 +11347,7 @@ function hwCheck(){const o=document.createElement('div');o.className='natdlg hwc
     await new Promise(r=>setTimeout(r,2500));const ok=frames>0||v.videoWidth>0;const name=ds[n].label||'Camera '+(n+1);
     M.textContent=ok?`${name}: works (${v.videoWidth}×${v.videoHeight}).`:`${name}: no picture arrived.`;set('cam',ok?'pass':'fail',ok?v.videoWidth+'×'+v.videoHeight+(ds.length>1?', '+ds.length+' cameras':''):'no picture')};
    if(ds.length>1)btn('Next camera',()=>{idx=(idx+1)%ds.length;start(idx)});btn('Next',()=>{if(!R.cam)set('cam','fail','did not start');next()},1);await start(0)},
-  async bat(){let bs=[];try{bs=((await rd('stats')).battery||[]).filter(b=>/battery/i.test(b.type||''))}catch(e){}
+  async bat(){let bs=[];try{bs=batOwn((await rd('stats')).battery)}catch(e){}
    if(!bs.length){B.innerHTML='<p>This computer has no battery, so this step is skipped.</p>';set('bat','skip','no battery');btn('Next',next,1);return}
    const out=[],bad=[];bs.forEach(b=>{const h=hwcBatHealth(b);const st={Charging:'Charging',Discharging:'On battery',Full:'Full','Not charging':'Plugged in, not charging'}[b.status]||b.status||'';
     out.push(`<li><b>${lxEsc([b.manufacturer,b.model_name].filter(Boolean).join(' ')||b.name)}</b>: ${b.capacity>=0?b.capacity+' %':''}${st?', '+lxEsc(st):''}</li>`);
@@ -11634,14 +11646,14 @@ const SS_STYLES=[['stars','Starfield'],['clock','Clock'],['rudolf','Rudolf'],['r
 const SS_MINS=[1,2,3,5,10,15,20,30,45,60];
 const ssCtx=c=>c.getContext('2d',{willReadFrequently:true,alpha:false});
 const ssRnd=(a,b)=>a+Math.random()*(b-a);
-const ssTime=()=>{const d=sysNow?sysNow():new Date();return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:typeof S=='object'&&S.h24?false:undefined})};
+const ssTime=()=>clockParts().time;
 /* each style: (g, w, h) => frame(t ms, dt ms); w/h are the canvas's own pixels */
 const SS_DRAW={
  stars:(g,w,h)=>{const st=[...Array(Math.round(w*h/4200))].map(()=>({x:ssRnd(-1,1),y:ssRnd(-1,1),z:Math.random()}));g.fillStyle='#020617';g.fillRect(0,0,w,h);
   return(t,dt)=>{g.fillStyle='rgba(2,6,23,.35)';g.fillRect(0,0,w,h);const v=dt*0.00018;for(const s of st){s.z-=v;if(s.z<=0.01){s.x=ssRnd(-1,1);s.y=ssRnd(-1,1);s.z=1}const k=0.5/s.z,x=w/2+s.x*k*w/2,y=h/2+s.y*k*h/2,r=Math.max(1,1.6/s.z*w/1280);g.fillStyle=`rgba(226,232,240,${(1-s.z).toFixed(2)})`;g.fillRect(x,y,r,r)}}},
  clock:(g,w,h)=>{let x=w/2,y=h/2,vx=w*0.00004,vy=h*0.00003;
   return(t,dt)=>{g.fillStyle='#020617';g.fillRect(0,0,w,h);const fs=Math.round(h/6);x+=vx*dt;y+=vy*dt;const hw=fs*1.6;if(x<hw||x>w-hw)vx=-vx;if(y<fs||y>h-fs*0.8)vy=-vy;x=Math.max(hw,Math.min(w-hw,x));y=Math.max(fs,Math.min(h-fs*0.8,y));
-   const d=sysNow?sysNow():new Date();g.textAlign='center';g.fillStyle='#e2e8f0';g.font=`300 ${fs}px system-ui,sans-serif`;g.fillText(ssTime(),x,y);g.fillStyle='#94a3b8';g.font=`${Math.round(fs/4)}px system-ui,sans-serif`;g.fillText(d.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'}),x,y+fs*0.45)}},
+   g.textAlign='center';g.fillStyle='#e2e8f0';g.font=`300 ${fs}px system-ui,sans-serif`;g.fillText(ssTime(),x,y);g.fillStyle='#94a3b8';g.font=`${Math.round(fs/4)}px system-ui,sans-serif`;g.fillText(clockParts().longNoYear,x,y+fs*0.45)}},
  rudolf:(g,w,h)=>{const img=new Image();const src=document.querySelector('#start img');if(src)img.src=src.src;const sz=Math.round(h/4);let x=ssRnd(0,w-sz),y=ssRnd(0,h-sz),vx=w*0.00022,vy=h*0.00019,hue=ssRnd(0,360);
   return(t,dt)=>{g.fillStyle='#000';g.fillRect(0,0,w,h);x+=vx*dt;y+=vy*dt;let b=false;if(x<0||x>w-sz){vx=-vx;b=true}if(y<0||y>h-sz){vy=-vy;b=true}x=Math.max(0,Math.min(w-sz,x));y=Math.max(0,Math.min(h-sz,y));if(b)hue=(hue+67)%360;
    g.fillStyle=`hsl(${hue},80%,55%)`;g.beginPath();g.arc(x+sz/2,y+sz/2,sz*0.62,0,Math.PI*2);g.fill();if(img.complete&&img.naturalWidth)g.drawImage(img,x,y,sz,sz);else{g.fillStyle='#fff';g.font=`bold ${sz/2}px sans-serif`;g.textAlign='center';g.fillText('R',x+sz/2,y+sz*0.68)}}},
@@ -11664,7 +11676,8 @@ const SS_DRAW={
 };
 /* runs a style in canvas c until stopped: {stop, frames} */
 function ssLoop(c,style,opt){opt=opt||{};const g=ssCtx(c),w=c.width,h=c.height,f=(SS_DRAW[style]||SS_DRAW.stars)(g,w,h);let raf=0,last=0,t0=0,run=true;const st={frames:0,stop:()=>{run=false;cancelAnimationFrame(raf)}};
- const fr=t=>{if(!run)return;raf=requestAnimationFrame(fr);if(!t0)t0=last=t;const dt=t-last;if(dt<32&&st.frames)return;last=t;try{f(t-t0,Math.min(100,dt||16))}catch(e){console.warn(e)}
+ const fr=t=>{if(!run)return;raf=requestAnimationFrame(fr);if(!t0)t0=last=t;const dt=t-last;if(dt<(window.__bsaver?99:32)&&st.frames)return;   /* (1.4.4) 10 frames a second while battery saver is on */
+ last=t;try{f(t-t0,Math.min(100,dt||16))}catch(e){console.warn(e)}
   if(opt.time&&style!='clock'){const fs=Math.round(h/12);g.textAlign='center';g.font=`600 ${fs}px system-ui,sans-serif`;g.fillStyle='rgba(2,6,23,.55)';g.fillText(ssTime(),w/2+2,h-fs*0.9+2);g.fillStyle='#e2e8f0';g.fillText(ssTime(),w/2,h-fs*0.9)}st.frames++};
  raf=requestAnimationFrame(fr);return st}
 /* the full-screen saver (saverStart in core25) */
@@ -11692,6 +11705,62 @@ function ssRun(opt){opt=opt||{};const c=document.createElement('canvas');c.id='s
 (function(){const o=usrPanelS;usrPanelS=function(c,W){o(c,W);const s=c.querySelector('#uss');if(!s)return;const l=s.previousElementSibling;
  const n=document.createElement('div');n.className='msg';n.innerHTML=`In <a href='#'>Display Properties › Screen saver</a>.`;s.replaceWith(n);if(l)l.textContent='Screen saver';n.querySelector('a').onclick=e=>{e.preventDefault();W.show('disp')};
  const k=c.querySelector('#ulk');if(k){const lb=k.closest('label');if(lb)lb.remove()}}})();
+
+/* ===== 1.4.4 (power31): the battery on the taskbar, and System Settings › Power and battery (installed Rudolf OS:
+   /usr/lib/rudolf/power through rudolfd's power/status and power/set; it applies the settings itself, at every start
+   and when the charger is plugged in or out, signed in or not). ===== */
+/* the computer's own batteries: type Battery, not a device's (a mouse, a pen: scope Device), a level of 0-100 (the
+   Vivobook also lists a battery at -1 %) */
+const batOwn=l=>(l||[]).filter(b=>/^battery$/i.test(b.type||'')&&b.scope!='Device'&&b.capacity>=0&&b.capacity<=100);
+let PWR=null;   /* the last power/status (installed), or {battery,ac} from the browser's battery */
+window.__bsaver=false;
+/* time left or to full, from the battery's energy (µWh) and power (µW), or its charge and current */
+function batTime(b){if(!b)return'';const e=b.energy_now!=null?[b.energy_now,b.energy_full,b.power_now]:b.charge_now!=null?[b.charge_now,b.charge_full,b.current_now]:null;if(!e||!e[2]||e[2]<=0)return'';
+ const h=b.status=='Charging'?(e[1]-e[0])/e[2]:b.status=='Discharging'?e[0]/e[2]:0;if(!(h>0)||h>48)return'';const m=Math.round(h*60);return(m>=60?Math.floor(m/60)+' h '+(m%60)+' min':m+' min')+(b.status=='Charging'?' to full':' left')}
+const batState=b=>({Charging:'charging',Discharging:'on battery',Full:'full','Not charging':'plugged in, not charging'})[b.status]||(b.status||'').toLowerCase();
+let batBtn=null;
+function batDraw(){if(!batBtn){const W=$('#wsw');if(!W)return;batBtn=document.createElement('button');batBtn.id='bat';batBtn.style.cssText='background:transparent;border:0;display:flex;align-items:center;gap:3px;color:#e5e7eb;font:600 12px system-ui,sans-serif;cursor:pointer;padding:0 6px;height:26px';W.before(batBtn);batBtn.onclick=()=>{settings('sys');setTimeout(()=>{const g=document.querySelector('.pwr31');g&&g.scrollIntoView({block:'start'})},500)}}
+ const b=PWR&&PWR.battery;if(!b){batBtn.style.display='none';return}batBtn.style.display='flex';
+ const lv=Math.max(0,Math.min(100,b.capacity)),ch=b.status=='Charging'||(PWR.ac&&b.status!='Discharging'),col=lv<=10?'#ef4444':lv<=20?'#f59e0b':'#22c55e',w=Math.round(lv/100*15);
+ batBtn.innerHTML=`<svg width='26' height='14' viewBox='0 0 26 14'><rect x='1' y='1' width='20' height='12' rx='2.5' fill='none' stroke='#e5e7eb' stroke-width='1.6'/><rect x='22' y='4.5' width='2.5' height='5' rx='1' fill='#e5e7eb'/><rect x='3.2' y='3.2' width='${w}' height='7.6' rx='1' fill='${col}'/>${ch?"<path d='M12.5 2.2 8.6 7.6h3l-1 4.4 4.1-5.6h-3z' fill='#fde047' stroke='#111' stroke-width='.6'/>":''}${window.__bsaver?"<path d='M17 11c-4 0-5-3-4-6 3 0 5 1 4 6zM13 5l3.6 5.4' fill='#86efac' stroke='#14532d' stroke-width='.6'/>":''}</svg><span></span>`;
+ batBtn.lastChild.textContent=lv+'%';const t=batTime(b);batBtn.title=`Battery ${lv}%, ${batState(b)}${t?' · '+t:''}${window.__bsaver?' · battery saver on':''}`;batBtn.setAttribute('aria-label',batBtn.title)}
+function pwrSaverApply(on){const was=window.__bsaver;window.__bsaver=!!on;const H=document.documentElement;H.classList.toggle('bsaver',!!on);if(on){H.classList.add('rmotion','rtrans')}else if(was){try{a11yApply()}catch(e){}}}
+(function(){const o=a11yApply;a11yApply=function(){o.apply(this,arguments);if(window.__bsaver)document.documentElement.classList.add('rmotion','rtrans')}})();
+async function pwrPoll(){try{if(RD){PWR=await rd('power/status');pwrSaverApply(PWR.now&&PWR.now.saver)}else if(navigator.getBattery){const b=await navigator.getBattery();PWR={ac:b.charging,battery:b.level<1||!b.charging||b.dischargingTime!=Infinity?{capacity:Math.round(b.level*100),status:b.charging?'Charging':'Discharging'}:null}}}catch(e){}batDraw();return PWR}
+/* the power button: Ask is the Shut down dialog (core25); Shut down flushes the files first */
+function pwrEvents(t){if(/^power (ac|battery|saver)/m.test(t))pwrPoll();if(/^power shutdown$/m.test(t)){try{fsFlush()}catch(e){}try{window.__rudolfLsFlush&&__rudolfLsFlush()}catch(e){}}}
+/* System Settings › Power and battery */
+const PWR_SCR=[0,1,2,5,10,15,30],PWR_SLP=[0,5,10,15,30,60];
+function pwrPanel(c,W){const d=document.createElement('div');d.className='pwr31';const foot=c.querySelector(':scope > .sfoot');if(foot)foot.before(d);else c.appendChild(d);
+ const head=`<h4 class='sh4 sgrp' style='font-size:15px;margin-top:18px'>Power and battery</h4>`;
+ if(!RD){d.innerHTML=head+`<div class='msg pwb'></div><div class='msg'>Power settings are part of Rudolf OS on its own computer; in the browser, your device manages its power.</div>`;pwrPoll().then(p=>{const b=p&&p.battery;d.querySelector('.pwb').textContent=b?`Battery ${b.capacity}%, ${batState(b)}.`:'No battery reported.'});return}
+ d.innerHTML=head+`<div class='msg'>Loading…</div>`;
+ const draw=p=>{if(!d.isConnected)return;const adm=isAdmin(),D=adm?'':' disabled',s=p.set,cn=p.can||{},b=p.battery;
+  const sel=(k,opts,dis,why)=>`<select data-k='${k}'${D}${dis?' disabled title="'+lxEsc(why)+'"':''}>${opts.map(([v,t])=>optH(v,t,s[k])).join('')}</select>`;
+  const pair=(k,opts,dis,why)=>`<div style='display:flex;gap:8px;flex-wrap:wrap'><label style='display:flex;flex-direction:column;font-size:11px'>On battery${sel(k+'_bat',opts,dis,why)}</label><label style='display:flex;flex-direction:column;font-size:11px'>Plugged in${sel(k+'_ac',opts,dis,why)}</label></div>`;
+  const mins=(l,never)=>l.map(m=>[m,m?m+(m==1?' minute':' minutes'):never]);
+  const noProf=!cn.profile&&!cn.epp,why=noProf?'This computer offers no power modes to Rudolf OS (no platform profile, no processor energy preference).':'';
+  let health='';if(b){const f=b.energy_full??b.charge_full,dz=b.energy_full_design??b.charge_full_design;if(f&&dz)health=` · health ${Math.round(f/dz*100)} %`;if(b.cycle_count>0)health+=`, ${b.cycle_count} charge cycles`}
+  d.innerHTML=head+`<h4 class='sh4'>Battery</h4><div class='msg'>${b?`${b.capacity} %, ${lxEsc(batState(b))}${batTime(b)?' · '+batTime(b):''}${health}${p.now&&p.now.saver?' · <b>battery saver is on</b>':''}`:'This computer has no battery.'}</div>
+  <div class='r2'><label>Power mode</label>${pair('mode',[['saver','Power saver'],['balanced','Balanced'],['performance','Performance']],noProf,why)}${noProf?`<div></div><div class='msg'>${why}</div>`:''}
+  <label>Battery saver</label><div>${b?`<label class='ck'><input type='checkbox' class='pwsn'${s.saver_now?' checked':''}${D}> On now (until the charger is plugged in)</label><div style='margin-top:4px'>On by itself at ${sel('saver_at',[[0,'never'],[10,'10 %'],[20,'20 %'],[30,'30 %']])}</div><div class='msg'>Power saver mode, the screen dimmer, fewer animations, the screen saver slower, no update checks${cn.wifiSave?', Wi-Fi power saving':''}.</div>`:'<div class="msg">Needs a battery.</div>'}</div>
+  <label>Turn the screen off after</label>${pair('screen',mins(PWR_SCR,'Never'))}
+  <label>Sleep after</label>${pair('sleep',mins(PWR_SLP,'Never'))}
+  <label>When the lid is closed</label>${pair('lid',[['sleep','Sleep'],['screen','Turn the screen off'],['nothing','Do nothing']],!cn.lid,'This computer has no lid switch.')}
+  <label>When the power button is pressed</label>${sel('button',[['ask','Ask what to do'],['sleep','Sleep'],['shutdown','Shut down']])}
+  <label>Battery care</label><div>${sel('care',[[60,'Stop charging at 60 %'],[80,'Stop charging at 80 % (for a laptop that is mostly plugged in)'],[100,'Charge to 100 %']],!cn.care,'This battery does not let Rudolf OS limit its charge.')}${cn.care?'':`<div class='msg'>This battery does not let Rudolf OS limit its charge.</div>`}</div></div>
+  <div class='msg pwm'>${adm?'Changes apply at once and hold for everyone, also before anyone signs in.':'Only administrators can change these.'}${p.now&&(p.now.profile||p.now.epp)?` In force: ${[p.now.profile&&'platform profile '+lxEsc(p.now.profile),p.now.epp&&'processor preference '+lxEsc(p.now.epp)].filter(Boolean).join(', ')}.`:''}</div>`;
+  const send=async q=>{try{const r=await rdPost('power/set?'+q);PWR=r;pwrSaverApply(r.now&&r.now.saver);batDraw();draw(r)}catch(e){notify('Power and battery',e.message,{kind:'error'})}};
+  d.querySelectorAll('select[data-k]').forEach(x=>x.addEventListener('change',e=>{e.stopPropagation();send(x.dataset.k+'='+x.value)}));
+  const sn=d.querySelector('.pwsn');if(sn)sn.addEventListener('change',e=>{e.stopPropagation();send('saver_now='+(sn.checked?1:0))})};
+ pwrPoll().then(p=>p&&p.set?draw(p):d.innerHTML=head+`<div class='msg'>The power settings could not be read.</div>`)}
+(function(){const o=sysPanelS;sysPanelS=function(c,W){o(c,W);try{pwrPanel(c,W)}catch(e){console.warn(e)}}})();
+/* User Settings: Sleep is in Power and battery now (a time set there before 1.4.4 is taken over once) */
+(function(){const o=usrPanelS;usrPanelS=function(c,W){o(c,W);const s=c.querySelector('#usp');if(!s)return;const l=s.previousElementSibling;const n=document.createElement('div');n.className='msg';n.innerHTML=`In <a href='#'>System Settings › Power and battery</a>.`;s.replaceWith(n);n.querySelector('a').onclick=e=>{e.preventDefault();W.show('sys')}}})();
+async function pwrMigrate(){if(!RD||!SYSC.suspmin||SYSC.suspmig)return;const m=[5,10,15,30,60].reduce((a,v)=>Math.abs(v-SYSC.suspmin)<Math.abs(a-SYSC.suspmin)?v:a,60);
+ try{await rdPost(`power/set?sleep_ac=${m}&sleep_bat=${m}`);SYSC.suspmig=1;sysSave()}catch(e){}}
+if(typeof evOn=='function')evOn(pwrEvents);
+setTimeout(()=>{pwrPoll();pwrMigrate()},1500);setInterval(()=>{if(!document.hidden)pwrPoll()},30000);
 
 (function(){const d=document.createElement('div');d.className='ic tr';d.innerHTML='<b>🗑️</b><span>Trash</span>';let t=0;
  d.onclick=()=>{document.querySelectorAll('.ic').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');if((Date.now()-t<(window.__mouse?dblMs():450)||window.__mouse&&S.msingle))trash();t=Date.now()};

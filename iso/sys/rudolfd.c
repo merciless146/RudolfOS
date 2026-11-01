@@ -406,7 +406,7 @@ static void battery(str *s)
 		/* health (1.2.8, Settings > Hardware check): energy in uWh, or charge in uAh on batteries that report charge */
 		{ static const char *k[] = {"energy_full", "energy_full_design", "charge_full", "charge_full_design", "cycle_count", "energy_now", "power_now", "voltage_min_design"};
 		  for (unsigned i = 0; i < sizeof k / sizeof *k; i++) { snprintf(p, sizeof p, "/sys/class/power_supply/%s/%s", e->d_name, k[i]); long long v = read_ll(p, -1); if (v >= 0) sadd(s, ",\"%s\":%lld", k[i], v); }
-		  static const char *t2[] = {"manufacturer", "model_name", "technology"};
+		  static const char *t2[] = {"manufacturer", "model_name", "technology", "scope"};
 		  for (unsigned i = 0; i < sizeof t2 / sizeof *t2; i++) { snprintf(p, sizeof p, "/sys/class/power_supply/%s/%s", e->d_name, t2[i]); char *v = slurp(p, NULL); if (v) { trim(v); sadd(s, ",\"%s\":", t2[i]); sjson(s, v); free(v); } } }
 		sadd(s, "}");
 		free(stt);
@@ -2693,6 +2693,74 @@ static void api(struct req *r)
 	if (!strcmp(p, "clipboard")) { api_clipboard(r); return; }
 	if (!strcmp(p, "web/status")) { api_web(r, "status"); return; }   /* the taskbar asks whether the browser window is open */
 	if (!strcmp(p, "wifi/status")) { api_wifi(r, "status"); return; }
+	/* 1.4.4: these answer GET too (each POST action checks for POST itself) */
+	/* 1.4.4: the system volume (the sound server's default output, through /usr/lib/rudolf/hotkey, as the keys do):
+	   GET volume; POST volume?set=N (0-100), ?muted=0|1 or ?step=up|down|mute */
+	if (!strcmp(p, "volume")) {
+		char cmd[96]; const char *v;
+		if (!post) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume get 2>/dev/null");
+		else if ((v = qparam(r->query, "set")) && *v && strspn(v, "0123456789") == strlen(v) && strlen(v) <= 3) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume set %s 2>/dev/null", v);
+		else if ((v = qparam(r->query, "muted")) && (!strcmp(v, "0") || !strcmp(v, "1"))) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume muted %s 2>/dev/null", v);
+		else if ((v = qparam(r->query, "step")) && (!strcmp(v, "up") || !strcmp(v, "down") || !strcmp(v, "mute"))) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume %s >/dev/null 2>&1; /usr/lib/rudolf/hotkey volume get 2>/dev/null", v);
+		else { reply_err(r->fd, 400, "set=0-100, muted=0|1 or step=up|down|mute"); return; }
+		char *o = run_out(cmd); trim(o); int lv = -1; char mu[8] = "";
+		if (sscanf(o, "%d %7s", &lv, mu) < 1) { free(o); reply_err(r->fd, 503, "the sound server is not running"); return; }
+		str js = {0}; sadd(&js, "{\"ok\":true,\"volume\":%d,\"muted\":%s}", lv, strcmp(mu, "muted") ? "false" : "true");
+		free(o); reply_json(r->fd, &js); return;
+	}
+	/* 1.4.4: System Settings › Power and battery, through /usr/lib/rudolf/power: GET power/status; POST
+	   power/set?KEY=VALUE&... (the script checks each key and value against its choices) */
+	if (!strcmp(p, "power/status") || !strcmp(p, "power/set")) {
+		if (access("/usr/lib/rudolf/power", X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no power settings"); return; }
+		char cmd[700] = "/usr/lib/rudolf/power status 2>/dev/null";
+		if (!strcmp(p, "power/set")) {
+			if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+			const char *q = r->query ? r->query : ""; size_t n = strlen(q);
+			if (!n || n > 400 || strspn(q, "abcdefghijklmnopqrstuvwxyz0123456789_=&") != n) { reply_err(r->fd, 400, "settings as key=value&..."); return; }
+			snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/power set ");
+			for (const char *c = q; *c; c++) { size_t l = strlen(cmd); if (l + 2 >= sizeof cmd) break; cmd[l] = *c == '&' ? ' ' : *c; cmd[l + 1] = 0; }
+			strncat(cmd, " 2>/dev/null", sizeof cmd - strlen(cmd) - 1);
+		}
+		char *o = run_out(cmd); trim(o);
+		if (!o || o[0] != '{') { reply_err(r->fd, 500, "the power settings could not be read"); free(o); return; }
+		if (strstr(o, "\"ok\":false")) { reply(r->fd, 400, "application/json", o, strlen(o), NULL); free(o); return; }
+		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
+	}
+	/* 1.4.4: brightness/step?d=up|down (the mouse wheel over the taskbar's brightness icon), as the keys */
+	if (!strcmp(p, "brightness/step")) {
+		const char *d = qparam(r->query, "d");
+		if (!post || !d || (strcmp(d, "up") && strcmp(d, "down"))) { reply_err(r->fd, 400, "POST with d=up or down"); return; }
+		char cmd[96]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey brightness %s 2>/dev/null", d);
+		char *o = run_out(cmd); trim(o); int lv = atoi(o);
+		if (!strcmp(o, "none") || !*o) { free(o); reply_err(r->fd, 404, "this screen has no adjustable backlight"); return; }
+		str js = {0}; sadd(&js, "{\"ok\":true,\"brightness\":%d}", lv); free(o); reply_json(r->fd, &js); return;
+	}
+	/* 1.4.4: idle: milliseconds since the last input of any kind, from any device (rudolf-display), so the screen saver
+	   and the screen-off time count input in games and Linux apps too */
+	if (!strcmp(p, "idle")) {
+		long long last = read_ll(RUN "/input-ms", -1); struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
+		long long now = t.tv_sec * 1000LL + t.tv_nsec / 1000000;
+		str js = {0}; if (last < 0) sadd(&js, "{\"ok\":true,\"idle\":null}"); else sadd(&js, "{\"ok\":true,\"idle\":%lld}", now > last ? now - last : 0);
+		reply_json(r->fd, &js); return;
+	}
+	if (!strcmp(p, "brightness")) {
+		char bl[256], f[300];
+		char *v = qparam(r->query, "value");
+		if (!backlight_dir(bl, sizeof bl)) { reply_err(r->fd, 404, "this screen has no adjustable backlight"); return; }
+		if (!v) {   /* 1.4.4: GET brightness: the level now, 0-100 (the taskbar's brightness icon) */
+			snprintf(f, sizeof f, "%s/max_brightness", bl); long long mx = read_ll(f, 1);
+			snprintf(f, sizeof f, "%s/brightness", bl); long long cur = read_ll(f, 0);
+			str js = {0}; sadd(&js, "{\"ok\":true,\"brightness\":%lld}", mx > 0 ? (cur * 100 + mx / 2) / mx : 0); reply_json(r->fd, &js); return;
+		}
+		if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+		snprintf(f, sizeof f, "%s/max_brightness", bl);
+		long long mx = read_ll(f, 100), val = atoll(v) * mx / 100;
+		if (val < mx / 20) val = mx / 20;
+		char b[32]; snprintf(b, sizeof b, "%lld", val);
+		snprintf(f, sizeof f, "%s/brightness", bl);
+		if (write_str(f, b)) reply_err(r->fd, 500, "could not set brightness"); else reply_ok(r->fd, "ok");
+		return;
+	}
 	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 	/* ---- actions ---- */
 	if (!strcmp(p, "proc/end")) { api_proc_end(r); return; }
@@ -2762,54 +2830,6 @@ static void api(struct req *r)
 		int f = open(RUN "/page.log", O_WRONLY | O_CREAT | O_APPEND, 0600);
 		if (f >= 0) { size_t n = r->blen > 4096 ? 4096 : r->blen; if (n && write(f, r->body, n) < 0) {} if (write(f, "\n", 1) < 0) {} close(f); }
 		reply_ok(r->fd, "ok"); return;
-	}
-	/* 1.4.4: the system volume (the sound server's default output, through /usr/lib/rudolf/hotkey, as the keys do):
-	   GET volume; POST volume?set=N (0-100), ?muted=0|1 or ?step=up|down|mute */
-	if (!strcmp(p, "volume")) {
-		char cmd[96]; const char *v;
-		if (!post) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume get 2>/dev/null");
-		else if ((v = qparam(r->query, "set")) && *v && strspn(v, "0123456789") == strlen(v) && strlen(v) <= 3) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume set %s 2>/dev/null", v);
-		else if ((v = qparam(r->query, "muted")) && (!strcmp(v, "0") || !strcmp(v, "1"))) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume muted %s 2>/dev/null", v);
-		else if ((v = qparam(r->query, "step")) && (!strcmp(v, "up") || !strcmp(v, "down") || !strcmp(v, "mute"))) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume %s >/dev/null 2>&1; /usr/lib/rudolf/hotkey volume get 2>/dev/null", v);
-		else { reply_err(r->fd, 400, "set=0-100, muted=0|1 or step=up|down|mute"); return; }
-		char *o = run_out(cmd); trim(o); int lv = -1; char mu[8] = "";
-		if (sscanf(o, "%d %7s", &lv, mu) < 1) { free(o); reply_err(r->fd, 503, "the sound server is not running"); return; }
-		str js = {0}; sadd(&js, "{\"ok\":true,\"volume\":%d,\"muted\":%s}", lv, strcmp(mu, "muted") ? "false" : "true");
-		free(o); reply_json(r->fd, &js); return;
-	}
-	/* 1.4.4: brightness/step?d=up|down (the mouse wheel over the taskbar's brightness icon), as the keys */
-	if (!strcmp(p, "brightness/step")) {
-		const char *d = qparam(r->query, "d");
-		if (!post || !d || (strcmp(d, "up") && strcmp(d, "down"))) { reply_err(r->fd, 400, "POST with d=up or down"); return; }
-		char cmd[96]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey brightness %s 2>/dev/null", d);
-		char *o = run_out(cmd); trim(o); int lv = atoi(o);
-		if (!strcmp(o, "none") || !*o) { free(o); reply_err(r->fd, 404, "this screen has no adjustable backlight"); return; }
-		str js = {0}; sadd(&js, "{\"ok\":true,\"brightness\":%d}", lv); free(o); reply_json(r->fd, &js); return;
-	}
-	/* 1.4.4: idle: milliseconds since the last input of any kind, from any device (rudolf-display), so the screen saver
-	   and the screen-off time count input in games and Linux apps too */
-	if (!strcmp(p, "idle")) {
-		long long last = read_ll(RUN "/input-ms", -1); struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
-		long long now = t.tv_sec * 1000LL + t.tv_nsec / 1000000;
-		str js = {0}; if (last < 0) sadd(&js, "{\"ok\":true,\"idle\":null}"); else sadd(&js, "{\"ok\":true,\"idle\":%lld}", now > last ? now - last : 0);
-		reply_json(r->fd, &js); return;
-	}
-	if (!strcmp(p, "brightness")) {
-		char bl[256], f[300];
-		char *v = qparam(r->query, "value");
-		if (!backlight_dir(bl, sizeof bl)) { reply_err(r->fd, 404, "this screen has no adjustable backlight"); return; }
-		if (!v) {   /* 1.4.4: GET brightness: the level now, 0-100 (the taskbar's brightness icon) */
-			snprintf(f, sizeof f, "%s/max_brightness", bl); long long mx = read_ll(f, 1);
-			snprintf(f, sizeof f, "%s/brightness", bl); long long cur = read_ll(f, 0);
-			str js = {0}; sadd(&js, "{\"ok\":true,\"brightness\":%lld}", mx > 0 ? (cur * 100 + mx / 2) / mx : 0); reply_json(r->fd, &js); return;
-		}
-		snprintf(f, sizeof f, "%s/max_brightness", bl);
-		long long mx = read_ll(f, 100), val = atoll(v) * mx / 100;
-		if (val < mx / 20) val = mx / 20;
-		char b[32]; snprintf(b, sizeof b, "%lld", val);
-		snprintf(f, sizeof f, "%s/brightness", bl);
-		if (write_str(f, b)) reply_err(r->fd, 500, "could not set brightness"); else reply_ok(r->fd, "ok");
-		return;
 	}
 	if (!strcmp(p, "net/dhcp")) {
 		char *i = qparam(r->query, "if");
@@ -3112,6 +3132,8 @@ int main(int argc, char **argv)
 	live = access(RUN "/persistent", F_OK) != 0;
 	dl_boot();
 	boot_entry_ensure();
+	/* 1.4.4: the power settings (System Settings › Power and battery) hold from the start, signed in or not */
+	if (!access("/usr/lib/rudolf/power", X_OK) && system("/usr/lib/rudolf/power apply >/dev/null 2>&1 &") != 0) {}
 	int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0), one = 1;
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
 	struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons(8080), .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };

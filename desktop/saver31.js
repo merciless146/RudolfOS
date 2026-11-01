@@ -6,14 +6,14 @@ const SS_STYLES=[['stars','Starfield'],['clock','Clock'],['rudolf','Rudolf'],['r
 const SS_MINS=[1,2,3,5,10,15,20,30,45,60];
 const ssCtx=c=>c.getContext('2d',{willReadFrequently:true,alpha:false});
 const ssRnd=(a,b)=>a+Math.random()*(b-a);
-const ssTime=()=>{const d=sysNow?sysNow():new Date();return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:typeof S=='object'&&S.h24?false:undefined})};
+const ssTime=()=>clockParts().time;
 /* each style: (g, w, h) => frame(t ms, dt ms); w/h are the canvas's own pixels */
 const SS_DRAW={
  stars:(g,w,h)=>{const st=[...Array(Math.round(w*h/4200))].map(()=>({x:ssRnd(-1,1),y:ssRnd(-1,1),z:Math.random()}));g.fillStyle='#020617';g.fillRect(0,0,w,h);
   return(t,dt)=>{g.fillStyle='rgba(2,6,23,.35)';g.fillRect(0,0,w,h);const v=dt*0.00018;for(const s of st){s.z-=v;if(s.z<=0.01){s.x=ssRnd(-1,1);s.y=ssRnd(-1,1);s.z=1}const k=0.5/s.z,x=w/2+s.x*k*w/2,y=h/2+s.y*k*h/2,r=Math.max(1,1.6/s.z*w/1280);g.fillStyle=`rgba(226,232,240,${(1-s.z).toFixed(2)})`;g.fillRect(x,y,r,r)}}},
  clock:(g,w,h)=>{let x=w/2,y=h/2,vx=w*0.00004,vy=h*0.00003;
   return(t,dt)=>{g.fillStyle='#020617';g.fillRect(0,0,w,h);const fs=Math.round(h/6);x+=vx*dt;y+=vy*dt;const hw=fs*1.6;if(x<hw||x>w-hw)vx=-vx;if(y<fs||y>h-fs*0.8)vy=-vy;x=Math.max(hw,Math.min(w-hw,x));y=Math.max(fs,Math.min(h-fs*0.8,y));
-   const d=sysNow?sysNow():new Date();g.textAlign='center';g.fillStyle='#e2e8f0';g.font=`300 ${fs}px system-ui,sans-serif`;g.fillText(ssTime(),x,y);g.fillStyle='#94a3b8';g.font=`${Math.round(fs/4)}px system-ui,sans-serif`;g.fillText(d.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'}),x,y+fs*0.45)}},
+   g.textAlign='center';g.fillStyle='#e2e8f0';g.font=`300 ${fs}px system-ui,sans-serif`;g.fillText(ssTime(),x,y);g.fillStyle='#94a3b8';g.font=`${Math.round(fs/4)}px system-ui,sans-serif`;g.fillText(clockParts().longNoYear,x,y+fs*0.45)}},
  rudolf:(g,w,h)=>{const img=new Image();const src=document.querySelector('#start img');if(src)img.src=src.src;const sz=Math.round(h/4);let x=ssRnd(0,w-sz),y=ssRnd(0,h-sz),vx=w*0.00022,vy=h*0.00019,hue=ssRnd(0,360);
   return(t,dt)=>{g.fillStyle='#000';g.fillRect(0,0,w,h);x+=vx*dt;y+=vy*dt;let b=false;if(x<0||x>w-sz){vx=-vx;b=true}if(y<0||y>h-sz){vy=-vy;b=true}x=Math.max(0,Math.min(w-sz,x));y=Math.max(0,Math.min(h-sz,y));if(b)hue=(hue+67)%360;
    g.fillStyle=`hsl(${hue},80%,55%)`;g.beginPath();g.arc(x+sz/2,y+sz/2,sz*0.62,0,Math.PI*2);g.fill();if(img.complete&&img.naturalWidth)g.drawImage(img,x,y,sz,sz);else{g.fillStyle='#fff';g.font=`bold ${sz/2}px sans-serif`;g.textAlign='center';g.fillText('R',x+sz/2,y+sz*0.68)}}},
@@ -36,7 +36,8 @@ const SS_DRAW={
 };
 /* runs a style in canvas c until stopped: {stop, frames} */
 function ssLoop(c,style,opt){opt=opt||{};const g=ssCtx(c),w=c.width,h=c.height,f=(SS_DRAW[style]||SS_DRAW.stars)(g,w,h);let raf=0,last=0,t0=0,run=true;const st={frames:0,stop:()=>{run=false;cancelAnimationFrame(raf)}};
- const fr=t=>{if(!run)return;raf=requestAnimationFrame(fr);if(!t0)t0=last=t;const dt=t-last;if(dt<32&&st.frames)return;last=t;try{f(t-t0,Math.min(100,dt||16))}catch(e){console.warn(e)}
+ const fr=t=>{if(!run)return;raf=requestAnimationFrame(fr);if(!t0)t0=last=t;const dt=t-last;if(dt<(window.__bsaver?99:32)&&st.frames)return;   /* (1.4.4) 10 frames a second while battery saver is on */
+ last=t;try{f(t-t0,Math.min(100,dt||16))}catch(e){console.warn(e)}
   if(opt.time&&style!='clock'){const fs=Math.round(h/12);g.textAlign='center';g.font=`600 ${fs}px system-ui,sans-serif`;g.fillStyle='rgba(2,6,23,.55)';g.fillText(ssTime(),w/2+2,h-fs*0.9+2);g.fillStyle='#e2e8f0';g.fillText(ssTime(),w/2,h-fs*0.9)}st.frames++};
  raf=requestAnimationFrame(fr);return st}
 /* the full-screen saver (saverStart in core25) */

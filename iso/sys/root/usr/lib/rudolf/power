@@ -1,0 +1,97 @@
+#!/bin/sh
+# power (1.4.4): System Settings › Power and battery. Run as root by rudolfd (status, set), rudolf-display (apply when
+# the charger is plugged in or out and every minute on battery, lid, button) and at start (apply).
+#   power status            JSON: the battery, the charger, what the computer can do, the settings, what is in force
+#   power set K=V ...       change settings (kept in /persist/etc/power.conf), then apply
+#   power apply             apply them for the power source in use (power mode, battery saver, battery care, Wi-Fi
+#                           power saving) and write /run/rudolf/power-now for rudolf-display and the desktop
+#   power lid closed|open   the lid switch (rudolf-display); power button   the power button (rudolf-display)
+# Settings: mode_ac, mode_bat (saver|balanced|performance), saver_at (0|10|20|30: battery saver by itself at that
+# level), saver_now (0|1), screen_ac, screen_bat (minutes to turn the screen off, 0 never), sleep_ac, sleep_bat
+# (minutes to sleep, 0 never), lid_ac, lid_bat (sleep|screen|nothing), button (ask|sleep|shutdown), care (60|80|100).
+# Test overrides: POWER_SYS (a stand-in /sys), POWER_CONF, POWER_RUN, POWER_SUSPEND (a command). GPL-2.0-or-later.
+SYS=${POWER_SYS:-/sys}
+RUN=${POWER_RUN:-/run/rudolf}
+if [ -n "$POWER_CONF" ]; then CONF=$POWER_CONF; elif [ -d /persist/etc ]; then CONF=/persist/etc/power.conf; else CONF=$RUN/power.conf; fi
+KEYS="mode_ac mode_bat saver_at saver_now screen_ac screen_bat sleep_ac sleep_bat lid_ac lid_bat button care"
+def() { case $1 in mode_ac|mode_bat) echo balanced;; saver_at) echo 20;; saver_now) echo 0;; screen_ac) echo 10;; screen_bat) echo 5;;
+	sleep_ac) echo 0;; sleep_bat) echo 15;; lid_ac|lid_bat) echo sleep;; button) echo ask;; care) echo 100;; esac; }
+ok_val() { case "$1=$2" in mode_ac=saver|mode_ac=balanced|mode_ac=performance|mode_bat=saver|mode_bat=balanced|mode_bat=performance) return 0;;
+	saver_at=0|saver_at=10|saver_at=20|saver_at=30|saver_now=0|saver_now=1) return 0;;
+	screen_ac=0|screen_ac=1|screen_ac=2|screen_ac=5|screen_ac=10|screen_ac=15|screen_ac=30) return 0;;
+	screen_bat=0|screen_bat=1|screen_bat=2|screen_bat=5|screen_bat=10|screen_bat=15|screen_bat=30) return 0;;
+	sleep_ac=0|sleep_ac=5|sleep_ac=10|sleep_ac=15|sleep_ac=30|sleep_ac=60|sleep_bat=0|sleep_bat=5|sleep_bat=10|sleep_bat=15|sleep_bat=30|sleep_bat=60) return 0;;
+	lid_ac=sleep|lid_ac=screen|lid_ac=nothing|lid_bat=sleep|lid_bat=screen|lid_bat=nothing) return 0;;
+	button=ask|button=sleep|button=shutdown|care=60|care=80|care=100) return 0;; esac; return 1; }
+get() { v=$(sed -n "s/^$1=//p" "$CONF" 2>/dev/null | tail -1); ok_val "$1" "$v" && echo "$v" || def "$1"; }
+ev() { echo "$*" >> "$RUN/events" 2>/dev/null; }
+now() { sed -n "s/^$1=//p" "$RUN/power-now" 2>/dev/null | tail -1; }
+rd1() { [ -r "$1" ] && head -c 200 "$1" | head -1; }
+
+# the computer's own battery: type Battery, not a device's (scope Device: a mouse, a pen), a level of 0-100
+bat_dir() { for d in "$SYS"/class/power_supply/*; do [ "$(rd1 $d/type)" = Battery ] || continue; [ "$(rd1 $d/scope)" = Device ] && continue
+	c=$(rd1 $d/capacity); case "$c" in ''|*[!0-9]*) continue;; esac; [ "$c" -le 100 ] && { echo "$d"; return 0; }; done; return 1; }
+# 1 on the charger (or with no battery at all), 0 on battery
+on_ac() { found=0; for d in "$SYS"/class/power_supply/*; do case "$(rd1 $d/type)" in Mains|USB|USB_C|USB_PD) found=1; [ "$(rd1 $d/online)" = 1 ] && { echo 1; return; };; esac; done
+	b=$(bat_dir) || { echo 1; return; }
+	if [ $found = 0 ]; then case "$(rd1 $b/status)" in Discharging) echo 0;; *) echo 1;; esac; else echo 0; fi; }
+profile_for() { ch=" $(rd1 $SYS/firmware/acpi/platform_profile_choices) "; case $1 in
+	saver) for p in low-power quiet cool; do case "$ch" in *" $p "*) echo $p; return;; esac; done;;
+	balanced) case "$ch" in *" balanced "*) echo balanced;; esac;;
+	performance) case "$ch" in *" performance "*) echo performance;; *" balanced-performance "*) echo balanced-performance;; esac;; esac; }
+epp_for() { case $1 in saver) echo power;; balanced) echo balance_performance;; performance) echo performance;; esac; }
+epp_files() { ls "$SYS"/devices/system/cpu/cpu*/cpufreq/energy_performance_preference 2>/dev/null; }
+
+apply() {
+	ac=$(on_ac); src=bat; [ "$ac" = 1 ] && src=ac
+	b=$(bat_dir); cap=$( [ -n "$b" ] && rd1 $b/capacity ); [ -n "$cap" ] || cap=100
+	sn=$(get saver_now); sa=$(get saver_at)
+	if [ "$ac" = 1 ] && [ "$sn" = 1 ]; then set_key saver_now 0; sn=0; fi   # off by itself on the charger
+	saver=0; [ "$sn" = 1 ] && saver=1; [ "$src" = bat ] && [ "$sa" -gt 0 ] && [ "$cap" -le "$sa" ] && saver=1
+	mode=$(get mode_$src); [ $saver = 1 ] && mode=saver
+	pp=$(profile_for $mode); [ -n "$pp" ] && [ -w "$SYS/firmware/acpi/platform_profile" ] && echo "$pp" > "$SYS/firmware/acpi/platform_profile" 2>/dev/null
+	e=$(epp_for $mode); for f in $(epp_files); do a=" $(rd1 ${f%/*}/energy_performance_available_preferences) "; case "$a" in *" $e "*) echo "$e" > "$f" 2>/dev/null;; esac; done
+	[ -n "$b" ] && [ -w "$b/charge_control_end_threshold" ] && echo "$(get care)" > "$b/charge_control_end_threshold" 2>/dev/null
+	if command -v iw >/dev/null 2>&1; then for w in "$SYS"/class/net/*/wireless; do [ -e "$w" ] || continue; i=${w%/wireless}; i=${i##*/}; iw dev "$i" set power_save $([ $saver = 1 ] && echo on || echo off) 2>/dev/null; done; fi
+	osrc=$(now src); osav=$(now saver)
+	# battery saver: the screen 30 % dimmer (not below 10 %), back as it was when it goes off
+	bl=$(ls -d "$SYS"/class/backlight/* 2>/dev/null | head -1)
+	if [ -n "$bl" ] && [ "$saver" = 1 ] && [ "$osav" != 1 ] && [ ! -e "$RUN/power-bright" ]; then c=$(rd1 $bl/brightness); m=$(rd1 $bl/max_brightness)
+		if [ -n "$c" ] && [ -n "$m" ]; then echo "$c" > "$RUN/power-bright"; n=$((c * 7 / 10)); [ $n -lt $((m / 10)) ] && n=$((m / 10)); [ $n -gt $c ] && n=$c; echo $n > $bl/brightness 2>/dev/null; fi
+	elif [ -n "$bl" ] && [ "$saver" = 0 ] && [ -e "$RUN/power-bright" ]; then cat "$RUN/power-bright" > $bl/brightness 2>/dev/null; rm -f "$RUN/power-bright"; fi
+	{ echo "src=$src"; echo "saver=$saver"; echo "mode=$mode"; echo "screen=$(get screen_$src)"; echo "sleep=$(get sleep_$src)"; echo "lid=$(get lid_$src)"; echo "button=$(get button)"; } > "$RUN/power-now.tmp" && mv "$RUN/power-now.tmp" "$RUN/power-now"
+	[ -n "$osrc" ] && [ "$osrc" != "$src" ] && ev "power $([ $src = ac ] && echo ac || echo battery)"
+	[ -n "$osav" ] && [ "$osav" != "$saver" ] && ev "power saver $([ $saver = 1 ] && echo on || echo off)"
+	return 0
+}
+set_key() { mkdir -p "${CONF%/*}" 2>/dev/null; t="$CONF.tmp"; { for k in $KEYS; do if [ "$k" = "$1" ]; then echo "$k=$2"; else echo "$k=$(get $k)"; fi; done; } > "$t" && mv "$t" "$CONF"; }
+suspend() { sync; if [ -n "$POWER_SUSPEND" ]; then $POWER_SUSPEND; else echo mem > "$SYS/power/state"; fi; }
+js() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
+num() { case "$1" in ''|*[!0-9-]*) echo null;; *) echo "$1";; esac; }
+
+status() {
+	apply >/dev/null
+	b=$(bat_dir); printf '{"ok":true,"ac":%s,' "$( [ "$(on_ac)" = 1 ] && echo true || echo false)"
+	if [ -n "$b" ]; then printf '"battery":{"name":%s,"capacity":%s,"status":%s' "$(js "${b##*/}")" "$(num "$(rd1 $b/capacity)")" "$(js "$(rd1 $b/status)")"
+		for k in energy_now energy_full energy_full_design power_now charge_now charge_full charge_full_design current_now cycle_count voltage_now; do v=$(rd1 $b/$k); case "$v" in ''|*[!0-9-]*) ;; *) printf ',"%s":%s' $k "$v";; esac; done
+		printf '}'; else printf '"battery":null'; fi
+	pc=$(rd1 $SYS/firmware/acpi/platform_profile_choices); ef=$(epp_files | head -1)
+	printf ',"can":{"profile":%s,"profileChoices":%s,"epp":%s,"care":%s,"lid":%s,"backlight":%s,"wifiSave":%s}' \
+		"$( [ -n "$pc" ] && echo true || echo false)" "$(js "$pc")" "$( [ -n "$ef" ] && echo true || echo false)" \
+		"$( [ -n "$b" ] && [ -e "$b/charge_control_end_threshold" ] && echo true || echo false)" \
+		"$( { [ -e "$RUN/lid-switch" ] || ls "${POWER_PROC:-/proc}"/acpi/button/lid/*/state >/dev/null 2>&1; } && echo true || echo false)" \
+		"$( ls -d "$SYS"/class/backlight/* >/dev/null 2>&1 && echo true || echo false)" "$(command -v iw >/dev/null 2>&1 && echo true || echo false)"
+	printf ',"now":{"src":%s,"saver":%s,"mode":%s,"profile":%s,"epp":%s,"screen":%s,"sleep":%s}' "$(js "$(now src)")" "$( [ "$(now saver)" = 1 ] && echo true || echo false)" "$(js "$(now mode)")" \
+		"$(js "$(rd1 $SYS/firmware/acpi/platform_profile)")" "$(js "$( [ -n "$ef" ] && rd1 $ef)")" "$(num "$(now screen)")" "$(num "$(now sleep)")"
+	printf ',"set":{'; s=''; for k in $KEYS; do v=$(get $k); case "$v" in *[!0-9]*) printf '%s"%s":%s' "$s" $k "$(js "$v")";; *) printf '%s"%s":%s' "$s" $k "$v";; esac; s=,; done; printf '}}\n'
+}
+
+case "$1" in
+status) status ;;
+apply) apply ;;
+set) shift; for kv in "$@"; do k=${kv%%=*}; v=${kv#*=}; ok_val "$k" "$v" || { echo "{\"ok\":false,\"error\":\"not a setting: $(echo "$kv" | tr -dc 'a-z0-9_=')\"}"; exit 2; }; done
+	for kv in "$@"; do set_key "${kv%%=*}" "${kv#*=}"; done; status ;;
+lid) ev "lid $2"; [ "$2" = closed ] || exit 0; apply >/dev/null; case "$(now lid)" in sleep) suspend;; esac ;;   # "screen": rudolf-display turns it off
+button) apply >/dev/null; case "$(now button)" in sleep) suspend;; shutdown) ev "power shutdown"; sleep 3; poweroff;; *) ev "power $(date +%s)000";; esac ;;
+*) echo "usage: power status | set K=V ... | apply | lid closed|open | button"; exit 2 ;;
+esac

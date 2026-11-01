@@ -228,7 +228,7 @@ function taskmgr26() {
     B.appendChild(h4('Computer')); B.appendChild(kv([['Model', s.machine.trim() || 'not reported'], ['Firmware', s.firmware.trim() || 'not reported'], ['Started with', (s.kernel.boot || '').toUpperCase()]]));
     B.appendChild(h4('Processor')); B.appendChild(kv([['Model', c.model], ['Threads', c.threads], ['Speed now', c.mhz ? c.mhz + ' MHz' : null], ['Temperature', c.tempC == null ? 'not reported' : c.tempC + ' °C'], ['Memory', fmtB(s.memory.total)]]));
     B.appendChild(h4('Graphics and display')); B.appendChild(kv([...tmLines(s.gpu).map(l => [l.split(' ')[0], tmGpu(l)]), ['Display', tmDisp(s.display)]]));
-    if ((s.battery || []).length) { B.appendChild(h4('Battery')); B.appendChild(kv(s.battery.map(b => ['Battery', b.capacity + '%' + (b.status ? ', ' + b.status : '')]))) }
+    if (batOwn(s.battery).length) { B.appendChild(h4('Battery')); B.appendChild(kv(batOwn(s.battery).map(b => ['Battery', b.capacity + '%' + (b.status ? ', ' + b.status : '')]))) }
     B.appendChild(h4('Storage')); B.appendChild(kv(tmLines(s.storage).map(l => { const [d, sz, us, at] = l.split(' '); return [d + ' (' + at + ')', `${fmtB(+us)} used of ${fmtB(+sz)}`] })));
     B.appendChild(h4('Network adapters')); B.appendChild(kv(tmLines(s.net).map(l => { const [n, state, sp, rx, tx, kind, drv] = l.split(' '); return [n + (kind == 'wifi' ? ' (Wi-Fi)' : ' (wired)'), `${state}${sp && sp != '-' && +sp > 0 ? ', ' + sp + ' Mb/s' : ''} · received ${fmtB(+rx)}, sent ${fmtB(+tx)}${tmSlow(kind, state, sp, drv) ? ' · slower than this chip can go: check the cable (use one for gigabit, Cat5e or better) or the router port' : ''}`] })));
     B.appendChild(h4('Sound')); B.appendChild(kv(tmLines(s.audio).filter(l => /^\d/.test(l)).map(l => ['Card ' + l.split(' ')[0], l.replace(/^\d+\s*/, '')])));
@@ -294,7 +294,7 @@ async function sysReport(problem) {
     ['CPU', st ? st.cpu.toFixed(0) + '% now, load ' + (k.load || [st.load]).join(' ') : '—'],
     ['Memory', st ? `${fmtB(st.memTotal - st.memAvailable)} used of ${fmtB(st.memTotal)}` + (m.swapTotal ? ', swap ' + fmtB(m.swapTotal - m.swapFree) + ' used' : '') : performance.memory ? fmtB(performance.memory.usedJSHeapSize) + ' JS heap' : '—'],
     ['Temperature', st && st.tempC != null ? st.tempC + ' C' : 'not reported'],
-    ['Battery', st && st.battery && st.battery.length ? st.battery.map(b => b.capacity + '% ' + (b.status || '')).join(', ') : 'none'],
+    ['Battery', st && batOwn(st.battery).length ? batOwn(st.battery).map(b => b.capacity + '% ' + (b.status || '')).join(', ') : 'none'],
     ['Storage', info && info.persistTotal > 0 ? fmtB(info.persistFree) + ' free of ' + fmtB(info.persistTotal) : 'live (not installed)'],
     ['Network', typeof netUp == 'function' ? (netUp() ? 'connected' : 'not connected') : (navigator.onLine ? 'online' : 'offline')],
     ['Services', sys ? `display ${yes(sv.display)}, sound ${yes(sv.sound)}, wifi ${yes(sv.wifi)}, X ${yes(sv.x)}, linux apps ${yes(sv.linuxApps)}` : '—'],
