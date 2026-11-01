@@ -154,7 +154,10 @@ function deckApp(path,seed){
  function updTb(){const o=objOf(sel[0]);if(o&&o.t!='img'){q('.pp-ff').value=o.font||((PP_THEMES[D.theme]||PP_THEMES.office)[o.ph=='title'?'tf':'bf']);q('.pp-fs').value=String(o.fs||24)}
   qa('.wp-tb [data-a=b]').forEach(b=>b.classList.toggle('on',!!(o&&o.bold)));qa('.wp-tb [data-a=al],.wp-tb [data-a=ac],.wp-tb [data-a=ar]').forEach(b=>b.classList.toggle('on',!!o&&({al:'left',ac:'center',ar:'right'}[b.dataset.a]==(o.align||'left'))))}
  /* ================= inserting ================= */
- function addObj(o,edit){const[w,h]=SZ();const n={id:ppId(),x:Math.round((w-(o.w||200))/2),y:Math.round((h-(o.h||100))/2),...o};change('Insert',()=>{S().objs.push(n);sel=[n.id]});if(edit)setTimeout(()=>startEdit(n.id),30);return n}
+ function addObj(o,edit){const[w,h]=SZ();const n={id:ppId(),x:Math.round((w-(o.w||200))/2),y:Math.round((h-(o.h||100))/2),...o};
+  /* a chart, table or picture takes the place of an empty content placeholder, as in PowerPoint */const ph=/chart|table|img/.test(o.t)&&S().objs.find(x=>x.t=='text'&&x.ph=='body'&&!ppText(x.html));
+  if(ph){const r=Math.min(ph.w/n.w,ph.h/n.h,o.t=='table'?1:9);n.w=Math.round(n.w*r);n.h=Math.round(n.h*r);if(o.t=='table'){n.w=Math.round(ph.w);n.h=Math.min(Math.round(ph.h),n.h)}n.x=Math.round(ph.x+(ph.w-n.w)/2);n.y=Math.round(ph.y+(ph.h-n.h)/2)}
+  change('Insert',()=>{if(ph)S().objs=S().objs.filter(x=>x!==ph);S().objs.push(n);sel=[n.id]});if(edit)setTimeout(()=>startEdit(n.id),30);return n}
  function addShape(k){const th=PP_THEMES[D.theme]||PP_THEMES.office;const line=/line|arrow|conn/.test(k);
   if(k=='conn'&&sel.length==2){const[a,b]=sel;const n={t:'shape',shape:'conn',a,b,w:10,h:10,line:th.fg,lw:2};const o=addObj(n);change('Connect',()=>conns(),{merge:true});return}
   addObj(line?{t:'shape',shape:k,w:240,h:10,line:th.fg,lw:3}:{t:'shape',shape:k,w:k=='rarrow'||k=='larrow'||k=='chevron'?220:180,h:k=='uarrow'||k=='darrow'?200:k=='rarrow'||k=='larrow'||k=='chevron'?110:160,fill:th.acc[0],html:'',fs:20})}

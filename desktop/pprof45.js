@@ -86,7 +86,7 @@ function ppObjEl(D,s,o,opt){const th=PP_THEMES[D.theme]||PP_THEMES.office;const 
  else if(o.t=='table'){const t=document.createElement('table');t.className='pp-tb';const acc=o.color||th.acc[0];const rows=(o.rows||[]).slice(0,60);
   t.style.cssText=`font-family:"${th.bf}",Calibri,Arial,sans-serif;font-size:${o.fs||16}px;color:${th.fg}`;rows.forEach((r,i)=>{const tr=document.createElement('tr');r.slice(0,20).forEach(cv=>{const td=document.createElement(i==0&&o.hdr!==false?'th':'td');td.innerHTML=ppClean(cv);if(i==0&&o.hdr!==false){td.style.background=acc;td.style.color='#fff'}else if(o.band!==false&&i%2==0)td.style.background='rgba(127,127,127,.12)';tr.appendChild(td)});t.appendChild(tr)});
   if(o.line!==false)t.style.setProperty('--pp-tl',o.line||'rgba(127,127,127,.5)');el.appendChild(t)}
- else if(o.t=='chart'){const spec={...(o.chart||{}),w:o.w,h:o.h,bg:'transparent'};el.innerHTML=offChartSVG(spec);const sv=el.firstElementChild;if(sv){sv.style.width='100%';sv.style.height='100%';sv.setAttribute('preserveAspectRatio','none')}}
+ else if(o.t=='chart'){const spec={...(o.chart||{}),w:o.w,h:o.h,bg:'transparent',fg:th.fg};el.innerHTML=offChartSVG(spec);const sv=el.firstElementChild;if(sv){sv.style.width='100%';sv.style.height='100%';sv.setAttribute('preserveAspectRatio','none')}}
  else if(o.t=='icon'){el.innerHTML=`<div class='pp-ic' style='font-size:${Math.min(o.w,o.h)*.85}px'>${ppEsc(o.icon||'⭐')}</div>`}
  return el}
 function ppRender(D,s,opt){opt=opt||{};const[W,H]=ppSize(D);const th=PP_THEMES[D.theme]||PP_THEMES.office;const el=document.createElement('div');el.className='pp-slide';el.style.cssText=`width:${W}px;height:${H}px;background:${ppBgCss(D,s)};color:${th.fg}`;

@@ -40,7 +40,7 @@ const OPS=['<>','<=','>=','+','-','*','/','^','&','=','<','>','%'];
 /* ---- parser (precedence as in Excel: comparison < & < + - < * / < ^ < unary < %) ---- */
 const BIN={'=':1,'<>':1,'<':1,'>':1,'<=':1,'>=':1,'&':2,'+':3,'-':3,'*':4,'/':4,'^':5};
  function parse(src){const t=tokenize(src);let p=0;const peek=()=>t[p],next=()=>t[p++];
- function expr(min){let l=unary();for(;;){const o=peek();if(!o||o.k!='op'||!(o.v in BIN)||BIN[o.v]<min)break;next();const r=expr(o.v=='^'?BIN[o.v]:BIN[o.v]+1);l={t:'bin',o:o.v,l,r}}return l}
+ function expr(min){let l=unary();for(;;){const o=peek();if(!o||o.k!='op'||!(o.v in BIN)||BIN[o.v]<min)break;next();const r=expr(BIN[o.v]+1);l={t:'bin',o:o.v,l,r}}return l}
  function unary(){const o=peek();if(o&&o.k=='op'&&(o.v=='-'||o.v=='+')){next();return{t:'un',o:o.v,a:unary()}}return postfix(primary())}
  function postfix(a){while(peek()&&peek().k=='op'&&peek().v=='%'){next();a={t:'pct',a}}return a}
  function refNode(sheet,tk){if(tk.k=='ref')return{t:'ref',sheet,a:tk.v};if(tk.k=='rng')return{t:'rng',sheet,a:tk.a,b:tk.b};throw E.ref}

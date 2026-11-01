@@ -1,7 +1,8 @@
 // 1.4.5 the Office apps together (office45.js): autosave and recovery after a crash (SpreadsheetPro and PresentPro),
 // the Start menu's Office group, Settings › Apps' default apps, the App Store's built-in apps, and the look they share.
 // node office_t.js [CHROME]   (build iso/www/index.html first)
-const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
+const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path'), os = require('os'), cp = require('child_process');
+const SHOT = process.env.SHOTS || path.join(os.tmpdir(), 'office-shots'); fs.mkdirSync(SHOT, {recursive: true});
 const WWW = path.join(__dirname, '../../../iso/www');
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 300) : '')) };
 const errors = [];
@@ -44,6 +45,33 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("wins.slice().forEach(w=>w.close());wordpro();window.XW=wins.at(-1);window.XB=sheetApp();window.XC=deckApp()"); await wait(800);
   ok('7. one look: WordPro, SpreadsheetPro and PresentPro share the menu bar, toolbar and status bar', await q("[XW,XB,XC].every(w=>!!w.el.querySelector('.wp-mb')&&!!w.el.querySelector('.wp-tb')&&!!w.el.querySelector('.wp-sb'))"));
   ok('...and Notey', await q("[XW,XB,XC].every(w=>!!w.el.querySelector('.wn'))"));
+
+  // ---- the common tasks, start to finish (round 2 of the plan), with a picture of each step ----
+  const shot = async n => p.screenshot({path: path.join(SHOT, n + '.png')});
+  await q("wins.slice().forEach(w=>{w.__force=1;w.close()})");
+  // a grade book: conditional formatting, then sorted by the average
+  await q("window.G=sheetApp(null,spTemplate('grades'));G.el.querySelector('.mx').click()"); await wait(800);
+  await q("G.sp.sortRange('A3:G9',[[5,-1]],true)"); await wait(200); await shot('u1-gradebook-sorted');
+  ok('8. a grade book sorted by the average, best first, the grades and colours following', await q("G.sp.value('A4')=='Casey'&&G.sp.value('G4')=='A'&&G.sp.value('A9')=='Devon'&&G.sp.value('F11')==82"), await q("[G.sp.value('A4'),G.sp.value('G4'),G.sp.value('A9'),G.sp.value('F11')]"));
+  await q("G.__force=1;G.close()");
+  // a monthly budget with its chart, copied with its data into a 10-slide talk
+  await q("window.B=sheetApp(null,spTemplate('budget'));B.el.querySelector('.mx').click()"); await wait(800);
+  await q("B.sp.type('C5','520')"); await wait(200); await shot('u2-budget');
+  ok('9. a monthly budget: a change flows through the totals and the chart', await q("B.sp.value('C13')==2810&&B.sp.chartSpec(B.sp.sheet.charts[0]).series[1].vals[1]==520"));
+  await q("(async()=>{const ch=B.sp.sheet.charts[0];const spec=B.sp.chartSpec(ch);OFFCLIP={kind:'chart',spec,png:await offSvgPng(offChartSVG(spec),ch.w,ch.h),live:{rg:ch.rg,sheet:B.sp.sheet.name}}})()"); await wait(300);
+  await q("window.T=deckApp(null,ppTemplate('talk'));T.el.querySelector('.mx').click()"); await wait(800);
+  await q("(()=>{const pp=T.pp;pp.go(1);for(let i=0;i<4;i++)pp.addSlide('content');pp.go(2);pp.pasteChart(OFFCLIP);pp.change('n',()=>{pp.deck.slides.forEach((s,i)=>{s.notes='Notes for slide '+(i+1)})});pp.change('th',()=>{pp.deck.theme='ocean'})})()");
+  const red = await q("(()=>{const c=document.createElement('canvas');c.width=800;c.height=500;const g=c.getContext('2d');g.fillStyle='#0ea5e9';g.fillRect(0,0,800,500);g.fillStyle='#fde047';g.beginPath();g.arc(400,250,120,0,7);g.fill();return c.toDataURL('image/png')})()");
+  await q(`T.pp.go(3);T.pp.placePicture('${red}')`); await wait(400); await q("T.pp.go(2)"); await wait(300); await shot('u3-talk-chart');
+  ok('10. a 10-slide talk with a theme, a picture, the budget chart, notes and transitions', await q("(()=>{const d=T.pp.deck;return d.slides.length==10&&d.theme=='ocean'&&d.slides.some(s=>s.objs.some(o=>o.t=='img'))&&d.slides[2].objs.some(o=>o.t=='chart'&&o.chart.series.length==2)&&d.slides.every(s=>s.notes)&&d.slides.slice(1).every(s=>s.tr.t=='fade')})()"));
+  await q("T.pp.present(0)"); await wait(300); await p.keyboard.press('ArrowRight'); await wait(300); await p.keyboard.press('ArrowRight'); await wait(800); await p.keyboard.press('p'); await wait(300); await shot('u4-presenter-view');
+  ok('...presented, with the presenter view showing the notes', await q("/Notes for slide 3/.test(document.querySelector('.pp-pvnotes').textContent)&&/Slide 3 of 10/.test(document.querySelector('.pp-pvh .n').textContent)"));
+  await p.keyboard.press('Escape'); await wait(200);
+  const pdfn = await q("(async()=>{let got=null;window.savePdf=(n,b)=>{got=b};await T.pp.exportPdf('slides');const t=new TextDecoder('latin1').decode(await new Response(got).arrayBuffer());return (t.match(/\\/Type\\s*\\/Page[^s]/g)||[]).length})()");
+  ok('...exported as a PDF of 10 pages', pdfn == 10, pdfn);
+  const px = await q("(async()=>{const b=await ppToPptx(T.pp.deck);const d=await offDataUrl(b);return d.split(',')[1]})()"); const f = path.join(os.tmpdir(), 'office-talk.pptx'); fs.writeFileSync(f, Buffer.from(px, 'base64'));
+  let n = ''; try { n = cp.execFileSync('python3', ['-c', 'import pptx,sys;p=pptx.Presentation(sys.argv[1]);print(len(p.slides),sum(1 for s in p.slides for sh in s.shapes if sh.shape_type==13),sum(1 for s in p.slides if s.has_notes_slide))', f], {encoding: 'utf8'}).trim() } catch (e) { n = String(e) }
+  ok('...and as a .pptx that python-pptx reads: 10 slides, the picture and the chart as pictures, 10 notes pages', n == '10 2 10', n);
   ok('no page error', !errors.length, errors);
   await b.close(); srv.close();
   console.log(`${R.filter(x => x).length}/${R.length} passed`); process.exit(R.every(x => x) ? 0 : 1);

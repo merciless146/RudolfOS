@@ -18,7 +18,7 @@ const err = (n, got, e) => ok(n, got && got.e === e, { got, want: e });
 eq('colName 0', SPE.colName(0), 'A'); eq('colName 25', SPE.colName(25), 'Z'); eq('colName 26', SPE.colName(26), 'AA'); eq('colName 701', SPE.colName(701), 'ZZ');
 eq('colNum AA', SPE.colNum('AA'), 26); eq('parseA1 $B$3', SPE.parseA1('$B$3'), { r: 2, c: 1 }); eq('parseA1 out', SPE.parseA1('AAA1'), null);
 // arithmetic and precedence
-eq('1+2*3', ev('1+2*3'), 7); eq('(1+2)*3', ev('(1+2)*3'), 9); eq('-2^2 (Excel: 4)', ev('-2^2'), 4); eq('2^3^2 right', ev('2^3^2'), 512);
+eq('1+2*3', ev('1+2*3'), 7); eq('(1+2)*3', ev('(1+2)*3'), 9); eq('-2^2 (Excel: 4)', ev('-2^2'), 4); eq('2^3^2 left to right, as Excel', ev('2^3^2'), 64);
 eq('10%', ev('10%'), 0.1); eq('&', ev('"a"&1&TRUE'), 'a1TRUE'); eq('= text no case', ev('"abc"="ABC"'), true); eq('1<"a"', ev('1<"a"'), true);
 err('1/0', ev('1/0'), '#DIV/0!'); err('"x"+1', ev('"x"+1'), '#VALUE!'); err('unknown fn', ev('FOO(1)'), '#NAME?'); err('bad syntax', ev('1+'), '#VALUE!');
 eq('"3"+4 text number', ev('"3"+4'), 7); eq('string escape', ev('"a""b"'), 'a"b');

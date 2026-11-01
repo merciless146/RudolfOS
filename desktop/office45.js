@@ -56,38 +56,38 @@ async function offRecover(app,X,open){try{const idx=(await kvGet(offRecKey()))||
  X.dialog('Recover your work?',`<div style='max-width:380px'>${offEsc(app)} closed before <b>${offEsc(v.name||'Untitled')}</b> was saved (${offEsc(new Date(v.t).toLocaleString())}). Open the copy it kept?</div>`,[['Discard',()=>{drop()}],['Open it',()=>{open(data,v.name);drop()},1]])}catch(e){console.warn('recover',e)}}
 /* charts as SVG: {type:'column'|'bar'|'line'|'area'|'pie'|'doughnut'|'scatter',title,cats,series:[{name,vals,color}],legend,xt,yt,w,h} */
 const OFF_CHART_COLORS=['#4472c4','#ed7d31','#a5a5a5','#ffc000','#5b9bd5','#70ad47','#264478','#9e480e','#636363','#997300'];
-function offChartSVG(c){const W=c.w||480,H=c.h||300,font="font-family='Calibri,Arial,sans-serif'";const ser=(c.series||[]).map((s,i)=>({...s,color:s.color||OFF_CHART_COLORS[i%10],vals:(s.vals||[]).map(v=>typeof v=='number'&&isFinite(v)?v:null)}));const cats=c.cats||[];
+function offChartSVG(c){const T1=c.fg||'#333',T2=c.fg||'#555',GR=c.fg?'rgba(127,127,127,.35)':'#e5e7eb',AX=c.fg||'#999';const W=c.w||480,H=c.h||300,font="font-family='Calibri,Arial,sans-serif'";const ser=(c.series||[]).map((s,i)=>({...s,color:s.color||OFF_CHART_COLORS[i%10],vals:(s.vals||[]).map(v=>typeof v=='number'&&isFinite(v)?v:null)}));const cats=c.cats||[];
  let o=`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}' viewBox='0 0 ${W} ${H}' ${font} font-size='12'><rect width='100%' height='100%' fill='${c.bg||'#fff'}'/>`;
  const top=c.title?34:12,legW=c.legend!==false&&ser.length&&!/pie|doughnut/.test(c.type)?Math.min(140,W*.28):0,pieLeg=c.legend!==false&&/pie|doughnut/.test(c.type)?Math.min(140,W*.3):0;
- if(c.title)o+=`<text x='${W/2}' y='22' text-anchor='middle' font-size='16' font-weight='bold' fill='#333'>${offEsc(c.title)}</text>`;
+ if(c.title)o+=`<text x='${W/2}' y='22' text-anchor='middle' font-size='16' font-weight='bold' fill='${T1}'>${offEsc(c.title)}</text>`;
  const fmt=v=>{const a=Math.abs(v);return a>=1e6?+(v/1e6).toFixed(1)+'M':a>=1e4?+(v/1e3).toFixed(1)+'k':+v.toFixed(a<1&&a?2:a<10?1:0)+''};
  if(/pie|doughnut/.test(c.type)){const s=ser[0]||{vals:[]},vals=s.vals.map(v=>Math.max(0,v||0)),tot=vals.reduce((a,b)=>a+b,0)||1;const cx=(W-pieLeg)/2,cy=top+(H-top-8)/2,R=Math.max(10,Math.min(cx-10,(H-top-16)/2)),r0=c.type=='doughnut'?R*.55:0;let a=-Math.PI/2;
   vals.forEach((v,i)=>{const a2=a+v/tot*Math.PI*2,col=(c.colors&&c.colors[i])||OFF_CHART_COLORS[i%10];const big=a2-a>Math.PI?1:0,p=(ang,r)=>`${(cx+r*Math.cos(ang)).toFixed(1)},${(cy+r*Math.sin(ang)).toFixed(1)}`;
    if(v>=tot-1e-9)o+=`<circle cx='${cx}' cy='${cy}' r='${R}' fill='${col}'/>`+(r0?`<circle cx='${cx}' cy='${cy}' r='${r0}' fill='#fff'/>`:'');
    else if(v>0)o+=`<path d='M${r0?p(a,r0):cx+','+cy} L${p(a,R)} A${R},${R} 0 ${big} 1 ${p(a2,R)} ${r0?`L${p(a2,r0)} A${r0},${r0} 0 ${big} 0 ${p(a,r0)}`:''}Z' fill='${col}' stroke='#fff'/>`;
    if(v>0&&v/tot>.04){const m=(a+a2)/2,rr=r0?(R+r0)/2:R*.65;o+=`<text x='${(cx+rr*Math.cos(m)).toFixed(1)}' y='${(cy+rr*Math.sin(m)+4).toFixed(1)}' text-anchor='middle' fill='#fff' font-size='11'>${Math.round(v/tot*100)}%</text>`}a=a2});
-  if(pieLeg)cats.forEach((n,i)=>{const y=top+8+i*18;if(y>H-10)return;o+=`<rect x='${W-pieLeg+6}' y='${y}' width='10' height='10' fill='${(c.colors&&c.colors[i])||OFF_CHART_COLORS[i%10]}'/><text x='${W-pieLeg+20}' y='${y+9}' fill='#333'>${offEsc(String(n).slice(0,18))}</text>`});
+  if(pieLeg)cats.forEach((n,i)=>{const y=top+8+i*18;if(y>H-10)return;o+=`<rect x='${W-pieLeg+6}' y='${y}' width='10' height='10' fill='${(c.colors&&c.colors[i])||OFF_CHART_COLORS[i%10]}'/><text x='${W-pieLeg+20}' y='${y+9}' fill='${T1}'>${offEsc(String(n).slice(0,18))}</text>`});
   return o+'</svg>'}
  const L=48+(c.yt?16:0),R_=W-12-legW,T=top+4,B=H-26-(c.xt?16:0);const pw=Math.max(10,R_-L),ph=Math.max(10,B-T);
  let all=ser.flatMap(s=>s.vals).filter(v=>v!=null);let xs=null;if(c.type=='scatter'){xs=cats.map(Number);}
  let mn=Math.min(0,...all),mx=Math.max(0,...all);if(!all.length){mn=0;mx=1}if(mn==mx)mx=mn+1;const step=(()=>{const r=(mx-mn)/5,p=Math.pow(10,Math.floor(Math.log10(r))),f=r/p;return(f<1.5?1:f<3?2:f<7?5:10)*p})();mn=Math.floor(mn/step)*step;mx=Math.ceil(mx/step)*step;
  const horiz=c.type=='bar';const vpos=v=>horiz?L+(v-mn)/(mx-mn)*pw:B-(v-mn)/(mx-mn)*ph;
- for(let v=mn;v<=mx+step/2;v+=step){const p=vpos(v).toFixed(1);o+=horiz?`<line x1='${p}' x2='${p}' y1='${T}' y2='${B}' stroke='#e5e7eb'/><text x='${p}' y='${B+14}' text-anchor='middle' fill='#555' font-size='10'>${fmt(v)}</text>`:`<line x1='${L}' x2='${R_}' y1='${p}' y2='${p}' stroke='#e5e7eb'/><text x='${L-5}' y='${+p+3}' text-anchor='end' fill='#555' font-size='10'>${fmt(v)}</text>`}
- o+=`<line x1='${L}' x2='${horiz?L:R_}' y1='${B}' y2='${horiz?T:B}' stroke='#999'/>`;
+ for(let v=mn;v<=mx+step/2;v+=step){const p=vpos(v).toFixed(1);o+=horiz?`<line x1='${p}' x2='${p}' y1='${T}' y2='${B}' stroke='${GR}'/><text x='${p}' y='${B+14}' text-anchor='middle' fill='${T2}' font-size='10'>${fmt(v)}</text>`:`<line x1='${L}' x2='${R_}' y1='${p}' y2='${p}' stroke='${GR}'/><text x='${L-5}' y='${+p+3}' text-anchor='end' fill='${T2}' font-size='10'>${fmt(v)}</text>`}
+ o+=`<line x1='${L}' x2='${horiz?L:R_}' y1='${B}' y2='${horiz?T:B}' stroke='${AX}'/>`;
  const n=Math.max(1,cats.length||Math.max(0,...ser.map(s=>s.vals.length)));
  if(c.type=='scatter'){let xmn=Math.min(...xs.filter(isFinite)),xmx=Math.max(...xs.filter(isFinite));if(!isFinite(xmn)){xmn=0;xmx=1}if(xmn==xmx)xmx=xmn+1;const xp=x=>L+(x-xmn)/(xmx-xmn)*pw;
-  for(let i=0;i<=4;i++){const x=xmn+(xmx-xmn)*i/4;o+=`<text x='${xp(x).toFixed(1)}' y='${B+14}' text-anchor='middle' fill='#555' font-size='10'>${fmt(x)}</text>`}
+  for(let i=0;i<=4;i++){const x=xmn+(xmx-xmn)*i/4;o+=`<text x='${xp(x).toFixed(1)}' y='${B+14}' text-anchor='middle' fill='${T2}' font-size='10'>${fmt(x)}</text>`}
   ser.forEach(s=>s.vals.forEach((v,i)=>{if(v!=null&&isFinite(xs[i]))o+=`<circle cx='${xp(xs[i]).toFixed(1)}' cy='${vpos(v).toFixed(1)}' r='3.5' fill='${s.color}'/>`}))}
  else{const band=(horiz?ph:pw)/n;
-  cats.forEach((t,i)=>{if(n>40&&i%Math.ceil(n/20))return;const p=(horiz?T:L)+band*(i+.5);o+=horiz?`<text x='${L-5}' y='${(p+3).toFixed(1)}' text-anchor='end' fill='#555' font-size='10'>${offEsc(String(t).slice(0,12))}</text>`:`<text x='${p.toFixed(1)}' y='${B+14}' text-anchor='middle' fill='#555' font-size='10'>${offEsc(String(t).slice(0,Math.max(3,band/6|0)))}</text>`});
+  cats.forEach((t,i)=>{if(n>40&&i%Math.ceil(n/20))return;const p=(horiz?T:L)+band*(i+.5);o+=horiz?`<text x='${L-5}' y='${(p+3).toFixed(1)}' text-anchor='end' fill='${T2}' font-size='10'>${offEsc(String(t).slice(0,12))}</text>`:`<text x='${p.toFixed(1)}' y='${B+14}' text-anchor='middle' fill='${T2}' font-size='10'>${offEsc(String(t).slice(0,Math.max(3,band/6|0)))}</text>`});
   if(c.type=='column'||c.type=='bar'){const bw=band*.7/Math.max(1,ser.length);ser.forEach((s,j)=>s.vals.forEach((v,i)=>{if(v==null)return;const a=vpos(Math.max(mn,Math.min(0,mx))),b=vpos(v),off=(horiz?T:L)+band*i+band*.15+bw*j;
    o+=horiz?`<rect x='${Math.min(a,b).toFixed(1)}' y='${off.toFixed(1)}' width='${Math.abs(b-a).toFixed(1)}' height='${(bw*.92).toFixed(1)}' fill='${s.color}'/>`:`<rect x='${off.toFixed(1)}' y='${Math.min(a,b).toFixed(1)}' width='${(bw*.92).toFixed(1)}' height='${Math.abs(b-a).toFixed(1)}' fill='${s.color}'/>`}))}
   else ser.forEach(s=>{const pts=s.vals.map((v,i)=>v==null?null:[L+band*(i+.5),vpos(v)]).filter(Boolean);if(!pts.length)return;const d=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
    if(c.type=='area')o+=`<path d='${d} L${pts.at(-1)[0].toFixed(1)},${vpos(Math.max(mn,0)).toFixed(1)} L${pts[0][0].toFixed(1)},${vpos(Math.max(mn,0)).toFixed(1)}Z' fill='${s.color}' fill-opacity='.55' stroke='${s.color}'/>`;
    else o+=`<path d='${d}' fill='none' stroke='${s.color}' stroke-width='2.5'/>`+pts.map(p=>`<circle cx='${p[0].toFixed(1)}' cy='${p[1].toFixed(1)}' r='3' fill='${s.color}'/>`).join('')})}
- if(c.xt)o+=`<text x='${(L+R_)/2}' y='${H-6}' text-anchor='middle' fill='#333'>${offEsc(c.xt)}</text>`;
- if(c.yt)o+=`<text transform='translate(14,${(T+B)/2}) rotate(-90)' text-anchor='middle' fill='#333'>${offEsc(c.yt)}</text>`;
- if(legW)ser.forEach((s,i)=>{const y=T+8+i*18;if(y>H-10)return;o+=`<rect x='${W-legW+4}' y='${y}' width='10' height='10' fill='${s.color}'/><text x='${W-legW+18}' y='${y+9}' fill='#333'>${offEsc(String(s.name||'Series '+(i+1)).slice(0,18))}</text>`});
+ if(c.xt)o+=`<text x='${(L+R_)/2}' y='${H-6}' text-anchor='middle' fill='${T1}'>${offEsc(c.xt)}</text>`;
+ if(c.yt)o+=`<text transform='translate(14,${(T+B)/2}) rotate(-90)' text-anchor='middle' fill='${T1}'>${offEsc(c.yt)}</text>`;
+ if(legW)ser.forEach((s,i)=>{const y=T+8+i*18;if(y>H-10)return;o+=`<rect x='${W-legW+4}' y='${y}' width='10' height='10' fill='${s.color}'/><text x='${W-legW+18}' y='${y+9}' fill='${T1}'>${offEsc(String(s.name||'Series '+(i+1)).slice(0,18))}</text>`});
  return o+'</svg>'}
 /* an SVG (or anything an <img> shows) as a PNG data URL */
 function offSvgPng(svg,w,h,scale){return new Promise(res=>{const im=new Image();im.onload=()=>{const c=document.createElement('canvas');c.width=w*(scale||2);c.height=h*(scale||2);const g=c.getContext('2d');g.scale(scale||2,scale||2);g.drawImage(im,0,0,w,h);res(c.toDataURL('image/png'))};im.onerror=()=>res(null);im.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg)})}
