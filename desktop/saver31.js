@@ -41,11 +41,20 @@ function ssLoop(c,style,opt){opt=opt||{};const g=ssCtx(c),w=c.width,h=c.height,f
   if(opt.time&&style!='clock'){const fs=Math.round(h/12);g.textAlign='center';g.font=`600 ${fs}px system-ui,sans-serif`;g.fillStyle='rgba(2,6,23,.55)';g.fillText(ssTime(),w/2+2,h-fs*0.9+2);g.fillStyle='#e2e8f0';g.fillText(ssTime(),w/2,h-fs*0.9)}st.frames++};
  raf=requestAnimationFrame(fr);return st}
 /* the full-screen saver (saverStart in core25) */
+/* (1.4.4) on installed Rudolf OS, app windows (Oracle's real tabs, Linux apps) are above the desktop page: the
+   desktop is brought to the front while the saver runs, and the window that was shown comes back after it */
+async function ssFront(){try{const j=await rdPost('apps/windows');const m=j.mode||'desktop';if(m!='desktop')await rdPost('apps/desktop');return m}catch(e){return 'desktop'}}
+function ssBack(m){if(!m||m=='desktop')return;const w=/^win ([0-9a-f]+)/.exec(m);(w?rdPost('apps/show?win='+w[1]):m=='web'?rdPost('web/show'):Promise.resolve()).catch(()=>{})}
 function ssRun(opt){opt=opt||{};const c=document.createElement('canvas');c.id='saver';const k=Math.min(1,1280/Math.max(1,innerWidth));c.width=Math.round(innerWidth*k);c.height=Math.round(innerHeight*k);c.style.cssText='width:100vw;height:100vh;background:#000';document.body.appendChild(c);
  const style=opt.style||SYSC.ssstyle||'stars',lp=ssLoop(c,style,{time:SYSC.sstime!==false});let iv=0;
  /* on installed Rudolf OS, input in a game or a Linux app (which the page does not see) also ends it */
  if(RD)iv=setInterval(async()=>{try{const j=await rd('idle');if(j.idle!=null&&j.idle<1500&&SAVER&&Date.now()-SAVER.t>1500)saverStop()}catch(e){}},1000);
- return{c,style,preview:!!opt.preview,t:Date.now(),lp,stop:()=>{lp.stop();clearInterval(iv);c.remove()}}}
+ let back=null,stopped=false,kept=false;if(RD)ssFront().then(m=>{if(!stopped)back=m;else if(kept){if(m!='desktop')window.__lkBack=m}else ssBack(m)});
+ /* stop(true): the lock screen follows, and the window comes back once it is unlocked */
+ return{c,style,preview:!!opt.preview,t:Date.now(),lp,stop:keep=>{stopped=true;kept=!!keep;lp.stop();clearInterval(iv);c.remove();if(keep&&back)window.__lkBack=back;else if(!keep)ssBack(back)}}}
+/* (1.4.4) the lock screen too is above every window (an app window shown above it would be usable while locked) */
+(function(){const o=lockScreen;lockScreen=function(){const r=o.apply(this,arguments);if(RD)ssFront().then(m=>{if(m!='desktop')window.__lkBack=m});return r}})();
+window.__lockDone=()=>{const m=window.__lkBack;window.__lkBack=null;ssBack(m)};
 /* Display Properties › Screen saver */
 (function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);const adm=isAdmin();const D=adm?'':' disabled';
  const d=document.createElement('div');d.className='ss31';

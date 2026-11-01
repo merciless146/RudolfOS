@@ -204,20 +204,22 @@ function lockScreen(reason,adminOnly){if(!USER||LOCKED)return;LOCKED=true;$('#me
  const tick=()=>{const c=clockParts();o.querySelector('.lkclock').textContent=c.time;o.querySelector('.lkdate').textContent=c.longNoYear};tick();const iv=setInterval(tick,1000);
  document.body.appendChild(o);setTimeout(()=>o.querySelector('.lkp').focus(),50);
  const un=async()=>{let ok=false;if(adminOnly)ok=await elevate(reason||'Unlock this account');else ok=USER.r=='guest'||await pwCheck(USER,P.get());
-  if(ok){clearInterval(iv);o.remove();LOCKED=false;lastInput=Date.now();sfx('login');if(adminOnly&&window.__parentalExtend)__parentalExtend()}else{o.querySelector('.lkm').textContent='Wrong password.';P.clear();sfx('error')}};
+  if(ok){clearInterval(iv);o.remove();LOCKED=false;lastInput=Date.now();if(window.__lockDone)__lockDone();sfx('login');if(adminOnly&&window.__parentalExtend)__parentalExtend()}else{o.querySelector('.lkm').textContent='Wrong password.';P.clear();sfx('error')}};
  o.querySelector('.lku').onclick=un;o.querySelector('.lkp').addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Enter')un()});
  o.querySelector('.lks').onclick=()=>{clearInterval(iv);o.remove();LOCKED=false;A.logoff()};
  o.addEventListener('keydown',e=>{if(e.key!='Tab')e.stopPropagation()})}
 /* the screen saver (1.4.4: eight styles drawn by the processor, saver31.js); the time without input comes from
    rudolf-display on installed Rudolf OS (every key and pointer movement, also in games and Linux apps) */
 function saverStart(preview){if(SAVER||!USER||LOCKED&&!preview)return;SAVER=ssRun({preview:!!preview})}
-function saverStop(){if(!SAVER)return;const s=SAVER;SAVER=null;s.stop();if(!s.preview&&SYSC.lockss&&Date.now()-s.t>3000)lockScreen()}
+function saverStop(){if(!SAVER)return;const s=SAVER;SAVER=null;const lock=!s.preview&&SYSC.lockss&&Date.now()-s.t>3000;s.stop(lock);if(lock)lockScreen()}
+async function mediaOther(){try{return (await rd('media')).playing>0}catch(e){return false}}
 async function idleNow(){let m=Date.now()-lastInput;if(RD){try{const j=await rd('idle');if(j.idle!=null)m=Math.min(m,j.idle)}catch(e){}}return m}
 async function idleCheck(){if(!USER)return;const idle=(await idleNow())/60000;
- if(SYSC.sson&&SYSC.ssmin>0&&idle>=SYSC.ssmin&&!LOCKED&&!SAVER&&!document.fullscreenElement&&!document.pointerLockElement&&!(window.__mediaPlaying&&__mediaPlaying()))saverStart();
+ const busy=(window.__mediaPlaying&&__mediaPlaying())||(RD&&await mediaOther());   /* (1.4.4) also a video in Oracle's real tabs or a Linux app */
+ if(SYSC.sson&&SYSC.ssmin>0&&idle>=SYSC.ssmin&&!LOCKED&&!SAVER&&!document.fullscreenElement&&!document.pointerLockElement&&!busy)saverStart();
  if(SYSC.lockmin>0&&idle>=SYSC.lockmin&&!LOCKED){saverStop();lockScreen()}
  const sm=RD&&PWR&&PWR.now&&PWR.now.sleep!=null?PWR.now.sleep:SYSC.suspmin;   /* (1.4.4) Power and battery's, for the power source in use */
- if(RD&&sm>0&&idle>=sm&&!(window.__mediaPlaying&&__mediaPlaying())){lastInput=Date.now();lockScreen();rdPost('power?action=suspend').catch(()=>{})}}
+ if(RD&&sm>0&&idle>=sm&&!busy){lastInput=Date.now();lockScreen();rdPost('power?action=suspend').catch(()=>{})}}
 setInterval(idleCheck,15000);
 /* ---------- parental controls: allowed apps and a daily time limit ---------- */
 const APPCAT=[['browser','Oracle Browser',/^Oracle/],['explorer','File Explorer',/^File Explorer|^Exploring/],['notepad','Notepad',/Notepad/],['prompt','Rudolf Prompt',/^Rudolf Prompt/],['blocklua','BlockLua Builder',/^BlockLua/],['calc','Calculator',/^Calculator/],['wordlite','WordLite',/^WordLite/],['wordpro','WordPro',/^WordPro/],['paint','Paint',/^Paint/],['boards','Board Games',/^Board Games|^Checkers|^Chess/],['poker','Card Games',/^Card Games/],['galaxy','WOS Galaxy Map',/^WOS Galaxy Map/],['media','Media Player',/^Media Player/],['gameboy','Emu',/^Emu|Emu$|Game Boy|GBA|\.GBA?C?\b/i],['flash','Flash Player',/Flash/],['quake','Quake Engine',/^Quake/],['gpulab','GPU Lab',/^GPU Lab/],['settings','Settings',/^Settings|^Display Properties/]];
