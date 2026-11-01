@@ -58,7 +58,17 @@ PKSRC=$(unsquashfs -cat "$PREV/modules.sfs" "usr/lib/modules/$KV/rudolf-ksrc" 2>
 if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 	# LINUX_SRC: an unpacked kernel tree of that version to build in instead of downloading one (local test builds)
 	if [ -n "$LINUX_SRC" ]; then ln -s "$(realpath "$LINUX_SRC")" "$W/linux"; else git clone -q --depth 1 -b "v$KERNEL_VERSION" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$W/linux"; fi
-	[ -x initramfs/bin/busybox ] || { git clone -q --depth 1 -b 1_36_1 https://git.busybox.net/busybox "$W/bb"; cp systools/busybox.config "$W/bb/.config"; make -C "$W/bb" -s -j$(nproc) >/dev/null; mkdir -p initramfs/bin; cp "$W/bb/busybox" initramfs/bin/; }
+	# 1.4.7: busybox's own server often fails mid-clone ("possible repository corruption on the remote side"): try it
+	# three times, then GitHub's mirror; either way the code must be release 1_36_1's commit
+	BB_COMMIT=1a64f6a20aaf6ea4dbba68bbfa8cc1ab7e5c57c4
+	if [ ! -x initramfs/bin/busybox ]; then
+		for u in https://git.busybox.net/busybox https://git.busybox.net/busybox https://git.busybox.net/busybox https://github.com/mirror/busybox; do
+			rm -rf "$W/bb"; if git clone -q --depth 1 -b 1_36_1 "$u" "$W/bb" && [ "$(git -C "$W/bb" rev-parse HEAD)" = "$BB_COMMIT" ]; then break; fi
+			echo "busybox: $u did not give release 1_36_1, trying again"; sleep 10
+		done
+		if [ "$(git -C "$W/bb" rev-parse HEAD 2>/dev/null)" != "$BB_COMMIT" ]; then echo "busybox 1_36_1 could not be fetched"; exit 1; fi
+		cp systools/busybox.config "$W/bb/.config"; make -C "$W/bb" -s -j$(nproc) >/dev/null; mkdir -p initramfs/bin; cp "$W/bb/busybox" initramfs/bin/
+	fi
 	gcc -Os -static -nostdlib -fno-builtin -fno-stack-protector -fno-asynchronous-unwind-tables -o initramfs/bin/rudolf-kexec sys/rudolf-kexec.c && strip initramfs/bin/rudolf-kexec
 	gcc -Os -static -o initramfs/bin/rudolf-verity sys/rudolf-verity.c && strip initramfs/bin/rudolf-verity
 	cp trusted-keys.txt initramfs/etc/rudolf-keys
