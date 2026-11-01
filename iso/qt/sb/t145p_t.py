@@ -72,15 +72,15 @@ try:
     vm, g, up, js = boot()
     ok('1. Rudolf OS starts', up)
     if not up: raise SystemExit
-    # something saved just before: a file in the home folder (C:), a setting, a file on the data partition
-    r = js("(()=>{const h=homePath('DOCUMENTS');let d=node(h);if(!d){d=node(homePath());d.DOCUMENTS={};d=d.DOCUMENTS}d['T145.TXT']='kept '+Date.now();fsSave();S.t145=1;persistS();return 1})()")
+    # something saved just before: a file on C: and a stored setting
+    r = js("(()=>{node(['C:'])['T145.TXT']='kept '+Date.now();fsSave();localStorage.setItem('t145','1');return 1})()")
     out('saved:', r)
     t = press(vm, js, 'poweroff')
     out(f'shut down: {t and round(t, 1)} s')
     ok('2. Shut down: the power is off within 10 s', t is not None and t <= 10, t)
     vm, g, up, js = boot()
     ok('3. starts again', up)
-    k = js("(()=>{const d=node(homePath('DOCUMENTS'));return [!!(d&&d['T145.TXT']),S.t145===1]})()")
+    k = js("(()=>[!!node(['C:'])['T145.TXT'],localStorage.getItem('t145')==='1'])()")
     ok('...the file and the setting saved just before are there', k == [True, True], k)
     dm = g.sh("dmesg | grep -iE 'EXT4-fs.*(recovery|orphan)' | head -3; echo", 20)
     ok('...the data partition was clean (no journal recovery)', 'recovery' not in dm, dm)

@@ -125,4 +125,16 @@ ok('at least 150 functions', Object.keys(SPE.F).length >= 150, Object.keys(SPE.F
   ok('100k rows recalculated within 1 s', t2 < 1000, t2); const last = s.cells.get(99999 * SPE.MAXC + 1).val; ok('...deep chain right (no stack overflow)', typeof last == 'number' && last > 0, last);
   eq('...SUM', s.cells.get(3).val, Array.from({ length: 100000 }, (_, i) => i % 97).reduce((a, b) => a + b, 0));
 }
+// recalculating only what a change reaches
+{
+  const b = book({ A1: 1, A2: 2, B1: '=A1*2', B2: '=SUM(A1:A2)', C1: '=B1+1', D1: '=RAND()', E1: '=A2*5' }); SPE.recalc(b, null);
+  const cell = a => { const p = SPE.parseA1(a); return b.sheets[0].cells.get(p.r * SPE.MAXC + p.c) };
+  const d0 = cell('D1').val, e0g = cell('E1')._g; cell('A1').v = 10; SPE.recalc(b, [[b.sheets[0], 0, 0]]);
+  eq('recalc: dependents', [cell('B1').val, cell('B2').val, cell('C1').val], [20, 12, 21]); ok('recalc: volatile again', cell('D1').val !== d0);
+  eq('recalc: others kept', cell('E1').val, 10);
+  const s = { name: 'Big', id: 9, cells: new Map() }, bb = { sheets: [s], names: {} };
+  for (let r = 0; r < 100000; r++) { s.cells.set(r * SPE.MAXC, { v: r % 97 }); s.cells.set(r * SPE.MAXC + 1, { f: '=A' + (r + 1) + '*2' }) }
+  s.cells.set(2, { f: '=SUM(B1:B100000)' }); SPE.recalc(bb, null); s.cells.get(500 * SPE.MAXC).v = 1000; let t = Date.now(); SPE.recalc(bb, [[s, 500, 0]]); t = Date.now() - t;
+  console.log(`one change in 100k rows: ${t} ms`); ok('one change in 100k rows: within 100 ms', t < 100, t); eq('...the total follows', s.cells.get(2).val, (Array.from({ length: 100000 }, (_, i) => i % 97).reduce((a, b) => a + b, 0) - 500 % 97 + 1000) * 2);
+}
 console.log(`${pass}/${pass + fail} passed`); process.exit(fail ? 1 : 0);

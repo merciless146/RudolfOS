@@ -352,3 +352,35 @@ body.emu-borderless #bar{display:none!important}
 .gmnote{background:#fff7ed;border:1px solid #fdba74;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:13px}
 .gmnote button{margin-left:4px}.gmsz{font-size:12px}
 .wfmt{font-size:12px;margin-right:6px}
+/* ===== 1.4.5: the Office apps (SpreadsheetPro, PresentPro) ===== */
+.off-main{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
+.off .wp-dd .off-dis{color:#9ca3af;cursor:default}.off .wp-dd .off-dis:hover{background:none}
+.off-pal{display:grid;grid-template-columns:repeat(6,26px);gap:4px;margin-bottom:8px}.off-pal button{width:26px;height:22px;border:1px solid #9ca3af;border-radius:3px;cursor:pointer;padding:0}
+.off .wp-tb b.sp-sw,.off .wp-tb b.sp-sw2{display:block;height:3px;margin-top:-3px}
+.sp-fb{display:flex;align-items:center;gap:4px;padding:3px 6px;background:#fff;border-bottom:1px solid #d1d5db}
+.sp-nb{width:96px;height:22px;border:1px solid #d1d5db;border-radius:3px;font:12px Segoe UI,Arial,sans-serif;padding:0 4px}
+.sp-fxl{font:italic 600 13px Georgia,serif;color:#6b7280;padding:0 4px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb}
+.sp-fx{flex:1;height:22px;border:1px solid #d1d5db;border-radius:3px;font:13px Consolas,'Courier New',monospace;padding:0 6px;min-width:0}
+.sp-gw{flex:1;position:relative;overflow:hidden;background:#fff;min-height:0}
+.sp-cv{position:absolute;left:0;top:0}
+.sp-sc{position:absolute;inset:0;overflow:scroll;outline:none}
+.sp-sp{width:1px;height:1px}
+.sp-ol{position:absolute;overflow:hidden;pointer-events:none}
+.sp-ch{position:absolute;pointer-events:auto;background:#fff;border:1px solid #d1d5db;box-shadow:0 1px 4px #0002;cursor:move;box-sizing:border-box}
+.sp-ch.on{outline:2px solid #1a73e8}.sp-cs{width:100%;height:100%;overflow:hidden}
+.sp-crz{position:absolute;right:-5px;bottom:-5px;width:10px;height:10px;background:#1a73e8;border:1px solid #fff;cursor:nwse-resize;display:none}.sp-ch.on .sp-crz{display:block}
+.sp-ed{position:absolute;z-index:5;border:2px solid #1a73e8;padding:1px 3px;resize:none;outline:none;box-sizing:border-box;overflow:hidden;line-height:1.2;box-shadow:0 2px 6px #0003;margin:0}
+.sp-hint{position:absolute;z-index:6;background:#fff;border:1px solid #cbd5e1;border-radius:4px;box-shadow:0 4px 12px #0003;font:12px Segoe UI,Arial,sans-serif;max-width:460px;color:#111}
+.sp-hi{padding:3px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sp-hi.on,.sp-hi:hover{background:#dbe6ff}.sp-hi span{color:#555}
+.sp-hd{padding:5px 8px}.sp-hk{padding:2px 8px;color:#6b7280;font-size:11px;border-top:1px solid #eee}
+.sp-tip{position:absolute;z-index:6;background:#ffffe1;border:1px solid #888;padding:4px 6px;font:12px Segoe UI,Arial,sans-serif;max-width:240px;white-space:pre-wrap;color:#111;pointer-events:none}
+.sp-tabs{display:flex;align-items:stretch;background:#f3f4f6;border-top:1px solid #d1d5db;height:26px;overflow:hidden}
+.sp-add{border:0;background:transparent;font-size:15px;width:30px;cursor:pointer;color:#374151}.sp-add:hover{background:#e5e7eb}
+.sp-tl{display:flex;overflow-x:auto;flex:1}.sp-tab{border:0;border-right:1px solid #d1d5db;background:transparent;padding:0 14px;font:12px Segoe UI,Arial,sans-serif;cursor:pointer;white-space:nowrap;color:#374151}
+.sp-tab.on{background:#fff;color:#0b57d0;font-weight:600;box-shadow:inset 0 -2px #0b57d0}.sp-tab:hover:not(.on){background:#e5e7eb}
+.sp-tabsel{display:flex;gap:2px;margin-bottom:8px;border-bottom:1px solid #d1d5db}.sp-tabsel button{border:1px solid transparent;background:none;padding:4px 10px;cursor:pointer}.sp-tabsel button.on{border-color:#d1d5db;border-bottom-color:#fff;background:#fff;margin-bottom:-1px;font-weight:600}
+.sp-pg{min-height:150px;min-width:420px}.sp-pg .bp.on{background:#c7d2fe}
+.sp-ctypes{display:grid;grid-template-columns:repeat(4,auto);gap:4px;margin-bottom:8px}.sp-ctypes button{padding:4px 6px;font-size:12px;border:1px solid #d1d5db;background:#fff;border-radius:4px;cursor:pointer}.sp-ctypes button.on{background:#c7d2fe;border-color:#818cf8}
+.sp-tpl{display:grid;grid-template-columns:repeat(3,130px);gap:8px}.sp-tpl button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 6px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:12px}.sp-tpl button span{font-size:30px}.sp-tpl button:hover{background:#eef2ff;border-color:#818cf8}
+.sp-fl{max-height:200px;overflow:auto;border:1px solid #e5e7eb;padding:4px;margin-top:6px;min-width:240px}.sp-fl label{display:block;white-space:nowrap}
+.sp .wp-sb .sp-agg{color:#374151}

@@ -7,13 +7,13 @@ const ERR=e=>({e});const isE=v=>v&&typeof v=='object'&&'e'in v;
 const E={div:ERR('#DIV/0!'),val:ERR('#VALUE!'),ref:ERR('#REF!'),name:ERR('#NAME?'),na:ERR('#N/A'),num:ERR('#NUM!'),cyc:ERR('#CIRCULAR!'),nul:ERR('#NULL!')};
 const MAXC=702,MAXR=100000;
 /* ---- A1 names ---- */
-function colName(c){let s='';c++;while(c>0){const m=(c-1)%26;s=String.fromCharCode(65+m)+s;c=Math.floor((c-1)/26)}return s}
-function colNum(s){let n=0;for(const ch of s.toUpperCase())n=n*26+(ch.charCodeAt(0)-64);return n-1}
+ function colName(c){let s='';c++;while(c>0){const m=(c-1)%26;s=String.fromCharCode(65+m)+s;c=Math.floor((c-1)/26)}return s}
+ function colNum(s){let n=0;for(const ch of s.toUpperCase())n=n*26+(ch.charCodeAt(0)-64);return n-1}
 const a1=(r,c)=>colName(c)+(r+1);
-function parseA1(s){const m=/^\$?([A-Za-z]{1,3})\$?(\d+)$/.exec(s);if(!m)return null;const c=colNum(m[1]),r=+m[2]-1;return c<MAXC&&r>=0&&r<MAXR?{r,c}:null}
+ function parseA1(s){const m=/^\$?([A-Za-z]{1,3})\$?(\d+)$/.exec(s);if(!m)return null;const c=colNum(m[1]),r=+m[2]-1;return c<MAXC&&r>=0&&r<MAXR?{r,c}:null}
 /* ---- tokens ---- */
 const OPS=['<>','<=','>=','+','-','*','/','^','&','=','<','>','%'];
-function tokenize(src){const t=[];let i=0;const n=src.length;
+ function tokenize(src){const t=[];let i=0;const n=src.length;
  while(i<n){const ch=src[i];
   if(/\s/.test(ch)){i++;continue}
   if(ch=='"'){let s='';i++;while(i<n){if(src[i]=='"'){if(src[i+1]=='"'){s+='"';i+=2;continue}break}s+=src[i++]}if(i>=n)throw E.val;i++;t.push({k:'str',v:s});continue}
@@ -39,7 +39,7 @@ function tokenize(src){const t=[];let i=0;const n=src.length;
  return t}
 /* ---- parser (precedence as in Excel: comparison < & < + - < * / < ^ < unary < %) ---- */
 const BIN={'=':1,'<>':1,'<':1,'>':1,'<=':1,'>=':1,'&':2,'+':3,'-':3,'*':4,'/':4,'^':5};
-function parse(src){const t=tokenize(src);let p=0;const peek=()=>t[p],next=()=>t[p++];
+ function parse(src){const t=tokenize(src);let p=0;const peek=()=>t[p],next=()=>t[p++];
  function expr(min){let l=unary();for(;;){const o=peek();if(!o||o.k!='op'||!(o.v in BIN)||BIN[o.v]<min)break;next();const r=expr(o.v=='^'?BIN[o.v]:BIN[o.v]+1);l={t:'bin',o:o.v,l,r}}return l}
  function unary(){const o=peek();if(o&&o.k=='op'&&(o.v=='-'||o.v=='+')){next();return{t:'un',o:o.v,a:unary()}}return postfix(primary())}
  function postfix(a){while(peek()&&peek().k=='op'&&peek().v=='%'){next();a={t:'pct',a}}return a}
@@ -55,42 +55,42 @@ function parse(src){const t=tokenize(src);let p=0;const peek=()=>t[p],next=()=>t
   }throw E.val}
  const e=expr(1);if(p<t.length)throw E.val;return e}
 /* ---- references ---- */
-function rangeOf(n,ctx){const sh=n.sheet!=null?ctx.sheetByName(n.sheet):ctx.sheet;if(!sh)return null;
+ function rangeOf(n,ctx){const sh=n.sheet!=null?ctx.sheetByName(n.sheet):ctx.sheet;if(!sh)return null;
  if(n._g!==undefined)return n._g&&{s:sh,r0:n._g.r0,c0:n._g.c0,r1:n._g.r1,c1:n._g.c1};const g=rangeOf0(n,sh);n._g=g;return g}
-function rangeOf0(n,sh){
+ function rangeOf0(n,sh){
  if(n.t=='ref'){const a=parseA1(n.a);return a&&{s:sh,r0:a.r,c0:a.c,r1:a.r,c1:a.c}}
  const A=n.a.replace(/\$/g,''),B=n.b.replace(/\$/g,'');
  if(/^\d+$/.test(A)&&/^\d+$/.test(B))return{s:sh,r0:Math.min(+A,+B)-1,c0:0,r1:Math.max(+A,+B)-1,c1:MAXC-1};
  if(/^[A-Za-z]+$/.test(A)&&/^[A-Za-z]+$/.test(B))return{s:sh,r0:0,c0:Math.min(colNum(A),colNum(B)),r1:MAXR-1,c1:Math.max(colNum(A),colNum(B))};
  const a=parseA1(A),b=parseA1(B);if(!a||!b)return null;return{s:sh,r0:Math.min(a.r,b.r),c0:Math.min(a.c,b.c),r1:Math.max(a.r,b.r),c1:Math.max(a.c,b.c)}}
 /* the cells of a range that hold something (whole columns are not walked cell by cell) */
-function rangeCells(rg,ctx,fn){const s=rg.s,big=(rg.r1-rg.r0+1)*(rg.c1-rg.c0+1)>200000;
+ function rangeCells(rg,ctx,fn){const s=rg.s,big=(rg.r1-rg.r0+1)*(rg.c1-rg.c0+1)>200000;
  if(!big){for(let r=rg.r0;r<=rg.r1;r++)for(let c=rg.c0;c<=rg.c1;c++)fn(ctx.value(s,r,c),r,c);return}
  const ks=[...s.cells.keys()].map(k=>[Math.floor(k/MAXC),k%MAXC]).filter(([r,c])=>r>=rg.r0&&r<=rg.r1&&c>=rg.c0&&c<=rg.c1).sort((x,y)=>x[0]-y[0]||x[1]-y[1]);for(const[r,c]of ks)fn(ctx.value(s,r,c),r,c)}
-function rangeMatrix(rg,ctx){const s=rg.s;let r1=rg.r1,c1=rg.c1;if(r1-rg.r0>5000||c1-rg.c0>500){let mr=rg.r0,mc=rg.c0;for(const k of s.cells.keys()){const r=Math.floor(k/MAXC),c=k%MAXC;if(r>=rg.r0&&r<=rg.r1&&c>=rg.c0&&c<=rg.c1){mr=Math.max(mr,r);mc=Math.max(mc,c)}}r1=Math.min(r1,mr);c1=Math.min(c1,mc)}
+ function rangeMatrix(rg,ctx){const s=rg.s;let r1=rg.r1,c1=rg.c1;if(r1-rg.r0>5000||c1-rg.c0>500){let mr=rg.r0,mc=rg.c0;for(const k of s.cells.keys()){const r=Math.floor(k/MAXC),c=k%MAXC;if(r>=rg.r0&&r<=rg.r1&&c>=rg.c0&&c<=rg.c1){mr=Math.max(mr,r);mc=Math.max(mc,c)}}r1=Math.min(r1,mr);c1=Math.min(c1,mc)}
  const m=[];for(let r=rg.r0;r<=r1;r++){const row=[];for(let c=rg.c0;c<=c1;c++)row.push(ctx.value(s,r,c));m.push(row)}return m}
 /* ---- coercion ---- */
-function num(v){if(isE(v))throw v;if(v==null||v==='')return 0;if(typeof v=='number')return v;if(typeof v=='boolean')return v?1:0;const s=String(v).trim();if(s==='')return 0;const d=parseDate(s);if(d!=null)return d;const x=+s.replace(/,/g,'').replace(/%$/,'');if(!isNaN(x))return /%$/.test(s)?x/100:x;throw E.val}
-function str(v){if(isE(v))throw v;if(v==null)return'';if(typeof v=='boolean')return v?'TRUE':'FALSE';if(typeof v=='number')return fmtGeneral(v);return String(v)}
-function bool(v){if(isE(v))throw v;if(typeof v=='boolean')return v;if(typeof v=='number')return v!=0;if(v==null||v==='')return false;const u=String(v).toUpperCase();if(u=='TRUE')return true;if(u=='FALSE')return false;throw E.val}
-function fmtGeneral(v){if(!isFinite(v))return'#NUM!';if(Number.isInteger(v)&&Math.abs(v)<1e15)return String(v);const a=Math.abs(v);if(a>=1e11||a<1e-9&&a>0)return v.toExponential(5).replace(/\.?0+e/,'E').replace('e','E');return String(+v.toPrecision(11))}
+ function num(v){if(isE(v))throw v;if(v==null||v==='')return 0;if(typeof v=='number')return v;if(typeof v=='boolean')return v?1:0;const s=String(v).trim();if(s==='')return 0;const d=parseDate(s);if(d!=null)return d;const x=+s.replace(/,/g,'').replace(/%$/,'');if(!isNaN(x))return /%$/.test(s)?x/100:x;throw E.val}
+ function str(v){if(isE(v))throw v;if(v==null)return'';if(typeof v=='boolean')return v?'TRUE':'FALSE';if(typeof v=='number')return fmtGeneral(v);return String(v)}
+ function bool(v){if(isE(v))throw v;if(typeof v=='boolean')return v;if(typeof v=='number')return v!=0;if(v==null||v==='')return false;const u=String(v).toUpperCase();if(u=='TRUE')return true;if(u=='FALSE')return false;throw E.val}
+ function fmtGeneral(v){if(!isFinite(v))return'#NUM!';if(Number.isInteger(v)&&Math.abs(v)<1e15)return String(v);const a=Math.abs(v);if(a>=1e11||a<1e-9&&a>0)return v.toExponential(5).replace(/\.?0+e/,'E').replace('e','E');return String(+v.toPrecision(11))}
 /* dates: serial numbers from 1899-12-30, as Excel (1900 date system) */
 const EPOCH=Date.UTC(1899,11,30);
 const toSerial=(y,m,d)=>(Date.UTC(y,m-1,d)-EPOCH)/864e5;
-function fromSerial(n){const d=new Date(EPOCH+Math.floor(n)*864e5);return{y:d.getUTCFullYear(),m:d.getUTCMonth()+1,d:d.getUTCDate(),wd:d.getUTCDay()}}
-function parseDate(s){let m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);if(m)return toSerial(+m[1],+m[2],+m[3]);m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);if(m)return toSerial(+m[3],+m[1],+m[2]);return null}
+ function fromSerial(n){const d=new Date(EPOCH+Math.floor(n)*864e5);return{y:d.getUTCFullYear(),m:d.getUTCMonth()+1,d:d.getUTCDate(),wd:d.getUTCDay()}}
+ function parseDate(s){let m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);if(m)return toSerial(+m[1],+m[2],+m[3]);m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);if(m)return toSerial(+m[3],+m[1],+m[2]);return null}
 /* ---- values of arguments ---- */
-function flat(args,ctx,opt){/* numbers of the arguments (for SUM and the like): in ranges only numbers count, typed values are converted */
+ function flat(args,ctx,opt){/* numbers of the arguments (for SUM and the like): in ranges only numbers count, typed values are converted */
  const out=[];for(const a of args){const v=a();if(v&&v.rg){rangeCells(v.rg,ctx,x=>{if(isE(x))throw x;if(typeof x=='number')out.push(x);else if(opt&&opt.a&&x!=null&&x!=='')out.push(typeof x=='boolean'?+x:0)})}else if(v&&v.arr){v.arr.flat().forEach(x=>{if(isE(x))throw x;if(typeof x=='number')out.push(x)})}else if(v==null&&opt&&opt.skipBlank){}else out.push(num(v))}return out}
-function vals(a,ctx){/* every value of one argument, a range walked cell by cell, empty cells included */
+ function vals(a,ctx){/* every value of one argument, a range walked cell by cell, empty cells included */
  const v=a();if(v&&v.rg)return rangeMatrix(v.rg,ctx).flat();if(v&&v.arr)return v.arr.flat();return[v]}
-function matrix(a,ctx){const v=a();if(v&&v.rg)return rangeMatrix(v.rg,ctx);if(v&&v.arr)return v.arr;return[[v]]}
-function scalar(v,ctx){if(v&&v.rg){const rg=v.rg;if(rg.r0==rg.r1&&rg.c0==rg.c1)return ctx.value(rg.s,rg.r0,rg.c0);
+ function matrix(a,ctx){const v=a();if(v&&v.rg)return rangeMatrix(v.rg,ctx);if(v&&v.arr)return v.arr;return[[v]]}
+ function scalar(v,ctx){if(v&&v.rg){const rg=v.rg;if(rg.r0==rg.r1&&rg.c0==rg.c1)return ctx.value(rg.s,rg.r0,rg.c0);
   /* implicit intersection with the formula's own row or column */
   if(rg.c0==rg.c1&&ctx.r>=rg.r0&&ctx.r<=rg.r1)return ctx.value(rg.s,ctx.r,rg.c0);if(rg.r0==rg.r1&&ctx.c>=rg.c0&&ctx.c<=rg.c1)return ctx.value(rg.s,rg.r0,ctx.c);return E.val}
  if(v&&v.arr)return v.arr[0][0];return v}
 /* criteria as in COUNTIF: ">=10", "<>x", "a*", 5 */
-function crit(c){if(typeof c=='number'||typeof c=='boolean')return v=>v===c||(typeof v=='string'&&v.toUpperCase()==String(c).toUpperCase()&&typeof c!='boolean');
+ function crit(c){if(typeof c=='number'||typeof c=='boolean')return v=>v===c||(typeof v=='string'&&v.toUpperCase()==String(c).toUpperCase()&&typeof c!='boolean');
  const s=String(c??'');const m=/^(<=|>=|<>|=|<|>)?(.*)$/.exec(s);const op=m[1]||'=',rhs=m[2];const n=rhs!==''&&!isNaN(+rhs)?+rhs:null;
  const wild=/[*?]/.test(rhs)?new RegExp('^'+rhs.replace(/[.+^${}()|[\]\\]/g,'\\$&').replace(/~\*/g,'\u0001').replace(/~\?/g,'\u0002').replace(/\*/g,'.*').replace(/\?/g,'.').replace(/\u0001/g,'\\*').replace(/\u0002/g,'\\?')+'$','i'):null;
  return v=>{if(n!=null&&typeof v=='number'){return{'=':v==n,'<>':v!=n,'<':v<n,'>':v>n,'<=':v<=n,'>=':v>=n}[op]}
@@ -98,7 +98,7 @@ function crit(c){if(typeof c=='number'||typeof c=='boolean')return v=>v===c||(ty
   if(op=='='){if(rhs==='')return v==null||v==='';return wild?wild.test(a):a.toUpperCase()==rhs.toUpperCase()}
   if(op=='<>'){if(rhs==='')return!(v==null||v==='');return wild?!wild.test(a):a.toUpperCase()!=rhs.toUpperCase()}
   if(typeof v!='string')return false;const cmp=a.toUpperCase().localeCompare(rhs.toUpperCase());return{'<':cmp<0,'>':cmp>0,'<=':cmp<=0,'>=':cmp>=0}[op]}}
-function cmpVals(a,b){/* Excel order: numbers < text < booleans; text without case */
+ function cmpVals(a,b){/* Excel order: numbers < text < booleans; text without case */
  const rank=v=>typeof v=='number'?0:typeof v=='string'?1:typeof v=='boolean'?2:v==null?-1:3;const ra=rank(a),rb=rank(b);
  if(a==null&&b==null)return 0;if(a==null)return typeof b=='string'?cmpVals('',b):cmpVals(0,b);if(b==null)return typeof a=='string'?cmpVals(a,''):cmpVals(a,0);
  if(ra!=rb)return ra-rb;if(ra==0)return a-b;if(ra==1){const x=a.toUpperCase(),y=b.toUpperCase();return x<y?-1:x>y?1:0}return(a?1:0)-(b?1:0)}
@@ -107,7 +107,7 @@ const F={};const D={};   /* D: the one-line description shown while typing */
 const def=(names,desc,f)=>names.split(',').forEach(n=>{F[n]=f;D[n]=desc});
 const n1=(f)=>(a,ctx)=>{const v=scalar(a[0](),ctx);return f(num(v),a,ctx)};
 const nOpt=(a,i,d,ctx)=>a[i]&&a[i].blank!==true?num(scalar(a[i](),ctx)):d;
-const sOpt=(a,i,d,ctx)=>a[i]?str(scalar(a[i](),ctx)):d;
+
 const chk=x=>{if(typeof x=='number'&&!isFinite(x))throw E.num;return x};
 /* maths */
 def('SUM','SUM(number1, …): adds the numbers',(a,c)=>flat(a,c).reduce((s,x)=>s+x,0));
@@ -277,7 +277,7 @@ def('SLN','SLN(cost, salvage, life): straight-line depreciation',(a,c)=>{const l
 def('TYPE','TYPE(value): 1 number, 2 text, 4 logical, 16 error, 64 array',(a,c)=>{try{const v=a[0]();if(v&&(v.rg&&(v.rg.r0!=v.rg.r1||v.rg.c0!=v.rg.c1)||v.arr))return 64;const s=scalar(v,c);return isE(s)?16:typeof s=='number'||s==null?1:typeof s=='string'?2:4}catch(e){return 16}});
 def('ERROR.TYPE','ERROR.TYPE(error): its number',(a,c)=>{let v;try{v=scalar(a[0](),c)}catch(e){v=e}if(!isE(v))throw E.na;return{'#NULL!':1,'#DIV/0!':2,'#VALUE!':3,'#REF!':4,'#NAME?':5,'#NUM!':6,'#N/A':7}[v.e]||8});
 /* ---- evaluation ---- */
-function ev(n,ctx){switch(n.t){
+ function ev(n,ctx){switch(n.t){
  case'num':return n.v;case'str':return n.v;case'bool':return n.v;case'err':return ERR(n.v);case'blank':return null;
  case'arr':return{arr:n.v};
  case'ref':case'rng':{const g=rangeOf(n,ctx);if(!g)throw E.ref;return{rg:g}}
@@ -291,22 +291,40 @@ function ev(n,ctx){switch(n.t){
  throw E.val}
 /* ---- the book: every formula cell is worked out once per change, in order, with the values remembered ---- */
 let GEN=0;
-function calc(book){const gen=++GEN;
+ function calc(book,only){const gen=++GEN;
  const byName=nm=>book.sheets.find(s=>s.name.toUpperCase()==String(nm).toUpperCase());
  const names=book.names||{};
  function value(s,r,c){const cell=s.cells.get(r*MAXC+c);if(!cell)return null;if(cell.f==null)return cell.v;
-  if(cell._g===gen)return cell.val;if(cell._b===gen){cell._g=gen;cell.val=E.cyc;return E.cyc}cell._b=gen;
+  if(cell._g===gen||only&&!only.has(cell))return cell.val;if(cell._b===gen){cell._g=gen;cell.val=E.cyc;return E.cyc}cell._b=gen;
   let v;try{if(!cell.ast)cell.ast=parse(cell.f.slice(1));const cx={sheetByName:byName,names,sheet:s,r,c,value};v=scalar(ev(cell.ast,cx),cx);if(v&&v.arr)v=v.arr[0][0];if(v===undefined)v=null}catch(e){v=isE(e)?e:E.val}
   cell._b=0;if(cell._g===gen&&cell.val===E.cyc)v=E.cyc;cell._g=gen;cell.val=v;return v}
  /* row by row: references usually point up or left, so chains are short. The list of formula cells is kept on the
     sheet until a cell changes (the app sets sheet.fk=null when it changes cells) */
  for(const s of book.sheets){if(!s.fk||s.fkn!==s.cells.size){s.fk=[];for(const[k,cl]of s.cells)if(cl.f!=null)s.fk.push(k);s.fk.sort((a,b)=>a-b);s.fkn=s.cells.size}
-  for(const k of s.fk)value(s,Math.floor(k/MAXC),k%MAXC)}
+  if(!only)for(const k of s.fk)value(s,Math.floor(k/MAXC),k%MAXC)}
+ if(only)for(const[,[s,r,c]]of only)value(s,r,c);
  return book}
-function evalIn(book,sheet,src){/* a formula worked out once, for the formula bar's preview and for tests */
+/* what depends on what: the references in each formula, so a change recalculates only the cells it reaches.
+   Formulas with OFFSET, INDIRECT, RAND, NOW, TODAY or names are worked out at every change */
+const VOL=new Set(['OFFSET','INDIRECT','RAND','RANDBETWEEN','NOW','TODAY','INDEX']);
+ function deps(book){const one=new Map(),rngs=[],vol=[];const byName=nm=>book.sheets.find(s=>s.name.toUpperCase()==String(nm).toUpperCase());
+ for(const s of book.sheets){for(const[k,cl]of s.cells){if(cl.f==null)continue;try{if(!cl.ast)cl.ast=parse(cl.f.slice(1))}catch(e){continue}
+  let v=false;const walk=n=>{if(!n||typeof n!='object')return;if(n.t=='fn'&&VOL.has(n.f))v=true;if(n.t=='name')v=true;
+   if(n.t=='ref'||n.t=='rng'){const g=rangeOf(n,{sheetByName:byName,sheet:s});if(g){if(g.r0==g.r1&&g.c0==g.c1){const key=g.s.id+':'+(g.r0*MAXC+g.c0);let l=one.get(key);if(!l)one.set(key,l=[]);l.push([s,k,cl])}else rngs.push([g,s,k,cl])}}
+   for(const x of n.args||[])walk(x);walk(n.l);walk(n.r);walk(n.a&&typeof n.a=='object'?n.a:null)};walk(cl.ast);if(v)vol.push([s,k,cl])}}
+ return{one,rngs,vol}}
+ function recalc(book,changed){/* changed: [[sheet,r,c],…]; null: everything */
+ if(!changed||!book._dep){book._dep=deps(book);return calc(book)}
+ const D=book._dep,dirty=new Map(),q=[];const push=(s,k,cl)=>{if(!dirty.has(cl)){const p=[s,Math.floor(k/MAXC),k%MAXC];dirty.set(cl,p);q.push(p)}};
+ for(const[s,r,c]of changed){const cl=s.cells.get(r*MAXC+c);if(cl&&cl.f!=null)push(s,r*MAXC+c,cl);else q.push([s,r,c])}
+ for(const[s,k,cl]of D.vol)push(s,k,cl);
+ while(q.length){const[s,r,c]=q.pop();const l=D.one.get(s.id+':'+(r*MAXC+c));if(l)for(const[t,k,cl]of l)push(t,k,cl);
+  for(const[g,t,k,cl]of D.rngs)if(g.s===s&&r>=g.r0&&r<=g.r1&&c>=g.c0&&c<=g.c1)push(t,k,cl)}
+ return calc(book,dirty)}
+ function evalIn(book,sheet,src){/* a formula worked out once, for the formula bar's preview and for tests */
  const s=book.sheets[sheet]||book.sheets[0],tmp={f:'='+src.replace(/^=/,'')},key=(MAXR-1)*MAXC+(MAXC-1),old=s.cells.get(key);s.cells.set(key,tmp);s.fk=null;calc(book);const v=tmp.val;if(old)s.cells.set(key,old);else s.cells.delete(key);s.fk=null;return v}
 /* ---- number formats (a useful part of Excel's codes) ---- */
-function fmtValue(v,f){if(v==null)return'';if(isE(v))return v.e;if(typeof v=='boolean')return v?'TRUE':'FALSE';if(typeof v=='string'){if(f&&f.includes('@'))return f.replace(/"([^"]*)"/g,'$1').replace('@',v);return v}
+ function fmtValue(v,f){if(v==null)return'';if(isE(v))return v.e;if(typeof v=='boolean')return v?'TRUE':'FALSE';if(typeof v=='string'){if(f&&f.includes('@'))return f.replace(/"([^"]*)"/g,'$1').replace('@',v);return v}
  if(!f||f=='General')return fmtGeneral(v);
  const parts=f.split(';');let p=parts[0];if(v<0&&parts[1]!=null){p=parts[1];v=-v}else if(v==0&&parts[2]!=null)p=parts[2];else if(v<0&&!/[ymdhs]/i.test(p.replace(/"[^"]*"/g,'')))return'-'+fmtValue(-v,p);
  const lit=s=>s.replace(/"([^"]*)"/g,'$1').replace(/\\(.)/g,'$1').replace(/_.|\*./g,' ').replace(/\[[^\]]*\]/g,'');
@@ -320,7 +338,7 @@ function fmtValue(v,f){if(v==null)return'';if(isE(v))return v.e;if(typeof v=='bo
  const numS=ip+(fp!=null?'.'+fp:'');
  const body=p.replace(/"[^"]*"/g,x=>'\u0000'+x+'\u0000');
  return lit(body.replace(/[#0,]*\.[0#]+%?|[#0,]+%?|%/,numS+(pct?'%':'')).replace(/\u0000/g,'')).replace(/%%$/,'%')}
-function fmtDate(v,p){const d=new Date(EPOCH+Math.round(v*864e5));const Y=d.getUTCFullYear(),M=d.getUTCMonth()+1,Dd=d.getUTCDate(),h=d.getUTCHours(),mi=d.getUTCMinutes(),se=d.getUTCSeconds();
+ function fmtDate(v,p){const d=new Date(EPOCH+Math.round(v*864e5));const Y=d.getUTCFullYear(),M=d.getUTCMonth()+1,Dd=d.getUTCDate(),h=d.getUTCHours(),mi=d.getUTCMinutes(),se=d.getUTCSeconds();
  const MN=['January','February','March','April','May','June','July','August','September','October','November','December'],DN=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
  const ampm=/AM\/PM/i.test(p);const p2=x=>String(x).padStart(2,'0');let out='',i=0;const s=p;
  while(i<s.length){const r=s.slice(i);let m;
@@ -335,8 +353,8 @@ function fmtDate(v,p){const d=new Date(EPOCH+Math.round(v*864e5));const Y=d.getU
   out+=r[0]=='\\'?r[1]:r[0];i+=r[0]=='\\'?2:1}
  return out}
 /* references moved when rows or columns are inserted or deleted (and when cells are copied) */
-function shiftFormula(f,fn){/* fn(r,c,absR,absC) -> [r,c] or null (#REF!) */
+ function shiftFormula(f,fn){/* fn(r,c,absR,absC) -> [r,c] or null (#REF!) */
  return f.replace(/(^|[^A-Za-z0-9_."'!])((?:'[^']+'|[A-Za-z_][A-Za-z0-9_]*)!)?(\$?)([A-Za-z]{1,3})(\$?)(\d+)(?![A-Za-z0-9_(])/g,(all,pre,sh,dc,col,dr,row)=>{
   const c=colNum(col),r=+row-1;if(c>=MAXC)return all;const x=fn(r,c,!!dr,!!dc,sh?sh.slice(0,-1).replace(/^'|'$/g,''):null);if(!x)return pre+(sh||'')+'#REF!';return pre+(sh||'')+dc+colName(x[1])+dr+(x[0]+1)})}
-function copyFormula(f,dr,dc){return shiftFormula(f,(r,c,ar,ac)=>{const nr=ar?r:r+dr,nc=ac?c:c+dc;return nr<0||nc<0||nr>=MAXR||nc>=MAXC?null:[nr,nc]})}
-return{parse,tokenize,calc,evalIn,fmtValue,fmtGeneral,colName,colNum,a1,parseA1,F,D,E,isE,MAXC,MAXR,toSerial,fromSerial,parseDate,copyFormula,shiftFormula,cmpVals}})();
+ function copyFormula(f,dr,dc){return shiftFormula(f,(r,c,ar,ac)=>{const nr=ar?r:r+dr,nc=ac?c:c+dc;return nr<0||nc<0||nr>=MAXR||nc>=MAXC?null:[nr,nc]})}
+return{parse,tokenize,calc,recalc,deps,evalIn,fmtValue,fmtGeneral,colName,colNum,a1,parseA1,F,D,E,isE,MAXC,MAXR,toSerial,fromSerial,parseDate,copyFormula,shiftFormula,cmpVals}})();
