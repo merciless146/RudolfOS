@@ -15,6 +15,7 @@ hwclock -s -u 2>/dev/null
 /usr/lib/rudolf/clockfloor 2>/dev/null   # 1.4.4: never earlier than this release (a hardware clock that lost its time)
 mdev -s
 mdev -d 2>/dev/null
+/usr/lib/rudolf/memory 2>/dev/null   # 1.4.7: compressed swap in memory, no thrashing
 grep -q rudolf.debug=1 $RCMD && ( while :; do setsid sh -c 'exec sh -l </dev/ttyS0 >/dev/ttyS0 2>&1'; sleep 1; done ) &
 [ -s /etc/rudolf/check.txt ] && cp /etc/rudolf/check.txt /run/rudolf/check.txt
 
@@ -80,4 +81,6 @@ done &
 /usr/lib/rudolf/wifi.sh boot >/dev/null 2>&1 &
 
 rudolfd > /run/rudolf/rudolfd.log 2>&1 &
+# 1.4.7: when memory runs out, the largest web page is ended instead of the whole desktop freezing
+( while :; do rudolf-memguard >/dev/null 2>&1; sleep 2; done ) &
 exec /usr/lib/rudolf/session

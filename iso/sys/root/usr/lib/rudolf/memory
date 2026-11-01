@@ -1,0 +1,41 @@
+#!/bin/sh
+# Rudolf OS memory set-up (1.4.7), run once at start-up by rudolf-init. GPL-2.0-or-later.
+#
+# Before 1.4.7 there was no swap at all: when a page (a 1.7 GB game tab on a 3.4 GB laptop) used up the memory, the
+# kernel kept dropping and rereading the system's own files and every process stalled, until the desktop's watchdog
+# restarted the browser a minute later. Now:
+# - compressed swap in memory (zram, zstd): half the memory; pages compress about 3:1, so a 3.4 GB laptop holds about
+#   5 GB before it runs out
+# - the multi-generational LRU keeps the pages it used in the last second (min_ttl_ms): when it cannot, the kernel
+#   ends a process at once instead of thrashing (the browser's tabs go first; see the memory guard in rudolfd)
+# rudolf.nozram=1 on the start-up options leaves the compressed swap out. What happened is in /run/rudolf/memory.
+RCMD=/etc/rudolf/cmdline; [ -s $RCMD ] || RCMD=/proc/cmdline
+LOG=/run/rudolf/memory
+log(){ echo "$*" >> $LOG; }
+: > $LOG
+
+# multi-generational LRU: on, and no thrashing (1 s)
+if [ -d /sys/kernel/mm/lru_gen ]; then
+	echo y > /sys/kernel/mm/lru_gen/enabled 2>/dev/null
+	echo 1000 > /sys/kernel/mm/lru_gen/min_ttl_ms 2>/dev/null && log "lru_gen min_ttl_ms=1000" || log "lru_gen: min_ttl_ms not set"
+else log "lru_gen: not in this kernel"; fi
+
+if grep -q rudolf.nozram=1 $RCMD; then log "zram: off (rudolf.nozram=1)"; exit 0; fi
+Z=/sys/block/zram0
+if [ ! -d $Z ]; then [ -e /sys/class/zram-control/hot_add ] && cat /sys/class/zram-control/hot_add >/dev/null 2>&1; fi
+if [ ! -d $Z ]; then log "zram: not in this kernel"; exit 0; fi
+grep -q '^/dev/zram0 ' /proc/swaps && { log "zram: already on"; exit 0; }
+TOTAL=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)
+SIZE=$((TOTAL / 2 * 1024))
+echo zstd > $Z/comp_algorithm 2>/dev/null || log "zram: zstd not available, using $(sed 's/.*\[\(.*\)\].*/\1/' $Z/comp_algorithm)"
+if ! echo $SIZE > $Z/disksize 2>/dev/null; then log "zram: could not set its size"; exit 0; fi
+[ -b /dev/zram0 ] || mknod /dev/zram0 b $(cut -d: -f1 $Z/dev) $(cut -d: -f2 $Z/dev)
+if mkswap /dev/zram0 >/dev/null 2>&1 && swapon -p 100 /dev/zram0 2>/dev/null; then
+	# swap in memory is cheap to read back: use it as readily as the page cache, one page at a time
+	echo 100 > /proc/sys/vm/swappiness
+	echo 0 > /proc/sys/vm/page-cluster
+	log "zram: on, $((SIZE / 1048576)) MiB, $(sed 's/.*\[\(.*\)\].*/\1/' $Z/comp_algorithm)"
+else
+	log "zram: mkswap or swapon failed"; echo 1 > $Z/reset 2>/dev/null
+fi
+exit 0

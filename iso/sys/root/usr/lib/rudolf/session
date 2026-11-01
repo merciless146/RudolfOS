@@ -214,7 +214,10 @@ while :; do
 		if [ $((NOW - START_T)) -gt 120 ]; then
 			if [ -e /run/rudolf/heartbeat ]; then
 				MT=$(stat -c %Y /run/rudolf/heartbeat); AGE=$(( $(date +%s) - MT ))
-				if [ $AGE -gt 60 ]; then echo "$(date) desktop not responding for ${AGE}s - restarting browser"; pkill -f 'chrom[e].*--rudolf-kiosk'; sleep 3; pkill -9 -f 'chrom[e].*--rudolf-kiosk'; fi
+				# 1.4.7: while memory is critical the memory guard is ending the largest page: give it 2 minutes
+				# before restarting the browser (that closes every window and tab)
+				LIM=60; [ -e /run/rudolf/memguard.critical ] && [ $(( $(date +%s) - $(stat -c %Y /run/rudolf/memguard.critical) )) -lt 30 ] && LIM=120
+				if [ $AGE -gt $LIM ]; then echo "$(date) desktop not responding for ${AGE}s - restarting browser"; pkill -f 'chrom[e].*--rudolf-kiosk'; sleep 3; pkill -9 -f 'chrom[e].*--rudolf-kiosk'; fi
 			fi
 		fi
 		if [ $MODE = gpu ] && ! kill -0 $XPID 2>/dev/null; then
