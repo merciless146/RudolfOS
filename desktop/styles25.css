@@ -425,3 +425,9 @@ body.emu-borderless #bar{display:none!important}
 .pp-pvb{flex:1;display:flex;gap:16px;padding:16px;min-height:0}.pp-pvc{flex:3;position:relative;min-width:0}.pp-sw2{position:absolute;inset:0}.pp-sw2 .pp-sc{position:absolute;left:0;top:0;transform-origin:0 0}.pp-sw2 .pp-sc>.pp-slide{position:absolute;left:0;top:0}
 .pp-pvr{flex:2;display:flex;flex-direction:column;gap:12px;min-width:0}.pp-pvn{position:relative;overflow:hidden;background:#000;border:1px solid #374151}.pp-pvn .pp-slide{position:absolute;left:0;top:0}.pp-end{color:#9ca3af;padding:30px;text-align:center}
 .pp-pvnotes{flex:1;overflow:auto;background:#111827;padding:12px;font-size:20px;line-height:1.45;white-space:pre-wrap;border-radius:4px}
+/* 1.4.6: Oracle's ☰ menu readable in every theme, and Oracle's dark pages */
+.odd{color:#111827}.odd div{color:inherit}
+html.dark .odd,.odark .odd{background:#1f2937;color:#f3f4f6;border-color:#374151}
+.odd div:hover{background:var(--ac);color:#fff}
+.odark .ob{background:#111827;border-color:#374151}.odark .obm{background:#0f172a;border-color:#374151}.odark .obm button,.odark .ob button{background:#1f2937;color:#e5e7eb;border-color:#374151}
+.odark .ob input{background:#1f2937;color:#f3f4f6;border-color:#374151}.odark .otabs{background:#0b1220}.odark .otab{background:#1e293b;color:#e2e8f0}.odark .otab.on{background:#334155;color:#f8fafc}.odark .stat{background:#0b1220;color:#94a3b8}

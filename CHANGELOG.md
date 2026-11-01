@@ -3,6 +3,29 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.4.6 (2026-11-01)
+Summary: Notey in SpreadsheetPro and PresentPro as in WordPro, with help for each app; dark pages in Oracle, and its menu easier to read
+- New: Notey in SpreadsheetPro and PresentPro is the same Notey as in WordPro. He moves in held poses, a few frames a second (not a constant smooth bob), with his expressions, tricks and reactions. He can be dragged anywhere, and falls asleep when nothing happens. Hiding him in one app hides him in all three.
+- New: in SpreadsheetPro, Notey checks a spreadsheet and fixes what he finds:
+  - errors, explained, or shown as a blank instead;
+  - numbers stored as text;
+  - a formula unlike the ones around it;
+  - a total that misses the last rows;
+  - columns too narrow for their numbers;
+  - long tables whose headings scroll away.
+  He also explains the formula in any cell in words, finds the function you describe ("how do I work out an average?"), offers a total under a column of numbers or a chart for a table, and reminds you to save.
+- New: in PresentPro, Notey checks a presentation:
+  - slides without a title;
+  - slides with too much text (he can split them in two);
+  - text too small or too faint to read;
+  - stretched pictures;
+  - empty slides;
+  - too many fonts;
+  - missing speaker notes.
+  He offers a theme and transitions as the deck grows, opens the themes, and rehearses the talk.
+- New: dark pages in Oracle (☰ › Dark pages). Oracle's bar, tabs and menu turn dark, and so do the pages. Pages that are dark already are left as they are; pictures and videos keep their colours.
+- Fixed: Oracle's ☰ menu had light grey text on a white background when the desktop used the dark theme.
+
 ## 1.4.5 (2026-11-01)
 Summary: two new apps with WordPro: SpreadsheetPro, in the place of Excel, and PresentPro, in the place of PowerPoint; Shut down and Restart finish within seconds
 - New: SpreadsheetPro replaces the small Spreadsheet app. It has WordPro's menus and toolbar, 702 columns by 100,000 rows, several sheets, 167 functions (with a description as you type each one), number formats, fonts, colours, borders, merged cells, conditional formatting with colour scales and data bars, sorting, filters, data validation, find and replace, comments, named ranges, charts (column, bar, line, area, pie, doughnut and scatter) that follow the data, the fill handle for series, frozen panes, printing and PDF with page setup, and templates (a budget, an invoice, a timetable, a grade book, a loan calculator). It opens and saves Excel .xlsx files, CSV files, and the old Spreadsheet's files.

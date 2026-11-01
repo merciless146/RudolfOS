@@ -117,7 +117,7 @@ const NY_FACES=['joy','love','excited','proud','surprised','curious','idea','con
 function notey2(W){const X=W.X,root=X.root,box=root&&root.querySelector('.wn');if(!box||box.__n2)return;box.__n2=1;
  const m=box.querySelector('.wn-m'),bub=box.querySelector('.wn-bub');m.classList.remove('pop');
  m.innerHTML=`<svg viewBox='0 0 130 140' width='100%' height='100%' class='wn-svg wn2' aria-hidden='true'></svg>`;const sv=m.firstChild;
- const st={base:'neutral',clip:null,fi:0,left:0,loops:0,t:0,ptr:null,blink:30,idle:90,last:'',clicks:[],drag:0,pd:null,wasDirty:false,path:X.path,len:(X.ed.textContent||'').length,shockAt:0};
+ const st={base:'neutral',clip:null,fi:0,left:0,loops:0,t:0,ptr:null,blink:30,idle:90,last:'',clicks:[],drag:0,pd:null,wasDirty:false,path:X.path,len:X.ed?(X.ed.textContent||'').length:0,shockAt:0};
  const rm=()=>document.documentElement.classList.contains('rmotion');const pick=a=>a[Math.floor(Math.random()*a.length)];
  const visible=()=>box.style.display!='none'&&W.el.isConnected&&!W.el.classList.contains('min');
  function play(name,opt){opt=opt||{};if(st.clip&&st.clip.lock&&!opt.force)return;
@@ -159,12 +159,14 @@ function notey2(W){const X=W.X,root=X.root,box=root&&root.querySelector('.wn');i
  m.addEventListener('pointerenter',()=>{if(!st.clip&&st.base=='neutral'&&Math.random()<.35)play('curious')});
  const onPtr=e=>{st.ptr=[e.clientX,e.clientY]};document.addEventListener('pointermove',onPtr);
  /* reacting to the writing */
- let typeT=0;const onInput=e=>{const L=(X.ed.textContent||'').length,d=L-st.len;st.len=L;st.idle=Math.max(st.idle,60);
-  if(d<-250&&e.inputType!='historyUndo'){st.shockAt=Date.now();play('shocked',{force:0});return}
-  if(e.inputType=='historyUndo'&&Date.now()-st.shockAt<20000&&d>0){st.shockAt=0;play('relieved');return}
-  if(e.inputType=='insertFromPaste'&&d>400){play('impressed');return}
+ let typeT=0;const onInput=e=>{const L=(X.ed.textContent||'').length,d=L-st.len;st.len=L;react(e.inputType,d)};
+ /* (1.4.5) d: how much was added (or removed, below 0); the Office apps call it as W.notey.react(kind, d) */
+ const react=(kind,d)=>{st.idle=Math.max(st.idle,60);
+  if(d<-250&&kind!='historyUndo'){st.shockAt=Date.now();play('shocked',{force:0});return}
+  if(kind=='historyUndo'&&Date.now()-st.shockAt<20000&&d>0){st.shockAt=0;play('relieved');return}
+  if(kind=='insertFromPaste'&&d>400){play('impressed');return}
   if(!st.clip&&(st.base=='neutral'||st.base=='focused')){st.base='focused';clearTimeout(typeT);typeT=setTimeout(()=>{if(st.base=='focused')st.base='neutral'},2500)}};
- X.ed.addEventListener('input',onInput);
+ if(X.ed)X.ed.addEventListener('input',onInput);
  function tick(){if(!W.el.isConnected){clearInterval(timer);mo.disconnect();bo.disconnect();document.removeEventListener('pointermove',onPtr);return}
   st.t++;if(!visible())return;
   if(st.t%8==0){const d=X.dirty,p=X.path;if(st.wasDirty&&!d&&p&&(p===st.path||!st.path))play('airplane');st.wasDirty=d;st.path=p}
@@ -179,5 +181,5 @@ function notey2(W){const X=W.X,root=X.root,box=root&&root.querySelector('.wn');i
   const html=nyRender(pose,st.t);if(html!==st.last){st.last=html;sv.innerHTML=html}}
  const timer=setInterval(tick,Math.round(1000/NOTEY_FPS));
  if(box.style.display!='none'&&!rm())play('appear');tick();
- W.notey.play=play;W.notey.tricks=tricks}
+ W.notey.play=play;W.notey.tricks=tricks;W.notey.react=react}
 (function(){if(typeof noteyInit!=='function')return;const orig=noteyInit;noteyInit=function(W){orig(W);try{notey2(W)}catch(e){console.warn('Notey animation',e)}}})();

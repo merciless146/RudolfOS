@@ -181,7 +181,7 @@ const py = (code, ...args) => cp.execFileSync('python3', ['-c', code, ...args], 
   await q("W.el.querySelector('.wp-dlg button').click()");
   await q("W.sp.chartDlg()"); await wait(200); await shot('05-chart-dialog'); await q("W.el.querySelector('.wp-dlg button').click()");
   // Notey's help
-  ok('23. Notey answers a question (how to make a chart)', await q("(()=>{W.notey.ask();const i=W.el.querySelector('.wn-q');i.value='how do I make a chart';i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));return /Insert › Chart/.test(W.el.querySelector('.wn-bub').textContent)})()"));
+  ok('23. Notey answers a question (how to make a chart)', await q("(async()=>{W.notey.ask();await new Promise(r=>setTimeout(r,120));const i=W.el.querySelector('.wn-q');i.value='how do I make a chart';i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));return /Insert › Chart/.test(W.el.querySelector('.wn-bub').textContent)})()"));
   ok('no page error', !errors.length, errors);
   await b.close(); srv.close();
   console.log(`${R.filter(x => x).length}/${R.length} passed`); process.exit(R.every(x => x) ? 0 : 1);
