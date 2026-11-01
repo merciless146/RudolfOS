@@ -71,6 +71,8 @@ rep("['input','change','click'].forEach(ev=>c.addEventListener(ev,()=>setTimeout
 rep("const p2=x=>String(x).padStart(2,'0'),dig=S.h24?p2(h)+':'+p2(m):((h%12)||12)+':'+p2(m)+' '+(h<12?'AM':'PM');","const dig=clockParts(n).time;")
 # 1.4.4: a picture of your own as the background (wallpaper31.js) comes before a dynamic background and the colours
 rep("const _u=window.__dyn?dynBg():'';","const _u=(typeof wpCss=='function'&&wpCss())||(window.__dyn?dynBg():'');")
+# 1.4.5: the desktop's right-click item opens Settings (it said "Change background…")
+rep("['Change background…',()=>settings('disp')]","['Open settings…',()=>settings()]")
 s=s.replace('Rudolf Prompt','Command Prompt')
 s=s.replace("<title>Rudolf OS</title>","<title>Rudolf OS</title>",1)
 open(O,'w').write(s);print(len(s))

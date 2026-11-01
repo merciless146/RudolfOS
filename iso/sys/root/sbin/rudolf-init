@@ -30,7 +30,7 @@ if mountpoint -q /persist; then
 	[ -f /persist/etc/rudolf-shell ] && cp /persist/etc/rudolf-shell /etc/rudolf-shell
 	# 1.2.8: the camera switched off in Settings > Privacy: its driver is not loaded
 	[ -f /persist/etc/camera-off ] && /usr/lib/rudolf/camera start
-	[ -f /persist/etc/decktest ] && /usr/lib/rudolf/decktest on
+	rm -f /persist/etc/decktest   # 1.4.5: the Cyberdeck test mode is gone (it only ever lasted until a restart)
 	[ -f /persist/proxy ] && cp /persist/proxy /run/rudolf/proxy
 	# native apps (Flatpak: Sober for Roblox) live on the data partition
 	mkdir -p /persist/flatpak && mount --bind /persist/flatpak /var/lib/flatpak

@@ -10,7 +10,6 @@ def w(c,t=240):
     return False
 print('desktop up:',w("typeof rd=='function'"))
 print(g.js("rd('display').then(r=>JSON.stringify(r)).catch(e=>'ERR '+e.message)"))
-print(g.js("rd('decktest').then(r=>JSON.stringify(r.deck)).catch(e=>'ERR '+e.message)"))
 print(g.js("rd('display?mode=soft').then(r=>'GET write allowed!').catch(e=>'GET write refused: '+e.message)"))
 print(g.sh("pgrep -a pulseaudio; sed -n '/Node 0x02/,/Node 0x03/p' /proc/asound/card0/codec#0 | grep vals",20))
 mark=os.path.getsize(N+'.wav')

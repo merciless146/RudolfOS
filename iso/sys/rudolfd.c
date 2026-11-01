@@ -2658,20 +2658,6 @@ static void api(struct req *r)
 		if (strcmp(p + 3, "list") && strcmp(p + 3, "read") && !post) { reply_err(r->fd, 400, "use POST"); return; }
 		api_fs(r, p + 3); return;
 	}
-	if (!strcmp(p, "decktest")) {
-		/* Cyberdeck test mode: approximate the Intel N100's CPU on a faster PC (see /usr/lib/rudolf/decktest) */
-		char *on = qparam(r->query, "on");
-		if (on) {
-			if (!post) { reply_err(r->fd, 400, "use POST"); return; }
-			int en = !strcmp(on, "1");
-			run(en ? "/usr/lib/rudolf/decktest on" : "/usr/lib/rudolf/decktest off");
-			if (!live) { if (en) { mkdir(PERSIST "/etc", 0755); write_str(PERSIST "/etc/decktest", "1"); } else unlink(PERSIST "/etc/decktest"); }
-			reply_ok(r->fd, en ? "Cyberdeck test mode is on" : "Cyberdeck test mode is off"); return;
-		}
-		char *o = run_out("/usr/lib/rudolf/decktest status");
-		str s = {0}; sadd(&s, "{\"ok\":true,\"deck\":%s}", o && *o == '{' ? o : "null"); free(o);
-		reply_json(r->fd, &s); return;
-	}
 	if (!strcmp(p, "display")) {
 		/* graphics path: "soft" (software display), "games" (Xorg on the graphics card; the desktop
 		   still renders in software) or "full" (Xorg, and the desktop also uses the graphics card).
