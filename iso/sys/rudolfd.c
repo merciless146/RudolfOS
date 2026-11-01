@@ -2716,6 +2716,9 @@ static void api(struct req *r)
 		char *o = run_out("/usr/lib/rudolf/hotkey playing 2>/dev/null"); trim(o); int n = o ? atoi(o) : 0; free(o);
 		str js = {0}; sadd(&js, "{\"ok\":true,\"playing\":%d}", n < 0 ? 0 : n); reply_json(r->fd, &js); return;
 	}
+	if (!strcmp(p, "shutdown/log")) {   /* 1.4.5: the last shutdowns and starts, with each step's time */
+		char *l = run_out("tail -n 12 " PERSIST "/var/log/shutdown.log 2>/dev/null"); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, l ? l : ""); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return;
+	}
 	if (!strcmp(p, "time/status")) {   /* the last automatic or manual sync */
 		char *ts = slurp(RUN "/time-sync", NULL), *fl = slurp(RUN "/clock-floored", NULL); str js = {0};
 		long long at = ts ? atoll(ts + (ts[0] == 'o' ? 3 : 5)) : 0;
@@ -2805,13 +2808,14 @@ static void api(struct req *r)
 		}
 		if (strcmp(a, "poweroff") && strcmp(a, "reboot")) { reply_err(r->fd, 400, "unknown action"); return; }
 		reply_ok(r->fd, a);
+		/* 1.4.5: /usr/lib/rudolf/shutdown closes every app at once (the desktop's Chromium gets up to 5 s, not 25),
+		   makes the data partition read-only and logs each step's time (t: the desktop's own steps) */
+		char *t = qparam(r->query, "t"), cmd[400];
+		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/shutdown %s '%.200s' >" RUN "/shutdown.out 2>&1", a, t && strspn(t, "abcdefghijklmnopqrstuvwxyz0123456789=,") == strlen(t) ? t : "");
+		if (!access("/usr/lib/rudolf/shutdown", X_OK)) run(cmd);
+		/* if it could not finish (or is missing): as before 1.4.5 */
 		write_str(RUN "/power", a);
-		/* let Chromium shut down cleanly so it writes local storage to disk (up to 25 s) */
-		run("pkill -TERM -f 'chrom[e].*--rudolf-kiosk'");
-		for (int i = 0; i < 50 && !run("pgrep -f 'chrom[e].*--rudolf-kiosk' >/dev/null 2>&1"); i++) usleep(500000);
 		run("pkill -KILL -f '/opt/chromium/chrome' >/dev/null 2>&1");
-		/* a RUDOLFDATA partition made during this live session (1.2.4): the session's files move onto it now */
-		if (!access(RUN "/keepfiles-pending", F_OK)) run("/usr/lib/rudolf/keepfiles.sh finish >" RUN "/keepfiles.log 2>&1");
 		sync();
 		run("umount -a -r 2>/dev/null");
 		reboot(!strcmp(a, "reboot") ? RB_AUTOBOOT : RB_POWER_OFF);

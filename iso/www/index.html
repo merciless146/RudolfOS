@@ -5567,7 +5567,15 @@ if(SYSC.sson===undefined){SYSC.sson=SYSC.ssmin>0;if(!SYSC.ssmin)SYSC.ssmin=10;SY
 /* ---------- shutdown dialog (power button, Start → Shut down) ---------- */
 function shutdownDlg(){const o=document.createElement('div');o.className='rmodal';o.innerHTML=`<div class='rmbox' role='dialog' aria-label='Power'><h3>Power</h3><p>What do you want the computer to do?</p><div class='rmrow'><button data-a='poweroff'>⏻ Shut down</button><button data-a='reboot'>↻ Restart</button><button data-a='suspend'>☾ Sleep</button><button data-a='x'>Cancel</button></div><div class='rmmsg'></div></div>`;document.body.appendChild(o);
  o.querySelector('button').focus();o.onclick=async e=>{const a=e.target.dataset&&e.target.dataset.a;if(!a)return;if(a=='x'){o.remove();showLogin();return}
-  o.querySelector('.rmmsg').textContent=a=='suspend'?'Going to sleep…':'Please wait…';try{await fsFlush()}catch(x){}await homeChain;try{window.__sessionSave&&__sessionSave()}catch(x){}try{await (window.__rudolfLsFlush&&__rudolfLsFlush())}catch(x){}sfx('shutdown');try{await rdPost('power?action='+a)}catch(x){o.querySelector('.rmmsg').textContent=x.message}if(a=='suspend'){o.remove();showLogin()}}}
+  /* 1.4.5: saving gets 3 seconds in all, so a step that stalls cannot keep the computer on; each step's time goes
+     to the shutdown log (About › For developers) */
+  const say=t=>o.querySelector('.rmmsg').textContent=t,T0=Date.now(),end=T0+3000,tl=[],mark=k=>tl.push(k+'='+(Date.now()-T0));
+  const lim=p=>Promise.race([Promise.resolve(p).catch(()=>{}),new Promise(r=>setTimeout(r,Math.max(0,end-Date.now())))]);
+  o.querySelectorAll('button').forEach(b=>b.disabled=true);
+  say(a=='suspend'?'Going to sleep…':'Saving your files…');await lim((async()=>{try{fsFlush()}catch(x){}await homeChain})());mark('files');
+  try{window.__sessionSave&&__sessionSave()}catch(x){}mark('session');await lim(window.__rudolfLsFlush&&__rudolfLsFlush());mark('storage');
+  if(a!='suspend')say(a=='reboot'?'Closing apps and restarting…':'Closing apps and turning off…');sfx('shutdown');
+  try{await rdPost('power?action='+a+(a=='suspend'?'':'&t='+tl.join(',')))}catch(x){say(x.message);o.querySelectorAll('button').forEach(b=>b.disabled=false)}if(a=='suspend'){o.remove();showLogin()}}}
 /* ---------- administrator permission (UAC / polkit style) ---------- */
 function elevate(reason){return new Promise(res=>{if(window.__elevTrust&&isAdmin()&&Date.now()-__elevTrust<120000)return res(true);
  const admins=ACCTS.filter(a=>a.r=='admin');const o=document.createElement('div');o.className='rmodal';
@@ -7153,9 +7161,12 @@ function devPageUpdate(host){const x=document.createElement('div');x.innerHTML=`
  q('.uf').onclick=async()=>{const p=await pickVfsFile('Choose the new Rudolf OS page (.HTML)',n=>/\.HTML?$/i.test(n));if(!p)return;if(!await elevate('Install a Rudolf OS update from '+p.join('\\')))return;try{const r=await rd('update',{method:'POST',body:node(p)});notify('Update installed',r.message,{action:()=>location.reload()})}catch(e){notify('Update failed',e.message,{kind:'error'})}};
  q('.rb').onclick=async()=>{if(!await elevate('Roll back Rudolf OS to the previous version'))return;try{const r=await rdPost('rollback');notify('Rolled back',r.message+' Restarting…');setTimeout(()=>rdPost('restart-browser'),1500)}catch(e){notify('Roll back failed',e.message,{kind:'error'})}};
  q('.rbr').onclick=async()=>{try{await fsFlush()}catch(e){}try{await (window.__rudolfLsFlush&&__rudolfLsFlush())}catch(e){}rdPost('restart-browser').catch(()=>{})};}
+/* About › For developers (1.4.5): how long the last shutdowns and restarts took, step by step */
+function devShutdownLog(host){const d=document.createElement('div');d.innerHTML=`<div class='r2'><label>Shutting down</label><div><pre class='sdlog' style='max-height:160px;overflow:auto;white-space:pre-wrap;font:11px monospace;margin:0'>Loading…</pre><div class='msg'>Each shutdown or restart: the desktop's steps and the system's, in milliseconds from the button; "start" lines are when Rudolf OS started again.</div></div></div>`;host.appendChild(d);
+ rd('shutdown/log').then(j=>{d.querySelector('.sdlog').textContent=(j.log||'').trim()||'Nothing yet: this list fills in after the next shutdown or restart.'}).catch(e=>{d.querySelector('.sdlog').textContent=e.message})}
 /* ---------- About page ---------- */
 function aboutPanel(c){c.innerHTML=`<h3>About</h3><div style='display:flex;gap:14px;align-items:center'><img class='rlogo' src='${$('#start img')?$('#start img').src:''}' width='64' height='64' alt=''><div><b style='font-size:18px'>Rudolf OS ${RVER}</b><div class='msg'>${RVERDATE} · GPL-2.0-or-later</div></div></div><table class='tmt ab'><tbody></tbody></table><div class='rmrow' style='justify-content:flex-start'><button class='lic'>Licences</button><button class='hlp'>Help</button><button class='cp'>Copy details</button></div>${RD?"<h4 class='sh4'>For developers</h4><div class='aboutdev'></div>":''}`;
- if(RD){const dv=c.querySelector('.aboutdev');try{devPageUpdate(dv)}catch(e){}}
+ if(RD){const dv=c.querySelector('.aboutdev');try{devPageUpdate(dv)}catch(e){}devShutdownLog(dv)}
  const tb=c.querySelector('.ab tbody');const rows=[];const add=(a,b)=>{rows.push(a+': '+b);const r=tb.insertRow();r.insertCell().textContent=a;r.insertCell().textContent=b};
  (async()=>{let gpu='—';try{const g=document.createElement('canvas').getContext('webgl');const d=g&&g.getExtension('WEBGL_debug_renderer_info');gpu=d?g.getParameter(d.UNMASKED_RENDERER_WEBGL):g?'WebGL available':'none'}catch(e){}
   if(RD){try{const i=await rd('info');add('Computer',(i.vendor+' '+i.product).trim()||'—');add('Processor',i.cpu+' ('+i.threads+' threads)');add('Memory',fmtB(i.memTotal));add('Linux kernel',i.kernel);add('Start-up',i.boot.toUpperCase()+(i.live?' · live':' · installed'))}catch(e){}}

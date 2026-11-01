@@ -1,0 +1,54 @@
+#!/bin/sh
+# shutdown (1.4.5): turn the computer off or restart it, quickly and with the data partition clean.
+#   shutdown poweroff|reboot [DESKTOP-TIMES]
+# Run as root by rudolfd (the desktop's Shut down and Restart, updates, every restart button) and by
+# /usr/lib/rudolf/power (the power button set to Shut down). DESKTOP-TIMES: the desktop's own steps
+# ("files=120,session=130,storage=410"), for the log.
+# Every app is asked to close at once (the desktop's Chromium, the browser window for sign-in sites, Linux apps,
+# Flatpak, the sound server, the development link); the desktop's Chromium gets up to 5 seconds (it needs about 1:
+# the desktop has saved its data before), then whatever is left is stopped. The data partition is made read-only
+# before the power goes off, so the next start finds it clean. Each step's time goes to
+# /persist/var/log/shutdown.log (the last 50), which About › For developers shows.
+# SHUTDOWN_TEST=DIR: a test run; the commands that act are written to DIR/actions instead. GPL-2.0-or-later.
+A=$1; DT=$(printf '%s' "$2" | tr -cd 'a-z0-9=,')
+case "$A" in poweroff|reboot) ;; *) echo "usage: shutdown poweroff|reboot [DESKTOP-TIMES]"; exit 2;; esac
+export PATH=${SHUTDOWN_TEST:+$PATH:}/usr/sbin:/usr/bin:/sbin:/bin
+RUN=/run/rudolf; P=/persist
+if [ -n "$SHUTDOWN_TEST" ]; then
+	RUN=$SHUTDOWN_TEST/run; P=$SHUTDOWN_TEST/persist; mkdir -p $RUN
+	act() { echo "$*" >> "$SHUTDOWN_TEST/actions"; }
+	running() { [ -e "$SHUTDOWN_TEST/chromium-running" ] && { n=$(cat "$SHUTDOWN_TEST/chromium-running"); [ "$n" -gt 0 ] && { echo $((n - 1)) > "$SHUTDOWN_TEST/chromium-running"; return 0; }; }; return 1; }
+	mounted() { true; }
+else
+	act() { "$@"; }
+	running() { pgrep -f 'chrom[e].*--rudolf-kiosk' >/dev/null 2>&1; }
+	mounted() { mountpoint -q $P; }
+fi
+up() { cut -d' ' -f1 /proc/uptime | tr -d .; }   # hundredths of a second
+T0=$(up); ST=""
+step() { ST="$ST${ST:+,}$1=$(( ($(up) - T0) * 10 ))"; }
+echo "$A" > $RUN/power   # the session does not start the desktop again
+# every app at once
+act pkill -TERM -f 'chrom[e].*--rudolf-kiosk'
+act pkill -TERM -f 'chrom[e].*--class=RudolfWeb'
+act pkill -TERM -u rudolf
+act pkill -TERM -x rudolf-devlink
+while [ $(( $(up) - T0 )) -lt 500 ] && running; do usleep 100000 2>/dev/null || sleep 1; done   # 5 seconds at most
+step apps
+act pkill -KILL -u rudolf
+act pkill -KILL -f /opt/chromium/chrome
+act pkill -KILL -x rudolf-devlink
+step stopped
+# a RUDOLFDATA partition made during this live session (1.2.4): the session's files move onto it now
+[ -e $RUN/keepfiles-pending ] && act /usr/lib/rudolf/keepfiles.sh finish
+act sync
+step synced
+if mounted; then
+	L=$P/var/log/shutdown.log; mkdir -p ${L%/*}
+	echo "$(date -u '+%F %T') $A desktop:${DT:-none} system:$ST" >> $L
+	tail -n 50 $L > $L.tmp 2>/dev/null && mv $L.tmp $L
+	act sync
+	act mount -o remount,ro $P
+fi
+act umount -a -r
+if [ "$A" = reboot ]; then act reboot -f; else act poweroff -f; fi

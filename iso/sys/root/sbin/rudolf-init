@@ -21,6 +21,8 @@ grep -q rudolf.debug=1 $RCMD && ( while :; do setsid sh -c 'exec sh -l </dev/tty
 # saved data
 if mountpoint -q /persist; then
 	touch /run/rudolf/persistent
+	# 1.4.5: when this start began (the time since the last shutdown's last step is the firmware's and the kernel's)
+	mkdir -p /persist/var/log && echo "$(date -u '+%F %T') start uptime=$(cut -d' ' -f1 /proc/uptime)" >> /persist/var/log/shutdown.log
 	mkdir -p /persist/home/rudolf /persist/etc /persist/os
 	chown 1000:1000 /persist/home/rudolf
 	mount --bind /persist/home/rudolf /home/rudolf
