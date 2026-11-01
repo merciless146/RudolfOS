@@ -1,18 +1,18 @@
 rudolf-system 1
-serial 2026110121
-version 1.4.6.261101
+serial 2026110123
+version 1.4.7.261101
 released 2026-11-01
 expires 2026-11-15
 urgent 0
 chromium 156.0.8078.47
 kernel 6.18.60-rudolf
-notes 1.4.6: Notey in SpreadsheetPro and PresentPro as in WordPro, with help for each app; dark pages in Oracle, and its menu easier to read
-L	vmlinuz	10787448	d81fce47335b19fd972ff869a0c3b6af8fea0ac85ee0767d885739925cf906b4	https://github.com/merciless146/RudolfOS/releases/download/r2026110121/vmlinuz
-L	base	205787136	55a2a82e0deb534705dea2c56bc18d7753417e2da67fefb81cd7e09a83b91fa8	https://github.com/merciless146/RudolfOS/releases/download/r2026110121/base.sfs
-L	chromium	131956736	8d967108b9b1348c3e4eec9487c76906af2c3869517339709e831424d00b5d38	https://github.com/merciless146/RudolfOS/releases/download/r2026110121/chromium.sfs
-L	desktop	26251264	1b6135c32b0bfa72403c8d30e85701f965558985f24bbb3721ca747c39da3b85	https://github.com/merciless146/RudolfOS/releases/download/r2026110121/desktop.sfs
-L	modules	78241792	0c3ea3de3b0ec04a5e7cf159aed96c4374ec89d56ece8ced055b85754ae5f9c4	https://github.com/merciless146/RudolfOS/releases/download/r2026110121/modules.sfs
-V	base	49846	e7ebb0caf2d221313c1fdd9af7f9fcc58137a94cc528f6b9c5de3cc365289cce	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
+notes 1.4.7: a page that uses up the memory no longer freezes the desktop: Rudolf OS closes that page and says why
+L	vmlinuz	10975864	4a575fdd8f6d95b21fb770849e85fcf3a30325d506bbc5cc7ab33428ca7e359f	https://github.com/merciless146/RudolfOS/releases/download/r2026110123/vmlinuz
+L	base	205795328	f6f0073b9581a913ca6be7a2a5d488a4c998cb748549bac0aedf647a7bc2c885	https://github.com/merciless146/RudolfOS/releases/download/r2026110123/base.sfs
+L	chromium	131956736	8d967108b9b1348c3e4eec9487c76906af2c3869517339709e831424d00b5d38	https://github.com/merciless146/RudolfOS/releases/download/r2026110123/chromium.sfs
+L	desktop	26251264	12d39a63eaab38264839c8fcd3d27384a5fde1e98d67dccd21c1f15867490ebd	https://github.com/merciless146/RudolfOS/releases/download/r2026110123/desktop.sfs
+L	modules	78237696	df54bede9329f60f1cbe021fe71c0c8bbd5943bcf014d64d549b3ac8d3a689ce	https://github.com/merciless146/RudolfOS/releases/download/r2026110123/modules.sfs
+V	base	49848	3bc77af12ccb10f8dabceb0777e2557f25287a6509a612f1bc5a501b430701a0	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
 V	chromium	31963	6abd580b77e4cd8b887fabb4581d76d915f2cacdb6d51a44b66225aa7f70333d	da3143e0b76e95a8fb9b20d6cd921581143496db9de69f0900a337920b32f7f8
-V	desktop	6358	55b238229f780b012f18d0fcd9ca18fe5bd013260689ce2b659e35ab02aae64d	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
-V	modules	18950	8215a2372f00bcd5527b63fb8aea4540def7517e858413f453c98fb40d9cc0f6	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
+V	desktop	6358	8263c304e9184fe6ea8e83d80fdb760fcd68d3c4d4d82ff9f0e3b02fdff2a91d	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
+V	modules	18949	5e8c78e81102d25671db377fae629efa055ce12138e1ac365c34bcb59db5522e	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
