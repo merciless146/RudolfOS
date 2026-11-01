@@ -15,6 +15,7 @@ Summary: the volume and brightness keys work; the clock sets itself from the int
 - Fixed: the pointer speed in Mouse and touchpad was forgotten at every restart.
 - Changed: Settings is tidier. Mouse and touchpad has every pointer setting (one pointer speed, also for games); the language and the internet clock are in System Settings › Date, time and language; web search and downloads are on the Oracle page; Accessibility is grouped as Vision, Hearing and Voice control; the Cyberdeck test and updating the desktop page from a file are in About › For developers. Quick settings keeps its switches; volume, brightness and the battery have their own taskbar icons.
 - Removed: unused code and programs, and two Accessibility settings that did nothing (natural scrolling and horizontal scroll speed; natural scrolling is in Mouse and touchpad).
+- Changed (1.4.4 update): the taskbar has one network icon. Its menu now also shows the Wi-Fi networks in range and joins one, as the separate Wi-Fi icon did; that icon is gone.
 - Fixed (1.4.4 update): on ASUS laptops F1 to F5 needed Fn for the volume and brightness (the keyboard started with Fn lock on). They now work on their own, as in Windows; Fn with them gives F1 to F5, and Fn+Esc switches.
 - New (1.4.4 update): a picture of your own as the desktop background. Display Properties › Picture: choose one from your files or from this computer, and how it fills the screen (fill, fit, stretch, centre or tile). It is kept with your settings, so it stays after a restart even if the file is moved or deleted.
 
