@@ -1,18 +1,18 @@
 rudolf-system 1
-serial 2026110114
+serial 2026110116
 version 1.4.4.261101
 released 2026-11-01
 expires 2026-11-15
 urgent 0
 chromium 156.0.8078.47
 kernel 6.18.60-rudolf
-notes 1.4.4: the volume and brightness keys work; the clock sets itself from the internet; the taskbar shows the battery, the real network and one time; Power and battery settings; eight screen savers; a tidier Settings
-L	vmlinuz	10787448	d81fce47335b19fd972ff869a0c3b6af8fea0ac85ee0767d885739925cf906b4	https://github.com/merciless146/RudolfOS/releases/download/r2026110114/vmlinuz
-L	base	205787136	edff3b8957c531422e5f6dcadc348ff4f38d46f2f038c72ca657cd5b1ce13c62	https://github.com/merciless146/RudolfOS/releases/download/r2026110114/base.sfs
-L	chromium	131956736	8d967108b9b1348c3e4eec9487c76906af2c3869517339709e831424d00b5d38	https://github.com/merciless146/RudolfOS/releases/download/r2026110114/chromium.sfs
-L	desktop	26128384	ee0cbbf1969d1ebed9864db2511ca16f8a968a5998a18ee013be83493a40b633	https://github.com/merciless146/RudolfOS/releases/download/r2026110114/desktop.sfs
-L	modules	78241792	0c3ea3de3b0ec04a5e7cf159aed96c4374ec89d56ece8ced055b85754ae5f9c4	https://github.com/merciless146/RudolfOS/releases/download/r2026110114/modules.sfs
-V	base	49846	0977968987a48f82900ec09d57622c65a6ed3127461accfa118878c8b6b91af5	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
+notes desktop update
+L	vmlinuz	10787448	d81fce47335b19fd972ff869a0c3b6af8fea0ac85ee0767d885739925cf906b4	https://github.com/merciless146/RudolfOS/releases/download/r2026110116/vmlinuz
+L	base	205787136	3f78268cd1307a98ce3868714731fe1cc6c6f42c6d37119abb9137b0c55805a7	https://github.com/merciless146/RudolfOS/releases/download/r2026110116/base.sfs
+L	chromium	131956736	8d967108b9b1348c3e4eec9487c76906af2c3869517339709e831424d00b5d38	https://github.com/merciless146/RudolfOS/releases/download/r2026110116/chromium.sfs
+L	desktop	26128384	d73a964aef6e07959b67c828455d479ed747293cb63642f0b5f95fbee40b427f	https://github.com/merciless146/RudolfOS/releases/download/r2026110116/desktop.sfs
+L	modules	78241792	0c3ea3de3b0ec04a5e7cf159aed96c4374ec89d56ece8ced055b85754ae5f9c4	https://github.com/merciless146/RudolfOS/releases/download/r2026110116/modules.sfs
+V	base	49846	2288b928082ba9e3199292b5ff9e54cb10aa7cbb7b94f7f2aabcab63b5b27b57	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
 V	chromium	31963	6abd580b77e4cd8b887fabb4581d76d915f2cacdb6d51a44b66225aa7f70333d	da3143e0b76e95a8fb9b20d6cd921581143496db9de69f0900a337920b32f7f8
-V	desktop	6328	15b760895e80077b60b34e34f1723e5e908d024c301000970a160b56edce2b7d	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
+V	desktop	6328	cfc3f06d868bbbab1927d1a5a11840f94b828dd267279ae99b6eaf55949b53ca	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
 V	modules	18950	8215a2372f00bcd5527b63fb8aea4540def7517e858413f453c98fb40d9cc0f6	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
