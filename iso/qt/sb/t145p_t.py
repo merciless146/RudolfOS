@@ -55,8 +55,15 @@ def boot():
         return r
     end = time.time() + 600
     while up and time.time() < end and js('typeof shutdownDlg=="function"&&typeof fsFlush=="function"', 20) is not True: time.sleep(5)
-    js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()=='Guest');if(b)b.click();return 1})()")
-    time.sleep(12); js('1')
+    js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()=='Guest');window.__pre=1;if(b)b.click();return 1})()")
+    # signing in as Guest loads the page again: wait for the new page, signed in, before going on
+    end = time.time() + 180
+    while time.time() < end:
+        time.sleep(4)
+        try:
+            if js("typeof window.__pre=='undefined'&&typeof USER!='undefined'&&!!USER&&!document.getElementById('login')&&typeof launch=='function'", 15) is True: break
+        except OSError: pass
+    time.sleep(5)
     return vm, g, up, js
 def press(vm, js, action, stall=False):
     """choose action in the Power dialog; the seconds until QEMU ends (the power is off, or a restart with -no-reboot)"""
