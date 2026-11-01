@@ -3,6 +3,13 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.4.7 (2026-11-01)
+Summary: a page that uses up the memory no longer freezes the desktop: Rudolf OS closes that page and says why
+- New: compressed swap in memory. Rudolf OS keeps memory it is not using right now compressed in memory, so a computer holds about half as much again before it runs out (a 3.4 GB laptop holds about 5 GB). Task Manager shows how much is stored this way.
+- New: when memory runs out anyway, Rudolf OS closes the web page using the most memory, and only that page. Oracle shows "This page was closed because it used too much memory" in its tab, with a Reload button, and a notification names the page. Before, the whole desktop could stop responding for a minute and then start again with every window and tab closed.
+- Changed: if memory runs out, the desktop and what draws it are the last things the system closes.
+- Fixed: with "Use it for games and the desktop" (Display Properties › Graphics), playing a large game in Oracle (Friday Night Funkin' on Newgrounds) could freeze a laptop with little memory and bring back the sign-in screen.
+
 ## 1.4.6 (2026-11-01)
 Summary: Notey in SpreadsheetPro and PresentPro as in WordPro, with help for each app; dark pages in Oracle, and its menu easier to read
 - New: Notey in SpreadsheetPro and PresentPro is the same Notey as in WordPro. He moves in held poses, a few frames a second (not a constant smooth bob), with his expressions, tricks and reactions. He can be dragged anywhere, and falls asleep when nothing happens. Hiding him in one app hides him in all three.

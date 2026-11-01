@@ -1952,6 +1952,28 @@ static void api_processes(struct req *r)
 	write_str(RUN "/procs.prev", nx.b ? nx.b : ""); free(nx.b); free(prev); free(ps);
 	reply_json(r->fd, &s);
 }
+/* 1.4.7: memory. What the start-up set up (compressed swap in memory, /run/rudolf/memory), whether memory is critical
+   now, and the pages the memory guard (rudolf-memguard) ended: [{time, pid, rss}], the last 20. Oracle asks when one
+   of its tabs stops, to say why. */
+static void api_memory(struct req *r)
+{
+	str s = {0}; sadd(&s, "{\"ok\":true,\"now\":%lld,\"setup\":", (long long)time(NULL));
+	char *m = slurp(RUN "/memory", NULL); if (m) trim(m); sjson(&s, m ? m : ""); free(m);
+	struct stat st; int crit = !stat(RUN "/memguard.critical", &st) && time(NULL) - st.st_mtime < 15;
+	sadd(&s, ",\"critical\":%s,\"available\":%lld,\"total\":%lld,\"events\":[", crit ? "true" : "false", meminfo_kb("MemAvailable") * 1024, meminfo_kb("MemTotal") * 1024);
+	char *e = slurp(RUN "/memguard.events", NULL); int n = 0;
+	if (e) {
+		int lines = 0; for (char *c = e; *c; c++) if (*c == '\n') lines++;
+		char *save = NULL; int i = 0;
+		for (char *l = strtok_r(e, "\n", &save); l; l = strtok_r(NULL, "\n", &save), i++) {
+			long long t, rss; int pid; if (i < lines - 20 || sscanf(l, "%lld %d %lld", &t, &pid, &rss) != 3) continue;
+			sadd(&s, "%s{\"time\":%lld,\"pid\":%d,\"rss\":%lld}", n++ ? "," : "", t, pid, rss);
+		}
+		free(e);
+	}
+	sadd(&s, "]}");
+	reply_json(r->fd, &s);
+}
 /* ending a process (Task Manager). The desktop asks for an administrator's password first; the processes that keep
    Rudolf OS running are refused here whatever the caller says. */
 static void api_proc_end(struct req *r)
@@ -2552,6 +2574,7 @@ static void api(struct req *r)
 	if (!strcmp(p, "stats")) { api_stats(r); return; }
 	if (!strcmp(p, "system")) { api_system(r); return; }
 	if (!strcmp(p, "processes")) { api_processes(r); return; }
+	if (!strcmp(p, "memory")) { api_memory(r); return; }
 	if (!strcmp(p, "net")) { api_net(r); return; }
 	if (!strcmp(p, "disks")) { api_disks(r); return; }
 	/* the hardware check's download test (1.2.5): rudolf-update speedtest prints "bytes N" and "ms N" */

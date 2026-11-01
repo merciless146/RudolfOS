@@ -90,6 +90,13 @@ if [ -n "$UCODE_DIR" ] && [ -d "$UCODE_DIR/amd-ucode" ]; then
 	$C --set-str EXTRA_FIRMWARE "$(cd "$UCODE_DIR" && ls amd-ucode/microcode_amd*.bin | tr '\n' ' ' | sed 's/ $//')"
 	$C --set-str EXTRA_FIRMWARE_DIR "$UCODE_DIR"
 fi
+# 1.4.7: memory. Compressed swap in memory (zram, zstd), memory pressure (PSI) for the memory guard in rudolfd,
+# and the multi-generational LRU, whose min_ttl_ms makes the kernel end a process instead of thrashing for a minute
+# when memory runs out (a 1.7 GB game tab froze a 3.4 GB laptop: there was no swap, so the kernel kept dropping and
+# rereading the system's own files until the desktop's watchdog restarted the browser)
+y SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD CRYPTO_ZSTD PSI LRU_GEN LRU_GEN_ENABLED
+n PSI_DEFAULT_DISABLED ZRAM_DEF_COMP_LZORLE ZRAM_DEF_COMP_LZO
+y ZRAM_DEF_COMP_ZSTD
 # speed up the build
 n DEBUG_INFO DEBUG_INFO_DWARF5 DEBUG_INFO_DWARF4 DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT DEBUG_INFO_BTF KALLSYMS_ALL FTRACE
 $C --enable DEBUG_INFO_NONE
@@ -97,4 +104,7 @@ make olddefconfig >/dev/null
 # 1.4.4: every hotkey driver is there, as a module (a dependency missing from x86_64_defconfig would drop it)
 for o in $HOTKEYS; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig (a dependency is missing)"; exit 1; }; done
 grep -q "^CONFIG_IPV6_SIT=y\|^CONFIG_IPV6_SIT=m" .config && { echo "kconfig.sh: IPV6_SIT is still on"; exit 1; }
+# 1.4.7: the memory options are on
+for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU_GEN_ENABLED; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
+grep -q "^CONFIG_PSI_DEFAULT_DISABLED=y" .config && { echo "kconfig.sh: PSI is off by default"; exit 1; }
 true
