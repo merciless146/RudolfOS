@@ -8,8 +8,8 @@ const OPENERS=[ /* key, label, icon, test(ext,value), open(path) */
  ['viewer','Image Viewer','🖼️',(e,v)=>/^data:image\//.test(v),p=>launchWith('viewer',p)],
  ['pdf','PDF Viewer','📕',(e,v)=>e=='PDF'||/^data:application\/pdf/.test(v),p=>launchWith('pdf',p)],
  ['media','Media Player','🎵',(e,v)=>/^data:(audio|video)\//.test(v),p=>media(p)],
- ['sheet','Spreadsheet','📊',e=>e=='CSV'||e=='RSHEET',p=>launchWith('sheet',p)],
- ['deck','Presentations','📽️',e=>e=='RDECK',p=>launchWith('deck',p)],
+ ['sheet','SpreadsheetPro','📊',e=>e=='CSV'||e=='TSV'||e=='RSHEET'||e=='XLSX'||e=='XLSM',p=>launchWith('sheet',p)],
+ ['deck','PresentPro','📽️',e=>e=='RDECK'||e=='PPTX',p=>launchWith('deck',p)],
  ['archive','Archive Manager','📦',e=>e=='ZIP'||e=='TAR',p=>launchWith('archive',p)],
  ['browser','Oracle Browser','🌐',e=>e=='HTM'||e=='HTML'||e=='SVG',p=>browser('file:///'+p.join('/'))],
  ['prompt','Rudolf Prompt (run)','⬛',e=>e=='LUA'||e=='BAT'||e=='WASM',null],
@@ -25,7 +25,7 @@ function openWith(path,always){const list=openersFor(path);const o=document.crea
  if(always)o.querySelector('.alw').checked=true;o.querySelector('.c').onclick=()=>o.remove();document.body.appendChild(o);l.querySelector('button').focus()}
 let openPathDefault=openPath;
 (function(){const o=openPath;openPathDefault=o;openPath=function(path){const v=node(path);if(v!=null&&!isDir(v)){const e=ext(path.at(-1));const d=ld(defK(),{})[e];const op=d&&OPENERS.find(x=>x[0]==d);if(op&&op[4]){try{recentAdd(path)}catch(x){}return op[4](path)}
-  if(e=='PDF'||/^data:application\/pdf/.test(v))return launchWith('pdf',path);if(/^data:image\/(gif|jpe?g|webp|svg|bmp)/.test(v)&&APPS.viewer)return launchWith('viewer',path);if(e=='ZIP')return launchWith('archive',path);if(e=='CSV'||e=='RSHEET')return launchWith('sheet',path);if(e=='RDECK')return launchWith('deck',path);if(e=='WASM')return window.wasiRun&&wasiRun(path);if(e=='RAPP')return window.rappInstall&&rappInstall(path)}
+  if(e=='PDF'||/^data:application\/pdf/.test(v))return launchWith('pdf',path);if(/^data:image\/(gif|jpe?g|webp|svg|bmp)/.test(v)&&APPS.viewer)return launchWith('viewer',path);if(e=='ZIP')return launchWith('archive',path);if(e=='CSV'||e=='RSHEET'||e=='XLSX'||e=='XLSM'||e=='TSV')return launchWith('sheet',path);if(e=='RDECK'||e=='PPTX')return launchWith('deck',path);if(e=='WASM')return window.wasiRun&&wasiRun(path);if(e=='RAPP')return window.rappInstall&&rappInstall(path)}
  return o.apply(this,arguments)}})();
 /* ---------- properties ---------- */
 function folderStats(v){let files=0,dirs=0,bytes=0;const w=n=>{for(const k in n){if(isDir(n[k])){dirs++;w(n[k])}else{files++;bytes+=Math.max(0,sizeOf(n[k]))}}};w(v);return{files,dirs,bytes}}

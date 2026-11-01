@@ -99,7 +99,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   t = await page('upd');
   ok('...Update and recovery: no "Update from a file"', !/Update from a file|Update the page/i.test(t));
   t = await page('about');
-  ok('...About › For developers: the desktop page from a file and the Cyberdeck test', /For developers/i.test(t) && /Update the page from a file/i.test(t) && /Cyberdeck test/i.test(t), t.slice(-500));
+  ok('...About › For developers: the desktop page from a file, and (1.4.5) no Cyberdeck test', /For developers/i.test(t) && /Update the page from a file/i.test(t) && !/Cyberdeck/i.test(t), t.slice(-500));
   // 26
   t = await page('stor');
   ok('26. Storage: one Backup group, with when to use it', (t.match(/Backup/gi) || []).length >= 1 && /Back up everything/i.test(t));
@@ -108,7 +108,14 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('27. Volume Controls: System volume, then the desktop sounds', /System volume/i.test(t) && /Desktop sounds/i.test(t) && !/Master volume/i.test(t));
   // search
   const sr = async w => q(`startSearch(${JSON.stringify(w)}).filter(r=>r.g=='Settings').map(r=>r.t)`);
-  ok('Settings search finds the moved controls on their new pages', (await sr('double-click')).some(x => /Mouse/.test(x)) && (await sr('language')).some(x => /^System/.test(x)) && (await sr('web search')).some(x => /^Oracle/.test(x)) && (await sr('cyberdeck')).some(x => /About/.test(x)), [await sr('double-click'), await sr('language'), await sr('web search')]);
+  ok('Settings search finds the moved controls on their new pages', (await sr('double-click')).some(x => /Mouse/.test(x)) && (await sr('language')).some(x => /^System/.test(x)) && (await sr('web search')).some(x => /^Oracle/.test(x)) && (await sr('desktop page')).some(x => /About/.test(x)), [await sr('double-click'), await sr('language'), await sr('web search')]);
+  // 1.4.5: the desktop's right-click menu
+  await q("wins.slice().forEach(w=>w.close())"); await wait(300);
+  await q("deskMenu(700,300)"); await wait(400);
+  const cm = await q("[...document.querySelectorAll('.cmenu .cmi span')].map(s=>s.textContent)");
+  ok('1.4.5: the desktop\'s right-click menu says "Open settings…", not "Change background…"', cm.includes('Open settings…') && !cm.includes('Change background…'), cm);
+  await q("[...document.querySelectorAll('.cmenu .cmi')].find(d=>d.textContent.includes('Open settings…')).click()"); await wait(800);
+  ok('...and opens Settings', await q("!!SW&&wins.includes(SW)"));
   ok('no page error along the way', !M.errors.length, M.errors);
   await p.close();
   // the browser version

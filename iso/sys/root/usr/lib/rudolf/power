@@ -92,6 +92,6 @@ apply) apply ;;
 set) shift; for kv in "$@"; do k=${kv%%=*}; v=${kv#*=}; ok_val "$k" "$v" || { echo "{\"ok\":false,\"error\":\"not a setting: $(echo "$kv" | tr -dc 'a-z0-9_=')\"}"; exit 2; }; done
 	for kv in "$@"; do set_key "${kv%%=*}" "${kv#*=}"; done; status ;;
 lid) ev "lid $2"; [ "$2" = closed ] || exit 0; apply >/dev/null; case "$(now lid)" in sleep) suspend;; esac ;;   # "screen": rudolf-display turns it off
-button) apply >/dev/null; case "$(now button)" in sleep) suspend;; shutdown) ev "power shutdown"; sleep 3; poweroff;; *) ev "power $(date +%s)000";; esac ;;
+button) apply >/dev/null; case "$(now button)" in sleep) suspend;; shutdown) ev "power shutdown"; sleep 2; /usr/lib/rudolf/shutdown poweroff;; *) ev "power $(date +%s)000";; esac ;;
 *) echo "usage: power status | set K=V ... | apply | lid closed|open | button"; exit 2 ;;
 esac

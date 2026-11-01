@@ -9,7 +9,7 @@ L=lambda f:open(os.path.join(here,f)).read()
 pinyin=open(os.path.join(here,'../libs/pinyin.min.json')).read()
 od=base64.b64encode(open(os.path.join(here,'../libs/od/compiled/OpenDyslexic-Regular.woff2'),'rb').read()).decode()
 odb=base64.b64encode(open(os.path.join(here,'../libs/od/compiled/OpenDyslexic-Bold.woff2'),'rb').read()).decode()
-mods=['core25.js','clock31.js','shell25.js','files25.js','apps25a.js','apps25b.js','a11y25.js','settings25.js','notey25.js','wp25.js','misc25.js','native25.js','props25.js','oext25.js','pkg25.js','sysupd25.js','tts25.js','print25.js','mail25.js','web25.js','linux26.js','wifi26.js','term26.js','emusnes26.js','emu26.js','blk2lua26.js','blitzpacks26.js','blitzen26.js','picker26.js','devices26.js','signin26.js','display26.js','shell26.js','tabs26.js','tm26.js','dl27.js','sb28.js','keep29.js','luau30.js','apps30.js','games30.js','boot30.js','stick30.js','hwcheck30.js','devlink40.js','osd31.js','net31.js','settings31.js','saver31.js','power31.js','wallpaper31.js']
+mods=['core25.js','clock31.js','shell25.js','files25.js','apps25a.js','apps25b.js','a11y25.js','settings25.js','notey25.js','wp25.js','misc25.js','native25.js','props25.js','oext25.js','pkg25.js','sysupd25.js','tts25.js','print25.js','mail25.js','web25.js','linux26.js','wifi26.js','term26.js','emusnes26.js','emu26.js','blk2lua26.js','blitzpacks26.js','blitzen26.js','picker26.js','devices26.js','signin26.js','display26.js','shell26.js','tabs26.js','tm26.js','dl27.js','sb28.js','keep29.js','luau30.js','apps30.js','games30.js','boot30.js','stick30.js','hwcheck30.js','devlink40.js','osd31.js','net31.js','settings31.js','saver31.js','power31.js','wallpaper31.js','office45.js','spreng45.js','sprof45.js','spro45.js','pprof45.js','ppro45.js']
 if os.path.exists(os.path.join(here,'i18n25.js')):mods.append('i18n25.js')
 # 1.4.0: a top-level function defined in two modules replaces the earlier one without a word (the development
 # link's dlPoll replaced the downloads' dlPoll, so downloads from real tabs never finished): stop the build instead
@@ -46,7 +46,7 @@ rep('data-a="notepad">📝 Notepad','data-a="notepad">🗒️ Notepad')
 # calculator: Standard / Scientific modes
 rep("relabel();W.el.focus({preventScroll:true})}","relabel();try{calcModes(W,cg)}catch(e){}W.el.focus({preventScroll:true})}")
 # WordPro additions and print/export CSS for watermarks and checklists
-rep("const mb=q('.wp-mb');Object.keys(MENUS)","try{wpExtend(W,MENUS,{get ed(){return ed},get root(){return root},get sheet(){return sheet},q,touch,sched,rs,insertHTML,dialog,say,blocks,textNodes,docText,words,layout,get meta(){return meta},get path(){return p},get dirty(){return dirty},doSave:()=>doSave()});W.printDoc=printDoc}catch(e){console.warn('WordPro additions',e)}\n const mb=q('.wp-mb');Object.keys(MENUS)")
+rep("const mb=q('.wp-mb');Object.keys(MENUS)","try{wpExtend(W,MENUS,W.__K={get ed(){return ed},get root(){return root},get sheet(){return sheet},q,touch,sched,rs,insertHTML,dialog,say,blocks,textNodes,docText,words,layout,get meta(){return meta},get path(){return p},get dirty(){return dirty},doSave:()=>doSave()});if(typeof offWordPro=='function')offWordPro(W,MENUS,W.__K);W.printDoc=printDoc}catch(e){console.warn('WordPro additions',e)}\n const mb=q('.wp-mb');Object.keys(MENUS)")
 rep("  try{const f=document.createElement('iframe');f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0';f.srcdoc=html;","  if(typeof wpPrint=='function'&&wpPrint(W,html,{size:meta.size,land:meta.land,title:p?p.at(-1):'Untitled'}))return;\n  try{const f=document.createElement('iframe');f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0';f.srcdoc=html;")
 rep("function loadTab(t){if(rtLoad(t))return;const u=t.h[t.i],r=page(u);","function loadTab(t){if(rtLoad(t))return;const u=t.h[t.i];let r=page(u);if(r.ext&&!r.frame&&typeof webWants=='function'&&webWants(u)){webOpen(u);r={title:webHost(u)+' (browser window)',html:webNote(u)}}")
 rep("const metaCss=()=>","const metaCss=()=>(typeof wpWmCss=='function'?wpWmCss(meta):'')+")
@@ -71,6 +71,8 @@ rep("['input','change','click'].forEach(ev=>c.addEventListener(ev,()=>setTimeout
 rep("const p2=x=>String(x).padStart(2,'0'),dig=S.h24?p2(h)+':'+p2(m):((h%12)||12)+':'+p2(m)+' '+(h<12?'AM':'PM');","const dig=clockParts(n).time;")
 # 1.4.4: a picture of your own as the background (wallpaper31.js) comes before a dynamic background and the colours
 rep("const _u=window.__dyn?dynBg():'';","const _u=(typeof wpCss=='function'&&wpCss())||(window.__dyn?dynBg():'');")
+# 1.4.5: the desktop's right-click item opens Settings (it said "Change background…")
+rep("['Change background…',()=>settings('disp')]","['Open settings…',()=>settings()]")
 s=s.replace('Rudolf Prompt','Command Prompt')
 s=s.replace("<title>Rudolf OS</title>","<title>Rudolf OS</title>",1)
 open(O,'w').write(s);print(len(s))

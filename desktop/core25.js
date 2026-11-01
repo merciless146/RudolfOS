@@ -1,6 +1,6 @@
 /* ===== V25 core: rudolfd link, storage, accounts, encryption, lock screen, elevation, guest, parental controls, backup ===== */
 window.__v25=1;
-const RVER='1.4.4',RVERDATE='2026-11-01';
+const RVER='1.4.5',RVERDATE='2026-11-01';
 /* ---------- rudolfd (only present on the bootable build) ---------- */
 const RD=window.RUDOLFD||null;
 async function rd(path,opt){opt=opt||{};if(!RD)throw new Error('This needs the installed Rudolf OS (bootable disc or USB).');
@@ -184,7 +184,15 @@ if(SYSC.sson===undefined){SYSC.sson=SYSC.ssmin>0;if(!SYSC.ssmin)SYSC.ssmin=10;SY
 /* ---------- shutdown dialog (power button, Start → Shut down) ---------- */
 function shutdownDlg(){const o=document.createElement('div');o.className='rmodal';o.innerHTML=`<div class='rmbox' role='dialog' aria-label='Power'><h3>Power</h3><p>What do you want the computer to do?</p><div class='rmrow'><button data-a='poweroff'>⏻ Shut down</button><button data-a='reboot'>↻ Restart</button><button data-a='suspend'>☾ Sleep</button><button data-a='x'>Cancel</button></div><div class='rmmsg'></div></div>`;document.body.appendChild(o);
  o.querySelector('button').focus();o.onclick=async e=>{const a=e.target.dataset&&e.target.dataset.a;if(!a)return;if(a=='x'){o.remove();showLogin();return}
-  o.querySelector('.rmmsg').textContent=a=='suspend'?'Going to sleep…':'Please wait…';try{await fsFlush()}catch(x){}await homeChain;try{window.__sessionSave&&__sessionSave()}catch(x){}try{await (window.__rudolfLsFlush&&__rudolfLsFlush())}catch(x){}sfx('shutdown');try{await rdPost('power?action='+a)}catch(x){o.querySelector('.rmmsg').textContent=x.message}if(a=='suspend'){o.remove();showLogin()}}}
+  /* 1.4.5: saving gets 3 seconds in all, so a step that stalls cannot keep the computer on; each step's time goes
+     to the shutdown log (About › For developers) */
+  const say=t=>o.querySelector('.rmmsg').textContent=t,T0=Date.now(),end=T0+3000,tl=[],mark=k=>tl.push(k+'='+(Date.now()-T0));
+  const lim=p=>Promise.race([Promise.resolve(p).catch(()=>{}),new Promise(r=>setTimeout(r,Math.max(0,end-Date.now())))]);
+  o.querySelectorAll('button').forEach(b=>b.disabled=true);
+  say(a=='suspend'?'Going to sleep…':'Saving your files…');await lim((async()=>{try{fsFlush()}catch(x){}await homeChain})());mark('files');
+  try{window.__sessionSave&&__sessionSave()}catch(x){}mark('session');await lim(window.__rudolfLsFlush&&__rudolfLsFlush());mark('storage');
+  if(a!='suspend')say(a=='reboot'?'Closing apps and restarting…':'Closing apps and turning off…');sfx('shutdown');
+  try{await rdPost('power?action='+a+(a=='suspend'?'':'&t='+tl.join(',')))}catch(x){say(x.message);o.querySelectorAll('button').forEach(b=>b.disabled=false)}if(a=='suspend'){o.remove();showLogin()}}}
 /* ---------- administrator permission (UAC / polkit style) ---------- */
 function elevate(reason){return new Promise(res=>{if(window.__elevTrust&&isAdmin()&&Date.now()-__elevTrust<120000)return res(true);
  const admins=ACCTS.filter(a=>a.r=='admin');const o=document.createElement('div');o.className='rmodal';
