@@ -15,6 +15,7 @@ Summary: the volume and brightness keys work; the clock sets itself from the int
 - Fixed: the pointer speed in Mouse and touchpad was forgotten at every restart.
 - Changed: Settings is tidier. Mouse and touchpad has every pointer setting (one pointer speed, also for games); the language and the internet clock are in System Settings › Date, time and language; web search and downloads are on the Oracle page; Accessibility is grouped as Vision, Hearing and Voice control; the Cyberdeck test and updating the desktop page from a file are in About › For developers. Quick settings keeps its switches; volume, brightness and the battery have their own taskbar icons.
 - Removed: unused code and programs, and two Accessibility settings that did nothing (natural scrolling and horizontal scroll speed; natural scrolling is in Mouse and touchpad).
+- Fixed (1.4.4 update): on ASUS laptops F1 to F5 needed Fn for the volume and brightness (the keyboard started with Fn lock on). They now work on their own, as in Windows; Fn with them gives F1 to F5, and Fn+Esc switches.
 
 ## 1.4.3 (2026-10-30)
 Summary: games and apps that draw with OpenGL through X11, such as Oolite, start again
