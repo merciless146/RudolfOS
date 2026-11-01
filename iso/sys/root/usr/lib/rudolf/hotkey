@@ -7,6 +7,7 @@
 #   hotkey mic mute                 the default input, muted or not
 #   hotkey brightness up|down       5 % steps of the first backlight, never below 5 % (as rudolfd's brightness)
 #   hotkey brightness get           0-100, or "none" without an adjustable backlight
+#   hotkey playing                  how many sound streams play now (any app); 0 when none or no sound server
 # Each change is written to /run/rudolf/events for the desktop's indicator: "osd volume 45", "osd volume muted",
 # "osd mic muted", "osd mic on", "osd brightness 60", "osd brightness none".
 # Run as root (by rudolf-display and rudolfd); the sound server is the desktop user's. GPL-2.0-or-later.
@@ -45,6 +46,7 @@ case "$1 $2" in
 "volume set") case "$3" in ''|*[!0-9]*) echo "a number 0-100"; exit 2;; esac; vol_set "$3"; vol_report ;;
 "volume muted") case "$3" in 0|1) pa set-sink-mute @DEFAULT_SINK@ "$3"; vol_report;; *) echo "0 or 1"; exit 2;; esac ;;
 "mic mute") pa set-source-mute @DEFAULT_SOURCE@ toggle; pa get-source-mute @DEFAULT_SOURCE@ | grep -q yes && { ev "osd mic muted"; echo muted; } || { ev "osd mic on"; echo on; } ;;
+"playing ") pa list sink-inputs | grep -c 'Corked: no' ;;   # (1.4.4) streams playing now: the screen saver waits
 "brightness up"|"brightness down") bl_step "$2" ;;
 "brightness get") bl_get ;;
 *) echo "usage: hotkey volume up|down|mute|get|set N|muted 0|1 | mic mute | brightness up|down|get"; exit 2 ;;

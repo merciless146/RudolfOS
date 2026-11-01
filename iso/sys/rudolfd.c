@@ -2724,6 +2724,12 @@ static void api(struct req *r)
 	if (!strcmp(p, "web/status")) { api_web(r, "status"); return; }   /* the taskbar asks whether the browser window is open */
 	if (!strcmp(p, "wifi/status")) { api_wifi(r, "status"); return; }
 	/* 1.4.4: these answer GET too (each POST action checks for POST itself) */
+	/* 1.4.4: is sound playing in any app (a video in Oracle's real tabs, a Linux app, a game): the screen saver and
+	   sleep wait, as they do for the desktop's own media */
+	if (!strcmp(p, "media")) {
+		char *o = run_out("/usr/lib/rudolf/hotkey playing 2>/dev/null"); trim(o); int n = o ? atoi(o) : 0; free(o);
+		str js = {0}; sadd(&js, "{\"ok\":true,\"playing\":%d}", n < 0 ? 0 : n); reply_json(r->fd, &js); return;
+	}
 	if (!strcmp(p, "time/status")) {   /* the last automatic or manual sync */
 		char *ts = slurp(RUN "/time-sync", NULL), *fl = slurp(RUN "/clock-floored", NULL); str js = {0};
 		long long at = ts ? atoll(ts + (ts[0] == 'o' ? 3 : 5)) : 0;

@@ -6,10 +6,14 @@ const {chromium} = require('playwright'); const http = require('http'), fs = req
 const ROOT = path.join(__dirname, '../../..'), WWW = path.join(ROOT, 'iso/www');
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 400) : '')) };
 const T = {'.wasm': 'application/wasm', '.js': 'text/javascript', '.mjs': 'text/javascript', '.html': 'text/html'};
-const M = {calls: [], idle: 0, errors: []};
+const M = {calls: [], idle: 0, errors: [], mode: 'desktop', playing: 0};
 const api = (a, q) => {
   M.calls.push(a);
   if (a == 'idle') return {ok: true, idle: M.idle};
+  if (a == 'media') return {ok: true, playing: M.playing};
+  if (a == 'apps/windows') return {ok: true, windows: [], mode: M.mode};
+  if (a == 'apps/desktop') { M.mode = 'desktop'; return {ok: true} }
+  if (a == 'apps/show') { M.mode = 'win ' + new URLSearchParams(q).get('win'); return {ok: true} }
   if (a == 'info') return {ok: true, backlight: false, live: 0, boot: 'uefi', kernel: 'test'};
   if (a == 'events') return {ok: true, events: ''};
   if (a == 'volume') return {ok: true, volume: 50, muted: false};
@@ -73,6 +77,20 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('9. while a game is played (rudolfd\'s idle is 4 s) it does not start', await q("!SAVER"));
   M.idle = 10 * 60000; await q("SYSC.sson=false"); await q("idleCheck()"); await wait(300);
   ok('10. Off: it never starts', await q("!SAVER"));
+  // 1.4.4 fix: above Oracle's real tabs and Linux apps
+  await q("SYSC.sson=true;SYSC.lockss=true;sysSave()"); M.mode = 'win 3a00007'; M.calls = []; M.idle = 10 * 60000;
+  await q("lastInput=Date.now()-4*60000"); await q("idleCheck()"); await wait(800);
+  ok('11. with an Oracle window shown, the saver brings the desktop to the front', await q("!!SAVER") && M.calls.includes('apps/desktop') && M.mode == 'desktop', [M.calls, M.mode]);
+  await wait(3200); M.idle = 200; await wait(2000);
+  ok('...ended, with the password: the window stays hidden until it is unlocked', await q("!SAVER") && M.mode == 'desktop', M.mode);
+  await q("__lockDone()"); await wait(500);
+  ok('...unlocked: the Oracle window is shown again', M.mode == 'win 3a00007', M.mode);
+  M.mode = 'win 3a00007'; M.calls = []; await q("SYSC.lockss=false"); M.idle = 10 * 60000; await q("lastInput=Date.now()-4*60000"); await q("idleCheck()"); await wait(800);
+  await wait(1500); M.idle = 200; await wait(2000);
+  ok('...without the password, the window comes back as soon as it ends', await q("!SAVER") && M.mode == 'win 3a00007', [M.mode, M.calls]);
+  M.playing = 1; M.idle = 10 * 60000; await q("lastInput=Date.now()-60*60000"); await q("idleCheck()"); await wait(500);
+  ok('12. sound playing in another app (a video in a real tab): it does not start', await q("!SAVER"));
+  M.playing = 0;
   ok('no page error', !M.errors.length, M.errors);
   await b.close(); srv.close();
   console.log(`${R.filter(x => x).length}/${R.length} passed`); process.exit(R.every(x => x) ? 0 : 1);
