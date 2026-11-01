@@ -56,7 +56,11 @@ function ptrKeep(){if(typeof SC=='object'&&SC){if(S.ptr)SC.ptr=cln(S.ptr);SC.mse
  d.innerHTML=`<h4 class='sh4'>Language</h4><div class='r2'><label for='slg'>Language</label><select id='slg'>${LANGS.map(l=>`<option value='${l[0]}'${S.lang==l[0]?' selected':''}>${l[1]}</option>`).join('')}</select></div>`+(RD?`<h4 class='sh4'>Clock from the internet</h4><div class='r2'><label>Internet time</label><div><button class='nts'>Set the clock from the internet</button><div class='msg ntsm'></div></div></div>`:'');
  const foot=c.querySelector(':scope > .sfoot');if(foot)foot.before(d);else c.appendChild(d);
  d.querySelector('#slg').onchange=e=>{S.lang=e.target.value;a11yApply();W&&W.rt&&W.rt();c.dispatchEvent(new Event('input',{bubbles:true}))};
- const b=d.querySelector('.nts');if(b)b.onclick=()=>rdPost('time/sync').then(r=>{notify('Clock',r.message);d.querySelector('.ntsm').textContent=r.message;typeof clk=='function'&&clk()}).catch(e=>notify('Clock',e.message,{kind:'error'}))}})();
+ /* 1.4.4: Rudolf OS sets its clock from the internet by itself (at start, when the network comes up, every 12 hours) */
+ const tsay=async()=>{const m=d.querySelector('.ntsm');if(!m)return;try{const j=await rd('time/status');const w=j.at?clockParts(new Date(j.at*1000)):null,today=clockParts();
+  m.textContent=j.result=='ok'?`Set from the internet at ${w.time}${w.iso!=today.iso?' on '+w.date:''}. Rudolf OS does this by itself at every start, when the network comes up and every 12 hours.`:j.result=='fail'?`The time servers did not answer at ${w.time} (offline?). Rudolf OS tries again when the network comes up.`:'Rudolf OS sets the clock from the internet by itself once the network is up.';
+  if(j.floored)m.textContent+=' At start the clock read an earlier date than this release, so it was set to the release date until then.'}catch(e){}};
+ const b=d.querySelector('.nts');if(b){tsay();b.onclick=()=>rdPost('time/sync').then(r=>{notify('Clock',r.message);tsay();typeof clk=='function'&&clk()}).catch(e=>{notify('Clock',e.message,{kind:'error'});tsay()})}}})();
 /* ---------- Network Settings: Web search and Downloads move to the Oracle page ---------- */
 function netSearchNodes(c){const a=setGroup(c,'Web search (Oracle)'),out=[];if(!a)return out;let e=a;
  while(e&&!(e.classList&&(e.classList.contains('sfoot')))){if(e.id=='nsm'||(e.classList&&e.classList.contains('msg')&&/profiles that control/.test(e.textContent)))break;out.push(e);e=e.nextElementSibling;if(e&&e.tagName=='H4'&&!/^(Downloads)$/.test(e.textContent.trim()))break}

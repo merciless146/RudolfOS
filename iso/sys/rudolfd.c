@@ -773,6 +773,36 @@ static void start_job(const char *name, const char *cmd)
 	run("setsid sh " RUN "/job.sh </dev/null >/dev/null 2>&1 &");
 }
 static void reap(void) { while (waitpid(-1, NULL, WNOHANG) > 0) {} }
+/* 1.4.4: the clock from the internet by itself (BusyBox ntpd, which needs no certificates: a clock that went back to
+   2016 breaks every HTTPS connection), then into the hardware clock. Result in RUN/time-sync: "ok EPOCH" or
+   "fail EPOCH". */
+#define TIME_SYNC_CMD "if ntpd -n -q -p pool.ntp.org >/dev/null 2>&1 || ntpd -n -q -p time.google.com >/dev/null 2>&1; then hwclock -w -u >/dev/null 2>&1; echo \"ok $(date +%s)\" > " RUN "/time-sync; else echo \"fail $(date +%s)\" > " RUN "/time-sync; exit 1; fi"
+static int default_route(void)
+{
+	FILE *f = fopen("/proc/net/route", "r"); char l[256], ifn[32]; unsigned long dst; int r = 0;
+	if (!f) return 0;
+	while (fgets(l, sizeof l, f)) if (sscanf(l, "%31s %lx", ifn, &dst) == 2 && dst == 0 && strcmp(ifn, "lo")) r = 1;
+	fclose(f); return r;
+}
+/* at start once the network is up (again every minute until a server answers), when the network comes up again
+   (Wi-Fi joined, a cable plugged in), and every 12 hours; in a child, so nothing waits for it */
+static void time_tick(void)
+{
+	static time_t last_try, last_ok, last_check; static int had_route, ok_since_up;
+	time_t t = time(NULL);
+	if (t - last_check < 5 && t >= last_check) return;
+	last_check = t;
+	int r = default_route();
+	if (r && !had_route) ok_since_up = 0;   /* the network came up: set the clock again */
+	had_route = r;
+	if (!r) return;
+	char *ts = slurp(RUN "/time-sync", NULL); if (ts) { if (!strncmp(ts, "ok ", 3) && atoll(ts + 3) > last_ok) { last_ok = atoll(ts + 3); ok_since_up = 1; } free(ts); }
+	int due = !ok_since_up ? (t - last_try >= 60 || t < last_try) : (t - last_ok >= 12 * 3600);
+	if (!due) return;
+	last_try = t;
+	pid_t p = fork();
+	if (p == 0) { setsid(); _exit(run(TIME_SYNC_CMD) ? 1 : 0); }
+}
 /* 1.3.0: crashes of Rudolf OS's own programs, from the kernel's log ("rudolf-apps[9979]: segfault at 0 ip ... in
  * libc.so.6[18badd,...]"): program, seconds after start-up, and where (library + offset). after: only lines that come
  * after this one (the last crash line when a job started). Other programs' crashes are not reported. */
@@ -2694,6 +2724,13 @@ static void api(struct req *r)
 	if (!strcmp(p, "web/status")) { api_web(r, "status"); return; }   /* the taskbar asks whether the browser window is open */
 	if (!strcmp(p, "wifi/status")) { api_wifi(r, "status"); return; }
 	/* 1.4.4: these answer GET too (each POST action checks for POST itself) */
+	if (!strcmp(p, "time/status")) {   /* the last automatic or manual sync */
+		char *ts = slurp(RUN "/time-sync", NULL), *fl = slurp(RUN "/clock-floored", NULL); str js = {0};
+		long long at = ts ? atoll(ts + (ts[0] == 'o' ? 3 : 5)) : 0;
+		sadd(&js, "{\"ok\":true,\"result\":\"%s\",\"at\":%lld,\"floored\":", ts ? (ts[0] == 'o' ? "ok" : "fail") : "none", at);
+		if (fl) { trim(fl); sjson(&js, fl); } else sadd(&js, "null");
+		sadd(&js, "}"); free(ts); free(fl); reply_json(r->fd, &js); return;
+	}
 	/* 1.4.4: the system volume (the sound server's default output, through /usr/lib/rudolf/hotkey, as the keys do):
 	   GET volume; POST volume?set=N (0-100), ?muted=0|1 or ?step=up|down|mute */
 	if (!strcmp(p, "volume")) {
@@ -2932,8 +2969,8 @@ static void api(struct req *r)
 		reply(r->fd, 200, "audio/wav", w.b, w.n, NULL); free(w.b); return;
 	}
 	if (!strcmp(p, "time/sync")) {
-		if (run("ntpd -n -q -p pool.ntp.org >/dev/null 2>&1 || ntpd -n -q -p time.google.com >/dev/null 2>&1")) { reply_err(r->fd, 500, "no time server answered (offline?)"); return; }
-		run("hwclock -w -u >/dev/null 2>&1"); reply_ok(r->fd, "clock set from the internet"); return;
+		if (run(TIME_SYNC_CMD)) { reply_err(r->fd, 500, "no time server answered (offline?)"); return; }
+		reply_ok(r->fd, "clock set from the internet"); return;
 	}
 	if (!strcmp(p, "restart-browser")) { reply_ok(r->fd, "restarting"); restart_browser(); return; }
 	if (!strcmp(p, "factory-reset")) {
@@ -3142,6 +3179,7 @@ int main(int argc, char **argv)
 	for (;;) {
 		struct pollfd pf = { s, POLLIN, 0 };
 		reap();
+		time_tick();
 		if (poll(&pf, 1, 1000) <= 0) continue;
 		int c = accept4(s, NULL, NULL, SOCK_CLOEXEC);
 		if (c < 0) continue;

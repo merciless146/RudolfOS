@@ -157,6 +157,8 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	systools/addnvk.sh "$W/broot"
 	sudo mkdir -p "$W/broot/etc/rudolf"; sudo cp trusted-keys.txt "$W/broot/etc/rudolf/rpk-keys"
 	sudo cp VERSION "$W/broot/usr/share/rudolf/VERSION"
+	# 1.4.4: the build date; rudolf-init never lets the clock read earlier than this (a reset hardware clock)
+	date -u +%F | sudo tee "$W/broot/usr/share/rudolf/released" >/dev/null
 	echo "$BSRC" | sudo tee "$W/broot/usr/share/rudolf/base-src" >/dev/null
 	sudo $MK "$W/broot" "$W/new/base.sfs" $SQ; sudo chown "$(id -u)" "$W/new/base.sfs"; sudo rm -rf "$W/broot"
 	NOTES+=("system programs")

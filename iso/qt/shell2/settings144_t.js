@@ -15,6 +15,7 @@ const api = (a, q) => {
   if (a == 'volume') return {ok: true, volume: 50, muted: false};
   if (a == 'brightness') return {ok: true, brightness: 40};
   if (a == 'time/sync') return {ok: true, message: 'The clock is set: 2026-10-30 18:00.'};
+  if (a == 'time/status') return {ok: true, result: 'ok', at: Math.floor(Date.now() / 1000) - 60, floored: null};
   if (a == 'decktest') return {ok: true, deck: {on: false, cpus: 8, memkb: 8e6}};
   if (a == 'devices') return {ok: true, inputs: [{kind: 'touchpad', name: 'Test touchpad'}], usb: [], drives: []};
   if (a == 'sys/status' || a == 'pkg/status') return {__status: 404, ok: false, error: 'not in this test'};
@@ -80,6 +81,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('...Revert puts it back', await q("S.lang=='en'||S.lang==undefined"), await q("S.lang"));
   M.calls = []; await q("document.querySelector('.syslang .nts').click()"); await wait(500);
   ok('20. Set the clock from the internet is there (time/sync)', M.calls.includes('time/sync'), M.calls);
+  ok('35. ...with the last automatic sync next to it', /Set from the internet at/.test(await q("document.querySelector('.syslang .ntsm').textContent")), await q("document.querySelector('.syslang .ntsm').textContent"));
   // 21: Network → Oracle
   t = await page('net');
   ok('21. Network Settings: no Web search, no Downloads, no Clock', !(await q("[...document.querySelectorAll('.sc h4')].some(h=>h.offsetParent&&/Web search|Downloads|^Clock$/.test(h.textContent))")) && /Oracle/i.test(t));

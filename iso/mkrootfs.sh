@@ -125,6 +125,7 @@ cp -a "$SYS/root/." .
 mkdir -p usr/share/rudolf
 cp -a "$WWW" usr/share/rudolf/www
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" usr/share/rudolf/VERSION
+date -u +%F > usr/share/rudolf/released   # 1.4.4: the clock floor (clockfloor)
 
 # ---------- kernel modules (Wi-Fi and other optional drivers)
 if [ -d "$HERE/modules/lib/modules" ]; then cp -a "$HERE/modules/lib/modules" usr/lib/; fi
