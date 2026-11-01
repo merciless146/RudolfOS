@@ -66,14 +66,18 @@ try:
     ok(f'2. the machine\'s clock read 2016-01-01: at least the release date ({rel}) after the start', d >= rel, [d, last(sh('cat /run/rudolf/clock-floored; echo', 10))])
     ok('...and the start-up says it floored it', '2016-01-01' in sh('cat /run/rudolf/clock-floored', 10))
     mods = sh("for m in asus-nb-wmi asus-wmi ideapad-laptop thinkpad_acpi hp-wmi dell-wmi acer-wmi; do find /lib/modules -name \"$m.ko*\" | head -1 | grep -q . && echo \"have $m\" || echo \"MISSING $m\"; done", 30)
-    ok('3. the laptop hotkey drivers are there, as modules', 'MISSING' not in mods and mods.count('have ') == 7, mods)
+    have = [l for l in mods.split('\n') if l.startswith('have ')]; miss = [l for l in mods.split('\n') if l.startswith('MISSING ')]
+    ok('3. the laptop hotkey drivers are there, as modules', not miss and len(have) == 7, mods)
     ok('4. no sit0 (the IPv6-in-IPv4 tunnel is not built)', last(sh('[ -e /sys/class/net/sit0 ] && echo yes || echo no', 10)) == 'no')
     # the desktop
     end = time.time() + 600
     while time.time() < end and js('typeof osdShow=="function"&&typeof pwrPoll=="function"', 20) is not True: time.sleep(5)
     js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()=='Guest');if(b)b.click();return 1})()")
     time.sleep(10)
-    js("(()=>{window.__ev=[];evOn(t=>{if(t)__ev.push(t)});window.__offs=0;A.off=()=>{__offs++};return 1})()")
+    # the hooks are put in again when the page has been loaded again (signing in as Guest reloads it)
+    HOOK = "(()=>{if(!window.__ev){window.__ev=[];evOn(t=>{if(t)__ev.push(t)})}if(!window.__offh){window.__offh=1;window.__offs=0;A.off=()=>{__offs++}}window.__ev.length=0;return 1})()"
+    hook = lambda: js(HOOK)
+    hook()
     n = J("rd('net')")
     ifs = {i['name']: i for i in n.get('interfaces', [])}
     ok('5. the network: the wired card, not virtual (every interface says whether it is)', 'eth0' in ifs and ifs['eth0'].get('virtual') is False and all('virtual' in i for i in ifs.values()), ifs)
@@ -81,7 +85,7 @@ try:
     # volume keys
     v0 = last(sh('/usr/lib/rudolf/hotkey volume get', 30)); out('sound server volume:', v0)
     if v0 and v0 != 'none':
-        g.key('volumeup'); time.sleep(3); v1 = last(sh('/usr/lib/rudolf/hotkey volume get', 30))
+        hook(); g.key('volumedown'); time.sleep(3); v0 = last(sh('/usr/lib/rudolf/hotkey volume get', 30)); hook(); g.key('volumeup'); time.sleep(3); v1 = last(sh('/usr/lib/rudolf/hotkey volume get', 30))
         ok('6. the volume-up key raises the system volume by 5 %', v1.split()[0].isdigit() and int(v1.split()[0]) == min(100, (int(v0.split()[0]) // 5 + 1) * 5), [v0, v1])
         ok('...and the desktop hears it (osd volume) and shows the indicator', any('osd volume' in e for e in js('__ev') or []) and js("!!document.getElementById('osd')") is True, js('__ev'))
         g.key('audiomute'); time.sleep(3)
@@ -89,17 +93,17 @@ try:
         g.key('audiomute'); time.sleep(2)
     else:
         out('NOTE no sound server in this machine: the volume keys are checked through their events only')
-        js("window.__ev=[]"); g.key('volumeup'); time.sleep(3)
+        hook(); g.key('volumeup'); time.sleep(3)
         ok('6. the volume-up key runs hotkey (osd volume none: no sound output)', any('osd volume' in e for e in js('__ev') or []), js('__ev'))
-    js("window.__ev=[]"); sh('/usr/lib/rudolf/hotkey brightness up', 20); time.sleep(3)
+    hook(); sh('/usr/lib/rudolf/hotkey brightness up', 20); time.sleep(3)
     ok('7. brightness without a backlight: the indicator says so, nothing fails', any('osd brightness none' in e for e in js('__ev') or []) and 'cannot' in (js("$('#osd')&&$('#osd').textContent") or ''), [js('__ev'), js("$('#osd')&&$('#osd').textContent")])
     i0 = J("rd('idle')").get('idle'); g.key('shift'); time.sleep(2); i1 = J("rd('idle')").get('idle')
     ok('8. rudolfd\'s idle: it drops when a key is pressed', i1 is not None and (i0 is None or i1 < 5000), [i0, i1])
     p = J("rd('power/status')")
     ok('9. Power and battery on QEMU: no battery, no lid, no power modes; reported', p.get('battery') is None and p.get('can', {}).get('lid') is False and p.get('can', {}).get('profile') is False and p.get('ac') is True, p)
     ok('...no battery icon on the taskbar', js("!$('#bat')||$('#bat').style.display=='none'") is True)
-    vm.q.cmd('system_powerdown'); time.sleep(5)
-    ok('10. the power button (QEMU\'s ACPI button) with Ask: the desktop\'s Shut down dialog', (js('__offs') or 0) >= 1, [js('__offs'), js('__ev')])
+    hook(); vm.q.cmd('system_powerdown'); time.sleep(5)
+    ok('10. the power button (QEMU\'s ACPI button) with Ask: the desktop\'s Shut down dialog', isinstance(js('__offs'), int) and js('__offs') >= 1, [js('__offs'), js('__ev')])
     r = J("rdPost('power/set?screen_ac=1')")
     ok('11. Turn the screen off after 1 minute (plugged in)', r.get('set', {}).get('screen_ac') == 1, r)
     sh('rm -f /run/rudolf/screen-off', 10); time.sleep(80)
