@@ -56,11 +56,4 @@ function wifiPanel(wf,ifn){
  q('.wfccs').onclick=()=>{const c=q('.wfcc').value.trim().toUpperCase();if(!/^[A-Z]{2}$/.test(c)){notify('Wi-Fi','Type a two-letter country code, like US or DE.',{kind:'error'});return}rdPost('wifi/country'+qs+(qs?'&':'?')+'cc='+c).then(m=>{notify('Wi-Fi',m.message);setTimeout(()=>scan(false),1500)}).catch(e=>notify('Wi-Fi',e.message,{kind:'error'}))};
  refresh().then(()=>scan(false));
  const t=setInterval(()=>{if(!wf.isConnected){clearInterval(t);return}if(!busy)refresh()},5000)}
-/* taskbar: Wi-Fi signal next to the volume button (installed system with a Wi-Fi adapter); opens Settings › Network */
-(function(){if(typeof RD=='undefined')return;let b=null,miss=0;
- const tick=async()=>{if(!RD)return;let st;try{st=wfStatus((await rd('wifi/status')).raw)}catch(e){return}
-  if(!st.adapter){if(b&&++miss>3){b.remove();b=null}return}miss=0;
-  if(!b){const v=document.getElementById('vol');if(!v)return;b=document.createElement('button');b.id='wftray';b.onclick=()=>settings('net');v.before(b)}
-  const on=st.wpa_state=='COMPLETED';b.className=on?'on':'';b.innerHTML=on?wfBars(+st.RSSI||-70):"<span class='wfb'>"+[1,2,3,4].map(i=>`<i style='height:${i*4+2}px'></i>`).join('')+"</span><span class='wfx0'>✕</span>";
-  b.title=on?'Wi-Fi: '+st.ssid+(st.ip_address?' · '+st.ip_address:''):'Wi-Fi: not connected'};
- setTimeout(tick,8000);setInterval(tick,15000)})();
+/* (1.4.4) the taskbar's own Wi-Fi icon is gone: the network icon (net31.js) shows the Wi-Fi and joins networks */
