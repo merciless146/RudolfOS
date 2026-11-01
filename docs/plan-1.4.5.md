@@ -17,7 +17,7 @@ Cyberdeck test mode is in About › For developers since 1.4.4, and was in Displ
 | 1 | The desktop: the Cyberdeck test switch (`devCyberdeck`) and its place in About › For developers. The search keyword "cyberdeck" goes too. For developers keeps "Update the page from a file" | `desktop/native25.js`, `settings25.js`, `shell25.js` |
 | 2 | rudolfd's `decktest` API | `iso/sys/rudolfd.c` |
 | 3 | `/usr/lib/rudolf/decktest` | `iso/sys/root/usr/lib/rudolf/decktest` (deleted) |
-| 4 | At start: `rudolf-init` no longer switches it on. A computer where it was left on has the flag file `/persist/etc/decktest`; it is deleted. Nothing else is needed, because the limits only ever lasted until the next start | `iso/sys/root/sbin/rudolf-init` |
+| 4 | At start: `rudolf-init` no longer switches it on. A computer where it was left on has the flag file `/persist/etc/decktest`; it is deleted. Nothing else is needed, because the limits only ever lasted until the next start. (The Vivobook does not have the file, checked 2026-11-01: all 8 processor threads online.) | `iso/sys/root/sbin/rudolf-init` |
 | 5 | Old test scripts that use it: removed, or the lines taken out | `iso/qt/p3_t.py`, `iso/qt/ph23_t.py`, `iso/qt/shell2/settings144_t.js` |
 
 **Tests:**
@@ -89,7 +89,7 @@ PresentPro replaces it, in the place of PowerPoint, with the same look as WordPr
 | 19 | **Objects on a slide:** text boxes (rich text: font, size, bold, italic, underline, colour, highlight, alignment, bullets and numbering, line spacing, auto-fit), shapes, pictures, tables, charts and icons. Every object can be moved, resized, rotated, layered, grouped, aligned and spaced, with guides and snapping. Shapes include rectangle, rounded rectangle, ellipse, triangle, arrows, lines, connectors, star, callout and speech bubble, each with a fill, an outline and a shadow. Pictures come from your files and can be cropped, given a border, and have their brightness set. Charts come from data typed into PresentPro or from a SpreadsheetPro range |
 | 20 | **Speaker notes** for each slide |
 | 21 | **Transitions and animations:** transitions between slides (fade, push, wipe, cover, zoom, morph-like move) and animations for each object (appear, fade, fly in, zoom, wipe; on click or after the previous), with timings. All are drawn with the processor and stay smooth on modest laptops such as the Vivobook |
-| 22 | **Presenting:** full screen from the start or from the current slide. The keyboard, mouse and a presenter remote's keys move through the slides (Page Up and Down, arrows, B or W for a black or white screen, a number then Enter to jump to a slide). A laser pointer and a pen. On a second screen, or in a window, the presenter view shows the current and next slide, the notes, the time and the elapsed time. Rehearse timings, and a slide show that runs by itself in a loop |
+| 22 | **Presenting:** full screen from the start or from the current slide. The keyboard, mouse and a presenter remote's keys move through the slides (Page Up and Down, arrows, B or W for a black or white screen, a number then Enter to jump to a slide). A laser pointer and a pen. The presenter view shows the current and next slide, the notes, the time and the elapsed time. Rudolf OS shows the same picture on every screen today (no extended desktop), so with a projector the presenter view is on the laptop's screen only when you switch to it (P), and the audience sees it too. A presenter view on a second screen of its own needs the desktop to span screens, which is not part of 1.4.5. Rehearse timings, and a slide show that runs by itself in a loop |
 | 23 | **Files:** PresentPro's own `.RDECK` (version 2); version 1 files open as before. Export to **PowerPoint .pptx** (text, shapes, pictures, tables, notes, transitions where PowerPoint has the same) and import of .pptx (text, shapes, pictures, tables, notes). PDF of the slides, handouts with 1, 2, 3 or 6 slides a page, notes pages, and PNG pictures of the slides. Templates: talk, lesson, report, photo album, pitch |
 | 24 | **Taking over from the old app:** the same as item 16, with the old id `deck` |
 
@@ -111,8 +111,9 @@ PresentPro replaces it, in the place of PowerPoint, with the same look as WordPr
    - The common tasks are done start to finish in the page test, with screenshots checked at each step: a monthly budget with a chart; a grade book with conditional formatting and sorting; a 10-slide talk with a theme, pictures, a chart from SpreadsheetPro, notes, transitions, presenting with the presenter view, and PDF and .pptx export.
    - What is slow, unclear or missing is fixed.
 4. **Refine, round 3 (speed and size):**
-   - 100,000 rows with formulas should scroll at 60 frames a second and recalculate within 1 second on the Vivobook's processor.
-   - A 50-slide deck with pictures should open within 2 seconds, and present at 60 frames a second.
+   - Measured on the Vivobook: AMD Ryzen 3 7320U, 4 cores and 8 threads, 3.4 GB of memory, of which about 1.2 GB is in use with the desktop open.
+   - 100,000 rows with formulas should scroll at 60 frames a second and recalculate within 1 second, and use no more than 150 MB of memory.
+   - A 50-slide deck with pictures should open within 2 seconds, present at 60 frames a second, and keep pictures shrunk to the slide size (as the desktop background does), so a deck stays small on disk and in memory.
    - The desktop page grows by no more than 600 KB for both apps (no new libraries beyond JSZip and what is already shipped).
 
 **Tests:**
@@ -139,7 +140,14 @@ rudolfd's `power?action=poweroff|reboot` then:
 - runs `sync` and `umount -a -r`;
 - powers off or restarts.
 
-The browser window for sign-in sites (RudolfWeb), Linux apps, the sound server and Wi-Fi are not asked to close. `/persist` is often still in use when it is unmounted, so it is not made read-only first. It is left to the kernel's journal on the next start, which takes extra time.
+The browser window for sign-in sites (RudolfWeb, when it is open), Linux apps, the sound server, Wi-Fi and the development link are not asked to close. `/persist` (also mounted as the home folder) is not made read-only before `umount -a -r`, so a program still writing to it can keep it from being unmounted cleanly.
+
+Checked on the Vivobook (2026-11-01, 1.4.4, through the development link):
+- **The last start found `/persist` clean**: no journal recovery, so today's shutdown does finish its job.
+- **What runs at shutdown:** the desktop's Chromium, which also holds Oracle's real tabs (11 processes), the sound server (PulseAudio), D-Bus, Wi-Fi (`wpa_supplicant`, `udhcpc`), `rudolf-portal`, `rudolf-display`, Xorg and the development link.
+- **Restart:** the kernel's reboot method is `acpi`, mode `cold`.
+
+What is slow, then, is most likely the waiting (the desktop's steps and up to 25 seconds for Chromium), not the disk. Item 28 measures it before anything is changed.
 
 | # | What | Where |
 |---|---|---|
@@ -147,7 +155,7 @@ The browser window for sign-in sites (RudolfWeb), Linux apps, the sound server a
 | 29 | **The desktop's steps get a time limit:** 3 seconds in all for saving, then shutting down goes on (what was saved is kept; the page's local storage copy was already sent every few seconds). The dialog shows what it is doing ("Saving your files…", "Closing apps…", "Turning off…") | `desktop/core25.js` |
 | 30 | **rudolfd closes everything at once:** both Chromium instances, Linux apps and Flatpak (bubblewrap) processes, the sound server and Wi-Fi get TERM together. It waits up to **5 seconds**; Chromium needs about 1, the desktop's data having been saved first. The rest get KILL. Then `sync`, `/persist` remounted read-only, `umount -a -r`, and the power off or restart | `iso/sys/rudolfd.c` |
 | 31 | **The same path** for the power button with "Shut down" (1.4.4 Power and battery), updates' "Restart now", and every other restart button | `iso/sys/root/usr/lib/rudolf/power`, desktop |
-| 32 | **If the firmware's reboot hangs** after `reboot()`, which some laptops do: only if the measurements show it, the kernel gets `reboot=` (`acpi`, `pci` or `efi`, whichever works on the Vivobook) | `iso/kconfig.sh` (only if needed) |
+| 32 | **If the firmware's reboot hangs** after `reboot()`, which some laptops do: only if the measurements show it, the kernel gets `reboot=` (`acpi`, `pci` or `efi`, whichever works on the Vivobook; it uses `acpi` today). A setting in the kernel's command line needs a kernel build, so this is decided once item 28's measurements are in | `iso/kconfig.sh` (only if needed) |
 
 **Targets:**
 - Shut down: the screen dark within 5 seconds normally, and the power off within 10 at worst.
