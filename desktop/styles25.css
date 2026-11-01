@@ -384,3 +384,44 @@ body.emu-borderless #bar{display:none!important}
 .sp-tpl{display:grid;grid-template-columns:repeat(3,130px);gap:8px}.sp-tpl button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 6px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:12px}.sp-tpl button span{font-size:30px}.sp-tpl button:hover{background:#eef2ff;border-color:#818cf8}
 .sp-fl{max-height:200px;overflow:auto;border:1px solid #e5e7eb;padding:4px;margin-top:6px;min-width:240px}.sp-fl label{display:block;white-space:nowrap}
 .sp .wp-sb .sp-agg{color:#374151}
+#menu li.offh{font-size:11px;font-weight:700;color:#6b7280;letter-spacing:.06em;text-transform:uppercase;padding-top:8px;cursor:default;pointer-events:none}
+#menu li.offi{padding-left:22px}
+/* PresentPro */
+.ppro .pp-body{flex:1;display:flex;min-height:0}
+.pp-list{width:184px;flex:none;overflow-y:auto;background:#f3f4f6;border-right:1px solid #d1d5db;padding:8px 6px;outline:none}
+.pp-th{display:flex;gap:6px;align-items:flex-start;margin-bottom:10px;cursor:pointer}.pp-th .n{width:16px;font:11px Segoe UI,Arial,sans-serif;color:#555;text-align:right}
+.pp-th .f{position:relative;overflow:hidden;border:2px solid transparent;border-radius:3px;box-shadow:0 1px 3px #0003;background:#fff;flex:none}.pp-th.on .f{border-color:#2563eb}.pp-th.hid .f{opacity:.45}.pp-th.dr .f{border-top:3px solid #f59e0b}
+.pp-th .f .pp-slide{position:absolute;left:0;top:0;pointer-events:none}
+.pp-sec{font:600 11px Segoe UI,Arial,sans-serif;color:#374151;margin:6px 0 6px 2px;cursor:default}
+.pp-center{flex:1;display:flex;flex-direction:column;min-width:0}
+.pp-wrap{flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:#e5e7eb;outline:none;position:relative;min-height:0}
+.pp-stagebox{position:relative;flex:none;box-shadow:0 2px 10px #0004;margin:20px}
+.pp-stage{position:absolute;left:0;top:0;transform-origin:0 0}
+.pp-ov{position:absolute;left:0;top:0;cursor:default}.pp-ov.editing{pointer-events:none}
+.pp-sel{position:absolute;border:1px solid #2563eb;box-sizing:border-box;pointer-events:none;transform-origin:center}.pp-sel.multi{border-style:dashed}
+.pp-h{position:absolute;width:9px;height:9px;background:#fff;border:1px solid #2563eb;box-sizing:border-box;pointer-events:auto;border-radius:2px}
+.pp-h.nw{left:-5px;top:-5px;cursor:nwse-resize}.pp-h.n{left:calc(50% - 4px);top:-5px;cursor:ns-resize}.pp-h.ne{right:-5px;top:-5px;cursor:nesw-resize}.pp-h.e{right:-5px;top:calc(50% - 4px);cursor:ew-resize}.pp-h.se{right:-5px;bottom:-5px;cursor:nwse-resize}.pp-h.s{left:calc(50% - 4px);bottom:-5px;cursor:ns-resize}.pp-h.sw{left:-5px;bottom:-5px;cursor:nesw-resize}.pp-h.w{left:-5px;top:calc(50% - 4px);cursor:ew-resize}
+.pp-h.rot{left:calc(50% - 5px);top:-26px;width:11px;height:11px;border-radius:50%;cursor:grab;background:#dbeafe}
+.pp-g{position:absolute;background:#ec4899;pointer-events:none}.pp-g.v{width:1px}.pp-g.h{height:1px}
+.pp-ov .pp-band{position:absolute;border:1px dashed #2563eb;background:rgba(37,99,235,.08);pointer-events:none}
+.pp-o.editing{z-index:50}.pp-o.editing .pp-tx{overflow:visible}.pp-o.editing .pp-ti{cursor:text;min-height:1em}
+.pp-nbar{height:92px;flex:none;border-top:1px solid #d1d5db;display:flex}.pp-notes{flex:1;border:0;resize:none;padding:8px 10px;font:13px Segoe UI,Arial,sans-serif;outline:none;background:#fff;color:#111}
+.pp-sorter{flex:1;overflow:auto;display:flex;flex-wrap:wrap;align-content:flex-start;gap:16px;padding:16px;background:#e5e7eb;outline:none}
+.pp-th.big{flex-direction:column;align-items:center;gap:4px}.pp-th.big .n{width:auto}
+.ppro .wp-tb .pp-play{background:#2563eb;color:#fff;padding:0 10px}.ppro .wp-tb .pp-play:hover{background:#1d4ed8}
+.ppro .wp-sb button{border:0;background:none;cursor:pointer;font-size:14px;padding:0 4px}.pp-zt{cursor:pointer;min-width:34px}
+.pp-themes{display:grid;grid-template-columns:repeat(4,128px);gap:8px}.pp-themes button{border:2px solid #e5e7eb;border-radius:6px;background:#fff;padding:4px;cursor:pointer;font-size:12px}.pp-themes button.on{border-color:#2563eb}
+.pp-themes span{display:flex;align-items:flex-end;gap:3px;height:62px;padding:6px;margin-bottom:4px;font-size:22px;border-radius:3px;box-sizing:border-box}.pp-themes span i{width:12px;height:12px;display:inline-block;margin-left:auto}.pp-themes span i+i{margin-left:0}
+.pp-icons{display:grid;grid-template-columns:repeat(10,36px);gap:4px}.pp-icons button{font-size:22px;border:1px solid #e5e7eb;background:#fff;border-radius:4px;cursor:pointer}
+.pp-show{position:fixed;inset:0;z-index:99990;background:#000;outline:none;cursor:default;overflow:hidden}
+.pp-show .pp-sw{position:absolute;inset:0}.pp-show .pp-sc{position:absolute;left:0;top:0;transform-origin:0 0;overflow:hidden}.pp-show .pp-sc>.pp-slide{position:absolute;left:0;top:0}
+.pp-show .pp-ink{position:absolute;inset:0;pointer-events:none;z-index:3}.pp-show.pen{cursor:crosshair}.pp-show.laser{cursor:none}
+.pp-show .pp-laser{position:absolute;width:14px;height:14px;border-radius:50%;background:radial-gradient(#ff3b3b,#ff000088 60%,transparent 70%);box-shadow:0 0 10px #f00;pointer-events:none;display:none;z-index:4}.pp-show.laser .pp-laser{display:block}
+.pp-show .pp-blank{position:absolute;inset:0;display:none;z-index:5}
+.pp-show .pp-num{position:absolute;left:20px;bottom:20px;background:#000c;color:#fff;padding:6px 12px;border-radius:6px;font:16px Segoe UI,Arial,sans-serif;z-index:6}
+.pp-show.pv{background:#1f2937}.pp-show.pv .pp-sw{display:none}
+.pp-pv{position:absolute;inset:0;display:flex;flex-direction:column;color:#e5e7eb;font-family:Segoe UI,Arial,sans-serif}
+.pp-pvh{display:flex;gap:18px;align-items:center;padding:10px 16px;background:#111827;font-size:18px}.pp-pvh .e{font:600 22px Consolas,monospace;color:#fbbf24}.pp-pvh .n{flex:1;text-align:right;color:#9ca3af;font-size:14px}.pp-pvh button{background:#374151;color:#fff;border:0;border-radius:4px;padding:6px 12px;cursor:pointer}
+.pp-pvb{flex:1;display:flex;gap:16px;padding:16px;min-height:0}.pp-pvc{flex:3;position:relative;min-width:0}.pp-sw2{position:absolute;inset:0}.pp-sw2 .pp-sc{position:absolute;left:0;top:0;transform-origin:0 0}.pp-sw2 .pp-sc>.pp-slide{position:absolute;left:0;top:0}
+.pp-pvr{flex:2;display:flex;flex-direction:column;gap:12px;min-width:0}.pp-pvn{position:relative;overflow:hidden;background:#000;border:1px solid #374151}.pp-pvn .pp-slide{position:absolute;left:0;top:0}.pp-end{color:#9ca3af;padding:30px;text-align:center}
+.pp-pvnotes{flex:1;overflow:auto;background:#111827;padding:12px;font-size:20px;line-height:1.45;white-space:pre-wrap;border-radius:4px}

@@ -21,7 +21,7 @@ const APPDESC={explorer:'Browse, open, copy and move the files and folders on th
  quake:'Play Quake with game data that you own.',gpulab:'Test and show what the graphics processor can do.',taskmgr:'See running apps and how hard the computer is working, and close apps that stop responding.',
  viewer:'Look at pictures and photos.',pdf:'Read PDF documents.',capture:'Take pictures of the screen.',code:'Write and run code, with syntax colouring.',archive:'Open and make ZIP archives.',
  store:'Find and install more apps.',calendar:'Keep track of dates and events.',clock:'Alarms, timers, a stopwatch and world clocks.',sheet:'SpreadsheetPro: tables, formulas, charts and Excel files.',
- deck:'Make slide presentations.',contacts:'Keep names, phone numbers and addresses.',weather:'See the weather forecast.',charmap:'Find and copy special characters and emoji.',
+ deck:'PresentPro: slide presentations, presenting, and PowerPoint files.',contacts:'Keep names, phone numbers and addresses.',weather:'See the weather forecast.',charmap:'Find and copy special characters and emoji.',
  events:'See what the system has recorded, such as errors and warnings.',camera:'Take photos and videos with a camera.',recorder:'Record sound from a microphone.',
  fonts:'Look at the fonts on this computer.',devcon:'Tools for people who build web pages and apps.',help:'Answers to questions about Rudolf OS.'};
 const APPEXTRA={flash:[['Uses','Ruffle, an open-source Flash Player emulator']],quake:[['License','GNU GPL (the engine; game data is not included)']]};
