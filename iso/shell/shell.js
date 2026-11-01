@@ -17,8 +17,8 @@
 'use strict';
 const DESK_URL = 'http://127.0.0.1:8080/';
 const DESK_ORIGIN = 'http://127.0.0.1:8080';
-const VERSION = '1.2.1';
-const CAPS = ['tabs'];
+const VERSION = '1.2.2';
+const CAPS = ['tabs', 'dark'];
 const desk = document.getElementById('desk');
 const starting = document.getElementById('starting');
 
@@ -199,6 +199,16 @@ function tabEvents(t) {
 let NEWN = 0, DLGN = 0, PERMN = 0;
 const DLG = new Map(), PERM = new Map();
 
+/* (1.2.2) dark pages, when Oracle asks for them: each page is turned dark as it loads (inverted, with pictures, videos
+   and frames turned back), unless it is dark already. The desktop sends {op: 'dark', on}. */
+let DARK = false;
+const DARK_CSS = 'html{filter:invert(.9) hue-rotate(180deg)!important;background:#fff!important}img,video,picture,canvas,iframe,embed,object,svg image,[style*="background-image"]{filter:invert(1) hue-rotate(180deg)!important}';
+const darkJS = on => `(()=>{const id='rudolf-dark';let s=document.getElementById(id);if(!${on}){if(s)s.remove();return}
+ if(!s){s=document.createElement('style');s.id=id;s.textContent=${JSON.stringify(DARK_CSS)};(document.head||document.documentElement).appendChild(s)}
+ const chk=()=>{try{const L=c=>{const m=/rgba?\\(([^)]+)\\)/.exec(c||'');if(!m)return null;const v=m[1].split(',').map(Number);if(v.length>3&&v[3]<.5)return null;return(.2126*v[0]+.7152*v[1]+.0722*v[2])/255};
+  let l=document.body?L(getComputedStyle(document.body).backgroundColor):null;if(l==null)l=L(getComputedStyle(document.documentElement).backgroundColor);if(l!=null&&l<.4&&s.isConnected)s.remove()}catch(e){}};
+ if(document.readyState=='loading')document.addEventListener('DOMContentLoaded',chk,{once:true});else chk()})()`;
+const darken = t => { if (DARK) t.f.executeScript({code: darkJS(true)}).catch(() => {}) };
 function makeTab(tid, part) {
   const f = document.createElement('controlledframe');
   f.className = 'tab';
@@ -207,6 +217,8 @@ function makeTab(tid, part) {
   document.body.appendChild(f);
   const t = {tid, part, f, url: '', r: null};
   TABS.set(tid, t);
+  f.addEventListener('loadcommit', e => { if (e.isTopLevel) darken(t) });
+  f.addEventListener('contentload', () => darken(t));
   try { f.addContentScripts([{name: 'oracle', urlPatterns: ['http://*/*', 'https://*/*'], js: {code: PAGE_JS}, runAt: 'document-start', allFrames: false},
     {name: 'flash', urlPatterns: ['http://*/*', 'https://*/*'], js: {code: FLASH_JS}, runAt: 'document-idle', allFrames: true},
     {name: 'fullscreen', urlPatterns: ['http://*/*', 'https://*/*'], js: {code: FS_JS}, runAt: 'document-start', allFrames: true}]).catch(() => {}) } catch (e) {}
@@ -327,6 +339,7 @@ function onTab(m) {
   if (m.op == 'fw') { const r = m.rules || {}; FW = {on: !!r.on, mode: String(r.mode || 'open'), block: [].concat(r.block || []).map(String), trust: [].concat(r.trust || []).map(String)}; return }
   if (m.op == 'dialog') { const d = DLG.get(m.did); DLG.delete(m.did); if (d) try { m.ok ? d.ok(String(m.text == null ? '' : m.text)) : d.cancel() } catch (e) {} return }
   if (m.op == 'blur') { desk.focus(); return }
+  if (m.op == 'dark') { const on = !!m.on; if (on === DARK) return; DARK = on; for (const t of TABS.values()) t.f.executeScript({code: darkJS(on)}).catch(() => {}); return }
   if (m.op == 'ruffle') { const r = m.cfg || {}; RUFFLE = {on: !!r.on, urls: [].concat(r.urls || []).filter(u => /^https?:\/\//.test(u)).slice(0, 4), config: Object.assign({}, r.config || {})}; return }
   if (m.op == 'perm') { const p = PERM.get(m.pid); PERM.delete(m.pid); if (p) try { m.allow ? p.allow() : p.deny() } catch (e) {} return }
   if (m.op == 'clear') {

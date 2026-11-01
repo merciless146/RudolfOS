@@ -35,15 +35,6 @@ function offShell(W,o){
  X.color=(title,def,cb,noneLabel)=>X.dialog(title,`<div class='off-pal'>${OFF_PALETTE.map(c=>`<button data-c='${c}' title='${c}' style='background:${c}'></button>`).join('')}</div><label>More colours <input type='color' class='off-cc' value='${/^#[0-9a-f]{6}$/i.test(def||'')?def:'#000000'}'></label>${noneLabel?`<p><button class='off-none'>${offEsc(noneLabel)}</button></p>`:''}`,[['Cancel'],['OK',d=>cb(d.querySelector('.off-cc').value),1]],d=>{
   d.querySelectorAll('.off-pal button').forEach(b=>b.onclick=()=>{cb(b.dataset.c);d.close()});const n=d.querySelector('.off-none');if(n)n.onclick=()=>{cb('');d.close()}});
  return X}
-/* Notey's help for the Office apps: a question box answered from a short list per app, and tips */
-function offNotey(X,app,faq){if(typeof NOTEY_SVG!='string')return null;const box=document.createElement('div');box.className='wn';box.innerHTML=`<div class='wn-bub' style='display:none'></div><div class='wn-m' title='Notey — click for help'>${NOTEY_SVG}</div>`;X.root.appendChild(box);
- const bub=box.querySelector('.wn-bub');let on=true;try{on=!(JSON.parse(localStorage.getItem('bd95wp'))||{}).noteyOff}catch(e){}box.style.display=on?'':'none';
- const say=(html,btns)=>{bub.innerHTML=`<u class='wn-x' title='Close'>✕</u><div class='wn-t'>${html}</div><div class='wn-b'></div>`;bub.style.display='block';bub.querySelector('.wn-x').onclick=()=>{bub.style.display='none'};const bb=bub.querySelector('.wn-b');(btns||[]).forEach(([t,f])=>{const b=document.createElement('button');b.textContent=t;b.onclick=f;bb.appendChild(b)})};
- const ask=()=>{say(`What do you want to do in ${offEsc(app)}?<br><input class='wn-q' style='width:100%;margin-top:6px' placeholder='For example: make a chart'>`,[['Search',go]]);const i=bub.querySelector('.wn-q');i.focus();i.onkeydown=e=>{e.stopPropagation();if(e.key=='Enter')go()}};
- function go(){const t=(bub.querySelector('.wn-q')||{}).value||'';const w=t.toLowerCase().split(/\W+/).filter(x=>x.length>2);const hits=faq.map(f=>[f,w.filter(x=>f[0].includes(x)).length]).filter(x=>x[1]).sort((a,b)=>b[1]-a[1]).slice(0,3);
-  say(hits.length?hits.map(([f])=>`<p><b>${offEsc(f[1])}</b><br>${f[2]}</p>`).join(''):`I don't know about that yet. Try the menus, or Help › Keyboard shortcuts.`,[['Ask again',ask]])}
- box.querySelector('.wn-m').onclick=()=>bub.style.display=='block'?bub.style.display='none':ask();
- return{ask:()=>{box.style.display='';ask()},show:v=>{box.style.display=v?'':'none'},visible:()=>box.style.display!='none',say}}
 /* autosave: a recovery copy every minute while there are changes; offered again after a crash or power cut */
 const offRecKey=()=>'offrec:'+(typeof uid=='function'?uid():'x');
 function offAutosave(app,W,get){const id=app+':'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);let last='';
