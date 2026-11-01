@@ -1,0 +1,4 @@
+Module options for BusyBox's modprobe (modprobe-small reads /etc/modules/NAME when it loads module NAME).
+asus_wmi (1.4.4): fnlock_default=0. The driver otherwise starts with Fn lock on, so F1-F12 send F1-F12 and the
+volume and brightness keys need Fn; Windows ships these laptops the other way round (the ASUS Vivobook Go: F1 mute,
+F2/F3 volume, F4/F5 brightness without Fn). Fn+Esc still switches it.
