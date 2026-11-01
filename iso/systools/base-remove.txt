@@ -1,0 +1,10 @@
+# Paths removed from the base layer by ci_release.sh (1.4.4): the release build copies sys/root over the previous
+# base layer, so a file that left the repository, or a program full builds no longer copy, stays until removed here.
+# One path per line, relative to the base layer's root; a path that is not there is skipped.
+usr/lib/rudolf/frames/_metadata
+usr/bin/ostree
+usr/bin/dbus-send
+usr/bin/dbus-run-session
+usr/bin/pacat
+usr/bin/paplay
+usr/bin/parecord

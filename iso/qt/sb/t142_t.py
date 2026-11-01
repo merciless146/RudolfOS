@@ -4,6 +4,7 @@
 # The Vivobook (1.4.1): its 1.1 stick handed over to 1.4.1 in the internal drive's slot a with nothing passed on; the
 # 1.4.1 start-up took the first RUDOLFDATA found, the stick's, whose slot a held 1.4.0, and started 1.4.0's layers
 # with the 1.4.1 kernel, which refused 1.4.0's drivers (each build signs its own): no Wi-Fi, no graphics driver.
+# 1.4.4: also a stick whose slot holds the same kernel build as an older release: the newest is taken.
 # Here: the release's kernel is started directly (-kernel), as the handover does, with rudolf.slot=a. A drive with a
 # data partition whose slot a holds PREV-REL (home: "stick") is a USB stick, whose data partition is found first (as in t131 B and on the laptop); the internal NVMe drive
 # holds REL in slot a (home: "internal").
@@ -25,7 +26,7 @@ mv = lambda d, k: re.search(rf'^{k} (.*)$', man(d), re.M).group(1)
 VER = '.'.join(mv(REL, 'version').split('.')[:3]); PVER = '.'.join(mv(PREV, 'version').split('.')[:3]); DMB = 1500
 
 
-def make_drive(path, who, rel, image=True):
+def make_drive(path, who, rel, image=True, serial=None):
     """image=False: RUDOLFDATA only, no disc image in front of it, so the start-up waits for a disc image and finds the
     stick's (as on the laptop: media /dev/sda1), by which time the stick's RUDOLFDATA is the first one found"""
     start = (os.path.getsize(OLD) + 1048575) // 1048576 * 2048 if image else 2048
@@ -39,7 +40,7 @@ def make_drive(path, who, rel, image=True):
     open(f'{T}/home/rudolf/whoami.txt', 'w').write(who + '\n'); subprocess.run(['chown', '-R', '1000:1000', f'{T}/home/rudolf'], check=True)
     a = f'{T}/os/system/a'; os.makedirs(a)
     for n in ('vmlinuz', 'base.sfs', 'chromium.sfs', 'desktop.sfs', 'modules.sfs', 'manifest.txt', 'manifest.sig'): shutil.copy(f'{rel}/{n}', f'{a}/{n}')
-    open(f'{a}/RELEASE', 'w').write(f"serial {mv(rel, 'serial')}\nversion {mv(rel, 'version')}\nreleased {mv(rel, 'released')}\nchromium {mv(rel, 'chromium')}\nkernel {mv(rel, 'kernel')}\nnotes test\n")
+    open(f'{a}/RELEASE', 'w').write(f"serial {serial or mv(rel, 'serial')}\nversion {mv(rel, 'version')}\nreleased {mv(rel, 'released')}\nchromium {mv(rel, 'chromium')}\nkernel {mv(rel, 'kernel')}\nnotes test\n")
     open(f'{a}/complete', 'w').write('1\n')
     open(f'{T}/os/system/state', 'w').write('good=a\nprev=\nnext=\ntries=0\nfailed=\n')
     D = path + '.data'
@@ -53,34 +54,45 @@ def make_drive(path, who, rel, image=True):
 
 
 INT = os.path.abspath('int142.img'); STK = os.path.abspath('stick142.img')
-make_drive(INT, 'internal', REL, image=False); make_drive(STK, 'stick', PREV)
 EXTRA = ['-device', 'qemu-xhci,id=xh', '-drive', f'file={STK},format=raw,if=none,id=us', '-device', 'usb-storage,bus=xh.0,drive=us,removable=on',
          '-drive', f'file={INT},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf142',
          '-kernel', f'{REL}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.trying=1 rudolf.debug=1']
-vm = sbvm.VM('t142', PARTS, [], secure=False, mem=3072, extra=EXTRA)
-g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3); sh = lambda c, t=60: g.sh(c, t)
-try:
-    time.sleep(45); up = False; end = time.time() + 900
-    while time.time() < end:
-        try:
-            if 'ready' in sh('echo ready', 8): up = True; break
-        except OSError: pass
-        time.sleep(4)
-    if not up:
-        for i in range(3): vm.shot(f'fail{i}'); time.sleep(5)
-    st = sh('for f in slot media persist; do echo "$f=$(cat /etc/rudolf/$f)"; done; echo "who=$(cat /home/rudolf/whoami.txt)"; F=$(findfs LABEL=RUDOLFDATA); echo "first=$F"; if [ "$F" = "$(cat /etc/rudolf/persist)" ]; then echo "firstwho=$(cat /home/rudolf/whoami.txt)"; else mkdir -p /tmp/f; mount -o ro $F /tmp/f 2>/dev/null; echo "firstwho=$(cat /tmp/f/home/rudolf/whoami.txt)"; umount /tmp/f 2>/dev/null; fi; modprobe cfg80211 2>/dev/null; echo "mods=$(grep -c "^cfg80211 " /proc/modules)"; echo "cmd=$(cat /proc/cmdline)"', 30) if up else ''
-    kv = dict(l.split('=', 1) for l in st.split('\n') if '=' in l)
-    rv = last(sh("grep -o \"RVER='[0-9.]*'\" /usr/share/rudolf/www/index.html | head -1 | tr -dc 0-9.; echo", 90)) if up else ''
-    out('start:', ' | '.join(f'{k}={v}' for k, v in kv.items()), '| RVER', rv)
-    ok('1. the update\'s kernel, started with nothing passed on (rudolf.slot=a only), comes up', up and kv.get('slot') == 'a', kv.get('slot'))
-    if kv.get('firstwho') != 'stick':
-        out(f'NOTE the first RUDOLFDATA found was {kv.get("first")}, not the other drive\'s: the case is not exercised')
-    ok('...the other drive\'s data partition (slot a: ' + PVER + ') is the first one found', kv.get('firstwho') == 'stick', [kv.get('first'), kv.get('firstwho')])
-    ok('...the start-up took the data partition whose slot a is this kernel\'s own (the internal drive)', kv.get('persist') != kv.get('first') and kv.get('who') == 'internal', [kv.get('persist'), kv.get('first'), kv.get('who')])
-    ok(f'...and runs its own system ({VER}), not the other drive\'s ({PVER})', rv == VER, rv)
-    ok('...with its drivers (cfg80211, the Wi-Fi core, loads: its signature is this build\'s)', kv.get('mods') == '1', kv.get('mods'))
-finally:
-    vm.stop()
+
+
+def run(n, label):
+    vm = sbvm.VM(f't142{n}', PARTS, [], secure=False, mem=3072, extra=EXTRA)
+    g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3); sh = lambda c, t=60: g.sh(c, t)
+    try:
+        time.sleep(45); up = False; end = time.time() + 900
+        while time.time() < end:
+            try:
+                if 'ready' in sh('echo ready', 8): up = True; break
+            except OSError: pass
+            time.sleep(4)
+        if not up:
+            for i in range(3): vm.shot(f'fail{i}'); time.sleep(5)
+        st = sh('for f in slot media persist; do echo "$f=$(cat /etc/rudolf/$f)"; done; echo "who=$(cat /home/rudolf/whoami.txt)"; F=$(findfs LABEL=RUDOLFDATA); echo "first=$F"; if [ "$F" = "$(cat /etc/rudolf/persist)" ]; then echo "firstwho=$(cat /home/rudolf/whoami.txt)"; else mkdir -p /tmp/f; mount -o ro $F /tmp/f 2>/dev/null; echo "firstwho=$(cat /tmp/f/home/rudolf/whoami.txt)"; umount /tmp/f 2>/dev/null; fi; modprobe cfg80211 2>/dev/null; echo "mods=$(grep -c "^cfg80211 " /proc/modules)"; echo "cmd=$(cat /proc/cmdline)"', 30) if up else ''
+        kv = dict(l.split('=', 1) for l in st.split('\n') if '=' in l)
+        rv = last(sh("grep -o \"RVER='[0-9.]*'\" /usr/share/rudolf/www/index.html | head -1 | tr -dc 0-9.; echo", 90)) if up else ''
+        out(f'start {n}:', ' | '.join(f'{k}={v}' for k, v in kv.items()), '| RVER', rv)
+        ok(f'{n}. {label}: the update\'s kernel, started with nothing passed on (rudolf.slot=a only), comes up', up and kv.get('slot') == 'a', kv.get('slot'))
+        if kv.get('firstwho') != 'stick':
+            out(f'NOTE the first RUDOLFDATA found was {kv.get("first")}, not the other drive\'s: the case is not exercised')
+        ok('...the other drive\'s data partition is the first one found', kv.get('firstwho') == 'stick', [kv.get('first'), kv.get('firstwho')])
+        ok('...the start-up took the internal drive\'s data partition', kv.get('persist') != kv.get('first') and kv.get('who') == 'internal', [kv.get('persist'), kv.get('first'), kv.get('who')])
+        ok(f'...and runs its own system ({VER})', rv == VER, rv)
+        ok('...with its drivers (cfg80211, the Wi-Fi core, loads: its signature is this build\'s)', kv.get('mods') == '1', kv.get('mods'))
+    finally:
+        vm.stop()
+
+
+# 1. the stick's slot a holds the previous release (on the Vivobook: 1.4.0, another kernel build)
+make_drive(INT, 'internal', REL, image=False); make_drive(STK, 'stick', PREV)
+run(1, f'the stick holds {PVER}')
+# 2. (1.4.4) the stick's slot a holds the same kernel build, as an older release (1.4.3 kept 1.4.2's kernel, and
+#    1.4.2's check took the stick's 1.4.2): the newest release is taken
+make_drive(INT, 'internal', REL, image=False); make_drive(STK, 'stick', REL, serial=str(int(mv(REL, 'serial')) - 1))
+run(2, 'the stick holds the same kernel build as an older release')
 for f in (INT, STK):
     try: os.remove(f)
     except OSError: pass

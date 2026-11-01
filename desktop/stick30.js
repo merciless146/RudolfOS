@@ -39,8 +39,11 @@ async function stkSection(c){if(!RD)return;const box=document.createElement('div
  box.innerHTML=`<h4 class='sh4'>Make a Rudolf OS USB stick</h4><p class='msg'>Puts Rudolf OS on a USB stick or memory card (2 GB or more) that starts on any computer and keeps its files. Everything on that drive is erased.</p>
  <div class='r2'><label>Rudolf OS to put on it</label><select class='stks'><option value=''>This Rudolf OS ${lxEsc(RVER)}${info.updateInstalled?' (with its updates)':''}</option>${imgs.map(x=>`<option value='${lxEsc(x.path)}'>${lxEsc(imgLabel(x))} (Downloads)</option>`).join('')}</select></div><p class='msg stkbo' hidden></p>
  <label class='ck'><input type='checkbox' class='stkf'> Also copy my files and settings (Linux apps are not copied)</label><div class='stkl'></div><pre class='jl stkj' hidden></pre>
- <h4 class='sh4'>Back up to a USB stick</h4><p class='msg'>The same backup as “Back up everything…”, written straight to a plugged-in drive (in its ${STK.BDIR} folder, with a checksum). A new Rudolf OS can restore it when it first starts.</p><div class='stkb'></div><div class='msg stkbm'></div>`;
- const q=s=>box.querySelector(s),L=q('.stkl'),pre=q('.stkj');
+ <div class='stkbg'><p class='msg'><b>Back up to a USB stick</b>: the same backup, written straight to a plugged-in drive (in its ${STK.BDIR} folder, with a checksum). Use it before reinstalling or when moving to a new computer: a new Rudolf OS finds it and offers to restore it when it first starts.</p><div class='stkb'></div><div class='msg stkbm'></div>
+ <p class='msg'><b>A Rudolf OS stick with your files</b>: “Make a Rudolf OS USB stick” below, with “Also copy my files and settings”. Use it to take Rudolf OS itself, with your files, to another computer.</p></div>`;
+ /* 1.4.4: the backup ways together in Storage › Backup */
+ {const g=box.querySelector('.stkbg'),a=c.querySelector('.sti3');if(g&&a)a.after(g)}
+ const q=s=>box.querySelector(s)||c.querySelector('.stkbg '+s),L=q('.stkl'),pre=q('.stkj');
  const bo=()=>{const e=q('.stkbo');e.hidden=!(info.bootSecure===0&&!q('.stks').value);e.textContent=STK_BOOTOLD};q('.stks').addEventListener('change',bo);bo();
  if(!tg.length)L.innerHTML="<p class='msg'>Plug in a USB stick or memory card of 2 GB or more (not the one Rudolf OS runs from), then open this page again.</p>";
  tg.forEach(k=>{const r=document.createElement('div');r.className='acr';r.innerHTML=`<span style='flex:1'></span><button>Make the stick…</button>`;r.firstChild.textContent=`🔌 ${k.name} — ${k.model||'USB drive'} — ${stkGB(k.bytes)}${k.partitions.some(p=>p.fs=='iso9660')?' (an older Rudolf OS stick)':''}`;

@@ -59,7 +59,6 @@ static char boot_mode[16] = "bios", media_mode[16] = "cd";
 static int live = 1, recovery = 0, secureboot = 0;   /* secureboot: the start-up found Secure Boot on (1.2.2) */
 
 /* ------------------------------------------------------------- helpers */
-static long long now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1000LL + t.tv_nsec / 1000000; }
 
 static char *slurp(const char *path, size_t *len)
 {
@@ -407,7 +406,7 @@ static void battery(str *s)
 		/* health (1.2.8, Settings > Hardware check): energy in uWh, or charge in uAh on batteries that report charge */
 		{ static const char *k[] = {"energy_full", "energy_full_design", "charge_full", "charge_full_design", "cycle_count", "energy_now", "power_now", "voltage_min_design"};
 		  for (unsigned i = 0; i < sizeof k / sizeof *k; i++) { snprintf(p, sizeof p, "/sys/class/power_supply/%s/%s", e->d_name, k[i]); long long v = read_ll(p, -1); if (v >= 0) sadd(s, ",\"%s\":%lld", k[i], v); }
-		  static const char *t2[] = {"manufacturer", "model_name", "technology"};
+		  static const char *t2[] = {"manufacturer", "model_name", "technology", "scope"};
 		  for (unsigned i = 0; i < sizeof t2 / sizeof *t2; i++) { snprintf(p, sizeof p, "/sys/class/power_supply/%s/%s", e->d_name, t2[i]); char *v = slurp(p, NULL); if (v) { trim(v); sadd(s, ",\"%s\":", t2[i]); sjson(s, v); free(v); } } }
 		sadd(s, "}");
 		free(stt);
@@ -505,6 +504,9 @@ static void api_stats(struct req *r)
 static void api_net(struct req *r)
 {
 	str s = {0};
+	/* 1.4.4: which interface carries the default route, which ones are virtual (no device: tunnels, bridges, VPNs),
+	   a wired link's speed, a connected Wi-Fi adapter's network name and signal (the taskbar's network icon) */
+	char *defif = run_out("ip route 2>/dev/null | awk '/^default/{for(i=1;i<NF;i++)if($i==\"dev\"){print $(i+1);exit}}'"); trim(defif);
 	sadd(&s, "{\"ok\":true,\"interfaces\":[");
 	DIR *d = opendir("/sys/class/net");
 	struct dirent *e;
@@ -529,7 +531,21 @@ static void api_net(struct req *r)
 		sadd(&s, ",\"state\":"); sjson(&s, st ? st : "");
 		sadd(&s, ",\"mac\":"); sjson(&s, mac ? mac : "");
 		sadd(&s, ",\"ip\":"); sjson(&s, ip);
-		sadd(&s, ",\"wireless\":%s,\"rx\":%lld,\"tx\":%lld}", wifi ? "true" : "false", rx, tx);
+		sadd(&s, ",\"wireless\":%s,\"rx\":%lld,\"tx\":%lld", wifi ? "true" : "false", rx, tx);
+		snprintf(p, sizeof p, "/sys/class/net/%s/device", e->d_name);
+		sadd(&s, ",\"virtual\":%s,\"default\":%s", access(p, F_OK) ? "true" : "false", !strcmp(defif, e->d_name) ? "true" : "false");
+		snprintf(p, sizeof p, "/sys/class/net/%s/speed", e->d_name);
+		if (!wifi) sadd(&s, ",\"speed\":%lld", st && !strcmp(st, "up") ? read_ll(p, -1) : -1LL);
+		if (wifi && st && !strcmp(st, "up") && safe_word(e->d_name, 16)) {
+			snprintf(cmd, sizeof cmd, "wpa_cli -p /run/rudolf/wpa -i %s status 2>/dev/null | sed -n 's/^ssid=//p' | head -1", e->d_name);
+			char *ss = run_out(cmd); trim(ss);
+			snprintf(cmd, sizeof cmd, "wpa_cli -p /run/rudolf/wpa -i %s signal_poll 2>/dev/null | sed -n 's/^RSSI=//p' | head -1", e->d_name);
+			char *rs = run_out(cmd); trim(rs);
+			sadd(&s, ",\"ssid\":"); sjson(&s, ss);
+			if (*rs && strspn(rs, "-0123456789") == strlen(rs)) sadd(&s, ",\"rssi\":%s", rs);
+			free(ss); free(rs);
+		}
+		sadd(&s, "}");
 		free(st); free(mac); free(ip);
 		first = 0;
 	}
@@ -539,7 +555,7 @@ static void api_net(struct req *r)
 	sadd(&s, "],\"gateway\":"); sjson(&s, gw);
 	sadd(&s, ",\"dns\":"); sjson(&s, dns);
 	sadd(&s, ",\"wifiTools\":%s}", access("/usr/sbin/wpa_supplicant", X_OK) ? "false" : "true");
-	free(gw); free(dns);
+	free(gw); free(dns); free(defif);
 	reply_json(r->fd, &s);
 }
 
@@ -757,6 +773,36 @@ static void start_job(const char *name, const char *cmd)
 	run("setsid sh " RUN "/job.sh </dev/null >/dev/null 2>&1 &");
 }
 static void reap(void) { while (waitpid(-1, NULL, WNOHANG) > 0) {} }
+/* 1.4.4: the clock from the internet by itself (BusyBox ntpd, which needs no certificates: a clock that went back to
+   2016 breaks every HTTPS connection), then into the hardware clock. Result in RUN/time-sync: "ok EPOCH" or
+   "fail EPOCH". */
+#define TIME_SYNC_CMD "if ntpd -n -q -p pool.ntp.org >/dev/null 2>&1 || ntpd -n -q -p time.google.com >/dev/null 2>&1; then hwclock -w -u >/dev/null 2>&1; echo \"ok $(date +%s)\" > " RUN "/time-sync; else echo \"fail $(date +%s)\" > " RUN "/time-sync; exit 1; fi"
+static int default_route(void)
+{
+	FILE *f = fopen("/proc/net/route", "r"); char l[256], ifn[32]; unsigned long dst; int r = 0;
+	if (!f) return 0;
+	while (fgets(l, sizeof l, f)) if (sscanf(l, "%31s %lx", ifn, &dst) == 2 && dst == 0 && strcmp(ifn, "lo")) r = 1;
+	fclose(f); return r;
+}
+/* at start once the network is up (again every minute until a server answers), when the network comes up again
+   (Wi-Fi joined, a cable plugged in), and every 12 hours; in a child, so nothing waits for it */
+static void time_tick(void)
+{
+	static time_t last_try, last_ok, last_check; static int had_route, ok_since_up;
+	time_t t = time(NULL);
+	if (t - last_check < 5 && t >= last_check) return;
+	last_check = t;
+	int r = default_route();
+	if (r && !had_route) ok_since_up = 0;   /* the network came up: set the clock again */
+	had_route = r;
+	if (!r) return;
+	char *ts = slurp(RUN "/time-sync", NULL); if (ts) { if (!strncmp(ts, "ok ", 3) && atoll(ts + 3) > last_ok) { last_ok = atoll(ts + 3); ok_since_up = 1; } free(ts); }
+	int due = !ok_since_up ? (t - last_try >= 60 || t < last_try) : (t - last_ok >= 12 * 3600);
+	if (!due) return;
+	last_try = t;
+	pid_t p = fork();
+	if (p == 0) { setsid(); _exit(run(TIME_SYNC_CMD) ? 1 : 0); }
+}
 /* 1.3.0: crashes of Rudolf OS's own programs, from the kernel's log ("rudolf-apps[9979]: segfault at 0 ip ... in
  * libc.so.6[18badd,...]"): program, seconds after start-up, and where (library + offset). after: only lines that come
  * after this one (the last crash line when a job started). Other programs' crashes are not reported. */
@@ -1782,7 +1828,8 @@ static void api_system(struct req *r)
 	jtext(&s, "audio", slurp("/proc/asound/cards", NULL));
 	jtext(&s, "input", run_out("sed -n 's/^N: Name=\"\\(.*\\)\"$/\\1/p' /proc/bus/input/devices 2>/dev/null"));
 	/* network adapters: name, state, speed (Mb/s), bytes received, bytes sent, kind, driver (1.2.4) */
-	jtext(&s, "net", run_out("for d in /sys/class/net/*; do n=${d##*/}; [ $n = lo ] && continue; dr=$(readlink $d/device/driver 2>/dev/null); echo \"$n $(cat $d/operstate 2>/dev/null) $(cat $d/speed 2>/dev/null || echo -) $(cat $d/statistics/rx_bytes) $(cat $d/statistics/tx_bytes) $([ -d $d/wireless ] && echo wifi || echo wired) ${dr##*/}\"; done"));
+	/* 1.4.4: network hardware only: virtual interfaces (no device: tunnels such as sit0, bridges, VPNs) are left out */
+	jtext(&s, "net", run_out("for d in /sys/class/net/*; do n=${d##*/}; [ $n = lo ] && continue; [ -e $d/device ] || continue; dr=$(readlink $d/device/driver 2>/dev/null); echo \"$n $(cat $d/operstate 2>/dev/null) $(cat $d/speed 2>/dev/null || echo -) $(cat $d/statistics/rx_bytes) $(cat $d/statistics/tx_bytes) $([ -d $d/wireless ] && echo wifi || echo wired) ${dr##*/}\"; done"));
 	/* storage: device, size, used, where (bytes) */
 	jtext(&s, "storage", run_out("df -kP 2>/dev/null | awk 'NR>1 && $1 ~ /^\\/dev\\//{print $1, $2*1024, $3*1024, $6}'"));
 	{
@@ -2577,6 +2624,14 @@ static void api(struct req *r)
 		if (access(RUN "/bootok", F_OK)) { write_str(RUN "/bootok", "1"); if (!access("/usr/bin/rudolf-update", X_OK)) run("/usr/bin/rudolf-update boot-ok >>" RUN "/update.log 2>&1"); }
 		reply_ok(r->fd, "ok"); return;
 	}
+	/* 1.4.4: events/wait waits (up to 25 s) until there are events, so the desktop hears of a key press (the volume
+	   and brightness indicator), the charger or Wi-Fi at once instead of at its next check; each connection has its
+	   own process, so waiting here holds nothing up */
+	if (!strcmp(p, "events/wait")) {
+		struct stat st;
+		for (int i = 0; i < 250; i++) { if (!stat(RUN "/events", &st) && st.st_size > 0) break; usleep(100000); }
+		p = "events";
+	}
 	if (!strcmp(p, "events")) {
 		char *ev = slurp(RUN "/events", NULL);
 		unlink(RUN "/events");
@@ -2668,6 +2723,81 @@ static void api(struct req *r)
 	if (!strcmp(p, "clipboard")) { api_clipboard(r); return; }
 	if (!strcmp(p, "web/status")) { api_web(r, "status"); return; }   /* the taskbar asks whether the browser window is open */
 	if (!strcmp(p, "wifi/status")) { api_wifi(r, "status"); return; }
+	/* 1.4.4: these answer GET too (each POST action checks for POST itself) */
+	if (!strcmp(p, "time/status")) {   /* the last automatic or manual sync */
+		char *ts = slurp(RUN "/time-sync", NULL), *fl = slurp(RUN "/clock-floored", NULL); str js = {0};
+		long long at = ts ? atoll(ts + (ts[0] == 'o' ? 3 : 5)) : 0;
+		sadd(&js, "{\"ok\":true,\"result\":\"%s\",\"at\":%lld,\"floored\":", ts ? (ts[0] == 'o' ? "ok" : "fail") : "none", at);
+		if (fl) { trim(fl); sjson(&js, fl); } else sadd(&js, "null");
+		sadd(&js, "}"); free(ts); free(fl); reply_json(r->fd, &js); return;
+	}
+	/* 1.4.4: the system volume (the sound server's default output, through /usr/lib/rudolf/hotkey, as the keys do):
+	   GET volume; POST volume?set=N (0-100), ?muted=0|1 or ?step=up|down|mute */
+	if (!strcmp(p, "volume")) {
+		char cmd[96]; const char *v;
+		if (!post) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume get 2>/dev/null");
+		else if ((v = qparam(r->query, "set")) && *v && strspn(v, "0123456789") == strlen(v) && strlen(v) <= 3) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume set %s 2>/dev/null", v);
+		else if ((v = qparam(r->query, "muted")) && (!strcmp(v, "0") || !strcmp(v, "1"))) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume muted %s 2>/dev/null", v);
+		else if ((v = qparam(r->query, "step")) && (!strcmp(v, "up") || !strcmp(v, "down") || !strcmp(v, "mute"))) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume %s >/dev/null 2>&1; /usr/lib/rudolf/hotkey volume get 2>/dev/null", v);
+		else { reply_err(r->fd, 400, "set=0-100, muted=0|1 or step=up|down|mute"); return; }
+		char *o = run_out(cmd); trim(o); int lv = -1; char mu[8] = "";
+		if (sscanf(o, "%d %7s", &lv, mu) < 1) { free(o); reply_err(r->fd, 503, "the sound server is not running"); return; }
+		str js = {0}; sadd(&js, "{\"ok\":true,\"volume\":%d,\"muted\":%s}", lv, strcmp(mu, "muted") ? "false" : "true");
+		free(o); reply_json(r->fd, &js); return;
+	}
+	/* 1.4.4: System Settings › Power and battery, through /usr/lib/rudolf/power: GET power/status; POST
+	   power/set?KEY=VALUE&... (the script checks each key and value against its choices) */
+	if (!strcmp(p, "power/status") || !strcmp(p, "power/set")) {
+		if (access("/usr/lib/rudolf/power", X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no power settings"); return; }
+		char cmd[700] = "/usr/lib/rudolf/power status 2>/dev/null";
+		if (!strcmp(p, "power/set")) {
+			if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+			const char *q = r->query ? r->query : ""; size_t n = strlen(q);
+			if (!n || n > 400 || strspn(q, "abcdefghijklmnopqrstuvwxyz0123456789_=&") != n) { reply_err(r->fd, 400, "settings as key=value&..."); return; }
+			snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/power set ");
+			for (const char *c = q; *c; c++) { size_t l = strlen(cmd); if (l + 2 >= sizeof cmd) break; cmd[l] = *c == '&' ? ' ' : *c; cmd[l + 1] = 0; }
+			strncat(cmd, " 2>/dev/null", sizeof cmd - strlen(cmd) - 1);
+		}
+		char *o = run_out(cmd); trim(o);
+		if (!o || o[0] != '{') { reply_err(r->fd, 500, "the power settings could not be read"); free(o); return; }
+		if (strstr(o, "\"ok\":false")) { reply(r->fd, 400, "application/json", o, strlen(o), NULL); free(o); return; }
+		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
+	}
+	/* 1.4.4: brightness/step?d=up|down (the mouse wheel over the taskbar's brightness icon), as the keys */
+	if (!strcmp(p, "brightness/step")) {
+		const char *d = qparam(r->query, "d");
+		if (!post || !d || (strcmp(d, "up") && strcmp(d, "down"))) { reply_err(r->fd, 400, "POST with d=up or down"); return; }
+		char cmd[96]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey brightness %s 2>/dev/null", d);
+		char *o = run_out(cmd); trim(o); int lv = atoi(o);
+		if (!strcmp(o, "none") || !*o) { free(o); reply_err(r->fd, 404, "this screen has no adjustable backlight"); return; }
+		str js = {0}; sadd(&js, "{\"ok\":true,\"brightness\":%d}", lv); free(o); reply_json(r->fd, &js); return;
+	}
+	/* 1.4.4: idle: milliseconds since the last input of any kind, from any device (rudolf-display), so the screen saver
+	   and the screen-off time count input in games and Linux apps too */
+	if (!strcmp(p, "idle")) {
+		long long last = read_ll(RUN "/input-ms", -1); struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
+		long long now = t.tv_sec * 1000LL + t.tv_nsec / 1000000;
+		str js = {0}; if (last < 0) sadd(&js, "{\"ok\":true,\"idle\":null}"); else sadd(&js, "{\"ok\":true,\"idle\":%lld}", now > last ? now - last : 0);
+		reply_json(r->fd, &js); return;
+	}
+	if (!strcmp(p, "brightness")) {
+		char bl[256], f[300];
+		char *v = qparam(r->query, "value");
+		if (!backlight_dir(bl, sizeof bl)) { reply_err(r->fd, 404, "this screen has no adjustable backlight"); return; }
+		if (!v) {   /* 1.4.4: GET brightness: the level now, 0-100 (the taskbar's brightness icon) */
+			snprintf(f, sizeof f, "%s/max_brightness", bl); long long mx = read_ll(f, 1);
+			snprintf(f, sizeof f, "%s/brightness", bl); long long cur = read_ll(f, 0);
+			str js = {0}; sadd(&js, "{\"ok\":true,\"brightness\":%lld}", mx > 0 ? (cur * 100 + mx / 2) / mx : 0); reply_json(r->fd, &js); return;
+		}
+		if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+		snprintf(f, sizeof f, "%s/max_brightness", bl);
+		long long mx = read_ll(f, 100), val = atoll(v) * mx / 100;
+		if (val < mx / 20) val = mx / 20;
+		char b[32]; snprintf(b, sizeof b, "%lld", val);
+		snprintf(f, sizeof f, "%s/brightness", bl);
+		if (write_str(f, b)) reply_err(r->fd, 500, "could not set brightness"); else reply_ok(r->fd, "ok");
+		return;
+	}
 	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 	/* ---- actions ---- */
 	if (!strcmp(p, "proc/end")) { api_proc_end(r); return; }
@@ -2737,18 +2867,6 @@ static void api(struct req *r)
 		int f = open(RUN "/page.log", O_WRONLY | O_CREAT | O_APPEND, 0600);
 		if (f >= 0) { size_t n = r->blen > 4096 ? 4096 : r->blen; if (n && write(f, r->body, n) < 0) {} if (write(f, "\n", 1) < 0) {} close(f); }
 		reply_ok(r->fd, "ok"); return;
-	}
-	if (!strcmp(p, "brightness")) {
-		char bl[256], f[300];
-		char *v = qparam(r->query, "value");
-		if (!v || !backlight_dir(bl, sizeof bl)) { reply_err(r->fd, 404, "this screen has no adjustable backlight"); return; }
-		snprintf(f, sizeof f, "%s/max_brightness", bl);
-		long long mx = read_ll(f, 100), val = atoll(v) * mx / 100;
-		if (val < mx / 20) val = mx / 20;
-		char b[32]; snprintf(b, sizeof b, "%lld", val);
-		snprintf(f, sizeof f, "%s/brightness", bl);
-		if (write_str(f, b)) reply_err(r->fd, 500, "could not set brightness"); else reply_ok(r->fd, "ok");
-		return;
 	}
 	if (!strcmp(p, "net/dhcp")) {
 		char *i = qparam(r->query, "if");
@@ -2851,8 +2969,8 @@ static void api(struct req *r)
 		reply(r->fd, 200, "audio/wav", w.b, w.n, NULL); free(w.b); return;
 	}
 	if (!strcmp(p, "time/sync")) {
-		if (run("ntpd -n -q -p pool.ntp.org >/dev/null 2>&1 || ntpd -n -q -p time.google.com >/dev/null 2>&1")) { reply_err(r->fd, 500, "no time server answered (offline?)"); return; }
-		run("hwclock -w -u >/dev/null 2>&1"); reply_ok(r->fd, "clock set from the internet"); return;
+		if (run(TIME_SYNC_CMD)) { reply_err(r->fd, 500, "no time server answered (offline?)"); return; }
+		reply_ok(r->fd, "clock set from the internet"); return;
 	}
 	if (!strcmp(p, "restart-browser")) { reply_ok(r->fd, "restarting"); restart_browser(); return; }
 	if (!strcmp(p, "factory-reset")) {
@@ -3051,6 +3169,8 @@ int main(int argc, char **argv)
 	live = access(RUN "/persistent", F_OK) != 0;
 	dl_boot();
 	boot_entry_ensure();
+	/* 1.4.4: the power settings (System Settings › Power and battery) hold from the start, signed in or not */
+	if (!access("/usr/lib/rudolf/power", X_OK) && system("/usr/lib/rudolf/power apply >/dev/null 2>&1 &") != 0) {}
 	int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0), one = 1;
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
 	struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons(8080), .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
@@ -3059,6 +3179,7 @@ int main(int argc, char **argv)
 	for (;;) {
 		struct pollfd pf = { s, POLLIN, 0 };
 		reap();
+		time_tick();
 		if (poll(&pf, 1, 1000) <= 0) continue;
 		int c = accept4(s, NULL, NULL, SOCK_CLOEXEC);
 		if (c < 0) continue;

@@ -64,20 +64,21 @@ HELP.splice(HELP.findIndex(h=>h[0]=='apps')+1,0,['roblox','Roblox (Sober)',()=>`
 <h4>While playing</h4><ul><li><kbd>Super</kbd>+<kbd>Esc</kbd> goes back to the Rudolf OS desktop. The game keeps running; open Roblox from the Start menu again to return to it.</li><li>To quit, leave the game from its own menu, or click <b>Close</b> in the App Store.</li></ul>
 <h4>Graphics and sound</h4><ul><li>Roblox runs on the graphics card through Xorg when <button data-set='disp'>Settings → Display → Graphics card</button> allows it. If the graphics card cannot be used, Rudolf OS uses the software display, where games are slow.</li><li>On a small computer such as the Intel N100 in the Rudolf Cyberdeck, set Roblox’s graphics quality low (Esc → Settings in the game). Shift+F5 in a game shows its frame rate.</li><li>Game sound plays through the Rudolf OS sound server; choose the output in <button data-set='vol'>Settings → Sound</button>.</li><li>Wi-Fi is not supported yet.</li></ul>
 <h4>Updates and removal</h4><p>Roblox updates often; if it stops starting, click <b>Update</b> in the App Store. <b>Remove</b> deletes Sober and its runtime. <b>Details</b> shows the app's messages, which help when something goes wrong.</p>`]);
-/* Settings > Display: graphics path (Xorg on the graphics card or the software display) and Cyberdeck test mode */
+/* Settings > Display: graphics path (Xorg on the graphics card or the software display); Cyberdeck test mode is in About › For developers (1.4.4) */
 (function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);if(!RD)return;
  const d=sp(c,`<h4 class='sh4'>Graphics</h4><div class='r2'><label for='dgp'>Graphics card</label><div><select id='dgp'>
   <option value='games'>Use it for games and Linux apps (recommended)</option><option value='full'>Use it for games and the desktop</option><option value='soft'>Do not use it (software display)</option></select>
-  <div class='msg dgs'>Checking…</div><div class='msg'>Changes take effect when Rudolf OS restarts. If the graphics card cannot be used, Rudolf OS falls back to the software display by itself.</div></div></div>
-  <h4 class='sh4'>Cyberdeck test mode</h4><div class='r2'><label>Cyberdeck test</label><div>${ckH('ddt','Make this PC behave roughly like the Rudolf Cyberdeck (Intel N100)',false)}
-  <div class='msg ddm'>Limits the processor to 4 cores without hyper-threading at about 2.4 GHz. It cannot slow down the graphics card, so game frame rates must still be measured on the cyberdeck itself.</div></div></div>`);
- const sel=d.querySelector('#dgp'),st=d.querySelector('.dgs'),dt=d.querySelector('#ddt'),dm=d.querySelector('.ddm');
+  <div class='msg dgs'>Checking…</div><div class='msg'>Changes take effect when Rudolf OS restarts. If the graphics card cannot be used, Rudolf OS falls back to the software display by itself.</div></div></div>`);
+ const sel=d.querySelector('#dgp'),st=d.querySelector('.dgs');
  const names={gpu:'graphics card (Xorg)',soft:'software display'};
  rd('display').then(r=>{sel.value=r.setting||'games';let t='Now using: '+(names[r.active]||r.active)+(r.gpu?' · driver '+r.gpu:'');if(r.reason)t+=' · '+r.reason;if(!r.xorg)t='This Rudolf OS build has no Xorg; the software display is used.';st.textContent=t;if(r.active=='gpu'){const row=[...c.querySelectorAll('.r2')].find(x=>x.firstElementChild&&x.firstElementChild.textContent.trim()=='Resolution');if(row&&row.lastElementChild)row.lastElementChild.textContent=screen.width*devicePixelRatio+'×'+screen.height*devicePixelRatio+' · the screen’s own resolution, set by the graphics card driver'}}).catch(e=>st.textContent=e.message);
  sel.onchange=()=>rdPost('display?mode='+sel.value).then(r=>{st.textContent=r.message;notify('Graphics',r.message,{action:()=>{try{fsFlush()}catch(e){}rdPost('power?action=reboot').catch(()=>{})}})}).catch(e=>notify('Graphics',e.message,{kind:'error'}));
+ }})();
+function devCyberdeck(host){const d=document.createElement('div');d.innerHTML=`<div class='r2'><label>Cyberdeck test</label><div>${ckH('ddt','Make this PC behave roughly like the Rudolf Cyberdeck (Intel N100)',false)}
+  <div class='msg ddm'>Limits the processor to 4 cores without hyper-threading at about 2.4 GHz. It cannot slow down the graphics card, so game frame rates must still be measured on the cyberdeck itself.</div></div></div>`;host.appendChild(d);
+ const dt=d.querySelector('#ddt'),dm=d.querySelector('.ddm');
  rd('decktest').then(r=>{if(!r.deck)return;dt.checked=!!r.deck.on;dm.textContent+=' This PC: '+r.deck.cpus+' logical processors, '+Math.round(r.deck.memkb/1048576)+' GB of memory'+(r.deck.on?'; now limited to processors '+r.deck.online+' at '+(r.deck.maxkhz/1e6).toFixed(1)+' GHz.':'.')}).catch(()=>{});
- dt.onchange=()=>rdPost('decktest?on='+(dt.checked?1:0)).then(r=>notify('Cyberdeck test',r.message)).catch(e=>{dt.checked=!dt.checked;notify('Cyberdeck test',e.message,{kind:'error'})});
-}})();
+ dt.onchange=()=>rdPost('decktest?on='+(dt.checked?1:0)).then(r=>notify('Cyberdeck test',r.message)).catch(e=>{dt.checked=!dt.checked;notify('Cyberdeck test',e.message,{kind:'error'})})}
 /* Keep open windows inside the free desktop area when the display scale or the screen size changes
    (a live scaling preview would otherwise push the Settings window and its Apply button under the taskbar) */
 window.fitWins=function(){const D=$('#desk'),B=$('#bar');if(!D)return;const avail=B&&B.offsetTop>D.offsetTop+100?B.offsetTop-D.offsetTop:D.clientHeight,aw=D.clientWidth;

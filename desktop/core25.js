@@ -1,6 +1,6 @@
 /* ===== V25 core: rudolfd link, storage, accounts, encryption, lock screen, elevation, guest, parental controls, backup ===== */
 window.__v25=1;
-const RVER='1.4.3',RVERDATE='2026-10-30';
+const RVER='1.4.4',RVERDATE='2026-11-01';
 /* ---------- rudolfd (only present on the bootable build) ---------- */
 const RD=window.RUDOLFD||null;
 async function rd(path,opt){opt=opt||{};if(!RD)throw new Error('This needs the installed Rudolf OS (bootable disc or USB).');
@@ -8,8 +8,13 @@ async function rd(path,opt){opt=opt||{};if(!RD)throw new Error('This needs the i
  const ct=r.headers.get('content-type')||'';if(ct.includes('json')){const j=await r.json();if(!j.ok)throw new Error(j.error||'Request failed');return j}
  if(!r.ok)throw new Error('HTTP '+r.status);return r}
 const rdPost=(p,body)=>rd(p,{method:'POST',body});
+/* events from rudolfd: the power button, drives, (1.4.4) the volume and brightness keys, the charger, Wi-Fi. events/wait
+   answers as soon as there is something (up to 25 s); without it (an older rudolfd), every 2.5 s as before */
+const EVH=[];function evOn(f){EVH.push(f)}
+function evDispatch(t){t=t||'';if(/^power \d/m.test(t))A.off&&A.off();if(typeof devEvents=='function')devEvents(t);for(const f of EVH){try{f(t)}catch(x){console.warn(x)}}}
 if(RD){const hb=()=>rdPost('heartbeat').catch(()=>{});hb();setInterval(hb,8000);
- setInterval(async()=>{try{const e=await rd('events');if(/^power /m.test(e.events||''))A.off&&A.off();if(typeof devEvents=='function')devEvents(e.events)}catch(x){}},2500)}
+ (async()=>{let wait=true;const nap=ms=>new Promise(r=>setTimeout(r,ms));
+  for(;;){try{const t0=Date.now(),e=await rd(wait?'events/wait':'events');evDispatch(e.events);if(!wait||!e.events&&Date.now()-t0<500)await nap(wait?1000:2500)}catch(x){if(wait&&/unknown API|404/i.test(x.message||''))wait=false;await nap(2500)}}})()}
 /* ---------- notifications used by every V25 module (the shell adds a centre on top) ---------- */
 function notify(title,body,opt){opt=opt||{};try{if(window.__notifCentre)return __notifCentre.add(title,body,opt)}catch(e){}
  const d=document.createElement('div');d.className='rtoast';d.textContent=title+(body?' — '+body:'');document.body.appendChild(d);setTimeout(()=>d.remove(),4000)}
@@ -163,7 +168,9 @@ function userLogout(){if(!USER)return;try{window.__sessionSave&&__sessionSave()}
  logEvt('sys',`${USER.n} signed out`);SESSION=null}
 (function(){const lo=A.logoff,of=A.off;A.logoff=()=>{userLogout();lo()};A.off=()=>{userLogout();RD?shutdownDlg():of()}})();
 /* Guest sign-in button on the login screen */
-const SYSK='bd95sys';let SYSC=Object.assign({guest:true,ssmin:10,lockss:true,lockmin:0,suspmin:0},ld(SYSK,{}));const sysSave=()=>svj(SYSK,SYSC);
+const SYSK='bd95sys';let SYSC=Object.assign({guest:true,ssmin:10,lockss:true,lockmin:0,suspmin:0},ld(SYSK,{}));
+/* 1.4.4: the screen saver is switched on and off by itself; a saved "Off" (0 minutes) from before stays off */
+if(SYSC.sson===undefined){SYSC.sson=SYSC.ssmin>0;if(!SYSC.ssmin)SYSC.ssmin=10;SYSC.ssstyle=SYSC.ssstyle||'stars';if(SYSC.sstime===undefined)SYSC.sstime=true}const sysSave=()=>svj(SYSK,SYSC);
 (function(){const box=$('#lg')&&$('#lg').parentElement;if(!box)return;const b=document.createElement('button');b.id='lgguest';b.textContent='Guest';b.title='Sign in as a guest. Nothing is kept after you sign out.';b.style.marginLeft='6px';$('#lg').after(b);
  const upd=()=>{b.style.display=SYSC.guest?'':'none'};upd();window.__guestUpd=upd;
  b.onclick=async()=>{const g={n:'Guest',r:'guest',id:'guest',h:''};USER=g;await userLogin(g,null);LG.style.display='none';le.textContent='';LP.clear();sfx('login');userUI()}})();
@@ -189,28 +196,29 @@ function elevate(reason){return new Promise(res=>{if(window.__elevTrust&&isAdmin
  o.querySelector('.ey').onclick=ok;o.querySelector('.ep').addEventListener('keydown',e=>{if(e.key=='Enter')ok();if(e.key=='Escape')done(false)})})}
 /* ---------- lock screen, screensaver, idle, sleep ---------- */
 let LOCKED=false,lastInput=Date.now(),SAVER=null;
-['pointermove','pointerdown','keydown','wheel','touchstart'].forEach(ev=>addEventListener(ev,()=>{lastInput=Date.now();if(SAVER)saverStop()},{capture:true,passive:true}));
+['pointermove','pointerdown','keydown','wheel','touchstart'].forEach(ev=>addEventListener(ev,()=>{lastInput=Date.now();if(SAVER&&Date.now()-SAVER.t>600)saverStop()},{capture:true,passive:true}));
 function lockScreen(reason,adminOnly){if(!USER||LOCKED)return;LOCKED=true;$('#menu').style.display='none';
  const o=document.createElement('div');o.id='lockov';o.setAttribute('role','dialog');o.setAttribute('aria-label','Locked');
  o.innerHTML=`<div class='lkclock'></div><div class='lkdate'></div><div class='lkbox'><div class='lkav'>👤</div><div class='lkn'></div><div class='lkr'></div><input class='lkp' aria-label='Password' placeholder='Password'><div class='lkm'></div><div class='rmrow'><button class='lks'>Switch user</button><button class='lku pri'>Unlock</button></div></div>`;
  o.querySelector('.lkn').textContent=USER.n;o.querySelector('.lkr').textContent=reason||'';const P=maskInput(o.querySelector('.lkp'));if(USER.r=='guest'&&!adminOnly)o.querySelector('.lkp').style.display='none';
- const tick=()=>{const d=sysNow?sysNow():new Date();o.querySelector('.lkclock').textContent=d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});o.querySelector('.lkdate').textContent=d.toLocaleDateString([], {weekday:'long',month:'long',day:'numeric'})};tick();const iv=setInterval(tick,1000);
+ const tick=()=>{const c=clockParts();o.querySelector('.lkclock').textContent=c.time;o.querySelector('.lkdate').textContent=c.longNoYear};tick();const iv=setInterval(tick,1000);
  document.body.appendChild(o);setTimeout(()=>o.querySelector('.lkp').focus(),50);
  const un=async()=>{let ok=false;if(adminOnly)ok=await elevate(reason||'Unlock this account');else ok=USER.r=='guest'||await pwCheck(USER,P.get());
   if(ok){clearInterval(iv);o.remove();LOCKED=false;lastInput=Date.now();sfx('login');if(adminOnly&&window.__parentalExtend)__parentalExtend()}else{o.querySelector('.lkm').textContent='Wrong password.';P.clear();sfx('error')}};
  o.querySelector('.lku').onclick=un;o.querySelector('.lkp').addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Enter')un()});
  o.querySelector('.lks').onclick=()=>{clearInterval(iv);o.remove();LOCKED=false;A.logoff()};
  o.addEventListener('keydown',e=>{if(e.key!='Tab')e.stopPropagation()})}
-function saverStart(){if(SAVER||!USER||LOCKED)return;const c=document.createElement('canvas');c.id='saver';c.width=innerWidth;c.height=innerHeight;document.body.appendChild(c);const g=c.getContext('2d');
- const st=[...Array(220)].map(()=>({x:Math.random()*2-1,y:Math.random()*2-1,z:Math.random()}));let raf;
- const fr=()=>{g.fillStyle='rgba(2,6,23,.35)';g.fillRect(0,0,c.width,c.height);for(const s of st){s.z-=0.006;if(s.z<=0.01){s.x=Math.random()*2-1;s.y=Math.random()*2-1;s.z=1}const k=0.5/s.z,x=c.width/2+s.x*k*c.width/2,y=c.height/2+s.y*k*c.height/2;g.fillStyle=`rgba(226,232,240,${1-s.z})`;g.fillRect(x,y,2/s.z,2/s.z)}
-  g.fillStyle='#e2e8f0';g.font='bold 64px sans-serif';g.textAlign='center';const d=sysNow?sysNow():new Date();g.fillText(d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),c.width/2,c.height/2);raf=requestAnimationFrame(fr)};fr();
- SAVER={c,stop:()=>{cancelAnimationFrame(raf);c.remove()},t:Date.now()}}
-function saverStop(){if(!SAVER)return;const s=SAVER;SAVER=null;s.stop();if(SYSC.lockss&&Date.now()-s.t>3000)lockScreen()}
-setInterval(()=>{if(!USER)return;const idle=(Date.now()-lastInput)/60000;
- if(SYSC.ssmin>0&&idle>=SYSC.ssmin&&!LOCKED&&!SAVER&&!document.fullscreenElement&&!document.pointerLockElement&&!(window.__mediaPlaying&&__mediaPlaying()))saverStart();
+/* the screen saver (1.4.4: eight styles drawn by the processor, saver31.js); the time without input comes from
+   rudolf-display on installed Rudolf OS (every key and pointer movement, also in games and Linux apps) */
+function saverStart(preview){if(SAVER||!USER||LOCKED&&!preview)return;SAVER=ssRun({preview:!!preview})}
+function saverStop(){if(!SAVER)return;const s=SAVER;SAVER=null;s.stop();if(!s.preview&&SYSC.lockss&&Date.now()-s.t>3000)lockScreen()}
+async function idleNow(){let m=Date.now()-lastInput;if(RD){try{const j=await rd('idle');if(j.idle!=null)m=Math.min(m,j.idle)}catch(e){}}return m}
+async function idleCheck(){if(!USER)return;const idle=(await idleNow())/60000;
+ if(SYSC.sson&&SYSC.ssmin>0&&idle>=SYSC.ssmin&&!LOCKED&&!SAVER&&!document.fullscreenElement&&!document.pointerLockElement&&!(window.__mediaPlaying&&__mediaPlaying()))saverStart();
  if(SYSC.lockmin>0&&idle>=SYSC.lockmin&&!LOCKED){saverStop();lockScreen()}
- if(RD&&SYSC.suspmin>0&&idle>=SYSC.suspmin&&!(window.__mediaPlaying&&__mediaPlaying())){lastInput=Date.now();lockScreen();rdPost('power?action=suspend').catch(()=>{})}},15000);
+ const sm=RD&&PWR&&PWR.now&&PWR.now.sleep!=null?PWR.now.sleep:SYSC.suspmin;   /* (1.4.4) Power and battery's, for the power source in use */
+ if(RD&&sm>0&&idle>=sm&&!(window.__mediaPlaying&&__mediaPlaying())){lastInput=Date.now();lockScreen();rdPost('power?action=suspend').catch(()=>{})}}
+setInterval(idleCheck,15000);
 /* ---------- parental controls: allowed apps and a daily time limit ---------- */
 const APPCAT=[['browser','Oracle Browser',/^Oracle/],['explorer','File Explorer',/^File Explorer|^Exploring/],['notepad','Notepad',/Notepad/],['prompt','Rudolf Prompt',/^Rudolf Prompt/],['blocklua','BlockLua Builder',/^BlockLua/],['calc','Calculator',/^Calculator/],['wordlite','WordLite',/^WordLite/],['wordpro','WordPro',/^WordPro/],['paint','Paint',/^Paint/],['boards','Board Games',/^Board Games|^Checkers|^Chess/],['poker','Card Games',/^Card Games/],['galaxy','WOS Galaxy Map',/^WOS Galaxy Map/],['media','Media Player',/^Media Player/],['gameboy','Emu',/^Emu|Emu$|Game Boy|GBA|\.GBA?C?\b/i],['flash','Flash Player',/Flash/],['quake','Quake Engine',/^Quake/],['gpulab','GPU Lab',/^GPU Lab/],['settings','Settings',/^Settings|^Display Properties/]];
 let parentT=0;

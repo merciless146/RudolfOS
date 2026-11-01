@@ -105,7 +105,7 @@ function hwCheck(){const o=document.createElement('div');o.className='natdlg hwc
     await new Promise(r=>setTimeout(r,2500));const ok=frames>0||v.videoWidth>0;const name=ds[n].label||'Camera '+(n+1);
     M.textContent=ok?`${name}: works (${v.videoWidth}×${v.videoHeight}).`:`${name}: no picture arrived.`;set('cam',ok?'pass':'fail',ok?v.videoWidth+'×'+v.videoHeight+(ds.length>1?', '+ds.length+' cameras':''):'no picture')};
    if(ds.length>1)btn('Next camera',()=>{idx=(idx+1)%ds.length;start(idx)});btn('Next',()=>{if(!R.cam)set('cam','fail','did not start');next()},1);await start(0)},
-  async bat(){let bs=[];try{bs=((await rd('stats')).battery||[]).filter(b=>/battery/i.test(b.type||''))}catch(e){}
+  async bat(){let bs=[];try{bs=batOwn((await rd('stats')).battery)}catch(e){}
    if(!bs.length){B.innerHTML='<p>This computer has no battery, so this step is skipped.</p>';set('bat','skip','no battery');btn('Next',next,1);return}
    const out=[],bad=[];bs.forEach(b=>{const h=hwcBatHealth(b);const st={Charging:'Charging',Discharging:'On battery',Full:'Full','Not charging':'Plugged in, not charging'}[b.status]||b.status||'';
     out.push(`<li><b>${lxEsc([b.manufacturer,b.model_name].filter(Boolean).join(' ')||b.name)}</b>: ${b.capacity>=0?b.capacity+' %':''}${st?', '+lxEsc(st):''}</li>`);

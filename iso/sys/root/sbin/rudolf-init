@@ -12,6 +12,7 @@ mount -t tmpfs -o mode=1777 tmpfs /dev/shm
 hostname rudolf
 ip link set lo up
 hwclock -s -u 2>/dev/null
+/usr/lib/rudolf/clockfloor 2>/dev/null   # 1.4.4: never earlier than this release (a hardware clock that lost its time)
 mdev -s
 mdev -d 2>/dev/null
 grep -q rudolf.debug=1 $RCMD && ( while :; do setsid sh -c 'exec sh -l </dev/ttyS0 >/dev/ttyS0 2>&1'; sleep 1; done ) &

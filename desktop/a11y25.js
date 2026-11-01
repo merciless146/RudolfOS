@@ -1,8 +1,8 @@
 /* ===== V25 accessibility, input and theming: themes, scaling, night light, screen reader, keyboard access, magnifier,
    sticky/slow/bounce keys, mouse keys, dwell click, captions, voice control, input methods, layouts, compose, clipboard history,
    drag and drop between apps, touch, gestures, mouse back/forward, natural scrolling, per-app volume, SVG icons ===== */
-Object.assign(DEFS.acc,{sr:false,mag:false,magz:2,rmotion:false,rtrans:false,dysfont:false,scale:100,sticky:false,slowk:0,bounce:0,mkeys:false,dwell:0,capsz:100,capbg:'#000000',capfg:'#ffffff',livecap:false,voice:false,touch:false,natscroll:false,hscroll:5,compose:'off',ime:'off',cliphist:true});
-['sr','mag','magz','rmotion','rtrans','dysfont','scale','sticky','slowk','bounce','mkeys','dwell','capsz','capbg','capfg','livecap','voice','touch','natscroll','hscroll','compose','ime','cliphist'].forEach(k=>{if(!AKEYS.includes(k))AKEYS.push(k);if(S[k]===undefined)S[k]=DEFS.acc[k];if(SC&&SC[k]===undefined)SC[k]=cln(S[k])});
+Object.assign(DEFS.acc,{sr:false,mag:false,magz:2,rmotion:false,rtrans:false,dysfont:false,scale:100,sticky:false,slowk:0,bounce:0,mkeys:false,dwell:0,capsz:100,capbg:'#000000',capfg:'#ffffff',livecap:false,voice:false,touch:false,compose:'off',ime:'off',cliphist:true});
+['sr','mag','magz','rmotion','rtrans','dysfont','scale','sticky','slowk','bounce','mkeys','dwell','capsz','capbg','capfg','livecap','voice','touch','compose','ime','cliphist'].forEach(k=>{if(!AKEYS.includes(k))AKEYS.push(k);if(S[k]===undefined)S[k]=DEFS.acc[k];if(SC&&SC[k]===undefined)SC[k]=cln(S[k])});
 Object.assign(DEFS.disp,{accent:'#2563eb',nl:false,nlv:40,nlsched:false,darkui:true,icons:'rudolf',tbgroup:true,rot:0});
 ['accent','nl','nlv','nlsched','darkui','icons','tbgroup','rot'].forEach(k=>{if(!DKEYS.includes(k))DKEYS.push(k);if(S[k]===undefined)S[k]=DEFS.disp[k];if(SC&&SC[k]===undefined)SC[k]=cln(S[k])});
 if(S.rmotion===false&&window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)S.rmotion=true;

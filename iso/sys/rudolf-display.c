@@ -43,6 +43,8 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <dlfcn.h>
 #include <linux/fb.h>
 #include <linux/input.h>
 #include <linux/kd.h>
@@ -287,7 +289,7 @@ static int sync_screen(void)
 #define MAXDEV 32
 struct dev {
 	int fd; char path[64]; char name[96];
-	int touchpad, touchscreen, buttonpad, kind;   /* kind: 1 keyboard 2 mouse 3 touchpad 4 touchscreen 5 other */
+	int touchpad, touchscreen, buttonpad, kind, lid;   /* kind: 1 keyboard 2 mouse 3 touchpad 4 touchscreen 5 other 6 lid switch */
 	int absx_min, absx_max, absy_min, absy_max;
 	int ax, ay, lastx, lasty, have_last, touching, fingers, maxf;
 	long long touch_t; int moved, travel, clicked, pressed_btn;
@@ -313,6 +315,7 @@ static void write_inputs(void)
 /* what an input device is, from what it can report */
 static int classify(struct dev *v, const uint8_t *evb, const uint8_t *keyb, const uint8_t *relb, const uint8_t *absb, const uint8_t *prop)
 {
+	if (TESTBIT(EV_SW, evb) && v->lid) return 6;   /* 1.4.4: the lid switch */
 	if (TESTBIT(EV_KEY, evb) && (TESTBIT(BTN_GAMEPAD, keyb) || TESTBIT(BTN_JOYSTICK, keyb) || TESTBIT(BTN_TRIGGER_HAPPY1, keyb))) return 0;   /* controllers: games read them */
 	if (TESTBIT(EV_ABS, evb) && TESTBIT(ABS_X, absb) && TESTBIT(ABS_Y, absb)) {
 		int finger = TESTBIT(EV_KEY, evb) && TESTBIT(BTN_TOOL_FINGER, keyb);
@@ -348,6 +351,8 @@ static void scan_devices(void)
 		ioctl(fd, EVIOCGBIT(EV_ABS, sizeof absb), absb);
 		ioctl(fd, EVIOCGPROP(sizeof prop), prop);
 		struct dev nd; memset(&nd, 0, sizeof nd);
+		{ uint8_t swb[SW_MAX / 8 + 1] = {0}; ioctl(fd, EVIOCGBIT(EV_SW, sizeof swb), swb); nd.lid = TESTBIT(EV_SW, evb) && TESTBIT(SW_LID, swb);
+		  if (nd.lid) { int f = open("/run/rudolf/lid-switch", O_WRONLY | O_CREAT | O_TRUNC, 0644); if (f >= 0) close(f); } }
 		nd.kind = classify(&nd, evb, keyb, relb, absb, prop);
 		if (!nd.kind) { close(fd); continue; }
 		nd.fd = fd; strcpy(nd.path, p);
@@ -485,10 +490,134 @@ static int desk_key(int c, int down)
 	return c;
 }
 
+/* 1.4.4: the volume and brightness keys run /usr/lib/rudolf/hotkey (the sound server's volume, the backlight, an
+   indicator in the desktop) instead of going to the X server: the same whether the desktop, a game or a Linux app is
+   in front, and nothing acts on them twice. Run in the background (a double fork, so no child is left to reap). */
+static void runbg(const char *script, const char *a, const char *b)
+{
+	pid_t p = fork();
+	if (p == 0) {
+		if (fork() == 0) { setsid(); execl("/bin/sh", "sh", script, a, b, (char *)NULL); _exit(127); }
+		_exit(0);
+	}
+	if (p > 0) waitpid(p, NULL, 0);
+}
+static void hotkey(const char *what, const char *how) { runbg("/usr/lib/rudolf/hotkey", what, how); }
+static int hotkey_key(int c, int value)
+{
+	static long long last;
+	const char *w = NULL, *h = NULL;
+	switch (c) {
+	case KEY_MUTE: w = "volume"; h = "mute"; break;
+	case KEY_VOLUMEDOWN: w = "volume"; h = "down"; break;
+	case KEY_VOLUMEUP: w = "volume"; h = "up"; break;
+	case KEY_MICMUTE: w = "mic"; h = "mute"; break;
+	case KEY_BRIGHTNESSDOWN: w = "brightness"; h = "down"; break;
+	case KEY_BRIGHTNESSUP: w = "brightness"; h = "up"; break;
+	default: return 0;
+	}
+	/* a press runs it; held down, the keyboard's repeats do too, at most every 120 ms (not mute: it would flicker) */
+	long long t = now_ms();
+	if (value == 1 || (value == 2 && strcmp(h, "mute") && t - last >= 120)) { last = t; hotkey(w, h); }
+	return 1;
+}
+/* 1.4.4: when the last input came (any key, movement or touch, from any device, also in games), for rudolfd's idle
+   time (the screen saver must not start during a game the desktop page cannot see being played): written at most
+   once a second, as CLOCK_MONOTONIC milliseconds */
+/* 1.4.4 (System Settings › Power and battery): the screen turns off after the minutes /usr/lib/rudolf/power wrote to
+   /run/rudolf/power-now for the power source in use, and on with any input: the backlight off (laptops), DPMS off on
+   Xorg (libXext, if there), the framebuffer blanked on the software display */
+static long long last_in_ms;
+static int blanked, input_only_g;
+static void backlights(const char *v) { DIR *d = opendir("/sys/class/backlight"); struct dirent *e; if (!d) return;
+	while ((e = readdir(d))) { if (e->d_name[0] == '.') continue; char p[300]; snprintf(p, sizeof p, "/sys/class/backlight/%s/bl_power", e->d_name); int f = open(p, O_WRONLY); if (f >= 0) { if (write(f, v, strlen(v)) < 0) {} close(f); } }
+	closedir(d); }
+static void dpms(int off)
+{
+	static void *h; static int (*force)(Display *, unsigned short); static int (*enable)(Display *); static int tried;
+	if (!tried) { tried = 1; h = dlopen("libXext.so.6", RTLD_NOW); if (h) { force = (int (*)(Display *, unsigned short))dlsym(h, "DPMSForceLevel"); enable = (int (*)(Display *))dlsym(h, "DPMSEnable"); } }
+	if (!force || !dpy) return;
+	if (enable) enable(dpy);
+	force(dpy, off ? 3 : 0); XFlush(dpy);   /* DPMSModeOff : DPMSModeOn */
+}
+static void screen_blank(int off)
+{
+	if (off == blanked) return;
+	blanked = off;
+	backlights(off ? "4" : "0");
+	if (input_only_g) dpms(off); else if (fbfd >= 0) ioctl(fbfd, FBIOBLANK, off ? FB_BLANK_POWERDOWN : FB_BLANK_UNBLANK);
+	int f = open("/run/rudolf/screen-off", O_WRONLY | O_CREAT | O_TRUNC, 0644); if (f >= 0) { if (dprintf(f, "%d\n", off) < 0) {} close(f); }
+}
+static int power_now_int(const char *key)
+{
+	FILE *f = fopen("/run/rudolf/power-now", "r"); char l[80]; int v = -1; size_t n = strlen(key);
+	if (!f) return -1;
+	while (fgets(l, sizeof l, f)) if (!strncmp(l, key, n) && l[n] == '=') v = atoi(l + n + 1);
+	fclose(f); return v;
+}
+static int power_now_is(const char *key, const char *val)
+{
+	FILE *f = fopen("/run/rudolf/power-now", "r"); char l[80], want[80]; int r = 0;
+	if (!f) return 0;
+	snprintf(want, sizeof want, "%s=%s\n", key, val);
+	while (fgets(l, sizeof l, f)) if (!strcmp(l, want)) r = 1;
+	fclose(f); return r;
+}
+/* the charger: plugged in or not (any Mains or USB supply online); -1 without one */
+static int ac_online(void)
+{
+	DIR *d = opendir("/sys/class/power_supply"); struct dirent *e; int r = -1;
+	if (!d) return -1;
+	while ((e = readdir(d))) {
+		if (e->d_name[0] == '.') continue;
+		char p[300], t[32] = ""; snprintf(p, sizeof p, "/sys/class/power_supply/%s/type", e->d_name);
+		FILE *f = fopen(p, "r"); if (!f) continue; if (!fgets(t, sizeof t, f)) t[0] = 0; fclose(f);
+		if (strncmp(t, "Mains", 5) && strncmp(t, "USB", 3)) continue;
+		snprintf(p, sizeof p, "/sys/class/power_supply/%s/online", e->d_name);
+		f = fopen(p, "r"); if (!f) continue; int o = 0; if (fscanf(f, "%d", &o) != 1) o = 0; fclose(f);
+		if (r < 0) r = 0; if (o) r = 1;
+	}
+	closedir(d); return r;
+}
+static void power_tick(long long t)
+{
+	static long long last_ac, last_apply; static int ac = -2;
+	if (t - last_ac >= 2000) {
+		last_ac = t; int a = ac_online();
+		if (ac != -2 && a != ac) { runbg("/usr/lib/rudolf/power", "apply", NULL); last_apply = t; }
+		ac = a;
+	}
+	/* on battery, once a minute: battery saver goes on by itself at its level */
+	if (ac == 0 && t - last_apply >= 60000) { last_apply = t; runbg("/usr/lib/rudolf/power", "apply", NULL); }
+	static long long last_read; static int mins = -1;
+	if (t - last_read >= 1000) { last_read = t; mins = power_now_int("screen"); }
+	if (!blanked && mins > 0 && last_in_ms && t - last_in_ms >= mins * 60000LL) screen_blank(1);
+}
+static void mark_input(void)
+{
+	static long long wrote;
+	long long t = now_ms();
+	last_in_ms = t;
+	if (blanked) screen_blank(0);
+	if (t - wrote < 1000) return;
+	wrote = t;
+	int f = open("/run/rudolf/input-ms.new", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (f < 0) return;
+	if (dprintf(f, "%lld\n", t) > 0) { close(f); rename("/run/rudolf/input-ms.new", "/run/rudolf/input-ms"); } else close(f);
+}
+
 static void handle_event(struct dev *v, struct input_event *e)
 {
+	if (e->type == EV_SW && e->code == SW_LID) {   /* 1.4.4: /usr/lib/rudolf/power acts on it (sleep), or the screen goes off here */
+		runbg("/usr/lib/rudolf/power", "lid", e->value ? "closed" : "open");
+		if (e->value && power_now_is("lid", "screen")) screen_blank(1);
+		if (!e->value) mark_input();
+		return;
+	}
+	if (e->type == EV_KEY || e->type == EV_REL || e->type == EV_ABS) mark_input();
 	if (e->type == EV_KEY) {
 		int c = e->code, down = e->value != 0;
+		if (hotkey_key(c, e->value)) return;
 		if (e->value == 2) return; /* autorepeat: X repeats by itself */
 		if (v->touchpad) { touchpad_key(v, c, down); return; }
 		if (c == KEY_LEFTMETA || c == KEY_RIGHTMETA) meta_down = down;
@@ -500,7 +629,9 @@ static void handle_event(struct dev *v, struct input_event *e)
 			if (down) { wm_cycle(); fit_windows(); }
 			return;
 		}
-		if (c == KEY_POWER && down) { int f = open("/run/rudolf/events", O_WRONLY | O_APPEND | O_CREAT, 0644); if (f >= 0) { dprintf(f, "power %lld\n", now_ms()); close(f); } return; }
+		if (c == KEY_POWER && down) {   /* 1.4.4: Power and battery's choice (ask, sleep, shut down), through /usr/lib/rudolf/power */
+			if (!access("/usr/lib/rudolf/power", R_OK)) { runbg("/usr/lib/rudolf/power", "button", NULL); return; }
+			int f = open("/run/rudolf/events", O_WRONLY | O_APPEND | O_CREAT, 0644); if (f >= 0) { dprintf(f, "power %lld\n", now_ms()); close(f); } return; }
 		if (v->touchscreen) {
 			if (c == BTN_TOUCH) { btn(1, down); return; }
 			if (c == BTN_TOOL_FINGER || c == BTN_TOOL_DOUBLETAP || c == BTN_TOOL_TRIPLETAP || c == BTN_TOOL_PEN || c == BTN_TOOL_RUBBER) return;
@@ -932,7 +1063,7 @@ int main(int argc, char **argv)
 	if (argc > 3 && !strcmp(argv[1], "--mode")) return set_mode(argv[2], atof(argv[3]));
 	{ const char *e = getenv("RUDOLF_FPS"); int f = e ? atoi(e) : 0; if (f >= 10 && f <= 240) frame_ms = 1000 / f; }
 	if (argc < 2) { fprintf(stderr, "usage: rudolf-display XWD-FILE | --input | --size | --xsize | --shot\n"); return 1; }
-	int input_only = !strcmp(argv[1], "--input");
+	int input_only = !strcmp(argv[1], "--input"); input_only_g = input_only;
 	int fev = 0, ferr;
 	if (input_only) {
 		if (!(dpy = open_display())) return 2;
@@ -969,6 +1100,7 @@ int main(int argc, char **argv)
 	while (!quit) {
 		long long t = now_ms();
 		if (t - last_scan > 2000) { scan_devices(); last_scan = t; }
+		power_tick(t);
 		if (t - last_set > 1000) { read_settings(); fit_windows(); last_set = t; }
 		else if (t - last_wmchk > 100) { last_wmchk = t; if (wm_changed()) fit_windows(); }
 		struct pollfd pf[MAXDEV + 1];
@@ -1001,7 +1133,7 @@ int main(int argc, char **argv)
 		/* the screen is updated at most frame_ms apart (Settings > Display > Frame rate) */
 		static long long last_sync;
 		long long t2 = now_ms();
-		if (t2 - last_sync >= frame_ms - 1) { last_sync = t2; if (sync_screen()) last_change = t; }
+		if (!blanked && t2 - last_sync >= frame_ms - 1) { last_sync = t2; if (sync_screen()) last_change = t; }
 	}
 	if (ttyfd >= 0) { ioctl(ttyfd, KDSKBMODE, K_UNICODE); ioctl(ttyfd, KDSETMODE, KD_TEXT); }
 	return 0;

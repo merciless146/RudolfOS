@@ -1,0 +1,17 @@
+#!/bin/sh
+# clockfloor (1.4.4): run by rudolf-init at start, before anything uses the network. A clock earlier than the day
+# this release was built is wrong (a hardware clock whose battery ran flat reads 2016-01-01, and then no HTTPS
+# connection works: no certificate is valid yet): it is set to that day, until rudolfd sets it from the internet.
+#   clockfloor [RELEASED-FILE]      (default /usr/share/rudolf/released: YYYY-MM-DD)
+# CLOCKFLOOR_DATE: a stand-in for date (tests). GPL-2.0-or-later.
+D=${CLOCKFLOOR_DATE:-date}
+R=$(head -c 10 "${1:-/usr/share/rudolf/released}" 2>/dev/null)
+case "$R" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) exit 0;; esac
+now=$($D -u +%Y%m%d); rel=$(echo "$R" | tr -d -)
+case "$now" in ''|*[!0-9]*) exit 0;; esac
+if [ "$now" -lt "$rel" ]; then
+	old=$($D -u '+%F %T')
+	$D -u -s "$R 00:00:00" >/dev/null 2>&1 && echo "clockfloor: the clock read $old, earlier than this release ($R): set to $R"
+	echo "clock floored from $old to $R" > /run/rudolf/clock-floored 2>/dev/null
+fi
+exit 0

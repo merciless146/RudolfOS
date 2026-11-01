@@ -3,6 +3,19 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.4.4 (2026-11-01)
+Summary: the volume and brightness keys work; the clock sets itself from the internet; the taskbar shows the battery, the real network and one time; Power and battery settings; eight screen savers; a tidier Settings
+- New: the laptop's volume, mute, microphone and brightness keys work (on the ASUS Vivobook Go: F1 to F5), in the desktop, in games and in Linux apps alike, with an indicator showing the new level. The taskbar's volume is now the computer's own volume, which every app follows; a brightness icon sits next to it, and Settings › Volume Controls has System volume.
+- New: System Settings › Power and battery: power mode (Power saver, Balanced, Performance), battery saver (on now, or by itself at 10, 20 or 30 %), turning the screen off and sleeping after a time without input, what closing the lid and pressing the power button do, and battery care (stop charging at 60 or 80 %), each for on battery and plugged in where it applies. The settings hold from the start, signed in or not.
+- New: the battery on the taskbar, next to the workspace buttons, with its level, charging, and the time left or to full. A device's battery that reports -1 % is no longer listed.
+- New: Display Properties › Screen saver: on or off, start after 1 to 60 minutes, eight styles (Starfield, Clock, Rudolf, Code rain, Mystify, Bubbles, Aurora, Fireworks) with a preview, the time over it, and the password when it ends. It is drawn by the processor, and it no longer starts while a game or a Linux app is being used.
+- Fixed: the clock could go back to 2016 after a restart (when the computer's own clock lost its time), and then no secure connection worked: no update check, no development link. Rudolf OS now never starts earlier than its release date, and sets the clock from the internet by itself at every start, when the network comes up and every 12 hours, keeping the result in the computer's clock.
+- Fixed: the calendar, the lock screen and the widgets showed another time than the taskbar (the browser's own time zone instead of the one set in System Settings). They all show the same time and date now.
+- Fixed: the network icon said "Ethernet — connected" on a laptop on Wi-Fi. It shows the real connection now: Wi-Fi with the network's name and signal, or the cable with its speed.
+- Fixed: the pointer speed in Mouse and touchpad was forgotten at every restart.
+- Changed: Settings is tidier. Mouse and touchpad has every pointer setting (one pointer speed, also for games); the language and the internet clock are in System Settings › Date, time and language; web search and downloads are on the Oracle page; Accessibility is grouped as Vision, Hearing and Voice control; the Cyberdeck test and updating the desktop page from a file are in About › For developers. Quick settings keeps its switches; volume, brightness and the battery have their own taskbar icons.
+- Removed: unused code and programs, and two Accessibility settings that did nothing (natural scrolling and horizontal scroll speed; natural scrolling is in Mouse and touchpad).
+
 ## 1.4.3 (2026-10-30)
 Summary: games and apps that draw with OpenGL through X11, such as Oolite, start again
 - Fixed: apps and games that draw with OpenGL in an X11 window (Oolite among them, and many games made with SDL) stopped as soon as they started, because the display server offered no OpenGL to them ("GLX is not supported"). It now does, with the computer's own graphics driver.

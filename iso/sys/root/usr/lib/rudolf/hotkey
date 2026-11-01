@@ -1,0 +1,51 @@
+#!/bin/sh
+# hotkey (1.4.4): the volume and brightness keys, and the system volume for Settings and the taskbar.
+#   hotkey volume up|down|mute      5 % steps of the sound server's default output (0-100 %); up and down also unmute
+#   hotkey volume get               "45" or "45 muted"
+#   hotkey volume set N             0-100
+#   hotkey volume muted 0|1
+#   hotkey mic mute                 the default input, muted or not
+#   hotkey brightness up|down       5 % steps of the first backlight, never below 5 % (as rudolfd's brightness)
+#   hotkey brightness get           0-100, or "none" without an adjustable backlight
+# Each change is written to /run/rudolf/events for the desktop's indicator: "osd volume 45", "osd volume muted",
+# "osd mic muted", "osd mic on", "osd brightness 60", "osd brightness none".
+# Run as root (by rudolf-display and rudolfd); the sound server is the desktop user's. GPL-2.0-or-later.
+EV=${HOTKEY_EVENTS:-/run/rudolf/events}
+BL=${HOTKEY_BACKLIGHT:-/sys/class/backlight}
+STEP=5
+
+pa() {   # pactl in the desktop user's session (HOTKEY_PACTL: a stand-in for tests)
+	if [ -n "$HOTKEY_PACTL" ]; then "$HOTKEY_PACTL" "$@"; return; fi
+	su -s /bin/sh rudolf -c "XDG_RUNTIME_DIR=/run/user/1000 pactl $*" 2>/dev/null
+}
+ev() { echo "$*" >> "$EV" 2>/dev/null; }
+vol_now() { pa get-sink-volume @DEFAULT_SINK@ | sed -n 's/.* \([0-9][0-9]*\)% .*/\1/p' | head -1; }
+mute_now() { pa get-sink-mute @DEFAULT_SINK@ | grep -q 'yes' && echo 1 || echo 0; }
+vol_report() { v=$(vol_now); [ -n "$v" ] || { ev "osd volume none"; echo none; return 1; }; if [ "$(mute_now)" = 1 ]; then ev "osd volume muted"; echo "$v muted"; else ev "osd volume $v"; echo "$v"; fi; }
+vol_set() { n=$1; [ "$n" -lt 0 ] && n=0; [ "$n" -gt 100 ] && n=100; pa set-sink-volume @DEFAULT_SINK@ "$n%"; }
+
+bl_dir() { for d in "$BL"/*; do [ -f "$d/max_brightness" ] && { echo "$d"; return 0; }; done; return 1; }
+bl_get() { d=$(bl_dir) || { echo none; return 1; }; m=$(cat "$d/max_brightness"); c=$(cat "$d/brightness"); [ "$m" -gt 0 ] || { echo none; return 1; }; echo $(( (c * 100 + m / 2) / m )); }
+bl_step() {
+	d=$(bl_dir) || { ev "osd brightness none"; echo none; return 1; }
+	m=$(cat "$d/max_brightness"); c=$(cat "$d/brightness"); s=$(( m * STEP / 100 )); [ "$s" -ge 1 ] || s=1
+	if [ "$1" = up ]; then c=$((c + s)); else c=$((c - s)); fi
+	lo=$(( m / 20 )); [ "$lo" -ge 1 ] || lo=1
+	[ "$c" -lt "$lo" ] && c=$lo; [ "$c" -gt "$m" ] && c=$m
+	echo "$c" > "$d/brightness"; p=$(( (c * 100 + m / 2) / m )); ev "osd brightness $p"; echo "$p"
+}
+
+case "$1 $2" in
+"volume up"|"volume down")
+	v=$(vol_now); [ -n "$v" ] || { ev "osd volume none"; exit 1; }
+	if [ "$2" = up ]; then n=$(( (v / STEP + 1) * STEP )); else n=$(( (v + STEP - 1) / STEP * STEP - STEP )); fi
+	pa set-sink-mute @DEFAULT_SINK@ 0; vol_set "$n"; vol_report >/dev/null; vol_now ;;
+"volume mute") pa set-sink-mute @DEFAULT_SINK@ toggle; vol_report ;;
+"volume get") v=$(vol_now); [ -n "$v" ] || { echo none; exit 1; }; [ "$(mute_now)" = 1 ] && echo "$v muted" || echo "$v" ;;
+"volume set") case "$3" in ''|*[!0-9]*) echo "a number 0-100"; exit 2;; esac; vol_set "$3"; vol_report ;;
+"volume muted") case "$3" in 0|1) pa set-sink-mute @DEFAULT_SINK@ "$3"; vol_report;; *) echo "0 or 1"; exit 2;; esac ;;
+"mic mute") pa set-source-mute @DEFAULT_SOURCE@ toggle; pa get-source-mute @DEFAULT_SOURCE@ | grep -q yes && { ev "osd mic muted"; echo muted; } || { ev "osd mic on"; echo on; } ;;
+"brightness up"|"brightness down") bl_step "$2" ;;
+"brightness get") bl_get ;;
+*) echo "usage: hotkey volume up|down|mute|get|set N|muted 0|1 | mic mute | brightness up|down|get"; exit 2 ;;
+esac
