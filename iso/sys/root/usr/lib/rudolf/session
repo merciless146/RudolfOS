@@ -25,6 +25,9 @@ read_screen() {
 	case "$RES" in auto|[0-9]*x[0-9]*) ;; *) RES=auto;; esac
 	case "$FPS" in 30|60|90|120) ;; *) FPS=60;; esac
 }
+# 1.4.5: rudolf-display passes the kernel's key codes (+8) to X, which are evdev key codes; Xvfb's own keymap is not
+# (with it, the arrow keys, Page Up and Down, Home, End and Delete arrived as other keys: Page Down as the menu key)
+keys_evdev() { DISPLAY=:0 setxkbmap -rules evdev -model pc105 -layout us >/dev/null 2>&1 || echo "$(date) setxkbmap failed"; }
 start_soft() {
 	set -- $(rudolf-display --size)
 	FBW=${1:-1024}; FBH=${2:-768}; W=$FBW; H=$FBH
@@ -38,6 +41,7 @@ start_soft() {
 	XPID=$!
 	for i in $(seq 50); do [ -e /tmp/.X11-unix/X0 ] && break; sleep 0.1; done
 	DISPARGS=/run/xvfb/Xvfb_screen0; MODE=soft
+	keys_evdev
 }
 start_gpu() {
 	rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
@@ -56,7 +60,7 @@ start_gpu() {
 			return 1
 		fi
 		[ $RC = 0 ] || echo "$(date) could not set the screen mode $RES at $FPS Hz"
-		S=$(rudolf-display --xsize 2>/dev/null); set -- $S; W=$1; H=$2; DISPARGS=--input; MODE=gpu
+		S=$(rudolf-display --xsize 2>/dev/null); set -- $S; W=$1; H=$2; DISPARGS=--input; MODE=gpu; keys_evdev
 		unset RUDOLF_FPS
 		grep -q 'glamor X acceleration enabled\|glamor initialized' /run/rudolf/Xorg.log || REASON="Xorg is running but without glamor acceleration (see Xorg.log)"
 		return 0
