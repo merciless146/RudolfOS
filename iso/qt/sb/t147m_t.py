@@ -38,7 +38,8 @@ def make_drive(path):
 HOG = r'''<!doctype html><meta charset="utf-8"><title>Memory hog</title><body style="font:20px sans-serif"><h1 id=h>Memory hog</h1><script>
 const again=localStorage.getItem('hogran')=='1';localStorage.setItem('hogran','1');const keep=[];let mb=0,x=2463534242;
 const src=new Uint32Array(8<<20);for(let i=0;i<src.length;i++){x^=x<<13;x^=x>>>17;x^=x<<5;src[i]=x>>>0}
-function step(){const a=new Uint32Array(8<<20);a.set(src);a[mb]=mb;keep.push(a);mb+=32;document.title='Memory hog '+mb+' MB';h.textContent=document.title;setTimeout(step,300)}
+function step(){const a=new Uint32Array(8<<20);a.set(src);a[mb]=mb;keep.push(a);mb+=32;document.title='Memory hog '+mb+' MB';h.textContent=document.title;ch.port2.postMessage(0)}
+const ch=new MessageChannel();ch.port1.onmessage=()=>step();   /* not a timer: Chromium slows timers in some frames */
 if(again){document.title='Memory hog (reloaded)';h.textContent=document.title}else setTimeout(step,1500)
 </script>'''
 
@@ -84,21 +85,24 @@ try:
     ok('2. compressed swap in memory is on (zram, zstd, half the memory)', re.search(r'zram: on, \d+ MiB, zstd', m) and '/dev/zram0' in m, m)
     ok('3. the kernel ends a process instead of thrashing (lru_gen min_ttl_ms 1000), memory pressure (PSI) is there', re.search(r'^1000$', m, re.M) and 'memory' in m, m)
     ok('4. the memory guard runs', re.search(r'^\d+$', m.split('memory\n', 1)[-1], re.M) is not None, m)
-    # the browser itself: the parent of its graphics process
-    adj = sh("G=$(pgrep -f 'type=gpu-process' | head -1); B=$(cut -d' ' -f4 /proc/$G/stat); for p in $B $G $(pgrep -x rudolfd | head -1); do cat /proc/$p/oom_score_adj; done")
+    # the browser itself (named chrome, with --rudolf-kiosk and no --type=), its graphics process, rudolfd; the
+    # guard sets these every 5 s: give it 15
+    time.sleep(15)
+    adj = sh("for d in /proc/[0-9]*; do [ \"$(cat $d/comm 2>/dev/null)\" = chrome ] || continue; c=$(tr '\\0' ' ' < $d/cmdline); case \"$c\" in *--type=gpu-process*) G=${d#/proc/};; *--type=*) ;; *--rudolf-kiosk*) B=${d#/proc/};; esac; done; for p in $B $G $(pgrep -x rudolfd | head -1); do cat /proc/$p/oom_score_adj; done")
     v = re.findall(r'^(-?\d+)$', adj, re.M)
     ok('5. the desktop\'s browser, its graphics process and rudolfd are ended last (oom_score_adj below 0)', len(v) == 3 and all(int(x) < 0 for x in v), adj)
-    # the desktop page says which page process is its own (it keeps its processor busy for half a second at start)
-    dr = ''
+    # the desktop page says which page process is its own, 15 s after each load (also after the sign-in's reload):
+    # wait for this page's answer, then compare it with the guard's file
+    iam = None
     for _ in range(20):
-        dr = sh("cat /run/rudolf/desktop-renderer 2>/dev/null | sed 's/^/DR /'")
-        m = re.search(r'^DR (\d+)', dr, re.M)
-        if m: break
+        iam = js("JSON.stringify(window.__memIam||null)")
+        if isinstance(iam, str) and '"ok":true' in iam: break
         time.sleep(6)
-    dpid = m.group(1) if m else ''
-    iam = js("JSON.stringify(window.__memIam||null)")
+    dr = sh("cat /run/rudolf/desktop-renderer 2>/dev/null | sed 's/^/DR /'")
+    m = re.search(r'^DR (\d+)', dr, re.M); dpid = m.group(1) if m else ''
+    alive = sh("[ -n '%s' ] && tr '\\0' ' ' < /proc/%s/cmdline | grep -q -- '--type=renderer' && echo RENDERER" % (dpid, dpid)) if dpid else ''
     out('desktop page process:', dpid, iam)
-    ok('5b. the desktop page tells the memory guard which process is its own', dpid != '' and js("!!window.__memIam&&window.__memIam.pid==" + (dpid or '0')) is True, [dr, iam])
+    ok('5b. the desktop page tells the memory guard which process is its own (a page process)', dpid != '' and isinstance(iam, str) and ('"pid":%s,' % dpid) in iam and 'RENDERER' in [l.strip() for l in alive.split('\n')], [dr, iam, alive])
     # the test page, served in the guest
     sh("mkdir -p /tmp/hog && cat > /tmp/hog/index.html <<'EOF'\n" + HOG + "\nEOF\n(busybox httpd -p 127.0.0.1:8099 -h /tmp/hog &) ; sleep 1; wget -qO- http://127.0.0.1:8099/ | head -c 40")
     sh(': > /run/rudolf/memguard.log; rm -f /run/rudolf/memguard.events; wc -l < /run/rudolf/session.log > /tmp/sl0')
