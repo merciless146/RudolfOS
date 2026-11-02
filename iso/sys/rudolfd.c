@@ -1533,7 +1533,7 @@ static void api_debian(struct req *r, const char *what)
 		}
 		sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
 	}
-	if (!strcmp(what, "setup") || !strcmp(what, "passwd") || !strcmp(what, "update") || !strcmp(what, "remove")) {
+	if (!strcmp(what, "setup") || !strcmp(what, "passwd") || !strcmp(what, "update") || !strcmp(what, "remove") || !strcmp(what, "wine")) {
 		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
 		if (!strcmp(what, "setup") || !strcmp(what, "passwd")) {
 			if (!r->body || r->blen < 4 || r->blen > 200) { reply_err(r->fd, 400, "choose a password of at least 4 characters"); return; }
@@ -1545,6 +1545,7 @@ static void api_debian(struct req *r, const char *what)
 			if (!strcmp(what, "passwd")) start_job("debian-passwd", DEBIAN_BIN " passwd " RUN "/debian.pw");
 			else start_job("debian-setup", DEBIAN_BIN " setup " RUN "/debian.pw");
 		} else if (!strcmp(what, "update")) start_job("debian-update", DEBIAN_BIN " update");
+		else if (!strcmp(what, "wine")) start_job("debian-wine", DEBIAN_BIN " wine");   /* 1.4.9: Settings > Apps > Linux > Install Wine */
 		else start_job("debian-remove", DEBIAN_BIN " remove");
 		reply_ok(r->fd, "started"); return;
 	}
@@ -1561,7 +1562,8 @@ static void api_debian(struct req *r, const char *what)
 	}
 	if (!strcmp(what, "icon")) {
 		const char *pth = qparam(r->query, "path");
-		if (!pth || strncmp(pth, "/persist/debian/usr/share/", 26) || strstr(pth, "..")) { reply_err(r->fd, 400, "bad icon"); return; }
+		/* (1.4.9) also the person's own icons, where Wine puts each installed Windows program's */
+		if (!pth || (strncmp(pth, "/persist/debian/usr/share/", 26) && strncmp(pth, "/home/rudolf/.local/share/icons/", 32)) || strstr(pth, "..")) { reply_err(r->fd, 400, "bad icon"); return; }
 		serve_file(r, pth); return;
 	}
 	if (!strcmp(what, "settings")) {

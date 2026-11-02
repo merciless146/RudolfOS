@@ -9,6 +9,7 @@
  *   rudolf-debian apps                      launchers of installed graphical apps (JSON)
  *   rudolf-debian launch APP-ID             start one of them as the user
  *   rudolf-debian update                    apt-get update + upgrade (as Debian's root)
+ *   rudolf-debian wine                      install Wine (Windows programs), as Debian's root
  *   rudolf-debian remove                    stop and delete Debian
  *
  * Who is who: Debian's root and system users (0-999) are uids 200000-200999 on Rudolf OS, with no rights
@@ -514,7 +515,7 @@ static int dkey(const char *line, const char *k, char *out, size_t n)
 	size_t kl = strlen(k); if (strncmp(line, k, kl) || line[kl] != '=') return 0;
 	snprintf(out, n, "%s", line + kl + 1); size_t l = strlen(out); while (l && (out[l - 1] == '\n' || out[l - 1] == '\r')) out[--l] = 0; return 1;
 }
-typedef struct { char name[160], exec[600], icon[200], cls[120], mime[600], cats[200]; int hidden, term, nodisp; } desk;
+typedef struct { char name[160], exec[600], icon[200], cls[120], mime[600], cats[200], path[400]; int hidden, term, nodisp; } desk;
 static int read_desk(const char *path, desk *d)
 {
 	memset(d, 0, sizeof *d); FILE *f = fopen(path, "r"); if (!f) return -1;
@@ -525,13 +526,17 @@ static int read_desk(const char *path, desk *d)
 		if (!gotname && dkey(l, "Name", d->name, sizeof d->name)) gotname = 1;
 		else if (dkey(l, "Exec", d->exec, sizeof d->exec)) {} else if (dkey(l, "Icon", d->icon, sizeof d->icon)) {}
 		else if (dkey(l, "StartupWMClass", d->cls, sizeof d->cls)) {} else if (dkey(l, "MimeType", d->mime, sizeof d->mime)) {}
-		else if (dkey(l, "Categories", d->cats, sizeof d->cats)) {}
+		else if (dkey(l, "Categories", d->cats, sizeof d->cats)) {} else if (dkey(l, "Path", d->path, sizeof d->path)) {}
 		else if (dkey(l, "NoDisplay", v, sizeof v) && !strcmp(v, "true")) d->nodisp = 1;
 		else if (dkey(l, "Hidden", v, sizeof v) && !strcmp(v, "true")) d->hidden = 1;
 		else if (dkey(l, "Terminal", v, sizeof v) && !strcmp(v, "true")) d->term = 1;
 		else if (dkey(l, "Type", v, sizeof v) && strcmp(v, "Application")) d->hidden = 1;
 	}
-	fclose(f); return d->name[0] && d->exec[0] ? 0 : -1;
+	fclose(f);
+	/* (1.4.9) Exec= is first unescaped as a string value (\\ \s \t \n \r), as the desktop entry rules say; the
+	   words are split after that. Wine writes Windows paths as C:\\\\users\\\\..., which must reach it as C:\users\... */
+	{ char *r = d->exec, *w = d->exec; while (*r) { if (r[0] == '\\' && r[1]) { char c = r[1]; *w++ = c == 's' ? ' ' : c == 't' ? '\t' : c == 'n' ? '\n' : c == 'r' ? '\r' : c == '\\' ? '\\' : (*w++ = '\\', c); r += 2; } else *w++ = *r++; } *w = 0; }
+	return d->name[0] && d->exec[0] ? 0 : -1;
 }
 /* an icon file inside Debian for an Icon= name (path as seen from Rudolf OS) */
 static int find_icon(const char *icon, char *out, size_t n)
@@ -545,6 +550,8 @@ static int find_icon(const char *icon, char *out, size_t n)
 		snprintf(out, n, ROOT "/usr/share/icons/%s/%s/apps/%s.png", themes[t], sizes[i], icon); if (!access(out, R_OK)) return 1;
 		snprintf(out, n, ROOT "/usr/share/icons/%s/%s/apps/%s.svg", themes[t], sizes[i], icon); if (!access(out, R_OK)) return 1;
 	}
+	/* 1.4.9: the person's own icons (Wine puts each installed Windows program's icon here) */
+	for (int i = 0; sizes[i]; i++) { snprintf(out, n, "/home/rudolf/.local/share/icons/hicolor/%s/apps/%s.png", sizes[i], icon); if (!access(out, R_OK)) return 1; }
 	snprintf(out, n, ROOT "/usr/share/pixmaps/%s.png", icon); if (!access(out, R_OK)) return 1;
 	snprintf(out, n, ROOT "/usr/share/pixmaps/%s.svg", icon); if (!access(out, R_OK)) return 1;
 	snprintf(out, n, ROOT "/usr/share/pixmaps/%s.xpm", icon); return !access(out, R_OK);
@@ -552,6 +559,45 @@ static int find_icon(const char *icon, char *out, size_t n)
 /* the folders launchers are read from: Debian's menu, and (1.4.8) Wine's own folder, where Debian keeps the "Wine
    Windows Program Loader" (wine.desktop: opens .exe, .msi and .bat files; kept out of menus) */
 static const char *const APPDIRS[] = { "/usr/share/applications", "/usr/share/wine/applications", NULL };
+/* 1.4.9: launchers in the person's own folder (/home/rudolf/.local/share/applications, any depth): Wine makes one there
+   for each Windows program it installs (Starport GE: wine/Programs/StarportGE/Starport GE.desktop). Their IDs are
+   "u-" and the launcher's path inside that folder in hex, so any file name works. Only launchers shown in menus are
+   listed (Wine's per-file-type ones, wine-extension-*, are not), and none with the name of one of Debian's own. */
+#define UAPPS "/home/rudolf/.local/share/applications"
+static void hexid(const char *rel, char *out, size_t n) { size_t o = snprintf(out, n, "u-"); for (const char *c = rel; *c && o + 3 < n; c++) o += snprintf(out + o, n - o, "%02x", (unsigned char)*c); }
+static int unhexid(const char *id, char *rel, size_t n)
+{
+	if (strncmp(id, "u-", 2)) return -1;
+	id += 2; size_t l = strlen(id), o = 0; if (l % 2 || l / 2 >= n) return -1;
+	for (size_t i = 0; i < l; i += 2) { unsigned v; if (sscanf(id + i, "%2x", &v) != 1 || !v) return -1; rel[o++] = (char)v; }
+	rel[o] = 0; return strstr(rel, "..") || rel[0] == '/' ? -1 : 0;
+}
+static int app_out(const char *id, desk *k, int first)
+{
+	char ic[600]; int hi = find_icon(k->icon, ic, sizeof ic);
+	printf("%s{\"id\":", first ? "" : ","); jstr(stdout, id);
+	printf(",\"name\":"); jstr(stdout, k->name); printf(",\"wmclass\":"); jstr(stdout, k->cls);
+	printf(",\"mime\":"); jstr(stdout, k->mime); printf(",\"categories\":"); jstr(stdout, k->cats);
+	printf(",\"icon\":"); jstr(stdout, hi ? ic : ""); printf(",\"menu\":%s}", k->nodisp ? "false" : "true");
+	return 0;
+}
+static char sysnames[256][160]; static int nsys;
+static void user_apps(const char *dir, const char *rel, int depth, int *first)
+{
+	DIR *d = depth < 6 ? opendir(dir) : NULL; struct dirent *e;
+	while (d && (e = readdir(d))) {
+		if (e->d_name[0] == '.') continue;
+		char p[900], r[700]; snprintf(p, sizeof p, "%s/%s", dir, e->d_name); snprintf(r, sizeof r, "%s%s%s", rel, *rel ? "/" : "", e->d_name);
+		struct stat st; if (stat(p, &st)) continue;
+		if (S_ISDIR(st.st_mode)) { user_apps(p, r, depth + 1, first); continue; }
+		size_t l = strlen(r); if (l < 9 || strcmp(r + l - 8, ".desktop") || !strncmp(e->d_name, "wine-extension-", 15)) continue;
+		desk k; if (read_desk(p, &k) || k.hidden || k.term || k.nodisp) continue;
+		int dup = 0; for (int i = 0; i < nsys; i++) if (!strcmp(sysnames[i], k.name)) dup = 1; if (dup) continue;
+		r[l - 8] = 0; char id[700]; hexid(r, id, sizeof id); if (strlen(id) > 200) continue;
+		app_out(id, &k, *first); *first = 0;
+	}
+	if (d) closedir(d);
+}
 static int cmd_apps(void)
 {
 	printf("{\"ok\":true,\"apps\":["); int first = 1;
@@ -567,21 +613,19 @@ static int cmd_apps(void)
 		   Loader" opens .exe and .msi files. It is listed with "menu":false (Open with only, not the Start menu). */
 		if (k.nodisp && !k.mime[0]) continue;
 		char id[256]; snprintf(id, sizeof id, "%.*s", (int)(l - 8), e->d_name);
-		char ic[600]; int hi = find_icon(k.icon, ic, sizeof ic);
-		printf("%s{\"id\":", first ? "" : ","); jstr(stdout, id);
-		printf(",\"name\":"); jstr(stdout, k.name); printf(",\"wmclass\":"); jstr(stdout, k.cls);
-		printf(",\"mime\":"); jstr(stdout, k.mime); printf(",\"categories\":"); jstr(stdout, k.cats);
-		printf(",\"icon\":"); jstr(stdout, hi ? ic : ""); printf(",\"menu\":%s}", k.nodisp ? "false" : "true");
-		first = 0;
+		app_out(id, &k, first); first = 0;
+		if (!k.nodisp && nsys < 256) snprintf(sysnames[nsys++], sizeof sysnames[0], "%s", k.name);
 	}
 	if (d) closedir(d);
 	}
+	if (installed()) user_apps(UAPPS, "", 0, &first);
 	printf("]}\n"); return 0;
 }
 static int cmd_launch(const char *id, const char *file)
 {
 	for (const char *c = id; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("._-+", *c)) die("bad app id");
-	char p[512]; desk k; int found = 0;
+	char p[900]; desk k; int found = 0;
+	if (!strncmp(id, "u-", 2)) { char rel[700]; if (unhexid(id, rel, sizeof rel)) die("bad app id"); snprintf(p, sizeof p, UAPPS "/%s.desktop", rel); found = !read_desk(p, &k); }
 	for (int di = 0; APPDIRS[di] && !found; di++) { snprintf(p, sizeof p, ROOT "%s/%s.desktop", APPDIRS[di], id); found = !read_desk(p, &k); }
 	if (!found) die("no such app");
 	/* Exec= split into words; %f %F %u %U become the file (if any), other field codes are dropped */
@@ -605,7 +649,8 @@ static int cmd_launch(const char *id, const char *file)
 	int lf = open(log, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
 	pid_t d = fork(); if (d) { printf("started\n"); return 0; }
 	setsid();
-	pid_t c = enter(0, "/home/rudolf");
+	/* 1.4.9: in the launcher's own folder (Path=), as Windows programs' launchers and updaters expect */
+	pid_t c = enter(0, k.path[0] == '/' && !strstr(k.path, "..") ? k.path : "/home/rudolf");
 	if (!c) {
 		int nul = open("/dev/null", O_RDWR); dup2(nul, 0); if (lf >= 0) { dup2(lf, 1); dup2(lf, 2); }
 		execvp(argv[0], argv); fprintf(stderr, "%s: %s\n", argv[0], strerror(errno)); _exit(127);
@@ -631,6 +676,7 @@ int main(int argc, char **argv)
 		printf("installed=%d\nversion=%s\nrunning=%d\npersist=%d\nfree=%lld\n", installed(), v ? v : "", keeper_pid() > 0, !system("mountpoint -q /persist"), fr);
 		if (argc > 2 && !strcmp(argv[2], "--size")) printf("size=%lld\n", installed() ? du(ROOT) : 0);
 		char u[400]; base_url(u, sizeof u); printf("url=%s\n", u);
+		printf("wine=%d\n", installed() && !access(ROOT "/usr/bin/wine-stable", X_OK));   /* 1.4.9 */
 		return 0;
 	}
 	if (!strcmp(c, "setup")) { if (argc < 3) die("setup PASSWORD-FILE"); return cmd_setup(argv[2]); }
@@ -657,6 +703,15 @@ int main(int argc, char **argv)
 		if (!installed()) die("Debian is not set up");
 		char *a[] = {"/bin/sh", "-c", "apt-get update && apt-get -y -o Dpkg::Options::=--force-confold upgrade && apt-get clean", NULL};
 		int r = run_in(1, NULL, a); write_str(RUND "/apps-changed", "1"); return r;
+	}
+	/* 1.4.9: Wine, to run Windows programs (Settings > Apps > Linux > Install Wine): the 32- and 64-bit parts, as
+	   Windows programs need both */
+	if (!strcmp(c, "wine")) {
+		if (!installed()) die("Debian is not set up");
+		char *a[] = {"/bin/sh", "-c", "export DEBIAN_FRONTEND=noninteractive; dpkg --add-architecture i386 && apt-get update && apt-get install -y --install-recommends wine wine32:i386 wine64 && apt-get clean", NULL};
+		int r = run_in(1, NULL, a); write_str(RUND "/apps-changed", "1");
+		if (!r) say("done Wine is installed");
+		return r;
 	}
 	if (!strcmp(c, "remove")) {
 		stop();

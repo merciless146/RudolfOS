@@ -119,13 +119,14 @@ async function lxCheckShow(box){box.innerHTML="<div class='msg'>Checking…</div
  const draw=async()=>{const st=await debStatus(true);if(!st){b.innerHTML="<div class='msg'>This Rudolf OS cannot run Debian.</div>";return}
   if(!st.installed){b.innerHTML=`<div class='msg'>Debian is not set up. It adds a Linux terminal with APT.</div><div class='rmrow' style='justify-content:flex-start'><button class='dsu'>Set up Debian…</button><button class='dck'>Check</button></div><div class='dckr'></div>`;b.querySelector('.dsu').onclick=()=>terminalApp();b.querySelector('.dck').onclick=()=>lxCheckShow(b.querySelector('.dckr'));return}
   const auto=ld('bd95debauto',true);
-  b.innerHTML=`<table class='tmt'><tbody><tr><td>Version</td><td>Debian ${lxEsc(st.version)}</td></tr><tr><td>Space used</td><td>${fmtB(st.size||0)}</td></tr><tr><td>Free on the data partition</td><td>${fmtB(st.free||0)}</td></tr><tr><td>Apps with a window</td><td>${DEB.apps.length}</td></tr></tbody></table>
+  b.innerHTML=`<table class='tmt'><tbody><tr><td>Version</td><td>Debian ${lxEsc(st.version)}</td></tr><tr><td>Space used</td><td>${fmtB(st.size||0)}</td></tr><tr><td>Free on the data partition</td><td>${fmtB(st.free||0)}</td></tr><tr><td>Apps with a window</td><td>${DEB.apps.filter(a=>a.menu!==false).length}</td></tr><tr><td>Windows programs</td><td class='dwine'></td></tr></tbody></table>
   <label class='chk'><input type='checkbox' class='dau'${auto?' checked':''}> Install Debian's updates automatically once a day</label>
   <div class='rmrow' style='justify-content:flex-start'><button class='dop'>Open Terminal</button><button class='dup'>Update now</button><button class='dpw'>Change the Linux password…</button><button class='drm'>Remove Debian…</button><button class='dck'>Check</button></div><div class='msg dmsg'></div><div class='dckr'></div>`;b.querySelector('.dck').onclick=()=>lxCheckShow(b.querySelector('.dckr'));
   const msg=b.querySelector('.dmsg');b.querySelector('.dau').onchange=e=>svj('bd95debauto',e.target.checked);b.querySelector('.dop').onclick=()=>terminalApp();
   b.querySelector('.dup').onclick=async()=>{if(!isAdmin()&&!await elevate('Update Debian'))return;try{await lxApi('debian/update')}catch(e){return msg.textContent=e.message}msg.textContent='Updating Debian…';const j=await lxJobWait();msg.textContent=j.status==0?'Debian is up to date.':j.crashed?jobCrashText(j):'The update did not finish: '+((j.log||'').trim().split('\n').pop()||'');debApps()};
   /* 1.3.0: a new Linux password (the one sudo asks for); before, only setting Debian up again could change it */
   b.querySelector('.dpw').onclick=()=>debPasswd(msg);
+  debWineCell(b.querySelector('.dwine'),st,msg,draw);
   b.querySelector('.drm').onclick=async()=>{if(!await elevate('Remove Debian and every program installed in it (your Documents, Pictures and Downloads stay)'))return;try{await lxApi('debian/remove')}catch(e){return msg.textContent=e.message}msg.textContent='Removing…';const j=await lxJobWait();await debStatus();DEB.apps=[];svj(DEB_AK,[]);lxRegister();msg.textContent=j.status==0?'Debian was removed.':'Removing failed.';setTimeout(draw,800)}};
  draw()}}
 /* 1.3.0: Change the Linux password: twice, the same rules as at setup; rudolf-debian passwd sets it for root and rudolf */
@@ -147,3 +148,16 @@ if(RD){(function(){const o=window.__afterLogin;window.__afterLogin=()=>{o&&o();s
    Terminal had been opened. */
 if(RD){(function(){const m=document.getElementById('menu');if(!m)return;let was=false;
  new MutationObserver(()=>{const vis=m.style.display!='none'&&m.offsetParent!==null;if(vis&&!was&&USER&&Date.now()-(DEB.appsAt||0)>10000)debApps();was=vis}).observe(m,{attributes:true,attributeFilter:['style','class']})})()}
+
+/* 1.4.9: Wine, to run Windows programs: installed from Settings › Apps › Linux (or from the message a Windows program
+   shows without it) instead of typing apt commands in the Terminal. rudolf-debian wine installs it, with the 32-bit
+   parts Windows programs need; the programs Wine installs then appear in the Start menu by themselves. */
+function debWineCell(cell,st,msg,redraw){if(!cell)return;
+ if(st.wine){cell.textContent='Wine is installed: .exe and .msi files open with it, and the programs you install appear in the Start menu.';return}
+ cell.innerHTML="Wine is not installed. <button class='dwi'>Install Wine…</button>";cell.querySelector('.dwi').onclick=async()=>{if(await debInstallWine(msg))redraw&&redraw()}}
+async function debInstallWine(msg){if(!isAdmin()&&!await elevate('Install Wine to run Windows programs (a download of about 1 GB)'))return false;
+ try{await lxApi('debian/wine')}catch(e){msg.textContent=e.message;return false}
+ msg.textContent='Installing Wine: about 1 GB to download, a few minutes…';let n=0;
+ const j=await lxJobWait(l=>{if(/^(Get|Unpacking|Setting up):?/.test(l)){n++;msg.textContent='Installing Wine… ('+n+' steps)'}});
+ if(j.status==0){msg.textContent='Wine is installed. Windows programs (.exe, .msi) now open with it.';await debStatus(true);DEB.appsAt=0;await debApps();notify('Wine is installed','Windows programs (.exe, .msi) now open with it. Installed programs appear in the Start menu.');return true}
+ msg.textContent=j.crashed?jobCrashText(j):'Wine could not be installed: '+((j.log||'').trim().split('\n').pop()||'');return false}
