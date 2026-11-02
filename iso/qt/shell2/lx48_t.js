@@ -42,7 +42,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("T.apps=T.apps.filter(a=>a.id!='wine');DEB.appsAt=0;debApps()"); await wait(800);
   await q("wins.slice().forEach(w=>{w.__force=1;w.close()});openPath(['C:','DOWNLOADS','STARPORTGE_INSTALL.EXE']);1"); await wait(800);
   const msg = await q("(wins.at(-1)&&wins.at(-1).el.textContent)||''");
-  ok('5. without Wine, a Windows program says how to get it (Debian, then apt install wine)', /Windows program/.test(msg) && /apt install wine/.test(msg), msg);
+  ok('5. without Wine, a Windows program says how to get it (1.4.9: an Install Wine button)', /Windows program/.test(msg) && /Install Wine/.test(msg), msg);
   // a Debian app added outside the Terminal shows up when the Start menu opens
   await q("T.apps.push({id:'newgame',name:'New Game',wmclass:'',mime:'',categories:'Game;',icon:'',menu:true});DEB.appsAt=Date.now()-60000;1");
   const n0 = await q("T.appsCalls");
