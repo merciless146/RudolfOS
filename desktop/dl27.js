@@ -143,7 +143,14 @@ async function dlOpen(path){const v=node(path),nm=path.at(-1),e=ext(nm),i=dlRefI
  if(TEXTX.test(e)||/^(TXT|LOG|CSV|JSON|MD|XML|SRT|VTT)$/.test(e)){if(i.s>4*1048576)return dlInfo(path,'This text file is too large to open in Notepad. Open it in a Linux app from the Downloads folder instead.');
   const W=win(nm+' (read only)','🗒️',720,520);W.body.style.cssText='overflow:auto;background:var(--wbg,#fff)';const pre=document.createElement('pre');pre.style.cssText='margin:0;padding:10px;white-space:pre-wrap;font:12px monospace';pre.textContent='Opening…';W.body.appendChild(pre);
   try{pre.textContent=await(await fetch(url)).text()}catch(x){pre.textContent='The file could not be read.'}return W}
+ /* 1.4.8: a Linux app that opens this type (Wine for Windows programs), else say how to get one */
+ const lx=typeof OPENERS!='undefined'&&OPENERS.find(o=>String(o[0]).startsWith('lx:')&&(()=>{try{return o[3](e,null)}catch(x){return false}})());if(lx)return dlLxOpen(lx,path);
+ if(/^(EXE|MSI)$/.test(e))return dlInfo(path,'This is a Windows program. Rudolf OS runs Windows programs with Wine, inside Debian: set up Debian in Settings › Apps › Linux, then in the Linux Terminal type  sudo dpkg --add-architecture i386 && sudo apt update && sudo apt install wine wine32 wine64  — after that, Windows programs open with Wine.');
  return dlInfo(path,e=='ZIP'?'Archive Manager opens archives up to 1.5 MB. Open this one in a Linux app from the Downloads folder.':'Rudolf OS has no app that opens this kind of file from the disk.')}
+/* (1.4.8) a file kept on the disk, opened by a Linux app: it is already on the disk, so the app gets its own path
+   (lxOpenFile would copy the reference itself, as it does for the desktop's own files outside the shared folders) */
+function dlDiskPath(i){const p=String(i&&i.p||'');return p.startsWith('/')?p:'/home/rudolf/Downloads/'+p}
+function dlLxOpen(o,path){const i=dlRefInfo(node(path)),x=typeof lxLaunchers=='function'&&lxLaunchers().find(l=>'lx:'+l.desktop==o[0]);if(!i||!x)return o[4](path);return lxRun(x,dlDiskPath(i))}
 function dlInfo(path,msg){const v=node(path),i=dlRefInfo(v)||{},W=win('Kept on the disk','💽',420,210);W.body.style.cssText='padding:14px;font-size:13px';
  W.body.innerHTML=`<b class='n'></b><p class='m'></p><p style='color:#6b7280'>${fmtB(i.s||0)} · in the Downloads folder on the disk${i.av=='part'?' · the antivirus checked its first and last 4 MB':''}</p><div style='text-align:right'><button>Close</button></div>`;
  W.body.querySelector('.n').textContent=path.at(-1);W.body.querySelector('.m').textContent=msg;W.body.querySelector('button').onclick=()=>W.close();return W}
@@ -151,7 +158,9 @@ function dlMissing(path,why){const W=dlInfo(path,'This file is no longer on the 
  b.onclick=()=>{const d=node(path.slice(0,-1));if(d){delete d[path.at(-1)];fsSave();try{EXPL.forEach(f=>f())}catch(e){}}W.close()};W.body.querySelector('div').prepend(b)}
 {const _op=openPath;openPath=function(path){if(isDlRef(node(path)))return dlOpen(path);return _op.apply(this,arguments)}}
 {const _od=openPathDefault;openPathDefault=function(path){if(isDlRef(node(path)))return dlOpen(path);return _od.apply(this,arguments)}}
-{const _of=openersFor;openersFor=function(path){if(!isDlRef(node(path)))return _of.apply(this,arguments);const e=ext(path.at(-1)),l=[['disk','Built-in viewer','💽',()=>true,p=>dlOpen(p)]];if(e=='PDF')l.unshift(OPENERS.find(x=>x[0]=='pdf'));return l.filter(Boolean)}}
+{const _of=openersFor;openersFor=function(path){if(!isDlRef(node(path)))return _of.apply(this,arguments);const e=ext(path.at(-1)),l=[['disk','Built-in viewer','💽',()=>true,p=>dlOpen(p)]];if(e=='PDF')l.unshift(OPENERS.find(x=>x[0]=='pdf'));
+ /* 1.4.8: Linux apps that open this type (the file is on the disk, in Downloads, where they can reach it) */
+ OPENERS.filter(o=>String(o[0]).startsWith('lx:')&&(()=>{try{return o[3](e,null)}catch(x){return false}})()).forEach(o=>l.push([o[0],o[1],o[2],o[3],p=>dlLxOpen(o,p)]));return l.filter(Boolean)}}
 /* ---------- Storage settings: what is kept on the disk ---------- */
 if(typeof storPanel=='function'){const _sp=storPanel;storPanel=function(c){const r=_sp.apply(this,arguments);if(!dlOn())return r;
  const refs=dlWalk(dlCDir(),['C:','DOWNLOADS'],[]),h=document.createElement('div');h.className='dl27st';

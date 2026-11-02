@@ -3,6 +3,12 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.4.8 (2026-11-02)
+Summary: Windows programs open with Wine, and Linux apps appear in the Start menu straight away
+- New: with Wine installed in Debian (Settings › Apps › Linux), Windows programs (.exe, .msi, .bat) open with it: double-click the file, or use Open with. Large downloads kept on the disk open the same way. Without Wine, opening a Windows program says how to get it.
+- Fixed: a Linux app installed outside the Linux Terminal only appeared in the Start menu after signing in again or opening the Terminal. The Start menu now checks for new Linux apps each time it opens.
+- Fixed: Linux apps that only open files (such as Wine's program loader) were never offered in Open with.
+
 ## 1.4.7 (2026-11-01)
 Summary: a page that uses up the memory no longer freezes the desktop: Rudolf OS closes that page and says why
 - New: compressed swap in memory. Rudolf OS keeps memory it is not using right now compressed in memory, so a computer holds about half as much again before it runs out (a 3.4 GB laptop holds about 5 GB). Task Manager shows how much is stored this way.
