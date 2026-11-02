@@ -55,7 +55,7 @@ if [ -f repo/index.txt ]; then mkdir -p $T/RUDOLF/PKG; for f in repo/*; do cp "$
 echo "== source archives"
 SD=$(mktemp -d); mkdir -p $SD/rudolf-os-$VER/desktop $SD/rudolf-os-$VER/libs/od $SD/rudolf-os-$VER/iso
 cp $HERE/../v10/*.js $HERE/../v10/styles25.css $HERE/../v10/build19.py $HERE/../v10/base_v24.html $SD/rudolf-os-$VER/desktop/
-cp $HERE/../libs/pinyin.min.json $SD/rudolf-os-$VER/libs/; mkdir -p $SD/rudolf-os-$VER/libs/od/compiled; cp $HERE/../libs/od/compiled/OpenDyslexic-Regular.woff2 $HERE/../libs/od/compiled/OpenDyslexic-Bold.woff2 $SD/rudolf-os-$VER/libs/od/compiled/; cp $HERE/../libs/od/OFL.txt $SD/rudolf-os-$VER/libs/od/
+cp $HERE/../libs/pinyin.min.json $SD/rudolf-os-$VER/libs/; mkdir -p $SD/rudolf-os-$VER/libs/od/compiled; cp $HERE/../libs/od/compiled/OpenDyslexic-Regular.woff2 $HERE/../libs/od/compiled/OpenDyslexic-Bold.woff2 $SD/rudolf-os-$VER/libs/od/compiled/; cp $HERE/../libs/od/OFL.txt $SD/rudolf-os-$VER/libs/od/; mkdir -p $SD/rudolf-os-$VER/libs/uifonts; cp $HERE/../libs/uifonts/* $SD/rudolf-os-$VER/libs/uifonts/
 cp -a boot pkgtools pkgs systools kconfig.sh wifibuild.sh fpshim.sh fpbuild.sh sndshim.sh sndbuild.sh xshim.sh xbuild.sh sys mkrootfs.sh mkimage.py credits.js pkgmanifest.py build_iso.sh initramfs.list VERSION LICENSE.TXT README.TXT SOURCE-OFFER.TXT BUILD.TXT $SD/rudolf-os-$VER/iso/
 mkdir -p $SD/rudolf-os-$VER/iso/qt; cp qt/*.py qt/*.sh qt/*.c $SD/rudolf-os-$VER/iso/qt/; cp -a qt/ndstest $SD/rudolf-os-$VER/iso/qt/
 cp initramfs/init $SD/rudolf-os-$VER/iso/sys/initramfs-init 2>/dev/null || true
