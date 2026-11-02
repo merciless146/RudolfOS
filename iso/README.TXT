@@ -1,6 +1,8 @@
 RUDOLF OS - READ ME
 ====================
 
+Rudolf stands for Runtime Driver Open Linux Framework.
+
 Rudolf OS is a desktop operating system that starts straight from this disc
 (CD, DVD or USB stick). It runs "live" without touching the computer's hard
 disk, and can optionally be installed.

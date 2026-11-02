@@ -1,5 +1,7 @@
 # Rudolf OS
 
+**Rudolf** stands for **Ru**ntime **D**river **O**pen **L**inux **F**ramework.
+
 A small desktop operating system for x86-64 PCs that starts from a CD or USB stick, built around one browser
 engine. Version 1.1 is the first public release. Download the disc image from
 [Releases](../../releases) (tag `disc-1.1`); `iso/README.TXT` explains how to start and install it.

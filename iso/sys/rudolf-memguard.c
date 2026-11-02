@@ -8,7 +8,8 @@
  * a memory stall (a PSI trigger):
  *   - critical: little memory left (MemAvailable under 5% of the memory, or under 10% for 2 s while the system stalls
  *     on memory), and the swap (if any) nearly full; or the system stalled on memory (PSI "full") over 30% of the
- *     last 10 s for 3 s in a row with under 15% left
+ *     last 10 s for 3 s in a row with under 15% left; or (1.4.8) the kernel reported stalls twice within 2.5 s
+ *     with under 8% left, swap or not
  *   - then it ends (SIGKILL) the renderer process of the largest web page: a tab in Oracle (a Controlled Frame), or a
  *     page in the browser window for sign-in sites, or one no browser holds any more. Never the desktop page itself
  *     (it says which process it is: /run/rudolf/desktop-renderer), nor Chromium's other processes, the graphics
@@ -196,10 +197,11 @@ int main(int argc, char **argv)
 	int pf = open("/proc/pressure/memory", O_RDWR | O_NONBLOCK | O_CLOEXEC);
 	if (pf >= 0 && write(pf, "full 150000 1000000", 20) < 0) { close(pf); pf = -1; }
 	logf_("started%s%s", pf < 0 ? " (no memory pressure trigger: once a second)" : "", off ? " (ending pages is off: rudolf.nomemguard=1)" : "");
-	int low = 0, stall = 0; time_t last_kill = 0, last_protect = 0, was_crit = 0;
+	int low = 0, stall = 0; time_t last_kill = 0, last_protect = 0, was_crit = 0; struct timespec fire0 = {0, 0};
 	for (;;) {
 		struct pollfd p = { pf, POLLPRI, 0 };
-		if (pf >= 0) { int r = poll(&p, 1, 1000); if ((r < 0 && errno != EINTR) || (r > 0 && (p.revents & (POLLERR | POLLNVAL)))) { close(pf); pf = -1; sleep(1); } } else sleep(1);
+		int fired = 0;
+		if (pf >= 0) { int r = poll(&p, 1, 1000); if ((r < 0 && errno != EINTR) || (r > 0 && (p.revents & (POLLERR | POLLNVAL)))) { close(pf); pf = -1; sleep(1); } else if (r > 0 && (p.revents & POLLPRI)) fired = 1; } else sleep(1);
 		time_t now = time(NULL);
 		if (readf("/proc/meminfo", buf, sizeof buf) <= 0) continue;
 		long long total = meminfo(buf, "MemTotal:"), avail = meminfo(buf, "MemAvailable:"), swt = meminfo(buf, "SwapTotal:"), swf = meminfo(buf, "SwapFree:");
@@ -208,9 +210,16 @@ int main(int argc, char **argv)
 		int hard = avail < total / 20 && swap_low;
 		low = avail < total / 10 && swap_low && full >= 10 ? low + 1 : 0;
 		stall = full >= 30 && avail < total * 15 / 100 ? stall + 1 : 0;
-		int crit = hard || low >= 2 || stall >= 3;
+		/* 1.4.8: thrashing while the swap still has room. Memory can fill faster than pages are moved to the
+		   compressed swap (QEMU: 175 MiB left with 954 of 987 MiB of swap free, and the desktop stalled 30 s
+		   until the 10-second stall average reached 30%). So the kernel's own stall report counts at once: two
+		   reports (tasks stalled on memory 150 ms within a second) within 2.5 s, with under 8% of the memory left. */
+		int thrash = 0;
+		if (fired) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); double gap = (t.tv_sec - fire0.tv_sec) + (t.tv_nsec - fire0.tv_nsec) / 1e9;
+			thrash = fire0.tv_sec && gap < 2.5 && avail < total * 8 / 100; fire0 = t; }
+		int crit = hard || low >= 2 || stall >= 3 || thrash;
 		if (crit) { int f = open(RUN "/memguard.critical", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644); if (f >= 0) close(f);
-			if (!was_crit) logf_("memory is low: %lld MiB available of %lld MiB, swap %lld of %lld MiB free, stall %.0f%%", avail >> 20, total >> 20, swf >> 20, swt >> 20, full);
+			if (!was_crit) logf_("memory is low: %lld MiB available of %lld MiB, swap %lld of %lld MiB free, stall %.0f%%%s", avail >> 20, total >> 20, swf >> 20, swt >> 20, full, thrash && !hard && low < 2 && stall < 3 ? " (thrashing: the kernel reports stalls)" : "");
 			was_crit = now; }
 		else if (was_crit && now - was_crit > 10) { logf_("memory is back: %lld MiB available", avail >> 20); was_crit = 0; }
 		if (now - last_protect >= 5 || crit) { scan(); protect(); last_protect = now; }
@@ -233,6 +242,6 @@ int main(int argc, char **argv)
 			char l[96]; int n = snprintf(l, sizeof l, "%lld %d %lld\n", (long long)now, v->pid, v->rss);
 			int f = open(RUN "/memguard.events", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644); if (f >= 0) { if (write(f, l, n) < 0) {} close(f); }
 		}
-		last_kill = now; low = stall = 0;
+		last_kill = now; low = stall = 0; fire0.tv_sec = 0;
 	}
 }
