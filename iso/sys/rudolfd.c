@@ -1974,6 +1974,39 @@ static void api_memory(struct req *r)
 	sadd(&s, "]}");
 	reply_json(r->fd, &s);
 }
+/* 1.4.7: which page process is the desktop's own, for the memory guard. Chromium does not say which renderer process
+   holds which page (Controlled Frames have no getProcessId), and its renderers' command lines are the same. So the
+   desktop page says it itself: step=start (the CPU time of every web page process), then it keeps its processor busy
+   for about half a second, then step=end: the page process that used most of that time is the desktop's (it must have
+   used over half of it, and twice as much as any other). Its pid goes to /run/rudolf/desktop-renderer, which
+   rudolf-memguard never ends. Done each time the desktop page loads. */
+static void api_memory_iam(struct req *r)
+{
+	char *st = qparam(r->query, "step");
+	struct pinfo *ps = calloc(MAXP, sizeof *ps); if (!ps || !st) { free(ps); reply_err(r->fd, 400, "step=start or step=end"); return; }
+	int n = nprocs(ps); tag_procs(ps, n);
+	struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now); long long ms = now.tv_sec * 1000LL + now.tv_nsec / 1000000;
+	if (!strcmp(st, "start")) {
+		str s = {0}; sadd(&s, "%lld\n", ms);
+		for (int i = 0; i < n; i++) if (ps[i].tag && !strcmp(ps[i].tag, "web") && strstr(ps[i].cmd, "--type=renderer")) sadd(&s, "%d %llu\n", ps[i].pid, ps[i].ticks);
+		write_str(RUN "/iam.start", s.b ? s.b : ""); free(s.b); free(ps); reply_ok(r->fd, "started"); return;
+	}
+	char *prev = slurp(RUN "/iam.start", NULL); if (!prev) { free(ps); reply_err(r->fd, 409, "step=start first"); return; }
+	long long t0 = atoll(prev), el = ms - t0; long hz = sysconf(_SC_CLK_TCK);
+	int best = 0; double b1 = 0, b2 = 0;
+	for (int i = 0; i < n; i++) {
+		if (!ps[i].tag || strcmp(ps[i].tag, "web") || !strstr(ps[i].cmd, "--type=renderer")) continue;
+		char key[32]; snprintf(key, sizeof key, "\n%d ", ps[i].pid); char *at = strstr(prev, key); if (!at) continue;
+		double used = (double)(ps[i].ticks - strtoull(at + strlen(key), NULL, 10)) * 1000.0 / hz;
+		if (used > b1) { b2 = b1; b1 = used; best = ps[i].pid; } else if (used > b2) b2 = used;
+	}
+	free(prev); free(ps); unlink(RUN "/iam.start");
+	str s = {0};
+	int found = best && el >= 200 && el < 5000 && b1 >= el * 0.5 && b1 >= 2 * b2;
+	if (found) { char b[32]; snprintf(b, sizeof b, "%d\n", best); write_str(RUN "/desktop-renderer", b); }
+	sadd(&s, "{\"ok\":%s,\"pid\":%d,\"ms\":%lld,\"used\":%.0f,\"next\":%.0f}", found ? "true" : "false", found ? best : 0, el, b1, b2);
+	reply_json(r->fd, &s);
+}
 /* ending a process (Task Manager). The desktop asks for an administrator's password first; the processes that keep
    Rudolf OS running are refused here whatever the caller says. */
 static void api_proc_end(struct req *r)
@@ -2575,6 +2608,7 @@ static void api(struct req *r)
 	if (!strcmp(p, "system")) { api_system(r); return; }
 	if (!strcmp(p, "processes")) { api_processes(r); return; }
 	if (!strcmp(p, "memory")) { api_memory(r); return; }
+	if (!strcmp(p, "memory/iam") && post) { api_memory_iam(r); return; }
 	if (!strcmp(p, "net")) { api_net(r); return; }
 	if (!strcmp(p, "disks")) { api_disks(r); return; }
 	/* the hardware check's download test (1.2.5): rudolf-update speedtest prints "bytes N" and "ms N" */

@@ -88,6 +88,17 @@ try:
     adj = sh("G=$(pgrep -f 'type=gpu-process' | head -1); B=$(cut -d' ' -f4 /proc/$G/stat); for p in $B $G $(pgrep -x rudolfd | head -1); do cat /proc/$p/oom_score_adj; done")
     v = re.findall(r'^(-?\d+)$', adj, re.M)
     ok('5. the desktop\'s browser, its graphics process and rudolfd are ended last (oom_score_adj below 0)', len(v) == 3 and all(int(x) < 0 for x in v), adj)
+    # the desktop page says which page process is its own (it keeps its processor busy for half a second at start)
+    dr = ''
+    for _ in range(20):
+        dr = sh("cat /run/rudolf/desktop-renderer 2>/dev/null | sed 's/^/DR /'")
+        m = re.search(r'^DR (\d+)', dr, re.M)
+        if m: break
+        time.sleep(6)
+    dpid = m.group(1) if m else ''
+    iam = js("JSON.stringify(window.__memIam||null)")
+    out('desktop page process:', dpid, iam)
+    ok('5b. the desktop page tells the memory guard which process is its own', dpid != '' and js("!!window.__memIam&&window.__memIam.pid==" + (dpid or '0')) is True, [dr, iam])
     # the test page, served in the guest
     sh("mkdir -p /tmp/hog && cat > /tmp/hog/index.html <<'EOF'\n" + HOG + "\nEOF\n(busybox httpd -p 127.0.0.1:8099 -h /tmp/hog &) ; sleep 1; wget -qO- http://127.0.0.1:8099/ | head -c 40")
     sh(': > /run/rudolf/memguard.log; rm -f /run/rudolf/memguard.events; wc -l < /run/rudolf/session.log > /tmp/sl0')
@@ -104,6 +115,9 @@ try:
         time.sleep(3)
     time.sleep(10); vm.shot('hog-ended')
     ok('6. the memory guard ended the test page when memory ran out', ended, samples[-3:])
+    ev = sh("cat /run/rudolf/memguard.events | sed 's/^/EV /'; [ -n '%s' ] && [ -d /proc/%s ] && echo DESKALIVE" % (dpid, dpid))
+    ended_pids = re.findall(r'^EV \d+ (\d+) ', ev, re.M)
+    ok('6b. ...not the desktop page\'s own process, which is still there', ended_pids and dpid not in ended_pids and 'DESKALIVE' in ev, ev)
     ok('7. the desktop kept responding (same page, never more than 30 s to answer)', js('window.__mark147===1') is True and worst < 30, worst)
     sl = sh("tail -n +$(( $(cat /tmp/sl0) + 1 )) /run/rudolf/session.log | grep -E 'restartin[g] browser|browse[r] exited|memory guar[d]' | sed 's/^/LOG /' | head")
     sl = '\n'.join(l[4:] for l in sl.split('\n') if l.startswith('LOG '))
