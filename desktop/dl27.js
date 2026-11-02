@@ -145,7 +145,12 @@ async function dlOpen(path){const v=node(path),nm=path.at(-1),e=ext(nm),i=dlRefI
   try{pre.textContent=await(await fetch(url)).text()}catch(x){pre.textContent='The file could not be read.'}return W}
  /* 1.4.8: a Linux app that opens this type (Wine for Windows programs), else say how to get one */
  const lx=typeof OPENERS!='undefined'&&OPENERS.find(o=>String(o[0]).startsWith('lx:')&&(()=>{try{return o[3](e,null)}catch(x){return false}})());if(lx)return dlLxOpen(lx,path);
- if(/^(EXE|MSI)$/.test(e))return dlInfo(path,'This is a Windows program. Rudolf OS runs Windows programs with Wine, inside Debian: set up Debian in Settings › Apps › Linux, then in the Linux Terminal type  sudo dpkg --add-architecture i386 && sudo apt update && sudo apt install wine wine32 wine64  — after that, Windows programs open with Wine.');
+ if(/^(EXE|MSI)$/.test(e)){const deb=typeof DEB!='undefined'&&DEB.st&&DEB.st.installed;
+  /* 1.4.9: one click: Install Wine (Debian is there), or Settings › Apps › Linux to set Debian up first */
+  const W=dlInfo(path,deb?'This is a Windows program. Rudolf OS runs Windows programs with Wine, which is not installed yet.':'This is a Windows program. Rudolf OS runs Windows programs with Wine, inside Debian: set up Debian first (Settings › Apps › Linux), then install Wine there.');
+  const bt=document.createElement('button');bt.textContent=deb?'Install Wine…':'Open Settings › Apps';bt.style.marginRight='6px';const m=W.body.querySelector('.m');
+  bt.onclick=async()=>{if(!deb){settings('apps');W.close();return}bt.disabled=true;if(typeof debInstallWine=='function'&&await debInstallWine(m)){bt.textContent='Open it with Wine';bt.disabled=false;bt.onclick=()=>{W.close();openPath(path)}}else bt.disabled=false};
+  W.body.querySelector('div').prepend(bt);return W}
  return dlInfo(path,e=='ZIP'?'Archive Manager opens archives up to 1.5 MB. Open this one in a Linux app from the Downloads folder.':'Rudolf OS has no app that opens this kind of file from the disk.')}
 /* (1.4.8) a file kept on the disk, opened by a Linux app: it is already on the disk, so the app gets its own path
    (lxOpenFile would copy the reference itself, as it does for the desktop's own files outside the shared folders) */

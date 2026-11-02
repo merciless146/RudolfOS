@@ -3,6 +3,13 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.4.9 (2026-11-02)
+Summary: Windows programs in a click: install Wine from Settings, and installed programs appear in the Start menu
+- New: Install Wine from Settings › Apps › Linux, or straight from a Windows program that cannot open yet. No Terminal commands are needed: it downloads about 1 GB and says when it is done.
+- New: Windows programs installed with Wine (games and their launchers) appear in the Start menu by themselves, with their own icons.
+- Fixed: programs that expect to start in their own folder (game launchers and updaters) are started there.
+- Fixed: Windows programs whose paths have backslashes (all of them) started with a wrong path from Wine's own menu entries.
+
 ## 1.4.8 (2026-11-02)
 Summary: Windows programs open with Wine, and Linux apps appear in the Start menu straight away
 - New: with Wine installed in Debian (Settings › Apps › Linux), Windows programs (.exe, .msi, .bat) open with it: double-click the file, or use Open with. Large downloads kept on the disk open the same way. Without Wine, opening a Windows program says how to get it.
