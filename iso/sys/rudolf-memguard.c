@@ -49,7 +49,7 @@
 #define EARLY 20                /* seconds: the pages a browser starts this early are the desktop's own */
 #define COOLDOWN 8
 
-struct proc { int pid, ppid; unsigned long long start; long long rss; char kind; /* r renderer, b browser (kiosk), w browser (web window), g gpu, n network, o other chrome, s system, 0 */ char ext; };
+struct proc { int pid, ppid; unsigned long long start; long long rss;   /* rss: in memory and in the swap */ char kind; /* r renderer, b browser (kiosk), w browser (web window), g gpu, n network, o other chrome, s system, 0 */ char ext; };
 static struct proc ps[MAXP];
 static int np, once, off;
 static long hz, pagesz;
@@ -109,8 +109,14 @@ static void scan(void)
 			else if (strstr(buf, "--rudolf-kiosk")) p->kind = 'b';
 			else if (strstr(buf, "--class=RudolfWeb")) p->kind = 'w';
 			else p->kind = 'o';
-			snprintf(path, sizeof path, "/proc/%d/statm", pid);
-			if (readf(path, buf, sizeof buf) > 0) { long long sz, res; if (sscanf(buf, "%lld %lld", &sz, &res) == 2) p->rss = res * pagesz; }
+			/* its memory: what is in memory and what is in the swap. Under memory pressure most of a large page's
+			   memory is in the (compressed) swap, so the memory in use alone makes it look small (1.4.7's first
+			   test: the page was not ended because it seemed to be under 200 MiB) */
+			snprintf(path, sizeof path, "/proc/%d/status", pid);
+			if (readf(path, buf, sizeof buf) > 0) {
+				const char *r = strstr(buf, "\nVmRSS:"), *w = strstr(buf, "\nVmSwap:");
+				p->rss = ((r ? atoll(r + 8) : 0) + (w ? atoll(w + 9) : 0)) * 1024;
+			}
 		} else if (!strcmp(name, "Xorg") || !strcmp(name, "Xvfb") || !strcmp(name, "rudolf-display") || !strcmp(name, "rudolfd") || !strcmp(name, "rudolf-launch") || !strcmp(name, "rudolf-memguard")) p->kind = 's';
 		np++;
 	}
@@ -210,7 +216,18 @@ int main(int argc, char **argv)
 		if (now - last_protect >= 5 || crit) { scan(); protect(); last_protect = now; }
 		if (!crit || off || now - last_kill < COOLDOWN) continue;
 		struct proc *v = victim();
-		if (!v) { if (now - last_kill >= 30) { logf_("no web page to end (the desktop itself, or a program, holds the memory)"); last_kill = now; } continue; }
+		if (!v) {
+			if (now - last_kill >= 30) {
+				/* say what holds the memory: the largest page renderer, and why it was left alone */
+				struct proc *big = NULL, *b;
+				for (int i = 0; i < np; i++) if (ps[i].kind == 'r' && (!big || ps[i].rss > big->rss)) big = &ps[i];
+				if (big) logf_("no web page to end: the largest page renderer (%d, %lld MiB) is %s", big->pid, big->rss >> 20,
+					big->ext ? "an extension" : !(b = browser_of(big)) ? "not in a browser" : desktop_own(big, b) ? "the desktop's own" : "under 200 MiB");
+				else logf_("no web page to end (no page renderers: a program holds the memory)");
+				last_kill = now;
+			}
+			continue;
+		}
 		if (kill(v->pid, SIGKILL) == 0) {
 			logf_("ended the largest web page (renderer %d, %lld MiB) to free memory", v->pid, v->rss >> 20);
 			char l[96]; int n = snprintf(l, sizeof l, "%lld %d %lld\n", (long long)now, v->pid, v->rss);
