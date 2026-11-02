@@ -514,7 +514,7 @@ static int dkey(const char *line, const char *k, char *out, size_t n)
 	size_t kl = strlen(k); if (strncmp(line, k, kl) || line[kl] != '=') return 0;
 	snprintf(out, n, "%s", line + kl + 1); size_t l = strlen(out); while (l && (out[l - 1] == '\n' || out[l - 1] == '\r')) out[--l] = 0; return 1;
 }
-typedef struct { char name[160], exec[600], icon[200], cls[120], mime[600], cats[200]; int hidden, term; } desk;
+typedef struct { char name[160], exec[600], icon[200], cls[120], mime[600], cats[200]; int hidden, term, nodisp; } desk;
 static int read_desk(const char *path, desk *d)
 {
 	memset(d, 0, sizeof *d); FILE *f = fopen(path, "r"); if (!f) return -1;
@@ -526,7 +526,7 @@ static int read_desk(const char *path, desk *d)
 		else if (dkey(l, "Exec", d->exec, sizeof d->exec)) {} else if (dkey(l, "Icon", d->icon, sizeof d->icon)) {}
 		else if (dkey(l, "StartupWMClass", d->cls, sizeof d->cls)) {} else if (dkey(l, "MimeType", d->mime, sizeof d->mime)) {}
 		else if (dkey(l, "Categories", d->cats, sizeof d->cats)) {}
-		else if (dkey(l, "NoDisplay", v, sizeof v) && !strcmp(v, "true")) d->hidden = 1;
+		else if (dkey(l, "NoDisplay", v, sizeof v) && !strcmp(v, "true")) d->nodisp = 1;
 		else if (dkey(l, "Hidden", v, sizeof v) && !strcmp(v, "true")) d->hidden = 1;
 		else if (dkey(l, "Terminal", v, sizeof v) && !strcmp(v, "true")) d->term = 1;
 		else if (dkey(l, "Type", v, sizeof v) && strcmp(v, "Application")) d->hidden = 1;
@@ -549,30 +549,41 @@ static int find_icon(const char *icon, char *out, size_t n)
 	snprintf(out, n, ROOT "/usr/share/pixmaps/%s.svg", icon); if (!access(out, R_OK)) return 1;
 	snprintf(out, n, ROOT "/usr/share/pixmaps/%s.xpm", icon); return !access(out, R_OK);
 }
+/* the folders launchers are read from: Debian's menu, and (1.4.8) Wine's own folder, where Debian keeps the "Wine
+   Windows Program Loader" (wine.desktop: opens .exe, .msi and .bat files; kept out of menus) */
+static const char *const APPDIRS[] = { "/usr/share/applications", "/usr/share/wine/applications", NULL };
 static int cmd_apps(void)
 {
-	printf("{\"ok\":true,\"apps\":[");
-	DIR *d = installed() ? opendir(ROOT "/usr/share/applications") : NULL; struct dirent *e; int first = 1;
+	printf("{\"ok\":true,\"apps\":["); int first = 1;
+	for (int di = 0; APPDIRS[di] && installed(); di++) {
+	char dp[256]; snprintf(dp, sizeof dp, ROOT "%s", APPDIRS[di]);
+	DIR *d = opendir(dp); struct dirent *e;
 	while (d && (e = readdir(d))) {
 		size_t l = strlen(e->d_name); if (l < 9 || strcmp(e->d_name + l - 8, ".desktop")) continue;
-		char p[512]; snprintf(p, sizeof p, ROOT "/usr/share/applications/%s", e->d_name);
+		char p[512]; snprintf(p, sizeof p, "%s/%s", dp, e->d_name);
+		if (di) { char q[512]; snprintf(q, sizeof q, ROOT "/usr/share/applications/%s", e->d_name); if (!access(q, F_OK)) continue; }   /* the menu's own wins */
 		desk k; if (read_desk(p, &k) || k.hidden || k.term) continue;
+		/* 1.4.8: a launcher kept out of menus (NoDisplay) still opens its file types: Wine's "Windows Program
+		   Loader" opens .exe and .msi files. It is listed with "menu":false (Open with only, not the Start menu). */
+		if (k.nodisp && !k.mime[0]) continue;
 		char id[256]; snprintf(id, sizeof id, "%.*s", (int)(l - 8), e->d_name);
 		char ic[600]; int hi = find_icon(k.icon, ic, sizeof ic);
 		printf("%s{\"id\":", first ? "" : ","); jstr(stdout, id);
 		printf(",\"name\":"); jstr(stdout, k.name); printf(",\"wmclass\":"); jstr(stdout, k.cls);
 		printf(",\"mime\":"); jstr(stdout, k.mime); printf(",\"categories\":"); jstr(stdout, k.cats);
-		printf(",\"icon\":"); jstr(stdout, hi ? ic : ""); printf("}");
+		printf(",\"icon\":"); jstr(stdout, hi ? ic : ""); printf(",\"menu\":%s}", k.nodisp ? "false" : "true");
 		first = 0;
 	}
 	if (d) closedir(d);
+	}
 	printf("]}\n"); return 0;
 }
 static int cmd_launch(const char *id, const char *file)
 {
 	for (const char *c = id; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("._-+", *c)) die("bad app id");
-	char p[512]; snprintf(p, sizeof p, ROOT "/usr/share/applications/%s.desktop", id);
-	desk k; if (read_desk(p, &k)) die("no such app");
+	char p[512]; desk k; int found = 0;
+	for (int di = 0; APPDIRS[di] && !found; di++) { snprintf(p, sizeof p, ROOT "%s/%s.desktop", APPDIRS[di], id); found = !read_desk(p, &k); }
+	if (!found) die("no such app");
 	/* Exec= split into words; %f %F %u %U become the file (if any), other field codes are dropped */
 	char *argv[64]; int n = 0; char *s = k.exec;
 	static char words[64][600];

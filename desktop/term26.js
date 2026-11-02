@@ -12,7 +12,7 @@ function debLib(){if(window.Terminal&&window.FitAddon)return Promise.resolve();
 /* ---------- Debian's graphical apps, listed with the Flatpak ones ---------- */
 async function debApps(){if(!RD)return[];if(!DEB.st)await debStatus();if(!DEB.st||!DEB.st.installed){if(DEB.apps.length){DEB.apps=[];svj(DEB_AK,[]);lxRegister()}return[]}
  try{const j=await lxApi('debian/apps');const a=j.apps||[];const ch=JSON.stringify(a)!=JSON.stringify(DEB.apps);DEB.apps=a;DEB.appsAt=Date.now();if(ch){svj(DEB_AK,a);lxRegister()}}catch(e){}return DEB.apps}
-{const _l=lxLaunchers;lxLaunchers=function(){const own=_l();const d=(DEB.apps.length?DEB.apps:ld(DEB_AK,[])).map(a=>({desktop:'deb-'+a.id,name:a.name,icon:a.icon,mime:a.mime,wmclass:a.wmclass,cats:a.categories,comment:'Debian',app:'deb:'+a.id,deb:a.id}));return own.concat(d)}}
+{const _l=lxLaunchers;lxLaunchers=function(){const own=_l();const d=(DEB.apps.length?DEB.apps:ld(DEB_AK,[])).map(a=>({desktop:'deb-'+a.id,name:a.name,icon:a.icon,mime:a.mime,wmclass:a.wmclass,cats:a.categories,comment:'Debian',app:'deb:'+a.id,deb:a.id,menu:a.menu!==false}));return own.concat(d)}}
 {const _r=lxRun;lxRun=async function(x,file){if(!x.deb)return _r(x,file);if(!RD)return;
  try{await lxApi('debian/launch?id='+encodeURIComponent(x.deb)+(file?'&file='+encodeURIComponent(file):''));if(!lxRun.toldDeb){lxRun.toldDeb=1;notify('Starting '+x.name+'…','It opens above the desktop in a moment; its taskbar button switches back to it.')}}catch(e){notify(x.name,e.message,{kind:'error'})}}}
 {const _i=lxImg;lxImg=function(el,id,icon){if(!String(id).startsWith('deb:'))return _i(el,id,icon);if(!icon)return;const k='deb|'+icon;
@@ -141,3 +141,9 @@ async function debAutoUpdate(){if(!RD||!USER||window.LOCKED||DEB.open>0||!ld('bd
  const st=await debStatus();if(!st||!st.installed||!navigator.onLine)return;try{const j=await rd('job');if(j.running)return}catch(e){return}
  try{await lxApi('debian/update')}catch(e){return}svj('bd95debupd',Date.now());await lxJobWait();debApps()}
 if(RD){(function(){const o=window.__afterLogin;window.__afterLogin=()=>{o&&o();setTimeout(debApps,2500)}})();setTimeout(debAutoUpdate,20*60e3);setInterval(debAutoUpdate,3*3600e3)}
+
+/* 1.4.8: the Start menu checks Debian's apps each time it opens (at most every 10 s). Before, apps added outside the
+   Linux Terminal (by another program, or over the development link) only appeared after a sign-in or once the
+   Terminal had been opened. */
+if(RD){(function(){const m=document.getElementById('menu');if(!m)return;let was=false;
+ new MutationObserver(()=>{const vis=m.style.display!='none'&&m.offsetParent!==null;if(vis&&!was&&USER&&Date.now()-(DEB.appsAt||0)>10000)debApps();was=vis}).observe(m,{attributes:true,attributeFilter:['style','class']})})()}

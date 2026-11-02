@@ -26,7 +26,7 @@ function lxRegister(){Object.keys(APPS).filter(k=>k.startsWith('lx:')).forEach(k
 async function lxRun(x,file){if(!RD)return;try{await lxApi('apps/run?id='+encodeURIComponent(x.app)+'&desktop='+encodeURIComponent(x.desktop)+(file?'&file='+encodeURIComponent(file):''));
  if(!lxRun.told){lxRun.told=1;notify('Starting '+x.name+'…','It opens above the desktop in a moment. Click the desktop part of the taskbar (or press Super+Esc) to come back; its taskbar button brings it back.')}}catch(e){notify(x.name,e.message,{kind:'error'})}}
 {const _sma=startMenuApps;startMenuApps=function(){_sma();const ul=$('#menu ul');if(!ul)return;ul.querySelectorAll('li.lxv').forEach(x=>x.remove());
- const ls=lxLaunchers().sort((a,b)=>a.name.localeCompare(b.name));if(!ls.length)return;const before=ul.querySelector('li[data-a=settings]')||ul.querySelector('li[data-a=run]');
+ const ls=lxLaunchers().filter(x=>x.menu!==false).sort((a,b)=>a.name.localeCompare(b.name));if(!ls.length)return;const before=ul.querySelector('li[data-a=settings]')||ul.querySelector('li[data-a=run]');
  ls.forEach(x=>{const li=document.createElement('li');li.className='lxv';li.tabIndex=0;li.title=x.comment||x.name;li.innerHTML=`<span class='lxmi'>🐧</span> ${lxEsc(x.name)}`;lxImg(li.querySelector('.lxmi'),x.app,x.icon);
   li.onclick=e=>{e.stopPropagation();$('#menu').style.display='none';lxRun(x)};li.onkeydown=e=>{if(e.key=='Enter')li.click()};ul.insertBefore(li,before)})}}
 /* ---------- Open with: apps whose launcher declares the file type ---------- */
@@ -35,8 +35,11 @@ const LX_MIME={txt:'text/plain',md:'text/markdown',csv:'text/csv',htm:'text/html
  xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',ods:'application/vnd.oasis.opendocument.spreadsheet',
  ppt:'application/vnd.ms-powerpoint',pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',odp:'application/vnd.oasis.opendocument.presentation',pdf:'application/pdf',
  png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',bmp:'image/bmp',webp:'image/webp',svg:'image/svg+xml',tif:'image/tiff',tiff:'image/tiff',xcf:'image/x-xcf',ico:'image/vnd.microsoft.icon',
+ exe:'application/x-ms-dos-executable',msi:'application/x-msi',lnk:'application/x-ms-shortcut',bat:'application/x-bat',
  mp3:'audio/mpeg',wav:'audio/x-wav',ogg:'audio/ogg',flac:'audio/flac',m4a:'audio/mp4',mp4:'video/mp4',mkv:'video/x-matroska',webm:'video/webm',avi:'video/x-msvideo',mov:'video/quicktime',zip:'application/zip'};
-function lxHandles(x,e){const m=LX_MIME[String(e||'').toLowerCase()];if(!m||!x.mime)return false;return x.mime.split(';').some(t=>t&&(t==m||(t.endsWith('/*')&&m.startsWith(t.slice(0,-1)))))}
+/* (1.4.8) other names the same file types go by in launchers */
+const LX_MIME_ALIAS={'application/x-ms-dos-executable':['application/x-msdownload','application/vnd.microsoft.portable-executable','application/x-dosexec','application/x-msdos-program']};
+function lxHandles(x,e){const m=LX_MIME[String(e||'').toLowerCase()];if(!m||!x.mime)return false;const ms=[m,...(LX_MIME_ALIAS[m]||[])];return x.mime.split(';').some(t=>t&&ms.some(m=>t==m||(t.endsWith('/*')&&m.startsWith(t.slice(0,-1)))))}
 function lxOpeners(){if(typeof OPENERS=='undefined')return;for(let i=OPENERS.length;i--;)if(String(OPENERS[i][0]).startsWith('lx:'))OPENERS.splice(i,1);
  lxLaunchers().filter(x=>x.mime).forEach(x=>OPENERS.push(['lx:'+x.desktop,x.name+' (Linux app)','🐧',e=>lxHandles(x,e),p=>lxOpenFile(x,p)]))}
 async function lxOpenFile(x,path){const real=lxRealPath(path);
