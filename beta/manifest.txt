@@ -1,5 +1,5 @@
 rudolf-system 1
-serial 2026110209
+serial 2026110211
 version 1.4.8.261102
 released 2026-11-02
 expires 2026-11-16
@@ -7,12 +7,12 @@ urgent 0
 chromium 156.0.8078.47
 kernel 6.18.60-rudolf
 notes 1.4.8: Windows programs open with Wine, and Linux apps appear in the Start menu straight away
-L	vmlinuz	10975864	4a575fdd8f6d95b21fb770849e85fcf3a30325d506bbc5cc7ab33428ca7e359f	https://github.com/merciless146/RudolfOS/releases/download/r2026110209/vmlinuz
-L	base	205795328	ff48a1de8f4c01d2ce78cc08684baa93a805a5e034a69bc0d65f638647dab117	https://github.com/merciless146/RudolfOS/releases/download/r2026110209/base.sfs
-L	chromium	131956736	8d967108b9b1348c3e4eec9487c76906af2c3869517339709e831424d00b5d38	https://github.com/merciless146/RudolfOS/releases/download/r2026110209/chromium.sfs
-L	desktop	26386432	6e1716e11812ef476f600303699febe2a2633b574d222a9e4b596c4eedd81df7	https://github.com/merciless146/RudolfOS/releases/download/r2026110209/desktop.sfs
-L	modules	78237696	df54bede9329f60f1cbe021fe71c0c8bbd5943bcf014d64d549b3ac8d3a689ce	https://github.com/merciless146/RudolfOS/releases/download/r2026110209/modules.sfs
-V	base	49848	475b0c7f098a05638549f50a50c10c604f26e49e82b7a04e00858d1db3d3e65b	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
+L	vmlinuz	10975864	4a575fdd8f6d95b21fb770849e85fcf3a30325d506bbc5cc7ab33428ca7e359f	https://github.com/merciless146/RudolfOS/releases/download/r2026110211/vmlinuz
+L	base	205795328	969ed4e4ce4115a26bdef68742b331a4aca59c494e5fc886acb123644d97110d	https://github.com/merciless146/RudolfOS/releases/download/r2026110211/base.sfs
+L	chromium	131956736	8d967108b9b1348c3e4eec9487c76906af2c3869517339709e831424d00b5d38	https://github.com/merciless146/RudolfOS/releases/download/r2026110211/chromium.sfs
+L	desktop	26386432	dc8c9268dc5e8a0547889c523edd249b03afd9193ae85613eb1e7280731762f3	https://github.com/merciless146/RudolfOS/releases/download/r2026110211/desktop.sfs
+L	modules	78237696	df54bede9329f60f1cbe021fe71c0c8bbd5943bcf014d64d549b3ac8d3a689ce	https://github.com/merciless146/RudolfOS/releases/download/r2026110211/modules.sfs
+V	base	49848	af1f832511f45e299b0f7a2b8b6fcee7d0fdc98c36ba651578e944a49e33ea2d	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
 V	chromium	31963	6abd580b77e4cd8b887fabb4581d76d915f2cacdb6d51a44b66225aa7f70333d	da3143e0b76e95a8fb9b20d6cd921581143496db9de69f0900a337920b32f7f8
-V	desktop	6391	d2c7de8021b2a68042cca48907d0798ce5a1d6c528d5b0025260282dec2f3e54	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
+V	desktop	6391	92b6b90373253536458caea5e7878cfe728f38809d50b7b8af6361e555bf7212	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
 V	modules	18949	5e8c78e81102d25671db377fae629efa055ce12138e1ac365c34bcb59db5522e	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
