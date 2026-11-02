@@ -112,7 +112,8 @@ try:
     # watch: the desktop answers, memory, what the guard did; up to 15 minutes (QEMU emulates the processor: slow)
     t0 = time.time(); worst = 0; ended = False; samples = []
     while time.time() - t0 < 900:
-        a = time.time(); r = g.js('window.__mark147===1', 90); dt = time.time() - a; worst = max(worst, dt)
+        # (counts as activity: Rudolf OS locks the screen after a few minutes without input, which hides the windows)
+        a = time.time(); r = g.js('(typeof lastInput!="undefined"&&(lastInput=Date.now()),window.__mark147===1)', 90); dt = time.time() - a; worst = max(worst, dt)
         st = sh("awk '/MemAvailable|SwapFree/{printf \"%s %d MB  \", $1, $2/1024}' /proc/meminfo; cat /proc/pressure/memory | head -1; tail -2 /run/rudolf/memguard.log", 60)
         samples.append((round(time.time() - t0), round(dt, 1), r)); out(f'{round(time.time()-t0)}s desktop answered in {dt:.1f}s ({r}) | {st.strip()}')
         if 'ended the largest web page' in st: ended = True; break
