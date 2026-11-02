@@ -10,9 +10,9 @@
  *     on memory), and the swap (if any) nearly full; or the system stalled on memory (PSI "full") over 30% of the
  *     last 10 s for 3 s in a row with under 15% left
  *   - then it ends (SIGKILL) the renderer process of the largest web page: a tab in Oracle (a Controlled Frame), or a
- *     page in the browser window for sign-in sites. Never the desktop itself: the shell (the Isolated Web App) and the
- *     desktop page are the first pages the desktop's browser starts (within 20 s of its first), and they are left alone, as
- *     are Chromium's other processes, the graphics process and the system. Pages under 200 MiB are left alone too.
+ *     page in the browser window for sign-in sites, or one no browser holds any more. Never the desktop page itself
+ *     (it says which process it is: /run/rudolf/desktop-renderer), nor Chromium's other processes, the graphics
+ *     process or the system. Pages under 200 MiB are left alone too.
  *     Oracle then shows "This page was closed because it used too much memory" with a Reload button.
  *   - after ending one it waits 8 s (the memory takes a moment to come back) before it looks again
  * It also tells the kernel which processes to end last if the kernel has to step in itself (oom_score_adj): the
@@ -46,7 +46,6 @@
 #define RUN "/run/rudolf"
 #define MAXP 4096
 #define MIN_RSS (200LL << 20)   /* pages smaller than this are left alone */
-#define EARLY 20                /* seconds: the pages a browser starts this early are the desktop's own */
 #define COOLDOWN 8
 
 struct proc { int pid, ppid; unsigned long long start; long long rss;   /* rss: in memory and in the swap */ char kind; /* r renderer, b browser (kiosk), w browser (web window), g gpu, n network, o other chrome, s system, 0 */ char ext; };
@@ -129,16 +128,17 @@ static struct proc *browser_of(struct proc *p)
 	for (int k = 0; k < 6 && p; k++) { if (p->kind == 'b' || p->kind == 'w') return p; p = find(p->ppid); }
 	return NULL;
 }
-/* the desktop's own pages (the shell and the desktop page): the first pages the desktop's browser starts, so the
-   renderers started within EARLY seconds of its oldest living page renderer (on a slow computer the browser itself may
-   start well before them) */
-static int desktop_own(struct proc *p, struct proc *b)
+/* the desktop's own page process: the desktop page says which it is each time it loads (rudolfd /api/memory/iam: it
+   keeps its processor busy for half a second, and the page process that used that time is the desktop's). Chromium
+   does not say which process holds which page, and a start-time rule failed: Chromium starts a spare page process
+   early and gives it to the next tab (1.4.7's QEMU test: the test page was taken for the desktop's own). The shell
+   (the Isolated Web App) and the spare process are small, so as the largest they are never ended either. */
+static int desktop_pid(void)
 {
-	if (b->kind != 'b') return 0;
-	unsigned long long first = ~0ULL;
-	for (int i = 0; i < np; i++) if (ps[i].kind == 'r' && !ps[i].ext && ps[i].start < first && browser_of(&ps[i]) == b) first = ps[i].start;
-	return p->start - first < (unsigned long long)EARLY * hz;
+	static char b[32]; if (readf(RUN "/desktop-renderer", b, sizeof b) <= 0) return 0;
+	return atoi(b);
 }
+static int desktop_own(struct proc *p, struct proc *b) { (void)b; int d = desktop_pid(); return d > 0 && p->pid == d; }
 static void set_adj(int pid, int adj)
 {
 	char path[64], cur[16], v[16]; snprintf(path, sizeof path, "/proc/%d/oom_score_adj", pid);
@@ -154,18 +154,18 @@ static void protect(void)
 		case 's': set_adj(p->pid, -900); break;
 		case 'b': set_adj(p->pid, -800); break;
 		case 'g': case 'n': if ((b = browser_of(p)) && b->kind == 'b') set_adj(p->pid, -700); break;
-		case 'r': if (!p->ext && (b = browser_of(p)) && desktop_own(p, b)) set_adj(p->pid, 0); break;
+		case 'r': if (desktop_own(p, NULL)) set_adj(p->pid, 0); break;
 		}
 	}
 }
-/* the largest web page that may be ended, or NULL */
+/* the largest web page that may be ended, or NULL: any page process but the desktop's own, also one that no browser
+   holds any more (left behind when the browser was restarted: it only holds memory) */
 static struct proc *victim(void)
 {
 	struct proc *best = NULL;
 	for (int i = 0; i < np; i++) {
-		struct proc *p = &ps[i], *b;
-		if (p->kind != 'r' || p->ext || p->rss < MIN_RSS || !(b = browser_of(p))) continue;
-		if (desktop_own(p, b)) continue;   /* the shell, the desktop page */
+		struct proc *p = &ps[i];
+		if (p->kind != 'r' || p->ext || p->rss < MIN_RSS || desktop_own(p, NULL)) continue;
 		if (!best || p->rss > best->rss) best = p;
 	}
 	return best;
@@ -183,7 +183,7 @@ int main(int argc, char **argv)
 		printf("memory: %lld MiB available of %lld MiB, stall %.1f%%\n", avail >> 20, total >> 20, psi_full10());
 		for (int i = 0; i < np; i++) { struct proc *p = &ps[i], *b; if (p->kind != 'r') continue; b = browser_of(p);
 			printf("renderer %d: %lld MiB%s%s%s\n", p->pid, p->rss >> 20, p->ext ? " (extension)" : "", !b ? " (no browser)" : b->kind == 'w' ? " (web window)" : "",
-				b && desktop_own(p, b) ? " (the desktop's own: kept)" : ""); }
+				desktop_own(p, NULL) ? " (the desktop's own: kept)" : ""); }
 		struct proc *v = victim(); if (v) printf("would end: %d (%lld MiB)\n", v->pid, v->rss >> 20); else printf("would end: none\n");
 		return 0;
 	}
@@ -219,10 +219,10 @@ int main(int argc, char **argv)
 		if (!v) {
 			if (now - last_kill >= 30) {
 				/* say what holds the memory: the largest page renderer, and why it was left alone */
-				struct proc *big = NULL, *b;
+				struct proc *big = NULL;
 				for (int i = 0; i < np; i++) if (ps[i].kind == 'r' && (!big || ps[i].rss > big->rss)) big = &ps[i];
 				if (big) logf_("no web page to end: the largest page renderer (%d, %lld MiB) is %s", big->pid, big->rss >> 20,
-					big->ext ? "an extension" : !(b = browser_of(big)) ? "not in a browser" : desktop_own(big, b) ? "the desktop's own" : "under 200 MiB");
+					big->ext ? "an extension" : desktop_own(big, NULL) ? "the desktop's own" : "under 200 MiB");
 				else logf_("no web page to end (no page renderers: a program holds the memory)");
 				last_kill = now;
 			}

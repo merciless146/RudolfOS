@@ -12121,6 +12121,16 @@ function memShow(t,o){
 function memGone(t,why,o){
  if(t.memChk)return;t.memChk=1;
  memWasGuard(why).then(yes=>{t.memChk=0;if(yes)memShow(t,o)})}
+/* the memory guard must never end the desktop page itself, and Chromium does not say which process holds it: so the
+   desktop says so, each time it loads. rudolfd notes every page process's processor time, the desktop keeps its
+   processor busy for half a second, and the page process that used that time is the desktop's
+   (/run/rudolf/desktop-renderer). Tried up to 3 times, when the desktop has settled. */
+async function memIam(n){
+ if(typeof RD=='undefined'||!RD)return;
+ try{await rdPost('memory/iam?step=start');const t=performance.now();let x=0;while(performance.now()-t<600)x+=Math.sqrt(x+1);
+  const r=await rdPost('memory/iam?step=end');window.__memIam=r;if(r&&r.ok)return}catch(e){}
+ if((n||0)<2)setTimeout(()=>memIam((n||0)+1),20000)}
+setTimeout(()=>memIam(0),15000);
 
 /* Rudolf OS 1.4.7: the desktop's fonts (Settings › Display Properties › Font).
    Before, the list offered Windows fonts that Rudolf OS does not have (Tahoma, Verdana, Trebuchet MS, Georgia,
