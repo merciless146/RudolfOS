@@ -84,8 +84,8 @@ try:
     ok('2. compressed swap in memory is on (zram, zstd, half the memory)', re.search(r'zram: on, \d+ MiB, zstd', m) and '/dev/zram0' in m, m)
     ok('3. the kernel ends a process instead of thrashing (lru_gen min_ttl_ms 1000), memory pressure (PSI) is there', re.search(r'^1000$', m, re.M) and 'memory' in m, m)
     ok('4. the memory guard runs', re.search(r'^\d+$', m.split('memory\n', 1)[-1], re.M) is not None, m)
-    # the browser itself: a process named chrome with --rudolf-kiosk and no --type= (not the su that starts it)
-    adj = sh("B=$(for p in $(pgrep -x chrome); do tr '\\0' ' ' < /proc/$p/cmdline | grep -q -- '--rudolf-kiosk' && ! tr '\\0' ' ' < /proc/$p/cmdline | grep -q -- '--type=' && echo $p; done | head -1); for p in $B $(pgrep -f 'type=gpu-process' | head -1) $(pgrep -x rudolfd | head -1); do cat /proc/$p/oom_score_adj; done")
+    # the browser itself: the parent of its graphics process
+    adj = sh("G=$(pgrep -f 'type=gpu-process' | head -1); B=$(cut -d' ' -f4 /proc/$G/stat); for p in $B $G $(pgrep -x rudolfd | head -1); do cat /proc/$p/oom_score_adj; done")
     v = re.findall(r'^(-?\d+)$', adj, re.M)
     ok('5. the desktop\'s browser, its graphics process and rudolfd are ended last (oom_score_adj below 0)', len(v) == 3 and all(int(x) < 0 for x in v), adj)
     # the test page, served in the guest
@@ -111,7 +111,7 @@ try:
     ok('8. the browser was not restarted (no watchdog restart)', 'restarting browser' not in sl and 'browser exited' not in sl, sl)
     page = js("(()=>{const W=wins.at(-1);const f=[...W.el.querySelectorAll('iframe')].find(f=>/used too much memory/.test(f.srcdoc||''));return !!f&&getComputedStyle(f).display!='none'})()")
     ok('9. Oracle shows "This page was closed because it used too much memory" in the tab', page is True, page)
-    note = js("document.body.innerText.includes('Page closed to free memory')||JSON.stringify(typeof NOTIFS!='undefined'?NOTIFS:'').includes('free memory')")
+    note = js("NC.some(n=>n.t=='Page closed to free memory'&&/Memory hog/.test(n.b))")
     ok('10. ...and a notification says so', note is True, note)
     js("wins.at(-1).el.dispatchEvent(new KeyboardEvent('keydown',{key:'F5',bubbles:true}));1"); time.sleep(20); vm.shot('hog-reloaded')
     rel = js("(()=>{const W=wins.at(-1);const f=[...W.el.querySelectorAll('iframe')].find(f=>/used too much memory/.test(f.srcdoc||''));return [!f||getComputedStyle(f).display=='none',W.el.innerText.includes('reloaded')||document.title]})()")
