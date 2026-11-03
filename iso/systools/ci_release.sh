@@ -83,7 +83,7 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 		FW=$W/linux-firmware
 		for u in https://gitlab.com/kernel-firmware/linux-firmware.git https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git; do
 			rm -rf "$FW"; git clone -q --depth 1 --filter=blob:none --no-checkout "$u" "$FW" || continue
-			git -C "$FW" sparse-checkout set --no-cone /WHENCE '/rtl_nic/' '/amd-ucode/' '/nvidia/*/gsp/*-570.144.bin' /htc_9271.fw /htc_7010.fw '/ath9k_htc/' /mediatek/mt7601u.bin /mediatek/mt7610u.bin /mediatek/mt7662.bin /mediatek/mt7662_rom_patch.bin && git -C "$FW" checkout -q && break
+			git -C "$FW" sparse-checkout set --no-cone /WHENCE '/rtl_nic/' '/amd-ucode/' '/nvidia/*/gsp/*-570.144.bin' /htc_9271.fw /htc_7010.fw '/ath9k_htc/' /mediatek/mt7601u.bin /mediatek/mt7610u.bin /mediatek/mt7662.bin /mediatek/mt7662_rom_patch.bin '/rtl_bt/' '/mediatek/BT_RAM_CODE_*' '/intel/ibt-*' && git -C "$FW" checkout -q && break
 		done
 	fi
 	rm -rf "$W/fw"; python3 systools/fwextra.py copy firmware-extra.txt "$FW" "$W/fw"
@@ -162,6 +162,14 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		NOTES+=("X server with GLX")
 	fi
 	# 1.5.0: the firewall (nft) and file encryption on RUDOLFDATA (tune2fs -O encrypt), with the libraries they need
+	# 1.5.1: Bluetooth: BlueZ (bluetoothd, bluetoothctl) and bluez-alsa (headphones: the daemon and its ALSA plug-in),
+	# from this Ubuntu 24.04, with the libraries the base layer lacks
+	BTF=$(for p in bluez bluez-alsa-utils libasound2-plugin-bluez; do dpkg -L $p; done 2>/dev/null | grep -E '/(bluetoothd|bluetoothctl|bluealsa|bluealsad)$|alsa-lib/libasound_module_(pcm|ctl)_bluealsa\.so$|alsa/alsa\.conf\.d/[^/]*bluealsa[^/]*\.conf$')
+	echo "$BTF" | grep -q '/bluetoothd$' && echo "$BTF" | grep -q '/bluetoothctl$' && echo "$BTF" | grep -qE '/bluealsad?$' || { echo "BlueZ or bluez-alsa is missing on the build machine (apt-get install bluez bluez-alsa-utils libasound2-plugin-bluez): $BTF"; exit 1; }
+	for x in $BTF; do [ -f "$x" ] || continue; sudo mkdir -p "$W/broot$(dirname "$x")"; sudo cp -L "$x" "$W/broot$x"
+		case "$x" in *.conf) continue;; esac
+		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/x86_64-linux-gnu/"; done
+	done
 	for x in /usr/sbin/nft /usr/sbin/tune2fs; do
 		[ -x "$x" ] || { echo "$x is missing on the build machine (apt-get install nftables e2fsprogs)"; exit 1; }
 		sudo install -m 0755 "$x" "$W/broot/usr/sbin/${x##*/}"

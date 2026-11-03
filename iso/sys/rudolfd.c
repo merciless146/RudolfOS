@@ -2610,7 +2610,7 @@ static void api_devlink(struct req *r, const char *what, int post)
 static void health_path(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/health.log" : PERSIST "/var/log/health.log"); }
 static int health_kind_ok(const char *k)
 {
-	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", NULL };
+	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", NULL };
 	for (int i = 0; K[i]; i++) if (k && !strcmp(k, K[i])) return 1;
 	return 0;
 }
@@ -2933,6 +2933,42 @@ static void api_remote(struct req *r, const char *what, int post)
 	sadd(&s, ",\"devices\":%d}", nd);
 	reply_json(r->fd, &s);
 }
+/* ------------------------------------------------------------- 1.5.1: Bluetooth (/usr/lib/rudolf/bluetooth: BlueZ)
+ * GET bt: the adapter and the devices (paired or found); POST bt/power?on=1|0, bt/scan?s=SECONDS (the answer comes
+ * when the search is over), bt/pair|connect|disconnect|remove?mac=AA:BB:..; pairings and their ends go into the
+ * health log (the device's name only). */
+static int bt_mac_ok(const char *m) { if (!m || strlen(m) != 17) return 0; for (int i = 0; i < 17; i++) { if (i % 3 == 2) { if (m[i] != ':') return 0; } else if (!isxdigit((unsigned char)m[i]) || islower((unsigned char)m[i])) return 0; } return 1; }
+static void api_bt(struct req *r, const char *what, int post)
+{
+	char cmd[200];
+	if (!post) { reply_cmd_json(r, "/usr/lib/rudolf/bluetooth status 2>/dev/null", "Bluetooth is not available"); return; }
+	if (!strcmp(what, "power")) {
+		char *on = qparam(r->query, "on"); if (!on || (strcmp(on, "1") && strcmp(on, "0"))) { reply_err(r->fd, 400, "on=1 or on=0"); return; }
+		run(*on == '1' ? "/usr/lib/rudolf/bluetooth on >/dev/null 2>&1" : "/usr/lib/rudolf/bluetooth off >/dev/null 2>&1");
+		reply_cmd_json(r, "/usr/lib/rudolf/bluetooth status 2>/dev/null", "Bluetooth is not available"); return;
+	}
+	if (!strcmp(what, "scan")) {
+		char *sv = qparam(r->query, "s"); int sec = sv ? atoi(sv) : 15; if (sec < 3 || sec > 60) sec = 15;
+		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/bluetooth scan %d >/dev/null 2>&1", sec); run(cmd);
+		reply_cmd_json(r, "/usr/lib/rudolf/bluetooth status 2>/dev/null", "Bluetooth is not available"); return;
+	}
+	if (!strcmp(what, "pair") || !strcmp(what, "connect") || !strcmp(what, "disconnect") || !strcmp(what, "remove")) {
+		char *m = qparam(r->query, "mac"); if (!bt_mac_ok(m)) { reply_err(r->fd, 400, "bad device"); return; }
+		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/bluetooth %s %s 2>&1", what, m);
+		char *o = run_out(cmd); if (o) trim(o);
+		char *st = run_out("/usr/lib/rudolf/bluetooth status 2>/dev/null");
+		/* did it work: the device's state now */
+		char key[40]; snprintf(key, sizeof key, "\"mac\":\"%s\"", m); char *d = st ? strstr(st, key) : NULL; char *de = d ? strchr(d, '}') : NULL;
+		int paired = d && de && strstr(d, "\"paired\":true") && strstr(d, "\"paired\":true") < de, conn = d && de && strstr(d, "\"connected\":true") && strstr(d, "\"connected\":true") < de;
+		int ok = !strcmp(what, "pair") ? paired : !strcmp(what, "connect") ? conn : !strcmp(what, "disconnect") ? !conn : !d;
+		char nm[80] = ""; if (d && de) { char *n = strstr(d, "\"name\":\""); if (n && n < de) { n += 8; size_t k = strcspn(n, "\""); snprintf(nm, sizeof nm, "%.*s", (int)(k < 79 ? k : 79), n); } }
+		if (!strcmp(what, "pair") && ok) health_add("bluetooth", "a Bluetooth device was paired: %s", nm[0] ? nm : m);
+		if (!strcmp(what, "remove")) health_add("bluetooth", "a Bluetooth device was forgotten");
+		str s = {0}; sadd(&s, "{\"ok\":%s,\"message\":", ok ? "true" : "false"); sjson(&s, o ? o : ""); sadd(&s, ",\"error\":"); sjson(&s, ok ? "" : (o && *o ? o : "it did not work")); sadd(&s, ",\"status\":%s}", st && *st == '{' ? st : "null");
+		free(o); free(st); reply(r->fd, ok ? 200 : 409, "application/json", s.b, s.n, NULL); free(s.b); return;
+	}
+	reply_err(r->fd, 404, "unknown Bluetooth request");
+}
 static void api(struct req *r)
 {
 	const char *p = r->path + 5;   /* after /api/ */
@@ -2946,6 +2982,8 @@ static void api(struct req *r)
 	if (!strcmp(p, "memory/iam") && post) { api_memory_iam(r); return; }
 	if (!strcmp(p, "health")) { api_health(r, post); return; }
 	if (!strcmp(p, "firewall")) { api_firewall(r, post); return; }
+	if (!strcmp(p, "bt")) { api_bt(r, "", post); return; }
+	if (!strncmp(p, "bt/", 3)) { api_bt(r, p + 3, post); return; }
 	if (!strcmp(p, "remote")) { api_remote(r, "", post); return; }
 	if (!strncmp(p, "remote/", 7)) { api_remote(r, p + 7, post); return; }
 	if (!strcmp(p, "vault")) { api_vault(r, "", 0); return; }

@@ -3,6 +3,14 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.5.1 (2026-11-03)
+Summary: Bluetooth (controllers, keyboards, mice, headphones), and Xbox Cloud Gaming and GeForce NOW in the Start menu
+- New: Bluetooth (Settings › Bluetooth). Pair controllers (Xbox, PlayStation, Switch Pro), keyboards, mice and headphones: put the device in pairing mode, choose Search for devices, then Pair. No code to type. Paired devices reconnect by themselves; headphones become the sound output when they connect. Notifications say when a device connects, goes away, or its battery runs low.
+- New: Xbox Cloud Gaming and GeForce NOW in the Start menu and the App Store's Games tab. They open in Oracle; controllers work in them.
+- New: game mode. While a game or video is full screen, notifications wait in the notification centre instead of popping up, and one message afterwards says how many came.
+- Fixed: playing with only a controller did not count as using the computer, so the screen could lock or the computer sleep in the middle of a game.
+- New: controllers are listed in Settings › Devices.
+
 ## 1.5.0 (2026-11-02)
 Summary: security: a firewall, encrypted data, administrators can open account files, a health log, and remote access from any browser
 - New: a firewall. Other computers can no longer connect to programs on this one (Linux and Windows programs included); everything this computer reaches out to works as before. Security Settings shows how many connections it blocked. The old "Firewall" setting for web pages is now called Website blocking; it works as before.

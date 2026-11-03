@@ -94,6 +94,9 @@ mkdir -p etc/ssl/certs && cp -L /etc/ssl/certs/ca-certificates.crt etc/ssl/certs
 cp -L /usr/sbin/mke2fs usr/sbin/ && copy_deps /usr/sbin/mke2fs
 # 1.5.0: the firewall (nft) and file encryption on RUDOLFDATA (tune2fs -O encrypt)
 for b in /usr/sbin/nft /usr/sbin/tune2fs; do cp -L $b usr/sbin/ && copy_deps $b; done
+# 1.5.1: Bluetooth: BlueZ and bluez-alsa (headphones), as the release build does (systools/ci_release.sh)
+for x in $(for p in bluez bluez-alsa-utils libasound2-plugin-bluez; do dpkg -L $p; done 2>/dev/null | grep -E '/(bluetoothd|bluetoothctl|bluealsa|bluealsad)$|alsa-lib/libasound_module_(pcm|ctl)_bluealsa\.so$|alsa/alsa\.conf\.d/[^/]*bluealsa[^/]*\.conf$'); do
+	[ -f "$x" ] || continue; mkdir -p ".$(dirname "$x")"; cp -L "$x" ".$x"; case "$x" in *.conf) ;; *) copy_deps "$x";; esac; done
 cp -a /etc/mke2fs.conf etc/ 2>/dev/null || true
 
 # ---------- Rudolf OS system programs and scripts
