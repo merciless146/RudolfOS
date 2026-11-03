@@ -289,7 +289,7 @@ static int sync_screen(void)
 #define MAXDEV 32
 struct dev {
 	int fd; char path[64]; char name[96];
-	int touchpad, touchscreen, buttonpad, kind, lid;   /* kind: 1 keyboard 2 mouse 3 touchpad 4 touchscreen 5 other 6 lid switch */
+	int touchpad, touchscreen, buttonpad, kind, lid;   /* kind: 1 keyboard 2 mouse 3 touchpad 4 touchscreen 5 other 6 lid switch 7 controller (watched) */
 	int absx_min, absx_max, absy_min, absy_max;
 	int ax, ay, lastx, lasty, have_last, touching, fingers, maxf;
 	long long touch_t; int moved, travel, clicked, pressed_btn;
@@ -305,10 +305,10 @@ static long long now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC
 
 static void write_inputs(void)
 {
-	static const char *const K[] = {"", "keyboard", "mouse", "touchpad", "touchscreen", "other"};
+	static const char *const K[] = {"", "keyboard", "mouse", "touchpad", "touchscreen", "other", "lid", "controller"};
 	FILE *f = fopen("/run/rudolf/inputs.new", "w");
 	if (!f) return;
-	for (int i = 0; i < ndev; i++) if (devs[i].kind >= 1 && devs[i].kind <= 4) fprintf(f, "%s|%s\n", K[devs[i].kind], devs[i].name);
+	for (int i = 0; i < ndev; i++) if ((devs[i].kind >= 1 && devs[i].kind <= 4) || devs[i].kind == 7) fprintf(f, "%s|%s\n", K[devs[i].kind], devs[i].name);
 	fclose(f); rename("/run/rudolf/inputs.new", "/run/rudolf/inputs");
 }
 
@@ -316,7 +316,9 @@ static void write_inputs(void)
 static int classify(struct dev *v, const uint8_t *evb, const uint8_t *keyb, const uint8_t *relb, const uint8_t *absb, const uint8_t *prop)
 {
 	if (TESTBIT(EV_SW, evb) && v->lid) return 6;   /* 1.4.4: the lid switch */
-	if (TESTBIT(EV_KEY, evb) && (TESTBIT(BTN_GAMEPAD, keyb) || TESTBIT(BTN_JOYSTICK, keyb) || TESTBIT(BTN_TRIGGER_HAPPY1, keyb))) return 0;   /* controllers: games read them */
+	/* controllers: games read them; 1.5.1: watched only, so playing with one (a cloud game, a Linux game) counts as
+	   input and the screen neither locks nor sleeps mid-game; nothing is passed on from them */
+	if (TESTBIT(EV_KEY, evb) && (TESTBIT(BTN_GAMEPAD, keyb) || TESTBIT(BTN_JOYSTICK, keyb) || TESTBIT(BTN_TRIGGER_HAPPY1, keyb))) return 7;
 	if (TESTBIT(EV_ABS, evb) && TESTBIT(ABS_X, absb) && TESTBIT(ABS_Y, absb)) {
 		int finger = TESTBIT(EV_KEY, evb) && TESTBIT(BTN_TOOL_FINGER, keyb);
 		int touch = TESTBIT(EV_KEY, evb) && (TESTBIT(BTN_TOUCH, keyb) || TESTBIT(BTN_LEFT, keyb) || TESTBIT(BTN_STYLUS, keyb));
@@ -614,6 +616,7 @@ static void handle_event(struct dev *v, struct input_event *e)
 		if (!e->value) mark_input();
 		return;
 	}
+	if (v->kind == 7) { if ((e->type == EV_KEY && e->value == 1) || e->type == EV_ABS) mark_input(); return; }   /* (a controller: only counted) */
 	if (e->type == EV_KEY || e->type == EV_REL || e->type == EV_ABS) mark_input();
 	if (e->type == EV_KEY) {
 		int c = e->code, down = e->value != 0;

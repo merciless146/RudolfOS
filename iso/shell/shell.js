@@ -17,7 +17,7 @@
 'use strict';
 const DESK_URL = 'http://127.0.0.1:8080/';
 const DESK_ORIGIN = 'http://127.0.0.1:8080';
-const VERSION = '1.2.2';
+const VERSION = '1.5.1';   /* 1.5.1: controllers (the gamepad permission) for cloud games in real tabs */
 const CAPS = ['tabs', 'dark'];
 const desk = document.getElementById('desk');
 const starting = document.getElementById('starting');
