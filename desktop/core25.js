@@ -106,24 +106,24 @@ function fsFlush(){if(!fsDirty)return;fsDirty=false;
  if(!IDB||!IDB.db||!FSLOADED){try{localStorage.setItem('blockdos95',JSON.stringify(fs))}catch(e){storageFull()}return}
  const C=fs['C:'],U=C.USERS,stub={};if(isDir(U))for(const k in U)stub[k]={};
  C.USERS=stub;try{kvPutNow('fs:system',fs)}catch(e){storageFull()}finally{C.USERS=U}
- homeSave();metaScan()}
+ homeSave();try{acSaveOthers()}catch(e){}metaScan()}
 addEventListener('pagehide',()=>{fsFlush()});
 /* homes: one encrypted record per account (AES-GCM, key from the password via PBKDF2) */
 function homeSave(){if(!USER||!HOME||USER.r=='guest'||!IDB.db)return;
  const U=fs['C:'].USERS;if(U[uname()]!==HOME){for(const k in U)if(U[k]===HOME)delete U[k];U[uname()]=HOME}
- const json=JSON.stringify(HOME),id=uid(),key=KEY;
- homeChain=homeChain.then(async()=>{try{if(key){const iv=crypto.getRandomValues(new Uint8Array(12));const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(json));await kvPutNow('home:'+id,{v:1,iv,ct})}else await kvPutNow('home:'+id,{v:1,plain:json})}catch(e){console.warn('home save',e)}})}
-function defaultHome(){const h={};HOMESUB.forEach(s=>h[s]={});h.DOCUMENTS['WELCOME.TXT']='Welcome to your Rudolf OS home folder.\n\nFiles you keep here are private to your account and are stored encrypted with a key made from your password.\n';return h}
+ const json=JSON.stringify(HOME),id=uid(),key=KEY,fk=!!FKRAW;
+ homeChain=homeChain.then(async()=>{try{if(key){const iv=crypto.getRandomValues(new Uint8Array(12));const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(json));await kvPutNow('home:'+id,fk?{v:1,k:'f',iv,ct}:{v:1,iv,ct})}else await kvPutNow('home:'+id,{v:1,plain:json})}catch(e){console.warn('home save',e)}})}
+function defaultHome(){const h={};HOMESUB.forEach(s=>h[s]={});h.DOCUMENTS['WELCOME.TXT']='Welcome to your Rudolf OS home folder.\n\n'+(typeof acWelcomeText=='function'&&USER?acWelcomeText(USER):'Files you keep here are stored encrypted.\n');return h}
 async function homeLoad(pw){const id=uid();let obj=null;
  if(USER.r=='guest'){obj=defaultHome()}
  else{const rec=await kvGet('home:'+id);
-  if(rec&&rec.ct&&KEY){try{obj=JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:rec.iv},KEY,rec.ct)))}catch(e){notify('Your home folder could not be decrypted','It was kept unchanged; a new empty home is used for this session.',{kind:'error'});obj=defaultHome();HOMELOCKED=true}}
+  if(rec&&rec.ct&&KEY){try{obj=JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:rec.iv},rec.k=='f'?KEY:(PKEY||KEY),rec.ct)))}catch(e){notify('Your home folder could not be decrypted','It was kept unchanged; a new empty home is used for this session.',{kind:'error'});obj=defaultHome();HOMELOCKED=true}}
   else if(rec&&rec.plain){try{obj=JSON.parse(rec.plain)}catch(e){}}
   if(!obj){obj=defaultHome();const old=fs['C:'].USERS[uname()];if(isDir(old)&&Object.keys(old).length)obj=old}}
  HOMESUB.forEach(s=>{if(!isDir(obj[s]))obj[s]={}});
  HOME=obj;fs['C:'].USERS[uname()]=HOME;if(!HOMELOCKED)homeSave()}
 let HOMELOCKED=false;
-function homeUnload(){if(!HOME)return;if(!HOMELOCKED)homeSave();const U=fs['C:'].USERS;for(const k in U)if(U[k]===HOME)U[k]={};HOME=null;KEY=null;HOMELOCKED=false;EXPL.forEach(f=>f())}
+function homeUnload(){if(!HOME)return;if(!HOMELOCKED)homeSave();const U=fs['C:'].USERS;for(const k in U)if(U[k]===HOME)U[k]={};HOME=null;KEY=null;HOMELOCKED=false;try{acClose()}catch(e){}EXPL.forEach(f=>f())}
 /* ---------- passwords: per-user salt + PBKDF2 (legacy SHA-256 hashes are upgraded at the next sign-in) ---------- */
 const b64e=u=>btoa(String.fromCharCode(...new Uint8Array(u))),b64d=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 const PBK_IT=210000;
@@ -134,7 +134,9 @@ async function pwCheck(a,pw){if(!a||pw==null)return false;if(a.r=='guest')return
  if(await hsh(pw)===a.h){a.h=await pwMake(pw);saveUser();return true}return false}
 async function pwFind(n,pw){const a=ACCTS.find(x=>x.n.toLowerCase()==String(n).toLowerCase());return a&&await pwCheck(a,pw)?a:null}
 async function deriveKey(pw,salt){const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt:b64d(salt),iterations:PBK_IT,hash:'SHA-256'},k,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])}
-async function homeRekey(pw){if(!USER||USER.r=='guest')return;USER.ks=b64e(crypto.getRandomValues(new Uint8Array(16)));KEY=await deriveKey(pw,USER.ks);saveUser();homeSave()}
+async function homeRekey(pw){if(!USER||USER.r=='guest')return;
+ /* 1.5.0: with a file key only its wrapping changes (acct50.js) */
+ if(FKRAW)await acRekey(USER,pw);else{USER.ks=b64e(crypto.getRandomValues(new Uint8Array(16)));KEY=PKEY=await deriveKey(pw,USER.ks)}saveUser();homeSave()}
 /* ---------- per-user settings, trash and icon positions ---------- */
 const cellKey=()=>USER?'bd95cells:'+uid():'bd95cells';
 function persistS(){try{const v=JSON.stringify(SC||S);localStorage.setItem('bd95set',v);if(USER)localStorage.setItem('bd95set:'+uid(),v)}catch(e){}}
@@ -143,7 +145,9 @@ function trSave(){if(USER&&IDB&&IDB.db&&USER.r!='guest')kvPutNow('trash:'+uid(),
 let SESSION=null;
 async function userLogin(a,pw){await FSREADY;
  if(!a.id){a.id='u'+b64e(crypto.getRandomValues(new Uint8Array(6))).replace(/[^a-z0-9]/gi,'');saveUser()}
- if(a.r!='guest'){if(!a.ks){a.ks=b64e(crypto.getRandomValues(new Uint8Array(16)));saveUser()}KEY=await deriveKey(pw,a.ks)}
+ if(a.r!='guest'){if(!a.ks){a.ks=b64e(crypto.getRandomValues(new Uint8Array(16)));saveUser()}PKEY=await deriveKey(pw,a.ks);KEY=PKEY;FKRAW=null;
+  /* 1.5.0 (acct50.js): the home folder's own file key, unlocked with the password */
+  if(a.fk){try{FKRAW=await acDec(PKEY,a.fk);KEY=await acFkKey(FKRAW)}catch(e){FKRAW=null}}}
  USER=a;
  /* settings */
  const us=ld('bd95set:'+uid(),null);if(us){for(const k in us)S[k]=us[k];SC=cln(S)}else persistS();
@@ -154,6 +158,7 @@ async function userLogin(a,pw){await FSREADY;
  /* icons */
  const c=ld(cellKey(),null);if(c){cells=c;try{layIcons()}catch(e){}}
  await homeLoad(pw);
+ if(a.r!='guest'&&!HOMELOCKED){try{await acctKeys(a,pw)}catch(e){console.warn('acct50',e)}}
  try{metaScan(true)}catch(e){}
  a.last=Date.now();if(a.r!='guest')saveUser();
  SESSION={start:Date.now(),user:a};
