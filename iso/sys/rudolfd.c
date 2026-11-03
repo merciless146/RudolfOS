@@ -2600,6 +2600,148 @@ static void api_devlink(struct req *r, const char *what, int post)
 	reply_err(r->fd, 404, "unknown request");
 }
 
+/* ------------------------------------------------------------- 1.5.0: the system health log and the firewall
+ * The health log is a record of what happened, kept on the computer only (docs/plan-1.5.0.md): one JSON line per
+ * event, {"t":TIME,"k":KIND,"m":TEXT}, in /persist/var/log/health.log (in /run/rudolf without RUDOLFDATA), at most
+ * 512 KB: the older half is dropped when it is full. Written by rudolfd itself (start-up, slot fallback, memory guard,
+ * crashes, disk nearly full, heat, firewall blocks per hour), by the desktop (POST /api/health) and by other programs
+ * (rudolfd --health KIND TEXT: the session's watchdog, rudolf-remote). Nothing in it is sent anywhere. */
+#define HEALTH_MAX (512 * 1024)
+static void health_path(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/health.log" : PERSIST "/var/log/health.log"); }
+static int health_kind_ok(const char *k)
+{
+	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", NULL };
+	for (int i = 0; K[i]; i++) if (k && !strcmp(k, K[i])) return 1;
+	return 0;
+}
+static void health_add(const char *kind, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void health_add(const char *kind, const char *fmt, ...)
+{
+	char m[400]; va_list ap; va_start(ap, fmt); vsnprintf(m, sizeof m, fmt, ap); va_end(ap);
+	char p[160]; health_path(p, sizeof p);
+	if (strncmp(p, RUN, strlen(RUN))) { mkdir(PERSIST "/var", 0755); mkdir(PERSIST "/var/log", 0755); }
+	struct stat st;
+	if (!stat(p, &st) && st.st_size > HEALTH_MAX) {
+		/* keep the newer half, from a line start */
+		size_t n; char *all = slurp(p, &n);
+		if (all) { char *h = all + n / 2; char *nl = strchr(h, '\n'); if (nl) h = nl + 1;
+			char tp[170]; snprintf(tp, sizeof tp, "%s.tmp", p); int f = open(tp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+			if (f >= 0) { if (write(f, h, all + n - h) < 0) {} close(f); rename(tp, p); } free(all); }
+	}
+	str s = {0}; sadd(&s, "{\"t\":%lld,\"k\":", (long long)time(NULL)); sjson(&s, kind); sadd(&s, ",\"m\":"); sjson(&s, m); sadd(&s, "}\n");
+	int f = open(p, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
+	if (f >= 0) { if (write(f, s.b, s.n) < 0) {} close(f); }
+	free(s.b);
+}
+/* GET health?n=200: the newest events, newest first; POST health {"k":KIND,"m":TEXT}: an event from the desktop */
+static void api_health(struct req *r, int post)
+{
+	if (post) {
+		char k[24] = "", m[400] = ""; const char *b = r->body ? r->body : "";
+		const char *kp = strstr(b, "\"k\":\""), *mp = strstr(b, "\"m\":\"");
+		if (kp) sscanf(kp + 5, "%23[a-z]", k);
+		if (mp) { mp += 5; size_t i = 0; while (*mp && *mp != '"' && i < sizeof m - 1) { if (*mp == '\\' && mp[1]) mp++; m[i++] = (unsigned char)*mp < 32 ? ' ' : *mp; mp++; } m[i] = 0; }
+		if (!health_kind_ok(k)) { reply_err(r->fd, 400, "unknown kind of event"); return; }
+		health_add(k, "%s", m); reply_ok(r->fd, "noted"); return;
+	}
+	char *q = qparam(r->query, "n"); int want = q ? atoi(q) : 200; if (want <= 0 || want > 2000) want = 200;
+	char p[160]; health_path(p, sizeof p); size_t n = 0; char *all = slurp(p, &n);
+	str s = {0}; sadd(&s, "{\"ok\":true,\"now\":%lld,\"uptime\":%ld,\"events\":[", (long long)time(NULL), ({ struct sysinfo si; sysinfo(&si) ? 0L : si.uptime; }));
+	int k = 0;
+	if (all) {
+		/* from the end backwards */
+		char *e = all + n;
+		while (e > all && k < want) {
+			char *l = e - 1; if (*l == '\n') l--; while (l > all && *(l - 1) != '\n') l--;
+			size_t ln = (e > all && *(e - 1) == '\n' ? e - 1 : e) - l;
+			if (ln > 2 && *l == '{') { sadd(&s, "%s%.*s", k ? "," : "", (int)ln, l); k++; }
+			e = l;
+		}
+		free(all);
+	}
+	sadd(&s, "]}"); reply_json(r->fd, &s);
+}
+/* once a minute: new memory-guard events, crashes in the kernel's log, disk nearly full, heat; once an hour: how many
+   incoming connections the firewall blocked */
+static void health_tick(void)
+{
+	static time_t last, last_fw, last_disk, last_heat; static long long mg_off = -1, fw_prev = -1; static char ck[300];
+	time_t t = time(NULL);
+	if (t - last < 60 && t >= last) return;
+	last = t;
+	/* the memory guard */
+	struct stat st;
+	if (!stat(RUN "/memguard.events", &st)) {
+		if (mg_off < 0) mg_off = st.st_size;
+		else if (st.st_size > mg_off) {
+			char *e = slurp(RUN "/memguard.events", NULL);
+			if (e && (long long)strlen(e) >= mg_off) for (char *l = strtok(e + mg_off, "\n"); l; l = strtok(NULL, "\n")) {
+				long long tt, rss; int pid; if (sscanf(l, "%lld %d %lld", &tt, &pid, &rss) == 3) health_add("memory", "memory ran out: a web page using %lld MB was closed", rss >> 20);
+			}
+			free(e); mg_off = st.st_size;
+		}
+	} else if (mg_off < 0) mg_off = 0;
+	/* crashes (every program: Rudolf OS's own, Linux and Windows programs), each once */
+	char *d = run_out("dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -20");
+	if (d) {
+		char *lines[20]; int nl = 0; for (char *l = strtok(d, "\n"); l && nl < 20; l = strtok(NULL, "\n")) lines[nl++] = l;
+		int from = 0;
+		if (ck[0]) { for (int i = nl - 1; i >= 0; i--) if (!strcmp(lines[i], ck)) { from = i + 1; break; } }
+		else from = nl;   /* the first look after start-up: those happened before rudolfd, not reported twice */
+		for (int i = from; i < nl; i++) {
+			const char *b = strchr(lines[i], ']'); if (!b) continue; b++; while (*b == ' ') b++; if (!strncmp(b, "traps: ", 7)) b += 7;
+			size_t k = strcspn(b, "["); if (!k || k > 60) continue;
+			health_add("crash", "%.*s stopped (%s)", (int)k, b, strstr(b, "segfault") ? "segmentation fault" : strstr(b, "general protection") ? "general protection fault" : "trap");
+		}
+		if (nl) snprintf(ck, sizeof ck, "%s", lines[nl - 1]); else if (!ck[0]) snprintf(ck, sizeof ck, "-");
+		free(d);
+	}
+	/* disk nearly full (RUDOLFDATA): at most once a day */
+	struct statvfs v;
+	if (!access(RUN "/persistent", F_OK) && !statvfs(PERSIST, &v) && t - last_disk > 86400) {
+		unsigned long long fr = (unsigned long long)v.f_bavail * v.f_frsize, all = (unsigned long long)v.f_blocks * v.f_frsize;
+		if (all && (fr < 512ULL << 20 || fr * 100 / all < 5)) { health_add("disk", "storage nearly full: %llu MB free of %llu MB", fr >> 20, all >> 20); last_disk = t; }
+	}
+	/* heat: 90 °C or more on any sensor, at most once an hour */
+	if (t - last_heat > 3600) {
+		long mx = 0; char tp[96];
+		for (int i = 0; i < 32; i++) { snprintf(tp, sizeof tp, "/sys/class/thermal/thermal_zone%d/temp", i); long long v2 = read_ll(tp, -1); if (v2 < 0) { if (i > 8) break; continue; } if (v2 > mx) mx = v2; }
+		if (mx >= 90000) { health_add("heat", "the processor reached %ld °C", mx / 1000); last_heat = t; }
+	}
+	/* the firewall, once an hour */
+	if (t - last_fw >= 3600 || t < last_fw) {
+		char *o = run_out("/usr/lib/rudolf/firewall status 2>/dev/null");
+		if (o && !strncmp(o, "on ", 3)) { long long c = atoll(o + 3); if (fw_prev >= 0 && c > fw_prev) health_add("firewall", "%lld incoming connection%s blocked in the last hour", c - fw_prev, c - fw_prev == 1 ? "" : "s"); fw_prev = c; }
+		free(o); last_fw = t;
+	}
+}
+/* at start-up: which slot started, and a fallback from an update that did not start (initramfs/init: state failed=) */
+static void health_boot(void)
+{
+	char *sl = slurp("/etc/rudolf/slot", NULL), *ver = slurp("/usr/share/rudolf/VERSION", NULL); if (sl) trim(sl); if (ver) trim(ver);
+	health_add("start", "Rudolf OS %s started (%s)", ver ? ver : "?", sl && strcmp(sl, "disc") ? sl : "from the disc");
+	char *stt = slurp(PERSIST "/os/system/state", NULL);
+	if (stt) {
+		char *f = strstr(stt, "failed="); char fv[32] = ""; if (f) sscanf(f + 7, "%31[A-Za-z0-9]", fv);
+		char *seen = slurp(PERSIST "/var/log/health.fallback", NULL); if (seen) trim(seen);
+		if (fv[0] && (!seen || strcmp(seen, fv))) { health_add("fallback", "the update in slot %s did not start, so the computer went back to the previous system", fv); char b[40]; snprintf(b, sizeof b, "%s\n", fv); write_str(PERSIST "/var/log/health.fallback", b); }
+		free(seen); free(stt);
+	}
+	free(sl); free(ver);
+}
+/* GET firewall: {on, blocked}; POST firewall?on=1|0 (the desktop asks for an administrator's password first) */
+static void api_firewall(struct req *r, int post)
+{
+	if (post) {
+		char *on = qparam(r->query, "on"); if (!on || (strcmp(on, "1") && strcmp(on, "0"))) { reply_err(r->fd, 400, "on=1 or on=0"); return; }
+		if (run(*on == '1' ? "/usr/lib/rudolf/firewall on >/dev/null 2>" RUN "/firewall.err" : "/usr/lib/rudolf/firewall off >/dev/null 2>" RUN "/firewall.err")) {
+			char *e = slurp(RUN "/firewall.err", NULL); if (e) trim(e); reply_err(r->fd, 500, e && *e ? e : "the firewall could not be changed"); free(e); return; }
+		health_add("firewall", "the firewall was turned %s", *on == '1' ? "on" : "off");
+	}
+	char *o = run_out("/usr/lib/rudolf/firewall status 2>/dev/null");
+	str s = {0}; sadd(&s, "{\"ok\":true,\"on\":%s,\"blocked\":%lld,\"remote\":%s}", o && !strncmp(o, "on", 2) ? "true" : "false", o && !strncmp(o, "on ", 3) ? atoll(o + 3) : 0LL, access(RUN "/firewall-remote", F_OK) ? "false" : "true");
+	free(o); reply_json(r->fd, &s);
+}
 static void api(struct req *r)
 {
 	const char *p = r->path + 5;   /* after /api/ */
@@ -2611,6 +2753,8 @@ static void api(struct req *r)
 	if (!strcmp(p, "processes")) { api_processes(r); return; }
 	if (!strcmp(p, "memory")) { api_memory(r); return; }
 	if (!strcmp(p, "memory/iam") && post) { api_memory_iam(r); return; }
+	if (!strcmp(p, "health")) { api_health(r, post); return; }
+	if (!strcmp(p, "firewall")) { api_firewall(r, post); return; }
 	if (!strcmp(p, "net")) { api_net(r); return; }
 	if (!strcmp(p, "disks")) { api_disks(r); return; }
 	/* the hardware check's download test (1.2.5): rudolf-update speedtest prints "bytes N" and "ms N" */
@@ -3196,6 +3340,8 @@ static int addpart(int argc, char **argv)
 int main(int argc, char **argv)
 {
 	if (argc > 1 && !strcmp(argv[1], "--addpart")) return addpart(argc, argv);
+	/* 1.5.0: rudolfd --health KIND TEXT: an event for the health log from another program */
+	if (argc == 4 && !strcmp(argv[1], "--health")) { if (!health_kind_ok(argv[2])) return 2; health_add(argv[2], "%s", argv[3]); return 0; }
 	signal(SIGPIPE, SIG_IGN);
 	mkdir(RUN, 0755);
 	int rf = open("/dev/urandom", O_RDONLY);
@@ -3223,6 +3369,7 @@ int main(int argc, char **argv)
 	{ char *sb = slurp("/etc/rudolf/secureboot", NULL); secureboot = sb && sb[0] == '1'; free(sb); }
 	live = access(RUN "/persistent", F_OK) != 0;
 	dl_boot();
+	health_boot();
 	boot_entry_ensure();
 	/* 1.4.4: the power settings (System Settings › Power and battery) hold from the start, signed in or not */
 	if (!access("/usr/lib/rudolf/power", X_OK) && system("/usr/lib/rudolf/power apply >/dev/null 2>&1 &") != 0) {}
@@ -3235,6 +3382,7 @@ int main(int argc, char **argv)
 		struct pollfd pf = { s, POLLIN, 0 };
 		reap();
 		time_tick();
+		health_tick();
 		if (poll(&pf, 1, 1000) <= 0) continue;
 		int c = accept4(s, NULL, NULL, SOCK_CLOEXEC);
 		if (c < 0) continue;

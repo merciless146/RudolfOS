@@ -160,6 +160,12 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		echo "$XSRC" | sudo tee "$W/broot/usr/lib/xorg/rudolf-xsrc" >/dev/null
 		NOTES+=("X server with GLX")
 	fi
+	# 1.5.0: the firewall (nft) and file encryption on RUDOLFDATA (tune2fs -O encrypt), with the libraries they need
+	for x in /usr/sbin/nft /usr/sbin/tune2fs; do
+		[ -x "$x" ] || { echo "$x is missing on the build machine (apt-get install nftables e2fsprogs)"; exit 1; }
+		sudo install -m 0755 "$x" "$W/broot/usr/sbin/${x##*/}"
+		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/x86_64-linux-gnu/"; done
+	done
 	sudo cp -a sys/root/. "$W/broot/"
 	# 1.4.4: what no longer belongs in the base layer (systools/base-remove.txt)
 	grep -v '^#' systools/base-remove.txt | while read -r x; do [ -n "$x" ] || continue; case "$x" in /*|*..*) echo "base-remove.txt: bad path $x"; exit 1;; esac

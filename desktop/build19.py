@@ -9,7 +9,7 @@ L=lambda f:open(os.path.join(here,f)).read()
 pinyin=open(os.path.join(here,'../libs/pinyin.min.json')).read()
 od=base64.b64encode(open(os.path.join(here,'../libs/od/compiled/OpenDyslexic-Regular.woff2'),'rb').read()).decode()
 odb=base64.b64encode(open(os.path.join(here,'../libs/od/compiled/OpenDyslexic-Bold.woff2'),'rb').read()).decode()
-mods=['core25.js','clock31.js','shell25.js','files25.js','apps25a.js','apps25b.js','a11y25.js','settings25.js','notey25.js','wp25.js','misc25.js','native25.js','props25.js','oext25.js','pkg25.js','sysupd25.js','tts25.js','print25.js','mail25.js','web25.js','linux26.js','wifi26.js','term26.js','emusnes26.js','emu26.js','blk2lua26.js','blitzpacks26.js','blitzen26.js','picker26.js','devices26.js','signin26.js','display26.js','shell26.js','tabs26.js','tm26.js','dl27.js','sb28.js','keep29.js','luau30.js','apps30.js','games30.js','boot30.js','stick30.js','hwcheck30.js','devlink40.js','osd31.js','net31.js','settings31.js','saver31.js','power31.js','wallpaper31.js','office45.js','notey45.js','web46.js','mem47.js','fonts47.js','weather47.js','name48.js','spreng45.js','sprof45.js','spro45.js','pprof45.js','ppro45.js']
+mods=['core25.js','clock31.js','shell25.js','files25.js','apps25a.js','apps25b.js','a11y25.js','settings25.js','notey25.js','wp25.js','misc25.js','native25.js','props25.js','oext25.js','pkg25.js','sysupd25.js','tts25.js','print25.js','mail25.js','web25.js','linux26.js','wifi26.js','term26.js','emusnes26.js','emu26.js','blk2lua26.js','blitzpacks26.js','blitzen26.js','picker26.js','devices26.js','signin26.js','display26.js','shell26.js','tabs26.js','tm26.js','dl27.js','sb28.js','keep29.js','luau30.js','apps30.js','games30.js','boot30.js','stick30.js','hwcheck30.js','devlink40.js','osd31.js','net31.js','settings31.js','saver31.js','power31.js','wallpaper31.js','office45.js','notey45.js','web46.js','mem47.js','fonts47.js','weather47.js','name48.js','sec50.js','spreng45.js','sprof45.js','spro45.js','pprof45.js','ppro45.js']
 if os.path.exists(os.path.join(here,'i18n25.js')):mods.append('i18n25.js')
 # 1.4.0: a top-level function defined in two modules replaces the earlier one without a word (the development
 # link's dlPoll replaced the downloads' dlPoll, so downloads from real tabs never finished): stop the build instead
@@ -35,6 +35,8 @@ rep("const save=()=>{try{localStorage.setItem('blockdos95',JSON.stringify(fs))}c
 # passwords: PBKDF2 with a per-user salt, encrypted homes, security keys
 rep("const h=await hsh(p),a=ACCTS.find(x=>x.n.toLowerCase()==n.toLowerCase()&&x.h==h);","let a=await pwFind(n,p);if(a&&a.pk&&!(await passkeyCheck(a))){a=null}")
 rep("if(a){USER=a;loginFails=0;","if(a){USER=a;try{await userLogin(a,p)}catch(err){console.warn(err)}loginFails=0;")
+# 1.5.0: a failed sign-in goes into the health log (sec50.js; the account's name only when such an account exists)
+rep("else{loginFails++;","else{loginFails++;try{hlNote('signin','wrong password for '+(ACCTS.some(x=>x.n.toLowerCase()==n.toLowerCase())?'the account '+n:'an account that does not exist'))}catch(e){}")
 rep("if(await hsh(OP.get())!=USER.h)","if(!(await pwCheck(USER,OP.get())))",2)
 rep("USER.h=await hsh(p1)","USER.h=await pwMake(p1);await homeRekey(p1)",2)
 rep("if(pdel.size){ACCTS=ACCTS.filter(a=>!pdel.has(a));","if(pdel.size){pdel.forEach(a=>{a.id&&kvDel('home:'+a.id)});ACCTS=ACCTS.filter(a=>!pdel.has(a));")

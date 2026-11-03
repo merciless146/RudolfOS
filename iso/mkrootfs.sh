@@ -92,6 +92,8 @@ mkdir -p etc/ssl/certs && cp -L /etc/ssl/certs/ca-certificates.crt etc/ssl/certs
 
 # ---------- disk tools for the installer
 cp -L /usr/sbin/mke2fs usr/sbin/ && copy_deps /usr/sbin/mke2fs
+# 1.5.0: the firewall (nft) and file encryption on RUDOLFDATA (tune2fs -O encrypt)
+for b in /usr/sbin/nft /usr/sbin/tune2fs; do cp -L $b usr/sbin/ && copy_deps $b; done
 cp -a /etc/mke2fs.conf etc/ 2>/dev/null || true
 
 # ---------- Rudolf OS system programs and scripts

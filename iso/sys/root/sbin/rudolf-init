@@ -74,6 +74,8 @@ for m in $(cat /sys/bus/*/devices/*/modalias 2>/dev/null | sort -u); do
 	modprobe -q -b "$m" 2>/dev/null
 done &
 
+# 1.5.0: the firewall for incoming connections, before any network is up (Settings › Security)
+/usr/lib/rudolf/firewall start 2>/run/rudolf/firewall.err || echo "firewall: $(cat /run/rudolf/firewall.err)" >> /run/rudolf/repairs
 # wired network: DHCP on every cable that is plugged in
 ( sleep 1; for i in /sys/class/net/*; do n=${i##*/}; [ "$n" = lo ] && continue; [ -e $i/wireless ] && continue; [ -e $i/device ] || continue
 	ip link set "$n" up; udhcpc -b -i "$n" -s /usr/lib/rudolf/udhcpc.sh >/dev/null 2>&1; done ) &
