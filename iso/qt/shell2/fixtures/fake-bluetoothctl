@@ -1,0 +1,10 @@
+#!/bin/sh
+[ "$1" = "--timeout" ] && shift 2
+case "$1" in
+show) printf 'Controller 00:11:22:33:44:55 (public)\n\tName: rudolf\n\tAlias: Rudolf OS\n\tPowered: yes\n\tDiscovering: no\n';;
+devices) printf 'Device AA:BB:CC:DD:EE:01 Xbox Wireless Controller\nDevice AA:BB:CC:DD:EE:02 WH-1000XM4\nDevice AA:BB:CC:DD:EE:03 AA-BB-CC-DD-EE-03\n';;
+info) case "$2" in
+  *01) printf 'Device AA:BB:CC:DD:EE:01 (public)\n\tName: Xbox Wireless Controller\n\tAlias: Xbox Wireless Controller\n\tIcon: input-gaming\n\tPaired: yes\n\tTrusted: yes\n\tConnected: yes\n\tBattery Percentage: 0x0c (12)\n';;
+  *02) printf 'Device AA:BB:CC:DD:EE:02 (public)\n\tName: WH-1000XM4\n\tAlias: WH-1000XM4 "Pro"\n\tIcon: audio-headset\n\tPaired: yes\n\tTrusted: yes\n\tConnected: no\n\tUUID: Audio Sink                (0000110b-0000-1000-8000-00805f9b34fb)\n';;
+  *) printf 'Device AA:BB:CC:DD:EE:03 (random)\n\tAlias: AA-BB-CC-DD-EE-03\n\tPaired: no\n\tConnected: no\n\tRSSI: 0xffffffb0 (-80)\n';; esac;;
+esac

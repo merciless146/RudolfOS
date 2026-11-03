@@ -101,6 +101,12 @@ y ZRAM_DEF_COMP_ZSTD
 # on RUDOLFDATA (fscrypt on ext4: /persist/vault, rudolfd unlocks it at sign-in; AES-256-XTS and AES-256-CTS)
 y NETFILTER NETFILTER_ADVANCED NF_CONNTRACK NF_TABLES NF_TABLES_INET NF_TABLES_IPV4 NF_TABLES_IPV6 NFT_CT NFT_LIMIT NFT_LOG NFT_REJECT NFT_REJECT_INET
 y FS_ENCRYPTION CRYPTO_AES CRYPTO_AES_NI_INTEL CRYPTO_XTS CRYPTO_CTS CRYPTO_CBC CRYPTO_ECB CRYPTO_SHA512 CRYPTO_HKDF
+# 1.5.1: Bluetooth (controllers, keyboards, mice, headphones): the core built in; the USB adapters' driver as a module, loaded
+# by modalias after the system is up, so the chips' firmware (rtl_bt, intel/ibt, mediatek in the modules layer) is
+# there when it asks; UHID for Bluetooth LE controllers and keyboards (BlueZ's HID over GATT), AF_ALG for BlueZ's own
+# crypto, hci_vhci for the tests (a virtual adapter)
+y BT BT_BREDR BT_LE BT_HIDP BT_RFCOMM BT_HCIBTUSB_RTL BT_HCIBTUSB_MTK BT_HCIBTUSB_BCM UHID CRYPTO_ECDH CRYPTO_CMAC CRYPTO_USER_API_HASH CRYPTO_USER_API_SKCIPHER
+m BT_HCIBTUSB BT_HCIVHCI
 # speed up the build
 n DEBUG_INFO DEBUG_INFO_DWARF5 DEBUG_INFO_DWARF4 DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT DEBUG_INFO_BTF KALLSYMS_ALL FTRACE
 $C --enable DEBUG_INFO_NONE
@@ -110,6 +116,7 @@ for o in $HOTKEYS; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o 
 grep -q "^CONFIG_IPV6_SIT=y\|^CONFIG_IPV6_SIT=m" .config && { echo "kconfig.sh: IPV6_SIT is still on"; exit 1; }
 # 1.4.7: the memory options are on
 for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU_GEN_ENABLED; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
-for o in NF_TABLES NF_TABLES_INET NFT_CT NFT_REJECT NFT_LIMIT FS_ENCRYPTION CRYPTO_XTS CRYPTO_CTS; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
+for o in NF_TABLES NF_TABLES_INET NFT_CT NFT_REJECT NFT_LIMIT FS_ENCRYPTION CRYPTO_XTS CRYPTO_CTS BT BT_BREDR BT_LE BT_HIDP UHID CRYPTO_ECDH CRYPTO_USER_API_HASH; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
+for o in BT_HCIBTUSB BT_HCIVHCI BT_RTL BT_INTEL BT_MTK; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig"; exit 1; }; done
 grep -q "^CONFIG_PSI_DEFAULT_DISABLED=y" .config && { echo "kconfig.sh: PSI is off by default"; exit 1; }
 true
