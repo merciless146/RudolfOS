@@ -205,7 +205,7 @@ function taskmgr26() {
     }
     B.appendChild(h4('Protection and storage'));
     B.appendChild(kv([['File storage', IDB.db ? 'Running (IndexedDB)' : 'Browser storage'], ['Home folder encryption', KEY ? 'On (AES-256-GCM)' : USER && USER.r == 'guest' ? 'Guest session' : 'Off'],
-      ['Firewall', window.SECC && SECC.fw && SECC.fw.on ? 'On (' + SECC.fw.mode + ')' : 'Off'], ['Antivirus', window.SECC && SECC.av && SECC.av.on ? 'On' : 'Off'],
+      ['Firewall', window.FW50 ? (FW50.on ? 'On, ' + FW50.blocked + ' blocked' : 'Off') : '—'], ['Website blocking', window.SECC && SECC.fw && SECC.fw.on ? 'On (' + SECC.fw.mode + ')' : 'Off'], ['Antivirus', window.SECC && SECC.av && SECC.av.on ? 'On' : 'Off'],
       ['Screen reader', S.sr ? 'On' : 'Off'], ['Notifications', S.dnd ? 'Do not disturb' : 'On'], ['Workspaces', NWS + ' (current ' + WS + ')']]));
     if (RD && s && s.kernel) {
       const k = s.kernel, m = s.memory || {};
@@ -283,6 +283,8 @@ async function sysReport(problem) {
     ['Created', new Date().toISOString().replace(/\.\d+Z$/, 'Z')],
     ['Started from', !RD ? 'web browser' : `${(k.boot || info && info.boot || '?').toUpperCase()}, ${k.media || info && info.media || '?'}${(k.live ?? (info && info.live)) ? ', live (changes are not kept)' : ', changes kept (RUDOLFDATA)'}${k.recovery ? ', recovery' : ''}`],
     ['Secure Boot', !RD ? '—' : typeof sbSummary == 'function' ? sbSummary(sbs) : '—'],
+    ['Data encryption', !RD ? '—' : await (typeof vStatus == 'function' ? vStatus() : Promise.resolve(null)).then(v => v ? v.state + (v.moved ? ' (' + Object.keys(v.moved).filter(k => v.moved[k]).join(', ') + ' encrypted)' : '') : 'not reported')],
+    ['Firewall', !RD ? '—' : await fwStatus().then(f => f ? (f.on ? 'on, ' + f.blocked + ' incoming connections blocked' + (f.remote ? ', remote access open to the local network' : '') : 'off') : 'not reported')],
     ['Development link', !RD ? '—' : typeof devlSummary == 'function' ? devlSummary(await rd('devlink').catch(() => null)) : '—'],
     ['Desktop', !RD ? 'browser version' : SHELL ? 'shell ' + SHELL_VER + ' (real tabs)' : sv.shellFailed ? 'plain page (shell failed)' : 'plain page'],
     ['Display', sys ? tmDisp(sys.display) : '—'],
@@ -327,6 +329,8 @@ async function sysReport(problem) {
   /* 1.3.0: crashes of Rudolf OS's own programs since start-up (from the kernel's log): which program, when, where */
   if (RD) { let c = null; try { c = await rd('crashes') } catch (e) {}
     if (c && c.crashes) out.push('== Crashes (Rudolf OS programs since start-up)', ...(c.crashes.length ? c.crashes.map(x => `${x.program}: ${x.kind} in ${x.where || '?'} (${Math.round(x.at / 60)} min after start-up)`) : ['none']), ''); }
+  /* 1.5.0: the latest events of the health log (sec50.js) */
+  if (RD && typeof hlReportLines == 'function') { const hl = await hlReportLines(50); if (hl.length) out.push('== Health log (latest 50, newest first)', ...hl, '') }
   if (sys && tmLines(k.messages).length) out.push('== Kernel warnings and errors (latest)', ...tmLines(k.messages).slice(-20), '');
   if (sys && tmLines(sys.session).length) out.push('== Session log (latest)', ...tmLines(sys.session).slice(-15), '');
   if (SHELL_LOG.length) out.push('== Shell notes', ...SHELL_LOG.slice(-15), '');

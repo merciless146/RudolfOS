@@ -1,0 +1,66 @@
+#!/bin/sh
+# Rudolf OS 1.5.0: the firewall for incoming connections (nftables).
+#   firewall start          load the rules (rudolf-init, before the network is up); off when /persist/etc/firewall-off
+#   firewall on | off       turn it on or off and remember it (rudolfd, Settings › Security, administrators)
+#   firewall remote on|off  let the local network reach remote access (port 8443) or not (rudolf-remote)
+#   firewall status         "on N" (N incoming connections blocked since start-up) or "off"
+# Outgoing connections are all allowed. Incoming: the computer itself (loopback), replies to connections it made,
+# DHCP replies, the ICMP a network needs (ping, too big, unreachable, IPv6 neighbour discovery), and remote access
+# from private addresses while it is on. Everything else is counted and dropped.
+# GPL-2.0-or-later.
+OFF=/persist/etc/firewall-off
+REM=/run/rudolf/firewall-remote
+command -v nft >/dev/null 2>&1 || { echo "nft is missing" >&2; exit 1; }
+
+rules() {
+	cat <<'EOF'
+table inet rudolf
+delete table inet rudolf
+table inet rudolf {
+	counter blocked { }
+	chain input {
+		type filter hook input priority filter; policy accept;
+		iif "lo" accept
+		ct state established,related accept
+		ct state invalid counter name blocked drop
+		meta l4proto icmp icmp type { echo-request, destination-unreachable, time-exceeded, parameter-problem } limit rate 20/second accept
+		meta l4proto ipv6-icmp icmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert, nd-redirect, mld-listener-query } accept
+		udp sport 67 udp dport 68 accept
+		udp sport 547 udp dport 546 accept
+		jump remote
+		counter name blocked drop
+	}
+	chain remote {
+	}
+}
+EOF
+}
+remote_rules() {
+	echo "flush chain inet rudolf remote"
+	[ "$1" = on ] && cat <<'EOF'
+add rule inet rudolf remote ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } tcp dport 8443 accept
+add rule inet rudolf remote ip6 saddr { fe80::/10, fc00::/7 } tcp dport 8443 accept
+EOF
+}
+loaded() { nft list table inet rudolf >/dev/null 2>&1; }
+
+case "$1" in
+start)
+	[ -f "$OFF" ] && exit 0
+	rules | nft -f - || exit 1
+	[ -f "$REM" ] && remote_rules on | nft -f -
+	exit 0;;
+on)
+	rm -f "$OFF"; rules | nft -f - || exit 1
+	[ -f "$REM" ] && remote_rules on | nft -f -
+	exit 0;;
+off)
+	mkdir -p /persist/etc 2>/dev/null; [ -d /persist/etc ] && : > "$OFF"
+	loaded && nft delete table inet rudolf; exit 0;;
+remote)
+	if [ "$2" = on ]; then : > "$REM"; else rm -f "$REM"; fi
+	loaded && remote_rules "$2" | nft -f -; exit 0;;
+status)
+	if loaded; then echo "on $(nft list counter inet rudolf blocked 2>/dev/null | sed -n 's/.*packets \([0-9]*\).*/\1/p' | head -1)"; else echo off; fi;;
+*) echo "usage: firewall start|on|off|remote on|off|status" >&2; exit 2;;
+esac

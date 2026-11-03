@@ -69,7 +69,7 @@ make)
 	for i in $(seq 30); do [ -b "$P" ] && break; sleep 0.2; mdev -s 2>/dev/null; done
 	[ -b "$P" ] || { echo "The new partition did not appear ($P)."; exit 3; }
 	echo "Step 2/3: creating the RUDOLFDATA file system ..."
-	mke2fs -q -F -t ext4 -L RUDOLFDATA -m 1 "$P" || { echo "Could not create the file system."; exit 4; }
+	mke2fs -q -F -t ext4 -O encrypt -L RUDOLFDATA -m 1 "$P"   # 1.5.0: -O encrypt: ready for data encryption || { echo "Could not create the file system."; exit 4; }
 	echo "Step 3/3: preparing it ..."
 	mkdir -p /mnt/keepfiles && mount -t ext4 "$P" /mnt/keepfiles || { echo "Could not use the new partition."; exit 5; }
 	mkdir -p /mnt/keepfiles/home/rudolf /mnt/keepfiles/os /mnt/keepfiles/etc

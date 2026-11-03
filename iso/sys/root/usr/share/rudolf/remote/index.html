@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Rudolf OS remote access</title>
+<link rel="stylesheet" href="/remote.css">
+</head>
+<body>
+<main id="signin" class="card" hidden>
+  <h1>Rudolf OS remote access</h1>
+  <p class="lead">Sign in with an account on this computer. Unless your account may connect unattended, someone at the computer is asked to allow it.</p>
+  <form id="f" autocomplete="off">
+    <label id="codeRow">Pairing code <small>(Settings › Remote access on the computer; asked once in this browser)</small>
+      <input id="code" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" autocomplete="one-time-code"></label>
+    <label>Account name <input id="user" autocapitalize="off" spellcheck="false" required></label>
+    <label>Password <input id="pass" type="password" required></label>
+    <button id="go" type="submit">Connect</button>
+    <p id="msg" role="alert"></p>
+  </form>
+</main>
+<main id="wait" class="card" hidden><h1>Connecting…</h1><p id="waitMsg"></p><button id="cancel">Cancel</button></main>
+<main id="bye" class="card" hidden><h1>Disconnected</h1><p id="byeMsg"></p><button id="again">Connect again</button></main>
+<div id="view" hidden>
+  <div id="bar"><span id="who">Rudolf OS</span><span class="sp"></span><button id="fit" title="Fit the screen to this window">Fit</button><button id="full" title="Full screen">Full screen</button><button id="end">Disconnect</button></div>
+  <div id="wrap"><canvas id="c" tabindex="0"></canvas></div>
+</div>
+<script src="/remote.js"></script>
+</body>
+</html>

@@ -92,12 +92,15 @@ mkdir -p etc/ssl/certs && cp -L /etc/ssl/certs/ca-certificates.crt etc/ssl/certs
 
 # ---------- disk tools for the installer
 cp -L /usr/sbin/mke2fs usr/sbin/ && copy_deps /usr/sbin/mke2fs
+# 1.5.0: the firewall (nft) and file encryption on RUDOLFDATA (tune2fs -O encrypt)
+for b in /usr/sbin/nft /usr/sbin/tune2fs; do cp -L $b usr/sbin/ && copy_deps $b; done
 cp -a /etc/mke2fs.conf etc/ 2>/dev/null || true
 
 # ---------- Rudolf OS system programs and scripts
 gcc -O2 -o usr/bin/rudolf-display "$SYS/rudolf-display.c" -lX11 /usr/lib/x86_64-linux-gnu/libXtst.so.6 /usr/lib/x86_64-linux-gnu/libXfixes.so.3 /usr/lib/x86_64-linux-gnu/libXrandr.so.2 -lm
 gcc -O2 -o usr/bin/rudolf-launch "$SYS/rudolf-launch.c"
 gcc -O2 -o usr/bin/rudolf-memguard "$SYS/rudolf-memguard.c"
+gcc -O2 -o usr/bin/rudolf-remote "$SYS/rudolf-remote.c" -lssl -lcrypto -lX11 -lXext /usr/lib/x86_64-linux-gnu/libXtst.so.6 -lz   # 1.5.0: remote access
 gcc -O2 -o usr/bin/rudolfd "$SYS/rudolfd.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
 gcc -O2 -o usr/bin/rpk "$SYS/rpk.c" -lcrypto
 gcc -O2 -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl
@@ -121,7 +124,7 @@ fi
 mkdir -p etc/rudolf; printf "%s\n" "${UPDATE_URL:-}" > etc/rudolf/update-url
 gcc -O2 -static -o usr/bin/cdp-eval "$SYS/cdp-eval.c"
 cp -L /usr/lib/x86_64-linux-gnu/libXtst.so.6 usr/lib/x86_64-linux-gnu/
-copy_deps usr/bin/rudolf-display usr/bin/rudolfd usr/bin/rpk usr/bin/rudolf-update usr/bin/rudolf-apps usr/bin/rudolf-portal usr/bin/rudolf-debian usr/bin/rudolf-ai
+copy_deps usr/bin/rudolf-display usr/bin/rudolf-remote usr/bin/rudolfd usr/bin/rpk usr/bin/rudolf-update usr/bin/rudolf-apps usr/bin/rudolf-portal usr/bin/rudolf-debian usr/bin/rudolf-ai
 cp -a "$SYS/root/." .
 mkdir -p usr/share/rudolf
 cp -a "$WWW" usr/share/rudolf/www

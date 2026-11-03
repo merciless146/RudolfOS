@@ -97,6 +97,10 @@ fi
 y SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD CRYPTO_ZSTD PSI LRU_GEN LRU_GEN_ENABLED
 n PSI_DEFAULT_DISABLED ZRAM_DEF_COMP_LZORLE ZRAM_DEF_COMP_LZO
 y ZRAM_DEF_COMP_ZSTD
+# 1.5.0: the firewall for incoming connections (nftables, /usr/lib/rudolf/firewall) and file encryption for the data
+# on RUDOLFDATA (fscrypt on ext4: /persist/vault, rudolfd unlocks it at sign-in; AES-256-XTS and AES-256-CTS)
+y NETFILTER NETFILTER_ADVANCED NF_CONNTRACK NF_TABLES NF_TABLES_INET NF_TABLES_IPV4 NF_TABLES_IPV6 NFT_CT NFT_LIMIT NFT_LOG NFT_REJECT NFT_REJECT_INET
+y FS_ENCRYPTION CRYPTO_AES CRYPTO_AES_NI_INTEL CRYPTO_XTS CRYPTO_CTS CRYPTO_CBC CRYPTO_ECB CRYPTO_SHA512 CRYPTO_HKDF
 # speed up the build
 n DEBUG_INFO DEBUG_INFO_DWARF5 DEBUG_INFO_DWARF4 DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT DEBUG_INFO_BTF KALLSYMS_ALL FTRACE
 $C --enable DEBUG_INFO_NONE
@@ -106,5 +110,6 @@ for o in $HOTKEYS; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o 
 grep -q "^CONFIG_IPV6_SIT=y\|^CONFIG_IPV6_SIT=m" .config && { echo "kconfig.sh: IPV6_SIT is still on"; exit 1; }
 # 1.4.7: the memory options are on
 for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU_GEN_ENABLED; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
+for o in NF_TABLES NF_TABLES_INET NFT_CT NFT_REJECT NFT_LIMIT FS_ENCRYPTION CRYPTO_XTS CRYPTO_CTS; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 grep -q "^CONFIG_PSI_DEFAULT_DISABLED=y" .config && { echo "kconfig.sh: PSI is off by default"; exit 1; }
 true

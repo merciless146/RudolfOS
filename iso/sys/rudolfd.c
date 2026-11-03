@@ -2600,6 +2600,339 @@ static void api_devlink(struct req *r, const char *what, int post)
 	reply_err(r->fd, 404, "unknown request");
 }
 
+/* ------------------------------------------------------------- 1.5.0: the system health log and the firewall
+ * The health log is a record of what happened, kept on the computer only (docs/plan-1.5.0.md): one JSON line per
+ * event, {"t":TIME,"k":KIND,"m":TEXT}, in /persist/var/log/health.log (in /run/rudolf without RUDOLFDATA), at most
+ * 512 KB: the older half is dropped when it is full. Written by rudolfd itself (start-up, slot fallback, memory guard,
+ * crashes, disk nearly full, heat, firewall blocks per hour), by the desktop (POST /api/health) and by other programs
+ * (rudolfd --health KIND TEXT: the session's watchdog, rudolf-remote). Nothing in it is sent anywhere. */
+#define HEALTH_MAX (512 * 1024)
+static void health_path(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/health.log" : PERSIST "/var/log/health.log"); }
+static int health_kind_ok(const char *k)
+{
+	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", NULL };
+	for (int i = 0; K[i]; i++) if (k && !strcmp(k, K[i])) return 1;
+	return 0;
+}
+static void health_add(const char *kind, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void health_add(const char *kind, const char *fmt, ...)
+{
+	char m[400]; va_list ap; va_start(ap, fmt); vsnprintf(m, sizeof m, fmt, ap); va_end(ap);
+	char p[160]; health_path(p, sizeof p);
+	if (strncmp(p, RUN, strlen(RUN))) { mkdir(PERSIST "/var", 0755); mkdir(PERSIST "/var/log", 0755); }
+	struct stat st;
+	if (!stat(p, &st) && st.st_size > HEALTH_MAX) {
+		/* keep the newer half, from a line start */
+		size_t n; char *all = slurp(p, &n);
+		if (all) { char *h = all + n / 2; char *nl = strchr(h, '\n'); if (nl) h = nl + 1;
+			char tp[170]; snprintf(tp, sizeof tp, "%s.tmp", p); int f = open(tp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+			if (f >= 0) { if (write(f, h, all + n - h) < 0) {} close(f); rename(tp, p); } free(all); }
+	}
+	str s = {0}; sadd(&s, "{\"t\":%lld,\"k\":", (long long)time(NULL)); sjson(&s, kind); sadd(&s, ",\"m\":"); sjson(&s, m); sadd(&s, "}\n");
+	int f = open(p, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
+	if (f >= 0) { if (write(f, s.b, s.n) < 0) {} close(f); }
+	free(s.b);
+}
+/* GET health?n=200: the newest events, newest first; POST health {"k":KIND,"m":TEXT}: an event from the desktop */
+static void api_health(struct req *r, int post)
+{
+	if (post) {
+		char k[24] = "", m[400] = ""; const char *b = r->body ? r->body : "";
+		const char *kp = strstr(b, "\"k\":\""), *mp = strstr(b, "\"m\":\"");
+		if (kp) sscanf(kp + 5, "%23[a-z]", k);
+		if (mp) { mp += 5; size_t i = 0; while (*mp && *mp != '"' && i < sizeof m - 1) { if (*mp == '\\' && mp[1]) mp++; m[i++] = (unsigned char)*mp < 32 ? ' ' : *mp; mp++; } m[i] = 0; }
+		if (!health_kind_ok(k)) { reply_err(r->fd, 400, "unknown kind of event"); return; }
+		health_add(k, "%s", m); reply_ok(r->fd, "noted"); return;
+	}
+	char *q = qparam(r->query, "n"); int want = q ? atoi(q) : 200; if (want <= 0 || want > 2000) want = 200;
+	char p[160]; health_path(p, sizeof p); size_t n = 0; char *all = slurp(p, &n);
+	str s = {0}; sadd(&s, "{\"ok\":true,\"now\":%lld,\"uptime\":%ld,\"events\":[", (long long)time(NULL), ({ struct sysinfo si; sysinfo(&si) ? 0L : si.uptime; }));
+	int k = 0;
+	if (all) {
+		/* from the end backwards */
+		char *e = all + n;
+		while (e > all && k < want) {
+			char *l = e - 1; if (*l == '\n') l--; while (l > all && *(l - 1) != '\n') l--;
+			size_t ln = (e > all && *(e - 1) == '\n' ? e - 1 : e) - l;
+			if (ln > 2 && *l == '{') { sadd(&s, "%s%.*s", k ? "," : "", (int)ln, l); k++; }
+			e = l;
+		}
+		free(all);
+	}
+	sadd(&s, "]}"); reply_json(r->fd, &s);
+}
+/* once a minute: new memory-guard events, crashes in the kernel's log, disk nearly full, heat; once an hour: how many
+   incoming connections the firewall blocked */
+static void health_tick(void)
+{
+	static time_t last, last_fw, last_disk, last_heat; static long long mg_off = -1, fw_prev = -1; static char ck[300];
+	time_t t = time(NULL);
+	if (t - last < 60 && t >= last) return;
+	last = t;
+	/* the memory guard */
+	struct stat st;
+	if (!stat(RUN "/memguard.events", &st)) {
+		if (mg_off < 0) mg_off = st.st_size;
+		else if (st.st_size > mg_off) {
+			char *e = slurp(RUN "/memguard.events", NULL);
+			if (e && (long long)strlen(e) >= mg_off) for (char *l = strtok(e + mg_off, "\n"); l; l = strtok(NULL, "\n")) {
+				long long tt, rss; int pid; if (sscanf(l, "%lld %d %lld", &tt, &pid, &rss) == 3) health_add("memory", "memory ran out: a web page using %lld MB was closed", rss >> 20);
+			}
+			free(e); mg_off = st.st_size;
+		}
+	} else if (mg_off < 0) mg_off = 0;
+	/* crashes (every program: Rudolf OS's own, Linux and Windows programs), each once */
+	char *d = run_out("dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -20");
+	if (d) {
+		char *lines[20]; int nl = 0; for (char *l = strtok(d, "\n"); l && nl < 20; l = strtok(NULL, "\n")) lines[nl++] = l;
+		int from = 0;
+		if (ck[0]) { for (int i = nl - 1; i >= 0; i--) if (!strcmp(lines[i], ck)) { from = i + 1; break; } }
+		else from = nl;   /* the first look after start-up: those happened before rudolfd, not reported twice */
+		for (int i = from; i < nl; i++) {
+			const char *b = strchr(lines[i], ']'); if (!b) continue; b++; while (*b == ' ') b++; if (!strncmp(b, "traps: ", 7)) b += 7;
+			size_t k = strcspn(b, "["); if (!k || k > 60) continue;
+			health_add("crash", "%.*s stopped (%s)", (int)k, b, strstr(b, "segfault") ? "segmentation fault" : strstr(b, "general protection") ? "general protection fault" : "trap");
+		}
+		if (nl) snprintf(ck, sizeof ck, "%s", lines[nl - 1]); else if (!ck[0]) snprintf(ck, sizeof ck, "-");
+		free(d);
+	}
+	/* disk nearly full (RUDOLFDATA): at most once a day */
+	struct statvfs v;
+	if (!access(RUN "/persistent", F_OK) && !statvfs(PERSIST, &v) && t - last_disk > 86400) {
+		unsigned long long fr = (unsigned long long)v.f_bavail * v.f_frsize, all = (unsigned long long)v.f_blocks * v.f_frsize;
+		if (all && (fr < 512ULL << 20 || fr * 100 / all < 5)) { health_add("disk", "storage nearly full: %llu MB free of %llu MB", fr >> 20, all >> 20); last_disk = t; }
+	}
+	/* heat: 90 °C or more on any sensor, at most once an hour */
+	if (t - last_heat > 3600) {
+		long mx = 0; char tp[96];
+		for (int i = 0; i < 32; i++) { snprintf(tp, sizeof tp, "/sys/class/thermal/thermal_zone%d/temp", i); long long v2 = read_ll(tp, -1); if (v2 < 0) { if (i > 8) break; continue; } if (v2 > mx) mx = v2; }
+		if (mx >= 90000) { health_add("heat", "the processor reached %ld °C", mx / 1000); last_heat = t; }
+	}
+	/* the firewall, once an hour */
+	if (t - last_fw >= 3600 || t < last_fw) {
+		char *o = run_out("/usr/lib/rudolf/firewall status 2>/dev/null");
+		if (o && !strncmp(o, "on ", 3)) { long long c = atoll(o + 3); if (fw_prev >= 0 && c > fw_prev) health_add("firewall", "%lld incoming connection%s blocked in the last hour", c - fw_prev, c - fw_prev == 1 ? "" : "s"); fw_prev = c; }
+		free(o); last_fw = t;
+	}
+}
+/* at start-up: which slot started, and a fallback from an update that did not start (initramfs/init: state failed=) */
+static void health_boot(void)
+{
+	char *sl = slurp("/etc/rudolf/slot", NULL), *ver = slurp("/usr/share/rudolf/VERSION", NULL); if (sl) trim(sl); if (ver) trim(ver);
+	health_add("start", "Rudolf OS %s started (%s)", ver ? ver : "?", sl && strcmp(sl, "disc") ? sl : "from the disc");
+	char *stt = slurp(PERSIST "/os/system/state", NULL);
+	if (stt) {
+		char *f = strstr(stt, "failed="); char fv[32] = ""; if (f) sscanf(f + 7, "%31[A-Za-z0-9]", fv);
+		char *seen = slurp(PERSIST "/var/log/health.fallback", NULL); if (seen) trim(seen);
+		if (fv[0] && (!seen || strcmp(seen, fv))) { health_add("fallback", "the update in slot %s did not start, so the computer went back to the previous system", fv); char b[40]; snprintf(b, sizeof b, "%s\n", fv); write_str(PERSIST "/var/log/health.fallback", b); }
+		free(seen); free(stt);
+	}
+	free(sl); free(ver);
+}
+/* GET firewall: {on, blocked}; POST firewall?on=1|0 (the desktop asks for an administrator's password first) */
+static void api_firewall(struct req *r, int post)
+{
+	if (post) {
+		char *on = qparam(r->query, "on"); if (!on || (strcmp(on, "1") && strcmp(on, "0"))) { reply_err(r->fd, 400, "on=1 or on=0"); return; }
+		if (run(*on == '1' ? "/usr/lib/rudolf/firewall on >/dev/null 2>" RUN "/firewall.err" : "/usr/lib/rudolf/firewall off >/dev/null 2>" RUN "/firewall.err")) {
+			char *e = slurp(RUN "/firewall.err", NULL); if (e) trim(e); reply_err(r->fd, 500, e && *e ? e : "the firewall could not be changed"); free(e); return; }
+		health_add("firewall", "the firewall was turned %s", *on == '1' ? "on" : "off");
+	}
+	char *o = run_out("/usr/lib/rudolf/firewall status 2>/dev/null");
+	str s = {0}; sadd(&s, "{\"ok\":true,\"on\":%s,\"blocked\":%lld,\"remote\":%s}", o && !strncmp(o, "on", 2) ? "true" : "false", o && !strncmp(o, "on ", 3) ? atoll(o + 3) : 0LL, access(RUN "/firewall-remote", F_OK) ? "false" : "true");
+	free(o); reply_json(r->fd, &s);
+}
+/* ------------------------------------------------------------- 1.5.0: data encryption (docs/plan-1.5.0.md, part 4)
+ * /persist/vault is a folder encrypted by the kernel (fscrypt v2 policy on ext4: AES-256-XTS contents, AES-256-CTS
+ * names). Debian, Flatpak apps and Downloads move into it (vault-move). The 64-byte data key never touches the disk:
+ * the desktop keeps it wrapped for every account (with a key made from that account's password) and for the
+ * recovery key, in /persist/etc/vault.json, which rudolfd stores as it is given. At sign-in the desktop unwraps it and
+ * hands it over (POST vault/unlock); rudolfd adds it to the file system (FS_IOC_ADD_ENCRYPTION_KEY), checks that its
+ * identifier is the vault's (/persist/etc/vault.id), and the folder opens until the computer is turned off.
+ * The first unlock after setup makes the folder and starts the move. A drive formatted before 1.5.0 has no "encrypt"
+ * feature: setup adds it (tune2fs -O encrypt, on the mounted drive). */
+#include <linux/fscrypt.h>
+#define VAULT_DIR PERSIST "/vault"
+#define VAULT_J   PERSIST "/etc/vault.json"
+#define VAULT_ID  PERSIST "/etc/vault.id"
+static int vault_set(void) { return !access(VAULT_J, F_OK); }
+static int vault_open(void) { return !access(RUN "/vault-unlocked", F_OK); }
+static int vault_locked(void) { return !access(VAULT_ID, F_OK) && !vault_open(); }
+static void vault_dev(char *o, size_t n) { char *d = slurp("/etc/rudolf/persist", NULL); if (d) trim(d); snprintf(o, n, "%s", d && !strncmp(d, "/dev/", 5) ? d : ""); free(d); }
+static int vault_feature(void)
+{
+	char dev[64]; vault_dev(dev, sizeof dev); if (!dev[0] || strchr(dev, '\'')) return 0;
+	char c[160]; snprintf(c, sizeof c, "tune2fs -l '%s' 2>/dev/null | grep -i '^Filesystem features'", dev);
+	char *o = run_out(c); int on = o && strstr(o, " encrypt"); free(o); return on;
+}
+static int hexval(int c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1; }
+static int vault_key_spec_remove(const unsigned char *id)
+{
+	int fd = open(PERSIST, O_RDONLY | O_DIRECTORY | O_CLOEXEC); if (fd < 0) return -1;
+	struct fscrypt_remove_key_arg a; memset(&a, 0, sizeof a); a.key_spec.type = FSCRYPT_KEY_SPEC_TYPE_IDENTIFIER; memcpy(a.key_spec.u.identifier, id, FSCRYPT_KEY_IDENTIFIER_SIZE);
+	int r = ioctl(fd, FS_IOC_REMOVE_ENCRYPTION_KEY, &a); close(fd); return r;
+}
+/* GET vault: the state, and what the desktop stored (the wrapped keys) */
+static void api_vault_get(struct req *r)
+{
+	const char *st = live ? "unavailable" : !vault_set() ? "off" : !access(RUN "/vault-restart", F_OK) ? "restart" : access(VAULT_ID, F_OK) ? "ready" : vault_open() ? (!access(PERSIST "/etc/vault.moving", F_OK) ? "moving" : "on") : "locked";
+	str s = {0}; sadd(&s, "{\"ok\":true,\"state\":\"%s\",\"feature\":%s,\"moved\":{", st, live ? "false" : vault_feature() ? "true" : "false");
+	const char *M[][2] = { {"debian", PERSIST "/debian"}, {"flatpak", PERSIST "/flatpak"}, {"downloads", PERSIST "/home/rudolf/Downloads"} };
+	for (int i = 0; i < 3; i++) { struct stat lst; sadd(&s, "%s\"%s\":%s", i ? "," : "", M[i][0], !lstat(M[i][1], &lst) && S_ISLNK(lst.st_mode) ? "true" : "false"); }
+	sadd(&s, "},\"data\":");
+	char *j = vault_set() ? slurp(VAULT_J, NULL) : NULL;
+	if (j && *j == '{') sadd(&s, "%s", j); else sadd(&s, "null");
+	free(j); sadd(&s, "}"); reply_json(r->fd, &s);
+}
+static int vault_json_ok(const char *b, size_t n) { if (!b || n < 2 || n > 256 * 1024 || b[0] != '{' || b[n - 1] != '}') return 0; for (size_t i = 0; i < n; i++) if ((unsigned char)b[i] < 32 && b[i] != '\n') return 0; return 1; }
+static void api_vault(struct req *r, const char *what, int post)
+{
+	if (!post) { api_vault_get(r); return; }
+	if (live) { reply_err(r->fd, 409, "encryption needs Rudolf OS installed or a drive that keeps files (RUDOLFDATA)"); return; }
+	/* setup: store the wrapped keys; add the ext4 "encrypt" feature when the drive lacks it (a restart is needed then) */
+	if (!strcmp(what, "setup")) {
+		if (vault_set()) { reply_err(r->fd, 409, "encryption is already set up"); return; }
+		if (!vault_json_ok(r->body, r->blen)) { reply_err(r->fd, 400, "bad key data"); return; }
+		mkdir(PERSIST "/etc", 0755);
+		if (!vault_feature()) {
+			char dev[64], c[200]; vault_dev(dev, sizeof dev);
+			if (!dev[0] || strchr(dev, '\'')) { reply_err(r->fd, 409, "the drive that keeps your files was not found"); return; }
+			snprintf(c, sizeof c, "tune2fs -O encrypt '%s' >" RUN "/vault.err 2>&1", dev);
+			if (run(c)) { char *e = slurp(RUN "/vault.err", NULL); if (e) trim(e); reply_err(r->fd, 500, e && *e ? e : "the drive could not be prepared for encryption"); free(e); return; }
+			/* (tune2fs writes the superblock through the same block cache the kernel uses, so the feature is on at once;
+			   if the kernel still refuses the folder, unlock says to restart) */
+		}
+		char tp[] = PERSIST "/etc/vault.json.tmp"; int f = open(tp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+		if (f < 0 || write(f, r->body, r->blen) != (ssize_t)r->blen) { if (f >= 0) close(f); reply_err(r->fd, 500, "the key data could not be stored"); return; }
+		fsync(f); close(f); rename(tp, VAULT_J);
+		health_add("vault", "encryption was set up");
+		api_vault_get(r); return;
+	}
+	/* store: the desktop's new wrapped keys (an account added, a password changed) */
+	if (!strcmp(what, "store")) {
+		if (!vault_set()) { reply_err(r->fd, 409, "encryption is not set up"); return; }
+		if (!vault_json_ok(r->body, r->blen)) { reply_err(r->fd, 400, "bad key data"); return; }
+		char tp[] = PERSIST "/etc/vault.json.tmp"; int f = open(tp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+		if (f < 0 || write(f, r->body, r->blen) != (ssize_t)r->blen) { if (f >= 0) close(f); reply_err(r->fd, 500, "the key data could not be stored"); return; }
+		fsync(f); close(f); rename(tp, VAULT_J); reply_ok(r->fd, "stored"); return;
+	}
+	/* unlock: the data key, 128 hex digits */
+	if (!strcmp(what, "unlock")) {
+		if (!vault_set()) { reply_err(r->fd, 409, "encryption is not set up"); return; }
+		if (!access(RUN "/vault-restart", F_OK)) { reply_err(r->fd, 409, "restart the computer first: the drive was prepared for encryption"); return; }
+		unsigned char key[64]; const char *h = r->body ? r->body : "";
+		if (r->blen < 128) { reply_err(r->fd, 400, "bad key"); return; }
+		for (int i = 0; i < 64; i++) { int a = hexval(h[2 * i]), b = hexval(h[2 * i + 1]); if (a < 0 || b < 0) { explicit_bzero(key, sizeof key); reply_err(r->fd, 400, "bad key"); return; } key[i] = a << 4 | b; }
+		explicit_bzero(r->body, r->blen);
+		int fd = open(PERSIST, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+		struct fscrypt_add_key_arg *a = calloc(1, sizeof *a + sizeof key);
+		if (fd < 0 || !a) { if (fd >= 0) close(fd); free(a); explicit_bzero(key, sizeof key); reply_err(r->fd, 500, "the drive could not be opened"); return; }
+		a->key_spec.type = FSCRYPT_KEY_SPEC_TYPE_IDENTIFIER; a->raw_size = sizeof key; memcpy(a->raw, key, sizeof key); explicit_bzero(key, sizeof key);
+		int rc = ioctl(fd, FS_IOC_ADD_ENCRYPTION_KEY, a); int er = errno;
+		unsigned char id[FSCRYPT_KEY_IDENTIFIER_SIZE]; memcpy(id, a->key_spec.u.identifier, sizeof id);
+		explicit_bzero(a, sizeof *a + sizeof key); free(a); close(fd);
+		if (rc) { char m[160]; snprintf(m, sizeof m, "the key could not be added (%s)", er == ENOTTY || er == EOPNOTSUPP ? "this kernel or drive does not support encryption" : strerror(er)); reply_err(r->fd, 500, m); return; }
+		char hex[2 * sizeof id + 2]; for (size_t i = 0; i < sizeof id; i++) sprintf(hex + 2 * i, "%02x", id[i]); strcat(hex, "\n");
+		char *have = slurp(VAULT_ID, NULL);
+		if (have) {
+			int same = !strncmp(have, hex, 32); free(have);
+			if (!same) { vault_key_spec_remove(id); health_add("vault", "unlocking failed: the key did not match"); reply_err(r->fd, 403, "that key does not open the encrypted folder"); return; }
+		} else {
+			/* the first unlock: make the folder with this key's policy */
+			if (mkdir(VAULT_DIR, 0755) && errno != EEXIST) { reply_err(r->fd, 500, "the encrypted folder could not be made"); return; }
+			int vd = open(VAULT_DIR, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+			struct fscrypt_policy_v2 p; memset(&p, 0, sizeof p);
+			p.version = FSCRYPT_POLICY_V2; p.contents_encryption_mode = FSCRYPT_MODE_AES_256_XTS; p.filenames_encryption_mode = FSCRYPT_MODE_AES_256_CTS; p.flags = FSCRYPT_POLICY_FLAGS_PAD_32;
+			memcpy(p.master_key_identifier, id, sizeof id);
+			int pr = vd < 0 ? -1 : ioctl(vd, FS_IOC_SET_ENCRYPTION_POLICY, &p); int pe = errno; if (vd >= 0) close(vd);
+			if (pr) { vault_key_spec_remove(id); char m[200]; snprintf(m, sizeof m, "the encrypted folder could not be made (%s)", pe == EOPNOTSUPP ? "the drive is not prepared for encryption: restart and try again" : pe == ENOTEMPTY ? "/persist/vault is not empty" : strerror(pe)); reply_err(r->fd, 500, m); return; }
+			write_str(VAULT_ID, hex); write_str(PERSIST "/etc/vault.moving", "");
+		}
+		write_str(RUN "/vault-unlocked", "1\n");
+		{ struct stat lst; if (!lstat(PERSIST "/flatpak", &lst) && S_ISLNK(lst.st_mode)) run("mountpoint -q /var/lib/flatpak || mount --bind " VAULT_DIR "/flatpak /var/lib/flatpak"); }
+		health_add("vault", "the encrypted folder was unlocked");
+		if (!access(PERSIST "/etc/vault.moving", F_OK) && !job_running()) start_job("vault", "/usr/lib/rudolf/vault-move");
+		api_vault_get(r); return;
+	}
+	/* move: run the move again (after making room) */
+	if (!strcmp(what, "move")) {
+		if (!vault_open()) { reply_err(r->fd, 409, "the encrypted folder is locked"); return; }
+		if (job_running()) { reply_err(r->fd, 409, "another job is running"); return; }
+		write_str(PERSIST "/etc/vault.moving", ""); start_job("vault", "/usr/lib/rudolf/vault-move"); reply_ok(r->fd, "moving"); return;
+	}
+	reply_err(r->fd, 404, "unknown vault request");
+}
+/* ------------------------------------------------------------- 1.5.0: remote access (rudolf-remote, port 8443)
+ * On/off (the desktop asks for an administrator's password first; /persist/etc/remote-on keeps it on after a restart),
+ * a new pairing code each time it is turned on, the firewall's port only while it is on, the approval prompt and the
+ * session marker for the desktop, and the accounts that may sign in (/persist/etc/remote-accounts, written by the
+ * desktop: name, PBKDF2 hash, role, unattended). Turned off, every browser that was paired is forgotten. */
+#include <ifaddrs.h>
+#define RREM RUN "/remote"
+static int remote_pid(void) { char *p = slurp(RREM "/pid", NULL); int v = p ? atoi(p) : 0; free(p); return v > 0 && !kill(v, 0) ? v : 0; }
+static void remote_start(void)
+{
+	mkdir(RREM, 0755);
+	unsigned char rb[4]; int rf = open("/dev/urandom", O_RDONLY | O_CLOEXEC); if (rf < 0 || read(rf, rb, 4) != 4) memset(rb, 7, 4); if (rf >= 0) close(rf);
+	char code[16]; snprintf(code, sizeof code, "%06u\n", (unsigned)((rb[0] << 24 | rb[1] << 16 | rb[2] << 8 | rb[3]) % 1000000)); write_str(RREM "/code", code);
+	write_str(RREM "/on", "1\n");
+	run("/usr/lib/rudolf/firewall remote on >/dev/null 2>&1");
+	if (!remote_pid()) run("setsid sh -c 'while [ -e " RREM "/on ]; do rudolf-remote; sleep 2; done' </dev/null >" RUN "/remote.log 2>&1 &");
+}
+static void remote_stop(void)
+{
+	unlink(RREM "/on"); int p = remote_pid(); if (p) kill(p, SIGTERM);
+	run("pkill -f '[r]udolf-remote' >/dev/null 2>&1; rm -rf " RREM "/sess " RREM "/pending " RREM "/session");
+	unlink(RREM "/code"); unlink(PERSIST "/etc/remote-devices");
+	run("/usr/lib/rudolf/firewall remote off >/dev/null 2>&1");
+}
+static void remote_boot(void) { if (!access(PERSIST "/etc/remote-on", F_OK) && !live) remote_start(); }
+static void api_remote(struct req *r, const char *what, int post)
+{
+	if (post && !strcmp(what, "")) {
+		char *on = qparam(r->query, "on"); if (!on || (strcmp(on, "1") && strcmp(on, "0"))) { reply_err(r->fd, 400, "on=1 or on=0"); return; }
+		if (*on == '1') { if (live) { reply_err(r->fd, 409, "remote access needs Rudolf OS installed (it keeps its certificate and settings)"); return; } write_str(PERSIST "/etc/remote-on", "1\n"); remote_start(); health_add("remote", "remote access was turned on"); }
+		else { unlink(PERSIST "/etc/remote-on"); remote_stop(); health_add("remote", "remote access was turned off"); }
+	} else if (post && !strcmp(what, "answer")) {
+		char *id = qparam(r->query, "id"), *al = qparam(r->query, "allow");
+		if (!id || strlen(id) != 16 || strspn(id, "0123456789abcdef") != 16 || !al) { reply_err(r->fd, 400, "bad answer"); return; }
+		char p[160]; snprintf(p, sizeof p, RREM "/answer-%s", id); write_str(p, *al == '1' ? "allow\n" : "deny\n"); reply_ok(r->fd, "answered"); return;
+	} else if (post && !strcmp(what, "end")) { write_str(RREM "/end", "1\n"); reply_ok(r->fd, "ending"); return; }
+	else if (post && !strcmp(what, "accounts")) {
+		/* lines: name TAB hash TAB role TAB unattended(0|1) */
+		if (r->blen > 64 * 1024) { reply_err(r->fd, 400, "too large"); return; }
+		mkdir(PERSIST "/etc", 0755);
+		int f = open(PERSIST "/etc/remote-accounts.tmp", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+		if (f < 0 || (r->blen && write(f, r->body, r->blen) != (ssize_t)r->blen)) { if (f >= 0) close(f); reply_err(r->fd, 500, "not stored"); return; }
+		close(f); rename(PERSIST "/etc/remote-accounts.tmp", PERSIST "/etc/remote-accounts"); reply_ok(r->fd, "stored"); return;
+	} else if (post) { reply_err(r->fd, 404, "unknown remote request"); return; }
+	/* the state */
+	int on = !access(RREM "/on", F_OK), pid = remote_pid();
+	if (on && !pid && !access(PERSIST "/etc/remote-on", F_OK)) remote_start();
+	str s = {0}; sadd(&s, "{\"ok\":true,\"on\":%s,\"running\":%s,\"port\":8443,\"live\":%s,\"code\":", on ? "true" : "false", pid ? "true" : "false", live ? "true" : "false");
+	char *c = on ? slurp(RREM "/code", NULL) : NULL; if (c) trim(c); sjson(&s, c ? c : ""); free(c);
+	char *fp = slurp(PERSIST "/etc/remote/fingerprint", NULL); if (fp) trim(fp); sadd(&s, ",\"fingerprint\":"); sjson(&s, fp ? fp : ""); free(fp);
+	sadd(&s, ",\"addresses\":[");
+	struct ifaddrs *ia = NULL; int n = 0;
+	if (!getifaddrs(&ia)) for (struct ifaddrs *i = ia; i; i = i->ifa_next) {
+		if (!i->ifa_addr || i->ifa_addr->sa_family != AF_INET || !strcmp(i->ifa_name, "lo")) continue;
+		char b[64]; inet_ntop(AF_INET, &((struct sockaddr_in *)i->ifa_addr)->sin_addr, b, sizeof b); sadd(&s, "%s\"%s\"", n++ ? "," : "", b);
+	}
+	if (ia) freeifaddrs(ia);
+	sadd(&s, "],\"session\":");
+	char *ss = slurp(RREM "/session", NULL); int spid = 0; char su[100] = "", sip[64] = ""; long long st = 0; int sua = 0;
+	if (ss && sscanf(ss, "%d\t%99[^\t]\t%63[^\t]\t%lld\t%d", &spid, su, sip, &st, &sua) >= 4 && spid > 0 && !kill(spid, 0)) { sadd(&s, "{\"user\":"); sjson(&s, su); sadd(&s, ",\"from\":"); sjson(&s, sip); sadd(&s, ",\"since\":%lld,\"unattended\":%s}", st, sua ? "true" : "false"); }
+	else sadd(&s, "null");
+	free(ss);
+	sadd(&s, ",\"pending\":");
+	char *pd = slurp(RREM "/pending", NULL); char pid2[20] = "", pu[100] = "", pip[64] = ""; long long pt = 0;
+	if (pd && sscanf(pd, "%19[^\t]\t%99[^\t]\t%63[^\t]\t%lld", pid2, pu, pip, &pt) == 4 && time(NULL) - pt < 65) { sadd(&s, "{\"id\":"); sjson(&s, pid2); sadd(&s, ",\"user\":"); sjson(&s, pu); sadd(&s, ",\"from\":"); sjson(&s, pip); sadd(&s, ",\"time\":%lld}", pt); }
+	else sadd(&s, "null");
+	free(pd);
+	char *dv = slurp(PERSIST "/etc/remote-devices", NULL); int nd = 0; if (dv) for (char *q = dv; *q; q++) if (*q == '\n') nd++; free(dv);
+	sadd(&s, ",\"devices\":%d}", nd);
+	reply_json(r->fd, &s);
+}
 static void api(struct req *r)
 {
 	const char *p = r->path + 5;   /* after /api/ */
@@ -2611,6 +2944,16 @@ static void api(struct req *r)
 	if (!strcmp(p, "processes")) { api_processes(r); return; }
 	if (!strcmp(p, "memory")) { api_memory(r); return; }
 	if (!strcmp(p, "memory/iam") && post) { api_memory_iam(r); return; }
+	if (!strcmp(p, "health")) { api_health(r, post); return; }
+	if (!strcmp(p, "firewall")) { api_firewall(r, post); return; }
+	if (!strcmp(p, "remote")) { api_remote(r, "", post); return; }
+	if (!strncmp(p, "remote/", 7)) { api_remote(r, p + 7, post); return; }
+	if (!strcmp(p, "vault")) { api_vault(r, "", 0); return; }
+	if (!strncmp(p, "vault/", 6)) { api_vault(r, p + 6, post); return; }
+	/* 1.5.0: Linux programs and Flatpak apps live in the encrypted folder: while it is locked they cannot start */
+	if (vault_locked() && (!strncmp(p, "term/", 5) || (!strncmp(p, "debian/", 7) && strcmp(p, "debian/status")) || !strcmp(p, "apps/install") || !strcmp(p, "apps/run") || !strcmp(p, "apps/update") || !strcmp(p, "apps/uninstall") || !strcmp(p, "native/run"))) {
+		str j = {0}; sadd(&j, "{\"ok\":false,\"locked\":true,\"error\":\"Your Linux programs are in the encrypted folder. Sign in to an account with its password to unlock it.\"}"); reply(r->fd, 423, "application/json", j.b, j.n, NULL); free(j.b); return;
+	}
 	if (!strcmp(p, "net")) { api_net(r); return; }
 	if (!strcmp(p, "disks")) { api_disks(r); return; }
 	/* the hardware check's download test (1.2.5): rudolf-update speedtest prints "bytes N" and "ms N" */
@@ -3196,6 +3539,8 @@ static int addpart(int argc, char **argv)
 int main(int argc, char **argv)
 {
 	if (argc > 1 && !strcmp(argv[1], "--addpart")) return addpart(argc, argv);
+	/* 1.5.0: rudolfd --health KIND TEXT: an event for the health log from another program */
+	if (argc == 4 && !strcmp(argv[1], "--health")) { if (!health_kind_ok(argv[2])) return 2; health_add(argv[2], "%s", argv[3]); return 0; }
 	signal(SIGPIPE, SIG_IGN);
 	mkdir(RUN, 0755);
 	int rf = open("/dev/urandom", O_RDONLY);
@@ -3223,6 +3568,8 @@ int main(int argc, char **argv)
 	{ char *sb = slurp("/etc/rudolf/secureboot", NULL); secureboot = sb && sb[0] == '1'; free(sb); }
 	live = access(RUN "/persistent", F_OK) != 0;
 	dl_boot();
+	health_boot();
+	remote_boot();
 	boot_entry_ensure();
 	/* 1.4.4: the power settings (System Settings › Power and battery) hold from the start, signed in or not */
 	if (!access("/usr/lib/rudolf/power", X_OK) && system("/usr/lib/rudolf/power apply >/dev/null 2>&1 &") != 0) {}
@@ -3235,6 +3582,7 @@ int main(int argc, char **argv)
 		struct pollfd pf = { s, POLLIN, 0 };
 		reap();
 		time_tick();
+		health_tick();
 		if (poll(&pf, 1, 1000) <= 0) continue;
 		int c = accept4(s, NULL, NULL, SOCK_CLOEXEC);
 		if (c < 0) continue;

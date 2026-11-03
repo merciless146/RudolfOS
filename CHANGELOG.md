@@ -3,6 +3,14 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.5.0 (2026-11-02)
+Summary: security: a firewall, encrypted data, administrators can open account files, a health log, and remote access from any browser
+- New: a firewall. Other computers can no longer connect to programs on this one (Linux and Windows programs included); everything this computer reaches out to works as before. Security Settings shows how many connections it blocked. The old "Firewall" setting for web pages is now called Website blocking; it works as before.
+- New: Encrypt my data (Security Settings). Debian, Linux and Windows programs, Linux apps and files kept in Downloads move into a folder the system encrypts. Signing in with your password unlocks it; Guest does not. A recovery key, shown once, opens it if every password is forgotten.
+- New: administrators can open the other accounts' files (in C:\USERS) and reset an account's password without its files being lost. It is on for every account and can be turned off per account (User Settings › Files and administrators). Each account's welcome file says who can open its files.
+- New: System health (Settings) records what happened on this computer: start-ups and how long they took, crashes, pages closed to free memory, updates that fell back, failed sign-ins, firewall blocks and remote sessions. It stays on this computer; Report a problem includes its latest events after you read the report.
+- New: Remote access (Settings). Use this computer from a phone, tablet or another computer on the same network, in any web browser, with nothing to install. A pairing code is asked once per browser, then an account and its password. Someone at the computer allows each connection, unless an administrator lets that account connect unattended. A red bar shows who is connected, with End.
+
 ## 1.4.9 (2026-11-02)
 Summary: Windows programs in a click: install Wine from Settings, and installed programs appear in the Start menu
 - New: Install Wine from Settings › Apps › Linux, or straight from a Windows program that cannot open yet. No Terminal commands are needed: it downloads about 1 GB and says when it is done.

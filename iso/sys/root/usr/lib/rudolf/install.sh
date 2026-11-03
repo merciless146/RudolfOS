@@ -65,7 +65,7 @@ sleep 2; mdev -s
 case "$N" in *[0-9]) P="${DEV}p3";; *) P="${DEV}3";; esac
 [ -b "$P" ] || { echo "The new data partition did not appear ($P)."; exit 6; }
 echo "Step 4/5: creating the RUDOLFDATA partition ($((SIZE / 2048)) MiB) ..."
-mke2fs -q -F -t ext4 -L RUDOLFDATA -m 1 "$P"
+mke2fs -q -F -t ext4 -O encrypt -L RUDOLFDATA -m 1 "$P"   # 1.5.0: -O encrypt: ready for data encryption
 echo "Step 5/5: finishing ..."
 mkdir -p /mnt/newdata && mount "$P" /mnt/newdata
 mkdir -p /mnt/newdata/home/rudolf /mnt/newdata/os /mnt/newdata/etc
