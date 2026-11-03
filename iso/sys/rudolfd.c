@@ -2877,7 +2877,11 @@ static void remote_start(void)
 	char code[16]; snprintf(code, sizeof code, "%06u\n", (unsigned)((rb[0] << 24 | rb[1] << 16 | rb[2] << 8 | rb[3]) % 1000000)); write_str(RREM "/code", code);
 	write_str(RREM "/on", "1\n");
 	run("/usr/lib/rudolf/firewall remote on >/dev/null 2>&1");
-	if (!remote_pid()) run("setsid sh -c 'while [ -e " RREM "/on ]; do rudolf-remote; sleep 2; done' </dev/null >" RUN "/remote.log 2>&1 &");
+	/* (1.5.1: one loop only. rudolf-remote writes its pid once it listens, which takes a few seconds on a slow
+	   computer; the desktop's status checks in the meantime started a second loop, whose rudolf-remote then failed
+	   "Address already in use" every 2 s for as long as remote access stayed on) */
+	if (!remote_pid() && run("pgrep -f '[w]hile \\[ -e " RREM "/on' >/dev/null 2>&1") != 0)
+		run("setsid sh -c 'while [ -e " RREM "/on ]; do rudolf-remote; sleep 2; done' </dev/null >" RUN "/remote.log 2>&1 &");
 }
 static void remote_stop(void)
 {
