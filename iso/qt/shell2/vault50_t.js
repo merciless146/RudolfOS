@@ -32,7 +32,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await boot();
   await q("(async()=>{ACCTS.length=0;ACCTS.push({n:'boss',h:await pwMake('b1'),r:'admin'});saveUser();await IN('boss','b1');return 1})()");
   await q("settings('sec')"); await wait(800);
-  ok('1. Security Settings: Data encryption, off, with Encrypt my data', await q("(()=>{const v=SW.body.querySelector('.v50');return !!v&&/^Off\\./.test(v.querySelector('.vt').textContent)&&[...v.querySelectorAll('button')].some(b=>b.textContent=='Encrypt my data…')})()"));
+  ok('1. Security Settings: Data encryption, off, with Encrypt my data', await q("(()=>{const v=SW.body.querySelector('.v50');return !!v&&/^Off\\./.test(v.querySelector('.v50t').textContent)&&[...v.querySelectorAll('button')].some(b=>b.textContent=='Encrypt my data…')})()"));
   await q("[...SW.body.querySelectorAll('.v50 button')].find(b=>b.textContent=='Encrypt my data…').click()"); await wait(500);
   const rk = await q("document.querySelector('.rmodal .rk').textContent");
   ok('2. the recovery key is shown (30 characters in groups of five)', /^([A-Z0-9]{5}-){5}[A-Z0-9]{5}$/.test(rk), rk);

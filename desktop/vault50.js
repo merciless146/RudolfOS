@@ -81,9 +81,9 @@ function vRecoverDlg(redraw){const o=document.createElement('div');o.className='
   try{await vUnlock(dk);await vAddEntry(USER,pw,s.data);o.remove();notify('Your data is unlocked','Your password unlocks it from now on.');redraw&&redraw()}catch(e){m.textContent=e.message||'It could not be unlocked.'}}}
 /* Security Settings › Data encryption */
 function vSection(c,W){if(!RD)return;const box=document.createElement('div');box.className='v50';
- box.innerHTML=`<h4 class='sh4'>Data encryption</h4><p class='msg vt' style='margin:2px 0 6px'></p><div class='vp' style='font-size:13px;margin-bottom:6px'></div><div class='rmrow' style='justify-content:flex-start;gap:6px'></div>`;
+ box.innerHTML=`<h4 class='sh4'>Data encryption</h4><p class='msg v50t' style='margin:2px 0 6px'></p><div class='v50p' style='font-size:13px;margin-bottom:6px'></div><div class='rmrow' style='justify-content:flex-start;gap:6px'></div>`;
  const fw=c.querySelector('.fw50');if(fw&&fw.nextSibling)c.insertBefore(box,fw.nextSibling);else c.appendChild(box);
- const t=box.querySelector('.vt'),pp=box.querySelector('.vp'),row=box.querySelector('.rmrow'),adm=isAdmin();
+ const t=box.querySelector('.v50t'),pp=box.querySelector('.v50p'),row=box.querySelector('.rmrow'),adm=isAdmin();
  const btn=(l,f,pri)=>{const b=document.createElement('button');b.textContent=l;if(pri)b.className='pri';b.onclick=f;row.appendChild(b);return b};
  const draw=async()=>{row.innerHTML='';pp.innerHTML='';const s=await vStatus();
   if(!s){t.textContent='Not available.';return}
