@@ -15,6 +15,9 @@ BD=$(command -v bluetoothd || echo /usr/libexec/bluetooth/bluetoothd)
 BC="bluetoothctl"
 BUS=/run/dbus/system_bus_socket
 export DBUS_SYSTEM_BUS_ADDRESS=unix:path=$BUS
+# (busybox's pgrep matches the name a program was started with: bluetoothd is started by its full path, so it never
+# matched, Bluetooth always looked stopped, and every check started another restart loop. pidof matches the program.)
+up() { pidof "$1" >/dev/null 2>&1; }
 mac_ok() { echo "$1" | grep -qE '^([0-9A-F]{2}:){5}[0-9A-F]{2}$'; }
 adapter() { ls /sys/class/bluetooth 2>/dev/null | grep -E '^hci[0-9]+$' | head -1; }
 bc() { timeout "${T:-10}" $BC "$@" 2>&1; }
@@ -30,11 +33,11 @@ start() {
 		mountpoint -q /var/lib/bluetooth || { mkdir -p /var/lib/bluetooth; mount --bind /persist/bluetooth /var/lib/bluetooth; }
 	else mkdir -p /var/lib/bluetooth; fi
 	for r in /sys/class/rfkill/*; do [ "$(cat $r/type 2>/dev/null)" = bluetooth ] && echo 0 > $r/soft 2>/dev/null; done
-	pgrep -x bluetoothd >/dev/null || (setsid sh -c "while [ ! -e /run/rudolf/bluetooth-stop ]; do $BD -n -f /etc/bluetooth/main.conf >>/run/rudolf/bluetooth.log 2>&1; sleep 2; done" </dev/null >/dev/null 2>&1 &)
+	[ -e /run/rudolf/bluetoothd.loop ] && kill -0 "$(cat /run/rudolf/bluetoothd.loop)" 2>/dev/null || (setsid sh -c "echo \$\$ > /run/rudolf/bluetoothd.loop; while [ ! -e /run/rudolf/bluetooth-stop ]; do $BD -n -f /etc/bluetooth/main.conf >>/run/rudolf/bluetooth.log 2>&1; sleep 2; done" </dev/null >/dev/null 2>&1 &)
 	B=$(command -v bluealsa || command -v bluealsad)
 	# headphones: bluealsa's ALSA device for PulseAudio
 	for c in /usr/share/alsa/alsa.conf.d/*bluealsa*.conf; do [ -f "$c" ] && mkdir -p /etc/alsa/conf.d && ln -sf "$c" /etc/alsa/conf.d/ 2>/dev/null; done
-	[ -n "$B" ] && ! pgrep -x "${B##*/}" >/dev/null && (setsid sh -c "while [ ! -e /run/rudolf/bluetooth-stop ]; do $B -p a2dp-source >>/run/rudolf/bluealsa.log 2>&1; sleep 2; done" </dev/null >/dev/null 2>&1 &)
+	[ -n "$B" ] && ! { [ -e /run/rudolf/bluealsa.loop ] && kill -0 "$(cat /run/rudolf/bluealsa.loop)" 2>/dev/null; } && (setsid sh -c "echo \$\$ > /run/rudolf/bluealsa.loop; while [ ! -e /run/rudolf/bluetooth-stop ]; do $B -p a2dp-source >>/run/rudolf/bluealsa.log 2>&1; sleep 2; done" </dev/null >/dev/null 2>&1 &)
 	rm -f /run/rudolf/bluetooth-stop
 	for i in $(seq 50); do T=3 bc show | grep -q 'Controller' && break; sleep 0.2; done
 	[ -f $OFF ] && T=5 bc power off >/dev/null || T=5 bc power on >/dev/null
@@ -45,7 +48,7 @@ json_str() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | 
 status() {
 	A=$(adapter)
 	if [ -z "$A" ]; then echo '{"ok":true,"adapter":null,"running":false,"devices":[]}'; return; fi
-	if ! pgrep -x bluetoothd >/dev/null; then printf '{"ok":true,"adapter":"%s","running":false,"powered":false,"devices":[]}\n' "$A"; return; fi
+	if ! up bluetoothd; then printf '{"ok":true,"adapter":"%s","running":false,"powered":false,"devices":[]}\n' "$A"; return; fi
 	S=$(T=4 bc show)
 	PW=$(echo "$S" | grep -q 'Powered: yes' && echo true || echo false); DI=$(echo "$S" | grep -q 'Discovering: yes' && echo true || echo false)
 	printf '{"ok":true,"adapter":"%s","running":true,"powered":%s,"discovering":%s,"name":%s,"devices":[' "$A" $PW $DI "$(json_str "$(echo "$S" | sed -n 's/^\s*Alias: //p' | head -1)")"
@@ -93,8 +96,8 @@ boot)
 	[ -n "$(adapter)" ] || exit 0
 	start;;
 start) start;;
-stop) : > /run/rudolf/bluetooth-stop; T=5 bc power off >/dev/null; pkill -x bluetoothd; pkill -x bluealsa; pkill -x bluealsad; exit 0;;
-on) rm -f $OFF; pgrep -x bluetoothd >/dev/null || start; T=5 bc power on;;
+stop) : > /run/rudolf/bluetooth-stop; T=5 bc power off >/dev/null; for p in bluetoothd bluealsa bluealsad; do kill $(pidof $p) 2>/dev/null; done; rm -f /run/rudolf/bluetoothd.loop /run/rudolf/bluealsa.loop; exit 0;;
+on) rm -f $OFF; up bluetoothd || start; T=5 bc power on;;
 off) mkdir -p /persist/etc 2>/dev/null; : > $OFF; T=5 bc power off;;
 status) status;;
 scan)
