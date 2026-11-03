@@ -22,7 +22,7 @@ function fwSection(c,W){
   cb.checked=s.on;st.textContent=s.on?`On · ${s.blocked} incoming connection${s.blocked==1?'':'s'} blocked since start-up${s.remote?' · remote access allowed from the local network':''}`:'Off ⚠ other computers can reach programs that listen for connections'};
  cb.onchange=async()=>{const on=cb.checked;cb.checked=!on;
   if(!await elevate(on?'Turn on the firewall':'Turn off the firewall: other computers on the network can then reach programs that listen for connections.'))return;
-  try{await rdPost('firewall?on='+(on?1:0));notify('Firewall',on?'The firewall is on.':'The firewall is off.',{kind:on?'info':'error'});logEvt&&logEvt('sec','Firewall '+(on?'on':'off'))}catch(e){notify('Firewall',e.message||'It could not be changed.',{kind:'error'})}
+  try{await rdPost('firewall?on='+(on?1:0));notify('Firewall',on?'The firewall is on.':'The firewall is off.',{kind:on?'info':'error'});logEvt('fw','Firewall (incoming connections) '+(on?'on':'off'))}catch(e){notify('Firewall',e.message||'It could not be changed.',{kind:'error'})}
   draw()};
  draw()}
 if(typeof secPanelS=='function'){const _sp50=secPanelS;secPanelS=function(c,W){const r=_sp50.apply(this,arguments);try{fwSection(c,W)}catch(e){console.warn('fw50',e)}return r}}

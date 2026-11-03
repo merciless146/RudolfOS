@@ -2742,6 +2742,126 @@ static void api_firewall(struct req *r, int post)
 	str s = {0}; sadd(&s, "{\"ok\":true,\"on\":%s,\"blocked\":%lld,\"remote\":%s}", o && !strncmp(o, "on", 2) ? "true" : "false", o && !strncmp(o, "on ", 3) ? atoll(o + 3) : 0LL, access(RUN "/firewall-remote", F_OK) ? "false" : "true");
 	free(o); reply_json(r->fd, &s);
 }
+/* ------------------------------------------------------------- 1.5.0: data encryption (docs/plan-1.5.0.md, part 4)
+ * /persist/vault is a folder encrypted by the kernel (fscrypt v2 policy on ext4: AES-256-XTS contents, AES-256-CTS
+ * names). Debian, Flatpak apps and Downloads move into it (vault-move). The 64-byte data key never touches the disk:
+ * the desktop keeps it wrapped for every account (with a key made from that account's password) and for the
+ * recovery key, in /persist/etc/vault.json, which rudolfd stores as it is given. At sign-in the desktop unwraps it and
+ * hands it over (POST vault/unlock); rudolfd adds it to the file system (FS_IOC_ADD_ENCRYPTION_KEY), checks that its
+ * identifier is the vault's (/persist/etc/vault.id), and the folder opens until the computer is turned off.
+ * The first unlock after setup makes the folder and starts the move. A drive formatted before 1.5.0 has no "encrypt"
+ * feature: setup adds it (tune2fs -O encrypt, on the mounted drive). */
+#include <linux/fscrypt.h>
+#define VAULT_DIR PERSIST "/vault"
+#define VAULT_J   PERSIST "/etc/vault.json"
+#define VAULT_ID  PERSIST "/etc/vault.id"
+static int vault_set(void) { return !access(VAULT_J, F_OK); }
+static int vault_open(void) { return !access(RUN "/vault-unlocked", F_OK); }
+static int vault_locked(void) { return !access(VAULT_ID, F_OK) && !vault_open(); }
+static void vault_dev(char *o, size_t n) { char *d = slurp("/etc/rudolf/persist", NULL); if (d) trim(d); snprintf(o, n, "%s", d && !strncmp(d, "/dev/", 5) ? d : ""); free(d); }
+static int vault_feature(void)
+{
+	char dev[64]; vault_dev(dev, sizeof dev); if (!dev[0] || strchr(dev, '\'')) return 0;
+	char c[160]; snprintf(c, sizeof c, "tune2fs -l '%s' 2>/dev/null | grep -i '^Filesystem features'", dev);
+	char *o = run_out(c); int on = o && strstr(o, " encrypt"); free(o); return on;
+}
+static int hexval(int c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1; }
+static int vault_key_spec_remove(const unsigned char *id)
+{
+	int fd = open(PERSIST, O_RDONLY | O_DIRECTORY | O_CLOEXEC); if (fd < 0) return -1;
+	struct fscrypt_remove_key_arg a; memset(&a, 0, sizeof a); a.key_spec.type = FSCRYPT_KEY_SPEC_TYPE_IDENTIFIER; memcpy(a.key_spec.u.identifier, id, FSCRYPT_KEY_IDENTIFIER_SIZE);
+	int r = ioctl(fd, FS_IOC_REMOVE_ENCRYPTION_KEY, &a); close(fd); return r;
+}
+/* GET vault: the state, and what the desktop stored (the wrapped keys) */
+static void api_vault_get(struct req *r)
+{
+	const char *st = live ? "unavailable" : !vault_set() ? "off" : !access(RUN "/vault-restart", F_OK) ? "restart" : access(VAULT_ID, F_OK) ? "ready" : vault_open() ? (!access(PERSIST "/etc/vault.moving", F_OK) ? "moving" : "on") : "locked";
+	str s = {0}; sadd(&s, "{\"ok\":true,\"state\":\"%s\",\"feature\":%s,\"moved\":{", st, live ? "false" : vault_feature() ? "true" : "false");
+	const char *M[][2] = { {"debian", PERSIST "/debian"}, {"flatpak", PERSIST "/flatpak"}, {"downloads", PERSIST "/home/rudolf/Downloads"} };
+	for (int i = 0; i < 3; i++) { struct stat lst; sadd(&s, "%s\"%s\":%s", i ? "," : "", M[i][0], !lstat(M[i][1], &lst) && S_ISLNK(lst.st_mode) ? "true" : "false"); }
+	sadd(&s, "},\"data\":");
+	char *j = vault_set() ? slurp(VAULT_J, NULL) : NULL;
+	if (j && *j == '{') sadd(&s, "%s", j); else sadd(&s, "null");
+	free(j); sadd(&s, "}"); reply_json(r->fd, &s);
+}
+static int vault_json_ok(const char *b, size_t n) { if (!b || n < 2 || n > 256 * 1024 || b[0] != '{' || b[n - 1] != '}') return 0; for (size_t i = 0; i < n; i++) if ((unsigned char)b[i] < 32 && b[i] != '\n') return 0; return 1; }
+static void api_vault(struct req *r, const char *what, int post)
+{
+	if (!post) { api_vault_get(r); return; }
+	if (live) { reply_err(r->fd, 409, "encryption needs Rudolf OS installed or a drive that keeps files (RUDOLFDATA)"); return; }
+	/* setup: store the wrapped keys; add the ext4 "encrypt" feature when the drive lacks it (a restart is needed then) */
+	if (!strcmp(what, "setup")) {
+		if (vault_set()) { reply_err(r->fd, 409, "encryption is already set up"); return; }
+		if (!vault_json_ok(r->body, r->blen)) { reply_err(r->fd, 400, "bad key data"); return; }
+		mkdir(PERSIST "/etc", 0755);
+		if (!vault_feature()) {
+			char dev[64], c[200]; vault_dev(dev, sizeof dev);
+			if (!dev[0] || strchr(dev, '\'')) { reply_err(r->fd, 409, "the drive that keeps your files was not found"); return; }
+			snprintf(c, sizeof c, "tune2fs -O encrypt '%s' >" RUN "/vault.err 2>&1", dev);
+			if (run(c)) { char *e = slurp(RUN "/vault.err", NULL); if (e) trim(e); reply_err(r->fd, 500, e && *e ? e : "the drive could not be prepared for encryption"); free(e); return; }
+			/* (tune2fs writes the superblock through the same block cache the kernel uses, so the feature is on at once;
+			   if the kernel still refuses the folder, unlock says to restart) */
+		}
+		char tp[] = PERSIST "/etc/vault.json.tmp"; int f = open(tp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+		if (f < 0 || write(f, r->body, r->blen) != (ssize_t)r->blen) { if (f >= 0) close(f); reply_err(r->fd, 500, "the key data could not be stored"); return; }
+		fsync(f); close(f); rename(tp, VAULT_J);
+		health_add("vault", "encryption was set up");
+		api_vault_get(r); return;
+	}
+	/* store: the desktop's new wrapped keys (an account added, a password changed) */
+	if (!strcmp(what, "store")) {
+		if (!vault_set()) { reply_err(r->fd, 409, "encryption is not set up"); return; }
+		if (!vault_json_ok(r->body, r->blen)) { reply_err(r->fd, 400, "bad key data"); return; }
+		char tp[] = PERSIST "/etc/vault.json.tmp"; int f = open(tp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+		if (f < 0 || write(f, r->body, r->blen) != (ssize_t)r->blen) { if (f >= 0) close(f); reply_err(r->fd, 500, "the key data could not be stored"); return; }
+		fsync(f); close(f); rename(tp, VAULT_J); reply_ok(r->fd, "stored"); return;
+	}
+	/* unlock: the data key, 128 hex digits */
+	if (!strcmp(what, "unlock")) {
+		if (!vault_set()) { reply_err(r->fd, 409, "encryption is not set up"); return; }
+		if (!access(RUN "/vault-restart", F_OK)) { reply_err(r->fd, 409, "restart the computer first: the drive was prepared for encryption"); return; }
+		unsigned char key[64]; const char *h = r->body ? r->body : "";
+		if (r->blen < 128) { reply_err(r->fd, 400, "bad key"); return; }
+		for (int i = 0; i < 64; i++) { int a = hexval(h[2 * i]), b = hexval(h[2 * i + 1]); if (a < 0 || b < 0) { explicit_bzero(key, sizeof key); reply_err(r->fd, 400, "bad key"); return; } key[i] = a << 4 | b; }
+		explicit_bzero(r->body, r->blen);
+		int fd = open(PERSIST, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+		struct fscrypt_add_key_arg *a = calloc(1, sizeof *a + sizeof key);
+		if (fd < 0 || !a) { if (fd >= 0) close(fd); free(a); explicit_bzero(key, sizeof key); reply_err(r->fd, 500, "the drive could not be opened"); return; }
+		a->key_spec.type = FSCRYPT_KEY_SPEC_TYPE_IDENTIFIER; a->raw_size = sizeof key; memcpy(a->raw, key, sizeof key); explicit_bzero(key, sizeof key);
+		int rc = ioctl(fd, FS_IOC_ADD_ENCRYPTION_KEY, a); int er = errno;
+		unsigned char id[FSCRYPT_KEY_IDENTIFIER_SIZE]; memcpy(id, a->key_spec.u.identifier, sizeof id);
+		explicit_bzero(a, sizeof *a + sizeof key); free(a); close(fd);
+		if (rc) { char m[160]; snprintf(m, sizeof m, "the key could not be added (%s)", er == ENOTTY || er == EOPNOTSUPP ? "this kernel or drive does not support encryption" : strerror(er)); reply_err(r->fd, 500, m); return; }
+		char hex[2 * sizeof id + 2]; for (size_t i = 0; i < sizeof id; i++) sprintf(hex + 2 * i, "%02x", id[i]); strcat(hex, "\n");
+		char *have = slurp(VAULT_ID, NULL);
+		if (have) {
+			int same = !strncmp(have, hex, 32); free(have);
+			if (!same) { vault_key_spec_remove(id); health_add("vault", "unlocking failed: the key did not match"); reply_err(r->fd, 403, "that key does not open the encrypted folder"); return; }
+		} else {
+			/* the first unlock: make the folder with this key's policy */
+			if (mkdir(VAULT_DIR, 0755) && errno != EEXIST) { reply_err(r->fd, 500, "the encrypted folder could not be made"); return; }
+			int vd = open(VAULT_DIR, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+			struct fscrypt_policy_v2 p; memset(&p, 0, sizeof p);
+			p.version = FSCRYPT_POLICY_V2; p.contents_encryption_mode = FSCRYPT_MODE_AES_256_XTS; p.filenames_encryption_mode = FSCRYPT_MODE_AES_256_CTS; p.flags = FSCRYPT_POLICY_FLAGS_PAD_32;
+			memcpy(p.master_key_identifier, id, sizeof id);
+			int pr = vd < 0 ? -1 : ioctl(vd, FS_IOC_SET_ENCRYPTION_POLICY, &p); int pe = errno; if (vd >= 0) close(vd);
+			if (pr) { vault_key_spec_remove(id); char m[200]; snprintf(m, sizeof m, "the encrypted folder could not be made (%s)", pe == EOPNOTSUPP ? "the drive is not prepared for encryption: restart and try again" : pe == ENOTEMPTY ? "/persist/vault is not empty" : strerror(pe)); reply_err(r->fd, 500, m); return; }
+			write_str(VAULT_ID, hex); write_str(PERSIST "/etc/vault.moving", "");
+		}
+		write_str(RUN "/vault-unlocked", "1\n");
+		{ struct stat lst; if (!lstat(PERSIST "/flatpak", &lst) && S_ISLNK(lst.st_mode)) run("mountpoint -q /var/lib/flatpak || mount --bind " VAULT_DIR "/flatpak /var/lib/flatpak"); }
+		health_add("vault", "the encrypted folder was unlocked");
+		if (!access(PERSIST "/etc/vault.moving", F_OK) && !job_running()) start_job("vault", "/usr/lib/rudolf/vault-move");
+		api_vault_get(r); return;
+	}
+	/* move: run the move again (after making room) */
+	if (!strcmp(what, "move")) {
+		if (!vault_open()) { reply_err(r->fd, 409, "the encrypted folder is locked"); return; }
+		if (job_running()) { reply_err(r->fd, 409, "another job is running"); return; }
+		write_str(PERSIST "/etc/vault.moving", ""); start_job("vault", "/usr/lib/rudolf/vault-move"); reply_ok(r->fd, "moving"); return;
+	}
+	reply_err(r->fd, 404, "unknown vault request");
+}
 static void api(struct req *r)
 {
 	const char *p = r->path + 5;   /* after /api/ */
@@ -2755,6 +2875,12 @@ static void api(struct req *r)
 	if (!strcmp(p, "memory/iam") && post) { api_memory_iam(r); return; }
 	if (!strcmp(p, "health")) { api_health(r, post); return; }
 	if (!strcmp(p, "firewall")) { api_firewall(r, post); return; }
+	if (!strcmp(p, "vault")) { api_vault(r, "", 0); return; }
+	if (!strncmp(p, "vault/", 6)) { api_vault(r, p + 6, post); return; }
+	/* 1.5.0: Linux programs and Flatpak apps live in the encrypted folder: while it is locked they cannot start */
+	if (vault_locked() && (!strncmp(p, "term/", 5) || (!strncmp(p, "debian/", 7) && strcmp(p, "debian/status")) || !strcmp(p, "apps/install") || !strcmp(p, "apps/run") || !strcmp(p, "apps/update") || !strcmp(p, "apps/uninstall") || !strcmp(p, "native/run"))) {
+		str j = {0}; sadd(&j, "{\"ok\":false,\"locked\":true,\"error\":\"Your Linux programs are in the encrypted folder. Sign in to an account with its password to unlock it.\"}"); reply(r->fd, 423, "application/json", j.b, j.n, NULL); free(j.b); return;
+	}
 	if (!strcmp(p, "net")) { api_net(r); return; }
 	if (!strcmp(p, "disks")) { api_disks(r); return; }
 	/* the hardware check's download test (1.2.5): rudolf-update speedtest prints "bytes N" and "ms N" */

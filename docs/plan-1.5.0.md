@@ -66,7 +66,7 @@ and AES-256-CTS for names): no extra partition, no cryptsetup.
   Linux programs").
 - Settings › Security › **Encrypt my data**: administrator, shows the recovery key, moves the data over as a job with
   progress (needs free space as large as the largest folder that moves), then deletes the unencrypted copies.
-- New installs format RUDOLFDATA with the `encrypt` feature; existing ones get it with `tune2fs -O encrypt`.
+- New installs format RUDOLFDATA with the `encrypt` feature; existing ones get it with `tune2fs -O encrypt` while mounted (no restart: checked on a loop device, the kernel sees the feature at once).
 - Not encrypted: the browser profile (the desktop's own data in it is already encrypted per account), settings,
   logs.
 - A USB stick with Rudolf OS unlocks on any computer with the password (no TPM binding in 1.5.0).

@@ -283,6 +283,7 @@ async function sysReport(problem) {
     ['Created', new Date().toISOString().replace(/\.\d+Z$/, 'Z')],
     ['Started from', !RD ? 'web browser' : `${(k.boot || info && info.boot || '?').toUpperCase()}, ${k.media || info && info.media || '?'}${(k.live ?? (info && info.live)) ? ', live (changes are not kept)' : ', changes kept (RUDOLFDATA)'}${k.recovery ? ', recovery' : ''}`],
     ['Secure Boot', !RD ? '—' : typeof sbSummary == 'function' ? sbSummary(sbs) : '—'],
+    ['Data encryption', !RD ? '—' : await (typeof vStatus == 'function' ? vStatus() : Promise.resolve(null)).then(v => v ? v.state + (v.moved ? ' (' + Object.keys(v.moved).filter(k => v.moved[k]).join(', ') + ' encrypted)' : '') : 'not reported')],
     ['Firewall', !RD ? '—' : await fwStatus().then(f => f ? (f.on ? 'on, ' + f.blocked + ' incoming connections blocked' + (f.remote ? ', remote access open to the local network' : '') : 'off') : 'not reported')],
     ['Development link', !RD ? '—' : typeof devlSummary == 'function' ? devlSummary(await rd('devlink').catch(() => null)) : '—'],
     ['Desktop', !RD ? 'browser version' : SHELL ? 'shell ' + SHELL_VER + ' (real tabs)' : sv.shellFailed ? 'plain page (shell failed)' : 'plain page'],

@@ -1,0 +1,54 @@
+#!/bin/sh
+# Rudolf OS 1.5.0: move Debian, Flatpak apps and the Downloads kept on the disk into the encrypted folder
+# /persist/vault (fscrypt; rudolfd unlocks it at sign-in). Run by rudolfd as a job, after the folder is unlocked.
+# Each folder is copied in, then the unencrypted one is replaced by a link to the encrypted copy and deleted; a
+# folder that is not there yet gets an empty encrypted one, so what comes later is encrypted. Safe to run again:
+# /persist/etc/vault.moving stays until every folder has moved, and the next unlock runs it again.
+# GPL-2.0-or-later.
+V=/persist/vault
+[ -e /run/rudolf/vault-unlocked ] || { echo "The encrypted folder is locked: sign in with an account to unlock it."; exit 3; }
+[ -d "$V" ] || { echo "There is no encrypted folder."; exit 3; }
+: > /persist/etc/vault.moving
+FAIL=0
+move() {   # move SOURCE NAME LABEL
+	src=$1; name=$2; label=$3
+	if [ -L "$src" ]; then echo "$label: already encrypted"; return 0; fi
+	if [ ! -e "$src" ]; then mkdir -p "$V/$name" && mkdir -p "$(dirname "$src")" && ln -s "$V/$name" "$src" && echo "$label: nothing to move; what is added from now on is encrypted"; return 0; fi
+	need=$(du -sxk "$src" 2>/dev/null | cut -f1); free=$(df -k /persist | awk 'NR==2{print $4}')
+	if [ "${need:-0}" -ge "$(( ${free:-0} - 131072 ))" ]; then
+		echo "$label: not enough free space to move it (it needs $(( need / 1024 )) MB; $(( free / 1024 )) MB are free, and 128 MB must stay free). Make room and unlock again, or remove it."
+		FAIL=1; return 1
+	fi
+	echo "$label: moving $(( need / 1024 )) MB…"
+	rm -rf "$V/$name.part"
+	if ! cp -a "$src" "$V/$name.part"; then echo "$label: copying failed; nothing was changed"; rm -rf "$V/$name.part"; FAIL=1; return 1; fi
+	rm -rf "$V/$name"; mv "$V/$name.part" "$V/$name" || { FAIL=1; return 1; }
+	mv "$src" "$src.unencrypted" && ln -s "$V/$name" "$src" || { echo "$label: could not switch over"; [ -e "$src" ] || mv "$src.unencrypted" "$src"; FAIL=1; return 1; }
+	rm -rf "$src.unencrypted"
+	echo "$label: done"
+}
+# Linux (Debian) must not be running while it moves
+if [ -e /persist/debian ] && [ ! -L /persist/debian ]; then
+	echo "Stopping Linux programs…"; rudolf-debian stop >/dev/null 2>&1
+	pkill -f '[r]udolf-debian' 2>/dev/null; sleep 1
+fi
+move /persist/debian debian "Linux (Debian)"
+# Flatpak apps: /var/lib/flatpak is a bind mount of /persist/flatpak
+if [ -e /persist/flatpak ] && [ ! -L /persist/flatpak ]; then
+	pkill -f '[f]latpak' 2>/dev/null; pkill -x bwrap 2>/dev/null; sleep 1
+	mountpoint -q /var/lib/flatpak && umount /var/lib/flatpak 2>/dev/null
+fi
+move /persist/flatpak flatpak "Linux apps (Flatpak)"
+mountpoint -q /var/lib/flatpak || { [ -d "$V/flatpak" ] && mount --bind "$V/flatpak" /var/lib/flatpak 2>/dev/null; }
+move /persist/home/rudolf/Downloads downloads "Files kept in Downloads"
+chown 1000:1000 "$V/downloads" 2>/dev/null
+if [ $FAIL = 0 ]; then
+	rm -f /persist/etc/vault.moving
+	# the space the unencrypted copies used is handed back to the drive (on SSDs it is then erased by the drive)
+	fstrim /persist >/dev/null 2>&1
+	rudolfd --health vault "your data was moved into the encrypted folder" 2>/dev/null
+	echo "Your data is encrypted."
+	exit 0
+fi
+rudolfd --health vault "moving data into the encrypted folder did not finish" 2>/dev/null
+exit 1

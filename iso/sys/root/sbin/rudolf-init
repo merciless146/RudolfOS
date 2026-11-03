@@ -36,7 +36,8 @@ if mountpoint -q /persist; then
 	rm -f /persist/etc/decktest   # 1.4.5: the Cyberdeck test mode is gone (it only ever lasted until a restart)
 	[ -f /persist/proxy ] && cp /persist/proxy /run/rudolf/proxy
 	# native apps (Flatpak: Sober for Roblox) live on the data partition
-	mkdir -p /persist/flatpak && mount --bind /persist/flatpak /var/lib/flatpak
+	# 1.5.0: Flatpak apps moved into the encrypted folder are mounted by rudolfd when it is unlocked at sign-in
+	[ -L /persist/flatpak ] || { mkdir -p /persist/flatpak && mount --bind /persist/flatpak /var/lib/flatpak; }
 	# 1.2.7: Flatpak's repository has its own tmp folder (OSTree makes its temporary files there), which an
 	# installation updated from an older disc may lack; nothing is erased here (Settings > Apps > Linux > Check)
 	[ -d /persist/flatpak/repo ] && [ ! -d /persist/flatpak/repo/tmp ] && mkdir -p /persist/flatpak/repo/tmp && echo "repaired: /persist/flatpak/repo/tmp" >> /run/rudolf/repairs
