@@ -97,21 +97,7 @@ F 6f0e871268f6e4d99196d90d89bcc09fe493d010366260a2cfcaa5dd66095f8c mediatek/mt76
 L mt7601u.bin mediatek/mt7601u.bin
 L mt7662.bin mediatek/mt7662.bin
 L mt7662_rom_patch.bin mediatek/mt7662_rom_patch.bin
-# Bluetooth (1.5.1)
-F a0604a0685a322e0ab2c3bd019bf862498c7b2b440ca6f515e0c8d7f849ac517 intel/ibt-18-16-1.sfi
-F fe272982577efdc289cfe3e8bedafca607c0b7d6c9df1aab1880e22ef930d077 intel/ibt-18-16-1.ddc
-F fd51628c307a1b03fbd7156f0d2a7f5af67b7202d4f358f5d4d807911982c3cc intel/ibt-20-1-3.sfi
-F fe272982577efdc289cfe3e8bedafca607c0b7d6c9df1aab1880e22ef930d077 intel/ibt-20-1-3.ddc
-F 74c7df0302a4cb0917411b959771b9148e87e4518e37215daddab57b397c99e1 intel/ibt-19-0-4.sfi
-F fe272982577efdc289cfe3e8bedafca607c0b7d6c9df1aab1880e22ef930d077 intel/ibt-19-0-4.ddc
-F a78f88bb5b0d346b2984c2772cef4797f9d074e5c29ae6087728429ce574c5a1 intel/ibt-0041-0041.sfi
-F fe272982577efdc289cfe3e8bedafca607c0b7d6c9df1aab1880e22ef930d077 intel/ibt-0041-0041.ddc
-F 77d231c28ff02c1ef0b5e9d0bd6bb10339da13b59ab023ca3f73df1e5ad827db intel/ibt-0040-0041.sfi
-F fe272982577efdc289cfe3e8bedafca607c0b7d6c9df1aab1880e22ef930d077 intel/ibt-0040-0041.ddc
-F 77d231c28ff02c1ef0b5e9d0bd6bb10339da13b59ab023ca3f73df1e5ad827db intel/ibt-0040-4150.sfi
-F fe272982577efdc289cfe3e8bedafca607c0b7d6c9df1aab1880e22ef930d077 intel/ibt-0040-4150.ddc
-F 205f22d76408283bad6d26e1fe21cc30cdb0c331b41de1e6d093c9ea2401feaa intel/ibt-0180-0041.sfi
-F fe272982577efdc289cfe3e8bedafca607c0b7d6c9df1aab1880e22ef930d077 intel/ibt-0180-0041.ddc
+# Bluetooth (1.5.1): Realtek (rtl_bt). Intel and MediaTek follow once their files are checked against kernel.org's linux-firmware
 F 40b7a23507f4190758bc616e0293c4e5bae43a8216a89f79272a654018b8e430 rtl_bt/rtl8192ee_fw.bin
 F 7dcaafe1ff55322f04c100780d05f99bba434a4d584288ae10bfcc41ad52adf8 rtl_bt/rtl8192eu_fw.bin
 F 756951ee36e417c0714b00547a6175d5d5decbe1e4cf7585f211019150c7cd10 rtl_bt/rtl8723a_fw.bin
@@ -146,9 +132,6 @@ F 7fcf88c00b2548a5ff157102a35722db5e4be655dab1ce8d9bddb6df85f88f24 rtl_bt/rtl885
 F 8a519ba39c6bc0b414286453cf6eeb2de59c02e58ef6af50daa41faae4b07444 rtl_bt/rtl8852btu_fw.bin
 F 112290ca9dc3985034f572594812f0deb8530dd031686461b55cac43a1c35a79 rtl_bt/rtl8922au_fw.bin
 F 6c28a3f07c6a30ed208c4b64862a23f02b7d93543ea980edd24df16bab45095f rtl_bt/rtl8922au_config.bin
-F 42b9acd8b18835c7e06b5288f1d80638ba8cb0206319187be4b8fbac615c9dd1 mediatek/BT_RAM_CODE_MT7961_1a_2_hdr.bin
-F 5eaa24adfccaac37daffec8c591e31e7b4a4860e4d6baf6a62d5aae3bfa4f853 mediatek/BT_RAM_CODE_MT7961_1_2_hdr.bin
-F da48eb99e63b13f7630f5e3bfb542e4faf7a6c17a9671116ff0d67089ae70fee mediatek/BT_RAM_CODE_MT7922_1_1_hdr.bin
 L rtl_bt/rtl8723b_config.bin rtl8723bs_config.bin
 L rtl_bt/rtl8723bs_config-OBDA8723.bin rtl8723bs_config.bin
 L rtl_bt/rtl8723bs_config-OBDA0623.bin rtl8723bs_config.bin

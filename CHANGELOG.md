@@ -5,7 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.1 (2026-11-03)
 Summary: Bluetooth (controllers, keyboards, mice, headphones), and Xbox Cloud Gaming and GeForce NOW in the Start menu
-- New: Bluetooth (Settings › Bluetooth). Pair controllers (Xbox, PlayStation, Switch Pro), keyboards, mice and headphones: put the device in pairing mode, choose Search for devices, then Pair. No code to type. Paired devices reconnect by themselves; headphones become the sound output when they connect. Notifications say when a device connects, goes away, or its battery runs low.
+- New: Bluetooth (Settings › Bluetooth), on computers with a Realtek Bluetooth chip or a USB Bluetooth adapter with one (Intel and MediaTek chips follow in an update). Pair controllers (Xbox, PlayStation, Switch Pro), keyboards, mice and headphones: put the device in pairing mode, choose Search for devices, then Pair. No code to type. Paired devices reconnect by themselves; headphones become the sound output when they connect. Notifications say when a device connects, goes away, or its battery runs low.
 - New: Xbox Cloud Gaming and GeForce NOW in the Start menu and the App Store's Games tab. They open in Oracle; controllers work in them.
 - New: game mode. While a game or video is full screen, notifications wait in the notification centre instead of popping up, and one message afterwards says how many came.
 - Fixed: playing with only a controller did not count as using the computer, so the screen could lock or the computer sleep in the middle of a game.

@@ -12,7 +12,7 @@ install script makes them; a git checkout has none). What is listed:
     files already sit in the base layer; these are the large GSP images and their boot loaders.
   - Realtek Ethernet (r8169) firmware: small fixes the driver loads for most of its chips.
   - AMD processor microcode (1.2.4): built into the kernel too (kconfig.sh, UCODE_DIR) so it applies at start-up.
-  - Bluetooth (1.5.1): Realtek, MediaTek MT7921/MT7922 and the common Intel chips.
+  - Bluetooth (1.5.1): Realtek.
   - USB Wi-Fi adapters whose drivers came in 1.2.7 (ath9k_htc, mt7601u, mt76x0u, mt76x2u). The firmware of the
     older Wi-Fi drivers sits in the base layer (wififw.py, at the full build).
 """
@@ -24,10 +24,8 @@ PATTERNS = [r'rtl_nic/.+', r'amd-ucode/microcode_amd(_fam[0-9a-f]+h)?\.bin',
             # USB Wi-Fi adapters (1.2.7): Atheros AR9271/AR7010 (ath9k_htc), MediaTek MT7601U, MT7610U, MT7612U (mt76x2u)
             r'htc_(9271|7010)\.fw', r'ath9k_htc/htc_(9271|7010)-1\.4\.0\.fw', r'(mediatek/)?mt7601u\.bin', r'mediatek/mt7610u\.bin',
             r'(mediatek/)?mt7662(_rom_patch)?\.bin',
-            # Bluetooth (1.5.1): Realtek (every chip: small), MediaTek MT7921/MT7922, and the common Intel chips
-            # (AX200, AX201, AX210/AX211, 9560, BE200); the others work without Bluetooth
-            r'rtl_bt/.+', r'mediatek/BT_RAM_CODE_MT79(61|61_1a|22)[^/]*\.bin',
-            r'intel/ibt-(0040-0041|0041-0041|0040-4150|0180-0041|19-0-4|20-1-3|18-16-1)\.(sfi|ddc)']
+            # Bluetooth (1.5.1): Realtek (every chip: small); Intel and MediaTek once checked against kernel.org
+            r'rtl_bt/.+']
 
 
 def want(p):
@@ -64,7 +62,7 @@ def cmd_list(fw):
 
 
 def cmd_copy(lst, fw, dest):
-    n = size = 0
+    n = size = 0; bad = []
     for line in open(lst):
         t = line.split()
         if not t or t[0].startswith('#'):
@@ -75,7 +73,9 @@ def cmd_copy(lst, fw, dest):
             if not os.path.isfile(src):
                 sys.exit('fwextra: %s is missing from linux-firmware' % f)
             if sha(src) != h:
-                sys.exit('fwextra: %s is not the listed file (linux-firmware changed it; run fwextra.py list again)' % f)
+                # 1.5.1: every file that differs is reported with the hash it has now, then the build stops
+                bad.append('fwextra: %s is not the listed file (listed %s, linux-firmware has %s; run fwextra.py list again)' % (f, h, sha(src)))
+                continue
             d = os.path.join(dest, f); os.makedirs(os.path.dirname(d), exist_ok=True)
             shutil.copyfile(src, d); os.chmod(d, 0o644); n += 1; size += os.path.getsize(d)
         elif t[0] == 'L':
@@ -83,6 +83,8 @@ def cmd_copy(lst, fw, dest):
             if os.path.lexists(d):
                 os.remove(d)
             os.symlink(t[2], d)
+    if bad:
+        sys.exit('\n'.join(bad))
     print('fwextra: %d files, %.1f MB' % (n, size / 1048576))
 
 
