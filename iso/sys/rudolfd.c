@@ -2874,7 +2874,9 @@ static void remote_start(void)
 {
 	mkdir(RREM, 0755);
 	unsigned char rb[4]; int rf = open("/dev/urandom", O_RDONLY | O_CLOEXEC); if (rf < 0 || read(rf, rb, 4) != 4) memset(rb, 7, 4); if (rf >= 0) close(rf);
-	char code[16]; snprintf(code, sizeof code, "%06u\n", (unsigned)((rb[0] << 24 | rb[1] << 16 | rb[2] << 8 | rb[3]) % 1000000)); write_str(RREM "/code", code);
+	char code[16]; /* (1.5.1: unsigned before the remainder; with a signed int, a first byte of 128 or more gave a negative number,
+	   printed as 10 digits that no viewer would accept) */
+	snprintf(code, sizeof code, "%06u\n", ((unsigned)rb[0] << 24 | (unsigned)rb[1] << 16 | (unsigned)rb[2] << 8 | (unsigned)rb[3]) % 1000000u); write_str(RREM "/code", code);
 	write_str(RREM "/on", "1\n");
 	run("/usr/lib/rudolf/firewall remote on >/dev/null 2>&1");
 	/* (1.5.1: one loop only. rudolf-remote writes its pid once it listens, which takes a few seconds on a slow

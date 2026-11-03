@@ -132,7 +132,7 @@ try:
     time.sleep(10)   # the desktop's status checks meanwhile (they started a second rudolf-remote before 1.5.1)
     o = sh("echo PIDS $(pgrep -x rudolf-remote | wc -l); echo LOOPS $(pgrep -f '[w]hile \\[ -e /run/rudolf/remote/on' | wc -l); echo INUSE $(grep -c 'already in use' /run/rudolf/remote.log); ls /persist/etc/remote/; echo CODE $(cat /run/rudolf/remote/code); nft list chain inet rudolf remote; netstat -ltn | grep 8443")
     out(o)
-    ok('6. remote access starts once (one rudolf-remote), its certificate is made, the firewall opens 8443 to private addresses', r is True and re.search(r'^PIDS 1$', o, re.M) and re.search(r'^LOOPS 1$', o, re.M) and re.search(r'^INUSE 0$', o, re.M) and 'cert.pem' in o and 'tcp dport 8443 accept' in o and re.search(r'^CODE \d{6}$', o, re.M) and ':8443' in o, o)
+    ok('6. remote access starts once (one rudolf-remote), its certificate is made, the firewall opens 8443 to private addresses', r is True and re.search(r'^PIDS 1$', o, re.M) and re.search(r'^LOOPS 1$', o, re.M) and re.search(r'^INUSE 0$', o, re.M) and 'cert.pem' in o and 'tcp dport 8443 accept' in o and re.search(r'^CODE \d{6}$', o, re.M) is not None and ':8443' in o, o)
     p5 = probe(8443)
     ok('7. ...and another computer on the local network reaches it (10.5.0.1 -> 8443: SYN-ACK)', p5 == 'open', p5)
     st = sh("timeout 60 /opt/chromium/chrome --headless=new --no-sandbox --disable-gpu --ignore-certificate-errors --user-data-dir=/tmp/hc --dump-dom https://127.0.0.1:8443/status 2>/dev/null | grep -o '{.*}'", 90)
