@@ -2862,6 +2862,77 @@ static void api_vault(struct req *r, const char *what, int post)
 	}
 	reply_err(r->fd, 404, "unknown vault request");
 }
+/* ------------------------------------------------------------- 1.5.0: remote access (rudolf-remote, port 8443)
+ * On/off (the desktop asks for an administrator's password first; /persist/etc/remote-on keeps it on after a restart),
+ * a new pairing code each time it is turned on, the firewall's port only while it is on, the approval prompt and the
+ * session marker for the desktop, and the accounts that may sign in (/persist/etc/remote-accounts, written by the
+ * desktop: name, PBKDF2 hash, role, unattended). Turned off, every browser that was paired is forgotten. */
+#include <ifaddrs.h>
+#define RREM RUN "/remote"
+static int remote_pid(void) { char *p = slurp(RREM "/pid", NULL); int v = p ? atoi(p) : 0; free(p); return v > 0 && !kill(v, 0) ? v : 0; }
+static void remote_start(void)
+{
+	mkdir(RREM, 0755);
+	unsigned char rb[4]; int rf = open("/dev/urandom", O_RDONLY | O_CLOEXEC); if (rf < 0 || read(rf, rb, 4) != 4) memset(rb, 7, 4); if (rf >= 0) close(rf);
+	char code[16]; snprintf(code, sizeof code, "%06u\n", (unsigned)((rb[0] << 24 | rb[1] << 16 | rb[2] << 8 | rb[3]) % 1000000)); write_str(RREM "/code", code);
+	write_str(RREM "/on", "1\n");
+	run("/usr/lib/rudolf/firewall remote on >/dev/null 2>&1");
+	if (!remote_pid()) run("setsid sh -c 'while [ -e " RREM "/on ]; do rudolf-remote; sleep 2; done' </dev/null >" RUN "/remote.log 2>&1 &");
+}
+static void remote_stop(void)
+{
+	unlink(RREM "/on"); int p = remote_pid(); if (p) kill(p, SIGTERM);
+	run("pkill -f '[r]udolf-remote' >/dev/null 2>&1; rm -rf " RREM "/sess " RREM "/pending " RREM "/session");
+	unlink(RREM "/code"); unlink(PERSIST "/etc/remote-devices");
+	run("/usr/lib/rudolf/firewall remote off >/dev/null 2>&1");
+}
+static void remote_boot(void) { if (!access(PERSIST "/etc/remote-on", F_OK) && !live) remote_start(); }
+static void api_remote(struct req *r, const char *what, int post)
+{
+	if (post && !strcmp(what, "")) {
+		char *on = qparam(r->query, "on"); if (!on || (strcmp(on, "1") && strcmp(on, "0"))) { reply_err(r->fd, 400, "on=1 or on=0"); return; }
+		if (*on == '1') { if (live) { reply_err(r->fd, 409, "remote access needs Rudolf OS installed (it keeps its certificate and settings)"); return; } write_str(PERSIST "/etc/remote-on", "1\n"); remote_start(); health_add("remote", "remote access was turned on"); }
+		else { unlink(PERSIST "/etc/remote-on"); remote_stop(); health_add("remote", "remote access was turned off"); }
+	} else if (post && !strcmp(what, "answer")) {
+		char *id = qparam(r->query, "id"), *al = qparam(r->query, "allow");
+		if (!id || strlen(id) != 16 || strspn(id, "0123456789abcdef") != 16 || !al) { reply_err(r->fd, 400, "bad answer"); return; }
+		char p[160]; snprintf(p, sizeof p, RREM "/answer-%s", id); write_str(p, *al == '1' ? "allow\n" : "deny\n"); reply_ok(r->fd, "answered"); return;
+	} else if (post && !strcmp(what, "end")) { write_str(RREM "/end", "1\n"); reply_ok(r->fd, "ending"); return; }
+	else if (post && !strcmp(what, "accounts")) {
+		/* lines: name TAB hash TAB role TAB unattended(0|1) */
+		if (r->blen > 64 * 1024) { reply_err(r->fd, 400, "too large"); return; }
+		mkdir(PERSIST "/etc", 0755);
+		int f = open(PERSIST "/etc/remote-accounts.tmp", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+		if (f < 0 || (r->blen && write(f, r->body, r->blen) != (ssize_t)r->blen)) { if (f >= 0) close(f); reply_err(r->fd, 500, "not stored"); return; }
+		close(f); rename(PERSIST "/etc/remote-accounts.tmp", PERSIST "/etc/remote-accounts"); reply_ok(r->fd, "stored"); return;
+	} else if (post) { reply_err(r->fd, 404, "unknown remote request"); return; }
+	/* the state */
+	int on = !access(RREM "/on", F_OK), pid = remote_pid();
+	if (on && !pid && !access(PERSIST "/etc/remote-on", F_OK)) remote_start();
+	str s = {0}; sadd(&s, "{\"ok\":true,\"on\":%s,\"running\":%s,\"port\":8443,\"live\":%s,\"code\":", on ? "true" : "false", pid ? "true" : "false", live ? "true" : "false");
+	char *c = on ? slurp(RREM "/code", NULL) : NULL; if (c) trim(c); sjson(&s, c ? c : ""); free(c);
+	char *fp = slurp(PERSIST "/etc/remote/fingerprint", NULL); if (fp) trim(fp); sadd(&s, ",\"fingerprint\":"); sjson(&s, fp ? fp : ""); free(fp);
+	sadd(&s, ",\"addresses\":[");
+	struct ifaddrs *ia = NULL; int n = 0;
+	if (!getifaddrs(&ia)) for (struct ifaddrs *i = ia; i; i = i->ifa_next) {
+		if (!i->ifa_addr || i->ifa_addr->sa_family != AF_INET || !strcmp(i->ifa_name, "lo")) continue;
+		char b[64]; inet_ntop(AF_INET, &((struct sockaddr_in *)i->ifa_addr)->sin_addr, b, sizeof b); sadd(&s, "%s\"%s\"", n++ ? "," : "", b);
+	}
+	if (ia) freeifaddrs(ia);
+	sadd(&s, "],\"session\":");
+	char *ss = slurp(RREM "/session", NULL); int spid = 0; char su[100] = "", sip[64] = ""; long long st = 0; int sua = 0;
+	if (ss && sscanf(ss, "%d\t%99[^\t]\t%63[^\t]\t%lld\t%d", &spid, su, sip, &st, &sua) >= 4 && spid > 0 && !kill(spid, 0)) { sadd(&s, "{\"user\":"); sjson(&s, su); sadd(&s, ",\"from\":"); sjson(&s, sip); sadd(&s, ",\"since\":%lld,\"unattended\":%s}", st, sua ? "true" : "false"); }
+	else sadd(&s, "null");
+	free(ss);
+	sadd(&s, ",\"pending\":");
+	char *pd = slurp(RREM "/pending", NULL); char pid2[20] = "", pu[100] = "", pip[64] = ""; long long pt = 0;
+	if (pd && sscanf(pd, "%19[^\t]\t%99[^\t]\t%63[^\t]\t%lld", pid2, pu, pip, &pt) == 4 && time(NULL) - pt < 65) { sadd(&s, "{\"id\":"); sjson(&s, pid2); sadd(&s, ",\"user\":"); sjson(&s, pu); sadd(&s, ",\"from\":"); sjson(&s, pip); sadd(&s, ",\"time\":%lld}", pt); }
+	else sadd(&s, "null");
+	free(pd);
+	char *dv = slurp(PERSIST "/etc/remote-devices", NULL); int nd = 0; if (dv) for (char *q = dv; *q; q++) if (*q == '\n') nd++; free(dv);
+	sadd(&s, ",\"devices\":%d}", nd);
+	reply_json(r->fd, &s);
+}
 static void api(struct req *r)
 {
 	const char *p = r->path + 5;   /* after /api/ */
@@ -2875,6 +2946,8 @@ static void api(struct req *r)
 	if (!strcmp(p, "memory/iam") && post) { api_memory_iam(r); return; }
 	if (!strcmp(p, "health")) { api_health(r, post); return; }
 	if (!strcmp(p, "firewall")) { api_firewall(r, post); return; }
+	if (!strcmp(p, "remote")) { api_remote(r, "", post); return; }
+	if (!strncmp(p, "remote/", 7)) { api_remote(r, p + 7, post); return; }
 	if (!strcmp(p, "vault")) { api_vault(r, "", 0); return; }
 	if (!strncmp(p, "vault/", 6)) { api_vault(r, p + 6, post); return; }
 	/* 1.5.0: Linux programs and Flatpak apps live in the encrypted folder: while it is locked they cannot start */
@@ -3496,6 +3569,7 @@ int main(int argc, char **argv)
 	live = access(RUN "/persistent", F_OK) != 0;
 	dl_boot();
 	health_boot();
+	remote_boot();
 	boot_entry_ensure();
 	/* 1.4.4: the power settings (System Settings › Power and battery) hold from the start, signed in or not */
 	if (!access("/usr/lib/rudolf/power", X_OK) && system("/usr/lib/rudolf/power apply >/dev/null 2>&1 &") != 0) {}
