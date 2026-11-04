@@ -2969,6 +2969,10 @@ static void api_bt(struct req *r, const char *what, int post)
 		run(*on == '1' ? "/usr/lib/rudolf/bluetooth on >/dev/null 2>&1" : "/usr/lib/rudolf/bluetooth off >/dev/null 2>&1");
 		reply_cmd_json(r, "/usr/lib/rudolf/bluetooth status 2>/dev/null", "Bluetooth is not available"); return;
 	}
+	if (!strcmp(what, "visible")) {
+		run("/usr/lib/rudolf/bluetooth visible >/dev/null 2>&1");
+		reply_cmd_json(r, "/usr/lib/rudolf/bluetooth status 2>/dev/null", "Bluetooth is not available"); return;
+	}
 	if (!strcmp(what, "scan")) {
 		char *sv = qparam(r->query, "s"); int sec = sv ? atoi(sv) : 15; if (sec < 3 || sec > 60) sec = 15;
 		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/bluetooth scan %d >/dev/null 2>&1", sec); run(cmd);

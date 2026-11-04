@@ -13,7 +13,7 @@ function btPanel(c,W){
  c.innerHTML=`<h3>Bluetooth</h3><p class='msg' style='margin:0 0 10px'>Controllers, keyboards, mice and headphones. To pair one, put it in pairing mode (usually by holding its pairing or Share/Sync button until its light flashes), then choose <b>Search for devices</b>.</p>
 <div class='r2'><label>Bluetooth</label><div><label class='ck'><input type='checkbox' class='bto'> On</label> <span class='bts' style='color:#6b7280;font-size:12px'></span></div></div>
 <h4 class='sh4'>My devices</h4><div class='btm'></div>
-<h4 class='sh4'>Other devices</h4><div class='rmrow' style='justify-content:flex-start'><button class='btf'>Search for devices</button> <span class='btw' style='color:#6b7280;font-size:12px'></span></div><div class='bt51n'></div><div class='msg btmsg'></div>`;
+<h4 class='sh4'>Other devices</h4><div class='rmrow' style='justify-content:flex-start'><button class='btf'>Search for devices</button> <span class='btw' style='color:#6b7280;font-size:12px'></span></div><div class='rmrow' style='justify-content:flex-start'><button class='btv'>Let this computer be found</button> <span class='btvs' style='color:#6b7280;font-size:12px'></span></div><p class='msg' style='margin:4px 0 8px;font-size:12px;color:#6b7280'>To pair from a phone, choose this, then look for this computer in the phone's Bluetooth settings.</p><div class='bt51n'></div><div class='msg btmsg'></div>`;
  const q=s=>c.querySelector(s),cb=q('.bto'),st=q('.bts'),mine=q('.btm'),near=q('.bt51n'),say=(t,ok)=>{const m=q('.btmsg');m.textContent=t;m.className='msg btmsg '+(ok?'ok':'bad')};
  let busy=false;
  const row=(d,host,btns)=>{const k=BT_KIND(d),r=document.createElement('div');r.className='acr';r.style.cssText='display:flex;gap:8px;align-items:center;padding:4px 0';
@@ -23,15 +23,16 @@ function btPanel(c,W){
  const act=async(what,d,okText)=>{say(what=='pair'?`Pairing with ${btName(d)}… keep it in pairing mode. A phone shows a code: check it matches the one shown here.`:'Working…',true);if(what=='pair')setTimeout(btAsk,1500);
   try{const r=await rdPost(`bt/${what}?mac=${d.mac}`);say(okText,true);if(r.status)BT51=r.status}catch(e){say(`${btName(d)}: ${e.message||'it did not work'}. Make sure it is on, near the computer, and (to pair) in pairing mode.`)}};
  const draw=async(s)=>{s=s||await btStatus();mine.innerHTML='';near.innerHTML='';
-  if(!s){st.textContent='Bluetooth needs the installed Rudolf OS.';cb.disabled=true;q('.btf').disabled=true;return}
-  if(!s.adapter){st.textContent='This computer has no Bluetooth adapter Rudolf OS can use. A USB Bluetooth adapter works too.';cb.disabled=true;q('.btf').disabled=true;mine.innerHTML="<i style='color:#6b7280'>None.</i>";return}
-  cb.disabled=false;cb.checked=!!s.powered;st.textContent=s.powered?(s.discovering?'On · searching…':'On'):(s.running?'Off':'Starting…');q('.btf').disabled=!s.powered;
+  if(!s){st.textContent='Bluetooth needs the installed Rudolf OS.';cb.disabled=true;q('.btf').disabled=true;q('.btv').disabled=true;return}
+  if(!s.adapter){q('.btv').disabled=true;st.textContent='This computer has no Bluetooth adapter Rudolf OS can use. A USB Bluetooth adapter works too.';cb.disabled=true;q('.btf').disabled=true;mine.innerHTML="<i style='color:#6b7280'>None.</i>";return}
+  cb.disabled=false;cb.checked=!!s.powered;st.textContent=s.powered?(s.discovering?'On · searching…':'On'):(s.running?'Off':'Starting…');q('.btf').disabled=!s.powered;q('.btv').disabled=!s.powered;q('.btvs').textContent=s.powered&&s.visible?`Visible as “${s.name||'Rudolf OS'}” for a few minutes.`:'';
   const paired=s.devices.filter(d=>d.paired),others=s.devices.filter(d=>!d.paired).sort((a,b)=>(b.rssi||-999)-(a.rssi||-999));
   if(!paired.length)mine.innerHTML="<i style='color:#6b7280'>No devices paired yet.</i>";
   paired.forEach(d=>row(d,mine,[d.connected?['Disconnect',()=>act('disconnect',d,`${btName(d)} is disconnected.`)]:['Connect',()=>act('connect',d,`${btName(d)} is connected.`),1],['Forget',()=>act('remove',d,`${btName(d)} is forgotten. Pair it again to use it.`)]]));
   if(!others.length)near.innerHTML=`<i style='color:#6b7280'>${s.discovering?'Searching…':'Choose Search for devices to find one.'}</i>`;
   others.forEach(d=>row(d,near,[['Pair',()=>act('pair',d,`${btName(d)} is paired and connected.`),1]]))};
  cb.onchange=async()=>{const on=cb.checked;cb.disabled=true;try{draw(await rdPost('bt/power?on='+(on?1:0)))}catch(e){say(e.message||'Bluetooth could not be changed.');draw()}};
+ q('.btv').onclick=async()=>{if(busy)return;q('.btv').disabled=true;try{draw(await rdPost('bt/visible'))}catch(e){say(e.message||'It did not work.')}};
  q('.btf').onclick=async()=>{if(busy)return;busy=true;q('.btf').disabled=true;q('.btw').textContent='Searching for 15 seconds…';
   const t=setInterval(()=>btStatus().then(s=>s&&c.isConnected&&!busy?draw(s):0),3000);
   try{draw(await rdPost('bt/scan?s=15'))}catch(e){say(e.message||'The search did not work.')}finally{clearInterval(t);busy=false;q('.btw').textContent=''}};
