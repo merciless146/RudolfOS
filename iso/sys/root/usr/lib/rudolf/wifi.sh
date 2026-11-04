@@ -25,6 +25,10 @@ start() {
 	if [ ! -s "$CONF" ]; then umask 077; printf 'ctrl_interface=%s\nupdate_config=1\nsae_pwe=2\n' $CTRL > "$CONF"; fi
 	chmod 600 "$CONF"
 	for r in /sys/class/rfkill/*; do [ "$(cat $r/type 2>/dev/null)" = wlan ] && echo 0 > $r/soft 2>/dev/null; done
+	# Realtek rtw88 chips (RTL8821CE and others): their deep power saving misses the router's beacons, so a good
+	# 5 GHz connection looks weak, wpa_supplicant tries the 2.4 GHz radio (which the Bluetooth half of the chip
+	# shares), and the connection drops every few minutes. Ordinary power saving stays on.
+	[ -w /sys/module/rtw88_core/parameters/disable_lps_deep ] && echo Y > /sys/module/rtw88_core/parameters/disable_lps_deep 2>/dev/null
 	ip link set "$IF" up 2>/dev/null
 	if ! W ping 2>/dev/null | grep -q PONG; then
 		wpa_supplicant -B -s -i "$IF" -c "$CONF" -D nl80211 -P /run/rudolf/wpa-$IF.pid >/dev/null 2>&1
