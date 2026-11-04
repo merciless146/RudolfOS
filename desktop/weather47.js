@@ -23,3 +23,11 @@ async function weatherLoc(){
 function wxF(loc){const u=ld('bd95wunit','');if(u)return u=='F';return!!loc&&['US','LR','MM'].includes(loc.cc)}
 function wxT(c,f){return f?Math.round(c*9/5+32)+'°F':Math.round(c)+'°C'}
 function wxSet(loc){svj('bd95wloc',loc);try{dispatchEvent(new Event('rudolf-wloc'))}catch(e){}}
+/* 1.5.1: the widget after a failed fetch. At start-up the widget asks before Wi-Fi is connected, failed ("Weather needs an
+   internet connection") and waited 15 minutes for its next try, while Weather itself (opened later) worked. Now a widget
+   that could not fetch tries again every 30 s, at once when the network comes back, and whenever Weather shows a
+   forecast. */
+function wxWidgetsRetry(all){document.querySelectorAll('[data-wx]').forEach(b=>{try{if(b._wx&&(all||/needs an internet connection|^Loading/.test(b.textContent)))b._wx()}catch(e){}})}
+addEventListener('online',()=>setTimeout(()=>wxWidgetsRetry(),2000));
+setInterval(()=>wxWidgetsRetry(),30000);
+if(typeof weatherApp=='function'){const _wa47=weatherApp;weatherApp=function(){const r=_wa47.apply(this,arguments);setTimeout(()=>wxWidgetsRetry(),5000);return r}}

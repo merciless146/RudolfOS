@@ -12,9 +12,9 @@ const GEO = {
   Oslo: [{name: 'Oslo', latitude: 59.91, longitude: 10.75, country: 'Norway', country_code: 'NO', admin1: 'Oslo'}]};
 (async () => {
   const b = await chromium.launch({executablePath: process.argv[2] || undefined}); const ctx = await b.newContext({viewport: {width: 1366, height: 768}});
-  const calls = [];
+  const calls = []; let OFFLINE = false;
   await ctx.route('https://geocoding-api.open-meteo.com/**', r => { const n = new URL(r.request().url()).searchParams.get('name'); calls.push('geo:' + n); r.fulfill({contentType: 'application/json', body: JSON.stringify({results: GEO[n] || []})}) });
-  await ctx.route('https://api.open-meteo.com/**', r => { const u = new URL(r.request().url()); calls.push('wx:' + u.searchParams.get('latitude') + ',' + u.searchParams.get('longitude') + ',' + u.searchParams.get('wind_speed_unit'));
+  await ctx.route('https://api.open-meteo.com/**', r => { if (OFFLINE) return r.abort(); const u = new URL(r.request().url()); calls.push('wx:' + u.searchParams.get('latitude') + ',' + u.searchParams.get('longitude') + ',' + u.searchParams.get('wind_speed_unit'));
     r.fulfill({contentType: 'application/json', body: JSON.stringify({current: {temperature_2m: 20, weather_code: 0, wind_speed_10m: 10, relative_humidity_2m: 50}, daily: {time: ['2026-11-02'], weather_code: [0], temperature_2m_max: [22], temperature_2m_min: [10]}})}) });
   const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto('http://127.0.0.1:8096/'); await p.waitForFunction(() => typeof uiFontStack == 'function' && typeof weatherLoc == 'function' && typeof settings == 'function', null, {timeout: 30000});
@@ -60,6 +60,12 @@ const GEO = {
   await q("wins.at(-1).el.querySelector('.un').click();1"); await wait(1200);
   ok('16. the °C/°F switch changes Weather and the widget', await q("/°C/.test(wins.at(-1).el.textContent)&&/°C/.test(document.querySelector('[data-wx]').textContent)"));
   await p.screenshot({path: path.join(SHOT, 'weather.png')});
+  // 1.5.1: a widget that could not fetch (the network was not up yet) tries again when the network comes back
+  OFFLINE = true; await q("document.querySelector('[data-wx]')._wx();1"); await p.waitForTimeout(1200);
+  const off = await q("document.querySelector('[data-wx]').textContent");
+  OFFLINE = false; await q("dispatchEvent(new Event('online'));1"); await p.waitForTimeout(3500);
+  const on2 = await q("document.querySelector('[data-wx]').textContent");
+  ok('16b. after a failed fetch the widget updates once the network is back (not 15 minutes later)', /needs an internet connection/.test(off) && /°/.test(on2) && !/needs an internet/.test(on2), [off, on2]);
   ok('17. no page errors', !errs.length, errs);
   console.log(`${R.filter(x => x).length}/${R.length} passed`); await b.close(); srv.close(); process.exit(R.every(x => x) ? 0 : 1);
 })();
