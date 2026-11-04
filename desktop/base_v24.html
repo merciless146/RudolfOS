@@ -4698,12 +4698,15 @@ async function qImportZip(u,say){if(typeof JSZip=='undefined')throw new Error('T
 /* free demo data published next to the page (LibreQuake subset, BSD licence) */
 async function qGunzip(u){if(typeof DecompressionStream!='function')throw new Error('This browser cannot unpack the free game data (it lacks DecompressionStream). Use Import ZIP instead.');
  const ds=new DecompressionStream('gzip');const out=new Response(new Blob([u]).stream().pipeThrough(ds));return new Uint8Array(await out.arrayBuffer())}
-async function qGetFree(say){let man;try{const r=await fetch('rudolfq/manifest.json',{cache:'no-store'});if(!r.ok)throw 0;man=await r.json()}catch(e){throw new Error('The free game data is not available here. Download LibreQuake from its website and use Import ZIP, or add PAK files from your own copy of Quake.')}
+async function qGetFree(say){
+ /* 1.5.2: on Rudolf OS the free data is the rudolf-quake package from the Rudolf OS Library (lib52.js), downloaded when first asked for */
+ let Q='rudolfq/';if(RD&&typeof libNeed=='function'){if(!(await libNeed('rudolf-quake')))throw new Error('The free game data was not downloaded. Get it from App Store › Rudolf OS Library, or add PAK files from your own copy of Quake.');Q=libBase('rudolf-quake')}
+ let man;try{const r=await fetch(Q+'manifest.json',{cache:'no-store'});if(!r.ok)throw 0;man=await r.json()}catch(e){throw new Error('The free game data is not available here. Download LibreQuake from its website and use Import ZIP, or add PAK files from your own copy of Quake.')}
  const root=qDir();if(!isDir(root.ID1))root.ID1={};let i=0;
  for(const f of man.files){i++;say('Downloading free game data… '+i+'/'+man.files.length+' ('+f.name+')');let u;
-  if(f.chunks){let b64='';for(const c of f.chunks){const r=await fetch('rudolfq/'+c);if(!r.ok)throw new Error('Could not download '+f.name+'.');b64+=(await r.text()).trim()}
+  if(f.chunks){let b64='';for(const c of f.chunks){const r=await fetch(Q+c);if(!r.ok)throw new Error('Could not download '+f.name+'.');b64+=(await r.text()).trim()}
    const bin=atob(b64);u=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)u[k]=bin.charCodeAt(k);if(f.gz)u=await qGunzip(u);if(f.size&&u.length!=f.size)throw new Error(f.name+' is damaged (wrong size).')}
-  else{const r=await fetch('rudolfq/'+f.path);if(!r.ok)throw new Error('Could not download '+f.name+'.');u=new Uint8Array(await r.arrayBuffer())}
+  else{const r=await fetch(Q+f.path);if(!r.ok)throw new Error('Could not download '+f.name+'.');u=new Uint8Array(await r.arrayBuffer())}
   let d=root.ID1;for(const s of(f.dir||'').split('/').filter(Boolean)){const k=s.toUpperCase();if(!isDir(d[k]))d[k]={};d=d[k]}await qStoreFile(d,f.name,u)}
  fsSave();EXPL.forEach(x=>x());return man}
 /* ---------- the app ---------- */

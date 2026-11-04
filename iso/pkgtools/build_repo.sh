@@ -18,4 +18,10 @@ for r in pkgs/*/recipe.json; do
 	python3 $T build $w/pkg repo/${n//-/_}.rpk --key $KEY
 	rm -rf $w
 done
+# 1.5.2: the Rudolf OS Library's packages too, as published (signed with the Library's key), so a computer installed
+# from the disc, or a live session, can add Quake and Emu without internet. Left out when the Library cannot be reached.
+LIB=${LIBRARY_URL:-https://merciless146.github.io/rudolfos-library}
+for n in rudolf-quake rudolf-emu; do
+	wget -q -T 60 -O repo/$n.rpk "$LIB/$n.rpk" || { rm -f repo/$n.rpk; echo "build_repo: $n is not on the disc (the Library could not be reached)"; }
+done
 python3 $T index repo --key $KEY

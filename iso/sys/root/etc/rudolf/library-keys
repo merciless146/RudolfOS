@@ -1,0 +1,4 @@
+# The Rudolf OS Library's public key (github.com/merciless146/rudolfos-library, keys.txt). rpk trusts it for Library
+# packages only: files for the desktop, never programs, never in place of a system package. rudolf-update does not
+# read this file, so this key can never sign a system update.
+kRBDN3Ys6i49gblu504quUt7NZHGZj/kexNTb6uoenY=
