@@ -10,6 +10,7 @@ Summary: Bluetooth (controllers, keyboards, mice, headphones), and Xbox Cloud Ga
 - New: game mode. While a game or video is full screen, notifications wait in the notification centre instead of popping up, and one message afterwards says how many came.
 - Fixed: playing with only a controller did not count as using the computer, so the screen could lock or the computer sleep in the middle of a game.
 - New: controllers are listed in Settings › Devices.
+- Fixed: Bluetooth pairings were not kept: a device showed as paired, but after a restart it had to be paired again, and a phone asking to compare codes never got an answer. A phone's code now appears on screen to confirm (Yes / No), a device that asks to pair is asked about, a keyboard that needs a code shows it, and Settings says so when a pairing did not finish.
 - Fixed: Wi-Fi dropped every few minutes on laptops with a Realtek Wi-Fi chip (such as the RTL8821CE) when the router has both a 5 GHz and a 2.4 GHz radio. The chip's deep power saving is now off.
 
 ## 1.5.0 (2026-11-02)

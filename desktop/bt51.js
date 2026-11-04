@@ -20,7 +20,7 @@ function btPanel(c,W){
   r.innerHTML=`<span style='font-size:20px'>${k[0]}</span><span style='flex:1'><b></b><br><small style='color:#6b7280'></small></span>`;
   r.querySelector('b').textContent=btName(d);r.querySelector('small').textContent=[k[1],d.connected?'connected':d.paired?'not connected':'',d.battery!=null?'battery '+d.battery+'%':''].filter(Boolean).join(' · ');
   btns.forEach(([l,f,pri])=>{const b=document.createElement('button');b.textContent=l;if(pri)b.className='pri';b.onclick=async()=>{if(busy)return;busy=true;c.querySelectorAll('button').forEach(x=>x.disabled=true);try{await f()}finally{busy=false;draw()}};r.appendChild(b)});host.appendChild(r)};
- const act=async(what,d,okText)=>{say(what=='pair'?`Pairing with ${btName(d)}… keep it in pairing mode.`:'Working…',true);
+ const act=async(what,d,okText)=>{say(what=='pair'?`Pairing with ${btName(d)}… keep it in pairing mode. A phone shows a code: check it matches the one shown here.`:'Working…',true);if(what=='pair')setTimeout(btAsk,1500);
   try{const r=await rdPost(`bt/${what}?mac=${d.mac}`);say(okText,true);if(r.status)BT51=r.status}catch(e){say(`${btName(d)}: ${e.message||'it did not work'}. Make sure it is on, near the computer, and (to pair) in pairing mode.`)}};
  const draw=async(s)=>{s=s||await btStatus();mine.innerHTML='';near.innerHTML='';
   if(!s){st.textContent='Bluetooth needs the installed Rudolf OS.';cb.disabled=true;q('.btf').disabled=true;return}
@@ -46,3 +46,21 @@ async function btWatch(){const s=await btStatus();setTimeout(btWatch,s&&s.powere
    if(d.connected&&d.battery!=null&&d.battery<=15&&!(was&&was.connected&&was.battery!=null&&was.battery<=15))notify(k[0]+' '+btName(d)+': battery low',`${d.battery}% left. Charge it soon.`,{kind:'error'})}}
  BT_SEEN=now}
 if(RD)setTimeout(btWatch,9000);
+/* the pairing question, wherever you are (1.5.1): a phone's code to compare, a device asking to pair, a code to type on
+   a keyboard. rudolfd's bt/ask is a small file the pairing agent writes; it is asked every 2 s while Bluetooth is on,
+   and an unanswered question is answered no after 30 s. */
+let BTQ=null;
+function btAskBox(a){let b=document.querySelector('.bt51q');
+ if(!a){if(b)b.remove();BTQ=null;return}
+ if(BTQ===a.t&&b)return;BTQ=a.t;if(!b){b=document.createElement('div');b.className='bt51q';document.body.appendChild(b)}
+ b.style.cssText='position:fixed;right:16px;bottom:64px;z-index:99990;max-width:340px;background:#fff;color:#111827;border:1px solid #d1d5db;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:14px 16px;font-size:14px';
+ const nm=a.name||'',who=nm||'A Bluetooth device';
+ b.innerHTML=`<div style='font-weight:600;margin-bottom:6px'>🔵 Bluetooth pairing</div><div class='bt51qt'></div><div class='bt51qc' style='font-size:28px;letter-spacing:4px;font-weight:700;margin:8px 0'></div><div class='bt51qb' style='display:flex;gap:8px;justify-content:flex-end'></div>`;
+ const t=b.querySelector('.bt51qt'),c=b.querySelector('.bt51qc'),bb=b.querySelector('.bt51qb');
+ const btn=(l,ok,pri)=>{const x=document.createElement('button');x.textContent=l;if(pri)x.className='pri';x.onclick=async()=>{bb.querySelectorAll('button').forEach(y=>y.disabled=true);try{await rdPost('bt/answer?ok='+(ok?1:0))}catch(e){}btAskBox(null)};bb.appendChild(x)};
+ if(a.kind=='confirm'){t.textContent=`Pair with ${nm||'this device'}? Choose Yes only if it shows the same code:`;c.textContent=a.code;btn('No',0);btn('Yes, pair',1,1)}
+ else if(a.kind=='accept'){t.textContent=`${who} wants to pair with this computer.`;c.remove();btn("Don't pair",0);btn('Pair',1,1)}
+ else if(a.kind=='keyboard'){t.textContent=`Type this code on ${nm||'the keyboard'}, then press Enter:`;c.textContent=a.code}
+ else{b.remove();BTQ=null}}
+async function btAsk(){try{const r=await rd('bt/ask');btAskBox(r.ask)}catch(e){}}
+if(RD)setInterval(()=>{if(BT51&&BT51.powered)btAsk()},2000);

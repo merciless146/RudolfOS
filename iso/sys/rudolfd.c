@@ -2949,7 +2949,21 @@ static int bt_mac_ok(const char *m) { if (!m || strlen(m) != 17) return 0; for (
 static void api_bt(struct req *r, const char *what, int post)
 {
 	char cmd[200];
+	/* 1.5.1: the pairing question (a phone's code to compare, a device asking to pair, a code to type on a keyboard),
+	   asked by the desktop every 2 s while Bluetooth is on: only a small file, read here, no script */
+	if (!post && !strcmp(what, "ask")) {
+		char buf[512] = ""; FILE *f = fopen("/run/rudolf/bt-ask", "r");
+		size_t n = f ? fread(buf, 1, sizeof buf - 1, f) : 0; if (f) fclose(f); buf[n] = 0; trim(buf);
+		str s = {0}; sadd(&s, "{\"ok\":true,\"ask\":%s}", buf[0] == '{' ? buf : "null");
+		reply(r->fd, 200, "application/json", s.b, s.n, NULL); free(s.b); return;
+	}
 	if (!post) { reply_cmd_json(r, "/usr/lib/rudolf/bluetooth status 2>/dev/null", "Bluetooth is not available"); return; }
+	if (!strcmp(what, "answer")) {
+		char *ok = qparam(r->query, "ok"); if (!ok || (strcmp(ok, "1") && strcmp(ok, "0"))) { reply_err(r->fd, 400, "ok=1 or ok=0"); return; }
+		int rc = run(*ok == '1' ? "/usr/lib/rudolf/bluetooth answer yes >/dev/null 2>&1" : "/usr/lib/rudolf/bluetooth answer no >/dev/null 2>&1");
+		if (rc) { reply_err(r->fd, 409, "The question was already answered or has run out of time"); return; }
+		reply_ok(r->fd, "answered"); return;
+	}
 	if (!strcmp(what, "power")) {
 		char *on = qparam(r->query, "on"); if (!on || (strcmp(on, "1") && strcmp(on, "0"))) { reply_err(r->fd, 400, "on=1 or on=0"); return; }
 		run(*on == '1' ? "/usr/lib/rudolf/bluetooth on >/dev/null 2>&1" : "/usr/lib/rudolf/bluetooth off >/dev/null 2>&1");
