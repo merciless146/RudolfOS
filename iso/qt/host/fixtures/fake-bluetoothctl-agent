@@ -1,0 +1,43 @@
+#!/bin/sh
+# A stand-in for BlueZ's bluetoothctl for btagent_t.sh: the state is files in $FAKEBT (bonded_MAC, connected_MAC,
+# trusted_MAC, name_MAC). Run without arguments it is the interactive agent, and prints what bluetoothctl 5.72 prints:
+# a question ends without a newline. Test hooks, sent as lines: incoming MAC (a phone starts pairing), pairkb MAC (a
+# keyboard that needs a code typed on it), authsvc (a device asks for a service).
+S=$FAKEBT
+[ "$1" = "--timeout" ] && shift 2
+nm() { cat $S/name_$1 2>/dev/null || echo "$1"; }
+case "$1" in
+info) M=$2; printf 'Device %s (public)\n\tName: %s\n\tAlias: %s\n' $M "$(nm $M)" "$(nm $M)"
+	[ -e $S/bonded_$M ] || [ -e $S/paired_$M ] && echo "	Paired: yes" || echo "	Paired: no"
+	[ -e $S/bonded_$M ] && echo "	Bonded: yes" || echo "	Bonded: no"
+	[ -e $S/trusted_$M ] && echo "	Trusted: yes" || echo "	Trusted: no"
+	[ -e $S/connected_$M ] && echo "	Connected: yes" || echo "	Connected: no"; exit 0;;
+devices) for f in $S/name_*; do M=${f##*/name_}
+	case "$2" in Connected) [ -e $S/connected_$M ] || continue;; Bonded) [ -e $S/bonded_$M ] || continue;; esac
+	echo "Device $M $(nm $M)"; done; exit 0;;
+trust) touch $S/trusted_$2; echo "Changing $2 trust succeeded"; exit 0;;
+connect) touch $S/connected_$2; echo "Connection successful"; exit 0;;
+show) printf 'Controller 00:11:22:33:44:55 (public)\n\tPowered: yes\n'; exit 0;;
+"") ;;
+*) exit 0;;
+esac
+p() { printf '%s' "$1"; }
+q() { printf '\033[0;94m[agent]\033[0m %s' "$1"; IFS= read -r a; echo "$a" >> $S/answers; }
+while IFS= read -r l; do
+	echo "$l" >> $S/commands
+	set -- $l
+	case "$1" in
+	agent) echo "Agent registered";;
+	default-agent) echo "Default agent request successful";;
+	pair) M=$2; echo "Attempting to pair with $M"; touch $S/connected_$M; echo "[CHG] Device $M Connected: yes"
+		echo "Request confirmation"; q "Confirm passkey 482913 (yes/no): "
+		if [ "$a" = yes ]; then touch $S/bonded_$M; echo "[CHG] Device $M Paired: yes"; echo "Pairing successful"
+		else echo "Failed to pair: org.bluez.Error.AuthenticationRejected"; fi;;
+	incoming) M=$2; touch $S/connected_$M; echo "Request authorization"; q "Accept pairing (yes/no): "
+		[ "$a" = yes ] && { touch $S/bonded_$M; echo "[CHG] Device $M Paired: yes"; };;
+	pairkb) M=$2; echo "Attempting to pair with $M"; touch $S/connected_$M; printf '\033[0;94m[agent]\033[0m Passkey: 019283\n'
+		sleep 3; touch $S/bonded_$M; echo "Pairing successful";;
+	authsvc) q "Authorize service 0000110e-0000-1000-8000-00805f9b34fb (yes/no): ";;
+	esac
+	printf '\033[0;94m[bluetooth]\033[0m# '
+done

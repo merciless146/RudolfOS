@@ -7,20 +7,84 @@
 #   bluetooth scan SECONDS      look for devices nearby (the laptop is visible to others only meanwhile)
 #   bluetooth pair MAC | connect MAC | disconnect MAC | remove MAC
 #   bluetooth audio             (after a connect or a disconnect) headphones as a PulseAudio output, or not
-# Pairing uses the "no input, no output" agent: controllers, mice, headphones and most keyboards pair with a press of
-# their pairing button; nothing is typed. Pairings are kept in /persist/bluetooth. GPL-2.0-or-later.
-export PATH=/usr/sbin:/usr/bin:/sbin:/bin:/usr/libexec/bluetooth
+#   bluetooth answer yes|no     the answer to the pairing question in /run/rudolf/bt-ask (Settings asks it)
+#   bluetooth agent-run         (started by start) the pairing agent: one bluetoothctl that stays
+# Pairing: an agent that stays registered as BlueZ's default (KeyboardDisplay), so a pairing finishes and is kept
+# whichever side starts it. (1.5.1 first paired with a one-off "bluetoothctl --agent NoInputNoOutput pair": the
+# pairing went through but BlueZ was told not to keep its key, so it was gone after a restart, and a phone that asked
+# to compare codes never got an answer.) Controllers, mice and headphones still pair with a press of their pairing
+# button. A phone shows a 6-digit code: the agent puts it in /run/rudolf/bt-ask and Settings asks whether the
+# phone shows the same; an unanswered question is answered no after 30 s. A keyboard that needs a code typed on it
+# gets one shown the same way. Pairings are kept in /persist/bluetooth. GPL-2.0-or-later.
+export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin:/usr/libexec/bluetooth
 OFF=/persist/etc/bluetooth-off
 BD=$(command -v bluetoothd || echo /usr/libexec/bluetooth/bluetoothd)
-BC="bluetoothctl"
-BUS=/run/dbus/system_bus_socket
+BC="${RUDOLF_BLUETOOTHCTL:-bluetoothctl}"   # (the host test points these at stand-ins)
+BUS=${RUDOLF_BT_BUS:-/run/dbus/system_bus_socket}
 export DBUS_SYSTEM_BUS_ADDRESS=unix:path=$BUS
 # (busybox's pgrep matches the name a program was started with: bluetoothd is started by its full path, so it never
 # matched, Bluetooth always looked stopped, and every check started another restart loop. pidof matches the program.)
 up() { pidof "$1" >/dev/null 2>&1; }
 mac_ok() { echo "$1" | grep -qE '^([0-9A-F]{2}:){5}[0-9A-F]{2}$'; }
-adapter() { ls /sys/class/bluetooth 2>/dev/null | grep -E '^hci[0-9]+$' | head -1; }
+adapter() { ls ${RUDOLF_BT_SYSFS:-/sys/class/bluetooth} 2>/dev/null | grep -E '^hci[0-9]+$' | head -1; }
 bc() { timeout "${T:-10}" $BC "$@" 2>&1; }
+SELF=$(readlink -f "$0")
+R=${RUDOLF_RUN:-/run/rudolf}
+AGIN=$R/bt-agent.in AGOUT=$R/bt-agent.out ASK=$R/bt-ask RES=$R/bt-result PW=$R/bt-pairing
+agent_up() { [ -e $R/btagent.pid ] && kill -0 "$(cat $R/btagent.pid)" 2>/dev/null && [ -p $AGIN ]; }
+# a line to the agent (never blocks: the agent keeps its own end of the pipe open)
+to_agent() { agent_up && timeout 2 sh -c "printf '%s\\n' \"\$1\" > $AGIN" sh "$1"; }
+# within two minutes of a pairing someone asked for (Pair in Settings, or a Yes to a phone)
+pairwin() { [ -f $PW ] && [ $(( $(date +%s) - $(stat -c %Y $PW) )) -lt 120 ]; }
+bonded() { I=$(T=4 bc info $1); echo "$I" | grep -q 'Bonded:' && { echo "$I" | grep -q 'Bonded: yes'; return; }; echo "$I" | grep -q 'Paired: yes'; }
+# the device a pairing question is about: connected and not yet bonded
+asking_dev() { for M in $(T=4 bc devices Connected | sed -n 's/^Device \([0-9A-F:]\{17\}\) .*/\1/p'); do bonded $M || { echo $M; return; }; done; }
+ask() {   # KIND CODE: the question for Settings, answered no after 30 s
+	t=$(date +%s); M=$(asking_dev); N=; [ -n "$M" ] && N=$(T=4 bc info $M | sed -n 's/^\s*Alias: //p' | head -1)
+	printf '{"kind":"%s","code":"%s","mac":"%s","name":%s,"t":%s}\n' "$1" "$2" "$M" "$(json_str "$N")" $t > $ASK.tmp && mv $ASK.tmp $ASK
+	[ "$1" = keyboard ] && return
+	(sleep 30; [ -f $ASK ] && grep -q "\"t\":$t}" $ASK && "$SELF" answer no) </dev/null >/dev/null 2>&1 &
+}
+answer() {
+	[ -f $ASK ] || { echo "nothing to answer"; return 1; }
+	rm -f $ASK; to_agent "$1" || return 1
+	[ "$1" = yes ] || return 0
+	touch $PW
+	# a pairing the other side started: trust the device once it is bonded, so it can connect again by itself
+	(sleep 12; for M in $(T=4 bc devices Bonded | sed -n 's/^Device \([0-9A-F:]\{17\}\) .*/\1/p'); do T=4 bc info $M | grep -q 'Trusted: yes' || T=5 bc trust $M >/dev/null; done) </dev/null >/dev/null 2>&1 &
+}
+# what the agent's bluetoothctl prints (prompts end without a newline, so ':' ends a line too)
+agent_read() {
+	pk=0
+	tr ':\r' '\n\n' | while IFS= read -r l; do
+		case "$l" in
+		*"Confirm passkey"*) ask confirm "$(echo "$l" | grep -o '[0-9]\{6\}' | head -1)";;
+		*"Accept pairing"*|*"Authorize pairing"*) ask accept "";;
+		*"Authorize service"*) if pairwin; then to_agent yes; else to_agent no; fi;;
+		*"Enter PIN code"*) to_agent 0000;;
+		*"Enter passkey"*) to_agent no;;
+		*"Passkey"*|*"PIN code"*) pk=1; c=$(echo "$l" | grep -o '[0-9]\{4,6\}' | head -1); [ -n "$c" ] && { ask keyboard "$c"; pk=0; };;
+		*"Pairing successful"*|*"Failed to pair"*) [ $pk = 1 ] && pk=0; echo "$l" | sed 's/\x1b\[[0-9;]*m//g; s/^.*\(Pairing successful\|Failed to pair\)/\1/' > $RES; rm -f $ASK;;
+		*"Request canceled"*|*"canceled"*) rm -f $ASK;;
+		*) if [ $pk = 1 ]; then c=$(echo "$l" | grep -o '[0-9]\{4,6\}' | head -1); [ -n "$c" ] && ask keyboard "$c"; pk=0; fi;;
+		esac
+	done
+}
+# the agent: a bluetoothctl that stays, registered as BlueZ's default agent; ends when bluetoothd restarts or stops
+agent_run() {
+	for i in $(seq 50); do up bluetoothd && [ -S $BUS ] && break; sleep 0.2; done
+	up bluetoothd || return 1
+	BDP=$(pidof bluetoothd)
+	rm -f $AGIN $AGOUT $ASK; mkfifo -m 600 $AGIN $AGOUT || return 1
+	exec 3<>$AGIN
+	agent_read < $AGOUT &
+	RP=$!
+	$BC <&3 >$AGOUT 2>&1 &
+	CP=$!; echo $CP > $R/btagent.pid
+	sleep 1; printf 'agent KeyboardDisplay\n' >&3; sleep 1; printf 'default-agent\n' >&3
+	while kill -0 $CP 2>/dev/null && [ ! -e $R/bluetooth-stop ] && [ "$(pidof bluetoothd)" = "$BDP" ]; do sleep 2; done
+	kill $CP $RP 2>/dev/null; exec 3>&-; rm -f $ASK $R/btagent.pid $AGIN $AGOUT
+}
 
 start() {
 	[ -x "$BD" ] || { echo "BlueZ is missing"; return 1; }
@@ -39,6 +103,7 @@ start() {
 	for c in /usr/share/alsa/alsa.conf.d/*bluealsa*.conf; do [ -f "$c" ] && mkdir -p /etc/alsa/conf.d && ln -sf "$c" /etc/alsa/conf.d/ 2>/dev/null; done
 	[ -n "$B" ] && ! { [ -e /run/rudolf/bluealsa.loop ] && kill -0 "$(cat /run/rudolf/bluealsa.loop)" 2>/dev/null; } && (setsid sh -c "echo \$\$ > /run/rudolf/bluealsa.loop; while [ ! -e /run/rudolf/bluetooth-stop ]; do $B -p a2dp-source >>/run/rudolf/bluealsa.log 2>&1; sleep 2; done" </dev/null >/dev/null 2>&1 &)
 	rm -f /run/rudolf/bluetooth-stop
+	[ -e $R/btagent.loop ] && kill -0 "$(cat $R/btagent.loop)" 2>/dev/null || (setsid sh -c "echo \$\$ > $R/btagent.loop; while [ ! -e $R/bluetooth-stop ]; do '$SELF' agent-run >>$R/btagent.log 2>&1; sleep 2; done" </dev/null >/dev/null 2>&1 &)
 	for i in $(seq 50); do T=3 bc show | grep -q 'Controller' && break; sleep 0.2; done
 	[ -f $OFF ] && T=5 bc power off >/dev/null || T=5 bc power on >/dev/null
 	return 0
@@ -56,7 +121,9 @@ status() {
 	for M in $(T=4 bc devices | sed -n 's/^Device \([0-9A-F:]\{17\}\) .*/\1/p'); do
 		I=$(T=4 bc info $M)
 		nm=$(echo "$I" | sed -n 's/^\s*Alias: //p' | head -1); ic=$(echo "$I" | sed -n 's/^\s*Icon: //p' | head -1)
-		pa=$(echo "$I" | grep -q 'Paired: yes' && echo true || echo false); co=$(echo "$I" | grep -q 'Connected: yes' && echo true || echo false)
+		# paired = the key is kept (BlueZ's Bonded); "Paired: yes" alone is gone after a restart
+		if echo "$I" | grep -q 'Bonded:'; then pa=$(echo "$I" | grep -q 'Bonded: yes' && echo true || echo false); else pa=$(echo "$I" | grep -q 'Paired: yes' && echo true || echo false); fi
+		co=$(echo "$I" | grep -q 'Connected: yes' && echo true || echo false)
 		tr_=$(echo "$I" | grep -q 'Trusted: yes' && echo true || echo false)
 		bat=$(echo "$I" | sed -n 's/.*Battery Percentage: 0x[0-9a-f]* (\([0-9]*\)).*/\1/p' | head -1)
 		au=$(echo "$I" | grep -qi 'Audio Sink' && echo true || echo false)
@@ -64,7 +131,7 @@ status() {
 		[ $n -gt 0 ] && printf ','; n=$((n+1))
 		printf '{"mac":"%s","name":%s,"icon":%s,"paired":%s,"trusted":%s,"connected":%s,"audio":%s,"battery":%s,"rssi":%s}' "$M" "$(json_str "$nm")" "$(json_str "$ic")" $pa $tr_ $co $au "${bat:-null}" "${rs:-null}"
 	done
-	printf ']}\n'
+	printf '],"ask":%s}\n' "$(cat $ASK 2>/dev/null || echo null)"
 }
 
 # headphones: a PulseAudio output for each connected audio device (bluealsa's ALSA plug-in), removed when it goes
@@ -96,7 +163,7 @@ boot)
 	[ -n "$(adapter)" ] || exit 0
 	start;;
 start) start;;
-stop) : > /run/rudolf/bluetooth-stop; T=5 bc power off >/dev/null; for p in bluetoothd bluealsa bluealsad; do kill $(pidof $p) 2>/dev/null; done; rm -f /run/rudolf/bluetoothd.loop /run/rudolf/bluealsa.loop; exit 0;;
+stop) : > /run/rudolf/bluetooth-stop; T=5 bc power off >/dev/null; for p in bluetoothd bluealsa bluealsad; do kill $(pidof $p) 2>/dev/null; done; kill $(cat $R/btagent.loop 2>/dev/null) $(cat $R/btagent.pid 2>/dev/null) 2>/dev/null; rm -f /run/rudolf/bluetoothd.loop /run/rudolf/bluealsa.loop $R/btagent.loop $R/btagent.pid $ASK; exit 0;;
 on) rm -f $OFF; up bluetoothd || start; T=5 bc power on;;
 off) mkdir -p /persist/etc 2>/dev/null; : > $OFF; T=5 bc power off;;
 status) status;;
@@ -105,7 +172,15 @@ scan)
 	T=$((S + 3)) bc --timeout $S scan on >/dev/null; echo scanned;;
 pair)
 	mac_ok "$2" || { echo "bad device"; exit 2; }
-	T=40 bc --agent NoInputNoOutput pair $2 | tail -3; R=$?
+	agent_up || { start >/dev/null; for i in $(seq 20); do agent_up && break; sleep 0.5; done; }
+	agent_up || { echo "The pairing helper did not start. Turn Bluetooth off and on, then try again."; exit 1; }
+	touch $PW; rm -f $RES
+	to_agent "pair $2"
+	# up to 45 s: long enough to compare a code on a phone
+	ok=0; for i in $(seq 90); do sleep 0.5; bonded $2 && { ok=1; break; }; grep -q 'Failed' $RES 2>/dev/null && break; done
+	rm -f $ASK
+	if [ $ok = 0 ]; then sed -n 's/^Failed to pair: *//p' $RES 2>/dev/null | head -1 | grep . || echo "The pairing did not finish"; exit 1; fi
+	echo "Pairing successful"
 	T=8 bc trust $2 >/dev/null
 	T=20 bc connect $2 | tail -1
 	audio;;
@@ -113,5 +188,7 @@ connect) mac_ok "$2" || exit 2; T=20 bc connect $2 | tail -1; audio;;
 disconnect) mac_ok "$2" || exit 2; T=10 bc disconnect $2 | tail -1; audio;;
 remove) mac_ok "$2" || exit 2; T=10 bc remove $2 | tail -1; audio;;
 audio) audio;;
-*) echo "usage: bluetooth boot|start|stop|on|off|status|scan [S]|pair MAC|connect MAC|disconnect MAC|remove MAC|audio" >&2; exit 2;;
+answer) case "$2" in yes|no) answer $2;; *) exit 2;; esac;;
+agent-run) agent_run;;
+*) echo "usage: bluetooth boot|start|stop|on|off|status|scan [S]|pair MAC|connect MAC|disconnect MAC|remove MAC|audio|answer yes|no" >&2; exit 2;;
 esac

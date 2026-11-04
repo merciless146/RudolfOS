@@ -4,6 +4,7 @@ const {chromium} = require('playwright'); const http = require('http'), fs = req
 const WWW = path.join(__dirname, '../../../iso/www');
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + JSON.stringify(d).slice(0, 300) : '')) };
 const ST = JSON.parse(fs.readFileSync(process.argv[2] || path.join(__dirname, 'fixtures/bt51_status.json'), 'utf8')), POSTS = [];
+let ASK = null;
 const dev = m => ST.devices.find(d => d.mac == m);
 const api = (q, s, body) => {
   const u = new URL(q.url, 'http://x'), p = u.pathname.slice(5); let j = q.method == 'POST' ? {ok: true} : {ok: false, error: 'not in the stand-in'}, code = 200;
@@ -12,6 +13,8 @@ const api = (q, s, body) => {
   if (p == 'bt') j = ST;
   else if (p == 'bt/power') { ST.powered = u.searchParams.get('on') == '1'; j = ST }
   else if (p == 'bt/scan') j = ST;
+  else if (p == 'bt/ask') j = {ok: true, ask: ASK};
+  else if (p == 'bt/answer') { if (ASK) { ASK = null; j = {ok: true} } else { code = 409; j = {ok: false, error: 'already answered'} } }
   else if (p == 'bt/pair') { if (m == 'AA:BB:CC:DD:EE:03') { Object.assign(dev(m), {paired: true, connected: true, name: 'Keyboard K380', icon: 'input-keyboard'}); j = {ok: true, status: ST} } else { code = 409; j = {ok: false, error: 'Failed to pair: org.bluez.Error.AuthenticationFailed'} } }
   else if (p == 'bt/connect') { dev(m).connected = true; j = {ok: true, status: ST} }
   else if (p == 'bt/remove') { ST.devices = ST.devices.filter(d => d.mac != m); j = {ok: true, status: ST} }
@@ -53,6 +56,23 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   dev('AA:BB:CC:DD:EE:01').connected = true; await q("NC.length=0;btWatch()"); await wait(400);
   const n2 = await q("NC.map(n=>n.t)");
   ok('8. ...and a low battery once it connects again (12%)', n2.some(x => /battery low/.test(x)), n2);
+  // the pairing question, wherever you are (polled every 2 s while Bluetooth is on)
+  const box = () => q("(()=>{const b=document.querySelector('.bt51q');return b?{t:b.innerText,btn:[...b.querySelectorAll('button')].map(x=>x.textContent),fixed:getComputedStyle(b).position}:null})()");
+  ASK = {kind: 'confirm', code: '482913', mac: 'DC:F0:90:56:8E:AE', name: 'REDMAGIC 9 Pro', t: 1}; await wait(2600);
+  const b1 = await box();
+  ok('12. a phone\'s code to compare: shown with its name, Yes and No', b1 && /Pair with REDMAGIC 9 Pro/.test(b1.t) && /482913/.test(b1.t) && b1.btn.join() == 'No,Yes, pair' && b1.fixed == 'fixed', b1);
+  await q("[...document.querySelectorAll('.bt51q button')].find(b=>/Yes/.test(b.textContent)).click()"); await wait(500);
+  ok('13. ...Yes answers yes and the box goes', POSTS.includes('bt/answer?ok=1') && !(await box()), POSTS.slice(-3));
+  ASK = {kind: 'accept', code: '', mac: 'AA:BB:CC:DD:EE:09', name: '', t: 2}; await wait(2600);
+  const b2 = await box();
+  ok('14. a device that asks to pair: Pair or Don\'t pair (no name: "A Bluetooth device")', b2 && /A Bluetooth device wants to pair/.test(b2.t) && b2.btn.join() == "Don't pair,Pair", b2);
+  await q("[...document.querySelectorAll('.bt51q button')].find(b=>/Don/.test(b.textContent)).click()"); await wait(500);
+  ok('15. ...Don\'t pair answers no', POSTS.includes('bt/answer?ok=0') && !(await box()));
+  ASK = {kind: 'keyboard', code: '019283', mac: 'AA:BB:CC:DD:EE:03', name: 'K380', t: 3}; await wait(2600);
+  const b3 = await box();
+  ok('16. a keyboard: the code to type on it, no buttons', b3 && /Type this code on K380/.test(b3.t) && /019283/.test(b3.t) && !b3.btn.length, b3);
+  ASK = null; await wait(2600);
+  ok('17. ...gone when the pairing is over', !(await box()));
   await q("SW.show('bt',1)"); await wait(400);
   await q("(()=>{const c=SW.body.querySelector('.bto');c.checked=false;c.dispatchEvent(new Event('change'))})()"); await wait(600);
   ok('9. the switch turns it off', POSTS.includes('bt/power?on=0') && await q("SW.body.querySelector('.bts').textContent") == 'Off');
