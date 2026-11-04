@@ -10,8 +10,12 @@
  *     webapp  www/ served by rudolfd at /pkg/<name>/         opened in a desktop window
  *     addon   files the desktop uses (for example a copy of Ruffle)
  * Repositories hold index.txt (tab-separated, one package per line) and index.sig (Ed25519 over index.txt).
- * Trusted public keys: /etc/rudolf/rpk-keys and <root>/keys (base64, one per line).
- * Sources: the disc's own repository (/live/media/rudolf/pkg) plus lines in <root>/sources.
+ * Trusted public keys: /etc/rudolf/rpk-keys and <root>/keys (base64, one per line), and (1.5.2) the Rudolf OS
+ * Library's keys in /etc/rudolf/library-keys. A package signed only by a Library key may hold files for the desktop
+ * (kind addon or webapp), never programs, and may not replace a package signed by a system key. rudolf-update
+ * never reads library-keys, so a Library key cannot sign a system update.
+ * Sources: the disc's own repository (/live/media/rudolf/pkg), the system's sources (/etc/rudolf/rpk-sources: the
+ * Library) and lines in <root>/sources.
  * <root> is /persist/pkg on an installed system and /run/rudolf/pkg on a live one (lost at shutdown). */
 #define _GNU_SOURCE
 #include <ctype.h>
@@ -33,16 +37,18 @@
 #define TRAILER 72
 #define DISC_REPO "/live/media/rudolf/pkg"
 #define SYS_KEYS "/etc/rudolf/rpk-keys"
+#define LIB_KEYS "/etc/rudolf/library-keys"
+#define SYS_SOURCES "/etc/rudolf/rpk-sources"
 #define MAXP 512
 
 static char ROOT[256], MNT[256];
 
 
 typedef struct { char *name, *version, *kind, *file, *sha, *title, *summary, *icon, *license; long long size; int src; } pkg_t;
-typedef struct { char loc[512], type[8]; long long serial; int ok, count; char err[160]; } src_t;
+typedef struct { char loc[512], type[8]; long long serial; int ok, count, lib; char err[160]; } src_t;
 static pkg_t AV[MAXP]; static int NAV;
 static src_t SRC[16]; static int NSRC;
-static unsigned char KEYS[16][32]; static int NKEYS;
+static unsigned char KEYS[16][32]; static int NKEYS, KLIB[16];
 
 static void die(const char *f, ...) { va_list a; va_start(a, f); fputs("rpk: ", stderr); vfprintf(stderr, f, a); fputc('\n', stderr); va_end(a); exit(1); }
 static void say(const char *f, ...) { va_list a; va_start(a, f); vprintf(f, a); putchar('\n'); fflush(stdout); va_end(a); }
@@ -93,7 +99,7 @@ static int sha256_file(const char *path, long long limit, char hex[65])
 	for (int i = 0; i < 32; i++) sprintf(hex + 2 * i, "%02x", md[i]);
 	return 0;
 }
-static void load_keys_from(const char *path)
+static void load_keys_from(const char *path, int lib)
 {
 	char *t = slurp(path, NULL); if (!t) return;
 	for (char *l = strtok(t, "\n"); l && NKEYS < 16; l = strtok(NULL, "\n")) {
@@ -101,21 +107,31 @@ static void load_keys_from(const char *path)
 		if (!*l || *l == '#') continue;
 		char *e = l; while (*e && !isspace((unsigned char)*e)) e++; *e = 0;
 		unsigned char raw[64]; int n = EVP_DecodeBlock(raw, (unsigned char *)l, strlen(l));
-		if (strlen(l) == 44 && n >= 32) memcpy(KEYS[NKEYS++], raw, 32);
+		if (strlen(l) == 44 && n >= 32) { KLIB[NKEYS] = lib; memcpy(KEYS[NKEYS++], raw, 32); }
 	}
 	free(t);
 }
-static void load_keys(void) { char p[300]; NKEYS = 0; load_keys_from(getenv("RPK_KEYS") ? getenv("RPK_KEYS") : SYS_KEYS); snprintf(p, sizeof p, "%s/keys", ROOT); load_keys_from(p); }
+static void load_keys(void)
+{
+	char p[300]; NKEYS = 0;
+	load_keys_from(getenv("RPK_KEYS") ? getenv("RPK_KEYS") : SYS_KEYS, 0);
+	load_keys_from(getenv("RPK_LIBRARY_KEYS") ? getenv("RPK_LIBRARY_KEYS") : LIB_KEYS, 1);
+	snprintf(p, sizeof p, "%s/keys", ROOT); load_keys_from(p, 0);
+}
+/* 0: no trusted key signed it; 1: a system key did; 2: only a Library key did */
 static int verify(const unsigned char *msg, size_t len, const unsigned char *sig)
 {
+	int lib = 0;
 	for (int i = 0; i < NKEYS; i++) {
 		EVP_PKEY *k = EVP_PKEY_new_raw_public_key(EVP_PKEY_ED25519, NULL, KEYS[i], 32); if (!k) continue;
 		EVP_MD_CTX *c = EVP_MD_CTX_new(); int ok = EVP_DigestVerifyInit(c, NULL, NULL, NULL, k) == 1 && EVP_DigestVerify(c, sig, 64, msg, len) == 1;
 		EVP_MD_CTX_free(c); EVP_PKEY_free(k);
-		if (ok) return 1;
+		if (ok && !KLIB[i]) return 1;
+		if (ok) lib = 1;
 	}
-	return 0;
+	return lib ? 2 : 0;
 }
+static int VCLASS;   /* what verify_rpk found: 1 a system key, 2 only a Library key */
 /* checks the trailer; returns the squashfs length, or -1 with a reason */
 static long long verify_rpk(const char *path, const char **why)
 {
@@ -126,7 +142,7 @@ static long long verify_rpk(const char *path, const char **why)
 	char hex[65], msg[80]; long long body = st.st_size - TRAILER;
 	if (sha256_file(path, body, hex)) { *why = "cannot read it"; return -1; }
 	snprintf(msg, sizeof msg, "rpk1 %s", hex);
-	if (!verify((unsigned char *)msg, strlen(msg), t)) { *why = "the signature is not from a trusted key"; return -1; }
+	if (!(VCLASS = verify((unsigned char *)msg, strlen(msg), t))) { *why = "the signature is not from a trusted key"; return -1; }
 	return body;
 }
 
@@ -157,8 +173,17 @@ static void load_sources(void)
 {
 	NSRC = 0; const char *d = getenv("RPK_DISC") ? getenv("RPK_DISC") : DISC_REPO;
 	struct stat st; if (!stat(d, &st) && S_ISDIR(st.st_mode)) { add_src(d); strcpy(SRC[0].type, "disc"); }
-	char p[300]; snprintf(p, sizeof p, "%s/sources", ROOT); char *t = slurp(p, NULL);
-	if (t) { for (char *l = strtok(t, "\n"); l; l = strtok(NULL, "\n")) if (*l == '/' || !strncmp(l, "http", 4)) add_src(l); free(t); }
+	char p[300]; snprintf(p, sizeof p, "%s/sources", ROOT);
+	const char *files[2] = { getenv("RPK_SOURCES") ? getenv("RPK_SOURCES") : SYS_SOURCES, p };
+	for (int f = 0; f < 2; f++) {
+		char *t = slurp(files[f], NULL); if (!t) continue;
+		for (char *l = strtok(t, "\n"); l; l = strtok(NULL, "\n")) {
+			if (*l != '/' && strncmp(l, "http", 4)) continue;
+			int dup = 0; for (int i = 0; i < NSRC; i++) if (!strcmp(SRC[i].loc, l)) dup = 1;
+			if (!dup) add_src(l);
+		}
+		free(t);
+	}
 }
 static int fetch(src_t *s, const char *file, const char *dest)
 {
@@ -193,7 +218,9 @@ static int load_index(int i, const char *idx, const char *sig, int check_expiry)
 	   signature-checked, but every package from it must still match the SHA-256 in that list */
 	int disc = !strcmp(s->type, "disc");
 	if (!t || (!g && !disc)) { snprintf(s->err, sizeof s->err, "no package list yet (run rpk refresh)"); free(t); free(g); return -1; }
-	if (!disc && (sl != 64 || !verify((unsigned char *)t, il, (unsigned char *)g))) { snprintf(s->err, sizeof s->err, "the package list is not signed by a trusted key"); free(t); free(g); return -1; }
+	int v = disc ? 1 : sl == 64 ? verify((unsigned char *)t, il, (unsigned char *)g) : 0;
+	if (!v) { snprintf(s->err, sizeof s->err, "the package list is not signed by a trusted key"); free(t); free(g); return -1; }
+	s->lib = v == 2;
 	char exp[16]; int n = parse_index(t, i, &s->serial, exp);
 	free(g);
 	if (n < 0) { snprintf(s->err, sizeof s->err, "the package list is damaged"); return -1; }
@@ -271,20 +298,30 @@ static int list_installed(char names[][48], int max)
 /* verifies a downloaded or local package file and installs it in place of any older copy */
 static int install_file(const char *path, const char *want_name, const char *want_sha, int from_disc)
 {
-	const char *why = NULL;
+	const char *why = NULL; VCLASS = 0;
 	if (want_sha) { char hex[65]; if (sha256_file(path, -1, hex) || strcmp(hex, want_sha)) { say("  refused: the download does not match the package list"); return -1; } }
 	if (from_disc && want_sha) { if (verify_rpk(path, &why) < 0 && strcmp(why, "the signature is not from a trusted key")) { say("  refused: %s", why); return -1; } }
 	else if (verify_rpk(path, &why) < 0) { say("  refused: %s", why); return -1; }
+	int cls = VCLASS;   /* 0 only for an unsigned package from the disc's own list, which the system trusts */
 	char tmpd[300]; snprintf(tmpd, sizeof tmpd, "%s/tmp/look", ROOT); mkdirs(tmpd);
 	char *a[] = {"mount", "-t", "squashfs", "-o", "loop,ro", (char *)path, tmpd, NULL};
 	if (spawn(a, 1)) { say("  refused: the package image cannot be opened"); return -1; }
 	info_t in; char ip[400]; snprintf(ip, sizeof ip, "%s/PKGINFO", tmpd);
 	int bad = read_info(ip, &in) || !valid_name(iget(&in, "name")) || !*iget(&in, "version") || (want_name && strcmp(iget(&in, "name"), want_name));
 	const char *kd = iget(&in, "kind"); if (strcmp(kd, "cli") && strcmp(kd, "app") && strcmp(kd, "webapp") && strcmp(kd, "addon")) bad = 1;
+	if (*iget(&in, "signed")) bad = 1;   /* rpk writes that line itself */
 	char name[48]; snprintf(name, sizeof name, "%s", iget(&in, "name"));
 	char dbf[400], dbt[420]; snprintf(dbf, sizeof dbf, "%s/db/%s.info", ROOT, name); snprintf(dbt, sizeof dbt, "%s.new", dbf);
-	if (!bad) { char cmd[900]; snprintf(cmd, sizeof cmd, "%s/db", ROOT); mkdirs(cmd); char *c[] = {"cp", ip, dbt, NULL}; bad = spawn(c, 1) != 0; }
+	/* a package only a Library key signed: files for the desktop, never programs, and never in place of a package a
+	   system key signed (so a stolen Library key could not change what the system's own packages do) */
+	int lib = cls == 2;
+	const char *refuse = NULL;
+	if (!bad && lib && strcmp(kd, "addon") && strcmp(kd, "webapp")) refuse = "a Rudolf OS Library package can only hold files for the desktop";
+	if (!bad && lib) { info_t cur; if (!installed_info(name, &cur) && strcmp(iget(&cur, "signed"), "library")) refuse = "it would replace a package that came with Rudolf OS"; }
+	if (!bad && !refuse) { char cmd[900]; snprintf(cmd, sizeof cmd, "%s/db", ROOT); mkdirs(cmd); char *c[] = {"cp", ip, dbt, NULL}; bad = spawn(c, 1) != 0;
+		if (!bad) { FILE *o = fopen(dbt, "a"); if (o) { fprintf(o, "\nsigned = %s\n", lib ? "library" : "system"); fclose(o); } else bad = 1; } }
 	{ char *u[] = {"umount", "-d", tmpd, NULL}; spawn(u, 1); }
+	if (refuse) { unlink(dbt); say("  refused: %s", refuse); return -1; }
 	if (bad) { unlink(dbt); say("  refused: the package information is missing or invalid"); return -1; }
 	char store[400], st2[420]; snprintf(store, sizeof store, "%s/store", ROOT); mkdirs(store);
 	snprintf(store, sizeof store, "%s/store/%s.rpk", ROOT, name); snprintf(st2, sizeof st2, "%s.new", store);
@@ -297,7 +334,9 @@ static int install_file(const char *path, const char *want_name, const char *wan
 }
 static int install_name(const char *name)
 {
-	pkg_t *k = best(name); if (!k) { say("No package called \"%s\". Try: rpk search", name); return -1; }
+	pkg_t *k = best(name);
+	if (!k) { static int again; if (!again) { again = 1; refresh(); load_available(); k = best(name); } }   /* a new source (the Library) not fetched yet */
+	if (!k) { say("No package called \"%s\". Try: rpk search", name); return -1; }
 	info_t cur; if (!installed_info(name, &cur) && strverscmp(iget(&cur, "version"), k->version) >= 0) { say("%s %s is already installed", name, iget(&cur, "version")); return 0; }
 	say("Getting %s %s (%lld KB) from %s", name, k->version, (k->size + 1023) / 1024, SRC[k->src].loc);
 	char dl[400]; snprintf(dl, sizeof dl, "%s/tmp", ROOT); mkdirs(dl); snprintf(dl, sizeof dl, "%s/tmp/%s.download", ROOT, name);
@@ -352,7 +391,7 @@ static void print_status(void)
 	char names[MAXP][48]; int ni = list_installed(names, MAXP);
 	printf("{\"ok\":true,\"persistent\":%s,\"root\":", strcmp(ROOT, "/run/rudolf/pkg") ? "true" : "false"); jstr(ROOT);
 	printf(",\"keys\":%d,\"sources\":[", NKEYS);
-	for (int i = 0; i < NSRC; i++) { printf("%s{\"loc\":", i ? "," : ""); jstr(SRC[i].loc); printf(",\"type\":"); jstr(SRC[i].type); printf(",\"ok\":%s,\"count\":%d,\"serial\":%lld,\"error\":", SRC[i].ok ? "true" : "false", SRC[i].count, SRC[i].serial); jstr(SRC[i].ok ? "" : SRC[i].err); putchar('}'); }
+	for (int i = 0; i < NSRC; i++) { printf("%s{\"loc\":", i ? "," : ""); jstr(SRC[i].loc); printf(",\"type\":"); jstr(SRC[i].type); printf(",\"ok\":%s,\"library\":%s,\"count\":%d,\"serial\":%lld,\"error\":", SRC[i].ok ? "true" : "false", SRC[i].lib ? "true" : "false", SRC[i].count, SRC[i].serial); jstr(SRC[i].ok ? "" : SRC[i].err); putchar('}'); }
 	printf("],\"installed\":[");
 	for (int i = 0; i < ni; i++) {
 		info_t in; if (installed_info(names[i], &in)) continue;
@@ -370,7 +409,7 @@ static void print_status(void)
 		pkg_t *k = &AV[i]; info_t in; int inst = !installed_info(k->name, &in);
 		printf("%s{\"name\":", first ? "" : ","); first = 0; jstr(k->name); printf(",\"version\":"); jstr(k->version); printf(",\"kind\":"); jstr(k->kind);
 		printf(",\"size\":%lld,\"title\":", k->size); jstr(k->title); printf(",\"summary\":"); jstr(k->summary); printf(",\"icon\":"); jstr(k->icon);
-		printf(",\"license\":"); jstr(k->license); printf(",\"source\":"); jstr(SRC[k->src].loc); printf(",\"installed\":"); if (inst) jstr(iget(&in, "version")); else printf("null");
+		printf(",\"license\":"); jstr(k->license); printf(",\"source\":"); jstr(SRC[k->src].loc); printf(",\"library\":%s,\"installed\":", SRC[k->src].lib ? "true" : "false"); if (inst) jstr(iget(&in, "version")); else printf("null");
 		putchar('}');
 	}
 	printf("]}\n");

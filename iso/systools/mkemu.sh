@@ -1,12 +1,15 @@
 #!/bin/bash
-# Build Emu's SNES and DS cores as WebAssembly into www/lib/emu (clang 18 + the WASI system libraries).
+# Build Emu's SNES and DS cores as WebAssembly into src/emu-out (clang 18 + the WASI system libraries).
+# 1.5.2: they are published in the Rudolf OS Library: copy them to rudolfos-library/apps/rudolf-emu/www (and
+# emu-src.tar.xz to apps/rudolf-emu/source), raise its version, and merge there. The SNES core is also inlined in the
+# desktop (EMU_SNES_WASM), so SNES games play without the package.
 #   LakeSnes (MIT):          src/lakesnes      github.com/angelo-wf/LakeSnes
 #   DeSmuME (GPL-2.0+):      src/desmume-wasm  github.com/44670/desmume-wasm (DeSmuME with a wasm port)
 #   zlib:                    src/zlib          github.com/madler/zlib (v1.3.1)
 #   WASI libraries:          src/wasi          github.com/WebAssembly/wasi-sdk (wasi-sysroot-22.0 + builtins)
 # GPL-2.0-or-later (this script).
 set -e
-I=$(cd "$(dirname "$0")/.." && pwd); S=$I/src; W=$S/wasi; OUT=$I/www/lib/emu; B=$S/emu-build; mkdir -p $OUT $B
+I=$(cd "$(dirname "$0")/.." && pwd); S=$I/src; W=$S/wasi; OUT=$S/emu-out; B=$S/emu-build; mkdir -p $OUT $B
 RD=$(clang -print-resource-dir); [ -f $RD/lib/wasi/libclang_rt.builtins-wasm32.a ] || { mkdir -p $RD/lib/wasi; cp $W/lib/wasi/libclang_rt.builtins-wasm32.a $RD/lib/wasi/; }
 T="--target=wasm32-wasi --sysroot=$W/wasi-sysroot"
 LINK="-mexec-model=reactor -Wl,--export=malloc -Wl,--export=free -Wl,--export-memory -Wl,--strip-all"

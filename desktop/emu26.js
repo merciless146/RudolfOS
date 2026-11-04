@@ -1,6 +1,7 @@
 /* ===== Emu: Super Nintendo (LakeSnes, MIT) and Nintendo DS (DeSmuME, GPL-2.0+) =====
-   The cores are WebAssembly (lib/emu, built by systools/mkemu.sh); the SNES core is also inlined for the
-   browser version. Games live in the game library /home/rudolf/Games/<SNES|DS> (rudolfd fs/*, games/*), or
+   The cores are WebAssembly (built by systools/mkemu.sh). 1.5.2: on Rudolf OS they come from the rudolf-emu package
+   of the Rudolf OS Library (/pkg/rudolf-emu/www, lib52.js), downloaded when a DS game is first played; the SNES core is
+   also inlined, so SNES games play without it. Games live in the game library /home/rudolf/Games/<SNES|DS> (rudolfd fs/*, games/*), or
    come from drive C: or a file picker. Saves and save states go next to the game (library: Saves, States). */
 const EMU_SYS={
  snes:{name:'Super Nintendo',short:'SNES',dir:'SNES',re:/\.(sfc|smc)$/i,core:'lakesnes',fps:60.0988,ic:'🎮'},
@@ -26,9 +27,13 @@ function emuWasi(getMem){let out='';const u8=()=>new Uint8Array(getMem().buffer)
 const EMU_MOD={};
 async function emuModule(sys){const c=EMU_SYS[sys].core;if(EMU_MOD[c])return EMU_MOD[c];
  let bytes=null;
- try{const r=await fetch((RD?'/':'')+'lib/emu/'+c+'.wasm');if(r.ok){bytes=await r.arrayBuffer();if(new Uint32Array(bytes,0,1)[0]!=0x6d736100)bytes=null}}catch(e){bytes=null}   /* the browser version finds the cores next to the page */
+ const get=async u=>{try{const r=await fetch(u);if(r.ok){const b=await r.arrayBuffer();if(b.byteLength>4&&new Uint32Array(b,0,1)[0]==0x6d736100)return b}}catch(e){}return null};
+ if(RD&&typeof libBase=='function'){bytes=await get(libBase('rudolf-emu')+c+'.wasm');
+  /* the DS core is only in the package: ask to download it (SNES falls back to the inlined core) */
+  if(!bytes&&c!='lakesnes'&&await libNeed('rudolf-emu'))bytes=await get(libBase('rudolf-emu')+c+'.wasm')}
+ if(!bytes&&!RD)bytes=await get('lib/emu/'+c+'.wasm');   /* the browser version finds the cores next to the page */
  if(!bytes&&c=='lakesnes'&&typeof EMU_SNES_WASM=='string'){const b=atob(EMU_SNES_WASM);bytes=new Uint8Array(b.length);for(let i=0;i<b.length;i++)bytes[i]=b.charCodeAt(i)}
- if(!bytes)throw new Error(EMU_SYS[sys].name+' games need Rudolf OS itself (the bootable disc or USB stick).');
+ if(!bytes)throw new Error(RD?EMU_SYS[sys].name+' games need Emu’s player from the Rudolf OS Library (App Store › Rudolf OS Library).':EMU_SYS[sys].name+' games need Rudolf OS itself (the bootable disc or USB stick).');
  return EMU_MOD[c]=await WebAssembly.compile(bytes)}
 async function emuInstance(sys){const m=await emuModule(sys);let inst;inst=await WebAssembly.instantiate(m,emuWasi(()=>inst.exports.memory));if(inst.exports._initialize)inst.exports._initialize();return inst.exports}
 /* ---------- where a game's saves and states are kept ---------- */

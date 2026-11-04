@@ -65,8 +65,8 @@ apps/<name>/www/...           the app's files (or a fetch script for large data,
 .github/workflows/publish.yml  build each changed app, sign it, upload it to a release, update the signed index
 ```
 Published: `https://merciless146.github.io/rudolfos-library/index.txt`, `index.sig` and `catalog.json` (titles,
-icons, descriptions, sizes, for the App Store; listed in the signed index too), with packages at
-`https://github.com/merciless146/rudolfos-library/releases/download/<name>-<version>/<name>.rpk`.
+icons, descriptions, sizes, for the App Store), with the packages next to them (`<name>.rpk`). (As built: rpk takes
+each package's file from the same place as the list, so the packages are on Pages too, not in Releases.)
 
 ## Keys: the Library gets its own
 

@@ -50,7 +50,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   // Games tab, drawing with the processor
   await p.evaluate(() => { window.__S = appStore(); return 1 });
   const tabs = await p.evaluate(() => [...__S.body.querySelectorAll('.tmtabs button')].map(b => b.textContent).join());
-  ok('the App Store has a Games tab after Get apps', tabs == 'Get apps,Games,Linux apps,Installed,Built-in apps', tabs);
+  ok('the App Store has a Games tab after Get apps (and the Rudolf OS Library after it, 1.5.2)', tabs == 'Get apps,Games,Rudolf OS Library,Linux apps,Installed,Built-in apps', tabs);
   await p.evaluate(() => __S.body.querySelector(".tmtabs [data-t='games']").click());
   await p.waitForFunction(() => __S.body.querySelectorAll('.gmc').length >= 5, null, {timeout: 10000}).catch(() => 0);
   await p.waitForFunction(() => /to download/.test(__S.body.textContent), null, {timeout: 10000}).catch(() => 0);   // the sizes arrive after the cards

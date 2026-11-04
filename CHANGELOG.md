@@ -3,6 +3,12 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.5.2 (2026-11-04)
+Summary: the Rudolf OS Library: Quake and Emu download when you first need them, and every update is smaller
+- New: App Store › Rudolf OS Library, a catalog of apps made for Rudolf OS that not every computer needs. Each shows its size, description and licence, with Get, Open, Update and Remove. The Library has its own signing key: it can add apps, but it can never change Rudolf OS itself.
+- Changed: Quake's free game data and Emu's Nintendo DS player moved into the Library. They download (21 MB and 0.4 MB) the first time you ask for them, so every desktop update is about 12 MB smaller. SNES games play without a download, and Quake data you already have on drive C: stays.
+- Changed: a computer that already played DS games gets Emu's DS player back by itself after the update, once.
+
 ## 1.5.1 (2026-11-03)
 Summary: Bluetooth (controllers, keyboards, mice, headphones), and Xbox Cloud Gaming and GeForce NOW in the Start menu
 - New: Bluetooth (Settings › Bluetooth), on computers with a Realtek Bluetooth chip or a USB Bluetooth adapter with one (Intel and MediaTek chips follow in an update). Pair controllers (Xbox, PlayStation, Switch Pro), keyboards, mice and headphones: put the device in pairing mode, choose Search for devices, then Pair. No code to type. Paired devices reconnect by themselves; headphones become the sound output when they connect. Notifications say when a device connects, goes away, or its battery runs low.

@@ -29,7 +29,7 @@ printf 'serial %s\nversion %s\nreleased %s\nchromium %s\nkernel %s\nnotes %s\n' 
 echo "== licences and sources"
 cp $HERE/../libs/od/OFL.txt $T/LICENSES/OFL_OPENDYSLEXIC.TXT
 cp $HERE/../libs/pdfjs/LICENSE $T/LICENSES/PDFJS_APACHE2.TXT
-cat www/rudolfq/librequake-copying.txt www/rudolfq/librequake-credits.txt > $T/LICENSES/LIBREQUAKE.TXT
+# (1.5.2: LibreQuake's licence and credits are inside the rudolf-quake package in RUDOLF/PKG, from the Rudolf OS Library)
 cat src/linux/COPYING src/linux/LICENSES/preferred/GPL-2.0 src/linux/LICENSES/exceptions/Linux-syscall-note > $T/LICENSES/LINUX_GPL2.TXT; cp src/busybox/LICENSE $T/LICENSES/BUSYBOX.TXT
 cp $HERE/LICENSE.TXT $T/LICENSES/RUDOLF_OS.TXT 2>/dev/null || true
 [ -f src/espeak-ng/COPYING ] && cp src/espeak-ng/COPYING $T/LICENSES/ESPEAKNG.TXT
