@@ -4,7 +4,8 @@
 #   bluetooth start | stop      the system D-Bus (BlueZ needs it), bluetoothd and bluealsa (headphones)
 #   bluetooth on | off          the adapter's power, remembered (/persist/etc/bluetooth-off)
 #   bluetooth status            JSON: adapter, powered, discovering, devices (paired, connected, kind, battery)
-#   bluetooth scan SECONDS      look for devices nearby (the laptop is visible to others only meanwhile)
+#   bluetooth scan SECONDS      look for devices nearby (and let them find this computer: see visible)
+#   bluetooth visible           let phones and other computers find this one for 3 minutes (main.conf's DiscoverableTimeout)
 #   bluetooth pair MAC | connect MAC | disconnect MAC | remove MAC
 #   bluetooth audio             (after a connect or a disconnect) headphones as a PulseAudio output, or not
 #   bluetooth answer yes|no     the answer to the pairing question in /run/rudolf/bt-ask (Settings asks it)
@@ -115,8 +116,9 @@ status() {
 	if [ -z "$A" ]; then echo '{"ok":true,"adapter":null,"running":false,"devices":[]}'; return; fi
 	if ! up bluetoothd; then printf '{"ok":true,"adapter":"%s","running":false,"powered":false,"devices":[]}\n' "$A"; return; fi
 	S=$(T=4 bc show)
+	VI=$(echo "$S" | grep -q 'Discoverable: yes' && echo true || echo false)
 	PW=$(echo "$S" | grep -q 'Powered: yes' && echo true || echo false); DI=$(echo "$S" | grep -q 'Discovering: yes' && echo true || echo false)
-	printf '{"ok":true,"adapter":"%s","running":true,"powered":%s,"discovering":%s,"name":%s,"devices":[' "$A" $PW $DI "$(json_str "$(echo "$S" | sed -n 's/^\s*Alias: //p' | head -1)")"
+	printf '{"ok":true,"adapter":"%s","running":true,"powered":%s,"discovering":%s,"visible":%s,"name":%s,"devices":[' "$A" $PW $DI $VI "$(json_str "$(echo "$S" | sed -n 's/^\s*Alias: //p' | head -1)")"
 	n=0
 	for M in $(T=4 bc devices | sed -n 's/^Device \([0-9A-F:]\{17\}\) .*/\1/p'); do
 		I=$(T=4 bc info $M)
@@ -169,7 +171,10 @@ off) mkdir -p /persist/etc 2>/dev/null; : > $OFF; T=5 bc power off;;
 status) status;;
 scan)
 	S=${2:-15}; case "$S" in ''|*[!0-9]*) S=15;; esac; [ $S -gt 60 ] && S=60
+	# (until 1.5.1's fix this computer was never visible: a phone could not find it to pair from its side)
+	T=5 bc pairable on >/dev/null; T=5 bc discoverable on >/dev/null
 	T=$((S + 3)) bc --timeout $S scan on >/dev/null; echo scanned;;
+visible) T=5 bc pairable on >/dev/null; T=5 bc discoverable on | tail -1;;
 pair)
 	mac_ok "$2" || { echo "bad device"; exit 2; }
 	agent_up || { start >/dev/null; for i in $(seq 20); do agent_up && break; sleep 0.5; done; }

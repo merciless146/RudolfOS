@@ -13,6 +13,7 @@ const api = (q, s, body) => {
   if (p == 'bt') j = ST;
   else if (p == 'bt/power') { ST.powered = u.searchParams.get('on') == '1'; j = ST }
   else if (p == 'bt/scan') j = ST;
+  else if (p == 'bt/visible') { ST.visible = true; j = ST }
   else if (p == 'bt/ask') j = {ok: true, ask: ASK};
   else if (p == 'bt/answer') { if (ASK) { ASK = null; j = {ok: true} } else { code = 409; j = {ok: false, error: 'already answered'} } }
   else if (p == 'bt/pair') { if (m == 'AA:BB:CC:DD:EE:03') { Object.assign(dev(m), {paired: true, connected: true, name: 'Keyboard K380', icon: 'input-keyboard'}); j = {ok: true, status: ST} } else { code = 409; j = {ok: false, error: 'Failed to pair: org.bluez.Error.AuthenticationFailed'} } }
@@ -74,6 +75,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ASK = null; await wait(2600);
   ok('17. ...gone when the pairing is over', !(await box()));
   await q("SW.show('bt',1)"); await wait(400);
+  await q("SW.body.querySelector('.btv').click()"); await wait(600);
+  ok('18. Let this computer be found: phones can find it, and Settings says so', POSTS.includes('bt/visible') && /Visible as “Rudolf OS”/.test(await q("SW.body.querySelector('.btvs').textContent")), await q("SW.body.querySelector('.btvs').textContent"));
   await q("(()=>{const c=SW.body.querySelector('.bto');c.checked=false;c.dispatchEvent(new Event('change'))})()"); await wait(600);
   ok('9. the switch turns it off', POSTS.includes('bt/power?on=0') && await q("SW.body.querySelector('.bts').textContent") == 'Off');
   ST.adapter = null; await q("SW.show('bt',1)"); await wait(500);
