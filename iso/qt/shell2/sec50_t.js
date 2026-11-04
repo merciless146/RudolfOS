@@ -47,6 +47,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("settings('sec')"); await wait(800);
   const fixed = await q("[...SW.body.querySelectorAll('.sc *')].filter(e=>getComputedStyle(e).position=='fixed').map(e=>e.tagName+'.'+e.className)");
   ok('10b. nothing in Security Settings floats over the page (a class name taken by the desktop\'s own styles: .vp was a fixed white pop-up)', !fixed.length, fixed);
+  ok('10c. Apply/Revert is the last thing on the page (Secure Boot and the development link come above it)', await q("(()=>{const c=SW.body.querySelector('.sc');return c.lastElementChild.classList.contains('sfoot')&&!!c.querySelector('.sb28')})()"));
   ok('11. no page errors', !errs.length, errs);
   console.log(`${R.filter(x => x).length}/${R.length} passed`); await b.close(); srv.close(); process.exit(R.every(x => x) ? 0 : 1);
 })();
