@@ -2849,6 +2849,8 @@ static void api_vault(struct req *r, const char *what, int post)
 			write_str(VAULT_ID, hex); write_str(PERSIST "/etc/vault.moving", "");
 		}
 		write_str(RUN "/vault-unlocked", "1\n");
+		/* Downloads in the encrypted folder: the folders the session could not make while it was locked (1.5.1) */
+		run("[ -d /home/rudolf/Downloads ] && { mkdir -p /home/rudolf/Downloads/.incoming /home/rudolf/Downloads/.quarantine; chown 1000:1000 /home/rudolf/Downloads/.incoming /home/rudolf/Downloads/.quarantine; chmod 700 /home/rudolf/Downloads/.quarantine; }");
 		{ struct stat lst; if (!lstat(PERSIST "/flatpak", &lst) && S_ISLNK(lst.st_mode)) run("mountpoint -q /var/lib/flatpak || mount --bind " VAULT_DIR "/flatpak /var/lib/flatpak"); }
 		health_add("vault", "the encrypted folder was unlocked");
 		if (!access(PERSIST "/etc/vault.moving", F_OK) && !job_running()) start_job("vault", "/usr/lib/rudolf/vault-move");

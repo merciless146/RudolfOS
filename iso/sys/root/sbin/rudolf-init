@@ -46,7 +46,9 @@ if mountpoint -q /persist; then
 else
 	mount -t tmpfs -o mode=0700,uid=1000,gid=1000 tmpfs /home/rudolf
 fi
-mkdir -p /home/rudolf/Downloads && chown 1000:1000 /home/rudolf/Downloads
+# (1.5.1: not while Downloads is a link into the encrypted folder, which is locked until someone signs in: mkdir
+# failed there with "No such file or directory" on the start-up screen; rudolfd makes its folders at the unlock)
+[ -L /home/rudolf/Downloads ] || { mkdir -p /home/rudolf/Downloads && chown 1000:1000 /home/rudolf/Downloads; }
 
 [ -s /etc/machine-id ] || dbus-uuidgen > /etc/machine-id 2>/dev/null
 
