@@ -10,6 +10,7 @@ Summary: Bluetooth (controllers, keyboards, mice, headphones), and Xbox Cloud Ga
 - New: game mode. While a game or video is full screen, notifications wait in the notification centre instead of popping up, and one message afterwards says how many came.
 - Fixed: playing with only a controller did not count as using the computer, so the screen could lock or the computer sleep in the middle of a game.
 - New: controllers are listed in Settings › Devices.
+- Fixed: Wi-Fi dropped every few minutes on laptops with a Realtek Wi-Fi chip (such as the RTL8821CE) when the router has both a 5 GHz and a 2.4 GHz radio. The chip's deep power saving is now off.
 
 ## 1.5.0 (2026-11-02)
 Summary: security: a firewall, encrypted data, administrators can open account files, a health log, and remote access from any browser
