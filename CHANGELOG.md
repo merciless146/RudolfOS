@@ -3,8 +3,8 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
-## 1.5.2 (2026-11-04)
-Summary: the Rudolf OS Library: Quake and Emu download when you first need them, and every update is smaller
+## 1.5.2 (2026-11-06)
+Summary: the Rudolf OS Library: Quake and Emu download when you first need them, and every update is smaller; Game Boy games in Emu's library; Windows games get the keyboard and full screen
 - New: App Store › Rudolf OS Library, a catalog of apps made for Rudolf OS that not every computer needs. Each shows its size, description and licence, with Get, Open, Update and Remove. The Library has its own signing key: it can add apps, but it can never change Rudolf OS itself.
 - Changed: Quake's free game data and Emu's Nintendo DS player moved into the Library. They download (21 MB and 0.4 MB) the first time you ask for them, so every desktop update is about 12 MB smaller. SNES games play without a download, and Quake data you already have on drive C: stays.
 - Changed: a computer that already played DS games gets Emu's DS player back by itself after the update, once.
