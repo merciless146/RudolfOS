@@ -1,7 +1,8 @@
 /* ===== Emu: Super Nintendo (LakeSnes, MIT) and Nintendo DS (DeSmuME, GPL-2.0+) =====
    The cores are WebAssembly (built by systools/mkemu.sh). 1.5.2: on Rudolf OS they come from the rudolf-emu package
    of the Rudolf OS Library (/pkg/rudolf-emu/www, lib52.js), downloaded when a DS game is first played; the SNES core is
-   also inlined, so SNES games play without it. Games live in the game library /home/rudolf/Games/<SNES|DS> (rudolfd fs/*, games/*), or
+   also inlined, so SNES games play without it. Games live in the game library /home/rudolf/Games/<GB|SNES|DS> (rudolfd fs/*, games/*;
+   1.5.2: Game Boy, Color and Advance games in GB play in the Game Boy player), or
    come from drive C: or a file picker. Saves and save states go next to the game (library: Saves, States). */
 const EMU_SYS={
  snes:{name:'Super Nintendo',short:'SNES',dir:'SNES',re:/\.(sfc|smc)$/i,core:'lakesnes',fps:60.0988,ic:'🎮'},
@@ -194,14 +195,20 @@ async function emuScan(){const cache=ld(emuLibK,{}),out=[];
   for(const it of items){if(it.dir||!EMU_SYS[sys].re.test(it.name))continue;const path=dir+'/'+it.name;let c=cache[path];
    if(!c||c.size!=it.size||c.mtime!=it.mtime){c={size:it.size,mtime:it.mtime,title:'',icon:''};try{Object.assign(c,await emuInfo(sys,path,it.size))}catch(e){}cache[path]=c}
    out.push({sys,path,name:it.name,size:it.size,title:c.title||it.name.replace(/\.[^.]+$/,''),icon:c.icon||''})}}
+ /* 1.5.2: Game Boy games added to the library play in the Game Boy player (base_v24.html gbPlayer) */
+ {const dir=EMU_GAMES+'/GB';let items=[];try{items=(await rd('fs/list?path='+encodeURIComponent(dir))).items}catch(e){}
+  for(const it of items)if(!it.dir&&EMU_GB_RE.test(it.name)){const path=dir+'/'+it.name;out.push({sys:'gb',path,real:path,name:it.name,size:it.size,title:it.name.replace(/\.[^.]+$/,'').replace(/_/g,' ').replace(/ {2,}/g,' ').trim(),icon:''})}}
  for(const k of Object.keys(cache))if(!out.some(o=>o.path==k))delete cache[k];try{svj(emuLibK,cache)}catch(e){}return out}
+const EMU_GB_RE=/\.(gb|gbc|gba)$/i;
+async function emuReadReal(path){const r=await fetch('/api/fs/read?path='+encodeURIComponent(path),{headers:{'X-Rudolf-Token':RD.token}});if(!r.ok)throw new Error('could not read the game (HTTP '+r.status+')');return new Uint8Array(await r.arrayBuffer())}
 async function emuOpenReal(path){const sys=/\.nds$/i.test(path)?'ds':'snes';
  try{const r=await fetch('/api/fs/read?path='+encodeURIComponent(path),{headers:{'X-Rudolf-Token':RD.token}});if(!r.ok)throw new Error('could not read the game (HTTP '+r.status+')');
   const c=(ld(emuLibK,{})[path]||{});return emuPlay({sys,name:path.split('/').pop(),title:c.title,bytes:new Uint8Array(await r.arrayBuffer()),real:path})}catch(e){notify('Emu',e.message,{kind:'error'})}}
 async function emuOpenDrive(p){const v=node(p);if(typeof v!='string')return;const sys=/\.nds$/i.test(p.at(-1))?'ds':'snes';
  const u=v.startsWith('data:')?new Uint8Array(await (await fetch(v)).arrayBuffer()):Uint8Array.from(v,c=>c.charCodeAt(0)&255);
  return emuPlay({sys,name:p.at(-1),bytes:u,drive:p})}
-function emuPickFile(){const i=document.createElement('input');i.type='file';i.accept='.sfc,.smc,.nds';i.onchange=async()=>{const f=i.files[0];if(!f)return;
+function emuPickFile(){const i=document.createElement('input');i.type='file';i.accept='.sfc,.smc,.nds,.gb,.gbc,.gba';i.onchange=async()=>{const f=i.files[0];if(!f)return;
+ if(EMU_GB_RE.test(f.name)){const P=typeof gbPlayer=='function'&&gbPlayer();if(P&&P.loadAny)P.loadAny(new Uint8Array(await f.arrayBuffer()),f.name);return}
  emuPlay({sys:/\.nds$/i.test(f.name)?'ds':'snes',name:f.name,bytes:new Uint8Array(await f.arrayBuffer())})};i.click()}
 let EMU_LIBW=null;
 async function emuLibrary(){if(EMU_LIBW&&wins.includes(EMU_LIBW)){EMU_LIBW.focus();EMU_LIBW.refresh();return EMU_LIBW}
@@ -218,15 +225,15 @@ async function emuLibrary(){if(EMU_LIBW&&wins.includes(EMU_LIBW)){EMU_LIBW.focus
   if(tab=='recent')l=rec.map(r=>l.find(g=>emuKey(g)==r.k||g.path==r.k)).filter(Boolean);else if(tab=='fav')l=l.filter(g=>fav.includes(g.path));else if(tab!='all')l=l.filter(g=>g.sys==tab);
   if(f)l=l.filter(g=>(g.title+' '+g.name).toLowerCase().includes(f));
   grid.innerHTML='';
-  if(!l.length){grid.innerHTML=`<div class='msg elempty'>${tab=='recent'?'Games you play show up here.':tab=='fav'?'Press and hold a game (or right-click) to make it a favourite.':(RD?'No games here yet. '+(guest?'':'Use “Add games…” to copy your SNES and DS games from a USB stick or Downloads.'):'In this browser, open a SNES game with “Open a file…”. DS games need Rudolf OS itself.')}</div>`;return}
+  if(!l.length){grid.innerHTML=`<div class='msg elempty'>${tab=='recent'?'Games you play show up here.':tab=='fav'?'Press and hold a game (or right-click) to make it a favourite.':(RD?'No games here yet. '+(guest?'':'Use “Add games…” to copy your Game Boy, SNES and DS games from a USB stick or Downloads.'):'In this browser, open a SNES game with “Open a file…”. DS games need Rudolf OS itself.')}</div>`;return}
   l.forEach(g=>{const t=document.createElement('button');t.className='eltile';const last=rec.find(r=>r.k==emuKey(g)||r.k==g.path);
    t.innerHTML=`<span class='elic'>${g.icon?`<img src='${g.icon}' alt=''>`:g.sys=='gb'?'🟩':EMU_SYS[g.sys].ic}</span><b></b><small></small>`;t.querySelector('b').textContent=g.title;
    t.querySelector('small').textContent=(g.sys=='gb'?'Game Boy':EMU_SYS[g.sys].short)+(g.size?' · '+fmtB(g.size):'')+(last?' · '+new Date(last.t).toLocaleDateString():'')+(fav.includes(g.path)?' · ★':'');t.title=g.name;
    t.onclick=()=>open(g);let lt;t.onpointerdown=e=>{lt=setTimeout(()=>{lt='done';ctxm(g,e.clientX,e.clientY)},600)};t.onpointerup=t.onpointerleave=()=>{if(lt!='done')clearTimeout(lt)};
    t.addEventListener('click',e=>{if(lt=='done'){e.stopImmediatePropagation();lt=null}},true);t.oncontextmenu=e=>{e.preventDefault();ctxm(g,e.clientX,e.clientY)};grid.appendChild(t)})};
- const open=g=>{if(g.sys=='gb'){const P=typeof gbPlayer=='function'&&gbPlayer();if(P&&P.loadAny){const n=node(g.drive);mmBytes(n).then(u=>P.loadAny(u,g.name));emuRecent(g)}return}emuOpenReal(g.path)};
+ const open=g=>{if(g.sys=='gb'){const P=typeof gbPlayer=='function'&&gbPlayer();if(P&&P.loadAny){(g.real?emuReadReal(g.real):mmBytes(node(g.drive))).then(u=>P.loadAny(u,g.name)).catch(e=>notify('Emu',e.message||String(e),{kind:'error'}));emuRecent(g)}return}emuOpenReal(g.path)};
  const ctxm=(g,X,Y)=>{const fav=ld(emuFavK(),[]),isF=fav.includes(g.path);const it=[['Play',()=>open(g),true,{icon:'▶'}],[isF?'Remove from favourites':'Add to favourites',()=>{svj(emuFavK(),isF?fav.filter(x=>x!=g.path):fav.concat(g.path));draw()}]];
-  if(g.sys!='gb'&&RD){it.push(['Show in Files',()=>{launch('explorer');setTimeout(()=>{const W=wins.filter(w=>w.el.querySelector('.xside')).pop();const it=W&&[...W.el.querySelectorAll('.xside *')].find(e=>e.children.length<3&&/Games \(Emu library\)/.test(e.textContent));it&&it.click()},500)}]);
+  if((g.sys!='gb'||g.real)&&RD){it.push(['Show in Files',()=>{launch('explorer');setTimeout(()=>{const W=wins.filter(w=>w.el.querySelector('.xside')).pop();const it=W&&[...W.el.querySelectorAll('.xside *')].find(e=>e.children.length<3&&/Games \(Emu library\)/.test(e.textContent));it&&it.click()},500)}]);
    if(!guest)it.push('-',['Delete from the library…',async()=>{if(!await elevate('Delete '+g.title+' from the game library (its saves stay)'))return;try{await rdPost('fs/delete?path='+encodeURIComponent(g.path));notify('Emu',g.title+' was deleted.');refresh()}catch(e){notify('Emu',e.message,{kind:'error'})}}])}
   cmenu(X,Y,it,{title:g.title})};
  const refresh=async()=>{q('.elfoot').textContent=RD?'Reading the library…':'';if(RD){try{games=await emuScan()}catch(e){games=[]}
@@ -247,7 +254,7 @@ async function emuAddGames(done){const W=win('Add games to the library','🦤',6
  const show=async p=>{cur=p;sel=new Set();q('.eapath').textContent=p;const L=q('.ealist');L.innerHTML="<div class='msg'>Reading…</div>";let it=[];try{it=(await rd('fs/list?path='+encodeURIComponent(p))).items}catch(e){L.innerHTML=`<div class='msg'>${lxEsc(e.message)}</div>`;return}
   it.sort((a,b)=>(b.dir-a.dir)||a.name.localeCompare(b.name));L.innerHTML='';
   if(p!='/home/rudolf/Downloads'&&p!='/home/rudolf/Documents'&&p.split('/').length>3){const up=document.createElement('div');up.className='earow';up.textContent='⬆️ ..';up.onclick=()=>show(p.replace(/\/[^/]+$/,''));L.appendChild(up)}
-  const ok=it.filter(i=>i.dir||/\.(sfc|smc|nds|zip)$/i.test(i.name));if(!ok.length)L.innerHTML+="<div class='msg'>No SNES (.sfc, .smc), DS (.nds) or ZIP files here.</div>";
+  const ok=it.filter(i=>i.dir||/\.(gb|gbc|gba|sfc|smc|nds|zip)$/i.test(i.name));if(!ok.length)L.innerHTML+="<div class='msg'>No Game Boy (.gb, .gbc, .gba), SNES (.sfc, .smc), DS (.nds) or ZIP files here.</div>";
   ok.forEach(i=>{const r=document.createElement('label');r.className='earow';if(i.dir){r.textContent='📁 '+i.name;r.onclick=()=>show(p+'/'+i.name)}else{r.innerHTML="<input type='checkbox'> <span></span><small></small>";r.querySelector('span').textContent=i.name;r.querySelector('small').textContent=fmtB(i.size);
    r.querySelector('input').onchange=e=>{e.target.checked?sel.add(p+'/'+i.name):sel.delete(p+'/'+i.name);q('.eago').disabled=!sel.size}}L.appendChild(r)});q('.eago').disabled=true};
  q('.eaall').onclick=()=>{W.body.querySelectorAll('.ealist input').forEach(c=>{if(!c.checked){c.checked=true;c.onchange({target:c})}})};
