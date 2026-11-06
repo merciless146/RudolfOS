@@ -30,6 +30,17 @@ echo "win ${ID#0x}" > /run/rudolf/wm; w8 '[ "$(grep -c take_focus $T/app.log)" -
 $T/xc full $ID 1; w8 'grep -q "^geom 0 0 1280 800" $T/app.log'; ok "it asks for full screen: it covers the whole screen, taskbar too" $([ $? = 0 ] && echo 1 || echo 0) "$(grep geom $T/app.log | tail -1)"
 $T/xc full $ID 0; w8 '[ "$(grep geom $T/app.log | tail -1)" = "geom 0 0 1280 752" ]'; ok "full screen off: above the taskbar again" $([ $? = 0 ] && echo 1 || echo 0) "$(grep geom $T/app.log | tail -1)"
 $T/xc full $ID 2; w8 'grep "^geom" $T/app.log | tail -1 | grep -q "1280 800"'; ok "toggle: full screen again" $([ $? = 0 ] && echo 1 || echo 0) "$(grep geom $T/app.log | tail -1)"
+$T/xc full $ID 0; w8 '[ "$(grep geom $T/app.log | tail -1)" = "geom 0 0 1280 752" ]'
+$T/xc resize $ID 1280 800; sleep 1; w8 '[ "$(grep geom $T/app.log | tail -1)" = "geom 0 0 1280 752" ]'; ok "a framed window making itself screen-sized is put back above the taskbar" $([ $? = 0 ] && [ "$($T/xc state $ID)" = - ] && echo 1 || echo 0) "$(grep geom $T/app.log | tail -2) $($T/xc state $ID)"
 kill $AP; w8 '[ "$(cat /run/rudolf/wm)" = desktop ]'; ok "the game closes: the desktop" $([ $? = 0 ] && echo 1 || echo 0) "$(cat /run/rudolf/wm)"
+# a Windows game's "full screen" in Wine: a borderless window that sizes itself to the screen, no _NET_WM_STATE
+$T/xc borderless 1280 800 > $T/bl.log & AP=$!
+w8 'grep -q "^id" $T/bl.log'; BID=$(sed -n 's/^id //p' $T/bl.log | head -1)
+w8 '[ "$($T/xc state $BID)" = fullscreen ]'; ok "a borderless window that makes itself screen-sized is marked full screen" $([ $? = 0 ] && echo 1 || echo 0) "$($T/xc state $BID)"
+sleep 1; ok "...and keeps the whole screen (1280x800)" $([ "$(grep geom $T/bl.log | tail -1)" = "geom 0 0 1280 800" ] && echo 1 || echo 0) "$(grep geom $T/bl.log | tail -3)"
+ok "...and the keyboard" $([ "$($T/xc getfocus)" = "$BID" ] && echo 1 || echo 0) "$($T/xc getfocus)"
+$T/xc resize $BID 800 600; w8 '[ "$(grep geom $T/bl.log | tail -1)" = "geom 0 0 1280 752" ]'; ok "it switches to windowed (800x600): above the taskbar again, mark gone" $([ $? = 0 ] && [ "$($T/xc state $BID)" = - ] && echo 1 || echo 0) "$(grep geom $T/bl.log | tail -1) $($T/xc state $BID)"
+$T/xc resize $BID 1280 800; w8 '[ "$($T/xc state $BID)" = fullscreen ]'; ok "...and back to full screen" $([ $? = 0 ] && echo 1 || echo 0) "$(grep geom $T/bl.log | tail -1) $($T/xc state $BID)"
+kill $AP
 ok "rudolf-display kept running" $(kill -0 $RD 2>/dev/null && echo 1 || echo 0) "$(cat $T/rd.log)"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

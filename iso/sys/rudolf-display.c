@@ -746,6 +746,15 @@ static int net_state(Window w, Atom *out)
 }
 static int is_fullscreen(Window w) { Atom a[32]; int n = net_state(w, a); for (int i = 0; i < n; i++) if (a[i] == A_FULL) return 1; return 0; }
 static int is_game(Window w) { return class_has(w, "sober", "roblox") || is_fullscreen(w); }
+/* no frame asked for (_MOTIF_WM_HINTS with decorations 0): Wine's borderless windows, most games' */
+static int borderless(Window w)
+{
+	Atom m = XInternAtom(dpy, "_MOTIF_WM_HINTS", False), type; int fmt; unsigned long cnt = 0, after; unsigned char *d = NULL; int r = 0;
+	if (XGetWindowProperty(dpy, w, m, 0, 5, False, AnyPropertyType, &type, &fmt, &cnt, &after, &d) == Success && d && fmt == 32 && cnt >= 3)
+		r = (((long *)d)[0] & 2) && ((long *)d)[2] == 0;   /* MWM_HINTS_DECORATIONS set, no decorations */
+	if (d) XFree(d);
+	return r;
+}
 /* a _NET_WM_STATE request (a client message to the root window): 0 remove, 1 add, 2 toggle */
 static void net_state_request(Window w, long action, Atom p1, Atom p2)
 {
@@ -867,7 +876,7 @@ static void fit_windows(void)
 	Window root = DefaultRootWindow(dpy), r, p, *kids = NULL, desktop = 0, chromium = 0, tr;
 	unsigned n = 0;
 	int sw = DisplayWidth(dpy, DefaultScreen(dpy)), sh = DisplayHeight(dpy, DefaultScreen(dpy)), ax = 0, ay = 0;
-	wm_read(); wm_commands();
+	wm_read(); wm_commands(); wm_atoms();
 	if (!XQueryTree(dpy, root, &r, &p, &kids, &n)) return;
 	Window apps[MAXWIN]; int napps = 0, fresh = -1;
 	/* the desktop first: the RudolfDesktop window, or (older sessions) the first Chromium */
@@ -897,6 +906,13 @@ static void fit_windows(void)
 		set_wm_state(kids[i]);
 		int seen = 0; for (int k = 0; k < nknown; k++) if (known[k] == kids[i]) seen = 1;
 		if (!seen) fresh = napps - 1;
+		/* 1.5.2: a borderless window that makes itself the size of the screen is a full-screen game (Starport GE in
+		   Wine, "full screen" in many Windows games, which never send _NET_WM_STATE): marked full screen, and left at
+		   that size; when it makes itself smaller again (windowed), the mark goes */
+		int fy = ay + wm_strut_top, fh = sh - wm_strut_top - wm_strut_bottom, screen_sized = wa.x == ax && wa.y == ay && wa.width == sw && wa.height == sh;
+		if (screen_sized && fh != sh && !is_fullscreen(kids[i]) && borderless(kids[i])) net_state_request(kids[i], 1, A_FULL, 0);
+		else if (!screen_sized && is_fullscreen(kids[i]) && borderless(kids[i]) && !class_has(kids[i], "sober", "roblox") && !(wa.x == ax && wa.y == fy && wa.width == sw && wa.height == fh))
+			net_state_request(kids[i], 0, A_FULL, 0);
 		if (is_game(kids[i])) { if (wa.x != ax || wa.y != ay || wa.width != sw || wa.height != sh) XMoveResizeWindow(dpy, kids[i], ax, ay, sw, sh); }
 		else {
 			int y = ay + wm_strut_top, h = sh - wm_strut_top - wm_strut_bottom;
@@ -1220,6 +1236,8 @@ int main(int argc, char **argv)
 		while (XPending(dpy)) {
 			XEvent xe; XNextEvent(dpy, &xe);
 			if (xe.type == MapNotify || xe.type == UnmapNotify || xe.type == DestroyNotify) win_events = 1;
+			/* 1.5.2: a window that resizes itself (a game going full screen or back to a window) */
+			if (xe.type == ConfigureNotify && xe.xconfigure.window != xe.xconfigure.event && !xe.xconfigure.override_redirect) win_events = 1;
 			/* 1.5.2: full screen (and the other states) asked for by a window, as EWMH says */
 			if (xe.type == ClientMessage && xe.xclient.format == 32) { wm_atoms(); if (xe.xclient.message_type == A_NSTATE) { net_state_request(xe.xclient.window, xe.xclient.data.l[0], (Atom)xe.xclient.data.l[1], (Atom)xe.xclient.data.l[2]); win_events = 1; } }
 			if (fev && xe.type == fev + 1) { restore_cursor_area(); fetch_cursor(); draw_cursor(); }

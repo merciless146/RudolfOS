@@ -11,7 +11,7 @@ Summary: the Rudolf OS Library: Quake and Emu download when you first need them,
 - New: Emu's "Add games" takes Game Boy, Game Boy Color and Game Boy Advance games (.gb, .gbc, .gba, or in a ZIP file). They go to Games › GB, show under Game Boy / GBA in Emu's library, and play in the Game Boy player.
 - Fixed: a ZIP file whose game had a space in its name (most downloaded games) was skipped as "no SNES or DS game inside".
 - Fixed: Windows games (Wine) got only some keys: the arrow keys worked, letters did not. A game in front now gets the keyboard the way Windows games expect (and gets it back when you click it after using the taskbar).
-- Changed: a game or app that asks for full screen now covers the whole screen, taskbar too, as Roblox does. Super+Esc goes to the desktop, Super+Tab to the next window.
+- Changed: a game that goes full screen now covers the whole screen, taskbar too, as Roblox does: whether it asks for full screen or makes its borderless window the size of the screen (as Windows games in Wine do, Starport GE among them). Switching the game to windowed brings the taskbar back. Super+Esc goes to the desktop, Super+Tab to the next window.
 
 ## 1.5.1 (2026-11-03)
 Summary: Bluetooth (controllers, keyboards, mice, headphones), and Xbox Cloud Gaming and GeForce NOW in the Start menu
