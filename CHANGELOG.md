@@ -8,6 +8,8 @@ Summary: the Rudolf OS Library: Quake and Emu download when you first need them,
 - New: App Store › Rudolf OS Library, a catalog of apps made for Rudolf OS that not every computer needs. Each shows its size, description and licence, with Get, Open, Update and Remove. The Library has its own signing key: it can add apps, but it can never change Rudolf OS itself.
 - Changed: Quake's free game data and Emu's Nintendo DS player moved into the Library. They download (21 MB and 0.4 MB) the first time you ask for them, so every desktop update is about 12 MB smaller. SNES games play without a download, and Quake data you already have on drive C: stays.
 - Changed: a computer that already played DS games gets Emu's DS player back by itself after the update, once.
+- New: Emu's "Add games" takes Game Boy, Game Boy Color and Game Boy Advance games (.gb, .gbc, .gba, or in a ZIP file). They go to Games › GB, show under Game Boy / GBA in Emu's library, and play in the Game Boy player.
+- Fixed: a ZIP file whose game had a space in its name (most downloaded games) was skipped as "no SNES or DS game inside".
 
 ## 1.5.1 (2026-11-03)
 Summary: Bluetooth (controllers, keyboards, mice, headphones), and Xbox Cloud Gaming and GeForce NOW in the Start menu
