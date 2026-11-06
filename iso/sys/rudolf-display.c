@@ -50,6 +50,7 @@
 #include <linux/kd.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/Xatom.h>
 #include "rrcompat.h"
 
 /* XTest / XFixes prototypes (headers are not needed at run time) */
@@ -371,7 +372,9 @@ static void scan_devices(void)
 	if (added) write_inputs();
 }
 
-static void btn(int b, int down) { XTestFakeButtonEvent(dpy, b, down, CurrentTime); }
+static void click_focus(void);
+/* 1.5.2: a press on the window in front gives it the keyboard back (after a click on the taskbar took it) */
+static void btn(int b, int down) { XTestFakeButtonEvent(dpy, b, down, CurrentTime); if (down && b <= 3) click_focus(); }
 static void click(int b) { btn(b, 1); btn(b, 0); }
 
 static void rel_move(double dx, double dy)
@@ -702,6 +705,10 @@ static void on_sig(int s) { (void)s; quit = 1; }
  *    is shown by itself; Super+Esc goes to the desktop and Super+Tab steps through the windows.
  *  - /run/rudolf/windows lists the app windows (id, browser?, class, instance, title) for the taskbar;
  *    /run/rudolf/wmcmd "close <hex>" asks a window to close (WM_DELETE_WINDOW, as a close button does).
+ *  - 1.5.2: what window managers do for Windows games (Wine) and others: a window shown gets WM_TAKE_FOCUS as well as
+ *    the keyboard (Wine counts a window as active only then: before, a Windows game got the arrow keys but not the
+ *    letters it reads through DirectInput); _NET_WM_STATE requests (full screen and the rest) are carried out, and
+ *    a full-screen window covers the whole screen, taskbar too, as games do; mapped windows get WM_STATE.
  * Pop-ups and menus (override-redirect) are left alone. */
 static int wm_strut_top, wm_strut_bottom;
 static long long wm_mtime, cmd_mtime;
@@ -719,7 +726,77 @@ static int class_has(Window w, const char *a, const char *b)
 	return r;
 }
 static int is_web(Window w) { return class_has(w, "rudolfweb", NULL); }
-static int is_game(Window w) { return class_has(w, "sober", "roblox"); }
+static Atom A_PROTO, A_TAKE, A_NSTATE, A_FULL, A_WMSTATE;
+static void wm_atoms(void)
+{
+	if (A_PROTO) return;
+	A_PROTO = XInternAtom(dpy, "WM_PROTOCOLS", False); A_TAKE = XInternAtom(dpy, "WM_TAKE_FOCUS", False);
+	A_NSTATE = XInternAtom(dpy, "_NET_WM_STATE", False); A_FULL = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
+	A_WMSTATE = XInternAtom(dpy, "WM_STATE", False);
+}
+/* the window's _NET_WM_STATE atoms (at most 32) */
+static int net_state(Window w, Atom *out)
+{
+	Atom type; int fmt; unsigned long cnt = 0, after; unsigned char *d = NULL; int n = 0;
+	wm_atoms();
+	if (XGetWindowProperty(dpy, w, A_NSTATE, 0, 32, False, XA_ATOM, &type, &fmt, &cnt, &after, &d) == Success && d && type == XA_ATOM && fmt == 32)
+		for (unsigned long i = 0; i < cnt && n < 32; i++) out[n++] = ((Atom *)d)[i];
+	if (d) XFree(d);
+	return n;
+}
+static int is_fullscreen(Window w) { Atom a[32]; int n = net_state(w, a); for (int i = 0; i < n; i++) if (a[i] == A_FULL) return 1; return 0; }
+static int is_game(Window w) { return class_has(w, "sober", "roblox") || is_fullscreen(w); }
+/* a _NET_WM_STATE request (a client message to the root window): 0 remove, 1 add, 2 toggle */
+static void net_state_request(Window w, long action, Atom p1, Atom p2)
+{
+	Atom a[34]; int n = net_state(w, a);
+	Atom want[2] = {p1, p2};
+	for (int k = 0; k < 2; k++) {
+		if (!want[k]) continue;
+		int at = -1; for (int i = 0; i < n; i++) if (a[i] == want[k]) at = i;
+		int add = action == 1 || (action == 2 && at < 0);
+		if (add && at < 0 && n < 32) a[n++] = want[k];
+		if (!add && at >= 0) a[at] = a[--n];
+	}
+	XChangeProperty(dpy, w, A_NSTATE, XA_ATOM, 32, PropModeReplace, (unsigned char *)a, n);
+}
+static int has_protocol(Window w, Atom p)
+{
+	Atom *list = NULL; int n = 0, r = 0;
+	if (XGetWMProtocols(dpy, w, &list, &n)) { for (int i = 0; i < n; i++) if (list[i] == p) r = 1; XFree(list); }
+	return r;
+}
+/* a server timestamp (WM_TAKE_FOCUS should carry a real one): a zero-length change to a window of our own */
+static Time server_time(void)
+{
+	static Window tw;
+	if (!tw) { tw = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), -10, -10, 1, 1, 0, 0, 0); XSelectInput(dpy, tw, PropertyChangeMask); }
+	XChangeProperty(dpy, tw, XA_WM_NAME, XA_STRING, 8, PropModeAppend, (unsigned char *)"", 0);
+	XEvent e; XWindowEvent(dpy, tw, PropertyChangeMask, &e);
+	return e.xproperty.time;
+}
+/* the keyboard to a window, as a window manager gives it (ICCCM 4.1.7): XSetInputFocus unless it says it takes no
+   input, and WM_TAKE_FOCUS when it asks for it */
+static void give_focus(Window w)
+{
+	wm_atoms();
+	Time t = server_time();
+	XWMHints *h = XGetWMHints(dpy, w); int input = !h || !(h->flags & InputHint) || h->input; if (h) XFree(h);
+	if (input) XSetInputFocus(dpy, w, RevertToPointerRoot, t);
+	if (has_protocol(w, A_TAKE)) {
+		XEvent e = {0}; e.xclient.type = ClientMessage; e.xclient.window = w; e.xclient.message_type = A_PROTO; e.xclient.format = 32;
+		e.xclient.data.l[0] = A_TAKE; e.xclient.data.l[1] = t; XSendEvent(dpy, w, False, NoEventMask, &e);
+	}
+}
+/* ICCCM: a window manager puts WM_STATE (NormalState) on the windows it shows */
+static void set_wm_state(Window w)
+{
+	Atom type; int fmt; unsigned long cnt = 0, after; unsigned char *d = NULL;
+	wm_atoms();
+	if (XGetWindowProperty(dpy, w, A_WMSTATE, 0, 2, False, A_WMSTATE, &type, &fmt, &cnt, &after, &d) == Success && d && cnt) { XFree(d); return; }
+	if (d) XFree(d);
+	long v[2] = {NormalState, None}; XChangeProperty(dpy, w, A_WMSTATE, A_WMSTATE, 32, PropModeReplace, (unsigned char *)v, 2);
+}
 
 static void wm_write(const char *mode)
 {
@@ -817,6 +894,7 @@ static void fit_windows(void)
 		}
 		if (napps >= MAXWIN) continue;
 		apps[napps++] = kids[i];
+		set_wm_state(kids[i]);
 		int seen = 0; for (int k = 0; k < nknown; k++) if (known[k] == kids[i]) seen = 1;
 		if (!seen) fresh = napps - 1;
 		if (is_game(kids[i])) { if (wa.x != ax || wa.y != ay || wa.width != sw || wa.height != sh) XMoveResizeWindow(dpy, kids[i], ax, ay, sw, sh); }
@@ -870,11 +948,32 @@ static void fit_windows(void)
 		/* a dialog of the shown window, on top of it, keeps its place and the keyboard */
 		int dialog = top && top != want && XGetTransientForHint(dpy, top, &owner) && owner == want;
 		if (!dialog && top != want) XRaiseWindow(dpy, want);
-		if (!dialog && (want != last_want || top != want)) XSetInputFocus(dpy, want, RevertToPointerRoot, CurrentTime);
+		if (!dialog && (want != last_want || top != want)) { if (want == desktop) XSetInputFocus(dpy, want, RevertToPointerRoot, CurrentTime); else give_focus(want); }
 	}
 	last_want = want;
 	if (kids) XFree(kids);
 	XFlush(dpy);
+}
+/* true when w is a or a window inside it */
+static int inside(Window w, Window a)
+{
+	for (int i = 0; i < 64 && w && w != PointerRoot; i++) {
+		if (w == a) return 1;
+		Window r, p, *k = NULL; unsigned n;
+		if (!XQueryTree(dpy, w, &r, &p, &k, &n)) return 0;
+		if (k) XFree(k);
+		if (p == r) return 0;
+		w = p;
+	}
+	return 0;
+}
+static void click_focus(void)
+{
+	if (strncmp(wm_mode, "win ", 4)) return;
+	Window shown = (Window)strtoul(wm_mode + 4, NULL, 16), r, c, f; int rx, ry, wx, wy, rv; unsigned m;
+	if (!XQueryPointer(dpy, DefaultRootWindow(dpy), &r, &c, &rx, &ry, &wx, &wy, &m) || c != shown) return;
+	XGetInputFocus(dpy, &f, &rv);
+	if (!inside(f, shown)) give_focus(shown);
 }
 /* Super+Tab: the desktop, then each app window in turn */
 static void wm_cycle(void)
@@ -1121,6 +1220,8 @@ int main(int argc, char **argv)
 		while (XPending(dpy)) {
 			XEvent xe; XNextEvent(dpy, &xe);
 			if (xe.type == MapNotify || xe.type == UnmapNotify || xe.type == DestroyNotify) win_events = 1;
+			/* 1.5.2: full screen (and the other states) asked for by a window, as EWMH says */
+			if (xe.type == ClientMessage && xe.xclient.format == 32) { wm_atoms(); if (xe.xclient.message_type == A_NSTATE) { net_state_request(xe.xclient.window, xe.xclient.data.l[0], (Atom)xe.xclient.data.l[1], (Atom)xe.xclient.data.l[2]); win_events = 1; } }
 			if (fev && xe.type == fev + 1) { restore_cursor_area(); fetch_cursor(); draw_cursor(); }
 		}
 		if (win_events) { win_events = 0; fit_windows(); }
