@@ -1,18 +1,18 @@
 rudolf-system 1
-serial 2026110607
+serial 2026110619
 version 1.5.2.261106
 released 2026-11-06
 expires 2026-11-20
 urgent 0
-chromium 156.0.8078.79
-kernel 6.18.60-rudolf
-notes 1.5.2: the Rudolf OS Library: Quake and Emu download when you first need them, and every update is smaller
-L	vmlinuz	11364984	d1b69d82a3c2fb4632d38367f5e3d08ae7857949eb7c5f259cdce3d2a7902011	https://github.com/merciless146/RudolfOS/releases/download/r2026110607/vmlinuz
-L	base	207286272	0a54ca86c0a19e359c91be9b65cf45307970874fbce5d9bcb248db75bd9785fa	https://github.com/merciless146/RudolfOS/releases/download/r2026110607/base.sfs
-L	chromium	132943872	7fb57f086179d645106c7024283a45a4c7919fcb2fbc070c40a22917bc87bd8e	https://github.com/merciless146/RudolfOS/releases/download/r2026110607/chromium.sfs
-L	desktop	4907008	3fc42681f8ab41b2fc9e9f643356d9ad3e67a1f042c4dcf6038897529991102b	https://github.com/merciless146/RudolfOS/releases/download/r2026110607/desktop.sfs
-L	modules	78794752	3613394921de75ea69802d3283c9f1ce6c301bea649dacc81a60738f3823010f	https://github.com/merciless146/RudolfOS/releases/download/r2026110607/modules.sfs
+chromium 157.0.8103.38
+kernel 6.18.62-rudolf
+notes Chromium 157.0.8103.38, Linux 6.18.62
+L	vmlinuz	11369080	d5a0bc64aeab93411af3daf0782b7a0dee0d21c321f625505e65030bd7f6b51c	https://github.com/merciless146/RudolfOS/releases/download/r2026110619/vmlinuz
+L	base	207286272	0a54ca86c0a19e359c91be9b65cf45307970874fbce5d9bcb248db75bd9785fa	https://github.com/merciless146/RudolfOS/releases/download/r2026110619/base.sfs
+L	chromium	134369280	5e9d9f111bcb03b430c404dd62fbb2f1289cac58efd602754490ec433ed2b944	https://github.com/merciless146/RudolfOS/releases/download/r2026110619/chromium.sfs
+L	desktop	4907008	3fc42681f8ab41b2fc9e9f643356d9ad3e67a1f042c4dcf6038897529991102b	https://github.com/merciless146/RudolfOS/releases/download/r2026110619/desktop.sfs
+L	modules	78802944	45ebcc27ccc7b3ec6041827668a2146ff3f6ef3edea08fc4b9be7ae02af2e024	https://github.com/merciless146/RudolfOS/releases/download/r2026110619/modules.sfs
 V	base	50209	edc12ef7a7e8744bed50f3c94f02167aa37c50af80dd0e5245cce1dd91a14afb	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
-V	chromium	32202	1c03916bd8a4a7cde6d6f7f859712587919e1d64e67ac8997a14cba5de716a54	da3143e0b76e95a8fb9b20d6cd921581143496db9de69f0900a337920b32f7f8
+V	chromium	32547	2ff477c010b75c21a70a4055ed85da0ed7427b08aca416ebef684299983c96a4	da3143e0b76e95a8fb9b20d6cd921581143496db9de69f0900a337920b32f7f8
 V	desktop	1187	5988f7d0472696ddd2884d90e4e4c4e1b2c346bda2755a9e31d7099b432ad99d	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
-V	modules	19084	61da35de446a94e12d12d1c87f3e1977209457d2b26cff36d38a11fb7cb78b33	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
+V	modules	19086	a36e73aedf9ca8eb515379bbb1026e5d54f36f067280a95b4a16abd4b0b3c830	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
