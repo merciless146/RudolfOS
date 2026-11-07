@@ -5,9 +5,13 @@ function wfDecode(s){/* wpa_cli escapes names: \xNN, \\, \", \e, \n, \r, \t */
  try{return new TextDecoder('utf-8',{fatal:true}).decode(new Uint8Array(b))}catch(e){return String.fromCharCode(...b)}}
 function wfBars(dbm){const n=dbm>=-55?4:dbm>=-67?3:dbm>=-75?2:1;return `<span class='wfb' title='${dbm} dBm'>${[1,2,3,4].map(i=>`<i class='${i<=n?'on':''}' style='height:${i*4+2}px'></i>`).join('')}</span>`}
 function wfKind(f){if(/EAP/.test(f))return 'eap';if(/OWE/.test(f)&&!/PSK|SAE/.test(f))return 'owe';if(/PSK|SAE/.test(f))return 'psk';if(/WEP/.test(f))return 'wep';return 'open'}
-function wfStatus(raw){const o={saved:[]};(raw||'').split('\n').forEach(l=>{const i=l.indexOf('=');if(i<0)return;const k=l.slice(0,i),v=l.slice(i+1);if(k=='saved'){const p=v.split('\t');o.saved.push({id:p[0],ssid:wfDecode(p[1]||''),flags:p[3]||''})}else o[k]=v});if(o.ssid)o.ssid=wfDecode(o.ssid);return o}
+function wfStatus(raw){const o={saved:[],wlans:[]};(raw||'').split('\n').forEach(l=>{const i=l.indexOf('=');if(i<0)return;const k=l.slice(0,i),v=l.slice(i+1);if(k=='saved'){const p=v.split('\t');o.saved.push({id:p[0],ssid:wfDecode(p[1]||''),flags:p[3]||''})}
+  /* 1.5.3: every Wi-Fi adapter: name, MAC, usb|pci, driver, in words */
+  else if(k=='wlan'){const p=v.split('\t');o.wlans.push({ifn:p[0],mac:p[1],bus:p[2],driver:p[3],name:p[4]||p[3]||p[0]})}else o[k]=v});if(o.ssid)o.ssid=wfDecode(o.ssid);return o}
+/* the adapter in words: "USB: Ralink 802.11 n WLAN", "Built-in (rtw88_8821ce)" */
+function wfAdapterName(a){return a.bus=='usb'?'USB: '+a.name:'Built-in'+(a.driver?' ('+a.driver+')':'')}
 function wifiPanel(wf,ifn){
- wf.innerHTML=`<div class='wfcur'></div><div class='wfhd'><b>Networks in range</b><button class='wfre'>↻ Refresh</button></div><div class='wfl'><div class='msg'>Looking for networks…</div></div>
+ wf.innerHTML=`<div class='wfad'></div><div class='wfcur'></div><div class='wfhd'><b>Networks in range</b><button class='wfre'>↻ Refresh</button></div><div class='wfl'><div class='msg'>Looking for networks…</div></div>
  <div class='rmrow' style='justify-content:flex-start'><button class='wfhid'>Join a hidden network…</button></div>
  <h4 class='sh4'>Saved networks</h4><div class='wfsv'></div>
  <details class='wfadv'><summary>Country</summary><div class='msg'>Which channels and transmit power your Wi-Fi may use depend on the country. Set yours if some networks do not show up.</div><div class='r2'><label>Country code</label><input class='wfcc' maxlength='2' placeholder='e.g. US, GB, DE' style='width:80px;text-transform:uppercase'><button class='wfccs'>Set</button></div></details>`;
@@ -24,7 +28,14 @@ function wifiPanel(wf,ifn){
   st.saved.forEach(x=>{const r=document.createElement('div');r.className='acr wfrow';r.innerHTML=`<span style='flex:1'></span><label class='ck wfmt' title='Ask before large downloads on this network (a phone hotspot or a capped plan)'><input type='checkbox'> Metered</label><button>Forget</button>`;r.firstChild.textContent=x.ssid+(/CURRENT/.test(x.flags)?'  ✓ connected':'');
    {const mc=r.querySelector('.wfmt input');mc.checked=typeof appMetered=='function'&&appMetered().includes(x.ssid);mc.onchange=()=>appSetMetered(x.ssid,mc.checked)}
    r.lastChild.onclick=e=>{const b=e.target;if(!b.dataset.sure){b.dataset.sure=1;b.textContent='Tap again to forget';b.classList.add('pri');setTimeout(()=>{if(b.isConnected){delete b.dataset.sure;b.textContent='Forget';b.classList.remove('pri')}},4000);return}rdPost('wifi/forget'+qs,x.ssid).then(m=>{notify('Wi-Fi',m.message);refresh()}).catch(e=>notify('Wi-Fi',e.message,{kind:'error'}))};sv.appendChild(r)});
-  if(st.country&&!q('.wfcc').value)q('.wfcc').value=st.country};
+  if(st.country&&!q('.wfcc').value)q('.wfcc').value=st.country;showAdapters()};
+ /* 1.5.3: with two or more Wi-Fi adapters (a USB dongle next to the built-in one), which one to use; one at a time */
+ let adKey='';const showAdapters=()=>{const a=q('.wfad');if(!a||ifn)return;const k=JSON.stringify([st.wlans,st.adapter,st.chosen_missing]);if(k==adKey)return;adKey=k;
+  if(st.wlans.length<2&&!st.chosen_missing){a.innerHTML='';return}
+  a.innerHTML=`<div class='r2'><label>Adapter</label><select class='wfas'></select></div>${st.chosen_missing?"<div class='msg'>The USB Wi-Fi adapter you chose is not plugged in, so the built-in Wi-Fi is used. Plug it in to use it again.</div>":''}`;
+  const sel=a.querySelector('select');st.wlans.forEach(w=>{const o=document.createElement('option');o.value=w.ifn;o.textContent=wfAdapterName(w);o.selected=w.ifn==st.adapter;sel.appendChild(o)});
+  sel.disabled=st.wlans.length<2;
+  sel.onchange=async()=>{sel.disabled=true;try{const m=await rdPost('wifi/adapter?if='+encodeURIComponent(sel.value));notify('Wi-Fi',m.message)}catch(e){notify('Wi-Fi',e.message,{kind:'error'})}adKey='';await refresh();scan(false)}};
  const refresh=async()=>{try{st=wfStatus((await rd('wifi/status'+qs)).raw);showCur()}catch(e){}};
  const connect=async(ssid,pw,kind,hidden)=>{busy=true;open='';showCur();q('.wfl').querySelectorAll('button').forEach(b=>b.disabled=true);
   const sec=kind=='saved'?'saved':(hidden?'hidden-':'')+(kind=='psk'?'psk':kind=='owe'?'owe':'open');

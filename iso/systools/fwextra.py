@@ -13,7 +13,8 @@ install script makes them; a git checkout has none). What is listed:
   - Realtek Ethernet (r8169) firmware: small fixes the driver loads for most of its chips.
   - AMD processor microcode (1.2.4): built into the kernel too (kconfig.sh, UCODE_DIR) so it applies at start-up.
   - Bluetooth (1.5.1): Realtek.
-  - USB Wi-Fi adapters whose drivers came in 1.2.7 (ath9k_htc, mt7601u, mt76x0u, mt76x2u). The firmware of the
+  - USB Wi-Fi adapters whose drivers came in 1.2.7 (ath9k_htc, mt7601u, mt76x0u, mt76x2u), and in 1.5.3 the
+    Ralink and MediaTek RT2800 chips (rt2800usb, rt2800pci). The firmware of the
     older Wi-Fi drivers sits in the base layer (wififw.py, at the full build).
 """
 import hashlib, os, re, shutil, sys
@@ -24,6 +25,8 @@ PATTERNS = [r'rtl_nic/.+', r'amd-ucode/microcode_amd(_fam[0-9a-f]+h)?\.bin',
             # USB Wi-Fi adapters (1.2.7): Atheros AR9271/AR7010 (ath9k_htc), MediaTek MT7601U, MT7610U, MT7612U (mt76x2u)
             r'htc_(9271|7010)\.fw', r'ath9k_htc/htc_(9271|7010)-1\.4\.0\.fw', r'(mediatek/)?mt7601u\.bin', r'mediatek/mt7610u\.bin',
             r'(mediatek/)?mt7662(_rom_patch)?\.bin',
+            # USB and PCIe Wi-Fi (1.5.3): Ralink and MediaTek RT2800 chips (rt2800usb, rt2800pci)
+            r'rt2870\.bin', r'rt2860\.bin', r'rt3290\.bin',
             # Bluetooth (1.5.1): Realtek (every chip: small); Intel and MediaTek once checked against kernel.org
             r'rtl_bt/.+']
 

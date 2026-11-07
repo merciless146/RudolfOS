@@ -97,6 +97,10 @@ F 6f0e871268f6e4d99196d90d89bcc09fe493d010366260a2cfcaa5dd66095f8c mediatek/mt76
 L mt7601u.bin mediatek/mt7601u.bin
 L mt7662.bin mediatek/mt7662.bin
 L mt7662_rom_patch.bin mediatek/mt7662_rom_patch.bin
+# Wi-Fi (1.5.3): Ralink and MediaTek RT2800 chips (rt2800usb: rt2870.bin for every USB chip; rt2800pci: rt2860.bin, rt3290.bin)
+F 251b8918391eac6415d60dca239e415aad0177e885376f2a17782e64fcbbe317 rt2870.bin
+F 67d5e8b32293cc2f31f67ebb112d4dabf1e23019a11c517036ba42cb48e4159c rt2860.bin
+F 9e8e2b0228dac355af7002048d4706b562979d208b11389bcf6ac28f83f676c2 rt3290.bin
 # Bluetooth (1.5.1): Realtek (rtl_bt). Intel and MediaTek follow once their files are checked against kernel.org's linux-firmware
 F 40b7a23507f4190758bc616e0293c4e5bae43a8216a89f79272a654018b8e430 rtl_bt/rtl8192ee_fw.bin
 F 7dcaafe1ff55322f04c100780d05f99bba434a4d584288ae10bfcc41ad52adf8 rtl_bt/rtl8192eu_fw.bin

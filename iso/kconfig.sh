@@ -57,9 +57,17 @@ y HID_ALPS HID_ASUS HID_LENOVO HID_ELAN MOUSE_BCM5974 HID_MAGICMOUSE TOUCHSCREEN
 y SND_HDA_CODEC_REALTEK SND_HDA_CODEC_HDMI SND_HDA_CODEC_CIRRUS PINCTRL_INTEL_PLATFORM SOUND SND SND_PCI SND_HDA_INTEL SND_HDA_GENERIC SND_HDA_CODEC_REALTEK_LIB SND_HDA_CODEC_ALC269 SND_HDA_CODEC_ALC662 SND_HDA_CODEC_ALC882 SND_HDA_CODEC_ALC680 SND_HDA_CODEC_ALC260 SND_HDA_CODEC_ALC262 SND_HDA_CODEC_ALC268 SND_HDA_CODEC_ALC861 SND_HDA_CODEC_ALC861VD SND_HDA_CODEC_ALC880 SND_HDA_CODEC_ANALOG SND_HDA_CODEC_SIGMATEL SND_HDA_CODEC_VIA SND_HDA_CODEC_CONEXANT SND_HDA_CODEC_CMEDIA SND_HDA_CODEC_CA0132 SND_HDA_CODEC_HDMI_GENERIC SND_HDA_CODEC_HDMI_INTEL SND_HDA_CODEC_HDMI_ATI SND_HDA_CODEC_HDMI_NVIDIA SND_USB SND_USB_AUDIO SND_INTEL8X0 SND_ENS1370 SND_HDA_CODEC_CS420X SND_HDA_CODEC_CS8409
 # network
 y PACKET UNIX INET IPV6 NETDEVICES ETHERNET E1000 E1000E IGB IGC R8169 ATL1C ALX TIGON3 8139CP 8139TOO NE2K_PCI PCNET32 USB_NET_DRIVERS USB_USBNET USB_NET_CDCETHER USB_RTL8152 USB_NET_AX88179_178A WIREGUARD
-m CFG80211 MAC80211 IWLWIFI IWLMVM IWLDVM RTW88 RTW88_8822BE RTW88_8822CE RTW88_8821CE RTW89 RTW89_8852AE RTW89_8852BE RTW89_8852CE RTW89_8852BTE RTW89_8851BE RTW89_8922AE ATH9K ATH10K ATH10K_PCI ATH11K ATH11K_PCI MT7921E MT7922E RTL8192CE RT2800USB RTL8XXXU MAC80211_HWSIM RTW88_USB RTW88_8821CU RTW88_8822BU RTW88_8822CU RTW88_8821AU RTW88_8812AU RTW89_8852BU RTW89_8851BU MT7921U MT7925E MT7925U ATH9K_HTC MT7601U
+# 1.5.3: the Wi-Fi drivers are in WIFI and checked after olddefconfig, as a driver whose menu or dependency is
+# off is dropped without a word (RT2800USB was, until the RT2X00 menu was turned on: the Vivobook's RT5370 dongle)
+WIFI="CFG80211 MAC80211 IWLWIFI IWLMVM IWLDVM RTW88 RTW88_8822BE RTW88_8822CE RTW88_8821CE RTW89 RTW89_8852AE RTW89_8852BE RTW89_8852CE RTW89_8852BTE RTW89_8851BE RTW89_8922AE ATH9K ATH10K ATH10K_PCI ATH11K ATH11K_PCI MT7921E RTL8192CE RT2800USB RT2800PCI RTL8XXXU MAC80211_HWSIM RTW88_USB RTW88_8821CU RTW88_8822BU RTW88_8822CU RTW88_8821AU RTW88_8812AU RTW89_8852BU RTW89_8851BU MT7921U MT7925E MT7925U ATH9K_HTC MT7601U"
+m $WIFI
 # options with lower case in their names (scripts/config upper-cases names unless told not to)
 mk MT76x0U MT76x2U
+# 1.5.3: Ralink and MediaTek RT2800 chips (most inexpensive USB Wi-Fi dongles since about 2010, and the same chips as
+# PCIe cards): the RT2X00 menu (a module, as mac80211 is), then every chip family (the RT5370's ID is behind RT2800USB_RT53XX)
+RT2800="RT2800USB_RT33XX RT2800USB_RT35XX RT2800USB_RT3573 RT2800USB_RT53XX RT2800USB_RT55XX RT2800USB_UNKNOWN RT2800PCI_RT33XX RT2800PCI_RT35XX RT2800PCI_RT53XX RT2800PCI_RT3290"
+m RT2X00
+y $RT2800
 y FW_LOADER
 # webcams (1.2.8): USB Video Class cameras, built-in laptop cameras included (no firmware needed); Chromium's camera
 # access (getUserMedia) then works, and Settings > Privacy > Camera decides whether pages may use it
@@ -118,5 +126,10 @@ grep -q "^CONFIG_IPV6_SIT=y\|^CONFIG_IPV6_SIT=m" .config && { echo "kconfig.sh: 
 for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU_GEN_ENABLED; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 for o in NF_TABLES NF_TABLES_INET NFT_CT NFT_REJECT NFT_LIMIT FS_ENCRYPTION CRYPTO_XTS CRYPTO_CTS BT BT_BREDR BT_LE BT_HIDP UHID CRYPTO_ECDH CRYPTO_USER_API_HASH; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 for o in BT_HCIBTUSB BT_HCIVHCI BT_RTL BT_INTEL BT_MTK; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig"; exit 1; }; done
+# 1.5.3: every Wi-Fi driver asked for is there (and the MediaTek USB ones, whose names have lower case)
+for o in $WIFI; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the Wi-Fi driver $o is not a module after olddefconfig (its menu or a dependency is off)"; exit 1; }; done
+for o in MT76x0U MT76x2U; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the Wi-Fi driver $o is not a module after olddefconfig"; exit 1; }; done
+grep -q "^CONFIG_RT2X00=m$" .config || { echo "kconfig.sh: RT2X00 is not a module after olddefconfig"; exit 1; }
+for o in $RT2800; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 grep -q "^CONFIG_PSI_DEFAULT_DISABLED=y" .config && { echo "kconfig.sh: PSI is off by default"; exit 1; }
 true
