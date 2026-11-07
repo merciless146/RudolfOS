@@ -4,7 +4,9 @@
    - Settings > Devices (drives, USB devices, keyboards, mice, touchpads) and Settings > Mouse and touchpad.
    - After an update, a notification says what changed; "What's new" shows CHANGELOG.md (RCHANGES). ===== */
 const DEV_ICON = {'Keyboard': '⌨️', 'Mouse': '🖱️', 'Keyboard and mouse': '⌨️', 'Input device': '🖱️', 'Game controller': '🎮', 'Audio device': '🎧', 'Camera': '📷',
-  'Phone or camera': '📱', 'Printer': '🖨️', 'Bluetooth adapter': '🔵', 'Wi-Fi adapter': '📶', 'Network adapter': '🌐', 'Smart card reader': '💳', 'USB drive': '🔌', 'USB device': '🔌'};
+  'Phone or camera': '📱', 'Printer': '🖨️', 'Bluetooth adapter': '🔵', 'Wi-Fi adapter': '📶', 'Network adapter': '🌐', 'Smart card reader': '💳', 'USB drive': '🔌', 'USB device': '🔌',
+  'Fingerprint reader': '👆', 'Sound card': '🔊', 'Sound processor': '🔊', 'Camera or sound processor': '📷', 'Speaker amplifier': '🔊', 'Camera sensor': '📷',
+  'Camera power control': '📷', 'Graphics card': '🖥️', 'Thunderbolt controller': '⚡', 'USB4 controller': '⚡', 'AI processor (NPU)': '🧠', 'Touchpad or touchscreen (I2C)': '👆'};
 const devEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const devDisk = d => ((/^(mmcblk\d+|nvme\d+n\d+)/.exec(d) || /^(sd[a-z]+)/.exec(d) || [d, d])[1]);
 const devDriveName = v => v.label || (v.model && v.model.trim()) || (/^mmcblk/.test(v.dev) ? 'SD card' : 'USB drive');
@@ -37,6 +39,10 @@ function devEvent(v) {
   }
 }
 
+/* 1.5.3: USB speeds in words (Mbit/s from devplug): the device's, and the fastest its port can run */
+const devUsbSpeed = m => !m ? '' : m < 12 ? 'USB 1.0, 1.5 Mbit/s' : m < 480 ? 'USB 1.1, 12 Mbit/s' : m < 5000 ? 'USB 2.0, 480 Mbit/s' : 'USB 3, ' + (m / 1000) + ' Gbit/s';
+const devUsbPort = m => !m ? '' : m >= 5000 ? 'in a USB 3 port (' + (m / 1000) + ' Gbit/s)' : 'in a USB 2.0 port';
+const DEV_BUS = {pci: 'built in (PCI)', usb: 'USB', acpi: 'built in (ACPI)'};
 /* ---------- Settings > Devices ---------- */
 function devPanel(c) {
   c.innerHTML = `<h3>Devices</h3><p class='msg'>What is plugged into this computer. USB drives and SD cards open in File Explorer by themselves; use ⏏ Eject before unplugging one.</p><div class='dvx'>Loading…</div><p><button class='dvr'>Refresh</button></p>`;
@@ -47,9 +53,14 @@ function devPanel(c) {
     const sec = (t, rows) => `<h4 style='margin:12px 0 4px'>${t}</h4>` + (rows.length ? `<table class='dvt' style='width:100%;border-collapse:collapse'>${rows.join('')}</table>` : `<div class='msg'>None</div>`);
     const drives = d.drives.map(v => `<tr><td style='width:28px'>${/^mmcblk/.test(v.dev) ? '💾' : '🔌'}</td><td><b>${devEsc(devDriveName(v))}</b><br><small>${devEsc(fmtB(v.bytes))} · ${devEsc(v.fs)}${v.readonly ? ' · read only' : ''}${v.model ? ' · ' + devEsc(v.model) : ''}</small></td>
       <td style='text-align:right;white-space:nowrap'><button data-open='${devEsc(v.dev)}'>Open</button> <button data-eject='${devEsc(devDisk(v.dev))}'>⏏ Eject</button></td></tr>`);
-    const usb = d.usb.filter(v => v.kind != 'USB drive' || !d.drives.length).map(v => `<tr><td>${DEV_ICON[v.kind] || '🔌'}</td><td><b>${devEsc(v.name)}</b><br><small>${devEsc(v.kind)} · ${devEsc(v.id)}${v.driver ? '' : ' · <span style="color:#b45309">no driver in Rudolf OS</span>'}</small></td><td></td></tr>`);
+    const usb = d.usb.filter(v => v.kind != 'USB drive' || !d.drives.length).map(v => `<tr><td>${DEV_ICON[v.kind] || '🔌'}</td><td><b>${devEsc(v.name)}</b><br><small>${devEsc(v.kind)} · ${devEsc(v.id)}${v.speed ? ' · ' + devUsbSpeed(v.speed) + (v.port ? ', ' + devUsbPort(v.port) : '') : ''}${v.driver ? '' : ' · <span style="color:#b45309">no driver in Rudolf OS</span>'}</small></td><td></td></tr>`);
     const inp = d.inputs.map(v => `<tr><td>${{keyboard: '⌨️', mouse: '🖱️', touchpad: '👆', touchscreen: '📱', controller: '🎮'}[v.kind] || '🖱️'}</td><td><b>${devEsc(v.name)}</b><br><small>${devEsc(v.kind)}</small></td><td style='text-align:right'>${v.kind == 'touchpad' || v.kind == 'mouse' ? "<button data-mouse='1'>Settings</button>" : ''}</td></tr>`);
-    box.innerHTML = sec('Drives and SD cards', drives) + sec('USB devices', usb) + sec('Keyboards, mice and touchpads', inp);
+    /* 1.5.3: every device no driver took, built in or plugged in, so it is clear what this computer is missing */
+    let un = null; try { un = (await rd('devices/unsupported')).devices } catch (e) {}
+    const uns = un ? (un.length ? `<table class='dvt dvun' style='width:100%;border-collapse:collapse'>${un.map(v => `<tr><td style='width:28px'>${DEV_ICON[v.kind] || '🧩'}</td><td><b>${devEsc(v.name)}</b><br><small>${devEsc(v.kind)} · ${devEsc(DEV_BUS[v.bus] || v.bus)} ${devEsc(v.id)} · <span style="color:#b45309">no driver yet</span></small></td><td></td></tr>`).join('')}</table>`
+      : `<div class='msg dvun'>Every device in this computer has a driver.</div>`) : '';
+    box.innerHTML = sec('Drives and SD cards', drives) + sec('USB devices', usb) + sec('Keyboards, mice and touchpads', inp)
+      + (un ? `<h4 style='margin:12px 0 4px'>Not supported yet</h4><p class='msg' style='margin:0 0 4px'>Parts of this computer that Rudolf OS has no driver for yet. Report a problem (Settings › Security) includes this list, so it can be added.</p>` + uns : '');
     box.querySelectorAll('[data-open]').forEach(b => b.onclick = () => { const v = d.drives.find(x => x.dev == b.dataset.open); v && devOpenDrive(v) });
     box.querySelectorAll('[data-eject]').forEach(b => b.onclick = async () => { b.disabled = true; try { await rdPost('eject?dev=' + b.dataset.eject); setTimeout(draw, 800) } catch (e) { b.disabled = false; notify('Eject', e.message, {kind: 'error'}) } });
     box.querySelectorAll('[data-mouse]').forEach(b => b.onclick = () => { const W = c.closest('.win'); const n = W && W.querySelector(".sn div[data-k='mouse']"); n && n.click() });

@@ -86,6 +86,9 @@ done &
 /usr/lib/rudolf/wifi.sh boot >/dev/null 2>&1 &
 # 1.5.1: Bluetooth, when the computer has an adapter (its driver is a module: it comes with the others above)
 /usr/lib/rudolf/bluetooth boot >/dev/null 2>&1 &
+# 1.5.3: the first start on a computer: a health-log line with the devices that have no driver (after a minute,
+# when USB devices and driver modules have settled)
+( sleep 60; /usr/lib/rudolf/devplug hwlog >/dev/null 2>&1 ) &
 
 rudolfd > /run/rudolf/rudolfd.log 2>&1 &
 # 1.4.7: when memory runs out, the largest web page is ended instead of the whole desktop freezing
