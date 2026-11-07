@@ -83,7 +83,9 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 		FW=$W/linux-firmware
 		for u in https://gitlab.com/kernel-firmware/linux-firmware.git https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git; do
 			rm -rf "$FW"; git clone -q --depth 1 --filter=blob:none --no-checkout "$u" "$FW" || continue
-			git -C "$FW" sparse-checkout set --no-cone /WHENCE '/rtl_nic/' '/amd-ucode/' '/nvidia/*/gsp/*-570.144.bin' /htc_9271.fw /htc_7010.fw '/ath9k_htc/' /mediatek/mt7601u.bin /mediatek/mt7610u.bin /mediatek/mt7662.bin /mediatek/mt7662_rom_patch.bin '/rtl_bt/' && git -C "$FW" checkout -q && break
+			# 1.5.3: exactly the files firmware-extra.txt pins (its "F" lines), so a file added there is always fetched
+			# (rt2870.bin was not: the hand-written list here had fallen behind)
+			awk '$1=="F"{print "/"$3}' firmware-extra.txt | { echo /WHENCE; cat; } | git -C "$FW" sparse-checkout set --no-cone --stdin && git -C "$FW" checkout -q && break
 		done
 	fi
 	rm -rf "$W/fw"; python3 systools/fwextra.py copy firmware-extra.txt "$FW" "$W/fw"
