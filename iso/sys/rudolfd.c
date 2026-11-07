@@ -862,6 +862,14 @@ static void api_wifi(struct req *r, const char *what)
 		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh country %s %s 2>&1", ifn, c);
 		char *o = run_out(cmd); trim(o); reply_ok(r->fd, o); free(o); return;
 	}
+	/* 1.5.3: the Wi-Fi adapter to use from now on (a USB dongle next to the built-in one) */
+	if (!strcmp(what, "adapter")) {
+		if (!i || !*i) { reply_err(r->fd, 400, "which adapter?"); return; }
+		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh adapter %s 2>&1", i);
+		char *o = run_out(cmd); trim(o);
+		if (o && !strncmp(o, "Using ", 6)) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "could not change the adapter");
+		free(o); return;
+	}
 	if (!strcmp(what, "connect") || !strcmp(what, "forget")) {
 		if (!r->body || !r->blen || r->blen > 600) { reply_err(r->fd, 400, "bad request"); return; }
 		const char *f = !strcmp(what, "connect") ? RUN "/wifi.req" : RUN "/wifi-forget.req";

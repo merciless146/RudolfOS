@@ -7,18 +7,38 @@
 #   wifi.sh forget IF REQUEST-FILE   remove a saved network (line 1 network name)
 #   wifi.sh disconnect|reconnect [IF]
 #   wifi.sh country [IF] CC          set the country (which channels and power the adapter may use)
+#   wifi.sh adapter IF               use this adapter from now on (1.5.3: a USB dongle next to the built-in Wi-Fi)
+# With no IF: the adapter chosen in Settings when it is plugged in (saved by its MAC address, as a USB adapter's
+# name changes with the port), otherwise the built-in one, otherwise the first. One adapter is used at a time.
 # Saved networks live in /persist/etc/wifi.conf (passwords are stored there as keys, readable by root only).
-export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
 CTRL=/run/rudolf/wpa
+# test hooks (iso/qt/host/wifiadapter_t.sh): RUDOLF_TEST_PATH, RUDOLF_WIFI_NET, RUDOLF_WIFI_SEL
+NET=${RUDOLF_WIFI_NET:-/sys/class/net}
 CONF=/run/rudolf/wifi.conf; mountpoint -q /persist 2>/dev/null && CONF=/persist/etc/wifi.conf
-firstif() { for i in /sys/class/net/*; do [ -e "$i/wireless" ] && { echo "${i##*/}"; return; }; done; }
+SEL=/run/rudolf/wifi-adapter; mountpoint -q /persist 2>/dev/null && SEL=/persist/etc/wifi-adapter
+[ -n "$RUDOLF_WIFI_SEL" ] && SEL=$RUDOLF_WIFI_SEL
+wlans() { for i in "$NET"/*; do [ -e "$i/wireless" ] && echo "${i##*/}"; done; }
+mac_of() { cat "$NET/$1/address" 2>/dev/null; }
+bus_of() { case "$(readlink -f "$NET/$1/device" 2>/dev/null)" in */usb*) echo usb;; "") echo other;; *) echo pci;; esac; }
+saved_if() { M=$(cat "$SEL" 2>/dev/null); [ -n "$M" ] || return; for i in $(wlans); do [ "$(mac_of $i)" = "$M" ] && { echo $i; return; }; done; }
+firstif() {
+	S=$(saved_if); [ -n "$S" ] && { echo "$S"; return; }
+	for i in $(wlans); do [ "$(bus_of $i)" != usb ] && { echo "$i"; return; }; done
+	wlans | head -1
+}
+# the adapter's name in words: USB adapters by their maker and product, the others by their driver
+name_of() {
+	D=$(readlink -f "$NET/$1/device" 2>/dev/null)
+	if [ "$(bus_of $1)" = usb ]; then echo "$(cat "$D/../manufacturer" 2>/dev/null) $(cat "$D/../product" 2>/dev/null)" | sed 's/^ *//; s/ *$//'; else basename "$(readlink "$D/driver" 2>/dev/null)" 2>/dev/null; fi
+}
 CMD=$1; IF=$2
 case "$CMD" in country) [ -n "$3" ] || { CC=$2; IF=; } ;; esac
 [ -n "$IF" ] || IF=$(firstif)
 W() { wpa_cli -p $CTRL -i "$IF" "$@"; }
 need() {
-	[ -x /usr/sbin/wpa_supplicant ] || { echo "Wi-Fi tools are not part of this build."; exit 2; }
-	[ -n "$IF" ] && [ -e "/sys/class/net/$IF/wireless" ] || { echo "No Wi-Fi adapter was found."; exit 3; }
+	[ -x "${RUDOLF_TEST_PATH:-/usr/sbin}/wpa_supplicant" ] || { echo "Wi-Fi tools are not part of this build."; exit 2; }
+	[ -n "$IF" ] && [ -e "$NET/$IF/wireless" ] || { echo "No Wi-Fi adapter was found."; exit 3; }
 }
 start() {
 	need
@@ -38,6 +58,15 @@ start() {
 	[ -f /run/rudolf/wpa-ev-$IF.pid ] && kill -0 "$(cat /run/rudolf/wpa-ev-$IF.pid)" 2>/dev/null || \
 		W -a /usr/lib/rudolf/wifi-event -B -P /run/rudolf/wpa-ev-$IF.pid >/dev/null 2>&1
 	W ping 2>/dev/null | grep -q PONG || { echo "The Wi-Fi service did not start."; exit 4; }
+	# 1.5.3: one adapter at a time: the others stop (their address too), so a dongle and the built-in Wi-Fi do not
+	# both join
+	for o in $(wlans); do
+		[ "$o" = "$IF" ] && continue
+		wpa_cli -p $CTRL -i "$o" ping 2>/dev/null | grep -q PONG || continue
+		wpa_cli -p $CTRL -i "$o" terminate >/dev/null 2>&1
+		/usr/lib/rudolf/wifi-event "$o" DISCONNECTED >/dev/null 2>&1
+		ip link set "$o" down 2>/dev/null
+	done
 }
 hexname() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
 # ids of saved networks with this name (list_networks shows names escaped; compare via the hex form)
@@ -50,14 +79,19 @@ ids_for() {
 }
 case "$CMD" in
 boot)
-	[ -x /usr/sbin/wpa_supplicant ] || exit 0
+	[ -x "${RUDOLF_TEST_PATH:-/usr/sbin}/wpa_supplicant" ] || exit 0
 	for i in $(seq 40); do IF=$(firstif); [ -n "$IF" ] && break; sleep 0.5; done
+	# a chosen USB adapter can show up a few seconds after the built-in one
+	if [ -s "$SEL" ] && [ -z "$(saved_if)" ]; then for i in $(seq 20); do [ -n "$(saved_if)" ] && { IF=$(saved_if); break; }; sleep 0.5; done; fi
 	[ -n "$IF" ] && start >/dev/null 2>&1; exit 0 ;;
 status)
-	if [ ! -x /usr/sbin/wpa_supplicant ]; then echo "tools=no"; exit 0; fi
-	[ -n "$IF" ] && [ -e "/sys/class/net/$IF/wireless" ] || { echo "adapter="; exit 0; }
+	if [ ! -x "${RUDOLF_TEST_PATH:-/usr/sbin}/wpa_supplicant" ]; then echo "tools=no"; exit 0; fi
+	[ -n "$IF" ] && [ -e "$NET/$IF/wireless" ] || { echo "adapter="; exit 0; }
 	start >/dev/null
 	echo "adapter=$IF"
+	# 1.5.3: every adapter (name, MAC, usb|pci, driver, in words), the one chosen, and whether it is missing
+	for i in $(wlans); do D=$(readlink -f "$NET/$i/device" 2>/dev/null); printf 'wlan=%s\t%s\t%s\t%s\t%s\n' "$i" "$(mac_of $i)" "$(bus_of $i)" "$(basename "$(readlink "$D/driver" 2>/dev/null)" 2>/dev/null)" "$(name_of $i)"; done
+	[ -s "$SEL" ] && { echo "chosen=$(cat "$SEL")"; [ -z "$(saved_if)" ] && echo "chosen_missing=1"; }
 	W status | grep -E '^(wpa_state|ssid|bssid|freq|key_mgmt|ip_address)='
 	W signal_poll 2>/dev/null | grep -E '^(RSSI|LINKSPEED)='
 	echo "country=$(W get country 2>/dev/null | grep -v FAIL)"
@@ -122,11 +156,17 @@ forget)
 	for o in $(ids_for "$SSID"); do W remove_network "$o" >/dev/null; N=$((N+1)); done
 	W save_config >/dev/null
 	[ $N -gt 0 ] && echo "Forgot $SSID" || { echo "$SSID is not saved."; exit 1; } ;;
+adapter)
+	[ -n "$2" ] && [ -e "$NET/$2/wireless" ] || { echo "No such Wi-Fi adapter."; exit 1; }
+	M=$(mac_of "$IF"); [ -n "$M" ] || { echo "No such Wi-Fi adapter."; exit 1; }
+	umask 077; mkdir -p "$(dirname "$SEL")"; echo "$M" > "$SEL"
+	start; W enable_network all >/dev/null; W reconnect >/dev/null
+	echo "Using $(name_of "$IF") for Wi-Fi" ;;
 disconnect) start; W disconnect >/dev/null; echo "Disconnected" ;;
 reconnect) start; W enable_network all >/dev/null; W reconnect >/dev/null; echo "Reconnecting" ;;
 country)
 	start; CC=${CC:-$3}
 	case "$CC" in [A-Z][A-Z]|00) ;; *) echo "Use a two-letter country code."; exit 1;; esac
 	W set country "$CC" >/dev/null && W save_config >/dev/null && echo "Country set to $CC" ;;
-*) echo "usage: wifi.sh boot|status|scan|connect|forget|disconnect|reconnect|country"; exit 1 ;;
+*) echo "usage: wifi.sh boot|status|scan|connect|forget|disconnect|reconnect|country|adapter"; exit 1 ;;
 esac

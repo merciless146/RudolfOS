@@ -3,6 +3,12 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.5.3 (2026-11-07)
+Summary: USB Wi-Fi adapters with Ralink and MediaTek RT2800 chips, and a choice of Wi-Fi adapter
+- New: USB Wi-Fi adapters with Ralink and MediaTek RT2800 chips work (RT2770, RT2870, RT3070, RT3071, RT3072, RT3370, RT3572, RT3573, RT5370, RT5372, RT5572: most inexpensive Wi-Fi dongles), and the same chips as cards inside older laptops (RT2860, RT3090, RT3290, RT5390 and others).
+- New: Settings › Network › Wi-Fi: with a USB Wi-Fi adapter next to the built-in one, choose which one to use. Rudolf OS remembers it, uses it whenever it is plugged in, and goes back to the built-in Wi-Fi when it is unplugged.
+- Fixed: the RT2800 driver was asked for but left out of the system without a word. Every Wi-Fi driver is now checked when Rudolf OS is built, so none can go missing again.
+
 ## 1.5.2 (2026-11-06)
 Summary: the Rudolf OS Library: Quake and Emu download when you first need them, and every update is smaller; Game Boy games in Emu's library; Windows games get the keyboard and full screen
 - New: App Store › Rudolf OS Library, a catalog of apps made for Rudolf OS that not every computer needs. Each shows its size, description and licence, with Get, Open, Update and Remove. The Library has its own signing key: it can add apps, but it can never change Rudolf OS itself.
