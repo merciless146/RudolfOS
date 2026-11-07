@@ -11,12 +11,17 @@
 #
 #   devplug                  from mdev (ACTION, MDEV, SUBSYSTEM, DEVTYPE, DEVPATH in the environment)
 #   devplug list             JSON of the connected USB devices, drives and input devices (Settings > Devices)
+#   devplug unsupported [json]  1.5.3: every device no driver took (PCI, USB, and known ACPI parts), one a line:
+#                            "bus|id|kind|name", or JSON (Settings > Devices > Not supported yet, system reports)
+#   devplug hwlog            1.5.3: one "hardware" line in the health log the first time Rudolf OS starts on a computer
 #   devplug mount DEV        mount a partition under /media/DEV (File Explorer)
 #   devplug eject DISK       unmount every partition of a disk and power it off, so it can be pulled out
 #   devplug release DISK     unmount what this script mounted from a disk (under /media), before the disk is written
 #                            (1.2.6). While /run/rudolf/busy/DISK exists, nothing on that disk is mounted.
 RUN=/run/rudolf
-mkdir -p $RUN/usb $RUN/drives /media 2>/dev/null
+# test hooks (iso/qt/host/devunsup_t.sh): RUDOLF_SYS (a stand-in /sys), RUDOLF_RUN
+SYS=${RUDOLF_SYS:-/sys}; [ -n "$RUDOLF_RUN" ] && RUN=$RUDOLF_RUN
+mkdir -p $RUN/usb $RUN/drives 2>/dev/null; [ -n "$RUDOLF_SYS" ] || mkdir -p /media 2>/dev/null
 
 clean() { tr -d '"\\\000-\037' | tr -s ' ' | sed 's/^ //; s/ $//' | cut -c1-80; }
 event() { echo "dev $1" >> $RUN/events; }
@@ -130,13 +135,100 @@ usb_identify() {
 	elif [ $wl = 1 ]; then kind="Wi-Fi adapter"
 	elif [ -n "$net" ] || has 02 || has 0a; then kind="Network adapter"
 	elif has 0b; then kind="Smart card reader"
-	else kind="USB device"; fi
+	else
+		# 1.5.3: a device that does not say what it is (its own "vendor" class, like most Wi-Fi dongles): by its name
+		case "$(rd $s/product | tr A-Z a-z)" in
+		*wlan*|*wi-fi*|*wifi*|*802.11*|*"wireless lan"*|*"wireless adapter"*) kind="Wi-Fi adapter";;
+		*bluetooth*) kind="Bluetooth adapter";;
+		*ethernet*|*" lan"*|*gigabit*) kind="Network adapter";;
+		*camera*|*webcam*) kind="Camera";;
+		*fingerprint*) kind="Fingerprint reader";;
+		*) kind="USB device";;
+		esac
+	fi
 	name=$(printf '%s %s' "$(rd $s/manufacturer)" "$(rd $s/product)" | clean)
 	[ -n "$name" ] || name="$kind ($vid:$pid)"
-	echo "$kind|$name|$vid:$pid|$drv"
+	echo "$kind|$name|$vid:$pid|$drv|$(usb_speeds $s)"
+}
+# 1.5.3: the speed a USB device runs at, and the fastest its port can (its own hub, or the SuperSpeed hub its port is
+# paired with), in Mbit/s: "480 10000" is a USB 2 device in a USB 3 port
+usb_speeds() {
+	local s=$1 sp p q h ps=0
+	sp=$(cat $s/speed 2>/dev/null); sp=${sp%%.*}
+	p=$(readlink -f $s/port 2>/dev/null)
+	for q in "$p" "$(readlink -f "$p/peer" 2>/dev/null)"; do
+		[ -n "$q" ] && [ -d "$q" ] || continue
+		h=$(cat "$(dirname "$(dirname "$q")")/speed" 2>/dev/null); h=${h%%.*}
+		[ "${h:-0}" -gt "$ps" ] && ps=$h
+	done
+	echo "${sp:-0}|$ps"
 }
 
-usb_json() { IFS='|' read -r kind name id drv; printf '{"t":"usb","kind":"%s","name":"%s","id":"%s","driver":%s}' "$kind" "$name" "$id" "$( [ "$drv" = 1 ] && echo 1 || echo 0)"; }
+usb_json() { IFS='|' read -r kind name id drv sp ps; printf '{"t":"usb","kind":"%s","name":"%s","id":"%s","driver":%s,"speed":%s,"port":%s}' "$kind" "$name" "$id" "$( [ "$drv" = 1 ] && echo 1 || echo 0)" "${sp:-0}" "${ps:-0}"; }
+
+# ---------------------------------------------------------------- devices without a driver (1.5.3)
+# Makers of the parts a laptop has, so the list says more than numbers (the rest show their PCI or USB ID)
+maker() {
+	case $1 in
+	8086|8087) echo Intel;; 1022|1002) echo AMD;; 10ec|0bda) echo Realtek;; 14c3|0e8d) echo MediaTek;; 168c|17cb|0cf3) echo Qualcomm;;
+	10de) echo NVIDIA;; 14e4|0a5c) echo Broadcom;; 1814|148f) echo Ralink;; 1b21) echo ASMedia;; 1217) echo O2Micro;; 1180) echo Ricoh;;
+	144d) echo Samsung;; 15b7) echo "Western Digital";; 1c5c) echo "SK hynix";; 1344) echo Micron;; 126f) echo "Silicon Motion";;
+	06cb) echo Synaptics;; 27c6) echo Goodix;; 04f3) echo Elan;; 138a) echo Validity;; 2808) echo FocalTech;; 1c7a) echo LighTuning;;
+	esac
+}
+# a PCI device's kind, from its class (and, for multimedia, its maker); nothing for parts that need no driver
+pci_kind() {
+	local c=$1 v=$2
+	case $c in
+	0600*|0601*|0604*|0680*|05*|0b*|0c05*|1180*|1080*|0806*|0880*|ff*) ;;   # bridges, memory, processor, SMBus, sensors, crypto, IOMMU
+	0280*) echo "Wi-Fi adapter";;
+	0d11*) echo "Bluetooth adapter";;
+	02*) echo "Network adapter";;
+	0401*|0403*) echo "Sound card";;
+	0480*) [ "$v" = 1022 ] && echo "Sound processor" || echo "Camera or sound processor";;
+	04*) echo "Multimedia device";;
+	03*) echo "Graphics card";;
+	0c0340) echo "USB4 controller";;
+	0c03*) echo "USB controller";;
+	0c0a*) echo "Thunderbolt controller";;
+	01*) echo "Storage controller";;
+	0805*) echo "SD card reader";;
+	1200*) echo "AI processor (NPU)";;
+	0780*|0700*) echo "Communication device";;
+	*) echo "Device";;
+	esac
+}
+# parts behind ACPI (I2C and SPI) that a laptop needs for sound, cameras and touchpads: by their ACPI ID
+acpi_kind() {
+	case $1 in
+	CSC3551|CSC3554|CSC3556) echo "Speaker amplifier|Cirrus";; TIAS2781|TXNW2781) echo "Speaker amplifier|TI";;
+	INT3472) echo "Camera power control|Intel";; OVTI*) echo "Camera sensor|OmniVision";; HIMX*) echo "Camera sensor|Himax";;
+	PNP0C50|ACPI0C50) echo "Touchpad or touchscreen (I2C)|";;
+	esac
+}
+unsupported() {
+	local d c v i kind id h a n
+	for d in $SYS/bus/pci/devices/*; do
+		[ -f $d/class ] && [ ! -e $d/driver ] || continue
+		c=$(cat $d/class); c=${c#0x}; v=$(cat $d/vendor); v=${v#0x}; i=$(cat $d/device); i=${i#0x}
+		kind=$(pci_kind $c $v); [ -n "$kind" ] || continue
+		n=$(maker $v); echo "pci|$v:$i|$kind|${n:+$n }$kind"
+	done
+	for d in $SYS/bus/usb/devices/*; do
+		[ -f $d/idVendor ] || continue
+		case ${d##*/} in usb*) continue;; esac
+		i=$(usb_identify $d) || continue
+		[ "$(echo "$i" | cut -d'|' -f4)" = 1 ] && continue
+		echo "usb|$(echo "$i" | cut -d'|' -f3)|$(echo "$i" | cut -d'|' -f1)|$(echo "$i" | cut -d'|' -f2)"
+	done
+	for d in $SYS/bus/acpi/devices/*; do
+		h=${d##*/}; h=${h%%:*}; a=$(acpi_kind $h); [ -n "$a" ] || continue
+		[ -f $d/status ] && [ "$(cat $d/status)" = 0 ] && continue   # described by the firmware, but not there
+		n=0; for p in $d/physical_node*; do [ -e "$p/driver" ] && n=1; done
+		[ $n = 1 ] && continue
+		kind=${a%%|*}; v=${a#*|}; echo "acpi|$h|$kind|${v:+$v }$kind"
+	done
+}
 
 usb_add() {
 	local s=/sys$DEVPATH key info j; key=$(echo "$DEVPATH" | tr '/' '_')
@@ -158,9 +250,26 @@ usb_remove() {
 
 # ---------------------------------------------------------------- commands
 case "$1" in
+unsupported)
+	if [ "$2" = json ]; then
+		printf '{"ok":true,"devices":['; f=1
+		unsupported | while IFS='|' read -r b id k n; do [ $f = 1 ] || printf ','; f=0; printf '{"bus":"%s","id":"%s","kind":"%s","name":"%s"}' "$b" "$(echo "$id" | clean)" "$k" "$(echo "$n" | clean)"; done
+		printf ']}\n'
+	else unsupported; fi
+	exit 0;;
+hwlog)
+	# once per computer (its model, as the firmware names it): what it has that Rudolf OS cannot use yet
+	M=$(printf '%s %s' "$(rd $SYS/class/dmi/id/sys_vendor)" "$(rd $SYS/class/dmi/id/product_name)" | clean)
+	F=/persist/etc/hardware-logged; [ -n "$RUDOLF_RUN" ] && F=$RUN/hardware-logged
+	[ -d "$(dirname $F)" ] || exit 0
+	[ "$(cat $F 2>/dev/null)" = "$M" ] && exit 0
+	L=$(unsupported | awk -F'|' '{printf "%s%s (%s %s)", (NR>1?", ":""), (index($4,$3)?$4:$4", "$3), $1, $2}')
+	if [ -n "$L" ]; then T="$M: no driver yet for $(unsupported | wc -l) device(s): $L"; else T="$M: every device has a driver"; fi
+	${RUDOLF_HEALTH:-rudolfd --health} hardware "$(echo "$T" | cut -c1-400)" && echo "$M" > $F
+	exit 0;;
 list)
 	printf '{"ok":true,"usb":['; f=1
-	for s in /sys/bus/usb/devices/*; do
+	for s in $SYS/bus/usb/devices/*; do
 		[ -f $s/idVendor ] || continue
 		case ${s##*/} in usb*) continue;; esac
 		info=$(usb_identify $s) || continue

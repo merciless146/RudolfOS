@@ -1836,6 +1836,8 @@ static void api_system(struct req *r)
 	jtext(&s, "gsp", run_out("grep -q '^nouveau ' /proc/modules && { dmesg 2>/dev/null | grep -i 'nouveau' | grep -iE 'gsp|firmware' | sed 's/^\\[[^]]*\\] *//' | tail -2; } || true"));
 	jtext(&s, "display", run_out("echo \"$(cat " RUN "/display-mode 2>/dev/null) | $(cat " RUN "/screen-actual 2>/dev/null) | $(cat " RUN "/display-reason 2>/dev/null)\""));
 	jtext(&s, "audio", slurp("/proc/asound/cards", NULL));
+	/* 1.5.3: devices with no driver ("bus|id|kind|name" a line), so a report says what this computer is missing */
+	jtext(&s, "unsupported", run_out("/usr/lib/rudolf/devplug unsupported 2>/dev/null"));
 	jtext(&s, "input", run_out("sed -n 's/^N: Name=\"\\(.*\\)\"$/\\1/p' /proc/bus/input/devices 2>/dev/null"));
 	/* network adapters: name, state, speed (Mb/s), bytes received, bytes sent, kind, driver (1.2.4) */
 	/* 1.4.4: network hardware only: virtual interfaces (no device: tunnels such as sit0, bridges, VPNs) are left out */
@@ -2618,7 +2620,7 @@ static void api_devlink(struct req *r, const char *what, int post)
 static void health_path(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/health.log" : PERSIST "/var/log/health.log"); }
 static int health_kind_ok(const char *k)
 {
-	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", NULL };
+	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", NULL };
 	for (int i = 0; K[i]; i++) if (k && !strcmp(k, K[i])) return 1;
 	return 0;
 }
@@ -3087,6 +3089,8 @@ static void api(struct req *r)
 		else { sadd(&s, ",\"reason\":"); sjson(&s, o && !strncmp(o, "no ", 3) ? o + 3 : "unknown"); }
 		sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
 	}
+	/* 1.5.3: every device no driver took (Settings > Devices > Not supported yet) */
+	if (!strcmp(p, "devices/unsupported")) { char *o = run_out("/usr/lib/rudolf/devplug unsupported json 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 500, "could not list the devices"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
 	if (!strcmp(p, "devices")) { char *o = run_out("/usr/lib/rudolf/devplug list 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 500, "could not list the devices"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
 	if (!strcmp(p, "job")) { api_job(r); return; }
 	if (!strncmp(p, "devlink", 7) && (!p[7] || p[7] == '/')) { api_devlink(r, p[7] ? p + 8 : "", post); return; }
