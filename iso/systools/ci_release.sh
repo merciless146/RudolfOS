@@ -52,7 +52,7 @@ SB_CERT=$(realpath "${SB_CERT:-boot/sb/rudolf-sb.crt}"); export SB_CERT
 [ -n "$SB_KEY" ] && [ -f "$SB_KEY" ] || { echo "SB_KEY: the Secure Boot signing key is needed"; exit 1; }
 python3 systools/sbkeycheck.py "$SB_KEY" "$SB_CERT"
 SBSIGN=${SBSIGN:-sbsign}
-KSRC=$(cat kconfig.sh firmware-extra.txt systools/fwextra.py initramfs.list initramfs/init initramfs/etc/rudolf-id sys/rudolf-kexec.c sys/rudolf-verity.c trusted-keys.txt "$SB_CERT" ${RUDOLF_TEST_KEYS:+"$RUDOLF_TEST_KEYS"} | sha256sum | cut -c1-16)
+KSRC=$(cat kconfig.sh firmware-extra.txt firmware-sof.txt systools/fwextra.py initramfs.list initramfs/init initramfs/etc/rudolf-id sys/rudolf-kexec.c sys/rudolf-verity.c trusted-keys.txt "$SB_CERT" ${RUDOLF_TEST_KEYS:+"$RUDOLF_TEST_KEYS"} | sha256sum | cut -c1-16)
 PKSRC=$(unsquashfs -cat "$PREV/modules.sfs" "usr/lib/modules/$KV/rudolf-ksrc" 2>/dev/null || true)
 [ -n "$KERNEL_VERSION" ] || KERNEL_VERSION=${KV%-rudolf}
 if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
@@ -89,6 +89,16 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 		done
 	fi
 	rm -rf "$W/fw"; python3 systools/fwextra.py copy firmware-extra.txt "$FW" "$W/fw"
+	# 1.5.4: Intel's sound processor firmware (SOF) and its topologies, which linux-firmware does not have: from
+	# thesofproject/sof-bin at this commit, exactly the files firmware-sof.txt pins. SOF_BIN: a checkout (local test builds)
+	SB=$SOF_BIN
+	if [ -z "$SB" ]; then
+		SB=$W/sof-bin; SOF_COMMIT=fcd5ae85ead7ecd67ff199335b61fac825843ca0
+		rm -rf "$SB"; git clone -q --filter=blob:none --no-checkout https://github.com/thesofproject/sof-bin.git "$SB"
+		awk '$1=="F"{print "/"$4}' firmware-sof.txt | git -C "$SB" sparse-checkout set --no-cone --stdin
+		git -C "$SB" checkout -q "$SOF_COMMIT"
+	fi
+	python3 systools/fwextra.py copy firmware-sof.txt "$SB" "$W/fw"
 	UCODE_DIR="$W/fw" ./kconfig.sh "$W/linux" "$HERE/initramfs $HERE/initramfs.list"
 	make -C "$W/linux" -s -j$(nproc) bzImage modules
 	make -C "$W/linux" -s modules_install INSTALL_MOD_PATH="$W/mods" DEPMOD=true >/dev/null
@@ -177,6 +187,10 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		sudo install -m 0755 "$x" "$W/broot/usr/sbin/${x##*/}"
 		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/x86_64-linux-gnu/"; done
 	done
+	# 1.5.4: ALSA's use case files (alsa-ucm-conf), how PulseAudio sets up the speakers, headphones and microphones of
+	# sound processors (Intel SOF, AMD ACP) and USB sound cards (/usr/lib/rudolf/sound)
+	[ -f /usr/share/alsa/ucm2/ucm.conf ] || { echo "alsa-ucm-conf is missing on the build machine (apt-get install alsa-ucm-conf)"; exit 1; }
+	sudo rm -rf "$W/broot/usr/share/alsa/ucm2"; sudo mkdir -p "$W/broot/usr/share/alsa"; sudo cp -a /usr/share/alsa/ucm2 "$W/broot/usr/share/alsa/"
 	sudo cp -a sys/root/. "$W/broot/"
 	# 1.4.4: what no longer belongs in the base layer (systools/base-remove.txt)
 	grep -v '^#' systools/base-remove.txt | while read -r x; do [ -n "$x" ] || continue; case "$x" in /*|*..*) echo "base-remove.txt: bad path $x"; exit 1;; esac

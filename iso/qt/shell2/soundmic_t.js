@@ -1,14 +1,17 @@
 // 1.5.4 (settings25.js, Sound): with the AMD audio processor's microphones (a card that records only), Settings ›
 // Sound offers only cards that play as outputs, and lists the microphones in words. The Vivobook's cards as they
 // should be: HD-Audio (speakers, headphones, headset microphone), HD-Audio HDMI, acp6x (the digital microphones).
-// The desktop page with a stand-in rudolfd, in Chromium.   node soundmic_t.js [CHROME]  (build iso/www first)
+// Then an Intel sound processor (SOF) card. The desktop page with a stand-in rudolfd, in Chromium.   node soundmic_t.js [CHROME]  (build iso/www first)
 const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
 const WWW = path.join(__dirname, '../../../iso/www');
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 400) : '')) };
 const CARDS = ' 0 [Generic        ]: HDA-Intel - HD-Audio Generic\n                      HD-Audio Generic at 0xd05c8000 irq 76\n 1 [Generic_1      ]: HDA-Intel - HD-Audio Generic\n                      HD-Audio Generic at 0xd05c0000 irq 77\n 2 [acp6x          ]: acp6x - acp6x\n                      ASUSTeK COMPUTER INC.-Vivobook Go E1404FA_E1404FA\n';
 const PCM = '00-03: HDMI 0 : HDMI 0 : playback 1\n01-00: ALC256 Analog : ALC256 Analog : playback 1 : capture 1\n02-00: acp6x-dmic-capture DMIC-0 : : capture 1\n';
+// an Alder Lake laptop with Intel's sound processor: one card for speakers, headphones, HDMI and the microphones
+const SOFC = ' 0 [sofhdadsp      ]: sof-hda-dsp - sof-hda-dsp\n                      LENOVO-21AH\n';
+const SOFP = '00-00: HDA Analog (*) :  : playback 1 : capture 1\n00-03: HDMI1 (*) :  : playback 1\n00-06: DMIC (*) :  : capture 1\n';
 let mode = 'new';
-const api = a => { if (a == 'audio') return mode == 'old' ? {ok: true, cards: CARDS} : {ok: true, cards: CARDS, pcm: PCM}; if (a == 'events/wait') return {ok: true, events: []}; return {ok: true} };
+const api = a => { if (a == 'audio') return mode == 'old' ? {ok: true, cards: CARDS} : mode == 'sof' ? {ok: true, cards: SOFC, pcm: SOFP} : {ok: true, cards: CARDS, pcm: PCM}; if (a == 'events/wait') return {ok: true, events: []}; return {ok: true} };
 const srv = http.createServer((q, s) => { const [u0] = q.url.split('?'); const u = decodeURIComponent(u0);
   q.on('data', () => {}); q.on('end', () => {
     if (u == '/' || u == '/index.html') { s.writeHead(200, {'content-type': 'text/html'});
@@ -29,6 +32,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('3. ...and the headset microphone of the HDA card, not HDMI', /Generic_1 — HDA-Intel - HD-Audio Generic/.test(g.mics) && (g.mics.match(/·/g) || []).length == 1, g);
   mode = 'old'; await show(); await wait(1200); g = await get();
   ok('4. an older rudolfd (no pcm): every card offered, as before', g.opts.length == 3, g);
-  ok('5. no page errors', !errs.length, errs);
+  mode = 'sof'; await show(); await wait(1200); g = await get();
+  ok('5. Intel SOF: the card is named as the sound processor', g.opts.length == 1 && /^0:Intel sound processor \(SOF\) — sof-hda-dsp/.test(g.opts[0]), g);
+  ok('6. ...and so are its microphones', g.mics == 'Built-in microphones (Intel sound processor)', g);
+  ok('7. no page errors', !errs.length, errs);
   await b.close(); srv.close(); console.log(R.filter(Boolean).length + '/' + R.length + ' passed'); process.exit(R.every(Boolean) ? 0 : 1)
 })().catch(e => { console.log('FAIL ' + e.stack); process.exit(1) });
