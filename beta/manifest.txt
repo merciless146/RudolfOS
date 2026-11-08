@@ -1,18 +1,18 @@
 rudolf-system 1
-serial 2026110812
+serial 2026110813
 version 1.5.4.261108
 released 2026-11-08
 expires 2026-11-22
 urgent 0
 chromium 157.0.8103.38
 kernel 6.18.62-rudolf
-notes 1.5.4: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chip, and the built-in microphones of AMD laptops
-L	vmlinuz	11381368	70b9e3ef993ba5ee712bde61cf5f75b27b5b2979897c05c48305f9233bd89f84	https://github.com/merciless146/RudolfOS/releases/download/r2026110812/vmlinuz
-L	base	207290368	99abf29851b9443ebdedda7dd881b7cefe675653c1b139854fdff043cfab60f1	https://github.com/merciless146/RudolfOS/releases/download/r2026110812/base.sfs
-L	chromium	134369280	5e9d9f111bcb03b430c404dd62fbb2f1289cac58efd602754490ec433ed2b944	https://github.com/merciless146/RudolfOS/releases/download/r2026110812/chromium.sfs
-L	desktop	4907008	73866fb469cd88c07eed357877253900cf70cb1e749a9abaee78e11fda6ac825	https://github.com/merciless146/RudolfOS/releases/download/r2026110812/desktop.sfs
-L	modules	95592448	6e7183224a49831e6f10b3a1e527f93533600311e0415c8f34d0cd8720b0b940	https://github.com/merciless146/RudolfOS/releases/download/r2026110812/modules.sfs
-V	base	50210	417cc75c3833d9e05845513e1b0a0376bb78a9edad06beb1c45bb1e3c81a490e	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
+notes 1.5.4: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chip, sound on laptops with an Intel sound processor or speaker amplifiers, and the built-in microphones of AMD laptops
+L	vmlinuz	11401848	9ade7afd33a4c1df8b4c005183898be1a41ac946f379d04b6e10074054d57937	https://github.com/merciless146/RudolfOS/releases/download/r2026110813/vmlinuz
+L	base	207347712	cb4296c3be6ae718dab0095bbb6c693cfad2ba67808c5b3986a8ae63facc016d	https://github.com/merciless146/RudolfOS/releases/download/r2026110813/base.sfs
+L	chromium	134369280	5e9d9f111bcb03b430c404dd62fbb2f1289cac58efd602754490ec433ed2b944	https://github.com/merciless146/RudolfOS/releases/download/r2026110813/chromium.sfs
+L	desktop	4907008	eb83e85d6e1a160b1db9d5142d935317d133aed8ca36252543f939e9bc2374b0	https://github.com/merciless146/RudolfOS/releases/download/r2026110813/desktop.sfs
+L	modules	100044800	2c2715ba4b7e0d4f8a594b4e7f6f2e5ca88cb792eeda0dca443f79f0072582c5	https://github.com/merciless146/RudolfOS/releases/download/r2026110813/modules.sfs
+V	base	50224	3b86c022ea64042f80c275cb0b0779b4945bf09fa23c7004be97360f1ed59f8f	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
 V	chromium	32547	2ff477c010b75c21a70a4055ed85da0ed7427b08aca416ebef684299983c96a4	da3143e0b76e95a8fb9b20d6cd921581143496db9de69f0900a337920b32f7f8
-V	desktop	1187	7b15c244a69a162469078a5f9d9cbdbd0102eacef8cf523d5f61f4727ddd6c02	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
-V	modules	23154	743aa20cda22ec9b5d4cedb245ee6bc5cd667399e12df4ac1ae513e1c390deed	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
+V	desktop	1187	23d1dd789fa0311d0dd40d51851295347bac0f1f543d0847a5215701309e3d6d	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
+V	modules	24232	ed53b89852e8ff34ff1ee1edb2991d244a1020f41b18d37af2020d655e8d7ac4	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
