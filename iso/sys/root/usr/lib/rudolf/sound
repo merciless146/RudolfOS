@@ -40,7 +40,14 @@ open_outputs() {
 # a card PulseAudio does not have yet (one that came while it was starting, or later)
 add_card() {
 	[ -n "$(cardmod "$1")" ] && return 0
-	asuser "pactl load-module module-alsa-card $(cardargs "$1")" >/dev/null 2>&1 || { echo "sound: card $1 could not be opened" >> $LOG; return 1; }
+	a=$(cardargs "$1")
+	# 1.5.5: a card whose use case file does not work with it (the Vivobook's AMD microphones, acp6x: "Module
+	# initialization failed") is opened again with PulseAudio's own profiles, as before 1.5.4
+	if ! asuser "pactl load-module module-alsa-card $a" >/dev/null 2>&1; then
+		case "$a" in *use_ucm=0*) echo "sound: card $1 could not be opened" >> $LOG; return 1;; esac
+		asuser "pactl load-module module-alsa-card $a use_ucm=0" >/dev/null 2>&1 || { echo "sound: card $1 could not be opened" >> $LOG; return 1; }
+		echo "sound: card $1 opened without its use case file" >> $LOG
+	fi
 	open_outputs "$1"
 }
 set_default() {

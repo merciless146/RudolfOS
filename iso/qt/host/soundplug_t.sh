@@ -27,7 +27,7 @@ case "$1 $2 $3" in
 "list short modules") cat $ST/mods;;
 "list short sinks") awk -F'\t' '{split($3,a," "); for(i in a) if (a[i] ~ /^name=/) {sub(/name=/,"",a[i]); print $1 "\talsa_output." a[i] ".analog-stereo"}}' $ST/mods;;
 "list short sources") awk -F'\t' '{split($3,a," "); for(i in a) if (a[i] ~ /^name=/) {sub(/name=/,"",a[i]); print $1 "\talsa_input." a[i] ".analog-stereo"; print $1 "\talsa_output." a[i] ".analog-stereo.monitor"}}' $ST/mods;;
-"load-module module-alsa-card"*) shift 2; i=$(cat $ST/next); echo $((i+1)) > $ST/next; printf '%s\tmodule-alsa-card\t%s\n' "$i" "$*" >> $ST/mods; echo $i;;
+"load-module module-alsa-card"*) shift 2; case " $* " in *" use_ucm=0 "*) ;; *) [ -e $ST/ucmfail-$(echo "$*" | sed 's/.*device_id=\([0-9]*\).*/\1/') ] && exit 1;; esac; i=$(cat $ST/next); echo $((i+1)) > $ST/next; printf '%s\tmodule-alsa-card\t%s\n' "$i" "$*" >> $ST/mods; echo $i;;
 "unload-module "*) awk -F'\t' -v m="$2" '$1!=m' $ST/mods > $ST/m2; mv $ST/m2 $ST/mods;;
 esac
 exit 0
@@ -64,4 +64,9 @@ MDEV=snd/controlC2 ACTION=remove sh $S hotplug
 ok "unplugged: the headset is closed" "$([ "$(grep -c 'device_id=2 ' $ST/mods)" = 0 ] && [ "$(wc -l < $ST/mods)" = 2 ] && echo 1)" "$(cat $ST/mods)"
 MDEV=snd/pcmC0D0p ACTION=add sh $S hotplug; MDEV=snd/controlC12 ACTION=remove sh $S hotplug
 ok "other devices and unknown cards: nothing changes" "$([ "$(wc -l < $ST/mods)" = 2 ] && echo 1)" "$(cat $ST/mods)"
+# 1.5.5: a card whose use case file fails (the Vivobook's acp6x microphones) is opened with PulseAudio's own profiles
+printf ' 3 [acp6x          ]: acp6x - acp6x\n                      ASUSTeKCOMPUTERINC.-VivobookGoE1404FA\n' >> $A/cards; mkdir -p $A/card3; touch $A/card3/pcm0c $ST/ucmfail-3
+: > $ST/log; MDEV=snd/controlC3 ACTION=add sh $S hotplug; sleep 1.5
+ok "a card whose use case file fails is opened without it" "$(grep 'device_id=3 ' $ST/mods | grep -q 'use_ucm=0' && echo 1)" "$(cat $ST/mods)"
+ok "...and its microphone is set to 80%" "$(has "$(cat $ST/log)" "set-source-volume alsa_input.card3.analog-stereo 80%")" "$(cat $ST/log)"
 echo "$((N-F))/$N passed"; [ $F = 0 ]
