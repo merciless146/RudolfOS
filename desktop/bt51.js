@@ -22,7 +22,8 @@ function btPanel(c,W){
   btns.forEach(([l,f,pri])=>{const b=document.createElement('button');b.textContent=l;if(pri)b.className='pri';b.onclick=async()=>{if(busy)return;busy=true;c.querySelectorAll('button').forEach(x=>x.disabled=true);try{await f()}finally{busy=false;draw()}};r.appendChild(b)});host.appendChild(r)};
  const act=async(what,d,okText)=>{say(what=='pair'?`Pairing with ${btName(d)}… keep it in pairing mode. A phone shows a code: check it matches the one shown here.`:'Working…',true);if(what=='pair')setTimeout(btAsk,1500);
   try{const r=await rdPost(`bt/${what}?mac=${d.mac}`);say(okText,true);if(r.status)BT51=r.status}catch(e){say(`${btName(d)}: ${e.message||'it did not work'}. Make sure it is on, near the computer, and (to pair) in pairing mode.`)}};
- const draw=async(s)=>{s=s||await btStatus();mine.innerHTML='';near.innerHTML='';
+ const draw=async(s)=>{s=s||await btStatus();if(!c.contains(cb))return;   /* another page was opened while waiting (1.5.6) */
+  mine.innerHTML='';near.innerHTML='';
   if(!s){st.textContent='Bluetooth needs the installed Rudolf OS.';cb.disabled=true;q('.btf').disabled=true;q('.btv').disabled=true;return}
   if(!s.adapter){q('.btv').disabled=true;st.textContent='This computer has no Bluetooth adapter Rudolf OS can use. A USB Bluetooth adapter works too.';cb.disabled=true;q('.btf').disabled=true;mine.innerHTML="<i style='color:#6b7280'>None.</i>";return}
   cb.disabled=false;cb.checked=!!s.powered;st.textContent=s.powered?(s.discovering?'On · searching…':'On'):(s.running?'Off':'Starting…');q('.btf').disabled=!s.powered;q('.btv').disabled=!s.powered;q('.btvs').textContent=s.powered&&s.visible?`Visible as “${s.name||'Rudolf OS'}” for a few minutes.`:'';

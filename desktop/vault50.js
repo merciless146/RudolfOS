@@ -88,7 +88,7 @@ function vSection(c,W){if(!RD)return;const box=document.createElement('div');box
  const draw=async()=>{row.innerHTML='';pp.innerHTML='';const s=await vStatus();
   if(!s){t.textContent='Not available.';return}
   const who=s.data&&s.data.accts?ACCTS.filter(a=>a.id&&s.data.accts[a.id]).map(a=>a.n):[];
-  const parts=()=>{for(const k in VLT_PARTS){const d=document.createElement('div');d.textContent=(s.moved[k]?'🔒 ':'○ ')+VLT_PARTS[k]+(s.moved[k]?': encrypted':': not moved yet');pp.appendChild(d)}
+  const parts=()=>{const mv=s.moved||{};for(const k in VLT_PARTS){const d=document.createElement('div');d.textContent=(mv[k]?'🔒 ':'○ ')+VLT_PARTS[k]+(mv[k]?': encrypted':': not moved yet');pp.appendChild(d)}
    const d=document.createElement('div');d.style.color='#6b7280';d.textContent='Accounts whose password unlocks it: '+(who.length?who.join(', '):'none yet')+'. Not encrypted: the system itself (it is signed and checked instead), settings, logs and the browser\'s own data (the desktop encrypts each account\'s home folder itself). Large downloads are in each account\'s own folder on the disk; Rudolf OS shows each account only its own, but programs running on this computer, such as Linux apps, could reach any of them.';pp.appendChild(d)};
   switch(s.state){
    case'unavailable':t.textContent='Encryption needs Rudolf OS installed, or a USB drive that keeps your files.';break;
