@@ -3,6 +3,11 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.5.4 (2026-11-08)
+Summary: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chip
+- New: Bluetooth works with Intel chips (the Bluetooth half of Intel Wi-Fi cards: 8260, 8265, 9260, 9560, AX200, AX201, AX203, AX210, AX211, AX411, BE200, BE201 and newer), MediaTek MT7921, MT7922 and MT7925, and Qualcomm chips on USB, as well as Realtek (1.5.1). Not yet tried on a computer with these chips: if Bluetooth does not appear, Settings › Devices › Not supported yet and Report a problem say what the computer has.
+- New: Bluetooth built into the board on a serial line (UART), found in inexpensive laptops and tablets (Realtek RTL8723BS and RTL8723CS, Broadcom, Intel, Qualcomm).
+
 ## 1.5.3 (2026-11-07)
 Summary: USB Wi-Fi adapters with Ralink and MediaTek RT2800 chips, a choice of Wi-Fi adapter, and a list of the devices that have no driver yet
 - New: USB Wi-Fi adapters with Ralink and MediaTek RT2800 chips work (RT2770, RT2870, RT3070, RT3071, RT3072, RT3370, RT3572, RT3573, RT5370, RT5372, RT5572: most inexpensive Wi-Fi dongles), and the same chips as cards inside older laptops (RT2860, RT3090, RT3290, RT5390 and others).

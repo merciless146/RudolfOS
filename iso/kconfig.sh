@@ -115,6 +115,11 @@ y FS_ENCRYPTION CRYPTO_AES CRYPTO_AES_NI_INTEL CRYPTO_XTS CRYPTO_CTS CRYPTO_CBC 
 # crypto, hci_vhci for the tests (a virtual adapter)
 y BT BT_BREDR BT_LE BT_HIDP BT_RFCOMM BT_HCIBTUSB_RTL BT_HCIBTUSB_MTK BT_HCIBTUSB_BCM UHID CRYPTO_ECDH CRYPTO_CMAC CRYPTO_USER_API_HASH CRYPTO_USER_API_SKCIPHER
 m BT_HCIBTUSB BT_HCIVHCI
+# 1.5.4: Bluetooth built into the board on a serial line (UART): cheap laptops and tablets (Realtek RTL8723BS/CS,
+# Broadcom, Intel, Qualcomm). serdev attaches the chip the firmware (ACPI) describes; hci_uart drives it.
+BTUART="BT_HCIUART_H4 BT_HCIUART_3WIRE BT_HCIUART_INTEL BT_HCIUART_BCM BT_HCIUART_RTL BT_HCIUART_QCA"
+y SERIAL_DEV_BUS SERIAL_DEV_CTRL_TTYPORT $BTUART
+m BT_HCIUART
 # speed up the build
 n DEBUG_INFO DEBUG_INFO_DWARF5 DEBUG_INFO_DWARF4 DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT DEBUG_INFO_BTF KALLSYMS_ALL FTRACE
 $C --enable DEBUG_INFO_NONE
@@ -124,8 +129,9 @@ for o in $HOTKEYS; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o 
 grep -q "^CONFIG_IPV6_SIT=y\|^CONFIG_IPV6_SIT=m" .config && { echo "kconfig.sh: IPV6_SIT is still on"; exit 1; }
 # 1.4.7: the memory options are on
 for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU_GEN_ENABLED; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
+for o in SERIAL_DEV_BUS SERIAL_DEV_CTRL_TTYPORT $BTUART; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the Bluetooth option $o is not on after olddefconfig"; exit 1; }; done
 for o in NF_TABLES NF_TABLES_INET NFT_CT NFT_REJECT NFT_LIMIT FS_ENCRYPTION CRYPTO_XTS CRYPTO_CTS BT BT_BREDR BT_LE BT_HIDP UHID CRYPTO_ECDH CRYPTO_USER_API_HASH; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
-for o in BT_HCIBTUSB BT_HCIVHCI BT_RTL BT_INTEL BT_MTK; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig"; exit 1; }; done
+for o in BT_HCIBTUSB BT_HCIVHCI BT_RTL BT_INTEL BT_MTK BT_HCIUART BT_BCM BT_QCA; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig"; exit 1; }; done
 # 1.5.3: every Wi-Fi driver asked for is there (and the MediaTek USB ones, whose names have lower case)
 for o in $WIFI; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the Wi-Fi driver $o is not a module after olddefconfig (its menu or a dependency is off)"; exit 1; }; done
 for o in MT76x0U MT76x2U; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the Wi-Fi driver $o is not a module after olddefconfig"; exit 1; }; done

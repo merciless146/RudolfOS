@@ -204,6 +204,7 @@ acpi_kind() {
 	CSC3551|CSC3554|CSC3556) echo "Speaker amplifier|Cirrus";; TIAS2781|TXNW2781) echo "Speaker amplifier|TI";;
 	INT3472) echo "Camera power control|Intel";; OVTI*) echo "Camera sensor|OmniVision";; HIMX*) echo "Camera sensor|Himax";;
 	PNP0C50|ACPI0C50) echo "Touchpad or touchscreen (I2C)|";;
+	OBDA8723|OBDA8C21|BCM2E*|INT33E1|QCOM6390) echo "Bluetooth adapter (UART)|";;   # 1.5.4: Bluetooth on the board's serial line
 	esac
 }
 unsupported() {
