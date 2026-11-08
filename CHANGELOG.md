@@ -9,6 +9,9 @@ Summary: your files on the disk (docs/plan-1.5.6.md)
 - New (beta): accounts keep their files on the disk. Saving writes only the files that changed, large files have no size limit, and Linux apps see the same Documents, Pictures, Music and Videos.
 - New (beta): an account from before 1.5.6 moves its files to the disk once, in the background after signing in. Everything is read back and compared before the switch; a move that does not arrive whole changes nothing and is tried again at the next sign-in. The old copy is kept for 7 days, so going back to 1.5.5 still finds your files.
 - New (beta): with your files on the disk, the Trash still gives back large files (they wait in your folder's own Trash until it is emptied), backups carry your home, a backup restored on another computer fills your folder there, and administrators can open, change and close other accounts' files as before.
+- Changed: Power and battery is in Settings › System health, below the summary, instead of System Settings. The battery on the taskbar, User Settings' link and the Settings search go there.
+- Changed: Battery care stops charging at 70 %, 80 %, 90 % or 100 % (it was 60 %, 80 % or 100 %). A limit of 60 % set before is kept as 70 %, the nearest choice, not raised to 100 %. If the battery reports a different limit than the one chosen (some batteries take only certain limits), Power and battery says so.
+- Fixed: Bluetooth's page could fail when another Settings page was opened before it had loaded, and the encryption page when Rudolf OS gave no list of moved folders.
 
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it

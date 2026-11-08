@@ -1,12 +1,12 @@
 // 1.4.4 part 6: one clock (taskbar, calendar, lock screen, screen saver, widgets) in the time zone and format of System
 // Settings; quick settings without volume, brightness and battery; the battery on the taskbar; System Settings › Power
-// and battery; with a stand-in rudolfd, in a browser whose own zone is UTC. node taskbar144_t.js [CHROME]
+// and battery (in System health since 1.5.6, with battery care at 70, 80, 90 or 100 %); with a stand-in rudolfd, in a browser whose own zone is UTC. node taskbar144_t.js [CHROME]
 const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '../../..'), WWW = path.join(ROOT, 'iso/www');
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 400) : '')) };
 const T = {'.wasm': 'application/wasm', '.js': 'text/javascript', '.mjs': 'text/javascript', '.html': 'text/html'};
 const M = {calls: [], ev: [], errors: [], bat: {name: 'BAT0', capacity: 45, status: 'Charging', energy_now: 30000000, energy_full: 40000000, energy_full_design: 42000000, power_now: 8000000, cycle_count: 120}, ac: true, set: {mode_ac: 'balanced', mode_bat: 'balanced', saver_at: 20, saver_now: 0, screen_ac: 10, screen_bat: 5, sleep_ac: 0, sleep_bat: 15, lid_ac: 'sleep', lid_bat: 'sleep', button: 'ask', care: 100}};
-const status = () => ({ok: true, ac: M.ac, battery: M.bat, can: {profile: true, profileChoices: 'quiet balanced performance', epp: true, care: true, lid: true, backlight: true, wifiSave: false}, now: {src: M.ac ? 'ac' : 'bat', saver: false, mode: 'balanced', profile: 'balanced', epp: 'balance_performance', screen: 10, sleep: 0}, set: M.set});
+const status = () => ({ok: true, ac: M.ac, battery: M.bat, can: {profile: true, profileChoices: 'quiet balanced performance', epp: true, care: true, lid: true, backlight: true, wifiSave: false}, now: {src: M.ac ? 'ac' : 'bat', saver: false, mode: 'balanced', profile: 'balanced', epp: 'balance_performance', screen: 10, sleep: 0, care: M.nowcare ?? M.set.care}, set: M.set});
 const api = (a, q) => {
   M.calls.push(a + (q ? '?' + q : ''));
   if (a == 'power/status') return status();
@@ -68,15 +68,22 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('5. a device\'s battery at -1 % is not the computer\'s (Task Manager too)', await q("batOwn([{type:'Battery',scope:'System',capacity:45},{type:'Battery',scope:'Device',capacity:-1},{type:'Mains',capacity:-1}]).length") == 1);
   M.bat = {name: 'BAT0', capacity: 45, status: 'Charging', energy_full: 40000000, energy_full_design: 42000000, cycle_count: 120}; M.ac = true; await q("pwrPoll()");
   // Power and battery
-  await q("settings('sys')"); await wait(1500);
+  await q("document.getElementById('bat').click()"); await wait(1500);
+  ok('6. the battery on the taskbar opens Settings › System health, with Power and battery between the summary and the events', await q("(()=>{const d=document.getElementById('pwr31');if(!d||!SW||SW.sec!='health')return false;const s=d.parentElement.querySelector(':scope > .hls'),e=d.parentElement.querySelector(':scope > .hlev');return !!s&&!!e&&!!(s.compareDocumentPosition(d)&4)&&!!(d.compareDocumentPosition(e)&4)})()"), await q("SW&&SW.sec"));
+  ok('...and no longer in System Settings', await q("(async()=>{SW.show('sys',1);await new Promise(r=>setTimeout(r,800));const n=!document.querySelector('.pwr31');SW.show('health',1);await new Promise(r=>setTimeout(r,1200));return n&&!!document.querySelector('.pwr31')})()"));
+  ok('...Battery care offers 70, 80, 90 and 100 %', await q("[...document.querySelectorAll('.pwr31 select[data-k=care] option')].map(o=>o.value).join()") == '70,80,90,100', await q("[...document.querySelectorAll('.pwr31 select[data-k=care] option')].map(o=>o.value).join()"));
+  ok('...Settings search: "battery" finds System health', await q("SETPAGES.some(([k,t,kw])=>k=='health'&&kw.includes('battery'))&&!SETPAGES.some(([k,t,kw])=>k=='sys'&&kw.includes('battery'))"));
   const t = await q("document.querySelector('.pwr31')&&document.querySelector('.pwr31').innerText");
-  ok('6. System Settings › Power and battery: battery and its health, power mode, battery saver, screen off, sleep, lid, power button, battery care', t && /45 %, charging/.test(t) && /health 95 %, 120 charge cycles/.test(t) && /Power mode/i.test(t) && /Battery saver/i.test(t) && /screen off/i.test(t) && /Sleep after/i.test(t) && /lid/i.test(t) && /power button/i.test(t) && /Battery care/i.test(t), t);
-  for (const [k, v] of [['mode_bat', 'saver'], ['screen_bat', '2'], ['lid_ac', 'nothing'], ['button', 'shutdown'], ['care', '80']]) {
+  ok('...Power and battery: battery and its health, power mode, battery saver, screen off, sleep, lid, power button, battery care', t && /45 %, charging/.test(t) && /health 95 %, 120 charge cycles/.test(t) && /Power mode/i.test(t) && /Battery saver/i.test(t) && /screen off/i.test(t) && /Sleep after/i.test(t) && /lid/i.test(t) && /power button/i.test(t) && /Battery care/i.test(t), t);
+  for (const [k, v] of [['mode_bat', 'saver'], ['screen_bat', '2'], ['lid_ac', 'nothing'], ['button', 'shutdown'], ['care', '80'], ['care', '70'], ['care', '90']]) {
     M.calls = []; await q(`(()=>{const s=document.querySelector('.pwr31 select[data-k=${k}]');s.value='${v}';s.dispatchEvent(new Event('change',{bubbles:true}))})()`); await wait(400);
     ok(`...${k} = ${v} goes to rudolfd (power/set)`, M.calls.includes(`power/set?${k}=${v}`) && String(M.set[k]) == v, M.calls) }
   M.calls = []; await q("(()=>{const s=document.querySelector('.pwr31 .pwsn');s.checked=true;s.dispatchEvent(new Event('change',{bubbles:true}))})()"); await wait(400);
   ok('...battery saver on now', M.calls.includes('power/set?saver_now=1'), M.calls);
-  ok('7. User Settings no longer has Sleep', await q("(async()=>{SW.show('usr',1);await new Promise(r=>setTimeout(r,800));return !document.getElementById('usp')})()"));
+  M.nowcare = 80; await q("(async()=>{SW.show('health',1)})()"); await wait(1200);
+  ok('...a battery that keeps another limit than the one chosen (90, reports 80) says so', /reports a limit of 80 %/.test(await q("(document.querySelector('.pwr31 .pwcn')||{}).textContent||''")), await q("document.querySelector('.pwr31')&&document.querySelector('.pwr31').innerText"));
+  M.nowcare = undefined;
+  ok('7. User Settings no longer has Sleep: a link to System health › Power and battery, which opens it', await q("(async()=>{SW.show('usr',1);await new Promise(r=>setTimeout(r,800));if(document.getElementById('usp'))return false;const a=[...SW.el.querySelectorAll('.msg a')].find(x=>/System health › Power and battery/.test(x.textContent));if(!a)return false;a.click();await new Promise(r=>setTimeout(r,1500));return SW.sec=='health'&&!!document.getElementById('pwr31')})()"));
   ok('no page error', !M.errors.length, M.errors);
   await b.close(); srv.close();
   console.log(`${R.filter(x => x).length}/${R.length} passed`); process.exit(R.every(x => x) ? 0 : 1);

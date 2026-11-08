@@ -1,5 +1,5 @@
 #!/bin/sh
-# power (1.4.4): System Settings › Power and battery. Run as root by rudolfd (status, set), rudolf-display (apply when
+# power (1.4.4): Power and battery (in System health since 1.5.6). Run as root by rudolfd (status, set), rudolf-display (apply when
 # the charger is plugged in or out and every minute on battery, lid, button) and at start (apply).
 #   power status            JSON: the battery, the charger, what the computer can do, the settings, what is in force
 #   power set K=V ...       change settings (kept in /persist/etc/power.conf), then apply
@@ -8,7 +8,8 @@
 #   power lid closed|open   the lid switch (rudolf-display); power button   the power button (rudolf-display)
 # Settings: mode_ac, mode_bat (saver|balanced|performance), saver_at (0|10|20|30: battery saver by itself at that
 # level), saver_now (0|1), screen_ac, screen_bat (minutes to turn the screen off, 0 never), sleep_ac, sleep_bat
-# (minutes to sleep, 0 never), lid_ac, lid_bat (sleep|screen|nothing), button (ask|sleep|shutdown), care (60|80|100).
+# (minutes to sleep, 0 never), lid_ac, lid_bat (sleep|screen|nothing), button (ask|sleep|shutdown), care (70|80|90|100;
+# a 60 kept before 1.5.6 is read as 70, the nearest choice, rather than falling back to 100).
 # Test overrides: POWER_SYS (a stand-in /sys), POWER_CONF, POWER_RUN, POWER_SUSPEND (a command). GPL-2.0-or-later.
 SYS=${POWER_SYS:-/sys}
 RUN=${POWER_RUN:-/run/rudolf}
@@ -22,8 +23,8 @@ ok_val() { case "$1=$2" in mode_ac=saver|mode_ac=balanced|mode_ac=performance|mo
 	screen_bat=0|screen_bat=1|screen_bat=2|screen_bat=5|screen_bat=10|screen_bat=15|screen_bat=30) return 0;;
 	sleep_ac=0|sleep_ac=5|sleep_ac=10|sleep_ac=15|sleep_ac=30|sleep_ac=60|sleep_bat=0|sleep_bat=5|sleep_bat=10|sleep_bat=15|sleep_bat=30|sleep_bat=60) return 0;;
 	lid_ac=sleep|lid_ac=screen|lid_ac=nothing|lid_bat=sleep|lid_bat=screen|lid_bat=nothing) return 0;;
-	button=ask|button=sleep|button=shutdown|care=60|care=80|care=100) return 0;; esac; return 1; }
-get() { v=$(sed -n "s/^$1=//p" "$CONF" 2>/dev/null | tail -1); ok_val "$1" "$v" && echo "$v" || def "$1"; }
+	button=ask|button=sleep|button=shutdown|care=70|care=80|care=90|care=100) return 0;; esac; return 1; }
+get() { v=$(sed -n "s/^$1=//p" "$CONF" 2>/dev/null | tail -1); [ "$1" = care ] && [ "$v" = 60 ] && v=70; ok_val "$1" "$v" && echo "$v" || def "$1"; }
 ev() { echo "$*" >> "$RUN/events" 2>/dev/null; }
 now() { sed -n "s/^$1=//p" "$RUN/power-now" 2>/dev/null | tail -1; }
 rd1() { [ -r "$1" ] && head -c 200 "$1" | head -1; }
@@ -81,8 +82,9 @@ status() {
 		"$( [ -n "$b" ] && [ -e "$b/charge_control_end_threshold" ] && echo true || echo false)" \
 		"$( { [ -e "$RUN/lid-switch" ] || ls "${POWER_PROC:-/proc}"/acpi/button/lid/*/state >/dev/null 2>&1; } && echo true || echo false)" \
 		"$( ls -d "$SYS"/class/backlight/* >/dev/null 2>&1 && echo true || echo false)" "$(command -v iw >/dev/null 2>&1 && echo true || echo false)"
-	printf ',"now":{"src":%s,"saver":%s,"mode":%s,"profile":%s,"epp":%s,"screen":%s,"sleep":%s}' "$(js "$(now src)")" "$( [ "$(now saver)" = 1 ] && echo true || echo false)" "$(js "$(now mode)")" \
-		"$(js "$(rd1 $SYS/firmware/acpi/platform_profile)")" "$(js "$( [ -n "$ef" ] && rd1 $ef)")" "$(num "$(now screen)")" "$(num "$(now sleep)")"
+	printf ',"now":{"src":%s,"saver":%s,"mode":%s,"profile":%s,"epp":%s,"screen":%s,"sleep":%s,"care":%s}' "$(js "$(now src)")" "$( [ "$(now saver)" = 1 ] && echo true || echo false)" "$(js "$(now mode)")" \
+		"$(js "$(rd1 $SYS/firmware/acpi/platform_profile)")" "$(js "$( [ -n "$ef" ] && rd1 $ef)")" "$(num "$(now screen)")" "$(num "$(now sleep)")" \
+		"$(num "$( [ -n "$b" ] && rd1 $b/charge_control_end_threshold)")"
 	printf ',"set":{'; s=''; for k in $KEYS; do v=$(get $k); case "$v" in *[!0-9]*) printf '%s"%s":%s' "$s" $k "$(js "$v")";; *) printf '%s"%s":%s' "$s" $k "$v";; esac; s=,; done; printf '}}\n'
 }
 

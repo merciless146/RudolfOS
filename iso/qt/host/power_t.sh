@@ -25,6 +25,11 @@ ok "...and every processor's energy preference performance" $([ "$(cat $T/sys/de
 ok "...kept in power.conf" $(grep -q '^mode_ac=performance$' $POWER_CONF && echo 1 || echo 0) "$(cat $POWER_CONF)"
 $SH $P set mode_ac=saver >/dev/null; ok "Power saver: the quiet profile (this laptop has no low-power) and the power preference" $([ "$(cat $T/sys/firmware/acpi/platform_profile)" = quiet ] && [ "$(cat $T/sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference)" = power ] && echo 1 || echo 0)
 $SH $P set care=80 >/dev/null; ok "Battery care 80 %: the charge threshold" $([ "$(cat $B/charge_control_end_threshold)" = 80 ] && echo 1 || echo 0)
+for c in 70 90 100; do $SH $P set care=$c >/dev/null; ok "Battery care $c %: the charge threshold" $([ "$(cat $B/charge_control_end_threshold)" = $c ] && echo 1 || echo 0); done
+s=$($SH $P set care=60 2>&1); ok "60 % is no longer a choice (1.5.6): refused" $(has "$s" '"ok":false') "$s"
+sed -i 's/^care=.*/care=60/' $POWER_CONF; s=$($SH $P status)
+ok "a 60 kept before 1.5.6 is read as 70, not 100, and the battery reports 70 (now.care)" $([ "$(has "$s" '"sleep":0,"care":70}')" = 1 ] && [ "$(has "$s" '"care":70}}')" = 1 ] && [ "$(cat $B/charge_control_end_threshold)" = 70 ] && echo 1 || echo 0) "$s"
+$SH $P set button=ask >/dev/null; ok "...and written as 70 at the next change" $(grep -q '^care=70$' $POWER_CONF && echo 1 || echo 0) "$(cat $POWER_CONF)"
 s=$($SH $P set mode_ac=fast 2>&1); ok "a value that is not a choice is refused and nothing changes" $([ "$(has "$s" '"ok":false')" = 1 ] && grep -q '^mode_ac=saver$' $POWER_CONF && echo 1 || echo 0) "$s"
 # unplugged: battery settings, battery saver at 20 %
 $SH $P set mode_ac=balanced mode_bat=balanced saver_at=20 screen_bat=2 >/dev/null; : > $T/run/events
