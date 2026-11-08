@@ -12,7 +12,7 @@ install script makes them; a git checkout has none). What is listed:
     files already sit in the base layer; these are the large GSP images and their boot loaders.
   - Realtek Ethernet (r8169) firmware: small fixes the driver loads for most of its chips.
   - AMD processor microcode (1.2.4): built into the kernel too (kconfig.sh, UCODE_DIR) so it applies at start-up.
-  - Bluetooth (1.5.1): Realtek.
+  - Bluetooth: Realtek (1.5.1); Intel, MediaTek MT79xx and Qualcomm USB chips (1.5.4).
   - USB Wi-Fi adapters whose drivers came in 1.2.7 (ath9k_htc, mt7601u, mt76x0u, mt76x2u), and in 1.5.3 the
     Ralink and MediaTek RT2800 chips (rt2800usb, rt2800pci). The firmware of the
     older Wi-Fi drivers sits in the base layer (wififw.py, at the full build).
@@ -27,8 +27,11 @@ PATTERNS = [r'rtl_nic/.+', r'amd-ucode/microcode_amd(_fam[0-9a-f]+h)?\.bin',
             r'(mediatek/)?mt7662(_rom_patch)?\.bin',
             # USB and PCIe Wi-Fi (1.5.3): Ralink and MediaTek RT2800 chips (rt2800usb, rt2800pci)
             r'rt2870\.bin', r'rt2860\.bin', r'rt3290\.bin',
-            # Bluetooth (1.5.1): Realtek (every chip: small); Intel and MediaTek once checked against kernel.org
-            r'rtl_bt/.+']
+            # Bluetooth (1.5.1): Realtek (every chip: small)
+            r'rtl_bt/.+',
+            # Bluetooth (1.5.4): Intel (every ibt- file: AX200 to BE201, and the newest PCIe-attached chips), MediaTek
+            # MT7921/MT7922/MT7925, Qualcomm chips on USB (btusb loads qca/rampatch_usb_* and qca/nvm_usb_* itself)
+            r'intel/ibt-.+', r'mediatek/(mt79[0-9a-z]+/)?BT_RAM_CODE_MT79.+', r'qca/([^/]+/)?(rampatch|nvm)_usb_.+']
 
 
 def want(p):
