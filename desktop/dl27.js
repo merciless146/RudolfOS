@@ -231,6 +231,9 @@ async function dlOpen(path){const v=node(path),nm=path.at(-1),e=ext(nm),i=dlRefI
   const bt=document.createElement('button');bt.textContent=deb?'Install Wine…':'Open Settings › Apps';bt.style.marginRight='6px';const m=W.body.querySelector('.m');
   bt.onclick=async()=>{if(!deb){settings('apps');W.close();return}bt.disabled=true;if(typeof debInstallWine=='function'&&await debInstallWine(m)){bt.textContent='Open it with Wine';bt.disabled=false;bt.onclick=()=>{W.close();openPath(path)}}else bt.disabled=false};
   W.body.querySelector('div').prepend(bt);return W}
+ /* 1.5.6: a Debian package (Discord's .deb, say): not installed from a file yet; the App Store has most such apps */
+ if(e=='DEB'){const W=dlInfo(path,'This is a package for Debian. Rudolf OS does not install packages from a file yet. Most apps, Discord among them, are in the App Store (Flathub): install them from there.');
+  const bt=document.createElement('button');bt.textContent='Open the App Store';bt.style.marginRight='6px';bt.onclick=()=>{W.close();launch('store')};W.body.querySelector('div').prepend(bt);return W}
  return dlInfo(path,e=='ZIP'?'Archive Manager opens archives up to 1.5 MB. Open this one in a Linux app from the Downloads folder.':'Rudolf OS has no app that opens this kind of file from the disk.')}
 /* (1.4.8) a file kept on the disk, opened by a Linux app: it is already on the disk, so the app gets its own path
    (lxOpenFile would copy the reference itself, as it does for the desktop's own files outside the shared folders) */

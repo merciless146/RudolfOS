@@ -12,6 +12,8 @@ Summary: your files on the disk (docs/plan-1.5.6.md)
 - Changed: Power and battery is in Settings › System health, below the summary, instead of System Settings. The battery on the taskbar, User Settings' link and the Settings search go there.
 - Changed: Battery care stops charging at 70 %, 80 %, 90 % or 100 % (it was 60 %, 80 % or 100 %). A limit of 60 % set before is kept as 70 %, the nearest choice, not raised to 100 %. If the battery reports a different limit than the one chosen (some batteries take only certain limits), Power and battery says so.
 - Fixed: Bluetooth's page could fail when another Settings page was opened before it had loaded, and the encryption page when Rudolf OS gave no list of moved folders.
+- Fixed: Oracle's Downloads page still pointed at C:\DOWNLOADS, which 1.5.5 replaced with each account's own Downloads: "Open" gave 404 Not found and "Open Downloads folder" gave Folder not found. Both go to your Downloads now, and a file kept on the disk opened from Oracle opens the way File Explorer opens it. Small files Oracle downloads itself go straight into your Downloads.
+- Changed: opening a Debian package (.deb, such as Discord's) says Rudolf OS does not install packages from a file yet, and offers the App Store, where most such apps (Discord among them) are.
 
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it
