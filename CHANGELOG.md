@@ -11,6 +11,7 @@ Summary: each account has its own Downloads, choose the app shortcuts on your de
 - New: right-click an app in the Start menu › Add to desktop (or Remove from desktop). Apps without a desktop icon of their own get one. Before, Add to desktop only said "Already on the desktop".
 - New: Desktop icons… (in the desktop's right-click menu and in File Explorer's Desktop folder) lists every app with a tick for those on the desktop, and Restore the standard icons. Each account keeps its own choice.
 - New: File Explorer › right-click › Copy to desktop.
+- Changed: My Computer and Programs cannot be dropped on the Trash (hide them from their menu instead). Desktop icons… lists the desktop's own icons by name, My Computer among them, and the notification after removing an icon puts it back with a click.
 - Fixed: the Trash's tooltip kept saying "The Trash is empty" after something was put in it.
 - Fixed: the built-in microphones of AMD laptops (1.5.4) were found but not offered to apps: their sound card did not open with ALSA's use case files, so it is opened with the sound server's own settings instead (found on the ASUS Vivobook Go).
 - Fixed: after a restart, Downloads was only looked after once something was downloaded, so downloads from before 1.5.5 did not move into your own Downloads, and lost entries were not found again (found on the ASUS Vivobook Go).

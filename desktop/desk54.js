@@ -12,6 +12,10 @@ const deskBuiltins=()=>[...DESK.querySelectorAll(':scope > .ic:not(.fic):not(.tr
 const deskVisible=d=>d.style.display!='none';
 /* any app shortcut can be removed, built in or not (My Computer and Programs too); files go to the Trash instead */
 const deskRemovable=d=>!!d&&!d.classList.contains('fic')&&!d.classList.contains('tr');
+/* 1.5.5: My Computer and Programs are the computer's own places, not app shortcuts: they can be hidden from their menu
+   or Desktop icons…, but dropping one on the Trash does nothing (as on Windows): on the Vivobook My Computer went into
+   the Trash by mistake and there was no obvious way back */
+const deskSystem=d=>{try{const T=icTarget(d);return T.kind=='computer'||T.kind=='folder'}catch(e){return false}};
 /* the visible icon that opens app k, if any */
 function deskIconFor(k){return [...DESK.querySelectorAll(':scope > .ic:not(.fic):not(.tr)')].find(d=>deskVisible(d)&&deskAppOf(d)==k)||null}
 function deskHasApp(k){return !!deskIconFor(k)}
@@ -39,7 +43,9 @@ function deskApply(){const hid=USER?ld(DESKHIDE(),[]):[],add=USER?ld(DESKADD(),[
 function deskRemove(d){if(!USER||!d)return false;const k=deskAppOf(d);const nm=(d.querySelector('span')||{}).textContent||'';
  if(d.dataset.app){svj(DESKADD(),ld(DESKADD(),[]).filter(x=>x!=d.dataset.app))}
  else{const h=ld(DESKHIDE(),[]);const n=d.dataset.n||nm;if(!h.includes(n))svj(DESKHIDE(),[...h,n])}
- deskApply();notify(nm+' removed from the desktop','The app stays in the Start menu; right-click it there to add it back.',{quiet:true,toast:3000});return true}
+ deskApply();notify(nm+' removed from the desktop','Click here to put it back. Later: right-click the desktop › Desktop icons…',{quiet:true,toast:5000,action:()=>deskRestore(d)});return true}
+/* put a removed icon back (the notification's Undo, Desktop icons…) */
+function deskRestore(d){if(!USER||!d)return;if(d.dataset.app){deskAdd(d.dataset.app);return}const n=d.dataset.n||d.querySelector('span').textContent;svj(DESKHIDE(),ld(DESKHIDE(),[]).filter(x=>x!=n));deskApply()}
 function deskAdd(k){if(!USER||!APPS[k])return false;if(deskHasApp(k))return true;
  const b=deskBuiltins().find(d=>deskAppOf(d)==k);
  if(b){svj(DESKHIDE(),ld(DESKHIDE(),[]).filter(x=>x!=(b.dataset.n||b.querySelector('span').textContent)))}
@@ -52,10 +58,17 @@ function deskMenuItem(k){if(!USER||!APPS[k])return null;const on=deskHasApp(k);r
 function deskIconsDlg(){if(!USER)return;const W=win('Desktop icons','🖥️',380,460);W.body.style.cssText='display:flex;flex-direction:column;padding:10px;gap:8px';
  W.body.innerHTML=`<div class='msg'>The app shortcuts on your desktop. Files and folders on the desktop are in your Desktop folder.</div><input type='search' class='dsq' placeholder='Search apps' aria-label='Search apps'><div class='dsl' style='flex:1;overflow:auto;border:1px solid #e5e7eb;border-radius:6px'></div><div style='display:flex;justify-content:space-between'><button class='rst'>Restore the standard icons</button><button class='ok'>Done</button></div>`;
  const L=W.body.querySelector('.dsl'),Q=W.body.querySelector('.dsq');
- const keys=()=>Object.keys(APPS).filter(k=>APPS[k]&&APPS[k].name&&!['trash'].includes(k)).sort((a,b)=>APPS[a].name.localeCompare(APPS[b].name));
- function draw(){const q=Q.value.trim().toLowerCase();L.innerHTML='';keys().filter(k=>!q||APPS[k].name.toLowerCase().includes(q)).forEach(k=>{const r=document.createElement('label');r.className='dsr';r.style.cssText='display:flex;gap:8px;align-items:center;padding:5px 8px;border-bottom:1px solid #f3f4f6;cursor:pointer';
-  r.innerHTML=`<input type='checkbox'><span style='width:22px;text-align:center'></span><span style='flex:1'></span>`;const c=r.querySelector('input');c.checked=deskHasApp(k);c.dataset.k=k;r.children[1].textContent=APPS[k].icon||'';r.children[2].textContent=APPS[k].name;
-  c.onchange=()=>{if(c.checked)deskAdd(k);else{const d=deskIconFor(k);d&&deskRemove(d)}c.checked=deskHasApp(k)};L.appendChild(r)})}
+ /* 1.5.5: the desktop's own icons by their own names (My Computer, Programs, Notepad…) first, then the apps that have
+   none; before, My Computer was only there as "File Explorer" */
+ const own=()=>deskBuiltins().map(d=>({d,name:d.querySelector('span').textContent.trim(),icon:(d.querySelector('b')||{}).textContent||'',k:deskAppOf(d)})).sort((a,b)=>a.name.localeCompare(b.name));
+ const keys=()=>{const taken=new Set(own().map(o=>o.k).filter(Boolean));return Object.keys(APPS).filter(k=>APPS[k]&&APPS[k].name&&k!='trash'&&!taken.has(k)).sort((a,b)=>APPS[a].name.localeCompare(APPS[b].name))};
+ function row(icon,name,on,set){const r=document.createElement('label');r.className='dsr';r.style.cssText='display:flex;gap:8px;align-items:center;padding:5px 8px;border-bottom:1px solid #f3f4f6;cursor:pointer';
+  r.innerHTML=`<input type='checkbox'><span style='width:22px;text-align:center'></span><span style='flex:1'></span>`;const c=r.querySelector('input');c.checked=on();r.children[1].textContent=icon;r.children[2].textContent=name;
+  c.onchange=()=>{set(c.checked);c.checked=on()};L.appendChild(r)}
+ function head(t){const h=document.createElement('div');h.className='msg';h.style.cssText='padding:6px 8px 2px;font-weight:600';h.textContent=t;L.appendChild(h)}
+ function draw(){const q=Q.value.trim().toLowerCase(),hit=n=>!q||n.toLowerCase().includes(q);L.innerHTML='';
+  const o=own().filter(x=>hit(x.name));if(o.length){head('The desktop\'s icons');o.forEach(x=>row(x.icon,x.name,()=>deskVisible(x.d),v=>v?deskRestore(x.d):deskRemove(x.d)))}
+  const a=keys().filter(k=>hit(APPS[k].name));if(a.length){head('Other apps');a.forEach(k=>row(APPS[k].icon||'',APPS[k].name,()=>deskHasApp(k),v=>{if(v)deskAdd(k);else{const d=deskIconFor(k);d&&deskRemove(d)}}))}}
  W.body.querySelector('.rst').onclick=()=>{svj(DESKHIDE(),[]);svj(DESKADD(),[]);deskApply();draw()};
  Q.oninput=draw;W.body.querySelector('.ok').onclick=()=>W.close();draw();return W}
 /* the desktop icon's menu: Remove from desktop for app shortcuts */
@@ -67,7 +80,7 @@ function deskIconsDlg(){if(!USER)return;const W=win('Desktop icons','🖥️',38
 DESK.addEventListener('keydown',e=>{if(e.key!='Delete'||!USER)return;const d=e.target.closest&&e.target.closest('#desk > .ic');if(!deskRemovable(d)||d.dataset.app)return;e.preventDefault();deskRemove(d)});
 /* dropping a built-in app icon on the Trash removes it from the desktop (the pointer is over the Trash only when
    the icon was dragged there: icons never overlap) */
-DESK.addEventListener('pointerup',e=>{if(!USER)return;const d=e.target.closest&&e.target.closest('#desk > .ic');if(!deskRemovable(d)||d.dataset.app)return;
+DESK.addEventListener('pointerup',e=>{if(!USER)return;const d=e.target.closest&&e.target.closest('#desk > .ic');if(!deskRemovable(d)||d.dataset.app||deskSystem(d))return;
  if(deskOnTrash(e))setTimeout(()=>deskRemove(d),0)},true);
 /* after signing in and out */
 {const _sr=window.__sessionRestore;window.__sessionRestore=function(){try{deskApply()}catch(e){}return _sr&&_sr.apply(this,arguments)}}
