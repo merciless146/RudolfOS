@@ -46,14 +46,38 @@ today's storage.
   - administrators' access works as today, through their wrapped copy of the key.
 - **Storage, search, duplicates and backup work on the disk directly.** rudolfd, `du`, `find`.
 
+## Stage 1, as built
+
+- **rudolfd `home/*`** in `iso/sys/rudolfd-home.c`, included by rudolfd.c. The folder is
+  `/persist/accounts/<id>`, not `/persist/home/<id>`: `/persist/home/rudolf` is already the Linux user's home.
+  - Requests: `GET home`, `unlock` (with `session=1` for the binds), `lock`, `tree`, `list`, `stat`, `read` (ranges),
+    `write` (base version, `new`, pieces with `part=1` and `final=1`, `mkdirs=1`), `mkdir`, `rename` (`replace=1`),
+    `copy`, `delete`.
+  - Every path is walked with `openat(O_NOFOLLOW)`. A key that another open account uses is never taken out.
+- **The binds cover Documents, Pictures, Music and Videos only.** Downloads joins them in stage 4, when Chromium's
+  `.incoming` moves out of `/home/rudolf/Downloads`; otherwise the bind would hide it.
+- **Not yet:** `watch` (inotify) comes with stage 2, where the desktop uses it.
+- **Test:** host `homeapi_t.sh`, 27/27, on a real ext4 drive with the encrypt feature (a loop device):
+  - the folder is made with the key's policy, and another account's key is refused;
+  - after `lock` the names and contents can't be read, also by root;
+  - paths, links, conflicts, pieces, rename, copy and delete;
+  - the binds.
+
+## 1.5.5's remaining items
+
+1.5.5 was promoted on 2026-11-08 with plan items 1 (Downloads for each account) and the fixes found on the Vivobook.
+Its items 2–7 (sorting, favourite files, storage, the Trash, search, batch rename and duplicates) move here, after
+stage 4, and are built on the disk directly. Storage, search and duplicates get simpler that way, and the Trash
+becomes `.Trash/` from the start.
+
 ## 1. Where the files go
 
 ```
-/persist/home/<account id>/          one per account, encrypted with its file key (fscrypt v2, AES-256-XTS)
+/persist/accounts/<account id>/          one per account, encrypted with its file key (fscrypt v2, AES-256-XTS)
     Desktop/ Documents/ Pictures/ Music/ Videos/ Downloads/
     .Trash/                          the account's Trash (files, and where each came from)
     .rudolf/                         the desktop's notes on files (comments, favourites, sort orders)
-/persist/home/guest/                 tmpfs, emptied at sign-out (as the guest's home is today)
+/persist/accounts/guest/                 tmpfs, emptied at sign-out (as the guest's home is today)
 ```
 
 - C:\USERS\<name> is that folder. The other parts of C: (Programs, the system folders) stay in `fs:system`: they
@@ -67,7 +91,7 @@ today's storage.
 
 ## 2. rudolfd: files in the homes
 
-A new file API (`home/*`), only inside `/persist/home/<the signed-in account>` (and an administrator's opened
+A new file API (`home/*`), only inside `/persist/accounts/<the signed-in account>` (and an administrator's opened
 account):
 - **`list`, `tree`, `stat`**: names, folder or file, size, modified time, a version number (mtime and size)
   for "changed elsewhere".
@@ -105,7 +129,7 @@ The apps keep using the in-memory tree (`node()`, `d[name]=value`, `fsSave()`), 
 ## 4. Moving the homes (once, at an account's first sign-in on 1.5.6)
 
 1. The desktop decrypts the home record as today.
-2. It writes every file to `/persist/home/<id>/`, which is already encrypted. Large downloads (the
+2. It writes every file to `/persist/accounts/<id>/`, which is already encrypted. Large downloads (the
    `.accounts/<id>/` files) are moved, not copied.
 3. It reads the tree back and compares names, sizes and SHA-256s with the record.
 4. Only then does it switch to the disk. It **keeps the old record** for the update fallback: if 1.5.6 does not
@@ -116,7 +140,7 @@ The apps keep using the in-memory tree (`node()`, `d[name]=value`, `fsSave()`), 
 Other cases:
 - A home that cannot be moved (a full disk, a damaged record) stays as it is, with a notification and a health-log
   line. Nothing is lost, and the move is tried again at the next sign-in.
-- C:\SHARED DOWNLOADS (BEFORE 1.5.5) moves to `/persist/home/shared-downloads/`, readable by every account, if it
+- C:\SHARED DOWNLOADS (BEFORE 1.5.5) moves to `/persist/accounts/shared-downloads/`, readable by every account, if it
   is still there.
 - Progress is shown, because a large home takes a while: "Moving your files to the disk… 1,234 of 5,678 files".
 
@@ -188,7 +212,8 @@ Other cases:
 2. The desktop's view of C: on the disk, for new accounts only (browser tests).
 3. The move for existing homes, with verification and the kept record (browser tests, QEMU t156).
 4. Downloads, the Trash, Linux apps' folders, "Encrypt my data", backup and restore on the new storage.
-5. Storage, search and duplicates switched to the disk (1.5.5 items 4, 6, 7, if 1.5.5 shipped them on C:).
+5. 1.5.5's items 2–7 (docs/plan-1.5.5.md), on the disk: sorting and favourite files; storage and the Trash; search;
+   batch rename and duplicates (one PR each).
 6. QEMU t150, t150f, t152 and t156 on the final beta; the Vivobook; then promote when you say; the disc image.
 
 ## Size
