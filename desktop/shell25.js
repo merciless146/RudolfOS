@@ -152,7 +152,7 @@ function startSearch(q){q=q.trim().toLowerCase();const out=[];if(!q)return out;
  new MutationObserver(()=>{if(M.style.display=='flex')setTimeout(()=>inp.focus(),10);else{inp.value='';items=[];draw()}}).observe(M,{attributes:true,attributeFilter:['style']});
  /* right-click on a Start item can pin it */
  M.addEventListener('contextmenu',e=>{const li=e.target.closest('li[data-a]');if(!li)return;const k=li.dataset.a=='docs'?null:(APPS[li.dataset.a]?li.dataset.a:null);if(!k)return;e.preventDefault();e.stopImmediatePropagation();
-  cmenu(e.clientX,e.clientY,[['Open',()=>{M.style.display='none';launch(k)},true,{icon:'↗'}],[pinList().includes(k)?'Unpin from taskbar':'Pin to taskbar',()=>pinSet(k,!pinList().includes(k))],['Add to desktop',()=>{notify('Already on the desktop','')}]],{title:APPS[k].name})},true)})();
+  cmenu(e.clientX,e.clientY,[['Open',()=>{M.style.display='none';launch(k)},true,{icon:'↗'}],[pinList().includes(k)?'Unpin from taskbar':'Pin to taskbar',()=>pinSet(k,!pinList().includes(k))],typeof deskMenuItem=='function'?deskMenuItem(k):null],{title:APPS[k].name})},true)})();
 /* ---------- notification centre ---------- */
 const NCK=()=>'bd95notif:'+uid();let NC=[],ncUnread=0;
 const NCB=document.createElement('button');NCB.id='ncb';NCB.title='Notifications (Super+N)';NCB.setAttribute('aria-label','Notifications');NCB.textContent='🔔';
@@ -237,7 +237,7 @@ function renameDlg(p){const o=document.createElement('div');o.className='rmodal'
 function deskNew(dirFlag){const d=deskFiles();if(!d)return;const n=uniq(d,dirFlag?'NEW FOLDER':'NEW TEXT DOCUMENT.TXT');d[n]=dirFlag?{}:'';fsSave();EXPL.forEach(f=>f());setTimeout(()=>renameDlg(homePath('DESKTOP').concat(n)),50)}
 function deskMenu(x,y){
  cmenu(x,y,[['New folder',()=>deskNew(1),!!deskFiles(),{icon:'📁'}],['New text document',()=>deskNew(0),!!deskFiles(),{icon:'📄'}],['Add a widget…',()=>widgetPicker(),!!USER,{icon:'🧩'}],'-',
-  ['Arrange icons by name',arrangeIcons],['Refresh',()=>{layIcons();EXPL.forEach(f=>f())},true,{key:'F5'}],'-',
+  ['Arrange icons by name',arrangeIcons],USER&&typeof deskIconsDlg=='function'?['Desktop icons…',deskIconsDlg,true,{icon:'🖥️'}]:null,['Refresh',()=>{layIcons();EXPL.forEach(f=>f())},true,{key:'F5'}],'-',
   ['Open File Explorer',()=>launch('explorer')],['Open Rudolf Prompt',()=>launch('prompt')],['Show all windows',()=>overview(),true,{key:'Super+Tab'}],'-',['Open settings…',()=>settings()]],{title:'Desktop'})}
 DESK.addEventListener('dragover',e=>{if(e.dataTransfer&&[...e.dataTransfer.types].includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy'}});
 DESK.addEventListener('drop',async e=>{const fl=e.dataTransfer&&[...e.dataTransfer.files];if(!fl||!fl.length)return;if(e.target.closest&&e.target.closest('.win'))return;e.preventDefault();const d=deskFiles();if(!d)return;
