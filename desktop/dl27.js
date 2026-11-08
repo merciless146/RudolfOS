@@ -30,14 +30,21 @@ function dlNative(u,o){o=o||{};let nm='';try{nm=decodeURIComponent(o.name||new U
 /* hand a download to Chromium itself (the frames fallback, or a file too large to fetch here) */
 function dlHandOff(u,rec){const f=document.createElement('iframe');f.setAttribute('sandbox','allow-downloads');f.style.cssText='position:fixed;width:1px;height:1px;left:-9px;top:-9px;border:0;opacity:0';f.src=u;document.body.appendChild(f);setTimeout(()=>f.remove(),120000);
  if(rec){rec.nat=1;rec.st='wait';rec.why='';if(!DLN.pend.includes(rec))DLN.pend.push(rec);saveDl()}clearTimeout(DLN.t);DLN.t=setTimeout(dlPoll,700)}
-function dlMatch(it){const N=dlCName(it.name);let r=DLN.pend.find(x=>x.st=='wait'&&x.part==it.name+'.crdownload')||DLN.pend.find(x=>x.st=='wait'&&x.n==N);if(!r)r=DLN.pend.find(x=>x.st=='wait'&&Date.now()-x.t<3600e3);
+/* 1.5.5: matched by its partial file or its name; otherwise only to the one download started in the last ten minutes
+   that no file has arrived for yet (the site named the file differently). Before, any waiting download within an
+   hour was taken: a saved recovery key was listed with a stuck Steam download's address (found on the Vivobook). */
+function dlMatch(it){const N=dlCName(it.name);let r=DLN.pend.find(x=>x.st=='wait'&&x.part==it.name+'.crdownload')||DLN.pend.find(x=>x.st=='wait'&&x.n==N);
+ if(!r){const c=DLN.pend.filter(x=>x.st=='wait'&&!x.part&&Date.now()-x.t<600e3);if(c.length==1)r=c[0]}
  if(!r){r={n:N,u:'',t:Date.now(),sz:0,st:'wait',why:'',nat:1};DLS.push(r);if(DLS.length>100)DLS.shift();DLN.pend.push(r)}return r}
 async function dlPoll(){clearTimeout(DLN.t);if(!dlOn())return;if(DLN.busy){DLN.t=setTimeout(dlPoll,1500);return}DLN.busy=true;let active=false;
  try{const j=await rd('dl/incoming');const items=j.items||[];
   for(const it of items){const key=it.name+'\0'+it.size+'\0'+it.mtime;
    if(it.partial){active=true;const r=DLN.pend.find(x=>x.st=='wait'&&(!x.part||x.part==it.name))||null;if(r){r.sz=it.size;r.part=it.name;if(r.gs!==it.size){r.gs=it.size;r.gt=Date.now()}}
-    if(r&&Date.now()-r.gt>120e3){/* not grown for two minutes: Chromium is holding it (for example a file over http from a secure page) */
-     await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&to=del').catch(()=>{});dlDone(r,'failed','The download stopped. The site may offer it over an insecure connection (http) from a secure page.');continue}
+    if(r&&Date.now()-r.gt>120e3){/* not grown for two minutes: Chromium is holding it. 1.5.5: "Unconfirmed N.crdownload"
+     is a file Chromium waits to have confirmed, which the desktop cannot do (the policy now exempts the file types it
+     asked about, as Rudolf OS checks every file itself); the old message blamed an insecure (http) address, which
+     the Vivobook's Discord and Steam downloads were not */
+     await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&to=del').catch(()=>{});dlDone(r,'failed',/^Unconfirmed /.test(it.name)?'The browser held this file back to ask whether to keep it. Try again; if it stops again, use Report a problem.':'The download stopped (nothing more arrived for two minutes). Try again.');continue}
     if(it.size>dlMax()){DLN.kill.add(it.name.replace(/\.crdownload$/,''));await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&to=del').catch(()=>{});if(r)dlDone(r,'blocked','The file is larger than '+fmtB(dlMax())+', the limit set in Settings ▸ Network ▸ Downloads.')}
     continue}
    if(DLN.kill.has(it.name)){/* stopped while it arrived: Chromium finished writing it anyway */DLN.kill.delete(it.name);await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&to=del').catch(()=>{});continue}
@@ -45,6 +52,10 @@ async function dlPoll(){clearTimeout(DLN.t);if(!dlOn())return;if(DLN.busy){DLN.t
    if(DLN.seen.has(key))continue;DLN.seen.add(key);active=true;const rec=dlMatch(it);rec.n=dlCName(it.name);rec.sz=it.size;rec.st='check';
    DLN.ing=(DLN.ing||0)+1;DLN.chain=DLN.chain.then(()=>dlIngest(it,rec)).catch(e=>{console.warn('download',e);dlDone(rec,'failed',e&&e.message||'The file could not be checked.')}).finally(()=>{DLN.ing--})}
   DLN.pend.filter(x=>x.st=='wait'&&!x.part&&Date.now()-x.t>180e3).forEach(x=>dlDone(x,'failed','The download did not start (the site did not send the file).'));
+  /* 1.5.5: its partial file went away without a finished file (Chromium cancelled it): stopped, not "Downloading…" for
+     ever (two Steam downloads from Nov 3 on the Vivobook) */
+  const parts=new Set(items.filter(i=>i.partial).map(i=>i.name)),names=new Set(items.map(i=>i.name));
+  DLN.pend.filter(x=>x.st=='wait'&&x.part&&!parts.has(x.part)&&!names.has(String(x.part).replace(/\.crdownload$/,''))).forEach(x=>{x.gone=(x.gone||0)+1;if(x.gone>=3)dlDone(x,'failed','The download was stopped before it finished.')});
   if(DLN.seen.size>500)DLN.seen=new Set([...DLN.seen].slice(-200));
   try{window.__dlHook&&window.__dlHook()}catch(e){}}
  catch(e){}finally{DLN.busy=false}
@@ -246,4 +257,10 @@ if(typeof storPanel=='function'){const _sp=storPanel;storPanel=function(c){const
  const sp=h.querySelector('.dlsp');sp.textContent=`${refs.length} file(s), ${fmtB(tot)}.`;rd('dl/space').then(s=>{if(s.total>0)sp.textContent+=` The disk has ${fmtB(s.free)} free of ${fmtB(s.total)}.${s.live?' Running live: they are kept in memory and gone after you shut down.':''}`}).catch(()=>{});
  const bk=c.querySelectorAll('h4.sh4')[1];bk?c.insertBefore(h,bk):c.appendChild(h);return r}}
 /* start */
-if(dlOn()){const go=()=>{setTimeout(dlPoll,1500);setTimeout(dlSpaceCheck,8000)};typeof FSREADY!='undefined'?FSREADY.then(go,go):go()}
+/* 1.5.5: started once the desktop knows it runs on Rudolf OS itself. window.__sys is set when the accounts are loaded,
+   after this file runs, so testing dlOn() here (as before) never started the checks after a restart: downloads were
+   only looked at once a download began in this session, and the reconcile (moving and adopting files) never ran.
+   Found on the Vivobook: C:\DOWNLOADS from before 1.5.5 had not moved. */
+/* 1.5.5: downloads an earlier session left waiting or being checked (the desktop restarted, or Rudolf OS did) */
+try{let n=0;DLS.forEach(r=>{if(['wait','check','approve'].includes(r.st)&&!DLN.pend.includes(r)){r.st='failed';r.why='Stopped when the desktop or Rudolf OS restarted. Download it again.';n++}});if(n)saveDl()}catch(e){}
+if(RD){let tries=0;const go=()=>{if(dlOn()){setTimeout(dlPoll,1500);setTimeout(dlSpaceCheck,8000)}else if(++tries<300)setTimeout(go,2000)};typeof FSREADY!='undefined'?FSREADY.then(go,go):go()}

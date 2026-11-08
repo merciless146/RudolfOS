@@ -13,6 +13,9 @@ Summary: each account has its own Downloads, choose the app shortcuts on your de
 - New: File Explorer › right-click › Copy to desktop.
 - Fixed: the Trash's tooltip kept saying "The Trash is empty" after something was put in it.
 - Fixed: the built-in microphones of AMD laptops (1.5.4) were found but not offered to apps: their sound card did not open with ALSA's use case files, so it is opened with the sound server's own settings instead (found on the ASUS Vivobook Go).
+- Fixed: after a restart, Downloads was only looked after once something was downloaded, so downloads from before 1.5.5 did not move into your own Downloads, and lost entries were not found again (found on the ASUS Vivobook Go).
+- Fixed: some downloads (for example Discord's and Steam's .deb files) stopped with "the site may offer it over an insecure connection": the browser was holding them for a confirmation it cannot ask for. It no longer does (Rudolf OS checks every file itself), and the message says what happened.
+- Fixed: Downloads no longer lists downloads as "Downloading…" for ever (from before a restart, or cancelled by the browser), and a saved file is no longer listed with another download's address.
 - Fixed: a download whose entry in Downloads was lost (for example one that finished while nobody was signed in) is listed again by itself, after the antivirus has checked it.
 
 ## 1.5.4 (2026-11-08)

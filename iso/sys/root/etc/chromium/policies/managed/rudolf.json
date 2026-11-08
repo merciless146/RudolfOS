@@ -7,5 +7,349 @@
   "InsecureContentAllowedForUrls": [
     "http://*"
   ],
-  "DefaultAutomaticDownloadsSetting": 1
+  "DefaultAutomaticDownloadsSetting": 1,
+  "ExemptDomainFileTypePairsFromFileTypeDownloadWarnings": [
+    {
+      "file_extension": "deb",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "rpm",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "run",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "sh",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "bash",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "csh",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "ksh",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "desktop",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "appimage",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "flatpak",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "flatpakref",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "snap",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "jar",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "jnlp",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "py",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "pl",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "rb",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "exe",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "msi",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "msix",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "msp",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "dll",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "bat",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "cmd",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "com",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "scr",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "ps1",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "psm1",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "vbs",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "vbe",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "js",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "jse",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "wsf",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "hta",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "lnk",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "url",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "reg",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "apk",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "dmg",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "pkg",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "app",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "iso",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "img",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "swf",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "crx",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "xpi",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "html",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "htm",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "svg",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "zip",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "7z",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "rar",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "gz",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "tgz",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "xz",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "bz2",
+      "domains": [
+        "*"
+      ]
+    },
+    {
+      "file_extension": "tar",
+      "domains": [
+        "*"
+      ]
+    }
+  ]
 }
