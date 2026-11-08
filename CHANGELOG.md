@@ -12,6 +12,7 @@ Summary: each account has its own Downloads, choose the app shortcuts on your de
 - New: Desktop icons… (in the desktop's right-click menu and in File Explorer's Desktop folder) lists every app with a tick for those on the desktop, and Restore the standard icons. Each account keeps its own choice.
 - New: File Explorer › right-click › Copy to desktop.
 - Fixed: the Trash's tooltip kept saying "The Trash is empty" after something was put in it.
+- Fixed: the built-in microphones of AMD laptops (1.5.4) were found but not offered to apps: their sound card did not open with ALSA's use case files, so it is opened with the sound server's own settings instead (found on the ASUS Vivobook Go).
 - Fixed: a download whose entry in Downloads was lost (for example one that finished while nobody was signed in) is listed again by itself, after the antivirus has checked it.
 
 ## 1.5.4 (2026-11-08)
