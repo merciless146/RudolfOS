@@ -110,6 +110,35 @@ today's storage.
 
   `home56_t.js` (20/20) now turns `supported` off while its pre-1.5.6 account signs in.
 
+## Stage 4, as built
+
+- **The Trash:**
+  - something put in the Trash that holds large files (references) is renamed into the account's
+    `.Trash/<stamp>/` on the disk instead of deleted, and the Trash's entries are pointed there
+    (`hdTrashRepoint`);
+  - Restore renames it back (`move`), not a copy;
+  - `.Trash/<stamp>` folders nothing points at any more are deleted after the Trash changes (`hdTrashSweep`);
+  - small files stay in the Trash's own record, as before.
+- **Backup:** `backupBlob` first writes the signed-in account's home as the record backups always had (encrypted
+  with the file key). Large files are not in it, as large downloads never were.
+- **A restored backup:**
+  - rudolfd's `home/unlock` now answers "made" when it made the folder;
+  - a disk account whose folder was just made, but which has a record (a backup restored here, or the account on
+    another computer), is filled from the record by the stage 3 move.
+- **Administrators:** `acOpenHome` opens a disk account's folder with its file key (`home/unlock` without binds,
+  key from `hdKeyHex(f, o.id)`). `acSaveOthers` writes its changes with `hdSyncFor`, and `acClose` writes and locks
+  it.
+- **`hdSync` is generalised** to `hdSyncFor(acct, home, snapshot)`.
+- **Not done in stage 4,** each needing the Vivobook:
+  - Downloads stays out of the Linux binds, because Chromium's `.incoming` would move with it;
+  - the Encrypt my data page's wording;
+  - `watch` (the 15 s re-read stays).
+- **Tests:**
+  - browser `home56r_t.js` 11/11: large files through the Trash and Restore, emptying, small files, the backup
+    record, a restore on a new folder, an administrator opening, changing and locking;
+  - host `homeapi_t.sh` 30/30 ("made", then "unlocked");
+  - `home56_t`, `home56m_t`, acct50, files, Downloads and desktop tests unchanged.
+
 ## 1.5.5's remaining items
 
 1.5.5 was promoted on 2026-11-08 with plan items 1 (Downloads for each account) and the fixes found on the Vivobook.

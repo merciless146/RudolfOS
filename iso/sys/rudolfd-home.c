@@ -125,8 +125,9 @@ static int home_bind(const char *acct, char *err, size_t en)
 	char line[80]; snprintf(line, sizeof line, "%s\n", acct); write_str(HOME_SESSION, line); return 0;
 }
 /* 0 ok; otherwise an HTTP status and err */
-static int home_unlock(const char *acct, const unsigned char *key, int session, char *err, size_t en)
+static int home_unlock(const char *acct, const unsigned char *key, int session, char *err, size_t en, int *made)
 {
+	if (made) *made = 0;
 	if (!dl_acct_ok(acct) || !strcmp(acct, "guest") || !strcmp(acct, "shared")) { snprintf(err, en, "bad account"); return 400; }
 	mkdir(home_root, 0711);
 	int rfd = open(home_root, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
@@ -150,6 +151,7 @@ static int home_unlock(const char *acct, const unsigned char *key, int session, 
 		if (d < 0 || ioctl(d, FS_IOC_SET_ENCRYPTION_POLICY, &p)) { int pe = errno; if (d >= 0) close(d); unlinkat(rfd, acct, AT_REMOVEDIR); close(rfd); home_key_remove(id, NULL);
 			snprintf(err, en, "the encrypted folder could not be made (%s)", pe == EOPNOTSUPP ? "the drive is not prepared for encryption" : strerror(pe)); return pe == EOPNOTSUPP ? 409 : 500; }
 		for (int i = 0; HOME_SUB[i]; i++) { mkdirat(d, HOME_SUB[i], 0755); fchownat(d, HOME_SUB[i], home_uid, home_uid, 0); }
+		if (made) *made = 1;
 	} else if (d < 0) { close(rfd); home_key_remove(id, NULL); snprintf(err, en, "the account's folder could not be opened"); return 500; }
 	else {
 		unsigned char have[FSCRYPT_KEY_IDENTIFIER_SIZE]; int p = home_policy_id(d, have);
@@ -294,9 +296,10 @@ static void api_home(struct req *r, const char *what, int post)
 		if (r->blen < 128) { reply_err(r->fd, 400, "bad key"); return; }
 		for (int i = 0; i < 64; i++) { int a = hexval(h[2 * i]), b = hexval(h[2 * i + 1]); if (a < 0 || b < 0) { explicit_bzero(key, sizeof key); reply_err(r->fd, 400, "bad key"); return; } key[i] = a << 4 | b; }
 		explicit_bzero(r->body, r->blen);
-		char err[200] = ""; int st = home_unlock(acct, key, session, err, sizeof err); explicit_bzero(key, sizeof key);
+		char err[200] = ""; int made = 0, st = home_unlock(acct, key, session, err, sizeof err, &made); explicit_bzero(key, sizeof key);
 		if (st) { if (st == 403) health_add("vault", "an account's folder was not opened: the key did not match"); reply_err(r->fd, st, err); return; }
-		reply_ok(r->fd, "unlocked"); return;
+		/* stage 4: "made" when the folder is new (the desktop then fills it from a restored backup, if it has one) */
+		reply_ok(r->fd, made ? "made" : "unlocked"); return;
 	}
 	if (!strcmp(what, "lock")) {
 		if (!post) { reply_err(r->fd, 400, "use POST"); return; }

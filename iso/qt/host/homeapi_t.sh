@@ -17,7 +17,7 @@ t() { $T/t $R "$@"; }
 K1=$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n'); K2=$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n')
 printf %s "$K1" > $T/k1; printf %s "$K2" > $T/k2; printf 'Dear diary' > $T/a; head -c 300000 /dev/urandom > $T/big; printf 'v2' > $T/b
 o=$(t "POST home/unlock?acct=u-boss <$T/k1")
-ok "1. the first unlock makes the account's folder" "$(has "$o" "200 OK")" "$o"
+ok "1. the first unlock makes the account's folder (and says made)" "$(has "$o" '"message":"made"')" "$o"
 ok "2. ...encrypted with the key's policy, with the usual folders" "$([ -d $R/u-boss/Documents ] && [ -d $R/u-boss/.Trash ] && [ "$(stat -c %u $R/u-boss/Documents)" = 1000 ] && echo 1)" "$(ls -la $R/u-boss)"
 o=$(t "POST home/write?acct=u-boss&path=Documents/diary.txt&base=new <$T/a" "GET home/read?acct=u-boss&path=Documents/diary.txt")
 ok "3. a file is written and read back" "$(has "$o" "Dear diary")" "$o"
@@ -49,7 +49,7 @@ ok "16. after lock, the folder is refused (423)" "$(echo "$o" | sed -n 2p | grep
 ok "17. ...and its names and contents are unreadable on the disk, also to root" "$([ ! -e $R/u-boss/Documents ] && ! grep -rqa 'Dear diary\|v2' $R/u-boss 2>/dev/null && echo 1)" "$(ls $R/u-boss | head -3)"
 ok "18. GET home lists the accounts, open or locked" "$(echo "$o" | sed -n 3p | grep -q '"id":"u-boss","unlocked":false' && echo "$o" | sed -n 3p | grep -q '"id":"u-kid","unlocked":true' && echo 1)" "$o"
 o=$(t "POST home/unlock?acct=u-boss <$T/k1" "GET home/read?acct=u-boss&path=Documents/Work/2026/diary.txt")
-ok "19. unlocked again with its key, the files are back" "$(has "$o" "|v2")" "$o"
+ok "19. unlocked again with its key (not made again), the files are back" "$([ "$(has "$o" "|v2")" = 1 ] && echo "$o" | sed -n 1p | grep -q '"message":"unlocked"' && echo 1)" "$o"
 o=$(t "POST home/unlock?acct=../x <$T/k1" "POST home/unlock?acct=guest <$T/k1" "POST home/unlock?acct=u-boss <$T/a")
 ok "20. bad accounts and bad keys are refused" "$([ "$(echo "$o" | grep -c ' 400 ')" = 3 ] && echo 1)" "$o"
 # the binds for Linux apps (a private /home here)
