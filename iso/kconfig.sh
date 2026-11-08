@@ -145,6 +145,12 @@ n $SOFOLD
 BTUART="BT_HCIUART_H4 BT_HCIUART_3WIRE BT_HCIUART_INTEL BT_HCIUART_BCM BT_HCIUART_RTL BT_HCIUART_QCA"
 y SERIAL_DEV_BUS SERIAL_DEV_CTRL_TTYPORT $BTUART
 m BT_HCIUART
+# 1.5.4: Windows games through Steam's Proton: NT synchronization (/dev/ntsync, recent Proton), and the Steam
+# Controller and Steam Deck controls (hid-steam). Controllers in Steam Input also need uinput, hidraw and xpad
+# (above), all checked below. PlayStation 4 and 5 controllers (hid-playstation) need the multicolour LED class for
+# their light bar: without it the driver was left out without a word, and they ran as plain HID devices.
+GAMES="NTSYNC HID_STEAM LEDS_CLASS LEDS_CLASS_MULTICOLOR HID_PLAYSTATION PLAYSTATION_FF"
+y $GAMES
 # speed up the build
 n DEBUG_INFO DEBUG_INFO_DWARF5 DEBUG_INFO_DWARF4 DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT DEBUG_INFO_BTF KALLSYMS_ALL FTRACE
 $C --enable DEBUG_INFO_NONE
@@ -157,6 +163,7 @@ for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU
 for o in $SOFM $AMPS $SPIM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the sound driver $o is not a module after olddefconfig"; exit 1; }; done
 for o in $SOFOLD; do grep -qE "^CONFIG_$o=(y|m)$" .config && { echo "kconfig.sh: $o is on: its SOF firmware is not shipped, so it must stay on HDA"; exit 1; }; done
 for o in $SOFY $SPIY; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the sound option $o is not on after olddefconfig"; exit 1; }; done
+for o in $GAMES INPUT_UINPUT HIDRAW INPUT_JOYSTICK JOYSTICK_XPAD HID_SONY HID_PLAYSTATION HID_NINTENDO; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the games option $o is not on after olddefconfig"; exit 1; }; done
 for o in $ACPMIC; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the sound driver $o is not a module after olddefconfig"; exit 1; }; done
 for o in SERIAL_DEV_BUS SERIAL_DEV_CTRL_TTYPORT $BTUART; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the Bluetooth option $o is not on after olddefconfig"; exit 1; }; done
 for o in NF_TABLES NF_TABLES_INET NFT_CT NFT_REJECT NFT_LIMIT FS_ENCRYPTION CRYPTO_XTS CRYPTO_CTS BT BT_BREDR BT_LE BT_HIDP UHID CRYPTO_ECDH CRYPTO_USER_API_HASH; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done

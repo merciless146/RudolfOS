@@ -703,7 +703,7 @@ static void on_sig(int s) { (void)s; quit = 1; }
  *  - /run/rudolf/wm says what to show: "desktop", "win <hex window id>", or the older "game" / "web"
  *    (the topmost game or browser window). rudolfd writes it when the desktop asks; a new app window
  *    is shown by itself; Super+Esc goes to the desktop and Super+Tab steps through the windows.
- *  - /run/rudolf/windows lists the app windows (id, browser?, class, instance, title) for the taskbar;
+ *  - /run/rudolf/windows lists the app windows (id, browser?, class, instance, full screen?, title) for the taskbar;
  *    /run/rudolf/wmcmd "close <hex>" asks a window to close (WM_DELETE_WINDOW, as a close button does).
  *  - 1.5.2: what window managers do for Windows games (Wine) and others: a window shown gets WM_TAKE_FOCUS as well as
  *    the keyboard (Wine counts a window as active only then: before, a Windows game got the arrow keys but not the
@@ -943,7 +943,8 @@ static void fit_windows(void)
 		for (int k = 0; k < napps && o < sizeof buf - 600; k++) {
 			XClassHint ch = {0}; char t[256]; window_title(apps[k], t, sizeof t);
 			XGetClassHint(dpy, apps[k], &ch);
-			o += snprintf(buf + o, sizeof buf - o, "%lx\t%d\t%s\t%s\t%s\n", (unsigned long)apps[k], is_web(apps[k]), ch.res_class ? ch.res_class : "", ch.res_name ? ch.res_name : "", t);
+			/* 1.5.4: and whether it is full screen (a game: the desktop holds notifications meanwhile) */
+			o += snprintf(buf + o, sizeof buf - o, "%lx\t%d\t%s\t%s\t%d\t%s\n", (unsigned long)apps[k], is_web(apps[k]), ch.res_class ? ch.res_class : "", ch.res_name ? ch.res_name : "", is_fullscreen(apps[k]), t);
 			if (ch.res_name) XFree(ch.res_name); if (ch.res_class) XFree(ch.res_class);
 		}
 		buf[o] = 0;

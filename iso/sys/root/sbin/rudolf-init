@@ -77,6 +77,10 @@ for m in $(cat /sys/bus/*/devices/*/modalias 2>/dev/null | sort -u); do
 	modprobe -q -b "$m" 2>/dev/null
 done &
 
+# 1.5.4: games (Steam's Proton): more memory maps than the kernel's default (some games stop without them), and
+# room for more open files (Proton's esync raises its own limit up to this one; other programs keep the usual 1024)
+echo 1048576 > /proc/sys/vm/max_map_count 2>/dev/null
+ulimit -H -n 524288 2>/dev/null
 # 1.5.0: the firewall for incoming connections, before any network is up (Settings › Security)
 /usr/lib/rudolf/firewall start 2>/run/rudolf/firewall.err || echo "firewall: $(cat /run/rudolf/firewall.err)" >> /run/rudolf/repairs
 # wired network: DHCP on every cable that is plugged in

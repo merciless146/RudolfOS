@@ -16,7 +16,9 @@ CLOUD_GAMES.forEach(g=>{regApp(g.k,{name:g.name,icon:g.icon,open:()=>browser(g.u
 /* which real tabs are full screen (the shell says so: tabev fs) */
 const GAME_FS=new Set();
 addEventListener('message',e=>{const m=e.data;if(!m||m.rudolfShell!='tabev'||m.ev!='fs')return;if(m.on)GAME_FS.add(m.tid);else GAME_FS.delete(m.tid);gameModeTick()});
-function gameMode(){return GAME_FS.size>0||!!document.fullscreenElement||!!document.pointerLockElement}
+/* 1.5.4: and while a Linux app's window in front is full screen (a Steam game, Big Picture, a game in Wine) */
+function gameModeNative(){return typeof LX!='undefined'&&!!LX.mode&&LX.mode.startsWith('win')&&(LX.wins||[]).some(w=>w.shown&&w.fullscreen)}
+function gameMode(){return GAME_FS.size>0||!!document.fullscreenElement||!!document.pointerLockElement||gameModeNative()}
 let GAME_HELD=0,GAME_WAS=false;
 function gameModeTick(){const on=gameMode();if(GAME_WAS&&!on&&GAME_HELD){const n=GAME_HELD;GAME_HELD=0;
   try{__notifCentre.add('While you were playing',`${n} notification${n==1?'':'s'} came in. They are in the notification centre.`,{kind:'info',action:()=>ncToggle(true)})}catch(e){}}

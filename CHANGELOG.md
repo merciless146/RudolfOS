@@ -4,7 +4,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.5.4 (2026-11-08)
-Summary: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chip, sound on laptops with an Intel sound processor or speaker amplifiers, and the built-in microphones of AMD laptops
+Summary: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chip, sound on laptops with an Intel sound processor or speaker amplifiers, the built-in microphones of AMD laptops, and Windows games through Steam's Proton
 - New: Bluetooth works with Intel chips (the Bluetooth half of Intel Wi-Fi cards: 8260, 8265, 9260, 9560, AX200, AX201, AX203, AX210, AX211, AX411, BE200, BE201 and newer), MediaTek MT7921, MT7922 and MT7925, and Qualcomm chips on USB, as well as Realtek (1.5.1). Not yet tried on a computer with these chips: if Bluetooth does not appear, Settings › Devices › Not supported yet and Report a problem say what the computer has.
 - New: Bluetooth built into the board on a serial line (UART), found in inexpensive laptops and tablets (Realtek RTL8723BS and RTL8723CS, Broadcom, Intel, Qualcomm).
 - New: the built-in microphones of AMD laptops whose microphones are wired to the AMD audio processor (ACP): Ryzen 4000 and 5000 (Renoir, Cezanne), 6000 and 7x20/7x30 (Rembrandt, Mendocino: the ASUS Vivobook Go among them), and 7040/8040 (Phoenix, Hawk Point), where the laptop is known to the kernel or its firmware says so.
@@ -12,6 +12,12 @@ Summary: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chi
 - New: sound on laptops whose speakers and microphones go through Intel's sound processor (SOF): 11th to 13th generation Core (Tiger Lake, Alder Lake, Raptor Lake; Elkhart Lake) and Core Ultra (Meteor Lake, Arrow Lake, Lunar Lake, Panther Lake), including SoundWire laptops. Settings › Sound names it ("Intel sound processor (SOF)"). Not yet tried on such a laptop.
 - New: the speaker amplifiers of many ASUS, Lenovo, HP and Dell laptops (Cirrus CS35L41, CS35L54 and CS35L56; TI TAS2563 and TAS2781), without which the speakers stay silent or very quiet while headphones work.
 - New: a sound card that appears after start-up (Intel's sound processor once its firmware runs, a USB headset or speaker) is ready to use by itself, and one that is unplugged goes away from the list. Sound processors and USB sound cards are set up with ALSA's use case files, as on other systems; the HD Audio of most computers (the Vivobook's among them) is set up as before.
+- New: Windows games through Steam's Proton. Installing Steam from App Store › Games also installs the 32-bit graphics drivers Proton needs (a Steam installed earlier gets them the next time it is opened), and Rudolf OS gives games what Proton expects: NT synchronization (ntsync), more memory maps and more open files.
+- New: Steam's card in App Store › Games says whether this computer's graphics have the Vulkan that Proton needs, and why not when they do not (drawing with the processor, Intel graphics before Broadwell, older NVIDIA cards, old Radeon cards, virtual machines); that games whose anti-cheat allows Linux work and others (Valorant, Fortnite, Call of Duty) do not, with cloud gaming for some of those; and how much space is free for games.
+- New: Steam can keep a game library on a USB drive or a second disk (Steam › Settings › Storage).
+- New: game controllers work in Steam (Steam Input) and in Linux games: Xbox, PlayStation 4 and 5, Switch and Steam controllers, by USB and by Bluetooth. Keyboards and mice stay out of apps' reach.
+- Fixed: PlayStation 4 and 5 controllers ran as plain HID devices (no light bar, touchpad, motion or rumble): their driver was left out of the system without a word. It is now checked when Rudolf OS is built.
+- Changed: notifications wait in the notification centre while a Linux app's window is full screen (a Steam game, Big Picture, a Windows game in Wine), as for full-screen pages.
 
 ## 1.5.3 (2026-11-07)
 Summary: USB Wi-Fi adapters with Ralink and MediaTek RT2800 chips, a choice of Wi-Fi adapter, and a list of the devices that have no driver yet
