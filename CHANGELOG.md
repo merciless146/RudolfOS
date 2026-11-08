@@ -4,13 +4,15 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.5.5 (2026-11-08)
-Summary: choose the app shortcuts on your desktop, every file in Downloads shows in File Explorer, and the Trash's tooltip says what is in it
+Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it
+- Changed: each account has its own Downloads again (C:\USERS\<name>\DOWNLOADS), encrypted with its home folder; large downloads are kept on the disk in the account's own folder. From 1.2.7 to 1.5.4 every account shared C:\DOWNLOADS. At the first start of 1.5.5 that folder goes to its owner when the computer has one account; with several, it stays readable by all as C:\SHARED DOWNLOADS (BEFORE 1.5.5) for an administrator to sort out. Nothing is deleted.
+- Changed: a download that finishes while nobody is signed in waits, and goes to whoever signs in next. The guest's downloads are deleted when the guest signs out.
 - New: app shortcuts can be taken off the desktop: right-click › Remove from desktop, the Delete key, dropping the icon on the Trash, or File Explorer's Desktop folder. The app stays in the Start menu.
 - New: right-click an app in the Start menu › Add to desktop (or Remove from desktop). Apps without a desktop icon of their own get one. Before, Add to desktop only said "Already on the desktop".
 - New: Desktop icons… (in the desktop's right-click menu and in File Explorer's Desktop folder) lists every app with a tick for those on the desktop, and Restore the standard icons. Each account keeps its own choice.
 - New: File Explorer › right-click › Copy to desktop.
 - Fixed: the Trash's tooltip kept saying "The Trash is empty" after something was put in it.
-- Fixed: files in the Downloads folder that File Explorer did not list (saved there by a Linux app, or an Oracle download that finished while nobody was signed in) now appear in Downloads by themselves, after the antivirus has checked them.
+- Fixed: a download whose entry in Downloads was lost (for example one that finished while nobody was signed in) is listed again by itself, after the antivirus has checked it.
 
 ## 1.5.4 (2026-11-08)
 Summary: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chip, sound on laptops with an Intel sound processor or speaker amplifiers, the built-in microphones of AMD laptops, Windows games through Steam's Proton, and Thunderbolt and USB4 docks and displays

@@ -3,7 +3,7 @@
 #   python3 t127c_t.py DISC.iso IMAGE.iso
 # DISC.iso: a 1.2.7 test disc (mkdisc.sh with RUDOLF_UKI_TEST_CMDLINE=rudolf.debug=1: a serial shell).
 # IMAGE.iso: a published Rudolf OS disc image (disc-1.2.6), split here into parts the way the release is (30408704
-# bytes each), with its .sha256. The parts go to Downloads on the disk, the .sha256 to C:\DOWNLOADS (browser storage),
+# bytes each), with its .sha256. The parts go to Downloads on the disk, the .sha256 to the account's Downloads (browser storage),
 # as Oracle saves them.
 #   - rudolfd install/images lists the set as not joined yet; info.bootSecure is 1 on the 1.2.7 disc
 #   - with one part damaged: the join stops ("does not match its .sha256"), nothing is written to the stick
@@ -92,7 +92,7 @@ try:
     until("typeof stkSection=='function'&&typeof imgSha=='function'", 600)
     js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();svj('bd95setup',1);const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()=='Guest');if(b)b.click();return 1})()")
     until('!!USER', 120); js("USER.r='admin';window.elevate=async()=>true;1")
-    # the .sha256 as Oracle keeps a file that small: in C:\DOWNLOADS (browser storage), in capitals
+    # the .sha256 as Oracle keeps a file that small: in the account's Downloads (browser storage), in capitals
     js(f"(()=>{{const D=node(downloadsPath());D[{json.dumps((NAME + '.sha256').upper())}]='data:application/octet-stream;base64,'+btoa({json.dumps(SHA + '  ' + NAME + chr(10))});fsSave();return 1}})()")
     info = J(js("rd('info').then(i=>JSON.stringify(i))"), {})
     ok('rudolfd says this disc\'s boot files start with Secure Boot (bootSecure 1)', info.get('bootSecure') == 1, info.get('bootSecure'))
@@ -100,7 +100,7 @@ try:
     st = [x for x in ims if x.get('parts')]
     ok('install/images lists the parts as one image, not joined yet', len(st) == 1 and st[0]['parts'] == n and st[0]['name'] == NAME and st[0]['path'] == '/home/rudolf/Downloads/' + NAME, ims)
     path = st[0]['path'] if st else '/home/rudolf/Downloads/' + NAME
-    ok('...and the page finds its SHA-256 in C:\\DOWNLOADS', js(f"imgSha({json.dumps(path)})") == SHA)
+    ok('...and the page finds its SHA-256 in Downloads', js(f"imgSha({json.dumps(path)})") == SHA)
     t = J(js("rd('info').then(async i=>JSON.stringify(stkTargets((await rd('disks')).disks,i).map(k=>k.name)))"), [])
     dev = t[0] if t else 'sdz'
     # a damaged part: refused, nothing written

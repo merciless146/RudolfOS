@@ -62,6 +62,19 @@ What is there today, checked in the code before writing this:
   - host test of rudolfd's per-account folders: no path outside Downloads, no `..`;
   - QEMU t150: the move into the encrypted folder still covers Downloads.
 
+**As built** (this PR):
+- the folder name on the disk is `dlAcct()`, the account id made safe (lower-case letters, digits, `-`);
+- rudolfd takes `acct=` on `dl/home`, `dl/read` and `dl/file`, and has `from=root&to=acct` (the move) and `dl/clear`;
+  `dl_path_ok` is checked by the host test `dlpath_t.sh` (26 checks);
+- the shared folder's large files go to `.accounts/shared/` rather than staying at the top of Downloads, so that
+  the top of Downloads is only the Linux apps' folder (kept in step with the Linux owner's Downloads by linux26's
+  sync, as before). #115's adoption looks only in the account's own folder: at the top of Downloads it would have
+  shown the sync's files twice;
+- the references of each account are tracked in their own list (`bd95dlrefs:<id>`), and the shared folder's in
+  `bd95dlrefs`, so one account's clean-up never deletes another account's files;
+- Install from and Make a USB stick also list disc images in the account's own folder (`install/images?acct=`);
+- browser test `dl155_t.js` (17 checks).
+
 ## 2. Sorting in every view, remembered
 
 - Sorting in the icons and thumbnails views: a Sort by menu in the toolbar (Name, Date modified, Type, Size;

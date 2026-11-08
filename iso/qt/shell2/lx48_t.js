@@ -21,9 +21,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
       if (u.includes('/api/dl/link')) return J({url: '/x'});
       if (u.includes('/api/')) return J({items: [], apps: []});
       return f0(u, o) } });
-  await p.goto('http://127.0.0.1:8098/'); await p.waitForFunction(() => typeof debApps == 'function' && typeof dlLxOpen == 'function' && typeof openersFor == 'function', null, {timeout: 30000});
+  await p.goto('http://127.0.0.1:8098/'); await p.waitForFunction(() => typeof debApps == 'function' && FSLOADED && fs['C:'] && fs['C:'].USERS && typeof dlLxOpen == 'function' && typeof openersFor == 'function', null, {timeout: 30000});
   const q = s => p.evaluate(s);
-  await q("(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});wins.slice().forEach(w=>{w.__force=1;w.close()});USER=USER||ACCTS[0];USER.r='admin';return 1})()");
+  await q("(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});wins.slice().forEach(w=>{w.__force=1;w.close()});USER=USER||ACCTS[0];USER.r='admin';if(!HOME){HOME={DOWNLOADS:{}};fs['C:'].USERS[uname()]=HOME}return 1})()");
   await q("debApps()"); await wait(800);
   const menu = await q("(startMenuApps(),[...document.querySelectorAll('#menu li.lxv')].map(l=>l.textContent.trim()))");
   ok('1. the Start menu lists Starport GE, not Wine\'s program loader (a launcher kept out of menus)', menu.some(t => /Starport GE/.test(t)) && !menu.some(t => /Wine/.test(t)), menu);
@@ -33,14 +33,14 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('2. a Windows program (.exe) can be opened with Wine (Open with)', op.some(t => /Wine/.test(t)), op);
   // a 60 MB installer kept on the disk (Downloads larger than 1.5 MB)
   await q("(()=>{const C=dlCDir();C['STARPORTGE_INSTALL.EXE']=dlMkRef('/home/rudolf/Downloads/StarportGE_install.exe',60018940,'ok');return 1})()");
-  const op2 = await q("openersFor(['C:','DOWNLOADS','STARPORTGE_INSTALL.EXE']).map(o=>o[1])");
+  const op2 = await q("openersFor([...downloadsPath(),'STARPORTGE_INSTALL.EXE']).map(o=>o[1])");
   ok('3. an installer kept on the disk offers Wine too (not only the built-in viewer)', op2.some(t => /Wine/.test(t)), op2);
-  await q("openPath(['C:','DOWNLOADS','STARPORTGE_INSTALL.EXE']);1"); await wait(800);
+  await q("openPath([...downloadsPath(),'STARPORTGE_INSTALL.EXE']);1"); await wait(800);
   const L = await q("T.launched");
   ok('4. opening it starts Wine with the file\'s own path on the disk (no copy)', L.some(x => x[0] == 'wine' && x[1] == '/home/rudolf/Downloads/StarportGE_install.exe'), L);
   // without Wine: say how to get it
   await q("T.apps=T.apps.filter(a=>a.id!='wine');DEB.appsAt=0;debApps()"); await wait(800);
-  await q("wins.slice().forEach(w=>{w.__force=1;w.close()});openPath(['C:','DOWNLOADS','STARPORTGE_INSTALL.EXE']);1"); await wait(800);
+  await q("wins.slice().forEach(w=>{w.__force=1;w.close()});openPath([...downloadsPath(),'STARPORTGE_INSTALL.EXE']);1"); await wait(800);
   const msg = await q("(wins.at(-1)&&wins.at(-1).el.textContent)||''");
   ok('5. without Wine, a Windows program says how to get it (1.4.9: an Install Wine button)', /Windows program/.test(msg) && /Install Wine/.test(msg), msg);
   // a Debian app added outside the Terminal shows up when the Start menu opens

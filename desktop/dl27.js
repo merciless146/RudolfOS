@@ -3,7 +3,9 @@
    /home/rudolf/Downloads/.incoming. rudolfd lists what is there (dl/incoming); here each finished file is checked:
    the size limit (Settings ▸ Network ▸ Downloads), the file-type rules, an administrator's approval for program files
    (the file waits in the quarantine folder meanwhile) and the antivirus. Files of 1.5 MB or less then go into
-   C:\DOWNLOADS as before; larger ones stay on the disk in /home/rudolf/Downloads and C:\DOWNLOADS holds a reference
+   the account's Downloads (1.5.5: C:\USERS\<name>\DOWNLOADS, encrypted with the home folder; before, C:\DOWNLOADS for
+   every account); larger ones stay on the disk, in the account's own folder /home/rudolf/Downloads/.accounts/<id>/,
+   and Downloads holds a reference
    to them ("rudolfdisk:" + {p: path, s: size, av: 'full'|'part'}), opened through a /dlf/ link that the viewers read
    in pieces. A reference cannot be copied elsewhere in C: (it is put back), and when the last reference to a file is
    gone (Trash emptied, quarantined copy deleted) the file is deleted from the disk too. */
@@ -19,7 +21,7 @@ const DLN={kill:new Set(),seen:new Set(),pend:[],busy:false,chain:Promise.resolv
 const dlOn=()=>!!(RD&&window.__sys);
 function dlHost(u){try{return new URL(u).hostname}catch(e){return''}}
 function dlDone(rec,st,why,extra){Object.assign(rec,{st,why:why||''},extra||{});const i=DLN.pend.indexOf(rec);if(i>=0)DLN.pend.splice(i,1);saveDl();try{window.__dlHook&&window.__dlHook()}catch(e){}
- const ok=st=='saved';notify(ok?'Downloaded':'Download '+(st=='quarantined'?'quarantined':'stopped'),rec.n+(ok?(rec.disk?' is in C:\\DOWNLOADS (kept on the disk).':' is in C:\\DOWNLOADS.'):' – '+(why||'it could not be saved.')),{kind:ok?'':'error',action:()=>browser('about:downloads')});
+ const ok=st=='saved';notify(ok?'Downloaded':'Download '+(st=='quarantined'?'quarantined':'stopped'),rec.n+(ok?(rec.disk?' is in Downloads (kept on the disk).':' is in Downloads.'):' – '+(why||'it could not be saved.')),{kind:ok?'':'error',action:()=>browser('about:downloads')});
  try{EXPL.forEach(f=>f())}catch(e){}}
 /* a real tab (or the desktop) started a download: a waiting line in about:downloads until the file arrives */
 function dlNative(u,o){o=o||{};let nm='';try{nm=decodeURIComponent(o.name||new URL(u).pathname.split('/').pop()||'')}catch(e){}
@@ -39,6 +41,7 @@ async function dlPoll(){clearTimeout(DLN.t);if(!dlOn())return;if(DLN.busy){DLN.t
     if(it.size>dlMax()){DLN.kill.add(it.name.replace(/\.crdownload$/,''));await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&to=del').catch(()=>{});if(r)dlDone(r,'blocked','The file is larger than '+fmtB(dlMax())+', the limit set in Settings ▸ Network ▸ Downloads.')}
     continue}
    if(DLN.kill.has(it.name)){/* stopped while it arrived: Chromium finished writing it anyway */DLN.kill.delete(it.name);await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&to=del').catch(()=>{});continue}
+   if(!dlReady()){active=true;continue}   /* 1.5.5: nobody signed in: it waits */
    if(DLN.seen.has(key))continue;DLN.seen.add(key);active=true;const rec=dlMatch(it);rec.n=dlCName(it.name);rec.sz=it.size;rec.st='check';
    DLN.ing=(DLN.ing||0)+1;DLN.chain=DLN.chain.then(()=>dlIngest(it,rec)).catch(e=>{console.warn('download',e);dlDone(rec,'failed',e&&e.message||'The file could not be checked.')}).finally(()=>{DLN.ing--})}
   DLN.pend.filter(x=>x.st=='wait'&&!x.part&&Date.now()-x.t>180e3).forEach(x=>dlDone(x,'failed','The download did not start (the site did not send the file).'));
@@ -48,7 +51,7 @@ async function dlPoll(){clearTimeout(DLN.t);if(!dlOn())return;if(DLN.busy){DLN.t
  try{dlReconcile()}catch(e){console.warn('downloads',e)}
  DLN.t=setTimeout(dlPoll,active||DLN.pend.length?1000:4000)}
 /* bytes of a file in the download folders */
-async function dlRead(name,from,off,len){const r=await rd('dl/read?name='+encodeURIComponent(name)+'&from='+from+'&off='+off+'&len='+len);return new Uint8Array(await r.arrayBuffer())}
+async function dlRead(name,from,off,len){const r=await rd('dl/read?name='+encodeURIComponent(name)+'&from='+from+'&off='+off+'&len='+len+(from=='home'?DLAQ():''));return new Uint8Array(await r.arrayBuffer())}
 const dlLatin=u8=>new TextDecoder('latin1').decode(u8);
 /* the antivirus on a large file: its first and last 4 MB (the whole file up to 8 MB) */
 async function dlScanBig(name,from,size,NM,prog){const hits=[];const h=await dlRead(name,from,0,DL_AVPART*2>=size?size:DL_AVPART);const parts=[dlLatin(h)];
@@ -70,7 +73,18 @@ function dlRelFile(name,u){if(!/^rudolf-os-\d+\.\d+\.\d+(-boot)?\.iso(\.part\d{2
 /* the antivirus part of the small-file check, for a release file (its type is allowed above) */
 function dlAvOnly(nm,val){if(!SECC.av.on)return{ok:true};const th=avScan(nm,val,true);if(!th.length)return{ok:true};
  logEvt('av',`Blocked ${nm} (download): ${th.join(', ')}`);return{ok:false,msg:`Antivirus blocked ${nm}: ${th.join(', ')}.`}}
-function dlCDir(){const C=fs['C:'];if(!C.DOWNLOADS||typeof C.DOWNLOADS!='object')C.DOWNLOADS={};return C.DOWNLOADS}
+/* 1.5.5: Downloads for each account. dlAcct: the account's folder name on the disk (/home/rudolf/Downloads/.accounts/);
+   downloads made before 1.5.5 on a computer with several accounts are in C:\SHARED DOWNLOADS (BEFORE 1.5.5), their
+   large files in .accounts/shared/ */
+const dlAcct=()=>USER?(String(uid()).toLowerCase().replace(/[^a-z0-9-]/g,'-').replace(/^-+/,'').slice(0,64)||'nobody'):'';
+const DLAQ=()=>'&acct='+encodeURIComponent(dlAcct());
+const DLRKA=()=>DLRK+':'+dlAcct();
+const DLADIR=()=>'/home/rudolf/Downloads/.accounts/'+dlAcct()+'/';
+const DLSHDIR='/home/rudolf/Downloads/.accounts/shared/',DLSHARED=['C:','SHARED DOWNLOADS (BEFORE 1.5.5)'];
+/* downloads are taken in only for an account that is signed in, with its home folder loaded: one that finishes while
+   nobody is signed in waits in .incoming for whoever signs in next */
+const dlReady=()=>dlOn()&&!!USER&&!!HOME&&FSLOADED&&!HOMELOCKED;
+function dlCDir(){const p=downloadsPath();return node(p)||{}}
 async function dlIngest(it,rec){let name=it.name,from='incoming';const NM=dlCName(name),e=ext(NM),rel=dlRelFile(name,rec.u),prog=!rel&&HIGHRISK.has(e),size=it.size;
  if(rel)logEvt('av',`Allowed ${NM}: a Rudolf OS disc file from the Rudolf OS releases`);
  const del=()=>rdPost('dl/file?name='+encodeURIComponent(name)+'&from='+from+'&to=del').catch(()=>{});
@@ -81,7 +95,7 @@ async function dlIngest(it,rec){let name=it.name,from='incoming';const NM=dlCNam
   if(!ok){await del();logEvt('av','Program download not approved: '+NM);return dlDone(rec,'blocked','An administrator did not approve this program file.')}
   rec.exe=true;rec.by=USER&&isAdmin()?USER.n:'an administrator';rec.st='check'}
  else if(!rel){const tg=typeGate(NM);if(tg){await del();logEvt('av',`Blocked download ${NM}: ${tg}`);return dlDone(rec,'blocked',tg)}}
- if(size<=DL_SMALL){/* small: into C:\DOWNLOADS, checked as before */
+ if(size<=DL_SMALL){/* small: into the account's Downloads, checked as before */
   const u8=await dlRead(name,from,0,size||1),b=new Blob([u8],{type:(typeof MIMEX!='undefined'&&MIMEX[e])||'application/octet-stream'});
   const val=await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);TEXTX.test(e)?fr.readAsText(b):fr.readAsDataURL(b)});
   const g=prog?netExeScan(NM,val):rel?dlAvOnly(NM,val):secIngress(NM,val,'download');await del();if(!g.ok)return dlDone(rec,g.q?'quarantined':'blocked',g.msg);
@@ -90,70 +104,102 @@ async function dlIngest(it,rec){let name=it.name,from='incoming';const NM=dlCNam
  let av='off';if(SECC.av.on){const th=await dlScanBig(name,from,size,NM,prog);av=size>DL_AVPART*2?'part':'full';
   if(th.length){const qm=SECC.av.act=='quarantine';logEvt('av',`${qm?'Quarantined':'Blocked'} ${NM} (download): ${th.join(', ')}`);
    if(qm){let qp;if(from=='quarantine')qp='/home/rudolf/Downloads/.quarantine/'+name;else{const q=await rdPost('dl/file?name='+encodeURIComponent(name)+'&to=quar');qp=q.path}
-    QUAR.push({id:Date.now()+Math.random(),n:NM,from:['C:','DOWNLOADS'],th,t:Date.now(),data:dlMkRef(qp,size,av),src:'download'});saveQ()}else await del();
+    QUAR.push({id:Date.now()+Math.random(),n:NM,from:downloadsPath(),th,t:Date.now(),data:dlMkRef(qp,size,av),src:'download'});saveQ()}else await del();
    return dlDone(rec,qm?'quarantined':'blocked',`Antivirus ${qm?'quarantined':'blocked'} ${NM}: ${th.join(', ')}.`)}}
- const k=await rdPost('dl/file?name='+encodeURIComponent(name)+'&to='+(from=='quarantine'?'release':'keep'));
+ const k=await rdPost('dl/file?name='+encodeURIComponent(name)+'&to='+(from=='quarantine'?'release':'keep')+DLAQ());
  const d=dlCDir(),n2=dlUniq(d,NM);d[n2]=dlMkRef(k.path,k.size,av);fsSave();dlRefsAdd(k.path);
  dlDone(rec,'saved','',{path:n2,disk:k.path,av});dlSpaceCheck()}
 async function dlSpaceCheck(){try{const s=await rd('dl/space');if(s.total>0&&s.free/s.total<.1&&Date.now()-DLN.warned>600e3){DLN.warned=Date.now();
   notify('The disk is almost full',`${fmtB(s.free)} free of ${fmtB(s.total)}.${s.live?' Running live, downloads are kept in memory until you shut down.':''} Delete downloads you no longer need.`,{kind:'error',action:()=>launch&&launch('settings')})}}catch(e){}}
 /* ---------- references: where they are, and the disk files that go with them ---------- */
-function dlRefsAdd(p){const k=ld(DLRK,{});k[p]={w:'fs',u:'',miss:0};svj(DLRK,k)}
+/* which list keeps a path: the account's own (bd95dlrefs:<id>), or the shared one (bd95dlrefs) for .accounts/shared */
+const dlKeyOf=p=>String(p).startsWith(DLSHDIR)?DLRK:DLRKA();
+function dlRefsAdd(p){const K=dlKeyOf(p),k=ld(K,{});k[p]={w:'fs',u:'',miss:0};svj(K,k)}
 function dlWalk(n,path,out){for(const k in n){const v=n[k];if(isDir(v))dlWalk(v,path.concat(k),out);else if(isDlRef(v))out.push({path:path.concat(k),v})}return out}
-/* 1.2.7: Files' "Downloads" is C:\DOWNLOADS now; say once where an account's own DOWNLOADS folder went */
-function dlHomeNote(){try{if(!USER||USER.r=='guest')return;const k='bd95dlnote:'+uid();if(ld(k,0))return;svj(k,1);const h=node(homePath('DOWNLOADS'));
- if(isDir(h)&&Object.keys(h).length)notify('Downloads',`Downloads now opens C:\\DOWNLOADS, where Oracle saves what you download. What was in your own Downloads folder is still there: ${USER.n} › DOWNLOADS.`,{action:()=>explorer(homePath('DOWNLOADS'))})}catch(e){}}
+const dlSame=(a,b)=>a.length==b.length&&a.every((x,i)=>String(x).toUpperCase()==String(b[i]).toUpperCase());
+const dlIn=(p,dir)=>p.length==dir.length+1&&dlSame(p.slice(0,-1),dir);
+/* 1.5.5: once per computer, C:\DOWNLOADS (every account's, 1.2.7 to 1.5.4) goes to its owner: with one account (and
+   perhaps the guest) into that account's Downloads, its large files into the account's folder on the disk; with
+   several, nobody can know whose they are: it stays readable by all as C:\SHARED DOWNLOADS (BEFORE 1.5.5), its large
+   files moved to .accounts/shared. Nothing is deleted. A large file that cannot be moved keeps its old entry. */
+let DLMIG=false;
+async function dlMigrate(){const C=fs['C:'];if(DLMIG||!USER||USER.r=='guest'||!isDir(C.DOWNLOADS))return false;DLMIG=true;
+ const D=C.DOWNLOADS,names=Object.keys(D),one=ACCTS.filter(a=>a.r!='guest').length<=1;
+ if(!names.length){delete C.DOWNLOADS;fsSave();return true}
+ const dest=one?dlCDir():(isDir(node(DLSHARED))?node(DLSHARED):(C[DLSHARED[1]]={}));
+ const acct=one?dlAcct():'shared',oldK=ld(DLRK,{}),stuck=[];let moved=0;
+ const move=async v=>{const i=dlRefInfo(v);if(!i||!/^\/home\/rudolf\/Downloads\/[^/]+$/.test(i.p))return v;
+  try{const r=await rdPost('dl/file?name='+encodeURIComponent(dlBase(i.p))+'&from=root&to=acct&acct='+acct);delete oldK[i.p];const nv=dlMkRef(r.path,i.s,i.av);dlRefsAdd(r.path);return nv}catch(e){stuck.push(dlBase(i.p));return v}};
+ for(const n of names){let v=D[n];if(isDlRef(v))v=await move(v);else if(isDir(v)){for(const x of dlWalk(v,[],[])){const nv=await move(x.v);let o=v;for(const s of x.path.slice(0,-1))o=o[s];o[x.path.at(-1)]=nv}}
+  const n2=dlUniq(dest,n);dest[n2]=v;moved++}
+ /* this account's Trash may hold entries for the old folder too */
+ if(one)try{for(const e of TR){if(isDlRef(e.v))e.v=await move(e.v)}trSave()}catch(e){}
+ delete C.DOWNLOADS;svj(DLRK,oldK);fsSave();try{EXPL.forEach(f=>f())}catch(e){}
+ if(one)notify('Downloads',`Your downloads (${moved}) are in your own Downloads folder now, kept with your other files.${stuck.length?' '+stuck.length+' could not be moved and are listed as before: '+stuck.slice(0,3).join(', '):''}`,{action:()=>explorer(downloadsPath())});
+ else notify('Downloads from before 1.5.5',`Every account has its own Downloads now. The ${moved} downloads from before are in C:\\SHARED DOWNLOADS (BEFORE 1.5.5), which every account can open${isAdmin()?': move them into an account, or delete them':''}.`,{action:()=>explorer(DLSHARED)});
+ return true}
+/* one set of references: those in `place` (a Downloads folder), for the files in `dir` on the disk, tracked in `key` */
+async function dlScope({dir,key,place,acct}){const P=node(place);if(!isDir(P))return false;let changed=false,moved=0;
+ const mine=p=>String(p).startsWith(dir)||acct!='shared'&&String(p).includes('/.quarantine/');
+ /* references to these files elsewhere in this account's home or on C: outside the homes go back to `place`;
+    copies of the same file are dropped */
+ const inD=new Map();Object.keys(P).forEach(n=>{const v=P[n];if(!isDlRef(v))return;const i=dlRefInfo(v);if(!i||!mine(i.p))return;if(inD.has(i.p)){delete P[n];changed=true;moved++}else inD.set(i.p,{path:place.concat(n),v})});
+ const C=fs['C:'],looks=[homePath()];Object.keys(C).filter(k=>k!='USERS').forEach(k=>looks.push(['C:',k]));
+ for(const L of looks){const n=node(L);if(!n)continue;const all=isDlRef(n)?[{path:L,v:n}]:isDir(n)?dlWalk(n,L,[]):[];
+  for(const x of all){if(dlIn(x.path,place))continue;const i=dlRefInfo(x.v);if(!i||!mine(i.p)||!String(i.p).startsWith(dir))continue;
+   const d=node(x.path.slice(0,-1));if(d)delete d[x.path.at(-1)];changed=true;moved++;if(!inD.has(i.p)){const n2=dlUniq(P,x.path.at(-1));P[n2]=x.v;inD.set(i.p,{path:place.concat(n2),v:x.v})}}}
+ if(moved)notify('Kept in Downloads','Files larger than 1.5 MB are kept on the disk and stay in Downloads. Open them from there.');
+ /* restored from quarantine: back into the folder on the disk */
+ for(const[p,x]of [...inD]){if(!p.includes('/.quarantine/'))continue;const i=dlRefInfo(x.v);
+  try{const r=await rdPost('dl/file?name='+encodeURIComponent(dlBase(p))+'&to=release&acct='+acct);const nv=dlMkRef(r.path,i.s,i.av);P[x.path.at(-1)]=nv;inD.delete(p);inD.set(r.path,{path:x.path,v:nv});dlRefsAdd(r.path);changed=true}catch(e){}}
+ /* renamed in Downloads: the same name on the disk */
+ for(const[p,x]of [...inD]){const cn=x.path.at(-1),dn=dlBase(p);if(cn.toUpperCase()==dn.toUpperCase()||p.includes('/.quarantine/'))continue;const i=dlRefInfo(x.v);
+  try{const r=await rdPost('dl/file?name='+encodeURIComponent(dn)+'&from=home&to=rename&as='+encodeURIComponent(cn)+'&acct='+acct);const nv=dlMkRef(r.path,i.s,i.av);P[cn]=nv;inD.delete(p);inD.set(r.path,{path:x.path,v:nv});changed=true}catch(e){}}
+ if(changed)fsSave();
+ /* every place a reference can still be: Downloads, this account's Trash, the quarantine */
+ const alive=new Map();inD.forEach((x,p)=>alive.set(p,{w:'fs',u:''}));
+ const me=uid();const tw=v=>{if(isDir(v))dlWalk(v,[],[]).forEach(y=>{const i=dlRefInfo(y.v);i&&mine(i.p)&&alive.set(i.p,{w:'tr',u:me})});else if(isDlRef(v)){const i=dlRefInfo(v);i&&mine(i.p)&&alive.set(i.p,{w:'tr',u:me})}};
+ try{TR.forEach(e=>tw(e.v))}catch(e){}
+ try{QUAR.forEach(e=>{if(isDlRef(e.data)){const i=dlRefInfo(e.data);i&&mine(i.p)&&alive.set(i.p,{w:'q',u:''})}})}catch(e){}
+ const k=ld(key,{}),nk={};
+ for(const p in k){if(!mine(p)){nk[p]=k[p];continue}if(alive.has(p))continue;const o=k[p];
+  if(o.w=='tr'&&o.u&&o.u!=me){nk[p]=o;continue}/* in another account's Trash */
+  if((o.miss||0)<1){nk[p]=Object.assign({},o,{miss:(o.miss||0)+1});continue}/* gone twice in a row: delete it */
+  const q=p.includes('/.quarantine/');await rdPost('dl/file?name='+encodeURIComponent(dlBase(p))+'&from='+(q?'quarantine':'home')+(q?'':'&acct='+acct)+'&to=del').catch(()=>{})}
+ alive.forEach((o,p)=>nk[p]=Object.assign({miss:0},o));svj(key,nk);return changed?nk:(nk.__same=1,nk)}
 let dlRecBusy=false;
-async function dlReconcile(){if(dlRecBusy||!dlOn()||typeof FSLOADED!='undefined'&&!FSLOADED||!isDir(fs['C:']))return;dlRecBusy=true;dlHomeNote();
- try{const all=dlWalk(fs['C:'],['C:'],[]),D=dlCDir();let changed=false,moved=0;
-  /* references outside C:\DOWNLOADS go back; copies of the same file are dropped */
-  const inD=new Map();all.filter(x=>x.path.length==3&&x.path[1]=='DOWNLOADS').forEach(x=>{const i=dlRefInfo(x.v);if(!i)return;if(inD.has(i.p)){delete D[x.path[2]];changed=true;moved++}else inD.set(i.p,x)});
-  all.filter(x=>!(x.path.length==3&&x.path[1]=='DOWNLOADS')).forEach(x=>{const i=dlRefInfo(x.v),dir=node(x.path.slice(0,-1));if(dir)delete dir[x.path.at(-1)];changed=true;moved++;
-   if(i&&!inD.has(i.p)){const n2=dlUniq(D,x.path.at(-1));D[n2]=x.v;inD.set(i.p,{path:['C:','DOWNLOADS',n2],v:x.v})}});
-  if(moved)notify('Kept in Downloads','Files larger than 1.5 MB are kept on the disk and stay in C:\\DOWNLOADS. Open them from there.');
-  /* restored from quarantine: back into Downloads on the disk */
-  for(const[p,x]of [...inD]){if(!p.includes('/.quarantine/'))continue;const i=dlRefInfo(x.v);
-   try{const r=await rdPost('dl/file?name='+encodeURIComponent(dlBase(p))+'&to=release');const nv=dlMkRef(r.path,i.s,i.av);D[x.path[2]]=nv;inD.delete(p);inD.set(r.path,{path:x.path,v:nv});changed=true}catch(e){}}
-  /* renamed in C:\DOWNLOADS: the same name on the disk */
-  for(const[p,x]of [...inD]){const cn=x.path[2],dn=dlBase(p);if(cn.toUpperCase()==dn.toUpperCase()||p.includes('/.quarantine/'))continue;const i=dlRefInfo(x.v);
-   try{const r=await rdPost('dl/file?name='+encodeURIComponent(dn)+'&from=home&to=rename&as='+encodeURIComponent(cn));const nv=dlMkRef(r.path,i.s,i.av);D[cn]=nv;inD.delete(p);inD.set(r.path,{path:x.path,v:nv});changed=true}catch(e){}}
-  if(changed)fsSave();
-  /* every place a reference can still be: C:, this account's Trash, the quarantine */
-  const alive=new Map();inD.forEach((x,p)=>alive.set(p,{w:'fs',u:''}));
-  const me=USER?uid():'';const tw=v=>{if(isDir(v))dlWalk(v,[],[]).forEach(y=>{const i=dlRefInfo(y.v);i&&alive.set(i.p,{w:'tr',u:me})});else if(isDlRef(v)){const i=dlRefInfo(v);i&&alive.set(i.p,{w:'tr',u:me})}};
-  try{TR.forEach(e=>tw(e.v))}catch(e){}
-  try{QUAR.forEach(e=>{if(isDlRef(e.data)){const i=dlRefInfo(e.data);i&&alive.set(i.p,{w:'q',u:''})}})}catch(e){}
-  const k=ld(DLRK,{}),nk={};
-  for(const p in k){if(alive.has(p))continue;const o=k[p];
-   if(o.w=='tr'&&o.u&&o.u!=me){nk[p]=o;continue}/* in another account's Trash */
-   if((o.miss||0)<1){nk[p]=Object.assign({},o,{miss:(o.miss||0)+1});continue}/* gone twice in a row: delete it */
-   const from=p.includes('/.quarantine/')?'quarantine':'home';await rdPost('dl/file?name='+encodeURIComponent(dlBase(p))+'&from='+from+'&to=del').catch(()=>{})}
-  alive.forEach((o,p)=>nk[p]=Object.assign({miss:0},o));svj(DLRK,nk);
-  if(await dlAdopt(nk))changed=true;
+async function dlReconcile(){if(dlRecBusy||!dlReady())return;dlRecBusy=true;
+ try{let changed=false;try{if(await dlMigrate())changed=true}catch(e){console.warn('downloads: moving the old folder',e)}
+  const own=await dlScope({dir:DLADIR(),key:DLRKA(),place:downloadsPath(),acct:dlAcct()});if(own&&!own.__same)changed=true;
+  if(isDir(node(DLSHARED))){const sh=await dlScope({dir:DLSHDIR,key:DLRK,place:DLSHARED,acct:'shared'});if(sh&&!sh.__same)changed=true}
+  if(own){delete own.__same;if(await dlAdopt(own))changed=true}
   if(changed)try{EXPL.forEach(f=>f())}catch(e){}}
  finally{dlRecBusy=false}}
-/* 1.5.5: files in Downloads on the disk that no C:\DOWNLOADS entry points at (saved there by a Linux app, or an
-   Oracle download whose entry was lost, for example one that finished while nobody was signed in) get an entry, so
-   File Explorer's Downloads shows everything that is in the folder. A file is taken in only when it was seen without
-   an entry twice in a row and no download is being taken in meanwhile (an entry is added just after a download is
-   moved there); one whose entry was deleted (waiting to be deleted from the disk) is left alone. The antivirus checks
-   it as for a download; the file-type rules do not apply, as it is already on this computer and cannot be run. */
+/* 1.5.5 (#115): files in the account's folder on the disk that no Downloads entry points at (an Oracle download
+   whose entry was lost) get an entry, so File Explorer's Downloads shows everything that is in the folder. A file is
+   taken in only when it was seen without an entry twice in a row and no download is being taken in meanwhile (an
+   entry is added just after a download is moved there); one whose entry was deleted (waiting to be deleted from the
+   disk) is left alone. The antivirus checks it as for a download. Downloads itself (/home/rudolf/Downloads, where
+   Linux apps save) is the Linux apps' folder: kept in step with Downloads by Linux apps' sync (linux26.js). */
 const DLADOPT={seen:new Set()};
-async function dlAdopt(known){if(DLN.ing)return false;let j;try{j=await rd('dl/home')}catch(e){return false}
- const now=new Set(),take=[];
- for(const it of j.items||[]){if(it.partial)continue;const p='/home/rudolf/Downloads/'+it.name;if(known[p])continue;now.add(p);if(DLADOPT.seen.has(p))take.push(it)}
+async function dlAdopt(known){if(DLN.ing)return false;let j;try{j=await rd('dl/home?acct='+encodeURIComponent(dlAcct()))}catch(e){return false}
+ const base=DLADIR(),now=new Set(),take=[];
+ for(const it of j.items||[]){if(it.partial)continue;const p=base+it.name;if(known[p])continue;now.add(p);if(DLADOPT.seen.has(p))take.push(it)}
  DLADOPT.seen=now;if(!take.length||DLN.ing)return false;
  const D=dlCDir();let n=0;const names=[];
- for(const it of take){const NM=dlCName(it.name),p='/home/rudolf/Downloads/'+it.name;let av='off';
+ for(const it of take){const NM=dlCName(it.name),p=base+it.name;let av='off';
   try{if(SECC.av.on){const th=await dlScanBig(it.name,'home',it.size,NM,false);av=it.size>DL_AVPART*2?'part':'full';
     if(th.length){const qm=SECC.av.act=='quarantine';logEvt('av',`${qm?'Quarantined':'Blocked'} ${NM} (in Downloads): ${th.join(', ')}`);
-     if(qm){const q=await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&from=home&to=quar');QUAR.push({id:Date.now()+Math.random(),n:NM,from:['C:','DOWNLOADS'],th,t:Date.now(),data:dlMkRef(q.path,it.size,av),src:'download'});saveQ()}
-     else await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&from=home&to=del').catch(()=>{});
+     if(qm){const q=await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&from=home&to=quar'+DLAQ());QUAR.push({id:Date.now()+Math.random(),n:NM,from:downloadsPath(),th,t:Date.now(),data:dlMkRef(q.path,it.size,av),src:'download'});saveQ()}
+     else await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&from=home&to=del'+DLAQ()).catch(()=>{});
      notify('Antivirus',`${NM} in Downloads ${qm?'was quarantined':'was deleted'}: ${th.join(', ')}.`,{kind:'error'});DLADOPT.seen.delete(p);continue}}}
   catch(e){continue}
   const n2=dlUniq(D,NM);D[n2]=dlMkRef(p,it.size,av);dlRefsAdd(p);DLADOPT.seen.delete(p);n++;names.push(n2)}
  if(!n)return false;fsSave();
- notify('In Downloads',n==1?`${names[0]} is in C:\\DOWNLOADS.`:`${n} files are in C:\\DOWNLOADS: ${names.slice(0,3).join(', ')}${n>3?'…':''}`,{quiet:true,action:()=>explorer(downloadsPath())});return true}
+ notify('In Downloads',n==1?`${names[0]} is in Downloads.`:`${n} files are in Downloads: ${names.slice(0,3).join(', ')}${n>3?'…':''}`,{quiet:true,action:()=>explorer(downloadsPath())});return true}
+/* 1.5.5: the guest's large downloads are not kept after sign-out (its home folder never is) */
+if(RD){rdPost('dl/clear?acct=guest').catch(()=>{});
+ const _lo=A.logoff;A.logoff=function(){const g=USER&&USER.r=='guest';const r=_lo.apply(this,arguments);if(g)rdPost('dl/clear?acct=guest').catch(()=>{});return r}}
 /* ---------- opening files kept on the disk ---------- */
 async function dlLink(v){const i=dlRefInfo(v);if(!i)throw new Error('This reference is damaged.');const j=await rd('dl/link?path='+encodeURIComponent(i.p));return j.url}
 const DL_VIDEO=/^(MP4|M4V|WEBM|MKV|MOV|OGV)$/,DL_AUDIO=/^(MP3|WAV|OGG|OPUS|M4A|AAC|FLAC)$/,DL_IMG=/^(PNG|JPG|JPEG|GIF|WEBP|BMP|AVIF|SVG)$/;
@@ -191,9 +237,9 @@ function dlMissing(path,why){const W=dlInfo(path,'This file is no longer on the 
  OPENERS.filter(o=>String(o[0]).startsWith('lx:')&&(()=>{try{return o[3](e,null)}catch(x){return false}})()).forEach(o=>l.push([o[0],o[1],o[2],o[3],p=>dlLxOpen(o,p)]));return l.filter(Boolean)}}
 /* ---------- Storage settings: what is kept on the disk ---------- */
 if(typeof storPanel=='function'){const _sp=storPanel;storPanel=function(c){const r=_sp.apply(this,arguments);if(!dlOn())return r;
- const refs=dlWalk(dlCDir(),['C:','DOWNLOADS'],[]),h=document.createElement('div');h.className='dl27st';
+ const refs=dlWalk(dlCDir(),downloadsPath(),[]),h=document.createElement('div');h.className='dl27st';
  h.innerHTML=`<h4 class='sh4'>Downloads kept on the disk</h4><p class='msg dlsp'></p><table class='tmt'><tbody></tbody></table>`;
- const tb=h.querySelector('tbody');let tot=0;refs.forEach(x=>{const i=dlRefInfo(x.v)||{};tot+=i.s||0;const row=tb.insertRow();row.insertCell().textContent=x.path[2];row.insertCell().textContent=fmtB(i.s||0);
+ const tb=h.querySelector('tbody');let tot=0;refs.forEach(x=>{const i=dlRefInfo(x.v)||{};tot+=i.s||0;const row=tb.insertRow();row.insertCell().textContent=x.path.slice(downloadsPath().length).join('\\');row.insertCell().textContent=fmtB(i.s||0);
   const a=row.insertCell(),o=document.createElement('button'),d=document.createElement('button');o.textContent='Open';d.textContent='Delete';o.onclick=()=>dlOpen(x.path);
   d.onclick=()=>{if(trashPut([x.path])>0){storPanel(c)}};a.append(o,' ',d)});
  if(!refs.length)tb.insertRow().insertCell().textContent='None. Downloads larger than 1.5 MB are kept here.';

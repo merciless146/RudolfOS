@@ -39,14 +39,14 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const b = await chromium.launch({executablePath: process.argv[2] || undefined});
   const p = await b.newPage(); p.on('pageerror', e => console.log('page error:', e.message));
   const q = s => p.evaluate(s);
-  await p.goto('http://127.0.0.1:8093/'); await p.waitForFunction(() => typeof explorer == 'function', null, {timeout: 30000});
-  await q("(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});wins.slice().forEach(w=>w.close());USER=USER||ACCTS[0];USER.r='admin';window.elevate=async()=>true;return 1})()");
+  await p.goto('http://127.0.0.1:8093/'); await p.waitForFunction(() => typeof explorer == 'function' && FSLOADED && fs['C:'] && fs['C:'].USERS, null, {timeout: 30000});
+  await q("(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});wins.slice().forEach(w=>w.close());USER=USER||ACCTS[0];USER.r='admin';if(!HOME){HOME={DOWNLOADS:{}};fs['C:'].USERS[uname()]=HOME}window.elevate=async()=>true;return 1})()");
   const open = async () => { await q("wins.slice().forEach(w=>w.close());explorer();1"); await wait(1500);
     await q("(()=>{const W=wins.find(w=>w.app=='explorer');const e=[...W.body.querySelectorAll('span')].find(x=>/^PHOTOS \\(/.test(x.textContent));e.click();return 1})()"); await wait(1500) };
   const pick = async (name) => { await q(`(()=>{const W=wins.find(w=>w.app=='explorer');const r=W.body.querySelector('tr[data-k="R:${name}"]');r.click();W.body.querySelector('.rim').click();return 1})()`) };
   const done = () => p.waitForFunction(() => { const W = wins.find(w => w.app == 'explorer'); return W && !W.body.querySelector('.rcx') && /Copied|Left out|Stopped|does not fit|at most/.test(W.body.querySelector('.stat').textContent) }, null, {timeout: 60000}).catch(() => 0);
   const st = () => q("wins.find(w=>w.app=='explorer').body.querySelector('.stat').textContent");
-  const dl = () => q("JSON.stringify(node(['C:','DOWNLOADS'])||{})").then(JSON.parse);   // 1.2.7: where downloads are
+  const dl = () => q("JSON.stringify(node(downloadsPath())||{})").then(JSON.parse);   // where downloads are (1.5.5: the account's own)
   await open();
   ok('the drive opens in Files with its folders', await q("!!wins.find(w=>w.app=='explorer').body.querySelector('tr[data-k=\"R:Trip\"]')"));
   // 1. a whole folder

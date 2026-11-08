@@ -2071,6 +2071,36 @@ static void api_service(struct req *r)
 #define INCOMING DLHOME "/.incoming"
 #define QUARANTINE DLHOME "/.quarantine"
 static int dl_name_ok(const char *n) { return n && *n && *n != '.' && !strchr(n, '/') && strlen(n) < 240; }
+/* 1.5.5: each account's large downloads are in DLHOME/.accounts/<account id>/ (a hidden folder, so Linux apps, which
+   share Downloads itself, do not list them); "shared" holds downloads from before 1.5.5 on a computer with several
+   accounts. An account id: lower-case letters, digits and "-", as the desktop makes them. */
+#define DLACCTS DLHOME "/.accounts"
+static int dl_acct_ok(const char *a)
+{
+	if (!a || !*a || strlen(a) > 64) return 0;
+	for (const char *c = a; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '-')) return 0;
+	return 1;
+}
+/* the folder for acct (made, owned by the desktop user), or DLHOME itself without one; 0 when acct is not valid */
+static int dl_acct_dir(const char *acct, char *out, size_t n)
+{
+	if (!acct || !*acct) { snprintf(out, n, "%s", DLHOME); return 1; }
+	if (!dl_acct_ok(acct)) return 0;
+	mkdir(DLACCTS, 0700); if (chown(DLACCTS, 1000, 1000)) {}
+	snprintf(out, n, "%s/%s", DLACCTS, acct); mkdir(out, 0700); if (chown(out, 1000, 1000)) {}
+	return 1;
+}
+/* a file in Downloads itself or in one account's folder: DLHOME/NAME or DLACCTS/ACCT/NAME, nothing hidden, no ".." */
+static int dl_path_ok(const char *p)
+{
+	if (!p || strstr(p, "..")) return 0;
+	if (!strncmp(p, DLACCTS "/", sizeof DLACCTS)) {
+		const char *a = p + sizeof DLACCTS, *sl = strchr(a, '/'); if (!sl) return 0;
+		char acct[80]; size_t l = (size_t)(sl - a); if (!l || l >= sizeof acct) return 0; memcpy(acct, a, l); acct[l] = 0;
+		return dl_acct_ok(acct) && dl_name_ok(sl + 1);
+	}
+	return !strncmp(p, DLHOME "/", sizeof DLHOME) && dl_name_ok(p + sizeof DLHOME);
+}
 /* a free name in dir: "name", "name (2).ext", ... */
 static void dl_unique(const char *dir, const char *name, char *out, size_t n)
 {
@@ -2084,7 +2114,8 @@ static void api_dl(struct req *r, const char *what, int post)
 	/* 1.5.5: home: the files in Downloads itself, so ones that no C:\DOWNLOADS entry points at (saved by a Linux app,
 	   or a download whose entry was lost) can be shown there too */
 	if (!strcmp(what, "incoming") || !strcmp(what, "quarantine") || !strcmp(what, "home")) {
-		const char *dir = !strcmp(what, "incoming") ? INCOMING : !strcmp(what, "home") ? DLHOME : QUARANTINE;
+		char hd[300]; if (!strcmp(what, "home") && !dl_acct_dir(qparam(r->query, "acct"), hd, sizeof hd)) { reply_err(r->fd, 400, "which account?"); return; }
+		const char *dir = !strcmp(what, "incoming") ? INCOMING : !strcmp(what, "home") ? hd : QUARANTINE;
 		DIR *d = opendir(dir); str s = {0}; sadd(&s, "{\"ok\":true,\"items\":["); int first = 1;
 		struct dirent *e;
 		while (d && (e = readdir(d))) {
@@ -2107,7 +2138,7 @@ static void api_dl(struct req *r, const char *what, int post)
 	if (!strcmp(what, "link")) {
 		/* a link to a file in Downloads that the page can use in <video>, <img> or the PDF viewer */
 		char *p = qparam(r->query, "path");
-		if (!p || strncmp(p, DLHOME "/", sizeof DLHOME) || strstr(p, "/.") || strstr(p, "..")) { reply_err(r->fd, 403, "only files in Downloads"); return; }
+		if (!dl_path_ok(p)) { reply_err(r->fd, 403, "only files in Downloads"); return; }
 		struct stat st; if (stat(p, &st) || !S_ISREG(st.st_mode)) { reply_err(r->fd, 404, "the file is not there any more"); return; }
 		unsigned char rb[16]; char id[33]; int rf = open("/dev/urandom", O_RDONLY);
 		if (rf < 0 || read(rf, rb, 16) != 16) { if (rf >= 0) close(rf); reply_err(r->fd, 500, "no randomness"); return; }
@@ -2120,7 +2151,8 @@ static void api_dl(struct req *r, const char *what, int post)
 		/* bytes of a downloaded file for the antivirus: from=incoming|quarantine|home, off (negative = from the end), len <= 8 MB */
 		char *name = qparam(r->query, "name"), *from = qparam(r->query, "from"), *os = qparam(r->query, "off"), *ls = qparam(r->query, "len");
 		if (!dl_name_ok(name)) { reply_err(r->fd, 400, "which file?"); return; }
-		const char *dir = from && !strcmp(from, "quarantine") ? QUARANTINE : from && !strcmp(from, "home") ? DLHOME : INCOMING;
+		char hd[300]; if (!dl_acct_dir(qparam(r->query, "acct"), hd, sizeof hd)) { reply_err(r->fd, 400, "which account?"); return; }
+		const char *dir = from && !strcmp(from, "quarantine") ? QUARANTINE : from && !strcmp(from, "home") ? hd : INCOMING;
 		char fp[600]; snprintf(fp, sizeof fp, "%s/%s", dir, name);
 		int f = open(fp, O_RDONLY | O_NOFOLLOW); struct stat st;
 		if (f < 0 || fstat(f, &st) || !S_ISREG(st.st_mode)) { if (f >= 0) close(f); reply_err(r->fd, 404, "the file is not there any more"); return; }
@@ -2141,23 +2173,35 @@ static void api_dl(struct req *r, const char *what, int post)
 		   del (from=incoming|quarantine|home), rename (from=home, as=new name), quar from home; as = another name for keep/release */
 		char *name = qparam(r->query, "name"), *to = qparam(r->query, "to"), *from = qparam(r->query, "from"), *as = qparam(r->query, "as");
 		if (!dl_name_ok(name) || !to) { reply_err(r->fd, 400, "which file?"); return; }
-		const char *src_dir = !strcmp(to, "release") || (from && !strcmp(from, "quarantine")) ? QUARANTINE : from && !strcmp(from, "home") ? DLHOME : INCOMING;
-		if (!strcmp(src_dir, DLHOME) && strcmp(to, "del") && strcmp(to, "rename") && strcmp(to, "quar")) { reply_err(r->fd, 400, "to?"); return; }
+		/* 1.5.5: acct = the account whose folder is meant (from=home, keep, release); from=root: Downloads itself (a file
+		   from before 1.5.5, to=acct moves it into acct's folder) */
+		char hd[300]; if (!dl_acct_dir(qparam(r->query, "acct"), hd, sizeof hd)) { reply_err(r->fd, 400, "which account?"); return; }
+		int fromhome = from && (!strcmp(from, "home") || !strcmp(from, "root"));
+		const char *src_dir = !strcmp(to, "release") || (from && !strcmp(from, "quarantine")) ? QUARANTINE : from && !strcmp(from, "root") ? DLHOME : from && !strcmp(from, "home") ? hd : INCOMING;
+		if (fromhome && strcmp(to, "del") && strcmp(to, "rename") && strcmp(to, "quar") && strcmp(to, "acct")) { reply_err(r->fd, 400, "to?"); return; }
+		if (!strcmp(to, "acct") && (!from || strcmp(from, "root") || !strcmp(hd, DLHOME))) { reply_err(r->fd, 400, "to which account?"); return; }
 		char src[600]; snprintf(src, sizeof src, "%s/%s", src_dir, name);
 		struct stat st; if (lstat(src, &st) || !S_ISREG(st.st_mode)) { reply_err(r->fd, 404, "the file is not there any more"); return; }
 		char dst[700] = "";
 		if (!strcmp(to, "del")) { if (unlink(src)) { reply_err(r->fd, 500, strerror(errno)); return; } reply_ok(r->fd, "deleted"); return; }
 		if (!strcmp(to, "rename")) {
-			if (strcmp(src_dir, DLHOME) || !dl_name_ok(as)) { reply_err(r->fd, 400, "which name?"); return; }
-			snprintf(dst, sizeof dst, "%s/%s", DLHOME, as);
+			if (!fromhome || !dl_name_ok(as)) { reply_err(r->fd, 400, "which name?"); return; }
+			snprintf(dst, sizeof dst, "%s/%s", src_dir, as);
 			if (!access(dst, F_OK)) { reply_err(r->fd, 409, "a file with that name is already there"); return; }
 		}
-		else if (!strcmp(to, "keep") || !strcmp(to, "release")) dl_unique(DLHOME, dl_name_ok(as) ? as : name, dst, sizeof dst);
+		else if (!strcmp(to, "keep") || !strcmp(to, "release")) dl_unique(hd, dl_name_ok(as) ? as : name, dst, sizeof dst);
+		else if (!strcmp(to, "acct")) dl_unique(hd, name, dst, sizeof dst);
 		else if (!strcmp(to, "quar")) { mkdir(QUARANTINE, 0700); if (chown(QUARANTINE, 1000, 1000)) {} dl_unique(QUARANTINE, name, dst, sizeof dst); }
 		else { reply_err(r->fd, 400, "to?"); return; }
 		if (rename(src, dst)) { reply_err(r->fd, 500, strerror(errno)); return; }
 		str s = {0}; sadd(&s, "{\"ok\":true,\"path\":"); sjson(&s, dst); sadd(&s, ",\"name\":"); sjson(&s, strrchr(dst, '/') + 1); sadd(&s, ",\"size\":%lld}", (long long)st.st_size);
 		reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(what, "clear") && post) {
+		/* 1.5.5: an account's folder of large downloads, deleted (the guest's after sign-out; an account that is removed) */
+		char *a = qparam(r->query, "acct");
+		if (!dl_acct_ok(a) || !strcmp(a, "shared")) { reply_err(r->fd, 400, "which account?"); return; }
+		char cmd[200]; snprintf(cmd, sizeof cmd, "rm -rf '" DLACCTS "/%s'", a); run(cmd); reply_ok(r->fd, "cleared"); return;
 	}
 	reply_err(r->fd, 404, "unknown download action");
 }
@@ -3086,20 +3130,24 @@ static void api(struct req *r)
 		str s = {0}; sadd(&s, "{\"ok\":true,\"bytes\":%lld,\"ms\":%lld}", by, ms); free(o); reply_json(r->fd, &s); return;
 	}
 	if (!strcmp(p, "install/images")) {
-		/* disc images downloaded to the Downloads folder, for Install from a newer image (1.2.4) */
-		str s = {0}; sadd(&s, "{\"ok\":true,\"images\":[");
-		DIR *dd = opendir("/home/rudolf/Downloads"); struct dirent *e; int n = 0;
+		/* disc images downloaded to the Downloads folder, for Install from a newer image (1.2.4); 1.5.5: and in the
+		   account's own folder of large downloads (acct=) */
+		str s = {0}; sadd(&s, "{\"ok\":true,\"images\":["); int n = 0;
+		char ad[300] = ""; const char *aq = qparam(r->query, "acct"); if (aq && *aq && dl_acct_ok(aq)) snprintf(ad, sizeof ad, DLACCTS "/%s", aq);
+		for (int pass = 0; pass < (ad[0] ? 2 : 1); pass++) {
+		const char *DLD = pass ? ad : DLHOME;
+		DIR *dd = opendir(DLD); struct dirent *e;
 		while (dd && (e = readdir(dd))) {
 			size_t l = strlen(e->d_name);
 			if (l < 5 || strcasecmp(e->d_name + l - 4, ".iso") || e->d_name[0] == '.') continue;
-			char fp[600]; snprintf(fp, sizeof fp, "/home/rudolf/Downloads/%s", e->d_name); struct stat st;
+			char fp[600]; snprintf(fp, sizeof fp, "%s/%s", DLD, e->d_name); struct stat st;
 			if (stat(fp, &st) || !S_ISREG(st.st_mode)) continue;
 			sadd(&s, "%s{\"path\":", n++ ? "," : ""); sjson(&s, fp); sadd(&s, ",\"name\":"); sjson(&s, e->d_name); sadd(&s, ",\"bytes\":%lld,\"boot\":%s}", (long long)st.st_size, l > 9 && !strcasecmp(e->d_name + l - 9, "-boot.iso") ? "true" : "false");
 		}
 		if (dd) closedir(dd);
 		/* 1.2.7: an image downloaded in parts (NAME.iso.part00, part01, ... with no gaps), not joined yet; install.sh
 		   joins it (joinparts.sh) when it is chosen. path is the image it becomes. */
-		dd = opendir("/home/rudolf/Downloads");
+		dd = opendir(DLD);
 		char seen[64][200]; int ns = 0;
 		while (dd && (e = readdir(dd))) {
 			size_t l = strlen(e->d_name);
@@ -3109,13 +3157,13 @@ static void api(struct req *r)
 			int dup = 0; for (int i = 0; i < ns; i++) if (!strcmp(seen[i], base)) dup = 1;
 			if (dup || ns >= 64) continue;
 			snprintf(seen[ns++], 200, "%s", base);
-			char fp[600]; struct stat st; snprintf(fp, sizeof fp, "/home/rudolf/Downloads/%s", base);
+			char fp[600]; struct stat st; snprintf(fp, sizeof fp, "%s/%s", DLD, base);
 			if (!stat(fp, &st)) continue;   /* already joined: listed above */
 			/* count part00, part01, ... until one is missing (either case for "part") */
 			int np = 0; long long tot = 0;
 			for (;; np++) {
 				char pp[640]; struct stat ps; int found = 0;
-				for (int c = 0; c < 2 && !found; c++) { snprintf(pp, sizeof pp, "/home/rudolf/Downloads/%s.%s%02d", base, c ? "PART" : "part", np); if (!stat(pp, &ps) && S_ISREG(ps.st_mode)) found = 1; }
+				for (int c = 0; c < 2 && !found; c++) { snprintf(pp, sizeof pp, "%s/%s.%s%02d", DLD, base, c ? "PART" : "part", np); if (!stat(pp, &ps) && S_ISREG(ps.st_mode)) found = 1; }
 				if (!found) break;
 				tot += ps.st_size;
 			}
@@ -3124,6 +3172,7 @@ static void api(struct req *r)
 			sadd(&s, ",\"bytes\":%lld,\"parts\":%d,\"boot\":%s}", tot, np, bl > 9 && !strcasecmp(base + bl - 9, "-boot.iso") ? "true" : "false");
 		}
 		if (dd) closedir(dd);
+		}
 		sadd(&s, "]}"); reply_json(r->fd, &s); return;
 	}
 	if (!strcmp(p, "keepfiles") && !post) {

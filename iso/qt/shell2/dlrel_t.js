@@ -1,4 +1,4 @@
-// Downloads 1.2.7: where downloads go (C:\DOWNLOADS, which Files' "Downloads" now opens) and a Rudolf OS release's own
+// Downloads 1.2.7: where downloads go (1.5.5: the account's own Downloads, which Files' "Downloads" opens) and a Rudolf OS release's own
 // disc files (.partNN, .sha256, .iso) past the file-type rules, in the desktop page with a stand-in rudolfd, in
 // Chromium. node dlrel_t.js [CHROME]   (build iso/www/index.html first)
 const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
@@ -29,8 +29,8 @@ const REL = 'https://release-assets.githubusercontent.com/github-production-rele
   const b = await chromium.launch({executablePath: process.argv[2] || undefined}); const p = await b.newPage();
   p.on('pageerror', e => console.log('page error:', e.message));
   const q = s => p.evaluate(s);
-  await p.goto('http://127.0.0.1:8090/'); await p.waitForFunction(() => typeof dlIngest == 'function' && typeof explorer == 'function', null, {timeout: 30000});
-  await q("(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});USER=USER||ACCTS[0];USER.r='admin';window.elevate=async()=>true;SECC.pol.unk=false;return 1})()");
+  await p.goto('http://127.0.0.1:8090/'); await p.waitForFunction(() => typeof dlIngest == 'function' && typeof explorer == 'function' && FSLOADED && fs['C:'] && fs['C:'].USERS, null, {timeout: 30000});
+  await q("(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});USER=USER||ACCTS[0];USER.r='admin';if(!HOME){HOME={DOWNLOADS:{}};fs['C:'].USERS[uname()]=HOME}window.elevate=async()=>true;SECC.pol.unk=false;return 1})()");
   // one download through the same path Oracle's downloads take: in, checked, kept or blocked
   const get = async (name, url, body) => { IN.set(name, body); return q(`(async()=>{const rec={n:dlCName(${JSON.stringify(name)}),u:${JSON.stringify(url)},t:Date.now(),sz:0,st:'wait',why:''};
     DLS.push(rec);await dlIngest({name:${JSON.stringify(name)},size:${body.length}},rec);return JSON.stringify({st:rec.st,why:rec.why,path:rec.path||''})})()`).then(JSON.parse) };
@@ -39,7 +39,7 @@ const REL = 'https://release-assets.githubusercontent.com/github-production-rele
   r.sha = await get('rudolf-os-1.2.6.iso.sha256', REL + 'rudolf-os-1.2.6.iso.sha256', 'f'.repeat(64) + '  rudolf-os-1.2.6.iso\n');
   r.iso = await get('rudolf-os-1.2.6.iso', 'https://github.com/merciless146/RudolfOS/releases/download/disc-1.2.6/rudolf-os-1.2.6.iso', big);
   ok('13. a release part from the Rudolf OS releases is kept (with unknown types blocked)', r.part.st == 'saved', r.part);
-  ok('...its .sha256 too (small: kept in C:\\DOWNLOADS itself)', r.sha.st == 'saved' && /^f{64}  rudolf-os-1\.2\.6\.iso/.test(await q("(()=>{const v=String(node(['C:','DOWNLOADS','RUDOLF-OS-1.2.6.ISO.SHA256'])||'');return v.startsWith('data:')?atob(v.split(',')[1]):v})()")), r.sha);
+  ok('...its .sha256 too (small: kept in Downloads itself)', r.sha.st == 'saved' && /^f{64}  rudolf-os-1\.2\.6\.iso/.test(await q("(()=>{const v=String(node([...downloadsPath(),'RUDOLF-OS-1.2.6.ISO.SHA256'])||'');return v.startsWith('data:')?atob(v.split(',')[1]):v})()")), r.sha);
   ok('...and a whole disc image from the release address (.iso is otherwise a forbidden program type)', r.iso.st == 'saved', r.iso);
   ok('...the activity log says why they were allowed', /Allowed RUDOLF-OS-1\.2\.6\.ISO\.PART00: a Rudolf OS disc file from the Rudolf OS releases/.test(await q("JSON.stringify(SLOG.av)")));
   const other = await get('rudolf-os-1.2.6.iso.part01', 'https://example.org/rudolf-os-1.2.6.iso.part01', big);
@@ -50,8 +50,9 @@ const REL = 'https://release-assets.githubusercontent.com/github-production-rele
   const iso = await get('random.iso', REL + 'random.iso', big);
   ok('...another .iso from the release address is a program file again (blocked without an administrator\'s approval)', iso.st == 'blocked', iso);
   await q("window.elevate=async()=>true;1");
-  // 12. Downloads in one place
-  ok('12. downloads are in C:\\DOWNLOADS', await q("!!node(['C:','DOWNLOADS','RUDOLF-OS-1.2.6.ISO.PART00'])"));
+  // 12. the account's own Downloads (1.5.5: C:\USERS\<name>\DOWNLOADS), its large files in the account's folder on the disk
+  ok('12. downloads are in the account\'s own Downloads (C:\\USERS\\<name>\\DOWNLOADS)', await q("downloadsPath()[1]=='USERS'&&!!node([...downloadsPath(),'RUDOLF-OS-1.2.6.ISO.PART00'])"));
+  ok('...large ones kept on the disk in the account\'s folder', M.calls.some(c => /^dl\/file\?name=rudolf-os-1\.2\.6\.iso\.part00&to=keep&acct=[a-z0-9-]+$/.test(c)), M.calls.filter(c => /keep/.test(c)));
   await q("wins.slice().forEach(w=>w.close());explorer();1"); await new Promise(r => setTimeout(r, 1200));
   await q("(()=>{const W=wins.find(w=>w.app=='explorer');const e=[...W.body.querySelectorAll('span')].find(x=>x.textContent.trim()=='Downloads');e.click();return 1})()"); await new Promise(r => setTimeout(r, 800));
   const shown = await q("(()=>{const W=wins.find(w=>w.app=='explorer');return W.title||W.body.closest('.win')?.querySelector('.wt')?.textContent||document.querySelector('.win.active .wt')?.textContent||''})()");
