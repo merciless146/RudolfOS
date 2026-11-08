@@ -5,8 +5,31 @@
 #        downloaded rudolf-os-*.iso in the home folder (checked as install.sh does). FILES: 1 to copy this
 #        session's files and settings onto the new stick too.
 # install.sh writes the image, reads it back and compares it, and adds RUDOLFDATA after it; this adds the rest.
-export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+#   mkstick.sh --check DIR BOOTONLY   (1.5.3, also for iso/qt/host/mkstick_t.sh) whether the RUDOLFDATA mounted at DIR
+#                                     can start: with a boot image (BOOTONLY=1), its system slot must be complete
+export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
 set -e
+# 1.5.3: an installed Rudolf OS keeps only its boot files in front of RUDOLFDATA (its system is in RUDOLFDATA's os
+# folder), so a stick made from it has a boot image, and starts only if that system was copied over. On 2026-11-07 a
+# stick was reported ready with an empty os folder and would not start (the HP: "this drive has boot files only").
+# Now that is checked before "Done", and a missing or incomplete copy is an error.
+stick_check() {
+	D=$1; BO=$2
+	[ "$BO" = 1 ] || return 0
+	G=$(sed -n 's/^good=//p' "$D/os/system/state" 2>/dev/null || true)   # (set -e: no state file is not an error here)
+	case "$G" in a|b) ;; *) echo "The new stick has no system: this Rudolf OS's installed system was not copied onto it."; return 11;; esac
+	[ -e "$D/os/system/$G/complete" ] || { echo "The new stick's system (slot $G) is incomplete."; return 12; }
+	for L in vmlinuz base.sfs chromium.sfs modules.sfs desktop.sfs; do
+		[ -s "$D/os/system/$G/$L" ] || { echo "The new stick's system is missing $L."; return 12; }
+	done
+	# the copy is read back and compared with this computer's (the slot in use, as the stick will start it)
+	for L in vmlinuz base.sfs chromium.sfs modules.sfs desktop.sfs; do
+		[ -n "$SRCOS" ] || break
+		cmp -s "$SRCOS/system/$G/$L" "$D/os/system/$G/$L" || { echo "The copy of $L on the new stick does not match: the stick may be failing or was unplugged."; return 13; }
+	done
+	return 0
+}
+if [ "$1" = --check ]; then stick_check "$2" "$3"; exit $?; fi
 DEV=$1; IMG=$2; FILES=$3
 N=${DEV##*/}
 [ -b "$DEV" ] && [ -r /sys/block/$N/size ] || { echo "No such drive: $DEV"; exit 2; }
@@ -22,6 +45,10 @@ SECTORS=$(cat /sys/block/$N/size)
 BUSY=/run/rudolf/busy/$N; mkdir -p /run/rudolf/busy; : > $BUSY; trap "rm -f $BUSY" EXIT
 MKSTICK=1 /usr/lib/rudolf/install.sh "$DEV" $IMG
 case "$N" in *[0-9]) P="${DEV}p3";; *) P="${DEV}3";; esac
+# 1.5.3: is the image now on the stick a boot image (boot files only)? Then the installed system must be copied
+case "$N" in *[0-9]) P1="${DEV}p1";; *) P1="${DEV}1";; esac
+BOOTONLY=0; mkdir -p /mnt/stickimg
+if mount -t iso9660 -o ro "$P1" /mnt/stickimg 2>/dev/null; then [ -e /mnt/stickimg/rudolf/bootonly ] && BOOTONLY=1; umount /mnt/stickimg; fi
 mkdir -p /mnt/newstick && mount -t ext4 "$P" /mnt/newstick || { echo "The new stick's RUDOLFDATA partition could not be opened."; exit 6; }
 trap "umount /mnt/newstick 2>/dev/null; rm -f $BUSY" EXIT
 FREE=$(df -k /mnt/newstick | awk 'NR==2 {print $4}')
@@ -32,8 +59,13 @@ if [ -z "$IMG" ] && [ -d /persist/os/system ] && mountpoint -q /persist; then
 		echo "Copying the installed updates ($((NEED / 1024)) MiB) ..."
 		cp -a /persist/os/. /mnt/newstick/os/
 		FREE=$(df -k /mnt/newstick | awk 'NR==2 {print $4}')
+	elif [ $BOOTONLY = 1 ]; then echo "Not enough room on the stick for Rudolf OS ($((NEED / 1024)) MiB). Use a bigger stick."; exit 11
 	else echo "Not enough room for the installed updates: the new stick starts the version on this drive's disc image and updates itself."; fi
 fi
+# 1.5.3: the stick must be able to start: with a boot image, its copied system complete and the same as this one's
+echo "Checking the new stick ..."
+sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+SRCOS=/persist/os stick_check /mnt/newstick $BOOTONLY
 if [ "$FILES" = 1 ]; then
 	NEED=$(du -sk /home/rudolf | cut -f1)
 	[ "$NEED" -lt $((FREE - 65536)) ] || { echo "Your files ($((NEED / 1024)) MiB) do not fit on the new stick. It is ready without them."; exit 10; }
