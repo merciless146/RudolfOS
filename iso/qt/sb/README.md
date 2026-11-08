@@ -27,3 +27,12 @@ named after the VM.
 Boot off starting from a USB stick (the disc image on xHCI USB storage). Checks the NVIDIA GSP and Realtek firmware
 in the modules layer (pinned checksums, the links of other chips), the start medium (usb), the installed release
 in Task Manager and the report, and an update slot started by kexec with each start-up option once (14 checks).
+
+## t152_t.py (Rudolf OS 1.5.4)
+
+`python3 t152_t.py REL-DIR` (as t150): the Rudolf OS Library on the release itself. A throwaway Library key signs a
+test Library, served over HTTP inside the guest and as a disc repository (rpk is told to trust that key with
+RPK_LIBRARY_KEYS). A Library package installs over the network and from the disc's repository and is updated and
+removed; one holding a program is refused; a release list signed with the Library key is refused by rudolf-update
+(the real one is accepted); and the health log has a `library` line for each (10 checks). The temporary keys are
+deleted at the end.

@@ -28,7 +28,7 @@ function fwSection(c,W){
 if(typeof secPanelS=='function'){const _sp50=secPanelS;secPanelS=function(c,W){const r=_sp50.apply(this,arguments);try{fwSection(c,W)}catch(e){console.warn('fw50',e)}return r}}
 
 /* ---------- System health ---------- */
-const HL_KIND={start:['🔌','Start-up'],ready:['✅','Ready'],fallback:['↩️','Update fallback'],memory:['🧠','Memory'],crash:['💥','Crash'],browser:['🔄','Desktop restart'],signin:['🔑','Sign-in'],disk:['💾','Storage'],heat:['🌡️','Heat'],firewall:['🛡️','Firewall'],remote:['🖥️','Remote access'],vault:['🔐','Encryption'],update:['⬆️','Update'],account:['👤','Accounts'],bluetooth:['🔵','Bluetooth'],hardware:['🧩','Hardware']};
+const HL_KIND={start:['🔌','Start-up'],ready:['✅','Ready'],fallback:['↩️','Update fallback'],memory:['🧠','Memory'],crash:['💥','Crash'],browser:['🔄','Desktop restart'],signin:['🔑','Sign-in'],disk:['💾','Storage'],heat:['🌡️','Heat'],firewall:['🛡️','Firewall'],remote:['🖥️','Remote access'],vault:['🔐','Encryption'],update:['⬆️','Update'],account:['👤','Accounts'],bluetooth:['🔵','Bluetooth'],hardware:['🧩','Hardware'],library:['📚','Rudolf OS Library']};
 const hlWhen=t=>{const d=new Date(t*1000);return sysDateStr(d)+' '+d.toLocaleTimeString(window.__a11y?LOC():[],{hour:'numeric',minute:'2-digit',timeZone:S.tz})};
 async function hlGet(n){if(!RD)return null;try{const h=await rd('health?n='+(n||300));return h&&Array.isArray(h.events)?h:null}catch(e){return null}}
 function hlNote(k,m){if(!RD)return;rdPost('health',JSON.stringify({k,m:String(m).slice(0,380)})).catch(()=>{})}

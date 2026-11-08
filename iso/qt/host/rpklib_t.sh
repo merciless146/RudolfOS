@@ -7,6 +7,8 @@ T=$(mktemp -d); trap 'for m in $(grep " $T/" /proc/mounts | cut -d" " -f2); do u
 gcc -O2 -o $T/rpk $I/sys/rpk.c -lcrypto || exit 1
 python3 $TOOL keygen $T/sys >/dev/null; python3 $TOOL keygen $T/lib >/dev/null
 export RPK_ROOT=$T/root RPK_MNT=$T/mnt RPK_DISC=$T/nodisc RPK_KEYS=$T/sys/rpk-signing.pub RPK_LIBRARY_KEYS=$T/lib/rpk-signing.pub RPK_SOURCES=$T/sources
+# 1.5.4: a stand-in for "rudolfd --health KIND MESSAGE" (the health log)
+export RPK_HEALTH=$T/health; printf '#!/bin/sh\necho "$2 $3" >> %s/hlog\n' $T > $T/health; chmod +x $T/health; : > $T/hlog
 mk() {   # NAME VERSION KIND KEY OUT
 	d=$T/p/$1-$2-$3; mkdir -p $d/www; printf 'name = %s\nversion = %s\nkind = %s\ntitle = %s\nsummary = test\nlicense = MIT\n%s' $1 $2 $3 $1 "$6" > $d/PKGINFO
 	echo "$1 $2" > $d/www/hello.txt; [ $3 = cli ] && { mkdir -p $d/bin; printf '#!/bin/sh\necho hi\n' > $d/bin/$1; chmod +x $d/bin/$1; printf 'commands = %s\n' $1 >> $d/PKGINFO; }
@@ -46,6 +48,14 @@ mk liar 1.0 addon lib $T/liar.rpk "signed = system
 "
 o=$($T/rpk install-file $T/liar.rpk 2>&1); r=$?
 ok "9. a package that writes its own \"signed\" line is refused" $([ $r != 0 ] && echo 1 || echo 0) "$r $o"
+# 1.5.4: the health log has a line for each Library install, update, removal and refusal
+H=$(cat $T/hlog)
+ok "11. health log: the Library install" $(has "$H" "library installed rudolf-quake 1.0.0, signed by the Rudolf OS Library") "$H"
+ok "12. health log: the Library update" $(has "$H" "library updated rudolf-quake from 1.0.0 to 1.1.0, signed by the Rudolf OS Library") "$H"
+ok "13. health log: the refused program and the refused replacement" $([ "$(has "$H" "library refused evilcli 1.0, signed by the Rudolf OS Library: a Rudolf OS Library package can only hold files for the desktop")" = 1 ] && [ "$(has "$H" "library refused sysapp 9.0")" = 1 ] && echo 1 || echo 0) "$H"
+ok "14. health log: nothing for the system's own package" $(has "$H" "sysapp 1.0" | tr 1 x | tr 0 1 | tr x 0) "$H"
+$T/rpk remove rudolf-quake >/dev/null 2>&1; H=$(cat $T/hlog)
+ok "15. health log: the Library removal" $(has "$H" "library removed rudolf-quake 1.1.0, from the Rudolf OS Library") "$H"
 # rudolf-update never reads library-keys
 ok "10. rudolf-update reads only rpk-keys (never library-keys)" $(grep -q "library-keys" $I/sys/rudolf-update.c && echo 0 || echo 1)
 echo "$((N-F))/$N passed"; [ $F = 0 ]
