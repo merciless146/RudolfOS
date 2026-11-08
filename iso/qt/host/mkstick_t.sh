@@ -1,8 +1,9 @@
 #!/bin/sh
-# 1.5.3: mkstick.sh's last check, before it says a stick is ready. A stick made from an installed Rudolf OS has a boot
+# 1.5.3: oscopy.sh, as Make a USB stick (mkstick.sh) and Install here (install.sh) use it: copying the installed
+# system, and the last check before a stick or an install is called ready. A stick made from an installed Rudolf OS has a boot
 # image (boot files only), so it starts only with the installed system copied into its RUDOLFDATA (on 2026-11-07 one
 # was reported ready with an empty os folder; the HP said "this drive has boot files only"). Stand-in folders.
-HERE=$(cd "$(dirname "$0")" && pwd); M=$HERE/../../sys/root/usr/lib/rudolf/mkstick.sh
+HERE=$(cd "$(dirname "$0")" && pwd); LIB=$HERE/../../sys/root/usr/lib/rudolf; M=$LIB/mkstick.sh; export RUDOLF_LIB=$LIB
 T=$(mktemp -d); trap 'rm -rf $T' EXIT
 N=0; F=0; ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $3"; F=$((F+1)); fi; }
 has() { case "$1" in *"$2"*) echo 1;; *) echo 0;; esac; }
@@ -20,9 +21,21 @@ chk $S 1; ok "...an empty layer: refused" $([ $r = 12 ] && [ "$(has "$o" "missin
 slot $S 1.5.3; chk $S 1; ok "...the whole system copied: ready" $([ $r = 0 ] && echo 1 || echo 0) "$r $o"
 slot $T/src 1.5.3; echo "a different modules" > $S/os/system/a/modules.sfs
 o=$(SRCOS=$T/src/os sh $M --check $S 1 2>&1); r=$?
-ok "...a copy that does not match this computer's: refused" $([ $r = 13 ] && [ "$(has "$o" "modules.sfs on the new stick does not match")" = 1 ] && echo 1 || echo 0) "$r $o"
+ok "...a copy that does not match this computer's: refused" $([ $r = 13 ] && [ "$(has "$o" "modules.sfs on the new drive does not match")" = 1 ] && echo 1 || echo 0) "$r $o"
 slot $S 1.5.3; o=$(SRCOS=$T/src/os sh $M --check $S 1 2>&1); r=$?
 ok "...a copy that matches: ready" $([ $r = 0 ] && echo 1 || echo 0) "$r $o"
 sed -i 's/good=a/good=disc/' $S/os/system/state; chk $S 1
 ok "...the system in use is the disc's, which a boot image does not have: refused" $([ $r = 11 ] && echo 1 || echo 0) "$r $o"
+# the copy (Install here from a stick made from an installed Rudolf OS: the HP)
+. $LIB/oscopy.sh
+mkdir -p $T/media/rudolf; export RUDOLF_MEDIA=$T/media
+ok "running from a whole disc image: no copy needed" $([ "$(os_running_bootonly)" = 0 ] && echo 1 || echo 0)
+touch $T/media/rudolf/bootonly
+ok "running from a drive with boot files only: the system must be copied" $([ "$(os_running_bootonly)" = 1 ] && echo 1 || echo 0)
+D=$T/newdrive; mkdir -p $D/os; o=$(os_copy $D $T/src/os 2>&1); r=$?
+ok "the copy says what it copies" $([ $r = 0 ] && [ "$(has "$o" "Copying the installed system")" = 1 ] && echo 1 || echo 0) "$r $o"
+o=$(os_check $D 1 $T/src/os 2>&1); r=$?
+ok "...and the new drive can start, read back the same" $([ $r = 0 ] && echo 1 || echo 0) "$r $o"
+o=$(os_copy $T/nothing-here $T/missing/os 2>&1); r=$?
+ok "no installed system to copy: refused, not skipped" $([ $r = 11 ] && [ "$(has "$o" "no installed system")" = 1 ] && echo 1 || echo 0) "$r $o"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

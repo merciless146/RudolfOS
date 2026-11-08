@@ -3,6 +3,7 @@
 # Layout: the Rudolf OS image (boots on BIOS and UEFI) followed by an ext4
 # partition labelled RUDOLFDATA that keeps your files, settings and updates.
 set -e
+. ${RUDOLF_LIB:-/usr/lib/rudolf}/oscopy.sh
 #   install.sh DISK [IMAGE]   IMAGE (1.2.4): a downloaded rudolf-os-*.iso to install instead of the running
 #                             drive's own image, so an older stick can install a newer, Secure Boot ready system
 DEV="$1"
@@ -70,6 +71,15 @@ echo "Step 5/5: finishing ..."
 mkdir -p /mnt/newdata && mount "$P" /mnt/newdata
 mkdir -p /mnt/newdata/home/rudolf /mnt/newdata/os /mnt/newdata/etc
 chown 1000:1000 /mnt/newdata/home/rudolf
+# 1.5.3: Install here from a Rudolf OS whose drive has boot files only (an installed Rudolf OS, or a stick made from
+# one): the image just written has no system, so the running system is copied into the new RUDOLFDATA and checked
+# (oscopy.sh). Before, the HP's drive got boot files and an empty os folder, and stopped at "boot files only".
+# (Make a USB stick does this itself, after install.sh.)
+if [ -z "$MKSTICK" ] && [ -z "$2" ] && [ "$(os_running_bootonly)" = 1 ]; then
+	R=0; os_copy /mnt/newdata /persist/os || R=$?
+	[ $R = 0 ] && { echo "Checking the installed system ..."; os_check /mnt/newdata 1 /persist/os || R=$?; }
+	[ $R = 0 ] || { umount /mnt/newdata; echo "Rudolf OS could not be installed on $DEV: see above. The drive Rudolf OS is running from was not changed."; exit $R; }
+fi
 echo "installed $(date)" > /mnt/newdata/etc/installed
 umount /mnt/newdata
 sync
