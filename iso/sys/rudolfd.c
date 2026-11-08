@@ -3278,6 +3278,21 @@ static void api(struct req *r)
 	if (!strcmp(p, "power")) {
 		char *a = qparam(r->query, "action");
 		if (!a) { reply_err(r->fd, 400, "action?"); return; }
+		/* 1.5.3: not in the middle of a job that leaves a drive or the system half-written when cut off (force=1:
+		   anyway). Twice a USB stick was left with an empty system: Restart was pressed while Make a USB stick ran,
+		   after it had made the stick's RUDOLFDATA and before it copied the system. */
+		char *fo = qparam(r->query, "force");
+		if (!(fo && !strcmp(fo, "1")) && job_running()) {
+			static const char *risky[][2] = {{"mkstick", "making a Rudolf OS USB stick"}, {"install", "installing Rudolf OS on a drive"},
+				{"bootfiles", "writing new boot files"}, {"keepfiles", "setting up a drive to keep your files"},
+				{"system-update", "updating the system"}, {"vault", "encrypting or decrypting your files"}};
+			char *jn = slurp(RUN "/job.name", NULL); if (jn) jn[strcspn(jn, "\n")] = 0;
+			for (size_t i = 0; jn && i < sizeof risky / sizeof risky[0]; i++) if (!strcmp(jn, risky[i][0])) {
+				char m[200]; snprintf(m, sizeof m, "busy: Rudolf OS is still %s. Wait until it says it is finished: stopping it now would leave it half done.", risky[i][1]);
+				free(jn); reply_err(r->fd, 409, m); return;
+			}
+			free(jn);
+		}
 		if (!strcmp(a, "suspend")) {
 			/* wake=N (1-60, 1.2.5's hardware check): the real-time clock wakes the computer after N seconds */
 			char *w = qparam(r->query, "wake"); int ws = w ? atoi(w) : 0;

@@ -197,7 +197,14 @@ function shutdownDlg(){const o=document.createElement('div');o.className='rmodal
   say(a=='suspend'?'Going to sleep…':'Saving your files…');await lim((async()=>{try{fsFlush()}catch(x){}await homeChain})());mark('files');
   try{window.__sessionSave&&__sessionSave()}catch(x){}mark('session');await lim(window.__rudolfLsFlush&&__rudolfLsFlush());mark('storage');
   if(a!='suspend')say(a=='reboot'?'Closing apps and restarting…':'Closing apps and turning off…');sfx('shutdown');
-  try{await rdPost('power?action='+a+(a=='suspend'?'':'&t='+tl.join(',')))}catch(x){say(x.message);o.querySelectorAll('button').forEach(b=>b.disabled=false)}if(a=='suspend'){o.remove();showLogin()}}}
+  const go=async force=>{try{await rdPost('power?action='+a+(a=='suspend'?'':'&t='+tl.join(','))+(force?'&force=1':''));return true}catch(x){
+   /* 1.5.3: rudolfd refuses while a job that must not be cut off runs (a USB stick, an install, boot files, an update):
+      it says which, and the person can wait, or go on anyway */
+   if(/^busy: /.test(x.message||'')){say(x.message.slice(6));o.querySelectorAll('button').forEach(b=>b.disabled=false);
+    const lb={poweroff:'Shut down',reboot:'Restart',suspend:'Sleep'}[a]+' anyway';let fb=o.querySelector('.rmforce');
+    if(!fb){fb=document.createElement('button');fb.className='rmforce';o.querySelector('.rmrow').appendChild(fb)}fb.textContent=lb;fb.dataset.a=a;fb.dataset.f=a;fb.style.color='#b91c1c'}
+   else{say(x.message);o.querySelectorAll('button').forEach(b=>b.disabled=false)}return false}};
+  if(!(await go(e.target.dataset.f==a))){return}if(a=='suspend'){o.remove();showLogin()}}}
 /* ---------- administrator permission (UAC / polkit style) ---------- */
 function elevate(reason){return new Promise(res=>{if(window.__elevTrust&&isAdmin()&&Date.now()-__elevTrust<120000)return res(true);
  const admins=ACCTS.filter(a=>a.r=='admin');const o=document.createElement('div');o.className='rmodal';
