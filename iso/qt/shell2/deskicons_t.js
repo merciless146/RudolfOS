@@ -82,6 +82,21 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('17. Desktop icons… lists the apps, with what is on the desktop ticked', dl.n > 10 && dl.paint === false, dl);
   await q("(()=>{const W=wins.find(w=>/Desktop icons/.test(w.el.textContent));W.body.querySelector('.rst').click()})()"); await wait(300);
   ok('18. Restore the standard icons', await vis('Paint') && await vis('Notepad') && await vis('Board Games') && await q(`!DESK.querySelector(':scope > .ic[data-app="${k}"]')`));
-  ok('19. no page errors', !errs.length, errs);
+  // 1.5.5: My Computer (found on the Vivobook: dropped on the Trash, then no obvious way back)
+  await q("wins.slice().forEach(w=>w.close())");
+  await q("(()=>{const d=[...DESK.querySelectorAll(':scope > .ic')].find(x=>x.querySelector('span').textContent=='My Computer');const t=document.querySelector('#desk > .ic.tr').getBoundingClientRect();d.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,clientX:t.left+t.width/2,clientY:t.top+t.height/2,button:0}));return 1})()"); await wait(300);
+  ok('19. My Computer dropped on the Trash stays on the desktop', await vis('My Computer'));
+  await q("(()=>{const d=[...DESK.querySelectorAll(':scope > .ic')].find(x=>x.querySelector('span').textContent=='My Computer');deskRemove(d)})()"); await wait(200);
+  const dlg2 = await q("(()=>{deskIconsDlg();const W=wins.find(w=>/Desktop icons/.test(w.el.textContent));const r=[...W.body.querySelectorAll('.dsr')].find(x=>x.children[2].textContent=='My Computer');return r?{on:r.querySelector('input').checked}:null})()");
+  ok('20. hidden from its menu, it is listed by its own name in Desktop icons…', dlg2 && dlg2.on === false, dlg2);
+  await q("(()=>{const W=wins.find(w=>/Desktop icons/.test(w.el.textContent));const c=[...W.body.querySelectorAll('.dsr')].find(x=>x.children[2].textContent=='My Computer').querySelector('input');c.click();return 1})()"); await wait(200);
+  ok('21. ...and ticking it puts it back', await vis('My Computer'));
+  await q("wins.slice().forEach(w=>w.close())");
+  await q("(()=>{const d=[...DESK.querySelectorAll(':scope > .ic')].find(x=>x.querySelector('span').textContent=='My Computer');deskRemove(d)})()"); await wait(200);
+  await q("(()=>{$('#menu').style.display='flex';const li=document.querySelector('#menu li[data-a=explorer]');const r=li.getBoundingClientRect();li.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:r.left+5,clientY:r.top+5}));[...CMENU.el.querySelectorAll('.cmi')].find(x=>/Add to desktop/.test(x.textContent)).click();$('#menu').style.display='none';return 1})()"); await wait(200);
+  ok('22. the Start menu\'s File Explorer › Add to desktop brings My Computer back too', await vis('My Computer'));
+  await q("(()=>{const d=[...DESK.querySelectorAll(':scope > .ic')].find(x=>x.querySelector('span').textContent=='Paint');deskRemove(d);deskRestore(d)})()"); await wait(200);
+  ok('23. the removal notification\'s Undo puts the icon back', await vis('Paint'));
+  ok('24. no page errors', !errs.length, errs);
   await b.close(); srv.close(); console.log(R.filter(Boolean).length + '/' + R.length + ' passed'); process.exit(R.every(Boolean) ? 0 : 1)
 })().catch(e => { console.log('FAIL ' + e.stack); process.exit(1) });
