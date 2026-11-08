@@ -7,14 +7,14 @@ const {chromium} = require('playwright'); const http = require('http'), fs = req
 const WWW = path.join(__dirname, '../../../iso/www');
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 500) : '')) };
 // the disk: acct → Map(rel → {d} | {b: Buffer, v}); keys; calls
-const DISK = new Map(), KEYS = new Map(), OPEN = new Set(), CALLS = []; let VN = 1;
+const DISK = new Map(), KEYS = new Map(), OPEN = new Set(), CALLS = []; let VN = 1, SUP = true;
 const ver = () => 'v' + (VN++);
 const mk = a => { if (!DISK.has(a)) { const m = new Map(); ['Desktop', 'Documents', 'Downloads', 'Music', 'Pictures', 'Videos', '.Trash', '.rudolf'].forEach(x => m.set(x, {d: 1})); DISK.set(a, m) } return DISK.get(a) };
 const parents = (m, rel) => { const p = rel.split('/'); for (let i = 1; i < p.length; i++) { const k = p.slice(0, i).join('/'); if (!m.has(k)) m.set(k, {d: 1}) } };
 const DLFILES = new Map();
 function api(method, a, q, body) { const p = new URLSearchParams(q || ''); CALLS.push(method + ' ' + a + '?' + (q || ''));
   const acct = p.get('acct'), m = acct && DISK.get(acct);
-  if (a == 'home') return [200, {ok: true, supported: true, accounts: [...DISK.keys()].map(id => ({id, unlocked: OPEN.has(id)})), session: ''}];
+  if (a == 'home') return [200, {ok: true, supported: SUP, accounts: [...DISK.keys()].map(id => ({id, unlocked: OPEN.has(id)})), session: ''}];
   if (a == 'home/unlock') { const k = body.toString(); if (!/^[0-9a-f]{128}$/.test(k)) return [400, {ok: false, error: 'bad key'}];
     if (KEYS.has(acct) && KEYS.get(acct) != k) return [403, {ok: false, error: 'that key does not open this account\'s folder'}]; KEYS.set(acct, k); mk(acct); OPEN.add(acct); return [200, {ok: true}] }
   if (a == 'home/lock') { OPEN.delete(acct); return [200, {ok: true}] }
@@ -50,6 +50,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const errs = []; p.on('pageerror', e => { if (!/volUpd/.test(e.stack || '')) errs.push(e.message) });
   const q = s => p.evaluate(s);
   await p.goto('http://127.0.0.1:8090/'); await p.waitForFunction(() => typeof hdSync == 'function' && typeof fs != 'undefined' && fs['C:'] && IDB && IDB.db && FSLOADED, null, {timeout: 30000});
+  /* (the move of accounts from before 1.5.6 is stage 3, tested in home56m_t.js: off here while "old" signs in) */
+  SUP = false;
   await q(`(async()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});window.__sys=1;
     window.IN=async(n,pw)=>{const a=ACCTS.find(x=>x.n==n);if(USER)userLogout();USER=a;await userLogin(a,pw);return true};
     window.SETTLE=async()=>{fsFlush();await new Promise(r=>setTimeout(r,100));await HD.chain;await new Promise(r=>setTimeout(r,50));await HD.chain};
@@ -58,7 +60,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     await kvPutNow('home:u-old',{v:1,plain:JSON.stringify({DESKTOP:{},DOCUMENTS:{'OLD.TXT':'kept in C:'},PICTURES:{},MUSIC:{},VIDEOS:{},DOWNLOADS:{}})});
     USER=ACCTS[0];await userLogin(ACCTS[0],'o1');fsSave();fsFlush();await new Promise(r=>setTimeout(r,500));userLogout();USER=null;return 1})()`);
   ok('1. an account from before 1.5.6 keeps its storage (its folder is never opened on the disk)', !CALLS.some(c => /home\/unlock\?acct=u-old/.test(c)) && await q("!ACCTS[0].disk"), CALLS.filter(c => /home/.test(c)));
-  await q("IN('ann','a1')"); await q("SETTLE()");
+  SUP = true; await q("IN('ann','a1')"); await q("SETTLE()");
   const un = CALLS.find(c => /^POST home\/unlock\?acct=u-ann&session=1/.test(c));
   ok('2. a new account keeps its files on the disk: its folder is opened at sign-in (with the Linux apps\' folders)', !!un && await q("ACCTS[1].disk==1&&!!ACCTS[1].fk&&hdOn()"), CALLS.filter(c => /home/.test(c)));
   ok('3. ...with the welcome file written to the disk', DISK.get('u-ann').has('Documents/WELCOME.TXT'), [...DISK.get('u-ann').keys()]);
@@ -107,7 +109,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   n0 = CALLS.length; await q("(()=>{fsSave();return 1})()"); await q("SETTLE()");
   ok('18. reading back writes nothing', !CALLS.slice(n0).some(c => /^POST home\/(write|delete|mkdir|copy)/.test(c)), CALLS.slice(n0));
   await q("(()=>{userLogout();USER=null;return 1})()"); await wait(500);
-  await q("IN('old','o1')"); await wait(500);
+  SUP = false; await q("IN('old','o1')"); await wait(2500);
   ok('19. the account from before 1.5.6 still has its files in C:', await q("HOME&&HOME.DOCUMENTS['OLD.TXT']=='kept in C:'&&!hdOn()"));
   ok('20. no page errors', !errs.length, errs);
   await b.close(); srv.close(); console.log(R.filter(Boolean).length + '/' + R.length + ' passed'); process.exit(R.every(Boolean) ? 0 : 1)
