@@ -17,11 +17,13 @@
  *   GET  home/list?acct=ID[&path=P]    one level
  *   GET  home/stat?acct=ID&path=P
  *   GET  home/read?acct=ID&path=P      the file (Range works, for video, PDFs and reading in pieces)
+ *   GET  home/link?acct=ID&path=P      a /dlf/ link to it (stage 2), walked again at every request
  *   POST home/write?acct=ID&path=P[&base=V|new][&mkdirs=1][&part=1|&final=1]   body: the file (or the next piece)
  *   POST home/mkdir?acct=ID&path=P
  *   POST home/rename?acct=ID&from=P&to=Q[&replace=1]
  *   POST home/copy?acct=ID&from=P&to=Q
  *   POST home/delete?acct=ID&path=P    (for good; the Trash comes in stage 4)
+ *   POST home/adopt?acct=ID&from=D&to=P   a large download (stage 2) moved from Downloads into the folder
  * Downloads and the Linux apps' Downloads folder stay as in 1.5.5 until stage 4 (Chromium's .incoming lives there). */
 #define HOME_ROOT_DEF PERSIST "/accounts"
 #define HOME_KEYS RUN "/home-keys"
@@ -326,6 +328,22 @@ static void api_home(struct req *r, const char *what, int post)
 		if (f < 0) { reply_err(r->fd, 404, "not found"); return; }
 		serve_fd_as(r, f, last, 1); return;
 	}
+	if (!strcmp(what, "link")) {
+		/* stage 2: a link (/dlf/<id>, as Downloads' files have) for <video>, <img> and the PDF viewer. It holds the
+		   account and the path, not a resolved path: each request walks the folder again (home_serve_link), so a link
+		   a Linux app puts in place of the file afterwards still leads nowhere */
+		if (!*p1) { close(root); reply_err(r->fd, 400, "no file"); return; }
+		char last[256]; int pf = home_parent(root, p1, last, sizeof last, 0); close(root);
+		struct stat st; if (pf < 0 || fstatat(pf, last, &st, AT_SYMLINK_NOFOLLOW) || !S_ISREG(st.st_mode)) { if (pf >= 0) close(pf); reply_err(r->fd, 404, "not found"); return; }
+		close(pf);
+		unsigned char rb[16]; char id[33]; int rf = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+		if (rf < 0 || read(rf, rb, 16) != 16) { if (rf >= 0) close(rf); reply_err(r->fd, 500, "no randomness"); return; }
+		close(rf); for (int i = 0; i < 16; i++) sprintf(id + i * 2, "%02x", rb[i]);
+		mkdir(RUN "/dlf", 0700);
+		char lf[128]; snprintf(lf, sizeof lf, RUN "/dlf/%s", id);
+		size_t L = strlen(acct) + strlen(p1) + 16; char *c = malloc(L); snprintf(c, L, "home:%s:%s\n", acct, p1); write_str(lf, c); free(c);
+		str s = {0}; sadd(&s, "{\"ok\":true,\"url\":\"/dlf/%s\"}", id); reply_json(r->fd, &s); return;
+	}
 	if (!post) { close(root); reply_err(r->fd, 400, "use POST"); return; }
 	if (!strcmp(what, "write")) {
 		if (!*p1) { close(root); reply_err(r->fd, 400, "no file"); return; }
@@ -339,6 +357,32 @@ static void api_home(struct req *r, const char *what, int post)
 		char v[80] = "", err[200] = ""; int st = home_write_at(pf, last, r->body, r->blen, part, fin, base, v, sizeof v, err, sizeof err); close(pf);
 		if (st == 409) { str s = {0}; sadd(&s, "{\"ok\":false,\"conflict\":true,\"error\":"); sjson(&s, err); sadd(&s, ",\"v\":"); sjson(&s, v); sadd(&s, "}"); reply(r->fd, 409, "application/json", s.b, s.n, NULL); free(s.b); return; }
 		if (st) { reply_err(r->fd, st, err); return; }
+		str s = {0}; sadd(&s, "{\"ok\":true,\"v\":"); sjson(&s, v); sadd(&s, "}"); reply_json(r->fd, &s); return;
+	}
+	if (!strcmp(what, "adopt")) {
+		/* stage 2: a large download (kept in Downloads, /home/rudolf/Downloads[/.accounts/<this account>]/name) moves
+		   into the account's folder; across the vault's encryption a rename is refused (EXDEV), so it is copied */
+		char from[1024]; { const char *a = qparam(r->query, "from"); snprintf(from, sizeof from, "%s", a ? a : ""); }
+		{ const char *a = qparam(r->query, "to"); snprintf(p2, sizeof p2, "%s", a ? a : ""); }
+		char mine[200]; snprintf(mine, sizeof mine, DLACCTS "/%s/", acct);
+		int top = !strncmp(from, DLHOME "/", sizeof DLHOME) && !strchr(from + sizeof DLHOME, '/');
+		if (!dl_path_ok(from) || !(top || !strncmp(from, mine, strlen(mine))) || !*p2 || !home_rel_ok(p2)) { close(root); reply_err(r->fd, 400, "bad path"); return; }
+		struct stat fs1; if (lstat(from, &fs1) || !S_ISREG(fs1.st_mode)) { close(root); reply_err(r->fd, 404, "the download is not there"); return; }
+		char last[256]; int pf = home_parent(root, p2, last, sizeof last, 1); close(root);
+		if (pf < 0) { reply_err(r->fd, 404, "the folder is not there"); return; }
+		struct stat st; if (!fstatat(pf, last, &st, AT_SYMLINK_NOFOLLOW)) home_rm_at(pf, last);
+		int rc = renameat(AT_FDCWD, from, pf, last);
+		if (rc && errno == EXDEV) {
+			char dir[1024]; snprintf(dir, sizeof dir, "%s", from); char *sl = strrchr(dir, '/'); *sl = 0;
+			int df = open(dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+			rc = df < 0 ? -1 : home_cp_at(df, sl + 1, pf, last);
+			if (!rc) unlinkat(df, sl + 1, 0);
+			if (df >= 0) close(df);
+		} else if (!rc) fchownat(pf, last, home_uid, home_uid, AT_SYMLINK_NOFOLLOW);
+		int e = errno; char v[80] = "";
+		if (!rc && !fstatat(pf, last, &st, AT_SYMLINK_NOFOLLOW)) home_ver(&st, v, sizeof v);
+		close(pf);
+		if (rc) { reply_err(r->fd, e == ENOSPC ? 507 : 500, e == ENOSPC ? "the disk is full" : "the download could not be moved"); return; }
 		str s = {0}; sadd(&s, "{\"ok\":true,\"v\":"); sjson(&s, v); sadd(&s, "}"); reply_json(r->fd, &s); return;
 	}
 	if (!strcmp(what, "mkdir")) {
@@ -376,4 +420,18 @@ static void api_home(struct req *r, const char *what, int post)
 		reply_ok(r->fd, !strcmp(what, "rename") ? "renamed" : "copied"); return;
 	}
 	close(root); reply_err(r->fd, 404, "unknown request");
+}
+
+/* /dlf/<id> for a file in an account's folder ("home:<acct>:<path>"): the folder walked again, never a link followed */
+static void home_serve_link(struct req *r, const char *spec)
+{
+	char acct[80]; const char *c = strchr(spec, ':');
+	if (!c || (size_t)(c - spec) >= sizeof acct) { reply_err(r->fd, 404, "not found"); return; }
+	memcpy(acct, spec, c - spec); acct[c - spec] = 0; const char *rel = c + 1;
+	if (!dl_acct_ok(acct) || !*rel || !home_rel_ok(rel) || !home_unlocked(acct)) { reply_err(r->fd, 404, "not found"); return; }
+	int root = home_root_fd(acct); if (root < 0) { reply_err(r->fd, 404, "not found"); return; }
+	char last[256]; int pf = home_parent(root, rel, last, sizeof last, 0); close(root);
+	if (pf < 0) { reply_err(r->fd, 404, "not found"); return; }
+	int f = openat(pf, last, O_RDONLY | O_NOFOLLOW | O_CLOEXEC); close(pf);
+	serve_fd_as(r, f, last, 1);
 }

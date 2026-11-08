@@ -63,6 +63,31 @@ today's storage.
   - paths, links, conflicts, pieces, rename, copy and delete;
   - the binds.
 
+## Stage 2, as built
+
+- **New desktop module `home56.js`.** It decides which accounts keep their files on the disk: an account whose
+  first sign-in is on 1.5.6, on a computer whose RUDOLFDATA supports encryption (`USER.disk`).
+  - **Sign-in:** the folder is opened with a 64-byte key made from the account's file key (HKDF-SHA512), with the
+    Linux binds (`session=1`).
+  - **Loading:** files up to 1.5 MB are loaded, as text or `data:` URLs, the way C: keeps them. Larger files become
+    `rudolfdisk:` references into the account's folder, which open through `home/link` like large downloads.
+  - **Saving:** `homeSave` compares with the snapshot and writes only what changed: new folders, new or changed
+    files (with their base version), copies of references, and deletions (top-most only).
+  - **Large downloads** in the account's Downloads move in with `home/adopt`.
+  - **Conflicts:** a file another program changed meanwhile is kept, and the desktop's version is saved beside it
+    as "… (desktop copy)".
+  - **Other programs' changes:** the tree is read again every 15 s instead of using inotify. A `watch` can replace
+    the poll later.
+  - **Sign-out:** pending writes finish, then the folder is locked.
+- **rudolfd:**
+  - `home/link`: `/dlf/` links that hold `home:<acct>:<path>` and are walked again at every request, so a link a
+    Linux app swaps in can't redirect them;
+  - `home/adopt`: from Downloads, the account's own folder or the top only, copied across file systems.
+- **Not yet for these accounts:** backup, an administrator opening their files, and the Trash on the disk
+  (stage 4). The CHANGELOG says so.
+- **Tests:** browser `home56_t.js` 20/20; host `homeapi_t.sh` 30/30. acct50, files, Downloads, stick and desktop
+  tests are unchanged.
+
 ## 1.5.5's remaining items
 
 1.5.5 was promoted on 2026-11-08 with plan items 1 (Downloads for each account) and the fixes found on the Vivobook.

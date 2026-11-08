@@ -3694,7 +3694,9 @@ static void handle(int fd)
 		if (strlen(id) != 32 || strspn(id, "0123456789abcdef") != 32) { reply_err(fd, 404, "not found"); goto out; }
 		snprintf(lf, sizeof lf, RUN "/dlf/%s", id);
 		char *p = slurp(lf, NULL); if (!p) { reply_err(fd, 404, "not found"); goto out; }
-		trim(p); serve_file_as(&r, p, 1); free(p); goto out;
+		trim(p);
+		if (!strncmp(p, "home:", 5)) home_serve_link(&r, p + 5); else serve_file_as(&r, p, 1);
+		free(p); goto out;
 	}
 	char root[256];
 	www_root(root, sizeof root);

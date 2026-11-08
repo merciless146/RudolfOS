@@ -58,5 +58,14 @@ o=$(BIND=1 t "POST home/unlock?acct=u-boss&session=1 <$T/k1")
 ok "21. session=1: Linux apps' Documents is the account's" "$([ -d /home/rudolf/Documents/Work/2026 ] && [ ! -e /home/rudolf/Documents/old.txt ] && grep -q u-boss /run/rudolf/home-session && echo 1)" "$o $(ls /home/rudolf/Documents)"
 o=$(BIND=1 t "POST home/lock?acct=u-boss")
 ok "22. lock: the binds go, and what was there before is back" "$([ -f /home/rudolf/Documents/old.txt ] && [ ! -e /run/rudolf/home-session ] && echo 1)" "$o"
+# stage 2: a large download moved in (across file systems here, as across the vault's encryption: copied), and links
+mkdir -p /home/rudolf/Downloads/.accounts/u-boss /home/rudolf/Downloads/.accounts/u-kid; head -c 2000000 /dev/urandom > /home/rudolf/Downloads/.accounts/u-boss/movie.mp4; echo x > /home/rudolf/Downloads/.accounts/u-kid/theirs.txt
+o=$(t "POST home/unlock?acct=u-boss <$T/k1" "POST home/adopt?acct=u-boss&from=/home/rudolf/Downloads/.accounts/u-boss/movie.mp4&to=Downloads/MOVIE.MP4")
+ok "23. adopt: a large download moves into the account's Downloads (copied across file systems, the original gone)" "$([ "$(stat -c %s $R/u-boss/Downloads/MOVIE.MP4 2>/dev/null)" = 2000000 ] && [ ! -e /home/rudolf/Downloads/.accounts/u-boss/movie.mp4 ] && echo 1)" "$o"
+o=$(t "POST home/adopt?acct=u-boss&from=/home/rudolf/Downloads/.accounts/u-kid/theirs.txt&to=Documents/x" "POST home/adopt?acct=u-boss&from=/etc/hostname&to=Documents/x" "POST home/adopt?acct=u-boss&from=/home/rudolf/Downloads/.incoming/x&to=Documents/x")
+ok "24. adopt refuses another account's download and anything outside Downloads" "$([ "$(echo "$o" | grep -c ' 400 ')" = 3 ] && [ -e /home/rudolf/Downloads/.accounts/u-kid/theirs.txt ] && echo 1)" "$o"
+o=$(t "GET home/link?acct=u-boss&path=Downloads/MOVIE.MP4" "GET home/link?acct=u-boss&path=Downloads/NONE.MP4")
+id=$(echo "$o" | sed -n 1p | sed 's/.*\/dlf\/\([0-9a-f]*\).*/\1/')
+ok "25. link: a /dlf/ link holding the account and the path (walked again when used), not a resolved path" "$([ "$(cat /run/rudolf/dlf/$id 2>/dev/null)" = "home:u-boss:Downloads/MOVIE.MP4" ] && echo "$o" | sed -n 2p | grep -q ' 404 ' && echo 1)" "$o"
 umount /home; umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]
