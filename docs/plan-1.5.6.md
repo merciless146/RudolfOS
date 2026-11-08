@@ -88,6 +88,28 @@ today's storage.
 - **Tests:** browser `home56_t.js` 20/20; host `homeapi_t.sh` 30/30. acct50, files, Downloads, stick and desktop
   tests are unchanged.
 
+## Stage 3, as built
+
+- **`hdMove` in home56.js.** An account from before 1.5.6 (it has a home record, or a file key) moves 1.5 s after
+  signing in, in the background, while it keeps working:
+  1. the folder is opened without the binds;
+  2. every folder is made and every file written (`replace` for what an earlier attempt left); large downloads move
+     in with `home/adopt`, and references already in the folder are kept;
+  3. everything is read back, comparing each file's SHA-256 (and the size of moved downloads) and each folder;
+  4. only then: `USER.disk`, `USER.oldHome` (the date), the snapshot from what was written (so changes made during
+     the move are written next), and the binds.
+  - Progress shows every 200 files or 5 s.
+  - A failure leaves everything as it was, says so, writes an event, and is tried again at the next sign-in.
+- **The old record** `home:<id>` is no longer written after the switch, so it stays as it was at the move. It is
+  deleted at the first sign-in after 7 days.
+- **Tests:** browser `home56m_t.js` 12/12:
+  - a failed read-back changes nothing; the move at the next sign-in;
+  - text, pictures and empty folders; a 3 MB download moved, not copied;
+  - read-back before binds; the old record kept, then deleted after 7 days;
+  - one write after the move, nothing moved again.
+
+  `home56_t.js` (20/20) now turns `supported` off while its pre-1.5.6 account signs in.
+
 ## 1.5.5's remaining items
 
 1.5.5 was promoted on 2026-11-08 with plan items 1 (Downloads for each account) and the fixes found on the Vivobook.

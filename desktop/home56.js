@@ -100,10 +100,58 @@ async function hdRefresh(){if(!hdOn()||HD.busy)return;HD.busy=1;const gen=HD.gen
  }catch(e){}finally{HD.busy=0}}
 setInterval(()=>{if(hdOn()&&document.visibilityState!='hidden')hdRefresh()},15000);
 /* sign-in: which accounts keep their files on the disk, and opening the folder */
+/* stage 3: an account from before 1.5.6 moves its home to the disk, once, in the background after signing in:
+   1. its folder is opened (without the Linux binds yet);
+   2. every folder and file is written (small ones) or moved in (large downloads), replacing what an earlier attempt
+      left;
+   3. everything is read back and compared (SHA-256 of each file; the size of moved downloads);
+   4. only then does the account switch (USER.disk), taking what was written as the snapshot, so changes made during
+      the move are written next; the Linux binds follow.
+   The old record in the browser's storage is kept: if 1.5.6 does not start, the update goes back to 1.5.5, which still
+   has it. It is deleted once the account has been on the disk for 7 days. A move that fails changes nothing and is
+   tried again at the next sign-in. */
+const HD_KEEP=7*864e5;
+const hdSha=async u8=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',u8))].map(x=>x.toString(16).padStart(2,'0')).join('');
+async function hdMove(a){const acct=uid(),q='acct='+encodeURIComponent(acct),home=HOME;if(!home||HOMELOCKED)return;
+ const prog=(t)=>{try{notify('Moving your files to the disk',t,{quiet:true,toast:4000,tag:'hdmove'})}catch(e){}};
+ try{
+  if(!FKRAW){FKRAW=crypto.getRandomValues(new Uint8Array(32));a.fk=await acEnc(PKEY,FKRAW);KEY=await acFkKey(FKRAW);saveUser();homeSave()}
+  const key=await hdKeyHex();await rd('home/unlock?'+q,{method:'POST',body:key});
+  const all=hdWalk(home,[],new Map()),dirs=[...all].filter(([,x])=>x.d).map(([r])=>r).sort((x,y)=>x.length-y.length),files=[...all].filter(([,x])=>!x.d);
+  for(const r of dirs)await rdPost('home/mkdir?'+q+'&path='+encodeURIComponent(r));
+  const snap=new Map(dirs.map(r=>[r,{d:1}])),sums=new Map();let n=0,t0=Date.now(),bytes=0;
+  for(const[r,x]of files){
+   if(isDlRef(x.v)){const i=dlRefInfo(x.v);
+    if(i&&i.p.startsWith(HD_ROOT+acct+'/')){snap.set(r,{v:x.v,ver:null});sums.set(r,{s:i.s})}
+    else if(i){const j=await rdPost('home/adopt?'+q+'&from='+encodeURIComponent(i.p)+'&to='+encodeURIComponent(r));const nv=dlMkRef(HD_ROOT+acct+'/'+r,i.s||0,i.av||'none');if(x.o[x.k]===x.v)x.o[x.k]=nv;snap.set(r,{v:nv,ver:j.v||null});sums.set(r,{s:i.s})}}
+   else{const b=hdBytes(x.v);const j=await rd('home/write?'+q+'&path='+encodeURIComponent(r)+'&mkdirs=1',{method:'POST',body:b});snap.set(r,{v:x.v,ver:j.v});sums.set(r,{h:await hdSha(b),s:b.length});bytes+=b.length}
+   if(++n%200==0||Date.now()-t0>5000){t0=Date.now();prog(n.toLocaleString()+' of '+files.length.toLocaleString()+' files…')}}
+  /* read back and compare */
+  const t=await rd('home/tree?'+q),disk=new Map((t.items||[]).map(i=>[i.p,i]));const bad=[];
+  for(const[r,w]of sums){const i=disk.get(r);if(!i||i.d||(w.s!=null&&i.s!==w.s)){bad.push(r);continue}
+   if(w.h){const back=await rd('home/read?'+q+'&path='+encodeURIComponent(r)).then(x=>x.arrayBuffer()).then(x=>new Uint8Array(x)).catch(()=>null);if(!back||await hdSha(back)!==w.h)bad.push(r)}}
+  for(const r of dirs){const i=disk.get(r);if(!i||!i.d)bad.push(r)}
+  if(bad.length)throw new Error(bad.length+' item(s) did not arrive as they were ('+bad.slice(0,3).join(', ')+')');
+  if(USER!==a||HOME!==home)return;   /* signed out meanwhile: done again next time */
+  /* switch: what was written is the snapshot; the Linux binds */
+  a.disk=1;a.oldHome=Date.now();saveUser();
+  HD.gen++;HD.acct=acct;HD.snap=snap;
+  for(const[r,i]of disk){const s=snap.get(r);if(s&&!s.d&&s.ver==null&&!i.d)s.ver=i.v}
+  await rd('home/unlock?'+q+'&session=1',{method:'POST',body:key}).catch(e=>console.warn('home binds',e));
+  hdSync();
+  logEvt('sys',`${a.n}'s files moved to the disk (${files.length} files, ${dirs.length} folders)`);
+  notify('Your files are on the disk','They are kept as files now, encrypted with your account\'s key; Linux apps see your Documents, Pictures, Music and Videos. A copy stays in the old place for 7 days.',{tag:'hdmove'});
+ }catch(e){console.warn('home move',e);logEvt('sys',`${a.n}'s files could not be moved to the disk: ${e.message}`);
+  notify('Your files stay where they were','Moving them to the disk did not work ('+e.message+'). Nothing was lost; it is tried again at your next sign-in.',{kind:'warn',tag:'hdmove'})}}
 {const _hl=homeLoad;homeLoad=async function(pw){
  const a=USER;
- if(RD&&a&&a.r!='guest'&&!a.disk&&!a.fk&&!(await kvGet('home:'+uid()))&&await hdSupported()){a.disk=1;saveUser()}   /* stage 2: new accounts only */
+ if(RD&&a&&a.r!='guest'&&!a.disk&&!a.fk&&!(await kvGet('home:'+uid()))&&await hdSupported()){a.disk=1;saveUser()}   /* stage 2: new accounts */
+ if(RD&&a&&a.r!='guest'&&!a.disk){const r=await _hl.apply(this,arguments);   /* stage 3: accounts from before 1.5.6 */
+  if(HOME&&!HOMELOCKED&&await hdSupported())setTimeout(()=>{if(USER===a&&!HD.moving){HD.moving=1;hdMove(a).finally(()=>{HD.moving=0})}},1500);
+  return r}
  if(!(RD&&a&&a.r!='guest'&&a.disk))return _hl.apply(this,arguments);
+ /* 7 days on the disk: the old record goes */
+ if(a.oldHome&&Date.now()-a.oldHome>HD_KEEP){try{await kvDel('home:'+uid())}catch(e){}delete a.oldHome;saveUser()}
  if(!FKRAW){FKRAW=crypto.getRandomValues(new Uint8Array(32));a.fk=await acEnc(PKEY,FKRAW);KEY=await acFkKey(FKRAW);saveUser()}
  HD.gen++;HD.acct=uid();
  let loaded=null;
