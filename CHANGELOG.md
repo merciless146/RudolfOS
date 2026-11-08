@@ -4,7 +4,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.5.4 (2026-11-08)
-Summary: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chip, sound on laptops with an Intel sound processor or speaker amplifiers, the built-in microphones of AMD laptops, and Windows games through Steam's Proton
+Summary: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chip, sound on laptops with an Intel sound processor or speaker amplifiers, the built-in microphones of AMD laptops, Windows games through Steam's Proton, and Thunderbolt and USB4 docks and displays
 - New: Bluetooth works with Intel chips (the Bluetooth half of Intel Wi-Fi cards: 8260, 8265, 9260, 9560, AX200, AX201, AX203, AX210, AX211, AX411, BE200, BE201 and newer), MediaTek MT7921, MT7922 and MT7925, and Qualcomm chips on USB, as well as Realtek (1.5.1). Not yet tried on a computer with these chips: if Bluetooth does not appear, Settings › Devices › Not supported yet and Report a problem say what the computer has.
 - New: Bluetooth built into the board on a serial line (UART), found in inexpensive laptops and tablets (Realtek RTL8723BS and RTL8723CS, Broadcom, Intel, Qualcomm).
 - New: the built-in microphones of AMD laptops whose microphones are wired to the AMD audio processor (ACP): Ryzen 4000 and 5000 (Renoir, Cezanne), 6000 and 7x20/7x30 (Rembrandt, Mendocino: the ASUS Vivobook Go among them), and 7040/8040 (Phoenix, Hawk Point), where the laptop is known to the kernel or its firmware says so.
@@ -18,6 +18,8 @@ Summary: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chi
 - New: game controllers work in Steam (Steam Input) and in Linux games: Xbox, PlayStation 4 and 5, Switch and Steam controllers, by USB and by Bluetooth. Keyboards and mice stay out of apps' reach.
 - Fixed: PlayStation 4 and 5 controllers ran as plain HID devices (no light bar, touchpad, motion or rumble): their driver was left out of the system without a word. It is now checked when Rudolf OS is built.
 - Changed: notifications wait in the notification centre while a Linux app's window is full screen (a Steam game, Big Picture, a Windows game in Wine), as for full-screen pages.
+- New: Thunderbolt and USB4 docks, displays and devices that use PCIe over the cable (external drives and cards), and the Aquantia network chip of many docks. Where the computer protects its memory from devices on the cable (DMA protection), they are allowed by themselves; otherwise a new device asks once, an administrator allows it, and it is allowed by itself from then on. Settings › Devices lists them, with Forget.
+- New: USB-C ports are managed by Rudolf OS (UCSI), and displays work through USB-C (DisplayPort alternate mode) where the port supports it.
 
 ## 1.5.3 (2026-11-07)
 Summary: USB Wi-Fi adapters with Ralink and MediaTek RT2800 chips, a choice of Wi-Fi adapter, and a list of the devices that have no driver yet

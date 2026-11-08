@@ -57,12 +57,15 @@ function devPanel(c) {
     const inp = d.inputs.map(v => `<tr><td>${{keyboard: '⌨️', mouse: '🖱️', touchpad: '👆', touchscreen: '📱', controller: '🎮'}[v.kind] || '🖱️'}</td><td><b>${devEsc(v.name)}</b><br><small>${devEsc(v.kind)}</small></td><td style='text-align:right'>${v.kind == 'touchpad' || v.kind == 'mouse' ? "<button data-mouse='1'>Settings</button>" : ''}</td></tr>`);
     /* 1.5.3: every device no driver took, built in or plugged in, so it is clear what this computer is missing */
     let un = null; try { un = (await rd('devices/unsupported')).devices } catch (e) {}
+    /* 1.5.4: Thunderbolt and USB4 devices (tb54.js) */
+    let tb = null; try { tb = await rd('tb') } catch (e) {}
     const uns = un ? (un.length ? `<table class='dvt dvun' style='width:100%;border-collapse:collapse'>${un.map(v => `<tr><td style='width:28px'>${DEV_ICON[v.kind] || '🧩'}</td><td><b>${devEsc(v.name)}</b><br><small>${devEsc(v.kind)} · ${devEsc(DEV_BUS[v.bus] || v.bus)} ${devEsc(v.id)} · <span style="color:#b45309">no driver yet</span></small></td><td></td></tr>`).join('')}</table>`
       : `<div class='msg dvun'>Every device in this computer has a driver.</div>`) : '';
-    box.innerHTML = sec('Drives and SD cards', drives) + sec('USB devices', usb) + sec('Keyboards, mice and touchpads', inp)
+    box.innerHTML = sec('Drives and SD cards', drives) + sec('USB devices', usb) + (typeof tbSection == 'function' ? tbSection(tb) : '') + sec('Keyboards, mice and touchpads', inp)
       + (un ? `<h4 style='margin:12px 0 4px'>Not supported yet</h4><p class='msg' style='margin:0 0 4px'>Parts of this computer that Rudolf OS has no driver for yet. Report a problem (Settings › Security) includes this list, so it can be added.</p>` + uns : '');
     box.querySelectorAll('[data-open]').forEach(b => b.onclick = () => { const v = d.drives.find(x => x.dev == b.dataset.open); v && devOpenDrive(v) });
     box.querySelectorAll('[data-eject]').forEach(b => b.onclick = async () => { b.disabled = true; try { await rdPost('eject?dev=' + b.dataset.eject); setTimeout(draw, 800) } catch (e) { b.disabled = false; notify('Eject', e.message, {kind: 'error'}) } });
+    if (typeof tbWire == 'function') tbWire(box, draw);
     box.querySelectorAll('[data-mouse]').forEach(b => b.onclick = () => { const W = c.closest('.win'); const n = W && W.querySelector(".sn div[data-k='mouse']"); n && n.click() });
   };
   c.querySelector('.dvr').onclick = draw;
