@@ -20,6 +20,7 @@ Summary: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chi
 - Changed: notifications wait in the notification centre while a Linux app's window is full screen (a Steam game, Big Picture, a Windows game in Wine), as for full-screen pages.
 - New: Thunderbolt and USB4 docks, displays and devices that use PCIe over the cable (external drives and cards), and the Aquantia network chip of many docks. Where the computer protects its memory from devices on the cable (DMA protection), they are allowed by themselves; otherwise a new device asks once, an administrator allows it, and it is allowed by itself from then on. Settings › Devices lists them, with Forget.
 - New: USB-C ports are managed by Rudolf OS (UCSI), and displays work through USB-C (DisplayPort alternate mode) where the port supports it.
+- New (preview): the first part of built-in cameras on newer Intel laptops (Intel's camera processor IPU6 and IPU7, the camera's power and light, and the common sensors). Apps cannot use these cameras yet: that needs a later update. Until then Settings › Devices › Not supported yet lists the camera. USB cameras work as before.
 
 ## 1.5.3 (2026-11-07)
 Summary: USB Wi-Fi adapters with Ralink and MediaTek RT2800 chips, a choice of Wi-Fi adapter, and a list of the devices that have no driver yet

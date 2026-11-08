@@ -213,6 +213,17 @@ processing unit, one for the camera sensor, and an image processor in software.
   - the Vivobook's USB camera in a video call (nothing changes);
   - an IPU6 laptop for the rest.
 
+**As built** (this PR; the kernel part only, chosen on 2026-11-08 because no computer here has an IPU6 camera to try
+libcamera and the way to Oracle on):
+- kernel: `VIDEO_INTEL_IPU6`, `VIDEO_INTEL_IPU7` (staging), `IPU_BRIDGE`, `INTEL_SKL_INT3472`, Intel's Visual Sensing
+  Controller (`INTEL_VSC`, `INTEL_MEI_VSC`, in front of the camera on many Alder Lake and Meteor Lake laptops), and
+  the sensors OV2740, OV01A10, OV02C10, OV02E10, OV08X40, OV13B10, OV5675, HI556, HI846, all modules and checked
+  after olddefconfig (with `MEDIA_PCI_SUPPORT`, without which IPU6 was dropped);
+- firmware: `intel/ipu/ipu6*_fw.bin` and `ipu7*_fw.bin` (2.8 MB);
+- devplug lists an IPU6 or IPU7 with its driver in "Not supported yet" ("driver ready, apps cannot use it yet");
+- still to do, on a laptop with such a camera: libcamera with its software image processor, choosing (a) or (b)
+  below, the camera light and Settings › Privacy, and the switch in Settings › Devices.
+
 ## 6. Library follow-ups
 
 The Library works on the Vivobook (1.5.2): its list and key, and Quake installed from it. Getting Emu from the
