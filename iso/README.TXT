@@ -24,8 +24,9 @@ MAKING A BOOTABLE DISC OR STICK
 -------------------------------
 The file rudolf-os-VERSION.iso (for example rudolf-os-1.2.4.iso) is a
 "hybrid" image: the same file works for discs and USB sticks, and for both
-BIOS and UEFI computers. GitHub delivers it in parts: JOIN-PARTS.TXT (and
-the script join.ps1 for Windows) joins them and checks the result.
+BIOS and UEFI computers. It is one file; check it first (below). Discs up to
+1.5.4 also came in parts, with JOIN-PARTS.TXT to join them; Rudolf OS's Make
+a USB stick and Install from still join such parts by themselves.
 
 CD or DVD: burn the .iso as a disc image ("Burn disc image" in Windows,
   Disk Utility / "Burn" on macOS, Brasero/K3b/xorriso on Linux). Do not copy
@@ -47,7 +48,7 @@ Check the download first: the file rudolf-os-VERSION.iso.sha256 holds the
 expected SHA-256 checksum (Windows PowerShell: Get-FileHash
 rudolf-os-VERSION.iso -Algorithm SHA256; Command Prompt: certutil -hashfile
 rudolf-os-VERSION.iso SHA256; macOS/Linux: sha256sum -c
-rudolf-os-VERSION.iso.sha256). join.ps1 does this for you.
+rudolf-os-VERSION.iso.sha256).
 
 
 STARTING

@@ -28,6 +28,9 @@ A new version (iso/VERSION and a new section at the top of CHANGELOG.md): Run wo
 (for example 1.1.1). After building the release it also publishes the disc image `disc-<version>`
 (systools/mkdisc.sh): the kernel and system layers of the newest beta release on top of the earlier disc
 (disc_from), whose packages, licences and sources are kept. The release notes come from CHANGELOG.md.
+Since 1.5.5 the image is published as one file (`rudolf-os-<version>.iso`, up to GitHub's 2 GB per file); discs up
+to 1.5.4 were split into parts. The workflow "Disc image as one file" (`disc-whole.yml`, version = 1.5.4) joins an
+older disc release's parts, checks them against its `.sha256` and attaches the whole image to that release.
 
 ## One-time setup
 
