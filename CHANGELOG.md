@@ -3,6 +3,14 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.5.5 (2026-11-08)
+Summary: choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it
+- New: app shortcuts can be taken off the desktop: right-click › Remove from desktop, the Delete key, dropping the icon on the Trash, or File Explorer's Desktop folder. The app stays in the Start menu.
+- New: right-click an app in the Start menu › Add to desktop (or Remove from desktop). Apps without a desktop icon of their own get one. Before, Add to desktop only said "Already on the desktop".
+- New: Desktop icons… (in the desktop's right-click menu and in File Explorer's Desktop folder) lists every app with a tick for those on the desktop, and Restore the standard icons. Each account keeps its own choice.
+- New: File Explorer › right-click › Copy to desktop.
+- Fixed: the Trash's tooltip kept saying "The Trash is empty" after something was put in it.
+
 ## 1.5.4 (2026-11-08)
 Summary: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chip, sound on laptops with an Intel sound processor or speaker amplifiers, the built-in microphones of AMD laptops, Windows games through Steam's Proton, and Thunderbolt and USB4 docks and displays
 - New: Bluetooth works with Intel chips (the Bluetooth half of Intel Wi-Fi cards: 8260, 8265, 9260, 9560, AX200, AX201, AX203, AX210, AX211, AX411, BE200, BE201 and newer), MediaTek MT7921, MT7922 and MT7925, and Qualcomm chips on USB, as well as Realtek (1.5.1). Not yet tried on a computer with these chips: if Bluetooth does not appear, Settings › Devices › Not supported yet and Report a problem say what the computer has.

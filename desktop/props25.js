@@ -118,7 +118,10 @@ function multiProps(sel){const W=win(sel.length+' items Properties','ℹ️',380
  const t=W.body.querySelector('table');ts.forEach((x,i)=>{const tr=document.createElement('tr');tr.innerHTML='<td></td><td></td>';tr.firstChild.appendChild(icPic(sel[i],18));tr.lastChild.textContent=x.name;t.appendChild(tr)});
  W.body.querySelector('.ok').onclick=()=>W.close();return W}
 /* Comments become the icon's tooltip */
-function icNotes(){if(!USER)return;const p=apGet();deskIcons().forEach(d=>{if(d.classList.contains('fic'))return;const T=icTarget(d),n=T.k&&p[T.k]&&p[T.k].note;if(!d.dataset.t0)d.dataset.t0=d.title||'-';d.title=n||(d.dataset.t0=='-'?'':d.dataset.t0)})}
+/* 1.5.5: the icon's own tooltip is kept only while a comment replaces it, so one that changes (the Trash's "3 item(s)
+   in the Trash") is never put back stale */
+function icNotes(){if(!USER)return;const p=apGet();deskIcons().forEach(d=>{if(d.classList.contains('fic'))return;const T=icTarget(d),n=T.k&&p[T.k]&&p[T.k].note;
+ if(n){if(!d.dataset.noted){d.dataset.t0=d.title||'';d.dataset.noted=1}d.title=n}else if(d.dataset.noted){d.title=d.dataset.t0||'';delete d.dataset.noted;delete d.dataset.t0}})}
 DESK.addEventListener('pointerover',e=>{if(e.target.closest&&e.target.closest('#desk > .ic:not(.fic)')&&!DESK.dataset.notes){DESK.dataset.notes=1;icNotes();setTimeout(()=>delete DESK.dataset.notes,4000)}});
 /* Run mode: open the app's window minimised or maximised */
 {const _w2=win;win=function(...a){const W=_w2.apply(this,a);setTimeout(()=>{try{const m=USER&&W.app&&(apGet()[W.app]||{}).run;if(m=='max'&&!W.el.classList.contains('max'))W.el.querySelector('.mx').click();else if(m=='min'&&!W.min)W.el.querySelector('.mn').click()}catch(e){}},0);return W}}

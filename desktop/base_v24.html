@@ -1226,7 +1226,7 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
  if(ch)fsSave()})();
 var TR=[];try{TR=JSON.parse(localStorage.getItem('bd95trash')||'[]')}catch(e){}if(!Array.isArray(TR))TR=[];
 const TRW=new Set();
-function trBadge(){const d=document.querySelector('.ic.tr');if(!d)return;d.classList.toggle('full',TR.length>0);d.querySelector('b').dataset.c=TR.length;d.title=TR.length?TR.length+' item(s) in the Trash':'The Trash is empty'}
+function trBadge(){const d=document.querySelector('.ic.tr');if(!d)return;d.classList.toggle('full',TR.length>0);d.querySelector('b').dataset.c=TR.length;const t=TR.length?TR.length+(TR.length==1?' item':' items')+' in the Trash':'The Trash is empty';if(d.dataset.noted)d.dataset.t0=t;else d.title=t}
 function trSave(){let ok=true;try{localStorage.setItem('bd95trash',JSON.stringify(TR))}catch(e){ok=false}trBadge();TRW.forEach(f=>f());return ok}
 function trashPut(paths){const es=[];paths.forEach(p=>{const d=dirOf(p),nm=p[p.length-1];if(d&&isDir(d)&&nm in d)es.push({n:nm,from:p.slice(0,-1),v:d[nm],t:Date.now()})});if(!es.length)return 0;
  TR.push(...es);if(!trSave()){TR.length-=es.length;trSave();return -1}
