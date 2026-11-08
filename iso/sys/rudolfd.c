@@ -273,9 +273,11 @@ static void www_root(char *out, size_t n)
 
 /* dl = a downloaded file (/dlf/): it is never run as a page of this origin (the desktop's), so pages and scripts
    come as plain text and everything carries a sandbox */
-static void serve_file_as(struct req *r, const char *path, int dl)
+static void serve_fd_as(struct req *r, int f, const char *path, int dl);
+static void serve_file_as(struct req *r, const char *path, int dl) { serve_fd_as(r, open(path, O_RDONLY | O_CLOEXEC), path, dl); }
+/* 1.5.6: an open file (home/read opens it inside the account's folder; path gives its type) */
+static void serve_fd_as(struct req *r, int f, const char *path, int dl)
 {
-	int f = open(path, O_RDONLY | O_CLOEXEC);
 	struct stat st;
 	if (f < 0 || fstat(f, &st) || S_ISDIR(st.st_mode)) { if (f >= 0) close(f); reply_err(r->fd, 404, "not found"); return; }
 	off_t start = 0, end = st.st_size - 1;
@@ -2934,6 +2936,8 @@ static void api_vault(struct req *r, const char *what, int post)
 	}
 	reply_err(r->fd, 404, "unknown vault request");
 }
+#include <sys/mount.h>
+#include "rudolfd-home.c"
 /* ------------------------------------------------------------- 1.5.0: remote access (rudolf-remote, port 8443)
  * On/off (the desktop asks for an administrator's password first; /persist/etc/remote-on keeps it on after a restart),
  * a new pairing code each time it is turned on, the firewall's port only while it is on, the approval prompt and the
@@ -3113,6 +3117,8 @@ static void api(struct req *r)
 	if (!strncmp(p, "bt/", 3)) { api_bt(r, p + 3, post); return; }
 	if (!strcmp(p, "remote")) { api_remote(r, "", post); return; }
 	if (!strncmp(p, "remote/", 7)) { api_remote(r, p + 7, post); return; }
+	if (!strcmp(p, "home")) { api_home(r, "", post); return; }
+	if (!strncmp(p, "home/", 5)) { api_home(r, p + 5, post); return; }
 	if (!strcmp(p, "vault")) { api_vault(r, "", 0); return; }
 	if (!strncmp(p, "vault/", 6)) { api_vault(r, p + 6, post); return; }
 	/* 1.5.0: Linux programs and Flatpak apps live in the encrypted folder: while it is locked they cannot start */

@@ -3,6 +3,10 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.5.6 (in progress)
+Summary: your files on the disk (docs/plan-1.5.6.md)
+- Under the hood: Rudolf OS can keep each account's files as real files on the disk, encrypted with that account's own key and unreadable while it is signed out. Nothing uses it yet; the next steps move your files there.
+
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it
 - Changed: each account has its own Downloads again (C:\USERS\<name>\DOWNLOADS), encrypted with its home folder; large downloads are kept on the disk in the account's own folder. From 1.2.7 to 1.5.4 every account shared C:\DOWNLOADS. At the first start of 1.5.5 that folder goes to its owner when the computer has one account; with several, it stays readable by all as C:\SHARED DOWNLOADS (BEFORE 1.5.5) for an administrator to sort out. Nothing is deleted.

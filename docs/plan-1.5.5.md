@@ -1,5 +1,16 @@
 # Rudolf OS 1.5.5: file management
 
+**Released** as stable 1.5.5.261108 (serial 2026110820) on 2026-11-08, with disc-1.5.5. It is the first disc image
+published as one file (#113). It shipped with:
+- item 1, Downloads for each account (#117);
+- the fixes found on the Vivobook:
+  - the Trash's tooltip, and adding and removing desktop icons (#114, #121);
+  - every file in Downloads showing (#115);
+  - the AMD microphones (#118);
+  - Downloads after a restart, held downloads, endless "Downloading…" and wrong addresses (#119).
+
+Items 2–7 below moved to docs/plan-1.5.6.md, to be built on the disk.
+
 1.5.4 is stable (1.5.4.261108, serial 2026110815, with disc-1.5.4). 1.5.5 has already started with fixes found on
 the Vivobook:
 - the Trash's tooltip (#114);
