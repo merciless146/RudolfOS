@@ -131,6 +131,9 @@ today's storage.
 - **`hdSync` is generalised** to `hdSyncFor(acct, home, snapshot)`.
 - **Not done in stage 4,** each needing the Vivobook:
   - Downloads stays out of the Linux binds, because Chromium's `.incoming` would move with it;
+    **done after stage 4:** the downloads store (`.incoming`, `.quarantine`, `.accounts`, Linux apps' old files) has its
+    own bind, `/run/rudolf/dl`, made by rudolfd before the account's binds; Chromium's policy points there; Downloads
+    joins the binds; `lxSync` copies nothing; the copies at the store's top are removed or moved in (`hdDlTop`);
   - the Encrypt my data page's wording;
   - `watch` (the 15 s re-read stays).
 - **Tests:**

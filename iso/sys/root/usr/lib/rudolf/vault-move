@@ -40,8 +40,19 @@ if [ -e /persist/flatpak ] && [ ! -L /persist/flatpak ]; then
 fi
 move /persist/flatpak flatpak "Linux apps (Flatpak)"
 mountpoint -q /var/lib/flatpak || { [ -d "$V/flatpak" ] && mount --bind "$V/flatpak" /var/lib/flatpak 2>/dev/null; }
-move /persist/home/rudolf/Downloads downloads "Files kept in Downloads"
-chown 1000:1000 "$V/downloads" 2>/dev/null
+# 1.5.6: the downloads store's bind (/run/rudolf/dl) and the signed-in account's Downloads bind hold the folder:
+# they come off for the move and go back on the folder in the encrypted folder
+ACCT=$(cat /run/rudolf/home-session 2>/dev/null)
+if [ ! -L /persist/home/rudolf/Downloads ]; then
+	umount -l /home/rudolf/Downloads 2>/dev/null; umount -l /run/rudolf/dl 2>/dev/null
+	move /persist/home/rudolf/Downloads downloads "Files kept in Downloads"
+	chown 1000:1000 "$V/downloads" 2>/dev/null
+	D=$(readlink -f /persist/home/rudolf/Downloads)
+	mkdir -p /run/rudolf/dl && mount --bind "$D" /run/rudolf/dl && { mount --make-private /run/rudolf/dl 2>/dev/null; mkdir -p "$D/.incoming" "$D/.quarantine"; chown 1000:1000 "$D/.incoming" "$D/.quarantine"; chmod 700 "$D/.quarantine"; }
+	[ -n "$ACCT" ] && [ -d "/persist/accounts/$ACCT/Downloads" ] && mount --bind "/persist/accounts/$ACCT/Downloads" /home/rudolf/Downloads
+else
+	move /persist/home/rudolf/Downloads downloads "Files kept in Downloads"
+fi
 if [ $FAIL = 0 ]; then
 	rm -f /persist/etc/vault.moving
 	# the space the unencrypted copies used is handed back to the drive (on SSDs it is then erased by the drive)

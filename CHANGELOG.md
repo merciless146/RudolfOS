@@ -14,6 +14,7 @@ Summary: your files on the disk (docs/plan-1.5.6.md)
 - Fixed: Bluetooth's page could fail when another Settings page was opened before it had loaded, and the encryption page when Rudolf OS gave no list of moved folders.
 - Fixed: Oracle's Downloads page still pointed at C:\DOWNLOADS, which 1.5.5 replaced with each account's own Downloads: "Open" gave 404 Not found and "Open Downloads folder" gave Folder not found. Both go to your Downloads now, and a file kept on the disk opened from Oracle opens the way File Explorer opens it. Small files Oracle downloads itself go straight into your Downloads.
 - Changed: opening a Debian package (.deb, such as Discord's) says Rudolf OS does not install packages from a file yet, and offers the App Store, where most such apps (Discord among them) are.
+- Changed: with your files on the disk, Linux apps' Downloads is your own Downloads, like Documents and Pictures. Nothing is copied back and forth any more. Copies the earlier 1.5.6 beta had made of your downloads in the Downloads folder shared by Linux apps are removed (only exact copies), and files Linux apps saved there move into your Downloads. Website downloads still arrive in a separate folder first, where they are checked.
 
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it
