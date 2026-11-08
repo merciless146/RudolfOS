@@ -1836,6 +1836,7 @@ static void api_system(struct req *r)
 	jtext(&s, "gsp", run_out("grep -q '^nouveau ' /proc/modules && { dmesg 2>/dev/null | grep -i 'nouveau' | grep -iE 'gsp|firmware' | sed 's/^\\[[^]]*\\] *//' | tail -2; } || true"));
 	jtext(&s, "display", run_out("echo \"$(cat " RUN "/display-mode 2>/dev/null) | $(cat " RUN "/screen-actual 2>/dev/null) | $(cat " RUN "/display-reason 2>/dev/null)\""));
 	jtext(&s, "audio", slurp("/proc/asound/cards", NULL));
+	jtext(&s, "audio_pcm", slurp("/proc/asound/pcm", NULL));
 	/* 1.5.3: devices with no driver ("bus|id|kind|name" a line), so a report says what this computer is missing */
 	jtext(&s, "unsupported", run_out("/usr/lib/rudolf/devplug unsupported 2>/dev/null"));
 	jtext(&s, "input", run_out("sed -n 's/^N: Name=\"\\(.*\\)\"$/\\1/p' /proc/bus/input/devices 2>/dev/null"));
@@ -3412,8 +3413,11 @@ static void api(struct req *r)
 			restart_browser();
 			reply_ok(r->fd, "sound card selected; Rudolf OS restarts its browser"); return;
 		}
-		char *cards = slurp("/proc/asound/cards", NULL);
-		str s = {0}; sadd(&s, "{\"ok\":true,\"cards\":"); sjson(&s, cards ? cards : ""); sadd(&s, "}"); free(cards); reply_json(r->fd, &s); return;
+		char *cards = slurp("/proc/asound/cards", NULL), *pcm = slurp("/proc/asound/pcm", NULL);
+		/* 1.5.4: and which devices play and which record ("CC-DD: name : name : playback 1 : capture 1"), so Settings
+		   offers only cards that play as outputs, and lists the microphones (an AMD ACP card records only) */
+		str s = {0}; sadd(&s, "{\"ok\":true,\"cards\":"); sjson(&s, cards ? cards : ""); sadd(&s, ",\"pcm\":"); sjson(&s, pcm ? pcm : ""); sadd(&s, "}");
+		free(cards); free(pcm); reply_json(r->fd, &s); return;
 	}
 	if (!strcmp(p, "proxy")) {
 		char *sv = qparam(r->query, "server");

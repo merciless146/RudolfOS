@@ -4,9 +4,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.5.4 (2026-11-08)
-Summary: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chip
+Summary: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chip, and the built-in microphones of AMD laptops
 - New: Bluetooth works with Intel chips (the Bluetooth half of Intel Wi-Fi cards: 8260, 8265, 9260, 9560, AX200, AX201, AX203, AX210, AX211, AX411, BE200, BE201 and newer), MediaTek MT7921, MT7922 and MT7925, and Qualcomm chips on USB, as well as Realtek (1.5.1). Not yet tried on a computer with these chips: if Bluetooth does not appear, Settings › Devices › Not supported yet and Report a problem say what the computer has.
 - New: Bluetooth built into the board on a serial line (UART), found in inexpensive laptops and tablets (Realtek RTL8723BS and RTL8723CS, Broadcom, Intel, Qualcomm).
+- New: the built-in microphones of AMD laptops whose microphones are wired to the AMD audio processor (ACP): Ryzen 4000 and 5000 (Renoir, Cezanne), 6000 and 7x20/7x30 (Rembrandt, Mendocino: the ASUS Vivobook Go among them), and 7040/8040 (Phoenix, Hawk Point), where the laptop is known to the kernel or its firmware says so.
+- Changed: Settings › Sound offers only sound cards that play as outputs, and lists the microphones it found ("Built-in digital microphones (AMD audio processor)").
 
 ## 1.5.3 (2026-11-07)
 Summary: USB Wi-Fi adapters with Ralink and MediaTek RT2800 chips, a choice of Wi-Fi adapter, and a list of the devices that have no driver yet

@@ -115,6 +115,13 @@ y FS_ENCRYPTION CRYPTO_AES CRYPTO_AES_NI_INTEL CRYPTO_XTS CRYPTO_CTS CRYPTO_CBC 
 # crypto, hci_vhci for the tests (a virtual adapter)
 y BT BT_BREDR BT_LE BT_HIDP BT_RFCOMM BT_HCIBTUSB_RTL BT_HCIBTUSB_MTK BT_HCIBTUSB_BCM UHID CRYPTO_ECDH CRYPTO_CMAC CRYPTO_USER_API_HASH CRYPTO_USER_API_SKCIPHER
 m BT_HCIBTUSB BT_HCIVHCI
+# 1.5.4: the digital microphones of AMD laptops, wired to the AMD audio processor (ACP) rather than the HDA codec:
+# Renoir/Cezanne (ACP 3.x), Rembrandt/Mendocino (ACP 6.x: the Vivobook Go E1404FA, rev 0x6f, in acp6x-mach's list),
+# Raptor Lake's ACP 6.x twin, Phoenix/Hawk Point (ACP 6.3). They need no firmware. (Intel SOF, AMD SOF and the
+# speaker amplifiers need firmware: they come with it.) SND_AMD_ACP_CONFIG picks the driver for each computer.
+# (ACP6x has a lower-case x: mk keeps the case, as for MT76x0U)
+ACPMIC="SND_SOC SND_AMD_ACP_CONFIG SND_SOC_AMD_RENOIR SND_SOC_AMD_RENOIR_MACH SND_SOC_AMD_ACP6x SND_SOC_AMD_YC_MACH SND_SOC_AMD_RPL_ACP6x SND_SOC_AMD_ACP63_TOPLEVEL SND_SOC_AMD_PS SND_SOC_AMD_PS_MACH SND_SOC_DMIC"
+mk $ACPMIC
 # 1.5.4: Bluetooth built into the board on a serial line (UART): cheap laptops and tablets (Realtek RTL8723BS/CS,
 # Broadcom, Intel, Qualcomm). serdev attaches the chip the firmware (ACPI) describes; hci_uart drives it.
 BTUART="BT_HCIUART_H4 BT_HCIUART_3WIRE BT_HCIUART_INTEL BT_HCIUART_BCM BT_HCIUART_RTL BT_HCIUART_QCA"
@@ -129,6 +136,7 @@ for o in $HOTKEYS; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o 
 grep -q "^CONFIG_IPV6_SIT=y\|^CONFIG_IPV6_SIT=m" .config && { echo "kconfig.sh: IPV6_SIT is still on"; exit 1; }
 # 1.4.7: the memory options are on
 for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU_GEN_ENABLED; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
+for o in $ACPMIC; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the sound driver $o is not a module after olddefconfig"; exit 1; }; done
 for o in SERIAL_DEV_BUS SERIAL_DEV_CTRL_TTYPORT $BTUART; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the Bluetooth option $o is not on after olddefconfig"; exit 1; }; done
 for o in NF_TABLES NF_TABLES_INET NFT_CT NFT_REJECT NFT_LIMIT FS_ENCRYPTION CRYPTO_XTS CRYPTO_CTS BT BT_BREDR BT_LE BT_HIDP UHID CRYPTO_ECDH CRYPTO_USER_API_HASH; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 for o in BT_HCIBTUSB BT_HCIVHCI BT_RTL BT_INTEL BT_MTK BT_HCIUART BT_BCM BT_QCA; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig"; exit 1; }; done
