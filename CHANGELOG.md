@@ -10,6 +10,7 @@ Summary: USB Wi-Fi adapters with Ralink and MediaTek RT2800 chips, a choice of W
 - Fixed: the RT2800 driver was asked for but left out of the system without a word. Every Wi-Fi driver is now checked when Rudolf OS is built, so none can go missing again.
 - New: Settings › Devices › Not supported yet: the parts of this computer that Rudolf OS has no driver for yet, built in or plugged in (for example a Wi-Fi card, a sound processor, a camera or a fingerprint reader), or that every device has one. Report a problem includes the list, and the health log notes it the first time Rudolf OS starts on a computer.
 - New: Settings › Devices shows each USB device's speed and the port it is in ("USB 2.0, 480 Mbit/s, in a USB 3 port (10 Gbit/s)"). A USB device that does not say what it is (most Wi-Fi dongles) is named by what it calls itself.
+- Fixed: Make a Rudolf OS USB stick could report a stick as ready that would not start ("this drive has boot files only"): made from an installed Rudolf OS, the stick needs that system copied onto it, and once it was not. The stick is now checked before it is called ready: its system must be complete and read back the same as this computer's, or it says what went wrong.
 
 ## 1.5.2 (2026-11-06)
 Summary: the Rudolf OS Library: Quake and Emu download when you first need them, and every update is smaller; Game Boy games in Emu's library; Windows games get the keyboard and full screen
