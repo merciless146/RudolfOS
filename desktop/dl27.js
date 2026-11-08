@@ -246,4 +246,8 @@ if(typeof storPanel=='function'){const _sp=storPanel;storPanel=function(c){const
  const sp=h.querySelector('.dlsp');sp.textContent=`${refs.length} file(s), ${fmtB(tot)}.`;rd('dl/space').then(s=>{if(s.total>0)sp.textContent+=` The disk has ${fmtB(s.free)} free of ${fmtB(s.total)}.${s.live?' Running live: they are kept in memory and gone after you shut down.':''}`}).catch(()=>{});
  const bk=c.querySelectorAll('h4.sh4')[1];bk?c.insertBefore(h,bk):c.appendChild(h);return r}}
 /* start */
-if(dlOn()){const go=()=>{setTimeout(dlPoll,1500);setTimeout(dlSpaceCheck,8000)};typeof FSREADY!='undefined'?FSREADY.then(go,go):go()}
+/* 1.5.5: started once the desktop knows it runs on Rudolf OS itself. window.__sys is set when the accounts are loaded,
+   after this file runs, so testing dlOn() here (as before) never started the checks after a restart: downloads were
+   only looked at once a download began in this session, and the reconcile (moving and adopting files) never ran.
+   Found on the Vivobook: C:\DOWNLOADS from before 1.5.5 had not moved. */
+if(RD){let tries=0;const go=()=>{if(dlOn()){setTimeout(dlPoll,1500);setTimeout(dlSpaceCheck,8000)}else if(++tries<300)setTimeout(go,2000)};typeof FSREADY!='undefined'?FSREADY.then(go,go):go()}
