@@ -42,8 +42,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const b = await chromium.launch({executablePath: process.argv[2] || undefined});
   let p = await b.newPage(); p.on('pageerror', e => /toUpperCase/.test(e.message) || console.log('page error:', e.message));
   const q = s => p.evaluate(s);
-  await p.goto('http://127.0.0.1:8094/'); await p.waitForFunction(() => typeof stkSection == 'function', null, {timeout: 30000});
-  await q("(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});wins.slice().forEach(w=>w.close());USER=USER||ACCTS[0];USER.r='admin';window.elevate=async()=>true;localStorage.setItem('bd95marker','from-the-backup');return 1})()");
+  await p.goto('http://127.0.0.1:8094/'); await p.waitForFunction(() => typeof stkSection == 'function' && FSLOADED && fs['C:'] && fs['C:'].USERS, null, {timeout: 30000});
+  await q("(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});wins.slice().forEach(w=>w.close());USER=USER||ACCTS[0];USER.r='admin';if(!HOME){HOME={DOWNLOADS:{}};fs['C:'].USERS[uname()]=HOME}window.elevate=async()=>true;localStorage.setItem('bd95marker','from-the-backup');return 1})()");
   ok('drive picking', await q("JSON.stringify([stkDisk('/dev/sda1'),stkDisk('/dev/nvme0n1p1'),stkDisk('/dev/mmcblk0p1'),stkDisk('/dev/sr0')])") == '["sda","nvme0n1","mmcblk0","sr0"]');
   await q("settings('stor')"); await p.waitForFunction(() => !!document.querySelector('.stk30 .stkl'), null, {timeout: 15000}).catch(() => 0);
   const rows = await q("[...document.querySelectorAll('.stk30 .stkl .acr')].map(r=>r.firstChild.textContent)");
@@ -70,7 +70,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('...and the drive was mounted for it and unmounted after', M.calls.includes('mount?dev=sdb1') && M.calls.includes('umount?dev=sdb1') && !M.mounted.size, M.calls.filter(c => /mount/.test(c)));
   // the first start of a new Rudolf OS: Restore from a backup
   await p.close(); const ctx = await b.newContext(); p = await ctx.newPage(); p.on('pageerror', e => /toUpperCase/.test(e.message) || console.log('page error:', e.message));
-  await p.goto('http://127.0.0.1:8094/'); await p.waitForFunction(() => !!document.getElementById('oobe'), null, {timeout: 30000}).catch(() => 0);
+  await p.goto('http://127.0.0.1:8094/'); await p.waitForFunction(() => !!document.getElementById('oobe') && FSLOADED && fs['C:'] && fs['C:'].USERS, null, {timeout: 30000}).catch(() => 0);
   ok('the first-start screen offers Restore from a backup', await q("!!document.querySelector('#oobe .oorest')"));
   M.corrupt = true; await q("document.querySelector('#oobe .oorest').click()");
   await p.waitForFunction(() => document.querySelectorAll('.natdlg .strl .acr').length > 0, null, {timeout: 15000}).catch(() => 0);
@@ -80,9 +80,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   M.corrupt = false; await q("document.querySelector('.natdlg .strl button').click()");
   await p.waitForNavigation({timeout: 20000}).catch(() => 0); await wait(3000);
   ok('...a good one is restored (its settings are back, no first-start screen)', await q("localStorage.getItem('bd95marker')") == 'from-the-backup' && await q("!document.getElementById('oobe')||!!localStorage.getItem('bd95setup')"), await q("localStorage.getItem('bd95marker')"));
-  // 1.2.7: an image still in parts, its checksum from C:\DOWNLOADS, and boot files from before Secure Boot
+  // 1.2.7: an image still in parts, its checksum from Downloads, and boot files from before Secure Boot
   M.parts = true; M.bs = 0; M.mk = null;
-  await q("(()=>{['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});USER=USER||ACCTS[0];USER.r='admin';window.elevate=async()=>true;return 1})()");   // the restore above reloaded the page
+  await q("(()=>{['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});USER=USER||ACCTS[0];USER.r='admin';if(!HOME){HOME={DOWNLOADS:{}};fs['C:'].USERS[uname()]=HOME}window.elevate=async()=>true;return 1})()");   // the restore above reloaded the page
   const H = 'ab'.repeat(32);
   await q(`(()=>{const D=node(downloadsPath());D['RUDOLF-OS-1.2.6.ISO.SHA256']='data:application/octet-stream;base64,'+btoa('${H}  rudolf-os-1.2.6.iso\\n');wins.slice().forEach(w=>w.close());settings('stor');return 1})()`);
   await p.waitForFunction(() => !!document.querySelector('.stk30 .stkl .acr'), null, {timeout: 15000}).catch(() => 0);
@@ -94,7 +94,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('...the note goes when the downloaded image is chosen', await note() == '');
   await q("document.querySelector('.stk30 .stkf').checked=false;document.querySelector('.stk30 .stkl button').click()"); await wait(800);
   await q("(()=>{const i=document.querySelector('.natdlg .stki');i.value='32.0 GB';i.dispatchEvent(new Event('input'));document.querySelector('.natdlg .g').click();return 1})()"); await wait(2500);
-  ok('...and the stick is made from it, with the SHA-256 from its .sha256 (kept in C:\\DOWNLOADS)', M.mk && M.mk.image == '/home/rudolf/Downloads/rudolf-os-1.2.6.iso' && M.mk.sha == H, M.mk);
+  ok('...and the stick is made from it, with the SHA-256 from its .sha256 (kept in Downloads)', M.mk && M.mk.image == '/home/rudolf/Downloads/rudolf-os-1.2.6.iso' && M.mk.sha == H, M.mk);
   await q("(()=>{wins.slice().forEach(w=>w.close());settings('sec');return 1})()");
   await p.waitForFunction(() => !!document.querySelector('.sb28 .sbt') && document.querySelector('.sb28 .sbt').textContent.length > 10, null, {timeout: 15000}).catch(() => 0);
   const sb = await q("(()=>{const b=document.querySelector('.sb28');return b?b.querySelector('.sbt').textContent+' | '+[...b.querySelectorAll('button')].map(x=>x.textContent).join(','):''})()");

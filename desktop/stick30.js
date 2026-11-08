@@ -23,7 +23,7 @@ function stkConfirm(k){return new Promise(res=>{const o=document.createElement('
  i.oninput=()=>g.disabled=i.value.trim().replace(/\s+/g,' ').toUpperCase()!=sz.toUpperCase();const done=v=>{o.remove();res(v)};o.querySelector('.c').onclick=()=>done(false);g.onclick=()=>done(true);
  o.onkeydown=e=>{e.stopPropagation();if(e.key=='Escape')done(false);if(e.key=='Enter'&&!g.disabled)done(true)};document.body.appendChild(o);i.focus()})}
 /* 1.2.7: a downloaded image still in parts is listed as such (install.sh joins it), with the expected SHA-256 from its
-   .sha256: a file that small stays in the browser's storage, in C:\DOWNLOADS, where rudolfd cannot read it */
+   .sha256: a file that small stays in the browser's storage, in the account's Downloads, where rudolfd cannot read it */
 function imgLabel(x){return x.parts?`${x.name} (${x.parts} parts, not joined yet)`:x.name}
 function imgSha(path){const b=String(path||'').split('/').pop();if(!b)return'';const D=node(downloadsPath())||{};
  const k=Object.keys(D).find(n=>n.toUpperCase()==(b+'.sha256').toUpperCase());let v=k?D[k]:'';if(typeof v!='string'||isDlRefSafe(v))return'';
@@ -34,7 +34,7 @@ const isDlRefSafe=v=>typeof isDlRef=='function'&&isDlRef(v);
 /* 1.2.7: the drive Rudolf OS started from has boot files from before Secure Boot (rudolfd info.bootSecure 0) */
 const STK_BOOTOLD='This computer started from a disc made before Rudolf OS supported Secure Boot (1.2.2). A stick made from it will not start with Secure Boot on: choose a downloaded image instead.';
 async function stkSection(c){if(!RD)return;const box=document.createElement('div');box.className='stk30';c.appendChild(box);
- let info={},disks=[],imgs=[];try{info=await rd('info');disks=(await rd('disks')).disks||[]}catch(e){}try{imgs=((await rd('install/images')).images||[]).filter(x=>!x.boot)}catch(e){}
+ let info={},disks=[],imgs=[];try{info=await rd('info');disks=(await rd('disks')).disks||[]}catch(e){}try{imgs=((await rd('install/images'+(typeof dlAcct=='function'&&USER?'?acct='+encodeURIComponent(dlAcct()):''))).images||[]).filter(x=>!x.boot)}catch(e){}
  const adm=isAdmin(),tg=stkTargets(disks,info),bp=stkBackupParts(disks,info);
  box.innerHTML=`<h4 class='sh4'>Make a Rudolf OS USB stick</h4><p class='msg'>Puts Rudolf OS on a USB stick or memory card (2 GB or more) that starts on any computer and keeps its files. Everything on that drive is erased.</p>
  <div class='r2'><label>Rudolf OS to put on it</label><select class='stks'><option value=''>This Rudolf OS ${lxEsc(RVER)}${info.updateInstalled?' (with its updates)':''}</option>${imgs.map(x=>`<option value='${lxEsc(x.path)}'>${lxEsc(imgLabel(x))} (Downloads)</option>`).join('')}</select></div><p class='msg stkbo' hidden></p>
@@ -101,7 +101,7 @@ const BF_RELEASES='https://github.com/merciless146/RudolfOS/releases';
 /* a job's log in BOX until it ends: resolves with its status */
 function bfJob(box){box.style.display='block';return new Promise(res=>{const iv=setInterval(async()=>{let j;try{j=await rd('job')}catch(e){return}box.textContent=j.log||'';box.scrollTop=box.scrollHeight;if(!j.running&&j.status>=0){clearInterval(iv);res(j.status)}},1000)})}
 /* the images in Downloads, boot images first */
-async function bfImages(){let im=[];try{im=(await rd('install/images')).images||[]}catch(e){}return im.sort((a,b)=>(b.boot?1:0)-(a.boot?1:0))}
+async function bfImages(){let im=[];try{im=(await rd('install/images'+(typeof dlAcct=='function'&&USER?'?acct='+encodeURIComponent(dlAcct()):''))).images||[]}catch(e){}return im.sort((a,b)=>(b.boot?1:0)-(a.boot?1:0))}
 async function bootFilesDlg(done){
  const inf=await rd('info').catch(()=>({}));const o=document.createElement('div');o.className='rmodal bfdlg';
  o.innerHTML=`<div class='rmbox' role='dialog' aria-label='New boot files' style='max-width:560px'><h3>New boot files for this drive</h3><div class='bfb'></div><pre class='bfl' style='display:none;max-height:180px;overflow:auto;font-size:11px;background:#111;color:#ddd;padding:6px;white-space:pre-wrap'></pre><div class='rmrow bfr'></div></div>`;

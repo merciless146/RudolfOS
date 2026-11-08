@@ -86,10 +86,11 @@ async function storageInfo(){let e={};try{e=await navigator.storage.estimate()}c
 /* ---------- file system persistence ---------- */
 var FSLOADED=false,HOME=null,KEY=null,fsTimer=0,fsDirty=false,homeChain=Promise.resolve();
 const HOMESUB=['DESKTOP','DOCUMENTS','PICTURES','MUSIC','VIDEOS','DOWNLOADS'];
-/* where downloads are (1.2.7): C:\DOWNLOADS, for every account. Oracle saves there, and files over 1.5 MB stay on the disk
-   (/home/rudolf/Downloads) with their reference in that folder (dl27.js). Files' "Downloads", dropped files and copies
-   from a drive use it too; before 1.2.7 they used C:\USERS\<name>\DOWNLOADS, so downloads seemed to vanish. */
-const downloadsPath=()=>{const C=fs['C:'];if(C&&(!C.DOWNLOADS||typeof C.DOWNLOADS!='object'))C.DOWNLOADS={};return['C:','DOWNLOADS']};
+/* where downloads are: 1.5.5, each account's own C:\USERS\<name>\DOWNLOADS, encrypted with its home folder (1.2.7 to
+   1.5.4: C:\DOWNLOADS, one folder for every account). Oracle saves there, and files over 1.5 MB stay on the disk in the
+   account's own folder with their reference here (dl27.js). Files' "Downloads", dropped files and copies from a drive
+   use it too. Nobody signed in: C:. */
+const downloadsPath=()=>{if(!USER)return['C:'];const h=node(homePath());if(isDir(h)&&!isDir(h.DOWNLOADS))h.DOWNLOADS={};return homePath('DOWNLOADS')};
 const uname=()=>USER?String(USER.n).toUpperCase().replace(/[\\\/:*?"<>|]/g,'_').slice(0,40):'';
 const uid=()=>USER?(USER.id||'u-'+String(USER.n).toLowerCase()):'nobody';
 const homePath=sub=>USER?['C:','USERS',uname(),...(sub?[sub]:[])]:['C:'];
