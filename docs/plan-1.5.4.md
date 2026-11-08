@@ -171,6 +171,18 @@ Thunderbolt or USB4, and devices that need PCIe over the cable do not.
   - on hardware: a dock (display, network, USB), and a USB-C display on the Vivobook if its port supports
     DisplayPort.
 
+**As built** (this PR):
+- kernel: `USB4`, `TYPEC`, `TYPEC_UCSI`, `UCSI_ACPI`, `TYPEC_DP_ALTMODE`, `TYPEC_TBT_ALTMODE`, `USB_ROLE_SWITCH` (built
+  in, or UCSI can only be a module), `PCIEPORTBUS`, `HOTPLUG_PCI_PCIE`, `INTEL_SCU_PCI` with `TYPEC_MUX_INTEL_PMC`,
+  `INTEL_IOMMU`, `AMD_IOMMU`, and `AQTION` (the option is called that, not ATLANTIC), all checked after
+  olddefconfig; DP tunnelling (`DRM_DISPLAY_DP_TUNNEL`) comes with i915;
+- the Intel IOMMU is not forced on for every computer (`INTEL_IOMMU_DEFAULT_ON` stays off, as in the defconfig):
+  the kernel turns it on by itself where the firmware asks for DMA protection, which is what makes
+  `iommu_dma_protection` 1, and forcing it on everywhere can break older Intel graphics;
+- `/usr/lib/rudolf/thunderbolt` (mdev for `SUBSYSTEM=thunderbolt`, and at start-up), rudolfd `GET tb`, `tb/ask`,
+  `POST tb/allow`, `tb/deny`, `tb/forget`; "no" holds until the device is unplugged; the system report has the list;
+- tb54.js: the question box, and the section in Settings › Devices.
+
 ## 5. Built-in cameras on newer Intel laptops (preview)
 
 USB cameras (UVC), in nearly every AMD laptop and older Intel ones, already work in Oracle. Intel laptops since

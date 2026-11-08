@@ -1848,6 +1848,8 @@ static void api_system(struct req *r)
 	jtext(&s, "display", run_out("echo \"$(cat " RUN "/display-mode 2>/dev/null) | $(cat " RUN "/screen-actual 2>/dev/null) | $(cat " RUN "/display-reason 2>/dev/null)\""));
 	jtext(&s, "audio", slurp("/proc/asound/cards", NULL));
 	jtext(&s, "audio_pcm", slurp("/proc/asound/pcm", NULL));
+	/* 1.5.4: Thunderbolt and USB4: the protection and the devices, approved or not */
+	jtext(&s, "thunderbolt", run_out("[ -d /sys/bus/thunderbolt ] && /usr/lib/rudolf/thunderbolt json 2>/dev/null || true"));
 	/* 1.5.3: devices with no driver ("bus|id|kind|name" a line), so a report says what this computer is missing */
 	jtext(&s, "unsupported", run_out("/usr/lib/rudolf/devplug unsupported 2>/dev/null"));
 	jtext(&s, "input", run_out("sed -n 's/^N: Name=\"\\(.*\\)\"$/\\1/p' /proc/bus/input/devices 2>/dev/null"));
@@ -2968,6 +2970,35 @@ static void api_remote(struct req *r, const char *what, int post)
  * when the search is over), bt/pair|connect|disconnect|remove?mac=AA:BB:..; pairings and their ends go into the
  * health log (the device's name only). */
 static int bt_mac_ok(const char *m) { if (!m || strlen(m) != 17) return 0; for (int i = 0; i < 17; i++) { if (i % 3 == 2) { if (m[i] != ':') return 0; } else if (!isxdigit((unsigned char)m[i]) || islower((unsigned char)m[i])) return 0; } return 1; }
+/* 1.5.4: Thunderbolt and USB4 devices (/usr/lib/rudolf/thunderbolt). GET tb: the devices and the protection; GET
+ * tb/ask: the device waiting for an answer, if any (asked by the desktop every few seconds); POST tb/allow?id=,
+ * tb/deny?id= (the desktop asks for an administrator's password first), tb/forget?uid= */
+static int tb_arg_ok(const char *a, int uid)
+{
+	if (!a || !*a || strlen(a) > 64) return 0;
+	for (const char *c = a; *c; c++) if (!(isxdigit((unsigned char)*c) || *c == '-')) return 0;
+	return uid || strchr(a, '-') != NULL;
+}
+static void api_tb(struct req *r, const char *what, int post)
+{
+	if (!post && !*what) { reply_cmd_json(r, "/usr/lib/rudolf/thunderbolt json 2>/dev/null", "Thunderbolt devices are not known"); return; }
+	if (!post && !strcmp(what, "ask")) {
+		char buf[512] = ""; FILE *f = fopen(RUN "/tb-ask", "r");
+		size_t n = f ? fread(buf, 1, sizeof buf - 1, f) : 0; if (f) fclose(f); buf[n] = 0; trim(buf);
+		str s = {0}; sadd(&s, "{\"ok\":true,\"ask\":%s}", buf[0] == '{' ? buf : "null");
+		reply(r->fd, 200, "application/json", s.b, s.n, NULL); free(s.b); return;
+	}
+	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+	int forget = !strcmp(what, "forget");
+	if (!forget && strcmp(what, "allow") && strcmp(what, "deny")) { reply_err(r->fd, 404, "unknown Thunderbolt action"); return; }
+	const char *a = qparam(r->query, forget ? "uid" : "id");
+	if (!tb_arg_ok(a, forget)) { reply_err(r->fd, 400, "bad device"); return; }
+	char cmd[200]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/thunderbolt %s %s 2>&1", what, a);
+	char *o = run_out(cmd); trim(o);
+	if (!o || (strcmp(o, "approved") && strcmp(o, "not approved") && strcmp(o, "forgotten"))) { reply_err(r->fd, 500, o && *o ? o : "that did not work"); free(o); return; }
+	health_add("hardware", !strcmp(what, "allow") ? "a Thunderbolt or USB4 device was approved" : !strcmp(what, "deny") ? "a Thunderbolt or USB4 device was not approved" : "a Thunderbolt or USB4 device was forgotten");
+	reply_ok(r->fd, o); free(o);
+}
 static void api_bt(struct req *r, const char *what, int post)
 {
 	char cmd[200];
@@ -3030,6 +3061,8 @@ static void api(struct req *r)
 	if (!strcmp(p, "memory/iam") && post) { api_memory_iam(r); return; }
 	if (!strcmp(p, "health")) { api_health(r, post); return; }
 	if (!strcmp(p, "firewall")) { api_firewall(r, post); return; }
+	if (!strcmp(p, "tb")) { api_tb(r, "", post); return; }
+	if (!strncmp(p, "tb/", 3)) { api_tb(r, p + 3, post); return; }
 	if (!strcmp(p, "bt")) { api_bt(r, "", post); return; }
 	if (!strncmp(p, "bt/", 3)) { api_bt(r, p + 3, post); return; }
 	if (!strcmp(p, "remote")) { api_remote(r, "", post); return; }

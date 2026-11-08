@@ -151,6 +151,15 @@ m BT_HCIUART
 # their light bar: without it the driver was left out without a word, and they ran as plain HID devices.
 GAMES="NTSYNC HID_STEAM LEDS_CLASS LEDS_CLASS_MULTICOLOR HID_PLAYSTATION PLAYSTATION_FF"
 y $GAMES
+# 1.5.4: Thunderbolt and USB4 (docks, displays and devices that use PCIe over the cable; approving them:
+# /usr/lib/rudolf/thunderbolt), USB-C ports (UCSI: power roles and modes), DisplayPort and Thunderbolt over USB-C
+# (with Intel's PMC mux; the USB role switch built in, or UCSI could only be a module), PCIe hot-plugging, the IOMMU
+# of both makers (the kernel turns Intel's on by itself where the firmware asks for DMA protection, as Thunderbolt
+# laptops do), and the Aquantia network chip of many docks
+TBY="USB4 USB_ROLE_SWITCH TYPEC TYPEC_UCSI UCSI_ACPI TYPEC_DP_ALTMODE TYPEC_TBT_ALTMODE PCIEPORTBUS HOTPLUG_PCI HOTPLUG_PCI_PCIE INTEL_SCU_PCI INTEL_IOMMU AMD_IOMMU NET_VENDOR_AQUANTIA"
+TBM="TYPEC_MUX_INTEL_PMC AQTION"
+y $TBY
+m $TBM
 # speed up the build
 n DEBUG_INFO DEBUG_INFO_DWARF5 DEBUG_INFO_DWARF4 DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT DEBUG_INFO_BTF KALLSYMS_ALL FTRACE
 $C --enable DEBUG_INFO_NONE
@@ -164,6 +173,8 @@ for o in $SOFM $AMPS $SPIM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfi
 for o in $SOFOLD; do grep -qE "^CONFIG_$o=(y|m)$" .config && { echo "kconfig.sh: $o is on: its SOF firmware is not shipped, so it must stay on HDA"; exit 1; }; done
 for o in $SOFY $SPIY; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the sound option $o is not on after olddefconfig"; exit 1; }; done
 for o in $GAMES INPUT_UINPUT HIDRAW INPUT_JOYSTICK JOYSTICK_XPAD HID_SONY HID_PLAYSTATION HID_NINTENDO; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the games option $o is not on after olddefconfig"; exit 1; }; done
+for o in $TBY; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the Thunderbolt or USB-C option $o is not on after olddefconfig"; exit 1; }; done
+for o in $TBM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the driver $o is not a module after olddefconfig"; exit 1; }; done
 for o in $ACPMIC; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the sound driver $o is not a module after olddefconfig"; exit 1; }; done
 for o in SERIAL_DEV_BUS SERIAL_DEV_CTRL_TTYPORT $BTUART; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the Bluetooth option $o is not on after olddefconfig"; exit 1; }; done
 for o in NF_TABLES NF_TABLES_INET NFT_CT NFT_REJECT NFT_LIMIT FS_ENCRYPTION CRYPTO_XTS CRYPTO_CTS BT BT_BREDR BT_LE BT_HIDP UHID CRYPTO_ECDH CRYPTO_USER_API_HASH; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done

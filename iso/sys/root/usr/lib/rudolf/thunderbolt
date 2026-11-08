@@ -1,0 +1,89 @@
+#!/bin/sh
+# Rudolf OS 1.5.4: Thunderbolt and USB4 devices (docks, displays, drives and cards that use PCIe over the cable).
+# A device on the cable can read the computer's memory unless the IOMMU stops it, so the kernel waits for it to be
+# approved (authorized). When the firmware turned on DMA protection (iommu_dma_protection = 1), devices are approved
+# by themselves, as on Windows and macOS. Otherwise the desktop asks an administrator once; approved devices are kept
+# by their unique ID (/persist/etc/thunderbolt-allowed) and approved again whenever they are plugged in.
+# GPL-2.0-or-later.
+#   thunderbolt plug        a device came (mdev: ACTION, DEVPATH)
+#   thunderbolt boot        the devices already there at start-up
+#   thunderbolt json        the controllers' protection and the devices, for rudolfd (GET tb)
+#   thunderbolt allow ID    approve device ID (e.g. 0-1) and keep it      (rudolfd, after an administrator's yes)
+#   thunderbolt deny ID     do not approve it (until it is plugged in again)
+#   thunderbolt forget UID  no longer approve that device by itself (and disconnect it, where the kernel allows)
+# test hooks (iso/qt/host/thunderbolt_t.sh): RUDOLF_TEST_SYS, RUDOLF_TEST_PERSIST, RUDOLF_TEST_RUN
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+TB=${RUDOLF_TEST_SYS:-/sys}/bus/thunderbolt/devices
+ALLOWED=${RUDOLF_TEST_PERSIST:-/persist}/etc/thunderbolt-allowed
+RUN=${RUDOLF_TEST_RUN:-/run/rudolf}
+ASK=$RUN/tb-ask; DENIED=$RUN/tb-denied
+
+isdev() { case "$1" in *[!0-9a-f-]*|*-0|-*|*-) return 1;; [0-9]*-[0-9a-f]*) [ -e "$TB/$1/authorized" ];; *) return 1;; esac; }
+val() { tr -d '\n' < "$TB/$1/$2" 2>/dev/null; }
+clean() { tr -d '\000-\037"\\' | cut -c1-80; }
+name() { n="$(val "$1" vendor_name | clean) $(val "$1" device_name | clean)"; n=${n# }; echo "${n:-Thunderbolt device}"; }
+dma() { for d in "$TB"/domain*; do [ -e "$d/iommu_dma_protection" ] && [ "$(tr -d '\n' < "$d/iommu_dma_protection" 2>/dev/null)" = 1 ] && return 0; done; return 1; }
+allowed() { [ -n "$1" ] && [ -f "$ALLOWED" ] && grep -q "^$1 " "$ALLOWED"; }
+keep() { allowed "$1" && return 0; mkdir -p "$(dirname "$ALLOWED")"; echo "$1 $2" >> "$ALLOWED"; }
+event() { [ -d "$RUN" ] && echo "tb $1" >> "$RUN/events"; }
+authorize() { echo 1 > "$TB/$1/authorized" 2>/dev/null; [ "$(val "$1" authorized)" != 0 ]; }
+askfile() {   # the oldest device that waits for an answer (one question at a time)
+	: > "$ASK.new"
+	for p in "$TB"/*; do i=${p##*/}; isdev "$i" || continue; [ "$(val "$i" authorized)" = 0 ] || continue
+		u=$(val "$i" unique_id); grep -q "^$u " "$DENIED" 2>/dev/null && continue
+		printf '{"id":"%s","uid":"%s","name":"%s","t":"%s"}\n' "$i" "$u" "$(name "$i")" "$u" > "$ASK.new"; break
+	done
+	if [ -s "$ASK.new" ]; then mv "$ASK.new" "$ASK"; else rm -f "$ASK.new" "$ASK"; fi
+}
+consider() {
+	i=$1; isdev "$i" || return 0
+	[ "$(val "$i" authorized)" = 0 ] || return 0
+	u=$(val "$i" unique_id); n=$(name "$i")
+	if allowed "$u"; then authorize "$i" && event "allowed $i"
+	elif dma; then authorize "$i" && keep "$u" "$n" && event "allowed $i"
+	else event "ask $i"; fi
+}
+case "$1" in
+plug)
+	i=${DEVPATH##*/}
+	# unplugged: a "no" is forgotten, so plugging it in again asks again
+	if [ "$ACTION" = remove ]; then [ -f "$DENIED" ] && { grep -v " $i\$" "$DENIED" > "$DENIED.new"; mv "$DENIED.new" "$DENIED"; }
+	else consider "$i"; fi
+	askfile;;
+boot)
+	rm -f "$DENIED"
+	for p in "$TB"/*; do consider "${p##*/}" >/dev/null; done
+	askfile;;
+json)
+	sec=; for d in "$TB"/domain*; do [ -e "$d/security" ] && { sec=$(tr -d '\n' < "$d/security" | clean); break; }; done
+	printf '{"ok":true,"present":%s,"dma":%s,"security":"%s","devices":[' "$([ -d "$TB" ] && ls "$TB" | grep -q '^domain' && echo true || echo false)" "$(dma && echo true || echo false)" "$sec"
+	f=1
+	for p in "$TB"/*; do i=${p##*/}; isdev "$i" || continue; u=$(val "$i" unique_id)
+		a=$(val "$i" authorized); [ -n "$a" ] || a=0
+		printf '%s{"id":"%s","uid":"%s","name":"%s","approved":%s,"kept":%s,"canDisconnect":%s}' "$([ $f = 1 ] || echo ,)" "$i" "$(echo "$u" | clean)" "$(name "$i")" \
+			"$([ "$a" != 0 ] && echo true || echo false)" "$(allowed "$u" && echo true || echo false)" "$([ "$(val "$i" deauthorization)" = 1 ] && echo true || echo false)"
+		f=0
+	done
+	printf '],"kept":['
+	f=1; [ -f "$ALLOWED" ] && while read -r u n; do [ -n "$u" ] || continue
+		printf '%s{"uid":"%s","name":"%s"}' "$([ $f = 1 ] || echo ,)" "$(echo "$u" | clean)" "$(echo "$n" | clean)"; f=0
+	done < "$ALLOWED"
+	printf ']}\n';;
+allow)
+	isdev "$2" || { echo "no such device"; exit 2; }
+	u=$(val "$2" unique_id)
+	authorize "$2" || { echo "the device could not be approved"; exit 1; }
+	keep "$u" "$(name "$2")"; [ -f "$DENIED" ] && { grep -v "^$u " "$DENIED" > "$DENIED.new"; mv "$DENIED.new" "$DENIED"; }
+	askfile; echo "approved";;
+deny)
+	isdev "$2" || { echo "no such device"; exit 2; }
+	echo "$(val "$2" unique_id) $2" >> "$DENIED"; askfile; echo "not approved";;
+forget)
+	case "$2" in ''|*[!0-9a-fA-F-]*) echo "bad device"; exit 2;; esac
+	[ -f "$ALLOWED" ] && { grep -v "^$2 " "$ALLOWED" > "$ALLOWED.new"; mv "$ALLOWED.new" "$ALLOWED"; }
+	for p in "$TB"/*; do i=${p##*/}; isdev "$i" || continue; [ "$(val "$i" unique_id)" = "$2" ] || continue
+		[ "$(val "$i" deauthorization)" = 1 ] && echo 0 > "$TB/$i/authorized" 2>/dev/null
+	done
+	echo "forgotten";;
+*) echo "usage: thunderbolt plug|boot|json|allow ID|deny ID|forget UID"; exit 2;;
+esac
