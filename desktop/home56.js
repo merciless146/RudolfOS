@@ -147,7 +147,7 @@ async function hdMove(a){const acct=uid(),q='acct='+encodeURIComponent(acct),hom
   HD.gen++;HD.acct=acct;HD.snap=snap;
   for(const[r,i]of disk){const s=snap.get(r);if(s&&!s.d&&s.ver==null&&!i.d)s.ver=i.v}
   await rd('home/unlock?'+q+'&session=1',{method:'POST',body:key}).catch(e=>console.warn('home binds',e));
-  hdSync();
+  hdSync();hdBinds();
   logEvt('sys',`${a.n}'s files moved to the disk (${files.length} files, ${dirs.length} folders)`);
   notify('Your files are on the disk','They are kept as files now, encrypted with your account\'s key; Linux apps see your Documents, Pictures, Music and Videos. A copy stays in the old place for 7 days.',{tag:'hdmove'});
  }catch(e){console.warn('home move',e);logEvt('sys',`${a.n}'s files could not be moved to the disk: ${e.message}`);
@@ -171,7 +171,7 @@ async function hdMove(a){const acct=uid(),q='acct='+encodeURIComponent(acct),hom
  if(made&&await kvGet('home:'+uid())){HD.acct=null;a.disk=0;saveUser();const r=await _hl.apply(this,arguments);
   if(HOME&&!HOMELOCKED)setTimeout(()=>{if(USER===a&&!HD.moving){HD.moving=1;hdMove(a).finally(()=>{HD.moving=0})}},1500);return r}
  HD.snap=loaded.snap;HOME=loaded.obj;fs['C:'].USERS[uname()]=HOME;
- setTimeout(hdTrashSweep,5000);
+ setTimeout(hdTrashSweep,5000);hdBinds();
  /* a new account's folder: the welcome file, as a home in C: had */
  if(![...HD.snap.values()].some(x=>!x.d))HOME.DOCUMENTS['WELCOME.TXT']=defaultHome().DOCUMENTS['WELCOME.TXT'];
  hdSync()}}
@@ -211,3 +211,31 @@ async function hdTrashSweep(){if(!hdOn())return;const acct=HD.acct;
  for(const[id,x]of keep){const obj=fs['C:'].USERS[x.name];if(isDir(obj))hdSyncFor(id,obj,x.snap)}}}
 {const _ac=acClose;acClose=function(){const locks=[];for(const[id,x]of AC_OTHERS)if(x.disk){const obj=fs['C:'].USERS[x.name];if(isDir(obj))hdSyncFor(id,obj,x.snap);locks.push(id)}
  const r=_ac.apply(this,arguments);if(locks.length){const me=HD.acct;HD.chain=HD.chain.then(async()=>{for(const id of locks)if(id!==me)await rdPost('home/lock?acct='+encodeURIComponent(id)).catch(()=>{})})}return r}}
+
+/* ---------- 1.5.6: Downloads among the binds for Linux apps ----------
+   rudolfd binds the account's Downloads at /home/rudolf/Downloads like Documents, once the downloads store (Chromium's
+   .incoming, .quarantine, the files Linux apps saved before) has its own bind (GET home: downloadsBound). Until 1.5.6
+   linux26's lxSync kept a copy of the Linux owner's C: Downloads at the top of the store, outside the account's
+   encrypted folder: those copies go (only when they are the same, byte for byte) and what Linux apps saved there
+   moves into this account's Downloads, once, for the account that owned that folder. */
+async function hdBinds(){HD.dlb=false;if(!hdOn())return;
+ try{const j=await rd('home');HD.dlb=!!(j.downloadsBound&&j.session==HD.acct)}catch(e){}
+ if(HD.dlb)setTimeout(()=>hdDlTop().catch(e=>console.warn('Downloads top',e)),4000)}
+const hdResBytes=r=>r&&typeof r.arrayBuffer=='function'?r.arrayBuffer().then(b=>new Uint8Array(b)):Promise.reject(new Error('not read'));
+async function hdDlTop(){if(!hdOn()||!HD.dlb||HD.dltop)return;HD.dltop=1;
+ const own=typeof lxOwner=='function'?ld('bd95lxowner',null):null;if(own&&own!==uid())return{skipped:'owner'};
+ const items=((await rd('dl/home')).items||[]).filter(i=>!i.partial);if(!items.length)return{moved:0,same:0};
+ await HD.chain;const dl=node(downloadsPath());const names=new Set(Object.keys(isDir(dl)?dl:{}).map(k=>k.toUpperCase()));
+ const free=n=>{if(!names.has(n.toUpperCase()))return n;const m=/^(.*?)(\.[^.]*)?$/.exec(n);for(let i=2;;i++){const c=m[1]+' ('+i+')'+(m[2]||'');if(!names.has(c.toUpperCase()))return c}};
+ let moved=0,same=0;
+ for(const it of items){const n=it.name;
+  try{const key=Object.keys(dl).find(k=>k.toUpperCase()==n.toUpperCase());
+   if(key&&it.size<=8*1048576){const a=await hdResBytes(await rd('dl/read?name='+encodeURIComponent(n)+'&from=home&off=0&len='+it.size));
+    const b=await hdResBytes(await rd('home/read?'+hdQ()+'&path='+encodeURIComponent('Downloads/'+key)).catch(()=>null)).catch(()=>null);
+    if(b&&a.length==b.length&&a.every((x,i)=>x===b[i])){await rdPost('dl/file?name='+encodeURIComponent(n)+'&from=root&to=del');same++;continue}}
+   const t=free(n);await rdPost('home/adopt?'+hdQ()+'&from='+encodeURIComponent('/home/rudolf/Downloads/'+n)+'&to='+encodeURIComponent('Downloads/'+t));names.add(t.toUpperCase());moved++}
+  catch(e){console.warn('Downloads top',n,e)}}
+ if(moved||same){HD.busy=0;await hdRefresh();try{EXPL.forEach(f=>f())}catch(e){}
+  logEvt('sys',`Downloads for Linux apps is ${uname()}'s own now: ${same} copies removed, ${moved} files moved in`);
+  if(moved)notify('Downloads',`${moved} file${moved==1?'':'s'} Linux apps had saved in Downloads ${moved==1?'is':'are'} in your Downloads now.`,{tag:'hddltop'})}
+ return{moved,same}}

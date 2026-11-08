@@ -26,7 +26,7 @@ static void one(const char *spec)
 }
 int main(int argc, char **argv)
 {
-	snprintf(home_root, sizeof home_root, "%s", argv[1]); home_nobind = getenv("BIND") ? 0 : 1; home_uid = 1000;
+	snprintf(home_root, sizeof home_root, "%s", argv[1]); home_nobind = getenv("BIND") ? 0 : 1; home_uid = 1000; if (!home_nobind) dl_home_boot();
 	for (int i = 2; i < argc; i++) one(argv[i]);
 	return 0;
 }

@@ -237,7 +237,11 @@ async function dlOpen(path){const v=node(path),nm=path.at(-1),e=ext(nm),i=dlRefI
  return dlInfo(path,e=='ZIP'?'Archive Manager opens archives up to 1.5 MB. Open this one in a Linux app from the Downloads folder.':'Rudolf OS has no app that opens this kind of file from the disk.')}
 /* (1.4.8) a file kept on the disk, opened by a Linux app: it is already on the disk, so the app gets its own path
    (lxOpenFile would copy the reference itself, as it does for the desktop's own files outside the shared folders) */
-function dlDiskPath(i){const p=String(i&&i.p||'');return p.startsWith('/')?p:'/home/rudolf/Downloads/'+p}
+function dlDiskPath(i){const p=String(i&&i.p||'');
+ /* 1.5.6: a file in the signed-in account's folder, by the name Linux apps see it under (the binds) */
+ if(typeof HD!='undefined'&&HD.acct&&p.startsWith(HD_ROOT+HD.acct+'/')){const rel=p.slice((HD_ROOT+HD.acct+'/').length),top=rel.split('/')[0];
+  if(['Documents','Pictures','Music','Videos'].includes(top)||(top=='Downloads'&&HD.dlb))return'/home/rudolf/'+rel}
+ return p.startsWith('/')?p:'/home/rudolf/Downloads/'+p}
 function dlLxOpen(o,path){const i=dlRefInfo(node(path)),x=typeof lxLaunchers=='function'&&lxLaunchers().find(l=>'lx:'+l.desktop==o[0]);if(!i||!x)return o[4](path);return lxRun(x,dlDiskPath(i))}
 function dlInfo(path,msg){const v=node(path),i=dlRefInfo(v)||{},W=win('Kept on the disk','💽',420,210);W.body.style.cssText='padding:14px;font-size:13px';
  W.body.innerHTML=`<b class='n'></b><p class='m'></p><p style='color:#6b7280'>${fmtB(i.s||0)} · in the Downloads folder on the disk${i.av=='part'?' · the antivirus checked its first and last 4 MB':''}</p><div style='text-align:right'><button>Close</button></div>`;

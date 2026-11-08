@@ -1,6 +1,6 @@
 {
   "AllowFileSelectionDialogs": false,
-  "DownloadDirectory": "/home/rudolf/Downloads/.incoming",
+  "DownloadDirectory": "/run/rudolf/dl/.incoming",
   "PromptForDownloadLocation": false,
   "DownloadRestrictions": 0,
   "SafeBrowsingProtectionLevel": 0,

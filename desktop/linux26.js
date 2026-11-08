@@ -79,9 +79,11 @@ async function lxSyncFolder(key,real){const base='/home/rudolf/'+real,dk=homePat
  /* folders deleted on the desktop: remove them on disk once their files are gone (deepest first) */
  for(const p of keys.filter(p=>R.get(p)&&R.get(p).dir&&!D.get(p)&&st[p]).sort((a,b)=>b.length-a.length)){try{await lxApi('fs/delete?path='+encodeURIComponent(rpath(p)));delete st[p]}catch(e){}}
  svj(SK,st);if(n){fsSave();try{EXPL.forEach(f=>f())}catch(e){}}return n}
-function lxSync(){if(!RD||!USER||LX.syncing)return LX.syncing||Promise.resolve(0);if(!(LX.inst||ld(LXK,[])).length&&!(typeof DEB!='undefined'&&DEB.st&&DEB.st.installed))return Promise.resolve(0);
+/* 1.5.6: with the account's files on the disk, Linux apps see the folders themselves (binds): nothing to copy. Downloads
+   only when it is bound too (HD.dlb); otherwise its copy is still kept in step */
+function lxSync(){if(!RD||!USER||LX.syncing)return LX.syncing||Promise.resolve(0);if(typeof hdOn=='function'&&hdOn()&&HD.dlb)return Promise.resolve(0);if(!(LX.inst||ld(LXK,[])).length&&!(typeof DEB!='undefined'&&DEB.st&&DEB.st.installed))return Promise.resolve(0);
  if(lxOwner()!=uid())return Promise.resolve(0);
- LX.syncing=(async()=>{let n=0;for(const[k,r]of LX_SHARED){try{n+=await lxSyncFolder(k,r)}catch(e){}}return n})().finally(()=>LX.syncing=null);return LX.syncing}
+ LX.syncing=(async()=>{let n=0;const hd=typeof hdOn=='function'&&hdOn();for(const[k,r]of LX_SHARED){if(hd&&k!='DOWNLOADS')continue;try{n+=await lxSyncFolder(k,r)}catch(e){}}return n})().finally(()=>LX.syncing=null);return LX.syncing}
 {const _fs=fsSave;fsSave=function(){const r=_fs.apply(this,arguments);if(RD&&!lxSync.busy){clearTimeout(lxSync.t);lxSync.t=setTimeout(()=>{lxSync.busy=1;lxSync().finally(()=>lxSync.busy=0)},2500)}return r}}
 /* ---------- taskbar buttons for app windows ---------- */
 function lxAppFor(w){const c=(w.class||'').toLowerCase(),i=(w.instance||'').toLowerCase();const ls=lxLaunchers();

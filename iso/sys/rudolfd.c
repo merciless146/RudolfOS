@@ -15,6 +15,8 @@
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
 #define _GNU_SOURCE
+#include <sys/mount.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -2069,14 +2071,58 @@ static void api_service(struct req *r)
    the desktop checks it (file type, antivirus, size) and asks here to keep it in Downloads, hold it in QUARANTINE,
    or delete it. Files kept in Downloads are opened through a link (/dlf/<id>) that needs no token, so a video
    or a PDF can be read in pieces by the page. */
-#define DLHOME "/home/rudolf/Downloads"
-#define INCOMING DLHOME "/.incoming"
-#define QUARANTINE DLHOME "/.quarantine"
+/* 1.5.6: DLPUB is the name the desktop and Chromium's old policy use; DLHOME is where the files are. While an
+   account is signed in, /home/rudolf/Downloads is that account's own Downloads (a bind, like Documents), so the store
+   (.incoming, .quarantine, .accounts and the files Linux apps saved before) is reached through its own bind,
+   RUN/dl, made before the account's (dl_store_bind). Without that bind (the host tests) DLHOME stays DLPUB. */
+#define DLPUB "/home/rudolf/Downloads"
+#define DLSTORE RUN "/dl"
+static char DLHOME[64] = DLPUB, INCOMING[96] = DLPUB "/.incoming", QUARANTINE[96] = DLPUB "/.quarantine", DLACCTS[96] = DLPUB "/.accounts";
+static int dl_store_bound = 0;   /* 1: RUN/dl is a bind of the store, so Downloads can be the account's own */
+static void dl_store_paths(const char *h)
+{
+	snprintf(DLHOME, sizeof DLHOME, "%s", h); snprintf(INCOMING, sizeof INCOMING, "%s/.incoming", h);
+	snprintf(QUARANTINE, sizeof QUARANTINE, "%s/.quarantine", h); snprintf(DLACCTS, sizeof DLACCTS, "%s/.accounts", h);
+}
+/* the folders the session makes; also when the encrypted folder is unlocked (1.5.1) */
+static void dl_store_dirs(void)
+{
+	struct stat st; if (stat(DLHOME, &st) || !S_ISDIR(st.st_mode)) return;
+	mkdir(INCOMING, 0755); if (chown(INCOMING, 1000, 1000)) {}
+	mkdir(QUARANTINE, 0700); if (chown(QUARANTINE, 1000, 1000)) {} chmod(QUARANTINE, 0700);
+}
+/* bind the store at RUN/dl. Only while /home/rudolf/Downloads is not an account's bind (at start, and in home_bind
+   after home_unbind), so that the real folder is found: a directory in /home/rudolf, or the link into the encrypted
+   folder. If the bind fails, RUN/dl is a link to it and Downloads stays out of the account's binds. */
+static void dl_store_bind(void)
+{
+	char rp[PATH_MAX]; if (!realpath(DLPUB, rp)) return;
+	struct stat a, b, rs;
+	if (!stat(DLSTORE, &a) && !stat(rp, &b) && a.st_dev == b.st_dev && a.st_ino == b.st_ino && !stat(RUN, &rs) && rs.st_dev != a.st_dev) { dl_store_bound = 1; dl_store_paths(DLSTORE); dl_store_dirs(); return; }
+	umount2(DLSTORE, MNT_DETACH);
+	struct stat l; if (!lstat(DLSTORE, &l) && S_ISLNK(l.st_mode)) unlink(DLSTORE);
+	mkdir(DLSTORE, 0755);
+	/* private: the account's bind onto the same folder (through the link into the encrypted folder) must not show here */
+	if (!mount(rp, DLSTORE, NULL, MS_BIND, NULL)) { dl_store_bound = 1; if (mount(NULL, DLSTORE, NULL, MS_PRIVATE, NULL)) {} }
+	else { fprintf(stderr, "rudolfd: the downloads store could not be bound (%s); Downloads stays shared\n", strerror(errno)); rmdir(DLSTORE); if (symlink(rp, DLSTORE)) {} dl_store_bound = 0; }
+	dl_store_paths(DLSTORE); dl_store_dirs();
+}
+/* a path the desktop sent (DLPUB/...) to where it is, and back for replies */
+static const char *dl_in(const char *p, char *b, size_t n)
+{
+	if (p && strcmp(DLHOME, DLPUB) && !strncmp(p, DLPUB "/", sizeof DLPUB)) { snprintf(b, n, "%s/%s", DLHOME, p + sizeof DLPUB); return b; }
+	return p;
+}
+static const char *dl_out(const char *p, char *b, size_t n)
+{
+	size_t l = strlen(DLHOME);
+	if (p && strcmp(DLHOME, DLPUB) && !strncmp(p, DLHOME, l) && p[l] == '/') { snprintf(b, n, DLPUB "%s", p + l); return b; }
+	return p;
+}
 static int dl_name_ok(const char *n) { return n && *n && *n != '.' && !strchr(n, '/') && strlen(n) < 240; }
 /* 1.5.5: each account's large downloads are in DLHOME/.accounts/<account id>/ (a hidden folder, so Linux apps, which
    share Downloads itself, do not list them); "shared" holds downloads from before 1.5.5 on a computer with several
    accounts. An account id: lower-case letters, digits and "-", as the desktop makes them. */
-#define DLACCTS DLHOME "/.accounts"
 static int dl_acct_ok(const char *a)
 {
 	if (!a || !*a || strlen(a) > 64) return 0;
@@ -2096,12 +2142,13 @@ static int dl_acct_dir(const char *acct, char *out, size_t n)
 static int dl_path_ok(const char *p)
 {
 	if (!p || strstr(p, "..")) return 0;
-	if (!strncmp(p, DLACCTS "/", sizeof DLACCTS)) {
-		const char *a = p + sizeof DLACCTS, *sl = strchr(a, '/'); if (!sl) return 0;
+	size_t la = strlen(DLACCTS), lh = strlen(DLHOME);
+	if (!strncmp(p, DLACCTS, la) && p[la] == '/') {
+		const char *a = p + la + 1, *sl = strchr(a, '/'); if (!sl) return 0;
 		char acct[80]; size_t l = (size_t)(sl - a); if (!l || l >= sizeof acct) return 0; memcpy(acct, a, l); acct[l] = 0;
 		return dl_acct_ok(acct) && dl_name_ok(sl + 1);
 	}
-	return !strncmp(p, DLHOME "/", sizeof DLHOME) && dl_name_ok(p + sizeof DLHOME);
+	return !strncmp(p, DLHOME, lh) && p[lh] == '/' && dl_name_ok(p + lh + 1);
 }
 /* a free name in dir: "name", "name (2).ext", ... */
 static void dl_unique(const char *dir, const char *name, char *out, size_t n)
@@ -2139,7 +2186,7 @@ static void api_dl(struct req *r, const char *what, int post)
 	}
 	if (!strcmp(what, "link")) {
 		/* a link to a file in Downloads that the page can use in <video>, <img> or the PDF viewer */
-		char *p = qparam(r->query, "path");
+		char pb[700]; const char *p = dl_in(qparam(r->query, "path"), pb, sizeof pb);
 		if (!dl_path_ok(p)) { reply_err(r->fd, 403, "only files in Downloads"); return; }
 		struct stat st; if (stat(p, &st) || !S_ISREG(st.st_mode)) { reply_err(r->fd, 404, "the file is not there any more"); return; }
 		unsigned char rb[16]; char id[33]; int rf = open("/dev/urandom", O_RDONLY);
@@ -2196,14 +2243,14 @@ static void api_dl(struct req *r, const char *what, int post)
 		else if (!strcmp(to, "quar")) { mkdir(QUARANTINE, 0700); if (chown(QUARANTINE, 1000, 1000)) {} dl_unique(QUARANTINE, name, dst, sizeof dst); }
 		else { reply_err(r->fd, 400, "to?"); return; }
 		if (rename(src, dst)) { reply_err(r->fd, 500, strerror(errno)); return; }
-		str s = {0}; sadd(&s, "{\"ok\":true,\"path\":"); sjson(&s, dst); sadd(&s, ",\"name\":"); sjson(&s, strrchr(dst, '/') + 1); sadd(&s, ",\"size\":%lld}", (long long)st.st_size);
+		char ob[760]; str s = {0}; sadd(&s, "{\"ok\":true,\"path\":"); sjson(&s, dl_out(dst, ob, sizeof ob)); sadd(&s, ",\"name\":"); sjson(&s, strrchr(dst, '/') + 1); sadd(&s, ",\"size\":%lld}", (long long)st.st_size);
 		reply_json(r->fd, &s); return;
 	}
 	if (!strcmp(what, "clear") && post) {
 		/* 1.5.5: an account's folder of large downloads, deleted (the guest's after sign-out; an account that is removed) */
 		char *a = qparam(r->query, "acct");
 		if (!dl_acct_ok(a) || !strcmp(a, "shared")) { reply_err(r->fd, 400, "which account?"); return; }
-		char cmd[200]; snprintf(cmd, sizeof cmd, "rm -rf '" DLACCTS "/%s'", a); run(cmd); reply_ok(r->fd, "cleared"); return;
+		char cmd[300]; snprintf(cmd, sizeof cmd, "rm -rf '%s/%s'", DLACCTS, a); run(cmd); reply_ok(r->fd, "cleared"); return;
 	}
 	reply_err(r->fd, 404, "unknown download action");
 }
@@ -2922,7 +2969,7 @@ static void api_vault(struct req *r, const char *what, int post)
 		}
 		write_str(RUN "/vault-unlocked", "1\n");
 		/* Downloads in the encrypted folder: the folders the session could not make while it was locked (1.5.1) */
-		run("[ -d /home/rudolf/Downloads ] && { mkdir -p /home/rudolf/Downloads/.incoming /home/rudolf/Downloads/.quarantine; chown 1000:1000 /home/rudolf/Downloads/.incoming /home/rudolf/Downloads/.quarantine; chmod 700 /home/rudolf/Downloads/.quarantine; }");
+		dl_store_dirs();
 		{ struct stat lst; if (!lstat(PERSIST "/flatpak", &lst) && S_ISLNK(lst.st_mode)) run("mountpoint -q /var/lib/flatpak || mount --bind " VAULT_DIR "/flatpak /var/lib/flatpak"); }
 		health_add("vault", "the encrypted folder was unlocked");
 		if (!access(PERSIST "/etc/vault.moving", F_OK) && !job_running()) start_job("vault", "/usr/lib/rudolf/vault-move");
@@ -2938,6 +2985,13 @@ static void api_vault(struct req *r, const char *what, int post)
 }
 #include <sys/mount.h>
 #include "rudolfd-home.inc"
+/* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
+static void dl_home_boot(void)
+{
+	char *cur = slurp(HOME_SESSION, NULL);
+	if (cur) { trim(cur); char err[200]; if (*cur && home_name_ok(cur, strlen(cur))) home_bind(cur, err, sizeof err); else dl_store_bind(); free(cur); }
+	else dl_store_bind();
+}
 /* ------------------------------------------------------------- 1.5.0: remote access (rudolf-remote, port 8443)
  * On/off (the desktop asks for an administrator's password first; /persist/etc/remote-on keeps it on after a restart),
  * a new pairing code each time it is turned on, the firewall's port only while it is on, the approval prompt and the
@@ -3139,9 +3193,9 @@ static void api(struct req *r)
 		/* disc images downloaded to the Downloads folder, for Install from a newer image (1.2.4); 1.5.5: and in the
 		   account's own folder of large downloads (acct=) */
 		str s = {0}; sadd(&s, "{\"ok\":true,\"images\":["); int n = 0;
-		char ad[300] = ""; const char *aq = qparam(r->query, "acct"); if (aq && *aq && dl_acct_ok(aq)) snprintf(ad, sizeof ad, DLACCTS "/%s", aq);
+		char ad[300] = ""; const char *aq = qparam(r->query, "acct"); if (aq && *aq && dl_acct_ok(aq)) snprintf(ad, sizeof ad, "%s/%s", DLACCTS, aq);
 		for (int pass = 0; pass < (ad[0] ? 2 : 1); pass++) {
-		const char *DLD = pass ? ad : DLHOME;
+		const char *DLD = pass ? ad : DLPUB;   /* 1.5.6: the account's own Downloads while it is signed in */
 		DIR *dd = opendir(DLD); struct dirent *e;
 		while (dd && (e = readdir(dd))) {
 			size_t l = strlen(e->d_name);
@@ -3766,6 +3820,7 @@ int main(int argc, char **argv)
 	{ char *sb = slurp("/etc/rudolf/secureboot", NULL); secureboot = sb && sb[0] == '1'; free(sb); }
 	live = access(RUN "/persistent", F_OK) != 0;
 	dl_boot();
+	dl_home_boot();
 	health_boot();
 	remote_boot();
 	boot_entry_ensure();

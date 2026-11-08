@@ -67,5 +67,18 @@ ok "24. adopt refuses another account's download and anything outside Downloads"
 o=$(t "GET home/link?acct=u-boss&path=Downloads/MOVIE.MP4" "GET home/link?acct=u-boss&path=Downloads/NONE.MP4")
 id=$(echo "$o" | sed -n 1p | sed 's/.*\/dlf\/\([0-9a-f]*\).*/\1/')
 ok "25. link: a /dlf/ link holding the account and the path (walked again when used), not a resolved path" "$([ "$(cat /run/rudolf/dlf/$id 2>/dev/null)" = "home:u-boss:Downloads/MOVIE.MP4" ] && echo "$o" | sed -n 2p | grep -q ' 404 ' && echo 1)" "$o"
-umount /home; umount $T/m; rm -rf $T
+# 1.5.6: Downloads joins the binds. The downloads store (here a link into another folder, as the encrypted folder is)
+# gets its own bind, /run/rudolf/dl, so Chromium's .incoming and the files Linux apps saved before stay reachable
+DS=$T/m/vaultdl; mkdir -p $DS/.incoming $DS/.accounts/u-boss; echo partial > $DS/.incoming/x.crdownload; echo linux > $DS/LINUX.TXT
+rm -rf /home/rudolf/Downloads; ln -s $DS /home/rudolf/Downloads
+o=$(BIND=1 t "POST home/unlock?acct=u-boss&session=1 <$T/k1")
+ok "25b. session=1: Linux apps' Downloads is the account's own (MOVIE.MP4), the store is at /run/rudolf/dl" "$([ -f /home/rudolf/Downloads/MOVIE.MP4 ] && [ ! -e /home/rudolf/Downloads/LINUX.TXT ] && [ -f /run/rudolf/dl/.incoming/x.crdownload ] && [ -f /run/rudolf/dl/LINUX.TXT ] && [ -d /run/rudolf/dl/.quarantine ] && echo 1)" "$o $(ls -A /home/rudolf/Downloads) / $(ls -A /run/rudolf/dl)"
+echo new > /run/rudolf/dl/.accounts/u-boss/new.bin   # (DS itself is covered by the account's bind now)
+o=$(BIND=1 t "POST home/adopt?acct=u-boss&from=/home/rudolf/Downloads/.accounts/u-boss/new.bin&to=Downloads/NEW.BIN" "POST home/adopt?acct=u-boss&from=/home/rudolf/Downloads/LINUX.TXT&to=Downloads/LINUX.TXT")
+ok "25c. ...the desktop's paths (/home/rudolf/Downloads/.accounts/..., and the top) still reach the store: adopt works" "$([ -f $R/u-boss/Downloads/NEW.BIN ] && [ -f $R/u-boss/Downloads/LINUX.TXT ] && [ ! -e /run/rudolf/dl/LINUX.TXT ] && echo 1)" "$o"
+o=$(BIND=1 t "POST home/unlock?acct=u-boss&session=1 <$T/k1")
+ok "25d. rudolfd started again in the session: the binds are made again, not stacked" "$([ "$(grep -c ' /home/rudolf/Downloads \| '$DS' ' /proc/self/mounts)" -le 1 ] && [ -f /home/rudolf/Downloads/NEW.BIN ] && [ -f /run/rudolf/dl/.incoming/x.crdownload ] && echo 1)" "$(grep -E 'rudolf|vaultdl' /proc/self/mounts)"
+o=$(BIND=1 t "POST home/lock?acct=u-boss")
+ok "25e. lock: Downloads is the store again, its bind at /run/rudolf/dl stays" "$([ -f /home/rudolf/Downloads/.incoming/x.crdownload ] && [ ! -e /home/rudolf/Downloads/NEW.BIN ] && [ -f /run/rudolf/dl/.incoming/x.crdownload ] && echo 1)" "$o $(ls -A /home/rudolf/Downloads)"
+umount /run/rudolf/dl 2>/dev/null; umount -R /home; umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]

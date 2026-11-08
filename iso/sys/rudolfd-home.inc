@@ -30,7 +30,9 @@
 #define HOME_SESSION RUN "/home-session"
 static char home_root[256] = HOME_ROOT_DEF;
 static const char *const HOME_SUB[] = { "Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos", ".Trash", ".rudolf", NULL };
-static const char *const HOME_BIND[] = { "Documents", "Pictures", "Music", "Videos", NULL };
+/* 1.5.6: Downloads too, when the downloads store has its own bind (dl_store_bind; the last entry, skipped without it) */
+static const char *const HOME_BIND[] = { "Documents", "Pictures", "Music", "Videos", "Downloads", NULL };
+static int home_bind_skip(int i) { return !strcmp(HOME_BIND[i], "Downloads") && !dl_store_bound; }
 static int home_uid = 1000, home_nobind = 0;   /* (tests change these) */
 
 static int home_name_ok(const char *c, size_t n)
@@ -117,7 +119,9 @@ static int home_bind(const char *acct, char *err, size_t en)
 {
 	home_unbind();
 	if (home_nobind) { write_str(HOME_SESSION, acct); return 0; }
+	dl_store_bind();   /* before Downloads is covered by the account's */
 	for (int i = 0; HOME_BIND[i]; i++) {
+		if (home_bind_skip(i)) continue;
 		char s[400], t[200]; snprintf(s, sizeof s, "%s/%s/%s", home_root, acct, HOME_BIND[i]); snprintf(t, sizeof t, "/home/rudolf/%s", HOME_BIND[i]);
 		mkdir(t, 0755); chown(t, home_uid, home_uid);
 		if (mount(s, t, NULL, MS_BIND, NULL)) { snprintf(err, en, "%s could not be shared with Linux apps (%s)", HOME_BIND[i], strerror(errno)); for (int j = 0; j < i; j++) { snprintf(t, sizeof t, "/home/rudolf/%s", HOME_BIND[j]); umount2(t, MNT_DETACH); } return -1; }
@@ -284,7 +288,9 @@ static void api_home(struct req *r, const char *what, int post)
 		while (d && (de = readdir(d))) { if (!dl_acct_ok(de->d_name)) continue; sadd(&s, "%s{\"id\":\"%s\",\"unlocked\":%s}", n++ ? "," : "", de->d_name, home_unlocked(de->d_name) ? "true" : "false"); }
 		if (d) closedir(d);
 		char *cur = slurp(HOME_SESSION, NULL); if (cur) trim(cur);
-		sadd(&s, "],\"session\":"); sjson(&s, cur && *cur ? cur : ""); sadd(&s, "}"); free(cur);
+		sadd(&s, "],\"session\":"); sjson(&s, cur && *cur ? cur : "");
+		/* 1.5.6: Downloads is among the session's binds (the downloads store has its own, dl_store_bind) */
+		sadd(&s, ",\"downloadsBound\":%s}", cur && *cur && dl_store_bound && !home_nobind ? "true" : "false"); free(cur);
 		reply_json(r->fd, &s); return;
 	}
 	char acct[80]; { const char *a = qparam(r->query, "acct"); snprintf(acct, sizeof acct, "%s", a ? a : ""); }
@@ -367,8 +373,9 @@ static void api_home(struct req *r, const char *what, int post)
 		   into the account's folder; across the vault's encryption a rename is refused (EXDEV), so it is copied */
 		char from[1024]; { const char *a = qparam(r->query, "from"); snprintf(from, sizeof from, "%s", a ? a : ""); }
 		{ const char *a = qparam(r->query, "to"); snprintf(p2, sizeof p2, "%s", a ? a : ""); }
-		char mine[200]; snprintf(mine, sizeof mine, DLACCTS "/%s/", acct);
-		int top = !strncmp(from, DLHOME "/", sizeof DLHOME) && !strchr(from + sizeof DLHOME, '/');
+		{ char fb[1024]; const char *f2 = dl_in(from, fb, sizeof fb); if (f2 != from) snprintf(from, sizeof from, "%s", fb); }
+		char mine[200]; snprintf(mine, sizeof mine, "%s/%s/", DLACCTS, acct);
+		size_t lh = strlen(DLHOME); int top = !strncmp(from, DLHOME, lh) && from[lh] == '/' && !strchr(from + lh + 1, '/');
 		if (!dl_path_ok(from) || !(top || !strncmp(from, mine, strlen(mine))) || !*p2 || !home_rel_ok(p2)) { close(root); reply_err(r->fd, 400, "bad path"); return; }
 		struct stat fs1; if (lstat(from, &fs1) || !S_ISREG(fs1.st_mode)) { close(root); reply_err(r->fd, 404, "the download is not there"); return; }
 		char last[256]; int pf = home_parent(root, p2, last, sizeof last, 1); close(root);

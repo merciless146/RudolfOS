@@ -8,13 +8,13 @@ const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 
 const T = {'.js': 'text/javascript', '.html': 'text/html', '.wasm': 'application/wasm'};
 const srv = http.createServer((q, s) => { const u = decodeURIComponent(q.url.split('?')[0]);
   const f = path.join(WWW, u == '/' ? 'index.html' : path.normalize(u)); if (!f.startsWith(WWW) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { s.writeHead(404); return s.end() }
-  s.writeHead(200, {'content-type': T[path.extname(f)] || 'application/octet-stream'}); fs.createReadStream(f).pipe(s) }).listen(8093, '127.0.0.1');
+  s.writeHead(200, {'content-type': T[path.extname(f)] || 'application/octet-stream'}); fs.createReadStream(f).pipe(s) }).listen(8141, '127.0.0.1');
 const wait = ms => new Promise(r => setTimeout(r, ms));
 (async () => {
   const b = await chromium.launch({executablePath: process.argv[2] || undefined}); const p = await b.newPage();
   const errs = []; p.on('pageerror', e => { if (!/volUpd|debian/.test(e.stack || e.message || '')) errs.push(e.message) });
   const q = s => p.evaluate(s);
-  await p.goto('http://127.0.0.1:8093/'); await p.waitForFunction(() => typeof secPage == 'function' && typeof fs != 'undefined' && fs['C:'] && IDB && IDB.db, null, {timeout: 30000});
+  await p.goto('http://127.0.0.1:8141/'); await p.waitForFunction(() => typeof secPage == 'function' && typeof fs != 'undefined' && fs['C:'] && IDB && IDB.db, null, {timeout: 30000});
   await q(`(async()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});window.__sys=window.__sys||{};
     ACCTS.length=0;ACCTS.push({n:'boss',h:await pwMake('b1'),r:'admin'});saveUser();USER=ACCTS[0];await userLogin(USER,'b1');
     const d=node(downloadsPath());d['NOTE.TXT']='hello';d['DISCORD.DEB']=dlMkRef('/persist/accounts/x/Downloads/DISCORD.DEB',2387236,'full');fsSave();

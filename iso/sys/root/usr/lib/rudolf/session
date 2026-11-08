@@ -128,11 +128,15 @@ for d in Documents Pictures Downloads; do [ -d /home/rudolf/$d ] || [ -L /home/r
 # website downloads arrive in Downloads/.incoming (Chromium's download folder, set by policy) and the desktop files
 # them after its checks (rudolfd: /api/dl/*); a download left unfinished by a restart is removed
 # (1.5.1: while Downloads is in the locked encrypted folder, rudolfd makes these when it is unlocked)
-if [ -d /home/rudolf/Downloads ]; then
-mkdir -p /home/rudolf/Downloads/.incoming /home/rudolf/Downloads/.quarantine
-chown rudolf:rudolf /home/rudolf/Downloads/.incoming /home/rudolf/Downloads/.quarantine; chmod 700 /home/rudolf/Downloads/.quarantine
+# (1.5.6: through /run/rudolf/dl, the downloads store's own bind made by rudolfd at its start, since while an account
+# is signed in /home/rudolf/Downloads is that account's own; Chromium's policy points there)
+for i in 1 2 3 4 5; do [ -e /run/rudolf/dl ] && break; sleep 1; done
+DLS=/run/rudolf/dl; [ -e $DLS ] || DLS=/home/rudolf/Downloads
+if [ -d $DLS/ ]; then
+mkdir -p $DLS/.incoming $DLS/.quarantine
+chown rudolf:rudolf $DLS/.incoming $DLS/.quarantine; chmod 700 $DLS/.quarantine
 fi
-rm -f /home/rudolf/Downloads/.incoming/*.crdownload /run/rudolf/dlf/* 2>/dev/null
+rm -f $DLS/.incoming/*.crdownload /run/rudolf/dlf/* 2>/dev/null
 mkdir -p /run/rudolf/portal/req /run/rudolf/portal/resp /run/rudolf/apps && chown -R rudolf:rudolf /run/rudolf/portal /run/rudolf/apps
 [ -x /usr/bin/rudolf-portal ] && [ -n "$DBUS_SESSION_BUS_ADDRESS" ] && su -s /bin/sh rudolf -c "set -a; . /run/rudolf/session.env; set +a; exec setsid /usr/bin/rudolf-portal" </dev/null >>/run/rudolf/portal.log 2>&1 &
 PROFILE=/home/rudolf/.rudolf-browser
