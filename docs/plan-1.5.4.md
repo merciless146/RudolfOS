@@ -127,6 +127,24 @@ the same way, so this applies to them too. Still to do:
     Windows if you have it.
   - Browser test: Steam's card and its warnings on a computer without Vulkan.
 
+**As built** (this PR):
+- kernel: `NTSYNC` and `HID_STEAM` built in; `HID_PLAYSTATION` was asked for but dropped without a word (it needs
+  `LEDS_CLASS_MULTICOLOR`), so PlayStation 4 and 5 controllers had only hid-generic: fixed, and every controller and
+  games option is checked after olddefconfig;
+- rudolf-init: `vm.max_map_count` 1048576, and the hard open-files limit 524288 (Wine raises its own soft limit to
+  it; the soft limit stays 1024 for everything else);
+- mdev: `/dev/uinput` and `/dev/ntsync` for the desktop user; `/dev/input/event*` only for game controllers
+  (`joyperm`, the same test as udev's input_id), so apps cannot read the keyboard;
+- `appextra`: Steam gets `--filesystem=/media` (library folders on drives) and
+  `org.freedesktop.Platform.GL32.default` for its runtime's branch, after the install, after Update all, and (as a
+  job) the first time a Steam installed earlier is opened;
+- Steam's card: Vulkan (from the graphics driver and glamor's renderer), anti-cheat, free space;
+- game mode: rudolf-display's window list says which windows are full screen, and notifications wait while one is
+  in front.
+- Not done: Steam's games stay in `~/.var/app/com.valvesoftware.Steam` on the data partition, outside the encrypted
+  folder. Moving `~/.var` there as a link, as Downloads is, may not work inside Flatpak's sandbox, and a bind
+  mount at sign-in has not been tried: both need trying on the Vivobook first.
+
 ## 4. Thunderbolt and USB4
 
 Basic USB-C works today: USB devices, and charging that the hardware does by itself. Docks, displays through

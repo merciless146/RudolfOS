@@ -28,7 +28,9 @@ n1=$(grep -c take_focus $T/app.log)
 echo desktop > /run/rudolf/wm; w8 '[ "$($T/xc getfocus)" = "$DID" ]'; ok "Super+Esc (the desktop): the desktop has the keyboard" $([ $? = 0 ] && echo 1 || echo 0) "$($T/xc getfocus)"
 echo "win ${ID#0x}" > /run/rudolf/wm; w8 '[ "$(grep -c take_focus $T/app.log)" -gt $n1 ]'; ok "back to the game: WM_TAKE_FOCUS again" $([ $? = 0 ] && echo 1 || echo 0) "$(cat $T/app.log)"
 $T/xc full $ID 1; w8 'grep -q "^geom 0 0 1280 800" $T/app.log'; ok "it asks for full screen: it covers the whole screen, taskbar too" $([ $? = 0 ] && echo 1 || echo 0) "$(grep geom $T/app.log | tail -1)"
+w8 'grep -q "^${ID#0x}	0	[^	]*	[^	]*	1	" /run/rudolf/windows'; ok "...and the window list says it is full screen (the desktop holds notifications)" $([ $? = 0 ] && echo 1 || echo 0) "$(cat /run/rudolf/windows)"
 $T/xc full $ID 0; w8 '[ "$(grep geom $T/app.log | tail -1)" = "geom 0 0 1280 752" ]'; ok "full screen off: above the taskbar again" $([ $? = 0 ] && echo 1 || echo 0) "$(grep geom $T/app.log | tail -1)"
+w8 'grep -q "^${ID#0x}	0	[^	]*	[^	]*	0	" /run/rudolf/windows'; ok "...and the window list says so" $([ $? = 0 ] && echo 1 || echo 0) "$(cat /run/rudolf/windows)"
 $T/xc full $ID 2; w8 'grep "^geom" $T/app.log | tail -1 | grep -q "1280 800"'; ok "toggle: full screen again" $([ $? = 0 ] && echo 1 || echo 0) "$(grep geom $T/app.log | tail -1)"
 $T/xc full $ID 0; w8 '[ "$(grep geom $T/app.log | tail -1)" = "geom 0 0 1280 752" ]'
 $T/xc resize $ID 1280 800; sleep 1; w8 '[ "$(grep geom $T/app.log | tail -1)" = "geom 0 0 1280 752" ]'; ok "a framed window making itself screen-sized is put back above the taskbar" $([ $? = 0 ] && [ "$($T/xc state $ID)" = - ] && echo 1 || echo 0) "$(grep geom $T/app.log | tail -2) $($T/xc state $ID)"

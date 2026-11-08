@@ -1,0 +1,26 @@
+#!/bin/sh
+# Rudolf OS 1.5.4: a game controller (joystick, gamepad, wheel) is readable by the desktop user, so games and Steam
+# Input see it; keyboards, mice and touchpads stay root's only. mdev runs this for each /dev/input/eventN (MDEV,
+# ACTION). A controller is a device with a joystick or gamepad button (BTN_JOYSTICK to BTN_THUMBR, 0x120-0x13f) or
+# an extra trigger (BTN_TRIGGER_HAPPY, 0x2c0-0x2e7), as udev's input_id decides. GPL-2.0-or-later.
+#   joyperm            (from mdev)
+#   joyperm check N    is input device eventN a controller? (exit 0 if it is)
+# test hook (iso/qt/host/joyperm_t.sh): RUDOLF_TEST_SYS, RUDOLF_TEST_DEV
+SYS=${RUDOLF_TEST_SYS:-/sys}; DEV=${RUDOLF_TEST_DEV:-/dev}
+iscontroller() {
+	# the key bitmap: 64-bit words in hex, the highest first ("3ff000000000000 0 0 0 0" and the like)
+	# word 4 holds bits 256-319, and its upper half 288-319 (0x120-0x13f); word 11 holds 704-767, and its lower
+	# 40 bits 704-743 (0x2c0-0x2e7)
+	awk '
+	function word(i,   w) { w = (NF - i >= 1) ? $(NF - i) : "0"; while (length(w) < 16) w = "0" w; return w }
+	function nz(s) { return s ~ /[1-9a-fA-F]/ }
+	{ if (nz(substr(word(4), 1, 8)) || nz(substr(word(11), 7, 10))) found = 1 }
+	END { exit !found }' "$SYS/class/input/$1/device/capabilities/key" 2>/dev/null
+}
+case "$1" in
+check) iscontroller "$2"; exit;;
+esac
+[ "$ACTION" = remove ] && exit 0
+n=${MDEV##*/}; case "$n" in event[0-9]*) ;; *) exit 0;; esac
+iscontroller "$n" || exit 0
+chgrp 1000 "$DEV/input/$n" && chmod 660 "$DEV/input/$n"

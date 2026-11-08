@@ -954,10 +954,11 @@ static void api_apps(struct req *r, const char *what)
 		char *w = slurp(RUN "/windows", NULL); str s = {0}; sadd(&s, "{\"ok\":true,\"windows\":["); int n = 0;
 		char *m = slurp(RUN "/wm", NULL); unsigned long shown = 0; if (m && !strncmp(m, "win ", 4)) shown = strtoul(m + 4, NULL, 16);
 		for (char *sv, *l = w ? strtok_r(w, "\n", &sv) : NULL; l; l = strtok_r(NULL, "\n", &sv)) {
-			char *f[5] = {0}; int k = 0; char *sp2; for (char *t = strtok_r(l, "\t", &sp2); t && k < 5; t = strtok_r(NULL, "\t", &sp2)) f[k++] = t;
-			if (k < 4) continue;
-			sadd(&s, "%s{\"win\":", n++ ? "," : ""); sjson(&s, f[0]); sadd(&s, ",\"web\":%s,\"shown\":%s,\"class\":", !strcmp(f[1], "1") ? "true" : "false", strtoul(f[0], NULL, 16) == shown ? "true" : "false");
-			sjson(&s, f[2]); sadd(&s, ",\"instance\":"); sjson(&s, f[3]); sadd(&s, ",\"title\":"); sjson(&s, k > 4 ? f[4] : ""); sadd(&s, "}");
+			/* 1.5.4: "ID web class instance fullscreen title"; strtok_r skips empty fields, so the line is cut by hand */
+			char *f[6] = {0}; int k = 0; for (char *t = l; t && k < 6; k++) { f[k] = t; char *tab = k < 5 ? strchr(t, '\t') : NULL; if (tab) *tab = 0; t = tab ? tab + 1 : NULL; }
+			if (k < 5) continue;
+			sadd(&s, "%s{\"win\":", n++ ? "," : ""); sjson(&s, f[0]); sadd(&s, ",\"web\":%s,\"shown\":%s,\"fullscreen\":%s,\"class\":", !strcmp(f[1], "1") ? "true" : "false", strtoul(f[0], NULL, 16) == shown ? "true" : "false", !strcmp(f[4], "1") ? "true" : "false");
+			sjson(&s, f[2]); sadd(&s, ",\"instance\":"); sjson(&s, f[3]); sadd(&s, ",\"title\":"); sjson(&s, k > 5 ? f[5] : ""); sadd(&s, "}");
 		}
 		sadd(&s, "],\"mode\":"); if (m) m[strcspn(m, "\n")] = 0; sjson(&s, m ? m : "desktop"); sadd(&s, "}");
 		free(w); free(m); reply_json(r->fd, &s); return;
@@ -1001,7 +1002,8 @@ static void api_apps(struct req *r, const char *what)
 	}
 	if (!strcmp(what, "update")) {
 		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
-		start_job("apps-update", "sh -c 'flatpak update --system -y --noninteractive && flatpak uninstall --system -y --noninteractive --unused; echo Done.'");
+		/* 1.5.4: and what installed apps need beyond their own download (Steam's 32-bit graphics drivers: appextra) */
+		start_job("apps-update", "sh -c 'flatpak update --system -y --noninteractive && flatpak uninstall --system -y --noninteractive --unused; /usr/lib/rudolf/appextra --all; echo Done.'");
 		reply_ok(r->fd, "started"); return;
 	}
 	if (!app_id_ok(id)) { reply_err(r->fd, 400, "bad app"); return; }
@@ -1013,7 +1015,9 @@ static void api_apps(struct req *r, const char *what)
 		if (!strcmp(what, "install")) {
 			if (!app_verified(id) && !apps_setting("unverified") && strcmp(id, "org.vinegarhq.Sober")) { reply_err(r->fd, 403, "this app is not verified on Flathub; an administrator can allow unverified apps in App Store > Installed"); return; }
 			snprintf(cmd, sizeof cmd, "sh -c 'set -e; flatpak remotes --system --columns=name | grep -qx flathub || flatpak remote-add --system flathub " FLATHUB_REPO "; "
-				"echo \"Downloading %s and anything it needs...\"; " FP_INSTALL "'", id, id);
+				"echo \"Downloading %s and anything it needs...\"; " FP_INSTALL "; "
+				/* 1.5.4: what the app needs beyond its own download (appextra: Steam's 32-bit graphics drivers) */
+				"/usr/lib/rudolf/appextra %s || echo \"It is installed, but something it needs did not download: App Store > Installed > Update all tries again.\"'", id, id, id);
 		} else snprintf(cmd, sizeof cmd, "sh -c 'set -e; flatpak uninstall --system -y --noninteractive %s; flatpak uninstall --system -y --noninteractive --unused; echo Done.'", id);
 		start_job(what, cmd); reply_ok(r->fd, "started"); return;
 	}
@@ -1027,6 +1031,13 @@ static void api_apps(struct req *r, const char *what)
 			if (!safe_media_path(fq)) { reply_err(r->fd, 403, "only files in Documents, Pictures, Downloads or on drives can be opened"); return; }
 			static unsigned seq; snprintf(argf, sizeof argf, RUN "/apps/arg-%d-%u", (int)getpid(), ++seq);
 			write_str(argf, fq); if (chown(argf, 1000, 1000)) {}
+		}
+		/* 1.5.4: Steam installed before 1.5.4 gets its drive access (appextra --quick: no download) */
+		if (!strcmp(id, "com.valvesoftware.Steam")) {
+			run("/usr/lib/rudolf/appextra com.valvesoftware.Steam --quick >/dev/null 2>&1");
+			/* ...and its 32-bit graphics drivers, downloaded while Steam starts (it updates itself first anyway) */
+			if (!job_running() && run("/usr/lib/rudolf/appextra com.valvesoftware.Steam --check") != 0)
+				start_job("apps-extra", "/usr/lib/rudolf/appextra com.valvesoftware.Steam");
 		}
 		snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh rudolf -c 'set -a; . " RUN "/session.env; set +a; exec /usr/bin/rudolf-apps launch %s %s' </dev/null >>" RUN "/apps/%s.log 2>&1 &",
 			desk, argf, id);

@@ -93,7 +93,7 @@ function lxTaskbar(){const T=$('#tasks');if(!T)return;T.querySelectorAll('.lxtb'
    b.onclick=e=>{e.stopPropagation();const cur=LX.wins.find(x=>x.win==b.dataset.win);lxApi(cur&&cur.shown?'apps/desktop':'apps/show?win='+b.dataset.win).then(lxWinPoll).catch(()=>{})};
    b.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();cmenu(e.clientX,e.clientY,[['Show',()=>lxApi('apps/show?win='+b.dataset.win)],['Close window',()=>lxApi('apps/close?win='+b.dataset.win)]],{title:label})};T.appendChild(b)}
   b.querySelector('.lxtt').textContent=label;b.title=label;b.classList.toggle('on',!!w.shown);b.setAttribute('aria-pressed',w.shown?'true':'false')})}
-async function lxWinPoll(){try{const j=await lxApi('apps/windows');const was=LX.mode;LX.wins=j.windows||[];LX.mode=j.mode||'desktop';const sh=LX.wins.find(w=>w.shown);if(sh)LX.shown=sh.win;lxTaskbar();
+async function lxWinPoll(){try{const j=await lxApi('apps/windows');const was=LX.mode;LX.wins=j.windows||[];LX.mode=j.mode||'desktop';const sh=LX.wins.find(w=>w.shown);if(sh)LX.shown=sh.win;lxTaskbar();if(typeof gameModeTick=='function')gameModeTick();
   if(was.startsWith('win')&&LX.mode=='desktop')lxSync()}catch(e){}}
 /* a click on the visible part of the desktop (the taskbar) while an app is in front brings the desktop back */
 addEventListener('pointerdown',e=>{if(RD&&LX.mode.startsWith('win')&&!e.target.closest('.lxtb')&&!(TRAYX.web&&TRAYX.web.contains(e.target))){LX.mode='desktop';lxApi('apps/desktop').then(lxWinPoll).catch(()=>{})}},true);

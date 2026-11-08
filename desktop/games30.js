@@ -8,7 +8,27 @@ const GAMES_FLAT=[
  {id:'org.libretro.RetroArch',name:'RetroArch',icon:'🕹️',gpu:0,size:0.5e9,desc:'Emulators for many old consoles in one app. Most cores run on any computer; the newest consoles need the graphics card.'}];
 const GAMES_BUILTIN=[['gameboy','Game Boy, GBA, SNES and DS games from Games on drive C:'],['quake','Quake (the shareware episode is included)'],['boards','Checkers, chess and other board games'],['poker','Card games']];
 /* is the screen drawn by the graphics card? true / false / null (not known: the browser version) */
-async function gamesGPU(){if(!RD)return null;try{const s=await rd('system');if(s&&s.renderer)return true;return false}catch(e){return null}}
+async function gamesGPU(){if(!RD)return null;try{const s=await rd('system');GAMES_SYS=s;if(s&&s.renderer)return true;return false}catch(e){return null}}
+let GAMES_SYS=null;
+/* 1.5.4: Proton needs Vulkan. From what draws the screen (glamor's renderer) and the graphics drivers: ok true,
+   false (with why), or null (not known). Steam's Flatpak brings its own Mesa, so the kernel driver decides. */
+function gamesVulkan(sys){if(!sys)return {ok:null};const dr=new Set((sys.gpu||'').split('\n').map(l=>l.trim().split(/\s+/)[2]).filter(Boolean)),r=sys.renderer||'';
+ if(!r)return {ok:false,why:'This computer draws with the processor, so Proton has no Vulkan: Windows games will not start, or will be very slow.'};
+ if(/llvmpipe|softpipe|lavapipe/i.test(r))return {ok:false,why:'This computer draws with the processor, so Proton has no Vulkan: Windows games will not start, or will be very slow.'};
+ if(dr.has('amdgpu'))return {ok:true};
+ if(dr.has('i915')||dr.has('xe')){if(/\((ILK|SNB|IVB|HSW|BYT|VLV|G4X|GM45)\b/.test(r))return {ok:false,why:'Intel graphics older than Broadwell (5th generation Core, 2015) have too little Vulkan for Proton: most Windows games will not start.'};return {ok:true}}
+ if(dr.has('nouveau')){if(/NVK/.test(r))return {ok:true};return {ok:false,why:'Older NVIDIA cards (before the GeForce 16 and 20 series) have little or no Vulkan with the open driver: many Windows games will not start.'}}
+ if(dr.has('radeon'))return {ok:false,why:'This AMD card runs on the older radeon driver, which has no Vulkan: Windows games through Proton will not start.'};
+ if(['virtio_gpu','virtio-pci','bochs','bochs-drm','qxl','vmwgfx','cirrus','cirrus-qemu'].some(x=>dr.has(x)))return {ok:false,why:'This is a virtual machine\'s graphics card, which has no Vulkan for Proton.'};
+ return {ok:null}}
+const STEAM_ID='com.valvesoftware.Steam';
+/* what Steam's card says beyond its description: Vulkan, anti-cheat, where games are kept */
+function gamesSteamNote(d,free){const v=gamesVulkan(GAMES_SYS),n=document.createElement('div');n.className='gmst msg';
+ n.innerHTML=(v.ok===false?`<div class='gmvk'><span class='gmlab gmslow'>Needs a graphics card with Vulkan</span> <span class='gmwhy'></span></div>`:v.ok?`<div class='gmvk'><span class='gmlab gmany'>Vulkan: yes</span> Windows games can run through Proton.</div>`:'')+
+  `<div class='gmac'>Most Windows games run through Proton, also those whose anti-cheat (Easy Anti-Cheat, BattlEye) allows it. Games whose anti-cheat does not allow Linux, such as Valorant, Fortnite and Call of Duty, do not; some of them play through <a href='#' class='gmcloud'>cloud gaming</a>.</div>`+
+  `<div class='gmsp'>Games are kept on this computer's data partition${free?` (${appGB(free)} free)`:''}; Steam › Settings › Storage can add a library folder on a USB drive or a second disk.</div>`;
+ if(v.ok===false)n.querySelector('.gmwhy').textContent=v.why;
+ n.querySelector('.gmcloud').onclick=e=>{e.preventDefault();if(APPS.xcloud)launch('xcloud')};d.querySelector('.std').after(n);return n}
 function gamesLabel(gpu,soft){return gpu?`<span class='gmlab ${soft?'gmslow':''}'>Needs the graphics card</span>`:`<span class='gmlab gmany'>Runs anywhere</span>`}
 async function gamesTab(B,back,W){B.innerHTML=`<div class='gmnote' hidden></div><h4 class='sh4'>Games to download</h4><div class='gmdl'></div><h4 class='sh4'>Built into Rudolf OS</h4><div class='gmbi'></div><h4 class='sh4'>All games on Flathub</h4><div class='gmall'></div>`;
  const hw=await gamesGPU(),soft=hw===false;if(!B.isConnected)return;
@@ -18,9 +38,11 @@ async function gamesTab(B,back,W){B.innerHTML=`<div class='gmnote' hidden></div>
  /* Roblox: the same card as on Get apps, with the label */
  if(typeof nativeCard=='function')NATIVE.forEach(a=>{const c=nativeCard(dl,a);c.querySelector('.natbadge').insertAdjacentHTML('afterend',' '+gamesLabel(1,soft)+` <span class='msg gmsz'>about ${appGB(1e9)}</span>`)});
  let inst=[];if(RD&&typeof lxInstalled=='function')try{inst=(await lxInstalled())||[]}catch(e){}
+ let FREE=0;if(RD)try{FREE=(await lxApi('apps/status')).free||0}catch(e){}
  GAMES_FLAT.forEach(g=>{const d=document.createElement('div');d.className='stc gmc';const has=inst.some(a=>a.id==g.id);
   d.innerHTML=`<div class='sti'></div><div style='flex:1;min-width:0'><b></b> <span class='natbadge'>Linux app</span> ${gamesLabel(g.gpu,soft)} <span class='msg gmsz'>about ${appGB(g.size)}</span><div class='std'></div></div><div class='stbtn'><button class='pri'>${has?'Open':'Get'}</button></div>`;
   d.querySelector('.sti').textContent=g.icon;d.querySelector('b').textContent=g.name;d.querySelector('.std').textContent=g.desc;dl.appendChild(d);
+  if(g.id==STEAM_ID)gamesSteamNote(d,FREE);
   d.querySelector('button').onclick=()=>has?gamesOpenFlat(g):gamesFlatPage(B,g,back,W)});
  /* the real download sizes, once Flathub answers (each is a separate question to Flathub) */
  if(RD)GAMES_FLAT.forEach((g,i)=>{if(inst.some(a=>a.id==g.id))return;lxApi('apps/size?id='+encodeURIComponent(g.id)).then(s=>{const el=dl.querySelectorAll('.gmc .gmsz')[i];if(el&&s&&s.ok&&s.download)el.textContent=appGB(s.download+(s.runtimeDownload||0))+' to download'}).catch(()=>{})});

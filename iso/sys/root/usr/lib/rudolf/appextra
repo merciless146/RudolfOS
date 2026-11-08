@@ -1,0 +1,31 @@
+#!/bin/sh
+# Rudolf OS 1.5.4: what an app from Flathub needs beyond its own download. rudolfd runs it after installing an app,
+# after Update all, and (quick) when Steam is opened. GPL-2.0-or-later.
+#   appextra ID          everything the app needs (may download)
+#   appextra ID --quick  only what needs no download
+#   appextra ID --check  exit 0 when the app has everything (1 when a download is still needed)
+#   appextra --all       for each installed app that needs something
+# test hook (iso/qt/host/appextra_t.sh): RUDOLF_TEST_PATH
+export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
+STEAM=com.valvesoftware.Steam
+steamrt() { flatpak info --system -m $STEAM 2>/dev/null | sed -n 's|^runtime=org\.freedesktop\.Platform/x86_64/||p' | head -1; }
+steam() {
+	rt=$(steamrt)
+	if [ "$1" = --check ]; then [ -n "$rt" ] && flatpak info --system "org.freedesktop.Platform.GL32.default//$rt" >/dev/null 2>&1; return; fi
+	# Steam › Settings › Storage › add a library folder on a USB drive or a second disk: drives are under /media
+	flatpak override --system --filesystem=/media $STEAM || return 1
+	[ "$1" = --quick ] && return 0
+	# Proton runs the 32-bit parts of Windows games with the 32-bit graphics drivers matching Steam's runtime;
+	# Flathub does not install them with Steam
+	[ -n "$rt" ] || { echo "Steam's runtime is not known: the 32-bit graphics drivers were not added."; return 1; }
+	echo "Adding the 32-bit graphics drivers for Windows games (Platform.GL32.default $rt)..."
+	n=0; until flatpak install --system -y --noninteractive --or-update flathub "org.freedesktop.Platform.GL32.default//$rt"; do
+		n=$((n+1)); [ $n -lt 3 ] || return 1
+		echo "The download stopped. Trying again in 10 seconds..."; sleep ${RUDOLF_RETRY_WAIT:-10}
+	done
+}
+case "$1" in
+--all) flatpak info --system $STEAM >/dev/null 2>&1 && { steam || exit 1; }; exit 0;;
+$STEAM) steam "$2";;
+*) exit 0;;
+esac
