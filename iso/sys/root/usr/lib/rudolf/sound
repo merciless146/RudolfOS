@@ -6,22 +6,50 @@
 #   sound default N   make card N the default output (Settings > Sound)
 #   sound restart     stop it and start it again (Task Manager)
 #   sound status      print the server state, cards and outputs
+#   sound hotplug     a sound card came or went (mdev, with ACTION and MDEV=snd/controlCN; 1.5.4)
 # GPL-2.0-or-later.
-export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
+# test hooks (iso/qt/host/soundplug_t.sh): RUDOLF_TEST_PATH, RUDOLF_TEST_ASOUND, RUDOLF_SOUND_WAIT, RUDOLF_SOUND_SETTLE
+ASND=${RUDOLF_TEST_ASOUND:-/proc/asound}
 RCMD=/etc/rudolf/cmdline; [ -s $RCMD ] || RCMD=/proc/cmdline   # the start-up options (1.2.8: not /proc/cmdline, see initramfs/init)
 export XDG_RUNTIME_DIR=/run/user/1000
 SOCK=$XDG_RUNTIME_DIR/pulse/native
 PA=/run/rudolf/pulse.pa
 LOG=/run/rudolf/pulse.log
 asuser() { su -s /bin/sh rudolf -c "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR PULSE_SERVER=unix:$SOCK $1"; }
-cards() { sed -n 's/^ *\([0-9][0-9]*\) \[.*/\1/p' /proc/asound/cards 2>/dev/null; }
+cards() { sed -n 's/^ *\([0-9][0-9]*\) \[.*/\1/p' $ASND/cards 2>/dev/null; }
+# 1.5.4: ALSA's use case files (alsa-ucm-conf) set up sound processors (Intel SOF, AMD ACP) and USB sound cards;
+# plain HD Audio cards keep PulseAudio's own profiles, as before, since they work that way
+cardargs() {
+	a="device_id=$1 name=card$1 tsched=1 deferred_volume=0"
+	case "$(sed -n "s/^ *$1 \[[^]]*\]: \([^ ]*\) .*/\1/p" $ASND/cards 2>/dev/null)" in HDA-Intel) a="$a use_ucm=0";; esac
+	echo "$a"
+}
+# the module-alsa-card loaded for card $1, if any
+cardmod() { asuser "pactl list short modules" 2>/dev/null | awk -v a="device_id=$1 " '$2=="module-alsa-card" && index($0 " ", a) {print $1}'; }
+# ALSA starts every card muted at its lowest volume and nothing else restores the mixer, so open each output fully
+# (volume is set in the desktop and in each app) and the inputs at 80%; $1: only card N's
+open_outputs() {
+	asuser "pactl list short sinks" 2>/dev/null | awk -v p="alsa_output.card$1" '$1 != "" && (p == "alsa_output.card" || index($2, p ".") == 1) {print $2}' | while read -r k; do
+		asuser "pactl set-sink-mute $k 0"; asuser "pactl set-sink-volume $k 100%"
+	done
+	asuser "pactl list short sources" 2>/dev/null | awk -v p="alsa_input.card$1" '$2 !~ /\.monitor$/ && (p == "alsa_input.card" || index($2, p ".") == 1) {print $2}' | while read -r k; do
+		asuser "pactl set-source-mute $k 0"; asuser "pactl set-source-volume $k 80%"
+	done
+}
+# a card PulseAudio does not have yet (one that came while it was starting, or later)
+add_card() {
+	[ -n "$(cardmod "$1")" ] && return 0
+	asuser "pactl load-module module-alsa-card $(cardargs "$1")" >/dev/null 2>&1 || { echo "sound: card $1 could not be opened" >> $LOG; return 1; }
+	open_outputs "$1"
+}
 set_default() {
 	S=$(asuser "pactl list short sinks" 2>/dev/null | awk -v p="alsa_output.card$1." 'index($2,p)==1{print $2; exit}')
 	[ -n "$S" ] && asuser "pactl set-default-sink $S" && echo "default output: $S"
 }
 case "$1" in
 start)
-	[ -x /usr/bin/pulseaudio ] || exit 0
+	command -v pulseaudio >/dev/null || exit 0
 	grep -q 'rudolf.nosound=1' $RCMD && exit 0
 	{
 		echo ".fail"
@@ -30,7 +58,7 @@ start)
 		echo "load-module module-card-restore"
 		echo "load-module module-augment-properties"
 		echo ".nofail"
-		for n in $(cards); do echo "load-module module-alsa-card device_id=$n name=card$n tsched=1 deferred_volume=0"; done
+		for n in $(cards); do echo "load-module module-alsa-card $(cardargs $n)"; done
 		echo ".fail"
 		echo "load-module module-native-protocol-unix auth-anonymous=1"
 		echo "load-module module-default-device-restore"
@@ -44,16 +72,26 @@ start)
 	asuser "pulseaudio --daemonize=yes -n -F $PA --exit-idle-time=-1 --log-target=file:$LOG" || echo "pulseaudio failed to start" >> $LOG
 	for i in $(seq 50); do [ -S $SOCK ] && break; sleep 0.1; done
 	[ -S $SOCK ] || exit 1
-	# ALSA starts every card muted at its lowest volume and nothing else restores the mixer, so
-	# open each output fully (volume is set in the desktop and in each app) and the inputs at 80%
-	for k in $(asuser "pactl list short sinks" 2>/dev/null | awk '{print $2}'); do
-		asuser "pactl set-sink-mute $k 0"; asuser "pactl set-sink-volume $k 100%"
-	done
-	for k in $(asuser "pactl list short sources" 2>/dev/null | awk '$2 !~ /\.monitor$/ {print $2}'); do
-		asuser "pactl set-source-mute $k 0"; asuser "pactl set-source-volume $k 80%"
-	done
+	open_outputs
+	for n in $(cards); do add_card "$n"; done
 	N=$(sed -n 's/^defaults.pcm.card \([0-9]*\)/\1/p' /etc/asound.conf 2>/dev/null)
 	[ -n "$N" ] && set_default "$N"
+	exit 0;;
+hotplug)
+	# 1.5.4: Intel's sound processor shows its card only once its firmware runs, often after the session started,
+	# and a USB headset can come and go; nothing else told PulseAudio (it runs without udev)
+	[ -S $SOCK ] || exit 0
+	n=${MDEV##*controlC}; case "$n" in ''|*[!0-9]*) exit 0;; esac
+	if [ "$ACTION" = remove ]; then
+		for m in $(cardmod "$n"); do asuser "pactl unload-module $m"; done
+		exit 0
+	fi
+	# the control device comes first; wait (in the background, mdev waits for this) for the card's sound devices
+	(
+		for i in $(seq ${RUDOLF_SOUND_WAIT:-30}); do [ -n "$(ls $ASND/card$n 2>/dev/null | grep '^pcm')" ] && break; sleep 0.2; done
+		sleep ${RUDOLF_SOUND_SETTLE:-1}
+		add_card "$n"
+	) </dev/null >/dev/null 2>&1 &
 	exit 0;;
 default)
 	[ -S $SOCK ] || exit 1
@@ -67,5 +105,5 @@ restart)
 	pkill -u rudolf -x pulseaudio; for i in 1 2 3 4 5; do pgrep -u rudolf -x pulseaudio >/dev/null || break; sleep 1; done
 	pkill -9 -u rudolf -x pulseaudio; rm -f $SOCK
 	exec "$0" start;;
-*) echo "usage: sound start|restart|default N|status"; exit 2;;
+*) echo "usage: sound start|restart|default N|status|hotplug"; exit 2;;
 esac

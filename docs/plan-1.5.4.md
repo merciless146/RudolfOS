@@ -69,6 +69,20 @@ no microphone.
   - on the Vivobook: the speakers, the headphone jack, the built-in microphone (before and after), HDMI sound;
   - in QEMU: HDA as today (no change). Intel SOF can only be tested on hardware.
 
+**As built** (#107; this PR): the AMD microphones (no firmware) first, then Intel SOF, the amplifiers, UCM and sound
+hotplug:
+- Intel SOF firmware comes from thesofproject/sof-bin (linux-firmware has none), pinned by `iso/firmware-sof.txt`
+  (`fwextra.py sof`): 11th–13th generation use IPC3, the kernel's default for them, from SOF 2.2 (the last IPC3
+  release; topologies 2.2 to 2.2.13); Core Ultra uses IPC4 from SOF 2.15 (topologies 2.15.1;
+  `intel/sof-ace-tplg` is a link to `intel/sof-ipc4-tplg`). Intel-signed only, about 27 MB unpacked, 1.8 MB
+  compressed. Panther Lake and Wildcat Lake came along (6.18 has them).
+- AMD SOF is left out: linux-firmware and sof-bin have no firmware for Renoir, Rembrandt, Van Gogh or ACP 6.3 (only
+  `amd/sof/acp7f`, for a newer ACP 7 part). AMD SOF is used mostly by Chromebooks and the Steam Deck; other AMD
+  laptops use the ACP microphone drivers (#107).
+- `alsa-ucm-conf` comes from the build machine (Ubuntu 24.04). PulseAudio uses it for every card but plain HD
+  Audio (`use_ucm=0` there), so the Vivobook's speakers, headphones and HDMI are set up as before.
+- `sound hotplug` (mdev, `snd/controlC*`) opens a card in PulseAudio when it appears and closes it when it goes.
+
 **Found by 1.5.3's "Not supported yet" list:** the Vivobook's AMD audio processor (ACP, `1022:15e2`) has no
 driver. It most likely carries the built-in microphones, so the ACP part of this section can be tested on the
 Vivobook itself.

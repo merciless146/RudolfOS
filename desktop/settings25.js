@@ -147,8 +147,10 @@ function aboutPanel(c){c.innerHTML=`<h3>About</h3><div style='display:flex;gap:1
      no pcm, and every card is offered as before */
   const pl=new Set(),cap=new Set();(r.pcm||'').split('\n').forEach(l=>{const m=/^(\d+)-\d+:/.exec(l);if(!m)return;const c=String(+m[1]);if(/playback \d/.test(l))pl.add(c);if(/capture \d/.test(l))cap.add(c)});
   const outs=r.pcm?cards.filter(m=>pl.has(m[1])):cards;
-  cs.innerHTML=outs.map(m=>`<option value='${m[1]}'>${esc2(m[2].trim()+' — '+m[3])}</option>`).join('')||'<option>No sound card found</option>';
-  const mi=d.querySelector('.mics');if(mi){const kind=m=>/acp6x|acp63|acp-pdm|acp_pdm|acppdm|rn-?pdm|renoir|acp_rpl|amd-?dmic|acp/i.test(m[2]+' '+m[3])?'Built-in digital microphones (AMD audio processor)':/HDMI|DisplayPort/i.test(m[3])?null:m[2].trim()+' — '+m[3];
+  /* 1.5.4: Intel's sound processor (SOF: sof-hda-dsp, sof-soundwire, sof-essx8336 ...) is named, so a report says it */
+  const sof=m=>/^sof[-_]/i.test(m[3].trim());
+  cs.innerHTML=outs.map(m=>`<option value='${m[1]}'>${esc2(sof(m)?'Intel sound processor (SOF) — '+m[3]:m[2].trim()+' — '+m[3])}</option>`).join('')||'<option>No sound card found</option>';
+  const mi=d.querySelector('.mics');if(mi){const kind=m=>sof(m)?'Built-in microphones (Intel sound processor)':/acp6x|acp63|acp-pdm|acp_pdm|acppdm|rn-?pdm|renoir|acp_rpl|amd-?dmic|acp/i.test(m[2]+' '+m[3])?'Built-in digital microphones (AMD audio processor)':/HDMI|DisplayPort/i.test(m[3])?null:m[2].trim()+' — '+m[3];
    const ms=cards.filter(m=>cap.has(m[1])).map(kind).filter(Boolean);mi.textContent=r.pcm?(ms.length?ms.join(' · '):'No microphone found.'):'—'}}).catch(()=>{});cs.onchange=()=>rdPost('audio?card='+cs.value).then(r=>notify('Sound card',r.message)).catch(e=>notify('Sound card',e.message))}}})();
 /* ---------- Network additions (installed system) ---------- */
 (function(){const o=netPanelS;netPanelS=function(c,W){o(c,W);if(!RD){sp(c,`<h4 class='sh4'>This device</h4><div class='msg'>${navigator.onLine?'Online':'Offline'}${navigator.connection&&navigator.connection.effectiveType?' · '+navigator.connection.effectiveType.toUpperCase()+' connection':''}. In the browser, the network settings above are a simulation; the bootable Rudolf OS controls the real network hardware.</div>`);return}

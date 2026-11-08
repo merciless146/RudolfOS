@@ -122,6 +122,24 @@ m BT_HCIBTUSB BT_HCIVHCI
 # (ACP6x has a lower-case x: mk keeps the case, as for MT76x0U)
 ACPMIC="SND_SOC SND_AMD_ACP_CONFIG SND_SOC_AMD_RENOIR SND_SOC_AMD_RENOIR_MACH SND_SOC_AMD_ACP6x SND_SOC_AMD_YC_MACH SND_SOC_AMD_RPL_ACP6x SND_SOC_AMD_ACP63_TOPLEVEL SND_SOC_AMD_PS SND_SOC_AMD_PS_MACH SND_SOC_DMIC"
 mk $ACPMIC
+# 1.5.4: Intel's sound processor (SOF), Tiger Lake to Panther Lake, with its firmware and topologies (firmware-sof.txt):
+# laptops whose speakers or microphones go through it (DMIC, SoundWire) get SOF, the others stay on HDA
+# (SND_INTEL_DSP_CONFIG chooses, as other systems do). The generic machine drivers: HDA codec + DMIC, and SoundWire.
+SOFM="SND_SOC_SOF_PCI SND_SOC_SOF_TIGERLAKE SND_SOC_SOF_ELKHARTLAKE SND_SOC_SOF_ALDERLAKE SND_SOC_SOF_METEORLAKE SND_SOC_SOF_LUNARLAKE SND_SOC_SOF_PANTHERLAKE SND_SOC_SOF_INTEL_SOUNDWIRE SOUNDWIRE SOUNDWIRE_INTEL SND_SOC_INTEL_SKL_HDA_DSP_GENERIC_MACH SND_SOC_INTEL_SOUNDWIRE_SOF_MACH SND_SOC_DMIC"
+SOFY="SND_SOC_SOF_TOPLEVEL SND_SOC_SOF_INTEL_TOPLEVEL SND_SOC_SOF_HDA_LINK SND_SOC_SOF_HDA_AUDIO_CODEC SND_SOC_INTEL_USER_FRIENDLY_LONG_NAMES MFD_INTEL_LPSS_PCI"
+# the speaker amplifiers next to the HDA codec (without them the speakers stay silent or very quiet; headphones work):
+# Cirrus CS35L41 and CS35L56 (ASUS, Lenovo, HP, Dell), TI TAS2781 (Lenovo); their tuning files are in cirrus/ and ti/
+AMPS="SND_HDA_SCODEC_CS35L41_I2C SND_HDA_SCODEC_CS35L41_SPI SND_HDA_SCODEC_CS35L56_I2C SND_HDA_SCODEC_CS35L56_SPI SND_HDA_SCODEC_TAS2781_I2C"
+m $SOFM $AMPS
+# (SPI: the SoundWire machine driver needs it, and some Cirrus amplifiers sit on the Intel LPSS or AMD SPI controller)
+SPIY="SPI SPI_MASTER SPI_MEM"
+SPIM="SPI_PXA2XX SPI_AMD"
+y $SPIY $SOFY
+m $SPIM
+# the older Intel platforms stay on HDA, as before: their SOF firmware is not shipped, and a laptop with digital
+# microphones would otherwise be given to SOF and stay silent (the kernel's defaults turn them all on with SOF)
+SOFOLD="SND_SOC_SOF_MERRIFIELD SND_SOC_SOF_SKYLAKE SND_SOC_SOF_KABYLAKE SND_SOC_SOF_APOLLOLAKE SND_SOC_SOF_GEMINILAKE SND_SOC_SOF_CANNONLAKE SND_SOC_SOF_COFFEELAKE SND_SOC_SOF_COMETLAKE SND_SOC_SOF_ICELAKE SND_SOC_SOF_JASPERLAKE SND_SOC_SOF_BAYTRAIL SND_SOC_SOF_BROADWELL"
+n $SOFOLD
 # 1.5.4: Bluetooth built into the board on a serial line (UART): cheap laptops and tablets (Realtek RTL8723BS/CS,
 # Broadcom, Intel, Qualcomm). serdev attaches the chip the firmware (ACPI) describes; hci_uart drives it.
 BTUART="BT_HCIUART_H4 BT_HCIUART_3WIRE BT_HCIUART_INTEL BT_HCIUART_BCM BT_HCIUART_RTL BT_HCIUART_QCA"
@@ -136,6 +154,9 @@ for o in $HOTKEYS; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o 
 grep -q "^CONFIG_IPV6_SIT=y\|^CONFIG_IPV6_SIT=m" .config && { echo "kconfig.sh: IPV6_SIT is still on"; exit 1; }
 # 1.4.7: the memory options are on
 for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU_GEN_ENABLED; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
+for o in $SOFM $AMPS $SPIM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the sound driver $o is not a module after olddefconfig"; exit 1; }; done
+for o in $SOFOLD; do grep -qE "^CONFIG_$o=(y|m)$" .config && { echo "kconfig.sh: $o is on: its SOF firmware is not shipped, so it must stay on HDA"; exit 1; }; done
+for o in $SOFY $SPIY; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the sound option $o is not on after olddefconfig"; exit 1; }; done
 for o in $ACPMIC; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the sound driver $o is not a module after olddefconfig"; exit 1; }; done
 for o in SERIAL_DEV_BUS SERIAL_DEV_CTRL_TTYPORT $BTUART; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the Bluetooth option $o is not on after olddefconfig"; exit 1; }; done
 for o in NF_TABLES NF_TABLES_INET NFT_CT NFT_REJECT NFT_LIMIT FS_ENCRYPTION CRYPTO_XTS CRYPTO_CTS BT BT_BREDR BT_LE BT_HIDP UHID CRYPTO_ECDH CRYPTO_USER_API_HASH; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
