@@ -5,7 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.6 (in progress)
 Summary: your files on the disk (docs/plan-1.5.6.md)
-- Under the hood: Rudolf OS can keep each account's files as real files on the disk, encrypted with that account's own key and unreadable while it is signed out. Nothing uses it yet; the next steps move your files there.
+- Under the hood: Rudolf OS can keep each account's files as real files on the disk, encrypted with that account's own key and unreadable while it is signed out.
+- New (beta): accounts made from now on keep their files on the disk. Saving writes only the files that changed, large files have no size limit, and Linux apps see the same Documents, Pictures, Music and Videos. Accounts from before keep their storage until the move (a later beta). Not yet for these new accounts: backup, an administrator opening their files, and the Trash on the disk.
 
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it
