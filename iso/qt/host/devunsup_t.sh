@@ -60,4 +60,10 @@ ok "...and not again on the next start" $([ "$(wc -l < $T/hlog)" = 1 ] && echo 1
 echo "Other Laptop" > $S/class/dmi/id/product_name; rm -rf $S/bus/pci/devices/0000:03:00.5 $S/bus/pci/devices/0000:05:00.0 $S/bus/usb/devices/3-3 $S/bus/acpi/devices/CSC3551:00
 sh $D hwlog
 ok "the disk in another computer: a new line, and it says everything has a driver" $([ "$(wc -l < $T/hlog)" = 2 ] && [ "$(has "$(tail -1 $T/hlog)" "ASUSTeK Other Laptop: every device has a driver")" = 1 ] && echo 1 || echo 0) "$(cat $T/hlog)"
+# 1.5.4: Intel's camera processor with its driver (IPU6) is still listed: apps cannot use the camera until libcamera
+mkdir -p $S/drivers/intel-ipu6; d=$S/devices/pci0000:00/0000:00:05.0; mkdir -p $d; echo 0x048000 > $d/class; echo 0x8086 > $d/vendor; echo 0x7d19 > $d/device
+ln -s $S/drivers/intel-ipu6 $d/driver; ln -s $d $S/bus/pci/devices/0000:00:05.0
+o=$(sh $D unsupported)
+ok "the IPU6 camera with its driver: listed, saying apps cannot use it yet" $(has "$o" "pci|8086:7d19|Camera|Intel built-in camera (IPU): driver ready, apps cannot use it yet") "$o"
+ok "...once" $([ "$(echo "$o" | grep -c 8086:7d19)" = 1 ] && echo 1 || echo 0) "$o"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

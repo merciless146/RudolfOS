@@ -16,6 +16,7 @@ install script makes them; a git checkout has none). What is listed:
   - Bluetooth: Realtek (1.5.1); Intel, MediaTek MT79xx and Qualcomm USB chips (1.5.4).
   - Speaker amplifiers (1.5.4): Cirrus CS35L41, CS35L54 and CS35L56, TI TAS2563 and TAS2781. Intel's sound processor firmware (SOF) is
     not in linux-firmware: firmware-sof.txt, from thesofproject/sof-bin (below).
+  - Built-in cameras (1.5.4): Intel IPU6 and IPU7 firmware.
   - USB Wi-Fi adapters whose drivers came in 1.2.7 (ath9k_htc, mt7601u, mt76x0u, mt76x2u), and in 1.5.3 the
     Ralink and MediaTek RT2800 chips (rt2800usb, rt2800pci). The firmware of the
     older Wi-Fi drivers sits in the base layer (wififw.py, at the full build).
@@ -51,6 +52,8 @@ PATTERNS = [r'rtl_nic/.+', r'amd-ucode/microcode_amd(_fam[0-9a-f]+h)?\.bin',
             r'intel/ibt-.+', r'mediatek/(mt79[0-9a-z]+/)?BT_RAM_CODE_MT79.+', r'qca/([^/]+/)?(rampatch|nvm)_usb_.+',
             # Speaker amplifiers (1.5.4): Cirrus CS35L41, CS35L54 and CS35L56 (their tuning per laptop), TI TAS2563 and TAS2781 (and the
             # top-level names the TAS2781 HDA driver asks for)
+            # Built-in cameras (1.5.4): Intel's camera processors IPU6 (and its variants) and IPU7
+            r'intel/ipu/ipu(6|7)[a-z]*_fw\.bin',
             r'cirrus/cs35l(41|54|56).*', r'ti/audio/tas2(563|781)/.+', r'TAS2XXX.+', r'TIAS2781.+']
 
 

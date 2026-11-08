@@ -210,6 +210,10 @@ acpi_kind() {
 unsupported() {
 	local d c v i kind id h a n
 	for d in $SYS/bus/pci/devices/*; do
+		# 1.5.4: Intel's camera processor (IPU6, IPU7) has its driver, but apps cannot use the camera yet: that needs
+		# libcamera, which comes later. Listed, so it is clear why the built-in camera does not show up.
+		case "$(readlink $d/driver 2>/dev/null)" in */intel-ipu6|*/intel_ipu6|*/intel-ipu7|*/intel_ipu7)
+			i=$(cat $d/device); echo "pci|8086:${i#0x}|Camera|Intel built-in camera (IPU): driver ready, apps cannot use it yet"; continue;; esac
 		[ -f $d/class ] && [ ! -e $d/driver ] || continue
 		c=$(cat $d/class); c=${c#0x}; v=$(cat $d/vendor); v=${v#0x}; i=$(cat $d/device); i=${i#0x}
 		kind=$(pci_kind $c $v); [ -n "$kind" ] || continue

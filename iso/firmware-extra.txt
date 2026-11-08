@@ -2073,3 +2073,11 @@ L cirrus/cs35l54-b0-dsp1-misc-103c900c.wmfw cs35l56/CS35L56_Rev3.11.18.wmfw
 L rtl_bt/rtl8761a_config.bin rtl8761bu_config.bin
 F 217f535a8f242f69fd6e28c5c61353391bb9e435c18e8bb2e30bdae4114a4186 ti/audio/tas2563/TAS2XXX3870.bin
 F f15184a8192bbbc9e4c29bfdfab42b3a35244ab47467a68cbfadb94849d6118e ti/audio/tas2563/INT8866RCA2.bin
+# Built-in cameras (1.5.4): Intel IPU6 and IPU7. From kernel.org's linux-firmware, 2026-11-06 (6d6bffb).
+F 260b2c7e6aca5c316b4a4412b49b5eac8c08c425be67cc5b2b57af66d82c1b0b intel/ipu/ipu6epadln_fw.bin
+F 26fda976b1cd02a8cae79d3b0ac50e57768165948d5c8b681d5e236854c30c2a intel/ipu/ipu7ptl_fw.bin
+F 5d563b75e53167f2a20f5bffbb6db1912c5a4c8e19bdc233ffd5e0e59cf51095 intel/ipu/ipu6epmtl_fw.bin
+F 60105304e5b66a5a85aac7541b31dc71740240c6dc1a144036b4b72ef2fb1ba1 intel/ipu/ipu6ep_fw.bin
+F 70cbe88d075dc03938a94a897912409c5fdd56dc987b3db2a9a2a867bb2f5f99 intel/ipu/ipu6_fw.bin
+F 8e6cbab206806e46b787b30a2b183bfff56e730a0ca134579910bb24db51e882 intel/ipu/ipu6se_fw.bin
+F d9f5751638a5e4e3eba32fdffb9043425ffd1451e9b9d96d767b489a4b71b80d intel/ipu/ipu7_fw.bin

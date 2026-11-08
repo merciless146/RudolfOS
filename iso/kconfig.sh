@@ -160,6 +160,13 @@ TBY="USB4 USB_ROLE_SWITCH TYPEC TYPEC_UCSI UCSI_ACPI TYPEC_DP_ALTMODE TYPEC_TBT_
 TBM="TYPEC_MUX_INTEL_PMC AQTION"
 y $TBY
 m $TBM
+# 1.5.4: built-in cameras on newer Intel laptops (preview: the kernel part). Intel's camera processor IPU6 (Tiger Lake
+# to Meteor Lake) and IPU7 (Lunar Lake, Panther Lake; in staging), the camera's power and light (INT3472), and the
+# common sensors. Apps need libcamera on top, which comes later; devplug lists the camera until then.
+CAMY="STAGING STAGING_MEDIA MEDIA_SUPPORT MEDIA_CAMERA_SUPPORT MEDIA_PCI_SUPPORT VIDEO_CAMERA_SENSOR COMMON_CLK GPIOLIB LEDS_CLASS REGULATOR INTEL_MEI"
+CAMM="IPU_BRIDGE INTEL_VSC INTEL_MEI_VSC_HW INTEL_MEI_VSC VIDEO_INTEL_IPU6 VIDEO_INTEL_IPU7 INTEL_SKL_INT3472 VIDEO_OV2740 VIDEO_OV01A10 VIDEO_OV02C10 VIDEO_OV02E10 VIDEO_OV08X40 VIDEO_OV13B10 VIDEO_HI556 VIDEO_OV5675 VIDEO_HI846"
+y $CAMY
+m $CAMM
 # speed up the build
 n DEBUG_INFO DEBUG_INFO_DWARF5 DEBUG_INFO_DWARF4 DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT DEBUG_INFO_BTF KALLSYMS_ALL FTRACE
 $C --enable DEBUG_INFO_NONE
@@ -175,6 +182,7 @@ for o in $SOFY $SPIY; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: 
 for o in $GAMES INPUT_UINPUT HIDRAW INPUT_JOYSTICK JOYSTICK_XPAD HID_SONY HID_PLAYSTATION HID_NINTENDO; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the games option $o is not on after olddefconfig"; exit 1; }; done
 for o in $TBY; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the Thunderbolt or USB-C option $o is not on after olddefconfig"; exit 1; }; done
 for o in $TBM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the driver $o is not a module after olddefconfig"; exit 1; }; done
+for o in $CAMM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the camera driver $o is not a module after olddefconfig"; exit 1; }; done
 for o in $ACPMIC; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the sound driver $o is not a module after olddefconfig"; exit 1; }; done
 for o in SERIAL_DEV_BUS SERIAL_DEV_CTRL_TTYPORT $BTUART; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the Bluetooth option $o is not on after olddefconfig"; exit 1; }; done
 for o in NF_TABLES NF_TABLES_INET NFT_CT NFT_REJECT NFT_LIMIT FS_ENCRYPTION CRYPTO_XTS CRYPTO_CTS BT BT_BREDR BT_LE BT_HIDP UHID CRYPTO_ECDH CRYPTO_USER_API_HASH; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
