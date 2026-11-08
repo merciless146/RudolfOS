@@ -2081,8 +2081,10 @@ static void dl_unique(const char *dir, const char *name, char *out, size_t n)
 }
 static void api_dl(struct req *r, const char *what, int post)
 {
-	if (!strcmp(what, "incoming") || !strcmp(what, "quarantine")) {
-		const char *dir = !strcmp(what, "incoming") ? INCOMING : QUARANTINE;
+	/* 1.5.5: home: the files in Downloads itself, so ones that no C:\DOWNLOADS entry points at (saved by a Linux app,
+	   or a download whose entry was lost) can be shown there too */
+	if (!strcmp(what, "incoming") || !strcmp(what, "quarantine") || !strcmp(what, "home")) {
+		const char *dir = !strcmp(what, "incoming") ? INCOMING : !strcmp(what, "home") ? DLHOME : QUARANTINE;
 		DIR *d = opendir(dir); str s = {0}; sadd(&s, "{\"ok\":true,\"items\":["); int first = 1;
 		struct dirent *e;
 		while (d && (e = readdir(d))) {

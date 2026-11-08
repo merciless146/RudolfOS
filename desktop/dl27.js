@@ -40,7 +40,7 @@ async function dlPoll(){clearTimeout(DLN.t);if(!dlOn())return;if(DLN.busy){DLN.t
     continue}
    if(DLN.kill.has(it.name)){/* stopped while it arrived: Chromium finished writing it anyway */DLN.kill.delete(it.name);await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&to=del').catch(()=>{});continue}
    if(DLN.seen.has(key))continue;DLN.seen.add(key);active=true;const rec=dlMatch(it);rec.n=dlCName(it.name);rec.sz=it.size;rec.st='check';
-   DLN.chain=DLN.chain.then(()=>dlIngest(it,rec)).catch(e=>{console.warn('download',e);dlDone(rec,'failed',e&&e.message||'The file could not be checked.')})}
+   DLN.ing=(DLN.ing||0)+1;DLN.chain=DLN.chain.then(()=>dlIngest(it,rec)).catch(e=>{console.warn('download',e);dlDone(rec,'failed',e&&e.message||'The file could not be checked.')}).finally(()=>{DLN.ing--})}
   DLN.pend.filter(x=>x.st=='wait'&&!x.part&&Date.now()-x.t>180e3).forEach(x=>dlDone(x,'failed','The download did not start (the site did not send the file).'));
   if(DLN.seen.size>500)DLN.seen=new Set([...DLN.seen].slice(-200));
   try{window.__dlHook&&window.__dlHook()}catch(e){}}
@@ -129,8 +129,31 @@ async function dlReconcile(){if(dlRecBusy||!dlOn()||typeof FSLOADED!='undefined'
    if((o.miss||0)<1){nk[p]=Object.assign({},o,{miss:(o.miss||0)+1});continue}/* gone twice in a row: delete it */
    const from=p.includes('/.quarantine/')?'quarantine':'home';await rdPost('dl/file?name='+encodeURIComponent(dlBase(p))+'&from='+from+'&to=del').catch(()=>{})}
   alive.forEach((o,p)=>nk[p]=Object.assign({miss:0},o));svj(DLRK,nk);
+  if(await dlAdopt(nk))changed=true;
   if(changed)try{EXPL.forEach(f=>f())}catch(e){}}
  finally{dlRecBusy=false}}
+/* 1.5.5: files in Downloads on the disk that no C:\DOWNLOADS entry points at (saved there by a Linux app, or an
+   Oracle download whose entry was lost, for example one that finished while nobody was signed in) get an entry, so
+   File Explorer's Downloads shows everything that is in the folder. A file is taken in only when it was seen without
+   an entry twice in a row and no download is being taken in meanwhile (an entry is added just after a download is
+   moved there); one whose entry was deleted (waiting to be deleted from the disk) is left alone. The antivirus checks
+   it as for a download; the file-type rules do not apply, as it is already on this computer and cannot be run. */
+const DLADOPT={seen:new Set()};
+async function dlAdopt(known){if(DLN.ing)return false;let j;try{j=await rd('dl/home')}catch(e){return false}
+ const now=new Set(),take=[];
+ for(const it of j.items||[]){if(it.partial)continue;const p='/home/rudolf/Downloads/'+it.name;if(known[p])continue;now.add(p);if(DLADOPT.seen.has(p))take.push(it)}
+ DLADOPT.seen=now;if(!take.length||DLN.ing)return false;
+ const D=dlCDir();let n=0;const names=[];
+ for(const it of take){const NM=dlCName(it.name),p='/home/rudolf/Downloads/'+it.name;let av='off';
+  try{if(SECC.av.on){const th=await dlScanBig(it.name,'home',it.size,NM,false);av=it.size>DL_AVPART*2?'part':'full';
+    if(th.length){const qm=SECC.av.act=='quarantine';logEvt('av',`${qm?'Quarantined':'Blocked'} ${NM} (in Downloads): ${th.join(', ')}`);
+     if(qm){const q=await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&from=home&to=quar');QUAR.push({id:Date.now()+Math.random(),n:NM,from:['C:','DOWNLOADS'],th,t:Date.now(),data:dlMkRef(q.path,it.size,av),src:'download'});saveQ()}
+     else await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&from=home&to=del').catch(()=>{});
+     notify('Antivirus',`${NM} in Downloads ${qm?'was quarantined':'was deleted'}: ${th.join(', ')}.`,{kind:'error'});DLADOPT.seen.delete(p);continue}}}
+  catch(e){continue}
+  const n2=dlUniq(D,NM);D[n2]=dlMkRef(p,it.size,av);dlRefsAdd(p);DLADOPT.seen.delete(p);n++;names.push(n2)}
+ if(!n)return false;fsSave();
+ notify('In Downloads',n==1?`${names[0]} is in C:\\DOWNLOADS.`:`${n} files are in C:\\DOWNLOADS: ${names.slice(0,3).join(', ')}${n>3?'…':''}`,{quiet:true,action:()=>explorer(downloadsPath())});return true}
 /* ---------- opening files kept on the disk ---------- */
 async function dlLink(v){const i=dlRefInfo(v);if(!i)throw new Error('This reference is damaged.');const j=await rd('dl/link?path='+encodeURIComponent(i.p));return j.url}
 const DL_VIDEO=/^(MP4|M4V|WEBM|MKV|MOV|OGV)$/,DL_AUDIO=/^(MP3|WAV|OGG|OPUS|M4A|AAC|FLAC)$/,DL_IMG=/^(PNG|JPG|JPEG|GIF|WEBP|BMP|AVIF|SVG)$/;

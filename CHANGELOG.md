@@ -4,12 +4,13 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.5.5 (2026-11-08)
-Summary: choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it
+Summary: choose the app shortcuts on your desktop, every file in Downloads shows in File Explorer, and the Trash's tooltip says what is in it
 - New: app shortcuts can be taken off the desktop: right-click › Remove from desktop, the Delete key, dropping the icon on the Trash, or File Explorer's Desktop folder. The app stays in the Start menu.
 - New: right-click an app in the Start menu › Add to desktop (or Remove from desktop). Apps without a desktop icon of their own get one. Before, Add to desktop only said "Already on the desktop".
 - New: Desktop icons… (in the desktop's right-click menu and in File Explorer's Desktop folder) lists every app with a tick for those on the desktop, and Restore the standard icons. Each account keeps its own choice.
 - New: File Explorer › right-click › Copy to desktop.
 - Fixed: the Trash's tooltip kept saying "The Trash is empty" after something was put in it.
+- Fixed: files in the Downloads folder that File Explorer did not list (saved there by a Linux app, or an Oracle download that finished while nobody was signed in) now appear in Downloads by themselves, after the antivirus has checked them.
 
 ## 1.5.4 (2026-11-08)
 Summary: Bluetooth on computers with an Intel, MediaTek, Qualcomm or Realtek chip, sound on laptops with an Intel sound processor or speaker amplifiers, the built-in microphones of AMD laptops, Windows games through Steam's Proton, and Thunderbolt and USB4 docks and displays
