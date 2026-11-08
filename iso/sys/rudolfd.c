@@ -2937,7 +2937,7 @@ static void api_vault(struct req *r, const char *what, int post)
 	reply_err(r->fd, 404, "unknown vault request");
 }
 #include <sys/mount.h>
-#include "rudolfd-home.c"
+#include "rudolfd-home.inc"
 /* ------------------------------------------------------------- 1.5.0: remote access (rudolf-remote, port 8443)
  * On/off (the desktop asks for an administrator's password first; /persist/etc/remote-on keeps it on after a restart),
  * a new pairing code each time it is turned on, the firewall's port only while it is on, the approval prompt and the

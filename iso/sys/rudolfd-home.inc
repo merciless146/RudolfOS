@@ -1,4 +1,4 @@
-/* ------------------------------------------------------------- 1.5.6: your files on the disk (docs/plan-1.5.6.md)
+/* (included by rudolfd.c, not built on its own: hence .inc) -------------------------------- 1.5.6: your files on the disk (docs/plan-1.5.6.md)
  * Part of rudolfd (included by rudolfd.c). Stage 1: each account's home folder as real files on RUDOLFDATA,
  * /persist/accounts/<account id>/, encrypted by the kernel (fscrypt v2, as the vault of 1.5.0) with that account's own
  * 64-byte file key. The desktop unwraps the key at sign-in and hands it over (POST home/unlock); rudolfd adds it to

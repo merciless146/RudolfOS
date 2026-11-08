@@ -48,7 +48,7 @@ today's storage.
 
 ## Stage 1, as built
 
-- **rudolfd `home/*`** in `iso/sys/rudolfd-home.c`, included by rudolfd.c. The folder is
+- **rudolfd `home/*`** in `iso/sys/rudolfd-home.inc`, included by rudolfd.c. The folder is
   `/persist/accounts/<id>`, not `/persist/home/<id>`: `/persist/home/rudolf` is already the Linux user's home.
   - Requests: `GET home`, `unlock` (with `session=1` for the binds), `lock`, `tree`, `list`, `stat`, `read` (ranges),
     `write` (base version, `new`, pieces with `part=1` and `final=1`, `mkdirs=1`), `mkdir`, `rename` (`replace=1`),
