@@ -235,6 +235,12 @@ Not done yet:
   - a package signed with the Library key that claims to be a program, or replaces a system package, is refused;
   - a system update signed with the Library key is refused.
 
+**As built** (this PR):
+- rpk writes a `library` health-log line (`rudolfd --health library ...`) for each Library install, update,
+  removal and refusal; Settings › Security › Health log shows them as "Rudolf OS Library";
+- host test `rpklib_t.sh` (15 checks, 5 new); QEMU `t152_t.py` (10 checks), run on the beta;
+- still for you on the Vivobook: Emu from App Store › Rudolf OS Library.
+
 ## Testing hardware other than the Vivobook
 
 The Vivobook can test the Realtek Bluetooth (no change), AMD sound and microphone (its ACP), the USB camera, USB-C

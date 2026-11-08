@@ -2634,7 +2634,7 @@ static void api_devlink(struct req *r, const char *what, int post)
 static void health_path(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/health.log" : PERSIST "/var/log/health.log"); }
 static int health_kind_ok(const char *k)
 {
-	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", NULL };
+	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", NULL };
 	for (int i = 0; K[i]; i++) if (k && !strcmp(k, K[i])) return 1;
 	return 0;
 }

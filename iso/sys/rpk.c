@@ -52,6 +52,16 @@ static unsigned char KEYS[16][32]; static int NKEYS, KLIB[16];
 
 static void die(const char *f, ...) { va_list a; va_start(a, f); fputs("rpk: ", stderr); vfprintf(stderr, f, a); fputc('\n', stderr); va_end(a); exit(1); }
 static void say(const char *f, ...) { va_list a; va_start(a, f); vprintf(f, a); putchar('\n'); fflush(stdout); va_end(a); }
+/* 1.5.4: a health-log line (Settings > Security > Health log) for each Library install, update, removal and refusal:
+   rudolfd --health library MESSAGE; RPK_HEALTH replaces the program (tests), "" turns it off */
+static int spawn(char *const argv[], int quiet);
+static void lib_health(const char *f, ...)
+{
+	const char *prog = getenv("RPK_HEALTH") ? getenv("RPK_HEALTH") : "/usr/bin/rudolfd";
+	if (!*prog || access(prog, X_OK)) return;
+	char m[300]; va_list a; va_start(a, f); vsnprintf(m, sizeof m, f, a); va_end(a);
+	char *argv[] = {(char *)prog, "--health", "library", m, NULL}; spawn(argv, 1);
+}
 static int valid_name(const char *n)
 {
 	if (!n || !*n || strlen(n) > 40 || !(islower((unsigned char)*n) || isdigit((unsigned char)*n))) return 0;
@@ -321,15 +331,18 @@ static int install_file(const char *path, const char *want_name, const char *wan
 	if (!bad && !refuse) { char cmd[900]; snprintf(cmd, sizeof cmd, "%s/db", ROOT); mkdirs(cmd); char *c[] = {"cp", ip, dbt, NULL}; bad = spawn(c, 1) != 0;
 		if (!bad) { FILE *o = fopen(dbt, "a"); if (o) { fprintf(o, "\nsigned = %s\n", lib ? "library" : "system"); fclose(o); } else bad = 1; } }
 	{ char *u[] = {"umount", "-d", tmpd, NULL}; spawn(u, 1); }
-	if (refuse) { unlink(dbt); say("  refused: %s", refuse); return -1; }
+	if (refuse) { unlink(dbt); say("  refused: %s", refuse); lib_health("refused %s %s, signed by the Rudolf OS Library: %s", name, iget(&in, "version"), refuse); return -1; }
 	if (bad) { unlink(dbt); say("  refused: the package information is missing or invalid"); return -1; }
 	char store[400], st2[420]; snprintf(store, sizeof store, "%s/store", ROOT); mkdirs(store);
 	snprintf(store, sizeof store, "%s/store/%s.rpk", ROOT, name); snprintf(st2, sizeof st2, "%s.new", store);
 	char *c[] = {"cp", (char *)path, st2, NULL}; if (spawn(c, 1)) { unlink(dbt); say("  could not store the package (is the disk full?)"); return -1; }
+	char was[64] = ""; { info_t cur; if (!installed_info(name, &cur)) snprintf(was, sizeof was, "%s", iget(&cur, "version")); }
 	umount_pkg(name);
 	rename(st2, store); rename(dbt, dbf);
 	if (mount_pkg(name)) { say("  installed %s %s, but it could not be mounted", name, iget(&in, "version")); return -1; }
 	say("Installed %s %s", name, iget(&in, "version"));
+	if (lib) { if (*was) lib_health("updated %s from %s to %s, signed by the Rudolf OS Library", name, was, iget(&in, "version"));
+		else lib_health("installed %s %s, signed by the Rudolf OS Library", name, iget(&in, "version")); }
 	return 0;
 }
 static int install_name(const char *name)
@@ -348,7 +361,9 @@ static int remove_pkg(const char *name)
 	info_t in; if (installed_info(name, &in)) { say("%s is not installed", name); return -1; }
 	umount_pkg(name);
 	char p[400]; snprintf(p, sizeof p, "%s/store/%s.rpk", ROOT, name); unlink(p); snprintf(p, sizeof p, "%s/db/%s.info", ROOT, name); unlink(p);
-	say("Removed %s", name); return 0;
+	say("Removed %s", name);
+	if (!strcmp(iget(&in, "signed"), "library")) lib_health("removed %s %s, from the Rudolf OS Library", name, iget(&in, "version"));
+	return 0;
 }
 
 /* ---------------- run */
