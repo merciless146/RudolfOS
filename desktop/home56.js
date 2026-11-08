@@ -1,7 +1,7 @@
 /* ===== Rudolf OS 1.5.6: your home folder on the disk (docs/plan-1.5.6.md, stage 2) =====
    For an account that keeps its files on the disk (USER.disk: in stage 2, accounts whose first sign-in is on 1.5.6 on
    a computer with RUDOLFDATA), C:\USERS\<name> is a view of /persist/accounts/<id>, kept by rudolfd (home/*,
-   rudolfd-home.c) and encrypted with the account's own key:
+   rudolfd-home.inc) and encrypted with the account's own key:
    - at sign-in the key (64 bytes made from the account's file key with HKDF) opens the folder; the tree is read, files
      up to 1.5 MB are loaded (text as text, the rest as data: URLs, as C: keeps them), larger ones become references
      ("rudolfdisk:" with a path in the account's folder) that the viewers open through a /dlf/ link, as large downloads;

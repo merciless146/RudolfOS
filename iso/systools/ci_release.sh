@@ -127,7 +127,7 @@ mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/ru
 # came only from full local builds, so GLX (off since 1.1) could not be turned on by an update
 XREV=f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2
 XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | cut -c1-16)
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c trusted-keys.txt systools/addnvk.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c trusted-keys.txt systools/addnvk.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
