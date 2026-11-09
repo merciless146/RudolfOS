@@ -11,7 +11,7 @@ const lxEsc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':
 async function lxApi(path,body){const r=await fetch('/api/'+path,{method:'POST',headers:{'X-Rudolf-Token':RD.token},body});const ct=r.headers.get('content-type')||'';
  if(ct.includes('json')){const j=await r.json();if(!j.ok)throw new Error(j.error||j.message||'Request failed');return j}if(!r.ok)throw new Error('HTTP '+r.status);return r}
 function lxIcon(id,icon){const k=id+'|'+(icon||'');if(!LX.icons.has(k))LX.icons.set(k,lxApi('apps/icon?id='+encodeURIComponent(id)+(icon?'&icon='+encodeURIComponent(icon):'')).then(r=>r.blob()).then(b=>URL.createObjectURL(b)).catch(()=>null));return LX.icons.get(k)}
-function lxImg(el,id,icon){lxIcon(id,icon).then(u=>{if(u&&el.isConnected){el.textContent='';const i=new Image();i.src=u;i.alt='';el.appendChild(i)}})}
+function lxImg(el,id,icon){lxIcon(id,icon).then(u=>{if(u&&el.isConnected){el.textContent='';const i=new Image();i.className='lxapp';i.src=u;i.alt='';el.appendChild(i)}})}
 /* 1.3.0: a job that crashed says so (rudolfd job.crashed), instead of a guess about the cause */
 function jobCrashText(j){if(!j||!j.crashed)return'';const c=(j.crashes||[])[0];return`${c&&c.program?c.program:'A part of Rudolf OS'} stopped unexpectedly${c&&c.where?' (in '+c.where+')':''}. That is a bug in Rudolf OS, not a problem with this computer or its connection. Task Manager › System › Report a problem… sends the details.`}
 const lxJobWait=onLine=>new Promise(res=>{let seen=0;const iv=setInterval(async()=>{let j;try{j=await rd('job')}catch(e){return}const ls=(j.log||'').split('\n');if(onLine)for(;seen<ls.length-1;seen++)onLine(ls[seen]);if(!j.running&&j.status>=0){clearInterval(iv);res(j)}},900)});
@@ -21,7 +21,7 @@ async function lxInstalled(force){if(!RD)return[];if(!force&&LX.inst&&Date.now()
  try{const j=await lxApi('apps/installed');LX.inst=j.apps||[];LX.instAt=Date.now();svj(LXK,LX.inst.map(a=>({id:a.id,name:a.name,launchers:a.launchers})));lxRegister()}catch(e){if(!LX.inst)LX.inst=[]}return LX.inst}
 function lxLaunchers(){const l=LX.inst||ld(LXK,[]);const out=[];l.forEach(a=>(a.launchers&&a.launchers.length?a.launchers:[{desktop:a.id,name:a.name,icon:a.id,mime:'',wmclass:'',cats:''}]).forEach(x=>out.push({...x,app:a.id})));return out}
 function lxRegister(){Object.keys(APPS).filter(k=>k.startsWith('lx:')).forEach(k=>delete APPS[k]);
- lxLaunchers().forEach(x=>regApp('lx:'+x.desktop,{name:x.name,icon:'🐧',kw:'linux app '+(x.comment||'')+' '+(x.cats||'').replace(/;/g,' '),open:()=>lxRun(x),re:/^\u0000/}));
+ lxLaunchers().forEach(x=>regApp('lx:'+x.desktop,{name:x.name,icon:'🐧',img:el=>lxImg(el,x.app,x.icon),kw:'linux app '+(x.comment||'')+' '+(x.cats||'').replace(/;/g,' '),open:()=>lxRun(x),re:/^\u0000/}));
  try{startMenuApps()}catch(e){}lxOpeners()}
 async function lxRun(x,file){if(!RD)return;try{await lxApi('apps/run?id='+encodeURIComponent(x.app)+'&desktop='+encodeURIComponent(x.desktop)+(file?'&file='+encodeURIComponent(file):''));
  if(!lxRun.told){lxRun.told=1;notify('Starting '+x.name+'…','It opens above the desktop in a moment. Click the desktop part of the taskbar (or press Super+Esc) to come back; its taskbar button brings it back.')}}catch(e){notify(x.name,e.message,{kind:'error'})}}

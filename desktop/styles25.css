@@ -432,3 +432,5 @@ html.dark .odd,.odark .odd{background:#1f2937;color:#f3f4f6;border-color:#374151
 .odd div:hover{background:var(--ac);color:#fff}
 .odark .ob{background:#111827;border-color:#374151}.odark .obm{background:#0f172a;border-color:#374151}.odark .obm button,.odark .ob button{background:#1f2937;color:#e5e7eb;border-color:#374151}
 .odark .ob input{background:#1f2937;color:#f3f4f6;border-color:#374151}.odark .otabs{background:#0b1220}.odark .otab{background:#1e293b;color:#e2e8f0}.odark .otab.on{background:#334155;color:#f8fafc}.odark .stat{background:#0b1220;color:#94a3b8}
+/* 1.5.6: a Linux app's own icon on a desktop shortcut */
+#desk>.ic>b img.lxapp{width:calc(40px*var(--is,1));height:calc(40px*var(--is,1));object-fit:contain;vertical-align:middle;filter:drop-shadow(0 1px 2px #000a)}

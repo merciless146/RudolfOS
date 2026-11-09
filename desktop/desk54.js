@@ -21,7 +21,8 @@ function deskIconFor(k){return [...DESK.querySelectorAll(':scope > .ic:not(.fic)
 function deskHasApp(k){return !!deskIconFor(k)}
 /* a shortcut of our own for an app without a built-in icon */
 function deskMakeIcon(k){const a=APPS[k];if(!a)return null;let el=DESK.querySelector(`:scope > .ic[data-app="${CSS.escape(k)}"]`);if(el)return el;
- el=document.createElement('div');el.className='ic dapp';el.dataset.app=k;el.dataset.n='app:'+k;el.innerHTML='<b></b><span></span>';el.querySelector('b').textContent=a.icon||'🔗';el.querySelector('span').textContent=a.name;el.title=a.name;el.tabIndex=0;
+ el=document.createElement('div');el.className='ic dapp';el.dataset.app=k;el.dataset.n='app:'+k;el.innerHTML='<b></b><span></span>';el.querySelector('b').textContent=a.icon||'🔗';if(a.img)try{a.img(el.querySelector('b'))}catch(e){}   /* 1.5.6: a Linux app's own icon */
+ el.querySelector('span').textContent=a.name;el.title=a.name;el.tabIndex=0;
  el.style.cssText+=';position:absolute;margin:0;touch-action:none;transition:left .1s,top .1s';
  let t=0;el.onclick=e=>{if(e&&e.ctrlKey)return;DESK.querySelectorAll('.ic').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');if(Date.now()-t<dblMs()||window.__mouse&&S.msingle)launch(k);t=Date.now()};
  el.onkeydown=e=>{if(e.key=='Enter')launch(k);if(e.key=='Delete')deskRemove(el)};
