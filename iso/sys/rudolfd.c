@@ -681,6 +681,37 @@ static void api_fs(struct req *r, const char *op)
 		}
 		sadd(&s, "]}"); reply_json(r->fd, &s);
 	}
+	else if (!strcmp(op, "search")) {
+		/* 1.5.6: File Explorer's "Everywhere" on a plugged-in drive: names that contain q (any case), at most 3 folder
+		   levels below path and 2,000 entries looked at, so a large drive does not stall it; on drives (/media) only */
+		const char *qq = qparam(r->query, "q");
+		if (strncmp(path, "/media/", 7)) { reply_err(r->fd, 403, "search is for drives (/media)"); return; }
+		if (!qq || !*qq || strlen(qq) > 200) { reply_err(r->fd, 400, "what to look for?"); return; }
+		char lq[256]; size_t ql = strlen(qq); for (size_t i = 0; i <= ql; i++) lq[i] = tolower((unsigned char)qq[i]);
+		static char stack[256][1100]; static int depth[256]; int sp = 0, seen = 0, n = 0, cut = 0;
+		snprintf(stack[sp], sizeof stack[0], "%s", path); depth[sp++] = 0;
+		str s = {0}; sadd(&s, "{\"ok\":true,\"items\":[");
+		size_t base = strlen(path);
+		while (sp && !cut) {
+			sp--; char dir[1100]; snprintf(dir, sizeof dir, "%s", stack[sp]); int dp = depth[sp];
+			DIR *d = opendir(dir); if (!d) continue; struct dirent *e;
+			while ((e = readdir(d))) {
+				if (e->d_name[0] == '.') continue;
+				if (++seen > 2000) { cut = 1; break; }
+				char fp[2200]; struct stat st; snprintf(fp, sizeof fp, "%s/%s", dir, e->d_name);
+				if (lstat(fp, &st) || S_ISLNK(st.st_mode)) continue;
+				int isd = S_ISDIR(st.st_mode); char ln[256]; size_t l = strlen(e->d_name); if (l > 255) l = 255;
+				for (size_t i = 0; i < l; i++) ln[i] = tolower((unsigned char)e->d_name[i]); ln[l] = 0;
+				if (strstr(ln, lq) && n < 1000) {
+					sadd(&s, "%s{\"p\":", n ? "," : ""); sjson(&s, fp + base + 1);
+					sadd(&s, ",\"dir\":%s,\"size\":%lld,\"mtime\":%lld}", isd ? "true" : "false", (long long)st.st_size, (long long)st.st_mtim.tv_sec * 1000 + st.st_mtim.tv_nsec / 1000000); n++;
+				}
+				if (isd && dp < 3 && sp < 256 && strlen(fp) < 1090) { snprintf(stack[sp], sizeof stack[0], "%s", fp); depth[sp++] = dp + 1; }
+			}
+			closedir(d);
+		}
+		sadd(&s, "],\"seen\":%d,\"truncated\":%s}", seen > 2000 ? 2000 : seen, cut ? "true" : "false"); reply_json(r->fd, &s);
+	}
 	else if (!strcmp(op, "delete")) {
 		struct stat st;
 		if (stat(path, &st)) { reply_err(r->fd, 404, "not found"); return; }
@@ -3367,7 +3398,7 @@ static void api(struct req *r)
 		char fp[600]; snprintf(fp, sizeof fp, "/home/rudolf/Downloads/%s", n); serve_file(r, fp); return;
 	}
 	if (!strncmp(p, "fs/", 3)) {
-		if (strcmp(p + 3, "list") && strcmp(p + 3, "read") && !post) { reply_err(r->fd, 400, "use POST"); return; }
+		if (strcmp(p + 3, "list") && strcmp(p + 3, "read") && strcmp(p + 3, "search") && !post) { reply_err(r->fd, 400, "use POST"); return; }
 		api_fs(r, p + 3); return;
 	}
 	if (!strcmp(p, "display")) {
