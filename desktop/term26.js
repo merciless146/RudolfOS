@@ -17,7 +17,7 @@ async function debApps(){if(!RD)return[];if(!DEB.st)await debStatus();if(!DEB.st
  try{await lxApi('debian/launch?id='+encodeURIComponent(x.deb)+(file?'&file='+encodeURIComponent(file):''));if(!lxRun.toldDeb){lxRun.toldDeb=1;notify('Starting '+x.name+'…','It opens above the desktop in a moment; its taskbar button switches back to it.')}}catch(e){notify(x.name,e.message,{kind:'error'})}}}
 {const _i=lxImg;lxImg=function(el,id,icon){if(!String(id).startsWith('deb:'))return _i(el,id,icon);if(!icon)return;const k='deb|'+icon;
  if(!LX.icons.has(k))LX.icons.set(k,lxApi('debian/icon?path='+encodeURIComponent(icon)).then(r=>r.blob()).then(b=>URL.createObjectURL(b)).catch(()=>null));
- LX.icons.get(k).then(u=>{if(u&&el.isConnected){el.textContent='';const i=new Image();i.src=u;i.alt='';el.appendChild(i)}})}}
+ LX.icons.get(k).then(u=>{if(u&&el.isConnected){el.textContent='';const i=new Image();i.className='lxapp';i.src=u;i.alt='';el.appendChild(i)}})}}
 /* ---------- one terminal session ---------- */
 function debB64(s){const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}
 class DebSession{
