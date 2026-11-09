@@ -14,7 +14,7 @@ const srv = http.createServer((q, s) => { s.writeHead(200, {'content-type': 'tex
     window.T = {icon: []};
     const f0 = window.fetch;
     window.fetch = (u, o) => { u = String(u);
-      if (u.includes('/api/apps/icon')) { T.icon.push(new URL(u, location.href).searchParams.get('id')); return Promise.resolve(new Response(png, {headers: {'content-type': 'image/png'}})) }
+      if (u.includes('/api/apps/icon') || u.includes('/api/debian/icon')) { T.icon.push(new URL(u, location.href).searchParams.get('id')); return Promise.resolve(new Response(png, {headers: {'content-type': 'image/png'}})) }
       if (u.includes('/api/')) return Promise.resolve(new Response('{"ok":true,"items":[],"apps":[]}', {headers: {'content-type': 'application/json'}}));
       return f0(u, o) } });
   await p.goto('http://127.0.0.1:8142/'); await p.waitForFunction(() => typeof lxRegister == 'function' && typeof deskMakeIcon == 'function' && FSLOADED && fs['C:'] && fs['C:'].USERS, null, {timeout: 30000});
@@ -24,7 +24,11 @@ const srv = http.createServer((q, s) => { s.writeHead(200, {'content-type': 'tex
   const r = await q("(()=>{const el=DESK.querySelector('.ic[data-app=\"lx:com.discordapp.Discord\"]');const im=el&&el.querySelector('b img.lxapp');return {has:!!el,img:!!im,txt:el&&el.querySelector('b').textContent,w:im&&im.getBoundingClientRect().width}})()");
   ok('1. Discord\'s desktop shortcut shows its own icon (from apps/icon), not the penguin', r.has && r.img && r.txt === '' && r.w >= 30 && r.w <= 60, r);
   ok('2. ...asked for Discord\'s icon', (await q("T.icon")).includes('com.discordapp.Discord'));
-  ok('3. no page errors', !errs.length, errs);
+  // 1.5.6: a Debian package's app (Discord from its .deb) too: its icon comes through debian/icon, and must stay icon-sized
+  await q("(()=>{DEB.apps=[{id:'discord',name:'Discord',icon:'/persist/debian/usr/share/pixmaps/discord.png',menu:true}];lxRegister();deskMakeIcon('lx:deb-discord');return 1})()"); await p.waitForTimeout(800);
+  const d = await q("(()=>{const el=DESK.querySelector('.ic[data-app=\"lx:deb-discord\"]');const im=el&&el.querySelector('b img');return {img:!!im,w:im&&im.getBoundingClientRect().width,h:im&&im.getBoundingClientRect().height}})()");
+  ok('3. a Debian package\'s app on the desktop: its own icon, icon-sized (not 256 px)', d.img && d.w >= 30 && d.w <= 60 && d.h <= 60, d);
+  ok('4. no page errors', !errs.length, errs);
   await b.close(); srv.close();
   console.log(`${R.filter(x => x).length}/${R.length} passed`); process.exit(R.every(x => x) ? 0 : 1);
 })().catch(e => { console.log('ERROR', e); process.exit(1) });
