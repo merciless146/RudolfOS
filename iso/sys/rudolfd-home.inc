@@ -517,3 +517,18 @@ static void dl_store_tidy(const char *acct)
 	if (same || moved || kept || failed)
 		fprintf(stderr, "rudolfd: Downloads for Linux apps is %s's own now: %d copies at the top of the store deleted, %d files moved in, %d left (%d account folders), %d failed\n", acct, same, moved, kept, accounts, failed);
 }
+
+/* 1.5.6: /persist/accounts/<the signed-in account>/<a folder Linux apps see>/rest -> /home/rudolf/<folder>/rest (the
+   binds; Downloads only while the downloads store has its own). 1 when it was rewritten. */
+static int home_linux_path(const char *in, char *out, size_t n)
+{
+	if (!in || strncmp(in, home_root, strlen(home_root)) || in[strlen(home_root)] != '/' || strstr(in, "/../")) return 0;
+	char *cur = slurp(HOME_SESSION, NULL); if (!cur) return 0; trim(cur);
+	const char *a = in + strlen(home_root) + 1; size_t al = strlen(cur); int ok = 0;
+	if (*cur && !strncmp(a, cur, al) && a[al] == '/') {
+		const char *rest = a + al + 1;
+		for (int i = 0; HOME_BIND[i] && !ok; i++) { size_t bl = strlen(HOME_BIND[i]);
+			if (!strncmp(rest, HOME_BIND[i], bl) && rest[bl] == '/' && !home_bind_skip(i)) { snprintf(out, n, "/home/rudolf/%s", rest); ok = 1; } }
+	}
+	free(cur); return ok;
+}

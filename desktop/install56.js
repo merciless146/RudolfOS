@@ -4,12 +4,13 @@
    (rudolfd debian/debinfo and debian/deb, rudolf-debian deb). .ipa only explains. .exe, .msi, .AppImage, .bin and
    .apk follow in their own stages. */
 const WZ_KINDS={DEB:'deb',IPA:'ipa'};
-/* where the file is for Linux: a file kept on the disk, or one in the account's folders that Linux sees (binds) */
+/* where the file is: a file kept on the disk, or one in the account's folders; rudolfd turns an account path into
+   the name Linux sees it under (the binds), or refuses one Linux cannot see */
 function wzDiskPath(path){const v=node(path);
  if(typeof isDlRef=='function'&&isDlRef(v)){const i=dlRefInfo(v);return i?dlDiskPath(i):null}
  if(typeof hdOn=='function'&&hdOn()&&typeof v=='string'){const h=homePath();if(path.length>h.length+1&&h.every((x,i)=>String(path[i]).toUpperCase()==String(x).toUpperCase())){
   const rel=hdRel(path.slice(h.length)),top=rel.split('/')[0];
-  if(['Documents','Pictures','Music','Videos'].includes(top)||(top=='Downloads'&&HD.dlb))return'/home/rudolf/'+rel}}
+  if(['Documents','Pictures','Music','Videos','Downloads'].includes(top))return HD_ROOT+HD.acct+'/'+rel}}   /* rudolfd gives Linux's name for it (home_linux_path) */
  return null}
 function wzWin(path,icon){const nm=path.at(-1);const W=win('Install '+nm,icon||'📦',520,420);W.body.classList.add('wz');
  W.body.innerHTML=`<div class='wzh'><span class='wzi'>${icon||'📦'}</span><div><b class='wzt'></b><div class='wzs'></div></div></div><div class='wzb'></div><div class='wzf'></div>`;
@@ -34,7 +35,7 @@ async function wzDeb(path){const W=wzWin(path,'📦');wzSub(W,'A package for Lin
  const st=await debStatus();
  if(!st||!st.installed){wzBody(W,`<p>Packages like this one are installed into Linux (Debian 13), which runs beside Rudolf OS. Linux is not set up on this computer yet: setting it up downloads about 120 MB.</p><p>Set it up, then open this file again.</p>`);
   wzFoot(W,[['Set up Linux…',()=>{W.close();launch('terminal')},1],['Close',()=>W.close()]]);return W}
- let info;try{info=await lxApi('debian/debinfo?file='+encodeURIComponent(file))}catch(e){wzBody(W,`<p>This package cannot be read: ${wzEsc(e.message)}</p><p>It may be damaged or incomplete; download it again.</p>`);wzFoot(W,[['Close',()=>W.close()]]);return W}
+ let info;try{info=await lxApi('debian/debinfo?file='+encodeURIComponent(file))}catch(e){wzBody(W,/cannot reach/.test(e.message)?`<p>${wzEsc(e.message)}, then open it again.</p>`:`<p>This package cannot be read: ${wzEsc(e.message)}</p><p>It may be damaged or incomplete; download it again.</p>`);wzFoot(W,[['Close',()=>W.close()]]);return W}
  const arch=info.arch||'',okArch=!arch||arch=='all'||arch=='amd64'||arch=='i386';
  const kb=+info.size||0,sz=kb?(kb>=1024?(kb/1024).toFixed(1)+' MB':kb+' KB'):'';
  wzSub(W,[info.package,info.version].filter(Boolean).join(' ')||'A package for Linux (Debian)');
