@@ -115,6 +115,7 @@ static void home_unbind(void)
 	for (int i = 0; HOME_BIND[i]; i++) { char t[200]; snprintf(t, sizeof t, "/home/rudolf/%s", HOME_BIND[i]); umount2(t, MNT_DETACH); }
 	unlink(HOME_SESSION);
 }
+static void dl_store_tidy(const char *acct);
 static int home_bind(const char *acct, char *err, size_t en)
 {
 	home_unbind();
@@ -126,7 +127,9 @@ static int home_bind(const char *acct, char *err, size_t en)
 		mkdir(t, 0755); chown(t, home_uid, home_uid);
 		if (mount(s, t, NULL, MS_BIND, NULL)) { snprintf(err, en, "%s could not be shared with Linux apps (%s)", HOME_BIND[i], strerror(errno)); for (int j = 0; j < i; j++) { snprintf(t, sizeof t, "/home/rudolf/%s", HOME_BIND[j]); umount2(t, MNT_DETACH); } return -1; }
 	}
-	char line[80]; snprintf(line, sizeof line, "%s\n", acct); write_str(HOME_SESSION, line); return 0;
+	char line[80]; snprintf(line, sizeof line, "%s\n", acct); write_str(HOME_SESSION, line);
+	if (dl_store_bound) dl_store_tidy(acct);
+	return 0;
 }
 /* 0 ok; otherwise an HTTP status and err */
 static int home_unlock(const char *acct, const unsigned char *key, int session, char *err, size_t en, int *made)
@@ -444,4 +447,64 @@ static void home_serve_link(struct req *r, const char *spec)
 	if (pf < 0) { reply_err(r->fd, 404, "not found"); return; }
 	int f = openat(pf, last, O_RDONLY | O_NOFOLLOW | O_CLOEXEC); close(pf);
 	serve_fd_as(r, f, last, 1);
+}
+
+/* 1.5.6: once Downloads is the account's own for Linux apps, the top of the downloads store (Linux apps' Downloads
+   until then) is out of sight. Until 1.5.6 the desktop kept a copy of the Linux owner's Downloads there, outside the
+   account's encrypted folder: a copy with the same name and the same bytes as a file in the account's Downloads is
+   deleted. Other files (what Linux apps saved there) move into the account's Downloads, under a free name, but only
+   when this computer has one account folder: with several, whose they are cannot be known, and they stay. Partial
+   downloads and hidden names (.incoming, .quarantine, .accounts) are left alone. Done here rather than in the
+   desktop so that it is in rudolfd's log. */
+static int dl_same_bytes(int da, const char *na, int db, const char *nb)
+{
+	int fa = openat(da, na, O_RDONLY | O_NOFOLLOW | O_CLOEXEC), fb = openat(db, nb, O_RDONLY | O_NOFOLLOW | O_CLOEXEC), same = fa >= 0 && fb >= 0;
+	static char ba[65536], bb[65536];
+	while (same) { ssize_t ka = read(fa, ba, sizeof ba), kb = ka > 0 ? read(fb, bb, (size_t)ka) : read(fb, bb, 1);
+		if (ka < 0 || kb < 0 || ka != kb) { same = 0; break; } if (!ka) break; if (memcmp(ba, bb, (size_t)ka)) same = 0; }
+	if (fa >= 0) close(fa); if (fb >= 0) close(fb); return same;
+}
+/* a name in dir, compared as the desktop does (C: ignores case) */
+static int dl_name_taken(int dd, const char *n)
+{
+	int d2 = dup(dd); DIR *d = d2 >= 0 ? fdopendir(d2) : NULL; struct dirent *e; int yes = 0;
+	if (!d) { if (d2 >= 0) close(d2); return 1; }
+	while (!yes && (e = readdir(d))) if (!strcasecmp(e->d_name, n)) yes = 1;
+	closedir(d); return yes;
+}
+static void dl_store_tidy(const char *acct)
+{
+	char ad[600]; snprintf(ad, sizeof ad, "%s/%s/Downloads", home_root, acct);
+	int sd = open(DLSTORE, O_RDONLY | O_DIRECTORY | O_CLOEXEC), dd = open(ad, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+	if (sd < 0 || dd < 0) { if (sd >= 0) close(sd); if (dd >= 0) close(dd); return; }
+	int accounts = 0; { DIR *h = opendir(home_root); struct dirent *e; while (h && (e = readdir(h))) if (dl_acct_ok(e->d_name)) accounts++; if (h) closedir(h); }
+	int s2 = dup(sd); DIR *d = s2 >= 0 ? fdopendir(s2) : NULL; struct dirent *e; int same = 0, moved = 0, kept = 0, failed = 0;
+	char names[256][256]; int nn = 0;   /* read first: the folder changes while files go */
+	while (d && (e = readdir(d)) && nn < 256) { if (e->d_name[0] == '.') continue; snprintf(names[nn++], 256, "%s", e->d_name); }
+	if (d) closedir(d); else if (s2 >= 0) close(s2);
+	for (int i = 0; i < nn; i++) {
+		const char *n = names[i]; size_t l = strlen(n); struct stat ss, ds;
+		if (fstatat(sd, n, &ss, AT_SYMLINK_NOFOLLOW) || !S_ISREG(ss.st_mode)) continue;
+		if (l > 11 && !strcmp(n + l - 11, ".crdownload")) continue;
+		if (!fstatat(dd, n, &ds, AT_SYMLINK_NOFOLLOW) && S_ISREG(ds.st_mode) && ds.st_size == ss.st_size && dl_same_bytes(sd, n, dd, n)) {
+			if (!unlinkat(sd, n, 0)) same++; else failed++;
+			continue;
+		}
+		if (accounts != 1) { kept++; continue; }
+		char t[300]; snprintf(t, sizeof t, "%s", n);
+		for (int k = 2; dl_name_taken(dd, t) && k < 1000; k++) {
+			const char *dot = strrchr(n, '.'); if (!dot || dot == n) dot = n + l;
+			snprintf(t, sizeof t, "%.*s (%d)%s", (int)(dot - n), n, k, dot);
+		}
+		int rc = renameat(sd, n, dd, t);
+		if (rc && errno == EXDEV) { rc = home_cp_at(sd, n, dd, t); if (!rc) unlinkat(sd, n, 0); }
+		if (!rc) { fchownat(dd, t, home_uid, home_uid, AT_SYMLINK_NOFOLLOW); moved++; } else failed++;
+	}
+	/* an empty .accounts left in the account's Downloads by the second 1.5.6 beta (the store taken for the account's
+	   folder): removed only while empty */
+	{ int ac = openat(dd, ".accounts", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+	  if (ac >= 0) { unlinkat(ac, acct, AT_REMOVEDIR); close(ac); unlinkat(dd, ".accounts", AT_REMOVEDIR); } }
+	close(sd); close(dd);
+	if (same || moved || kept || failed)
+		fprintf(stderr, "rudolfd: Downloads for Linux apps is %s's own now: %d copies at the top of the store deleted, %d files moved in, %d left (%d account folders), %d failed\n", acct, same, moved, kept, accounts, failed);
 }

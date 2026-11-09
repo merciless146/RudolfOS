@@ -215,29 +215,10 @@ async function hdTrashSweep(){if(!hdOn())return;const acct=HD.acct;
 /* ---------- 1.5.6: Downloads among the binds for Linux apps ----------
    rudolfd binds the account's Downloads at /home/rudolf/Downloads like Documents, once the downloads store (Chromium's
    .incoming, .quarantine, the files Linux apps saved before) has its own bind (GET home: downloadsBound). Until 1.5.6
-   linux26's lxSync kept a copy of the Linux owner's C: Downloads at the top of the store, outside the account's
-   encrypted folder: those copies go (only when they are the same, byte for byte) and what Linux apps saved there
-   moves into this account's Downloads, once, for the account that owned that folder. */
+   linux26's lxSync kept a copy of the Linux owner's C: Downloads at the top of the store; rudolfd tidies it. */
+const hdDlLog=m=>{try{window.__rdlog&&window.__rdlog('downloads: '+m)}catch(e){}};   /* kept in /run/rudolf/page.log */
 async function hdBinds(){HD.dlb=false;if(!hdOn())return;
  try{const j=await rd('home');HD.dlb=!!(j.downloadsBound&&j.session==HD.acct);if(!HD.dlb)hdDlLog('not bound: '+JSON.stringify({session:j.session,me:HD.acct,bound:j.downloadsBound}))}catch(e){hdDlLog('home: '+e.message)}
- if(HD.dlb)setTimeout(()=>hdDlTop().catch(e=>console.warn('Downloads top',e)),4000)}
-const hdResBytes=r=>r&&typeof r.arrayBuffer=='function'?r.arrayBuffer().then(b=>new Uint8Array(b)):Promise.reject(new Error('not read'));
-const hdDlLog=m=>{try{window.__rdlog&&window.__rdlog('downloads top: '+m)}catch(e){}};   /* kept in /run/rudolf/page.log */
-async function hdDlTop(){const r=await hdDlTop1().catch(e=>({error:String(e&&e.message||e)}));hdDlLog(JSON.stringify(r));return r}
-async function hdDlTop1(){if(!hdOn()||!HD.dlb||HD.dltop)return{skipped:!hdOn()?'not on the disk':!HD.dlb?'not bound':'done'};HD.dltop=1;
- const own=typeof lxOwner=='function'?ld('bd95lxowner',null):null;if(own&&own!==uid())return{skipped:'owner'};
- const items=((await rd('dl/home')).items||[]).filter(i=>!i.partial);if(!items.length)return{moved:0,same:0};
- await HD.chain;const dl=node(downloadsPath());const names=new Set(Object.keys(isDir(dl)?dl:{}).map(k=>k.toUpperCase()));
- const free=n=>{if(!names.has(n.toUpperCase()))return n;const m=/^(.*?)(\.[^.]*)?$/.exec(n);for(let i=2;;i++){const c=m[1]+' ('+i+')'+(m[2]||'');if(!names.has(c.toUpperCase()))return c}};
- let moved=0,same=0;
- for(const it of items){const n=it.name;
-  try{const key=Object.keys(dl).find(k=>k.toUpperCase()==n.toUpperCase());
-   if(key&&it.size<=8*1048576){const a=await hdResBytes(await rd('dl/read?name='+encodeURIComponent(n)+'&from=home&off=0&len='+it.size));
-    const b=await hdResBytes(await rd('home/read?'+hdQ()+'&path='+encodeURIComponent('Downloads/'+key)).catch(()=>null)).catch(()=>null);
-    if(b&&a.length==b.length&&a.every((x,i)=>x===b[i])){await rdPost('dl/file?name='+encodeURIComponent(n)+'&from=root&to=del');same++;continue}}
-   const t=free(n);await rdPost('home/adopt?'+hdQ()+'&from='+encodeURIComponent('/home/rudolf/Downloads/'+n)+'&to='+encodeURIComponent('Downloads/'+t));names.add(t.toUpperCase());moved++}
-  catch(e){console.warn('Downloads top',n,e);hdDlLog(n+': '+(e&&e.message||e))}}
- if(moved||same){HD.busy=0;await hdRefresh();try{EXPL.forEach(f=>f())}catch(e){}
-  logEvt('sys',`Downloads for Linux apps is ${uname()}'s own now: ${same} copies removed, ${moved} files moved in`);
-  if(moved)notify('Downloads',`${moved} file${moved==1?'':'s'} Linux apps had saved in Downloads ${moved==1?'is':'are'} in your Downloads now.`,{tag:'hddltop'})}
- return{moved,same}}
+}
+/* (the top of the store is tidied by rudolfd when Downloads is bound: dl_store_tidy in rudolfd-home.inc; File Explorer
+   shows what moved in at the next refresh) */
