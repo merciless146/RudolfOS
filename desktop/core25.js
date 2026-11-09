@@ -262,7 +262,13 @@ const fileMeta=path=>META['/'+path.join('/')]||null;
 const RECK=()=>'bd95recent:'+uid(),FAVK=()=>'bd95fav:'+uid();
 function recentAdd(path){if(!USER)return;const k=path.join('\\');let r=ld(RECK(),[]).filter(x=>x!=k);r.unshift(k);svj(RECK(),r.slice(0,30))}
 const recentList=()=>ld(RECK(),[]).map(k=>k.split('\\')).filter(p=>node(p)!=null);
-const favList=()=>ld(FAVK(),[]).map(k=>k.split('\\')).filter(p=>isDir(node(p)));
+/* 1.5.6: favourite files too. favAll: every favourite, folders first, with whether it is still there (a favourite whose
+   file was deleted stays, greyed, until it is removed); favMoved: a rename or move in File Explorer takes its
+   favourites along (the item itself, and everything inside a folder) */
+const favAll=()=>ld(FAVK(),[]).map(k=>{const p=k.split('\\'),v=node(p);return{p,ok:v!=null,dir:isDir(v)}}).sort((a,b)=>(b.dir-a.dir));
+const isFav=path=>ld(FAVK(),[]).includes(path.join('\\'));
+function favMoved(from,to){if(!USER)return;const a=from.join('\\'),b=to.join('\\');let ch=0;
+ const f=ld(FAVK(),[]).map(k=>{if(k==a){ch=1;return b}if(k.startsWith(a+'\\')){ch=1;return b+k.slice(a.length)}return k});if(ch)svj(FAVK(),[...new Set(f)])}
 function favToggle(path){const k=path.join('\\');let f=ld(FAVK(),[]);f=f.includes(k)?f.filter(x=>x!=k):[...f,k];svj(FAVK(),f);EXPL.forEach(x=>x())}
 (function(){const o=openPath;openPath=function(path){try{if(!isDir(node(path)))recentAdd(path)}catch(e){}return o.apply(this,arguments)}})();
 /* write permission: system folders need an administrator, other homes are private */
