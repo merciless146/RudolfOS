@@ -3,12 +3,16 @@
 Asked for on 2026-11-09, after the Vivobook tests of the 1.5.6 betas. 1.5.6 finishes first (its installation wizards,
 the camera, the Terminal and 1.5.5's remaining File Explorer items); this plan starts once 1.5.6 is promoted.
 
-Two parts:
+Three parts:
 1. **Blitzen diagnostics:** Blitzen reads the computer's own state and Rudolf OS's documents, and explains what went
    wrong, without changing anything.
 2. **Recommended improvements:** what the 1.5.6 betas showed on real hardware: a deleted download, a wrong path, a
    setting lost between requests, a browser restarted after sleep. Each led to a fix; these make the next ones less
    likely, and quicker to find.
+3. **Apps, games and start-up** (added on 2026-11-09, after Steam and Among Us on the Vivobook): stopping apps,
+   saying what the memory guard did, the network at start-up, and what 1.5.6 leaves for later. (Three more found that
+   day went into 1.5.6 itself: prompts in front of full-screen games, installer windows hidden behind the desktop,
+   and Chromium's own shortcuts that could close the desktop.)
 
 ## What is there today (checked in the code and on the Vivobook)
 
@@ -122,6 +126,34 @@ From the 1.5.6 betas on the Vivobook, in order of how much each would have helpe
 9. **Test speed:** the browser tests run in parallel (each has its own port since 1.5.6), and a test of a fix fails
    before the fix (as lxdesk_t and mdevcam_t do).
 
+## Part 3: apps, games and start-up
+
+Found on 2026-11-09 with Steam (Flatpak) and Among Us (Proton) on the Vivobook.
+
+1. **Ending an app from Task Manager.** Steam stuck half-closed (its window gone, its process left) could only be
+   stopped over the devlink, and opening it again did nothing. Task Manager lists every app that runs: Flatpak apps
+   (all their sandboxes as one, from `/run/user/N/.flatpak`, as the memory guard counts them since 1.5.6), Debian's
+   Linux apps and Wine programs, also those with no window open (Discord in the tray). "End" asks the app to quit, then
+   ends it after 5 s; a rudolfd endpoint `apps/end` does it as root, for that app's processes only.
+2. **Saying what the memory guard did.** Since 1.5.6 it closes an app with no window open when memory runs out, and
+   says so only in System health. A notification says it at once ("Discord was closed to free memory"), with a link
+   to System health. And before a full-screen game starts while little memory is free and background apps are open:
+   "Discord is running in the background and uses 600 MB. Close it for the game?"
+3. **The network at start-up.** The Weather widget failed once at start-up, before the Wi-Fi had an address, and
+   waited 15 minutes (fixed in 1.5.6 for the widget). The same for everything the desktop fetches at start-up: the
+   update check, the App Store's lists, Oracle's home page and Blitzen's packs wait for the network (rudolfd's
+   network state, and the `online` event) or try again soon, instead of failing once and waiting for the next turn.
+4. **`rudolf-selftest` checks Linux apps and games** (with Part 2's item 4): `/dev/fd`, `/dev/stdin`, `/dev/stdout`
+   and `/dev/stderr` (missing before 1.5.6: Steam's interface did not start), the compressed memory's size, the
+   camera (`/dev/video*` and its group), controllers (`/dev/input/js*`, `event*`), the Flatpak and Debian state, and the
+   windows on screen. The windows come from the display server itself (a short client, no new package: the computer has
+   no xwininfo); 1.5.6's checks used such a script over the devlink.
+5. **What 1.5.6 leaves for later:**
+   - the installation wizards for **.AppImage** and **.bin** (Linux programs that run without installing) and **.apk**
+     (Android apps, with Waydroid; it needs the kernel's binder);
+   - the **camera in Debian's Linux apps** (`/dev/video*` into Debian's namespace, as the account's folders are);
+   - **controllers for Linux apps** (Debian and Flatpak games: `/dev/input` and the uinput rules).
+
 ## Stages (one PR each)
 
 1. Desktop events and errors on the disk, and rudolfd's log kept (item 2): Blitzen and the devlink need them first.
@@ -130,10 +162,15 @@ From the 1.5.6 betas on the Vivobook, in order of how much each would have helpe
 4. The recovery folder for background deletions (item 1).
 5. rudolfd state review (item 3) and `rudolf-selftest` (item 4).
 6. Downloads, the battery limit and error texts (items 6 to 8).
-7. QEMU with Debian (item 5), then the Vivobook with `rudolf-selftest`; promote when you say.
+7. Task Manager's "End" for apps, and the memory guard's notification and game warning (Part 3, items 1 and 2).
+8. The network at start-up (Part 3, item 3), and `rudolf-selftest`'s Linux and game checks (item 4).
+9. The .AppImage and .bin wizards; the camera and controllers in Debian; then .apk with Waydroid (Part 3, item 5).
+10. QEMU with Debian (Part 2, item 5), then the Vivobook with `rudolf-selftest`; promote when you say.
 
 ## Size
 
-Desktop: about 400 lines (Blitzen diagnostics, the recovery folder, events on the disk). rudolfd: about 300 (ai/facts,
-logs, the recovery folder). The documents' index is built by the release workflow from `docs/`, the CHANGELOG and the
-Help. No new packages, and the model stays the one Blitzen has.
+Desktop: about 400 lines (Blitzen diagnostics, the recovery folder, events on the disk), and about 300 more for Part 3
+(Task Manager's apps, the notifications, the network at start-up, the new wizards). rudolfd: about 300 (ai/facts,
+logs, the recovery folder), and about 200 for Part 3 (apps/end, the selftest's checks, Debian's devices). Waydroid
+is the one new package, for .apk only. The documents' index is built by the release workflow from `docs/`, the CHANGELOG and the
+Help. The model stays the one Blitzen has.
