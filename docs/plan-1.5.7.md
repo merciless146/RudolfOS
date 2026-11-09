@@ -148,7 +148,18 @@ Found on 2026-11-09 with Steam (Flatpak) and Among Us (Proton) on the Vivobook.
    camera (`/dev/video*` and its group), controllers (`/dev/input/js*`, `event*`), the Flatpak and Debian state, and the
    windows on screen. The windows come from the display server itself (a short client, no new package: the computer has
    no xwininfo); 1.5.6's checks used such a script over the devlink.
-5. **What 1.5.6 leaves for later:**
+5. **Memory in System health** (asked for on 2026-11-09). A **Memory** section in Settings › System health, beside
+   Power and battery:
+   - **Compressed memory:** Automatic (as large as the memory, at most 8 GiB, as since 1.5.6; recommended), Smaller
+     (half of it, as before 1.5.6) or Off. No free size: too small runs out sooner, too large spends the computer's
+     time compressing. A change applies at the next restart (shrinking a full one would stall the computer); the
+     `rudolf.nozram=1` start-up option stays, and wins. Kept in `/persist/etc/rudolf-memory`, read by
+     `/usr/lib/rudolf/memory`, set through a rudolfd endpoint `memory/settings` (administrators).
+   - **Now:** memory in use, and how much is compressed and how full it is (as Task Manager shows).
+   - **What the memory guard closed** in the last 7 days, from the health log (on 2026-11-09 a Newgrounds Flash game's
+     page at 1,882 MB; Discord, when it is closed as a background app), each with its time and size.
+   - **"Close apps with no window open when memory runs out"**, on by default (the memory guard's rule since 1.5.6).
+6. **What 1.5.6 leaves for later:**
    - the installation wizards for **.AppImage** and **.bin** (Linux programs that run without installing) and **.apk**
      (Android apps, with Waydroid; it needs the kernel's binder);
    - the **camera in Debian's Linux apps** (`/dev/video*` into Debian's namespace, as the account's folders are);
@@ -162,9 +173,10 @@ Found on 2026-11-09 with Steam (Flatpak) and Among Us (Proton) on the Vivobook.
 4. The recovery folder for background deletions (item 1).
 5. rudolfd state review (item 3) and `rudolf-selftest` (item 4).
 6. Downloads, the battery limit and error texts (items 6 to 8).
-7. Task Manager's "End" for apps, and the memory guard's notification and game warning (Part 3, items 1 and 2).
+7. Task Manager's "End" for apps, the memory guard's notification and game warning, and the Memory section in System
+   health (Part 3, items 1, 2 and 5).
 8. The network at start-up (Part 3, item 3), and `rudolf-selftest`'s Linux and game checks (item 4).
-9. The .AppImage and .bin wizards; the camera and controllers in Debian; then .apk with Waydroid (Part 3, item 5).
+9. The .AppImage and .bin wizards; the camera and controllers in Debian; then .apk with Waydroid (Part 3, item 6).
 10. QEMU with Debian (Part 2, item 5), then the Vivobook with `rudolf-selftest`; promote when you say.
 
 ## Size
