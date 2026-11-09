@@ -20,6 +20,7 @@ Summary: your files on the disk (docs/plan-1.5.6.md)
 - Fixed: a Linux app put on the desktop (Discord from the App Store, say) showed the penguin instead of its own icon. It now shows the app's icon, as the Start menu and the taskbar do.
 - Fixed: no app could use the camera on an installed Rudolf OS (the Vivobook's built-in webcam, a USB webcam): the camera's device belonged to the system only. Cameras now belong to the video group the desktop is in.
 - Fixed: programs in Linux (Debian), Wine among them, did not see your Documents, Pictures, Music, Videos and Downloads as they are since 1.5.6, and with "Encrypt my data" on they could not open Downloads at all. They now see the same folders as the rest of Rudolf OS, also after switching accounts.
+- New: installing apps from files. Opening a Linux package (.deb, such as Discord's) shows what it is and installs it into Linux (Debian) with what it needs, with a progress bar; its app is then in the Start menu, and the wizard offers to open it or put it on the desktop. An iPhone or iPad app (.ipa) is explained: it cannot run outside Apple's devices. Windows programs, AppImages, .bin installers and Android apps follow.
 
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it

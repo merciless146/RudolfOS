@@ -1573,6 +1573,30 @@ static void api_debian(struct req *r, const char *what)
 		reply_ok(r->fd, "started"); return;
 	}
 	if (!strcmp(what, "apps")) { reply_cmd_json(r, DEBIAN_BIN " apps 2>/dev/null", "could not list the Debian apps"); return; }
+	/* 1.5.6: installing a package from a file (the installation wizard): what it is, then installing it as a job.
+	   Only a .deb among the person's own files; the name may not hold a quote (it goes into a shell command). */
+	if (!strcmp(what, "debinfo") || !strcmp(what, "deb")) {
+		const char *f = qparam(r->query, "file"); size_t l = f ? strlen(f) : 0;
+		if (!f || strncmp(f, "/home/rudolf/", 13) || strstr(f, "/../") || strpbrk(f, "'\n\\") || l < 5 || l > 900 || strcasecmp(f + l - 4, ".deb")) { reply_err(r->fd, 400, "not a package in your folders"); return; }
+		char cmd[1100];
+		if (!strcmp(what, "debinfo")) {
+			snprintf(cmd, sizeof cmd, DEBIAN_BIN " debinfo '%s' 2>&1", f);
+			char *o = run_out(cmd); if (!o) { reply_err(r->fd, 500, "could not read the package"); return; }
+			str s = {0}; sadd(&s, "{\"ok\":true"); int got = 0;
+			for (char *sv, *ln = strtok_r(o, "\n", &sv); ln; ln = strtok_r(NULL, "\n", &sv)) {
+				if (*ln == ' ') continue;   /* the description's further lines */
+				char *e = strstr(ln, ": "); if (!e || e == ln || e - ln > 30) continue; *e = 0;
+				const char *k = !strcmp(ln, "Package") ? "package" : !strcmp(ln, "Version") ? "version" : !strcmp(ln, "Architecture") ? "arch" : !strcmp(ln, "Maintainer") ? "maintainer" : !strcmp(ln, "Installed-Size") ? "size" : !strcmp(ln, "Description") ? "description" : NULL;
+				if (!k) continue; sadd(&s, ",\"%s\":", k); sjson(&s, e + 2); got++;
+			}
+			sadd(&s, "}");
+			if (!got) { free(s.b); reply_err(r->fd, 422, "this file is not a Debian package that can be read"); free(o); return; }
+			free(o); reply_json(r->fd, &s); return;
+		}
+		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
+		snprintf(cmd, sizeof cmd, DEBIAN_BIN " deb '%s'", f); start_job("debian-deb", cmd);
+		reply_ok(r->fd, "started"); return;
+	}
 	if (!strcmp(what, "launch")) {
 		char idc[220] = "", filec[1100] = ""; const char *q1 = qparam(r->query, "id"); if (q1) snprintf(idc, sizeof idc, "%s", q1);
 		const char *q2 = qparam(r->query, "file"); if (q2) snprintf(filec, sizeof filec, "%s", q2);

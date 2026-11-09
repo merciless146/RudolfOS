@@ -12,6 +12,8 @@
  *   rudolf-debian wine                      install Wine (Windows programs), as Debian's root
  *   rudolf-debian remove                    stop and delete Debian
  *   rudolf-debian rebind                    (1.5.6) the signed-in account's folders, as Rudolf OS has them now
+ *   rudolf-debian debinfo FILE.deb          (1.5.6) the package's name, version... (dpkg-deb -f, as the user)
+ *   rudolf-debian deb FILE.deb              (1.5.6) install a package from a file, with what it needs (apt-get)
  *
  * Who is who: Debian's root and system users (0-999) are uids 200000-200999 on Rudolf OS, with no rights
  * outside; Debian's "rudolf" (1000) is Rudolf OS's rudolf (1000), so the home folder is theirs on both
@@ -754,6 +756,23 @@ int main(int argc, char **argv)
 	if (!strcmp(c, "setup")) { if (argc < 3) die("setup PASSWORD-FILE"); return cmd_setup(argv[2]); }
 	if (!strcmp(c, "start")) { printf("%d\n", start()); return 0; }
 	if (!strcmp(c, "rebind")) return cmd_rebind();
+	/* 1.5.6: installing a downloaded package (the installation wizard). The file is one of the person's own
+	   (/home/rudolf/...), checked by rudolfd too; it is copied inside first, so that apt reads a file of its own. */
+	if (!strcmp(c, "debinfo") || !strcmp(c, "deb")) {
+		if (argc < 3) die("%s FILE.deb", c);
+		const char *f = argv[2]; size_t l = strlen(f);
+		if (strncmp(f, "/home/rudolf/", 13) || strstr(f, "/../") || l < 5 || strcasecmp(f + l - 4, ".deb")) die("not a package in your folders");
+		if (!installed()) die("Debian is not set up");
+		if (!strcmp(c, "debinfo")) {
+			char *a[] = {"dpkg-deb", "-f", (char *)f, "Package", "Version", "Architecture", "Maintainer", "Installed-Size", "Description", NULL};
+			char *ra[] = {"--", a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], NULL};
+			return cmd_run(10, ra);
+		}
+		char *a[] = {"/bin/sh", "-c", "export DEBIAN_FRONTEND=noninteractive; f=/tmp/rudolf-install.deb; cp \"$1\" $f && chmod 644 $f || exit 3; "
+			"echo 'step Getting the list of packages'; apt-get update; echo 'step Installing'; apt-get install -y $f; r=$?; rm -f $f; apt-get clean; exit $r", "sh", (char *)f, NULL};
+		int r = run_in(1, NULL, a); write_str(RUND "/apps-changed", "1");
+		if (!r) say("done installed"); return r;
+	}
 	if (!strcmp(c, "stop")) { stop(); return 0; }
 	if (!strcmp(c, "run")) return cmd_run(argc - 2, argv + 2);
 	if (!strcmp(c, "pty")) { if (argc < 3) die("pty ID"); return cmd_pty(argv[2], argc > 3 && !strcmp(argv[3], "--root")); }
