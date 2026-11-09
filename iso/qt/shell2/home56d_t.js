@@ -1,7 +1,7 @@
 // 1.5.6 (home56.js, linux26.js, dl27.js): Downloads joins the binds for Linux apps. With rudolfd's downloadsBound,
-// the copies lxSync used to keep at the top of the downloads store go (only identical ones), what Linux apps saved
-// there moves into the account's Downloads, lxSync copies nothing, and Linux apps get /home/rudolf/<Folder>/... paths
-// for files in the account's folder. Without downloadsBound nothing is copied either (the Vivobook lost two files).
+// lxSync copies nothing, and Linux apps get /home/rudolf/<Folder>/... paths for files in the account's folder.
+// Without downloadsBound nothing is copied either (the Vivobook lost two files). (The top of the downloads store is
+// tidied by rudolfd: homeapi_t.sh 25h, 25i.)
 // A stand-in rudolfd with a disk in memory.   node home56d_t.js [CHROME]  (build iso/www first)
 const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
 const WWW = path.join(__dirname, '../../../iso/www');
@@ -44,7 +44,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const b = await chromium.launch({executablePath: process.argv[2] || undefined}); const p = await b.newPage();
   const errs = []; p.on('pageerror', e => { if (!/volUpd/.test(e.stack || '')) errs.push(e.message) });
   const q = s => p.evaluate(s);
-  await p.goto('http://127.0.0.1:8140/'); await p.waitForFunction(() => typeof hdDlTop == 'function' && typeof fs != 'undefined' && fs['C:'] && IDB && IDB.db && FSLOADED, null, {timeout: 30000});
+  await p.goto('http://127.0.0.1:8140/'); await p.waitForFunction(() => typeof fs != 'undefined' && fs['C:'] && IDB && IDB.db && FSLOADED, null, {timeout: 30000});
   // ann's folder on the disk, and the top of the store as 1.5.6's first beta left it (lxSync's copies, a Linux app's file)
   const m = mk('u-ann'); m.set('Downloads/NOTE.TXT', {b: Buffer.from('hello'), v: ver()}); m.set('Downloads/DIFF.TXT', {b: Buffer.from('mine'), v: ver()});
   TOP.set('NOTE.TXT', Buffer.from('hello')); TOP.set('DIFF.TXT', Buffer.from('theirs')); TOP.set('rudolf-os-1.4.1-boot.iso', Buffer.from('ISO')); TOP.set('Unconfirmed 1.crdownload', Buffer.from('part'));
@@ -53,25 +53,15 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     ACCTS.length=0;ACCTS.push({n:'ann',h:await pwMake('a1'),r:'admin',id:'u-ann',disk:1});ACCTS.push({n:'bob',h:await pwMake('b1'),r:'user',id:'u-bob',disk:1});saveUser();return 1})()`);
   await q("IN('ann','a1')"); await wait(800);
   ok('1. signed in on the disk: Downloads is among the binds (HD.dlb)', await q("hdOn()&&HD.dlb===true"), await q("({on:hdOn(),dlb:HD.dlb})"));
-  await p.waitForFunction(() => HD.dltop, null, {timeout: 10000}).catch(() => {}); await wait(1500);
-  const top = [...TOP.keys()].sort(), dl = [...m.keys()].filter(k => k.startsWith('Downloads/')).sort();
-  ok('2. the identical copy at the top of the store goes; the different DIFF.TXT and the Linux app\'s ISO move in; the partial download stays',
-    top.join() == 'Unconfirmed 1.crdownload' && dl.join() == 'Downloads/DIFF (2).TXT,Downloads/DIFF.TXT,Downloads/NOTE.TXT,Downloads/rudolf-os-1.4.1-boot.iso' && m.get('Downloads/DIFF.TXT').b.toString() == 'mine', [top, dl]);
-  const c = await q("Object.keys(node(downloadsPath())).sort().join()");
-  ok('3. ...and File Explorer shows them in Downloads', /DIFF \(2\)\.TXT/.test(c) && /rudolf-os-1\.4\.1-boot\.iso/i.test(c), c);
   // lxSync copies nothing: every shared folder is the account's own
   await q("LX.inst=[{id:'x'}];svj(LXK,[{id:'x'}]);svj('bd95lxowner',uid())"); CALLS.length = 0;
   const n = await q("lxSync()");
   ok('4. lxSync copies nothing while Downloads is bound', n === 0 && !CALLS.some(x => /fs\/(tree|write|read)/.test(x)), CALLS.filter(x => /fs\//.test(x)));
   ok('5. a file in the account\'s folder is given to Linux apps by the name they see', await q("dlDiskPath({p:'/persist/accounts/u-ann/Downloads/A.ISO'})=='/home/rudolf/Downloads/A.ISO'&&dlDiskPath({p:'/persist/accounts/u-ann/Documents/X/b.pdf'})=='/home/rudolf/Documents/X/b.pdf'&&dlDiskPath({p:'/persist/accounts/u-ann/Desktop/c'})=='/persist/accounts/u-ann/Desktop/c'"));
-  // without the bind (rudolfd could not bind the store): only Downloads is still kept in step, nothing is taken in
-  DLB = false; TOP.set('LATER.TXT', Buffer.from('x'));
-  await q("(async()=>{HD.dltop=0;await hdBinds();return 1})()"); await wait(4800);
-  ok('6. without downloadsBound: no clean-up of the store\'s top', await q("HD.dlb===false") && TOP.has('LATER.TXT'));
+  DLB = false; await q("(async()=>{await hdBinds();return 1})()");
+  ok('6. without downloadsBound: HD.dlb is false', await q("HD.dlb===false"));
   await q("svj('bd95lxsync:'+uid(),{'Downloads/DISCORD.DEB':{h:'x',m:1,s:1}})"); CALLS.length = 0; await q("lxSync()");
   ok('7. ...and lxSync still copies nothing (no two-way sync while the Linux side can change under it), and its old record is dropped', !CALLS.some(x => /fs\/(tree|write|read|delete)/.test(x)) && await q("localStorage.getItem('bd95lxsync:'+uid())===null"), CALLS.filter(x => /fs\//.test(x)));
-  // another account than the one Linux apps' Downloads belonged to: left alone
-  DLB = true; await q("(async()=>{svj('bd95lxowner','u-bob');HD.dltop=0;HD.dlb=true;return JSON.stringify(await hdDlTop())})()").then(r => ok('8. the store\'s top is taken in only by the account that owned it before', /owner/.test(r) && TOP.has('LATER.TXT'), r));
   ok('no page error', !errs.length, errs);
   await b.close(); srv.close();
   console.log(`${R.filter(x => x).length}/${R.length} passed`); process.exit(R.every(x => x) ? 0 : 1);

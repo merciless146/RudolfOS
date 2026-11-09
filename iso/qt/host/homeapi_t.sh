@@ -90,6 +90,14 @@ mv $DS.locked $DS
 BOOT=1 BIND=1 t "GET home" >/dev/null   # (vault/unlock calls dl_home_boot)
 o=$(BIND=1 t "POST home/unlock?acct=u-boss&session=1 <$T/k1" "GET home")
 ok "25g. once it is found (unlocked): the link becomes the bind, and Downloads joins the account's binds" "$([ -d /run/rudolf/dl ] && [ ! -L /run/rudolf/dl ] && [ -f /run/rudolf/dl/.incoming/x.crdownload ] && [ -f /home/rudolf/Downloads/NEW.BIN ] && echo "$o" | grep -q '"downloadsBound":true' && echo 1)" "$o $(ls -la /run/rudolf)"
+# the top of the store (Linux apps' Downloads before): identical copies go; with one account folder the rest moves in
+echo new > /run/rudolf/dl/NEW.BIN; echo other > /run/rudolf/dl/OTHER.TXT; echo part > /run/rudolf/dl/x.iso.crdownload
+o=$(BIND=1 t "POST home/unlock?acct=u-boss&session=1 <$T/k1" 2>&1)
+ok "25h. sign-in with Downloads bound: the identical copy at the top goes; OTHER.TXT stays (two account folders); the partial stays" "$([ ! -e /run/rudolf/dl/NEW.BIN ] && [ -f /run/rudolf/dl/OTHER.TXT ] && [ -f /run/rudolf/dl/x.iso.crdownload ] && [ -f $R/u-boss/Downloads/NEW.BIN ] && echo 1)" "$o $(ls -A /run/rudolf/dl)"
+mv $R/u-kid $T/kid.aside; echo diff > /run/rudolf/dl/new.bin; mkdir -p $R/u-boss/Downloads/.accounts/u-boss
+o=$(BIND=1 t "POST home/unlock?acct=u-boss&session=1 <$T/k1" 2>&1)
+ok "25i. ...with one account folder: OTHER.TXT moves in, a different new.bin gets a free name (new (2).bin), an empty stray .accounts goes, and rudolfd says so" "$([ -f $R/u-boss/Downloads/OTHER.TXT ] && [ "$(cat "$R/u-boss/Downloads/new (2).bin")" = diff ] && [ "$(cat $R/u-boss/Downloads/NEW.BIN)" = new ] && [ ! -e /run/rudolf/dl/OTHER.TXT ] && [ -f /run/rudolf/dl/x.iso.crdownload ] && [ ! -e $R/u-boss/Downloads/.accounts ] && echo "$o" | grep -q '1 files moved in\|2 files moved in' && echo 1)" "$o $(ls -A $R/u-boss/Downloads) / $(ls -A /run/rudolf/dl)"
+mv $T/kid.aside $R/u-kid
 o=$(BIND=1 t "POST home/lock?acct=u-boss")
 umount /run/rudolf/dl 2>/dev/null; umount -R /home; umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]
