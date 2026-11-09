@@ -3,7 +3,7 @@
    done (Open, Put on the desktop). Built type by type (docs/plan-1.5.6.md, 5a): .deb first, through Debian
    (rudolfd debian/debinfo and debian/deb, rudolf-debian deb). .ipa only explains. .exe, .msi, .AppImage, .bin and
    .apk follow in their own stages. */
-const WZ_KINDS={DEB:'deb',IPA:'ipa'};
+const WZ_KINDS={DEB:'deb',IPA:'ipa',EXE:'exe',MSI:'exe'};
 /* where the file is: a file kept on the disk, or one in the account's folders; rudolfd turns an account path into
    the name Linux sees it under (the binds), or refuses one Linux cannot see */
 function wzDiskPath(path){const v=node(path);
@@ -19,7 +19,7 @@ const wzEsc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt
 function wzFoot(W,btns){const f=W.body.querySelector('.wzf');f.innerHTML='';btns.forEach(([t,fn,main])=>{const b=document.createElement('button');b.textContent=t;if(main)b.className='wzmain';b.onclick=fn;f.appendChild(b)});return f}
 function wzBody(W,html){const b=W.body.querySelector('.wzb');b.innerHTML=html;return b}
 function wzSub(W,t){W.body.querySelector('.wzs').textContent=t}
-function installWizard(path){const e=ext(path.at(-1)),k=WZ_KINDS[e];if(k=='deb')return wzDeb(path);if(k=='ipa')return wzIpa(path);return null}
+function installWizard(path){const e=ext(path.at(-1)),k=WZ_KINDS[e];if(k=='deb')return wzDeb(path);if(k=='ipa')return wzIpa(path);if(k=='exe')return wzExe(path);return null}
 
 /* ---------- .ipa: cannot be installed ---------- */
 function wzIpa(path){const W=wzWin(path,'📱');wzSub(W,'An app for iPhone and iPad');
@@ -74,6 +74,47 @@ async function wzDebRun(W,path,file,info){const name=info.package||path.at(-1);
    if(!k)r.querySelector('.d').remove();box.appendChild(r)})}
  b.insertBefore(box,b.querySelector('details'));logEvt('sys',`Installed ${name} from ${path.at(-1)}`);
  wzFoot(W,[['Close',()=>W.close(),1]]);return true}
+
+/* ---------- .exe and .msi: Windows programs, with Wine (in Debian) ----------
+   An installer (an .msi, or a name with setup/install) is run and watched: the programs it adds to the Start menu are
+   offered when they appear. Any other .exe is a program itself: run it, or keep it in Programs. */
+const WZ_INSTALLER=/(setup|install|installer|_inst)\b|\binst\b/i;
+const wzWine=()=>typeof lxLaunchers=='function'&&lxLaunchers().find(x=>x.deb&&/application\/x-(ms-dos-executable|msdownload|msi)/.test(x.mime||''));
+function wzSize(path){const v=node(path);if(typeof isDlRef=='function'&&isDlRef(v)){const i=dlRefInfo(v);return i&&i.s||0}return typeof v=='string'?(/^data:/.test(v)?Math.round((v.length-v.indexOf(',')-1)*3/4):v.length):0}
+async function wzExe(path){const nm=path.at(-1),e=ext(nm),msi=e=='MSI',inst=msi||WZ_INSTALLER.test(nm);const W=wzWin(path,'🪟');
+ wzSub(W,msi?'A Windows installer package':inst?'A Windows installer':'A Windows program');
+ if(!RD){wzBody(W,'<p>Windows programs run with Wine on an installed Rudolf OS (not in a web browser).</p>');wzFoot(W,[['Close',()=>W.close()]]);return W}
+ const file=wzDiskPath(path);
+ if(!file){wzBody(W,'<p>Linux cannot reach this file where it is. Move it into Downloads or Documents, then open it again.</p>');wzFoot(W,[['Close',()=>W.close()]]);return W}
+ wzBody(W,'<p class="wzwait">Checking for Wine…</p>');
+ const st=await debStatus();
+ if(!st||!st.installed){wzBody(W,`<p>Windows programs run with Wine, inside Linux (Debian 13). Linux is not set up on this computer yet: setting it up downloads about 120 MB, and Wine about 1 GB more.</p>`);
+  wzFoot(W,[['Set up Linux…',()=>{W.close();terminalApp('linux')},1],['Close',()=>W.close()]]);return W}
+ if(!(DEB.apps||[]).length)await debApps();
+ if(!st.wine&&!wzWine()){const b=wzBody(W,`<p>Windows programs run with Wine, which is not installed yet (a download of about 1 GB, a few minutes).</p><p class='wzstep'></p>`);
+  wzFoot(W,[['Install Wine',async()=>{wzFoot(W,[]);const ok=typeof debInstallWine=='function'&&await debInstallWine(b.querySelector('.wzstep'));if(ok){DEB.appsAt=0;await debApps();W.close();wzExe(path)}else wzFoot(W,[['Close',()=>W.close()]])},1],['Cancel',()=>W.close()]]);return W}
+ const sz=wzSize(path);
+ wzBody(W,`<table class='wztab'>${sz?`<tr><td>Size</td><td>${fmtB(sz)}</td></tr>`:''}<tr><td>Runs with</td><td>Wine, inside Linux (Debian 13)</td></tr></table>
+  <p>${inst?'Installing runs its own setup window: answer its questions there. The programs it installs appear here and in the Start menu.':'This looks like a program rather than an installer: it can run from where it is.'}</p>
+  <p class='wznote'>Windows programs run with your account's rights inside Linux. Run programs only from sources you trust; some Windows programs do not work with Wine.</p>`);
+ const btns=inst?[['Install',()=>wzExeRun(W,path,file,true),1],['Run it without installing',()=>wzExeRun(W,path,file,false)],['Cancel',()=>W.close()]]
+  :[['Run',()=>wzExeRun(W,path,file,false),1],['Install it (it is an installer)',()=>wzExeRun(W,path,file,true)],['Cancel',()=>W.close()]];
+ wzFoot(W,btns);return W}
+async function wzExeRun(W,path,file,inst){const wine=wzWine();
+ if(!wine){wzBody(W,'<p>Wine is installed, but its launcher was not found. Open Settings › Apps › Linux and check Wine.</p>');wzFoot(W,[['Close',()=>W.close()]]);return}
+ const before=new Set((await debApps().catch(()=>[])||[]).map(a=>a.id));
+ try{await lxRun(wine,file)}catch(e){wzBody(W,`<p>${wzEsc(e.message)}</p>`);wzFoot(W,[['Close',()=>W.close()]]);return}
+ if(!inst){logEvt('sys',`Ran ${path.at(-1)} with Wine`);W.close();return}
+ const b=wzBody(W,`<p class='wzstep'>The installer is starting (this can take a minute the first time Wine runs). Answer its questions in its own window.</p><div class='wzbar wzbusy'><i></i></div><div class='wzapps'></div>`);
+ wzFoot(W,[['Done',()=>W.close(),1]]);
+ const box=b.querySelector('.wzapps'),seen=new Set();let n=0;
+ const poll=async()=>{if(!W.el.isConnected)return;DEB.appsAt=0;const after=await debApps().catch(()=>[])||[];try{lxRegister()}catch(e){}
+  after.filter(a=>!before.has(a.id)&&!seen.has(a.id)&&a.menu!==false).forEach(a=>{seen.add(a.id);n++;const k=APPS['lx:deb-'+a.id]?'lx:deb-'+a.id:null;const r=document.createElement('div');r.className='wzapp';
+   r.innerHTML=`<span>🪟</span><b></b><button class='o'>Open</button><button class='d'>Put on the desktop</button>`;r.querySelector('b').textContent=a.name;if(k&&APPS[k].img)APPS[k].img(r.querySelector('span'));
+   r.querySelector('.o').onclick=()=>{k?launch(k):lxRun({deb:a.id,name:a.name})};r.querySelector('.d').onclick=e=>{if(k&&deskAdd(k)){e.target.disabled=true;e.target.textContent='On the desktop'}};if(!k)r.querySelector('.d').remove();box.appendChild(r)});
+  if(n){b.querySelector('.wzstep').textContent=(n==1?'It installed this program':'It installed these programs')+' (they are in the Start menu too):';b.querySelector('.wzbar').remove()}
+  setTimeout(poll,5000)};
+ setTimeout(poll,5000);logEvt('sys',`Started the installer ${path.at(-1)} with Wine`)}
 
 /* opening one of these files starts the wizard (before File Explorer's own openers and dl27's for files on the disk) */
 {const _op=openPath;openPath=function(path){try{if(WZ_KINDS[ext(path.at(-1))]&&!isDir(node(path))){installWizard(path);return}}catch(e){console.warn('install',e)}return _op.apply(this,arguments)}}
