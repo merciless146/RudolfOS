@@ -12,13 +12,16 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.addInitScript(() => {
     window.RUDOLFD = {token: 'x', base: '', boot: 'uefi', media: 'disk', live: 0, recovery: 0};
-    window.T = {installed: 1, wine: 1, arch: 'amd64', fail: 0, calls: [], launched: [], apps: [{id: 'org.old.App', name: 'Old App', menu: true}, {id: 'wine', name: 'Wine Windows Program Loader', menu: false, mime: 'application/x-ms-dos-executable;application/x-msi;'}], job: null};
+    window.T = {installed: 1, wine: 1, arch: 'amd64', fail: 0, calls: [], launched: [], wins: ['3a00001'], apps: [{id: 'org.old.App', name: 'Old App', menu: true}, {id: 'wine', name: 'Wine Windows Program Loader', menu: false, mime: 'application/x-ms-dos-executable;application/x-msi;'}], job: null};
     const f0 = window.fetch;
     window.fetch = (u, o) => { u = String(u); const J = (x, st) => Promise.resolve(new Response(JSON.stringify(Object.assign({ok: !st}, x)), {status: st || 200, headers: {'content-type': 'application/json'}}));
       const q = new URL(u, location.href);
       if (u.includes('/api/')) T.calls.push(q.pathname.slice(5) + q.search);
       if (u.includes('/api/debian/status')) return J({installed: T.installed, version: '13.7', running: 1, wine: T.wine});
-      if (u.includes('/api/debian/launch')) { T.launched.push([q.searchParams.get('id'), q.searchParams.get('file')]); setTimeout(() => { T.apps = T.apps.concat([{id: 'u-77696e65', name: 'Starport GE', menu: true}]) }, 1500); return J({message: 'started'}) }
+      if (u.includes('/api/debian/launch')) { T.launched.push([q.searchParams.get('id'), q.searchParams.get('file')]); setTimeout(() => { T.wins = T.wins.concat(['7a00001']); T.apps = T.apps.concat([{id: 'u-77696e65', name: 'Starport GE', menu: true}]) }, 1500); return J({message: 'started'}) }
+      // 1.5.6: the windows on the screen; the installer's window ignores "close" (as a hung one does)
+      if (q.pathname == '/api/apps/windows') return J({windows: T.wins.map(w => ({win: w, web: false, shown: false, fullscreen: false, class: 'x', instance: 'x', title: 'x'})), mode: 'desktop'});
+      if (q.pathname == '/api/apps/kill') { T.wins = T.wins.filter(w => w != q.searchParams.get('win')); return J({}) }
       if (u.includes('/api/debian/apps')) return J({apps: T.apps});
       if (u.includes('/api/debian/debinfo')) return J({package: 'discord', version: '0.0.120', arch: T.arch, maintainer: 'Discord Inc. <dev@discord.com>', size: '252000', description: 'Chat for Communities and Friends'});
       if (u.includes('/api/debian/deb')) { T.job = {n: 0}; return J({message: 'started'}) }
@@ -62,6 +65,12 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await click('Install'); await wait(7500); w = await W();
   const L = await q("T.launched");
   ok('10. Install runs it with Wine (the file\'s path for Linux) and offers the program it installed', L.some(x => x[0] == 'wine' && x[1] == '/home/rudolf/Downloads/StarportGE_install.exe') && /It installed this program/.test(w.txt) && /Starport GE/.test(w.txt), [L, w]);
+  ok('10b. while it runs: "Show the installer" and "Stop the installer"', w.btn.includes('Show the installer') && w.btn.includes('Stop the installer'), w);
+  await q("T.calls.length=0"); await click('Show the installer'); await wait(500);
+  ok('10c. "Show the installer" brings its window (the new one, not the one open before) to the front', (await q("T.calls")).includes('apps/show?win=7a00001') && !(await q("T.calls")).some(c => /show\?win=3a00001/.test(c)), await q("T.calls"));
+  await q("T.calls.length=0"); await click('Stop the installer'); await wait(5500); w = await W();
+  const sc = await q("T.calls");
+  ok('10d. "Stop the installer" asks it to close, then ends it when it does not, and only its window', sc.includes('apps/close?win=7a00001') && sc.includes('apps/kill?win=7a00001') && !sc.some(c => /3a00001/.test(c)) && /The installer was stopped/.test(w.txt), [sc, w.txt]);
   await open('GAME.EXE'); await wait(1000); w = await W();
   ok('11. another .exe is a program: Run first', /A Windows program/.test(w.txt) && w.btn[0] == 'Run', w);
   ok('12. no page errors', !errs.length, errs);

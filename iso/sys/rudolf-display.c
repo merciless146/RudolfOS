@@ -707,7 +707,8 @@ static void on_sig(int s) { (void)s; quit = 1; }
  *    (the topmost game or browser window). rudolfd writes it when the desktop asks; a new app window
  *    is shown by itself; Super+Esc goes to the desktop and Super+Tab steps through the windows.
  *  - /run/rudolf/windows lists the app windows (id, browser?, class, instance, full screen?, title) for the taskbar;
- *    /run/rudolf/wmcmd "close <hex>" asks a window to close (WM_DELETE_WINDOW, as a close button does).
+ *    /run/rudolf/wmcmd "close <hex>" asks a window to close (WM_DELETE_WINDOW, as a close button does); "kill <hex>"
+ *    (1.5.6) ends the program behind it.
  *  - 1.5.2: what window managers do for Windows games (Wine) and others: a window shown gets WM_TAKE_FOCUS as well as
  *    the keyboard (Wine counts a window as active only then: before, a Windows game got the arrow keys but not the
  *    letters it reads through DirectInput); _NET_WM_STATE requests (full screen and the rest) are carried out, and
@@ -856,6 +857,9 @@ static void wm_commands(void)
 	cmd_mtime = m;
 	char b[64] = {0}; int f = open("/run/rudolf/wmcmd", O_RDONLY); if (f < 0) return;
 	if (read(f, b, sizeof b - 1) > 0 && !strncmp(b, "close ", 6)) { unsigned long x = strtoul(b + 6, NULL, 16); if (x) close_window((Window)x); }
+	/* 1.5.6: "kill <hex>" ends the program behind a window (XKillClient: its connection is cut, and Wine and most X
+	   programs then exit), for the installation wizard's "Stop the installer" when asking politely did not do it */
+	else if (!strncmp(b, "kill ", 5)) { unsigned long x = strtoul(b + 5, NULL, 16); if (x) XKillClient(dpy, (Window)x); }
 	close(f); unlink("/run/rudolf/wmcmd"); cmd_mtime = -1;
 }
 
@@ -871,6 +875,25 @@ static void window_title(Window w, char *out, size_t n)
 
 #define MAXWIN 64
 static char wm_last_class[128];
+/* 1.5.6: dialogs (WM_TRANSIENT_FOR) whose owner is on the screen, and that owner's top-level window, bottom to top */
+static Window dlgs[MAXWIN], dlg_of[MAXWIN]; static int ndlg;
+/* the top-level window a dialog belongs to, when it is viewable and not the root (a dialog's owner can be a window
+   inside an app, or another dialog), else 0 */
+static Window dlg_owner(Window t)
+{
+	Window root = DefaultRootWindow(dpy);
+	for (int i = 0; i < 16 && t && t != root; i++) {
+		Window r, p, *k = NULL; unsigned n;
+		if (!XQueryTree(dpy, t, &r, &p, &k, &n)) return 0;
+		if (k) XFree(k);
+		if (p != r) { t = p; continue; }            /* a window inside one: go up to its top-level window */
+		XWindowAttributes wa; Window tr;
+		if (!XGetWindowAttributes(dpy, t, &wa) || wa.map_state != IsViewable) return 0;
+		if (XGetTransientForHint(dpy, t, &tr) && tr && tr != t) { Window o = dlg_owner(tr); return o ? o : t; }
+		return t;
+	}
+	return 0;
+}
 static Window known[MAXWIN]; static int nknown;
 static Window cur_list[MAXWIN]; static int ncur;   /* app windows, bottom to top */
 
@@ -882,6 +905,7 @@ static void fit_windows(void)
 	wm_read(); wm_commands(); wm_atoms();
 	if (!XQueryTree(dpy, root, &r, &p, &kids, &n)) return;
 	Window apps[MAXWIN]; int napps = 0, fresh = -1;
+	ndlg = 0;
 	/* the desktop first: the RudolfDesktop window, or (older sessions) the first Chromium */
 	for (unsigned i = 0; i < n; i++) {
 		XWindowAttributes wa;
@@ -902,6 +926,14 @@ static void fit_windows(void)
 			/* dialog: centre it */
 			int x = ax + (sw - wa.width) / 2, y = ay + (sh - wa.height) / 2;
 			if (wa.width < sw && wa.height < sh && (abs(wa.x - x) > 1 || abs(wa.y - y) > 1)) XMoveWindow(dpy, kids[i], x < ax ? ax : x, y < ay ? ay : y);
+			/* 1.5.6: and it goes with its owner (raised above it below). A dialog whose owner is not on the screen (a
+			   hidden window, or the root) is shown as a window of its own: Inno Setup's wizard (Starport's installer in
+			   Wine) belongs to a hidden window, and stayed behind the desktop where nobody could answer it */
+			Window o = dlg_owner(tr);
+			if (o && ndlg < MAXWIN) { dlgs[ndlg] = kids[i]; dlg_of[ndlg++] = o; continue; }
+			if (napps >= MAXWIN) continue;
+			apps[napps++] = kids[i]; set_wm_state(kids[i]);
+			{ int seen = 0; for (int k = 0; k < nknown; k++) if (known[k] == kids[i]) seen = 1; if (!seen) fresh = napps - 1; }
 			continue;
 		}
 		if (napps >= MAXWIN) continue;
@@ -964,11 +996,16 @@ static void fit_windows(void)
 	}
 	static Window last_want;
 	if (want) {
-		Window owner;
-		/* a dialog of the shown window, on top of it, keeps its place and the keyboard */
-		int dialog = top && top != want && XGetTransientForHint(dpy, top, &owner) && owner == want;
-		if (!dialog && top != want) XRaiseWindow(dpy, want);
-		if (!dialog && (want != last_want || top != want)) { if (want == desktop) XSetInputFocus(dpy, want, RevertToPointerRoot, CurrentTime); else give_focus(want); }
+		/* 1.5.6: the shown window's dialogs stay above it, the newest on top, and the newest has the keyboard (before,
+		   only a dialog already on top kept its place: one under its owner, or under the desktop, stayed hidden) */
+		Window mine[MAXWIN]; int nm = 0;
+		for (int k = 0; k < ndlg; k++) if (dlg_of[k] == want) mine[nm++] = dlgs[k];
+		Window should = nm ? mine[nm - 1] : want;
+		if (top != should) {
+			XRaiseWindow(dpy, want);
+			for (int k = 0; k < nm; k++) XRaiseWindow(dpy, mine[k]);
+		}
+		if (want != last_want || top != should) { if (want == desktop) XSetInputFocus(dpy, want, RevertToPointerRoot, CurrentTime); else give_focus(should); }
 	}
 	last_want = want;
 	if (kids) XFree(kids);

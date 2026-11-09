@@ -45,7 +45,7 @@ gcc -O2 -o $WORK/rudolf-launch $REPO/iso/sys/rudolf-launch.c
 # a test copy of the real rudolfd for the system and process information: fixed token, port 8181, its own run folder
 sed -e 's/for (int i = 0; i < 16; i++) sprintf(token + i \* 2, "%02x", rb\[i\]);/strcpy(token, "testtoken");/' -e 's/htons(8080)/htons(8181)/' \
 	-e 's#define RUN      "/run/rudolf"#define RUN "/tmp/rdt-run"#' $REPO/iso/sys/rudolfd.c > $WORK/rudolfd_t.c
-gcc -O2 -o $WORK/rudolfd_t $WORK/rudolfd_t.c -Wl,-Bstatic -lz -Wl,-Bdynamic 2>/dev/null
+gcc -O2 -I$REPO/iso/sys -o $WORK/rudolfd_t $WORK/rudolfd_t.c -Wl,-Bstatic -lz -Wl,-Bdynamic 2>/dev/null
 mkdir -p /run/user/1000
 setsid $WORK/rudolfd_t >$WORK/rudolfd.log 2>&1 & echo $! > $WORK/rudolfd.pid
 sleep 1

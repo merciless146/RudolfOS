@@ -967,10 +967,11 @@ static void api_apps(struct req *r, const char *what)
 		sadd(&s, "],\"mode\":"); if (m) m[strcspn(m, "\n")] = 0; sjson(&s, m ? m : "desktop"); sadd(&s, "}");
 		free(w); free(m); reply_json(r->fd, &s); return;
 	}
-	if (!strcmp(what, "show") || !strcmp(what, "close")) {
+	/* 1.5.6: and "kill": ends the program behind the window (the installation wizard's "Stop the installer") */
+	if (!strcmp(what, "show") || !strcmp(what, "close") || !strcmp(what, "kill")) {
 		const char *wq = qparam(r->query, "win"); char *e; unsigned long x = wq ? strtoul(wq, &e, 16) : 0;
 		if (!x || *e) { reply_err(r->fd, 400, "bad window"); return; }
-		char b[64]; snprintf(b, sizeof b, "%s %lx\n", !strcmp(what, "show") ? "win" : "close", x);
+		char b[64]; snprintf(b, sizeof b, "%s %lx\n", !strcmp(what, "show") ? "win" : what, x);
 		write_str(!strcmp(what, "show") ? RUN "/wm" : RUN "/wmcmd", b); reply_ok(r->fd, "ok"); return;
 	}
 	if (!strcmp(what, "desktop")) { write_str(RUN "/wm", "desktop"); reply_ok(r->fd, "ok"); return; }

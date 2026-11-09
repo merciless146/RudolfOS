@@ -29,7 +29,7 @@ function devlAsk(s){const p=s&&s.on&&s.pending;let o=document.getElementById('de
  o.querySelector('.dlw').textContent='Command '+p.id+' from '+s.repo+' ('+p.kind+'):';o.querySelector('.dlc').textContent=p.what||'';
  const ans=async a=>{o.remove();try{await rdPost('devlink/answer?id='+encodeURIComponent(p.id)+'&a='+a)}catch(e){}devlPoll()};
  o.querySelector('.dln').onclick=()=>ans('refuse');o.querySelector('.dly').onclick=()=>ans('allow');
- document.body.appendChild(o);o.querySelector('.dln').focus()}
+ document.body.appendChild(o);o.querySelector('.dln').focus();typeof promptFront=='function'&&promptFront(o)}
 async function devlPoll(){if(!RD)return;try{DEVLST=await rd('devlink')}catch(e){return}devlBanner(DEVLST);devlAsk(DEVLST)}
 if(typeof RD!='undefined'&&RD){devlPoll();setInterval(devlPoll,4000)}
 async function devlLog(){let l='';try{l=(await rd('devlink/log')).log||''}catch(e){l=e.message}

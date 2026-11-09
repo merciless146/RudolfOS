@@ -53,6 +53,18 @@ desk.addEventListener('loadabort', e => {
   starting.hidden = false; setTimeout(() => { desk.src = DESK_URL }, 2000);
 });
 addEventListener('focus', () => { if (!document.activeElement || document.activeElement === document.body) desk.focus() });
+/* 1.5.6: a key that reaches the shell itself (the keyboard is on neither the desktop nor a tab) never lets Chromium
+   act: Ctrl+Shift+R reloaded the desktop from here (the host test, in this shell), and F5, Alt+F4, Ctrl+H, Shift+Esc
+   and the others do what desktop/keys56.js lists. The key is stopped, and the keyboard goes back to the desktop */
+const SHELL_KEYS = new Set(['CKeyW', 'CKeyT', 'CKeyN', 'CKeyR', 'CKeyS', 'CKeyO', 'CKeyP', 'CKeyH', 'CKeyJ', 'CKeyD', 'CKeyF', 'CKeyU', 'CKeyQ', 'CKeyG',
+  'CKeyE', 'CKeyK', 'CKeyL', 'CF4', 'CF5', 'CTab', 'CPageUp', 'CPageDown', 'CSKeyW', 'CSKeyN', 'CSKeyT', 'CSKeyR', 'CSKeyQ', 'CSKeyB', 'CSKeyO', 'CSKeyA',
+  'CSKeyM', 'CSKeyG', 'CSKeyJ', 'CSKeyI', 'CSKeyC', 'CSDelete', 'CSTab', 'AF4', 'AHome', 'AKeyD', 'AKeyF', 'AKeyE', 'ASKeyI', 'SEscape', 'SF5',
+  'F1', 'F3', 'F5', 'F6', 'F7', 'F10', 'F11', 'F12', 'CF20', 'CF21', 'CF22', 'CF23', 'AF20']);
+addEventListener('keydown', e => {
+  if (!e.isTrusted || document.activeElement === desk || (document.activeElement && document.activeElement.tagName === 'CONTROLLEDFRAME')) return;
+  const n = (e.ctrlKey ? 'C' : '') + (e.shiftKey ? 'S' : '') + (e.altKey ? 'A' : '') + e.code;
+  if (/^C?S?A?Digit[1-9]$/.test(n) && e.ctrlKey || SHELL_KEYS.has(n)) { e.preventDefault(); desk.focus() }
+}, true);
 
 /* pointer capture for games (Quake): movement, buttons and the wheel go to the desktop while captured */
 let captured = false;
@@ -116,11 +128,16 @@ function fwWhy(u) {
 /* inside every page (isolated world): Oracle's shortcuts, and the title */
 const PAGE_JS = `(()=>{const N=${JSON.stringify(NONCE)},say=o=>{try{console.debug(N+JSON.stringify(o))}catch(e){}};
 const SUB={F20:'w',F21:'t',F22:'n',F23:'q'};
+const UI=new Set(['CKeyH','CKeyJ','CKeyD','CKeyU','CKeyS','CKeyO','CSKeyN','CSKeyT','CSKeyW','CSKeyO','CSKeyB','CSDelete','CSKeyA','CSKeyM','ASKeyI','SEscape','F1','F7','AHome']);
 addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey,k=SUB[e.code]&&e.ctrlKey?SUB[e.code]:e.key;let a='';
  if(c&&!e.altKey&&!e.shiftKey&&/^[twlrn]$/i.test(k))a='c'+k.toLowerCase();else if(c&&k=='q')a='none';else if(k=='F5')a='f5';
  else if(e.altKey&&!c&&(k=='ArrowLeft'||k=='ArrowRight'))a=k=='ArrowLeft'?'back':'fwd';else if(e.altKey&&!c&&(k=='F4'||e.code=='F20'))a='af4';
  else if(c&&!e.altKey&&(k=='+'||k=='='||k=='-'||k=='0'))a='z'+(k=='='?'+':k);else if(c&&k=='Tab')a=e.shiftKey?'ptab':'ntab';
- if(a){e.preventDefault();e.stopImmediatePropagation();if(a!='none')say({k:a})}},true);
+ else if((c&&(e.code=='KeyR'||e.code=='F5'))||(e.shiftKey&&!c&&e.code=='F5'))a='f5';
+ if(a){e.preventDefault();e.stopImmediatePropagation();if(a!='none')say({k:a})}
+ /* 1.5.6: Chromium's own pages, windows and bubbles (history, downloads, bookmarks, its task manager, view source,
+    save and open dialogs, help) never open from a website: the page still sees the key */
+ else if(e.isTrusted&&UI.has((c?'C':'')+(e.shiftKey?'S':'')+(e.altKey?'A':'')+e.code))e.preventDefault()},true);
 let t=null;const tt=()=>{if(document.title!==t){t=document.title;say({title:t})}};
 addEventListener('DOMContentLoaded',tt);addEventListener('load',tt);setInterval(tt,1500)})()`;
 /* in every frame of a page: Flash content (an <embed> or <object> with a .swf) asks for Ruffle */
