@@ -207,7 +207,7 @@ function rappPackageDlg(html,path){const id=('user.'+(USER?USER.n:'me')+'.'+(pat
 /* Start menu section for installed apps */
 function startMenuApps(){const ul=$('#menu ul');if(!ul)return;ul.querySelectorAll('li.rapp,li.v25').forEach(x=>x.remove());const hidden=USER?ld(HIDEK(),[]):[];
  ul.querySelectorAll('li[data-a]').forEach(li=>{li.style.display=hidden.includes(li.dataset.a)?'none':''});
- const extra=['taskmgr','code','viewer','pdf','capture','archive','calendar','clock','sheet','deck','contacts','weather','charmap','events','camera','recorder','fonts','devcon','help','store'].filter(k=>APPS[k]&&!hidden.includes(k));
+ const extra=['taskmgr','code','viewer','pdf','capture','archive','calendar','clock','sheet','deck','contacts','weather','charmap','events','camera','recorder','fonts','devcon','help','store'].filter(k=>APPS[k]&&!hidden.includes(k)&&(k!='devcon'||devToolsShown()));
  const before=ul.querySelector('li[data-a=settings]')||ul.querySelector('li[data-a=run]');
  const mk=(k,cls)=>{const a=APPS[k],li=document.createElement('li');li.className=cls;li.dataset.v25=k;li.textContent=a.icon+' '+a.name;li.tabIndex=0;li.onclick=e=>{e.stopPropagation();$('#menu').style.display='none';launch(k)};return li};
  /* 1.4.5: an Office group with WordPro, SpreadsheetPro and PresentPro */const wli=ul.querySelector('li[data-a=wordpro]');const office=OFFICE_APPS.filter(([k])=>APPS[k]&&!hidden.includes(k));if(office.length){if(wli)wli.style.display='none';const hd=document.createElement('li');hd.className='v25 offh';hd.textContent='Office';hd.setAttribute('aria-hidden','true');ul.insertBefore(hd,before);office.forEach(([k])=>{const li=mk(k,'v25 offi');ul.insertBefore(li,before)})}

@@ -441,3 +441,5 @@ html.dark .odd,.odark .odd{background:#1f2937;color:#f3f4f6;border-color:#374151
 .wzbar{height:8px;border-radius:4px;background:#8884;overflow:hidden;margin:8px 0}.wzbar i{display:block;height:100%;width:0;background:#2e86de;transition:width .4s}
 .wzlog{max-height:160px;overflow:auto;font-size:11px;white-space:pre-wrap}.wzf{display:flex;gap:8px;justify-content:flex-end}.wzf .wzmain{font-weight:bold}
 .wzapp{display:flex;align-items:center;gap:8px;margin:4px 0}.wzapp>span{width:24px;height:24px;display:inline-block;text-align:center}.wzapp>span img{width:100%;height:100%;object-fit:contain}.wzapp b{flex:1}
+/* 1.5.6: the Command Prompt as a Terminal tab */
+.dtbox.dtcmd{display:flex;flex-direction:column;inset:0}.dtbox.dtcmd .term{flex:1;height:100%;font-size:inherit;background:#0b1020}.dtbox.dtcmd .term input{font-size:inherit}

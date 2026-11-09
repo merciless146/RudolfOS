@@ -133,13 +133,13 @@ async function pkgPrompt(P,args){const c=(args[0]||'help').toLowerCase(),rest=ar
   try{await pkgJob(jobs[c]+(c=='install'||c=='remove'?encodeURIComponent(rest.map(x=>x.toLowerCase()).join(',')):''),l=>P.print(l))}catch(e){P.print('rpk: '+e.message)}return}
  P.print('Unknown rpk command "'+c+'". Type: rpk help')}
 const PROMPT_BUILTIN=new Set('HELP VER CLS ECHO DATE TIME DIR CD MD RD TYPE DEL COPY REN EDIT LUA BLOCKLUA EXPLORER EXIT'.split(' '));
-{const _p=prompt;prompt=function(startCmd){const go=startCmd&&/^\s*rpk\b/i.test(startCmd);const P=_p(go?undefined:startCmd);const W=wins[wins.length-1],inp=W&&W.body.querySelector('.term input');
+{const _p=promptMount;promptMount=function(startCmd,host){const go=startCmd&&/^\s*rpk\b/i.test(startCmd);const P=_p(go?undefined:startCmd,host);const inp=P.input;
  if(inp)inp.addEventListener('keydown',e=>{if(e.key!='Enter')return;const v=inp.value,t=pkgTokens(v.trim()),c=(t[0]||'').toLowerCase();
   if(c=='help'&&t.length==1){setTimeout(()=>P.print('RPK           packages: rpk help'),0);return}
   let args=null;if(c=='rpk')args=t.slice(1);
   else if(c&&!PROMPT_BUILTIN.has(c.toUpperCase())&&PKGS&&PKGS.installed){const p=PKGS.installed.find(x=>x.kind=='cli'&&(x.commands||'').split(' ').includes(c));if(p)args=['run',p.name,...t]}
   if(!args)return;e.preventDefault();e.stopImmediatePropagation();
-  const pr=W.body.querySelector('.term .pr');P.print((pr?pr.textContent:'')+v);if(v)P.hist.push(v);P.hi=P.hist.length;inp.value='';inp.disabled=true;
+  const pr=P.term.querySelector('.pr');P.print((pr?pr.textContent:'')+v);if(v)P.hist.push(v);P.hi=P.hist.length;inp.value='';inp.disabled=true;
   pkgPrompt(P,args).catch(er=>P.print('rpk: '+er.message)).finally(()=>{inp.disabled=false;inp.focus()})},true);
  if(go&&inp){inp.value=startCmd;inp.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))}
  return P}}

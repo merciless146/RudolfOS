@@ -122,7 +122,7 @@ function blzChatUI(W){
  const showOut=(c,res)=>{const o=c.querySelector('.blzout');o.hidden=false;o.innerHTML='';
   if(!res.ok){o.innerHTML=`<div class='msg'>${lxEsc(res.error||'Could not run it.')}</div>`;
    if(res.missing=='python'||res.missing=='cpp'){const b=document.createElement('button');b.textContent=res.missing=='python'?'Install Python':'Install the C++ compiler';b.onclick=()=>blzInstall(res.missing,b,o);o.appendChild(b)}
-   else if(res.missing=='debian'){const b=document.createElement('button');b.textContent='Set up Linux (Debian)…';b.onclick=()=>terminalApp();o.appendChild(b)}return}
+   else if(res.missing=='debian'){const b=document.createElement('button');b.textContent='Set up Linux (Debian)…';b.onclick=()=>terminalApp('linux');o.appendChild(b)}return}
   const pre=document.createElement('pre');pre.className='blzres'+(res.code?' bad':'');pre.textContent=(res.out||'').trim()||(res.code?'(no output)':'(finished with no output)');o.appendChild(pre)};
  /* run one block; "auto" runs are the check after an answer */
  async function runBlock(c,lang,code,auto){
@@ -207,8 +207,8 @@ function blzHook(W,title){if(!RD||!W||!W.body||BLZ.wins.has(W))return;
    blzAskFrom('blocks',qn,null,{lang:'blocklua',blocks:true,onBlocks:t=>blzToBlocks(t)})}}}
 {const _w3=win;win=function(...a){const W=_w3.apply(this,a);try{const t=String(a[0]);if(/^(Notepad|Code Editor|BlockLua Builder)$/.test(t))queueMicrotask(()=>blzHook(W,t))}catch(e){}return W}}
 /* the Terminal: "Ask Blitzen" sends the last screenful (a command and its error) */
-{const _dt=debTermUI;debTermUI=function(W){const r=_dt(W);try{const bar=W.body.querySelector('.dtbar');if(RD&&bar&&!bar.querySelector('.blzask')){const b=blzAskButton('⚡ Ask');b.title='Ask Blitzen about what the terminal shows';bar.insertBefore(b,bar.querySelector('.dtfm'));
-  b.onclick=async()=>{const t=W.term&&W.term.cur();if(!t)return;const buf=t.s.t.buffer.active;const lines=[];for(let i=Math.max(0,buf.length-60);i<buf.length;i++){const l=buf.getLine(i);if(l){const s=l.translateToString(true);if(s.trim())lines.push(s)}}
+{const _dt=termUI;termUI=function(W){const r=_dt(W);try{const bar=W.body.querySelector('.dtbar');if(RD&&bar&&!bar.querySelector('.blzask')){const b=blzAskButton('⚡ Ask');b.title='Ask Blitzen about what the terminal shows';bar.insertBefore(b,bar.querySelector('.dtfm'));
+  b.onclick=async()=>{const t=W.term&&W.term.cur();if(!t)return;let lines=[];if(t.kind=='cmd')lines=t.box.innerText.split('\n').filter(x=>x.trim());else{const buf=t.s.t.buffer.active;for(let i=Math.max(0,buf.length-60);i<buf.length;i++){const l=buf.getLine(i);if(l){const s=l.translateToString(true);if(s.trim())lines.push(s)}}}
    const qn=await blzAskDialog('Ask Blitzen about the terminal','For example: why did this fail?');if(!qn)return;blzAskFrom('the terminal',qn,'```\n'+lines.slice(-40).join('\n')+'\n```')}}}catch(e){}return r}}
 
 /* ---------- Start menu, keyboard, Settings › Apps › Blitzen ---------- */

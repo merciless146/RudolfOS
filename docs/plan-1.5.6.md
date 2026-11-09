@@ -208,6 +208,15 @@ can be removed again from Settings › Apps.
   encrypted for Apple's devices; nothing outside Apple's devices can run them. The wizard says so, and offers to look
   for the same app in the App Store (Linux) or as a web app.
 
+### Fewer console apps (added 2026-11-09)
+
+- **Terminal** takes in the Command Prompt: one app with the Command Prompt's icon, a tab for the Command Prompt
+  (drive C:, everywhere) and tabs for Linux (Debian). It opens on Linux when Linux is set up; prompt() (Lua, .BAT,
+  rpk) opens a C: tab. The Start menu has one Terminal; "Terminal (Linux)" and the Command Prompt entry go.
+- **The Developer Console** leaves the Start menu unless Settings › Apps › "Show developer tools" is on; it stays in
+  Task Manager and in search.
+- **The Code Editor** stays: it is an editor, not a console.
+
 ### The camera
 
 - **The device (#136):** cameras (`video*`, `media*`, `v4l-subdev*`) belong to the video group the desktop is in.
