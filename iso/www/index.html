@@ -5751,7 +5751,6 @@ const fileMeta=path=>META['/'+path.join('/')]||null;
 const RECK=()=>'bd95recent:'+uid(),FAVK=()=>'bd95fav:'+uid();
 function recentAdd(path){if(!USER)return;const k=path.join('\\');let r=ld(RECK(),[]).filter(x=>x!=k);r.unshift(k);svj(RECK(),r.slice(0,30))}
 const recentList=()=>ld(RECK(),[]).map(k=>k.split('\\')).filter(p=>node(p)!=null);
-const favList=()=>ld(FAVK(),[]).map(k=>k.split('\\')).filter(p=>isDir(node(p)));
 /* 1.5.6: favourite files too. favAll: every favourite, folders first, with whether it is still there (a favourite whose
    file was deleted stays, greyed, until it is removed); favMoved: a rename or move in File Explorer takes its
    favourites along (the item itself, and everything inside a folder) */
