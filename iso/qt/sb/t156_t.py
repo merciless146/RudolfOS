@@ -68,11 +68,24 @@ def boot(tag, slot):
     js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};return 1})()")
     return vm, g, up, js
 
-def signin(js, n, pw):
-    # the notifications from here on are kept (window.__nt), to say why a move did not happen
-    js("(()=>{if(!window.__ntw){window.__ntw=1;window.__nt=[];const o=notify;notify=function(t,b){__nt.push(t+': '+b);return o.apply(this,arguments)}}return 1})()")
-    return js(f"(async()=>{{const a=ACCTS.find(x=>x.n=={json.dumps(n)});if(!a)return 'no account';if(!(await pwCheck(a,{json.dumps(pw)})))return 'bad';if(USER)userLogout();"
-              f"const L=document.getElementById('login');USER=a;await userLogin(a,{json.dumps(pw)});lastInput=Date.now();if(L)L.style.display='none';return 'in '+USER.n}})()", 180)
+def signin(js, n, pw, secs=900):
+    # the notifications and the page's warnings from here on are kept (window.__nt, __cw), to say why something did not
+    # happen. Signing in runs in the page and is waited for here: a sign-in that reads 3,000 files from the disk takes
+    # minutes in QEMU, and js() retrying a call that timed out signed out and in again in the middle of it.
+    js("(()=>{if(!window.__ntw){window.__ntw=1;window.__nt=[];window.__cw=[];const o=notify;notify=function(t,b){__nt.push(t+': '+b);return o.apply(this,arguments)};"
+       "const w=console.warn;console.warn=function(...a){__cw.push(a.map(x=>x&&x.message?x.message:String(x)).join(' ').slice(0,300));return w.apply(this,a)}}return 1})()")
+    r = js(f"(()=>{{if(window.__si=='wait')return 'already';const a=ACCTS.find(x=>x.n=={json.dumps(n)});if(!a)return 'no account';window.__si='wait';"
+           f"(async()=>{{try{{if(!(await pwCheck(a,{json.dumps(pw)}))){{__si='bad';return}}if(USER)userLogout();const L=document.getElementById('login');USER=a;"
+           f"await userLogin(a,{json.dumps(pw)});lastInput=Date.now();if(L)L.style.display='none';__si='in '+USER.n}}catch(e){{__si='error '+e.message}}}})();return 'started'}})()", 60)
+    if r not in ('started', 'already'): return r
+    end = time.time() + secs
+    while time.time() < end:
+        s = js("window.__si", 30)
+        if isinstance(s, str) and s != 'wait': return s
+        time.sleep(5)
+    return 'still signing in after %d s' % secs
+def warnings(js):
+    return js("(window.__cw||[]).slice(-12)")
 def signout(js):
     return js("(async()=>{try{fsFlush()}catch(e){}try{await homeChain}catch(e){}try{if(typeof HD!='undefined')await HD.chain}catch(e){}if(USER)userLogout();"
               "await new Promise(r=>setTimeout(r,3000));try{if(typeof HD!='undefined')await HD.chain}catch(e){}try{await homeChain}catch(e){}return 'out'})()", 180)
@@ -122,7 +135,7 @@ try:
     o = sh(f"ls {A}/Documents; cat {A}/Documents/NOTE.TXT; ls {A}/Documents/MANY | wc -l; ls -la {A}/Pictures/PIC.PNG; sha256sum {A}/Downloads/BIG.BIN; ls /home/rudolf/Downloads/.accounts/{DLA}/ 2>&1", 120)
     out(o)
     ok(f'5. the first sign-in on 1.5.6 moves the files to {A} (the document, the picture, 3,000 files), verified', moved is True and 'written in 1.5.5' in o and re.search(r'^3000$', o, re.M) and 'PIC.PNG' in o, [moved, o])
-    ok('6. the large download is moved into the account\'s Downloads, not copied (the same bytes; gone from the old place)', BIGSHA and BIGSHA in o and 'BIG.BIN' not in o.split(BIGSHA)[-1], [BIGSHA, o])
+    ok('6. the large download is moved into the account\'s Downloads, not copied (the same bytes; gone from the old place)', BIGSHA and f'{BIGSHA}  {A}/Downloads/BIG.BIN' in o and 'No such file' in o.split(BIGSHA)[-1], [BIGSHA, o])
     ms = js("(async()=>{const t=performance.now();const j=await rd('home/list?'+hdQ()+'&path=Documents/MANY');return [Math.round(performance.now()-t),(j.items||[]).length]})()", 120)
     ok('7. listing the folder of 3,000 files takes under a second', isinstance(ms, list) and ms[1] == 3000 and ms[0] < 1000, ms)
     # a Linux app: busybox in a stand-in Debian (the real one is a large download), owned by Debian's own root (200000,
@@ -146,6 +159,7 @@ try:
     out(signout(js)); time.sleep(5)
     out(signin(js, 'boss', 'b1'))
     opened = wait_for(js, "(()=>{const k=fs['C:'].USERS.KID;return !!(k&&k.DOCUMENTS&&typeof k.DOCUMENTS['KIDNOTE.TXT']=='string')})()", 300)
+    if opened is not True: out('page warnings:', warnings(js))
     ok('11. the user\'s home moved too, and the administrator opens it from the disk', kmoved is True and opened is True, [kmoved, opened])
     js("(async()=>{fs['C:'].USERS.KID.DOCUMENTS['KIDNOTE.TXT']+='an administrator was here\\n';fsSave();fsFlush();await new Promise(r=>setTimeout(r,8000));return 1})()", 120)
     out(signout(js)); time.sleep(5)
@@ -182,6 +196,7 @@ try:
     out(signin(js, 'boss', 'b1'))
     rest = wait_for(js, "(()=>{if(!(USER&&USER.disk&&hdOn()))return false;const D=node(homePath('DOCUMENTS'));return !!(D&&typeof D['NOTE.TXT']=='string'&&D['NOTE.TXT'].includes('changed by a Linux app')&&D.MANY&&Object.keys(D.MANY).length==3000)})()", 1500, 10)
     o = sh(f"cat /persist/accounts/{BOSS}/Documents/NOTE.TXT; ls /persist/accounts/{BOSS}/Documents/MANY | wc -l", 60); out(o)
+    if rest is not True: out('page warnings:', warnings(js), 'notifications:', js("(window.__nt||[]).slice(-4)"))
     ok('15. a backup, the account\'s folder removed, the backup restored: the home comes back onto the disk', isinstance(r, int) and r > 1000 and rest is True and 'changed by a Linux app' in o and re.search(r'^3000$', o, re.M), [r, rest, o])
     out(signout(js))
 finally:
