@@ -206,3 +206,18 @@ async function lxAutoUpdate(){if(!RD||!USER||window.LOCKED)return;if(Date.now()-
  if(!s.flatpak||!s.persistent||!s.auto)return;if(!(await lxInstalled()).length)return;try{const j=await rd('job');if(j.running)return}catch(e){return}
  try{await lxApi('apps/update')}catch(e){return}svj('bd95lxupd',Date.now());const j=await lxJobWait();if(j.status==0&&/Updating|Installing/i.test(j.log||''))notify('Linux apps updated','Your Linux apps have the latest versions.')}
 if(RD){lxRegister();setTimeout(()=>lxInstalled(true),4000);setInterval(lxWinPoll,1500);setInterval(lxPortalPoll,1000);setTimeout(lxSync,9000);setInterval(()=>{if(LX.wins.some(w=>!w.web))lxSync()},20000);setTimeout(lxAutoUpdate,15*60e3);setInterval(lxAutoUpdate,3*3600e3)}
+
+/* ---------- 1.5.6: "Install" links from Flathub's website ----------
+   flathub.org's Install button opens flatpak+https://dl.flathub.org/repo/appstream/<id>.flatpakref (or appstream://<id>),
+   which a browser cannot open (ERR_UNKNOWN_URL_SCHEME). Oracle gives such links, and downloaded .flatpakref files, to
+   the App Store, which opens that app's page. */
+function lxStoreLinkId(u){u=String(u||'');let m=/^appstream:\/*([A-Za-z0-9_.-]+?)(\.desktop)?$/.exec(u);if(m)return m[1];
+ m=/^flatpak\+https?:\/\/[^?#]*\/([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+){2,})\.flatpakref(?:[?#].*)?$/i.exec(u);return m?m[1]:null}
+async function lxStoreOpen(id){const W=appStore();const b=W.body.querySelector(".tmtabs button[data-t='linux']");if(!b)return W;b.click();
+ const B=W.body.querySelector('.stb');
+ /* the Linux apps tab draws itself first (it may download the app list); then the app's page */
+ for(let i=0;i<100&&W.el.isConnected&&!B.querySelector('.lxfoot,.lxempty');i++)await new Promise(r=>setTimeout(r,100));
+ const a=(LX.cat||[]).find(x=>x.id==id);
+ if(a)flatAppPage(B,a,()=>flatStoreTab(B));
+ else{const q=B.querySelector('.lxq');if(q){q.value=id.split('.').pop();q.dispatchEvent(new Event('input'))}}
+ return W}
