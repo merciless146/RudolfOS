@@ -2077,6 +2077,7 @@ static void api_service(struct req *r)
    RUN/dl, made before the account's (dl_store_bind). Without that bind (the host tests) DLHOME stays DLPUB. */
 #define DLPUB "/home/rudolf/Downloads"
 #define DLSTORE RUN "/dl"
+static void dl_home_boot(void);
 static char DLHOME[64] = DLPUB, INCOMING[96] = DLPUB "/.incoming", QUARANTINE[96] = DLPUB "/.quarantine", DLACCTS[96] = DLPUB "/.accounts";
 static int dl_store_bound = 0;   /* 1: RUN/dl is a bind of the store, so Downloads can be the account's own */
 static void dl_store_paths(const char *h)
@@ -2096,9 +2097,14 @@ static void dl_store_dirs(void)
    folder. If the bind fails, RUN/dl is a link to it and Downloads stays out of the account's binds. */
 static void dl_store_bind(void)
 {
-	char rp[PATH_MAX]; if (!realpath(DLPUB, rp)) return;
+	/* Downloads in the encrypted folder while it is locked: its name cannot be found yet. RUN/dl is a link to Downloads
+	   meanwhile (Chromium's policy points into it; nothing is downloaded before a sign-in), and the bind is made when
+	   the folder is unlocked (vault/unlock calls dl_home_boot) */
+	char rp[PATH_MAX];
+	if (!realpath(DLPUB, rp)) { struct stat l; if (lstat(DLSTORE, &l)) { if (symlink(DLPUB, DLSTORE)) {} } return; }
 	struct stat a, b, rs;
-	if (!stat(DLSTORE, &a) && !stat(rp, &b) && a.st_dev == b.st_dev && a.st_ino == b.st_ino && !stat(RUN, &rs) && rs.st_dev != a.st_dev) { dl_store_bound = 1; dl_store_paths(DLSTORE); dl_store_dirs(); return; }
+	struct stat ls0; int islink = !lstat(DLSTORE, &ls0) && S_ISLNK(ls0.st_mode);   /* a link is not a bind */
+	if (!islink && !stat(DLSTORE, &a) && !stat(rp, &b) && a.st_dev == b.st_dev && a.st_ino == b.st_ino && !stat(RUN, &rs) && rs.st_dev != a.st_dev) { dl_store_bound = 1; dl_store_paths(DLSTORE); dl_store_dirs(); return; }
 	umount2(DLSTORE, MNT_DETACH);
 	struct stat l; if (!lstat(DLSTORE, &l) && S_ISLNK(l.st_mode)) unlink(DLSTORE);
 	mkdir(DLSTORE, 0755);
@@ -2969,7 +2975,9 @@ static void api_vault(struct req *r, const char *what, int post)
 		}
 		write_str(RUN "/vault-unlocked", "1\n");
 		/* Downloads in the encrypted folder: the folders the session could not make while it was locked (1.5.1) */
-		dl_store_dirs();
+		/* 1.5.6: the downloads store's bind, which could not be made while the folder was locked; with an account
+		   signed in, its binds again so that Downloads joins them */
+		dl_home_boot();
 		{ struct stat lst; if (!lstat(PERSIST "/flatpak", &lst) && S_ISLNK(lst.st_mode)) run("mountpoint -q /var/lib/flatpak || mount --bind " VAULT_DIR "/flatpak /var/lib/flatpak"); }
 		health_add("vault", "the encrypted folder was unlocked");
 		if (!access(PERSIST "/etc/vault.moving", F_OK) && !job_running()) start_job("vault", "/usr/lib/rudolf/vault-move");

@@ -80,5 +80,13 @@ o=$(BIND=1 t "POST home/unlock?acct=u-boss&session=1 <$T/k1")
 ok "25d. rudolfd started again in the session: the binds are made again, not stacked" "$([ "$(grep -c ' /home/rudolf/Downloads \| '$DS' ' /proc/self/mounts)" -le 1 ] && [ -f /home/rudolf/Downloads/NEW.BIN ] && [ -f /run/rudolf/dl/.incoming/x.crdownload ] && echo 1)" "$(grep -E 'rudolf|vaultdl' /proc/self/mounts)"
 o=$(BIND=1 t "POST home/lock?acct=u-boss")
 ok "25e. lock: Downloads is the store again, its bind at /run/rudolf/dl stays" "$([ -f /home/rudolf/Downloads/.incoming/x.crdownload ] && [ ! -e /home/rudolf/Downloads/NEW.BIN ] && [ -f /run/rudolf/dl/.incoming/x.crdownload ] && echo 1)" "$o $(ls -A /home/rudolf/Downloads)"
+# the Vivobook: at start-up Downloads is in the locked encrypted folder, so its name is not found yet
+umount -l /run/rudolf/dl; rmdir /run/rudolf/dl; mv $DS $DS.locked
+o=$(BIND=1 t "GET home")
+ok "25f. Downloads not found at the start (locked): /run/rudolf/dl is a link to Downloads, and Downloads is not bound" "$([ -L /run/rudolf/dl ] && [ "$(readlink /run/rudolf/dl)" = /home/rudolf/Downloads ] && echo "$o" | grep -q '"downloadsBound":false' && echo 1)" "$o $(ls -la /run/rudolf)"
+mv $DS.locked $DS
+o=$(BIND=1 t "POST home/unlock?acct=u-boss&session=1 <$T/k1" "GET home")
+ok "25g. once it is found (unlocked): the link becomes the bind, and Downloads joins the account's binds" "$([ -d /run/rudolf/dl ] && [ ! -L /run/rudolf/dl ] && [ -f /run/rudolf/dl/.incoming/x.crdownload ] && [ -f /home/rudolf/Downloads/NEW.BIN ] && echo "$o" | grep -q '"downloadsBound":true' && echo 1)" "$o $(ls -la /run/rudolf)"
+o=$(BIND=1 t "POST home/lock?acct=u-boss")
 umount /run/rudolf/dl 2>/dev/null; umount -R /home; umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]
