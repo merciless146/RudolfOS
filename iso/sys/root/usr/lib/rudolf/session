@@ -206,8 +206,13 @@ while :; do
 	B=$!
 	START_T=$(cut -d. -f1 /proc/uptime)
 	# watchdog: the desktop sends a heartbeat every few seconds
+	# 1.5.6: after sleep the heartbeat is as old as the sleep (on the Vivobook 5722 s), and the browser was restarted
+	# on waking, closing every window: a gap in this loop's own clock means the computer slept, and the desktop gets
+	# 90 s to send its heartbeat again
+	LASTW=$(date +%s); GRACE=0
 	while kill -0 $B 2>/dev/null; do
 		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] || [ -e /run/rudolf/shell-switch ] && break; done
+		W=$(date +%s); if [ $((W - LASTW)) -gt 40 ]; then echo "$(date) woke after $((W - LASTW)) s - the desktop has 90 s to answer"; GRACE=$((W + 90)); fi; LASTW=$W
 		if [ -e /run/rudolf/screen-restart ]; then rm -f /run/rudolf/screen-restart; display_restart; break; fi
 		# the desktop has handed its data over (or Settings changed): start the browser again, with the shell if it can
 		if [ -e /run/rudolf/shell-switch ]; then rm -f /run/rudolf/shell-switch; echo "$(date) starting the browser again (shell)"
@@ -224,6 +229,7 @@ while :; do
 				# 1.4.7: while memory is critical the memory guard is ending the largest page: give it 2 minutes
 				# before restarting the browser (that closes every window and tab)
 				LIM=60; [ -e /run/rudolf/memguard.critical ] && [ $(( $(date +%s) - $(stat -c %Y /run/rudolf/memguard.critical) )) -lt 30 ] && LIM=120
+				[ $W -lt $GRACE ] && [ $((W - MT)) -gt $LIM ] && AGE=0   # just woke: not yet
 				if [ $AGE -gt $LIM ]; then echo "$(date) desktop not responding for ${AGE}s - restarting browser"; rudolfd --health browser "the desktop stopped responding for ${AGE} s, so the browser was restarted"; pkill -f 'chrom[e].*--rudolf-kiosk'; sleep 3; pkill -9 -f 'chrom[e].*--rudolf-kiosk'; fi
 			fi
 		fi
