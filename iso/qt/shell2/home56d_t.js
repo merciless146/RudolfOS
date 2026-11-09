@@ -1,7 +1,7 @@
 // 1.5.6 (home56.js, linux26.js, dl27.js): Downloads joins the binds for Linux apps. With rudolfd's downloadsBound,
 // the copies lxSync used to keep at the top of the downloads store go (only identical ones), what Linux apps saved
 // there moves into the account's Downloads, lxSync copies nothing, and Linux apps get /home/rudolf/<Folder>/... paths
-// for files in the account's folder. Without downloadsBound only Downloads is still kept in step.
+// for files in the account's folder. Without downloadsBound nothing is copied either (the Vivobook lost two files).
 // A stand-in rudolfd with a disk in memory.   node home56d_t.js [CHROME]  (build iso/www first)
 const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
 const WWW = path.join(__dirname, '../../../iso/www');
@@ -68,9 +68,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   DLB = false; TOP.set('LATER.TXT', Buffer.from('x'));
   await q("(async()=>{HD.dltop=0;await hdBinds();return 1})()"); await wait(4800);
   ok('6. without downloadsBound: no clean-up of the store\'s top', await q("HD.dlb===false") && TOP.has('LATER.TXT'));
-  CALLS.length = 0; await q("lxSync()");
-  const trees = CALLS.filter(x => /fs\/tree/.test(x)).map(x => decodeURIComponent(x));
-  ok('7. ...and lxSync keeps only Downloads in step (Documents and Pictures are bound)', trees.length == 1 && /\/home\/rudolf\/Downloads/.test(trees[0]), trees);
+  await q("svj('bd95lxsync:'+uid(),{'Downloads/DISCORD.DEB':{h:'x',m:1,s:1}})"); CALLS.length = 0; await q("lxSync()");
+  ok('7. ...and lxSync still copies nothing (no two-way sync while the Linux side can change under it), and its old record is dropped', !CALLS.some(x => /fs\/(tree|write|read|delete)/.test(x)) && await q("localStorage.getItem('bd95lxsync:'+uid())===null"), CALLS.filter(x => /fs\//.test(x)));
   // another account than the one Linux apps' Downloads belonged to: left alone
   DLB = true; await q("(async()=>{svj('bd95lxowner','u-bob');HD.dltop=0;HD.dlb=true;return JSON.stringify(await hdDlTop())})()").then(r => ok('8. the store\'s top is taken in only by the account that owned it before', /owner/.test(r) && TOP.has('LATER.TXT'), r));
   ok('no page error', !errs.length, errs);
