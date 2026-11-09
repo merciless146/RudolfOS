@@ -1,5 +1,5 @@
 rudolf-system 1
-serial 2026110914
+serial 2026110916
 version 1.5.6.261109
 released 2026-11-09
 expires 2026-11-23
@@ -7,12 +7,12 @@ urgent 0
 chromium 157.0.8103.38
 kernel 6.18.62-rudolf
 notes 1.5.6: your files on the disk (docs/plan-1.5.6.md)
-L	vmlinuz	11639416	d1c8c9ced057e65c20cbcb467869f24dc3b337d2f709df302207da2a6327046a	https://github.com/merciless146/RudolfOS/releases/download/r2026110914/vmlinuz
-L	base	207323136	367746b73c829c1feb0c7916eeca4e8196833884a5f73eadcebb9a3ad89c1e38	https://github.com/merciless146/RudolfOS/releases/download/r2026110914/base.sfs
-L	chromium	134369280	5e9d9f111bcb03b430c404dd62fbb2f1289cac58efd602754490ec433ed2b944	https://github.com/merciless146/RudolfOS/releases/download/r2026110914/chromium.sfs
-L	desktop	4947968	1f507a36707f61a9dd0fb901c9c2c7108ab459557d668d30ef9b088187d1086a	https://github.com/merciless146/RudolfOS/releases/download/r2026110914/desktop.sfs
-L	modules	101203968	d0c77a306aef2eec834ca889a3e82c6cf0f12bea1b5f585fe2c2539a86ba9d6b	https://github.com/merciless146/RudolfOS/releases/download/r2026110914/modules.sfs
-V	base	50218	63d2f313d1f167d6e2d6fb420b77cf84079b105fc0bb7fc5960e507b8cb68bd7	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
+L	vmlinuz	11639416	d1c8c9ced057e65c20cbcb467869f24dc3b337d2f709df302207da2a6327046a	https://github.com/merciless146/RudolfOS/releases/download/r2026110916/vmlinuz
+L	base	207323136	a520d11abd29e31bc78f461b826e27bbbc47e1668e0039b41d27d08162981f8e	https://github.com/merciless146/RudolfOS/releases/download/r2026110916/base.sfs
+L	chromium	134369280	5e9d9f111bcb03b430c404dd62fbb2f1289cac58efd602754490ec433ed2b944	https://github.com/merciless146/RudolfOS/releases/download/r2026110916/chromium.sfs
+L	desktop	4947968	89f501f42e3830a029fc653a0058760db77cfc2f866cf1413deace99e70e8d84	https://github.com/merciless146/RudolfOS/releases/download/r2026110916/desktop.sfs
+L	modules	101203968	d0c77a306aef2eec834ca889a3e82c6cf0f12bea1b5f585fe2c2539a86ba9d6b	https://github.com/merciless146/RudolfOS/releases/download/r2026110916/modules.sfs
+V	base	50218	a6c2f69c38db3ee4e9c7b18ce4a406aa2bd64144aa2498990d271c374e8deb22	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
 V	chromium	32547	2ff477c010b75c21a70a4055ed85da0ed7427b08aca416ebef684299983c96a4	da3143e0b76e95a8fb9b20d6cd921581143496db9de69f0900a337920b32f7f8
-V	desktop	1197	e49e5cb842819e740801d918ce05868759f5649f96a5a9ea14c859244998a847	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
+V	desktop	1197	3f427b1335f2dd1967d9ce3311ffe9590975fd007e307350236be77a91e93f6c	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
 V	modules	24513	a4aca3b0713a2dd348aad707672f4101f298b920513c44bc8b3ab43a08b0cbcd	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
