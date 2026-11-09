@@ -43,41 +43,63 @@ class DebSession{
  font(n){this.t.options.fontSize=n;this.resize()}
  close(){if(this.id&&this.alive)lxApi('term/close?id='+this.id).catch(()=>{});this.alive=false;try{this.t.dispose()}catch(e){}}
 }
-/* ---------- the Terminal app ---------- */
-async function terminalApp(){
- if(!RD)return notify('Terminal','The Linux terminal needs the installed Rudolf OS (bootable disc or USB).',{kind:'error'});
- if(!USER||USER.r=='guest')return notify('Terminal','The Linux terminal is not available to guests. Sign in with your own account.',{kind:'error'});
- const W=win('Terminal','🐧',820,520);W.body.innerHTML="<div class='msg' style='padding:16px'>Starting…</div>";
- const st=await debStatus();
- if(!st)return W.body.innerHTML="<div class='msg' style='padding:16px'>This Rudolf OS cannot run Debian (the system is too old: update it in Settings › Update and recovery).</div>";
- if(!st.installed)return debSetupPage(W);
- try{await debLib()}catch(e){W.body.innerHTML=`<div class='msg' style='padding:16px'>${lxEsc(e.message)}</div>`;return}
- debTermUI(W);lxSync()}
-function debTermUI(W){
+/* ---------- the Terminal app ----------
+   1.5.6: one Terminal (with the Command Prompt's icon) for the Command Prompt (drive C:, everywhere, also in a web
+   browser) and the Linux shell (Debian, on an installed Rudolf OS): each is a tab; ＋ opens either. It opens on
+   Linux when Linux is set up, otherwise on the Command Prompt. prompt() (Lua, .BAT files, rpk) opens a C: tab. */
+async function termLinuxOk(){if(!RD||!USER||USER.r=='guest')return false;const st=await debStatus();if(!st||!st.installed)return false;try{await debLib();return true}catch(e){return false}}
+async function terminalApp(kind){
+ if(kind=='linux'){
+  if(!RD)return notify('Terminal','The Linux terminal needs the installed Rudolf OS (bootable disc or USB).',{kind:'error'});
+  if(!USER||USER.r=='guest')return notify('Terminal','The Linux terminal is not available to guests. Sign in with your own account.',{kind:'error'})}
+ const W=win('Terminal','⬛',820,520);const ui=termUI(W);
+ if(kind=='cmd'){ui.add('cmd');termCheckLinux(ui);return W}
+ W.body.querySelector('.dtarea').innerHTML="<div class='msg dtwait' style='padding:16px'>Starting…</div>";
+ const st=RD&&USER&&USER.r!='guest'?await debStatus():null;
+ W.body.querySelector('.dtwait')?.remove();
+ if(kind=='linux'&&!st){ui.add('cmd');ui.info('This Rudolf OS cannot run Debian (the system is too old: update it in Settings › Update and recovery).');return W}
+ if(kind=='linux'&&!st.installed){debSetupPage(W);return W}
+ ui.linux=!!(st&&st.installed)&&await debLib().then(()=>true,()=>false);
+ ui.add(ui.linux?'linux':'cmd');if(ui.linux)lxSync();return W}
+function termCheckLinux(ui){termLinuxOk().then(ok=>{ui.linux=ok})}
+/* a Command Prompt tab in a new Terminal window, for prompt(): its P (print, exec, input) at once */
+function termCmd(startCmd){const W=win('Terminal','⬛',720,440);const ui=termUI(W);const t=ui.add('cmd',startCmd);termCheckLinux(ui);return t.P}
+/* the Command Prompt in a tab: the same shape as DebSession for the tab bar (resize, font, focus, close) */
+class CmdSession{constructor(box,startCmd,onexit){box.classList.add('dtcmd');box.__close=onexit;this.box=box;this.P=promptMount(startCmd,box);const i=this.P.input;this.t={focus:()=>i.focus()};this.font(ld('bd95termfs',15))}
+ resize(){}font(n){this.box.style.fontSize=n+'px'}close(){}send(k){const i=this.P.input;if(k=='\t')return;i.value+=k;i.focus()}paste(t){this.send(String(t||'').replace(/\r?\n/g,' '))}}
+function termUI(W){
  W.body.classList.add('dterm');
  W.body.innerHTML=`<div class='dtbar'><div class='dttabs' role='tablist'></div><button class='dtnew' title='New tab (Ctrl+Shift+T)'>＋</button><span style='flex:1'></span><button class='dtfm' title='Smaller text'>A−</button><button class='dtfp' title='Larger text'>A+</button></div>
  <div class='dtarea'></div><div class='dtkeys' aria-label='Extra keys'>${['Esc','Tab','Ctrl','↑','↓','←','→','|','~','/','-','Paste'].map(k=>`<button data-k='${k}'>${k}</button>`).join('')}</div>`;
- const tabsEl=W.body.querySelector('.dttabs'),area=W.body.querySelector('.dtarea');const tabs=[];let cur=null;DEB.open++;
+ const tabsEl=W.body.querySelector('.dttabs'),area=W.body.querySelector('.dtarea'),keys=W.body.querySelector('.dtkeys');const tabs=[];let cur=null,linuxTabs=0;
+ const ui={linux:false,add:null,tabs:()=>tabs,cur:()=>cur,info:m=>{const d=document.createElement('div');d.className='msg';d.style.padding='6px 10px';d.textContent=m;area.before(d)}};
  const ctrlBtn=W.body.querySelector("[data-k='Ctrl']");
- const show=t=>{cur=t;tabs.forEach(x=>{x.box.style.display=x==t?'':'none';x.btn.classList.toggle('on',x==t);x.btn.setAttribute('aria-selected',x==t)});setTimeout(()=>{t.s.resize();t.s.t.focus()},30);W.setTitle(t.title||'Terminal')};
- const add=()=>{const box=document.createElement('div');box.className='dtbox';area.appendChild(box);const btn=document.createElement('button');btn.className='dttab';btn.setAttribute('role','tab');btn.innerHTML="<span>Debian</span><b title='Close tab'>✕</b>";tabsEl.appendChild(btn);
-  const t={box,btn,title:''};t.s=new DebSession(box,{onexit:()=>{btn.classList.add('ended')},ontitle:x=>{t.title=x;btn.firstChild.textContent=x.replace(/^rudolf@rudolf: ?/,'')||'Debian';if(cur==t)W.setTitle(x)},onctrl:v=>ctrlBtn.classList.toggle('on',v)});
-  btn.onclick=e=>{if(e.target.tagName=='B'){closeTab(t);return}show(t)};tabs.push(t);show(t)};
- const closeTab=t=>{t.s.close();t.box.remove();t.btn.remove();tabs.splice(tabs.indexOf(t),1);if(!tabs.length){W.close();return}show(tabs.at(-1))};
- W.body.querySelector('.dtnew').onclick=add;
- const fs=d=>{const n=Math.max(10,Math.min(28,ld('bd95termfs',15)+d));svj('bd95termfs',n);tabs.forEach(t=>t.s.font(n))};
- W.body.querySelector('.dtfm').onclick=()=>fs(-1);W.body.querySelector('.dtfp').onclick=()=>fs(1);
+ const show=t=>{cur=t;tabs.forEach(x=>{x.box.style.display=x==t?'':'none';x.btn.classList.toggle('on',x==t);x.btn.setAttribute('aria-selected',x==t)});keys.style.display=t.kind=='linux'?'':'none';setTimeout(()=>{t.s.resize();t.s.t.focus()},30);W.setTitle(t.title||'Terminal')};
+ const add=(kind,startCmd)=>{const box=document.createElement('div');box.className='dtbox';area.appendChild(box);const btn=document.createElement('button');btn.className='dttab';btn.setAttribute('role','tab');
+  btn.innerHTML=`<span>${kind=='linux'?'Debian':'C:'}</span><b title='Close tab'>✕</b>`;tabsEl.appendChild(btn);
+  const t={box,btn,title:'',kind};
+  if(kind=='linux'){linuxTabs++;if(linuxTabs==1)DEB.open++;t.s=new DebSession(box,{onexit:()=>{btn.classList.add('ended')},ontitle:x=>{t.title=x;btn.firstChild.textContent=x.replace(/^rudolf@rudolf: ?/,'')||'Debian';if(cur==t)W.setTitle(x)},onctrl:v=>ctrlBtn.classList.toggle('on',v)})}
+  else{t.s=new CmdSession(box,startCmd,()=>closeTab(t));t.P=t.s.P;t.title='Command Prompt'}
+  btn.onclick=e=>{if(e.target.tagName=='B'){closeTab(t);return}show(t)};tabs.push(t);show(t);return t};
+ ui.add=add;
+ const closeTab=t=>{t.s.close();t.box.remove();t.btn.remove();tabs.splice(tabs.indexOf(t),1);if(t.kind=='linux'&&--linuxTabs==0){DEB.open--;setTimeout(debApps,1500);lxSync()}if(!tabs.length){W.close();return}show(tabs.at(-1))};
+ const newTab=e=>{if(!ui.linux)return add('cmd');const r=(e&&e.target||W.body.querySelector('.dtnew')).getBoundingClientRect();
+  cmenu(r.left,r.bottom,[['Command Prompt (C:)',()=>add('cmd'),true,{icon:'⬛'}],['Linux (Debian)',()=>add('linux'),true,{icon:'🐧'}]])};
+ W.body.querySelector('.dtnew').onclick=newTab;
+ const fsz=d=>{const n=Math.max(10,Math.min(28,ld('bd95termfs',15)+d));svj('bd95termfs',n);tabs.forEach(t=>t.s.font(n))};
+ W.body.querySelector('.dtfm').onclick=()=>fsz(-1);W.body.querySelector('.dtfp').onclick=()=>fsz(1);
  const K={Esc:'\x1b',Tab:'\t','↑':'\x1b[A','↓':'\x1b[B','→':'\x1b[C','←':'\x1b[D'};
- W.body.querySelector('.dtkeys').onclick=e=>{const k=e.target.dataset&&e.target.dataset.k;if(!k||!cur)return;
+ keys.onclick=e=>{const k=e.target.dataset&&e.target.dataset.k;if(!k||!cur)return;
   if(k=='Ctrl'){cur.s.ctrl=!cur.s.ctrl;ctrlBtn.classList.toggle('on',cur.s.ctrl)}else if(k=='Paste')navigator.clipboard.readText().then(t=>cur.s.paste(t)).catch(()=>notify('Terminal','Use Ctrl+Shift+V to paste.'));else cur.s.send(K[k]||k);cur.s.t.focus()};
  /* the desktop's own shortcuts stay out of the terminal; Ctrl+Shift+T opens a tab */
- W.body.addEventListener('keydown',e=>{if(e.ctrlKey&&e.shiftKey&&(e.key=='T'||e.key=='t')){e.preventDefault();add()}e.stopPropagation()});
- W.body.addEventListener('keyup',e=>e.stopPropagation());
+ W.body.addEventListener('keydown',e=>{if(e.ctrlKey&&e.shiftKey&&(e.key=='T'||e.key=='t')){e.preventDefault();newTab()}if(cur&&cur.kind=='linux')e.stopPropagation()});
+ W.body.addEventListener('keyup',e=>{if(cur&&cur.kind=='linux')e.stopPropagation()});
  let rt;new ResizeObserver(()=>{clearTimeout(rt);rt=setTimeout(()=>cur&&cur.s.resize(),80)}).observe(area);
- /* Documents, Pictures and Downloads are kept in step with drive C: while a terminal is open */
- const poll=setInterval(()=>{if(!W.el.isConnected){clearInterval(poll);return}debApps();lxSync()},15000);
- W.onclose=()=>{tabs.forEach(t=>t.s.close());DEB.open--;setTimeout(debApps,1500);lxSync()};
- W.term={add,tabs:()=>tabs,cur:()=>cur};add();return W}
+ const poll=setInterval(()=>{if(!W.el.isConnected){clearInterval(poll);return}if(linuxTabs){debApps();lxSync()}},15000);
+ W.onclose=()=>{tabs.forEach(t=>t.s.close());if(linuxTabs){DEB.open--;setTimeout(debApps,1500);lxSync()}};
+ W.term=ui;return ui}
+/* (kept for older callers) the Linux terminal in an existing window */
+function debTermUI(W){const ui=termUI(W);ui.linux=true;ui.add('linux');return W}
 function debSetupPage(W){const st=DEB.st;W.setTitle('Set up Linux (Debian 13)');W.body.classList.remove('dterm');
  W.body.innerHTML=`<div class='dsetup'><h3>🐧 Linux terminal with Debian 13</h3>
  <p>Debian is a complete Linux system that runs beside Rudolf OS. You get a terminal, and <code>sudo apt install</code> gives you Debian's 60,000 programs: command-line tools, programming languages and graphical apps, which appear in the Start menu.</p>
@@ -96,11 +118,9 @@ function debSetupPage(W){const st=DEB.st;W.setTitle('Set up Linux (Debian 13)');
   const j=await lxJobWait(l=>{let m;if((m=/^step (.*)/.exec(l)))step.textContent=m[1]+'…';else if((m=/^progress (\d+)/.exec(l)))bar.style.width=m[1]+'%';else if(/^done /.test(l)){step.textContent=l.slice(5);bar.style.width='100%'}});
   if(j.status!=0){pg.hidden=true;f.hidden=false;err.textContent=((j.log||'').trim().split('\n').pop()||'Setup failed.').replace(/^rudolf-debian: /,'');return}
   notify('Debian is ready','Open the Terminal from the Start menu any time.');await debStatus();try{await debLib()}catch(e){err.textContent=e.message;return}W.setTitle('Terminal');debTermUI(W);lxSync()}}
-regApp('terminal',{name:'Terminal',icon:'🐧',kw:'terminal linux debian apt shell bash command line console sudo',open:()=>terminalApp(),re:/^(Terminal|Set up Linux)/});
-{const _sma=startMenuApps;startMenuApps=function(){_sma();const ul=$('#menu ul');if(!ul||!RD)return;ul.querySelectorAll('li.dtv').forEach(x=>x.remove());if(!USER||USER.r=='guest')return;
- const before=ul.querySelector('li[data-a=settings]')||ul.querySelector('li[data-a=run]');const li=document.createElement('li');li.className='rapp dtv';li.dataset.v25='terminal';li.tabIndex=0;li.textContent='🐧 Terminal (Linux)';
- li.onclick=e=>{e.stopPropagation();$('#menu').style.display='none';terminalApp()};li.onkeydown=e=>{if(e.key=='Enter')li.click()};ul.insertBefore(li,before)}}
-addEventListener('keydown',e=>{if(RD&&e.ctrlKey&&e.altKey&&(e.key=='t'||e.key=='T')&&USER&&USER.r!='guest'){e.preventDefault();terminalApp()}});
+regApp('terminal',{name:'Terminal',icon:'⬛',kw:'terminal command prompt cmd dos linux debian apt shell bash command line console sudo lua bat',open:()=>terminalApp(),re:/^(Terminal|Set up Linux|Command Prompt)/});
+/* (1.5.6: the Start menu's own Terminal entry opens both; the separate "Terminal (Linux)" entry is gone) */
+addEventListener('keydown',e=>{if(e.ctrlKey&&e.altKey&&(e.key=='t'||e.key=='T')&&USER){e.preventDefault();terminalApp()}});
 /* ---------- Linux check (1.2.7): what Linux apps and the terminal need, from rudolf-fscheck (rudolfd debian/check) ---------- */
 const LXCHK=[['persist','Data partition'],['persist_fs','File system'],['persist_kind','Kind'],['persist_features','Features'],['persist_inode_size','Inode size'],['persist_opts','Mounted with'],
  ['tmpfile_persist','Temporary files on the data partition'],['tmpfile_flatpak','…in Flatpak\'s folder'],['tmpfile_flatpak_repo','…in Flatpak\'s repository'],['tmpfile_var_tmp','…in /var/tmp'],['tmpfile_tmp','…in /tmp'],['tmpfile_debian','…in Debian'],

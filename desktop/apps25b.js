@@ -198,7 +198,8 @@ async function wasiRun(path,args,P){const bin=node(path);if(typeof bin!='string'
  try{const {instance}=await WebAssembly.instantiate(bytes,imp);mem=instance.exports.memory;const t0=performance.now();instance.exports._start();if(out)P.print(out);P.print(`[${path.at(-1)} finished in ${Math.round(performance.now()-t0)} ms]`)}catch(e){if(out)P.print(out);if(e instanceof Exit)P.print(`[exit code ${e.c}]`);else P.print('WebAssembly error: '+e.message)}}
 /* ===================== Unix commands, pipes and pkg in the Rudolf Prompt ===================== */
 const UNIX=['ls','cat','grep','head','tail','wc','sort','uniq','echo','cp','mv','rm','mkdir','touch','pwd','find','tree','clear','pkg','wasm','man','date','whoami','uname','df','du','open'];
-(function(){const o=prompt;prompt=function(...a){const P=o(...a);const W=wins[wins.length-1];const inp=W&&W.body.querySelector('.term input');const term=W&&W.body.querySelector('.term');if(!inp)return P;
+/* (1.5.6: on promptMount, so every Command Prompt tab of the Terminal has them) */
+(function(){const o=promptMount;promptMount=function(...a){const P=o(...a);const inp=P.input,term=P.term;if(!inp)return P;
  inp.addEventListener('keydown',e=>{if(e.key!='Enter')return;const line=inp.value.trim();const first=line.split(/\s+/)[0];if(!line||!(UNIX.includes(first)||/[|]|(^|\s)>>?\s/.test(line)&&/^[a-z]/.test(first)))return;
   e.preventDefault();e.stopImmediatePropagation();const pr=term.querySelector('.pr').textContent;P.print(pr+line);P.hist.push(line);P.hi=P.hist.length;inp.value='';sh(line,P).then(()=>P.ps&&P.ps())},true);
  return P}})();

@@ -17,5 +17,7 @@ function calcModes(W,cg){if(!W||!cg)return;cg.querySelectorAll('button').forEach
 function osverDraw(){const st=document.getElementById('start');if(!st)return;let v=document.getElementById('osver');
  if(!v){v=document.createElement('button');v.id='osver';v.title='About Rudolf OS';v.onclick=()=>{try{settings('about')}catch(e){}};st.after(v)}v.textContent=`Rudolf OS ${RVER}`}
 osverDraw();
+/* 1.5.6: the Command Prompt's desktop icon is the Terminal's now (the same icon): keep its place */
+(function(){try{Object.keys(localStorage).filter(k=>/^bd95cells/.test(k)).forEach(k=>{const c=JSON.parse(localStorage.getItem(k)||'null');const o='Rudolf '+'Prompt',o2='Command '+'Prompt';[o,o2].forEach(x=>{if(c&&c[x]&&!c['Terminal']){c['Terminal']=c[x];delete c[x];localStorage.setItem(k,JSON.stringify(c))}})})}catch(e){}})();
 /* the prompt used to be called “Rudolf Prompt”: keep its desktop position and pins */
 (function(){try{Object.keys(localStorage).filter(k=>/^bd95cells/.test(k)).forEach(k=>{const c=JSON.parse(localStorage.getItem(k)||'null');const old='Rudolf '+'Prompt';if(c&&c[old]&&!c['Command Prompt']){c['Command Prompt']=c[old];delete c[old];localStorage.setItem(k,JSON.stringify(c))}})}catch(e){}})();

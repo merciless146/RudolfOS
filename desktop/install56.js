@@ -34,7 +34,7 @@ async function wzDeb(path){const W=wzWin(path,'📦');wzSub(W,'A package for Lin
  wzBody(W,'<p class="wzwait">Reading the package…</p>');
  const st=await debStatus();
  if(!st||!st.installed){wzBody(W,`<p>Packages like this one are installed into Linux (Debian 13), which runs beside Rudolf OS. Linux is not set up on this computer yet: setting it up downloads about 120 MB.</p><p>Set it up, then open this file again.</p>`);
-  wzFoot(W,[['Set up Linux…',()=>{W.close();launch('terminal')},1],['Close',()=>W.close()]]);return W}
+  wzFoot(W,[['Set up Linux…',()=>{W.close();terminalApp('linux')},1],['Close',()=>W.close()]]);return W}
  let info;try{info=await lxApi('debian/debinfo?file='+encodeURIComponent(file))}catch(e){wzBody(W,/cannot reach/.test(e.message)?`<p>${wzEsc(e.message)}, then open it again.</p>`:`<p>This package cannot be read: ${wzEsc(e.message)}</p><p>It may be damaged or incomplete; download it again.</p>`);wzFoot(W,[['Close',()=>W.close()]]);return W}
  const arch=info.arch||'',okArch=!arch||arch=='all'||arch=='amd64'||arch=='i386';
  const kb=+info.size||0,sz=kb?(kb>=1024?(kb/1024).toFixed(1)+' MB':kb+' KB'):'';
