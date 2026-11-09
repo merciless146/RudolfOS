@@ -82,7 +82,7 @@ try:
     sh = lambda c, t=30: g.sh(c, t)
     m = sh('cat /run/rudolf/memory; cat /proc/swaps; cat /sys/kernel/mm/lru_gen/min_ttl_ms; cat /proc/sys/vm/swappiness; ls /proc/pressure; pgrep -x rudolf-memguard | head -1; free -m')
     out(m)
-    ok('2. compressed swap in memory is on (zram, zstd, half the memory)', re.search(r'zram: on, \d+ MiB, zstd', m) and '/dev/zram0' in m, m)
+    ok('2. compressed swap in memory is on (zram, zstd, as large as the memory since 1.5.6)', re.search(r'zram: on, \d+ MiB, zstd', m) and '/dev/zram0' in m, m)
     ok('3. the kernel ends a process instead of thrashing (lru_gen min_ttl_ms 1000), memory pressure (PSI) is there', re.search(r'^1000$', m, re.M) and 'memory' in m, m)
     ok('4. the memory guard runs', re.search(r'^\d+$', m.split('memory\n', 1)[-1], re.M) is not None, m)
     # the browser itself (named chrome, with --rudolf-kiosk and no --type=), its graphics process, rudolfd; the

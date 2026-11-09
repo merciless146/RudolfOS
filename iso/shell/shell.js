@@ -91,8 +91,8 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
    shell -> desktop {rudolfShell: 'tabev', tid, ev, ...}
      nav {url, back, fwd}       the page's address changed (also inside the page); back/fwd: its own history
      load {loading}             title {title}       focus       close (the page closed itself)
-     keys {k}                   a shortcut pressed inside the page: ct cw cn cl cr f5 back fwd z+ z- z0 ntab ptab
-                                (Ctrl+W, T, N, Q arrive as Ctrl+F20..F23: see rudolf-display's desk_key)
+     keys {k}                   a shortcut pressed inside the page: ct cw cn cl cr f5 back fwd z+ z- z0 ntab ptab af4
+                                (Ctrl+W, T, N, Q arrive as Ctrl+F20..F23, Alt+F4 as Alt+F20: see rudolf-display's desk_key; af4 closes the window)
      newwin {url, ntid, popup}  the page opened a window: a new tab ntid already holds it (opener kept)
      dialog {did, kind, text, def}   perm {pid, perm, url}   blocked {url, why, main}   gone {why}
      fs {on}                    the page is "fullscreen" (the stand-in, see fsStandIn): its frame fills the screen
@@ -118,7 +118,7 @@ const PAGE_JS = `(()=>{const N=${JSON.stringify(NONCE)},say=o=>{try{console.debu
 const SUB={F20:'w',F21:'t',F22:'n',F23:'q'};
 addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey,k=SUB[e.code]&&e.ctrlKey?SUB[e.code]:e.key;let a='';
  if(c&&!e.altKey&&!e.shiftKey&&/^[twlrn]$/i.test(k))a='c'+k.toLowerCase();else if(c&&k=='q')a='none';else if(k=='F5')a='f5';
- else if(e.altKey&&!c&&(k=='ArrowLeft'||k=='ArrowRight'))a=k=='ArrowLeft'?'back':'fwd';
+ else if(e.altKey&&!c&&(k=='ArrowLeft'||k=='ArrowRight'))a=k=='ArrowLeft'?'back':'fwd';else if(e.altKey&&!c&&(k=='F4'||e.code=='F20'))a='af4';
  else if(c&&!e.altKey&&(k=='+'||k=='='||k=='-'||k=='0'))a='z'+(k=='='?'+':k);else if(c&&k=='Tab')a=e.shiftKey?'ptab':'ntab';
  if(a){e.preventDefault();e.stopImmediatePropagation();if(a!='none')say({k:a})}},true);
 let t=null;const tt=()=>{if(document.title!==t){t=document.title;say({title:t})}};

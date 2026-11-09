@@ -450,7 +450,7 @@ static void touchpad_frame(struct dev *v)
 /* Chromium keeps some shortcuts for itself and acts on them before the page sees them: Ctrl+W and Ctrl+F4 close
    the desktop's window (the desktop starts again, open windows are lost), Ctrl+Q quits Chromium, Ctrl+T and Ctrl+N
    open browser windows over the desktop. While the desktop's Chromium window (class RudolfDesktop) has the
-   keyboard, those keys arrive as F20 (W, F4), F21 (T), F22 (N) and F23 (Q), still with Ctrl held; the desktop and
+   keyboard, those keys arrive as F20 (W, F4), F21 (T), F22 (N) and F23 (Q), still with Ctrl held (and Alt+F4 as Alt+F20); the desktop and
    Oracle's real tabs read Ctrl+F20 as Ctrl+W and so on (shell26.js: DESK_SUB). Linux apps and the browser window
    for sign-in sites get the keys unchanged. */
 static int mod_ctrl, mod_alt;
@@ -491,6 +491,9 @@ static int desk_key(int c, int down)
 	case KEY_N: s = KEY_F22; break;
 	case KEY_Q: s = KEY_F23; break;
 	}
+	/* 1.5.6: Alt+F4 too (Chromium closed the desktop's window on it: the Vivobook went back to the sign-in screen with
+	   a game open). It arrives as Alt+F20, which the desktop reads as Alt+F4: close the window in front */
+	if (mod_alt && !mod_ctrl && c == KEY_F4) s = KEY_F20;
 	if (s && desk_focused()) { key_sub[c] = s; return s; }
 	return c;
 }

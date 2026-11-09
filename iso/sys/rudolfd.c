@@ -2024,8 +2024,8 @@ static void api_memory(struct req *r)
 		int lines = 0; for (char *c = e; *c; c++) if (*c == '\n') lines++;
 		char *save = NULL; int i = 0;
 		for (char *l = strtok_r(e, "\n", &save); l; l = strtok_r(NULL, "\n", &save), i++) {
-			long long t, rss; int pid; if (i < lines - 20 || sscanf(l, "%lld %d %lld", &t, &pid, &rss) != 3) continue;
-			sadd(&s, "%s{\"time\":%lld,\"pid\":%d,\"rss\":%lld}", n++ ? "," : "", t, pid, rss);
+			long long t, rss; int pid; char app[64] = ""; if (i < lines - 20 || sscanf(l, "%lld %d %lld %63[^\n]", &t, &pid, &rss, app) < 3) continue;
+			sadd(&s, "%s{\"time\":%lld,\"pid\":%d,\"rss\":%lld,\"app\":", n++ ? "," : "", t, pid, rss); sjson(&s, app); sadd(&s, "}");
 		}
 		free(e);
 	}
@@ -2848,7 +2848,11 @@ static void health_tick(void)
 		else if (st.st_size > mg_off) {
 			char *e = slurp(RUN "/memguard.events", NULL);
 			if (e && (long long)strlen(e) >= mg_off) for (char *l = strtok(e + mg_off, "\n"); l; l = strtok(NULL, "\n")) {
-				long long tt, rss; int pid; if (sscanf(l, "%lld %d %lld", &tt, &pid, &rss) == 3) health_add("memory", "memory ran out: a web page using %lld MB was closed", rss >> 20);
+				long long tt, rss; int pid; char app[64] = "";
+				int k = sscanf(l, "%lld %d %lld %63[^\n]", &tt, &pid, &rss, app);
+				/* 1.5.6: or an app with no window open (rudolf-memguard: "TIME PID RSS NAME") */
+				if (k == 4) health_add("memory", "memory ran out: %s, which had no window open and used %lld MB, was closed", app, rss >> 20);
+				else if (k == 3) health_add("memory", "memory ran out: a web page using %lld MB was closed", rss >> 20);
 			}
 			free(e); mg_off = st.st_size;
 		}
