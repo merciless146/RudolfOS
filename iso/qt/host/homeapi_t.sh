@@ -101,6 +101,10 @@ mv $T/kid.aside $R/u-kid
 # the wizard gives a file in the account's folder; Linux sees it under /home/rudolf (home_linux_path)
 o=$(BIND=1 t "LP $R/u-boss/Downloads/a b.deb" "LP $R/u-boss/Documents/x/y.deb" "LP $R/u-boss/Desktop/z.deb" "LP $R/u-kid/Downloads/k.deb" "LP $R/u-boss/Downloads/../../u-kid/Downloads/k.deb" "LP /etc/passwd")
 ok "25j. a file in the signed-in account's Downloads or Documents -> /home/rudolf/...; Desktop, another account, .. and other paths are not" "$([ "$(echo "$o" | tr '\n' '|')" = "LP /home/rudolf/Downloads/a b.deb|LP /home/rudolf/Documents/x/y.deb|LP -|LP -|LP -|LP -|" ] && echo 1)" "$o"
+# 1.5.6: home/hash (File Explorer's Find duplicates): a file's SHA-256, read in place; never a link, a folder or outside
+cp $T/big $T/m/accounts/u-boss/Pictures/dup.bin 2>/dev/null || t "POST home/write?acct=u-boss&path=Pictures/dup.bin&base=new <$T/big" >/dev/null
+o=$(t "GET home/hash?acct=u-boss&path=Pictures/dup.bin" "GET home/hash?acct=u-boss&path=Pictures" "GET home/hash?acct=u-boss&path=../u-kid/Documents/x")
+ok "25k. home/hash gives the file's SHA-256; a folder and a path outside the account are refused" "$(echo "$o" | sed -n 1p | grep -q "\"sha256\":\"$(sha256sum $T/big | cut -c1-64)\"" && [ "$(echo "$o" | sed -n 2,3p | grep -c ' 40[04] ')" = 2 ] && echo 1)" "$o"
 o=$(BIND=1 t "POST home/lock?acct=u-boss")
 umount /run/rudolf/dl 2>/dev/null; umount -R /home; umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]
