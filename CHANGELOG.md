@@ -43,6 +43,7 @@ Summary: your files on the disk (docs/plan-1.5.6.md)
 - New: File Explorer's "Everywhere" search looks in the folder you are in first, then the rest of C:, then plugged-in drives (by name, at most 3 folder levels and 2,000 files each), with filters for the type (documents, pictures, music, videos, archives, programs) and when it changed. Results show where each one is and appear while it looks; it can be stopped, and shows 1,000 at a time with "Show more".
 - New: Rename… with several files selected renames them together: a pattern ("HOLIDAY ###" gives HOLIDAY 001, 002…, each keeping its extension) or find and replace, with every new name shown first. Names that would clash are shown in red and nothing changes until they are fixed; one Undo puts all the names back.
 - New: Find duplicates (a folder's menu in File Explorer, and Settings › Storage and backup) finds identical files (the same size and SHA-256, also for files kept on the disk), suggests keeping the newest of each, and moves the others to the Trash only when you ask.
+- Fixed: most accounts' files did not move to the disk on 1.5.6 ("Your files stay where they were" at every sign-in): account ids with capital letters were refused. Found by the new QEMU test of the move (t156).
 
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it

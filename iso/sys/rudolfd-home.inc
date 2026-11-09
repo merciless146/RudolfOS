@@ -28,6 +28,15 @@
 #define HOME_ROOT_DEF PERSIST "/accounts"
 #define HOME_KEYS RUN "/home-keys"
 #define HOME_SESSION RUN "/home-session"
+/* 1.5.6: an account's folder name is its id (the desktop's "u" and 8 letters and digits, upper and lower case). The
+   downloads' check (dl_acct_ok) takes lower case only (dlAcct() lowers the id), and refused most accounts here: QEMU
+   t156 found that an account like uQppGToP7 never moved to the disk ("bad account" at each sign-in) */
+static int home_acct_ok(const char *a)
+{
+	if (!a || !*a || strlen(a) > 64) return 0;
+	for (const char *c = a; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '-')) return 0;
+	return 1;
+}
 static char home_root[256] = HOME_ROOT_DEF;
 static const char *const HOME_SUB[] = { "Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos", ".Trash", ".rudolf", NULL };
 /* 1.5.6: Downloads too, when the downloads store has its own bind (dl_store_bind; the last entry, skipped without it) */
@@ -143,7 +152,7 @@ static int home_bind(const char *acct, char *err, size_t en)
 static int home_unlock(const char *acct, const unsigned char *key, int session, char *err, size_t en, int *made)
 {
 	if (made) *made = 0;
-	if (!dl_acct_ok(acct) || !strcmp(acct, "guest") || !strcmp(acct, "shared")) { snprintf(err, en, "bad account"); return 400; }
+	if (!home_acct_ok(acct) || !strcmp(acct, "guest") || !strcmp(acct, "shared")) { snprintf(err, en, "bad account"); return 400; }
 	mkdir(home_root, 0711);
 	int rfd = open(home_root, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
 	if (rfd < 0) { snprintf(err, en, "the folder for accounts could not be made"); return 500; }
@@ -189,7 +198,7 @@ static int home_unlock(const char *acct, const unsigned char *key, int session, 
 }
 static int home_lock(const char *acct, int *busy)
 {
-	if (!dl_acct_ok(acct)) return 400;
+	if (!home_acct_ok(acct)) return 400;
 	char *cur = slurp(HOME_SESSION, NULL); if (cur) { trim(cur); if (!strcmp(cur, acct)) home_unbind(); free(cur); }
 	int d = home_root_fd(acct); if (d < 0) return 404;
 	unsigned char id[FSCRYPT_KEY_IDENTIFIER_SIZE]; int p = home_policy_id(d, id); close(d);
@@ -296,7 +305,7 @@ static void api_home(struct req *r, const char *what, int post)
 		str s = {0}; int sup = vault_feature();
 		sadd(&s, "{\"ok\":true,\"supported\":%s,\"accounts\":[", sup ? "true" : "false");
 		DIR *d = opendir(home_root); struct dirent *de; int n = 0;
-		while (d && (de = readdir(d))) { if (!dl_acct_ok(de->d_name)) continue; sadd(&s, "%s{\"id\":\"%s\",\"unlocked\":%s}", n++ ? "," : "", de->d_name, home_unlocked(de->d_name) ? "true" : "false"); }
+		while (d && (de = readdir(d))) { if (!home_acct_ok(de->d_name)) continue; sadd(&s, "%s{\"id\":\"%s\",\"unlocked\":%s}", n++ ? "," : "", de->d_name, home_unlocked(de->d_name) ? "true" : "false"); }
 		if (d) closedir(d);
 		char *cur = slurp(HOME_SESSION, NULL); if (cur) trim(cur);
 		sadd(&s, "],\"session\":"); sjson(&s, cur && *cur ? cur : "");
@@ -305,7 +314,7 @@ static void api_home(struct req *r, const char *what, int post)
 		reply_json(r->fd, &s); return;
 	}
 	char acct[80]; { const char *a = qparam(r->query, "acct"); snprintf(acct, sizeof acct, "%s", a ? a : ""); }
-	if (!dl_acct_ok(acct)) { reply_err(r->fd, 400, "bad account"); return; }
+	if (!home_acct_ok(acct)) { reply_err(r->fd, 400, "bad account"); return; }
 	if (!strcmp(what, "unlock")) {
 		if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 		const char *sq = qparam(r->query, "session"); int session = sq && !strcmp(sq, "1");
@@ -463,7 +472,7 @@ static void home_serve_link(struct req *r, const char *spec)
 	char acct[80]; const char *c = strchr(spec, ':');
 	if (!c || (size_t)(c - spec) >= sizeof acct) { reply_err(r->fd, 404, "not found"); return; }
 	memcpy(acct, spec, c - spec); acct[c - spec] = 0; const char *rel = c + 1;
-	if (!dl_acct_ok(acct) || !*rel || !home_rel_ok(rel) || !home_unlocked(acct)) { reply_err(r->fd, 404, "not found"); return; }
+	if (!home_acct_ok(acct) || !*rel || !home_rel_ok(rel) || !home_unlocked(acct)) { reply_err(r->fd, 404, "not found"); return; }
 	int root = home_root_fd(acct); if (root < 0) { reply_err(r->fd, 404, "not found"); return; }
 	char last[256]; int pf = home_parent(root, rel, last, sizeof last, 0); close(root);
 	if (pf < 0) { reply_err(r->fd, 404, "not found"); return; }
@@ -500,7 +509,7 @@ static void dl_store_tidy(const char *acct)
 	char ad[600]; snprintf(ad, sizeof ad, "%s/%s/Downloads", home_root, acct);
 	int sd = open(DLSTORE, O_RDONLY | O_DIRECTORY | O_CLOEXEC), dd = open(ad, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
 	if (sd < 0 || dd < 0) { if (sd >= 0) close(sd); if (dd >= 0) close(dd); return; }
-	int accounts = 0; { DIR *h = opendir(home_root); struct dirent *e; while (h && (e = readdir(h))) if (dl_acct_ok(e->d_name)) accounts++; if (h) closedir(h); }
+	int accounts = 0; { DIR *h = opendir(home_root); struct dirent *e; while (h && (e = readdir(h))) if (home_acct_ok(e->d_name)) accounts++; if (h) closedir(h); }
 	int s2 = dup(sd); DIR *d = s2 >= 0 ? fdopendir(s2) : NULL; struct dirent *e; if (d) rewinddir(d); int same = 0, moved = 0, kept = 0, failed = 0;
 	char names[256][256]; int nn = 0;   /* read first: the folder changes while files go */
 	while (d && (e = readdir(d)) && nn < 256) { if (e->d_name[0] == '.') continue; snprintf(names[nn++], 256, "%s", e->d_name); }

@@ -105,6 +105,10 @@ ok "25j. a file in the signed-in account's Downloads or Documents -> /home/rudol
 cp $T/big $T/m/accounts/u-boss/Pictures/dup.bin 2>/dev/null || t "POST home/write?acct=u-boss&path=Pictures/dup.bin&base=new <$T/big" >/dev/null
 o=$(t "GET home/hash?acct=u-boss&path=Pictures/dup.bin" "GET home/hash?acct=u-boss&path=Pictures" "GET home/hash?acct=u-boss&path=../u-kid/Documents/x")
 ok "25k. home/hash gives the file's SHA-256; a folder and a path outside the account are refused" "$(echo "$o" | sed -n 1p | grep -q "\"sha256\":\"$(sha256sum $T/big | cut -c1-64)\"" && [ "$(echo "$o" | sed -n 2,3p | grep -c ' 40[04] ')" = 2 ] && echo 1)" "$o"
+# 1.5.6: the desktop's account ids have capitals (u and 8 letters and digits): such a folder is made and opened (QEMU
+# t156: uQppGToP7 got "bad account" and never moved to the disk)
+o=$(t "POST home/unlock?acct=uQppGToP7 <$T/k2" "POST home/write?acct=uQppGToP7&path=Documents/x.txt&base=new <$T/a" "GET home/read?acct=uQppGToP7&path=Documents/x.txt" "POST home/lock?acct=uQppGToP7" "POST home/unlock?acct=u/../x <$T/k2")
+ok "25l. an account id with capitals is a folder of its own (made, written, read); a path in its place is still refused" "$(echo "$o" | grep -q "\"made\"" && [ "$(echo "$o" | grep -c "Dear diary")" = 1 ] && echo "$o" | tail -1 | grep -q ' 400 ' && echo 1)" "$o"
 o=$(BIND=1 t "POST home/lock?acct=u-boss")
 umount /run/rudolf/dl 2>/dev/null; umount -R /home; umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]
