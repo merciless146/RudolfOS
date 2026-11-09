@@ -149,6 +149,76 @@ Its items 2–7 (sorting, favourite files, storage, the Trash, search, batch ren
 stage 4, and are built on the disk directly. Storage, search and duplicates get simpler that way, and the Trash
 becomes `.Trash/` from the start.
 
+## Added on 2026-11-09: installing apps from files, and the camera
+
+Asked for after the Vivobook tests: installation wizards for apps downloaded as files (built in 1.5.6, before 1.5.5's
+remaining items), and the Vivobook's camera.
+
+### What is there today (checked in the code and on the Vivobook)
+
+- **.deb:** opening one says that Rudolf OS does not install packages from a file yet, and offers the App Store
+  (#128). Debian 13 runs beside Rudolf OS (rudolf-debian, its own namespaces); Settings › Apps › Linux sets it up,
+  updates it and installs Wine.
+- **.exe and .msi:** they open with Wine when Wine is installed (1.4.8, 1.4.9). There is no wizard: the installer
+  just runs, and what it installs shows up in the Start menu by itself.
+- **.AppImage, .bin, .apk, .ipa:** nothing opens them.
+- **Debian and your folders:** Debian's programs, Wine included, did not see the account's folders as 1.5.6 has them,
+  and with "Encrypt my data" they could not open Downloads at all (fixed in #137, needed by every wizard below).
+- **The camera:** the kernel finds the Vivobook's webcam (a USB webcam, UVC, 3277:0034), but its device was the
+  system's only, so no app could open it (fixed in #136).
+
+### The wizard (all file types)
+
+Opening an installable file in File Explorer or from Oracle's Downloads opens **Install <name>**, one window with the
+same steps for every type:
+
+1. **What it is:** the app's name, version, publisher and size where the file says (a .deb's control fields, an
+   .exe's version information), and where it will be installed.
+2. **What it needs:** Linux (Debian) set up, Wine, or Android, each with the size of its download. The wizard sets
+   them up itself, behind an administrator's password, with a progress bar (as Install Wine does today).
+3. **Installing:** a progress bar from the job's own output, and the full log behind "Details".
+4. **Done:** "Open <app>", "Put it on the desktop", and where it is in the Start menu. A failure says why, in plain
+   words, from the last lines of the log.
+
+Installing needs an administrator (or their password), as installing from the App Store does. Every installed app
+can be removed again from Settings › Apps.
+
+### Each file type
+
+- **.deb (Debian packages):** `rudolf-debian deb FILE` copies the file into Debian and installs it with
+  `apt-get install`, which fetches what it depends on. The app's launcher appears in the Start menu, with its own icon.
+  Uninstall: `apt-get remove`, from Settings › Apps › Linux.
+- **.exe and .msi (Windows):** the wizard runs the installer with Wine (`wine` or `wine msiexec /i`). It tells which
+  programs appeared in the Start menu afterwards, and offers to put them on the desktop. A program that is not an
+  installer, but the app itself, is offered "Keep it in Programs and add it to the Start menu" instead.
+- **.AppImage:** kept in a Programs folder of the account (`~/Applications`), made runnable, and given a Start-menu
+  launcher with the icon from inside it (`--appimage-extract` of the .desktop file and the icon only). It runs in
+  Debian, which has the libraries AppImages expect; one that needs FUSE runs with `--appimage-extract-and-run`.
+- **.bin (Linux installers):** these are programs that install something else (drivers, games, tools); what they do
+  differs for each one. The wizard shows what the file is (`file`), warns that it runs with the account's rights in
+  Debian, and runs it in a Terminal window, where its own questions can be answered. Not as administrator.
+- **.apk (Android apps):** through Waydroid, which runs Android in a container.
+  - the kernel needs Android's binder (`CONFIG_ANDROID_BINDER_IPC`, `CONFIG_ANDROID_BINDERFS`) and a few container
+    options: a kernel change, checked in kconfig.sh like the others;
+  - Waydroid itself comes from Debian; the Android system image (about 800 MB, LineageOS) is downloaded the first time,
+    behind a confirmation;
+  - Android apps show in a window of their own (Waydroid runs a small Wayland display inside X);
+  - Google Play's apps that need Google services may not work; the wizard says so before the download.
+- **.ipa (iPhone and iPad apps):** these cannot be installed. iPhone apps are built for Apple's own system and are
+  encrypted for Apple's devices; nothing outside Apple's devices can run them. The wizard says so, and offers to look
+  for the same app in the App Store (Linux) or as a web app.
+
+### The camera
+
+- **The device (#136):** cameras (`video*`, `media*`, `v4l-subdev*`) belong to the video group the desktop is in.
+- **Checked on the Vivobook after the fix:** the Camera app (photos and video), Oracle's websites asking for the
+  camera (the shell's permission prompt), Discord's video calls (Flatpak, which has the device), and Settings ›
+  Privacy › Camera off and on.
+- **Debian's programs (Wine included):** `/dev/video*` placed in Debian like `/dev/dri` and `/dev/snd`.
+- **Cameras of other laptops:** Intel's MIPI cameras (IPU6, 1.5.4's kernel options) need libcamera rather than UVC;
+  only checked on hardware that has one.
+- **Hardware check (hwcheck30):** the camera step opens it for a moment and says which camera it found.
+
 ## 1. Where the files go
 
 ```
@@ -293,6 +363,9 @@ Other cases:
 4. Downloads, the Trash, Linux apps' folders, "Encrypt my data", backup and restore on the new storage.
 5. 1.5.5's items 2–7 (docs/plan-1.5.5.md), on the disk: sorting and favourite files; storage and the Trash; search;
    batch rename and duplicates (one PR each).
+5a. (added 2026-11-09) Installation wizards, one PR each: Debian sees the account's folders (#137) and the wizard
+   with .deb; .exe and .msi; .AppImage and .bin; .apk (kernel binder, Waydroid); .ipa's explanation goes with the
+   first. The camera: the device (#136), then Debian's /dev/video and the hardware check.
 6. QEMU t150, t150f, t152 and t156 on the final beta; the Vivobook; then promote when you say; the disc image.
 
 ## Size
