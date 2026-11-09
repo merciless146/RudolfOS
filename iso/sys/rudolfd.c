@@ -1531,6 +1531,7 @@ static void api_term(struct req *r, const char *what)
 	else { close(s); reply_err(r->fd, 404, "unknown terminal action"); return; }
 	char ok[8]; if (read(s, ok, sizeof ok) < 0) {} close(s); reply_ok(r->fd, "ok");
 }
+static int home_linux_path(const char *in, char *out, size_t n);   /* rudolfd-home.inc */
 static void api_debian(struct req *r, const char *what)
 {
 	if (access(DEBIAN_BIN, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS cannot run Debian"); return; }
@@ -1576,8 +1577,10 @@ static void api_debian(struct req *r, const char *what)
 	/* 1.5.6: installing a package from a file (the installation wizard): what it is, then installing it as a job.
 	   Only a .deb among the person's own files; the name may not hold a quote (it goes into a shell command). */
 	if (!strcmp(what, "debinfo") || !strcmp(what, "deb")) {
-		const char *f = qparam(r->query, "file"); size_t l = f ? strlen(f) : 0;
-		if (!f || strncmp(f, "/home/rudolf/", 13) || strstr(f, "/../") || strpbrk(f, "'\n\\") || l < 5 || l > 900 || strcasecmp(f + l - 4, ".deb")) { reply_err(r->fd, 400, "not a package in your folders"); return; }
+		/* 1.5.6: a file in the signed-in account's folder is given by the name Linux sees it under */
+		char lp[1000]; const char *f = qparam(r->query, "file"); if (f && home_linux_path(f, lp, sizeof lp)) f = lp;
+		size_t l = f ? strlen(f) : 0;
+		if (!f || strncmp(f, "/home/rudolf/", 13) || strstr(f, "/../") || strpbrk(f, "'\n\\") || l < 5 || l > 900 || strcasecmp(f + l - 4, ".deb")) { reply_err(r->fd, 400, "Linux cannot reach this file: move it into your Downloads or Documents"); return; }
 		char cmd[1100];
 		if (!strcmp(what, "debinfo")) {
 			snprintf(cmd, sizeof cmd, DEBIAN_BIN " debinfo '%s' 2>&1", f);

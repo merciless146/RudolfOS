@@ -17,6 +17,7 @@ static void one(const char *spec)
 	char tf[] = "/tmp/homeapi-XXXXXX"; r.fd = mkstemp(tf); unlink(tf);
 	const char *w = r.path; int post = !strcmp(r.method, "POST");
 	dl_store_state();   /* as handle() does: each request in rudolfd is a process of its own */
+	if (!strcmp(r.method, "LP")) { char o[1000]; printf("LP %s\n", home_linux_path(r.path, o, sizeof o) ? o : "-"); close(r.fd); free(r.body); return; }   /* home_linux_path */
 	if (!strcmp(w, "home")) api_home(&r, "", post); else api_home(&r, w + 5, post);
 	lseek(r.fd, 0, SEEK_SET); char b[1 << 16]; ssize_t n; size_t tot = 0; char *all = NULL;
 	while ((n = read(r.fd, b, sizeof b)) > 0) { all = realloc(all, tot + n + 1); memcpy(all + tot, b, n); tot += n; }
