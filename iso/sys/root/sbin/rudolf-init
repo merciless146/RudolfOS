@@ -9,6 +9,9 @@ mkdir -p /run/rudolf /run/xvfb /tmp/.X11-unix /dev/shm /media
 chmod 1777 /tmp/.X11-unix
 mkdir -p /var/tmp; chmod 1777 /tmp /var/tmp
 mount -t tmpfs -o mode=1777 tmpfs /dev/shm
+# 1.5.6: the standard links into /proc (devtmpfs and mdev do not make them): bash's process substitution, "cat
+# /dev/stdin" and Steam's runtime (its logger failed on /dev/fd/63, and Steam's interface did not come up) need them
+[ -e /dev/fd ] || ln -s /proc/self/fd /dev/fd; for n in 0:stdin 1:stdout 2:stderr; do [ -e /dev/${n#*:} ] || ln -s /proc/self/fd/${n%%:*} /dev/${n#*:}; done
 hostname rudolf
 ip link set lo up
 hwclock -s -u 2>/dev/null
