@@ -159,7 +159,15 @@ static void keeper_main(void)   /* pid 1 inside: set up the file system, then re
 	mkdirs(ROOT "/run/lock", 01777); chmod(ROOT "/run/lock", 01777);
 	if (!access("/tmp/.X11-unix", F_OK)) bindmnt("/tmp/.X11-unix", ROOT "/tmp/.X11-unix", 1);
 	if (!access("/run/user/1000", F_OK)) bindmnt("/run/user/1000", ROOT "/run/user/1000", 1);
-	bindmnt("/home/rudolf", ROOT "/home/rudolf", 1);
+	/* 1.5.6: /home/rudolf without what is mounted on it. The signed-in account's folders bound there by rudolfd would
+	   come in as part of this copy, which in Debian's user namespace locks them in place: rebind could never take
+	   them off, so after sign-out the account's folder stayed in use and its folders' names readable (QEMU t156).
+	   The folder underneath (rudolf-init binds /persist/home/rudolf there) has nothing mounted on it; rebind puts
+	   the account's folders on top. */
+	{ struct stat h, p; mkdirs(ROOT "/home/rudolf", 0755);
+	  if (stat("/home/rudolf", &h) || stat("/persist/home/rudolf", &p) || h.st_dev != p.st_dev || h.st_ino != p.st_ino ||
+	      mount("/persist/home/rudolf", ROOT "/home/rudolf", NULL, MS_BIND, NULL))
+		bindmnt("/home/rudolf", ROOT "/home/rudolf", 1); }
 	/* 1.5.6: with "Encrypt my data", Downloads is a link into the encrypted folder (/persist/vault/downloads), which is
 	   outside Debian: the folder is placed at the same path inside, so the link works there too. The downloads store's
 	   own bind (/run/rudolf/dl) is taken when there is one, so that this is the store and not an account's folder

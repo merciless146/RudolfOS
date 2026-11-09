@@ -45,6 +45,8 @@ Summary: your files on the disk (docs/plan-1.5.6.md)
 - New: Find duplicates (a folder's menu in File Explorer, and Settings › Storage and backup) finds identical files (the same size and SHA-256, also for files kept on the disk), suggests keeping the newest of each, and moves the others to the Trash only when you ask.
 - Fixed: most accounts' files did not move to the disk on 1.5.6 ("Your files stay where they were" at every sign-in): account ids with capital letters were refused. Found by the new QEMU test of the move (t156).
 - Fixed: the move of an account's files to the disk stopped at its large downloads when the account's id had capital letters (their downloads folder is in lower case), and a move that did not finish left the account's folder unlocked after sign-out. Found by QEMU t156.
+- Fixed: when Linux (Debian) was started after signing in, the account's folders stayed in use after sign-out, so the names of its folders and files could still be listed (their contents could not be read). Found by QEMU t156.
+- Fixed: restoring a backup after the account's folder on the disk was removed did not bring the files back: the large files, which backups do not hold, stopped the move. They are now left out.
 
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it

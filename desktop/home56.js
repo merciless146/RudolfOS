@@ -131,17 +131,22 @@ async function hdMove(a){const acct=uid(),q='acct='+encodeURIComponent(acct),hom
   const snap=new Map(dirs.map(r=>[r,{d:1}])),sums=new Map();let n=0,t0=Date.now(),bytes=0;
   for(const[r,x]of files){
    if(isDlRef(x.v)){const i=dlRefInfo(x.v);
-    if(i&&i.p.startsWith(HD_ROOT+acct+'/')){snap.set(r,{v:x.v,ver:null});sums.set(r,{s:i.s})}
+    if(i&&i.p.startsWith(HD_ROOT+acct+'/')){snap.set(r,{v:x.v,ver:null});sums.set(r,{s:i.s,own:x})}
     else if(i){const j=await rdPost('home/adopt?'+q+'&from='+encodeURIComponent(i.p)+'&to='+encodeURIComponent(r));const nv=dlMkRef(HD_ROOT+acct+'/'+r,i.s||0,i.av||'none');if(x.o[x.k]===x.v)x.o[x.k]=nv;snap.set(r,{v:nv,ver:j.v||null});sums.set(r,{s:i.s})}}
    else{const b=hdBytes(x.v);const j=await rd('home/write?'+q+'&path='+encodeURIComponent(r)+'&mkdirs=1',{method:'POST',body:b});snap.set(r,{v:x.v,ver:j.v});sums.set(r,{h:await hdSha(b),s:b.length});bytes+=b.length}
    if(++n%200==0||Date.now()-t0>5000){t0=Date.now();prog(n.toLocaleString()+' of '+files.length.toLocaleString()+' files…')}}
   /* read back and compare */
   const t=await rd('home/tree?'+q),disk=new Map((t.items||[]).map(i=>[i.p,i]));const bad=[];
-  for(const[r,w]of sums){const i=disk.get(r);if(!i||i.d||(w.s!=null&&i.s!==w.s)){bad.push(r);continue}
+  /* a large file already in the account's folder that is not there: a backup restored after the folder was removed
+     (large files are not in backups); it is left out, not a reason for the move to fail (QEMU t156) */
+  const gone=[];
+  for(const[r,w]of sums){const i=disk.get(r);if(!i&&w.own){gone.push(r);continue}if(!i||i.d||(w.s!=null&&i.s!==w.s)){bad.push(r);continue}
    if(w.h){const back=await rd('home/read?'+q+'&path='+encodeURIComponent(r)).then(x=>x.arrayBuffer()).then(x=>new Uint8Array(x)).catch(()=>null);if(!back||await hdSha(back)!==w.h)bad.push(r)}}
   for(const r of dirs){const i=disk.get(r);if(!i||!i.d)bad.push(r)}
   if(bad.length)throw new Error(bad.length+' item(s) did not arrive as they were ('+bad.slice(0,3).join(', ')+')');
   if(USER!==a||HOME!==home)return;   /* signed out meanwhile: done again next time */
+  for(const r of gone){const x=sums.get(r).own;if(x.o[x.k]===x.v)delete x.o[x.k];snap.delete(r)}
+  if(gone.length)logEvt('sys',`${a.n}'s move to the disk: ${gone.length} large file(s) were not there (not in the backup): ${gone.slice(0,3).join(', ')}`);
   /* switch: what was written is the snapshot; the Linux binds */
   a.disk=1;a.oldHome=Date.now();saveUser();
   HD.gen++;HD.acct=acct;HD.snap=snap;

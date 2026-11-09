@@ -16,7 +16,7 @@ function api(method, a, q, body) { const p = new URLSearchParams(q || ''); CALLS
   const acct = p.get('acct'), m = acct && DISK.get(acct);
   if (a == 'home') return [200, {ok: true, supported: SUP, accounts: [...DISK.keys()].map(id => ({id, unlocked: OPEN.has(id)})), session: ''}];
   if (a == 'home/unlock') { const k = body.toString(); if (!/^[0-9a-f]{128}$/.test(k)) return [400, {ok: false, error: 'bad key'}];
-    if (KEYS.has(acct) && KEYS.get(acct) != k) return [403, {ok: false, error: 'that key does not open this account\'s folder'}]; KEYS.set(acct, k); mk(acct); OPEN.add(acct); return [200, {ok: true}] }
+    if (KEYS.has(acct) && KEYS.get(acct) != k) return [403, {ok: false, error: 'that key does not open this account\'s folder'}]; const made = !DISK.has(acct); KEYS.set(acct, k); mk(acct); OPEN.add(acct); return [200, {ok: true, message: made ? 'made' : 'unlocked'}] }
   if (a == 'home/lock') { OPEN.delete(acct); return [200, {ok: true}] }
   if (a == 'dl/incoming' || a == 'dl/quarantine' || a == 'dl/home') return [200, {ok: true, items: []}];
   if (a == 'events/wait') return [200, {ok: true, events: ''}];
@@ -86,6 +86,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("(()=>{userLogout();USER=null;return 1})()"); await wait(500);
   n1 = CALLS.length; await q("IN('joe','j1')"); await q("SETTLE()"); await wait(1800);
   ok('10. signing in again reads the disk, and moves nothing again', await q("hdOn()&&HOME.DOCUMENTS['LETTER.TXT'].endsWith('P.S.')&&HOME.DOCUMENTS.WORK['PLAN.MD']=='# Plan'") && !CALLS.slice(n1).some(c => /home\/(write|adopt)/.test(c)), CALLS.slice(n1).filter(c => /home/.test(c)));
+  // a backup restored after the account's folder was removed: the record moves in again; the large download (never in
+  // backups) is not there and is left out instead of failing the move (QEMU t156)
+  await q("(async()=>{await backupBlob();userLogout();USER=null;return 1})()"); await wait(500);
+  DISK.delete('u-joe'); OPEN.delete('u-joe');
+  await q("IN('joe','j1')"); await wait(2500); const m3 = await q("MOVED()"); await q("SETTLE()");
+  const d3 = DISK.get('u-joe') || new Map();
+  ok('10b. a backup restored after the folder was removed: the files move in again, without the large download that was not in it', m3 && await q("hdOn()&&!('GAME.ISO' in HOME.DOWNLOADS)") && d3.get('Documents/LETTER.TXT') && /P\.S\.$/.test(d3.get('Documents/LETTER.TXT').b.toString()) && !d3.has('Downloads/GAME.ISO'), [m3, [...d3.keys()]]);
   await q("(()=>{USER.oldHome=Date.now()-8*864e5;saveUser();userLogout();USER=null;return 1})()"); await wait(300);
   await q("IN('joe','j1')"); await wait(500);
   ok('11. after 7 days on the disk, the old record is deleted', !(await q("kvGet('home:u-joe').then(x=>!!x)")) && await q("!USER.oldHome"));
