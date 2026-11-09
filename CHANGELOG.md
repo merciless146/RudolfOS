@@ -32,6 +32,7 @@ Summary: your files on the disk (docs/plan-1.5.6.md)
 - Changed: when memory runs out and no web page can be closed, an app with no window open (Discord in the tray, say) is closed instead, never the app or game in front. System health says which.
 - Changed: the compressed memory (zram) is as large as the computer's memory instead of half of it, so it can hold twice as much (on the Vivobook, Steam, Discord and a game filled the old one).
 - Changed: while an app or game is in front and memory ran short, the desktop gets 5 minutes instead of 2 to answer before its browser is restarted (closing every window).
+- Fixed: the Weather widget said "Weather needs an internet connection" for 15 minutes after start-up when the desktop was ready before the Wi-Fi. It now tries again after 20 seconds, then 1, 2 and 5 minutes, and at once when the computer is online.
 
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it
