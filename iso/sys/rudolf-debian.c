@@ -769,7 +769,12 @@ int main(int argc, char **argv)
 			return cmd_run(10, ra);
 		}
 		char *a[] = {"/bin/sh", "-c", "export DEBIAN_FRONTEND=noninteractive; f=/tmp/rudolf-install.deb; cp \"$1\" $f && chmod 644 $f || exit 3; "
-			"echo 'step Getting the list of packages'; apt-get update; echo 'step Installing'; apt-get install -y $f; r=$?; rm -f $f; apt-get clean; exit $r", "sh", (char *)f, NULL};
+			"p=$(dpkg-deb -f $f Package); echo 'step Getting the list of packages'; apt-get update; echo 'step Installing'; apt-get install -y $f; r=$?; rm -f $f; "
+			/* 1.5.6: a package whose installation adds its maker's own package source (Steam's adds Valve's) recommends
+			   packages from there, which could not be found until now: they are added in a second pass, which may fail
+			   without failing the installation */
+			"if [ $r = 0 ] && [ -n \"$p\" ]; then echo 'step Adding what it recommends'; apt-get update >/dev/null 2>&1; apt-get install -y --install-recommends \"$p\" || echo 'note: some recommended packages could not be added'; fi; "
+			"apt-get clean; exit $r", "sh", (char *)f, NULL};
 		int r = run_in(1, NULL, a); write_str(RUND "/apps-changed", "1");
 		if (!r) say("done installed"); return r;
 	}
