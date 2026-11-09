@@ -219,10 +219,12 @@ async function hdTrashSweep(){if(!hdOn())return;const acct=HD.acct;
    encrypted folder: those copies go (only when they are the same, byte for byte) and what Linux apps saved there
    moves into this account's Downloads, once, for the account that owned that folder. */
 async function hdBinds(){HD.dlb=false;if(!hdOn())return;
- try{const j=await rd('home');HD.dlb=!!(j.downloadsBound&&j.session==HD.acct)}catch(e){}
+ try{const j=await rd('home');HD.dlb=!!(j.downloadsBound&&j.session==HD.acct);if(!HD.dlb)hdDlLog('not bound: '+JSON.stringify({session:j.session,me:HD.acct,bound:j.downloadsBound}))}catch(e){hdDlLog('home: '+e.message)}
  if(HD.dlb)setTimeout(()=>hdDlTop().catch(e=>console.warn('Downloads top',e)),4000)}
 const hdResBytes=r=>r&&typeof r.arrayBuffer=='function'?r.arrayBuffer().then(b=>new Uint8Array(b)):Promise.reject(new Error('not read'));
-async function hdDlTop(){if(!hdOn()||!HD.dlb||HD.dltop)return;HD.dltop=1;
+const hdDlLog=m=>{try{window.__rdlog&&window.__rdlog('downloads top: '+m)}catch(e){}};   /* kept in /run/rudolf/page.log */
+async function hdDlTop(){const r=await hdDlTop1().catch(e=>({error:String(e&&e.message||e)}));hdDlLog(JSON.stringify(r));return r}
+async function hdDlTop1(){if(!hdOn()||!HD.dlb||HD.dltop)return{skipped:!hdOn()?'not on the disk':!HD.dlb?'not bound':'done'};HD.dltop=1;
  const own=typeof lxOwner=='function'?ld('bd95lxowner',null):null;if(own&&own!==uid())return{skipped:'owner'};
  const items=((await rd('dl/home')).items||[]).filter(i=>!i.partial);if(!items.length)return{moved:0,same:0};
  await HD.chain;const dl=node(downloadsPath());const names=new Set(Object.keys(isDir(dl)?dl:{}).map(k=>k.toUpperCase()));
@@ -234,7 +236,7 @@ async function hdDlTop(){if(!hdOn()||!HD.dlb||HD.dltop)return;HD.dltop=1;
     const b=await hdResBytes(await rd('home/read?'+hdQ()+'&path='+encodeURIComponent('Downloads/'+key)).catch(()=>null)).catch(()=>null);
     if(b&&a.length==b.length&&a.every((x,i)=>x===b[i])){await rdPost('dl/file?name='+encodeURIComponent(n)+'&from=root&to=del');same++;continue}}
    const t=free(n);await rdPost('home/adopt?'+hdQ()+'&from='+encodeURIComponent('/home/rudolf/Downloads/'+n)+'&to='+encodeURIComponent('Downloads/'+t));names.add(t.toUpperCase());moved++}
-  catch(e){console.warn('Downloads top',n,e)}}
+  catch(e){console.warn('Downloads top',n,e);hdDlLog(n+': '+(e&&e.message||e))}}
  if(moved||same){HD.busy=0;await hdRefresh();try{EXPL.forEach(f=>f())}catch(e){}
   logEvt('sys',`Downloads for Linux apps is ${uname()}'s own now: ${same} copies removed, ${moved} files moved in`);
   if(moved)notify('Downloads',`${moved} file${moved==1?'':'s'} Linux apps had saved in Downloads ${moved==1?'is':'are'} in your Downloads now.`,{tag:'hddltop'})}
