@@ -36,8 +36,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const op2 = await q("openersFor([...downloadsPath(),'STARPORTGE_INSTALL.EXE']).map(o=>o[1])");
   ok('3. an installer kept on the disk offers Wine too (not only the built-in viewer)', op2.some(t => /Wine/.test(t)), op2);
   await q("openPath([...downloadsPath(),'STARPORTGE_INSTALL.EXE']);1"); await wait(800);
+  await q("(()=>{const b=[...wins.at(-1).body.querySelectorAll('.wzf button')].find(x=>x.textContent=='Install');b&&b.click();return 1})()"); await wait(800);
   const L = await q("T.launched");
-  ok('4. opening it starts Wine with the file\'s own path on the disk (no copy)', L.some(x => x[0] == 'wine' && x[1] == '/home/rudolf/Downloads/StarportGE_install.exe'), L);
+  ok('4. opening it (1.5.6: the wizard\'s Install) starts Wine with the file\'s own path on the disk (no copy)', L.some(x => x[0] == 'wine' && x[1] == '/home/rudolf/Downloads/StarportGE_install.exe'), L);
   // without Wine: say how to get it
   await q("T.apps=T.apps.filter(a=>a.id!='wine');DEB.appsAt=0;debApps()"); await wait(800);
   await q("wins.slice().forEach(w=>{w.__force=1;w.close()});openPath([...downloadsPath(),'STARPORTGE_INSTALL.EXE']);1"); await wait(800);

@@ -1603,6 +1603,7 @@ static void api_debian(struct req *r, const char *what)
 	if (!strcmp(what, "launch")) {
 		char idc[220] = "", filec[1100] = ""; const char *q1 = qparam(r->query, "id"); if (q1) snprintf(idc, sizeof idc, "%s", q1);
 		const char *q2 = qparam(r->query, "file"); if (q2) snprintf(filec, sizeof filec, "%s", q2);
+		{ char lp[1000]; if (*filec && home_linux_path(filec, lp, sizeof lp)) snprintf(filec, sizeof filec, "%s", lp); }   /* 1.5.6 */
 		const char *id = idc, *file = filec;
 		if (!*id || strlen(id) > 200 || strspn(id, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-+") != strlen(id)) { reply_err(r->fd, 400, "bad app"); return; }
 		if (file && *file && (strncmp(file, "/home/rudolf/", 13) || strstr(file, "/../"))) { reply_err(r->fd, 400, "bad file"); return; }
