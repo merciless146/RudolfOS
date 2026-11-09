@@ -408,7 +408,10 @@ static void api_home(struct req *r, const char *what, int post)
 		char from[1024]; { const char *a = qparam(r->query, "from"); snprintf(from, sizeof from, "%s", a ? a : ""); }
 		{ const char *a = qparam(r->query, "to"); snprintf(p2, sizeof p2, "%s", a ? a : ""); }
 		{ char fb[1024]; const char *f2 = dl_in(from, fb, sizeof fb); if (f2 != from) snprintf(from, sizeof from, "%s", fb); }
-		char mine[200]; snprintf(mine, sizeof mine, "%s/%s/", DLACCTS, acct);
+		/* the account's downloads folder is its id in lower case (the desktop's dlAcct()); QEMU t156: uQppGToP7's
+		   large download was refused as "bad path", and the whole move with it */
+		char lac[80]; size_t li = 0; for (; acct[li] && li < sizeof lac - 1; li++) lac[li] = tolower((unsigned char)acct[li]); lac[li] = 0;
+		char mine[200]; snprintf(mine, sizeof mine, "%s/%s/", DLACCTS, lac);
 		size_t lh = strlen(DLHOME); int top = !strncmp(from, DLHOME, lh) && from[lh] == '/' && !strchr(from + lh + 1, '/');
 		if (!dl_path_ok(from) || !(top || !strncmp(from, mine, strlen(mine))) || !*p2 || !home_rel_ok(p2)) { close(root); reply_err(r->fd, 400, "bad path"); return; }
 		struct stat fs1; if (lstat(from, &fs1) || !S_ISREG(fs1.st_mode)) { close(root); reply_err(r->fd, 404, "the download is not there"); return; }
@@ -535,7 +538,8 @@ static void dl_store_tidy(const char *acct)
 	/* an empty .accounts left in the account's Downloads by the second 1.5.6 beta (the store taken for the account's
 	   folder): removed only while empty */
 	{ int ac = openat(dd, ".accounts", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-	  if (ac >= 0) { unlinkat(ac, acct, AT_REMOVEDIR); close(ac); unlinkat(dd, ".accounts", AT_REMOVEDIR); } }
+	  if (ac >= 0) { char lac[80]; size_t li = 0; for (; acct[li] && li < sizeof lac - 1; li++) lac[li] = tolower((unsigned char)acct[li]); lac[li] = 0;
+	    unlinkat(ac, lac, AT_REMOVEDIR); close(ac); unlinkat(dd, ".accounts", AT_REMOVEDIR); } }
 	close(sd); close(dd);
 	if (same || moved || kept || failed)
 		fprintf(stderr, "rudolfd: Downloads for Linux apps is %s's own now: %d copies at the top of the store deleted, %d files moved in, %d left (%d account folders), %d failed\n", acct, same, moved, kept, accounts, failed);

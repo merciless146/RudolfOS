@@ -69,6 +69,8 @@ def boot(tag, slot):
     return vm, g, up, js
 
 def signin(js, n, pw):
+    # the notifications from here on are kept (window.__nt), to say why a move did not happen
+    js("(()=>{if(!window.__ntw){window.__ntw=1;window.__nt=[];const o=notify;notify=function(t,b){__nt.push(t+': '+b);return o.apply(this,arguments)}}return 1})()")
     return js(f"(async()=>{{const a=ACCTS.find(x=>x.n=={json.dumps(n)});if(!a)return 'no account';if(!(await pwCheck(a,{json.dumps(pw)})))return 'bad';if(USER)userLogout();"
               f"const L=document.getElementById('login');USER=a;await userLogin(a,{json.dumps(pw)});lastInput=Date.now();if(L)L.style.display='none';return 'in '+USER.n}})()", 180)
 def signout(js):
@@ -114,8 +116,8 @@ try:
     if not up: raise SystemExit
     sh("printf 'good=b\\nprev=a\\nnext=\\ntries=0\\nfailed=\\n' > /persist/os/system/state; sync")   # as the update leaves it once 1.5.6 started
     t0 = time.time(); out(signin(js, 'boss', 'b1'))
-    moved = wait_for(js, "!!(USER&&USER.disk&&hdOn())", 1500, 10); took = int(time.time() - t0)
-    out('the move took', took, 's')
+    moved = wait_for(js, "!!(USER&&USER.disk&&hdOn())", 2400, 10); took = int(time.time() - t0)
+    out('the move took', took, 's'); out('notifications:', js("(window.__nt||[]).filter(x=>/disk|files/i.test(x)).slice(-4)"))
     A = f'/persist/accounts/{BOSS}'
     o = sh(f"ls {A}/Documents; cat {A}/Documents/NOTE.TXT; ls {A}/Documents/MANY | wc -l; ls -la {A}/Pictures/PIC.PNG; sha256sum {A}/Downloads/BIG.BIN; ls /home/rudolf/Downloads/.accounts/{DLA}/ 2>&1", 120)
     out(o)
@@ -140,7 +142,7 @@ try:
     out(signout(js))
     # the user's home moves at its first sign-in; then the administrator opens it
     out(signin(js, 'kid', 'k1'))
-    kmoved = wait_for(js, "!!(USER&&USER.disk&&hdOn())", 900, 10)
+    kmoved = wait_for(js, "!!(USER&&USER.disk&&hdOn())", 900, 10); out('notifications:', js("(window.__nt||[]).filter(x=>/disk|files/i.test(x)).slice(-4)"))
     out(signout(js)); time.sleep(5)
     out(signin(js, 'boss', 'b1'))
     opened = wait_for(js, "(()=>{const k=fs['C:'].USERS.KID;return !!(k&&k.DOCUMENTS&&typeof k.DOCUMENTS['KIDNOTE.TXT']=='string')})()", 300)

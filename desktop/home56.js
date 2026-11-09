@@ -151,6 +151,8 @@ async function hdMove(a){const acct=uid(),q='acct='+encodeURIComponent(acct),hom
   logEvt('sys',`${a.n}'s files moved to the disk (${files.length} files, ${dirs.length} folders)`);
   notify('Your files are on the disk','They are kept as files now, encrypted with your account\'s key; Linux apps see your Documents, Pictures, Music and Videos. A copy stays in the old place for 7 days.',{tag:'hdmove'});
  }catch(e){console.warn('home move',e);logEvt('sys',`${a.n}'s files could not be moved to the disk: ${e.message}`);
+  /* the folder was unlocked for the move: it is locked again (it stayed readable after sign-out in QEMU t156) */
+  rdPost('home/lock?'+q).catch(()=>{});
   notify('Your files stay where they were','Moving them to the disk did not work ('+e.message+'). Nothing was lost; it is tried again at your next sign-in.',{kind:'warn',tag:'hdmove'})}}
 {const _hl=homeLoad;homeLoad=async function(pw){
  const a=USER;

@@ -109,6 +109,11 @@ ok "25k. home/hash gives the file's SHA-256; a folder and a path outside the acc
 # t156: uQppGToP7 got "bad account" and never moved to the disk)
 o=$(t "POST home/unlock?acct=uQppGToP7 <$T/k2" "POST home/write?acct=uQppGToP7&path=Documents/x.txt&base=new <$T/a" "GET home/read?acct=uQppGToP7&path=Documents/x.txt" "POST home/lock?acct=uQppGToP7" "POST home/unlock?acct=u/../x <$T/k2")
 ok "25l. an account id with capitals is a folder of its own (made, written, read); a path in its place is still refused" "$(echo "$o" | grep -q "\"made\"" && [ "$(echo "$o" | grep -c "Dear diary")" = 1 ] && echo "$o" | tail -1 | grep -q ' 400 ' && echo 1)" "$o"
+# ...and its large download, kept in Downloads/.accounts/<the id in lower case> (dlAcct()), moves in (QEMU t156: "bad path"
+# stopped the whole move)
+mkdir -p /home/rudolf/Downloads/.accounts/uqppgtop7; head -c 300000 /dev/urandom > /home/rudolf/Downloads/.accounts/uqppgtop7/big.bin
+o=$(t "POST home/unlock?acct=uQppGToP7 <$T/k2" "POST home/adopt?acct=uQppGToP7&from=/home/rudolf/Downloads/.accounts/uqppgtop7/big.bin&to=Downloads/BIG.BIN" "POST home/lock?acct=uQppGToP7")
+ok "25m. an account id with capitals: its large download (in the lower-case folder) moves in" "$(echo "$o" | sed -n 2p | grep -q ' 200 ' && [ ! -e /home/rudolf/Downloads/.accounts/uqppgtop7/big.bin ] && echo 1)" "$o"
 o=$(BIND=1 t "POST home/lock?acct=u-boss")
 umount /run/rudolf/dl 2>/dev/null; umount -R /home; umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]

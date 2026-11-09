@@ -66,8 +66,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('1. before 1.5.6: the home is in the browser\'s storage, nothing on the disk', !DISK.has('u-joe') && await q("kvGet('home:u-joe').then(x=>!!x)"));
   // a move that does not arrive whole
   SUP = true; SPOIL = 'Documents/WORK/PLAN.MD';
-  await q("IN('joe','j1')"); const m1 = await q("MOVED()");
+  const c1 = CALLS.length; await q("IN('joe','j1')"); const m1 = await q("MOVED()"); await wait(500);
   ok('2. a move whose read-back differs is not used: the account stays as it was, and says so', !m1 && await q("!USER.disk&&!hdOn()&&HOME.DOCUMENTS['LETTER.TXT'].startsWith('Dear')") && await q("[...document.querySelectorAll('*')].some(e=>/stay where they were/.test(e.textContent))||true"), await q("JSON.stringify({disk:USER.disk})"));
+  ok('2b. ...and the folder it opened for the move is locked again (QEMU t156: it stayed readable after sign-out)', CALLS.slice(c1).some(c => /^POST home\/lock\?acct=u-joe/.test(c)), CALLS.slice(c1).filter(c => /home\/(un)?lock/.test(c)));
   await q("(()=>{userLogout();USER=null;return 1})()"); await wait(300);
   // the next sign-in: the move
   const n0 = CALLS.length; await q("IN('joe','j1')"); const m2 = await q("MOVED()"); await q("SETTLE()");
