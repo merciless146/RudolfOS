@@ -134,7 +134,7 @@ addEventListener('message', e => {
   const h = t.h, ev = m.ev;
   try {
     if (ev == 'nav' && /^https?:/i.test(m.url || '')) h.nav(m.url, !!m.back, !!m.fwd);
-    else if (ev == 'load') h.load(!!m.loading, m.error || '');
+    else if (ev == 'load') { if (/ERR_UNKNOWN_URL_SCHEME/.test(m.error || '') && typeof lxStoreLinkId == 'function' && lxStoreLinkId(m.url)) { lxStoreOpen(lxStoreLinkId(m.url)); try { rtSend('back', m.tid, {}) } catch (x) {} h.load(false, '') } else h.load(!!m.loading, m.error || '') }
     else if (ev == 'title') h.title(String(m.title || ''));
     else if (ev == 'focus') h.focus();
     else if (ev == 'close') h.close();

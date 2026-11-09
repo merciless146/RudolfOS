@@ -26,6 +26,7 @@ Summary: your files on the disk (docs/plan-1.5.6.md)
 - Changed: the Developer Console is out of the Start menu unless Settings › Apps › "Show developer tools in the Start menu" is on. It is always in Task Manager and in search.
 - Changed: installing a Linux package also adds what it recommends once the package itself is in (Steam's package adds Valve's own source, whose 32-bit libraries can only be found then).
 - New: Windows programs (.exe, .msi) open in the installation wizard: an installer runs with Wine and the programs it installs are offered (Open, Put on the desktop) as they appear; another program runs, or can be installed anyway. Without Wine (or Linux), the wizard sets them up first.
+- Fixed: the Install button on Flathub's website (in Oracle) gave "This site can't be reached". Its link, and a downloaded .flatpakref file, now open that app's page in the App Store.
 
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it

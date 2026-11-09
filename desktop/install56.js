@@ -3,7 +3,7 @@
    done (Open, Put on the desktop). Built type by type (docs/plan-1.5.6.md, 5a): .deb first, through Debian
    (rudolfd debian/debinfo and debian/deb, rudolf-debian deb). .ipa only explains. .exe, .msi, .AppImage, .bin and
    .apk follow in their own stages. */
-const WZ_KINDS={DEB:'deb',IPA:'ipa',EXE:'exe',MSI:'exe'};
+const WZ_KINDS={DEB:'deb',IPA:'ipa',EXE:'exe',MSI:'exe',FLATPAKREF:'fpref'};
 /* where the file is: a file kept on the disk, or one in the account's folders; rudolfd turns an account path into
    the name Linux sees it under (the binds), or refuses one Linux cannot see */
 function wzDiskPath(path){const v=node(path);
@@ -19,7 +19,11 @@ const wzEsc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt
 function wzFoot(W,btns){const f=W.body.querySelector('.wzf');f.innerHTML='';btns.forEach(([t,fn,main])=>{const b=document.createElement('button');b.textContent=t;if(main)b.className='wzmain';b.onclick=fn;f.appendChild(b)});return f}
 function wzBody(W,html){const b=W.body.querySelector('.wzb');b.innerHTML=html;return b}
 function wzSub(W,t){W.body.querySelector('.wzs').textContent=t}
-function installWizard(path){const e=ext(path.at(-1)),k=WZ_KINDS[e];if(k=='deb')return wzDeb(path);if(k=='ipa')return wzIpa(path);if(k=='exe')return wzExe(path);return null}
+function installWizard(path){const e=ext(path.at(-1)),k=WZ_KINDS[e];if(k=='deb')return wzDeb(path);if(k=='ipa')return wzIpa(path);if(k=='exe')return wzExe(path);if(k=='fpref')return wzFpRef(path);return null}
+/* a .flatpakref (an App Store link from Flathub's website, downloaded): its app's page in the App Store */
+function wzFpRef(path){const v=node(path);const m=typeof v=='string'&&/^Name=([A-Za-z0-9_.-]+)\s*$/m.exec(v);
+ if(m&&RD&&typeof lxStoreOpen=='function')return lxStoreOpen(m[1]);
+ const W=wzWin(path,'🐧');wzSub(W,'A link to a Linux app on Flathub');wzBody(W,m?'<p>Linux apps are installed from the App Store on an installed Rudolf OS.</p>':'<p>This file does not name an app.</p>');wzFoot(W,[['Close',()=>W.close()]]);return W}
 
 /* ---------- .ipa: cannot be installed ---------- */
 function wzIpa(path){const W=wzWin(path,'📱');wzSub(W,'An app for iPhone and iPad');
