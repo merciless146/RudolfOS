@@ -32,9 +32,11 @@ addEventListener('message', e => {
    Here they become the keys the desktop's apps listen for again. Also on the plain desktop page (no shell). */
 const DESK_SUB = {F20: ['w', 'KeyW'], F21: ['t', 'KeyT'], F22: ['n', 'KeyN'], F23: ['q', 'KeyQ']};
 for (const type of ['keydown', 'keyup']) addEventListener(type, e => {
-  const s = e.ctrlKey && e.isTrusted && DESK_SUB[e.code]; if (!s) return;   // (the code: X may have no key name for F20..F23)
+  // 1.5.6: Alt+F4 arrives as Alt+F20 (Chromium closed the desktop's window on Alt+F4): it closes the window in front
+  const alt = !e.ctrlKey && e.altKey && e.isTrusted && e.code == 'F20';
+  const s = alt ? ['F4', 'F4'] : e.ctrlKey && e.isTrusted && DESK_SUB[e.code]; if (!s) return;   // (the code: X may have no key name for F20..F23)
   e.preventDefault(); e.stopImmediatePropagation();
-  (e.target || document).dispatchEvent(new KeyboardEvent(type, {key: e.shiftKey ? s[0].toUpperCase() : s[0], code: s[1], ctrlKey: true, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey, repeat: e.repeat, bubbles: true, cancelable: true, composed: true}));
+  (e.target || document).dispatchEvent(new KeyboardEvent(type, {key: e.shiftKey && !alt ? s[0].toUpperCase() : s[0], code: s[1], ctrlKey: !alt, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey, repeat: e.repeat, bubbles: true, cancelable: true, composed: true}));
 }, true);
 
 /* fullscreen inside the shell. Controlled Frame does not let its page go fullscreen, but the shell's window already

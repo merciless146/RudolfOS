@@ -18,7 +18,7 @@ function memNote(u,title){const h=mlEsc(webHost(u)||u),ti=mlEsc(title||webHost(u
 async function memWasGuard(why){
  if(why=='oom')return true;
  if(!/^(killed|crashed|abnormal)$/.test(why)||typeof RD=='undefined'||!RD)return false;
- try{const m=await rd('memory');return(m.events||[]).some(e=>m.now-e.time<=30)||!!m.critical}catch(e){return false}}
+ try{const m=await rd('memory');return(m.events||[]).some(e=>!e.app&&m.now-e.time<=30)||!!m.critical}catch(e){return false}}
 function memShow(t,o){
  const u=t.h[t.i],title=t.title&&t.title!==u?t.title:webHost(u)||u,fr=t.fr;
  t.real=false;t.pend=false;fr.removeAttribute('src');fr.setAttribute('sandbox','allow-scripts');t.src='';

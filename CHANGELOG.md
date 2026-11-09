@@ -28,6 +28,10 @@ Summary: your files on the disk (docs/plan-1.5.6.md)
 - New: Windows programs (.exe, .msi) open in the installation wizard: an installer runs with Wine and the programs it installs are offered (Open, Put on the desktop) as they appear; another program runs, or can be installed anyway. Without Wine (or Linux), the wizard sets them up first.
 - Fixed: the Install button on Flathub's website (in Oracle) gave "This site can't be reached". Its link, and a downloaded .flatpakref file, now open that app's page in the App Store.
 - Fixed: /dev/fd, /dev/stdin, /dev/stdout and /dev/stderr were missing. Steam (from the App Store) failed to start its interface because of it, and scripts using them failed too.
+- Fixed: Alt+F4 with the desktop in front closed the desktop's whole window, back to the sign-in screen. It now closes the window in front, as everywhere else.
+- Changed: when memory runs out and no web page can be closed, an app with no window open (Discord in the tray, say) is closed instead, never the app or game in front. System health says which.
+- Changed: the compressed memory (zram) is as large as the computer's memory instead of half of it, so it can hold twice as much (on the Vivobook, Steam, Discord and a game filled the old one).
+- Changed: while an app or game is in front and memory ran short, the desktop gets 5 minutes instead of 2 to answer before its browser is restarted (closing every window).
 
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it

@@ -16,12 +16,18 @@
  *     process or the system. Pages under 200 MiB are left alone too.
  *     Oracle then shows "This page was closed because it used too much memory" with a Reload button.
  *   - after ending one it waits 8 s (the memory takes a moment to come back) before it looks again
+ *   - 1.5.6: when there is no such page, an app with no window open (Discord in the tray, found on the Vivobook: a
+ *     game froze and the desktop was restarted while the guard had "no web page to end"). The largest Flatpak app
+ *     (all its sandboxes, from /run/user/N/.flatpak) of over 200 MiB whose windows are none of those listed in
+ *     /run/rudolf/windows: a window of class "steam_app_N" (a Steam game) counts as Steam's. It is asked to quit
+ *     (SIGTERM), and ended 3 s later if it has not. The app in front, and every app with a window open, are left alone.
  * It also tells the kernel which processes to end last if the kernel has to step in itself (oom_score_adj): the
  * desktop's browser, its graphics and network processes, Xorg, rudolf-display, rudolfd, rudolf-launch and this guard.
  *
  * Files (in /run/rudolf):
  *   memguard.log       what it did (also copied to the session log)
- *   memguard.events    one line per page ended: "TIME PID RSS-BYTES" (rudolfd's /api/memory reads it)
+ *   memguard.events    one line per page ended: "TIME PID RSS-BYTES", or per app: "TIME PID RSS-BYTES APP-NAME"
+ *                      (rudolfd's /api/memory and the health log read it)
  *   memguard.critical  touched every second while memory is critical (the session's watchdog then waits longer)
  * Options: rudolf.nomemguard=1 on the start-up options (it then only sets oom_score_adj); --once prints what it
  * would do and exits (testing).
@@ -38,6 +44,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -172,6 +179,92 @@ static struct proc *victim(void)
 	return best;
 }
 
+/* 1.5.6: apps. Each Flatpak sandbox has a folder in /run/user/UID/.flatpak with "pid" (its bwrap, the root of its
+   processes) and "info" ([Application] name=com.discordapp.Discord). Steam starts its interface and its games in
+   further sandboxes of its own (through the Flatpak portal): the same name, so they count as Steam's. */
+#define MAXAPP 32
+struct app { char id[128]; int roots[16], nroots; long long rss; };
+static struct app apps[MAXAPP];
+static int napps;
+static int under(struct proc *p, int root) { for (int k = 0; k < 64 && p; k++) { if (p->pid == root) return 1; p = find(p->ppid); } return 0; }
+static long long proc_mem(int pid)
+{
+	char path[64]; snprintf(path, sizeof path, "/proc/%d/status", pid);
+	if (readf(path, buf, sizeof buf) <= 0) return 0;
+	const char *r = strstr(buf, "\nVmRSS:"), *w = strstr(buf, "\nVmSwap:");
+	return ((r ? atoll(r + 8) : 0) + (w ? atoll(w + 9) : 0)) * 1024;
+}
+static void scan_apps(const char *base)
+{
+	napps = 0;
+	DIR *u = opendir(base); struct dirent *e;
+	while (u && (e = readdir(u))) {
+		if (e->d_name[0] < '0' || e->d_name[0] > '9') continue;
+		char dir[600]; snprintf(dir, sizeof dir, "%s/%s/.flatpak", base, e->d_name);
+		DIR *d = opendir(dir); struct dirent *i;
+		while (d && (i = readdir(d))) {
+			if (i->d_name[0] == '.') continue;
+			char path[900], info[2048];
+			snprintf(path, sizeof path, "%s/%s/pid", dir, i->d_name);
+			if (readf(path, info, sizeof info) <= 0) continue;
+			int root = atoi(info); if (root <= 1 || !find(root)) continue;
+			snprintf(path, sizeof path, "%s/%s/info", dir, i->d_name);
+			if (readf(path, info, sizeof info) <= 0) continue;
+			char *n = strstr(info, "\nname="); if (!n && !strncmp(info, "name=", 5)) n = info - 1;
+			if (!n) continue;
+			n += 6; size_t l = strcspn(n, "\n"); if (!l || l >= sizeof apps[0].id) continue;
+			struct app *a = NULL;
+			for (int k = 0; k < napps; k++) if (strlen(apps[k].id) == l && !strncmp(apps[k].id, n, l)) a = &apps[k];
+			if (!a) { if (napps >= MAXAPP) continue; a = &apps[napps++]; memset(a, 0, sizeof *a); memcpy(a->id, n, l); a->id[l] = 0; }
+			if (a->nroots < 16) a->roots[a->nroots++] = root;
+		}
+		if (d) closedir(d);
+	}
+	if (u) closedir(u);
+	for (int k = 0; k < napps; k++)
+		for (int i = 0; i < np; i++) for (int r = 0; r < apps[k].nroots; r++) if (under(&ps[i], apps[k].roots[r])) { apps[k].rss += proc_mem(ps[i].pid); break; }
+}
+/* the app's short name: com.discordapp.Discord -> Discord */
+static const char *app_name(const struct app *a) { const char *d = strrchr(a->id, '.'); return d ? d + 1 : a->id; }
+/* true when one of its windows is open: a window class (or instance) that is its short name, or starts with it and
+   "_" (steam_app_945360 for a Steam game), case aside. /run/rudolf/windows: id, web, class, instance, full screen, title */
+static int has_window(const struct app *a, const char *wins)
+{
+	const char *nm = app_name(a); size_t nl = strlen(nm);
+	for (const char *l = wins; l && *l; ) {
+		const char *end = strchr(l, '\n'); if (!end) end = l + strlen(l);
+		const char *f = l; int col = 0;
+		while (f < end) {
+			const char *t = memchr(f, '\t', end - f); if (!t) t = end;
+			if ((col == 2 || col == 3) && (size_t)(t - f) >= nl && !strncasecmp(f, nm, nl) && ((size_t)(t - f) == nl || f[nl] == '_')) return 1;
+			f = t + 1; col++;
+		}
+		l = *end ? end + 1 : end;
+	}
+	return 0;
+}
+/* the largest app with no window open, over MIN_RSS, or NULL */
+static struct app *app_victim(void)
+{
+	static char wins[16384];
+	/* (--once, for the host test: other places, and a smaller size) */
+	const char *wf = once && getenv("MG_WINDOWS") ? getenv("MG_WINDOWS") : RUN "/windows", *ru = once && getenv("MG_RUNUSER") ? getenv("MG_RUNUSER") : "/run/user";
+	long long min = once && getenv("MG_MIN_MIB") ? atoll(getenv("MG_MIN_MIB")) << 20 : MIN_RSS;
+	if (readf(wf, wins, sizeof wins) < 0) wins[0] = 0;
+	scan_apps(ru);
+	struct app *best = NULL;
+	for (int k = 0; k < napps; k++) {
+		if (apps[k].rss < min || has_window(&apps[k], wins)) continue;
+		if (!best || apps[k].rss > best->rss) best = &apps[k];
+	}
+	return best;
+}
+static void signal_app(struct app *a, int sig)
+{
+	scan();
+	for (int i = 0; i < np; i++) for (int r = 0; r < a->nroots; r++) if (under(&ps[i], a->roots[r])) { kill(ps[i].pid, sig); break; }
+}
+
 int main(int argc, char **argv)
 {
 	once = argc > 1 && !strcmp(argv[1], "--once");
@@ -186,6 +279,9 @@ int main(int argc, char **argv)
 			printf("renderer %d: %lld MiB%s%s%s\n", p->pid, p->rss >> 20, p->ext ? " (extension)" : "", !b ? " (no browser)" : b->kind == 'w' ? " (web window)" : "",
 				desktop_own(p, NULL) ? " (the desktop's own: kept)" : ""); }
 		struct proc *v = victim(); if (v) printf("would end: %d (%lld MiB)\n", v->pid, v->rss >> 20); else printf("would end: none\n");
+		struct app *a = app_victim();
+		for (int k = 0; k < napps; k++) printf("app %s: %lld MiB, %d sandbox(es)%s\n", apps[k].id, apps[k].rss >> 20, apps[k].nroots, &apps[k] == a ? " (no window open: would quit it)" : "");
+		if (!v && a) printf("would quit app: %s (%lld MiB)\n", app_name(a), a->rss >> 20);
 		return 0;
 	}
 	/* never swapped out or stalled itself; ended last; ahead of the pages */
@@ -225,6 +321,17 @@ int main(int argc, char **argv)
 		if (now - last_protect >= 5 || crit) { scan(); protect(); last_protect = now; }
 		if (!crit || off || now - last_kill < COOLDOWN) continue;
 		struct proc *v = victim();
+		struct app *a = v ? NULL : app_victim();
+		if (!v && a) {
+			char nm[128]; snprintf(nm, sizeof nm, "%s", app_name(a)); long long rss = a->rss; int root = a->roots[0];
+			signal_app(a, SIGTERM); sleep(3);
+			if ((a = app_victim()) && !strcmp(app_name(a), nm)) signal_app(a, SIGKILL);
+			logf_("quit %s (no window open, %lld MiB) to free memory", nm, rss >> 20);
+			char l[200]; int n = snprintf(l, sizeof l, "%lld %d %lld %s\n", (long long)now, root, rss, nm);
+			int f = open(RUN "/memguard.events", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644); if (f >= 0) { if (write(f, l, n) < 0) {} close(f); }
+			last_kill = time(NULL); low = stall = 0; fire0.tv_sec = 0;
+			continue;
+		}
 		if (!v) {
 			if (now - last_kill >= 30) {
 				/* say what holds the memory: the largest page renderer, and why it was left alone */
@@ -233,6 +340,7 @@ int main(int argc, char **argv)
 				if (big) logf_("no web page to end: the largest page renderer (%d, %lld MiB) is %s", big->pid, big->rss >> 20,
 					big->ext ? "an extension" : desktop_own(big, NULL) ? "the desktop's own" : "under 200 MiB");
 				else logf_("no web page to end (no page renderers: a program holds the memory)");
+				logf_("no app without a window open to quit either");
 				last_kill = now;
 			}
 			continue;
