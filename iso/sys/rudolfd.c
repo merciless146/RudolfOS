@@ -2085,6 +2085,25 @@ static void dl_store_paths(const char *h)
 	snprintf(DLHOME, sizeof DLHOME, "%s", h); snprintf(INCOMING, sizeof INCOMING, "%s/.incoming", h);
 	snprintf(QUARANTINE, sizeof QUARANTINE, "%s/.quarantine", h); snprintf(DLACCTS, sizeof DLACCTS, "%s/.accounts", h);
 }
+/* Each request is handled in its own process (fork in main), so what dl_store_bind found does not outlive the request
+   that made it: every request reads it again from the mounts (dl_store_state, at the start of handle) */
+static int dl_store_mounted(void)
+{
+	FILE *f = fopen("/proc/self/mountinfo", "r"); if (!f) return 0;
+	char line[1024]; int yes = 0;
+	while (!yes && fgets(line, sizeof line, f)) {
+		char *t = line; for (int i = 0; i < 4 && t; i++) { t = strchr(t, ' '); if (t) t++; }   /* the 5th field: the mount point */
+		if (t && !strncmp(t, DLSTORE " ", sizeof DLSTORE)) yes = 1;
+	}
+	fclose(f); return yes;
+}
+static int home_nobind;
+static void dl_store_state(void)
+{
+	if (home_nobind) return;
+	if (dl_store_mounted()) { dl_store_bound = 1; dl_store_paths(DLSTORE); }
+	else { dl_store_bound = 0; dl_store_paths(DLPUB); }
+}
 /* the folders the session makes; also when the encrypted folder is unlocked (1.5.1) */
 static void dl_store_dirs(void)
 {
@@ -2104,7 +2123,7 @@ static void dl_store_bind(void)
 	if (!realpath(DLPUB, rp)) { struct stat l; if (lstat(DLSTORE, &l)) { if (symlink(DLPUB, DLSTORE)) {} } return; }
 	struct stat a, b, rs;
 	struct stat ls0; int islink = !lstat(DLSTORE, &ls0) && S_ISLNK(ls0.st_mode);   /* a link is not a bind */
-	if (!islink && !stat(DLSTORE, &a) && !stat(rp, &b) && a.st_dev == b.st_dev && a.st_ino == b.st_ino && !stat(RUN, &rs) && rs.st_dev != a.st_dev) { dl_store_bound = 1; dl_store_paths(DLSTORE); dl_store_dirs(); return; }
+	if (!islink && dl_store_mounted() && !stat(DLSTORE, &a) && !stat(rp, &b) && a.st_dev == b.st_dev && a.st_ino == b.st_ino && !stat(RUN, &rs) && rs.st_dev != a.st_dev) { dl_store_bound = 1; dl_store_paths(DLSTORE); dl_store_dirs(); return; }
 	umount2(DLSTORE, MNT_DETACH);
 	struct stat l; if (!lstat(DLSTORE, &l) && S_ISLNK(l.st_mode)) unlink(DLSTORE);
 	mkdir(DLSTORE, 0755);
@@ -3702,6 +3721,7 @@ static void api(struct req *r)
 
 static void handle(int fd)
 {
+	dl_store_state();   /* 1.5.6: this process's view of the downloads store */
 	struct req r;
 	memset(&r, 0, sizeof r);
 	r.fd = fd;
