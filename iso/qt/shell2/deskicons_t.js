@@ -26,7 +26,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("(()=>{const d=node(homePath('DESKTOP'));d['NOTE.TXT']='hello';fsSave();EXPL.forEach(f=>f());trashPut([homePath('DESKTOP').concat('NOTE.TXT')]);return TR.length})()");
   await q("(()=>{const d=document.querySelector('#desk > .ic:not(.tr)');delete DESK.dataset.notes;d.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}))})()"); await wait(300);
   const t1 = await tr();
-  ok('1. the Trash says it is empty, then (after hovering the desktop icons) how many items it holds', t0 == 'The Trash is empty' && t1 == '1 item in the Trash', [t0, t1]);
+  ok('1. the Trash says it is empty, then (after hovering the desktop icons) how many items it holds, and their size (1.5.6)', t0 == 'The Trash is empty' && /^1 item in the Trash \(5 B\)$/.test(t1), [t0, t1]);
   // a built-in icon off the desktop from its menu
   await q("(()=>{const d=[...DESK.querySelectorAll(':scope > .ic')].find(x=>x.querySelector('span').textContent=='Calculator');const r=d.getBoundingClientRect();iconMenu(d,r.left+5,r.top+5)})()");
   let m = await menuItems();

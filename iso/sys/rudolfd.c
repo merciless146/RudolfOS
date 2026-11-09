@@ -2014,6 +2014,23 @@ static void api_processes(struct req *r)
 /* 1.4.7: memory. What the start-up set up (compressed swap in memory, /run/rudolf/memory), whether memory is critical
    now, and the pages the memory guard (rudolf-memguard) ended: [{time, pid, rss}], the last 20. Oracle asks when one
    of its tabs stops, to say why. */
+/* 1.5.6: what fills the disk (Settings › Storage and backup). /usr/lib/rudolf/storage-measure counts it into
+   RUN/storage.json (a large Steam library takes a while); "measure" starts it unless it is running, and GET storage
+   gives the last result, and whether a count is running. */
+static int storage_running(void)
+{
+	char *p = slurp(RUN "/storage.pid", NULL); int pid = p ? atoi(p) : 0; free(p);
+	return pid > 1 && !kill(pid, 0);
+}
+static void api_storage(struct req *r, int measure)
+{
+	if (measure && !storage_running())
+		run("sh -c 'echo $$ > " RUN "/storage.pid; exec /usr/lib/rudolf/storage-measure " RUN "/storage.json' >/dev/null 2>&1 </dev/null &");
+	if (measure) { int i; for (i = 0; i < 20 && !storage_running(); i++) usleep(50000); }
+	char *j = slurp(RUN "/storage.json", NULL);
+	str s = {0}; sadd(&s, "{\"ok\":true,\"measuring\":%s,\"result\":%s}", storage_running() ? "true" : "false", j && *j == '{' ? j : "null");
+	free(j); reply_json(r->fd, &s);
+}
 static void api_memory(struct req *r)
 {
 	str s = {0}; sadd(&s, "{\"ok\":true,\"now\":%lld,\"setup\":", (long long)time(NULL));
@@ -3222,6 +3239,7 @@ static void api(struct req *r)
 	if (!strcmp(p, "system")) { api_system(r); return; }
 	if (!strcmp(p, "processes")) { api_processes(r); return; }
 	if (!strcmp(p, "memory")) { api_memory(r); return; }
+	if (!strcmp(p, "storage") || (!strcmp(p, "storage/measure") && post)) { api_storage(r, !strcmp(p, "storage/measure")); return; }
 	if (!strcmp(p, "memory/iam") && post) { api_memory_iam(r); return; }
 	if (!strcmp(p, "health")) { api_health(r, post); return; }
 	if (!strcmp(p, "firewall")) { api_firewall(r, post); return; }
