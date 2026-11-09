@@ -40,6 +40,7 @@ Summary: your files on the disk (docs/plan-1.5.6.md)
 - New: favourite files. "Add to favourites" works for files too; they are listed in the sidebar below your favourite folders and open in their app. A favourite follows its file when you rename or move it in File Explorer, and stays greyed when the file is gone, with "Remove from favourites".
 - New: Settings › Storage and backup says what fills the computer's disk, largest first: your files, other accounts' files, Downloads, the Trash, Linux apps, Steam's games, Linux (Debian), Emu's games, Blitzen's model, the system and everything else, each with what you can do about it (Open, Manage, Open Steam). "The disk is almost full" opens it.
 - New: the Trash shows its size (on the desktop and in its window, large files at their size on the disk), and Settings › Storage and backup can delete items for good once they are older than 1, 14, 30 or 60 days (Never by default; each account its own), with one notification a day at most.
+- New: File Explorer's "Everywhere" search looks in the folder you are in first, then the rest of C:, then plugged-in drives (by name, at most 3 folder levels and 2,000 files each), with filters for the type (documents, pictures, music, videos, archives, programs) and when it changed. Results show where each one is and appear while it looks; it can be stopped, and shows 1,000 at a time with "Show more".
 
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it
