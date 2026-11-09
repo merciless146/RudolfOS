@@ -109,11 +109,18 @@ static int home_key_remove(const unsigned char *id, int *busy)
 	if (busy) *busy = !r && (a.removal_status_flags & FSCRYPT_KEY_REMOVAL_STATUS_FLAG_FILES_BUSY);
 	return r;
 }
+/* 1.5.6: Debian (if running) sees the same folders: its mount namespace is its own (rudolf-debian rebind) */
+static void home_debian_rebind(void)
+{
+	if (home_nobind || access("/usr/bin/rudolf-debian", X_OK)) return;
+	if (run("/usr/bin/rudolf-debian rebind >/dev/null 2>&1")) fprintf(stderr, "rudolfd: Debian could not be given the account's folders\n");
+}
 static void home_unbind(void)
 {
 	char *cur = slurp(HOME_SESSION, NULL); if (!cur) return; free(cur);
 	for (int i = 0; HOME_BIND[i]; i++) { char t[200]; snprintf(t, sizeof t, "/home/rudolf/%s", HOME_BIND[i]); umount2(t, MNT_DETACH); }
 	unlink(HOME_SESSION);
+	home_debian_rebind();
 }
 static void dl_store_tidy(const char *acct);
 static int home_bind(const char *acct, char *err, size_t en)
@@ -129,6 +136,7 @@ static int home_bind(const char *acct, char *err, size_t en)
 	}
 	char line[80]; snprintf(line, sizeof line, "%s\n", acct); write_str(HOME_SESSION, line);
 	if (dl_store_bound) dl_store_tidy(acct);
+	home_debian_rebind();
 	return 0;
 }
 /* 0 ok; otherwise an HTTP status and err */
@@ -469,6 +477,7 @@ static int dl_name_taken(int dd, const char *n)
 {
 	int d2 = dup(dd); DIR *d = d2 >= 0 ? fdopendir(d2) : NULL; struct dirent *e; int yes = 0;
 	if (!d) { if (d2 >= 0) close(d2); return 1; }
+	rewinddir(d);   /* a dup shares the read position with dd: from the start each time */
 	while (!yes && (e = readdir(d))) if (!strcasecmp(e->d_name, n)) yes = 1;
 	closedir(d); return yes;
 }
@@ -478,7 +487,7 @@ static void dl_store_tidy(const char *acct)
 	int sd = open(DLSTORE, O_RDONLY | O_DIRECTORY | O_CLOEXEC), dd = open(ad, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
 	if (sd < 0 || dd < 0) { if (sd >= 0) close(sd); if (dd >= 0) close(dd); return; }
 	int accounts = 0; { DIR *h = opendir(home_root); struct dirent *e; while (h && (e = readdir(h))) if (dl_acct_ok(e->d_name)) accounts++; if (h) closedir(h); }
-	int s2 = dup(sd); DIR *d = s2 >= 0 ? fdopendir(s2) : NULL; struct dirent *e; int same = 0, moved = 0, kept = 0, failed = 0;
+	int s2 = dup(sd); DIR *d = s2 >= 0 ? fdopendir(s2) : NULL; struct dirent *e; if (d) rewinddir(d); int same = 0, moved = 0, kept = 0, failed = 0;
 	char names[256][256]; int nn = 0;   /* read first: the folder changes while files go */
 	while (d && (e = readdir(d)) && nn < 256) { if (e->d_name[0] == '.') continue; snprintf(names[nn++], 256, "%s", e->d_name); }
 	if (d) closedir(d); else if (s2 >= 0) close(s2);

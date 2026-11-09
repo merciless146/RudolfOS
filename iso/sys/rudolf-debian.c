@@ -11,6 +11,7 @@
  *   rudolf-debian update                    apt-get update + upgrade (as Debian's root)
  *   rudolf-debian wine                      install Wine (Windows programs), as Debian's root
  *   rudolf-debian remove                    stop and delete Debian
+ *   rudolf-debian rebind                    (1.5.6) the signed-in account's folders, as Rudolf OS has them now
  *
  * Who is who: Debian's root and system users (0-999) are uids 200000-200999 on Rudolf OS, with no rights
  * outside; Debian's "rudolf" (1000) is Rudolf OS's rudolf (1000), so the home folder is theirs on both
@@ -157,6 +158,13 @@ static void keeper_main(void)   /* pid 1 inside: set up the file system, then re
 	if (!access("/tmp/.X11-unix", F_OK)) bindmnt("/tmp/.X11-unix", ROOT "/tmp/.X11-unix", 1);
 	if (!access("/run/user/1000", F_OK)) bindmnt("/run/user/1000", ROOT "/run/user/1000", 1);
 	bindmnt("/home/rudolf", ROOT "/home/rudolf", 1);
+	/* 1.5.6: with "Encrypt my data", Downloads is a link into the encrypted folder (/persist/vault/downloads), which is
+	   outside Debian: the folder is placed at the same path inside, so the link works there too. The downloads store's
+	   own bind (/run/rudolf/dl) is taken when there is one, so that this is the store and not an account's folder
+	   bound over it; the account's comes on top (rebind). */
+	{ char t[300]; ssize_t n = readlink("/home/rudolf/Downloads", t, sizeof t - 1);
+	  if (n > 0) { t[n] = 0; char d[400]; snprintf(d, sizeof d, ROOT "%s", t);
+	    if (t[0] == '/' && !strstr(t, "..") && !strncmp(t, "/persist/", 9)) bindmnt(!access("/run/rudolf/dl/.", F_OK) ? "/run/rudolf/dl" : t, d, 1); } }
 	if (access("/etc/resolv.conf", F_OK)) write_str("/etc/resolv.conf", "");
 	bindmnt("/etc/resolv.conf", ROOT "/etc/resolv.conf", 0);
 	sethostname("rudolf", 6);
@@ -172,6 +180,7 @@ static void keeper_main(void)   /* pid 1 inside: set up the file system, then re
 	signal(SIGTERM, SIG_DFL); signal(SIGINT, SIG_IGN); signal(SIGHUP, SIG_IGN);
 	for (;;) { if (wait(NULL) < 0 && errno == ECHILD) pause(); }
 }
+static int cmd_rebind(void);
 static pid_t start(void)
 {
 	pid_t k = keeper_pid(); if (k) return k;
@@ -197,6 +206,7 @@ static pid_t start(void)
 	if (n < 1 || c[0] != 1 || q <= 0) die("the Debian sandbox did not start (%s)", q <= 0 ? "no process" : "no ready signal");
 	char s[32]; snprintf(s, sizeof s, "%d\n", q); write_str(INITPID, s);
 	k = keeper_pid(); if (!k) die("the Debian sandbox did not start");
+	cmd_rebind();   /* 1.5.6: the signed-in account's folders */
 	return k;
 }
 static void stop(void)
@@ -658,6 +668,68 @@ static int cmd_launch(const char *id, const char *file)
 	int st; waitpid(c, &st, 0); _exit(0);
 }
 
+/* ------------------------------------------------------------------ the account's folders (1.5.6) */
+/* rudolfd binds the signed-in account's Documents, Pictures, Music, Videos (and Downloads) over /home/rudolf's at
+   sign-in. Debian's mount namespace is its own (private, from when it started), so it does not see that: rebind puts
+   the same folders there, through the new mount API (a copy of the folder made outside, attached inside), after
+   taking off whatever was put there before. Run by rudolfd after its binds change, and when Debian starts. */
+#ifndef SYS_open_tree
+#define SYS_open_tree 428
+#endif
+#ifndef SYS_move_mount
+#define SYS_move_mount 429
+#endif
+#define RB_OPEN_TREE_CLONE 1
+#define RB_MOVE_MOUNT_F_EMPTY_PATH 0x4
+static const char *const RB_NAMES[] = {"Documents", "Pictures", "Music", "Videos", "Downloads", NULL};
+/* mounts stacked at path (as the keeper sees it) */
+static int rb_count(const char *mi, const char *path)
+{
+	int n = 0; size_t pl = strlen(path);
+	for (const char *l = mi; l && *l; ) {
+		const char *t = l; for (int i = 0; i < 4 && t; i++) { t = strchr(t, ' '); if (t) t++; }
+		if (t && !strncmp(t, path, pl) && t[pl] == ' ') n++;
+		l = strchr(l, '\n'); if (l) l++;
+	}
+	return n;
+}
+static int cmd_rebind(void)
+{
+	pid_t k = keeper_pid(); if (!k) return 0;
+	char *acct = slurp("/run/rudolf/home-session", NULL); if (acct) { char *e = strpbrk(acct, "\r\n"); if (e) *e = 0; }
+	for (const char *c = acct; c && *c; c++) if (!isalnum((unsigned char)*c) && *c != '-' && *c != '_') { free(acct); acct = NULL; break; }
+	/* Downloads is the account's own only while the downloads store has its bind (rudolfd: dl_store_bound) */
+	char *hm = slurp("/proc/self/mountinfo", NULL); int dlb = hm && strstr(hm, " /run/rudolf/dl "); free(hm);
+	char p[64]; snprintf(p, sizeof p, "/proc/%d/mountinfo", k); char *mi = slurp(p, NULL); if (!mi) die("cannot read Debian's mounts");
+	int fds[8], base[8], cnt[8]; char tgt[8][320];
+	for (int i = 0; RB_NAMES[i]; i++) {
+		char h[200]; snprintf(h, sizeof h, "/home/rudolf/%s", RB_NAMES[i]);
+		char l[300]; ssize_t n = readlink(h, l, sizeof l - 1);
+		if (n > 0 && l[0] == '/') { l[n] = 0; snprintf(tgt[i], sizeof tgt[i], "%s", l); base[i] = 1; }   /* the link's folder, placed at start */
+		else { snprintf(tgt[i], sizeof tgt[i], "%s", h); base[i] = 0; }
+		cnt[i] = rb_count(mi, tgt[i]);
+		fds[i] = -1;
+		if (acct && *acct && (strcmp(RB_NAMES[i], "Downloads") || dlb)) {
+			char src[300]; snprintf(src, sizeof src, "/persist/accounts/%s/%s", acct, RB_NAMES[i]);
+			struct stat st; if (!lstat(src, &st) && S_ISDIR(st.st_mode)) fds[i] = syscall(SYS_open_tree, AT_FDCWD, src, RB_OPEN_TREE_CLONE | O_CLOEXEC);
+		}
+	}
+	free(mi); free(acct);
+	snprintf(p, sizeof p, "/proc/%d/ns/mnt", k); int ns = open(p, O_RDONLY | O_CLOEXEC); if (ns < 0) die("cannot reach the sandbox");
+	pid_t c = fork(); if (c < 0) die("fork");
+	if (!c) {
+		if (setns(ns, CLONE_NEWNS)) { fprintf(stderr, "rudolf-debian: rebind: cannot join (%s)\n", strerror(errno)); _exit(1); }
+		int bad = 0;
+		for (int i = 0; RB_NAMES[i]; i++) {
+			for (int j = cnt[i]; j > base[i]; j--) if (umount2(tgt[i], MNT_DETACH)) break;
+			if (fds[i] >= 0 && syscall(SYS_move_mount, fds[i], "", AT_FDCWD, tgt[i], RB_MOVE_MOUNT_F_EMPTY_PATH)) { fprintf(stderr, "rudolf-debian: rebind %s: %s\n", RB_NAMES[i], strerror(errno)); bad = 1; }
+		}
+		_exit(bad);
+	}
+	close(ns); for (int i = 0; RB_NAMES[i]; i++) if (fds[i] >= 0) close(fds[i]);
+	int st; waitpid(c, &st, 0); return WIFEXITED(st) ? WEXITSTATUS(st) : 1;
+}
+
 /* ------------------------------------------------------------------ status, update, remove */
 static long long du(const char *path)
 {
@@ -681,6 +753,7 @@ int main(int argc, char **argv)
 	}
 	if (!strcmp(c, "setup")) { if (argc < 3) die("setup PASSWORD-FILE"); return cmd_setup(argv[2]); }
 	if (!strcmp(c, "start")) { printf("%d\n", start()); return 0; }
+	if (!strcmp(c, "rebind")) return cmd_rebind();
 	if (!strcmp(c, "stop")) { stop(); return 0; }
 	if (!strcmp(c, "run")) return cmd_run(argc - 2, argv + 2);
 	if (!strcmp(c, "pty")) { if (argc < 3) die("pty ID"); return cmd_pty(argv[2], argc > 3 && !strcmp(argv[3], "--root")); }
