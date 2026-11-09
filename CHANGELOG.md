@@ -24,6 +24,7 @@ Summary: your files on the disk (docs/plan-1.5.6.md)
 - New: installing apps from files. Opening a Linux package (.deb, such as Discord's) shows what it is and installs it into Linux (Debian) with what it needs, with a progress bar; its app is then in the Start menu, and the wizard offers to open it or put it on the desktop. An iPhone or iPad app (.ipa) is explained: it cannot run outside Apple's devices. AppImages, .bin installers and Android apps follow.
 - Changed: the Command Prompt and the Linux terminal are one app, Terminal, with the Command Prompt's icon. Each is a tab: ＋ opens either. Terminal opens on Linux when Linux is set up, otherwise on the Command Prompt (also in a web browser). Lua programs, .BAT files and rpk open a Command Prompt tab. Its desktop icon keeps its place.
 - Changed: the Developer Console is out of the Start menu unless Settings › Apps › "Show developer tools in the Start menu" is on. It is always in Task Manager and in search.
+- Changed: installing a Linux package also adds what it recommends once the package itself is in (Steam's package adds Valve's own source, whose 32-bit libraries can only be found then).
 - New: Windows programs (.exe, .msi) open in the installation wizard: an installer runs with Wine and the programs it installs are offered (Open, Put on the desktop) as they appear; another program runs, or can be installed anyway. Without Wine (or Linux), the wizard sets them up first.
 
 ## 1.5.5 (2026-11-08)
