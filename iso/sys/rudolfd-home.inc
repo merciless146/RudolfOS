@@ -348,6 +348,20 @@ static void api_home(struct req *r, const char *what, int post)
 		if (f < 0) { reply_err(r->fd, 404, "not found"); return; }
 		serve_fd_as(r, f, last, 1); return;
 	}
+	if (!strcmp(what, "hash")) {
+		/* 1.5.6: SHA-256 of a file in the account's folder, for File Explorer's Find duplicates (read in place,
+		   through the folder's own descriptor, as read is) */
+		if (!*p1) { close(root); reply_err(r->fd, 400, "no file"); return; }
+		char last[256]; int pf = home_parent(root, p1, last, sizeof last, 0); close(root);
+		if (pf < 0) { reply_err(r->fd, 404, "not found"); return; }
+		int f = openat(pf, last, O_RDONLY | O_NOFOLLOW); close(pf);
+		struct stat st; if (f < 0 || fstat(f, &st) || !S_ISREG(st.st_mode)) { if (f >= 0) close(f); reply_err(r->fd, 404, "not found"); return; }
+		char cmd[64]; snprintf(cmd, sizeof cmd, "sha256sum </proc/self/fd/%d 2>/dev/null", f);
+		char *h = run_out(cmd); close(f);
+		if (!h || strlen(h) < 64) { free(h); reply_err(r->fd, 500, "could not read the file"); return; }
+		h[64] = 0; for (int i = 0; i < 64; i++) if (!isxdigit((unsigned char)h[i])) { free(h); reply_err(r->fd, 500, "could not read the file"); return; }
+		str s = {0}; sadd(&s, "{\"ok\":true,\"sha256\":\"%s\",\"size\":%lld}", h, (long long)st.st_size); free(h); reply_json(r->fd, &s); return;
+	}
 	if (!strcmp(what, "link")) {
 		/* stage 2: a link (/dlf/<id>, as Downloads' files have) for <video>, <img> and the PDF viewer. It holds the
 		   account and the path, not a resolved path: each request walks the folder again (home_serve_link), so a link
