@@ -1239,7 +1239,7 @@ function trRestore(i){const it=TR[i];if(!it)return;let d=fs;for(const x of (it.f
 function trSize(v){if(isDir(v))return Object.values(v).reduce((a,x)=>a+trSize(x),0);return String(v).length}
 function trash(){const W=win('Trash','🗑️',580,380);let sel=new Set();
  W.body.innerHTML=`<div class='menubar' style='gap:6px'><button class='rs'>Restore</button><button class='df'>Delete forever</button><button class='em'>Empty Trash</button></div><div class='tl' style='flex:1;overflow:auto;min-height:0'></div><div class='stat sunk st'></div>`;
- const q=s=>W.body.querySelector(s),L=q('.tl'),st=q('.st'),fmt=n=>n<1024?n+' B':(n/1024).toFixed(1)+' KB';
+ const q=s=>W.body.querySelector(s),L=q('.tl'),st=q('.st'),fmt=n=>fmtB(n);
  const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
  function draw(){L.innerHTML='';sel=new Set([...sel].filter(i=>i<TR.length));
   if(!TR.length){L.innerHTML="<div style='text-align:center;color:#6b7280;padding:40px 10px'><div style='font-size:42px'>🗑️</div>The Trash is empty.</div>"}

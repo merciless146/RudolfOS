@@ -1,0 +1,39 @@
+#!/bin/sh
+# 1.5.6 (1.5.5's plan, item 4): what fills the disk, for Settings › Storage and backup. Started by rudolfd
+# (POST storage/measure); counting a large Steam library takes a while, so it writes its answer to a file:
+#   storage-measure OUT.json
+# Sizes are in bytes (du -sxk, so on the disk itself, and a folder is never counted twice: each place is
+# measured once, and the folders Linux apps see are the accounts' own). Each line:
+#   files      the accounts' folders, without their Downloads and their .Trash (per account in "accounts")
+#   trash      the accounts' .Trash folders (large files wait there until the Trash is emptied)
+#   downloads  the accounts' Downloads folders, and the downloads store (what Linux apps save, .incoming); an
+#              account's Downloads that is a mount of the store is not counted twice
+#   flatpak    Linux apps: the apps (/var/lib/flatpak) and their data (~/.var/app), Steam's games aside
+#   steam      Steam's games (its steamapps folders, inside the Linux apps' data)
+#   debian     Linux (Debian)
+#   games      Emu's games (/home/rudolf/Games)
+#   ai         Blitzen's model
+#   updates    the system and its spare slot (/persist/os)
+# The rest of the used space is what the disk says is used, minus all of these. The places can be moved for the
+# host test (STORAGE_PERSIST, STORAGE_HOME, STORAGE_FLATPAK, STORAGE_DL).
+OUT=${1:?usage: storage-measure OUT.json}
+P=${STORAGE_PERSIST:-/persist}; H=${STORAGE_HOME:-/home/rudolf}; FP=${STORAGE_FLATPAK:-/var/lib/flatpak}; DL=${STORAGE_DL:-/run/rudolf/dl}
+sz() { t=0; for f in "$@"; do [ -e "$f" ] || continue; k=$(du -sxk "$f" 2>/dev/null | tail -1 | cut -f1); t=$((t + ${k:-0} * 1024)); done; echo $t; }
+START=$(date +%s)
+ACC=""; FILES=0; TRASH=0; DOWN=0
+mounted() { grep -q " $1 " /proc/mounts 2>/dev/null; }
+for a in "$P"/accounts/*/; do
+	[ -d "$a" ] || continue; id=$(basename "$a")
+	f=0; for e in "$a"* "$a".[!.]*; do [ -e "$e" ] || continue; case "${e##*/}" in Downloads|.Trash) continue;; esac; f=$((f + $(sz "$e"))); done
+	t=$(sz "$a.Trash"); d=0; mounted "${a}Downloads" || d=$(sz "${a}Downloads")
+	FILES=$((FILES + f)); TRASH=$((TRASH + t)); DOWN=$((DOWN + d))
+	ACC="$ACC${ACC:+,}{\"id\":\"$(printf %s "$id" | tr -cd 'a-z0-9_-')\",\"files\":$f,\"trash\":$t,\"downloads\":$d}"
+done
+DOWN=$((DOWN + $(sz "$DL")))
+STEAM=0; for s in "$H"/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps "$H"/.var/app/com.valvesoftware.Steam/data/Steam/steamapps; do STEAM=$((STEAM + $(sz "$s"))); done
+FLAT=$(( $(sz "$FP" "$H/.var/app") - STEAM )); [ $FLAT -lt 0 ] && FLAT=0
+DEB=$(sz "$P/debian/"); GAMES=$(sz "$H/Games"); AI=$(sz "$P/ai"); UPD=$(sz "$P/os")
+set -- $(df -kP "$P" 2>/dev/null | tail -1); TOT=$(( ${2:-0} * 1024 )); USED=$(( ${3:-0} * 1024 )); FREE=$(( ${4:-0} * 1024 ))
+SUM=$((FILES + TRASH + DOWN + FLAT + STEAM + DEB + GAMES + AI + UPD)); REST=$((USED - SUM)); [ $REST -lt 0 ] && REST=0
+printf '{"ok":true,"time":%s,"took":%s,"disk":{"total":%s,"used":%s,"free":%s},"items":{"files":%s,"trash":%s,"downloads":%s,"flatpak":%s,"steam":%s,"debian":%s,"games":%s,"ai":%s,"updates":%s,"rest":%s},"accounts":[%s]}\n' \
+	"$(date +%s)" $(( $(date +%s) - START )) $TOT $USED $FREE $FILES $TRASH $DOWN $FLAT $STEAM $DEB $GAMES $AI $UPD $REST "$ACC" > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
