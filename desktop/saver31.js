@@ -45,6 +45,11 @@ function ssLoop(c,style,opt){opt=opt||{};const g=ssCtx(c),w=c.width,h=c.height,f
    desktop is brought to the front while the saver runs, and the window that was shown comes back after it */
 async function ssFront(){try{const j=await rdPost('apps/windows');const m=j.mode||'desktop';if(m!='desktop')await rdPost('apps/desktop');return m}catch(e){return 'desktop'}}
 function ssBack(m){if(!m||m=='desktop')return;const w=/^win ([0-9a-f]+)/.exec(m);(w?rdPost('apps/show?win='+w[1]):m=='web'?rdPost('web/show'):Promise.resolve()).catch(()=>{})}
+/* 1.5.6: a prompt that needs the person (the development link's "Allow this command?", a remote connection) comes in
+   front of the app or game on the screen, and the app comes back when it is answered. On the Vivobook the
+   development link's prompt waited behind Among Us, and could not be reached */
+function promptFront(o){if(!RD||!o)return;ssFront().then(m=>{if(m=='desktop')return;if(!o.isConnected){ssBack(m);return}
+ const ob=new MutationObserver(()=>{if(!o.isConnected){ob.disconnect();ssBack(m)}});ob.observe(document.body,{childList:true,subtree:true})})}
 function ssRun(opt){opt=opt||{};const c=document.createElement('canvas');c.id='saver';const k=Math.min(1,1280/Math.max(1,innerWidth));c.width=Math.round(innerWidth*k);c.height=Math.round(innerHeight*k);c.style.cssText='width:100vw;height:100vh;background:#000';document.body.appendChild(c);
  const style=opt.style||SYSC.ssstyle||'stars',lp=ssLoop(c,style,{time:SYSC.sstime!==false});let iv=0;
  /* on installed Rudolf OS, input in a game or a Linux app (which the page does not see) also ends it */

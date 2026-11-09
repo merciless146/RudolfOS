@@ -33,6 +33,9 @@ Summary: your files on the disk (docs/plan-1.5.6.md)
 - Changed: the compressed memory (zram) is as large as the computer's memory instead of half of it, so it can hold twice as much (on the Vivobook, Steam, Discord and a game filled the old one).
 - Changed: while an app or game is in front and memory ran short, the desktop gets 5 minutes instead of 2 to answer before its browser is restarted (closing every window).
 - Fixed: the Weather widget said "Weather needs an internet connection" for 15 minutes after start-up when the desktop was ready before the Wi-Fi. It now tries again after 20 seconds, then 1, 2 and 5 minutes, and at once when the computer is online.
+- Fixed: a prompt that needs you (the development link's "Allow this command?", "Allow a remote connection?") waited behind a full-screen game or app where it could not be reached. It now comes to the front, and the app comes back once you answer.
+- Fixed: an installer's window could stay hidden behind the desktop (Starport's installer in Wine: its wizard belongs to another window). A window's dialogs now stay above it with the keyboard, and a dialog whose owner is hidden is shown as a window of its own. The installation wizard has "Show the installer" and "Stop the installer".
+- Fixed: Chromium's own shortcuts could close, reload or cover the desktop: F5 and Ctrl+R reloaded it (every window lost), Ctrl+H, Ctrl+J, F1 and others put Chromium's pages over it, Shift+Esc opened Chromium's task manager. None of them acts on the desktop now; the desktop's own shortcuts still work. In Oracle's tabs Chromium's pages never open from a website, and Ctrl+Shift+R and Shift+F5 reload the tab.
 
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it

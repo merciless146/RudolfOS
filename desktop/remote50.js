@@ -16,7 +16,7 @@ const rmFmtSince=t=>{const m=Math.max(0,Math.round((Date.now()/1000-t)/60));retu
 function rmAsk(p){if(RM50ask&&RM50ask.id==p.id)return;if(RM50ask)RM50ask.o.remove();
  const o=document.createElement('div');o.className='rmodal';o.style.zIndex=99999;
  o.innerHTML=`<div class='rmbox' role='alertdialog' aria-label='Remote connection' style='max-width:460px'><h3>🖥️ Allow a remote connection?</h3><p><b class='u'></b> wants to see and control this computer from <b class='f'></b>.</p><p class='msg' style='color:#6b7280;font-size:12px'>Allow it only if you know who it is. They can use everything you can see on the screen. <span class='cd'></span></p><div class='rmrow'><button class='n'>Refuse</button><button class='y pri'>Allow</button></div></div>`;
- o.querySelector('.u').textContent=p.user;o.querySelector('.f').textContent=p.from;document.body.appendChild(o);sfx&&sfx('notify');
+ o.querySelector('.u').textContent=p.user;o.querySelector('.f').textContent=p.from;document.body.appendChild(o);sfx&&sfx('notify');typeof promptFront=='function'&&promptFront(o);
  const ans=async a=>{o.remove();RM50ask=null;try{await rdPost('remote/answer?id='+p.id+'&allow='+(a?1:0))}catch(e){}};
  o.querySelector('.y').onclick=()=>ans(true);o.querySelector('.n').onclick=()=>ans(false);
  const cd=o.querySelector('.cd'),t0=p.time;const tick=()=>{if(!o.isConnected)return;const left=60-Math.round(Date.now()/1000-t0);cd.textContent=left>0?`Refused by itself in ${left} s.`:'';if(left<=0){o.remove();RM50ask=null;return}setTimeout(tick,1000)};tick();

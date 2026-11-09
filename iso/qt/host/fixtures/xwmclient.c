@@ -3,6 +3,8 @@
  * sends it, one line each, to stdout: "id 0x..", "take_focus TIME", "focus_in", "geom X Y W H".
  *   xwmclient desktop | app | borderless W H (a Wine-style borderless window, then sized W x H) | resize ID W H |
  *             full ID 0|1|2 (full screen off/on/toggle) | focus ID | getfocus | wmstate ID (1 = NormalState)
+ *             | stack (1.5.6: the viewable top-level windows, bottom to top) | inno (1.5.6: an app window, then a dialog
+ *             of it, like Inno Setup's wizard: "id" then "dlg") | orphan (a dialog whose owner is never shown: "dlg")
  * GPL-2.0-or-later. */
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -34,6 +36,25 @@ int main(int argc, char **argv)
 		XGetWindowProperty(d, strtoul(argv[2], NULL, 0), st, 0, 32, False, XA_ATOM, &type, &fmt, &n, &after, &p);
 		for (unsigned long i = 0; p && i < n; i++) if (((Atom *)p)[i] == fs) f = 1;
 		printf("%s\n", f ? "fullscreen" : "-"); return 0;
+	}
+	if (!strcmp(argv[1], "stack")) {
+		Window r, p, *k = NULL; unsigned n = 0; XQueryTree(d, root, &r, &p, &k, &n);
+		for (unsigned i = 0; i < n; i++) { XWindowAttributes wa; if (XGetWindowAttributes(d, k[i], &wa) && wa.map_state == IsViewable && !wa.override_redirect) printf("0x%lx\n", k[i]); }
+		return 0;
+	}
+	if (!strcmp(argv[1], "inno") || !strcmp(argv[1], "orphan")) {
+		int orphan = argv[1][0] == 'o';
+		Window o = XCreateSimpleWindow(d, root, 0, 0, orphan ? 10 : 300, orphan ? 10 : 200, 0, 0, 0);
+		XClassHint oc = {"setup.tmp", "setup.tmp"}; XSetClassHint(d, o, &oc); XStoreName(d, o, "Setup");
+		if (!orphan) { XMapWindow(d, o); XSync(d, False); printf("id 0x%lx\n", o); usleep(400000); }
+		Window w = XCreateSimpleWindow(d, root, 10, 10, 500, 380, 0, 0, 0);
+		XSetClassHint(d, w, &oc); XStoreName(d, w, "Setup - Starport"); XSetTransientForHint(d, w, o);
+		Atom pr[2] = {XInternAtom(d, "WM_DELETE_WINDOW", False), XInternAtom(d, "WM_TAKE_FOCUS", False)}; XSetWMProtocols(d, w, pr, 2);
+		XWMHints h = {0}; h.flags = InputHint; h.input = True; XSetWMHints(d, w, &h);
+		XMapWindow(d, w); XSync(d, False); printf("dlg 0x%lx\n", w);
+		/* then the owner is raised by itself, as Wine does when the wizard's owner is activated */
+		if (!orphan) { usleep(400000); XRaiseWindow(d, o); XSync(d, False); }
+		for (;;) { XEvent e; XNextEvent(d, &e); }
 	}
 	if (!strcmp(argv[1], "getfocus")) { Window f; int r; XGetInputFocus(d, &f, &r); printf("0x%lx\n", f); return 0; }
 	int desk = !strcmp(argv[1], "desktop"), bl = !strcmp(argv[1], "borderless") && argc > 3;

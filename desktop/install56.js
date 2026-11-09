@@ -104,19 +104,30 @@ async function wzExe(path){const nm=path.at(-1),e=ext(nm),msi=e=='MSI',inst=msi|
  const btns=inst?[['Install',()=>wzExeRun(W,path,file,true),1],['Run it without installing',()=>wzExeRun(W,path,file,false)],['Cancel',()=>W.close()]]
   :[['Run',()=>wzExeRun(W,path,file,false),1],['Install it (it is an installer)',()=>wzExeRun(W,path,file,true)],['Cancel',()=>W.close()]];
  wzFoot(W,btns);return W}
+/* the app windows on the screen now (rudolf-display's list, through rudolfd), as hex ids */
+async function wzWins(){try{return((await rdPost('apps/windows')).windows||[]).map(w=>w.win)}catch(e){return[]}}
 async function wzExeRun(W,path,file,inst){const wine=wzWine();
  if(!wine){wzBody(W,'<p>Wine is installed, but its launcher was not found. Open Settings › Apps › Linux and check Wine.</p>');wzFoot(W,[['Close',()=>W.close()]]);return}
- const before=new Set((await debApps().catch(()=>[])||[]).map(a=>a.id));
+ const before=new Set((await debApps().catch(()=>[])||[]).map(a=>a.id)),wbefore=new Set(await wzWins());
  try{await lxRun(wine,file)}catch(e){wzBody(W,`<p>${wzEsc(e.message)}</p>`);wzFoot(W,[['Close',()=>W.close()]]);return}
  if(!inst){logEvt('sys',`Ran ${path.at(-1)} with Wine`);W.close();return}
  const b=wzBody(W,`<p class='wzstep'>The installer is starting (this can take a minute the first time Wine runs). Answer its questions in its own window.</p><div class='wzbar wzbusy'><i></i></div><div class='wzapps'></div>`);
- wzFoot(W,[['Done',()=>W.close(),1]]);
+ /* 1.5.6: its window can be brought to the front, and it can be stopped (Starport's installer on the Vivobook: its
+    wizard was hidden, and the person had no way to answer it or end it) */
+ const note=t=>{let p=b.querySelector('.wznote');if(!p){p=document.createElement('p');p.className='msg wznote';b.appendChild(p)}p.textContent=t};
+ const mine=async()=>(await wzWins()).filter(w=>!wbefore.has(w));
+ wzFoot(W,[['Show the installer',async()=>{const ws=await mine();if(!ws.length){note('Its window has not appeared yet. Wine can take a minute the first time.');return}try{await rdPost('apps/show?win='+ws.at(-1))}catch(e){note(e.message)}}],
+  ['Stop the installer',async()=>{const ws=await mine();if(!ws.length){note('It has no window open: it is not running, or has not started yet.');return}
+   note('Asking it to stop…');for(const w of ws)await rdPost('apps/close?win='+w).catch(()=>{});await new Promise(r=>setTimeout(r,4000));
+   const left=(await mine()).filter(w=>ws.includes(w));for(const w of left)await rdPost('apps/kill?win='+w).catch(()=>{});
+   note(left.length?'The installer was stopped.':'The installer closed.');logEvt('sys',`Stopped the installer ${path.at(-1)}`)}],
+  ['Done',()=>W.close(),1]]);
  const box=b.querySelector('.wzapps'),seen=new Set();let n=0;
  const poll=async()=>{if(!W.el.isConnected)return;DEB.appsAt=0;const after=await debApps().catch(()=>[])||[];try{lxRegister()}catch(e){}
   after.filter(a=>!before.has(a.id)&&!seen.has(a.id)&&a.menu!==false).forEach(a=>{seen.add(a.id);n++;const k=APPS['lx:deb-'+a.id]?'lx:deb-'+a.id:null;const r=document.createElement('div');r.className='wzapp';
    r.innerHTML=`<span>🪟</span><b></b><button class='o'>Open</button><button class='d'>Put on the desktop</button>`;r.querySelector('b').textContent=a.name;if(k&&APPS[k].img)APPS[k].img(r.querySelector('span'));
    r.querySelector('.o').onclick=()=>{k?launch(k):lxRun({deb:a.id,name:a.name})};r.querySelector('.d').onclick=e=>{if(k&&deskAdd(k)){e.target.disabled=true;e.target.textContent='On the desktop'}};if(!k)r.querySelector('.d').remove();box.appendChild(r)});
-  if(n){b.querySelector('.wzstep').textContent=(n==1?'It installed this program':'It installed these programs')+' (they are in the Start menu too):';b.querySelector('.wzbar').remove()}
+  if(n){b.querySelector('.wzstep').textContent=(n==1?'It installed this program':'It installed these programs')+' (they are in the Start menu too):';{const z=b.querySelector('.wzbar');z&&z.remove()}}
   setTimeout(poll,5000)};
  setTimeout(poll,5000);logEvt('sys',`Started the installer ${path.at(-1)} with Wine`)}
 
