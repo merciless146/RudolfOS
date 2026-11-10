@@ -104,6 +104,10 @@ is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted.
    and Blitzen's facts (the start before, the start-up's decisions). Tests: qt/host/startlogs58_t.sh,
    qt/shell2/starts58_t.js. To merge once 1.5.7 is promoted.
 2. 4.2 devlink and remote access at start-up; QEMU check with the desktop disabled.
-3. 4.3 emergency keys in rudolf-display; host test of the key handling.
+3. 4.3 emergency keys in rudolf-display; host test of the key handling. **Done** (branch v158-startlogs):
+   Ctrl+Alt+Backspace held for a second runs /usr/lib/rudolf/desktop-safe (standard engine, no shell, desktop started
+   again; Lite off for good with the reason); Help and Settings › Desktop engine mention it. Test qt/host/desksafe58_t.sh.
+   (No on-screen line from rudolf-display: with Xorg on the GPU it cannot draw over the screen; the desktop coming back
+   and System health say it.)
 4. 5.3 sound chip check and reset; 5.1 rescue media and messages; 5.2 Help page.
 5. 5.4 the testing rule in docs, then the Lite investigation on the Vivobook (devlink plus remote access).

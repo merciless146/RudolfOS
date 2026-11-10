@@ -648,6 +648,15 @@ static void handle_event(struct dev *v, struct input_event *e)
 				int f = open("/run/rudolf/events", O_WRONLY | O_APPEND | O_CREAT, 0644); if (f >= 0) { dprintf(f, "taskmgr\n"); close(f); } }
 			return;
 		}
+		/* 1.5.8: Ctrl+Alt+Backspace: the safe desktop now, when the desktop shows nothing or keeps restarting: the
+		   standard engine and no shell (desktop-safe), and the desktop started again. Read here, before X, so it works
+		   whatever the desktop is doing; held for a second (it acts when Backspace is let go), so a slip of the fingers does not restart the desktop. */
+		if (c == KEY_BACKSPACE && mod_ctrl && mod_alt) {
+			static long long held = 0;
+			if (down) held = now_ms();
+			else { if (held && now_ms() - held >= 1000) runbg("/usr/lib/rudolf/desktop-safe", "keys", NULL); held = 0; }
+			return;
+		}
 		if (c == KEY_POWER && down) {   /* 1.4.4: Power and battery's choice (ask, sleep, shut down), through /usr/lib/rudolf/power */
 			if (!access("/usr/lib/rudolf/power", R_OK)) { runbg("/usr/lib/rudolf/power", "button", NULL); return; }
 			int f = open("/run/rudolf/events", O_WRONLY | O_APPEND | O_CREAT, 0644); if (f >= 0) { dprintf(f, "power %lld\n", now_ms()); close(f); } return; }
