@@ -50,7 +50,7 @@ function acIcons(){const col=S.icac&&S.icons!=='emoji'?acVariant(S.accent||'#256
  const each=(sel,pre)=>sel.split(',').map(x=>pre+' '+x).join(',');
  const st=document.createElement('style');st.textContent=`html.tbac #bar{background:var(--tbbg)!important;color:var(--tbfg)!important}
 ${each(BX,'html.tbac')}{background:var(--tbbt)!important;color:var(--tbfg)!important}${each(BX.replace(/,/g,':hover,')+':hover','html.tbac')}{background:var(--tbbh)!important}
-html.tbac #bar #tray *,html.tbac #bar #osver,html.tbac #bar #start,html.tbac #bar button{color:var(--tbfg)!important}
+html.tbac #bar #tray *,html.tbac #bar #start,html.tbac #bar #start .stv,html.tbac #bar button{color:var(--tbfg)!important}
 /* the logo is white: dark on a light bar (Retro's silver, a light accent) */
 html.tb-light #bar #start img{filter:brightness(.22)}
 /* Wireframe: outlines only, on a see-through bar */

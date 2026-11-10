@@ -364,6 +364,31 @@ Other cases:
 - **The Vivobook:** your real home moved; Oracle, Steam, Emu, Notepad, WordPro, Paint and the Linux apps on the
   same files.
 
+## 8. The last change before release: one Start button
+
+Moved from the 1.5.7 plan (its Part 3, item 7) on 2026-11-10. This, and any fixes it needs, are the last changes before
+1.5.6 is released.
+
+**One button for the logo and the version** (asked for on 2026-11-10, for 1.5.7; moved here the same day). The taskbar has the logo (Start) and,
+right beside it, "Rudolf OS 1.5.6" (`#osver`, misc25.js), which opens Settings › About: two buttons next to each
+other that both lead into the same place. They become one button: the logo with "Rudolf OS" and the version beside
+it, in one frame, that does only what the Start button does (a click opens the Start menu, a right-click its menu,
+and the keyboard and screen readers know it as "Start"). Settings › About stays where it is, in Settings and the
+Start menu. On a taskbar at the left or the right (150 px wide) the text goes under the logo, or is left out when
+it does not fit. The screen saver and About's picture take the logo from it as before.
+- **The whole version number, whatever it is** (asked for on 2026-11-10): the text is the full version as the
+  system has it (`RVER`, from the release's version), never a fixed "1.5" or a pattern of three one-digit parts.
+  It must show 1.5.7, 1.10.0, 1.12.15, 2.0 and 10.3.1 whole; the button's width follows the text, and only the
+  side taskbars may leave the text out, never cut it. Anything that compares versions (the update check, "what's
+  new", the Library's minimum versions) compares them part by part as numbers (1.10.0 is newer than 1.9.9), and
+  a test covers these versions.
+
+Built in 1.5.6: misc25.js (the version is a part of the Start button, `.stv`; the second button is gone), styles25.css
+(beside the logo at the bottom and the top, under it at the left and the right, on two lines there if need be, never
+cut), core25.js `verCmp` (versions part by part as numbers; What's new lists them newest first with it; nothing
+else compares versions today: updates go by the release's serial, and the Library has no minimum versions yet).
+Test: iso/qt/shell2/startbtn56_t.js.
+
 ## Stages (one PR each)
 
 1. rudolfd `home/*` with fscrypt per account and the bind mounts (host tests).
