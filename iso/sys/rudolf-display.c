@@ -453,7 +453,7 @@ static void touchpad_frame(struct dev *v)
    keyboard, those keys arrive as F20 (W, F4), F21 (T), F22 (N) and F23 (Q), still with Ctrl held (and Alt+F4 as Alt+F20); the desktop and
    Oracle's real tabs read Ctrl+F20 as Ctrl+W and so on (shell26.js: DESK_SUB). Linux apps and the browser window
    for sign-in sites get the keys unchanged. */
-static int mod_ctrl, mod_alt;
+static int mod_ctrl, mod_alt, shift_down;
 static unsigned char key_sub[256];
 static int desk_focused(void)
 {
@@ -638,10 +638,14 @@ static void handle_event(struct dev *v, struct input_event *e)
 			if (down) { wm_cycle(); fit_windows(); }
 			return;
 		}
-		/* 1.5.7: Ctrl+Alt+Del opens Task Manager, also with an app or a game in front (the desktop comes forward):
-		   "taskmgr" to the desktop through rudolfd's events. Delete itself is not passed on. */
-		if (c == KEY_DELETE && mod_ctrl && mod_alt) {
-			if (down) { wm_set(0); fit_windows(); int f = open("/run/rudolf/events", O_WRONLY | O_APPEND | O_CREAT, 0644); if (f >= 0) { dprintf(f, "taskmgr\n"); close(f); } }
+		/* 1.5.7: Ctrl+Alt+Del and Ctrl+Shift+Esc open Task Manager, also with an app or a game in front: the desktop
+		   comes forward, its processes get the processor and the disk first (desktop-priority on, until Task Manager
+		   closes), and "taskmgr" goes to the desktop through rudolfd's events (it opens Task Manager above every
+		   window). The key itself (Delete, Esc) is not passed on. */
+		if (c == KEY_LEFTSHIFT || c == KEY_RIGHTSHIFT) shift_down = down;
+		if ((c == KEY_DELETE && mod_ctrl && mod_alt) || (c == KEY_ESC && mod_ctrl && shift_down && !mod_alt)) {
+			if (down) { runbg("/usr/lib/rudolf/desktop-priority", "on", NULL); wm_set(0); fit_windows();
+				int f = open("/run/rudolf/events", O_WRONLY | O_APPEND | O_CREAT, 0644); if (f >= 0) { dprintf(f, "taskmgr\n"); close(f); } }
 			return;
 		}
 		if (c == KEY_POWER && down) {   /* 1.4.4: Power and battery's choice (ask, sleep, shut down), through /usr/lib/rudolf/power */
@@ -712,7 +716,7 @@ static void on_sig(int s) { (void)s; quit = 1; }
  *  - /run/rudolf/wm says what to show: "desktop", "win <hex window id>", or the older "game" / "web"
  *    (the topmost game or browser window). rudolfd writes it when the desktop asks; a new app window
  *    is shown by itself; Super+Esc goes to the desktop and Super+Tab steps through the windows; (1.5.7) Ctrl+Alt+Del
- *    goes to the desktop and opens Task Manager.
+ *    and Ctrl+Shift+Esc go to the desktop and open Task Manager, with the desktop's processes put first.
  *  - /run/rudolf/windows lists the app windows (id, browser?, class, instance, full screen?, title) for the taskbar;
  *    /run/rudolf/wmcmd "close <hex>" asks a window to close (WM_DELETE_WINDOW, as a close button does); "kill <hex>"
  *    (1.5.6) ends the program behind it.

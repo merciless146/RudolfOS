@@ -1,0 +1,21 @@
+#!/bin/sh
+# 1.5.7: Task Manager opened with Ctrl+Alt+Del or Ctrl+Shift+Esc gets the computer's attention first, so a program
+# using it up can be found and ended: the desktop's processes (its browser or WebKit, every page and helper of it;
+# the session starts them in the memory group "desktop") get a higher processor priority (nice -10) and the first
+# turn at the disk (best-effort 0), every thread of them; the group's own processor and disk weights go up when the
+# kernel has those controllers. "off" (Task Manager closed) puts all of it back (nice 0, best-effort 4, weight 100).
+#   desktop-priority on|off      (run as root: by rudolf-display on the keys, by rudolfd for the desktop)
+# (renice PRIORITY -p ID sets it, in BusyBox and util-linux alike; with -n BusyBox would add it.) The places can be moved
+# for the host test (DP_CGROUP, DP_PROC, DP_RENICE, DP_IONICE, DP_RUNF). GPL-2.0-or-later.
+CG=${DP_CGROUP:-/sys/fs/cgroup/desktop}; PROC=${DP_PROC:-/proc}; RENICE=${DP_RENICE:-renice}; IONICE=${DP_IONICE:-ionice}; RUNF=${DP_RUNF:-/run/rudolf/desktop-priority}
+case "$1" in on) N=-10; IO=0; W=1000;; off) N=0; IO=4; W=100;; *) echo "usage: desktop-priority on|off"; exit 2;; esac
+PIDS=$(cat "$CG/cgroup.procs" 2>/dev/null)
+# (no memory group: the desktop's browser found by its option, and what it started)
+[ -n "$PIDS" ] || PIDS=$(for p in $(ls "$PROC" | grep '^[0-9]*$'); do tr '\0' ' ' 2>/dev/null < "$PROC/$p/cmdline" | grep -q -- '[-]-rudolf-kiosk' && echo $p; done)
+n=0; for p in $PIDS; do
+	for t in $(ls "$PROC/$p/task" 2>/dev/null); do $RENICE $N -p $t >/dev/null 2>&1 && n=$((n+1)); command -v $IONICE >/dev/null && $IONICE -c 2 -n $IO -p $t >/dev/null 2>&1; done
+done
+[ -w "$CG/cpu.weight" ] && echo $W > "$CG/cpu.weight" 2>/dev/null
+[ -w "$CG/io.weight" ] && echo "default $W" > "$CG/io.weight" 2>/dev/null
+if [ $1 = on ]; then date +%s 2>/dev/null > "$RUNF"; else rm -f "$RUNF"; fi
+echo "desktop priority $1: $n threads"
