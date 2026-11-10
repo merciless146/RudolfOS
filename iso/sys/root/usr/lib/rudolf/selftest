@@ -1,0 +1,108 @@
+#!/bin/sh
+# 1.5.7 (plan stage 5): rudolf-selftest. The checks that were run by hand over the development link during the 1.5.6
+# betas, as one script: the account's folders as Linux apps see them, Downloads, Debian's view, the camera, the
+# battery limit, memory, the logs, the network. It only reads: nothing is changed, started or stopped. One line per
+# check: "PASS name - detail", "FAIL name - detail" or "SKIP name - why"; then a summary line. Exit status 1 when a
+# check failed. Run by rudolfd (GET selftest, Settings › System health › Run the self-test) and over the devlink.
+# The places can be moved for the host test (ST_SYS, ST_RUN, ST_PERSIST, ST_HOME, ST_DEV, ST_PROC, ST_CONF).
+# GPL-2.0-or-later.
+SYS=${ST_SYS:-/sys}; RUN=${ST_RUN:-/run/rudolf}; P=${ST_PERSIST:-/persist}; H=${ST_HOME:-/home/rudolf}; DEV=${ST_DEV:-/dev}; PROC=${ST_PROC:-/proc}
+NP=0; NF=0; NS=0
+pass() { NP=$((NP+1)); echo "PASS $1 - $2"; }
+fail() { NF=$((NF+1)); echo "FAIL $1 - $2"; }
+skip() { NS=$((NS+1)); echo "SKIP $1 - $2"; }
+ino() { stat -L -c %d:%i "$1" 2>/dev/null; }
+rd1() { head -c 200 "$1" 2>/dev/null | head -1; }
+running() { for c in "$PROC"/[0-9]*/comm; do [ "$(rd1 "$c")" = "$1" ] && return 0; done; return 1; }
+
+# ---- the system
+if running rudolfd; then pass rudolfd "running"; else fail rudolfd "not running: the desktop cannot reach the system"; fi
+PERS=0; [ -e "$RUN/persistent" ] && PERS=1
+if [ $PERS = 1 ]; then pass storage "your data partition (RUDOLFDATA) is in use"
+else skip storage "a live start: nothing is kept after a restart"; fi
+if [ $PERS = 1 ]; then
+	l=$(readlink "$RUN/rudolfd.log" 2>/dev/null)
+	if [ "$l" = "$P/var/log/rudolfd.log" ] && [ -f "$l" ]; then pass logs "rudolfd's log is kept on the disk ($(ls "$P"/var/log/rudolfd.log.* 2>/dev/null | wc -l) earlier start-ups)"
+	else fail logs "rudolfd's log is not kept on the disk (/run/rudolf/rudolfd.log -> ${l:-nothing})"; fi
+	if [ -f "$P/var/log/health.log" ]; then pass health-log "$(wc -l < "$P/var/log/health.log") events"; else fail health-log "the health log is missing"; fi
+	fr=$(df -P "$P" 2>/dev/null | awk 'NR==2{print int($4*100/($2+1))}')
+	if [ -z "$fr" ]; then skip disk-space "not measured"; elif [ "$fr" -ge 5 ]; then pass disk-space "$fr % free"; else fail disk-space "only $fr % free: delete or move files"; fi
+fi
+
+# ---- the signed-in account's folders, as Linux apps see them
+ACCT=$(rd1 "$RUN/home-session")
+if [ -z "$ACCT" ]; then skip folders "nobody is signed in with their files on the disk"
+else
+	A="$P/accounts/$ACCT"; bad=""; n=0
+	for f in Documents Pictures Music Videos; do n=$((n+1)); [ -n "$(ino "$A/$f")" ] && [ "$(ino "$A/$f")" = "$(ino "$H/$f")" ] || bad="$bad $f"; done
+	if [ -z "$bad" ]; then pass folders "Linux apps see the account's Documents, Pictures, Music and Videos"
+	else fail folders "Linux apps do not see the account's:$bad"; fi
+fi
+
+# ---- Downloads
+if [ $PERS = 1 ]; then
+	S="$RUN/dl"
+	if [ -L "$S" ]; then pass downloads-store "Downloads is shared (a link: $(readlink "$S"))"
+	elif [ -d "$S" ] && grep -q " $S " "$PROC/self/mountinfo" 2>/dev/null; then pass downloads-store "the downloads store is bound"
+	else fail downloads-store "the downloads store is missing ($S)"; fi
+	if [ -d "$S/.incoming" ]; then
+		old=$(find "$S/.incoming" -maxdepth 1 -name '*.crdownload' -mtime +1 2>/dev/null | wc -l)
+		if [ "$old" = 0 ]; then pass downloads-partial "no unfinished downloads older than a day"
+		else fail downloads-partial "$old unfinished download(s) older than a day in .incoming"; fi
+	fi
+	if [ -n "$ACCT" ]; then
+		if [ "$(ino "$P/accounts/$ACCT/Downloads")" = "$(ino "$H/Downloads")" ]; then pass downloads-folder "Linux apps' Downloads is the account's"
+		else skip downloads-folder "Linux apps' Downloads is shared, not the account's own"; fi
+	fi
+fi
+
+# ---- Debian (Linux programs, Wine)
+K=$(rd1 "$RUN/debian/init.pid")
+if [ ! -e "$P/debian/.rudolf-ready" ]; then skip debian "Linux (Debian) is not set up"
+elif [ -z "$K" ] || [ "$(rd1 "$PROC/$K/comm")" != debian-init ]; then skip debian "Linux (Debian) is not running now"
+elif [ -z "$ACCT" ]; then skip debian "nobody is signed in"
+else
+	bad=""; for f in Documents Pictures Music Videos; do [ "$(ino "$PROC/$K/root/home/rudolf/$f")" = "$(ino "$P/accounts/$ACCT/$f")" ] || bad="$bad $f"; done
+	if [ -z "$bad" ]; then pass debian "Debian's programs see the account's folders"; else fail debian "Debian's programs do not see the account's:$bad"; fi
+fi
+
+# ---- the camera
+cams=$(ls "$DEV"/video[0-9]* 2>/dev/null)
+if [ -z "$cams" ]; then skip camera "no camera found"
+else
+	bad=""; for c in $cams; do g=$(stat -c %G "$c" 2>/dev/null); m=$(stat -c %a "$c" 2>/dev/null); gm=$(( (0${m:-0} >> 3) & 6 ))
+		[ "$g" = video ] && [ $gm = 6 ] || bad="$bad ${c##*/}($g $m)"; done
+	if [ -z "$bad" ]; then pass camera "$(echo $cams | wc -w) camera device(s), usable by apps (group video)"; else fail camera "not usable by apps:$bad"; fi
+fi
+
+# ---- the battery limit
+B=$(ls -d "$SYS"/class/power_supply/BAT* 2>/dev/null | head -1)
+CONF=${ST_CONF:-$P/etc/power.conf}; [ -f "$CONF" ] || CONF=$RUN/power.conf
+if [ -z "$B" ]; then skip battery-limit "no battery"
+elif [ ! -e "$B/charge_control_end_threshold" ]; then skip battery-limit "this computer does not let Rudolf OS limit charging"
+else
+	want=$(sed -n 's/^care=//p' "$CONF" 2>/dev/null | tail -1); [ "$want" = 60 ] && want=70; [ -n "$want" ] || want=100
+	have=$(rd1 "$B/charge_control_end_threshold")
+	if [ "$have" = "$want" ]; then pass battery-limit "charging stops at $have %"
+	else fail battery-limit "set to $want %, the battery keeps $have % (this computer may allow only some limits)"; fi
+fi
+
+# ---- memory
+Z="$SYS/block/zram0"
+if [ ! -e "$Z/disksize" ]; then skip compressed-memory "off (or not in this kernel)"
+elif [ "$(rd1 "$Z/disksize")" -gt 0 ] 2>/dev/null && grep -q zram0 "$PROC/swaps" 2>/dev/null; then pass compressed-memory "$(( $(rd1 "$Z/disksize") / 1048576 )) MiB, in use"
+else fail compressed-memory "made but not in use"; fi
+G="$SYS/fs/cgroup/desktop"
+if [ ! -d "$SYS/fs/cgroup" ] || [ ! -e "$SYS/fs/cgroup/cgroup.controllers" ]; then skip desktop-memory "no memory groups in this kernel"
+elif [ -e "$G/memory.low" ] && [ "$(rd1 "$G/memory.low")" != 0 ]; then pass desktop-memory "the desktop keeps $(( $(rd1 "$G/memory.low") / 1048576 )) MiB$( [ -s "$G/cgroup.procs" ] && echo ", with its browser in it" || echo ", but its browser is not in it")"
+else fail desktop-memory "the desktop's memory group is missing or keeps nothing"; fi
+
+# ---- the network
+W=""; for d in "$SYS"/class/net/*; do [ -e "$d/wireless" ] && W=${d##*/}; done
+if [ -z "$W" ]; then skip wifi "no Wi-Fi adapter"
+elif running wpa_supplicant; then
+	if ip -4 addr show "$W" 2>/dev/null | grep -q 'inet '; then pass wifi "$W has an address"; else skip wifi "$W is not connected to a network now"; fi
+else fail wifi "the Wi-Fi service is not running ($W)"; fi
+
+echo "$NP passed, $NF failed, $NS skipped"
+[ $NF = 0 ]

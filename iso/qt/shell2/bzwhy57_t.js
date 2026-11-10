@@ -23,6 +23,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
       if (q.pathname == '/api/ai/facts') return J({version: '1.5.7', uptime: 4000, health: H.map(e => JSON.stringify(e)).join('\n') + '\n',
         rudolfd: 'rudolfd: listening\ndownloads: open /home/rudolf/Downloads/setup.deb: not found (the download is not there)\nrudolfd: wifi up\n', page: 'TypeError: x is undefined at dlOpen\n', session: 'watchdog: ok\n'});
       if (q.pathname == '/api/health') return J({events: H.slice().reverse(), now});
+      if (q.pathname == '/api/selftest') return J({text: 'PASS rudolfd - running\nSKIP wifi - no Wi-Fi adapter\nFAIL camera - not usable by apps: video0(root 600)\n1 passed, 1 failed, 1 skipped\n'});
       if (q.pathname == '/api/ai/status') return J({model: 'test', state: 'ready'});
       if (u.includes('/api/')) return J({items: [], apps: [], windows: [], events: []});
       return f0(u, o) } });
@@ -68,6 +69,11 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("(()=>{SYSLOG.push({t:Date.now(),k:'error',m:'Uncaught TypeError: cannot read the file'});launch('events');return 1})()"); await wait(800);
   const ev = await q("[...document.querySelectorAll('.el tbody tr')].filter(r=>/cannot read the file/.test(r.textContent)).map(r=>!!r.querySelector('.bzwhy'))");
   ok('12. the Event Viewer\'s error has "Why?"', ev.length && ev[0], ev);
+  // 1.5.7 stage 5: System health › Run the self-test
+  await q("(()=>{settings('health');return 1})()"); await wait(1200);
+  await q("(()=>{[...document.querySelectorAll('.hst')].at(-1).click();return 1})()"); await wait(1000);
+  const stt = await q("(()=>{const W=wins.find(w=>w.app=='selftest');if(!W)return null;return {sum:W.body.querySelector('.stsum').textContent,rows:[...W.body.querySelectorAll('tbody tr')].map(r=>r.cells[1].textContent+'|'+r.className+'|'+!!r.querySelector('.bzwhy'))}})()");
+  ok('13. 1.5.7: "Run the self-test" shows its checks, failures first, a failure with "Why?"', stt && stt.sum == '1 passed, 1 failed, 1 skipped' && stt.rows[0] == 'camera|st-fail|true' && stt.rows[1] == 'rudolfd|st-pass|false' && stt.rows[2] == 'wifi|st-skip|false', stt);
   ok('no page error', !errs.length, errs);
   await b.close(); srv.close(); console.log(R.filter(x => x).length + '/' + R.length + ' passed'); process.exit(R.every(x => x) ? 0 : 1);
 })();

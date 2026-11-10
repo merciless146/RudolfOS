@@ -39,10 +39,12 @@ function hlSummary(ev,now){const wk=ev.filter(e=>now-e.t<7*86400),cnt=k=>wk.filt
   ['Crashes this week',String(cnt('crash')+cnt('browser'))],['Pages closed to free memory',String(cnt('memory'))],['Update fallbacks',String(cnt('fallback'))],['Failed sign-ins this week',String(cnt('signin'))]]}
 function healthPanel(c,W){
  c.innerHTML=`<h3>System health</h3><p class='msg' style='margin:0 0 10px'>What happened on this computer: start-ups, crashes, memory, updates, sign-in failures, the firewall and remote access. It is kept on this computer only and is never sent anywhere. Power and battery is here too, below the summary. <b>Report a problem</b> includes the latest events, after you have read the report.</p>
-<div class='hls r2'></div><h4 class='sh4 hlev'>Events</h4><div class='rmrow' style='justify-content:flex-start;gap:6px;margin-bottom:6px'><select class='hlk'><option value=''>All events</option></select><button class='hlr'>Refresh</button><button class='hlp'>Report a problem…</button><button class='hlw' hidden>⚡ What's wrong with this computer?</button></div><div class='hll' style='font-size:13px'></div>`;
+<div class='hls r2'></div><h4 class='sh4 hlev'>Events</h4><div class='rmrow' style='justify-content:flex-start;gap:6px;margin-bottom:6px'><select class='hlk'><option value=''>All events</option></select><button class='hlr'>Refresh</button><button class='hlp'>Report a problem…</button><button class='hlw' hidden>⚡ What's wrong with this computer?</button><button class='hst'>Run the self-test</button></div><div class='hll' style='font-size:13px'></div>`;
  const sel=c.querySelector('.hlk');for(const k in HL_KIND){const o=document.createElement('option');o.value=k;o.textContent=HL_KIND[k][0]+' '+HL_KIND[k][1];sel.appendChild(o)}
  const L=c.querySelector('.hll'),Sm=c.querySelector('.hls');
  c.querySelector('.hlp').onclick=()=>{if(typeof sysReportDialog=='function')sysReportDialog()};
+ /* 1.5.7: rudolf-selftest (only reads): its lines, failures first */
+ c.querySelector('.hst').hidden=!RD;c.querySelector('.hst').onclick=()=>selftestShow();
  /* 1.5.7: Blitzen reads the logs and explains (blitzdiag57.js) */
  if(typeof bzCan=='function'&&bzCan()){const w=c.querySelector('.hlw');w.hidden=false;w.onclick=()=>bzWhy("What's wrong with this computer?",{all:1})}
  const draw=async()=>{L.textContent='Loading…';const h=await hlGet(500);
@@ -63,3 +65,15 @@ async function hlReportLines(n){const h=await hlGet(n||50);if(!h||!h.events)retu
 (function(){if(!RD)return;setTimeout(async()=>{try{if(sessionStorage.getItem('hl50ready'))return;sessionStorage.setItem('hl50ready','1')}catch(e){}
  const h=await hlGet(5);if(!h||!Array.isArray(h.events))return;const last=h.events.find(e=>e.k=='start'),rdy=h.events.find(e=>e.k=='ready');
  if(last&&(!rdy||rdy.t<last.t)&&h.uptime<900)hlNote('ready',`the desktop was ready ${h.uptime} s after start-up`)},4000)})();
+/* 1.5.7 (plan stage 5): the self-test's result in a window: failures first, then what passed and what was skipped */
+async function selftestShow(){const W=appWin('selftest','Self-test','🩺',620,460);W.body.style.cssText='overflow:auto;padding:10px;background:var(--wbg,#fff)';
+ W.body.innerHTML="<p class='msg'>Checking… (this only reads; nothing is changed)</p>";let j;
+ try{j=await rd('selftest')}catch(e){W.body.innerHTML='';const m=document.createElement('p');m.className='msg';m.textContent='The self-test did not run: '+e.message;W.body.appendChild(m);return W}
+ const lines=String(j.text||'').split('\n').filter(Boolean),sum=lines.filter(l=>!/^(PASS|FAIL|SKIP) /.test(l)).join(' ');
+ const rows=lines.filter(l=>/^(PASS|FAIL|SKIP) /.test(l)).map(l=>{const m=/^(\w+) (\S+) - (.*)$/.exec(l)||[l,l.slice(0,4),l.slice(5),''];return {k:m[1],n:m[2],d:m[3]}});
+ const ord={FAIL:0,PASS:1,SKIP:2};rows.sort((a,b)=>ord[a.k]-ord[b.k]);
+ W.body.innerHTML=`<p class='msg stsum'></p><table class='tmt'><thead><tr><th></th><th>Check</th><th>Result</th></tr></thead><tbody></tbody></table><div class='rmrow' style='justify-content:flex-start;margin-top:8px'><button class='stc'>Copy the result</button><button class='str'>Run again</button></div>`;
+ W.body.querySelector('.stsum').textContent=sum;const tb=W.body.querySelector('tbody');
+ rows.forEach(r=>{const tr=tb.insertRow();tr.className='st-'+r.k.toLowerCase();tr.insertCell().textContent=r.k=='PASS'?'✅':r.k=='FAIL'?'❌':'➖';tr.insertCell().textContent=r.n;tr.insertCell().textContent=r.d;if(r.k=='FAIL'){tr.style.color='#b91c1c';if(typeof bzWhyBtn=='function')bzWhyBtn(tr.cells[2],{t:'Self-test: '+r.n+' failed',b:r.d,k:'error'})}});
+ W.body.querySelector('.stc').onclick=async()=>{try{await navigator.clipboard.writeText(j.text);notify('Self-test result copied','')}catch(e){}};
+ W.body.querySelector('.str').onclick=()=>{W.close();selftestShow()};return W}
