@@ -167,11 +167,17 @@ Found on 2026-11-09 with Steam (Flatpak) and Among Us (Proton) on the Vivobook.
 
 7. **One button for the logo and the version** (asked for on 2026-11-10). The taskbar has the logo (Start) and,
    right beside it, "Rudolf OS 1.5.6" (`#osver`, misc25.js), which opens Settings › About: two buttons next to each
-   other that both lead into the same place. They become one button: the logo with "Rudolf OS 1.5.x" beside it, in
-   one frame, that does only what the Start button does (a click opens the Start menu, a right-click its menu, and
-   the keyboard and screen readers know it as "Start"). Settings › About stays where it is, in Settings and the
+   other that both lead into the same place. They become one button: the logo with "Rudolf OS" and the version beside
+   it, in one frame, that does only what the Start button does (a click opens the Start menu, a right-click its menu,
+   and the keyboard and screen readers know it as "Start"). Settings › About stays where it is, in Settings and the
    Start menu. On a taskbar at the left or the right (150 px wide) the text goes under the logo, or is left out when
    it does not fit. The screen saver and About's picture take the logo from it as before.
+   - **The whole version number, whatever it is** (asked for on 2026-11-10): the text is the full version as the
+     system has it (`RVER`, from the release's version), never a fixed "1.5" or a pattern of three one-digit parts.
+     It must show 1.5.7, 1.10.0, 1.12.15, 2.0 and 10.3.1 whole; the button's width follows the text, and only the
+     side taskbars may leave the text out, never cut it. Anything that compares versions (the update check, "what's
+     new", the Library's minimum versions) compares them part by part as numbers (1.10.0 is newer than 1.9.9), and
+     a test covers these versions.
 
 ## Stages (one PR each)
 
