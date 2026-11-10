@@ -127,7 +127,7 @@ mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/ru
 # came only from full local builds, so GLX (off since 1.1) could not be turned on by an update
 XREV=f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2
 XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | cut -c1-16)
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c trusted-keys.txt systools/addnvk.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -197,6 +197,9 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		if [ -e "$W/broot/$x" ] || [ -L "$W/broot/$x" ]; then sudo rm -rf "$W/broot/$x"; echo "removed from the base layer: $x"; fi; done
 	# NVK and the Vulkan loader: OpenGL on GeForce 20 series and newer (Zink on NVK) (1.2.3)
 	systools/addnvk.sh "$W/broot"
+	# 1.5.7 (plan Part 4): the Lite desktop engine, WebKitGTK, with what it needs (systools/addwebkit.sh)
+	gcc -O2 -Wno-deprecated-declarations -o "$B/rudolf-webkit" sys/rudolf-webkit.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) || { echo "rudolf-webkit did not build (apt-get install libwebkit2gtk-4.1-dev)"; exit 1; }
+	systools/addwebkit.sh "$W/broot" "$B/rudolf-webkit"
 	sudo mkdir -p "$W/broot/etc/rudolf"; sudo cp trusted-keys.txt "$W/broot/etc/rudolf/rpk-keys"
 	sudo cp VERSION "$W/broot/usr/share/rudolf/VERSION"
 	# 1.4.4: the build date; rudolf-init never lets the clock read earlier than this (a reset hardware clock)

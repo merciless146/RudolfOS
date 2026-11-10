@@ -129,6 +129,10 @@ gcc -O2 -static -o usr/bin/cdp-eval "$SYS/cdp-eval.c"
 cp -L /usr/lib/x86_64-linux-gnu/libXtst.so.6 usr/lib/x86_64-linux-gnu/
 copy_deps usr/bin/rudolf-display usr/bin/rudolf-remote usr/bin/rudolfd usr/bin/rpk usr/bin/rudolf-update usr/bin/rudolf-apps usr/bin/rudolf-portal usr/bin/rudolf-debian usr/bin/rudolf-ai
 cp -a "$SYS/root/." .
+# 1.5.7 (plan Part 4): the Lite desktop engine (WebKitGTK), when this machine has it (the release workflow always does)
+if pkg-config --exists webkit2gtk-4.1 gtk+-3.0 2>/dev/null; then
+	gcc -O2 -Wno-deprecated-declarations -o /tmp/rudolf-webkit.$$ "$SYS/rudolf-webkit.c" $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) && "$HERE/systools/addwebkit.sh" "$OUT" /tmp/rudolf-webkit.$$; rm -f /tmp/rudolf-webkit.$$
+else echo "mkrootfs: no WebKitGTK here (libwebkit2gtk-4.1-dev): this build has no Lite desktop engine"; fi
 mkdir -p usr/share/rudolf
 cp -a "$WWW" usr/share/rudolf/www
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" usr/share/rudolf/VERSION
