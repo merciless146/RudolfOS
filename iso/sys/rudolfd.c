@@ -3603,6 +3603,16 @@ static void api(struct req *r)
 			access(RUN "/webkit-failed", F_OK) ? "false" : "true", access(RUN "/persistent", F_OK) ? "false" : "true");
 		free(c); free(n); reply_json(r->fd, &s); return;
 	}
+	/* 1.5.7: Task Manager opened by Ctrl+Alt+Del or Ctrl+Shift+Esc puts the desktop's processes first (rudolf-display
+	   already did, at the key); POST on=0 when it closes gives them back their usual share. Only the desktop's own
+	   processes change, so this is safe to ask without an administrator. */
+	if (!strcmp(p, "desktop/priority")) {
+		if (!post) { str s = {0}; sadd(&s, "{\"ok\":true,\"on\":%s}", access(RUN "/desktop-priority", F_OK) ? "false" : "true"); reply_json(r->fd, &s); return; }
+		const char *o = qparam(r->query, "on");
+		if (access("/usr/lib/rudolf/desktop-priority", X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no desktop priority"); return; }
+		char *t = run_out(o && !strcmp(o, "1") ? "/usr/lib/rudolf/desktop-priority on 2>&1" : "/usr/lib/rudolf/desktop-priority off 2>&1");
+		str s = {0}; sadd(&s, "{\"ok\":true,\"text\":"); sjson(&s, t ? t : ""); sadd(&s, "}"); free(t); reply_json(r->fd, &s); return;
+	}
 	if (!strcmp(p, "selftest")) { char *o = access("/usr/lib/rudolf/selftest", X_OK) ? NULL : run_out("/usr/lib/rudolf/selftest 2>&1");
 		if (!o) { reply_err(r->fd, 404, "this Rudolf OS has no self-test"); return; }
 		str s = {0}; sadd(&s, "{\"ok\":true,\"text\":"); sjson(&s, o); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return; }
