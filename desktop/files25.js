@@ -267,6 +267,7 @@ function wire(pn,el,r){const k=pkey(r.p);
     tr.ondblclick=async()=>{if(it.dir){pn.remote=Object.assign({},pn.remote,{path:pn.remote.path+'/'+it.name});pn.sel=new Set();draw()}else{if(window.emuOpenReal&&/\.(sfc|smc|nds)$/i.test(it.name)){emuOpenReal(pn.remote.path+'/'+it.name);return}const p=await remoteImport(pn,[it]);p[0]&&openPath(p[0])}};tb.appendChild(tr)});box.appendChild(t);
    const cur=()=>items.filter(i=>pn.sel.has('R:'+i.name));
    bar.querySelector('.rup').onclick=()=>{if(pn.remote.path==pn.remote.root)return;pn.remote.path=pn.remote.path.replace(/\/[^/]+$/,'');draw()};
+   if(pn.remote.ro)['.rpu','.rmk','.rdl','.rej'].forEach(c=>{const x=bar.querySelector(c);if(x)x.style.display='none'});   /* an app's folder: to look at only */
    bar.querySelector('.rim').onclick=()=>remoteImport(pn,cur());bar.querySelector('.rpu').onclick=()=>remoteUpload(pn);bar.querySelector('.rmk').onclick=()=>remoteMkdir(pn);
    bar.querySelector('.rdl').onclick=async()=>{const c=cur();if(!c.length)return say('Select files on the drive first.',true);for(const i of c){try{await rdPost('fs/delete?path='+encodeURIComponent(pn.remote.path+'/'+i.name))}catch(e){say(e.message,true)}}draw()};
    bar.querySelector('.rej').onclick=async()=>{try{await rdPost('umount?dev='+pn.remote.dev);say('You can now remove the drive.');go(pn,homePath())}catch(e){say(e.message,true)}};
@@ -326,10 +327,13 @@ function wire(pn,el,r){const k=pkey(r.p);
  q('.nf').onclick=()=>create(1);q('.nt').onclick=()=>create(0);q('.cu').onclick=doCut;q('.cp').onclick=doCopy;q('.ps').onclick=doPaste;q('.rn').onclick=doRename;q('.dl').onclick=doDelete;q('.un').onclick=doUndo;q('.zp').onclick=doZip;q('.ul').onclick=()=>q('.fi').click();q('.dn').onclick=doDown;
  q('.so').onchange=e=>{const pn=P(),k=e.target.value;sortTo(pn,k,k=='date'||k=='size'?-1:1)};q('.sod').onclick=()=>{const pn=P();sortTo(pn,pn.sk,-pn.sd)};
  q('.vw').onchange=e=>{P().view=e.target.value;S.xview=e.target.value;draw()};q('.pv').onclick=()=>{preview=!preview;S.xprev=preview;draw()};q('.spl').onclick=toggleSplit;
- ad.onkeydown=e=>{if(e.key=='Enter'){const p=resolve(ad.value.trim()||'C:\\',['C:']);if(!go(P(),p))ad.value=P().path.join('\\')}};
+ ad.onkeydown=e=>{if(e.key=='Enter'){const v=ad.value.trim();
+  /* 1.5.6: a folder of this computer typed as an address (as an app's Properties shows it), when Rudolf OS can show it */
+  if(RD&&v.startsWith('/')){const pth=v.replace(/\/+$/,'')||'/';openRemote(P(),{dev:'path',root:pth,path:pth,label:pth.split('/').pop()||'/',ro:!/^\/media\//.test(pth)});return}
+  const p=resolve(v||'C:\\',['C:']);if(!go(P(),p))ad.value=P().path.join('\\')}};
  let srT=0;q('.sr').oninput=e=>{clearTimeout(srT);srT=setTimeout(()=>{P().filt=e.target.value;draw();q('.sr').focus()},200)};q('.deep').onchange=e=>{P().deep=e.target.checked;draw()};q('.dty').onchange=e=>{P().dtype=e.target.value;draw()};q('.dmo').onchange=e=>{P().dmod=e.target.value;draw()};
  W.el.addEventListener('keydown',e=>{if(e.target.closest('.xc'))return;if((e.ctrlKey||e.metaKey)&&['t','w'].includes(e.key.toLowerCase())){e.preventDefault();keys(e,P())}});
- EXPL.add(draw);W.refresh=draw;const onDrive=e=>{const v=e.detail||{};if(v.a!='add')tabs.forEach(t=>t.panes.forEach(pn=>{if(pn.remote&&pn.remote.dev==v.dev){pn.remote=null;pn.path=USER?homePath():['C:']}}));draw()};
+ EXPL.add(draw);W.refresh=draw;W.openRemote=r=>openRemote(P(),r);   /* 1.5.6: an app's folder from its Properties */const onDrive=e=>{const v=e.detail||{};if(v.a!='add')tabs.forEach(t=>t.panes.forEach(pn=>{if(pn.remote&&pn.remote.dev==v.dev){pn.remote=null;pn.path=USER?homePath():['C:']}}));draw()};
  addEventListener('rudolf-drive',onDrive);
  W.onclose=()=>{EXPL.delete(draw);removeEventListener('rudolf-drive',onDrive)};
  W.openPath=p=>{go(P(),p)};

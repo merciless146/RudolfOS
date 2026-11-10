@@ -25,6 +25,9 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwA
       if (q.pathname == '/api/debian/apps') return J({apps: [{id: 'starport-ge', name: 'Starport GE', wmclass: 'launcher.exe', categories: 'Game;', icon: '/persist/debian/usr/share/pixmaps/starport-ge.png', menu: true}]});
       if (q.pathname == '/api/apps/icon' || q.pathname == '/api/debian/icon') return Promise.resolve(new Response(Uint8Array.from(atob(png), c => c.charCodeAt(0)), {headers: {'content-type': 'image/png'}}));
       if (q.pathname == '/api/job') return J({running: false, status: 0, log: 'done\n'});
+      if (q.pathname == '/api/apps/where') return J({path: '/var/lib/flatpak/app/com.discordapp.Discord/current/active/files', bytes: 596221952, kind: 'flatpak', program: '', package: 'com.discordapp.Discord.flatpakref'});
+      if (q.pathname == '/api/debian/where') return J({path: '/home/rudolf/.wine/drive_c/users/rudolf/StarportGE', bytes: 1288490188, kind: 'exe', program: 'Launcher.exe', package: ''});
+      if (q.pathname == '/api/fs/list') return J({items: [{name: 'Launcher.exe', dir: false, size: 1000, mtime: 0}, {name: 'data', dir: true, size: 0, mtime: 0}]});
       if (u.includes('/api/')) return J({items: [], apps: [], windows: []});
       return f0(u, o) } }, PNG);
   const q = s => p.evaluate(s);
@@ -69,6 +72,29 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwA
   ok('9. ...of a Windows program in Debian (Starport GE): Windows program (Debian, Wine), its ID and window class', /Windows program \(Debian, Wine\)/.test(r.g.body) && /starport-ge/.test(r.d) && /launcher\.exe/.test(r.d), [r.g.body.slice(0, 200), r.d.slice(0, 300)]);
   r = await props(items.findIndex(x => x.a == 'gbplayer'));
   ok('10. ...of Emu', /Emu Properties/.test(r.g.title) && /Game Boy/.test(r.g.body), r.g);
+  // the address, the size on disk and the files it uses
+  const gen = async i => { await props(i); await wait(500); return q("wins.at(-1).body.querySelector('.aptab').textContent") };
+  await props(items.findIndex(x => /Discord/.test(x.t)));
+  await q("(()=>{const W=wins.at(-1);[...W.body.querySelectorAll('.aptabs button')].find(b=>b.textContent=='General').click();return 1})()"); await wait(500);
+  let g = await q("wins.at(-1).body.querySelector('.aptab').textContent");
+  ok('11. Discord: its address (its folder), its size on disk, the links it opens, what it was installed from', /Address\/var\/lib\/flatpak\/app\/com\.discordapp\.Discord\/current\/active\/files/.test(g) && /Size on disk568\.6/.test(g) && /File typesdiscord: links/.test(g) && /Installed fromcom\.discordapp\.Discord \(\.flatpakref\)/.test(g), g);
+  await q("(()=>{const W=wins.at(-1);[...W.body.querySelectorAll('.aptabs button')].find(b=>b.textContent=='General').click();return 1})()");
+  g = await gen(items.findIndex(x => /Starport GE/.test(x.t)));
+  await q("(()=>{const W=wins.at(-1);[...W.body.querySelectorAll('.aptabs button')].find(b=>b.textContent=='General').click();return 1})()"); await wait(500);
+  g = await q("wins.at(-1).body.querySelector('.aptab').textContent");
+  ok('12. Starport GE: its folder in Wine, its size, its program file (.exe)', /Address\/home\/rudolf\/\.wine\/drive_c\/users\/rudolf\/StarportGE/.test(g) && /Size on disk1\.2 GB|Size on disk1\.3 GB/.test(g) && /Program fileLauncher\.exe/.test(g), g);
+  if (process.argv[3]) { const bx = await q("(()=>{const r=wins.at(-1).el.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height}})()"); await p.screenshot({path: path.join(process.argv[3], 'props-starport.png'), clip: bx}) }
+  await q("(()=>{const b=[...wins.at(-1).body.querySelectorAll('button')].find(b=>b.textContent=='Open in File Explorer');b.click();return 1})()"); await wait(800);
+  const fe = await q("(()=>{const W=wins.at(-1);const bar=W.body.querySelector('.xrb');return{ad:W.body.querySelector('.ad').value,names:[...W.body.querySelectorAll('tr[data-k]')].map(t=>t.dataset.k),del:bar&&getComputedStyle(bar.querySelector('.rdl')).display}})()");
+  ok('13. Open in File Explorer: its folder, to look at only (no Delete, New folder, Copy here)', /Launcher\.exe/.test(fe.names.join()) && fe.del == 'none' && (await q("T.calls")).some(c => /fs\/list\?path=%2Fhome%2Frudolf%2F\.wine%2Fdrive_c%2Fusers%2Frudolf%2FStarportGE/.test(c)), fe);
+  await q("(()=>{wins.slice().forEach(w=>w.close());return 1})()");
+  await props(items.findIndex(x => x.a == 'notepad' || x.v == 'notepad'));
+  await q("(()=>{const W=wins.at(-1);[...W.body.querySelectorAll('.aptabs button')].find(b=>b.textContent=='General').click();return 1})()"); await wait(400);
+  g = await q("wins.at(-1).body.querySelector('.aptab').textContent");
+  ok('14. Notepad (built in): Rudolf OS\'s desktop folder, part of its size, .txt and any text file', /Address\/usr\/share\/rudolf\/www/.test(g) && /Part of Rudolf OS's desktop/.test(g) && /File types\.txt, any text file/.test(g), g);
+  // typing an app's address in File Explorer
+  await q("(()=>{wins.slice().forEach(w=>w.close());explorer(homePath());const ad=wins.at(-1).body.querySelector('.ad');ad.value='/var/lib/flatpak/app/com.discordapp.Discord/current/active/files';ad.onkeydown({key:'Enter'});return 1})()"); await wait(600);
+  ok('15. the address typed in File Explorer\'s address bar opens that folder', (await q("T.calls")).some(c => /fs\/list\?path=%2Fvar%2Flib%2Fflatpak%2Fapp%2Fcom\.discordapp\.Discord/.test(c)));
   ok('no page error', !errs.length, errs);
   await b.close(); srv.close();
   console.log(`${R.filter(x => x).length}/${R.length} passed`); process.exit(R.every(x => x) ? 0 : 1);
