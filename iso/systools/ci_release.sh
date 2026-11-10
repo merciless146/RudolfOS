@@ -57,7 +57,20 @@ PKSRC=$(unsquashfs -cat "$PREV/modules.sfs" "usr/lib/modules/$KV/rudolf-ksrc" 2>
 [ -n "$KERNEL_VERSION" ] || KERNEL_VERSION=${KV%-rudolf}
 if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 	# LINUX_SRC: an unpacked kernel tree of that version to build in instead of downloading one (local test builds)
-	if [ -n "$LINUX_SRC" ]; then ln -s "$(realpath "$LINUX_SRC")" "$W/linux"; else git clone -q --depth 1 -b "v$KERNEL_VERSION" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$W/linux"; fi
+	# 1.5.7: kernel.org's git server refused the clone in two builds in a row (exit 128, 2026-11-10): it is tried twice,
+	# then the release tarball from cdn.kernel.org, checked against the SHA-256 in kernel.org's sha256sums.asc beside it
+	if [ -n "$LINUX_SRC" ]; then ln -s "$(realpath "$LINUX_SRC")" "$W/linux"
+	else ok=""
+		for i in 1 2; do rm -rf "$W/linux"; git clone -q --depth 1 -b "v$KERNEL_VERSION" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$W/linux" && { ok=1; break; }; echo "kernel: git.kernel.org did not answer, trying again"; sleep 20; done
+		if [ -z "$ok" ]; then
+			KM=${KERNEL_VERSION%%.*}; T=linux-$KERNEL_VERSION.tar.xz; echo "kernel: from cdn.kernel.org ($T)"
+			curl -fsSL --retry 3 -o "$W/$T" "https://cdn.kernel.org/pub/linux/kernel/v$KM.x/$T"
+			curl -fsSL --retry 3 -o "$W/sha256sums.asc" "https://cdn.kernel.org/pub/linux/kernel/v$KM.x/sha256sums.asc"
+			want=$(awk -v f="$T" '$2==f{print $1}' "$W/sha256sums.asc"); got=$(sha256sum "$W/$T" | cut -c1-64)
+			[ -n "$want" ] && [ "$want" = "$got" ] || { echo "kernel: $T does not match kernel.org's checksum"; exit 1; }
+			mkdir -p "$W/linux" && tar -xJf "$W/$T" -C "$W/linux" --strip-components=1 && rm -f "$W/$T"
+		fi
+	fi
 	# 1.4.7: busybox's own server often fails mid-clone ("possible repository corruption on the remote side"): try it
 	# three times, then GitHub's mirror; either way the code must be release 1_36_1's commit
 	BB_COMMIT=1a64f6a20aaf6ea4dbba68bbfa8cc1ab7e5c57c4
