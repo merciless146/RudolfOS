@@ -1716,8 +1716,76 @@ static int ai_connect(void)
 	struct timeval tv = {120, 0}; setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
 	return s;
 }
+static void health_path(char *o, size_t n);
+/* 1.5.7 (plan stage 2): what Blitzen may read about this computer, read-only. The last lines of each log, with lines
+   that carry a password, token or key left out, and long runs of key-like characters hidden. */
+static int facts_secret_line(const char *l)
+{
+	static const char *const W[] = { "password", "passwd", "passphrase", "psk", "token", "secret", "private", "bearer",
+		"authorization", "cookie", "key=", "key:", "-----begin", NULL };
+	char low[1024]; size_t i = 0; for (; l[i] && i < sizeof low - 1; i++) low[i] = tolower((unsigned char)l[i]); low[i] = 0;
+	for (int k = 0; W[k]; k++) if (strstr(low, W[k])) return 1;
+	return 0;
+}
+static void facts_hide_runs(char *l)
+{
+	/* 32 or more characters of hex or base64 in a row (a key, a hash, a token) become [hidden] */
+	char *o = l, *p = l;
+	while (*p) {
+		char *q = p; while (*q && (isalnum((unsigned char)*q) || *q == '+' || *q == '=' || *q == '_' || *q == '-')) q++;
+		size_t n = q - p; int dig = 0; for (char *c = p; c < q; c++) if (isdigit((unsigned char)*c)) dig = 1;
+		if (n >= 32 && dig) { memcpy(o, "[hidden]", 8); o += 8; p = q; continue; }
+		if (n) { memmove(o, p, n); o += n; p = q; continue; }
+		*o++ = *p++;
+	}
+	*o = 0;
+}
+/* the last n lines of a file (from its last 96 KiB), filtered; NULL when there is no such file */
+static char *facts_tail(const char *path, int n)
+{
+	int f = open(path, O_RDONLY | O_CLOEXEC); if (f < 0) return NULL;
+	off_t end = lseek(f, 0, SEEK_END), from = end > 98304 ? end - 98304 : 0;
+	size_t len = end - from; char *b = malloc(len + 1); if (!b) { close(f); return NULL; }
+	ssize_t got = pread(f, b, len, from); close(f); if (got < 0) got = 0; b[got] = 0;
+	for (ssize_t i = 0; i < got; i++) if (!b[i]) b[i] = ' ';
+	char *start = b + got; int cnt = 0;
+	if (start > b && start[-1] == '\n') start--;
+	while (start > b) { if (start[-1] == '\n' && ++cnt >= n) break; start--; }
+	if (from && start == b) { char *nl = strchr(b, '\n'); start = nl ? nl + 1 : b + got; }   /* no half line at the top */
+	str s = {0}; sadd(&s, "%s", "");
+	for (char *sv, *l = strtok_r(start, "\n", &sv); l; l = strtok_r(NULL, "\n", &sv)) {
+		if (strlen(l) > 1000) l[1000] = 0;
+		if (facts_secret_line(l)) { sadd(&s, "(a line with a password, token or key was left out)\n"); continue; }
+		facts_hide_runs(l); sadd(&s, "%s\n", l);
+	}
+	free(b); return s.b;
+}
+static void facts_add(str *s, const char *key, const char *path, int n)
+{
+	char *t = facts_tail(path, n); sadd(s, ",\"%s\":", key);
+	if (t) sjson(s, t); else sadd(s, "null");
+	free(t);
+}
+static void api_ai_facts(struct req *r)
+{
+	char hp[200]; health_path(hp, sizeof hp);
+	str s = {0}; char *v = slurp("/usr/share/rudolf/VERSION", NULL); if (v) trim(v);
+	sadd(&s, "{\"ok\":true,\"version\":"); sjson(&s, v ? v : ""); free(v);
+	{ double up = 0; FILE *f = fopen("/proc/uptime", "r"); if (f) { if (fscanf(f, "%lf", &up) != 1) up = 0; fclose(f); } sadd(&s, ",\"uptime\":%.0f", up); }
+	facts_add(&s, "health", hp, 100);
+	facts_add(&s, "rudolfd", RUN "/rudolfd.log", 120);
+	facts_add(&s, "rudolfdBefore", PERSIST "/var/log/rudolfd.log.1", 40);
+	facts_add(&s, "session", RUN "/session.log", 60);
+	facts_add(&s, "page", RUN "/page.log", 60);
+	facts_add(&s, "shutdown", PERSIST "/var/log/shutdown.log", 20);
+	{ char *jn = slurp(RUN "/job.name", NULL); if (jn) trim(jn); sadd(&s, ",\"jobName\":"); sjson(&s, jn ? jn : ""); free(jn); }
+	facts_add(&s, "job", RUN "/job.log", 60);
+	sadd(&s, "}"); reply_json(r->fd, &s);
+}
+
 static void api_ai(struct req *r, const char *what)
 {
+	if (!strcmp(what, "facts")) { api_ai_facts(r); return; }   /* 1.5.7: also without Blitzen installed */
 	if (access(AI_BIN, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no Blitzen"); return; }
 	if (!strcmp(what, "status")) {
 		char *o = run_out(AI_BIN " status 2>/dev/null");
