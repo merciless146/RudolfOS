@@ -8,6 +8,7 @@ Summary: Blitzen diagnostics, and what the 1.5.6 tests taught (docs/plan-1.5.7.m
 - Fixed: the desktop's errors were never written to the system's error log (/run/rudolf/page.log): rudolfd answered the desktop's report as if it were a request to read the log. System health, the system report and the devlink now see them.
 - Changed: the Event Viewer's events are kept in your account's folder too (.rudolf/events.log, with your files on the disk), so they outlast the desktop's storage; events from before signing in are written once it is open.
 - Changed: Rudolf OS's service log (rudolfd) is kept on the disk for this start and the 3 before it (/persist/var/log/rudolfd.log, .1 to .3), instead of being lost at each restart.
+- Under the hood: Blitzen can read what this computer recorded (the health log, the service log, the desktop's errors, the last task's log), with lines that carry a password, token or key left out, and Rudolf OS's own documents (its plans, this list of changes and the Help pages), searched on this computer. Nothing is sent anywhere; the diagnostics that use them come next.
 
 ## 1.5.6 (2026-11-10)
 Summary: your files on the disk (docs/plan-1.5.6.md)
