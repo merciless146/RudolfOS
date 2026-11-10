@@ -49,6 +49,9 @@ start() {
 	# 5 GHz connection looks weak, wpa_supplicant tries the 2.4 GHz radio (which the Bluetooth half of the chip
 	# shares), and the connection drops every few minutes. Ordinary power saving stays on.
 	[ -w /sys/module/rtw88_core/parameters/disable_lps_deep ] && echo Y > /sys/module/rtw88_core/parameters/disable_lps_deep 2>/dev/null
+	# 1.5.6: and their PCIe link power saving (ASPM), a known cause of dropped connections on the RTL8821CE (the
+	# Vivobook's) and its relatives; /etc/modules/rtw88_pci sets it when the driver loads, this for one already loaded
+	[ -w /sys/module/rtw88_pci/parameters/disable_aspm ] && echo Y > /sys/module/rtw88_pci/parameters/disable_aspm 2>/dev/null
 	ip link set "$IF" up 2>/dev/null
 	if ! W ping 2>/dev/null | grep -q PONG; then
 		wpa_supplicant -B -s -i "$IF" -c "$CONF" -D nl80211 -P /run/rudolf/wpa-$IF.pid >/dev/null 2>&1
@@ -58,16 +61,23 @@ start() {
 	[ -f /run/rudolf/wpa-ev-$IF.pid ] && kill -0 "$(cat /run/rudolf/wpa-ev-$IF.pid)" 2>/dev/null || \
 		W -a /usr/lib/rudolf/wifi-event -B -P /run/rudolf/wpa-ev-$IF.pid >/dev/null 2>&1
 	W ping 2>/dev/null | grep -q PONG || { echo "The Wi-Fi service did not start."; exit 4; }
+	bgscan_all
 	# 1.5.3: one adapter at a time: the others stop (their address too), so a dongle and the built-in Wi-Fi do not
 	# both join
 	for o in $(wlans); do
 		[ "$o" = "$IF" ] && continue
 		wpa_cli -p $CTRL -i "$o" ping 2>/dev/null | grep -q PONG || continue
 		wpa_cli -p $CTRL -i "$o" terminate >/dev/null 2>&1
-		/usr/lib/rudolf/wifi-event "$o" DISCONNECTED >/dev/null 2>&1
+		/usr/lib/rudolf/wifi-event "$o" DISCONNECTED now >/dev/null 2>&1
 		ip link set "$o" down 2>/dev/null
 	done
 }
+# 1.5.6: look for a better radio of the same network only when the signal is weak: below -70 dBm every 30 s, otherwise
+# once an hour. On the Vivobook the router's 2.4 and 5 GHz radios (one network) took turns a few seconds apart, and a
+# change that failed left it off the network for 30 s.
+BGSCAN='"simple:30:-70:3600"'
+bgscan_all() { W list_networks | tail -n +2 | cut -f1 | while read -r id; do
+	[ -n "$id" ] && [ "$(W get_network "$id" bgscan)" != "$BGSCAN" ] && W set_network "$id" bgscan "$BGSCAN" >/dev/null; done; }
 hexname() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
 # ids of saved networks with this name (list_networks shows names escaped; compare via the hex form)
 ids_for() {
@@ -119,6 +129,7 @@ connect)
 	fi
 	ID=$(W add_network | tail -1)
 	W set_network "$ID" ssid "$(hexname "$SSID")" >/dev/null
+	W set_network "$ID" bgscan "$BGSCAN" >/dev/null
 	case "$SEC" in
 	*psk) W set_network "$ID" key_mgmt "WPA-PSK WPA-PSK-SHA256 SAE" >/dev/null; W set_network "$ID" ieee80211w 1 >/dev/null
 		W set_network "$ID" psk "\"$PSK\"" >/dev/null || { W remove_network "$ID" >/dev/null; echo "That password cannot be used."; exit 1; } ;;
