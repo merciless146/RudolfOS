@@ -54,6 +54,7 @@ start() {
 	[ -w /sys/module/rtw88_pci/parameters/disable_aspm ] && echo Y > /sys/module/rtw88_pci/parameters/disable_aspm 2>/dev/null
 	ip link set "$IF" up 2>/dev/null
 	if ! W ping 2>/dev/null | grep -q PONG; then
+		rm -f /run/rudolf/wifi-ignore-$IF   # a new wpa_supplicant: nothing left out
 		wpa_supplicant -B -s -i "$IF" -c "$CONF" -D nl80211 -P /run/rudolf/wpa-$IF.pid >/dev/null 2>&1
 		for i in 1 2 3 4 5 6 7 8 9 10; do W ping 2>/dev/null | grep -q PONG && break; sleep 0.3; done
 	fi
@@ -79,6 +80,11 @@ start() {
 BGSCAN='"simple:30:-78:86400"'
 bgscan_all() { W list_networks | tail -n +2 | cut -f1 | while read -r id; do
 	[ -n "$id" ] && [ "$(W get_network "$id" bgscan)" != "$BGSCAN" ] && W set_network "$id" bgscan "$BGSCAN" >/dev/null; done; }
+# the radios left out for this session (wifi-event) are never saved: taken off while saving, put back after
+save_cfg() { SI=/run/rudolf/wifi-ignore-$IF; ids=$(cut -d' ' -f1 $SI 2>/dev/null | sort -u)
+	for id in $ids; do W set_network "$id" bssid_ignore "" >/dev/null; done
+	W save_config >/dev/null; r=$?
+	for id in $ids; do W set_network "$id" bssid_ignore "$(grep "^$id " $SI | cut -d' ' -f2 | tr '\n' ' ')" >/dev/null; done; return $r; }
 hexname() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
 # ids of saved networks with this name (list_networks shows names escaped; compare via the hex form)
 ids_for() {
@@ -158,7 +164,7 @@ connect)
 	fi
 	for o in $OLD; do W remove_network "$o" >/dev/null; done
 	W enable_network all >/dev/null
-	W save_config >/dev/null
+	save_cfg
 	for i in $(seq 20); do ip -4 -o addr show dev "$IF" | grep -q inet && break; sleep 0.5; done
 	A=$(ip -4 -o addr show dev "$IF" | awk '{print $4}' | head -1)
 	if [ -n "$A" ]; then echo "Connected to $SSID ($A)"; else echo "Joined $SSID, but no address yet (the network did not answer DHCP)."; fi ;;
@@ -166,7 +172,7 @@ forget)
 	start
 	SSID=$(sed -n 1p "$3"); rm -f "$3"; N=0
 	for o in $(ids_for "$SSID"); do W remove_network "$o" >/dev/null; N=$((N+1)); done
-	W save_config >/dev/null
+	save_cfg
 	[ $N -gt 0 ] && echo "Forgot $SSID" || { echo "$SSID is not saved."; exit 1; } ;;
 adapter)
 	[ -n "$2" ] && [ -e "$NET/$2/wireless" ] || { echo "No such Wi-Fi adapter."; exit 1; }
@@ -179,6 +185,6 @@ reconnect) start; W enable_network all >/dev/null; W reconnect >/dev/null; echo 
 country)
 	start; CC=${CC:-$3}
 	case "$CC" in [A-Z][A-Z]|00) ;; *) echo "Use a two-letter country code."; exit 1;; esac
-	W set country "$CC" >/dev/null && W save_config >/dev/null && echo "Country set to $CC" ;;
+	W set country "$CC" >/dev/null && save_cfg && echo "Country set to $CC" ;;
 *) echo "usage: wifi.sh boot|status|scan|connect|forget|disconnect|reconnect|country|adapter"; exit 1 ;;
 esac

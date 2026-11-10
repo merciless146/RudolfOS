@@ -29,7 +29,9 @@ cat > $B/wpa_cli <<'X'
 #!/bin/sh
 while [ $# -gt 0 ]; do case "$1" in -p|-i) shift 2;; *) break;; esac; done
 case "$1" in
-status) echo "wpa_state=$(cat $TT/wstate 2>/dev/null || echo COMPLETED)" ;;
+status) echo "wpa_state=$(cat $TT/wstate 2>/dev/null || echo COMPLETED)"; [ -s $TT/wbssid ] && echo "bssid=$(cat $TT/wbssid)" ;;
+bssid_ignore) cat $TT/wign 2>/dev/null ;;
+set_network) echo "wpa $*" >> $LOG; echo OK ;;
 list_networks) printf 'network id / ssid / bssid / flags\n0\tHome\tany\t%s\n' "$(cat $TT/wflags 2>/dev/null)" ;;
 select_network|enable_network) echo "wpa $*" >> $LOG; echo OK ;;
 *) echo OK ;;
@@ -68,6 +70,21 @@ ok "16. at most 4 tries for one drop" "$([ "$(grep -c 'select_network' $LOG)" = 
 echo INACTIVE > $T/wstate; : > $T/wflags; : > $LOG; WPA_ID=0 $E wlan0 CONNECTED; $E wlan0 DISCONNECTED; sleep 1.5
 ok "17. off and wpa_supplicant no longer trying (INACTIVE): chosen again too" "$(grep -q 'wpa select_network 0' $LOG && echo 1)" "$(cat $LOG)"
 echo COMPLETED > $T/wstate; WPA_ID=0 $E wlan0 CONNECTED; sleep 1
+# 2026111016: the 2.4 GHz radio tried twice in 25 minutes; it stays out for the session
+: > $LOG; rm -f $T/run/wifi.log; echo bc:96:e5:88:1f:d9 > $T/wbssid; printf 'bc:96:e5:88:1f:da\nbc:96:e5:88:1f:d9\n' > $T/wign
+WPA_ID=0 $E wlan0 CONNECTED
+ok "18. joined: the radio that did not answer is left out of the network for this session (not the one joined)" "$(grep -q 'wpa set_network 0 bssid_ignore bc:96:e5:88:1f:da$' $LOG && echo 1)" "$(cat $LOG)"
+ok "19. ...written to the Wi-Fi log" "$(grep -q 'left out for this session: bc:96:e5:88:1f:da' $T/run/wifi.log && echo 1)" "$(cat $T/run/wifi.log 2>/dev/null)"
+c=$(grep -c 'set_network' $LOG); WPA_ID=0 $E wlan0 CONNECTED
+ok "20. joining again: nothing new, nothing set again" "$([ "$(grep -c 'set_network' $LOG)" = "$c" ] && echo 1)" "$(cat $LOG)"
+: > $LOG; echo SCANNING > $T/wstate; : > $T/wign; $E wlan0 DISCONNECTED; sleep 1.5
+ok "21. off for longer than the grace: every radio allowed again (maybe only that one reaches here)" "$(grep -q 'wpa set_network 0 bssid_ignore $' $LOG && [ ! -s $T/run/wifi-ignore-wlan0 ] && echo 1)" "$(cat $LOG)"
+echo COMPLETED > $T/wstate; : > $LOG; $E wlan0 DISCONNECTED; sleep 0.2; WPA_ID=0 $E wlan0 CONNECTED; sleep 1.3
+ok "22. a short drop does not let it in again" "$(grep -q 'bssid_ignore $' $LOG && echo 0 || echo 1)" "$(cat $LOG)"
+: > $T/wbssid
+# wifi.sh: never saved
+grep -q '^save_cfg()' $L/wifi.sh && [ "$(grep -c 'W save_config' $L/wifi.sh)" = 1 ] && grep -q 'rm -f /run/rudolf/wifi-ignore-$IF' $L/wifi.sh
+ok "23. wifi.sh saves without the session's left-out radios (and a new wpa_supplicant starts with none)" "$([ $? = 0 ] && echo 1)"
 # udhcpc.sh: the same address on renewal is kept as it is
 : > $LOG; echo 10.0.0.5 > $T/addr
 PATH=$B:$PATH interface=wlan0 ip=10.0.0.5 mask=24 router=10.0.0.1 sh -c "sed 's#/etc/resolv.conf#$T/resolv#g' $L/udhcpc.sh > $T/u.sh; sh $T/u.sh renew"

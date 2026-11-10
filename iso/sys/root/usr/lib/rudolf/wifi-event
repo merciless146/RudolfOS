@@ -20,6 +20,22 @@ recover() { [ -n "$1" ] || return 1; ST=$(W status 2>/dev/null | sed -n 's/^wpa_
 	W list_networks 2>/dev/null | awk -F'\t' -v id="$1" '$1==id' | grep -q 'TEMP-DISABLED' || case "$ST" in DISCONNECTED|INACTIVE) ;; *) return 1;; esac
 	W select_network "$1" >/dev/null 2>&1; W enable_network all >/dev/null 2>&1
 	echo "$(date) wifi: network $1 was set aside after failures; chosen again" >> $R/wifi.log; return 0; }
+# 1.5.6: a radio that did not answer stays out for the rest of the session. On 2026111016 the router's 2.4 GHz radio
+# never accepted the Vivobook, and wpa_supplicant tried it twice in 25 minutes (1.3 s and 5.6 s off the network: a
+# game disconnected); its own ignore list forgets after 10 s at first. On joining, the radios on that list (other
+# than the one joined) go into the network's own bssid_ignore, for this session only (SI, never saved: wifi.sh
+# leaves them out of save_config). Off the network for longer than the grace, they are let in again: maybe only that
+# radio reaches here.
+SI=$R/wifi-ignore-$IF
+session_ignore() { [ -n "$1" ] || return 0; CUR=$(W status 2>/dev/null | sed -n 's/^bssid=//p'); L=$(grep "^$1 " $SI 2>/dev/null | cut -d' ' -f2); NEW=
+	for b in $(W bssid_ignore 2>/dev/null | grep -Eio '([0-9a-f]{2}:){5}[0-9a-f]{2}'); do [ "$b" = "$CUR" ] && continue
+		echo "$L" | grep -qix "$b" || { L="$L $b"; NEW="$NEW $b"; }; done
+	[ -n "$NEW" ] || return 0; L=$(echo $L)
+	W set_network "$1" bssid_ignore "$L" >/dev/null 2>&1 || return 0
+	{ grep -v "^$1 " $SI 2>/dev/null; for b in $L; do echo "$1 $b"; done; } > $SI.n; mv $SI.n $SI
+	echo "$(date) wifi: network $1: left out for this session:$NEW (did not answer)" >> $R/wifi.log; }
+session_unignore() { [ -n "$1" ] && grep -q "^$1 " $SI 2>/dev/null || return 0; W set_network "$1" bssid_ignore "" >/dev/null 2>&1
+	grep -v "^$1 " $SI > $SI.n; mv $SI.n $SI; echo "$(date) wifi: network $1: every radio allowed again (off the network)" >> $R/wifi.log; }
 stop() { [ -f $P ] && kill "$(cat $P)" 2>/dev/null; rm -f $P; }
 running() { [ -f $P ] && kill -0 "$(cat $P)" 2>/dev/null; }
 case "$2" in
@@ -32,6 +48,7 @@ CONNECTED)
 		udhcpc -b -i "$IF" -t 6 -T 2 -A 5 -p $P -s /usr/lib/rudolf/udhcpc.sh >/dev/null 2>&1
 	fi
 	echo "${WPA_ID:-}" > $N
+	session_ignore "${WPA_ID:-}"
 	echo "wifi connected" >> $R/events ;;
 DISCONNECTED)
 	# switching adapters (wifi.sh: "now"): at once
@@ -40,7 +57,7 @@ DISCONNECTED)
 	T="$(date +%s).$$"; echo $T > $D
 	ID=$(cat $N 2>/dev/null)
 	( sleep $GRACE; [ "$(cat $D 2>/dev/null)" = "$T" ] || exit 0
-	  rm -f $N; stop; ip addr flush dev "$IF" 2>/dev/null; echo "wifi disconnected" >> $R/events
+	  rm -f $N; stop; ip addr flush dev "$IF" 2>/dev/null; echo "wifi disconnected" >> $R/events; session_unignore "$ID"
 	  for i in 1 2 3 4; do [ "$(cat $D 2>/dev/null)" = "$T" ] || exit 0; recover "$ID"; sleep $RETRY; done; rm -f $D ) </dev/null >/dev/null 2>&1 &
 	;;
 esac
