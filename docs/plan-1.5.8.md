@@ -116,4 +116,5 @@ is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted.
    5.2 **done**: Help › Starting from a USB stick (rescue). 5.1 in part: the boot-files-only message names the drive
    (USB stick or this computer's drive, with its model) and says what to do; Make a stick writing a full system by
    default is left.
-5. 5.4 the testing rule in docs, then the Lite investigation on the Vivobook (devlink plus remote access).
+5. 5.4 the testing rule in docs, then the Lite investigation on the Vivobook (devlink plus remote access). The rule is
+   **done**: docs/testing.md. The Lite cause was found and fixed in 1.5.7 (libGLESv2); GPU drawing for Lite remains.
