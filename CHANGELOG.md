@@ -52,6 +52,7 @@ Summary: your files on the disk (docs/plan-1.5.6.md)
 - Fixed: the Wi-Fi dropped every open connection whenever it moved between the router's 2.4 and 5 GHz radios. A short drop now keeps the network address (and renews it on the same network); the Wi-Fi looks for a better radio only when the signal is weak; Realtek rtw88 Wi-Fi chips (RTL8821CE and others) no longer use PCIe link power saving, a known cause of drops.
 - Fixed: Linux apps' icons (Discord, Steam) could stay a penguin for the whole session after one failed request; the icon is now asked for again.
 - New: Settings › Display Properties: 16 accent colours (8 before), and the accent colour on the taskbar and on the desktop icons, each with its own tick box and a choice of Normal, Negative or Complementary.
+- New: Settings › Display Properties › Taskbar › Style: Standard, Wireframe (outlines on a see-through bar), Monochrome (greys), Candy (glossy, round buttons) or Retro (raised and sunken edges on silver); each in the accent colour when that is ticked for the taskbar.
 
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it

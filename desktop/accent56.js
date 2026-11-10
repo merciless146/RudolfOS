@@ -6,9 +6,16 @@
      lightness).
    The taskbar takes the colour as its background, with white or black writing, whichever reads better. The desktop
    icons are Rudolf's own icons, drawn in shades of the colour (apps' own pictures, such as Flathub apps' icons, stay
-   as they are; with Emoji icons there is nothing to colour). Off by default: nothing changes until ticked. */
-Object.assign(DEFS.disp,{tbac:false,tbacm:'normal',icac:false,icacm:'normal'});
-['tbac','tbacm','icac','icacm'].forEach(k=>{if(!DKEYS.includes(k))DKEYS.push(k);if(S[k]===undefined)S[k]=DEFS.disp[k];if(SC&&SC[k]===undefined)SC[k]=cln(S[k])});
+   as they are; with Emoji icons there is nothing to colour). Off by default: nothing changes until ticked.
+   And (asked for on 2026-11-10) the taskbar's style, as the icons have theirs (Display Properties › Taskbar › Style):
+   - Standard: the usual dark bar (or the accent colour);
+   - Wireframe: outlines only, on a see-through bar;
+   - Monochrome: shades of grey, the pictures in grey too;
+   - Candy: glossy, with rounded "pill" buttons;
+   - Retro: the raised and sunken edges of 1990s desktops, on silver.
+   The accent colour (when ticked for the taskbar) is the colour each style is made of; otherwise each has its own. */
+Object.assign(DEFS.disp,{tbac:false,tbacm:'normal',icac:false,icacm:'normal',tbstyle:'standard'});
+['tbac','tbacm','icac','icacm','tbstyle'].forEach(k=>{if(!DKEYS.includes(k))DKEYS.push(k);if(S[k]===undefined)S[k]=DEFS.disp[k];if(SC&&SC[k]===undefined)SC[k]=cln(S[k])});
 /* the accent colours offered: the eight of before (blue, green, red, purple, orange, cyan, pink, slate) and eight
    more that fill the colour wheel's gaps (amber, yellow, lime, teal, sky, indigo, fuchsia) and a brown, in the order
    of the wheel, the two greys/browns last */
@@ -22,18 +29,49 @@ function acVariant(hex,mode){const o=icHex2rgb(hex);if(!o)return hex;
 /* white or black writing on a colour: whichever has the higher contrast (WCAG relative luminance) */
 function acInk(hex){const o=icHex2rgb(hex)||[0,0,0];const L=o.map(v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)}),Y=.2126*L[0]+.7152*L[1]+.0722*L[2];
  return (1.05)/(Y+.05)>=(Y+.05)/.05?'#ffffff':'#000000'}
-function acApply(){const H=document.documentElement,ac=S.accent||'#2563eb';
- const tb=S.tbac?acVariant(ac,S.tbacm):'';H.classList.toggle('tbac',!!tb);
- if(tb){const ink=acInk(tb),o=icHex2rgb(tb),[h,sa,l]=icRgb2hsl(...o);H.style.setProperty('--tbbg',tb);H.style.setProperty('--tbfg',ink);
-  /* the window buttons a little lighter or darker than the bar, as on the usual dark bar */
-  H.style.setProperty('--tbbt',icHsl2hex(h,sa,l>50?l-10:l+10));H.style.setProperty('--tbbh',icHsl2hex(h,sa,l>50?l-18:l+18))}
+const TB_STYLES=[['standard','Standard'],['wire','Wireframe'],['mono','Monochrome'],['candy','Candy'],['retro','Retro']];
+const TB_BASE={standard:'#111827',wire:'#111827',mono:'#3f3f46',candy:'#db2777',retro:'#c0c0c0'};
+function acApply(){const H=document.documentElement,ac=S.accent||'#2563eb',st=TB_STYLES.some(x=>x[0]==S.tbstyle)?S.tbstyle:'standard';
+ TB_STYLES.forEach(([k])=>H.classList.toggle('tbs-'+k,k==st&&k!='standard'));
+ let base=S.tbac?acVariant(ac,S.tbacm):TB_BASE[st];
+ if(st=='mono'){const[,,l]=icRgb2hsl(...icHex2rgb(base));base=icHsl2hex(0,0,l)}   /* grey of the colour's lightness */
+ const on=!!S.tbac||st!='standard';H.classList.toggle('tbac',on);if(!on)H.classList.remove('tb-light');H.classList.toggle('tbac-col',!!S.tbac);
+ if(on){const ink=acInk(base),[h,sa,l]=icRgb2hsl(...icHex2rgb(base)),sh=d=>icHsl2hex(h,sa,Math.max(0,Math.min(100,l+d)));
+  H.style.setProperty('--tbbg',base);H.style.setProperty('--tbfg',ink);H.classList.toggle('tb-light',ink=='#000000');
+  /* the buttons a little lighter or darker than the bar, as on the usual dark bar; light and dark edges for Retro
+     and Candy */
+  H.style.setProperty('--tbbt',sh(l>50?-10:10));H.style.setProperty('--tbbh',sh(l>50?-18:18));
+  H.style.setProperty('--tbhi',sh(Math.min(30,96-l)));H.style.setProperty('--tblo',sh(-Math.min(30,l-6)));H.style.setProperty('--tbsh',sh(-Math.min(50,l-2)))}
  acIcons()}
 function acIcons(){const col=S.icac&&S.icons!=='emoji'?acVariant(S.accent||'#2563eb',S.icacm):'';
  document.querySelectorAll('#desk > .ic > b img.ico').forEach(i=>{const e=i.dataset.emo||'',k=EMO2IC[e]||EMO2IC[e.replace(/️/g,'')];if(!k)return;
   const u=col?icSvg(k,col):icSvg(k);if(i.getAttribute('src')!==u)i.src=u})}
-{const st=document.createElement('style');st.textContent=`html.tbac #bar{background:var(--tbbg)!important;color:var(--tbfg)!important}
-html.tbac #bar #tasks button{background:var(--tbbt)!important;color:var(--tbfg)!important}html.tbac #bar #tasks button:hover{background:var(--tbbh)!important}
-html.tbac #bar #tray,html.tbac #bar #tray *,html.tbac #bar #osver,html.tbac #bar #vol{color:var(--tbfg)!important}
+{const BX='#bar #tasks button,#bar #wsw button:not(.on),#bar #net,#bar #vol,#bar #tray',ALL='#bar button,#bar #tray,#bar #net,#bar #vol,#bar #tasks button,#bar #wsw button:not(.on)';
+ const each=(sel,pre)=>sel.split(',').map(x=>pre+' '+x).join(',');
+ const st=document.createElement('style');st.textContent=`html.tbac #bar{background:var(--tbbg)!important;color:var(--tbfg)!important}
+${each(BX,'html.tbac')}{background:var(--tbbt)!important;color:var(--tbfg)!important}${each(BX.replace(/,/g,':hover,')+':hover','html.tbac')}{background:var(--tbbh)!important}
+html.tbac #bar #tray *,html.tbac #bar #osver,html.tbac #bar #start,html.tbac #bar button{color:var(--tbfg)!important}
+/* the logo is white: dark on a light bar (Retro's silver, a light accent) */
+html.tb-light #bar #start img{filter:brightness(.22)}
+/* Wireframe: outlines only, on a see-through bar */
+html.tbs-wire #bar{background:color-mix(in srgb,var(--tbbg) 45%,transparent)!important;backdrop-filter:blur(8px);box-shadow:none!important;border-top:1px solid color-mix(in srgb,var(--tbfg) 70%,transparent)!important}
+${each(ALL,'html.tbs-wire')}{background:transparent!important;box-shadow:none!important;border:1px solid color-mix(in srgb,var(--tbfg) 55%,transparent)!important;border-radius:3px!important}
+${each(ALL.replace(/,/g,':hover,')+':hover','html.tbs-wire')}{background:color-mix(in srgb,var(--tbfg) 14%,transparent)!important}
+html.tbs-wire #bar #wsw button.on{background:transparent!important;border:2px solid var(--ac)!important}
+html.tbs-wire.tbac-col #bar button,html.tbs-wire.tbac-col #bar #tray{border-color:var(--tbhi)!important}
+/* Monochrome: greys, and the pictures in grey */
+html.tbs-mono #bar img,html.tbs-mono #bar svg{filter:grayscale(1)}html.tbs-mono #bar #wsw button.on{background:var(--tbhi)!important;color:var(--tbbg)!important}
+/* Candy: a glossy bar, round "pill" buttons */
+html.tbs-candy #bar{background:linear-gradient(180deg,var(--tbhi) 0%,var(--tbbg) 48%,var(--tblo) 100%)!important;box-shadow:inset 0 1px 0 #ffffff80,0 -1px 3px #0004!important}
+${each(ALL,'html.tbs-candy')}{border-radius:999px!important;border:0!important}
+${each(BX,'html.tbs-candy')}{background:linear-gradient(180deg,#ffffff8c 0%,#ffffff26 50%,#ffffff00 52%),var(--tbbt)!important;box-shadow:inset 0 1px 0 #ffffffb3,0 1px 2px #0005!important}
+html.tbs-candy #bar #wsw button.on{background:linear-gradient(180deg,#ffffffa6 0%,#ffffff33 50%,#ffffff00 52%),var(--ac)!important;box-shadow:inset 0 1px 0 #fff,0 1px 2px #0005!important}
+/* Retro: raised and sunken edges, square corners */
+html.tbs-retro #bar{background:var(--tbbg)!important;box-shadow:inset 0 1px 0 var(--tbhi),inset 0 2px 0 #fff8!important;border:0!important}
+${each(ALL,'html.tbs-retro')}{border-radius:0!important;border:0!important;background:var(--tbbg)!important;box-shadow:inset -1px -1px 0 var(--tbsh),inset 1px 1px 0 var(--tbhi),inset -2px -2px 0 var(--tblo),inset 2px 2px 0 #fff6!important}
+${each(ALL.replace(/,/g,':active,')+':active','html.tbs-retro')},html.tbs-retro #bar #wsw button.on,html.tbs-retro #bar #tasks button.act,html.tbs-retro #bar #tasks button.on{box-shadow:inset 1px 1px 0 var(--tbsh),inset -1px -1px 0 var(--tbhi),inset 2px 2px 0 var(--tblo)!important}
+html.tbs-retro #bar #tray{box-shadow:inset 1px 1px 0 var(--tblo),inset -1px -1px 0 var(--tbhi)!important}
+html.tbs-retro #bar #wsw button.on{background:var(--tbbt)!important}
 .acrow{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}.acrow select:disabled{opacity:.55}`;document.head.appendChild(st)}
 (function(){const o=themeApply;themeApply=function(){const r=o.apply(this,arguments);try{acApply()}catch(e){}return r}})();
 (function(){const o=icRedraw;icRedraw=function(){const r=o.apply(this,arguments);try{acIcons()}catch(e){}return r}})();
@@ -55,5 +93,8 @@ html.tbac #bar #tray,html.tbac #bar #tray *,html.tbac #bar #osver,html.tbac #bar
   const m=q('.acmsg');if(m)m.dataset.emoji=S.icons==='emoji'?'1':'';if(q('#dicac').checked&&S.icons==='emoji')m.textContent='The desktop icons take the colour with Rudolf icons (Icons, below); Emoji keep their own colours.'};
  q('#dtbac').onchange=e=>{liveSet(c,'tbac',e.target.checked);sync()};q('#dtbacm').onchange=e=>liveSet(c,'tbacm',e.target.value);
  q('#dicac').onchange=e=>{liveSet(c,'icac',e.target.checked);sync()};q('#dicacm').onchange=e=>liveSet(c,'icacm',e.target.value);
- sync()}})();
+ sync();
+ /* the taskbar's style, in the Taskbar group (settings31) */
+ const tg=c.querySelector('.tbgrp');if(tg){const l2=document.createElement('label');l2.htmlFor='dtbs';l2.textContent='Style';const s2=document.createElement('select');s2.id='dtbs';
+  s2.innerHTML=TB_STYLES.map(([k,n])=>optH(k,n,S.tbstyle||'standard')).join('');s2.onchange=e=>liveSet(c,'tbstyle',e.target.value);tg.append(l2,s2)}}})();
 acApply();
