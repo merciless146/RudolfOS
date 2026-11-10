@@ -246,10 +246,13 @@ Conclusion: clearly lighter; Part 4 goes on to steps 2 to 4 (stage 11), behind t
 
 System Settings › Desktop engine: a list, Standard (Chromium) or Lite (WebKit, test); the choice is kept in
 /persist/etc/rudolf-desktop-engine and taken by rudolf-init at start-up, so it applies at the next restart. Lite is
-WebKitGTK 4.1 in Debian (webkit-desktop.py, installed in Debian when chosen), not yet a package of the system layer:
-with Debian in the encrypted folder (the Vivobook), which opens only at sign-in after the desktop has started, Lite
-cannot be chosen. Shipping WebKit in the system layer (as "What changes" above says) lifts that, and is the next step
-for Part 4. All 44 built-in apps opened in WebKit on the Vivobook without script errors (iso/systools/webkit_apps.sh).
+rudolf-webkit (iso/sys/rudolf-webkit.c, WebKitGTK 4.1) in the system layer, with what it needs gathered by
+systools/addwebkit.sh from the release machine's Ubuntu 24.04 (its helper processes, GStreamer's basic plug-ins, GLib's
+TLS module): it starts before sign-in, with or without Debian and "Encrypt my data". (A first version used WebKitGTK in
+Debian, which with Debian in the encrypted folder, as on the Vivobook, could not start before sign-in.) Not yet: H.264
+and AAC (GStreamer's libav plug-in, about 30 MB more). The workflow "Lite engine check" builds it and opens the desktop
+page in it on a virtual screen whenever its files change. All 44 built-in apps opened in WebKit on the Vivobook
+without script errors (iso/systools/webkit_apps.sh).
 
 ### Steps
 

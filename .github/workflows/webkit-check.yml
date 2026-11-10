@@ -1,0 +1,37 @@
+# Rudolf OS 1.5.7: a check of the Lite desktop engine on the release machine's Ubuntu 24.04, made when its files change
+# (or by hand): rudolf-webkit builds against WebKitGTK 4.1, systools/addwebkit.sh gathers what it needs (into an empty
+# tree, so the size is the most it can add), and the desktop page (the browser build) opens in it on a virtual screen
+# for 40 s: its console and a screenshot are kept. Publishes nothing.
+name: Lite engine check
+on:
+  push:
+    paths: ['iso/sys/rudolf-webkit.c', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Packages (as the release workflow installs them)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good glib-networking xvfb imagemagick >/dev/null
+      - name: Build rudolf-webkit
+        run: gcc -O2 -Wall -Wno-deprecated-declarations -o rudolf-webkit iso/sys/rudolf-webkit.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0)
+      - name: What addwebkit.sh adds (into an empty tree)
+        run: |
+          R=$RUNNER_TEMP/root; mkdir -p $R/usr/lib/x86_64-linux-gnu $R/usr/bin
+          iso/systools/addwebkit.sh $R ./rudolf-webkit | tee add.txt
+          du -sh $R; find $R -type f | wc -l
+      - name: The desktop page in rudolf-webkit, on a virtual screen
+        run: |
+          cd iso/www && (python3 -m http.server 8080 --bind 127.0.0.1 >/dev/null 2>&1 &) && cd ../..
+          sleep 1
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 1
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 HOME=$RUNNER_TEMP/home; mkdir -p $HOME
+          (timeout 45 ./rudolf-webkit --rudolf-kiosk --size=1280x800 http://127.0.0.1:8080/ > console.txt 2>&1 &)
+          sleep 40; import -window root shot.png || true
+          for p in $(pgrep -f 'WebKit(Web|Network)Process|rudolf-webkit'); do echo "$p $(cat /proc/$p/comm) $(awk '/^Pss:/{print int($2/1024)" MB PSS"}' /proc/$p/smaps_rollup)"; done | tee mem.txt
+          echo "== console"; head -c 6000 console.txt
+          grep -qiE 'not leaving|stopped \(' console.txt && echo "::warning::$(grep -iE 'not leaving|stopped \(' console.txt | head -3)" || true
+      - uses: actions/upload-artifact@v4
+        with: {name: lite-engine-check, path: "shot.png\nconsole.txt\nmem.txt\nadd.txt"}

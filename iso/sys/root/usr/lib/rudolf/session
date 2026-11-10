@@ -168,16 +168,15 @@ SHELLINST=""; SHELLFEAT=""
 if [ ${#SHELLID} = 56 ] && [ "$(cat /etc/rudolf-shell 2>/dev/null)" != off ] && ! grep -q 'rudolf.recovery=1' $RCMD && [ -r /usr/share/rudolf/www/iwa/shell.swbn ]; then
 	SHELLINST="--install-isolated-web-app-from-file=/usr/share/rudolf/www/iwa/shell.swbn"; SHELLFEAT=",IsolatedWebAppDevMode"
 fi
-# 1.5.7: the desktop in WebKit (System Settings › Desktop engine, kept in /persist/etc/rudolf-desktop-engine and taken
-# at start-up by rudolf-init into /run/rudolf/engine-choice: a change applies at the next restart of the computer): Debian
-# set up with WebKitGTK and its Python bindings (rudolfd installs them when it is chosen), not in recovery mode, and not
-# after it failed to start this time (/run/rudolf/webkit-failed)
+# 1.5.7: the desktop in WebKit (System Settings › Desktop engine › Lite, kept in /persist/etc/rudolf-desktop-engine and
+# taken at start-up by rudolf-init into /run/rudolf/engine-choice: a change applies at the next restart of the computer).
+# rudolf-webkit (WebKitGTK) is in the system layer; not in recovery mode, and not after it failed this start
+# (/run/rudolf/webkit-failed)
 webkit_usable() {
 	[ "$(cat /run/rudolf/engine-choice 2>/dev/null)" = webkit ] || return 1
 	grep -q 'rudolf.recovery=1' $RCMD && return 1
 	[ -e /run/rudolf/webkit-failed ] && return 1
-	[ -e /persist/debian/.rudolf-ready ] && [ -r /usr/lib/rudolf/webkit-desktop.py ] || return 1
-	ls /persist/debian/usr/lib/*/girepository-1.0/WebKit2-4.1.typelib >/dev/null 2>&1 && [ -d /persist/debian/usr/lib/python3/dist-packages/gi ]
+	[ -x /usr/bin/rudolf-webkit ]
 }
 shell_usable() {
 	[ ${#SHELLID} = 56 ] || return 1
@@ -214,8 +213,7 @@ while :; do
 	# 1.5.6: the browser starts in the desktop's memory group (see memory); this loop goes back out right after
 	DCG=/sys/fs/cgroup/desktop/cgroup.procs; [ -e $DCG ] && echo $$ > $DCG 2>/dev/null
 	if [ $ENGINE = webkit ]; then
-		mkdir -p /persist/debian/usr/local/lib/rudolf; cp /usr/lib/rudolf/webkit-desktop.py /persist/debian/usr/local/lib/rudolf/ 2>/dev/null
-		/usr/bin/rudolf-debian run -- python3 /usr/local/lib/rudolf/webkit-desktop.py --rudolf-kiosk --size=${W}x$H $START >>/run/rudolf/webkit-desktop.log 2>&1 &
+		su -s /bin/sh rudolf -c "exec /usr/bin/rudolf-webkit --rudolf-kiosk --size=${W}x$H $START" >>/run/rudolf/webkit-desktop.log 2>&1 &
 	else
 	su -s /bin/sh rudolf -c "exec $LAUNCH /opt/chromium/chrome --rudolf-kiosk --class=RudolfDesktop --kiosk --start-fullscreen \
 		--window-position=0,0 --window-size=$W,$H --user-data-dir=$PROFILE \

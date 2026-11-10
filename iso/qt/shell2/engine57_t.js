@@ -15,8 +15,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
       const f0 = window.fetch;
       window.fetch = (u, o) => { u = String(u); const q = new URL(u, location.href); const a = q.pathname.replace('/api/', ''); const J = (x, st) => Promise.resolve(new Response(JSON.stringify(Object.assign({ok: !st}, x)), {status: st || 200, headers: {'content-type': 'application/json'}}));
         if (u.includes('/api/')) M.calls.push(((o && o.method) || 'GET') + ' ' + a + q.search);
-        if (a == 'desktop/engine') { if (o && o.method == 'POST') { const e = q.searchParams.get('engine'); if (e) { M.choice = e; if (e == 'webkit' && !M.ready) { M.ready = true; return J({message: 'installing'}) } } return J({message: 'saved'}) }
-          return J({encrypted: !!M.enc, choice: M.choice, now: M.now, debian: true, ready: M.ready, failed: false, persistent: true}) }
+        if (a == 'desktop/engine') { if (o && o.method == 'POST') { const e = q.searchParams.get('engine'); if (e) M.choice = e; return J({message: 'saved'}) }
+          return J({choice: M.choice, now: M.now, available: M.avail !== false, failed: false, persistent: true}) }
         if (a == 'job') return J({running: false, status: 0, log: 'Setting up gir1.2-webkit2-4.1\ndone installed\n'});
         if (a == 'health') return J({events: [], now: 0});
         if (u.includes('/api/')) return J({items: [], apps: [], windows: []});
@@ -32,13 +32,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('2. System Settings › Desktop engine: a list with Standard (Chromium) and Lite (WebKit, test); what is in use now', t && t.v == 'chromium' && JSON.stringify(t.opts) == '["Standard (Chromium)","Lite (WebKit, test)"]' && /In use now: Lite \(WebKit\)/.test(t.txt) && /changes when the computer restarts/.test(t.txt), t);
   await q("(()=>{const s=document.querySelector('#eng57');s.value='webkit';s.dispatchEvent(new Event('change'));return 1})()"); await wait(1500);
   const c = await q("M.calls.filter(x=>/desktop\\/engine\\?/.test(x))"); t = await q("(()=>{const d=document.querySelector('.eng57');return {v:d.querySelector('#eng57').value,txt:d.innerText}})()");
-  ok('3. choosing Lite saves it (installing WebKit in Linux when missing); it is used after the computer restarts', JSON.stringify(c) == '["POST desktop/engine?engine=webkit"]' && t.v == 'webkit', [c, t]);
+  ok('3. choosing Lite saves it; it is used after the computer restarts', JSON.stringify(c) == '["POST desktop/engine?engine=webkit"]' && t.v == 'webkit', [c, t]);
   await q("(()=>{M.now='chromium';document.querySelectorAll('.eng57').forEach(e=>e.remove());enginePanel57([...document.querySelectorAll('.win')].at(-1).querySelector('.eng57')?.parentElement||document.querySelector('#sdp').closest('div').parentElement);return 1})()"); await wait(800);
   t = await q("document.querySelector('.eng57 .engnow').textContent");
   ok('4. chosen but not yet in use: it says the change comes with the next restart (nothing restarts now)', /In use now: Standard \(Chromium\)\. Lite \(WebKit\) is used after the computer restarts/.test(t) && !(await q("M.calls.some(x=>/apply/.test(x))")), t);
-  await q("(()=>{M.enc=true;M.choice='chromium';document.querySelectorAll('.eng57').forEach(e=>e.remove());enginePanel57(document.querySelector('#sdp').closest('div').parentElement);return 1})()"); await wait(800);
+  await q("(()=>{M.avail=false;M.choice='chromium';document.querySelectorAll('.eng57').forEach(e=>e.remove());enginePanel57(document.querySelector('#sdp').closest('div').parentElement);return 1})()"); await wait(800);
   const o2 = await q("(()=>{const o=document.querySelector('#eng57 option[value=webkit]');return {d:o.disabled,t:o.textContent}})()");
-  ok('4b. Linux in the encrypted folder (it opens only at sign-in, after the desktop has started): Lite cannot be chosen, and it says why', o2.d && /not with Linux in the encrypted folder/.test(o2.t), o2);
+  ok('4b. a Rudolf OS without the Lite engine (before this update): Lite cannot be chosen, and it says why', o2.d && /update Rudolf OS first/.test(o2.t), o2);
   ok('no page error (WebKit)', !errs.length, errs);
   await p.close(); ({p, errs} = await page('chromium'));
   ok('5. desktop in Chromium: only the sign-in sites go to the browser window, as before', await p.evaluate("webWants('https://accounts.google.com/')&&!webWants('https://example.com/a')"));
