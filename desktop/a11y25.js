@@ -205,13 +205,16 @@ var ICDYN=null;
 function icHex2rgb(h){h=String(h||'').trim();const m=/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(h);if(!m)return null;let x=m[1];if(x.length==3)x=x.split('').map(c=>c+c).join('');return[0,2,4].map(i=>parseInt(x.substr(i,2),16))}
 function icRgb2hsl(r,g,b){r/=255;g/=255;b/=255;const mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2;let h=0,s=0;if(mx!=mn){const d=mx-mn;s=l>.5?d/(2-mx-mn):d/(mx+mn);h=mx==r?(g-b)/d+(g<b?6:0):mx==g?(b-r)/d+2:(r-g)/d+4;h*=60}return[h,s*100,l*100]}
 function icHsl2hex(h,s,l){h=((h%360)+360)%360;s/=100;l/=100;const k=n=>(n+h/30)%12,a=s*Math.min(l,1-l),f=n=>l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)));return'#'+[f(0),f(8),f(4)].map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('')}
-function icColors(k){let[a,b]=IC_BG[k]||['#64748b','#334155'],g='#fff',det=null;
+function icColors(k,ac){let[a,b]=IC_BG[k]||['#64748b','#334155'],g='#fff',det=null;
+ /* 1.5.6: one colour for every icon (the desktop icons in the accent colour, accent56.js): a lighter and a darker
+    shade of it, and a dark symbol on a light colour */
+ if(ac){const o=icHex2rgb(ac);if(o){const[h,sa,l]=icRgb2hsl(...o);a=icHsl2hex(h,sa,Math.min(l+10,86));b=icHsl2hex(h,sa,Math.max(l-12,10));if(l>=68){g=icHsl2hex(h,Math.min(sa,60),14);det='#fff'}return{a,b,g,det}}}
  if(S.icdyn&&ICDYN){const o=icHex2rgb(a),oh=o?icRgb2hsl(...o)[0]:0,h=ICDYN.h+180+((oh/360)-.5)*48;   /* complement of the wallpaper, spread a little per app */
   if(ICDYN.dark){a=icHsl2hex(h,72,72);b=icHsl2hex(h,66,58);g=icHsl2hex(h,60,13);det='#fff'}else{a=icHsl2hex(h,70,46);b=icHsl2hex(h,74,31)}}
  return{a,b,g,det}}
 function icGlyph(k,g,det){let s=IC_G[k]||'';if(g.toLowerCase()!='#fff'){s=s.replace(/#fff\b/gi,'@G@');if(det)s=s.replace(/#(334155|64748b|0f172a|1f2937)\b/gi,det);s=s.replace(/@G@/g,g)}return s}
-function icSvg(k){const st=S.icstyle||'rudolf',key=k+'|'+st+'|'+(S.icdyn&&ICDYN?ICDYN.key:'');if(icCache[key])return icCache[key];
- const c=icColors(k),G=icGlyph(k,c.g,c.det),grad=`<defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='${c.a}'/><stop offset='1' stop-color='${c.b}'/></linearGradient></defs>`,sc=(z,cx,cy,inner)=>`<g transform='translate(${cx} ${cy}) scale(${z}) translate(-24 -24)'>${inner}</g>`;
+function icSvg(k,ac){const st=S.icstyle||'rudolf',key=k+'|'+st+'|'+(ac?'ac'+ac:S.icdyn&&ICDYN?ICDYN.key:'');if(icCache[key])return icCache[key];
+ const c=icColors(k,ac),G=icGlyph(k,c.g,c.det),grad=`<defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='${c.a}'/><stop offset='1' stop-color='${c.b}'/></linearGradient></defs>`,sc=(z,cx,cy,inner)=>`<g transform='translate(${cx} ${cy}) scale(${z}) translate(-24 -24)'>${inner}</g>`;
  let body;switch(st){
   case 'flat':body=`<rect x='2' y='2' width='44' height='44' rx='9' fill='${c.a}'/>${G}`;break;
   case 'circle':body=`${grad}<circle cx='24' cy='24' r='22' fill='url(#g)'/>${sc(.84,24,24,G)}`;break;

@@ -172,7 +172,7 @@ function userLogout(){if(!USER)return;try{window.__sessionSave&&__sessionSave()}
  if(USER.r=='guest'){try{localStorage.removeItem('bd95set:guest');localStorage.removeItem('bd95cells:guest')}catch(e){}TR=[];
   for(const k in fs['C:'].USERS)if(k=='GUEST')delete fs['C:'].USERS[k];fsSave()}
  logEvt('sys',`${USER.n} signed out`);SESSION=null}
-(function(){const lo=A.logoff,of=A.off;A.logoff=()=>{userLogout();lo()};A.off=()=>{userLogout();RD?shutdownDlg():of()}})();
+(function(){const lo=A.logoff,of=A.off;A.logoff=()=>{userLogout();lo()};A.off=()=>{if(RD){shutdownDlg();return}userLogout();of()}})();
 /* Guest sign-in button on the login screen */
 const SYSK='bd95sys';let SYSC=Object.assign({guest:true,ssmin:10,lockss:true,lockmin:0,suspmin:0},ld(SYSK,{}));
 /* 1.4.4: the screen saver is switched on and off by itself; a saved "Off" (0 minutes) from before stays off */
@@ -189,7 +189,12 @@ if(SYSC.sson===undefined){SYSC.sson=SYSC.ssmin>0;if(!SYSC.ssmin)SYSC.ssmin=10;SY
  b.onclick=e=>{e.stopPropagation();shutdownDlg()};L.appendChild(b)})();
 /* ---------- shutdown dialog (power button, Start → Shut down) ---------- */
 function shutdownDlg(){const o=document.createElement('div');o.className='rmodal';o.innerHTML=`<div class='rmbox' role='dialog' aria-label='Power'><h3>Power</h3><p>What do you want the computer to do?</p><div class='rmrow'><button data-a='poweroff'>⏻ Shut down</button><button data-a='reboot'>↻ Restart</button><button data-a='suspend'>☾ Sleep</button><button data-a='x'>Cancel</button></div><div class='rmmsg'></div></div>`;document.body.appendChild(o);
- o.querySelector('button').focus();o.onclick=async e=>{const a=e.target.dataset&&e.target.dataset.a;if(!a)return;if(a=='x'){o.remove();showLogin();return}
+ o.querySelector('button').focus();o.onclick=async e=>{const a=e.target.dataset&&e.target.dataset.a;if(!a)return;if(a=='x'){o.remove();if(!SESSION)showLogin();return}
+  /* 1.5.6: the power button and Start › Shut down no longer sign out before asking: Cancel goes back to the desktop
+     as it was (on the Vivobook the power button, pressed to get out of a stuck game, left the person signed out).
+     Shut down and Restart sign out once chosen; Sleep keeps the session, behind the lock screen. */
+  if(SESSION&&(a=='poweroff'||a=='reboot'))try{userLogout()}catch(x){}
+  if(SESSION&&a=='suspend')try{lockScreen()}catch(x){}
   /* 1.4.5: saving gets 3 seconds in all, so a step that stalls cannot keep the computer on; each step's time goes
      to the shutdown log (About › For developers) */
   const say=t=>o.querySelector('.rmmsg').textContent=t,T0=Date.now(),end=T0+3000,tl=[],mark=k=>tl.push(k+'='+(Date.now()-T0));
@@ -205,7 +210,7 @@ function shutdownDlg(){const o=document.createElement('div');o.className='rmodal
     const lb={poweroff:'Shut down',reboot:'Restart',suspend:'Sleep'}[a]+' anyway';let fb=o.querySelector('.rmforce');
     if(!fb){fb=document.createElement('button');fb.className='rmforce';o.querySelector('.rmrow').appendChild(fb)}fb.textContent=lb;fb.dataset.a=a;fb.dataset.f=a;fb.style.color='#b91c1c'}
    else{say(x.message);o.querySelectorAll('button').forEach(b=>b.disabled=false)}return false}};
-  if(!(await go(e.target.dataset.f==a))){return}if(a=='suspend'){o.remove();showLogin()}}}
+  if(!(await go(e.target.dataset.f==a))){return}if(a=='suspend'){o.remove();if(!SESSION)showLogin()}}}
 /* ---------- administrator permission (UAC / polkit style) ---------- */
 function elevate(reason){return new Promise(res=>{if(window.__elevTrust&&isAdmin()&&Date.now()-__elevTrust<120000)return res(true);
  const admins=ACCTS.filter(a=>a.r=='admin');const o=document.createElement('div');o.className='rmodal';

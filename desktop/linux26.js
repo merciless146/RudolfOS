@@ -10,8 +10,13 @@ const LX={cat:null,inst:null,instAt:0,wins:[],mode:'desktop',shown:'',icons:new 
 const lxEsc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function lxApi(path,body){const r=await fetch('/api/'+path,{method:'POST',headers:{'X-Rudolf-Token':RD.token},body});const ct=r.headers.get('content-type')||'';
  if(ct.includes('json')){const j=await r.json();if(!j.ok)throw new Error(j.error||j.message||'Request failed');return j}if(!r.ok)throw new Error('HTTP '+r.status);return r}
-function lxIcon(id,icon){const k=id+'|'+(icon||'');if(!LX.icons.has(k))LX.icons.set(k,lxApi('apps/icon?id='+encodeURIComponent(id)+(icon?'&icon='+encodeURIComponent(icon):'')).then(r=>r.blob()).then(b=>URL.createObjectURL(b)).catch(()=>null));return LX.icons.get(k)}
-function lxImg(el,id,icon){lxIcon(id,icon).then(u=>{if(u&&el.isConnected){el.textContent='';const i=new Image();i.className='lxapp';i.src=u;i.alt='';el.appendChild(i)}})}
+/* 1.5.6: a request that fails is not kept: on the Vivobook Discord's and Steam's icons became the penguin for the
+   whole session, the icon having been asked for once while it could not be had (start-up, sign-in); the icon is asked
+   for again 3 s, 15 s, 1 min and 5 min later while it is on the screen, and at every new drawing */
+function lxIcon(id,icon){const k=id+'|'+(icon||'');if(!LX.icons.has(k))LX.icons.set(k,lxApi('apps/icon?id='+encodeURIComponent(id)+(icon?'&icon='+encodeURIComponent(icon):'')).then(r=>r.blob()).then(b=>{if(!b.size||!/^image\//.test(b.type))throw new Error('not an image');return URL.createObjectURL(b)}).catch(()=>{LX.icons.delete(k);return null}));return LX.icons.get(k)}
+const LX_ICON_RETRY=[3000,15000,60000,300000];
+function lxImg(el,id,icon){const go=n=>lxIcon(id,icon).then(u=>{if(!el.isConnected&&n)return;if(u){el.textContent='';const i=new Image();i.className='lxapp';i.src=u;i.alt='';el.appendChild(i);return}
+ if(n<LX_ICON_RETRY.length)setTimeout(()=>{if(el.isConnected)go(n+1)},LX_ICON_RETRY[n])});go(0)}
 /* 1.3.0: a job that crashed says so (rudolfd job.crashed), instead of a guess about the cause */
 function jobCrashText(j){if(!j||!j.crashed)return'';const c=(j.crashes||[])[0];return`${c&&c.program?c.program:'A part of Rudolf OS'} stopped unexpectedly${c&&c.where?' (in '+c.where+')':''}. That is a bug in Rudolf OS, not a problem with this computer or its connection. Task Manager › System › Report a problem… sends the details.`}
 const lxJobWait=onLine=>new Promise(res=>{let seen=0;const iv=setInterval(async()=>{let j;try{j=await rd('job')}catch(e){return}const ls=(j.log||'').split('\n');if(onLine)for(;seen<ls.length-1;seen++)onLine(ls[seen]);if(!j.running&&j.status>=0){clearInterval(iv);res(j)}},900)});

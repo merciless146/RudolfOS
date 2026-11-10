@@ -1,17 +1,33 @@
 #!/bin/sh
 # Called by wpa_cli -a when Wi-Fi joins or leaves a network: get an address by DHCP, or drop it.
-#   wifi-event IF CONNECTED|DISCONNECTED     GPL-2.0-or-later.
-export PATH=/usr/sbin:/usr/bin:/sbin:/bin
-IF=$1; P=/run/rudolf/udhcpc-$IF.pid
+#   wifi-event IF CONNECTED|DISCONNECTED [now]     (WPA_ID: the network's id, from wpa_cli)   GPL-2.0-or-later.
+# 1.5.6: a short drop keeps the address. On the Vivobook the router's 2.4 and 5 GHz radios (the same network) took
+# turns, a few seconds apart, and each change dropped the address and asked DHCP again from scratch, breaking every
+# open connection. Now a drop waits GRACE seconds (10) before the address goes; joining the same network again within
+# them renews the lease it has (udhcpc's SIGUSR1) instead of starting over; another network starts over.
+export PATH=${WIFI_EVENT_PATH:-/usr/sbin:/usr/bin:/sbin:/bin}
+R=${WIFI_EVENT_RUN:-/run/rudolf}
+IF=$1; P=$R/udhcpc-$IF.pid; D=$R/wifi-drop-$IF; N=$R/wifi-net-$IF; GRACE=${WIFI_EVENT_GRACE:-10}
 stop() { [ -f $P ] && kill "$(cat $P)" 2>/dev/null; rm -f $P; }
+running() { [ -f $P ] && kill -0 "$(cat $P)" 2>/dev/null; }
 case "$2" in
 CONNECTED)
-	stop
-	udhcpc -b -i "$IF" -t 6 -T 2 -A 5 -p $P -s /usr/lib/rudolf/udhcpc.sh >/dev/null 2>&1
-	echo "wifi connected" >> /run/rudolf/events ;;
+	rm -f $D
+	if running && [ -n "$WPA_ID" ] && [ "$(cat $N 2>/dev/null)" = "$WPA_ID" ] && ip -4 -o addr show dev "$IF" | grep -q inet; then
+		kill -USR1 "$(cat $P)" 2>/dev/null   # the same network: renew the address it has
+	else
+		stop
+		udhcpc -b -i "$IF" -t 6 -T 2 -A 5 -p $P -s /usr/lib/rudolf/udhcpc.sh >/dev/null 2>&1
+	fi
+	echo "${WPA_ID:-}" > $N
+	echo "wifi connected" >> $R/events ;;
 DISCONNECTED)
-	stop
-	ip addr flush dev "$IF" 2>/dev/null
-	echo "wifi disconnected" >> /run/rudolf/events ;;
+	# switching adapters (wifi.sh: "now"): at once
+	if [ "$3" = now ]; then rm -f $D $N; stop; ip addr flush dev "$IF" 2>/dev/null; echo "wifi disconnected" >> $R/events; exit 0; fi
+	# the address goes only if the Wi-Fi is still off the network GRACE seconds later
+	T="$(date +%s).$$"; echo $T > $D
+	( sleep $GRACE; [ "$(cat $D 2>/dev/null)" = "$T" ] || exit 0
+	  rm -f $D $N; stop; ip addr flush dev "$IF" 2>/dev/null; echo "wifi disconnected" >> $R/events ) </dev/null >/dev/null 2>&1 &
+	;;
 esac
 exit 0
