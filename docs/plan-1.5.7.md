@@ -3,7 +3,7 @@
 Asked for on 2026-11-09, after the Vivobook tests of the 1.5.6 betas. 1.5.6 finishes first (its installation wizards,
 the camera, the Terminal and 1.5.5's remaining File Explorer items); this plan starts once 1.5.6 is promoted.
 
-Three parts:
+Four parts:
 1. **Blitzen diagnostics:** Blitzen reads the computer's own state and Rudolf OS's documents, and explains what went
    wrong, without changing anything.
 2. **Recommended improvements:** what the 1.5.6 betas showed on real hardware: a deleted download, a wrong path, a
@@ -13,6 +13,9 @@ Three parts:
    saying what the memory guard did, the network at start-up, and what 1.5.6 leaves for later. (Three more found that
    day went into 1.5.6 itself: prompts in front of full-screen games, installer windows hidden behind the desktop,
    and Chromium's own shortcuts that could close the desktop.)
+4. **WebKit for the desktop, Chromium only for browsing** (added on 2026-11-10): the desktop and its built-in apps
+   run in WebKit, a lighter web engine, so that they take much less of the memory; Chromium stays, as the web
+   browser, started only to browse.
 
 ## What is there today (checked in the code and on the Vivobook)
 
@@ -167,6 +170,75 @@ Found on 2026-11-09 with Steam (Flatpak) and Among Us (Proton) on the Vivobook.
 
 (Item 7, one Start button for the logo and the version, moved to the 1.5.6 plan on 2026-11-10: built in 1.5.6.)
 
+## Part 4: WebKit for the desktop, Chromium only for browsing
+
+Asked for on 2026-11-10, after the comparison with Ubuntu and Mint: of the ways to make the desktop lighter, this one
+needs the least work for the largest gain.
+
+### Why
+
+- On the Vivobook (3.4 GB) the desktop's own Chromium takes about 780 MB (its main process, the desktop page, the
+  graphics process, the network process), and more with web pages open. With Steam, Discord and a game, that is what
+  ran out: the white screens and the watchdog's restarts of 1.5.6 (#160, #167) came from it.
+- The desktop and every built-in app (File Explorer, the Office apps, Settings, the App Store, the emulators, Blitzen)
+  are web code (HTML, CSS, JavaScript, WebAssembly). A native desktop (Xfce, LXQt, Qt or GTK) would mean writing them
+  all again; another web engine runs them as they are.
+- WebKit (WPE WebKit with its small launcher Cog, or WebKitGTK) is the engine of GNOME's Web and of many devices'
+  screens; it usually takes noticeably less memory per page than Chromium. How much less on the Vivobook is measured
+  first (step 1), before anything is changed.
+
+### What changes
+
+- **The desktop page** (the desktop, the taskbar, the Start menu and every built-in app) runs in Cog (WPE WebKit), in
+  place of the Chromium kiosk. The session starts it the same way, in the desktop's memory group (#160), with the
+  same watchdog (its heartbeat is the same request to rudolfd).
+- **Web pages** (Oracle Browser, the links in apps, sign-in pages, Newgrounds, cloud gaming) open in Chromium, as a
+  separate window: started when someone browses, closed when its last window is. Today they open in tabs inside the
+  desktop (the shell's Controlled Frames); they become Chromium's own windows and tabs, with Rudolf OS's policies
+  (downloads into the account's Downloads, the camera prompt, the keyboard shortcuts of #151).
+- **What only Chromium has, and what replaces it:**
+  - the shell (an Isolated Web App with Controlled Frames): not needed by the desktop any more; the web pages are
+    Chromium's own windows (above);
+  - the Ruffle extension (Flash in web pages): Flash Player (the built-in app) already plays SWF files with Ruffle's
+    web build; in web pages, Chromium keeps the extension;
+  - the frames extension (web pages inside the desktop's frames): not needed (the pages open in Chromium);
+  - Chromium's policies and flags for the desktop (shortcuts, the camera, the GPU): WebKit's own settings, and the
+    keyboard guard of #151 in the page itself;
+  - the memory guard's "the largest web page": it closes Chromium's tabs, as now; the desktop itself is WebKit and
+    is not one of them.
+- **Kept as it is:** rudolfd and everything it does, the accounts, the files, Linux apps (Flatpak), Debian and Wine,
+  the updates. The desktop talks to rudolfd as it does today.
+
+### Steps
+
+1. **A trial first, changing nothing:** Cog (WPE WebKit) as a package, the desktop page opened in it on the Vivobook
+   beside the Chromium desktop (devlink): its memory with nothing open, with File Explorer, WordPro and the emulator
+   open, and with Steam and Discord; and the list of what does not work. If it is not clearly lighter (less than
+   about a third less), Part 4 stops here and the plan says why.
+2. The desktop in WebKit, behind a setting (Settings › System health › "Desktop engine": Chromium or WebKit), so
+   that either can be used and compared; Chromium stays the default for this step.
+3. Web pages in Chromium's own windows (Oracle Browser, links, sign-in pages, cloud gaming), with the account's
+   Downloads, the camera prompt and the shortcuts.
+4. Every built-in app checked in WebKit (the browser tests run in WebKit too, with Playwright's WebKit), and what
+   differs fixed: WebAssembly, SharedArrayBuffer, WebGL, the audio, the file pickers, the fonts.
+5. WebKit the default on computers with 4 GB of memory or less; then, once the Vivobook has used it for a week of
+   betas, on all of them. The setting stays, so that Chromium can always be chosen again.
+
+### Risks
+
+- **Something works only in Chromium:** the setting (step 2) keeps Chromium as a choice, and each beta can go back.
+- **The package's size:** WPE WebKit and Cog add about 60 to 80 MB to the system; Chromium stays (for browsing).
+  The system layer grows by that much.
+- **Graphics:** WPE's graphics on the Vivobook's AMD chip (and in QEMU, in software) are tested in step 1.
+- **Two engines to update:** WebKit's security updates come with each release, as Chromium's do.
+
+### Tests
+
+- Host: the session starts Cog in the desktop's memory group, and the watchdog sees its heartbeat.
+- Browser: every browser test also runs in WebKit (Playwright's WebKit) from step 4.
+- QEMU: the start-up, the sign-in, an update and going back, with the WebKit desktop.
+- The Vivobook: the memory measured as in step 1, with Steam, Discord and a game, before and after.
+
 ## Stages (one PR each)
 
 1. Desktop events and errors on the disk, and rudolfd's log kept (item 2): Blitzen and the devlink need them first.
@@ -179,7 +251,11 @@ Found on 2026-11-09 with Steam (Flatpak) and Among Us (Proton) on the Vivobook.
    health (Part 3, items 1, 2 and 5).
 8. The network at start-up (Part 3, item 3), and `rudolf-selftest`'s Linux and game checks (item 4).
 9. The .AppImage and .bin wizards; the camera and controllers in Debian; then .apk with Waydroid (Part 3, item 6).
-10. QEMU with Debian (Part 2, item 5), then the Vivobook with `rudolf-selftest`; promote when you say.
+10. Part 4, step 1: the WebKit trial on the Vivobook (no change to the system), and its measurements in this plan.
+11. Part 4, steps 2 to 4, if the trial shows it is worth it: the desktop in WebKit behind a setting, the web pages in
+    Chromium's own windows, every app checked in WebKit.
+12. QEMU with Debian (Part 2, item 5), then the Vivobook with `rudolf-selftest`; promote when you say. (Part 4's
+    step 5, WebKit as the default, comes in a later beta, after a week of use.)
 
 ## Size
 
@@ -187,4 +263,6 @@ Desktop: about 400 lines (Blitzen diagnostics, the recovery folder, events on th
 (Task Manager's apps, the notifications, the network at start-up, the new wizards). rudolfd: about 300 (ai/facts,
 logs, the recovery folder), and about 200 for Part 3 (apps/end, the selftest's checks, Debian's devices). Waydroid
 is the one new package, for .apk only. The documents' index is built by the release workflow from `docs/`, the CHANGELOG and the
-Help. The model stays the one Blitzen has.
+Help. The model stays the one Blitzen has. Part 4: the session and the shell's web-page handling (about 300 lines),
+Chromium's windows for web pages (about 200), the fixes found in step 4 (unknown until then); WPE WebKit and Cog are new
+packages (about 60 to 80 MB).
