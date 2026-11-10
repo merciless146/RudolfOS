@@ -39,12 +39,14 @@ function hlSummary(ev,now){const wk=ev.filter(e=>now-e.t<7*86400),cnt=k=>wk.filt
   ['Crashes this week',String(cnt('crash')+cnt('browser'))],['Pages closed to free memory',String(cnt('memory'))],['Update fallbacks',String(cnt('fallback'))],['Failed sign-ins this week',String(cnt('signin'))]]}
 function healthPanel(c,W){
  c.innerHTML=`<h3>System health</h3><p class='msg' style='margin:0 0 10px'>What happened on this computer: start-ups, crashes, memory, updates, sign-in failures, the firewall and remote access. It is kept on this computer only and is never sent anywhere. Power and battery is here too, below the summary. <b>Report a problem</b> includes the latest events, after you have read the report.</p>
-<div class='hls r2'></div><h4 class='sh4 hlev'>Events</h4><div class='rmrow' style='justify-content:flex-start;gap:6px;margin-bottom:6px'><select class='hlk'><option value=''>All events</option></select><button class='hlr'>Refresh</button><button class='hlp'>Report a problem…</button><button class='hlw' hidden>⚡ What's wrong with this computer?</button><button class='hst'>Run the self-test</button></div><div class='hll' style='font-size:13px'></div>`;
+<div class='hls r2'></div><h4 class='sh4 hlev'>Events</h4><div class='rmrow' style='justify-content:flex-start;gap:6px;margin-bottom:6px'><select class='hlk'><option value=''>All events</option></select><button class='hlr'>Refresh</button><button class='hlp'>Report a problem…</button><button class='hlw' hidden>⚡ What's wrong with this computer?</button><button class='hst'>Run the self-test</button><button class='hss'>Last starts</button></div><div class='hll' style='font-size:13px'></div>`;
  const sel=c.querySelector('.hlk');for(const k in HL_KIND){const o=document.createElement('option');o.value=k;o.textContent=HL_KIND[k][0]+' '+HL_KIND[k][1];sel.appendChild(o)}
  const L=c.querySelector('.hll'),Sm=c.querySelector('.hls');
  c.querySelector('.hlp').onclick=()=>{if(typeof sysReportDialog=='function')sysReportDialog()};
  /* 1.5.7: rudolf-selftest (only reads): its lines, failures first */
  c.querySelector('.hst').hidden=!RD;c.querySelector('.hst').onclick=()=>selftestShow();
+ /* 1.5.8: the last 4 starts, from the logs kept for each (also one whose desktop never came up) */
+ c.querySelector('.hss').hidden=!RD;c.querySelector('.hss').onclick=()=>startsShow();
  /* 1.5.7: Blitzen reads the logs and explains (blitzdiag57.js) */
  if(typeof bzCan=='function'&&bzCan()){const w=c.querySelector('.hlw');w.hidden=false;w.onclick=()=>bzWhy("What's wrong with this computer?",{all:1})}
  const draw=async()=>{L.textContent='Loading…';const h=await hlGet(500);
@@ -66,6 +68,18 @@ async function hlReportLines(n){const h=await hlGet(n||50);if(!h||!h.events)retu
  const h=await hlGet(5);if(!h||!Array.isArray(h.events))return;const last=h.events.find(e=>e.k=='start'),rdy=h.events.find(e=>e.k=='ready');
  if(last&&(!rdy||rdy.t<last.t)&&h.uptime<900)hlNote('ready',`the desktop was ready ${h.uptime} s after start-up`)},4000)})();
 /* 1.5.7 (plan stage 5): the self-test's result in a window: failures first, then what passed and what was skipped */
+/* 1.5.8: System health › Last starts: when, which system, whether the desktop came up (and how soon), with which engine,
+   how often the browser was started again, what was given up, and what the start-up said */
+async function startsShow(){const W=appWin('starts','Last starts','🕓',640,460);W.body.style.cssText='overflow:auto;padding:10px;background:var(--wbg,#fff)';
+ W.body.innerHTML="<p class='msg'>Loading…</p>";let j;try{j=await rd('system/starts')}catch(e){W.body.innerHTML=`<p class='msg warn'>${esc2(e.message)}</p>`;return W}
+ const L=j.starts||[];if(!L.length){W.body.innerHTML="<p class='msg'>No start has been recorded yet: they are kept from this version on.</p>";return W}
+ const eng=e=>e=='webkit'?'Lite (WebKit)':e=='chromium'?'Standard (Chromium)':'';
+ W.body.innerHTML=`<p class='msg'>The last ${L.length} starts of this computer, newest first. Their logs are in <code>/persist/var/log/starts</code> (0 is this start).</p>`+L.map(s=>{
+  const t=s.time&&!isNaN(Date.parse(s.time))?new Date(s.time).toLocaleString():s.time||'?';
+  const ok=s.desktopUp!=null,now=s.n==0;
+  const head=ok?`✅ The desktop came up after ${s.desktopUp} s${s.engine?' ('+eng(s.engine)+')':''}`:now?'⏳ The desktop has not answered yet':'❌ The desktop never came up';
+  return `<div class='sysucard ${ok?'ok':now?'':'warn'}' style='margin:6px 0'><div><b>${esc2(t)}</b> · ${head}</div><div class='msg'>${s.recovery?'Recovery mode · ':''}${s.slot&&s.slot!='disc'?'system slot '+esc2(s.slot.toUpperCase()):'the drive\'s own system'}${s.release?' · release '+esc2(s.release):''}${s.exits>1?' · the browser started '+s.exits+' times':''}</div>${s.gaveUp?`<div class='msg warn'>${esc2(s.gaveUp).replace(/\n/g,'<br>')}</div>`:''}${s.startup?`<details><summary class='msg'>What the start-up said</summary><pre style='white-space:pre-wrap;font-size:12px'>${esc2(s.startup)}</pre></details>`:''}</div>`}).join('');
+ return W}
 async function selftestShow(){const W=appWin('selftest','Self-test','🩺',620,460);W.body.style.cssText='overflow:auto;padding:10px;background:var(--wbg,#fff)';
  W.body.innerHTML="<p class='msg'>Checking… (this only reads; nothing is changed)</p>";let j;
  try{j=await rd('selftest')}catch(e){W.body.innerHTML='';const m=document.createElement('p');m.className='msg';m.textContent='The self-test did not run: '+e.message;W.body.appendChild(m);return W}

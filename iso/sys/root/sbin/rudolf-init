@@ -105,19 +105,20 @@ ulimit -H -n 524288 2>/dev/null
 # the oldest), written as they happen: the session, the Lite desktop, Xorg, the development link, the kernel's
 # messages, and what the start-up decided. A start whose desktop never came up can be read at the next one (on the
 # Vivobook, the Lite desktop's grey screen left nothing: its logs were in /run, lost at each restart).
-# STARTS_ROOT, STARTS_RUN: other places, for the host test (qt/host/startlogs58_t.sh).
+# STARTS_PERSIST, STARTS_RUN, STARTS_ETC: other places, for the host test (qt/host/startlogs58_t.sh).
 starts_keep() {
-	S=${STARTS_ROOT:-/persist/var/log}/starts; R=${STARTS_RUN:-/run/rudolf}; E=${STARTS_ETC:-/etc/rudolf}
-	mkdir -p $S && chmod 700 $S; rm -rf $S/3; for i in 2 1 0; do [ -d $S/$i ] && mv $S/$i $S/$((i + 1)); done; mkdir -p $S/0
-	{ echo "time=$(date -u +%FT%TZ)"; echo "slot=$(cat $E/slot 2>/dev/null)"; echo "release=$(sed -n 's/^serial //p' ${STARTS_ROOT:-/persist}/os/system/$(cat $E/slot 2>/dev/null)/RELEASE 2>/dev/null)"
-	  echo "entry=$(cat $E/boot-entry 2>/dev/null)"; echo "options=$(cat $E/cmdline 2>/dev/null)"; } > $S/0/start.txt
-	cp $E/initramfs.log $S/0/initramfs.log 2>/dev/null
-	tail -n 40 ${STARTS_ROOT:-/persist/var/log}/boot-decisions.log > $S/0/boot-decisions.log 2>/dev/null
-	mkdir -p $R/devlink; for f in session.log webkit-desktop.log Xorg.log devlink/daemon.log; do : >> $S/0/${f##*/}; ln -sf $S/0/${f##*/} $R/$f; done
-	echo $S/0 > $R/start-logs
+	SK_P=${STARTS_PERSIST:-/persist}; SK_S=$SK_P/var/log/starts; SK_R=${STARTS_RUN:-/run/rudolf}; SK_E=${STARTS_ETC:-/etc/rudolf}
+	mkdir -p $SK_S && chmod 700 $SK_S; rm -rf $SK_S/3; for i in 2 1 0; do [ -d $SK_S/$i ] && mv $SK_S/$i $SK_S/$((i + 1)); done; mkdir -p $SK_S/0
+	SK_SL=$(cat $SK_E/slot 2>/dev/null)
+	{ echo "time=$(date -u +%FT%TZ)"; echo "slot=$SK_SL"; echo "release=$(sed -n 's/^serial //p' $SK_P/os/system/$SK_SL/RELEASE 2>/dev/null)"
+	  echo "entry=$(cat $SK_E/boot-entry 2>/dev/null)"; echo "options=$(cat $SK_E/cmdline 2>/dev/null)"; } > $SK_S/0/start.txt
+	cp $SK_E/initramfs.log $SK_S/0/initramfs.log 2>/dev/null
+	tail -n 40 $SK_P/var/log/boot-decisions.log > $SK_S/0/boot-decisions.log 2>/dev/null
+	mkdir -p $SK_R/devlink; for f in session.log webkit-desktop.log Xorg.log devlink/daemon.log; do : >> $SK_S/0/${f##*/}; ln -sf $SK_S/0/${f##*/} $SK_R/$f; done
+	echo $SK_S/0 > $SK_R/start-logs
 }
-if mountpoint -q /persist || [ -n "$STARTS_ROOT" ]; then starts_keep
-	( for t in 30 60 120 300; do sleep $t; dmesg > $S/0/kernel.log 2>/dev/null; done; while :; do sleep 600; dmesg > $S/0/kernel.log 2>/dev/null; done ) &
+if mountpoint -q /persist; then starts_keep
+	( for t in 30 60 120 300; do sleep $t; dmesg > $SK_S/0/kernel.log 2>/dev/null; done; while :; do sleep 600; dmesg > $SK_S/0/kernel.log 2>/dev/null; done ) &
 fi
 # 1.5.7: rudolfd's log is kept on the disk for this start and the 3 before it (/run/rudolf/rudolfd.log points to it)
 RDLOG=/run/rudolf/rudolfd.log

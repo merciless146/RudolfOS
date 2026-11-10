@@ -27,7 +27,7 @@ say() { echo "$*" > /dev/console; echo "$(date -u +%T 2>/dev/null) $*" >> /tmp/i
 note() { echo "$(date -u +%T 2>/dev/null) $*" >> /tmp/initramfs.log; }
 keeplog() {
 	[ -d /mnt/persist/os ] || return 0; K=/mnt/persist/var/log/boot-decisions.log; mkdir -p /mnt/persist/var/log
-	{ echo "== $(date -u '+%F %T' 2>/dev/null) $1 (kernel $(uname -r), ${SLOT:+slot $SLOT}${SLOT:-first stage}, entry ${ENTRY:-none})"; cat /tmp/initramfs.log 2>/dev/null; } >> $K
+	{ echo "== $(date -u '+%F %T' 2>/dev/null) $1 (kernel $(uname -r), $([ -n "$SLOT" ] && echo "slot $SLOT" || echo "first stage"), entry ${ENTRY:-none})"; cat /tmp/initramfs.log 2>/dev/null; } >> $K
 	tail -n 300 $K > $K.new 2>/dev/null && mv -f $K.new $K; : > /tmp/initramfs.log; sync
 }
 # Secure Boot (1.2.2): the firmware says whether it is on (the kernel then also locks itself down). With it on,

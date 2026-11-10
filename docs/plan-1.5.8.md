@@ -96,7 +96,13 @@ is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted.
   its effect on memory and speed.
 
 ## Steps
-1. 4.1 start logs (initramfs, rudolf-init, session), with a host test of the rotation.
+1. 4.1 start logs (initramfs, rudolf-init, session), with a host test of the rotation. **Done** (branch
+   v158-startlogs): initramfs `note`/`keeplog` (var/log/boot-decisions.log, last 300 lines, kept before every
+   hand-over, restart and stop; /etc/rudolf/initramfs.log), rudolf-init `starts_keep` (var/log/starts/0..3: start.txt,
+   initramfs.log, boot-decisions.log, session, Lite, Xorg, devlink and kernel logs; /run's logs link into 0), the
+   session's `desk_up_mark`, /usr/lib/rudolf/starts (JSON), rudolfd GET system/starts, System health › Last starts,
+   and Blitzen's facts (the start before, the start-up's decisions). Tests: qt/host/startlogs58_t.sh,
+   qt/shell2/starts58_t.js. To merge once 1.5.7 is promoted.
 2. 4.2 devlink and remote access at start-up; QEMU check with the desktop disabled.
 3. 4.3 emergency keys in rudolf-display; host test of the key handling.
 4. 5.3 sound chip check and reset; 5.1 rescue media and messages; 5.2 Help page.

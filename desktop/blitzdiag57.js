@@ -45,7 +45,7 @@ function bzCan(){return !!RD&&typeof blzAskFrom=='function'}
 /* the log lines, as {src,l}, from ai/facts and the desktop (newest last in each source) */
 function bzLines(f){const out=[],add=(src,t)=>String(t||'').split('\n').forEach(l=>{l=l.trim();if(l)out.push({src,l})});
  String(f.health||'').split('\n').forEach(l=>{l=l.trim();if(!l)return;try{const j=JSON.parse(l);out.push({src:'health log',l:new Date(j.t*1000).toISOString().slice(0,19).replace('T',' ')+' '+j.k+': '+j.m})}catch(e){out.push({src:'health log',l})}});
- add('rudolfd',f.rudolfd);add('rudolfd, the start before',f.rudolfdBefore);add('session',f.session);add('desktop errors',f.page);add('shutdown',f.shutdown);
+ add('rudolfd',f.rudolfd);add('rudolfd, the start before',f.rudolfdBefore);add('session',f.session);add('session, the start before',f.sessionBefore);add('Lite desktop, the start before',f.liteBefore);add('start-up decisions',f.bootDecisions);add('desktop errors',f.page);add('shutdown',f.shutdown);
  if(f.job)add('last task'+(f.jobName?' ('+f.jobName+')':''),f.job);add('Event Viewer',f.events);
  if(typeof SYSLOG!='undefined')SYSLOG.slice(-40).forEach(x=>out.push({src:'desktop warnings',l:new Date(x.t).toISOString().slice(0,19).replace('T',' ')+' '+x.k+': '+x.m}));
  return out}

@@ -1824,6 +1824,10 @@ static void api_ai_facts(struct req *r)
 	facts_add(&s, "rudolfd", RUN "/rudolfd.log", 120);
 	facts_add(&s, "rudolfdBefore", PERSIST "/var/log/rudolfd.log.1", 40);
 	facts_add(&s, "session", RUN "/session.log", 60);
+	/* 1.5.8: the start before this one (its desktop may never have come up) and what the start-up decided */
+	facts_add(&s, "sessionBefore", PERSIST "/var/log/starts/1/session.log", 40);
+	facts_add(&s, "liteBefore", PERSIST "/var/log/starts/1/webkit-desktop.log", 20);
+	facts_add(&s, "bootDecisions", PERSIST "/var/log/boot-decisions.log", 30);
 	facts_add(&s, "page", RUN "/page.log", 60);
 	facts_add(&s, "shutdown", PERSIST "/var/log/shutdown.log", 20);
 	{ char *jn = slurp(RUN "/job.name", NULL); if (jn) trim(jn); sadd(&s, ",\"jobName\":"); sjson(&s, jn ? jn : ""); free(jn); }
@@ -3657,6 +3661,10 @@ static void api(struct req *r)
 		char *t = run_out(o && !strcmp(o, "1") ? "/usr/lib/rudolf/desktop-priority on 2>&1" : "/usr/lib/rudolf/desktop-priority off 2>&1");
 		str s = {0}; sadd(&s, "{\"ok\":true,\"text\":"); sjson(&s, t ? t : ""); sadd(&s, "}"); free(t); reply_json(r->fd, &s); return;
 	}
+	/* 1.5.8: the last starts (/usr/lib/rudolf/starts: from var/log/starts), for System health › Last starts */
+	if (!strcmp(p, "system/starts")) { char *o = access("/usr/lib/rudolf/starts", X_OK) ? NULL : run_out("/usr/lib/rudolf/starts 2>/dev/null");
+		if (!o || o[0] != '{') { free(o); reply_err(r->fd, 404, "this Rudolf OS keeps no start logs"); return; }
+		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
 	if (!strcmp(p, "selftest")) { char *o = access("/usr/lib/rudolf/selftest", X_OK) ? NULL : run_out("/usr/lib/rudolf/selftest 2>&1");
 		if (!o) { reply_err(r->fd, 404, "this Rudolf OS has no self-test"); return; }
 		str s = {0}; sadd(&s, "{\"ok\":true,\"text\":"); sjson(&s, o); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return; }
