@@ -1804,7 +1804,7 @@ static void api_ai(struct req *r, const char *what)
 		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
 		if (!strcmp(what, "download")) { start_job("blitzen-download", AI_BIN " download"); reply_ok(r->fd, "started"); return; }
 		const char *w = qparam(r->query, "what");
-		if (access("/persist/debian/.rudolf-ready", F_OK)) { reply_err(r->fd, 409, "set up Linux (Debian) first: Start > Terminal (Linux)"); return; }
+		if (access("/persist/debian/.rudolf-ready", F_OK)) { reply_err(r->fd, 409, "set up Linux (Debian) first: open Terminal and choose Linux"); return; }
 		if (w && !strcmp(w, "python")) start_job("blitzen-python", "/usr/bin/rudolf-debian run --root -- sh -c 'apt-get update && apt-get install -y python3'");
 		else if (w && !strcmp(w, "cpp")) start_job("blitzen-cpp", "/usr/bin/rudolf-debian run --root -- sh -c 'apt-get update && apt-get install -y g++'");
 		else { reply_err(r->fd, 400, "install what?"); return; }
@@ -1851,7 +1851,7 @@ static void api_ai(struct req *r, const char *what)
 		int py = !strcmp(lang, "python"), cpp = !strcmp(lang, "cpp");
 		if (!py && !cpp) { reply_err(r->fd, 400, "Blitzen runs Python and C++ here (BlockLua and JavaScript run in the page)"); return; }
 		if (!r->body || r->blen > 200000) { reply_err(r->fd, 400, "no program"); return; }
-		if (access("/persist/debian/.rudolf-ready", F_OK)) { str j = {0}; sadd(&j, "{\"ok\":false,\"missing\":\"debian\",\"error\":\"Running %s needs Linux (Debian): Start > Terminal (Linux) sets it up\"}", py ? "Python" : "C++"); reply_json(r->fd, &j); return; }
+		if (access("/persist/debian/.rudolf-ready", F_OK)) { str j = {0}; sadd(&j, "{\"ok\":false,\"missing\":\"debian\",\"error\":\"Running %s needs Linux (Debian): open Terminal and choose Linux to set it up\"}", py ? "Python" : "C++"); reply_json(r->fd, &j); return; }
 		if (access(py ? "/persist/debian/usr/bin/python3" : "/persist/debian/usr/bin/g++", F_OK)) { str j = {0}; sadd(&j, "{\"ok\":false,\"missing\":\"%s\",\"error\":\"%s is not installed in Debian yet\"}", lang, py ? "Python" : "The C++ compiler (g++)"); reply_json(r->fd, &j); return; }
 		/* a fresh folder in the home folder (shared with Debian), owned by the user */
 		unsigned char rb[8]; char id[20]; int rf = open("/dev/urandom", O_RDONLY | O_CLOEXEC); if (rf < 0 || read(rf, rb, 8) != 8) { if (rf >= 0) close(rf); reply_err(r->fd, 500, "no randomness"); return; } close(rf);
@@ -2370,6 +2370,21 @@ static void dl_unique(const char *dir, const char *name, char *out, size_t n)
 	const char *dot = strrchr(name, '.'); size_t stem = dot && dot != name ? (size_t)(dot - name) : strlen(name);
 	for (int i = 2; i < 10000; i++) { snprintf(out, n, "%s/%.*s (%d)%s", dir, (int)stem, name, i, dot && dot != name ? dot : ""); if (access(out, F_OK)) return; }
 }
+/* 1.5.7 (plan stage 6): unfinished downloads (.crdownload) that have not grown for a day are left behind by Chromium
+   (one from 2026-11-04 was still in .incoming on the Vivobook): deleted when the incoming folder is listed */
+static void health_add(const char *kind, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static int dl_old_partials(const char *dir)
+{
+	DIR *d = opendir(dir); struct dirent *e; int n = 0; time_t now = time(NULL);
+	while (d && (e = readdir(d))) {
+		size_t l = strlen(e->d_name); if (l <= 11 || strcmp(e->d_name + l - 11, ".crdownload")) continue;
+		char fp[600]; struct stat st; snprintf(fp, sizeof fp, "%s/%s", dir, e->d_name);
+		if (lstat(fp, &st) || !S_ISREG(st.st_mode) || now - st.st_mtime < 86400) continue;
+		if (!unlink(fp)) { n++; health_add("disk", "an unfinished download left for over a day was removed: %.200s (%lld MB)", e->d_name, (long long)(st.st_size >> 20)); }
+	}
+	if (d) closedir(d);
+	return n;
+}
 static void api_dl(struct req *r, const char *what, int post)
 {
 	/* 1.5.5: home: the files in Downloads itself, so ones that no C:\DOWNLOADS entry points at (saved by a Linux app,
@@ -2377,6 +2392,7 @@ static void api_dl(struct req *r, const char *what, int post)
 	if (!strcmp(what, "incoming") || !strcmp(what, "quarantine") || !strcmp(what, "home")) {
 		char hd[300]; if (!strcmp(what, "home") && !dl_acct_dir(qparam(r->query, "acct"), hd, sizeof hd)) { reply_err(r->fd, 400, "which account?"); return; }
 		const char *dir = !strcmp(what, "incoming") ? INCOMING : !strcmp(what, "home") ? hd : QUARANTINE;
+		if (!strcmp(what, "incoming")) dl_old_partials(dir);
 		DIR *d = opendir(dir); str s = {0}; sadd(&s, "{\"ok\":true,\"items\":["); int first = 1;
 		struct dirent *e;
 		while (d && (e = readdir(d))) {
