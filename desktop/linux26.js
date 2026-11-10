@@ -36,13 +36,18 @@ async function lxAfterSignIn(){LX.ok=0;for(let i=0;i<30&&!LX.ok;i++){await lxIns
 (function(){const o=userLogin;userLogin=async function(){const r=await o.apply(this,arguments);if(RD)setTimeout(lxAfterSignIn,1500);return r}})();
 function lxLaunchers(){const l=LX.inst||ld(LXK,[]);const out=[];l.forEach(a=>(a.launchers&&a.launchers.length?a.launchers:[{desktop:a.id,name:a.name,icon:a.id,mime:'',wmclass:'',cats:''}]).forEach(x=>out.push({...x,app:a.id})));return out}
 function lxRegister(){Object.keys(APPS).filter(k=>k.startsWith('lx:')).forEach(k=>delete APPS[k]);
- lxLaunchers().forEach(x=>regApp('lx:'+x.desktop,{name:x.name,icon:'🐧',img:el=>lxImg(el,x.app,x.icon),kw:'linux app '+(x.comment||'')+' '+(x.cats||'').replace(/;/g,' '),open:()=>lxRun(x),re:/^\u0000/}));
- try{startMenuApps()}catch(e){}lxOpeners()}
+ lxLaunchers().forEach(x=>regApp('lx:'+x.desktop,{name:x.name,icon:'🐧',img:el=>lxImg(el,x.app,x.icon),lxUninstall:x.deb?null:()=>lxUninstall(x),kw:'linux app '+(x.comment||'')+' '+(x.cats||'').replace(/;/g,' '),open:()=>lxRun(x),re:/^\u0000/}));
+ try{startMenuApps()}catch(e){}try{pinDraw()}catch(e){}lxOpeners()}
+/* 1.5.6: Uninstall from the Start menu's right-click menu (a Flathub app; as the App Store's Installed list does) */
+async function lxUninstall(x){const a=(LX.inst||[]).find(i=>i.id==x.app);const n=a?a.name:x.name;if(!await elevate('Uninstall '+n))return;
+ try{await lxApi('apps/uninstall?id='+encodeURIComponent(x.app))}catch(e){notify(n,e.message,{kind:'error'});return}
+ notify('Uninstalling '+n+'…','It goes from the Start menu when it is done.');const j=await lxJobWait();await lxInstalled(true);
+ notify(n,j.status==0?n+' was uninstalled.':'Uninstalling did not finish: the App Store\'s Installed list says more.',j.status==0?{}:{kind:'error'})}
 async function lxRun(x,file){if(!RD)return;try{await lxApi('apps/run?id='+encodeURIComponent(x.app)+'&desktop='+encodeURIComponent(x.desktop)+(file?'&file='+encodeURIComponent(file):''));
  if(!lxRun.told){lxRun.told=1;notify('Starting '+x.name+'…','It opens above the desktop in a moment. Click the desktop part of the taskbar (or press Super+Esc) to come back; its taskbar button brings it back.')}}catch(e){notify(x.name,e.message,{kind:'error'})}}
 {const _sma=startMenuApps;startMenuApps=function(){_sma();const ul=$('#menu ul');if(!ul)return;ul.querySelectorAll('li.lxv').forEach(x=>x.remove());
  const ls=lxLaunchers().filter(x=>x.menu!==false).sort((a,b)=>a.name.localeCompare(b.name));if(!ls.length)return;const before=ul.querySelector('li[data-a=settings]')||ul.querySelector('li[data-a=run]');
- ls.forEach(x=>{const li=document.createElement('li');li.className='lxv';li.tabIndex=0;li.title=x.comment||x.name;li.innerHTML=`<span class='lxmi'>🐧</span> ${lxEsc(x.name)}`;lxImg(li.querySelector('.lxmi'),x.app,x.icon);
+ ls.forEach(x=>{const li=document.createElement('li');li.className='lxv';li.dataset.v25='lx:'+x.desktop;li.tabIndex=0;   /* 1.5.6: data-v25: its right-click menu (apps25a) */li.title=x.comment||x.name;li.innerHTML=`<span class='lxmi'>🐧</span> ${lxEsc(x.name)}`;lxImg(li.querySelector('.lxmi'),x.app,x.icon);
   li.onclick=e=>{e.stopPropagation();$('#menu').style.display='none';lxRun(x)};li.onkeydown=e=>{if(e.key=='Enter')li.click()};ul.insertBefore(li,before)})}}
 /* ---------- Open with: apps whose launcher declares the file type ---------- */
 const LX_MIME={txt:'text/plain',md:'text/markdown',csv:'text/csv',htm:'text/html',html:'text/html',xml:'application/xml',json:'application/json',js:'text/javascript',py:'text/x-python',c:'text/x-csrc',h:'text/x-chdr',sh:'application/x-shellscript',

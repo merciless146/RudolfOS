@@ -37,7 +37,8 @@ const BAR=$('#bar'),TASKS=$('#tasks');
 const pinsK=()=>'bd95pins:'+uid();const pinList=()=>ld(pinsK(),['explorer','browser','notepad','settings']).filter(k=>APPS[k]);
 const PINS=document.createElement('div');PINS.id='pins';PINS.setAttribute('role','toolbar');PINS.setAttribute('aria-label','Pinned apps');TASKS.before(PINS);
 const WSW=document.createElement('div');WSW.id='wsw';WSW.setAttribute('role','toolbar');WSW.setAttribute('aria-label','Workspaces');TASKS.after(WSW);
-function pinDraw(){PINS.innerHTML='';if(!USER)return;pinList().forEach(k=>{const a=APPS[k],b=document.createElement('button');b.className='pin';b.textContent=a.icon;b.title=a.name;b.setAttribute('aria-label',a.name);b.dataset.k=k;
+function pinDraw(){PINS.innerHTML='';if(!USER)return;pinList().forEach(k=>{const a=APPS[k];if(!a)return;const b=document.createElement('button');b.className='pin';b.textContent=a.icon;b.title=a.name;b.setAttribute('aria-label',a.name);b.dataset.k=k;
+ if(a.img)try{a.img(b)}catch(e){}   /* 1.5.6: a Linux app pinned from the Start menu: its own picture */
  const run=wins.filter(o=>o.app==k);if(run.length)b.classList.add('run');if(run.some(o=>o.el.classList.contains('act')&&!o.min))b.classList.add('on');
  b.onclick=()=>{const r=wins.filter(o=>o.app==k&&o.ws==WS);if(!r.length)return launch(k);const top=MRU.find(o=>o.app==k&&o.ws==WS);if(top&&top.el.classList.contains('act')&&!top.min&&r.length==1)top.el.querySelector('.mn').click();else if(r.length>1)groupPop(b,k);else top.focus()};
  b.onauxclick=e=>{if(e.button==1){e.preventDefault();launch(k)}};
@@ -151,7 +152,7 @@ function startSearch(q){q=q.trim().toLowerCase();const out=[];if(!q)return out;
  M.addEventListener('keydown',e=>{if(e.target!==inp&&e.key.length==1&&!e.ctrlKey&&!e.altKey){inp.focus()}});
  new MutationObserver(()=>{if(M.style.display=='flex')setTimeout(()=>inp.focus(),10);else{inp.value='';items=[];draw()}}).observe(M,{attributes:true,attributeFilter:['style']});
  /* right-click on a Start item can pin it */
- M.addEventListener('contextmenu',e=>{const li=e.target.closest('li[data-a]');if(!li)return;const k=li.dataset.a=='docs'?null:(APPS[li.dataset.a]?li.dataset.a:null);if(!k)return;e.preventDefault();e.stopImmediatePropagation();
+ M.addEventListener('contextmenu',e=>{const li=e.target.closest('li[data-a]');if(!li)return;const MA={gbplayer:'gameboy'},k=li.dataset.a=='docs'?null:(APPS[li.dataset.a]?li.dataset.a:APPS[MA[li.dataset.a]]?MA[li.dataset.a]:null);if(!k)return;   /* 1.5.6: Emu is gbplayer in the menu, gameboy among the apps */e.preventDefault();e.stopImmediatePropagation();
   cmenu(e.clientX,e.clientY,[['Open',()=>{M.style.display='none';launch(k)},true,{icon:'↗'}],[pinList().includes(k)?'Unpin from taskbar':'Pin to taskbar',()=>pinSet(k,!pinList().includes(k))],typeof deskMenuItem=='function'?deskMenuItem(k):null],{title:APPS[k].name})},true)})();
 /* ---------- notification centre ---------- */
 const NCK=()=>'bd95notif:'+uid();let NC=[],ncUnread=0;
