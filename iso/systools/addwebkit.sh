@@ -27,6 +27,14 @@ for p in coreelements app audioconvert audioresample audiotestsrc volume playbac
 	f=$GS/libgst$p.so; [ -f "$f" ] || continue; $SUDO cp -L "$f" "$R$f"; echo "$f" >> "$LIST"; done
 # GLib: the TLS module (https), with its loader cache made for ROOT
 for m in $ML/gio/modules/libgiognutls.so; do [ -f "$m" ] && { $SUDO mkdir -p "$R${m%/*}"; $SUDO cp -L "$m" "$R$m"; echo "$m" >> "$LIST"; }; done
+# 1.5.7: the libraries WebKit opens itself while running, which no ldd sees. libGLESv2.so.2 (GLVND's OpenGL ES, from
+# libgles2): without it WebKit's web process aborts as it starts ("Couldn't open libGLESv2.so.2"), and the Lite desktop
+# closed every few seconds on the Vivobook (the release machine and Debian had it; the base layer did not). With it,
+# WebKit draws with the GPU when GTK can, and in software otherwise. libdrm's list of AMD GPUs too (only a warning).
+for l in libGLESv2.so.2 libEGL.so.1 libGLdispatch.so.0 libgbm.so.1 libepoxy.so.0; do
+	f=$(readlink -f $ML/$l 2>/dev/null) || continue; [ -f "$f" ] || { echo "addwebkit: $ML/$l is missing here (apt-get install libgles2 libegl1 libgbm1)"; exit 1; }
+	[ -e "$R$f" ] || { $SUDO cp -L "$f" "$R$f"; echo "$f" >> "$LIST"; }; [ -e "$R$ML/$l" ] || $SUDO ln -sf "${f##*/}" "$R$ML/$l"; done
+for d in /usr/share/libdrm; do [ -d "$d" ] && { $SUDO mkdir -p "$R$d"; $SUDO cp -a "$d/." "$R$d/"; }; done
 # GTK 3's settings schemas (it reads them at start), compiled in ROOT
 $SUDO mkdir -p "$R/usr/share/glib-2.0/schemas"
 for s in /usr/share/glib-2.0/schemas/org.gtk.Settings.*.gschema.xml /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml /usr/share/glib-2.0/schemas/gschema.dtd; do
