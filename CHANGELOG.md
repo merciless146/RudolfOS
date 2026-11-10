@@ -47,6 +47,7 @@ Summary: your files on the disk (docs/plan-1.5.6.md)
 - Fixed: the move of an account's files to the disk stopped at its large downloads when the account's id had capital letters (their downloads folder is in lower case), and a move that did not finish left the account's folder unlocked after sign-out. Found by QEMU t156.
 - Fixed: when Linux (Debian) was started after signing in, the account's folders stayed in use after sign-out, so the names of its folders and files could still be listed (their contents could not be read). Found by QEMU t156.
 - Fixed: restoring a backup after the account's folder on the disk was removed did not bring the files back: the large files, which backups do not hold, stopped the move. They are now left out.
+- Fixed: closing Steam or Discord could leave the screen white for over a minute and then go back to the sign-in screen: the desktop's memory had been pushed into the compressed swap behind them. The desktop now keeps its memory (a memory group the system frees last), a reserve of free memory is kept for the graphics driver, and the watchdog waits up to 5 minutes while the desktop is still reading its memory back instead of restarting it after 1 minute.
 
 ## 1.5.5 (2026-11-08)
 Summary: each account has its own Downloads, choose the app shortcuts on your desktop, and the Trash's tooltip says what is in it

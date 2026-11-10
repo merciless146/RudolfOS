@@ -180,6 +180,9 @@ LOGPOLL=0
 DBG=""
 grep -q 'rudolf.debug=1' $RCMD && DBG="--enable-logging=stderr --v=0 --remote-debugging-port=9222"
 export FONTCONFIG_FILE=/etc/fonts/fonts.conf
+# 1.5.6: the major page faults (pages read back from the swap or the disk) of the desktop page and the browser
+desk_faults() { t=0; for p in $(cat /run/rudolf/desktop-renderer 2>/dev/null) $(pgrep -o -f 'chrom[e].*--rudolf-kiosk'); do
+	f=$(sed 's/.*) //' /proc/$p/stat 2>/dev/null | cut -d' ' -f10); t=$((t + ${f:-0})); done; echo $t; }
 while :; do
 	[ -e /run/rudolf/power ] && sleep 30
 	PROXY=""
@@ -193,6 +196,8 @@ while :; do
 	# the web frames extension lets websites load inside the desktop page's frames (it removes their frame protections)
 	# and spots sign-in pages; with the shell, Oracle's tabs are real pages and it is left out
 	EXTS=$EXT,$RUF; [ $SHELLON = 1 ] && EXTS=$RUF
+	# 1.5.6: the browser starts in the desktop's memory group (see memory); this loop goes back out right after
+	DCG=/sys/fs/cgroup/desktop/cgroup.procs; [ -e $DCG ] && echo $$ > $DCG 2>/dev/null
 	su -s /bin/sh rudolf -c "exec $LAUNCH /opt/chromium/chrome --rudolf-kiosk --class=RudolfDesktop --kiosk --start-fullscreen \
 		--window-position=0,0 --window-size=$W,$H --user-data-dir=$PROFILE \
 		--no-first-run --no-default-browser-check --noerrdialogs --disable-infobars \
@@ -204,12 +209,13 @@ while :; do
 		--load-extension=$EXTS --disable-gpu-watchdog --disk-cache-size=67108864 $PROXY $DBG $EXTRA \
 		$START" &
 	B=$!
+	[ -e $DCG ] && echo $$ > /sys/fs/cgroup/cgroup.procs 2>/dev/null
 	START_T=$(cut -d. -f1 /proc/uptime)
 	# watchdog: the desktop sends a heartbeat every few seconds
 	# 1.5.6: after sleep the heartbeat is as old as the sleep (on the Vivobook 5722 s), and the browser was restarted
 	# on waking, closing every window: a gap in this loop's own clock means the computer slept, and the desktop gets
 	# 90 s to send its heartbeat again
-	LASTW=$(date +%s); GRACE=0
+	LASTW=$(date +%s); GRACE=0; MF0=0; BUSY_T=0
 	while kill -0 $B 2>/dev/null; do
 		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] || [ -e /run/rudolf/shell-switch ] && break; done
 		W=$(date +%s); if [ $((W - LASTW)) -gt 40 ]; then echo "$(date) woke after $((W - LASTW)) s - the desktop has 90 s to answer"; GRACE=$((W + 90)); fi; LASTW=$W
@@ -218,6 +224,10 @@ while :; do
 		if [ -e /run/rudolf/shell-switch ]; then rm -f /run/rudolf/shell-switch; echo "$(date) starting the browser again (shell)"
 			pkill -f 'chrom[e].*--rudolf-kiosk'; for i in 1 2 3 4 5 6; do kill -0 $B 2>/dev/null || break; sleep 1; done; pkill -9 -f 'chrom[e].*--rudolf-kiosk'; break; fi
 		NOW=$(cut -d. -f1 /proc/uptime)
+		# 1.5.6: is the desktop working its way back? Its pages being read back from the compressed swap (major faults
+		# of the desktop page and the browser) or the whole computer waiting for memory (PSI) count as busy
+		MF=$(desk_faults); [ $MF -gt $MF0 ] && [ $MF0 -gt 0 ] && BUSY_T=$W; MF0=$MF
+		[ "$(sed -n 's/^full avg10=\([0-9]*\).*/\1/p' /proc/pressure/memory 2>/dev/null)" -ge 10 ] 2>/dev/null && BUSY_T=$W
 		# the shell did not bring the desktop up: use the desktop page by itself from now on (until restart)
 		if [ $SHELLON = 1 ] && [ $((NOW - START_T)) -gt 90 ] && [ ! -e /run/rudolf/heartbeat ]; then
 			echo "$(date) the shell did not start the desktop - using the desktop page directly"
@@ -234,6 +244,9 @@ while :; do
 				# the desktop is behind it. On the Vivobook the browser was restarted 126 s into a memory shortage with
 				# Among Us in front, and memory came back 15 s later
 				case "$(cat /run/rudolf/wm 2>/dev/null)" in "win "*|game|web) [ $MC -lt 300 ] && LIM=300;; esac
+				# 1.5.6: and 5 minutes while it is busy getting its memory back (see above): on the Vivobook closing Steam
+				# left the desktop white while it did, and it was restarted after 62 s (memory never reached critical)
+				[ $((W - BUSY_T)) -lt 30 ] && [ $LIM -lt 300 ] && LIM=300
 				[ $W -lt $GRACE ] && [ $((W - MT)) -gt $LIM ] && AGE=0   # just woke: not yet
 				if [ $AGE -gt $LIM ]; then echo "$(date) desktop not responding for ${AGE}s - restarting browser"; rudolfd --health browser "the desktop stopped responding for ${AGE} s, so the browser was restarted"; pkill -f 'chrom[e].*--rudolf-kiosk'; sleep 3; pkill -9 -f 'chrom[e].*--rudolf-kiosk'; fi
 			fi

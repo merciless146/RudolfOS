@@ -21,6 +21,23 @@ if [ -d /sys/kernel/mm/lru_gen ]; then
 	echo 1000 > /sys/kernel/mm/lru_gen/min_ttl_ms 2>/dev/null && log "lru_gen min_ttl_ms=1000" || log "lru_gen: min_ttl_ms not set"
 else log "lru_gen: not in this kernel"; fi
 
+# 1.5.6: the desktop keeps its memory. On the Vivobook (3.4 GB) with Steam and Discord open, the desktop's own pages
+# were pushed into the compressed swap; closing Steam's window then made the desktop redraw from there, white for over
+# a minute, and the watchdog restarted it (back to the sign-in screen). The session starts the desktop's browser in the
+# memory group "desktop", whose first quarter of the memory (512 MiB to 1.5 GiB) the kernel takes back only after
+# everything else (memory.low); apps and games are outside it. And a reserve of free memory (64 MiB, kswapd starting
+# earlier): the graphics driver's urgent requests failed when it was down to 40 MB ("page allocation failure").
+CG=/sys/fs/cgroup
+if [ -d $CG ] && { [ -e $CG/cgroup.controllers ] || mount -t cgroup2 cgroup2 $CG 2>/dev/null; } && grep -qw memory $CG/cgroup.controllers; then
+	echo +memory > $CG/cgroup.subtree_control 2>/dev/null; mkdir -p $CG/desktop
+	TOTAL=$(awk '/^MemTotal:/{print $2}' /proc/meminfo); LOW=$((TOTAL * 1024 / 4))
+	[ $LOW -lt 536870912 ] && LOW=536870912; [ $LOW -gt 1610612736 ] && LOW=1610612736
+	echo $LOW > $CG/desktop/memory.low 2>/dev/null && log "desktop memory group: kept up to $((LOW / 1048576)) MiB" || log "desktop memory group: memory.low not set"
+else log "desktop memory group: no memory groups in this kernel"; fi
+[ "$(cat /proc/sys/vm/min_free_kbytes)" -lt 65536 ] && echo 65536 > /proc/sys/vm/min_free_kbytes
+echo 125 > /proc/sys/vm/watermark_scale_factor 2>/dev/null
+log "free memory reserve: $(cat /proc/sys/vm/min_free_kbytes) kB, watermark_scale_factor $(cat /proc/sys/vm/watermark_scale_factor)"
+
 if grep -q rudolf.nozram=1 $RCMD; then log "zram: off (rudolf.nozram=1)"; exit 0; fi
 Z=/sys/block/zram0
 if [ ! -d $Z ]; then [ -e /sys/class/zram-control/hot_add ] && cat /sys/class/zram-control/hot_add >/dev/null 2>&1; fi
