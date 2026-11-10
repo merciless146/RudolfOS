@@ -165,6 +165,14 @@ Found on 2026-11-09 with Steam (Flatpak) and Among Us (Proton) on the Vivobook.
    - the **camera in Debian's Linux apps** (`/dev/video*` into Debian's namespace, as the account's folders are);
    - **controllers for Linux apps** (Debian and Flatpak games: `/dev/input` and the uinput rules).
 
+7. **One button for the logo and the version** (asked for on 2026-11-10). The taskbar has the logo (Start) and,
+   right beside it, "Rudolf OS 1.5.6" (`#osver`, misc25.js), which opens Settings › About: two buttons next to each
+   other that both lead into the same place. They become one button: the logo with "Rudolf OS 1.5.x" beside it, in
+   one frame, that does only what the Start button does (a click opens the Start menu, a right-click its menu, and
+   the keyboard and screen readers know it as "Start"). Settings › About stays where it is, in Settings and the
+   Start menu. On a taskbar at the left or the right (150 px wide) the text goes under the logo, or is left out when
+   it does not fit. The screen saver and About's picture take the logo from it as before.
+
 ## Stages (one PR each)
 
 1. Desktop events and errors on the disk, and rudolfd's log kept (item 2): Blitzen and the devlink need them first.
@@ -174,7 +182,7 @@ Found on 2026-11-09 with Steam (Flatpak) and Among Us (Proton) on the Vivobook.
 5. rudolfd state review (item 3) and `rudolf-selftest` (item 4).
 6. Downloads, the battery limit and error texts (items 6 to 8).
 7. Task Manager's "End" for apps, the memory guard's notification and game warning, and the Memory section in System
-   health (Part 3, items 1, 2 and 5).
+   health (Part 3, items 1, 2 and 5); the one Start button with the version (item 7).
 8. The network at start-up (Part 3, item 3), and `rudolf-selftest`'s Linux and game checks (item 4).
 9. The .AppImage and .bin wizards; the camera and controllers in Debian; then .apk with Waydroid (Part 3, item 6).
 10. QEMU with Debian (Part 2, item 5), then the Vivobook with `rudolf-selftest`; promote when you say.
