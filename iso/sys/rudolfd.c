@@ -1690,6 +1690,28 @@ static void api_debian(struct req *r, const char *what)
 		snprintf(cmd, sizeof cmd, DEBIAN_BIN " deb '%s'", f); start_job("debian-deb", cmd);
 		reply_ok(r->fd, "started"); return;
 	}
+	/* 1.5.7: the installation wizard for .AppImage and .bin/.run files: run one (as the user, in Debian), or put it
+	   in the Start menu. Only a file of that kind among the person's own (Linux's name for it) */
+	if (!strcmp(what, "runfile") || !strcmp(what, "keepfile")) {
+		char lp[1000], fc[1100] = ""; const char *f = qparam(r->query, "file"); if (f) snprintf(fc, sizeof fc, "%s", f);
+		if (*fc && home_linux_path(fc, lp, sizeof lp)) snprintf(fc, sizeof fc, "%s", lp);
+		size_t l = strlen(fc); const char *kq = qparam(r->query, "kind"); char kind[12]; snprintf(kind, sizeof kind, "%s", kq ? kq : "");
+		int ai = l > 9 && !strcasecmp(fc + l - 9, ".AppImage"), bin = l > 4 && (!strcasecmp(fc + l - 4, ".bin") || !strcasecmp(fc + l - 4, ".run"));
+		if (strcmp(what, "keepfile")) { if (strcmp(kind, ai ? "appimage" : "bin")) { reply_err(r->fd, 400, "bad kind"); return; } }
+		if ((!ai && !bin) || strncmp(fc, "/home/rudolf/", 13) || strstr(fc, "/../") || strpbrk(fc, "\n\r")) { reply_err(r->fd, 400, "Linux cannot reach this file: move it into your Downloads or Documents"); return; }
+		if (access("/persist/debian/.rudolf-ready", F_OK)) { reply_err(r->fd, 409, "set up Linux (Debian) first: open Terminal and choose Linux"); return; }
+		char a0[] = "rudolf-debian", a1[16], a2[1100], a3[160];
+		if (!strcmp(what, "runfile")) { snprintf(a1, sizeof a1, "runfile"); snprintf(a2, sizeof a2, "%s", kind); snprintf(a3, sizeof a3, "%s", ""); 
+			char fb[1100]; snprintf(fb, sizeof fb, "%s", fc); char *argv[] = {a0, a1, a2, fb, NULL}; spawn_debian(argv); reply_ok(r->fd, "started"); return; }
+		const char *nq = qparam(r->query, "name"); snprintf(a3, sizeof a3, "%s", nq && *nq ? nq : "Program");
+		snprintf(a1, sizeof a1, "keepfile"); snprintf(a2, sizeof a2, "%s", fc);
+		char *argv[] = {a0, a1, a2, a3, NULL};
+		pid_t p = fork();
+		if (!p) { int n = open("/dev/null", O_RDWR); dup2(n, 0); dup2(n, 1); dup2(n, 2); execv(DEBIAN_BIN, argv); _exit(127); }
+		int st = 1; if (p > 0) waitpid(p, &st, 0);
+		if (p < 0 || !WIFEXITED(st) || WEXITSTATUS(st)) { reply_err(r->fd, 500, "it could not be put in the Start menu"); return; }
+		reply_ok(r->fd, "kept"); return;
+	}
 	if (!strcmp(what, "launch")) {
 		char idc[220] = "", filec[1100] = ""; const char *q1 = qparam(r->query, "id"); if (q1) snprintf(idc, sizeof idc, "%s", q1);
 		const char *q2 = qparam(r->query, "file"); if (q2) snprintf(filec, sizeof filec, "%s", q2);

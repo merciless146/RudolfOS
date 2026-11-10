@@ -3,7 +3,7 @@
    done (Open, Put on the desktop). Built type by type (docs/plan-1.5.6.md, 5a): .deb first, through Debian
    (rudolfd debian/debinfo and debian/deb, rudolf-debian deb). .ipa only explains. .exe, .msi, .AppImage, .bin and
    .apk follow in their own stages. */
-const WZ_KINDS={DEB:'deb',IPA:'ipa',EXE:'exe',MSI:'exe',FLATPAKREF:'fpref'};
+const WZ_KINDS={DEB:'deb',IPA:'ipa',EXE:'exe',MSI:'exe',FLATPAKREF:'fpref',APPIMAGE:'appimage',BIN:'bin',RUN:'bin'};   /* (1.5.7: .AppImage, .bin, .run) */
 /* where the file is: a file kept on the disk, or one in the account's folders; rudolfd turns an account path into
    the name Linux sees it under (the binds), or refuses one Linux cannot see */
 function wzDiskPath(path){const v=node(path);
@@ -19,7 +19,7 @@ const wzEsc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt
 function wzFoot(W,btns){const f=W.body.querySelector('.wzf');f.innerHTML='';btns.forEach(([t,fn,main])=>{const b=document.createElement('button');b.textContent=t;if(main)b.className='wzmain';b.onclick=fn;f.appendChild(b)});return f}
 function wzBody(W,html){const b=W.body.querySelector('.wzb');b.innerHTML=html;return b}
 function wzSub(W,t){W.body.querySelector('.wzs').textContent=t}
-function installWizard(path){const e=ext(path.at(-1)),k=WZ_KINDS[e];if(k=='deb')return wzDeb(path);if(k=='ipa')return wzIpa(path);if(k=='exe')return wzExe(path);if(k=='fpref')return wzFpRef(path);return null}
+function installWizard(path){const e=ext(path.at(-1)),k=WZ_KINDS[e];if(k=='deb')return wzDeb(path);if(k=='ipa')return wzIpa(path);if(k=='exe')return wzExe(path);if(k=='fpref')return wzFpRef(path);if(k=='appimage'||k=='bin')return wzLinuxFile(path,k);return null}
 /* a .flatpakref (an App Store link from Flathub's website, downloaded): its app's page in the App Store */
 function wzFpRef(path){const v=node(path);const m=typeof v=='string'&&/^Name=([A-Za-z0-9_.-]+)\s*$/m.exec(v);
  if(m&&RD&&typeof lxStoreOpen=='function')return lxStoreOpen(m[1]);
@@ -133,3 +133,25 @@ async function wzExeRun(W,path,file,inst){const wine=wzWine();
 
 /* opening one of these files starts the wizard (before File Explorer's own openers and dl27's for files on the disk) */
 {const _op=openPath;openPath=function(path){try{if(WZ_KINDS[ext(path.at(-1))]&&!isDir(node(path))){installWizard(path);return}}catch(e){console.warn('install',e)}return _op.apply(this,arguments)}}
+/* ---------- 1.5.7 (plan stage 9): .AppImage, .bin and .run: Linux programs that need no installing ----------
+   They run in Linux (Debian), from where they are, as the person (rudolf-debian runfile: an AppImage is run extracted,
+   as Debian has no FUSE; a .bin or .run is a program, or an installer script). "Keep it in the Start menu" adds a
+   launcher of the person's own (rudolf-debian keepfile), which the Start menu lists as Debian's programs. */
+async function wzLinuxFile(path,k){const nm=path.at(-1),ai=k=='appimage';const W=wzWin(path,'🐧');
+ wzSub(W,ai?'A Linux program (AppImage): it runs without installing':/\.run$/i.test(nm)?'A Linux program or installer (.run)':'A Linux program or installer (.bin)');
+ if(!RD){wzBody(W,'<p>Linux programs run on an installed Rudolf OS (not in a web browser).</p>');wzFoot(W,[['Close',()=>W.close()]]);return W}
+ const file=wzDiskPath(path);
+ if(!file){wzBody(W,'<p>Linux cannot reach this file where it is. Move it into Downloads or Documents, then open it again.</p>');wzFoot(W,[['Close',()=>W.close()]]);return W}
+ wzBody(W,'<p class="wzwait">Checking for Linux…</p>');
+ const st=await debStatus();
+ if(!st||!st.installed){wzBody(W,`<p>${ai?'AppImages':'Linux programs'} run inside Linux (Debian 13), which is not set up on this computer yet: setting it up downloads about 120 MB.</p>`);
+  wzFoot(W,[['Set up Linux…',()=>{W.close();terminalApp('linux')},1],['Close',()=>W.close()]]);return W}
+ const sz=wzSize(path),title=String(file).split('/').pop().replace(/\.(AppImage|bin|run)$/i,'').replace(/[-_]+/g,' ').replace(/\s*(x86[_ ]64|amd64|linux)\s*/ig,' ').trim()||nm;
+ wzBody(W,`<table class='wztab'>${sz?`<tr><td>Size</td><td>${fmtB(sz)}</td></tr>`:''}<tr><td>Runs with</td><td>Linux (Debian 13), from where it is</td></tr></table>
+  <p>${ai?'An AppImage holds the program and what it needs in one file: nothing is installed. It opens in its own window (the first start takes a moment while it unpacks).':'This is a Linux program, or an installer that asks its own questions. It runs in its own window.'}</p>
+  <p class='wznote'>Linux programs run with your account's rights inside Linux. Run programs only from sources you trust.</p><p class='wzstep'></p>`);
+ const step=t=>{const e=W.body.querySelector('.wzstep');if(e)e.textContent=t};
+ const run=async()=>{try{await lxApi('debian/runfile?kind='+k+'&file='+encodeURIComponent(file));logEvt('sys',`Ran ${nm} in Linux`);step('Starting '+nm+'… It opens above the desktop in a moment.');setTimeout(()=>W.el.isConnected&&W.close(),4000)}catch(e){step(e.message)}};
+ const keep=async()=>{try{await lxApi('debian/keepfile?file='+encodeURIComponent(file)+'&name='+encodeURIComponent(title));logEvt('sys',`Put ${nm} in the Start menu`);
+   DEB.appsAt=0;await debApps().catch(()=>{});try{lxRegister()}catch(e){}step(title+' is in the Start menu now (keep the file where it is: the Start menu opens it from there).')}catch(e){step(e.message)}};
+ wzFoot(W,[['Run',run,1],['Keep it in the Start menu',keep],['Cancel',()=>W.close()]]);return W}
