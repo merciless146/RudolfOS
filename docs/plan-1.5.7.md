@@ -242,7 +242,15 @@ What this says, and does not:
 
 Conclusion: clearly lighter; Part 4 goes on to steps 2 to 4 (stage 11), behind the setting, with Chromium the default.
 
-### Steps
+### Step 2 as built (2026-11-10)
+
+System Settings › Desktop engine: a list, Standard (Chromium) or Lite (WebKit, test); the choice is kept in
+/persist/etc/rudolf-desktop-engine and taken by rudolf-init at start-up, so it applies at the next restart. Lite is
+WebKitGTK 4.1 in Debian (webkit-desktop.py, installed in Debian when chosen), not yet a package of the system layer:
+with Debian in the encrypted folder (the Vivobook), which opens only at sign-in after the desktop has started, Lite
+cannot be chosen. Shipping WebKit in the system layer (as "What changes" above says) lifts that, and is the next step
+for Part 4. All 44 built-in apps opened in WebKit on the Vivobook without script errors (iso/systools/webkit_apps.sh).
+
 ### Steps
 
 1. **A trial first, changing nothing:** Cog (WPE WebKit) as a package, the desktop page opened in it on the Vivobook
