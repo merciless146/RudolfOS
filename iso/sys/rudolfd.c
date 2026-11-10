@@ -995,6 +995,22 @@ static void api_apps(struct req *r, const char *what)
 {
 	char cmd[2400];
 	int fp = !access("/usr/bin/flatpak", X_OK), persist = !access(RUN "/persistent", F_OK);
+	/* 1.5.7 (plan stage 7): the apps that run, also with no window open (Flatpak apps, Windows programs in Wine, Linux
+	   programs in Debian), and ending one: rudolf-memguard knows them (--apps, --end ID), as it does when memory runs out */
+	if (!strcmp(what, "running") || !strcmp(what, "end")) {
+		if (!strcmp(what, "end")) {
+			const char *id = qparam(r->query, "id");
+			if (strcmp(r->method, "POST")) { reply_err(r->fd, 400, "use POST"); return; }
+			if (!id || !*id || strlen(id) > 200) { reply_err(r->fd, 400, "which app?"); return; }
+			for (const char *c = id; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("._:-", *c)) { reply_err(r->fd, 400, "which app?"); return; }
+			snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-memguard --end '%s' 2>/dev/null", id);
+		} else snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-memguard --apps 2>/dev/null");
+		char *o = run_out(cmd);
+		if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "the list of apps could not be made"); return; }
+		if (!strncmp(o, "{\"ok\":false", 11)) { char *e = strstr(o, "\"error\":\""); char m[200] = "that app is not running any more";
+			if (e) { e += 9; size_t l = strcspn(e, "\""); if (l < sizeof m) { memcpy(m, e, l); m[l] = 0; } } free(o); reply_err(r->fd, 404, m); return; }
+		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
+	}
 	if (!strcmp(what, "status")) {
 		struct statvfs v; long long freeb = statvfs("/var/lib/flatpak", &v) ? 0 : (long long)v.f_bavail * v.f_frsize;
 		struct stat st; long long age = stat(APPSTREAM_GZ, &st) ? -1 : (long long)(time(NULL) - st.st_mtime);
@@ -2171,6 +2187,37 @@ static void api_storage(struct req *r, int measure)
 	char *j = slurp(RUN "/storage.json", NULL);
 	str s = {0}; sadd(&s, "{\"ok\":true,\"measuring\":%s,\"result\":%s}", storage_running() ? "true" : "false", j && *j == '{' ? j : "null");
 	free(j); reply_json(r->fd, &s);
+}
+/* 1.5.7 (plan stage 7): Settings › System health › Memory. GET: the choices (zram auto|small|off, applied at the next
+   start-up by /usr/lib/rudolf/memory; closeApps: the memory guard may quit apps with no window open) and the memory
+   now (in use, the compressed swap's size, what it holds and what that takes). POST zram=…&closeApps=0|1 keeps them in
+   /persist/etc/rudolf-memory (an installed Rudolf OS only). */
+#define MEMCONF PERSIST "/etc/rudolf-memory"
+static void api_memory_settings(struct req *r, int post)
+{
+	char z[8] = "auto"; int ca = 1;
+	char *c = slurp(MEMCONF, NULL);
+	if (c) { for (char *sv, *l = strtok_r(c, "\n", &sv); l; l = strtok_r(NULL, "\n", &sv)) {
+		if (!strcmp(l, "zram=auto") || !strcmp(l, "zram=small") || !strcmp(l, "zram=off")) snprintf(z, sizeof z, "%s", l + 5);
+		else if (!strcmp(l, "close_apps=0")) ca = 0; else if (!strcmp(l, "close_apps=1")) ca = 1; } free(c); }
+	if (post) {
+		if (access(RUN "/persistent", F_OK)) { reply_err(r->fd, 409, "settings are kept only on an installed Rudolf OS"); return; }
+		const char *zq = qparam(r->query, "zram");
+		if (zq && *zq) { if (strcmp(zq, "auto") && strcmp(zq, "small") && strcmp(zq, "off")) { reply_err(r->fd, 400, "zram is auto, small or off"); return; } snprintf(z, sizeof z, "%s", zq); }
+		const char *cq = qparam(r->query, "closeApps");
+		if (cq && *cq) { if (strcmp(cq, "0") && strcmp(cq, "1")) { reply_err(r->fd, 400, "closeApps is 0 or 1"); return; } ca = cq[0] == '1'; }
+		mkdir(PERSIST "/etc", 0755);
+		char b[80]; snprintf(b, sizeof b, "zram=%s\nclose_apps=%d\n", z, ca); write_str(MEMCONF ".tmp", b);
+		if (rename(MEMCONF ".tmp", MEMCONF)) { reply_err(r->fd, 500, "could not save"); return; }
+	}
+	str s = {0}; sadd(&s, "{\"ok\":true,\"zram\":\"%s\",\"closeApps\":%s,\"persistent\":%s", z, ca ? "true" : "false", access(RUN "/persistent", F_OK) ? "false" : "true");
+	sadd(&s, ",\"total\":%lld,\"available\":%lld,\"swapTotal\":%lld,\"swapFree\":%lld", meminfo_kb("MemTotal") * 1024, meminfo_kb("MemAvailable") * 1024, meminfo_kb("SwapTotal") * 1024, meminfo_kb("SwapFree") * 1024);
+	{ unsigned long long ds = 0, o = 0, cm = 0, m = 0; FILE *f = fopen("/sys/block/zram0/disksize", "r"); if (f) { if (fscanf(f, "%llu", &ds) != 1) ds = 0; fclose(f); }
+	  f = fopen("/sys/block/zram0/mm_stat", "r"); if (f) { if (fscanf(f, "%llu %llu %llu", &o, &cm, &m) != 3) o = cm = m = 0; fclose(f); }
+	  char *on = slurp("/proc/swaps", NULL); int active = on && strstr(on, "/dev/zram0") != NULL; free(on);
+	  sadd(&s, ",\"compressed\":{\"size\":%llu,\"stored\":%llu,\"used\":%llu,\"on\":%s}", ds, o, m, active ? "true" : "false"); }
+	char *m = slurp(RUN "/memory", NULL); if (m) trim(m); sadd(&s, ",\"setup\":"); sjson(&s, m ? m : ""); free(m);
+	sadd(&s, "}"); reply_json(r->fd, &s);
 }
 static void api_memory(struct req *r)
 {
@@ -3396,6 +3443,7 @@ static void api(struct req *r)
 	if (!strcmp(p, "system")) { api_system(r); return; }
 	if (!strcmp(p, "processes")) { api_processes(r); return; }
 	if (!strcmp(p, "memory")) { api_memory(r); return; }
+	if (!strcmp(p, "memory/settings")) { api_memory_settings(r, post); return; }   /* 1.5.7 */
 	if (!strcmp(p, "storage") || (!strcmp(p, "storage/measure") && post)) { api_storage(r, !strcmp(p, "storage/measure")); return; }
 	if (!strcmp(p, "memory/iam") && post) { api_memory_iam(r); return; }
 	if (!strcmp(p, "health")) { api_health(r, post); return; }

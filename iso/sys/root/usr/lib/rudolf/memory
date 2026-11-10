@@ -39,12 +39,17 @@ echo 125 > /proc/sys/vm/watermark_scale_factor 2>/dev/null
 log "free memory reserve: $(cat /proc/sys/vm/min_free_kbytes) kB, watermark_scale_factor $(cat /proc/sys/vm/watermark_scale_factor)"
 
 if grep -q rudolf.nozram=1 $RCMD; then log "zram: off (rudolf.nozram=1)"; exit 0; fi
+# 1.5.7 (plan stage 7): Settings › System health › Memory: zram=auto (as large as the memory, at most 8 GiB; the
+# default), small (half of it, as before 1.5.6) or off; read at start-up (a change applies at the next restart)
+MCONF=${MEMORY_CONF:-/persist/etc/rudolf-memory}
+ZSET=$(sed -n 's/^zram=//p' $MCONF 2>/dev/null | tail -1); case "$ZSET" in auto|small|off) ;; *) ZSET=auto;; esac
+if [ "$ZSET" = off ]; then log "zram: off (Settings › System health › Memory)"; exit 0; fi
 Z=/sys/block/zram0
 if [ ! -d $Z ]; then [ -e /sys/class/zram-control/hot_add ] && cat /sys/class/zram-control/hot_add >/dev/null 2>&1; fi
 if [ ! -d $Z ]; then log "zram: not in this kernel"; exit 0; fi
 grep -q '^/dev/zram0 ' /proc/swaps && { log "zram: already on"; exit 0; }
 TOTAL=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)
-SIZE=$((TOTAL * 1024)); [ $SIZE -gt 8589934592 ] && SIZE=8589934592
+SIZE=$((TOTAL * 1024)); [ "$ZSET" = small ] && SIZE=$((SIZE / 2)); [ $SIZE -gt 8589934592 ] && SIZE=8589934592
 echo zstd > $Z/comp_algorithm 2>/dev/null || log "zram: zstd not available, using $(sed 's/.*\[\(.*\)\].*/\1/' $Z/comp_algorithm)"
 if ! echo $SIZE > $Z/disksize 2>/dev/null; then log "zram: could not set its size"; exit 0; fi
 [ -b /dev/zram0 ] || mknod /dev/zram0 b $(cut -d: -f1 $Z/dev) $(cut -d: -f2 $Z/dev)
