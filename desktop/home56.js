@@ -66,7 +66,7 @@ function hdSyncFor(acct,home,old){const now=hdWalk(home,[],new Map());
  /* stage 4: what goes holding large files (references) goes to the account's .Trash on the disk, so the Trash can
     still give it back; the rest is deleted (small files are kept in the Trash's own record, as before) */
  gone.forEach(r=>{const refs=[...old].some(([k,x])=>(k===r||k.startsWith(r+'/'))&&!x.d&&hdRefRel(x.v,acct)!=null);
-  ops.push(refs?{t:'trash',r,stamp:Date.now().toString(36)+Math.random().toString(36).slice(2,6)}:{t:'del',r,d:!!old.get(r).d})});
+  ops.push(refs?{t:'trash',r,stamp:Date.now().toString(36)+Math.random().toString(36).slice(2,6)}:{t:'del',r,d:!!old.get(r).d,rec:hdTrashed(r,old.get(r))?'':'the desktop, without going to the Trash'})});
  if(!ops.length)return HD.chain;
  /* the snapshot takes the new state at once, so the next comparison does not repeat these; a failed write is put back */
  for(const op of ops){if(op.t=='mkdir')old.set(op.r,{d:1});else if(op.t=='del'||op.t=='trash'){[...old.keys()].forEach(k=>{if(k===op.r||k.startsWith(op.r+'/'))old.delete(k)})}else old.set(op.r,{v:op.x.v,ver:null})}
@@ -75,7 +75,7 @@ function hdSyncFor(acct,home,old){const now=hdWalk(home,[],new Map());
   for(const op of ops){   /* (written even after sign-out: the account and its changes were taken when compared) */
    try{
     if(op.t=='mkdir')await rdPost('home/mkdir?'+q+'&path='+encodeURIComponent(op.r));
-    else if(op.t=='del')await rdPost('home/delete?'+q+'&path='+encodeURIComponent(op.r));
+    else if(op.t=='del')await rdPost('home/delete?'+q+'&path='+encodeURIComponent(op.r)+(op.rec?'&recover='+encodeURIComponent(op.rec):''));
     else if(op.t=='trash'){const to='.Trash/'+op.stamp+'/'+op.r.split('/').pop();await rdPost('home/rename?'+q+'&from='+encodeURIComponent(op.r)+'&to='+encodeURIComponent(to));hdTrashRepoint(acct,op.r,to)}
     else if(op.t=='move'){await rdPost('home/rename?'+q+'&from='+encodeURIComponent(op.from)+'&to='+encodeURIComponent(op.r)+'&replace=1');
      const nv=dlMkRef(HD_ROOT+acct+'/'+op.r,(dlRefInfo(op.x.v)||{}).s||0,'none');if(op.x.o[op.x.k]===op.x.v)op.x.o[op.x.k]=nv;old.set(op.r,{v:nv,ver:null})}
@@ -200,7 +200,7 @@ async function hdTrashSweep(){if(!hdOn())return;const acct=HD.acct;
  try{await HD.chain;const l=await rd('home/list?acct='+encodeURIComponent(acct)+'&path=.Trash');const used=new Set();
   const look=v=>{if(typeof v=='string'&&isDlRef(v)){const m=/\/\.Trash\/([^/]+)\//.exec((dlRefInfo(v)||{}).p||'');if(m)used.add(m[1])}else if(isDir(v))for(const k in v)look(v[k])};
   (TR||[]).forEach(e=>look(e.v));look(HOME);
-  for(const i of l.items||[]){const st=i.p.split('/').pop();if(i.d&&!used.has(st))await rdPost('home/delete?acct='+encodeURIComponent(acct)+'&path='+encodeURIComponent(i.p)).catch(()=>{})}}catch(e){}}
+  for(const i of l.items||[]){const st=i.p.split('/').pop();if(i.d&&!used.has(st))await rdPost('home/delete?acct='+encodeURIComponent(acct)+'&path='+encodeURIComponent(i.p)+'&recover='+encodeURIComponent("the Trash's clean-up")).catch(()=>{})}}catch(e){}}
 {const _ts=trSave;trSave=function(){const r=_ts.apply(this,arguments);if(hdOn()){clearTimeout(HD.sw);HD.sw=setTimeout(hdTrashSweep,3000)}return r}}
 /* backup: the signed-in account's home goes into the backup as the record a backup always had (encrypted with the
    file key), so "Back up everything" and a restore on another computer keep working; large files are not in it, as
@@ -239,3 +239,22 @@ async function evFlush(){evT=0;if(!EVQ.length||evBusy)return;if(!hdOn()){evKick(
  try{await rd('home/append?'+hdQ()+'&path='+encodeURIComponent('.rudolf/events.log'),{method:'POST',body:b});EVQ.splice(0,n)}
  catch(e){evKick(60000)}finally{evBusy=0;if(EVQ.length)evKick()}}
 if(typeof logEvt=='function'){const _le=logEvt;logEvt=function(k,m){_le(k,m);if(!m)return;EVQ.push(evLine(k,m));if(EVQ.length>200)EVQ.splice(0,EVQ.length-200);evKick()}}
+/* 1.5.7 (plan stage 4): a deletion the person asked for is one whose item is in the Trash (same name, same contents);
+   any other (the item gone from the desktop's files some other way) is kept in .Recovered for 7 days by rudolfd */
+function hdTrashed(r,o){const n=r.split('/').pop();if(!Array.isArray(TR))return false;
+ return TR.some(e=>e&&e.n===n&&(o&&o.d?isDir(e.v):typeof e.v=='string'&&o&&e.v===o.v))}
+/* the Trash window: "Recovered automatically", what background tasks deleted, with Restore and Delete now */
+async function recList(){if(!hdOn())return null;try{return await rd('home/recovered?'+hdQ())}catch(e){return null}}
+function recPanel(W){if(!W||!W.body||W.body.querySelector('.recp'))return;const box=document.createElement('div');box.className='recp';box.hidden=true;
+ box.style.cssText='border-top:1px solid rgba(128,128,128,.3);max-height:40%;overflow:auto;padding:4px 6px';
+ const st=W.body.querySelector('.st');W.body.insertBefore(box,st||null);
+ const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+ const draw=async()=>{const j=await recList();const it=(j&&j.items)||[];box.hidden=!it.length;if(!it.length){box.innerHTML='';return}
+  box.innerHTML=`<b>Recovered automatically</b> <small style='color:#6b7280'>deleted by Rudolf OS, not by you; kept ${j.days||7} days</small>`+it.map((x,i)=>`<div class='tr-row rec' data-i='${i}' style='display:flex;gap:8px;align-items:center'><span>${x.d?'📁':'📄'}</span><b>${esc(x.name)}</b><i style='flex:1'>${esc(x.from.split('/').slice(0,-1).join('\\')||'Home')}</i><em>${fmtB(x.s)}</em><small title='${esc(x.why)}'>${new Date(x.at*1000).toLocaleString()}</small><button class='rr'>Restore</button><button class='rf'>Delete now</button></div>`).join('');
+  box.querySelectorAll('.tr-row.rec').forEach(r=>{const x=it[+r.dataset.i];r.title='Deleted by '+x.why;
+   r.querySelector('.rr').onclick=async()=>{try{const o=await rdPost('home/restore?'+hdQ()+'&id='+encodeURIComponent(x.id));notify('Restored',x.name+' is back in '+(o&&o.path||x.from));await hdRefresh()}catch(e){notify('Not restored',e.message,{kind:'error'})}draw()};
+   r.querySelector('.rf').onclick=async()=>{if(!await recAsk('Delete '+x.name+' now? It cannot be brought back.'))return;try{await rdPost('home/forget?'+hdQ()+'&id='+encodeURIComponent(x.id))}catch(e){notify('Not deleted',e.message,{kind:'error'})}draw()}})};
+ W.recDraw=draw;draw()}
+{const _tr=trash;trash=function(){const r=_tr.apply(this,arguments);try{recPanel(wins.filter(w=>w.body&&w.body.querySelector('.tl')&&w.body.querySelector('.em')).at(-1))}catch(e){}return r};A.trash=trash}
+function recAsk(msg){return new Promise(res=>{const o=document.createElement('div');o.className='rmodal';o.innerHTML=`<div class='rmbox' role='alertdialog'><p></p><div class='rmrow'><button class='no'>Cancel</button><button class='ok pri'>Delete now</button></div></div>`;
+ o.querySelector('p').textContent=msg;const done=v=>{o.remove();res(v)};o.querySelector('.no').onclick=()=>done(false);o.querySelector('.ok').onclick=()=>done(true);document.body.appendChild(o);o.querySelector('.no').focus()})}
