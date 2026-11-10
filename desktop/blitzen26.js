@@ -166,7 +166,8 @@ function blzChatUI(W){
   const u=bubble('user');u.querySelector('.blzbody').innerHTML=blzMd(text)+(o.context?`<details class='blzctx'><summary>with ${lxEsc(o.contextName||'context')}</summary><pre></pre></details>`:'');if(o.context)u.querySelector('.blzctx pre').textContent=o.context;
   ta.value='';const el=await answer(null,{blocks:o.blocks,pack:o.blocks?'blocklua':o.pack});
   if(el&&o.blocks&&o.onBlocks){const t=chat.msgs.at(-1).content.replace(/^```lua\n|\n```$/g,'');o.onBlocks(t)}
-  if(el&&!o.blocks)await check(el,0)}
+  if(el&&!o.blocks&&!o.norun)await check(el,0)
+  if(el&&o.onAnswer)try{o.onAnswer(el,chat.msgs.at(-1).content)}catch(e){console.warn(e)}}   /* 1.5.7: diagnostics run no code, and add their buttons */
  goBtn.onclick=()=>ask(ta.value);stopBtn.onclick=()=>W.abort&&W.abort.abort();
  ta.addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Enter'&&!e.shiftKey){e.preventDefault();ask(ta.value)}});
  q('.blznew').onclick=()=>{if(busy)return;chat.msgs=[];chat.file=null;empty();stEl.textContent=''};

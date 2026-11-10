@@ -359,20 +359,26 @@ function sysReportUrl(r, title, full) {
   return u.href;
 }
 const SR_MAX = 7000;
-function sysReportDialog() {
+function sysReportDialog(pre) {
+  /* 1.5.7: pre {title, text, logs}: filled in by Blitzen's "Draft a report" (blitzdiag57.js) */
+  pre = pre || {}; const logs = Array.isArray(pre.logs) ? pre.logs : [];
   const o = document.createElement('div'); o.className = 'rmodal';
   o.innerHTML = `<div class='rmbox' role='dialog' aria-labelledby='srh' style='max-width:620px;width:92vw'>
     <h3 id='srh'>Report a problem</h3>
     <p class='msg'>Your report goes to the Rudolf OS issue tracker on GitHub, where it can be seen by anyone. You sign in to GitHub and send it there; nothing is sent before you do.</p>
     <label>Short title</label><input class='srt' maxlength='80' style='width:100%;box-sizing:border-box' placeholder='e.g. Sound stops after waking from sleep'>
     <label style='display:block;margin-top:8px'>What happened, and what were you doing?</label><textarea class='srw' style='width:100%;height:90px;box-sizing:border-box'></textarea>
+    ${logs.length ? `<label class='ck' style='margin-top:8px'><input type='checkbox' class='srl' checked> Include the ${logs.length} log line${logs.length > 1 ? 's' : ''} Blitzen read (account names, e-mail and network addresses are left out)</label>` : ''}
     <label class='ck' style='margin-top:8px'><input type='checkbox' class='sri' checked> Include the system report (recommended: the state of the computer right now)</label>
     <div class='msg'>It contains the Rudolf OS version, how the computer started, the display, the hardware, memory, CPU, temperature, battery and storage figures, the services, the busiest processes, and recent warnings. It does not contain your name, files, passwords, web addresses, network addresses or network names. <a href='#' class='srv'>See the report</a></div>
     <div class='msg srm' style='color:#b45309'></div>
     <div class='rmrow'><button class='srs'>Save to a file</button><button class='src'>Cancel</button><button class='srg pri'>Continue on GitHub</button></div></div>`;
   document.body.appendChild(o); o.querySelector('.srt').focus();
   const q = s => o.querySelector(s); let rep = null;
-  const build = async () => { rep = await sysReport(q('.srw').value.trim()); if (!q('.sri').checked) rep = {text: '', summary: 'Version: ' + RVER + ' (system report not included)', problem: rep.problem}; return rep };
+  if (pre.title) q('.srt').value = String(pre.title).slice(0, 80); if (pre.text) q('.srw').value = String(pre.text);
+  const build = async () => { rep = await sysReport(q('.srw').value.trim()); if (!q('.sri').checked) rep = {text: '', summary: 'Version: ' + RVER + ' (system report not included)', problem: rep.problem};
+    if (logs.length && q('.srl') && q('.srl').checked) rep.text = (rep.text ? rep.text + '\n\n' : '') + '--- Log lines Blitzen read ---\n' + srScrub(logs.join('\n'), []);
+    return rep };
   q('.src').onclick = () => o.remove();
   q('.srv').onclick = async e => { e.preventDefault(); sysReportShow((await build()).text || '(not included)') };
   q('.srs').onclick = async () => {
