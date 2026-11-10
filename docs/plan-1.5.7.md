@@ -315,3 +315,12 @@ for .apk, moved to a later version.) The documents' index is built by the releas
 Help. The model stays the one Blitzen has. Part 4: the session and the shell's web-page handling (about 300 lines),
 Chromium's windows for web pages (about 200), the fixes found in step 4 (unknown until then); WPE WebKit and Cog are new
 packages (about 60 to 80 MB).
+
+## Added on 2026-11-10: safeguards against a computer that cannot start
+
+The Vivobook could not start the 1.5.7 beta with the Lite desktop engine, and Recovery mode, a boot-files-only rescue
+stick and a stick's updater each made it worse (the account is in docs/plan-1.5.8.md). Priorities 1 to 3 of the
+safeguards went into 1.5.7: a desktop that cannot start is given up (Lite on trial until it answers once), a system
+slot missing a layer goes back to the previous one, Recovery mode starts the installed system with safe settings,
+recovery and stick starts never update the installed system, and updates are self-contained and checked complete.
+Priorities 4 and 5 are docs/plan-1.5.8.md.

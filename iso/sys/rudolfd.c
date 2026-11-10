@@ -3593,15 +3593,20 @@ static void api(struct req *r)
 			if (!e || (strcmp(e, "webkit") && strcmp(e, "chromium"))) { reply_err(r->fd, 400, "engine is webkit or chromium"); return; }
 			if (!strcmp(e, "webkit") && !have) { reply_err(r->fd, 409, "this Rudolf OS has no Lite engine yet: update it first"); return; }
 			mkdir(PERSIST "/etc", 0755);
+			/* (1.5.7: a new choice starts a new trial: the last failure and trial marks go) */
+			unlink(PERSIST "/etc/rudolf-desktop-engine.failed"); unlink(PERSIST "/etc/rudolf-desktop-engine.trying");
 			if (!strcmp(e, "chromium")) unlink(PERSIST "/etc/rudolf-desktop-engine");
 			else if (write_str(PERSIST "/etc/rudolf-desktop-engine", "webkit\n")) { reply_err(r->fd, 500, "could not save"); return; }
 			reply_ok(r->fd, "saved"); return;
 		}
-		char *c = slurp(PERSIST "/etc/rudolf-desktop-engine", NULL), *n = slurp(RUN "/desktop-engine", NULL); if (c) trim(c); if (n) trim(n);
-		str s = {0}; sadd(&s, "{\"ok\":true,\"choice\":\"%s\",\"now\":\"%s\",\"available\":%s,\"failed\":%s,\"persistent\":%s}",
+		char *c = slurp(PERSIST "/etc/rudolf-desktop-engine", NULL), *n = slurp(RUN "/desktop-engine", NULL), *fw = slurp(PERSIST "/etc/rudolf-desktop-engine.failed", NULL);
+		if (c) trim(c); if (n) trim(n); if (fw) trim(fw);
+		str s = {0}; sadd(&s, "{\"ok\":true,\"choice\":\"%s\",\"now\":\"%s\",\"available\":%s,\"failed\":%s,\"persistent\":%s,\"gaveUp\":",
 			c && !strcmp(c, "webkit") ? "webkit" : "chromium", n && !strcmp(n, "webkit") ? "webkit" : "chromium", have ? "true" : "false",
 			access(RUN "/webkit-failed", F_OK) ? "false" : "true", access(RUN "/persistent", F_OK) ? "false" : "true");
-		free(c); free(n); reply_json(r->fd, &s); return;
+		/* 1.5.7: Lite given up for good by the session ("<time> <why>"), until it is chosen again */
+		sjson(&s, fw ? fw : ""); sadd(&s, "}");
+		free(c); free(n); free(fw); reply_json(r->fd, &s); return;
 	}
 	/* 1.5.7: Task Manager opened by Ctrl+Alt+Del or Ctrl+Shift+Esc puts the desktop's processes first (rudolf-display
 	   already did, at the key); POST on=0 when it closes gives them back their usual share. Only the desktop's own

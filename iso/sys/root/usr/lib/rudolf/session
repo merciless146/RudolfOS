@@ -191,8 +191,48 @@ DBG=""
 grep -q 'rudolf.debug=1' $RCMD && DBG="--enable-logging=stderr --v=0 --remote-debugging-port=9222"
 export FONTCONFIG_FILE=/etc/fonts/fonts.conf
 # 1.5.6: the major page faults (pages read back from the swap or the disk) of the desktop page and the browser
+# 1.5.7: the Lite (WebKit) desktop given up for good: Standard from now on (the choice is removed; Settings says why,
+# and the user can choose Lite again). On the Vivobook, Lite closed as it started, every 8 s, and was started again
+# without end: the computer never reached the sign-in screen.
+webkit_give_up() {
+	echo "$(date) the WebKit desktop did not start ($1) - using Chromium"; touch /run/rudolf/webkit-failed
+	if [ -e /run/rudolf/persistent ]; then rm -f /persist/etc/rudolf-desktop-engine /persist/etc/rudolf-desktop-engine.trying
+		echo "$(date -u +%FT%TZ) $1" > /persist/etc/rudolf-desktop-engine.failed; sync; fi
+	rudolfd --health browser "the Lite desktop did not start ($1), so the standard engine is used from now on (Settings › System health › Desktop engine)"
+}
+# 1.5.7: Lite is on trial until its desktop answers once: a start that never got there (the computer was switched off
+# at a grey screen, say) gives it up at the next start. Checked once per start, before the engine is chosen.
+webkit_trial_check() {
+	[ "$FIRST" = 1 ] && [ -e /persist/etc/rudolf-desktop-engine.trying ] && webkit_usable && webkit_give_up "it did not reach the sign-in screen at the last start"
+	FIRST=0
+}
+webkit_trial_mark() { [ $ENGINE = webkit ] && [ -e /run/rudolf/persistent ] && [ ! -e /persist/etc/rudolf-desktop-engine.trying ] && date -u +%FT%TZ > /persist/etc/rudolf-desktop-engine.trying; return 0; }
+webkit_trial_ok() { [ $ENGINE = webkit ] && [ -e /run/rudolf/heartbeat ] && [ -e /persist/etc/rudolf-desktop-engine.trying ] && rm -f /persist/etc/rudolf-desktop-engine.trying; return 0; }
+# 1.5.7: a desktop asking for the shell again and again (a USB stick's older desktop on this computer's newer files
+# did, every few seconds): after 3 times in 5 minutes the request is ignored and the shell given up until the next start
+shell_switch_limit() {
+	[ -e /run/rudolf/shell-switch ] || return 0
+	W2=$(date +%s); [ $((W2 - SW_T)) -gt 300 ] && { SW_T=$W2; SW_N=0; }; SW_N=$((SW_N + 1))
+	[ $SW_N -gt 3 ] || return 0
+	rm -f /run/rudolf/shell-switch
+	[ -e /run/rudolf/shell-failed ] || { touch /run/rudolf/shell-failed; echo "$(date) the desktop restarted the browser $SW_N times in 5 minutes - no shell until the next start"
+		rudolfd --health browser "the desktop kept restarting the browser, so Oracle's real tabs are off until the next start"; }
+}
+# 1.5.7: the browser ended after RAN seconds. Closed within a minute without the desktop answering, 3 times in a row,
+# is a desktop that cannot start: Lite gives way to Standard and the shell to the desktop page. Chromium by itself has
+# nothing to fall back to and is reported once (the loop then pauses longer each time, so a broken browser does not spin).
+desk_exited() {
+	if [ ! -e /run/rudolf/heartbeat ] && [ "$1" -lt 60 ]; then FAST=$((FAST + 1)); else FAST=0; fi
+	[ $FAST -ge 3 ] || return 0
+	if [ $ENGINE = webkit ]; then webkit_give_up "it closed $FAST times in a row as it started"; FAST=0
+	elif [ $SHELLON = 1 ]; then echo "$(date) the shell closed $FAST times as it started - using the desktop page directly"; touch /run/rudolf/shell-failed; FAST=0
+	elif [ $FAST = 3 ]; then rudolfd --health browser "the desktop browser closed 3 times in a row as it started"; fi
+	return 0
+}
 desk_faults() { t=0; for p in $(cat /run/rudolf/desktop-renderer 2>/dev/null) $(pgrep -o -f '[-]-rudolf-kiosk'); do
 	f=$(sed 's/.*) //' /proc/$p/stat 2>/dev/null | cut -d' ' -f10); t=$((t + ${f:-0})); done; echo $t; }
+# 1.5.7: starts that ended within a minute without the desktop answering, in a row; quick shell restarts
+FAST=0; FIRST=1; SW_T=0; SW_N=0
 while :; do
 	[ -e /run/rudolf/power ] && sleep 30
 	PROXY=""
@@ -205,7 +245,11 @@ while :; do
 	echo "${START:-isolated-app://$SHELLID/}" > /run/rudolf/desktop-url
 	# 1.5.7 (plan Part 4, step 2): Settings › System health › Desktop engine: WebKit (WebKitGTK, in Debian), with Chromium
 	# kept for browsing. Only when Debian has it and it has not failed this start (then Chromium, as before)
+	# 1.5.7: Lite is on trial until its desktop answers once: a start that never got there (the computer was switched
+	# off at a grey screen, say) gives it up at the next start
+	webkit_trial_check
 	ENGINE=chromium; webkit_usable && { ENGINE=webkit; START=http://127.0.0.1:8080/; SHELLON=0; LAUNCH=""; echo "$START" > /run/rudolf/desktop-url; }
+	webkit_trial_mark
 	echo $ENGINE > /run/rudolf/desktop-engine
 	# the web frames extension lets websites load inside the desktop page's frames (it removes their frame protections)
 	# and spots sign-in pages; with the shell, Oracle's tabs are real pages and it is left out
@@ -238,6 +282,7 @@ while :; do
 		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] || [ -e /run/rudolf/shell-switch ] && break; done
 		W=$(date +%s); if [ $((W - LASTW)) -gt 40 ]; then echo "$(date) woke after $((W - LASTW)) s - the desktop has 90 s to answer"; GRACE=$((W + 90)); fi; LASTW=$W
 		if [ -e /run/rudolf/screen-restart ]; then rm -f /run/rudolf/screen-restart; display_restart; break; fi
+		webkit_trial_ok; shell_switch_limit
 		# the desktop has handed its data over (or Settings changed): start the browser again, with the shell if it can
 		if [ -e /run/rudolf/shell-switch ]; then rm -f /run/rudolf/shell-switch; echo "$(date) starting the browser again (shell)"
 			pkill -f '[-]-rudolf-kiosk'; for i in 1 2 3 4 5 6; do kill -0 $B 2>/dev/null || break; sleep 1; done; pkill -9 -f '[-]-rudolf-kiosk'; break; fi
@@ -250,8 +295,7 @@ while :; do
 		[ "$(sed -n 's/^full avg10=\([0-9]*\).*/\1/p' /proc/pressure/memory 2>/dev/null)" -ge 10 ] 2>/dev/null && BUSY_T=$W
 		# 1.5.7: the WebKit desktop did not come up (no heartbeat in 90 s): Chromium from now on (until restart)
 		if [ $ENGINE = webkit ] && [ $((NOW - START_T)) -gt 90 ] && [ ! -e /run/rudolf/heartbeat ]; then
-			echo "$(date) the WebKit desktop did not start - using Chromium"; touch /run/rudolf/webkit-failed
-			rudolfd --health browser "the WebKit desktop did not start, so Chromium was used (Settings › System health › Desktop engine)"
+			webkit_give_up "no answer from it in 90 s"
 			kill $B 2>/dev/null; pkill -f '[-]-rudolf-kiosk'; sleep 3; pkill -9 -f '[-]-rudolf-kiosk'; break
 		fi
 		# the shell did not bring the desktop up: use the desktop page by itself from now on (until restart)
@@ -297,5 +341,10 @@ while :; do
 		kill -0 $DISP 2>/dev/null || { rudolf-display $DISPARGS & DISP=$!; }
 	done
 	echo "$(date) browser exited"
+	# 1.5.7: closed within a minute without the desktop answering: 3 times in a row is a desktop that cannot start.
+	# Lite gives way to Standard and the shell to the desktop page; Chromium by itself has nothing to fall back to and
+	# is only reported (with the pause below growing, so a broken browser does not spin)
+	desk_exited $(( $(cut -d. -f1 /proc/uptime) - START_T ))
+	[ $FAST -ge 3 ] && sleep $(( FAST > 12 ? 30 : FAST * 2 ))
 	sleep 1
 done
