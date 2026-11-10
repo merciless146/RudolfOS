@@ -967,6 +967,18 @@ static void reply_cmd_json(struct req *r, const char *cmd, const char *fail)
 	if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, fail); return; }
 	reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o);
 }
+/* 1.5.6: the Linux apps are in the encrypted folder (Encrypt my data: /persist/flatpak is a link into it) and it is
+   not open yet: /var/lib/flatpak is not mounted until sign-in. Their list was then empty, and the desktop, asking at
+   start-up, kept that (and saved it): on the Vivobook Discord and Steam were gone from the desktop and the Start menu,
+   and their icons were the penguin. Now the list and the icons say "locked", and the desktop asks again later. */
+static int apps_locked(void)
+{
+	struct stat l, a, b;
+	if (lstat(PERSIST "/flatpak", &l) || !S_ISLNK(l.st_mode)) return 0;
+	if (stat("/var/lib/flatpak", &a) || stat("/var/lib", &b)) return 1;
+	return a.st_dev == b.st_dev;   /* not a mount point: the folder is not open */
+}
+
 static void api_apps(struct req *r, const char *what)
 {
 	char cmd[2400];
@@ -984,6 +996,7 @@ static void api_apps(struct req *r, const char *what)
 		if (access(CATALOG, R_OK)) { reply_err(r->fd, 404, "the app catalogue has not been downloaded yet"); return; }
 		serve_file(r, CATALOG); return;
 	}
+	if ((!strcmp(what, "installed") || !strcmp(what, "icon")) && apps_locked()) { reply_err(r->fd, 423, "the apps are in the encrypted folder, which opens at sign-in"); return; }
 	if (!strcmp(what, "installed")) { reply_cmd_json(r, "/usr/bin/rudolf-apps installed 2>/dev/null", "could not list the installed apps"); return; }
 	if (!strcmp(what, "windows")) {
 		char *w = slurp(RUN "/windows", NULL); str s = {0}; sadd(&s, "{\"ok\":true,\"windows\":["); int n = 0;

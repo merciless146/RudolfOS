@@ -23,7 +23,15 @@ const lxJobWait=onLine=>new Promise(res=>{let seen=0;const iv=setInterval(async(
 /* ---------- installed apps: Start menu, search, launching ---------- */
 const LXK='bd95lx';
 async function lxInstalled(force){if(!RD)return[];if(!force&&LX.inst&&Date.now()-LX.instAt<20000)return LX.inst;
- try{const j=await lxApi('apps/installed');LX.inst=j.apps||[];LX.instAt=Date.now();svj(LXK,LX.inst.map(a=>({id:a.id,name:a.name,launchers:a.launchers})));lxRegister()}catch(e){if(!LX.inst)LX.inst=[]}return LX.inst}
+ try{const j=await lxApi('apps/installed');LX.inst=j.apps||[];LX.instAt=Date.now();LX.ok=1;svj(LXK,LX.inst.map(a=>({id:a.id,name:a.name,launchers:a.launchers})));lxRegister();try{deskApply()}catch(e){}lxRedraw()}
+ /* 1.5.6: not to be had (the encrypted folder not open yet): the list saved last time, not an empty one */
+ catch(e){if(!LX.inst)LX.inst=ld(LXK,[])}return LX.inst}
+/* 1.5.6: the apps' list again once signed in: with Encrypt my data the apps are in the encrypted folder, which opens
+   at sign-in, and the list asked for at start-up could not be had. Every 3 s until it comes, for at most 90 s; the
+   desktop's app icons and the Start menu are then drawn again (their pictures too) */
+function lxRedraw(){document.querySelectorAll('#desk > .ic[data-app^="lx:"] > b').forEach(b=>{if(b.querySelector('img'))return;const a=APPS[b.parentElement.dataset.app];if(a&&a.img)try{a.img(b)}catch(e){}})}
+async function lxAfterSignIn(){LX.ok=0;for(let i=0;i<30&&!LX.ok;i++){await lxInstalled(true);if(LX.ok)break;await new Promise(r=>setTimeout(r,3000))}}
+(function(){const o=userLogin;userLogin=async function(){const r=await o.apply(this,arguments);if(RD)setTimeout(lxAfterSignIn,1500);return r}})();
 function lxLaunchers(){const l=LX.inst||ld(LXK,[]);const out=[];l.forEach(a=>(a.launchers&&a.launchers.length?a.launchers:[{desktop:a.id,name:a.name,icon:a.id,mime:'',wmclass:'',cats:''}]).forEach(x=>out.push({...x,app:a.id})));return out}
 function lxRegister(){Object.keys(APPS).filter(k=>k.startsWith('lx:')).forEach(k=>delete APPS[k]);
  lxLaunchers().forEach(x=>regApp('lx:'+x.desktop,{name:x.name,icon:'🐧',img:el=>lxImg(el,x.app,x.icon),kw:'linux app '+(x.comment||'')+' '+(x.cats||'').replace(/;/g,' '),open:()=>lxRun(x),re:/^\u0000/}));
