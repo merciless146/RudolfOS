@@ -168,11 +168,12 @@ SHELLINST=""; SHELLFEAT=""
 if [ ${#SHELLID} = 56 ] && [ "$(cat /etc/rudolf-shell 2>/dev/null)" != off ] && ! grep -q 'rudolf.recovery=1' $RCMD && [ -r /usr/share/rudolf/www/iwa/shell.swbn ]; then
 	SHELLINST="--install-isolated-web-app-from-file=/usr/share/rudolf/www/iwa/shell.swbn"; SHELLFEAT=",IsolatedWebAppDevMode"
 fi
-# 1.5.7: the desktop in WebKit (Settings › System health › Desktop engine; /persist/etc/rudolf-desktop-engine): Debian
+# 1.5.7: the desktop in WebKit (System Settings › Desktop engine, kept in /persist/etc/rudolf-desktop-engine and taken
+# at start-up by rudolf-init into /run/rudolf/engine-choice: a change applies at the next restart of the computer): Debian
 # set up with WebKitGTK and its Python bindings (rudolfd installs them when it is chosen), not in recovery mode, and not
 # after it failed to start this time (/run/rudolf/webkit-failed)
 webkit_usable() {
-	[ "$(cat /persist/etc/rudolf-desktop-engine 2>/dev/null)" = webkit ] || return 1
+	[ "$(cat /run/rudolf/engine-choice 2>/dev/null)" = webkit ] || return 1
 	grep -q 'rudolf.recovery=1' $RCMD && return 1
 	[ -e /run/rudolf/webkit-failed ] && return 1
 	[ -e /persist/debian/.rudolf-ready ] && [ -r /usr/lib/rudolf/webkit-desktop.py ] || return 1
@@ -236,11 +237,11 @@ while :; do
 	# 90 s to send its heartbeat again
 	LASTW=$(date +%s); GRACE=0; MF0=0; BUSY_T=0; FRONT_T=0; WM0=desktop
 	while kill -0 $B 2>/dev/null; do
-		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] || [ -e /run/rudolf/shell-switch ] || [ -e /run/rudolf/engine-switch ] && break; done
+		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] || [ -e /run/rudolf/shell-switch ] && break; done
 		W=$(date +%s); if [ $((W - LASTW)) -gt 40 ]; then echo "$(date) woke after $((W - LASTW)) s - the desktop has 90 s to answer"; GRACE=$((W + 90)); fi; LASTW=$W
 		if [ -e /run/rudolf/screen-restart ]; then rm -f /run/rudolf/screen-restart; display_restart; break; fi
 		# the desktop has handed its data over (or Settings changed): start the browser again, with the shell if it can
-		if [ -e /run/rudolf/shell-switch ] || [ -e /run/rudolf/engine-switch ]; then rm -f /run/rudolf/shell-switch /run/rudolf/engine-switch; echo "$(date) starting the browser again (shell)"
+		if [ -e /run/rudolf/shell-switch ]; then rm -f /run/rudolf/shell-switch; echo "$(date) starting the browser again (shell)"
 			pkill -f '[-]-rudolf-kiosk'; for i in 1 2 3 4 5 6; do kill -0 $B 2>/dev/null || break; sleep 1; done; pkill -9 -f '[-]-rudolf-kiosk'; break; fi
 		NOW=$(cut -d. -f1 /proc/uptime)
 		# 1.5.6: is the desktop working its way back? Its pages being read back from the compressed swap (major faults

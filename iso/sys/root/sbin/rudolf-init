@@ -33,6 +33,8 @@ if mountpoint -q /persist; then
 	[ -f /persist/etc/rudolf-display ] && cp /persist/etc/rudolf-display /etc/rudolf-display
 	[ -f /persist/etc/rudolf-screen ] && cp /persist/etc/rudolf-screen /etc/rudolf-screen
 	[ -f /persist/etc/rudolf-shell ] && cp /persist/etc/rudolf-shell /etc/rudolf-shell
+	# 1.5.7: the desktop engine (System Settings): taken now, so a change applies at the next restart of the computer
+	[ -f /persist/etc/rudolf-desktop-engine ] && cp /persist/etc/rudolf-desktop-engine /run/rudolf/engine-choice
 	# 1.2.8: the camera switched off in Settings > Privacy: its driver is not loaded
 	[ -f /persist/etc/camera-off ] && /usr/lib/rudolf/camera start
 	rm -f /persist/etc/decktest   # 1.4.5: the Cyberdeck test mode is gone (it only ever lasted until a restart)

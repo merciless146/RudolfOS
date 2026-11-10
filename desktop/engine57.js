@@ -1,21 +1,23 @@
-/* 1.5.7 (plan Part 4, step 2): Settings › System health › Desktop engine. Chromium (the default) or WebKit, a lighter
-   web engine (WebKitGTK, in Linux (Debian)): the desktop and its apps in WebKit, websites in Chromium's own window.
-   On the Vivobook (2026-11-10, headless) WebKit held the desktop page in about a third of Chromium's memory. A test:
-   if WebKit does not start, Chromium takes over for that start. Choosing WebKit installs it in Debian when needed. */
-async function enginePanel57(c){if(!RD)return;const d=document.createElement('div');d.className='eng57';const at=c.querySelector(':scope > .hlev');if(at)at.before(d);else c.appendChild(d);
- const draw=async()=>{let e;try{e=await rd('desktop/engine')}catch(x){d.innerHTML='';return}const adm=isAdmin();
-  d.innerHTML=`<h4 class='sh4 sgrp' style='font-size:15px;margin-top:18px'>Desktop engine (test)</h4>
-<div class='msg'>The desktop and its apps can run in <b>WebKit</b>, a lighter web engine, instead of Chromium: it takes much less memory, which leaves more for apps and games. Websites then open in Chromium's own window. This is a test in 1.5.7: some things may look or work differently.</div>
-<div class='r2'><label>Engine</label><div><label class='ck'><input type='radio' name='eng57' value='chromium'> Chromium (recommended)</label><label class='ck'><input type='radio' name='eng57' value='webkit'> WebKit (test)</label></div>
-<label>Now</label><div class='engnow'></div></div><div class='rmrow' style='justify-content:flex-start;gap:6px'><button class='engap' hidden>Restart the desktop with it</button></div><pre class='jl englog' hidden></pre>`;
-  const q=s=>d.querySelector(s);d.querySelectorAll('input[name=eng57]').forEach(r=>{r.checked=r.value==e.choice;r.disabled=!adm||!e.persistent||(r.value=='webkit'&&!e.debian)});
-  q('.engnow').textContent=(e.now=='webkit'?'WebKit':'Chromium')+(e.failed?' (WebKit did not start this time, so Chromium was used)':'')+(!e.debian?' · WebKit needs Linux (Debian) set up: open Terminal and choose Linux.':e.choice=='webkit'&&!e.ready?' · WebKit is being installed in Linux.':'');
-  q('.engap').hidden=e.choice==e.now;
-  q('.engap').onclick=async()=>{if(!await elevate('Restart the desktop'))return;notify('Restarting the desktop','Your open windows close; save your work first.',{quiet:true});setTimeout(()=>rdPost('desktop/engine?apply=1').catch(()=>{}),1500)};
-  d.querySelectorAll('input[name=eng57]').forEach(r=>r.onchange=async()=>{if(!await elevate('Change the desktop engine'))return draw();
-   try{const j=await rdPost('desktop/engine?engine='+r.value);
+/* 1.5.7 (plan Part 4, step 2): System Settings › Desktop engine. Standard (Chromium, as before) or Lite (WebKit, a
+   lighter web engine: WebKitGTK, in Linux (Debian)): the desktop and its apps in WebKit, websites in Chromium's own
+   window. On the Vivobook (2026-11-10, headless) WebKit held the desktop page in about a third of Chromium's memory.
+   The choice applies when the computer next starts (rudolf-init takes it then). A test: if WebKit does not start,
+   Chromium takes over for that start. Choosing WebKit installs it in Debian when needed. */
+async function enginePanel57(c){if(!RD)return;const d=document.createElement('div');d.className='eng57';c.appendChild(d);
+ const draw=async()=>{let e;try{e=await rd('desktop/engine')}catch(x){d.innerHTML='';return}const adm=isAdmin(),nm=v=>v=='webkit'?'Lite (WebKit)':'Standard (Chromium)';
+  d.innerHTML=`<h4 class='sh4'>Desktop engine</h4><div class='r2'><label for='eng57'>Desktop engine</label><div><select id='eng57'><option value='chromium'>Standard (Chromium)</option><option value='webkit'>Lite (WebKit, test)</option></select>
+<div class='msg engnow'></div></div></div><div class='msg'>Lite runs the desktop and its apps in WebKit, a lighter web engine: it takes much less memory, which leaves more for apps and games. Websites then open in Chromium's own window. It is a test in 1.5.7: some things may look or work differently. The engine changes when the computer restarts.</div><pre class='jl englog' hidden></pre>`;
+  const q=s=>d.querySelector(s),sel=q('#eng57');sel.value=e.choice;sel.disabled=!adm||!e.persistent;
+  [...sel.options].forEach(o=>{if(o.value=='webkit'&&!e.debian){o.disabled=true;o.textContent+=' — needs Linux (Debian) set up'}
+   /* (WebKit is in Linux (Debian) in this test; in the encrypted folder that opens only at sign-in, after the desktop has started) */
+   else if(o.value=='webkit'&&e.encrypted&&e.choice!='webkit'){o.disabled=true;o.textContent+=' — not with Linux in the encrypted folder'}});
+  q('.engnow').textContent='In use now: '+nm(e.now)+(e.failed?' (Lite did not start this time, so Standard was used)':'')+'.'
+   +(e.choice!=e.now?' '+nm(e.choice)+' is used after the computer restarts.':'')+(!adm?' Only administrators can change it.':'')+(e.choice=='webkit'&&!e.ready?' WebKit is not installed in Linux yet.':'');
+  sel.onchange=async()=>{if(!await elevate('Change the desktop engine'))return draw();
+   try{const j=await rdPost('desktop/engine?engine='+sel.value);
     if(j&&/installing/.test(j.message||'')){const pre=q('.englog');pre.hidden=false;pre.textContent='Installing WebKit in Linux (about 60 MB)…\n';
-     if(typeof lxJobWait=='function'){const jj=await lxJobWait(l=>{pre.textContent+=l+'\n';pre.scrollTop=pre.scrollHeight});pre.textContent+=jj.status==0?'\nDone.':'\nThat did not work. Is this computer connected to the internet?'}}}
-   catch(x){notify('Desktop engine',x.message,{kind:'error'})}draw()})};
+     if(typeof lxJobWait=='function'){const jj=await lxJobWait(l=>{pre.textContent+=l+'\n';pre.scrollTop=pre.scrollHeight});pre.textContent+=jj.status==0?'\nDone.':'\nThat did not work. Is this computer connected to the internet?'}}
+    notify('Desktop engine',nm(sel.value)+' is used after the computer restarts.',{quiet:true})}
+   catch(x){notify('Desktop engine',x.message,{kind:'error'})}draw()}};
  draw()}
-{const _h=healthPanel;healthPanel=function(c,W){const r=_h.apply(this,arguments);try{enginePanel57(c)}catch(e){console.warn(e)}return r}}
+{const _s=sysPanelS;sysPanelS=function(c,W){const r=_s.apply(this,arguments);try{enginePanel57(c)}catch(e){console.warn(e)}return r}}

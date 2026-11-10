@@ -3582,32 +3582,32 @@ static void api(struct req *r)
 	if (!strcmp(p, "log")) { char *l = run_out("dmesg | tail -200"); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, l); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return; }
 	if (!strcmp(p, "native/status")) { api_native_status(r); return; }
 	/* 1.5.7 (plan stage 5): rudolf-selftest, which only reads; its PASS/FAIL/SKIP lines */
-	/* 1.5.7 (plan Part 4, step 2): Settings › System health › Desktop engine. GET: the choice, the engine in use, and
-	   whether Debian has what WebKit needs. POST engine=webkit|chromium keeps the choice (/persist/etc); choosing WebKit
-	   installs WebKitGTK and its Python bindings in Debian (a job) when they are missing; apply=1 starts the desktop
-	   again with it (the session reads the choice) */
+	/* 1.5.7 (plan Part 4, step 2): System Settings › Desktop engine. GET: the choice, the engine in use, and whether
+	   Debian has what WebKit needs. POST engine=webkit|chromium keeps the choice (/persist/etc), which rudolf-init takes
+	   at the next start-up; choosing WebKit installs WebKitGTK and its Python bindings in Debian (a job) when missing */
 	if (!strcmp(p, "desktop/engine")) {
 		const char *TL = "ls /persist/debian/usr/lib/*/girepository-1.0/WebKit2-4.1.typelib >/dev/null 2>&1 && [ -d /persist/debian/usr/lib/python3/dist-packages/gi ]";
 		if (post) {
 			if (access(RUN "/persistent", F_OK)) { reply_err(r->fd, 409, "settings are kept only on an installed Rudolf OS"); return; }
-			const char *e = qparam(r->query, "engine"), *ap = qparam(r->query, "apply");
+			const char *e = qparam(r->query, "engine");
 			if (e && *e) {
 				if (strcmp(e, "webkit") && strcmp(e, "chromium")) { reply_err(r->fd, 400, "engine is webkit or chromium"); return; }
 				if (!strcmp(e, "webkit") && access("/persist/debian/.rudolf-ready", F_OK)) { reply_err(r->fd, 409, "set up Linux (Debian) first: open Terminal and choose Linux"); return; }
+				{ struct stat dl; if (!strcmp(e, "webkit") && !lstat("/persist/debian", &dl) && S_ISLNK(dl.st_mode)) { reply_err(r->fd, 409, "Lite needs Linux (Debian) outside the encrypted folder, which opens only at sign-in"); return; } }
 				mkdir(PERSIST "/etc", 0755);
 				if (!strcmp(e, "chromium")) unlink(PERSIST "/etc/rudolf-desktop-engine"); else write_str(PERSIST "/etc/rudolf-desktop-engine", "webkit\n");
-				unlink(RUN "/webkit-failed");
 				if (!strcmp(e, "webkit") && run(TL)) {
 					if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
 					start_job("webkit-install", "/usr/bin/rudolf-debian run --root -- sh -c 'apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends python3-gi gir1.2-webkit2-4.1 gir1.2-gtk-3.0 libgles2 libegl1 libegl-mesa0 libgl1-mesa-dri && echo done installed'");
 					reply_ok(r->fd, "installing"); return;
 				}
 			}
-			if (ap && !strcmp(ap, "1")) write_str(RUN "/engine-switch", "1");
 			reply_ok(r->fd, "saved"); return;
 		}
 		char *c = slurp(PERSIST "/etc/rudolf-desktop-engine", NULL), *n = slurp(RUN "/desktop-engine", NULL); if (c) trim(c); if (n) trim(n);
-		str s = {0}; sadd(&s, "{\"ok\":true,\"choice\":\"%s\",\"now\":\"%s\",\"debian\":%s,\"ready\":%s,\"failed\":%s,\"persistent\":%s}",
+		/* Debian in the encrypted folder opens only at sign-in, after the desktop has started: WebKit cannot show it */
+		struct stat dl; int enc = !lstat("/persist/debian", &dl) && S_ISLNK(dl.st_mode);
+		str s = {0}; sadd(&s, "{\"ok\":true,\"encrypted\":%s,\"choice\":\"%s\",\"now\":\"%s\",\"debian\":%s,\"ready\":%s,\"failed\":%s,\"persistent\":%s}", enc ? "true" : "false",
 			c && !strcmp(c, "webkit") ? "webkit" : "chromium", n && !strcmp(n, "webkit") ? "webkit" : "chromium",
 			access("/persist/debian/.rudolf-ready", F_OK) ? "false" : "true", run(TL) ? "false" : "true",
 			access(RUN "/webkit-failed", F_OK) ? "false" : "true", access(RUN "/persistent", F_OK) ? "false" : "true");
