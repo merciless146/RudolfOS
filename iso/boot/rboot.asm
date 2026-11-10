@@ -872,7 +872,7 @@ fatal:  push si
 NITEMS  equ 5
 items:  dw it1, it2, it3, it4, it5
 it1:    db '1  Start Rudolf OS', 0
-it2:    db '2  Recovery mode (start with default settings)', 0
+it2:    db '2  Recovery mode (safe settings)', 0
 it3:    db '3  Check this disc / USB drive for errors', 0
 it4:    db '4  Screen resolution:', 0
 it5:    db '5  Boot from the first hard disk', 0

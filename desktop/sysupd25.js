@@ -19,6 +19,8 @@ function sysuRestart(){if(!(SW&&wins.includes(SW))){settings('upd');return setTi
   const cur=s.current||{},st=s.state||{},av=s.available,nx=st.next&&s.slots[st.next]&&s.slots[st.next].complete?s.slots[st.next]:null;
   let line,cls='';
   if(!s.persistent){line='Security updates need Rudolf OS installed on this computer, or a USB drive with a RUDOLFDATA partition (see Install below).';cls='warn'}
+  /* 1.5.7: a recovery start, or a system running off a USB stick or disc on an installed computer, never changes the installed system */
+  else if(s.canUpdate===false){line=s.recovery?'Recovery mode: updates are paused. Restart normally to update Rudolf OS.':'Rudolf OS is running from a USB drive or disc: start it from this computer\'s own drive to update it.';cls='warn'}
   else if(s.trying&&st.good==s.booted){line=`<b>Kept:</b> Rudolf OS ${pkgEsc(cur.version||RVER)} started successfully and is now the system this computer starts.`;cls='ok'}
   else if(s.trying)line='Trying the new version: it is kept as soon as the desktop has started.';
   else if(nx){line=`<b>Ready:</b> Rudolf OS ${pkgEsc(nx.version)} starts when the computer restarts.`;cls='ok'}
@@ -28,7 +30,7 @@ function sysuRestart(){if(!(SW&&wins.includes(SW))){settings('upd');return setTi
   box.innerHTML=`<h4 class='sh4'>Security updates</h4><div class='sysucard ${cls}'><div>${line}</div>
 <div class='msg'>Rudolf OS ${pkgEsc(cur.version||RVER)}${cur.chromium?' · Chromium '+pkgEsc(cur.chromium):''}${cur.kernel?' · Linux '+pkgEsc(cur.kernel):''} · checked ${sysuWhen(s.checked)}${s.booted!='disc'?' · system slot '+s.booted.toUpperCase():''}</div>
 ${st.failed?`<div class='msg warn'>The update in slot ${pkgEsc(st.failed.toUpperCase())} did not start, so Rudolf OS went back to the previous version. It will try the next release.</div>`:''}</div>
-<div class='rmrow' style='justify-content:flex-start'><button class='ucheck'>Check now</button>${av&&!nx&&s.persistent?`<button class='udl'>Download (only the changes)</button>`:''}${nx?`<button class='urs'>Restart now</button>`:''}${st.good&&st.good!='disc'||st.prev?`<button class='urb'>Roll back system…</button>`:''}</div>
+<div class='rmrow' style='justify-content:flex-start'><button class='ucheck'>Check now</button>${av&&!nx&&s.persistent&&s.canUpdate!==false?`<button class='udl'>Download (only the changes)</button>`:''}${nx?`<button class='urs'>Restart now</button>`:''}${st.good&&st.good!='disc'||st.prev?`<button class='urb'>Roll back system…</button>`:''}</div>
 <label class='ck'><input type='checkbox' class='uauto'${s.auto?' checked':''}${adm?'':' disabled'}> Download security updates automatically</label>
 <details class='uadv'><summary>Update address</summary><div class='rmrow' style='justify-content:flex-start'><input class='uurl' value='${pkgEsc(s.url)}' placeholder='https://…/stable' style='flex:1'${adm?'':' disabled'}><button class='usave'${adm?'':' disabled'}>Save</button></div><p class='msg'>Releases must be signed by a key this computer trusts; others are refused.</p></details>
 <pre class='jl ulog' hidden></pre>`;
@@ -44,7 +46,7 @@ ${st.failed?`<div class='msg warn'>The update in slot ${pkgEsc(st.failed.toUpper
  draw()}}
 /* ---------- daily check and download ---------- */
 async function sysuTick(){if(!RD||!USER||window.LOCKED||window.__bsaver)return;   /* (1.4.4) not while battery saver is on */
- const s=await sysuStatus();if(!s||!s.persistent||!s.auto||!s.url)return;
+ const s=await sysuStatus();if(!s||!s.persistent||!s.auto||!s.url||s.canUpdate===false)return;   /* (1.5.7: not from a stick or in recovery) */
  const st=s.state||{},ready=st.next&&s.slots[st.next]&&s.slots[st.next].complete;
  if(ready){if(!sysuTick.told){sysuTick.told=1;notify('Security update ready','Restart to finish installing Rudolf OS '+s.slots[st.next].version+'.',{action:sysuRestart,kind:'info'})}return}
  if(Date.now()/1000-(s.checked||0)<20*3600&&!(s.available&&!ready))return;

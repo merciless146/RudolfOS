@@ -291,6 +291,57 @@ static void url_join(const char *base, const char *file, char *out, size_t n)
 	snprintf(out, n, "%s/%s", b, file);
 }
 
+/* 1.5.7: what this start is. A disc layer only counts as part of an update when the disc is on the same drive as
+   RUDOLFDATA (an installed computer, or a USB drive with its own RUDOLFDATA): a USB stick or a disc used to start a
+   computer goes away. On the Vivobook, 1.5.6 running from a rescue stick put an update in the spare slot that took
+   its Chromium layer from the stick, and scheduled it: without the stick that system could not start.
+   RU_CMDLINE, RU_MOUNTS and RU_SYSBLOCK move these for the host test. */
+static char CMDF[256] = "/etc/rudolf/cmdline", MOUNTSF[256] = "/proc/mounts", SYSBLK[256] = "/sys/block";
+static int recovery_start(void)
+{
+	char *c = slurp(CMDF, NULL); if (!c) c = slurp("/proc/cmdline", NULL);
+	int r = c && strstr(c, "rudolf.recovery=1") != NULL; free(c); return r;
+}
+/* the device mounted on DIR (from /proc/mounts), or "" */
+static void mount_dev(const char *dir, char *out, size_t n)
+{
+	out[0] = 0; char *t = slurp(MOUNTSF, NULL); if (!t) return;
+	for (char *l = strtok(t, "\n"); l; l = strtok(NULL, "\n")) {
+		char d[300], m[300]; if (sscanf(l, "%299s %299s", d, m) == 2 && !strcmp(m, dir)) { snprintf(out, n, "%s", d); break; }
+	}
+	free(t);
+}
+/* the whole disk under a device: /dev/nvme0n1p3 -> nvme0n1, /dev/sda1 -> sda, /dev/loop3 -> its backing disk */
+static void disk_of(const char *dev, char *out, size_t n)
+{
+	const char *b = strrchr(dev, '/'); b = b ? b + 1 : dev; char name[64]; snprintf(name, sizeof name, "%s", b);
+	if (!strncmp(name, "loop", 4)) {
+		char p[400]; snprintf(p, sizeof p, "%s/%s/loop/backing_file", SYSBLK, name); char *f = slurp(p, NULL);
+		if (f) { char *nl = strchr(f, '\n'); if (nl) *nl = 0; if (!strncmp(f, "/dev/", 5)) { disk_of(f, out, n); free(f); return; } free(f); }
+		snprintf(out, n, "%s", name); return;
+	}
+	size_t l = strlen(name);
+	if (!strncmp(name, "nvme", 4) || !strncmp(name, "mmcblk", 6)) { char *pp = strrchr(name, 'p'); if (pp && pp > name + 4 && isdigit((unsigned char)pp[1])) *pp = 0; }
+	else { while (l && isdigit((unsigned char)name[l - 1])) name[--l] = 0; }
+	snprintf(out, n, "%s", name);
+}
+static int media_permanent(void)
+{
+	char md[300], pd[300], a[64], b[64]; mount_dev(MEDIA, md, sizeof md); mount_dev("/persist", pd, sizeof pd);
+	if (getenv("RU_PERSIST_DEV")) snprintf(pd, sizeof pd, "%s", getenv("RU_PERSIST_DEV"));
+	if (!*md || !*pd) return 0;
+	disk_of(md, a, sizeof a); disk_of(pd, b, sizeof b); return !strcmp(a, b);
+}
+/* updates change the installed system: not from a recovery start, and not from a system running off a stick or a
+   disc that is not this computer's own drive */
+static int may_change_system(int quiet)
+{
+	char bs[8]; snprintf(bs, sizeof bs, "%s", ""); { char *t = slurp(SLOTF, NULL); snprintf(bs, sizeof bs, "%s", t && (t[0] == 'a' || t[0] == 'b') ? "slot" : "disc"); free(t); }
+	if (recovery_start()) { if (!quiet) say("Not in recovery mode: restart normally to update Rudolf OS."); return 0; }
+	if (!strcmp(bs, "disc") && !media_permanent()) { if (!quiet) say("Not while Rudolf OS runs from a USB drive or disc: start it from this computer's own drive to update it."); return 0; }
+	return 1;
+}
+
 static int lockf_(void) { char p[300]; snprintf(p, sizeof p, "%s/.lock", SYSD); mkdirs(SYSD); int f = open(p, O_CREAT | O_RDWR | O_CLOEXEC, 0600); return f >= 0 && !flock(f, LOCK_EX | LOCK_NB) ? 0 : -1; }
 
 /* speedtest (1.2.5, Task Manager's hardware check): how fast the update server answers here. Downloads the newest
@@ -346,6 +397,7 @@ static int cmd_check(int quiet)
 }
 static int cmd_download(void)
 {
+	if (!may_change_system(0)) return 6;
 	if (lockf_()) die("another update is running");
 	int r = cmd_check(1); if (r) return r;
 	char ap[300]; snprintf(ap, sizeof ap, "%s/available.txt", SYSD); char *t = slurp(ap, NULL); man_t m; if (!t || parse_manifest(t, &m)) die("no release list");
@@ -364,7 +416,7 @@ static int cmd_download(void)
 	long long need = 0; for (int i = 0; i < m.nl; i++) need += m.L[i].size;
 	struct statvfs v; if (!statvfs(SYSD, &v) && (long long)v.f_bavail * v.f_frsize < need / 2) die("not enough free space on RUDOLFDATA (about %lld MB needed)", need / 2 / 1048576);
 	char base[300]; kv_t cf; kv_read(CONFP, &cf, '='); snprintf(base, sizeof base, "%s", kv(&cf, "url")); if (!*base) { char *d = slurp("/etc/rudolf/update-url", NULL); if (d) { snprintf(base, sizeof base, "%s", d); char *nl = strchr(base, '\n'); if (nl) *nl = 0; free(d); } }
-	long long total = 0;
+	long long total = 0; int permanent = media_permanent();
 	for (int i = 0; i < NL; i++) {
 		lay_t *y = mlayer(&m, LAYERS[i]); char out[400], hex[65];
 		snprintf(out, sizeof out, "%s/%s%s", tn, y->name, strcmp(y->name, "vmlinuz") ? ".sfs" : "");
@@ -376,7 +428,8 @@ static int cmd_download(void)
 		int done = 0;
 		for (int c = 0; c < nc && !done; c++) {
 			struct stat s; if (stat(cand[c], &s) || s.st_size != y->size || sha256_file(cand[c], hex) || strcmp(hex, y->sha)) continue;
-			if (!strncmp(cand[c], MEDIA, strlen(MEDIA)) && strcmp(y->name, "vmlinuz")) { say("%s: unchanged (the disc's copy is used)", y->name); done = 1; break; }
+			/* (1.5.7: only a disc on this computer's own drive; one that goes away is copied into the slot) */
+			if (!strncmp(cand[c], MEDIA, strlen(MEDIA)) && strcmp(y->name, "vmlinuz") && permanent) { say("%s: unchanged (the disc's copy is used)", y->name); done = 1; break; }
 			if (!link(cand[c], out)) { say("%s: unchanged", y->name); done = 1; break; }
 			char *a[] = {"cp", cand[c], out, NULL}; if (!spawn(a)) { say("%s: unchanged (copied)", y->name); done = 1; }
 		}
@@ -396,6 +449,16 @@ static int cmd_download(void)
 	/* the signed release list goes with the slot: the start-up checks the layers against its hashes (1.2.2) */
 	{ char d1[420], d2[420]; snprintf(d1, sizeof d1, "%s/manifest.txt", tn); snprintf(d2, sizeof d2, "%s/manifest.sig", tn);
 	  char *a1[] = {"cp", ap, d1, NULL}, *a2[] = {"cp", sig, d2, NULL}; if (spawn(a1) || spawn(a2)) die("could not keep the release list with the slot"); }
+	/* 1.5.7: complete before it is scheduled: every file in the slot at its listed size, or (a layer) on a disc that
+	   is part of this computer's own drive */
+	for (int i = 0; i < NL; i++) {
+		lay_t *y = mlayer(&m, LAYERS[i]); char f[420]; struct stat s2;
+		snprintf(f, sizeof f, "%s/%s%s", tn, y->name, strcmp(y->name, "vmlinuz") ? ".sfs" : "");
+		if (!stat(f, &s2) && s2.st_size == y->size) continue;
+		if (strcmp(y->name, "vmlinuz") && permanent) { snprintf(f, sizeof f, "%s/rudolf/%s.sfs", MEDIA, y->name); if (!stat(f, &s2) && s2.st_size == y->size) continue; }
+		say("%s: missing from the new system; it is not used.", y->name);
+		{ char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } return 7;
+	}
 	snprintf(rp, sizeof rp, "%s/complete", tn); write_file(rp, "1\n");
 	sync();
 	{ char *a[] = {"rm", "-rf", tp, NULL}; spawn(a); } if (rename(tn, tp)) die("could not finish the slot");
@@ -409,6 +472,7 @@ static int cmd_bootok(void)
 {
 	char bs[8], stp[300]; booted(bs); snprintf(stp, sizeof stp, "%s/state", SYSD); kv_t st; kv_read(stp, &st, '=');
 	if (!strcmp(bs, "disc") || strcmp(kv(&st, "next"), bs)) return 0;
+	if (recovery_start()) return 0;   /* 1.5.7: a desktop in recovery mode does not prove the normal start works */
 	char g[300]; snprintf(g, sizeof g, "%s", kv(&st, "good"));
 	kv_set(&st, "prev", g); kv_set(&st, "good", bs); kv_set(&st, "next", ""); kv_set(&st, "tries", "0"); kv_set(&st, "failed", "");
 	kv_write(stp, &st, '='); sync();
@@ -443,6 +507,7 @@ static int cmd_status(void)
 	printf(",\"chromium\":"); jstr(kv(&r, "chromium")); printf(",\"kernel\":"); jstr(kv(&r, "kernel")); printf(",\"released\":"); jstr(kv(&r, "released")); printf(",\"notes\":"); jstr(kv(&r, "notes")); printf("}");
 	printf(",\"state\":{\"good\":"); jstr(kv(&st, "good")); printf(",\"prev\":"); jstr(kv(&st, "prev")); printf(",\"next\":"); jstr(kv(&st, "next"));
 	printf(",\"tries\":%d,\"failed\":", atoi(kv(&st, "tries"))); jstr(kv(&st, "failed")); printf("}");
+	printf(",\"canUpdate\":%s,\"recovery\":%s", may_change_system(1) ? "true" : "false", recovery_start() ? "true" : "false");
 	printf(",\"slots\":{\"a\":"); slot_json("a"); printf(",\"b\":"); slot_json("b"); printf("}");
 	printf(",\"url\":"); jstr(*kv(&cf, "url") ? kv(&cf, "url") : d ? d : ""); printf(",\"auto\":%s", strcmp(kv(&cf, "auto"), "0") ? "true" : "false");
 	printf(",\"checked\":%lld,\"available\":", atoll(kv(&cf, "checked")));
@@ -465,6 +530,9 @@ int main(int argc, char **argv)
 	if (getenv("RU_CONF")) snprintf(CONFP, sizeof CONFP, "%s", getenv("RU_CONF"));
 	if (getenv("RU_KEYS")) snprintf(KEYF, sizeof KEYF, "%s", getenv("RU_KEYS"));
 	if (getenv("RU_SLOT")) snprintf(SLOTF, sizeof SLOTF, "%s", getenv("RU_SLOT"));
+	if (getenv("RU_CMDLINE")) snprintf(CMDF, sizeof CMDF, "%s", getenv("RU_CMDLINE"));
+	if (getenv("RU_MOUNTS")) snprintf(MOUNTSF, sizeof MOUNTSF, "%s", getenv("RU_MOUNTS"));
+	if (getenv("RU_SYSBLOCK")) snprintf(SYSBLK, sizeof SYSBLK, "%s", getenv("RU_SYSBLOCK"));
 	if (argc < 2) { fputs("usage: rudolf-update status|check|download|boot-ok|rollback|set url URL|set auto 0|1|rzs-make FILE OUT\n", stderr); return 2; }
 	const char *c = argv[1];
 	if (!strcmp(c, "rzs-make")) { if (argc < 4) die("usage: rzs-make FILE OUT.rzs"); return rzs_make(argv[2], argv[3]); }

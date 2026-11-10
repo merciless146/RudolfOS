@@ -11,6 +11,8 @@ async function enginePanel57(c){if(!RD)return;const d=document.createElement('di
   if(!e.available){const o=sel.querySelector('option[value=webkit]');o.disabled=true;o.textContent+=' — update Rudolf OS first'}
   q('.engnow').textContent='In use now: '+nm(e.now)+(e.failed?' (Lite did not start this time, so Standard was used)':'')+'.'
    +(e.choice!=e.now?' '+nm(e.choice)+' is used after the computer restarts.':'')+(!adm?' Only administrators can change it.':!e.persistent?' Kept only on an installed Rudolf OS.':'');
+  /* 1.5.7: Lite given up for good by the session (its trial): when, and why */
+  if(e.gaveUp){const m=String(e.gaveUp).match(/^(\S+)\s+(.*)$/),when=m&&!isNaN(Date.parse(m[1]))?new Date(m[1]).toLocaleString():'';q('.engnow').textContent+=` Lite was turned off${when?' on '+when:''} because ${m?m[2]:e.gaveUp}. Choose it again to try once more.`}
   sel.onchange=async()=>{if(!await elevate('Change the desktop engine'))return draw();
    try{await rdPost('desktop/engine?engine='+sel.value);notify('Desktop engine',nm(sel.value)+' is used after the computer restarts.',{quiet:true})}
    catch(x){notify('Desktop engine',x.message,{kind:'error'})}draw()}};

@@ -16,7 +16,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
       window.fetch = (u, o) => { u = String(u); const q = new URL(u, location.href); const a = q.pathname.replace('/api/', ''); const J = (x, st) => Promise.resolve(new Response(JSON.stringify(Object.assign({ok: !st}, x)), {status: st || 200, headers: {'content-type': 'application/json'}}));
         if (u.includes('/api/')) M.calls.push(((o && o.method) || 'GET') + ' ' + a + q.search);
         if (a == 'desktop/engine') { if (o && o.method == 'POST') { const e = q.searchParams.get('engine'); if (e) M.choice = e; return J({message: 'saved'}) }
-          return J({choice: M.choice, now: M.now, available: M.avail !== false, failed: false, persistent: true}) }
+          return J({choice: M.choice, now: M.now, available: M.avail !== false, failed: false, persistent: true, gaveUp: M.gaveUp || ''}) }
         if (a == 'job') return J({running: false, status: 0, log: 'Setting up gir1.2-webkit2-4.1\ndone installed\n'});
         if (a == 'health') return J({events: [], now: 0});
         if (u.includes('/api/')) return J({items: [], apps: [], windows: []});
@@ -36,6 +36,10 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("(()=>{M.now='chromium';document.querySelectorAll('.eng57').forEach(e=>e.remove());enginePanel57([...document.querySelectorAll('.win')].at(-1).querySelector('.eng57')?.parentElement||document.querySelector('#sdp').closest('div').parentElement);return 1})()"); await wait(800);
   t = await q("document.querySelector('.eng57 .engnow').textContent");
   ok('4. chosen but not yet in use: it says the change comes with the next restart (nothing restarts now)', /In use now: Standard \(Chromium\)\. Lite \(WebKit\) is used after the computer restarts/.test(t) && !(await q("M.calls.some(x=>/apply/.test(x))")), t);
+  await q("(()=>{M.gaveUp='2026-11-10T21:59:00Z it closed 3 times in a row as it started';M.choice='chromium';document.querySelectorAll('.eng57').forEach(e=>e.remove());enginePanel57(document.querySelector('#sdp').closest('div').parentElement);return 1})()"); await wait(800);
+  t = await q("document.querySelector('.eng57 .engnow').textContent");
+  ok('4b. Lite given up by the session: Settings says when and why, and that choosing it again tries once more', /Lite was turned off on .+ because it closed 3 times in a row as it started\. Choose it again/.test(t), t);
+  await q("M.gaveUp=''");
   await q("(()=>{M.avail=false;M.choice='chromium';document.querySelectorAll('.eng57').forEach(e=>e.remove());enginePanel57(document.querySelector('#sdp').closest('div').parentElement);return 1})()"); await wait(800);
   const o2 = await q("(()=>{const o=document.querySelector('#eng57 option[value=webkit]');return {d:o.disabled,t:o.textContent}})()");
   ok('4b. a Rudolf OS without the Lite engine (before this update): Lite cannot be chosen, and it says why', o2.d && /update Rudolf OS first/.test(o2.t), o2);
