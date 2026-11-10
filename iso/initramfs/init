@@ -20,7 +20,16 @@ CMD=$(cat /proc/cmdline)
 # which already hold them
 CMD=$(echo "$CMD" | awk '{o=""; for(i=1;i<=NF;i++) if(!s[$i]++) o=o (o==""?"":" ") $i; print o}')
 has() { case " $CMD " in *" $1 "*) return 0;; esac; return 1; }
-say() { echo "$*" > /dev/console; }
+say() { echo "$*" > /dev/console; echo "$(date -u +%T 2>/dev/null) $*" >> /tmp/initramfs.log; }
+# 1.5.8: what the start-up decided, kept on RUDOLFDATA (var/log/boot-decisions.log, the last 300 lines) before it
+# hands over (kexec), restarts or stops: a start that never reaches the desktop still leaves a record. The rest of a
+# start's lines go to /etc/rudolf/initramfs.log, which rudolf-init keeps with the start's other logs.
+note() { echo "$(date -u +%T 2>/dev/null) $*" >> /tmp/initramfs.log; }
+keeplog() {
+	[ -d /mnt/persist/os ] || return 0; K=/mnt/persist/var/log/boot-decisions.log; mkdir -p /mnt/persist/var/log
+	{ echo "== $(date -u '+%F %T' 2>/dev/null) $1 (kernel $(uname -r), ${SLOT:+slot $SLOT}${SLOT:-first stage}, entry ${ENTRY:-none})"; cat /tmp/initramfs.log 2>/dev/null; } >> $K
+	tail -n 300 $K > $K.new 2>/dev/null && mv -f $K.new $K; : > /tmp/initramfs.log; sync
+}
 # Secure Boot (1.2.2): the firmware says whether it is on (the kernel then also locks itself down). With it on,
 # nothing unchecked may start: a problem ends in a restart, never in a shell.
 mount -t efivarfs efivarfs /sys/firmware/efi/efivars 2>/dev/null
@@ -30,7 +39,7 @@ has rudolf.sb=1 && SB=1   # a kernel started by kexec from a Secure Boot start
 # with Secure Boot on, the kernel is locked down before anything else runs: no unsigned modules or kernels, no
 # writing to kernel memory (mainline Linux leaves this to the start-up)
 if [ $SB = 1 ]; then mount -t securityfs securityfs /sys/kernel/security 2>/dev/null; echo integrity > /sys/kernel/security/lockdown 2>/dev/null; fi
-fail() { if [ $SB = 1 ]; then say "Press Enter to restart."; read x < /dev/console; sync; reboot -f; fi; exec sh; }
+fail() { keeplog "stopped"; if [ $SB = 1 ]; then say "Press Enter to restart."; read x < /dev/console; sync; reboot -f; fi; exec sh; }
 # the UEFI boot menu (systemd-boot) says which entry was started; its options are not taken from the menu, so
 # that nobody can add their own (Secure Boot)
 ENTRY=$(efv LoaderEntrySelected-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f | tr -d '\000')
@@ -250,7 +259,7 @@ if [ -n "$PERSIST" ] && [ -s $BI/pending ] && [ -s $BI/boot.iso ] && ! has rudol
 			say "Your files are safe. If the computer does not start, start it from a Rudolf OS USB stick and use"
 			say "Install here > Replace the boot files only. Press Enter to restart."; read x < /dev/console
 		fi
-		cd /; umount /mnt/persist; sync; sleep 2; reboot -f
+		keeplog "boot files written"; cd /; umount /mnt/persist; sync; sleep 2; reboot -f
 	fi
 fi
 
@@ -264,7 +273,7 @@ slot_bad() {
 	GOOD=$(st_get good); PREV=$(st_get prev); NEXT=$(st_get next); TRIES=$(st_get tries); FAILED=$SLOT
 	[ "$NEXT" = "$SLOT" ] && { NEXT=""; TRIES=0; }
 	[ "$GOOD" = "$SLOT" ] && GOOD=$PREV
-	st_write; say "Rudolf OS: this update cannot start; restarting with the previous system."; sync; sleep 5; reboot -f
+	st_write; say "Rudolf OS: this update cannot start; restarting with the previous system."; keeplog "slot $SLOT given up"; sync; sleep 5; reboot -f
 }
 # 1.5.7: Recovery mode starts the installed system (the last good one; else the previous one) with safe settings
 # (rudolf.recovery=1: the standard desktop engine, no shell, safe graphics), never an update being tried, and changes
@@ -297,6 +306,7 @@ if [ -z "$SLOT" ] && [ -n "$PERSIST" ] && [ -f $SYSD/state ] && [ -n "$REC" ]; t
 		NC="$CMD rudolf.slot=$T"; [ $SB = 1 ] && NC="$NC rudolf.sb=1 lockdown=integrity"
 		if whole "$MEDIA"; then NC="$NC rudolf.mediadisk=$MEDIA"; elif [ -n "$MEDIA" ]; then NC="$NC rudolf.mediadev=$MEDIA"; fi; PU=$(blkid "$PERSIST" 2>/dev/null | sed -n 's/.* UUID="\([^"]*\)".*/\1/p'); [ -n "$PU" ] && NC="$NC rudolf.persist=$PU"
 		say "Rudolf OS: recovery mode - starting the installed system with safe settings."
+		note "recovery: good=$GOOD prev=$PREV -> slot $T"; keeplog "handing over to slot $T (recovery)"
 		cd /; umount /mnt/persist; umount_media; sync
 		rudolf-kexec /tmp/vmlinuz "$NC"
 		mount -t ext4 -o rw,noatime "$PERSIST" /mnt/persist; [ -n "$MEDIA" ] && mount_media "$MEDIA"
@@ -317,9 +327,10 @@ if [ -z "$SLOT" ] && [ -n "$PERSIST" ] && [ -f $SYSD/state ] && [ -z "$REC" ]; t
 	if [ -n "$T" ] && slot_ok "$T"; then
 		cp $SYSD/$T/vmlinuz /tmp/vmlinuz
 		NC="$CMD rudolf.slot=$T"; [ -n "$TRY" ] && NC="$NC rudolf.trying=1"; [ $SB = 1 ] && NC="$NC rudolf.sb=1 lockdown=integrity"
+		note "start: good=$GOOD prev=$PREV next=$NEXT tries=$TRIES failed=$FAILED -> slot $T${TRY:+ (trying an update)}"
 		# 1.3.0: the same drive and data partition for the slot's kernel
 		if whole "$MEDIA"; then NC="$NC rudolf.mediadisk=$MEDIA"; elif [ -n "$MEDIA" ]; then NC="$NC rudolf.mediadev=$MEDIA"; fi; PU=$(blkid "$PERSIST" 2>/dev/null | sed -n 's/.* UUID="\([^"]*\)".*/\1/p'); [ -n "$PU" ] && NC="$NC rudolf.persist=$PU"
-		cd /; umount /mnt/persist; umount_media; sync
+		keeplog "handing over to slot $T"; cd /; umount /mnt/persist; umount_media; sync
 		rudolf-kexec /tmp/vmlinuz "$NC"
 		# kexec failed: count it as a failed start and carry on with the disc's own system
 		mount -t ext4 -o rw,noatime "$PERSIST" /mnt/persist; [ -n "$MEDIA" ] && mount_media "$MEDIA"
@@ -438,5 +449,6 @@ mount --move /proc /newroot/proc
 # failed (Operation not permitted)") on every computer running an installed update, whose kernel (started by kexec)
 # always had options given twice, so this mount was always made there (since 1.2.3).
 echo "$CMD" > /newroot/etc/rudolf/cmdline
+cp /tmp/initramfs.log /newroot/etc/rudolf/initramfs.log 2>/dev/null
 mount --move /sys /newroot/sys
 exec switch_root /newroot /sbin/rudolf-init
