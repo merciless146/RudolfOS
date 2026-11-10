@@ -6,7 +6,7 @@
 HERE=$(cd "$(dirname "$0")" && pwd); L=$HERE/../../sys/root/usr/lib/rudolf
 T=$(mktemp -d); trap 'pkill -f "$T/bin/udhcpc" 2>/dev/null; rm -rf $T' EXIT
 N=0; F=0; ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $3"; F=$((F+1)); fi; }
-B=$T/bin; mkdir -p $B $T/run; LOG=$T/log; : > $LOG; export LOG T
+B=$T/bin; mkdir -p $B $T/run; LOG=$T/log; : > $LOG; TT=$T; export LOG T TT
 # udhcpc: records its start, keeps a pid file, notes SIGUSR1 (renew)
 cat > $B/udhcpc <<'X'
 #!/bin/sh
@@ -24,8 +24,19 @@ case "$*" in
 *) echo "ip $*" >> $LOG ;;
 esac
 X
+# wpa_cli: the state and the network list come from files; select_network and enable_network are logged
+cat > $B/wpa_cli <<'X'
+#!/bin/sh
+while [ $# -gt 0 ]; do case "$1" in -p|-i) shift 2;; *) break;; esac; done
+case "$1" in
+status) echo "wpa_state=$(cat $TT/wstate 2>/dev/null || echo COMPLETED)" ;;
+list_networks) printf 'network id / ssid / bssid / flags\n0\tHome\tany\t%s\n' "$(cat $TT/wflags 2>/dev/null)" ;;
+select_network|enable_network) echo "wpa $*" >> $LOG; echo OK ;;
+*) echo OK ;;
+esac
+X
 chmod +x $B/*
-export WIFI_EVENT_PATH=$B:/usr/bin:/bin WIFI_EVENT_RUN=$T/run WIFI_EVENT_GRACE=1
+export WIFI_EVENT_PATH=$B:/usr/bin:/bin WIFI_EVENT_RUN=$T/run WIFI_EVENT_GRACE=1 WIFI_EVENT_RETRY=1
 E="sh $L/wifi-event"; cnt() { grep -c "$1" $LOG; }
 WPA_ID=0 $E wlan0 CONNECTED
 ok "1. joining a network asks DHCP for an address" "$([ "$(cnt 'udhcpc start')" = 1 ] && echo 1)" "$(cat $LOG)"
@@ -43,6 +54,20 @@ ok "6. another network: DHCP starts over" "$([ "$(cnt 'udhcpc start')" = $((c0 +
 # switching adapters: at once
 f0=$(cnt 'ip flush'); $E wlan0 DISCONNECTED now
 ok "7. switching adapters (now): the address goes at once" "$([ "$(cnt 'ip flush')" = $((f0 + 1)) ] && echo 1)" "$(cat $LOG)"
+# 2026111014: the move to the 2.4 GHz radio failed and wpa_supplicant set the whole network aside for 5.5 minutes
+WPA_ID=0 $E wlan0 CONNECTED; : > $LOG; echo DISCONNECTED > $T/wstate; echo '[TEMP-DISABLED]' > $T/wflags
+$E wlan0 DISCONNECTED; sleep 1.5
+ok "12. still off after the grace and the network set aside: it is chosen again (the others enabled again too)" "$(grep -q 'wpa select_network 0' $LOG && grep -q 'wpa enable_network all' $LOG && echo 1)" "$(cat $LOG)"
+grep -q "set aside" $T/run/wifi.log; ok "13. ...and that is written to the Wi-Fi log" "$([ $? = 0 ] && echo 1)"
+echo COMPLETED > $T/wstate; : > $T/wflags; WPA_ID=0 $E wlan0 CONNECTED; n=$(grep -c select_network $LOG); sleep 2.5
+ok "14. back on the network: no more tries" "$([ "$(grep -c select_network $LOG)" = "$n" ] && echo 1)" "$(cat $LOG)"
+: > $LOG; echo SCANNING > $T/wstate; : > $T/wflags; $E wlan0 DISCONNECTED; sleep 3
+ok "15. off but not set aside (still looking): left to wpa_supplicant" "$(grep -q select_network $LOG && echo 0 || echo 1)" "$(cat $LOG)"
+echo DISCONNECTED > $T/wstate; echo '[TEMP-DISABLED]' > $T/wflags; : > $LOG; WPA_ID=0 $E wlan0 CONNECTED; $E wlan0 DISCONNECTED; sleep 6.5
+ok "16. at most 4 tries for one drop" "$([ "$(grep -c 'select_network' $LOG)" = 4 ] && echo 1)" "$(grep -c select_network $LOG)"
+echo INACTIVE > $T/wstate; : > $T/wflags; : > $LOG; WPA_ID=0 $E wlan0 CONNECTED; $E wlan0 DISCONNECTED; sleep 1.5
+ok "17. off and wpa_supplicant no longer trying (INACTIVE): chosen again too" "$(grep -q 'wpa select_network 0' $LOG && echo 1)" "$(cat $LOG)"
+echo COMPLETED > $T/wstate; WPA_ID=0 $E wlan0 CONNECTED; sleep 1
 # udhcpc.sh: the same address on renewal is kept as it is
 : > $LOG; echo 10.0.0.5 > $T/addr
 PATH=$B:$PATH interface=wlan0 ip=10.0.0.5 mask=24 router=10.0.0.1 sh -c "sed 's#/etc/resolv.conf#$T/resolv#g' $L/udhcpc.sh > $T/u.sh; sh $T/u.sh renew"
@@ -50,7 +75,7 @@ ok "8. udhcpc.sh: a renewal with the same address does not take it off first" "$
 PATH=$B:$PATH interface=wlan0 ip=10.0.0.9 mask=24 sh $T/u.sh bound
 ok "9. ...another address replaces it" "$([ "$(cnt 'ip flush')" = 1 ] && grep -q '10.0.0.9/24' $LOG && echo 1)" "$(cat $LOG)"
 # wifi.sh: bgscan on saved networks and on a new one
-grep -q "BGSCAN='\"simple:30:-70:3600\"'" $L/wifi.sh && grep -q 'bgscan_all$' $L/wifi.sh && grep -q 'set_network "$ID" bgscan "$BGSCAN"' $L/wifi.sh
+grep -q "BGSCAN='\"simple:30:-78:86400\"'" $L/wifi.sh && grep -q 'bgscan_all$' $L/wifi.sh && grep -q 'set_network "$ID" bgscan "$BGSCAN"' $L/wifi.sh
 ok "10. wifi.sh sets the background scan (weak signal only) on saved networks and new ones" "$([ $? = 0 ] && echo 1)"
 grep -q 'disable_aspm' $L/wifi.sh && [ "$(cat $HERE/../../sys/root/etc/modules/rtw88_pci)" = "disable_aspm=1" ]
 ok "11. Realtek rtw88: no PCIe link power saving (at load and for a loaded driver)" "$([ $? = 0 ] && echo 1)"

@@ -72,10 +72,11 @@ start() {
 		ip link set "$o" down 2>/dev/null
 	done
 }
-# 1.5.6: look for a better radio of the same network only when the signal is weak: below -70 dBm every 30 s, otherwise
-# once an hour. On the Vivobook the router's 2.4 and 5 GHz radios (one network) took turns a few seconds apart, and a
-# change that failed left it off the network for 30 s.
-BGSCAN='"simple:30:-70:3600"'
+# 1.5.6: look for a better radio of the same network only when the signal is weak: below -78 dBm every 30 s, otherwise
+# not at all (a day). On the Vivobook the router's 2.4 and 5 GHz radios (one network) took turns a few seconds apart,
+# and a change that failed left it off the network (30 s; on 2026111014, with -70, 5.5 minutes: see wifi-event). Every
+# scan is a chance to change radios, and the 5 GHz signal there dips to -70 now and then.
+BGSCAN='"simple:30:-78:86400"'
 bgscan_all() { W list_networks | tail -n +2 | cut -f1 | while read -r id; do
 	[ -n "$id" ] && [ "$(W get_network "$id" bgscan)" != "$BGSCAN" ] && W set_network "$id" bgscan "$BGSCAN" >/dev/null; done; }
 hexname() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
