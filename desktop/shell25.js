@@ -237,7 +237,7 @@ function renameDlg(p){const o=document.createElement('div');o.className='rmodal'
 /* desktop menu with new items and widgets (replaces the V24 menu) */
 function deskNew(dirFlag){const d=deskFiles();if(!d)return;const n=uniq(d,dirFlag?'NEW FOLDER':'NEW TEXT DOCUMENT.TXT');d[n]=dirFlag?{}:'';fsSave();EXPL.forEach(f=>f());setTimeout(()=>renameDlg(homePath('DESKTOP').concat(n)),50)}
 /* 1.5.7: Ctrl+Alt+Del (rudolf-display, also with a game in front: the desktop comes forward) opens Task Manager */
-if(RD)evOn(t=>{if(/^taskmgr$/m.test(t))launch('taskmgr')});
+if(RD)evOn(t=>{if(/^taskmgr$/m.test(t))(window.__tmEvent||(()=>launch('taskmgr')))()});
 function deskMenu(x,y){
  cmenu(x,y,[['New folder',()=>deskNew(1),!!deskFiles(),{icon:'📁'}],['New text document',()=>deskNew(0),!!deskFiles(),{icon:'📄'}],['Add a widget…',()=>widgetPicker(),!!USER,{icon:'🧩'}],'-',
   ['Arrange icons by name',arrangeIcons],USER&&typeof deskIconsDlg=='function'?['Desktop icons…',deskIconsDlg,true,{icon:'🖥️'}]:null,['Refresh',()=>{layIcons();EXPL.forEach(f=>f())},true,{key:'F5'}],'-',
