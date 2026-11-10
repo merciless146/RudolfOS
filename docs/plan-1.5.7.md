@@ -163,8 +163,10 @@ Found on 2026-11-09 with Steam (Flatpak) and Among Us (Proton) on the Vivobook.
      page at 1,882 MB; Discord, when it is closed as a background app), each with its time and size.
    - **"Close apps with no window open when memory runs out"**, on by default (the memory guard's rule since 1.5.6).
 6. **What 1.5.6 leaves for later:**
-   - the installation wizards for **.AppImage** and **.bin** (Linux programs that run without installing) and **.apk**
-     (Android apps, with Waydroid; it needs the kernel's binder);
+   - the installation wizards for **.AppImage** and **.bin** (Linux programs that run without installing; built in
+     stage 9, #182). **.apk** (Android apps, with Waydroid) moved to a later version on 2026-11-10: it needs the
+     kernel's binder, Waydroid and its container tools in the system layer and a first download of about 1 GB, which
+     weighs on a 3.4 GB computer while Part 4 works to make the desktop lighter;
    - the **camera in Debian's Linux apps** (`/dev/video*` into Debian's namespace, as the account's folders are);
    - **controllers for Linux apps** (Debian and Flatpak games: `/dev/input` and the uinput rules).
 
@@ -250,7 +252,8 @@ needs the least work for the largest gain.
 7. Task Manager's "End" for apps, the memory guard's notification and game warning, and the Memory section in System
    health (Part 3, items 1, 2 and 5).
 8. The network at start-up (Part 3, item 3), and `rudolf-selftest`'s Linux and game checks (item 4).
-9. The .AppImage and .bin wizards; the camera and controllers in Debian; then .apk with Waydroid (Part 3, item 6).
+9. The .AppImage and .bin wizards; the camera and controllers in Debian (Part 3, item 6; #182). (.apk with Waydroid:
+   a later version.)
 10. Part 4, step 1: the WebKit trial on the Vivobook (no change to the system), and its measurements in this plan.
 11. Part 4, steps 2 to 4, if the trial shows it is worth it: the desktop in WebKit behind a setting, the web pages in
     Chromium's own windows, every app checked in WebKit.
@@ -261,8 +264,8 @@ needs the least work for the largest gain.
 
 Desktop: about 400 lines (Blitzen diagnostics, the recovery folder, events on the disk), and about 300 more for Part 3
 (Task Manager's apps, the notifications, the network at start-up, the new wizards). rudolfd: about 300 (ai/facts,
-logs, the recovery folder), and about 200 for Part 3 (apps/end, the selftest's checks, Debian's devices). Waydroid
-is the one new package, for .apk only. The documents' index is built by the release workflow from `docs/`, the CHANGELOG and the
+logs, the recovery folder), and about 200 for Part 3 (apps/end, the selftest's checks, Debian's devices). (Waydroid,
+for .apk, moved to a later version.) The documents' index is built by the release workflow from `docs/`, the CHANGELOG and the
 Help. The model stays the one Blitzen has. Part 4: the session and the shell's web-page handling (about 300 lines),
 Chromium's windows for web pages (about 200), the fixes found in step 4 (unknown until then); WPE WebKit and Cog are new
 packages (about 60 to 80 MB).
