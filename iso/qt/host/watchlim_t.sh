@@ -25,4 +25,18 @@ sed -n '/^desk_faults()/,/; }$/p' "$S" | sed "s#/run/rudolf#$T#g" > $T/df.sh
 sleep 30 & SP=$!; echo $SP > $T/desktop-renderer
 r=$(sh -c ". $T/df.sh; desk_faults"); x=$(awk '{print $12}' /proc/$SP/stat); kill $SP
 ok "desk_faults reads the desktop page's major faults" "$([ "$r" = "$x" ] && [ -n "$r" ] && echo 1)" "$r vs $x"
+# 1.5.6: back in front after a game, the desktop is judged from that moment (its page was hidden: Chromium slows a
+# hidden page's timers, and its heartbeat stops; the Vivobook's browser was restarted the moment Steam's game closed)
+grep 'WMN=$(cut' "$S" | sed "s#/run/rudolf#$T#g" > $T/front.sh; grep -A1 'FRONT_T -gt $MT' "$S" > $T/age.sh
+[ -s $T/front.sh ] && [ -s $T/age.sh ] || ok "the front lines were found" 0 "missing"
+front() {   # wm before, wm now -> FRONT_T set (W) or not (0)
+	echo "$2" > $T/wm; WM0=$1 FRONT_T=0 W=1000 sh -c ". $T/front.sh; echo \$FRONT_T"; }
+r=$(front "win 3a00001" desktop); ok "a game closed: the desktop's time in front starts now" "$([ "$r" = 1000 ] && echo 1)" "$r"
+r=$(front desktop desktop); ok "the desktop in front all along: nothing changes" "$([ "$r" = 0 ] && echo 1)" "$r"
+r=$(front desktop "win 3a00001"); ok "a game comes in front: nothing changes" "$([ "$r" = 0 ] && echo 1)" "$r"
+age() { W=$1 MT=$2 FRONT_T=$3 WMN=${4:-desktop} AGE=$(($1 - $2)) sh -c ". $T/age.sh; echo \$AGE"; }
+r=$(age 1000 787 1000); ok "heartbeat 213 s old, the game closed just now: judged as 0 s (not restarted)" "$([ "$r" = 0 ] && echo 1)" "$r"
+r=$(age 1070 787 1000); ok "...70 s later and still no heartbeat: 70 s (over the 60 s limit: restarted)" "$([ "$r" = 70 ] && echo 1)" "$r"
+r=$(age 1070 1065 1000); ok "a heartbeat since it came back: its own age as usual" "$([ "$r" = 5 ] && echo 1)" "$r"
+r=$(age 1400 787 0 win); ok "behind a game the desktop is not judged at all (a restart would close the game too)" "$([ "$r" = 0 ] && echo 1)" "$r"
 echo "$((N-F))/$N passed"; [ $F = 0 ]
