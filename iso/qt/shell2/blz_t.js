@@ -67,6 +67,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await p.evaluate(() => { const d = node(['C:']); d['GAME.LUAU'] = 'local p = game:GetService("Players")\nprint(p)'; codeEditor(['C:', 'GAME.LUAU']); return 1 });
   o = await p.waitForFunction(() => LUAU.checkers.roblox && LUAU.checkers.roblox.done, null, {timeout: 60000}).then(() => true, () => false);
   ok('...and opening a Roblox .LUAU file in Code Editor starts the Roblox one, keeping Pilot.lua\'s', o && await p.evaluate(() => !!LUAU.checkers.pilot && LUAU.defines.pilot >= 1));
+  // 1.5.7: a diagnostics question (blitzdiag57.js) goes through the chat with the diagnostics card; its code is never run
+  replies = ['The download was gone: `setup.deb: not found`. Likely.\n```js\nconsole.log("never run")\n```']; const n0 = asked.length;
+  await p.evaluate(`(async()=>{const W=await __W;W.blz.ask('Why did this happen: Download not found',{context:'### Log: rudolfd\\nsetup.deb: not found',contextName:'the logs',pack:'diag',norun:true,lang:'',onAnswer:(el,t)=>{window.__DIAG=t}});return 1})()`);
+  o = await p.waitForFunction(() => window.__DIAG, null, {timeout: 20000}).then(() => true, () => false);
+  ok('1.5.7: a diagnostics answer: the diagnostics card is sent with the logs, onAnswer gets the text', o && asked.length == n0 + 1 && /understand a problem on their Rudolf OS computer/.test(asked[n0].messages[0].content) && /setup\.deb: not found/.test(asked[n0].messages.at(-1).content));
+  await wait(1500);
+  ok('...and its code block is not run (no result, no second request)', asked.length == n0 + 1 && await p.evaluate(() => { const W = wins.find(w => w.body.classList.contains('blzw')); return ![...W.body.querySelectorAll('.blzres')].some(x => /never run/.test(x.textContent)) }));
   await b.close(); srv.close();
   console.log(R.filter(x => x).length + '/' + R.length + ' passed'); process.exit(R.every(x => x) ? 0 : 1);
 })().catch(e => { console.error(e); process.exit(1) });

@@ -39,10 +39,12 @@ function hlSummary(ev,now){const wk=ev.filter(e=>now-e.t<7*86400),cnt=k=>wk.filt
   ['Crashes this week',String(cnt('crash')+cnt('browser'))],['Pages closed to free memory',String(cnt('memory'))],['Update fallbacks',String(cnt('fallback'))],['Failed sign-ins this week',String(cnt('signin'))]]}
 function healthPanel(c,W){
  c.innerHTML=`<h3>System health</h3><p class='msg' style='margin:0 0 10px'>What happened on this computer: start-ups, crashes, memory, updates, sign-in failures, the firewall and remote access. It is kept on this computer only and is never sent anywhere. Power and battery is here too, below the summary. <b>Report a problem</b> includes the latest events, after you have read the report.</p>
-<div class='hls r2'></div><h4 class='sh4 hlev'>Events</h4><div class='rmrow' style='justify-content:flex-start;gap:6px;margin-bottom:6px'><select class='hlk'><option value=''>All events</option></select><button class='hlr'>Refresh</button><button class='hlp'>Report a problem…</button></div><div class='hll' style='font-size:13px'></div>`;
+<div class='hls r2'></div><h4 class='sh4 hlev'>Events</h4><div class='rmrow' style='justify-content:flex-start;gap:6px;margin-bottom:6px'><select class='hlk'><option value=''>All events</option></select><button class='hlr'>Refresh</button><button class='hlp'>Report a problem…</button><button class='hlw' hidden>⚡ What's wrong with this computer?</button></div><div class='hll' style='font-size:13px'></div>`;
  const sel=c.querySelector('.hlk');for(const k in HL_KIND){const o=document.createElement('option');o.value=k;o.textContent=HL_KIND[k][0]+' '+HL_KIND[k][1];sel.appendChild(o)}
  const L=c.querySelector('.hll'),Sm=c.querySelector('.hls');
  c.querySelector('.hlp').onclick=()=>{if(typeof sysReportDialog=='function')sysReportDialog()};
+ /* 1.5.7: Blitzen reads the logs and explains (blitzdiag57.js) */
+ if(typeof bzCan=='function'&&bzCan()){const w=c.querySelector('.hlw');w.hidden=false;w.onclick=()=>bzWhy("What's wrong with this computer?",{all:1})}
  const draw=async()=>{L.textContent='Loading…';const h=await hlGet(500);
   if(!h){L.innerHTML='<i style="color:#6b7280">The health log is kept by the installed Rudolf OS (bootable disc or USB).</i>';Sm.innerHTML='';return}
   Sm.innerHTML='';hlSummary(h.events,h.now).forEach(([a,b])=>{const l=document.createElement('label');l.textContent=a;const v=document.createElement('div');v.textContent=b;Sm.append(l,v)});
@@ -50,7 +52,8 @@ function healthPanel(c,W){
   if(!ev.length){L.innerHTML='<i style="color:#6b7280">Nothing recorded.</i>';return}
   ev.slice(0,300).forEach(e=>{const r=document.createElement('div');r.className='acr';r.style.cssText='display:flex;gap:8px;align-items:baseline;padding:3px 0;border-bottom:1px solid rgba(128,128,128,.15)';
    const k=HL_KIND[e.k]||['•',e.k];r.innerHTML=`<span style='min-width:1.4em'></span><span style='min-width:150px;color:#6b7280;font-size:12px'></span><span></span>`;
-   r.children[0].textContent=k[0];r.children[0].title=k[1];r.children[1].textContent=hlWhen(e.t);r.children[2].textContent=e.m;L.appendChild(r)})};
+   r.children[0].textContent=k[0];r.children[0].title=k[1];r.children[1].textContent=hlWhen(e.t);r.children[2].textContent=e.m;
+   if(typeof bzCan=='function'&&bzCan()&&(['crash','browser','memory','fallback','signin'].includes(e.k)||bzIsError(e.m)))bzWhyBtn(r,{t:k[1]+': '+e.m,b:'',k:'error'},{when:e.t*1000});L.appendChild(r)})};
  sel.onchange=draw;c.querySelector('.hlr').onclick=draw;draw();
  /* 1.5.6: Power and battery (power31.js), moved here from System Settings */
  if(typeof pwrPanel=='function')try{pwrPanel(c,W)}catch(e){console.warn(e)}}
