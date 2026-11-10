@@ -34,7 +34,12 @@ function api(method, a, q, body) { const p = new URLSearchParams(q || ''); CALLS
   if (a == 'home/delete') { [...m.keys()].forEach(k => { if (k == rel || k.startsWith(rel + '/')) m.delete(k) }); return [200, {ok: true}] }
   if (a == 'home/copy') { const f = p.get('from'), t = p.get('to'); const x = m.get(f); if (!x) return [404, {ok: false, error: 'not found'}]; parents(m, t); m.set(t, {b: x.b, v: ver()}); return [200, {ok: true}] }
   if (a == 'home/adopt') { const f = p.get('from'), t = p.get('to'); const b = DLFILES.get(f); if (!b) return [404, {ok: false, error: 'the download is not there'}]; DLFILES.delete(f); parents(m, t); const v = ver(); m.set(t, {b, v}); return [200, {ok: true, v}] }
+  // 1.5.7: the recovery folder
+  if (a == 'home/recovered') return [200, {ok: true, days: 7, items: REC}];
+  if (a == 'home/restore') { const i = REC.findIndex(x => x.id == p.get('id')); if (i < 0) return [404, {ok: false, error: 'it is no longer there'}]; const x = REC.splice(i, 1)[0]; parents(m, x.from); m.set(x.from, {b: Buffer.from('recovered'), v: ver()}); return [200, {ok: true, path: x.from}] }
+  if (a == 'home/forget') { const i = REC.findIndex(x => x.id == p.get('id')); if (i >= 0) REC.splice(i, 1); return [200, {ok: true}] }
   return [404, {ok: false, error: 'unknown'}] }
+const REC = [];
 const srv = http.createServer((q, s) => { const [u0, qs] = q.url.split('?'); const u = decodeURIComponent(u0); const ch = [];
   q.on('data', c => ch.push(c)); q.on('end', () => {
     if (u == '/' || u == '/index.html') { s.writeHead(200, {'content-type': 'text/html'});
@@ -98,6 +103,18 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('13. a file changed by another program and here: both kept', d.get('Documents/RENAMED.TXT').b.toString() == 'changed by an app' && d.get('Documents/RENAMED (desktop copy).TXT') && d.get('Documents/RENAMED (desktop copy).TXT').b.toString() == 'changed here', [...d.keys()]);
   n0 = CALLS.length; await q("(()=>{delete HOME.PICTURES.TRIP;fsSave()})()"); await q("SETTLE()");
   ok('14. deleting a folder: one delete for the folder', CALLS.slice(n0).filter(c => /home\/delete/.test(c)).length == 1 && !d.has('Pictures/TRIP') && !d.has('Pictures/TRIP/DOT.PNG'), CALLS.slice(n0));
+  // 1.5.7 (plan stage 4): gone without going to the Trash: rudolfd keeps it in Recovered; through the Trash: deleted
+  ok('14b. 1.5.7: a folder gone from the files without going to the Trash is deleted with recover (kept 7 days)', CALLS.slice(n0).some(c => /home\/delete\?acct=u-ann&path=Pictures%2FTRIP&recover=the%20desktop%2C%20without%20going%20to%20the%20Trash/.test(c)), CALLS.slice(n0));
+  await q("(()=>{HOME.DOCUMENTS['TRASHME.TXT']='to the Trash';fsSave()})()"); await q("SETTLE()");
+  n0 = CALLS.length; await q("(()=>{const v=HOME.DOCUMENTS['TRASHME.TXT'];TR.push({n:'TRASHME.TXT',v,from:['C:','DOCUMENTS'],at:Date.now()});trSave();delete HOME.DOCUMENTS['TRASHME.TXT'];fsSave()})()"); await q("SETTLE()");
+  ok('14c. ...a file put in the Trash by the person is deleted for good (the Trash has it)', CALLS.slice(n0).some(c => /^POST home\/delete\?acct=u-ann&path=Documents%2FTRASHME.TXT$/.test(c)), CALLS.slice(n0));
+  REC.push({id: '1762800000-abcdef', at: 1762800000, why: 'the desktop, without going to the Trash', from: 'Pictures/TRIP', name: 'TRIP', d: 1, s: 4096});
+  await q("(()=>{trash();return 1})()"); await wait(800);
+  const rp = await q("(()=>{const b=document.querySelector('.recp');return b&&!b.hidden?b.textContent:null})()");
+  ok('14d. the Trash shows "Recovered automatically" with the item, where it was, Restore and Delete now', rp && /Recovered automatically/.test(rp) && /TRIP/.test(rp) && /Pictures/.test(rp) && /Restore/.test(rp) && /Delete now/.test(rp), rp);
+  n0 = CALLS.length; await q("(()=>{document.querySelector('.recp .rr').click();return 1})()"); await wait(1200);
+  ok('14e. Restore asks rudolfd to put it back, and the files show it again', CALLS.slice(n0).some(c => /^POST home\/restore\?acct=u-ann&id=1762800000-abcdef/.test(c)) && await q("HOME.PICTURES.TRIP==='recovered'||!!HOME.PICTURES.TRIP") && await q("document.querySelector('.recp').hidden"), CALLS.slice(n0));
+  await q("(()=>{wins.filter(w=>w.body&&w.body.querySelector('.recp')).forEach(w=>w.close&&w.close());return 1})()");
   // sign out: written, then locked; sign in again: read back
   await q("(()=>{HOME.DOCUMENTS['LAST.TXT']='written at sign-out';userLogout();USER=null;return 1})()"); await wait(800);
   const lockAt = CALLS.findIndex(c => /^POST home\/lock\?acct=u-ann/.test(c)), lastAt = CALLS.findIndex(c => /path=Documents%2FLAST.TXT/.test(c));

@@ -127,6 +127,30 @@ o=$(t "POST home/append?acct=u-boss&path=.rudolf/events.log <$T/e2")
 ok "26d. past 256 KiB the log moves to events.log.1 and a new one starts" "$([ "$(stat -c %s $R/u-boss/.rudolf/events.log.1)" = 270000 ] && [ "$(cat $R/u-boss/.rudolf/events.log)" = '2026-11-10T10:00:01Z fw two' ] && echo 1)" "$o"
 o=$(t "POST home/lock?acct=u-boss" "POST home/append?acct=u-boss&path=.rudolf/events.log <$T/e2")
 ok "26e. a locked folder is not written (423)" "$(echo "$o" | sed -n 2p | grep -q ' 423 ' && echo 1)" "$o"
+# 1.5.7 (plan stage 4): what a background task deletes is kept in .Recovered for 7 days; the Trash gives it back
+o=$(t "POST home/unlock?acct=u-boss <$T/k1" "POST home/mkdir?acct=u-boss&path=Documents/Rec" "POST home/write?acct=u-boss&path=Documents/Rec/keep.txt <$T/a" "POST home/delete?acct=u-boss&path=Documents/Rec/keep.txt&recover=the%20desktop's%20sync")
+ok "27a. delete with recover: the file leaves its place for .Recovered/<id>/, with where it was and why" "$([ ! -e $R/u-boss/Documents/Rec/keep.txt ] && [ "$(cat $R/u-boss/.Recovered/*/keep.txt)" = 'Dear diary' ] && grep -qx 'Documents/Rec/keep.txt' $R/u-boss/.Recovered/*/.from && echo "$o" | tail -1 | grep -q '"recovered"' && echo 1)" "$o $(ls -laR $R/u-boss/.Recovered)"
+ok "27b. ...and the health log says so" "$(grep -q '"k":"recover".*Documents/Rec/keep.txt was deleted by the desktop.s sync and kept in Recovered for 7 days' /run/rudolf/health.log && echo 1)" "$(tail -2 /run/rudolf/health.log)"
+o=$(t "GET home/recovered?acct=u-boss"); ID=$(echo "$o" | sed -n 's/.*"id":"\([0-9a-f-]*\)".*/\1/p' | head -1)
+ok "27c. home/recovered lists it: where it was, why, its size" "$(echo "$o" | grep -q '"from":"Documents/Rec/keep.txt"' && echo "$o" | grep -q '"why":"the desktop.s sync"' && echo "$o" | grep -q '"name":"keep.txt","d":0,"s":10' && echo 1)" "$o"
+rm -rf $R/u-boss/Documents/Rec
+o=$(t "POST home/restore?acct=u-boss&id=$ID" "GET home/recovered?acct=u-boss")
+ok "27d. restore puts it back where it was, making the folder again; it leaves Recovered" "$([ "$(cat $R/u-boss/Documents/Rec/keep.txt)" = 'Dear diary' ] && echo "$o" | sed -n 1p | grep -q '"path":"Documents/Rec/keep.txt"' && echo "$o" | sed -n 2p | grep -q '"items":\[\]' && echo 1)" "$o"
+o=$(t "POST home/delete?acct=u-boss&path=Documents/Rec/keep.txt&recover=sync" "POST home/write?acct=u-boss&path=Documents/Rec/keep.txt <$T/b" "GET home/recovered?acct=u-boss"); ID=$(echo "$o" | sed -n 's/.*"id":"\([0-9a-f-]*\)".*/\1/p' | head -1)
+o=$(t "POST home/restore?acct=u-boss&id=$ID")
+ok "27e. a new file in its place stays; the recovered one comes back beside it as keep (2).txt" "$([ "$(cat $R/u-boss/Documents/Rec/keep.txt)" = v2 ] && [ "$(cat "$R/u-boss/Documents/Rec/keep (2).txt")" = 'Dear diary' ] && echo "$o" | grep -q '"path":"Documents/Rec/keep (2).txt"' && echo 1)" "$o"
+o=$(t "POST home/delete?acct=u-boss&path=Documents/Rec&recover=sync" "GET home/recovered?acct=u-boss"); ID=$(echo "$o" | sed -n 's/.*"id":"\([0-9a-f-]*\)".*/\1/p' | head -1)
+ok "27f. a folder is kept whole (its size is its files')" "$(echo "$o" | sed -n 2p | grep -q '"name":"Rec","d":1,"s":12' && echo 1)" "$o"
+o=$(t "POST home/forget?acct=u-boss&id=$ID" "GET home/recovered?acct=u-boss")
+ok "27g. forget deletes it at once" "$([ -z "$(ls $R/u-boss/.Recovered)" ] && echo "$o" | sed -n 2p | grep -q '"items":\[\]' && echo 1)" "$o"
+OLD=$(( $(date +%s) - 8*86400 )); mkdir -p $R/u-boss/.Recovered/$OLD-abcd/x; echo 'Documents/x' > $R/u-boss/.Recovered/$OLD-abcd/.from
+NEW=$(( $(date +%s) - 6*86400 )); mkdir -p $R/u-boss/.Recovered/$NEW-abcd/y; printf 'Documents/y\nsync\n' > $R/u-boss/.Recovered/$NEW-abcd/.from
+o=$(t "GET home/recovered?acct=u-boss")
+ok "27h. after 7 days it is deleted; 6 days old stays" "$([ ! -e $R/u-boss/.Recovered/$OLD-abcd ] && [ -d $R/u-boss/.Recovered/$NEW-abcd ] && echo 1)" "$o $(ls $R/u-boss/.Recovered)"
+o=$(t "POST home/restore?acct=u-boss&id=../x" "POST home/restore?acct=u-boss&id=99-zz" "POST home/delete?acct=u-boss&path=.Recovered&recover=sync" "POST home/forget?acct=u-boss&id=1-abcd")
+ok "27i. bad ids, Recovered itself and missing items are refused" "$(echo "$o" | sed -n 1p | grep -q ' 400 ' && echo "$o" | sed -n 2p | grep -q ' 400 ' && echo "$o" | sed -n 3p | grep -q ' 400 ' && echo "$o" | sed -n 4p | grep -q ' 404 ' && [ -d $R/u-boss/.Recovered ] && echo 1)" "$o"
+o=$(t "POST home/write?acct=u-boss&path=Documents/gone.txt <$T/a" "POST home/delete?acct=u-boss&path=Documents/gone.txt")
+ok "27j. a delete without recover (the person's own) is for good" "$([ ! -e $R/u-boss/Documents/gone.txt ] && ! grep -rqs 'gone.txt' $R/u-boss/.Recovered && echo 1)" "$o"
 o=$(BIND=1 t "POST home/lock?acct=u-boss")
 umount /run/rudolf/dl 2>/dev/null; umount -R /home; umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]

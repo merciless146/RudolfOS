@@ -22,7 +22,8 @@
  *   POST home/mkdir?acct=ID&path=P
  *   POST home/rename?acct=ID&from=P&to=Q[&replace=1]
  *   POST home/copy?acct=ID&from=P&to=Q
- *   POST home/delete?acct=ID&path=P    (for good; the Trash comes in stage 4)
+ *   POST home/delete?acct=ID&path=P[&recover=WHY]   (for good; with recover, kept in .Recovered for 7 days: 1.5.7)
+ *   GET  home/recovered?acct=ID        POST home/restore?acct=ID&id=X   POST home/forget?acct=ID&id=X   (1.5.7)
  *   POST home/adopt?acct=ID&from=D&to=P   a large download (stage 2) moved from Downloads into the folder
  * Downloads and the Linux apps' Downloads folder stay as in 1.5.5 until stage 4 (Chromium's .incoming lives there). */
 #define HOME_ROOT_DEF PERSIST "/accounts"
@@ -299,6 +300,78 @@ static int home_write_at(int pf, const char *name, const void *buf, size_t n, in
 	home_ver(&st, v, vn); return 0;
 }
 
+/* 1.5.7 (plan stage 4): what a background task deletes (the desktop's sync, the Trash's clean-up) goes to the account's
+   .Recovered folder for 7 days instead: .Recovered/<seconds>-<random>/<the item> with .from ("path\nwhy\n"). The Trash
+   lists it (home/recovered), gives it back (home/restore) or deletes it at once (home/forget); the health log says
+   what went there and why. Older than 7 days, it is deleted (at sign-in and at each new one). */
+static int dl_name_taken(int dd, const char *n);
+#define REC_DIR ".Recovered"
+#define REC_DAYS 7
+static int rec_id_ok(const char *id)
+{
+	if (!id || !*id || strlen(id) > 40) return 0;
+	for (const char *c = id; *c; c++) if (!isdigit((unsigned char)*c) && !(*c >= 'a' && *c <= 'f') && *c != '-') return 0;
+	return isdigit((unsigned char)id[0]);
+}
+static void rec_sweep(int root)
+{
+	int rd = openat(root, REC_DIR, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); if (rd < 0) return;
+	int d2 = dup(rd); DIR *d = d2 >= 0 ? fdopendir(d2) : NULL; struct dirent *e; char old[64][48]; int n = 0;
+	time_t now = time(NULL);
+	while (d && (e = readdir(d)) && n < 64) { if (!rec_id_ok(e->d_name)) continue; long long t = atoll(e->d_name); if (t > 0 && now - t > REC_DAYS * 86400L) snprintf(old[n++], 48, "%s", e->d_name); }
+	if (d) closedir(d); else if (d2 >= 0) close(d2);
+	for (int i = 0; i < n; i++) home_rm_at(rd, old[i]);
+	if (n) fprintf(stderr, "rudolfd: %d recovered item(s) older than %d days deleted\n", n, REC_DAYS);
+	close(rd);
+}
+/* move rel into .Recovered; 0 ok, -1 errno set (ENOENT: it was not there) */
+static int rec_put(int root, const char *rel, const char *why)
+{
+	char last[256]; int pf = home_parent(root, rel, last, sizeof last, 0); if (pf < 0) return -1;
+	struct stat st; if (fstatat(pf, last, &st, AT_SYMLINK_NOFOLLOW)) { int e = errno; close(pf); errno = e; return -1; }
+	if (mkdirat(root, REC_DIR, 0700) && errno != EEXIST) { int e = errno; close(pf); errno = e; return -1; }
+	fchownat(root, REC_DIR, home_uid, home_uid, AT_SYMLINK_NOFOLLOW);
+	int rd = openat(root, REC_DIR, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); if (rd < 0) { int e = errno; close(pf); errno = e; return -1; }
+	char id[48]; int mk = -1;
+	for (int tries = 0; tries < 8 && mk; tries++) {   /* many in one second (a folder's worth): another random part */
+		unsigned char rb[3] = {0, 0, 0}; int u = open("/dev/urandom", O_RDONLY | O_CLOEXEC); if (u >= 0) { if (read(u, rb, 3) != 3) {} close(u); }
+		snprintf(id, sizeof id, "%lld-%02x%02x%02x", (long long)time(NULL), rb[0], rb[1], rb[2]);
+		mk = mkdirat(rd, id, 0700); if (mk && errno != EEXIST) break; }
+	if (mk) { int e = errno; close(rd); close(pf); errno = e; return -1; }
+	fchownat(rd, id, home_uid, home_uid, AT_SYMLINK_NOFOLLOW);
+	int sd = openat(rd, id, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+	int rc = sd < 0 ? -1 : renameat(pf, last, sd, last); int e = errno; close(pf);
+	if (rc) { if (sd >= 0) close(sd); unlinkat(rd, id, AT_REMOVEDIR); close(rd); errno = e; return -1; }
+	int f = openat(sd, ".from", O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0600);
+	if (f >= 0) { char b[4400]; int n = snprintf(b, sizeof b, "%s\n%s\n", rel, why); if (write(f, b, n) < 0) {} fchown(f, home_uid, home_uid); close(f); }
+	close(sd); close(rd);
+	health_add("recover", "%s%s was deleted by %s and kept in Recovered for %d days (the Trash can give it back)", rel, S_ISDIR(st.st_mode) ? " (a folder)" : "", why, REC_DAYS);
+	rec_sweep(root);
+	return 0;
+}
+/* the item in a .Recovered/<id> and where it was: 0 ok */
+static int rec_read(int rd, const char *id, char *name, size_t nn, char *from, size_t fn, char *why, size_t wn)
+{
+	int sd = openat(rd, id, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); if (sd < 0) return -1;
+	char b[4400] = ""; int f = openat(sd, ".from", O_RDONLY | O_NOFOLLOW | O_CLOEXEC); if (f >= 0) { ssize_t k = read(f, b, sizeof b - 1); if (k > 0) b[k] = 0; close(f); }
+	char *nl = strchr(b, '\n'); if (nl) { *nl = 0; char *w = nl + 1, *n2 = strchr(w, '\n'); if (n2) *n2 = 0; snprintf(why, wn, "%s", w); } else snprintf(why, wn, "%s", "");
+	snprintf(from, fn, "%s", b);
+	int d2 = dup(sd); DIR *d = d2 >= 0 ? fdopendir(d2) : NULL; struct dirent *e; *name = 0;
+	while (d && (e = readdir(d))) { if (e->d_name[0] == '.' && (!e->d_name[1] || !strcmp(e->d_name, "..") || !strcmp(e->d_name, ".from"))) continue; snprintf(name, nn, "%s", e->d_name); break; }
+	if (d) closedir(d); else if (d2 >= 0) close(d2);
+	close(sd); return *name && *from && home_rel_ok(from) ? 0 : -1;
+}
+static long long rec_bytes(int dfd, const char *n)
+{
+	struct stat st; if (fstatat(dfd, n, &st, AT_SYMLINK_NOFOLLOW)) return 0;
+	if (!S_ISDIR(st.st_mode)) return S_ISREG(st.st_mode) ? st.st_size : 0;
+	int c = openat(dfd, n, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); if (c < 0) return 0;
+	int d2 = dup(c); DIR *d = d2 >= 0 ? fdopendir(d2) : NULL; struct dirent *e; long long t = 0;
+	while (d && (e = readdir(d))) if (strcmp(e->d_name, ".") && strcmp(e->d_name, "..")) t += rec_bytes(c, e->d_name);
+	if (d) closedir(d); else if (d2 >= 0) close(d2);
+	close(c); return t;
+}
+
 static void api_home(struct req *r, const char *what, int post)
 {
 	if (!*what && !post) {
@@ -325,6 +398,7 @@ static void api_home(struct req *r, const char *what, int post)
 		char err[200] = ""; int made = 0, st = home_unlock(acct, key, session, err, sizeof err, &made); explicit_bzero(key, sizeof key);
 		if (st) { if (st == 403) health_add("vault", "an account's folder was not opened: the key did not match"); reply_err(r->fd, st, err); return; }
 		/* stage 4: "made" when the folder is new (the desktop then fills it from a restored backup, if it has one) */
+		{ int rt = home_root_fd(acct); if (rt >= 0) { rec_sweep(rt); close(rt); } }   /* 1.5.7: recovered items older than 7 days */
 		reply_ok(r->fd, made ? "made" : "unlocked"); return;
 	}
 	if (!strcmp(what, "lock")) {
@@ -387,7 +461,46 @@ static void api_home(struct req *r, const char *what, int post)
 		size_t L = strlen(acct) + strlen(p1) + 16; char *c = malloc(L); snprintf(c, L, "home:%s:%s\n", acct, p1); write_str(lf, c); free(c);
 		str s = {0}; sadd(&s, "{\"ok\":true,\"url\":\"/dlf/%s\"}", id); reply_json(r->fd, &s); return;
 	}
+	if (!strcmp(what, "recovered")) {   /* 1.5.7: [{"id","at","why","from","name","d","s"}], newest first */
+		rec_sweep(root);
+		int rd = openat(root, REC_DIR, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); close(root);
+		str s = {0}; int n = 0; sadd(&s, "{\"ok\":true,\"days\":%d,\"items\":[", REC_DAYS);
+		if (rd >= 0) {
+			int d2 = dup(rd); DIR *d = d2 >= 0 ? fdopendir(d2) : NULL; struct dirent *e; char ids[256][48]; int k = 0;
+			while (d && (e = readdir(d)) && k < 256) if (rec_id_ok(e->d_name)) snprintf(ids[k++], 48, "%s", e->d_name);
+			if (d) closedir(d); else if (d2 >= 0) close(d2);
+			for (int i = 0; i < k; i++) for (int j = i + 1; j < k; j++) if (atoll(ids[j]) > atoll(ids[i])) { char t[48]; memcpy(t, ids[i], 48); memcpy(ids[i], ids[j], 48); memcpy(ids[j], t, 48); }
+			for (int i = 0; i < k; i++) {
+				char nm[256], from[4096], why[200]; if (rec_read(rd, ids[i], nm, sizeof nm, from, sizeof from, why, sizeof why)) continue;
+				int sd = openat(rd, ids[i], O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); struct stat st; int isd = 0; long long by = 0;
+				if (sd >= 0) { if (!fstatat(sd, nm, &st, AT_SYMLINK_NOFOLLOW)) isd = S_ISDIR(st.st_mode); by = rec_bytes(sd, nm); close(sd); }
+				sadd(&s, "%s{\"id\":", n++ ? "," : ""); sjson(&s, ids[i]); sadd(&s, ",\"at\":%lld,\"why\":", atoll(ids[i])); sjson(&s, why);
+				sadd(&s, ",\"from\":"); sjson(&s, from); sadd(&s, ",\"name\":"); sjson(&s, nm); sadd(&s, ",\"d\":%d,\"s\":%lld}", isd, by);
+			}
+			close(rd);
+		}
+		sadd(&s, "]}"); reply_json(r->fd, &s); return;
+	}
 	if (!post) { close(root); reply_err(r->fd, 400, "use POST"); return; }
+	if (!strcmp(what, "restore") || !strcmp(what, "forget")) {   /* 1.5.7: a recovered item back where it was, or deleted now */
+		const char *id = qparam(r->query, "id");
+		if (!rec_id_ok(id)) { close(root); reply_err(r->fd, 400, "bad id"); return; }
+		int rd = openat(root, REC_DIR, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+		char nm[256], from[4096], why[200];
+		if (rd < 0 || rec_read(rd, id, nm, sizeof nm, from, sizeof from, why, sizeof why)) { if (rd >= 0) close(rd); close(root); reply_err(r->fd, 404, "it is no longer there"); return; }
+		if (!strcmp(what, "forget")) { int rc = home_rm_at(rd, id); close(rd); close(root); if (rc) { reply_err(r->fd, 500, "it could not all be deleted"); return; } reply_ok(r->fd, "deleted"); return; }
+		char last[256]; int pf = home_parent(root, from, last, sizeof last, 1);
+		if (pf < 0) { close(rd); close(root); reply_err(r->fd, 409, "the folder it was in cannot be made again"); return; }
+		char t[300]; snprintf(t, sizeof t, "%s", last); size_t l = strlen(last);
+		for (int k = 2; dl_name_taken(pf, t) && k < 1000; k++) { const char *dot = strrchr(last, '.'); if (!dot || dot == last) dot = last + l; snprintf(t, sizeof t, "%.*s (%d)%s", (int)(dot - last), last, k, dot); }
+		int sd = openat(rd, id, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+		int rc = sd < 0 ? -1 : renameat(sd, nm, pf, t); if (sd >= 0) close(sd);
+		if (!rc) home_rm_at(rd, id);
+		close(pf); close(rd);
+		if (rc) { close(root); reply_err(r->fd, 500, "it could not be put back"); return; }
+		char where[4400]; size_t pl = strlen(from) - l; snprintf(where, sizeof where, "%.*s%s", (int)pl, from, t);
+		close(root); str s = {0}; sadd(&s, "{\"ok\":true,\"path\":"); sjson(&s, where); sadd(&s, "}"); reply_json(r->fd, &s); return;
+	}
 	if (!strcmp(what, "append")) {
 		/* 1.5.7: the desktop's Event Viewer events, kept in the account's folder (.rudolf/events.log); only a .log
 		   file directly in .rudolf, a line or a few at a time, kept to 256 KiB and the one before it (.1) */
@@ -464,6 +577,14 @@ static void api_home(struct req *r, const char *what, int post)
 	}
 	if (!strcmp(what, "delete")) {
 		if (!*p1) { close(root); reply_err(r->fd, 400, "the account's folder itself cannot be deleted"); return; }
+		/* 1.5.7: recover=WHY (a deletion no person asked for): kept in .Recovered for 7 days instead */
+		{ const char *why = qparam(r->query, "recover");
+		  if (why && *why) { char w[60]; size_t i = 0; for (; why[i] && i < sizeof w - 1; i++) w[i] = isalnum((unsigned char)why[i]) || strchr(" -_.,", why[i]) ? why[i] : ' '; w[i] = 0;
+		    if (!strncmp(p1, REC_DIR, strlen(REC_DIR)) && (!p1[strlen(REC_DIR)] || p1[strlen(REC_DIR)] == '/')) { close(root); reply_err(r->fd, 400, "already recovered"); return; }
+		    int rc = rec_put(root, p1, w); int e = errno; close(root);
+		    if (rc && e == ENOENT) { reply_ok(r->fd, "not there"); return; }
+		    if (rc) { reply_err(r->fd, 500, "it could not be kept"); return; }
+		    reply_ok(r->fd, "recovered"); return; } }
 		char last[256]; int pf = home_parent(root, p1, last, sizeof last, 0); close(root);
 		if (pf < 0) { reply_ok(r->fd, "not there"); return; }
 		int rc = home_rm_at(pf, last); close(pf);
