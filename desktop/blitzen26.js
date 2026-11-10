@@ -87,7 +87,7 @@ function blzSetupPage(W,ask){const st=BLZ.st;W.setTitle('Set up Blitzen');
  if(!st.persistent){f.innerHTML="<p class='msg'>Blitzen's model is kept on the data partition, so it needs Rudolf OS installed (Settings › Update and recovery › Install here…). It cannot be kept on the live disc.</p>";return}
  if(!isAdmin()){f.innerHTML="<p class='msg'>An administrator downloads Blitzen once; after that every account can use it.</p>";return}
  f.innerHTML=`<div class='rmrow' style='justify-content:flex-start'><button class='dsgo pri'>${st.partial?'Continue the download':'Download Blitzen'}</button></div>`;
- f.querySelector('.dsgo').onclick=async()=>{err.textContent='';try{await lxApi('ai/download')}catch(e){return err.textContent=e.message}
+ f.querySelector('.dsgo').onclick=async()=>{err.textContent='';if(typeof netGate=='function')await netGate(t=>err.textContent=t);try{await lxApi('ai/download')}catch(e){return err.textContent=e.message}
   f.hidden=true;const pg=W.body.querySelector('.dsprog');pg.hidden=false;const step=pg.querySelector('.dsstep'),bar=pg.querySelector('.dsbar i');
   const j=await lxJobWait(l=>{let m;if((m=/^step (.*)/.exec(l)))step.textContent=m[1]+'…';else if((m=/^progress (\d+)/.exec(l)))bar.style.width=m[1]+'%';else if(/^done /.test(l)){step.textContent=l.slice(5);bar.style.width='100%'}});
   if(j.status!=0){pg.hidden=true;f.hidden=false;err.textContent=((j.log||'').trim().split('\n').pop()||'The download failed.').replace(/^rudolf-ai: /,'');await blzStatus();if(BLZ.st&&BLZ.st.partial)f.querySelector('.dsgo').textContent='Continue the download';return}

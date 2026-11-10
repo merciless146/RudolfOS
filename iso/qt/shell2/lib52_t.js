@@ -23,6 +23,7 @@ const api = (a, q) => {
   if (a == 'job') return {ok: true, ...M.job};
   if (a == 'fs/list') return {ok: true, items: M.dsGames.map(x => ({name: x, dir: false, size: 1, mtime: 1}))};
   if (a == 'apps/status') return {ok: true, flatpak: true, persistent: true};
+  if (a == 'net') return {ok: true, interfaces: [{name: 'eth0', state: 'up', ip: '10.0.2.15', default: true}]};   // (1.5.7: online)
   if (a == 'apps/installed') return {ok: true, apps: []};
   if (a == 'system') return {ok: true, renderer: 'AMD'};
   if (a == 'events/wait') return {ok: true, events: []};
