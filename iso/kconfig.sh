@@ -105,6 +105,10 @@ fi
 y SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD CRYPTO_ZSTD PSI LRU_GEN LRU_GEN_ENABLED
 n PSI_DEFAULT_DISABLED ZRAM_DEF_COMP_LZORLE ZRAM_DEF_COMP_LZO
 y ZRAM_DEF_COMP_ZSTD
+# 1.5.6: memory groups (cgroup v2's memory controller), so the desktop's browser keeps its memory (memory.low, set in
+# /usr/lib/rudolf/memory): on the Vivobook its pages went to the swap behind Steam and Discord, and closing Steam left
+# it white until the watchdog restarted it. x86_64_defconfig leaves it off
+y CGROUPS MEMCG
 # 1.5.0: the firewall for incoming connections (nftables, /usr/lib/rudolf/firewall) and file encryption for the data
 # on RUDOLFDATA (fscrypt on ext4: /persist/vault, rudolfd unlocks it at sign-in; AES-256-XTS and AES-256-CTS)
 y NETFILTER NETFILTER_ADVANCED NF_CONNTRACK NF_TABLES NF_TABLES_INET NF_TABLES_IPV4 NF_TABLES_IPV6 NFT_CT NFT_LIMIT NFT_LOG NFT_REJECT NFT_REJECT_INET
@@ -175,7 +179,7 @@ make olddefconfig >/dev/null
 for o in $HOTKEYS; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig (a dependency is missing)"; exit 1; }; done
 grep -q "^CONFIG_IPV6_SIT=y\|^CONFIG_IPV6_SIT=m" .config && { echo "kconfig.sh: IPV6_SIT is still on"; exit 1; }
 # 1.4.7: the memory options are on
-for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU_GEN_ENABLED; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
+for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU_GEN_ENABLED CGROUPS MEMCG; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 for o in $SOFM $AMPS $SPIM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the sound driver $o is not a module after olddefconfig"; exit 1; }; done
 for o in $SOFOLD; do grep -qE "^CONFIG_$o=(y|m)$" .config && { echo "kconfig.sh: $o is on: its SOF firmware is not shipped, so it must stay on HDA"; exit 1; }; done
 for o in $SOFY $SPIY; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the sound option $o is not on after olddefconfig"; exit 1; }; done
