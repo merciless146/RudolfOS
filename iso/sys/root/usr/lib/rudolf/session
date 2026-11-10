@@ -215,7 +215,7 @@ while :; do
 	# 1.5.6: after sleep the heartbeat is as old as the sleep (on the Vivobook 5722 s), and the browser was restarted
 	# on waking, closing every window: a gap in this loop's own clock means the computer slept, and the desktop gets
 	# 90 s to send its heartbeat again
-	LASTW=$(date +%s); GRACE=0; MF0=0; BUSY_T=0
+	LASTW=$(date +%s); GRACE=0; MF0=0; BUSY_T=0; FRONT_T=0; WM0=desktop
 	while kill -0 $B 2>/dev/null; do
 		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] || [ -e /run/rudolf/shell-switch ] && break; done
 		W=$(date +%s); if [ $((W - LASTW)) -gt 40 ]; then echo "$(date) woke after $((W - LASTW)) s - the desktop has 90 s to answer"; GRACE=$((W + 90)); fi; LASTW=$W
@@ -227,6 +227,8 @@ while :; do
 		# 1.5.6: is the desktop working its way back? Its pages being read back from the compressed swap (major faults
 		# of the desktop page and the browser) or the whole computer waiting for memory (PSI) count as busy
 		MF=$(desk_faults); [ $MF -gt $MF0 ] && [ $MF0 -gt 0 ] && BUSY_T=$W; MF0=$MF
+		# 1.5.6: the moment the desktop came back in front (an app or a game closed or put aside): see FRONT_T below
+		WMN=$(cut -d' ' -f1 /run/rudolf/wm 2>/dev/null); [ "$WMN" = desktop ] && [ "$WM0" != desktop ] && FRONT_T=$W; WM0=${WMN:-desktop}
 		[ "$(sed -n 's/^full avg10=\([0-9]*\).*/\1/p' /proc/pressure/memory 2>/dev/null)" -ge 10 ] 2>/dev/null && BUSY_T=$W
 		# the shell did not bring the desktop up: use the desktop page by itself from now on (until restart)
 		if [ $SHELLON = 1 ] && [ $((NOW - START_T)) -gt 90 ] && [ ! -e /run/rudolf/heartbeat ]; then
@@ -248,6 +250,14 @@ while :; do
 				# left the desktop white while it did, and it was restarted after 62 s (memory never reached critical)
 				[ $((W - BUSY_T)) -lt 30 ] && [ $LIM -lt 300 ] && LIM=300
 				[ $W -lt $GRACE ] && [ $((W - MT)) -gt $LIM ] && AGE=0   # just woke: not yet
+				# 1.5.6: behind a game, the desktop's page is hidden, and Chromium slows or freezes a hidden page's timers
+				# (more so when memory is short), so its heartbeat stops. On the Vivobook, memory ran short with a Steam
+				# game in front; the last heartbeat was 213 s old when the game and Steam were closed, the limit fell from
+				# 5 minutes to 60 s at that moment, and the browser was restarted at once (back to the sign-in screen).
+				# Back in front, the desktop is judged from that moment: LIM seconds to answer. Behind an app or a game it
+				# is not judged at all (restarting it would close every window, the game's included)
+				[ $FRONT_T -gt $MT ] && AGE=$((W - FRONT_T))
+				case "$WMN" in win|game|web) AGE=0;; esac
 				if [ $AGE -gt $LIM ]; then echo "$(date) desktop not responding for ${AGE}s - restarting browser"; rudolfd --health browser "the desktop stopped responding for ${AGE} s, so the browser was restarted"; pkill -f 'chrom[e].*--rudolf-kiosk'; sleep 3; pkill -9 -f 'chrom[e].*--rudolf-kiosk'; fi
 			fi
 		fi
