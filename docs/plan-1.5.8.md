@@ -2,7 +2,8 @@
 
 Asked for on 2026-11-10, after the Vivobook could not start the 1.5.7 beta with the Lite desktop engine. The safeguards
 that stop such a failure from leaving a computer unable to start went into 1.5.7 (priorities 1 to 3 below); this plan
-is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted.
+is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted. Added the same day: **mobile data** (Part 6, after
+looking at a Verizon MiFi 7730L) and **Android apps** (Part 7: the .apk work delayed from 1.5.7, with workarounds).
 
 ## What happened (2026-11-10)
 
@@ -95,6 +96,107 @@ is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted.
   modesetting on AMD): WebKit draws in software. Left for 1.5.8: GPU drawing for Lite (GTK's GL on this X server), and
   its effect on memory and speed.
 
+## Part 6: mobile data (added on 2026-11-10)
+
+Looked at on 2026-11-10: a used **Verizon Jetpack MiFi 7730L** (Novatel/Inseego, January 2017) plugged into the Asus
+desktop. LTE Category 9 (3-carrier aggregation, 2x2 MIMO, nano SIM), Wi-Fi 802.11ac on 2.4 and 5 GHz at once (15
+devices), a 4,400 mAh battery, a 2.4" 320x240 touchscreen, USB-C and USB-A, a Qualcomm modem (the chip is not
+published), and 128 MB of memory with 256 MB of storage. Rudolf OS cannot run on it: far too little memory and storage,
+and its firmware is signed and locked (no open firmware such as OpenWrt supports it). Its use is as the **cellular link
+of a Rudolf OS laptop or tablet**, over USB or Wi-Fi. On the Asus, Windows listed it as a device but not as a network
+adapter (USB tethering off in its menu, or no active SIM), so which USB protocol it uses is still to be seen.
+
+What Rudolf OS lacks for that (checked in the code on 2026-11-10):
+
+### 6.1 USB modems and tethered phones
+- The kernel has the USB CDC Ethernet driver (`USB_NET_CDCETHER`) only. Add `USB_NET_RNDIS_HOST` (many hotspots and
+  Android phones' USB tethering), `USB_NET_CDC_NCM` and `USB_NET_CDC_MBIM` (newer hotspots and phones), `USB_NET_QMI_WWAN`
+  and `USB_SERIAL_OPTION` (cellular modules inside laptops and USB sticks), checked in kconfig.sh like the others.
+- ModemManager (with libqmi and libmbim) for cellular modules that need to be told to connect, with the SIM's PIN asked
+  by the desktop; hotspots and tethered phones need none of it (they hand out an address themselves).
+
+### 6.2 A network adapter plugged in after start-up
+- rudolf-init asks for an address (udhcpc) only on cables present at start-up. An adapter that appears later (a
+  hotspot's USB cable, a phone's tethering switched on, a USB Ethernet dongle) gets none: mdev runs the same DHCP start
+  for a new network interface, and stops it when it goes. Settings › Network lists it ("USB modem: MiFi 7730L").
+
+### 6.3 Metered connections
+- A connection can be **metered** (cellular data with a cap): set automatically for USB modems and tethered phones and
+  for Wi-Fi networks that say so (Android's hotspots set the ANDROID_METERED option in DHCP), and by hand in Settings ›
+  Network for any network.
+- On a metered connection: no automatic system updates (sysupd25's daily check downloads nothing; Settings says why
+  and offers it by hand), no automatic Library, Flathub or Blitzen downloads, no app store catalog refresh in the
+  background; the browser and apps work as usual. rudolfd keeps the state (`net/metered`), the desktop reads it.
+- Data used on each metered connection this month (from the interface's counters), in Settings › Network.
+
+### 6.4 Rudolf OS as the hotspot ("Share this connection")
+- The Vivobook's Wi-Fi chip (rtw88 8821CE) supports access-point mode. Settings › Network › Share this connection:
+  shares the connection Rudolf OS has (cable, USB modem, or Wi-Fi on a second adapter) over Wi-Fi with its own network
+  name and password (hostapd, dnsmasq, and the firewall's NAT rules), off by default, administrators only.
+- With one Wi-Fi chip, sharing a Wi-Fi connection over the same chip depends on the chip (concurrent station and access
+  point): checked on the Vivobook first, otherwise offered only for cable and USB connections.
+
+### 6.5 Battery and signal of a hotspot
+- Hotspots and phones expose little over USB: what Rudolf OS can show without signing in to the hotspot is the
+  connection itself (speed, data used). A hotspot's own admin page stays the hotspot's (its address in Settings ›
+  Network, opened in Oracle); Rudolf OS does not sign in to it or keep its password.
+
+## Part 7: Android apps (.apk), delayed from 1.5.7, with workarounds (added on 2026-11-10)
+
+On 2026-11-10 .apk was moved out of 1.5.7: Waydroid needs the kernel's binder, Waydroid and its container tools in the
+system layer, and a first download of about 1 GB (the Android system image), which weighs on a 3.4 GB computer while
+the desktop is being made lighter. These are the ways to it, cheapest first; the .apk wizard (install56) offers what
+this computer can do.
+
+### 7.1 Always: say what the .apk is, and offer what already works
+- Opening an .apk shows the app's name, icon, version and the permissions it asks for (read from the file with
+  `aapt2 dump badging`, from Debian's Android tools, or a small reader of the APK's manifest in rudolfd), never
+  running it.
+- It offers what Rudolf OS already runs: the app's **web version** (many Android apps are also websites or web apps;
+  Oracle can keep one as an app in the Start menu) and the **same app for Linux** (Flathub, by name, in the App Store),
+  when there is one.
+
+### 7.2 The phone's own apps on Rudolf OS (scrcpy)
+- An Android phone plugged in by USB (or on the same Wi-Fi) shows its screen in a Rudolf OS window and is used with the
+  mouse and keyboard, sound included: scrcpy (from Debian), over ADB. The apps run on the phone, so nothing is
+  installed on the computer and nothing is downloaded beyond scrcpy (a few MB).
+- It needs "USB debugging" turned on in the phone's developer options, by the phone's owner: Rudolf OS explains how and
+  never changes anything on the phone itself. (Normal ADB only: not the diagnostic or download modes of a phone's chip,
+  which can damage it.)
+- On the test computers' phones (a REDMAGIC 9 Pro, a moto g play) this works with any Android 5 or later.
+
+### 7.3 Android apps on the computer (Waydroid), for computers with room for it
+- The kernel side costs almost nothing and can ship first, in 1.5.8: `ANDROID_BINDER_IPC`, `ANDROID_BINDERFS` (and
+  `ANDROID_BINDER_DEVICES=""`), with the namespaces and cgroups Waydroid's LXC container uses (most are on already),
+  checked in kconfig.sh. Then Waydroid can be added later without a new kernel.
+- Waydroid itself in **Debian** (already a download on demand), not in the system layer: `apt install waydroid` in
+  Debian's container, with binderfs mounted into it, so the system layer does not grow and computers that never open an
+  .apk pay nothing.
+- The Android image (LineageOS, about 800 MB) only when the person asks, behind a confirmation with the size, kept in
+  the encrypted folder's storage like Debian, and removable in Storage. Offered only on computers with at least 4 GB of
+  memory, or with the Lite desktop engine on (it frees roughly 300 to 500 MB), and the memory guard treats Waydroid's
+  container as an app it may close.
+- Each Android app gets its own window (Waydroid's multi-window mode, its Wayland display shown inside X with a small
+  compositor), and a Start menu entry.
+- Apps that need Google's services (most from Google Play) may not work; the wizard says so before the download. Waydroid
+  with OpenGApps or microG is left to the person (a setting in Waydroid, not something Rudolf OS installs).
+
+### 7.4 Lighter, experimental: Android Translation Layer
+- The Android Translation Layer (used by postmarketOS) runs some simple Android apps as ordinary Linux programs, with no
+  Android image at all. It runs few apps today; looked at again once 7.3 works, as a light option for the apps it
+  runs.
+
+### 7.5 Rudolf OS on a phone
+- The desktop's browser build (iso/www/index.html) already runs in any web browser, without rudolfd. On a phone it could
+  be added to the home screen as a web app (a manifest and a service worker, so it opens offline and full screen), with
+  the touch layout the desktop has for tablets: Notepad, WordPro, the games, Blitzen's packs and the files kept in the
+  browser. Rudolf OS as a system on phone hardware (its own kernel on a phone) is not planned: phones' boot loaders are
+  locked and their drivers closed.
+
+### 7.6 iPhone apps (.ipa)
+- Unchanged from 1.5.6's plan: they cannot run outside Apple's devices; the wizard says so and looks for a web or Linux
+  version.
+
 ## Steps
 1. 4.1 start logs (initramfs, rudolf-init, session), with a host test of the rotation. **Done** (branch
    v158-startlogs): initramfs `note`/`keeplog` (var/log/boot-decisions.log, last 300 lines, kept before every
@@ -118,3 +220,10 @@ is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted.
    default is left.
 5. 5.4 the testing rule in docs, then the Lite investigation on the Vivobook (devlink plus remote access). The rule is
    **done**: docs/testing.md. The Lite cause was found and fixed in 1.5.7 (libGLESv2); GPU drawing for Lite remains.
+6. Part 6, mobile data: 6.1 kernel drivers (kconfig.sh) and 6.2 adapters plugged in later (mdev, udhcpc), with host
+   tests; then 6.3 metered connections (rudolfd net/metered, sysupd25, lib52, the download wizards), with browser
+   tests; then 6.4 Share this connection, first checked on the Vivobook's Wi-Fi chip over the devlink. The MiFi 7730L
+   is tried once USB tethering is on (which driver it needs).
+7. Part 7, Android apps: 7.1 the .apk wizard's information and alternatives; 7.2 scrcpy (needs only Debian); the
+   kernel side of 7.3 (binder) in the same release; Waydroid in Debian after that, measured on the Vivobook with Lite
+   on; 7.5 the browser build as a phone web app.
