@@ -21,7 +21,7 @@ if [ -n "$SHUTDOWN_TEST" ]; then
 	mounted() { true; }
 else
 	act() { "$@"; }
-	running() { pgrep -f 'chrom[e].*--rudolf-kiosk' >/dev/null 2>&1; }
+	running() { pgrep -f '[-]-rudolf-kiosk' >/dev/null 2>&1; }   # (1.5.7: Chromium's or WebKit's desktop)
 	mounted() { mountpoint -q $P; }
 fi
 up() { cut -d' ' -f1 /proc/uptime | tr -d .; }   # hundredths of a second
@@ -29,7 +29,7 @@ T0=$(up); ST=""
 step() { ST="$ST${ST:+,}$1=$(( ($(up) - T0) * 10 ))"; }
 echo "$A" > $RUN/power   # the session does not start the desktop again
 # every app at once
-act pkill -TERM -f 'chrom[e].*--rudolf-kiosk'
+act pkill -TERM -f '[-]-rudolf-kiosk'
 act pkill -TERM -f 'chrom[e].*--class=RudolfWeb'
 act pkill -TERM -u rudolf
 act pkill -TERM -x rudolf-devlink

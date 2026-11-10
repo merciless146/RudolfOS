@@ -8,7 +8,10 @@ const WEB_SITES=['accounts.google.com','mail.google.com','docs.google.com','driv
  'outlook.live.com','outlook.office.com','outlook.office365.com','login.live.com','login.microsoftonline.com','account.microsoft.com','onedrive.live.com','teams.microsoft.com',
  'mail.yahoo.com','compose.mail.yahoo.com','login.yahoo.com','paypal.com','web.whatsapp.com','discord.com','app.slack.com','github.com','icloud.com','proton.me'];
 function webHost(u){try{return new URL(u).hostname.toLowerCase()}catch(e){return''}}
-function webWants(u){if(!RD)return false;const h=webHost(u);return!!h&&WEB_SITES.concat(S.webSites||[]).some(d=>h==d||h.endsWith('.'+d))}
+function webWants(u){if(!RD)return false;const h=webHost(u);
+ /* 1.5.7: with the desktop in WebKit, every website opens in Chromium's own window (Chromium only for browsing) */
+ if(RD.engine=='webkit')return !!h&&!/^(127\.0\.0\.1|localhost)$/.test(h);
+ return!!h&&WEB_SITES.concat(S.webSites||[]).some(d=>h==d||h.endsWith('.'+d))}
 let WEB_ON=false,WEB_SHOWN=false,WEB_TOLD=false,WEB_POLL=null;
 const webNativeOpen=window.open.bind(window);
 async function webOpen(u){
