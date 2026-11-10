@@ -109,5 +109,8 @@ is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted.
    again; Lite off for good with the reason); Help and Settings › Desktop engine mention it. Test qt/host/desksafe58_t.sh.
    (No on-screen line from rudolf-display: with Xorg on the GPU it cannot draw over the screen; the desktop coming back
    and System health say it.)
-4. 5.3 sound chip check and reset; 5.1 rescue media and messages; 5.2 Help page.
+4. 5.3 sound chip check and reset; 5.1 rescue media and messages; 5.2 Help page. 5.3 **done** (branch
+   v158-startlogs): `sound codec-check` (run by rudolf-init 12 s after start-up) resets an HD Audio chip that did not
+   answer, once, and says so in System health (hardware); the self-test's sound-chip check names one still silent with
+   what to do. Test qt/host/codec58_t.sh.
 5. 5.4 the testing rule in docs, then the Lite investigation on the Vivobook (devlink plus remote access).

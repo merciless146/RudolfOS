@@ -97,6 +97,8 @@ ulimit -H -n 524288 2>/dev/null
 /usr/lib/rudolf/bluetooth boot >/dev/null 2>&1 &
 # 1.5.4: Thunderbolt and USB4 devices already plugged in at start-up (later ones: mdev)
 [ -d /sys/bus/thunderbolt ] && ( sleep 3; /usr/lib/rudolf/thunderbolt boot >/dev/null 2>&1 ) &
+# 1.5.8: a sound chip that did not answer at start-up is reset once (the driver lets go of it and takes it again)
+( sleep 12; /usr/lib/rudolf/sound codec-check >> /run/rudolf/sound-reset.log 2>&1 ) &
 # 1.5.3: the first start on a computer: a health-log line with the devices that have no driver (after a minute,
 # when USB devices and driver modules have settled)
 ( sleep 60; /usr/lib/rudolf/devplug hwlog >/dev/null 2>&1 ) &
