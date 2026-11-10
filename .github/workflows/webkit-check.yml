@@ -2,6 +2,8 @@
 # (or by hand): rudolf-webkit builds against WebKitGTK 4.1, systools/addwebkit.sh gathers what it needs (into an empty
 # tree, so the size is the most it can add), and the desktop page (the browser build) opens in it on a virtual screen
 # for 40 s: its console and a screenshot are kept (an artifact), and the results are given as notices. Publishes nothing.
+# 1.5.7: and the same page in rudolf-webkit run from the base layer itself (a chroot, nothing from this machine), so a
+# library WebKit opens while running and the layer lacks fails here, not on a computer (the Vivobook: libGLESv2.so.2).
 name: Lite engine check
 on:
   push:
@@ -14,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Packages (as the release workflow installs them)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good glib-networking xvfb imagemagick >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgles2 gstreamer1.0-plugins-base gstreamer1.0-plugins-good glib-networking xvfb imagemagick >/dev/null
       - name: Build rudolf-webkit
         run: gcc -O2 -Wall -Wno-deprecated-declarations -o rudolf-webkit iso/sys/rudolf-webkit.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0)
       - name: What addwebkit.sh adds (into an empty tree)
@@ -51,5 +53,16 @@ jobs:
           [ -s mem.txt ] || echo "::error title=No WebKit processes::rudolf-webkit was not running after 40 s"
           # (what is on the screen: the share of pixels that are not the background's, from the screenshot)
           [ -f shot.png ] && echo "::notice title=Screen::$(convert shot.png -format '%k colours, mean %[fx:mean]' info:)" || true
+      - name: The desktop page in rudolf-webkit from the base layer itself (chroot)
+        run: |
+          B=$RUNNER_TEMP/base; [ -x $B/usr/bin/rudolf-webkit ] || { echo "::error title=Base layer::no rudolf-webkit in it"; exit 1; }
+          for d in proc sys dev tmp/.X11-unix; do sudo mkdir -p $B/$d; done
+          sudo mount -t proc proc $B/proc; sudo mount --rbind /sys $B/sys; sudo mount --rbind /dev $B/dev; sudo mount --bind /tmp/.X11-unix $B/tmp/.X11-unix
+          sudo mkdir -p $B/root/h; sudo chmod 1777 $B/tmp
+          (sudo timeout 30 chroot $B /usr/bin/env -i DISPLAY=:99 HOME=/root/h LIBGL_ALWAYS_SOFTWARE=1 PATH=/usr/bin:/bin /usr/bin/rudolf-webkit --size=1280x800 http://127.0.0.1:8080/ > chroot.txt 2>&1; echo "exit $?" >> chroot.txt) || true
+          echo "== chroot"; head -c 4000 chroot.txt
+          if grep -q "Couldn't open\|cannot open shared object\|Aborted" chroot.txt || ! grep -q '^exit 124' chroot.txt; then
+            echo "::error title=Lite engine from the base layer::$(grep -v '^$' chroot.txt | grep -iE "open|abort|exit|error" | head -6 | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"; exit 1
+          else echo "::notice title=Lite engine from the base layer::ran 30 s and was still running"; fi
       - uses: actions/upload-artifact@v4
-        with: {name: lite-engine-check, path: "shot.png\nconsole.txt\nmem.txt\nadd.txt"}
+        with: {name: lite-engine-check, path: "shot.png\nconsole.txt\nmem.txt\nadd.txt\nchroot.txt"}

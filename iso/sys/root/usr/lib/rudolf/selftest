@@ -5,7 +5,7 @@
 # check: "PASS name - detail", "FAIL name - detail" or "SKIP name - why"; then a summary line. Exit status 1 when a
 # check failed. Run by rudolfd (GET selftest, Settings › System health › Run the self-test) and over the devlink.
 # The places can be moved for the host test (ST_SYS, ST_RUN, ST_PERSIST, ST_HOME, ST_DEV, ST_PROC, ST_CONF, and since
-# 1.5.7 ST_MEMCONF, ST_JOYPERM, ST_FLATPAK, ST_FLATPAK_BIN).
+# 1.5.7 ST_MEMCONF, ST_JOYPERM, ST_FLATPAK, ST_FLATPAK_BIN, ST_LIBDIR, ST_WEBKIT).
 # GPL-2.0-or-later.
 SYS=${ST_SYS:-/sys}; RUN=${ST_RUN:-/run/rudolf}; P=${ST_PERSIST:-/persist}; H=${ST_HOME:-/home/rudolf}; DEV=${ST_DEV:-/dev}; PROC=${ST_PROC:-/proc}
 NP=0; NF=0; NS=0
@@ -103,6 +103,15 @@ G="$SYS/fs/cgroup/desktop"
 if [ ! -d "$SYS/fs/cgroup" ] || [ ! -e "$SYS/fs/cgroup/cgroup.controllers" ]; then skip desktop-memory "no memory groups in this kernel"
 elif [ -e "$G/memory.low" ] && [ "$(rd1 "$G/memory.low")" != 0 ]; then pass desktop-memory "the desktop keeps $(( $(rd1 "$G/memory.low") / 1048576 )) MiB$( [ -s "$G/cgroup.procs" ] && echo ", with its browser in it" || echo ", but its browser is not in it")"
 else fail desktop-memory "the desktop's memory group is missing or keeps nothing"; fi
+
+# ---- 1.5.7: the Lite desktop engine has what it opens while running (on the Vivobook it closed as it started: no
+# libGLESv2.so.2 in the system)
+ML=${ST_LIBDIR:-/usr/lib/x86_64-linux-gnu}
+if [ ! -x "${ST_WEBKIT:-/usr/bin/rudolf-webkit}" ]; then skip lite-engine "not in this Rudolf OS"
+else bad=""; for l in libGLESv2.so.2 libEGL.so.1 libGLdispatch.so.0 libepoxy.so.0; do [ -e "$ML/$l" ] || bad="$bad $l"; done
+	[ -x "$ML/webkit2gtk-4.1/WebKitWebProcess" ] || bad="$bad WebKitWebProcess"
+	if [ -z "$bad" ]; then pass lite-engine "WebKit and the graphics libraries it opens are there"; else fail lite-engine "missing:$bad (Lite would close as it starts; Standard is used)"; fi
+fi
 
 # ---- 1.5.7 (plan stage 8): Linux apps and games
 bad=""; for n in fd stdin stdout stderr; do [ -e "$DEV/$n" ] || [ -L "$DEV/$n" ] || bad="$bad /dev/$n"; done

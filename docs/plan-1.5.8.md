@@ -88,8 +88,12 @@ is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted.
 - A rule for the repository: anything that changes how the desktop starts (engine, shell, display) has its fallback
   tested first, on the real graphics path (Xorg with the GPU, in QEMU with virtio-gpu and on the Vivobook), not only on
   the software display; it reaches the Vivobook only after that.
-- Find why Lite showed a grey screen on the Vivobook (WebKitGTK under Xorg on AMD graphics: its DMA-BUF renderer,
-  compositing mode, or the sandbox), with the 1.5.7 fallbacks in place, before Lite is offered as more than a test.
+- Found on 2026-11-10 (devlink, Lite run by hand for 15 s): WebKit's web process aborted at once, "Couldn't open
+  libGLESv2.so.2": WebKit opens it while running, so addwebkit.sh's ldd pass never saw it. Fixed in 1.5.7
+  (addwebkit.sh copies it; the self-test checks it; webkit-check.yml runs Lite from the base layer in a chroot). With
+  it, Lite ran, but GTK could not use the GPU ("No available configurations for the given pixel format", Xorg with
+  modesetting on AMD): WebKit draws in software. Left for 1.5.8: GPU drawing for Lite (GTK's GL on this X server), and
+  its effect on memory and speed.
 
 ## Steps
 1. 4.1 start logs (initramfs, rudolf-init, session), with a host test of the rotation.

@@ -58,4 +58,11 @@ rm -rf $ST_RUN/persistent $ST_RUN/home-session $ST_DEV/video* $ST_SYS/class/powe
 OUT=$(sh $S); RC=$?
 ok "7. a live start with nothing to check: skipped, not failed" "$([ $RC = 0 ] && has 'SKIP storage - a live start' && has 'SKIP folders - nobody is signed in' && has 'SKIP camera - no camera' && has 'SKIP battery-limit - no battery' && has 'SKIP debian - Linux (Debian) is not set up' && echo 1)" "$OUT"
 ok "8. rudolfd answers it (GET selftest), and rudolf-selftest is a command" "$(grep -q 'if (!strcmp(p, "selftest"))' $HERE/../../sys/rudolfd.c && [ "$(readlink $HERE/../../sys/root/usr/bin/rudolf-selftest)" = ../lib/rudolf/selftest ] && [ -x $S ] && echo 1)" ""
+# 1.5.7: the Lite engine's libraries (the Vivobook: no libGLESv2.so.2, so Lite closed as it started)
+printf '#!/bin/sh\n' > $W/rudolf-webkit; chmod 755 $W/rudolf-webkit; mkdir -p $W/lib/webkit2gtk-4.1; printf '#!/bin/sh\n' > $W/lib/webkit2gtk-4.1/WebKitWebProcess; chmod 755 $W/lib/webkit2gtk-4.1/WebKitWebProcess
+for l in libEGL.so.1 libGLdispatch.so.0 libepoxy.so.0; do : > $W/lib/$l; done
+OUT=$(ST_WEBKIT=$W/rudolf-webkit ST_LIBDIR=$W/lib sh $S)
+ok "9. 1.5.7: the Lite engine without libGLESv2.so.2: named" "$(has 'FAIL lite-engine - missing: libGLESv2.so.2' && echo 1)" "$OUT"
+: > $W/lib/libGLESv2.so.2; OUT=$(ST_WEBKIT=$W/rudolf-webkit ST_LIBDIR=$W/lib sh $S)
+ok "10. ...with it: passes" "$(has 'PASS lite-engine' && echo 1)" "$OUT"
 echo "$NP/$((NP+NF)) passed"; [ $NF = 0 ]
