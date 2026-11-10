@@ -23,6 +23,18 @@ jobs:
           iso/systools/addwebkit.sh $R ./rudolf-webkit | tee add.txt
           du -sh $R; find $R -type f | wc -l
           echo "::notice title=Added to the system layer (at most)::$(tail -1 add.txt) — $(du -sh $R | cut -f1) in $(find $R -type f | wc -l) files" 
+      - name: What it adds to the latest release's base layer (the real size)
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          sudo apt-get install -y -qq squashfs-tools >/dev/null
+          T=$(gh release list -R ${{ github.repository }} -L 20 --json tagName -q '[.[]|select(.tagName|startswith("r"))][0].tagName')
+          gh release download "$T" -R ${{ github.repository }} -p base.sfs -D $RUNNER_TEMP/prev
+          B=$RUNNER_TEMP/base; sudo unsquashfs -q -d $B $RUNNER_TEMP/prev/base.sfs >/dev/null
+          S0=$(stat -c %s $RUNNER_TEMP/prev/base.sfs)
+          iso/systools/addwebkit.sh $B ./rudolf-webkit | tee add2.txt
+          sudo mksquashfs $B $RUNNER_TEMP/new.sfs -comp xz -Xbcj x86 -b 1M -noappend -all-root -quiet -no-progress >/dev/null
+          S1=$(stat -c %s $RUNNER_TEMP/new.sfs)
+          echo "::notice title=The base layer of $T::$((S0/1048576)) MB now, $((S1/1048576)) MB with WebKit (+$(((S1-S0)/1048576)) MB compressed); $(tail -1 add2.txt)"
       - name: The desktop page in rudolf-webkit, on a virtual screen
         run: |
           cd iso/www && (python3 -m http.server 8080 --bind 127.0.0.1 >/dev/null 2>&1 &) && cd ../..
