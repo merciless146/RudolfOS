@@ -251,7 +251,9 @@ systools/addwebkit.sh from the release machine's Ubuntu 24.04 (its helper proces
 TLS module): it starts before sign-in, with or without Debian and "Encrypt my data". (A first version used WebKitGTK in
 Debian, which with Debian in the encrypted folder, as on the Vivobook, could not start before sign-in.) Not yet: H.264
 and AAC (GStreamer's libav plug-in, about 30 MB more). The workflow "Lite engine check" builds it and opens the desktop
-page in it on a virtual screen whenever its files change. All 44 built-in apps opened in WebKit on the Vivobook
+page in it on a virtual screen whenever its files change. Its first runs (WebKitGTK 2.52.6): the base layer grows from
+197 to 232 MB (+34 MB to download once, +140 MB on the disk, 35 more libraries); the desktop page at the sign-in screen,
+drawn in software on the virtual screen, took 507 MB PSS (the page's process 379 MB, the window 93, the network 35). All 44 built-in apps opened in WebKit on the Vivobook
 without script errors (iso/systools/webkit_apps.sh).
 
 ### Steps
