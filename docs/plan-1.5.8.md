@@ -98,6 +98,19 @@ versions).
   modesetting on AMD): WebKit draws in software. Left for 1.5.8: GPU drawing for Lite (GTK's GL on this X server), and
   its effect on memory and speed.
 
+## Staging toward 1.6.0, the first cellular release (added on 2026-11-10)
+Parts 6 to 8 are staged across three versions (docs/plan-1.5.9.md, docs/plan-1.6.0.md):
+- **1.5.8 (this plan):** the network groundwork: 6.1 the kernel's USB modem drivers, 6.2 adapters plugged in after
+  start-up, 6.3 metered connections; 7.1 the .apk wizard's information, 7.2 scrcpy, the kernel side of 7.3 (binder);
+  8.1 begun (the tablet layout in the desktop, with browser tests).
+- **1.5.9:** ModemManager (read only), the WWAN kernel subsystem and the operators' database; 8.1 finished (tablet mode,
+  on-screen keyboard, rotation); 8.2 the ARM64 build with QEMU checks on a test channel; 6.4 Share this connection;
+  7.3 Waydroid in Debian; the first phone prepared.
+- **1.6.0:** cellular: SIM and PIN, APNs, connecting, priorities and failover, data limits, signal and status, SMS
+  (Messages), airplane mode, the FCC unlock for laptop modules; the first ARM64 release. Voice and emergency calls, and
+  phones themselves, in 1.6.x (8.3).
+- **6.5** (a hotspot's own status) stays as written: Rudolf OS shows the connection, never signs in to the hotspot.
+
 ## Part 6: mobile data (added on 2026-11-10)
 
 Looked at on 2026-11-10: a used **Verizon Jetpack MiFi 7730L** (Novatel/Inseego, January 2017) plugged into the Asus
@@ -115,7 +128,8 @@ What Rudolf OS lacks for that (checked in the code on 2026-11-10):
   Android phones' USB tethering), `USB_NET_CDC_NCM` and `USB_NET_CDC_MBIM` (newer hotspots and phones), `USB_NET_QMI_WWAN`
   and `USB_SERIAL_OPTION` (cellular modules inside laptops and USB sticks), checked in kconfig.sh like the others.
 - ModemManager (with libqmi and libmbim) for cellular modules that need to be told to connect, with the SIM's PIN asked
-  by the desktop; hotspots and tethered phones need none of it (they hand out an address themselves).
+  by the desktop: **1.5.9** (read only) and **1.6.0** (connecting); hotspots and tethered phones need none of it (they
+  hand out an address themselves), so 1.5.8 covers them fully.
 
 ### 6.2 A network adapter plugged in after start-up
 - rudolf-init asks for an address (udhcpc) only on cables present at start-up. An adapter that appears later (a
@@ -131,7 +145,7 @@ What Rudolf OS lacks for that (checked in the code on 2026-11-10):
   background; the browser and apps work as usual. rudolfd keeps the state (`net/metered`), the desktop reads it.
 - Data used on each metered connection this month (from the interface's counters), in Settings › Network.
 
-### 6.4 Rudolf OS as the hotspot ("Share this connection")
+### 6.4 Rudolf OS as the hotspot ("Share this connection") (1.5.9)
 - The Vivobook's Wi-Fi chip (rtw88 8821CE) supports access-point mode. Settings › Network › Share this connection:
   shares the connection Rudolf OS has (cable, USB modem, or Wi-Fi on a second adapter) over Wi-Fi with its own network
   name and password (hostapd, dnsmasq, and the firewall's NAT rules), off by default, administrators only.
@@ -244,7 +258,7 @@ The aim: Rudolf OS on handhelds, tablets and, within the next few versions, phon
   touchscreen (`-device virtio-tablet` / `usb-tablet` with multitouch) and a portrait screen; then the Vivobook with the
   tablet mode forced, over the devlink and remote access.
 
-### 8.2 The ARM64 build (1.5.9 to 1.6.0): Rudolf OS on ARM, first in QEMU
+### 8.2 The ARM64 build (built and checked in QEMU in 1.5.9; first released in 1.6.0): Rudolf OS on ARM
 - **Build:** the release workflow builds a second set of layers on GitHub's ARM64 runners (ubuntu-24.04-arm): the base
   layer, Lite (WebKitGTK for arm64), rudolfd and the C helpers (they are portable C), and the desktop page unchanged.
   The x86 paths become `$(gcc -print-multiarch)`; addwebkit.sh and the self-test take the architecture from the
@@ -321,12 +335,11 @@ The aim: Rudolf OS on handhelds, tablets and, within the next few versions, phon
    **done**: docs/testing.md. The Lite cause was found and fixed in 1.5.7 (libGLESv2); GPU drawing for Lite remains.
 6. Part 6, mobile data: 6.1 kernel drivers (kconfig.sh) and 6.2 adapters plugged in later (mdev, udhcpc), with host
    tests; then 6.3 metered connections (rudolfd net/metered, sysupd25, lib52, the download wizards), with browser
-   tests; then 6.4 Share this connection, first checked on the Vivobook's Wi-Fi chip over the devlink. The MiFi 7730L
-   is tried once USB tethering is on (which driver it needs).
+   tests. The MiFi 7730L is tried once USB tethering is on (which driver it needs). (6.4 moves to 1.5.9.)
 7. Part 7, Android apps: 7.1 the .apk wizard's information and alternatives; 7.2 scrcpy (needs only Debian); the
-   kernel side of 7.3 (binder) in the same release; Waydroid in Debian after that, measured on the Vivobook with Lite
-   on; 7.5 the browser build as a phone web app.
-8. Part 8, mobile form factors: 8.1 in 1.5.8 to 1.5.9 (tablet mode and on-screen keyboard in the desktop with browser
-   tests; rotation; QEMU x86 with a touchscreen; the Vivobook with tablet mode forced); 8.2 the ARM64 build in 1.5.9 to
-   1.6.0, proven in QEMU aarch64 first; 8.3 one phone in 1.6.x (a PinePhone Pro or a OnePlus 6/6T), then the phone
-   services one at a time; every step measured against the leanness budgets.
+   kernel side of 7.3 (binder) in the same release; 7.5 the browser build as a phone web app. (Waydroid in Debian:
+   1.5.9.)
+8. Part 8, mobile form factors: in 1.5.8, 8.1's tablet layout in the desktop with browser tests (the on-screen
+   keyboard, rotation and the QEMU and Vivobook checks finish it in 1.5.9); 8.2 the ARM64 build in 1.5.9, first
+   released in 1.6.0; 8.3 one phone in 1.6.x (a PinePhone Pro or a OnePlus 6/6T), then the phone services one at a
+   time; every step measured against the leanness budgets.
