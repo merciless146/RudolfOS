@@ -222,7 +222,8 @@ The aim: Rudolf OS on handhelds, tablets and, within the next few versions, phon
 2. **Nothing heavy in the system layer:** Debian, Wine, Steam, Waydroid, Blitzen's model, scrcpy and the like stay
    downloads on demand, behind a confirmation with the size, removable in Storage.
 3. **Measured on the device, against budgets:** the system layers under 400 MB compressed; the desktop at the sign-in
-   screen under 350 MB of memory with Lite; idle power measured over an hour with the screen off. A release that
+   screen under 400 MB of memory with Lite (about 520 MB in the release check on 2026-11-10: WebKit's web process
+   389 MB, its UI 94 MB, its network process 35 MB, on Xvfb; reducing it is part of 8.2); idle power measured over an hour with the screen off. A release that
    breaks a budget says so in the release check, like the Lite engine check.
 4. **The same release, one system per architecture:** one version number and one CHANGELOG; the desktop (the web page)
    is identical everywhere; only the layers below it differ.
@@ -284,7 +285,7 @@ The aim: Rudolf OS on handhelds, tablets and, within the next few versions, phon
   the phone's port).
 - **The phone shell:** the tablet layout of 8.1 at phone size: one app at a time, the Start menu as an app grid, a
   status bar (signal, battery, time), a lock screen with notifications, the on-screen keyboard.
-- **Phone budgets:** the desktop with Lite under 350 MB at the sign-in screen; the system layers for a phone under 400 MB
+- **Phone budgets:** the desktop with Lite under 400 MB at the sign-in screen; the system layers for a phone under 400 MB
   compressed; idle drain with the screen off and the modem on measured over a night, compared with postmarketOS on the
   same phone.
 
