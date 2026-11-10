@@ -172,6 +172,17 @@ static int safe_media_path(const char *p)
 	return 1;
 }
 
+/* 1.5.6: an app's own folder, to look at in File Explorer from its Properties (read only: list, read, search): the
+   Linux apps from Flathub, Windows programs in Wine, Debian's programs, Rudolf OS's own desktop files */
+static int app_view_path(const char *p)
+{
+	static const char *const R[] = {"/var/lib/flatpak/app/", "/home/rudolf/.wine/drive_c/", "/persist/debian/usr/", "/persist/debian/opt/", "/usr/share/rudolf/www/", NULL};
+	if (!p || strstr(p, "/../") || strstr(p, "/./") || strlen(p) > 1024) return 0;
+	size_t n = strlen(p); if (n >= 3 && !strcmp(p + n - 3, "/..")) return 0;
+	for (int i = 0; R[i]; i++) { size_t l = strlen(R[i]); if (!strncmp(p, R[i], l) || (n == l - 1 && !strncmp(p, R[i], n))) return 1; }
+	return 0;
+}
+
 static void urldecode(char *s)
 {
 	char *o = s;
@@ -625,7 +636,8 @@ static void api_fs(struct req *r, const char *op)
 {
 	char *p = qparam(r->query, "path");
 	char path[1100];
-	if (!p || !safe_media_path(p)) { reply_err(r->fd, 403, "only /media/... and the shared folders are reachable"); return; }
+	int ro = !strcmp(op, "list") || !strcmp(op, "read") || !strcmp(op, "search");
+	if (!p || (!safe_media_path(p) && !(ro && app_view_path(p)))) { reply_err(r->fd, 403, "only /media/... and the shared folders are reachable"); return; }
 	snprintf(path, sizeof path, "%s", p);
 	if (!strcmp(op, "list")) {
 		DIR *d = opendir(path);
@@ -996,7 +1008,10 @@ static void api_apps(struct req *r, const char *what)
 		if (access(CATALOG, R_OK)) { reply_err(r->fd, 404, "the app catalogue has not been downloaded yet"); return; }
 		serve_file(r, CATALOG); return;
 	}
-	if ((!strcmp(what, "installed") || !strcmp(what, "icon")) && apps_locked()) { reply_err(r->fd, 423, "the apps are in the encrypted folder, which opens at sign-in"); return; }
+	if ((!strcmp(what, "installed") || !strcmp(what, "icon") || !strcmp(what, "where")) && apps_locked()) { reply_err(r->fd, 423, "the apps are in the encrypted folder, which opens at sign-in"); return; }
+	/* 1.5.6: where an app is kept, how much it takes on the disk (an app's Properties) */
+	if (!strcmp(what, "where")) { const char *id = qparam(r->query, "id"); if (!id || !app_id_ok(id)) { reply_err(r->fd, 400, "bad app"); return; }
+		char c[400]; snprintf(c, sizeof c, "/usr/lib/rudolf/appwhere flatpak '%s' 2>/dev/null", id); reply_cmd_json(r, c, "could not find the app"); return; }
 	if (!strcmp(what, "installed")) { reply_cmd_json(r, "/usr/bin/rudolf-apps installed 2>/dev/null", "could not list the installed apps"); return; }
 	if (!strcmp(what, "windows")) {
 		char *w = slurp(RUN "/windows", NULL); str s = {0}; sadd(&s, "{\"ok\":true,\"windows\":["); int n = 0;
@@ -1589,7 +1604,7 @@ static int debian_locked(void)
 static void api_debian(struct req *r, const char *what)
 {
 	if (access(DEBIAN_BIN, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS cannot run Debian"); return; }
-	if ((!strcmp(what, "status") || !strcmp(what, "apps") || !strcmp(what, "icon")) && debian_locked()) { reply_err(r->fd, 423, "Debian is in the encrypted folder, which opens at sign-in"); return; }
+	if ((!strcmp(what, "status") || !strcmp(what, "apps") || !strcmp(what, "icon") || !strcmp(what, "where")) && debian_locked()) { reply_err(r->fd, 423, "Debian is in the encrypted folder, which opens at sign-in"); return; }
 	if (!strcmp(what, "status")) {
 		const char *sz = qparam(r->query, "size");
 		char *o = run_out(sz && !strcmp(sz, "1") ? DEBIAN_BIN " status --size 2>/dev/null" : DEBIAN_BIN " status 2>/dev/null");
@@ -1629,6 +1644,10 @@ static void api_debian(struct req *r, const char *what)
 		reply_ok(r->fd, "started"); return;
 	}
 	if (!strcmp(what, "apps")) { reply_cmd_json(r, DEBIAN_BIN " apps 2>/dev/null", "could not list the Debian apps"); return; }
+	if (!strcmp(what, "where")) { const char *id = qparam(r->query, "id"); int ok = id && *id && strlen(id) < 200 && id[0] != '-' && id[0] != '.';
+		for (const char *c = id; ok && *c; c++) if (!isalnum((unsigned char)*c) && !strchr("._-+", *c)) ok = 0;
+		if (!ok) { reply_err(r->fd, 400, "bad program"); return; }
+		char c[400]; snprintf(c, sizeof c, "/usr/lib/rudolf/appwhere debian '%s' 2>/dev/null", id); reply_cmd_json(r, c, "could not find the program"); return; }
 	/* 1.5.6: installing a package from a file (the installation wizard): what it is, then installing it as a job.
 	   Only a .deb among the person's own files; the name may not hold a quote (it goes into a shell command). */
 	if (!strcmp(what, "debinfo") || !strcmp(what, "deb")) {

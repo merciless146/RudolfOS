@@ -1,0 +1,38 @@
+#!/bin/sh
+# 1.5.6: where an app is kept and how much it takes on the disk, for its Properties (Start menu › right-click ›
+# Properties). Run by rudolfd (apps/where, debian/where), which checks the id. GPL-2.0-or-later.
+#   appwhere flatpak ID     a Linux app from Flathub: its folder (/var/lib/flatpak/app/ID, all its versions)
+#   appwhere debian ID      a program in Debian (its launcher ID.desktop): a Windows program's folder in Wine
+#                           (from its starter script: the folder it starts in, and the .exe it runs), or the
+#                           Debian package the program comes from
+# Prints {"ok":true,"path":...,"bytes":...,"kind":...,"program":...,"package":...}. The places can be moved for the
+# host test (APPWHERE_FLATPAK, APPWHERE_DEBIAN, APPWHERE_HOME).
+FP=${APPWHERE_FLATPAK:-/var/lib/flatpak/app}; D=${APPWHERE_DEBIAN:-/persist/debian}; H=${APPWHERE_HOME:-/home/rudolf}
+esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+du_b() { k=$(du -sk "$1" 2>/dev/null | tail -1 | cut -f1); echo $(( ${k:-0} * 1024 )); }
+out() { printf '{"ok":true,"path":"%s","bytes":%s,"kind":"%s","program":"%s","package":"%s"}\n' "$(esc "$1")" "${2:-0}" "$3" "$(esc "$4")" "$(esc "$5")"; }
+case "$1" in
+flatpak)
+	A="$FP/$2"; [ -d "$A" ] || { echo '{"ok":false,"error":"the app is not installed"}'; exit 1; }
+	F="$A/current/active/files"; [ -d "$F" ] || F=$A
+	out "$F" "$(du_b "$A")" flatpak "" "$2.flatpakref" ;;
+debian)
+	L=""; for d in /usr/share/applications /usr/local/share/applications; do [ -f "$D$d/$2.desktop" ] && { L="$D$d/$2.desktop"; break; }; done
+	[ -n "$L" ] || { echo '{"ok":false,"error":"no such program"}'; exit 1; }
+	X=$(sed -n 's/^Exec=//p' "$L" | head -1 | awk '{print $1}' | tr -d '"'); X=${X##*/}
+	B=""; for d in /usr/local/bin /usr/bin /bin /usr/games /usr/local/games; do [ -e "$D$d/$X" ] && { B=$d/$X; break; }; done
+	[ -n "$B" ] || { out "$D/usr/share/applications" 0 debian "$X" ""; exit 0; }
+	# a starter script that changes to a folder (a Windows program in Wine: cd "$HOME/.wine/drive_c/...")
+	if [ "$(head -c 2 "$D$B")" = "#!" ] && grep -q 'cd ' "$D$B"; then
+		W=$(grep -o 'cd "[^"]*"' "$D$B" | head -1 | sed 's/^cd "//; s/"$//; s#\$HOME#/home/rudolf#; s#\${HOME}#/home/rudolf#')
+		P=$(grep -oiE '"[^"]+\.exe"|[^ "/\\]+\.exe' "$D$B" | head -1 | tr -d '"'); P=${P##*/}; P=${P##*\\}
+		case "$W" in /home/rudolf/*) R="$H${W#/home/rudolf}";; /*) R="$D$W";; *) R="";; esac
+		if [ -n "$R" ] && [ -d "$R" ]; then out "$R" "$(du_b "$R")" "${P:+exe}" "$P" ""; exit 0; fi
+	fi
+	# a Debian package's program: the package and its size (dpkg's Installed-Size, in KiB)
+	K=$(grep -lx "$B" "$D"/var/lib/dpkg/info/*.list 2>/dev/null | head -1); K=${K##*/}; K=${K%.list}; K=${K%%:*}
+	S=0; [ -n "$K" ] && S=$(awk -v p="$K" '/^Package: /{q=($2==p)} q&&/^Installed-Size: /{print $2*1024; exit}' "$D/var/lib/dpkg/status")
+	[ -n "$K" ] || S=$(du_b "$D$B")
+	out "$D$(dirname "$B")" "${S:-0}" deb "$X" "${K:+$K.deb}" ;;
+*) echo '{"ok":false,"error":"usage: appwhere flatpak|debian ID"}'; exit 2 ;;
+esac
