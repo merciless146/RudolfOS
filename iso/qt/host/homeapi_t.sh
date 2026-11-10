@@ -114,6 +114,19 @@ ok "25l. an account id with capitals is a folder of its own (made, written, read
 mkdir -p /home/rudolf/Downloads/.accounts/uqppgtop7; head -c 300000 /dev/urandom > /home/rudolf/Downloads/.accounts/uqppgtop7/big.bin
 o=$(t "POST home/unlock?acct=uQppGToP7 <$T/k2" "POST home/adopt?acct=uQppGToP7&from=/home/rudolf/Downloads/.accounts/uqppgtop7/big.bin&to=Downloads/BIG.BIN" "POST home/lock?acct=uQppGToP7")
 ok "25m. an account id with capitals: its large download (in the lower-case folder) moves in" "$(echo "$o" | sed -n 2p | grep -q ' 200 ' && [ ! -e /home/rudolf/Downloads/.accounts/uqppgtop7/big.bin ] && echo 1)" "$o"
+# 1.5.7 (plan stage 1): the desktop's Event Viewer events are appended to .rudolf/events.log in the account's folder
+printf '2026-11-10T10:00:00Z sys one' > $T/e1; printf '2026-11-10T10:00:01Z fw two\n' > $T/e2
+o=$(t "POST home/unlock?acct=u-boss <$T/k1" "POST home/append?acct=u-boss&path=.rudolf/events.log <$T/e1" "POST home/append?acct=u-boss&path=.rudolf/events.log <$T/e2")
+ok "26a. append adds lines to .rudolf/events.log (a missing newline is added), owned by the account" "$([ "$(cat $R/u-boss/.rudolf/events.log)" = "$(printf '2026-11-10T10:00:00Z sys one\n2026-11-10T10:00:01Z fw two')" ] && [ "$(stat -c %u%a $R/u-boss/.rudolf/events.log)" = 1000600 ] && echo 1)" "$o $(cat $R/u-boss/.rudolf/events.log)"
+o=$(t "POST home/append?acct=u-boss&path=Documents/diary.txt <$T/e1" "POST home/append?acct=u-boss&path=.rudolf/x.txt <$T/e1" "POST home/append?acct=u-boss&path=.rudolf/a/b.log <$T/e1" "POST home/append?acct=u-boss&path=.rudolf/.x.log <$T/e1" "POST home/append?acct=u-boss&path=.rudolf/../a.log <$T/e1")
+ok "26b. append writes only .rudolf/*.log" "$([ "$(echo "$o" | grep -c ' 400 ')" = 5 ] && echo 1)" "$o"
+ln -s /etc/hostname $R/u-boss/.rudolf/link.log
+o=$(t "POST home/append?acct=u-boss&path=.rudolf/link.log <$T/e1"); ok "26c. ...never through a link" "$(has "$o" " 409 ")" "$o"
+head -c 270000 /dev/zero | tr '\0' x > $R/u-boss/.rudolf/events.log
+o=$(t "POST home/append?acct=u-boss&path=.rudolf/events.log <$T/e2")
+ok "26d. past 256 KiB the log moves to events.log.1 and a new one starts" "$([ "$(stat -c %s $R/u-boss/.rudolf/events.log.1)" = 270000 ] && [ "$(cat $R/u-boss/.rudolf/events.log)" = '2026-11-10T10:00:01Z fw two' ] && echo 1)" "$o"
+o=$(t "POST home/lock?acct=u-boss" "POST home/append?acct=u-boss&path=.rudolf/events.log <$T/e2")
+ok "26e. a locked folder is not written (423)" "$(echo "$o" | sed -n 2p | grep -q ' 423 ' && echo 1)" "$o"
 o=$(BIND=1 t "POST home/lock?acct=u-boss")
 umount /run/rudolf/dl 2>/dev/null; umount -R /home; umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]

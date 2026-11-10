@@ -3427,7 +3427,8 @@ static void api(struct req *r)
 	if (!strcmp(p, "native/status")) { api_native_status(r); return; }
 	if (!strcmp(p, "sys/status")) { char *o = access("/usr/bin/rudolf-update", X_OK) ? NULL : run_out("/usr/bin/rudolf-update status 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 404, "this Rudolf OS has no system updates"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
 	if (!strcmp(p, "pkg/status")) { if (access("/usr/bin/rpk", X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no package manager"); return; } char *o = run_out("/usr/bin/rpk status 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 500, "rpk failed"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
-	if (!strcmp(p, "clientlog")) { char *c = slurp(RUN "/page.log", NULL); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, c ? c : ""); sadd(&s, "}"); free(c); reply_json(r->fd, &s); return; }
+	/* 1.5.7: only reading; a POST goes on to the writer below (this caught writes too, so page.log was never written) */
+	if (!strcmp(p, "clientlog") && !post) { char *c = slurp(RUN "/page.log", NULL); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, c ? c : ""); sadd(&s, "}"); free(c); reply_json(r->fd, &s); return; }
 	if (!strcmp(p, "check")) { char *c = slurp(RUN "/check.txt", NULL); str s = {0}; sadd(&s, "{\"ok\":true,\"result\":"); sjson(&s, c ? c : ""); sadd(&s, "}"); free(c); reply_json(r->fd, &s); return; }
 	if (!strcmp(p, "downloads")) {
 		char *l = run_out("ls -l --full-time /home/rudolf/Downloads 2>/dev/null | tail -n +2");
