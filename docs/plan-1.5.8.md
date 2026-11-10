@@ -158,12 +158,12 @@ this computer can do.
 
 ### 7.2 The phone's own apps on Rudolf OS (scrcpy)
 - An Android phone plugged in by USB (or on the same Wi-Fi) shows its screen in a Rudolf OS window and is used with the
-  mouse and keyboard, sound included: scrcpy (from Debian), over ADB. The apps run on the phone, so nothing is
+  mouse and keyboard (with its sound on Android 11 or later): scrcpy (from Debian), over ADB. The apps run on the phone, so nothing is
   installed on the computer and nothing is downloaded beyond scrcpy (a few MB).
 - It needs "USB debugging" turned on in the phone's developer options, by the phone's owner: Rudolf OS explains how and
   never changes anything on the phone itself. (Normal ADB only: not the diagnostic or download modes of a phone's chip,
   which can damage it.)
-- On the test computers' phones (a REDMAGIC 9 Pro, a moto g play) this works with any Android 5 or later.
+- scrcpy works with Android 5 or later; the phones seen on the Asus (a REDMAGIC 9 Pro, a moto g play) are recent enough.
 
 ### 7.3 Android apps on the computer (Waydroid), for computers with room for it
 - The kernel side costs almost nothing and can ship first, in 1.5.8: `ANDROID_BINDER_IPC`, `ANDROID_BINDERFS` (and
