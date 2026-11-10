@@ -42,7 +42,7 @@ function tmTabs(pages) {
 function taskmgr26() {
   if (window.__tmW && wins.includes(__tmW)) { __tmW.focus(); return __tmW }
   const W = window.__tmW = appWin('taskmgr', 'Task Manager', '📊', 860, 580);
-  let tab = 'apps', iv, sys = null, procs = null, sel = null, sortK = 'rss', sortUp = false, filt = '', netPrev = null;
+  let appsRun = null, tab = 'apps', iv, sys = null, procs = null, sel = null, sortK = 'rss', sortUp = false, filt = '', netPrev = null;
   const hist = {cpu: [], mem: [], net: []}, L = {};
   W.body.style.cssText = 'display:flex;flex-direction:column;background:var(--wbg,#fff)';
   W.body.innerHTML = `<div class='tmtabs' role='tablist'>${[['apps', 'Apps'], ['procs', 'Processes'], ['perf', 'Performance'], ['system', 'System'], ['hw', 'Hardware'], ['start', 'Startup']].map(([k, n]) => `<button data-t='${k}' role='tab'>${n}</button>`).join('')}</div>
@@ -58,6 +58,7 @@ function taskmgr26() {
       if (RD) {
         const s = await rd('stats'); L.cpu = s.cpu; L.mem = s.memTotal - s.memAvailable; L.memT = s.memTotal; L.temp = s.tempC; L.bat = s.battery;
         if (tab == 'apps' || tab == 'procs') procs = await rd('processes');
+        if (tab == 'apps' && typeof apps57 == 'function') appsRun = await apps57();   /* 1.5.7: apps with no window too */
         if (tab == 'perf') {
           const n = await rd('net'); const now = performance.now(), tot = n.interfaces.filter(i => i.name != 'lo' && !i.virtual).reduce((a, i) => a + i.rx + i.tx, 0);
           L.net = netPrev ? Math.max(0, (tot - netPrev.b) / ((now - netPrev.t) / 1000)) : 0; netPrev = {b: tot, t: now};
@@ -116,6 +117,7 @@ function taskmgr26() {
     });
     const dp = pages.find(p => p.url.startsWith(location.origin + '/'));
     B.appendChild(t);
+    if (typeof tmApps57 == 'function') tmApps57(B, appsRun, async () => { appsRun = await apps57(); if (tab == 'apps') draw() });
     const m = document.createElement('div'); m.className = 'msg'; m.style.marginTop = '8px';
     m.textContent = (dp ? 'The desktop page uses ' + fmtB(dp.used) + ' of JavaScript memory. ' : '') + (RD ? 'Window memory is estimated from each window\'s contents; a real tab shows the JavaScript memory of its page. If the whole desktop stops responding for a minute, Rudolf OS restarts it and reopens your apps.' : 'Memory is estimated from each window\'s contents. "End task" closes a window even if it asks to save.');
     B.appendChild(m);

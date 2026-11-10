@@ -31,6 +31,11 @@
  *   memguard.critical  touched every second while memory is critical (the session's watchdog then waits longer)
  * Options: rudolf.nomemguard=1 on the start-up options (it then only sets oom_score_adj); --once prints what it
  * would do and exits (testing).
+ *   1.5.7 (plan stage 7): --apps prints the apps that run, as JSON, for Task Manager (rudolfd's apps/running): Flatpak
+ *   apps (all their sandboxes as one), Windows programs in Wine and Linux programs in Debian, each with its memory and
+ *   whether a window of it is open; --end ID asks one to quit (SIGTERM) and ends what is left of it 5 s later
+ *   (SIGKILL), its own processes only. When this guard quits an app it also says so to the desktop at once (a line
+ *   "memory closed NAME MB" in /run/rudolf/events), which shows a notification.
  *
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
@@ -56,7 +61,7 @@
 #define MIN_RSS (200LL << 20)   /* pages smaller than this are left alone */
 #define COOLDOWN 8
 
-struct proc { int pid, ppid; unsigned long long start; long long rss;   /* rss: in memory and in the swap */ char kind; /* r renderer, b browser (kiosk), w browser (web window), g gpu, n network, o other chrome, s system, 0 */ char ext; };
+struct proc { int pid, ppid; unsigned long long start; long long rss; char name[32];   /* rss: in memory and in the swap */ char kind; /* r renderer, b browser (kiosk), w browser (web window), g gpu, n network, o other chrome, s system, 0 */ char ext; };
 static struct proc ps[MAXP];
 static int np, once, off;
 static long hz, pagesz;
@@ -102,6 +107,7 @@ static void scan(void)
 		char *a = strchr(buf, '('), *b = strrchr(buf, ')'); if (!a || !b) continue;
 		struct proc *p = &ps[np]; memset(p, 0, sizeof *p); p->pid = pid;
 		char name[32]; size_t nl = b - a - 1; if (nl >= sizeof name) nl = sizeof name - 1; memcpy(name, a + 1, nl); name[nl] = 0;
+		snprintf(p->name, sizeof p->name, "%s", name);
 		/* after ')': state ppid pgrp session tty tpgid flags minflt cminflt majflt cmajflt utime stime cutime cstime
 		   priority nice threads itrealvalue starttime */
 		char st; if (sscanf(b + 2, "%c %d %*d %*d %*d %*d %*u %*u %*u %*u %*u %*u %*u %*d %*d %*d %*d %*d %*d %llu", &st, &p->ppid, &p->start) < 3) continue;
@@ -259,15 +265,130 @@ static struct app *app_victim(void)
 	}
 	return best;
 }
+/* 1.5.7: Settings › System health › Memory › "Close apps with no window open when memory runs out" (on unless
+   /persist/etc/rudolf-memory says close_apps=0) */
+static int close_apps_on(void)
+{
+	char b[200]; const char *f = getenv("MG_TEST") ? getenv("MG_MEMCONF") : "/persist/etc/rudolf-memory";
+	if (!f || readf(f, b, sizeof b) <= 0) return 1;
+	return strstr(b, "close_apps=0") == NULL;
+}
 static void signal_app(struct app *a, int sig)
 {
 	scan();
 	for (int i = 0; i < np; i++) for (int r = 0; r < a->nroots; r++) if (under(&ps[i], a->roots[r])) { kill(ps[i].pid, sig); break; }
 }
 
+/* ---------- 1.5.7 (plan stage 7): the apps that run, for Task Manager, and ending one ---------- */
+/* Debian's processes are under its keeper (debian-init, /run/rudolf/debian/init.pid). A Windows program is a process
+   named *.exe that is not one of Wine's own; a Linux program is a process whose parent is the keeper or a shell, that
+   is not a shell or a helper. Each counts with everything under it. */
+static const char *const DEB_HELPERS[] = { "debian-init", "sh", "bash", "dash", "sleep", "wineserver", "services.exe", "winedevice.exe",
+	"explorer.exe", "plugplay.exe", "svchost.exe", "rpcss.exe", "conhost.exe", "start.exe", "winemenubuilder", "wineboot.exe",
+	"tabtip.exe", "rundll32.exe", "dbus-daemon", "dbus-launch", "pulseaudio", "xdg-desktop-por", "xdg-document-po", "xdg-permission-", "at-spi-bus-laun", "at-spi2-registr", "gvfsd", NULL };
+static int deb_helper(const char *n) { for (int i = 0; DEB_HELPERS[i]; i++) if (!strcmp(n, DEB_HELPERS[i])) return 1; return 0; }
+static int is_shell(const char *n) { return !strcmp(n, "sh") || !strcmp(n, "bash") || !strcmp(n, "dash"); }
+/* the program's own name: its command line's first word, after the last / or \\ (Wine gives C:\\...\\Game.exe; the
+   kernel's name is cut at 15 letters, so a long .exe name loses its ".exe"); the kernel's name otherwise */
+static void long_name(struct proc *p, char *o, size_t on)
+{
+	char path[64], cl[1024]; snprintf(path, sizeof path, "/proc/%d/cmdline", p->pid); ssize_t n = readf(path, cl, sizeof cl);
+	if (n > 0) { cl[sizeof cl - 1] = 0; const char *b = cl, *c; for (c = cl; *c; c++) if (*c == '/' || *c == '\\') b = c + 1;
+		if (*b && (size_t)(c - b) < on && strncmp(b, p->name, strlen(p->name) > 15 ? 15 : strlen(p->name)) == 0) { snprintf(o, on, "%s", b); return; } }
+	snprintf(o, on, "%s", p->name);
+}
+static int ends_exe(const char *n) { size_t l = strlen(n); return l > 4 && !strcasecmp(n + l - 4, ".exe"); }
+struct dapp { int root; char name[64]; char kind; long long rss; };
+static struct dapp dapps[64]; static int ndapps;
+static void scan_debian(void)
+{
+	ndapps = 0;
+	char path[64]; const char *kp = once && getenv("MG_KEEPER") ? NULL : RUN "/debian/init.pid"; int keeper = 0;
+	if (kp) { if (readf(kp, path, sizeof path) > 0) keeper = atoi(path); } else keeper = atoi(getenv("MG_KEEPER"));
+	struct proc *k = keeper > 1 ? find(keeper) : NULL;
+	if (!k || (strcmp(k->name, "debian-init") && !(once && getenv("MG_KEEPER")))) return;
+	for (int i = 0; i < np && ndapps < 64; i++) {
+		struct proc *p = &ps[i]; if (p->pid == keeper || !under(p, keeper)) continue;
+		char ln[64]; long_name(p, ln, sizeof ln); if (deb_helper(ln) || deb_helper(p->name)) continue;
+		struct proc *par = find(p->ppid); if (!par) continue;
+		int exe = ends_exe(ln), top;
+		if (exe) { /* the topmost .exe that is not Wine's own: a program started by another counts with it */
+			top = 1; for (struct proc *q = par; q && q->pid != keeper; q = find(q->ppid)) { char qn[64]; long_name(q, qn, sizeof qn); if (ends_exe(qn) && !deb_helper(qn)) { top = 0; break; } } }
+		else { top = par->pid == keeper || is_shell(par->name);
+			/* under a Windows program, or under another Linux program, it counts with that one */
+			for (struct proc *q = par; top && q && q->pid != keeper; q = find(q->ppid)) { char qn[64]; long_name(q, qn, sizeof qn); if (!deb_helper(qn) && !is_shell(qn)) top = 0; } }
+		if (!top) continue;
+		struct dapp *d = &dapps[ndapps++]; d->root = p->pid; snprintf(d->name, sizeof d->name, "%s", ln); d->kind = exe ? 'w' : 'd'; d->rss = 0;
+	}
+	for (int a = 0; a < ndapps; a++) for (int i = 0; i < np; i++) if (under(&ps[i], dapps[a].root)) dapps[a].rss += proc_mem(ps[i].pid);
+}
+/* a Windows or Linux program's window: Wine's class is the .exe's name; a Linux program's is usually its name */
+static int dapp_window(const struct dapp *d, const char *wins)
+{
+	char nm[64]; snprintf(nm, sizeof nm, "%s", d->name); size_t nl = strlen(nm);
+	char st[64]; snprintf(st, sizeof st, "%s", nm); if (d->kind == 'w' && nl > 4) st[nl - 4] = 0; size_t sl = strlen(st);
+	for (const char *l = wins; l && *l; ) {
+		const char *end = strchr(l, '\n'); if (!end) end = l + strlen(l);
+		const char *f = l; int col = 0;
+		while (f < end) {
+			const char *t = memchr(f, '\t', end - f); if (!t) t = end; size_t fl = t - f;
+			if ((col == 2 || col == 3) && ((fl == nl && !strncasecmp(f, nm, nl)) || (fl == sl && !strncasecmp(f, st, sl)))) return 1;
+			f = t + 1; col++;
+		}
+		l = *end ? end + 1 : end;
+	}
+	return 0;
+}
+static void jstr(const char *v) { putchar('"'); for (const unsigned char *c = (const unsigned char *)v; *c; c++) { if (*c == '"' || *c == '\\') printf("\\%c", *c); else if (*c < 32) printf("\\u%04x", *c); else putchar(*c); } putchar('"'); }
+static void list_apps(void)
+{
+	static char wins[16384];
+	const char *wf = getenv("MG_WINDOWS") && once ? getenv("MG_WINDOWS") : RUN "/windows", *ru = getenv("MG_RUNUSER") && once ? getenv("MG_RUNUSER") : "/run/user";
+	if (readf(wf, wins, sizeof wins) < 0) wins[0] = 0;
+	scan(); scan_apps(ru); scan_debian();
+	printf("{\"ok\":true,\"apps\":["); int n = 0;
+	for (int k = 0; k < napps; k++) { printf("%s{\"id\":\"flatpak:", n++ ? "," : ""); printf("%s\",\"app\":", apps[k].id); jstr(apps[k].id);
+		printf(",\"name\":"); jstr(app_name(&apps[k])); printf(",\"kind\":\"flatpak\",\"rss\":%lld,\"window\":%s,\"processes\":%d}", apps[k].rss, has_window(&apps[k], wins) ? "true" : "false", apps[k].nroots); }
+	for (int k = 0; k < ndapps; k++) { printf("%s{\"id\":\"%s:%d\",\"name\":", n++ ? "," : "", dapps[k].kind == 'w' ? "wine" : "debian", dapps[k].root); jstr(dapps[k].name);
+		printf(",\"kind\":\"%s\",\"rss\":%lld,\"window\":%s}", dapps[k].kind == 'w' ? "wine" : "debian", dapps[k].rss, dapp_window(&dapps[k], wins) ? "true" : "false"); }
+	printf("]}\n");
+}
+/* the processes of one listed app: flatpak:ID, wine:PID or debian:PID (a PID that is one of the listed programs) */
+static int app_pids(const char *id, int *out, int max)
+{
+	scan(); const char *ru = getenv("MG_RUNUSER") && once ? getenv("MG_RUNUSER") : "/run/user"; int n = 0;
+	if (!strncmp(id, "flatpak:", 8)) { scan_apps(ru);
+		for (int k = 0; k < napps; k++) if (!strcmp(apps[k].id, id + 8))
+			for (int i = 0; i < np && n < max; i++) for (int r = 0; r < apps[k].nroots; r++) if (under(&ps[i], apps[k].roots[r])) { out[n++] = ps[i].pid; break; }
+		return n; }
+	int pid = 0; if (!strncmp(id, "wine:", 5)) pid = atoi(id + 5); else if (!strncmp(id, "debian:", 7)) pid = atoi(id + 7); else return 0;
+	scan_debian(); int listed = 0; for (int k = 0; k < ndapps; k++) if (dapps[k].root == pid && (dapps[k].kind == 'w') == !strncmp(id, "wine:", 5)) listed = 1;
+	if (!listed) return 0;
+	for (int i = 0; i < np && n < max; i++) if (under(&ps[i], pid)) out[n++] = ps[i].pid;
+	return n;
+}
+static int end_app(const char *id)
+{
+	static int pids[MAXP]; int n = app_pids(id, pids, MAXP);
+	if (!n) { printf("{\"ok\":false,\"error\":\"that app is not running any more\"}\n"); return 1; }
+	for (int i = 0; i < n; i++) kill(pids[i], SIGTERM);
+	int left = n, waited = 0;
+	for (; waited < 50 && left; waited++) { usleep(100000); left = 0; for (int i = 0; i < n; i++) if (!kill(pids[i], 0)) { char p[64]; snprintf(p, sizeof p, "/proc/%d/stat", pids[i]); if (readf(p, buf, sizeof buf) > 0) { char *b = strrchr(buf, ')'); if (b && b[2] != 'Z') left++; } } }
+	int forced = 0; if (left) { int now[MAXP]; int m = app_pids(id, now, MAXP); for (int i = 0; i < m; i++) { kill(now[i], SIGKILL); forced++; } }
+	printf("{\"ok\":true,\"processes\":%d,\"forced\":%s}\n", n, forced ? "true" : "false");
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	once = argc > 1 && !strcmp(argv[1], "--once");
+	/* 1.5.7: (the host test sets MG_TEST to move the places, as --once does) */
+	if (argc > 1 && (!strcmp(argv[1], "--apps") || !strcmp(argv[1], "--end"))) {
+		once = getenv("MG_TEST") != NULL; hz = sysconf(_SC_CLK_TCK); pagesz = sysconf(_SC_PAGESIZE);
+		if (!strcmp(argv[1], "--apps")) { list_apps(); return 0; }
+		if (argc < 3 || strlen(argv[2]) > 200) { printf("{\"ok\":false,\"error\":\"which app?\"}\n"); return 2; }
+		return end_app(argv[2]);
+	}
 	hz = sysconf(_SC_CLK_TCK); pagesz = sysconf(_SC_PAGESIZE);
 	if (readf("/etc/rudolf/cmdline", buf, sizeof buf) <= 0) readf("/proc/cmdline", buf, sizeof buf);
 	off = strstr(buf, "rudolf.nomemguard=1") != NULL;
@@ -281,7 +402,7 @@ int main(int argc, char **argv)
 		struct proc *v = victim(); if (v) printf("would end: %d (%lld MiB)\n", v->pid, v->rss >> 20); else printf("would end: none\n");
 		struct app *a = app_victim();
 		for (int k = 0; k < napps; k++) printf("app %s: %lld MiB, %d sandbox(es)%s\n", apps[k].id, apps[k].rss >> 20, apps[k].nroots, &apps[k] == a ? " (no window open: would quit it)" : "");
-		if (!v && a) printf("would quit app: %s (%lld MiB)\n", app_name(a), a->rss >> 20);
+		if (!v && a) { if (close_apps_on()) printf("would quit app: %s (%lld MiB)\n", app_name(a), a->rss >> 20); else printf("would quit app: none (closing apps is off)\n"); }
 		return 0;
 	}
 	/* never swapped out or stalled itself; ended last; ahead of the pages */
@@ -321,7 +442,7 @@ int main(int argc, char **argv)
 		if (now - last_protect >= 5 || crit) { scan(); protect(); last_protect = now; }
 		if (!crit || off || now - last_kill < COOLDOWN) continue;
 		struct proc *v = victim();
-		struct app *a = v ? NULL : app_victim();
+		struct app *a = v || !close_apps_on() ? NULL : app_victim();
 		if (!v && a) {
 			char nm[128]; snprintf(nm, sizeof nm, "%s", app_name(a)); long long rss = a->rss; int root = a->roots[0];
 			signal_app(a, SIGTERM); sleep(3);
@@ -329,6 +450,9 @@ int main(int argc, char **argv)
 			logf_("quit %s (no window open, %lld MiB) to free memory", nm, rss >> 20);
 			char l[200]; int n = snprintf(l, sizeof l, "%lld %d %lld %s\n", (long long)now, root, rss, nm);
 			int f = open(RUN "/memguard.events", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644); if (f >= 0) { if (write(f, l, n) < 0) {} close(f); }
+			/* 1.5.7: the desktop says so at once ("Discord was closed to free memory") */
+			n = snprintf(l, sizeof l, "memory closed %s %lld\n", nm, rss >> 20);
+			f = open(RUN "/events", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644); if (f >= 0) { if (write(f, l, n) < 0) {} close(f); }
 			last_kill = time(NULL); low = stall = 0; fire0.tv_sec = 0;
 			continue;
 		}
