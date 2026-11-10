@@ -10,13 +10,14 @@ function debLib(){if(window.Terminal&&window.FitAddon)return Promise.resolve();
  if(!debLib.p)debLib.p=new Promise((res,rej)=>{const l=document.createElement('link');l.rel='stylesheet';l.href='/lib/xterm.css';document.head.appendChild(l);
   const s=document.createElement('script');s.src='/lib/xterm.js';s.onload=()=>res();s.onerror=()=>{debLib.p=null;rej(new Error('The terminal could not be loaded.'))};document.head.appendChild(s)});return debLib.p}
 /* ---------- Debian's graphical apps, listed with the Flatpak ones ---------- */
-async function debApps(){if(!RD)return[];if(!DEB.st)await debStatus();if(!DEB.st||!DEB.st.installed){if(DEB.apps.length){DEB.apps=[];svj(DEB_AK,[]);lxRegister()}return[]}
+async function debApps(){if(!RD)return[];if(!DEB.st)await debStatus();if(!DEB.st||!DEB.st.installed){if(DEB.st&&DEB.apps.length){DEB.apps=[];svj(DEB_AK,[]);lxRegister()}return DEB.st?[]:(DEB.apps.length?DEB.apps:ld(DEB_AK,[]))}   /* 1.5.6: status not to be had (locked): keep what is known */
  try{const j=await lxApi('debian/apps');const a=j.apps||[];const ch=JSON.stringify(a)!=JSON.stringify(DEB.apps);DEB.apps=a;DEB.appsAt=Date.now();if(ch){svj(DEB_AK,a);lxRegister()}}catch(e){}return DEB.apps}
 {const _l=lxLaunchers;lxLaunchers=function(){const own=_l();const d=(DEB.apps.length?DEB.apps:ld(DEB_AK,[])).map(a=>({desktop:'deb-'+a.id,name:a.name,icon:a.icon,mime:a.mime,wmclass:a.wmclass,cats:a.categories,comment:'Debian',app:'deb:'+a.id,deb:a.id,menu:a.menu!==false}));return own.concat(d)}}
 {const _r=lxRun;lxRun=async function(x,file){if(!x.deb)return _r(x,file);if(!RD)return;
  try{await lxApi('debian/launch?id='+encodeURIComponent(x.deb)+(file?'&file='+encodeURIComponent(file):''));if(!lxRun.toldDeb){lxRun.toldDeb=1;notify('Starting '+x.name+'…','It opens above the desktop in a moment; its taskbar button switches back to it.')}}catch(e){notify(x.name,e.message,{kind:'error'})}}}
 {const _i=lxImg;lxImg=function(el,id,icon){if(!String(id).startsWith('deb:'))return _i(el,id,icon);if(!icon)return;const k='deb|'+icon;
- if(!LX.icons.has(k))LX.icons.set(k,lxApi('debian/icon?path='+encodeURIComponent(icon)).then(r=>r.blob()).then(b=>URL.createObjectURL(b)).catch(()=>null));
+ /* 1.5.6: a picture that could not be had is not kept (asked for again at the next drawing: lxRedraw after sign-in) */
+ if(!LX.icons.has(k))LX.icons.set(k,lxApi('debian/icon?path='+encodeURIComponent(icon)).then(r=>r.blob()).then(b=>{if(!b.size||!/^image\//.test(b.type))throw new Error('not an image');return URL.createObjectURL(b)}).catch(()=>{LX.icons.delete(k);return null}));
  LX.icons.get(k).then(u=>{if(u&&el.isConnected){el.textContent='';const i=new Image();i.className='lxapp';i.src=u;i.alt='';el.appendChild(i)}})}}
 /* ---------- one terminal session ---------- */
 function debB64(s){const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}

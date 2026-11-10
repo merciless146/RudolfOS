@@ -1577,9 +1577,19 @@ static void api_term(struct req *r, const char *what)
 	char ok[8]; if (read(s, ok, sizeof ok) < 0) {} close(s); reply_ok(r->fd, "ok");
 }
 static int home_linux_path(const char *in, char *out, size_t n);   /* rudolfd-home.inc */
+/* 1.5.6: Debian is in the encrypted folder (/persist/debian a link into it) and the folder is not open yet: before
+   sign-in it looked not installed, and the desktop dropped its apps (Starport GE's icon on the Vivobook, after #168
+   brought back Discord's and Steam's). Until it is open, the status, the apps and their icons say "locked". */
+static int debian_locked(void)
+{
+	struct stat l, t;
+	return !lstat(PERSIST "/debian", &l) && S_ISLNK(l.st_mode) && stat(PERSIST "/debian", &t);
+}
+
 static void api_debian(struct req *r, const char *what)
 {
 	if (access(DEBIAN_BIN, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS cannot run Debian"); return; }
+	if ((!strcmp(what, "status") || !strcmp(what, "apps") || !strcmp(what, "icon")) && debian_locked()) { reply_err(r->fd, 423, "Debian is in the encrypted folder, which opens at sign-in"); return; }
 	if (!strcmp(what, "status")) {
 		const char *sz = qparam(r->query, "size");
 		char *o = run_out(sz && !strcmp(sz, "1") ? DEBIAN_BIN " status --size 2>/dev/null" : DEBIAN_BIN " status 2>/dev/null");

@@ -23,6 +23,9 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwA
       const q = new URL(u, location.href);
       if (q.pathname == '/api/apps/installed') { T.inst++; return T.open ? J({apps: APPS_}) : J({error: 'the apps are in the encrypted folder, which opens at sign-in'}, 423) }
       if (q.pathname == '/api/apps/icon') return T.open ? Promise.resolve(new Response(Uint8Array.from(atob(png), c => c.charCodeAt(0)), {headers: {'content-type': 'image/png'}})) : J({error: 'locked'}, 423);
+      if (q.pathname == '/api/debian/status') return T.open ? J({installed: 1, wine: 1}) : J({error: 'Debian is in the encrypted folder, which opens at sign-in'}, 423);
+      if (q.pathname == '/api/debian/apps') return T.open ? J({apps: [{id: 'starport-ge', name: 'Starport GE', icon: '/persist/debian/usr/share/pixmaps/starport-ge.png', menu: true}]}) : J({error: 'locked'}, 423);
+      if (q.pathname == '/api/debian/icon') return T.open ? Promise.resolve(new Response(Uint8Array.from(atob(png), c => c.charCodeAt(0)), {headers: {'content-type': 'image/png'}})) : J({error: 'locked'}, 423);
       if (u.includes('/api/')) return J({items: [], apps: [], windows: []});
       return f0(u, o) } }, PNG);
   const q = s => p.evaluate(s);
@@ -32,20 +35,26 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwA
   await q(`(async()=>{T.open=true;try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});
     ACCTS.length=0;ACCTS.push({n:'ann',h:await pwMake('a1'),r:'admin'});saveUser();USER=ACCTS[0];await userLogin(USER,'a1');return 1})()`);
   await wait(2500);
-  await q("(()=>{deskAdd('lx:com.discordapp.Discord');return 1})()"); await wait(300);
-  ok('0. set up: Discord is on the desktop, the list is saved', await q("!!document.querySelector('#desk .ic[data-app=\"lx:com.discordapp.Discord\"]')") && (await q("ld(LXK,[]).length")) == 2);
+  await q("(async()=>{DEB.st=null;await debApps();lxRegister();return 1})()"); await wait(300);
+  await q("(()=>{deskAdd('lx:com.discordapp.Discord');deskAdd('lx:deb-starport-ge');return 1})()"); await wait(300);
+  ok('0. set up: Discord and Starport GE (Debian, Wine) are on the desktop, the lists are saved', await q("!!document.querySelector('#desk .ic[data-app=\"lx:com.discordapp.Discord\"]')&&!!document.querySelector('#desk .ic[data-app=\"lx:deb-starport-ge\"]')") && (await q("ld(LXK,[]).length")) == 2 && (await q("ld(DEB_AK,[]).length")) == 1);
   // the next start: the folder is locked until sign-in
   await q("(()=>{T.open=false;return 1})()");
   await load(); await q("(()=>{T.open=false;return 1})()");
   await wait(5000);   // the start-up's own request (4 s) is refused
   ok('1. locked at start-up: the list saved last time is kept (not emptied, not saved empty)', (await q("ld(LXK,[]).length")) == 2 && (await q("(LX.inst||[]).length")) == 2 && await q("T.inst") >= 1, [await q("ld(LXK,[]).length"), await q("(LX.inst||[]).length"), await q("T.inst")]);
   ok('2. ...so the apps stay in the Start menu meanwhile', await q("!!APPS['lx:com.discordapp.Discord']&&!!APPS['lx:com.valvesoftware.Steam']"));
+  await q("(async()=>{DEB.st=null;await debApps();return 1})()");
+  ok('2b. Debian locked too: its apps kept (Starport GE stays), not saved empty', (await q("ld(DEB_AK,[]).length")) == 1 && await q("!!APPS['lx:deb-starport-ge']"), [await q("ld(DEB_AK,[]).length"), await q("Object.keys(APPS).filter(k=>/deb/.test(k))")]);
   // sign in; the folder opens a few seconds later
   await q(`(async()=>{const o=document.getElementById('oobe');o&&o.remove();USER=ACCTS[0];await userLogin(USER,'a1');const L=document.getElementById('login');if(L)L.style.display='none';return 1})()`);
   const n0 = await q("T.inst"); await wait(4000); await q("(()=>{T.open=true;return 1})()"); await wait(4500);
   ok('3. signed in: the list is asked for again until it comes', (await q("T.inst")) > n0 + 1 && await q("LX.ok==1"), [n0, await q("T.inst")]);
   const di = await q("(()=>{const e=document.querySelector('#desk .ic[data-app=\"lx:com.discordapp.Discord\"]');return e?{img:!!e.querySelector('b img.lxapp'),txt:e.querySelector('b').textContent}:null})()");
   ok('4. Discord is on the desktop with its own picture', di && di.img, di);
+  await wait(3500);
+  const st = await q("(()=>{const e=document.querySelector('#desk .ic[data-app=\"lx:deb-starport-ge\"]');return e?{img:!!e.querySelector('b img.lxapp'),txt:e.querySelector('b').textContent}:null})()");
+  ok('4b. Starport GE (Debian) is on the desktop with its own picture after sign-in', st && st.img, st);
   ok('5. ...and the Start menu has both, with their pictures', await q("(()=>{startMenuApps();return 1})()") && await wait(800) === undefined && await q("[...document.querySelectorAll('#menu li.lxv')].filter(li=>/Discord|Steam/.test(li.textContent)&&li.querySelector('img.lxapp')).length") == 2, await q("[...document.querySelectorAll('#menu li.lxv')].map(li=>li.textContent)"));
   ok('no page error', !errs.length, errs);
   await b.close(); srv.close();
