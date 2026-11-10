@@ -8548,7 +8548,10 @@ const WEB_SITES=['accounts.google.com','mail.google.com','docs.google.com','driv
  'outlook.live.com','outlook.office.com','outlook.office365.com','login.live.com','login.microsoftonline.com','account.microsoft.com','onedrive.live.com','teams.microsoft.com',
  'mail.yahoo.com','compose.mail.yahoo.com','login.yahoo.com','paypal.com','web.whatsapp.com','discord.com','app.slack.com','github.com','icloud.com','proton.me'];
 function webHost(u){try{return new URL(u).hostname.toLowerCase()}catch(e){return''}}
-function webWants(u){if(!RD)return false;const h=webHost(u);return!!h&&WEB_SITES.concat(S.webSites||[]).some(d=>h==d||h.endsWith('.'+d))}
+function webWants(u){if(!RD)return false;const h=webHost(u);
+ /* 1.5.7: with the desktop in WebKit, every website opens in Chromium's own window (Chromium only for browsing) */
+ if(RD.engine=='webkit')return !!h&&!/^(127\.0\.0\.1|localhost)$/.test(h);
+ return!!h&&WEB_SITES.concat(S.webSites||[]).some(d=>h==d||h.endsWith('.'+d))}
 let WEB_ON=false,WEB_SHOWN=false,WEB_TOLD=false,WEB_POLL=null;
 const webNativeOpen=window.open.bind(window);
 async function webOpen(u){
@@ -14320,6 +14323,28 @@ if(RD){const _p=net31Poll;net31Poll=async function(){const r=await _p.apply(this
 addEventListener('online',()=>setTimeout(()=>{if(!RD){NET57.was=false;net57Check()}else if(typeof net31Poll=='function')net31Poll()},300));
 /* a button that needs the internet: pressed offline, it says it waits and goes on by itself once online */
 async function netGate(note){if(netLive())return true;if(note)note('Waiting for the internet… It starts by itself once this computer is online (Settings › Network).');await netWait(90000);if(note)note('');return true}   /* (tried anyway after 90 s) */
+
+/* 1.5.7 (plan Part 4, step 2): Settings › System health › Desktop engine. Chromium (the default) or WebKit, a lighter
+   web engine (WebKitGTK, in Linux (Debian)): the desktop and its apps in WebKit, websites in Chromium's own window.
+   On the Vivobook (2026-11-10, headless) WebKit held the desktop page in about a third of Chromium's memory. A test:
+   if WebKit does not start, Chromium takes over for that start. Choosing WebKit installs it in Debian when needed. */
+async function enginePanel57(c){if(!RD)return;const d=document.createElement('div');d.className='eng57';const at=c.querySelector(':scope > .hlev');if(at)at.before(d);else c.appendChild(d);
+ const draw=async()=>{let e;try{e=await rd('desktop/engine')}catch(x){d.innerHTML='';return}const adm=isAdmin();
+  d.innerHTML=`<h4 class='sh4 sgrp' style='font-size:15px;margin-top:18px'>Desktop engine (test)</h4>
+<div class='msg'>The desktop and its apps can run in <b>WebKit</b>, a lighter web engine, instead of Chromium: it takes much less memory, which leaves more for apps and games. Websites then open in Chromium's own window. This is a test in 1.5.7: some things may look or work differently.</div>
+<div class='r2'><label>Engine</label><div><label class='ck'><input type='radio' name='eng57' value='chromium'> Chromium (recommended)</label><label class='ck'><input type='radio' name='eng57' value='webkit'> WebKit (test)</label></div>
+<label>Now</label><div class='engnow'></div></div><div class='rmrow' style='justify-content:flex-start;gap:6px'><button class='engap' hidden>Restart the desktop with it</button></div><pre class='jl englog' hidden></pre>`;
+  const q=s=>d.querySelector(s);d.querySelectorAll('input[name=eng57]').forEach(r=>{r.checked=r.value==e.choice;r.disabled=!adm||!e.persistent||(r.value=='webkit'&&!e.debian)});
+  q('.engnow').textContent=(e.now=='webkit'?'WebKit':'Chromium')+(e.failed?' (WebKit did not start this time, so Chromium was used)':'')+(!e.debian?' · WebKit needs Linux (Debian) set up: open Terminal and choose Linux.':e.choice=='webkit'&&!e.ready?' · WebKit is being installed in Linux.':'');
+  q('.engap').hidden=e.choice==e.now;
+  q('.engap').onclick=async()=>{if(!await elevate('Restart the desktop'))return;notify('Restarting the desktop','Your open windows close; save your work first.',{quiet:true});setTimeout(()=>rdPost('desktop/engine?apply=1').catch(()=>{}),1500)};
+  d.querySelectorAll('input[name=eng57]').forEach(r=>r.onchange=async()=>{if(!await elevate('Change the desktop engine'))return draw();
+   try{const j=await rdPost('desktop/engine?engine='+r.value);
+    if(j&&/installing/.test(j.message||'')){const pre=q('.englog');pre.hidden=false;pre.textContent='Installing WebKit in Linux (about 60 MB)…\n';
+     if(typeof lxJobWait=='function'){const jj=await lxJobWait(l=>{pre.textContent+=l+'\n';pre.scrollTop=pre.scrollHeight});pre.textContent+=jj.status==0?'\nDone.':'\nThat did not work. Is this computer connected to the internet?'}}}
+   catch(x){notify('Desktop engine',x.message,{kind:'error'})}draw()})};
+ draw()}
+{const _h=healthPanel;healthPanel=function(c,W){const r=_h.apply(this,arguments);try{enginePanel57(c)}catch(e){console.warn(e)}return r}}
 
 /* ===== 1.4.5 (spreng45): SpreadsheetPro's formula engine. No eval or Function: formulas are tokenized and parsed
    into a tree, then evaluated. Values: numbers, strings, booleans, errors ({e:'#DIV/0!'}), empty (null); ranges are

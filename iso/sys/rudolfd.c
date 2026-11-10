@@ -365,11 +365,13 @@ static void serve_index(struct req *r, const char *root)
 	for (size_t i = 0; ls && i < lsn; i++) {   /* '<' escaped so the data can never end the script element */
 		if (ls[i] == '<') { memcpy(q, "\\u003c", 6); q += 6; } else *q++ = ls[i];
 	}
-	q += sprintf(q, "</script><script>window.RUDOLFD={token:\"%s\",base:\"\",boot:\"%s\",media:\"%s\",live:%d,recovery:%d};"
+	/* 1.5.7: which engine shows the desktop (the session writes it): with WebKit, websites open in Chromium's window */
+	char eng[16] = "chromium"; { char *e = slurp(RUN "/desktop-engine", NULL); if (e) { trim(e); if (!strcmp(e, "webkit")) snprintf(eng, sizeof eng, "webkit"); free(e); } }
+	q += sprintf(q, "</script><script>window.RUDOLFD={token:\"%s\",base:\"\",boot:\"%s\",media:\"%s\",live:%d,recovery:%d,engine:\"%s\"};"
 		"(function(){var n=0;function s(m){if(++n>200)return;try{fetch('/api/clientlog',{method:'POST',headers:{'X-Rudolf-Token':RUDOLFD.token},body:new Date().toISOString()+' '+String(m).slice(0,3000)})}catch(e){}}"
 		"addEventListener('error',function(e){s('error: '+e.message+' @'+(e.filename||'').split('/').pop()+':'+e.lineno+':'+e.colno)});"
 		"addEventListener('unhandledrejection',function(e){var r=e.reason;s('promise: '+(r&&r.stack||r))});window.__rdlog=s})();%s</script>",
-		token, boot_mode, media_mode, live, recovery, LSJS);
+		token, boot_mode, media_mode, live, recovery, eng, LSJS);
 	size_t il = q - inj;
 	free(ls);
 	char *h = strstr(html, "<head>");
@@ -2882,7 +2884,7 @@ static void api_secureboot(struct req *r, const char *what, int post)
 }
 
 /* ------------------------------------------------------------- dispatcher */
-static int restart_browser(void) { return run("pkill -f 'chrom[e].*--rudolf-kiosk' >/dev/null 2>&1"); }
+static int restart_browser(void) { return run("pkill -f '[-]-rudolf-kiosk' >/dev/null 2>&1"); }   /* (1.5.7: either engine) */
 
 /* ------------------------------------------------------------- the development link (1.4.0)
  * rudolf-devlink runs commands from a private GitHub repository the owner chose (see rudolf-devlink.c and
@@ -3580,6 +3582,37 @@ static void api(struct req *r)
 	if (!strcmp(p, "log")) { char *l = run_out("dmesg | tail -200"); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, l); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return; }
 	if (!strcmp(p, "native/status")) { api_native_status(r); return; }
 	/* 1.5.7 (plan stage 5): rudolf-selftest, which only reads; its PASS/FAIL/SKIP lines */
+	/* 1.5.7 (plan Part 4, step 2): Settings › System health › Desktop engine. GET: the choice, the engine in use, and
+	   whether Debian has what WebKit needs. POST engine=webkit|chromium keeps the choice (/persist/etc); choosing WebKit
+	   installs WebKitGTK and its Python bindings in Debian (a job) when they are missing; apply=1 starts the desktop
+	   again with it (the session reads the choice) */
+	if (!strcmp(p, "desktop/engine")) {
+		const char *TL = "ls /persist/debian/usr/lib/*/girepository-1.0/WebKit2-4.1.typelib >/dev/null 2>&1 && [ -d /persist/debian/usr/lib/python3/dist-packages/gi ]";
+		if (post) {
+			if (access(RUN "/persistent", F_OK)) { reply_err(r->fd, 409, "settings are kept only on an installed Rudolf OS"); return; }
+			const char *e = qparam(r->query, "engine"), *ap = qparam(r->query, "apply");
+			if (e && *e) {
+				if (strcmp(e, "webkit") && strcmp(e, "chromium")) { reply_err(r->fd, 400, "engine is webkit or chromium"); return; }
+				if (!strcmp(e, "webkit") && access("/persist/debian/.rudolf-ready", F_OK)) { reply_err(r->fd, 409, "set up Linux (Debian) first: open Terminal and choose Linux"); return; }
+				mkdir(PERSIST "/etc", 0755);
+				if (!strcmp(e, "chromium")) unlink(PERSIST "/etc/rudolf-desktop-engine"); else write_str(PERSIST "/etc/rudolf-desktop-engine", "webkit\n");
+				unlink(RUN "/webkit-failed");
+				if (!strcmp(e, "webkit") && run(TL)) {
+					if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
+					start_job("webkit-install", "/usr/bin/rudolf-debian run --root -- sh -c 'apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends python3-gi gir1.2-webkit2-4.1 gir1.2-gtk-3.0 libgles2 libegl1 libegl-mesa0 libgl1-mesa-dri && echo done installed'");
+					reply_ok(r->fd, "installing"); return;
+				}
+			}
+			if (ap && !strcmp(ap, "1")) write_str(RUN "/engine-switch", "1");
+			reply_ok(r->fd, "saved"); return;
+		}
+		char *c = slurp(PERSIST "/etc/rudolf-desktop-engine", NULL), *n = slurp(RUN "/desktop-engine", NULL); if (c) trim(c); if (n) trim(n);
+		str s = {0}; sadd(&s, "{\"ok\":true,\"choice\":\"%s\",\"now\":\"%s\",\"debian\":%s,\"ready\":%s,\"failed\":%s,\"persistent\":%s}",
+			c && !strcmp(c, "webkit") ? "webkit" : "chromium", n && !strcmp(n, "webkit") ? "webkit" : "chromium",
+			access("/persist/debian/.rudolf-ready", F_OK) ? "false" : "true", run(TL) ? "false" : "true",
+			access(RUN "/webkit-failed", F_OK) ? "false" : "true", access(RUN "/persistent", F_OK) ? "false" : "true");
+		free(c); free(n); reply_json(r->fd, &s); return;
+	}
 	if (!strcmp(p, "selftest")) { char *o = access("/usr/lib/rudolf/selftest", X_OK) ? NULL : run_out("/usr/lib/rudolf/selftest 2>&1");
 		if (!o) { reply_err(r->fd, 404, "this Rudolf OS has no self-test"); return; }
 		str s = {0}; sadd(&s, "{\"ok\":true,\"text\":"); sjson(&s, o); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return; }
