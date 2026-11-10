@@ -26,6 +26,11 @@ ok "...kept in power.conf" $(grep -q '^mode_ac=performance$' $POWER_CONF && echo
 $SH $P set mode_ac=saver >/dev/null; ok "Power saver: the quiet profile (this laptop has no low-power) and the power preference" $([ "$(cat $T/sys/firmware/acpi/platform_profile)" = quiet ] && [ "$(cat $T/sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference)" = power ] && echo 1 || echo 0)
 $SH $P set care=80 >/dev/null; ok "Battery care 80 %: the charge threshold" $([ "$(cat $B/charge_control_end_threshold)" = 80 ] && echo 1 || echo 0)
 for c in 70 90 100; do $SH $P set care=$c >/dev/null; ok "Battery care $c %: the charge threshold" $([ "$(cat $B/charge_control_end_threshold)" = $c ] && echo 1 || echo 0); done
+# 1.5.7 (plan stage 6): a battery that keeps another limit than the one asked (some ASUS laptops: 60, 80 or 100 % only)
+s=$(POWER_CARE_FW=80 $SH $P set care=70); ok "1.5.7: 70 % asked, 80 % kept: noted, and said in the status (careKept)" $(has "$s" '"careKept":{"70":80}') "$s"
+s=$(POWER_CARE_FW=100 $SH $P set care=90); ok "1.5.7: ...90 % asked, 100 % kept: both noted" $(has "$s" '"careKept":{"70":80,"90":100}') "$s"
+s=$($SH $P set care=70); ok "1.5.7: ...70 % kept later (a firmware update): taken off the list" $(has "$s" '"careKept":{"90":100}') "$s"
+s=$($SH $P set care=90); ok "1.5.7: ...and when every limit is kept, nothing is noted" $(has "$s" '"careKept":{}') "$s"
 s=$($SH $P set care=60 2>&1); ok "60 % is no longer a choice (1.5.6): refused" $(has "$s" '"ok":false') "$s"
 sed -i 's/^care=.*/care=60/' $POWER_CONF; s=$($SH $P status)
 ok "a 60 kept before 1.5.6 is read as 70, not 100, and the battery reports 70 (now.care)" $([ "$(has "$s" '"sleep":0,"care":70}')" = 1 ] && [ "$(has "$s" '"care":70}}')" = 1 ] && [ "$(cat $B/charge_control_end_threshold)" = 70 ] && echo 1 || echo 0) "$s"

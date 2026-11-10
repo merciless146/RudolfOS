@@ -10,7 +10,8 @@
 # level), saver_now (0|1), screen_ac, screen_bat (minutes to turn the screen off, 0 never), sleep_ac, sleep_bat
 # (minutes to sleep, 0 never), lid_ac, lid_bat (sleep|screen|nothing), button (ask|sleep|shutdown), care (70|80|90|100;
 # a 60 kept before 1.5.6 is read as 70, the nearest choice, rather than falling back to 100).
-# Test overrides: POWER_SYS (a stand-in /sys), POWER_CONF, POWER_RUN, POWER_SUSPEND (a command). GPL-2.0-or-later.
+# Test overrides: POWER_SYS (a stand-in /sys), POWER_CONF, POWER_RUN, POWER_SUSPEND (a command), POWER_CARE_FW (the limit
+# the stand-in battery keeps). GPL-2.0-or-later.
 SYS=${POWER_SYS:-/sys}
 RUN=${POWER_RUN:-/run/rudolf}
 if [ -n "$POWER_CONF" ]; then CONF=$POWER_CONF; elif [ -d /persist/etc ]; then CONF=/persist/etc/power.conf; else CONF=$RUN/power.conf; fi
@@ -52,7 +53,9 @@ apply() {
 	mode=$(get mode_$src); [ $saver = 1 ] && mode=saver
 	pp=$(profile_for $mode); [ -n "$pp" ] && [ -w "$SYS/firmware/acpi/platform_profile" ] && echo "$pp" > "$SYS/firmware/acpi/platform_profile" 2>/dev/null
 	e=$(epp_for $mode); for f in $(epp_files); do a=" $(rd1 ${f%/*}/energy_performance_available_preferences) "; case "$a" in *" $e "*) echo "$e" > "$f" 2>/dev/null;; esac; done
-	[ -n "$b" ] && [ -w "$b/charge_control_end_threshold" ] && echo "$(get care)" > "$b/charge_control_end_threshold" 2>/dev/null
+	if [ -n "$b" ] && [ -w "$b/charge_control_end_threshold" ]; then want=$(get care); echo "$want" > "$b/charge_control_end_threshold" 2>/dev/null
+		[ -n "$POWER_CARE_FW" ] && echo "$POWER_CARE_FW" > "$b/charge_control_end_threshold"   # (the host test: firmware that keeps another limit)
+		care_note "$want" "$(rd1 "$b/charge_control_end_threshold")"; fi
 	if command -v iw >/dev/null 2>&1; then for w in "$SYS"/class/net/*/wireless; do [ -e "$w" ] || continue; i=${w%/wireless}; i=${i##*/}; iw dev "$i" set power_save $([ $saver = 1 ] && echo on || echo off) 2>/dev/null; done; fi
 	osrc=$(now src); osav=$(now saver)
 	# battery saver: the screen 30 % dimmer (not below 10 %), back as it was when it goes off
@@ -65,6 +68,12 @@ apply() {
 	[ -n "$osav" ] && [ "$osav" != "$saver" ] && ev "power saver $([ $saver = 1 ] && echo on || echo off)"
 	return 0
 }
+# 1.5.7 (plan stage 6): what the battery kept when a limit was asked for, "ASKED=KEPT" a line (some ASUS laptops keep
+# only 60, 80 or 100 %), so Power and battery can say so beside that choice; a limit kept as asked is taken off
+REFUSED="$CONF.refused"
+care_note() { [ -n "$2" ] || return 0; old=$(grep -v "^$1=" "$REFUSED" 2>/dev/null)
+	if [ "$1" = "$2" ]; then [ -e "$REFUSED" ] || return 0; [ -n "$old" ] && echo "$old" > "$REFUSED" || rm -f "$REFUSED"
+	else { [ -n "$old" ] && echo "$old"; echo "$1=$2"; } > "$REFUSED.tmp" && mv "$REFUSED.tmp" "$REFUSED"; fi; }
 set_key() { mkdir -p "${CONF%/*}" 2>/dev/null; t="$CONF.tmp"; { for k in $KEYS; do if [ "$k" = "$1" ]; then echo "$k=$2"; else echo "$k=$(get $k)"; fi; done; } > "$t" && mv "$t" "$CONF"; }
 suspend() { sync; if [ -n "$POWER_SUSPEND" ]; then $POWER_SUSPEND; else echo mem > "$SYS/power/state"; fi; }
 js() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
@@ -85,6 +94,7 @@ status() {
 	printf ',"now":{"src":%s,"saver":%s,"mode":%s,"profile":%s,"epp":%s,"screen":%s,"sleep":%s,"care":%s}' "$(js "$(now src)")" "$( [ "$(now saver)" = 1 ] && echo true || echo false)" "$(js "$(now mode)")" \
 		"$(js "$(rd1 $SYS/firmware/acpi/platform_profile)")" "$(js "$( [ -n "$ef" ] && rd1 $ef)")" "$(num "$(now screen)")" "$(num "$(now sleep)")" \
 		"$(num "$( [ -n "$b" ] && rd1 $b/charge_control_end_threshold)")"
+	printf ',"careKept":{'; s=''; if [ -f "$REFUSED" ]; then while IFS== read -r a k; do case "$a$k" in *[!0-9]*|'') continue;; esac; printf '%s"%s":%s' "$s" "$a" "$k"; s=,; done < "$REFUSED"; fi; printf '}'
 	printf ',"set":{'; s=''; for k in $KEYS; do v=$(get $k); case "$v" in *[!0-9]*) printf '%s"%s":%s' "$s" $k "$(js "$v")";; *) printf '%s"%s":%s' "$s" $k "$v";; esac; s=,; done; printf '}}\n'
 }
 

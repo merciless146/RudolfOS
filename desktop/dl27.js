@@ -21,7 +21,11 @@ const DLN={kill:new Set(),seen:new Set(),pend:[],busy:false,chain:Promise.resolv
 const dlOn=()=>!!(RD&&window.__sys);
 function dlHost(u){try{return new URL(u).hostname}catch(e){return''}}
 function dlDone(rec,st,why,extra){Object.assign(rec,{st,why:why||''},extra||{});const i=DLN.pend.indexOf(rec);if(i>=0)DLN.pend.splice(i,1);saveDl();try{window.__dlHook&&window.__dlHook()}catch(e){}
- const ok=st=='saved';notify(ok?'Downloaded':'Download '+(st=='quarantined'?'quarantined':'stopped'),rec.n+(ok?(rec.disk?' is in Downloads (kept on the disk).':' is in Downloads.'):' – '+(why||'it could not be saved.')),{kind:ok?'':'error',action:()=>browser('about:downloads')});
+ const ok=st=='saved';
+ /* 1.5.7: a download the browser held back or that stalled is offered again (its address is known): the notification
+    downloads it again; about:downloads has "Download again" for every failed one */
+ const again=!ok&&rec.again&&/^https?:/i.test(rec.u||'');
+ notify(ok?'Downloaded':'Download '+(st=='quarantined'?'quarantined':'stopped'),rec.n+(ok?(rec.disk?' is in Downloads (kept on the disk).':' is in Downloads.'):' – '+(why||'it could not be saved.')+(again?' Click here to download it again.':'')),{kind:ok?'':'error',action:again?()=>{rec.again=0;dlStart(rec.u)}:()=>browser('about:downloads')});
  try{EXPL.forEach(f=>f())}catch(e){}}
 /* a real tab (or the desktop) started a download: a waiting line in about:downloads until the file arrives */
 function dlNative(u,o){o=o||{};let nm='';try{nm=decodeURIComponent(o.name||new URL(u).pathname.split('/').pop()||'')}catch(e){}
@@ -44,7 +48,7 @@ async function dlPoll(){clearTimeout(DLN.t);if(!dlOn())return;if(DLN.busy){DLN.t
      is a file Chromium waits to have confirmed, which the desktop cannot do (the policy now exempts the file types it
      asked about, as Rudolf OS checks every file itself); the old message blamed an insecure (http) address, which
      the Vivobook's Discord and Steam downloads were not */
-     await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&to=del').catch(()=>{});dlDone(r,'failed',/^Unconfirmed /.test(it.name)?'The browser held this file back to ask whether to keep it. Try again; if it stops again, use Report a problem.':'The download stopped (nothing more arrived for two minutes). Try again.');continue}
+     await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&to=del').catch(()=>{});dlDone(r,'failed',/^Unconfirmed /.test(it.name)?'The browser held this file back to ask whether to keep it.':'The download stopped (nothing more arrived for two minutes).',{again:1});continue}
     if(it.size>dlMax()){DLN.kill.add(it.name.replace(/\.crdownload$/,''));await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&to=del').catch(()=>{});if(r)dlDone(r,'blocked','The file is larger than '+fmtB(dlMax())+', the limit set in Settings ▸ Network ▸ Downloads.')}
     continue}
    if(DLN.kill.has(it.name)){/* stopped while it arrived: Chromium finished writing it anyway */DLN.kill.delete(it.name);await rdPost('dl/file?name='+encodeURIComponent(it.name)+'&to=del').catch(()=>{});continue}
