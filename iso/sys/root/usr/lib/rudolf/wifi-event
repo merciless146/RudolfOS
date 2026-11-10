@@ -5,9 +5,21 @@
 # turns, a few seconds apart, and each change dropped the address and asked DHCP again from scratch, breaking every
 # open connection. Now a drop waits GRACE seconds (10) before the address goes; joining the same network again within
 # them renews the lease it has (udhcpc's SIGUSR1) instead of starting over; another network starts over.
+# And a network set aside is taken back: on 2026111014 the move to the 2.4 GHz radio failed (it did not answer), and
+# wpa_supplicant set the whole network aside after its failures (TEMP-DISABLED, longer each time), 5 GHz radio
+# included: 5.5 minutes off the network. Still off after the grace, and the network set aside, it is chosen again
+# (select_network clears that; the radio that failed stays on wpa_supplicant's own ignore list, longer each time it
+# fails), every RETRY seconds (15), up to 4 times.
 export PATH=${WIFI_EVENT_PATH:-/usr/sbin:/usr/bin:/sbin:/bin}
 R=${WIFI_EVENT_RUN:-/run/rudolf}
-IF=$1; P=$R/udhcpc-$IF.pid; D=$R/wifi-drop-$IF; N=$R/wifi-net-$IF; GRACE=${WIFI_EVENT_GRACE:-10}
+IF=$1; P=$R/udhcpc-$IF.pid; D=$R/wifi-drop-$IF; N=$R/wifi-net-$IF; GRACE=${WIFI_EVENT_GRACE:-10}; RETRY=${WIFI_EVENT_RETRY:-15}
+W() { wpa_cli -p ${WIFI_EVENT_CTRL:-/run/rudolf/wpa} -i "$IF" "$@"; }
+# the network was set aside by wpa_supplicant (and we are still off): choose it again, the others enabled as before
+# (or wpa_supplicant has stopped trying: DISCONNECTED or INACTIVE rather than SCANNING or joining)
+recover() { [ -n "$1" ] || return 1; ST=$(W status 2>/dev/null | sed -n 's/^wpa_state=//p'); [ "$ST" = COMPLETED ] && return 1
+	W list_networks 2>/dev/null | awk -F'\t' -v id="$1" '$1==id' | grep -q 'TEMP-DISABLED' || case "$ST" in DISCONNECTED|INACTIVE) ;; *) return 1;; esac
+	W select_network "$1" >/dev/null 2>&1; W enable_network all >/dev/null 2>&1
+	echo "$(date) wifi: network $1 was set aside after failures; chosen again" >> $R/wifi.log; return 0; }
 stop() { [ -f $P ] && kill "$(cat $P)" 2>/dev/null; rm -f $P; }
 running() { [ -f $P ] && kill -0 "$(cat $P)" 2>/dev/null; }
 case "$2" in
@@ -26,8 +38,10 @@ DISCONNECTED)
 	if [ "$3" = now ]; then rm -f $D $N; stop; ip addr flush dev "$IF" 2>/dev/null; echo "wifi disconnected" >> $R/events; exit 0; fi
 	# the address goes only if the Wi-Fi is still off the network GRACE seconds later
 	T="$(date +%s).$$"; echo $T > $D
+	ID=$(cat $N 2>/dev/null)
 	( sleep $GRACE; [ "$(cat $D 2>/dev/null)" = "$T" ] || exit 0
-	  rm -f $D $N; stop; ip addr flush dev "$IF" 2>/dev/null; echo "wifi disconnected" >> $R/events ) </dev/null >/dev/null 2>&1 &
+	  rm -f $N; stop; ip addr flush dev "$IF" 2>/dev/null; echo "wifi disconnected" >> $R/events
+	  for i in 1 2 3 4; do [ "$(cat $D 2>/dev/null)" = "$T" ] || exit 0; recover "$ID"; sleep $RETRY; done; rm -f $D ) </dev/null >/dev/null 2>&1 &
 	;;
 esac
 exit 0
