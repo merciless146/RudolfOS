@@ -3,7 +3,9 @@
 Asked for on 2026-11-10, after the Vivobook could not start the 1.5.7 beta with the Lite desktop engine. The safeguards
 that stop such a failure from leaving a computer unable to start went into 1.5.7 (priorities 1 to 3 below); this plan
 is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted. Added the same day: **mobile data** (Part 6, after
-looking at a Verizon MiFi 7730L) and **Android apps** (Part 7: the .apk work delayed from 1.5.7, with workarounds).
+looking at a Verizon MiFi 7730L), **Android apps** (Part 7: the .apk work delayed from 1.5.7, with workarounds) and
+**mobile form factors** (Part 8: x86 handhelds and tablets first, then a lean phone-capable Rudolf OS over the next
+versions).
 
 ## What happened (2026-11-10)
 
@@ -197,6 +199,102 @@ this computer can do.
 - Unchanged from 1.5.6's plan: they cannot run outside Apple's devices; the wizard says so and looks for a web or Linux
   version.
 
+## Part 8: mobile form factors, and a phone-capable Rudolf OS (added on 2026-11-10)
+
+The aim: Rudolf OS on handhelds, tablets and, within the next few versions, phones, while staying lean (a phone has 4 to
+8 GB of memory and runs on a battery). Two routes, the cheap one first.
+
+### What stands in the way today (checked in the code on 2026-11-10)
+- **x86 only:** the release builds x86-64 layers, and x86 paths are written into ci_release.sh, addwebkit.sh, addnvk.sh
+  and the self-test (`/usr/lib/x86_64-linux-gnu`). Phones are ARM64.
+- **One kernel for every PC**, started by UEFI (systemd-boot, a signed UKI, Secure Boot). Phones need a kernel and a
+  device tree per model, started by the phone's own boot loader (Android boot images, or U-Boot on the PinePhone Pro).
+- **A desktop for a mouse and keyboard:** touch works (rudolf-display reads touchscreens), but there is no on-screen
+  keyboard, no portrait layout, no gestures, and windows are sized for a large screen.
+- **No phone services:** no cellular modem handling, calls or SMS, no suspend that keeps the modem listening, no screen
+  rotation from the sensors, no phone cameras.
+- **Weight:** the Chromium layer (about 130 MB compressed) and the standard engine's memory (about 830 MB on the
+  Vivobook); Debian, Wine and Steam are already downloads on demand.
+
+### Leanness rules for every mobile step
+1. **Lite (WebKit) is the desktop engine on mobile devices**, not Standard: about a third of Chromium's memory (the 1.5.7
+   trial). Chromium becomes a download on demand there, for websites that need it.
+2. **Nothing heavy in the system layer:** Debian, Wine, Steam, Waydroid, Blitzen's model, scrcpy and the like stay
+   downloads on demand, behind a confirmation with the size, removable in Storage.
+3. **Measured on the device, against budgets:** the system layers under 400 MB compressed; the desktop at the sign-in
+   screen under 350 MB of memory with Lite; idle power measured over an hour with the screen off. A release that
+   breaks a budget says so in the release check, like the Lite engine check.
+4. **The same release, one system per architecture:** one version number and one CHANGELOG; the desktop (the web page)
+   is identical everywhere; only the layers below it differ.
+
+### 8.1 x86 handhelds and tablets (1.5.8 to 1.5.9): no port needed
+- **Target devices:** Steam Deck, ASUS ROG Ally, Lenovo Legion Go, Microsoft Surface Go and other x86 tablets. They start
+  Rudolf OS as it is (UEFI, x86-64); Secure Boot as on any PC.
+- **Touch layout** (the desktop): a tablet mode chosen automatically when there is a touchscreen and no keyboard (and by
+  hand in Settings › Display): bigger targets, the taskbar as a dock, windows full screen one at a time, swipe from the
+  bottom for the Start menu and from the right for notifications, portrait and landscape.
+- **On-screen keyboard:** part of the desktop page (it is a web page, so its own keyboard works in every built-in app
+  and in Oracle's pages); for X programs (Linux and Windows apps), rudolf-display types its keys through XTest as it
+  types the hardware keyboard's.
+- **Rotation** from the accelerometer (iio-sensor-proxy, or reading /sys/bus/iio directly) through rudolf-display, which
+  already rotates and scales the screen.
+- **Mobile data** (Part 6) and **battery care** (1.4.4 on) apply as they are.
+- **Tests:** browser tests at tablet and phone sizes (portrait 1080x2340 scaled, touch events); QEMU x86 with a
+  touchscreen (`-device virtio-tablet` / `usb-tablet` with multitouch) and a portrait screen; then the Vivobook with the
+  tablet mode forced, over the devlink and remote access.
+
+### 8.2 The ARM64 build (1.5.9 to 1.6.0): Rudolf OS on ARM, first in QEMU
+- **Build:** the release workflow builds a second set of layers on GitHub's ARM64 runners (ubuntu-24.04-arm): the base
+  layer, Lite (WebKitGTK for arm64), rudolfd and the C helpers (they are portable C), and the desktop page unchanged.
+  The x86 paths become `$(gcc -print-multiarch)`; addwebkit.sh and the self-test take the architecture from the
+  system.
+- **Not on ARM64 at first:** Steam and Windows programs (x86 only; Box64 or FEX as a later download, measured first),
+  the NVIDIA (nvk) layer, Flash's Ruffle stays (it is WebAssembly).
+- **Updates:** the same signed manifest format, with a list per architecture (`beta/arm64/manifest.txt`); the updater
+  takes its architecture's list and never another's.
+- **QEMU checks (what QEMU can confirm):** `qemu-system-aarch64 -M virt` with UEFI (edk2), virtio-gpu, a virtio touchscreen,
+  3 to 4 GB of memory and a portrait screen: the system starts, the desktop runs in Lite, updates and rollback work,
+  Recovery mode and the safeguards work, and a USB modem passed through to the virtual machine (the MiFi 7730L) gets
+  an address. **What QEMU cannot confirm:** a phone's display, GPU, modem, cameras, sensors and audio drivers, its
+  sleep and wake, battery life and heat, and how its boot loader starts the kernel. Those need the phone.
+- **Generic ARM64 computers first:** ARM64 laptops and boards that start with UEFI (Snapdragon X laptops as their
+  mainline support matures; the Raspberry Pi 5 with its UEFI firmware) run the same image as QEMU.
+
+### 8.3 Phones (1.6.x): one well-supported phone first
+- **Candidates** (boot loader unlockable, good mainline Linux support; checked against the postmarketOS device list when
+  the work starts): **PinePhone Pro** (made for Linux; the easiest to work on, slow), **OnePlus 6/6T** (Snapdragon 845,
+  long among the best-supported Android phones on mainline Linux; cheap used), **Google Pixel 3a or a newer Pixel bought
+  unlocked from Google** (not one sold by Verizon), **Fairphone 4/5** (the maker supports unlocking and Linux ports),
+  **Purism Librem 5** (Linux-first, expensive). The test phones at hand are not suitable: the moto g play XT2093DL is a
+  carrier prepaid model, normally not unlockable; whether the REDMAGIC 9 Pro's boot loader unlocks is to be checked
+  before relying on it. Only a phone that may be experimented on.
+- **Per-phone kernel, shared everything else:** a device package per phone (its kernel config fragment, device tree,
+  firmware list, boot image format), built from postmarketOS's mainline work where it exists (their kernel configs and
+  patches are the reference); the base, Lite and desktop layers are the ARM64 build's.
+- **Starting and updating:** the phone's boot loader starts a Rudolf OS boot image (kernel, device tree, the same
+  initramfs) from the boot partition; the A/B system slots, the signed manifest, rollback and the safeguards are the same
+  as on a PC, kept on the userdata partition as RUDOLFDATA. Installing: from a computer, with fastboot (a guided page in
+  Rudolf OS on the PC, and the steps in Help); the phone's boot loader stays unlocked, so it has no Secure Boot: the
+  dm-verity check of each layer against the signed list still runs, and Settings says plainly that the phone's boot
+  loader is unlocked.
+- **Phone services, each a small part:** the cellular modem and mobile data (ModemManager, Part 6), SMS and calls
+  (ModemManager's messaging and voice, with a Phone and a Messages app in the desktop; emergency calls only once tested
+  on that phone), suspend with the modem able to wake the phone (calls, messages), screen rotation and the proximity
+  sensor (iio), the cameras (libcamera, where the phone's are supported), audio routing for calls (ALSA's UCM files from
+  the phone's port).
+- **The phone shell:** the tablet layout of 8.1 at phone size: one app at a time, the Start menu as an app grid, a
+  status bar (signal, battery, time), a lock screen with notifications, the on-screen keyboard.
+- **Phone budgets:** the desktop with Lite under 350 MB at the sign-in screen; the system layers for a phone under 400 MB
+  compressed; idle drain with the screen off and the modem on measured over a night, compared with postmarketOS on the
+  same phone.
+
+### 8.4 Before any of it is offered
+- The testing rule (docs/testing.md) applies: the fallback first (on a phone: the previous slot, Recovery mode from the
+  boot menu, the safe desktop), tests from the built system, the real hardware path, and the device last with its
+  logs readable (the devlink works on any Rudolf OS with a network).
+- Each step ships as a test first (as Lite did), and only to devices that pass the release check for their
+  architecture.
+
 ## Steps
 1. 4.1 start logs (initramfs, rudolf-init, session), with a host test of the rotation. **Done** (branch
    v158-startlogs): initramfs `note`/`keeplog` (var/log/boot-decisions.log, last 300 lines, kept before every
@@ -227,3 +325,7 @@ this computer can do.
 7. Part 7, Android apps: 7.1 the .apk wizard's information and alternatives; 7.2 scrcpy (needs only Debian); the
    kernel side of 7.3 (binder) in the same release; Waydroid in Debian after that, measured on the Vivobook with Lite
    on; 7.5 the browser build as a phone web app.
+8. Part 8, mobile form factors: 8.1 in 1.5.8 to 1.5.9 (tablet mode and on-screen keyboard in the desktop with browser
+   tests; rotation; QEMU x86 with a touchscreen; the Vivobook with tablet mode forced); 8.2 the ARM64 build in 1.5.9 to
+   1.6.0, proven in QEMU aarch64 first; 8.3 one phone in 1.6.x (a PinePhone Pro or a OnePlus 6/6T), then the phone
+   services one at a time; every step measured against the leanness budgets.
