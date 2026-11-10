@@ -113,4 +113,7 @@ is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted.
    v158-startlogs): `sound codec-check` (run by rudolf-init 12 s after start-up) resets an HD Audio chip that did not
    answer, once, and says so in System health (hardware); the self-test's sound-chip check names one still silent with
    what to do. Test qt/host/codec58_t.sh.
+   5.2 **done**: Help › Starting from a USB stick (rescue). 5.1 in part: the boot-files-only message names the drive
+   (USB stick or this computer's drive, with its model) and says what to do; Make a stick writing a full system by
+   default is left.
 5. 5.4 the testing rule in docs, then the Lite investigation on the Vivobook (devlink plus remote access).

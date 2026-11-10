@@ -400,8 +400,14 @@ for L in desktop chromium modules base; do
 	# like a damaged one: back to the previous system, never a dead end
 	if [ -z "$F" ] && [ -n "$SLOT" ] && [ -n "$PERSIST" ]; then say "Rudolf OS: this system has no '$L' layer."; slot_bad; fi
 	if [ -z "$F" ] && [ -e /mnt/media/rudolf/bootonly ]; then
-		say "Rudolf OS: this drive has boot files only (1.2.8), and its installed system could not start."
-		say "Start from a Rudolf OS USB stick and use Settings > Update and recovery > Install here."
+		# 1.5.8: which drive this is, and what to do. The Vivobook's drive and a boot-files-only rescue stick gave the
+		# same message, and it took three tries to see which one had started.
+		MD=$(disk_of "${MEDIA:-x}"); MN=$(cat /sys/class/block/${MD##*/}/device/model 2>/dev/null | sed 's/ *$//')
+		if is_usb "$MD"; then say "Rudolf OS: this USB stick${MN:+ ($MN)} has boot files only: no Rudolf OS system is on it."
+			say "Use a stick written from a full Rudolf OS disc image (rudolf-os-X.Y.Z.iso, not -boot.iso), in DD mode."
+		else say "Rudolf OS: this computer's drive${MN:+ ($MN)} has boot files only, and no installed Rudolf OS system could start."
+			say "Start from a full Rudolf OS USB stick (in the computer's boot menu, often Esc, F8 or F12) and choose"
+			say "Recovery mode; or use Settings > Update and recovery > Install here from it."; fi
 		fail
 	fi
 	[ -n "$F" ] || { say "Rudolf OS: the system layer '$L' is missing."; fail; }
