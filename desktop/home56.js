@@ -229,3 +229,13 @@ async function hdBinds(){HD.dlb=false;if(!hdOn())return;
 }
 /* (the top of the store is tidied by rudolfd when Downloads is bound: dl_store_tidy in rudolfd-home.inc; File Explorer
    shows what moved in at the next refresh) */
+/* 1.5.7: the Event Viewer's events are kept in the account's folder too (.rudolf/events.log, by rudolfd's home
+   append), so they outlast the desktop; events from before sign-in wait (up to 200) until the folder is open */
+const EVQ=[];let evT=0,evBusy=0;
+function evLine(k,m){return new Date().toISOString()+' '+k+' '+String(m).replace(/\s+/g,' ').slice(0,500)}
+function evKick(ms){if(!evT)evT=setTimeout(evFlush,ms||3000)}
+async function evFlush(){evT=0;if(!EVQ.length||evBusy)return;if(!hdOn()){evKick(15000);return}
+ evBusy=1;const n=EVQ.length,b=EVQ.slice(0,n).join('\n')+'\n';
+ try{await rd('home/append?'+hdQ()+'&path='+encodeURIComponent('.rudolf/events.log'),{method:'POST',body:b});EVQ.splice(0,n)}
+ catch(e){evKick(60000)}finally{evBusy=0;if(EVQ.length)evKick()}}
+if(typeof logEvt=='function'){const _le=logEvt;logEvt=function(k,m){_le(k,m);if(!m)return;EVQ.push(evLine(k,m));if(EVQ.length>200)EVQ.splice(0,EVQ.length-200);evKick()}}

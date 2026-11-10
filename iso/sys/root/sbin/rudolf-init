@@ -99,7 +99,15 @@ ulimit -H -n 524288 2>/dev/null
 # when USB devices and driver modules have settled)
 ( sleep 60; /usr/lib/rudolf/devplug hwlog >/dev/null 2>&1 ) &
 
-rudolfd > /run/rudolf/rudolfd.log 2>&1 &
+# 1.5.7: rudolfd's log is kept on the disk for this start and the 3 before it (/run/rudolf/rudolfd.log points to it)
+RDLOG=/run/rudolf/rudolfd.log
+if mountpoint -q /persist; then
+	L=/persist/var/log; mkdir -p $L
+	for i in 2 1; do [ -f $L/rudolfd.log.$i ] && mv -f $L/rudolfd.log.$i $L/rudolfd.log.$((i+1)); done
+	[ -f $L/rudolfd.log ] && mv -f $L/rudolfd.log $L/rudolfd.log.1
+	: > $L/rudolfd.log && chmod 600 $L/rudolfd.log && ln -sf $L/rudolfd.log $RDLOG && RDLOG=$L/rudolfd.log
+fi
+rudolfd > $RDLOG 2>&1 &
 # 1.4.7: when memory runs out, the largest web page is ended instead of the whole desktop freezing
 ( while :; do rudolf-memguard >/dev/null 2>&1; sleep 2; done ) &
 exec /usr/lib/rudolf/session

@@ -388,6 +388,28 @@ static void api_home(struct req *r, const char *what, int post)
 		str s = {0}; sadd(&s, "{\"ok\":true,\"url\":\"/dlf/%s\"}", id); reply_json(r->fd, &s); return;
 	}
 	if (!post) { close(root); reply_err(r->fd, 400, "use POST"); return; }
+	if (!strcmp(what, "append")) {
+		/* 1.5.7: the desktop's Event Viewer events, kept in the account's folder (.rudolf/events.log); only a .log
+		   file directly in .rudolf, a line or a few at a time, kept to 256 KiB and the one before it (.1) */
+		size_t pl = strlen(p1);
+		if (strncmp(p1, ".rudolf/", 8) || strchr(p1 + 8, '/') || pl < 13 || pl > 60 || strcmp(p1 + pl - 4, ".log") || p1[8] == '.') { close(root); reply_err(r->fd, 400, "only .rudolf/*.log"); return; }
+		if (r->blen > 16384) { close(root); reply_err(r->fd, 413, "too long"); return; }
+		char last[256]; int pf = home_parent(root, p1, last, sizeof last, 1); close(root);
+		if (pf < 0) { reply_err(r->fd, 404, "the folder is not there"); return; }
+		struct stat st;
+		if (!fstatat(pf, last, &st, AT_SYMLINK_NOFOLLOW)) {
+			if (!S_ISREG(st.st_mode)) { close(pf); reply_err(r->fd, 409, "not a file"); return; }
+			if (st.st_size > 262144) { char old1[300]; snprintf(old1, sizeof old1, "%s.1", last); renameat(pf, last, pf, old1); }
+		}
+		int f = openat(pf, last, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW | O_CLOEXEC, 0600);
+		if (f < 0) { close(pf); reply_err(r->fd, 500, "could not open the log"); return; }
+		if (fchown(f, home_uid, home_uid)) {}
+		int bad = r->blen && write(f, r->body, r->blen) != (ssize_t)r->blen;
+		if (!bad && r->blen && r->body[r->blen - 1] != '\n') bad = write(f, "\n", 1) != 1;
+		close(f); close(pf);
+		if (bad) { reply_err(r->fd, 507, "could not write"); return; }
+		reply_ok(r->fd, "ok"); return;
+	}
 	if (!strcmp(what, "write")) {
 		if (!*p1) { close(root); reply_err(r->fd, 400, "no file"); return; }
 		char base[80] = ""; int mk = 0, part = 0, fin = 0;

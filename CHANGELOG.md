@@ -3,7 +3,13 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
-## 1.5.6 (in progress)
+## 1.5.7 (in progress)
+Summary: Blitzen diagnostics, and what the 1.5.6 tests taught (docs/plan-1.5.7.md)
+- Fixed: the desktop's errors were never written to the system's error log (/run/rudolf/page.log): rudolfd answered the desktop's report as if it were a request to read the log. System health, the system report and the devlink now see them.
+- Changed: the Event Viewer's events are kept in your account's folder too (.rudolf/events.log, with your files on the disk), so they outlast the desktop's storage; events from before signing in are written once it is open.
+- Changed: Rudolf OS's service log (rudolfd) is kept on the disk for this start and the 3 before it (/persist/var/log/rudolfd.log, .1 to .3), instead of being lost at each restart.
+
+## 1.5.6 (2026-11-10)
 Summary: your files on the disk (docs/plan-1.5.6.md)
 - Under the hood: Rudolf OS can keep each account's files as real files on the disk, encrypted with that account's own key and unreadable while it is signed out.
 - New (beta): accounts keep their files on the disk. Saving writes only the files that changed, large files have no size limit, and Linux apps see the same Documents, Pictures, Music and Videos.
