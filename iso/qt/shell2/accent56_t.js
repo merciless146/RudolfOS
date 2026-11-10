@@ -63,6 +63,12 @@ const SHOT = process.argv[3];
   await q("(()=>{['#dtbac','#dicac'].forEach(i=>{const c=document.querySelector(i);c.checked=false;c.onchange({target:c})});return 1})()"); await wait(300);
   const s4 = await deskSrc();
   ok('17. both off: the taskbar and the icons as before', hex(await barBg()) == '#111827' && s4.every(u => !decodeURIComponent(u).includes(nsh)), hex(await barBg()));
+  // one row of colours, at the window's usual size and a narrower one (the Vivobook: the 16th went to a second row)
+  const row = () => q("(()=>{const b=[...document.querySelectorAll('.swb')],i=document.querySelector('#dac'),t=b.map(x=>Math.round(x.getBoundingClientRect().top));return{one:new Set(t.concat([Math.round(i.getBoundingClientRect().top+i.offsetHeight/2-b[0].offsetHeight/2)])).size<=2&&new Set(t).size==1,w:Math.round(b[0].getBoundingClientRect().width),h:Math.round(b[0].getBoundingClientRect().height)}})()");
+  let r = await row();
+  ok('19. the 16 colours fit on one row at the window\'s usual size, round and at most a little smaller (22 px before)', r.one && r.w == r.h && r.w >= 18, r);
+  await q("(()=>{SW.el.style.width='640px';return 1})()"); await wait(200); r = await row();
+  ok('20. ...and in a narrower window too, shrinking only as much as needed', r.one && r.w == r.h && r.w >= 14, r);
   // kept with the other display settings
   ok('18. the four settings are kept with the display settings', await q("['tbac','tbacm','icac','icacm'].every(k=>DKEYS.includes(k))"));
   ok('no page error', !errs.length, errs);
