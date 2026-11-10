@@ -211,6 +211,38 @@ needs the least work for the largest gain.
 - **Kept as it is:** rudolfd and everything it does, the accounts, the files, Linux apps (Flatpak), Debian and Wine,
   the updates. The desktop talks to rudolfd as it does today.
 
+### The trial (step 1), 2026-11-10
+
+On the Vivobook (1.5.7 beta 2026111022, just started), with `iso/systools/webkit_trial.sh webkit`: the desktop page as a
+plain web page (the browser build: no rudolfd, a throwaway account in the page's own storage), in Cog 0.18 with WPE
+WebKit 2.48 (Debian's packages, headless), going through its steps by itself. Memory of WebKit's processes (cog, the
+web process, the network process):
+
+| Step                        | PSS    | Private (in memory and in the compressed swap) |
+|-----------------------------|--------|------------------------------------------------|
+| Loaded                      | 290 MB | 219 MB |
+| Signed in                   | 299 MB | 227 MB |
+| File Explorer open          | 315 MB | 242 MB |
+| WordPro open                | 331 MB | 258 MB |
+| Emu (did not open a window) | 332 MB | 259 MB |
+
+The desktop's own Chromium at the same time (signed in, as the person had it; 14 processes): **1,206 MB PSS, 908 MB
+private**. Earlier that day, after a few hours of use, its desktop page alone held 1.44 GB.
+
+What this says, and does not:
+- WebKit ran the whole desktop page unchanged: sign-in, File Explorer and WordPro worked, with no script errors.
+- With the desktop page and two apps open, WebKit took about a quarter to a third of what Chromium takes for the
+  desktop: well past the "about a third less" this step asked for.
+- Not the same conditions: WebKit ran headless (no screen, no graphics compositing) and without rudolfd's parts; the
+  desktop's Chromium draws on the screen, holds the person's real data and the shell (an Isolated Web App). A fair
+  side-by-side of the same page in both engines needs Chromium headless too, which (run beside the desktop while the
+  computer was in use) made the desktop stop responding for 65 s: to be repeated only while nobody uses the computer.
+- The 1.44 GB desktop page shows that much of the memory can be the page's own (its data and windows), which WebKit
+  would hold too: step 2 measures that on the screen, behind the setting.
+
+Conclusion: clearly lighter; Part 4 goes on to steps 2 to 4 (stage 11), behind the setting, with Chromium the default.
+
+### Steps
 ### Steps
 
 1. **A trial first, changing nothing:** Cog (WPE WebKit) as a package, the desktop page opened in it on the Vivobook
@@ -254,7 +286,8 @@ needs the least work for the largest gain.
 8. The network at start-up (Part 3, item 3), and `rudolf-selftest`'s Linux and game checks (item 4).
 9. The .AppImage and .bin wizards; the camera and controllers in Debian (Part 3, item 6; #182). (.apk with Waydroid:
    a later version.)
-10. Part 4, step 1: the WebKit trial on the Vivobook (no change to the system), and its measurements in this plan.
+10. Part 4, step 1: the WebKit trial on the Vivobook (no change to the system), and its measurements in this plan
+    (done 2026-11-10: see "The trial" above).
 11. Part 4, steps 2 to 4, if the trial shows it is worth it: the desktop in WebKit behind a setting, the web pages in
     Chromium's own windows, every app checked in WebKit.
 12. QEMU with Debian (Part 2, item 5), then the Vivobook with `rudolf-selftest`; promote when you say. (Part 4's
