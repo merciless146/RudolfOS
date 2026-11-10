@@ -72,8 +72,8 @@ cams=$(ls "$DEV"/video[0-9]* 2>/dev/null)
 if [ -z "$cams" ]; then skip camera "no camera found"
 else
 	bad=""; for c in $cams; do g=$(stat -c %G "$c" 2>/dev/null); m=$(stat -c %a "$c" 2>/dev/null); gm=$(( (0${m:-0} >> 3) & 6 ))
-		[ "$g" = video ] && [ $gm = 6 ] || bad="$bad ${c##*/}($g $m)"; done
-	if [ -z "$bad" ]; then pass camera "$(echo $cams | wc -w) camera device(s), usable by apps (group video)"; else fail camera "not usable by apps:$bad"; fi
+		{ [ "$g" = video ] || [ "$(stat -c %g "$c" 2>/dev/null)" = 1000 ]; } && [ $gm = 6 ] || bad="$bad ${c##*/}($g $m)"; done
+	if [ -z "$bad" ]; then pass camera "$(echo $cams | wc -w) camera device(s), usable by apps"; else fail camera "not usable by apps:$bad"; fi
 fi
 
 # ---- the battery limit

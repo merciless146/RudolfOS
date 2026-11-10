@@ -14,11 +14,16 @@
  *   rudolf-debian rebind                    (1.5.6) the signed-in account's folders, as Rudolf OS has them now
  *   rudolf-debian debinfo FILE.deb          (1.5.6) the package's name, version... (dpkg-deb -f, as the user)
  *   rudolf-debian deb FILE.deb              (1.5.6) install a package from a file, with what it needs (apt-get)
+ *   rudolf-debian runfile appimage|bin FILE (1.5.7) run a Linux program that needs no installing, as the user
+ *   rudolf-debian keepfile FILE NAME        (1.5.7) ...and put it in the Start menu (a launcher of the person's)
+ *   rudolf-debian devices                   (1.5.7) cameras and controllers plugged in since Debian started
  *
  * Who is who: Debian's root and system users (0-999) are uids 200000-200999 on Rudolf OS, with no rights
  * outside; Debian's "rudolf" (1000) is Rudolf OS's rudolf (1000), so the home folder is theirs on both
  * sides; 1001-65535 are 201001-265535. Debian sees the home folder, the display (/tmp/.X11-unix), the
- * session folder with the sound and D-Bus sockets (/run/user/1000), the GPU (/dev/dri) and the network.
+ * session folder with the sound and D-Bus sockets (/run/user/1000), the GPU (/dev/dri) and the network; since 1.5.7
+ * also cameras (/dev/video*, media*, v4l-subdev*) and game controllers (/dev/input, /dev/uinput, hidraw*), which
+ * Rudolf OS gives to group 1000 (mdev.conf): Debian's rudolf's own group, so its programs can open them.
  *
  * Terminal protocol (one request per connection to ID.sock):
  *   "R <offset> [<s>]\n"    -> "<new offset>\n" + output bytes after <offset> (waits up to <s>, default 20 s);
@@ -132,6 +137,14 @@ static const char *kstep(int n)
 	default: return "an unknown step";
 	}
 }
+/* 1.5.7: the device nodes Debian's programs get one by one: cameras, Steam Input's uinput, hidraw (controllers) */
+static int dev_wanted(const char *n)
+{
+	static const char *const P[] = {"video", "media", "v4l-subdev", "hidraw", NULL};
+	if (!strcmp(n, "uinput")) return 1;
+	for (int i = 0; P[i]; i++) { size_t l = strlen(P[i]); if (!strncmp(n, P[i], l) && isdigit((unsigned char)n[l])) { for (const char *c = n + l; *c; c++) if (!isdigit((unsigned char)*c)) return 0; return 1; } }
+	return 0;
+}
 static void keeper_main(void)   /* pid 1 inside: set up the file system, then reap */
 {
 	prctl(PR_SET_NAME, "debian-init");
@@ -153,6 +166,12 @@ static void keeper_main(void)   /* pid 1 inside: set up the file system, then re
 	symlink("/proc/self/fd/1", ROOT "/dev/stdout"); symlink("/proc/self/fd/2", ROOT "/dev/stderr");
 	if (!access("/dev/dri", F_OK)) bindmnt("/dev/dri", ROOT "/dev/dri", 1);
 	if (!access("/dev/snd", F_OK)) bindmnt("/dev/snd", ROOT "/dev/snd", 1);
+	/* 1.5.7: game controllers (the folder, so ones plugged in later are there too) and the single device nodes:
+	   cameras, Steam Input's uinput, hidraw (later ones: rudolf-debian devices, from mdev) */
+	if (!access("/dev/input", F_OK)) bindmnt("/dev/input", ROOT "/dev/input", 1);
+	{ DIR *dd = opendir("/dev"); struct dirent *de; while (dd && (de = readdir(dd))) if (dev_wanted(de->d_name)) {
+		snprintf(a, sizeof a, "/dev/%s", de->d_name); snprintf(b, sizeof b, ROOT "/dev/%s", de->d_name); bindmnt(a, b, 0); }
+	  if (dd) closedir(dd); }
 	/* /tmp and /run of its own, with the display and session sockets placed in them */
 	mount("tmpfs", ROOT "/tmp", "tmpfs", MS_NOSUID | MS_NODEV, "mode=1777");
 	mount("tmpfs", ROOT "/run", "tmpfs", MS_NOSUID | MS_NODEV, "mode=755");
@@ -740,6 +759,96 @@ static int cmd_rebind(void)
 	int st; waitpid(c, &st, 0); return WIFEXITED(st) ? WEXITSTATUS(st) : 1;
 }
 
+/* ------------------------------------------------------------------ devices plugged in later (1.5.7) */
+/* a camera or controller plugged in after Debian started is bound into its /dev (the same way rebind places the
+   account's folders); one that is gone is taken off. Run by mdev for each such device (mdev.conf). */
+static int cmd_devices(void)
+{
+	pid_t k = keeper_pid(); if (!k) return 0;
+	char host[64][64], in[64][64]; int nh = 0, ni = 0;
+	DIR *d = opendir("/dev"); struct dirent *e;
+	while (d && (e = readdir(d)) && nh < 64) { struct stat st; char p[300]; snprintf(p, sizeof p, "/dev/%s", e->d_name);
+		if (dev_wanted(e->d_name) && !stat(p, &st) && S_ISCHR(st.st_mode)) snprintf(host[nh++], 64, "%s", e->d_name); }
+	if (d) closedir(d);
+	char kd[64]; snprintf(kd, sizeof kd, "/proc/%d/root/dev", k);
+	d = opendir(kd); while (d && (e = readdir(d)) && ni < 64) if (dev_wanted(e->d_name)) snprintf(in[ni++], 64, "%s", e->d_name);
+	if (d) closedir(d);
+	int fds[64], add[64], na = 0, del[64], nd = 0;
+	for (int i = 0; i < nh; i++) { int have = 0; for (int j = 0; j < ni; j++) if (!strcmp(host[i], in[j])) have = 1;
+		if (have) continue; char p[300]; snprintf(p, sizeof p, "/dev/%s", host[i]);
+		int fd = syscall(SYS_open_tree, AT_FDCWD, p, RB_OPEN_TREE_CLONE | O_CLOEXEC); if (fd >= 0) { fds[na] = fd; add[na++] = i; } }
+	for (int j = 0; j < ni; j++) { int there = 0; for (int i = 0; i < nh; i++) if (!strcmp(host[i], in[j])) there = 1; if (!there) del[nd++] = j; }
+	if (!na && !nd) return 0;
+	char p[64]; snprintf(p, sizeof p, "/proc/%d/ns/mnt", k); int ns = open(p, O_RDONLY | O_CLOEXEC); if (ns < 0) die("cannot reach the sandbox");
+	pid_t c = fork(); if (c < 0) die("fork");
+	if (!c) {
+		if (setns(ns, CLONE_NEWNS)) _exit(1);
+		int bad = 0;
+		for (int j = 0; j < nd; j++) { char t[100]; snprintf(t, sizeof t, "/dev/%s", in[del[j]]); umount2(t, MNT_DETACH); unlink(t); }
+		for (int a = 0; a < na; a++) { char t[100]; snprintf(t, sizeof t, "/dev/%s", host[add[a]]);
+			int f = open(t, O_WRONLY | O_CREAT | O_CLOEXEC, 0600); if (f >= 0) close(f);
+			if (syscall(SYS_move_mount, fds[a], "", AT_FDCWD, t, RB_MOVE_MOUNT_F_EMPTY_PATH)) { fprintf(stderr, "rudolf-debian: devices %s: %s\n", t, strerror(errno)); bad = 1; } }
+		_exit(bad);
+	}
+	close(ns); for (int a = 0; a < na; a++) close(fds[a]);
+	int st; waitpid(c, &st, 0); return WIFEXITED(st) ? WEXITSTATUS(st) : 1;
+}
+
+/* ------------------------------------------------------------------ programs that need no installing (1.5.7) */
+/* .AppImage (one file with the program and what it needs; run extracted, as Debian has no FUSE) and .bin or .run
+   (a program, or a self-extracting installer: a shell script). The file is the person's, in their folders. */
+static int file_ok(const char *f)
+{
+	return f && !strncmp(f, "/home/rudolf/", 13) && !strstr(f, "/../") && !strstr(f, "/./") && strlen(f) < 900 && !strpbrk(f, "\n\r");
+}
+static int cmd_runfile(const char *kind, const char *file)
+{
+	int appimage = !strcmp(kind, "appimage"); if (!appimage && strcmp(kind, "bin")) die("runfile appimage|bin FILE");
+	if (!file_ok(file)) die("Linux cannot reach this file: move it into your Downloads or Documents");
+	char dir[900]; snprintf(dir, sizeof dir, "%s", file); char *sl = strrchr(dir, '/'); if (sl) *sl = 0;
+	mkdirs(RUND, 0755);
+	int lf = open(RUND "/runfile.log", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+	pid_t d = fork(); if (d) { printf("started\n"); return 0; }
+	setsid();
+	pid_t c = enter(0, dir);
+	if (!c) {
+		int nul = open("/dev/null", O_RDWR); dup2(nul, 0); if (lf >= 0) { dup2(lf, 1); dup2(lf, 2); }
+		struct stat st; if (stat(file, &st) || !S_ISREG(st.st_mode)) { fprintf(stderr, "%s: not found\n", file); _exit(127); }
+		if (!(st.st_mode & S_IXUSR) && chmod(file, st.st_mode | S_IXUSR)) fprintf(stderr, "%s: could not be made runnable (%s)\n", file, strerror(errno));
+		if (appimage) { setenv("APPIMAGE_EXTRACT_AND_RUN", "1", 1); setenv("NO_CLEANUP", "1", 1); }
+		/* a .bin that is neither a program (ELF) nor a script (#!) is a shell script without its first line */
+		char h[4] = {0}; int f = open(file, O_RDONLY | O_CLOEXEC); if (f >= 0) { if (read(f, h, 4) < 0) h[0] = 0; close(f); }
+		if (!appimage && memcmp(h, "\177ELF", 4) && memcmp(h, "#!", 2)) execlp("sh", "sh", file, (char *)NULL);
+		else execl(file, file, (char *)NULL);
+		fprintf(stderr, "%s: %s\n", file, strerror(errno)); _exit(127);
+	}
+	int st; waitpid(c, &st, 0); _exit(0);
+}
+static void exec_quote(const char *file, char *q, size_t n)
+{
+	size_t o = 0; q[o++] = '"'; for (const char *c = file; *c && o < n - 3; c++) { if (*c == '"' || *c == '\\' || *c == '`' || *c == '$') q[o++] = '\\'; q[o++] = *c; } q[o++] = '"'; q[o] = 0;
+}
+static int cmd_keepfile(const char *file, const char *name)
+{
+	if (!file_ok(file)) die("Linux cannot reach this file: move it into your Downloads or Documents");
+	char nm[120]; size_t o = 0; for (const char *c = name ? name : ""; *c && o < sizeof nm - 1; c++) if ((unsigned char)*c >= 32 && *c != '\\') nm[o++] = *c; nm[o] = 0;
+	if (!*nm) die("no name");
+	const char *bn = strrchr(file, '/') + 1; size_t bl = strlen(bn); int appimage = bl > 9 && !strcasecmp(bn + bl - 9, ".AppImage");
+	/* Exec: the path in double quotes, with " and \\ escaped (the launcher's own rules) */
+	char q[2000]; exec_quote(file, q, sizeof q);
+	char body[3000]; snprintf(body, sizeof body, "[Desktop Entry]\nType=Application\nName=%s\nExec=%s%s\nTerminal=false\nCategories=Utility;\nComment=Kept by Rudolf OS from %s\n", nm, appimage ? "env APPIMAGE_EXTRACT_AND_RUN=1 NO_CLEANUP=1 " : "", q, bn);
+	pid_t c = enter(0, "/home/rudolf");
+	if (!c) {
+		struct stat st; if (!stat(file, &st) && !(st.st_mode & S_IXUSR)) if (chmod(file, st.st_mode | S_IXUSR)) {}
+		mkdirs(UAPPS "/rudolf-kept", 0755);
+		char lp[400]; unsigned h = 5381; for (const char *x = file; *x; x++) h = h * 33 + (unsigned char)*x;
+		snprintf(lp, sizeof lp, UAPPS "/rudolf-kept/%08x.desktop", h);
+		if (write_str(lp, body)) { fprintf(stderr, "rudolf-debian: the launcher could not be written\n"); _exit(1); }
+		printf("kept\n"); _exit(0);
+	}
+	int st; waitpid(c, &st, 0); return WIFEXITED(st) ? WEXITSTATUS(st) : 1;
+}
+
 /* ------------------------------------------------------------------ status, update, remove */
 static long long du(const char *path)
 {
@@ -791,6 +900,9 @@ int main(int argc, char **argv)
 	if (!strcmp(c, "pty")) { if (argc < 3) die("pty ID"); return cmd_pty(argv[2], argc > 3 && !strcmp(argv[3], "--root")); }
 	if (!strcmp(c, "apps")) return cmd_apps();
 	if (!strcmp(c, "launch")) { if (argc < 3) die("launch APP-ID [FILE]"); return cmd_launch(argv[2], argc > 3 ? argv[3] : NULL); }
+	if (!strcmp(c, "runfile")) { if (argc < 4) die("runfile appimage|bin FILE"); return cmd_runfile(argv[2], argv[3]); }
+	if (!strcmp(c, "keepfile")) { if (argc < 4) die("keepfile FILE NAME"); return cmd_keepfile(argv[2], argv[3]); }
+	if (!strcmp(c, "devices")) return cmd_devices();
 	/* 1.3.0: a new Linux password (Settings > Apps > Linux > Change the Linux password), for root and rudolf, as at setup */
 	if (!strcmp(c, "passwd")) {
 		if (argc < 3) die("passwd PASSWORD-FILE");
