@@ -72,6 +72,8 @@ ${each(ALL,'html.tbs-retro')}{border-radius:0!important;border:0!important;backg
 ${each(ALL.replace(/,/g,':active,')+':active','html.tbs-retro')},html.tbs-retro #bar #wsw button.on,html.tbs-retro #bar #tasks button.act,html.tbs-retro #bar #tasks button.on{box-shadow:inset 1px 1px 0 var(--tbsh),inset -1px -1px 0 var(--tbhi),inset 2px 2px 0 var(--tblo)!important}
 html.tbs-retro #bar #tray{box-shadow:inset 1px 1px 0 var(--tblo),inset -1px -1px 0 var(--tbhi)!important}
 html.tbs-retro #bar #wsw button.on{background:var(--tbbt)!important}
+.acsw{display:flex;align-items:center;flex-wrap:nowrap;gap:4px;min-width:0}.acsw #dac{flex:0 0 auto;margin-right:2px}
+.acsw .swb{flex:0 1 22px;width:auto!important;min-width:14px;height:auto!important;aspect-ratio:1;margin:0!important}
 .acrow{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}.acrow select:disabled{opacity:.55}`;document.head.appendChild(st)}
 (function(){const o=themeApply;themeApply=function(){const r=o.apply(this,arguments);try{acApply()}catch(e){}return r}})();
 (function(){const o=icRedraw;icRedraw=function(){const r=o.apply(this,arguments);try{acIcons()}catch(e){}return r}})();
@@ -83,6 +85,8 @@ html.tbs-retro #bar #wsw button.on{background:var(--tbbt)!important}
  box.querySelectorAll('.swb').forEach(b=>b.remove());
  ACCENTS.forEach(([c2,n])=>{const b=document.createElement('button');b.className='swb';b.dataset.c=c2;b.style.background=c2;b.title=n;b.setAttribute('aria-label','Accent '+n);
   b.onclick=()=>{sw.value=c2;liveSet(c,'accent',c2)};box.appendChild(b)});
+ /* one row: the swatches get only as much smaller as the row needs (on the Vivobook the 16th went to a second row) */
+ box.classList.add('acsw');[...box.childNodes].forEach(n=>{if(n.nodeType==3&&!n.textContent.trim())n.remove()});
  const sel=(id,v)=>`<select id='${id}' aria-label='Which colour'>${ACMODES.map(([k,n])=>optH(k,n,v)).join('')}</select>`;
  const lab=document.createElement('label');lab.textContent='Accent colour on';const d=document.createElement('div');d.className='acplaces';
  d.innerHTML=`<div class='acrow'>${ckH('dtbac','The taskbar',!!S.tbac)} ${sel('dtbacm',S.tbacm||'normal')}</div>
