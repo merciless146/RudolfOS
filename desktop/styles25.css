@@ -141,9 +141,12 @@ html.dark .stat{background:#0b1220;color:#94a3b8}html.dark .term{background:#000
 /* calculator modes */
 .cmode{display:flex;gap:4px;padding:6px 8px 0;background:var(--wbg,#fff)}.cmode button{flex:1;padding:4px 0;border-radius:6px;font-size:12px}.cmode button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
 .calc-std .cg{grid-template-columns:repeat(4,1fr)}.calc-std .cg button{font-size:18px}.calc-std .cg button[data-k='=']{background:var(--ac);color:#fff}
-/* OS name beside Start */
-#osver{background:transparent;border:0;color:inherit;font:600 12px/1 system-ui,sans-serif;opacity:.85;padding:4px 8px;white-space:nowrap;border-radius:6px;cursor:pointer;height:auto}#osver:hover{background:#ffffff1a;opacity:1}
-body.left #osver,body.right #osver{font-size:11px;padding:2px 4px;text-align:left}
+/* 1.5.6: the OS name and version in the Start button: beside the logo on a taskbar at the bottom or the top; under it,
+   smaller, on one at the left or the right (it may go on two lines there, never cut) */
+#start:has(.stv){display:flex;align-items:center;gap:7px;width:auto;padding-right:10px;color:inherit}
+#start .stv{font:600 12px/1 system-ui,sans-serif;white-space:nowrap;opacity:.9;color:inherit}
+body.left #start:has(.stv),body.right #start:has(.stv){flex-direction:column;gap:3px;height:auto;padding:4px 4px 5px;align-self:stretch}
+body.left #start .stv,body.right #start .stv{font-size:10px;white-space:normal;text-align:center;line-height:1.15;max-width:100%;overflow-wrap:anywhere}
 /* WordPro additions */
 .wp-cm{background:#fef08a;border-bottom:2px solid #eab308;cursor:help}.wp-mf{background:#e0e7ff;color:#3730a3;border-radius:3px;padding:0 2px;font-family:system-ui,sans-serif;font-size:.9em}
 ul.wp-chk{list-style:none;padding-left:4pt}ul.wp-chk>li{position:relative;padding-left:22px}ul.wp-chk>li::before{content:'☐';position:absolute;left:0;cursor:pointer}ul.wp-chk>li.done::before{content:'☑';color:#16a34a}ul.wp-chk>li.done{text-decoration:line-through;color:#6b7280}

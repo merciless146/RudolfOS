@@ -13,9 +13,12 @@ function calcModes(W,cg){if(!W||!cg)return;cg.querySelectorAll('button').forEach
   if(resize&&!W.max)winFit(W,std?290:340,std?440:480)};
  bar.querySelectorAll('button').forEach(b=>{b.onmousedown=e=>e.preventDefault();b.onclick=()=>{set(b.dataset.m,1);W.el.focus({preventScroll:true})}});
  set(ld('bd95calcmode','sci')=='std'?'std':'sci',1)}
-/* OS name and version beside the Start button */
-function osverDraw(){const st=document.getElementById('start');if(!st)return;let v=document.getElementById('osver');
- if(!v){v=document.createElement('button');v.id='osver';v.title='About Rudolf OS';v.onclick=()=>{try{settings('about')}catch(e){}};st.after(v)}v.textContent=`Rudolf OS ${RVER}`}
+/* OS name and version in the Start button (1.5.6, moved from the 1.5.7 plan: before, a second button beside it opened
+   Settings › About, two buttons side by side leading to the same place). One button, the logo and "Rudolf OS" with the
+   whole version as the system has it (RVER: 1.5.6, 1.10.0, 2.0, …, never a fixed "1.5"), doing only what Start does:
+   a click opens the Start menu, a right-click its menu. Settings › About is in Settings and the Start menu. */
+function osverDraw(){const st=document.getElementById('start');if(!st)return;const o=document.getElementById('osver');if(o)o.remove();
+ let v=st.querySelector('.stv');if(!v){v=document.createElement('span');v.className='stv';st.appendChild(v)}v.textContent=`Rudolf OS ${RVER}`;st.title='Start'}
 osverDraw();
 /* 1.5.6: the Command Prompt's desktop icon is the Terminal's now (the same icon): keep its place */
 (function(){try{Object.keys(localStorage).filter(k=>/^bd95cells/.test(k)).forEach(k=>{const c=JSON.parse(localStorage.getItem(k)||'null');const o='Rudolf '+'Prompt',o2='Command '+'Prompt';[o,o2].forEach(x=>{if(c&&c[x]&&!c['Terminal']){c['Terminal']=c[x];delete c[x];localStorage.setItem(k,JSON.stringify(c))}})})}catch(e){}})();

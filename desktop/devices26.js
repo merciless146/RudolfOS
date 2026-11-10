@@ -119,7 +119,7 @@ function changesParse() {
   return out;
 }
 function changesHtml(only) {
-  const vs = changesParse().filter(v => !only || only.includes(v.ver));
+  const vs = changesParse().filter(v => !only || only.includes(v.ver)).sort((a, b) => verCmp(b.ver, a.ver));   /* newest first, as numbers */
   if (!vs.length) return `<p>Rudolf OS ${devEsc(RVER)}</p>`;
   return vs.map(v => `<h3 style='margin:14px 0 4px'>Rudolf OS ${devEsc(v.ver)}${v.date ? ` <small style='font-weight:normal'>· ${devEsc(v.date)}</small>` : ''}${v.ver == RVER ? ` <small style='font-weight:normal'>· this version</small>` : ''}</h3>
     <ul>${v.items.map(i => { const m = /^(Fixed|New|Security|Changed):\s*/.exec(i); return `<li>${m ? `<b>${m[1]}:</b> ` + devEsc(i.slice(m[0].length)) : devEsc(i)}</li>` }).join('')}</ul>`).join('');
