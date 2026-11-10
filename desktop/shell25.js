@@ -236,10 +236,12 @@ function renameDlg(p){const o=document.createElement('div');o.className='rmodal'
  o.querySelector('.ok').onclick=ok;o.querySelector('.c').onclick=()=>o.remove();i.onkeydown=e=>{e.stopPropagation();if(e.key=='Enter')ok();if(e.key=='Escape')o.remove()}}
 /* desktop menu with new items and widgets (replaces the V24 menu) */
 function deskNew(dirFlag){const d=deskFiles();if(!d)return;const n=uniq(d,dirFlag?'NEW FOLDER':'NEW TEXT DOCUMENT.TXT');d[n]=dirFlag?{}:'';fsSave();EXPL.forEach(f=>f());setTimeout(()=>renameDlg(homePath('DESKTOP').concat(n)),50)}
+/* 1.5.7: Ctrl+Alt+Del (rudolf-display, also with a game in front: the desktop comes forward) opens Task Manager */
+if(RD)evOn(t=>{if(/^taskmgr$/m.test(t))launch('taskmgr')});
 function deskMenu(x,y){
  cmenu(x,y,[['New folder',()=>deskNew(1),!!deskFiles(),{icon:'📁'}],['New text document',()=>deskNew(0),!!deskFiles(),{icon:'📄'}],['Add a widget…',()=>widgetPicker(),!!USER,{icon:'🧩'}],'-',
   ['Arrange icons by name',arrangeIcons],USER&&typeof deskIconsDlg=='function'?['Desktop icons…',deskIconsDlg,true,{icon:'🖥️'}]:null,['Refresh',()=>{layIcons();EXPL.forEach(f=>f())},true,{key:'F5'}],'-',
-  ['Open File Explorer',()=>launch('explorer')],['Open Rudolf Prompt',()=>launch('prompt')],['Show all windows',()=>overview(),true,{key:'Super+Tab'}],'-',['Open settings…',()=>settings()]],{title:'Desktop'})}
+  ['Open File Explorer',()=>launch('explorer')],['Open Rudolf Prompt',()=>launch('prompt')],['Show all windows',()=>overview(),true,{key:'Super+Tab'}],['Task Manager',()=>launch('taskmgr'),true,{icon:'📊',key:'Ctrl+Shift+Esc'}],'-',['Open settings…',()=>settings()]],{title:'Desktop'})}   /* (1.5.7: Task Manager) */
 DESK.addEventListener('dragover',e=>{if(e.dataTransfer&&[...e.dataTransfer.types].includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy'}});
 DESK.addEventListener('drop',async e=>{const fl=e.dataTransfer&&[...e.dataTransfer.files];if(!fl||!fl.length)return;if(e.target.closest&&e.target.closest('.win'))return;e.preventDefault();const d=deskFiles();if(!d)return;
  for(const f of fl){if(f.size>64*1048576){notify('Too large',f.name+' is over 64 MB.',{kind:'error'});continue}const nm=f.name.toUpperCase().replace(/[\\\/:*?"<>|]/g,'_').slice(0,60);const bin=!/^text\/|json|xml|javascript/.test(f.type)&&!/\.(txt|lua|md|csv|json|html?|css|js|bat|cfg)$/i.test(f.name);

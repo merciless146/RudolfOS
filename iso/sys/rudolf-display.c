@@ -638,6 +638,12 @@ static void handle_event(struct dev *v, struct input_event *e)
 			if (down) { wm_cycle(); fit_windows(); }
 			return;
 		}
+		/* 1.5.7: Ctrl+Alt+Del opens Task Manager, also with an app or a game in front (the desktop comes forward):
+		   "taskmgr" to the desktop through rudolfd's events. Delete itself is not passed on. */
+		if (c == KEY_DELETE && mod_ctrl && mod_alt) {
+			if (down) { wm_set(0); fit_windows(); int f = open("/run/rudolf/events", O_WRONLY | O_APPEND | O_CREAT, 0644); if (f >= 0) { dprintf(f, "taskmgr\n"); close(f); } }
+			return;
+		}
 		if (c == KEY_POWER && down) {   /* 1.4.4: Power and battery's choice (ask, sleep, shut down), through /usr/lib/rudolf/power */
 			if (!access("/usr/lib/rudolf/power", R_OK)) { runbg("/usr/lib/rudolf/power", "button", NULL); return; }
 			int f = open("/run/rudolf/events", O_WRONLY | O_APPEND | O_CREAT, 0644); if (f >= 0) { dprintf(f, "power %lld\n", now_ms()); close(f); } return; }
@@ -705,7 +711,8 @@ static void on_sig(int s) { (void)s; quit = 1; }
  *    the whole screen. Dialogs (WM_TRANSIENT_FOR) are centred above their window.
  *  - /run/rudolf/wm says what to show: "desktop", "win <hex window id>", or the older "game" / "web"
  *    (the topmost game or browser window). rudolfd writes it when the desktop asks; a new app window
- *    is shown by itself; Super+Esc goes to the desktop and Super+Tab steps through the windows.
+ *    is shown by itself; Super+Esc goes to the desktop and Super+Tab steps through the windows; (1.5.7) Ctrl+Alt+Del
+ *    goes to the desktop and opens Task Manager.
  *  - /run/rudolf/windows lists the app windows (id, browser?, class, instance, full screen?, title) for the taskbar;
  *    /run/rudolf/wmcmd "close <hex>" asks a window to close (WM_DELETE_WINDOW, as a close button does); "kill <hex>"
  *    (1.5.6) ends the program behind it.
