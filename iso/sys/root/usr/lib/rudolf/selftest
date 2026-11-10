@@ -4,7 +4,8 @@
 # battery limit, memory, the logs, the network. It only reads: nothing is changed, started or stopped. One line per
 # check: "PASS name - detail", "FAIL name - detail" or "SKIP name - why"; then a summary line. Exit status 1 when a
 # check failed. Run by rudolfd (GET selftest, Settings › System health › Run the self-test) and over the devlink.
-# The places can be moved for the host test (ST_SYS, ST_RUN, ST_PERSIST, ST_HOME, ST_DEV, ST_PROC, ST_CONF).
+# The places can be moved for the host test (ST_SYS, ST_RUN, ST_PERSIST, ST_HOME, ST_DEV, ST_PROC, ST_CONF, and since
+# 1.5.7 ST_MEMCONF, ST_JOYPERM, ST_FLATPAK, ST_FLATPAK_BIN).
 # GPL-2.0-or-later.
 SYS=${ST_SYS:-/sys}; RUN=${ST_RUN:-/run/rudolf}; P=${ST_PERSIST:-/persist}; H=${ST_HOME:-/home/rudolf}; DEV=${ST_DEV:-/dev}; PROC=${ST_PROC:-/proc}
 NP=0; NF=0; NS=0
@@ -89,13 +90,46 @@ fi
 
 # ---- memory
 Z="$SYS/block/zram0"
-if [ ! -e "$Z/disksize" ]; then skip compressed-memory "off (or not in this kernel)"
-elif [ "$(rd1 "$Z/disksize")" -gt 0 ] 2>/dev/null && grep -q zram0 "$PROC/swaps" 2>/dev/null; then pass compressed-memory "$(( $(rd1 "$Z/disksize") / 1048576 )) MiB, in use"
+MSET=$(sed -n 's/^zram=//p' "${ST_MEMCONF:-$P/etc/rudolf-memory}" 2>/dev/null | tail -1); [ -n "$MSET" ] || MSET=auto
+if [ "$MSET" = off ]; then skip compressed-memory "off (Settings › System health › Memory)"
+elif [ ! -e "$Z/disksize" ]; then skip compressed-memory "off (or not in this kernel)"
+elif [ "$(rd1 "$Z/disksize")" -gt 0 ] 2>/dev/null && grep -q zram0 "$PROC/swaps" 2>/dev/null; then
+	# 1.5.7: its size as set: as large as the memory (Automatic) or half of it (Smaller), at most 8 GiB
+	ds=$(rd1 "$Z/disksize"); mt=$(( $(sed -n 's/^MemTotal: *\([0-9]*\).*/\1/p' "$PROC/meminfo" 2>/dev/null) * 1024 )); want=$mt; [ "$MSET" = small ] && want=$((mt / 2)); [ $want -gt 8589934592 ] && want=8589934592
+	if [ $mt -gt 0 ] && { [ $ds -lt $((want * 95 / 100)) ] || [ $ds -gt $((want * 105 / 100)) ]; }; then fail compressed-memory "$((ds / 1048576)) MiB, but $MSET means $((want / 1048576)) MiB (restart to apply a new setting)"
+	else pass compressed-memory "$((ds / 1048576)) MiB ($MSET), in use"; fi
 else fail compressed-memory "made but not in use"; fi
 G="$SYS/fs/cgroup/desktop"
 if [ ! -d "$SYS/fs/cgroup" ] || [ ! -e "$SYS/fs/cgroup/cgroup.controllers" ]; then skip desktop-memory "no memory groups in this kernel"
 elif [ -e "$G/memory.low" ] && [ "$(rd1 "$G/memory.low")" != 0 ]; then pass desktop-memory "the desktop keeps $(( $(rd1 "$G/memory.low") / 1048576 )) MiB$( [ -s "$G/cgroup.procs" ] && echo ", with its browser in it" || echo ", but its browser is not in it")"
 else fail desktop-memory "the desktop's memory group is missing or keeps nothing"; fi
+
+# ---- 1.5.7 (plan stage 8): Linux apps and games
+bad=""; for n in fd stdin stdout stderr; do [ -e "$DEV/$n" ] || [ -L "$DEV/$n" ] || bad="$bad /dev/$n"; done
+if [ -z "$bad" ]; then pass dev-fd "/dev/fd, /dev/stdin, /dev/stdout and /dev/stderr are there (Steam's interface needs them)"
+else fail dev-fd "missing:$bad (Steam's interface and scripts fail without them)"; fi
+pads=""; bad=""; for e in "$DEV"/input/event[0-9]*; do [ -e "$e" ] || continue; n=${e##*/}
+	if [ -f "$SYS/class/input/$n/device/capabilities/key" ] && RUDOLF_TEST_SYS=$SYS ${ST_JOYPERM:-/usr/lib/rudolf/joyperm} check "$n" 2>/dev/null; then pads="$pads $n"; g=$(stat -c %g "$e"); m=$(stat -c %a "$e"); gm=$(( (0${m:-0} >> 3) & 6 ))
+		[ "$g" = 1000 ] && [ $gm = 6 ] || bad="$bad $n($g $m)"; fi; done
+js=$(ls "$DEV"/input/js[0-9]* 2>/dev/null | wc -l)
+if [ -z "$pads" ]; then skip controllers "no game controller plugged in"
+elif [ -z "$bad" ]; then pass controllers "$(echo $pads | wc -w) controller(s)$([ "$js" -gt 0 ] && echo ", $js joystick device(s)"), usable by games"
+else fail controllers "not usable by games:$bad"; fi
+FP=${ST_FLATPAK:-/var/lib/flatpak}
+if [ ! -x "${ST_FLATPAK_BIN:-/usr/bin/flatpak}" ]; then skip flatpak "this Rudolf OS has no Linux apps (Flatpak)"
+elif [ $PERS = 0 ]; then skip flatpak "a live start: Linux apps are not kept"
+elif [ -L "$P/flatpak" ] && ! grep -q " ${FP%/} " "$PROC/self/mountinfo" 2>/dev/null; then
+	if [ -n "$ACCT" ]; then fail flatpak "Linux apps are in the encrypted folder, but it was not opened at sign-in"; else skip flatpak "Linux apps are in the encrypted folder, which opens at sign-in"; fi
+else n=$(ls "$FP/app" 2>/dev/null | wc -l); pass flatpak "$n Linux app(s) installed"; fi
+if [ -e "$P/debian/.rudolf-ready" ]; then
+	if [ -x "$P/debian/usr/bin/wine" ] || [ -x "$P/debian/usr/lib/wine/wine64" ] || ls "$P"/debian/usr/bin/wine* >/dev/null 2>&1; then pass debian-wine "Debian is set up, with Wine for Windows programs"
+	else pass debian-wine "Debian is set up (no Wine: Windows programs need it)"; fi
+elif [ -L "$P/debian" ] && [ ! -e "$P/debian/" ]; then skip debian-wine "Debian is in the encrypted folder, which opens at sign-in"
+else skip debian-wine "Linux (Debian) is not set up"; fi
+WF="$RUN/windows"
+if [ ! -e "$WF" ]; then skip windows "the display is not running"
+else nw=$(grep -c . "$WF" 2>/dev/null); nf=$(awk -F'\t' '$5==1' "$WF" 2>/dev/null | wc -l)
+	pass windows "$nw app window(s) on screen$([ "$nf" -gt 0 ] && echo ", $nf full screen")$( [ "$nw" -gt 0 ] && echo ": $(cut -f3 "$WF" | sort -u | head -6 | tr '\n' ' ' | sed 's/ $//')")"; fi
 
 # ---- the network
 W=""; for d in "$SYS"/class/net/*; do [ -e "$d/wireless" ] && W=${d##*/}; done

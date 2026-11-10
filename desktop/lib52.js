@@ -27,12 +27,17 @@ async function libNeed(n){if(!RD)return false;if(await libHas(n))return true;
  notify(a.title,'Downloaded from the Rudolf OS Library.');return true}
 /* the catalog's descriptions (the signed package list has titles, sizes and licences; this adds the longer text) */
 let LIBCAT=null;
-async function libCatalog(){if(LIBCAT)return LIBCAT;const c={};try{const r=await fetch(LIB_URL+'/catalog.json',{cache:'no-store'});if(r.ok)((await r.json()).apps||[]).forEach(a=>c[a.name]=a)}catch(e){}return LIBCAT=c}
+async function libCatalog(){if(LIBCAT)return LIBCAT;const c={};let got=false;try{const r=await fetch(LIB_URL+'/catalog.json',{cache:'no-store'});if(r.ok){((await r.json()).apps||[]).forEach(a=>c[a.name]=a);got=true}}catch(e){}
+ /* 1.5.7: a list that could not be had (offline) is not kept: it is asked for again next time */
+ if(got)LIBCAT=c;return c}
 async function libTab(B){
  B.innerHTML=`<p class='msg' style='margin:0 0 10px'>Apps made for Rudolf OS that not every computer needs. They come from the <b>Rudolf OS Library</b>, signed with its own key: it can add apps, but it can never change Rudolf OS itself.</p><div class='libl'></div><pre class='jl liblog' hidden></pre>`;
  const L=B.querySelector('.libl'),log=B.querySelector('.liblog');
  if(!RD){L.innerHTML="<p class='msg'>The Library needs Rudolf OS itself (the bootable disc, a USB drive or the hard disk).</p>";return}
  L.innerHTML="<p class='msg'>Loading…</p>";
+ /* 1.5.7: offline: the Library's list waits for the internet, then shows */
+ if(typeof netLive=='function'&&!netLive()){L.innerHTML="<p class='msg'>Waiting for the internet to get the Library’s list… It shows by itself once this computer is online.</p>";await netWait(10000);   /* (after 10 s it is tried anyway: rudolfd may not know the network) */
+ if(!B.isConnected)return;L.innerHTML="<p class='msg'>Loading…</p>"}
  let s=await pkgStatus(true);const src=s&&(s.sources||[]).find(x=>x.loc==LIB_URL);
  if(src&&!src.ok){L.innerHTML="<p class='msg'>Getting the Library’s list…</p>";try{await pkgJob('pkg/refresh')}catch(e){}s=await pkgStatus(true)}
  const cat=await libCatalog();if(!B.isConnected)return;
@@ -67,7 +72,7 @@ async function libMigrate(){if(!RD)return;let st;try{st=JSON.parse(localStorage.
  const save=v=>{try{localStorage.setItem('bd95lib52',JSON.stringify(v))}catch(e){}};
  if(!used){save({done:1});return}
  if(await libHas('rudolf-emu')){save({done:1});return}
- if(!navigator.onLine){setTimeout(libMigrate,600000);return}
+ if(typeof netLive=='function'?!netLive():!navigator.onLine){typeof netWait=='function'?netWait().then(()=>setTimeout(libMigrate,15000)):setTimeout(libMigrate,600000);return}
  let ok=false;try{ok=await pkgJob('pkg/install?name=rudolf-emu')}catch(e){}
  if(ok){save({done:1});notify('🕹️ Emu','Emu’s Nintendo DS player now comes from the Rudolf OS Library. It was downloaded, so your DS games play as before.')}
  else setTimeout(libMigrate,1800000)}
