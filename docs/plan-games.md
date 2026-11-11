@@ -154,11 +154,24 @@ Asked for on 2026-11-11 and built (rudolfos-library#6, on #5's eye colours, bloa
   sprinter; a wendigo comes. **Fog:** sight is a cone of light from Rudolf's nose towards the crosshair; elves out of
   it show as ripples of sound; their sounds louder; searching finds less and scouts are more often lost.
   **Blizzard:** a shorter, narrower cone; no ripples; nothing sprints; the survivors' aim suffers; no searching.
-- **The wendigo:** always red-eyed; a screech (and a caption) before it appears; huge, very tough, moderate speed;
-  every few seconds it takes up an elf and throws it at the barricade; shooting the held elf makes it let go. One
-  under the full moon, one on Night 24, two on Night 25. An original design: gaunt, long-limbed, sharp branching
-  antlers, frightening by shape rather than gore.
-- **Tests:** `tests/frostbarricade_t.js` (54 checks).
+- **The wendigo** (reworked in 1.2): a mini-boss, always red-eyed; a screech (and a caption) a few seconds before it
+  appears; huge, very tough and slow, drifting towards Rudolf's lane; only one on the field at a time. Every 5-8 s it
+  stops for 1.5 s to draw in a screech, then lets it go down its lane with the screen shaking: it hurts survivors in
+  its path (not the barricade), and if it reaches Rudolf he is stunned, his sight blurs and his ears ring, fully for
+  3 s, then fading. One under the full moon, one on Night 24, two on Night 25 (one after the other). An original
+  design: gaunt, long-limbed, sharp branching antlers, frightening by shape rather than gore.
+- **Tests:** `tests/frostbarricade_t.js` (54 checks in 1.1).
+
+## Frost Barricade 1.2: shielders and Bash
+Asked for on 2026-11-11 and built (rudolfos-library#7).
+- **Shielders:** cyan eyes, above-average health, from Night 5. Their shield covers the waist, chest and head (not
+  the lower legs and feet) and stops every shot, survivors' bolts included; piercing shots stop at it; fire reaches
+  round it for half. Explosives and **Bash** knock it loose and the shielder back. From Night 10 a shielder goes back
+  for its own shield; from Night 18 an ordinary white-eyed elf walking over a fallen shielder's shield may take it up
+  (it keeps its white eyes and its own health).
+- **Bash:** Rudolf's melee blow over the barricade at the elf against it nearest the crosshair (F, Y on a controller,
+  the middle mouse button, or the weapon bar's button).
+- **Tests:** `tests/frostbarricade_t.js` (63 checks).
 
 ## Tests
 - Each game: a browser test (qt/shell2 in RudolfOS for the Start menu and Games tab entries and the download offer; in
