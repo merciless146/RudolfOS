@@ -456,3 +456,19 @@ html.webkit select:not([multiple]):not([size]){-webkit-appearance:none!important
 :where(html.webkit.dark) select{background-color:#0b1220;color:#e2e8f0;border-color:#334155}
 html.webkit option{background-color:#fff;color:#111}
 html.webkit select:disabled{opacity:.6}
+/* 1.5.7 (asked on 2026-11-10): one selection highlight in every desktop window, the Start menu's: the accent colour
+   with the writing in --acfg (white, or black on a light accent: a11y25.js themeApply picks whichever reads
+   better). The bright bars before (#e5e7eb, #dbe6ff, #dbeafe...) were made for the light theme, and under the dark
+   theme's light writing in Settings, File Explorer and others the text could not be read. Hovering over a row that
+   is not selected tints it with the accent and keeps the window's own writing colour, in both themes. */
+html body :is(#menu li:hover,.ctx .cmi.hi,.ctx div:not(.cmi):not(.dis):hover,.odd div:hover,.ssi.on,.ssi:hover,.xp25 tr.s td,.xp25 .xg>div.s,.xsi.on,.pkr.on,.clipop .clipi:focus,.clipop .clipi:hover,
+ .sn div.on,.xt div.on,.np .npr.on,.lxit.on,.calbig td.sel,.sp-hi.on,.mp-it.on,.menubar button:hover,.wp-mb button:hover,.wp-di:hover,.wp-oi:hover,[role=option][aria-selected=true],[role=listbox] [aria-selected=true],[role=tree] [aria-selected=true]){background:var(--ac)!important;color:var(--acfg,#fff)!important}
+html body :is(#menu li:hover,.ssi.on,.ssi:hover,.xp25 tr.s td,.xp25 .xg>div.s,.xsi.on,.pkr.on,.sn div.on,.xt div.on,.np .npr.on,.lxit.on,.calbig td.sel,.sp-hi.on,.mp-it.on,.odd div:hover,.ctx div:not(.cmi):hover,.ctx .cmi.hi,[aria-selected=true]) :is(small,span,b,i,em,strong,div,label,td,.mut,.sdm){color:inherit!important;opacity:1}
+:root{--selhov:rgba(37,99,235,.16)}
+@supports (background:color-mix(in srgb,red 50%,transparent)){:root{--selhov:color-mix(in srgb,var(--ac) 18%,transparent)}}
+html body :is(.sn div:not(.on):hover,.xt div:not(.on):hover,.np .npr:not(.on):hover,.lxit:not(.on):hover,.lxrow:hover,.lxrow:focus,.xsi:not(.on):hover,.pkr:not(.on):hover,.pkr:not(.on):focus,
+ .mp-pick .mp-it:not(.on):hover,.sp-hi:not(.on):hover,.xp25 tr:not(.s):hover td,.xp25 .xg>div:not(.s):hover,.egrid .eb:hover,.sp-add:hover,.sp-tpl button:hover,.wp-ni:hover,.tmt tbody tr:not(.on):hover td){background:var(--selhov)!important;color:inherit!important}
+html body .tmt tbody tr.on td{background:var(--ac)!important;color:var(--acfg,#fff)!important}
+html.dark .calbig td.sel .cd,html body .calbig td.sel .ce{outline:1px solid var(--acfg,#fff)}
+/* the folder tree (.xt) and the network list keep their light backgrounds in the dark theme no more */
+html.dark .xp{background:#111827}html.dark .xt{background:#0f172a}

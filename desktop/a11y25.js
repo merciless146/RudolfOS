@@ -11,9 +11,15 @@ if(S.rmotion===false&&window.matchMedia&&matchMedia('(prefers-reduced-motion: re
    screen: the desktop's CSS uses --vh1/--vw1 (1% of what is really visible) instead */
 function scaleVars(){const H=document.documentElement,zf=parseFloat(H.style.zoom)||1;H.style.setProperty('--vh1',innerHeight/zf/100+'px');H.style.setProperty('--vw1',innerWidth/zf/100+'px')}
 addEventListener('resize',()=>scaleVars());
+/* white or black writing on a colour: whichever has the higher contrast (WCAG relative luminance); #rgb or #rrggbb */
+function acFg(hex){let h=String(hex||'').trim().replace(/^#/,'');if(h.length==3)h=h.split('').map(c=>c+c).join('');if(!/^[0-9a-f]{6}$/i.test(h))return'#ffffff';
+ const L=[0,2,4].map(i=>{const v=parseInt(h.slice(i,i+2),16)/255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)}),Y=.2126*L[0]+.7152*L[1]+.0722*L[2];
+ return 1.05/(Y+.05)>=(Y+.05)/.05?'#ffffff':'#000000'}
 function themeApply(){const H=document.documentElement,B=document.body;let dark=false;try{dark=S.darkui!==false&&(window.dynResolve?dynResolve().mode=='dark':S.dm=='dark')}catch(e){dark=S.dm=='dark'}
  H.classList.toggle('dark',dark);H.classList.toggle('hc',S.cb=='contrast');H.classList.toggle('rmotion',!!S.rmotion);H.classList.toggle('rtrans',!!S.rtrans);H.classList.toggle('touch',!!S.touch);H.classList.toggle('dysfont',!!S.dysfont);
  B.style.setProperty('--ac',S.accent||'#2563eb');H.style.setProperty('--ac',S.accent||'#2563eb');
+ /* 1.5.7: the writing on the accent colour (selected rows, the Start menu): white, or black on a light accent */
+ {const fg=acFg(S.accent||'#2563eb');B.style.setProperty('--acfg',fg);H.style.setProperty('--acfg',fg)}
  const z=Math.max(75,Math.min(250,+S.scale||100));H.style.zoom=z==100?'':z/100;scaleVars();
  H.style.setProperty('--capsz',(S.capsz||100)/100+'em');H.style.setProperty('--capbg',S.capbg||'#000');H.style.setProperty('--capfg',S.capfg||'#fff');
  let nl=$('#nightl');const nlOn=S.nl&&(!S.nlsched||(()=>{const h=new Date().getHours();return h>=20||h<7})());if(nlOn){if(!nl){nl=document.createElement('div');nl.id='nightl';nl.setAttribute('aria-hidden','true');document.body.appendChild(nl)}nl.style.opacity=(S.nlv||40)/100*.55}else if(nl)nl.remove();
