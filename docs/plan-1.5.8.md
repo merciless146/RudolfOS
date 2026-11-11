@@ -5,7 +5,7 @@ that stop such a failure from leaving a computer unable to start went into 1.5.7
 is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted. Added the same day: **mobile data** (Part 6, after
 looking at a Verizon MiFi 7730L), **Android apps** (Part 7: the .apk work delayed from 1.5.7, with workarounds) and
 **mobile form factors** (Part 8: x86 handhelds and tablets first, then a lean phone-capable Rudolf OS over the next
-versions).
+versions) and **Oracle's tabs in WebKit** (Part 9: a real browser in the Lite desktop).
 
 ## What happened (2026-11-10)
 
@@ -100,7 +100,7 @@ versions).
 
 ## Staging toward 1.6.0, the first cellular release (added on 2026-11-10)
 Parts 6 to 8 are staged across three versions (docs/plan-1.5.9.md, docs/plan-1.6.0.md):
-- **1.5.8 (this plan):** the network groundwork: 6.1 the kernel's USB modem drivers, 6.2 adapters plugged in after
+- **1.5.8 (this plan):** Oracle's tabs in WebKit (Part 9); the network groundwork: 6.1 the kernel's USB modem drivers, 6.2 adapters plugged in after
   start-up, 6.3 metered connections; 7.1 the .apk wizard's information, 7.2 scrcpy, the kernel side of 7.3 (binder);
   8.1 begun (the tablet layout in the desktop, with browser tests).
 - **1.5.9:** ModemManager (read only), the WWAN kernel subsystem and the operators' database; 8.1 finished (tablet mode,
@@ -310,6 +310,60 @@ The aim: Rudolf OS on handhelds, tablets and, within the next few versions, phon
 - Each step ships as a test first (as Lite did), and only to devices that pass the release check for their
   architecture.
 
+## Part 9: Oracle's tabs in WebKit (added on 2026-11-10)
+
+On the Vivobook with Lite (beta 2026111100, 2026-11-10), Oracle sent every website to Chromium's own window (the design
+of 1.5.7's Lite: the desktop page cannot show most sites in its frames, which sites forbid), and that window went behind
+the desktop at once, so browsing looked broken. With Standard, Oracle's tabs are real Chromium pages (the shell). Lite
+gets the same: Oracle's tabs as real WebKit pages.
+
+### 9.1 How
+- rudolf-webkit (WebKitGTK, our own program) makes a **web view per Oracle tab**, laid over the desktop page exactly
+  where Oracle draws its page area (a GtkOverlay above the desktop's view), shown, hidden, moved and closed as the page
+  asks. A native view is not a frame: sites' frame protections do not apply, and sign-ins work as in a browser.
+- **The page and rudolf-webkit talk** through a WebKit script message handler (page to program: open, navigate, back,
+  forward, reload, stop, close, show, hide, place, zoom, find) and a script run in the page (program to page: address,
+  title, icon, loading progress, security state, can-go-back, new tab or window wanted, download started).
+- **Websites' data apart from the desktop's:** their own WebKitWebsiteDataManager in `~/.rudolf-webkit/web`, with cookies
+  kept; private tabs with an ephemeral one; Settings › Oracle's clear-data buttons act on it.
+- **Popups and sign-in windows** become new tabs (or a small window for `window.open` with a size, as sign-in popups need,
+  with `window.opener` working so the sign-in returns to the page).
+- **Downloads** through WebKitDownload into Downloads, shown in Oracle's downloads and the notifications, as dl27 does for
+  Chromium's.
+- **Permissions** (camera, microphone, location, notifications) asked through the desktop's own prompt, per site,
+  remembered as Oracle's site settings.
+- **Fullscreen** video: the tab's view fills the screen; Esc leaves.
+- **Keyboard and focus:** the tab's view has the focus when clicked; the desktop's shortcuts still work (rudolf-display and
+  the program pass them to the page).
+- **Flash:** Ruffle injected as a user script in the tabs (it is JavaScript and WebAssembly).
+- **Input from other windows:** Task Manager, notifications and menus drawn by the desktop page stay above the tab views
+  (the program hides or clips a view under them, as the shell does).
+
+### 9.2 What stays Chromium's
+- Sites that need **Widevine** (Netflix, Spotify, Disney+), **H.264/AAC** where no other format is offered, Chrome-only
+  sites and Chrome extensions: Oracle offers **"Open in Chromium"** (a button in the address bar and in the page's menu),
+  and opens such sites there by itself when a site is on the list or a playback fails for want of a codec; the browser
+  window comes to the front and stays there (the 1.5.7 bug fixed first, below).
+- YouTube plays in WebKit through its VP9/AV1 and Opus streams.
+
+### 9.3 Leanness
+- Each tab is a WebKit web process (about the size of a Chromium tab), with no second browser running at all unless a
+  site needs Chromium; hidden tabs can be suspended (WebKit's page freezing), and the memory guard treats tab views as
+  pages it may end, as it does Chromium's.
+- No new layer: WebKitGTK is already in the system (1.5.7).
+
+### 9.4 First, in 1.5.7
+- The browser window comes to the front when Oracle opens a site in Lite, and stays there until the person goes back to
+  the desktop (the desktop page and rudolf-display no longer bring the desktop back over it).
+
+### 9.5 Tests
+- rudolf-webkit's tab protocol: a host test that runs it on Xvfb with a local test site (frame-protected pages, a
+  sign-in popup with window.opener, a download, a permission request, fullscreen), in the Lite engine check from the
+  base layer (chroot) as for the desktop.
+- Browser tests of Oracle's side with the program's messages stood in.
+- On the Vivobook over the devlink and remote access: YouTube, a Google sign-in, Discord, a download, a video in
+  fullscreen, memory with 5 tabs against Chromium's.
+
 ## Steps
 1. 4.1 start logs (initramfs, rudolf-init, session), with a host test of the rotation. **Done** (branch
    v158-startlogs): initramfs `note`/`keeplog` (var/log/boot-decisions.log, last 300 lines, kept before every
@@ -343,3 +397,5 @@ The aim: Rudolf OS on handhelds, tablets and, within the next few versions, phon
    keyboard, rotation and the QEMU and Vivobook checks finish it in 1.5.9); 8.2 the ARM64 build in 1.5.9, first
    released in 1.6.0; 8.3 one phone in 1.6.x (a PinePhone Pro or a OnePlus 6/6T), then the phone services one at a
    time; every step measured against the leanness budgets.
+9. Part 9, Oracle's tabs in WebKit: 9.4 in 1.5.7 first; then the tab protocol in rudolf-webkit and Oracle's side
+   (9.1), "Open in Chromium" (9.2), with the tests of 9.5; on the Vivobook last.
