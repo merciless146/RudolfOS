@@ -116,6 +116,133 @@ numbers need the service's own calling plan (Google Voice in the US, Zoom Phone,
   6. Memory during a 10-minute call on each engine (the Vivobook has 4 GB: the call must leave room for the desktop).
 - Results go into docs/testing.md; a site that fails on Lite is added to the Chromium list.
 
+## Part 8: developers, custom builds, and the official recovery (added on 2026-11-11)
+Asked for: a Rudolf OS account with keys of its own, for people who make games for the Library or publish their own
+repository with their own build of Rudolf OS; a way back to the official, certified Rudolf OS at any time; Recovery
+mode always the official Rudolf OS, even when the normal start runs a build from another repository; and a README
+that explains how to make your own repository, keys and builds.
+
+Today (1.5.8): Settings › Updates › Update address takes any https:// address, but rudolf-update installs only
+releases signed by a key in /etc/rudolf/rpk-keys, which is in the system image (the official release key). A mirror of
+the official releases works; a build signed by anyone else is refused. The Library is the same (rpk, /persist/pkg/sources).
+
+### 8.1 Three keys, not one
+- **The computer's key** (device key): made in the computer's TPM 2.0 when it has one, never leaving it. It protects
+  "Encrypt my data" (sealed to the TPM, so the disk opens only on this computer with its own start-up) and says "this
+  computer". Without a TPM: a key protected by the account's password (as Encrypt my data is now). Lost with the
+  hardware, by design.
+- **The publisher key** (per person): Ed25519, signs a person's games or builds. Not tied to one computer: kept on a
+  hardware security key (FIDO2/PIV: YubiKey and similar) or as a passphrase-protected file with an offline backup, as
+  the Rudolf OS keys are. Losing a computer must not lose the right to update one's own games.
+- **The account:** links a person to their publisher key. Rudolf OS has no server of its own; the account is the
+  person's GitHub account plus their publisher key registered in the Library (8.2). Settings › Accounts › Developer:
+  makes or imports the publisher key, shows its public half and fingerprint, exports a backup, and (with a hardware
+  key) signs with it without the private key ever being on the disk.
+- The three are separate so that a leaked signing key does not open anyone's files, and a broken laptop does not lock
+  a developer out of their games.
+
+### 8.2 Publishing to the Library: a chain of trust
+- **Developer certificates:** the Library's key (rudolfos-library's `RPK_LIBRARY_KEY`) signs a short certificate per
+  approved developer: name, GitHub account, public key, what they may publish (package names under a prefix of their
+  own), dates. Published as `dev/<name>.cert` in the Library.
+- **Packages** carry their developer's signature and certificate; rpk accepts a package whose signature leads to the
+  Library key through a valid certificate, and whose name the certificate allows.
+- **Revocation:** a signed `revoked.txt` in the Library (keys and packages); rpk checks it with the index, and a
+  revoked package is disabled on every computer at the next check (the App Store says why).
+- **Review:** a developer's first package, and any that asks for new permissions, is reviewed before it is listed
+  (a pull request to rudolfos-library, as today). Until certificates exist, that pull request is the way to publish:
+  the Library's own workflow signs.
+- **The sandbox first (a requirement before any outside developer's app):** Library web apps are served today from
+  the desktop's own address (127.0.0.1:8080/pkg/...), so a package has the desktop's whole access to rudolfd. That is
+  fine for the project's own Quake and Emu, not for anyone else's. Outside apps run on an origin of their own
+  (rudolfd serves /pkg/<name>/ on a separate port per package, or a sandboxed frame without `allow-same-origin`), with no
+  rudolfd token, and talk to the desktop only through a small message API granting what their PKGINFO asks and the
+  person allowed: saves (their own folder only), gamepads, full screen, notifications, network (on by default),
+  nothing else. The games plan's `rudolf-gamekit` uses only this API.
+
+### 8.3 Developer mode: a custom build on one's own computer
+- Settings › Updates › Developer mode (administrators, with a strong warning, the password, and a typed confirmation):
+  adds one extra trusted key (the developer's publisher key) and an update address. Kept in
+  /persist/etc/rudolf/extra-keys, never in the system image; the official key stays.
+- rudolf-update then accepts releases signed by either key, and records which key signed the running system.
+- **Official or Custom:** Settings › About, System health and the self-test show **Official Rudolf OS** when every
+  running file (kernel, layers) is listed in a manifest signed by the official key, and **Custom build (signed by NAME,
+  fingerprint ...)** otherwise. The Start menu's version shows a small "custom" mark. Blitzen's diagnostics and the
+  devlink report it, so a problem report says which build it came from.
+- **Secure Boot:** a custom build's start-up files (its UKI) are signed by the developer's own Secure Boot key. Rudolf
+  OS shows how to enrol it in the firmware (MOK-style enrolment where the firmware allows it, or the firmware's own
+  key menu), or to turn Secure Boot off; it never weakens Secure Boot by itself. The official Secure Boot key stays
+  enrolled (8.4 depends on it).
+- Turning Developer mode off is 8.5.
+
+### 8.4 Recovery mode is always the official Rudolf OS
+Whatever the normal start runs, the boot menu's "Recovery mode" starts the official Rudolf OS:
+- **An official recovery slot:** besides the two update slots (a and b), RUDOLFDATA keeps `system/r`: the newest
+  official release that started successfully on this computer (kernel and layers), with its manifest and signature.
+  rudolf-update fills and refreshes it only from releases signed by the official key, after they have started once
+  (boot-ok), and never from a release signed by an extra key. On a computer that never ran the official build (a
+  developer's own disc), it is downloaded from the official update address the first time Developer mode is on.
+- **An official recovery start-up file:** the ESP keeps `/EFI/rudolf/recovery.efi`, the official UKI (signed with the
+  official Secure Boot key), and the "Recovery mode" boot entry starts that file, not the normal one
+  (`/EFI/rudolf/rudolf.efi`, which a custom build replaces). Its initramfs carries the official public key and starts
+  only `system/r`, after checking its manifest's signature and every file's size and SHA-256; it ignores
+  /persist/etc/rudolf/extra-keys and the update address entirely.
+- **What it can do:** everything Recovery mode does now (safe settings, the devlink and remote access, Make a stick),
+  plus "Return to official Rudolf OS" (8.5) in its first screen.
+- **Who may change it:** only rudolf-update, with an official release. A custom build's updater is told by the official
+  rules (and its own copy of them) to leave `system/r` and `recovery.efi` alone; the official build checks both at each
+  start and repairs them from the official release if they were changed.
+- **The honest limit:** an administrator, or a custom build running as root, can always overwrite their own disk,
+  including these files. Secure Boot then refuses a recovery file not signed by an enrolled key, so the entry either
+  starts the real official recovery or does not start at all; it cannot start a fake one unless the developer's own key
+  signed it. The last way back is the same as on 2026-11-10: a rescue stick made from an official release (Make a
+  stick, or the official boot image from GitHub, 1.5.7), which starts the official recovery from USB.
+
+### 8.5 Return to official Rudolf OS
+- In Settings › Updates (Developer mode › Turn off) and in Recovery mode's first screen:
+  1. removes the extra key and the developer's update address, and sets the official address;
+  2. starts from `system/r` (or downloads the newest official release, checked with the official key) into the spare
+     slot, and makes it the one that starts; the slot the custom build was in is cleared;
+  3. restores the official `rudolf.efi` from that release;
+  4. asks: keep accounts, files and apps (a return), or erase everything (a factory reset, as Install here does,
+     without a disc);
+  5. after the next start, Settings › About says Official Rudolf OS again, and the self-test checks it.
+- If the official start fails, the start-up falls back to the previous slot as every update does, and Recovery mode is
+  still there.
+- Library apps from outside developers stay installed only if their certificates are still valid; apps from an extra
+  source added in Developer mode are listed and offered for removal.
+
+### 8.6 The README: making your own Rudolf OS
+A new `docs/custom-builds.md`, linked from the README, for someone who forks Rudolf OS:
+1. **Fork and build:** forking merciless146/RudolfOS, the release workflow, what each secret is for, building a disc
+   and betas in their own GitHub Actions, and their own GitHub Pages update address (`beta/`, `stable/`).
+2. **Keys:** making their release key (rpk-tool's Ed25519 key pair) and Secure Boot key (`openssl req` for the db
+   certificate), what goes in the repository (public halves only, `trusted-keys.txt`), what goes in GitHub secrets
+   (`RPK_SIGNING_KEY`, `RUDOLF_SB_KEY`), and keeping offline backups. Never committing a private key (`keys/`,
+   `*.pem`, `*.key` are in .gitignore). How to replace a key that leaked.
+3. **Their own Library:** forking rudolfos-library, its key (`RPK_LIBRARY_KEY`), publishing packages, and adding the
+   Library to a computer (`/persist/pkg/sources`, with its key in Developer mode).
+4. **Installing a custom build:** on a computer of their own (their disc, Secure Boot enrolment or off), or on an
+   official Rudolf OS through Developer mode (8.3), and what changes (Custom in About; the official recovery stays).
+5. **Going back:** Return to official Rudolf OS (8.5), Recovery mode, and a rescue stick.
+6. **What the name means:** a custom build must not call itself the official Rudolf OS; how to name it, and that the
+   official recovery and update addresses are the project's.
+7. **Publishing games for the official Library:** the developer certificate (8.2), the sandbox's API, the review, and
+   the games plan's rules (docs/plan-games.md).
+- Each command in it is run in CI against a throw-away fork layout (keys made, a package signed and verified, a
+  manifest signed and checked by rudolf-update in its test mode), so the README cannot go stale.
+
+### 8.7 Tests
+- Host: rudolf-update with an extra key (accepts its releases only in Developer mode; never writes `system/r` from
+  them); the recovery initramfs refuses a `system/r` whose manifest is signed by anything but the official key or
+  whose files differ; Return to official from a custom slot (keep and erase); rpk with developer certificates, a
+  package outside its prefix refused, a revoked key refused.
+- Browser: Developer mode's warnings and confirmation; Official/Custom in About; the outside app sandbox (no rudolfd
+  token, only the granted API).
+- QEMU (with Secure Boot, OVMF and the official keys enrolled): an official install; Developer mode with a test key
+  and a custom release; Recovery mode starts the official `system/r`; a tampered `system/r` and a tampered
+  `recovery.efi` (refused by the initramfs and by Secure Boot); Return to official, keeping files and erasing them.
+
 ## Steps
 1. Part 1 (ModemManager, read only), with the USB stick and the MiFi on the Vivobook over the devlink.
 2. Part 2 (tablet mode, keyboard, rotation).
@@ -126,3 +253,6 @@ numbers need the service's own calling plan (Google Voice in the US, Zoom Phone,
 7. Part 7 (calls): 7.1 WebKit's WebRTC plug-ins measured and added, the CI call test on both engines, 7.2 the
    in-a-call indicator, device switching and holding off sleep, 7.3 the calls page and tel: links; then the Vivobook
    checks (7.4) before 1.5.9 is promoted.
+8. Part 8 (developers): 8.2's sandbox for outside apps first (before any outside package); 8.4 the official recovery
+   slot and recovery.efi, and 8.5 Return to official, proven in QEMU with Secure Boot; then 8.3 Developer mode, 8.1 the
+   keys in Settings, 8.2's certificates and revocation, and 8.6 the README with its CI check.
