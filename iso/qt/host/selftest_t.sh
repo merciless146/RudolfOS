@@ -65,4 +65,8 @@ OUT=$(ST_WEBKIT=$W/rudolf-webkit ST_LIBDIR=$W/lib sh $S)
 ok "9. 1.5.7: the Lite engine without libGLESv2.so.2: named" "$(has 'FAIL lite-engine - missing: libGLESv2.so.2' && echo 1)" "$OUT"
 : > $W/lib/libGLESv2.so.2; OUT=$(ST_WEBKIT=$W/rudolf-webkit ST_LIBDIR=$W/lib sh $S)
 ok "10. ...with it: passes" "$(has 'PASS lite-engine' && echo 1)" "$OUT"
+# 1.5.8: Mesa's GLX (without it GTK finds no OpenGL and WebKit turns its hardware acceleration off)
+ok "11. 1.5.8: without Mesa's GLX: lite-gpu names it" "$(has 'FAIL lite-gpu - missing: libGLX_mesa.so.0 libxcb-glx.so.0' && echo 1)" "$OUT"
+: > $W/lib/libGLX_mesa.so.0; : > $W/lib/libxcb-glx.so.0; OUT=$(ST_WEBKIT=$W/rudolf-webkit ST_LIBDIR=$W/lib sh $S)
+ok "12. ...with it: passes" "$(has 'PASS lite-gpu' && echo 1)" "$OUT"
 echo "$NP/$((NP+NF)) passed"; [ $NF = 0 ]

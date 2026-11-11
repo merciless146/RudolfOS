@@ -121,6 +121,11 @@ else bad=""; for l in libGLESv2.so.2 libEGL.so.1 libGLdispatch.so.0 libepoxy.so.
 	[ -x "$ML/webkit2gtk-4.1/WebKitWebProcess" ] || bad="$bad WebKitWebProcess"
 	if [ -z "$bad" ]; then pass lite-engine "WebKit and the graphics libraries it opens are there"; else fail lite-engine "missing:$bad (Lite would close as it starts; Standard is used)"; fi
 fi
+# 1.5.8: Mesa's GLX: without it GTK finds no OpenGL and WebKit turns its hardware acceleration off (Lite still works,
+# drawing everything with the processor)
+if [ -x "${ST_WEBKIT:-/usr/bin/rudolf-webkit}" ]; then soft=""; for l in libGLX_mesa.so.0 libxcb-glx.so.0; do [ -e "$ML/$l" ] || soft="$soft $l"; done
+	if [ -z "$soft" ]; then pass lite-gpu "Mesa's GLX is there: Lite can draw with the GPU"; else fail lite-gpu "missing:$soft (Lite draws in software, without the GPU)"; fi
+fi
 
 # ---- 1.5.7 (plan stage 8): Linux apps and games
 bad=""; for n in fd stdin stdout stderr; do [ -e "$DEV/$n" ] || [ -L "$DEV/$n" ] || bad="$bad /dev/$n"; done

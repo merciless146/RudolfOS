@@ -31,8 +31,11 @@ for m in $ML/gio/modules/libgiognutls.so; do [ -f "$m" ] && { $SUDO mkdir -p "$R
 # libgles2): without it WebKit's web process aborts as it starts ("Couldn't open libGLESv2.so.2"), and the Lite desktop
 # closed every few seconds on the Vivobook (the release machine and Debian had it; the base layer did not). With it,
 # WebKit draws with the GPU when GTK can, and in software otherwise. libdrm's list of AMD GPUs too (only a warning).
-for l in libGLESv2.so.2 libEGL.so.1 libGLdispatch.so.0 libgbm.so.1 libepoxy.so.0; do
-	f=$(readlink -f $ML/$l 2>/dev/null) || continue; [ -f "$f" ] || { echo "addwebkit: $ML/$l is missing here (apt-get install libgles2 libegl1 libgbm1)"; exit 1; }
+# 1.5.8: and Mesa's GLX (libGLX_mesa.so.0, from libglx-mesa0, with libxcb-glx.so.0): GTK 3 checks OpenGL through GLX, and
+# without Mesa's GLX it found none ("No available configurations for the given pixel format"), so WebKit turned its
+# hardware acceleration off on every computer ("Disabled hardware acceleration because GTK failed to initialize GL").
+for l in libGLESv2.so.2 libEGL.so.1 libGLdispatch.so.0 libgbm.so.1 libepoxy.so.0 libGLX_mesa.so.0 libxcb-glx.so.0; do
+	f=$(readlink -f $ML/$l 2>/dev/null) || continue; [ -f "$f" ] || { echo "addwebkit: $ML/$l is missing here (apt-get install libgles2 libegl1 libgbm1 libglx-mesa0)"; exit 1; }
 	[ -e "$R$f" ] || { $SUDO cp -L "$f" "$R$f"; echo "$f" >> "$LIST"; }; [ -e "$R$ML/$l" ] || $SUDO ln -sf "${f##*/}" "$R$ML/$l"; done
 for d in /usr/share/libdrm; do [ -d "$d" ] && { $SUDO mkdir -p "$R$d"; $SUDO cp -a "$d/." "$R$d/"; }; done
 # GTK 3's settings schemas (it reads them at start), compiled in ROOT
