@@ -134,6 +134,24 @@ jobs:
           gh release create "r$S" out/files/$S/* --title "Rudolf OS system release $S" --notes "${{ steps.build.outputs.notes }}"
           mkdir -p "$RUNNER_TEMP/pages/beta" && cp out/channel/manifest.txt out/channel/manifest.sig "$RUNNER_TEMP/pages/beta/"
           cd "$RUNNER_TEMP/pages" && git add -A && git -c user.name=rudolf-release -c user.email=release@localhost commit -qm "beta: release $S" && git push -q origin gh-pages
+      # 1.5.7: the boot files of this release (rudolf-os-boot.iso, about 30 MB), with every beta: Make a stick gives a new
+      # stick the boot files of the system it copies (its Recovery mode and safeguards), not the older ones on the drive
+      # it was made from. Built from the newest disc release's boot image; a failure here does not stop the release.
+      - name: Boot image
+        if: inputs.promote == '' && steps.build.outputs.released == '1'
+        continue-on-error: true
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          S=${{ steps.build.outputs.serial }}; VER=$(cat iso/VERSION)
+          D=$(gh release list -L 50 --json tagName -q '[.[]|select(.tagName|startswith("disc-"))][0].tagName'); DV=${D#disc-}
+          mkdir -p brel bold && cp out/channel/manifest.txt out/channel/manifest.sig brel/ && cp out/files/$S/vmlinuz brel/
+          gh release download "$D" -D bold -p "rudolf-os-$DV-boot.iso" -p "rudolf-os-$DV-boot.iso.sha256"
+          [ "$(sha256sum < bold/rudolf-os-$DV-boot.iso | cut -d' ' -f1)" = "$(cut -d' ' -f1 bold/rudolf-os-$DV-boot.iso.sha256)" ] || { echo "::error::$D: the boot image does not match its checksum"; exit 1; }
+          [ -d sbparts ] || bash iso/systools/sb_parts_get.sh sbparts
+          BOOT_ONLY=1 SB_PARTS=$PWD/sbparts SB_KEY="$RUNNER_TEMP/sb.key" bash iso/systools/mkdisc.sh bold/rudolf-os-$DV-boot.iso brel "$VER" bout
+          mv bout/rudolf-os-$VER-boot.iso bout/boot.iso; (cd bout && sha256sum boot.iso > boot.iso.sha256)
+          gh release upload "r$S" bout/boot.iso bout/boot.iso.sha256
+          echo "::notice title=Boot image::boot.iso ($(( $(stat -c %s bout/boot.iso) / 1048576 )) MB) added to r$S"
       - name: Disc image
         if: inputs.promote == '' && inputs.disc != ''
         env: {GH_TOKEN: '${{ github.token }}', VER: '${{ inputs.disc }}', FROM: '${{ inputs.disc_from }}'}

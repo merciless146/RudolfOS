@@ -13,7 +13,9 @@ case "$MEDIA" in "$DEV"|"$DEV"[0-9]*|"$DEV"p[0-9]*) echo "That is the drive Rudo
 SRC=$MEDIA
 if [ -n "$2" ]; then
 	SRC=$2
-	case "$SRC" in *..*) echo "Bad file name."; exit 7;; /home/rudolf/*.iso|/home/rudolf/*.ISO) ;; *) echo "The image must be a .iso file in your home folder."; exit 7;; esac
+	# (1.5.7: or, for Make a stick, the installed system's own boot image it downloaded and checked: os_bootimg)
+	STICKBOOT=0; case "$SRC" in /persist/os/bootimg/boot-[0-9]*.iso) [ "$MKSTICK" = 1 ] && STICKBOOT=1;; esac
+	case "$SRC" in *..*) echo "Bad file name."; exit 7;; /home/rudolf/*.iso|/home/rudolf/*.ISO) ;; *) [ $STICKBOOT = 1 ] || { echo "The image must be a .iso file in your home folder."; exit 7; };; esac
 	# a disc image downloaded in parts (1.2.7): joined first, into the same name (joinparts.sh)
 	[ -f "$SRC" ] || /usr/lib/rudolf/joinparts.sh "$SRC" || exit 7
 	[ -f "$SRC" ] || { echo "No such file: $SRC"; exit 7; }
@@ -23,7 +25,7 @@ if [ -n "$2" ]; then
 	mount -t iso9660 -o ro,loop "$SRC" /mnt/instsrc || { echo "That file is not a disc image."; exit 7; }
 	OK=1; [ -e /mnt/instsrc/rudolf/id ] || OK=0
 	# 1.2.8: a boot image has no system of its own: it only replaces the boot files of an installed drive
-	[ -e /mnt/instsrc/rudolf/bootonly ] && { umount /mnt/instsrc; echo "That is a boot image (boot files only, no system). To install Rudolf OS choose a whole disc image; a boot image is for Replace the boot files only."; exit 7; }
+	[ -e /mnt/instsrc/rudolf/bootonly ] && [ $STICKBOOT = 0 ] && { umount /mnt/instsrc; echo "That is a boot image (boot files only, no system). To install Rudolf OS choose a whole disc image; a boot image is for Replace the boot files only."; exit 7; }
 	V=$(rudolf-update verify-manifest /mnt/instsrc/rudolf/manifest.txt /mnt/instsrc/rudolf/manifest.sig 2>&1) || OK=0
 	umount /mnt/instsrc
 	[ $OK = 1 ] || { echo "That file is not a Rudolf OS disc image signed by Rudolf OS ($V)."; exit 7; }
