@@ -472,3 +472,15 @@ html body .tmt tbody tr.on td{background:var(--ac)!important;color:var(--acfg,#f
 html.dark .calbig td.sel .cd,html body .calbig td.sel .ce{outline:1px solid var(--acfg,#fff)}
 /* the folder tree (.xt) and the network list keep their light backgrounds in the dark theme no more */
 html.dark .xp{background:#111827}html.dark .xt{background:#0f172a}
+/* 1.5.8 (plan 8.1): tablet mode (tablet58.js): each window fills the desktop, one at a time; the taskbar as a dock */
+html.tablet #desk{bottom:56px!important;padding:0!important}html.tablet #bar{height:56px!important;padding-bottom:env(safe-area-inset-bottom,0px)!important}
+html.tablet #desk .win{left:0!important;top:0!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;border-radius:0!important;box-sizing:border-box}
+html.tablet #desk .win .tb{min-height:40px}html.tablet #desk .win .tb .mx,html.tablet #desk .win>div[style*="resize"]{display:none!important}
+html.tablet #tasks{justify-content:center;gap:6px}
+html.tablet #tasks button{flex:0 0 52px!important;width:52px;height:48px!important;font-size:0!important;text-align:center;border-radius:12px!important;padding:0!important;overflow:hidden}
+html.tablet #tasks button::before{content:attr(data-ic);font-size:26px;line-height:48px}html.tablet #tasks button img.ico{width:32px!important;height:32px!important;margin:8px auto!important;display:block}html.tablet #tasks button.grp::after{font-size:10px}
+html.tablet #tasks button.on{outline:2px solid var(--ac);outline-offset:-2px}
+html.tablet #start{min-width:52px;height:48px}
+html.tablet.portrait #menu{left:0!important;right:0!important;width:auto!important;max-height:70vh}
+html.tablet #start{font-size:0!important;min-width:52px}html.tablet #start img{width:30px;height:30px}
+html.tablet #start .stv{display:none!important}
