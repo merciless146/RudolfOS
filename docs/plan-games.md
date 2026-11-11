@@ -125,6 +125,13 @@ and fires lasers from his nose.
    Checkers over the network; BlockLua Arcade.
 4. **Later:** Blitzen's Quest, Rally, Tower Defense, Pinball.
 
+## Progress
+- **2026-11-11:** `rudolf-gamekit` (rudolfos-library `lib/gamekit/gamekit.js`, copied into each game by tools/publish.sh)
+  and **Fault Lines** (`apps/rudolf-faultlines`, 16 KB), with `tests/faultlines_t.js` (21 checks, desktop and phone
+  sizes) run by the Library's check.yml. The desktop's side: `desktop/games58.js` (LIB_GAMES: Start menu, Games tab,
+  the download offer; the kit's messages: saves in the desktop's database per account, pause and resume, settings),
+  tested by `iso/qt/shell2/games58_t.js`. Next: Block Drop, Logic Pack, then Night Flight's engine and stages 1-2.
+
 ## Tests
 - Each game: a browser test (qt/shell2 in RudolfOS for the Start menu and Games tab entries and the download offer; in
   the Library, a test per game: it starts, takes input from keyboard, mouse, touch and gamepad, pauses and resumes,

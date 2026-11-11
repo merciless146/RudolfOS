@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.8 (in progress)
 Summary: Oracle's tabs in the Lite desktop, mobile data, Android phones and tablets, and diagnosing a computer that does not start (docs/plan-1.5.8.md)
+- New: games from the Rudolf OS Library, starting with Fault Lines (a logic puzzle: clear the ground without opening a fault; three fields and a Daily one). It is in the Start menu and App Store › Games, and downloads its small package (16 KB) the first time. Best times are kept with your account, and the game pauses when its window is minimised or the computer locks.
 - New: with the Lite desktop, Oracle's tabs are real browser tabs again (WebKit pages): websites open inside Oracle, signing in works, and only sites that need Chromium (Netflix, Spotify, Disney+ and other protected video and music) open in Chromium's browser window. Oracle's menu has "Open in Chromium" for any page.
 - New: Oracle's menu › Sign-in with FedCM: Chromium's own way for "Sign in with Google" buttons, off by default (on some computers Google's sign-in through it stopped on a blank page). It applies to the browser window and to Oracle's tabs on the Standard desktop.
 - New: mobile data. A hotspot's or a phone's USB tethering, a cellular modem or a USB network adapter plugged in at any time gets connected by itself ("📱 Phone connected"). Hotspots and phones that use RNDIS, NCM, MBIM or EEM, iPhones' tethering, and QMI modems are supported.
