@@ -356,12 +356,35 @@ gets the same: Oracle's tabs as real WebKit pages.
 - The browser window comes to the front when Oracle opens a site in Lite, and stays there until the person goes back to
   the desktop (the desktop page and rudolf-display no longer bring the desktop back over it).
 
+### 9.6 FedCM on or off, in Oracle's ☰ menu (added on 2026-11-10)
+On the Vivobook, "Sign in with Google" on claude.ai went through Chromium's FedCM and stopped on a blank
+accounts.google.com/gsi/transform window; Firefox, without FedCM, signed in. 1.5.7 turns FedCM off in Chromium for
+everyone (PR #198). It is a choice, since some sites may come to need FedCM and Google may change its sign-in again:
+- **Oracle's ☰ menu:** "Sign-in with FedCM" with a tick (off by default), and the same switch in Settings › Oracle ›
+  Sign-in, with one line on what it does ("Sites' 'Sign in with Google' buttons use Chromium's own sign-in. Turn it on
+  only if a site asks for it; with it, Google's sign-in stopped on a blank window on some computers").
+- **Where it is kept:** a system setting, /persist/etc/rudolf-browser.conf (`fedcm=0|1`), since Chromium's flags are set
+  for the whole browser, not per account; rudolfd GET/POST `web/fedcm` (any signed-in account may change it, as other
+  browser settings; guests cannot). The desktop page reads it at start-up for the menu's tick.
+- **What it changes:** rudolfd `web/open` leaves FedCm out of `--disable-features` when on; the session reads the file
+  when it starts the desktop's Chromium (Oracle's real tabs with Standard).
+- **When it applies:** the browser window is restarted at once if it is open (after asking: "Close the browser window
+  to apply? Its tabs come back"; Chromium restores them); real tabs need the desktop's Chromium restarted, so the menu
+  says "Applies to Oracle's tabs at the next sign-in or restart" and offers "Restart Oracle's tabs now" (the shell's
+  restart, which keeps the session).
+- **Lite's WebKit tabs (9.1):** WebKitGTK has no FedCM; the menu item is shown greyed with "Not used by WebKit tabs"
+  while the tab is a WebKit one, and still applies to sites sent to Chromium (9.2).
+- **If a sign-in stops on a blank accounts.google.com/gsi/... page** (the address is known), Oracle's bar offers
+  "Sign-in stuck? Try with FedCM off / on" once, switching the setting and reloading the sign-in.
+
 ### 9.5 Tests
 - rudolf-webkit's tab protocol: a host test that runs it on Xvfb with a local test site (frame-protected pages, a
   sign-in popup with window.opener, a download, a permission request, fullscreen), in the Lite engine check from the
   base layer (chroot) as for the desktop.
 - Browser tests of Oracle's side with the program's messages stood in.
-- On the Vivobook over the devlink and remote access: YouTube, a Google sign-in, Discord, a download, a video in
+- FedCM switch: a host test that `web/open` and the session put FedCm in `--disable-features` exactly when the setting
+  is off; a browser test of the ☰ menu tick, Settings › Oracle and the stuck-sign-in bar (stood-in rudolfd).
+- On the Vivobook over the devlink and remote access: YouTube, a Google sign-in, with FedCM off and on, Discord, a download, a video in
   fullscreen, memory with 5 tabs against Chromium's.
 
 ## Steps
