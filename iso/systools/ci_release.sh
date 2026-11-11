@@ -227,12 +227,29 @@ mkdir -p "$W/ds/usr/share/rudolf"; cp -a www "$W/ds/usr/share/rudolf/www"
 # the shell (an Isolated Web App that gives Oracle real tabs), signed with a key derived from the release key;
 # Chromium installs it from these files (policy written by the session). Ed25519 signatures are deterministic,
 # so an unchanged shell gives the same bytes.
+# 1.5.8: Chromium updates an installed Isolated Web App only to a higher version, and the shell's manifest said 1.5.1
+# since 1.5.1: no change to the shell after that reached a computer (the Vivobook still ran the shell of 2026-11-01;
+# YouTube's full-screen fix, #206, never arrived). The version is now set here: the previous release's when the
+# shell's files did not change (the layer stays byte-identical), else VERSION.SERIAL, higher than any before it.
 if [ -d shell ]; then
 	I="$W/ds/usr/share/rudolf/www/iwa"; mkdir -p "$I"
+	SH=$(cd shell && find . -type f ! -path ./.well-known/manifest.webmanifest | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -c1-32)
+	PSH=$(unsquashfs -cat "$PREV/desktop.sfs" usr/share/rudolf/www/iwa/shell.sha 2>/dev/null || true)
+	PSV=$(unsquashfs -cat "$PREV/desktop.sfs" usr/share/rudolf/www/iwa/update.json 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin)["versions"][0]["version"])
+except Exception: print("")' || true)
+	if [ -n "$PSV" ] && [ "$SH" = "$PSH" ]; then SV=$PSV; else SV="$(cat VERSION).${SERIAL:-$(date -u +%Y%m%d%H)}"; fi
+	rm -rf "$W/shell"; cp -a shell "$W/shell"
+	python3 - "$W/shell/.well-known/manifest.webmanifest" "$SV" <<'PY'
+import json, sys
+p, v = sys.argv[1], sys.argv[2]; m = json.load(open(p)); m['version'] = v
+open(p, 'w').write(json.dumps(m, indent=1, ensure_ascii=False) + '\n')
+PY
+	echo "$SH" > "$I/shell.sha"
 	python3 systools/mkiwa.py derive "$KEYFILE" "$W/iwa.key" > "$I/id"
-	python3 systools/mkiwa.py build shell "$I/shell.swbn" "$W/iwa.key" >/dev/null
-	python3 systools/mkiwa.py update shell http://127.0.0.1:8080/iwa/shell.swbn "$I/update.json" >/dev/null
-	rm -f "$W/iwa.key"
+	python3 systools/mkiwa.py build "$W/shell" "$I/shell.swbn" "$W/iwa.key" >/dev/null
+	python3 systools/mkiwa.py update "$W/shell" http://127.0.0.1:8080/iwa/shell.swbn "$I/update.json" >/dev/null
+	rm -f "$W/iwa.key"; [ "$SV" = "$PSV" ] || NOTES+=("Oracle's tabs (shell $SV)")
 fi
 $MK "$W/ds" "$W/desk.sfs" $SQ; python3 systools/verity.py add "$W/desk.sfs" desktop >/dev/null
 if ! cmp -s "$W/desk.sfs" "$W/new/desktop.sfs"; then cp "$W/desk.sfs" "$W/new/desktop.sfs"; NOTES+=("desktop update"); fi
