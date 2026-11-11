@@ -5,7 +5,7 @@
 # check: "PASS name - detail", "FAIL name - detail" or "SKIP name - why"; then a summary line. Exit status 1 when a
 # check failed. Run by rudolfd (GET selftest, Settings › System health › Run the self-test) and over the devlink.
 # The places can be moved for the host test (ST_SYS, ST_RUN, ST_PERSIST, ST_HOME, ST_DEV, ST_PROC, ST_CONF, and since
-# 1.5.7 ST_MEMCONF, ST_JOYPERM, ST_FLATPAK, ST_FLATPAK_BIN, ST_LIBDIR, ST_WEBKIT).
+# 1.5.7 ST_MEMCONF, ST_JOYPERM, ST_FLATPAK, ST_FLATPAK_BIN, ST_LIBDIR, ST_WEBKIT, and since 1.5.8 ST_DMESG).
 # GPL-2.0-or-later.
 SYS=${ST_SYS:-/sys}; RUN=${ST_RUN:-/run/rudolf}; P=${ST_PERSIST:-/persist}; H=${ST_HOME:-/home/rudolf}; DEV=${ST_DEV:-/dev}; PROC=${ST_PROC:-/proc}
 NP=0; NF=0; NS=0
@@ -103,6 +103,15 @@ G="$SYS/fs/cgroup/desktop"
 if [ ! -d "$SYS/fs/cgroup" ] || [ ! -e "$SYS/fs/cgroup/cgroup.controllers" ]; then skip desktop-memory "no memory groups in this kernel"
 elif [ -e "$G/memory.low" ] && [ "$(rd1 "$G/memory.low")" != 0 ]; then pass desktop-memory "the desktop keeps $(( $(rd1 "$G/memory.low") / 1048576 )) MiB$( [ -s "$G/cgroup.procs" ] && echo ", with its browser in it" || echo ", but its browser is not in it")"
 else fail desktop-memory "the desktop's memory group is missing or keeps nothing"; fi
+
+# ---- 1.5.8: every sound chip answered at start-up (or was reset): one that did not has no card, so no speakers
+DM=$( { [ -n "$ST_DMESG" ] && cat "$ST_DMESG" || dmesg; } 2>/dev/null)
+bad=""; for a in $(echo "$DM" | sed -n 's/.*snd_hda_intel \([0-9a-f:.]*\): no codecs initialized.*/\1/p' | sort -u); do
+	ls -d "$SYS/bus/pci/devices/$a/sound/card"* >/dev/null 2>&1 || bad="$bad $a"; done
+if [ -n "$bad" ]; then fail sound-chip "the sound chip did not answer at start-up ($(echo $bad)): shut the computer down fully (not Restart), wait 10 seconds and turn it on"
+elif echo "$DM" | grep -q 'no codecs initialized'; then pass sound-chip "it did not answer at start-up, and was reset"
+elif [ -d "$SYS/class/sound" ] || [ -n "$ST_DMESG" ]; then pass sound-chip "every sound chip answered at start-up"
+else skip sound-chip "no sound cards"; fi
 
 # ---- 1.5.7: the Lite desktop engine has what it opens while running (on the Vivobook it closed as it started: no
 # libGLESv2.so.2 in the system)

@@ -53,7 +53,10 @@ async function sysuTick(){if(!RD||!USER||window.LOCKED||window.__bsaver)return; 
  /* 1.5.7: offline (at start-up, before the Wi-Fi has an address): check once online, not in an hour */
  if(typeof netLive=='function'&&!netLive()){if(!sysuTick.wait){sysuTick.wait=1;netWait().then(()=>setTimeout(()=>{sysuTick.wait=0;sysuTick()},20000))}return}
  try{const j=await rd('job');if(j.running)return}catch(e){return}
- try{if(Date.now()/1000-(s.checked||0)>=20*3600)await sysuJob('check');const s2=SYSU;if(s2&&s2.available){await sysuJob('download');const s3=SYSU,n=s3&&s3.state&&s3.state.next;
+ try{if(Date.now()/1000-(s.checked||0)>=20*3600)await sysuJob('check');const s2=SYSU;
+ /* 1.5.8: on a metered connection (cellular data) the update is found but not downloaded by itself */
+ if(s2&&s2.available&&(typeof netMetered=='function'&&netMetered())){if(!sysuTick.metered){sysuTick.metered=1;notify('Update available','Rudolf OS '+(s2.available.version||'')+' was not downloaded: this connection is metered. Download it in Settings › Updates when you want, or on another network.',{app:'Updates',action:()=>settings('upd')})}return}
+ if(s2&&s2.available){await sysuJob('download');const s3=SYSU,n=s3&&s3.state&&s3.state.next;
    if(n&&s3.slots[n].complete){sysuTick.told=1;notify(s2.available.urgent?'Urgent security update ready':'Security update ready','Restart to finish installing Rudolf OS '+s3.slots[n].version+'.',{action:sysuRestart,kind:s2.available.urgent?'warning':'info'})}}sysuTick.fails=0}
  catch(e){/* 1.5.7: a check that failed is tried again in 5 minutes (3 times), not in an hour */if((sysuTick.fails=(sysuTick.fails||0)+1)<=3)setTimeout(sysuTick,300000)}}
 if(RD){setTimeout(sysuTick,10*60*1000);setInterval(sysuTick,60*60*1000)}

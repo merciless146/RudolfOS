@@ -1,0 +1,18 @@
+#!/bin/sh
+# 1.5.8: the safe desktop, now: the standard engine (Chromium) and no shell, and the desktop started again. For a
+# desktop that shows nothing or keeps restarting (the Vivobook, 1.5.7: Lite closing as it started, a grey screen).
+#   desktop-safe keys     Ctrl+Alt+Backspace held for a second (rudolf-display)
+#   desktop-safe devlink  the same, asked over the development link or by hand
+# Lite chosen in System Settings is turned off for good, saying why (Settings › Desktop engine); the shell only until
+# the next start. Run as root. DS_PERSIST, DS_RUN, DS_PKILL, DS_HEALTH: other places, for the host test.
+P=${DS_PERSIST:-/persist}; R=${DS_RUN:-/run/rudolf}; PK=${DS_PKILL:-pkill}; HE=${DS_HEALTH:-rudolfd}
+case "$1" in keys) how="Ctrl+Alt+Backspace was held";; devlink) how="the safe desktop was asked for";; *) echo "usage: desktop-safe keys|devlink"; exit 2;; esac
+touch $R/webkit-failed $R/shell-failed
+if [ -e $R/persistent ] && [ -f $P/etc/rudolf-desktop-engine ]; then
+	rm -f $P/etc/rudolf-desktop-engine $P/etc/rudolf-desktop-engine.trying
+	echo "$(date -u +%FT%TZ) $how" > $P/etc/rudolf-desktop-engine.failed; sync
+fi
+echo "$(date) $how - starting the desktop again with the standard engine and no shell" >> $R/session.log
+$HE --health browser "$how, so the desktop was started again with the standard engine and no shell" >/dev/null 2>&1
+$PK -f '[-]-rudolf-kiosk' >/dev/null 2>&1; sleep 3; $PK -9 -f '[-]-rudolf-kiosk' >/dev/null 2>&1
+echo "the safe desktop is starting"

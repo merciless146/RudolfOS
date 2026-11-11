@@ -44,6 +44,11 @@
 static char DIR_[256] = "/persist/devlink", RUND[256] = "/run/rudolf/devlink", API[256] = "https://api.github.com";
 static char RDURL[256] = "http://127.0.0.1:8080", REPO[128], TOKEN[256];
 static int TESTMODE;
+/* 1.5.8 (4.2): the desktop's heartbeat (rudolfd writes it every few seconds while the desktop runs). With Ask first on,
+   nobody can allow a command while the desktop is not running (it showed a grey screen on the Vivobook on 2026-11-10,
+   and commands waited unanswered): after HBWAIT seconds without a heartbeat the command is answered at once with that
+   reason, instead of waiting 10 minutes in silence. It is still not run. */
+static char HB[256] = "/run/rudolf/heartbeat"; static int HBWAIT = 60;
 static volatile sig_atomic_t STOP;
 
 /* ---------------- small helpers */
@@ -373,10 +378,13 @@ static int ask(cmd *c, const char *what)
 	buf s = {0}; bfmt(&s, "{\"id\":\"%s\",\"kind\":", c->id); bjs(&s, c->kind); bfmt(&s, ",\"what\":"); bjs(&s, what); bfmt(&s, ",\"since\":%lld}\n", (long long)time(NULL));
 	write_file(pp, s.b, s.n, 0644); free(s.b);
 	status("waiting for approval", c->id, "");
-	time_t end = time(NULL) + ASKWAIT; int a = 0;
+	time_t end = time(NULL) + ASKWAIT, nodesk = 0; int a = 0;
 	while (!STOP && time(NULL) < end) {
 		char *v = slurp(ap, NULL);
 		if (v) { trim(v); a = !strcmp(v, "allow") ? 1 : -1; free(v); break; }
+		struct stat hb; time_t now = time(NULL);
+		if (stat(HB, &hb) || now - hb.st_mtime > 30) { if (!nodesk) nodesk = now; else if (now - nodesk >= HBWAIT) { a = -2; break; } }
+		else nodesk = 0;
 		sleep(1);
 	}
 	unlink(pp); unlink(ap);
@@ -430,8 +438,8 @@ static int execute(cmd *c)
 	if (askfirst) {
 		int a = ask(c, w.b ? w.b : "");
 		if (a <= 0) {
-			snprintf(r.error, sizeof r.error, a < 0 ? "refused on the computer" : STOP ? "the link was ended before it was allowed" : "not allowed within 10 minutes");
-			r.status = -1; approved = a < 0 ? "refused" : "no answer";
+			snprintf(r.error, sizeof r.error, a == -2 ? "not run: Ask first is on and the desktop is not running, so nobody can allow it (turn Ask first off in Settings to use the link while the desktop cannot start)" : a < 0 ? "refused on the computer" : STOP ? "the link was ended before it was allowed" : "not allowed within 10 minutes");
+			r.status = -1; approved = a == -2 ? "no desktop to ask" : a < 0 ? "refused" : "no answer";
 			logline(c->id, c->kind, w.b, r.error, approved); report(c, &r, time(NULL), approved); done_upto(c->id); free(w.b); return 1;
 		}
 		approved = "allowed on the computer";
@@ -601,6 +609,8 @@ static void setup(void)
 		if ((v = getenv("RUDOLF_DEVLINK_DIR"))) snprintf(DIR_, sizeof DIR_, "%s", v);
 		if ((v = getenv("RUDOLF_DEVLINK_RUN"))) snprintf(RUND, sizeof RUND, "%s", v);
 		if ((v = getenv("RUDOLF_DEVLINK_RD"))) snprintf(RDURL, sizeof RDURL, "%s", v);
+		if ((v = getenv("RUDOLF_DEVLINK_HB"))) snprintf(HB, sizeof HB, "%s", v);
+		if ((v = getenv("RUDOLF_DEVLINK_HBWAIT"))) HBWAIT = atoi(v);
 	}
 	mkdir(DIR_, 0700); chmod(DIR_, 0700);
 	if (!TESTMODE && dbg) {

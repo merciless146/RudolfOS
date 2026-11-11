@@ -235,9 +235,17 @@ unsupported() {
 	done
 }
 
+# 1.5.8 (plan 7.2): an Android phone with USB debugging on (an ADB interface: class ff, subclass 42, protocol 01) is the
+# desktop user's to use, so scrcpy and adb in Linux (Debian) can reach it; nothing else on the phone changes
+adb_perm() {
+	local s=$1 i n
+	for i in $s/*:*; do [ "$(cat $i/bInterfaceClass 2>/dev/null)$(cat $i/bInterfaceSubClass 2>/dev/null)$(cat $i/bInterfaceProtocol 2>/dev/null)" = ff4201 ] || continue
+		n=$(sed -n 's/^DEVNAME=//p' $s/uevent 2>/dev/null); [ -n "$n" ] && [ -c "${RUDOLF_DEV:-/dev}/$n" ] && chgrp 1000 "${RUDOLF_DEV:-/dev}/$n" && chmod 660 "${RUDOLF_DEV:-/dev}/$n"; return 0; done
+}
 usb_add() {
 	local s=/sys$DEVPATH key info j; key=$(echo "$DEVPATH" | tr '/' '_')
 	sleep 2   # the device's interfaces and drivers appear after the device itself
+	adb_perm $s
 	info=$(usb_identify $s) || return 0
 	echo "$info" > $RUN/usb/$key
 	case "$info" in "USB drive|"*) return 0;; esac   # the drive's own events say more

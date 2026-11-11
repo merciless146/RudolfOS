@@ -1,0 +1,21 @@
+#!/bin/sh
+# 1.5.8: the last starts, as JSON, from the logs rudolf-init keeps for each (var/log/starts/0 is this one, 3 the
+# oldest): when, which system (slot, release, Recovery mode), whether the desktop came up and how long it took, with
+# which engine, how often the browser was started again, what was given up, and what the start-up said. Only reads.
+# Run by rudolfd (GET system/starts: Settings › System health › Last starts) and over the devlink.
+# STARTS_DIR: another place, for the host test.   GPL-2.0-or-later.
+D=${STARTS_DIR:-/persist/var/log/starts}
+js() { awk 'BEGIN{ORS=""} {gsub(/\\/,"\\\\\\\\"); gsub(/"/,"\\\""); gsub(/\t/," "); gsub(/[\001-\037]/,""); if (NR>1) print "\\n"; print}' ; }
+kv() { sed -n "s/^$1=//p" "$2/start.txt" 2>/dev/null | head -1 | js; }
+printf '{"ok":true,"starts":['; first=1
+for n in 0 1 2 3; do S=$D/$n; [ -f $S/start.txt ] || continue
+	[ $first = 1 ] || printf ','; first=0
+	up=""; eng=""; [ -s $S/desktop-up ] && { up=$(cut -d' ' -f1 $S/desktop-up); eng=$(cut -d' ' -f2 $S/desktop-up); }
+	rec=false; grep -q 'rudolf.recovery=1' $S/start.txt && rec=true
+	ex=$(grep -c 'browser exited' $S/session.log 2>/dev/null); ex=${ex:-0}
+	printf '{"n":%d,"time":"%s","slot":"%s","release":"%s","entry":"%s","recovery":%s,"desktopUp":%s,"engine":"%s","exits":%d,' \
+		$n "$(kv time $S)" "$(kv slot $S)" "$(kv release $S)" "$(kv entry $S)" $rec "${up:-null}" "$(echo "$eng" | js)" "$ex"
+	printf '"gaveUp":"%s",' "$(grep -E 'did not start|given up|no shell until|using the desktop page' $S/session.log 2>/dev/null | tail -3 | sed 's/^[A-Z][a-z][a-z] [A-Z][a-z][a-z] [ 0-9]* [0-9:]* [A-Z]* [0-9]* //' | js)"
+	printf '"startup":"%s"}' "$(cat $S/initramfs.log 2>/dev/null | tail -8 | js)"
+done
+printf ']}\n'

@@ -222,7 +222,8 @@ async function flatInstalledCards(B){if(!RD)return;let s;try{s=await lxApi('apps
  const set=async(k,v,el)=>{if(!await elevate(k=='auto'?'Change automatic updates of Linux apps':'Change which Linux apps can be installed')){el.checked=!v;return}try{await lxApi('apps/settings?'+k+'='+(v?1:0))}catch(e){el.checked=!v;notify('Linux apps',e.message,{kind:'error'})}};
  box.querySelector('.lxau').onchange=e=>set('auto',e.target.checked,e.target);box.querySelector('.lxun').onchange=e=>set('unverified',e.target.checked,e.target)}
 /* daily automatic updates of Linux apps (after the security check has had its turn) */
-async function lxAutoUpdate(){if(!RD||!USER||window.LOCKED)return;if(Date.now()-ld('bd95lxupd',0)<20*3600e3)return;let s;try{s=await lxApi('apps/status')}catch(e){return}
+async function lxAutoUpdate(){if(!RD||!USER||window.LOCKED||(typeof netMetered=='function'&&netMetered()))return;   /* (1.5.8: not on a metered connection) */
+ if(Date.now()-ld('bd95lxupd',0)<20*3600e3)return;let s;try{s=await lxApi('apps/status')}catch(e){return}
  if(!s.flatpak||!s.persistent||!s.auto)return;if(!(await lxInstalled()).length)return;try{const j=await rd('job');if(j.running)return}catch(e){return}
  try{await lxApi('apps/update')}catch(e){return}svj('bd95lxupd',Date.now());const j=await lxJobWait();if(j.status==0&&/Updating|Installing/i.test(j.log||''))notify('Linux apps updated','Your Linux apps have the latest versions.')}
 if(RD){lxRegister();setTimeout(()=>lxInstalled(true),4000);setInterval(lxWinPoll,1500);setInterval(lxPortalPoll,1000);setTimeout(lxSync,9000);setInterval(()=>{if(LX.wins.some(w=>!w.web))lxSync()},20000);setTimeout(lxAutoUpdate,15*60e3);setInterval(lxAutoUpdate,3*3600e3)}

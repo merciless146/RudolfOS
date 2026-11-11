@@ -207,6 +207,9 @@ webkit_trial_check() {
 	FIRST=0
 }
 webkit_trial_mark() { [ $ENGINE = webkit ] && [ -e /run/rudolf/persistent ] && [ ! -e /persist/etc/rudolf-desktop-engine.trying ] && date -u +%FT%TZ > /persist/etc/rudolf-desktop-engine.trying; return 0; }
+# 1.5.8: this start's desktop answered: when (seconds after the computer started) and with which engine, beside the
+# start's logs (rudolf-init: var/log/starts/0), for System health's "Last starts"
+desk_up_mark() { [ -e /run/rudolf/heartbeat ] || return 0; D=$(cat /run/rudolf/start-logs 2>/dev/null); [ -n "$D" ] && [ -d "$D" ] && [ ! -e "$D/desktop-up" ] && echo "$(cut -d. -f1 /proc/uptime) $ENGINE" > "$D/desktop-up"; return 0; }
 webkit_trial_ok() { [ $ENGINE = webkit ] && [ -e /run/rudolf/heartbeat ] && [ -e /persist/etc/rudolf-desktop-engine.trying ] && rm -f /persist/etc/rudolf-desktop-engine.trying; return 0; }
 # 1.5.7: a desktop asking for the shell again and again (a USB stick's older desktop on this computer's newer files
 # did, every few seconds): after 3 times in 5 minutes the request is ignored and the shell given up until the next start
@@ -254,6 +257,8 @@ while :; do
 	# the web frames extension lets websites load inside the desktop page's frames (it removes their frame protections)
 	# and spots sign-in pages; with the shell, Oracle's tabs are real pages and it is left out
 	EXTS=$EXT,$RUF; [ $SHELLON = 1 ] && EXTS=$RUF
+	# 1.5.8 (plan 9.6): FedCM ("Sign in with Google" buttons) off unless chosen in Oracle's menu (/persist/etc/rudolf-browser.conf)
+	FEDCM_OFF=,FedCm; grep -qx 'fedcm=1' /persist/etc/rudolf-browser.conf 2>/dev/null && FEDCM_OFF=
 	# 1.5.6: the browser starts in the desktop's memory group (see memory); this loop goes back out right after
 	DCG=/sys/fs/cgroup/desktop/cgroup.procs; [ -e $DCG ] && echo $$ > $DCG 2>/dev/null
 	if [ $ENGINE = webkit ]; then
@@ -263,7 +268,7 @@ while :; do
 		--window-position=0,0 --window-size=$W,$H --user-data-dir=$PROFILE \
 		--no-first-run --no-default-browser-check --noerrdialogs --disable-infobars \
 		--disable-session-crashed-bubble --disable-translate --password-store=basic \
-		--disable-features=Translate,MediaRouter,DialMediaRouteProvider,OptimizationHints,PrivacySandboxSettings4,Vulkan,WebGPUService,SkiaGraphite,OptimizationGuideOnDeviceModel,FedCm --disable-vulkan-surface \
+		--disable-features=Translate,MediaRouter,DialMediaRouteProvider,OptimizationHints,PrivacySandboxSettings4,Vulkan,WebGPUService,SkiaGraphite,OptimizationGuideOnDeviceModel$FEDCM_OFF --disable-vulkan-surface \
 		$GLFLAGS \
 		--autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream \
 		--auto-select-desktop-capture-source=Entire --enable-features=SharedArrayBuffer,IsolatedWebApps$SHELLFEAT $SHELLINST \
@@ -282,7 +287,7 @@ while :; do
 		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] || [ -e /run/rudolf/shell-switch ] && break; done
 		W=$(date +%s); if [ $((W - LASTW)) -gt 40 ]; then echo "$(date) woke after $((W - LASTW)) s - the desktop has 90 s to answer"; GRACE=$((W + 90)); fi; LASTW=$W
 		if [ -e /run/rudolf/screen-restart ]; then rm -f /run/rudolf/screen-restart; display_restart; break; fi
-		webkit_trial_ok; shell_switch_limit
+		webkit_trial_ok; desk_up_mark; shell_switch_limit
 		# the desktop has handed its data over (or Settings changed): start the browser again, with the shell if it can
 		if [ -e /run/rudolf/shell-switch ]; then rm -f /run/rudolf/shell-switch; echo "$(date) starting the browser again (shell)"
 			pkill -f '[-]-rudolf-kiosk'; for i in 1 2 3 4 5 6; do kill -0 $B 2>/dev/null || break; sleep 1; done; pkill -9 -f '[-]-rudolf-kiosk'; break; fi

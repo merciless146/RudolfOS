@@ -3,6 +3,22 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.5.8 (in progress)
+Summary: Oracle's tabs in the Lite desktop, mobile data, Android phones and tablets, and diagnosing a computer that does not start (docs/plan-1.5.8.md)
+- New: with the Lite desktop, Oracle's tabs are real browser tabs again (WebKit pages): websites open inside Oracle, signing in works, and only sites that need Chromium (Netflix, Spotify, Disney+ and other protected video and music) open in Chromium's browser window. Oracle's menu has "Open in Chromium" for any page.
+- New: Oracle's menu › Sign-in with FedCM: Chromium's own way for "Sign in with Google" buttons, off by default (on some computers Google's sign-in through it stopped on a blank page). It applies to the browser window and to Oracle's tabs on the Standard desktop.
+- New: mobile data. A hotspot's or a phone's USB tethering, a cellular modem or a USB network adapter plugged in at any time gets connected by itself ("📱 Phone connected"). Hotspots and phones that use RNDIS, NCM, MBIM or EEM, iPhones' tethering, and QMI modems are supported.
+- New: metered connections. Cellular modems, tethered phones and networks that say so (Android hotspots) are metered by themselves, and any network can be set in Settings › Network › Metered connection. On a metered connection updates are found but not downloaded by themselves, and Linux apps and Debian are not updated in the background; Settings shows the data used this month.
+- New: opening an Android app (.apk) shows what it is (its name, version, the Android it needs and what it asks for) without running it, and offers what works now: the app on your phone through Phone screen, its web version, or the App Store.
+- New: Phone screen shows an Android phone's screen in a window, used with this computer's mouse and keyboard (scrcpy, from Linux). It needs USB debugging turned on by the phone's owner; Rudolf OS never changes anything on the phone.
+- New: tablet mode, by itself on a touch-only screen or in Settings › Display: each window fills the screen, the taskbar becomes a dock, swipe up from the bottom for Start and in from the right for notifications.
+- New: the browser version of Rudolf OS can be added to a phone's or tablet's home screen, and opens without a connection.
+- New: System health › Last starts shows how each of the last four starts went, from logs kept on the disk (they outlasted no restart before).
+- New: holding Ctrl+Alt+Backspace for a second starts the desktop again with the standard engine, when the desktop shows nothing or keeps restarting.
+- Fixed: a sound chip that did not answer at start-up (no sound after forced power-offs) is reset once by itself; the self-test says when it is still silent.
+- Changed: the development link no longer waits ten minutes in silence when Ask first is on and the desktop is not running: it answers at once that nobody can allow the command.
+- Changed: the start-up message about boot files names the drive it is about; Help has a page on starting from a USB stick.
+
 ## 1.5.7 (in progress)
 Summary: Blitzen diagnostics, and what the 1.5.6 tests taught (docs/plan-1.5.7.md)
 - Fixed: the desktop's errors were never written to the system's error log (/run/rudolf/page.log): rudolfd answered the desktop's report as if it were a request to read the log. System health, the system report and the devlink now see them.

@@ -167,5 +167,22 @@ ok('the token file is readable by its owner only', oct(os.stat(f'{DIR}/token').s
 lines = open(f'{DIR}/log').read().strip().split('\n')
 ok('the log has every command, its result and who allowed it', len(lines) >= 19 and all('"approved"' in l for l in lines), len(lines))
 
+# ---- 1.5.8 (4.2): Ask first with no desktop running: answered at once, not run
+hbf = f'{T}/heartbeat'; open(hbf, 'w').write('1')
+E2 = dict(ENV, RUDOLF_DEVLINK_HB=hbf, RUDOLF_DEVLINK_HBWAIT='4')
+config(ask=1)
+try: os.remove(f'{RUN}/stop')
+except FileNotFoundError: pass
+d = subprocess.Popen([BIN, 'run'], env=E2, stdout=subprocess.PIPE, stderr=subprocess.STDOUT); time.sleep(2)
+cmd(30, kind='sh', script='touch ' + T + '/nodesk-must-not-exist')
+end = time.time() + 20
+while time.time() < end and not os.path.exists(f'{RUN}/pending.json'): time.sleep(0.3)
+def beat(n):
+    for _ in range(n): os.utime(hbf); time.sleep(1)
+beat(7); ok('the desktop running (heartbeat): the command keeps waiting for Allow', 'res/000030.json' not in files() and os.path.exists(f'{RUN}/pending.json'))
+os.utime(hbf, (time.time() - 120, time.time() - 120)); r = result(30, 60)
+ok('...the desktop stopped (no heartbeat): answered within a minute, "no desktop to ask", not run', r and r['approved'] == 'no desktop to ask' and 'desktop is not running' in r.get('error', '') and not os.path.exists(f'{T}/nodesk-must-not-exist'), r)
+open(f'{RUN}/stop', 'w').write('1'); d.wait(15)
+
 stub.kill(); shutil.rmtree(T)
 print(f'{P}/{N} passed'); sys.exit(0 if P == N else 1)

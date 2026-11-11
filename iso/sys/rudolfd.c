@@ -1305,9 +1305,23 @@ static int web_url_ok(const char *u)
 	for (const unsigned char *c = (const unsigned char *)u; *c; c++) if (*c <= 0x20 || *c >= 0x7f || strchr("'\"\\`$", *c)) return 0;
 	return 1;
 }
+/* 1.5.8 (plan 9.6): FedCM in Chromium ("Sign in with Google" buttons), off unless chosen in Oracle's menu: on the
+   Vivobook, Google's sign-in through FedCM stopped on a blank accounts.google.com/gsi/transform window (1.5.7) */
+#define BROWSERCONF PERSIST "/etc/rudolf-browser.conf"
+static int web_fedcm(void) { char *c = slurp(BROWSERCONF, NULL); int on = c && strstr(c, "fedcm=1"); free(c); return on; }
 static void api_web(struct req *r, const char *what)
 {
 	char cmd[3200];
+	if (!strcmp(what, "fedcm")) {
+		if (!strcmp(r->method, "POST")) {
+			const char *v = qparam(r->query, "on"); if (!v || (strcmp(v, "0") && strcmp(v, "1"))) { reply_err(r->fd, 400, "on=0|1"); return; }
+			if (access(RUN "/persistent", F_OK)) { reply_err(r->fd, 409, "settings are kept only on an installed Rudolf OS"); return; }
+			char t[] = BROWSERCONF ".new"; int f = open(t, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+			if (f < 0 || dprintf(f, "fedcm=%s\n", v) < 0) { if (f >= 0) close(f); reply_err(r->fd, 500, "could not save"); return; }
+			fsync(f); close(f); rename(t, BROWSERCONF);
+		}
+		str s = {0}; sadd(&s, "{\"ok\":true,\"on\":%s,\"running\":%s}", web_fedcm() ? "true" : "false", web_running() ? "true" : "false"); reply_json(r->fd, &s); return;
+	}
 	if (!strcmp(what, "status")) {
 		char *m = slurp(RUN "/wm", NULL); int run_ = web_running(), shown = run_ && m && !strncmp(m, "web", 3);
 		/* rudolf-display shows a new window as "win ID": shown too when that window is the browser window
@@ -1329,13 +1343,13 @@ static void api_web(struct req *r, const char *what)
 		snprintf(cmd, sizeof cmd, "mkdir -p " WEBPROFILE "; chown rudolf:rudolf /home/rudolf/.config " WEBPROFILE " 2>/dev/null; "
 			"setsid su -s /bin/sh rudolf -c 'set -a; . " RUN "/session.env; set +a; FONTCONFIG_FILE=/etc/fonts/fonts.conf GOOGLE_API_KEY=no GOOGLE_DEFAULT_CLIENT_ID=no GOOGLE_DEFAULT_CLIENT_SECRET=no; export FONTCONFIG_FILE GOOGLE_API_KEY GOOGLE_DEFAULT_CLIENT_ID GOOGLE_DEFAULT_CLIENT_SECRET; "
 			"exec /opt/chromium/chrome --class=RudolfWeb --user-data-dir=" WEBPROFILE " --no-first-run --no-default-browser-check "
-			"--password-store=basic --disable-session-crashed-bubble --disable-features=Translate,MediaRouter,Vulkan,FedCm --disable-vulkan-surface "
+			"--password-store=basic --disable-session-crashed-bubble --disable-features=Translate,MediaRouter,Vulkan%s --disable-vulkan-surface "
 			/* 1.5.7: FedCm off: "Sign in with Google" (claude.ai and others) went through Chromium's FedCM and stopped on a
 			   blank accounts.google.com/gsi/transform window on the Vivobook; without it Google's sign-in uses its usual
 			   pop-up window, as in Firefox, where it worked */
 			/* Ruffle plays Flash here too; the web frames extension is not loaded, so sites keep their protections */
 			"--load-extension=" RUN "/ruffle-ext %s %s%s \"%s\"' "
-			"</dev/null >>" RUN "/web.log 2>&1 &", gl ? gl : "", px && *px ? "--proxy-server=" : "", px && *px ? px : "", u);
+			"</dev/null >>" RUN "/web.log 2>&1 &", web_fedcm() ? "" : ",FedCm", gl ? gl : "", px && *px ? "--proxy-server=" : "", px && *px ? px : "", u);
 		free(gl); free(px);
 		write_str(RUN "/wm", "web"); run(cmd);
 		reply_ok(r->fd, "opened"); return;
@@ -1640,6 +1654,7 @@ static void api_debian(struct req *r, const char *what)
 			int num = e[1] && strspn(e + 1, "0123456789") == strlen(e + 1);
 			sadd(&s, ",\"%s\":", l); if (num) sadd(&s, "%s", e + 1); else sjson(&s, e + 1);
 		}
+		sadd(&s, ",\"scrcpy\":%s", access("/persist/debian/usr/bin/scrcpy", F_OK) ? "false" : "true");   /* 1.5.8: Phone screen */
 		sadd(&s, ",\"job\":"); char *jn = slurp(RUN "/job.name", NULL); if (jn) trim(jn);
 		sjson(&s, job_running() && jn ? jn : ""); free(jn); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
 	}
@@ -1653,7 +1668,7 @@ static void api_debian(struct req *r, const char *what)
 		}
 		sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
 	}
-	if (!strcmp(what, "setup") || !strcmp(what, "passwd") || !strcmp(what, "update") || !strcmp(what, "remove") || !strcmp(what, "wine")) {
+	if (!strcmp(what, "setup") || !strcmp(what, "passwd") || !strcmp(what, "update") || !strcmp(what, "remove") || !strcmp(what, "wine") || !strcmp(what, "scrcpy")) {
 		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
 		if (!strcmp(what, "setup") || !strcmp(what, "passwd")) {
 			if (!r->body || r->blen < 4 || r->blen > 200) { reply_err(r->fd, 400, "choose a password of at least 4 characters"); return; }
@@ -1666,6 +1681,9 @@ static void api_debian(struct req *r, const char *what)
 			else start_job("debian-setup", DEBIAN_BIN " setup " RUN "/debian.pw");
 		} else if (!strcmp(what, "update")) start_job("debian-update", DEBIAN_BIN " update");
 		else if (!strcmp(what, "wine")) start_job("debian-wine", DEBIAN_BIN " wine");   /* 1.4.9: Settings > Apps > Linux > Install Wine */
+		/* 1.5.8 (plan 7.2): Phone screen: scrcpy and adb from Debian (a few MB) */
+		else if (!strcmp(what, "scrcpy")) { if (access("/persist/debian/.rudolf-ready", F_OK)) { reply_err(r->fd, 409, "set up Linux (Debian) first"); return; }
+			start_job("debian-scrcpy", DEBIAN_BIN " run --root -- sh -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y scrcpy adb'"); }
 		else start_job("debian-remove", DEBIAN_BIN " remove");
 		reply_ok(r->fd, "started"); return;
 	}
@@ -1824,6 +1842,10 @@ static void api_ai_facts(struct req *r)
 	facts_add(&s, "rudolfd", RUN "/rudolfd.log", 120);
 	facts_add(&s, "rudolfdBefore", PERSIST "/var/log/rudolfd.log.1", 40);
 	facts_add(&s, "session", RUN "/session.log", 60);
+	/* 1.5.8: the start before this one (its desktop may never have come up) and what the start-up decided */
+	facts_add(&s, "sessionBefore", PERSIST "/var/log/starts/1/session.log", 40);
+	facts_add(&s, "liteBefore", PERSIST "/var/log/starts/1/webkit-desktop.log", 20);
+	facts_add(&s, "bootDecisions", PERSIST "/var/log/boot-decisions.log", 30);
 	facts_add(&s, "page", RUN "/page.log", 60);
 	facts_add(&s, "shutdown", PERSIST "/var/log/shutdown.log", 20);
 	{ char *jn = slurp(RUN "/job.name", NULL); if (jn) trim(jn); sadd(&s, ",\"jobName\":"); sjson(&s, jn ? jn : ""); free(jn); }
@@ -3526,6 +3548,16 @@ static void api(struct req *r)
 		str j = {0}; sadd(&j, "{\"ok\":false,\"locked\":true,\"error\":\"Your Linux programs are in the encrypted folder. Sign in to an account with its password to unlock it.\"}"); reply(r->fd, 423, "application/json", j.b, j.n, NULL); free(j.b); return;
 	}
 	if (!strcmp(p, "net")) { api_net(r); return; }
+	/* 1.5.8 (plan 6.3): metered connections (/usr/lib/rudolf/netplug). GET: the connection in use, metered or not and
+	   why, this month's data on it. POST if=IF&v=on|off|auto: metered by hand for that network, or automatic again */
+	if (!strcmp(p, "net/metered")) {
+		if (!post) { char *o = run_out("/usr/lib/rudolf/netplug state 2>/dev/null"); trim(o); str j = {0}; sadd(&j, "%s", *o == '{' ? o : "{\"ok\":true,\"connected\":false}"); free(o); reply_json(r->fd, &j); return; }
+		const char *i = qparam(r->query, "if"), *v = qparam(r->query, "v");
+		if (!safe_word(i, 15) || !v || (strcmp(v, "on") && strcmp(v, "off") && strcmp(v, "auto"))) { reply_err(r->fd, 400, "if=ADAPTER&v=on|off|auto"); return; }
+		char cmd[128]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/netplug set %s %s 2>&1", i, v);
+		char *o = run_out(cmd); trim(o); if (*o) { reply_err(r->fd, 400, o); free(o); return; } free(o);
+		reply_ok(r->fd, "ok"); return;
+	}
 	if (!strcmp(p, "disks")) { api_disks(r); return; }
 	/* the hardware check's download test (1.2.5): rudolf-update speedtest prints "bytes N" and "ms N" */
 	if (!strcmp(p, "speedtest")) {
@@ -3657,6 +3689,10 @@ static void api(struct req *r)
 		char *t = run_out(o && !strcmp(o, "1") ? "/usr/lib/rudolf/desktop-priority on 2>&1" : "/usr/lib/rudolf/desktop-priority off 2>&1");
 		str s = {0}; sadd(&s, "{\"ok\":true,\"text\":"); sjson(&s, t ? t : ""); sadd(&s, "}"); free(t); reply_json(r->fd, &s); return;
 	}
+	/* 1.5.8: the last starts (/usr/lib/rudolf/starts: from var/log/starts), for System health › Last starts */
+	if (!strcmp(p, "system/starts")) { char *o = access("/usr/lib/rudolf/starts", X_OK) ? NULL : run_out("/usr/lib/rudolf/starts 2>/dev/null");
+		if (!o || o[0] != '{') { free(o); reply_err(r->fd, 404, "this Rudolf OS keeps no start logs"); return; }
+		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
 	if (!strcmp(p, "selftest")) { char *o = access("/usr/lib/rudolf/selftest", X_OK) ? NULL : run_out("/usr/lib/rudolf/selftest 2>&1");
 		if (!o) { reply_err(r->fd, 404, "this Rudolf OS has no self-test"); return; }
 		str s = {0}; sadd(&s, "{\"ok\":true,\"text\":"); sjson(&s, o); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return; }
@@ -3903,7 +3939,7 @@ static void api(struct req *r)
 	if (!strcmp(p, "net/dhcp")) {
 		char *i = qparam(r->query, "if");
 		if (!safe_word(i, 16)) { reply_err(r->fd, 400, "bad interface"); return; }
-		char cmd[256]; snprintf(cmd, sizeof cmd, "ip link set %s up; udhcpc -i %s -n -q -t 5 -s /usr/lib/rudolf/udhcpc.sh >/dev/null 2>&1", i, i);
+		char cmd[256]; snprintf(cmd, sizeof cmd, "ip link set %s up; udhcpc -i %s -n -q -t 5 -O 43 -s /usr/lib/rudolf/udhcpc.sh >/dev/null 2>&1", i, i);
 		if (run(cmd)) reply_err(r->fd, 500, "no DHCP answer on this network"); else reply_ok(r->fd, "connected");
 		return;
 	}

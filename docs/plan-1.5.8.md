@@ -2,7 +2,10 @@
 
 Asked for on 2026-11-10, after the Vivobook could not start the 1.5.7 beta with the Lite desktop engine. The safeguards
 that stop such a failure from leaving a computer unable to start went into 1.5.7 (priorities 1 to 3 below); this plan
-is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted.
+is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted. Added the same day: **mobile data** (Part 6, after
+looking at a Verizon MiFi 7730L), **Android apps** (Part 7: the .apk work delayed from 1.5.7, with workarounds) and
+**mobile form factors** (Part 8: x86 handhelds and tablets first, then a lean phone-capable Rudolf OS over the next
+versions) and **Oracle's tabs in WebKit** (Part 9: a real browser in the Lite desktop).
 
 ## What happened (2026-11-10)
 
@@ -95,9 +98,333 @@ is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted.
   modesetting on AMD): WebKit draws in software. Left for 1.5.8: GPU drawing for Lite (GTK's GL on this X server), and
   its effect on memory and speed.
 
+## Staging toward 1.6.0, the first cellular release (added on 2026-11-10)
+Parts 6 to 8 are staged across three versions (docs/plan-1.5.9.md, docs/plan-1.6.0.md):
+- **1.5.8 (this plan):** Oracle's tabs in WebKit (Part 9); the network groundwork: 6.1 the kernel's USB modem drivers, 6.2 adapters plugged in after
+  start-up, 6.3 metered connections; 7.1 the .apk wizard's information, 7.2 scrcpy, the kernel side of 7.3 (binder);
+  8.1 begun (the tablet layout in the desktop, with browser tests).
+- **1.5.9:** ModemManager (read only), the WWAN kernel subsystem and the operators' database; 8.1 finished (tablet mode,
+  on-screen keyboard, rotation); 8.2 the ARM64 build with QEMU checks on a test channel; 6.4 Share this connection;
+  7.3 Waydroid in Debian; the first phone prepared.
+- **1.6.0:** cellular: SIM and PIN, APNs, connecting, priorities and failover, data limits, signal and status, SMS
+  (Messages), airplane mode, the FCC unlock for laptop modules; the first ARM64 release. Voice and emergency calls, and
+  phones themselves, in 1.6.x (8.3).
+- **6.5** (a hotspot's own status) stays as written: Rudolf OS shows the connection, never signs in to the hotspot.
+
+## Part 6: mobile data (added on 2026-11-10)
+
+Looked at on 2026-11-10: a used **Verizon Jetpack MiFi 7730L** (Novatel/Inseego, January 2017) plugged into the Asus
+desktop. LTE Category 9 (3-carrier aggregation, 2x2 MIMO, nano SIM), Wi-Fi 802.11ac on 2.4 and 5 GHz at once (15
+devices), a 4,400 mAh battery, a 2.4" 320x240 touchscreen, USB-C and USB-A, a Qualcomm modem (the chip is not
+published), and 128 MB of memory with 256 MB of storage. Rudolf OS cannot run on it: far too little memory and storage,
+and its firmware is signed and locked (no open firmware such as OpenWrt supports it). Its use is as the **cellular link
+of a Rudolf OS laptop or tablet**, over USB or Wi-Fi. On the Asus, Windows listed it as a device but not as a network
+adapter (USB tethering off in its menu, or no active SIM), so which USB protocol it uses is still to be seen.
+
+What Rudolf OS lacks for that (checked in the code on 2026-11-10):
+
+### 6.1 USB modems and tethered phones
+- The kernel has the USB CDC Ethernet driver (`USB_NET_CDCETHER`) only. Add `USB_NET_RNDIS_HOST` (many hotspots and
+  Android phones' USB tethering), `USB_NET_CDC_NCM` and `USB_NET_CDC_MBIM` (newer hotspots and phones), `USB_NET_QMI_WWAN`
+  and `USB_SERIAL_OPTION` (cellular modules inside laptops and USB sticks), checked in kconfig.sh like the others.
+- ModemManager (with libqmi and libmbim) for cellular modules that need to be told to connect, with the SIM's PIN asked
+  by the desktop: **1.5.9** (read only) and **1.6.0** (connecting); hotspots and tethered phones need none of it (they
+  hand out an address themselves), so 1.5.8 covers them fully.
+
+### 6.2 A network adapter plugged in after start-up
+- rudolf-init asks for an address (udhcpc) only on cables present at start-up. An adapter that appears later (a
+  hotspot's USB cable, a phone's tethering switched on, a USB Ethernet dongle) gets none: mdev runs the same DHCP start
+  for a new network interface, and stops it when it goes. Settings › Network lists it ("USB modem: MiFi 7730L").
+
+### 6.3 Metered connections
+- A connection can be **metered** (cellular data with a cap): set automatically for USB modems and tethered phones and
+  for Wi-Fi networks that say so (Android's hotspots set the ANDROID_METERED option in DHCP), and by hand in Settings ›
+  Network for any network.
+- On a metered connection: no automatic system updates (sysupd25's daily check downloads nothing; Settings says why
+  and offers it by hand), no automatic Library, Flathub or Blitzen downloads, no app store catalog refresh in the
+  background; the browser and apps work as usual. rudolfd keeps the state (`net/metered`), the desktop reads it.
+- Data used on each metered connection this month (from the interface's counters), in Settings › Network.
+
+### 6.4 Rudolf OS as the hotspot ("Share this connection") (1.5.9)
+- The Vivobook's Wi-Fi chip (rtw88 8821CE) supports access-point mode. Settings › Network › Share this connection:
+  shares the connection Rudolf OS has (cable, USB modem, or Wi-Fi on a second adapter) over Wi-Fi with its own network
+  name and password (hostapd, dnsmasq, and the firewall's NAT rules), off by default, administrators only.
+- With one Wi-Fi chip, sharing a Wi-Fi connection over the same chip depends on the chip (concurrent station and access
+  point): checked on the Vivobook first, otherwise offered only for cable and USB connections.
+
+### 6.5 Battery and signal of a hotspot
+- Hotspots and phones expose little over USB: what Rudolf OS can show without signing in to the hotspot is the
+  connection itself (speed, data used). A hotspot's own admin page stays the hotspot's (its address in Settings ›
+  Network, opened in Oracle); Rudolf OS does not sign in to it or keep its password.
+
+## Part 7: Android apps (.apk), delayed from 1.5.7, with workarounds (added on 2026-11-10)
+
+On 2026-11-10 .apk was moved out of 1.5.7: Waydroid needs the kernel's binder, Waydroid and its container tools in the
+system layer, and a first download of about 1 GB (the Android system image), which weighs on a 3.4 GB computer while
+the desktop is being made lighter. These are the ways to it, cheapest first; the .apk wizard (install56) offers what
+this computer can do.
+
+### 7.1 Always: say what the .apk is, and offer what already works
+- Opening an .apk shows the app's name, icon, version and the permissions it asks for (read from the file with
+  `aapt2 dump badging`, from Debian's Android tools, or a small reader of the APK's manifest in rudolfd), never
+  running it.
+- It offers what Rudolf OS already runs: the app's **web version** (many Android apps are also websites or web apps;
+  Oracle can keep one as an app in the Start menu) and the **same app for Linux** (Flathub, by name, in the App Store),
+  when there is one.
+
+### 7.2 The phone's own apps on Rudolf OS (scrcpy)
+- An Android phone plugged in by USB (or on the same Wi-Fi) shows its screen in a Rudolf OS window and is used with the
+  mouse and keyboard (with its sound on Android 11 or later): scrcpy (from Debian), over ADB. The apps run on the phone, so nothing is
+  installed on the computer and nothing is downloaded beyond scrcpy (a few MB).
+- It needs "USB debugging" turned on in the phone's developer options, by the phone's owner: Rudolf OS explains how and
+  never changes anything on the phone itself. (Normal ADB only: not the diagnostic or download modes of a phone's chip,
+  which can damage it.)
+- scrcpy works with Android 5 or later; the phones seen on the Asus (a REDMAGIC 9 Pro, a moto g play) are recent enough.
+
+### 7.3 Android apps on the computer (Waydroid), for computers with room for it
+- The kernel side costs almost nothing and can ship first, in 1.5.8: `ANDROID_BINDER_IPC`, `ANDROID_BINDERFS` (and
+  `ANDROID_BINDER_DEVICES=""`), with the namespaces and cgroups Waydroid's LXC container uses (most are on already),
+  checked in kconfig.sh. Then Waydroid can be added later without a new kernel.
+- Waydroid itself in **Debian** (already a download on demand), not in the system layer: `apt install waydroid` in
+  Debian's container, with binderfs mounted into it, so the system layer does not grow and computers that never open an
+  .apk pay nothing.
+- The Android image (LineageOS, about 800 MB) only when the person asks, behind a confirmation with the size, kept in
+  the encrypted folder's storage like Debian, and removable in Storage. Offered only on computers with at least 4 GB of
+  memory, or with the Lite desktop engine on (it frees roughly 300 to 500 MB), and the memory guard treats Waydroid's
+  container as an app it may close.
+- Each Android app gets its own window (Waydroid's multi-window mode, its Wayland display shown inside X with a small
+  compositor), and a Start menu entry.
+- Apps that need Google's services (most from Google Play) may not work; the wizard says so before the download. Waydroid
+  with OpenGApps or microG is left to the person (a setting in Waydroid, not something Rudolf OS installs).
+
+### 7.4 Lighter, experimental: Android Translation Layer
+- The Android Translation Layer (used by postmarketOS) runs some simple Android apps as ordinary Linux programs, with no
+  Android image at all. It runs few apps today; looked at again once 7.3 works, as a light option for the apps it
+  runs.
+
+### 7.5 Rudolf OS on a phone
+- The desktop's browser build (iso/www/index.html) already runs in any web browser, without rudolfd. On a phone it could
+  be added to the home screen as a web app (a manifest and a service worker, so it opens offline and full screen), with
+  the touch layout the desktop has for tablets: Notepad, WordPro, the games, Blitzen's packs and the files kept in the
+  browser. Rudolf OS as a system on phone hardware (its own kernel on a phone) is not planned: phones' boot loaders are
+  locked and their drivers closed.
+
+### 7.6 iPhone apps (.ipa)
+- Unchanged from 1.5.6's plan: they cannot run outside Apple's devices; the wizard says so and looks for a web or Linux
+  version.
+
+## Part 8: mobile form factors, and a phone-capable Rudolf OS (added on 2026-11-10)
+
+The aim: Rudolf OS on handhelds, tablets and, within the next few versions, phones, while staying lean (a phone has 4 to
+8 GB of memory and runs on a battery). Two routes, the cheap one first.
+
+### What stands in the way today (checked in the code on 2026-11-10)
+- **x86 only:** the release builds x86-64 layers, and x86 paths are written into ci_release.sh, addwebkit.sh, addnvk.sh
+  and the self-test (`/usr/lib/x86_64-linux-gnu`). Phones are ARM64.
+- **One kernel for every PC**, started by UEFI (systemd-boot, a signed UKI, Secure Boot). Phones need a kernel and a
+  device tree per model, started by the phone's own boot loader (Android boot images, or U-Boot on the PinePhone Pro).
+- **A desktop for a mouse and keyboard:** touch works (rudolf-display reads touchscreens), but there is no on-screen
+  keyboard, no portrait layout, no gestures, and windows are sized for a large screen.
+- **No phone services:** no cellular modem handling, calls or SMS, no suspend that keeps the modem listening, no screen
+  rotation from the sensors, no phone cameras.
+- **Weight:** the Chromium layer (about 130 MB compressed) and the standard engine's memory (about 830 MB on the
+  Vivobook); Debian, Wine and Steam are already downloads on demand.
+
+### Leanness rules for every mobile step
+1. **Lite (WebKit) is the desktop engine on mobile devices**, not Standard: about a third of Chromium's memory (the 1.5.7
+   trial). Chromium becomes a download on demand there, for websites that need it.
+2. **Nothing heavy in the system layer:** Debian, Wine, Steam, Waydroid, Blitzen's model, scrcpy and the like stay
+   downloads on demand, behind a confirmation with the size, removable in Storage.
+3. **Measured on the device, against budgets:** the system layers under 400 MB compressed; the desktop at the sign-in
+   screen under 400 MB of memory with Lite (about 520 MB in the release check on 2026-11-10: WebKit's web process
+   389 MB, its UI 94 MB, its network process 35 MB, on Xvfb; reducing it is part of 8.2); idle power measured over an hour with the screen off. A release that
+   breaks a budget says so in the release check, like the Lite engine check.
+4. **The same release, one system per architecture:** one version number and one CHANGELOG; the desktop (the web page)
+   is identical everywhere; only the layers below it differ.
+
+### 8.1 x86 handhelds and tablets (1.5.8 to 1.5.9): no port needed
+- **Target devices:** Steam Deck, ASUS ROG Ally, Lenovo Legion Go, Microsoft Surface Go and other x86 tablets. They start
+  Rudolf OS as it is (UEFI, x86-64); Secure Boot as on any PC.
+- **Touch layout** (the desktop): a tablet mode chosen automatically when there is a touchscreen and no keyboard (and by
+  hand in Settings › Display): bigger targets, the taskbar as a dock, windows full screen one at a time, swipe from the
+  bottom for the Start menu and from the right for notifications, portrait and landscape.
+- **On-screen keyboard:** part of the desktop page (it is a web page, so its own keyboard works in every built-in app
+  and in Oracle's pages); for X programs (Linux and Windows apps), rudolf-display types its keys through XTest as it
+  types the hardware keyboard's.
+- **Rotation** from the accelerometer (iio-sensor-proxy, or reading /sys/bus/iio directly) through rudolf-display, which
+  already rotates and scales the screen.
+- **Mobile data** (Part 6) and **battery care** (1.4.4 on) apply as they are.
+- **Tests:** browser tests at tablet and phone sizes (portrait 1080x2340 scaled, touch events); QEMU x86 with a
+  touchscreen (`-device virtio-tablet` / `usb-tablet` with multitouch) and a portrait screen; then the Vivobook with the
+  tablet mode forced, over the devlink and remote access.
+
+### 8.2 The ARM64 build (built and checked in QEMU in 1.5.9; first released in 1.6.0): Rudolf OS on ARM
+- **Build:** the release workflow builds a second set of layers on GitHub's ARM64 runners (ubuntu-24.04-arm): the base
+  layer, Lite (WebKitGTK for arm64), rudolfd and the C helpers (they are portable C), and the desktop page unchanged.
+  The x86 paths become `$(gcc -print-multiarch)`; addwebkit.sh and the self-test take the architecture from the
+  system.
+- **Not on ARM64 at first:** Steam and Windows programs (x86 only; Box64 or FEX as a later download, measured first),
+  the NVIDIA (nvk) layer, Flash's Ruffle stays (it is WebAssembly).
+- **Updates:** the same signed manifest format, with a list per architecture (`beta/arm64/manifest.txt`); the updater
+  takes its architecture's list and never another's.
+- **QEMU checks (what QEMU can confirm):** `qemu-system-aarch64 -M virt` with UEFI (edk2), virtio-gpu, a virtio touchscreen,
+  3 to 4 GB of memory and a portrait screen: the system starts, the desktop runs in Lite, updates and rollback work,
+  Recovery mode and the safeguards work, and a USB modem passed through to the virtual machine (the MiFi 7730L) gets
+  an address. **What QEMU cannot confirm:** a phone's display, GPU, modem, cameras, sensors and audio drivers, its
+  sleep and wake, battery life and heat, and how its boot loader starts the kernel. Those need the phone.
+- **Generic ARM64 computers first:** ARM64 laptops and boards that start with UEFI (Snapdragon X laptops as their
+  mainline support matures; the Raspberry Pi 5 with its UEFI firmware) run the same image as QEMU.
+
+### 8.3 Phones (1.6.x): one well-supported phone first
+- **Candidates** (boot loader unlockable, good mainline Linux support; checked against the postmarketOS device list when
+  the work starts): **PinePhone Pro** (made for Linux; the easiest to work on, slow), **OnePlus 6/6T** (Snapdragon 845,
+  long among the best-supported Android phones on mainline Linux; cheap used), **Google Pixel 3a or a newer Pixel bought
+  unlocked from Google** (not one sold by Verizon), **Fairphone 4/5** (the maker supports unlocking and Linux ports),
+  **Purism Librem 5** (Linux-first, expensive). The test phones at hand are not suitable: the moto g play XT2093DL is a
+  carrier prepaid model, normally not unlockable; whether the REDMAGIC 9 Pro's boot loader unlocks is to be checked
+  before relying on it. Only a phone that may be experimented on.
+- **Per-phone kernel, shared everything else:** a device package per phone (its kernel config fragment, device tree,
+  firmware list, boot image format), built from postmarketOS's mainline work where it exists (their kernel configs and
+  patches are the reference); the base, Lite and desktop layers are the ARM64 build's.
+- **Starting and updating:** the phone's boot loader starts a Rudolf OS boot image (kernel, device tree, the same
+  initramfs) from the boot partition; the A/B system slots, the signed manifest, rollback and the safeguards are the same
+  as on a PC, kept on the userdata partition as RUDOLFDATA. Installing: from a computer, with fastboot (a guided page in
+  Rudolf OS on the PC, and the steps in Help); the phone's boot loader stays unlocked, so it has no Secure Boot: the
+  dm-verity check of each layer against the signed list still runs, and Settings says plainly that the phone's boot
+  loader is unlocked.
+- **Phone services, each a small part:** the cellular modem and mobile data (ModemManager, Part 6), SMS and calls
+  (ModemManager's messaging and voice, with a Phone and a Messages app in the desktop; emergency calls only once tested
+  on that phone), suspend with the modem able to wake the phone (calls, messages), screen rotation and the proximity
+  sensor (iio), the cameras (libcamera, where the phone's are supported), audio routing for calls (ALSA's UCM files from
+  the phone's port).
+- **The phone shell:** the tablet layout of 8.1 at phone size: one app at a time, the Start menu as an app grid, a
+  status bar (signal, battery, time), a lock screen with notifications, the on-screen keyboard.
+- **Phone budgets:** the desktop with Lite under 400 MB at the sign-in screen; the system layers for a phone under 400 MB
+  compressed; idle drain with the screen off and the modem on measured over a night, compared with postmarketOS on the
+  same phone.
+
+### 8.4 Before any of it is offered
+- The testing rule (docs/testing.md) applies: the fallback first (on a phone: the previous slot, Recovery mode from the
+  boot menu, the safe desktop), tests from the built system, the real hardware path, and the device last with its
+  logs readable (the devlink works on any Rudolf OS with a network).
+- Each step ships as a test first (as Lite did), and only to devices that pass the release check for their
+  architecture.
+
+## Part 9: Oracle's tabs in WebKit (added on 2026-11-10)
+
+On the Vivobook with Lite (beta 2026111100, 2026-11-10), Oracle sent every website to Chromium's own window (the design
+of 1.5.7's Lite: the desktop page cannot show most sites in its frames, which sites forbid), and that window went behind
+the desktop at once, so browsing looked broken. With Standard, Oracle's tabs are real Chromium pages (the shell). Lite
+gets the same: Oracle's tabs as real WebKit pages.
+
+### 9.1 How
+- rudolf-webkit (WebKitGTK, our own program) makes a **web view per Oracle tab**, laid over the desktop page exactly
+  where Oracle draws its page area (a GtkOverlay above the desktop's view), shown, hidden, moved and closed as the page
+  asks. A native view is not a frame: sites' frame protections do not apply, and sign-ins work as in a browser.
+- **The page and rudolf-webkit talk** through a WebKit script message handler (page to program: open, navigate, back,
+  forward, reload, stop, close, show, hide, place, zoom, find) and a script run in the page (program to page: address,
+  title, icon, loading progress, security state, can-go-back, new tab or window wanted, download started).
+- **Websites' data apart from the desktop's:** their own WebKitWebsiteDataManager in `~/.rudolf-webkit/web`, with cookies
+  kept; private tabs with an ephemeral one; Settings › Oracle's clear-data buttons act on it.
+- **Popups and sign-in windows** become new tabs (or a small window for `window.open` with a size, as sign-in popups need,
+  with `window.opener` working so the sign-in returns to the page).
+- **Downloads** through WebKitDownload into Downloads, shown in Oracle's downloads and the notifications, as dl27 does for
+  Chromium's.
+- **Permissions** (camera, microphone, location, notifications) asked through the desktop's own prompt, per site,
+  remembered as Oracle's site settings.
+- **Fullscreen** video: the tab's view fills the screen; Esc leaves.
+- **Keyboard and focus:** the tab's view has the focus when clicked; the desktop's shortcuts still work (rudolf-display and
+  the program pass them to the page).
+- **Flash:** Ruffle injected as a user script in the tabs (it is JavaScript and WebAssembly).
+- **Input from other windows:** Task Manager, notifications and menus drawn by the desktop page stay above the tab views
+  (the program hides or clips a view under them, as the shell does).
+
+### 9.2 What stays Chromium's
+- Sites that need **Widevine** (Netflix, Spotify, Disney+), **H.264/AAC** where no other format is offered, Chrome-only
+  sites and Chrome extensions: Oracle offers **"Open in Chromium"** (a button in the address bar and in the page's menu),
+  and opens such sites there by itself when a site is on the list or a playback fails for want of a codec; the browser
+  window comes to the front and stays there (the 1.5.7 bug fixed first, below).
+- YouTube plays in WebKit through its VP9/AV1 and Opus streams.
+
+### 9.3 Leanness
+- Each tab is a WebKit web process (about the size of a Chromium tab), with no second browser running at all unless a
+  site needs Chromium; hidden tabs can be suspended (WebKit's page freezing), and the memory guard treats tab views as
+  pages it may end, as it does Chromium's.
+- No new layer: WebKitGTK is already in the system (1.5.7).
+
+### 9.4 First, in 1.5.7
+- The browser window comes to the front when Oracle opens a site in Lite, and stays there until the person goes back to
+  the desktop (the desktop page and rudolf-display no longer bring the desktop back over it).
+
+### 9.6 FedCM on or off, in Oracle's ☰ menu (added on 2026-11-10)
+On the Vivobook, "Sign in with Google" on claude.ai went through Chromium's FedCM and stopped on a blank
+accounts.google.com/gsi/transform window; Firefox, without FedCM, signed in. 1.5.7 turns FedCM off in Chromium for
+everyone (PR #198). It is a choice, since some sites may come to need FedCM and Google may change its sign-in again:
+- **Oracle's ☰ menu:** "Sign-in with FedCM" with a tick (off by default), and the same switch in Settings › Oracle ›
+  Sign-in, with one line on what it does ("Sites' 'Sign in with Google' buttons use Chromium's own sign-in. Turn it on
+  only if a site asks for it; with it, Google's sign-in stopped on a blank window on some computers").
+- **Where it is kept:** a system setting, /persist/etc/rudolf-browser.conf (`fedcm=0|1`), since Chromium's flags are set
+  for the whole browser, not per account; rudolfd GET/POST `web/fedcm` (any signed-in account may change it, as other
+  browser settings; guests cannot). The desktop page reads it at start-up for the menu's tick.
+- **What it changes:** rudolfd `web/open` leaves FedCm out of `--disable-features` when on; the session reads the file
+  when it starts the desktop's Chromium (Oracle's real tabs with Standard).
+- **When it applies:** the browser window is restarted at once if it is open (after asking: "Close the browser window
+  to apply? Its tabs come back"; Chromium restores them); real tabs need the desktop's Chromium restarted, so the menu
+  says "Applies to Oracle's tabs at the next sign-in or restart" and offers "Restart Oracle's tabs now" (the shell's
+  restart, which keeps the session).
+- **Lite's WebKit tabs (9.1):** WebKitGTK has no FedCM; the menu item is shown greyed with "Not used by WebKit tabs"
+  while the tab is a WebKit one, and still applies to sites sent to Chromium (9.2).
+- **If a sign-in stops on a blank accounts.google.com/gsi/... page** (the address is known), Oracle's bar offers
+  "Sign-in stuck? Try with FedCM off / on" once, switching the setting and reloading the sign-in.
+
+### 9.5 Tests
+- rudolf-webkit's tab protocol: a host test that runs it on Xvfb with a local test site (frame-protected pages, a
+  sign-in popup with window.opener, a download, a permission request, fullscreen), in the Lite engine check from the
+  base layer (chroot) as for the desktop.
+- Browser tests of Oracle's side with the program's messages stood in.
+- FedCM switch: a host test that `web/open` and the session put FedCm in `--disable-features` exactly when the setting
+  is off; a browser test of the ☰ menu tick, Settings › Oracle and the stuck-sign-in bar (stood-in rudolfd).
+- On the Vivobook over the devlink and remote access: YouTube, a Google sign-in, with FedCM off and on, Discord, a download, a video in
+  fullscreen, memory with 5 tabs against Chromium's.
+
 ## Steps
-1. 4.1 start logs (initramfs, rudolf-init, session), with a host test of the rotation.
-2. 4.2 devlink and remote access at start-up; QEMU check with the desktop disabled.
-3. 4.3 emergency keys in rudolf-display; host test of the key handling.
-4. 5.3 sound chip check and reset; 5.1 rescue media and messages; 5.2 Help page.
-5. 5.4 the testing rule in docs, then the Lite investigation on the Vivobook (devlink plus remote access).
+1. 4.1 start logs (initramfs, rudolf-init, session), with a host test of the rotation. **Done** (branch
+   v158-startlogs): initramfs `note`/`keeplog` (var/log/boot-decisions.log, last 300 lines, kept before every
+   hand-over, restart and stop; /etc/rudolf/initramfs.log), rudolf-init `starts_keep` (var/log/starts/0..3: start.txt,
+   initramfs.log, boot-decisions.log, session, Lite, Xorg, devlink and kernel logs; /run's logs link into 0), the
+   session's `desk_up_mark`, /usr/lib/rudolf/starts (JSON), rudolfd GET system/starts, System health › Last starts,
+   and Blitzen's facts (the start before, the start-up's decisions). Tests: qt/host/startlogs58_t.sh,
+   qt/shell2/starts58_t.js. To merge once 1.5.7 is promoted.
+2. 4.2 devlink and remote access at start-up. **Done**: both already start from rudolfd at start-up (dl_boot,
+   remote_boot), independent of the desktop; what kept the devlink silent at the grey screen was Ask first, which waits
+   for an Allow the desktop never showed: with no desktop heartbeat for a minute a command is now answered at once ("no
+   desktop to ask") and not run (qt/host/devlink_t.py). QEMU check with the desktop disabled: with 1.5.8's QEMU set.
+3. 4.3 emergency keys in rudolf-display; host test of the key handling. **Done** (branch v158-startlogs):
+   Ctrl+Alt+Backspace held for a second runs /usr/lib/rudolf/desktop-safe (standard engine, no shell, desktop started
+   again; Lite off for good with the reason); Help and Settings › Desktop engine mention it. Test qt/host/desksafe58_t.sh.
+   (No on-screen line from rudolf-display: with Xorg on the GPU it cannot draw over the screen; the desktop coming back
+   and System health say it.)
+4. 5.3 sound chip check and reset; 5.1 rescue media and messages; 5.2 Help page. 5.3 **done** (branch
+   v158-startlogs): `sound codec-check` (run by rudolf-init 12 s after start-up) resets an HD Audio chip that did not
+   answer, once, and says so in System health (hardware); the self-test's sound-chip check names one still silent with
+   what to do. Test qt/host/codec58_t.sh.
+   5.2 **done**: Help › Starting from a USB stick (rescue). 5.1 in part: the boot-files-only message names the drive
+   (USB stick or this computer's drive, with its model) and says what to do; Make a stick writing a full system by
+   default is left.
+5. 5.4 the testing rule in docs, then the Lite investigation on the Vivobook (devlink plus remote access). The rule is
+   **done**: docs/testing.md. The Lite cause was found and fixed in 1.5.7 (libGLESv2); GPU drawing for Lite remains.
+6. Part 6, mobile data: **done** (6.1 kconfig, 6.2 netplug from mdev, 6.3 metered connections; qt/host/netplug58_t.sh,
+   qt/shell2/mobile58_t.js). 6.1 kernel drivers (kconfig.sh) and 6.2 adapters plugged in later (mdev, udhcpc), with host
+   tests; then 6.3 metered connections (rudolfd net/metered, sysupd25, lib52, the download wizards), with browser
+   tests. The MiFi 7730L is tried once USB tethering is on (which driver it needs). (6.4 moves to 1.5.9.)
+7. Part 7, Android apps: **done** for 1.5.8 (apk58.js, Phone screen, binder in kconfig, the web app; qt/shell2/apk58_t.js,
+   webapp58_t.js, qt/host/adb58_t.sh). 7.1 the .apk wizard's information and alternatives; 7.2 scrcpy (needs only Debian); the
+   kernel side of 7.3 (binder) in the same release; 7.5 the browser build as a phone web app. (Waydroid in Debian:
+   1.5.9.)
+8. Part 8, mobile form factors: 8.1's tablet layout **done** (tablet58.js, qt/shell2/tablet58_t.js). In 1.5.8, 8.1's tablet layout in the desktop with browser tests (the on-screen
+   keyboard, rotation and the QEMU and Vivobook checks finish it in 1.5.9); 8.2 the ARM64 build in 1.5.9, first
+   released in 1.6.0; 8.3 one phone in 1.6.x (a PinePhone Pro or a OnePlus 6/6T), then the phone services one at a
+   time; every step measured against the leanness budgets.
+9. Part 9, Oracle's tabs in WebKit: **done** (rudolf-webkit's tabs, oracle58.js, 9.2 and 9.6; qt/shell2/oracle58_t.js,
+   qt/webkit/tabs58_ci.py 8/8 in webkit-check.yml); on the Vivobook once 1.5.8 is installed. 9.4 in 1.5.7 first; then the tab protocol in rudolf-webkit and Oracle's side
+   (9.1), "Open in Chromium" (9.2), with the tests of 9.5; on the Vivobook last.

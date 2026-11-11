@@ -1,0 +1,117 @@
+#!/bin/sh
+# Rudolf OS 1.5.8 (plan Part 6): network adapters plugged in after start-up, and metered connections. GPL-2.0-or-later.
+#
+#   netplug                 from mdev (ACTION, INTERFACE or MDEV in the environment): a network adapter came or went.
+#                           A wired one (a USB Ethernet dongle, a hotspot's USB cable, a phone's USB tethering) gets
+#                           an address (udhcpc) as cables present at start-up do; when it goes, its udhcpc stops.
+#                           The desktop is told ("dev {"t":"net",...}" in /run/rudolf/events).
+#   netplug boot            every wired adapter there at start-up (rudolf-init), then the data counter every minute
+#   netplug kind IF         usbmodem, phone, iphone, usb (a USB Ethernet dongle), ethernet, wifi or virtual
+#   netplug key IF          the connection's name for its settings: wifi:NETWORK, or if:MAC
+#   netplug is IF           1 when the connection is metered, else 0
+#   netplug set IF on|off|auto   metered by hand (kept per network), or back to automatic
+#   netplug state           JSON: the connection in use (the default route), metered or not and why, data used
+#   netplug tick            adds what metered connections sent and received since the last tick to this month's total
+#
+# Metered automatically: cellular modems and tethered phones (by their USB driver), and Wi-Fi or USB networks whose
+# DHCP server says so (Android's hotspots send ANDROID_METERED, option 43; udhcpc.sh notes it). By hand: Settings ›
+# Network. Kept in /persist/etc/rudolf-metered ("KEY=1" or "KEY=0"); this month's use in
+# /persist/var/lib/rudolf/netusage ("YYYY-MM KEY BYTES").
+# test hooks (qt/host/netplug58_t.sh): RUDOLF_SYS (a stand-in /sys), RUDOLF_RUN, RUDOLF_ETC, RUDOLF_VAR, RUDOLF_NOUP,
+# RUDOLF_SSID_<IF> (the Wi-Fi network's name), RUDOLF_DEFIF (the interface of the default route), RUDOLF_MONTH
+SYS=${RUDOLF_SYS:-/sys}; RUN=${RUDOLF_RUN:-/run/rudolf}; ETC=${RUDOLF_ETC:-/persist/etc}; VAR=${RUDOLF_VAR:-/persist/var/lib/rudolf}
+CONF=$ETC/rudolf-metered; USE=$VAR/netusage
+mkdir -p "$RUN/metered" "$RUN/netcount" "$RUN/udhcpc" 2>/dev/null
+
+clean() { tr -d '"\\\000-\037' | tr -s ' ' | sed 's/^ //; s/ $//' | cut -c1-64; }
+drv() { d=$(readlink "$SYS/class/net/$1/device/driver" 2>/dev/null); echo "${d##*/}"; }
+kind() {
+	[ -e "$SYS/class/net/$1/wireless" ] && { echo wifi; return; }
+	[ -e "$SYS/class/net/$1/device" ] || { echo virtual; return; }
+	case "$(drv "$1")" in
+	qmi_wwan|cdc_mbim|huawei_cdc_ncm|option) echo usbmodem;;
+	rndis_host|cdc_ncm|cdc_eem) echo phone;;
+	ipheth) echo iphone;;
+	*) case "$(readlink -f "$SYS/class/net/$1/device" 2>/dev/null)" in */usb*) echo usb;; *) echo ethernet;; esac;;
+	esac
+}
+ssid() { eval "v=\${RUDOLF_SSID_$1:-}"; [ -n "$v" ] && { echo "$v"; return; }
+	wpa_cli -p /run/rudolf/wpa -i "$1" status 2>/dev/null | sed -n 's/^ssid=//p' | head -1; }
+key() {
+	if [ "$(kind "$1")" = wifi ]; then s=$(ssid "$1" | clean); [ -n "$s" ] && { echo "wifi:$s"; return; }; fi
+	echo "if:$(cat "$SYS/class/net/$1/address" 2>/dev/null | clean)"
+}
+manual() { k=$(key "$1"); [ -f "$CONF" ] && grep -F "$k=" "$CONF" 2>/dev/null | grep -F -x -e "$k=1" -e "$k=0" | tail -1 | sed 's/.*=//'; }
+# why it is metered automatically, if it is: modem, phone, dhcp (or nothing)
+auto() {
+	case "$(kind "$1")" in usbmodem) echo modem; return;; phone|iphone) echo phone; return;; esac
+	[ -e "$RUN/metered/$1" ] && echo dhcp
+}
+is() { m=$(manual "$1"); [ -n "$m" ] && { echo "$m"; return; }; [ -n "$(auto "$1")" ] && echo 1 || echo 0; }
+defif() { [ -n "$RUDOLF_DEFIF" ] && { echo "$RUDOLF_DEFIF"; return; }
+	ip route 2>/dev/null | awk '/^default/{for(i=1;i<NF;i++)if($i=="dev"){print $(i+1);exit}}'; }
+month() { echo "${RUDOLF_MONTH:-$(date +%Y-%m)}"; }
+used() { [ -f "$USE" ] && awk -v m="$(month)" -v k="$1" '$1==m && $2==k {t+=$3} END {print t+0}' "$USE" || echo 0; }
+name() { # a USB adapter's maker and product, for "USB modem: MiFi 7730L"
+	u=$(readlink -f "$SYS/class/net/$1/device" 2>/dev/null); while [ -n "$u" ] && [ "$u" != / ]; do
+		[ -f "$u/product" ] && { p=$(clean < "$u/product"); [ -n "$p" ] && { echo "$p"; return; }; }; u=${u%/*}; done; }
+event() { [ -d "$RUN" ] && echo "dev $1" >> "$RUN/events"; }
+dhcp_up() {
+	[ -n "$RUDOLF_NOUP" ] && { echo "$1" >> "$RUN/up.log"; return; }
+	ip link set "$1" up
+	udhcpc -b -i "$1" -O 43 -p "$RUN/udhcpc/$1.pid" -s /usr/lib/rudolf/udhcpc.sh >/dev/null 2>&1
+}
+dhcp_down() {
+	p=$(cat "$RUN/udhcpc/$1.pid" 2>/dev/null); [ -n "$p" ] && kill "$p" 2>/dev/null
+	rm -f "$RUN/udhcpc/$1.pid" "$RUN/metered/$1" "$RUN/netcount/$1"
+	[ -n "$RUDOLF_NOUP" ] && echo "-$1" >> "$RUN/up.log"
+}
+wired() { [ "$1" != lo ] && [ ! -e "$SYS/class/net/$1/wireless" ] && [ -e "$SYS/class/net/$1/device" ]; }
+plug() {
+	i=${INTERFACE:-$MDEV}; case "$i" in ""|*/*|lo) return;; esac
+	case "$ACTION" in
+	add) wired "$i" || return 0; k=$(kind "$i"); n=$(name "$i")
+		dhcp_up "$i"
+		event "{\"a\":\"add\",\"t\":\"net\",\"if\":\"$i\",\"kind\":\"$k\",\"name\":\"$n\",\"metered\":$( [ "$(is "$i")" = 1 ] && echo true || echo false)}";;
+	remove) [ -e "$RUN/udhcpc/$i.pid" ] || [ -n "$RUDOLF_NOUP" ] || return 0
+		dhcp_down "$i"; event "{\"a\":\"remove\",\"t\":\"net\",\"if\":\"$i\"}";;
+	esac
+}
+tick() {
+	for d in "$SYS"/class/net/*; do i=${d##*/}; [ "$i" = lo ] && continue
+		[ "$(cat "$d/operstate" 2>/dev/null)" = up ] || [ "$(kind "$i")" = usbmodem ] || continue
+		b=$(( $(cat "$d/statistics/rx_bytes" 2>/dev/null || echo 0) + $(cat "$d/statistics/tx_bytes" 2>/dev/null || echo 0) ))
+		last=$(cat "$RUN/netcount/$i" 2>/dev/null); echo "$b" > "$RUN/netcount/$i"
+		[ -n "$last" ] || continue; [ "$(is "$i")" = 1 ] || continue
+		delta=$((b - last)); [ "$delta" -gt 0 ] || continue   # counters start again when an adapter comes back
+		mkdir -p "$VAR"; echo "$(month) $(key "$i") $delta" >> "$USE"
+	done
+	# this month's and last month's lines only, merged per network
+	[ -f "$USE" ] && [ "$(wc -l < "$USE")" -gt 200 ] && { awk '{t[$1" "$2]+=$3} END {for (k in t) print k, t[k]}' "$USE" > "$USE.new" && mv "$USE.new" "$USE"; }
+	true
+}
+state() {
+	i=$(defif)
+	if [ -z "$i" ]; then echo '{"ok":true,"connected":false}'; return; fi
+	k=$(key "$i"); m=$(manual "$i"); a=$(auto "$i")
+	printf '{"ok":true,"connected":true,"if":"%s","kind":"%s","key":"%s","name":"%s","metered":%s,"manual":%s,"auto":"%s","used":%s}\n' \
+		"$i" "$(kind "$i")" "$(echo "$k" | clean)" "$(name "$i")" "$( [ "$(is "$i")" = 1 ] && echo true || echo false)" \
+		"$( [ -n "$m" ] && echo true || echo false)" "$a" "$(used "$k")"
+}
+setm() {
+	i=$1; v=$2; wired "$i" || [ -e "$SYS/class/net/$i/wireless" ] || { echo "no such network adapter" >&2; return 1; }
+	k=$(key "$i"); mkdir -p "$ETC"; [ -f "$CONF" ] && grep -v -F "$k=" "$CONF" > "$CONF.new"; [ -f "$CONF.new" ] || : > "$CONF.new"
+	case "$v" in on) echo "$k=1" >> "$CONF.new";; off) echo "$k=0" >> "$CONF.new";; auto) ;; *) rm -f "$CONF.new"; echo "on, off or auto" >&2; return 1;; esac
+	mv "$CONF.new" "$CONF"
+}
+case "$1" in
+"") plug;;
+boot) sleep 1; for d in "$SYS"/class/net/*; do i=${d##*/}; wired "$i" && dhcp_up "$i"; done
+	[ -n "$RUDOLF_NOUP" ] && exit 0
+	( while sleep 60; do tick; done ) &;;
+kind|key|is|auto|name) [ -n "$2" ] && "$1" "$2";;
+set) setm "$2" "$3";;
+state) state;;
+tick) tick;;
+*) echo "usage: netplug [boot|kind IF|key IF|is IF|set IF on|off|auto|state|tick]" >&2; exit 2;;
+esac

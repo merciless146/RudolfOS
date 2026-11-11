@@ -7,6 +7,7 @@
 #   sound restart     stop it and start it again (Task Manager)
 #   sound status      print the server state, cards and outputs
 #   sound hotplug     a sound card came or went (mdev, with ACTION and MDEV=snd/controlCN; 1.5.4)
+#   sound codec-check a chip that did not answer at start-up is reset, once (1.5.8; rudolf-init)
 # GPL-2.0-or-later.
 export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
 # test hooks (iso/qt/host/soundplug_t.sh): RUDOLF_TEST_PATH, RUDOLF_TEST_ASOUND, RUDOLF_SOUND_WAIT, RUDOLF_SOUND_SETTLE
@@ -112,5 +113,21 @@ restart)
 	pkill -u rudolf -x pulseaudio; for i in 1 2 3 4 5; do pgrep -u rudolf -x pulseaudio >/dev/null || break; sleep 1; done
 	pkill -9 -u rudolf -x pulseaudio; rm -f $SOCK
 	exec "$0" start;;
-*) echo "usage: sound start|restart|default N|status|hotplug"; exit 2;;
+codec-check)
+	# 1.5.8: an HD Audio controller whose chip did not answer at start-up ("no codecs initialized": on the Vivobook,
+	# after forced power-offs, the speakers' chip had no card at all): its driver is let go of it and takes it again,
+	# once per start; the new card reaches the sound server like a plugged-in one (hotplug). Run by rudolf-init after
+	# start-up. RUDOLF_TEST_DMESG (a file), RUDOLF_TEST_PCI, RUDOLF_TEST_DRV, RUDOLF_TEST_RUN, RUDOLF_SOUND_RESET_WAIT: for the host test.
+	PCI=${RUDOLF_TEST_PCI:-/sys/bus/pci/devices}; DRV=${RUDOLF_TEST_DRV:-/sys/bus/pci/drivers/snd_hda_intel}
+	{ [ -n "$RUDOLF_TEST_DMESG" ] && cat "$RUDOLF_TEST_DMESG" || dmesg; } 2>/dev/null | sed -n 's/.*snd_hda_intel \([0-9a-f:.]*\): no codecs initialized.*/\1/p' | sort -u | while read a; do
+		[ -e ${RUDOLF_TEST_RUN:-/run/rudolf}/codec-reset-$a ] && continue; : > ${RUDOLF_TEST_RUN:-/run/rudolf}/codec-reset-$a
+		ls -d $PCI/$a/sound/card* >/dev/null 2>&1 && continue   # (it has a card by now)
+		echo "$a" > $DRV/unbind 2>/dev/null; sleep 1; echo "$a" > $DRV/bind 2>/dev/null
+		for i in $(seq ${RUDOLF_SOUND_RESET_WAIT:-10}); do ls -d $PCI/$a/sound/card* >/dev/null 2>&1 && break; sleep 1; done
+		if ls -d $PCI/$a/sound/card* >/dev/null 2>&1; then echo "sound: the chip at $a did not answer at start-up; reset, it works now"
+			rudolfd --health hardware "the sound chip did not answer at start-up; it was reset and works now" >/dev/null 2>&1
+		else echo "sound: the chip at $a still does not answer"
+			rudolfd --health hardware "the sound chip did not answer at start-up: shut the computer down fully (not Restart), wait 10 seconds and turn it on" >/dev/null 2>&1; fi
+	done;;
+*) echo "usage: sound start|restart|default N|status|hotplug|codec-check"; exit 2;;
 esac
