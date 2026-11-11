@@ -1275,7 +1275,11 @@ static void api_shell(struct req *r, const char *what, int post)
 		if (!strcmp(on, "1")) unlink(RUN "/shell-failed");
 		reply_ok(r->fd, "saved"); return;
 	}
-	if (!strcmp(what, "/switch")) { write_str(RUN "/shell-switch", "1\n"); reply_ok(r->fd, "the browser starts again"); return; }
+	if (!strcmp(what, "/switch")) {
+		/* 1.5.7: the Lite desktop (WebKit) has no shell: starting it again would only start Lite again */
+		char *en = slurp(RUN "/desktop-engine", NULL); int lite = en && !strncmp(en, "webkit", 6); free(en);
+		if (lite) { reply_err(r->fd, 409, "the Lite desktop has no shell: Oracle's real tabs come with the Standard engine"); return; }
+		write_str(RUN "/shell-switch", "1\n"); reply_ok(r->fd, "the browser starts again"); return; }
 	reply_err(r->fd, 404, "unknown shell action");
 }
 

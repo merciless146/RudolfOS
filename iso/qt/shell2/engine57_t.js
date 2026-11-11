@@ -17,6 +17,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
         if (u.includes('/api/')) M.calls.push(((o && o.method) || 'GET') + ' ' + a + q.search);
         if (a == 'desktop/engine') { if (o && o.method == 'POST') { const e = q.searchParams.get('engine'); if (e) M.choice = e; return J({message: 'saved'}) }
           return J({choice: M.choice, now: M.now, available: M.avail !== false, failed: false, persistent: true, gaveUp: M.gaveUp || ''}) }
+        if (a == 'shell') return J({id: 'x', on: true, failed: false, active: false, ready: true, installed: true});
         if (a == 'job') return J({running: false, status: 0, log: 'Setting up gir1.2-webkit2-4.1\ndone installed\n'});
         if (a == 'health') return J({events: [], now: 0});
         if (u.includes('/api/')) return J({items: [], apps: [], windows: []});
@@ -43,9 +44,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("(()=>{M.avail=false;M.choice='chromium';document.querySelectorAll('.eng57').forEach(e=>e.remove());enginePanel57(document.querySelector('#sdp').closest('div').parentElement);return 1})()"); await wait(800);
   const o2 = await q("(()=>{const o=document.querySelector('#eng57 option[value=webkit]');return {d:o.disabled,t:o.textContent}})()");
   ok('4b. a Rudolf OS without the Lite engine (before this update): Lite cannot be chosen, and it says why', o2.d && /update Rudolf OS first/.test(o2.t), o2);
+  await q("M.calls.length=0;shellOffer()"); await wait(1500);
+  ok('6. 1.5.7: the Lite desktop never offers the shell\'s restart ("Real browser tabs are ready": a loop on the Vivobook)', !(await q("M.calls.some(x=>/shell\\/switch/.test(x))||!!document.querySelector('.rmodal h3')&&/Real browser tabs/.test(document.querySelector('.rmodal h3').textContent)")), await q('M.calls'));
   ok('no page error (WebKit)', !errs.length, errs);
   await p.close(); ({p, errs} = await page('chromium'));
   ok('5. desktop in Chromium: only the sign-in sites go to the browser window, as before', await p.evaluate("webWants('https://accounts.google.com/')&&!webWants('https://example.com/a')"));
+  await p.evaluate("M.calls.length=0;shellOffer()"); await wait(1500);
+  ok('7. ...the Standard desktop still does, once', await p.evaluate("M.calls.some(x=>/POST shell\\/switch/.test(x))"), await p.evaluate('M.calls'));
   ok('no page error (Chromium)', !errs.length, errs);
   await b.close(); srv.close(); console.log(R.filter(x => x).length + '/' + R.length + ' passed'); process.exit(R.every(x => x) ? 0 : 1);
 })();

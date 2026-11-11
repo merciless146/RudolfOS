@@ -104,7 +104,9 @@ function shellClipboard() {
    mirror and Chromium has installed the shell, the browser starts again with the shell: by itself right after
    start-up, otherwise when the person agrees. */
 async function shellOffer() {
-  if (!RD || SHELL) return;
+  /* 1.5.7: not in the Lite desktop (WebKit): the shell is Chromium's, and Lite starts again as Lite, so on the Vivobook
+     the offer came back after every restart ("Real browser tabs are ready", every 8 s) */
+  if (!RD || SHELL || RD.engine == 'webkit') return;
   let st; try { st = await rd('shell') } catch (e) { return }
   if (!st.id || !st.on || st.failed || st.active || !st.ready) return;
   if (!st.installed) { if ((shellOffer.n = (shellOffer.n || 0) + 1) < 20) setTimeout(shellOffer, 10000); return }   // still installing
