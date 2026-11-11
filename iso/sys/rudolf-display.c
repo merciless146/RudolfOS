@@ -832,7 +832,15 @@ static void wm_write(const char *mode)
 	struct stat st; if (!stat("/run/rudolf/wm", &st)) wm_mtime = (long long)st.st_mtim.tv_sec * 1000000000LL + st.st_mtim.tv_nsec;
 }
 static void wm_set(int game) { if (!game) wm_write("desktop"); }
-static void wm_show(Window w) { char b[40]; snprintf(b, sizeof b, "win %lx", (unsigned long)w); wm_write(b); }
+static char wm_last_class[128];
+/* 1.5.7: the shown window's class is kept at once, so a window that an app replaces right after it appeared (Chromium's
+   browser window, as it starts in Lite: on the Vivobook its window went and the desktop came back over YouTube) is
+   followed to the app's next window instead of falling back to the desktop */
+static void wm_show(Window w)
+{
+	char b[40]; snprintf(b, sizeof b, "win %lx", (unsigned long)w); wm_write(b);
+	XClassHint ch = {0}; if (XGetClassHint(dpy, w, &ch)) { if (ch.res_class) snprintf(wm_last_class, sizeof wm_last_class, "%s", ch.res_class); if (ch.res_name) XFree(ch.res_name); if (ch.res_class) XFree(ch.res_class); }
+}
 static long long mtime_ns(const char *p) { struct stat st; return stat(p, &st) ? -1 : (long long)st.st_mtim.tv_sec * 1000000000LL + st.st_mtim.tv_nsec; }
 /* true when /run/rudolf/wm or wmcmd changed since we last looked (checked often, so switching is quick) */
 static int wm_changed(void) { return mtime_ns("/run/rudolf/wm") != wm_mtime || mtime_ns("/run/rudolf/wmcmd") != cmd_mtime; }
@@ -885,7 +893,6 @@ static void window_title(Window w, char *out, size_t n)
 }
 
 #define MAXWIN 64
-static char wm_last_class[128];
 /* 1.5.6: dialogs (WM_TRANSIENT_FOR) whose owner is on the screen, and that owner's top-level window, bottom to top */
 static Window dlgs[MAXWIN], dlg_of[MAXWIN]; static int ndlg;
 /* the top-level window a dialog belongs to, when it is viewable and not the root (a dialog's owner can be a window
@@ -976,7 +983,7 @@ static void fit_windows(void)
 		if (!want) {
 			/* the shown window went away: another window of the same app, else the desktop */
 			for (int k = napps; k-- > 0;) { XClassHint ch = {0}; if (XGetClassHint(dpy, apps[k], &ch)) { if (ch.res_class && wm_last_class[0] && !strcmp(ch.res_class, wm_last_class)) want = apps[k]; if (ch.res_name) XFree(ch.res_name); if (ch.res_class) XFree(ch.res_class); } if (want) break; }
-			if (want) wm_show(want); else wm_write("desktop");
+			if (want) wm_show(want); else { fprintf(stderr, "display: the shown window (%s) went away - back to the desktop\n", wm_last_class[0] ? wm_last_class : "?"); wm_write("desktop"); }
 		} else { XClassHint ch = {0}; if (XGetClassHint(dpy, want, &ch)) { if (ch.res_class) snprintf(wm_last_class, sizeof wm_last_class, "%s", ch.res_class); if (ch.res_name) XFree(ch.res_name); if (ch.res_class) XFree(ch.res_class); } }
 	} else if (!strcmp(wm_mode, "game") || !strcmp(wm_mode, "web")) {
 		int webm = !strcmp(wm_mode, "web");
