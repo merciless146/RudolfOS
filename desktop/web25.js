@@ -23,7 +23,8 @@ async function webOpen(u){
  href=href.replace(/'/g,'%27').replace(/`/g,'%60').replace(/\$/g,'%24').replace(/\\/g,'%5C').replace(/"/g,'%22');
  try{await rdPost('web/open?url='+encodeURIComponent(href))}catch(e){return notify('The browser window could not open',e.message,{kind:'error'})}
  WEB_ON=WEB_SHOWN=true;webTray();webWatch();
- if(!WEB_TOLD){WEB_TOLD=true;notify('Opened in a browser window',webHost(href)+' needs a real browser window to sign in. Tap 🌐 in the taskbar (or press Super+Esc) to switch back to the desktop.')}}
+ /* 1.5.7: with the Lite desktop every website opens there, not only sites that sign in: the message says so */
+ if(!WEB_TOLD){WEB_TOLD=true;notify('Opened in a browser window',RD.engine=='webkit'?'With the Lite desktop, Oracle opens websites in Chromium\'s browser window. Tap 🌐 in the taskbar (or press Super+Esc) to switch back to the desktop.':webHost(href)+' needs a real browser window to sign in. Tap 🌐 in the taskbar (or press Super+Esc) to switch back to the desktop.')}}
 function webTray(){if(!WEB_ON){trayRemove('web');return}
  const b=trayAdd('web',{icon:'🌐',title:WEB_SHOWN?'Back to the desktop':'Show the browser window',onclick:()=>webToggle(),
   menu:()=>[[WEB_SHOWN?'Back to the desktop':'Show the browser window',()=>webToggle()],['Close the browser window',async()=>{try{await rdPost('web/close')}catch(e){}WEB_ON=WEB_SHOWN=false;webTray()}]]});

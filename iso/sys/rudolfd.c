@@ -1329,7 +1329,10 @@ static void api_web(struct req *r, const char *what)
 		snprintf(cmd, sizeof cmd, "mkdir -p " WEBPROFILE "; chown rudolf:rudolf /home/rudolf/.config " WEBPROFILE " 2>/dev/null; "
 			"setsid su -s /bin/sh rudolf -c 'set -a; . " RUN "/session.env; set +a; FONTCONFIG_FILE=/etc/fonts/fonts.conf GOOGLE_API_KEY=no GOOGLE_DEFAULT_CLIENT_ID=no GOOGLE_DEFAULT_CLIENT_SECRET=no; export FONTCONFIG_FILE GOOGLE_API_KEY GOOGLE_DEFAULT_CLIENT_ID GOOGLE_DEFAULT_CLIENT_SECRET; "
 			"exec /opt/chromium/chrome --class=RudolfWeb --user-data-dir=" WEBPROFILE " --no-first-run --no-default-browser-check "
-			"--password-store=basic --disable-session-crashed-bubble --disable-features=Translate,MediaRouter,Vulkan --disable-vulkan-surface "
+			"--password-store=basic --disable-session-crashed-bubble --disable-features=Translate,MediaRouter,Vulkan,FedCm --disable-vulkan-surface "
+			/* 1.5.7: FedCm off: "Sign in with Google" (claude.ai and others) went through Chromium's FedCM and stopped on a
+			   blank accounts.google.com/gsi/transform window on the Vivobook; without it Google's sign-in uses its usual
+			   pop-up window, as in Firefox, where it worked */
 			/* Ruffle plays Flash here too; the web frames extension is not loaded, so sites keep their protections */
 			"--load-extension=" RUN "/ruffle-ext %s %s%s \"%s\"' "
 			"</dev/null >>" RUN "/web.log 2>&1 &", gl ? gl : "", px && *px ? "--proxy-server=" : "", px && *px ? px : "", u);

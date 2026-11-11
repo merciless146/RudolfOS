@@ -263,7 +263,7 @@ while :; do
 		--window-position=0,0 --window-size=$W,$H --user-data-dir=$PROFILE \
 		--no-first-run --no-default-browser-check --noerrdialogs --disable-infobars \
 		--disable-session-crashed-bubble --disable-translate --password-store=basic \
-		--disable-features=Translate,MediaRouter,DialMediaRouteProvider,OptimizationHints,PrivacySandboxSettings4,Vulkan,WebGPUService,SkiaGraphite,OptimizationGuideOnDeviceModel --disable-vulkan-surface \
+		--disable-features=Translate,MediaRouter,DialMediaRouteProvider,OptimizationHints,PrivacySandboxSettings4,Vulkan,WebGPUService,SkiaGraphite,OptimizationGuideOnDeviceModel,FedCm --disable-vulkan-surface \
 		$GLFLAGS \
 		--autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream \
 		--auto-select-desktop-capture-source=Entire --enable-features=SharedArrayBuffer,IsolatedWebApps$SHELLFEAT $SHELLINST \
