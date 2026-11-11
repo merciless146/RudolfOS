@@ -142,23 +142,23 @@ and fires lasers from his nose.
   is an original character, Captain Quill (a rockhopper penguin in a red winter coat, with a sleigh pulled by snowy
   owls), not another project's mascot. `tests/frostbarricade_t.js` (26 checks). In LIB_GAMES.
 
-## Frost Barricade: the next release (weather and the wendigo)
-Asked for on 2026-11-11, for a later release with weather events.
-- **Weather events:** a night may bring a blizzard (snow that hides the far lanes and slows everyone), freezing fog
-  (the far lanes fade; their eyes still show), a thaw (slush slows the elves), or a clear, bitter night. One is shown
-  in the morning's plan, so the day's hours can be spent with it in mind. The chance of one grows over the nights.
-- **The wendigo:** a special enemy, always with **red eyes**. Before one appears there is a **screech** (a sound and
-  a caption, "A screech from the woods…", for players who cannot hear it), then it walks out of the treeline.
-  - Very large and extremely tough; it comes on at a moderate speed.
-  - Every few seconds it **picks up an elf and throws it at the barricade**: the thrown elf arcs across the field and
-    the barricade takes damage where it lands (the thrown elf may survive the landing and keep attacking).
-  - Shooting the elf it holds makes it drop it; the eyes are its weak spot, as for the elves.
-  - It shares red eyes with sprinters, but its size, its slower walk and the screech set it apart.
-  - Its look: an original design for this game, gaunt and antlered (unlike Rudolf's soft, round antlers), dark and
-    jagged in the same corruption as the elves; frightening but not gory, as the rest of the game.
-  - From the middle nights on, more often in the weather; never on Night 1.
-- **Tests:** the screech before it appears (and its caption); a throw damaging the barricade; shooting the held elf
-  making it drop; the weather's effect on sight and speed; the morning's forecast.
+## Frost Barricade 1.1: twenty-five nights, the weather radio, the weather, wendigos
+Asked for on 2026-11-11 and built (rudolfos-library#6, on #5's eye colours, bloaters and muggers).
+- **Twenty-five nights**; the sleigh comes at the end of the last, in the great blizzard.
+- **A prep screen before every night** with a **weather radio**: tonight's weather and tomorrow night's, a warning
+  the day before a blizzard, and on Day 22 always the warning of the three-night blizzard.
+- **The schedule**, fixed per game from its seed: days 1-7 clear or fog; a blizzard on day 8 or 9 and on 17 or 18
+  (the other day clear or fog); the great blizzard on 23-25; one full moon (20% a day on days 8-14, 60% on 15-20, 80%
+  on 21, otherwise 22), never on a blizzard's day.
+- **Clear:** full sight; searching goes quicker. **Full moon:** brighter; every white-eyed elf becomes a red-eyed
+  sprinter; a wendigo comes. **Fog:** sight is a cone of light from Rudolf's nose towards the crosshair; elves out of
+  it show as ripples of sound; their sounds louder; searching finds less and scouts are more often lost.
+  **Blizzard:** a shorter, narrower cone; no ripples; nothing sprints; the survivors' aim suffers; no searching.
+- **The wendigo:** always red-eyed; a screech (and a caption) before it appears; huge, very tough, moderate speed;
+  every few seconds it takes up an elf and throws it at the barricade; shooting the held elf makes it let go. One
+  under the full moon, one on Night 24, two on Night 25. An original design: gaunt, long-limbed, sharp branching
+  antlers, frightening by shape rather than gore.
+- **Tests:** `tests/frostbarricade_t.js` (54 checks).
 
 ## Tests
 - Each game: a browser test (qt/shell2 in RudolfOS for the Start menu and Games tab entries and the download offer; in
