@@ -224,16 +224,22 @@ function elevate(reason){return new Promise(res=>{if(window.__elevTrust&&isAdmin
  const ok=async()=>{const a=admins.find(x=>x.n==sel.value);if(a&&await pwCheck(a,P.get())){logEvt('sys',`${a.n} approved: ${reason}`);if(isAdmin()&&a===USER)window.__elevTrust=Date.now();done(true)}else{o.querySelector('.rmmsg').textContent='Wrong password.';P.clear();sfx('error')}};
  o.querySelector('.ey').onclick=ok;o.querySelector('.ep').addEventListener('keydown',e=>{if(e.key=='Enter')ok();if(e.key=='Escape')done(false)})})}
 /* ---------- lock screen, screensaver, idle, sleep ---------- */
-let LOCKED=false,lastInput=Date.now(),SAVER=null;
+let LOCKED=false,lastInput=Date.now(),SAVER=null,UNLOCKED_AT=0;
+/* 1.5.7: other modules read window.LOCKED (updates, Keep, Linux apps' updates), which a "let" does not make: it was
+   always undefined, so they went on behind the lock screen */
+try{Object.defineProperty(window,'LOCKED',{get:()=>LOCKED,configurable:true})}catch(e){}
 ['pointermove','pointerdown','keydown','wheel','touchstart'].forEach(ev=>addEventListener(ev,()=>{lastInput=Date.now();if(SAVER&&Date.now()-SAVER.t>600)saverStop()},{capture:true,passive:true}));
-function lockScreen(reason,adminOnly){if(!USER||LOCKED)return;LOCKED=true;$('#menu').style.display='none';
+function lockScreen(reason,adminOnly){if(!USER||LOCKED)return;
+ /* 1.5.7: never a second lock screen over the first (the HP desktop showed two after its screen had locked) */
+ if(document.getElementById('lockov')){LOCKED=true;return}
+ LOCKED=true;$('#menu').style.display='none';
  const o=document.createElement('div');o.id='lockov';o.setAttribute('role','dialog');o.setAttribute('aria-label','Locked');
  o.innerHTML=`<div class='lkclock'></div><div class='lkdate'></div><div class='lkbox'><div class='lkav'>👤</div><div class='lkn'></div><div class='lkr'></div><input class='lkp' aria-label='Password' placeholder='Password'><div class='lkm'></div><div class='rmrow'><button class='lks'>Switch user</button><button class='lku pri'>Unlock</button></div></div>`;
  o.querySelector('.lkn').textContent=USER.n;o.querySelector('.lkr').textContent=reason||'';const P=maskInput(o.querySelector('.lkp'));if(USER.r=='guest'&&!adminOnly)o.querySelector('.lkp').style.display='none';
  const tick=()=>{const c=clockParts();o.querySelector('.lkclock').textContent=c.time;o.querySelector('.lkdate').textContent=c.longNoYear};tick();const iv=setInterval(tick,1000);
  document.body.appendChild(o);setTimeout(()=>o.querySelector('.lkp').focus(),50);
  const un=async()=>{let ok=false;if(adminOnly)ok=await elevate(reason||'Unlock this account');else ok=USER.r=='guest'||await pwCheck(USER,P.get());
-  if(ok){clearInterval(iv);o.remove();LOCKED=false;lastInput=Date.now();if(window.__lockDone)__lockDone();sfx('login');if(adminOnly&&window.__parentalExtend)__parentalExtend()}else{o.querySelector('.lkm').textContent='Wrong password.';P.clear();sfx('error')}};
+  if(ok){clearInterval(iv);o.remove();LOCKED=false;lastInput=UNLOCKED_AT=Date.now();if(window.__lockDone)__lockDone();sfx('login');if(adminOnly&&window.__parentalExtend)__parentalExtend()}else{o.querySelector('.lkm').textContent='Wrong password.';P.clear();sfx('error')}};
  o.querySelector('.lku').onclick=un;o.querySelector('.lkp').addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Enter')un()});
  o.querySelector('.lks').onclick=()=>{clearInterval(iv);o.remove();LOCKED=false;A.logoff()};
  o.addEventListener('keydown',e=>{if(e.key!='Tab')e.stopPropagation()})}
@@ -242,13 +248,30 @@ function lockScreen(reason,adminOnly){if(!USER||LOCKED)return;LOCKED=true;$('#me
 function saverStart(preview){if(SAVER||!USER||LOCKED&&!preview)return;SAVER=ssRun({preview:!!preview})}
 function saverStop(){if(!SAVER)return;const s=SAVER;SAVER=null;const lock=!s.preview&&SYSC.lockss&&Date.now()-s.t>3000;s.stop(lock);if(lock)lockScreen()}
 async function mediaOther(){try{return (await rd('media')).playing>0}catch(e){return false}}
-async function idleNow(){let m=Date.now()-lastInput;if(RD){try{const j=await rd('idle');if(j.idle!=null)m=Math.min(m,j.idle)}catch(e){}}return m}
-async function idleCheck(){if(!USER)return;const idle=(await idleNow())/60000;
- const busy=(window.__mediaPlaying&&__mediaPlaying())||(RD&&await mediaOther());   /* (1.4.4) also a video in Oracle's real tabs or a Linux app */
- if(SYSC.sson&&SYSC.ssmin>0&&idle>=SYSC.ssmin&&!LOCKED&&!SAVER&&!document.fullscreenElement&&!document.pointerLockElement&&!busy)saverStart();
- if(SYSC.lockmin>0&&idle>=SYSC.lockmin&&!LOCKED){saverStop();lockScreen()}
- const sm=RD&&PWR&&PWR.now&&PWR.now.sleep!=null?PWR.now.sleep:SYSC.suspmin;   /* (1.4.4) Power and battery's, for the power source in use */
- if(RD&&sm>0&&idle>=sm&&!busy){lastInput=Date.now();lockScreen();rdPost('power?action=suspend').catch(()=>{})}}
+/* 1.5.7: the idle checks, safe against what put a second lock screen on the HP desktop and started the screen saver
+   at the wrong time on the Vivobook:
+   - a check waits for rudolfd (idle, media); one that took long (rudolfd busy, the computer asleep in between)
+     acted afterwards on its old numbers, after the person had come back and unlocked: now a check that saw input,
+     an unlock or a sleep while it waited decides nothing, and only one check runs at a time (4 s at most each);
+   - after a sleep the page's clock has run on (Date.now() counts the sleep), and the key that woke the computer
+     often reaches nobody: waking counts as input, so the saver and the lock do not start again at once;
+   - for a minute after an unlock, nothing locks by itself (Lock, Meta+L and the time limit still do) */
+const idleWait=(p,v)=>Promise.race([Promise.resolve(p).catch(()=>v),new Promise(r=>setTimeout(()=>r(v),4000))]);
+async function idleNow(){let m=Date.now()-lastInput;if(RD){const j=await idleWait(rd('idle'),null);if(j&&j.idle!=null)m=Math.min(m,j.idle)}return m}
+/* asleep: the wall clock (Date.now) ran on while the page's own clock (performance.now, which stops while the computer
+   sleeps) did not; a page whose timers were only slowed down sees both move together */
+let idleBusy=false,idleTick=Date.now(),idlePerf=performance.now();
+function idleWoke(){const t=Date.now(),p=performance.now(),slept=(t-idleTick)-(p-idlePerf)>30000;idleTick=t;idlePerf=p;if(slept)lastInput=t;return slept}
+async function idleCheck(){if(idleWoke()||!USER||idleBusy)return;idleBusy=true;const t0=lastInput,u0=UNLOCKED_AT,l0=LOCKED;
+ try{const ms=await idleNow();
+  const busy=(window.__mediaPlaying&&__mediaPlaying())||(RD&&await idleWait(mediaOther(),false));   /* (1.4.4) also a video in Oracle's real tabs or a Linux app */
+  if(idleWoke()||!USER||lastInput!==t0||UNLOCKED_AT!==u0||LOCKED!==l0)return;
+  const idle=ms/60000,fresh=Date.now()-UNLOCKED_AT<60000;
+  if(SYSC.sson&&SYSC.ssmin>0&&idle>=SYSC.ssmin&&!LOCKED&&!SAVER&&!fresh&&!document.fullscreenElement&&!document.pointerLockElement&&!busy)saverStart();
+  if(SYSC.lockmin>0&&idle>=SYSC.lockmin&&!LOCKED&&!fresh){saverStop();lockScreen()}
+  const sm=RD&&PWR&&PWR.now&&PWR.now.sleep!=null?PWR.now.sleep:SYSC.suspmin;   /* (1.4.4) Power and battery's, for the power source in use */
+  if(RD&&sm>0&&idle>=sm&&!busy&&!fresh){lastInput=Date.now();saverStop();lockScreen();rdPost('power?action=suspend').catch(()=>{})}}
+ finally{idleBusy=false}}
 setInterval(idleCheck,15000);
 /* ---------- parental controls: allowed apps and a daily time limit ---------- */
 const APPCAT=[['browser','Oracle Browser',/^Oracle/],['explorer','File Explorer',/^File Explorer|^Exploring/],['notepad','Notepad',/Notepad/],['prompt','Rudolf Prompt',/^Rudolf Prompt/],['blocklua','BlockLua Builder',/^BlockLua/],['calc','Calculator',/^Calculator/],['wordlite','WordLite',/^WordLite/],['wordpro','WordPro',/^WordPro/],['paint','Paint',/^Paint/],['boards','Board Games',/^Board Games|^Checkers|^Chess/],['poker','Card Games',/^Card Games/],['galaxy','WOS Galaxy Map',/^WOS Galaxy Map/],['media','Media Player',/^Media Player/],['gameboy','Emu',/^Emu|Emu$|Game Boy|GBA|\.GBA?C?\b/i],['flash','Flash Player',/Flash/],['quake','Quake Engine',/^Quake/],['gpulab','GPU Lab',/^GPU Lab/],['settings','Settings',/^Settings|^Display Properties/]];

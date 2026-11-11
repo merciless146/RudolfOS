@@ -5,6 +5,9 @@
 const SS_STYLES=[['stars','Starfield'],['clock','Clock'],['rudolf','Rudolf'],['rain','Code rain'],['mystify','Mystify'],['bubbles','Bubbles'],['aurora','Aurora'],['fireworks','Fireworks']];
 const SS_MINS=[1,2,3,5,10,15,20,30,45,60];
 const ssCtx=c=>c.getContext('2d',{willReadFrequently:true,alpha:false});
+/* 1.5.7: on the Lite desktop (WebKit draws the page in software on the Vivobook) the saver draws at most 15 frames a
+   second and 960 pixels wide, so that it leaves the processor to the apps and stops at once when the person is back */
+const ssLite=()=>document.documentElement.classList.contains('webkit');
 const ssRnd=(a,b)=>a+Math.random()*(b-a);
 const ssTime=()=>clockParts().time;
 /* each style: (g, w, h) => frame(t ms, dt ms); w/h are the canvas's own pixels */
@@ -36,7 +39,7 @@ const SS_DRAW={
 };
 /* runs a style in canvas c until stopped: {stop, frames} */
 function ssLoop(c,style,opt){opt=opt||{};const g=ssCtx(c),w=c.width,h=c.height,f=(SS_DRAW[style]||SS_DRAW.stars)(g,w,h);let raf=0,last=0,t0=0,run=true;const st={frames:0,stop:()=>{run=false;cancelAnimationFrame(raf)}};
- const fr=t=>{if(!run)return;raf=requestAnimationFrame(fr);if(!t0)t0=last=t;const dt=t-last;if(dt<(window.__bsaver?99:32)&&st.frames)return;   /* (1.4.4) 10 frames a second while battery saver is on */
+ const fr=t=>{if(!run)return;raf=requestAnimationFrame(fr);if(!t0)t0=last=t;const dt=t-last;if(dt<(window.__bsaver?99:ssLite()?66:32)&&st.frames)return;   /* (1.4.4) 10 frames a second while battery saver is on */
  last=t;try{f(t-t0,Math.min(100,dt||16))}catch(e){console.warn(e)}
   if(opt.time&&style!='clock'){const fs=Math.round(h/12);g.textAlign='center';g.font=`600 ${fs}px system-ui,sans-serif`;g.fillStyle='rgba(2,6,23,.55)';g.fillText(ssTime(),w/2+2,h-fs*0.9+2);g.fillStyle='#e2e8f0';g.fillText(ssTime(),w/2,h-fs*0.9)}st.frames++};
  raf=requestAnimationFrame(fr);return st}
@@ -50,7 +53,7 @@ function ssBack(m){if(!m||m=='desktop')return;const w=/^win ([0-9a-f]+)/.exec(m)
    development link's prompt waited behind Among Us, and could not be reached */
 function promptFront(o){if(!RD||!o)return;ssFront().then(m=>{if(m=='desktop')return;if(!o.isConnected){ssBack(m);return}
  const ob=new MutationObserver(()=>{if(!o.isConnected){ob.disconnect();ssBack(m)}});ob.observe(document.body,{childList:true,subtree:true})})}
-function ssRun(opt){opt=opt||{};const c=document.createElement('canvas');c.id='saver';const k=Math.min(1,1280/Math.max(1,innerWidth));c.width=Math.round(innerWidth*k);c.height=Math.round(innerHeight*k);c.style.cssText='width:100vw;height:100vh;background:#000';document.body.appendChild(c);
+function ssRun(opt){opt=opt||{};const c=document.createElement('canvas');c.id='saver';const k=Math.min(1,(ssLite()?960:1280)/Math.max(1,innerWidth));c.width=Math.round(innerWidth*k);c.height=Math.round(innerHeight*k);c.style.cssText='width:100vw;height:100vh;background:#000';document.body.appendChild(c);
  const style=opt.style||SYSC.ssstyle||'stars',lp=ssLoop(c,style,{time:SYSC.sstime!==false});let iv=0;
  /* on installed Rudolf OS, input in a game or a Linux app (which the page does not see) also ends it */
  if(RD)iv=setInterval(async()=>{try{const j=await rd('idle');if(j.idle!=null&&j.idle<1500&&SAVER&&Date.now()-SAVER.t>1500)saverStop()}catch(e){}},1000);
@@ -58,7 +61,7 @@ function ssRun(opt){opt=opt||{};const c=document.createElement('canvas');c.id='s
  /* stop(true): the lock screen follows, and the window comes back once it is unlocked */
  return{c,style,preview:!!opt.preview,t:Date.now(),lp,stop:keep=>{stopped=true;kept=!!keep;lp.stop();clearInterval(iv);c.remove();if(keep&&back)window.__lkBack=back;else if(!keep)ssBack(back)}}}
 /* (1.4.4) the lock screen too is above every window (an app window shown above it would be usable while locked) */
-(function(){const o=lockScreen;lockScreen=function(){const r=o.apply(this,arguments);if(RD)ssFront().then(m=>{if(m!='desktop')window.__lkBack=m});return r}})();
+(function(){const o=lockScreen;lockScreen=function(){const was=LOCKED,r=o.apply(this,arguments);if(RD&&!was&&LOCKED)ssFront().then(m=>{if(m!='desktop')window.__lkBack=m});return r}})();
 window.__lockDone=()=>{const m=window.__lkBack;window.__lkBack=null;ssBack(m)};
 /* Display Properties › Screen saver */
 (function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);const adm=isAdmin();const D=adm?'':' disabled';
