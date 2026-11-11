@@ -36,7 +36,7 @@ async function lxAfterSignIn(){LX.ok=0;for(let i=0;i<30&&!LX.ok;i++){await lxIns
 (function(){const o=userLogin;userLogin=async function(){const r=await o.apply(this,arguments);if(RD)setTimeout(lxAfterSignIn,1500);return r}})();
 function lxLaunchers(){const l=LX.inst||ld(LXK,[]);const out=[];l.forEach(a=>(a.launchers&&a.launchers.length?a.launchers:[{desktop:a.id,name:a.name,icon:a.id,mime:'',wmclass:'',cats:''}]).forEach(x=>out.push({...x,app:a.id})));return out}
 function lxRegister(){Object.keys(APPS).filter(k=>k.startsWith('lx:')).forEach(k=>delete APPS[k]);
- lxLaunchers().forEach(x=>regApp('lx:'+x.desktop,{name:x.name,icon:'🐧',img:el=>lxImg(el,x.app,x.icon),lxUninstall:x.deb?null:()=>lxUninstall(x),kw:'linux app '+(x.comment||'')+' '+(x.cats||'').replace(/;/g,' '),open:()=>lxRun(x),re:/^\u0000/}));
+ lxLaunchers().forEach(x=>regApp('lx:'+x.desktop,{name:x.name,icon:'🐧',img:el=>lxImg(el,x.app,x.icon),lxUninstall:x.deb?null:()=>lxUninstall(x),lxApp:x.app,kw:'linux app '+(x.comment||'')+' '+(x.cats||'').replace(/;/g,' '),open:()=>lxRun(x),re:/^\u0000/}));
  try{startMenuApps()}catch(e){}try{pinDraw()}catch(e){}lxOpeners()}
 /* 1.5.6: Uninstall from the Start menu's right-click menu (a Flathub app; as the App Store's Installed list does) */
 async function lxUninstall(x){const a=(LX.inst||[]).find(i=>i.id==x.app);const n=a?a.name:x.name;if(!await elevate('Uninstall '+n))return;
@@ -116,7 +116,7 @@ function lxTaskbar(){const T=$('#tasks');if(!T)return;T.querySelectorAll('.lxtb'
  LX.wins.filter(w=>!w.web).forEach(w=>{let b=T.querySelector(`.lxtb[data-win="${w.win}"]`);const a=lxAppFor(w),label=w.title||(a&&a.name)||w.class||'Linux app';
   if(!b){b=document.createElement('button');b.className='lxtb';b.dataset.win=w.win;b.innerHTML=`<span class='lxti'>🐧</span><span class='lxtt'></span>`;if(a)lxImg(b.querySelector('.lxti'),a.app,a.icon);
    b.onclick=e=>{e.stopPropagation();const cur=LX.wins.find(x=>x.win==b.dataset.win);lxApi(cur&&cur.shown?'apps/desktop':'apps/show?win='+b.dataset.win).then(lxWinPoll).catch(()=>{})};
-   b.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();cmenu(e.clientX,e.clientY,[['Show',()=>lxApi('apps/show?win='+b.dataset.win)],['Close window',()=>lxApi('apps/close?win='+b.dataset.win)]],{title:label})};T.appendChild(b)}
+   b.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();cmenu(e.clientX,e.clientY,[['Show',()=>lxApi('apps/show?win='+b.dataset.win)],['Close window',()=>lxApi('apps/close?win='+b.dataset.win)],typeof fqXItem=='function'?fqXItem(b.dataset.win,a?a.name:label):null],{title:label})};T.appendChild(b)}
   b.querySelector('.lxtt').textContent=label;b.title=label;b.classList.toggle('on',!!w.shown);b.setAttribute('aria-pressed',w.shown?'true':'false')})}
 async function lxWinPoll(){try{const j=await lxApi('apps/windows');const was=LX.mode;LX.wins=j.windows||[];LX.mode=j.mode||'desktop';const sh=LX.wins.find(w=>w.shown);if(sh)LX.shown=sh.win;lxTaskbar();if(typeof gameModeTick=='function')gameModeTick();
   if(was.startsWith('win')&&LX.mode=='desktop')lxSync()}catch(e){}}

@@ -1005,7 +1005,8 @@ static void api_apps(struct req *r, const char *what)
 			if (strcmp(r->method, "POST")) { reply_err(r->fd, 400, "use POST"); return; }
 			if (!id || !*id || strlen(id) > 200) { reply_err(r->fd, 400, "which app?"); return; }
 			for (const char *c = id; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("._:-", *c)) { reply_err(r->fd, 400, "which app?"); return; }
-			snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-memguard --end '%s' 2>/dev/null", id);
+			const char *fq = qparam(r->query, "force");   /* (1.5.7: Force quit) */
+			snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-memguard --end '%s'%s 2>/dev/null", id, fq && *fq == '1' ? " --force" : "");
 		} else snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-memguard --apps 2>/dev/null");
 		char *o = run_out(cmd);
 		if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "the list of apps could not be made"); return; }

@@ -33,7 +33,8 @@
  * would do and exits (testing).
  *   1.5.7 (plan stage 7): --apps prints the apps that run, as JSON, for Task Manager (rudolfd's apps/running): Flatpak
  *   apps (all their sandboxes as one), Windows programs in Wine and Linux programs in Debian, each with its memory and
- *   whether a window of it is open; --end ID asks one to quit (SIGTERM) and ends what is left of it 5 s later
+ *   whether a window of it is open (and which: "wins"); --end ID asks one to quit (SIGTERM) and ends what is left of it 5 s later
+ *   (1.5.7: --end ID --force, Force quit: all of it at once, background processes included)
  *   (SIGKILL), its own processes only. When this guard quits an app it also says so to the desktop at once (a line
  *   "memory closed NAME MB" in /run/rudolf/events), which shows a notification.
  *
@@ -340,6 +341,19 @@ static int dapp_window(const struct dapp *d, const char *wins)
 	return 0;
 }
 static void jstr(const char *v) { putchar('"'); for (const unsigned char *c = (const unsigned char *)v; *c; c++) { if (*c == '"' || *c == '\\') printf("\\%c", *c); else if (*c < 32) printf("\\u%04x", *c); else putchar(*c); } putchar('"'); }
+/* 1.5.7: the ids of the windows that belong to an app (the lines of /run/rudolf/windows its own test matches), as a JSON
+   list: a window's "Force quit" finds its app by them */
+static void print_wins(const struct app *a, const struct dapp *d, const char *wins)
+{
+	printf(",\"wins\":["); int n = 0;
+	for (const char *l = wins; l && *l; ) {
+		const char *end = strchr(l, '\n'); if (!end) end = l + strlen(l);
+		char line[1024]; size_t ll = end - l < (long)sizeof line - 1 ? (size_t)(end - l) : sizeof line - 1; memcpy(line, l, ll); line[ll] = 0;
+		if (a ? has_window(a, line) : dapp_window(d, line)) { size_t il = strcspn(line, "\t"); if (il && il < 20) printf("%s\"%.*s\"", n++ ? "," : "", (int)il, line); }
+		l = *end ? end + 1 : end;
+	}
+	printf("]");
+}
 static void list_apps(void)
 {
 	static char wins[16384];
@@ -348,9 +362,9 @@ static void list_apps(void)
 	scan(); scan_apps(ru); scan_debian();
 	printf("{\"ok\":true,\"apps\":["); int n = 0;
 	for (int k = 0; k < napps; k++) { printf("%s{\"id\":\"flatpak:", n++ ? "," : ""); printf("%s\",\"app\":", apps[k].id); jstr(apps[k].id);
-		printf(",\"name\":"); jstr(app_name(&apps[k])); printf(",\"kind\":\"flatpak\",\"rss\":%lld,\"window\":%s,\"processes\":%d}", apps[k].rss, has_window(&apps[k], wins) ? "true" : "false", apps[k].nroots); }
+		printf(",\"name\":"); jstr(app_name(&apps[k])); printf(",\"kind\":\"flatpak\",\"rss\":%lld,\"window\":%s,\"processes\":%d", apps[k].rss, has_window(&apps[k], wins) ? "true" : "false", apps[k].nroots); print_wins(&apps[k], NULL, wins); printf("}"); }
 	for (int k = 0; k < ndapps; k++) { printf("%s{\"id\":\"%s:%d\",\"name\":", n++ ? "," : "", dapps[k].kind == 'w' ? "wine" : "debian", dapps[k].root); jstr(dapps[k].name);
-		printf(",\"kind\":\"%s\",\"rss\":%lld,\"window\":%s}", dapps[k].kind == 'w' ? "wine" : "debian", dapps[k].rss, dapp_window(&dapps[k], wins) ? "true" : "false"); }
+		printf(",\"kind\":\"%s\",\"rss\":%lld,\"window\":%s", dapps[k].kind == 'w' ? "wine" : "debian", dapps[k].rss, dapp_window(&dapps[k], wins) ? "true" : "false"); print_wins(NULL, &dapps[k], wins); printf("}"); }
 	printf("]}\n");
 }
 /* the processes of one listed app: flatpak:ID, wine:PID or debian:PID (a PID that is one of the listed programs) */
@@ -367,10 +381,18 @@ static int app_pids(const char *id, int *out, int max)
 	for (int i = 0; i < np && n < max; i++) if (under(&ps[i], pid)) out[n++] = ps[i].pid;
 	return n;
 }
-static int end_app(const char *id)
+static int end_app(const char *id, int force)
 {
 	static int pids[MAXP]; int n = app_pids(id, pids, MAXP);
 	if (!n) { printf("{\"ok\":false,\"error\":\"that app is not running any more\"}\n"); return 1; }
+	/* 1.5.7: --force (Force quit): every process of the app, its background processes included, stopped at once and
+	   ended, without asking it to quit first */
+	if (force) {
+		for (int i = 0; i < n; i++) kill(pids[i], SIGSTOP);
+		int ended = 0; for (int i = 0; i < n; i++) { if (!kill(pids[i], SIGKILL)) ended++; kill(pids[i], SIGCONT); }
+		int now[MAXP]; int m = app_pids(id, now, MAXP); for (int i = 0; i < m; i++) if (!kill(now[i], SIGKILL)) ended++;   /* (any started meanwhile) */
+		printf("{\"ok\":true,\"processes\":%d,\"forced\":true}\n", ended); return 0;
+	}
 	for (int i = 0; i < n; i++) kill(pids[i], SIGTERM);
 	int left = n, waited = 0;
 	for (; waited < 50 && left; waited++) { usleep(100000); left = 0; for (int i = 0; i < n; i++) if (!kill(pids[i], 0)) { char p[64]; snprintf(p, sizeof p, "/proc/%d/stat", pids[i]); if (readf(p, buf, sizeof buf) > 0) { char *b = strrchr(buf, ')'); if (b && b[2] != 'Z') left++; } } }
@@ -387,7 +409,7 @@ int main(int argc, char **argv)
 		once = getenv("MG_TEST") != NULL; hz = sysconf(_SC_CLK_TCK); pagesz = sysconf(_SC_PAGESIZE);
 		if (!strcmp(argv[1], "--apps")) { list_apps(); return 0; }
 		if (argc < 3 || strlen(argv[2]) > 200) { printf("{\"ok\":false,\"error\":\"which app?\"}\n"); return 2; }
-		return end_app(argv[2]);
+		return end_app(argv[2], argc > 3 && !strcmp(argv[3], "--force"));
 	}
 	hz = sysconf(_SC_CLK_TCK); pagesz = sysconf(_SC_PAGESIZE);
 	if (readf("/etc/rudolf/cmdline", buf, sizeof buf) <= 0) readf("/proc/cmdline", buf, sizeof buf);
