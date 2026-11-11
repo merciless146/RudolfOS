@@ -1,6 +1,6 @@
 /* ===== V26 Task Manager and system reports (Rudolf OS 1.2) =====
    Task Manager: Apps (windows, and Oracle's real tabs with the memory each page uses), Processes (every process,
-   grouped by what it is, with CPU and memory; End process), Performance (CPU, memory, network), System (Rudolf OS,
+   grouped by what it is, with CPU and memory; End process, End process tree), Performance (CPU, memory, network), System (Rudolf OS,
    the desktop's host, the services, the kernel), Hardware, Startup. rudolfd provides /api/system and /api/processes;
    ending a process and restarting a service ask for an administrator's password, except for the person's own
    apps. On the browser version the system tabs say what they need.
@@ -84,12 +84,17 @@ function taskmgr26() {
   async function getSys(force) { if (RD && (!sys || force)) { try { sys = await rd('system') } catch (e) { sys = {error: e.message} } } return sys }
 
   /* ending a process: an administrator approves, except for the person's own apps */
-  async function endProc(p, force) {
-    const own = p.tag == 'app' && p.user == 'rudolf';
-    const what = (p.tag == 'web' ? 'This process shows web pages; ending it closes them (if it shows the desktop, the desktop starts again). ' : '') + `End ${p.name} (process ${p.pid})${force ? ' at once' : ''}?`;
-    if (own) { if (!(await new Promise(r => sdlg(W, 'End process', what, [['Cancel', () => r(false)], ['End process', () => r(true), 1]])))) return }
+  /* 1.5.7: the processes a process started, and theirs (End process tree) */
+  const tmTree = p => { const all = procs && procs.items || [], out = [], q = [p.pid]; while (q.length) { const x = q.shift(); all.filter(c => c.ppid === x && c.pid !== p.pid).forEach(c => { out.push(c); if (!c.prot) q.push(c.pid) }) } return out };
+  async function endProc(p, force, tree) {
+    const kids = tree ? tmTree(p) : [], kept = kids.filter(c => c.prot), own = p.tag == 'app' && p.user == 'rudolf' && kids.every(c => c.tag == 'app' && c.user == 'rudolf');
+    const what = (p.tag == 'web' ? 'This process shows web pages; ending it closes them (if it shows the desktop, the desktop starts again). ' : '') +
+      (tree ? `End ${p.name} (process ${p.pid}) and the ${kids.length - kept.length} process${kids.length - kept.length == 1 ? '' : 'es'} it started${force ? ', at once' : ''}? Anything they were doing is lost.${kept.length ? ` (${kept.length} that Rudolf OS needs stay running.)` : ''}` : `End ${p.name} (process ${p.pid})${force ? ' at once' : ''}?`);
+    const title = tree ? 'End process tree' : 'End process';
+    if (own) { if (!(await new Promise(r => sdlg(W, title, what, [['Cancel', () => r(false)], [title, () => r(true), 1]])))) return }
     else if (!(await elevate(what))) return;
-    try { await rdPost(`proc/end?pid=${p.pid}${force ? '&force=1' : ''}`); notify('Process ended', p.name, {toast: 3000}); sel = null; setTimeout(() => sample().then(() => draw()), 500) }
+    try { const j = await rdPost(`proc/end?pid=${p.pid}${force ? '&force=1' : ''}${tree ? '&tree=1' : ''}`);
+      notify(tree ? 'Process tree ended' : 'Process ended', tree && j && j.ended != null ? `${p.name}: ${j.ended} process${j.ended == 1 ? '' : 'es'}` : p.name, {toast: 3000}); sel = null; setTimeout(() => sample().then(() => draw()), 500) }
     catch (e) { notify('Could not end ' + p.name, e.message, {kind: 'error'}) }
   }
   async function restartSvc(name, label) {
@@ -126,19 +131,20 @@ function taskmgr26() {
     if (!RD) return needRD();
     if (!procs) { B.textContent = 'Loading…'; return }
     const bar = document.createElement('div'); bar.className = 'rmrow'; bar.style.cssText = 'justify-content:flex-start;margin-bottom:6px';
-    bar.innerHTML = `<input class='tmf' placeholder='Find a process' aria-label='Find a process' style='flex:0 1 220px'><button class='tme' disabled>End process</button><button class='tmk' disabled title='Ends it at once, without letting it save or tidy up'>End now</button><span class='msg tmsel'></span>`;
+    bar.innerHTML = `<input class='tmf' placeholder='Find a process' aria-label='Find a process' style='flex:0 1 220px'><button class='tme' disabled>End process</button><button class='tmt2' disabled title='Ends it and every process it started (as in Windows XP)'>End process tree</button><button class='tmk' disabled title='Ends it at once, without letting it save or tidy up'>End now</button><span class='msg tmsel'></span>`;
     const f = bar.querySelector('.tmf'); f.value = filt; f.oninput = () => { filt = f.value; drawTable() };
     B.appendChild(bar);
     const wrap = document.createElement('div'); B.appendChild(wrap);
     const pick = p => {
       sel = p ? p.pid : null;
-      bar.querySelector('.tme').disabled = bar.querySelector('.tmk').disabled = !p || p.prot;
+      bar.querySelector('.tme').disabled = bar.querySelector('.tmk').disabled = bar.querySelector('.tmt2').disabled = !p || p.prot;
       bar.querySelector('.tmsel').textContent = p ? (p.prot ? p.name + ': Rudolf OS needs it, so it cannot be ended' : p.name + ' (' + p.pid + ')' + (p.cmd ? ' — ' + p.cmd.slice(0, 90) : '')) : '';
       wrap.querySelectorAll('tr[data-pid]').forEach(r => r.classList.toggle('on', +r.dataset.pid === sel));
     };
     const cur = () => procs.items.find(p => p.pid === sel);
     bar.querySelector('.tme').onclick = () => cur() && endProc(cur(), false);
     bar.querySelector('.tmk').onclick = () => cur() && endProc(cur(), true);
+    bar.querySelector('.tmt2').onclick = () => cur() && endProc(cur(), false, true);
     function drawTable() {
       const q = filt.trim().toLowerCase(), items = procs.items.filter(p => !q || (p.name + ' ' + p.cmd + ' ' + p.pid).toLowerCase().includes(q));
       const cols = [['name', 'Name'], ['pid', 'PID'], ['user', 'User'], ['cpu', 'CPU'], ['rss', 'Memory']];
@@ -156,7 +162,9 @@ function taskmgr26() {
           r.innerHTML = `<td></td><td style='text-align:right'>${p.pid}</td><td></td><td style='text-align:right'>${p.cpu == null ? '…' : p.cpu.toFixed(1) + '%'}</td><td style='text-align:right'>${p.rss ? fmtB(p.rss) : '—'}</td>`;
           const ty = p.name == 'chrome' && /--type=(\S+)/.exec(p.cmd);   /* Chromium's processes: say which kind */
           r.children[0].textContent = (p.prot ? '🔒 ' : '') + p.name + (ty ? ' · ' + ty[1].replace('-process', '') : p.tag == 'desktop' && p.name == 'chrome' ? ' · browser' : ''); r.children[2].textContent = p.user;
-          r.onclick = () => pick(p); r.onkeydown = e => { if (e.key == 'Enter') pick(p); else if (e.key == 'Delete' && !p.prot) endProc(p, false) };
+          r.onclick = () => pick(p); r.onkeydown = e => { if (e.key == 'Enter') pick(p); else if (e.key == 'Delete' && !p.prot) endProc(p, false, e.shiftKey) };
+          /* 1.5.7: right-click, as in Windows XP's Task Manager: End process, End process tree, End now */
+          r.oncontextmenu = e => { e.preventDefault(); pick(p); cmenu(e.clientX, e.clientY, [['End process', () => endProc(p, false), !p.prot], ['End process tree', () => endProc(p, false, true), !p.prot], ['End now', () => endProc(p, true), !p.prot]], {title: p.name + ' (' + p.pid + ')'}) };
         });
       }
       wrap.innerHTML = ''; wrap.appendChild(t); pick(procs.items.find(p => p.pid === sel));
@@ -408,5 +416,5 @@ if (typeof HELP != 'undefined') {
   const at = Math.max(0, HELP.findIndex(h => h[0] == 'trouble'));
   HELP.splice(at, 0,
     ['web', 'The web in Oracle', () => `<ul><li>Oracle opens websites as <b>real browser tabs</b>: signing in works for every site, pop-up sign-ins work, and each account on this computer has its own cookies. Settings › Oracle sign-in › Real browser tabs turns this off (sites that need a sign-in then open in a separate browser window).</li><li><kbd>Ctrl+T</kbd> new tab, <kbd>Ctrl+W</kbd> close tab, <kbd>Ctrl+L</kbd> address bar, <kbd>Alt+←</kbd>/<kbd>Alt+→</kbd> back and forward, <kbd>Ctrl++</kbd>/<kbd>Ctrl+−</kbd> zoom, <kbd>Ctrl+Tab</kbd> next tab. These work inside a website too.</li><li>Downloads go to your own Downloads folder (<code>C:\\USERS\\<i>you</i>\\DOWNLOADS</code>) after the firewall, file-type and antivirus checks (Menu › View downloads). Files larger than 1.5 MB stay on the disk (💽) and open from there; the largest download allowed is set in Settings › Network › Downloads. Program files need an administrator's approval.</li><li>Videos and pages can go fullscreen; <kbd>Esc</kbd> brings them back.</li><li>The firewall (Security) applies to everything a website loads.</li></ul>`],
-    ['taskman', 'Task Manager and reporting problems', () => `<ul><li><button data-app='taskmgr'>📊 Task Manager</button> (<kbd>Ctrl+Shift+Esc</kbd>): <b>Apps</b> (windows and Oracle's tabs, with the memory each page uses), <b>Processes</b> (every process by kind; End process asks an administrator, and the processes Rudolf OS needs cannot be ended), <b>Performance</b>, <b>System</b> (how Rudolf OS started, the services with Restart, the kernel and its warnings) and <b>Hardware</b>.</li><li><b>Report a problem</b> (<button data-app='report'>🐞 Report a problem</button>, or in Task Manager) opens a ready-filled report on the Rudolf OS issue tracker on GitHub with the state of the computer at that moment. Reports are public; they leave out your name, files, web and network addresses and Wi-Fi names. You read it before sending it, or save it to <code>C:\\DOCUMENTS</code> to send later. You need a GitHub account.</li></ul>`]);
+    ['taskman', 'Task Manager and reporting problems', () => `<ul><li><button data-app='taskmgr'>📊 Task Manager</button> (<kbd>Ctrl+Shift+Esc</kbd>): <b>Apps</b> (windows and Oracle's tabs, with the memory each page uses), <b>Processes</b> (every process by kind; End process, End process tree (it and every process it started) and End now, also on the right-click menu, ask an administrator, and the processes Rudolf OS needs cannot be ended), <b>Performance</b>, <b>System</b> (how Rudolf OS started, the services with Restart, the kernel and its warnings) and <b>Hardware</b>.</li><li><b>Report a problem</b> (<button data-app='report'>🐞 Report a problem</button>, or in Task Manager) opens a ready-filled report on the Rudolf OS issue tracker on GitHub with the state of the computer at that moment. Reports are public; they leave out your name, files, web and network addresses and Wi-Fi names. You read it before sending it, or save it to <code>C:\\DOCUMENTS</code> to send later. You need a GitHub account.</li></ul>`]);
 }

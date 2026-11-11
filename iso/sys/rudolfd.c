@@ -2301,6 +2301,25 @@ static void api_memory_iam(struct req *r)
 }
 /* ending a process (Task Manager). The desktop asks for an administrator's password first; the processes that keep
    Rudolf OS running are refused here whatever the caller says. */
+/* 1.5.7: End process tree. The process PID and every process it started, and theirs, breadth first (each after its
+   parent) into ORDER (indexes into PS); a process Rudolf OS needs is left out with what runs under it, and counted in
+   KEPT. Returns how many. */
+static int proc_tree(struct pinfo *ps, int n, int pid, int *order, int *kept)
+{
+	char *in = calloc(n ? n : 1, 1); int no = 0; *kept = 0; if (!in) return 0;
+	for (int i = 0; i < n; i++) if (ps[i].pid == pid) { in[i] = 1; order[no++] = i; break; }
+	for (int k = 0; k < no; k++)
+		for (int i = 0; i < n; i++) if (!in[i] && ps[i].ppid == ps[order[k]].pid) { in[i] = 1; if (ps[i].prot) { (*kept)++; continue; } order[no++] = i; }
+	free(in); return no;
+}
+/* all stopped first (none starts another or notices the others going), then ended children before their parents */
+static int proc_tree_end(struct pinfo *ps, int *order, int no, int force)
+{
+	for (int k = 0; k < no; k++) kill(ps[order[k]].pid, SIGSTOP);
+	int ended = 0;
+	for (int k = no; k-- > 0;) { int q = ps[order[k]].pid; if (!kill(q, force ? SIGKILL : SIGTERM)) ended++; kill(q, SIGCONT); }
+	return ended;
+}
 static void api_proc_end(struct req *r)
 {
 	char *a = qparam(r->query, "pid"); int pid = a ? atoi(a) : 0;
@@ -2311,7 +2330,19 @@ static void api_proc_end(struct req *r)
 	struct pinfo *p = pfind(ps, n, pid);
 	if (!p) { free(ps); reply_err(r->fd, 404, "that process has already ended"); return; }
 	if (p->prot) { free(ps); reply_err(r->fd, 403, "Rudolf OS needs this process to keep running, so it cannot be ended"); return; }
-	char name[32]; snprintf(name, sizeof name, "%s", p->name); free(ps);
+	char name[32]; snprintf(name, sizeof name, "%s", p->name);
+	/* 1.5.7: tree=1, End process tree (as in Windows XP's Task Manager): the process and every process it started, and
+	   theirs. All are stopped first (so none starts another or notices the others going), then ended, children before
+	   their parents; processes Rudolf OS needs are left running (with whatever runs under them), and counted */
+	char *tr = qparam(r->query, "tree");
+	if (tr && *tr == '1') {
+		int *order = calloc(n, sizeof *order), kept = 0;
+		if (!order) { free(ps); reply_err(r->fd, 500, "out of memory"); return; }
+		int no = proc_tree(ps, n, pid, order, &kept), ended = proc_tree_end(ps, order, no, force);
+		free(order); free(ps);
+		str s = {0}; sadd(&s, "{\"ok\":true,\"message\":"); sjson(&s, name); sadd(&s, ",\"ended\":%d,\"kept\":%d}", ended, kept); reply_json(r->fd, &s); return;
+	}
+	free(ps);
 	if (kill(pid, force ? SIGKILL : SIGTERM)) { reply_err(r->fd, 500, strerror(errno)); return; }
 	str s = {0}; sadd(&s, "{\"ok\":true,\"message\":"); sjson(&s, name); sadd(&s, "}"); reply_json(r->fd, &s);
 }
