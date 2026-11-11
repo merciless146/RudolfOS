@@ -171,6 +171,16 @@ CAMY="STAGING STAGING_MEDIA MEDIA_SUPPORT MEDIA_CAMERA_SUPPORT MEDIA_PCI_SUPPORT
 CAMM="IPU_BRIDGE INTEL_VSC INTEL_MEI_VSC_HW INTEL_MEI_VSC VIDEO_INTEL_IPU6 VIDEO_INTEL_IPU7 INTEL_SKL_INT3472 VIDEO_OV2740 VIDEO_OV01A10 VIDEO_OV02C10 VIDEO_OV02E10 VIDEO_OV08X40 VIDEO_OV13B10 VIDEO_HI556 VIDEO_OV5675 VIDEO_HI846"
 y $CAMY
 m $CAMM
+# 1.5.8 (plan Part 6.1): mobile data. Hotspots and phones' USB tethering (RNDIS: many hotspots and Android phones; NCM,
+# MBIM and EEM: newer ones; iPhones' tethering), and cellular modules and USB sticks (QMI, and the "option" serial
+# driver for their control ports). Hotspots and tethered phones hand out an address themselves; modules that must be
+# told to connect wait for ModemManager (1.5.9/1.6.0).
+MOBM="USB_NET_RNDIS_HOST USB_NET_CDC_NCM USB_NET_CDC_MBIM USB_NET_CDC_EEM USB_NET_HUAWEI_CDC_NCM USB_NET_QMI_WWAN USB_IPHETH USB_SERIAL USB_SERIAL_OPTION"
+m $MOBM
+# 1.5.8 (plan Part 7.3): Android's binder, for Android apps in a container (Waydroid, 1.5.9); built in, as Waydroid
+# needs, with binderfs so each container gets its own devices
+y ANDROID_BINDER_IPC ANDROID_BINDERFS
+$C --set-str ANDROID_BINDER_DEVICES ""
 # speed up the build
 n DEBUG_INFO DEBUG_INFO_DWARF5 DEBUG_INFO_DWARF4 DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT DEBUG_INFO_BTF KALLSYMS_ALL FTRACE
 $C --enable DEBUG_INFO_NONE
@@ -196,5 +206,7 @@ for o in $WIFI; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the Wi
 for o in MT76x0U MT76x2U; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the Wi-Fi driver $o is not a module after olddefconfig"; exit 1; }; done
 grep -q "^CONFIG_RT2X00=m$" .config || { echo "kconfig.sh: RT2X00 is not a module after olddefconfig"; exit 1; }
 for o in $RT2800; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
+for o in $MOBM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the mobile data driver $o is not a module after olddefconfig"; exit 1; }; done
+for o in ANDROID_BINDER_IPC ANDROID_BINDERFS; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 grep -q "^CONFIG_PSI_DEFAULT_DISABLED=y" .config && { echo "kconfig.sh: PSI is off by default"; exit 1; }
 true

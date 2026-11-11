@@ -158,6 +158,9 @@ static void keeper_main(void)   /* pid 1 inside: set up the file system, then re
 	const char *nodes[] = {"null", "zero", "full", "random", "urandom", "tty", NULL};
 	char a[256], b[256];
 	for (int i = 0; nodes[i]; i++) { snprintf(a, sizeof a, "/dev/%s", nodes[i]); snprintf(b, sizeof b, ROOT "/dev/%s", nodes[i]); bindmnt(a, b, 0); }
+	/* 1.5.8 (plan 7.2): USB devices for adb and scrcpy (a phone with USB debugging on, which devplug gives to the
+	   desktop user); the folder itself, so devices plugged in later appear in it */
+	bindmnt("/dev/bus/usb", ROOT "/dev/bus/usb", 1);
 	mkdirs(ROOT "/dev/pts", 0755);
 	if (mount("devpts", ROOT "/dev/pts", "devpts", MS_NOSUID | MS_NOEXEC, "newinstance,ptmxmode=0666,mode=620")) KFAIL(14);
 	symlink("pts/ptmx", ROOT "/dev/ptmx");
