@@ -130,7 +130,12 @@ and fires lasers from his nose.
   and **Fault Lines** (`apps/rudolf-faultlines`, 16 KB), with `tests/faultlines_t.js` (21 checks, desktop and phone
   sizes) run by the Library's check.yml. The desktop's side: `desktop/games58.js` (LIB_GAMES: Start menu, Games tab,
   the download offer; the kit's messages: saves in the desktop's database per account, pause and resume, settings),
-  tested by `iso/qt/shell2/games58_t.js`. Next: Block Drop, Logic Pack, then Night Flight's engine and stages 1-2.
+  tested by `iso/qt/shell2/games58_t.js`.
+- **2026-11-11:** **Night Flight**, moved first: the engine and stages 1-2 with their bosses (rudolfos-library
+  `apps/rudolf-nightflight`: art.js, audio.js, stages.js, nightflight.js; about 31 KB as a package), Story, Practice,
+  Score Attack, three difficulties, replays; `tests/nightflight_t.js` (22 checks: a replay matching a minute of play,
+  600 bullets drawn in about 2 ms in Chromium). In LIB_GAMES. Next: Night Flight on WebKit (the Lite engine's frame
+  time), the Vivobook; then Block Drop and Logic Pack; Night Flight's stages 3-6 once the corrupted art is settled.
 
 ## Tests
 - Each game: a browser test (qt/shell2 in RudolfOS for the Start menu and Games tab entries and the download offer; in
