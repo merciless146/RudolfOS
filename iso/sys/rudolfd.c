@@ -1305,9 +1305,23 @@ static int web_url_ok(const char *u)
 	for (const unsigned char *c = (const unsigned char *)u; *c; c++) if (*c <= 0x20 || *c >= 0x7f || strchr("'\"\\`$", *c)) return 0;
 	return 1;
 }
+/* 1.5.8 (plan 9.6): FedCM in Chromium ("Sign in with Google" buttons), off unless chosen in Oracle's menu: on the
+   Vivobook, Google's sign-in through FedCM stopped on a blank accounts.google.com/gsi/transform window (1.5.7) */
+#define BROWSERCONF PERSIST "/etc/rudolf-browser.conf"
+static int web_fedcm(void) { char *c = slurp(BROWSERCONF, NULL); int on = c && strstr(c, "fedcm=1"); free(c); return on; }
 static void api_web(struct req *r, const char *what)
 {
 	char cmd[3200];
+	if (!strcmp(what, "fedcm")) {
+		if (!strcmp(r->method, "POST")) {
+			const char *v = qparam(r->query, "on"); if (!v || (strcmp(v, "0") && strcmp(v, "1"))) { reply_err(r->fd, 400, "on=0|1"); return; }
+			if (access(RUN "/persistent", F_OK)) { reply_err(r->fd, 409, "settings are kept only on an installed Rudolf OS"); return; }
+			char t[] = BROWSERCONF ".new"; int f = open(t, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+			if (f < 0 || dprintf(f, "fedcm=%s\n", v) < 0) { if (f >= 0) close(f); reply_err(r->fd, 500, "could not save"); return; }
+			fsync(f); close(f); rename(t, BROWSERCONF);
+		}
+		str s = {0}; sadd(&s, "{\"ok\":true,\"on\":%s,\"running\":%s}", web_fedcm() ? "true" : "false", web_running() ? "true" : "false"); reply_json(r->fd, &s); return;
+	}
 	if (!strcmp(what, "status")) {
 		char *m = slurp(RUN "/wm", NULL); int run_ = web_running(), shown = run_ && m && !strncmp(m, "web", 3);
 		/* rudolf-display shows a new window as "win ID": shown too when that window is the browser window
@@ -1329,13 +1343,13 @@ static void api_web(struct req *r, const char *what)
 		snprintf(cmd, sizeof cmd, "mkdir -p " WEBPROFILE "; chown rudolf:rudolf /home/rudolf/.config " WEBPROFILE " 2>/dev/null; "
 			"setsid su -s /bin/sh rudolf -c 'set -a; . " RUN "/session.env; set +a; FONTCONFIG_FILE=/etc/fonts/fonts.conf GOOGLE_API_KEY=no GOOGLE_DEFAULT_CLIENT_ID=no GOOGLE_DEFAULT_CLIENT_SECRET=no; export FONTCONFIG_FILE GOOGLE_API_KEY GOOGLE_DEFAULT_CLIENT_ID GOOGLE_DEFAULT_CLIENT_SECRET; "
 			"exec /opt/chromium/chrome --class=RudolfWeb --user-data-dir=" WEBPROFILE " --no-first-run --no-default-browser-check "
-			"--password-store=basic --disable-session-crashed-bubble --disable-features=Translate,MediaRouter,Vulkan,FedCm --disable-vulkan-surface "
+			"--password-store=basic --disable-session-crashed-bubble --disable-features=Translate,MediaRouter,Vulkan%s --disable-vulkan-surface "
 			/* 1.5.7: FedCm off: "Sign in with Google" (claude.ai and others) went through Chromium's FedCM and stopped on a
 			   blank accounts.google.com/gsi/transform window on the Vivobook; without it Google's sign-in uses its usual
 			   pop-up window, as in Firefox, where it worked */
 			/* Ruffle plays Flash here too; the web frames extension is not loaded, so sites keep their protections */
 			"--load-extension=" RUN "/ruffle-ext %s %s%s \"%s\"' "
-			"</dev/null >>" RUN "/web.log 2>&1 &", gl ? gl : "", px && *px ? "--proxy-server=" : "", px && *px ? px : "", u);
+			"</dev/null >>" RUN "/web.log 2>&1 &", web_fedcm() ? "" : ",FedCm", gl ? gl : "", px && *px ? "--proxy-server=" : "", px && *px ? px : "", u);
 		free(gl); free(px);
 		write_str(RUN "/wm", "web"); run(cmd);
 		reply_ok(r->fd, "opened"); return;

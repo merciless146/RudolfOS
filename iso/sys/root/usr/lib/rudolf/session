@@ -257,6 +257,8 @@ while :; do
 	# the web frames extension lets websites load inside the desktop page's frames (it removes their frame protections)
 	# and spots sign-in pages; with the shell, Oracle's tabs are real pages and it is left out
 	EXTS=$EXT,$RUF; [ $SHELLON = 1 ] && EXTS=$RUF
+	# 1.5.8 (plan 9.6): FedCM ("Sign in with Google" buttons) off unless chosen in Oracle's menu (/persist/etc/rudolf-browser.conf)
+	FEDCM_OFF=,FedCm; grep -qx 'fedcm=1' /persist/etc/rudolf-browser.conf 2>/dev/null && FEDCM_OFF=
 	# 1.5.6: the browser starts in the desktop's memory group (see memory); this loop goes back out right after
 	DCG=/sys/fs/cgroup/desktop/cgroup.procs; [ -e $DCG ] && echo $$ > $DCG 2>/dev/null
 	if [ $ENGINE = webkit ]; then
@@ -266,7 +268,7 @@ while :; do
 		--window-position=0,0 --window-size=$W,$H --user-data-dir=$PROFILE \
 		--no-first-run --no-default-browser-check --noerrdialogs --disable-infobars \
 		--disable-session-crashed-bubble --disable-translate --password-store=basic \
-		--disable-features=Translate,MediaRouter,DialMediaRouteProvider,OptimizationHints,PrivacySandboxSettings4,Vulkan,WebGPUService,SkiaGraphite,OptimizationGuideOnDeviceModel,FedCm --disable-vulkan-surface \
+		--disable-features=Translate,MediaRouter,DialMediaRouteProvider,OptimizationHints,PrivacySandboxSettings4,Vulkan,WebGPUService,SkiaGraphite,OptimizationGuideOnDeviceModel$FEDCM_OFF --disable-vulkan-surface \
 		$GLFLAGS \
 		--autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream \
 		--auto-select-desktop-capture-source=Entire --enable-features=SharedArrayBuffer,IsolatedWebApps$SHELLFEAT $SHELLINST \

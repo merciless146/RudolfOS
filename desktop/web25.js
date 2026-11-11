@@ -9,15 +9,16 @@ const WEB_SITES=['accounts.google.com','mail.google.com','docs.google.com','driv
  'mail.yahoo.com','compose.mail.yahoo.com','login.yahoo.com','paypal.com','web.whatsapp.com','discord.com','app.slack.com','github.com','icloud.com','proton.me'];
 function webHost(u){try{return new URL(u).hostname.toLowerCase()}catch(e){return''}}
 function webWants(u){if(!RD)return false;const h=webHost(u);
- /* 1.5.7: with the desktop in WebKit, every website opens in Chromium's own window (Chromium only for browsing) */
- if(RD.engine=='webkit')return !!h&&!/^(127\.0\.0\.1|localhost)$/.test(h);
+ /* 1.5.7: with the desktop in WebKit, every website opens in Chromium's own window (Chromium only for browsing);
+    1.5.8: unless Oracle's tabs are WebKit pages (rudolf-webkit's tabs): then only the sites that need Chromium */
+ if(RD.engine=='webkit'){if(typeof rtOn=='function'&&rtOn())return typeof rtChromium=='function'&&rtChromium(u);return !!h&&!/^(127\.0\.0\.1|localhost)$/.test(h)}
  return!!h&&WEB_SITES.concat(S.webSites||[]).some(d=>h==d||h.endsWith('.'+d))}
 let WEB_ON=false,WEB_SHOWN=false,WEB_TOLD=false,WEB_POLL=null;
 const webNativeOpen=window.open.bind(window);
 async function webOpen(u){
  if(!RD){try{webNativeOpen(u,'_blank','noopener')}catch(e){}return}
  /* Rudolf OS 1.2 inside the shell: Oracle's real tabs keep sign-ins, so the browser window is not needed */
- if(typeof rtOn=='function'&&rtOn()){browser(u);return}
+ if(typeof rtOn=='function'&&rtOn()&&!(RD.engine=='webkit'&&typeof rtChromium=='function'&&rtChromium(u))){browser(u);return}
  if(window.__sys&&typeof fwCheck=='function'){const g=fwCheck(u);if(g){notify('Blocked by the firewall',g.why,{kind:'error'});return}}
  let href;try{href=new URL(u).href}catch(e){return notify('Cannot open',String(u),{kind:'error'})}
  href=href.replace(/'/g,'%27').replace(/`/g,'%60').replace(/\$/g,'%24').replace(/\\/g,'%5C').replace(/"/g,'%22');

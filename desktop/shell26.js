@@ -5,7 +5,7 @@
    browser, or the session's fallback) SHELL stays null and everything works as before. ===== */
 let SHELL = null, SHELL_VER = '', SHELL_N = 0, SHELL_ORIGIN = '', SHELL_CAPS = [];
 /* the shell's address: isolated-app://<its ID>/ (the ID is published next to the shell's bundle) */
-if (RD) fetch('/iwa/id').then(r => r.ok ? r.text() : '').then(t => { t = t.trim(); if (/^[a-z2-7]{56}$/.test(t)) SHELL_ORIGIN = 'isolated-app://' + t }).catch(() => {});
+if (RD && RD.engine != 'webkit') fetch('/iwa/id').then(r => r.ok ? r.text() : '').then(t => { t = t.trim(); if (/^[a-z2-7]{56}$/.test(t)) SHELL_ORIGIN = 'isolated-app://' + t }).catch(() => {});
 const SHELL_WAIT = new Map(), SHELL_LOG = [];   // SHELL_LOG: the shell's notes (what went wrong), for support
 function shellSend(m) { if (SHELL) try { SHELL.postMessage(m, '*') } catch (e) {} }
 function shellAsk(op, data) {

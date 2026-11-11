@@ -7,7 +7,7 @@
 name: Lite engine check
 on:
   push:
-    paths: ['iso/sys/rudolf-webkit.c', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml']
+    paths: ['iso/sys/rudolf-webkit.c', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -53,6 +53,13 @@ jobs:
           [ -s mem.txt ] || echo "::error title=No WebKit processes::rudolf-webkit was not running after 40 s"
           # (what is on the screen: the share of pixels that are not the background's, from the screenshot)
           [ -f shot.png ] && echo "::notice title=Screen::$(convert shot.png -format '%k colours, mean %[fx:mean]' info:)" || true
+      - name: Oracle's tabs in rudolf-webkit (1.5.8, the tab protocol)
+        run: |
+          sudo mkdir -p /run/rudolf/dl/.incoming && sudo chmod -R 777 /run/rudolf
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 HOME=$RUNNER_TEMP/home2; mkdir -p $HOME
+          python3 iso/qt/webkit/tabs58_ci.py ./rudolf-webkit | tee tabs-result.txt; r=${PIPESTATUS[0]}
+          echo "::notice title=Oracle's tabs in WebKit::$(tail -1 tabs-result.txt) — $(grep -E '^FAIL' tabs-result.txt | tr '\n' '|')"
+          head -c 3000 tabs.txt; exit $r
       - name: The desktop page in rudolf-webkit from the base layer itself (chroot)
         run: |
           B=$RUNNER_TEMP/base; [ -x $B/usr/bin/rudolf-webkit ] || { echo "::error title=Base layer::no rudolf-webkit in it"; exit 1; }
@@ -65,4 +72,4 @@ jobs:
             echo "::error title=Lite engine from the base layer::$(grep -v '^$' chroot.txt | grep -iE "open|abort|exit|error" | head -6 | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"; exit 1
           else echo "::notice title=Lite engine from the base layer::ran 30 s and was still running"; fi
       - uses: actions/upload-artifact@v4
-        with: {name: lite-engine-check, path: "shot.png\nconsole.txt\nmem.txt\nadd.txt\nchroot.txt"}
+        with: {name: lite-engine-check, path: "shot.png\nconsole.txt\nmem.txt\nadd.txt\nchroot.txt\ntabs.png\ntabs.txt\ntabs-result.txt"}

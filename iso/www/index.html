@@ -1673,7 +1673,7 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
  /* a website that the firewall or the network would stop gets Oracle's own page instead (page(): secPage) */
  const rtStop=u=>{if(!window.__sys)return false;if(window.__net&&!netUp()&&!/^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/i.test(rtHost(u)))return true;const f=SECC.fw,h=rtHost(u);return !!(f.on&&(f.mode=='lock'||hostMatch(h,f.block)||(f.mode=='trusted'&&!hostMatch(h,f.trust))))};
  function rtLoad(t){const u=t.h[t.i];
-  if(!/^https?:/i.test(u)||typeof rtOn!='function'||!rtOn()||rtStop(u)){if(t.real){t.real=false;if(t===T())sync()}return false}
+  if(!/^https?:/i.test(u)||typeof rtOn!='function'||!rtOn()||rtStop(u)||(typeof rtChromium=='function'&&rtChromium(u))){if(t.real){t.real=false;if(t===T())sync()}return false}
   if(t.siBar){t.siBar.remove();t.siBar=null}
   const fr=t.fr;fr.removeAttribute('src');fr.removeAttribute('srcdoc');t.src='';t.pend=false;t.real=true;
   if(!t.rt||t.ru!==u)t.title=rtHost(u)||u;
@@ -1702,7 +1702,7 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
  q('.ex').onclick=()=>{try{window.open(cur(),'_blank','noopener')}catch(e){st.textContent='Pop-ups are blocked.'}};
  const MENU=[['New tab',()=>newTab()],['History',()=>nav('about:history')],['View downloads',()=>nav('about:downloads')],['Bookmarks',()=>nav('about:bookmarks')],['Zoom in',()=>zoom(.1)],['Zoom out',()=>zoom(-.1)],['Reset zoom',()=>zoom(0)],['View source',()=>{const s=T().src||'';src=s;nav('about:source')}],['Extensions',()=>nav('about:extensions')],[()=>(WEB_DARK?'✓ ':'')+'Dark pages',()=>webDarkSet(!WEB_DARK)],['About Oracle',()=>nav('about:oracle')]];
  function zoom(d){const t=T();t.zoom=d?Math.max(.5,Math.min(3,+(t.zoom+d).toFixed(2))):1;t.fr.style.zoom=t.zoom;if(t.rt)rtCmd(t.rt,'zoom',{z:t.zoom});st.textContent='Zoom '+Math.round(t.zoom*100)+'%'}
- q('.mn').onclick=e=>{e.stopPropagation();const o=W.body.querySelector('.odd');if(o){o.remove();return}const d=document.createElement('div');d.className='odd';MENU.forEach(([n,f])=>{const r=document.createElement('div');r.textContent=typeof n=='function'?n():n;r.onclick=()=>{d.remove();f()};d.appendChild(r)});W.body.style.position='relative';W.body.appendChild(d);const kill=()=>{d.remove();document.removeEventListener('pointerdown',kill,true)};setTimeout(()=>document.addEventListener('pointerdown',ev=>{if(!d.contains(ev.target))kill()},true),0)};
+ q('.mn').onclick=e=>{e.stopPropagation();const o=W.body.querySelector('.odd');if(o){o.remove();return}const d=document.createElement('div');d.className='odd';MENU.concat(typeof window.__oracleMenu=='function'?window.__oracleMenu({url:cur(),tab:T()}):[]).forEach(([n,f])=>{const r=document.createElement('div');r.textContent=typeof n=='function'?n():n;r.onclick=()=>{d.remove();f()};d.appendChild(r)});W.body.style.position='relative';W.body.appendChild(d);const kill=()=>{d.remove();document.removeEventListener('pointerdown',kill,true)};setTimeout(()=>document.addEventListener('pointerdown',ev=>{if(!d.contains(ev.target))kill()},true),0)};
  /* Oracle's shortcuts: pressed in Oracle, or inside a real tab (the shell passes them on) */
  function key(a){if(a=='ct')newTab();else if(a=='cn')browser();else if(a=='cw')closeTab(ci);else if(a=='cl'){if(typeof rtBlur=='function')rtBlur();ad.focus()}else if(a=='cr'||a=='f5')loadTab(T());else if(a=='back')go(-1);else if(a=='fwd')go(1);else if(a=='z+')zoom(.1);else if(a=='z-')zoom(-.1);else if(a=='z0')zoom(0);else if((a=='ntab'||a=='ptab')&&tabs.length>1){ci=(ci+(a=='ntab'?1:tabs.length-1))%tabs.length;sync()}else if(a=='af4')W.close()}
  W.el.addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey,k=e.key;let a='';if(c&&!e.shiftKey&&!e.altKey&&/^[twlrn]$/i.test(k))a='c'+k.toLowerCase();else if(k=='F5')a='f5';else if(e.altKey&&k=='ArrowLeft')a='back';else if(e.altKey&&k=='ArrowRight')a='fwd';else if(c&&(k=='+'||k=='='))a='z+';else if(c&&k=='-')a='z-';else if(c&&k=='0')a='z0';else if(c&&k=='Tab')a=e.shiftKey?'ptab':'ntab';if(a){e.preventDefault();key(a)}});
@@ -8624,15 +8624,16 @@ const WEB_SITES=['accounts.google.com','mail.google.com','docs.google.com','driv
  'mail.yahoo.com','compose.mail.yahoo.com','login.yahoo.com','paypal.com','web.whatsapp.com','discord.com','app.slack.com','github.com','icloud.com','proton.me'];
 function webHost(u){try{return new URL(u).hostname.toLowerCase()}catch(e){return''}}
 function webWants(u){if(!RD)return false;const h=webHost(u);
- /* 1.5.7: with the desktop in WebKit, every website opens in Chromium's own window (Chromium only for browsing) */
- if(RD.engine=='webkit')return !!h&&!/^(127\.0\.0\.1|localhost)$/.test(h);
+ /* 1.5.7: with the desktop in WebKit, every website opens in Chromium's own window (Chromium only for browsing);
+    1.5.8: unless Oracle's tabs are WebKit pages (rudolf-webkit's tabs): then only the sites that need Chromium */
+ if(RD.engine=='webkit'){if(typeof rtOn=='function'&&rtOn())return typeof rtChromium=='function'&&rtChromium(u);return !!h&&!/^(127\.0\.0\.1|localhost)$/.test(h)}
  return!!h&&WEB_SITES.concat(S.webSites||[]).some(d=>h==d||h.endsWith('.'+d))}
 let WEB_ON=false,WEB_SHOWN=false,WEB_TOLD=false,WEB_POLL=null;
 const webNativeOpen=window.open.bind(window);
 async function webOpen(u){
  if(!RD){try{webNativeOpen(u,'_blank','noopener')}catch(e){}return}
  /* Rudolf OS 1.2 inside the shell: Oracle's real tabs keep sign-ins, so the browser window is not needed */
- if(typeof rtOn=='function'&&rtOn()){browser(u);return}
+ if(typeof rtOn=='function'&&rtOn()&&!(RD.engine=='webkit'&&typeof rtChromium=='function'&&rtChromium(u))){browser(u);return}
  if(window.__sys&&typeof fwCheck=='function'){const g=fwCheck(u);if(g){notify('Blocked by the firewall',g.why,{kind:'error'});return}}
  let href;try{href=new URL(u).href}catch(e){return notify('Cannot open',String(u),{kind:'error'})}
  href=href.replace(/'/g,'%27').replace(/`/g,'%60').replace(/\$/g,'%24').replace(/\\/g,'%5C').replace(/"/g,'%22');
@@ -10354,7 +10355,7 @@ if (RD) setTimeout(screenPending, 2500);
    browser, or the session's fallback) SHELL stays null and everything works as before. ===== */
 let SHELL = null, SHELL_VER = '', SHELL_N = 0, SHELL_ORIGIN = '', SHELL_CAPS = [];
 /* the shell's address: isolated-app://<its ID>/ (the ID is published next to the shell's bundle) */
-if (RD) fetch('/iwa/id').then(r => r.ok ? r.text() : '').then(t => { t = t.trim(); if (/^[a-z2-7]{56}$/.test(t)) SHELL_ORIGIN = 'isolated-app://' + t }).catch(() => {});
+if (RD && RD.engine != 'webkit') fetch('/iwa/id').then(r => r.ok ? r.text() : '').then(t => { t = t.trim(); if (/^[a-z2-7]{56}$/.test(t)) SHELL_ORIGIN = 'isolated-app://' + t }).catch(() => {});
 const SHELL_WAIT = new Map(), SHELL_LOG = [];   // SHELL_LOG: the shell's notes (what went wrong), for support
 function shellSend(m) { if (SHELL) try { SHELL.postMessage(m, '*') } catch (e) {} }
 function shellAsk(op, data) {
@@ -14645,6 +14646,51 @@ function tabletDock(){const T=document.getElementById('tasks');if(!T)return;T.qu
   <div class='msg dtabm'></div>`);
  const msg=()=>{d.querySelector('.dtabm').textContent=tabletOn()?'Tablet mode is on: each window fills the screen, the taskbar is a dock, swipe up from the bottom for Start and in from the right for notifications.':'Tablet mode is off.'};
  d.querySelector('#dtab').onchange=e=>{S.tablet=e.target.value;if(SC)SC.tablet=S.tablet;persistS();tabletApply();msg()};msg()}})();
+
+/* ===== Rudolf OS 1.5.8 (plan Part 9): Oracle's tabs on the Lite desktop, "Open in Chromium", and FedCM.
+   9.1 With the Lite desktop (WebKit), rudolf-webkit is the shell: it makes Oracle's tabs real WebKit pages with the
+       same messages as the Chromium shell (iso/shell/shell.js), so tabs26.js works as it is. Its messages arrive
+       through window.__rwkIn and go out through WebKit's message handler; to shell26.js it looks like the shell.
+   9.2 Sites WebKit cannot play (Widevine: Netflix, Spotify, Disney+, Prime Video, Max, Hulu, Apple TV+) open in
+       Chromium's browser window by themselves; any other site can be sent there from Oracle's menu (Open in Chromium).
+   9.6 Oracle's menu › Sign-in with FedCM (off by default): Chromium's own way for "Sign in with Google" buttons. On
+       the Vivobook, Google's sign-in through it stopped on a blank window (1.5.7), so it is off unless chosen. Kept for
+       the whole computer (rudolfd web/fedcm), for the browser window and for Oracle's tabs on the Standard desktop.
+   ===== */
+if(typeof RD!='undefined'&&RD&&RD.engine=='webkit'&&window.webkit&&webkit.messageHandlers&&webkit.messageHandlers.rudolfShell){
+ const CH=new MessageChannel(),P=CH.port1;
+ /* (a MessagePort, so the events' source is an object of its own: shell26.js and tabs26.js check e.source) */
+ P.postMessage=m=>{try{webkit.messageHandlers.rudolfShell.postMessage(JSON.parse(JSON.stringify(m)))}catch(e){}};
+ SHELL_ORIGIN='rudolf-webkit://desktop';
+ window.__rwkIn=m=>{try{dispatchEvent(new MessageEvent('message',{data:m,origin:SHELL_ORIGIN,source:P}))}catch(e){}};
+}
+const RT_CHROMIUM=['netflix.com','spotify.com','disneyplus.com','primevideo.com','amazon.com/gp/video','max.com','hbomax.com','hulu.com','tv.apple.com','peacocktv.com','paramountplus.com','crunchyroll.com','tidal.com','music.amazon.com','deezer.com','play.hbomax.com'];
+/* true when this address should open in Chromium's window: only with Lite's WebKit tabs */
+function rtChromium(u){if(!RD||RD.engine!='webkit'||typeof rtOn!='function'||!rtOn())return false;let x;try{x=new URL(u)}catch(e){return false}
+ const h=x.hostname.toLowerCase(),hp=h+x.pathname;
+ return RT_CHROMIUM.concat(S.chromiumSites||[]).some(d=>d.includes('/')?(hp==d||hp.startsWith(d)||hp.startsWith('www.'+d)):(h==d||h.endsWith('.'+d)))}
+/* the browser window itself, whatever Oracle would do */
+async function webOpenChromium(u){if(!RD)return;let href;try{href=new URL(u).href}catch(e){return}
+ if(window.__sys&&typeof fwCheck=='function'){const g=fwCheck(href);if(g){notify('Blocked by the firewall',g.why,{kind:'error'});return}}
+ href=href.replace(/'/g,'%27').replace(/`/g,'%60').replace(/\$/g,'%24').replace(/\\/g,'%5C').replace(/"/g,'%22');
+ try{await rdPost('web/open?url='+encodeURIComponent(href))}catch(e){return notify('The browser window could not open',e.message,{kind:'error'})}
+ WEB_ON=WEB_SHOWN=true;webTray();webWatch()}
+let FEDCM=null;
+async function fedcmGet(){if(!RD)return null;try{FEDCM=await rd('web/fedcm')}catch(e){FEDCM=null}return FEDCM}
+async function fedcmSet(on){if(!RD)return;if(USER&&USER.r=='guest'){notify('Oracle','Guests cannot change this.',{kind:'error'});return}
+ try{FEDCM=await rdPost('web/fedcm?on='+(on?1:0))}catch(e){return notify('Oracle',e.message,{kind:'error'})}
+ const tabs=RD.engine!='webkit'&&typeof rtOn=='function'&&rtOn();
+ const msg='Sign-in with FedCM is '+(on?'on':'off')+'. '+(FEDCM&&FEDCM.running?'Close the browser window to apply it there (its tabs come back when it opens again). ':'')+(tabs?'Oracle\'s tabs use it from the next sign-in or restart.':'');
+ notify('Oracle',msg,FEDCM&&FEDCM.running?{action:async()=>{try{await rdPost('web/close')}catch(e){}WEB_ON=WEB_SHOWN=false;webTray()}}:{})}
+if(RD)setTimeout(fedcmGet,8000);
+/* Oracle's ☰ menu: Open in Chromium (with Lite), Sign-in with FedCM */
+window.__oracleMenu=o=>{if(!RD)return[];const out=[],u=o&&o.url||'';
+ if(RD.engine=='webkit'&&/^https?:/i.test(u))out.push(['Open in Chromium',()=>webOpenChromium(u)]);
+ out.push([(FEDCM&&FEDCM.on?'✓ ':'')+'Sign-in with FedCM',async()=>{await fedcmGet();fedcmSet(!(FEDCM&&FEDCM.on))}]);
+ return out};
+/* a sign-in that stopped on Google's blank FedCM window: offered once, in the browser window's notice */
+(function(){if(!RD)return;let told=false;addEventListener('message',e=>{const m=e.data;if(told||!m||m.rudolfShell!='tabev'||m.ev!='nav')return;
+ if(/^https:\/\/accounts\.google\.com\/gsi\/(transform|fedcm)/.test(m.url||'')){told=true;notify('Sign-in stuck?','If Google\'s sign-in stays on a blank page, try it with Sign-in with FedCM '+(FEDCM&&FEDCM.on?'off':'on')+' (Oracle\'s ☰ menu).',{app:'Oracle',action:()=>fedcmSet(!(FEDCM&&FEDCM.on))})}})})();
 
 /* 1.5.7: Task Manager opened by its shortcut (Ctrl+Alt+Del, or Ctrl+Shift+Esc) comes up above every window and is
    kept there ("Always on top", focused, restored if it was minimized), and the desktop's processes get the processor
