@@ -136,6 +136,11 @@ and fires lasers from his nose.
   Score Attack, three difficulties, replays; `tests/nightflight_t.js` (22 checks: a replay matching a minute of play,
   600 bullets drawn in about 2 ms in Chromium). In LIB_GAMES. Next: Night Flight on WebKit (the Lite engine's frame
   time), the Vivobook; then Block Drop and Logic Pack; Night Flight's stages 3-6 once the corrupted art is settled.
+- **2026-11-11:** **Frost Barricade** (asked for; for older players, cartoon horror and combat): an original
+  barricade-defence shooter, `apps/rudolf-frostbarricade` (about 26 KB as a package). Corrupted elves in Night Flight's
+  style, nine winter weapons, days of repair, search and training, survivors, fifteen nights; the rescuer on Night 15
+  is an original character, Captain Quill (a rockhopper penguin in a red winter coat, with a sleigh pulled by snowy
+  owls), not another project's mascot. `tests/frostbarricade_t.js` (26 checks). In LIB_GAMES.
 
 ## Tests
 - Each game: a browser test (qt/shell2 in RudolfOS for the Start menu and Games tab entries and the download offer; in
