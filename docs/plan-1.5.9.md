@@ -243,6 +243,45 @@ A new `docs/custom-builds.md`, linked from the README, for someone who forks Rud
   and a custom release; Recovery mode starts the official `system/r`; a tampered `system/r` and a tampered
   `recovery.efi` (refused by the initramfs and by Secure Boot); Return to official, keeping files and erasing them.
 
+## Part 9: game mode frees memory for the game (added on 2026-11-11)
+Found on the Vivobook (1.5.8 beta 2026111108, Standard desktop): Friday Night Funkin' on Newgrounds holds about
+1.7 GB. While a song played, 400 MB of the 3.4 GB stayed free, the swap gave memory back in the first seconds of the
+song, and the game stuttered, with the processor at about 21% overall (3.5-3.9 GHz, 67-71 °C) and the graphics chip
+mostly idle: memory is what is short, not speed. Before 1.5.8 the memory guard ended the game outright (PR #203).
+
+### 9.1 When it applies
+- Game mode (game51.js, 1.5.1) already starts when a page is full screen or has the pointer captured; it also starts
+  for a Steam game's window or a Flatpak game in front (Games category), and by hand from the taskbar (🎮).
+- Settings › Games › Game mode › "Free memory for the game" (on by default), each part below with its own switch.
+- It ends when the game leaves full screen or loses the front; what was paused comes back then, or when used.
+
+### 9.2 What it does
+1. **Oracle's other tabs sleep:** tabs not in front, not playing sound, not in a call (Part 7) and not loading a form
+   the person typed into are unloaded (the shell and rudolf-webkit close their page and keep the address, title,
+   icon and scroll position); selecting one loads it again. On Standard and on Lite. The desktop says how many slept.
+2. **The desktop gets smaller:** animated wallpapers, the desktop's widgets and hidden windows' timers pause; the
+   desktop's own caches (thumbnails, the App Store's catalog) are dropped.
+3. **Background work waits:** update and Library downloads, the Linux apps' and Debian's background updates, the
+   file index, Blitzen's model (if loaded, about 1-2 GB: unloaded, loaded again when Blitzen is opened).
+4. **Apps in the tray:** apps with no window open (Discord, chat apps) are offered to be quit in one notification
+   ("Free 600 MB for the game? Quit Discord, …"), never quit without asking; the memory guard still steps in when
+   memory really runs out (its rules, PR #203).
+5. **The game comes first:** while game mode is on, the memory guard ends background tabs and pages before the game's,
+   the game's processes get a lower oom_score_adj than other pages', and the kernel is asked to move other programs'
+   memory to the swap first (memory.reclaim on the desktop's and background apps' cgroups at the start, while the game
+   loads), so the game's own loading does not wait on the swap.
+6. **Measured, not assumed:** each step logs how much it freed (memguard.log, "game mode: 3 tabs slept, 410 MB").
+
+### 9.3 Tests
+- Browser: game mode on (full screen) puts background tabs to sleep and back on selection, on both engines (the
+  shell's and rudolf-webkit's tab messages); tabs with sound, a call or a typed-in form stay; the tray notification's
+  choices; everything restored when game mode ends.
+- Host: the memory guard's victim order with game mode on (background pages before the game); memory.reclaim called
+  on the right cgroups.
+- On the Vivobook (devlink): FNF on Newgrounds with three other tabs and Discord open: free memory before and
+  after game mode, swap activity at a song's start, and stutter (frame times from a small page script in the
+  devlink's test tab, compared with 1.5.8). The goal: over 1 GB free during a song, no swap-in at its start.
+
 ## Steps
 1. Part 1 (ModemManager, read only), with the USB stick and the MiFi on the Vivobook over the devlink.
 2. Part 2 (tablet mode, keyboard, rotation).
@@ -256,3 +295,5 @@ A new `docs/custom-builds.md`, linked from the README, for someone who forks Rud
 8. Part 8 (developers): 8.2's sandbox for outside apps first (before any outside package); 8.4 the official recovery
    slot and recovery.efi, and 8.5 Return to official, proven in QEMU with Secure Boot; then 8.3 Developer mode, 8.1 the
    keys in Settings, 8.2's certificates and revocation, and 8.6 the README with its CI check.
+9. Part 9 (game mode memory): 9.2's sleeping tabs first (both engines), then the desktop's own savings, waiting
+   background work, the tray offer and the memory guard's order; checked with FNF on the Vivobook before promotion.
