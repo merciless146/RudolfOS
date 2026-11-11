@@ -65,7 +65,7 @@ function winMenu(W,x,y){const mx=W.el.classList.contains('max'),top=W.el.classLi
  ['Always on top',()=>{W.el.classList.toggle('ontop');W.focus()},true,{check:top}],['Center on screen',()=>{if(mx)maxToggle(W);W.focus();const d=$('#desk');W.el.style.left=Math.max(0,(d.clientWidth-W.el.offsetWidth)/2)+'px';W.el.style.top=Math.max(0,(d.clientHeight-W.el.offsetHeight)/2)+'px'},true],'-'];
  for(let i=1;i<=NWS;i++)if(i!=W.ws)items.push(['Move to workspace '+i,()=>wsMove(W,i)]);
  if(W.app&&APPS[W.app])items.push('-',[pinList().includes(W.app)?'Unpin from taskbar':'Pin to taskbar',()=>pinSet(W.app,!pinList().includes(W.app))]);
- items.push('-',['Close',()=>W.close(),true,{icon:'✕',key:'Alt+F4'}]);cmenu(x,y,items,{title:W.el.querySelector('.t').textContent})}
+ items.push('-',['Close',()=>W.close(),true,{icon:'✕',key:'Alt+F4'}]);if(typeof fqWinItem=='function'){const f=fqWinItem(W);if(f)items.push(f)}cmenu(x,y,items,{title:W.el.querySelector('.t').textContent})}   /* (1.5.7: Force quit, below Close) */
 /* ---------- resize from every edge and corner ---------- */
 function addResize(el){[['n','top:-3px;left:8px;right:8px;height:6px;cursor:ns-resize'],['s','bottom:-3px;left:8px;right:8px;height:6px;cursor:ns-resize'],['e','right:-3px;top:8px;bottom:8px;width:6px;cursor:ew-resize'],['w','left:-3px;top:8px;bottom:8px;width:6px;cursor:ew-resize'],
  ['ne','right:-4px;top:-4px;width:12px;height:12px;cursor:nesw-resize'],['nw','left:-4px;top:-4px;width:12px;height:12px;cursor:nwse-resize'],['se','right:-4px;bottom:-4px;width:14px;height:14px;cursor:nwse-resize'],['sw','left:-4px;bottom:-4px;width:12px;height:12px;cursor:nesw-resize']].forEach(([k,css])=>{

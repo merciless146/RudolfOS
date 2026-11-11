@@ -29,10 +29,13 @@ ok "1. the list is JSON with every app: Discord (Flatpak), StarportGE.exe and AV
 ok "2. ...each kind, and Wine's own processes (wineserver, services.exe) are not apps" "$(J "1 if a['Discord']['kind']=='flatpak' and a['StarportGE.exe']['kind']=='wine' and a['gimp']['kind']=='debian' and a['Discord']['id']=='flatpak:com.discordapp.Discord' else 0")" "$O"
 ok "3. a program counts with what it started (the game's crash handler; gimp's script-fu)" "$(J "1 if a['StarportGE.exe']['rss']>=55<<20 and a['gimp']['rss']>=30<<20 else 0")" "$O"
 ok "4. windows: Discord's and the game's are open, gimp has none" "$(J "1 if a['Discord']['window'] and a['StarportGE.exe']['window'] and not a['gimp']['window'] else 0")" "$O"
+ok "4b. 1.5.7: each app lists its windows by id (a window's Force quit finds its app by them)" "$(J "1 if a['Discord']['wins']==['0x1'] and a['StarportGE.exe']['wins']==['0x2'] and a['gimp']['wins']==[] else 0")" "$O"
 GID=$(J "a['gimp']['id']"); SID=$(J "a['StarportGE.exe']['id']"); LID=$(J "a['AVeryLongGameName.exe']['id']")
 ok "5. an id that is not a listed app is refused (the keeper, wineserver, a pid passed as a game)" "$(run --end debian:$K | grep -q '"ok":false' && run --end wine:${GID#debian:} | grep -q '"ok":false' && run --end flatpak:org.none | grep -q '"ok":false' && kill -0 $K && echo 1)" ""
 o=$(run --end $GID); sleep 0.3
 ok "6. End gimp: gimp and script-fu end, nothing else" "$(echo "$o" | grep -q '"ok":true,"processes":2' && ! alive ${GID#debian:} && run --apps | grep -q StarportGE && kill -0 $K && echo 1)" "$o"
+t0=$(date +%s); o=$(run --end $SID --force); t1=$(date +%s); sleep 0.3
+ok "6b. 1.5.7: Force quit (--force): the game and its crash handler end at once, without being asked to quit" "$(echo "$o" | grep -q '"forced":true' && [ $((t1-t0)) -le 1 ] && ! alive ${SID#wine:} && run --apps | grep -q AVeryLong && kill -0 $K && echo 1)" "$o"
 t0=$(date +%s); o=$(run --end $LID); t1=$(date +%s)
 ok "7. a program that does not quit when asked is ended 5 s later" "$(echo "$o" | grep -q '"forced":true' && [ $((t1-t0)) -ge 4 ] && ! alive ${LID#wine:} && echo 1)" "$o"
 o=$(run --end flatpak:com.discordapp.Discord); sleep 0.3

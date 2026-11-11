@@ -20,9 +20,10 @@ function tmApps57(B,list,redraw){if(!RD||!list)return;const box=document.createE
  const h=document.createElement('h4');h.className='sh4';h.textContent='Apps and programs running';box.appendChild(h);
  if(!list.length){const m=document.createElement('div');m.className='msg';m.textContent='No Linux apps or Windows programs are running.';box.appendChild(m);B.appendChild(box);return}
  const t=document.createElement('table');t.className='tmt';t.innerHTML='<thead><tr><th>App</th><th>Kind</th><th>Window</th><th style="text-align:right">Memory</th><th></th></tr></thead><tbody></tbody>';
- list.slice().sort((a,b)=>b.rss-a.rss).forEach(x=>{const r=t.tBodies[0].insertRow();r.innerHTML=`<td></td><td></td><td></td><td style='text-align:right'></td><td><button class='et'>End</button></td>`;
+ list.slice().sort((a,b)=>b.rss-a.rss).forEach(x=>{const r=t.tBodies[0].insertRow();r.innerHTML=`<td></td><td></td><td></td><td style='text-align:right'></td><td><button class='et'>End</button> <button class='fq'>Force quit</button></td>`;
   r.cells[0].textContent=appName57(x);r.cells[1].textContent=APP57_KIND[x.kind]||x.kind;r.cells[2].textContent=x.window?'Open':'None (in the background)';r.cells[3].textContent=fmtB(x.rss);
-  const b=r.querySelector('.et');b.title='Asks it to quit; if it has not quit after 5 seconds, it is stopped';b.onclick=async()=>{b.disabled=true;b.textContent='Ending…';await appEnd57(x);redraw&&redraw()}});
+  const b=r.querySelector('.et');b.title='Asks it to quit; if it has not quit after 5 seconds, it is stopped';b.onclick=async()=>{b.disabled=true;b.textContent='Ending…';await appEnd57(x);redraw&&redraw()};
+  const f=r.querySelector('.fq');f.title='Ends it and all its background processes at once, without asking it to quit';f.onclick=async()=>{f.disabled=true;await forceQuit57(x,appName57(x));redraw&&redraw()}});
  box.appendChild(t);B.appendChild(box)}
 /* a game is about to start: with little memory free, offer to close what runs in the background */
 async function gameMem57(name,appId){if(!RD)return true;try{const s=await rd('stats');if(!s.memTotal||s.memAvailable/s.memTotal>=0.35)return true}catch(e){return true}
@@ -50,3 +51,27 @@ async function memPanel57(c){if(!RD)return;const d=document.createElement('div')
   q('.mzs').onchange=e=>save('zram='+e.target.value);q('.mca').onchange=e=>save('closeApps='+(e.target.checked?1:0))};
  draw()}
 {const _h=healthPanel;healthPanel=function(c,W){const r=_h.apply(this,arguments);try{memPanel57(c)}catch(e){console.warn(e)}return r}}
+/* 1.5.7: Force quit, on an app's right-click menu below Close (a window's title bar and taskbar button, a Linux or
+   Windows program's taskbar button, the Start menu): the app and every process of it, its background ones included
+   (Steam's helpers, a tray app, a game's crash handler), ended at once without asking it to quit (rudolf-memguard
+   --end ID --force), as Task Manager's End process tree does for one process. For an app of the desktop itself
+   (Notepad, Paint...): its windows closed at once, without asking to save. */
+let FQ57={list:null,t:0};
+async function fqList(){if(!RD)return [];if(FQ57.list&&Date.now()-FQ57.t<4000)return FQ57.list;FQ57.list=(await apps57())||[];FQ57.t=Date.now();return FQ57.list}
+async function forceQuit57(x,name){try{const r=await rdPost('apps/end?id='+encodeURIComponent(x.id)+'&force=1');FQ57.list=null;
+  notify(name+' was force-quit',r&&r.processes?`${r.processes} process${r.processes==1?'':'es'} ended, background ones included.`:'',{quiet:true});return true}
+ catch(e){notify(name+' was not force-quit',e.message,{kind:'error'});return false}}
+/* a Linux or Windows program's window (taskbar button): its app, by the window's id; else the program behind the window */
+function fqXItem(win,name){return['Force quit '+name,async()=>{const l=await fqList(),x=l.find(a=>(a.wins||[]).includes(win));
+ if(x)return forceQuit57(x,appName57(x)||name);
+ try{await rdPost('apps/kill?win='+encodeURIComponent(win));notify(name+' was force-quit','Its program was ended.',{quiet:true})}catch(e){notify(name+' was not force-quit',e.message,{kind:'error'})}},true,{icon:'⛔'}]}
+/* a window of the desktop's own apps (or of a web app): all of that app's windows, closed at once */
+function fqWinItem(W){const k=W.app,a=k&&APPS[k];const name=a?a.name:W.el.querySelector('.t').textContent;if(W===window.__tmW)return null;
+ if(a&&a.lxApp)return fqAppItem(k);
+ return['Force quit '+name,()=>{const all=k?wins.filter(o=>o.app===k):[W];all.forEach(o=>{try{o.onclose=null}catch(e){}try{o.close()}catch(e){}if(wins.includes(o)){o.el.remove();o.tb&&o.tb.remove();wins.splice(wins.indexOf(o),1)}});
+  notify(name+' was force-quit',all.length>1?all.length+' windows closed.':'',{quiet:true})},true,{icon:'⛔'}]}
+/* the Start menu: a Linux app (Flatpak) that runs, with a window or only in the background */
+function fqAppItem(k){const a=APPS[k];if(!a||!a.lxApp||!RD)return null;const x=(FQ57.list||[]).find(e=>e.id=='flatpak:'+a.lxApp);
+ return['Force quit '+a.name,async()=>{const l=await fqList(),y=l.find(e=>e.id=='flatpak:'+a.lxApp);if(!y){notify(a.name+' is not running','',{quiet:true});return}$('#menu').style.display='none';forceQuit57(y,a.name)},!!x||!FQ57.list,{icon:'⛔'}]}
+/* (the list kept fresh while the Start menu is open, so its Force quit knows what runs) */
+if(RD)addEventListener('pointerover',e=>{if(e.target.closest&&e.target.closest('#menu'))fqList().catch(()=>{})},{passive:true});
