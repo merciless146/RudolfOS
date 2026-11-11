@@ -447,3 +447,12 @@ html.dark .odd,.odark .odd{background:#1f2937;color:#f3f4f6;border-color:#374151
 /* 1.5.6: the Command Prompt as a Terminal tab */
 .dtbox.dtcmd{display:flex;flex-direction:column;inset:0}.dtbox.dtcmd .term{flex:1;height:100%;font-size:inherit;background:#0b1020}.dtbox.dtcmd .term input{font-size:inherit}
 .wzbusy i{width:30%!important;animation:wzb 1.4s linear infinite}@keyframes wzb{0%{margin-left:-30%}100%{margin-left:100%}}
+/* 1.5.7: the Lite desktop (WebKit, html.webkit): WebKitGTK draws dropdowns with its own light GTK style and ignores the
+   theme's background, so in dark mode their light text sat on white (the Vivobook's System Settings looked blank).
+   Drawn by the page instead, as Chromium shows them: the theme's colours (the existing dark rules still apply, being
+   more specific than these), a border and an arrow. Chromium (Standard) is unchanged. */
+html.webkit select:not([multiple]):not([size]){-webkit-appearance:none!important;appearance:none!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2394a3b8' stroke-width='1.6'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:right 7px center!important;background-size:10px 6px!important;padding:2px 24px 2px 6px!important;border-radius:3px}
+:where(html.webkit) select{background-color:#fff;color:#111;border:1px solid #8f8f9d}
+:where(html.webkit.dark) select{background-color:#0b1220;color:#e2e8f0;border-color:#334155}
+html.webkit option{background-color:#fff;color:#111}
+html.webkit select:disabled{opacity:.6}

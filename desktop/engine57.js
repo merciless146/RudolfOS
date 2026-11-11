@@ -3,6 +3,8 @@
    own window. On the Vivobook (2026-11-10, headless) WebKit held the desktop page in about a third of Chromium's
    memory. The choice applies when the computer next starts (rudolf-init takes it then). A test: if WebKit does not
    start, Chromium takes over for that start. */
+/* 1.5.7: the page knows it runs in the Lite desktop (styles for WebKit's differences: styles25.css, html.webkit) */
+if(typeof RD!='undefined'&&RD&&RD.engine=='webkit')document.documentElement.classList.add('webkit');
 async function enginePanel57(c){if(!RD)return;const d=document.createElement('div');d.className='eng57';c.appendChild(d);
  const draw=async()=>{let e;try{e=await rd('desktop/engine')}catch(x){d.innerHTML='';return}const adm=isAdmin(),nm=v=>v=='webkit'?'Lite (WebKit)':'Standard (Chromium)';
   d.innerHTML=`<h4 class='sh4'>Desktop engine</h4><div class='r2'><label for='eng57'>Desktop engine</label><div><select id='eng57'><option value='chromium'>Standard (Chromium)</option><option value='webkit'>Lite (WebKit, test)</option></select>
