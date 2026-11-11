@@ -49,6 +49,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 	ok('1. Fault Lines is in the Start menu', menu.length == 1 && /Fault Lines/.test(menu[0]), menu);
 	const nf = await p.evaluate(() => ({menu: [...document.querySelectorAll('#menu ul li[data-a=nightflight]')].map(l => l.textContent), lib: LIB_APPS['rudolf-nightflight'] && LIB_APPS['rudolf-nightflight'].app}));
 	ok('1b. ...and Night Flight, downloaded from the Library when first opened', nf.menu.length == 1 && /Night Flight/.test(nf.menu[0]) && nf.lib == 'nightflight', nf);
+	const fbm = await p.evaluate(() => [...document.querySelectorAll('#menu ul li[data-a=frostbarricade]')].map(l => l.textContent));
+	ok('1c. ...and Frost Barricade', fbm.length == 1 && /Frost Barricade/.test(fbm[0]), fbm);
 	await p.evaluate(() => { const W = appStore(); W.showGames ? W.showGames() : [...W.body.querySelectorAll('.tmtabs button')].find(x => x.textContent == 'Games').click() }); await wait(1500);
 	const cards = await p.evaluate(() => [...document.querySelectorAll('.gmbi .gmc')].map(c => c.innerText.replace(/\s+/g, ' '))), card = cards.find(t => /Fault Lines/.test(t)) || '';
 	ok('2. ...and in the App Store\'s Games tab, with Play (Night Flight too)', /Fault Lines.*logic puzzle.*Play/.test(card) && cards.some(t => /Night Flight.*bullet-hell.*Play/.test(t)), cards.filter(t => /Fault|Night/.test(t)));
