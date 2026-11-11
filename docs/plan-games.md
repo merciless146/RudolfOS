@@ -142,6 +142,24 @@ and fires lasers from his nose.
   is an original character, Captain Quill (a rockhopper penguin in a red winter coat, with a sleigh pulled by snowy
   owls), not another project's mascot. `tests/frostbarricade_t.js` (26 checks). In LIB_GAMES.
 
+## Frost Barricade: the next release (weather and the wendigo)
+Asked for on 2026-11-11, for a later release with weather events.
+- **Weather events:** a night may bring a blizzard (snow that hides the far lanes and slows everyone), freezing fog
+  (the far lanes fade; their eyes still show), a thaw (slush slows the elves), or a clear, bitter night. One is shown
+  in the morning's plan, so the day's hours can be spent with it in mind. The chance of one grows over the nights.
+- **The wendigo:** a special enemy, always with **red eyes**. Before one appears there is a **screech** (a sound and
+  a caption, "A screech from the woods…", for players who cannot hear it), then it walks out of the treeline.
+  - Very large and extremely tough; it comes on at a moderate speed.
+  - Every few seconds it **picks up an elf and throws it at the barricade**: the thrown elf arcs across the field and
+    the barricade takes damage where it lands (the thrown elf may survive the landing and keep attacking).
+  - Shooting the elf it holds makes it drop it; the eyes are its weak spot, as for the elves.
+  - It shares red eyes with sprinters, but its size, its slower walk and the screech set it apart.
+  - Its look: an original design for this game, gaunt and antlered (unlike Rudolf's soft, round antlers), dark and
+    jagged in the same corruption as the elves; frightening but not gory, as the rest of the game.
+  - From the middle nights on, more often in the weather; never on Night 1.
+- **Tests:** the screech before it appears (and its caption); a throw damaging the barricade; shooting the held elf
+  making it drop; the weather's effect on sight and speed; the morning's forecast.
+
 ## Tests
 - Each game: a browser test (qt/shell2 in RudolfOS for the Start menu and Games tab entries and the download offer; in
   the Library, a test per game: it starts, takes input from keyboard, mouse, touch and gamepad, pauses and resumes,
