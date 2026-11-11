@@ -16,6 +16,7 @@ Summary: Oracle's tabs in the Lite desktop, mobile data, Android phones and tabl
 - New: System health › Last starts shows how each of the last four starts went, from logs kept on the disk (they outlasted no restart before).
 - New: holding Ctrl+Alt+Backspace for a second starts the desktop again with the standard engine, when the desktop shows nothing or keeps restarting.
 - Fixed: a sound chip that did not answer at start-up (no sound after forced power-offs) is reset once by itself; the self-test says when it is still silent.
+- Fixed: a big web game loading (Friday Night Funkin' on Newgrounds, at a song's loading screen) was ended by the memory guard after a moment's low memory, while most of the swap was still free and nothing was stalled. A page is now ended for "thrashing" only when the system really stalls, the swap is nearly full, or under 4% of the memory is left.
 - Changed: the development link no longer waits ten minutes in silence when Ask first is on and the desktop is not running: it answers at once that nobody can allow the command.
 - Changed: the start-up message about boot files names the drive it is about; Help has a page on starting from a USB stick.
 
