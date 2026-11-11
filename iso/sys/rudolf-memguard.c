@@ -9,7 +9,7 @@
  *   - critical: little memory left (MemAvailable under 5% of the memory, or under 10% for 2 s while the system stalls
  *     on memory), and the swap (if any) nearly full; or the system stalled on memory (PSI "full") over 30% of the
  *     last 10 s for 3 s in a row with under 15% left; or (1.4.8) the kernel reported stalls twice within 2.5 s
- *     with under 8% left, swap or not
+ *     with under 8% left, swap or not (1.5.8: when the stalls are real: see thrashing())
  *   - then it ends (SIGKILL) the renderer process of the largest web page: a tab in Oracle (a Controlled Frame), or a
  *     page in the browser window for sign-in sites, or one no browser holds any more. Never the desktop page itself
  *     (it says which process it is: /run/rudolf/desktop-renderer), nor Chromium's other processes, the graphics
@@ -401,9 +401,22 @@ static int end_app(const char *id, int force)
 	return 0;
 }
 
+/* 1.4.8: two kernel stall reports within 2.5 s with under 8% of the memory left count as thrashing at once.
+   1.5.8: only when the stalls are real, not a moment's: the 10-second stall average at 5% or more, or the swap nearly
+   full, or under 4% left. On the Vivobook a game loading a song (Friday Night Funkin' on Newgrounds, 1.6 GB) briefly
+   left 205 MiB of 3415 with 2.6 GB of the 3.4 GB swap free and a stall average of 0%, and was ended twice while the
+   system would have moved memory to the swap; a desktop that really stalls (QEMU, 1.4.8) reaches 5% within a second. */
+static int thrashing(long long total, long long avail, long long swt, long long swf, double full, double gap)
+{
+	if (gap >= 2.5 || avail >= total * 8 / 100) return 0;
+	int swap_low = swt == 0 || swf < swt / 10;
+	return swap_low || full >= 5 || avail < total * 4 / 100;
+}
 int main(int argc, char **argv)
 {
 	once = argc > 1 && !strcmp(argv[1], "--once");
+	/* 1.5.8 (test): --thrash TOTAL AVAIL SWAPTOTAL SWAPFREE FULL GAP (MiB, %, s) prints 1 if that counts as thrashing */
+	if (argc == 8 && !strcmp(argv[1], "--thrash")) { printf("%d\n", thrashing(atoll(argv[2]) << 20, atoll(argv[3]) << 20, atoll(argv[4]) << 20, atoll(argv[5]) << 20, atof(argv[6]), atof(argv[7]))); return 0; }
 	/* 1.5.7: (the host test sets MG_TEST to move the places, as --once does) */
 	if (argc > 1 && (!strcmp(argv[1], "--apps") || !strcmp(argv[1], "--end"))) {
 		once = getenv("MG_TEST") != NULL; hz = sysconf(_SC_CLK_TCK); pagesz = sysconf(_SC_PAGESIZE);
@@ -455,7 +468,7 @@ int main(int argc, char **argv)
 		   reports (tasks stalled on memory 150 ms within a second) within 2.5 s, with under 8% of the memory left. */
 		int thrash = 0;
 		if (fired) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); double gap = (t.tv_sec - fire0.tv_sec) + (t.tv_nsec - fire0.tv_nsec) / 1e9;
-			thrash = fire0.tv_sec && gap < 2.5 && avail < total * 8 / 100; fire0 = t; }
+			thrash = fire0.tv_sec && thrashing(total, avail, swt, swf, full, gap); fire0 = t; }
 		int crit = hard || low >= 2 || stall >= 3 || thrash;
 		if (crit) { int f = open(RUN "/memguard.critical", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644); if (f >= 0) close(f);
 			if (!was_crit) logf_("memory is low: %lld MiB available of %lld MiB, swap %lld of %lld MiB free, stall %.0f%%%s", avail >> 20, total >> 20, swf >> 20, swt >> 20, full, thrash && !hard && low < 2 && stall < 3 ? " (thrashing: the kernel reports stalls)" : "");
