@@ -1,7 +1,8 @@
 #!/bin/sh
 # Make a Rudolf OS USB stick from inside Rudolf OS (1.2.5). GPL-2.0-or-later. Everything on the stick is erased.
 #   mkstick.sh DISK [IMAGE] [FILES]
-# IMAGE: "" for this Rudolf OS (the image on the drive it started from, and the updates installed on it), or a
+# IMAGE: "" for this Rudolf OS (the image on the drive it started from, and the updates installed on it; 1.5.7: with the
+#        boot files of the system in use when the drive's are older, os_bootimg), or a
 #        downloaded rudolf-os-*.iso in the home folder (checked as install.sh does). FILES: 1 to copy this
 #        session's files and settings onto the new stick too.
 # install.sh writes the image, reads it back and compares it, and adds RUDOLFDATA after it; this adds the rest.
@@ -25,6 +26,11 @@ SECTORS=$(cat /sys/block/$N/size)
 [ "$SECTORS" -ge 3900000 ] || { echo "The stick is too small: Rudolf OS needs at least 2 GB."; exit 5; }
 # nothing on the stick is mounted by itself until it is finished (install.sh unmounts what was; 1.2.6)
 BUSY=/run/rudolf/busy/$N; mkdir -p /run/rudolf/busy; : > $BUSY; trap "rm -f $BUSY" EXIT
+# 1.5.7: the boot files of the installed system in use (its Recovery mode and safeguards), not the drive's older ones
+if [ -z "$IMG" ] && mountpoint -q /persist && [ -d /persist/os/system ]; then
+	if B=$(os_bootimg /persist/os /live/media /persist/os/bootimg); then IMG=$B; echo "The stick gets the boot files of this system (release $(sed -n 's/^serial //p' /persist/os/system/$(cat /etc/rudolf/slot)/RELEASE))."
+	elif [ $? = 2 ]; then echo "Warning: the stick gets this drive's own boot files, which are older than this system: on it, Recovery mode may not start this computer's Rudolf OS. Connect to the internet and make it again to fix that."; fi
+fi
 MKSTICK=1 /usr/lib/rudolf/install.sh "$DEV" $IMG
 case "$N" in *[0-9]) P="${DEV}p3";; *) P="${DEV}3";; esac
 # 1.5.3: is the image now on the stick a boot image (boot files only)? Then the installed system must be copied
@@ -35,7 +41,8 @@ mkdir -p /mnt/newstick && mount -t ext4 "$P" /mnt/newstick || { echo "The new st
 trap "umount /mnt/newstick 2>/dev/null; rm -f $BUSY" EXIT
 FREE=$(df -k /mnt/newstick | awk 'NR==2 {print $4}')
 # the updates installed on this Rudolf OS, so the new stick starts the same version (not with a downloaded image)
-if [ -z "$IMG" ] && [ -d /persist/os/system ] && mountpoint -q /persist; then
+case "$IMG" in /persist/os/bootimg/*) OWNSYS=1;; "") OWNSYS=1;; *) OWNSYS=0;; esac
+if [ $OWNSYS = 1 ] && [ -d /persist/os/system ] && mountpoint -q /persist; then
 	NEED=$(du -sk /persist/os | cut -f1)
 	if [ "$NEED" -lt $((FREE - 262144)) ]; then
 		os_copy /mnt/newstick /persist/os

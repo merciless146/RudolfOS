@@ -17,7 +17,8 @@
  *   rudolf-update boot-ok           the desktop came up: keep the slot that is being tried
  *   rudolf-update rollback          go back to the previous system at the next start
  *   rudolf-update set url URL | set auto 0|1
- *   rudolf-update rzs-make FILE OUT.rzs     (build side) write a delta control file */
+ *   rudolf-update rzs-make FILE OUT.rzs     (build side) write a delta control file
+ *   rudolf-update fetch URL OUT             (1.5.7, Make a stick) a release's boot image from github.com */
 #define _GNU_SOURCE
 #include <ctype.h>
 #include <dlfcn.h>
@@ -543,6 +544,14 @@ int main(int argc, char **argv)
 		int r = delta_fetch(argv[2], ru, sd, n, argv[3], atoll(argv[4]), &got); say("result %d, downloaded %lld bytes", r, got); return r != 0;
 	}
 	if (!strcmp(c, "speedtest")) return cmd_speedtest();
+	/* 1.5.7: fetch URL OUT, for Make a stick: a release's boot image (boot.iso), from an https address on github.com
+	   (the one beside the kernel in the installed system's signed release list); what is in it is checked after */
+	if (!strcmp(c, "fetch") && argc == 4) {
+		if (strncmp(argv[2], "https://github.com/", 19) || strstr(argv[2], "..") || strchr(argv[2], '\'') || strlen(argv[2]) > 400) { say("only a Rudolf OS release on github.com"); return 2; }
+		char t[600]; snprintf(t, sizeof t, "%s.part", argv[3]);
+		if (http_to_file(argv[2], t)) { unlink(t); say("the download did not finish"); return 3; }
+		if (rename(t, argv[3])) { unlink(t); return 3; } return 0;
+	}
 	load_keys();
 	if (!strcmp(c, "status")) return cmd_status();
 	/* verify-manifest LIST SIG (1.2.4, install.sh): is this a release list signed with a trusted key? */

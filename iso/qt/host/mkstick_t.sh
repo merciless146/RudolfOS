@@ -38,4 +38,28 @@ o=$(os_check $D 1 $T/src/os 2>&1); r=$?
 ok "...and the new drive can start, read back the same" $([ $r = 0 ] && echo 1 || echo 0) "$r $o"
 o=$(os_copy $T/nothing-here $T/missing/os 2>&1); r=$?
 ok "no installed system to copy: refused, not skipped" $([ $r = 11 ] && [ "$(has "$o" "no installed system")" = 1 ] && echo 1 || echo 0) "$r $o"
+# 1.5.7: os_bootimg: a stick gets the boot files of the system in use when the drive's are older (the Vivobook: 1.2.8's,
+# whose Recovery mode could not start an installed system); downloaded and checked, else the drive's own with a warning
+B=$T/bi; mkdir -p $B/etc $B/media/rudolf $B/os/system/b $B/cache $B/rel
+echo b > $B/etc/slot; printf 'serial 2026111101\n' > $B/os/system/b/RELEASE; echo KERNEL-1101 > $B/os/system/b/vmlinuz
+printf 'L\tvmlinuz\t11\tabc\thttps://github.com/merciless146/RudolfOS/releases/download/r2026111101/vmlinuz\n' > $B/os/system/b/manifest.txt
+echo ID1 > $B/media/rudolf/id; printf 'serial 2026101000\n' > $B/media/rudolf/release; touch $B/media/rudolf/bootonly
+# the release's boot image, unpacked (RUDOLF_ISODIR): what the stand-in download gives
+mkrel() { rm -rf $B/rel; mkdir -p $B/rel/rudolf $B/rel/boot; touch $B/rel/rudolf/bootonly; echo ID1 > $B/rel/rudolf/id; echo KERNEL-1101 > $B/rel/boot/vmlinuz; echo recovery-installed > $B/rel/rudolf/features; }
+printf '#!/bin/sh\necho "$1" >> %s/urls; cp -a %s/rel "$2"\n' $B $B > $B/fetch; chmod +x $B/fetch
+bi() { rm -rf $B/cache/*; o=$(RUDOLF_ETC=$B/etc RUDOLF_FETCH=$B/fetch RUDOLF_ISODIR=1 sh -c ". $LIB/oscopy.sh; os_bootimg $B/os $B/media $B/cache" 2>&1); r=$?; }
+mkrel; bi
+ok "bootimg: the drive's boot files are older: the system's own boot image, downloaded from beside its kernel and checked" $([ $r = 0 ] && [ "$(echo "$o" | tail -1)" = $B/cache/boot-2026111101.iso ] && grep -qx 'https://github.com/merciless146/RudolfOS/releases/download/r2026111101/boot.iso' $B/urls && echo 1 || echo 0) "$r $o"
+mkrel; echo OTHER > $B/rel/boot/vmlinuz; bi
+ok "bootimg: ...refused when its kernel is not this system's" $([ $r = 2 ] && [ "$(has "$o" "its kernel is not this system's")" = 1 ] && [ ! -e $B/cache/boot-2026111101.iso ] && echo 1 || echo 0) "$r $o"
+mkrel; echo ID2 > $B/rel/rudolf/id; bi
+ok "bootimg: ...refused with another disc ID" $([ $r = 2 ] && [ "$(has "$o" "another Rudolf OS disc ID")" = 1 ] && echo 1 || echo 0) "$r $o"
+mkrel; rm $B/rel/rudolf/features; bi
+ok "bootimg: ...refused without Recovery mode for installed systems" $([ $r = 2 ] && [ "$(has "$o" "no Recovery mode")" = 1 ] && echo 1 || echo 0) "$r $o"
+mkrel; printf '#!/bin/sh\nexit 1\n' > $B/fetch0; chmod +x $B/fetch0; o=$(RUDOLF_ETC=$B/etc RUDOLF_FETCH=$B/fetch0 RUDOLF_ISODIR=1 sh -c ". $LIB/oscopy.sh; os_bootimg $B/os $B/media $B/cache" 2>&1); r=$?
+ok "bootimg: ...offline: none (the stick gets the drive's own, with a warning)" $([ $r = 2 ] && [ "$(has "$o" "could not be downloaded")" = 1 ] && grep -q 'Warning: the stick gets this drive' $M && echo 1 || echo 0) "$r $o"
+echo recovery-installed > $B/media/rudolf/features; printf 'serial 2026111101\n' > $B/media/rudolf/release; bi
+ok "bootimg: the drive's own boot files are current: kept (nothing downloaded)" $([ $r = 1 ] && echo 1 || echo 0) "$r $o"
+echo disc > $B/etc/slot; bi; ok "bootimg: running the drive's own system: its own boot files" $([ $r = 1 ] && echo 1 || echo 0) "$r $o"
+grep -q '/persist/os/bootimg/boot-\[0-9\]\*.iso) \[ "\$MKSTICK" = 1 \] && STICKBOOT=1' $LIB/install.sh; ok "install.sh takes that boot image only for Make a stick" $([ $? = 0 ] && echo 1 || echo 0) ""
 echo "$((N-F))/$N passed"; [ $F = 0 ]
