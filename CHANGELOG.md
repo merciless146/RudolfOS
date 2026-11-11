@@ -19,7 +19,7 @@ Summary: Oracle's tabs in the Lite desktop, mobile data, Android phones and tabl
 - Changed: the development link no longer waits ten minutes in silence when Ask first is on and the desktop is not running: it answers at once that nobody can allow the command.
 - Changed: the start-up message about boot files names the drive it is about; Help has a page on starting from a USB stick.
 
-## 1.5.7 (in progress)
+## 1.5.7 (2026-11-11)
 Summary: Blitzen diagnostics, and what the 1.5.6 tests taught (docs/plan-1.5.7.md)
 - Fixed: the desktop's errors were never written to the system's error log (/run/rudolf/page.log): rudolfd answered the desktop's report as if it were a request to read the log. System health, the system report and the devlink now see them.
 - Changed: the Event Viewer's events are kept in your account's folder too (.rudolf/events.log, with your files on the disk), so they outlast the desktop's storage; events from before signing in are written once it is open.
