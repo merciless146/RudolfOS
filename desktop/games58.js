@@ -13,6 +13,7 @@
    ===== */
 window.__games58=1;
 const LIB_GAMES=[
+ {k:'nightflight',pkg:'rudolf-nightflight',name:'Night Flight',icon:'🌙',size:31e3,desc:'Rudolf’s bullet-hell flight through a winter night: lasers from his glowing nose, a charged beam, friends to save. Stages 1 and 2 so far.'},
  {k:'faultlines',pkg:'rudolf-faultlines',name:'Fault Lines',icon:'⛏️',size:17e3,desc:'A logic puzzle: clear the ground without opening a fault. Three fields and a Daily one; best times kept with your account.'}];
 LIB_GAMES.forEach(g=>{
  if(typeof LIB_APPS!='undefined')LIB_APPS[g.pkg]={app:g.k,title:g.name,size:g.size,why:g.name};
