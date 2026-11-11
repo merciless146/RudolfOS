@@ -140,7 +140,7 @@ mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/ru
 # came only from full local builds, so GLX (off since 1.1) could not be turned on by an update
 XREV=f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2
 XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | cut -c1-16)
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -151,6 +151,7 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 -o "$B/rudolf-update" sys/rudolf-update.c -lcrypto -ldl
 	gcc -O2 -o "$B/rudolf-launch" sys/rudolf-launch.c
 	gcc -O2 -o "$B/rudolf-memguard" sys/rudolf-memguard.c   # 1.4.7: the memory guard
+	gcc -O2 -o "$B/rudolf-shellfix" sys/rudolf-shellfix.c   # 1.5.8: the shell put into the profile when it changed
 	gcc -O2 -o "$B/rudolf-remote" sys/rudolf-remote.c -lssl -lcrypto -lX11 -lXext /usr/lib/x86_64-linux-gnu/libXtst.so.6 -lz   # 1.5.0: remote access
 	gcc -O2 -static -o "$B/cdp-eval" sys/cdp-eval.c
 	# 1.2.7: the Debian sandbox and the Linux self-check, rebuilt here too (before, only a full build made rudolf-debian)
@@ -165,7 +166,7 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 -o "$B/rudolf-print" sys/rudolf-print.c -ldl
 	# 1.4.0: the development link
 	gcc -O2 -o "$B/rudolf-devlink" sys/rudolf-devlink.c -lcrypto -ldl
-	for b in rudolf-display rudolfd rudolf-update rudolf-launch rudolf-memguard rudolf-remote cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-apps rpk rudolf-ai rudolf-print rudolf-devlink; do
+	for b in rudolf-display rudolfd rudolf-update rudolf-launch rudolf-memguard rudolf-shellfix rudolf-remote cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-apps rpk rudolf-ai rudolf-print rudolf-devlink; do
 		for l in $(ldd "$B/$b" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$b needs $l, which the base layer does not have"; exit 1; }; done
 		sudo install -m 0755 "$B/$b" "$W/broot/usr/bin/$b"
 	done

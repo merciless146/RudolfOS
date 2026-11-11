@@ -42,3 +42,5 @@ window.__oracleMenu=o=>{if(!RD)return[];const out=[],u=o&&o.url||'';
 /* a sign-in that stopped on Google's blank FedCM window: offered once, in the browser window's notice */
 (function(){if(!RD)return;let told=false;addEventListener('message',e=>{const m=e.data;if(told||!m||m.rudolfShell!='tabev'||m.ev!='nav')return;
  if(/^https:\/\/accounts\.google\.com\/gsi\/(transform|fedcm)/.test(m.url||'')){told=true;notify('Sign-in stuck?','If Google\'s sign-in stays on a blank page, try it with Sign-in with FedCM '+(FEDCM&&FEDCM.on?'off':'on')+' (Oracle\'s ☰ menu).',{app:'Oracle',action:()=>fedcmSet(!(FEDCM&&FEDCM.on))})}})})();
+/* 1.5.8: the session replaced an older copy of Oracle's tabs (rudolf-shellfix): their storage went with it */
+if(typeof EVH!='undefined')EVH.push(t=>{if(/^shell 1$/m.test(t))notify('Oracle\'s tabs were updated','Websites in Oracle may ask you to sign in again, once.',{app:'Oracle'})});
