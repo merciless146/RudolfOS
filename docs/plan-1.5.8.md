@@ -395,7 +395,10 @@ everyone (PR #198). It is a choice, since some sites may come to need FedCM and 
    session's `desk_up_mark`, /usr/lib/rudolf/starts (JSON), rudolfd GET system/starts, System health › Last starts,
    and Blitzen's facts (the start before, the start-up's decisions). Tests: qt/host/startlogs58_t.sh,
    qt/shell2/starts58_t.js. To merge once 1.5.7 is promoted.
-2. 4.2 devlink and remote access at start-up; QEMU check with the desktop disabled.
+2. 4.2 devlink and remote access at start-up. **Done**: both already start from rudolfd at start-up (dl_boot,
+   remote_boot), independent of the desktop; what kept the devlink silent at the grey screen was Ask first, which waits
+   for an Allow the desktop never showed: with no desktop heartbeat for a minute a command is now answered at once ("no
+   desktop to ask") and not run (qt/host/devlink_t.py). QEMU check with the desktop disabled: with 1.5.8's QEMU set.
 3. 4.3 emergency keys in rudolf-display; host test of the key handling. **Done** (branch v158-startlogs):
    Ctrl+Alt+Backspace held for a second runs /usr/lib/rudolf/desktop-safe (standard engine, no shell, desktop started
    again; Lite off for good with the reason); Help and Settings › Desktop engine mention it. Test qt/host/desksafe58_t.sh.
@@ -410,15 +413,18 @@ everyone (PR #198). It is a choice, since some sites may come to need FedCM and 
    default is left.
 5. 5.4 the testing rule in docs, then the Lite investigation on the Vivobook (devlink plus remote access). The rule is
    **done**: docs/testing.md. The Lite cause was found and fixed in 1.5.7 (libGLESv2); GPU drawing for Lite remains.
-6. Part 6, mobile data: 6.1 kernel drivers (kconfig.sh) and 6.2 adapters plugged in later (mdev, udhcpc), with host
+6. Part 6, mobile data: **done** (6.1 kconfig, 6.2 netplug from mdev, 6.3 metered connections; qt/host/netplug58_t.sh,
+   qt/shell2/mobile58_t.js). 6.1 kernel drivers (kconfig.sh) and 6.2 adapters plugged in later (mdev, udhcpc), with host
    tests; then 6.3 metered connections (rudolfd net/metered, sysupd25, lib52, the download wizards), with browser
    tests. The MiFi 7730L is tried once USB tethering is on (which driver it needs). (6.4 moves to 1.5.9.)
-7. Part 7, Android apps: 7.1 the .apk wizard's information and alternatives; 7.2 scrcpy (needs only Debian); the
+7. Part 7, Android apps: **done** for 1.5.8 (apk58.js, Phone screen, binder in kconfig, the web app; qt/shell2/apk58_t.js,
+   webapp58_t.js, qt/host/adb58_t.sh). 7.1 the .apk wizard's information and alternatives; 7.2 scrcpy (needs only Debian); the
    kernel side of 7.3 (binder) in the same release; 7.5 the browser build as a phone web app. (Waydroid in Debian:
    1.5.9.)
-8. Part 8, mobile form factors: in 1.5.8, 8.1's tablet layout in the desktop with browser tests (the on-screen
+8. Part 8, mobile form factors: 8.1's tablet layout **done** (tablet58.js, qt/shell2/tablet58_t.js). In 1.5.8, 8.1's tablet layout in the desktop with browser tests (the on-screen
    keyboard, rotation and the QEMU and Vivobook checks finish it in 1.5.9); 8.2 the ARM64 build in 1.5.9, first
    released in 1.6.0; 8.3 one phone in 1.6.x (a PinePhone Pro or a OnePlus 6/6T), then the phone services one at a
    time; every step measured against the leanness budgets.
-9. Part 9, Oracle's tabs in WebKit: 9.4 in 1.5.7 first; then the tab protocol in rudolf-webkit and Oracle's side
+9. Part 9, Oracle's tabs in WebKit: **done** (rudolf-webkit's tabs, oracle58.js, 9.2 and 9.6; qt/shell2/oracle58_t.js,
+   qt/webkit/tabs58_ci.py 8/8 in webkit-check.yml); on the Vivobook once 1.5.8 is installed. 9.4 in 1.5.7 first; then the tab protocol in rudolf-webkit and Oracle's side
    (9.1), "Open in Chromium" (9.2), with the tests of 9.5; on the Vivobook last.
