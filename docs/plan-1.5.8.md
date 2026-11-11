@@ -97,6 +97,12 @@ versions) and **Oracle's tabs in WebKit** (Part 9: a real browser in the Lite de
   it, Lite ran, but GTK could not use the GPU ("No available configurations for the given pixel format", Xorg with
   modesetting on AMD): WebKit draws in software. Left for 1.5.8: GPU drawing for Lite (GTK's GL on this X server), and
   its effect on memory and speed.
+- Found on 2026-11-11 (the release's base layer in a chroot, Xvfb with GLX, no GPU needed): the message is GTK 3's
+  GLX check, and WebKit then turns acceleration off ("Disabled hardware acceleration because GTK failed to initialize
+  GL"). The base layer had GLVND's libGLX.so.0 but no Mesa GLX driver (libGLX_mesa.so.0, which needs libxcb-glx.so.0).
+  With both, the warning is gone and WebKit keeps acceleration on. addwebkit.sh copies them, the self-test checks them
+  (lite-gpu), webkit-check.yml fails on the warning. Left: on the Vivobook, memory and speed with the GPU against
+  software (Lite's point is memory), and a driver that hangs; if it costs too much, a setting.
 
 ## Staging toward 1.6.0, the first cellular release (added on 2026-11-10)
 Parts 6 to 8 are staged across three versions (docs/plan-1.5.9.md, docs/plan-1.6.0.md):
@@ -412,7 +418,7 @@ everyone (PR #198). It is a choice, since some sites may come to need FedCM and 
    (USB stick or this computer's drive, with its model) and says what to do; Make a stick writing a full system by
    default is left.
 5. 5.4 the testing rule in docs, then the Lite investigation on the Vivobook (devlink plus remote access). The rule is
-   **done**: docs/testing.md. The Lite cause was found and fixed in 1.5.7 (libGLESv2); GPU drawing for Lite remains.
+   **done**: docs/testing.md. The Lite cause was found and fixed in 1.5.7 (libGLESv2); GPU drawing for Lite: Mesa's GLX added (2026-11-11), measured on the Vivobook next.
 6. Part 6, mobile data: **done** (6.1 kconfig, 6.2 netplug from mdev, 6.3 metered connections; qt/host/netplug58_t.sh,
    qt/shell2/mobile58_t.js). 6.1 kernel drivers (kconfig.sh) and 6.2 adapters plugged in later (mdev, udhcpc), with host
    tests; then 6.3 metered connections (rudolfd net/metered, sysupd25, lib52, the download wizards), with browser

@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Packages (as the release workflow installs them)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgles2 gstreamer1.0-plugins-base gstreamer1.0-plugins-good glib-networking xvfb imagemagick >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good glib-networking xvfb imagemagick >/dev/null
       - name: Build rudolf-webkit
         run: gcc -O2 -Wall -Wno-deprecated-declarations -o rudolf-webkit iso/sys/rudolf-webkit.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0)
       - name: What addwebkit.sh adds (into an empty tree)
@@ -71,5 +71,9 @@ jobs:
           if grep -q "Couldn't open\|cannot open shared object\|Aborted" chroot.txt || ! grep -q '^exit 124' chroot.txt; then
             echo "::error title=Lite engine from the base layer::$(grep -v '^$' chroot.txt | grep -iE "open|abort|exit|error" | head -6 | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"; exit 1
           else echo "::notice title=Lite engine from the base layer::ran 30 s and was still running"; fi
+          # 1.5.8: GTK finds OpenGL (Mesa's GLX), so WebKit keeps its hardware acceleration (with software GL here)
+          if grep -q 'Disabled hardware acceleration' chroot.txt; then
+            echo "::error title=Lite GPU drawing::$(grep -m1 'Disabled hardware acceleration' chroot.txt | cut -c1-200 | sed 's/::/: /g')"; exit 1
+          else echo "::notice title=Lite GPU drawing::WebKit kept hardware acceleration on"; fi
       - uses: actions/upload-artifact@v4
         with: {name: lite-engine-check, path: "shot.png\nconsole.txt\nmem.txt\nadd.txt\nchroot.txt\ntabs.png\ntabs.txt\ntabs-result.txt"}
