@@ -69,6 +69,22 @@ function fsStandIn(notify) {
   for (const k of ['fullscreenElement', 'webkitFullscreenElement', 'webkitCurrentFullScreenElement']) Object.defineProperty(D, k, {configurable: true, get() { return cur }});
   for (const k of ['fullscreen', 'webkitIsFullScreen']) Object.defineProperty(D, k, {configurable: true, get() { return !!cur }});
   for (const k of ['fullscreenEnabled', 'webkitFullscreenEnabled']) Object.defineProperty(D, k, {configurable: true, get() { return true }});
+  /* 1.5.8: a video element's own fullscreen (webkitEnterFullscreen) is the stand-in's too */
+  if (window.HTMLVideoElement) { const V = HTMLVideoElement.prototype; V.webkitEnterFullscreen = V.webkitEnterFullScreen = function () { enter.call(this).catch(() => {}) }; V.webkitExitFullscreen = V.webkitExitFullScreen = function () { exit.call(document).catch(() => {}) } }
+  /* 1.5.8: a page can take untouched copies of these functions from a new, empty frame of its own (about:blank, which
+     the stand-in is not put into). YouTube's player does: its fullscreen then reached Chromium's real one, which
+     Controlled Frame puts straight back, and the video returned to its size at once (the Vivobook, 2026-11-11). Such a
+     frame gets the stand-in's functions as soon as the page reaches its window or document. */
+  const own = w => { try { if (!w || w === window || w.__rudolfFs) return; w.__rudolfFs = 1;
+      const WE = w.Element.prototype, WD = w.Document.prototype;
+      for (const k of ['requestFullscreen', 'webkitRequestFullscreen', 'webkitRequestFullScreen']) WE[k] = E[k];
+      for (const k of ['exitFullscreen', 'webkitExitFullscreen', 'webkitCancelFullScreen']) WD[k] = D[k];
+      for (const k of ['fullscreenElement', 'webkitFullscreenElement', 'webkitCurrentFullScreenElement', 'fullscreen', 'webkitIsFullScreen', 'fullscreenEnabled', 'webkitFullscreenEnabled']) Object.defineProperty(WD, k, Object.getOwnPropertyDescriptor(D, k));
+      if (w.HTMLVideoElement && window.HTMLVideoElement) for (const k of ['webkitEnterFullscreen', 'webkitEnterFullScreen', 'webkitExitFullscreen', 'webkitExitFullScreen']) w.HTMLVideoElement.prototype[k] = HTMLVideoElement.prototype[k];
+    } catch (e) {} };
+  if (window.HTMLIFrameElement) { const IF = HTMLIFrameElement.prototype;
+    for (const k of ['contentWindow', 'contentDocument']) { const d = Object.getOwnPropertyDescriptor(IF, k); if (!d || !d.get) continue;
+      Object.defineProperty(IF, k, {configurable: true, enumerable: d.enumerable, get() { const v = d.get.call(this); own(k == 'contentWindow' ? v : v && v.defaultView); return v }}) } }
   addEventListener('keydown', e => { if (cur && e.key == 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); exit.call(document) } }, true);
   setInterval(() => { if (cur && !cur.isConnected) exit.call(document).catch(() => {}) }, 1000);
 }
