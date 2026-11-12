@@ -3,6 +3,11 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.5.9 (in progress)
+Summary: In progress.
+- Changed: Chromium comes only from Ubuntu's open-source Chromium (the snap). When it cannot be fetched, the release keeps the Chromium it has, instead of taking another kind of browser; it never goes back to an older version.
+- Fixed: when a system file does not match its release, the start-up and Task Manager say so plainly, with its size, instead of a low-level error.
+
 ## 1.5.8 (2026-11-12)
 Summary: Diagnosing a computer that does not start, full rescue sticks, Oracle's tabs in the Lite desktop, mobile data, Android phones and tablets, and new dynamic backgrounds (docs/plan-1.5.8.md)
 - Fixed: when the memory guard ends a web page, the desktop now leaves full screen at once and says so, also when only a frame inside a page was ended (a game on a website), which left the screen full screen on a broken frame before.

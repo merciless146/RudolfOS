@@ -391,7 +391,7 @@ Google's own terms rather than Chromium's open-source licence. Rudolf OS ships o
   local test builds and by explicit choice (CHROMIUM_FROM=playwright).
 - **Checked before it is used:** `chrome --version` must say "Chromium" (not "Google Chrome"), and the version must
   not be lower than the release's: Chromium does not open a profile written by a newer version, so 1.5.8's Chrome
-  for Testing 158 stays until the snap has 158 or newer. The manifest records the source (`chromium 158.x snap`).
+  for Testing 158 stays until the snap has 158 or newer. The release notes say when the Chromium was kept and why.
 - Tests: host, chromium_fetch.sh against recorded store answers (a timeout, Chrome branding, a lower version).
 
 ### 11.2 Browser security updates

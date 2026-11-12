@@ -27,6 +27,9 @@ for f in vmlinuz base.sfs chromium.sfs desktop.sfs modules.sfs; do cp "$PREV/$f"
 try_chromium() {
 	systools/chromium_fetch.sh "$1" "$W/chrome" || return 1
 	NV=$(cat "$W/chrome.version"); [ "$NV" = "$CH" ] && { echo "Chromium $NV unchanged"; return 0; }
+	# never a lower version: Chromium does not open a profile written by a newer one (1.5.8 shipped Chrome for
+	# Testing 158 from the fallback; the snap's Chromium replaces it only once it is 158 or newer)
+	[ "$(printf '%s\n%s\n' "$NV" "$CH" | sort -V | tail -1)" = "$NV" ] || { echo "Chromium $NV from $1 is older than the release's $CH: kept $CH"; NOTES+=("Chromium $CH kept (the $1 has $NV, older)"); return 0; }
 	rm -rf "$W/cs"; mkdir -p "$W/cs/opt/chromium"; cp -a "$W/chrome/." "$W/cs/opt/chromium/"
 	( cd "$W/cs/opt/chromium/locales" && for f in *.pak; do case $f in en-US.pak|de.pak|es.pak|fr.pak|pt-BR.pak|ru.pak|zh-CN.pak|ja.pak|ko.pak|ar.pak|he.pak) ;; *) rm -f "$f";; esac; done )
 	rm -f "$W/cs/opt/chromium/chrome-wrapper" "$W/cs/opt/chromium/xdg-mime" "$W/cs/opt/chromium/xdg-settings" "$W/cs/opt/chromium"/locales/*.info
@@ -37,12 +40,17 @@ try_chromium() {
 	sudo cp -a "$W/cs/opt/chromium/." "$W/root/opt/chromium/"
 	sudo mount --bind /dev "$W/root/dev"; sudo mount -t proc proc "$W/root/proc"
 	OK=$(sudo chroot "$W/root" /opt/chromium/chrome --headless=new --no-sandbox --disable-gpu --user-data-dir=/tmp/ct --dump-dom 'data:text/html,<p>rudolf-ok</p>' 2>/dev/null | grep -c rudolf-ok || true)
+	# open-source Chromium, not a Google Chrome build ("Chromium 158.0.…", not "Google Chrome for Testing 158.0.…")
+	BR=$(sudo chroot "$W/root" /opt/chromium/chrome --version 2>/dev/null | head -1)
 	sudo umount "$W/root/proc" "$W/root/dev"; sudo rm -rf "$W/root"
 	[ "$OK" -ge 1 ] || { echo "Chromium $NV from $1 did not start inside Rudolf OS"; return 1; }
+	case "$BR" in Chromium\ *) ;; *) [ "$1" = playwright ] || { echo "the browser from $1 says \"$BR\", not Chromium"; return 1; };; esac
 	$MK "$W/cs" "$W/new/chromium.sfs" $SQ; CH=$NV; NOTES+=("Chromium $NV"); return 0
 }
 # CHROMIUM_FROM=none skips Chromium (local test builds)
-[ "${CHROMIUM_FROM:-snap}" = none ] || try_chromium "${CHROMIUM_FROM:-snap}" || { [ "${CHROMIUM_FROM:-snap}" != playwright ] && try_chromium playwright; } || NOTES+=("Chromium unchanged: the new build failed the start test")
+# (1.5.9: no fallback to another kind of Chromium: when the snap cannot be had, the previous release's chromium.sfs
+# stays, said in the notes and as a warning. Before, the fallback brought Chrome for Testing into 1.5.8 unasked.)
+[ "${CHROMIUM_FROM:-snap}" = none ] || try_chromium "${CHROMIUM_FROM:-snap}" || { NOTES+=("Chromium $CH kept: the new one could not be fetched or failed the start test"); echo "::warning title=Chromium::Chromium $CH kept: the ${CHROMIUM_FROM:-snap} could not be fetched or failed the start test"; }
 
 # ---- kernel and modules
 # what the kernel is built from besides its version: when it changes, the kernel is rebuilt

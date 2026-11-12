@@ -2,7 +2,8 @@
 # Fetch the newest stable Chromium for the next Rudolf OS release.   chromium_fetch.sh SOURCE OUTDIR
 #   snap        Ubuntu's chromium snap, stable channel (security fixes within days of Chrome stable;
 #               built for Ubuntu, like the rest of Rudolf OS). Default.
-#   playwright  Playwright's Chromium build, as on the first Rudolf OS discs (updated with Playwright releases)
+#   playwright  Playwright's browser: since Playwright 1.5x Google's "Chrome for Testing", a Chrome build for tests,
+#               not open-source Chromium. Local test builds only, never a release (1.5.9, docs/plan-1.5.9.md 11.1).
 # Writes OUTDIR in the layout mkrootfs.sh expects (chrome, chrome_crashpad_handler, *.pak, locales/ ...)
 # and OUTDIR.version. Network access is needed. GPL-2.0-or-later.
 set -e
@@ -15,7 +16,12 @@ snap)
 	URL=$(echo "$J" | jq -r '."channel-map"[] | select(.channel.name=="stable" and .channel.architecture=="amd64") | .download.url' | head -1)
 	VER=$(echo "$J" | jq -r '."channel-map"[] | select(.channel.name=="stable" and .channel.architecture=="amd64") | .version' | head -1)
 	[ -n "$URL" ] && [ "$URL" != null ] || { echo "no stable amd64 chromium snap" >&2; exit 1; }
-	curl -fsSL --retry 4 --retry-delay 10 --retry-all-errors -o "$W/c.snap" "$URL"
+	# (1.5.9: on 2026-11-12 the download itself failed four builds running (curl 52, an empty reply): longer retries,
+	# then snapd's own download as a second way to the same snap)
+	curl -fsSL --retry 6 --retry-delay 20 --retry-all-errors --connect-timeout 30 --max-time 900 -o "$W/c.snap" "$URL" || {
+		echo "the snap's download failed; trying snapd" >&2; rm -f "$W/c.snap"
+		( cd "$W" && timeout 900 snap download chromium --channel=stable --basename=c >/dev/null ) || { echo "snapd could not download the snap either" >&2; exit 1; }
+		[ -s "$W/c.snap" ] || { echo "snapd gave no snap" >&2; exit 1; }; }
 	unsquashfs -q -d "$W/s" "$W/c.snap" 'usr/lib/chromium-browser' >/dev/null
 	cp -a "$W/s/usr/lib/chromium-browser/." "$OUT/"
 	[ -x "$OUT/chrome" ] || { echo "the snap has no chrome binary" >&2; exit 1; }

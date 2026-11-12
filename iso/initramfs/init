@@ -425,7 +425,7 @@ for L in desktop chromium modules base; do
 	LOOP=$(losetup -f)
 	losetup -r "$LOOP" "$F" || { say "Rudolf OS: the system layer '$L' cannot be read."; [ -n "$SLOT" ] && slot_bad; fail; }
 	DEV=""; WHY="no signed release list"
-	if [ -n "$MAN" ]; then DEV=$(rudolf-verity open "$MAN" "$MSIG" /etc/rudolf-keys "$L" "$LOOP" 2>/tmp/verity.err) || DEV=""; [ -s /tmp/verity.err ] && WHY=$(sed 's/^rudolf-verity: //' /tmp/verity.err | head -1); fi
+	if [ -n "$MAN" ]; then DEV=$(rudolf-verity open "$MAN" "$MSIG" /etc/rudolf-keys "$L" "$LOOP" 2>/tmp/verity.err) || DEV=""; [ -s /tmp/verity.err ] && WHY=$(sed 's/^rudolf-verity: //' /tmp/verity.err | tail -1); fi
 	if [ -n "$DEV" ] && mount -t squashfs -o ro "$DEV" /mnt/l/$L 2>/dev/null; then :
 	elif [ $SB = 1 ]; then
 		say "Rudolf OS: the system layer '$L' did not pass the check ($WHY). With Secure Boot on, only a checked system starts."
