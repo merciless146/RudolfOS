@@ -53,4 +53,12 @@ o=$(run download 2>&1); r=$?
 ok "7. a stick's layer is copied into the new system, never counted on" $([ $r = 0 ] && cmp -s $T/sys/a/chromium.sfs $T/media/rudolf/chromium.sfs && ! echo "$o" | grep -q "disc's copy is used" && grep -q '^next=a' $T/sys/state; echo $?) "$r $o"
 ok "8. ...every file of the new system is in its slot" $(for f in vmlinuz base.sfs chromium.sfs desktop.sfs modules.sfs; do [ -s $T/sys/a/$f ] || exit 1; done; echo 0)
 ok "9. the updater checks a slot is complete before scheduling it" $(grep -q 'missing from the new system; it is not used' $I/sys/rudolf-update.c; echo $?)
+# 1.5.8: running a stick's rescue system (slot r): an update goes into slot a or b, never into r, and r stays as it was
+fresh r "$OWN" "rudolf.slot=r"; mkdir -p $T/sys/r; printf 'serial 2026110500\nversion 1.5.6\n' > $T/sys/r/RELEASE; echo 1 > $T/sys/r/complete
+for f in base chromium desktop modules; do head -c 300000 /dev/urandom > $T/sys/r/$f.sfs; done; cp $T/media/boot/vmlinuz $T/sys/r/vmlinuz
+printf 'good=\nprev=\nnext=\ntries=0\nfailed=\n' > $T/sys/state; H=$(cat $T/sys/r/*.sfs | sha256sum)
+o=$(run download 2>&1); r=$?
+ok "10. running the rescue system: the update goes into slot a, the rescue system untouched" $([ $r = 0 ] && grep -q '^next=a' $T/sys/state && [ -e $T/sys/a/complete ] && [ "$(cat $T/sys/r/*.sfs | sha256sum)" = "$H" ] && grep -q 'version 1.5.6' $T/sys/r/RELEASE; echo $?) "$r $o"
+s2=$(run status)
+ok "11. ...status says it runs the rescue system, and lists it" $(echo "$s2" | grep -q '"booted":"r"' && echo "$s2" | grep -q '"r":{"complete":true,"serial":2026110500'; echo $?) "$s2"
 echo "$P/$((P+F)) passed"; [ $F = 0 ]

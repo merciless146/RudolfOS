@@ -275,7 +275,8 @@ static int parse_manifest(char *t, man_t *m)
 static lay_t *mlayer(man_t *m, const char *n) { for (int i = 0; i < m->nl; i++) if (!strcmp(m->L[i].name, n)) return &m->L[i]; return NULL; }
 
 /* ---------------- where things are */
-static void booted(char *s) { char *t = slurp(SLOTF, NULL); snprintf(s, 8, "%s", t && (t[0] == 'a' || t[0] == 'b') ? (t[1] = 0, t) : "disc"); free(t); }
+/* 1.5.8: r is a stick's rescue system (Make a stick keeps it; updates never write it, they only ever choose a or b) */
+static void booted(char *s) { char *t = slurp(SLOTF, NULL); snprintf(s, 8, "%s", t && (t[0] == 'a' || t[0] == 'b' || t[0] == 'r') ? (t[1] = 0, t) : "disc"); free(t); }
 static void cur_release(kv_t *r) { char s[8], p[400]; booted(s); if (strcmp(s, "disc")) snprintf(p, sizeof p, "%s/%s/RELEASE", SYSD, s); else snprintf(p, sizeof p, "%s/rudolf/release", MEDIA); kv_read(p, r, ' '); }
 static void layer_path(const char *slot, const char *n, char *out, size_t sz)
 {
@@ -509,7 +510,7 @@ static int cmd_status(void)
 	printf(",\"state\":{\"good\":"); jstr(kv(&st, "good")); printf(",\"prev\":"); jstr(kv(&st, "prev")); printf(",\"next\":"); jstr(kv(&st, "next"));
 	printf(",\"tries\":%d,\"failed\":", atoi(kv(&st, "tries"))); jstr(kv(&st, "failed")); printf("}");
 	printf(",\"canUpdate\":%s,\"recovery\":%s", may_change_system(1) ? "true" : "false", recovery_start() ? "true" : "false");
-	printf(",\"slots\":{\"a\":"); slot_json("a"); printf(",\"b\":"); slot_json("b"); printf("}");
+	printf(",\"slots\":{\"a\":"); slot_json("a"); printf(",\"b\":"); slot_json("b"); printf(",\"r\":"); slot_json("r"); printf("}");
 	printf(",\"url\":"); jstr(*kv(&cf, "url") ? kv(&cf, "url") : d ? d : ""); printf(",\"auto\":%s", strcmp(kv(&cf, "auto"), "0") ? "true" : "false");
 	printf(",\"checked\":%lld,\"available\":", atoll(kv(&cf, "checked")));
 	char ap[300], sp[300]; snprintf(ap, sizeof ap, "%s/available.txt", SYSD); snprintf(sp, sizeof sp, "%s/available.sig", SYSD);

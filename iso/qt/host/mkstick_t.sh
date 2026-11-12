@@ -62,4 +62,31 @@ echo recovery-installed > $B/media/rudolf/features; printf 'serial 2026111101\n'
 ok "bootimg: the drive's own boot files are current: kept (nothing downloaded)" $([ $r = 1 ] && echo 1 || echo 0) "$r $o"
 echo disc > $B/etc/slot; bi; ok "bootimg: running the drive's own system: its own boot files" $([ $r = 1 ] && echo 1 || echo 0) "$r $o"
 grep -q '/persist/os/bootimg/boot-\[0-9\]\*.iso) \[ "\$MKSTICK" = 1 \] && STICKBOOT=1' $LIB/install.sh; ok "install.sh takes that boot image only for Make a stick" $([ $? = 0 ] && echo 1 || echo 0) ""
+# 1.5.8: the rescue system (slot r): a fixed copy of the copied system, hard links, checked with it
+R=$T/rs; slot $R 1.5.8; printf 'serial 2026111300\nversion 1.5.8\n' > $R/os/system/a/RELEASE
+o=$(os_rescue $R 2>&1); r=$?
+ok "rescue: kept as slot r, saying so" $([ $r = 0 ] && [ -e $R/os/system/r/rescue ] && [ "$(has "$o" "Kept a rescue system on it (Rudolf OS 1.5.8)")" = 1 ] && echo 1 || echo 0) "$r $o"
+ok "rescue: ...the same files (hard links: no room taken)" $([ "$(stat -c %i $R/os/system/a/base.sfs)" = "$(stat -c %i $R/os/system/r/base.sfs)" ] && echo 1 || echo 0)
+ok "rescue: ...complete, with its release" $([ -e $R/os/system/r/complete ] && grep -q 'version 1.5.8' $R/os/system/r/RELEASE && echo 1 || echo 0)
+# an update on the stick replaces slot a's files (a new folder, renamed over): the rescue copy is untouched
+mkdir $R/os/system/a.new; for L in vmlinuz base.sfs chromium.sfs modules.sfs desktop.sfs; do echo "$L of 1.5.9" > $R/os/system/a.new/$L; done; rm -rf $R/os/system/a; mv $R/os/system/a.new $R/os/system/a
+ok "rescue: ...an update that replaces the slot leaves it as it was" $(grep -q 'of 1.5.8' $R/os/system/r/base.sfs && echo 1 || echo 0) "$(cat $R/os/system/r/base.sfs)"
+slot $R 1.5.8; os_rescue $R >/dev/null; rm $R/os/system/r/chromium.sfs; o=$(os_check $R 1 2>&1); r=$?
+ok "rescue: a rescue system missing a layer is refused" $([ $r = 12 ] && [ "$(has "$o" "rescue system is missing chromium.sfs")" = 1 ] && echo 1 || echo 0) "$r $o"
+mkdir -p $T/rn/os/system; echo good=disc > $T/rn/os/system/state; o=$(os_rescue $T/rn 2>&1); r=$?
+ok "rescue: nothing installed to keep (a whole disc image's own system): nothing done" $([ $r = 0 ] && [ ! -e $T/rn/os/system/r ] && echo 1 || echo 0) "$r $o"
+# 1.5.8: os_info: what a stick holds, for Settings > Storage
+IM=$T/img; mkdir -p $IM/rudolf; printf 'serial 2026111300\nversion 1.5.8\n' > $IM/rudolf/release; touch $IM/rudolf/bootonly
+slot $R 1.5.8; printf 'serial 2026111300\nversion 1.5.8\n' > $R/os/system/a/RELEASE; os_rescue $R >/dev/null
+j=$(os_info $IM $R)
+ok "info: a full rescue stick: its system and its rescue system, can start" $(echo "$j" | grep -q '"bootonly":true' && echo "$j" | grep -q '"system":{"slot":"a","version":"1.5.8"' && echo "$j" | grep -q '"rescue":{"version":"1.5.8"' && echo "$j" | grep -q '"canStart":true' && echo 1 || echo 0) "$j"
+ok "info: ...valid JSON" $(echo "$j" | node -e 'JSON.parse(require("fs").readFileSync(0,"utf8"));console.log(1)' 2>/dev/null || echo 0) "$j"
+j=$(os_info $IM $T/nothing)
+ok "info: boot files only, nothing installed: cannot start" $(echo "$j" | grep -q '"system":null' && echo "$j" | grep -q '"rescue":null' && echo "$j" | grep -q '"canStart":false' && echo 1 || echo 0) "$j"
+rm $IM/rudolf/bootonly; j=$(os_info $IM $T/nothing)
+ok "info: a whole disc image starts on its own" $(echo "$j" | grep -q '"bootonly":false' && echo "$j" | grep -q '"canStart":true' && echo 1 || echo 0) "$j"
+# 1.5.8: Make a stick checks the room before erasing, and clears a stick it could not finish
+grep -q 'Nothing on it was changed. Use a bigger stick' $M && grep -q '^trap cleanup EXIT' $M && grep -q 'dd if=/dev/zero of="\$DEV" bs=1M count=8' $M
+ok "mkstick: room checked before anything is erased; a half-made stick is cleared (its start area)" $([ $? = 0 ] && echo 1 || echo 0)
+grep -q 'os_rescue /mnt/newstick' $M; ok "mkstick: keeps the rescue system after copying the system" $([ $? = 0 ] && echo 1 || echo 0)
 echo "$((N-F))/$N passed"; [ $F = 0 ]

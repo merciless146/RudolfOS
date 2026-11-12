@@ -393,6 +393,17 @@ everyone (PR #198). It is a choice, since some sites may come to need FedCM and 
 - On the Vivobook over the devlink and remote access: YouTube, a Google sign-in, with FedCM off and on, Discord, a download, a video in
   fullscreen, memory with 5 tabs against Chromium's.
 
+## Moved to 1.5.9 (2026-11-12)
+Only Make a stick (5.1) was kept for 1.5.8; these move to docs/plan-1.5.9.md ("Moved from 1.5.8"):
+- Lite (WebKit): menus and windows behind Oracle's tab pages (branch litetabs: the still picture works, the live page
+  does not step aside in CI); stutter in Oracle's tabs (GPU drawing for the tabs); Google sign-in for GitHub (symptoms
+  to be described).
+- On the Vivobook: GPU drawing for Lite measured (memory and speed); Oracle's WebKit tabs (YouTube, a Google sign-in,
+  a download, fullscreen, memory with 5 tabs); the lock and sign-in settings and the shutting-down screen; the moving
+  backgrounds (petals, lanterns, northern lights) in Lite.
+- The devlink with the desktop disabled, in QEMU (4.2).
+- The MiFi 7730L with USB tethering on (6.1).
+
 ## Steps
 1. 4.1 start logs (initramfs, rudolf-init, session), with a host test of the rotation. **Done** (branch
    v158-startlogs): initramfs `note`/`keeplog` (var/log/boot-decisions.log, last 300 lines, kept before every
@@ -414,9 +425,17 @@ everyone (PR #198). It is a choice, since some sites may come to need FedCM and 
    v158-startlogs): `sound codec-check` (run by rudolf-init 12 s after start-up) resets an HD Audio chip that did not
    answer, once, and says so in System health (hardware); the self-test's sound-chip check names one still silent with
    what to do. Test qt/host/codec58_t.sh.
-   5.2 **done**: Help › Starting from a USB stick (rescue). 5.1 in part: the boot-files-only message names the drive
-   (USB stick or this computer's drive, with its model) and says what to do; Make a stick writing a full system by
-   default is left.
+   5.2 **done**: Help › Starting from a USB stick (rescue). 5.1 **done**: the boot-files-only message names the drive
+   (USB stick or this computer's drive, with its model) and says what to do; and (2026-11-12) Make a stick makes a
+   **full rescue stick or none**: the room is checked before anything is erased; the system copied onto the stick is
+   kept a second time as its rescue system, `system/r` (hard links, so no extra room; updates only ever write a and b,
+   so it never changes), which the start-up falls back to when no installed system can start and Recovery mode can
+   choose (a damaged rescue system stops with a message, never a restart loop); a stick that could not be finished is
+   cleared (its start area), never left half-made; Settings › Storage says what each plugged-in Rudolf OS stick holds
+   (rudolfd `stick/info`, `mkstick.sh --info`), Settings › Update says when the rescue system is running, and the boot
+   image's menu says what it is ("Start Rudolf OS (boot files: the system installed on this drive)", mkdisc.sh with
+   mkefi.sh's START_TITLE). Tests: qt/host/mkstick_t.sh (34), startfall58_t.sh (8), updsafe57_t.sh (11),
+   qt/shell2/stick58_t.js (9). `system/r` is the slot 1.5.9's official recovery (plan-1.5.9.md 8.4) builds on.
 5. 5.4 the testing rule in docs, then the Lite investigation on the Vivobook (devlink plus remote access). The rule is
    **done**: docs/testing.md. The Lite cause was found and fixed in 1.5.7 (libGLESv2); GPU drawing for Lite: Mesa's GLX added (2026-11-11), measured on the Vivobook next.
 6. Part 6, mobile data: **done** (6.1 kconfig, 6.2 netplug from mdev, 6.3 metered connections; qt/host/netplug58_t.sh,
