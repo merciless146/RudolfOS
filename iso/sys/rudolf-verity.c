@@ -8,7 +8,7 @@
  *   rudolf-verity check MANIFEST SIG KEYS              exit 0: signed by a trusted key
  *   rudolf-verity open MANIFEST SIG KEYS NAME LOOPDEV  prints /dev/dm-N, the checked device
  * Exit codes: 0 ok, 2 not signed, 3 no V line for that layer (an older release), 4 the device could not be
- * set up, 1 usage. Ed25519 verification follows TweetNaCl (public domain; Bernstein, van Gastel, Janssen,
+ * set up (5: the layer is not the one the list describes: its size), 1 usage. Ed25519 verification follows TweetNaCl (public domain; Bernstein, van Gastel, Janssen,
  * Lange, Schwabe, Smetsers). Static, no libraries. */
 #define _GNU_SOURCE
 #include <fcntl.h>
@@ -17,6 +17,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <linux/fs.h>
+#include <errno.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
@@ -285,7 +287,7 @@ static int verity_open(const char *name, const char *loop, unsigned long long bl
 	t->sector_start = 0; t->length = blocks * 8; snprintf(t->target_type, sizeof t->target_type, "verity");
 	size_t pl = strlen(params) + 1; pl = (pl + 7) & ~7UL; t->next = 0;
 	u.d.target_count = 1; u.d.flags = DM_READONLY_FLAG;
-	if (dm(c, DM_TABLE_LOAD, &u.d, dn, sizeof u.d + sizeof *t + pl)) { perror("rudolf-verity: table"); memset(&u, 0, sizeof u); dm(c, DM_DEV_REMOVE, &u.d, dn, sizeof u.d); close(c); return -1; }
+	if (dm(c, DM_TABLE_LOAD, &u.d, dn, sizeof u.d + sizeof *t + pl)) { fprintf(stderr, "rudolf-verity: %s: the checked device could not be set up (%s)\n", name, strerror(errno)); memset(&u, 0, sizeof u); dm(c, DM_DEV_REMOVE, &u.d, dn, sizeof u.d); close(c); return -1; }
 	memset(&u, 0, sizeof u);
 	if (dm(c, DM_DEV_SUSPEND, &u.d, dn, sizeof u.d)) { perror("rudolf-verity: resume"); memset(&u, 0, sizeof u); dm(c, DM_DEV_REMOVE, &u.d, dn, sizeof u.d); close(c); return -1; }
 	close(c);
@@ -308,6 +310,13 @@ int main(int argc, char **argv)
 			if (k != 5 || strcmp(f[1], argv[5])) continue;
 			unsigned long long blocks = strtoull(f[2], NULL, 10);
 			if (!blocks || !hexok(f[3], 64) || !hexok(f[4], 64)) { fprintf(stderr, "rudolf-verity: bad V line for %s\n", argv[5]); return 3; }
+			/* (1.5.9: a layer of another size made the device-mapper answer "table: Argument list too long". The layer
+			   holds its data and, after it, the hash tree: it is at least one block longer than the data) */
+			{ unsigned long long sz = 0; int fd = open(argv[6], O_RDONLY | O_CLOEXEC);
+			  if (fd >= 0) { struct stat st; if (ioctl(fd, BLKGETSIZE64, &sz)) sz = fstat(fd, &st) ? 0 : (unsigned long long)st.st_size; close(fd); }
+			  if (fd >= 0 && sz && sz < (blocks + 1) * 4096ULL) {
+				fprintf(stderr, "rudolf-verity: %s does not match the release list (%llu MB, the list says more than %llu MB)\n", argv[5], sz >> 20, (blocks * 4096ULL) >> 20);
+				return 5; } }
 			return verity_open(argv[5], argv[6], blocks, f[3], f[4]) ? 4 : 0;
 		}
 		fprintf(stderr, "rudolf-verity: the release list has no hash for %s\n", argv[5]);

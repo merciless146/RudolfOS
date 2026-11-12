@@ -1,0 +1,33 @@
+# Browser security updates (docs/plan-1.5.9.md 11.2): once a day, the snap's stable Chromium against the stable
+# release's. When it is newer, one GitHub issue says so (opened once, then kept up to date), so a beta with it is
+# one dispatch away. It builds and promotes nothing.
+name: Chromium check
+on:
+  schedule: [{cron: '17 14 * * *'}]
+  workflow_dispatch:
+permissions: {contents: read, issues: write}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Compare
+        env: {GH_TOKEN: '${{ github.token }}', REPO: '${{ github.repository }}'}
+        run: |
+          set -e
+          SNAP=$(curl -fsSL --retry 4 --retry-delay 15 --retry-all-errors -H 'Snap-Device-Series: 16' 'https://api.snapcraft.io/v2/snaps/info/chromium?fields=version' \
+            | jq -r '."channel-map"[] | select(.channel.name=="stable" and .channel.architecture=="amd64") | .version' | head -1)
+          SNAP=${SNAP%%-*}
+          REL=$(gh api "repos/$REPO/contents/stable/manifest.txt?ref=gh-pages" --jq .content | base64 -d | sed -n 's/^chromium //p')
+          echo "snap $SNAP, stable release $REL"
+          [ -n "$SNAP" ] && [ -n "$REL" ] || { echo "::warning::could not read both versions"; exit 0; }
+          [ "$SNAP" != "$REL" ] && [ "$(printf '%s\n%s\n' "$SNAP" "$REL" | sort -V | tail -1)" = "$SNAP" ] || { echo "the stable release has the newest Chromium"; exit 0; }
+          T="Chromium $SNAP is available (security fixes)"
+          B="The snap's stable Chromium is **$SNAP**; the stable release has **$REL**. Chromium's stable updates carry security fixes.
+
+          A beta with it: run the release workflow (Actions › Rudolf OS release › Run workflow on main). Promotion stays your choice.
+
+          _Checked $(date -u '+%Y-%m-%d %H:%M UTC') by the Chromium check workflow (docs/plan-1.5.9.md 11.2)._"
+          N=$(gh api "repos/$REPO/issues?state=open&labels=chromium-update&per_page=5" --jq '.[0].number // empty')
+          if [ -n "$N" ]; then gh api -X PATCH "repos/$REPO/issues/$N" -f title="$T" -f body="$B" >/dev/null; echo "updated #$N"
+          else gh api "repos/$REPO/issues" -f title="$T" -f body="$B" -f 'labels[]=chromium-update' --jq '"opened #\(.number)"'; fi
+          echo "::notice title=Chromium::$T (the stable release has $REL)"
