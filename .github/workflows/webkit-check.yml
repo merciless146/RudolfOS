@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Packages (as the release workflow installs them)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good glib-networking xvfb imagemagick >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad glib-networking xvfb imagemagick >/dev/null
       - name: Build rudolf-webkit
         run: gcc -O2 -Wall -Wno-deprecated-declarations -o rudolf-webkit iso/sys/rudolf-webkit.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0)
       - name: What addwebkit.sh adds (into an empty tree)
@@ -75,5 +75,11 @@ jobs:
           if grep -q 'Disabled hardware acceleration' chroot.txt; then
             echo "::error title=Lite GPU drawing::$(grep -m1 'Disabled hardware acceleration' chroot.txt | cut -c1-200 | sed 's/::/: /g')"; exit 1
           else echo "::notice title=Lite GPU drawing::WebKit kept hardware acceleration on"; fi
+      - name: Video in the Lite engine from the base layer (1.5.8, Media Source, as YouTube uses it)
+        run: |
+          B=$RUNNER_TEMP/base; (cd iso/qt/webkit && python3 -m http.server 8081 --bind 127.0.0.1 >/dev/null 2>&1 &); sleep 1
+          (sudo timeout 20 chroot $B /usr/bin/env -i DISPLAY=:99 HOME=/root/h LIBGL_ALWAYS_SOFTWARE=1 PATH=/usr/bin:/bin /usr/bin/rudolf-webkit --size=800x600 http://127.0.0.1:8081/mse58.html > mse.txt 2>&1) || true
+          r=$(grep -o 'RUDOLF-MSE.*' mse.txt | head -1); echo "::notice title=Lite video formats::${r:-no answer}"
+          echo "$r" | grep -q 'vp9=true' && echo "$r" | grep -q 'opus=true' || { echo "::error title=Lite video::YouTube's VP9 with Opus is not offered (${r:-no answer})"; grep -i gst mse.txt | head -5; exit 1; }
       - uses: actions/upload-artifact@v4
-        with: {name: lite-engine-check, path: "shot.png\nconsole.txt\nmem.txt\nadd.txt\nchroot.txt\ntabs.png\ntabs.txt\ntabs-result.txt"}
+        with: {name: lite-engine-check, path: "shot.png\nconsole.txt\nmem.txt\nadd.txt\nchroot.txt\ntabs.png\ntabs.txt\ntabs-result.txt\nmse.txt"}
