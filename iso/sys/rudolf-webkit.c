@@ -230,6 +230,7 @@ static void still_ready(GObject *o, GAsyncResult *res, gpointer d)
 	g_free(buf); if (pb) g_object_unref(pb); if (sf) cairo_surface_destroy(sf);
 	tabev(t, "still", x->str); g_string_free(x, TRUE);
 	t->stillUp = 1; gtk_widget_hide(t->box);   /* the picture is on its way: the live page steps aside */
+	gtk_widget_queue_draw(desk); gtk_widget_queue_draw(overlay);   /* (and what is under it is drawn again) */
 }
 /* covered or not, after each place */
 static void cover_step(tab *t)
@@ -246,7 +247,7 @@ static void apply_place(tab *t)
 		gtk_widget_set_margin_start(t->box, 0); gtk_widget_set_margin_top(t->box, 0); gtk_widget_set_size_request(t->box, W, H);
 		gtk_widget_show(t->box); shape(t); tabs_order(); return;
 	}
-	if (!t->shown || (t->still && t->stillUp)) { gtk_widget_hide(t->box); return; }
+	if (!t->shown || (t->still && t->stillUp)) { gtk_widget_hide(t->box); gtk_widget_queue_draw(desk); return; }
 	gtk_widget_set_margin_start(t->box, t->x); gtk_widget_set_margin_top(t->box, t->y);
 	gtk_widget_set_size_request(t->box, t->w, t->h);
 	gtk_widget_show(t->box); shape(t); tabs_order();
