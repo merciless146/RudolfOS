@@ -21,21 +21,45 @@ const SHOT = process.argv[3];
   ok('3. the animals: the twelve of the zodiac, a panda, an elephant, a leopard and a deer', await q("['rat','ox','tiger','rabbit','dragon','snake','horse','goat','monkey','rooster','dog','pig','panda','elephant','leopard','deer'].every(n=>ST.parts[n]&&ST.parts[n].length>4)"));
   await q("(()=>{S.dyn='oasis';applySet();return 1})()"); await wait(500);
   ok('4. Spirit Falls: the statue stands there, under everything else on the page', await q("STS.el.style.display==''&&STS.el.parentNode==document.body&&getComputedStyle(STS.el).pointerEvents=='none'&&STS.img.naturalWidth>0"));
-  ok('5. the accent Blue: the Dog', await q("stAnimal()=='dog'&&STS.key=='dog|light'"));
+  ok('5. the accent Blue: the Dog', await q("stAnimal()=='dog'&&STS.key.startsWith('dog|light|')"));
   ok('6. it is where the bank is in the picture (center/cover)', await q(`(()=>{const r=STS.img.getBoundingClientRect(),s=Math.max(innerWidth/1600,innerHeight/1067),ox=(innerWidth-1600*s)/2,oy=(innerHeight-1067*s)/2;return Math.abs(r.left-(ox+ST.box[0]*s))<1&&Math.abs(r.top-(oy+ST.box[1]*s))<1&&Math.abs(r.width-ST.box[2]*s)<1})()`));
   const src1 = await q('STS.img.src');
   await q("(()=>{S.accent='#dc2626';themeApply();return 1})()"); await wait(300);
   ok('7. a new accent colour (Red): the Dragon, a different picture', await q("stAnimal()=='dragon'") && await q('STS.img.src') != src1);
   await q("(()=>{S.dm='dark';applySet();return 1})()"); await wait(300);
-  ok('8. dark mode: the dark statue', await q("STS.key=='dragon|dark'&&/%231a1c36/i.test(STS.img.src)"));
+  ok('8. dark mode: the dark statue', await q("STS.key.startsWith('dragon|dark|')&&/%231a1c36/i.test(STS.img.src)"));
   await q("(()=>{S.accent='#e11d48';themeApply();return 1})()");
   ok('9. a colour of one\'s own takes the nearest accent\'s animal', await q("stAnimal()")== await q("ST_OF['#dc2626']==stAnimal()||ST_OF['#db2777']==stAnimal()?stAnimal():'x'"));
   ok('10. every statue draws, light and dark, the same each time', await q("(()=>{const out=[];for(const n of ST_ORDER)for(const m of ['light','dark']){STS.cache={};const a=stSvg(n,m);STS.cache={};out.push(a==stSvg(n,m)&&a.length>2000)}return out.every(Boolean)})()"));
   if (SHOT) { await q("(()=>{S.accent='#475569';S.dm='light';applySet();themeApply();return 1})()"); await wait(500); await p.screenshot({path: SHOT + '/statue-panda.png'}) }
   await q("(()=>{settings('disp');return 1})()"); await wait(800);
+  // the glow in its dark features: the accent colour by the chosen rule
+  const glowHue = () => q("icRgb2hsl(...icHex2rgb(stGlow()))[0]");
+  await q("(()=>{S.accent='#2563eb';themeApply();return 1})()");
+  const gN = await glowHue(), aH = await q("icRgb2hsl(...icHex2rgb('#2563eb'))[0]");
+  ok('11a. the glow: Normal is the accent colour\'s hue', Math.abs(gN - aH) < 3 && await q("decodeURIComponent(STS.img.src).includes(stGlow())"), [gN, aH]);
+  await q("(()=>{const s=document.querySelector('#dstm');s.value='comp';s.onchange({target:s});return 1})()"); await wait(200);
+  const gC = await glowHue();
+  ok('11b. Complementary: the opposite hue, and the statue redrawn with it', Math.abs(((gC - aH + 360) % 360) - 180) < 3 && await q("decodeURIComponent(STS.img.src).includes(stGlow())"), [gC, aH]);
+  await q("(()=>{const s=document.querySelector('#dstm');s.value='negative';s.onchange({target:s});return 1})()"); await wait(200);
+  const nH = await q("icRgb2hsl(...icHex2rgb(acVariant('#2563eb','negative')))[0]"), gG = await glowHue();
+  ok('11c. Negative: the hue of the accent\'s negative', Math.abs(gG - nH) < 3, [gG, nH]);
+  // the petals blowing across
+  const c1 = await q("PET.cv.toDataURL()"); await wait(400); const c2 = await q("PET.cv.toDataURL()");
+  ok('11d. cherry petals blow across (70 of them, moving)', await q("PET.ps.length==70&&!!PET.timer") && c1 != c2);
+  // the sky lanterns at night, in the accent colour by their own rule
+  await q("(()=>{S.dm='dark';applySet();return 1})()"); await wait(300);
+  const lh = () => q("(()=>{const c=lanCol().glow.split(',').map(Number);return icRgb2hsl(...c)[0]})()");
+  ok('11e. dark mode: paper lanterns across the sky, more left of the moon than right of it, behind the cliffs and trees (the sky mask)', await q("PET.mode=='dark'&&PET.ls.length==28&&PET.ls.filter(l=>l.x<1180).length>PET.ls.filter(l=>l.x>=1180).length&&!!PET.mask&&PET.mask.naturalWidth==400&&PET.lcv.nextSibling===STS.img"));
+  await q("(()=>{const s=document.querySelector('#dlnm');s.value='normal';s.onchange({target:s});return 1})()");
+  const l1 = await lh();
+  await q("(()=>{const s=document.querySelector('#dlnm');s.value='comp';s.onchange({target:s});return 1})()");
+  const l2 = await lh();
+  ok('11f. the lanterns: Normal is the accent\'s hue, Complementary the opposite', Math.abs(l1 - aH) < 4 && Math.abs(((l2 - aH + 360) % 360) - 180) < 4, [l1, l2, aH]);
+  ok('11g. what stands in front of the statue (the palm, the shrubs) is drawn over it', await q("decodeURIComponent(STS.img.src).includes('matrix(')&&ST_FRONT.tpl.length>1000"));
   ok('11. Display Properties says which statue stands there', await q("/stands on the right bank/.test((document.querySelector('.stmsg')||{}).textContent||'')"));
   await q("(()=>{S.dyn='';applySet();return 1})()");
-  ok('12. no background: no statue', await q("STS.el.style.display=='none'"));
+  ok('12. no background: no statue, no petals', await q("STS.el.style.display=='none'&&!PET.timer"));
   ok('13. no errors', errs.length == 0, errs);
   await b.close(); srv.close();
   const k = R.filter(Boolean).length; console.log(`${k}/${R.length} passed`); process.exit(k == R.length ? 0 : 1);
