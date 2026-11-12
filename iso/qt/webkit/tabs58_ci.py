@@ -23,6 +23,7 @@ async function run(){await post('hello',true);
  await step('dialog',async()=>(await wait(m=>m.ev=='dialog'&&m.tid=='t1')).kind);
  send({rudolfShell:'tab',op:'place',tid:'t1',r:[100,100,700,450],vis:[[0,0,350,450]],z:1});
  await new Promise(r=>setTimeout(r,1500)); await post('shot2',true); await new Promise(r=>setTimeout(r,2000));
+ send({rudolfShell:'tab',op:'place',tid:'t1',r:[100,100,700,450],vis:null,z:1}); await new Promise(r=>setTimeout(r,1500)); await post('shot3',true); await new Promise(r=>setTimeout(r,2000));
  send({rudolfShell:'tab',op:'go',tid:'t1',url:'http://127.0.0.1:8091/file.bin'});
  await step('download',async()=>(await wait(m=>m.ev=='download'&&m.tid=='t1')).url);
  send({rudolfShell:'tab',op:'fw',rules:{on:true,mode:'open',block:['blocked.test'],trust:[]}});
@@ -59,6 +60,7 @@ while time.time() < end and 'done' not in RES and p.poll() is None:
     # 1.5.8: what is really on the screen: the new tab's first drawing (no reload), and a cut where the desktop covers it
     if not s1 and 'shot1' in RES: time.sleep(1.5); subprocess.run(['import', '-window', 'root', 'tabs1' + suf + '.png']); s1 = True
     if not s2 and 'shot2' in RES: time.sleep(.8); subprocess.run(['import', '-window', 'root', 'tabs2' + suf + '.png']); s2 = True
+    if 'shot3' in RES and not os.path.exists('tabs3' + suf + '.png'): time.sleep(.8); subprocess.run(['import', '-window', 'root', 'tabs3' + suf + '.png'])
     if not shot and 'dialog' in RES:
         time.sleep(2.5); subprocess.run(['import', '-window', 'root', 'tabs.png']); shot = True
     time.sleep(0.5)
@@ -72,7 +74,8 @@ def px(f, x, y):
 yellow = lambda c: bool(c) and c[0] > 200 and c[1] > 190 and c[2] < 180
 desk = lambda c: bool(c) and c[0] < 70 and c[1] < 80 and c[2] < 100
 P1, P2L, P2R = px('tabs1' + suf + '.png', 600, 400), px('tabs2' + suf + '.png', 250, 400), px('tabs2' + suf + '.png', 650, 400)
-print('pixels', DRAW or 'default', P1, P2L, P2R)
+P3 = px('tabs3' + suf + '.png', 600, 400)
+print('pixels', DRAW or 'default', P1, P2L, P2R, 'uncut again', P3)
 checks = [
     ('rudolf-webkit says hello, the desktop answers ready', RES.get('hello') is True),
     ('a tab opens a page that forbids frames, and reports its title', RES.get('title') == 'XFO page'),
