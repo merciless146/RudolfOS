@@ -486,6 +486,12 @@ static void on_tab_op(JSCValue *m)
 		else if (!strcmp(op, "zoom")) { double z = jnum(m, "z", 1); webkit_web_view_set_zoom_level(v, z < .25 ? .25 : z > 5 ? 5 : z); }
 		else if (!strcmp(op, "focus")) gtk_widget_grab_focus(t->view);
 		else if (!strcmp(op, "close")) g_hash_table_remove(TABS, t->tid);
+		else if (!strcmp(op, "notice")) {   /* 1.5.9 (plan 9.2b): a notice inside the page, in the top layer (above its full screen) */
+			char *x = jstr(m, "text"); int sec = (int)jnum(m, "s", 12); if (sec < 3) sec = 3; if (sec > 30) sec = 30;
+			GString *j = g_string_new("(()=>{try{const o=document.getElementById('rudolf-notice');o&&o.remove();const d=document.createElement('div');d.id='rudolf-notice';d.setAttribute('popover','manual');"
+				"d.style.cssText='position:fixed;inset:auto auto 24px 50%;transform:translateX(-50%);margin:0;max-width:560px;padding:12px 18px;border:0;border-radius:10px;background:rgba(20,20,24,.92);color:#fff;font:15px/1.4 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.5);z-index:2147483647';d.textContent='\\u26a0 '+");
+			json_str(j, x ? x : ""); g_string_append_printf(j, ";(document.body||document.documentElement).appendChild(d);try{d.showPopover()}catch(e){}setTimeout(()=>d.remove(),%d)}catch(e){}})()", sec * 1000);
+			webkit_web_view_run_javascript(v, j->str, NULL, NULL, NULL); g_string_free(j, TRUE); g_free(x); }
 		else if (!strcmp(op, "busy")) { busy_q *q = g_new0(busy_q, 1); snprintf(q->tid, sizeof q->tid, "%s", t->tid); q->id = (int)jnum(m, "id", 0);
 			q->audio = webkit_web_view_is_playing_audio(v); webkit_web_view_evaluate_javascript(v, BUSY_JS, -1, NULL, NULL, NULL, busy_done, q); }
 		else if (!strcmp(op, "place")) {

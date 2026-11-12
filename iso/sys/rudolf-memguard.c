@@ -37,7 +37,8 @@
  *   (1.5.7: --end ID --force, Force quit: all of it at once, background processes included)
  *   (SIGKILL), its own processes only. When this guard quits an app it also says so to the desktop at once (a line
  *   "memory closed NAME MB" in /run/rudolf/events), which shows a notification. 1.5.8: so does ending a web page
- *   ("memory page PID MB"): the desktop leaves full screen and says so.
+ *   ("memory page PID MB"): the desktop leaves full screen and says so. 1.5.9: before that, a warning ("memory warn
+ *   PID MB") when memory is getting low, shown over a full-screen game too.
  *
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
@@ -413,10 +414,13 @@ static int thrashing(long long total, long long avail, long long swt, long long 
 	int swap_low = swt == 0 || swf < swt / 10;
 	return swap_low || full >= 5 || avail < total * 4 / 100;
 }
+/* 1.5.9 (plan 9.2b): time to warn: under 12% of the memory available and the swap three quarters full (or none) */
+static int warn_due(long long total, long long avail, long long swt, long long swf) { return avail < total * 12 / 100 && (swt == 0 || swf < swt / 4); }
 int main(int argc, char **argv)
 {
 	once = argc > 1 && !strcmp(argv[1], "--once");
 	/* 1.5.8 (test): --thrash TOTAL AVAIL SWAPTOTAL SWAPFREE FULL GAP (MiB, %, s) prints 1 if that counts as thrashing */
+	if (argc == 6 && !strcmp(argv[1], "--warn")) { printf("%d\n", warn_due(atoll(argv[2]) << 20, atoll(argv[3]) << 20, atoll(argv[4]) << 20, atoll(argv[5]) << 20)); return 0; }
 	if (argc == 8 && !strcmp(argv[1], "--thrash")) { printf("%d\n", thrashing(atoll(argv[2]) << 20, atoll(argv[3]) << 20, atoll(argv[4]) << 20, atoll(argv[5]) << 20, atof(argv[6]), atof(argv[7]))); return 0; }
 	/* 1.5.7: (the host test sets MG_TEST to move the places, as --once does) */
 	if (argc > 1 && (!strcmp(argv[1], "--apps") || !strcmp(argv[1], "--end"))) {
@@ -450,7 +454,7 @@ int main(int argc, char **argv)
 	int pf = open("/proc/pressure/memory", O_RDWR | O_NONBLOCK | O_CLOEXEC);
 	if (pf >= 0 && write(pf, "full 150000 1000000", 20) < 0) { close(pf); pf = -1; }
 	logf_("started%s%s", pf < 0 ? " (no memory pressure trigger: once a second)" : "", off ? " (ending pages is off: rudolf.nomemguard=1)" : "");
-	int low = 0, stall = 0; time_t last_kill = 0, last_protect = 0, was_crit = 0; struct timespec fire0 = {0, 0};
+	int low = 0, stall = 0; time_t last_kill = 0, last_protect = 0, was_crit = 0, warned = 0; struct timespec fire0 = {0, 0};
 	for (;;) {
 		struct pollfd p = { pf, POLLPRI, 0 };
 		int fired = 0;
@@ -476,6 +480,18 @@ int main(int argc, char **argv)
 			was_crit = now; }
 		else if (was_crit && now - was_crit > 10) { logf_("memory is back: %lld MiB available", avail >> 20); was_crit = 0; }
 		if (now - last_protect >= 5 || crit) { scan(); protect(); last_protect = now; }
+		/* 1.5.9 (plan 9.2b): before it is critical, a warning. Under 12% of the memory available and the swap three
+		   quarters full (or none): the desktop is told which page is the largest ("memory warn PID MB"), and shows the
+		   warning, over a full-screen game too. Once a minute at most, and again only after memory was back above
+		   20%. It changes nothing about when a page is ended. */
+		if (warned && avail > total / 5) warned = 0;
+		if (!crit && !off && !warned && warn_due(total, avail, swt, swf)) {
+			if (now - last_protect) { scan(); last_protect = now; }
+			struct proc *w = victim();
+			if (w) { char l[64]; int n = snprintf(l, sizeof l, "memory warn %d %lld\n", w->pid, w->rss >> 20);
+				int f = open(RUN "/events", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644); if (f >= 0) { if (write(f, l, n) < 0) {} close(f); }
+				logf_("memory is getting low (%lld MiB available, swap %lld of %lld MiB free): warned about the largest page (%d, %lld MiB)", avail >> 20, swf >> 20, swt >> 20, w->pid, w->rss >> 20);
+				warned = now; } }
 		if (!crit || off || now - last_kill < COOLDOWN) continue;
 		struct proc *v = victim();
 		struct app *a = v || !close_apps_on() ? NULL : app_victim();
