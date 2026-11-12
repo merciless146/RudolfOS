@@ -28,7 +28,9 @@ playwright)
 	D=$(ls -d ~/.cache/ms-playwright/chromium-*/chrome-linux ~/.cache/ms-playwright/chromium-*/chrome-linux64 2>/dev/null | sort -V | tail -1)
 	[ -n "$D" ] && [ -x "$D/chrome" ] || { echo "Playwright's Chromium was not found in ~/.cache/ms-playwright" >&2; exit 1; }
 	cp -a "$D/." "$OUT/"
-	"$OUT/chrome" --version | awk '{print $2}' > "$OUT.version";;
+	# (newer Playwright brings "Google Chrome for Testing 1xx.x.x.x": the version is the dotted number, not the 2nd word)
+	"$OUT/chrome" --version | grep -oE '[0-9]+(\.[0-9]+){3}' | head -1 > "$OUT.version"
+	[ -s "$OUT.version" ] || { echo "Playwright's Chromium gave no version" >&2; exit 1; };;
 *) echo "unknown source $SRC" >&2; exit 2;;
 esac
 echo "chromium $(cat "$OUT.version") from $SRC"
