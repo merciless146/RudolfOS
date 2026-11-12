@@ -26,6 +26,7 @@ function memShow(t,o){
  const reload=()=>{for(const[w,f]of MEM_RELOAD)if(f===reload)MEM_RELOAD.delete(w);o.reload()};
  fr.onload=()=>{try{MEM_RELOAD.set(fr.contentWindow,reload)}catch(e){}};
  if(t===o.T()){o.sync();o.st.textContent='Closed to free memory. Reload (F5) to open it again.'}
+ window.__memShown=Date.now();
  notify('Page closed to free memory',`${title} used too much memory, so Rudolf OS closed it to keep the desktop responding.`,{kind:'error'})}
 function memGone(t,why,o){
  if(t.memChk)return;t.memChk=1;
@@ -40,3 +41,12 @@ async function memIam(n){
   const r=await rdPost('memory/iam?step=end');window.__memIam=r;if(r&&r.ok)return}catch(e){}
  if((n||0)<2)setTimeout(()=>memIam((n||0)+1),20000)}
 setTimeout(()=>memIam(0),15000);
+/* 1.5.8 (2026-11-12): the memory guard says at once when it ends a page ("memory page PID MB"). On the Vivobook it
+   ended Friday Night Funkin' (1.9 GB) after a song while full screen; the game is a frame inside Newgrounds' page,
+   so only that frame stopped (Chromium's sad face) and Oracle's tab never heard of it: the screen stayed full screen
+   on the sad face and nothing said why. Now the desktop leaves full screen at once and, unless Oracle's own page
+   already says so (a whole tab ended), says what happened. */
+evOn(t=>{for(const m of String(t).matchAll(/^memory page (\d+) (\d+)$/gm)){const mb=+m[2],at=Date.now();
+ if(typeof fsLeave=='function')fsLeave();
+ setTimeout(()=>{if((window.__memShown||0)>=at-1000)return;
+  notify('Part of a page was closed to free memory',`The computer ran out of memory, so Rudolf OS closed the largest web page (${mb>=1024?(mb/1024).toFixed(1)+' GB':mb+' MB'}): often a game or a video inside a page. Reload the page (F5) to open it again; closing other tabs and programs first gives it more room.`,{kind:'error'})},3000)}});

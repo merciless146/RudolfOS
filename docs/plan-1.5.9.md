@@ -287,6 +287,21 @@ mostly idle: memory is what is short, not speed. Before 1.5.8 the memory guard e
    loads), so the game's own loading does not wait on the swap.
 6. **Measured, not assumed:** each step logs how much it freed (memguard.log, "game mode: 3 tabs slept, 410 MB").
 
+### 9.2a Compressed memory as large as the memory (added on 2026-11-12)
+Found on the Vivobook (final 1.5.8 beta 2026111218): FNF reached 1.9 GB when a song ended and the game went back to
+song selection; with 143 MB available and the compressed swap (zram) all but full (287 of 1,707 MB free), the memory
+guard ended the game. zram compressed about 4 to 1 there, so the swap filled long before the memory was used up. The
+Vivobook's Settings › System health › Memory is on "small" (half the memory, 1.7 GB); the default since 1.5.7,
+"auto", is as large as the memory (3.4 GB here, at most 8 GB).
+- **Measure first, on the Vivobook:** zram on auto, the same FNF test (a whole week, back to song selection each
+  time): the guard's events, the swap used and the stalls (PSI), and frame times, against "small".
+- **Then, if auto keeps the game alive without long stalls:** when the guard ends a page or an app and zram is on
+  "small", its notification offers to switch to auto (applies at the next restart); game mode (9.1) says the same once.
+  If auto stalls more than it helps, the guard's thresholds are tuned with it instead (its "memory is low" point and
+  the stall it waits for).
+- Tests: host, the size zram is given for auto and small on 2, 3.4, 4 and 16 GB (the memory script); browser, the
+  offer in the notification and the switch.
+
 ### 9.3 Tests
 - Browser: game mode on (full screen) puts background tabs to sleep and back on selection, on both engines (the
   shell's and rudolf-webkit's tab messages); tabs with sound, a call or a typed-in form stay; the tray notification's

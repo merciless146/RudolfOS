@@ -36,7 +36,8 @@
  *   whether a window of it is open (and which: "wins"); --end ID asks one to quit (SIGTERM) and ends what is left of it 5 s later
  *   (1.5.7: --end ID --force, Force quit: all of it at once, background processes included)
  *   (SIGKILL), its own processes only. When this guard quits an app it also says so to the desktop at once (a line
- *   "memory closed NAME MB" in /run/rudolf/events), which shows a notification.
+ *   "memory closed NAME MB" in /run/rudolf/events), which shows a notification. 1.5.8: so does ending a web page
+ *   ("memory page PID MB"): the desktop leaves full screen and says so.
  *
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
@@ -508,6 +509,10 @@ int main(int argc, char **argv)
 			logf_("ended the largest web page (renderer %d, %lld MiB) to free memory", v->pid, v->rss >> 20);
 			char l[96]; int n = snprintf(l, sizeof l, "%lld %d %lld\n", (long long)now, v->pid, v->rss);
 			int f = open(RUN "/memguard.events", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644); if (f >= 0) { if (write(f, l, n) < 0) {} close(f); }
+			/* 1.5.8: and to the desktop at once ("memory page PID MB"): it leaves full screen and says so, also when the
+			   page ended was only a frame inside a tab (a game on Newgrounds), which Oracle's tab never hears of */
+			n = snprintf(l, sizeof l, "memory page %d %lld\n", v->pid, v->rss >> 20);
+			f = open(RUN "/events", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644); if (f >= 0) { if (write(f, l, n) < 0) {} close(f); }
 		}
 		last_kill = now; low = stall = 0; fire0.tv_sec = 0;
 	}
