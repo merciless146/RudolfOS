@@ -141,6 +141,14 @@ and fires lasers from his nose.
   style, nine winter weapons, days of repair, search and training, survivors, fifteen nights; the rescuer on Night 15
   is an original character, Captain Quill (a rockhopper penguin in a red winter coat, with a sleigh pulled by snowy
   owls), not another project's mascot. `tests/frostbarricade_t.js` (26 checks). In LIB_GAMES.
+- **2026-11-12:** **Block Drop** (`apps/rudolf-blockdrop`, about 20 KB as a package). Its own rules and look, not a
+  copy of a trademarked game: an 8-wide, 16-deep well; pieces of three and four blocks; colours that do not follow the
+  shape, each with its own mark (circle, triangle, square, diamond, cross). The twist: every 12th piece carries a
+  prism; where it lands, every block of its colour bursts, the blocks above tumble down their columns, and rows that
+  fill clear in a chain (worth more each step); while it falls, the blocks it would burst are outlined. Classic
+  (faster every 10 rows), Relaxed (one speed), Daily (3 minutes, the same blocks for everyone). Touch: drag to move,
+  tap to turn, flick down to drop, and a touch bar; on a tall window the panel moves above the well.
+  `tests/blockdrop_t.js` (33 checks). In LIB_GAMES. Next: Logic Pack.
 
 ## Frost Barricade 1.1: twenty-five nights, the weather radio, the weather, wendigos
 Asked for on 2026-11-11 and built (rudolfos-library#6, on #5's eye colours, bloaters and muggers).
