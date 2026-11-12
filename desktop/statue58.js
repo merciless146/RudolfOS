@@ -108,7 +108,7 @@ function petDraw(t){const c=PET.cv;if(!c)return;const g=c.getContext('2d');g.set
  for(const p of PET.ps){g.save();g.translate(p.x,p.y);g.globalAlpha=Math.max(0,Math.min(1,p.life))*(p.landed?.85:1);
   if(p.landed){const tp=(p.y-640)/427;g.scale(1,.4+.2*tp)}else{g.rotate(p.ph+t*p.sp*1.6);g.scale(1,.25+.75*Math.abs(Math.cos(t*2*p.sp+p.ph)))}
   g.fillStyle=p.c;g.beginPath();g.ellipse(0,0,p.s,p.s*.62,0,0,6.283);g.fill();g.restore()}}
-function petTick(){if(document.hidden)return;const now=performance.now(),dt=Math.min(.2,(now-(PET.last||now))/1000);PET.last=now;const t=(now-PET.t0)/1000;petStep(dt,t);lanStep(dt,t);lanDraw(t);petDraw(t)}
+function petTick(){if(document.hidden||!DYNOV.vis){PET.last=0;return}if(DYNOV.slow&&(DYNOV.t^=1))return;const now=performance.now(),dt=Math.min(.2,(now-(PET.last||now))/1000);PET.last=now;const t=(now-PET.t0)/1000;petStep(dt,t);lanStep(dt,t);lanDraw(t);petDraw(t)}
 function petStart(mode){if(PET.mode!==mode||!PET.ps.length){PET.mode=mode;PET.ps=[];for(let i=0;i<70;i++)PET.ps.push(petNew(true));PET.ls=[];for(let i=0;i<28;i++)PET.ls.push(lanNew(true))}
  clearInterval(PET.timer);PET.timer=0;PET.last=0;
  const still=!!(S.rmotion||(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches));
@@ -117,7 +117,7 @@ function petStop(){clearInterval(PET.timer);PET.timer=0}
 function stFit(){if(!STS.img)return;const vw=innerWidth,vh=innerHeight,s=Math.max(vw/1600,vh/1067),ox=(vw-1600*s)/2,oy=(vh-1067*s)/2,b=ST.box;
  Object.assign(STS.img.style,{left:ox+b[0]*s+'px',top:oy+b[1]*s+'px',width:b[2]*s+'px',height:b[3]*s+'px'});
  for(const cv of[PET.cv,PET.lcv])if(cv)Object.assign(cv.style,{left:ox+'px',top:oy+'px',width:1600*s+'px',height:1067*s+'px'})}
-function stUpdate(){let want=false,mode='light';try{want=S.dyn=='oasis'&&!!DYN.oasis;mode=dynResolve().mode}catch(e){}
+function stUpdate(){let want=false,mode='light';try{want=S.dyn=='oasis'&&!!DYN.oasis&&dynShown();mode=dynResolve().mode}catch(e){}
  if(!want){if(STS.el)STS.el.style.display='none';STS.key='';petStop();return}
  if(!STS.el){const d=document.createElement('div');d.id='dynstatue';d.setAttribute('aria-hidden','true');d.style.cssText='position:fixed;inset:0;overflow:hidden;pointer-events:none';
   const lc=document.createElement('canvas');lc.width=800;lc.height=534;lc.style.position='absolute';d.appendChild(lc);PET.lcv=lc;

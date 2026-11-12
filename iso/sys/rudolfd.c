@@ -2269,7 +2269,7 @@ static void api_memory_settings(struct req *r, int post)
 		if (rename(MEMCONF ".tmp", MEMCONF)) { reply_err(r->fd, 500, "could not save"); return; }
 	}
 	str s = {0}; sadd(&s, "{\"ok\":true,\"zram\":\"%s\",\"closeApps\":%s,\"videoLog\":%s,\"persistent\":%s", z, ca ? "true" : "false", vl ? "true" : "false", access(RUN "/persistent", F_OK) ? "false" : "true");
-	sadd(&s, ",\"total\":%lld,\"available\":%lld,\"swapTotal\":%lld,\"swapFree\":%lld", meminfo_kb("MemTotal") * 1024, meminfo_kb("MemAvailable") * 1024, meminfo_kb("SwapTotal") * 1024, meminfo_kb("SwapFree") * 1024);
+	sadd(&s, ",\"total\":%lld,\"available\":%lld,\"swapTotal\":%lld,\"swapFree\":%lld", meminfo_kb("MemTotal"), meminfo_kb("MemAvailable"), meminfo_kb("SwapTotal"), meminfo_kb("SwapFree"));   /* (1.5.8: meminfo_kb gives bytes already; they were 1024 times too big) */
 	{ unsigned long long ds = 0, o = 0, cm = 0, m = 0; FILE *f = fopen("/sys/block/zram0/disksize", "r"); if (f) { if (fscanf(f, "%llu", &ds) != 1) ds = 0; fclose(f); }
 	  f = fopen("/sys/block/zram0/mm_stat", "r"); if (f) { if (fscanf(f, "%llu %llu %llu", &o, &cm, &m) != 3) o = cm = m = 0; fclose(f); }
 	  char *on = slurp("/proc/swaps", NULL); int active = on && strstr(on, "/dev/zram0") != NULL; free(on);
@@ -2282,7 +2282,7 @@ static void api_memory(struct req *r)
 	str s = {0}; sadd(&s, "{\"ok\":true,\"now\":%lld,\"setup\":", (long long)time(NULL));
 	char *m = slurp(RUN "/memory", NULL); if (m) trim(m); sjson(&s, m ? m : ""); free(m);
 	struct stat st; int crit = !stat(RUN "/memguard.critical", &st) && time(NULL) - st.st_mtime < 15;
-	sadd(&s, ",\"critical\":%s,\"available\":%lld,\"total\":%lld,\"events\":[", crit ? "true" : "false", meminfo_kb("MemAvailable") * 1024, meminfo_kb("MemTotal") * 1024);
+	sadd(&s, ",\"critical\":%s,\"available\":%lld,\"total\":%lld,\"events\":[", crit ? "true" : "false", meminfo_kb("MemAvailable"), meminfo_kb("MemTotal"));
 	char *e = slurp(RUN "/memguard.events", NULL); int n = 0;
 	if (e) {
 		int lines = 0; for (char *c = e; *c; c++) if (*c == '\n') lines++;

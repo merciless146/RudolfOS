@@ -13,11 +13,26 @@
    Lite; it stops while the desktop is hidden, and stands still with Reduce motion. */
 Object.assign(DEFS.disp,{aur:true,aurm:'normal'});
 ['aur','aurm'].forEach(k=>{if(!DKEYS.includes(k))DKEYS.push(k);if(S[k]===undefined)S[k]=DEFS.disp[k];if(SC&&SC[k]===undefined)SC[k]=cln(S[k])});
+/* 1.5.8 (2026-11-12): the moving parts of the dynamic backgrounds (these lights; Spirit Falls' petals and lanterns)
+   run only when they can be seen and the computer can spare it. On the Vivobook they kept running behind a game in an
+   Oracle tab (about 6 % of a core, and the window redrawn with them): Friday Night Funkin' ran choppy. And they ran
+   over a picture of one's own when Glacier Lake was still the chosen dynamic background underneath it.
+   - shown: a dynamic background is what is on the screen (not a picture of one's own, which wallpaper31 puts first);
+   - seen: no window covers most of the screen, nothing is full screen, the desktop is not hidden;
+   - power: stopped in power saver (and battery saver: "fewer animations"), half the frames on battery. */
+const DYNOV={vis:true,slow:false,t:0};
+function dynShown(){try{return !(typeof wpCss=='function'&&wpCss())&&!!S.dyn&&!!DYN[S.dyn]}catch(e){return false}}
+function dynOvCheck(){let vis=!document.hidden&&!document.fullscreenElement&&dynShown();
+ if(vis&&typeof wins!='undefined'){const A=innerWidth*innerHeight;for(const w of wins){const e=w&&w.el;if(!e||w.min||e.style.display=='none'||(w.ws&&typeof WS!='undefined'&&w.ws!=WS))continue;
+  const r=e.getBoundingClientRect();if(r.width*r.height>=A*.6){vis=false;break}}}
+ let saver=!!window.__bsaver,slow=false;try{const P=typeof PWR!='undefined'?PWR:null;if(P&&P.now&&(P.now.saver||P.now.profile=='quiet'||P.now.epp=='power'))saver=true;if(P&&P.battery&&P.battery.status=='Discharging')slow=true}catch(e){}
+ DYNOV.vis=vis&&!saver;DYNOV.slow=slow}
+setInterval(dynOvCheck,1000);
 const AUR={el:null,cv:null,sky:null,mask:null,maskSrc:'',on:false,timer:0,t0:performance.now(),col:''};
 const AUR_W=400,AUR_H=267,AUR_S=.25,AUR_WL=550;
 /* the three curtains, in the picture's own coordinates (1600×1067, the water line at 550) */
 const AUR_RIB=[{y0:250,amp:50,k:.0042,sp:.11,h:210,ph:0,a:.78},{y0:300,amp:34,k:.0061,sp:-.08,h:150,ph:2.1,a:.6},{y0:190,amp:30,k:.0029,sp:.06,h:130,ph:4.2,a:.45}];
-function aurWanted(){try{return !!(S.aur&&S.dyn=='lake'&&DYN.lake&&DYN.lake.am&&dynResolve().mode=='dark')}catch(e){return false}}
+function aurWanted(){try{return !!(S.aur&&S.dyn=='lake'&&DYN.lake&&DYN.lake.am&&dynShown()&&dynResolve().mode=='dark')}catch(e){return false}}
 function aurColours(){const base=acVariant(S.accent||'#2563eb',S.aurm||'normal'),o=icHex2rgb(base)||[37,99,235];let[h,s,l]=icRgb2hsl(...o);
  s=Math.max(s,38);const lo=icHsl2hex(h,s,Math.max(52,Math.min(68,l+8))),hi=icHsl2hex(h+38,Math.max(30,s-8),Math.max(40,Math.min(58,l)));return{base,lo,hi}}
 /* one vertical strip, bright at the curtain's lower edge, shading off upwards to the neighbouring hue */
@@ -42,7 +57,7 @@ function aurDraw(){const c=AUR.cv;if(!c||!AUR.mask||!AUR.mask.complete||!AUR.mas
  /* the lake: the same light upside down about the water line (the mask keeps it to the open water and dims it) */
  g.globalCompositeOperation='lighter';g.setTransform(1,0,0,-1,0,2*AUR_WL*AUR_S);g.drawImage(AUR.sky,0,0);g.drawImage(AUR.sky,0,0);g.setTransform(1,0,0,1,0,0);
  g.globalCompositeOperation='destination-in';g.drawImage(AUR.mask,0,0,AUR_W,AUR_H);g.globalCompositeOperation='source-over'}
-function aurTick(){if(document.hidden)return;aurDraw()}
+function aurTick(){if(document.hidden||!DYNOV.vis)return;if(DYNOV.slow&&(DYNOV.t^=1))return;aurDraw()}
 function aurStop(){clearInterval(AUR.timer);AUR.timer=0}
 function aurStart(){aurStop();AUR.still=!!(S.rmotion||(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches));
  aurDraw();if(!AUR.still)AUR.timer=setInterval(aurTick,document.documentElement.classList.contains('webkit')?125:100)}

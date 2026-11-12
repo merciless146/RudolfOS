@@ -2550,7 +2550,7 @@ function dispPanelS(c,W){dispPanel0(c);const q=s=>c.querySelector('#'+s),ids=Obj
   mk('','None',null);ids.forEach(id=>mk(id,DYN[id].n,DYN[id][r.mode=='light'?'tl':'td']));info()};
  drawW();window.__dynRefresh=()=>{if(c.isConnected)drawW();else window.__dynRefresh=null};
  const upd=()=>{const f=c.querySelector('.sfoot');f&&f.upd&&f.upd()};
- c.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('.dynb');if(b){S.dyn=b.dataset.dyn;applySet();drawW();return}if(e.target.dataset&&e.target.dataset.p!=null&&S.dyn){S.dyn='';setTimeout(drawW,0)}},true);
+ c.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('.dynb');if(b){S.dyn=b.dataset.dyn;if(S.dyn&&S.wpimg)S.wpimg='';applySet();drawW();return}if(e.target.dataset&&e.target.dataset.p!=null&&S.dyn){S.dyn='';setTimeout(drawW,0)}},true);
  c.addEventListener('input',e=>{const id=e.target.id;if((id=='bs'||id=='b1'||id=='b2')&&S.dyn){S.dyn='';setTimeout(drawW,0)}else if(id=='dm'){S.dm=e.target.value;applySet();drawW()}else if(id=='dlat'){S.lat=e.target.value===''?'':+e.target.value;applySet();info()}},true);
  secFooter(c,W,'disp',()=>{W.show('disp',1)})}
 window.__dyn=1;if(S.dyn)applySet();
