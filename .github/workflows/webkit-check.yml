@@ -57,9 +57,9 @@ jobs:
         run: |
           sudo mkdir -p /run/rudolf/dl/.incoming && sudo chmod -R 777 /run/rudolf
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 HOME=$RUNNER_TEMP/home2; mkdir -p $HOME
-          python3 iso/qt/webkit/tabs58_ci.py ./rudolf-webkit | tee tabs-result.txt; r=${PIPESTATUS[0]}
-          echo "::notice title=Oracle's tabs in WebKit::$(tail -1 tabs-result.txt) — $(grep -E '^FAIL' tabs-result.txt | tr '\n' '|')"
-          head -c 3000 tabs.txt; exit $r
+          r=0; for m in mixed soft gpu; do rm -rf /run/rudolf/dl/.incoming/*; python3 iso/qt/webkit/tabs58_ci.py ./rudolf-webkit $m | tee tabs-result-$m.txt || r=1
+            echo "::notice title=Oracle's tabs in WebKit ($m)::$(tail -1 tabs-result-$m.txt) — $(grep -E '^FAIL|^pixels' tabs-result-$m.txt | tr '\n' '|')"; cp tabs.txt tabs-$m.txt; done
+          cp tabs-result-mixed.txt tabs-result.txt; head -c 2000 tabs-mixed.txt; exit $r
       - name: The desktop page in rudolf-webkit from the base layer itself (chroot)
         run: |
           B=$RUNNER_TEMP/base; [ -x $B/usr/bin/rudolf-webkit ] || { echo "::error title=Base layer::no rudolf-webkit in it"; exit 1; }
@@ -93,4 +93,4 @@ jobs:
             pkill -f "rudolf-webkit --rudolf-kiosk --size=1280x800 --draw=$m" || true; sleep 2; done
           exit ${fail:-0}
       - uses: actions/upload-artifact@v4
-        with: {name: lite-engine-check, path: "shot.png\nconsole.txt\nmem.txt\nadd.txt\nchroot.txt\ntabs.png\ntabs.txt\ntabs-result.txt\nmse.txt"}
+        with: {name: lite-engine-check, path: "shot.png\nconsole.txt\nmem.txt\nadd.txt\nchroot.txt\ntabs.png\ntabs.txt\ntabs-result.txt\ntabs*-*.png\ntabs-*.txt\nmse.txt"}

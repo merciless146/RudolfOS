@@ -5,7 +5,7 @@
 # answer goes back to the page; a download arrives in the download folder (as Chromium's do); the firewall blocks a
 # page; the tab is placed, cut and closed. python3 tabs58_ci.py ./rudolf-webkit   (DISPLAY set, /run/rudolf/dl writable)
 import http.server, json, os, subprocess, sys, threading, time
-BIN = sys.argv[1]; RES = {}; PROMPT = []
+BIN = sys.argv[1]; DRAW = sys.argv[2] if len(sys.argv) > 2 else ''; RES = {}; PROMPT = []
 DESK = r'''<!doctype html><meta charset=utf-8><title>desk</title><body style="background:#123">desk<script>
 const post=(k,v)=>fetch('/result',{method:'POST',body:JSON.stringify({k,v})});
 const send=m=>window.webkit.messageHandlers.rudolfShell.postMessage(m);
@@ -18,10 +18,11 @@ async function run(){await post('hello',true);
  send({rudolfShell:'tab',op:'open',tid:'t1',url:'http://127.0.0.1:8091/xfo.html',part:'utest'});
  send({rudolfShell:'tab',op:'place',tid:'t1',r:[100,100,700,450],vis:null,z:1});
  await step('title',async()=>(await wait(m=>m.ev=='title'&&m.tid=='t1'&&m.title=='XFO page')).title);
+ await post('shot1',true); await new Promise(r=>setTimeout(r,2500));
  await step('nav',async()=>(await wait(m=>m.ev=='nav'&&m.tid=='t1'&&/xfo\.html$/.test(m.url))).url);
  await step('dialog',async()=>(await wait(m=>m.ev=='dialog'&&m.tid=='t1')).kind);
  send({rudolfShell:'tab',op:'place',tid:'t1',r:[100,100,700,450],vis:[[0,0,350,450]],z:1});
- await new Promise(r=>setTimeout(r,1500));
+ await new Promise(r=>setTimeout(r,1500)); await post('shot2',true); await new Promise(r=>setTimeout(r,2000));
  send({rudolfShell:'tab',op:'go',tid:'t1',url:'http://127.0.0.1:8091/file.bin'});
  await step('download',async()=>(await wait(m=>m.ev=='download'&&m.tid=='t1')).url);
  send({rudolfShell:'tab',op:'fw',rules:{on:true,mode:'open',block:['blocked.test'],trust:[]}});
@@ -51,13 +52,24 @@ class H(http.server.BaseHTTPRequestHandler):
 for port in (8090, 8091):
     s = http.server.ThreadingHTTPServer(('127.0.0.1', port), H); threading.Thread(target=s.serve_forever, daemon=True).start()
 log = open('tabs.txt', 'w')
-p = subprocess.Popen([BIN, '--rudolf-kiosk', '--size=1280x800', 'http://127.0.0.1:8090/'], stdout=log, stderr=subprocess.STDOUT)
-end = time.time() + 120; shot = False
+p = subprocess.Popen([BIN, '--rudolf-kiosk', '--size=1280x800'] + (['--draw=' + DRAW] if DRAW else []) + ['http://127.0.0.1:8090/'], stdout=log, stderr=subprocess.STDOUT)
+end = time.time() + 120; shot = False; s1 = s2 = False
+suf = '-' + DRAW if DRAW else ''
 while time.time() < end and 'done' not in RES and p.poll() is None:
+    # 1.5.8: what is really on the screen: the new tab's first drawing (no reload), and a cut where the desktop covers it
+    if not s1 and 'shot1' in RES: time.sleep(1.5); subprocess.run(['import', '-window', 'root', 'tabs1' + suf + '.png']); s1 = True
+    if not s2 and 'shot2' in RES: time.sleep(.8); subprocess.run(['import', '-window', 'root', 'tabs2' + suf + '.png']); s2 = True
     if not shot and 'dialog' in RES:
         time.sleep(2.5); subprocess.run(['import', '-window', 'root', 'tabs.png']); shot = True
     time.sleep(0.5)
 time.sleep(1); dl = '/run/rudolf/dl/.incoming/file.bin'
+def px(f, x, y):
+    try: return tuple(int(float(v)) for v in subprocess.run(['convert', f, '-format', '%[fx:int(255*p{%d,%d}.r)],%[fx:int(255*p{%d,%d}.g)],%[fx:int(255*p{%d,%d}.b)]' % (x, y, x, y, x, y), 'info:'], capture_output=True, text=True).stdout.split(','))
+    except Exception: return None
+yellow = lambda c: bool(c) and c[0] > 200 and c[1] > 190 and c[2] < 180
+desk = lambda c: bool(c) and c[0] < 70 and c[1] < 80 and c[2] < 100
+P1, P2L, P2R = px('tabs1' + suf + '.png', 600, 400), px('tabs2' + suf + '.png', 250, 400), px('tabs2' + suf + '.png', 650, 400)
+print('pixels', DRAW or 'default', P1, P2L, P2R)
 checks = [
     ('rudolf-webkit says hello, the desktop answers ready', RES.get('hello') is True),
     ('a tab opens a page that forbids frames, and reports its title', RES.get('title') == 'XFO page'),
@@ -66,6 +78,8 @@ checks = [
     ("...and the desktop's answer goes back to the page", PROMPT == ['typed%20in%20the%20desktop'] or PROMPT == ['typed in the desktop']),
     ('a download is reported and arrives in the download folder, complete', str(RES.get('download', '')).endswith('/file.bin') and os.path.exists(dl) and os.path.getsize(dl) == 100000 and not os.path.exists(dl + '.crdownload')),
     ('the firewall blocks a page in a tab', 'blocked list' in str(RES.get('blocked', ''))),
+    ('a new tab shows its page at once, without a reload (' + (DRAW or 'default') + ')', yellow(P1)),
+    ('a cut shows the desktop where it covers the tab, the page elsewhere (' + (DRAW or 'default') + ')', yellow(P2L) and desk(P2R)),
     ('rudolf-webkit still runs', p.poll() is None),
 ]
 p.terminate(); log.close()
