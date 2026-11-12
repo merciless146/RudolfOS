@@ -99,3 +99,20 @@ provisioning (downloading a carrier's eSIM profile), and 5G standalone features 
 5. The FCC-unlock path on a laptop module.
 6. Part 7: the ARM64 release with all of the above, after QEMU aarch64 and one ARM64 computer.
 7. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
+
+## After 1.6.0: the native desktop decision (added on 2026-11-12)
+Before the first phone (1.6.x), decide whether Rudolf OS's shell becomes native (drawn by its own program, not by a
+web engine). Not before 1.6.0: its work is mostly the system's (modems, the SIM, ARM64), its desktop parts (Messages,
+the taskbar's signal, Settings › Mobile network) are planned in the desktop page and would otherwise be built twice,
+and the web page runs the same on x86 and ARM64 while ARM64 is brought up.
+- **What it rests on:** the hidden-memory reading (docs/plan-memdebug.md) and the lighter desktop page
+  (docs/plan-1.5.9.md Part 10), both measured on the Vivobook: Standard's and Lite's memory at idle before and after.
+- **The prototype:** a small native shell (taskbar, wallpaper, window frames) in a Wayland compositor, with the apps
+  still web pages loaded when opened, measured on the Vivobook and on the ARM64 computer: memory at idle, with Oracle
+  open, and with a game; start-up time; battery at idle.
+- **Then:** if it saves enough on a 2 to 4 GB device, the phone's shell starts native, and the desktop can follow as
+  Rudolf OS 2.0 (every app moved over, the browser build and the phone web app kept or retired). If not, the web
+  desktop stays and the effort goes into slimming it further.
+- For scale (2026-11-12): Standard at idle about 1.0 to 1.2 GB; light native Linux desktops (Xfce, LXQt) typically
+  300 to 500 MB for the whole system. The desktop is about 4.9 MB of code in 97 files: a native desktop rewrites all
+  of it, so it is a release of its own, never part of another.
