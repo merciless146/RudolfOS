@@ -1,0 +1,31 @@
+# A test kernel for one measurement (iso/systools/testkernel.sh): the stable release's kernel with extra options,
+# published as a pre-release named test-*. Never in a channel: no update installs it, and it is started by hand with
+# Secure Boot off. 2026-11-12: allocation profiling (docs/plan-memdebug.md).
+name: Test kernel
+on:
+  workflow_dispatch:
+    inputs:
+      tag: {description: 'Pre-release to publish it as (test-...)', required: true, default: 'test-allocinfo'}
+      extra: {description: 'Kernel options to turn on', required: true, default: 'MEM_ALLOC_PROFILING MEM_ALLOC_PROFILING_ENABLED_BY_DEFAULT'}
+permissions: {contents: write}
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools bc flex bison libelf-dev libssl-dev kmod >/dev/null
+      - name: Build
+        env: {TAG: '${{ inputs.tag }}', EXTRA: '${{ inputs.extra }}', GH_TOKEN: '${{ github.token }}'}
+        run: |
+          case "$TAG" in test-*) ;; *) echo "::error::the tag must start with test-"; exit 1;; esac
+          git fetch -q --depth 1 origin gh-pages
+          KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); export KERNEL_VERSION=${KV%-rudolf}
+          echo "stable kernel $KV"
+          OUT=$PWD/tout bash iso/systools/testkernel.sh
+          gh release delete "$TAG" -y --cleanup-tag 2>/dev/null || true
+          { echo "Test kernel only: Linux $KERNEL_VERSION as in the stable release, with: $EXTRA."
+            echo; echo "Not a Rudolf OS release. No update installs it; it is started by hand, with Secure Boot off, for one measurement (docs/plan-memdebug.md)."; } > notes.md
+          gh release create "$TAG" tout/vmlinuz tout/modules.sfs tout/rudolf-kexec tout/SHA256SUMS tout/config-extra.txt --prerelease --title "Test kernel ($TAG)" --notes-file notes.md
+          echo "::notice title=Test kernel::$TAG: $(cat tout/config-extra.txt | tr '\n' ' ')"
