@@ -99,6 +99,7 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
      fw {rules}                 the firewall (all tabs): {on, mode: open|trusted|lock, block: [], trust: []}
      clear {part}               forget a partition's cookies, storage and cache
      blur                       keyboard focus back to the desktop
+     unfs                       (1.5.8) leave full screen, whichever tab has it (Task Manager and the power dialog come first)
      ruffle {cfg}               Ruffle for Flash content in pages: {on, urls, config} (as the extension's settings)
    shell -> desktop {rudolfShell: 'tabev', tid, ev, ...}
      nav {url, back, fwd}       the page's address changed (also inside the page); back/fwd: its own history
@@ -181,7 +182,9 @@ function tabEvents(t) {
   });
   f.addEventListener('focus', () => toTab(t.tid, 'focus'));
   f.addEventListener('close', () => toTab(t.tid, 'close'));
-  f.addEventListener('exit', e => { if (e.reason != 'normal') toTab(t.tid, 'gone', {why: String(e.reason || '')}) });
+  /* (1.5.8: a page that ends while full screen, as the memory guard ended a game's on the Vivobook, leaves full screen:
+     its frame stayed over everything with Chromium's sad-face icon, and Task Manager opened behind it) */
+  f.addEventListener('exit', e => { if (FS_TAB === t || document.fullscreenElement === f) document.exitFullscreen().catch(() => {}); if (e.reason != 'normal') toTab(t.tid, 'gone', {why: String(e.reason || '')}) });
   f.addEventListener('unresponsive', () => toTab(t.tid, 'gone', {why: 'unresponsive'}));
   f.addEventListener('newwindow', e => {
     const url = e.targetUrl || '';
@@ -303,6 +306,7 @@ function onTab(m) {
   if (m.op == 'fw') { const r = m.rules || {}; FW = {on: !!r.on, mode: String(r.mode || 'open'), block: [].concat(r.block || []).map(String), trust: [].concat(r.trust || []).map(String)}; return }
   if (m.op == 'dialog') { const d = DLG.get(m.did); DLG.delete(m.did); if (d) try { m.ok ? d.ok(String(m.text == null ? '' : m.text)) : d.cancel() } catch (e) {} return }
   if (m.op == 'blur') { desk.focus(); return }
+  if (m.op == 'unfs') { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); return }   // 1.5.8: Task Manager, the power dialog
   if (m.op == 'dark') { const on = !!m.on; if (on === DARK) return; DARK = on; for (const t of TABS.values()) t.f.executeScript({code: darkJS(on)}).catch(() => {}); return }
   if (m.op == 'ruffle') { const r = m.cfg || {}; RUFFLE = {on: !!r.on, urls: [].concat(r.urls || []).filter(u => /^https?:\/\//.test(u)).slice(0, 4), config: Object.assign({}, r.config || {})}; return }
   if (m.op == 'perm') { const p = PERM.get(m.pid); PERM.delete(m.pid); if (p) try { m.allow ? p.allow() : p.deny() } catch (e) {} return }
