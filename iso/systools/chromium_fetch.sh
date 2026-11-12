@@ -10,11 +10,12 @@ SRC=${1:-snap}; OUT=$(realpath -m "$2"); rm -rf "$OUT"; mkdir -p "$OUT"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 case "$SRC" in
 snap)
-	J=$(curl -fsSL -H 'Snap-Device-Series: 16' 'https://api.snapcraft.io/v2/snaps/info/chromium?fields=download,version')
+	# (1.5.8: retried; on 2026-11-12 the store's TLS handshake timed out once and the release fell back to Playwright)
+	J=$(curl -fsSL --retry 4 --retry-delay 10 --retry-all-errors --connect-timeout 30 -H 'Snap-Device-Series: 16' 'https://api.snapcraft.io/v2/snaps/info/chromium?fields=download,version')
 	URL=$(echo "$J" | jq -r '."channel-map"[] | select(.channel.name=="stable" and .channel.architecture=="amd64") | .download.url' | head -1)
 	VER=$(echo "$J" | jq -r '."channel-map"[] | select(.channel.name=="stable" and .channel.architecture=="amd64") | .version' | head -1)
 	[ -n "$URL" ] && [ "$URL" != null ] || { echo "no stable amd64 chromium snap" >&2; exit 1; }
-	curl -fsSL -o "$W/c.snap" "$URL"
+	curl -fsSL --retry 4 --retry-delay 10 --retry-all-errors -o "$W/c.snap" "$URL"
 	unsquashfs -q -d "$W/s" "$W/c.snap" 'usr/lib/chromium-browser' >/dev/null
 	cp -a "$W/s/usr/lib/chromium-browser/." "$OUT/"
 	[ -x "$OUT/chrome" ] || { echo "the snap has no chrome binary" >&2; exit 1; }
@@ -22,7 +23,10 @@ snap)
 	echo "${VER%%-*}" > "$OUT.version";;
 playwright)
 	npx -y playwright@latest install chromium >/dev/null
-	D=$(ls -d ~/.cache/ms-playwright/chromium-*/chrome-linux | sort -V | tail -1)
+	# (1.5.8: newer Playwright unpacks to chrome-linux64. Found nothing, the empty name made this copy the runner's
+	# whole root file system, "/.", until it failed: now both names, and nothing is copied unless a chrome is there)
+	D=$(ls -d ~/.cache/ms-playwright/chromium-*/chrome-linux ~/.cache/ms-playwright/chromium-*/chrome-linux64 2>/dev/null | sort -V | tail -1)
+	[ -n "$D" ] && [ -x "$D/chrome" ] || { echo "Playwright's Chromium was not found in ~/.cache/ms-playwright" >&2; exit 1; }
 	cp -a "$D/." "$OUT/"
 	"$OUT/chrome" --version | awk '{print $2}' > "$OUT.version";;
 *) echo "unknown source $SRC" >&2; exit 2;;
