@@ -302,6 +302,15 @@ Vivobook's Settings › System health › Memory is on "small" (half the memory,
 - Tests: host, the size zram is given for auto and small on 2, 3.4, 4 and 16 GB (the memory script); browser, the
   offer in the notification and the switch.
 
+### 9.2b The memory guard warns before it ends the game (added on 2026-11-12)
+On 2026-11-12 the guard ended FNF (about 2 GB) twice without a word before it: the screen left full screen and said
+so afterwards (1.5.8). When memory is low but not yet critical and the largest page is the one in front (above all
+full screen), the guard first asks the desktop to warn: a small notice over the full-screen page ("Memory is almost
+full: close other tabs or apps to keep the game running", with the largest of them and a button for each), for at
+least 10 seconds or until memory is critical, whichever comes first. A background page is still ended first, as
+now; the warning is only for the page in front. Tests: host, the guard's new "low, warned" step and its timings;
+browser, the notice over a full-screen page and its buttons.
+
 ### 9.3 Tests
 - Browser: game mode on (full screen) puts background tabs to sleep and back on selection, on both engines (the
   shell's and rudolf-webkit's tab messages); tabs with sound, a call or a typed-in form stay; the tray notification's
@@ -368,7 +377,43 @@ profiling. From it:
   keeps versions apart, and that a missing file is reported; on the Vivobook, memory at idle and after opening and
   closing each large app, Standard and Lite, before promotion.
 
+## Part 11: fixes and safeguards (added on 2026-11-12)
+### 11.1 Chromium from one known source, never changed without being chosen
+On 2026-11-12 the snap store could not be reached for four builds in a row, and each time the build fell back to
+Playwright's Chromium without being asked. Newer Playwright brings Google's **Chrome for Testing** (158.0.8127.18),
+which is what 1.5.8 shipped: a Google Chrome build made for automated tests, not for everyday browsing, under
+Google's own terms rather than Chromium's open-source licence. Rudolf OS ships open-source Chromium.
+- **One source: Ubuntu's chromium snap** (open-source Chromium, built for Ubuntu like the base layer). Debian's
+  package is no alternative: it is built for Debian's newer C library and does not run on the Ubuntu base. The
+  download is made sturdier: the store's two addresses (api.snapcraft.io and its CDN), longer retries.
+- **No silent fallback:** when the snap cannot be fetched, the release keeps the previous release's chromium.sfs (as
+  it already does when the start test fails) and says so in its notes and as a warning. Playwright stays only for
+  local test builds and by explicit choice (CHROMIUM_FROM=playwright).
+- **Checked before it is used:** `chrome --version` must say "Chromium" (not "Google Chrome"), and the version must
+  not be lower than the release's: Chromium does not open a profile written by a newer version, so 1.5.8's Chrome
+  for Testing 158 stays until the snap has 158 or newer. The manifest records the source (`chromium 158.x snap`).
+- Tests: host, chromium_fetch.sh against recorded store answers (a timeout, Chrome branding, a lower version).
+
+### 11.2 Browser security updates
+Chromium has security fixes every few weeks, and they reach Rudolf OS only with a release. A scheduled workflow, once
+a day, compares the snap's stable Chromium with the stable release's and, when it is newer, opens (or updates) one
+GitHub issue: "Chromium X is available (security fixes): the stable release has Y". A beta with it is then one
+dispatch; promotion stays the person's choice.
+
+### 11.3 A clear message when a system layer does not match its release
+When a layer differs from the signed release list, rudolf-verity reports the device-mapper's error ("table: Argument
+list too long") instead of saying what is wrong. It compares the layer's size with the list's blocks before loading
+the table and says "modules.sfs does not match the release list (size)"; Task Manager and the start-up message show
+that. Test: host, a layer of another size.
+
+### 11.4 New features keep their logic in the system services
+So that the desktop that draws them can change (the native desktop decision after 1.6.0), what 1.5.9 adds (the
+modem service, Share this connection, calls, game mode, developer mode) keeps its logic and state in rudolfd and the
+services, with the desktop only showing state and sending choices through rudolfd's API. Each part's API is written
+down in docs/api.md with its first use.
+
 ## Steps
+0. Part 11 first: 11.1 (the Chromium source) and 11.3, then 11.2; 11.4 holds for every part.
 1. Part 1 (ModemManager, read only), with the USB stick and the MiFi on the Vivobook over the devlink.
 2. Part 2 (tablet mode, keyboard, rotation).
 3. Part 3 (ARM64 build and its QEMU checks).
@@ -382,6 +427,6 @@ profiling. From it:
    slot and recovery.efi, and 8.5 Return to official, proven in QEMU with Secure Boot; then 8.3 Developer mode, 8.1 the
    keys in Settings, 8.2's certificates and revocation, and 8.6 the README with its CI check.
 9. Part 9 (game mode memory): 9.2's sleeping tabs first (both engines), then the desktop's own savings, waiting
-   background work, the tray offer and the memory guard's order; checked with FNF on the Vivobook before promotion.
+   background work, the tray offer, the memory guard's order and its warning (9.2b); checked with FNF on the Vivobook before promotion.
 10. Part 10 (a lighter page): pictures and fonts out first, then the large apps one at a time behind stubs, each
     measured on both engines on the Vivobook; then the engines' limits (10.3).
