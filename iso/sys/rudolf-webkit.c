@@ -207,6 +207,8 @@ static void tabs_order(void)
 static void shape(tab *t)
 {
 	GdkWindow *gw = gtk_widget_get_window(t->box); if (!gw || !gtk_widget_get_has_window(t->box)) return;
+	if (t->still && t->stillUp) { step_aside(t); return; }
+	gdk_window_shape_combine_region(gw, NULL, 0, 0);
 	gdk_window_input_shape_combine_region(gw, t->fs ? NULL : t->vis, 0, 0);
 	gtk_widget_queue_draw(overlay);
 }
@@ -216,12 +218,13 @@ static gboolean on_box_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	if (t->vis && !t->fs) { gdk_cairo_region(cr, t->vis); cairo_clip(cr); }
 	return FALSE;
 }
-/* out of the way: hidden, shrunk to a pixel in the corner and laid out again (a hide alone left the page's pixels on
-   the screen: what was under it was not drawn again) */
+/* out of the way: its window shaped to nothing (a hide, or shrinking it, left the page's pixels on the screen; an
+   empty shape is what takes it off in all three drawing modes, as the Lite engine check showed) */
 static void step_aside(tab *t)
 {
-	gtk_widget_set_margin_start(t->box, 0); gtk_widget_set_margin_top(t->box, 0); gtk_widget_set_size_request(t->box, 1, 1);
-	gtk_widget_hide(t->box); gtk_widget_queue_resize(overlay); gtk_widget_queue_draw(desk);
+	GdkWindow *gw = gtk_widget_get_window(t->box);
+	if (gw) { cairo_region_t *none = cairo_region_create(); gdk_window_shape_combine_region(gw, none, 0, 0); gdk_window_input_shape_combine_region(gw, none, 0, 0); cairo_region_destroy(none); }
+	gtk_widget_queue_draw(desk);
 }
 static void still_ready(GObject *o, GAsyncResult *res, gpointer d)
 {
@@ -256,7 +259,6 @@ static void apply_place(tab *t)
 		gtk_widget_show(t->box); shape(t); tabs_order(); return;
 	}
 	if (!t->shown) { gtk_widget_hide(t->box); return; }
-	if (t->still && t->stillUp) { step_aside(t); return; }
 	gtk_widget_set_margin_start(t->box, t->x); gtk_widget_set_margin_top(t->box, t->y);
 	gtk_widget_set_size_request(t->box, t->w, t->h);
 	gtk_widget_show(t->box); shape(t); tabs_order();
