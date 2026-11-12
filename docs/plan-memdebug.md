@@ -88,3 +88,28 @@ ever installs it. On the Vivobook, with Secure Boot off again (the same switch):
 4. A normal restart (the released kernel again), the slot `r` removed, and Secure Boot back on and checked. Nothing
    else on the drive changes; if the test kernel does not start, the power button and a normal start bring the
    released system back.
+
+## What the test kernel found (2026-11-12, idle, 204 MB unaccounted)
+`/proc/allocinfo` on the Vivobook, five minutes idle (the test kernel through slot `r`, Secure Boot off):
+
+| Held by | MB | What it is |
+|---|---|---|
+| `drivers/iommu/dma-iommu.c` (`__iommu_dma_alloc_pages`) | 65 | the SSD's host memory buffer: the Kingston OM8PGP4128P has no DRAM of its own and borrows 64 MiB (`nvme0: allocated 64 MiB host memory buffer`) |
+| `ttm_pool_alloc_page` [ttm] | 42 | the graphics driver's pool and the graphics card's system memory |
+| `net/core/skbuff.c` (`kmalloc_reserve`) | 16 | network (Wi-Fi) receive buffers |
+| `blk-mq` requests, `dm-bufio` | 9 | the drive's requests; dm-verity's cache of checked blocks |
+| IOMMU tables, smaller | 5 | |
+
+About 135 of the 204 MB is named; the other 60 to 70 MB was taken before tracking could see it (early start-up).
+- **Nothing is a leak and nothing is wasted by Rudolf OS.** The largest part is the hardware of a budget laptop: an
+  SSD without DRAM borrows RAM, and it is faster for it. Limiting it (`nvme.max_host_mem_size_mb`) would trade the
+  drive's speed for 64 MB: left as it is.
+- The graphics pool cap stays in 1.5.9 (Part 10); the network and drive buffers are normal and small.
+- The memory to win is the desktop page's (Part 10), not hidden memory.
+
+After the reading: a normal restart into the released kernel, slot `r` and the test files removed, Secure Boot back
+on and checked (lockdown `[integrity]`, 2026111219 from slot b). The pre-release `test-allocinfo` stays for a later
+measurement; it is never in a channel.
+- The test kernel's screen was garbled: handing over by kexec from a running desktop leaves the graphics card set up
+  by the first kernel, which amdgpu does not fully reset. A test of this kind reads over the devlink only; updates
+  hand over before any graphics driver has started, so they are not affected.
