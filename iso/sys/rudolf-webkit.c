@@ -555,7 +555,17 @@ int main(int argc, char **argv)
 	char *home = g_build_filename(g_get_home_dir(), ".rudolf-webkit", NULL);
 	char *data = g_build_filename(home, "data", NULL), *cache = g_build_filename(home, "cache", NULL);
 	WebKitWebsiteDataManager *mgr = webkit_website_data_manager_new("base-data-directory", data, "base-cache-directory", cache, NULL);
-	WebKitWebContext *ctx = webkit_web_context_new_with_website_data_manager(mgr);
+	/* 1.5.8: the desktop's web process frees what it can spare (decoded images, fonts, JavaScript's leftovers) from about
+	   250 MB (conservative, 1/3 of the limit) and more from about 380 MB (strict, 1/2), checked every 15 s; WebKit's own
+	   limit follows the computer's memory, so on a 4 GB laptop it began only past 1 GB. It is never ended for its size. */
+	WebKitMemoryPressureSettings *mps = webkit_memory_pressure_settings_new();
+	webkit_memory_pressure_settings_set_memory_limit(mps, 768);
+	webkit_memory_pressure_settings_set_conservative_threshold(mps, 0.33);
+	webkit_memory_pressure_settings_set_strict_threshold(mps, 0.5);
+	webkit_memory_pressure_settings_set_kill_threshold(mps, 0);
+	webkit_memory_pressure_settings_set_poll_interval(mps, 15);
+	WebKitWebContext *ctx = WEBKIT_WEB_CONTEXT(g_object_new(WEBKIT_TYPE_WEB_CONTEXT, "website-data-manager", mgr, "memory-pressure-settings", mps, NULL));
+	webkit_memory_pressure_settings_free(mps);
 	webkit_web_context_set_cache_model(ctx, WEBKIT_CACHE_MODEL_DOCUMENT_VIEWER);   /* the least for caches: the page is local */
 	WebKitUserContentManager *ucm = webkit_user_content_manager_new();
 	webkit_user_content_manager_register_script_message_handler(ucm, "rudolfShell");
@@ -565,6 +575,7 @@ int main(int argc, char **argv)
 	g_object_set(s, "enable-javascript", TRUE, "javascript-can-access-clipboard", TRUE, "enable-webaudio", TRUE,
 		"enable-media-stream", TRUE, "enable-webgl", TRUE, "enable-developer-extras", FALSE,
 		"media-playback-requires-user-gesture", FALSE, "allow-file-access-from-file-urls", FALSE,
+		"enable-page-cache", FALSE,   /* (1.5.8: the desktop never goes back to an earlier page: no back/forward cache) */
 		"enable-write-console-messages-to-stdout", TRUE, NULL);
 	webkit_settings_set_hardware_acceleration_policy(s, HWPOL);
 	g_signal_connect(desk, "permission-request", G_CALLBACK(on_permission), NULL);
