@@ -159,7 +159,7 @@ async function debPasswd(msg){if(!await elevate('Change the Linux password (the 
   q('.y').disabled=true;try{await lxApi('debian/passwd',a)}catch(e){q('.y').disabled=false;return err.textContent=e.message}
   const j=await lxJobWait();o.remove();const t=j.status==0?'The Linux password is changed.':'The password was not changed: '+((j.log||'').trim().split('\n').pop()||'error');if(msg)msg.textContent=t;notify('Linux password',t,{kind:j.status==0?'info':'error'})}}
 /* ---------- daily updates (quiet; skipped while a terminal is open or another task runs) ---------- */
-async function debAutoUpdate(){if(!RD||!USER||window.LOCKED||(typeof netMetered=='function'&&netMetered())||DEB.open>0||!ld('bd95debauto',true))return;if(Date.now()-ld('bd95debupd',0)<22*3600e3)return;
+async function debAutoUpdate(){if(!RD||!USER||window.LOCKED||(typeof gameMode=='function'&&gameMode())||(typeof netMetered=='function'&&netMetered())||DEB.open>0||!ld('bd95debauto',true))return;if(Date.now()-ld('bd95debupd',0)<22*3600e3)return;
  const st=await debStatus();if(!st||!st.installed||!navigator.onLine)return;try{const j=await rd('job');if(j.running)return}catch(e){return}
  try{await lxApi('debian/update')}catch(e){return}svj('bd95debupd',Date.now());await lxJobWait();debApps()}
 if(RD){(function(){const o=window.__afterLogin;window.__afterLogin=()=>{o&&o();setTimeout(debApps,2500)}})();setTimeout(debAutoUpdate,20*60e3);setInterval(debAutoUpdate,3*3600e3)}
