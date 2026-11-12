@@ -211,6 +211,7 @@ static gboolean on_box_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	(void)w; tab *t = d;
 	if (t->vis && !t->fs) { gdk_cairo_region(cr, t->vis); cairo_clip(cr); }
+	if (g_getenv("RUDOLF_WK_DEBUG") && t->vis) { double a, b, c, e; cairo_clip_extents(cr, &a, &b, &c, &e); g_printerr("draw %s %s clip %.0f,%.0f-%.0f,%.0f\n", t->tid, w == t->view ? "view" : "box", a, b, c, e); }
 	return FALSE;
 }
 static void apply_place(tab *t)
@@ -347,6 +348,7 @@ static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 	t->box = gtk_event_box_new(); gtk_event_box_set_visible_window(GTK_EVENT_BOX(t->box), TRUE);
 	gtk_widget_set_halign(t->box, GTK_ALIGN_START); gtk_widget_set_valign(t->box, GTK_ALIGN_START);
 	gtk_container_add(GTK_CONTAINER(t->box), t->view); gtk_widget_show(t->view);
+	g_signal_connect(t->view, "draw", G_CALLBACK(on_box_draw), t);   /* (the view draws itself: the clip must be on its own drawing) */
 	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), t->box);
 	g_signal_connect(t->box, "realize", G_CALLBACK(on_box_realize), t);
 	g_signal_connect(t->box, "draw", G_CALLBACK(on_box_draw), t);
