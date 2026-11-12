@@ -91,6 +91,7 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
      open {url, part, adopt?}   a new tab (part: whose tab, so each Rudolf OS account has its own cookies);
                                 adopt: a tab the shell already made for a page's new window (tabev 'newwin')
      go {url} | back | forward | reload | stop | zoom {z} | focus | close
+     busy {id}                  (1.5.9) may the tab sleep (game mode)? answered by tabev busy {id, m, f}
      place {r: [x, y, w, h] | null, vis: [[x, y, w, h], ...] | null, z}
                                 where the tab is on the screen (null: not shown); vis: the parts of it not covered
                                 by the desktop (menus, other windows), relative to r; null when nothing covers it
@@ -110,7 +111,8 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
      dialog {did, kind, text, def}   perm {pid, perm, url}   blocked {url, why, main}   gone {why}
      fs {on}                    the page is fullscreen: its frame fills the screen
      flash                      Ruffle was loaded for Flash content in the page
-     download {url, started}    the page started a download (Chromium saves it; the desktop files it) */
+     download {url, started}    the page started a download (Chromium saves it; the desktop files it)
+     busy {id, m, f}            (1.5.9) m: sound or video is playing; f: text is typed into the page and not sent */
 const TABS = new Map();
 const NONCE = 'rudolf' + crypto.getRandomValues(new Uint32Array(2)).join('');
 let FW = {on: false}, RUFFLE = {on: false, urls: [], config: {}};
@@ -284,6 +286,9 @@ document.addEventListener('fullscreenchange', () => {
 });
 const num = (v, d) => Number.isFinite(+v) ? +v : d;
 const rect = r => Array.isArray(r) && r.length == 4 ? r.map(v => Math.round(num(v, 0))) : null;
+/* (1.5.9) what the page is doing that sleeping would lose: media playing, text typed and not sent */
+const BUSY_JS = `JSON.stringify({m:[...document.querySelectorAll('video,audio')].some(x=>!x.paused&&!x.muted&&x.readyState>2),
+f:[...document.querySelectorAll('input,textarea')].some(x=>!x.disabled&&/^(text|search|email|url|tel|number|password|textarea|)$/.test(x.type||'')&&x.value&&x.value!==x.defaultValue)||[...document.querySelectorAll('[contenteditable]')].some(x=>x.isContentEditable&&(x.textContent||'').trim().length>0&&x.contains(document.activeElement))})`;
 const TAB_OPS = {
   open: m => {
     let t = m.adopt && TABS.get(String(m.adopt));
@@ -300,6 +305,13 @@ const TAB_OPS = {
   zoom: (m, t) => t.f.setZoom(Math.max(.25, Math.min(5, num(m.z, 1)))).catch(() => {}),
   focus: (m, t) => t.f.focus(),
   close: (m, t) => { t.f.remove(); TABS.delete(t.tid) },
+  /* 1.5.9 (game mode, plan 9.2): may this tab sleep? Sound playing, or text typed into a form, says no */
+  busy: async (m, t) => {
+    let a = false, r = {};
+    try { a = !!(await t.f.getAudioState()) } catch (e) {}
+    try { const x = await t.f.executeScript({code: BUSY_JS}); r = JSON.parse((x && x[0]) || '{}') } catch (e) { r = {f: true} }
+    toTab(t.tid, 'busy', {id: m.id, m: a || !!r.m, f: !!r.f});
+  },
   place: (m, t) => place(t, rect(m.r), Array.isArray(m.vis) ? m.vis.map(rect).filter(Boolean) : null, m.z),
 };
 function onTab(m) {

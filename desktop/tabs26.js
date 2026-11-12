@@ -28,6 +28,14 @@ function rtOpen(url, where, h, adopt) {
 const rtGo = (tid, url) => rtSend('go', tid, {url});
 const rtCmd = (tid, op, o) => rtSend(op, tid, o);
 function rtClose(tid) { if (!RT.has(tid)) return; RT.delete(tid); rtSend('close', tid) }
+/* 1.5.9 (game mode, plan 9.2): may a tab sleep? {m: sound or video playing, f: text typed and not sent}; no answer
+   within 2 s counts as busy (the tab stays) */
+const RT_BUSY = new Map(); let RT_BN = 0;
+function rtBusy(tid) {
+  if (!RT.has(tid)) return Promise.resolve({m: true, f: true});
+  const id = ++RT_BN;
+  return new Promise(res => { RT_BUSY.set(id, res); rtSend('busy', tid, {id}); setTimeout(() => { if (RT_BUSY.has(id)) { RT_BUSY.delete(id); res({m: true, f: true, late: true}) } }, 2000) });
+}
 
 /* ---- what covers a tab. Candidates are the desktop's top-level pieces (windows, the taskbar, the Start menu,
    menus, notifications, dialogs) and what the tab's own window puts over it; a candidate that overlaps the tab
@@ -141,6 +149,7 @@ addEventListener('message', e => {
     else if (ev == 'keys') h.keys(String(m.k || ''));
     else if (ev == 'newwin' && typeof m.ntid == 'string') h.newwin(String(m.url || ''), m.ntid, !!m.popup);
     else if (ev == 'gone') h.gone(String(m.why || ''));
+    else if (ev == 'busy') { const w = RT_BUSY.get(m.id); if (w) { RT_BUSY.delete(m.id); w({m: !!m.m, f: !!m.f}) } }
     else if (ev == 'fs') h.fs && h.fs(!!m.on);
     else if (ev == 'blocked') { if (m.main) h.blocked(String(m.url || ''), String(m.why || '')) }
     else if (ev == 'flash') h.flash && h.flash();
