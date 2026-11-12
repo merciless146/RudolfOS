@@ -216,6 +216,13 @@ static gboolean on_box_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	if (t->vis && !t->fs) { gdk_cairo_region(cr, t->vis); cairo_clip(cr); }
 	return FALSE;
 }
+/* out of the way: hidden, shrunk to a pixel in the corner and laid out again (a hide alone left the page's pixels on
+   the screen: what was under it was not drawn again) */
+static void step_aside(tab *t)
+{
+	gtk_widget_set_margin_start(t->box, 0); gtk_widget_set_margin_top(t->box, 0); gtk_widget_set_size_request(t->box, 1, 1);
+	gtk_widget_hide(t->box); gtk_widget_queue_resize(overlay); gtk_widget_queue_draw(desk);
+}
 static void still_ready(GObject *o, GAsyncResult *res, gpointer d)
 {
 	char *tid = d; tab *t = g_hash_table_lookup(TABS, tid); g_free(tid);
@@ -229,8 +236,7 @@ static void still_ready(GObject *o, GAsyncResult *res, gpointer d)
 	else g_string_append(x, "null");
 	g_free(buf); if (pb) g_object_unref(pb); if (sf) cairo_surface_destroy(sf);
 	tabev(t, "still", x->str); g_string_free(x, TRUE);
-	t->stillUp = 1; gtk_widget_hide(t->box);   /* the picture is on its way: the live page steps aside */
-	gtk_widget_queue_draw(desk); gtk_widget_queue_draw(overlay);   /* (and what is under it is drawn again) */
+	t->stillUp = 1; step_aside(t);   /* the picture is on its way: the live page steps aside */
 	if (g_getenv("RUDOLF_WK_DEBUG")) g_printerr("still %s up, box visible=%d mapped=%d\n", t->tid, gtk_widget_get_visible(t->box), gtk_widget_get_mapped(t->box));
 }
 /* covered or not, after each place */
@@ -249,7 +255,8 @@ static void apply_place(tab *t)
 		gtk_widget_set_margin_start(t->box, 0); gtk_widget_set_margin_top(t->box, 0); gtk_widget_set_size_request(t->box, W, H);
 		gtk_widget_show(t->box); shape(t); tabs_order(); return;
 	}
-	if (!t->shown || (t->still && t->stillUp)) { gtk_widget_hide(t->box); gtk_widget_queue_draw(desk); return; }
+	if (!t->shown) { gtk_widget_hide(t->box); return; }
+	if (t->still && t->stillUp) { step_aside(t); return; }
 	gtk_widget_set_margin_start(t->box, t->x); gtk_widget_set_margin_top(t->box, t->y);
 	gtk_widget_set_size_request(t->box, t->w, t->h);
 	gtk_widget_show(t->box); shape(t); tabs_order();
