@@ -2,7 +2,7 @@
  * rudolf-webkit - the Rudolf OS desktop in WebKit (WebKitGTK 4.1) instead of Chromium (1.5.7, plan Part 4).
  *
  * System Settings › Desktop engine › Lite: the session starts this instead of Chromium's kiosk, as the desktop user,
- * in the desktop's memory group:   rudolf-webkit --rudolf-kiosk --size=WxH http://127.0.0.1:8080/
+ * in the desktop's memory group:   rudolf-webkit --rudolf-kiosk --size=WxH [--software] http://127.0.0.1:8080/
  * One window without a frame, class RudolfDesktop (rudolf-display keeps it exactly full screen, as Chromium's), the
  * page's own data in ~/.rudolf-webkit (at start the desktop loads rudolfd's mirror of its databases, as the shell
  * does). A website the page would load as the whole desktop is refused. A page that stopped (its process ended) is
@@ -34,6 +34,10 @@
 static const char *url = "http://127.0.0.1:8080/";
 static GtkWidget *win, *overlay, *desk;
 static int desk_ready;
+/* 1.5.8: --software: draw with the processor (the session passes it unless Settings › Display › Graphics card says
+   "Use it for games and the desktop", as the Chromium desktop does). On the Vivobook, drawing with the graphics card
+   took some 400 MB more at rest (graphics memory lent from RAM, and a bigger web process). */
+static WebKitHardwareAccelerationPolicy HWPOL = WEBKIT_HARDWARE_ACCELERATION_POLICY_ON_DEMAND;
 static guint hello_timer;
 
 /* ------------------------------------------------------------------ small helpers */
@@ -323,7 +327,7 @@ static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 	WebKitSettings *s = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(t->view));
 	g_object_set(s, "enable-javascript", TRUE, "enable-webaudio", TRUE, "enable-media-stream", TRUE, "enable-webgl", TRUE, "enable-fullscreen", TRUE,
 		"enable-developer-extras", FALSE, "javascript-can-open-windows-automatically", FALSE, "enable-back-forward-navigation-gestures", TRUE, NULL);
-	webkit_settings_set_hardware_acceleration_policy(s, WEBKIT_HARDWARE_ACCELERATION_POLICY_ON_DEMAND);
+	webkit_settings_set_hardware_acceleration_policy(s, HWPOL);
 	t->box = gtk_event_box_new(); gtk_event_box_set_visible_window(GTK_EVENT_BOX(t->box), TRUE);
 	gtk_widget_set_halign(t->box, GTK_ALIGN_START); gtk_widget_set_valign(t->box, GTK_ALIGN_START);
 	gtk_container_add(GTK_CONTAINER(t->box), t->view); gtk_widget_show(t->view);
@@ -539,6 +543,7 @@ int main(int argc, char **argv)
 	int w = 0, h = 0;
 	for (int i = 1; i < argc; i++) {
 		if (!strncmp(argv[i], "--size=", 7)) { if (sscanf(argv[i] + 7, "%dx%d", &w, &h) != 2) w = h = 0; }
+		else if (!strcmp(argv[i], "--software")) HWPOL = WEBKIT_HARDWARE_ACCELERATION_POLICY_NEVER;
 		else if (!strncmp(argv[i], "http://127.0.0.1:", 17)) url = argv[i];
 	}
 	g_set_prgname("RudolfDesktop"); gdk_set_program_class("RudolfDesktop");
@@ -561,7 +566,7 @@ int main(int argc, char **argv)
 		"enable-media-stream", TRUE, "enable-webgl", TRUE, "enable-developer-extras", FALSE,
 		"media-playback-requires-user-gesture", FALSE, "allow-file-access-from-file-urls", FALSE,
 		"enable-write-console-messages-to-stdout", TRUE, NULL);
-	webkit_settings_set_hardware_acceleration_policy(s, WEBKIT_HARDWARE_ACCELERATION_POLICY_ON_DEMAND);
+	webkit_settings_set_hardware_acceleration_policy(s, HWPOL);
 	g_signal_connect(desk, "permission-request", G_CALLBACK(on_permission), NULL);
 	g_signal_connect(desk, "decide-policy", G_CALLBACK(on_decide), NULL);
 	g_signal_connect(desk, "web-process-terminated", G_CALLBACK(on_terminated), NULL);
