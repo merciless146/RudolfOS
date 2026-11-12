@@ -262,7 +262,10 @@ while :; do
 	# 1.5.6: the browser starts in the desktop's memory group (see memory); this loop goes back out right after
 	DCG=/sys/fs/cgroup/desktop/cgroup.procs; [ -e $DCG ] && echo $$ > $DCG 2>/dev/null
 	if [ $ENGINE = webkit ]; then
-		su -s /bin/sh rudolf -c "exec /usr/bin/rudolf-webkit --rudolf-kiosk --size=${W}x$H $START" >>/run/rudolf/webkit-desktop.log 2>&1 &
+		# 1.5.8: how WebKit draws (see rudolf-webkit.c): the graphics card for everything only when Settings say "full";
+		# by default the processor draws and the graphics card puts the layers together; no graphics card: software
+		WKSOFT=--draw=soft; [ $MODE = gpu ] && WKSOFT=--draw=mixed; [ $MODE = gpu ] && [ "$SETTING" = full ] && WKSOFT=--draw=gpu
+		su -s /bin/sh rudolf -c "exec /usr/bin/rudolf-webkit --rudolf-kiosk --size=${W}x$H $WKSOFT $START" >>/run/rudolf/webkit-desktop.log 2>&1 &
 	else
 	# 1.5.8: Chromium 157 never replaces the installed shell from its file ("App is already installed"), so a release's
 	# changes to Oracle's tabs never arrived. Once per start, when the profile's copy is not the system's, rudolf-shellfix
