@@ -307,6 +307,9 @@ shared memory and file cache. Lite (1.5.7's check): the page's own process 389 M
 page's share is the page itself: 4.8 MB of code in 95 modules, all loaded and compiled at sign-in, with every dynamic
 background (light and dark, about 1.5 MB as text), fonts and the CHANGELOG embedded. Slimming it helps both engines.
 
+What the 200 to 250 MB is will be read with one start without lockdown (docs/plan-memdebug.md), and its answer
+added here.
+
 ### 10.1 What moves out of the start-up page
 - **Pictures and fonts first:** the dynamic backgrounds, their thumbnails and the sky masks (DYN), and the extra fonts,
   become files beside the page; only the background in use is loaded and decoded, the thumbnails when Display
