@@ -47,6 +47,16 @@ const SHOT = process.argv[3];
   // the petals blowing across
   const c1 = await q("PET.cv.toDataURL()"); await wait(400); const c2 = await q("PET.cv.toDataURL()");
   ok('11d. cherry petals blow across (70 of them, moving)', await q("PET.ps.length==70&&!!PET.timer") && c1 != c2);
+  // the sky lanterns at night, in the accent colour by their own rule
+  await q("(()=>{S.dm='dark';applySet();return 1})()"); await wait(300);
+  const lh = () => q("(()=>{const c=lanCol().glow.split(',').map(Number);return icRgb2hsl(...c)[0]})()");
+  ok('11e. dark mode: paper lanterns rise in the sky', await q("PET.mode=='dark'&&PET.ls.length==12&&PET.ls.every(l=>l.x>=680&&l.x<=1120)"));
+  await q("(()=>{const s=document.querySelector('#dlnm');s.value='normal';s.onchange({target:s});return 1})()");
+  const l1 = await lh();
+  await q("(()=>{const s=document.querySelector('#dlnm');s.value='comp';s.onchange({target:s});return 1})()");
+  const l2 = await lh();
+  ok('11f. the lanterns: Normal is the accent\'s hue, Complementary the opposite', Math.abs(l1 - aH) < 4 && Math.abs(((l2 - aH + 360) % 360) - 180) < 4, [l1, l2, aH]);
+  ok('11g. what stands in front of the statue (the palm, the shrubs) is drawn over it', await q("decodeURIComponent(STS.img.src).includes('matrix(')&&ST_FRONT.tpl.length>1000"));
   ok('11. Display Properties says which statue stands there', await q("/stands on the right bank/.test((document.querySelector('.stmsg')||{}).textContent||'')"));
   await q("(()=>{S.dyn='';applySet();return 1})()");
   ok('12. no background: no statue, no petals', await q("STS.el.style.display=='none'&&!PET.timer"));
