@@ -204,6 +204,7 @@ static void tabs_order(void)
    anything covers part of a tab, the tab is hidden and the desktop shows a still picture of it (a JPEG, sent with the
    'still' event) under its menus and windows; uncovered, the live tab comes back (cover_step). The clip and the input
    shape stay for the moment before the picture is up. */
+static void step_aside(tab *t);
 static void shape(tab *t)
 {
 	GdkWindow *gw = gtk_widget_get_window(t->box); if (!gw || !gtk_widget_get_has_window(t->box)) return;
