@@ -205,6 +205,10 @@ static void shape(tab *t)
 {
 	GdkWindow *gw = gtk_widget_get_window(t->box); if (!gw || !gtk_widget_get_has_window(t->box)) return;
 	gdk_window_input_shape_combine_region(gw, t->fs ? NULL : t->vis, 0, 0);
+	/* the view's own window (WebKit gives it one): cut that too, or what was drawn there stays on the screen */
+	GdkWindow *vw = t->view ? gtk_widget_get_window(t->view) : NULL;
+	if (vw && vw != gw && gtk_widget_get_has_window(t->view)) { gdk_window_shape_combine_region(vw, t->fs ? NULL : t->vis, 0, 0); gdk_window_input_shape_combine_region(vw, t->fs ? NULL : t->vis, 0, 0); }
+	if (g_getenv("RUDOLF_WK_DEBUG")) g_printerr("shape %s box native=%d view win=%d native=%d\n", t->tid, gdk_window_has_native(gw), vw && vw != gw, vw ? gdk_window_has_native(vw) : -1);
 	gtk_widget_queue_draw(overlay);
 }
 static gboolean on_box_draw(GtkWidget *w, cairo_t *cr, gpointer d)
