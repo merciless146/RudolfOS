@@ -53,7 +53,8 @@ function lkLoginClock() {
 { const _show = showLogin; showLogin = function () { lkRemember(); const r = _show.apply(this, arguments); lkLoginClock(); lkApply($('#login'), 'login'); return r } }
 setTimeout(() => { try { lkLoginClock(); lkApply($('#login'), 'login') } catch (e) {} }, 0);
 
-/* Display Properties › Lock and sign-in screen */
+/* Display Properties › Lock and sign-in screen (with the background settings) */
+{ const st = document.createElement('style'); st.textContent = '.lk58in,.lk58in>.r2{display:contents}.lk58in>.sh4,.lk58in>.msg{grid-column:1/-1}.lk58in>.sh4{margin:14px 0 2px}.lk58in>.msg{margin:0 0 6px}'; document.head.appendChild(st) }
 (function () { const o = dispPanelS; dispPanelS = function (c, W) { o(c, W); const adm = isAdmin(), D = adm ? '' : ' disabled', k = lkConf();
   const d = document.createElement('div'); d.className = 'lk58';
   const opt = (v, t, cur) => `<option value='${v}'${v == cur ? ' selected' : ''}>${t}</option>`;
@@ -67,7 +68,10 @@ setTimeout(() => { try { lkLoginClock(); lkApply($('#login'), 'login') } catch (
   <label>Account</label><div><label class='ck'><input type='checkbox' id='lkuser'${k.user ? ' checked' : ''}${D}> Show the account’s picture and name when locked</label></div>
   <label></label><div><button class='lkprev'>Preview</button></div></div>
   <div class='msg'>For everyone on this computer, on the lock screen and the sign-in page.${adm ? '' : ' Only administrators can change it.'}</div>`;
-  const at = c.querySelector(':scope > .sfoot'); if (at) at.before(d); else c.appendChild(d);
+  /* with the rest of the background settings (dynamic backgrounds, appearance, background style, picture, colours):
+     right after the colours, before the fonts; its rows line up with theirs */
+  const after = (c.querySelector('#b1') || {}).parentElement;
+  if (after && after.parentElement) { d.classList.add('lk58in'); after.after(d) } else { const at = c.querySelector(':scope > .sfoot'); if (at) at.before(d); else c.appendChild(d) }
   const q = s => d.querySelector(s);
   const show = () => { const bg = q('#lkbg').value; q('.lkpicrow').style.display = bg == 'picture' ? '' : 'none'; q('.lkcolrow').style.display = bg == 'color' ? '' : 'none'; q('.lkbv').textContent = q('#lkblur').value + ' px'; q('.lkdv').textContent = q('#lkdim').value + ' %' };
   const save = () => { SYSC.lk = {bg: q('#lkbg').value, color: q('#lkcol').value, blur: +q('#lkblur').value, dim: +q('#lkdim').value, clock: q('#lkck').value, pos: q('#lkpos').value, user: q('#lkuser').checked}; sysSave(); show(); try { lkApply($('#login'), 'login') } catch (e) {} };
