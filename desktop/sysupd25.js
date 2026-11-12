@@ -47,7 +47,7 @@ ${st.failed?`<div class='msg warn'>The update in slot ${pkgEsc(st.failed.toUpper
   q('.usave').onclick=async()=>{const v=q('.uurl').value.trim();if(v&&!/^https?:\/\//.test(v))return notify('Updates','The address starts with https://',{kind:'error'});if(!await elevate('Change where Rudolf OS gets updates'))return;try{await rdPost('sys/set?k=url&v='+encodeURIComponent(v));notify('Updates','Saved. Checking for updates…');job('check')}catch(e){notify('Updates',e.message,{kind:'error'})}}};
  draw()}}
 /* ---------- daily check and download ---------- */
-async function sysuTick(){if(!RD||!USER||window.LOCKED||window.__bsaver)return;   /* (1.4.4) not while battery saver is on */
+async function sysuTick(){if(!RD||!USER||window.LOCKED||window.__bsaver||(typeof gameMode=='function'&&gameMode()))return;   /* (1.4.4) not while battery saver is on */
  const s=await sysuStatus();if(!s||!s.persistent||!s.auto||!s.url||s.canUpdate===false)return;   /* (1.5.7: not from a stick or in recovery) */
  const st=s.state||{},ready=st.next&&s.slots[st.next]&&s.slots[st.next].complete;
  if(ready){if(!sysuTick.told){sysuTick.told=1;notify('Security update ready','Restart to finish installing Rudolf OS '+s.slots[st.next].version+'.',{action:sysuRestart,kind:'info'})}return}
