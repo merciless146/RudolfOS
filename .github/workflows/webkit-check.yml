@@ -57,8 +57,8 @@ jobs:
         run: |
           sudo mkdir -p /run/rudolf/dl/.incoming && sudo chmod -R 777 /run/rudolf
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 HOME=$RUNNER_TEMP/home2; mkdir -p $HOME
-          r=0; for m in mixed soft gpu; do rm -rf /run/rudolf/dl/.incoming/*; python3 iso/qt/webkit/tabs58_ci.py ./rudolf-webkit $m | tee tabs-result-$m.txt || r=1
-            echo "::notice title=Oracle's tabs in WebKit ($m)::$(tail -1 tabs-result-$m.txt) — $(grep -E '^FAIL|^pixels' tabs-result-$m.txt | tr '\n' '|')"; cp tabs.txt tabs-$m.txt; done
+          export RUDOLF_WK_DEBUG=1; r=0; for m in mixed soft gpu; do rm -rf /run/rudolf/dl/.incoming/*; python3 iso/qt/webkit/tabs58_ci.py ./rudolf-webkit $m | tee tabs-result-$m.txt || r=1
+            echo "::notice title=Oracle's tabs in WebKit ($m)::$(tail -1 tabs-result-$m.txt) — $(grep -E '^FAIL|^pixels' tabs-result-$m.txt | tr '\n' '|') — $(grep -E '^place' tabs.txt | tr '\n' '|')"; cp tabs.txt tabs-$m.txt; done
           cp tabs-result-mixed.txt tabs-result.txt; head -c 2000 tabs-mixed.txt; exit $r
       - name: The desktop page in rudolf-webkit from the base layer itself (chroot)
         run: |

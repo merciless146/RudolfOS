@@ -495,6 +495,7 @@ static void on_tab_op(JSCValue *m)
 				}
 			} else t->shown = 0;
 			if (r) g_object_unref(r); if (vis) g_object_unref(vis);
+			if (g_getenv("RUDOLF_WK_DEBUG")) g_printerr("place %s shown=%d at %d,%d %dx%d cut=%d\n", t->tid, t->shown, t->x, t->y, t->w, t->h, t->vis ? cairo_region_num_rectangles(t->vis) : -1);
 			apply_place(t);
 		}
 	}
