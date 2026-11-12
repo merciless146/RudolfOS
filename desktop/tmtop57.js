@@ -4,7 +4,13 @@
    ended. rudolf-display already did that at the key; closing Task Manager gives the desktop its usual share again.
    The right-click menu and the Start menu open it as before. GPL-2.0-or-later. */
 function tmPriority(on){if(!RD)return Promise.resolve(null);return rd('desktop/priority?on='+(on?1:0),{method:'POST'}).catch(()=>null)}
+/* 1.5.8: nothing full screen may hide Task Manager or the power dialog: a game's tab ended by the memory guard while
+   full screen stayed there (Chromium's sad-face icon), and Ctrl+Alt+Del's Task Manager opened behind it (the Vivobook,
+   2026-11-12; only the power button got out). The shell leaves full screen for a tab ('unfs'); the page for itself. */
+function fsLeave(){try{if(typeof rtSend=='function')rtSend('unfs','')}catch(e){}try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}catch(e){}}
+{const _sd=shutdownDlg;shutdownDlg=function(){fsLeave();return _sd.apply(this,arguments)}}
 function tmUrgent(){
+ fsLeave();
  const W=launch('taskmgr');if(!W||!W.el)return W;
  if(W.min||W.el.style.display=='none')W.focus();
  W.el.classList.add('ontop','tmurgent');W.focus();

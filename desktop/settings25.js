@@ -3,9 +3,11 @@
 function settings(sec){if(SW&&wins.includes(SW)){SW.focus();SW.show(sec||SW.sec);return}
  LAUNCHING='settings';const W=SW=win('Settings','⚙️',860,640);LAUNCHING=null;W.app='settings';W.body.style.position='relative';
  W.body.innerHTML="<div class='sg'><div class='sn' role='tablist' aria-label='Settings pages'></div><div class='sc' role='tabpanel'></div></div>";
- const nav=W.body.querySelector('.sn'),box=W.body.querySelector('.sc');
+ const nav=W.body.querySelector('.sn');let box=W.body.querySelector('.sc');
  const SEC={disp:['🖥️','Display Properties',dispPanelS],vol:['🔊','Volume Controls',volPanelS],mm:['🎮','Multimedia Settings',mmPanelS],net:['📶','Network Settings',netPanelS],bt:['🔵','Bluetooth',btPanel],web:['🔐','Oracle',signinPanel],sys:['🕒','System Settings',sysPanelS],kbd:['⌨️','Keyboard',kbdPanel],mouse:['🖱️','Mouse and touchpad',mousePanel],devs:['🔌','Devices',devPanel],acc:['♿','Accessibility',accPanelS],priv:['🔏','Privacy',privPanel],sec:['🛡️','Security Settings',secPanelS],health:['🩺','System health',healthPanel],usr:['👤','User Settings',usrPanelS],remote:['🖥️','Remote access',remotePanel],stor:['💾','Storage and backup',storPanel],apps:['🧩','Apps',appsPanel],notif:['🔔','Notifications',notifPanel],upd:['🔄','Update and recovery',updPanel],about:['ℹ️','About',aboutPanel]};
- const go=(k)=>{W.sec=k;nav.querySelectorAll('div').forEach(d=>{d.classList.toggle('on',d.dataset.k==k);d.setAttribute('aria-selected',d.dataset.k==k)});box.innerHTML='';SEC[k][2](box,W);sfootLast(box);box.scrollTop=0;kbFix(box)};
+ /* 1.5.8: each page gets a fresh box, so no page keeps listening once another is shown (Display Properties' input
+    handler ran on the Power page and looked for its own controls: "Cannot read properties of null", 2026-11-12) */
+ const go=(k)=>{W.sec=k;nav.querySelectorAll('div').forEach(d=>{d.classList.toggle('on',d.dataset.k==k);d.setAttribute('aria-selected',d.dataset.k==k)});{const nb=box.cloneNode(false);box.replaceWith(nb);box=nb}SEC[k][2](box,W);sfootLast(box);box.scrollTop=0;kbFix(box)};
  W.rt=()=>{nav.querySelectorAll('div').forEach(d=>{d.textContent=SEC[d.dataset.k][0]+'  '+SEC[d.dataset.k][1]});trTree(W.el)};
  W.guard=(next)=>{const cur=W.sec;if(!cur||!secDirty(cur)||!box.isConnected)return next();
   if(CUST[cur])sdlg(W,'Unapplied changes','You have changes that are not applied yet.',[['Keep editing'],['Discard',()=>{secDiscard(cur);next()},1]]);
