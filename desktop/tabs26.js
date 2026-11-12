@@ -144,6 +144,9 @@ addEventListener('message', e => {
     else if (ev == 'fs') h.fs && h.fs(!!m.on);
     else if (ev == 'blocked') { if (m.main) h.blocked(String(m.url || ''), String(m.why || '')) }
     else if (ev == 'flash') h.flash && h.flash();
+    /* 1.5.8 (Lite): while something covers part of the tab, rudolf-webkit shows a still picture of it here, under the
+       desktop's menus and windows (WebKit's page cannot be cut on the screen); live again when uncovered */
+    else if (ev == 'still') { const el = t.el; if (el) { if (typeof m.img == 'string' && m.img.startsWith('data:image/')) { el.style.backgroundImage = 'url(' + m.img + ')'; el.style.backgroundSize = '100% 100%'; el.style.backgroundRepeat = 'no-repeat' } else el.style.backgroundImage = '' } }
     else if (ev == 'download') h.download && h.download(String(m.url || ''), {name: String(m.name || ''), data: typeof m.data == 'string' && m.data.startsWith('data:') ? m.data : '', big: !!m.big, why: String(m.why || ''), started: !!m.started});
     else if (ev == 'dialog') h.dialog(String(m.kind || 'alert'), String(m.text || ''), String(m.def || '')).then(r => rtSend('dialog', m.tid, {did: m.did, ok: r.ok, text: r.text}));
     else if (ev == 'perm') h.perm(String(m.perm || ''), String(m.url || '')).then(a => rtSend('perm', m.tid, {pid: m.pid, allow: a}));

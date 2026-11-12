@@ -22,8 +22,9 @@ async function run(){await post('hello',true);
  await step('nav',async()=>(await wait(m=>m.ev=='nav'&&m.tid=='t1'&&/xfo\.html$/.test(m.url))).url);
  await step('dialog',async()=>(await wait(m=>m.ev=='dialog'&&m.tid=='t1')).kind);
  send({rudolfShell:'tab',op:'place',tid:'t1',r:[100,100,700,450],vis:[[0,0,350,450]],z:1});
- await new Promise(r=>setTimeout(r,1500)); await post('shot2',true); await new Promise(r=>setTimeout(r,2000));
- send({rudolfShell:'tab',op:'place',tid:'t1',r:[100,100,700,450],vis:null,z:1}); await new Promise(r=>setTimeout(r,1500)); await post('shot3',true); await new Promise(r=>setTimeout(r,2000));
+ await step('still',async()=>{const m=await wait(m=>m.ev=='still'&&m.tid=='t1'&&typeof m.img=='string');return m.img.slice(0,23)+' '+m.img.length});
+ await new Promise(r=>setTimeout(r,800)); await post('shot2',true); await new Promise(r=>setTimeout(r,2000));
+ send({rudolfShell:'tab',op:'place',tid:'t1',r:[100,100,700,450],vis:null,z:1}); await step('still0',async()=>!!(await wait(m=>m.ev=='still'&&m.tid=='t1'&&m.img===null))); await new Promise(r=>setTimeout(r,1500)); await post('shot3',true); await new Promise(r=>setTimeout(r,2000));
  send({rudolfShell:'tab',op:'go',tid:'t1',url:'http://127.0.0.1:8091/file.bin'});
  await step('download',async()=>(await wait(m=>m.ev=='download'&&m.tid=='t1')).url);
  send({rudolfShell:'tab',op:'fw',rules:{on:true,mode:'open',block:['blocked.test'],trust:[]}});
@@ -85,7 +86,9 @@ checks = [
     ('a download is reported and arrives in the download folder, complete', str(RES.get('download', '')).endswith('/file.bin') and os.path.exists(dl) and os.path.getsize(dl) == 100000 and not os.path.exists(dl + '.crdownload')),
     ('the firewall blocks a page in a tab', 'blocked list' in str(RES.get('blocked', ''))),
     ('a new tab shows its page at once, without a reload (' + (DRAW or 'default') + ')', yellow(P1)),
-    ('a cut shows the desktop where it covers the tab, the page elsewhere (' + (DRAW or 'default') + ')', yellow(P2L) and desk(P2R)),
+    ('covered: the desktop gets a still picture of the tab (' + (DRAW or 'default') + ')', str(RES.get('still', '')).startswith('data:image/jpeg;base64') and int(str(RES.get('still', '0 0')).split(' ')[-1]) > 2000),
+    ('...and the live page steps aside, so the desktop is seen there', desk(P2R) and desk(P2L)),
+    ('uncovered: the live page is back', RES.get('still0') is True and yellow(P3)),
     ('rudolf-webkit still runs', p.poll() is None),
 ]
 p.terminate(); log.close()

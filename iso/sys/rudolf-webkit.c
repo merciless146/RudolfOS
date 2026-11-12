@@ -130,7 +130,7 @@ static char **str_list(JSCValue *o, const char *k)
 typedef struct tab {
 	char tid[64], part[48];
 	GtkWidget *box, *view;           /* the view, in an event box with its own window (cut to the visible parts) */
-	int x, y, w, h, z, shown, fs;
+	int x, y, w, h, z, shown, fs, still, stillUp;   /* still: covered, shown as a picture by the desktop (stillUp: the picture is there) */
 	cairo_region_t *vis;             /* NULL: nothing covers it */
 } tab;
 static GHashTable *TABS;           /* tid -> tab */
@@ -198,34 +198,55 @@ static void tabs_order(void)
 	for (i = 0; i < n; i++) gtk_overlay_reorder_overlay(GTK_OVERLAY(overlay), a[i]->box, i);
 	g_free(a); g_list_free(l);
 }
-/* what covers a tab (a menu, another window): 1.5.8 draws the tab clipped to its visible pieces (on_box_draw), and
-   only its input is shaped. Shaping its window as well hid the whole page on the Vivobook and in the Lite engine
-   check (with the graphics card, mixed, or software), so the desktop's menus and windows ended up behind pages. */
+/* what covers a tab (a menu, another window). WebKit's page cannot be cut on the screen in GTK 3: shaping its window,
+   clipping its drawing, a native window, none of them showed the desktop through (the Lite engine check, in all three
+   drawing modes), so the desktop's menus and windows went behind pages (the Vivobook, 2026-11-12). So, 1.5.8: while
+   anything covers part of a tab, the tab is hidden and the desktop shows a still picture of it (a JPEG, sent with the
+   'still' event) under its menus and windows; uncovered, the live tab comes back (cover_step). The clip and the input
+   shape stay for the moment before the picture is up. */
 static void shape(tab *t)
 {
 	GdkWindow *gw = gtk_widget_get_window(t->box); if (!gw || !gtk_widget_get_has_window(t->box)) return;
 	gdk_window_input_shape_combine_region(gw, t->fs ? NULL : t->vis, 0, 0);
-	/* the view's own window (WebKit gives it one): cut that too, or what was drawn there stays on the screen */
-	GdkWindow *vw = t->view ? gtk_widget_get_window(t->view) : NULL;
-	if (vw && vw != gw && gtk_widget_get_has_window(t->view)) { gdk_window_shape_combine_region(vw, t->fs ? NULL : t->vis, 0, 0); gdk_window_input_shape_combine_region(vw, t->fs ? NULL : t->vis, 0, 0); }
-	if (g_getenv("RUDOLF_WK_DEBUG")) g_printerr("shape %s box native=%d view win=%d native=%d\n", t->tid, gdk_window_has_native(gw), vw && vw != gw, vw ? gdk_window_has_native(vw) : -1);
 	gtk_widget_queue_draw(overlay);
 }
 static gboolean on_box_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	(void)w; tab *t = d;
 	if (t->vis && !t->fs) { gdk_cairo_region(cr, t->vis); cairo_clip(cr); }
-	if (g_getenv("RUDOLF_WK_DEBUG") && t->vis) { double a, b, c, e; cairo_clip_extents(cr, &a, &b, &c, &e); g_printerr("draw %s %s clip %.0f,%.0f-%.0f,%.0f\n", t->tid, w == t->view ? "view" : "box", a, b, c, e); }
 	return FALSE;
+}
+static void still_ready(GObject *o, GAsyncResult *res, gpointer d)
+{
+	char *tid = d; tab *t = g_hash_table_lookup(TABS, tid); g_free(tid);
+	GError *err = NULL; cairo_surface_t *sf = webkit_web_view_get_snapshot_finish(WEBKIT_WEB_VIEW(o), res, &err);
+	if (err) g_error_free(err);
+	if (!t || !t->still) { if (sf) cairo_surface_destroy(sf); return; }
+	GString *x = g_string_new("\"img\":");
+	GdkPixbuf *pb = sf ? gdk_pixbuf_get_from_surface(sf, 0, 0, cairo_image_surface_get_width(sf), cairo_image_surface_get_height(sf)) : NULL;
+	gchar *buf = NULL; gsize len = 0;
+	if (pb && gdk_pixbuf_save_to_buffer(pb, &buf, &len, "jpeg", NULL, "quality", "82", NULL)) { gchar *b = g_base64_encode((guchar *)buf, len); g_string_append(x, "\"data:image/jpeg;base64,"); g_string_append(x, b); g_string_append_c(x, '"'); g_free(b); }
+	else g_string_append(x, "null");
+	g_free(buf); if (pb) g_object_unref(pb); if (sf) cairo_surface_destroy(sf);
+	tabev(t, "still", x->str); g_string_free(x, TRUE);
+	t->stillUp = 1; gtk_widget_hide(t->box);   /* the picture is on its way: the live page steps aside */
+}
+/* covered or not, after each place */
+static void cover_step(tab *t)
+{
+	const int covered = t->shown && t->vis && !t->fs;
+	if (covered && !t->still) { t->still = 1; t->stillUp = 0; webkit_web_view_get_snapshot(WEBKIT_WEB_VIEW(t->view), WEBKIT_SNAPSHOT_REGION_VISIBLE, WEBKIT_SNAPSHOT_OPTIONS_NONE, NULL, still_ready, g_strdup(t->tid)); }
+	else if (!covered && t->still) { t->still = 0; t->stillUp = 0; tabev(t, "still", "\"img\":null"); }
 }
 static void apply_place(tab *t)
 {
+	cover_step(t);
 	if (t->fs) {
 		int W = gtk_widget_get_allocated_width(overlay), H = gtk_widget_get_allocated_height(overlay);
 		gtk_widget_set_margin_start(t->box, 0); gtk_widget_set_margin_top(t->box, 0); gtk_widget_set_size_request(t->box, W, H);
 		gtk_widget_show(t->box); shape(t); tabs_order(); return;
 	}
-	if (!t->shown) { gtk_widget_hide(t->box); return; }
+	if (!t->shown || (t->still && t->stillUp)) { gtk_widget_hide(t->box); return; }
 	gtk_widget_set_margin_start(t->box, t->x); gtk_widget_set_margin_top(t->box, t->y);
 	gtk_widget_set_size_request(t->box, t->w, t->h);
 	gtk_widget_show(t->box); shape(t); tabs_order();
