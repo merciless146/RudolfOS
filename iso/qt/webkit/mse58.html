@@ -1,6 +1,7 @@
 <!doctype html><title>MSE</title><script>
 /* 1.5.8: what WebKit's streaming video (Media Source) offers; YouTube needs VP9 with Opus (or H.264 with AAC) */
 const T={vp9:'video/webm; codecs="vp9"',opus:'audio/webm; codecs="opus"',h264:'video/mp4; codecs="avc1.42E01E"',aac:'audio/mp4; codecs="mp4a.40.2"',av1:'video/mp4; codecs="av01.0.05M.08"'};
-const r=Object.entries(T).map(([k,v])=>k+'='+(!!window.MediaSource&&MediaSource.isTypeSupported(v))).join(' ');
+const a=document.createElement('audio');const mp3=a.canPlayType('audio/mpeg'),mp4=a.canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"');
+const r=Object.entries(T).map(([k,v])=>k+'='+(!!window.MediaSource&&MediaSource.isTypeSupported(v))).join(' ')+' mp3='+(mp3||'no')+' mp4file='+(mp4||'no');
 console.log('RUDOLF-MSE '+r);document.title=r;
 </script>
