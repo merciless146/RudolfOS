@@ -41,14 +41,15 @@ async function memPanel57(c){if(!RD)return;const d=document.createElement('div')
   d.innerHTML=`<h4 class='sh4 sgrp' style='font-size:15px;margin-top:18px'>Memory</h4><div class='r2'><label>In use now</label><div class='mnow'></div><label>Compressed memory</label><div class='mcz'></div>
 <label>Size of compressed memory</label><div><select class='mzs'${adm&&m.persistent?'':' disabled'}><option value='auto'>Automatic (recommended)</option><option value='small'>Smaller</option><option value='off'>Off</option></select><div class='msg mzn'></div></div>
 <label>When memory runs out</label><label class='ck'><input type='checkbox' class='mca'${adm&&m.persistent?'':' disabled'}> Close apps with no window open (such as Discord in the tray)</label>
-<label>Closed to free memory</label><div class='mcl'></div></div>`;
+<label>Closed to free memory</label><div class='mcl'></div>
+<label>Video problems</label><div><label class='ck'><input type='checkbox' class='mvl'${adm&&m.persistent?'':' disabled'}> Log video problems (the Lite desktop)</label><div class='msg'>Writes the video and sound system's warnings to a log that the system report includes. Starts at the next restart; leave it off unless you are looking into a problem.</div></div></div>`;
   const q=s=>d.querySelector(s);q('.mnow').textContent=`${fmtB(used)} of ${fmtB(m.total)} (${Math.round(used*100/m.total)} %)`;
   q('.mcz').textContent=cz.on?`${fmtB(cz.size)}, holding ${fmtB(cz.stored)} in ${fmtB(cz.used)}${cz.size?' ('+Math.round(cz.stored*100/cz.size)+' % full)':''}`:'Off';
   q('.mzs').value=m.zram;q('.mzn').textContent='Automatic: as large as the memory (at most 8 GB). Too small runs out sooner; too large spends the computer\'s time compressing. A change applies at the next restart.'+(m.persistent?'':' (Kept only on an installed Rudolf OS.)');
-  q('.mca').checked=!!m.closeApps;
+  q('.mca').checked=!!m.closeApps;q('.mvl').checked=!!m.videoLog;
   q('.mcl').textContent=wk.length?'':'Nothing in the last 7 days.';if(wk.length){const ul=document.createElement('ul');ul.style.margin='0';wk.slice(0,20).forEach(e=>{const li=document.createElement('li');li.textContent=hlWhen(e.t)+': '+e.m.replace(/^memory ran out: /,'');ul.appendChild(li)});q('.mcl').appendChild(ul)}
   const save=async qs=>{if(!await elevate('Change the memory settings'))return draw();try{await rdPost('memory/settings?'+qs);notify('Memory settings saved',qs.startsWith('zram')?'The new size applies at the next restart.':'',{quiet:!qs.startsWith('zram')})}catch(e){notify('Memory settings',e.message,{kind:'error'})}draw()};
-  q('.mzs').onchange=e=>save('zram='+e.target.value);q('.mca').onchange=e=>save('closeApps='+(e.target.checked?1:0))};
+  q('.mzs').onchange=e=>save('zram='+e.target.value);q('.mca').onchange=e=>save('closeApps='+(e.target.checked?1:0));q('.mvl').onchange=e=>save('videoLog='+(e.target.checked?1:0))};
  draw()}
 {const _h=healthPanel;healthPanel=function(c,W){const r=_h.apply(this,arguments);try{memPanel57(c)}catch(e){console.warn(e)}return r}}
 /* 1.5.7: Force quit, on an app's right-click menu below Close (a window's title bar and taskbar button, a Linux or

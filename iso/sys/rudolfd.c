@@ -1845,6 +1845,7 @@ static void api_ai_facts(struct req *r)
 	/* 1.5.8: the start before this one (its desktop may never have come up) and what the start-up decided */
 	facts_add(&s, "sessionBefore", PERSIST "/var/log/starts/1/session.log", 40);
 	facts_add(&s, "liteBefore", PERSIST "/var/log/starts/1/webkit-desktop.log", 20);
+	facts_add(&s, "liteVideo", RUN "/webkit-video.log", 80);   /* (Settings › System health › Log video problems) */
 	facts_add(&s, "bootDecisions", PERSIST "/var/log/boot-decisions.log", 30);
 	facts_add(&s, "page", RUN "/page.log", 60);
 	facts_add(&s, "shutdown", PERSIST "/var/log/shutdown.log", 20);
@@ -2249,22 +2250,25 @@ static void api_storage(struct req *r, int measure)
 #define MEMCONF PERSIST "/etc/rudolf-memory"
 static void api_memory_settings(struct req *r, int post)
 {
-	char z[8] = "auto"; int ca = 1;
+	char z[8] = "auto"; int ca = 1, vl = 0;
 	char *c = slurp(MEMCONF, NULL);
 	if (c) { for (char *sv, *l = strtok_r(c, "\n", &sv); l; l = strtok_r(NULL, "\n", &sv)) {
 		if (!strcmp(l, "zram=auto") || !strcmp(l, "zram=small") || !strcmp(l, "zram=off")) snprintf(z, sizeof z, "%s", l + 5);
-		else if (!strcmp(l, "close_apps=0")) ca = 0; else if (!strcmp(l, "close_apps=1")) ca = 1; } free(c); }
+		else if (!strcmp(l, "close_apps=0")) ca = 0; else if (!strcmp(l, "close_apps=1")) ca = 1;
+		else if (!strcmp(l, "video_log=1")) vl = 1; } free(c); }
 	if (post) {
 		if (access(RUN "/persistent", F_OK)) { reply_err(r->fd, 409, "settings are kept only on an installed Rudolf OS"); return; }
 		const char *zq = qparam(r->query, "zram");
 		if (zq && *zq) { if (strcmp(zq, "auto") && strcmp(zq, "small") && strcmp(zq, "off")) { reply_err(r->fd, 400, "zram is auto, small or off"); return; } snprintf(z, sizeof z, "%s", zq); }
 		const char *cq = qparam(r->query, "closeApps");
 		if (cq && *cq) { if (strcmp(cq, "0") && strcmp(cq, "1")) { reply_err(r->fd, 400, "closeApps is 0 or 1"); return; } ca = cq[0] == '1'; }
+		const char *vq = qparam(r->query, "videoLog");   /* 1.5.8: the Lite desktop logs GStreamer's warnings (session) */
+		if (vq && *vq) { if (strcmp(vq, "0") && strcmp(vq, "1")) { reply_err(r->fd, 400, "videoLog is 0 or 1"); return; } vl = vq[0] == '1'; }
 		mkdir(PERSIST "/etc", 0755);
-		char b[80]; snprintf(b, sizeof b, "zram=%s\nclose_apps=%d\n", z, ca); write_str(MEMCONF ".tmp", b);
+		char b[96]; snprintf(b, sizeof b, "zram=%s\nclose_apps=%d\nvideo_log=%d\n", z, ca, vl); write_str(MEMCONF ".tmp", b);
 		if (rename(MEMCONF ".tmp", MEMCONF)) { reply_err(r->fd, 500, "could not save"); return; }
 	}
-	str s = {0}; sadd(&s, "{\"ok\":true,\"zram\":\"%s\",\"closeApps\":%s,\"persistent\":%s", z, ca ? "true" : "false", access(RUN "/persistent", F_OK) ? "false" : "true");
+	str s = {0}; sadd(&s, "{\"ok\":true,\"zram\":\"%s\",\"closeApps\":%s,\"videoLog\":%s,\"persistent\":%s", z, ca ? "true" : "false", vl ? "true" : "false", access(RUN "/persistent", F_OK) ? "false" : "true");
 	sadd(&s, ",\"total\":%lld,\"available\":%lld,\"swapTotal\":%lld,\"swapFree\":%lld", meminfo_kb("MemTotal") * 1024, meminfo_kb("MemAvailable") * 1024, meminfo_kb("SwapTotal") * 1024, meminfo_kb("SwapFree") * 1024);
 	{ unsigned long long ds = 0, o = 0, cm = 0, m = 0; FILE *f = fopen("/sys/block/zram0/disksize", "r"); if (f) { if (fscanf(f, "%llu", &ds) != 1) ds = 0; fclose(f); }
 	  f = fopen("/sys/block/zram0/mm_stat", "r"); if (f) { if (fscanf(f, "%llu %llu %llu", &o, &cm, &m) != 3) o = cm = m = 0; fclose(f); }

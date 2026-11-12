@@ -265,7 +265,10 @@ while :; do
 		# 1.5.8: how WebKit draws (see rudolf-webkit.c): the graphics card for everything only when Settings say "full";
 		# by default the processor draws and the graphics card puts the layers together; no graphics card: software
 		WKSOFT=--draw=soft; [ $MODE = gpu ] && WKSOFT=--draw=mixed; [ $MODE = gpu ] && [ "$SETTING" = full ] && WKSOFT=--draw=gpu
-		su -s /bin/sh rudolf -c "exec /usr/bin/rudolf-webkit --rudolf-kiosk --size=${W}x$H $WKSOFT $START" >>/run/rudolf/webkit-desktop.log 2>&1 &
+		# 1.5.8: Settings › System health › Log video problems: GStreamer's warnings and errors (WebKit's video and sound)
+		# go to /run/rudolf/webkit-video.log, which the system report includes; kept under 4 MB by the loop below
+		VLOG=; grep -q '^video_log=1' /persist/etc/rudolf-memory 2>/dev/null && { VLOG="GST_DEBUG=*:2 GST_DEBUG_NO_COLOR=1 GST_DEBUG_FILE=/run/rudolf/webkit-video.log"; : > /run/rudolf/webkit-video.log; chown rudolf /run/rudolf/webkit-video.log; }
+		su -s /bin/sh rudolf -c "exec env $VLOG /usr/bin/rudolf-webkit --rudolf-kiosk --size=${W}x$H $WKSOFT $START" >>/run/rudolf/webkit-desktop.log 2>&1 &
 	else
 	# 1.5.8: Chromium 157 never replaces the installed shell from its file ("App is already installed"), so a release's
 	# changes to Oracle's tabs never arrived. Once per start, when the profile's copy is not the system's, rudolf-shellfix
@@ -351,6 +354,7 @@ while :; do
 				if [ $AGE -gt $LIM ]; then echo "$(date) desktop not responding for ${AGE}s - restarting browser"; rudolfd --health browser "the desktop stopped responding for ${AGE} s, so the browser was restarted"; pkill -f '[-]-rudolf-kiosk'; sleep 3; pkill -9 -f '[-]-rudolf-kiosk'; fi
 			fi
 		fi
+		VL=/run/rudolf/webkit-video.log; [ -f $VL ] && [ $(stat -c %s $VL 2>/dev/null || echo 0) -gt 4194304 ] && { tail -c 2097152 $VL > $VL.t; cat $VL.t > $VL; rm -f $VL.t; }
 		if [ $MODE = gpu ] && ! kill -0 $XPID 2>/dev/null; then
 			echo "$(date) Xorg stopped - switching to the software display"
 			rudolfd --health crash "the graphics server (Xorg) stopped; the software display took over"
