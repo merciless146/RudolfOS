@@ -20,6 +20,7 @@ node mv_t.js STEP                                # the move of the databases int
 node sr_t.js                                     # the system-reports workflow script, against a stand-in for GitHub
 node keysiwa_t.js $WORK/xin                      # 1.5.6: Chromium's shortcuts never act on the desktop (real X keys)
 node tabsfs58_t.js $WORK/xin                       # 1.5.8: real fullscreen in tabs (a page with Trusted Types), late hello, sign-out
+node aurora58_t.js [CHROME] [SHOTS]               # 1.5.8: the northern lights over Glacier Lake (no shell needed; 17 checks)
 node dl_t.js                                     # 1.2.1 downloads of any size (35 checks; MEDIA=folder with clip.webm and big.pdf,
                                                  # PDFLIB=a disc's www/lib for PDF Viewer, both set before host.sh)
 ./host.sh stop
