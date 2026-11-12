@@ -1,6 +1,6 @@
 /* ===== V25 core: rudolfd link, storage, accounts, encryption, lock screen, elevation, guest, parental controls, backup ===== */
 window.__v25=1;
-const RVER='1.5.8',RVERDATE='2026-11-11';
+const RVER='1.5.9',RVERDATE='2026-11-12';
 /* 1.5.6: versions compared part by part as numbers (1.10.0 is newer than 1.9.9; 2.0 is 2.0.0): -1, 0 or 1 */
 function verCmp(a,b){const p=v=>String(v||'').trim().replace(/^v/i,'').split(/[.-]/).map(x=>parseInt(x,10)||0);const x=p(a),y=p(b);
  for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0);if(d)return d<0?-1:1}return 0}
