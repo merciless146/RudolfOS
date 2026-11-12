@@ -1,4 +1,4 @@
-import base64,json,os,sys
+import base64,json,os,re,sys
 B='base_v24.html';O=sys.argv[1] if len(sys.argv)>1 else '/mnt/user-data/outputs/blockdos.html'   # e.g. python3 build19.py ../iso/www/index.html
 s=open(B).read()
 def rep(a,b,n=1):
@@ -95,6 +95,30 @@ rep("const _u=window.__dyn?dynBg():'';","const _u=(typeof wpCss=='function'&&wpC
 rep("['Change background…',()=>settings('disp')]","['Open settings…',()=>settings()]")
 s=s.replace('Rudolf Prompt','Command Prompt')
 s=s.replace("<title>Rudolf OS</title>","<title>Rudolf OS</title>",1)
-open(O,'w').write(s);print(len(s))
+# 1.5.9 (plan 10.1): the dynamic backgrounds' pictures and the fonts become files beside the page (www/a/), named by
+# their contents, so the browser fetches and decodes one only when it is shown or used, and the page is about a
+# megabyte smaller. Only these: DYN's pictures (used as url()s and <img> sources) and @font-face sources.
+import hashlib
+_A=os.path.join(os.path.dirname(os.path.abspath(O)),'a');os.makedirs(_A,exist_ok=True);_keep=set()
+_EXT={'image/webp':'webp','image/jpeg':'jpg','image/png':'png','font/woff2':'woff2','font/woff':'woff'}
+def _out(uri):
+    m=re.match(r'data:([a-z0-9/+.-]+);base64,(.*)$',uri,re.S)
+    if not m or m.group(1) not in _EXT:return uri
+    b=base64.b64decode(m.group(2));n=hashlib.sha256(b).hexdigest()[:16]+'.'+_EXT[m.group(1)]
+    f=os.path.join(_A,n);_keep.add(n)
+    if not os.path.exists(f):open(f,'wb').write(b)
+    return 'a/'+n
+_i=s.find('const DYN=');_j=s.find('\n',_i)
+_m=re.match(r'const DYN=(\{.*\});?$',s[_i:_j])
+assert _m,'DYN not found'
+_D=json.loads(_m.group(1))
+for _k,_v in _D.items():
+    for _f in list(_v):
+        if isinstance(_v[_f],str) and _v[_f].startswith('data:'):_v[_f]=_out(_v[_f])
+s=s[:_i]+'const DYN='+json.dumps(_D,ensure_ascii=False,separators=(',',':'))+';'+s[_j:]
+s=re.sub(r"(@font-face\{[^}]*?src:url\()(data:font/[a-z0-9]+;base64,[A-Za-z0-9+/=]+)(\))",lambda m:m.group(1)+_out(m.group(2))+m.group(3),s)
+for _n in os.listdir(_A):
+    if _n not in _keep:os.remove(os.path.join(_A,_n))
+open(O,'w').write(s);print(len(s),len(_keep),'files in a/')
 # 1.5.7: Blitzen's reference material (docsindex.py), beside the desktop
 import docsindex;_j=docsindex.build();open(os.path.join(os.path.dirname(os.path.abspath(O)),'blitzen-docs.json'),'w').write(json.dumps(_j,ensure_ascii=False,separators=(',',':')))

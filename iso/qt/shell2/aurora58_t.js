@@ -17,7 +17,7 @@ const SHOT = process.argv[3];
   const q = s => p.evaluate(s);
   await q(`(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});S.accent='#16a34a';S.aur=true;S.aurm='normal';S.rmotion=false;S.dyn='lake';S.dm='light';applySet();return 1})()`);
   await wait(300);
-  ok('1. Glacier Lake has its sky mask', await q("/^data:image\\/webp;base64,/.test(DYN.lake.am)"));
+  ok('1. Glacier Lake has its sky mask (a file beside the page since 1.5.9)', await q("/^(data:image\\/webp;base64,|a\\/[0-9a-f]{16}\\.webp$)/.test(DYN.lake.am)"));
   ok('2. light mode: no northern lights', await q("!AUR.on&&!AUR.timer"));
   await q("(()=>{S.dm='dark';applySet();return 1})()"); await wait(700);
   ok('3. dark mode: the lights are on, moving (a timer), the overlay the first thing on the page, under the icons', await q("AUR.on&&!!AUR.timer&&document.body.firstChild.id=='aurora'&&getComputedStyle(document.getElementById('aurora')).pointerEvents=='none'"));
