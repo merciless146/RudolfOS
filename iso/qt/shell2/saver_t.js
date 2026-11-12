@@ -65,10 +65,11 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('...the pointer moving ends it, without asking for the password (a preview)', await q("!SAVER&&!document.getElementById('saver')&&__locks==0"));
   await q("wins.slice().forEach(w=>w.close())");
   // Start after (a stand-in clock: the last input is set back)
-  M.idle = 10 * 60000;
-  await q("lastInput=Date.now()-2*60000"); await q("idleCheck()"); await wait(200);
+  // (1.5.8: rudolfd's count of real input decides; the page's own only without rudolfd)
+  M.idle = 2 * 60000;
+  await q("lastInput=Date.now()-60*60000"); await q("idleCheck()"); await wait(200);
   ok('7. not after 2 minutes when set to 3', await q("!SAVER"));
-  await q("lastInput=Date.now()-3*60000-1000"); await q("idleCheck()"); await wait(300);
+  M.idle = 3 * 60000 + 1000; await q("idleCheck()"); await wait(300);
   ok('...after 3 minutes it starts, with Aurora and the time', await q("!!SAVER&&SAVER.style=='aurora'&&!SAVER.preview"));
   await wait(3200); M.idle = 200; await wait(2000);
   ok('8. input the page does not see (a game: rudolfd\'s idle drops) ends it', await q("!SAVER"));
@@ -77,6 +78,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('9. while a game is played (rudolfd\'s idle is 4 s) it does not start', await q("!SAVER"));
   M.idle = 10 * 60000; await q("SYSC.sson=false"); await q("idleCheck()"); await wait(300);
   ok('10. Off: it never starts', await q("!SAVER"));
+  // 1.5.8: a pointermove that did not move (Chromium's, when what is under a resting pointer changes) is not input
+  await q("SYSC.sson=true;lastInput=Date.now()-60*60000"); M.idle = 10 * 60000;
+  await q("dispatchEvent(new PointerEvent('pointermove',{movementX:0,movementY:0}))"); await q("idleCheck()"); await wait(300);
+  ok('10b. a pointer event that did not move does not hold the saver back', await q("!!SAVER"));
+  await wait(800); await q("dispatchEvent(new PointerEvent('pointermove',{movementX:0,movementY:0}))"); await wait(200);
+  ok('...nor end it', await q("!!SAVER"));
+  await q("saverStop()"); await wait(200);
   // 1.4.4 fix: above Oracle's real tabs and Linux apps
   await q("SYSC.sson=true;SYSC.lockss=true;sysSave()"); M.mode = 'win 3a00007'; M.calls = []; M.idle = 10 * 60000;
   await q("lastInput=Date.now()-4*60000"); await q("idleCheck()"); await wait(800);
