@@ -39,6 +39,8 @@ python3 systools/fwextra.py copy firmware-extra.txt "$FW" "$W/fw"
 SB=$W/sof-bin; git clone -q --filter=blob:none --no-checkout https://github.com/thesofproject/sof-bin.git "$SB"
 awk '$1=="F"{print "/"$4}' firmware-sof.txt | git -C "$SB" sparse-checkout set --no-cone --stdin; git -C "$SB" checkout -q fcd5ae85ead7ecd67ff199335b61fac825843ca0
 python3 systools/fwextra.py copy firmware-sof.txt "$SB" "$W/fw"
+# the Rudolf OS certificate built in as trusted, as in a release (public: the certificate only, never the key)
+export SB_CERT=$(realpath boot/sb/rudolf-sb.crt)
 UCODE_DIR="$W/fw" ./kconfig.sh "$W/linux" "$HERE/initramfs $HERE/initramfs.list"
 # the test options, on top of the release's configuration
 for o in $EXTRA; do "$W/linux/scripts/config" --file "$W/linux/.config" --enable "$o"; done
