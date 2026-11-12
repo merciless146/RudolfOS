@@ -200,15 +200,19 @@ function shutdownDlg(){const o=document.createElement('div');o.className='rmodal
   if(SESSION&&a=='suspend')try{lockScreen()}catch(x){}
   /* 1.4.5: saving gets 3 seconds in all, so a step that stalls cannot keep the computer on; each step's time goes
      to the shutdown log (About › For developers) */
-  const say=t=>o.querySelector('.rmmsg').textContent=t,T0=Date.now(),end=T0+3000,tl=[],mark=k=>tl.push(k+'='+(Date.now()-T0));
+  const say=t=>{o.querySelector('.rmmsg').textContent=t;if(window.shutScreenSay)shutScreenSay(t)},T0=Date.now(),end=T0+3000,tl=[],mark=k=>tl.push(k+'='+(Date.now()-T0));
+  /* 1.5.8 (lock58.js): the shutting-down screen at once, and the tone played to the end before the power goes */
+  let toneEnd=0;if(a!='suspend'&&window.shutScreen){shutScreen(a);sfx('shutdown');toneEnd=T0+Math.min(3000,sfxLen('shutdown')*1000+150)}
   const lim=p=>Promise.race([Promise.resolve(p).catch(()=>{}),new Promise(r=>setTimeout(r,Math.max(0,end-Date.now())))]);
   o.querySelectorAll('button').forEach(b=>b.disabled=true);
   say(a=='suspend'?'Going to sleep…':'Saving your files…');await lim((async()=>{try{fsFlush()}catch(x){}await homeChain})());mark('files');
   try{window.__sessionSave&&__sessionSave()}catch(x){}mark('session');await lim(window.__rudolfLsFlush&&__rudolfLsFlush());mark('storage');
-  if(a!='suspend')say(a=='reboot'?'Closing apps and restarting…':'Closing apps and turning off…');sfx('shutdown');
+  if(a!='suspend')say(a=='reboot'?'Closing apps and restarting…':'Closing apps and turning off…');if(!toneEnd)sfx('shutdown');
+  if(toneEnd>Date.now())await new Promise(r=>setTimeout(r,toneEnd-Date.now()));mark('tone');
   const go=async force=>{try{await rdPost('power?action='+a+(a=='suspend'?'':'&t='+tl.join(','))+(force?'&force=1':''));return true}catch(x){
    /* 1.5.3: rudolfd refuses while a job that must not be cut off runs (a USB stick, an install, boot files, an update):
       it says which, and the person can wait, or go on anyway */
+   if(window.shutScreenGone)shutScreenGone();
    if(/^busy: /.test(x.message||'')){say(x.message.slice(6));o.querySelectorAll('button').forEach(b=>b.disabled=false);
     const lb={poweroff:'Shut down',reboot:'Restart',suspend:'Sleep'}[a]+' anyway';let fb=o.querySelector('.rmforce');
     if(!fb){fb=document.createElement('button');fb.className='rmforce';o.querySelector('.rmrow').appendChild(fb)}fb.textContent=lb;fb.dataset.a=a;fb.dataset.f=a;fb.style.color='#b91c1c'}
