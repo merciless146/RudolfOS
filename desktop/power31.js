@@ -7,7 +7,11 @@ const batOwn=l=>(l||[]).filter(b=>/^battery$/i.test(b.type||'')&&b.scope!='Devic
 let PWR=null;   /* the last power/status (installed), or {battery,ac} from the browser's battery */
 window.__bsaver=false;
 /* time left or to full, from the battery's energy (µWh) and power (µW), or its charge and current */
-function batTime(b){if(!b)return'';const e=b.energy_now!=null?[b.energy_now,b.energy_full,b.power_now]:b.charge_now!=null?[b.charge_now,b.charge_full,b.current_now]:null;if(!e||!e[2]||e[2]<=0)return'';
+/* 1.5.8: the power (or current) averaged over the last few minutes: one moment's reading swung from 2 h 53 min to
+   4 h 13 min within a minute on the Vivobook, as a game closed or the power mode changed */
+const BATAVG={st:'',v:0,t:0};
+function batRate(b,v){const now=Date.now();if(BATAVG.st!=b.status||!BATAVG.v||now-BATAVG.t>600000)BATAVG.v=v;else if(now-BATAVG.t>=1000){const a=Math.min(1,(now-BATAVG.t)/180000);BATAVG.v+=a*(v-BATAVG.v)}else return BATAVG.v;BATAVG.st=b.status;BATAVG.t=now;return BATAVG.v}
+function batTime(b){if(!b)return'';const e=b.energy_now!=null?[b.energy_now,b.energy_full,b.power_now]:b.charge_now!=null?[b.charge_now,b.charge_full,b.current_now]:null;if(!e||!e[2]||e[2]<=0)return'';e[2]=batRate(b,e[2]);
  const h=b.status=='Charging'?(e[1]-e[0])/e[2]:b.status=='Discharging'?e[0]/e[2]:0;if(!(h>0)||h>48)return'';const m=Math.round(h*60);return(m>=60?Math.floor(m/60)+' h '+(m%60)+' min':m+' min')+(b.status=='Charging'?' to full':' left')}
 const batState=b=>({Charging:'charging',Discharging:'on battery',Full:'full','Not charging':'plugged in, not charging'})[b.status]||(b.status||'').toLowerCase();
 let batBtn=null;
