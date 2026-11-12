@@ -42,6 +42,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("launch('settings')"); await wait(600);
   await q("(()=>{const W=wins.find(w=>w.app=='settings');const b=[...W.body.querySelectorAll('*')].find(e=>e.children.length==0&&/^Display Properties$/.test(e.textContent.trim()));b&&b.click()})()"); await wait(600);
   ok('1. Display Properties has a "Lock and sign-in screen" section', await q("!!document.querySelector('.lk58')"));
+  ok('1b. ...with the background settings: right after the colours, before the fonts, its rows in the same grid', await q("(()=>{const d=document.querySelector('.lk58'),b=document.querySelector('#b1').parentElement,f=document.querySelector('#ff');return d.previousElementSibling===b&&!!(d.compareDocumentPosition(f)&Node.DOCUMENT_POSITION_FOLLOWING)&&getComputedStyle(d).display=='contents'})()"));
   await q("(()=>{const d=document.querySelector('.lk58');const s=(id,v)=>{const e=d.querySelector(id);e.value=v;e.dispatchEvent(new Event('change'))};s('#lkbg','color');const c=d.querySelector('#lkcol');c.value='#aa0000';c.dispatchEvent(new Event('change'));const r=d.querySelector('#lkdim');r.value=0;r.dispatchEvent(new Event('input'));s('#lkck','small');s('#lkpos','bottom');const u=d.querySelector('#lkuser');u.checked=false;u.dispatchEvent(new Event('change'))})()");
   ok('2. ...its choices are kept for the computer', !!(await q("SYSC.lk")));
   const k = JSON.parse(await q("JSON.stringify(SYSC.lk)"));
