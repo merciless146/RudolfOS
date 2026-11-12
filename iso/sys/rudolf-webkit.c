@@ -231,6 +231,7 @@ static void still_ready(GObject *o, GAsyncResult *res, gpointer d)
 	tabev(t, "still", x->str); g_string_free(x, TRUE);
 	t->stillUp = 1; gtk_widget_hide(t->box);   /* the picture is on its way: the live page steps aside */
 	gtk_widget_queue_draw(desk); gtk_widget_queue_draw(overlay);   /* (and what is under it is drawn again) */
+	if (g_getenv("RUDOLF_WK_DEBUG")) g_printerr("still %s up, box visible=%d mapped=%d\n", t->tid, gtk_widget_get_visible(t->box), gtk_widget_get_mapped(t->box));
 }
 /* covered or not, after each place */
 static void cover_step(tab *t)
@@ -242,6 +243,7 @@ static void cover_step(tab *t)
 static void apply_place(tab *t)
 {
 	cover_step(t);
+	if (g_getenv("RUDOLF_WK_DEBUG")) g_printerr("apply %s shown=%d still=%d up=%d\n", t->tid, t->shown, t->still, t->stillUp);
 	if (t->fs) {
 		int W = gtk_widget_get_allocated_width(overlay), H = gtk_widget_get_allocated_height(overlay);
 		gtk_widget_set_margin_start(t->box, 0); gtk_widget_set_margin_top(t->box, 0); gtk_widget_set_size_request(t->box, W, H);
