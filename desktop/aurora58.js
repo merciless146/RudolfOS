@@ -63,9 +63,9 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&AUR.on)au
 /* Display Properties: under the dynamic backgrounds' Appearance */
 (function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);const m=c.querySelector('#dynm');if(!m)return;
  const d=document.createElement('div');d.className='aurrow';
- d.innerHTML=`<div class='acrow'>${ckH('daur','Northern lights at night (Glacier Lake)',!!S.aur)} <select id='daurm' aria-label='Northern lights colour'>${ACMODES.map(([k,n])=>optH(k,n,S.aurm||'normal')).join('')}</select></div>
+ d.innerHTML=`<div class='acrow'>${ckH('daur','At night, with Glacier Lake',!!S.aur)} <select id='daurm' aria-label='Northern lights colour'>${ACMODES.map(([k,n])=>optH(k,n,S.aurm||'normal')).join('')}</select></div>
   <div class='msg'>The lights take the accent colour: Normal is the accent colour; Negative is its negative; Complementary is the colour opposite it on the colour wheel.</div>`;
- m.after(d);const q=s=>d.querySelector(s),sync=()=>{q('#daurm').disabled=!q('#daur').checked};
+ const lab=document.createElement('label');lab.textContent='Northern lights';m.after(lab);lab.after(d);const q=s=>d.querySelector(s),sync=()=>{q('#daurm').disabled=!q('#daur').checked};
  q('#daur').onchange=e=>{liveSet(c,'aur',e.target.checked);sync();aurUpdate()};
  q('#daurm').onchange=e=>{liveSet(c,'aurm',e.target.value);AUR.col='';aurUpdate()};sync()}})();
 {const st=document.createElement('style');st.textContent='.aurrow{margin-top:6px}.aurrow .msg{margin-top:4px}';document.head.appendChild(st)}
