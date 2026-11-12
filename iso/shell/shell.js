@@ -107,7 +107,7 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
                                 (Ctrl+W, T, N, Q arrive as Ctrl+F20..F23, Alt+F4 as Alt+F20: see rudolf-display's desk_key; af4 closes the window)
      newwin {url, ntid, popup}  the page opened a window: a new tab ntid already holds it (opener kept)
      dialog {did, kind, text, def}   perm {pid, perm, url}   blocked {url, why, main}   gone {why}
-     fs {on}                    the page is "fullscreen" (the stand-in, see fsStandIn): its frame fills the screen
+     fs {on}                    the page is fullscreen: its frame fills the screen
      flash                      Ruffle was loaded for Flash content in the page
      download {url, started}    the page started a download (Chromium saves it; the desktop files it) */
 const TABS = new Map();
@@ -178,7 +178,6 @@ function tabEvents(t) {
     if (typeof o.k == 'string') toTab(t.tid, 'keys', {k: o.k.slice(0, 8)});
     else if (typeof o.flash == 'string') { if (RUFFLE.on && RUFFLE.urls.length) { f.executeScript({code: ruffleJS(), allFrames: true}).catch(() => {}); toTab(t.tid, 'flash') } }
     else if (typeof o.title == 'string') toTab(t.tid, 'title', {title: o.title.slice(0, 300)});
-    else if (typeof o.pfs == 'boolean') pageFullscreen(t, o.pfs, !!o.top, String(o.href || ''));
   });
   f.addEventListener('focus', () => toTab(t.tid, 'focus'));
   f.addEventListener('close', () => toTab(t.tid, 'close'));
@@ -237,8 +236,7 @@ function makeTab(tid, part) {
   f.addEventListener('loadcommit', e => { if (e.isTopLevel) darken(t) });
   f.addEventListener('contentload', () => darken(t));
   try { f.addContentScripts([{name: 'oracle', urlPatterns: ['http://*/*', 'https://*/*'], js: {code: PAGE_JS}, runAt: 'document-start', allFrames: false},
-    {name: 'flash', urlPatterns: ['http://*/*', 'https://*/*'], js: {code: FLASH_JS}, runAt: 'document-idle', allFrames: true},
-    {name: 'fullscreen', urlPatterns: ['http://*/*', 'https://*/*'], js: {code: FS_JS}, runAt: 'document-start', allFrames: true}]).catch(() => {}) } catch (e) {}
+    {name: 'flash', urlPatterns: ['http://*/*', 'https://*/*'], js: {code: FLASH_JS}, runAt: 'document-idle', allFrames: true}]).catch(e => note('content scripts:', String(e))) } catch (e) { note('content scripts:', String(e)) }
   try {
     const i = f.request.createWebRequestInterceptor({urlPatterns: ['*://*/*'], blocking: true,
       resourceTypes: ['main-frame', 'sub-frame', 'stylesheet', 'script', 'image', 'font', 'object', 'xmlhttprequest', 'ping', 'csp-report', 'media', 'websocket', 'webbundle', 'other']});
@@ -268,86 +266,19 @@ function place(t, r, vis, zi) {
   s.clipPath = vis ? `path('${vis.map(([x, y, w, h]) => `M${x} ${y}h${w}v${h}h${-w}z`).join('')}')` : '';
   s.visibility = 'visible';
 }
-/* ---- fullscreen. Controlled Frame does not let a page go fullscreen (Chromium puts it straight back), so pages get
-   a stand-in: requestFullscreen() makes the element fill the page (the class rudolf-fs), document.fullscreenElement
-   and the fullscreenchange events behave as usual, Esc leaves; and the shell makes the page's frame fill the screen.
-   The stand-in runs in the page's own world (a script element, so a page whose Content Security Policy forbids
-   inline scripts keeps its normal, non-fullscreen view). It may only go fullscreen right after a click or a key
-   press, as with the real thing. Same code as the desktop's (shell26.js). */
-function fsStandIn(notify) {
-  if (window.__rudolfFs) return; window.__rudolfFs = 1;
-  const D = Document.prototype, E = Element.prototype; let cur = null;
-  const css = document.createElement('style');
-  css.textContent = '.rudolf-fs{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;z-index:2147483647!important;transform:none!important;border:0!important;border-radius:0!important;box-sizing:border-box!important;background:#000}video.rudolf-fs{object-fit:contain!important}html.rudolf-fs-on,html.rudolf-fs-on body{overflow:hidden!important}';
-  const fire = el => { for (const n of ['fullscreenchange', 'webkitfullscreenchange']) try { (el && el.isConnected ? el : document).dispatchEvent(new Event(n, {bubbles: true, composed: true})) } catch (e) {} };
-  const enter = function () {
-    const el = this;
-    if (!(el instanceof Element)) return Promise.reject(new TypeError('Not an element'));
-    if (cur !== el && !notify(true)) return Promise.reject(new TypeError('Permissions check failed'));
-    if (!css.isConnected) (document.head || document.documentElement).appendChild(css);
-    if (cur && cur !== el) cur.classList.remove('rudolf-fs');
-    cur = el; el.classList.add('rudolf-fs'); document.documentElement.classList.add('rudolf-fs-on');
-    setTimeout(() => fire(el), 0); return Promise.resolve();
-  };
-  const exit = function () {
-    if (!cur) return Promise.reject(new TypeError('Document not active'));
-    const el = cur; cur = null; el.classList.remove('rudolf-fs'); document.documentElement.classList.remove('rudolf-fs-on');
-    notify(false); setTimeout(() => fire(el), 0); return Promise.resolve();
-  };
-  E.requestFullscreen = enter; E.webkitRequestFullscreen = E.webkitRequestFullScreen = function () { enter.call(this).catch(() => {}) };
-  D.exitFullscreen = exit; D.webkitExitFullscreen = D.webkitCancelFullScreen = function () { exit.call(this).catch(() => {}) };
-  for (const k of ['fullscreenElement', 'webkitFullscreenElement', 'webkitCurrentFullScreenElement']) Object.defineProperty(D, k, {configurable: true, get() { return cur }});
-  for (const k of ['fullscreen', 'webkitIsFullScreen']) Object.defineProperty(D, k, {configurable: true, get() { return !!cur }});
-  for (const k of ['fullscreenEnabled', 'webkitFullscreenEnabled']) Object.defineProperty(D, k, {configurable: true, get() { return true }});
-  /* 1.5.8: a video element's own fullscreen (webkitEnterFullscreen) is the stand-in's too */
-  if (window.HTMLVideoElement) { const V = HTMLVideoElement.prototype; V.webkitEnterFullscreen = V.webkitEnterFullScreen = function () { enter.call(this).catch(() => {}) }; V.webkitExitFullscreen = V.webkitExitFullScreen = function () { exit.call(document).catch(() => {}) } }
-  /* 1.5.8: a page can take untouched copies of these functions from a new, empty frame of its own (about:blank, which
-     the stand-in is not put into). YouTube's player does: its fullscreen then reached Chromium's real one, which
-     Controlled Frame puts straight back, and the video returned to its size at once (the Vivobook, 2026-11-11). Such a
-     frame gets the stand-in's functions as soon as the page reaches its window or document. */
-  const own = w => { try { if (!w || w === window || w.__rudolfFs) return; w.__rudolfFs = 1;
-      const WE = w.Element.prototype, WD = w.Document.prototype;
-      for (const k of ['requestFullscreen', 'webkitRequestFullscreen', 'webkitRequestFullScreen']) WE[k] = E[k];
-      for (const k of ['exitFullscreen', 'webkitExitFullscreen', 'webkitCancelFullScreen']) WD[k] = D[k];
-      for (const k of ['fullscreenElement', 'webkitFullscreenElement', 'webkitCurrentFullScreenElement', 'fullscreen', 'webkitIsFullScreen', 'fullscreenEnabled', 'webkitFullscreenEnabled']) Object.defineProperty(WD, k, Object.getOwnPropertyDescriptor(D, k));
-      if (w.HTMLVideoElement && window.HTMLVideoElement) for (const k of ['webkitEnterFullscreen', 'webkitEnterFullScreen', 'webkitExitFullscreen', 'webkitExitFullScreen']) w.HTMLVideoElement.prototype[k] = HTMLVideoElement.prototype[k];
-    } catch (e) {} };
-  if (window.HTMLIFrameElement) { const IF = HTMLIFrameElement.prototype;
-    for (const k of ['contentWindow', 'contentDocument']) { const d = Object.getOwnPropertyDescriptor(IF, k); if (!d || !d.get) continue;
-      Object.defineProperty(IF, k, {configurable: true, enumerable: d.enumerable, get() { const v = d.get.call(this); own(k == 'contentWindow' ? v : v && v.defaultView); return v }}) } }
-  addEventListener('keydown', e => { if (cur && e.key == 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); exit.call(document) } }, true);
-  setInterval(() => { if (cur && !cur.isConnected) exit.call(document).catch(() => {}) }, 1000);
-}
-/* in every frame of a page, before the page's own scripts: the stand-in, and its link to the shell. A page cannot
-   fake going fullscreen: the request is only passed on while the page has a click or key press to show for it. */
-const FS_JS = `(()=>{const N=${JSON.stringify(NONCE)};
-const s=document.createElement('script');s.textContent='('+${JSON.stringify(fsStandIn.toString())}+')(on=>{const e=new CustomEvent("rudolf-fs",{detail:on,cancelable:true});document.dispatchEvent(e);return !e.defaultPrevented})';
-(document.head||document.documentElement).appendChild(s);s.remove();
-document.addEventListener('rudolf-fs',e=>{const on=e.detail===true;if(on&&!(navigator.userActivation&&navigator.userActivation.isActive)){e.preventDefault();return}
- try{console.debug(N+JSON.stringify({pfs:on,top:window===top,href:location.href}))}catch(x){}},true)})()`;
-/* the page's frame fills the screen while the page is "fullscreen"; a frame inside the page that went fullscreen
-   (a video player from another site) is made to fill the page too */
-function pageFullscreen(t, on, top, href) {
-  if (!top) {
-    let origin = ''; try { origin = new URL(href).origin } catch (e) {}
-    t.f.executeScript({allFrames: true, code: `(()=>{const o=${JSON.stringify(origin)},on=${on};document.querySelectorAll('iframe').forEach(f=>{let fo='';try{fo=new URL(f.src,location.href).origin}catch(e){}if(fo!==o)return;
-      if(on){if(f.dataset.rudolfFs===undefined)f.dataset.rudolfFs=f.getAttribute('style')||'';f.setAttribute('style','position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;z-index:2147483647!important;border:0!important;margin:0!important;transform:none!important')}
-      else if(f.dataset.rudolfFs!==undefined){f.setAttribute('style',f.dataset.rudolfFs);delete f.dataset.rudolfFs}})})()`}).catch(() => {});
-  }
-  if (on === !!t.pfs) return;
-  t.pfs = on; toTab(t.tid, 'fs', {on});
-  const s = t.f.style;
-  if (on) {
-    Object.assign(s, {left: '0', top: '0', width: '100%', height: '100%', clipPath: '', zIndex: '2147483000', visibility: 'visible'});
-    t.f.focus(); fsHint();
-  } else place(t, t.r, t.vis);
-}
-/* "Press Esc to leave full screen", for a few seconds */
-let fsHintT = 0;
-function fsHint() {
-  const h = document.getElementById('fshint'); h.hidden = false; clearTimeout(fsHintT);
-  fsHintT = setTimeout(() => { h.hidden = true }, 3500);
-}
+/* ---- fullscreen (1.5.8). A page in a tab goes fullscreen the real way: Chromium asks the shell (permissionrequest,
+   allowed above) and the tab's frame then fills the screen, with Chromium's own "press Esc" notice. Chromium asks only
+   when the shell's permissions policy lets websites use fullscreen (the manifest: "fullscreen": ["self", "*"]); with
+   "self" alone it said no by itself, at once, so a video went back to its size (YouTube on the Vivobook, 2026-11-11).
+   (Before, pages had a stand-in put into them, which a site with Trusted Types, such as YouTube, refuses.)
+   While a tab is fullscreen the shell does not move or cut it; afterwards it goes back over Oracle's window. */
+let FS_TAB = null;
+document.addEventListener('fullscreenchange', () => {
+  const el = document.fullscreenElement;
+  const t = el ? [...TABS.values()].find(x => x.f === el) || null : null;
+  if (FS_TAB && FS_TAB !== t) { const o = FS_TAB; FS_TAB = null; o.pfs = false; toTab(o.tid, 'fs', {on: false}); place(o, o.r, o.vis) }
+  if (t && FS_TAB !== t) { FS_TAB = t; t.pfs = true; t.f.style.clipPath = ''; t.f.style.visibility = 'visible'; t.f.focus(); toTab(t.tid, 'fs', {on: true}) }
+});
 const num = (v, d) => Number.isFinite(+v) ? +v : d;
 const rect = r => Array.isArray(r) && r.length == 4 ? r.map(v => Math.round(num(v, 0))) : null;
 const TAB_OPS = {

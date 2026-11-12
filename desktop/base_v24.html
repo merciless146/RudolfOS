@@ -729,7 +729,8 @@ function maskInput(inp){let pw='',sS=0,sE=0;inp.type='text';inp.autocomplete='of
  return{get:()=>pw,clear:()=>{pw='';inp.value=''}}}
 const LG=$('#login'),lu=$('#lu'),lp=$('#lp'),le=$('#le'),LP=maskInput(lp);let sGest=0;
 ['pointerdown','keydown'].forEach(ev=>LG.addEventListener(ev,()=>{if(!sGest&&LG.style.display!='none'){sGest=1;sfx('startup')}},true));
-function closeAll(){wins.slice().forEach(w=>{try{w.el.remove();w.tb.remove()}catch(e){}});wins=[]}
+/* (1.5.8: each window's onclose runs too, so Oracle's real tabs close with it; before, signing out left them running, hidden) */
+function closeAll(){wins.slice().forEach(w=>{try{w.onclose&&w.onclose()}catch(e){}try{w.el.remove();w.tb.remove()}catch(e){}});wins=[]}
 function showLogin(){closeAll();$('#menu').style.display='none';LG.style.display='flex';lu.value=USER.n;LP.clear();le.textContent='';setTimeout(()=>lp.focus(),30)}
 async function tryLogin(){const n=lu.value.trim(),p=LP.get();if(n.toLowerCase()==USER.n.toLowerCase()&&await hsh(p)==USER.h){LG.style.display='none';le.textContent='';LP.clear();sfx('login');userUI()}else{le.textContent='The user name or password is incorrect.';LP.clear();LG.classList.remove('shake');void LG.offsetWidth;LG.classList.add('shake');sfx('error');lp.focus()}}
 $('#lg').onclick=tryLogin;[lu,lp].forEach(i=>i.addEventListener('keydown',e=>{if(e.key=='Enter')tryLogin()}));
@@ -1188,6 +1189,10 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
   t.ru=u;if(t===T()){st.textContent='Loading '+u;sync()}return true}
  /* a window a page opened (sign-in pop-ups and the like): the shell already holds it, opener and all */
  function adoptTab(u,nt){const t=mkTab(u);ci=tabs.length-1;t.real=true;t.ru=u;t.title=rtHost(u)||'New tab';t.rt=rtOpen(u,rtWhere(t),rtH(t),nt);return t}
+ /* 1.5.8: a website opened before the shell said hello (just after the desktop started) went into a frame and stayed
+    there, without titles, Ctrl+T or fullscreen: it moves to a real tab as soon as the shell is there */
+ const rtLate=()=>{if(!W.el.isConnected){removeEventListener('rudolf-shell',rtLate);return}let n=0;tabs.forEach(t=>{if(!t.real&&/^https?:/i.test(t.h[t.i]||'')&&rtLoad(t))n++});if(n)sync()};
+ addEventListener('rudolf-shell',rtLate);
  function loadTab(t){if(rtLoad(t))return;const u=t.h[t.i],r=page(u);t.title=r.title||u;const fr=t.fr;t.pend=!!r.ext;if(t.siBar){t.siBar.remove();t.siBar=null}
   /* sites that need a sign-in open in the real browser window (signin26.js, web25.js) */
   if(r.ext&&typeof siWants=='function'&&siWants(u)){t.title=webHost(u);hist.push([t.title,u]);hist=hist.slice(-200);store('bd95hist',hist);webOpen(u);siNote(t,u);return}

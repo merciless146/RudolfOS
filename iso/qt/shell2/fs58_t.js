@@ -1,10 +1,10 @@
-// 1.5.8: the fullscreen stand-in (shell.js fsStandIn, the same in shell26.js) against a page that takes untouched
+// 1.5.8: the desktop's fullscreen stand-in (shell26.js fsStandIn; Oracle's tabs use Chromium's real fullscreen) against a page that takes untouched
 // copies of the fullscreen functions from an empty frame of its own, as YouTube's player does. Before, that reached
 // Chromium's real fullscreen, which Controlled Frame puts straight back (YouTube went back to its size at once).
 // node fs58_t.js [CHROME] [SHELL_JS]
 const {chromium} = require('playwright'); const fs = require('fs'), path = require('path');
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + JSON.stringify(d).slice(0, 300) : '')) };
-const src = fs.readFileSync(process.argv[3] || path.join(__dirname, '../../shell/shell.js'), 'utf8');
+const src = fs.readFileSync(process.argv[3] || path.join(__dirname, '../../../desktop/shell26.js'), 'utf8');
 const fn = /\nfunction fsStandIn\(notify\) \{[\s\S]*?\n\}\n/.exec(src)[0];
 (async () => {
   const b = await chromium.launch({executablePath: process.argv[2] || undefined, args: ['--disable-gpu']});
