@@ -26,7 +26,7 @@ function stAnimal(){const a=String(S.accent||'#2563eb').toLowerCase();if(ST_OF[a
 function stRand(seed){let a=seed>>>0;return()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 function stGlow(){const o=icHex2rgb(acVariant(S.accent||'#2563eb',S.stm||'normal'))||[37,99,235],[h,sa,l]=icRgb2hsl(...o);return icHsl2hex(h,Math.max(sa,45),Math.max(58,Math.min(72,l+10)))}
 function stSvg(name,mode,G){G=G||stGlow();const key=name+'|'+mode+'|'+G;if(STS.cache[key])return STS.cache[key];
- const L=mode=='light',P={S:L?'#9b998a':'#4a4d72',L:L?'#b3b1a0':'#5a5d86',D:L?'#45433a':'#1a1c36',K:L?'#5c5b51':'#2b2d4c',
+ const L=mode=='light',P={S:L?'#9b998a':'#5c5f88',L:L?'#b3b1a0':'#6e7199',D:L?'#45433a':'#1a1c36',K:L?'#5c5b51':'#30324f',
   M1:L?'#6e8f45':'#25483a',M2:L?'#8bac52':'#336050',M3:L?'#55743a':'#1b3a2e',V:L?'#4f7a3a':'#1d3d30',W:L?'#4cb7b0':'#0c2b42',G,F1:L?'#3f7d5a':'#0d2a2c',F2:L?'#5b9b6d':'#143834',F3:L?'#2c5c44':'#08191f'};
  const R=stRand(40+ST_ORDER.indexOf(name)),U=(a,b)=>a+(b-a)*R(),ch=a=>a[Math.floor(R()*a.length)],f1=v=>v.toFixed(1);
  const parts=ST.plinth.concat(ST.parts[name],ST.carve),fill=s=>s.replace(/\{(\w+)\}/g,(m,k)=>P[k]||m);
