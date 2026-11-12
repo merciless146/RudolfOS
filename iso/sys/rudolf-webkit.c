@@ -204,9 +204,6 @@ static void tabs_order(void)
 static void shape(tab *t)
 {
 	GdkWindow *gw = gtk_widget_get_window(t->box); if (!gw || !gtk_widget_get_has_window(t->box)) return;
-	/* a native (X) window, so that the X server cuts it: GTK's own windows kept the whole page on the screen */
-	gdk_window_ensure_native(gw);
-	gdk_window_shape_combine_region(gw, t->fs ? NULL : t->vis, 0, 0);
 	gdk_window_input_shape_combine_region(gw, t->fs ? NULL : t->vis, 0, 0);
 	/* the view's own window (WebKit gives it one): cut that too, or what was drawn there stays on the screen */
 	GdkWindow *vw = t->view ? gtk_widget_get_window(t->view) : NULL;
