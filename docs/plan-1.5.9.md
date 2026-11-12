@@ -322,8 +322,13 @@ shared memory and file cache. Lite (1.5.7's check): the page's own process 389 M
 page's share is the page itself: 4.8 MB of code in 95 modules, all loaded and compiled at sign-in, with every dynamic
 background (light and dark, about 1.5 MB as text), fonts and the CHANGELOG embedded. Slimming it helps both engines.
 
-What the 200 to 250 MB is will be read with one start without lockdown (docs/plan-memdebug.md), and its answer
-added here.
+What the 200 to 250 MB is was read on 2026-11-12 with one start without lockdown (docs/plan-memdebug.md): 40 to 65 MB is
+graphics (the driver's page pool, 21 to 46 MB and growing with use, and the system memory the graphics card uses);
+140 to 180 MB is taken by the kernel or a driver outside every counter, to be named by a test kernel with allocation
+profiling. From it:
+- **The graphics pool capped** (`ttm.page_pool_size`, 16384 pages = 64 MB, on the kernel's command line): its limit is
+  now 1.7 GB, so it can creep up over a long session. Measured: the frame rate of a video and of FNF before and after.
+- What the test kernel names, each with its own fix.
 
 ### 10.1 What moves out of the start-up page
 - **Pictures and fonts first:** the dynamic backgrounds, their thumbnails and the sky masks (DYN), and the extra fonts,
