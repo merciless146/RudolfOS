@@ -149,6 +149,14 @@ and fires lasers from his nose.
   (faster every 10 rows), Relaxed (one speed), Daily (3 minutes, the same blocks for everyone). Touch: drag to move,
   tap to turn, flick down to drop, and a touch bar; on a tall window the panel moves above the well.
   `tests/blockdrop_t.js` (33 checks). In LIB_GAMES. Next: Logic Pack.
+- **2026-11-12:** **Logic Pack** (`apps/rudolf-logicpack`, about 24 KB as a package): Sudoku, Picture Grid (nonograms)
+  and Cages (Latin squares with + − × ÷ cages), made in the game (`logic.js`, under 25 ms each), each with exactly one
+  answer. Sudoku Easy solves with naked singles, Medium with hidden singles too, Hard is only unique; Picture Grid
+  5×5, 10×10, 15×15, solvable line by line (a cell is given where line logic stalls); Cages 4×4 to 6×6. A Daily
+  puzzle per kind. Notes, undo, clashes and wrong cages marked (with a bar, not colour alone), clues greyed when their
+  line matches, hints that fix a wrong entry or do the next step and say why; each kind's puzzle in progress kept.
+  The pad goes under the grid on a tall window. `tests/logicpack_t.js` (41 checks). In LIB_GAMES. Next (1.5.9-1.6.0):
+  Wordsmith, Galaxy Conquest, FreeCell and Spider, Chess levels.
 
 ## Frost Barricade 1.1: twenty-five nights, the weather radio, the weather, wendigos
 Asked for on 2026-11-11 and built (rudolfos-library#6, on #5's eye colours, bloaters and muggers).
