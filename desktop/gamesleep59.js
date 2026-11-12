@@ -37,3 +37,12 @@ setInterval(()=>{let on=false;try{on=gameMode()}catch(e){}const was=GSL.on;GSL.o
  d.innerHTML=`<label>Game mode</label><div>${ckH('gsl59ck',"In game mode, free memory for the game",!!S.gmsleep)}<div class='msg'>Oracle's background tabs sleep (a tab that is not its window's current one closes its page and keeps its address; selecting it loads it again; tabs playing sound or holding typed text stay awake), and Blitzen's model is unloaded unless Blitzen is in front. Updates wait until the game ends.</div></div>`;
  const at=c.querySelector(':scope > .hlev');if(at)at.before(d);else c.appendChild(d);
  d.querySelector('#gsl59ck').onchange=e=>{liveSet(c,'gmsleep',e.target.checked)}}catch(e){console.warn(e)}return r}}
+/* 9.2b: the memory guard warns before memory is critical ("memory warn PID MB": the largest page). The page is not
+   ended for it; the warning comes first so there is time to save or to close something. In game mode the warning is
+   shown inside the full-screen page (the shell's "notice", in the page's top layer) and more tabs are put to sleep;
+   otherwise as a notification. */
+evOn(t=>{for(const m of String(t).matchAll(/^memory warn (\d+) (\d+)$/gm)){const mb=+m[2],sz=mb>=1024?(mb/1024).toFixed(1)+' GB':mb+' MB';
+ const txt=`Memory is almost full. Rudolf OS may soon close the largest page (${sz}) to free memory: save your progress if you can.`;
+ let shown=0;if(typeof gameMode=='function'&&gameMode()&&typeof GAME_FS!='undefined')for(const tid of GAME_FS){rtSend('notice',tid,{text:txt,s:12});shown++}
+ if(typeof gameMode=='function'&&gameMode())gslSleep();
+ notify('Memory is almost full',`The largest page uses ${sz}. Close tabs or apps you are not using, or Rudolf OS may close that page to free memory.`,{kind:'error',quiet:!!shown})}});

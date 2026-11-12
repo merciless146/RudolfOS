@@ -40,6 +40,18 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const ai = await q(`(async()=>{const calls=[];const la=lxApi;lxApi=async p=>{calls.push(p);return p=='ai/status'?{loaded:true,mem:1500000000}:{ok:true}};
     const n=await gslBlitzen();lxApi=la;return {n,calls}})()`);
   ok('7c. Blitzen\'s model is unloaded in game mode (its next question loads it again)', ai.n > 0 && ai.calls.join() == 'ai/status,ai/unload', ai);
+  // 9.2b: the guard's warning, in game mode: shown inside the full-screen page
+  await q(`(()=>{dispatchEvent(new MessageEvent('message',{source:window,data:{rudolfShell:'tabev',tid:${JSON.stringify(gameTid)},ev:'fs',on:true}}));__sent.length=0;document.querySelectorAll('.ntoast').forEach(x=>x.remove());evDispatch('memory warn 4242 1940\\n');return 1})()`); await wait(300);
+  const nt = await q("__sent.filter(m=>m.op=='notice')");
+  ok('7d. memory getting low in game mode: a notice inside the full-screen game, with the page\'s size', nt.length == 1 && nt[0].tid == gameTid && /almost full/.test(nt[0].text) && /1\.9 GB/.test(nt[0].text), nt);
+  await q(`(()=>{dispatchEvent(new MessageEvent('message',{source:window,data:{rudolfShell:'tabev',tid:${JSON.stringify(gameTid)},ev:'fs',on:false}}));return 1})()`);
+  // the notice's own code (shell.js) in a page whose element is full screen: it is in the top layer, above it
+  const SH = fs.readFileSync(path.join(__dirname, '../../shell/shell.js'), 'utf8');
+  const nj = eval(SH.match(/const noticeJS = ([\s\S]*?`;)\n/)[1].replace(/;$/, ''))('Memory is almost full.', 5);
+  const p2 = await b.newPage(); await p2.setContent('<div id=g style="width:200px;height:100px;background:#000" onclick="this.requestFullscreen()"></div>'); await p2.click('#g'); await wait(300);
+  await p2.evaluate(nj); await wait(100);
+  ok('7e. the notice shows over the page\'s own full screen (a popover, in the top layer)', await p2.evaluate("!!document.fullscreenElement&&document.getElementById('rudolf-notice').matches(':popover-open')&&/Memory is almost full/.test(document.getElementById('rudolf-notice').textContent)"));
+  await p2.close();
   await q("(()=>{S.gmsleep=false;return 1})()");
   ok('8. switched off in Settings: nothing sleeps', (await q("gslSleep()")) == 0);
   await q("(()=>{settings('health');return 1})()"); await wait(800);

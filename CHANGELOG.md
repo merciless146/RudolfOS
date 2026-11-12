@@ -6,6 +6,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 ## 1.5.9 (in progress)
 Summary: In progress.
 - New: game mode puts Oracle's background tabs to sleep to free memory for the game. A sleeping tab keeps its address and shows 💤; selecting it loads it again. Tabs playing sound or holding typed text stay awake. Blitzen's model is unloaded too (unless Blitzen is in front), and system, Linux app and Debian updates wait until the game ends. Settings › System health › Memory can turn it off.
+- New: when memory is getting low, Rudolf OS warns before it has to close a page, also inside a full-screen game ("Memory is almost full: save your progress if you can"), and game mode puts more tabs to sleep.
 - Changed: Chromium comes only from Ubuntu's open-source Chromium (the snap). When it cannot be fetched, the release keeps the Chromium it has, instead of taking another kind of browser; it never goes back to an older version.
 - Fixed: when a system file does not match its release, the start-up and Task Manager say so plainly, with its size, instead of a low-level error.
 
