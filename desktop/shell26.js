@@ -21,7 +21,7 @@ addEventListener('message', e => {
   const m = e.data;
   if (!m || typeof m.rudolfShell != 'string' || e.source == null) return;
   if (!SHELL_ORIGIN || e.origin !== SHELL_ORIGIN) return;           // only Rudolf OS's own shell
-  if (m.rudolfShell == 'hello') { if (!SHELL) fsStandIn(on => { SHELL_FS = on; return true }); SHELL = e.source; SHELL_VER = String(m.version || ''); SHELL_CAPS = Array.isArray(m.caps) ? m.caps.map(String) : []; document.documentElement.classList.add('inshell'); shellSend({rudolfShell: 'ready'}); return }
+  if (m.rudolfShell == 'hello') { if (!SHELL) fsStandIn(on => { SHELL_FS = on; return true }); SHELL = e.source; SHELL_VER = String(m.version || ''); SHELL_CAPS = Array.isArray(m.caps) ? m.caps.map(String) : []; document.documentElement.classList.add('inshell'); shellSend({rudolfShell: 'ready'}); if (typeof rtOn == 'function' && rtOn()) dispatchEvent(new Event('rudolf-shell')); return }
   if (m.rudolfShell == 'log') { SHELL_LOG.push(new Date().toISOString().slice(11, 19) + ' ' + String(m.m || '').slice(0, 500)); if (SHELL_LOG.length > 50) SHELL_LOG.shift(); return }
   if (m.id && SHELL_WAIT.has(m.id)) { SHELL_WAIT.get(m.id)(m); SHELL_WAIT.delete(m.id); return }
   if (m.rudolfShell == 'newwindow' && /^https?:/i.test(m.url || '')) { if (typeof webOpen == 'function') webOpen(m.url); return }
