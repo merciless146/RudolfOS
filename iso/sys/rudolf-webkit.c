@@ -198,11 +198,20 @@ static void tabs_order(void)
 	for (i = 0; i < n; i++) gtk_overlay_reorder_overlay(GTK_OVERLAY(overlay), a[i]->box, i);
 	g_free(a); g_list_free(l);
 }
+/* what covers a tab (a menu, another window): 1.5.8 draws the tab clipped to its visible pieces (on_box_draw), and
+   only its input is shaped. Shaping its window as well hid the whole page on the Vivobook and in the Lite engine
+   check (with the graphics card, mixed, or software), so the desktop's menus and windows ended up behind pages. */
 static void shape(tab *t)
 {
 	GdkWindow *gw = gtk_widget_get_window(t->box); if (!gw || !gtk_widget_get_has_window(t->box)) return;
-	gdk_window_shape_combine_region(gw, t->fs ? NULL : t->vis, 0, 0);
 	gdk_window_input_shape_combine_region(gw, t->fs ? NULL : t->vis, 0, 0);
+	gtk_widget_queue_draw(overlay);
+}
+static gboolean on_box_draw(GtkWidget *w, cairo_t *cr, gpointer d)
+{
+	(void)w; tab *t = d;
+	if (t->vis && !t->fs) { gdk_cairo_region(cr, t->vis); cairo_clip(cr); }
+	return FALSE;
 }
 static void apply_place(tab *t)
 {
@@ -340,6 +349,7 @@ static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 	gtk_container_add(GTK_CONTAINER(t->box), t->view); gtk_widget_show(t->view);
 	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), t->box);
 	g_signal_connect(t->box, "realize", G_CALLBACK(on_box_realize), t);
+	g_signal_connect(t->box, "draw", G_CALLBACK(on_box_draw), t);
 	g_signal_connect(t->box, "size-allocate", G_CALLBACK(on_box_size), t);
 	g_signal_connect(t->view, "load-changed", G_CALLBACK(on_tab_load), t);
 	g_signal_connect(t->view, "load-failed", G_CALLBACK(on_tab_load_failed), t);
