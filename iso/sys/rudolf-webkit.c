@@ -164,6 +164,22 @@ static void tabev(tab *t, const char *ev, const char *extra)
 	if (extra && *extra) { g_string_append_c(m, ','); g_string_append(m, extra); }
 	g_string_append_c(m, '}'); to_desk(m);
 }
+/* 1.5.9 (game mode, plan 9.2): may this tab sleep? WebKit says whether it plays sound; the page whether text is typed
+   into it and not sent (as the shell's BUSY_JS). The answer comes back as tabev busy {id, m, f}. */
+static const char BUSY_JS[] = "JSON.stringify({m:[...document.querySelectorAll('video,audio')].some(x=>!x.paused&&!x.muted&&x.readyState>2),"
+	"f:[...document.querySelectorAll('input,textarea')].some(x=>!x.disabled&&/^(text|search|email|url|tel|number|password|textarea|)$/.test(x.type||'')&&x.value&&x.value!==x.defaultValue)"
+	"||[...document.querySelectorAll('[contenteditable]')].some(x=>x.isContentEditable&&(x.textContent||'').trim().length>0&&x.contains(document.activeElement))})";
+typedef struct { char tid[64]; int id, audio; } busy_q;
+static void busy_done(GObject *o, GAsyncResult *res, gpointer p)
+{
+	busy_q *q = p; GError *e = NULL; int m = q->audio, f = 1;
+	JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(o), res, &e);
+	if (v && jsc_value_is_string(v)) { char *j = jsc_value_to_string(v); if (j) { if (strstr(j, "\"m\":true")) m = 1; f = !!strstr(j, "\"f\":true"); g_free(j); } }
+	if (v) g_object_unref(v); if (e) g_error_free(e);
+	tab *t = g_hash_table_lookup(TABS, q->tid);
+	if (t) { char x[64]; snprintf(x, sizeof x, "\"id\":%d,\"m\":%s,\"f\":%s", q->id, m ? "true" : "false", f ? "true" : "false"); tabev(t, "busy", x); }
+	g_free(q);
+}
 static void nav_state(tab *t)
 {
 	WebKitWebView *v = WEBKIT_WEB_VIEW(t->view); GString *e = g_string_new("\"url\":");
@@ -470,6 +486,8 @@ static void on_tab_op(JSCValue *m)
 		else if (!strcmp(op, "zoom")) { double z = jnum(m, "z", 1); webkit_web_view_set_zoom_level(v, z < .25 ? .25 : z > 5 ? 5 : z); }
 		else if (!strcmp(op, "focus")) gtk_widget_grab_focus(t->view);
 		else if (!strcmp(op, "close")) g_hash_table_remove(TABS, t->tid);
+		else if (!strcmp(op, "busy")) { busy_q *q = g_new0(busy_q, 1); snprintf(q->tid, sizeof q->tid, "%s", t->tid); q->id = (int)jnum(m, "id", 0);
+			q->audio = webkit_web_view_is_playing_audio(v); webkit_web_view_evaluate_javascript(v, BUSY_JS, -1, NULL, NULL, NULL, busy_done, q); }
 		else if (!strcmp(op, "place")) {
 			JSCValue *r = jsc_value_object_get_property(m, "r"), *vis = jsc_value_object_get_property(m, "vis"); int x[4];
 			if (rect_of(r, x) && x[2] > 0 && x[3] > 0) {
