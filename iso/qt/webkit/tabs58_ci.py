@@ -64,11 +64,10 @@ while time.time() < end and 'done' not in RES and p.poll() is None:
     time.sleep(0.5)
 time.sleep(1); dl = '/run/rudolf/dl/.incoming/file.bin'
 def px(f, x, y):
-    # one pixel as (r, g, b) 0-255, from ImageMagick's text format ("0,0: (253,230,138) ...")
     try:
         out = subprocess.run(['convert', f, '-crop', '1x1+%d+%d' % (x, y), '-depth', '8', 'txt:-'], capture_output=True, text=True).stdout
-        import re; m = re.search(r'\((\d+),(\d+),(\d+)', out.replace(' ', ''))
-        return tuple(int(v) for v in m.groups()) if m else None
+        h = out.split('#', 2)[-1][:6] if '#' in out else ''
+        return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)) if len(h) == 6 else None
     except Exception: return None
 yellow = lambda c: bool(c) and c[0] > 200 and c[1] > 190 and c[2] < 180
 desk = lambda c: bool(c) and c[0] < 70 and c[1] < 80 and c[2] < 100
