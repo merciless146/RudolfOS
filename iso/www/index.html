@@ -5763,7 +5763,9 @@ let LOCKED=false,lastInput=Date.now(),SAVER=null,UNLOCKED_AT=0;
 /* 1.5.7: other modules read window.LOCKED (updates, Keep, Linux apps' updates), which a "let" does not make: it was
    always undefined, so they went on behind the lock screen */
 try{Object.defineProperty(window,'LOCKED',{get:()=>LOCKED,configurable:true})}catch(e){}
-['pointermove','pointerdown','keydown','wheel','touchstart'].forEach(ev=>addEventListener(ev,()=>{lastInput=Date.now();if(SAVER&&Date.now()-SAVER.t>600)saverStop()},{capture:true,passive:true}));
+/* (1.5.8: a pointermove that did not move is not input: Chromium sends them when what is under a resting pointer
+   changes (the clock, a widget, a page), which kept the screen saver from ever starting on the Vivobook) */
+['pointermove','pointerdown','keydown','wheel','touchstart'].forEach(ev=>addEventListener(ev,e=>{if(e.type=='pointermove'&&!e.movementX&&!e.movementY)return;lastInput=Date.now();if(SAVER&&Date.now()-SAVER.t>600)saverStop()},{capture:true,passive:true}));
 function lockScreen(reason,adminOnly){if(!USER||LOCKED)return;
  /* 1.5.7: never a second lock screen over the first (the HP desktop showed two after its screen had locked) */
  if(document.getElementById('lockov')){LOCKED=true;return}
@@ -5792,7 +5794,8 @@ async function mediaOther(){try{return (await rd('media')).playing>0}catch(e){re
      often reaches nobody: waking counts as input, so the saver and the lock do not start again at once;
    - for a minute after an unlock, nothing locks by itself (Lock, Meta+L and the time limit still do) */
 const idleWait=(p,v)=>Promise.race([Promise.resolve(p).catch(()=>v),new Promise(r=>setTimeout(()=>r(v),4000))]);
-async function idleNow(){let m=Date.now()-lastInput;if(RD){const j=await idleWait(rd('idle'),null);if(j&&j.idle!=null)m=Math.min(m,j.idle)}return m}
+/* the system's count of real input (keys, mouse, touch, controllers) when there is one; the page's own otherwise */
+async function idleNow(){let m=Date.now()-lastInput;if(RD){const j=await idleWait(rd('idle'),null);if(j&&j.idle!=null)m=j.idle}return m}
 /* asleep: the wall clock (Date.now) ran on while the page's own clock (performance.now, which stops while the computer
    sleeps) did not; a page whose timers were only slowed down sees both move together */
 let idleBusy=false,idleTick=Date.now(),idlePerf=performance.now();
