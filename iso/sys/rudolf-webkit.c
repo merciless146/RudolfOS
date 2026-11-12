@@ -2,7 +2,7 @@
  * rudolf-webkit - the Rudolf OS desktop in WebKit (WebKitGTK 4.1) instead of Chromium (1.5.7, plan Part 4).
  *
  * System Settings › Desktop engine › Lite: the session starts this instead of Chromium's kiosk, as the desktop user,
- * in the desktop's memory group:   rudolf-webkit --rudolf-kiosk --size=WxH [--software] http://127.0.0.1:8080/
+ * in the desktop's memory group:   rudolf-webkit --rudolf-kiosk --size=WxH [--draw=gpu|mixed|soft] http://127.0.0.1:8080/
  * One window without a frame, class RudolfDesktop (rudolf-display keeps it exactly full screen, as Chromium's), the
  * page's own data in ~/.rudolf-webkit (at start the desktop loads rudolfd's mirror of its databases, as the shell
  * does). A website the page would load as the whole desktop is refused. A page that stopped (its process ended) is
@@ -34,10 +34,17 @@
 static const char *url = "http://127.0.0.1:8080/";
 static GtkWidget *win, *overlay, *desk;
 static int desk_ready;
-/* 1.5.8: --software: draw with the processor (the session passes it unless Settings › Display › Graphics card says
-   "Use it for games and the desktop", as the Chromium desktop does). On the Vivobook, drawing with the graphics card
-   took some 400 MB more at rest (graphics memory lent from RAM, and a bigger web process). */
+/* 1.5.8: how the desktop draws, from Settings › Display › Graphics card (the session passes --draw=):
+     gpu    the graphics card draws everything ("Use it for games and the desktop")
+     mixed  the processor draws the contents, on several cores, and the graphics card puts the layers together and
+            moves them ("Use it for games and Linux apps", the default). On the Vivobook, gpu took some 400 MB more at
+            rest (graphics memory lent from RAM, still growing after 15 minutes); software alone stuttered.
+     soft   the processor does both, with lighter effects (no shadows or blurs) to keep it smooth (no graphics card) */
+enum { DRAW_GPU, DRAW_MIXED, DRAW_SOFT };
+static int DRAW = DRAW_GPU;
 static WebKitHardwareAccelerationPolicy HWPOL = WEBKIT_HARDWARE_ACCELERATION_POLICY_ON_DEMAND;
+static const char *LIGHT_CSS = "*,*::before,*::after{box-shadow:none!important;text-shadow:none!important;"
+	"backdrop-filter:none!important;-webkit-backdrop-filter:none!important}";
 static guint hello_timer;
 
 /* ------------------------------------------------------------------ small helpers */
@@ -543,8 +550,15 @@ int main(int argc, char **argv)
 	int w = 0, h = 0;
 	for (int i = 1; i < argc; i++) {
 		if (!strncmp(argv[i], "--size=", 7)) { if (sscanf(argv[i] + 7, "%dx%d", &w, &h) != 2) w = h = 0; }
-		else if (!strcmp(argv[i], "--software")) HWPOL = WEBKIT_HARDWARE_ACCELERATION_POLICY_NEVER;
+		else if (!strcmp(argv[i], "--draw=soft") || !strcmp(argv[i], "--software")) DRAW = DRAW_SOFT;
+		else if (!strcmp(argv[i], "--draw=mixed")) DRAW = DRAW_MIXED;
+		else if (!strcmp(argv[i], "--draw=gpu")) DRAW = DRAW_GPU;
 		else if (!strncmp(argv[i], "http://127.0.0.1:", 17)) url = argv[i];
+	}
+	if (DRAW == DRAW_SOFT) HWPOL = WEBKIT_HARDWARE_ACCELERATION_POLICY_NEVER;
+	if (DRAW == DRAW_MIXED) {   /* (WebKitGTK 2.52: read by the web processes, which inherit the environment) */
+		char n[8]; int c = (int)g_get_num_processors() - 1; snprintf(n, sizeof n, "%d", c < 1 ? 1 : c > 8 ? 8 : c);
+		g_setenv("WEBKIT_SKIA_ENABLE_CPU_RENDERING", "1", TRUE); g_setenv("WEBKIT_SKIA_CPU_PAINTING_THREADS", n, TRUE);
 	}
 	g_set_prgname("RudolfDesktop"); gdk_set_program_class("RudolfDesktop");
 	gtk_init(&argc, &argv);
@@ -570,6 +584,8 @@ int main(int argc, char **argv)
 	WebKitUserContentManager *ucm = webkit_user_content_manager_new();
 	webkit_user_content_manager_register_script_message_handler(ucm, "rudolfShell");
 	g_signal_connect(ucm, "script-message-received::rudolfShell", G_CALLBACK(on_desk_msg), NULL);
+	if (DRAW == DRAW_SOFT) webkit_user_content_manager_add_style_sheet(ucm, webkit_user_style_sheet_new(LIGHT_CSS,
+		WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES, WEBKIT_USER_STYLE_LEVEL_USER, NULL, NULL));
 	desk = GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", ctx, "user-content-manager", ucm, NULL));
 	WebKitSettings *s = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(desk));
 	g_object_set(s, "enable-javascript", TRUE, "javascript-can-access-clipboard", TRUE, "enable-webaudio", TRUE,

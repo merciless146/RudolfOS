@@ -81,5 +81,16 @@ jobs:
           (sudo timeout 20 chroot $B /usr/bin/env -i DISPLAY=:99 HOME=/root/h LIBGL_ALWAYS_SOFTWARE=1 PATH=/usr/bin:/bin /usr/bin/rudolf-webkit --size=800x600 http://127.0.0.1:8081/mse58.html > mse.txt 2>&1) || true
           r=$(grep -o 'RUDOLF-MSE.*' mse.txt | head -1); echo "::notice title=Lite video formats::${r:-no answer}"
           echo "$r" | grep -q 'vp9=true' && echo "$r" | grep -q 'opus=true' || { echo "::error title=Lite video::YouTube's VP9 with Opus is not offered (${r:-no answer})"; grep -i gst mse.txt | head -5; exit 1; }
+      - name: The three ways the Lite desktop draws (1.5.8, --draw=gpu, mixed, soft)
+        run: |
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
+          for m in gpu mixed soft; do export HOME=$RUNNER_TEMP/home-$m; mkdir -p $HOME
+            (timeout 30 ./rudolf-webkit --rudolf-kiosk --size=1280x800 --draw=$m http://127.0.0.1:8080/ > draw-$m.txt 2>&1 &)
+            sleep 25; mem=$(for p in $(pgrep -f 'WebKit(Web|Network)Process|rudolf-webkit --rudolf'); do awk '/^Pss:/{s+=$2}END{printf "%d+",s/1024}' /proc/$p/smaps_rollup; done)
+            thr=$(for p in $(pgrep -f WebKitWebProcess); do ls /proc/$p/task | while read t; do cat /proc/$p/task/$t/comm; done; done | grep -c SkiaCPU || true)
+            if pgrep -f "rudolf-webkit --rudolf-kiosk --size=1280x800 --draw=$m" >/dev/null; then echo "::notice title=Lite drawing: $m::running after 25 s; ${mem%+} MB PSS; $thr Skia CPU painting threads"
+            else echo "::error title=Lite drawing: $m::not running after 25 s: $(tail -3 draw-$m.txt | tr '\n' '|' | sed 's/::/: /g')"; fail=1; fi
+            pkill -f "rudolf-webkit --rudolf-kiosk --size=1280x800 --draw=$m" || true; sleep 2; done
+          exit ${fail:-0}
       - uses: actions/upload-artifact@v4
         with: {name: lite-engine-check, path: "shot.png\nconsole.txt\nmem.txt\nadd.txt\nchroot.txt\ntabs.png\ntabs.txt\ntabs-result.txt\nmse.txt"}
