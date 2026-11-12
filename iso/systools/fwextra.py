@@ -122,6 +122,16 @@ def cmd_sof(sb):
 
 def cmd_copy(lst, fw, dest):
     n = size = 0; bad = []
+    # 1.5.9: linux-firmware sometimes drops a file whose bytes another file already has (2026-11-12:
+    # qca/nvm_usb_00130200_0105.bin, the same as _0104 and _0110), so the release build stopped. The list pins the
+    # bytes, not where they come from: a missing file is taken from another listed file with the same hash.
+    same = {}
+    for line in open(lst):
+        t = line.split()
+        if len(t) >= 3 and t[0] == 'F':
+            p = os.path.join(fw, t[3] if len(t) > 3 else t[2])
+            if os.path.isfile(p):
+                same.setdefault(t[1], p)
     for line in open(lst):
         t = line.split()
         if not t or t[0].startswith('#'):
@@ -131,7 +141,10 @@ def cmd_copy(lst, fw, dest):
             h, f = t[1], t[2]
             src = os.path.join(fw, t[3] if len(t) > 3 else f)
             if not os.path.isfile(src):
-                sys.exit('fwextra: %s is missing from %s' % (f, fw))
+                if h not in same:
+                    sys.exit('fwextra: %s is missing from %s' % (f, fw))
+                print('fwextra: %s is missing from %s; the same bytes from %s' % (f, fw, os.path.relpath(same[h], fw)))
+                src = same[h]
             if sha(src) != h:
                 # 1.5.1: every file that differs is reported with the hash it has now, then the build stops
                 bad.append('fwextra: %s is not the listed file (listed %s, %s has %s; make the list again)' % (f, h, fw, sha(src)))
