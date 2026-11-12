@@ -297,6 +297,54 @@ mostly idle: memory is what is short, not speed. Before 1.5.8 the memory guard e
   after game mode, swap activity at a song's start, and stutter (frame times from a small page script in the
   devlink's test tab, compared with 1.5.8). The goal: over 1 GB free during a song, no swap-in at its start.
 
+## Part 10: a lighter desktop page (added on 2026-11-12)
+
+Measured on the Vivobook with beta 2026111214 (devlink), Standard engine, nothing open: about 1.0 to 1.2 GB in use on
+the System monitor (all memory minus what Linux calls available), of which the desktop's own processes about 500 to
+550 MB, the kernel about 130 MB, about 200 to 250 MB that belongs to no process (steady at idle, after a video and
+after a game: not a graphics pool that fills with use, so capping TTM's page_pool_size would gain little here), and
+shared memory and file cache. Lite (1.5.7's check): the page's own process 389 MB of about 520 MB. Most of the
+page's share is the page itself: 4.8 MB of code in 95 modules, all loaded and compiled at sign-in, with every dynamic
+background (light and dark, about 1.5 MB as text), fonts and the CHANGELOG embedded. Slimming it helps both engines.
+
+### 10.1 What moves out of the start-up page
+- **Pictures and fonts first:** the dynamic backgrounds, their thumbnails and the sky masks (DYN), and the extra fonts,
+  become files beside the page; only the background in use is loaded and decoded, the thumbnails when Display
+  Properties opens, a font when chosen.
+- **Self-contained apps:** WordPro, the spreadsheet and presentations, the games, Emu, BlockLua, Blitzen's packs, the
+  Library apps' pages, Help and What's new: each its own file, loaded when first opened.
+- **What stays:** the core (windows, taskbar, Settings' frame, Oracle and its tabs, the shell's messages) and every
+  module that wraps a shared function (applySet, dispPanelS, themeApply, lxRun and the like: aurora58, statue58,
+  accent56, lock58 among them), since the order they wrap in matters.
+
+### 10.2 Without causing issues
+- **A stub per app:** the name stays defined from the start; the first call loads the file, then runs the call (a
+  .docx opened from File Explorer, a game from the Library, a Help link). A file that cannot load says so, with Try
+  again, never a silent failure.
+- **Versioned file names** (wordpro-1.5.9-ab12.js): a desktop open across an update never mixes versions; the old
+  files stay until the next start.
+- **Everywhere the page runs:** rudolfd serves the files for both engines (127.0.0.1:8080, and rudolf-webkit's own
+  loading); the browser build on GitHub Pages ships them beside index.html, and the phone web app's offline cache
+  (7.5) stores them.
+- **The tools learn it:** build19.py writes the files and their list; deadcheck reads them all; the self-test checks
+  every listed file is present; each app's browser tests load it through its stub.
+- **Chromium cannot unload code:** the saving is in apps not opened in a session; the memory their documents and
+  pictures use is still given back when they close (checked: no references kept after a window closes).
+
+### 10.3 Then, measured
+- The engines' own limits: Lite's JavaScript heap and, for the desktop page only, the JIT off as an option measured
+  for speed; Standard's renderer limit and the desktop page's heap limit (site isolation stays on for websites).
+- The ~200 MB that belongs to no process: what it is (kernel, graphics driver; debugfs is locked down with Secure Boot,
+  so through the driver's sysfs counters and /proc), and whether any of it can be given back.
+- WPE WebKit as a later Lite engine (no GTK layer), measured against WebKitGTK, once the page is slim.
+
+### 10.4 Targets and tests
+- Targets at the sign-in screen, nothing open: Lite about 300 to 350 MB for the desktop's processes (0.55 to 0.65 GB
+  on the System monitor), Standard about 0.8 to 0.9 GB on the System monitor; start-up no slower.
+- Tests: browser tests that each deferred app opens through its stub on both engines, that an update between loads
+  keeps versions apart, and that a missing file is reported; on the Vivobook, memory at idle and after opening and
+  closing each large app, Standard and Lite, before promotion.
+
 ## Steps
 1. Part 1 (ModemManager, read only), with the USB stick and the MiFi on the Vivobook over the devlink.
 2. Part 2 (tablet mode, keyboard, rotation).
@@ -312,3 +360,5 @@ mostly idle: memory is what is short, not speed. Before 1.5.8 the memory guard e
    keys in Settings, 8.2's certificates and revocation, and 8.6 the README with its CI check.
 9. Part 9 (game mode memory): 9.2's sleeping tabs first (both engines), then the desktop's own savings, waiting
    background work, the tray offer and the memory guard's order; checked with FNF on the Vivobook before promotion.
+10. Part 10 (a lighter page): pictures and fonts out first, then the large apps one at a time behind stubs, each
+    measured on both engines on the Vivobook; then the engines' limits (10.3).

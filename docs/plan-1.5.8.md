@@ -1,5 +1,9 @@
 # Rudolf OS 1.5.8: diagnosing a computer that does not start, and smoother recovery
 
+**Status (2026-11-12): finished.** Every step below is done or moved to docs/plan-1.5.9.md ("Moved from 1.5.8"); the
+last additions were Make a stick's full rescue sticks (5.1), the dynamic backgrounds (Glacier Lake, Spirit Falls,
+their moving parts paused when unseen) and the fixes found on the Vivobook with beta 2026111214.
+
 Asked for on 2026-11-10, after the Vivobook could not start the 1.5.7 beta with the Lite desktop engine. The safeguards
 that stop such a failure from leaving a computer unable to start went into 1.5.7 (priorities 1 to 3 below); this plan
 is the rest (priorities 4 and 5). It starts once 1.5.7 is promoted. Added the same day: **mobile data** (Part 6, after
