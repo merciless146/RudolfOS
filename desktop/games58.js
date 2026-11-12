@@ -13,7 +13,7 @@
    ===== */
 window.__games58=1;
 const LIB_GAMES=[
- {k:'frostbarricade',pkg:'rudolf-frostbarricade',name:'Frost Barricade',icon:'🛡️',size:26e3,desc:'For older players (cartoon horror and combat): hold a barricade against corrupted elves for twenty-five nights, through fog, blizzards and a full moon, with winter weapons, survivors and a sleigh to wait for.'},
+ {k:'frostbarricade',pkg:'rudolf-frostbarricade',name:'25 Days',icon:'🛡️',size:31e3,desc:'For older players (gritty cartoon horror and combat): hold a barricade against corrupted elves for twenty-five days and nights. Move Rudolf behind it and shoot with winter weapons that never run out of ammunition; train your survivors, wait for the sleigh. (Formerly Frost Barricade.)'},
  {k:'nightflight',pkg:'rudolf-nightflight',name:'Night Flight',icon:'🌙',size:31e3,desc:'Rudolf’s bullet-hell flight through a winter night: lasers from his glowing nose, a charged beam, friends to save. Stages 1 and 2 so far.'},
  {k:'faultlines',pkg:'rudolf-faultlines',name:'Fault Lines',icon:'⛏️',size:17e3,desc:'A logic puzzle: clear the ground without opening a fault. Three fields and a Daily one; best times kept with your account.'}];
 LIB_GAMES.forEach(g=>{

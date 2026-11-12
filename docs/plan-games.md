@@ -181,3 +181,20 @@ Asked for on 2026-11-11 and built (rudolfos-library#7).
   deterministic replay that ends with the same score twice, the reduce-flashing setting.
 - On the Vivobook (devlink and remote access): each game played on Standard and Lite, with memory and frame rate noted
   in docs/testing.md.
+
+## 25 Days (Frost Barricade 1.3)
+
+Asked for on 2026-11-12. The game is renamed **25 Days** (the package stays `rudolf-frostbarricade`, so saves carry on).
+
+- A grittier look, like the old violent Flash games: darker, washed-out colours, film grain and a vignette, dead trees
+  and fence posts, dark ichor splatter, tumbling chunks and stains that last the night, muzzle smoke and spent casings.
+- Rudolf redrawn after Rudolf OS's portrait (the boot splash): an angular, faceted white stag with branching antlers, a
+  diamond ear, a slanted eye, a ruff and the red nose, full body, with a bandolier.
+- A wider field and lanes, a longer barricade. Rudolf moves up and down behind it (W/S, the arrows, a controller's left
+  stick, a drag behind the barricade) and aims within 15 degrees of level.
+- Shots fly on past the crosshair until an elf or a shield stops them; the Ornament Launcher still bursts at the crosshair.
+- Unlimited ammunition, quicker reloads (searching finds scrap instead of ammunition); the elves 30% faster, the
+  sprinters most (the wendigo unchanged).
+- The survivors shoot each in their own time, about 40% hits untrained to 85% trained; below 5% of the barricade they
+  panic, drop their crossbows and run until morning.
+
