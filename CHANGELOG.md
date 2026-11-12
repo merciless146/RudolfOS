@@ -3,7 +3,7 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
-## 1.5.8 (in progress)
+## 1.5.8 (2026-11-12)
 Summary: Diagnosing a computer that does not start, full rescue sticks, Oracle's tabs in the Lite desktop, mobile data, Android phones and tablets, and new dynamic backgrounds (docs/plan-1.5.8.md)
 - Fixed: when the memory guard ends a web page, the desktop now leaves full screen at once and says so, also when only a frame inside a page was ended (a game on a website), which left the screen full screen on a broken frame before.
 - Fixed: a page closed to free memory while full screen (a game in an Oracle tab) left the screen full screen and black, and Ctrl+Alt+Del's Task Manager opened behind it. A tab that ends now leaves full screen, and Task Manager and the shutdown dialog leave full screen first. Settings pages also no longer react to changes on a page shown before them.
