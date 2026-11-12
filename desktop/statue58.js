@@ -77,21 +77,25 @@ function stSvg(name,mode,G){G=G||stGlow();const key=name+'|'+mode+'|'+G;if(STS.c
    right and down, turning over as they go, and those that reach the pool float there a while and fade. A canvas at
    half the picture's size over the whole picture; 15 frames a second (10 in Lite); still with Reduce motion. */
 const PET={cv:null,ps:[],ls:[],timer:0,t0:performance.now(),last:0,mode:''};
-/* at night, paper sky lanterns rise slowly over the valley, swaying and flickering, in the accent colour by the
-   Normal / Negative / Complementary rule chosen for them; nearer ones larger and faster. They keep to the open sky
-   between the cherry tree and the palms. */
-function lanNew(any){const R=Math.random,z=.45+R()*.55;return{x:690+R()*420,y:any?40+R()*280:330+R()*30,z,ph:R()*6.283,vy:(4+R()*5)*z,fl:R()*6.283,life:any?1:0}}
+/* at night, paper sky lanterns rise slowly from behind the cliffs and drift up the sky, scattered across it, more of
+   them left of the moon than right of it, swaying and flickering, in the accent colour by the Normal / Negative /
+   Complementary rule chosen for them; nearer ones larger and faster. They have their own canvas behind the statue,
+   kept to the open sky by the picture's sky mask (DYN.oasis.am), so they pass behind the cliffs, the trees and the
+   palms. */
+function lanNew(any){const R=Math.random,z=.35+R()*.65,x=R()<.74?R()*1180:1180+R()*440;return{x,y:any?10+R()*190:190+R()*40,z,ph:R()*6.283,vy:(3+R()*5)*z,fl:R()*6.283,life:any?1:0}}
 function lanCol(){const o=icHex2rgb(acVariant(S.accent||'#2563eb',S.lnm||'normal'))||[37,99,235],[h,sa,l]=icRgb2hsl(...o),s2=Math.max(sa,60);
  const rgb=x=>icHex2rgb(x).join(',');return{body:rgb(icHsl2hex(h,s2,Math.max(60,Math.min(72,l+14)))),glow:rgb(icHsl2hex(h,s2,62)),core:rgb(icHsl2hex(h,Math.min(100,s2+10),88))}}
 function lanStep(dt,t){for(let i=0;i<PET.ls.length;i++){const p=PET.ls[i];p.y-=p.vy*dt;p.x+=Math.sin(t*.4+p.ph)*3*dt*p.z;p.life=Math.min(1,p.life+dt/4);
-  if(p.y<20)p.life-=dt/2;if(p.y<-20||p.life<0&&p.y<40)PET.ls[i]=lanNew(false)}}
-function lanDraw(g,t){if(PET.mode!=='dark')return;const c=lanCol();
- for(const p of PET.ls){const s=14*p.z,fl=.85+.15*Math.sin(t*7+p.fl)*Math.sin(t*3.1+p.ph),a=Math.max(0,Math.min(1,p.life))*(p.y>290?Math.max(0,(330-p.y)/40):1);if(a<=0)continue;
+  if(p.y<-30)PET.ls[i]=lanNew(false)}}
+function lanDraw(t){const cv=PET.lcv;if(!cv)return;const g=cv.getContext('2d');g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,cv.width,cv.height);
+ if(PET.mode!=='dark'||!PET.mask||!PET.mask.complete||!PET.mask.naturalWidth)return;g.setTransform(.5,0,0,.5,0,0);const c=lanCol();
+ for(const p of PET.ls){const s=14*p.z,fl=.85+.15*Math.sin(t*7+p.fl)*Math.sin(t*3.1+p.ph),a=Math.max(0,Math.min(1,p.life));if(a<=0)continue;
   const gr=g.createRadialGradient(p.x,p.y,0,p.x,p.y,s*3.2);gr.addColorStop(0,`rgba(${c.glow},${.55*fl*a})`);gr.addColorStop(1,`rgba(${c.glow},0)`);
   g.fillStyle=gr;g.fillRect(p.x-s*3.2,p.y-s*3.2,s*6.4,s*6.4);
   g.globalAlpha=a;g.fillStyle=`rgb(${c.body})`;g.beginPath();g.moveTo(p.x-s*.55,p.y-s*.75);g.lineTo(p.x+s*.55,p.y-s*.75);g.lineTo(p.x+s*.42,p.y+s*.6);g.lineTo(p.x-s*.42,p.y+s*.6);g.closePath();g.fill();
   const cg=g.createLinearGradient(0,p.y-s*.75,0,p.y+s*.6);cg.addColorStop(0,'rgba(255,255,255,0)');cg.addColorStop(1,`rgba(${c.core},${.9*fl})`);g.fillStyle=cg;g.fill();
-  g.fillStyle='rgba(40,20,20,.35)';g.fillRect(p.x-s*.55,p.y-s*.78,s*1.1,s*.12);g.fillStyle=`rgba(255,240,200,${fl})`;g.beginPath();g.arc(p.x,p.y+s*.5,s*.12,0,6.283);g.fill();g.globalAlpha=1}}
+  g.fillStyle='rgba(40,20,20,.35)';g.fillRect(p.x-s*.55,p.y-s*.78,s*1.1,s*.12);g.fillStyle=`rgba(255,240,200,${fl})`;g.beginPath();g.arc(p.x,p.y+s*.5,s*.12,0,6.283);g.fill();g.globalAlpha=1}
+ g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='destination-in';g.drawImage(PET.mask,0,0,cv.width,cv.height);g.globalCompositeOperation='source-over'}
 function petNew(any){const R=Math.random,cols=PET.mode=='light'?['#ffc2d6','#ffe3ec','#ff9fc0','#ffd3e1']:['#e79ac0','#f6c4dc','#c66d9e','#f0b3d0'];
  return{x:any?R()*1700-60:R()*640-80,y:any?60+R()*700:90+R()*380,s:3+R()*3.5,ph:R()*6.283,sp:.6+R()*.8,vy:10+R()*22,wy:648+Math.pow(R(),.7)*410,
   c:cols[Math.floor(R()*cols.length)],landed:false,life:1}}
@@ -101,28 +105,29 @@ function petStep(dt,t){const wind=34+20*Math.sin(t*.23)+10*Math.sin(t*.71+1);
   else{p.x+=wind*.12*dt;p.life-=dt/9}
   if(p.x>1680||p.life<=0)PET.ps[i]=petNew(false)}}
 function petDraw(t){const c=PET.cv;if(!c)return;const g=c.getContext('2d');g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,c.width,c.height);g.setTransform(.5,0,0,.5,0,0);
- lanDraw(g,t);
  for(const p of PET.ps){g.save();g.translate(p.x,p.y);g.globalAlpha=Math.max(0,Math.min(1,p.life))*(p.landed?.85:1);
   if(p.landed){const tp=(p.y-640)/427;g.scale(1,.4+.2*tp)}else{g.rotate(p.ph+t*p.sp*1.6);g.scale(1,.25+.75*Math.abs(Math.cos(t*2*p.sp+p.ph)))}
   g.fillStyle=p.c;g.beginPath();g.ellipse(0,0,p.s,p.s*.62,0,0,6.283);g.fill();g.restore()}}
-function petTick(){if(document.hidden)return;const now=performance.now(),dt=Math.min(.2,(now-(PET.last||now))/1000);PET.last=now;const t=(now-PET.t0)/1000;petStep(dt,t);lanStep(dt,t);petDraw(t)}
-function petStart(mode){if(PET.mode!==mode||!PET.ps.length){PET.mode=mode;PET.ps=[];for(let i=0;i<70;i++)PET.ps.push(petNew(true));PET.ls=[];for(let i=0;i<12;i++)PET.ls.push(lanNew(true))}
+function petTick(){if(document.hidden)return;const now=performance.now(),dt=Math.min(.2,(now-(PET.last||now))/1000);PET.last=now;const t=(now-PET.t0)/1000;petStep(dt,t);lanStep(dt,t);lanDraw(t);petDraw(t)}
+function petStart(mode){if(PET.mode!==mode||!PET.ps.length){PET.mode=mode;PET.ps=[];for(let i=0;i<70;i++)PET.ps.push(petNew(true));PET.ls=[];for(let i=0;i<28;i++)PET.ls.push(lanNew(true))}
  clearInterval(PET.timer);PET.timer=0;PET.last=0;
  const still=!!(S.rmotion||(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches));
- petDraw(0);if(!still)PET.timer=setInterval(petTick,document.documentElement.classList.contains('webkit')?100:66)}
+ lanDraw(0);petDraw(0);if(!still)PET.timer=setInterval(petTick,document.documentElement.classList.contains('webkit')?100:66)}
 function petStop(){clearInterval(PET.timer);PET.timer=0}
 function stFit(){if(!STS.img)return;const vw=innerWidth,vh=innerHeight,s=Math.max(vw/1600,vh/1067),ox=(vw-1600*s)/2,oy=(vh-1067*s)/2,b=ST.box;
  Object.assign(STS.img.style,{left:ox+b[0]*s+'px',top:oy+b[1]*s+'px',width:b[2]*s+'px',height:b[3]*s+'px'});
- if(PET.cv)Object.assign(PET.cv.style,{left:ox+'px',top:oy+'px',width:1600*s+'px',height:1067*s+'px'})}
+ for(const cv of[PET.cv,PET.lcv])if(cv)Object.assign(cv.style,{left:ox+'px',top:oy+'px',width:1600*s+'px',height:1067*s+'px'})}
 function stUpdate(){let want=false,mode='light';try{want=S.dyn=='oasis'&&!!DYN.oasis;mode=dynResolve().mode}catch(e){}
  if(!want){if(STS.el)STS.el.style.display='none';STS.key='';petStop();return}
  if(!STS.el){const d=document.createElement('div');d.id='dynstatue';d.setAttribute('aria-hidden','true');d.style.cssText='position:fixed;inset:0;overflow:hidden;pointer-events:none';
+  const lc=document.createElement('canvas');lc.width=800;lc.height=534;lc.style.position='absolute';d.appendChild(lc);PET.lcv=lc;
   const i=document.createElement('img');i.alt='';i.style.position='absolute';i.draggable=false;d.appendChild(i);
   const c=document.createElement('canvas');c.width=800;c.height=534;c.style.position='absolute';d.appendChild(c);PET.cv=c;
   STS.el=d;STS.img=i;addEventListener('resize',stFit)}
  if(STS.el.parentNode!==document.body)document.body.insertBefore(STS.el,document.body.firstChild);
  const G=stGlow(),key=stAnimal()+'|'+mode+'|'+G;if(key!==STS.key){STS.key=key;STS.img.src=stSvg(stAnimal(),mode,G)}
  STS.el.style.display='';stFit();
+ if(DYN.oasis.am&&(!PET.mask||PET.maskSrc!==DYN.oasis.am)){PET.maskSrc=DYN.oasis.am;PET.mask=new Image();PET.mask.onload=()=>lanDraw((performance.now()-PET.t0)/1000);PET.mask.src=DYN.oasis.am}
  const still=!!(S.rmotion||(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches));
  if(PET.mode!==mode||(!PET.timer&&!still)||(PET.timer&&still))petStart(mode)}
 (function(){const o=applySet;applySet=function(){const r=o.apply(this,arguments);try{stUpdate()}catch(e){}return r}})();
@@ -132,7 +137,7 @@ function stUpdate(){let want=false,mode='light';try{want=S.dyn=='oasis'&&!!DYN.o
  const lab=document.createElement('label');lab.textContent='Spirit Falls statue';const d=document.createElement('div');d.className='strow';
  d.innerHTML=`<div class='acrow'><span>Glow</span> <select id='dstm' aria-label='Statue glow colour'>${ACMODES.map(([k,n])=>optH(k,n,S.stm||'normal')).join('')}</select></div><div class='msg stmsg'></div><div class='acrow'><span>Sky lanterns at night</span> <select id='dlnm' aria-label='Sky lanterns colour'>${ACMODES.map(([k,n])=>optH(k,n,S.lnm||'normal')).join('')}</select></div>`;
  const say=()=>{d.querySelector('.stmsg').textContent=`The ${ST_NAMES[stAnimal()]} stands on the right bank. Each accent colour has its own statue: the twelve animals of the Chinese zodiac, a panda, an elephant, a leopard and a deer. Its carvings glow faintly in the accent colour, and at night paper lanterns rise into the sky in it: Normal is the accent colour; Negative is its negative; Complementary is the colour opposite it on the colour wheel.`};
- say();m.after(lab);lab.after(d);d.querySelector('#dstm').onchange=e=>{liveSet(c,'stm',e.target.value);stUpdate()};d.querySelector('#dlnm').onchange=e=>{liveSet(c,'lnm',e.target.value);if(!PET.timer)petDraw(0)};
+ say();m.after(lab);lab.after(d);d.querySelector('#dstm').onchange=e=>{liveSet(c,'stm',e.target.value);stUpdate()};d.querySelector('#dlnm').onchange=e=>{liveSet(c,'lnm',e.target.value);if(!PET.timer)lanDraw(0)};
  c.addEventListener('click',()=>setTimeout(say,0));c.addEventListener('input',()=>setTimeout(say,0))}})();
 {const st=document.createElement('style');st.textContent='.strow{margin-top:6px}.strow .msg{margin-top:4px}';document.head.appendChild(st)}
 stUpdate();

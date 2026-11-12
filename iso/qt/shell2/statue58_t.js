@@ -50,7 +50,7 @@ const SHOT = process.argv[3];
   // the sky lanterns at night, in the accent colour by their own rule
   await q("(()=>{S.dm='dark';applySet();return 1})()"); await wait(300);
   const lh = () => q("(()=>{const c=lanCol().glow.split(',').map(Number);return icRgb2hsl(...c)[0]})()");
-  ok('11e. dark mode: paper lanterns rise in the sky', await q("PET.mode=='dark'&&PET.ls.length==12&&PET.ls.every(l=>l.x>=680&&l.x<=1120)"));
+  ok('11e. dark mode: paper lanterns across the sky, more left of the moon than right of it, behind the cliffs and trees (the sky mask)', await q("PET.mode=='dark'&&PET.ls.length==28&&PET.ls.filter(l=>l.x<1180).length>PET.ls.filter(l=>l.x>=1180).length&&!!PET.mask&&PET.mask.naturalWidth==400&&PET.lcv.nextSibling===STS.img"));
   await q("(()=>{const s=document.querySelector('#dlnm');s.value='normal';s.onchange({target:s});return 1})()");
   const l1 = await lh();
   await q("(()=>{const s=document.querySelector('#dlnm');s.value='comp';s.onchange({target:s});return 1})()");
