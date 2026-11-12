@@ -20,3 +20,6 @@ async function enginePanel57(c){if(!RD)return;const d=document.createElement('di
    catch(x){notify('Desktop engine',x.message,{kind:'error'})}draw()}};
  draw()}
 {const _s=sysPanelS;sysPanelS=function(c,W){const r=_s.apply(this,arguments);try{enginePanel57(c)}catch(e){console.warn(e)}return r}}
+/* 1.5.8: Settings on the Lite desktop (WebKit): the pages scrolled sideways and on past their end (empty space under
+   Apply / Revert), from the sticky footer's negative offsets; WebKit gets a plain sticky footer */
+if(document.documentElement.classList.contains('webkit')){const st=document.createElement('style');st.textContent='html.webkit .sc{overflow-x:hidden}html.webkit .sfoot{bottom:0;margin:14px -18px 0}';document.head.appendChild(st)}
