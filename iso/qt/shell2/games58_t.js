@@ -51,9 +51,11 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 	ok('1b. ...and Night Flight, downloaded from the Library when first opened', nf.menu.length == 1 && /Night Flight/.test(nf.menu[0]) && nf.lib == 'nightflight', nf);
 	const fbm = await p.evaluate(() => [...document.querySelectorAll('#menu ul li[data-a=frostbarricade]')].map(l => l.textContent));
 	ok('1c. ...and 25 Days (formerly Frost Barricade)', fbm.length == 1 && /25 Days/.test(fbm[0]), fbm);
+	const bdm = await p.evaluate(() => ({menu: [...document.querySelectorAll('#menu ul li[data-a=blockdrop]')].map(l => l.textContent), lib: LIB_APPS['rudolf-blockdrop'] && LIB_APPS['rudolf-blockdrop'].app}));
+	ok('1d. ...and Block Drop, downloaded from the Library when first opened', bdm.menu.length == 1 && /Block Drop/.test(bdm.menu[0]) && bdm.lib == 'blockdrop', bdm);
 	await p.evaluate(() => { const W = appStore(); W.showGames ? W.showGames() : [...W.body.querySelectorAll('.tmtabs button')].find(x => x.textContent == 'Games').click() }); await wait(1500);
 	const cards = await p.evaluate(() => [...document.querySelectorAll('.gmbi .gmc')].map(c => c.innerText.replace(/\s+/g, ' '))), card = cards.find(t => /Fault Lines/.test(t)) || '';
-	ok('2. ...and in the App Store\'s Games tab, with Play (Night Flight too)', /Fault Lines.*logic puzzle.*Play/.test(card) && cards.some(t => /Night Flight.*bullet-hell.*Play/.test(t)), cards.filter(t => /Fault|Night/.test(t)));
+	ok('2. ...and in the App Store\'s Games tab, with Play (Night Flight and Block Drop too)', /Fault Lines.*logic puzzle.*Play/.test(card) && cards.some(t => /Night Flight.*bullet-hell.*Play/.test(t)) && cards.some(t => /Block Drop.*falling-blocks.*Play/.test(t)), cards.filter(t => /Fault|Night|Block/.test(t)));
 	await p.evaluate(() => wins.slice().forEach(w => w.close()));
 
 	/* opened without its package: the download is offered, then the game opens in a sandboxed frame */
