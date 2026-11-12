@@ -3563,6 +3563,13 @@ static void api(struct req *r)
 		reply_ok(r->fd, "ok"); return;
 	}
 	if (!strcmp(p, "disks")) { api_disks(r); return; }
+	/* 1.5.8: what a plugged-in Rudolf OS stick holds (mkstick.sh --info): its image, its systems, whether it can start */
+	if (!strcmp(p, "stick/info")) {
+		char *d = qparam(r->query, "disk");
+		if (!safe_word(d, 16) || strstr(d, "..")) { reply_err(r->fd, 400, "disk: a drive name such as sdb"); return; }
+		char cmd[200]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/mkstick.sh --info /dev/%s 2>/dev/null", d);
+		char *o = run_out(cmd); str s2 = {0}; sadd(&s2, "%s", o && *o == '{' ? o : "{\"rudolf\":false}\n"); free(o); reply_json(r->fd, &s2); return;
+	}
 	/* the hardware check's download test (1.2.5): rudolf-update speedtest prints "bytes N" and "ms N" */
 	if (!strcmp(p, "speedtest")) {
 		char *o = run_out("/usr/bin/rudolf-update speedtest 2>&1"); long long by = 0, ms = 0; char *q;

@@ -12,6 +12,19 @@ experience on them. It starts once 1.5.8 is promoted.
 - Metered connections, and what pauses on them.
 - The kernel's Android binder (for Waydroid later), scrcpy, the .apk wizard's information.
 
+## Moved from 1.5.8 (2026-11-12)
+- **Lite (WebKit):** menus and windows drawn by the desktop behind Oracle's tab pages (branch litetabs: the still
+  picture of a covered tab works, but the live page does not step aside under Xvfb; next: swap the page for its still
+  picture while a menu is open); stutter in Oracle's tabs in Lite (GPU drawing for the tab views only, the desktop
+  staying light); Google sign-in for GitHub in Lite (symptoms to be described first).
+- **On the Vivobook:** GPU drawing for Lite measured against software and mixed (memory and speed); Oracle's WebKit
+  tabs (YouTube, a Google sign-in with FedCM off and on, a download, fullscreen, memory with 5 tabs against Chromium's);
+  the lock and sign-in screen settings and the shutting-down screen; the moving parts of the dynamic backgrounds
+  (Spirit Falls' petals and lanterns, Glacier Lake's northern lights) in Lite.
+- **QEMU:** the devlink answering with the desktop disabled (plan-1.5.8.md 4.2).
+- **The MiFi 7730L** with USB tethering on: which USB network driver it needs (plan-1.5.8.md 6.1).
+- **Kernel tuning** (proposed on 2026-11-12), if confirmed.
+
 ## Part 1: the modem service
 - **ModemManager** (with libqmi, libmbim and libqrtr) in the system layer, started by mdev when a modem appears (a
   `wwan*` or `cdc-wdm*` device, or a USB modem's serial ports), stopped when the last one goes; D-Bus on the system bus
@@ -177,7 +190,9 @@ the official releases works; a build signed by anyone else is refused. The Libra
 
 ### 8.4 Recovery mode is always the official Rudolf OS
 Whatever the normal start runs, the boot menu's "Recovery mode" starts the official Rudolf OS:
-- **An official recovery slot:** besides the two update slots (a and b), RUDOLFDATA keeps `system/r`: the newest
+- **An official recovery slot:** (1.5.8 already keeps `system/r` on every stick Make a stick makes, as the stick's
+  rescue system, and the start-up falls back to it; this part makes it the official recovery everywhere.) Besides the
+  two update slots (a and b), RUDOLFDATA keeps `system/r`: the newest
   official release that started successfully on this computer (kernel and layers), with its manifest and signature.
   rudolf-update fills and refreshes it only from releases signed by the official key, after they have started once
   (boot-ok), and never from a release signed by an extra key. On a computer that never ran the official build (a

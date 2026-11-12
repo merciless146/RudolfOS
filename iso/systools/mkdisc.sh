@@ -55,6 +55,9 @@ B=$(mktemp -d); nasm -f bin -o "$B/mbr.bin" "$HERE/boot/mbr.asm"
 # the system then comes from the installed update. RUDOLF/BOOTONLY marks it for the start-up.
 echo "== boot image"
 BT=$(realpath -m "$OUT/btree"); rm -rf "$BT"; cp -a "$T" "$BT"; rm -f "$BT"/RUDOLF/*.SFS; rm -rf "$BT/SOURCE" "$BT/LICENSES"
+# 1.5.8: its menu says what it is: it starts the system installed on the drive (a stick written from it with nothing
+# installed says so at once in the menu, not only when its start-up fails)
+START_TITLE="Start Rudolf OS (boot files: the system installed on this drive)" bash "$HERE/systools/mkefi.sh" "$REL/vmlinuz" "$VER" "$SB_PARTS" "$BT/EFI/EFIBOOT.IMG"
 printf 'Rudolf OS %s boot files only: the system comes from the update installed on the drive (RUDOLFDATA).\r\n' "$VER" > "$BT/RUDOLF/BOOTONLY"
 printf 'Licences and source: rudolf-os-%s.iso and rudolf-os-%s-source.tar.xz in the same release.\r\n' "$VER" "$VER" > "$BT/LICENSES.TXT"
 (cd "$BT" && find . -type f ! -path ./RUDOLF/SHA256 | sed 's#^\./##' | sort | while read -r f; do l=$(echo "$f" | tr 'A-Z' 'a-z'); echo "$(sha256sum "$f" | cut -d' ' -f1)  $l"; done) > "$BT/RUDOLF/SHA256"

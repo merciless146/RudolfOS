@@ -7,7 +7,7 @@
 #   EFI/rudolf/rudolf.cer  the Rudolf OS certificate, to choose in MokManager ("Enroll key from disk")
 #   loader/                the menu (iso/boot/sb/loader)
 # With Secure Boot off, shim starts the menu without checking anything, as before.
-#   mkefi.sh VMLINUZ VERSION PARTS-DIR OUT.IMG
+#   mkefi.sh VMLINUZ VERSION PARTS-DIR OUT.IMG      (START_TITLE: another title for the menu's first entry)
 # PARTS-DIR: the files of the draft release sb-parts (shimx64.efi, mmx64.efi, systemd-bootx64.efi,
 # linuxx64.efi.stub), checked against iso/boot/sb/parts.txt. SB_KEY / SB_CERT: the signing key and its
 # certificate (SB_CERT defaults to iso/boot/sb/rudolf-sb.crt); SBSIGN: the sbsign program. GPL-2.0-or-later.
@@ -27,6 +27,10 @@ openssl x509 -in "$SB_CERT" -outform DER -out "$T/rudolf.cer"
 L=$HERE/boot/sb/loader
 F=("$P/shimx64.efi:EFI/BOOT/BOOTX64.EFI" "$P/mmx64.efi:EFI/BOOT/mmx64.efi" "$T/grubx64.efi:EFI/BOOT/grubx64.efi"
    "$T/rudolf.efi:EFI/rudolf/rudolf.efi" "$T/rudolf.cer:EFI/rudolf/rudolf.cer" "$L/loader.conf:loader/loader.conf")
-for e in "$L"/entries/*.conf; do F+=("$e:loader/entries/$(basename "$e")"); done
+# 1.5.8: START_TITLE: the menu's first entry under another title (the boot image's says it has boot files only)
+for e in "$L"/entries/*.conf; do
+	if [ -n "$START_TITLE" ] && [ "$(basename "$e")" = rudolf-start.conf ]; then sed "s/^title .*/title $START_TITLE/" "$e" > "$T/rudolf-start.conf"; F+=("$T/rudolf-start.conf:loader/entries/rudolf-start.conf")
+	else F+=("$e:loader/entries/$(basename "$e")"); fi
+done
 python3 "$HERE/mkimage.py" fat "$OUT" "${F[@]}"
 rm -rf "$T"

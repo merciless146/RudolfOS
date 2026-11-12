@@ -5,7 +5,7 @@
 # top and hands over to /sbin/rudolf-init.
 # System updates live in two slots on RUDOLFDATA (os/system/a and b). The disc's
 # kernel starts first; if a slot is good, or an update is waiting with tries left,
-# it hands over to that slot's kernel with kexec (rudolf.slot=a|b). An update that
+# it hands over to that slot's kernel with kexec (rudolf.slot=a|b, or r: 1.5.8, a stick's rescue system). An update that
 # fails to start twice is dropped and the last good system starts instead.
 /bin/busybox --install -s /bin
 export PATH=/bin
@@ -96,7 +96,7 @@ find_media() {
 	done
 	return 1
 }
-SLOT=$(sed -n 's/.*rudolf\.slot=\([ab]\).*/\1/p' /proc/cmdline)
+SLOT=$(sed -n 's/.*rudolf\.slot=\([abr]\).*/\1/p' /proc/cmdline)
 # a slot's kernel may be newer than the disc: any Rudolf OS disc will do, and none is needed
 [ -n "$SLOT" ] && ID=any
 # (1.4.1: and whole drives with the installed layout, partition 3 and no partition 1, after the partitions)
@@ -270,6 +270,8 @@ st_write() { { echo "good=$GOOD"; echo "prev=$PREV"; echo "next=$NEXT"; echo "tr
 slot_ok() { [ -s $SYSD/$1/vmlinuz ] && [ -e $SYSD/$1/complete ]; }
 # a slot whose system cannot start (a layer damaged or failing its check): never again, back to the previous one
 slot_bad() {
+	# 1.5.8: the rescue system is the last resort: if it cannot start either, say so and stop (never a restart loop)
+	if [ "$SLOT" = r ]; then say "Rudolf OS: the rescue system on this drive cannot start either: it is damaged. Make the stick again from a working Rudolf OS."; keeplog "rescue system r failed"; fail; fi
 	GOOD=$(st_get good); PREV=$(st_get prev); NEXT=$(st_get next); TRIES=$(st_get tries); FAILED=$SLOT
 	[ "$NEXT" = "$SLOT" ] && { NEXT=""; TRIES=0; }
 	[ "$GOOD" = "$SLOT" ] && GOOD=$PREV
@@ -291,7 +293,7 @@ if [ -n "$REC" ] && [ -z "$SLOT" ] && [ -n "$MEDIA" ] && is_usb "$(disk_of "$MED
 		is_data "$P" || continue; is_usb "$(disk_of "$P")" && continue; [ "$P" = "$PERSIST" ] && break
 		[ -n "$PERSIST" ] && umount /mnt/persist
 		if mount -t ext4 -o rw,noatime "$P" /mnt/persist 2>/dev/null; then
-			G=$(st_get good); Q=$(st_get prev); OKS=""; for c in "$G" "$Q"; do case "$c" in a|b) slot_ok "$c" && OKS=1;; esac; done
+			G=$(st_get good); Q=$(st_get prev); OKS=""; for c in "$G" "$Q" r; do case "$c" in a|b|r) slot_ok "$c" && OKS=1;; esac; done
 			if [ -n "$OKS" ]; then say "Rudolf OS: recovery mode from a USB stick - this computer's own Rudolf OS ($P)."; PERSIST=$P; break; fi
 			umount /mnt/persist
 		fi
@@ -300,7 +302,7 @@ if [ -n "$REC" ] && [ -z "$SLOT" ] && [ -n "$MEDIA" ] && is_usb "$(disk_of "$MED
 fi
 if [ -z "$SLOT" ] && [ -n "$PERSIST" ] && [ -f $SYSD/state ] && [ -n "$REC" ]; then
 	GOOD=$(st_get good); PREV=$(st_get prev); T=""
-	for c in "$GOOD" "$PREV"; do case "$c" in a|b) slot_ok "$c" && { T=$c; break; };; esac; done
+	for c in "$GOOD" "$PREV" r; do case "$c" in a|b|r) slot_ok "$c" && { T=$c; break; };; esac; done
 	if [ -n "$T" ]; then
 		cp $SYSD/$T/vmlinuz /tmp/vmlinuz
 		NC="$CMD rudolf.slot=$T"; [ $SB = 1 ] && NC="$NC rudolf.sb=1 lockdown=integrity"
@@ -324,6 +326,10 @@ if [ -z "$SLOT" ] && [ -n "$PERSIST" ] && [ -f $SYSD/state ] && [ -z "$REC" ]; t
 		T=$GOOD
 	fi
 	case "$T" in a|b) ;; *) T="";; esac
+	# 1.5.8: no installed system that can start, but a rescue system (Make a stick keeps one, slot r, which updates never
+	# change): that one, rather than the drive's own boot files with nothing to start
+	if { [ -z "$T" ] || ! slot_ok "$T"; } && slot_ok r && [ -e /mnt/media/rudolf/bootonly ]; then
+		say "Rudolf OS: no installed system on this drive can start; starting its rescue system."; T=r; TRY=""; fi
 	if [ -n "$T" ] && slot_ok "$T"; then
 		cp $SYSD/$T/vmlinuz /tmp/vmlinuz
 		NC="$CMD rudolf.slot=$T"; [ -n "$TRY" ] && NC="$NC rudolf.trying=1"; [ $SB = 1 ] && NC="$NC rudolf.sb=1 lockdown=integrity"

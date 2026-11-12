@@ -21,6 +21,22 @@ os_copy() {
 	return 0
 }
 
+# 1.5.8: os_rescue DEST: a rescue system on the new drive: slot r, a fixed copy of the system it starts (the good
+# slot), which updates never change (they only ever write slots a and b). The start-up falls back to it when no
+# installed system can start, and Recovery mode can choose it, so a stick made by Make a stick can always start: on
+# 2026-11-10 a stick's own update, made with a layer it did not have, left it with nothing that could start. Hard
+# links: it costs no room (an update replaces a slot's files, it never writes into them).
+os_rescue() {
+	_d=$1; _g=$(sed -n 's/^good=//p' "$_d/os/system/state" 2>/dev/null || true)
+	case "$_g" in a|b) ;; *) return 0;; esac
+	rm -rf "$_d/os/system/r.new" "$_d/os/system/r"
+	cp -al "$_d/os/system/$_g" "$_d/os/system/r.new" 2>/dev/null || { rm -rf "$_d/os/system/r.new"; cp -a "$_d/os/system/$_g" "$_d/os/system/r.new"; } || { echo "The rescue system could not be kept on the new drive."; return 13; }
+	_v=$(sed -n 's/^version //p' "$_d/os/system/r.new/RELEASE" 2>/dev/null)
+	printf 'rescue copy of slot %s, made %s; never changed by updates\n' "$_g" "$(date '+%Y-%m-%d %H:%M')" > "$_d/os/system/r.new/rescue"
+	mv "$_d/os/system/r.new" "$_d/os/system/r"
+	echo "Kept a rescue system on it (Rudolf OS ${_v:-?}): it starts if an update on the stick ever cannot."
+}
+
 # os_check DEST BOOTONLY [SRCOS]: whether the RUDOLFDATA at DEST can start. With a boot image (BOOTONLY=1) its system
 # slot in use must be complete, with all five layers, read back and (with SRCOS) the same as this computer's.
 os_check() {
@@ -31,6 +47,7 @@ os_check() {
 	[ -e "$_d/os/system/$_g/complete" ] || { echo "The new drive's system (slot $_g) is incomplete."; return 12; }
 	for _l in vmlinuz base.sfs chromium.sfs modules.sfs desktop.sfs; do
 		[ -s "$_d/os/system/$_g/$_l" ] || { echo "The new drive's system is missing $_l."; return 12; }
+		[ ! -d "$_d/os/system/r" ] || [ -s "$_d/os/system/r/$_l" ] || { echo "The new drive's rescue system is missing $_l."; return 12; }
 	done
 	[ -n "$_s" ] || return 0
 	sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
@@ -50,7 +67,7 @@ os_check() {
 # why on stderr. RUDOLF_ETC, RUDOLF_FETCH and RUDOLF_ISODIR (an unpacked image instead of mounting one): for the tests.
 os_bootimg() {
 	_s=$1; _m=$2; _o=$3; _sl=$(cat "${RUDOLF_ETC:-/etc/rudolf}/slot" 2>/dev/null)
-	case "$_sl" in a|b) ;; *) return 1;; esac
+	case "$_sl" in a|b|r) ;; *) return 1;; esac
 	_ser=$(sed -n 's/^serial //p' "$_s/system/$_sl/RELEASE" 2>/dev/null); _ms=$(sed -n 's/^serial //p' "$_m/rudolf/release" 2>/dev/null)
 	if grep -qx recovery-installed "$_m/rudolf/features" 2>/dev/null && [ "${_ms:-0}" -ge "${_ser:-0}" ] 2>/dev/null; then return 1; fi
 	_u=$(awk -F'\t' '$1=="L" && $2=="vmlinuz" {print $5}' "$_s/system/$_sl/manifest.txt" 2>/dev/null)
@@ -69,4 +86,20 @@ os_bootimg() {
 	[ -z "$RUDOLF_ISODIR" ] && umount $_t 2>/dev/null
 	[ -z "$_bad" ] || { rm -rf "$_f"; echo "the downloaded boot files were refused: $_bad" >&2; return 2; }
 	echo "$_f"
+}
+
+# 1.5.8: os_info IMAGEDIR DATADIR: what a Rudolf OS drive holds, as JSON (Settings > Storage lists plugged-in sticks):
+# its image (a whole disc image, or boot files only), the systems in its RUDOLFDATA, and whether it can start
+os_info() {
+	_i=$1; _d=$2; _bo=false; [ -e "$_i/rudolf/bootonly" ] && _bo=true
+	_iv=$(sed -n 's/^version //p' "$_i/rudolf/release" 2>/dev/null); _is=$(sed -n 's/^serial //p' "$_i/rudolf/release" 2>/dev/null)
+	_g=$(sed -n 's/^good=//p' "$_d/os/system/state" 2>/dev/null || true)
+	_sv() { sed -n "s/^$2 //p" "$_d/os/system/$1/RELEASE" 2>/dev/null; }
+	_ok() { [ -e "$_d/os/system/$1/complete" ] && for _l in vmlinuz base.sfs chromium.sfs modules.sfs desktop.sfs; do [ -s "$_d/os/system/$1/$_l" ] || return 1; done; }
+	_sys=""; case "$_g" in a|b) _ok "$_g" && _sys=$_g;; esac
+	_res=""; _ok r && _res=r
+	_can=false; { [ $_bo = false ] || [ -n "$_sys" ] || [ -n "$_res" ]; } && _can=true
+	printf '{"bootonly":%s,"image":{"version":"%s","serial":"%s"},"system":%s,"rescue":%s,"canStart":%s}\n' "$_bo" "$_iv" "$_is" \
+		"$([ -n "$_sys" ] && printf '{"slot":"%s","version":"%s","serial":"%s"}' "$_sys" "$(_sv $_sys version)" "$(_sv $_sys serial)" || echo null)" \
+		"$([ -n "$_res" ] && printf '{"version":"%s","serial":"%s"}' "$(_sv r version)" "$(_sv r serial)" || echo null)" "$_can"
 }
