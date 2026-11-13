@@ -18,7 +18,9 @@ hwclock -s -u 2>/dev/null
 /usr/lib/rudolf/clockfloor 2>/dev/null   # 1.4.4: never earlier than this release (a hardware clock that lost its time)
 mdev -s
 mdev -d 2>/dev/null
-grep -q rudolf.debug=1 $RCMD && ( while :; do setsid sh -c 'exec sh -l </dev/ttyS0 >/dev/ttyS0 2>&1'; sleep 1; done ) &
+# (1.5.9: on ARM64 the serial port is ttyAMA0, QEMU's virt machine and most ARM boards; x86 has none)
+DBGTTY=/dev/ttyS0; [ -c /dev/ttyAMA0 ] && DBGTTY=/dev/ttyAMA0
+grep -q rudolf.debug=1 $RCMD && ( while :; do setsid sh -c "exec sh -l <$DBGTTY >$DBGTTY 2>&1"; sleep 1; done ) &
 [ -s /etc/rudolf/check.txt ] && cp /etc/rudolf/check.txt /run/rudolf/check.txt
 
 # saved data
@@ -50,6 +52,8 @@ if mountpoint -q /persist; then
 else
 	mount -t tmpfs -o mode=0700,uid=1000,gid=1000 tmpfs /home/rudolf
 fi
+# 1.5.9 (plan Part 3): a system without Chromium (the first ARM64 builds) has one desktop engine: Lite
+[ -x /opt/chromium/chrome ] || { mkdir -p /run/rudolf; echo webkit > /run/rudolf/engine-choice; }
 /usr/lib/rudolf/memory 2>/dev/null   # 1.4.7: compressed swap in memory, no thrashing (1.5.7: after /persist, for its setting)
 # (1.5.1: not while Downloads is a link into the encrypted folder, which is locked until someone signs in: mkdir
 # failed there with "No such file or directory" on the start-up screen; rudolfd makes its folders at the unlock)

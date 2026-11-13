@@ -3,11 +3,13 @@
 # build, and the kernel starts in QEMU (aarch64 virt, 3 GB) as far as Rudolf OS's start-up looking for its drive.
 # Step 2: the base layer, from scratch (systools/arm64_base.sh: BusyBox, the X server, PulseAudio, the Wi-Fi tools,
 # the system programs and WebKitGTK), every program in it checked to start on ARM64.
+# Step 3: the whole system started in QEMU (the kernel, and the four layers on a disc image) until the Lite desktop
+# answers: the sign-in screen (qt/arm64_boot.py), with a picture of the screen.
 name: ARM64 check
 on:
   workflow_dispatch:
   pull_request:
-    paths: ['iso/kconfig-arm64.sh', 'iso/systools/arm64_kernel.sh', 'iso/systools/arm64_base.sh', 'iso/sys/*.c', 'iso/sys/root/**', 'iso/initramfs/**',
+    paths: ['iso/kconfig-arm64.sh', 'iso/systools/arm64_kernel.sh', 'iso/systools/arm64_base.sh', 'iso/qt/arm64_boot.py', 'iso/sys/*.c', 'iso/sys/root/**', 'iso/initramfs/**',
       'iso/mkrootfs.sh', 'iso/xbuild.sh', 'iso/xshim.sh', 'iso/sndbuild.sh', 'iso/sndshim.sh', 'iso/wifibuild.sh', 'iso/pkgmanifest.py',
       'iso/systools/mklayers.sh', 'iso/systools/addwebkit.sh', '.github/workflows/arm64-check.yml']
 permissions: {contents: read}
@@ -52,6 +54,13 @@ jobs:
           KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); export KERNEL_VERSION=${KV%-rudolf}
           OUT=$PWD/k-arm64 bash iso/systools/arm64_kernel.sh | tee k.log
           echo "::notice title=ARM64 kernel::$(tail -1 k.log)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arm64-kernel
+          retention-days: 3
+          path: |
+            k-arm64/Image
+            k-arm64/modules.sfs
       - name: Start it in QEMU
         run: |
           A=tcg; [ -w /dev/kvm ] && A=kvm; echo "accelerator $A"
@@ -80,9 +89,36 @@ jobs:
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav glib-networking >/dev/null
       - name: Build the base layer
         run: OUT=$PWD/b-arm64 bash iso/systools/arm64_base.sh
+      - uses: actions/upload-artifact@v4
+        with: {name: arm64-layers, path: 'b-arm64/layers/*.sfs', retention-days: 3}
       - name: Report
         if: always()
         run: |
           cat b-arm64/report.txt 2>/dev/null || true
           S=$(sed -n 's/^base.sfs: //p' b-arm64/report.txt 2>/dev/null)
           [ -z "$S" ] || echo "::notice title=ARM64 base layer::base.sfs $S; every program in it has its libraries and the main ones run on ARM64"
+  boot:
+    needs: [arm64, base]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with: {name: arm64-kernel, path: k}
+      - uses: actions/download-artifact@v4
+        with: {name: arm64-layers, path: l}
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-arm xorriso >/dev/null
+      - name: Start the whole system in QEMU, to the Lite sign-in screen
+        run: |
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm || true
+          python3 iso/qt/arm64_boot.py k/Image l/base.sfs l/chromium.sfs l/desktop.sfs k/modules.sfs out
+          echo "::notice title=ARM64 in QEMU::$(tail -1 out/boot.txt)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: arm64-boot
+          retention-days: 7
+          path: |
+            out/*.txt
+            out/*.png
