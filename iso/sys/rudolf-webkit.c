@@ -274,6 +274,14 @@ static gboolean on_tab_dialog(WebKitWebView *v, WebKitScriptDialog *dl, gpointer
 	tabev(d, "dialog", x->str); g_string_free(x, TRUE);
 	return TRUE;   /* answered later (op 'dialog') */
 }
+/* 1.5.9 (docs/plan-1.5.9.md 7.1): video calls in Oracle's Lite tabs: WebRTC (WebKitGTK's own setting, off by default;
+   GStreamer's webrtcbin, nice, DTLS, SRTP and SCTP plug-ins: addwebkit.sh). Set only when this WebKitGTK has the setting.
+   RUDOLF_WEBKIT_MOCK_MEDIA=1 (the Lite engine check only): WebKit's stand-in camera and microphone. */
+static void webrtc_on(WebKitSettings *s)
+{
+	if (g_object_class_find_property(G_OBJECT_GET_CLASS(s), "enable-webrtc")) g_object_set(s, "enable-webrtc", TRUE, NULL);
+	if (getenv("RUDOLF_WEBKIT_MOCK_MEDIA") && g_object_class_find_property(G_OBJECT_GET_CLASS(s), "enable-mock-capture-devices")) g_object_set(s, "enable-mock-capture-devices", TRUE, NULL);
+}
 static gboolean on_tab_perm(WebKitWebView *v, WebKitPermissionRequest *req, gpointer d)
 {
 	const char *p = WEBKIT_IS_USER_MEDIA_PERMISSION_REQUEST(req) ? "media" : WEBKIT_IS_GEOLOCATION_PERMISSION_REQUEST(req) ? "geolocation" : NULL;
@@ -366,6 +374,7 @@ static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 	g_signal_connect(t->view, "web-process-terminated", G_CALLBACK(on_tab_gone), t);
 	g_signal_connect(t->view, "focus-in-event", G_CALLBACK(on_tab_focus), t);
 	g_signal_connect(t->view, "script-dialog", G_CALLBACK(on_tab_dialog), t);
+	webrtc_on(webkit_web_view_get_settings(WEBKIT_WEB_VIEW(t->view)));
 	g_signal_connect(t->view, "permission-request", G_CALLBACK(on_tab_perm), t);
 	g_signal_connect(t->view, "enter-fullscreen", G_CALLBACK(on_tab_fs), t);
 	g_signal_connect(t->view, "leave-fullscreen", G_CALLBACK(on_tab_unfs), t);
@@ -627,6 +636,7 @@ int main(int argc, char **argv)
 		"enable-page-cache", FALSE,   /* (1.5.8: the desktop never goes back to an earlier page: no back/forward cache) */
 		"enable-write-console-messages-to-stdout", TRUE, NULL);
 	webkit_settings_set_hardware_acceleration_policy(s, HWPOL);
+	webrtc_on(s);
 	g_signal_connect(desk, "permission-request", G_CALLBACK(on_permission), NULL);
 	g_signal_connect(desk, "decide-policy", G_CALLBACK(on_decide), NULL);
 	g_signal_connect(desk, "web-process-terminated", G_CALLBACK(on_terminated), NULL);

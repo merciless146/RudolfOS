@@ -90,7 +90,7 @@ jobs:
             libasound2-dev libsndfile1-dev libltdl-dev alsa-ucm-conf \
             xvfb fontconfig fonts-dejavu-core fonts-liberation fonts-freefont-ttf fonts-noto-core fonts-noto-cjk adwaita-icon-theme tzdata \
             e2fsprogs nftables bluez bluez-alsa-utils libasound2-plugin-bluez dbus gpg gpgv fuse3 libnss3 \
-            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav glib-networking >/dev/null
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-nice glib-networking >/dev/null
       - name: Build the base layer
         run: OUT=$PWD/b-arm64 bash iso/systools/arm64_base.sh
       - uses: actions/upload-artifact@v4
