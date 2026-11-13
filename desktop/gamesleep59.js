@@ -31,10 +31,19 @@ async function gslSleep(first){if(GSL.busy||!S.gmsleep)return 0;GSL.busy=true;le
  if(fc>=64*1048576)parts.push(`the file cache was cleared (${fmtB(fc)})`);
  if(parts.length)notify('Game mode freed memory',parts.join('. ').replace(/^./,c=>c.toUpperCase())+'.',{quiet:true});
  return n}
+/* 9.2 step 4: apps running in the background with no window (Discord in the tray, a chat app) are offered to be quit,
+   in one notice inside the game ("Free 600 MB for the game? Discord runs in the background. [Quit it]"); never quit
+   without the person pressing the button. Apps of 100 MB or more, the largest first. */
+async function gslTrayOffer(){if(typeof apps57!='function'||typeof GAME_FS=='undefined'||!GAME_FS.size)return 0;
+ const list=(await apps57())||[];const bg=list.filter(x=>!x.window&&x.rss>=100*1048576).sort((a,b)=>b.rss-a.rss);if(!bg.length)return 0;
+ const names=bg.map(appName57),tot=bg.reduce((a,x)=>a+x.rss,0),lst=names.length==1?names[0]:names.slice(0,-1).join(', ')+' and '+names.at(-1);
+ const txt=`Free ${fmtB(tot)} for the game? ${lst} ${bg.length==1?'runs':'run'} in the background with no window open.`;
+ for(const tid of GAME_FS)rtNotice(tid,txt,15,bg.length==1?'Quit it':'Quit them',async()=>{for(const x of bg)await appEnd57(x)});
+ return bg.length}
 /* when game mode starts (checked each second: game mode has several sources, the shell's tabs, the desktop's own
    full screen and pointer capture, a Linux game) */
 setInterval(()=>{let on=false;try{on=gameMode()}catch(e){}const was=GSL.on;GSL.on=on;
- if(on&&!was)setTimeout(()=>{try{if(gameMode())gslSleep(true)}catch(e){}},1500)},1000);
+ if(on&&!was)setTimeout(()=>{try{if(gameMode()){gslSleep(true);if(S.gmsleep)gslTrayOffer()}}catch(e){}},1500)},1000);
 /* Settings › System health › Memory */
 {const _h=healthPanel;healthPanel=function(c,W){const r=_h.apply(this,arguments);try{
  const d=document.createElement('div');d.className='gsl59 r2';d.style.marginTop='6px';
@@ -47,6 +56,6 @@ setInterval(()=>{let on=false;try{on=gameMode()}catch(e){}const was=GSL.on;GSL.o
    otherwise as a notification. */
 evOn(t=>{for(const m of String(t).matchAll(/^memory warn (\d+) (\d+)$/gm)){const mb=+m[2],sz=mb>=1024?(mb/1024).toFixed(1)+' GB':mb+' MB';
  const txt=`Memory is almost full. Rudolf OS may soon close the largest page (${sz}) to free memory: save your progress if you can.`;
- let shown=0;if(typeof gameMode=='function'&&gameMode()&&typeof GAME_FS!='undefined')for(const tid of GAME_FS){rtSend('notice',tid,{text:txt,s:12});shown++}
+ let shown=0;if(typeof gameMode=='function'&&gameMode()&&typeof GAME_FS!='undefined')for(const tid of GAME_FS){rtNotice(tid,txt,12);shown++}
  if(typeof gameMode=='function'&&gameMode())gslSleep();
  notify('Memory is almost full',`The largest page uses ${sz}. Close tabs or apps you are not using, or Rudolf OS may close that page to free memory.`,{kind:'error',quiet:!!shown})}});

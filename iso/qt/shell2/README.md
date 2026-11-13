@@ -24,7 +24,7 @@ node aurora58_t.js [CHROME] [SHOTS]               # 1.5.8: the northern lights o
 node ovpause58_t.js [CHROME]                       # 1.5.8: the backgrounds' moving parts pause when unseen, in power saver; battery time (11 checks)
 node fsfix58_t.js [CHROME]                         # 1.5.8: an ended tab leaves full screen; Task Manager and the power dialog leave it first; Settings pages stop listening (7 checks)
 node memfs58_t.js [CHROME]                         # 1.5.8: the memory guard ends a page: leave full screen, say so (5 checks)
-node gamesleep59_t.js [CHROME]                     # 1.5.9: game mode: background tabs sleep, Blitzen unloaded, updates wait, the memory warning over a full-screen game (14 checks)
+node gamesleep59_t.js [CHROME]                     # 1.5.9: game mode: background tabs sleep, Blitzen unloaded, updates wait, the memory warning over a full-screen game, the tray-app offer (19 checks)
 node slim59_t.js [CHROME]                          # 1.5.9: pictures, fonts, the SNES core and SpreadsheetPro/PresentPro load when used (14 checks)
 node membreak59_t.js [CHROME]                      # 1.5.9: Task Manager › Performance: where the memory goes, Clear cache (9 checks)
 node statue58_t.js [CHROME] [SHOTS]               # 1.5.8: Spirit Falls' statue, its glow, the petals and the lanterns (no shell needed; 20 checks)

@@ -31,6 +31,9 @@ function rtClose(tid) { if (!RT.has(tid)) return; RT.delete(tid); rtSend('close'
 /* 1.5.9 (game mode, plan 9.2): may a tab sleep? {m: sound or video playing, f: text typed and not sent}; no answer
    within 2 s counts as busy (the tab stays) */
 const RT_BUSY = new Map(); let RT_BN = 0;
+/* 1.5.9: a notice inside a tab's page, over its full screen too; with a button, f(tid) runs when a person presses it */
+const RT_NOTICE = new Map(); let RT_NN = 0;
+function rtNotice(tid, text, sec, btn, f) { const o = {text, s: sec || 12}; if (btn && f) { o.btn = btn; o.id = ++RT_NN; RT_NOTICE.set(o.id, f); setTimeout(() => RT_NOTICE.delete(o.id), (o.s + 5) * 1000) } rtSend('notice', tid, o) }
 function rtBusy(tid) {
   if (!RT.has(tid)) return Promise.resolve({m: true, f: true});
   const id = ++RT_BN;
@@ -149,6 +152,7 @@ addEventListener('message', e => {
     else if (ev == 'keys') h.keys(String(m.k || ''));
     else if (ev == 'newwin' && typeof m.ntid == 'string') h.newwin(String(m.url || ''), m.ntid, !!m.popup);
     else if (ev == 'gone') h.gone(String(m.why || ''));
+    else if (ev == 'notice') { const w = RT_NOTICE.get(+m.id); if (w) { RT_NOTICE.delete(+m.id); w(m.tid) } }   // 1.5.9: a notice's button
     else if (ev == 'busy') { const w = RT_BUSY.get(m.id); if (w) { RT_BUSY.delete(m.id); w({m: !!m.m, f: !!m.f}) } }
     else if (ev == 'fs') h.fs && h.fs(!!m.on);
     else if (ev == 'blocked') { if (m.main) h.blocked(String(m.url || ''), String(m.why || '')) }

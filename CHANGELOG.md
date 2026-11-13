@@ -12,6 +12,7 @@ Summary: In progress.
 - Changed: the graphics driver keeps at most 64 MB of spare memory for reuse (it could grow to half the memory over a long session).
 - New: Task Manager › Performance shows where the memory goes: programs and pages, the file cache, the kernel, graphics, the SSD's buffer, compressed memory, and what Linux cannot itemise while the system is protected.
 - New: Task Manager › Performance has Clear cache, which frees the memory holding recently used files at once; game mode does the same when a game starts, so the game finds free memory as it loads.
+- New: when a game starts, apps running in the background with no window (such as Discord) are offered to be quit, in a notice inside the game with a button; nothing is quit unless you press it.
 - Changed: Chromium comes only from Ubuntu's open-source Chromium (the snap). When it cannot be fetched, the release keeps the Chromium it has, instead of taking another kind of browser; it never goes back to an older version.
 - Fixed: when a system file does not match its release, the start-up and Task Manager say so plainly, with its size, instead of a low-level error.
 

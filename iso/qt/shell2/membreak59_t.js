@@ -36,7 +36,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await wait(2600);
   ok('7b. ...and still says so after the tab redraws (every 2 s)', /Cleared: 612/.test(await q("document.querySelector('.win.act .tmcc .msg').textContent")));
   const fc = await q("gslCache()");
-  ok('8. game mode clears it too, the same way (once, at its start)', fc == 612 * MiB && drops.length == 2 && /gslSleep\(true\)/.test(await q("document.documentElement.innerHTML.match(/if\\(gameMode\\(\\)\\)gslSleep\\(true\\)/)?'gslSleep(true)':''")), [fc, drops]);
+  ok('8. game mode clears it too, the same way (once, at its start)', fc == 612 * MiB && drops.length == 2 && await q("/gslSleep\\(true\\)/.test(document.documentElement.innerHTML)"), [fc, drops]);
   ok('6. no page errors', errs.length == 0, errs);
   await b.close(); srv.close();
   const k = R.filter(Boolean).length; console.log(`${k}/${R.length} passed`); process.exit(k == R.length ? 0 : 1);
