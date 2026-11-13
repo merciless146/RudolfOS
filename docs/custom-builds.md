@@ -107,8 +107,9 @@ Until developer certificates exist (docs/plan-1.5.9.md 8.2), a game is published
 `merciless146/rudolfos-library`, reviewed before it is listed. The Library's own workflow signs it.
 
 - **The sandbox.** Library web apps run in a sandbox: no access to the desktop, its storage or the system. They ask
-  only for what they need in their `PKGINFO` (`permissions = saves gamepad fullscreen notifications`), and the person
+  only for what they need in their `PKGINFO` (`permissions = saves gamepad fullscreen`), and the person
   allows it when first opening them.
-- **Their API.** Load `http://127.0.0.1:8080/lib/rudolf-gamekit.js` and use `RudolfGamekit.save(name, text)`,
-  `load(name)`, `saves()`, `remove(name)` and `notify(text)`. Full screen and game controllers are the browser's own.
+- **Their API.** The Library's game kit (`lib/gamekit/gamekit.js` in rudolfos-library, the `RG` global) talks to the
+  desktop: `RG.load()` and `RG.save(value)` keep saves for the account, and the desktop pauses the game when its window
+  is hidden. Full screen and game controllers are the browser's own.
 - **The rules** are in docs/plan-games.md.
