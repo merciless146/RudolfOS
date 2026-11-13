@@ -40,6 +40,13 @@ experience on them. It starts once 1.5.8 is promoted.
 - **Tests:** host tests with a stand-in ModemManager on a private D-Bus (rudolfd's parsing); the USB stick (1.6.0's test
   hardware) on the Vivobook over the devlink, read only.
 
+- **Done (2026-11-13), up to the device check:** /usr/lib/rudolf/modem (start on mdev's cdc-wdm/wwan/ttyUSB of a modem
+  driver, stop when the last goes; status from mmcli), the system bus shared with Bluetooth, rudolfd `mobile/status`,
+  Settings › Network › Cellular modems; kconfig.sh's WWAN (MHI_WWAN_CTRL, MHI_WWAN_MBIM, IOSM, checked); ci_release.sh
+  copies ModemManager, mmcli, qmi-proxy, mbim-proxy, the plug-ins and serviceproviders.xml with their libraries, and
+  fails over 10 MB. To check on the Vivobook: whether ModemManager finds the stick's ports without udev (Rudolf OS
+  has mdev); if not, its `--test-no-udev`-style hints or a small udev database are the next step.
+
 ## Part 2: tablet mode and the on-screen keyboard (docs/plan-1.5.8.md 8.1, finished)
 - Tablet mode: chosen when there is a touchscreen and no keyboard, or by hand; dock, one window at a time, swipes.
 - The on-screen keyboard: in the desktop page for its own apps and Oracle's pages; through rudolf-display (XTest) for

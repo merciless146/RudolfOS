@@ -175,6 +175,11 @@ m $CAMM
 # MBIM and EEM: newer ones; iPhones' tethering), and cellular modules and USB sticks (QMI, and the "option" serial
 # driver for their control ports). Hotspots and tethered phones hand out an address themselves; modules that must be
 # told to connect wait for ModemManager (1.5.9/1.6.0).
+# 1.5.9 (plan Part 1): the WWAN subsystem, for M.2 cellular modules (Qualcomm's over MHI, Intel's newer ones: IOSM),
+# which ModemManager talks to through /dev/wwan*
+WWANM="MHI_WWAN_CTRL MHI_WWAN_MBIM IOSM"
+y WWAN MHI_BUS
+m $WWANM
 MOBM="USB_NET_RNDIS_HOST USB_NET_CDC_NCM USB_NET_CDC_MBIM USB_NET_CDC_EEM USB_NET_HUAWEI_CDC_NCM USB_NET_QMI_WWAN USB_IPHETH USB_SERIAL USB_SERIAL_OPTION"
 m $MOBM
 # 1.5.8 (plan Part 7.3): Android's binder, for Android apps in a container (Waydroid, 1.5.9); built in, as Waydroid
@@ -186,6 +191,7 @@ n DEBUG_INFO DEBUG_INFO_DWARF5 DEBUG_INFO_DWARF4 DEBUG_INFO_DWARF_TOOLCHAIN_DEFA
 $C --enable DEBUG_INFO_NONE
 make olddefconfig >/dev/null
 # 1.4.4: every hotkey driver is there, as a module (a dependency missing from x86_64_defconfig would drop it)
+for o in $WWANM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig"; exit 1; }; done
 for o in $HOTKEYS; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig (a dependency is missing)"; exit 1; }; done
 grep -q "^CONFIG_IPV6_SIT=y\|^CONFIG_IPV6_SIT=m" .config && { echo "kconfig.sh: IPV6_SIT is still on"; exit 1; }
 # 1.4.7: the memory options are on

@@ -3629,6 +3629,12 @@ static void api(struct req *r)
 	if (!strcmp(p, "net")) { api_net(r); return; }
 	/* 1.5.8 (plan 6.3): metered connections (/usr/lib/rudolf/netplug). GET: the connection in use, metered or not and
 	   why, this month's data on it. POST if=IF&v=on|off|auto: metered by hand for that network, or automatic again */
+	/* 1.5.9 (plan Part 1): the cellular modems ModemManager sees (read only: maker, model, SIM, operator, signal) */
+	if (!strcmp(p, "mobile/status")) {
+		char *o = run_out("/usr/lib/rudolf/modem status 2>/dev/null"); trim(o);
+		if (!o || o[0] != '{') { free(o); str e = {0}; sadd(&e, "{\"ok\":true,\"running\":false,\"modems\":[]}"); reply_json(r->fd, &e); return; }
+		str js = {0}; sadd(&js, "{\"ok\":true,"); sadd(&js, "%s", o + 1); free(o); reply_json(r->fd, &js); return;
+	}
 	if (!strcmp(p, "net/metered")) {
 		if (!post) { char *o = run_out("/usr/lib/rudolf/netplug state 2>/dev/null"); trim(o); str j = {0}; sadd(&j, "%s", *o == '{' ? o : "{\"ok\":true,\"connected\":false}"); free(o); reply_json(r->fd, &j); return; }
 		const char *i = qparam(r->query, "if"), *v = qparam(r->query, "v");
