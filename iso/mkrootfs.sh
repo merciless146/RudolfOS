@@ -72,9 +72,18 @@ if [ "$CHROME" != none ]; then
 	for f in *.pak; do case $f in en-US.pak|de.pak|es.pak|fr.pak|pt-BR.pak|ru.pak|zh-CN.pak|ja.pak|ko.pak|ar.pak|he.pak) ;; *) rm -f "$f";; esac; done
 	cd "$OUT"
 	rm -f opt/chromium/chrome-wrapper opt/chromium/xdg-mime opt/chromium/xdg-settings opt/chromium/locales/*.info
-	strip opt/chromium/chrome opt/chromium/chrome_crashpad_handler 2>/dev/null || true
+	[ -d opt/chromium/glibc ] || strip opt/chromium/chrome opt/chromium/chrome_crashpad_handler 2>/dev/null || true   # (not after patchelf)
 	[ -e opt/chromium/chrome_sandbox ] && chmod 4755 opt/chromium/chrome_sandbox
-	copy_deps opt/chromium/chrome opt/chromium/chrome_crashpad_handler opt/chromium/libEGL.so opt/chromium/libGLESv2.so opt/chromium/libvk_swiftshader.so
+	if [ -d opt/chromium/glibc ]; then
+		# 1.5.9: Chromium with its own C library (chromium_fetch.sh): its libraries listed by its own program loader,
+		# and its C library left where it is (never copied over the system's)
+		GL=$(ls opt/chromium/glibc/ld-linux*.so.* | head -1)
+		for f in opt/chromium/chrome opt/chromium/chrome_crashpad_handler opt/chromium/libEGL.so opt/chromium/libGLESv2.so opt/chromium/libvk_swiftshader.so; do
+			[ -e "$f" ] || continue
+			"$GL" --library-path "$PWD/opt/chromium/glibc:$PWD/opt/chromium" --list "$f" 2>/dev/null | awk '/=>/ {print $3}' | grep -v '/opt/chromium/' | while read -r l; do
+				[ -n "$l" ] && [ -e "$l" ] || continue; d="$OUT/usr/lib/$MA/${l##*/}"; [ -e "$d" ] || cp -L "$l" "$d"; done
+		done
+	else copy_deps opt/chromium/chrome opt/chromium/chrome_crashpad_handler opt/chromium/libEGL.so opt/chromium/libGLESv2.so opt/chromium/libvk_swiftshader.so; fi
 else echo "mkrootfs: CHROME_DIR=none: no Chromium in this root file system"; fi
 find usr/lib/$MA -name "*.so*" -type f -exec strip --strip-unneeded {} + 2>/dev/null || true
 # libraries Chromium opens at run time (file dialogs, NSS)

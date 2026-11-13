@@ -21,6 +21,9 @@ mdev -d 2>/dev/null
 # (1.5.9: on ARM64 the serial port is ttyAMA0, QEMU's virt machine and most ARM boards; x86 has none)
 DBGTTY=/dev/ttyS0; [ -c /dev/ttyAMA0 ] && DBGTTY=/dev/ttyAMA0
 grep -q rudolf.debug=1 $RCMD && ( while :; do setsid sh -c "exec sh -l <$DBGTTY >$DBGTTY 2>&1"; sleep 1; done ) &
+# (1.5.9: with rudolf.debug=1, each step of the start-up is written to /run/rudolf/init-trace.log, to find where a
+#  start-up stops: the ARM64 check's never reached the session)
+grep -q rudolf.debug=1 $RCMD && { exec 2>>/run/rudolf/init-trace.log; set -x; }
 [ -s /etc/rudolf/check.txt ] && cp /etc/rudolf/check.txt /run/rudolf/check.txt
 
 # saved data
