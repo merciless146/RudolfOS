@@ -7,7 +7,8 @@
 #   bluetooth scan SECONDS      look for devices nearby (and let them find this computer: see visible)
 #   bluetooth visible           let phones and other computers find this one for 3 minutes (main.conf's DiscoverableTimeout)
 #   bluetooth pair MAC | connect MAC | disconnect MAC | remove MAC
-#   bluetooth audio             (after a connect or a disconnect) headphones as a PulseAudio output, or not
+#   bluetooth audio             (after a connect or a disconnect) headphones as a PulseAudio output, or not; a
+#                               headset's microphone too (1.5.9)
 #   bluetooth answer yes|no     the answer to the pairing question in /run/rudolf/bt-ask (Settings asks it)
 #   bluetooth agent-run         (started by start) the pairing agent: one bluetoothctl that stays
 # Pairing: an agent that stays registered as BlueZ's default (KeyboardDisplay), so a pairing finishes and is kept
@@ -100,9 +101,11 @@ start() {
 	for r in /sys/class/rfkill/*; do [ "$(cat $r/type 2>/dev/null)" = bluetooth ] && echo 0 > $r/soft 2>/dev/null; done
 	[ -e /run/rudolf/bluetoothd.loop ] && kill -0 "$(cat /run/rudolf/bluetoothd.loop)" 2>/dev/null || (setsid sh -c "echo \$\$ > /run/rudolf/bluetoothd.loop; while [ ! -e /run/rudolf/bluetooth-stop ]; do $BD -n -f /etc/bluetooth/main.conf >>/run/rudolf/bluetooth.log 2>&1; sleep 2; done" </dev/null >/dev/null 2>&1 &)
 	B=$(command -v bluealsa || command -v bluealsad)
+	# 1.5.9: headsets' microphones too (Hands-Free and Headset, bluealsa's own), when this bluealsa has them
+	BP="-p a2dp-source"; [ -n "$B" ] && $B --help 2>&1 | grep -q 'hfp-ag' && BP="$BP -p hfp-ag -p hsp-ag"
 	# headphones: bluealsa's ALSA device for PulseAudio
 	for c in /usr/share/alsa/alsa.conf.d/*bluealsa*.conf; do [ -f "$c" ] && mkdir -p /etc/alsa/conf.d && ln -sf "$c" /etc/alsa/conf.d/ 2>/dev/null; done
-	[ -n "$B" ] && ! { [ -e /run/rudolf/bluealsa.loop ] && kill -0 "$(cat /run/rudolf/bluealsa.loop)" 2>/dev/null; } && (setsid sh -c "echo \$\$ > /run/rudolf/bluealsa.loop; while [ ! -e /run/rudolf/bluetooth-stop ]; do $B -p a2dp-source >>/run/rudolf/bluealsa.log 2>&1; sleep 2; done" </dev/null >/dev/null 2>&1 &)
+	[ -n "$B" ] && ! { [ -e /run/rudolf/bluealsa.loop ] && kill -0 "$(cat /run/rudolf/bluealsa.loop)" 2>/dev/null; } && (setsid sh -c "echo \$\$ > /run/rudolf/bluealsa.loop; while [ ! -e /run/rudolf/bluetooth-stop ]; do $B $BP >>/run/rudolf/bluealsa.log 2>&1; sleep 2; done" </dev/null >/dev/null 2>&1 &)
 	rm -f /run/rudolf/bluetooth-stop
 	[ -e $R/btagent.loop ] && kill -0 "$(cat $R/btagent.loop)" 2>/dev/null || (setsid sh -c "echo \$\$ > $R/btagent.loop; while [ ! -e $R/bluetooth-stop ]; do '$SELF' agent-run >>$R/btagent.log 2>&1; sleep 2; done" </dev/null >/dev/null 2>&1 &)
 	for i in $(seq 50); do T=3 bc show | grep -q 'Controller' && break; sleep 0.2; done
@@ -136,27 +139,81 @@ status() {
 	printf '],"ask":%s}\n' "$(cat $ASK 2>/dev/null || echo null)"
 }
 
-# headphones: a PulseAudio output for each connected audio device (bluealsa's ALSA plug-in), removed when it goes
+# headphones: a PulseAudio output for each connected audio device (bluealsa's ALSA plug-in), removed when it goes.
+# 1.5.9 (plan 7.2): a headset (Hands-Free or Headset profile) also gets its microphone, bt_in_MAC (bluealsa's SCO
+# device). A headset's microphone only works in its call mode (SCO), which also carries the call's sound at phone
+# quality; music stays on the better A2DP output. So callmode watches: while an app records from the headset's
+# microphone (a call), what plays goes to its call output (bt_call_MAC, made then), and back to A2DP after.
+# (PulseAudio closes an idle microphone after 5 s, module-suspend-on-idle, so the headset leaves call mode.)
+# The names given to PulseAudio are quoted for its module arguments: before, a name with a space ("Galaxy Buds")
+# made the output fail to load.
+ASOCK=${RUDOLF_PULSE_SOCK:-/run/user/1000/pulse/native}
+asuser() { su -s /bin/sh rudolf -c "XDG_RUNTIME_DIR=/run/user/1000 PULSE_SERVER=unix:$ASOCK DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SYSTEM_BUS_ADDRESS $1"; }
+CALLPID=$R/bt-callmode.pid
 audio() {
-	SOCK=/run/user/1000/pulse/native; [ -S $SOCK ] || return 0
-	asuser() { su -s /bin/sh rudolf -c "XDG_RUNTIME_DIR=/run/user/1000 PULSE_SERVER=unix:$SOCK DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SYSTEM_BUS_ADDRESS $1"; }
-	CON=""
+	[ -S $ASOCK ] || return 0
+	CON=""; HF=""
 	for M in $(T=4 bc devices Connected 2>/dev/null | sed -n 's/^Device \([0-9A-F:]\{17\}\) .*/\1/p'); do
-		T=4 bc info $M | grep -qi 'Audio Sink' && CON="$CON $M"
+		I=$(T=4 bc info $M)
+		echo "$I" | grep -qi 'Audio Sink' && CON="$CON $M"
+		# (a headset: "Handsfree" or "Headset", not a phone's "Handsfree Audio Gateway" or "Headset AG")
+		echo "$I" | grep -qE 'UUID: (Handsfree|Headset)[[:space:]]+\(' && HF="$HF $M"
 	done
 	MODS=$(asuser "pactl list short modules" 2>/dev/null)
-	# remove the outputs of devices no longer connected
-	echo "$MODS" | awk '/module-alsa-sink/ && /sink_name=bt_/ {print $1, $0}' | while read id rest; do
-		m=$(echo "$rest" | sed -n 's/.*sink_name=bt_\([0-9A-F_]*\).*/\1/p' | tr _ :)
-		echo "$CON" | grep -q "$m" || asuser "pactl unload-module $id" >/dev/null 2>&1
+	# remove the outputs and microphones of devices no longer connected
+	echo "$MODS" | awk '/module-alsa-(sink|source)/ && /_name=bt_/ {print $1, $0}' | while read id rest; do
+		m=$(echo "$rest" | sed -n 's/.*_name=bt_[a-z_]*\([0-9A-F]\{2\}\(_[0-9A-F]\{2\}\)\{5\}\).*/\1/p' | tr _ :)
+		echo "$CON $HF" | grep -q "${m:-none}" || asuser "pactl unload-module $id" >/dev/null 2>&1
 	done
 	for M in $CON; do
 		n=$(echo $M | tr : _)
-		echo "$MODS" | grep -q "sink_name=bt_$n" && continue
+		echo "$MODS" | grep -q "sink_name=bt_$n " && continue
 		NAME=$(T=4 bc info $M | sed -n 's/^\s*Alias: //p' | head -1 | tr -cd 'A-Za-z0-9 ._-')
-		asuser "pactl load-module module-alsa-sink device=bluealsa:DEV=$M,PROFILE=a2dp sink_name=bt_$n tsched=0 sink_properties=device.description=\"${NAME:-Bluetooth}\"" >/dev/null 2>&1 \
+		asuser "pactl load-module module-alsa-sink device=bluealsa:DEV=$M,PROFILE=a2dp sink_name=bt_$n tsched=0 \"sink_properties='device.description=\\\"${NAME:-Bluetooth}\\\"'\"" >/dev/null 2>&1 \
 			&& asuser "pactl set-default-sink bt_$n" >/dev/null 2>&1 && echo "headphones: $NAME"
 	done
+	for M in $HF; do
+		n=$(echo $M | tr : _)
+		echo "$MODS" | grep -q "source_name=bt_in_$n " && continue
+		NAME=$(T=4 bc info $M | sed -n 's/^\s*Alias: //p' | head -1 | tr -cd 'A-Za-z0-9 ._-')
+		asuser "pactl load-module module-alsa-source device=bluealsa:DEV=$M,PROFILE=sco source_name=bt_in_$n tsched=0 \"source_properties='device.description=\\\"${NAME:-Bluetooth} microphone\\\"'\"" >/dev/null 2>&1 \
+			&& asuser "pactl set-default-source bt_in_$n" >/dev/null 2>&1 && echo "headset microphone: $NAME"
+	done
+	if [ -n "$HF" ] && ! { [ -s $CALLPID ] && kill -0 "$(cat $CALLPID)" 2>/dev/null; }; then
+		(setsid "$SELF" callmode </dev/null >/dev/null 2>&1 &)
+	fi
+	return 0
+}
+# one look: for each headset microphone, is an app recording from it (not counting PulseAudio's own monitoring)
+callmode_once() {
+	MODS=$(asuser "pactl list short modules" 2>/dev/null)
+	INS=$(echo "$MODS" | sed -n 's/.*source_name=bt_in_\([0-9A-F_]*\).*/\1/p')
+	[ -n "$INS" ] || return 1
+	SRCS=$(asuser "pactl list short sources" 2>/dev/null); OUTS=$(asuser "pactl list short source-outputs" 2>/dev/null)
+	for n in $INS; do
+		i=$(echo "$SRCS" | awk -F'\t' -v s=bt_in_$n '$2==s {print $1}')
+		busy=$(echo "$OUTS" | awk -F'\t' -v i="$i" '$2==i && $4 !~ /module-/' | head -1)
+		if [ -n "$busy" ] && ! echo "$MODS" | grep -q "sink_name=bt_call_$n "; then
+			M=$(echo $n | tr _ :)
+			asuser "pactl load-module module-alsa-sink device=bluealsa:DEV=$M,PROFILE=sco sink_name=bt_call_$n tsched=0 \"sink_properties='device.description=\\\"Headset (call)\\\"'\"" >/dev/null 2>&1 || continue
+			asuser "pactl set-default-sink bt_call_$n" >/dev/null 2>&1
+			for s in $(asuser "pactl list short sink-inputs" 2>/dev/null | awk -F'\t' '$4 !~ /module-/ {print $1}'); do asuser "pactl move-sink-input $s bt_call_$n" >/dev/null 2>&1; done
+			echo "$(date) call mode: $M" >> $R/bluetooth.log
+		elif [ -z "$busy" ]; then
+			id=$(echo "$MODS" | awk -v a="sink_name=bt_call_$n " 'index($0 " ", a) {print $1}')
+			[ -n "$id" ] || continue
+			asuser "pactl set-default-sink bt_$n" >/dev/null 2>&1
+			for s in $(asuser "pactl list short sink-inputs" 2>/dev/null | awk -F'\t' '$4 !~ /module-/ {print $1}'); do asuser "pactl move-sink-input $s bt_$n" >/dev/null 2>&1; done
+			asuser "pactl unload-module $id" >/dev/null 2>&1
+			echo "$(date) call mode ended: $(echo $n | tr _ :)" >> $R/bluetooth.log
+		fi
+	done
+	return 0
+}
+callmode() {
+	echo $$ > $CALLPID
+	while callmode_once; do sleep ${RUDOLF_BT_CALLPOLL:-2}; done
+	rm -f $CALLPID
 }
 
 case "$1" in
@@ -193,6 +250,8 @@ connect) mac_ok "$2" || exit 2; T=20 bc connect $2 | tail -1; audio;;
 disconnect) mac_ok "$2" || exit 2; T=10 bc disconnect $2 | tail -1; audio;;
 remove) mac_ok "$2" || exit 2; T=10 bc remove $2 | tail -1; audio;;
 audio) audio;;
+callmode) callmode;;
+callmode-once) callmode_once;;
 answer) case "$2" in yes|no) answer $2;; *) exit 2;; esac;;
 agent-run) agent_run;;
 *) echo "usage: bluetooth boot|start|stop|on|off|status|scan [S]|pair MAC|connect MAC|disconnect MAC|remove MAC|audio|answer yes|no" >&2; exit 2;;

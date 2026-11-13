@@ -69,4 +69,11 @@ ok "10. ...with it: passes" "$(has 'PASS lite-engine' && echo 1)" "$OUT"
 ok "11. 1.5.8: without Mesa's GLX: lite-gpu names it" "$(has 'FAIL lite-gpu - missing: libGLX_mesa.so.0 libxcb-glx.so.0' && echo 1)" "$OUT"
 : > $W/lib/libGLX_mesa.so.0; : > $W/lib/libxcb-glx.so.0; OUT=$(ST_WEBKIT=$W/rudolf-webkit ST_LIBDIR=$W/lib sh $S)
 ok "12. ...with it: passes" "$(has 'PASS lite-gpu' && echo 1)" "$OUT"
+# 1.5.9 (plan 7.2): the camera in use by an app, switched off, or connected without its driver
+touch $ST_DEV/video0; chgrp video $ST_DEV/video0; chmod 660 $ST_DEV/video0; mkdir -p $ST_PROC/300/fd; echo zoom > $ST_PROC/300/comm; ln -s $ST_DEV/video0 $ST_PROC/300/fd/7
+OUT=$(sh $S); ok "13. 1.5.9: the camera in use: which app has it" "$(has 'PASS camera - 1 camera device(s), usable by apps (in use now by zoom)' && echo 1)" "$OUT"
+rm -rf $ST_DEV/video0 $ST_PROC/300; : > $ST_RUN/camera-off
+OUT=$(sh $S); ok "14. ...switched off in Privacy: said so" "$(has 'SKIP camera - no camera: it is switched off' && echo 1)" "$OUT"
+rm -f $ST_RUN/camera-off; mkdir -p $ST_SYS/bus/usb/devices/1-2; echo 'usb:v04F2pB6D9d0001dcEFdsc02dp01ic0Eisc01ip00in00' > $ST_SYS/bus/usb/devices/1-2/modalias
+OUT=$(sh $S); ok "15. ...a USB camera without its driver: a failure, named" "$(has 'FAIL camera - a camera is connected but has no driver' && echo 1)" "$OUT"
 echo "$NP/$((NP+NF)) passed"; [ $NF = 0 ]

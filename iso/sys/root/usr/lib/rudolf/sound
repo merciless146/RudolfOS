@@ -8,16 +8,45 @@
 #   sound status      print the server state, cards and outputs
 #   sound hotplug     a sound card came or went (mdev, with ACTION and MDEV=snd/controlCN; 1.5.4)
 #   sound codec-check a chip that did not answer at start-up is reset, once (1.5.8; rudolf-init)
+#   sound echo on|off|status   the echo canceller (1.5.9, plan 7.2; Settings › Sound, off by default)
 # GPL-2.0-or-later.
 export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
 # test hooks (iso/qt/host/soundplug_t.sh): RUDOLF_TEST_PATH, RUDOLF_TEST_ASOUND, RUDOLF_SOUND_WAIT, RUDOLF_SOUND_SETTLE
 ASND=${RUDOLF_TEST_ASOUND:-/proc/asound}
 RCMD=/etc/rudolf/cmdline; [ -s $RCMD ] || RCMD=/proc/cmdline   # the start-up options (1.2.8: not /proc/cmdline, see initramfs/init)
 export XDG_RUNTIME_DIR=/run/user/1000
-SOCK=$XDG_RUNTIME_DIR/pulse/native
+SOCK=${RUDOLF_PULSE_SOCK:-$XDG_RUNTIME_DIR/pulse/native}
 PA=/run/rudolf/pulse.pa
 LOG=/run/rudolf/pulse.log
 asuser() { su -s /bin/sh rudolf -c "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR PULSE_SERVER=unix:$SOCK $1"; }
+# 1.5.9 (plan 7.2): the echo canceller, for Linux apps that have none of their own (Chromium cancels echo itself): the
+# speakers' sound is taken out of what the microphone hears, so the other side of a call does not hear itself.
+# PulseAudio's module-echo-cancel with Adrian's canceller (built in; no WebRTC or Speex library needed). It costs
+# processor time, so it is off unless switched on (kept in ECHOF); it sits on the default output and microphone and is
+# put on the new ones when they change (set_default, a Bluetooth headset).
+ECHOF=${RUDOLF_SOUND_ECHO:-/persist/etc/sound-echo}; [ -d "$(dirname "$ECHOF")" ] || ECHOF=/run/rudolf/sound-echo
+ECHOM=${RUDOLF_SOUND_RUN:-/run/rudolf}/echo-masters
+# the streams to move: not the echo canceller's own (its stream plays to and records from the real devices)
+streams() { asuser "pactl list short $1" 2>/dev/null | awk -F'\t' '$4 !~ /echo-cancel/ {print $1}'; }
+echo_apply() {
+	MS=$(cat $ECHOM 2>/dev/null); rm -f $ECHOM
+	for m in $(asuser "pactl list short modules" 2>/dev/null | awk -F'\t' '$2=="module-echo-cancel" {print $1}'); do asuser "pactl unload-module $m" >/dev/null 2>&1; done
+	I=$(asuser "pactl info" 2>/dev/null); S=$(echo "$I" | sed -n 's/^Default Sink: //p'); M=$(echo "$I" | sed -n 's/^Default Source: //p')
+	case "$S" in ""|echocancel*) S=${MS%% *};; esac; case "$M" in ""|echocancel*) M=${MS#* };; esac
+	[ -n "$S" ] && asuser "pactl set-default-sink $S" >/dev/null 2>&1; [ -n "$M" ] && asuser "pactl set-default-source $M" >/dev/null 2>&1
+	[ -f "$ECHOF" ] || return 0
+	case "$S" in ""|*.monitor) echo "echo canceller: no output"; return 0;; esac
+	case "$M" in ""|*.monitor) echo "echo canceller: no microphone"; return 0;; esac
+	# a Bluetooth headset cancels echo itself in its call mode, and the canceller would keep it in call mode
+	case "$M" in bt_in_*) echo "echo canceller: not needed with a Bluetooth headset"; return 0;; esac
+	asuser "pactl load-module module-echo-cancel aec_method=adrian use_master_format=1 sink_master=$S source_master=$M sink_name=echocancel_sink source_name=echocancel_source \"sink_properties='device.description=\\\"Speakers (echo cancelled)\\\"'\" \"source_properties='device.description=\\\"Microphone (echo cancelled)\\\"'\"" >/dev/null 2>&1 \
+		|| { echo "echo canceller: could not be started" >> $LOG; echo "echo canceller: could not be started"; return 1; }
+	echo "$S $M" > $ECHOM
+	asuser "pactl set-default-sink echocancel_sink" >/dev/null 2>&1; asuser "pactl set-default-source echocancel_source" >/dev/null 2>&1
+	for i in $(streams sink-inputs); do asuser "pactl move-sink-input $i echocancel_sink" >/dev/null 2>&1; done
+	for i in $(streams source-outputs); do asuser "pactl move-source-output $i echocancel_source" >/dev/null 2>&1; done
+	echo "echo canceller: on ($S, $M)"
+}
 cards() { sed -n 's/^ *\([0-9][0-9]*\) \[.*/\1/p' $ASND/cards 2>/dev/null; }
 # 1.5.4: ALSA's use case files (alsa-ucm-conf) set up sound processors (Intel SOF, AMD ACP) and USB sound cards;
 # plain HD Audio cards keep PulseAudio's own profiles, as before, since they work that way
@@ -60,6 +89,8 @@ set_default() {
 	M=$(asuser "pactl list short sources" 2>/dev/null | awk -v p="alsa_input.card$1." 'index($2,p)==1{print $2; exit}')
 	if [ -n "$M" ]; then asuser "pactl set-default-source $M" >/dev/null 2>&1 && echo "default microphone: $M"
 		for i in $(asuser "pactl list short source-outputs" 2>/dev/null | cut -f1); do asuser "pactl move-source-output $i $M" >/dev/null 2>&1; done; fi
+	# the echo canceller moves to the new output and microphone
+	{ [ -f "$ECHOF" ] || [ -s $ECHOM ]; } && echo_apply >/dev/null
 	return 0
 }
 case "$1" in
@@ -93,7 +124,15 @@ start)
 	for n in $(cards); do add_card "$n"; done
 	N=$(sed -n 's/^defaults.pcm.card \([0-9]*\)/\1/p' /etc/asound.conf 2>/dev/null)
 	[ -n "$N" ] && set_default "$N"
+	[ -f "$ECHOF" ] && echo_apply >/dev/null
 	exit 0;;
+echo)
+	case "$2" in
+	on) mkdir -p "$(dirname "$ECHOF")"; : > "$ECHOF"; if [ -S $SOCK ]; then echo_apply || exit 1; else echo "echo canceller: on at the next start"; fi;;
+	off) rm -f "$ECHOF"; [ -S $SOCK ] && echo_apply; echo "echo canceller: off";;
+	status) A=false; [ -s $ECHOM ] && A=true; O=false; [ -f "$ECHOF" ] && O=true; printf '{"on":%s,"active":%s}\n' $O $A;;
+	*) echo "usage: sound echo on|off|status"; exit 2;;
+	esac;;
 hotplug)
 	# 1.5.4: Intel's sound processor shows its card only once its firmware runs, often after the session started,
 	# and a USB headset can come and go; nothing else told PulseAudio (it runs without udev)

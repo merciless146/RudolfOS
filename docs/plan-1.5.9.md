@@ -169,8 +169,13 @@ numbers need the service's own calling plan (Google Voice in the US, Zoom Phone,
   camera and microphone) passes; the Lite one reports whether a later WebKitGTK has WebRTC. Also: the
   🎙️ indicator and mute (hotkey mic users|get|muted, rudolfd `mic`); a call holds off the saver, lock and sleep
   (`media`'s `mic`); the sound output change moves streams and the microphone (sound set_default), and
-  module-switch-on-connect. Not yet: Bluetooth headsets' microphone (HFP), the echo-cancel switch, the self-test's
-  camera line.
+  module-switch-on-connect. Then (same day): a Bluetooth headset's microphone (bluealsa's Hands-Free and Headset
+  profiles when it has them; the SCO microphone as PulseAudio's bt_in_MAC; while an app records from it, what plays
+  moves to the headset's call output and back to A2DP after); the echo canceller in Settings › Sound › Calls (Adrian's,
+  built into PulseAudio; off by default; follows the sound card; not on a Bluetooth headset, which cancels echo
+  itself); the self-test's camera line (which app has it open; switched off; connected without its driver). Also
+  fixed: a Bluetooth output whose name had a space ("Galaxy Buds") failed to load. Still to check on the Vivobook:
+  a real headset's microphone in a call (7.4).
 ### 7.3 Phone numbers
 - Settings › Apps › "Calls to phones": a short page on what each service needs (Google Voice: free in the US with a
   Google account; Zoom Phone, Teams Phone: paid), with links that open in Oracle. Nothing is installed or signed up for

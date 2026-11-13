@@ -12,3 +12,14 @@ function call59Draw(){if(!CALL59.users.length){trayRemove('call');return}
 async function call59Poll(){if(!RD||!USER||document.hidden)return;try{const j=await rd('mic');CALL59.users=j.users||[];CALL59.muted=!!j.muted}catch(e){CALL59.users=[]}call59Draw()}
 async function call59Toggle(){try{const j=await rdPost('mic?muted='+(CALL59.muted?0:1));CALL59.muted=!!j.muted;CALL59.users=j.users||CALL59.users}catch(e){notify('Microphone',e.message,{kind:'error'})}call59Draw()}
 if(RD){CALL59.iv=setInterval(call59Poll,5000);setTimeout(call59Poll,3000)}
+/* Settings › Sound › Calls (plan 7.2): the echo canceller for Linux apps without their own (Chromium cancels echo
+   itself). Off by default: it costs processor time. A Bluetooth headset's microphone works in calls by itself (the
+   headset cancels echo); its call sound is switched to while an app records from it (/usr/lib/rudolf/bluetooth). */
+if(typeof volPanelS=='function'&&RD){const _v=volPanelS;volPanelS=function(c,W){const r=_v.apply(this,arguments);try{
+ const d=document.createElement('div');d.className='echo59';c.appendChild(d);
+ d.innerHTML=`<h4 class='sh4'>Calls</h4><label class='ck'><input type='checkbox' class='ec'> Cancel echo for Linux apps</label><div class='msg ecm'>For calls in Linux apps that have no echo cancelling of their own, with the speakers on. It uses some processor time. Oracle's calls cancel echo themselves; a Bluetooth headset does too.</div>`;
+ const cb=d.querySelector('.ec'),m=d.querySelector('.ecm'),base=m.textContent;
+ const show=s=>{cb.checked=!!s.on;m.textContent=base+(s.on&&!s.active?' (Not active now: there is no microphone or speaker it can use.)':'')};
+ rd('sound/echo').then(show).catch(()=>{cb.disabled=true});
+ cb.onchange=()=>{cb.disabled=true;rdPost('sound/echo?on='+(cb.checked?1:0)).then(s=>{show(s);notify('Echo cancelling',s.on?'On':'Off',{quiet:true})}).catch(e=>{cb.checked=!cb.checked;notify('Echo cancelling',e.message,{kind:'error'})}).finally(()=>cb.disabled=false)};
+}catch(e){console.warn(e)}return r}}

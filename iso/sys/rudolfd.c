@@ -3897,6 +3897,15 @@ static void api(struct req *r)
 		int first = 1; if (u) for (char *l = strtok(u, "\n"); l; l = strtok(NULL, "\n")) { if (!*l) continue; if (!first) sadd(&js, ","); first = 0; sjson(&js, l); }
 		sadd(&js, "]}"); free(u); free(g); reply_json(r->fd, &js); return;
 	}
+	/* 1.5.9 (plan 7.2): GET sound/echo: the echo canceller, {on, active}; POST sound/echo?on=0|1 */
+	if (!strcmp(p, "sound/echo")) {
+		if (post) { char *v = qparam(r->query, "on"); if (!v || (strcmp(v, "0") && strcmp(v, "1"))) { reply_err(r->fd, 400, "on is 0 or 1"); return; }
+			char cmd[100]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/sound echo %s >>" RUN "/sound.log 2>&1", *v == '1' ? "on" : "off");
+			if (run(cmd)) { reply_err(r->fd, 500, "the echo canceller could not be started"); return; } }
+		char *o = run_out("/usr/lib/rudolf/sound echo status 2>/dev/null"); if (o) trim(o);
+		if (!o || *o != '{') { free(o); reply_err(r->fd, 503, "no sound server"); return; }
+		str js = {0}; sadd(&js, "{\"ok\":true,%s", o + 1); free(o); reply_json(r->fd, &js); return;
+	}
 	if (!strcmp(p, "shutdown/log")) {   /* 1.4.5: the last shutdowns and starts, with each step's time */
 		char *l = run_out("tail -n 12 " PERSIST "/var/log/shutdown.log 2>/dev/null"); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, l ? l : ""); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return;
 	}
