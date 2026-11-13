@@ -6,13 +6,14 @@ metered connections); 1.5.9 adds the modem service, the tablet layout and the AR
 experience on them. It starts once 1.5.8 is promoted.
 
 ## Status (2026-11-13, after the unattended work session)
-Done in code and tests (PRs #260–#274, rudolfos-library #31; each part's "Done" note says what): Part 1 up to the device
-check, Part 3 steps 1–4 (the QEMU boot to the Lite sign-in still being finished), Part 4 up to the device check, Part 7
-except the Vivobook call checks, Part 8 except 8.4's recovery.efi and the TPM and hardware keys, Part 9, Part 10's
-pictures, fonts and lazy apps, Part 11.
+Done in code and tests (PRs #260–#281, rudolfos-library #31; each part's "Done" note says what): Part 1 up to the device
+check (since #280 ModemManager runs without udev; since #281 the self-test has a modem line), Part 3 steps 1–5 (QEMU
+starts the ARM64 build directly, through UEFI firmware and with Chromium as the desktop), Part 4 up to the device
+check, Part 7 except the Vivobook call checks, Part 8 except 8.4's recovery.efi and the TPM and hardware keys, Part 9,
+Part 10's pictures, fonts and lazy apps, Part 11. The latest beta with all of it: **2026111321** (not promoted).
 
 ### What needs the Vivobook (or the person) before 1.5.9 is promoted
-1. **A beta with everything** (after the PRs are merged): install it; the self-test.
+1. **A beta with everything:** 2026111321: install it; the self-test (with the modem stick plugged in, its modem line).
 2. **iw and the radios** (#267): Settings › Network › Wi-Fi › This computer's Wi-Fi radios lists 2.4 and 5 GHz.
 3. **The hotspot** (Part 4): with the phone's USB tethering as the connection, Share this connection on the RTL8821CE;
    a phone joins it and browses. (If the chip cannot be an access point, the setting says so.)
