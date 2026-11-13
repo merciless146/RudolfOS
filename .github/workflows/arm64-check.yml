@@ -5,7 +5,8 @@
 # the system programs and WebKitGTK), every program in it checked to start on ARM64.
 # Step 3: the whole system started in QEMU (the kernel, and the four layers on a disc image) until the Lite desktop
 # answers: the sign-in screen (qt/arm64_boot.py), with a picture of the screen; and again started by the UEFI
-# firmware from an EFI system partition, as a computer starts it (boot-uefi).
+# firmware from an EFI system partition, as a computer starts it (boot-uefi); and with the desktop in Chromium,
+# the snap's arm64 build (boot-standard).
 name: ARM64 check
 on:
   workflow_dispatch:
@@ -125,6 +126,33 @@ jobs:
         if: always()
         with:
           name: arm64-boot
+          retention-days: 7
+          path: |
+            out/*.txt
+            out/*.png
+
+  boot-standard:
+    needs: [arm64, base]
+    if: always() && (inputs.reuse != '' && inputs.reuse != null || needs.arm64.result == 'success' && needs.base.result == 'success')
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with: {name: arm64-kernel, path: k, run-id: '${{ inputs.reuse || github.run_id }}', github-token: '${{ github.token }}'}
+      - uses: actions/download-artifact@v4
+        with: {name: arm64-layers, path: l, run-id: '${{ inputs.reuse || github.run_id }}', github-token: '${{ github.token }}'}
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-arm xorriso >/dev/null
+      - name: The desktop in Chromium (Standard), to its sign-in screen
+        run: |
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm || true
+          ARM64_ENGINE=standard python3 iso/qt/arm64_boot.py k/Image l/base.sfs l/chromium.sfs l/desktop.sfs k/modules.sfs out
+          echo "::notice title=ARM64 in QEMU (Standard)::$(tail -1 out/boot.txt)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: arm64-boot-standard
           retention-days: 7
           path: |
             out/*.txt
