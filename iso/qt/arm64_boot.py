@@ -16,6 +16,19 @@ def say(*a):
 # the disc: rudolf/id (as the kernel's initramfs has it) and the four layers
 d = os.path.join(out, 'disc'); shutil.rmtree(d, ignore_errors=True); os.makedirs(d + '/rudolf')
 shutil.copy(os.path.join(here, '../initramfs/etc/rudolf-id'), d + '/rudolf/id')
+# the probe, read from the disc inside the system (typing long commands into the emulated serial port loses characters,
+# even slowly: 2026-11-13): it reports every 10 s until the desktop answers or 15 minutes pass, then what is needed
+open(d + '/rudolf/p.sh', 'w').write(r'''
+echo PROBE-START; [ -d /newroot ] && echo "PROBE: in the initramfs (the start-up stopped)" && tail -30 /tmp/initramfs.log
+i=0; while [ $i -lt 90 ]; do
+  S="$(cat /run/rudolf/desktop-engine 2>/dev/null)|$([ -e /run/rudolf/heartbeat ] && echo up)|$(pidof Xorg rudolf-webkit WebKitWebProcess | wc -w)"
+  echo "STATUS $S"; case "$S" in webkit\|up*) break;; esac; i=$((i+1)); sleep 10; done
+echo "== uname"; uname -m; echo "== unverified"; cat /etc/rudolf/unverified; echo "== engine"; cat /run/rudolf/engine-choice /run/rudolf/desktop-engine
+echo "== dri"; ls /dev/dri; echo "== free"; free -m; echo "== session.log"; tail -50 /run/rudolf/session.log
+echo "== Xorg"; grep -E "\((EE|WW)\)" /run/rudolf/Xorg.log | head -20; echo "== initramfs.log"; tail -20 /etc/rudolf/initramfs.log
+echo "== dmesg"; dmesg | grep -iE "error|fail|virtio|drm" | tail -25; echo "== ps"; ps -o pid,rss,args | grep -v "\[" | head -40
+echo PROBE-DONE
+''')
 for n, f in (('base', base), ('chromium', chrom), ('desktop', desk), ('modules', mods)): os.link(f, f'{d}/rudolf/{n}.sfs') if os.stat(f).st_dev == os.stat(d).st_dev else shutil.copy(f, f'{d}/rudolf/{n}.sfs')
 iso = os.path.join(out, 'disc.iso')
 subprocess.run(['xorriso', '-as', 'mkisofs', '-quiet', '-R', '-V', 'RUDOLF', '-o', iso, d], check=True)
@@ -33,52 +46,31 @@ q = subprocess.Popen(['qemu-system-aarch64', '-M', 'virt', '-cpu', 'max' if acc 
     stdout=open(os.path.join(out, 'qemu.txt'), 'w'), stderr=subprocess.STDOUT)
 time.sleep(2)
 g = Guest(N); cons = open(os.path.join(out, 'console.txt'), 'w')
-t0 = time.time(); ok = False; shell = False; last = ''
-# typed slowly: the emulated serial port (PL011, 16-byte FIFO, without a fast CPU under TCG) drops characters sent at
-# once, which garbled the commands (2026-11-13). Each command's output ends with a tag.
-def sh(c, t=30):
-    tag = 'Q%d' % int(time.time() * 1000); line = (c + f"; echo {tag}E''ND\n").encode()
-    for i in range(0, len(line), 8): g.s.s.send(line[i:i + 8]); time.sleep(0.03)
-    out = ''; end = time.time() + t
-    while time.time() < end:
-        out += g.s.read(0.5)
-        if f'{tag}END' in out.replace(f"{tag}E''ND", ''): break
-    out = out.replace('\r', ''); j = out.rfind(f'{tag}END')
-    body = out[:j] if j >= 0 else out
-    i = body.find(f"E''ND\n"); body = body[i + 6:] if i >= 0 else body
-    return body
+def typ(c):   # one character at a time
+    for ch in c.encode():
+        try: g.s.s.send(bytes([ch]))
+        except OSError: pass
+        time.sleep(0.08)
+t0 = time.time(); ok = False; started = False; buf = ''; seen = set()
 try:
-    # the debug shell appears when rudolf-init starts (after the kernel and the initramfs found the disc)
-    while time.time() - t0 < 900 and q.poll() is None:
-        if not shell:
-            cons.write(g.s.read(2)); cons.flush()
-            # (the serial port takes input only once something reads it: a send can time out until then)
-            try: g.s.s.send(b'\n'); o = sh('echo READY$((40+2))', 5)
-            except OSError: o = ''
-            cons.write(o); cons.flush()
-            if 'READY42' in o: shell = True; say(f'{int(time.time()-t0)} s: the system started (debug shell on ttyAMA0)'); continue
-            continue
-        try: st = sh('printf "%s|%s|%s\\n" "$(cat /run/rudolf/desktop-engine 2>/dev/null)" "$([ -e /run/rudolf/heartbeat ] && echo up)" "$(pidof rudolf-webkit Xorg | wc -w)"', 20).strip().split('\n')[-1]
-        except OSError: st = 'serial busy'
-        if st != last: say(f'{int(time.time()-t0)} s: engine|heartbeat|processes = {st}'); last = st
-        if st.startswith('webkit|up'): ok = True; break
-        time.sleep(10)
+    while time.time() - t0 < 1080 and q.poll() is None:
+        o = g.s.read(3).replace('\r', ''); cons.write(o); cons.flush(); buf += o
+        if not started and time.time() - t0 > 8 and int(time.time() - t0) % 15 < 3:
+            typ('\nsh /*/m*/rudolf/p.sh\n')
+        if 'PROBE-START' in buf and not started: started = True; say(f'{int(time.time()-t0)} s: a shell in the started system runs the probe')
+        for l in buf.split('\n')[:-1]:
+            if (l.startswith('STATUS ') or l.startswith('PROBE:')) and l not in seen: seen.add(l); say(f'{int(time.time()-t0)} s: {l}')
+        if 'STATUS webkit|up' in buf: ok = True
+        if 'PROBE-DONE' in buf.split('PROBE-START')[-1] if 'PROBE-START' in buf else False: break
+        buf = buf[-20000:]
     if q.poll() is not None: say('QEMU stopped:', q.returncode)
-    if shell:
-        time.sleep(5 if ok else 0)
-        try: g.shot(os.path.join(out, 'screen.png')); say('screen: screen.png')
-        except Exception as e: say('no screen picture:', e)
-        for c in ('uname -m; cat /etc/rudolf/unverified; ls /newroot 2>/dev/null | head -3; tail -20 /tmp/initramfs.log 2>/dev/null', 'cat /run/rudolf/desktop-engine; ls /dev/dri', 'free -m', 'tail -40 /run/rudolf/session.log',
-                  'grep -E "\\((EE|WW)\\)" /run/rudolf/Xorg.log | head -20', 'dmesg | grep -iE "error|fail|virtio" | tail -20', 'ps -o pid,rss,args | head -40'):
-            say('$ ' + c)
-            try: say(sh(c, 30))
-            except OSError: say('(the serial port did not take the command)')
+    try: g.shot(os.path.join(out, 'screen.png')); say('screen: screen.png')
+    except Exception as e: say('no screen picture:', e)
+    if 'PROBE-START' in buf: say('--- the probe:'); say(buf.split('PROBE-START')[-1][-8000:])
 finally:
-    try: cons.write(g.s.read(1))
-    except OSError: pass
     cons.close(); q.kill()
-    if not ok:   # (the artifacts may not be reachable: the console's end and QEMU's messages in the log too)
-        say('--- the serial console, last lines:'); say('\n'.join(open(os.path.join(out, 'console.txt'), errors='replace').read().replace('\r', '').split('\n')[-60:]))
+    if not ok and 'PROBE-START' not in buf:
+        say('--- the serial console, last lines:'); say('\n'.join(open(os.path.join(out, 'console.txt'), errors='replace').read().split('\n')[-60:]))
         say('--- QEMU:'); say(open(os.path.join(out, 'qemu.txt'), errors='replace').read()[-2000:])
 say('PASS: the ARM64 system reached the Lite sign-in screen in QEMU' if ok else 'FAIL: the Lite desktop did not answer within 15 minutes')
 sys.exit(0 if ok else 1)
