@@ -200,6 +200,12 @@ the official releases works; a build signed by anyone else is refused. The Libra
   OS shows how to enrol it in the firmware (MOK-style enrolment where the firmware allows it, or the firmware's own
   key menu), or to turn Secure Boot off; it never weakens Secure Boot by itself. The official Secure Boot key stays
   enrolled (8.4 depends on it).
+- **Done (2026-11-13):** rudolf-update `developer on KEY URL | off` (the key in /persist/etc/rudolf/extra-keys, never
+  the official one; the official keys alone count for "official" and for the recovery system), status's `signer`,
+  `signerKey`, `developer`, `recoveryOfficial`; rudolfd `sys/developer`; Settings › Update and recovery › Developer mode
+  (warning, typed "I TRUST THIS DEVELOPER", the password every time) and Official / Custom in About. Not yet: the
+  "custom" mark in the Start menu, the self-test, Blitzen and the devlink reporting it; a custom build's own Secure
+  Boot key (a custom kernel started by kexec with Secure Boot on needs it enrolled).
 - Turning Developer mode off is 8.5.
 
 ### 8.4 Recovery mode is always the official Rudolf OS
