@@ -22,6 +22,7 @@ Summary: In progress.
 - New: an official recovery system on every installed computer: the newest official release that started successfully is kept (without using extra room), and Recovery mode starts it. Only releases signed with the official key ever become the recovery system.
 - New: Developer mode (Settings › Update and recovery, administrators): install your own Rudolf OS builds, signed with your publisher key, from your own address, after a strong warning, a typed confirmation and the password. Settings › About says whether the running system is the Official Rudolf OS or a Custom build, and with which key.
 - New: Return to official Rudolf OS (Settings › Update and recovery, and offered in Recovery mode): Developer mode off, the official Rudolf OS at the next restart, keeping your accounts, files and apps or erasing everything; the custom build is removed once the official one has started.
+- New: docs/custom-builds.md, how to make your own Rudolf OS (keys, update address, Library) and go back to the official one; its commands are checked in CI.
 - Changed: Chromium comes only from Ubuntu's open-source Chromium (the snap). When it cannot be fetched, the release keeps the Chromium it has, instead of taking another kind of browser; it never goes back to an older version.
 - Fixed: when a system file does not match its release, the start-up and Task Manager say so plainly, with its size, instead of a low-level error.
 

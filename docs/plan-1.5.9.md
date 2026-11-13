@@ -273,6 +273,8 @@ A new `docs/custom-builds.md`, linked from the README, for someone who forks Rud
    official recovery and update addresses are the project's.
 7. **Publishing games for the official Library:** the developer certificate (8.2), the sandbox's API, the review, and
    the games plan's rules (docs/plan-games.md).
+- **Done (2026-11-13):** docs/custom-builds.md, linked from the README; workflow *Custom builds page* runs its `sh ci`
+  blocks (iso/qt/host/custombuild_t.sh).
 - Each command in it is run in CI against a throw-away fork layout (keys made, a package signed and verified, a
   manifest signed and checked by rudolf-update in its test mode), so the README cannot go stale.
 
