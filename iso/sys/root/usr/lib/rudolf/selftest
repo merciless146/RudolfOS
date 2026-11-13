@@ -68,12 +68,20 @@ else
 fi
 
 # ---- the camera
+# 1.5.9 (plan 7.2): also when it is missing (switched off in Privacy, or a USB camera without its driver) and which
+# app has it open (a camera is used by one app at a time: a call cannot have it while another app does)
 cams=$(ls "$DEV"/video[0-9]* 2>/dev/null)
-if [ -z "$cams" ]; then skip camera "no camera found"
+if [ -z "$cams" ]; then
+	if [ -e "$RUN/camera-off" ]; then skip camera "no camera: it is switched off (Settings › Privacy › Camera)"
+	elif cat "$SYS"/bus/usb/devices/*/modalias 2>/dev/null | grep -q 'ic0Eisc01'; then fail camera "a camera is connected but has no driver (uvcvideo): no app can use it"
+	else skip camera "no camera found"; fi
 else
 	bad=""; for c in $cams; do g=$(stat -c %G "$c" 2>/dev/null); m=$(stat -c %a "$c" 2>/dev/null); gm=$(( (0${m:-0} >> 3) & 6 ))
 		{ [ "$g" = video ] || [ "$(stat -c %g "$c" 2>/dev/null)" = 1000 ]; } && [ $gm = 6 ] || bad="$bad ${c##*/}($g $m)"; done
-	if [ -z "$bad" ]; then pass camera "$(echo $cams | wc -w) camera device(s), usable by apps"; else fail camera "not usable by apps:$bad"; fi
+	use=""; for f in "$PROC"/[0-9]*/fd/*; do l=$(readlink "$f" 2>/dev/null); case "$l" in "$DEV"/video[0-9]*|/dev/video[0-9]*)
+		a=$(rd1 "${f%/fd/*}/comm"); case " $use " in *" $a "*) ;; *) use="$use $a";; esac;; esac; done
+	inuse=""; [ -n "$use" ] && inuse=" (in use now by$use)"
+	if [ -z "$bad" ]; then pass camera "$(echo $cams | wc -w) camera device(s), usable by apps$inuse"; else fail camera "not usable by apps:$bad$inuse"; fi
 fi
 
 # ---- the battery limit
