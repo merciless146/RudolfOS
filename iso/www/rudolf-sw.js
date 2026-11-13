@@ -9,6 +9,7 @@ self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Pr
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url); if (e.request.method != 'GET' || u.origin != location.origin || u.pathname.includes('/api/')) return;
   const keep = r => { if (r && r.ok && r.type == 'basic') { const c = r.clone(); caches.open(C).then(k => k.put(e.request, c)) } return r };
-  if (u.pathname.includes('/lib/')) { e.respondWith(caches.match(e.request).then(h => h || fetch(e.request).then(keep))); return }
+  /* (1.5.9: and a/, the dynamic backgrounds' pictures and the fonts, named by their contents: they never change) */
+  if (u.pathname.includes('/lib/') || u.pathname.includes('/a/')) { e.respondWith(caches.match(e.request).then(h => h || fetch(e.request).then(keep))); return }
   e.respondWith(fetch(e.request).then(keep).catch(() => caches.match(e.request).then(h => h || caches.match('index.html'))));
 });
