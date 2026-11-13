@@ -108,8 +108,11 @@ bootloader read over the devlink (read only).
   snap's arm64 build is in the layer and renders a page; that snap is built on core26 (glibc 2.43), so it brings its
   base's C library in /opt/chromium/glibc (only Chromium uses it). Fixed on the way: the session gave up before a
   display adapter's driver made /dev/fb0 (now waits up to 30 s); with rudolf.debug=1 the start-up and the session are
-  traced. Next (needs your OK): the test channel `beta-arm64/`; then UEFI firmware instead of `-kernel`, Chromium
-  (Standard) as the desktop engine, and the update and recovery checks.
+  traced.
+- **Step 5 (2026-11-13):** the ARM64 check also starts the system **by the UEFI firmware** (QEMU_EFI.fd: the kernel's
+  EFI application on an EFI system partition, started by the firmware's shell; Lite sign-in at 388 s under TCG) and
+  with **Chromium (Standard) as the desktop** (sign-in at 166 s): runs 43466031954 and 43478068386. Next (needs your
+  OK): the test channel `beta-arm64/`; then the update and recovery checks on it.
 
 ## Part 4: Share this connection (docs/plan-1.5.8.md 6.4)
 - Rudolf OS as the hotspot: hostapd and dnsmasq in the system layer (about 1 MB), the firewall's NAT rules, off by
