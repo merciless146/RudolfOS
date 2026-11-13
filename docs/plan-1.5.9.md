@@ -172,6 +172,13 @@ the official releases works; a build signed by anyone else is refused. The Libra
   Library key through a valid certificate, and whose name the certificate allows.
 - **Revocation:** a signed `revoked.txt` in the Library (keys and packages); rpk checks it with the index, and a
   revoked package is disabled on every computer at the next check (the App Store says why).
+- **Done (2026-11-13):** rpk-tool `cert` (the Library signs `rpk-cert 1`: name, github, key, prefix, expires) and
+  `build --cert` (the package carries it: `RPKSIG02` trailer); rpk accepts it like a Library package (desktop files
+  only), under the prefix, never replacing someone else's, with a certificate from a trusted key that has not expired.
+  Revocations are "R" lines in the signed package list (from the Library's `revoked.txt`) rather than a separate
+  `revoked.txt` download: refused to install, disabled at the next refresh (`db/NAME.disabled`, in status, not mounted).
+  Not yet: the App Store showing the developer and a disabled app's reason; rudolfos-library's workflow publishing
+  `dev/<name>.cert`.
 - **Review:** a developer's first package, and any that asks for new permissions, is reviewed before it is listed
   (a pull request to rudolfos-library, as today). Until certificates exist, that pull request is the way to publish:
   the Library's own workflow signs.
