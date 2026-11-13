@@ -218,9 +218,11 @@ the official releases works; a build signed by anyone else is refused. The Libra
   person allowed: saves (their own folder only), gamepads, full screen, notifications, network (on by default),
   nothing else. The games plan's `rudolf-gamekit` uses only this API.
   **Done (2026-11-13):** the web-app window's frame has no origin (rudolfd also sends /pkg/ pages with a sandbox
-  policy, so one opened some other way is sandboxed too); the person is asked once per account for what PKGINFO's
-  `permissions` lists (saves, gamepad, fullscreen, notifications); saves go to Saved Games\NAME (1 MB each, 20 MB in
-  all); www/lib/rudolf-gamekit.js wraps the messages. The network is not limited.
+  policy, so one opened some other way is sandboxed too). The API is the game kit's messages (games58.js, rudolfGame:
+  hello, load, save; the Library's lib/gamekit); the project's own Library apps get them with full screen and
+  controllers as before; an outside developer's app gets what PKGINFO's `permissions` lists (saves, gamepad,
+  fullscreen) and the person allowed, asked once per account. (A first version added a second API and game kit; they
+  were removed the same day.) The network is not limited.
 
 ### 8.3 Developer mode: a custom build on one's own computer
 - Settings › Updates › Developer mode (administrators, with a strong warning, the password, and a typed confirmation):

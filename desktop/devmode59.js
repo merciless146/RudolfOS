@@ -59,3 +59,5 @@ if(RD&&window.RUDOLFD&&RUDOLFD.recovery)setTimeout(async()=>{try{const s=await r
 {const _ab=aboutPanel;aboutPanel=function(c){_ab.apply(this,arguments);if(!RD)return;
  rd('sys/status').then(s=>{const b=devmBuild(s);if(!b||!c.isConnected)return;const v=c.querySelector('.msg');if(!v)return;
   const d=document.createElement('div');d.className='devmab';d.textContent=(s.signer=='official'?'✅ ':'⚠️ ')+b;d.style.cssText='font-size:12px;margin-top:2px;'+(s.signer=='official'?'':'color:#b45309;font-weight:600');v.after(d)}).catch(()=>{})}}
+/* the Start button: a small "custom" mark on a custom build's version */
+if(RD)setTimeout(async()=>{try{const s=await rd('sys/status');if(!s||s.signer!='custom')return;const _d=osverDraw;osverDraw=function(){_d.apply(this,arguments);const v=document.querySelector('#start .stv');if(v&&!/custom$/.test(v.textContent)){v.textContent+=' · custom';v.title='A custom build: '+devmBuild(s)}};osverDraw()}catch(e){}},4000);

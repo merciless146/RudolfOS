@@ -47,6 +47,8 @@ addEventListener('message',async e=>{const m=e.data;if(!m||m.rudolfGame!==1||typ
  if(typeof m.game!='string'||!/^[a-z0-9-]{2,40}$/.test(m.game))return reply({ok:false,error:'bad game id'});
  if(!GAME_FRAMES.has(at.f))GAME_FRAMES.set(at.f,{pkg:at.pkg,paused:false});
  if(m.op=='hello')return reply({ok:true,dark:gameDark(),reduceFlash:gameRM()});
+ /* 1.5.9 (plan 8.2): an outside developer's app keeps saves only when the person allowed it (pkgbox59.js) */
+ if((m.op=='load'||m.op=='save')&&at.f.dataset.dev=='1'&&!(at.f.dataset.grants||'').split(' ').includes('saves'))return reply({ok:false,error:'saves were not allowed for this app'});
  if(m.op=='load'){let v;try{v=await kvGet(gameKey(at.pkg,m.game))}catch(x){}return reply({ok:true,data:v===undefined?null:v})}
  if(m.op=='save'){let s;try{s=JSON.stringify(m.data===undefined?null:m.data)}catch(x){return reply({ok:false,error:'not JSON'})}
   if(s.length>GAME_MAX)return reply({ok:false,error:'too large'});
