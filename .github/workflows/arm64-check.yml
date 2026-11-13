@@ -11,7 +11,7 @@ on:
     inputs:
       reuse: {description: 'Start in QEMU only, with the kernel and layers of this earlier run (its id)', required: false, default: ''}
   pull_request:
-    paths: ['iso/kconfig-arm64.sh', 'iso/systools/arm64_kernel.sh', 'iso/systools/arm64_base.sh', 'iso/qt/arm64_boot.py', 'iso/sys/*.c', 'iso/sys/root/**', 'iso/initramfs/**',
+    paths: ['iso/kconfig-arm64.sh', 'iso/systools/arm64_kernel.sh', 'iso/systools/arm64_base.sh', 'iso/qt/arm64_boot.py', 'iso/systools/chromium_fetch.sh', 'iso/sys/*.c', 'iso/sys/root/**', 'iso/initramfs/**',
       'iso/mkrootfs.sh', 'iso/xbuild.sh', 'iso/xshim.sh', 'iso/sndbuild.sh', 'iso/sndshim.sh', 'iso/wifibuild.sh', 'iso/pkgmanifest.py',
       'iso/systools/mklayers.sh', 'iso/systools/addwebkit.sh', '.github/workflows/arm64-check.yml']
 permissions: {contents: read, actions: read}

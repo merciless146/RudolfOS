@@ -38,7 +38,7 @@ for s in (f'/tmp/ser-{N}.sock', f'/tmp/qmp-{N}.sock'):
     if os.path.exists(s): os.unlink(s)
 acc = 'kvm' if os.access('/dev/kvm', os.W_OK) else 'tcg'; say('accelerator', acc)
 q = subprocess.Popen(['qemu-system-aarch64', '-M', 'virt', '-cpu', 'max' if acc == 'tcg' else 'host', '-accel', acc, '-m', '3G', '-smp', '4',
-    '-kernel', img, '-append', 'console=ttyAMA0 console=tty0 rudolf.debug=1 panic=-1',
+    '-kernel', img, '-append', 'console=ttyAMA0 console=tty0 rudolf.debug=1 rudolf.lite=1 panic=-1',
     '-drive', f'if=none,id=d0,format=raw,readonly=on,file={iso}', '-device', 'virtio-blk-pci,drive=d0',
     '-device', 'virtio-gpu-pci,xres=1280,yres=800', '-device', 'virtio-keyboard-pci', '-device', 'virtio-tablet-pci',
     '-nic', 'user,model=virtio-net-pci', '-display', 'none', '-no-reboot',

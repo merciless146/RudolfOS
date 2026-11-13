@@ -4,7 +4,7 @@
 # source commit), the sound server (PulseAudio 16.1, sndbuild.sh), the Wi-Fi tools (wifibuild.sh), then mkrootfs.sh
 # (the system programs, WebKitGTK: the Lite engine) and mklayers.sh. No Chromium yet (CHROME_DIR=none), no Linux apps
 # (Flatpak), no speech or Blitzen engine: those come in later steps. Not a release: the "ARM64 check" workflow builds
-# it and checks every program in it can start on ARM64 (each one's libraries are all there, read by the layer's own
+# it and checks every program in it can start on ARM64; (step 4) Chromium from the snap's arm64 build (each one's libraries are all there, read by the layer's own
 # program loader), then the main ones run.   OUT=DIR arm64_base.sh    writes OUT/base.sfs, OUT/report.txt
 # GPL-2.0-or-later.
 set -e
@@ -36,9 +36,12 @@ echo "== the Wi-Fi tools"
 clone https://github.com/LineageOS/android_external_wpa_supplicant_8 lineage-24.0 src/hostap
 clone https://github.com/thom311/libnl libnl3_9_0 src/libnl
 bash wifibuild.sh > "$OUT/wifibuild.log" 2>&1 || { tail -40 "$OUT/wifibuild.log"; echo "the Wi-Fi tools did not build"; exit 1; }
+echo "== Chromium (the snap's, for ARM64)"
+CH=none; if bash systools/chromium_fetch.sh snap "$OUT/chrome" > "$OUT/chromium.log" 2>&1; then CH=$OUT/chrome; echo "Chromium $(cat "$OUT/chrome.version") (arm64 snap)" | tee -a "$OUT/report.txt"
+else tail -5 "$OUT/chromium.log"; echo "::warning title=ARM64 Chromium::the arm64 snap could not be fetched: the layer is built without it"; fi
 echo "== the root file system"
 mkdir -p sys/root/usr/share/rudolf sys/root/etc/rudolf; cp boot/sb/rudolf-sb.crt sys/root/usr/share/rudolf/rudolf-sb.crt; cp trusted-keys.txt sys/root/etc/rudolf/rpk-keys
-sudo -E env "PATH=$PATH" CHROME_DIR=none MA=$MA bash mkrootfs.sh "$OUT/rootfs" www > "$OUT/mkrootfs.log" 2>&1 || { tail -40 "$OUT/mkrootfs.log"; echo "mkrootfs.sh failed"; exit 1; }
+sudo -E env "PATH=$PATH" CHROME_DIR=$CH MA=$MA bash mkrootfs.sh "$OUT/rootfs" www > "$OUT/mkrootfs.log" 2>&1 || { tail -40 "$OUT/mkrootfs.log"; echo "mkrootfs.sh failed"; exit 1; }
 tail -3 "$OUT/mkrootfs.log"
 R=$OUT/rootfs; LD=/usr/lib/ld-linux-aarch64.so.1
 [ -e "$R$LD" ] && [ -L "$R/lib" ] || { echo "the program loader is not at $LD"; exit 1; }
@@ -60,6 +63,15 @@ run /usr/bin/pulseaudio --version | grep -q "pulseaudio 16.1" || { echo "PulseAu
 run /usr/sbin/wpa_supplicant -v | grep -q "wpa_supplicant v" || { echo "wpa_supplicant does not run"; exit 1; }
 run /usr/bin/rudolf-memguard --warn 3415 340 3415 2387 | grep -qx 1 || { echo "rudolf-memguard does not run"; exit 1; }
 [ -x "$R/usr/bin/rudolf-webkit" ] && [ -x "$R/usr/lib/$MA/webkit2gtk-4.1/WebKitWebProcess" ] || { echo "no WebKitGTK (the Lite engine) in the layer"; exit 1; }
+# Chromium starts inside the layer and renders a page (as the release's start test does)
+if [ "$CH" != none ]; then
+	sudo mount --bind /dev "$R/dev"; sudo mount -t proc proc "$R/proc"
+	OK=$(sudo chroot "$R" /opt/chromium/chrome --headless=new --no-sandbox --disable-gpu --user-data-dir=/tmp/ct --dump-dom 'data:text/html,<p>rudolf-ok</p>' 2>/dev/null | grep -c rudolf-ok || true)
+	BR=$(sudo chroot "$R" /opt/chromium/chrome --version 2>/dev/null | head -1)
+	sudo umount "$R/proc" "$R/dev"; sudo rm -rf "$R/tmp/ct"
+	echo "Chromium in the layer: $BR, renders a page: $([ "$OK" -ge 1 ] && echo yes || echo no)" | tee -a "$OUT/report.txt"
+	[ "$OK" -ge 1 ] || { echo "Chromium does not start inside the ARM64 layer"; exit 1; }
+fi
 echo "== the layer"
 sudo bash systools/mklayers.sh "$R" "$OUT/layers" | tee -a "$OUT/report.txt"
 sudo cp "$OUT/layers/base.sfs" "$OUT/base.sfs"; sudo chown "$(id -u)" "$OUT/base.sfs"

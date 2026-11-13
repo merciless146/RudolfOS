@@ -8,19 +8,21 @@
 # and OUTDIR.version. Network access is needed. GPL-2.0-or-later.
 set -e
 SRC=${1:-snap}; OUT=$(realpath -m "$2"); rm -rf "$OUT"; mkdir -p "$OUT"
+# (1.5.9, plan Part 3: the build machine's architecture: amd64, or arm64 on GitHub's ARM64 runner; CHROMIUM_ARCH overrides)
+ARCH=${CHROMIUM_ARCH:-$(dpkg --print-architecture 2>/dev/null || echo amd64)}
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 case "$SRC" in
 snap)
 	# (1.5.8: retried; on 2026-11-12 the store's TLS handshake timed out once and the release fell back to Playwright)
 	J=$(curl -fsSL --retry 4 --retry-delay 10 --retry-all-errors --connect-timeout 30 -H 'Snap-Device-Series: 16' 'https://api.snapcraft.io/v2/snaps/info/chromium?fields=download,version')
-	URL=$(echo "$J" | jq -r '."channel-map"[] | select(.channel.name=="stable" and .channel.architecture=="amd64") | .download.url' | head -1)
-	VER=$(echo "$J" | jq -r '."channel-map"[] | select(.channel.name=="stable" and .channel.architecture=="amd64") | .version' | head -1)
-	[ -n "$URL" ] && [ "$URL" != null ] || { echo "no stable amd64 chromium snap" >&2; exit 1; }
+	URL=$(echo "$J" | jq -r '."channel-map"[] | select(.channel.name=="stable" and .channel.architecture==$a) | .download.url' --arg a "$ARCH" | head -1)
+	VER=$(echo "$J" | jq -r '."channel-map"[] | select(.channel.name=="stable" and .channel.architecture==$a) | .version' --arg a "$ARCH" | head -1)
+	[ -n "$URL" ] && [ "$URL" != null ] || { echo "no stable $ARCH chromium snap" >&2; exit 1; }
 	# (1.5.9: on 2026-11-12 the download itself failed four builds running (curl 52, an empty reply): longer retries,
 	# then snapd's own download as a second way to the same snap)
 	curl -fsSL --retry 6 --retry-delay 20 --retry-all-errors --connect-timeout 30 --max-time 900 -o "$W/c.snap" "$URL" || {
 		echo "the snap's download failed; trying snapd" >&2; rm -f "$W/c.snap"
-		( cd "$W" && timeout 900 snap download chromium --channel=stable --basename=c >/dev/null ) || { echo "snapd could not download the snap either" >&2; exit 1; }
+		( cd "$W" && UBUNTU_STORE_ARCH=$ARCH timeout 900 snap download chromium --channel=stable --basename=c >/dev/null ) || { echo "snapd could not download the snap either" >&2; exit 1; }
 		[ -s "$W/c.snap" ] || { echo "snapd gave no snap" >&2; exit 1; }; }
 	unsquashfs -q -d "$W/s" "$W/c.snap" 'usr/lib/chromium-browser' >/dev/null
 	cp -a "$W/s/usr/lib/chromium-browser/." "$OUT/"
