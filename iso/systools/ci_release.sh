@@ -150,7 +150,8 @@ mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/ru
 # came only from full local builds, so GLX (off since 1.1) could not be turned on by an update
 XREV=f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2
 XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | cut -c1-16)
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+# (1.5.9: and this script itself: a program it adds to the base layer, such as iw, rebuilds the layer)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -206,8 +207,10 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		case "$x" in *.conf) continue;; esac
 		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; done
 	done
-	for x in /usr/sbin/nft /usr/sbin/tune2fs; do
-		[ -x "$x" ] || { echo "$x is missing on the build machine (apt-get install nftables e2fsprogs)"; exit 1; }
+	# 1.5.9: and iw: the Wi-Fi chip's bands (Settings › Network › Wi-Fi › This computer's Wi-Fi radios, wifi.sh radios
+	# and band); it was never in the base layer, so on the Vivobook (2026111308) those found no bands at all
+	for x in /usr/sbin/nft /usr/sbin/tune2fs /usr/sbin/iw; do
+		[ -x "$x" ] || { echo "$x is missing on the build machine (apt-get install nftables e2fsprogs iw)"; exit 1; }
 		sudo install -m 0755 "$x" "$W/broot/usr/sbin/${x##*/}"
 		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; done
 	done
