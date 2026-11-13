@@ -102,6 +102,13 @@ bootloader read over the devlink (read only).
   layer finds its libraries through the layer's own loader, and Xorg, PulseAudio, wpa_supplicant and the memory guard
   run inside it: base.sfs 214 MB (758 MB unpacked). Not in it yet: Chromium, Flatpak, speech, Blitzen's engine,
   firmware. Next: the layers started together in QEMU to the Lite sign-in screen, then the test channel.
+- **Steps 3 and 4 (2026-11-13): the ARM64 system reaches the Lite sign-in screen in QEMU** (run 43445321597; the
+  *boot* job: QEMU virt under TCG, virtio graphics, the four layers from a disc, Lite in 132 s). Chromium from the
+  snap's arm64 build is in the layer and renders a page; that snap is built on core26 (glibc 2.43), so it brings its
+  base's C library in /opt/chromium/glibc (only Chromium uses it). Fixed on the way: the session gave up before a
+  display adapter's driver made /dev/fb0 (now waits up to 30 s); with rudolf.debug=1 the start-up and the session are
+  traced. Next (needs your OK): the test channel `beta-arm64/`; then UEFI firmware instead of `-kernel`, Chromium
+  (Standard) as the desktop engine, and the update and recovery checks.
 
 ## Part 4: Share this connection (docs/plan-1.5.8.md 6.4)
 - Rudolf OS as the hotspot: hostapd and dnsmasq in the system layer (about 1 MB), the firewall's NAT rules, off by
@@ -114,8 +121,9 @@ bootloader read over the devlink (read only).
   connection let go and given back); hostapd (WPA2/WPA3, the name as hex), dnsmasq on 10.42.0.0/24, NAT and a forward
   chain in its own table, the firewall's `hotspot` chain for DHCP and DNS; the password kept root-only for next time;
   wifi.sh does not start a connection on the access point. rudolfd `net/hotspot` (the request through a root-only
-  file); Settings › Network › Share this connection. ci_release.sh adds hostapd, hostapd_cli and dnsmasq within the
-  10 MB with ModemManager. To check on the Vivobook (iw is in the base layer from #267): AP mode on the RTL8821CE,
+  file); Settings › Network › Share this connection. ci_release.sh adds hostapd, hostapd_cli and dnsmasq with a budget of
+  their own, 6 MB (beta 2026111314 stopped: with ModemManager's they came to 13 MB, over the shared 10 MB; ModemManager
+  keeps its 10 MB). To check on the Vivobook (iw is in the base layer from #267): AP mode on the RTL8821CE,
   with the USB tethering of the phone as the connection.
 
 ## Part 5: Android apps with Waydroid, in Debian (docs/plan-1.5.8.md 7.3)
