@@ -18,6 +18,7 @@ Summary: In progress.
 - New: "Why does the Wi-Fi drop?" (Settings › Network › Wi-Fi, or asking Blitzen about a Wi-Fi problem): Blitzen reads the Wi-Fi's log, the kernel's Wi-Fi messages and the radios, and recommends only the Wi-Fi settings that exist.
 - Improved: Blitzen's Wi-Fi answer now rests on findings worked out from the logs (which radio did not answer, how strong each radio is) and names the setting to change, instead of retelling earlier versions from the documentation.
 - New: "This computer's Wi-Fi radios" (Settings › Network › Wi-Fi), a drop-down menu with a check by each of the computer's own Wi-Fi radios (2.4 / 5 / 6 GHz) that is on. Only an administrator can change it, with their password, and Rudolf OS never changes it by itself.
+- Security: Library web apps run in a sandbox of their own (no access to the desktop, its storage or rudolfd), and get only what they ask for and you allow when you first open one: their own saves (Saved Games), game controllers, full screen and notifications (rudolf-gamekit). Needed before apps from outside developers can be in the Library.
 - Changed: Chromium comes only from Ubuntu's open-source Chromium (the snap). When it cannot be fetched, the release keeps the Chromium it has, instead of taking another kind of browser; it never goes back to an older version.
 - Fixed: when a system file does not match its release, the start-up and Task Manager say so plainly, with its size, instead of a low-level error.
 
