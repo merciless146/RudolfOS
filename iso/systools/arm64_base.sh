@@ -65,12 +65,17 @@ run /usr/bin/rudolf-memguard --warn 3415 340 3415 2387 | grep -qx 1 || { echo "r
 [ -x "$R/usr/bin/rudolf-webkit" ] && [ -x "$R/usr/lib/$MA/webkit2gtk-4.1/WebKitWebProcess" ] || { echo "no WebKitGTK (the Lite engine) in the layer"; exit 1; }
 # Chromium starts inside the layer and renders a page (as the release's start test does)
 if [ "$CH" != none ]; then
-	sudo mount --bind /dev "$R/dev"; sudo mount -t proc proc "$R/proc"
-	OK=$(sudo chroot "$R" /opt/chromium/chrome --headless=new --no-sandbox --disable-gpu --user-data-dir=/tmp/ct --dump-dom 'data:text/html,<p>rudolf-ok</p>' 2>/dev/null | grep -c rudolf-ok || true)
-	BR=$(sudo chroot "$R" /opt/chromium/chrome --version 2>/dev/null | head -1)
-	sudo umount "$R/proc" "$R/dev"; sudo rm -rf "$R/tmp/ct"
+	# (its libraries first: the snap's Chromium brings some of its own, the rest must be in the layer)
+	CMISS=$(sudo chroot "$R" $LD --list /opt/chromium/chrome 2>&1 | grep 'not found' || true)
+	[ -z "$CMISS" ] || { echo "$CMISS" | head -20; echo "Chromium's libraries missing in the ARM64 layer"; exit 1; }
+	# /dev with its /dev/shm and /dev/pts (rbind), /proc and /sys, as at start-up
+	sudo mount --rbind /dev "$R/dev"; sudo mount --make-rslave "$R/dev"; sudo mount -t proc proc "$R/proc"; sudo mount --rbind /sys "$R/sys"; sudo mount --make-rslave "$R/sys"
+	OUTC=$(sudo chroot "$R" /opt/chromium/chrome --headless=new --no-sandbox --disable-gpu --user-data-dir=/tmp/ct --dump-dom 'data:text/html,<p>rudolf-ok</p>' 2>&1 || true)
+	OK=$(echo "$OUTC" | grep -c rudolf-ok || true)
+	BR=$(sudo chroot "$R" /opt/chromium/chrome --version 2>&1 | head -1)
+	sudo umount -R "$R/sys" "$R/proc" "$R/dev" 2>/dev/null || sudo umount -l "$R/sys" "$R/proc" "$R/dev"; sudo rm -rf "$R/tmp/ct"
 	echo "Chromium in the layer: $BR, renders a page: $([ "$OK" -ge 1 ] && echo yes || echo no)" | tee -a "$OUT/report.txt"
-	[ "$OK" -ge 1 ] || { echo "Chromium does not start inside the ARM64 layer"; exit 1; }
+	[ "$OK" -ge 1 ] || { echo "$OUTC" | grep -v '^\s*$' | tail -25; echo "Chromium does not start inside the ARM64 layer"; exit 1; }
 fi
 echo "== the layer"
 sudo bash systools/mklayers.sh "$R" "$OUT/layers" | tee -a "$OUT/report.txt"
