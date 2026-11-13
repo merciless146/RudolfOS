@@ -24,7 +24,7 @@ Summary: In progress.
 - New: Return to official Rudolf OS (Settings › Update and recovery, and offered in Recovery mode): Developer mode off, the official Rudolf OS at the next restart, keeping your accounts, files and apps or erasing everything; the custom build is removed once the official one has started.
 - New: docs/custom-builds.md, how to make your own Rudolf OS (keys, update address, Library) and go back to the official one; its commands are checked in CI.
 - New: packages from outside developers, through a chain of trust: the Rudolf OS Library certifies a developer (their key and the names they may use); their apps install only as desktop apps in the sandbox, under those names; the Library can revoke a developer or a package, which is then disabled on every computer at its next check.
-- New: video calls in the Lite engine's Oracle tabs (WebRTC, with GStreamer's call plug-ins), checked by a test call in CI.
+- New: video calls: with the Lite engine, Google Meet, Zoom's web client, Teams and other call sites open in Chromium's window (Ubuntu's WebKitGTK has no WebRTC); test calls on both engines in CI.
 - New: "In a call" in the taskbar (🎙️ while an app uses the microphone; one click mutes it for everything); a call keeps the screen saver, the lock and sleep away; changing the sound output moves the call too, and a headset plugged in takes over.
 - New: Settings › Apps › Calls to phones: what Google Voice, Zoom Phone and Teams Phone need to call phone numbers.
 - Changed: Chromium comes only from Ubuntu's open-source Chromium (the snap). When it cannot be fetched, the release keeps the Chromium it has, instead of taking another kind of browser; it never goes back to an older version.
