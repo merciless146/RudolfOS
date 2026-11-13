@@ -3,16 +3,29 @@
 # libqrtr) runs only while a cellular modem is plugged in or built in: mdev starts it when a modem's device appears
 # (wwan*, cdc-wdm*, a USB modem's serial ports) and it stops when the last one goes. It is on the system bus (the one
 # Bluetooth uses, /etc/rudolf/dbus-system.conf). Nothing connects yet: that is 1.6.0 (SIM, APN and metering together).
+# Rudolf OS has mdev, not udev, so ModemManager runs as on OpenWrt: without udev (--test-no-udev, or --no-auto-scan on
+# an older one), applying its own udev rules (/usr/lib/udev/rules.d/*-mm-*.rules: which ports are modem candidates)
+# itself, and told of each port with mmcli --report-kernel-event: the ports already there when it starts, then each one
+# mdev reports. (With udev built in and no udevd, it would find no port marked ID_MM_CANDIDATE and see no modem.)
 #   modem hotplug     (mdev, with ACTION and MDEV) a modem's device came or went
 #   modem start|stop
 #   modem status      JSON: {"running":bool,"modems":[{maker,model,firmware,driver,state,sim,locked,operator,signal,tech,…}]}
 # GPL-2.0-or-later.
 export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
 BUS=/run/dbus/system_bus_socket; LOG=${RUDOLF_MODEM_LOG:-/run/rudolf/modem.log}; DEVS=${RUDOLF_MODEM_DEV:-/dev}
+SYS=${RUDOLF_MODEM_SYS:-/sys}; R=${RUDOLF_RUN:-/run/rudolf}
 MM=$(command -v ModemManager)
 running() { pgrep -x ModemManager >/dev/null 2>&1; }
+# a port's subsystem as ModemManager names it (empty: not a port it is told of)
+subsys() { case "$1" in cdc-wdm*) echo usbmisc;; ttyUSB*|ttyACM*) echo tty;; wwan*) [ -e $SYS/class/net/$1 ] && echo net || echo wwan;;
+	*) case "$(readlink -f $SYS/class/net/$1/device/driver 2>/dev/null)" in */qmi_wwan|*/cdc_mbim|*/mhi_net|*/mhi_wwan_mbim) echo net;; esac;; esac; }
+report() { S=$(subsys "$2"); [ -n "$S" ] || return 0
+	mmcli --report-kernel-event="action=$1,subsystem=$S,name=$2" >/dev/null 2>&1 || echo "$(date) could not report $1 $S/$2" >> $LOG; }
+# every port there now (also the network interfaces, which mdev does not report)
+ports() { for d in $SYS/class/usbmisc/cdc-wdm* $SYS/class/wwan/* $SYS/class/tty/ttyUSB* $SYS/class/tty/ttyACM* $SYS/class/net/*; do
+	[ -e "$d" ] && [ -n "$(subsys "${d##*/}")" ] && echo "${d##*/}"; done; }
 any_modem() { ls $DEVS/cdc-wdm* $DEVS/wwan* 2>/dev/null | grep -q . && return 0
-	for t in $DEVS/ttyUSB*; do [ -e "$t" ] || continue; case "$(readlink -f /sys/class/tty/${t##*/}/device/driver 2>/dev/null)" in */option*|*/qcserial*|*/sierra*) return 0;; esac; done; return 1; }
+	for t in $DEVS/ttyUSB*; do [ -e "$t" ] || continue; case "$(readlink -f $SYS/class/tty/${t##*/}/device/driver 2>/dev/null)" in */option*|*/qcserial*|*/sierra*) return 0;; esac; done; return 1; }
 start() {
 	[ -n "$MM" ] || { echo "ModemManager is not part of this build"; return 1; }
 	running && return 0
@@ -22,8 +35,12 @@ start() {
 		for i in $(seq 30); do [ -S $BUS ] && break; sleep 0.1; done
 	fi
 	# (no polkit on Rudolf OS: only root talks to it, through rudolfd)
-	setsid $MM --log-level=WARN >>$LOG 2>&1 </dev/null &
-	echo "$(date) ModemManager started" >> $LOG
+	NOU=--test-no-udev; $MM --help-all 2>/dev/null | grep -q test-no-udev || NOU=--no-auto-scan
+	setsid $MM --log-level=WARN $NOU >>$LOG 2>&1 </dev/null &
+	echo "$(date) ModemManager started ($NOU)" >> $LOG
+	# on the bus, then told of the ports already there
+	for i in $(seq 50); do mmcli -L >/dev/null 2>&1 && break; sleep 0.2; done
+	for p in $(ports); do report add $p; done
 }
 stop() { running || return 0; pkill -x ModemManager; echo "$(date) ModemManager stopped (no modem left)" >> $LOG; }
 # one modem's mmcli -J output -> a small JSON object (python-free: sed on mmcli's JSON keys)
@@ -49,8 +66,10 @@ status() {
 }
 case "$1" in
 hotplug)
-	if [ "$ACTION" = remove ]; then sleep 1; any_modem || stop
-	else any_modem && start; fi ;;
+	# (one at a time: a modem's ports come together, and the first one starts ModemManager and reports them all)
+	mkdir -p $R; for i in $(seq 150); do mkdir $R/modem.lock 2>/dev/null && break; sleep 0.2; done; trap 'rmdir $R/modem.lock 2>/dev/null' EXIT
+	if [ "$ACTION" = remove ]; then running && report remove "$MDEV"; sleep 1; any_modem || stop
+	elif any_modem; then if running; then report add "$MDEV"; else start; fi; fi ;;
 start) start ;;
 stop) stop ;;
 status) status ;;
