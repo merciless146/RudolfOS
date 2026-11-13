@@ -26,7 +26,9 @@ i=0; while [ $i -lt 90 ]; do
 echo "== uname"; uname -m; echo "== unverified"; cat /etc/rudolf/unverified; echo "== engine"; cat /run/rudolf/engine-choice /run/rudolf/desktop-engine
 echo "== dri"; ls /dev/dri /dev/fb* /sys/class/graphics; cat /proc/fb; grep -iE "drm|virtio|fb" /proc/modules; echo "== free"; free -m; echo "== session.log"; tail -50 /run/rudolf/session.log
 echo "== Xorg"; grep -E "\((EE|WW)\)" /run/rudolf/Xorg.log | head -20; echo "== initramfs.log"; tail -20 /etc/rudolf/initramfs.log
-echo "== dmesg"; dmesg | tail -40; echo "== ps"; ps -o pid,rss,args | grep -v "\[" | head -40
+echo "== dmesg"; dmesg | tail -40; echo "== ps"; ps -o pid,ppid,stat,args | grep -v "\[" | head -45
+echo "== waiting"; for p in $(pidof rudolf-init sh); do echo "$p $(cat /proc/$p/wchan 2>/dev/null) $(tr '\0' ' ' < /proc/$p/cmdline | cut -c1-80)"; done | head -20
+echo "== init-trace"; tail -40 /run/rudolf/init-trace.log; ls -l /usr/lib/rudolf/session
 echo PROBE-DONE
 ''')
 for n, f in (('base', base), ('chromium', chrom), ('desktop', desk), ('modules', mods)): os.link(f, f'{d}/rudolf/{n}.sfs') if os.stat(f).st_dev == os.stat(d).st_dev else shutil.copy(f, f'{d}/rudolf/{n}.sfs')
