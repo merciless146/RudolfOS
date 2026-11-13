@@ -301,8 +301,12 @@ if [ -n "$REC" ] && [ -z "$SLOT" ] && [ -n "$MEDIA" ] && is_usb "$(disk_of "$MED
 	done
 fi
 if [ -z "$SLOT" ] && [ -n "$PERSIST" ] && [ -f $SYSD/state ] && [ -n "$REC" ]; then
-	GOOD=$(st_get good); PREV=$(st_get prev); T=""
-	for c in "$GOOD" "$PREV" r; do case "$c" in a|b|r) slot_ok "$c" && { T=$c; break; };; esac; done
+	GOOD=$(st_get good); PREV=$(st_get prev); T=""; FIRST=""
+	# 1.5.9 (plan 8.4): the official recovery system first (slot r with "official": the newest release signed by the
+	# official key that started on this computer, kept by rudolf-update), so Recovery mode is the official Rudolf OS
+	# whatever the normal start runs; its layers are checked against its own signed list as any slot's are
+	[ -e $SYSD/r/official ] && FIRST=r
+	for c in $FIRST "$GOOD" "$PREV" r; do case "$c" in a|b|r) slot_ok "$c" && { T=$c; break; };; esac; done
 	if [ -n "$T" ]; then
 		cp $SYSD/$T/vmlinuz /tmp/vmlinuz
 		NC="$CMD rudolf.slot=$T"; [ $SB = 1 ] && NC="$NC rudolf.sb=1 lockdown=integrity"

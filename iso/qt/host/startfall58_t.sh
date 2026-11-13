@@ -38,5 +38,10 @@ reset 'good=a\nprev=b\nnext=\ntries=0\nfailed=\n'; rm -rf $S/r; rm $S/a/complete
 ok "7. a stick made before 1.5.8 (no rescue system), nothing that starts: boot files only, as before" $(echo "$o" | grep -q 'boot files only' && ! echo "$o" | grep -q 'rudolf.slot=r'; echo $?) "$o"
 reset 'good=a\nprev=b\nnext=\ntries=0\nfailed=\n'; rm /mnt/media/rudolf/bootonly; for f in base chromium desktop modules; do echo x > /mnt/media/rudolf/$f.sfs; done; rm $S/a/complete; o=$(run "rudolf.boot=uefi" "")
 ok "8. a whole disc image: its own system, as before (the rescue system is for boot images)" $(! echo "$o" | grep -q 'rudolf.slot=r' && echo "$o" | grep -q LAYERS-OK; echo $?) "$o"
+# 1.5.9 (plan 8.4): Recovery mode starts the official recovery system (slot r marked official) before the last good one
+reset 'good=a\nprev=b\nnext=\ntries=0\nfailed=\n'; echo 'official recovery system' > $S/r/official; o=$(run "rudolf.boot=uefi rudolf.recovery=1" "")
+ok "9. Recovery mode with an official recovery system: that one, though slot a can start" $(echo "$o" | grep -q 'KEXEC .*rudolf.recovery=1.*rudolf.slot=r'; echo $?) "$o"
+o=$(run "rudolf.boot=uefi" "")
+ok "10. ...a normal start still starts the good system" $(echo "$o" | grep -q 'KEXEC .*rudolf.slot=a'; echo $?) "$o"
 echo "$P/$((P+F)) passed"; [ $F = 0 ]
 XEOF

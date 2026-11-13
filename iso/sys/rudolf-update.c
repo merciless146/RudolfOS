@@ -16,6 +16,7 @@
  *   rudolf-update download          assemble the new release in the spare slot, ready for the next start
  *   rudolf-update boot-ok           the desktop came up: keep the slot that is being tried
  *   rudolf-update rollback          go back to the previous system at the next start
+ *   rudolf-update recovery          (1.5.9) refresh the official recovery system (slot r) from the running slot
  *   rudolf-update set url URL | set auto 0|1
  *   rudolf-update rzs-make FILE OUT.rzs     (build side) write a delta control file
  *   rudolf-update fetch URL OUT             (1.5.7, Make a stick) a release's boot image from github.com */
@@ -470,17 +471,63 @@ static int cmd_download(void)
 	say("Ready: Rudolf OS %s starts the next time the computer restarts (%lld KB downloaded).", m.version, (total + 1023) / 1024);
 	return 0;
 }
+/* 1.5.9 (docs/plan-1.5.9.md 8.4): the official recovery system, slot r: the newest official release that started
+   successfully on this computer. Refreshed from the running slot after it proved itself (boot-ok), only when that
+   slot's release list is signed by the official key (KEYF, the system image's own list: never a key added later),
+   and only by a newer release. Hard links (no extra room while the slot keeps the same files); a layer the slot
+   takes from the disc on this drive is linked or copied from there. Recovery mode starts slot r first (initramfs).
+   Updates never write it (they go to a or b). */
+static int recovery_refresh(const char *bs)
+{
+	if (strcmp(bs, "a") && strcmp(bs, "b")) return 0;
+	char sp[300], mp[400], gp[400]; snprintf(sp, sizeof sp, "%s/%s", SYSD, bs);
+	snprintf(mp, sizeof mp, "%s/manifest.txt", sp); snprintf(gp, sizeof gp, "%s/manifest.sig", sp);
+	size_t ml, sl; char *mt = slurp(mp, &ml), *sg = slurp(gp, &sl);
+	int off = mt && sg && sl == 64 && verify((unsigned char *)mt, ml, (unsigned char *)sg);
+	man_t m; char *cp = mt ? strdup(mt) : NULL; if (off && parse_manifest(cp, &m)) off = 0;
+	free(sg); if (!off) { free(mt); free(cp); say("Slot %s is not an official release: the recovery system is kept as it is.", bs); return 1; }
+	char rp[300], rr[400]; snprintf(rp, sizeof rp, "%s/r", SYSD); snprintf(rr, sizeof rr, "%s/RELEASE", rp);
+	kv_t r0; kv_read(rr, &r0, ' '); char ck[400]; snprintf(ck, sizeof ck, "%s/complete", rp);
+	if (!access(ck, F_OK) && atoll(kv(&r0, "serial")) >= m.serial) { free(mt); free(cp); return 0; }
+	char tn[310]; snprintf(tn, sizeof tn, "%s.new", rp); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } mkdirs(tn);
+	int bad = 0;
+	for (int i = 0; i < NL && !bad; i++) {
+		lay_t *y = mlayer(&m, LAYERS[i]); if (!y) { bad = 1; break; }
+		const char *ext = strcmp(y->name, "vmlinuz") ? ".sfs" : "";
+		char from[420], to[420]; struct stat s2; snprintf(to, sizeof to, "%s/%s%s", tn, y->name, ext);
+		snprintf(from, sizeof from, "%s/%s%s", sp, y->name, ext);
+		if (stat(from, &s2) || s2.st_size != y->size) { snprintf(from, sizeof from, "%s/rudolf/%s%s", MEDIA, y->name, ext); if (stat(from, &s2) || s2.st_size != y->size) { bad = 1; break; } }
+		if (link(from, to)) { char *a[] = {"cp", from, to, NULL}; if (spawn(a)) bad = 1; }
+	}
+	char f1[420], f2[420], f3[420];
+	snprintf(f1, sizeof f1, "%s/RELEASE", sp); snprintf(f2, sizeof f2, "%s/RELEASE", tn);
+	{ char *a[] = {"cp", f1, f2, NULL}; if (!bad && spawn(a)) bad = 1; }
+	snprintf(f2, sizeof f2, "%s/manifest.txt", tn); snprintf(f3, sizeof f3, "%s/manifest.sig", tn);
+	{ char *a1[] = {"cp", mp, f2, NULL}, *a2[] = {"cp", gp, f3, NULL}; if (!bad && (spawn(a1) || spawn(a2))) bad = 1; }
+	free(mt); free(cp);
+	if (bad) { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); say("The recovery system could not be refreshed (a file is missing); the previous one is kept."); return 1; }
+	char note[300]; time_t now = time(NULL); char ts[40]; strftime(ts, sizeof ts, "%Y-%m-%d %H:%M", localtime(&now));
+	snprintf(note, sizeof note, "official recovery system: release %lld, from slot %s, %s; only official releases update it\n", m.serial, bs, ts);
+	snprintf(f2, sizeof f2, "%s/official", tn); write_file(f2, note);
+	snprintf(f2, sizeof f2, "%s/complete", tn); write_file(f2, "1\n"); sync();
+	{ char *a[] = {"rm", "-rf", rp, NULL}; spawn(a); } if (rename(tn, rp)) { say("could not finish the recovery system"); return 1; }
+	sync(); say("Recovery system: Rudolf OS release %lld (official).", m.serial); return 0;
+}
 static int cmd_bootok(void)
 {
 	char bs[8], stp[300]; booted(bs); snprintf(stp, sizeof stp, "%s/state", SYSD); kv_t st; kv_read(stp, &st, '=');
-	if (!strcmp(bs, "disc") || strcmp(kv(&st, "next"), bs)) return 0;
+	if (!strcmp(bs, "disc")) return 0;
 	if (recovery_start()) return 0;   /* 1.5.7: a desktop in recovery mode does not prove the normal start works */
+	/* (1.5.9: the last good system, started again: the recovery system is made if it is missing or older) */
+	if (strcmp(kv(&st, "next"), bs)) { if (!strcmp(kv(&st, "good"), bs)) recovery_refresh(bs); return 0; }
 	char g[300]; snprintf(g, sizeof g, "%s", kv(&st, "good"));
 	kv_set(&st, "prev", g); kv_set(&st, "good", bs); kv_set(&st, "next", ""); kv_set(&st, "tries", "0"); kv_set(&st, "failed", "");
 	kv_write(stp, &st, '='); sync();
 	/* the new system brings its own desktop: a desktop installed earlier from a file no longer overrides it */
 	if (!access("/persist/os/current/index.html", F_OK)) write_file("/persist/os/disabled", "system update\n");
-	say("Keeping the updated system (slot %s).", bs); return 0;
+	say("Keeping the updated system (slot %s).", bs);
+	recovery_refresh(bs);   /* (1.5.9: the official recovery system follows the newest official release that started) */
+	return 0;
 }
 static int cmd_rollback(void)
 {
@@ -568,6 +615,7 @@ int main(int argc, char **argv)
 	if (!strcmp(c, "download")) return cmd_download();
 	if (!strcmp(c, "boot-ok")) return cmd_bootok();
 	if (!strcmp(c, "rollback")) return cmd_rollback();
+	if (!strcmp(c, "recovery")) { char bs[8]; booted(bs); if (recovery_start()) { say("Not while in recovery mode."); return 1; } return recovery_refresh(bs); }
 	if (!strcmp(c, "set") && argc >= 4) {
 		kv_t cf; kv_read(CONFP, &cf, '=');
 		if (!strcmp(argv[2], "url")) { const char *u = argv[3]; if (*u && strncmp(u, "https://", 8) && strncmp(u, "http://", 7)) die("the address starts with https://"); for (const char *q = u; *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/:._-~%+", *q)) die("bad character in the address"); kv_set(&cf, "url", u); }
