@@ -487,4 +487,7 @@ html.tablet #start .stv{display:none!important}
 /* 1.5.9: Task Manager's memory breakdown */
 .tmmrow{display:grid;grid-template-columns:minmax(150px,200px) 1fr 80px;gap:8px;align-items:center;margin:3px 0;font-size:13px}.tmmrow i{display:block;height:10px;background:rgba(127,127,127,.18);border-radius:5px;overflow:hidden}.tmmrow b{display:block;height:100%;background:#a78bfa}.tmmrow em{font-style:normal;text-align:right}
 .tmcc{margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.wfbd{margin:6px 0}.wfbdw{position:relative;display:inline-block}.wfbdb{min-height:36px;padding:0 14px}.wfbdm{position:absolute;z-index:5;left:0;top:calc(100% + 4px);min-width:300px;background:var(--bg,#fff);border:1px solid var(--bd);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:6px}
+.wfbdi{display:flex;align-items:center;gap:8px;width:100%;min-height:40px;padding:0 10px;border:0;background:none;text-align:left;border-radius:8px;cursor:pointer}.wfbdi:hover:not(:disabled),.wfbdi:focus-visible{background:rgba(37,99,235,.1)}.wfbdi:disabled{cursor:default;opacity:.75}
+.wfbdc{display:inline-block;width:18px;text-align:center;font-weight:700;color:#16a34a}.wfbd .msg{font-size:12px}
 .wfrad{margin:6px 0}.wfrad summary{cursor:pointer;font-weight:600}.wfradr .msg{font-size:12px}

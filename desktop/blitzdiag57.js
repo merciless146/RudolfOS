@@ -105,10 +105,12 @@ This is about the Wi-Fi. How to read the lines:
 - "wlanN: authenticate with X … authentication with X timed out": the radio X (a router has one per band, 2.4 / 5 / 6 GHz, under one network name) did not answer this computer.
 - "disconnect from AP X for new auth to Y": the computer left radio X to try radio Y of the same network; if Y then timed out, that is a drop caused by Y.
 - "wifi: network N: left out (did not answer): X": Rudolf OS already left radio X out for a day by itself.
-- In "The Wi-Fi now", radio=ADDRESS MHz dBm STATE: below 2500 MHz is 2.4 GHz, 4900 to 5900 is 5 GHz, above 5925 is 6 GHz. dBm: -30 to -55 strong, -55 to -67 good, -67 to -75 weak, below -75 very weak. STATE: inuse, on, off (turned off by the person), failed:TIME (left out by Rudolf OS until then).
+- In "The Wi-Fi now", radio=ADDRESS MHz dBm STATE: below 2500 MHz is 2.4 GHz, 4900 to 5900 is 5 GHz, above 5925 is 6 GHz. dBm: -30 to -55 strong, -55 to -67 good, -67 to -75 weak, below -75 very weak. STATE: inuse, on, off (turned off by the person), failed:TIME (left out by Rudolf OS until then), bandoff (this computer's own radio for that band is turned off by an administrator). bandsoff=: this computer's own radios an administrator turned off.
 You get "Findings (worked out from the lines below)" and "Settings these findings point to": base your answer on them. Say what happened (the drops, which radio), then recommend the settings listed there, in their words; do not add others, and do not describe how Rudolf OS worked in earlier versions.
+An administrator's choice of this computer's own radios (bandsoff) is never recommended against: if it matters, say that only an administrator can change it, in This computer's Wi-Fi radios.
 The Wi-Fi settings that exist, in Settings › Network › Wi-Fi (recommend only these):
 - "Radios of this network": each radio of the network in use, with a "Use" switch. Turning off a radio that does not answer, or one that is very weak, keeps the computer on the good one. Warn before suggesting to turn off the radio in use, and never all of them.
+- "This computer's Wi-Fi radios" (a drop-down menu): this computer's own radios, 2.4 / 5 / 6 GHz, each on (a check) or off. Only an administrator changes it, with their password; recommend it only when one band of this computer fails on every network, and say an administrator has to do it.
 - "Adapter" (only with two Wi-Fi adapters, like a USB dongle): which one to use.
 - "Country": the channels and power allowed; set it when networks are missing.
 - "Forget" a saved network and join it again with its password: when the password changed or joining fails every time.
@@ -127,7 +129,10 @@ function bzWifiFindings(f){const now=String(f.wifiNow||''),k=String(f.wifiKernel
  const ssid=(now.match(/^ssid=(.*)$/m)||[])[1]||'',rs=Object.values(rad),name=b=>{const r=rad[b];return r?`the ${bzWifiBand(r.f)} radio (channel ${bzWifiCh(r.f)}, ${b})`:`radio ${b}`};
  if(ssid)F.push(`Network in use: ${ssid}.`);else F.push('The Wi-Fi is not connected to a network now.');
  const bands=(now.match(/^bands=(.*)$/m)||[])[1];if(bands&&bands.trim())F.push(`This computer's Wi-Fi works on ${bands.trim().split(/\s+/).map(x=>x+' GHz').join(' and ')}.`);
- rs.sort((a,b)=>a.f-b.f).forEach(r=>F.push(`Radio: ${bzWifiBand(r.f)}, channel ${bzWifiCh(r.f)}, signal ${r.s} dBm (${bzWifiSig(r.s)}), ${r.st=='inuse'?'in use now':r.st=='off'?'turned off by the person':r.st.startsWith('failed:')?"left out by Rudolf OS until "+new Date(+r.st.slice(7)*1000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+" because it did not answer":'available'}.`));
+ /* 1.5.9: this computer's own radios turned off by an administrator: their choice, never recommended against */
+ const boff=((now.match(/^bandsoff=(.*)$/m)||[])[1]||'').trim().split(/\s+/).filter(Boolean);
+ if(boff.length)F.push(`This computer's ${boff.map(x=>x+' GHz').join(' and ')} radio is turned off by an administrator (Settings › Network › Wi-Fi › This computer's Wi-Fi radios): an administrator's choice, which Rudolf OS keeps.`);
+ rs.sort((a,b)=>a.f-b.f).forEach(r=>F.push(`Radio: ${bzWifiBand(r.f)}, channel ${bzWifiCh(r.f)}, signal ${r.s} dBm (${bzWifiSig(r.s)}), ${r.st=='inuse'?'in use now':r.st=='off'?'turned off by the person':r.st=='bandoff'?"not used: this computer's radio for that band is turned off by an administrator":r.st.startsWith('failed:')?"left out by Rudolf OS until "+new Date(+r.st.slice(7)*1000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+" because it did not answer":'available'}.`));
  /* the drops, from the kernel's lines */
  const failed=new Set();let drops=0;
  for(const l of k.split('\n')){let m;const t=(l.match(/^\[\s*([\d.]+)\]/)||[])[1],at=t?` (${Math.round(+t)} s after the start)`:'';
@@ -137,8 +142,8 @@ function bzWifiFindings(f){const now=String(f.wifiNow||''),k=String(f.wifiKernel
  for(const l of log.split('\n'))if(/left out|turned (on|off) by hand|set aside|chosen again/.test(l))F.push('Rudolf OS: '+l.replace(/^.*wifi: /,''));
  if(!drops&&!failed.size)F.push(`No drop is in the kernel's Wi-Fi lines since this start (up ${Math.round((f.uptime||0)/60)} minutes).`);
  /* the settings that follow */
- for(const b of failed){const r=rad[b];if(r&&r.st=='off')continue;R.push(`Turn off ${name(b)} in Settings › Network › Wi-Fi › Radios of this network (untick Use): it did not answer this computer${r&&r.st.startsWith('failed:')?'; Rudolf OS already leaves it out for a day, turning it off keeps it out for good':''}.`)}
- const on=rs.filter(r=>r.st!='off');
+ for(const b of failed){const r=rad[b];if(r&&(r.st=='off'||r.st=='bandoff'))continue;R.push(`Turn off ${name(b)} in Settings › Network › Wi-Fi › Radios of this network (untick Use): it did not answer this computer${r&&r.st.startsWith('failed:')?'; Rudolf OS already leaves it out for a day, turning it off keeps it out for good':''}.`)}
+ const on=rs.filter(r=>r.st!='off'&&r.st!='bandoff');
  if(on.length&&on.every(r=>r.s<-75))R.push('Every radio of this network is very weak here: the computer is too far from the router, or walls are in the way. No setting fixes that: move closer, or move the router.');
  else{const cur=rs.find(r=>r.st=='inuse');if(cur&&cur.s<-72){const better=rs.find(r=>r!==cur&&r.st=='on'&&r.s>cur.s+8);if(better)R.push(`The radio in use is weak (${cur.s} dBm) and ${name(better.b)} is stronger (${better.s} dBm): turning off the weak one in Radios of this network moves the computer to the stronger one.`)}}
  if(!R.length)R.push(drops||failed.size?'Nothing to change: Rudolf OS already handles what the lines show.':'Nothing to change from these lines. If the Wi-Fi drops again, ask again right after it happens, while the lines are fresh.');

@@ -405,6 +405,12 @@ Settings › Network › Wi-Fi › "Radios of this network" lists each radio (ba
 switch (wifi.sh radios / radio; turned off by hand it stays off); "Why does the Wi-Fi drop?" (and a Wi-Fi problem
 asked in Blitzen's chat) gives Blitzen the Wi-Fi's log, the kernel's Wi-Fi messages and the radios (ai/facts), with
 a Wi-Fi pack that says how to read them and which settings exist. To check on the Vivobook: Blitzen's real answer.
+- **This computer's Wi-Fi radios** (asked for on 2026-11-13): a drop-down menu between "Radios of this network" and
+  "Why does the Wi-Fi drop?", listing the computer's own radios (its adapter's bands, 2.4 / 5 / 6 GHz) with a check by
+  each one that is on and a blank space by one that is off. Only an administrator changes it, typing their password
+  every time. Kept by the adapter's MAC (/persist/etc/wifi-bands-off), applied as wpa_supplicant's freq_list at every
+  start and join (wifi.sh bands / band); nothing automatic writes it, a router's radio on a band that is off cannot be
+  turned on in "Radios of this network", and Blitzen never recommends against it. One radio always stays on.
 
 ### 11.1 Chromium from one known source, never changed without being chosen
 On 2026-11-12 the snap store could not be reached for four builds in a row, and each time the build fell back to

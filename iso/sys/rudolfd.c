@@ -917,7 +917,17 @@ static void api_wifi(struct req *r, const char *what)
 		if (o && !strncmp(o, "Radio ", 6)) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "could not change the radio");
 		free(o); return;
 	}
-	if (!strcmp(what, "status") || !strcmp(what, "scan") || !strcmp(what, "disconnect") || !strcmp(what, "reconnect") || !strcmp(what, "radios")) {
+	/* 1.5.9: this computer's own Wi-Fi radios (its adapter's bands), one turned off or on. An administrator's setting:
+	   the desktop asks for an administrator's password first, every time (Settings › Network › Wi-Fi) */
+	if (!strcmp(what, "band")) {
+		char *b = qparam(r->query, "band"), *on = qparam(r->query, "on");
+		if (!b || (strcmp(b, "2.4") && strcmp(b, "5") && strcmp(b, "6")) || !on || (strcmp(on, "on") && strcmp(on, "off"))) { reply_err(r->fd, 400, "bad band"); return; }
+		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh band %s %s %s 2>&1", ifn, b, on);
+		char *o = run_out(cmd); trim(o);
+		if (o && !strncmp(o, "This computer's ", 16) && strstr(o, " turned ")) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "could not change the radio");
+		free(o); return;
+	}
+	if (!strcmp(what, "status") || !strcmp(what, "scan") || !strcmp(what, "disconnect") || !strcmp(what, "reconnect") || !strcmp(what, "radios") || !strcmp(what, "bands")) {
 		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh %s %s 2>&1", what, ifn);
 		char *o = run_out(cmd); str s = {0}; sadd(&s, "{\"ok\":true,\"raw\":"); sjson(&s, o ? o : ""); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
 	}

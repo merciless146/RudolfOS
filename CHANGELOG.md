@@ -17,6 +17,7 @@ Summary: In progress.
 - New: Settings › Network › Wi-Fi › Radios of this network: each radio of the router (2.4, 5 and 6 GHz under one name) with its channel, signal and state, and a switch to stop this computer using one; it also says which bands this computer's Wi-Fi has.
 - New: "Why does the Wi-Fi drop?" (Settings › Network › Wi-Fi, or asking Blitzen about a Wi-Fi problem): Blitzen reads the Wi-Fi's log, the kernel's Wi-Fi messages and the radios, and recommends only the Wi-Fi settings that exist.
 - Improved: Blitzen's Wi-Fi answer now rests on findings worked out from the logs (which radio did not answer, how strong each radio is) and names the setting to change, instead of retelling earlier versions from the documentation.
+- New: "This computer's Wi-Fi radios" (Settings › Network › Wi-Fi), a drop-down menu with a check by each of the computer's own Wi-Fi radios (2.4 / 5 / 6 GHz) that is on. Only an administrator can change it, with their password, and Rudolf OS never changes it by itself.
 - Changed: Chromium comes only from Ubuntu's open-source Chromium (the snap). When it cannot be fetched, the release keeps the Chromium it has, instead of taking another kind of browser; it never goes back to an older version.
 - Fixed: when a system file does not match its release, the start-up and Task Manager say so plainly, with its size, instead of a low-level error.
 
