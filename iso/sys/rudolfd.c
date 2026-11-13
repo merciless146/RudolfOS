@@ -2302,6 +2302,23 @@ static void api_memory_breakdown(struct req *r)
 	     total, freeb, avail, anon, cache, shm, kern, gtt, zram, hmb, other);
 	reply_json(r->fd, &s);
 }
+/* 1.5.9: clear the file cache (Task Manager's "Clear cache"; game mode at its start). Linux gives the cache back by
+   itself, but more slowly than a game can ask for memory (FNF on the Vivobook, 2026-11-12): dropping it first leaves
+   free memory ready. Only clean cached files are dropped (drop_caches 1): nothing is lost, files are read again
+   when used. Once every 10 s at most. Answers how much became free. */
+static void api_memory_dropcache(struct req *r)
+{
+	static time_t last; time_t now = time(NULL);
+	if (now - last < 10) { reply_err(r->fd, 429, "the cache was cleared a moment ago"); return; }
+	last = now;
+	long long before = meminfo_kb("MemFree"), cache0 = meminfo_kb("Cached");
+	sync();
+	int f = open("/proc/sys/vm/drop_caches", O_WRONLY | O_CLOEXEC); int ok = f >= 0 && write(f, "1", 1) == 1; if (f >= 0) close(f);
+	if (!ok) { reply_err(r->fd, 500, "the cache could not be cleared"); return; }
+	long long after = meminfo_kb("MemFree"), cache1 = meminfo_kb("Cached");
+	str s = {0}; sadd(&s, "{\"ok\":true,\"freed\":%lld,\"cacheBefore\":%lld,\"cacheAfter\":%lld}", after > before ? after - before : 0, cache0, cache1);
+	reply_json(r->fd, &s);
+}
 static void api_memory(struct req *r)
 {
 	str s = {0}; sadd(&s, "{\"ok\":true,\"now\":%lld,\"setup\":", (long long)time(NULL));
@@ -3558,6 +3575,7 @@ static void api(struct req *r)
 	if (!strcmp(p, "processes")) { api_processes(r); return; }
 	if (!strcmp(p, "memory")) { api_memory(r); return; }
 	if (!strcmp(p, "memory/breakdown")) { api_memory_breakdown(r); return; }   /* 1.5.9 */
+	if (!strcmp(p, "memory/dropcache")) { if (!post) { reply_err(r->fd, 405, "POST"); return; } api_memory_dropcache(r); return; }   /* 1.5.9 */
 	if (!strcmp(p, "memory/settings")) { api_memory_settings(r, post); return; }   /* 1.5.7 */
 	if (!strcmp(p, "storage") || (!strcmp(p, "storage/measure") && post)) { api_storage(r, !strcmp(p, "storage/measure")); return; }
 	if (!strcmp(p, "memory/iam") && post) { api_memory_iam(r); return; }

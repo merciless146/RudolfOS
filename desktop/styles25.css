@@ -486,3 +486,4 @@ html.tablet #start{font-size:0!important;min-width:52px}html.tablet #start img{w
 html.tablet #start .stv{display:none!important}
 /* 1.5.9: Task Manager's memory breakdown */
 .tmmrow{display:grid;grid-template-columns:minmax(150px,200px) 1fr 80px;gap:8px;align-items:center;margin:3px 0;font-size:13px}.tmmrow i{display:block;height:10px;background:rgba(127,127,127,.18);border-radius:5px;overflow:hidden}.tmmrow b{display:block;height:100%;background:#a78bfa}.tmmrow em{font-style:normal;text-align:right}
+.tmcc{margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
