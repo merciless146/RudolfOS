@@ -42,12 +42,18 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('6. only one radio left on: a warning', /Only one radio of this network is left on/.test(await q("document.querySelector('#wft .wfradb').textContent")));
   // Blitzen's diagnosis: what it would read, and the knowledge it gets
   ok('7. "Why does the Wi-Fi drop?" is there (Blitzen available)', await q("!document.querySelector('#wft .wfwhy').hidden"));
+  daOff = false;   // (the 2.4 GHz radio left out by Rudolf OS, as on the Vivobook, not turned off by hand)
   await q("(()=>{window.__ask=null;blzAskFrom=(a,qq,ctx,o)=>{window.__ask={a,qq,ctx,o}};document.querySelector('#wft .wfwhy').click();return 1})()"); await wait(1500);
   const parts = await q("[...document.querySelectorAll('.bzrev label, .bzrev b, .bzrev summary')].map(x=>x.textContent).join(' | ')");
   ok('8. the review shows the Wi-Fi\'s log, the kernel\'s Wi-Fi messages and the Wi-Fi now', /Wi-Fi log/.test(parts) && /Wi-Fi \(kernel\)/.test(parts) && /The Wi-Fi now/.test(parts), parts);
   await q("(()=>{const b=[...document.querySelectorAll('.bzrev button')].find(x=>/Ask|Continue|Go|OK/i.test(x.textContent));b&&b.click();return 1})()"); await wait(800);
   const ask = await q('__ask');
   ok('9. Blitzen is asked which Wi-Fi settings to change, with the kernel lines (the radio that timed out) and the radios', ask && /Wi-Fi keep dropping/.test(ask.qq) && /authentication with bc:96:e5:88:1f:da timed out/.test(ask.ctx) && /radio=bc:96:e5:88:1f:d9\t5220\t-53\tinuse/.test(ask.ctx) && ask.o.pack == 'wifi', ask && {qq: ask.qq, pack: ask.o.pack, ctx: ask.ctx.slice(0, 300)});
+  ok('9b. worked out for it first: the drop (left 5 GHz for 2.4 GHz, which did not answer), and the setting it points to', ask && /Drop \(87 s after the start\): the computer left the 5 GHz radio \(channel 44, bc:96:e5:88:1f:d9\) to try the 2\.4 GHz radio \(channel 1, bc:96:e5:88:1f:da\)/.test(ask.ctx) && /Turn off the 2\.4 GHz radio \(channel 1, bc:96:e5:88:1f:da\) in Settings › Network › Wi-Fi › Radios of this network/.test(ask.ctx), ask && ask.ctx.slice(0, 1500));
+  ok('9c. no documents for the Wi-Fi (they led it to retell how 1.5.6 worked)', ask && !/### Rudolf OS: /.test(ask.ctx));
+  const fw = await q(`(()=>{const a=bzWifiFindings({uptime:600,wifiNow:'bands=2.4 5 \\nssid=Far\\nradio=aa:aa:aa:aa:aa:01\\t5180\\t-82\\tinuse\\nradio=aa:aa:aa:aa:aa:02\\t2437\\t-79\\ton\\n',wifiKernel:''});
+    const b=bzWifiFindings({uptime:900,wifiNow:'bands=2.4 5 \\nssid=Home\\nradio=aa:aa:aa:aa:aa:01\\t5180\\t-50\\tinuse\\n',wifiKernel:''});return [a.recs,b.findings,b.recs]})()`);
+  ok('9d. every radio very weak: "too far from the router", no setting; nothing in the lines: says so, nothing to change', /too far from the router/.test(fw[0]) && /No drop is in the kernel's Wi-Fi lines since this start \(up 15 minutes\)/.test(fw[1]) && /Nothing to change from these lines/.test(fw[2]), fw);
   ok('10. its knowledge: how to read the lines, and only the settings that exist ("Radios of this network", Adapter, Country, Forget)', await q("/authentication with X timed out/.test(BLZ_PACKS.wifi)&&/Radios of this network/.test(BLZ_PACKS.wifi)&&/recommend only these/.test(BLZ_PACKS.wifi)&&/Never tell the person to run commands/.test(BLZ_PACKS.wifi)"));
   ok('12. a Wi-Fi problem asked in Blitzen\'s chat goes the same way (logs first); a how-to question does not', await q("bzWifiQ('why does my wifi keep dropping?')&&bzWifiQ('The internet keeps cutting out')&&bzWifiQ('my connection is slow and unstable')&&!bzWifiQ('how do I join a wifi network?')&&!bzWifiQ('write a python script')"));
   ok('11. no page errors', errs.length == 0, errs);

@@ -68,8 +68,11 @@ async function bzWhy(what,o){o=o||{};if(!bzCan())return notify('Blitzen is not a
  if(typeof blzGameRunning=='function'&&blzGameRunning())return notify('Close the game first','Blitzen needs the memory a game is using.');
  const [f]=await Promise.all([bzFacts(o.all?7:3),bzDocs()]);
  const lines=bzLines(f),picked=o.wifi?lines.filter(x=>/^Wi-Fi/.test(x.src)).slice(-50):o.all?lines.filter(x=>BZ_ERRW.test(x.l)||x.src=='health log'&&!/ (start|ready|shutdown):/.test(x.l)).slice(-24):bzPick(lines,what);   /* the whole computer: its latest problems */
- const docs=bzSearch(what+' '+picked.map(x=>x.l).join(' ').slice(0,400),3);
+ /* (1.5.9: for the Wi-Fi, no documents: on the Vivobook Blitzen retold 1.5.6's notes from them instead of reading the
+    logs. The findings worked out from the lines come first instead, with the settings they point to.) */
+ const docs=o.wifi?[]:bzSearch(what+' '+picked.map(x=>x.l).join(' ').slice(0,400),3);
  const parts=[];if(o.detail)parts.push({label:'What failed',text:String(o.detail).slice(0,1500)});
+ if(o.wifi){const w=bzWifiFindings(f);parts.push({label:'Findings (worked out from the lines below)',text:w.findings},{label:'Settings these findings point to',text:w.recs})}
  const bySrc={};picked.forEach(x=>(bySrc[x.src]=bySrc[x.src]||[]).push(x.l));
  for(const s in bySrc)parts.push({label:'Log: '+s+' ('+bySrc[s].length+' line'+(bySrc[s].length>1?'s':'')+')',text:bySrc[s].join('\n'),log:1});
  docs.forEach(d=>parts.push({label:'Rudolf OS: '+d.s.replace(/^docs\//,'')+(d.h?' › '+d.h:''),text:d.t}));
@@ -103,6 +106,7 @@ This is about the Wi-Fi. How to read the lines:
 - "disconnect from AP X for new auth to Y": the computer left radio X to try radio Y of the same network; if Y then timed out, that is a drop caused by Y.
 - "wifi: network N: left out (did not answer): X": Rudolf OS already left radio X out for a day by itself.
 - In "The Wi-Fi now", radio=ADDRESS MHz dBm STATE: below 2500 MHz is 2.4 GHz, 4900 to 5900 is 5 GHz, above 5925 is 6 GHz. dBm: -30 to -55 strong, -55 to -67 good, -67 to -75 weak, below -75 very weak. STATE: inuse, on, off (turned off by the person), failed:TIME (left out by Rudolf OS until then).
+You get "Findings (worked out from the lines below)" and "Settings these findings point to": base your answer on them. Say what happened (the drops, which radio), then recommend the settings listed there, in their words; do not add others, and do not describe how Rudolf OS worked in earlier versions.
 The Wi-Fi settings that exist, in Settings › Network › Wi-Fi (recommend only these):
 - "Radios of this network": each radio of the network in use, with a "Use" switch. Turning off a radio that does not answer, or one that is very weak, keeps the computer on the good one. Warn before suggesting to turn off the radio in use, and never all of them.
 - "Adapter" (only with two Wi-Fi adapters, like a USB dongle): which one to use.
@@ -112,3 +116,30 @@ The Wi-Fi settings that exist, in Settings › Network › Wi-Fi (recommend only
 If the lines show the signal is very weak on every radio, say the computer is too far from the router (or a wall is in the way) and no setting fixes that. If nothing in the lines explains the drops, say so.`;
 /* a question about a Wi-Fi or internet problem (not how to set it up): "why does my wifi keep dropping", "internet keeps cutting out" */
 function bzWifiQ(t){t=String(t||'').toLowerCase();return /\b(wi-?fi|wlan|internet|connection|network|router|signal)\b/.test(t)&&/\b(drops?|dropping|dropped|disconnect\w*|cut(s|ting)? out|keeps?|lost|loses|losing|slow|unstable|not work\w*|won'?t|can'?t|cannot|fails?|failing|stops?|stopping|goes? (out|off|away)|weak)\b/.test(t)}
+/* 1.5.9: what the Wi-Fi's lines say, worked out here (a small model reads plain findings far better than raw lines):
+   the radios (band, channel, signal in words, state), each drop (the radio left and the one tried, and whether it
+   answered), and the settings that follow from them: only settings that exist. */
+function bzWifiBand(mhz){return mhz>=5925?'6 GHz':mhz>=4900?'5 GHz':'2.4 GHz'}
+function bzWifiCh(mhz){return mhz>=5925?Math.round((mhz-5950)/5):mhz>=4900?Math.round((mhz-5000)/5):mhz==2484?14:Math.round((mhz-2407)/5)}
+function bzWifiSig(d){return d>=-55?'strong':d>=-67?'good':d>=-75?'weak':'very weak'}
+function bzWifiFindings(f){const now=String(f.wifiNow||''),k=String(f.wifiKernel||''),log=String(f.wifi||''),F=[],R=[],rad={};
+ for(const l of now.split('\n')){const m=l.match(/^radio=([0-9a-f:]{17})\t(\d+)\t(-?\d+)\t(\S+)/i);if(m)rad[m[1].toLowerCase()]={b:m[1].toLowerCase(),f:+m[2],s:+m[3],st:m[4]}}
+ const ssid=(now.match(/^ssid=(.*)$/m)||[])[1]||'',rs=Object.values(rad),name=b=>{const r=rad[b];return r?`the ${bzWifiBand(r.f)} radio (channel ${bzWifiCh(r.f)}, ${b})`:`radio ${b}`};
+ if(ssid)F.push(`Network in use: ${ssid}.`);else F.push('The Wi-Fi is not connected to a network now.');
+ const bands=(now.match(/^bands=(.*)$/m)||[])[1];if(bands&&bands.trim())F.push(`This computer's Wi-Fi works on ${bands.trim().split(/\s+/).map(x=>x+' GHz').join(' and ')}.`);
+ rs.sort((a,b)=>a.f-b.f).forEach(r=>F.push(`Radio: ${bzWifiBand(r.f)}, channel ${bzWifiCh(r.f)}, signal ${r.s} dBm (${bzWifiSig(r.s)}), ${r.st=='inuse'?'in use now':r.st=='off'?'turned off by the person':r.st.startsWith('failed:')?"left out by Rudolf OS until "+new Date(+r.st.slice(7)*1000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+" because it did not answer":'available'}.`));
+ /* the drops, from the kernel's lines */
+ const failed=new Set();let drops=0;
+ for(const l of k.split('\n')){let m;const t=(l.match(/^\[\s*([\d.]+)\]/)||[])[1],at=t?` (${Math.round(+t)} s after the start)`:'';
+  if(m=l.match(/disconnect from AP ([0-9a-f:]{17}) for new auth to ([0-9a-f:]{17})/i)){drops++;F.push(`Drop${at}: the computer left ${name(m[1].toLowerCase())} to try ${name(m[2].toLowerCase())}.`)}
+  else if(m=l.match(/(authentication|association) with ([0-9a-f:]{17}) timed out/i)){failed.add(m[2].toLowerCase());F.push(`${name(m[2].toLowerCase()).replace(/^t/,'T')} did not answer${at}: the computer was off the network until it joined a radio again.`)}
+  else if(m=l.match(/(deauthenticated|disassociated) from ([0-9a-f:]{17}).*reason[=: ]+(\d+)/i)){drops++;F.push(`The router sent the computer away${at} (${m[1]}, reason ${m[3]}).`)}}
+ for(const l of log.split('\n'))if(/left out|turned (on|off) by hand|set aside|chosen again/.test(l))F.push('Rudolf OS: '+l.replace(/^.*wifi: /,''));
+ if(!drops&&!failed.size)F.push(`No drop is in the kernel's Wi-Fi lines since this start (up ${Math.round((f.uptime||0)/60)} minutes).`);
+ /* the settings that follow */
+ for(const b of failed){const r=rad[b];if(r&&r.st=='off')continue;R.push(`Turn off ${name(b)} in Settings › Network › Wi-Fi › Radios of this network (untick Use): it did not answer this computer${r&&r.st.startsWith('failed:')?'; Rudolf OS already leaves it out for a day, turning it off keeps it out for good':''}.`)}
+ const on=rs.filter(r=>r.st!='off');
+ if(on.length&&on.every(r=>r.s<-75))R.push('Every radio of this network is very weak here: the computer is too far from the router, or walls are in the way. No setting fixes that: move closer, or move the router.');
+ else{const cur=rs.find(r=>r.st=='inuse');if(cur&&cur.s<-72){const better=rs.find(r=>r!==cur&&r.st=='on'&&r.s>cur.s+8);if(better)R.push(`The radio in use is weak (${cur.s} dBm) and ${name(better.b)} is stronger (${better.s} dBm): turning off the weak one in Radios of this network moves the computer to the stronger one.`)}}
+ if(!R.length)R.push(drops||failed.size?'Nothing to change: Rudolf OS already handles what the lines show.':'Nothing to change from these lines. If the Wi-Fi drops again, ask again right after it happens, while the lines are fresh.');
+ return {findings:F.join('\n'),recs:R.map(x=>'- '+x).join('\n')}}
