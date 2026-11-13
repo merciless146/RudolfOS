@@ -14,6 +14,14 @@
  * Library's keys in /etc/rudolf/library-keys. A package signed only by a Library key may hold files for the desktop
  * (kind addon or webapp), never programs, and may not replace a package signed by a system key. rudolf-update
  * never reads library-keys, so a Library key cannot sign a system update.
+ * 1.5.9 (docs/plan-1.5.9.md 8.2): a package from an outside developer carries its developer's certificate:
+ *     [squashfs][certificate text][64-byte certificate signature][4-byte length, little-endian][b"RPKCERT1"]
+ *     [64-byte package signature][b"RPKSIG02"]
+ * The certificate ("rpk-cert 1", name, github, key, prefix, expires) is signed by a Library key; the package by the
+ * developer's key in it. Such a package is treated as the Library's (files for the desktop only), its name must
+ * start with the certificate's prefix, and the certificate must not have expired. Revocation: the signed package
+ * list's "R" lines (R key KEY, R pkg NAME VERSION|*): refused to install, and an installed one is disabled at the
+ * next refresh (unmounted, with the reason in status).
  * Sources: the disc's own repository (/live/media/rudolf/pkg), the system's sources (/etc/rudolf/rpk-sources: the
  * Library) and lines in <root>/sources.
  * <root> is /persist/pkg on an installed system and /run/rudolf/pkg on a live one (lost at shutdown). */
@@ -49,6 +57,10 @@ typedef struct { char loc[512], type[8]; long long serial; int ok, count, lib; c
 static pkg_t AV[MAXP]; static int NAV;
 static src_t SRC[16]; static int NSRC;
 static unsigned char KEYS[16][32]; static int NKEYS, KLIB[16];
+/* 1.5.9: the revocations the signed package lists carry, and the certificate verify_rpk last accepted */
+typedef struct { char what[4]; char a[64]; char b[64]; } rev_t;
+static rev_t REV[256]; static int NREV;
+static struct { char name[64], github[64], key[48], prefix[48], expires[16]; } CERT;
 
 static void die(const char *f, ...) { va_list a; va_start(a, f); fputs("rpk: ", stderr); vfprintf(stderr, f, a); fputc('\n', stderr); va_end(a); exit(1); }
 static void say(const char *f, ...) { va_list a; va_start(a, f); vprintf(f, a); putchar('\n'); fflush(stdout); va_end(a); }
@@ -141,17 +153,64 @@ static int verify(const unsigned char *msg, size_t len, const unsigned char *sig
 	}
 	return lib ? 2 : 0;
 }
-static int VCLASS;   /* what verify_rpk found: 1 a system key, 2 only a Library key */
+static int VCLASS;   /* what verify_rpk found: 1 a system key, 2 only a Library key, 3 a developer's certificate */
+static int key_b64(const char *b, unsigned char out[32]) { unsigned char raw[64]; return strlen(b) == 44 && EVP_DecodeBlock(raw, (const unsigned char *)b, 44) >= 32 ? (memcpy(out, raw, 32), 0) : -1; }
+static int verify_with(const unsigned char k32[32], const unsigned char *msg, size_t len, const unsigned char *sig)
+{
+	EVP_PKEY *k = EVP_PKEY_new_raw_public_key(EVP_PKEY_ED25519, NULL, k32, 32); if (!k) return 0;
+	EVP_MD_CTX *c = EVP_MD_CTX_new(); int ok = EVP_DigestVerifyInit(c, NULL, NULL, NULL, k) == 1 && EVP_DigestVerify(c, sig, 64, msg, len) == 1;
+	EVP_MD_CTX_free(c); EVP_PKEY_free(k); return ok;
+}
+static int revoked(const char *what, const char *a, const char *b)
+{
+	for (int i = 0; i < NREV; i++) if (!strcmp(REV[i].what, what) && !strcmp(REV[i].a, a) && (!b || !strcmp(REV[i].b, "*") || !strcmp(REV[i].b, b))) return 1;
+	return 0;
+}
+static void today(char *d) { time_t now = time(NULL); strftime(d, 16, "%Y-%m-%d", gmtime(&now)); }
+/* a developer's certificate (text + signature): signed by a trusted key; fills CERT. 0 or a reason */
+static const char *check_cert(const char *t, size_t n, const unsigned char *sig)
+{
+	if (!verify((const unsigned char *)t, n, sig)) return "its developer certificate is not signed by the Rudolf OS Library";
+	if (strncmp(t, "rpk-cert 1\n", 11)) return "its developer certificate is not one";
+	memset(&CERT, 0, sizeof CERT); char *c = strndup(t, n);
+	for (char *l = strtok(c, "\n"); l; l = strtok(NULL, "\n")) {
+		char *v = strchr(l, ' '); if (!v) continue; *v++ = 0;
+		if (!strcmp(l, "name")) snprintf(CERT.name, sizeof CERT.name, "%s", v); else if (!strcmp(l, "github")) snprintf(CERT.github, sizeof CERT.github, "%s", v);
+		else if (!strcmp(l, "key")) snprintf(CERT.key, sizeof CERT.key, "%s", v); else if (!strcmp(l, "prefix")) snprintf(CERT.prefix, sizeof CERT.prefix, "%s", v);
+		else if (!strcmp(l, "expires")) snprintf(CERT.expires, sizeof CERT.expires, "%s", v);
+	}
+	free(c);
+	char d[16]; today(d);
+	if (!*CERT.key || !*CERT.prefix || strlen(CERT.prefix) < 3 || !*CERT.expires) return "its developer certificate is incomplete";
+	if (strcmp(CERT.expires, d) < 0) return "its developer certificate has expired";
+	if (revoked("key", CERT.key, NULL)) return "its developer's key was revoked by the Rudolf OS Library";
+	return NULL;
+}
 /* checks the trailer; returns the squashfs length, or -1 with a reason */
 static long long verify_rpk(const char *path, const char **why)
 {
 	struct stat st; if (stat(path, &st) || st.st_size < 4096 + TRAILER) { *why = "not a package file"; return -1; }
 	int f = open(path, O_RDONLY | O_CLOEXEC); if (f < 0) { *why = "cannot read it"; return -1; }
-	unsigned char t[TRAILER]; int ok = pread(f, t, TRAILER, st.st_size - TRAILER) == TRAILER; close(f);
-	if (!ok || memcmp(t + 64, MAGIC, 8)) { *why = "not a signed Rudolf package"; return -1; }
-	char hex[65], msg[80]; long long body = st.st_size - TRAILER;
+	unsigned char t[TRAILER]; int ok = pread(f, t, TRAILER, st.st_size - TRAILER) == TRAILER;
+	if (!ok || (memcmp(t + 64, MAGIC, 8) && memcmp(t + 64, "RPKSIG02", 8))) { close(f); *why = "not a signed Rudolf package"; return -1; }
+	long long body = st.st_size - TRAILER;
+	int dev = !memcmp(t + 64, "RPKSIG02", 8); unsigned char ck[32];
+	if (dev) {
+		unsigned char h[12]; if (body < 12 || pread(f, h, 12, body - 12) != 12 || memcmp(h + 4, "RPKCERT1", 8)) { close(f); *why = "its developer certificate is missing"; return -1; }
+		long long cl = h[0] | h[1] << 8 | h[2] << 16 | (long long)h[3] << 24;
+		if (cl < 20 || cl > 4000 || body < 12 + 64 + cl + 4096) { close(f); *why = "its developer certificate is damaged"; return -1; }
+		char *ct = malloc(cl + 1); unsigned char cs[64];
+		ok = pread(f, ct, cl, body - 12 - 64 - cl) == cl && pread(f, cs, 64, body - 12 - 64) == 64; ct[ok ? cl : 0] = 0;
+		const char *w = ok ? check_cert(ct, cl, cs) : "its developer certificate cannot be read"; free(ct);
+		if (w) { close(f); *why = w; return -1; }
+		if (key_b64(CERT.key, ck)) { close(f); *why = "its developer certificate is damaged"; return -1; }
+		body -= 12 + 64 + cl;
+	}
+	close(f);
+	char hex[65], msg[80];
 	if (sha256_file(path, body, hex)) { *why = "cannot read it"; return -1; }
 	snprintf(msg, sizeof msg, "rpk1 %s", hex);
+	if (dev) { if (!verify_with(ck, (unsigned char *)msg, strlen(msg), t)) { *why = "the signature is not from the developer its certificate names"; return -1; } VCLASS = 3; return body; }
 	if (!(VCLASS = verify((unsigned char *)msg, strlen(msg), t))) { *why = "the signature is not from a trusted key"; return -1; }
 	return body;
 }
@@ -211,6 +270,10 @@ static int parse_index(char *t, int src, long long *serial, char *expires)
 	for (char *l = strtok(t, "\n"); l; l = strtok(NULL, "\n")) {
 		if (!strncmp(l, "serial ", 7)) *serial = atoll(l + 7);
 		else if (!strncmp(l, "expires ", 8)) snprintf(expires, 16, "%s", l + 8);
+		else if (!strncmp(l, "R\t", 2) && NREV < 256) {   /* (1.5.9) a revocation */
+			char *p = l + 2; rev_t *r = &REV[NREV]; snprintf(r->what, sizeof r->what, "%s", field(&p)); snprintf(r->a, sizeof r->a, "%s", field(&p)); snprintf(r->b, sizeof r->b, "%s", field(&p));
+			if ((!strcmp(r->what, "key") || !strcmp(r->what, "pkg")) && *r->a) NREV++;
+		}
 		else if (!strncmp(l, "P\t", 2) && NAV < MAXP) {
 			char *p = l + 2; pkg_t *k = &AV[NAV];
 			k->name = strdup(field(&p)); k->version = strdup(field(&p)); k->kind = strdup(field(&p)); k->size = atoll(field(&p));
@@ -245,7 +308,7 @@ static void idx_paths(int i, char *idx, char *sig, size_t n)
 }
 static void load_available(void)
 {
-	NAV = 0; char idx[400], sig[400];
+	NAV = 0; NREV = 0; char idx[400], sig[400];
 	for (int i = 0; i < NSRC; i++) {
 		if (!strcmp(SRC[i].type, "web")) { idx_paths(i, idx, sig, sizeof idx); load_index(i, idx, sig, 1); }
 		else { snprintf(idx, sizeof idx, "%s/index.txt", SRC[i].loc); snprintf(sig, sizeof sig, "%s/index.sig", SRC[i].loc); load_index(i, idx, sig, 0); }
@@ -256,6 +319,25 @@ static pkg_t *best(const char *name)
 	pkg_t *b = NULL;
 	for (int i = 0; i < NAV; i++) if (!strcmp(AV[i].name, name) && (!b || strverscmp(AV[i].version, b->version) > 0)) b = &AV[i];
 	return b;
+}
+static int list_installed(char names[][48], int max);
+static void umount_pkg(const char *name);
+static int installed_info(const char *name, info_t *in);
+/* 1.5.9: installed packages the Library revoked (the package, or its developer's key) are disabled: unmounted, kept
+   with the reason (status shows it; removing them is the person's choice) */
+static void revoke_installed(void)
+{
+	NAV = 0; NREV = 0; load_available();
+	char n[MAXP][48]; int k = list_installed(n, MAXP);
+	for (int i = 0; i < k; i++) {
+		info_t in; if (installed_info(n[i], &in)) continue;
+		const char *why = revoked("pkg", n[i], iget(&in, "version")) ? "the Rudolf OS Library revoked this package"
+			: !strcmp(iget(&in, "signed"), "developer") && revoked("key", iget(&in, "certkey"), NULL) ? "the Rudolf OS Library revoked its developer's key" : NULL;
+		char dis[400]; snprintf(dis, sizeof dis, "%s/db/%s.disabled", ROOT, n[i]);
+		if (!why || !access(dis, F_OK)) continue;
+		umount_pkg(n[i]); FILE *o = fopen(dis, "w"); if (o) { fprintf(o, "%s\n", why); fclose(o); }
+		say("Disabled %s: %s", n[i], why); lib_health("disabled %s %s: %s", n[i], iget(&in, "version"), why);
+	}
 }
 static void refresh(void)
 {
@@ -274,6 +356,7 @@ static void refresh(void)
 		if (SRC[i].serial < old) { say("  refused: this list is older than the one already here"); unlink(ti); unlink(ts); continue; }
 		rename(ti, idx); rename(ts, sig); say("  %d packages", SRC[i].count);
 	}
+	revoke_installed();
 }
 
 /* ---------------- installed packages */
@@ -286,6 +369,7 @@ static int mount_pkg(const char *name)
 {
 	char file[400], dir[300]; snprintf(file, sizeof file, "%s/store/%s.rpk", ROOT, name); snprintf(dir, sizeof dir, "%s/%s", MNT, name);
 	if (is_mounted(dir)) return 0;
+	{ char dis[400]; snprintf(dis, sizeof dis, "%s/db/%s.disabled", ROOT, name); if (!access(dis, F_OK)) return 0; }   /* (1.5.9: revoked) */
 	mkdirs(dir);
 	char *a[] = {"mount", "-t", "squashfs", "-o", "loop,ro", file, dir, NULL}; return spawn(a, 1);
 }
@@ -324,12 +408,19 @@ static int install_file(const char *path, const char *want_name, const char *wan
 	char dbf[400], dbt[420]; snprintf(dbf, sizeof dbf, "%s/db/%s.info", ROOT, name); snprintf(dbt, sizeof dbt, "%s.new", dbf);
 	/* a package only a Library key signed: files for the desktop, never programs, and never in place of a package a
 	   system key signed (so a stolen Library key could not change what the system's own packages do) */
-	int lib = cls == 2;
+	int lib = cls == 2 || cls == 3;
 	const char *refuse = NULL;
+	if (!bad && revoked("pkg", iget(&in, "name"), iget(&in, "version"))) refuse = "this package was revoked by the Rudolf OS Library";
+	/* (1.5.9) an outside developer's package: only names under the prefix its certificate gives */
+	if (!bad && !refuse && cls == 3 && strncmp(iget(&in, "name"), CERT.prefix, strlen(CERT.prefix))) refuse = "its name is not one its developer certificate allows";
 	if (!bad && lib && strcmp(kd, "addon") && strcmp(kd, "webapp")) refuse = "a Rudolf OS Library package can only hold files for the desktop";
-	if (!bad && lib) { info_t cur; if (!installed_info(name, &cur) && strcmp(iget(&cur, "signed"), "library")) refuse = "it would replace a package that came with Rudolf OS"; }
+	/* (1.5.9: an outside developer's package replaces only its own developer's, never the Library's or the system's) */
+	if (!bad && lib && !refuse) { info_t cur; if (!installed_info(name, &cur)) {
+		if (cls == 3) { if (strcmp(iget(&cur, "signed"), "developer") || strcmp(iget(&cur, "certkey"), CERT.key)) refuse = "it would replace a package from someone else"; }
+		else if (strcmp(iget(&cur, "signed"), "library")) refuse = "it would replace a package that came with Rudolf OS"; } }
 	if (!bad && !refuse) { char cmd[900]; snprintf(cmd, sizeof cmd, "%s/db", ROOT); mkdirs(cmd); char *c[] = {"cp", ip, dbt, NULL}; bad = spawn(c, 1) != 0;
-		if (!bad) { FILE *o = fopen(dbt, "a"); if (o) { fprintf(o, "\nsigned = %s\n", lib ? "library" : "system"); fclose(o); } else bad = 1; } }
+		if (!bad) { FILE *o = fopen(dbt, "a"); if (o) { fprintf(o, "\nsigned = %s\n", cls == 3 ? "developer" : lib ? "library" : "system");
+			if (cls == 3) fprintf(o, "certkey = %s\ndeveloper = %s\ngithub = %s\n", CERT.key, CERT.name, CERT.github); fclose(o); } else bad = 1; } }
 	{ char *u[] = {"umount", "-d", tmpd, NULL}; spawn(u, 1); }
 	if (refuse) { unlink(dbt); say("  refused: %s", refuse); lib_health("refused %s %s, signed by the Rudolf OS Library: %s", name, iget(&in, "version"), refuse); return -1; }
 	if (bad) { unlink(dbt); say("  refused: the package information is missing or invalid"); return -1; }
@@ -340,6 +431,7 @@ static int install_file(const char *path, const char *want_name, const char *wan
 	umount_pkg(name);
 	rename(st2, store); rename(dbt, dbf);
 	if (mount_pkg(name)) { say("  installed %s %s, but it could not be mounted", name, iget(&in, "version")); return -1; }
+	{ char dis[400]; snprintf(dis, sizeof dis, "%s/db/%s.disabled", ROOT, name); unlink(dis); }   /* (a newer version that is not revoked) */
 	say("Installed %s %s", name, iget(&in, "version"));
 	if (lib) { if (*was) lib_health("updated %s from %s to %s, signed by the Rudolf OS Library", name, was, iget(&in, "version"));
 		else lib_health("installed %s %s, signed by the Rudolf OS Library", name, iget(&in, "version")); }
@@ -413,6 +505,7 @@ static void print_status(void)
 		char dir[300]; snprintf(dir, sizeof dir, "%s/%s", MNT, names[i]); pkg_t *b = best(names[i]);
 		printf("%s{", i ? "," : "");
 		for (int j = 0; j < in.n; j++) { jstr(in.k[j]); putchar(':'); jstr(in.v[j]); putchar(','); }
+		{ char dis[400]; snprintf(dis, sizeof dis, "%s/db/%s.disabled", ROOT, names[i]); char *w = slurp(dis, NULL); if (w) { char *nl = strchr(w, '\n'); if (nl) *nl = 0; printf("\"disabled\":"); jstr(w); putchar(','); free(w); } }
 		printf("\"mounted\":%s,\"update\":", is_mounted(dir) ? "true" : "false");
 		if (b && strverscmp(b->version, iget(&in, "version")) > 0) jstr(b->version); else printf("null");
 		putchar('}');
@@ -515,7 +608,7 @@ int main(int argc, char **argv)
 	if (!strcmp(c, "refresh")) { lock(); refresh(); return 0; }
 	if (!strcmp(c, "install-file")) {
 		if (argc < 3) die("usage: rpk install-file FILE"); lock();
-		say("Checking %s", argv[2]); return install_file(argv[2], NULL, NULL, 0) ? 1 : 0;
+		say("Checking %s", argv[2]); load_available(); return install_file(argv[2], NULL, NULL, 0) ? 1 : 0;   /* (1.5.9: with the revocations) */
 	}
 	if (!strcmp(c, "install") || !strcmp(c, "remove")) {
 		if (argc < 3) die("usage: rpk %s NAME...", c); lock();

@@ -10,6 +10,11 @@
                                                  write index.txt and index.sig for every .rpk in REPODIR
   rpk-tool.py local-deb PACKAGE OUTDIR           rebuild a .deb from a package installed on this machine
                                                  (for building without network access to a Debian mirror)
+  rpk-tool.py cert OUT --key LIBRARYKEY --name N --github G --pubkey KEY --prefix P [--days 365]
+                                                 (1.5.9, the Library) a developer's certificate: OUT and OUT.sig
+  rpk-tool.py build PKGDIR OUT.rpk --key KEY --cert CERT
+                                                 (1.5.9, a developer) a package with its certificate
+  The index takes revocations from REPODIR/revoked.txt: "key KEY" or "pkg NAME VERSION|*" lines.
 
 Package file layout: [squashfs][64-byte Ed25519 signature][b"RPKSIG01"]; the signature covers
 b"rpk1 " + hex SHA-256 of the squashfs part. index.sig is the Ed25519 signature of index.txt."""
@@ -123,7 +128,17 @@ def from_recipe(recipe, outdir, debs, rootfs):
         for c in r.get('commands', []): os.chmod(os.path.join(outdir, 'bin', c), 0o755)
     print(f'laid out {info["name"]} {info["version"]} in {outdir}')
 
-def build(pkgdir, out, key):
+def cert(out, key, name, github, pubkey, prefix, days):
+    if len(base64.b64decode(pubkey)) != 32 or len(pubkey) != 44: die('the publisher key is 44 characters of base64')
+    if not NAME.match(prefix.rstrip('-') or 'x') or len(prefix) < 3: die('the prefix is 3 or more lower-case letters, digits, - or _')
+    for v in (name, github): 
+        if '\n' in v or not v.strip(): die('name and github are one line each')
+    exp = (datetime.date.today() + datetime.timedelta(days=days)).isoformat()
+    text = f'rpk-cert 1\nname {name}\ngithub {github}\nkey {pubkey}\nprefix {prefix}\nexpires {exp}\n'.encode()
+    open(out, 'wb').write(text); open(out + '.sig', 'wb').write(load_key(key).sign(text))
+    print(f'{out}: {name} ({github}), packages named {prefix}..., until {exp}')
+
+def build(pkgdir, out, key, certf=None):
     info = read_info(open(os.path.join(pkgdir, 'PKGINFO')).read()); check_info(info, pkgdir)
     tmp = out + '.sfs'
     if os.path.exists(tmp): os.unlink(tmp)
@@ -133,7 +148,14 @@ def build(pkgdir, out, key):
     h = hashlib.sha256(open(tmp, 'rb').read()).hexdigest()
     sig = load_key(key).sign(b'rpk1 ' + h.encode())
     with open(out, 'wb') as f:
-        f.write(open(tmp, 'rb').read()); f.write(sig); f.write(MAGIC)
+        f.write(open(tmp, 'rb').read())
+        if certf:   # (1.5.9) [cert][cert sig][len LE32][RPKCERT1][package sig][RPKSIG02]
+            ct, cs = open(certf, 'rb').read(), open(certf + '.sig', 'rb').read()
+            pfx = [l.split(' ', 1)[1] for l in ct.decode().splitlines() if l.startswith('prefix ')]
+            if not pfx or not info['name'].startswith(pfx[0]): die(f'the package name must start with the certificate\'s prefix ({pfx[0] if pfx else "?"})')
+            f.write(ct); f.write(cs); f.write(len(ct).to_bytes(4, 'little')); f.write(b'RPKCERT1'); f.write(sig); f.write(b'RPKSIG02')
+        else:
+            f.write(sig); f.write(MAGIC)
     os.unlink(tmp)
     print(f'{out}: {info["name"]} {info["version"]}, {os.path.getsize(out)//1024} KB')
 
@@ -151,6 +173,14 @@ def index(repo, key, serial, days):
                                i['title'], i['summary'], i.get('icon', ''), i['license']]))
     head = ['rpk-index 1', f'serial {serial}']
     if days: head.append('expires ' + (datetime.date.today() + datetime.timedelta(days=days)).isoformat())
+    rv = os.path.join(repo, 'revoked.txt')   # (1.5.9) revocations, signed with the list
+    if os.path.exists(rv):
+        for l in open(rv):
+            w = l.split()
+            if not w or w[0].startswith('#'): continue
+            if w[0] == 'key' and len(w) == 2: rows.append('\t'.join(['R', 'key', w[1]]))
+            elif w[0] == 'pkg' and len(w) == 3: rows.append('\t'.join(['R', 'pkg', w[1], w[2]]))
+            else: die(f'revoked.txt: "key KEY" or "pkg NAME VERSION|*", not: {l.strip()}')
     text = ('\n'.join(head + rows) + '\n').encode()
     open(os.path.join(repo, 'index.txt'), 'wb').write(text)
     open(os.path.join(repo, 'index.sig'), 'wb').write(load_key(key).sign(text))
@@ -176,12 +206,14 @@ if __name__ == '__main__':
     a = argparse.ArgumentParser(); s = a.add_subparsers(dest='cmd', required=True)
     p = s.add_parser('keygen'); p.add_argument('dir')
     p = s.add_parser('from-recipe'); p.add_argument('recipe'); p.add_argument('outdir'); p.add_argument('--debs', default='.'); p.add_argument('--rootfs')
-    p = s.add_parser('build'); p.add_argument('pkgdir'); p.add_argument('out'); p.add_argument('--key', required=True)
+    p = s.add_parser('build'); p.add_argument('pkgdir'); p.add_argument('out'); p.add_argument('--key', required=True); p.add_argument('--cert')
+    p = s.add_parser('cert'); p.add_argument('out'); p.add_argument('--key', required=True); p.add_argument('--name', required=True); p.add_argument('--github', required=True); p.add_argument('--pubkey', required=True); p.add_argument('--prefix', required=True); p.add_argument('--days', type=int, default=365)
     p = s.add_parser('index'); p.add_argument('repo'); p.add_argument('--key', required=True); p.add_argument('--serial', type=int, default=int(datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d%H'))); p.add_argument('--expires-days', type=int, default=0)
     p = s.add_parser('local-deb'); p.add_argument('package'); p.add_argument('outdir')
     o = a.parse_args()
     if o.cmd == 'keygen': keygen(o.dir)
     elif o.cmd == 'from-recipe': from_recipe(o.recipe, o.outdir, o.debs, o.rootfs)
-    elif o.cmd == 'build': build(o.pkgdir, o.out, o.key)
+    elif o.cmd == 'build': build(o.pkgdir, o.out, o.key, o.cert)
+    elif o.cmd == 'cert': cert(o.out, o.key, o.name, o.github, o.pubkey, o.prefix, o.days)
     elif o.cmd == 'index': index(o.repo, o.key, o.serial, o.expires_days)
     elif o.cmd == 'local-deb': local_deb(o.package, o.outdir)
