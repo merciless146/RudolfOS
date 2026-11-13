@@ -70,7 +70,7 @@ if [ -z "$NOGPU" ]; then
 	for d in /sys/bus/pci/devices/*; do
 		case "$(cat $d/class 2>/dev/null)" in 0x03*) modprobe -q -b "$(cat $d/modalias)" 2>/dev/null;; esac
 	done
-	if grep -qE '^(i915|xe|amdgpu|radeon|nouveau|bochs|qxl|vmwgfx|gma500_gfx|ast|mgag200) ' /proc/modules; then
+	if grep -qE '^(i915|xe|amdgpu|radeon|nouveau|bochs|qxl|vmwgfx|gma500_gfx|ast|mgag200|virtio_gpu) ' /proc/modules; then
 		# the driver replaces the firmware framebuffer; wait (up to 6 s) for its own fb0. NVIDIA cards from the
 		# GeForce 20 series on first start their GSP processor from a 30-60 MB firmware file: up to 15 s (1.2.3)
 		T=60; grep -q '^nouveau ' /proc/modules && T=150

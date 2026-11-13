@@ -24,9 +24,9 @@ i=0; while [ $i -lt 90 ]; do
   S="$(cat /run/rudolf/desktop-engine 2>/dev/null)|$([ -e /run/rudolf/heartbeat ] && echo up)|$(pidof Xorg rudolf-webkit WebKitWebProcess | wc -w)"
   echo "STATUS $S"; case "$S" in webkit\|up*) break;; esac; i=$((i+1)); sleep 10; done
 echo "== uname"; uname -m; echo "== unverified"; cat /etc/rudolf/unverified; echo "== engine"; cat /run/rudolf/engine-choice /run/rudolf/desktop-engine
-echo "== dri"; ls /dev/dri; echo "== free"; free -m; echo "== session.log"; tail -50 /run/rudolf/session.log
+echo "== dri"; ls /dev/dri /dev/fb* /sys/class/graphics; cat /proc/fb; grep -iE "drm|virtio|fb" /proc/modules; echo "== free"; free -m; echo "== session.log"; tail -50 /run/rudolf/session.log
 echo "== Xorg"; grep -E "\((EE|WW)\)" /run/rudolf/Xorg.log | head -20; echo "== initramfs.log"; tail -20 /etc/rudolf/initramfs.log
-echo "== dmesg"; dmesg | grep -iE "error|fail|virtio|drm" | tail -25; echo "== ps"; ps -o pid,rss,args | grep -v "\[" | head -40
+echo "== dmesg"; dmesg | tail -40; echo "== ps"; ps -o pid,rss,args | grep -v "\[" | head -40
 echo PROBE-DONE
 ''')
 for n, f in (('base', base), ('chromium', chrom), ('desktop', desk), ('modules', mods)): os.link(f, f'{d}/rudolf/{n}.sfs') if os.stat(f).st_dev == os.stat(d).st_dev else shutil.copy(f, f'{d}/rudolf/{n}.sfs')
