@@ -19,6 +19,7 @@
  *   rudolf-update recovery          (1.5.9) refresh the official recovery system (slot r) from the running slot
  *   rudolf-update developer on KEY URL | off    (1.5.9, plan 8.3) Developer mode: one more trusted key (a developer's
  *                                   publisher key) and their update address; off: back to the official ones only
+ *   rudolf-update return-official keep|erase    (1.5.9, plan 8.5) back to the official Rudolf OS at the next start
  *   rudolf-update set url URL | set auto 0|1
  *   rudolf-update rzs-make FILE OUT.rzs     (build side) write a delta control file
  *   rudolf-update fetch URL OUT             (1.5.7, Make a stick) a release's boot image from github.com */
@@ -406,16 +407,17 @@ static int cmd_check(int quiet)
 	free(t); free(g);
 	return 0;
 }
+static int FORCE_DL;   /* (1.5.9: Return to official: the official release even when the custom build's number is higher) */
 static int cmd_download(void)
 {
-	if (!may_change_system(0)) return 6;
+	if (!FORCE_DL && !may_change_system(0)) return 6;
 	if (lockf_()) die("another update is running");
 	int r = cmd_check(1); if (r) return r;
 	char ap[300]; snprintf(ap, sizeof ap, "%s/available.txt", SYSD); char *t = slurp(ap, NULL); man_t m; if (!t || parse_manifest(t, &m)) die("no release list");
 	char sig[300]; snprintf(sig, sizeof sig, "%s/available.sig", SYSD);
 	{ size_t ml, sl; char *mt = slurp(ap, &ml), *sg = slurp(sig, &sl); int ok = mt && sg && sl == 64 && verify((unsigned char *)mt, ml, (unsigned char *)sg); free(mt); free(sg); if (!ok) die("the saved release list is not signed"); }
 	kv_t cr; cur_release(&cr);
-	if (m.serial <= atoll(kv(&cr, "serial"))) { say("Already up to date."); return 0; }
+	if (!FORCE_DL && m.serial <= atoll(kv(&cr, "serial"))) { say("Already up to date."); return 0; }
 	char bs[8]; booted(bs); kv_t st; char stp[300]; snprintf(stp, sizeof stp, "%s/state", SYSD); kv_read(stp, &st, '=');
 	/* the spare slot: never the one running, never the last good one */
 	const char *T = strcmp(bs, "a") && strcmp(kv(&st, "good"), "a") ? "a" : strcmp(bs, "b") && strcmp(kv(&st, "good"), "b") ? "b" : NULL;
@@ -521,6 +523,65 @@ static int recovery_refresh(const char *bs)
 	{ char *a[] = {"rm", "-rf", rp, NULL}; spawn(a); } if (rename(tn, rp)) { say("could not finish the recovery system"); return 1; }
 	sync(); say("Recovery system: Rudolf OS release %lld (official).", m.serial); return 0;
 }
+/* 1.5.9 (docs/plan-1.5.9.md 8.5): Return to official Rudolf OS, from Settings or from Recovery mode. Developer mode
+   off (the extra key and the developer's address gone); the official recovery system (slot r) put into the spare slot,
+   or, without one, the newest official release downloaded there (checked with the official key only); it starts at the
+   next restart (ret=1: once it has started, boot-ok clears every slot that is not official). erase: a factory reset at
+   that start too (accounts, files and apps; the system slots stay). From a USB stick only when it is this computer's
+   own drive. */
+static int official_slot(const char *s)
+{
+	char mp[400], gp[400]; snprintf(mp, sizeof mp, "%s/%s/manifest.txt", SYSD, s); snprintf(gp, sizeof gp, "%s/%s/manifest.sig", SYSD, s);
+	size_t ml, sl; char *mt = slurp(mp, &ml), *sg = slurp(gp, &sl); int v = mt && sg && sl == 64 ? verify((unsigned char *)mt, ml, (unsigned char *)sg) : 0;
+	free(mt); free(sg); return official(v);
+}
+static int cmd_return(int erase)
+{
+	char bs[8]; booted(bs);
+	if (!strcmp(bs, "disc") && !media_permanent()) { say("Not while Rudolf OS runs from a USB drive or disc: start this computer's own Rudolf OS (or its Recovery mode)."); return 6; }
+	if (lockf_()) die("another update is running");
+	unlink(EXTRAF); { kv_t cf; kv_read(CONFP, &cf, '='); kv_set(&cf, "url", ""); kv_set(&cf, "devurl", ""); kv_write(CONFP, &cf, '='); }
+	load_keys();   /* the official keys only from here on */
+	char stp[300]; snprintf(stp, sizeof stp, "%s/state", SYSD); kv_t st; kv_read(stp, &st, '=');
+	char rc[400]; snprintf(rc, sizeof rc, "%s/r/complete", SYSD); char ro[400]; snprintf(ro, sizeof ro, "%s/r/official", SYSD);
+	const char *T = NULL;
+	if (!access(rc, F_OK) && !access(ro, F_OK) && official_slot("r")) {
+		/* the spare slot: not the one running, not the last good one (the custom build) */
+		T = strcmp(bs, "a") && strcmp(kv(&st, "good"), "a") ? "a" : strcmp(bs, "b") && strcmp(kv(&st, "good"), "b") ? "b" : NULL;
+		if (!T) T = strcmp(kv(&st, "good"), "a") ? "a" : "b";
+		char tp[300], tn[310]; snprintf(tp, sizeof tp, "%s/%s", SYSD, T); snprintf(tn, sizeof tn, "%s.new", tp);
+		{ char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } mkdirs(tn);
+		char rd_[300]; snprintf(rd_, sizeof rd_, "%s/r", SYSD); DIR *d = opendir(rd_);
+		struct dirent *e; int bad = !d;
+		while (d && (e = readdir(d))) { if (e->d_name[0] == '.' || !strcmp(e->d_name, "official")) continue;
+			char f1[600], f2[600]; snprintf(f1, sizeof f1, "%s/%s", rd_, e->d_name); snprintf(f2, sizeof f2, "%s/%s", tn, e->d_name);
+			if (link(f1, f2)) { char *a[] = {"cp", f1, f2, NULL}; if (spawn(a)) bad = 1; } }
+		if (d) closedir(d);
+		if (bad) { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); die("could not copy the official recovery system"); }
+		sync(); { char *a[] = {"rm", "-rf", tp, NULL}; spawn(a); } if (rename(tn, tp)) die("could not finish the slot");
+		kv_read(stp, &st, '='); kv_set(&st, "next", T); kv_set(&st, "tries", "2"); kv_set(&st, "failed", "");
+	} else {
+		say("No official recovery system on this computer yet: the newest official Rudolf OS is downloaded.");
+		FORCE_DL = 1; int r = cmd_download(); FORCE_DL = 0; if (r) return r;
+		kv_read(stp, &st, '='); T = kv(&st, "next");
+		if (!*T || !official_slot(T)) die("the official release could not be prepared");
+	}
+	kv_set(&st, "ret", "1"); kv_write(stp, &st, '='); sync();
+	if (erase) { char fr[400]; snprintf(fr, sizeof fr, "%s/../../.factory-reset", SYSD); write_file(fr, "1\n"); sync(); }
+	char rp[400]; snprintf(rp, sizeof rp, "%s/%s/RELEASE", SYSD, T); kv_t rl; kv_read(rp, &rl, ' ');
+	say("Returning to the official Rudolf OS %s: it starts the next time the computer restarts%s.", kv(&rl, "version"), erase ? ", with everything erased (a factory reset)" : ", with your accounts, files and apps");
+	return 0;
+}
+/* (after Return to official: the official system started; the custom build's slots are cleared) */
+static void return_done(const char *bs, kv_t *st, const char *stp)
+{
+	if (strcmp(kv(st, "ret"), "1") || !official_slot(bs)) return;
+	const char *sl[2] = {"a", "b"};
+	for (int i = 0; i < 2; i++) { if (!strcmp(sl[i], bs) || official_slot(sl[i])) continue;
+		char p[300]; snprintf(p, sizeof p, "%s/%s", SYSD, sl[i]); { char *a[] = {"rm", "-rf", p, NULL}; spawn(a); }
+		if (!strcmp(kv(st, "prev"), sl[i])) kv_set(st, "prev", ""); say("Cleared the custom build in slot %s.", sl[i]); }
+	kv_set(st, "ret", ""); kv_write(stp, st, '='); sync(); say("Back to the official Rudolf OS.");
+}
 static int cmd_bootok(void)
 {
 	char bs[8], stp[300]; booted(bs); snprintf(stp, sizeof stp, "%s/state", SYSD); kv_t st; kv_read(stp, &st, '=');
@@ -534,6 +595,7 @@ static int cmd_bootok(void)
 	/* the new system brings its own desktop: a desktop installed earlier from a file no longer overrides it */
 	if (!access("/persist/os/current/index.html", F_OK)) write_file("/persist/os/disabled", "system update\n");
 	say("Keeping the updated system (slot %s).", bs);
+	return_done(bs, &st, stp);
 	recovery_refresh(bs);   /* (1.5.9: the official recovery system follows the newest official release that started) */
 	return 0;
 }
@@ -655,6 +717,7 @@ int main(int argc, char **argv)
 		kv_set(&cf, "url", u); kv_set(&cf, "devurl", u); if (kv_write(CONFP, &cf, '=')) return 1;
 		say("Developer mode is on: releases signed by this key are installed too, from %s. The official recovery system stays official.", u); return 0;
 	}
+	if (!strcmp(c, "return-official") && argc == 3 && (!strcmp(argv[2], "keep") || !strcmp(argv[2], "erase"))) return cmd_return(!strcmp(argv[2], "erase"));
 	if (!strcmp(c, "set") && argc >= 4) {
 		kv_t cf; kv_read(CONFP, &cf, '=');
 		if (!strcmp(argv[2], "url")) { const char *u = argv[3]; if (*u && strncmp(u, "https://", 8) && strncmp(u, "http://", 7)) die("the address starts with https://"); for (const char *q = u; *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/:._-~%+", *q)) die("bad character in the address"); kv_set(&cf, "url", u); }

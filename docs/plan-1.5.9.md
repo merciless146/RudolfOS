@@ -246,6 +246,11 @@ Whatever the normal start runs, the boot menu's "Recovery mode" starts the offic
   4. asks: keep accounts, files and apps (a return), or erase everything (a factory reset, as Install here does,
      without a disc);
   5. after the next start, Settings › About says Official Rudolf OS again, and the self-test checks it.
+- **Done (2026-11-13):** rudolf-update `return-official keep|erase` (Developer mode off; slot r, or the newest official
+  release downloaded, into the spare slot, tried at the next start; once it started, boot-ok clears every slot that is
+  not official; erase: the factory reset at that start, the system slots kept); rudolfd `sys/return` (a job); Settings ›
+  Update and recovery's button and Recovery mode's notice. Not yet: restoring the official rudolf.efi (8.4's ESP work),
+  and Library apps from outside developers checked against their certificates (8.2's certificates).
 - If the official start fails, the start-up falls back to the previous slot as every update does, and Recovery mode is
   still there.
 - Library apps from outside developers stay installed only if their certificates are still valid; apps from an extra

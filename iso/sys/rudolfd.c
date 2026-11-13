@@ -3997,6 +3997,14 @@ static void api(struct req *r)
 			snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update %s", w); start_job("system-update", cmd); reply_ok(r->fd, "started"); return;
 		}
 		if (!strcmp(w, "rollback")) { char *o = run_out("/usr/bin/rudolf-update rollback 2>&1"); reply_ok(r->fd, o); free(o); return; }
+		/* 1.5.9 (plan 8.5): Return to official Rudolf OS (keep or erase); a job (it may download the official release).
+		   The desktop asks an administrator's password first */
+		if (!strcmp(w, "return")) {
+			const char *e = qparam(r->query, "erase");
+			if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
+			snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update return-official %s", e && !strcmp(e, "1") ? "erase" : "keep");
+			start_job("system-update", cmd); reply_ok(r->fd, "started"); return;
+		}
 		if (!strcmp(w, "set")) {
 			const char *k = qparam(r->query, "k"); char kk[8]; snprintf(kk, sizeof kk, "%s", k ? k : "");
 			const char *v = qparam(r->query, "v"); if (!v) v = "";
