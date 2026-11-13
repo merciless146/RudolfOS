@@ -41,10 +41,14 @@ try:
     while time.time() - t0 < 900 and q.poll() is None:
         if not shell:
             cons.write(g.s.read(2)); cons.flush()
-            g.s.s.send(b'\n'); o = g.sh('echo READY$((40+2))', 5)
+            # (the serial port takes input only once something reads it: a send can time out until then)
+            try: g.s.s.send(b'\n'); o = g.sh('echo READY$((40+2))', 5)
+            except OSError: o = ''
+            cons.write(o); cons.flush()
             if 'READY42' in o: shell = True; say(f'{int(time.time()-t0)} s: the system started (debug shell on ttyAMA0)'); continue
             continue
-        st = sh('printf "%s|%s|%s\\n" "$(cat /run/rudolf/desktop-engine 2>/dev/null)" "$([ -e /run/rudolf/heartbeat ] && echo up)" "$(pidof rudolf-webkit Xorg | wc -w)"', 20).strip().split('\n')[-1]
+        try: st = sh('printf "%s|%s|%s\\n" "$(cat /run/rudolf/desktop-engine 2>/dev/null)" "$([ -e /run/rudolf/heartbeat ] && echo up)" "$(pidof rudolf-webkit Xorg | wc -w)"', 20).strip().split('\n')[-1]
+        except OSError: st = 'serial busy'
         if st != last: say(f'{int(time.time()-t0)} s: engine|heartbeat|processes = {st}'); last = st
         if st.startswith('webkit|up'): ok = True; break
         time.sleep(10)
@@ -55,9 +59,15 @@ try:
         except Exception as e: say('no screen picture:', e)
         for c in ('uname -m; cat /etc/rudolf/unverified', 'cat /run/rudolf/desktop-engine; ls /dev/dri', 'free -m', 'tail -40 /run/rudolf/session.log',
                   'grep -E "\\((EE|WW)\\)" /run/rudolf/Xorg.log | head -20', 'dmesg | grep -iE "error|fail|virtio" | tail -20', 'ps -o pid,rss,args | head -40'):
-            say('$ ' + c); say(sh(c, 30))
+            say('$ ' + c)
+            try: say(sh(c, 30))
+            except OSError: say('(the serial port did not take the command)')
 finally:
-    cons.write(g.s.read(1)); cons.close()
-    q.kill()
+    try: cons.write(g.s.read(1))
+    except OSError: pass
+    cons.close(); q.kill()
+    if not ok:   # (the artifacts may not be reachable: the console's end and QEMU's messages in the log too)
+        say('--- the serial console, last lines:'); say('\n'.join(open(os.path.join(out, 'console.txt'), errors='replace').read().replace('\r', '').split('\n')[-60:]))
+        say('--- QEMU:'); say(open(os.path.join(out, 'qemu.txt'), errors='replace').read()[-2000:])
 say('PASS: the ARM64 system reached the Lite sign-in screen in QEMU' if ok else 'FAIL: the Lite desktop did not answer within 15 minutes')
 sys.exit(0 if ok else 1)

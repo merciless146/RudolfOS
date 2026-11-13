@@ -8,13 +8,16 @@
 name: ARM64 check
 on:
   workflow_dispatch:
+    inputs:
+      reuse: {description: 'Start in QEMU only, with the kernel and layers of this earlier run (its id)', required: false, default: ''}
   pull_request:
     paths: ['iso/kconfig-arm64.sh', 'iso/systools/arm64_kernel.sh', 'iso/systools/arm64_base.sh', 'iso/qt/arm64_boot.py', 'iso/sys/*.c', 'iso/sys/root/**', 'iso/initramfs/**',
       'iso/mkrootfs.sh', 'iso/xbuild.sh', 'iso/xshim.sh', 'iso/sndbuild.sh', 'iso/sndshim.sh', 'iso/wifibuild.sh', 'iso/pkgmanifest.py',
       'iso/systools/mklayers.sh', 'iso/systools/addwebkit.sh', '.github/workflows/arm64-check.yml']
-permissions: {contents: read}
+permissions: {contents: read, actions: read}
 jobs:
   arm64:
+    if: inputs.reuse == '' || inputs.reuse == null
     runs-on: ubuntu-24.04-arm
     env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
@@ -71,6 +74,7 @@ jobs:
           grep -q "Rudolf OS could not find its disc or USB drive" q.log
           echo "::notice title=ARM64 in QEMU::the kernel started and Rudolf OS's start-up ran (it looked for its drive; none given)"
   base:
+    if: inputs.reuse == '' || inputs.reuse == null
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
@@ -99,14 +103,15 @@ jobs:
           [ -z "$S" ] || echo "::notice title=ARM64 base layer::base.sfs $S; every program in it has its libraries and the main ones run on ARM64"
   boot:
     needs: [arm64, base]
+    if: always() && (inputs.reuse != '' && inputs.reuse != null || needs.arm64.result == 'success' && needs.base.result == 'success')
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
-        with: {name: arm64-kernel, path: k}
+        with: {name: arm64-kernel, path: k, run-id: '${{ inputs.reuse || github.run_id }}', github-token: '${{ github.token }}'}
       - uses: actions/download-artifact@v4
-        with: {name: arm64-layers, path: l}
+        with: {name: arm64-layers, path: l, run-id: '${{ inputs.reuse || github.run_id }}', github-token: '${{ github.token }}'}
       - name: Tools
         run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-arm xorriso >/dev/null
       - name: Start the whole system in QEMU, to the Lite sign-in screen
