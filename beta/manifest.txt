@@ -1,5 +1,5 @@
 rudolf-system 1
-serial 2026111317
+serial 2026111321
 version 1.5.9.261113
 released 2026-11-13
 expires 2026-11-27
@@ -7,12 +7,12 @@ urgent 0
 chromium 158.0.8127.18
 kernel 6.18.63-rudolf
 notes 1.5.9: In progress.
-L	vmlinuz	11803256	98e0f4223abcf19fba14fdf28ff6638fd1e3bf75d8ab8179cc2061b1f427911c	https://github.com/merciless146/RudolfOS/releases/download/r2026111317/vmlinuz
-L	base	303742976	9989e16887e18ce919e13162c1ffc23360cb123e4aa5f84eb0f5e42ffa408fbe	https://github.com/merciless146/RudolfOS/releases/download/r2026111317/base.sfs
-L	chromium	149966848	d8a8262511a48622a596781c068a1e060742fee552c7fb49593769eb6be2eae8	https://github.com/merciless146/RudolfOS/releases/download/r2026111317/chromium.sfs
-L	desktop	5513216	9fb785ac5d680edfacc2234b5d960703624ecccfcbbc9d75d1545de93166fef0	https://github.com/merciless146/RudolfOS/releases/download/r2026111317/desktop.sfs
-L	modules	101310464	09a6b0b0e59d147f35dfe410fc957ccceeb06c8f4e9615d14506ce170312a89c	https://github.com/merciless146/RudolfOS/releases/download/r2026111317/modules.sfs
-V	base	73575	19667b9dab57861a59ca6bc2298b8998789becde404910497eacbab46a3810c2	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
+L	vmlinuz	11803256	98e0f4223abcf19fba14fdf28ff6638fd1e3bf75d8ab8179cc2061b1f427911c	https://github.com/merciless146/RudolfOS/releases/download/r2026111321/vmlinuz
+L	base	303747072	de040b43a965ee34b0c72bea615bd17cbaaa28acd37cf96c4a4e7c3493cb05c5	https://github.com/merciless146/RudolfOS/releases/download/r2026111321/base.sfs
+L	chromium	149966848	d8a8262511a48622a596781c068a1e060742fee552c7fb49593769eb6be2eae8	https://github.com/merciless146/RudolfOS/releases/download/r2026111321/chromium.sfs
+L	desktop	5513216	9fb785ac5d680edfacc2234b5d960703624ecccfcbbc9d75d1545de93166fef0	https://github.com/merciless146/RudolfOS/releases/download/r2026111321/desktop.sfs
+L	modules	101310464	09a6b0b0e59d147f35dfe410fc957ccceeb06c8f4e9615d14506ce170312a89c	https://github.com/merciless146/RudolfOS/releases/download/r2026111321/modules.sfs
+V	base	73576	514aa3eeb05886a50870f67bfd9894169ca9cdd8e7c88ef880e51852f1a2c9dd	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
 V	chromium	36325	b5385a42cbd7f5c64776c89abda64f97c5ee531836fdd2daef4e814f68fb50f1	da3143e0b76e95a8fb9b20d6cd921581143496db9de69f0900a337920b32f7f8
 V	desktop	1334	d839b2d78aa10b3593cd3882771f2789fd749a93410bd16c4c9c2831d8b91ffb	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
 V	modules	24539	2088257b570ce7a27d255e7d3d9a067d30652a3d812d8336576f534dae16ed07	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
