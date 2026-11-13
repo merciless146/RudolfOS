@@ -66,7 +66,8 @@ run /usr/bin/rudolf-memguard --warn 3415 340 3415 2387 | grep -qx 1 || { echo "r
 # Chromium starts inside the layer and renders a page (as the release's start test does)
 if [ "$CH" != none ]; then
 	# (its libraries first: the snap's Chromium brings some of its own, the rest must be in the layer)
-	CMISS=$(sudo chroot "$R" $LD --list /opt/chromium/chrome 2>&1 | grep 'not found' || true)
+	CLD=$LD; G=$(ls "$R"/opt/chromium/glibc/ld-linux*.so.* 2>/dev/null | head -1); [ -n "$G" ] && { CLD=${G#$R}; echo "Chromium with its own C library: $(cat "$OUT/chrome.glibc" 2>/dev/null)" | tee -a "$OUT/report.txt"; }
+	CMISS=$(sudo chroot "$R" $CLD --list /opt/chromium/chrome 2>&1 | grep -E 'not found|version .* not found' || true)
 	[ -z "$CMISS" ] || { echo "$CMISS" | head -20; echo "Chromium's libraries missing in the ARM64 layer"; exit 1; }
 	# /dev with its /dev/shm and /dev/pts (rbind), /proc and /sys, as at start-up
 	sudo mount --rbind /dev "$R/dev"; sudo mount --make-rslave "$R/dev"; sudo mount -t proc proc "$R/proc"; sudo mount --rbind /sys "$R/sys"; sudo mount --make-rslave "$R/sys"

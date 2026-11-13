@@ -27,6 +27,32 @@ snap)
 	unsquashfs -q -d "$W/s" "$W/c.snap" 'usr/lib/chromium-browser' >/dev/null
 	cp -a "$W/s/usr/lib/chromium-browser/." "$OUT/"
 	[ -x "$OUT/chrome" ] || { echo "the snap has no chrome binary" >&2; exit 1; }
+	# 1.5.9 (plan Part 3): a snap built on a newer Ubuntu than Rudolf OS's (the arm64 snap moved to core26 first and
+	# needs GLIBC_2.43; Rudolf OS's layer has Ubuntu 24.04's 2.39) brings its own C library: the one of the snap's base
+	# (core26, from the same store), in OUTDIR/glibc; chrome and its crash handler load it (patchelf: their program
+	# loader and an RPATH /opt/chromium/glibc). The other libraries in the layer work with the newer C library.
+	NEED=$(strings -a "$OUT/chrome" "$OUT"/*.so 2>/dev/null | sed -n 's/^GLIBC_2\.\([0-9]*\)$/\1/p' | sort -n | tail -1)
+	HAVE=$(getconf GNU_LIBC_VERSION | sed -n 's/^glibc 2\.\([0-9]*\).*/\1/p')
+	if [ "${NEED:-0}" -gt "${HAVE:-99}" ]; then
+		echo "the snap needs glibc 2.$NEED, this system has 2.$HAVE: bundling its base's C library" >&2
+		unsquashfs -q -d "$W/m" "$W/c.snap" meta/snap.yaml >/dev/null
+		BASE=$(sed -n 's/^base: *//p' "$W/m/meta/snap.yaml"); [ -n "$BASE" ] || { echo "the snap names no base" >&2; exit 1; }
+		JB=$(curl -fsSL --retry 4 --retry-delay 10 --retry-all-errors --connect-timeout 30 -H 'Snap-Device-Series: 16' "https://api.snapcraft.io/v2/snaps/info/$BASE?fields=download,version")
+		UB=$(echo "$JB" | jq -r '."channel-map"[] | select(.channel.name=="stable" and .channel.architecture==$a) | .download.url' --arg a "$ARCH" | head -1)
+		[ -n "$UB" ] && [ "$UB" != null ] || { echo "no stable $ARCH $BASE snap" >&2; exit 1; }
+		curl -fsSL --retry 6 --retry-delay 20 --retry-all-errors --connect-timeout 30 --max-time 900 -o "$W/b.snap" "$UB"
+		case "$ARCH" in arm64) M=aarch64-linux-gnu;; amd64) M=x86_64-linux-gnu;; *) echo "no C library bundling for $ARCH" >&2; exit 1;; esac
+		unsquashfs -q -d "$W/b" "$W/b.snap" "usr/lib/$M" >/dev/null
+		mkdir -p "$OUT/glibc"
+		for l in libc.so.6 libm.so.6 libmvec.so.1 libpthread.so.0 libdl.so.2 librt.so.1 libresolv.so.2 libanl.so.1 libutil.so.1; do
+			[ -e "$W/b/usr/lib/$M/$l" ] && cp -L "$W/b/usr/lib/$M/$l" "$OUT/glibc/"; done
+		LDN=$(cd "$W/b/usr/lib/$M" && ls ld-linux*.so.* | head -1); [ -n "$LDN" ] && cp -L "$W/b/usr/lib/$M/$LDN" "$OUT/glibc/"
+		[ -e "$OUT/glibc/libc.so.6" ] && [ -n "$LDN" ] || { echo "$BASE has no C library at usr/lib/$M" >&2; exit 1; }
+		for x in chrome chrome_crashpad_handler; do [ -e "$OUT/$x" ] || continue
+			patchelf --set-interpreter "/opt/chromium/glibc/$LDN" --force-rpath --set-rpath '/opt/chromium/glibc:$ORIGIN' "$OUT/$x"; done
+		echo "$BASE $(echo "$JB" | jq -r '."channel-map"[] | select(.channel.name=="stable" and .channel.architecture==$a) | .version' --arg a "$ARCH" | head -1): glibc $(strings -a "$OUT/glibc/libc.so.6" | sed -n 's/^GNU C Library .* version \([0-9.]*\).*/\1/p' | head -1)" > "$OUT.glibc"
+		cat "$OUT.glibc" >&2
+	fi
 	# the setuid sandbox helper is not in the snap; Rudolf OS runs Chromium with the namespace sandbox
 	echo "${VER%%-*}" > "$OUT.version";;
 playwright)

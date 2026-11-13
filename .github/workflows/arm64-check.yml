@@ -83,7 +83,7 @@ jobs:
       - name: Tools and the libraries the layer is made from (as the release's, on ARM64)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq build-essential git file squashfs-tools meson ninja-build pkg-config cmake gettext m4 \
+          sudo apt-get install -y -qq build-essential git file squashfs-tools patchelf meson ninja-build pkg-config cmake gettext m4 \
             libx11-dev libxtst-dev libxfixes-dev libxrandr-dev libxext-dev libssl-dev zlib1g-dev libglib2.0-dev libwebkit2gtk-4.1-dev libgtk-3-dev \
             libpixman-1-dev x11-xkb-utils xkb-data xorg-sgml-doctools libxfont2 libxshmfence1 libxkbfile1 libpciaccess0 libepoxy0 libgbm1 libudev-dev libdrm2 \
             libgl1 libglx0 libgles2 libegl1 libegl-mesa0 libglx-mesa0 libgl1-mesa-dri \
