@@ -144,6 +144,7 @@ addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey,k=SUB[e.code]&&e.ctr
  /* 1.5.6: Chromium's own pages, windows and bubbles (history, downloads, bookmarks, its task manager, view source,
     save and open dialogs, help) never open from a website: the page still sees the key */
  else if(e.isTrusted&&UI.has((c?'C':'')+(e.shiftKey?'S':'')+(e.altKey?'A':'')+e.code))e.preventDefault()},true);
+addEventListener('click',e=>{if(!e.isTrusted)return;const a=e.target&&e.target.closest&&e.target.closest('a[href^="tel:" i]');if(!a)return;e.preventDefault();e.stopImmediatePropagation();say({tel:String(a.getAttribute('href')).slice(4,80)})},true);
 let t=null;const tt=()=>{if(document.title!==t){t=document.title;say({title:t})}};
 addEventListener('DOMContentLoaded',tt);addEventListener('load',tt);setInterval(tt,1500)})()`;
 /* in every frame of a page: Flash content (an <embed> or <object> with a .swf) asks for Ruffle */
@@ -184,7 +185,8 @@ function tabEvents(t) {
     if (typeof o.k == 'string') toTab(t.tid, 'keys', {k: o.k.slice(0, 8)});
     else if (typeof o.flash == 'string') { if (RUFFLE.on && RUFFLE.urls.length) { f.executeScript({code: ruffleJS(), allFrames: true}).catch(() => {}); toTab(t.tid, 'flash') } }
     else if (typeof o.title == 'string') toTab(t.tid, 'title', {title: o.title.slice(0, 300)});
-    else if (typeof o.notice == 'number') toTab(t.tid, 'notice', {id: o.notice});   // (1.5.9: its button was pressed, by a person: isTrusted)
+    else if (typeof o.notice == 'number') toTab(t.tid, 'notice', {id: o.notice});
+    else if (typeof o.tel == 'string') toTab(t.tid, 'tel', {num: o.tel.slice(0, 80)});   // (1.5.9, plan 7.3: a phone number clicked)   // (1.5.9: its button was pressed, by a person: isTrusted)
   });
   f.addEventListener('focus', () => toTab(t.tid, 'focus'));
   f.addEventListener('close', () => toTab(t.tid, 'close'));

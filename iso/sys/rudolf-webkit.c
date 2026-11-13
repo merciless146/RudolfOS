@@ -147,6 +147,7 @@ static const char *PAGE_JS =
 	" else if(c&&!e.altKey&&(k=='+'||k=='='||k=='-'||k=='0'))a='z'+(k=='='?'+':k);else if(c&&k=='Tab')a=e.shiftKey?'ptab':'ntab';"
 	" if(a){e.preventDefault();e.stopImmediatePropagation();if(a!='none')say({k:a})}},true);"
 	"const S='embed[src*=\".swf\" i],embed[type*=\"shockwave\" i],object[data*=\".swf\" i],object[type*=\"shockwave\" i],object[classid*=\"d27cdb6e\" i],param[name=\"movie\" i][value*=\".swf\" i]';"
+	"addEventListener('click',e=>{if(!e.isTrusted)return;const a=e.target&&e.target.closest&&e.target.closest('a[href^=\"tel:\" i]');if(!a)return;e.preventDefault();e.stopImmediatePropagation();say({tel:String(a.getAttribute('href')).slice(4,80)})},true);"
 	"let done=false,mo=null;const go=()=>{if(done)return;done=true;if(mo)mo.disconnect();say({flash:location.href})};"
 	"const watch=()=>{if(document.querySelector(S))return go();mo=new MutationObserver(()=>{if(document.querySelector(S))go()});"
 	" mo.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['src','data','type','value']});setTimeout(()=>mo&&mo.disconnect(),60000)};"
@@ -342,6 +343,8 @@ static void on_tab_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, g
 {
 	(void)m; tab *t = d; JSCValue *o = webkit_javascript_result_get_js_value(r); if (!jsc_value_is_object(o)) return;
 	if (jsc_value_object_has_property(o, "notice")) { char x[32]; snprintf(x, sizeof x, "\"id\":%d", (int)jnum(o, "notice", 0)); tabev(t, "notice", x); return; }   /* 1.5.9 */
+	/* 1.5.9 (plan 7.3): a phone number clicked (tel:): the desktop asks how to call it */
+	{ char *tl = jstr(o, "tel"); if (tl) { GString *x = g_string_new("\"num\":"); if (strlen(tl) > 80) tl[80] = 0; json_str(x, tl); tabev(t, "tel", x->str); g_string_free(x, TRUE); g_free(tl); return; } }
 	char *k = jstr(o, "k"), *fl = jstr(o, "flash");
 	if (k) { GString *x = g_string_new("\"k\":"); k[strcspn(k, "\n")] = 0; if (strlen(k) > 8) k[8] = 0; json_str(x, k); tabev(t, "keys", x->str); g_string_free(x, TRUE); }
 	else if (fl && RUFFLE_JS[0]) { webkit_web_view_run_javascript(WEBKIT_WEB_VIEW(t->view), RUFFLE_JS, NULL, NULL, NULL); tabev(t, "flash", NULL); }

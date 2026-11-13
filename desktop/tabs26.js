@@ -153,6 +153,7 @@ addEventListener('message', e => {
     else if (ev == 'newwin' && typeof m.ntid == 'string') h.newwin(String(m.url || ''), m.ntid, !!m.popup);
     else if (ev == 'gone') h.gone(String(m.why || ''));
     else if (ev == 'notice') { const w = RT_NOTICE.get(+m.id); if (w) { RT_NOTICE.delete(+m.id); w(m.tid) } }   // 1.5.9: a notice's button
+    else if (ev == 'tel') { if (typeof telOpen == 'function') telOpen(m.num) }   // 1.5.9 (plan 7.3): a phone number clicked in a tab
     else if (ev == 'busy') { const w = RT_BUSY.get(m.id); if (w) { RT_BUSY.delete(m.id); w({m: !!m.m, f: !!m.f}) } }
     else if (ev == 'fs') h.fs && h.fs(!!m.on);
     else if (ev == 'blocked') { if (m.main) h.blocked(String(m.url || ''), String(m.why || '')) }
