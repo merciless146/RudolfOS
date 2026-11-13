@@ -216,6 +216,10 @@ Whatever the normal start runs, the boot menu's "Recovery mode" starts the offic
   (`/EFI/rudolf/rudolf.efi`, which a custom build replaces). Its initramfs carries the official public key and starts
   only `system/r`, after checking its manifest's signature and every file's size and SHA-256; it ignores
   /persist/etc/rudolf/extra-keys and the update address entirely.
+- **Done (2026-11-13), step 1:** rudolf-update keeps `system/r` (with an `official` mark) from the running slot at
+  boot-ok when its release list is signed by the official key and is newer (hard links; a layer from this drive's disc
+  is taken from there), never in recovery mode; Recovery mode starts it first. Next: recovery.efi on the ESP, the
+  recovery initramfs's own checks, the repair at each start, and the QEMU Secure Boot test.
 - **What it can do:** everything Recovery mode does now (safe settings, the devlink and remote access, Make a stick),
   plus "Return to official Rudolf OS" (8.5) in its first screen.
 - **Who may change it:** only rudolf-update, with an official release. A custom build's updater is told by the official
