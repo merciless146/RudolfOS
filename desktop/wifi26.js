@@ -14,6 +14,7 @@ function wifiPanel(wf,ifn){
  wf.innerHTML=`<div class='wfad'></div><div class='wfcur'></div><div class='wfhd'><b>Networks in range</b><button class='wfre'>↻ Refresh</button></div><div class='wfl'><div class='msg'>Looking for networks…</div></div>
  <div class='rmrow' style='justify-content:flex-start'><button class='wfhid'>Join a hidden network…</button></div>
  <details class='wfrad'><summary>Radios of this network</summary><div class='wfradb'><div class='msg'>Connect to a network to see its radios.</div></div></details>
+ <div class='wfbd'><span class='wfbdw'><button class='wfbdb' aria-haspopup='menu' aria-expanded='false'>📡 This computer's Wi-Fi radios ▾</button><div class='wfbdm' role='menu' aria-label="This computer's Wi-Fi radios" hidden></div></span><div class='msg wfbdn'></div></div>
  <div class='rmrow' style='justify-content:flex-start'><button class='wfwhy'>⚡ Why does the Wi-Fi drop?</button></div>
  <h4 class='sh4'>Saved networks</h4><div class='wfsv'></div>
  <details class='wfadv'><summary>Country</summary><div class='msg'>Which channels and transmit power your Wi-Fi may use depend on the country. Set yours if some networks do not show up.</div><div class='r2'><label>Country code</label><input class='wfcc' maxlength='2' placeholder='e.g. US, GB, DE' style='width:80px;text-transform:uppercase'><button class='wfccs'>Set</button></div></details>`;
@@ -45,15 +46,40 @@ function wifiPanel(wf,ifn){
   const o={radios:[]};(r.raw||'').split('\n').forEach(l=>{const i=l.indexOf('=');if(i<0)return;const k=l.slice(0,i),v=l.slice(i+1);if(k=='radio'){const p=v.split('\t');o.radios.push({b:p[0],f:+p[1],s:+p[2],st:p[3]||''})}else o[k]=v.trim()});
   const key=JSON.stringify(o);if(key==radKey)return;radKey=key;
   const bands=(o.bands||'').split(' ').filter(Boolean).map(x=>x+' GHz');
-  let h=`<div class='msg'>This computer's Wi-Fi: ${bands.length?esc2(bands.join(', ')):'its bands are not known'}.</div>`;
+  const boffs=(o.bandsoff||'').split(' ').filter(Boolean);
+  let h=`<div class='msg'>This computer's Wi-Fi: ${bands.length?esc2(bands.join(', ')):'its bands are not known'}${boffs.length?' ('+esc2(boffs.map(x=>x+' GHz').join(', '))+' turned off by an administrator)':''}.</div>`;
   if(!o.ssid){b.innerHTML=h+"<div class='msg'>Connect to a network to see its radios.</div>";return}
   if(!o.radios.length){b.innerHTML=h+"<div class='msg'>No radios found yet: press Refresh above to look again.</div>";return}
   b.innerHTML=h;o.radios.sort((x,y)=>x.f-y.f).forEach(x=>{const band=x.f>=5925?'6 GHz':x.f>=4900?'5 GHz':'2.4 GHz',ch=x.f>=5925?Math.round((x.f-5950)/5):x.f>=4900?Math.round((x.f-5000)/5):x.f==2484?14:Math.round((x.f-2407)/5);
-   const fail=x.st.startsWith('failed:')?new Date(+x.st.slice(7)*1000):null,st=x.st=='inuse'?'In use':x.st=='off'?'Turned off':fail?"Didn't answer: left out until "+fail.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):'Available';
+   const fail=x.st.startsWith('failed:')?new Date(+x.st.slice(7)*1000):null,boff=x.st=='bandoff',st=x.st=='inuse'?'In use':x.st=='off'?'Turned off':boff?`This computer's ${band} radio is off`:fail?"Didn't answer: left out until "+fail.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):'Available';
    const d=document.createElement('div');d.className='acr wfrow wfradr';d.innerHTML=`${wfBars(x.s)}<span style='flex:1'><b>${band}</b> · channel ${ch} <span class='msg'>· ${esc2(st)} · ${esc2(x.b)}</span></span><label class='ck' title='Turned off, this computer never joins this radio'><input type='checkbox'> Use</label>`;
-   const c=d.querySelector('input');c.checked=x.st!='off'&&!fail;c.onchange=async()=>{c.disabled=true;try{const m=await rdPost('wifi/radio'+qs+(qs?'&':'?')+'bssid='+encodeURIComponent(x.b)+'&on='+(c.checked?'on':'off'));notify('Wi-Fi',band+' radio: '+(c.checked?'turned on':'turned off')+(x.st=='inuse'&&!c.checked?'; moving to another radio of this network':''))}catch(e){notify('Wi-Fi',e.message,{kind:'error'});c.checked=!c.checked}c.disabled=false;radKey='';setTimeout(radios,x.st=='inuse'?4000:300)};
+   const c=d.querySelector('input');c.checked=x.st!='off'&&!fail&&!boff;if(boff){c.disabled=true;c.parentNode.title="This computer's "+band+" radio is turned off (This computer's Wi-Fi radios, below)"}c.onchange=async()=>{c.disabled=true;try{const m=await rdPost('wifi/radio'+qs+(qs?'&':'?')+'bssid='+encodeURIComponent(x.b)+'&on='+(c.checked?'on':'off'));notify('Wi-Fi',band+' radio: '+(c.checked?'turned on':'turned off')+(x.st=='inuse'&&!c.checked?'; moving to another radio of this network':''))}catch(e){notify('Wi-Fi',e.message,{kind:'error'});c.checked=!c.checked}c.disabled=false;radKey='';setTimeout(radios,x.st=='inuse'?4000:300)};
    b.appendChild(d)});
   if(o.radios.filter(x=>x.st!='off').length<=1&&o.radios.length>1)b.insertAdjacentHTML('beforeend',"<div class='msg'>Only one radio of this network is left on: if it fails, this computer cannot reach the network until you turn another on.</div>")};
+ /* 1.5.9: this computer's own Wi-Fi radios (its adapter's bands: 2.4, 5, 6 GHz), in a drop-down menu: a check by each
+    one that is on, a blank space by one that is off. Only an administrator changes it, typing their password each time
+    (no "remembered for two minutes"); the system keeps the choice as it is (wifi.sh band: nothing automatic changes it,
+    and a router's radio on a band that is off cannot be turned on in "Radios of this network"). */
+ const bdm=q('.wfbdm'),bdb=q('.wfbdb');let bd=null;
+ const bdClose=()=>{bdm.hidden=true;bdb.setAttribute('aria-expanded','false')};
+ const bdShow=()=>{bdm.innerHTML='';const adm=typeof isAdmin=='function'&&isAdmin(),n=q('.wfbdn');
+  if(!bd||!bd.bands.length){bdm.innerHTML="<div class='msg' style='padding:8px'>This computer's Wi-Fi radios are not known yet.</div>";n.textContent='';return}
+  bd.bands.forEach(x=>{const it=document.createElement('button');it.className='wfbdi';it.setAttribute('role','menuitemcheckbox');it.setAttribute('aria-checked',x.on?'true':'false');
+   it.innerHTML=`<span class='wfbdc' aria-hidden='true'>${x.on?'✓':''}</span><span style='flex:1'>${esc2(x.b)} GHz radio</span><span class='msg'>${bd.cur==x.b?'in use':''}</span>`;
+   it.disabled=!adm;it.onclick=()=>bdSet(x);bdm.appendChild(it)});
+  const off=bd.bands.filter(x=>!x.on).map(x=>x.b+' GHz');
+  n.textContent=(bd.name?bd.name+': ':'')+(off.length?off.join(', ')+' turned off by an administrator; Rudolf OS does not turn '+(off.length>1?'them':'it')+' back on by itself.':'every radio is on.')+(adm?'':' Only an administrator can change this.')};
+ const bdLoad=async()=>{try{const r=await rd('wifi/bands'+qs);const o={bands:[]};(r.raw||'').split('\n').forEach(l=>{const i=l.indexOf('=');if(i<0)return;const k=l.slice(0,i),v=l.slice(i+1);
+   if(k=='band'){const p=v.split('\t');o.bands.push({b:p[0],on:p[1]!='off'})}else if(k=='adapter'){const p=v.split('\t');o.name=wfAdapterName({bus:p[2],name:p[3],driver:p[3]})}else if(k=='freq'){const f=+v;o.cur=f>=5925?'6':f>=4900?'5':f?'2.4':''}});bd=o}catch(e){bd=null}bdShow()};
+ const bdSet=async x=>{if(!(typeof isAdmin=='function'&&isAdmin())){notify('Wi-Fi','Only an administrator can change which Wi-Fi radios this computer uses.',{kind:'error'});return}
+  const on=!x.on;if(!on&&bd.bands.filter(y=>y.on).length<=1){notify('Wi-Fi',"One of this computer's Wi-Fi radios has to stay on. To stop using Wi-Fi, turn Wi-Fi off.",{kind:'error'});return}
+  bdClose();window.__elevTrust=0;if(!await elevate((on?'Turn on':'Turn off')+" this computer's "+x.b+' GHz Wi-Fi radio'+(on?'':': this computer will not use '+x.b+' GHz networks or radios until an administrator turns it on again')))return;
+  try{const m=await rdPost('wifi/band'+qs+(qs?'&':'?')+'band='+encodeURIComponent(x.b)+'&on='+(on?'on':'off'));notify('Wi-Fi',m.message);typeof logEvt=='function'&&logEvt('sys',`${USER?USER.n:'?'}: ${m.message}`)}catch(e){notify('Wi-Fi',e.message,{kind:'error'})}
+  await bdLoad();radKey='';setTimeout(radios,x.b==bd?.cur?4000:300)};
+ bdb.onclick=e=>{e.stopPropagation();if(!bdm.hidden){bdClose();return}bdm.hidden=false;bdb.setAttribute('aria-expanded','true');bdShow();bdLoad().then(()=>{const f=bdm.querySelector('.wfbdi:not(:disabled)');if(f)f.focus()})};
+ bdm.addEventListener('keydown',e=>{const it=[...bdm.querySelectorAll('.wfbdi')],i=it.indexOf(document.activeElement);if(e.key=='Escape'){bdClose();bdb.focus()}else if(e.key=='ArrowDown'&&it.length){e.preventDefault();it[(i+1)%it.length].focus()}else if(e.key=='ArrowUp'&&it.length){e.preventDefault();it[(i-1+it.length)%it.length].focus()}});
+ {const oc=e=>{if(!wf.isConnected){document.removeEventListener('click',oc);return}if(bdm.hidden)return;if(!q('.wfbd').contains(e.target))bdClose()};document.addEventListener('click',oc)}
+ bdLoad();
  q('.wfrad').ontoggle=()=>{radKey='';radios()};
  q('.wfwhy').onclick=()=>{if(typeof bzWhy=='function')bzWhy('The Wi-Fi keeps dropping or disconnecting',{wifi:true});else notify('Blitzen is not available','Blitzen needs the installed Rudolf OS.')};
  q('.wfwhy').hidden=typeof bzCan!='function'||!bzCan();
