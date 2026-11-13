@@ -39,7 +39,7 @@ select_network|enable_network) echo "wpa $*" >> $LOG; echo OK ;;
 esac
 X
 chmod +x $B/*
-export WIFI_EVENT_PATH=$B:/usr/bin:/bin WIFI_EVENT_RUN=$T/run WIFI_EVENT_GRACE=1 WIFI_EVENT_RETRY=1 WIFI_EVENT_PERSIST=$T/persist-ignore
+export WIFI_EVENT_PATH=$B:/usr/bin:/bin WIFI_EVENT_RUN=$T/run WIFI_EVENT_GRACE=1 WIFI_EVENT_RETRY=1 WIFI_EVENT_PERSIST=$T/persist-ignore WIFI_EVENT_OFF=$T/radios-off
 printf '#!/bin/sh\ncat $TT/dmesg 2>/dev/null\n' > $B/dmesg; chmod +x $B/dmesg
 E="sh $L/wifi-event"; cnt() { grep -c "$1" $LOG; }
 WPA_ID=0 $E wlan0 CONNECTED
@@ -117,4 +117,11 @@ ok "27. reached through that radio after all: taken off the list" "$(grep -qi 'b
 echo "$H aa:bb:cc:dd:ee:ff $(( $(date +%s) - 90000 ))" >> $T/persist-ignore; echo bc:96:e5:88:1f:d9 > $T/wbssid; rm -f $T/wset; : > $LOG
 WPA_ID=0 $E wlan0 CONNECTED
 ok "28. after a day a radio is tried again" "$(grep -q 'aa:bb:cc:dd:ee:ff' $T/persist-ignore $LOG && echo 0 || echo 1)" "$(cat $T/persist-ignore; cat $LOG)"
+# 1.5.9: a radio turned off by hand (Settings › Network › Wi-Fi › Radios) is left out from every join, and stays out
+# when off the network for longer than the grace (the radios left out for not answering are let in again then)
+echo "$H 11:22:33:44:55:66" > $T/radios-off; rm -f $T/wset $T/persist-ignore; : > $LOG; echo bc:96:e5:88:1f:d9 > $T/wbssid
+WPA_ID=0 $E wlan0 CONNECTED
+ok "29. a radio turned off by hand is left out from the join" "$(grep -q 'wpa set_network 0 bssid_ignore .*11:22:33:44:55:66' $LOG && echo 1)" "$(cat $LOG)"
+: > $LOG; echo DISCONNECTED > $T/wstate; : > $T/wbssid; $E wlan0 DISCONNECTED; sleep 1.6
+ok "30. ...and stays out when off the network for longer (the others let in again)" "$(grep 'set_network 0 bssid_ignore' $LOG | tail -1 | grep -q 'bssid_ignore 11:22:33:44:55:66$' && echo 1)" "$(cat $LOG)"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

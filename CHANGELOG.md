@@ -14,6 +14,8 @@ Summary: In progress.
 - New: Task Manager › Performance has Clear cache, which frees the memory holding recently used files at once; game mode does the same when a game starts, so the game finds free memory as it loads.
 - New: when a game starts, apps running in the background with no window (such as Discord) are offered to be quit, in a notice inside the game with a button; nothing is quit unless you press it.
 - Fixed: Wi-Fi dropped for about 45 seconds when it tried a radio of the router that never answers (the Vivobook's router's 2.4 GHz radio). Such a radio is now left out reliably, and remembered for a day, restarts included.
+- New: Settings › Network › Wi-Fi › Radios of this network: each radio of the router (2.4, 5 and 6 GHz under one name) with its channel, signal and state, and a switch to stop this computer using one; it also says which bands this computer's Wi-Fi has.
+- New: "Why does the Wi-Fi drop?" (Settings › Network › Wi-Fi, or asking Blitzen about a Wi-Fi problem): Blitzen reads the Wi-Fi's log, the kernel's Wi-Fi messages and the radios, and recommends only the Wi-Fi settings that exist.
 - Changed: Chromium comes only from Ubuntu's open-source Chromium (the snap). When it cannot be fetched, the release keeps the Chromium it has, instead of taking another kind of browser; it never goes back to an older version.
 - Fixed: when a system file does not match its release, the start-up and Task Manager say so plainly, with its size, instead of a low-level error.
 

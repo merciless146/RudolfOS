@@ -13,6 +13,8 @@ function wfAdapterName(a){return a.bus=='usb'?'USB: '+a.name:'Built-in'+(a.drive
 function wifiPanel(wf,ifn){
  wf.innerHTML=`<div class='wfad'></div><div class='wfcur'></div><div class='wfhd'><b>Networks in range</b><button class='wfre'>↻ Refresh</button></div><div class='wfl'><div class='msg'>Looking for networks…</div></div>
  <div class='rmrow' style='justify-content:flex-start'><button class='wfhid'>Join a hidden network…</button></div>
+ <details class='wfrad'><summary>Radios of this network</summary><div class='wfradb'><div class='msg'>Connect to a network to see its radios.</div></div></details>
+ <div class='rmrow' style='justify-content:flex-start'><button class='wfwhy'>⚡ Why does the Wi-Fi drop?</button></div>
  <h4 class='sh4'>Saved networks</h4><div class='wfsv'></div>
  <details class='wfadv'><summary>Country</summary><div class='msg'>Which channels and transmit power your Wi-Fi may use depend on the country. Set yours if some networks do not show up.</div><div class='r2'><label>Country code</label><input class='wfcc' maxlength='2' placeholder='e.g. US, GB, DE' style='width:80px;text-transform:uppercase'><button class='wfccs'>Set</button></div></details>`;
  const q=s=>wf.querySelector(s);const qs=ifn?'?if='+encodeURIComponent(ifn):'';let st={saved:[]},open='',busy=false;
@@ -36,7 +38,26 @@ function wifiPanel(wf,ifn){
   const sel=a.querySelector('select');st.wlans.forEach(w=>{const o=document.createElement('option');o.value=w.ifn;o.textContent=wfAdapterName(w);o.selected=w.ifn==st.adapter;sel.appendChild(o)});
   sel.disabled=st.wlans.length<2;
   sel.onchange=async()=>{sel.disabled=true;try{const m=await rdPost('wifi/adapter?if='+encodeURIComponent(sel.value));notify('Wi-Fi',m.message)}catch(e){notify('Wi-Fi',e.message,{kind:'error'})}adKey='';await refresh();scan(false)}};
- const refresh=async()=>{try{st=wfStatus((await rd('wifi/status'+qs)).raw);showCur()}catch(e){}};
+ /* 1.5.9: the radios of the network in use: one router often has a 2.4 GHz and a 5 GHz radio (and 6 GHz) under one
+    name. Each with its band, channel, signal and state, and a switch: turned off, this computer never joins that radio
+    (kept, restarts included). A radio that did not answer is left out for a day by itself (wifi-event). */
+ let radKey='';const radios=async()=>{const b=q('.wfradb');if(!b||!q('.wfrad').open)return;let r;try{r=await rd('wifi/radios'+qs)}catch(e){b.innerHTML=`<div class='msg'>${esc2(e.message)}</div>`;return}
+  const o={radios:[]};(r.raw||'').split('\n').forEach(l=>{const i=l.indexOf('=');if(i<0)return;const k=l.slice(0,i),v=l.slice(i+1);if(k=='radio'){const p=v.split('\t');o.radios.push({b:p[0],f:+p[1],s:+p[2],st:p[3]||''})}else o[k]=v.trim()});
+  const key=JSON.stringify(o);if(key==radKey)return;radKey=key;
+  const bands=(o.bands||'').split(' ').filter(Boolean).map(x=>x+' GHz');
+  let h=`<div class='msg'>This computer's Wi-Fi: ${bands.length?esc2(bands.join(', ')):'its bands are not known'}.</div>`;
+  if(!o.ssid){b.innerHTML=h+"<div class='msg'>Connect to a network to see its radios.</div>";return}
+  if(!o.radios.length){b.innerHTML=h+"<div class='msg'>No radios found yet: press Refresh above to look again.</div>";return}
+  b.innerHTML=h;o.radios.sort((x,y)=>x.f-y.f).forEach(x=>{const band=x.f>=5925?'6 GHz':x.f>=4900?'5 GHz':'2.4 GHz',ch=x.f>=5925?Math.round((x.f-5950)/5):x.f>=4900?Math.round((x.f-5000)/5):x.f==2484?14:Math.round((x.f-2407)/5);
+   const fail=x.st.startsWith('failed:')?new Date(+x.st.slice(7)*1000):null,st=x.st=='inuse'?'In use':x.st=='off'?'Turned off':fail?"Didn't answer: left out until "+fail.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):'Available';
+   const d=document.createElement('div');d.className='acr wfrow wfradr';d.innerHTML=`${wfBars(x.s)}<span style='flex:1'><b>${band}</b> · channel ${ch} <span class='msg'>· ${esc2(st)} · ${esc2(x.b)}</span></span><label class='ck' title='Turned off, this computer never joins this radio'><input type='checkbox'> Use</label>`;
+   const c=d.querySelector('input');c.checked=x.st!='off'&&!fail;c.onchange=async()=>{c.disabled=true;try{const m=await rdPost('wifi/radio'+qs+(qs?'&':'?')+'bssid='+encodeURIComponent(x.b)+'&on='+(c.checked?'on':'off'));notify('Wi-Fi',band+' radio: '+(c.checked?'turned on':'turned off')+(x.st=='inuse'&&!c.checked?'; moving to another radio of this network':''))}catch(e){notify('Wi-Fi',e.message,{kind:'error'});c.checked=!c.checked}c.disabled=false;radKey='';setTimeout(radios,x.st=='inuse'?4000:300)};
+   b.appendChild(d)});
+  if(o.radios.filter(x=>x.st!='off').length<=1&&o.radios.length>1)b.insertAdjacentHTML('beforeend',"<div class='msg'>Only one radio of this network is left on: if it fails, this computer cannot reach the network until you turn another on.</div>")};
+ q('.wfrad').ontoggle=()=>{radKey='';radios()};
+ q('.wfwhy').onclick=()=>{if(typeof bzWhy=='function')bzWhy('The Wi-Fi keeps dropping or disconnecting',{wifi:true});else notify('Blitzen is not available','Blitzen needs the installed Rudolf OS.')};
+ q('.wfwhy').hidden=typeof bzCan!='function'||!bzCan();
+ const refresh=async()=>{try{st=wfStatus((await rd('wifi/status'+qs)).raw);showCur();radios()}catch(e){}};
  const connect=async(ssid,pw,kind,hidden)=>{busy=true;open='';showCur();q('.wfl').querySelectorAll('button').forEach(b=>b.disabled=true);
   const sec=kind=='saved'?'saved':(hidden?'hidden-':'')+(kind=='psk'?'psk':kind=='owe'?'owe':'open');
   try{await rdPost('wifi/connect'+qs,ssid+'\n'+(pw||'')+'\n'+sec);notify('Wi-Fi','Connecting to '+ssid+'…',{quiet:true});

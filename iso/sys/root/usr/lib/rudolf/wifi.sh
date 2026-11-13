@@ -86,6 +86,8 @@ save_cfg() { SI=/run/rudolf/wifi-ignore-$IF; ids=$(cut -d' ' -f1 $SI 2>/dev/null
 	W save_config >/dev/null; r=$?
 	for id in $ids; do W set_network "$id" bssid_ignore "$(grep "^$id " $SI | cut -d' ' -f2 | tr '\n' ' ')" >/dev/null; done; return $r; }
 hexname() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
+# 1.5.9: radios turned off by hand (OFF), and those wifi-event left out for not answering (PI, a day)
+OFF=${RUDOLF_WIFI_OFF:-/persist/etc/wifi-radios-off}; PI=${RUDOLF_WIFI_PI:-/persist/etc/wifi-ignore}
 # ids of saved networks with this name (list_networks shows names escaped; compare via the hex form)
 ids_for() {
 	H=$(hexname "$1")
@@ -186,5 +188,38 @@ country)
 	start; CC=${CC:-$3}
 	case "$CC" in [A-Z][A-Z]|00) ;; *) echo "Use a two-letter country code."; exit 1;; esac
 	W set country "$CC" >/dev/null && save_cfg && echo "Country set to $CC" ;;
-*) echo "usage: wifi.sh boot|status|scan|connect|forget|disconnect|reconnect|country|adapter"; exit 1 ;;
+# 1.5.9: the radios of the network in use (one router often has a 2.4 GHz and a 5 GHz radio, sometimes 6 GHz, under
+# one name), and turning one off or on for this computer. Off: kept in OFF (the network's name as wpa_supplicant shows
+# it, in hex, and the radio), applied with the radios wifi-event left out for not answering (PI, a day); wifi-event
+# keeps both on the network from every join.
+#   radios: bands=2.4 5 (this adapter's) / net=ID / radio=BSSID<TAB>MHz<TAB>dBm<TAB>inuse|on|off|failed:UNTIL
+#   radio BSSID on|off
+radios)
+	start; ST=$(W status); CUR=$(echo "$ST" | sed -n 's/^bssid=//p'); SS=$(echo "$ST" | sed -n 's/^ssid=//p'); NID=$(echo "$ST" | sed -n 's/^id=//p'); H=$(hexname "$SS")
+	PHY=$(cat "$NET/$IF/phy80211/name" 2>/dev/null)
+	echo "bands=$(iw phy "$PHY" info 2>/dev/null | sed -n 's/^[[:space:]]*Band \([0-9]*\):.*/\1/p' | sed 's/^1$/2.4/;s/^2$/5/;s/^4$/6/;s/^3$/60/' | tr '\n' ' ')"
+	[ -n "$SS" ] || exit 0
+	echo "net=$NID"; echo "ssid=$SS"; NOW=$(date +%s)
+	W scan_results | tail -n +2 | awk -F'\t' -v s="$SS" '$5==s{print $1"\t"$2"\t"$3}' | sort -u -k1,1 | while IFS="$(printf '\t')" read -r b f sig; do
+		st=on; [ "$b" = "$CUR" ] && st=inuse
+		grep -qi "^$H $b\$" "$OFF" 2>/dev/null && st=off
+		[ "$st" = on ] && { t=$(awk -v h="$H" -v b="$b" 'BEGIN{IGNORECASE=1} $1==h && tolower($2)==tolower(b){print $3}' "$PI" 2>/dev/null | head -1); [ -n "$t" ] && [ $((NOW - t)) -lt 86400 ] && st=failed:$((t + 86400)); }
+		printf 'radio=%s\t%s\t%s\t%s\n' "$b" "$f" "$sig" "$st"; done ;;
+radio)
+	start; B=$3; case "$B" in [0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]) ;; *) echo "Not a radio's address."; exit 1;; esac
+	case "$4" in on|off) ;; *) echo "on or off?"; exit 1;; esac
+	ST=$(W status); CUR=$(echo "$ST" | sed -n 's/^bssid=//p'); SS=$(echo "$ST" | sed -n 's/^ssid=//p'); NID=$(echo "$ST" | sed -n 's/^id=//p'); H=$(hexname "$SS")
+	[ -n "$SS" ] && [ -n "$NID" ] || { echo "Connect to the network first."; exit 1; }
+	W scan_results | tail -n +2 | awk -F'\t' -v s="$SS" -v b="$B" 'tolower($1)==tolower(b) && $5==s' | grep -q . || { echo "That radio is not one of this network's."; exit 1; }
+	mkdir -p "$(dirname "$OFF")"; grep -vi "^$H $B\$" "$OFF" > "$OFF.n" 2>/dev/null; [ "$4" = off ] && echo "$H $B" >> "$OFF.n"; mv "$OFF.n" "$OFF"
+	# turned on by hand: no longer left out for not answering either
+	[ "$4" = on ] && [ -f "$PI" ] && { grep -vi "^$H $B " "$PI" > "$PI.n"; mv "$PI.n" "$PI"; }
+	L=$( { awk -v h="$H" '$1==h{print $2}' "$OFF" 2>/dev/null; awk -v h="$H" -v now="$(date +%s)" '$1==h && now-$3<86400{print $2}' "$PI" 2>/dev/null; } | sort -fu | tr '\n' ' ')
+	W set_network "$NID" bssid_ignore "${L% }" >/dev/null
+	SI=/run/rudolf/wifi-ignore-$IF; { grep -v "^$NID " $SI 2>/dev/null; for b in $L; do echo "$NID $b"; done; } > $SI.n; mv $SI.n $SI
+	echo "$(date) wifi: network $NID: radio $B turned $4 by hand" >> /run/rudolf/wifi.log
+	# the radio in use turned off: move to another of the network's
+	[ "$4" = off ] && [ "$(echo "$CUR" | tr A-F a-f)" = "$(echo "$B" | tr A-F a-f)" ] && W reassociate >/dev/null
+	[ "$4" = off ] && echo "Radio $B turned off for this network" || echo "Radio $B turned on for this network" ;;
+*) echo "usage: wifi.sh boot|status|scan|connect|forget|disconnect|reconnect|country|adapter|radios|radio"; exit 1 ;;
 esac

@@ -398,6 +398,14 @@ profiling. From it:
   closing each large app, Standard and Lite, before promotion.
 
 ## Part 11: fixes and safeguards (added on 2026-11-12)
+### 11.5 The Wi-Fi's radios, and Blitzen's Wi-Fi diagnosis (asked for on 2026-11-13, done)
+On 2026111302 the Vivobook left the router's 5 GHz radio for its 2.4 GHz one, which never answers it, and was off for
+45 s. Now: a radio that did not answer is left out for a day (wifi-event, the kernel's own message counted);
+Settings › Network › Wi-Fi › "Radios of this network" lists each radio (band, channel, signal, state) with a Use
+switch (wifi.sh radios / radio; turned off by hand it stays off); "Why does the Wi-Fi drop?" (and a Wi-Fi problem
+asked in Blitzen's chat) gives Blitzen the Wi-Fi's log, the kernel's Wi-Fi messages and the radios (ai/facts), with
+a Wi-Fi pack that says how to read them and which settings exist. To check on the Vivobook: Blitzen's real answer.
+
 ### 11.1 Chromium from one known source, never changed without being chosen
 On 2026-11-12 the snap store could not be reached for four builds in a row, and each time the build fell back to
 Playwright's Chromium without being asked. Newer Playwright brings Google's **Chrome for Testing** (158.0.8127.18),

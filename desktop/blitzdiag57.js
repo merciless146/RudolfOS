@@ -47,6 +47,7 @@ function bzLines(f){const out=[],add=(src,t)=>String(t||'').split('\n').forEach(
  String(f.health||'').split('\n').forEach(l=>{l=l.trim();if(!l)return;try{const j=JSON.parse(l);out.push({src:'health log',l:new Date(j.t*1000).toISOString().slice(0,19).replace('T',' ')+' '+j.k+': '+j.m})}catch(e){out.push({src:'health log',l})}});
  add('rudolfd',f.rudolfd);add('rudolfd, the start before',f.rudolfdBefore);add('session',f.session);add('session, the start before',f.sessionBefore);add('Lite desktop, the start before',f.liteBefore);add('start-up decisions',f.bootDecisions);add('desktop errors',f.page);add('shutdown',f.shutdown);
  if(f.job)add('last task'+(f.jobName?' ('+f.jobName+')':''),f.job);add('Event Viewer',f.events);
+ add('Wi-Fi log',f.wifi);add('Wi-Fi (kernel)',f.wifiKernel);   /* 1.5.9 */
  if(typeof SYSLOG!='undefined')SYSLOG.slice(-40).forEach(x=>out.push({src:'desktop warnings',l:new Date(x.t).toISOString().slice(0,19).replace('T',' ')+' '+x.k+': '+x.m}));
  return out}
 /* the lines that matter for a problem: those sharing its words (best first), errors, then the latest of the health log */
@@ -66,17 +67,18 @@ function bzReview(title,parts){return new Promise(res=>{const o=document.createE
 async function bzWhy(what,o){o=o||{};if(!bzCan())return notify('Blitzen is not available','Blitzen needs the installed Rudolf OS.');
  if(typeof blzGameRunning=='function'&&blzGameRunning())return notify('Close the game first','Blitzen needs the memory a game is using.');
  const [f]=await Promise.all([bzFacts(o.all?7:3),bzDocs()]);
- const lines=bzLines(f),picked=o.all?lines.filter(x=>BZ_ERRW.test(x.l)||x.src=='health log'&&!/ (start|ready|shutdown):/.test(x.l)).slice(-24):bzPick(lines,what);   /* the whole computer: its latest problems */
+ const lines=bzLines(f),picked=o.wifi?lines.filter(x=>/^Wi-Fi/.test(x.src)).slice(-50):o.all?lines.filter(x=>BZ_ERRW.test(x.l)||x.src=='health log'&&!/ (start|ready|shutdown):/.test(x.l)).slice(-24):bzPick(lines,what);   /* the whole computer: its latest problems */
  const docs=bzSearch(what+' '+picked.map(x=>x.l).join(' ').slice(0,400),3);
  const parts=[];if(o.detail)parts.push({label:'What failed',text:String(o.detail).slice(0,1500)});
  const bySrc={};picked.forEach(x=>(bySrc[x.src]=bySrc[x.src]||[]).push(x.l));
  for(const s in bySrc)parts.push({label:'Log: '+s+' ('+bySrc[s].length+' line'+(bySrc[s].length>1?'s':'')+')',text:bySrc[s].join('\n'),log:1});
  docs.forEach(d=>parts.push({label:'Rudolf OS: '+d.s.replace(/^docs\//,'')+(d.h?' › '+d.h:''),text:d.t}));
  parts.push({label:'This computer',text:'Rudolf OS '+(f.version||RVER)+', up for '+Math.round((f.uptime||0)/60)+' minutes'});
+ if(o.wifi&&f.wifiNow)parts.push({label:'The Wi-Fi now (adapter, network, radios)',text:String(f.wifiNow).slice(0,1500)});
  const keep=await bzReview(o.all?"What's wrong with this computer?":'Why? '+what.slice(0,80),parts);if(!keep)return null;
  const ctx=keep.map(p=>'### '+p.label+'\n'+p.text).join('\n\n').slice(0,9000),logs=keep.filter(p=>p.log).map(p=>p.text).join('\n');
- const q=o.all?"What's wrong with this computer? Look at the problems in the logs and explain the most important ones.":'Why did this happen: '+what;
- blzAskFrom('the logs and documents you allowed',q,ctx,{pack:'diag',norun:true,lang:'',onAnswer:(el,text)=>bzAnswerButtons(el,o.all?'A problem on this computer':what,text,logs)});
+ const q=o.wifi?(what&&what!='The Wi-Fi keeps dropping or disconnecting'?what+' (Which Wi-Fi settings should I change?)':'Why does the Wi-Fi keep dropping, and which Wi-Fi settings should I change?'):o.all?"What's wrong with this computer? Look at the problems in the logs and explain the most important ones.":'Why did this happen: '+what;
+ blzAskFrom('the logs and documents you allowed',q,ctx,{pack:o.wifi?'wifi':'diag',norun:true,lang:'',onAnswer:(el,text)=>bzAnswerButtons(el,o.all?'A problem on this computer':what,text,logs)});
  return keep}
 function bzAnswerButtons(el,what,text,logs){const r=document.createElement('div');r.className='rmrow bzact';r.style.cssText='justify-content:flex-start;gap:6px;margin-top:6px';
  const b=document.createElement('button');b.textContent='🐞 Draft a report';b.title='Report a problem, filled in with this answer and the log lines (you read it before anything is sent)';
@@ -91,3 +93,22 @@ function bzDraftReport(what,answer,logs){if(typeof sysReportDialog!='function')r
 function bzWhyBtn(host,n,o){try{if(!host||!bzCan()||!bzIsError(n.t+' '+n.b,n.k))return;const b=document.createElement('button');b.className='bzwhy';b.textContent='⚡ Why?';
  b.title='Ask Blitzen why this happened (it reads the logs you allow; it changes nothing)';b.style.cssText='margin-left:6px;font-size:11px;padding:0 6px';
  b.onclick=e=>{e.stopPropagation();const t=host.closest&&host.closest('.ntoast');if(t)t.remove();bzWhy((n.t+(n.b?' — '+n.b:'')).slice(0,300),Object.assign({detail:n.t+(n.b?'\n'+n.b:'')},o||{}))};host.appendChild(b)}catch(e){}}
+/* 1.5.9: Wi-Fi diagnostics (Settings › Network › Wi-Fi › "Why does the Wi-Fi drop?"): the Wi-Fi's own log, the kernel's
+   Wi-Fi messages and the Wi-Fi now (adapter, network, radios with band, signal and state), with what Rudolf OS's
+   Wi-Fi settings can and cannot do, so the advice names settings that exist. */
+if(typeof BLZ_PACKS!='undefined')BLZ_PACKS.wifi=BLZ_PACKS.diag+`
+
+This is about the Wi-Fi. How to read the lines:
+- "wlanN: authenticate with X … authentication with X timed out": the radio X (a router has one per band, 2.4 / 5 / 6 GHz, under one network name) did not answer this computer.
+- "disconnect from AP X for new auth to Y": the computer left radio X to try radio Y of the same network; if Y then timed out, that is a drop caused by Y.
+- "wifi: network N: left out (did not answer): X": Rudolf OS already left radio X out for a day by itself.
+- In "The Wi-Fi now", radio=ADDRESS MHz dBm STATE: below 2500 MHz is 2.4 GHz, 4900 to 5900 is 5 GHz, above 5925 is 6 GHz. dBm: -30 to -55 strong, -55 to -67 good, -67 to -75 weak, below -75 very weak. STATE: inuse, on, off (turned off by the person), failed:TIME (left out by Rudolf OS until then).
+The Wi-Fi settings that exist, in Settings › Network › Wi-Fi (recommend only these):
+- "Radios of this network": each radio of the network in use, with a "Use" switch. Turning off a radio that does not answer, or one that is very weak, keeps the computer on the good one. Warn before suggesting to turn off the radio in use, and never all of them.
+- "Adapter" (only with two Wi-Fi adapters, like a USB dongle): which one to use.
+- "Country": the channels and power allowed; set it when networks are missing.
+- "Forget" a saved network and join it again with its password: when the password changed or joining fails every time.
+- Disconnect / Reconnect.
+If the lines show the signal is very weak on every radio, say the computer is too far from the router (or a wall is in the way) and no setting fixes that. If nothing in the lines explains the drops, say so.`;
+/* a question about a Wi-Fi or internet problem (not how to set it up): "why does my wifi keep dropping", "internet keeps cutting out" */
+function bzWifiQ(t){t=String(t||'').toLowerCase();return /\b(wi-?fi|wlan|internet|connection|network|router|signal)\b/.test(t)&&/\b(drops?|dropping|dropped|disconnect\w*|cut(s|ting)? out|keeps?|lost|loses|losing|slow|unstable|not work\w*|won'?t|can'?t|cannot|fails?|failing|stops?|stopping|goes? (out|off|away)|weak)\b/.test(t)}
