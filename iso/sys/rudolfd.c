@@ -3857,7 +3857,20 @@ static void api(struct req *r)
 	   sleep wait, as they do for the desktop's own media */
 	if (!strcmp(p, "media")) {
 		char *o = run_out("/usr/lib/rudolf/hotkey playing 2>/dev/null"); trim(o); int n = o ? atoi(o) : 0; free(o);
-		str js = {0}; sadd(&js, "{\"ok\":true,\"playing\":%d}", n < 0 ? 0 : n); reply_json(r->fd, &js); return;
+		/* 1.5.9 (plan 7.2): and the apps recording from a microphone (a call): the screen saver, the lock and sleep
+		   wait for those too */
+		char *u = run_out("/usr/lib/rudolf/hotkey mic users 2>/dev/null"); int m = 0; if (u) for (char *c = u; *c; c++) if (*c == '\n') m++;
+		str js = {0}; sadd(&js, "{\"ok\":true,\"playing\":%d,\"mic\":%d}", n < 0 ? 0 : n, m); reply_json(r->fd, &js); free(u); return;
+	}
+	/* 1.5.9 (plan 7.2): GET mic: the apps using a microphone and whether it is muted; POST mic?muted=0|1 */
+	if (!strcmp(p, "mic")) {
+		char *v = qparam(r->query, "muted");
+		if (post) { if (!v || (strcmp(v, "0") && strcmp(v, "1"))) { reply_err(r->fd, 400, "muted is 0 or 1"); return; }
+			char cmd[100]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey mic muted %s >/dev/null 2>&1", v); run(cmd); }
+		char *u = run_out("/usr/lib/rudolf/hotkey mic users 2>/dev/null"), *g = run_out("/usr/lib/rudolf/hotkey mic get 2>/dev/null"); trim(g);
+		str js = {0}; sadd(&js, "{\"ok\":true,\"muted\":%s,\"users\":[", g && !strcmp(g, "muted") ? "true" : "false");
+		int first = 1; if (u) for (char *l = strtok(u, "\n"); l; l = strtok(NULL, "\n")) { if (!*l) continue; if (!first) sadd(&js, ","); first = 0; sjson(&js, l); }
+		sadd(&js, "]}"); free(u); free(g); reply_json(r->fd, &js); return;
 	}
 	if (!strcmp(p, "shutdown/log")) {   /* 1.4.5: the last shutdowns and starts, with each step's time */
 		char *l = run_out("tail -n 12 " PERSIST "/var/log/shutdown.log 2>/dev/null"); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, l ? l : ""); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return;
