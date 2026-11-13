@@ -34,15 +34,26 @@ q = subprocess.Popen(['qemu-system-aarch64', '-M', 'virt', '-cpu', 'max' if acc 
 time.sleep(2)
 g = Guest(N); cons = open(os.path.join(out, 'console.txt'), 'w')
 t0 = time.time(); ok = False; shell = False; last = ''
+# typed slowly: the emulated serial port (PL011, 16-byte FIFO, without a fast CPU under TCG) drops characters sent at
+# once, which garbled the commands (2026-11-13). Each command's output ends with a tag.
 def sh(c, t=30):
-    o = g.sh(c, t); return o
+    tag = 'Q%d' % int(time.time() * 1000); line = (c + f"; echo {tag}E''ND\n").encode()
+    for i in range(0, len(line), 8): g.s.s.send(line[i:i + 8]); time.sleep(0.03)
+    out = ''; end = time.time() + t
+    while time.time() < end:
+        out += g.s.read(0.5)
+        if f'{tag}END' in out.replace(f"{tag}E''ND", ''): break
+    out = out.replace('\r', ''); j = out.rfind(f'{tag}END')
+    body = out[:j] if j >= 0 else out
+    i = body.find(f"E''ND\n"); body = body[i + 6:] if i >= 0 else body
+    return body
 try:
     # the debug shell appears when rudolf-init starts (after the kernel and the initramfs found the disc)
     while time.time() - t0 < 900 and q.poll() is None:
         if not shell:
             cons.write(g.s.read(2)); cons.flush()
             # (the serial port takes input only once something reads it: a send can time out until then)
-            try: g.s.s.send(b'\n'); o = g.sh('echo READY$((40+2))', 5)
+            try: g.s.s.send(b'\n'); o = sh('echo READY$((40+2))', 5)
             except OSError: o = ''
             cons.write(o); cons.flush()
             if 'READY42' in o: shell = True; say(f'{int(time.time()-t0)} s: the system started (debug shell on ttyAMA0)'); continue
@@ -57,7 +68,7 @@ try:
         time.sleep(5 if ok else 0)
         try: g.shot(os.path.join(out, 'screen.png')); say('screen: screen.png')
         except Exception as e: say('no screen picture:', e)
-        for c in ('uname -m; cat /etc/rudolf/unverified', 'cat /run/rudolf/desktop-engine; ls /dev/dri', 'free -m', 'tail -40 /run/rudolf/session.log',
+        for c in ('uname -m; cat /etc/rudolf/unverified; ls /newroot 2>/dev/null | head -3; tail -20 /tmp/initramfs.log 2>/dev/null', 'cat /run/rudolf/desktop-engine; ls /dev/dri', 'free -m', 'tail -40 /run/rudolf/session.log',
                   'grep -E "\\((EE|WW)\\)" /run/rudolf/Xorg.log | head -20', 'dmesg | grep -iE "error|fail|virtio" | tail -20', 'ps -o pid,rss,args | head -40'):
             say('$ ' + c)
             try: say(sh(c, 30))
