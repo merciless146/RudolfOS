@@ -54,6 +54,13 @@ add_card() {
 set_default() {
 	S=$(asuser "pactl list short sinks" 2>/dev/null | awk -v p="alsa_output.card$1." 'index($2,p)==1{print $2; exit}')
 	[ -n "$S" ] && asuser "pactl set-default-sink $S" && echo "default output: $S"
+	# 1.5.9 (plan 7.2): what plays now moves too (a call does not drop when the output changes), and the same card's
+	# microphone becomes the default one, with what records from it (the call's microphone)
+	[ -n "$S" ] && for i in $(asuser "pactl list short sink-inputs" 2>/dev/null | cut -f1); do asuser "pactl move-sink-input $i $S" >/dev/null 2>&1; done
+	M=$(asuser "pactl list short sources" 2>/dev/null | awk -v p="alsa_input.card$1." 'index($2,p)==1{print $2; exit}')
+	if [ -n "$M" ]; then asuser "pactl set-default-source $M" >/dev/null 2>&1 && echo "default microphone: $M"
+		for i in $(asuser "pactl list short source-outputs" 2>/dev/null | cut -f1); do asuser "pactl move-source-output $i $M" >/dev/null 2>&1; done; fi
+	return 0
 }
 case "$1" in
 start)
@@ -75,6 +82,8 @@ start)
 		echo "load-module module-suspend-on-idle"
 		echo "load-module module-position-event-sounds"
 		echo "load-module module-switch-on-port-available"
+		# 1.5.9 (plan 7.2): a headset plugged in (USB, Bluetooth) takes over what plays and records, during a call too
+		echo "load-module module-switch-on-connect"
 	} > $PA
 	: > $LOG; chown rudolf $LOG
 	asuser "pulseaudio --daemonize=yes -n -F $PA --exit-idle-time=-1 --log-target=file:$LOG" || echo "pulseaudio failed to start" >> $LOG
