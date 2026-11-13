@@ -59,6 +59,7 @@ window.addEventListener('message',async e=>{const b=PKGBOX.get(e.source);if(!b)r
  try{e.source.postMessage(r,'*')}catch(x){}});   /* ('*': the frame has no origin to name) */
 /* the web-app window: the frame above instead of 1.5.2's plain one */
 {const _o=pkgOpen;pkgOpen=async function(name){const s=await pkgStatus();const p=s&&s.installed.find(x=>x.name==name);
+ if(p&&p.disabled)return notify(p.title||name,'This app is turned off: '+p.disabled+'. Remove it in App Store › Rudolf OS Library.',{kind:'error'});   /* (revoked: plan 8.2) */
  if(!p||p.kind!='webapp')return _o.apply(this,arguments);
  const entry=(p.entry||'www/index.html').replace(/^\/+/,'');if(!/^www\//.test(entry)||entry.includes('..'))return notify(p.title,'This package has no page to open.',{kind:'error'});
  const granted=await pkgBoxGrants(p);if(granted===null)return;

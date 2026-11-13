@@ -54,6 +54,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('9. messages from anything but an open Library app\'s frame are ignored', fake);
   await q("window.__res=null;pkgOpen('demo');1"); await wait(800);
   ok('10. opened again: not asked again (remembered for this account)', !(await q("!!document.querySelector('.rmodal .pkbp')")) && await q("[...document.querySelectorAll('iframe')].filter(x=>/pkg\\/demo/.test(x.src)).length==2"));
+  await q("(()=>{const s0=PKGS;PKGS={...s0,installed:[{...s0.installed[0],disabled:'the Rudolf OS Library revoked its developer\u2019s key'}]};PKGT=Date.now();window.__n=[];const _n=notify;notify=(t,m,o)=>{__n.push(m);return _n(t,m,o)};pkgOpen('demo');return 1})()"); await wait(400);
+  ok('12. a revoked app does not open, and says why', /turned off: the Rudolf OS Library revoked/.test(await q("__n.join('|')")) && await q("[...document.querySelectorAll('iframe')].filter(x=>/pkg\\/demo/.test(x.src)).length==2"));
   ok('11. no page errors', errs.length == 0, errs);
   await b.close(); srv.close();
   console.log(R.filter(Boolean).length + '/' + R.length + ' passed'); process.exit(R.every(Boolean) ? 0 : 1);
