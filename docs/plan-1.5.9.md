@@ -302,6 +302,11 @@ Vivobook's Settings › System health › Memory is on "small" (half the memory,
 - Tests: host, the size zram is given for auto and small on 2, 3.4, 4 and 16 GB (the memory script); browser, the
   offer in the notification and the switch.
 
+- **Measured on 2026-11-12 (beta 2026111222, zram on auto, 3.4 GB):** FNF was still ended, at 1,929 MiB: 130 MiB
+  available with 2.4 GB of zram free and real stalls (8%). The game took memory faster than the kernel moved idle
+  memory into zram. Chosen: swappiness 180 (was 100), so it moves sooner; the warning (9.2b) no longer waits for the
+  swap to fill. Measured again with FNF on the next beta.
+
 ### 9.2b The memory guard warns before it ends the game (added on 2026-11-12)
 On 2026-11-12 the guard ended FNF (about 2 GB) twice without a word before it: the screen left full screen and said
 so afterwards (1.5.8). When memory is low but not yet critical and the largest page is the one in front (above all

@@ -54,10 +54,14 @@ echo zstd > $Z/comp_algorithm 2>/dev/null || log "zram: zstd not available, usin
 if ! echo $SIZE > $Z/disksize 2>/dev/null; then log "zram: could not set its size"; exit 0; fi
 [ -b /dev/zram0 ] || mknod /dev/zram0 b $(cut -d: -f1 $Z/dev) $(cut -d: -f2 $Z/dev)
 if mkswap /dev/zram0 >/dev/null 2>&1 && swapon -p 100 /dev/zram0 2>/dev/null; then
-	# swap in memory is cheap to read back: use it as readily as the page cache, one page at a time
-	echo 100 > /proc/sys/vm/swappiness
+	# swap in memory is cheap to read back: use it before the page cache, one page at a time.
+	# (1.5.9: 180, not 100. On the Vivobook FNF grew to 1.9 GB faster than the kernel moved idle memory into zram:
+	# 130 MiB left with 2.4 GB of zram still free, real stalls, and the memory guard ended the game. A higher
+	# swappiness moves idle memory into zram sooner, so there is room when a game asks for more at once; Fedora and
+	# ChromeOS use high values with zram for the same reason. The kernel's limit is 200.)
+	echo 180 > /proc/sys/vm/swappiness
 	echo 0 > /proc/sys/vm/page-cluster
-	log "zram: on, $((SIZE / 1048576)) MiB, $(sed 's/.*\[\(.*\)\].*/\1/' $Z/comp_algorithm)"
+	log "zram: on, $((SIZE / 1048576)) MiB, $(sed 's/.*\[\(.*\)\].*/\1/' $Z/comp_algorithm), swappiness $(cat /proc/sys/vm/swappiness)"
 else
 	log "zram: mkswap or swapon failed"; echo 1 > $Z/reset 2>/dev/null
 fi

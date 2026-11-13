@@ -414,8 +414,10 @@ static int thrashing(long long total, long long avail, long long swt, long long 
 	int swap_low = swt == 0 || swf < swt / 10;
 	return swap_low || full >= 5 || avail < total * 4 / 100;
 }
-/* 1.5.9 (plan 9.2b): time to warn: under 12% of the memory available and the swap three quarters full (or none) */
-static int warn_due(long long total, long long avail, long long swt, long long swf) { return avail < total * 12 / 100 && (swt == 0 || swf < swt / 4); }
+/* 1.5.9 (plan 9.2b): time to warn: under 12% of the memory available. (At first also "the swap three quarters full";
+   with zram as large as the memory it never got there: on the Vivobook FNF was ended with 2.4 of 3.4 GB of zram free
+   and no warning before. What is short is memory the game can have now, whatever the swap holds.) */
+static int warn_due(long long total, long long avail, long long swt, long long swf) { (void)swt; (void)swf; return avail < total * 12 / 100; }
 int main(int argc, char **argv)
 {
 	once = argc > 1 && !strcmp(argv[1], "--once");
@@ -480,8 +482,7 @@ int main(int argc, char **argv)
 			was_crit = now; }
 		else if (was_crit && now - was_crit > 10) { logf_("memory is back: %lld MiB available", avail >> 20); was_crit = 0; }
 		if (now - last_protect >= 5 || crit) { scan(); protect(); last_protect = now; }
-		/* 1.5.9 (plan 9.2b): before it is critical, a warning. Under 12% of the memory available and the swap three
-		   quarters full (or none): the desktop is told which page is the largest ("memory warn PID MB"), and shows the
+		/* 1.5.9 (plan 9.2b): before it is critical, a warning. Under 12% of the memory available: the desktop is told which page is the largest ("memory warn PID MB"), and shows the
 		   warning, over a full-screen game too. Once a minute at most, and again only after memory was back above
 		   20%. It changes nothing about when a page is ended. */
 		if (warned && avail > total / 5) warned = 0;
