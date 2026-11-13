@@ -17,5 +17,8 @@ engine. Version 1.1 is the first public release. Download the disc image from
 Automatic updates: installed computers check `https://merciless146.github.io/RudolfOS/stable` once a day and
 accept only releases signed by the key in `iso/trusted-keys.txt`.
 
+Making your own build, with your own keys, update address and Library, and going back to the official Rudolf OS:
+[docs/custom-builds.md](docs/custom-builds.md).
+
 Rudolf OS is free software under the GNU General Public License, version 2 or (at your option) any later
 version. See `LICENSE`.
