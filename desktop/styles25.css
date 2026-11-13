@@ -491,3 +491,5 @@ html.tablet #start .stv{display:none!important}
 .wfbdi{display:flex;align-items:center;gap:8px;width:100%;min-height:40px;padding:0 10px;border:0;background:none;text-align:left;border-radius:8px;cursor:pointer}.wfbdi:hover:not(:disabled),.wfbdi:focus-visible{background:rgba(37,99,235,.1)}.wfbdi:disabled{cursor:default;opacity:.75}
 .wfbdc{display:inline-block;width:18px;text-align:center;font-weight:700;color:#16a34a}.wfbd .msg{font-size:12px}
 .wfrad{margin:6px 0}.wfrad summary{cursor:pointer;font-weight:600}.wfradr .msg{font-size:12px}
+
+#bar .tapp.call59{color:#16a34a}#bar .tapp.call59.muted{color:#b91c1c}
