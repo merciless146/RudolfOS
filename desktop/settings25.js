@@ -7,7 +7,9 @@ function settings(sec){if(SW&&wins.includes(SW)){SW.focus();SW.show(sec||SW.sec)
  const SEC={disp:['🖥️','Display Properties',dispPanelS],vol:['🔊','Volume Controls',volPanelS],mm:['🎮','Multimedia Settings',mmPanelS],net:['📶','Network Settings',netPanelS],bt:['🔵','Bluetooth',btPanel],web:['🔐','Oracle',signinPanel],sys:['🕒','System Settings',sysPanelS],kbd:['⌨️','Keyboard',kbdPanel],mouse:['🖱️','Mouse and touchpad',mousePanel],devs:['🔌','Devices',devPanel],acc:['♿','Accessibility',accPanelS],priv:['🔏','Privacy',privPanel],sec:['🛡️','Security Settings',secPanelS],health:['🩺','System health',healthPanel],usr:['👤','User Settings',usrPanelS],remote:['🖥️','Remote access',remotePanel],stor:['💾','Storage and backup',storPanel],apps:['🧩','Apps',appsPanel],notif:['🔔','Notifications',notifPanel],upd:['🔄','Update and recovery',updPanel],about:['ℹ️','About',aboutPanel]};
  /* 1.5.8: each page gets a fresh box, so no page keeps listening once another is shown (Display Properties' input
     handler ran on the Power page and looked for its own controls: "Cannot read properties of null", 2026-11-12) */
- const go=(k)=>{W.sec=k;nav.querySelectorAll('div').forEach(d=>{d.classList.toggle('on',d.dataset.k==k);d.setAttribute('aria-selected',d.dataset.k==k)});{const nb=box.cloneNode(false);box.replaceWith(nb);box=nb}SEC[k][2](box,W);sfootLast(box);box.scrollTop=0;kbFix(box)};
+ const go=(k)=>{W.sec=k;nav.querySelectorAll('div').forEach(d=>{d.classList.toggle('on',d.dataset.k==k);d.setAttribute('aria-selected',d.dataset.k==k)});{const nb=box.cloneNode(false);box.replaceWith(nb);box=nb}SEC[k][2](box,W);sfootLast(box);box.scrollTop=0;kbFix(box);
+  /* 1.5.9: Search in Settings learns what this page has (also once its parts that are read from the system are in) */
+  if(typeof ssHarvest=='function'){const b=box;ssHarvest(k,b);setTimeout(()=>{if(b.isConnected)ssHarvest(k,b)},1500)}};
  W.rt=()=>{nav.querySelectorAll('div').forEach(d=>{d.textContent=SEC[d.dataset.k][0]+'  '+SEC[d.dataset.k][1]});trTree(W.el)};
  W.guard=(next)=>{const cur=W.sec;if(!cur||!secDirty(cur)||!box.isConnected)return next();
   if(CUST[cur])sdlg(W,'Unapplied changes','You have changes that are not applied yet.',[['Keep editing'],['Discard',()=>{secDiscard(cur);next()},1]]);
@@ -17,6 +19,7 @@ function settings(sec){if(SW&&wins.includes(SW)){SW.focus();SW.show(sec||SW.sec)
  W.onclose=()=>{if(W._ok){SW=null;return}const dl=Object.keys(SEC).filter(s=>secDirty(s));if(!dl.length){SW=null;return}
   const cust=dl.some(s=>CUST[s]);
   sdlg(W,'Unapplied changes','You have changes that are not applied yet.',cust?[['Keep editing'],['Discard',()=>{dl.forEach(secDiscard);W._ok=1;W.close()},1]]:[['Keep editing'],['Discard',()=>{dl.forEach(secDiscard);W._ok=1;W.close()}],['Apply',()=>{dl.forEach(secCommit);W._ok=1;W.close()},1]]);return false};
+ W.SEC=SEC;if(typeof ssAttach=='function')ssAttach(W);   /* 1.5.9: the search box at the top (setsearch59.js) */
  go(sec&&SEC[sec]?sec:'disp')}
 /* 1.5.1: Apply/Revert (.sfoot, sticky at the bottom) stays the last thing on a page. Sections that modules add with
    appendChild (Secure Boot, Development link in Security Settings) landed below it, so the bar sat in the middle of

@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- New: Search in Settings: a search box at the top of Settings. As you type, a drop-down lists the pages, sections and settings that still match, each with where it is underneath in smaller text (Settings › Network Settings › Wi-Fi). Choose one (click, or the arrow keys and Enter) to open its page with that setting highlighted.
 - New: game mode puts Oracle's background tabs to sleep to free memory for the game. A sleeping tab keeps its address and shows 💤; selecting it loads it again. Tabs playing sound or holding typed text stay awake. Blitzen's model is unloaded too (unless Blitzen is in front), and system, Linux app and Debian updates wait until the game ends. Settings › System health › Memory can turn it off.
 - New: when memory is getting low, Rudolf OS warns before it has to close a page, also inside a full-screen game ("Memory is almost full: save your progress if you can"), and game mode puts more tabs to sleep.
 - Changed: the desktop page is about 2 MB smaller (5.5 to 3.5 MB): the dynamic backgrounds' pictures, the fonts and the Super Nintendo player are now separate files, and SpreadsheetPro and PresentPro load the first time they are opened.
