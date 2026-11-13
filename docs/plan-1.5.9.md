@@ -56,6 +56,12 @@ experience on them. It starts once 1.5.8 is promoted.
   system starts, the Lite desktop reaches the sign-in screen, an update installs and rolls back, Recovery mode and the
   safe desktop work.
 - **Not on ARM64:** Steam, Windows programs, the nvk layer (see docs/plan-1.5.8.md 8.2).
+- **Step 1 (2026-11-13):** the workflow *ARM64 check* (GitHub's ubuntu-24.04-arm): the C helpers and rudolfd build and
+  run on ARM64 (rudolf-kexec with ARM64 system calls, Flathub's arch in rudolfd and rudolf-apps, ci_release.sh's
+  library paths from the build machine's multiarch name); the kernel (kconfig-arm64.sh, on arm64's defconfig) and its
+  modules build (systools/arm64_kernel.sh); the kernel starts in QEMU as far as Rudolf OS's start-up. Next: the base
+  layer for ARM64 (mkrootfs.sh and the Xorg, sound and Wi-Fi builds on the ARM64 runner), then Lite and the test
+  channel.
 
 ## Part 4: Share this connection (docs/plan-1.5.8.md 6.4)
 - Rudolf OS as the hotspot: hostapd and dnsmasq in the system layer (about 1 MB), the firewall's NAT rules, off by

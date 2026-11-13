@@ -1,0 +1,59 @@
+# The ARM64 build, step by step (docs/plan-1.5.9.md Part 3). Nothing is published: it builds on GitHub's ARM64
+# runner and checks. Now: the C helpers and rudolfd build for ARM64, the kernel and its modules (kconfig-arm64.sh)
+# build, and the kernel starts in QEMU (aarch64 virt, 3 GB) as far as Rudolf OS's start-up looking for its drive.
+name: ARM64 check
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['iso/kconfig-arm64.sh', 'iso/systools/arm64_kernel.sh', 'iso/sys/*.c', 'iso/initramfs/**', '.github/workflows/arm64-check.yml']
+permissions: {contents: read}
+jobs:
+  arm64:
+    runs-on: ubuntu-24.04-arm
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential bc flex bison libelf-dev libssl-dev squashfs-tools zlib1g-dev libx11-dev libxtst-dev libxfixes-dev libxrandr-dev libxext-dev libglib2.0-dev qemu-system-arm file cpio xz-utils kmod >/dev/null
+      - name: The C helpers and rudolfd
+        run: |
+          cd iso; MA=$(gcc -print-multiarch); echo "multiarch $MA"; B=$PWD/out-arm64; mkdir -p $B
+          gcc -O2 -o $B/rudolf-display sys/rudolf-display.c -lX11 /usr/lib/$MA/libXtst.so.6 /usr/lib/$MA/libXfixes.so.3 /usr/lib/$MA/libXrandr.so.2 -lm
+          gcc -O2 -o $B/rudolfd sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          gcc -O2 -o $B/rudolf-update sys/rudolf-update.c -lcrypto -ldl
+          gcc -O2 -o $B/rudolf-launch sys/rudolf-launch.c
+          gcc -O2 -o $B/rudolf-memguard sys/rudolf-memguard.c
+          gcc -O2 -o $B/rudolf-shellfix sys/rudolf-shellfix.c
+          gcc -O2 -o $B/rudolf-remote sys/rudolf-remote.c -lssl -lcrypto -lX11 -lXext /usr/lib/$MA/libXtst.so.6 -lz
+          gcc -O2 -static -o $B/cdp-eval sys/cdp-eval.c
+          gcc -O2 -o $B/rudolf-debian sys/rudolf-debian.c -lcrypto -ldl
+          gcc -O2 -o $B/rudolf-fscheck sys/rudolf-fscheck.c
+          gcc -O2 -o $B/rudolf-portal sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0)
+          gcc -O2 -o $B/rudolf-apps sys/rudolf-apps.c -lz
+          gcc -O2 -o $B/rpk sys/rpk.c -lcrypto
+          gcc -O2 -o $B/rudolf-ai sys/rudolf-ai.c -lcrypto -ldl
+          gcc -O2 -o $B/rudolf-print sys/rudolf-print.c -ldl
+          gcc -O2 -o $B/rudolf-devlink sys/rudolf-devlink.c -lcrypto -ldl
+          gcc -Os -static -nostdlib -fno-builtin -fno-stack-protector -fno-asynchronous-unwind-tables -o $B/rudolf-kexec sys/rudolf-kexec.c
+          gcc -Os -static -o $B/rudolf-verity sys/rudolf-verity.c
+          file $B/* | sed 's/,.*//' ; ! file $B/* | grep -v "ARM aarch64"
+          $B/rudolf-kexec 2>&1 | grep -q "usage: rudolf-kexec" && echo "rudolf-kexec runs (ARM64 system calls)"
+          $B/rudolf-memguard --warn 3415 340 3415 2387 | grep -qx 1 && echo "rudolf-memguard runs"
+          echo "::notice title=ARM64::the C helpers and rudolfd build and run on ARM64 ($MA)"
+      - name: The kernel and its modules
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); export KERNEL_VERSION=${KV%-rudolf}
+          OUT=$PWD/k-arm64 bash iso/systools/arm64_kernel.sh | tee k.log
+          echo "::notice title=ARM64 kernel::$(tail -1 k.log)"
+      - name: Start it in QEMU
+        run: |
+          A=tcg; [ -w /dev/kvm ] && A=kvm; echo "accelerator $A"
+          qemu-system-aarch64 -M virt -cpu max -accel $A -m 3G -smp 2 -nographic -no-reboot \
+            -kernel k-arm64/Image -append "console=ttyAMA0 panic=-1" < /dev/null > q.log 2>&1 &
+          Q=$!; for i in $(seq 1 300); do grep -q "could not find its disc\|Kernel panic" q.log && break; sleep 1; done; kill $Q 2>/dev/null || true
+          tail -25 q.log
+          grep -q "Rudolf OS could not find its disc or USB drive" q.log
+          echo "::notice title=ARM64 in QEMU::the kernel started and Rudolf OS's start-up ran (it looked for its drive; none given)"
