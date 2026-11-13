@@ -29,7 +29,7 @@ Summary: In progress.
 - New: "In a call" in the taskbar (🎙️ while an app uses the microphone; one click mutes it for everything); a call keeps the screen saver, the lock and sleep away; changing the sound output moves the call too, and a headset plugged in takes over.
 - New: cellular modems are recognised (ModemManager, started only while a modem is plugged in): Settings › Network shows each one with its SIM, operator and signal. Connecting with a SIM comes in 1.6.0.
 - New: Share this connection (Settings › Network, administrators): the computer's Wi-Fi becomes a hotspot (WPA2/WPA3) for other devices, sharing a cable, a phone's USB tethering or a modem (or the Wi-Fi itself on chips that can do both). Off by default and after a restart.
-- New: Settings › Apps › Calls to phones: what Google Voice, Zoom Phone and Teams Phone need to call phone numbers.
+- New: Settings › Apps › Calls to phones: what Google Voice, Zoom Phone and Teams Phone need to call phone numbers; a phone number clicked on a web page asks how to call it (Google Voice, Teams, the phone on the desk, or copy it), once if you like.
 - Changed: Chromium comes only from Ubuntu's open-source Chromium (the snap). When it cannot be fetched, the release keeps the Chromium it has, instead of taking another kind of browser; it never goes back to an older version.
 - Fixed: when a system file does not match its release, the start-up and Task Manager say so plainly, with its size, instead of a low-level error.
 

@@ -37,6 +37,14 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("(()=>{const d=document.createElement('div');d.id='apt';document.body.appendChild(d);appsPanel(d);return 1})()"); await wait(300);
   const ph = await q("document.querySelector('#apt .ph59')?.textContent||''");
   ok('7. Settings › Apps › Calls to phones: Google Voice, Zoom Phone and Teams Phone, what each needs', /Calls to phones/.test(ph) && /Google Voice/.test(ph) && /Zoom Phone/.test(ph) && /Teams Phone/.test(ph) && /does not sign you up/.test(ph), ph.slice(0, 200));
+  // 7.3: a phone number clicked in a tab (the tab protocol's "tel" event)
+  await q("(()=>{window.__wo=[];webOpen=u=>{__wo.push(u)};delete S.telApp;dispatchEvent(new MessageEvent('message',{data:{rudolfShell:'tabev',ev:'tel',tid:'t1',num:'+1 (555) 010-2030'},origin:SHELL_ORIGIN,source:null}));telOpen('+1 (555) 010-2030');return 1})()"); await wait(300);
+  const tl = await q("(()=>{const o=[...document.querySelectorAll('.rmodal')].pop();return o?o.textContent:''})()");
+  ok('8. a phone number clicked: how to call it (Google Voice, Teams, copy), the number cleaned', /Call \+15550102030/.test(tl) && /Google Voice/.test(tl) && /Microsoft Teams/.test(tl) && /Copy the number/.test(tl), tl);
+  await q("(()=>{const o=[...document.querySelectorAll('.rmodal')].pop();o.querySelector('.ta').checked=true;[...o.querySelectorAll('.tl button')].find(b=>/Google Voice/.test(b.textContent)).click();return 1})()"); await wait(300);
+  ok('9. ...Google Voice opens in Oracle with the number; chosen for next time', await q("__wo.at(-1)=='https://voice.google.com/u/0/calls?a=nc,%2B15550102030'&&S.telApp=='voice'"));
+  await q("document.querySelectorAll('.rmodal').forEach(o=>o.remove());telOpen('tel:+44 20 7946 0000')"); await wait(200);
+  ok('10. ...the next number goes straight there', await q("!document.querySelector('.rmodal .tl')&&__wo.at(-1)=='https://voice.google.com/u/0/calls?a=nc,%2B442079460000'"));
   ok('6. no page errors', errs.length == 0, errs);
   await b.close(); srv.close();
   console.log(R.filter(Boolean).length + '/' + R.length + ' passed'); process.exit(R.every(Boolean) ? 0 : 1);

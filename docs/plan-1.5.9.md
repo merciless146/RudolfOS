@@ -146,8 +146,9 @@ numbers need the service's own calling plan (Google Voice in the US, Zoom Phone,
 - Settings › Apps › "Calls to phones": a short page on what each service needs (Google Voice: free in the US with a
   Google account; Zoom Phone, Teams Phone: paid), with links that open in Oracle. Nothing is installed or signed up for
   by Rudolf OS.
-- **Done (2026-11-13):** the Settings › Apps page (call59_t). Not yet: `tel:` links (both engines need to hand them to
-  the desktop).
+- **Done (2026-11-13):** the Settings › Apps page; `tel:` links: both engines' page scripts catch a click on one (a
+  person's click, isTrusted) and send the tab event `tel`; the desktop asks: Google Voice, Teams, Phone screen (the
+  number copied for the phone's dialler) or copy, with "Always use this" (S.telApp, undone in Settings › Apps).
 - `tel:` links (a phone number on a web page): offered to the calling site the person chooses once (Google Voice,
   Zoom, Teams), or to Phone screen (1.5.8 Part 7) to call from the Android phone on the desk.
 
