@@ -116,8 +116,11 @@ numbers need the service's own calling plan (Google Voice in the US, Zoom Phone,
 - **The camera:** the laptop's camera (UVC) seen by both Chromium and Linux apps; the self-test says when the camera
   is missing or in use by another app.
 
-- **Done (2026-11-13):** WebRTC on in rudolf-webkit (desktop and tabs; `enable-webrtc` where WebKitGTK has it), the
-  plug-ins in addwebkit.sh (webrtc, nice, dtls, srtp, sctp, rtpmanager, rtp; gstreamer1.0-nice in the release); the
+- **Done (2026-11-13):** the Lite engine check's call test found Ubuntu's WebKitGTK 2.52.6 **without WebRTC**
+  ("Can't find variable: RTCPeerConnection", with `enable-webrtc` on), so with Lite the call sites (Meet, Voice, Zoom's
+  web client, Teams, Skype, Whereby, Jitsi) open in Chromium's window (oracle58.js RT_CALLS, only while the engine has
+  no RTCPeerConnection); no WebRTC plug-ins are added. The Standard call test (webrtc59_t.js, Chromium's stand-in
+  camera and microphone) passes; the Lite one reports whether a later WebKitGTK has WebRTC. Also: the
   🎙️ indicator and mute (hotkey mic users|get|muted, rudolfd `mic`); a call holds off the saver, lock and sleep
   (`media`'s `mic`); the sound output change moves streams and the microphone (sound set_default), and
   module-switch-on-connect. Not yet: Bluetooth headsets' microphone (HFP), the echo-cancel switch, the self-test's

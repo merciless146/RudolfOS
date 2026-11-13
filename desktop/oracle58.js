@@ -16,10 +16,14 @@ if(typeof RD!='undefined'&&RD&&RD.engine=='webkit'&&window.webkit&&webkit.messag
  window.__rwkIn=m=>{try{dispatchEvent(new MessageEvent('message',{data:m,origin:SHELL_ORIGIN,source:P}))}catch(e){}};
 }
 const RT_CHROMIUM=['netflix.com','spotify.com','disneyplus.com','primevideo.com','amazon.com/gp/video','max.com','hbomax.com','hulu.com','tv.apple.com','peacocktv.com','paramountplus.com','crunchyroll.com','tidal.com','music.amazon.com','deezer.com','play.hbomax.com'];
+/* 1.5.9 (plan 7.1): video calls. Ubuntu's WebKitGTK (2.52) is built without WebRTC (the Lite engine check's call test:
+   "Can't find variable: RTCPeerConnection"), so with Lite the call sites open in Chromium's window, which has it */
+const RT_CALLS=['meet.google.com','voice.google.com','app.zoom.us','zoom.us/wc','zoom.us/j','zoom.us/test','teams.microsoft.com','teams.live.com','web.skype.com','whereby.com','meet.jit.si'];
+const rtNoWebRTC=()=>typeof RTCPeerConnection=='undefined';
 /* true when this address should open in Chromium's window: only with Lite's WebKit tabs */
 function rtChromium(u){if(!RD||RD.engine!='webkit'||typeof rtOn!='function'||!rtOn())return false;let x;try{x=new URL(u)}catch(e){return false}
  const h=x.hostname.toLowerCase(),hp=h+x.pathname;
- return RT_CHROMIUM.concat(S.chromiumSites||[]).some(d=>d.includes('/')?(hp==d||hp.startsWith(d)||hp.startsWith('www.'+d)):(h==d||h.endsWith('.'+d)))}
+ return RT_CHROMIUM.concat(rtNoWebRTC()?RT_CALLS:[],S.chromiumSites||[]).some(d=>d.includes('/')?(hp==d||hp.startsWith(d)||hp.startsWith('www.'+d)):(h==d||h.endsWith('.'+d)))}
 /* the browser window itself, whatever Oracle would do */
 async function webOpenChromium(u){if(!RD)return;let href;try{href=new URL(u).href}catch(e){return}
  if(window.__sys&&typeof fwCheck=='function'){const g=fwCheck(href);if(g){notify('Blocked by the firewall',g.why,{kind:'error'});return}}

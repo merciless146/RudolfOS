@@ -31,12 +31,10 @@ for s in $ML/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner; do [ -x "$s" ] && $S
 for p in coreelements app audioconvert audioresample audiotestsrc volume playback typefindfunctions videoconvertscale videoscale videoconvert \
 	ogg vorbis opus theora vpx matroska isomp4 wavparse audioparsers autodetect pulseaudio alsa id3demux gio rawparse videorate videofilter \
 	audiomixer compositor opengl gdkpixbuf jpeg png webrtcdsp \
-	opusparse videoparsersbad audiofx debugutilsbad subenc libav deinterlace \
-	webrtc nice dtls srtp sctp rtpmanager rtp rtpmanagerbad videotestsrc; do
+	opusparse videoparsersbad audiofx debugutilsbad subenc libav deinterlace; do
 	f=$GS/libgst$p.so; [ -f "$f" ] || continue; $SUDO cp -L "$f" "$R$f"; echo "$f" >> "$LIST"; done
-# 1.5.9 (plan 7.1): video calls in Lite tabs (Meet, Zoom's web client, Teams): WebKit's WebRTC is GStreamer's webrtcbin
-# with ICE (nice, from gstreamer1.0-nice), DTLS, SRTP, SCTP (data channels) and the RTP elements; videotestsrc for the
-# Lite engine check's stand-in camera
+# (1.5.9, plan 7.1: no WebRTC plug-ins: Ubuntu's WebKitGTK 2.52 has no WebRTC, so Lite opens call sites in Chromium's
+# window; the Lite engine check's call test says whether a newer WebKitGTK has it)
 # GLib: the TLS module (https), with its loader cache made for ROOT
 for m in $ML/gio/modules/libgiognutls.so; do [ -f "$m" ] && { $SUDO mkdir -p "$R${m%/*}"; $SUDO cp -L "$m" "$R$m"; echo "$m" >> "$LIST"; }; done
 # 1.5.7: the libraries WebKit opens itself while running, which no ldd sees. libGLESv2.so.2 (GLVND's OpenGL ES, from
