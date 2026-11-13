@@ -168,6 +168,14 @@ if [ -z "$W" ]; then skip wifi "no Wi-Fi adapter"
 elif running wpa_supplicant; then
 	if ip -4 addr show "$W" 2>/dev/null | grep -q 'inet '; then pass wifi "$W has an address"; else skip wifi "$W is not connected to a network now"; fi
 else fail wifi "the Wi-Fi service is not running ($W)"; fi
+# 1.5.9 (plan Part 1): a cellular modem: ModemManager runs while one is there, can read its own rules (it runs without
+# udev, /usr/lib/rudolf/modem) and has found it (mmcli only reads)
+md=$(ls "$DEV"/cdc-wdm* "$DEV"/wwan* 2>/dev/null | head -3 | tr '\n' ' ')
+if [ -z "$md" ]; then skip modem "no cellular modem"
+elif ! running ModemManager; then fail modem "a modem is there (${md% }) but ModemManager is not running ($RUN/modem.log)"
+elif grep -q 'Invalid rule match' "$RUN/modem.log" 2>/dev/null; then fail modem "ModemManager could not read its port rules (\"Invalid rule match\" in $RUN/modem.log): it may not see the modem"
+else n=$(mmcli -L 2>/dev/null | grep -c '/Modem/')
+	if [ "$n" -gt 0 ]; then pass modem "$n modem(s) found by ModemManager"; else fail modem "ModemManager runs but has found no modem (${md% }): see $RUN/modem.log"; fi; fi
 
 echo "$NP passed, $NF failed, $NS skipped"
 [ $NF = 0 ]
