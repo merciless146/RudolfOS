@@ -313,6 +313,10 @@ Vivobook's Settings › System health › Memory is on "small" (half the memory,
   memory into zram. Chosen: swappiness 180 (was 100), so it moves sooner; the warning (9.2b) no longer waits for the
   swap to fill. Measured again with FNF on the next beta.
 
+- **The file cache cleared when game mode starts** (2026-11-12, asked for): rudolfd memory/dropcache (clean cached
+  files only, drop_caches 1, once every 10 s at most), called once per game by game mode and by Task Manager ›
+  Performance › Clear cache. Linux gives the cache back by itself, but more slowly than a game can ask.
+
 ### 9.2b The memory guard warns before it ends the game (added on 2026-11-12)
 On 2026-11-12 the guard ended FNF (about 2 GB) twice without a word before it: the screen left full screen and said
 so afterwards (1.5.8). When memory is low but not yet critical and the largest page is the one in front (above all

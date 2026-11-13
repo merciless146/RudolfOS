@@ -172,6 +172,7 @@ function taskmgr26() {
     drawTable();
   }
   /* 1.5.9: the memory in use, by what holds it (rudolfd memory/breakdown; docs/plan-memdebug.md) */
+  let tmCC = {t: 0, msg: ''};   /* the last Clear cache's result, kept across the tab's redraws (every 2 s) */
   async function tmMemBreak(el) {
     let m; try { m = await rd('memory/breakdown') } catch (e) { el.textContent = 'Not available.'; return }
     const used = m.total - m.free, rows = [
@@ -188,6 +189,10 @@ function taskmgr26() {
       r.innerHTML = '<span></span><i><b></b></i><em></em>'; r.querySelector('span').textContent = n; r.querySelector('em').textContent = fmtB(v);
       r.querySelector('b').style.width = Math.max(1, Math.round(v * 100 / used)) + '%'; el.appendChild(r) }
     const f = document.createElement('div'); f.className = 'msg'; f.textContent = `${fmtB(used)} of ${fmtB(m.total)} is used; ${fmtB(m.available)} is available (free, and the file cache that can be given back). Point at a row for what it is.`; el.appendChild(f);
+    /* 1.5.9: Clear cache, the same as game mode does at its start */
+    const cb = document.createElement('div'); cb.className = 'tmcc'; cb.innerHTML = "<button class='tmccb'>Clear cache</button> <span class='msg'></span>"; el.appendChild(cb);
+    const sp = cb.querySelector('span'); sp.textContent = Date.now() - tmCC.t < 15000 ? tmCC.msg : 'Frees the memory holding recently used files at once. Nothing is lost; files are read again when next used, so things may be a little slower for a moment.';
+    cb.querySelector('button').onclick = async e => { e.target.disabled = true; try { const r = await rdPost('memory/dropcache'); tmCC = {t: Date.now(), msg: 'Cleared: ' + fmtB(r.freed) + ' more is free now.'}; sp.textContent = tmCC.msg } catch (x) { sp.textContent = x.message; e.target.disabled = false } };
   }
   function drawPerf() {
     const cards = document.createElement('div'); cards.className = 'tmcards';

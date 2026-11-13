@@ -19,22 +19,26 @@ function gslCandidates(){const out=[];if(typeof RT=='undefined')return out;
 /* Blitzen's model out of memory (its next question loads it again) */
 async function gslBlitzen(){if(typeof lxApi!='function')return 0;   /* (without rudolfd its call fails: 0) */try{if(typeof BLZ!='undefined'&&[...BLZ.wins].some(w=>w.el&&w.el.isConnected&&w.el.classList.contains('act')&&!w.min))return 0;
  const s=await lxApi('ai/status');if(!s||!s.loaded)return 0;await lxApi('ai/unload');return s.mem||1}catch(e){return 0}}
-async function gslSleep(){if(GSL.busy||!S.gmsleep)return 0;GSL.busy=true;let n=0,ai=0;const names=[];
+/* (1.5.9) the file cache cleared at once, so the game finds free memory when it loads (Linux gives the cache back by
+   itself, but more slowly than a game can ask: FNF on the Vivobook). Once per game, not on every warning. */
+async function gslCache(){if(typeof RD=='undefined'||!RD)return 0;try{const r=await rdPost('memory/dropcache');return r.freed||0}catch(e){return 0}}
+async function gslSleep(first){if(GSL.busy||!S.gmsleep)return 0;GSL.busy=true;let n=0,ai=0,fc=0;const names=[];
  try{for(const [tid,w] of gslCandidates()){const b=await rtBusy(tid);if(b.m||b.f)continue;
    let title='';try{title=w.title()}catch(e){}if(w.sleep()){n++;if(title)names.push(title)}}
-  ai=await gslBlitzen()}finally{GSL.busy=false}
+  ai=await gslBlitzen();if(first)fc=await gslCache()}finally{GSL.busy=false}
  const parts=[];if(n)parts.push(`${n==1?'a tab in Oracle was':n+' tabs in Oracle were'} put to sleep${names.length?' ('+names.slice(0,3).join(', ')+(names.length>3?', …':'')+')':''}; select a tab to load it again`);
  if(ai)parts.push("Blitzen's model was unloaded; it loads again with your next question");
+ if(fc>=64*1048576)parts.push(`the file cache was cleared (${fmtB(fc)})`);
  if(parts.length)notify('Game mode freed memory',parts.join('. ').replace(/^./,c=>c.toUpperCase())+'.',{quiet:true});
  return n}
 /* when game mode starts (checked each second: game mode has several sources, the shell's tabs, the desktop's own
    full screen and pointer capture, a Linux game) */
 setInterval(()=>{let on=false;try{on=gameMode()}catch(e){}const was=GSL.on;GSL.on=on;
- if(on&&!was)setTimeout(()=>{try{if(gameMode())gslSleep()}catch(e){}},1500)},1000);
+ if(on&&!was)setTimeout(()=>{try{if(gameMode())gslSleep(true)}catch(e){}},1500)},1000);
 /* Settings › System health › Memory */
 {const _h=healthPanel;healthPanel=function(c,W){const r=_h.apply(this,arguments);try{
  const d=document.createElement('div');d.className='gsl59 r2';d.style.marginTop='6px';
- d.innerHTML=`<label>Game mode</label><div>${ckH('gsl59ck',"In game mode, free memory for the game",!!S.gmsleep)}<div class='msg'>Oracle's background tabs sleep (a tab that is not its window's current one closes its page and keeps its address; selecting it loads it again; tabs playing sound or holding typed text stay awake), and Blitzen's model is unloaded unless Blitzen is in front. Updates wait until the game ends.</div></div>`;
+ d.innerHTML=`<label>Game mode</label><div>${ckH('gsl59ck',"In game mode, free memory for the game",!!S.gmsleep)}<div class='msg'>Oracle's background tabs sleep (a tab that is not its window's current one closes its page and keeps its address; selecting it loads it again; tabs playing sound or holding typed text stay awake), and Blitzen's model is unloaded unless Blitzen is in front. Recently used files are let go from memory (the file cache), and updates wait until the game ends.</div></div>`;
  const at=c.querySelector(':scope > .hlev');if(at)at.before(d);else c.appendChild(d);
  d.querySelector('#gsl59ck').onchange=e=>{liveSet(c,'gmsleep',e.target.checked)}}catch(e){console.warn(e)}return r}}
 /* 9.2b: the memory guard warns before memory is critical ("memory warn PID MB": the largest page). The page is not
