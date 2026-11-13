@@ -17,6 +17,8 @@
  *   rudolf-update boot-ok           the desktop came up: keep the slot that is being tried
  *   rudolf-update rollback          go back to the previous system at the next start
  *   rudolf-update recovery          (1.5.9) refresh the official recovery system (slot r) from the running slot
+ *   rudolf-update developer on KEY URL | off    (1.5.9, plan 8.3) Developer mode: one more trusted key (a developer's
+ *                                   publisher key) and their update address; off: back to the official ones only
  *   rudolf-update set url URL | set auto 0|1
  *   rudolf-update rzs-make FILE OUT.rzs     (build side) write a delta control file
  *   rudolf-update fetch URL OUT             (1.5.7, Make a stick) a release's boot image from github.com */
@@ -89,22 +91,28 @@ static int kv_write(const char *path, kv_t *m, char sep)
 }
 
 /* ---------------- crypto */
-static unsigned char KEYS[8][32]; static int NKEYS;
+static unsigned char KEYS[8][32]; static int NKEYS, NOFF;
+/* 1.5.9 (plan 8.3): Developer mode's extra key, kept on RUDOLFDATA (never in the system image); the official keys
+   (KEYF, the system image's list) come first, and only they count for the recovery system and "Official" */
+static char EXTRAF[256] = "/persist/etc/rudolf/extra-keys";
+static int key_line(char *l, unsigned char out[32]) { while (isspace((unsigned char)*l)) l++; if (*l == '#') return 0; char *e = l; while (*e && !isspace((unsigned char)*e)) e++; *e = 0; unsigned char raw[64]; if (strlen(l) == 44 && EVP_DecodeBlock(raw, (unsigned char *)l, 44) >= 32) { memcpy(out, raw, 32); return 1; } return 0; }
+static void load_file_keys(const char *path) { char *t = slurp(path, NULL); if (!t) return; for (char *l = strtok(t, "\n"); l && NKEYS < 8; l = strtok(NULL, "\n")) if (key_line(l, KEYS[NKEYS])) NKEYS++; free(t); }
 static void load_keys(void)
 {
-	char *t = slurp(KEYF, NULL); NKEYS = 0; if (!t) return;
-	for (char *l = strtok(t, "\n"); l && NKEYS < 8; l = strtok(NULL, "\n")) { while (isspace((unsigned char)*l)) l++; if (*l == '#') continue; char *e = l; while (*e && !isspace((unsigned char)*e)) e++; *e = 0; unsigned char raw[64]; if (strlen(l) == 44 && EVP_DecodeBlock(raw, (unsigned char *)l, 44) >= 32) memcpy(KEYS[NKEYS++], raw, 32); }
-	free(t);
+	NKEYS = 0; load_file_keys(KEYF); NOFF = NKEYS;
+	if (!access(EXTRAF, F_OK)) load_file_keys(EXTRAF);
 }
+/* which key signed: 1..NKEYS, 0 for none (the official ones are 1..NOFF) */
 static int verify(const unsigned char *msg, size_t len, const unsigned char *sig)
 {
 	for (int i = 0; i < NKEYS; i++) {
 		EVP_PKEY *k = EVP_PKEY_new_raw_public_key(EVP_PKEY_ED25519, NULL, KEYS[i], 32); if (!k) continue;
 		EVP_MD_CTX *c = EVP_MD_CTX_new(); int ok = EVP_DigestVerifyInit(c, NULL, NULL, NULL, k) == 1 && EVP_DigestVerify(c, sig, 64, msg, len) == 1;
-		EVP_MD_CTX_free(c); EVP_PKEY_free(k); if (ok) return 1;
+		EVP_MD_CTX_free(c); EVP_PKEY_free(k); if (ok) return i + 1;
 	}
 	return 0;
 }
+static int official(int v) { return v > 0 && v <= NOFF; }
 static int sha256_file(const char *path, char hex[65])
 {
 	int f = open(path, O_RDONLY | O_CLOEXEC); if (f < 0) return -1;
@@ -483,7 +491,7 @@ static int recovery_refresh(const char *bs)
 	char sp[300], mp[400], gp[400]; snprintf(sp, sizeof sp, "%s/%s", SYSD, bs);
 	snprintf(mp, sizeof mp, "%s/manifest.txt", sp); snprintf(gp, sizeof gp, "%s/manifest.sig", sp);
 	size_t ml, sl; char *mt = slurp(mp, &ml), *sg = slurp(gp, &sl);
-	int off = mt && sg && sl == 64 && verify((unsigned char *)mt, ml, (unsigned char *)sg);
+	int off = mt && sg && sl == 64 && official(verify((unsigned char *)mt, ml, (unsigned char *)sg));
 	man_t m; char *cp = mt ? strdup(mt) : NULL; if (off && parse_manifest(cp, &m)) off = 0;
 	free(sg); if (!off) { free(mt); free(cp); say("Slot %s is not an official release: the recovery system is kept as it is.", bs); return 1; }
 	char rp[300], rr[400]; snprintf(rp, sizeof rp, "%s/r", SYSD); snprintf(rr, sizeof rr, "%s/RELEASE", rp);
@@ -558,6 +566,16 @@ static int cmd_status(void)
 	printf(",\"tries\":%d,\"failed\":", atoi(kv(&st, "tries"))); jstr(kv(&st, "failed")); printf("}");
 	printf(",\"canUpdate\":%s,\"recovery\":%s", may_change_system(1) ? "true" : "false", recovery_start() ? "true" : "false");
 	printf(",\"slots\":{\"a\":"); slot_json("a"); printf(",\"b\":"); slot_json("b"); printf(",\"r\":"); slot_json("r"); printf("}");
+	/* 1.5.9 (plan 8.3): who signed the running system (official, or a developer's key in Developer mode), Developer
+	   mode itself, and whether the recovery system is the official one */
+	{ char mp2[400], gp2[400]; if (strcmp(bs, "disc")) { snprintf(mp2, sizeof mp2, "%s/%s/manifest.txt", SYSD, bs); snprintf(gp2, sizeof gp2, "%s/%s/manifest.sig", SYSD, bs); }
+	  else { snprintf(mp2, sizeof mp2, "%s/rudolf/manifest.txt", MEDIA); snprintf(gp2, sizeof gp2, "%s/rudolf/manifest.sig", MEDIA); }
+	  size_t l1, l2; char *t1 = slurp(mp2, &l1), *t2 = slurp(gp2, &l2); int v = t1 && t2 && l2 == 64 ? verify((unsigned char *)t1, l1, (unsigned char *)t2) : 0;
+	  printf(",\"signer\":\"%s\",\"signerKey\":", official(v) ? "official" : v ? "custom" : "unknown");
+	  if (v) { unsigned char b64[64]; EVP_EncodeBlock(b64, KEYS[v - 1], 32); jstr((char *)b64); } else printf("null");
+	  free(t1); free(t2);
+	  char rk[400]; snprintf(rk, sizeof rk, "%s/r/official", SYSD);
+	  printf(",\"developer\":%s,\"recoveryOfficial\":%s", access(EXTRAF, F_OK) ? "false" : "true", access(rk, F_OK) ? "false" : "true"); }
 	printf(",\"url\":"); jstr(*kv(&cf, "url") ? kv(&cf, "url") : d ? d : ""); printf(",\"auto\":%s", strcmp(kv(&cf, "auto"), "0") ? "true" : "false");
 	printf(",\"checked\":%lld,\"available\":", atoll(kv(&cf, "checked")));
 	char ap[300], sp[300]; snprintf(ap, sizeof ap, "%s/available.txt", SYSD); snprintf(sp, sizeof sp, "%s/available.sig", SYSD);
@@ -582,6 +600,7 @@ int main(int argc, char **argv)
 	if (getenv("RU_CMDLINE")) snprintf(CMDF, sizeof CMDF, "%s", getenv("RU_CMDLINE"));
 	if (getenv("RU_MOUNTS")) snprintf(MOUNTSF, sizeof MOUNTSF, "%s", getenv("RU_MOUNTS"));
 	if (getenv("RU_SYSBLOCK")) snprintf(SYSBLK, sizeof SYSBLK, "%s", getenv("RU_SYSBLOCK"));
+	if (getenv("RU_EXTRA")) snprintf(EXTRAF, sizeof EXTRAF, "%s", getenv("RU_EXTRA"));
 	if (argc < 2) { fputs("usage: rudolf-update status|check|download|boot-ok|rollback|set url URL|set auto 0|1|rzs-make FILE OUT\n", stderr); return 2; }
 	const char *c = argv[1];
 	if (!strcmp(c, "rzs-make")) { if (argc < 4) die("usage: rzs-make FILE OUT.rzs"); return rzs_make(argv[2], argv[3]); }
@@ -616,6 +635,26 @@ int main(int argc, char **argv)
 	if (!strcmp(c, "boot-ok")) return cmd_bootok();
 	if (!strcmp(c, "rollback")) return cmd_rollback();
 	if (!strcmp(c, "recovery")) { char bs[8]; booted(bs); if (recovery_start()) { say("Not while in recovery mode."); return 1; } return recovery_refresh(bs); }
+	/* 1.5.9 (plan 8.3): Developer mode (the desktop asks an administrator's password and a typed confirmation first) */
+	if (!strcmp(c, "developer") && argc >= 3) {
+		kv_t cf; kv_read(CONFP, &cf, '=');
+		if (!strcmp(argv[2], "off")) {
+			unlink(EXTRAF); kv_set(&cf, "url", ""); kv_set(&cf, "devurl", "");
+			if (kv_write(CONFP, &cf, '=')) return 1;
+			say("Developer mode is off: only releases signed by Rudolf OS are installed, from the official address."); return 0;
+		}
+		if (strcmp(argv[2], "on") || argc != 5) die("developer on KEY URL | developer off");
+		unsigned char k[32]; char kl[100]; snprintf(kl, sizeof kl, "%s", argv[3]);
+		if (!key_line(kl, k)) die("the key is a publisher key: 44 characters of base64 (an Ed25519 public key)");
+		for (int i = 0; i < NOFF; i++) if (!memcmp(KEYS[i], k, 32)) die("that is the official Rudolf OS key");
+		const char *u = argv[4]; if (strncmp(u, "https://", 8)) die("the update address starts with https://");
+		for (const char *q = u; *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/:._-~%+", *q)) die("bad character in the address");
+		{ char d[300]; snprintf(d, sizeof d, "%s", EXTRAF); char *sl = strrchr(d, '/'); if (sl) { *sl = 0; mkdirs(d); } }
+		char line[200]; snprintf(line, sizeof line, "# Developer mode (Settings > Updates): a developer's publisher key\n%s\n", argv[3]);
+		if (write_file(EXTRAF, line)) die("could not keep the key");
+		kv_set(&cf, "url", u); kv_set(&cf, "devurl", u); if (kv_write(CONFP, &cf, '=')) return 1;
+		say("Developer mode is on: releases signed by this key are installed too, from %s. The official recovery system stays official.", u); return 0;
+	}
 	if (!strcmp(c, "set") && argc >= 4) {
 		kv_t cf; kv_read(CONFP, &cf, '=');
 		if (!strcmp(argv[2], "url")) { const char *u = argv[3]; if (*u && strncmp(u, "https://", 8) && strncmp(u, "http://", 7)) die("the address starts with https://"); for (const char *q = u; *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/:._-~%+", *q)) die("bad character in the address"); kv_set(&cf, "url", u); }

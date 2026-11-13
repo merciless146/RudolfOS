@@ -4005,6 +4005,21 @@ static void api(struct req *r)
 			snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update set %s '%s' 2>&1", kk, v);
 			char *o = run_out(cmd); if (o && *o) { reply_err(r->fd, 400, o); free(o); return; } free(o); reply_ok(r->fd, "saved"); return;
 		}
+		/* 1.5.9 (plan 8.3): Developer mode on (key, address) or off; the desktop asks an administrator's password and a
+		   typed confirmation first */
+		if (!strcmp(w, "developer")) {
+			const char *on = qparam(r->query, "on"), *k = qparam(r->query, "key"), *u = qparam(r->query, "url");
+			if (on && !strcmp(on, "0")) snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update developer off 2>&1");
+			else {
+				if (!k || strlen(k) != 44 || strspn(k, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=") != 44) { reply_err(r->fd, 400, "the key is 44 characters of base64"); return; }
+				if (!u || strlen(u) > 300) { reply_err(r->fd, 400, "an update address is needed"); return; }
+				for (const char *c = u; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("/:._-~%+", *c)) { reply_err(r->fd, 400, "bad character in the address"); return; }
+				snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update developer on '%s' '%s' 2>&1", k, u);
+			}
+			char *o = run_out(cmd); trim(o);
+			if (o && !strncmp(o, "Developer mode is ", 18)) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "could not change Developer mode");
+			free(o); return;
+		}
 		reply_err(r->fd, 404, "unknown update action"); return;
 	}
 	if (!strcmp(p, "lsync")) {
