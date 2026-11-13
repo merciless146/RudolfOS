@@ -4,11 +4,12 @@
 # point at the host's runtime libraries, which are the ones copied into Rudolf OS.
 # libxcvt is small and not on the host, so it is compiled here and shipped. GPL-2.0-or-later.
 set -e
+MA=${MA:-$(gcc -print-multiarch)}; [ -n "$MA" ] || MA=x86_64-linux-gnu   # (1.5.9: the build machine's library folder; aarch64-linux-gnu on ARM64)
 HERE=$(cd "$(dirname "$0")" && pwd)
 X=$HERE/src/xorg/xsrc/external/mit
 P=$HERE/src/xorg/shim
 ST=$HERE/src/xorg/stage
-L=/usr/lib/x86_64-linux-gnu
+L=/usr/lib/$MA
 MESON="python3 $HERE/src/fp/meson-1.12.1/meson.py"; [ -f "$HERE/src/fp/meson-1.12.1/meson.py" ] || MESON=meson   # (the release build: Ubuntu's meson)
 rm -rf "$P"; mkdir -p "$P/include" "$P/lib/pkgconfig"
 pc(){ # name version libname host-so cflags-extra [requires]
@@ -38,13 +39,13 @@ cp "$X/MesaLib/dist/src/gbm/main/gbm.h" "$P/include/"; pc gbm 25.2.8 gbm "$L/lib
 cp -r "$X/MesaLib/dist/include/EGL" "$X/MesaLib/dist/include/KHR" "$P/include/"
 # OpenGL and the DRI driver interface (1.4.3: GLX), headers from Mesa 21.3.7. The X server's GLX loads Mesa's
 # DRI driver (dri/radeonsi_dri.so and others: Mesa 25.2 still exports __driDriverGetExtensions_*) from
-# /usr/lib/x86_64-linux-gnu/dri, which Rudolf OS ships for glamor, and is linked with glvnd's libGL.so.1.
+# /usr/lib/MULTIARCH/dri, which Rudolf OS ships for glamor, and is linked with glvnd's libGL.so.1.
 mkdir -p "$P/include/GL/internal"
 cp "$X/MesaLib/dist/include/GL/gl.h" "$X/MesaLib/dist/include/GL/glext.h" "$P/include/GL/"
 cp "$X/MesaLib/dist/include/GL/internal/dri_interface.h" "$P/include/GL/internal/"
 pc gl 21.3.7 GL "$L/libGL.so.1" ""   # libglx.so calls glXGetProcAddressARB: glvnd's libGL (shipped with libGLX.so.0)
 pc dri 21.3.7 "" "" ""
-sed -i 's|^includedir=.*|&\ndridriverdir=/usr/lib/x86_64-linux-gnu/dri|' "$P/lib/pkgconfig/dri.pc"
+sed -i 's|^includedir=.*|&\ndridriverdir=/usr/lib/$MA/dri|' "$P/lib/pkgconfig/dri.pc"
 # libepoxy (headers generated from the Khronos registry; host runtime 1.5.10)
 mkdir -p "$P/include/epoxy"; E=$X/libepoxy/dist
 cp "$E/include/epoxy/common.h" "$E/include/epoxy/gl.h" "$E/include/epoxy/egl.h" "$E/include/epoxy/glx.h" "$P/include/epoxy/"
@@ -77,7 +78,7 @@ pc xshmfence 1.3 xshmfence "$L/libxshmfence.so.1" ""
 if [ -f "$HERE/src/snd/hdr/systemd/src/libudev/libudev.h" ]; then cp "$HERE/src/snd/hdr/systemd/src/libudev/libudev.h" "$P/include/"; else cp /usr/include/libudev.h "$P/include/"; fi
 pc libudev 255 udev "$L/libudev.so.1" ""
 # libxcvt 0.1.3: built and installed into the X stage (shipped in Rudolf OS)
-(cd "$X/libxcvt/dist" && rm -rf b && $MESON setup b --prefix=/usr --libdir=lib/x86_64-linux-gnu >/dev/null && ninja -C b >/dev/null && DESTDIR=$ST $MESON install -C b --quiet >/dev/null)
+(cd "$X/libxcvt/dist" && rm -rf b && $MESON setup b --prefix=/usr --libdir=lib/$MA >/dev/null && ninja -C b >/dev/null && DESTDIR=$ST $MESON install -C b --quiet >/dev/null)
 cp -r "$ST/usr/include/libxcvt" "$P/include/"
-pc libxcvt 0.1.3 xcvt "$ST/usr/lib/x86_64-linux-gnu/libxcvt.so.0" ""
+pc libxcvt 0.1.3 xcvt "$ST/usr/lib/$MA/libxcvt.so.0" ""
 echo "X shim ready: $P"

@@ -2,6 +2,8 @@
 # and write the package list, versions and licence texts (for the licences / source offer).
 # Usage: python3 pkgmanifest.py ROOTFS OUTDIR     (GPL-2.0-or-later)
 import os,sys,glob,subprocess
+# (1.5.9) the build machine's library folder: x86_64-linux-gnu, aarch64-linux-gnu
+MA=subprocess.run(['gcc','-print-multiarch'],capture_output=True,text=True).stdout.strip() or 'x86_64-linux-gnu'
 root,out=sys.argv[1],sys.argv[2]
 own={}
 for lst in glob.glob('/var/lib/dpkg/info/*.list'):
@@ -9,7 +11,7 @@ for lst in glob.glob('/var/lib/dpkg/info/*.list'):
     for l in open(lst,errors='replace'):
         own.setdefault(os.path.realpath(l.strip()) if os.path.islink(l.strip()) else l.strip(),pkg); own.setdefault(l.strip(),pkg)
 pk=set()
-for top in ['usr/lib/x86_64-linux-gnu','lib64','usr/bin','usr/sbin','usr/share/X11','usr/share/fonts','usr/share/alsa','usr/share/icons','usr/share/zoneinfo','etc/fonts']:
+for top in ['usr/lib/'+MA,'lib64','usr/bin','usr/sbin','usr/share/X11','usr/share/fonts','usr/share/alsa','usr/share/icons','usr/share/zoneinfo','etc/fonts']:
     for dp,dn,fn in os.walk(os.path.join(root,top)):
         for f in fn:
             if os.path.islink(os.path.join(dp,f)): continue
@@ -18,7 +20,7 @@ for top in ['usr/lib/x86_64-linux-gnu','lib64','usr/bin','usr/sbin','usr/share/X
                 if c in own: pk.add(own[c]);break
             else:
                 b=os.path.basename(rel)
-                for c in ('/usr/lib/x86_64-linux-gnu/'+b,'/lib/x86_64-linux-gnu/'+b):
+                for c in ('/usr/lib/'+MA+'/'+b,'/lib/'+MA+'/'+b):
                     if c in own: pk.add(own[c]);break
 pk=sorted(pk)
 q=subprocess.run(['dpkg-query','-W','-f=${Package}\t${Version}\t${source:Package}\t${source:Version}\n']+pk,capture_output=True,text=True).stdout

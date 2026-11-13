@@ -9,6 +9,9 @@ HERE=$(cd "$(dirname "$0")/.." && pwd)
 R=$(realpath "$1"); O=$(realpath -m "$2"); mkdir -p "$O"
 MK=$HERE/src/squashfs-tools/squashfs-tools/mksquashfs
 S=$(mktemp -d -p "$(dirname "$R")"); trap 'rm -rf "$S"' EXIT
+# the compression's branch filter for the machine's code (1.5.9: none on ARM64, where every kernel can read plain xz)
+BCJ="-Xbcj x86"; [ "$(uname -m)" = x86_64 ] || BCJ=""
+[ -x "$MK" ] || MK=mksquashfs   # (the ARM64 check: Ubuntu's squashfs-tools)
 export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1760000000}
 part() { # name, paths inside the root file system
 	local n=$1; shift; mkdir -p "$S/$n"
@@ -21,6 +24,6 @@ mkdir -p "$S/base"; cp -al "$R/." "$S/base/"; rm -rf "$S/base/opt/chromium" "$S/
 mkdir -p "$S/base/opt/chromium" "$S/base/usr/share/rudolf/www" "$S/base/usr/lib/modules"
 for n in base chromium desktop modules; do
 	rm -f "$O/$n.sfs"
-	"$MK" "$S/$n" "$O/$n.sfs" -comp xz -Xbcj x86 -b 1M -noappend -all-root -quiet -no-progress
+	"$MK" "$S/$n" "$O/$n.sfs" -comp xz $BCJ -b 1M -noappend -all-root -quiet -no-progress
 	echo "$n.sfs $(stat -c %s "$O/$n.sfs")"
 done

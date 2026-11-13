@@ -3,16 +3,17 @@
 # tree, from this Ubuntu 24.04 (apt-get install libwebkit2gtk-4.1-dev gstreamer1.0-plugins-base
 # gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav glib-networking):   addwebkit.sh ROOT BINARY
 # BINARY is rudolf-webkit, built here against libwebkit2gtk-4.1. Copied into ROOT: the binary (usr/bin), WebKit's
-# helper processes and injected bundle (usr/lib/x86_64-linux-gnu/webkit2gtk-4.1), the GStreamer plug-ins the
+# helper processes and injected bundle (usr/lib/MULTIARCH/webkit2gtk-4.1), the GStreamer plug-ins the
 # desktop's media need (sound, Ogg, WebM, MP4 containers, WAV; no H.264 or AAC: Chromium plays those, the Lite engine
 # not yet) and its plug-in scanner, GLib's TLS module (https for the desktop's own requests, such as the weather),
 # GTK's settings schemas (compiled) and the image loaders; then every library any of them needs that ROOT lacks.
 # Prints the size added. Fails when WebKitGTK is not installed here. GPL-2.0-or-later.
 set -e
-R=$1; BIN=$2; [ -d "$R/usr/lib/x86_64-linux-gnu" ] && [ -x "$BIN" ] || { echo "usage: $0 ROOT BINARY"; exit 1; }
-ML=/usr/lib/x86_64-linux-gnu; WK=$ML/webkit2gtk-4.1
+MA=${MA:-$(gcc -print-multiarch)}; [ -n "$MA" ] || MA=x86_64-linux-gnu   # (1.5.9: the build machine's library folder; aarch64-linux-gnu on ARM64)
+R=$1; BIN=$2; [ -d "$R/usr/lib/$MA" ] && [ -x "$BIN" ] || { echo "usage: $0 ROOT BINARY"; exit 1; }
+ML=/usr/lib/$MA; WK=$ML/webkit2gtk-4.1
 [ -x "$WK/WebKitWebProcess" ] && [ -x "$WK/WebKitNetworkProcess" ] || { echo "addwebkit: WebKitGTK 4.1 is not installed here (apt-get install libwebkit2gtk-4.1-dev)"; exit 1; }
-SUDO=; [ -w "$R/usr/lib/x86_64-linux-gnu" ] || SUDO=sudo
+SUDO=; [ -w "$R/usr/lib/$MA" ] || SUDO=sudo
 B0=$(du -sk "$R" | cut -f1)
 LIST=$(mktemp)
 $SUDO install -m 0755 "$BIN" "$R/usr/bin/rudolf-webkit"; echo "$BIN" >> "$LIST"
