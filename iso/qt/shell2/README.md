@@ -26,6 +26,7 @@ node fsfix58_t.js [CHROME]                         # 1.5.8: an ended tab leaves 
 node memfs58_t.js [CHROME]                         # 1.5.8: the memory guard ends a page: leave full screen, say so (5 checks)
 node gamesleep59_t.js [CHROME]                     # 1.5.9: game mode: background tabs sleep, Blitzen unloaded, updates wait, the memory warning over a full-screen game (14 checks)
 node slim59_t.js [CHROME]                          # 1.5.9: pictures, fonts, the SNES core and SpreadsheetPro/PresentPro load when used (14 checks)
+node membreak59_t.js [CHROME]                      # 1.5.9: Task Manager › Performance: where the memory goes (6 checks)
 node statue58_t.js [CHROME] [SHOTS]               # 1.5.8: Spirit Falls' statue, its glow, the petals and the lanterns (no shell needed; 20 checks)
 node dl_t.js                                     # 1.2.1 downloads of any size (35 checks; MEDIA=folder with clip.webm and big.pdf,
                                                  # PDFLIB=a disc's www/lib for PDF Viewer, both set before host.sh)

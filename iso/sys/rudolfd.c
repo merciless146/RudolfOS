@@ -2277,6 +2277,25 @@ static void api_memory_settings(struct req *r, int post)
 	char *m = slurp(RUN "/memory", NULL); if (m) trim(m); sadd(&s, ",\"setup\":"); sjson(&s, m ? m : ""); free(m);
 	sadd(&s, "}"); reply_json(r->fd, &s);
 }
+/* 1.5.9: where the memory goes, for Task Manager (docs/plan-memdebug.md). Every figure is one the kernel gives with
+   Secure Boot and lockdown on; together they come to the memory in use (all of it minus what is free). What none of
+   them shows (the graphics driver's page pool, network buffers, what the kernel took while starting) is "other". */
+static void api_memory_breakdown(struct req *r)
+{
+	long long total = meminfo_kb("MemTotal"), freeb = meminfo_kb("MemFree"), avail = meminfo_kb("MemAvailable");
+	long long anon = meminfo_kb("AnonPages"), cache = meminfo_kb("Cached") + meminfo_kb("Buffers"), shm = meminfo_kb("Shmem");
+	long long kern = meminfo_kb("Slab") + meminfo_kb("KernelStack") + meminfo_kb("PageTables") + meminfo_kb("VmallocUsed") + meminfo_kb("Percpu");
+	long long sec = meminfo_kb("SecPageTables"); if (sec > 0) kern += sec;
+	long long gtt = 0, zram = 0, hmb = 0; char p[128];
+	for (int i = 0; i < 4; i++) { snprintf(p, sizeof p, "/sys/class/drm/card%d/device/mem_info_gtt_used", i); char *g = slurp(p, NULL); if (g) { gtt += atoll(g); free(g); } }
+	char *z = slurp("/sys/block/zram0/mm_stat", NULL); if (z) { long long o, c, u; if (sscanf(z, "%lld %lld %lld", &o, &c, &u) == 3) zram = u; free(z); }
+	char *h = slurp(RUN "/hmb-mib", NULL); if (h) { hmb = atoll(h) << 20; free(h); }
+	long long used = total - freeb, other = used - anon - cache - kern - gtt - zram - hmb; if (other < 0) other = 0;
+	str s = {0};
+	sadd(&s, "{\"ok\":true,\"total\":%lld,\"free\":%lld,\"available\":%lld,\"programs\":%lld,\"cache\":%lld,\"shared\":%lld,\"kernel\":%lld,\"graphics\":%lld,\"compressed\":%lld,\"ssd\":%lld,\"other\":%lld}",
+	     total, freeb, avail, anon, cache, shm, kern, gtt, zram, hmb, other);
+	reply_json(r->fd, &s);
+}
 static void api_memory(struct req *r)
 {
 	str s = {0}; sadd(&s, "{\"ok\":true,\"now\":%lld,\"setup\":", (long long)time(NULL));
@@ -3532,6 +3551,7 @@ static void api(struct req *r)
 	if (!strcmp(p, "system")) { api_system(r); return; }
 	if (!strcmp(p, "processes")) { api_processes(r); return; }
 	if (!strcmp(p, "memory")) { api_memory(r); return; }
+	if (!strcmp(p, "memory/breakdown")) { api_memory_breakdown(r); return; }   /* 1.5.9 */
 	if (!strcmp(p, "memory/settings")) { api_memory_settings(r, post); return; }   /* 1.5.7 */
 	if (!strcmp(p, "storage") || (!strcmp(p, "storage/measure") && post)) { api_storage(r, !strcmp(p, "storage/measure")); return; }
 	if (!strcmp(p, "memory/iam") && post) { api_memory_iam(r); return; }

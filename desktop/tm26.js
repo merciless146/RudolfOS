@@ -171,6 +171,24 @@ function taskmgr26() {
     }
     drawTable();
   }
+  /* 1.5.9: the memory in use, by what holds it (rudolfd memory/breakdown; docs/plan-memdebug.md) */
+  async function tmMemBreak(el) {
+    let m; try { m = await rd('memory/breakdown') } catch (e) { el.textContent = 'Not available.'; return }
+    const used = m.total - m.free, rows = [
+      ['Programs and web pages', m.programs, 'The desktop, Oracle\'s tabs and every app, in memory now.'],
+      ['Files in memory (cache)', m.cache, 'Recently used files and the system\'s own; given back as soon as anything needs the memory' + (m.shared ? ' (' + fmtB(m.shared) + ' of it is shared memory, which is not)' : '') + '.'],
+      ['Kernel', m.kernel, 'Linux itself: its tables, stacks and modules.'],
+      ['Graphics', m.graphics, 'Memory the graphics chip uses for the screen and for pages and games.'],
+      ['SSD buffer', m.ssd, 'An SSD without memory of its own borrows some of the computer\'s; it makes the drive faster.'],
+      ['Compressed memory', m.compressed, 'What compressed memory itself takes to hold what was moved into it.'],
+      ['Other drivers and kernel', m.other, 'Not itemised: mostly the graphics driver\'s spare pages (at most 64 MB), network buffers and what Linux takes while starting. Rudolf OS cannot measure these separately while the system is protected (Secure Boot).']];
+    el.innerHTML = '';
+    for (const [n, v, why] of rows) { if (!v && n != 'Other drivers and kernel') continue;
+      const r = document.createElement('div'); r.className = 'tmmrow'; r.title = why;
+      r.innerHTML = '<span></span><i><b></b></i><em></em>'; r.querySelector('span').textContent = n; r.querySelector('em').textContent = fmtB(v);
+      r.querySelector('b').style.width = Math.max(1, Math.round(v * 100 / used)) + '%'; el.appendChild(r) }
+    const f = document.createElement('div'); f.className = 'msg'; f.textContent = `${fmtB(used)} of ${fmtB(m.total)} is used; ${fmtB(m.available)} is available (free, and the file cache that can be given back). Point at a row for what it is.`; el.appendChild(f);
+  }
   function drawPerf() {
     const cards = document.createElement('div'); cards.className = 'tmcards';
     const card = (t, v) => { const d = document.createElement('div'); d.className = 'tmcard'; d.innerHTML = '<small></small><b></b>'; d.querySelector('small').textContent = t; d.querySelector('b').textContent = v; cards.appendChild(d) };
@@ -183,6 +201,7 @@ function taskmgr26() {
     B.appendChild(cards);
     B.appendChild(h4(RD ? 'CPU (last minute)' : 'Desktop load (how busy the page is)')); B.appendChild(graph(hist.cpu, 'CPU', '#38bdf8', 100));
     B.appendChild(h4('Memory in use')); B.appendChild(graph(hist.mem, 'Memory', '#a78bfa', 100));
+    if (RD) { B.appendChild(h4('Where the memory goes')); const mb = document.createElement('div'); mb.className = 'tmmem'; B.appendChild(mb); tmMemBreak(mb) }
     if (RD) { B.appendChild(h4('Network (received and sent, per second)')); B.appendChild(graph(hist.net, 'Network', '#34d399', 0, v => fmtB(v) + '/s')) }
   }
   async function drawSystem() {
