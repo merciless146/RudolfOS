@@ -33,6 +33,8 @@ for p in coreelements app audioconvert audioresample audiotestsrc volume playbac
 	audiomixer compositor opengl gdkpixbuf jpeg png webrtcdsp \
 	opusparse videoparsersbad audiofx debugutilsbad subenc libav deinterlace; do
 	f=$GS/libgst$p.so; [ -f "$f" ] || continue; $SUDO cp -L "$f" "$R$f"; echo "$f" >> "$LIST"; done
+# (1.5.9, plan 7.1: no WebRTC plug-ins: Ubuntu's WebKitGTK 2.52 has no WebRTC, so Lite opens call sites in Chromium's
+# window; the Lite engine check's call test says whether a newer WebKitGTK has it)
 # GLib: the TLS module (https), with its loader cache made for ROOT
 for m in $ML/gio/modules/libgiognutls.so; do [ -f "$m" ] && { $SUDO mkdir -p "$R${m%/*}"; $SUDO cp -L "$m" "$R$m"; echo "$m" >> "$LIST"; }; done
 # 1.5.7: the libraries WebKit opens itself while running, which no ldd sees. libGLESv2.so.2 (GLVND's OpenGL ES, from

@@ -7,7 +7,7 @@
 name: Lite engine check
 on:
   push:
-    paths: ['iso/sys/rudolf-webkit.c', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
+    paths: ['iso/sys/rudolf-webkit.c', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Packages (as the release workflow installs them)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav glib-networking xvfb imagemagick >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-nice glib-networking xvfb imagemagick >/dev/null
       - name: Build rudolf-webkit
         run: gcc -O2 -Wall -Wno-deprecated-declarations -o rudolf-webkit iso/sys/rudolf-webkit.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0)
       - name: What addwebkit.sh adds (into an empty tree)
@@ -94,3 +94,12 @@ jobs:
           exit ${fail:-0}
       - uses: actions/upload-artifact@v4
         with: {name: lite-engine-check, path: "shot.png\nconsole.txt\nmem.txt\nadd.txt\nchroot.txt\ntabs.png\ntabs.txt\ntabs-result.txt\nmse.txt"}
+      - name: A video call in Lite (1.5.9, plan 7.4)
+        if: always()
+        run: |
+          export DISPLAY=:99 HOME=$RUNNER_TEMP/home3; mkdir -p $HOME
+          pgrep Xvfb >/dev/null || { Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 1; }
+          python3 iso/qt/webkit/webrtc59_ci.py ./rudolf-webkit | tee webrtc-result.txt; r=${PIPESTATUS[0]}
+          echo "::notice title=Lite video call::$(grep -E 'passed|FAIL|error|NOTE' webrtc-result.txt | tr '\n' ' ')"
+          grep -v '^$' webrtc-console.txt | grep -iE 'webrtc|gst|error' | head -15 || true
+          exit $r
