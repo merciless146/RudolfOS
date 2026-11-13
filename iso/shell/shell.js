@@ -92,7 +92,8 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
                                 adopt: a tab the shell already made for a page's new window (tabev 'newwin')
      go {url} | back | forward | reload | stop | zoom {z} | focus | close
      busy {id}                  (1.5.9) may the tab sleep (game mode)? answered by tabev busy {id, m, f}
-     notice {text, s}           (1.5.9) a notice inside the page for s seconds, over its full screen too (memory warning)
+     notice {text, s, btn?, id?} (1.5.9) a notice inside the page for s seconds, over its full screen too (memory warning);
+                                with btn, a button that answers tabev notice {id}
      place {r: [x, y, w, h] | null, vis: [[x, y, w, h], ...] | null, z}
                                 where the tab is on the screen (null: not shown); vis: the parts of it not covered
                                 by the desktop (menus, other windows), relative to r; null when nothing covers it
@@ -113,7 +114,8 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
      fs {on}                    the page is fullscreen: its frame fills the screen
      flash                      Ruffle was loaded for Flash content in the page
      download {url, started}    the page started a download (Chromium saves it; the desktop files it)
-     busy {id, m, f}            (1.5.9) m: sound or video is playing; f: text is typed into the page and not sent */
+     busy {id, m, f}            (1.5.9) m: sound or video is playing; f: text is typed into the page and not sent
+     notice {id}                (1.5.9) the button of a notice was pressed */
 const TABS = new Map();
 const NONCE = 'rudolf' + crypto.getRandomValues(new Uint32Array(2)).join('');
 let FW = {on: false}, RUFFLE = {on: false, urls: [], config: {}};
@@ -182,6 +184,7 @@ function tabEvents(t) {
     if (typeof o.k == 'string') toTab(t.tid, 'keys', {k: o.k.slice(0, 8)});
     else if (typeof o.flash == 'string') { if (RUFFLE.on && RUFFLE.urls.length) { f.executeScript({code: ruffleJS(), allFrames: true}).catch(() => {}); toTab(t.tid, 'flash') } }
     else if (typeof o.title == 'string') toTab(t.tid, 'title', {title: o.title.slice(0, 300)});
+    else if (typeof o.notice == 'number') toTab(t.tid, 'notice', {id: o.notice});   // (1.5.9: its button was pressed, by a person: isTrusted)
   });
   f.addEventListener('focus', () => toTab(t.tid, 'focus'));
   f.addEventListener('close', () => toTab(t.tid, 'close'));
@@ -288,9 +291,12 @@ document.addEventListener('fullscreenchange', () => {
 const num = (v, d) => Number.isFinite(+v) ? +v : d;
 const rect = r => Array.isArray(r) && r.length == 4 ? r.map(v => Math.round(num(v, 0))) : null;
 /* (1.5.9) a notice shown inside a page for S seconds: a popover (the top layer: above the page's full-screen element) */
-const noticeJS = (text, sec) => `(()=>{try{const o=document.getElementById('rudolf-notice');o&&o.remove();const d=document.createElement('div');d.id='rudolf-notice';d.setAttribute('popover','manual');
+const noticeJS = (text, sec, btn, id) => `(()=>{try{const o=document.getElementById('rudolf-notice');o&&o.remove();const d=document.createElement('div');d.id='rudolf-notice';d.setAttribute('popover','manual');
 d.style.cssText='position:fixed;inset:auto auto 24px 50%;transform:translateX(-50%);margin:0;max-width:560px;padding:12px 18px;border:0;border-radius:10px;background:rgba(20,20,24,.92);color:#fff;font:15px/1.4 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.5);z-index:2147483647';
-d.textContent=${JSON.stringify('⚠ ')}+${JSON.stringify(text)};(document.body||document.documentElement).appendChild(d);try{d.showPopover()}catch(e){}setTimeout(()=>d.remove(),${sec * 1000})}catch(e){}})()`;
+d.textContent=${JSON.stringify('⚠ ')}+${JSON.stringify(text)};
+${btn ? `const b=document.createElement('button');b.textContent=${JSON.stringify(btn)};b.style.cssText='margin-left:12px;padding:4px 12px;border:0;border-radius:6px;background:#fff;color:#111;font:inherit;cursor:pointer';
+b.onclick=e=>{if(!e.isTrusted)return;try{console.debug(${JSON.stringify(NONCE)}+JSON.stringify({notice:${Number(id) || 0}}))}catch(x){}d.remove()};d.appendChild(b);` : ''}
+(document.body||document.documentElement).appendChild(d);try{d.showPopover()}catch(e){}setTimeout(()=>d.remove(),${sec * 1000})}catch(e){}})()`;
 /* (1.5.9) what the page is doing that sleeping would lose: media playing, text typed and not sent */
 const BUSY_JS = `JSON.stringify({m:[...document.querySelectorAll('video,audio')].some(x=>!x.paused&&!x.muted&&x.readyState>2),
 f:[...document.querySelectorAll('input,textarea')].some(x=>!x.disabled&&/^(text|search|email|url|tel|number|password|textarea|)$/.test(x.type||'')&&x.value&&x.value!==x.defaultValue)||[...document.querySelectorAll('[contenteditable]')].some(x=>x.isContentEditable&&(x.textContent||'').trim().length>0&&x.contains(document.activeElement))})`;
@@ -311,7 +317,7 @@ const TAB_OPS = {
   focus: (m, t) => t.f.focus(),
   close: (m, t) => { t.f.remove(); TABS.delete(t.tid) },
   /* 1.5.9 (plan 9.2b): a notice inside the page, in the top layer, so it shows over the page's own full screen too */
-  notice: (m, t) => { t.f.executeScript({code: noticeJS(String(m.text || '').slice(0, 300), Math.max(3, Math.min(30, num(m.s, 12))))}).catch(() => {}) },
+  notice: (m, t) => { t.f.executeScript({code: noticeJS(String(m.text || '').slice(0, 300), Math.max(3, Math.min(30, num(m.s, 12))), m.btn ? String(m.btn).slice(0, 40) : '', m.id)}).catch(() => {}) },
   /* 1.5.9 (game mode, plan 9.2): may this tab sleep? Sound playing, or text typed into a form, says no */
   busy: async (m, t) => {
     let a = false, r = {};

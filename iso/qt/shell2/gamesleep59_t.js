@@ -52,6 +52,27 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await p2.evaluate(nj); await wait(100);
   ok('7e. the notice shows over the page\'s own full screen (a popover, in the top layer)', await p2.evaluate("!!document.fullscreenElement&&document.getElementById('rudolf-notice').matches(':popover-open')&&/Memory is almost full/.test(document.getElementById('rudolf-notice').textContent)"));
   await p2.close();
+  // 9.2 step 4: background apps with no window are offered to be quit, inside the game, by its button only
+  await q(`(()=>{dispatchEvent(new MessageEvent('message',{source:window,data:{rudolfShell:'tabev',tid:${JSON.stringify(gameTid)},ev:'fs',on:true}}));__sent.length=0;
+    window.__ended=[];apps57=async()=>[{id:'fp:com.discordapp.Discord',kind:'flatpak',app:'com.discordapp.Discord',name:'Discord',window:false,rss:620*1048576},{id:'w1',name:'Steam',window:true,rss:900*1048576},{id:'s',name:'Small',window:false,rss:20*1048576}];
+    appName57=x=>x.name;appEnd57=async x=>{__ended.push(x.name)};return 1})()`);
+  const n4 = await q("gslTrayOffer()"); const off = await q("__sent.filter(m=>m.op=='notice')");
+  ok('7f. game mode offers to quit apps with no window (Discord, 620 MB), not those with a window or small ones', n4 == 1 && off.length == 1 && /Free 620(\.00)? MB for the game\? Discord runs in the background/.test(off[0].text) && off[0].btn == 'Quit it' && off[0].id > 0, off);
+  ok('7g. nothing is quit until the button is pressed', (await q("__ended")).length == 0);
+  await q(`(()=>{dispatchEvent(new MessageEvent('message',{source:window,data:{rudolfShell:'tabev',tid:${JSON.stringify(gameTid)},ev:'notice',id:${off.length ? off[0].id : 0}}}));return 1})()`); await wait(200);
+  ok('7h. pressing it quits them', (await q("__ended")).join() == 'Discord');
+  await q(`(()=>{dispatchEvent(new MessageEvent('message',{source:window,data:{rudolfShell:'tabev',tid:${JSON.stringify(gameTid)},ev:'fs',on:false}}));return 1})()`);
+  // the notice's button in a real page: a person's click answers, a script's click does not
+  const SH2 = fs.readFileSync(path.join(__dirname, '../../shell/shell.js'), 'utf8');
+  const NONCE = 'rudolfTEST';
+  const nj2 = eval(SH2.match(/const noticeJS = ([\s\S]*?`;)\n/)[1].replace(/;$/, ''))('Free 620 MB for the game?', 10, 'Quit it', 7);
+  const p3 = await b.newPage(); const said = []; p3.on('console', m => { if (m.text().startsWith(NONCE)) said.push(m.text().slice(NONCE.length)) });
+  await p3.setContent('<body>game</body>'); await p3.evaluate(nj2); await wait(100);
+  await p3.evaluate("document.querySelector('#rudolf-notice button').click()"); await wait(100);
+  ok('7i. a script in the page pressing the button does nothing', said.length == 0 && await p3.evaluate("!!document.getElementById('rudolf-notice')"), said);
+  await p3.click('#rudolf-notice button'); await wait(100);
+  ok('7j. a person pressing it answers (notice 7) and the notice goes', said.join() == '{"notice":7}' && await p3.evaluate("!document.getElementById('rudolf-notice')"), said);
+  await p3.close();
   await q("(()=>{S.gmsleep=false;return 1})()");
   ok('8. switched off in Settings: nothing sleeps', (await q("gslSleep()")) == 0);
   await q("(()=>{settings('health');return 1})()"); await wait(800);

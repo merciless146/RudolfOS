@@ -333,6 +333,7 @@ static GtkWidget *on_tab_create(WebKitWebView *v, WebKitNavigationAction *a, gpo
 static void on_tab_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d)
 {
 	(void)m; tab *t = d; JSCValue *o = webkit_javascript_result_get_js_value(r); if (!jsc_value_is_object(o)) return;
+	if (jsc_value_object_has_property(o, "notice")) { char x[32]; snprintf(x, sizeof x, "\"id\":%d", (int)jnum(o, "notice", 0)); tabev(t, "notice", x); return; }   /* 1.5.9 */
 	char *k = jstr(o, "k"), *fl = jstr(o, "flash");
 	if (k) { GString *x = g_string_new("\"k\":"); k[strcspn(k, "\n")] = 0; if (strlen(k) > 8) k[8] = 0; json_str(x, k); tabev(t, "keys", x->str); g_string_free(x, TRUE); }
 	else if (fl && RUFFLE_JS[0]) { webkit_web_view_run_javascript(WEBKIT_WEB_VIEW(t->view), RUFFLE_JS, NULL, NULL, NULL); tabev(t, "flash", NULL); }
@@ -490,8 +491,16 @@ static void on_tab_op(JSCValue *m)
 			char *x = jstr(m, "text"); int sec = (int)jnum(m, "s", 12); if (sec < 3) sec = 3; if (sec > 30) sec = 30;
 			GString *j = g_string_new("(()=>{try{const o=document.getElementById('rudolf-notice');o&&o.remove();const d=document.createElement('div');d.id='rudolf-notice';d.setAttribute('popover','manual');"
 				"d.style.cssText='position:fixed;inset:auto auto 24px 50%;transform:translateX(-50%);margin:0;max-width:560px;padding:12px 18px;border:0;border-radius:10px;background:rgba(20,20,24,.92);color:#fff;font:15px/1.4 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.5);z-index:2147483647';d.textContent='\\u26a0 '+");
-			json_str(j, x ? x : ""); g_string_append_printf(j, ";(document.body||document.documentElement).appendChild(d);try{d.showPopover()}catch(e){}setTimeout(()=>d.remove(),%d)}catch(e){}})()", sec * 1000);
-			webkit_web_view_run_javascript(v, j->str, NULL, NULL, NULL); g_string_free(j, TRUE); g_free(x); }
+			json_str(j, x ? x : ""); g_string_append_c(j, ';');
+			/* (with btn: a button that answers tabev notice {id}, pressed by a person only: isTrusted; in the "rudolf"
+			   world, where rudolfTab's handler is) */
+			char *btn = jstr(m, "btn"); int id = (int)jnum(m, "id", 0);
+			if (btn && *btn) { if (strlen(btn) > 40) btn[40] = 0;
+				g_string_append(j, "const b=document.createElement('button');b.textContent="); json_str(j, btn);
+				g_string_append_printf(j, ";b.style.cssText='margin-left:12px;padding:4px 12px;border:0;border-radius:6px;background:#fff;color:#111;font:inherit;cursor:pointer';"
+					"b.onclick=e=>{if(!e.isTrusted)return;try{window.webkit.messageHandlers.rudolfTab.postMessage({notice:%d})}catch(x){}d.remove()};d.appendChild(b);", id); }
+			g_string_append_printf(j, "(document.body||document.documentElement).appendChild(d);try{d.showPopover()}catch(e){}setTimeout(()=>d.remove(),%d)}catch(e){}})()", sec * 1000);
+			webkit_web_view_evaluate_javascript(v, j->str, -1, "rudolf", NULL, NULL, NULL, NULL); g_string_free(j, TRUE); g_free(x); g_free(btn); }
 		else if (!strcmp(op, "busy")) { busy_q *q = g_new0(busy_q, 1); snprintf(q->tid, sizeof q->tid, "%s", t->tid); q->id = (int)jnum(m, "id", 0);
 			q->audio = webkit_web_view_is_playing_audio(v); webkit_web_view_evaluate_javascript(v, BUSY_JS, -1, NULL, NULL, NULL, busy_done, q); }
 		else if (!strcmp(op, "place")) {
