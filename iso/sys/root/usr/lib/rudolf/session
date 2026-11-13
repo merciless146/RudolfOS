@@ -6,6 +6,9 @@ RCMD=/etc/rudolf/cmdline; [ -s $RCMD ] || RCMD=/proc/cmdline   # the start-up op
 export DISPLAY=:0
 LOG=/run/rudolf/session.log
 exec >>$LOG 2>&1
+# 1.5.9: a graphics card whose driver is still making its framebuffer (virtio graphics in the ARM64 QEMU check: the
+# session started before /dev/fb0 came, and stopped in the shell below): wait up to 20 s while a card is there
+if [ ! -e /dev/fb0 ] && ls /dev/dri/card* >/dev/null 2>&1; then for i in $(seq 100); do [ -e /dev/fb0 ] && break; sleep 0.2; done; fi
 if [ ! -e /dev/fb0 ]; then
 	echo "no framebuffer" > /dev/console
 	echo "Rudolf OS needs a graphics screen (VESA or UEFI GOP). Try 'Screen resolution' in the boot menu." > /dev/console

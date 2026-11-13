@@ -5,6 +5,35 @@ Asked for on 2026-11-10, with docs/plan-1.6.0.md (the first cellular release): w
 metered connections); 1.5.9 adds the modem service, the tablet layout and the ARM64 build; 1.6.0 builds the cellular
 experience on them. It starts once 1.5.8 is promoted.
 
+## Status (2026-11-13, after the unattended work session)
+Done in code and tests (PRs #260–#274, rudolfos-library #31; each part's "Done" note says what): Part 1 up to the device
+check, Part 3 steps 1–4 (the QEMU boot to the Lite sign-in still being finished), Part 4 up to the device check, Part 7
+except the Vivobook call checks, Part 8 except 8.4's recovery.efi and the TPM and hardware keys, Part 9, Part 10's
+pictures, fonts and lazy apps, Part 11.
+
+### What needs the Vivobook (or the person) before 1.5.9 is promoted
+1. **A beta with everything** (after the PRs are merged): install it; the self-test.
+2. **iw and the radios** (#267): Settings › Network › Wi-Fi › This computer's Wi-Fi radios lists 2.4 and 5 GHz.
+3. **The hotspot** (Part 4): with the phone's USB tethering as the connection, Share this connection on the RTL8821CE;
+   a phone joins it and browses. (If the chip cannot be an access point, the setting says so.)
+4. **The modem service** (Part 1): the USB modem stick plugged in: Settings › Network › Cellular modems shows it
+   (ModemManager without udev is the open question).
+5. **Calls** (Part 7.4): Meet's test call in Oracle on Standard, and on Lite (it opens in Chromium's window); Zoom's
+   test meeting; the 🎙️ indicator and its mute; no screen saver during a call; a tel: link.
+6. **Game mode and memory** (Part 9, on 2026111308 or newer): FNF to the end; the idle reading; Task Manager's
+   breakdown; Clear cache.
+7. **Developer mode and Return to official** in QEMU with Secure Boot (8.7), and 8.4's recovery.efi: to be done with the
+   person present (it changes how the computer starts).
+8. **Part 5 (Waydroid)** measured on the Vivobook before it is offered; **Part 6** waits for the phone (the one plugged
+   in on 2026-11-13 identifies as a MediaTek "S24Ultra": an S24 Ultra look-alike, see below).
+
+### The phone plugged in on 2026-11-13
+USB `0e8d:2008`, "MediaTek" / "S24Ultra", MTP only: a MediaTek phone presenting itself as a Galaxy S24 Ultra (the real
+one is Snapdragon, Samsung's `04e8`). Useful for tethering, Phone screen and file transfer tests. Running Rudolf OS on
+it is unlikely (no unlockable bootloader, kernel source or device tree known for such phones); nothing is flashed or
+unlocked on it without the person's decision. Next: USB debugging on, then its chip, model, Android version and
+bootloader read over the devlink (read only).
+
 ## From 1.5.8 (expected done there)
 - Kernel drivers for USB networking from hotspots and phones (RNDIS, CDC-NCM, CDC-MBIM) and for cellular modules
   (QMI WWAN, the option serial driver), as modules.
@@ -190,6 +219,11 @@ the official releases works; a build signed by anyone else is refused. The Libra
   person's GitHub account plus their publisher key registered in the Library (8.2). Settings › Accounts › Developer:
   makes or imports the publisher key, shows its public half and fingerprint, exports a backup, and (with a hardware
   key) signs with it without the private key ever being on the disk.
+- **Done (2026-11-13), the publisher key:** User Settings › Developer makes one (WebCrypto Ed25519), keeps its private
+  half only in a backup in Documents (PBKDF2-SHA-256 600 000 rounds, AES-GCM, a passphrase of 12 characters or more),
+  the public half and fingerprint for the account; "Use a backup" brings it back; the private half is shown (60 s, after
+  the passphrase) only to paste into a GitHub secret; its raw form is rpk-tool's. Not yet: hardware keys (FIDO2/PIV)
+  and the computer's own key (TPM), which need the hardware to test.
 - The three are separate so that a leaked signing key does not open anyone's files, and a broken laptop does not lock
   a developer out of their games.
 
