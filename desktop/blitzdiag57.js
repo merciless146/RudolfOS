@@ -25,6 +25,8 @@ function bzSearch(q,n){if(!BZD.idx)return[];const {df,tf,avg,n:N}=BZD.idx,qs=[..
  return out.sort((a,b)=>b.score-a.score).slice(0,n||4)}
 /* this computer's state: rudolfd's facts and the desktop's events of the last days (newest last) */
 async function bzFacts(days){const f={};try{Object.assign(f,await rd('ai/facts'))}catch(e){f.error=e.message}
+ /* 1.5.9 (plan 8.3): which build this is, so a problem report says (Official, or Custom with its key) */
+ try{const u=await rd('sys/status');if(u&&u.signer)f.build=typeof devmBuild=='function'?devmBuild(u):u.signer}catch(e){}
  const since=Date.now()-(days||3)*864e5,ev=[];
  if(typeof SLOG!='undefined')for(const k of ['sys','fw','av'])for(const e of SLOG[k]||[])if(e.t>=since)ev.push({t:e.t,k,m:e.m});
  f.events=ev.sort((a,b)=>a.t-b.t).slice(-60).map(e=>new Date(e.t).toISOString().slice(0,19).replace('T',' ')+' '+e.k+' '+e.m).join('\n');
@@ -76,7 +78,7 @@ async function bzWhy(what,o){o=o||{};if(!bzCan())return notify('Blitzen is not a
  const bySrc={};picked.forEach(x=>(bySrc[x.src]=bySrc[x.src]||[]).push(x.l));
  for(const s in bySrc)parts.push({label:'Log: '+s+' ('+bySrc[s].length+' line'+(bySrc[s].length>1?'s':'')+')',text:bySrc[s].join('\n'),log:1});
  docs.forEach(d=>parts.push({label:'Rudolf OS: '+d.s.replace(/^docs\//,'')+(d.h?' › '+d.h:''),text:d.t}));
- parts.push({label:'This computer',text:'Rudolf OS '+(f.version||RVER)+', up for '+Math.round((f.uptime||0)/60)+' minutes'});
+ parts.push({label:'This computer',text:'Rudolf OS '+(f.version||RVER)+(f.build?' ('+f.build+')':'')+', up for '+Math.round((f.uptime||0)/60)+' minutes'});
  if(o.wifi&&f.wifiNow)parts.push({label:'The Wi-Fi now (adapter, network, radios)',text:String(f.wifiNow).slice(0,1500)});
  const keep=await bzReview(o.all?"What's wrong with this computer?":'Why? '+what.slice(0,80),parts);if(!keep)return null;
  const ctx=keep.map(p=>'### '+p.label+'\n'+p.text).join('\n\n').slice(0,9000),logs=keep.filter(p=>p.log).map(p=>p.text).join('\n');
