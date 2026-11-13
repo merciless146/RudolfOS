@@ -1,0 +1,58 @@
+#!/bin/sh
+# Rudolf OS 1.5.9 (docs/plan-1.5.9.md Part 1): the modem service, read only. ModemManager (with libqmi, libmbim and
+# libqrtr) runs only while a cellular modem is plugged in or built in: mdev starts it when a modem's device appears
+# (wwan*, cdc-wdm*, a USB modem's serial ports) and it stops when the last one goes. It is on the system bus (the one
+# Bluetooth uses, /etc/rudolf/dbus-system.conf). Nothing connects yet: that is 1.6.0 (SIM, APN and metering together).
+#   modem hotplug     (mdev, with ACTION and MDEV) a modem's device came or went
+#   modem start|stop
+#   modem status      JSON: {"running":bool,"modems":[{maker,model,firmware,driver,state,sim,locked,operator,signal,tech,…}]}
+# GPL-2.0-or-later.
+export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
+BUS=/run/dbus/system_bus_socket; LOG=${RUDOLF_MODEM_LOG:-/run/rudolf/modem.log}; DEVS=${RUDOLF_MODEM_DEV:-/dev}
+MM=$(command -v ModemManager)
+running() { pgrep -x ModemManager >/dev/null 2>&1; }
+any_modem() { ls $DEVS/cdc-wdm* $DEVS/wwan* 2>/dev/null | grep -q . && return 0
+	for t in $DEVS/ttyUSB*; do [ -e "$t" ] || continue; case "$(readlink -f /sys/class/tty/${t##*/}/device/driver 2>/dev/null)" in */option*|*/qcserial*|*/sierra*) return 0;; esac; done; return 1; }
+start() {
+	[ -n "$MM" ] || { echo "ModemManager is not part of this build"; return 1; }
+	running && return 0
+	mkdir -p /run/dbus
+	if [ ! -S $BUS ] || ! pgrep -f '[d]bus-daemon --config-file=/etc/rudolf/dbus-system.conf' >/dev/null; then
+		rm -f $BUS; dbus-daemon --config-file=/etc/rudolf/dbus-system.conf --fork --nopidfile
+		for i in $(seq 30); do [ -S $BUS ] && break; sleep 0.1; done
+	fi
+	# (no polkit on Rudolf OS: only root talks to it, through rudolfd)
+	setsid $MM --log-level=WARN >>$LOG 2>&1 </dev/null &
+	echo "$(date) ModemManager started" >> $LOG
+}
+stop() { running || return 0; pkill -x ModemManager; echo "$(date) ModemManager stopped (no modem left)" >> $LOG; }
+# one modem's mmcli -J output -> a small JSON object (python-free: sed on mmcli's JSON keys)
+jget() { printf '%s' "$1" | sed -n "s/.*\"$2\": *\"\\([^\"]*\\)\".*/\\1/p" | head -1; }
+jarr() { printf '%s' "$1" | sed -n "s/.*\"$2\": *\\[\\([^]]*\\)\\].*/\\1/p" | head -1 | tr -d '"' | sed 's/, */,/g'; }
+esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+status() {
+	R=false; running && R=true
+	printf '{"running":%s,"modems":[' "$R"; first=1
+	if [ $R = true ]; then
+		for p in $(mmcli -J -L 2>/dev/null | grep -o '/org/freedesktop/ModemManager1/Modem/[0-9]*'); do
+			n=${p##*/}; J=$(mmcli -J -m $n 2>/dev/null | tr -d '\n') || continue
+			S=$(jget "$J" sim); SJ=""; [ -n "$S" ] && [ "$S" != "--" ] && SJ=$(mmcli -J -i "${S##*/}" 2>/dev/null | tr -d '\n')
+			[ $first = 1 ] || printf ','; first=0
+			printf '{"id":%s,"maker":"%s","model":"%s","firmware":"%s","driver":"%s","state":"%s","failed":"%s","locked":"%s","sim":%s,"operator":"%s","signal":"%s","tech":"%s","imei":"%s"}' \
+				"$n" "$(esc "$(jget "$J" manufacturer)")" "$(esc "$(jget "$J" model)")" "$(esc "$(jget "$J" revision)")" "$(esc "$(jarr "$J" drivers)")" \
+				"$(jget "$J" state)" "$(jget "$J" state-failed-reason)" "$(jget "$J" unlock-required)" \
+				"$([ -n "$SJ" ] && echo true || echo false)" "$(esc "$(jget "$J" operator-name)")" "$(jget "$J" value)" "$(esc "$(jarr "$J" access-technologies)")" \
+				"$(jget "$J" equipment-identifier | sed 's/^\(.\{6\}\).*/\1…/')"
+		done
+	fi
+	printf ']}\n'
+}
+case "$1" in
+hotplug)
+	if [ "$ACTION" = remove ]; then sleep 1; any_modem || stop
+	else any_modem && start; fi ;;
+start) start ;;
+stop) stop ;;
+status) status ;;
+*) echo "usage: modem hotplug|start|stop|status"; exit 2 ;;
+esac

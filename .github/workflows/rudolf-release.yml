@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq nftables iw alsa-ucm-conf bluez bluez-alsa-utils libasound2-plugin-bluez squashfs-tools nasm bc flex bison libelf-dev libssl-dev kmod jq python3-cryptography libx11-dev libxtst6 libxfixes3 libxrandr2 libxrandr-dev zlib1g-dev libglib2.0-dev sbsigntool mesa-vulkan-drivers libvulkan1 meson ninja-build libpixman-1-dev x11-xkb-utils xorg-sgml-doctools libxfont2 libxshmfence1 libxkbfile1 libpciaccess0 libepoxy0 libgbm1 libudev-dev libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav glib-networking >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq nftables iw alsa-ucm-conf bluez bluez-alsa-utils libasound2-plugin-bluez squashfs-tools nasm bc flex bison libelf-dev libssl-dev kmod jq python3-cryptography libx11-dev libxtst6 libxfixes3 libxrandr2 libxrandr-dev zlib1g-dev libglib2.0-dev sbsigntool mesa-vulkan-drivers libvulkan1 meson ninja-build libpixman-1-dev x11-xkb-utils xorg-sgml-doctools libxfont2 libxshmfence1 libxkbfile1 libpciaccess0 libepoxy0 libgbm1 libudev-dev libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav glib-networking modemmanager mobile-broadband-provider-info libqmi-proxy libmbim-proxy >/dev/null
       - name: Signing key
         env: {KEY: '${{ secrets.RPK_SIGNING_KEY }}'}
         run: |
