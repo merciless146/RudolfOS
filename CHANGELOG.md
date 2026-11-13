@@ -10,6 +10,7 @@ Summary: In progress.
 - Changed: the desktop page is about 2 MB smaller (5.5 to 3.5 MB): the dynamic backgrounds' pictures, the fonts and the Super Nintendo player are now separate files, and SpreadsheetPro and PresentPro load the first time they are opened.
 - Changed: with compressed memory on, idle memory is moved into it sooner (swappiness 180), so a game that suddenly needs more finds room; the memory warning now comes whenever free memory is low.
 - Changed: the graphics driver keeps at most 64 MB of spare memory for reuse (it could grow to half the memory over a long session).
+- New: Task Manager › Performance shows where the memory goes: programs and pages, the file cache, the kernel, graphics, the SSD's buffer, compressed memory, and what Linux cannot itemise while the system is protected.
 - Changed: Chromium comes only from Ubuntu's open-source Chromium (the snap). When it cannot be fetched, the release keeps the Chromium it has, instead of taking another kind of browser; it never goes back to an older version.
 - Fixed: when a system file does not match its release, the start-up and Task Manager say so plainly, with its size, instead of a low-level error.
 

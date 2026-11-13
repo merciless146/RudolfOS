@@ -37,6 +37,9 @@ else log "desktop memory group: no memory groups in this kernel"; fi
 [ "$(cat /proc/sys/vm/min_free_kbytes)" -lt 65536 ] && echo 65536 > /proc/sys/vm/min_free_kbytes
 echo 125 > /proc/sys/vm/watermark_scale_factor 2>/dev/null
 log "free memory reserve: $(cat /proc/sys/vm/min_free_kbytes) kB, watermark_scale_factor $(cat /proc/sys/vm/watermark_scale_factor)"
+# 1.5.9: memory an SSD without its own DRAM borrows (its host memory buffer), noted for Task Manager while the kernel's
+# start-up messages still hold it (rudolfd's memory/breakdown reads /run/rudolf/hmb-mib)
+dmesg 2>/dev/null | sed -n 's/.*allocated \([0-9]*\) MiB host memory buffer.*/\1/p' | awk '{s+=$1} END{print s+0}' > /run/rudolf/hmb-mib 2>/dev/null
 # 1.5.9: the graphics pool capped at 64 MiB (/etc/modules/ttm); also here when ttm was loaded before that was read
 # (the parameter is read each time pages are given back, so it applies at once)
 [ -w /sys/module/ttm/parameters/page_pool_size ] && echo 16384 > /sys/module/ttm/parameters/page_pool_size 2>/dev/null && log "graphics page pool: at most 64 MiB"

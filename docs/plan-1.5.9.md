@@ -344,6 +344,11 @@ profiling. From it:
   now 1.7 GB, so it can creep up over a long session. Measured: the frame rate of a video and of FNF before and after.
 - What the test kernel names, each with its own fix.
 
+- **Task Manager says where the memory goes** (asked for on 2026-11-12, done): rudolfd's memory/breakdown and
+  Performance › "Where the memory goes": programs and web pages, the file cache, the kernel, graphics, the SSD's host
+  memory buffer (noted by the memory script from the start-up messages), compressed memory, and "Other drivers and
+  kernel" for what cannot be read with lockdown on (the graphics pool, network buffers, early start-up), saying so.
+
 ### 10.1 What moves out of the start-up page
 - **Pictures and fonts first:** the dynamic backgrounds, their thumbnails and the sky masks (DYN), and the extra fonts,
   become files beside the page; only the background in use is loaded and decoded, the thumbnails when Display

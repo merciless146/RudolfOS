@@ -484,3 +484,5 @@ html.tablet #start{min-width:52px;height:48px}
 html.tablet.portrait #menu{left:0!important;right:0!important;width:auto!important;max-height:70vh}
 html.tablet #start{font-size:0!important;min-width:52px}html.tablet #start img{width:30px;height:30px}
 html.tablet #start .stv{display:none!important}
+/* 1.5.9: Task Manager's memory breakdown */
+.tmmrow{display:grid;grid-template-columns:minmax(150px,200px) 1fr 80px;gap:8px;align-items:center;margin:3px 0;font-size:13px}.tmmrow i{display:block;height:10px;background:rgba(127,127,127,.18);border-radius:5px;overflow:hidden}.tmmrow b{display:block;height:100%;background:#a78bfa}.tmmrow em{font-style:normal;text-align:right}
