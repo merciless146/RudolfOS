@@ -27,13 +27,30 @@ recover() { [ -n "$1" ] || return 1; ST=$(W status 2>/dev/null | sed -n 's/^wpa_
 # leaves them out of save_config). Off the network for longer than the grace, they are let in again: maybe only that
 # radio reaches here.
 SI=$R/wifi-ignore-$IF
-session_ignore() { [ -n "$1" ] || return 0; CUR=$(W status 2>/dev/null | sed -n 's/^bssid=//p'); L=$(grep "^$1 " $SI 2>/dev/null | cut -d' ' -f2); NEW=
-	for b in $(W bssid_ignore 2>/dev/null | grep -Eio '([0-9a-f]{2}:){5}[0-9a-f]{2}'); do [ "$b" = "$CUR" ] && continue
-		echo "$L" | grep -qix "$b" || { L="$L $b"; NEW="$NEW $b"; }; done
-	[ -n "$NEW" ] || return 0; L=$(echo $L)
-	W set_network "$1" bssid_ignore "$L" >/dev/null 2>&1 || return 0
-	{ grep -v "^$1 " $SI 2>/dev/null; for b in $L; do echo "$1 $b"; done; } > $SI.n; mv $SI.n $SI
-	echo "$(date) wifi: network $1: left out for this session:$NEW (did not answer)" >> $R/wifi.log; }
+# 1.5.9: two more sources, and kept across restarts. On 2026111302 (2026-11-13) the Vivobook left the router's 5 GHz
+# radio (-53 dBm) for its 2.4 GHz one, which again did not answer, and was off the network for 45 s; it had not been
+# left out, as wpa_supplicant's own list had forgotten it (after 10 s at first) by the time the Wi-Fi was back. So the
+# kernel's own messages ("authentication with X timed out") count too, and a radio that did not answer stays out for
+# a day (PI: SSID in hex, the radio, when), restarts included. If the network is then reached through that radio after
+# all, it is taken off the list.
+PI=${WIFI_EVENT_PERSIST:-/persist/etc/wifi-ignore}; DAY=86400
+hexs() { printf %s "$1" | od -An -tx1 | tr -d ' \n'; }
+session_ignore() { [ -n "$1" ] || return 0; ST=$(W status 2>/dev/null); CUR=$(echo "$ST" | sed -n 's/^bssid=//p'); SS=$(echo "$ST" | sed -n 's/^ssid=//p')
+	H=$(hexs "$SS"); NOW=$(date +%s); L=$(grep "^$1 " $SI 2>/dev/null | cut -d' ' -f2); NEW=
+	# kept from earlier (a day), this network's; the radio in use now is not left out (and is dropped from the list)
+	if [ -n "$H" ] && [ -f "$PI" ]; then
+		awk -v h="$H" -v c="$CUR" -v now="$NOW" -v d=$DAY '!($1==h && (tolower($2)==tolower(c) || now-$3>=d))' "$PI" > "$PI.n" 2>/dev/null && mv "$PI.n" "$PI"
+		for b in $(awk -v h="$H" '$1==h{print $2}' "$PI"); do echo "$L" | grep -qix "$b" || L="$L $b"; done; fi
+	for b in $( { W bssid_ignore 2>/dev/null; dmesg 2>/dev/null | sed -n 's/.*\(authentication\|association\) with \(\([0-9a-f]\{2\}:\)\{5\}[0-9a-f]\{2\}\) timed out.*/\2/p'; } | grep -Eio '([0-9a-f]{2}:){5}[0-9a-f]{2}' | sort -u); do
+		[ "$b" = "$CUR" ] && continue
+		echo "$L" | grep -qix "$b" || { L="$L $b"; NEW="$NEW $b"; }
+		[ -n "$H" ] && ! grep -qi "^$H $b " "$PI" 2>/dev/null && echo "$H $b $NOW" >> "$PI"; done
+	L=$(echo $L); [ -n "$L" ] || return 0
+	[ "$(W get_network "$1" bssid_ignore 2>/dev/null)" = "$L" ] && return 0
+	if W set_network "$1" bssid_ignore "$L" 2>/dev/null | grep -q OK; then
+		{ grep -v "^$1 " $SI 2>/dev/null; for b in $L; do echo "$1 $b"; done; } > $SI.n; mv $SI.n $SI
+		echo "$(date) wifi: network $1: left out (did not answer):$( [ -n "$NEW" ] && echo "$NEW" || echo " $L (kept from earlier)")" >> $R/wifi.log
+	else echo "$(date) wifi: network $1: could not leave out$NEW" >> $R/wifi.log; fi; }
 session_unignore() { [ -n "$1" ] && grep -q "^$1 " $SI 2>/dev/null || return 0; W set_network "$1" bssid_ignore "" >/dev/null 2>&1
 	grep -v "^$1 " $SI > $SI.n; mv $SI.n $SI; echo "$(date) wifi: network $1: every radio allowed again (off the network)" >> $R/wifi.log; }
 stop() { [ -f $P ] && kill "$(cat $P)" 2>/dev/null; rm -f $P; }
