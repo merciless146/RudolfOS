@@ -208,7 +208,8 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; done
 	done
 	# 1.5.9 (plan Part 1): ModemManager (read only in 1.5.9: /usr/lib/rudolf/modem) with libqmi, libmbim and libqrtr,
-	# its plug-ins and the operators' database (mobile-broadband-provider-info, for 1.6.0's APNs); under 10 MB in all
+	# its plug-ins and the operators' database (mobile-broadband-provider-info, for 1.6.0's APNs); under 12 MB in all
+	# (10 MB until 2026-11-13: beta 2026111316 came to just over it; raised to 12 MB, as asked)
 	MMF=$(for p in modemmanager mobile-broadband-provider-info libqmi-proxy libmbim-proxy; do dpkg -L $p; done 2>/dev/null | grep -E '/(ModemManager|mmcli|qmi-proxy|mbim-proxy)$|/ModemManager/[^/]*\.so$|/ModemManager/fcc-unlock\.available\.d/|/serviceproviders\.xml$|/dbus-1/system\.d/org\.freedesktop\.ModemManager1\.conf$')
 	echo "$MMF" | grep -q '/ModemManager$' && echo "$MMF" | grep -q '/mmcli$' || { echo "ModemManager is missing on the build machine (apt-get install modemmanager mobile-broadband-provider-info)"; exit 1; }
 	MMB=0
@@ -216,7 +217,10 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		case "$x" in *.xml|*.conf) continue;; esac
 		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; MMB=$((MMB + $(stat -L -c %s "$l"))); }; done
 	done
-	[ $MMB -lt 10485760 ] || { echo "ModemManager adds $((MMB / 1048576)) MB to the base layer: over its 10 MB budget (docs/plan-1.5.9.md Part 1)"; exit 1; }
+	# (what it is made of, largest first: each file of the packages and each library it brought)
+	MML=$(for x in $MMF; do [ -f "$x" ] && echo "$(stat -c %s "$x") $x"; done; for x in $MMF; do case "$x" in *.xml|*.conf) continue;; esac; [ -f "$x" ] && ldd "$x" 2>/dev/null | awk '/=>/{print $3}'; done | sort -u | while read -r l; do [ -n "$l" ] && [ -e "$l" ] && ! echo "$MMF" | grep -qx "$l" && echo "$(stat -L -c %s "$l") $l (library)"; done)
+	echo "$MML" | sort -rn | head -15 | awk '{printf "  %6d KB %s %s\n", $1/1024, $2, $3}'
+	[ $MMB -lt 12582912 ] || { echo "ModemManager adds $((MMB / 1024)) KB to the base layer: over its 12 MB budget (docs/plan-1.5.9.md Part 1)"; exit 1; }
 	echo "::notice title=ModemManager::$((MMB / 1024)) KB added to the base layer"
 	# (the hotspot's tools have their own budget, 6 MB: with ModemManager's, the two came to 13 MB in 2026111314's build)
 	HSB=0

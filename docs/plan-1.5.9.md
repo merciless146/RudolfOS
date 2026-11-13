@@ -64,7 +64,8 @@ bootloader read over the devlink (read only).
 - **The operators' database** (mobile-broadband-provider-info) in the system layer, for 1.6.0's APNs.
 - **Kernel:** the WWAN subsystem (`WWAN`, `MHI_WWAN_CTRL`, `MHI_WWAN_MBIM`, `IOSM` for Intel's newer M.2 modems), as
   modules, checked in kconfig.sh.
-- **Budget:** ModemManager and its libraries under 10 MB in the base layer (release check); nothing running without a
+- **Budget:** ModemManager and its libraries under 12 MB (10 MB until 2026-11-13: beta 2026111316 came to just over it;
+  raised as asked) in the base layer (release check); nothing running without a
   modem.
 - **Tests:** host tests with a stand-in ModemManager on a private D-Bus (rudolfd's parsing); the USB stick (1.6.0's test
   hardware) on the Vivobook over the devlink, read only.
