@@ -76,4 +76,11 @@ rm -rf $ST_DEV/video0 $ST_PROC/300; : > $ST_RUN/camera-off
 OUT=$(sh $S); ok "14. ...switched off in Privacy: said so" "$(has 'SKIP camera - no camera: it is switched off' && echo 1)" "$OUT"
 rm -f $ST_RUN/camera-off; mkdir -p $ST_SYS/bus/usb/devices/1-2; echo 'usb:v04F2pB6D9d0001dcEFdsc02dp01ic0Eisc01ip00in00' > $ST_SYS/bus/usb/devices/1-2/modalias
 OUT=$(sh $S); ok "15. ...a USB camera without its driver: a failure, named" "$(has 'FAIL camera - a camera is connected but has no driver' && echo 1)" "$OUT"
+# 1.5.9 (plan Part 1): a cellular modem: ModemManager running, its rules read, the modem found (a stand-in mmcli)
+OUT=$(sh $S); ok "16. 1.5.9: no modem: skipped" "$(has 'SKIP modem - no cellular modem' && echo 1)" "$OUT"
+touch $ST_DEV/cdc-wdm0; OUT=$(sh $S); ok "17. ...a modem without ModemManager running: a failure" "$(has 'FAIL modem - a modem is there .*cdc-wdm0.* but ModemManager is not running' && echo 1)" "$OUT"
+mkdir -p $ST_PROC/400 $W/mbin; echo ModemManager > $ST_PROC/400/comm; echo 'x Invalid rule match, wrong match type' > $ST_RUN/modem.log
+printf '#!/bin/sh\n[ "$1" = -L ] && echo "    /org/freedesktop/ModemManager1/Modem/0 [Quectel] EG25"\n' > $W/mbin/mmcli; chmod +x $W/mbin/mmcli
+OUT=$(PATH=$W/mbin:$PATH sh $S); ok "18. ...its rules not read: named" "$(has 'FAIL modem - ModemManager could not read its port rules' && echo 1)" "$OUT"
+: > $ST_RUN/modem.log; OUT=$(PATH=$W/mbin:$PATH sh $S); ok "19. ...found: passes" "$(has 'PASS modem - 1 modem(s) found by ModemManager' && echo 1)" "$OUT"
 echo "$NP/$((NP+NF)) passed"; [ $NF = 0 ]
