@@ -114,8 +114,9 @@ bootloader read over the devlink (read only).
   connection let go and given back); hostapd (WPA2/WPA3, the name as hex), dnsmasq on 10.42.0.0/24, NAT and a forward
   chain in its own table, the firewall's `hotspot` chain for DHCP and DNS; the password kept root-only for next time;
   wifi.sh does not start a connection on the access point. rudolfd `net/hotspot` (the request through a root-only
-  file); Settings › Network › Share this connection. ci_release.sh adds hostapd, hostapd_cli and dnsmasq within the
-  10 MB with ModemManager. To check on the Vivobook (iw is in the base layer from #267): AP mode on the RTL8821CE,
+  file); Settings › Network › Share this connection. ci_release.sh adds hostapd, hostapd_cli and dnsmasq with a budget of
+  their own, 6 MB (beta 2026111314 stopped: with ModemManager's they came to 13 MB, over the shared 10 MB; ModemManager
+  keeps its 10 MB). To check on the Vivobook (iw is in the base layer from #267): AP mode on the RTL8821CE,
   with the USB tethering of the phone as the connection.
 
 ## Part 5: Android apps with Waydroid, in Debian (docs/plan-1.5.8.md 7.3)
