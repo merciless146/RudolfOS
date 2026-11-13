@@ -216,8 +216,14 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		case "$x" in *.xml|*.conf) continue;; esac
 		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; MMB=$((MMB + $(stat -L -c %s "$l"))); }; done
 	done
-	[ $MMB -lt 10485760 ] || { echo "ModemManager adds $((MMB / 1048576)) MB to the base layer: over its 10 MB budget (docs/plan-1.5.9.md Part 1)"; exit 1; }
-	echo "::notice title=ModemManager::$((MMB / 1024)) KB added to the base layer"
+	# 1.5.9 (plan Part 4): Share this connection: hostapd and hostapd_cli (the access point) and dnsmasq (addresses)
+	for x in /usr/sbin/hostapd /usr/sbin/hostapd_cli /usr/sbin/dnsmasq; do
+		[ -x "$x" ] || { echo "$x is missing on the build machine (apt-get install hostapd dnsmasq-base)"; exit 1; }
+		sudo install -m 0755 "$x" "$W/broot/usr/sbin/${x##*/}"; MMB=$((MMB + $(stat -c %s "$x")))
+		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; MMB=$((MMB + $(stat -L -c %s "$l"))); }; done
+	done
+	[ $MMB -lt 10485760 ] || { echo "ModemManager and the hotspot tools add $((MMB / 1048576)) MB to the base layer: over their 10 MB budget (docs/plan-1.5.9.md Parts 1 and 4)"; exit 1; }
+	echo "::notice title=ModemManager and the hotspot::$((MMB / 1024)) KB added to the base layer"
 	# 1.5.9: and iw: the Wi-Fi chip's bands (Settings › Network › Wi-Fi › This computer's Wi-Fi radios, wifi.sh radios
 	# and band); it was never in the base layer, so on the Vivobook (2026111308) those found no bands at all
 	for x in /usr/sbin/nft /usr/sbin/tune2fs /usr/sbin/iw; do

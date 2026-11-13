@@ -3629,6 +3629,25 @@ static void api(struct req *r)
 	if (!strcmp(p, "net")) { api_net(r); return; }
 	/* 1.5.8 (plan 6.3): metered connections (/usr/lib/rudolf/netplug). GET: the connection in use, metered or not and
 	   why, this month's data on it. POST if=IF&v=on|off|auto: metered by hand for that network, or automatic again */
+	/* 1.5.9 (plan Part 4): Share this connection. GET net/hotspot: the state; POST net/hotspot?on=0: off; POST with a
+	   body (name, password, band: one per line) through a root-only file: on. The desktop asks an administrator first */
+	if (!strcmp(p, "net/hotspot")) {
+		if (!post) { char *o = run_out("/usr/lib/rudolf/hotspot status 2>/dev/null"); trim(o);
+			if (!o || o[0] != '{') { free(o); reply_err(r->fd, 404, "this Rudolf OS has no hotspot"); return; }
+			str js = {0}; sadd(&js, "{\"ok\":true,"); sadd(&js, "%s", o + 1); free(o); reply_json(r->fd, &js); return; }
+		char *on = qparam(r->query, "on"); char *o;
+		if (on && !strcmp(on, "0")) o = run_out("/usr/lib/rudolf/hotspot stop 2>&1");
+		else {
+			if (!r->body || !r->blen || r->blen > 200) { reply_err(r->fd, 400, "bad request"); return; }
+			const char *f = RUN "/hotspot.req"; unlink(f);
+			int fd = open(f, O_WRONLY | O_CREAT | O_EXCL, 0600);
+			if (fd < 0 || write(fd, r->body, r->blen) != (ssize_t)r->blen) { if (fd >= 0) close(fd); reply_err(r->fd, 500, "could not write the request"); return; }
+			close(fd); o = run_out("/usr/lib/rudolf/hotspot start " RUN "/hotspot.req 2>&1");
+		}
+		trim(o);
+		if (o && (!strncmp(o, "Sharing ", 8) || !strncmp(o, "The hotspot is off", 18))) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "the hotspot did not start");
+		free(o); return;
+	}
 	/* 1.5.9 (plan Part 1): the cellular modems ModemManager sees (read only: maker, model, SIM, operator, signal) */
 	if (!strcmp(p, "mobile/status")) {
 		char *o = run_out("/usr/lib/rudolf/modem status 2>/dev/null"); trim(o);
