@@ -74,8 +74,13 @@ bootloader read over the devlink (read only).
   driver, stop when the last goes; status from mmcli), the system bus shared with Bluetooth, rudolfd `mobile/status`,
   Settings › Network › Cellular modems; kconfig.sh's WWAN (MHI_WWAN_CTRL, MHI_WWAN_MBIM, IOSM, checked); ci_release.sh
   copies ModemManager, mmcli, qmi-proxy, mbim-proxy, the plug-ins and serviceproviders.xml with their libraries, and
-  fails over 10 MB. To check on the Vivobook: whether ModemManager finds the stick's ports without udev (Rudolf OS
-  has mdev); if not, its `--test-no-udev`-style hints or a small udev database are the next step.
+  fails over 10 MB. Then (same day, without the device): ModemManager runs **without udev**, as on OpenWrt: started with
+  `--test-no-udev` (`--no-auto-scan` on an older one), it applies its own udev rules (now in the base layer; the build
+  fails without 80-mm-candidate.rules), and the modem service tells it of each port with `mmcli --report-kernel-event`:
+  those already there when it starts (the network interfaces too, which mdev does not report), then each one mdev adds
+  or removes. Udev-built with no udevd, it would have found no port marked ID_MM_CANDIDATE and seen no modem. To check on
+  the Vivobook: the stick shows in Settings › Network › Cellular modems; /run/rudolf/modem.log has no "Invalid rule
+  match" (ModemManager 1.22.0's u-blox rules broke its own rule reading, ModemManager issue 779).
 
 ## Part 2: tablet mode and the on-screen keyboard (docs/plan-1.5.8.md 8.1, finished)
 - Tablet mode: chosen when there is a touchscreen and no keyboard, or by hand; dock, one window at a time, swipes.
