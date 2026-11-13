@@ -340,7 +340,7 @@ What the 200 to 250 MB is was read on 2026-11-12 with one start without lockdown
 graphics (the driver's page pool, 21 to 46 MB and growing with use, and the system memory the graphics card uses);
 140 to 180 MB is taken by the kernel or a driver outside every counter, to be named by a test kernel with allocation
 profiling. From it:
-- **The graphics pool capped** (`ttm.page_pool_size`, 16384 pages = 64 MB, on the kernel's command line): its limit is
+- **The graphics pool capped** (`ttm` page_pool_size 16384 pages = 64 MB, in /etc/modules/ttm and by the memory script; done in 1.5.9): its limit is
   now 1.7 GB, so it can creep up over a long session. Measured: the frame rate of a video and of FNF before and after.
 - What the test kernel names, each with its own fix.
 
