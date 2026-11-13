@@ -6,7 +6,7 @@
 const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
 const WWW = path.join(__dirname, '../../../iso/www');
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + JSON.stringify(d).slice(0, 400) : '')) };
-const srv = http.createServer((q, s) => { s.writeHead(200, {'content-type': 'text/html'}); s.end(fs.readFileSync(path.join(WWW, 'index.html'))) }).listen(8098, '127.0.0.1');
+const srv = http.createServer((q, s) => { const u = decodeURIComponent(q.url.split('?')[0]); if (u.startsWith('/a/')) { const f = path.join(WWW, path.normalize(u)); if (f.startsWith(WWW) && fs.existsSync(f)) { s.writeHead(200, {'content-type': u.endsWith('.js') ? 'text/javascript' : u.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream'}); return s.end(fs.readFileSync(f)) } }   /* (1.5.9: files beside the page) */ s.writeHead(200, {'content-type': 'text/html'}); s.end(fs.readFileSync(path.join(WWW, 'index.html'))) }).listen(8098, '127.0.0.1');
 const wait = ms => new Promise(r => setTimeout(r, ms));
 (async () => {
   const b = await chromium.launch({executablePath: process.argv[2] || undefined}); const p = await b.newPage({viewport: {width: 1280, height: 800}});

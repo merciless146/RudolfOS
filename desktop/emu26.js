@@ -33,6 +33,8 @@ async function emuModule(sys){const c=EMU_SYS[sys].core;if(EMU_MOD[c])return EMU
   /* the DS core is only in the package: ask to download it (SNES falls back to the inlined core) */
   if(!bytes&&c!='lakesnes'&&await libNeed('rudolf-emu'))bytes=await get(libBase('rudolf-emu')+c+'.wasm')}
  if(!bytes&&!RD)bytes=await get('lib/emu/'+c+'.wasm');   /* the browser version finds the cores next to the page */
+ /* (1.5.9: the SNES core is a file beside the page, fetched when a SNES game is first played: plan 10.1) */
+ if(!bytes&&c=='lakesnes'&&typeof EMU_SNES_URL=='string')bytes=await get(EMU_SNES_URL);
  if(!bytes&&c=='lakesnes'&&typeof EMU_SNES_WASM=='string'){const b=atob(EMU_SNES_WASM);bytes=new Uint8Array(b.length);for(let i=0;i<b.length;i++)bytes[i]=b.charCodeAt(i)}
  if(!bytes)throw new Error(RD?EMU_SYS[sys].name+' games need Emu’s player from the Rudolf OS Library (App Store › Rudolf OS Library).':EMU_SYS[sys].name+' games need Rudolf OS itself (the bootable disc or USB stick).');
  return EMU_MOD[c]=await WebAssembly.compile(bytes)}
