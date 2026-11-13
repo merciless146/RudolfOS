@@ -160,6 +160,8 @@ function blzChatUI(W){
   chat.msgs.push({role:'user',content:`That program ${res.timeout?'ran too long and was stopped':'failed'}. Output:\n\`\`\`\n${err}\n\`\`\`\nFix it and send the whole corrected program.`});
   const fx=await answer(`⚡ Blitzen · fix ${tries+1} of ${BLZ.retries}`,{pack:{lua:langSel.value=='lua'?'lua':'blocklua',luau:'luau',pilot:'pilot',js:'js',python:'python',cpp:'cpp'}[c.dataset.lang]});await check(fx,tries+1)}
  async function ask(text,o={}){text=String(text||'').trim();if(!text||busy)return;
+  /* 1.5.9: a Wi-Fi problem asked in the chat: read the Wi-Fi's logs first (the person sees what, and can leave parts out) */
+  if(!o.context&&typeof bzWifiQ=='function'&&bzWifiQ(text)){ta.value='';bzWhy(text,{wifi:true});return}
   if(blzGameRunning()){stEl.textContent='Close the game first: Blitzen needs the memory a game is using.';return}
   if(o.lang!==undefined){langSel.value=o.lang;warm()}
   if(!chat.msgs.length)log.innerHTML='';chat.msgs.push({role:'user',content:text+(o.context?'\n\n'+o.context:'')});

@@ -34,13 +34,16 @@ SI=$R/wifi-ignore-$IF
 # a day (PI: SSID in hex, the radio, when), restarts included. If the network is then reached through that radio after
 # all, it is taken off the list.
 PI=${WIFI_EVENT_PERSIST:-/persist/etc/wifi-ignore}; DAY=86400
+# (1.5.9: and the radios turned off by hand: Settings › Network › Wi-Fi › Radios; never forgotten, never let in again)
+OFF=${WIFI_EVENT_OFF:-/persist/etc/wifi-radios-off}
 hexs() { printf %s "$1" | od -An -tx1 | tr -d ' \n'; }
 session_ignore() { [ -n "$1" ] || return 0; ST=$(W status 2>/dev/null); CUR=$(echo "$ST" | sed -n 's/^bssid=//p'); SS=$(echo "$ST" | sed -n 's/^ssid=//p')
-	H=$(hexs "$SS"); NOW=$(date +%s); L=$(grep "^$1 " $SI 2>/dev/null | cut -d' ' -f2); NEW=
+	H=$(hexs "$SS"); [ -n "$H" ] && echo "$H" > $R/wifi-ssid-$IF; NOW=$(date +%s); L=$(grep "^$1 " $SI 2>/dev/null | cut -d' ' -f2); NEW=
 	# kept from earlier (a day), this network's; the radio in use now is not left out (and is dropped from the list)
 	if [ -n "$H" ] && [ -f "$PI" ]; then
 		awk -v h="$H" -v c="$CUR" -v now="$NOW" -v d=$DAY '!($1==h && (tolower($2)==tolower(c) || now-$3>=d))' "$PI" > "$PI.n" 2>/dev/null && mv "$PI.n" "$PI"
 		for b in $(awk -v h="$H" '$1==h{print $2}' "$PI"); do echo "$L" | grep -qix "$b" || L="$L $b"; done; fi
+	[ -n "$H" ] && for b in $(awk -v h="$H" '$1==h{print $2}' "$OFF" 2>/dev/null); do echo "$L" | grep -qix "$b" || L="$L $b"; done
 	for b in $( { W bssid_ignore 2>/dev/null; dmesg 2>/dev/null | sed -n 's/.*\(authentication\|association\) with \(\([0-9a-f]\{2\}:\)\{5\}[0-9a-f]\{2\}\) timed out.*/\2/p'; } | grep -Eio '([0-9a-f]{2}:){5}[0-9a-f]{2}' | sort -u); do
 		[ "$b" = "$CUR" ] && continue
 		echo "$L" | grep -qix "$b" || { L="$L $b"; NEW="$NEW $b"; }
@@ -51,7 +54,11 @@ session_ignore() { [ -n "$1" ] || return 0; ST=$(W status 2>/dev/null); CUR=$(ec
 		{ grep -v "^$1 " $SI 2>/dev/null; for b in $L; do echo "$1 $b"; done; } > $SI.n; mv $SI.n $SI
 		echo "$(date) wifi: network $1: left out (did not answer):$( [ -n "$NEW" ] && echo "$NEW" || echo " $L (kept from earlier)")" >> $R/wifi.log
 	else echo "$(date) wifi: network $1: could not leave out$NEW" >> $R/wifi.log; fi; }
-session_unignore() { [ -n "$1" ] && grep -q "^$1 " $SI 2>/dev/null || return 0; W set_network "$1" bssid_ignore "" >/dev/null 2>&1
+session_unignore() { [ -n "$1" ] && grep -q "^$1 " $SI 2>/dev/null || return 0
+	# (1.5.9: those turned off by hand stay off)
+	H=$(hexs "$(W status 2>/dev/null | sed -n 's/^ssid=//p')"); [ -n "$H" ] || H=$(cat $R/wifi-ssid-$IF 2>/dev/null)
+	KO=$(awk -v h="$H" '$1==h{print $2}' "$OFF" 2>/dev/null | tr '\n' ' ')
+	W set_network "$1" bssid_ignore "${KO% }" >/dev/null 2>&1
 	grep -v "^$1 " $SI > $SI.n; mv $SI.n $SI; echo "$(date) wifi: network $1: every radio allowed again (off the network)" >> $R/wifi.log; }
 stop() { [ -f $P ] && kill "$(cat $P)" 2>/dev/null; rm -f $P; }
 running() { [ -f $P ] && kill -0 "$(cat $P)" 2>/dev/null; }

@@ -907,7 +907,17 @@ static void api_wifi(struct req *r, const char *what)
 	if (i && *i && !safe_word(i, 16)) { reply_err(r->fd, 400, "bad interface"); return; }
 	const char *ifn = i && *i ? i : "\"\"";
 	char cmd[300];
-	if (!strcmp(what, "status") || !strcmp(what, "scan") || !strcmp(what, "disconnect") || !strcmp(what, "reconnect")) {
+	/* 1.5.9: the radios of the network in use, and one turned off or on for this computer */
+	if (!strcmp(what, "radio")) {
+		char *b = qparam(r->query, "bssid"), *on = qparam(r->query, "on");
+		int okb = b && strlen(b) == 17; for (int k = 0; okb && k < 17; k++) okb = (k % 3 == 2) ? b[k] == ':' : isxdigit((unsigned char)b[k]);
+		if (!okb || !on || (strcmp(on, "on") && strcmp(on, "off"))) { reply_err(r->fd, 400, "bad radio"); return; }
+		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh radio %s %s %s 2>&1", ifn, b, on);
+		char *o = run_out(cmd); trim(o);
+		if (o && !strncmp(o, "Radio ", 6)) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "could not change the radio");
+		free(o); return;
+	}
+	if (!strcmp(what, "status") || !strcmp(what, "scan") || !strcmp(what, "disconnect") || !strcmp(what, "reconnect") || !strcmp(what, "radios")) {
 		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh %s %s 2>&1", what, ifn);
 		char *o = run_out(cmd); str s = {0}; sadd(&s, "{\"ok\":true,\"raw\":"); sjson(&s, o ? o : ""); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
 	}
@@ -1857,6 +1867,12 @@ static void api_ai_facts(struct req *r)
 	facts_add(&s, "shutdown", PERSIST "/var/log/shutdown.log", 20);
 	{ char *jn = slurp(RUN "/job.name", NULL); if (jn) trim(jn); sadd(&s, ",\"jobName\":"); sjson(&s, jn ? jn : ""); free(jn); }
 	facts_add(&s, "job", RUN "/job.log", 60);
+	/* 1.5.9: the Wi-Fi, for "Why does the Wi-Fi drop?": its own log, the kernel's Wi-Fi messages, the radios */
+	facts_add(&s, "wifi", RUN "/wifi.log", 40);
+	{ char *k = run_out("dmesg 2>/dev/null | grep -E 'wlan[0-9]+:|rtw88|rtw89|iwlwifi|mt79|ath1[01]k|cfg80211' | grep -v -E 'Loading compiled-in|regulatory' | tail -40");
+	  sadd(&s, ",\"wifiKernel\":"); sjson(&s, k ? k : ""); free(k); }
+	{ char *w = run_out("/usr/lib/rudolf/wifi.sh radios \"\" 2>/dev/null; /usr/lib/rudolf/wifi.sh status \"\" 2>/dev/null | grep -E '^(adapter|wlan|wpa_state|ssid|bssid|freq|RSSI|LINKSPEED|country)='");
+	  sadd(&s, ",\"wifiNow\":"); sjson(&s, w ? w : ""); free(w); }
 	sadd(&s, "}"); reply_json(r->fd, &s);
 }
 
