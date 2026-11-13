@@ -79,6 +79,16 @@ experience on them. It starts once 1.5.8 is promoted.
   default, administrators only. First checked on the Vivobook's Wi-Fi chip over the devlink (access point alone, and
   with a Wi-Fi connection at the same time).
 
+- **Done (2026-11-13), up to the device check:** /usr/lib/rudolf/hotspot (status, start, stop): AP mode and "both at
+  once" read from iw; the Wi-Fi itself shared only with a chip that can do both (a second interface on the
+  connection's channel), otherwise a cable, a phone's tethering or a modem, with the Wi-Fi as the access point (its
+  connection let go and given back); hostapd (WPA2/WPA3, the name as hex), dnsmasq on 10.42.0.0/24, NAT and a forward
+  chain in its own table, the firewall's `hotspot` chain for DHCP and DNS; the password kept root-only for next time;
+  wifi.sh does not start a connection on the access point. rudolfd `net/hotspot` (the request through a root-only
+  file); Settings › Network › Share this connection. ci_release.sh adds hostapd, hostapd_cli and dnsmasq within the
+  10 MB with ModemManager. To check on the Vivobook (iw is in the base layer from #267): AP mode on the RTL8821CE,
+  with the USB tethering of the phone as the connection.
+
 ## Part 5: Android apps with Waydroid, in Debian (docs/plan-1.5.8.md 7.3)
 - Waydroid installed into Debian on demand, binderfs mounted into Debian's container, the Android image downloaded
   only on request; measured on the Vivobook with Lite on before it is offered.

@@ -3,6 +3,7 @@
 #   firewall start          load the rules (rudolf-init, before the network is up); off when /persist/etc/firewall-off
 #   firewall on | off       turn it on or off and remember it (rudolfd, Settings › Security, administrators)
 #   firewall remote on|off  let the local network reach remote access (port 8443) or not (rudolf-remote)
+#   firewall hotspot IF|off  (1.5.9) let the devices on this computer's hotspot (IF) ask it for an address and names
 #   firewall status         "on N" (N incoming connections blocked since start-up) or "off"
 # Outgoing connections are all allowed. Incoming: the computer itself (loopback), replies to connections it made,
 # DHCP replies, the ICMP a network needs (ping, too big, unreachable, IPv6 neighbour discovery), and remote access
@@ -28,9 +29,12 @@ table inet rudolf {
 		udp sport 67 udp dport 68 accept
 		udp sport 547 udp dport 546 accept
 		jump remote
+		jump hotspot
 		counter name blocked drop
 	}
 	chain remote {
+	}
+	chain hotspot {
 	}
 }
 EOF
@@ -42,6 +46,11 @@ add rule inet rudolf remote ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
 add rule inet rudolf remote ip6 saddr { fe80::/10, fc00::/7 } tcp dport 8443 accept
 EOF
 }
+HS=/run/rudolf/firewall-hotspot
+hotspot_rules() {
+	echo "flush chain inet rudolf hotspot"
+	[ -n "$1" ] && [ "$1" != off ] && printf 'add rule inet rudolf hotspot iifname "%s" udp dport { 53, 67 } accept\nadd rule inet rudolf hotspot iifname "%s" tcp dport 53 accept\n' "$1" "$1"
+}
 loaded() { nft list table inet rudolf >/dev/null 2>&1; }
 # nft -f - reads /dev/stdin, which Rudolf OS does not have (no udev): the rules go through a file
 nftf() { T=/run/rudolf/firewall.nft.$$; cat > "$T"; nft -f "$T"; r=$?; rm -f "$T"; return $r; }
@@ -51,11 +60,16 @@ start)
 	[ -f "$OFF" ] && exit 0
 	rules | nftf || exit 1
 	[ -f "$REM" ] && remote_rules on | nftf
+	[ -s "$HS" ] && hotspot_rules "$(cat $HS)" | nftf
 	exit 0;;
 on)
 	rm -f "$OFF"; rules | nftf || exit 1
 	[ -f "$REM" ] && remote_rules on | nftf
+	[ -s "$HS" ] && hotspot_rules "$(cat $HS)" | nftf
 	exit 0;;
+hotspot)
+	if [ "$2" = off ]; then rm -f "$HS"; else echo "$2" > "$HS"; fi
+	loaded && hotspot_rules "$2" | nftf; exit 0;;
 off)
 	mkdir -p /persist/etc 2>/dev/null; [ -d /persist/etc ] && : > "$OFF"
 	loaded && nft delete table inet rudolf; exit 0;;
@@ -64,5 +78,5 @@ remote)
 	loaded && remote_rules "$2" | nftf; exit 0;;
 status)
 	if loaded; then echo "on $(nft list counter inet rudolf blocked 2>/dev/null | sed -n 's/.*packets \([0-9]*\).*/\1/p' | head -1)"; else echo off; fi;;
-*) echo "usage: firewall start|on|off|remote on|off|status" >&2; exit 2;;
+*) echo "usage: firewall start|on|off|remote on|off|hotspot IF|off|status" >&2; exit 2;;
 esac

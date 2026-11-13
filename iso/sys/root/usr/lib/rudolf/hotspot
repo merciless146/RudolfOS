@@ -1,0 +1,99 @@
+#!/bin/sh
+# Rudolf OS 1.5.9 (docs/plan-1.5.9.md Part 4): Share this connection. The computer's Wi-Fi becomes an access point for
+# other devices (WPA2/WPA3 with a password), handing out addresses (dnsmasq) and sharing the connection it has (NAT,
+# nftables). Off by default, administrators only (the desktop asks the password), not kept across a restart.
+#   hotspot status            JSON: on, name, band, devices, the connection shared, whether the chip can, and why not
+#   hotspot start REQUEST     line 1 the name, line 2 the password (8-63 characters), line 3 2.4|5 (a root-only file)
+#   hotspot stop
+# The Wi-Fi chip must offer access-point mode (iw: "* AP"). Shared over the Wi-Fi it is connected with only when the
+# chip can do both at once (an "AP" and a "managed" interface in one combination, on the same channel); otherwise a
+# cable, a phone's USB tethering or a modem is shared, and the Wi-Fi itself becomes the access point.
+# GPL-2.0-or-later.
+export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
+NET=${RUDOLF_WIFI_NET:-/sys/class/net}; R=${RUDOLF_HOTSPOT_RUN:-/run/rudolf/hotspot}; mkdir -p $R
+NETW=10.42.0; LOG=${RUDOLF_HOTSPOT_LOG:-/run/rudolf/hotspot.log}
+FW=${RUDOLF_FIREWALL:-/usr/lib/rudolf/firewall}; WS=${RUDOLF_WIFISH:-/usr/lib/rudolf/wifi.sh}; FWD=${RUDOLF_IPFWD:-/proc/sys/net/ipv4/ip_forward}
+# the last name, password and band (root only; an empty password in a request means this one)
+SAVED=${RUDOLF_HOTSPOT_SAVED:-/persist/etc/hotspot.conf}; [ -d "$(dirname $SAVED)" ] || SAVED=/run/rudolf/hotspot.conf
+wlan() { for i in "$NET"/*; do [ -e "$i/wireless" ] && { echo "${i##*/}"; return; }; done; }
+uplink() { ip route show default 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -1; }
+phyinfo() { iw phy "$(cat "$NET/$1/phy80211/name" 2>/dev/null)" info 2>/dev/null; }
+can_ap() { phyinfo "$1" | sed -n '/Supported interface modes/,/Band\|Supported commands/p' | grep -qE '^\s*\* AP$'; }
+# AP and managed in one combination with 2 or more interfaces in all: both at once
+# (iw prints each combination over two lines: joined first, one combination per line)
+can_both() { phyinfo "$1" | sed -n '/valid interface combinations/,/^\s*$/p' | tr '\n\t' '  ' | sed 's/\* #/\n* #/g' | grep -E '#\{[^}]*AP' | grep -E 'managed' | grep -qE 'total <= ([2-9]|[1-9][0-9])'; }
+running() { [ -s $R/hostapd.pid ] && kill -0 "$(cat $R/hostapd.pid)" 2>/dev/null; }
+esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+status() {
+	W=$(wlan); U=$(uplink); A=false; B=false; WHY=""
+	[ -n "$W" ] || WHY="This computer has no Wi-Fi."
+	command -v hostapd >/dev/null && command -v dnsmasq >/dev/null || WHY=${WHY:-"The hotspot tools are not part of this build."}
+	[ -n "$W" ] && can_ap "$W" && A=true; [ -n "$W" ] && can_both "$W" && B=true
+	[ -z "$WHY" ] && [ $A = false ] && WHY="This computer's Wi-Fi cannot be an access point."
+	[ -z "$WHY" ] && [ -z "$U" ] && WHY="There is no connection to share yet."
+	[ -z "$WHY" ] && [ "$U" = "$W" ] && [ $B = false ] && WHY="This computer's Wi-Fi cannot share the Wi-Fi it is connected to: connect by cable, a phone's USB tethering or a modem, then share that."
+	ON=false; running && ON=true
+	N=$(cat $R/ssid 2>/dev/null); [ -n "$N" ] || N=$(sed -n 1p "$SAVED" 2>/dev/null); SB=$(sed -n 3p "$SAVED" 2>/dev/null); KP=false; [ -n "$(sed -n 2p "$SAVED" 2>/dev/null)" ] && KP=true; D=0; [ $ON = true ] && D=$(hostapd_cli -p $R/ctrl -i "$(cat $R/if)" list_sta 2>/dev/null | grep -c ':')
+	printf '{"on":%s,"name":"%s","band":"%s","devices":%s,"uplink":"%s","wifi":"%s","canAP":%s,"both":%s,"saved":%s,"why":"%s"}\n' \
+		$ON "$(esc "$N")" "$(cat $R/band 2>/dev/null || echo "$SB")" "${D:-0}" "$(cat $R/uplink 2>/dev/null || echo "$U")" "$W" $A $B $KP "$(esc "$WHY")"
+}
+stop() {
+	running && kill "$(cat $R/hostapd.pid)" 2>/dev/null; [ -s $R/dnsmasq.pid ] && kill "$(cat $R/dnsmasq.pid)" 2>/dev/null
+	IF=$(cat $R/if 2>/dev/null)
+	nft delete table ip rudolf_hotspot 2>/dev/null; $FW hotspot off >/dev/null 2>&1
+	if [ -n "$IF" ]; then ip addr flush dev "$IF" 2>/dev/null; [ "$(cat $R/made 2>/dev/null)" = 1 ] && iw dev "$IF" del 2>/dev/null; fi
+	# the Wi-Fi given back to the computer's own use when it was the access point itself
+	[ "$(cat $R/made 2>/dev/null)" = 0 ] && $WS reconnect >/dev/null 2>&1
+	rm -f $R/hostapd.pid $R/dnsmasq.pid $R/if $R/made $R/ssid $R/band $R/uplink $R/hostapd.conf
+	echo "$(date) hotspot off" >> $LOG; echo "The hotspot is off."
+}
+start() {
+	SS=$(sed -n 1p "$1"); PW=$(sed -n 2p "$1"); BAND=$(sed -n 3p "$1"); rm -f "$1"
+	[ -z "$PW" ] && [ -s "$SAVED" ] && [ "$(sed -n 1p $SAVED)" = "$SS" ] && PW=$(sed -n 2p $SAVED)
+	[ -n "$SS" ] && [ ${#SS} -le 32 ] || { echo "The network name has 1 to 32 characters."; return 1; }
+	[ ${#PW} -ge 8 ] && [ ${#PW} -le 63 ] || { echo "The password has 8 to 63 characters."; return 1; }
+	case "$BAND" in 5) ;; *) BAND=2.4;; esac
+	S=$(status); case "$S" in *'"why":""'*) ;; *) echo "$S" | sed 's/.*"why":"\(.*\)"}/\1/'; return 1;; esac
+	running && stop >/dev/null
+	W=$(wlan); U=$(uplink)
+	if [ "$U" = "$W" ]; then   # both at once: a second interface, on the connection's own channel
+		IF=ap0; iw dev "$W" interface add $IF type __ap || { echo "The access point could not be made."; return 1; }; echo 1 > $R/made
+		F=$(iw dev "$W" link 2>/dev/null | sed -n 's/.*freq: \([0-9]*\).*/\1/p'); [ -n "$F" ] && { [ "$F" -ge 4900 ] && BAND=5 || BAND=2.4; }
+	else IF=$W; echo 0 > $R/made; wpa_cli -p /run/rudolf/wpa -i "$W" terminate >/dev/null 2>&1; sleep 1; fi
+	if [ "$BAND" = 5 ]; then MODE=a; CH=36; [ -n "$F" ] && CH=$(( (F - 5000) / 5 )); else MODE=g; CH=6; [ -n "$F" ] && [ "$F" -lt 4900 ] && CH=$(( (F - 2407) / 5 )); fi
+	umask 077
+	cat > $R/hostapd.conf <<E
+interface=$IF
+driver=nl80211
+ctrl_interface=$R/ctrl
+ssid2=$(printf '%s' "$SS" | od -An -tx1 | tr -d ' \n')
+hw_mode=$MODE
+channel=$CH
+ieee80211n=1
+wmm_enabled=1
+wpa=2
+wpa_key_mgmt=WPA-PSK SAE
+rsn_pairwise=CCMP
+ieee80211w=1
+wpa_passphrase=$PW
+E
+	( umask 077; printf '%s\n%s\n%s\n' "$SS" "$PW" "$BAND" > "$SAVED" )
+	PW=
+	ip link set "$IF" up 2>/dev/null; ip addr flush dev "$IF" 2>/dev/null; ip addr add $NETW.1/24 dev "$IF"
+	hostapd -B -P $R/hostapd.pid $R/hostapd.conf >>$LOG 2>&1 || { echo "The access point did not start (see hotspot.log)."; stop >/dev/null; return 1; }
+	dnsmasq --interface="$IF" --bind-interfaces --except-interface=lo --dhcp-range=$NETW.10,$NETW.250,12h --dhcp-option=3,$NETW.1 \
+		--dhcp-option=6,$NETW.1 --pid-file=$R/dnsmasq.pid --dhcp-leasefile=$R/leases --log-facility=$LOG || { echo "Addresses could not be handed out."; stop >/dev/null; return 1; }
+	echo 1 > $FWD
+	printf 'table ip rudolf_hotspot {\n chain post { type nat hook postrouting priority srcnat; oifname "%s" masquerade; }\n chain fwd { type filter hook forward priority filter; policy drop; iifname "%s" oifname "%s" accept; ct state established,related accept; }\n}\n' "$U" "$IF" "$U" > $R/nat.nft
+	nft -f $R/nat.nft || { echo "The connection could not be shared."; stop >/dev/null; return 1; }
+	$FW hotspot "$IF" >/dev/null 2>&1
+	printf '%s' "$SS" > $R/ssid; echo "$BAND" > $R/band; echo "$U" > $R/uplink; echo "$IF" > $R/if
+	echo "$(date) hotspot on: $IF sharing $U ($BAND GHz)" >> $LOG
+	echo "Sharing this connection as $SS."
+}
+case "$1" in
+status) status ;;
+start) [ -f "$2" ] || { echo "usage: hotspot start REQUEST-FILE"; exit 2; }; start "$2" ;;
+stop) stop ;;
+*) echo "usage: hotspot status|start REQUEST|stop"; exit 2 ;;
+esac

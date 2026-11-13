@@ -44,6 +44,8 @@ need() {
 }
 start() {
 	need
+	# 1.5.9 (plan Part 4): the Wi-Fi is the hotspot's access point: not started as a connection under it
+	[ "$(cat /run/rudolf/hotspot/if 2>/dev/null)" = "$IF" ] && { echo "The Wi-Fi is sharing a connection (hotspot): turn the hotspot off to connect."; exit 5; }
 	if [ ! -s "$CONF" ]; then umask 077; printf 'ctrl_interface=%s\nupdate_config=1\nsae_pwe=2\n' $CTRL > "$CONF"; fi
 	chmod 600 "$CONF"
 	for r in /sys/class/rfkill/*; do [ "$(cat $r/type 2>/dev/null)" = wlan ] && echo 0 > $r/soft 2>/dev/null; done
