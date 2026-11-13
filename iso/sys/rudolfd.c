@@ -312,6 +312,11 @@ static void serve_fd_as(struct req *r, int f, const char *path, int dl)
 	/* shared libraries (Ruffle, PDF.js) are also loaded by Oracle's sandboxed pages, which have no origin */
 	const char *cors = dl ? "Content-Security-Policy: sandbox\r\nX-Content-Type-Options: nosniff\r\n" : strstr(path, "/lib/") || !strncmp(path, "/pkg/", 5) ? "Access-Control-Allow-Origin: *\r\n" : "";
 	const char *mt = mime(path);
+	/* 1.5.9 (plan 8.2): a Library web app's pages always run in a sandbox of their own (no origin: no access to the
+	   desktop's storage, its page or rudolfd), also when one is opened some other way than in its window (an address
+	   typed in Oracle). Their files the desktop itself reads (Quake's data, Emu's players) are not pages: unchanged. */
+	if (!dl && !strncmp(path, "/pkg/", 5) && !strncmp(mt, "text/html", 9))
+		cors = "Access-Control-Allow-Origin: *\r\nContent-Security-Policy: sandbox allow-scripts allow-forms allow-modals allow-downloads allow-pointer-lock\r\nX-Content-Type-Options: nosniff\r\n";
 	if (dl && (!strncmp(mt, "text/html", 9) || !strcmp(mt, "text/javascript") || (strstr(mt, "xml") && strcmp(mt, "image/svg+xml")))) mt = "text/plain; charset=utf-8";
 	int l = snprintf(h, sizeof h, "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %lld\r\nAccept-Ranges: bytes\r\n%s%s%sCache-Control: no-cache\r\nConnection: close\r\n\r\n",
 		partial ? 206 : 200, partial ? "Partial Content" : "OK", mt, (long long)(end - start + 1),
