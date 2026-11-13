@@ -190,6 +190,11 @@ the official releases works; a build signed by anyone else is refused. The Libra
   person's GitHub account plus their publisher key registered in the Library (8.2). Settings › Accounts › Developer:
   makes or imports the publisher key, shows its public half and fingerprint, exports a backup, and (with a hardware
   key) signs with it without the private key ever being on the disk.
+- **Done (2026-11-13), the publisher key:** User Settings › Developer makes one (WebCrypto Ed25519), keeps its private
+  half only in a backup in Documents (PBKDF2-SHA-256 600 000 rounds, AES-GCM, a passphrase of 12 characters or more),
+  the public half and fingerprint for the account; "Use a backup" brings it back; the private half is shown (60 s, after
+  the passphrase) only to paste into a GitHub secret; its raw form is rpk-tool's. Not yet: hardware keys (FIDO2/PIV)
+  and the computer's own key (TPM), which need the hardware to test.
 - The three are separate so that a leaked signing key does not open anyone's files, and a broken laptop does not lock
   a developer out of their games.
 
