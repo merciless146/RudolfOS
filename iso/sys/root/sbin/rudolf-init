@@ -53,7 +53,7 @@ else
 	mount -t tmpfs -o mode=0700,uid=1000,gid=1000 tmpfs /home/rudolf
 fi
 # 1.5.9 (plan Part 3): a system without Chromium (the first ARM64 builds) has one desktop engine: Lite
-[ -x /opt/chromium/chrome ] || { mkdir -p /run/rudolf; echo webkit > /run/rudolf/engine-choice; }
+{ [ -x /opt/chromium/chrome ] && ! grep -q 'rudolf.lite=1' $RCMD; } || { mkdir -p /run/rudolf; echo webkit > /run/rudolf/engine-choice; }   # (rudolf.lite=1: Lite for this start, as the ARM64 boot check uses)
 /usr/lib/rudolf/memory 2>/dev/null   # 1.4.7: compressed swap in memory, no thrashing (1.5.7: after /persist, for its setting)
 # (1.5.1: not while Downloads is a link into the encrypted folder, which is locked until someone signs in: mkdir
 # failed there with "No such file or directory" on the start-up screen; rudolfd makes its folders at the unlock)
