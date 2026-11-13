@@ -5,3 +5,7 @@ F2/F3 volume, F4/F5 brightness without Fn). Fn+Esc still switches it.
 rtw88_pci (1.5.6): disable_aspm=1. The PCIe link power saving (ASPM) of Realtek's rtw88 Wi-Fi chips (the RTL8821CE of
 the ASUS Vivobook Go, the RTL8822CE and RTL8822BE) is a known cause of dropped Wi-Fi connections; wifi.sh also sets it
 for a driver already loaded.
+ttm (1.5.9): page_pool_size=16384 (64 MiB). The graphics memory manager keeps freed graphics pages for reuse, up to
+half the memory by default (1.7 GB on the 3.4 GB Vivobook); on 2026-11-12 its pool there grew from 21 to 46 MiB with
+use (docs/plan-memdebug.md). 64 MiB keeps reuse for the common case and stops the creep; the memory script also sets
+it if ttm was loaded before this file was read.
