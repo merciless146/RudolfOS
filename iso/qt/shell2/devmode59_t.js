@@ -9,6 +9,8 @@ const status = () => ({ok: true, persistent: true, booted: 'a', current: {serial
 const api = (a, q, m) => { const sp = new URLSearchParams(q || '');
   if (a == 'sys/status') return status();
   if (a == 'sys/developer' && m == 'POST') { posts.push(sp.get('on') == '0' ? 'off' : 'on ' + sp.get('key') + ' ' + sp.get('url')); dev = sp.get('on') != '0'; return {ok: true, message: dev ? 'Developer mode is on: …' : 'Developer mode is off: …'} }
+  if (a == 'sys/return' && m == 'POST') { posts.push('return ' + sp.get('erase')); return {ok: true, message: 'started'} }
+  if (a == 'job') return {ok: true, running: false, status: 0, log: 'Returning to the official Rudolf OS 1.5.9: it starts the next time the computer restarts, with everything erased (a factory reset).\n'};
   if (a == 'info') return {ok: true, vendor: 'ASUS', product: 'Vivobook', cpu: 'x', threads: 4, memTotal: 3.4e9, kernel: '6.18', boot: 'uefi', live: 0};
   return {ok: true} };
 const srv = http.createServer((q, s) => { const [u0, qs] = q.url.split('?'); const u = decodeURIComponent(u0);
@@ -51,6 +53,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await p.type('.rmodal .ep', 'sesame'); await p.keyboard.press('Enter'); await wait(1200);
   signer = 'official'; await q("(()=>{const o=document.getElementById('abt');o&&o.remove();const d=document.createElement('div');d.id='abt';document.body.appendChild(d);aboutPanel(d);return 1})()"); await wait(800);
   ok('10. off: rudolfd told; About says Official Rudolf OS again', posts.at(-1) == 'off' && /✅ Official Rudolf OS/.test(await q("document.querySelector('#abt .devmab')?.textContent||''")), posts);
+  dev = true; signer = 'custom'; d = await panel();
+  ok('12. a custom build: "Return to official Rudolf OS" is offered', await q("!!document.querySelector('#dmt .dvr')"));
+  await q("document.querySelector('#dmt .dvr').click()"); await wait(300);
+  await q("(()=>{document.querySelector('.rmodal input[name=dre][value=\"1\"]').checked=true;document.querySelector('.rmodal .y').click();return 1})()"); await wait(400);
+  ok('13. keep or erase, then the administrator\'s password', /Return to the official Rudolf OS, erasing every account/.test(await q("document.querySelector('.rmodal .rmr')?.textContent||''")));
+  await p.type('.rmodal .ep', 'sesame'); await p.keyboard.press('Enter'); await wait(2000);
+  ok('14. rudolfd returns to official, erasing (as chosen)', posts.at(-1) == 'return 1', posts);
   ok('11. no page errors', errs.length == 0, errs);
   await b.close(); srv.close();
   console.log(R.filter(Boolean).length + '/' + R.length + ' passed'); process.exit(R.every(Boolean) ? 0 : 1);
