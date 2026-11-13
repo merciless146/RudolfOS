@@ -29,16 +29,18 @@ cat > $B/wpa_cli <<'X'
 #!/bin/sh
 while [ $# -gt 0 ]; do case "$1" in -p|-i) shift 2;; *) break;; esac; done
 case "$1" in
-status) echo "wpa_state=$(cat $TT/wstate 2>/dev/null || echo COMPLETED)"; [ -s $TT/wbssid ] && echo "bssid=$(cat $TT/wbssid)" ;;
+status) echo "wpa_state=$(cat $TT/wstate 2>/dev/null || echo COMPLETED)"; [ -s $TT/wbssid ] && echo "bssid=$(cat $TT/wbssid)"; [ -s $TT/wssid ] && echo "ssid=$(cat $TT/wssid)" ;;
 bssid_ignore) cat $TT/wign 2>/dev/null ;;
-set_network) echo "wpa $*" >> $LOG; echo OK ;;
+set_network) echo "wpa $*" >> $LOG; [ "$3" = bssid_ignore ] && echo "$4" > $TT/wset; echo OK ;;
+get_network) [ "$3" = bssid_ignore ] && cat $TT/wset 2>/dev/null || echo FAIL ;;
 list_networks) printf 'network id / ssid / bssid / flags\n0\tHome\tany\t%s\n' "$(cat $TT/wflags 2>/dev/null)" ;;
 select_network|enable_network) echo "wpa $*" >> $LOG; echo OK ;;
 *) echo OK ;;
 esac
 X
 chmod +x $B/*
-export WIFI_EVENT_PATH=$B:/usr/bin:/bin WIFI_EVENT_RUN=$T/run WIFI_EVENT_GRACE=1 WIFI_EVENT_RETRY=1
+export WIFI_EVENT_PATH=$B:/usr/bin:/bin WIFI_EVENT_RUN=$T/run WIFI_EVENT_GRACE=1 WIFI_EVENT_RETRY=1 WIFI_EVENT_PERSIST=$T/persist-ignore
+printf '#!/bin/sh\ncat $TT/dmesg 2>/dev/null\n' > $B/dmesg; chmod +x $B/dmesg
 E="sh $L/wifi-event"; cnt() { grep -c "$1" $LOG; }
 WPA_ID=0 $E wlan0 CONNECTED
 ok "1. joining a network asks DHCP for an address" "$([ "$(cnt 'udhcpc start')" = 1 ] && echo 1)" "$(cat $LOG)"
@@ -74,7 +76,7 @@ echo COMPLETED > $T/wstate; WPA_ID=0 $E wlan0 CONNECTED; sleep 1
 : > $LOG; rm -f $T/run/wifi.log; echo bc:96:e5:88:1f:d9 > $T/wbssid; printf 'bc:96:e5:88:1f:da\nbc:96:e5:88:1f:d9\n' > $T/wign
 WPA_ID=0 $E wlan0 CONNECTED
 ok "18. joined: the radio that did not answer is left out of the network for this session (not the one joined)" "$(grep -q 'wpa set_network 0 bssid_ignore bc:96:e5:88:1f:da$' $LOG && echo 1)" "$(cat $LOG)"
-ok "19. ...written to the Wi-Fi log" "$(grep -q 'left out for this session: bc:96:e5:88:1f:da' $T/run/wifi.log && echo 1)" "$(cat $T/run/wifi.log 2>/dev/null)"
+ok "19. ...written to the Wi-Fi log" "$(grep -q 'left out (did not answer): bc:96:e5:88:1f:da' $T/run/wifi.log && echo 1)" "$(cat $T/run/wifi.log 2>/dev/null)"
 c=$(grep -c 'set_network' $LOG); WPA_ID=0 $E wlan0 CONNECTED
 ok "20. joining again: nothing new, nothing set again" "$([ "$(grep -c 'set_network' $LOG)" = "$c" ] && echo 1)" "$(cat $LOG)"
 : > $LOG; echo SCANNING > $T/wstate; : > $T/wign; $E wlan0 DISCONNECTED; sleep 1.5
@@ -96,4 +98,23 @@ grep -q "BGSCAN='\"simple:30:-78:86400\"'" $L/wifi.sh && grep -q 'bgscan_all$' $
 ok "10. wifi.sh sets the background scan (weak signal only) on saved networks and new ones" "$([ $? = 0 ] && echo 1)"
 grep -q 'disable_aspm' $L/wifi.sh && [ "$(cat $HERE/../../sys/root/etc/modules/rtw88_pci)" = "disable_aspm=1" ]
 ok "11. Realtek rtw88: no PCIe link power saving (at load and for a loaded driver)" "$([ $? = 0 ] && echo 1)"
+# 1.5.9 (2026111302): the 2.4 GHz radio did not answer again; wpa_supplicant's own list had forgotten it by then
+rm -rf $T/run; mkdir -p $T/run; rm -f $T/wign $T/wset $T/persist-ignore; : > $LOG
+echo bc:96:e5:88:1f:d9 > $T/wbssid; echo 'Spectrum 3E' > $T/wssid; echo COMPLETED > $T/wstate
+printf '[   87.849511] wlan0: authentication with bc:96:e5:88:1f:da timed out\n' > $T/dmesg
+WPA_ID=0 $E wlan0 CONNECTED
+ok "24. the kernel's 'authentication with X timed out' counts too (wpa_supplicant's list already empty)" "$(grep -q 'wpa set_network 0 bssid_ignore bc:96:e5:88:1f:da$' $LOG && echo 1)" "$(cat $LOG)"
+H=$(printf %s 'Spectrum 3E' | od -An -tx1 | tr -d ' \n')
+ok "25. ...and kept for a day, by network name (in hex), across restarts" "$(grep -q "^$H bc:96:e5:88:1f:da [0-9]*$" $T/persist-ignore && echo 1)" "$(cat $T/persist-ignore 2>/dev/null)"
+# a restart: a new session, no kernel message yet: the radio is left out from the first join
+rm -rf $T/run; mkdir -p $T/run; rm -f $T/wset $T/dmesg; : > $LOG
+WPA_ID=0 $E wlan0 CONNECTED
+ok "26. after a restart it is left out from the first join (kept from earlier)" "$(grep -q 'wpa set_network 0 bssid_ignore bc:96:e5:88:1f:da$' $LOG && grep -q 'kept from earlier' $T/run/wifi.log && echo 1)" "$(cat $LOG; cat $T/run/wifi.log)"
+# reached through that radio after all (the only one in reach): it is taken off the list
+echo bc:96:e5:88:1f:da > $T/wbssid; rm -f $T/wset; WPA_ID=0 $E wlan0 CONNECTED
+ok "27. reached through that radio after all: taken off the list" "$(grep -qi 'bc:96:e5:88:1f:da' $T/persist-ignore && echo 0 || echo 1)" "$(cat $T/persist-ignore)"
+# a day later it is forgotten
+echo "$H aa:bb:cc:dd:ee:ff $(( $(date +%s) - 90000 ))" >> $T/persist-ignore; echo bc:96:e5:88:1f:d9 > $T/wbssid; rm -f $T/wset; : > $LOG
+WPA_ID=0 $E wlan0 CONNECTED
+ok "28. after a day a radio is tried again" "$(grep -q 'aa:bb:cc:dd:ee:ff' $T/persist-ignore $LOG && echo 0 || echo 1)" "$(cat $T/persist-ignore; cat $LOG)"
 echo "$((N-F))/$N passed"; [ $F = 0 ]
