@@ -3,10 +3,11 @@
 # libraries (ALSA 1.2.11, libsndfile 1.2.2, libudev 255) plus pkg-config files pointing at those
 # host libraries, which are the same ones copied into Rudolf OS. GPL-2.0-or-later.
 set -e
+MA=${MA:-$(gcc -print-multiarch)}; [ -n "$MA" ] || MA=x86_64-linux-gnu   # (1.5.9: the build machine's library folder; aarch64-linux-gnu on ARM64)
 HERE=$(cd "$(dirname "$0")" && pwd)
 H=$HERE/src/snd/hdr
 P=$HERE/src/snd/shim
-L=/usr/lib/x86_64-linux-gnu
+L=/usr/lib/$MA
 rm -rf "$P"; mkdir -p "$P/include" "$P/lib/pkgconfig"
 pc(){ # name version libname host-so [requires]
 	ln -sf "$L/$4" "$P/lib/lib$3.so"

@@ -8,6 +8,11 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 SRC=$HERE/src
 SYS=$HERE/sys
 CHROME=${CHROME_DIR:-/opt/pw-browsers/chromium-1194/chrome-linux}
+# 1.5.9 (plan Part 3): the build machine's library folder (x86_64-linux-gnu, aarch64-linux-gnu), so the same script
+# makes the ARM64 root file system on an ARM64 machine; its program loader (/lib64/ld-linux-x86-64.so.2,
+# /lib/ld-linux-aarch64.so.1)
+MA=${MA:-$(gcc -print-multiarch)}; [ -n "$MA" ] || MA=x86_64-linux-gnu
+LDSO=$(ldd /bin/ls | awk '/ld-linux/ {print $1}' | head -1)
 rm -rf "$OUT"; mkdir -p "$OUT"
 cd "$OUT"
 mkdir -p bin sbin usr/bin usr/sbin usr/lib usr/share etc dev proc sys run tmp root home/rudolf media mnt live persist opt var/lib/xkb var/log lib64
@@ -20,18 +25,18 @@ copy_deps() {
 	local f
 	for f in "$@"; do
 		[ -e "$f" ] || continue
-		ldd "$f" 2>/dev/null | awk '/=>/ {print $3} /^\t\/lib64/ {print $1}' | while read -r l; do
+		ldd "$f" 2>/dev/null | awk '/=>/ {print $3} /^\t\/lib(64)?\// {print $1}' | while read -r l; do
 			[ -n "$l" ] && [ -e "$l" ] || continue
-			d="$OUT/usr/lib/x86_64-linux-gnu/${l##*/}"
-			case "$l" in /lib64/*) d="$OUT/lib64/${l##*/}";; esac
+			d="$OUT/usr/lib/$MA/${l##*/}"
+			case "$l" in /lib64/*) d="$OUT/lib64/${l##*/}";; /lib/ld-*|/usr/lib/ld-*) d="$OUT/usr/lib/${l##*/}";; esac
 			[ -e "$d" ] || cp -L "$l" "$d"
 		done
 	done
 }
-mkdir -p usr/lib/x86_64-linux-gnu
+mkdir -p usr/lib/$MA
 copy_deps /bin/ls   # glibc + loader first
-cp -L /lib64/ld-linux-x86-64.so.2 lib64/
-echo /usr/lib/x86_64-linux-gnu > etc/ld.so.conf
+case "$LDSO" in /lib64/*) cp -L "$LDSO" lib64/;; *) cp -L "$LDSO" usr/lib/;; esac
+echo /usr/lib/$MA > etc/ld.so.conf
 
 # ---------- BusyBox (static) provides the base tools
 cp "$SRC/busybox/busybox" bin/busybox
@@ -58,28 +63,32 @@ mkdir -p usr/share/glib-2.0/schemas
 cp /usr/share/glib-2.0/schemas/gschemas.compiled usr/share/glib-2.0/schemas/ 2>/dev/null || true
 
 # ---------- Chromium (locales trimmed to the Rudolf OS languages)
-mkdir -p opt/chromium
-cp -a "$CHROME"/. opt/chromium/
-cd opt/chromium/locales
-for f in *.pak; do case $f in en-US.pak|de.pak|es.pak|fr.pak|pt-BR.pak|ru.pak|zh-CN.pak|ja.pak|ko.pak|ar.pak|he.pak) ;; *) rm -f "$f";; esac; done
-cd "$OUT"
-rm -f opt/chromium/chrome-wrapper opt/chromium/xdg-mime opt/chromium/xdg-settings opt/chromium/locales/*.info
-strip opt/chromium/chrome opt/chromium/chrome_crashpad_handler 2>/dev/null || true
-find usr/lib/x86_64-linux-gnu -name "*.so*" -type f -exec strip --strip-unneeded {} + 2>/dev/null || true
-[ -e opt/chromium/chrome_sandbox ] && chmod 4755 opt/chromium/chrome_sandbox
-copy_deps opt/chromium/chrome opt/chromium/chrome_crashpad_handler opt/chromium/libEGL.so opt/chromium/libGLESv2.so opt/chromium/libvk_swiftshader.so
+# (1.5.9: CHROME_DIR=none builds without it: the first ARM64 base layer, whose desktop engine is WebKitGTK; the
+# Chromium layer comes on its own)
+if [ "$CHROME" != none ]; then
+	mkdir -p opt/chromium
+	cp -a "$CHROME"/. opt/chromium/
+	cd opt/chromium/locales
+	for f in *.pak; do case $f in en-US.pak|de.pak|es.pak|fr.pak|pt-BR.pak|ru.pak|zh-CN.pak|ja.pak|ko.pak|ar.pak|he.pak) ;; *) rm -f "$f";; esac; done
+	cd "$OUT"
+	rm -f opt/chromium/chrome-wrapper opt/chromium/xdg-mime opt/chromium/xdg-settings opt/chromium/locales/*.info
+	strip opt/chromium/chrome opt/chromium/chrome_crashpad_handler 2>/dev/null || true
+	[ -e opt/chromium/chrome_sandbox ] && chmod 4755 opt/chromium/chrome_sandbox
+	copy_deps opt/chromium/chrome opt/chromium/chrome_crashpad_handler opt/chromium/libEGL.so opt/chromium/libGLESv2.so opt/chromium/libvk_swiftshader.so
+else echo "mkrootfs: CHROME_DIR=none: no Chromium in this root file system"; fi
+find usr/lib/$MA -name "*.so*" -type f -exec strip --strip-unneeded {} + 2>/dev/null || true
 # libraries Chromium opens at run time (file dialogs, NSS)
-G=$(ls /usr/lib/x86_64-linux-gnu/libgtk-3.so.0 2>/dev/null || true)
-if [ -n "$G" ]; then cp -L "$G" usr/lib/x86_64-linux-gnu/; copy_deps "$G"; fi
-cp -a /usr/lib/x86_64-linux-gnu/nss usr/lib/x86_64-linux-gnu/ 2>/dev/null || true
-for l in /usr/lib/x86_64-linux-gnu/libsoftokn3.so /usr/lib/x86_64-linux-gnu/libfreeblpriv3.so /usr/lib/x86_64-linux-gnu/libnssckbi.so; do [ -e "$l" ] && cp -L "$l" usr/lib/x86_64-linux-gnu/; done
-mkdir -p usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0
-cp -a /usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0 usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/ 2>/dev/null || true
-for l in usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/*.so; do [ -e "$l" ] && copy_deps "$l"; done
+G=$(ls /usr/lib/$MA/libgtk-3.so.0 2>/dev/null || true)
+if [ -n "$G" ]; then cp -L "$G" usr/lib/$MA/; copy_deps "$G"; fi
+cp -a /usr/lib/$MA/nss usr/lib/$MA/ 2>/dev/null || true
+for l in /usr/lib/$MA/libsoftokn3.so /usr/lib/$MA/libfreeblpriv3.so /usr/lib/$MA/libnssckbi.so; do [ -e "$l" ] && cp -L "$l" usr/lib/$MA/; done
+mkdir -p usr/lib/$MA/gdk-pixbuf-2.0
+cp -a /usr/lib/$MA/gdk-pixbuf-2.0/2.10.0 usr/lib/$MA/gdk-pixbuf-2.0/ 2>/dev/null || true
+for l in usr/lib/$MA/gdk-pixbuf-2.0/2.10.0/loaders/*.so; do [ -e "$l" ] && copy_deps "$l"; done
 # libraries Chromium dlopens for X11 (missing them makes the browser abort at start-up)
 for l in libX11-xcb.so.1 libxcb-randr.so.0 libxcb-xfixes.so.0 libxcb-present.so.0 libxcb-sync.so.1 libxcb-dri3.so.0 libxshmfence.so.1 libXxf86vm.so.1 libva.so.2 libva-drm.so.2 libxcb-shm.so.0 libxcb-render.so.0 libxcb-xkb.so.1 libxkbcommon-x11.so.0 libXss.so.1 libXinerama.so.1 libXcursor.so.1 libXrender.so.1; do
-	f=/usr/lib/x86_64-linux-gnu/$l; [ -e "$f" ] || continue
-	[ -e "usr/lib/x86_64-linux-gnu/$l" ] || cp -L "$f" usr/lib/x86_64-linux-gnu/; copy_deps "$f"
+	f=/usr/lib/$MA/$l; [ -e "$f" ] || continue
+	[ -e "usr/lib/$MA/$l" ] || cp -L "$f" usr/lib/$MA/; copy_deps "$f"
 done
 mkdir -p usr/share/icons/Adwaita usr/share/icons/default
 cp -a /usr/share/icons/Adwaita/cursors usr/share/icons/Adwaita/ 2>/dev/null || true
@@ -100,10 +109,10 @@ for x in $(for p in bluez bluez-alsa-utils libasound2-plugin-bluez; do dpkg -L $
 cp -a /etc/mke2fs.conf etc/ 2>/dev/null || true
 
 # ---------- Rudolf OS system programs and scripts
-gcc -O2 -o usr/bin/rudolf-display "$SYS/rudolf-display.c" -lX11 /usr/lib/x86_64-linux-gnu/libXtst.so.6 /usr/lib/x86_64-linux-gnu/libXfixes.so.3 /usr/lib/x86_64-linux-gnu/libXrandr.so.2 -lm
+gcc -O2 -o usr/bin/rudolf-display "$SYS/rudolf-display.c" -lX11 /usr/lib/$MA/libXtst.so.6 /usr/lib/$MA/libXfixes.so.3 /usr/lib/$MA/libXrandr.so.2 -lm
 gcc -O2 -o usr/bin/rudolf-launch "$SYS/rudolf-launch.c"
 gcc -O2 -o usr/bin/rudolf-memguard "$SYS/rudolf-memguard.c"
-gcc -O2 -o usr/bin/rudolf-remote "$SYS/rudolf-remote.c" -lssl -lcrypto -lX11 -lXext /usr/lib/x86_64-linux-gnu/libXtst.so.6 -lz   # 1.5.0: remote access
+gcc -O2 -o usr/bin/rudolf-remote "$SYS/rudolf-remote.c" -lssl -lcrypto -lX11 -lXext /usr/lib/$MA/libXtst.so.6 -lz   # 1.5.0: remote access
 gcc -O2 -o usr/bin/rudolfd "$SYS/rudolfd.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
 gcc -O2 -o usr/bin/rpk "$SYS/rpk.c" -lcrypto
 gcc -O2 -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl
@@ -126,7 +135,7 @@ fi
 # where this build looks for system updates (set UPDATE_URL when building releases)
 mkdir -p etc/rudolf; printf "%s\n" "${UPDATE_URL:-}" > etc/rudolf/update-url
 gcc -O2 -static -o usr/bin/cdp-eval "$SYS/cdp-eval.c"
-cp -L /usr/lib/x86_64-linux-gnu/libXtst.so.6 usr/lib/x86_64-linux-gnu/
+cp -L /usr/lib/$MA/libXtst.so.6 usr/lib/$MA/
 copy_deps usr/bin/rudolf-display usr/bin/rudolf-remote usr/bin/rudolfd usr/bin/rpk usr/bin/rudolf-update usr/bin/rudolf-apps usr/bin/rudolf-portal usr/bin/rudolf-debian usr/bin/rudolf-ai
 cp -a "$SYS/root/." .
 # 1.5.7 (plan Part 4): the Lite desktop engine (WebKitGTK), when this machine has it (the release workflow always does)
@@ -162,12 +171,12 @@ if [ -x "$FPS/usr/bin/flatpak" ]; then
 	cp -a "$FPS/usr/bin/flatpak" "$FPS/usr/bin/bwrap" usr/bin/
 	mkdir -p usr/libexec usr/share/dbus-1 etc/profile.d etc/flatpak/remotes.d var/lib/flatpak
 	cp -a "$FPS/usr/libexec/." usr/libexec/
-	cp -a "$FPS/usr/lib/x86_64-linux-gnu/"libflatpak.so* "$FPS/usr/lib/x86_64-linux-gnu/"libostree-1.so* usr/lib/x86_64-linux-gnu/
+	cp -a "$FPS/usr/lib/$MA/"libflatpak.so* "$FPS/usr/lib/$MA/"libostree-1.so* usr/lib/$MA/
 	cp -a "$FPS/usr/share/flatpak" usr/share/
 	cp -a "$FPS/usr/share/dbus-1/." usr/share/dbus-1/
 	cp -a "$FPS/etc/profile.d/." etc/profile.d/ 2>/dev/null || true
 	copy_deps usr/bin/flatpak usr/bin/bwrap usr/libexec/flatpak-* usr/libexec/revokefs-fuse \
-		usr/lib/x86_64-linux-gnu/libflatpak.so.0 usr/lib/x86_64-linux-gnu/libostree-1.so.1
+		usr/lib/$MA/libflatpak.so.0 usr/lib/$MA/libostree-1.so.1
 fi
 for b in dbus-daemon dbus-uuidgen gpg gpgv gpgconf gpg-agent fusermount3; do
 	[ -x /usr/bin/$b ] && cp -L /usr/bin/$b usr/bin/ && copy_deps usr/bin/$b
@@ -183,33 +192,33 @@ if [ -x "$XS/usr/bin/Xorg" ]; then
 	cp -a "$XS/usr/bin/Xorg" usr/bin/
 	mkdir -p usr/lib/xorg var/lib/xkb
 	cp -a "$XS/usr/lib/xorg/modules" usr/lib/xorg/
-	cp -a "$XS/usr/lib/x86_64-linux-gnu/"libxcvt.so* usr/lib/x86_64-linux-gnu/
+	cp -a "$XS/usr/lib/$MA/"libxcvt.so* usr/lib/$MA/
 	# Mesa 25 (all GPU drivers are in libgallium; dri/*.so and gbm/dri_gbm.so are small loaders)
-	ML=/usr/lib/x86_64-linux-gnu
-	mkdir -p usr/lib/x86_64-linux-gnu/dri usr/lib/x86_64-linux-gnu/gbm usr/share/glvnd/egl_vendor.d usr/share/drirc.d
-	cp -a $ML/dri/. usr/lib/x86_64-linux-gnu/dri/
-	cp -a $ML/gbm/dri_gbm.so usr/lib/x86_64-linux-gnu/gbm/
-	cp -L $ML/libEGL.so.1 $ML/libEGL_mesa.so.0 $ML/libGLdispatch.so.0 $ML/libGL.so.1 $ML/libGLX.so.0 $ML/libgbm.so.1 $ML/libepoxy.so.0 usr/lib/x86_64-linux-gnu/
-	for l in $ML/libgallium-*.so; do cp -L "$l" usr/lib/x86_64-linux-gnu/; done
+	ML=/usr/lib/$MA
+	mkdir -p usr/lib/$MA/dri usr/lib/$MA/gbm usr/share/glvnd/egl_vendor.d usr/share/drirc.d
+	cp -a $ML/dri/. usr/lib/$MA/dri/
+	cp -a $ML/gbm/dri_gbm.so usr/lib/$MA/gbm/
+	cp -L $ML/libEGL.so.1 $ML/libEGL_mesa.so.0 $ML/libGLdispatch.so.0 $ML/libGL.so.1 $ML/libGLX.so.0 $ML/libgbm.so.1 $ML/libepoxy.so.0 usr/lib/$MA/
+	for l in $ML/libgallium-*.so; do cp -L "$l" usr/lib/$MA/; done
 	cp /usr/share/glvnd/egl_vendor.d/50_mesa.json usr/share/glvnd/egl_vendor.d/
 	cp -a /usr/share/drirc.d/. usr/share/drirc.d/ 2>/dev/null || true
-	copy_deps usr/bin/Xorg usr/lib/xorg/modules/*.so usr/lib/xorg/modules/drivers/*.so usr/lib/x86_64-linux-gnu/libgallium-*.so \
-		usr/lib/x86_64-linux-gnu/dri/libdril_dri.so usr/lib/x86_64-linux-gnu/gbm/dri_gbm.so usr/lib/x86_64-linux-gnu/libEGL_mesa.so.0 \
-		usr/lib/x86_64-linux-gnu/libEGL.so.1 usr/lib/x86_64-linux-gnu/libepoxy.so.0
+	copy_deps usr/bin/Xorg usr/lib/xorg/modules/*.so usr/lib/xorg/modules/drivers/*.so usr/lib/$MA/libgallium-*.so \
+		usr/lib/$MA/dri/libdril_dri.so usr/lib/$MA/gbm/dri_gbm.so usr/lib/$MA/libEGL_mesa.so.0 \
+		usr/lib/$MA/libEGL.so.1 usr/lib/$MA/libepoxy.so.0
 fi
 
 # ---------- sound server: PulseAudio 16.1 (built by sndbuild.sh)
 SNS=$SRC/snd/stage
 if [ -x "$SNS/usr/bin/pulseaudio" ]; then
 	cp -a "$SNS/usr/bin/pulseaudio" "$SNS/usr/bin/pactl" usr/bin/
-	mkdir -p usr/lib/x86_64-linux-gnu etc/pulse usr/share/pulseaudio
-	cp -a "$SNS/usr/lib/x86_64-linux-gnu/"libpulse.so* "$SNS/usr/lib/x86_64-linux-gnu/"libpulse-simple.so* usr/lib/x86_64-linux-gnu/
-	cp -a "$SNS/usr/lib/x86_64-linux-gnu/pulseaudio" usr/lib/x86_64-linux-gnu/
+	mkdir -p usr/lib/$MA etc/pulse usr/share/pulseaudio
+	cp -a "$SNS/usr/lib/$MA/"libpulse.so* "$SNS/usr/lib/$MA/"libpulse-simple.so* usr/lib/$MA/
+	cp -a "$SNS/usr/lib/$MA/pulseaudio" usr/lib/$MA/
 	cp -a "$SNS/etc/pulse/." etc/pulse/
 	# only the session starts the sound server
 	printf "\nautospawn = no\n" >> etc/pulse/client.conf
 	cp -a "$SNS/usr/share/pulseaudio/." usr/share/pulseaudio/
-	copy_deps usr/bin/pulseaudio usr/bin/pactl usr/lib/x86_64-linux-gnu/pulseaudio/*.so usr/lib/x86_64-linux-gnu/pulseaudio/modules/*.so
+	copy_deps usr/bin/pulseaudio usr/bin/pactl usr/lib/$MA/pulseaudio/*.so usr/lib/$MA/pulseaudio/modules/*.so
 fi
 [ -d /usr/share/alsa ] && [ ! -d usr/share/alsa/ucm2 ] && cp -a /usr/share/alsa/. usr/share/alsa/ 2>/dev/null || true
 
@@ -244,5 +253,5 @@ ldconfig -r "$OUT" 2>/dev/null || true
 mkdir -p var/cache/fontconfig; fc-cache -s -y "$OUT" >/dev/null 2>&1 || true
 # ---------- record which distribution packages the copied files came from (for licences / source offer)
 python3 "$HERE/pkgmanifest.py" "$OUT" "$OUT/usr/share/doc/rudolf"
-node "$HERE/credits.js" "$CHROME/resources.pak" usr/share/doc/rudolf/chromium-credits.txt >/dev/null
+[ "$CHROME" = none ] || node "$HERE/credits.js" "$CHROME/resources.pak" usr/share/doc/rudolf/chromium-credits.txt >/dev/null
 echo "Rudolf OS root file system: $(du -sh "$OUT" | cut -f1)"
