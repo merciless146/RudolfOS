@@ -24,7 +24,7 @@ i=0; while [ $i -lt 90 ]; do
   S="$(cat /run/rudolf/desktop-engine 2>/dev/null)|$([ -e /run/rudolf/heartbeat ] && echo up)|$(pidof Xorg rudolf-webkit WebKitWebProcess | wc -w)"
   echo "STATUS $S"; case "$S" in webkit\|up*) break;; esac; i=$((i+1)); sleep 10; done
 echo "== uname"; uname -m; echo "== unverified"; cat /etc/rudolf/unverified; echo "== engine"; cat /run/rudolf/engine-choice /run/rudolf/desktop-engine
-echo "== dri"; ls /dev/dri /dev/fb* /sys/class/graphics; cat /proc/fb; grep -iE "drm|virtio|fb" /proc/modules; echo "== free"; free -m; echo "== session.log"; tail -50 /run/rudolf/session.log
+echo "== dri"; ls /dev/dri /dev/fb* /sys/class/graphics; cat /proc/fb; grep -iE "drm|virtio|fb" /proc/modules; echo "== free"; free -m; echo "== session.log"; tail -80 /run/rudolf/session.log
 echo "== Xorg"; grep -E "\((EE|WW)\)" /run/rudolf/Xorg.log | head -20; echo "== initramfs.log"; tail -20 /etc/rudolf/initramfs.log
 echo "== dmesg"; dmesg | tail -40; echo "== ps"; ps -o pid,ppid,stat,args | grep -v "\[" | head -45
 echo "== waiting"; for p in $(pidof rudolf-init sh); do echo "$p $(cat /proc/$p/wchan 2>/dev/null) $(tr '\0' ' ' < /proc/$p/cmdline | cut -c1-80)"; done | head -20
