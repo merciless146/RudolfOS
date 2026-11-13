@@ -14,6 +14,12 @@
  *
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
+/* 1.5.9: Flathub's name for this processor (docs/plan-1.5.9.md Part 3) */
+#if defined(__aarch64__)
+#define FP_ARCH "aarch64"
+#else
+#define FP_ARCH "x86_64"
+#endif
 #define _GNU_SOURCE
 #include <sys/mount.h>
 #include <limits.h>
@@ -942,7 +948,7 @@ static void api_wifi(struct req *r, const char *what)
 #define FLATHUB_REPO "https://dl.flathub.org/repo/flathub.flatpakrepo"
 #endif
 #define CATALOG "/var/lib/flatpak/rudolf-catalog.json"
-#define APPSTREAM_GZ "/var/lib/flatpak/appstream/flathub/x86_64/active/appstream.xml.gz"
+#define APPSTREAM_GZ "/var/lib/flatpak/appstream/flathub/" FP_ARCH "/active/appstream.xml.gz"
 #define APPSCONF PERSIST "/os/apps.conf"
 static int app_id_ok(const char *id)
 {
@@ -1071,7 +1077,7 @@ static void api_apps(struct req *r, const char *what)
 			if (!access(f, R_OK)) { serve_file(r, f); return; }
 		}
 		if (app_id_ok(id)) for (int i = 0; i < 2; i++) {
-			snprintf(f, sizeof f, "/var/lib/flatpak/appstream/flathub/x86_64/active/icons/%s/%s.png", i ? "64x64" : "128x128", id);
+			snprintf(f, sizeof f, "/var/lib/flatpak/appstream/flathub/" FP_ARCH "/active/icons/%s/%s.png", i ? "64x64" : "128x128", id);
 			if (!access(f, R_OK)) { serve_file(r, f); return; }
 		}
 		reply_err(r->fd, 404, "no icon"); return;

@@ -7,6 +7,12 @@
  *
  * RA_APPSTREAM overrides the catalogue file, RA_EXPORTS the exported launchers folder (tests).
  * Copyright (C) 2026 the Rudolf OS authors. SPDX-License-Identifier: GPL-2.0-or-later */
+/* 1.5.9: Flathub's name for this processor (docs/plan-1.5.9.md Part 3) */
+#if defined(__aarch64__)
+#define FP_ARCH "aarch64"
+#else
+#define FP_ARCH "x86_64"
+#endif
 #define _GNU_SOURCE
 #include <ctype.h>
 #include <dirent.h>
@@ -16,7 +22,7 @@
 #include <sys/stat.h>
 #include <zlib.h>
 
-#define APPSTREAM "/var/lib/flatpak/appstream/flathub/x86_64/active/appstream.xml.gz"
+#define APPSTREAM "/var/lib/flatpak/appstream/flathub/" FP_ARCH "/active/appstream.xml.gz"
 #define EXPORTS "/var/lib/flatpak/exports/share"
 
 typedef struct { char *b; size_t n, cap; } str;

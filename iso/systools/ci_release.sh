@@ -19,6 +19,8 @@ python3 systools/deadcheck.py
 W=$(realpath -m work); rm -rf "$W"; mkdir -p "$W/new"
 export SOURCE_DATE_EPOCH=1760000000
 pv() { sed -n "s/^$1 //p" "$PREV/manifest.txt"; }
+# (1.5.9, plan Part 3: the build machine's library directory, x86_64-linux-gnu or aarch64-linux-gnu)
+MA=$(gcc -print-multiarch); [ -n "$MA" ] || MA=x86_64-linux-gnu
 MK="mksquashfs"; SQ="-comp xz -Xbcj x86 -b 1M -noappend -all-root -quiet -no-progress"
 NOTES=(); CH=$(pv chromium); KV=$(pv kernel)
 for f in vmlinuz base.sfs chromium.sfs desktop.sfs modules.sfs; do cp "$PREV/$f" "$W/new/$f"; done
@@ -154,13 +156,13 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
 	B=$W/bbin; mkdir -p "$B"
 	# the same commands as mkrootfs.sh, on the same Ubuntu 24.04 the base layer's libraries come from
-	gcc -O2 -o "$B/rudolf-display" sys/rudolf-display.c -lX11 /usr/lib/x86_64-linux-gnu/libXtst.so.6 /usr/lib/x86_64-linux-gnu/libXfixes.so.3 /usr/lib/x86_64-linux-gnu/libXrandr.so.2 -lm
+	gcc -O2 -o "$B/rudolf-display" sys/rudolf-display.c -lX11 /usr/lib/$MA/libXtst.so.6 /usr/lib/$MA/libXfixes.so.3 /usr/lib/$MA/libXrandr.so.2 -lm
 	gcc -O2 -o "$B/rudolfd" sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
 	gcc -O2 -o "$B/rudolf-update" sys/rudolf-update.c -lcrypto -ldl
 	gcc -O2 -o "$B/rudolf-launch" sys/rudolf-launch.c
 	gcc -O2 -o "$B/rudolf-memguard" sys/rudolf-memguard.c   # 1.4.7: the memory guard
 	gcc -O2 -o "$B/rudolf-shellfix" sys/rudolf-shellfix.c   # 1.5.8: the shell put into the profile when it changed
-	gcc -O2 -o "$B/rudolf-remote" sys/rudolf-remote.c -lssl -lcrypto -lX11 -lXext /usr/lib/x86_64-linux-gnu/libXtst.so.6 -lz   # 1.5.0: remote access
+	gcc -O2 -o "$B/rudolf-remote" sys/rudolf-remote.c -lssl -lcrypto -lX11 -lXext /usr/lib/$MA/libXtst.so.6 -lz   # 1.5.0: remote access
 	gcc -O2 -static -o "$B/cdp-eval" sys/cdp-eval.c
 	# 1.2.7: the Debian sandbox and the Linux self-check, rebuilt here too (before, only a full build made rudolf-debian)
 	gcc -O2 -o "$B/rudolf-debian" sys/rudolf-debian.c -lcrypto -ldl
@@ -184,14 +186,14 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		bash xbuild.sh > "$W/xbuild.log" 2>&1 || { tail -40 "$W/xbuild.log"; echo "the X server did not build"; exit 1; }
 		XS=src/xorg/stage
 		# GLX is linked with glvnd's libGL.so.1 and libGLX.so.0 (libGLdispatch.so.0 is there for glamor already)
-		for l in libGL.so.1 libGLX.so.0; do sudo cp -L "/usr/lib/x86_64-linux-gnu/$l" "$W/broot/usr/lib/x86_64-linux-gnu/$l"; done
+		for l in libGL.so.1 libGLX.so.0; do sudo cp -L "/usr/lib/$MA/$l" "$W/broot/usr/lib/$MA/$l"; done
 		[ -x "$XS/usr/bin/Xorg" ] && [ -f "$XS/usr/lib/xorg/modules/extensions/libglx.so" ] || { echo "the X server build has no Xorg or GLX module"; exit 1; }
 		for f in "$XS/usr/bin/Xorg" $(find "$XS/usr/lib/xorg/modules" -name '*.so'); do
-			for l in $(LD_LIBRARY_PATH="$XS/usr/lib/x86_64-linux-gnu" ldd "$f" | awk '/=>/{print $3}'); do case "$l" in *libxcvt*) continue;; /*) ;; *) echo "$f: a library it needs is missing on the build machine"; exit 1;; esac; [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$f needs $l, which the base layer does not have"; exit 1; }; done
+			for l in $(LD_LIBRARY_PATH="$XS/usr/lib/$MA" ldd "$f" | awk '/=>/{print $3}'); do case "$l" in *libxcvt*) continue;; /*) ;; *) echo "$f: a library it needs is missing on the build machine"; exit 1;; esac; [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$f needs $l, which the base layer does not have"; exit 1; }; done
 		done
 		sudo install -m 0755 "$XS/usr/bin/Xorg" "$W/broot/usr/bin/Xorg"
 		sudo rm -rf "$W/broot/usr/lib/xorg/modules"; sudo cp -a "$XS/usr/lib/xorg/modules" "$W/broot/usr/lib/xorg/"
-		sudo cp -a "$XS/usr/lib/x86_64-linux-gnu/"libxcvt.so* "$W/broot/usr/lib/x86_64-linux-gnu/"
+		sudo cp -a "$XS/usr/lib/$MA/"libxcvt.so* "$W/broot/usr/lib/$MA/"
 		echo "$XSRC" | sudo tee "$W/broot/usr/lib/xorg/rudolf-xsrc" >/dev/null
 		NOTES+=("X server with GLX")
 	fi
@@ -202,12 +204,12 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	echo "$BTF" | grep -q '/bluetoothd$' && echo "$BTF" | grep -q '/bluetoothctl$' && echo "$BTF" | grep -qE '/bluealsad?$' || { echo "BlueZ or bluez-alsa is missing on the build machine (apt-get install bluez bluez-alsa-utils libasound2-plugin-bluez): $BTF"; exit 1; }
 	for x in $BTF; do [ -f "$x" ] || continue; sudo mkdir -p "$W/broot$(dirname "$x")"; sudo cp -L "$x" "$W/broot$x"
 		case "$x" in *.conf) continue;; esac
-		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/x86_64-linux-gnu/"; done
+		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; done
 	done
 	for x in /usr/sbin/nft /usr/sbin/tune2fs; do
 		[ -x "$x" ] || { echo "$x is missing on the build machine (apt-get install nftables e2fsprogs)"; exit 1; }
 		sudo install -m 0755 "$x" "$W/broot/usr/sbin/${x##*/}"
-		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/x86_64-linux-gnu/"; done
+		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; done
 	done
 	# 1.5.4: ALSA's use case files (alsa-ucm-conf), how PulseAudio sets up the speakers, headphones and microphones of
 	# sound processors (Intel SOF, AMD ACP) and USB sound cards (/usr/lib/rudolf/sound)
