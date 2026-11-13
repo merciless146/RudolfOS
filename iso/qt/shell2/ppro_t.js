@@ -18,6 +18,8 @@ const py = (code, ...args) => cp.execFileSync('python3', ['-c', code, ...args], 
   const b = await chromium.launch({executablePath: process.argv[2] || undefined}); const ctx = await b.newContext({viewport: {width: 1280, height: 760}});
   const p = await ctx.newPage(); p.on('pageerror', e => { errors.push(e.message); console.log('page error:', e.stack.slice(0, 400)) });
   await p.goto('http://127.0.0.1:8096/'); await p.waitForFunction(() => typeof deckApp == 'function' && typeof launch == 'function', null, {timeout: 30000});
+  // (1.5.9: SpreadsheetPro's and PresentPro's code loads when first needed, plan 10.1)
+  await p.evaluate("typeof lazyApp=='function'?Promise.all([lazyApp('sheet'),lazyApp('deck')]):0");
   await p.evaluate("(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});wins.slice().forEach(w=>w.close());USER=USER||ACCTS[0];USER.r='admin';for(const sub of [[],['DOCUMENTS'],['PICTURES']]){const h=homePath(...sub);let n=fs;for(const x of h){if(!n[x])n[x]={};n=n[x]}}return 1})()");
   const q = s => p.evaluate(s); const shot = async n => p.screenshot({path: path.join(SHOT, n + '.png')});
   const key = async (k, n = 1) => { for (let i = 0; i < n; i++) await p.keyboard.press(k) };

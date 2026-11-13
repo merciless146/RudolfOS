@@ -19,8 +19,32 @@ for _m in mods:
     for _n in set(_re.findall(r'^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)',L(_m),_re.M)):
         assert _n not in _seen,f'{_n} is defined in both {_seen.get(_n)} and {_m}: give one of them another name'
         _seen[_n]=_m
+# 1.5.9 (plan 10.1-10.2): self-contained apps are not in the page: each group is a file beside it (www/a/, named by
+# its contents), loaded the first time the app is opened. The app's registration (its regApp line) stays in the page,
+# and a stub of the same name loads the file, then calls the real one (which the file defines anew). A file that
+# cannot load says so, with Try again. lazyApp(group) loads one by hand (WordPro's "Insert a spreadsheet table" and
+# "Make a presentation" need SpreadsheetPro's and PresentPro's code).
+LAZY={'sheet':(['spreng45.js','sprof45.js','spro45.js'],'sheetApp','SpreadsheetPro'),'deck':(['pprof45.js','ppro45.js'],'deckApp','PresentPro')}
+LAZY_CODE={};LAZY_REG={}
+for _g,(_fs,_fn,_nm) in LAZY.items():
+    _c=''
+    for _f in _fs:
+        mods.remove(_f);_t=L(_f)
+        _r=re.search(r"^regApp\('"+_g+r"',.*$",_t,re.M)
+        if _r:LAZY_REG[_g]=_r.group(0);_t=_t[:_r.start()]+'/* (its regApp line is in the page) */'+_t[_r.end():]
+        _c+=_t+'\n'
+    LAZY_CODE[_g]=_c+'LAZY_DONE.'+_g+'=1;\n'
+_lz='const LAZY_DONE={},LAZY_P={};let LAZY={};\n'
+_lz+="""function lazyApp(g){if(LAZY_DONE[g])return Promise.resolve();return LAZY_P[g]||(LAZY_P[g]=new Promise((res,rej)=>{const s=document.createElement('script');s.src=LAZY[g];s.async=false;
+ s.onload=()=>LAZY_DONE[g]?res():(delete LAZY_P[g],rej(new Error('incomplete')));s.onerror=()=>{delete LAZY_P[g];s.remove();rej(new Error('not found'))};document.head.appendChild(s)}))}
+function lazyFail(name,g,retry){try{notify(name+' could not be loaded','Its files could not be read ('+LAZY[g]+'). Try again, or restart if it keeps happening.',{kind:'error',action:retry})}catch(e){}}
+"""
+for _g,(_fs,_fn,_nm) in LAZY.items():
+    _lz+=f"async function {_fn}(...a){{const me={_fn};try{{await lazyApp('{_g}')}}catch(e){{lazyFail('{_nm}','{_g}',()=>{_fn}(...a));return null}}if({_fn}===me)throw new Error('{_nm}: not loaded');return {_fn}(...a)}}\n"
+    _lz+=LAZY_REG[_g]+'\n'
 changes=open(os.path.join(here,'../CHANGELOG.md')).read()   # "What's new" and the notice after an update
 code='const PINYIN_JSON='+json.dumps(pinyin)+';\nconst RCHANGES='+json.dumps(changes).replace('</','<\\/')+';\n'+'\n'.join(L(m) for m in mods)
+code=code+'\n'+_lz
 anchor="(function(){const d=document.createElement('div');d.className='ic tr';"
 rep(anchor,code+'\n'+anchor)
 css=L('styles25.css')+"\n@font-face{font-family:'OpenDyslexic';src:url(data:font/woff2;base64,"+od+") format('woff2');font-weight:400}@font-face{font-family:'OpenDyslexic';src:url(data:font/woff2;base64,"+odb+") format('woff2');font-weight:700}\n"
@@ -117,6 +141,14 @@ for _k,_v in _D.items():
         if isinstance(_v[_f],str) and _v[_f].startswith('data:'):_v[_f]=_out(_v[_f])
 s=s[:_i]+'const DYN='+json.dumps(_D,ensure_ascii=False,separators=(',',':'))+';'+s[_j:]
 s=re.sub(r"(@font-face\{[^}]*?src:url\()(data:font/[a-z0-9]+;base64,[A-Za-z0-9+/=]+)(\))",lambda m:m.group(1)+_out(m.group(2))+m.group(3),s)
+# ...and the SNES core (163 KB of WebAssembly as base64): fetched when a SNES game is first played
+_EXT['application/wasm']='wasm'
+s=re.sub(r"const EMU_SNES_WASM='([A-Za-z0-9+/=]+)';",lambda m:"const EMU_SNES_URL='"+_out('data:application/wasm;base64,'+m.group(1))+"';",s)
+assert 'EMU_SNES_URL' in s
+# the lazy groups' files (named by their contents, like the pictures)
+_EXT['text/javascript']='js'
+_LZ={_g:_out('data:text/javascript;base64,'+base64.b64encode(_c.encode()).decode()) for _g,_c in LAZY_CODE.items()}
+s=s.replace("const LAZY_DONE={},LAZY_P={};let LAZY={};","const LAZY_DONE={},LAZY_P={};let LAZY="+json.dumps(_LZ)+";",1)
 for _n in os.listdir(_A):
     if _n not in _keep:os.remove(os.path.join(_A,_n))
 open(O,'w').write(s);print(len(s),len(_keep),'files in a/')

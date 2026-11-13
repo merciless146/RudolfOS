@@ -31,6 +31,7 @@ const api = (a, q) => {
 };
 const srv = http.createServer((q, s) => { const [u0, qs] = q.url.split('?'); const u = decodeURIComponent(u0);
   q.on('data', () => {}); q.on('end', () => {
+    if (u.startsWith('/a/')) { const f = path.join(WWW, path.normalize(u)); if (f.startsWith(WWW) && fs.existsSync(f)) { s.writeHead(200, {'content-type': u.endsWith('.js') ? 'text/javascript' : u.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream'}); return s.end(fs.readFileSync(f)) } }   /* (1.5.9: files beside the page) */ 
     if (u == '/' || u == '/index.html') { s.writeHead(200, {'content-type': 'text/html'});
       return s.end(fs.readFileSync(path.join(WWW, 'index.html'), 'utf8').replace('<head>', '<head><script>window.RUDOLFD={token:"t",base:"",boot:"uefi",media:"disk",live:0,recovery:0};</script>')) }
     if (u.startsWith('/api/')) { if (u == '/api/events/wait') return setTimeout(() => { s.writeHead(200, {'content-type': 'application/json'}); s.end('{"ok":true,"events":[]}') }, 20000);

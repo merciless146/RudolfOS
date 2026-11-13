@@ -9,12 +9,14 @@ const srv = http.createServer((q, s) => { const u = decodeURIComponent(q.url.spl
   if (u == '/' || u == '/index.html') { s.writeHead(200, {'content-type': 'text/html'}); return s.end(fs.readFileSync(path.join(WWW, 'index.html'))) }
   if (u == '/light.html') { s.writeHead(200, {'content-type': 'text/html'}); return s.end('<body style="background:#fff;color:#111"><h1>Light</h1><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" width=10></body>') }
   if (u == '/dark.html') { s.writeHead(200, {'content-type': 'text/html'}); return s.end('<body style="background:#111;color:#eee"><h1>Dark</h1></body>') }
-  s.writeHead(404); s.end() }).listen(8092, '127.0.0.1');
+  if (u.startsWith('/a/')) { const f = path.join(WWW, path.normalize(u)); if (f.startsWith(WWW) && fs.existsSync(f)) { s.writeHead(200, {'content-type': u.endsWith('.js') ? 'text/javascript' : u.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream'}); return s.end(fs.readFileSync(f)) } }   /* (1.5.9: files beside the page) */ s.writeHead(404); s.end() }).listen(8092, '127.0.0.1');
 const wait = ms => new Promise(r => setTimeout(r, ms));
 (async () => {
   const b = await chromium.launch({executablePath: process.argv[2] || undefined}); const ctx = await b.newContext({viewport: {width: 1280, height: 760}});
   const p = await ctx.newPage(); p.on('pageerror', e => { errors.push(e.message); console.log('page error:', e.stack.slice(0, 400)) });
   await p.goto('http://127.0.0.1:8092/'); await p.waitForFunction(() => typeof sheetApp == 'function' && typeof offNotey == 'function', null, {timeout: 30000});
+  // (1.5.9: SpreadsheetPro's and PresentPro's code loads when first needed, plan 10.1)
+  await p.evaluate("typeof lazyApp=='function'?Promise.all([lazyApp('sheet'),lazyApp('deck')]):0");
   await p.evaluate("(()=>{try{svj('bd95setup',1)}catch(e){}localStorage.removeItem('bd95wp');['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});wins.slice().forEach(w=>{w.__force=1;w.close()});USER=USER||ACCTS[0];USER.r='admin';return 1})()");
   const q = s => p.evaluate(s); const shot = async n => p.screenshot({path: path.join(SHOT, n + '.png')});
   // ---------------- SpreadsheetPro ----------------

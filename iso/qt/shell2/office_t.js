@@ -6,12 +6,14 @@ const SHOT = process.env.SHOTS || path.join(os.tmpdir(), 'office-shots'); fs.mkd
 const WWW = path.join(__dirname, '../../../iso/www');
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 300) : '')) };
 const errors = [];
-const srv = http.createServer((q, s) => { const u = decodeURIComponent(q.url.split('?')[0]); if (u == '/' || u == '/index.html') { s.writeHead(200, {'content-type': 'text/html'}); return s.end(fs.readFileSync(path.join(WWW, 'index.html'))) } s.writeHead(404); s.end() }).listen(8093, '127.0.0.1');
+const srv = http.createServer((q, s) => { const u = decodeURIComponent(q.url.split('?')[0]); if (u == '/' || u == '/index.html') { s.writeHead(200, {'content-type': 'text/html'}); return s.end(fs.readFileSync(path.join(WWW, 'index.html'))) } if (u.startsWith('/a/')) { const f = path.join(WWW, path.normalize(u)); if (f.startsWith(WWW) && fs.existsSync(f)) { s.writeHead(200, {'content-type': u.endsWith('.js') ? 'text/javascript' : u.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream'}); return s.end(fs.readFileSync(f)) } }   /* (1.5.9: files beside the page) */ s.writeHead(404); s.end() }).listen(8093, '127.0.0.1');
 const wait = ms => new Promise(r => setTimeout(r, ms));
 (async () => {
   const b = await chromium.launch({executablePath: process.argv[2] || undefined}); const ctx = await b.newContext({viewport: {width: 1280, height: 760}});
   const open = async () => { const p = await ctx.newPage(); p.on('pageerror', e => { errors.push(e.message); console.log('page error:', e.stack.slice(0, 300)) });
     await p.goto('http://127.0.0.1:8093/'); await p.waitForFunction(() => typeof sheetApp == 'function' && typeof IDB != 'undefined', null, {timeout: 30000}); await p.evaluate('IDB.ready');
+  // (1.5.9: SpreadsheetPro's and PresentPro's code loads when first needed, plan 10.1)
+  await p.evaluate("typeof lazyApp=='function'?Promise.all([lazyApp('sheet'),lazyApp('deck')]):0");
     await p.evaluate("(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});wins.slice().forEach(w=>{w.__force=1;w.close()});USER=USER||ACCTS[0];USER.r='admin';const h=homePath();let n=fs;for(const x of h){if(!n[x])n[x]={};n=n[x]}return 1})()"); return p };
   let p = await open(); const q = s => p.evaluate(s);
   // autosave: changes are copied every minute (the test runs the minute's work at once)
