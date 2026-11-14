@@ -1,6 +1,6 @@
 /* A stand-in X client for wmfocus_t.sh (1.5.2): the desktop (class RudolfDesktop), or an app window that behaves
  * like Wine's: WM_PROTOCOLS with WM_TAKE_FOCUS and WM_DELETE_WINDOW, input hint on. It logs what a window manager
- * sends it, one line each, to stdout: "id 0x..", "take_focus TIME", "focus_in", "geom X Y W H".
+ * sends it, one line each, to stdout: "id 0x..", "take_focus TIME", "focus_in", "geom X Y W H", "delete" (then it ends).
  *   xwmclient desktop | app | borderless W H (a Wine-style borderless window, then sized W x H) | resize ID W H |
  *             full ID 0|1|2 (full screen off/on/toggle) | focus ID | getfocus | wmstate ID (1 = NormalState)
  *             | stack (1.5.6: the viewable top-level windows, bottom to top) | inno (1.5.6: an app window, then a dialog
@@ -74,6 +74,8 @@ int main(int argc, char **argv)
 	for (;;) {
 		XEvent e; XNextEvent(d, &e);
 		if (e.type == ClientMessage && (Atom)e.xclient.data.l[0] == take) printf("take_focus %ld\n", e.xclient.data.l[1]);
+		/* (1.5.9: a window manager's close button) */
+		else if (e.type == ClientMessage && (Atom)e.xclient.data.l[0] == XInternAtom(d, "WM_DELETE_WINDOW", False)) { printf("delete\n"); return 0; }
 		else if (e.type == FocusIn && e.xfocus.detail != NotifyPointer) printf("focus_in\n");
 		else if (e.type == ConfigureNotify) printf("geom %d %d %d %d\n", e.xconfigure.x, e.xconfigure.y, e.xconfigure.width, e.xconfigure.height);
 	}

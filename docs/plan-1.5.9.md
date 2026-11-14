@@ -730,13 +730,16 @@ GDK event filter, so one GTK process does both).
   opened by an open app window (the page's own `window.open`, kept as webNativeOpen), which WebKit keeps in that process,
   so they share one WebKit web process (found in step 3: a view merely made `related-view` to another, or to a hidden
   one, got a process of its own or drew nothing, WebKitGTK 2.52), and one web context (the page's storage, ~/.rudolf-native, as
-  ~/.rudolf-webkit is Lite's). The frame's title follows the page's title; ✕ calls `window.__oneAppClose()` (the app may
+  ~/.rudolf-webkit is Lite's). All app windows have one user content manager (WebKit gives a window opened by another its opener's anyway), so
+  each page says which window it is (`#app=NAME&w=N`, in each `rudolfNative` message). The frame's title follows the
+  page's title; ✕ calls `window.__oneAppClose()` (the app may
   ask to save), a second ✕ after 5 s closes it anyway; the page's `close` closes the window. A `rudolfNative` message
   `open` opens another app's window. A web process that ends is reported in each window with Reload.
 - **The taskbar's list:** the open windows (ours and the others), the active one highlighted; a click focuses, or
   minimises the active one; a pinned app with a window open focuses it rather than opening another.
 - rudolf-display keeps feeding input and copying the screen (software display) but stops managing windows while
-  /run/rudolf/wm-native exists (rudolf-native makes it at start and removes it at exit).
+  /run/rudolf/wm-native exists (the session makes it before starting rudolf-native and removes it after: rudolf-native
+  runs as the desktop user, who cannot write /run/rudolf).
 
 **Step 5: the session.** Settings › System health › Desktop engine gets **Native (test)**; rudolfd's desktop/engine
 takes `engine=native` (when /usr/bin/rudolf-native is there), kept in /persist/etc/rudolf-desktop-engine as Lite's.

@@ -733,7 +733,8 @@ static void on_sig(int s) { (void)s; quit = 1; }
  *    the keyboard (Wine counts a window as active only then: before, a Windows game got the arrow keys but not the
  *    letters it reads through DirectInput); _NET_WM_STATE requests (full screen and the rest) are carried out, and
  *    a full-screen window covers the whole screen, taskbar too, as games do; mapped windows get WM_STATE.
- * Pop-ups and menus (override-redirect) are left alone. */
+ * Pop-ups and menus (override-redirect) are left alone.
+ * 1.5.9: none of this while /run/rudolf/wm-native exists (the native desktop engine is the window manager). */
 static int wm_strut_top, wm_strut_bottom;
 static long long wm_mtime, cmd_mtime;
 static char wm_mode[48] = "desktop";
@@ -924,8 +925,12 @@ static Window dlg_owner(Window t)
 static Window known[MAXWIN]; static int nknown;
 static Window cur_list[MAXWIN]; static int ncur;   /* app windows, bottom to top */
 
+/* 1.5.9 (plan Part 12): the native desktop engine (rudolf-native) is the window manager while the session keeps
+   /run/rudolf/wm-native: then this program only feeds input and shows the screen */
+static int wm_native(void) { return !access("/run/rudolf/wm-native", F_OK); }
 static void fit_windows(void)
 {
+	if (wm_native()) return;
 	Window root = DefaultRootWindow(dpy), r, p, *kids = NULL, desktop = 0, chromium = 0, tr;
 	unsigned n = 0;
 	int sw = DisplayWidth(dpy, DefaultScreen(dpy)), sh = DisplayHeight(dpy, DefaultScreen(dpy)), ax = 0, ay = 0;
@@ -1053,6 +1058,7 @@ static int inside(Window w, Window a)
 }
 static void click_focus(void)
 {
+	if (wm_native()) return;
 	if (strncmp(wm_mode, "win ", 4)) return;
 	Window shown = (Window)strtoul(wm_mode + 4, NULL, 16), r, c, f; int rx, ry, wx, wy, rv; unsigned m;
 	if (!XQueryPointer(dpy, DefaultRootWindow(dpy), &r, &c, &rx, &ry, &wx, &wy, &m) || c != shown) return;
