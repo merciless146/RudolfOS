@@ -100,7 +100,7 @@ class H(http.server.BaseHTTPRequestHandler):
             sid = s['id'] if s else ''
             st = sget(data, 'bd95set:' + sid) if sid else None
             if st is None: st = sget(data, 'bd95set') or {}
-            K = ["bs", "b1", "b2", "dyn", "dm", "lat", "wpimg", "wpfit", "tb", "tbstyle", "tbac", "tbacm", "tbbstyle", "tbbac", "tbbacm", "twstyle", "twacm", "accent", "darkui", "ck", "h24", "df", "tz", "doff", "ff", "fs", "lang", "scale", "icons", "icstyle"]
+            K = ["bs", "b1", "b2", "dyn", "dm", "lat", "wpimg", "wpfit", "tb", "tbstyle", "tbac", "tbacm", "tbbstyle", "tbbac", "tbbacm", "twstyle", "twacm", "accent", "darkui", "ck", "h24", "df", "tz", "doff", "ff", "fs", "lang", "scale", "icons", "icstyle", "nl", "dnd", "sr", "mag", "cb", "vk", "touch"]
             pins = sget(data, 'bd95pins:' + (sid or 'nobody'))
             nt = sget(data, 'bd95notif:' + (sid or 'nobody')) or []
             wall = bool(sid and st.get('wpimg') and rd('wall.jpg'))
@@ -112,7 +112,7 @@ class H(http.server.BaseHTTPRequestHandler):
             wg = own['list'] if wgown else (sget(data, 'bd95widgets:' + sid) if sid else None)
             return self.j({'ok': True, 'gen': L.get('gen', 1), 'acct': sid, 's': {k: st[k] for k in K if k in st},
                            'pins': pins if isinstance(pins, list) else ["explorer", "browser", "notepad", "settings"], 'notes': len(nt), 'wallpaper': wall, 'wpacct': sid if wall else '',
-                           'widgets': wg if isinstance(wg, list) else [], 'wgown': wgown, 'wloc': sget(data, 'bd95wloc'), 'wunit': sget(data, 'bd95wunit') or '', 'cal': (sget(data, 'bd95cal:' + sid) if sid else None) or []})
+                           'widgets': wg if isinstance(wg, list) else [], 'wgown': wgown, 'wloc': sget(data, 'bd95wloc'), 'wunit': sget(data, 'bd95wunit') or '', 'cal': (sget(data, 'bd95cal:' + sid) if sid else None) or [], 'notif': nt if isinstance(nt, list) else []})
         if w == 'desktop/widgets':
             if m == 'POST':
                 sid = s['id'] if s else ''; open(os.path.join(D, 'widgets.json'), 'w').write(json.dumps({'list': json.loads(b), 'was': data.get('bd95widgets:' + sid) or ''})); return self.j({'ok': True})
