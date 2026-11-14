@@ -300,10 +300,23 @@ calendar, except on its date, where the page's calendar closes and opens again a
 treats the date's <small> as outside the clock). same_t.sh: new cases fly-cal, fly-cal-next, fly-cal-dark, fly-cal-top,
 fly-vol; the behaviour on both engines: `SAME_SCRIPT=flybeh_t.js sh same_t.sh` 23/23 (19 steps compared, with the
 page's own outcomes). Known differences left: the slider's own sound when let go (sfx('notify')), and the slider and
-the checkbox by the keyboard; the network's and the battery's pop-ups, quick settings (☰), the notifications' pop-ups
-and centre (🔔), the taskbar at the left or right, auto-hide, the workspaces' buttons and the 🎙️ indicator are item 3's
-second part's second half.
-**Next:** item 3's second part's second half, then items 4 to 12 in order, one PR each, stacked, each passing same_t.sh for its
+the checkbox by the keyboard. (PR #328, merged.)
+Item 3, second part, second half (the PR after #328): quick settings (☰, shell25.js #qsp: the page's eight switches as
+tiles, three to a row, as tall as their names; the network's line (net31Desc); Lock, Settings, Power) and the
+notifications' centre (🔔, #ncp: Do not disturb, Clear all, each notification with its time and ✕, a failure's red
+edge and Blitzen's ⚡ Why? as bzWhyBtn decides; the list scrolled with the wheel past 70 % of the screen's height),
+drawn by the shell as the other pop-ups; the battery opens Settings' System health (pwrShow). A switch, Do not disturb,
+✕, Clear all and Why? are the page's own: a page does them (#app=do-qs&item=WORDS, #app=do-nc&op=...; Why? in a window
+of its own), the shell shows the change at once and reads the page's storage back after. rudolfd's desktop/settings
+gives the switches (nl, dnd, sr, mag, cb, vk, touch) and the notifications' list ("notif"). same_t.sh: new cases
+fly-qs, fly-qs-on, fly-qs-dark, fly-nc, fly-nc-empty; the behaviour on both engines: `SAME_SCRIPT=qsbeh_t.js sh
+same_t.sh` 15/15 (14 steps compared: the switches and what the page keeps, a notification dismissed, Do not disturb,
+Clear all, one panel giving way to the other, Settings). Known differences left: what some switches do to the screen
+(Night light's tint, Touch mode's sizes, High contrast, the magnifier, the screen reader, the on-screen keyboard: the
+shell keeps and shows the switch; their effects are items 9 and 10); the centre's scrollbar; the notifications'
+pop-ups (toasts) as they come; the network's pop-up (its Wi-Fi list), the taskbar at the left or right, auto-hide, the
+workspaces' buttons and the 🎙️ indicator are item 3's last part.
+**Next:** item 3's last part, then items 4 to 12 in order, one PR each, stacked, each passing same_t.sh for its
 part, and docs/plan-2.0.md after them. Native is not the default yet.
 
 **Becoming the default:** after items 1-12 pass on the host and on the Vivobook (a week of betas on Native), the

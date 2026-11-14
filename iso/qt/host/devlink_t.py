@@ -37,7 +37,7 @@ def result(i, t=30):
 
 
 def config(**kw):
-    c = {'on': '1', 'repo': REPO, 'until': str(int(time.time()) + 3600), 'ask': '0', 'home': '0', 'restart': '0'}; c.update({k: str(v) for k, v in kw.items()})
+    c = {'on': '1', 'repo': REPO, 'until': str(int(time.time()) + 3600), 'ask': '0', 'home': '0', 'restart': '0', 'change': '1'}; c.update({k: str(v) for k, v in kw.items()})
     open(f'{DIR}/config', 'w').write(''.join(f'{k}={v}\n' for k, v in c.items()))
 
 
@@ -197,6 +197,40 @@ beat(7); ok('the desktop running (heartbeat): the command keeps waiting for Allo
 os.utime(hbf, (time.time() - 120, time.time() - 120)); r = result(30, 60)
 ok('...the desktop stopped (no heartbeat): answered within a minute, "no desktop to ask", not run', r and r['approved'] == 'no desktop to ask' and 'desktop is not running' in r.get('error', '') and not os.path.exists(f'{T}/nodesk-must-not-exist'), r)
 open(f'{RUN}/stop', 'w').write('1'); d.wait(15)
+
+# ---- 1.5.9 (plan 15.7): read-only unless "Allow changes to this computer" (needs root: a mount namespace)
+if os.geteuid() == 0:
+    os.chmod(T, 0o755)
+    # (outside /tmp: a read-only command has a /tmp of its own)
+    RO = tempfile.mkdtemp(prefix='devlink-ro-', dir='/var/tmp'); os.chmod(RO, 0o700)
+    sec = f'{RO}/root-only'; open(sec, 'w').write('the secret 42\n'); os.chmod(sec, 0o600)
+    victim = subprocess.Popen(['sleep', '120'])
+    config(change=0); d = start(); time.sleep(2)
+    cmd(40, kind='sh', script=f'''echo "uid=$(id -u)"; cat {sec}; echo "tok=[$(cat {DIR}/token)] rd=[$RUDOLF_TOKEN]"
+echo x > {RO}/ro-written 2>/dev/null && echo WROTE || echo write-refused
+echo inside > /tmp/ro-mark && cat /tmp/ro-mark
+mount -t tmpfs none /mnt 2>/dev/null && echo MOUNTED || echo mount-refused
+kill {victim.pid} 2>/dev/null && echo KILLED || echo kill-refused
+echo 1 > /proc/sys/vm/drop_caches 2>/dev/null && echo SYSCTL || echo sysctl-refused''')
+    r = result(40); o = r and r.get('stdout', '') or ''
+    ok('15.7 read-only: a command runs as nobody', r and 'uid=65534' in o, r)
+    ok('...and reads every file, root\'s too (logs, settings)', 'the secret 42' in o, o)
+    ok('...but writes none: not a file, not a mount, not another process, not a kernel setting', all(w in o for w in ('write-refused', 'mount-refused', 'kill-refused', 'sysctl-refused')) and not os.path.exists(f'{RO}/ro-written') and victim.poll() is None, o)
+    ok('...a /tmp of its own to work in, gone afterwards', 'inside' in o and not os.path.exists('/tmp/ro-mark'), o)
+    ok('...and neither the link\'s GitHub token nor rudolfd\'s', 'tok=[]' in o and 'rd=[]' in o and TOKEN not in json.dumps(r), o)
+    cmd(41, kind='put', name='x.bin', src='cmd/000040.json'); r = result(41)
+    ok('..."put" (brings a file onto the computer) is refused, and says how to allow it', r and r['status'] == -1 and 'read-only' in r.get('error', '') and 'Allow changes' in r.get('error', '') and not os.path.exists(f'{DIR}/files/x.bin'), r)
+    cmd(42, kind='restart'); r = result(42)
+    ok('..."restart" is refused, and the link goes on', r and r['status'] == -1 and 'read-only' in r.get('error', '') and d.poll() is None, r)
+    cmd(43, kind='screenshot'); r = result(43)
+    ok('...a screenshot still works (reading the screen)', r and r['status'] == 0 and 'screen.png' in r.get('files', []), r)
+    open(f'{RUN}/stop', 'w').write('1'); d.wait(15)
+    config(change=1); d = start(); time.sleep(2)
+    cmd(44, kind='sh', script='echo "uid=$(id -u)"'); r = result(44)
+    ok('15.7 allowed to change: commands run as root, as before', r and 'uid=0' in r.get('stdout', ''), r)
+    open(f'{RUN}/stop', 'w').write('1'); d.wait(15); victim.kill(); shutil.rmtree(RO)
+else:
+    print('SKIP 15.7 read-only: needs root (a mount namespace)')
 
 stub.kill(); shutil.rmtree(T)
 print(f'{P}/{N} passed'); sys.exit(0 if P == N else 1)

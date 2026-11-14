@@ -63,6 +63,14 @@ CASES.push({n: 'fly-cal-next', set: {}, more: CALEV, fly: 'clock', next: 1, part
 CASES.push({n: 'fly-cal-dark', set: {dm: 'dark', darkui: true}, fly: 'clock', parts: ['fly']});
 CASES.push({n: 'fly-cal-top', set: {tb: 'top', h24: true}, fly: 'clock', parts: ['fly']});
 CASES.push({n: 'fly-vol', set: {}, fly: 'vol', parts: ['fly']});
+/* (and quick settings: off, some switches on, the dark theme; the notifications' centre: two, a failure among them, and none) */
+const NOTES = {['bd95notif:' + ACCT]: [{id: 1, t: 'Download finished', b: 'report.pdf is in Downloads', k: 'info', app: '', at: Date.parse('2026-11-14T09:40:00Z')},
+  {id: 2, t: 'Update failed', b: 'Could not reach the update server', k: 'error', app: '', at: Date.parse('2026-11-14T08:40:00Z')}]};
+CASES.push({n: 'fly-qs', set: {}, fly: 'qs', parts: ['fly']});
+CASES.push({n: 'fly-qs-on', set: {dnd: true, sr: true}, fly: 'qs', parts: ['fly']});   /* (switches the shell does not show otherwise: Night light's tint, Touch mode's sizes are later items') */
+CASES.push({n: 'fly-qs-dark', set: {dm: 'dark', darkui: true}, fly: 'qs', parts: ['fly']});
+CASES.push({n: 'fly-nc', set: {}, more: NOTES, fly: 'notes', parts: ['fly']});
+CASES.push({n: 'fly-nc-empty', set: {}, fly: 'notes', parts: ['fly']});
 CASES.push({n: 'tbm-bar-win', set: {}, more: PINS2, act: 'notepad', rc: 'bar', parts: ['ctx']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
@@ -105,7 +113,7 @@ async function stdCase(c) {
       const r = await p.evaluate(() => { const e = [...document.querySelectorAll('.ctx .cmi')].find(x => x.textContent.includes('Add a widget')); const q = e.getBoundingClientRect(); return [q.left + 50, q.top + q.height / 2] });
       await p.mouse.click(r[0], r[1]); await p.clock.runFor(300); await wait(200) }
     if (/menu$|wgpick/.test(c.act || '')) await p.mouse.move(W / 2, H - 200);
-    if (c.fly) { await p.click(c.fly == 'clock' ? '#tray' : '#vol'); await p.clock.runFor(400); await wait(300);
+    if (c.fly) { await p.click({clock: '#tray', vol: '#vol', qs: '#qsb', notes: '#ncb'}[c.fly]); await p.clock.runFor(400); await wait(300);
       if (c.next) { await p.click('#calp .cn'); await p.clock.runFor(300); await wait(200) } await p.mouse.move(300, 300) }
   }
   rects.screen = [0, 0, W, H]; rects.wallpaper = [0, 0, W, H];
@@ -116,7 +124,7 @@ async function stdCase(c) {
   rects.title = await p.evaluate(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.offsetParent).pop(); const t = w && w.querySelector('.tb'); if (!t) return null; const r = w.getBoundingClientRect(), q = t.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(q.bottom - r.top)] });
   { const r = await rectOf('.ctx'); rects.ctx = r ? [r[0] - 4, r[1] - 4, r[2] + 8, r[3] + 8] : null; rects.dlg = await rectOf('.rmodal .rmbox') }   /* (a menu with its focus ring) */
   for (let i = 0; i < (c.wg || 0); i++) rects['wg' + i] = await p.evaluate(i => { const e = document.querySelectorAll('#desk > .wgt')[i]; if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.left) - 20, Math.round(r.top) - 10, Math.round(r.width) + 40, Math.round(r.height) + 40] }, i);   /* (with its shadow) */
-  { const r = await rectOf('#calp') || await rectOf('.svp'); rects.fly = r }
+  { const r = await rectOf('#calp') || await rectOf('.svp') || await rectOf('#qsp') || await rectOf('#ncp'); rects.fly = r }
   rects.desc = await p.evaluate(() => ({bar: document.getElementById('bar').className, body: document.body.className}));
   const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f});
   await ctx.close(); return {f, rects, errs, pt};

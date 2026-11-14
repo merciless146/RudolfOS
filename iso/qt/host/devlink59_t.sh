@@ -44,7 +44,7 @@ ok "5. an administrator with the password, in Developer mode: on" "$(has "$o" '2
 o=$(t "GET devlink"); now=$(date +%s); since=$(echo "$o" | sed -n 's/.*"since":\([0-9]*\).*/\1/p')
 ok "...System health's line: on, since when, by whom" "$(has "$o" '"on":true')$(has "$o" '"by":"Ann"')$([ -n "$since" ] && [ $((now - since)) -lt 30 ] && echo 1)" "$o"
 ok "...Ask first was turned off for now" "$(has "$o" '"ask":false')" "$o"
-ok "...said in the health log, without the token" "$(grep -q 'switched on by Ann for 2 h (owner/devlink; Ask first off)' $H && ! grep -q github_pat $H && echo 1)" "$(cat $H)"
+ok "...said in the health log, without the token" "$(grep -q 'switched on by Ann for 2 h (owner/devlink; Ask first off; read-only)' $H && ! grep -q github_pat $H && echo 1)" "$(cat $H)"
 echo '{"t":"2026-11-14T10:00:00Z","id":"000007","kind":"sh","what":"uname -a","result":"status 0","approved":"allowed on the computer"}' >> /persist/devlink/log
 o=$(t "GET devlink"); ok "6. its last command" "$(has "$o" '"lastCommand":{"t":"2026-11-14T10:00:00Z","id":"000007"')" "$o"
 ok "...and the token is never sent back" "$(has "$o" 'github_pat' | grep -q 0 && echo 1)" "$o"
@@ -64,4 +64,27 @@ touch $T/extra-keys; body '{"n":"Ann","p":"pw-ann ü"}'; t "$ON <$T/b" >/dev/nul
 o=$(t "POST devlink/off"); o2=$(t "GET devlink")
 ok "10. End now: off, said in the health log" "$(has "$o" '200')$(has "$o2" '"on":false')$(grep -q 'development link was switched off"' $H && echo 1)" "$o $o2"
 grep -q '"k":"security"' $H; ok "...the link's events are under Security" "$([ $? = 0 ] && echo 1)"
+# 1.5.9 (plan 15.7): read-only unless "Allow changes to this computer"
+body '{"n":"Ann","p":"pw-ann ü"}'; t "$ON <$T/b" >/dev/null; o=$(t "GET devlink")
+ok "11. switched on without ticking it: read-only" "$(has "$o" '"change":false')$(grep -q '^change=0' $C && echo 1)" "$(cat $C) $o"
+ok "...said in the health log" "$(grep -q 'Ask first on; read-only)' $H && echo 1)" "$(cat $H)"
+body '{"n":"Bob","p":"bob-pass"}'; o=$(t "POST devlink/change?on=1 <$T/b")
+ok "12. allowing changes: a standard account is refused" "$(has "$o" '403')$(grep -q '^change=0' $C && echo 1)" "$o"
+body '{"n":"Ann","p":"wrong"}'; o=$(t "POST devlink/change?on=1 <$T/b")
+ok "...an administrator with a wrong password is refused" "$(has "$o" '403')$(grep -q '^change=0' $C && echo 1)" "$o"
+body '{"n":"Ann","p":"pw-ann ü"}'; o=$(t "POST devlink/change?on=1 <$T/b"); o2=$(t "GET devlink")
+ok "...the administrator's password: it can change this computer" "$(has "$o" '200')$(has "$o2" '"change":true')$(grep -q '^change=1' $C && echo 1)" "$o $o2"
+ok "...said in the health log, with who" "$(grep -q 'allowed to change this computer by Ann' $H && echo 1)" "$(cat $H)"
+: > $T/b; o=$(t "POST devlink/change?on=0 <$T/b"); o2=$(t "GET devlink")
+ok "13. making it read-only again needs no password" "$(has "$o" '200')$(has "$o2" '"change":false')" "$o $o2"
+body '{"n":"Ann","p":"pw-ann ü"}'; t "POST devlink/change?on=1 <$T/b" >/dev/null; rm -f $T/extra-keys
+body '{"n":"Ann","p":"pw-ann ü"}'; t "POST devlink/change?on=0 <$T/b" >/dev/null; o=$(t "POST devlink/change?on=1 <$T/b")
+ok "14. outside Developer mode it cannot be allowed" "$(has "$o" '403')$(has "$o" 'Developer mode')" "$o"
+touch $T/extra-keys; t "POST devlink/change?on=1 <$T/b" >/dev/null
+o=$(t "POST devlink/off"); ok "15. switched off: read-only again" "$(grep -q '^change=0' $C && echo 1)" "$(cat $C)"
+body '{"n":"Ann","p":"pw-ann ü"}'; t "$ON&restart=1&change=1 <$T/b" >/dev/null
+ok "16. switched on with it ticked: it can change this computer" "$(grep -q '^change=1' $C && echo 1)" "$(cat $C)"
+killdl; t boot; timeout 2 tail -f /dev/null; o=$(t "GET devlink")
+ok "17. a restart (kept on): still on, but read-only again" "$(has "$o" '"on":true')$(has "$o" '"change":false')$(grep -q '^change=0' $C && echo 1)" "$(cat $C) $o"
+killdl
 echo "$((N-F))/$N passed"; [ $F = 0 ]

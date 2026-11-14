@@ -10,7 +10,9 @@ window.__devlink40=1;
 let DEVLST=null,DEVLASKED='';
 const devlLeft=s=>{const m=Math.max(0,Math.round((s||0)/60));return m>=60?Math.floor(m/60)+' h '+(m%60)+' min':m+' min'};
 const devlUntil=s=>s&&s.until?new Date(s.until*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'';
-function devlSummary(s){if(!s||!s.available)return'not available';if(!s.on)return'off';return'on until '+devlUntil(s)+' ('+s.repo+(s.ask?', asks first':', runs without asking')+')'}
+/* 1.5.9 (plan 15.7): read-only unless "Allow changes to this computer" (an administrator's password; off at every start) */
+const devlMode=s=>s&&s.change?'can change this computer':'read-only';
+function devlSummary(s){if(!s||!s.available)return'not available';if(!s.on)return'off';return'on until '+devlUntil(s)+' ('+s.repo+', '+devlMode(s)+(s.ask?', asks first':', runs without asking')+')'}
 async function devlOff(){try{await rdPost('devlink/off')}catch(e){}devlPoll()}
 /* 1.5.9 (plan 12.3b step 7): an app window of the Native desktop (one-app mode) draws no banner: it covered the top of
    every app (Settings' search box); the native shell shows the banner once, and asks about commands itself */
@@ -22,7 +24,7 @@ function devlBanner(s){let b=document.getElementById('devlinkBanner');
   b.style.cssText='position:fixed;left:0;right:0;top:0;z-index:2147483647;display:flex;align-items:center;gap:10px;padding:3px 10px;background:#b00020;color:#fff;font:600 13px system-ui,sans-serif;box-shadow:0 1px 4px #0006;pointer-events:auto';
   b.innerHTML="<span class='dlt' style='flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis'></span><button class='dle' style='background:#fff;color:#b00020;border:0;border-radius:4px;padding:2px 10px;font-weight:700;cursor:pointer'>End now</button>";
   b.querySelector('.dle').onclick=devlOff;document.body.appendChild(b)}
- const st=s.status||{};let t='⚠ Development link on: commands from GitHub ('+s.repo+') can control this computer · '+devlLeft(s.secondsLeft)+' left';
+ const st=s.status||{};let t='⚠ Development link on: commands from GitHub ('+s.repo+') '+(s.change?'can change this computer':'can look at this computer (read-only)')+' · '+devlLeft(s.secondsLeft)+' left';
  if(st.state&&st.state!='on')t+=' · '+st.state;if(st.error)t+=' · '+st.error;
  b.querySelector('.dlt').textContent=t;b.title=t}
 function devlAsk(s){const p=s&&s.on&&!(devlOneApp()&&typeof oaNative=='function'&&oaNative())&&s.pending;let o=document.getElementById('devlinkAsk');
@@ -31,7 +33,7 @@ function devlAsk(s){const p=s&&s.on&&!(devlOneApp()&&typeof oaNative=='function'
  o=document.createElement('div');o.id='devlinkAsk';o.className='rmodal';o.style.zIndex='2147483646';
  o.innerHTML=`<div class='rmbox' role='alertdialog' aria-label='Development link: allow this command?' style='max-width:640px'><h3>🔧 Allow this command?</h3>
 <p class='msg dlw'></p><pre class='dlc' style='max-height:45vh;overflow:auto;white-space:pre-wrap;background:#0003;padding:8px;border-radius:4px;font:12px monospace'></pre>
-<p class='msg'>It runs with full control of this computer. Refuse anything you did not expect. Not answered in 10 minutes, it is refused.</p>
+<p class='msg'>${s.change?'It runs with full control of this computer.':'It runs read-only: it can read files and take screenshots, but cannot change anything.'} Refuse anything you did not expect. Not answered in 10 minutes, it is refused.</p>
 <div class='rmrow'><button class='dln'>Refuse</button><button class='pri dly'>Allow</button></div></div>`;
  o.querySelector('.dlw').textContent='Command '+p.id+' from '+s.repo+' ('+p.kind+'):';o.querySelector('.dlc').textContent=p.what||'';
  const ans=async a=>{o.remove();try{await rdPost('devlink/answer?id='+encodeURIComponent(p.id)+'&a='+a)}catch(e){}devlPoll()};
@@ -46,7 +48,7 @@ async function devlPoll(){if(!RD)return;try{DEVLST=await rd('devlink')}catch(e){
 /* 15.4: System health's line: on or off, since when and by whom, its last command */
 function devlHealthText(s){if(!s||!s.available)return'';if(!s.on)return'Off';
  const lc=s.lastCommand,when=t=>t?new Date(t*1000).toLocaleString([], {hour:'2-digit',minute:'2-digit',day:'numeric',month:'short'}):'';
- return'On since '+when(s.since)+(s.by?' (switched on by '+s.by+')':'')+', '+s.repo+(s.ask?', asks first':', runs without asking')+' · last command: '+(lc?lc.id+' ('+lc.kind+') at '+String(lc.t||'').replace('T',' ').replace(/:\d\dZ$/,' UTC')+', '+(lc.approved||''):'none yet')}
+ return'On since '+when(s.since)+(s.by?' (switched on by '+s.by+')':'')+', '+s.repo+', '+devlMode(s)+(s.ask?', asks first':', runs without asking')+' · last command: '+(lc?lc.id+' ('+lc.kind+') at '+String(lc.t||'').replace('T',' ').replace(/:\d\dZ$/,' UTC')+', '+(lc.approved||''):'none yet')}
 /* (called by healthPanel, sec50.js) */
 function devlHealthRow(c){if(!RD)return;
  const d=document.createElement('div');d.className='dl59h r2';d.style.marginTop='6px';d.innerHTML="<label>Development link</label><div class='dl59t'>…</div>";
@@ -65,13 +67,22 @@ async function devlSection(c,W){
   const btn=(l,fn,pri,need)=>{const b=document.createElement('button');b.textContent=l;if(pri)b.className='pri';if(need&&!adm)b.disabled=true;b.onclick=fn;row.appendChild(b);return b};
   if(!RD){t.textContent='The development link is part of the installed Rudolf OS (bootable disc or USB drive).';return}
   if(!s||!s.available){t.textContent='This Rudolf OS has no development link.';return}
-  if(s.on){const st=s.status||{};t.textContent='On until '+devlUntil(s)+' ('+devlLeft(s.secondsLeft)+' left): commands from the GitHub repository '+s.repo+' can control this computer'+(s.ask?'; each one waits for you to allow it':', without asking')+(s.restart?', also after a restart (with Ask first on again)':', until the computer restarts')+'. It turns itself off after 4 hours without a command.'+(st.state&&st.state!='on'?' Now: '+st.state+'.':'')+(st.error?' '+st.error+'.':'');
+  if(s.on){const st=s.status||{};t.textContent='On until '+devlUntil(s)+' ('+devlLeft(s.secondsLeft)+' left): commands from the GitHub repository '+s.repo+' '+(s.change?'can change this computer':'can look at this computer (read-only)')+(s.ask?'; each one waits for you to allow it':', without asking')+(s.restart?', also after a restart (with Ask first on again)':', until the computer restarts')+'. It turns itself off after 4 hours without a command.'+(st.state&&st.state!='on'?' Now: '+st.state+'.':'')+(st.error?' '+st.error+'.':'');
+   f.innerHTML="<label style='display:block;margin:6px 0'><input type='checkbox' class='dlc'> Allow changes to this computer</label><p class='msg'>Unticked, its commands can only look: read files and logs, take screenshots, measure. Ticked, they can also install, change settings and restart. Ticking it needs an administrator's password; it is unticked again at every start.</p><p class='msg dlcerr' style='color:#b91c1c'></p>";
+   const cb=f.querySelector('.dlc');cb.checked=!!s.change;cb.disabled=!s.change&&(!adm||s.developer===false);
+   cb.onchange=async()=>{const e=f.querySelector('.dlcerr');e.textContent='';
+    if(!cb.checked){try{await rdPost('devlink/change?on=0')}catch(x){e.textContent=x.message}devlPoll();draw();return}
+    window.__elevTrust=0;const cr=await elevate('Allow the development link to change this computer: commands from '+s.repo+' can then install, change settings and restart it.',{cred:1});
+    if(!cr){cb.checked=false;return}
+    try{await rd('devlink/change?on=1',{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p})})}catch(x){e.textContent=x.message||'It could not be allowed.';cb.checked=false;return}
+    devlPoll();draw()};
    btn('End now',async()=>{await devlOff();draw()},1);btn('Log…',devlLog);return}
-  t.textContent='Off. When it is on, a developer you choose (for example a Claude session) can run tests on this computer through a private GitHub repository you own: run commands with full control, take screenshots, send and bring files, restart it. Use it on a test computer only, never on one with personal files. A red banner shows while it is on.';
+  t.textContent='Off. When it is on, a developer you choose (for example a Claude session) can run tests on this computer through a private GitHub repository you own: run commands (read-only unless you allow changes), take screenshots and send files; with changes allowed, also bring files and restart it. Use it on a test computer only, never on one with personal files. A red banner shows while it is on.';
   f.innerHTML=`<div class='r2' style='grid-template-columns:auto 1fr;gap:6px 10px;margin:6px 0'><label>Repository</label><input class='dlr' placeholder='owner/name (private)' spellcheck='false' autocomplete='off'>
 <label>Token</label><input class='dlk' type='password' spellcheck='false' autocomplete='off'>
 <label>For</label><select class='dlh'><option value='1'>1 hour</option><option value='2' selected>2 hours</option><option value='4'>4 hours</option><option value='8'>8 hours</option></select></div>
 <label style='display:block'><input type='checkbox' class='dla' checked> Ask first: each command waits for me to allow it (on again after every restart)</label>
+<label style='display:block'><input type='checkbox' class='dlch'> Allow changes to this computer (unticked: its commands can only look; unticked again at every start)</label>
 <label style='display:block'><input type='checkbox' class='dlb'> Keep on after restarting (until its time is up)</label>
 <label style='display:block'><input type='checkbox' class='dlhome'> Let it read files in home folders</label>
 <p class='msg'>It turns itself off after 4 hours without a command, and when the computer restarts unless you keep it on. On github.com, make a private repository, then a fine-grained personal access token for that repository only, with the permission <b>Contents: Read and write</b>. Paste it here; it is checked with GitHub, kept where only the system can read it, and never shown again. Revoking it on GitHub ends all access.</p><p class='msg dlerr' style='color:#e66'></p>`;
@@ -82,9 +93,9 @@ async function devlSection(c,W){
    if(!/^[\w.-]+\/[\w.-]+$/.test(r.value.trim())){e.textContent='Write the repository as owner/name.';return}
    if(!k.value.trim()&&!s.hasToken){e.textContent='Paste the token from GitHub.';return}
    if(!dev){e.textContent='Turn on Developer mode first (Update and recovery).';return}
-   window.__elevTrust=0;const cr=await elevate('Switch the development link on: commands from the GitHub repository '+r.value.trim()+' can control this computer for '+f.querySelector('.dlh').value+' hour(s).',{cred:1});if(!cr)return;
+   window.__elevTrust=0;const cr=await elevate('Switch the development link on: commands from the GitHub repository '+r.value.trim()+' can '+(f.querySelector('.dlch').checked?'change':'look at')+' this computer for '+f.querySelector('.dlh').value+' hour(s).',{cred:1});if(!cr)return;
    ev.target.disabled=true;e.textContent='Checking the token with GitHub…';
-   try{await rd('devlink/on?repo='+encodeURIComponent(r.value.trim())+'&hours='+f.querySelector('.dlh').value+'&ask='+(f.querySelector('.dla').checked?1:0)+'&restart='+(b.checked?1:0)+'&home='+(f.querySelector('.dlhome').checked?1:0),{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p,token:k.value.trim()})});k.value='';devlPoll();draw()}
+   try{await rd('devlink/on?repo='+encodeURIComponent(r.value.trim())+'&hours='+f.querySelector('.dlh').value+'&ask='+(f.querySelector('.dla').checked?1:0)+'&restart='+(b.checked?1:0)+'&home='+(f.querySelector('.dlhome').checked?1:0)+'&change='+(f.querySelector('.dlch').checked?1:0),{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p,token:k.value.trim()})});k.value='';devlPoll();draw()}
    catch(x){e.textContent=x.message||'It could not be switched on.';ev.target.disabled=false}},1,1).disabled=!adm||!dev;
   if(s.hasToken)btn('Forget the token',async()=>{if(!await elevate('Delete the development link\'s token from this computer.'))return;try{await rdPost('devlink/forget')}catch(e){}draw()},0,1);
   btn('Log…',devlLog);
