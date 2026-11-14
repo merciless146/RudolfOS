@@ -106,6 +106,8 @@ provisioning (downloading a carrier's eSIM profile), and 5G standalone features 
 7. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
 
 ## After 1.6.0: the native desktop decision (added on 2026-11-12)
+(2026-11-13: the prototype moved into 1.5.9 as a third desktop engine, Native (test): docs/plan-1.5.9.md Part 12. The
+decision below still waits for its measurements on the Vivobook.)
 Before the first phone (1.6.x), decide whether Rudolf OS's shell becomes native (drawn by its own program, not by a
 web engine). Not before 1.6.0: its work is mostly the system's (modems, the SIM, ARM64), its desktop parts (Messages,
 the taskbar's signal, Settings › Mobile network) are planned in the desktop page and would otherwise be built twice,
