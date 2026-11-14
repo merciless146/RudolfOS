@@ -9,6 +9,7 @@
 #   DIR/devlink.json   the development link's state (devlink: off when missing)
 #   DIR/page.html      (when there) served as the page instead of the desktop page: a plain page for the window
 #                      manager's checks (a drop-down)
+#   DIR/iwa-id         (when there) the shell's ID, served as /iwa/id (Oracle in the shell: oracle_native_t.sh)
 # Ann's password is in keys.json; a wrong one gets the page's message.   python3 native_rd.py PORT DIR
 import http.server, json, os, sys, threading
 PORT = int(sys.argv[1]); D = sys.argv[2]; WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../www')
@@ -50,6 +51,7 @@ class H(http.server.BaseHTTPRequestHandler):
             alt = rd('page.html')
             if alt is not None: return self.send(200, alt, 'text/html; charset=utf-8')
             return self.send(200, open(os.path.join(WWW, 'index.html'), encoding='utf-8').read().replace('<head>', '<head>' + INJ, 1), 'text/html; charset=utf-8')
+        if u == '/iwa/id' and rd('iwa-id') is not None: return self.send(200, rd('iwa-id'), 'text/plain')
         f = os.path.normpath(os.path.join(WWW, u.lstrip('/')))
         if f.startswith(os.path.normpath(WWW)) and os.path.isfile(f):
             ct = {'.js': 'text/javascript', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.png': 'image/png', '.woff2': 'font/woff2', '.woff': 'font/woff', '.wasm': 'application/wasm'}.get(os.path.splitext(f)[1], 'application/octet-stream')

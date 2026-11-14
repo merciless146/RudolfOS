@@ -35,6 +35,8 @@
 #include <arpa/inet.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <math.h>
 #include <stdint.h>
 #include <netinet/in.h>
@@ -362,6 +364,7 @@ static WebKitWebContext *CTX; static WebKitUserContentManager *UCM; static int N
 static void bar_redraw(void);
 static void app_open(const char *k, const char *file);
 static void app_open_ex(const char *k, const char *file, const char *extra, int hidden);
+static int oracle_open(const char *file, const char *extra);   /* (1.5.9, 12.3c: Oracle in Rudolf's Chromium) */
 static void page_done(JSCValue *v);
 static void frame_redraw_app(AppWin *a);
 static const App *app_find(const char *k) { for (int i = 0; i < NAPPS; i++) if (!strcmp(APPS[i].k, k)) return &APPS[i]; return NULL; }
@@ -515,6 +518,10 @@ static void app_open(const char *k, const char *file) { app_open_ex(k, file, NUL
 static void app_open_ex(const char *k, const char *file, const char *extra, int hidden)
 {
 	if (!USER_ID[0] || LOCKED || strspn(k, "abcdefghijklmnopqrstuvwxyz0123456789_-") != strlen(k) || strlen(k) > 39) return;
+	/* (1.5.9, docs/plan-1.5.9.md 12.3c) Oracle runs in Rudolf's own Chromium with the shell's real tabs, as on Standard; without
+	   Chromium or the shell, here as before, and the page says once that websites work better on Standard */
+	static int nochrome_said;
+	if (!strcmp(k, "browser") && !hidden) { if (oracle_open(file, extra)) return; if (!nochrome_said++) { char *ex = g_strdup_printf("%s&nochrome=1", extra ? extra : ""); app_open_ex(k, file, ex, hidden); g_free(ex); return; } }
 	ctx_make(); int id = ++NEXTID; char *u = app_url(k, file, id, extra);
 	AppWin *rel = NULL; for (GList *l = WINS; l; l = l->next) { AppWin *x = l->data; if (x->view && webkit_web_view_get_uri(WEBKIT_WEB_VIEW(x->view)) && !x->closing) { rel = x; break; } }
 	if (rel) {
@@ -537,7 +544,8 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
    videos) covers the whole screen, taskbar too, without the frame. Our own app windows are framed the same way (our
    own requests are not redirected to us, so they are framed as they are shown). The taskbar lists them all. */
 #define BW 1   /* (the page's windows' 1 px edge; the title bar's height, TH, follows the display scaling) */
-typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click; } Client;
+typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
+	char ak[40]; Window clip; int il, it, ir, ib; } Client;   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
 static GList *CLIENTS;   /* oldest first */
 static Client *FOCUS;
 static Display *DPY; static Window ROOT; static int WM_OK;
@@ -546,7 +554,7 @@ static Cursor CUR[9];
 static int wm_err;
 static int wm_errh(Display *d, XErrorEvent *e) { (void)d; if (e->error_code == BadAccess) wm_err = 1; return 0; }
 static void clients_forget(AppWin *a) { for (GList *l = CLIENTS; l; l = l->next) if (((Client *)l->data)->app == a) ((Client *)l->data)->app = NULL; }
-static Client *client_of(Window w) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->w == w || c->frame == w || (w && (c->rz[0] == w || c->rz[1] == w || c->rz[2] == w))) return c; } return NULL; }
+static Client *client_of(Window w) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->w == w || c->frame == w || (w && (c->clip == w || c->rz[0] == w || c->rz[1] == w || c->rz[2] == w))) return c; } return NULL; }
 static int rz_of(Client *c, Window w) { for (int i = 0; i < 3; i++) if (c->rz[i] && c->rz[i] == w) return i; return -1; }
 static Client *client_of_app(AppWin *a) { for (GList *l = CLIENTS; l; l = l->next) if (((Client *)l->data)->app == a) return l->data; return NULL; }
 static int fw_of(Client *c) { return c->cw + 2 * BW; }
@@ -559,6 +567,9 @@ static void wm_title(Client *c)
 	if (d) XFree(d);
 	if (!c->title[0]) { char *nm = NULL; if (XFetchName(DPY, c->w, &nm) && nm) { snprintf(c->title, sizeof c->title, "%s", nm); XFree(nm); } }
 	for (char *p = c->title; *p; p++) if (*p == '\n' || *p == '\t') *p = ' ';
+	/* (Oracle's Chromium: an app's window is titled "Rudolf OS - PAGE'S TITLE", the shell's name first; the page's alone) */
+	if (c->ak[0] && !strncmp(c->title, "Rudolf OS - ", 12)) memmove(c->title, c->title + 12, strlen(c->title + 12) + 1);
+	else if (c->ak[0] && !strcmp(c->title, "Rudolf OS")) { const App *ap = app_find(c->ak); snprintf(c->title, sizeof c->title, "%s", ap ? ap->name : "Oracle"); }
 }
 static void set_wm_state(Client *c, long st) { long v[2] = {st, None}; XChangeProperty(DPY, c->w, A_WMSTATE, A_WMSTATE, 32, PropModeReplace, (unsigned char *)v, 2); }
 static void client_list(void)
@@ -572,6 +583,7 @@ static void tell_geom(Client *c)
 {
 	XEvent e = {0}; e.xconfigure.type = ConfigureNotify; e.xconfigure.event = c->w; e.xconfigure.window = c->w;
 	e.xconfigure.x = c->full ? 0 : c->x + BW; e.xconfigure.y = c->full ? 0 : c->y + TH; e.xconfigure.width = c->cw; e.xconfigure.height = c->ch;
+	if (c->clip && !c->full) { e.xconfigure.x -= c->il; e.xconfigure.y -= c->it; e.xconfigure.width += c->il + c->ir; e.xconfigure.height += c->it + c->ib; }
 	XSendEvent(DPY, c->w, False, StructureNotifyMask, &e);
 }
 static void frame_shape(Client *c);
@@ -592,8 +604,12 @@ static void rz_to_frame(Client *c, int i, int *x, int *y) { int fw = c->cw + 2 *
 static struct { Client *c; int edge, px, py, x, y, w, h; } DRAG;   /* edge: 0 move, else 1 left 2 right 4 top 8 bottom */
 static void place(Client *c)
 {
-	if (c->full) { XMoveResizeWindow(DPY, c->frame, -BW, -TH, SW + 2 * BW, SH + TH + BW); XMoveResizeWindow(DPY, c->w, BW, TH, SW, SH); c->cw = SW; c->ch = SH; }
-	else { XMoveResizeWindow(DPY, c->frame, c->x, c->y, fw_of(c), fh_of(c)); XMoveResizeWindow(DPY, c->w, BW, TH, c->cw, c->ch); }
+	if (c->full) { XMoveResizeWindow(DPY, c->frame, -BW, -TH, SW + 2 * BW, SH + TH + BW); c->cw = SW; c->ch = SH; }
+	else XMoveResizeWindow(DPY, c->frame, c->x, c->y, fw_of(c), fh_of(c));
+	/* (Oracle's Chromium: its own title bar and edges cut away by the clip window; full screen, it draws none) */
+	if (c->clip) { XMoveResizeWindow(DPY, c->clip, BW, TH, c->cw, c->ch);
+		if (c->full) XMoveResizeWindow(DPY, c->w, 0, 0, c->cw, c->ch); else XMoveResizeWindow(DPY, c->w, -c->il, -c->it, c->cw + c->il + c->ir, c->ch + c->it + c->ib); }
+	else XMoveResizeWindow(DPY, c->w, BW, TH, c->cw, c->ch);
 	/* (our own app window: GTK resizes itself to the size it was last asked for (its requests are not redirected: the shell's
 	   connection is GTK's), so it is asked for the window's size) */
 	if (c->app && c->app->win && !c->full) { int gw = 0, gh = 0; gtk_window_get_size(GTK_WINDOW(c->app->win), &gw, &gh); if (gw != c->cw || gh != c->ch) gtk_window_resize(GTK_WINDOW(c->app->win), c->cw, c->ch); }
@@ -680,12 +696,76 @@ static void wm_close(Client *c)
 	if (c->app) { appwin_ask_close(c->app); return; }   /* (our own: the page is asked, as its ✕ does) */
 	if (has_proto(c->w, A_DEL)) send_proto(c->w, A_DEL, CurrentTime); else XKillClient(DPY, c->w);
 }
+/* ------------------------------------------------------------------ Oracle in Rudolf's Chromium (1.5.9, docs/plan-1.5.9.md 12.3c)
+   On Standard, Oracle's websites are real browser pages: the desktop page runs in the shell (iso/shell, an Isolated Web App
+   in Rudolf's Chromium), which gives Oracle its tabs (Controlled Frames). Here Oracle's window is that too: one Chromium for
+   every Oracle window (rudolf-launch --oracle, which opens the shell's windows over Chromium's private pipe, as the session's
+   Standard does), the shell with #app=browser&... (it passes its # on to the page: Oracle alone in one-app mode, with the real
+   tabs), Standard's profile and flags (the session writes them: /run/rudolf/oracle-chrome, its first line the shell's ID, then
+   the program and its arguments, one a line). Chromium starts with the first Oracle window and goes with the last; its windows
+   are framed here as the others, as Oracle (its picture, its title, the page's), with Chromium's own title bar and edges cut
+   away (an Isolated Web App's window always has them: neither the "use system title bar" setting nor "borderless" applies).
+   RUDOLF_ORACLE_CMD and RUDOLF_LAUNCH change the files (tests); RUDOLF_ORACLE_INSET="TOP LEFT RIGHT BOTTOM" Chromium's edges. */
+static GPid OR_PID; static int OR_RUN; static char OR_CTL[300]; static guint OR_BUSY;
+static void oracle_busy(int on)
+{
+	if (!WM_OK) return;
+	static Cursor watch; if (!watch) watch = XCreateFontCursor(DPY, XC_watch);
+	XDefineCursor(DPY, ROOT, on ? watch : CUR[0]); XFlush(DPY);
+	if (OR_BUSY) { g_source_remove(OR_BUSY); OR_BUSY = 0; }
+}
+static gboolean oracle_busy_end(gpointer d) { (void)d; OR_BUSY = 0; oracle_busy(0); return G_SOURCE_REMOVE; }
+static void oracle_exited(GPid p, gint st, gpointer d) { (void)d; (void)st; g_spawn_close_pid(p); if (p == OR_PID) { OR_RUN = 0; OR_PID = 0; state_write(); } }
+/* the shell's #...: letters, digits and the address's own punctuation (the rest escaped) */
+static void oracle_hash(GString *h, const char *s) { for (const char *c = s; *c; c++) { if (g_ascii_isalnum(*c) || strchr("&=._-~%+", *c)) g_string_append_c(h, *c); else g_string_append_printf(h, "%%%02X", (unsigned char)*c); } }
+static int oracle_open(const char *file, const char *extra)
+{
+	const char *cf = getenv("RUDOLF_ORACLE_CMD"); if (!cf) cf = "/run/rudolf/oracle-chrome";
+	const char *ln = getenv("RUDOLF_LAUNCH"); if (!ln) ln = "/usr/bin/rudolf-launch";
+	if (!OR_RUN) {
+		gchar *t = NULL; if (!g_file_get_contents(cf, &t, NULL, NULL) || access(ln, X_OK)) { g_free(t); fprintf(stderr, "rudolf-native: Oracle: no Chromium with the shell (%s): its WebKit window\n", cf); return 0; }
+		gchar **L = g_strsplit(t, "\n", 0); g_free(t); int n = 0; while (L[n]) n++;
+		if (n < 2 || strlen(L[0]) != 56 || access(L[1], X_OK)) { g_strfreev(L); fprintf(stderr, "rudolf-native: Oracle: %s names no Chromium or shell\n", cf); return 0; }
+		snprintf(OR_CTL, sizeof OR_CTL, "%s/rudolf-oracle.ctl", g_get_user_runtime_dir()); unlink(OR_CTL);
+		if (mkfifo(OR_CTL, 0600)) { g_strfreev(L); fprintf(stderr, "rudolf-native: Oracle: %s: %s\n", OR_CTL, strerror(errno)); return 0; }
+		GPtrArray *a = g_ptr_array_new(); g_ptr_array_add(a, (gpointer)ln); g_ptr_array_add(a, "--oracle"); g_ptr_array_add(a, OR_CTL); g_ptr_array_add(a, L[0]);
+		for (int i = 1; i < n; i++) if (L[i][0]) g_ptr_array_add(a, L[i]);
+		g_ptr_array_add(a, NULL); GError *er = NULL;
+		int ok = g_spawn_async(NULL, (gchar **)a->pdata, NULL, G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL, &OR_PID, &er);
+		g_ptr_array_free(a, TRUE); g_strfreev(L);
+		if (!ok) { fprintf(stderr, "rudolf-native: Oracle: %s\n", er ? er->message : "?"); if (er) g_error_free(er); unlink(OR_CTL); return 0; }
+		OR_RUN = 1; g_child_watch_add(OR_PID, oracle_exited, NULL);
+	}
+	/* the window: Oracle's place and size as an app window's first (the page's own size comes with its title) */
+	int n = g_list_length(CLIENTS) % 8, w = SW * 7 / 10, h = work_h() * 8 / 10; if (w < 640) w = SW; if (h < 400) h = work_h();
+	GString *hs = g_string_new("app=browser"); if (file && *file) { g_string_append(hs, "&file="); oracle_hash(hs, file); }
+	if (extra) oracle_hash(hs, extra);
+	char *line = g_strdup_printf("open %d %d %d %d %s\n", w, h, 40 + n * 28, work_top() + 20 + n * 28, hs->str); g_string_free(hs, TRUE);
+	int ok = 0; for (int i = 0; i < 50 && !ok; i++) { int f = open(OR_CTL, O_WRONLY | O_NONBLOCK | O_CLOEXEC); if (f >= 0) { ok = write(f, line, strlen(line)) == (ssize_t)strlen(line); close(f); } if (!ok) g_usleep(100000); }
+	g_free(line);
+	if (!ok) { fprintf(stderr, "rudolf-native: Oracle: Chromium did not take the window\n"); return 0; }
+	/* (a cold Chromium takes 1 to 3 s: the pointer says so until the window is there) */
+	oracle_busy(1); OR_BUSY = g_timeout_add_seconds(20, oracle_busy_end, NULL);
+	return 1;
+}
+static void oracle_client(Client *c, XWindowAttributes *wa)
+{
+	XClassHint ch = {0}; if (!XGetClassHint(DPY, c->w, &ch)) return;
+	int is = ch.res_class && !strcmp(ch.res_class, "RudolfOracle"); if (ch.res_name) XFree(ch.res_name); if (ch.res_class) XFree(ch.res_class);
+	if (!is || c->trans) return;
+	snprintf(c->ak, sizeof c->ak, "browser");
+	const char *in = getenv("RUDOLF_ORACLE_INSET"); int t = 28, l = 4, r = 4, b = 4; if (in) sscanf(in, "%d %d %d %d", &t, &l, &r, &b);
+	c->it = t; c->il = l; c->ir = r; c->ib = b; c->cw = wa->width - l - r; c->ch = wa->height - t - b; if (c->cw < 100) c->cw = 100; if (c->ch < 100) c->ch = 100;
+	oracle_busy(0);
+}
+static void oracle_gone(void) { }
 static void wm_manage(Window w, AppWin *own)
 {
 	if (client_of(w)) return;
 	XWindowAttributes wa; if (!XGetWindowAttributes(DPY, w, &wa) || wa.override_redirect) return;
 	Client *c = g_new0(Client, 1); c->w = w; c->app = own; c->cw = wa.width; c->ch = wa.height;
 	if (!XGetTransientForHint(DPY, w, &c->trans)) c->trans = None;
+	if (!own) oracle_client(c, &wa);   /* (1.5.9, 12.3c: Oracle's Chromium is Oracle's window) */
 	wm_title(c);
 	int ay = work_top(), ah = work_h();
 	if (c->cw > SW - 2 * BW) c->cw = SW - 2 * BW; if (c->ch > ah - TH - BW) c->ch = ah - TH - BW;
@@ -703,7 +783,11 @@ static void wm_manage(Window w, AppWin *own)
 	XSelectInput(DPY, w, PropertyChangeMask | (own ? wa.your_event_mask : StructureNotifyMask));
 	XAddToSaveSet(DPY, w); XSetWindowBorderWidth(DPY, w, 0);
 	if (wa.map_state != IsUnmapped) c->ignore_unmap++;   /* (reparenting a shown window unmaps it once) */
-	XReparentWindow(DPY, w, c->frame, BW, TH); XResizeWindow(DPY, w, c->cw, c->ch);
+	if (c->ak[0] && c->it) {
+		XSetWindowAttributes ca = {0}; ca.event_mask = SubstructureNotifyMask | SubstructureRedirectMask; ca.background_pixel = WhitePixel(DPY, DefaultScreen(DPY));
+		c->clip = XCreateWindow(DPY, c->frame, BW, TH, c->cw, c->ch, 0, CopyFromParent, InputOutput, CopyFromParent, CWEventMask | CWBackPixel, &ca); XMapWindow(DPY, c->clip);
+		XReparentWindow(DPY, w, c->clip, -c->il, -c->it); XResizeWindow(DPY, w, c->cw + c->il + c->ir, c->ch + c->it + c->ib); }
+	else { XReparentWindow(DPY, w, c->frame, BW, TH); XResizeWindow(DPY, w, c->cw, c->ch); }
 	CLIENTS = g_list_append(CLIENTS, c);
 	XMapWindow(DPY, w); frame_shape(c); rz_place(c); XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); desk_shadows();
 	grab_clicks(c, 1); tell_geom(c);
@@ -717,7 +801,9 @@ static void wm_unmanage(Client *c, int gone)
 	desk_shadows();
 	CLIENTS = g_list_remove(CLIENTS, c);
 	if (!gone) { XReparentWindow(DPY, c->w, ROOT, c->x + BW, c->y + TH); XRemoveFromSaveSet(DPY, c->w); set_wm_state(c, WithdrawnState); grab_clicks(c, 0); }
+	if (c->clip) XDestroyWindow(DPY, c->clip);
 	XDestroyWindow(DPY, c->frame);
+	if (c->ak[0]) oracle_gone();
 	if (FOCUS == c) { FOCUS = NULL; wm_focus(top_client()); }
 	g_free(c); client_list(); bar_redraw(); state_write();
 }
@@ -793,8 +879,9 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 		XConfigureRequestEvent *r = &e->xconfigurerequest; c = client_of(r->window);
 		if (!c) { XWindowChanges wc = { r->x, r->y, r->width, r->height, r->border_width, r->above, r->detail }; XConfigureWindow(DPY, r->window, r->value_mask, &wc); return GDK_FILTER_REMOVE; }
 		if (c->w == r->window && !c->full && !c->max) {
-			if (r->value_mask & CWWidth) c->cw = r->width; if (r->value_mask & CWHeight) c->ch = r->height;
-			if (r->value_mask & CWX) c->x = r->x - BW; if (r->value_mask & CWY) c->y = r->y - TH;
+			int dw = c->clip ? c->il + c->ir : 0, dh = c->clip ? c->it + c->ib : 0;   /* (Oracle's Chromium asks with its own edges) */
+			if (r->value_mask & CWWidth) c->cw = r->width - dw; if (r->value_mask & CWHeight) c->ch = r->height - dh;
+			if (r->value_mask & CWX) c->x = r->x + (c->clip ? c->il : 0) - BW; if (r->value_mask & CWY) c->y = r->y + (c->clip ? c->it : 0) - TH;
 			/* (a window making itself the screen's size is a game going full screen: as rudolf-display does) */
 			if (c->cw >= SW && c->ch >= SH) { wm_fullscreen(c, 1); return GDK_FILTER_REMOVE; }
 			place(c); frame_draw(c);
@@ -806,9 +893,9 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 			(e->xconfigure.width != c->cw || e->xconfigure.height != c->ch)) { c->cw = e->xconfigure.width; c->ch = e->xconfigure.height; XResizeWindow(DPY, c->frame, fw_of(c), fh_of(c)); frame_draw(c); }
 		return GDK_FILTER_CONTINUE;
 	case UnmapNotify:
-		if ((c = client_of(e->xunmap.window)) && c->w == e->xunmap.window && (e->xunmap.event == c->frame || e->xunmap.send_event)) {   /* (not GDK's own copy: our windows') */
+		if ((c = client_of(e->xunmap.window)) && c->w == e->xunmap.window && (e->xunmap.event == c->frame || (c->clip && e->xunmap.event == c->clip) || e->xunmap.send_event)) {   /* (not GDK's own copy: our windows') */
 			if (c->ignore_unmap > 0) { c->ignore_unmap--; return GDK_FILTER_CONTINUE; }
-			if (e->xunmap.event == c->frame || e->xunmap.send_event) wm_unmanage(c, 0);
+			wm_unmanage(c, 0);
 		}
 		return GDK_FILTER_CONTINUE;
 	case DestroyNotify:
@@ -1320,10 +1407,10 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 		box_paint(cr, wx, y, tw, 34, &b); hit_add(wx, y, tw, 34, "win", wid);
 		/* the line: the picture (vertical-align -4px) and the title, centred in the button's content (34 less 1 px above and below) */
 		double d, A = css_ascent(cr, UIFAM, act ? 600 : 400, 13, &d), lt = fmin(-A, -14), lb = fmax(d, 4), base = y + b.bw + 1 + (32 - 2 * b.bw - (lb - lt)) / 2 - lt;
-		const App *ap = a ? app_find(a->k) : NULL; GdkPixbuf *px = app_pix(ap); double tx = wx + b.bw + 6;
+		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = app_pix(ap); double tx = wx + b.bw + 6;
 		cairo_save(cr); cairo_rectangle(cr, wx + b.bw + 6, y, tw - 2 * b.bw - 12, 34); cairo_clip(cr);
 		if (px) { pix_at(cr, px, tx, base + 4 - 18, 18, b.filt); tx += 18; }
-		const char *ti = a ? a->title : c->title; char *tt = px ? g_strdup_printf(" %s", ti) : g_strdup_printf("%s%s%s", a && a->icon[0] ? a->icon : "", a && a->icon[0] ? " " : "", ti);
+		const char *ti = a ? a->title : c->title, *ico = a ? a->icon : ap ? ap->icon : ""; char *tt = px ? g_strdup_printf(" %s", ti) : g_strdup_printf("%s%s%s", ico, ico[0] ? " " : "", ti);
 		css_text(cr, tt, UIFAM, act ? 600 : 400, 13, tx, base - A, A + d, b.fg, wx + tw - b.bw - 6 - tx); g_free(tt);
 		cairo_restore(cr);
 	}
@@ -1362,6 +1449,7 @@ static void bar_click(int h)
 	if (!strcmp(t->kind, "start")) menu_toggle();
 	else if (!strcmp(t->kind, "pin")) {
 		for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!strcmp(a->k, t->arg)) { appwin_activate(a); return; } }   /* already open: to the front */
+		for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->ak[0] && !strcmp(c->ak, t->arg) && !c->trans) { wm_focus(c); return; } }   /* (Oracle's Chromium: 12.3c) */
 		app_open(t->arg, NULL);
 	}
 	else if (!strcmp(t->kind, "win")) {
@@ -1457,9 +1545,9 @@ static void frame_draw(Client *c)
 	else box_paint(cr, 1, 1, W - 2, 34, &tb);
 	cairo_restore(cr);
 	/* the picture, the title, the buttons */
-	int wt = !strcmp(st, "retro") && V.on ? 700 : 600; AppWin *a = c->app; const App *ap = a ? app_find(a->k) : NULL; GdkPixbuf *px = app_pix(ap);
+	int wt = !strcmp(st, "retro") && V.on ? 700 : 600; AppWin *a = c->app; const App *ap = a ? app_find(a->k) : c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = app_pix(ap);
 	int filt = V.on && !strcmp(st, "mono") ? 1 : 0;
-	if (px) pix_at(cr, px, 9, 10, 16, filt); else if (a && a->icon[0]) css_text(cr, a->icon, UIFAM, wt, 13, 9, 10.5, 15, fg, 0);
+	if (px) pix_at(cr, px, 9, 10, 16, filt); else if (a && a->icon[0]) css_text(cr, a->icon, UIFAM, wt, 13, 9, 10.5, 15, fg, 0); else if (!a && ap && ap->icon[0]) css_text(cr, ap->icon, UIFAM, wt, 13, 9, 10.5, 15, fg, 0);
 	int r[3][4]; btn_rects(c, r); double tx = 1 + 8 + 16 + 3, tmax = r[0][0] / Z - 3 - tx;
 	css_text(cr, a ? a->title : c->title, UIFAM, wt, 13, tx, 10.5, 15, fg, tmax);
 	static const char *const G[3] = {"_", "□", "✕"};
@@ -3087,7 +3175,8 @@ static void jumps_load(JV *v)
 }
 static int tb_win(Client *c) { return c && !c->hidden && !c->trans && (!c->app || !c->app->hidden); }   /* (the page's wins: the taskbar's windows) */
 static int tb_count(int min) { int n = 0; for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (tb_win(c) && (min < 0 || c->min == min)) n++; } return n; }
-static int app_running(const char *k) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!a->hidden && !strcmp(a->k, k)) return 1; } return 0; }
+static int app_running(const char *k) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!a->hidden && !strcmp(a->k, k)) return 1; }
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->ak[0] && !strcmp(c->ak, k)) return 1; } return 0; }   /* (and Oracle's Chromium's windows: 12.3c) */
 static void tb_page(const char *k, const char *extra, int hidden) { app_open_ex(k, NULL, extra, hidden); }
 static void tb_settings(const char *page) { char *e = qesc(page), ex[96]; snprintf(ex, sizeof ex, "&page=%s", e); g_free(e); tb_page("settings", ex, 0); }
 static void tb_jump(const char *k, const char *label) { char *e = qesc(label), ex[300]; snprintf(ex, sizeof ex, "&jump=%s", e); g_free(e); tb_page(k, ex, 0); }
@@ -3108,6 +3197,7 @@ static void on_tb_act(const char *a)
 	else if (!strcmp(a, "mute")) tb_page("do-mute", NULL, 1);
 	else if (!strncmp(a, "pnew:", 5)) app_open(a + 5, NULL);
 	else if (!strncmp(a, "pclose:", 7)) { GList *L = g_list_copy(WINS); for (GList *l = L; l; l = l->next) { AppWin *w = l->data; if (g_list_find(WINS, w) && !w->hidden && !strcmp(w->k, a + 7)) appwin_ask_close(w); } g_list_free(L); }
+	if (!strncmp(a, "pclose:", 7)) { GList *L = g_list_copy(CLIENTS); for (GList *l = L; l; l = l->next) { Client *c = l->data; if (g_list_find(CLIENTS, c) && c->ak[0] && !strcmp(c->ak, a + 7)) wm_close(c); } g_list_free(L); }
 	else if (!strncmp(a, "pin0:", 5) || !strncmp(a, "pin1:", 5)) { char *e = qesc(a + 5), ex[120]; snprintf(ex, sizeof ex, "&k=%s&on=%c", e, a[3]); g_free(e); tb_page("do-pin", ex, 1); }
 	else if (!strncmp(a, "jump:", 5)) { char k[40]; const char *bar = strchr(a + 5, '|'); if (!bar) return; snprintf(k, sizeof k, "%.*s", (int)(bar - a - 5), a + 5); tb_jump(k, bar + 1); }
 	else if (!strncmp(a, "wn:", 3) || !strncmp(a, "wp:", 3)) {
@@ -3616,7 +3706,7 @@ static void state_write(void)
 		g_string_append_printf(s, "app %s %lx %d %s\n", a->k, g ? (unsigned long)GDK_WINDOW_XID(g) : 0UL, c ? c == FOCUS : a == ACTIVE, a->title); }
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data;
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
-			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : "-", c->title);
+			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : c->ak[0] ? c->ak : "-", c->title);
 		if (c->app && c->app->win && c->app->view && GTK_IS_WIDGET(c->app->view)) { GtkAllocation al; gtk_widget_get_allocation(c->app->view, &al); g_string_append_printf(s, "view %lx %d %d\n", (unsigned long)c->w, al.width, al.height); } }   /* (the page's own size: its window's) */
 	g_string_append_printf(s, "wm %d\nicons %u %s\n", WM_OK, ICONS ? g_hash_table_size(ICONS) : 0, VER[0] ? VER : "-");
 	for (int i = 0; di_shown() && i < NDI; i++) { int x, y; di_xy(&DI[i], &x, &y); g_string_append_printf(s, "dicon %d %d %d %d %d %d %s|%s|%s\n", DI[i].c, DI[i].r, x, y, di_w(), DI[i].sel, DI[i].k, DI[i].kind, DI[i].n); }
@@ -3636,6 +3726,7 @@ static void state_write(void)
 		if (FLK == FL_NC) { g_string_append_printf(s, "flync %d %d", NNT, S.dnd); for (int i = 0; i < NNT; i++) g_string_append_printf(s, "|%s", NT[i].t); g_string_append_c(s, '\n'); }
 		for (int i = 0; i < NFLB; i++) g_string_append_printf(s, "flybtn %s %d %d\n", FLBK[i], (int)lround((FLB[i].x + FLB[i].w / 2) * Z), (int)lround((FLB[i].y + FLB[i].h / 2) * Z)); }
 	else g_string_append(s, "fly -\n");
+	g_string_append_printf(s, "oracle %d %d\n", OR_RUN, (int)OR_PID);   /* (12.3c: Oracle's Chromium running, rudolf-launch's process) */
 	g_string_append_printf(s, "devlink %d %d\ndlask %s\n", DL_ON && DLBAN && gtk_widget_get_visible(DLBAN), TOPRES, DLASK && gtk_widget_get_visible(DLASK) ? DL_PEND : "-");
 	char tmp[600]; snprintf(tmp, sizeof tmp, "%s.tmp", STATEF); g_file_set_contents(tmp, s->str, s->len, NULL); rename(tmp, STATEF); g_string_free(s, TRUE);
 }

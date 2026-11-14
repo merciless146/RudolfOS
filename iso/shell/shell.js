@@ -12,12 +12,18 @@
                        pointer cannot be captured inside the desktop's frame, so the shell captures it on the frame
                        and sends {rudolfShell: 'mm', dx, dy}, {'mb', b, down}, {'mw', dy}; {'lockchange', locked}
                        {rudolfShell: 'unlock'}
+                       {rudolfShell: 'oa', op: 'title', t} | {rudolfShell: 'oa', op: 'close'}   (1.5.9) Oracle's own window
+                       on the native desktop (opened at #app=browser&...): the window's title, and closing it with the app
    Tabs (see TABS below): desktop -> shell {rudolfShell: 'tab', op, tid, ...}; shell -> desktop {rudolfShell: 'tabev',
    tid, ev, ...}. */
 'use strict';
 const DESK_URL = 'http://127.0.0.1:8080/';
 const DESK_ORIGIN = 'http://127.0.0.1:8080';
-const VERSION = '1.5.1';   /* 1.5.1: controllers (the gamepad permission) for cloud games in real tabs */
+const VERSION = '1.5.9';   /* 1.5.1: controllers (the gamepad permission) for cloud games in real tabs; 1.5.9: Oracle's window on the native desktop */
+/* 1.5.9 (docs/plan-1.5.9.md 12.3c): on the native desktop each of Oracle's windows is this shell, opened at
+   #app=browser&...: the # goes on to the desktop page, which opens Oracle alone in it (one-app mode) with these real tabs */
+const DESK_HASH = /^#app=[a-z0-9_-]{1,40}(&[A-Za-z0-9&=._~%+-]*)?$/.test(location.hash) ? location.hash : '';
+const DESK_SRC = DESK_URL + DESK_HASH;
 const CAPS = ['tabs', 'dark'];
 const desk = document.getElementById('desk');
 const starting = document.getElementById('starting');
@@ -50,7 +56,7 @@ desk.addEventListener('loadcommit', e => { if (e.isTopLevel) tabsReset() });
 /* rudolfd may not be listening yet right after start-up: try again */
 desk.addEventListener('loadabort', e => {
   if (e.isTopLevel === false) return;
-  starting.hidden = false; setTimeout(() => { desk.src = DESK_URL }, 2000);
+  starting.hidden = false; setTimeout(() => { desk.src = DESK_SRC }, 2000);
 });
 addEventListener('focus', () => { if (!document.activeElement || document.activeElement === document.body) desk.focus() });
 /* 1.5.6: a key that reaches the shell itself (the keyboard is on neither the desktop nor a tab) never lets Chromium
@@ -358,6 +364,8 @@ const handlers = {
   unlock: () => { if (document.pointerLockElement) document.exitPointerLock() },
   ping: (m, reply) => reply({rudolfShell: 'pong', id: m.id}),
   tab: m => onTab(m),
+  /* 1.5.9 (12.3c): Oracle's own window on the native desktop: its title is the page's, and it closes with the app */
+  oa: m => { if (!DESK_HASH) return; if (m.op === 'title') document.title = String(m.t || '').slice(0, 200) || 'Rudolf OS'; else if (m.op === 'close') window.close() },
 };
 addEventListener('message', e => {
   if (e.origin !== DESK_ORIGIN || e.source !== desk.contentWindow) return;
@@ -365,4 +373,4 @@ addEventListener('message', e => {
   handlers[m.rudolfShell](m, r => toDesk(r));
 });
 
-desk.src = DESK_URL;
+desk.src = DESK_SRC;

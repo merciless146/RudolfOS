@@ -718,14 +718,53 @@ closed → no Chromium left; same_t.sh's comparison of Oracle's window (toolbar,
 Measured on the Vivobook: Native with Oracle open (target: no more than Standard with Oracle open, 1,167 MB), Native
 idle unchanged after Oracle closes, FNF in Oracle on both engines (frame rate the same).
 
-**Status:** planned (2026-11-14), not started. It is built after the native session's item in progress, in its own
-PR; it touches iso/shell/shell.js (so, as with Part 14, a beta with it replaces the shell in the profile once).
-(2026-11-14, the unattended security session, after 15.4, 15.6, 15.5 and 15.3's first step: not started here. The
-build host of that session had neither WebKitGTK's nor GTK 3's development files (rudolf-native cannot be built) nor
-Rudolf's Chromium with Isolated Web Apps (the shell cannot run; Playwright's is Chrome for Testing), and no network
-for packages, so neither oracle_native_t.sh nor the shell's part could be run; untested GTK code was not written.
-Next: on a host with libwebkit2gtk-4.1-dev and Rudolf's Chromium, or in the webkit-check workflow's runner, after the
-open native PR (native15-tray-more, which changes rudolf-native.c) is merged.)
+**Status (2026-11-14, first part done):** steps 1 to 4 and 6, with their test; step 5 next.
+- **rudolf-launch --oracle CONTROL SHELL-ID CHROME ARGS...:** Chromium started with no window (--no-startup-window) and the
+  private DevTools pipe, as Standard's rudolf-launch; each line `open W H X Y HASH` on the FIFO CONTROL opens the shell at
+  `isolated-app://SHELL-ID/#HASH` as a window of its own (Target.createTarget with newWindow and the bounds; retried while
+  Chromium installs the shell from its file). Every shell window is counted; when the last has closed, Browser.close and
+  rudolf-launch exits with Chromium. Other pages that appear are closed, as Standard's rudolf-launch does.
+- **rudolf-native:** Oracle (its pin, the start menu, a desktop icon, another app's link: every app_open of "browser", not
+  the pages it asks to do things unseen) starts rudolf-launch --oracle the first time (the FIFO in its runtime folder) and
+  writes one line per window, the page's #app=browser&... (file, jump, url) passed on; the pointer is busy until the
+  window is there (up to 20 s). Chromium's windows (WM_CLASS RudolfOracle) are framed as Oracle: its picture and name in
+  the title bar and the taskbar, the title the page's (Chromium's "Rudolf OS - TITLE" without the shell's name), the
+  pin bringing it to the front, Open a new window and Close all windows in the pin's menu as for the other apps. An
+  Isolated Web App's window always has Chromium's own title bar and edges (measured: neither the "use the system's
+  title bar" setting nor display_override "borderless" with the window-management permission removes them, Chromium 153),
+  so the window manager puts the window in a clip window inside the frame, its own bar (28 px) and edges (4 px) cut
+  away (RUDOLF_ORACLE_INSET to change them); full screen, Chromium draws none. Without the file, Chromium, the shell or
+  rudolf-launch: Oracle's WebKit window as before, and the page says once (#…&nochrome=1, a notification) that websites
+  work better on Standard.
+- **The shell (1.5.9, version 1.5.9: the beta replaces the profile's copy once, rudolf-shellfix):** its # (only
+  `#app=NAME&...`) goes on to the desktop frame (DESK_URL + hash), so the page opens Oracle alone in one-app mode, with
+  the shell's real tabs (rtOn() true): Standard's code path. A new message `{rudolfShell:'oa', op:'title'|'close'}` from
+  the page (oneapp59.js oaShell, when the page is not in WebKit) sets the window's title and closes it when the app
+  closes, so Chromium goes with Oracle's last window.
+- **The session:** with Native, /run/rudolf/oracle-chrome (the shell's ID, then Chromium and Standard's flags: the profile
+  /home/rudolf/.rudolf-browser, GPU flags, the features turned off, autoplay, the fake media UI for calls, the password
+  store, the shell installed from its file, Ruffle, the proxy, browser-flags), written only when the shell, Chromium and
+  rudolf-launch are there; rudolf-shellfix (now shell_fix) runs before Native's Oracle too. Chromium runs as the
+  desktop's user (rudolf), as on Standard: the page and the API are answered only for it (15.1), and the profile is its.
+- Tests: qt/native/oracle_native_t.sh (13, in a network namespace of its own, rudolf-native under Xvfb with Playwright's
+  Chromium, the real shell built with a test key, a stand-in rudolfd): one Chromium from the pin, no WebKit window, the
+  page in one-app mode with rtOn(), framed as Oracle with the page's title, the page filling the frame and no
+  Chromium title bar, a local site in a real tab (a Controlled Frame) keeping its cookie, the pin to the front and the
+  menu's rows, Open a new window in the same Chromium, the app's ✕ and the frame's ✕ closing them and Chromium with
+  the last, Oracle again with the cookie kept (the same profile), without Chromium the WebKit window. native59_t.sh
+  70/70, wmnative59_t.sh, oneapp59_t.js 42/42, engine57/59, deskfall57, startlogs58, watchlim unchanged.
+  (Found: Playwright's Chrome for Testing 153 runs the shell and its Controlled Frames here; the earlier note that it
+  could not was not so.)
+
+**Next (12.3c, second part):** step 5, what the page in Chromium needs from the native desktop: another app opened from
+Oracle (oneapp59's op "open": now it opens inside Oracle's page, as in a browser; to go through rudolfd or the shell to
+rudolf-native), downloads into the account's Downloads with the native taskbar's progress, notifications (to the
+native shell's pop-ups once the native port's toasts are on main), the file dialogs and Open with, the clipboard, the
+volume and the 🎙️ during calls, game mode (Chromium's window full screen: the shell's fullscreen stand-in fills only the
+window now; the page's requestFullscreen should make the window full screen), the keys (keys56.js, Ctrl+Shift+N) and
+the devlink's screenshot, each checked on both engines; then same_t.sh's comparison of Oracle's window against
+Standard's, and the Vivobook's measurements (Native with Oracle open against Standard's 1,167 MB; idle again after
+Oracle closes; FNF's frame rate on both engines).
 
 ### 12.4 Tests
 - Host, under Xvfb: rudolf-native draws its wallpaper and taskbar (screenshots compared), a window gets a frame,
@@ -1174,5 +1213,5 @@ Tests: qt/host/seccheck59_t.py (12, stand-ins for GitHub, the snap store and the
 
 **Status:** planned (2026-11-14). 15.1 first, then 15.2, 15.4, 15.5, 15.6; 15.3 when 15.1 is done (it changes the same
 code). Each in its own PR. (2026-11-14: 15.1, 15.2, 15.4, 15.6 and 15.5 done; 15.3's first and second steps done (the second: X authorization,
-Debian, Wine and Library packages as the account's user), its QEMU check next, as its note says; then Part 12 step 8,
-12.3c.)
+Debian, Wine and Library packages as the account's user), its QEMU check next, as its note says; Part 12 step 8,
+12.3c: its first part done (steps 1-4 and 6), step 5 next, as its note says.)
