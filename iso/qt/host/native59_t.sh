@@ -68,10 +68,28 @@ ok "57. a double-click opens the icon's app" "$(grep -q '^app notepad' $D/state 
 NID=$(grep '^client .* app=notepad' $D/state | cut -d' ' -f2); X=$(cv $NID 4); Y=$(cv $NID 5); FW=$(( $(cv $NID 6) + 2 )); click $((X+FW-21)) $((Y+18)); w8 '[ -z "$(cl $NID)" ]' 40
 xdotool mousemove 218 134 mousedown 1; for k in 1 2 3 4 5 6; do xdotool mousemove $((218+k*42)) $((134+k*29)); timeout 0.1 tail -f /dev/null; done; xdotool mouseup 1; timeout 0.5 tail -f /dev/null
 ok "58. dragging an icon: to the nearest cell, kept by rudolfd for the shell (desktop/cells)" "$([ "$(di Calculator | cut -d' ' -f2-3)" = "5 3" ] && grep -q '"Calculator":\[5,3\]' $D/cells.json && echo 1)" "$(di Calculator) $(cat $D/cells.json 2>/dev/null)"
-xdotool mousemove 900 500 click 3; w8 '[ "$(st dmenu)" = desk ]' 20; xdotool key Down Return; timeout 0.8 tail -f /dev/null
+cmi() { grep "^cmitem .*|$1$" $D/state | head -1 | awk '{print $2, $3}'; }   # an item of the menu that is open, its middle
+dc() { di "$1" | awk '{print $4+42, $5+24}'; }                           # an icon's picture
+xdotool mousemove 900 500 click 3; w8 '[ "$(st dmenu)" = desk ] && [ -n "$(cmi "Arrange icons by name")" ]' 20; click $(cmi "Arrange icons by name"); timeout 0.8 tail -f /dev/null
 ok "59. the desktop's menu: Arrange icons by name" "$([ "$(di Calculator | cut -d' ' -f2-3)" = "0 0" ] && [ "$(di 'My Computer' | cut -d' ' -f2-3)" = "0 1" ] && [ "$(di Notepad | cut -d' ' -f2-3)" = "0 2" ] && echo 1)" "$(grep '^dicon\|^dmenu' $D/state)"
 xdotool mousemove 50 40 click 3; w8 '[ "$(st dmenu)" = icon ]' 20; xdotool key Escape
 ok "60. an icon's own menu" "$([ "$(st dmenu)" = icon ] && echo 1)"
+# 1.6.0 (Part 12, item 1, second part): the Desktop folder's files, the page's menus and dialogs drawn by the shell
+xdotool mousemove 900 500 click 3; w8 '[ -n "$(cmi "New text document")" ]' 20; click $(cmi "New text document"); w8 '[ "$(st dialog | cut -d" " -f1)" = rename ]' 80
+ok "61. the desktop's menu: New text document, then the page's Rename dialog, its name chosen" "$([ "$(st dialog)" = "rename NEW TEXT DOCUMENT.TXT|" ] && echo 1)" "$(st dialog)"
+xdotool type --delay 30 'notes.txt'; xdotool key Return; w8 '[ -n "$(di NOTES.TXT)" ]' 80
+ok "62. ...a name typed and Enter: the file's icon on the desktop (the page's upper case)" "$(di NOTES.TXT | grep -q '|file|NOTES.TXT$' && [ "$(st dialog | cut -d' ' -f1)" = - ] && echo 1)" "$(grep '^dicon\|^dialog' $D/state)"
+xdotool mousemove $(dc NOTES.TXT) click 3; w8 '[ "$(st dmenu)" = file ]' 20
+ok "63. a file's menu: Open, Open with…, Rename, Move to Trash, Properties" "$([ "$(st cmenu | cut -d' ' -f5-)" = NOTES.TXT ] && grep '^cmitem' $D/state | cut -d'|' -f2 | tr '\n' ',' | grep -q '^Open,Open with…,Rename,Move to Trash,Properties,$' && echo 1)" "$(grep '^cmenu\|^cmitem' $D/state)"
+xdotool key Escape; w8 '[ -z "$(st cmenu)" ]' 20; click $(dc NOTES.TXT); w8 'di NOTES.TXT | grep -q " 1 |file|"' 20; xdotool key F2; w8 '[ "$(st dialog | cut -d" " -f1)" = rename ]' 40; xdotool type --delay 30 'plan.txt'; xdotool key Return; w8 '[ -n "$(di PLAN.TXT)" ]' 80
+ok "64. F2: Rename, the new name kept" "$([ -n "$(di PLAN.TXT)" ] && [ -z "$(di NOTES.TXT)" ] && echo 1)" "$(di NOTES.TXT) / $(di PLAN.TXT) / $(st dialog) / $(st dmenu)"
+xdotool mousemove 900 500 click 3; w8 '[ -n "$(cmi "New folder")" ]' 20; click $(cmi "New folder"); w8 '[ "$(st dialog | cut -d" " -f1)" = rename ]' 80
+xdotool type --delay 30 'plan.txt'; xdotool key Return; w8 '[ -n "$(st dialog | cut -d"|" -f2)" ]' 40
+ok "65. ...a name already used: the page's message, the dialog still open" "$([ "$(st dialog)" = "rename NEW FOLDER|That name is already used." ] && echo 1)" "$(st dialog)"
+xdotool key Escape; w8 '[ -n "$(di "NEW FOLDER")" ]' 40; click $(dc PLAN.TXT); w8 'di PLAN.TXT | grep -q " 1 |file|"' 20; xdotool key Delete; w8 '[ -z "$(di PLAN.TXT)" ]' 80
+xdotool mousemove $(dc Trash) click 3; w8 '[ "$(st dmenu)" = icon ]' 20
+ok "66. Delete: the file to the Trash, whose menu can empty it now" "$([ -z "$(di PLAN.TXT)" ] && [ -n "$(di 'NEW FOLDER')" ] && grep -q '^cmitem [0-9]* [0-9]* 0 icon:Empty trash…|Empty trash…$' $D/state && echo 1)" "$(grep '^dicon\|^cmitem' $D/state)"
+xdotool key Escape
 set_s '{"s":{"bs":"gradient","b1":"#ff0000","b2":"#0000ff","tb":"top","accent":"#16a34a","tbac":true,"tbacm":"negative","h24":false,"df":"dmy"},"pins":["calc"],"notes":0,"wallpaper":false}'
 w8 '[ "$(st bar | cut -d" " -f3)" = 0 ]' 40; timeout 1 tail -f /dev/null; shot
 ok "11. settings changed in the page: the taskbar moves to the top" "$([ "$(st bar)" = "1 0 0 1280 46" ] && echo 1)" "$(st bar)"
