@@ -27,7 +27,7 @@ function net31Fill(p){const i=N31.cur;p.querySelector('.nps').textContent=i?(NET
  const L=p.querySelector('.npl');L.innerHTML='';
  N31.ifs.forEach(a=>{const r=document.createElement('div');r.className='npr'+(a===i?' on':'');r.style.cursor='default';r.innerHTML="<span></span><b></b><i></i>";
   r.children[0].textContent=a.wireless?'📶':'🔌';r.children[1].textContent=a.wireless?'Wi-Fi'+(a.ssid&&a.ip?' · '+(typeof wfDecode=='function'?wfDecode(a.ssid):a.ssid):''):'Ethernet ('+a.name+')';
-  r.children[2].textContent=a.ip?'Connected':a.state=='up'?'No address':a.wireless?'Not connected':'No cable';L.appendChild(r)});
+  r.children[2].textContent=a.ip?(a.internet===false?'No internet':'Connected'):a.state=='up'?'No address':a.wireless?'Not connected':'No cable';if(a.internet===false)r.title='Connected, but the internet does not answer through it: the other connection is used until it does';L.appendChild(r)});
  if(!N31.ifs.length)L.innerHTML="<div style='color:#6b7280'>No network adapter was found.</div>"}
 /* (1.4.4) the popup also holds the Wi-Fi: the network now, the networks in range, joining one (the old Wi-Fi icon's) */
 function net31Pop(){const old=document.querySelector('.np');if(old){old.remove();return}const B=$('#net'),p=document.createElement('div');p.className='np np31';p.style.cssText='width:330px;max-height:75vh;overflow:auto';

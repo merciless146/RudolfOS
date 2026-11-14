@@ -573,6 +573,9 @@ static void api_net(struct req *r)
 		sadd(&s, ",\"wireless\":%s,\"rx\":%lld,\"tx\":%lld", wifi ? "true" : "false", rx, tx);
 		snprintf(p, sizeof p, "/sys/class/net/%s/device", e->d_name);
 		sadd(&s, ",\"virtual\":%s,\"default\":%s", access(p, F_OK) ? "true" : "false", !strcmp(defif, e->d_name) ? "true" : "false");
+		/* 1.5.9: a wired link held back because the internet does not answer through it (udhcpc.sh) */
+		snprintf(p, sizeof p, RUN "/nointernet/%s", e->d_name);
+		if (!access(p, F_OK)) sadd(&s, ",\"internet\":false");
 		snprintf(p, sizeof p, "/sys/class/net/%s/speed", e->d_name);
 		if (!wifi) sadd(&s, ",\"speed\":%lld", st && !strcmp(st, "up") ? read_ll(p, -1) : -1LL);
 		if (wifi && st && !strcmp(st, "up") && safe_word(e->d_name, 16)) {
