@@ -720,6 +720,12 @@ idle unchanged after Oracle closes, FNF in Oracle on both engines (frame rate th
 
 **Status:** planned (2026-11-14), not started. It is built after the native session's item in progress, in its own
 PR; it touches iso/shell/shell.js (so, as with Part 14, a beta with it replaces the shell in the profile once).
+(2026-11-14, the unattended security session, after 15.4, 15.6, 15.5 and 15.3's first step: not started here. The
+build host of that session had neither WebKitGTK's nor GTK 3's development files (rudolf-native cannot be built) nor
+Rudolf's Chromium with Isolated Web Apps (the shell cannot run; Playwright's is Chrome for Testing), and no network
+for packages, so neither oracle_native_t.sh nor the shell's part could be run; untested GTK code was not written.
+Next: on a host with libwebkit2gtk-4.1-dev and Rudolf's Chromium, or in the webkit-check workflow's runner, after the
+open native PR (native15-tray-more, which changes rudolf-native.c) is merged.)
 
 ### 12.4 Tests
 - Host, under Xvfb: rudolf-native draws its wallpaper and taskbar (screenshots compared), a window gets a frame,
@@ -1004,6 +1010,38 @@ Found: the built-in apps all run in the desktop's one page (one origin), so a sc
 user (uid 1001 and up), so one account's programs cannot read another's files, and none is the desktop's user (15.1's
 second check). 1.6.0 Part 11 (elogind and polkit) stays in 1.6.0.
 
+**Done, first step (2026-11-14), `iso/sys/rudolfd-users.inc`:**
+- **Users:** each account of the page's list (bd95user, read from the lsync copy after every lsync and at start; not
+  the guest) gets `acctUID`, uid and gid 1001 and up, with no password, in audio, video, input and group 1000 (the
+  devices' group: cameras, controllers, hidraw, the ADB phone, which mdev gives to group 1000). An account that goes
+  loses its user (its programs stopped); the uids are kept in /persist/etc/rudolf/account-users ("ID UID [moved]",
+  "-ID UID" for a removed one, never given again) and written into /etc (in RAM) at every start.
+- **Files:** the account's folder (/persist/accounts/ID, encrypted with its key) and what is made in it belong to its
+  user, 0700: no other account's user, and not the desktop's, can go in (rudolfd serves the desktop page as root).
+- **The move of existing computers:** at the first start each account's folder's files owned by the desktop's user
+  become its user's (lchown only, nothing copied), logged ("… belong to its own Linux user now: N moved"); a file
+  that cannot be moved leaves the account to be tried again at the next start, said in the health log (Accounts) and in
+  System health (the new "Accounts' Linux users" line, from GET accounts/users).
+- **The session:** at sign-in with the files on the disk (home_bind) the account's folder is also its user's home
+  (/home/acctUID, a bind), /run/user/UID is its own, its session D-Bus and rudolf-portal start as it, and
+  /run/rudolf/acct-session.env has its environment. Linux apps (rudolf-apps launch) and Flatpak apps (native run) start
+  as the account's user with it; nobody signed in (or an account without its files on the disk, or the guest): as the
+  desktop's user, as before. Sound: the desktop's PulseAudio offers a second socket, /run/rudolf/pulse/native, in a
+  folder for the audio group only (in the list of listeners). Signing out (home_unbind) stops every program of the
+  user (TERM, then KILL), its home and runtime folder go; rudolfd started again in the session keeps them.
+- **15.1's second check:** the page and the API are answered only for the desktop's user (rudolf, 1000) or root, as
+  well as its memory group (rudolfd-peer.inc).
+- Tests: qt/host/users59_t.sh (21, on ext4 with real users in a private namespace: users made, the same again, the
+  move and a file that cannot move, one account's user refused another's files, the session, sign-out stopping every
+  program but another account's, rudolfd started again, an account removed and its uid not given again), peer59_t.sh
+  (20, with 9b: a process of another user in the desktop's group refused), dl140_t.js (System health's line).
+
+**Next (15.3, second step):** Debian and Wine as the account's user (rudolf-debian makes the same uid in Debian's
+passwd and runs its terminal and apps as it; Wine's prefix in the account's home); Library packages (rpk run) as it;
+X authorization instead of `-ac` (each account's user given the display, not every program); the QEMU check with two
+accounts (a Flatpak app, a Debian terminal and Wine refused the other's files; sign-out; the move on an existing
+data partition).
+
 ### 15.4 The devlink is off unless it is being used
 Found: the devlink runs commands sent through a GitHub repository; on the Vivobook it was on with "Ask first" off, so
 anyone who got into that GitHub account could run commands on the computer.
@@ -1070,7 +1108,7 @@ Settings. **Done (2026-11-14):**
   listens, a listening daemon a script starts, anything like nc -l, socat, sshd or VNC) and the self-test's line on a
   stand-in /proc. ci_release.sh runs it before each release.
 - **Built hardened:** `iso/systools/hardflags.sh` (HARD: `-fstack-protector-strong -D_FORTIFY_SOURCE=3 -fPIE -pie
-  -Wl,-z,relro,-z,now`, with `-fcf-protection=full` on x86-64 and `-mbranch-protection=standard` on ARM64; HARD_STATIC
+  -Wl,-z,relro,-z,now`, with `-fcf-protection=full` on x86-64 and `-mbranch-protection=standard` on ARM64 (whose BTI and PAC mark is not checked: Ubuntu's ARM64 start-up files lack it, so the linker drops it); HARD_STATIC
   with `-static-pie` for cdp-eval and rudolf-verity), used by ci_release.sh, mkrootfs.sh (so arm64_base.sh),
   arm64_kernel.sh, testkernel.sh and the ARM64 workflow. rudolf-kexec (no C library) is the one left as it was.
   `iso/systools/hardcheck.py` reads each built program (readelf: ELF type DYN, GNU_RELRO and BIND_NOW,
@@ -1104,4 +1142,5 @@ Settings › About: Chromium (the release's, else the browser's own) and Release
 Tests: qt/host/seccheck59_t.py (12, stand-ins for GitHub, the snap store and the mainline list), devmode59_t.js 10b.
 
 **Status:** planned (2026-11-14). 15.1 first, then 15.2, 15.4, 15.5, 15.6; 15.3 when 15.1 is done (it changes the same
-code). Each in its own PR.
+code). Each in its own PR. (2026-11-14: 15.1, 15.2, 15.4, 15.6 and 15.5 done; 15.3's first step done, its second step
+next, as its note says; then Part 12 step 8, 12.3c.)

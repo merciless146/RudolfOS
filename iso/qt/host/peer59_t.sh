@@ -32,7 +32,7 @@ chmod 644 $T/cl.py; chmod 777 $T
 run() { rm -f $T/pid.$1 $T/go.$1; python3 $T/cl.py $1 "$2" $T > $T/out.$1 2>&1 & w8 "[ -s $T/pid.$1 ]" 40
   [ "$3" = desk ] && echo "$(cat $T/pid.$1)" >> $T/cg/cgroup.procs; touch $T/go.$1; wait $!; cat $T/out.$1; }
 code() { echo "$1" | head -1 | cut -d' ' -f1; }
-start "RUDOLFD_DESKTOP_CG=$T/cg"
+start "RUDOLFD_DESKTOP_CG=$T/cg RUDOLFD_DESKTOP_UID=65534"   # (the clients run as nobody: here the desktop's user)
 o=$(run d1 / desk)
 ok "1. the desktop (a process of its memory group) gets the page, with the token" "$([ "$(code "$o")" = 200 ] && echo "$o" | grep -q 'RUDOLFD={token:"' && echo 1)" "$(echo "$o" | head -c 300)"
 echo "$o" | sed -n 's/.*RUDOLFD={token:"\([0-9a-f]*\)".*/\1/p' | head -1 > $T/tok; chmod 644 $T/tok; TOK=$(cat $T/tok)
@@ -61,6 +61,14 @@ o=$(run x6 /api/ping no)
 ok "8. a program that is not the desktop is still refused after the remembered one" "$([ "$(code "$o")" = 403 ] && echo 1)" "$o"
 H=$(cat /run/rudolf/health.log 2>/dev/null)
 ok "9. the health log says so (Security, the user), once a minute at most, without the token" "$(echo "$H" | grep -c 'security.*not the desktop (Linux user 65534)' | grep -qx 1 && ! echo "$H" | grep -q "$TOK" && echo 1)" "$H"
+kill $RDP; wait $RDP 2>/dev/null
+# 1.5.9 (15.3): the second check: the desktop's user too. A process in the desktop's group, but of another user (an
+# account's own Linux user), is refused
+start "RUDOLFD_DESKTOP_CG=$T/cg RUDOLFD_DESKTOP_UID=1000"
+rm -f $T/tok; o=$(run u1 / desk)
+ok "9b. (15.3) a process in the desktop's group but not of the desktop's user (rudolf, 1000) is refused the page" "$([ "$(code "$o")" = 403 ] && echo 1)" "$(echo "$o" | head -c 200)"
+echo "$TOK" > $T/tok; chmod 644 $T/tok; o=$(run u2 /api/ping desk)
+ok "...and the API" "$([ "$(code "$o")" = 403 ] && echo 1)" "$o"
 kill $RDP; wait $RDP 2>/dev/null
 # no desktop group: not enforced, as before 1.5.9, and said once
 rm -f /run/rudolf/health.log; start "RUDOLFD_DESKTOP_CG=$T/none"
