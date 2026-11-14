@@ -45,8 +45,8 @@ function wpFromComputer(){return new Promise((res,rej)=>{const i=document.create
   const r=d.querySelector('.wpr');if(r)r.onclick=e=>{e.preventDefault();S.wpimg='';S.wpname='';applySet();window.__dynRefresh&&__dynRefresh();done()};
   const f=d.querySelector('.wpfit');if(f)f.onchange=e=>{e.stopPropagation();S.wpfit=f.value;applySet();c.dispatchEvent(new Event('input',{bubbles:true}))}};
  draw();if(S.wpimg&&S.wpimg!=WPID)wpLoad(S.wpimg).then(()=>d.isConnected&&draw());
- /* a dynamic background, a preset or other colours: the picture is no longer the background */
+ /* a drawn background or other colours: the picture is no longer the background */
  const off=()=>{if(!S.wpimg)return;S.wpimg='';S.wpname='';setTimeout(()=>{applySet();draw()},0)};
- c.addEventListener('click',e=>{if(e.target.closest&&(e.target.closest('.dynb')||(e.target.dataset&&e.target.dataset.p!=null)))off()},true);
+ c.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('.dynb'))off()},true);
  c.addEventListener('input',e=>{if(['bs','b1','b2'].includes(e.target.id))off()},true)}})();
 WPREADY=true;if(S.wpimg)wpLoad(S.wpimg);

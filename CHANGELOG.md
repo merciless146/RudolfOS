@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- Changed: Display Properties no longer has the colour presets (Sunset, Ocean, Classic Teal and the others, there since 1.1); Background style and Color 1 / Color 2 still make simple colour and pattern backgrounds. The drawn backgrounds are now in two rows: Dynamic Backgrounds, the ones that move (Spirit Falls, Glacier Lake), and Static Backgrounds (Alpine Peak, Obsidian Waves, Gilded Crest, Teal Prism, Slate Panels). Both still have a light and a dark version.
 - New: Display Properties › Title bars: the windows' title bars in the taskbar's styles (Standard, Wireframe, Monochrome, Candy, Retro), in the accent colour as Normal, Negative or Complementary. The window you are using has the colour; the others stay grey.
 - New: Search in Settings: a search box at the top of Settings. As you type, a drop-down lists the pages, sections and settings that still match, each with where it is underneath in smaller text (Settings › Network Settings › Wi-Fi). Choose one (click, or the arrow keys and Enter) to open its page with that setting highlighted.
 - New: game mode puts Oracle's background tabs to sleep to free memory for the game. A sleeping tab keeps its address and shows 💤; selecting it loads it again. Tabs playing sound or holding typed text stay awake. Blitzen's model is unloaded too (unless Blitzen is in front), and system, Linux app and Debian updates wait until the game ends. Settings › System health › Memory can turn it off.
