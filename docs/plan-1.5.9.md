@@ -1087,7 +1087,7 @@ before it switches the link on; updated with its next run.
   listens, a listening daemon a script starts, anything like nc -l, socat, sshd or VNC) and the self-test's line on a
   stand-in /proc. ci_release.sh runs it before each release.
 - **Built hardened:** `iso/systools/hardflags.sh` (HARD: `-fstack-protector-strong -D_FORTIFY_SOURCE=3 -fPIE -pie
-  -Wl,-z,relro,-z,now`, with `-fcf-protection=full` on x86-64 and `-mbranch-protection=standard` on ARM64; HARD_STATIC
+  -Wl,-z,relro,-z,now`, with `-fcf-protection=full` on x86-64 and `-mbranch-protection=standard` on ARM64 (whose BTI and PAC mark is not checked: Ubuntu's ARM64 start-up files lack it, so the linker drops it); HARD_STATIC
   with `-static-pie` for cdp-eval and rudolf-verity), used by ci_release.sh, mkrootfs.sh (so arm64_base.sh),
   arm64_kernel.sh, testkernel.sh and the ARM64 workflow. rudolf-kexec (no C library) is the one left as it was.
   `iso/systools/hardcheck.py` reads each built program (readelf: ELF type DYN, GNU_RELRO and BIND_NOW,

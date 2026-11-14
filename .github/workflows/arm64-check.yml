@@ -51,7 +51,7 @@ jobs:
           gcc -Os -static -nostdlib -fno-builtin -fno-stack-protector -fno-asynchronous-unwind-tables -o $B/rudolf-kexec sys/rudolf-kexec.c
           gcc -Os $HARD_STATIC -o $B/rudolf-verity sys/rudolf-verity.c
           file $B/* | sed 's/,.*//' ; ! file $B/* | grep -v "ARM aarch64"
-          python3 systools/hardcheck.py $(ls $B/* | grep -v rudolf-kexec)   # (BTI and PAC on ARM64; rudolf-kexec has no C library)
+          python3 systools/hardcheck.py $(ls $B/* | grep -v rudolf-kexec)   # (rudolf-kexec has no C library; the BTI and PAC mark is not required: hardcheck.py says why)
           $B/rudolf-kexec 2>&1 | grep -q "usage: rudolf-kexec" && echo "rudolf-kexec runs (ARM64 system calls)"
           $B/rudolf-memguard --warn 3415 340 3415 2387 | grep -qx 1 && echo "rudolf-memguard runs"
           echo "::notice title=ARM64::the C helpers and rudolfd build and run on ARM64 ($MA)"
