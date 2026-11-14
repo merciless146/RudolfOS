@@ -70,6 +70,23 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 	for (let i = 0; i < 40 && !(await fr().evaluate(() => !!window.__fl).catch(() => false)); i++) await wait(100);
 	const g = fr();
 	ok('5. the game kit greets the desktop and is answered', await g.evaluate(() => RG.inDesktop));
+	/* 1.5.9: the language, shared only while Settings › Date, time and language › Share my language with apps is on */
+	const hello = () => g.evaluate(() => new Promise(r => { const id = 'h' + Math.random(); const h = e => { if (e.data && e.data.id === id) { removeEventListener('message', h); r(e.data) } };
+		addEventListener('message', h); parent.postMessage({rudolfGame: 1, op: 'hello', id, game: 'fault-lines'}, '*') }));
+	const pushed = () => g.evaluate(() => { window.__pushed = []; addEventListener('message', e => { if (e.data && e.data.op == 'settings') __pushed.push(e.data) }) });
+	await p.evaluate(() => { S.lang = 'de' }); await wait(2300);
+	const h1 = await hello();
+	ok('5b. the hello tells a game the language (shared by default)', h1.ok && h1.lang == 'de' && h1.locale == 'de-DE' && 'dark' in h1, h1);
+	await pushed(); await p.evaluate(() => { S.lang = 'ja' }); await wait(2300);
+	const ps = await g.evaluate(() => __pushed.slice(-1)[0]);
+	ok('5c. ...and a changed language is sent to it', ps && ps.lang == 'ja' && ps.locale == 'ja-JP', ps);
+	const ui = await p.evaluate(async () => { const c = document.createElement('div'); document.body.appendChild(c); sysPanelS(c, null); const b = c.querySelector('#slgs');
+		const r = {has: !!b, on: b && b.checked, label: b && b.closest('.r2').innerText}; let ev = 0; c.addEventListener('input', () => ev++); b.click(); r.after = S.shareLang; r.ev = ev; c.remove(); return r });
+	ok('5d. Settings › Date, time and language has the checkbox, on by default; unticked, sharing stops', ui.has && ui.on && /Share my language with apps/.test(ui.label) && ui.after === false && ui.ev == 1, ui);
+	await pushed(); await wait(2300);
+	const h2 = await hello(), ps2 = await g.evaluate(() => __pushed.slice(-1)[0]);
+	ok('5e. ...off: the hello and the settings sent no longer carry the language', h2.ok && !('lang' in h2) && !('locale' in h2) && ps2 && !('lang' in ps2), {h2, ps2});
+	await p.evaluate(() => { S.shareLang = true; S.lang = 'en' }); await wait(2300);
 	/* saves: kept in the desktop's database, per package, game and account */
 	await g.evaluate(() => RG.save({v: 1, best: {small: 42.5}, daily: {}, played: 3, won: 1}));
 	await wait(300);

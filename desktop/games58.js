@@ -40,13 +40,19 @@ function gameFrame(src){for(const f of document.querySelectorAll('iframe')){let 
 const gameKey=(pkg,game)=>'game:'+pkg+':'+game+':'+uid();
 const gameDark=()=>document.documentElement.classList.contains('dark');
 const gameRM=()=>!!(typeof S!='undefined'&&S&&S.rmotion);
+/* 1.5.9: Rudolf OS's language, given to apps only while Settings › Date, time and language › "Share my language with
+   apps" is on (it is by default). Off, an app is told nothing and falls back to its own choice. */
+Object.assign(DEFS.sys,{shareLang:true});if(!SKEYS.includes('shareLang'))SKEYS.push('shareLang');
+if(S.shareLang===undefined)S.shareLang=true;if(typeof SC=='object'&&SC&&SC.shareLang===undefined)SC.shareLang=true;
+const gameLang=()=>{if(typeof S=='undefined'||!S||S.shareLang===false)return {};const l=LANGS.find(x=>x[0]==S.lang);return l?{lang:l[0],locale:l[2]}:{}};
+const gameSet=()=>Object.assign({dark:gameDark(),reduceFlash:gameRM()},gameLang());
 const GAME_FRAMES=new Map();   /* frame -> {pkg, paused} */
 addEventListener('message',async e=>{const m=e.data;if(!m||m.rudolfGame!==1||typeof m.op!='string')return;
  const at=gameFrame(e.source);if(!at)return;
  const reply=o=>{try{e.source.postMessage(Object.assign({rudolfGame:1,op:'reply',id:m.id},o),'*')}catch(x){}};
  if(typeof m.game!='string'||!/^[a-z0-9-]{2,40}$/.test(m.game))return reply({ok:false,error:'bad game id'});
  if(!GAME_FRAMES.has(at.f))GAME_FRAMES.set(at.f,{pkg:at.pkg,paused:false});
- if(m.op=='hello')return reply({ok:true,dark:gameDark(),reduceFlash:gameRM()});
+ if(m.op=='hello')return reply(Object.assign({ok:true},gameSet()));
  /* 1.5.9 (plan 8.2): an outside developer's app keeps saves only when the person allowed it (pkgbox59.js) */
  if((m.op=='load'||m.op=='save')&&at.f.dataset.dev=='1'&&!(at.f.dataset.grants||'').split(' ').includes('saves'))return reply({ok:false,error:'saves were not allowed for this app'});
  if(m.op=='load'){let v;try{v=await kvGet(gameKey(at.pkg,m.game))}catch(x){}return reply({ok:true,data:v===undefined?null:v})}
@@ -62,7 +68,7 @@ function gameTick(){if(!GAME_FRAMES.size)return;const all=!!(document.hidden||wi
   const hide=all||!f.offsetParent||f.clientWidth<2;
   if(hide!=st.paused){st.paused=hide;try{f.contentWindow.postMessage({rudolfGame:1,op:hide?'pause':'resume'},'*')}catch(e){}}}}
 setInterval(gameTick,1000);document.addEventListener('visibilitychange',gameTick);
-/* the theme or Reduce motion changed */
+/* the theme, Reduce motion or the shared language changed (a "settings" without lang: no longer shared) */
 let GAME_SET='';
-setInterval(()=>{const k=gameDark()+'/'+gameRM();if(k==GAME_SET)return;const first=!GAME_SET;GAME_SET=k;if(first)return;
- for(const f of GAME_FRAMES.keys())try{f.contentWindow.postMessage({rudolfGame:1,op:'settings',dark:gameDark(),reduceFlash:gameRM()},'*')}catch(e){}},2000);
+setInterval(()=>{const o=gameSet(),k=JSON.stringify(o);if(k==GAME_SET)return;const first=!GAME_SET;GAME_SET=k;if(first)return;
+ for(const f of GAME_FRAMES.keys())try{f.contentWindow.postMessage(Object.assign({rudolfGame:1,op:'settings'},o),'*')}catch(e){}},2000);
