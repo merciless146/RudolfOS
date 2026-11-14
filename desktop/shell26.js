@@ -86,7 +86,9 @@ function fsStandIn(notify) {
     for (const k of ['contentWindow', 'contentDocument']) { const d = Object.getOwnPropertyDescriptor(IF, k); if (!d || !d.get) continue;
       Object.defineProperty(IF, k, {configurable: true, enumerable: d.enumerable, get() { const v = d.get.call(this); own(k == 'contentWindow' ? v : v && v.defaultView); return v }}) } }
   addEventListener('keydown', e => { if (cur && e.key == 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); exit.call(document) } }, true);
-  setInterval(() => { if (cur && !cur.isConnected) exit.call(document).catch(() => {}) }, 1000);
+  /* (1.5.9) also when it is no longer on the screen (its window minimised or hidden): it stayed "full screen" for good,
+     which kept game mode on and the screen saver off */
+  setInterval(() => { if (cur && (!cur.isConnected || !cur.getClientRects().length)) exit.call(document).catch(() => {}) }, 1000);
 }
 
 /* pointer capture for games inside the shell (the frame cannot capture the pointer itself): h = {move(dx,dy),
