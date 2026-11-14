@@ -1004,6 +1004,38 @@ Found: the built-in apps all run in the desktop's one page (one origin), so a sc
 user (uid 1001 and up), so one account's programs cannot read another's files, and none is the desktop's user (15.1's
 second check). 1.6.0 Part 11 (elogind and polkit) stays in 1.6.0.
 
+**Done, first step (2026-11-14), `iso/sys/rudolfd-users.inc`:**
+- **Users:** each account of the page's list (bd95user, read from the lsync copy after every lsync and at start; not
+  the guest) gets `acctUID`, uid and gid 1001 and up, with no password, in audio, video, input and group 1000 (the
+  devices' group: cameras, controllers, hidraw, the ADB phone, which mdev gives to group 1000). An account that goes
+  loses its user (its programs stopped); the uids are kept in /persist/etc/rudolf/account-users ("ID UID [moved]",
+  "-ID UID" for a removed one, never given again) and written into /etc (in RAM) at every start.
+- **Files:** the account's folder (/persist/accounts/ID, encrypted with its key) and what is made in it belong to its
+  user, 0700: no other account's user, and not the desktop's, can go in (rudolfd serves the desktop page as root).
+- **The move of existing computers:** at the first start each account's folder's files owned by the desktop's user
+  become its user's (lchown only, nothing copied), logged ("… belong to its own Linux user now: N moved"); a file
+  that cannot be moved leaves the account to be tried again at the next start, said in the health log (Accounts) and in
+  System health (the new "Accounts' Linux users" line, from GET accounts/users).
+- **The session:** at sign-in with the files on the disk (home_bind) the account's folder is also its user's home
+  (/home/acctUID, a bind), /run/user/UID is its own, its session D-Bus and rudolf-portal start as it, and
+  /run/rudolf/acct-session.env has its environment. Linux apps (rudolf-apps launch) and Flatpak apps (native run) start
+  as the account's user with it; nobody signed in (or an account without its files on the disk, or the guest): as the
+  desktop's user, as before. Sound: the desktop's PulseAudio offers a second socket, /run/rudolf/pulse/native, in a
+  folder for the audio group only (in the list of listeners). Signing out (home_unbind) stops every program of the
+  user (TERM, then KILL), its home and runtime folder go; rudolfd started again in the session keeps them.
+- **15.1's second check:** the page and the API are answered only for the desktop's user (rudolf, 1000) or root, as
+  well as its memory group (rudolfd-peer.inc).
+- Tests: qt/host/users59_t.sh (21, on ext4 with real users in a private namespace: users made, the same again, the
+  move and a file that cannot move, one account's user refused another's files, the session, sign-out stopping every
+  program but another account's, rudolfd started again, an account removed and its uid not given again), peer59_t.sh
+  (20, with 9b: a process of another user in the desktop's group refused), dl140_t.js (System health's line).
+
+**Next (15.3, second step):** Debian and Wine as the account's user (rudolf-debian makes the same uid in Debian's
+passwd and runs its terminal and apps as it; Wine's prefix in the account's home); Library packages (rpk run) as it;
+X authorization instead of `-ac` (each account's user given the display, not every program); the QEMU check with two
+accounts (a Flatpak app, a Debian terminal and Wine refused the other's files; sign-out; the move on an existing
+data partition).
+
 ### 15.4 The devlink is off unless it is being used
 Found: the devlink runs commands sent through a GitHub repository; on the Vivobook it was on with "Ask first" off, so
 anyone who got into that GitHub account could run commands on the computer.

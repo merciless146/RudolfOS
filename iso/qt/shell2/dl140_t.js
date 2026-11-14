@@ -15,6 +15,7 @@ const api = (a, q, body) => { const Q = new URLSearchParams(q || ''); M.calls.pu
   if (a == 'devlink') return {ok: true, available: true, on: M.on, repo: M.repo, until: M.until, secondsLeft: M.on ? M.until - now() : 0, restart: M.restart, ask: M.ask, home: M.home, hasToken: M.hasToken, persistent: true, developer: M.developer, since: M.on ? M.since : 0, by: M.on ? 'Ann' : '', lastCommand: M.on ? JSON.parse(LOG) : null, status: M.on ? {state: 'on', last: '', error: ''} : M.idle ? {state: 'ended (4 hours without a command)', at: M.idle} : {state: 'off'}, ...(M.on && M.pending ? {pending: M.pending} : {})};
   if (a == 'devlink/on') { if (Q.get('repo') == 'owner/public') return {ok: false, error: 'the repository is public: use a private one, so nobody else can read what is run here', __status: 400};
     M.on = true; M.since = now(); M.repo = Q.get('repo'); M.until = now() + 3600 * +Q.get('hours'); M.ask = Q.get('ask') == '1'; M.restart = Q.get('restart') == '1'; M.home = Q.get('home') == '1'; M.hasToken = true; return {ok: true, message: 'on'} }
+  if (a == 'accounts/users') return {ok: true, on: true, users: [{id: 'u1', uid: 1001, user: 'acct1001', moved: true}, {id: 'u2', uid: 1002, user: 'acct1002', moved: false}], moveFailed: M.moveFailed || ''};
   if (a == 'devlink/off') { M.on = false; return {ok: true, message: 'off'} }
   if (a == 'devlink/answer') { M.answers.push(Q.get('id') + ':' + Q.get('a')); M.pending = null; return {ok: true} }
   if (a == 'devlink/log') return {ok: true, log: LOG};
@@ -87,6 +88,11 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("(()=>{wins.slice().forEach(w=>w.close());settings('health');return 1})()"); await p.waitForSelector('.dl59h .dl59t', {timeout: 8000}).catch(() => 0); await wait(800);
   const hl = await q("(()=>{const d=document.querySelector('.dl59h .dl59t');return d?d.textContent:''})()");
   ok('15.4: System health lists the link as on, since when, by whom, its last command', /^On since /.test(hl) && /switched on by Ann/.test(hl) && /last command: 000001 \(sh\)/.test(hl), hl);
+  const uh = await q("(()=>{const d=document.querySelector('.hl59u .hl59ut');return d?d.textContent:''})()");
+  ok('15.3: System health says each account\'s apps run as its own Linux user', /run as its own Linux user \(2 accounts\)/.test(uh), uh);
+  M.moveFailed = 'u2'; await q("(()=>{wins.slice().forEach(w=>w.close());settings('health');return 1})()"); await p.waitForSelector('.hl59u .hl59ut', {timeout: 8000}).catch(() => 0); await wait(800);
+  const uh2 = await q("document.querySelector('.hl59u .hl59ut').textContent");
+  ok('15.3: ...and names an account whose files could not all be moved', /The files of u2 could not all be given to its own Linux user/.test(uh2), uh2);
   await q("document.querySelector('#devlinkBanner .dle').click()"); await wait(5000);
   ok('End now (no password needed to stop it) switches it off and the banner goes', M.calls.includes('devlink/off') && !M.on && !(await q("!!document.getElementById('devlinkBanner')")));
   await q("(()=>{window.__NT=[];const n=notify;window.notify=function(t,m,o){__NT.push(t+': '+m);return n.apply(this,arguments)};try{localStorage.removeItem('devl59idle')}catch(e){}return 1})()");

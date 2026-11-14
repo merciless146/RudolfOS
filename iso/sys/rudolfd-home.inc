@@ -127,14 +127,18 @@ static void home_debian_rebind(void)
 }
 static void home_unbind(void)
 {
-	char *cur = slurp(HOME_SESSION, NULL); if (!cur) return; free(cur);
+	char *cur = slurp(HOME_SESSION, NULL); if (!cur) return; trim(cur);
+	au_session_stop(cur); free(cur);   /* 1.5.9 (15.3): every program of the account's Linux user stops */
 	for (int i = 0; HOME_BIND[i]; i++) { char t[200]; snprintf(t, sizeof t, "/home/rudolf/%s", HOME_BIND[i]); umount2(t, MNT_DETACH); }
 	unlink(HOME_SESSION);
 	home_debian_rebind();
 }
 static void dl_store_tidy(const char *acct);
+static int au_keep;
 static int home_bind(const char *acct, char *err, size_t en)
 {
+	/* 1.5.9 (15.3): the account already signed in (rudolfd started again): its own Linux user's programs go on */
+	{ char *was = slurp(HOME_SESSION, NULL); if (was) trim(was); au_keep = was && !strcmp(was, acct); free(was); }
 	home_unbind();
 	if (home_nobind) { write_str(HOME_SESSION, acct); return 0; }
 	dl_store_bind();   /* before Downloads is covered by the account's */
@@ -147,6 +151,8 @@ static int home_bind(const char *acct, char *err, size_t en)
 	char line[80]; snprintf(line, sizeof line, "%s\n", acct); write_str(HOME_SESSION, line);
 	if (dl_store_bound) dl_store_tidy(acct);
 	home_debian_rebind();
+	au_session_start(acct);   /* 1.5.9 (15.3): the account's own Linux user's session */
+	au_keep = 0;
 	return 0;
 }
 /* 0 ok; otherwise an HTTP status and err */
@@ -168,6 +174,7 @@ static int home_unlock(const char *acct, const unsigned char *key, int session, 
 	if (d < 0 && errno == ENOENT) {
 		/* the first time: the folder, with this key's policy, and the usual folders inside */
 		if (mkdirat(rfd, acct, 0700)) { close(rfd); home_key_remove(id, NULL); snprintf(err, en, "the folder could not be made"); return 500; }
+		{ unsigned u = au_uid(acct); if (u) home_uid = (int)u; }   /* 1.5.9 (15.3) */
 		fchownat(rfd, acct, home_uid, home_uid, 0);
 		d = openat(rfd, acct, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
 		struct fscrypt_policy_v2 p; memset(&p, 0, sizeof p);
@@ -388,6 +395,8 @@ static void api_home(struct req *r, const char *what, int post)
 	}
 	char acct[80]; { const char *a = qparam(r->query, "acct"); snprintf(acct, sizeof acct, "%s", a ? a : ""); }
 	if (!home_acct_ok(acct)) { reply_err(r->fd, 400, "bad account"); return; }
+	/* 1.5.9 (15.3): what is made in the account's folder belongs to its own Linux user (each request is a process) */
+	{ unsigned u = au_uid(acct); if (u) home_uid = (int)u; }
 	if (!strcmp(what, "unlock")) {
 		if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 		const char *sq = qparam(r->query, "session"); int session = sq && !strcmp(sq, "1");

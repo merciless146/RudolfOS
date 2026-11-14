@@ -33,6 +33,8 @@
 #include <strings.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <ftw.h>
+#include <pwd.h>
 #include <errno.h>
 #include <poll.h>
 #include <dirent.h>
@@ -235,6 +237,7 @@ struct req {
 	char *body; size_t blen;
 };
 
+static void au_app_user(char *user, size_t un, char *env, size_t en);   /* rudolfd-users.inc (1.5.9, plan 15.3) */
 static void send_all(int fd, const void *b, size_t n)
 {
 	const char *p = b;
@@ -1159,8 +1162,11 @@ static void api_apps(struct req *r, const char *what)
 			if (!job_running() && run("/usr/lib/rudolf/appextra com.valvesoftware.Steam --check") != 0)
 				start_job("apps-extra", "/usr/lib/rudolf/appextra com.valvesoftware.Steam");
 		}
-		snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh rudolf -c 'set -a; . " RUN "/session.env; set +a; exec /usr/bin/rudolf-apps launch %s %s' </dev/null >>" RUN "/apps/%s.log 2>&1 &",
-			desk, argf, id);
+		/* 1.5.9 (15.3): as the signed-in account's own Linux user, with its session (else the desktop's, as before) */
+		{ char au[32], ae[160]; au_app_user(au, sizeof au, ae, sizeof ae);
+		  if (*argf) { struct passwd *pw = getpwnam(au); if (pw && chown(argf, pw->pw_uid, pw->pw_gid)) {} }
+		  snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh %s -c 'set -a; . %s; set +a; exec /usr/bin/rudolf-apps launch %s %s' </dev/null >>" RUN "/apps/%s.log 2>&1 &",
+			au, ae, desk, argf, id); }
 		run(cmd); reply_ok(r->fd, "started"); return;
 	}
 	if (!strcmp(what, "log")) { char f[300]; snprintf(f, sizeof f, RUN "/apps/%s.log", id); char *l = slurp(f, NULL); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, l ? (strlen(l) > 8000 ? l + strlen(l) - 8000 : l) : ""); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return; }
@@ -1540,8 +1546,9 @@ static void api_native(struct req *r, const char *what)
 	}
 	if (!strcmp(what, "run")) {
 		/* started as the desktop user with the session's display and buses; rudolf-display shows it full screen */
-		snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh rudolf -c 'set -a; . " RUN "/session.env; set +a; exec flatpak run %s' "
-			"</dev/null >>" RUN "/native.log 2>&1 & echo $! > " RUN "/native.pid", id);
+		{ char au[32], ae[160]; au_app_user(au, sizeof au, ae, sizeof ae);   /* 1.5.9 (15.3) */
+		  snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh %s -c 'set -a; . %s; set +a; exec flatpak run %s' "
+			"</dev/null >>" RUN "/native.log 2>&1 & echo $! > " RUN "/native.pid", au, ae, id); }
 		if (native_pid()) { write_str(RUN "/wm", "game"); reply_ok(r->fd, "already running"); return; }
 		{ char chk[160]; snprintf(chk, sizeof chk, "flatpak info --system %s >/dev/null 2>&1", id);
 		  if (run(chk)) { reply_err(r->fd, 404, "this app is not installed"); return; } }
@@ -3484,9 +3491,13 @@ static void api_vault(struct req *r, const char *what, int post)
 	reply_err(r->fd, 404, "unknown vault request");
 }
 #include <sys/mount.h>
+static int au_session_start(const char *id);   /* rudolfd-users.inc (1.5.9, plan 15.3) */
+static void au_session_stop(const char *id);
+static unsigned au_uid(const char *id);
 #include "rudolfd-home.inc"
 #include "rudolfd-desktop.inc"   /* 1.5.9: the native desktop's API (plan Part 12) */
 #include "rudolfd-peer.inc"      /* 1.5.9: only the desktop gets the page and the API (plan Part 15.1) */
+#include "rudolfd-users.inc"     /* 1.5.9: each account is its own Linux user (plan Part 15.3) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
 {
@@ -4143,12 +4154,14 @@ static void api(struct req *r)
 		}
 		reply_err(r->fd, 404, "unknown update action"); return;
 	}
+	if (!strcmp(p, "accounts/users")) { api_account_users(r); return; }   /* 1.5.9 (15.3) */
 	if (!strcmp(p, "lsync")) {
 		if (r->blen < 2 || r->blen > (16u << 20) || r->body[0] != '{' || r->body[r->blen - 1] != '}') { reply_err(r->fd, 400, "bad data"); return; }
 		int f = open(LSFILE ".tmp", O_WRONLY | O_CREAT | O_TRUNC, 0600);
 		if (f < 0 || write(f, r->body, r->blen) != (ssize_t)r->blen || fsync(f)) { if (f >= 0) close(f); unlink(LSFILE ".tmp"); reply_err(r->fd, 500, "could not save"); return; }
 		close(f);
 		if (rename(LSFILE ".tmp", LSFILE)) { reply_err(r->fd, 500, "could not save"); return; }
+		au_sync();   /* 1.5.9 (15.3): a Linux user for each account, made and removed with it */
 		reply_ok(r->fd, "saved"); return;
 	}
 	if (!strcmp(p, "clientlog")) {   /* desktop errors, kept for the Event Viewer and diagnostics */
@@ -4485,6 +4498,7 @@ int main(int argc, char **argv)
 	{ char *sb = slurp("/etc/rudolf/secureboot", NULL); secureboot = sb && sb[0] == '1'; free(sb); }
 	live = access(RUN "/persistent", F_OK) != 0;
 	dl_boot();
+	au_on = 1; au_start();   /* 1.5.9 (15.3): each account's Linux user, and the move of existing accounts' folders */
 	dl_home_boot();
 	health_boot();
 	remote_boot();

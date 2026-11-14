@@ -107,6 +107,11 @@ start)
 		for n in $(cards); do echo "load-module module-alsa-card $(cardargs $n)"; done
 		echo ".fail"
 		echo "load-module module-native-protocol-unix auth-anonymous=1"
+		# 1.5.9 (plan 15.3): the accounts' own Linux users play and record through the same sound server (one owns
+		# the sound card): a second socket, in a folder only the audio group (they are in it) may enter
+		echo ".nofail"
+		echo "load-module module-native-protocol-unix auth-anonymous=1 socket=/run/rudolf/pulse/native"
+		echo ".fail"
 		echo "load-module module-default-device-restore"
 		echo "load-module module-always-sink"
 		echo "load-module module-intended-roles"
@@ -117,6 +122,7 @@ start)
 		echo "load-module module-switch-on-connect"
 	} > $PA
 	: > $LOG; chown rudolf $LOG
+	mkdir -p /run/rudolf/pulse && chown rudolf:audio /run/rudolf/pulse && chmod 750 /run/rudolf/pulse
 	asuser "pulseaudio --daemonize=yes -n -F $PA --exit-idle-time=-1 --log-target=file:$LOG" || echo "pulseaudio failed to start" >> $LOG
 	for i in $(seq 50); do [ -S $SOCK ] && break; sleep 0.1; done
 	[ -S $SOCK ] || exit 1

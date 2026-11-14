@@ -62,7 +62,15 @@ function healthPanel(c,W){
  /* 1.5.6: Power and battery (power31.js), moved here from System Settings */
  if(typeof pwrPanel=='function')try{pwrPanel(c,W)}catch(e){console.warn(e)}
  /* 1.5.9 (plan 15.4): the development link, on or off, since when, its last command (devlink40.js) */
- if(typeof devlHealthRow=='function')try{devlHealthRow(c)}catch(e){console.warn(e)}}
+ if(typeof devlHealthRow=='function')try{devlHealthRow(c)}catch(e){console.warn(e)}
+ /* 1.5.9 (plan 15.3): each account's own Linux user; an account whose files could not all be given to it is named */
+ if(RD)try{hlUsersRow(c)}catch(e){console.warn(e)}}
+function hlUsersRow(c){const d=document.createElement('div');d.className='hl59u r2';d.style.marginTop='6px';d.innerHTML="<label>Accounts' Linux users</label><div class='hl59ut'>…</div>";
+ const at=c.querySelector(':scope > .hlev');if(at)at.before(d);else c.appendChild(d);
+ rd('accounts/users').then(u=>{if(!u||!u.on||!Array.isArray(u.users)){d.remove();return}
+  const nm=id=>{const a=(typeof ACCTS!='undefined'?ACCTS:[]).find(x=>x.id==id);return a?a.n:id},bad=u.moveFailed;
+  d.querySelector('.hl59ut').textContent=bad?`The files of ${nm(bad)} could not all be given to its own Linux user: they stay readable to the account, and it is tried again at the next start (see the events).`:`Each account's Linux apps run as its own Linux user (${u.users.length} account${u.users.length==1?'':'s'}), so one account's apps cannot read another's files.`;
+  if(bad)d.querySelector('.hl59ut').style.color='#b91c1c'}).catch(()=>d.remove())}
 /* lines for the system report (account names and addresses are scrubbed by srScrub like the rest) */
 async function hlReportLines(n){const h=await hlGet(n||50);if(!h||!h.events)return[];return h.events.map(e=>`${new Date(e.t*1000).toISOString().replace(/\.\d+Z$/,'Z')} ${(HL_KIND[e.k]||['',e.k])[1]}: ${e.m}`)}
 /* the desktop is up: how long the start took (uptime when the desktop page first came up after start-up) */
