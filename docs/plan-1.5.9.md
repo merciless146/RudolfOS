@@ -756,15 +756,26 @@ idle unchanged after Oracle closes, FNF in Oracle on both engines (frame rate th
   (Found: Playwright's Chrome for Testing 153 runs the shell and its Controlled Frames here; the earlier note that it
   could not was not so.)
 
-**Next (12.3c, second part):** step 5, what the page in Chromium needs from the native desktop: another app opened from
-Oracle (oneapp59's op "open": now it opens inside Oracle's page, as in a browser; to go through rudolfd or the shell to
-rudolf-native), downloads into the account's Downloads with the native taskbar's progress, notifications (to the
-native shell's pop-ups once the native port's toasts are on main), the file dialogs and Open with, the clipboard, the
-volume and the 🎙️ during calls, game mode (Chromium's window full screen: the shell's fullscreen stand-in fills only the
-window now; the page's requestFullscreen should make the window full screen), the keys (keys56.js, Ctrl+Shift+N) and
-the devlink's screenshot, each checked on both engines; then same_t.sh's comparison of Oracle's window against
-Standard's, and the Vivobook's measurements (Native with Oracle open against Standard's 1,167 MB; idle again after
-Oracle closes; FNF's frame rate on both engines).
+**Step 5, first piece (2026-11-14, the PR after #341):** a channel from Oracle's page in Chromium to the native desktop, as the
+WebKit windows' rudolfNative message handler: rudolf-launch --oracle attaches (over its private pipe) to each window's
+desktop page (the shell's Controlled Frame at http://127.0.0.1:8080/#app=..., never a website tab) and gives it a DevTools
+binding, rudolfNativeOracle(JSON); what the page calls is written to rudolf-launch's standard output ("msg JSON", one a
+line), which rudolf-native reads (oracle_msgs). oneapp59.js oaPost sends there what is not the window's own (the title and
+closing stay with the shell): another app asked for from Oracle (launch, launchWith: oaOut() is WebKit's handler or this
+binding) opens in a window of its own, as from a WebKit window (Settings at a page in Settings' own window, once #342's
+"page" is on main). Test: oracle_native_t.sh 15 (new 4b: Notepad from Oracle a WebKit window of its own, not inside
+Oracle's page; no website tab has the binding; the page's own ✕ and the frame's ✕ each tested on one window). Game mode
+needed nothing more: a website's full screen in Oracle (a game, a video) is the tab's real full screen in the shell, so
+Chromium's window asks the window manager for full screen and covers the screen, the taskbar under it, and goes back into
+its frame after (oracle_native_t.sh 4c, 17 checks now).
+
+**Next (12.3c, second part):** step 5's rest, what the page in Chromium needs from the native desktop: notifications
+(the page's toasts and "note" through the same channel to the native shell's pop-ups, once #342 is on main), the desktop
+page's own full screen (its stand-in fills Oracle's window, not the screen: rare in Oracle), downloads into the account's
+Downloads with the native taskbar's progress, the file dialogs and Open with, the clipboard, the volume and the 🎙️ during
+calls, the keys (keys56.js, Ctrl+Shift+N) and the devlink's screenshot, each checked on both engines; then same_t.sh's
+comparison of Oracle's window against Standard's, and the Vivobook's measurements (Native with Oracle open against
+Standard's 1,167 MB; idle again after Oracle closes; FNF's frame rate on both engines).
 
 ### 12.4 Tests
 - Host, under Xvfb: rudolf-native draws its wallpaper and taskbar (screenshots compared), a window gets a frame,

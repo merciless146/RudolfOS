@@ -71,7 +71,12 @@ function oaPost(m){try{if(oaNative())window.webkit.messageHandlers.rudolfNative.
 /* (1.5.9, docs/plan-1.5.9.md 12.3c) Oracle on the native desktop is this page in the shell, in Rudolf's Chromium (its real tabs):
    the window's title and its closing go to the shell, which is the window (a title kept until the shell has said hello) */
 let OA_SHT='';function oaShell(m){if(!ONEAPP)return;if(m.op=='title'){OA_SHT=m.t;if(typeof SHELL!='undefined'&&SHELL)shellSend({rudolfShell:'oa',op:'title',t:m.t})}
- else if(m.op=='close'&&typeof SHELL!='undefined'&&SHELL)shellSend({rudolfShell:'oa',op:'close'})}
+ else if(m.op=='close'&&typeof SHELL!='undefined'&&SHELL)shellSend({rudolfShell:'oa',op:'close'})
+ /* (12.3c step 5) the rest goes to the native desktop itself: rudolf-launch's binding on its private pipe, in Oracle's windows only */
+ else if(oaChromium())try{window.rudolfNativeOracle(JSON.stringify(Object.assign({w:ONEAPP.w||0},m)))}catch(e){}}
+function oaChromium(){return typeof window.rudolfNativeOracle=='function'}
+/* (the native desktop is there: WebKit's message handler, or Oracle's binding in Rudolf's Chromium) */
+const oaOut=()=>oaNative()||oaChromium();
 if(ONEAPP)addEventListener('rudolf-shell',()=>{if(OA_SHT)shellSend({rudolfShell:'oa',op:'title',t:OA_SHT})});
 const oaHex=h=>h&&/^([0-9a-f]{2})+$/i.test(h)?Uint8Array.from(h.match(/../g),x=>parseInt(x,16)):null;
 if(ONEAPP){
@@ -89,10 +94,10 @@ html.oneapp .win.oamain>.tb{display:none!important}html.oneapp .win.oamain>.body
  /* the first window made for the app is its main window: it fills the page and gives the page its title */
  {const _w=win;win=function(...a){const W=_w.apply(this,a);if(OA.want&&!OA.main&&W&&W.el)oaMain(W);return W}}
  /* another app: a window of its own when the native shell is there */
- {const _l=launch;launch=function(k){if(OA.main&&k!=ONEAPP.k&&oaNative()&&APPS[k]){oaPost({op:'open',app:k});return}return _l.apply(this,arguments)}}
+ {const _l=launch;launch=function(k){if(OA.main&&k!=ONEAPP.k&&oaOut()&&APPS[k]){oaPost({op:'open',app:k});return}return _l.apply(this,arguments)}}
  /* (Settings at a page, asked by another app's window or a notification's action: Settings' own window, at that page) */
- {const _st=settings;settings=function(sec){if(OA.main&&ONEAPP.k!='settings'&&oaNative()){oaPost({op:'open',app:'settings',page:typeof sec=='string'?sec:''});return}return _st.apply(this,arguments)}}
- {const _lw=launchWith;launchWith=function(k,p){if(OA.main&&k!=ONEAPP.k&&oaNative()&&APPS[k]){oaPost({op:'open',app:k,file:Array.isArray(p)?p.join('\\'):String(p||'')});return}return _lw.apply(this,arguments)}}
+ {const _st=settings;settings=function(sec){if(OA.main&&ONEAPP.k!='settings'&&oaOut()){oaPost({op:'open',app:'settings',page:typeof sec=='string'?sec:''});return}return _st.apply(this,arguments)}}
+ {const _lw=launchWith;launchWith=function(k,p){if(OA.main&&k!=ONEAPP.k&&oaOut()&&APPS[k]){oaPost({op:'open',app:k,file:Array.isArray(p)?p.join('\\'):String(p||'')});return}return _lw.apply(this,arguments)}}
  /* the first sign-in screen: the native session's account instead, when there is one */
  {const _sl=showLogin;let first=1;showLogin=function(){if(first&&!OA.opened){first=0;oaStart(_sl);return}if(OA.opened&&OA.done)return;return _sl.apply(this,arguments)}}
  /* after any sign-in: the app */

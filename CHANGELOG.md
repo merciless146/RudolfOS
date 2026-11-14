@@ -79,6 +79,7 @@ Summary: In progress.
 - Changed: Chromium comes only from Ubuntu's open-source Chromium (the snap). When it cannot be fetched, the release keeps the Chromium it has, instead of taking another kind of browser; it never goes back to an older version.
 - Fixed: when a system file does not match its release, the start-up and Task Manager say so plainly, with its size, instead of a low-level error.
 - New: on the Native desktop (test), Oracle runs in Rudolf OS's own Chromium with real browser tabs, as on Standard: websites open as real pages, sign-ins are kept in the same place as on Standard, and one Chromium serves every Oracle window, started with the first and closed with the last. Its windows are framed by the native desktop like every other app; without Chromium, Oracle opens as before and says so once (plan 12.3c).
+- New: on the Native desktop (test), an app opened from Oracle (a downloaded file, a link to another app) opens in a window of its own, as from any other app (plan 12.3c, step 5).
 
 ## 1.5.8 (2026-11-12)
 Summary: Diagnosing a computer that does not start, full rescue sticks, Oracle's tabs in the Lite desktop, mobile data, Android phones and tablets, and new dynamic backgrounds (docs/plan-1.5.8.md)

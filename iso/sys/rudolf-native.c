@@ -724,6 +724,21 @@ static void oracle_busy(int on)
 	if (OR_BUSY) { g_source_remove(OR_BUSY); OR_BUSY = 0; }
 }
 static gboolean oracle_busy_end(gpointer d) { (void)d; OR_BUSY = 0; oracle_busy(0); return G_SOURCE_REMOVE; }
+/* (12.3c step 5) what Oracle's page in Chromium tells the native desktop (oneapp59.js oaPost, through rudolf-launch's binding
+   rudolfNativeOracle): "msg JSON" lines, as the WebKit windows' rudolfNative messages. Another app asked for: a window of
+   its own (Settings at a page: Settings' own window there) */
+static void tb_settings(const char *page);
+static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
+{
+	(void)d; if (c & (G_IO_HUP | G_IO_ERR)) { if (!(c & G_IO_IN)) return G_SOURCE_REMOVE; }
+	gchar *l = NULL; gsize n = 0; GIOStatus st = g_io_channel_read_line(ch, &l, &n, NULL, NULL);
+	if (st == G_IO_STATUS_EOF || st == G_IO_STATUS_ERROR) { g_free(l); return G_SOURCE_REMOVE; }
+	if (l && !strncmp(l, "msg {", 5)) { JV *v = jparse(l + 4); char op[16] = "", app[48] = "", file[1024] = "", pg[48] = "";
+		if (v) { jstr(v, "op", op, sizeof op); jstr(v, "app", app, sizeof app); jstr(v, "file", file, sizeof file); jstr(v, "page", pg, sizeof pg); }
+		if (!strcmp(op, "open") && app[0] && USER_ID[0] && !LOCKED) { if (!strcmp(app, "settings") && pg[0]) tb_settings(pg); else app_open(app, file[0] ? file : NULL); }
+		jfree(v); }
+	g_free(l); return G_SOURCE_CONTINUE;
+}
 static void oracle_exited(GPid p, gint st, gpointer d) { (void)d; (void)st; g_spawn_close_pid(p); if (p == OR_PID) { OR_RUN = 0; OR_PID = 0; state_write(); } }
 /* the shell's #...: letters, digits and the address's own punctuation (the rest escaped) */
 static void oracle_hash(GString *h, const char *s) { for (const char *c = s; *c; c++) { if (g_ascii_isalnum(*c) || strchr("&=._-~%+", *c)) g_string_append_c(h, *c); else g_string_append_printf(h, "%%%02X", (unsigned char)*c); } }
@@ -740,7 +755,8 @@ static int oracle_open(const char *file, const char *extra)
 		GPtrArray *a = g_ptr_array_new(); g_ptr_array_add(a, (gpointer)ln); g_ptr_array_add(a, "--oracle"); g_ptr_array_add(a, OR_CTL); g_ptr_array_add(a, L[0]);
 		for (int i = 1; i < n; i++) if (L[i][0]) g_ptr_array_add(a, L[i]);
 		g_ptr_array_add(a, NULL); GError *er = NULL;
-		int ok = g_spawn_async(NULL, (gchar **)a->pdata, NULL, G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL, &OR_PID, &er);
+		int out = -1, ok = g_spawn_async_with_pipes(NULL, (gchar **)a->pdata, NULL, G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL, &OR_PID, NULL, &out, NULL, &er);
+		if (ok && out >= 0) { GIOChannel *ch = g_io_channel_unix_new(out); g_io_channel_set_close_on_unref(ch, TRUE); g_io_add_watch(ch, G_IO_IN | G_IO_HUP | G_IO_ERR, oracle_msgs, NULL); g_io_channel_unref(ch); }
 		g_ptr_array_free(a, TRUE); g_strfreev(L);
 		if (!ok) { fprintf(stderr, "rudolf-native: Oracle: %s\n", er ? er->message : "?"); if (er) g_error_free(er); unlink(OR_CTL); return 0; }
 		OR_RUN = 1; g_child_watch_add(OR_PID, oracle_exited, NULL);
