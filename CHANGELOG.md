@@ -4,6 +4,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.6.0 (planned work)
+- Planned: a keyring for Linux apps (the Secret Service), unlocked by the account's sign-in, so apps such as the Claude app keep their sign-ins without a plain file or a second password.
 - New: the native desktop (Native engine, docs/plan-1.6.0.md Part 12, item 4): workspaces as on Standard: the taskbar's 1 2 3 buttons, Ctrl+Alt+Left and Right (with Shift the window goes too), a window's Move to workspace N, the taskbar listing the shown workspace's windows, "Workspace N" said in a toast (compared with Chromium: new same_t.sh cases ws2, ws2-dark, ws2-left; the same steps on both engines: new test iso/qt/native/wsbeh_t.js). Fixed: a notification with no text under its title is as tall as the page's.
 - New: the native desktop (Native engine, docs/plan-1.6.0.md Part 12, item 3's last part): the taskbar at the left or the right of the screen, as on Standard: a column as wide as its widest part, the start button, the pinned apps, the open windows one under the other and the tray at the bottom; the desktop's icons, windows, the start menu and the pop-ups placed beside it.
 - Changed: the plan: signed system extensions (Part 13): drivers, firmware and tools added to one computer as signed read-only layers over the unchanged base, instead of a conventional package manager; USB printers (Part 8) are their first use.
