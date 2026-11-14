@@ -52,7 +52,8 @@ bootloader read over the devlink (read only).
   the lock and sign-in screen settings and the shutting-down screen; the moving parts of the dynamic backgrounds
   (Spirit Falls' petals and lanterns, Glacier Lake's northern lights) in Lite.
 - **QEMU:** the devlink answering with the desktop disabled (plan-1.5.8.md 4.2).
-- **The MiFi 7730L** with USB tethering on: which USB network driver it needs (plan-1.5.8.md 6.1).
+- ~~**The MiFi 7730L** with USB tethering on: which USB network driver it needs (plan-1.5.8.md 6.1).~~ Moved to 1.6.0
+  (2026-11-13: the MiFi could not be found; docs/plan-1.6.0.md, Hardware to test with).
 - **Kernel tuning** (proposed on 2026-11-12), if confirmed.
 
 ## Part 1: the modem service
@@ -568,7 +569,7 @@ down in docs/api.md with its first use.
 
 ## Steps
 0. Part 11 first: 11.1 (the Chromium source) and 11.3, then 11.2; 11.4 holds for every part.
-1. Part 1 (ModemManager, read only), with the USB stick and the MiFi on the Vivobook over the devlink.
+1. Part 1 (ModemManager, read only), with the USB stick on the Vivobook over the devlink (the MiFi's check moved to 1.6.0).
 2. Part 2 (tablet mode, keyboard, rotation).
 3. Part 3 (ARM64 build and its QEMU checks).
 4. Part 4 (Share this connection), after the Vivobook's Wi-Fi chip is checked.

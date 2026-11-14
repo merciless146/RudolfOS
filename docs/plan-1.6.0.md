@@ -75,6 +75,8 @@ provisioning (downloading a carrier's eSIM profile), and 5G standalone features 
 
 ## Hardware to test with
 - **The MiFi 7730L** (USB tethering and Wi-Fi), with an active SIM (or a prepaid data SIM).
+  First (moved from 1.5.9, where it could not be found): with USB tethering on, which USB network driver it needs
+  (plan-1.5.8.md 6.1), before Parts 1 and 2 use it.
 - **A USB cellular stick** with an MBIM or QMI modem (for example a Quectel EC25 or EG25-G in a USB adapter: the same
   family as the PinePhone's modem, useful again in 1.6.x).
 - **A laptop with a WWAN module, or an M.2 WWAN card in an adapter:** the Vivobook has no WWAN slot; a used ThinkPad
