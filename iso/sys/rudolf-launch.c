@@ -20,6 +20,9 @@
  * one-app mode with the shell's real tabs). CONTROL is a FIFO rudolf-native writes to, one line per window:
  *   open W H X Y HASH       a window of W x H at X,Y (0 0 0 0: Chromium's choice) for isolated-app://SHELL-ID/#HASH
  * Chromium starts with no window; when the last of the shell's windows has closed, Chromium is closed and this exits.
+ * (12.3c step 5) The desktop page in each window (http://127.0.0.1:8080/#app=...) gets rudolfNativeOracle(JSON), a
+ * DevTools binding on this private pipe (no website tab has it): what the page tells the native desktop, as its
+ * rudolfNative message handler does in WebKit, is written to standard output, one line each: "msg JSON".
  *
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
@@ -226,6 +229,24 @@ static void o_line(char *l)
 	if (ready) o_send(o_nq);
 	o_nq++;
 }
+/* the desktop pages attached for their messages (12.3c step 5) */
+static struct { char target[64]; int attach_id; } o_pg[64]; static int o_npg;
+/* a JSON string's value at key (its escapes undone): the binding's payload */
+static int json_str(const char *msg, const char *key, char *out, size_t n)
+{
+	char k[64]; snprintf(k, sizeof k, "\"%s\":\"", key); const char *p = strstr(msg, k); if (!p) return -1; p += strlen(k);
+	size_t o = 0;
+	for (; *p && *p != '"' && o + 4 < n; p++) {
+		if (*p != '\\') { out[o++] = *p; continue; }
+		p++; if (!*p) break;
+		switch (*p) { case 'n': out[o++] = ' '; break; case 't': out[o++] = ' '; break; case 'r': break; case 'b': case 'f': break;
+		case 'u': { unsigned c = 0; for (int i = 1; i <= 4; i++) { char h = p[i]; c = c * 16 + (h >= '0' && h <= '9' ? h - '0' : h >= 'a' && h <= 'f' ? h - 'a' + 10 : h >= 'A' && h <= 'F' ? h - 'A' + 10 : 0); if (!h) return -1; } p += 4;
+			/* (kept as the escape it was: the payload is JSON itself, read again by rudolf-native) */
+			o += snprintf(out + o, n - o, "\\u%04x", c); break; }
+		default: out[o++] = *p; }
+	}
+	out[o] = 0; return 0;
+}
 static int o_win_slot(const char *t, int add)
 {
 	for (int i = 0; i < o_n; i++) if (!strcmp(o_win[i].target, t)) return i;
@@ -237,6 +258,17 @@ static int o_handle(const char *msg)
 	char t[64], ty[32], url[512];
 	if (debug) fprintf(stderr, "launch << %.300s\n", msg);
 	long id = strstr(msg, "\"method\"") ? 0 : num_field(msg, "id");
+	/* (12.3c step 5) a desktop page attached: its binding; what it calls goes to standard output */
+	for (int i = 0; id > 0 && i < o_npg; i++) if (o_pg[i].attach_id == id) {
+		char sid[80]; field(msg, "sessionId", sid, sizeof sid); o_pg[i].attach_id = 0;
+		if (sid[0]) { int k; send_session(sid, "Runtime.addBinding", "{\"name\":\"rudolfNativeOracle\"}", &k); }
+		return 1;
+	}
+	if (strstr(msg, "\"method\":\"Runtime.bindingCalled\"") && strstr(msg, "\"name\":\"rudolfNativeOracle\"")) {
+		static char pl[16384]; if (!json_str(msg, "payload", pl, sizeof pl) && pl[0] == '{') { printf("msg %s\n", pl); fflush(stdout); }
+		return 1;
+	}
+	if (strstr(msg, "\"sessionId\"") && !strstr(msg, "\"method\":\"Target.")) return 1;   /* (the attached pages' own events) */
 	for (int i = 0; id > 0 && i < o_nq; i++) if (o_q[i].id == id) {
 		if (strstr(msg, "\"error\"") && o_q[i].tries < 60) { o_q[i].at = now_ms() + 1000; return 1; }
 		memmove(&o_q[i], &o_q[i + 1], (o_nq - i - 1) * sizeof o_q[0]); o_nq--; return 1;
@@ -245,11 +277,16 @@ static int o_handle(const char *msg)
 		field(msg, "type", ty, sizeof ty); field(msg, "url", url, sizeof url); field(msg, "targetId", t, sizeof t);
 		if (!t[0]) return 1;
 		if (!strncmp(url, "isolated-app://", 15) && (!strcmp(ty, "page") || !strcmp(ty, "app"))) { if (o_win_slot(t, 1) >= 0) o_had = 1; }
+		else if (!strcmp(ty, "webview") && !strncmp(url, "http://127.0.0.1:8080/#app=", 27)) {   /* (a window's desktop page: attached once) */
+			int k = -1; for (int i = 0; i < o_npg; i++) if (!strcmp(o_pg[i].target, t)) k = i;
+			if (k < 0 && o_npg < 64) { k = o_npg++; snprintf(o_pg[k].target, sizeof o_pg[0].target, "%s", t);
+				char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%s\",\"flatten\":true}", t); o_pg[k].attach_id = next_id; send_cmd("Target.attachToTarget", p); } }
 		else if (!strcmp(ty, "page") && strncmp(url, "devtools://", 11)) { char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%s\"}", t); send_cmd("Target.closeTarget", p); }
 		return 1;
 	}
 	if (strstr(msg, "\"method\":\"Target.targetDestroyed\"")) {
 		field(msg, "targetId", t, sizeof t); int k = o_win_slot(t, 0);
+		for (int i = 0; i < o_npg; i++) if (!strcmp(o_pg[i].target, t)) { o_pg[i] = o_pg[--o_npg]; break; }
 		if (k >= 0) { o_win[k] = o_win[--o_n];
 			/* the last of Oracle's windows: Chromium goes with it (the native desktop's memory is the point) */
 			if (!o_n && o_had && !o_nq) send_cmd("Browser.close", NULL); }

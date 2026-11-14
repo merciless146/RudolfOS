@@ -6,7 +6,8 @@
 # the native desktop as Oracle (no title bar of Chromium's own), the page in one-app mode with the shell's real tabs
 # (rtOn()), a local site in a real tab (a Controlled Frame), a second window (New private tab) in the same Chromium, the
 # last window closed -> no Chromium left; the site's cookie kept in the profile (seen when Oracle opens again); without
-# Chromium, Oracle's WebKit window as before, said once.
+# Chromium, Oracle's WebKit window as before, said once. (Step 5) another app asked for from Oracle opens in a window of
+# its own, through rudolf-launch's binding (rudolfNativeOracle), which no website tab has.
 # Runs in a network namespace of its own (the shell's desktop is http://127.0.0.1:8080). Needs root, Xvfb, xdotool,
 # ImageMagick, node, python3, gcc, ip and WebKitGTK's headers.   sh oracle_native_t.sh
 [ "$(id -u)" = 0 ] || { echo "SKIP: needs root (a network namespace)"; exit 0; }
@@ -47,12 +48,12 @@ st() { grep "^$1 " $D/state 2>/dev/null | head -1 | cut -d' ' -f2-; }
 hit() { grep "^hit $1 $2 " $D/state | head -1 | awk '{print $4+int($6/2), $5+int($7/2)}'; }
 # (DevTools: the pages in Chromium; the shell itself cannot be reached, its desktop frame and tabs can)
 ev() { node -e '
-const [pre, expr] = process.argv.slice(1);
-(async () => { const l = await (await fetch("http://127.0.0.1:9335/json/list")).json(); const ts = l.filter(x => x.url.startsWith(pre)); if (!ts.length) { console.log("NO TARGET"); return }
+const [pre, expr, one] = process.argv.slice(1);
+(async () => { const l = await (await fetch("http://127.0.0.1:9335/json/list")).json(); const ts = l.filter(x => x.url.startsWith(pre)).slice(0, one ? 1 : 99); if (!ts.length) { console.log("NO TARGET"); return }
   const r = []; for (const t of ts) r.push(await new Promise(res => { const ws = new WebSocket(t.webSocketDebuggerUrl); const to = setTimeout(() => res("TIMEOUT"), 8000);
     ws.onopen = () => ws.send(JSON.stringify({id: 1, method: "Runtime.evaluate", params: {expression: expr, returnByValue: true, awaitPromise: true}}));
     ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id == 1) { clearTimeout(to); ws.close(); res(m.result.result ? m.result.result.value : m.result) } } }));
-  console.log(JSON.stringify(r.length == 1 ? r[0] : r)) })().catch(e => console.log("ERR " + e.message))' "$1" "$2" 2>&1; }
+  console.log(JSON.stringify(r.length == 1 ? r[0] : r)) })().catch(e => console.log("ERR " + e.message))' "$1" "$2" "$3" 2>&1; }
 targets() { node -e 'fetch("http://127.0.0.1:9335/json/list").then(r=>r.json()).then(l=>console.log(l.map(t=>t.type+" "+t.url).join("\n"))).catch(()=>{})' 2>/dev/null; }
 # (Chromium's browser processes of this profile: not its helpers (--type=), not rudolf-launch)
 chromes() { n=0; for p in $(pgrep -f -- "--user-data-dir=$T/prof"); do c=$( { tr '\0' ' ' < /proc/$p/cmdline; } 2>/dev/null); case "$c" in *--type=*|*rudolf-launch*|'') ;; *) n=$((n+1));; esac; done; echo $n; }
@@ -82,6 +83,12 @@ w8 'targets | grep -q "^webview http://127.0.0.1:8333/"' 80
 ok "4. a website opened in Oracle is a real tab (a Controlled Frame of the shell), not a frame of the page" "$(targets | grep -q '^webview http://127.0.0.1:8333/' && echo 1)" "$(targets)"
 w8 '[ "$(ev http://127.0.0.1:8333/ "document.cookie")" = "\"oracle59=kept\"" ]' 40
 ok "...it keeps its cookie" "$([ "$(ev http://127.0.0.1:8333/ 'document.cookie')" = '"oracle59=kept"' ] && echo 1)" "$(ev http://127.0.0.1:8333/ 'document.cookie')"
+# ---- (step 5) what the page tells the native desktop: another app asked for from Oracle is a window of its own
+o=$(ev http://127.0.0.1:8080/ 'typeof rudolfNativeOracle')
+ev http://127.0.0.1:8080/ 'launch("notepad"),1' >/dev/null
+w8 'grep -q "^app notepad " $D/state' 120
+ok "4b. another app opened from Oracle (rudolf-launch's binding, its private pipe): a window of its own, as from a WebKit window" "$([ "$o" = '"function"' ] && grep -q '^app notepad ' $D/state && [ "$(ev http://127.0.0.1:8080/ 'wins.filter(W=>W.app=="notepad").length')" = 0 ] && echo 1)" "$o $(grep '^app ' $D/state)"
+ok "...and no website tab has the binding" "$([ "$(ev http://127.0.0.1:8333/ 'typeof rudolfNativeOracle')" = '"undefined"' ] && echo 1)" "$(ev http://127.0.0.1:8333/ 'typeof rudolfNativeOracle')"
 # ---- a second window: the pin's Open a new window, in the same Chromium (the pin itself brings Oracle to the front)
 xdotool mousemove $(hit pin browser) click 1; timeout 2 tail -f /dev/null; n1=$(grep -c "^client .* app=browser" $D/state)
 xdotool mousemove $(hit pin browser) click 3; w8 'grep -q "^cmitem .*pnew:browser" $D/state' 40
@@ -90,7 +97,7 @@ w8 '[ "$(grep -c "^client .* app=browser" $D/state)" = 2 ]' 120
 ok "5. the pin while Oracle is open: Oracle to the front (no second window); its menu's Close all windows not greyed" "$([ "$n1" = 1 ] && [ "$cl" = 0 ] && echo 1)" "$n1 $cl"
 ok "...its Open a new window: a second Oracle window, of the same Chromium" "$([ "$(grep -c '^client .* app=browser' $D/state)" = 2 ] && [ "$(chromes)" = 1 ] && [ "$(targets | grep -c '^app isolated-app://')" = 2 ] && echo 1)" "$(grep '^client' $D/state) | chromes $(chromes) | $(targets) | menu: $P $(grep '^cmitem' $D/state | head -8)"
 # ---- the windows closed: Chromium goes with the last (one by the page's own ✕, the other by the frame's)
-ev http://127.0.0.1:8080/ 'window.__oneAppClose(),1' >/dev/null
+ev http://127.0.0.1:8080/ 'window.__oneAppClose(),1' one >/dev/null
 w8 '[ "$(grep -c "^client .* app=browser" $D/state)" -le 1 ]' 60; timeout 1 tail -f /dev/null
 F2=$(grep "^client .* app=browser" $D/state | head -1); set -- $F2; xdotool mousemove $(($4 + $6 - 10)) $(($5 + 17)) click 1
 w8 '[ "$(grep -c "^client .* app=browser" $D/state)" = 0 ]' 120
