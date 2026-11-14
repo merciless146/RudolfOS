@@ -55,7 +55,12 @@ if(ONEAPP&&typeof gridInfo=='function'){const _gi=gridInfo;gridInfo=function(){c
 const oaNative=()=>!!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rudolfNative);
 /* (w: which of the shell's windows this is, from #app=NAME&w=N: WebKit gives every window the native shell opens the same
    message handler, so the shell knows the sender by it) */
-function oaPost(m){try{if(oaNative())window.webkit.messageHandlers.rudolfNative.postMessage(Object.assign({w:ONEAPP?ONEAPP.w:0},m))}catch(e){}}
+function oaPost(m){try{if(oaNative())window.webkit.messageHandlers.rudolfNative.postMessage(Object.assign({w:ONEAPP?ONEAPP.w:0},m));else oaShell(m)}catch(e){}}
+/* (1.5.9, docs/plan-1.5.9.md 12.3c) Oracle on the native desktop is this page in the shell, in Rudolf's Chromium (its real tabs):
+   the window's title and its closing go to the shell, which is the window (a title kept until the shell has said hello) */
+let OA_SHT='';function oaShell(m){if(!ONEAPP)return;if(m.op=='title'){OA_SHT=m.t;if(typeof SHELL!='undefined'&&SHELL)shellSend({rudolfShell:'oa',op:'title',t:m.t})}
+ else if(m.op=='close'&&typeof SHELL!='undefined'&&SHELL)shellSend({rudolfShell:'oa',op:'close'})}
+if(ONEAPP)addEventListener('rudolf-shell',()=>{if(OA_SHT)shellSend({rudolfShell:'oa',op:'title',t:OA_SHT})});
 const oaHex=h=>h&&/^([0-9a-f]{2})+$/i.test(h)?Uint8Array.from(h.match(/../g),x=>parseInt(x,16)):null;
 if(ONEAPP){
  document.documentElement.classList.add('oneapp');
@@ -118,6 +123,8 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
  const app=APPS[ONEAPP.k]||(act?{name:da,open:act}:null);
  if(!app){oaClosed('There is no app called “'+ONEAPP.k+'”.');oaPost({op:'close'});return}
  OA.want=1;
+ /* (1.5.9, 12.3c) Oracle without Rudolf's Chromium on the native desktop (none, or it would not start): said once */
+ if(ONEAPP.k=='browser'&&ONEAPP.q.get('nochrome')=='1')setTimeout(()=>{try{notify('Oracle','Websites will work better on Standard: Oracle is running without Rudolf\u2019s Chromium here, so some sites cannot open in its tabs.')}catch(e){}},1500);
  try{if(act)act();else if(ONEAPP.file&&app.openFile)launchWith(ONEAPP.k,resolve(ONEAPP.file,['C:']));else launch(ONEAPP.k)}catch(e){console.warn(e)}
  /* an app that opens no window (or not yet: a large app loads its files first) */
  setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed(app.name+' did not open a window.');oaPost({op:'close'})}},15000)}

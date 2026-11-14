@@ -231,6 +231,40 @@ shell_usable() {
 	[ -e /home/rudolf/.rudolf-shell-ready ] || return 1
 	grep -lqs "$SHELLID" $PROFILE/Default/iwa/*/main.swbn || return 1
 }
+# 1.5.8: Chromium 157 never replaces the installed shell from its file ("App is already installed"), so a release's
+# changes to Oracle's tabs never arrived. Once per start, when the profile's copy is not the system's, rudolf-shellfix
+# puts the system's in (Chromium's DevTools over a pipe: removed and installed again; the shell's storage goes with
+# it: the desktop's data comes back from rudolfd's mirror, websites ask to sign in again). (1.5.9: before Native's
+# Oracle too, docs/plan-1.5.9.md 12.3c)
+shell_fix() {
+	if [ -n "$SHELLINST" ] && [ ! -e /run/rudolf/shellfix-done ]; then
+		touch /run/rudolf/shellfix-done; SAME=0; HAVE=0
+		for f in $PROFILE/Default/iwa/*/main.swbn; do [ -f "$f" ] || continue; HAVE=1; cmp -s "$f" /usr/share/rudolf/www/iwa/shell.swbn && SAME=1; done
+		if [ $HAVE = 1 ] && [ $SAME = 0 ]; then
+			echo "$(date) the shell in the profile is not the system's: replacing it"
+			if su -s /bin/sh rudolf -c "exec /usr/bin/rudolf-shellfix /opt/chromium/chrome $PROFILE /usr/share/rudolf/www/iwa/shell.swbn $SHELLID" >>/run/rudolf/shellfix.log 2>&1; then
+				echo "$(date) shell replaced"; echo "shell 1" >> /run/rudolf/events
+			else echo "$(date) the shell was not replaced (see /run/rudolf/shellfix.log)"; fi
+		fi
+	fi
+}
+# 1.5.9 (docs/plan-1.5.9.md 12.3c): Oracle on the native desktop runs in Rudolf's own Chromium with the shell's real tabs,
+# as on Standard: rudolf-native starts it (rudolf-launch --oracle) with what is written here, Standard's profile and flags
+# (the shell's ID, then the program and its arguments, one a line). Not without the shell or Chromium: then Oracle's
+# WebKit window, as before.
+oracle_chrome() {
+	rm -f /run/rudolf/oracle-chrome
+	[ ${#SHELLID} = 56 ] && [ -n "$SHELLINST" ] && [ -x /opt/chromium/chrome ] && [ -x /usr/bin/rudolf-launch ] || return 0
+	shell_fix
+	{ echo "$SHELLID"; for a in /opt/chromium/chrome --class=RudolfOracle --user-data-dir=$PROFILE \
+		--no-first-run --no-default-browser-check --noerrdialogs --disable-infobars \
+		--disable-session-crashed-bubble --disable-translate --password-store=basic \
+		--disable-features=Translate,MediaRouter,DialMediaRouteProvider,OptimizationHints,PrivacySandboxSettings4,Vulkan,WebGPUService,SkiaGraphite,OptimizationGuideOnDeviceModel$FEDCM_OFF --disable-vulkan-surface \
+		$GLFLAGS --autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream \
+		--auto-select-desktop-capture-source=Entire --enable-features=SharedArrayBuffer,IsolatedWebApps$SHELLFEAT $SHELLINST \
+		--load-extension=$RUF --disable-gpu-watchdog --disk-cache-size=67108864 $PROXY $EXTRA; do echo "$a"; done; } > /run/rudolf/oracle-chrome.t &&
+		chmod 644 /run/rudolf/oracle-chrome.t && mv /run/rudolf/oracle-chrome.t /run/rudolf/oracle-chrome
+}
 LOGPOLL=0
 DBG=""
 grep -q 'rudolf.debug=1' $RCMD && DBG="--enable-logging=stderr --v=0 --remote-debugging-port=9222"
@@ -318,6 +352,7 @@ while :; do
 	# again was given the time as its width)
 	SCW=$W; SCH=$H; [ -s /run/rudolf/screen ] && read SCW SCH < /run/rudolf/screen
 	if [ $ENGINE = native ]; then
+		oracle_chrome
 		su -s /bin/sh rudolf -c "exec /usr/bin/rudolf-native --rudolf-kiosk --size=${SCW}x$SCH $WKSOFT --base=http://127.0.0.1:8080" >>/run/rudolf/native-desktop.log 2>&1 &
 	elif [ $ENGINE = webkit ]; then
 		# 1.5.8: Settings › System health › Log video problems: GStreamer's warnings and errors (WebKit's video and sound)
@@ -325,20 +360,7 @@ while :; do
 		VLOG=; grep -q '^video_log=1' /persist/etc/rudolf-memory 2>/dev/null && { VLOG="GST_DEBUG=*:2 GST_DEBUG_NO_COLOR=1 GST_DEBUG_FILE=/run/rudolf/webkit-video.log"; : > /run/rudolf/webkit-video.log; chown rudolf /run/rudolf/webkit-video.log; }
 		su -s /bin/sh rudolf -c "exec env $VLOG /usr/bin/rudolf-webkit --rudolf-kiosk --size=${SCW}x$SCH $WKSOFT $START" >>/run/rudolf/webkit-desktop.log 2>&1 &
 	else
-	# 1.5.8: Chromium 157 never replaces the installed shell from its file ("App is already installed"), so a release's
-	# changes to Oracle's tabs never arrived. Once per start, when the profile's copy is not the system's, rudolf-shellfix
-	# puts the system's in (Chromium's DevTools over a pipe: removed and installed again; the shell's storage goes with
-	# it: the desktop's data comes back from rudolfd's mirror, websites ask to sign in again).
-	if [ -n "$SHELLINST" ] && [ ! -e /run/rudolf/shellfix-done ]; then
-		touch /run/rudolf/shellfix-done; SAME=0; HAVE=0
-		for f in $PROFILE/Default/iwa/*/main.swbn; do [ -f "$f" ] || continue; HAVE=1; cmp -s "$f" /usr/share/rudolf/www/iwa/shell.swbn && SAME=1; done
-		if [ $HAVE = 1 ] && [ $SAME = 0 ]; then
-			echo "$(date) the shell in the profile is not the system's: replacing it"
-			if su -s /bin/sh rudolf -c "exec /usr/bin/rudolf-shellfix /opt/chromium/chrome $PROFILE /usr/share/rudolf/www/iwa/shell.swbn $SHELLID" >>/run/rudolf/shellfix.log 2>&1; then
-				echo "$(date) shell replaced"; echo "shell 1" >> /run/rudolf/events
-			else echo "$(date) the shell was not replaced (see /run/rudolf/shellfix.log)"; fi
-		fi
-	fi
+	shell_fix
 	su -s /bin/sh rudolf -c "exec $LAUNCH /opt/chromium/chrome --rudolf-kiosk --class=RudolfDesktop --kiosk --start-fullscreen \
 		--window-position=0,0 --window-size=$W,$H --user-data-dir=$PROFILE \
 		--no-first-run --no-default-browser-check --noerrdialogs --disable-infobars \
