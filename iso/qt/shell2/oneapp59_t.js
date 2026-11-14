@@ -68,6 +68,7 @@ const URL0 = 'http://127.0.0.1:' + (+process.env.ONEAPP59_PORT || 8295) + '/';
   const cat = M.apps && JSON.parse(M.apps.b.toString());
   ok('15. after sign-in the page gives rudolfd the start menu\'s list and the backgrounds\' pictures (desktop/apps)', cat && cat.apps.some(a => a.k == 'notepad' && a.name == 'Notepad' && a.icon) && cat.bg.alpine && /^a\//.test(cat.bg.alpine.d) && cat.acct == acct.id, cat && {n: cat.apps.length, bg: Object.keys(cat.bg)});
   ok('15b. ...with the apps\' pictures as the page draws them (PNG, one per picture) and the version (1.5.9 step 7)', cat && cat.ver && cat.apps.some(a => a.k == 'notepad' && a.ic == 'notepad') && /^data:image\/png;base64,/.test(cat.icons && cat.icons.notepad || ''), cat && {ver: cat.ver, icons: Object.keys(cat.icons || {}).length});
+  ok('15c. ...and the desktop\'s icons as the account sees them, their places and size (1.6.0 Part 12, item 1)', cat && Array.isArray(cat.desk) && cat.desk.some(d => d.n == 'Notepad' && d.k == 'notepad' && d.kind == 'app') && cat.desk.some(d => d.kind == 'computer') && cat.cells && typeof cat.cells == 'object' && cat.is == 100, cat && {desk: (cat.desk || []).slice(0, 4), is: cat.is});
   await p.close();
   // 1.5.9 step 7: the development link's banner is not drawn in an app window; with the native shell it asks, not the page
   M.devlink = {ok: true, available: true, on: true, repo: 'a/b', secondsLeft: 600, ask: true, status: {state: 'on'}, pending: {id: 'c1', kind: 'run', what: 'ls'}};

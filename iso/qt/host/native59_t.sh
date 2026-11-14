@@ -6,7 +6,7 @@
 # app windows in one-app mode sharing one WebKit web process, the lock screen and signing out; (step 4) the window
 # manager: frames, focus, moving, resizing, maximise, minimise, the taskbar's list, full screen, dialogs, close; (step 7)
 # the arrow on the screen, the apps' pictures, the display scaling, a drop-down in an app window, the development link's
-# banner and question. What is where comes from
+# banner and question; (1.6.0 Part 12, item 1) the desktop's icons. What is where comes from
 # rudolf-native's own account of it (RUDOLF_NATIVE_STATE); colours from screenshots. Needs Xvfb, xdotool, ImageMagick,
 # node, python3, gcc and WebKitGTK's headers (libwebkit2gtk-4.1-dev).   sh native59_t.sh [RUDOLF-NATIVE]
 HERE=$(cd "$(dirname "$0")" && pwd); T=$(mktemp -d /tmp/native59.XXXXXX); PORT=${NATIVE59_PORT:-8298}; DSP=${NATIVE59_DSP:-:79}
@@ -56,6 +56,21 @@ printf '%s\n' '#include <X11/Xlib.h>' '#include <X11/extensions/Xfixes.h>' '#inc
 gcc -o $T/cur $T/cur.c -lX11 -lXfixes 2>/dev/null; xdotool mousemove 640 300; timeout 0.5 tail -f /dev/null; c=$($T/cur 2>/dev/null)
 ok "47. the screen shows the arrow, not X's bare cross (step 7, bug 2)" "$(echo "$c" | awk '$3<=3 && $4<=3 {print 1}')" "$c"
 P=$(hit pin notepad); ok "48. a pinned app shows its picture as the page draws it, and the start button the version (bug 3)" "$(close "$(px $P)" "16 185 129" 6 && [ "$(st icons)" = "1 9.9.9" ] && echo 1)" "$(px $P) $(st icons)"
+# 1.6.0 (Part 12, item 1): the desktop's icons
+di() { grep "^dicon .*|$1$" $D/state | head -1; }
+cl() { grep "^client $1 " $D/state | head -1; }          # client ID FRAME X Y W H min= max= full= focus= app= TITLE
+cv() { cl $1 | awk -v f=$2 '{print $f}'; }               # one field: 4 x, 5 y, 6 w, 7 h
+w8 '[ -n "$(di Notepad)" ]' 20; timeout 0.5 tail -f /dev/null; shot
+ok "56. the desktop's icons, on the page's grid: in the columns, and where the page put one (the Calculator)" "$([ "$(di Notepad | cut -d' ' -f2-5)" = "0 0 8 8" ] && [ "$(di Calculator | cut -d' ' -f2-5)" = "2 1 176 94" ] && [ "$(di 'My Computer' | cut -d' ' -f2-3)" = "0 1" ] && close "$(px 50 34)" "16 185 129" 6 && echo 1)" "$(grep '^dicon' $D/state) $(px 50 34)"
+xdotool mousemove 50 40 click --repeat 2 --delay 80 1; w8 'grep -q "^app notepad .* Notepad$" $D/state' 80
+ok "57. a double-click opens the icon's app" "$(grep -q '^app notepad' $D/state && [ "$(di Notepad | cut -d' ' -f7)" = 1 ] && echo 1)" "$(grep '^app\|^dicon' $D/state)"
+NID=$(grep '^client .* app=notepad' $D/state | cut -d' ' -f2); X=$(cv $NID 4); Y=$(cv $NID 5); FW=$(( $(cv $NID 6) + 8 )); click $((X+FW-25)) $((Y+15)); w8 '[ -z "$(cl $NID)" ]' 40
+xdotool mousemove 218 134 mousedown 1; for k in 1 2 3 4 5 6; do xdotool mousemove $((218+k*42)) $((134+k*29)); timeout 0.1 tail -f /dev/null; done; xdotool mouseup 1; timeout 0.5 tail -f /dev/null
+ok "58. dragging an icon: to the nearest cell, kept by rudolfd for the shell (desktop/cells)" "$([ "$(di Calculator | cut -d' ' -f2-3)" = "5 3" ] && grep -q '"Calculator":\[5,3\]' $D/cells.json && echo 1)" "$(di Calculator) $(cat $D/cells.json 2>/dev/null)"
+xdotool mousemove 900 500 click 3; w8 '[ "$(st dmenu)" = desk ]' 20; xdotool key Down Return; timeout 0.8 tail -f /dev/null
+ok "59. the desktop's menu: Arrange icons by name" "$([ "$(di Calculator | cut -d' ' -f2-3)" = "0 0" ] && [ "$(di 'My Computer' | cut -d' ' -f2-3)" = "0 1" ] && [ "$(di Notepad | cut -d' ' -f2-3)" = "0 2" ] && echo 1)" "$(grep '^dicon\|^dmenu' $D/state)"
+xdotool mousemove 50 40 click 3; w8 '[ "$(st dmenu)" = icon ]' 20; xdotool key Escape
+ok "60. an icon's own menu" "$([ "$(st dmenu)" = icon ] && echo 1)"
 set_s '{"s":{"bs":"gradient","b1":"#ff0000","b2":"#0000ff","tb":"top","accent":"#16a34a","tbac":true,"tbacm":"negative","h24":false,"df":"dmy"},"pins":["calc"],"notes":0,"wallpaper":false}'
 w8 '[ "$(st bar | cut -d" " -f3)" = 0 ]' 40; timeout 1 tail -f /dev/null; shot
 ok "11. settings changed in the page: the taskbar moves to the top" "$([ "$(st bar)" = "1 0 0 1280 46" ] && echo 1)" "$(st bar)"
