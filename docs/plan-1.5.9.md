@@ -10,7 +10,7 @@ Done in code and tests (PRs #260–#281, rudolfos-library #31; each part's "Done
 check (since #280 ModemManager runs without udev; since #281 the self-test has a modem line), Part 3 steps 1–5 (QEMU
 starts the ARM64 build directly, through UEFI firmware and with Chromium as the desktop), Part 4 up to the device
 check, Part 7 except the Vivobook call checks, Part 8 except 8.4's recovery.efi and the TPM and hardware keys, Part 9,
-Part 10's pictures, fonts and lazy apps, Part 11. Part 12 (the native desktop engine, a prototype) and Part 13 (USB printers) are not started. The
+Part 10's pictures, fonts and lazy apps, Part 11. Part 12 (the native desktop engine, a prototype) is not started; Part 13 (USB printers) moved to 1.6.0. The
 latest beta: **2026111402** (not promoted).
 
 ### What needs the Vivobook (or the person) before 1.5.9 is promoted
@@ -618,41 +618,8 @@ numbers (docs/plan-1.6.0.md, "the native desktop decision", now pointing here).
 - Browser: each app's one-app mode opens and closes cleanly, on both engines.
 - The session's engine choice and give-up (host test, as desksafe58_t.sh for Lite); CI builds rudolf-native.
 
-## Part 13: USB printers (added on 2026-11-13)
-Asked for: printing to printers plugged in by USB, as Rudolf OS prints to network printers now (rudolf-print: IPP
-Everywhere and AirPrint, no CUPS and no drivers). The same print dialog (WordPro, SpreadsheetPro, PresentPro, and the
-PDF Viewer since #295) lists them as "USB: name".
-
-### 13.1 Which USB printers
-- **IPP over USB** (the USB printer class's protocol 4, 7/1/4; most printers sold since about 2015, and every one with
-  the IPP Everywhere or Mopria logo): the printer speaks IPP over its USB link exactly as over the network. **ipp-usb**
-  (Debian's, GPL-2) turns it into a local IPP address; rudolf-print then prints to it as to a network printer
-  (PDF, or PWG / Apple raster from pdf.js). Nothing new to write for the job itself.
-- **Plain USB printers that read PDF or PostScript** (7/1/1 or 7/1/2, the IEEE 1284 device ID listing PDF or
-  POSTSCRIPT in its command set): the job is written to /dev/usb/lpN as it is. Through the kernel's usblp driver.
-- **Others** (PCL-only or host-based printers that need a driver): not in 1.5.9. The dialog names the printer and says
-  it needs a driver Rudolf OS does not have; PCL raster from pdf.js (as PWG raster is made now) is a candidate for
-  later.
-
-### 13.2 What changes
-- **Kernel:** USB_PRINTER (usblp) as a module, checked in kconfig.sh (x86 and ARM64). usblp must not claim an IPP over
-  USB printer's interface 7/1/4 (ipp-usb needs it): the modem service's way (mdev with the interface's class) unbinds
-  it for those.
-- **The system layer:** ipp-usb and its libraries, with a budget checked in ci_release.sh (about 10 MB expected; the
-  build says the real size, as for ModemManager). Avahi is not added: ipp-usb's address is passed to rudolf-print in
-  /run/rudolf/usb-printers instead of being announced on the network.
-- **/usr/lib/rudolf/usbprint** (mdev hotplug, like the modem service): a printer plugged in starts ipp-usb for it (IPP
-  over USB) or records its /dev/usb/lpN and device ID (plain); unplugged, it stops it and forgets it. rudolfd's
-  print/find adds these to the network's printers; print/job sends to /dev/usb/lpN for the plain kind.
-- **Settings › Devices** lists a USB printer with its kind (IPP over USB, PDF, PostScript, or "needs a driver").
-- **The self-test:** a "usb-printer" line (found, its kind, ipp-usb answering).
-
-### 13.3 Tests
-- Host: the hotplug script with stand-ins (an IPP over USB printer's interfaces, a plain PostScript one, a PCL-only
-  one); rudolfd's print/find listing them; a job to the plain kind written to a stand-in /dev/usb/lp0.
-- rudolf-print against ipp-usb's stand-in (its test IPP server) as for network printers.
-- **On real hardware:** one USB printer on the Vivobook (a printer with IPP over USB if there is one; the person says
-  which printers are at hand), over the devlink read only, then a test page.
+## Part 13: USB printers (moved to 1.6.0 on 2026-11-13)
+To be tested with the HP desktop's user, who has the USB printer: docs/plan-1.6.0.md Part 8. Nothing of it is in 1.5.9.
 
 ## Steps
 0. Part 11 first: 11.1 (the Chromium source) and 11.3, then 11.2; 11.4 holds for every part.
@@ -674,5 +641,4 @@ PDF Viewer since #295) lists them as "USB: name".
     measured on both engines on the Vivobook; then the engines' limits (10.3).
 11. Part 12 (the native desktop engine, a prototype): the one-app mode and rudolfd's settings first, then rudolf-native's
     wallpaper and taskbar, its window manager, the engine choice; measured on the Vivobook last.
-12. Part 13 (USB printers): the kernel's usblp and the hotplug script first, then ipp-usb in the system layer with its
-    budget, rudolfd's print/find and print/job, Settings › Devices; a real USB printer on the Vivobook last.
+12. Part 13 (USB printers): moved to 1.6.0 (its Part 8).
