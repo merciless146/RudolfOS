@@ -665,6 +665,62 @@ deskapi59_t.sh 33 to 36, oneapp59_t.js 15b, 17 and 18):
 5. Not the window manager: WebKitGTK's pop-up list works under it (tested with a plain page). The page only gave its
    own drop-down style (html.webkit, styles25.css, 1.5.7) to Lite: under Native it now does too.
 
+### 12.3c Step 8: Oracle on Native runs on Chromium, as on Standard (added on 2026-11-14)
+Asked for: Oracle on the native desktop runs on Chromium, so that it works exactly as on Standard (docs/plan-1.6.0.md
+Part 12, "The rule"). Found on 2026-11-14: on Native, Oracle opens as any app does, its page in a WebKit one-app window,
+and nothing there gives it real tabs (no `rudolfShell`: only rudolf-native's `rudolfNative` message handler), so its
+websites fall back to frames, or to a separate Chromium window for sign-in sites. Many sites refuse frames; sign-ins
+are not kept as on Standard; private tabs are not private (Part 14); games run in a frame of the WebKit page.
+12.1's "Oracle's tabs (Chromium) are framed windows like any other" assumed a step that was never written: this one.
+
+**Why Chromium and not something else (decided 2026-11-14):** Blink (drawing pages) and V8 (JavaScript) are parts of
+Chromium and cannot be used alone; whatever embeds them (CEF, Qt WebEngine, Electron) ships a Chromium of its own, a
+second copy (about 100 MB more) with a different build. WebKitGTK tabs, as Lite has, would be lighter but are Safari's
+engine: sites and games behave differently. Rudolf's own Chromium with its tab shell is the same program as
+Standard's: the same Blink and V8, the same partitions (an account's sign-ins are the same on both engines), private
+tabs in memory, nothing more to download.
+
+**How:**
+1. **Oracle's window on Native is Chromium with the shell** (iso/shell, the Isolated Web App Standard starts), not a
+   WebKit one-app window: when Oracle is opened (the start menu, a pin, a desktop icon, a link from another app, a
+   file of a web type, a page's "open in Oracle"), rudolf-native starts
+   `/opt/chromium/chrome --class=RudolfOracle --user-data-dir=PROFILE --app=isolated-app://SHELLID/#app=browser&url=…`
+   with Standard's flags (the session's: GPU flags, features turned off, autoplay, the fake media UI for calls, the
+   password store), as the account's Linux user. The shell passes its own `#…` on to the desktop frame
+   (`DESK_URL + location.hash`), so the page inside starts Oracle alone in one-app mode (oneapp59.js), now with the
+   shell's real tabs (rtOn() true): Standard's code path, unchanged.
+2. **One Chromium for every Oracle window:** a second Oracle window, or a website's new window, is a message to the
+   running one (the shell's `newwin` and oneapp59.js's "another app asked for" become windows of the same Chromium),
+   not a second Chromium. The windows are framed by rudolf-native's window manager like the others (the page's title
+   bars, the taskbar's button with Oracle's icon and title; `RudolfOracle` grouped as Oracle, not as a Linux app).
+3. **Started only with Oracle, gone with it:** when the last Oracle window closes, Chromium exits (the shell closes
+   itself when its page says "This app is closed"); idle Native stays at its measured 854 MB. Its start is shown (the
+   pointer busy, the window's frame at once with the page's loading look) so the 1 to 3 s of a cold Chromium start do
+   not look like nothing happened. Kept warm: no (memory is the point of Native).
+4. **The profile is Standard's** (/home/rudolf/.rudolf-chromium or as the session names it): the shell's installed
+   copy, its partitions (persist:web-ACCOUNT), Oracle's downloads, permissions and sign-ins. The engines never run at
+   the same time, so the profile's lock is never contended; the session's shell checks (rudolf-shellfix, the bundle
+   compared) run before Native starts too, so Oracle never meets an old shell.
+5. **What the page in Chromium needs from the native desktop:** notifications, the file dialogs, Open with, the
+   clipboard, downloads (__dlHook: into the account's Downloads, the native taskbar's progress), the volume and the
+   🎙️ indicator during calls, game mode (Chromium's window full screen: the native taskbar and the effects stand
+   still), the keys (keys56.js's rules, Ctrl+Shift+N for a private tab) and the devlink's screenshot. Each checked
+   on both engines.
+6. **Safeguards:** if Chromium is missing or will not start (the desktop layer without it, recovery), Oracle opens
+   as now (the WebKit page with frames) and says once that websites will work better on Standard; Native is not given
+   up for it.
+
+**Tests:** a host test under Xvfb (`iso/qt/native/oracle_native_t.sh`): rudolf-native with Chromium and the shell;
+Oracle opened → one Chromium (`--class=RudolfOracle`), framed, its page in one-app mode with rtOn() true, a local test
+site in a real tab (a Controlled Frame), cookies kept in persist:web-ACCOUNT and seen again by Standard's run of the
+same profile, a private tab's part in memory (Part 14), a second Oracle window in the same Chromium, the last window
+closed → no Chromium left; same_t.sh's comparison of Oracle's window (toolbar, tabs, a site) against Standard's.
+Measured on the Vivobook: Native with Oracle open (target: no more than Standard with Oracle open, 1,167 MB), Native
+idle unchanged after Oracle closes, FNF in Oracle on both engines (frame rate the same).
+
+**Status:** planned (2026-11-14), not started. It is built after the native session's item in progress, in its own
+PR; it touches iso/shell/shell.js (so, as with Part 14, a beta with it replaces the shell in the profile once).
+
 ### 12.4 Tests
 - Host, under Xvfb: rudolf-native draws its wallpaper and taskbar (screenshots compared), a window gets a frame,
   minimise, maximise and close work, a pinned app opens its one-app WebKit window.
@@ -849,6 +905,7 @@ To be tested with the HP desktop's user, who has the USB printer: docs/plan-1.6.
     measured on both engines on the Vivobook; then the engines' limits (10.3).
 11. Part 12 (the native desktop engine, a prototype): the one-app mode and rudolfd's settings first, then rudolf-native's
     wallpaper and taskbar, its window manager, the engine choice; measured on the Vivobook last.
+    Then step 7 (the Vivobook's bugs, done: #311) and step 8 (Oracle on Chromium on Native, 12.3c), before promotion.
 12. Part 13 (USB printers): moved to 1.6.0 (its Part 8).
 
 ## Part 14: private browsing in Oracle (added on 2026-11-14)
@@ -860,5 +917,5 @@ part named `priv-ACCOUNT-SESSION`, which the Chromium shell gives a partition wi
 ephemeral context (in memory only); cleared when the last private window closes, a new name for the next private
 session; pop-ups from it stay private. Kept: bookmarks and downloads (said on its start page and in Help › Privacy).
 Not private: websites shown in frames when Oracle's tabs are not running (the start page says so), and on Native until
-its taskbar menus come (docs/plan-1.6.0.md Part 12, item 3). Test: qt/shell2/private59_t.js. The shell changed, so the
+its taskbar menus come (docs/plan-1.6.0.md Part 12, item 3) and Oracle runs on Chromium there (Part 12, step 8). Test: qt/shell2/private59_t.js. The shell changed, so the
 first start of a beta with it replaces the shell in the profile (websites ask to sign in again, once).
