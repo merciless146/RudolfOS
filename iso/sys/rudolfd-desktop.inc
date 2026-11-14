@@ -12,6 +12,8 @@
  *   GET  desktop/settings      the page's settings the shell draws, the pinned apps, the notifications' count, "gen"
  *   GET  desktop/apps          the start menu's list and the drawn backgrounds' pictures, as the page wrote them
  *   POST desktop/apps          (the page, after each sign-in)
+ *   GET  desktop/cells?acct=ID       (1.6.0) where the shell put the desktop's icons: {"NAME":[COLUMN,ROW]}
+ *   POST desktop/cells?acct=ID       (the shell, when an icon is moved)
  *   GET  desktop/wallpaper?acct=ID   a picture of your own (JPEG), as the page gave it, else (1.5.9 step 7) made here from
  *                                    the page's database mirror (idbm: the record "wp:PICTURE" of rudolfos/kv)
  *   POST desktop/wallpaper?acct=ID[&img=PICTURE]   (the page, when it loads or changes one)
@@ -611,6 +613,18 @@ static int api_desktop(struct req *r, const char *w, int post)
 		char p[300]; snprintf(p, sizeof p, "%s/.rudolf-apps.json", desk_dir);
 		if (!post) { size_t n; char *b = slurp(p, &n); if (!b) { static const char E[] = "{\"ok\":true,\"apps\":[],\"bg\":{}}"; reply(r->fd, 200, "application/json", E, sizeof E - 1, NULL); return 1; } reply(r->fd, 200, "application/json", b, n, NULL); free(b); return 1; }
 		if (!r->body || r->blen > (1u << 20) || *dj_ws(r->body) != '{' || !dj_end(r->body, 0) || *dj_ws(dj_end(r->body, 0))) { reply_err(r->fd, 400, "a JSON object, at most 1 MB"); return 1; }
+		if (dput(p, r->body, r->blen)) reply_err(r->fd, 500, "could not save"); else reply_ok(r->fd, "saved");
+		return 1;
+	}
+	/* 1.6.0 (Part 12, item 1): where the shell put the desktop's icons, per account (the page's own places are in its
+	   storage, bd95cells, given in desktop/apps) */
+	if (!strcmp(w, "cells")) {
+		const char *a = qparam(r->query, "acct"); char d[300], p[400];
+		if (!home_acct_ok(a)) { reply_err(r->fd, 400, "bad account"); return 1; }
+		snprintf(d, sizeof d, "%s/.rudolf-cells", desk_dir); snprintf(p, sizeof p, "%s/%s.json", d, a);
+		if (!post) { size_t n; char *b = slurp(p, &n); if (!b) { static const char E[] = "{}"; reply(r->fd, 200, "application/json", E, 2, NULL); return 1; } reply(r->fd, 200, "application/json", b, n, NULL); free(b); return 1; }
+		if (!r->body || r->blen > (64u << 10) || *dj_ws(r->body) != '{' || !dj_end(r->body, 0) || *dj_ws(dj_end(r->body, 0))) { reply_err(r->fd, 400, "a JSON object, at most 64 KB"); return 1; }
+		if (mkdir(d, 0755) == 0 && chown(d, desk_uid, desk_uid)) {}
 		if (dput(p, r->body, r->blen)) reply_err(r->fd, 500, "could not save"); else reply_ok(r->fd, "saved");
 		return 1;
 	}

@@ -190,6 +190,15 @@ to. The apps stay web pages in one-app WebKit windows (1.5.9 Part 12) until 2.0 
 12. **Memory:** each one-app page runs only its app's code (the page's other modules not started in one-app mode),
     measured again: one app open within 120 MB of idle.
 
+**Status (2026-11-14, unattended session):** 1.5.9's step 7 (Native (test)'s six Vivobook bugs) is PR #311. Item 1's
+first part is the next PR, stacked on it: the desktop's icons (the shortcuts the account sees, with the page's
+pictures and places, on the page's grid at the icon size and display scaling), double-click to open, dragging to the
+nearest free cell (rudolfd's desktop/cells), Arrange icons by name, Refresh, the icon's menu (Open) and the desktop's
+(Arrange, Refresh, File Explorer, Task Manager, Settings); native59_t.sh 56 to 60, deskapi59_t.sh 37, oneapp59_t.js 15c.
+**Next:** item 1's second part: files in the Desktop folder as icons (opened with their app, renamed, to the Trash),
+New folder / New text document, Properties, the Trash icon's own menu, dropping files onto the desktop and between
+windows; then items 2 to 12 in order, and docs/plan-2.0.md after them. Native is not the default yet.
+
 **Becoming the default:** after items 1-12 pass on the host and on the Vivobook (a week of betas on Native), the
 release's default engine is Native for new installations; an update keeps the engine the computer had, and Settings
 offers the change once ("Rudolf OS's new desktop uses less memory and starts faster"). Native's safeguards stay

@@ -101,5 +101,8 @@ o=$(t "GET wallpaper?acct=uAnnA1b2"); ok "34. ...and given to the shell; the dis
 o=$(t "POST wallpaper?acct=uAnnA1b2&img=other1 <$T/second.jpg" "GET wallpaper?acct=uAnnA1b2")
 ok "35. a copy of another picture (the page changed it, the settings not yet written) is replaced by the settings' picture" "$(echo "$o" | sed -n 2p | grep -c 'mirrored picture')" "$o"
 o=$(t "POST logout" "GET settings" | sed -n 2p); ok "36. before sign-in: the last account's picture only if the last settings (bd95set) show it" "$(has "$o" '"wallpaper":false,"wpacct":""')" "$o"
+# 1.6.0 (Part 12, item 1): where the shell put the desktop's icons
+printf '{"Notepad":[3,1]}' > $T/cells; o=$(t "GET cells?acct=uAnnA1b2" "POST cells?acct=uAnnA1b2 <$T/cells" "GET cells?acct=uAnnA1b2" "POST cells?acct=uAnnA1b2 <$T/bad" "GET cells?acct=../x")
+ok "37. the desktop's icons' places: none at first, then kept per account; only whole JSON, a real account" "$(echo "$o" | sed -n 1p | grep -q '|{}$' && echo "$o" | sed -n 3p | grep -q '"Notepad":\[3,1\]' && echo "$o" | sed -n 4p | grep -q 400 && echo "$o" | sed -n 5p | grep -q 400 && echo 1)" "$o"
 umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]

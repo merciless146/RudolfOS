@@ -104,7 +104,14 @@ class H(http.server.BaseHTTPRequestHandler):
                 raw = b''.join(b'\0' + bytes(rgb) * w for _ in range(h)); ch = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
                 return b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + ch(b'IDAT', zlib.compress(raw)) + ch(b'IEND', b'')
             icons = {'notepad': 'data:image/png;base64,' + base64.b64encode(png(48, 48, (16, 185, 129))).decode()}
-            return self.j({'ok': True, 'apps': apps, 'bg': dyn, 'icons': icons, 'ver': '9.9.9'})
+            # the desktop's icons as the page lists them for the account, and the page's places (1.6.0 Part 12, item 1)
+            desk = [{'n': 'Notepad', 'k': 'notepad', 'kind': 'app', 'ic': 'notepad', 'icon': '🗒️'}, {'n': 'Calculator', 'k': 'calc', 'kind': 'app', 'ic': '', 'icon': '🧮'},
+                    {'n': 'My Computer', 'k': 'explorer', 'kind': 'computer', 'ic': '', 'icon': '🖥️'}]
+            return self.j({'ok': True, 'apps': apps, 'bg': dyn, 'icons': icons, 'ver': '9.9.9', 'desk': desk, 'cells': {'Calculator': [2, 1]}, 'is': 100,
+                           'acct': s['session']['id'] if s['session'] else ''})
+        if w == 'desktop/cells':
+            if m == 'POST': open(os.path.join(D, 'cells.json'), 'wb').write(b); return self.j({'ok': True})
+            return self.send(200, rd('cells.json', b'{}'))
         if w == 'desktop/wallpaper':
             x = rd('wall.jpg'); return self.send(200, x, 'image/jpeg') if x else self.err(404, 'no picture')
         # the development link: DIR/devlink.json as rudolfd's devlink answers (off when missing); End now removes it,
