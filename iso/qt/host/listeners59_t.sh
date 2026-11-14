@@ -43,6 +43,16 @@ o=$(st)
 ok "8. a port and a socket the list does not name (a program listening on 0.0.0.0:4444, a socket in a home folder): fails, naming both" "$(echo "$o" | grep -q '^FAIL listeners - .*tcp 0.0.0.0:4444' && echo "$o" | grep -q '/home/rudolf/.evil/sock' && echo 1)" "$o"
 printf '   4: 0100007F:2406 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 1006 1 0 100 0 0 10 0\n' > $P/net/tcp.x; head -1 $P/net/tcp > $P/net/tcp.y; cat $P/net/tcp.y $P/net/tcp.x > $P/net/tcp; : > $P/net/tcp6; head -1 $P/net/unix > $P/net/unix.y; mv $P/net/unix.y $P/net/unix
 o=$(st); ok "9. Chromium's test port (9222, test discs only) is named too" "$(echo "$o" | grep -q '^PASS listeners - 1 listening' && echo 1)" "$o"
+# 2026-11-14 (found on the Vivobook): a Linux app's own sockets inside Debian's container (the Claude app's, an Electron
+# app's SingletonSocket) are the app's; Chromium's newer folder name is named; a socket in /tmp held by a program
+# outside the container still fails
+mkdir -p $W/run/debian $W/debroot $W/other $P/200 $P/300/fd $P/400/fd; echo 200 > $W/run/debian/init.pid; echo debian-init > $P/200/comm
+ln -s $W/debroot $P/200/root; ln -s $W/debroot $P/300/root; ln -s $W/other $P/400/root
+ln -s 'socket:[3001]' $P/300/fd/5; ln -s 'socket:[3002]' $P/300/fd/6; ln -s 'socket:[3004]' $P/400/fd/3; chown -h 1001 $P/300 2>/dev/null; chown 1001 $P/300; chown 1000 $P/400
+{ head -1 $P/net/unix; printf '0000000000000000: 00000002 00000000 00010000 0001 01 3001 /run/user/1000/claude-cowork-vm.sock\n0000000000000000: 00000002 00000000 00010000 0001 01 3002 /tmp/scoped_dirhldzNi/SingletonSocket\n0000000000000000: 00000002 00000000 00010000 0001 01 3003 /tmp/org.chromium.Chromium.5rKOls/SingletonSocket\n'; } > $P/net/unix.y; mv $P/net/unix.y $P/net/unix
+o=$(st); ok "9b. a Linux app's own sockets in Debian's container: its, said; Chromium's newer socket folder named: passes" "$(echo "$o" | grep -q "^PASS listeners - 4 listening, each named in the list (who may use it and how it checks) (and 2 of Linux apps' own, inside their containers)" && echo 1)" "$o"
+printf '0000000000000000: 00000002 00000000 00010000 0001 01 3004 /tmp/sneaky/sock\n' >> $P/net/unix
+o=$(st); ok "...a socket in /tmp held by a program outside the containers still fails" "$(echo "$o" | grep -q '^FAIL listeners - .*unix /tmp/sneaky/sock' && ! echo "$o" | grep -q 'scoped_dir' && echo 1)" "$o"
 o=$(ST_SYS=$W/sys ST_RUN=$W/run ST_PROC=$P ST_LISTENERS=$W/none sh $SYS/root/usr/lib/rudolf/selftest 2>/dev/null | grep ' listeners ')
 ok "10. without the list, the self-test says so" "$(echo "$o" | grep -q '^FAIL listeners - the list of listeners is missing' && echo 1)" "$o"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

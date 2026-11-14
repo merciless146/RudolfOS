@@ -10,6 +10,13 @@
 #   DIR/page.html      (when there) served as the page instead of the desktop page: a plain page for the window
 #                      manager's checks (a drop-down)
 #   DIR/iwa-id         (when there) the shell's ID, served as /iwa/id (Oracle in the shell: oracle_native_t.sh)
+#   DIR/dl-dir         (when there) the path of Chromium's download folder (Downloads/.incoming): dl/incoming, dl/read and
+#                      dl/file as rudolfd answers them for it (oracle_native_t.sh); each dl/ request is noted with the engine
+#                      that asked ("chrome" or "webkit", from its User-Agent)
+#   DIR/idbm/          (when there) rudolfd's mirror of the pages' databases (rudolfd.c api_idbm), so a file one engine's page
+#                      saved (Oracle's, in Chromium) is seen by a page started after it in the other (a WebKit window)
+#   DIR/hotkey         (when there) the path of Rudolf OS's hotkey script: mic and volume answered through it as rudolfd does
+#                      (the sound server: pactl, PULSE_SERVER from the environment)
 # Ann's password is in keys.json; a wrong one gets the page's message.   python3 native_rd.py PORT DIR
 import http.server, json, os, sys, threading
 PORT = int(sys.argv[1]); D = sys.argv[2]; WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../www')
@@ -42,7 +49,8 @@ class H(http.server.BaseHTTPRequestHandler):
     def go(self, m):
         u, _, q = self.path.partition('?'); b = self.body() if m == 'POST' else b''
         if u.startswith('/api/'):
-            note('%s %s%s' % (m, u[5:], '?' + q if q else ''))
+            ua = self.headers.get('User-Agent') or ''
+            note('%s %s%s%s' % (m, u[5:], '?' + q if q else '', (' [%s]' % ('chrome' if 'Chrome/' in ua else 'webkit')) if u.startswith('/api/dl/') else ''))
             if self.headers.get('X-Rudolf-Token') != TOK: return self.err(403, 'missing token')
             return self.api(m, u[5:], q, b)
         if u in ('/', '/index.html'):
@@ -129,10 +137,68 @@ class H(http.server.BaseHTTPRequestHandler):
         if w == 'devlink/answer':
             o = json.loads(rd('devlink.json', b'{}')); o.pop('pending', None); open(os.path.join(D, 'devlink.json'), 'w').write(json.dumps(o)); return self.j({'ok': True})
         if w == 'net': return self.j({'ok': True, 'interfaces': [{'name': 'lo', 'ip': '127.0.0.1', 'state': 'up', 'wireless': False}, {'name': 'wlan0', 'ip': '192.168.1.5', 'state': 'up', 'wireless': True}]})
+        if w.startswith('dl/') and rd('dl-dir') is not None: return self.dl(m, w[3:], q)
+        if w in ('mic', 'volume') and rd('hotkey') is not None: return self.hotkey(m, w, q)
+        if w.startswith('idbm/') and os.path.isdir(os.path.join(D, 'idbm')): return self.idbm(m, w[5:], q, b)
         if w == 'volume': return self.j({'ok': True, 'volume': 70, 'muted': False})
         if w == 'power/status': return self.j({'ok': True, 'ac': False, 'battery': {'name': 'BAT0', 'capacity': 81, 'status': 'Discharging'}})
         if w == 'info': return self.j({'ok': True, 'battery': [{'name': 'BAT0', 'type': 'Battery', 'capacity': 81, 'status': 'Discharging'}]})
         return self.j({'ok': True})
+    def dl(self, m, what, q):
+        # (rudolfd.c api_dl, for the incoming folder only: what the desktop page needs to file a small download)
+        import urllib.parse; a = {k: v[0] for k, v in urllib.parse.parse_qs(q).items()}; inc = rd('dl-dir').decode().strip()
+        name = a.get('name', '')
+        if what == 'incoming':
+            items = []
+            for n in sorted(os.listdir(inc)) if os.path.isdir(inc) else []:
+                f = os.path.join(inc, n)
+                if n.startswith('.') or not os.path.isfile(f): continue
+                st = os.stat(f); items.append({'name': n, 'size': st.st_size, 'mtime': int(st.st_mtime * 1000), 'partial': n.endswith('.crdownload')})
+            return self.j({'ok': True, 'items': items})
+        if what == 'space': return self.j({'ok': True, 'free': 1 << 34, 'total': 1 << 35, 'live': False})
+        if not name or '/' in name or name.startswith('.'): return self.err(400, 'which file?')
+        f = os.path.join(inc, name)
+        if what == 'read':
+            if a.get('from', 'incoming') != 'incoming' or not os.path.isfile(f): return self.err(404, 'the file is not there any more')
+            b = open(f, 'rb').read(); off = int(a.get('off', '0')); n = int(a.get('len', str(8 << 20)))
+            if off < 0: off = max(0, len(b) + off)
+            return self.send(200, b[off:off + n], 'application/octet-stream')
+        if what == 'file' and m == 'POST':
+            if not os.path.isfile(f): return self.err(404, 'the file is not there any more')
+            if a.get('to') == 'del': os.unlink(f); return self.j({'ok': True, 'message': 'deleted'})
+            return self.err(400, 'to? (the stand-in deletes only)')
+        return self.err(404, 'unknown download action')
+    def idbm(self, m, what, q, b):
+        import re, urllib.parse; I = os.path.join(D, 'idbm'); f = urllib.parse.parse_qs(q).get('f', [''])[0]
+        with LOCK:
+            gen = int(rd('idbm/gen', b'0') or 0); ready = os.path.exists(os.path.join(I, 'ready'))
+            items = sorted(x for x in os.listdir(I) if re.fullmatch('[0-9a-f]{16}', x))
+            if what == 'meta': return self.j({'ok': True, 'gen': gen, 'ready': ready, 'count': len(items)})
+            if what == 'list': return self.j({'ok': True, 'gen': gen, 'ready': ready, 'items': items})
+            if what == 'ready' and m == 'POST': open(os.path.join(I, 'ready'), 'w').write('1'); return self.j({'ok': True})
+            if not re.fullmatch('[0-9a-f]{16}', f): return self.err(400, 'which record?')
+            if what == 'get': x = rd('idbm/' + f); return self.send(200, x) if x is not None else self.err(404, 'no such record')
+            if m != 'POST' or what not in ('put', 'del'): return self.err(404, 'unknown action')
+            if what == 'put': open(os.path.join(I, f), 'wb').write(b)
+            elif os.path.exists(os.path.join(I, f)): os.unlink(os.path.join(I, f))
+            open(os.path.join(I, 'gen'), 'w').write(str(gen + 1)); return self.j({'ok': True, 'gen': gen + 1})
+    def hotkey(self, m, w, q):
+        # (rudolfd.c: GET/POST mic and volume, through /usr/lib/rudolf/hotkey)
+        import subprocess, urllib.parse; a = {k: v[0] for k, v in urllib.parse.parse_qs(q).items()}; hk = rd('hotkey').decode().strip()
+        env = dict(os.environ, HOTKEY_PACTL='pactl', HOTKEY_EVENTS=os.path.join(D, 'events'))
+        run = lambda *x: subprocess.run(['sh', hk] + list(x), env=env, capture_output=True, text=True, timeout=10).stdout.strip()
+        if w == 'mic':
+            if m == 'POST':
+                if a.get('muted') not in ('0', '1'): return self.err(400, 'muted is 0 or 1')
+                run('mic', 'muted', a['muted'])
+            return self.j({'ok': True, 'muted': run('mic', 'get') == 'muted', 'users': [x for x in run('mic', 'users').split('\n') if x]})
+        if m != 'POST': o = run('volume', 'get')
+        elif a.get('set', '').isdigit(): o = run('volume', 'set', a['set'])
+        elif a.get('muted') in ('0', '1'): o = run('volume', 'muted', a['muted'])
+        else: return self.err(400, 'set=0-100 or muted=0|1')
+        v = o.split()
+        if not v or not v[0].isdigit(): return self.err(503, 'the sound server is not running')
+        return self.j({'ok': True, 'volume': int(v[0]), 'muted': len(v) > 1 and v[1] == 'muted'})
 class S(http.server.ThreadingHTTPServer):
     daemon_threads = True
     def handle_error(self, *a): pass
