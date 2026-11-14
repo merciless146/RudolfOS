@@ -21,7 +21,7 @@ function rtOpen(url, where, h, adopt) {
   const tid = 'o' + (++RT_N) + '-' + Date.now().toString(36);
   RT.set(tid, Object.assign({h, last: ''}, where));
   rtFw(true); rtRuffle();
-  rtSend('open', tid, {url, part: rtPart(), adopt});
+  rtSend('open', tid, {url, part: where && where.priv && typeof rtPrivPart == 'function' ? rtPrivPart() : rtPart(), adopt});   // 1.5.9: a private window's tabs: private59.js
   rtLoop();
   return tid;
 }

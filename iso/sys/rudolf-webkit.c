@@ -142,7 +142,7 @@ static const char *PAGE_JS =
 	"(()=>{const say=o=>{try{window.webkit.messageHandlers.rudolfTab.postMessage(o)}catch(e){}};"
 	"const SUB={F20:'w',F21:'t',F22:'n',F23:'q'};"
 	"addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey,k=SUB[e.code]&&e.ctrlKey?SUB[e.code]:e.key;let a='';"
-	" if(c&&!e.altKey&&!e.shiftKey&&/^[twlrn]$/i.test(k))a='c'+k.toLowerCase();else if(c&&k=='q')a='none';else if(k=='F5')a='f5';"
+	" if(c&&e.shiftKey&&!e.altKey&&e.code=='KeyN')a='cpn';else if(c&&!e.altKey&&!e.shiftKey&&/^[twlrn]$/i.test(k))a='c'+k.toLowerCase();else if(c&&k=='q')a='none';else if(k=='F5')a='f5';"
 	" else if(e.altKey&&!c&&(k=='ArrowLeft'||k=='ArrowRight'))a=k=='ArrowLeft'?'back':'fwd';else if(e.altKey&&!c&&(k=='F4'||e.code=='F20'))a='af4';"
 	" else if(c&&!e.altKey&&(k=='+'||k=='='||k=='-'||k=='0'))a='z'+(k=='='?'+':k);else if(c&&k=='Tab')a=e.shiftKey?'ptab':'ntab';"
 	" if(a){e.preventDefault();e.stopImmediatePropagation();if(a!='none')say({k:a})}},true);"
@@ -191,6 +191,13 @@ static void on_download(WebKitWebContext *c, WebKitDownload *dl, gpointer d);
 static WebKitWebContext *ctx_for(const char *part)
 {
 	WebKitWebContext *c = g_hash_table_lookup(CTX, part); if (c) return c;
+	/* 1.5.9: a private window's tabs ("priv-…"): nothing on the disk, cookies and site data in memory only */
+	if (!strncmp(part, "priv-", 5)) {
+		c = webkit_web_context_new_ephemeral();
+		webkit_web_context_set_cache_model(c, WEBKIT_CACHE_MODEL_WEB_BROWSER);
+		g_signal_connect(c, "download-started", G_CALLBACK(on_download), NULL);
+		g_hash_table_insert(CTX, g_strdup(part), c); return c;
+	}
 	char *base = g_build_filename(g_get_home_dir(), ".rudolf-webkit", "web", part, NULL), *data = g_build_filename(base, "data", NULL), *cache = g_build_filename(base, "cache", NULL);
 	WebKitWebsiteDataManager *m = webkit_website_data_manager_new("base-data-directory", data, "base-cache-directory", cache, NULL);
 	c = webkit_web_context_new_with_website_data_manager(m);
