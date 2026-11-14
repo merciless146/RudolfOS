@@ -238,7 +238,7 @@ Rename and Open with dialogs, drawn by the shell; what they do is done by the pa
 shell ("done": an error to show, or a dialog to ask) and posts the catalogue again. An app's window (and a hidden page)
 now lays the desktop's icons out at the screen's size, not its own (it used to squeeze the places kept for the shell).
 same_t.sh: 44 parts in 33 cases pass (new: desk-files, desk-menu, file-menu, file-rename, file-openwith).
-Item 1's second part, second half (PR native11-desk-drag, stacked on #317): dragging. A desktop icon follows the
+Item 1's second part, second half (PR #320, on main): dragging. A desktop icon follows the
 pointer; a file dropped on an app's window opens in that app in a window of its own (a page asked by the shell,
 #app=do-fs&op=drop, doing what the page's __dropFileOnWindow does), a file or an own shortcut dropped on the Trash goes
 there; an Explorer window's files dragged onto another window (another page) are dropped there (they go with the drag
