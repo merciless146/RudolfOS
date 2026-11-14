@@ -754,7 +754,7 @@ function settings(sec){if(SW&&wins.includes(SW)){SW.focus();SW.show(sec||SW.sec)
 const opt=(a,v)=>a.map(x=>`<option${x==v?' selected':''}>${x}</option>`).join('');
 function dispPanel0(c){const tl=tzList();let cs=tl.find(x=>x.z==S.tz);if(!cs){let t;try{t=off(S.tz)}catch(e){}cs=tl.find(x=>x.t==t)}
  c.innerHTML=`<h3>Display Properties</h3><div class='r2'>
-<label>Dynamic Backgrounds</label><div id='dynw'></div>
+<label>Dynamic Backgrounds<span class='msg dynps'${typeof DYNOV=='object'&&DYNOV.ps?'':' hidden'}>Note: Dynamic effects are disabled on power-saver mode.</span></label><div id='dynw'></div>
 <label>Static Backgrounds</label><div id='dyns'></div>
 <label>Appearance</label><div id='dynm'></div>
 <label>Background style</label><select id='bs'>${opt(['solid','gradient','vertical','radial','checker','dots','grid','stripes'],S.bs)}</select>
@@ -2510,6 +2510,7 @@ DKEYS.push('dyn','dm','lat');Object.assign(DEFS.disp,{dyn:'',dm:'auto',lat:''});
 ['dyn','dm','lat'].forEach(k=>{if(S[k]===undefined)S[k]=DEFS.disp[k];if(SC&&SC[k]===undefined)SC[k]=DEFS.disp[k]});
 (function(){const R=`Dynamic Backgrounds|Fondos dinámicos|Planos de fundo dinâmicos|Arrière-plans dynamiques|Dynamische Hintergründe|Динамические фоны|动态背景|ダイナミック背景|동적 배경
 Static Backgrounds|Fondos estáticos|Planos de fundo estáticos|Arrière-plans statiques|Statische Hintergründe|Статические фоны|静态背景|静止背景|정적 배경
+Note: Dynamic effects are disabled on power-saver mode.|Nota: los efectos dinámicos se desactivan en el modo de ahorro de energía.|Observação: os efeitos dinâmicos ficam desativados no modo de economia de energia.|Remarque : les effets dynamiques sont désactivés en mode économie d’énergie.|Hinweis: Dynamische Effekte sind im Energiesparmodus ausgeschaltet.|Примечание: динамические эффекты отключены в режиме энергосбережения.|注意：节能模式下动态效果已关闭。|注意：省電力モードでは動的効果はオフになります。|참고: 절전 모드에서는 동적 효과가 꺼집니다.
 Appearance|Apariencia|Aparência|Apparence|Darstellung|Оформление|外观|外観|모양
 Automatic (sunrise / sunset)|Automático (amanecer / atardecer)|Automático (nascer / pôr do sol)|Automatique (lever / coucher du soleil)|Automatisch (Sonnenaufgang / -untergang)|Автоматически (рассвет / закат)|自动（日出 / 日落）|自動 (日の出 / 日の入り)|자동 (일출 / 일몰)
 Light mode (locked)|Modo claro (fijo)|Modo claro (fixo)|Mode clair (fixe)|Heller Modus (fest)|Светлый режим (зафиксирован)|浅色模式（锁定）|ライト モード (固定)|라이트 모드 (고정)

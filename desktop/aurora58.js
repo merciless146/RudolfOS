@@ -26,7 +26,9 @@ function dynOvCheck(){let vis=!document.hidden&&!document.fullscreenElement&&dyn
  if(vis&&typeof wins!='undefined'){const A=innerWidth*innerHeight;for(const w of wins){const e=w&&w.el;if(!e||w.min||e.style.display=='none'||(w.ws&&typeof WS!='undefined'&&w.ws!=WS))continue;
   const r=e.getBoundingClientRect();if(r.width*r.height>=A*.6){vis=false;break}}}
  let saver=!!window.__bsaver,slow=false;try{const P=typeof PWR!='undefined'?PWR:null;if(P&&P.now&&(P.now.saver||P.now.profile=='quiet'||P.now.epp=='power'))saver=true;if(P&&P.battery&&P.battery.status=='Discharging')slow=true}catch(e){}
- DYNOV.vis=vis&&!saver;DYNOV.slow=slow}
+ DYNOV.vis=vis&&!saver;DYNOV.slow=slow;
+ /* 1.5.9: Display Properties says so under Dynamic Backgrounds, only while power saver is on */
+DYNOV.ps=saver;document.querySelectorAll('.dynps').forEach(e=>{if(e.hidden==saver)e.hidden=!saver})}
 setInterval(dynOvCheck,1000);
 const AUR={el:null,cv:null,sky:null,mask:null,maskSrc:'',on:false,timer:0,t0:performance.now(),col:''};
 const AUR_W=400,AUR_H=267,AUR_S=.25,AUR_WL=550;
@@ -85,3 +87,4 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&AUR.on)au
  q('#daurm').onchange=e=>{liveSet(c,'aurm',e.target.value);AUR.col='';aurUpdate()};sync()}})();
 {const st=document.createElement('style');st.textContent='.aurrow{margin-top:6px}.aurrow .msg{margin-top:4px}';document.head.appendChild(st)}
 aurUpdate();
+{const st=document.createElement('style');st.textContent='.dynps{display:block;font-weight:400;margin-top:4px}.dynps[hidden]{display:none}';document.head.appendChild(st)}
