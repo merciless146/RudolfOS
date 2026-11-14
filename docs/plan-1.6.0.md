@@ -342,9 +342,21 @@ networks: Settings › Network has them); rudolfd's events (events/wait) go to t
 window open a page's event-driven notifications (memory, Bluetooth, the power button's dialog) are not seen until one is
 (a hidden page for the desktop's own events, item 11); the toasts' window shows what was behind it when it appeared (no
 compositor).
-**Next:** item 3's last part, second half (the taskbar at the left or the right; the page has no auto-hide, so Native
-has none), then items 4 to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and
-docs/plan-2.0.md after them. Native is not the default yet.
+Item 3's last part, second half (the PR after #344): the taskbar at the left or the right (Display Properties' Taskbar:
+left, right), drawn by the shell as the page's body.left/.right #bar: a column from the screen's top to its bottom, 3 px of
+padding, its parts 4 px apart and as wide as the column, the column as wide as its widest part (max-content: the pinned
+apps' row, the version under the logo, the clock...; measured with the page's fonts, bar_measure); the start button the
+logo over the version (10 px, centred); the pinned apps in a row; the open windows' buttons 22 px high one under the
+other; at the bottom the battery, the workspaces, the network, the sound, the call's 🎙️, quick settings, the
+notifications and the clock (its date hidden, as the page's). The desktop's icons, the widgets and the windows' first
+places beside it (#desk's inset, var(--bw): the bar's width and 4 px), maximised windows and Cascade in the rest of the
+screen, the start menu beside it at the top (left or right: var(--bw), top 4 px), the network's and the volume's pop-ups
+beside their buttons (flyPlace), quick settings, the centre and the calendar where the page puts them (at the bottom
+right, as the page does); clicks outside a pop-up reach the bar wherever it is. The page has no auto-hide, so Native has
+none. same_t.sh: new bar-left, bar-right (and the icons beside them), bar-left-win (a window's button and its title bar),
+bar-left-candy, bar-right-retro, menu-left, menu-right, fly-vol-left, fly-net-right, fly-qs-left. Item 3 is done.
+**Next:** items 4 to 12 in order (4: the workspaces), one PR each, based on main, each passing same_t.sh for its part,
+and docs/plan-2.0.md after them. Native is not the default yet.
 
 **Becoming the default:** after items 1-12 pass on the host and on the Vivobook (a week of betas on Native), the
 release's default engine is Native for new installations; an update keeps the engine the computer had, and Settings
