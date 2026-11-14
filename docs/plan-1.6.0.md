@@ -248,8 +248,30 @@ they read the files again); an app's page kept the size GTK first asked for, lar
 repainted where a window uncovered it (the shell selected its own X events on its windows, replacing GDK's on the same
 connection); the shell could crash when a window closed before its frame. native59_t.sh 70/70 (new 67-70).
 Known differences left: files dropped from outside Rudolf OS onto the desktop (Standard saves them in the Desktop
-folder; the shell does not take X drops yet); the desktop menu's Show all windows (item 5) and Add a widget… (item 2).
-**Next:** items 2 to 12 in order, one PR each, stacked, each passing same_t.sh for its part, and docs/plan-2.0.md after
+folder; the shell does not take X drops yet); the desktop menu's Show all windows (item 5).
+Item 2, the widgets (the PR after #320): the page's five widgets drawn by the shell (desktop/shell25.js WTYPES and
+wgDraw, styles25.css .wgt: each into a picture of its own with its shadow and the desktop behind it blurred 6 px, laid
+over the desktop), where the account left them (bd95widgets:ID through desktop/settings; what the shell changes kept by
+rudolfd, desktop/widgets, with the page's value it replaced, until the page's own value changes: an app's page takes the
+shell's list into the page's storage at sign-in, so Standard shows the same); dragged by the header, removed by the ✕,
+added with the desktop menu's Add a widget… (the page's picker, drawn by the shell, the new one where the page puts it);
+the clock and calendar (System Settings' time zone, weeks from Sunday), the system monitor every 3 s (rudolfd's stats;
+the windows counted), the weather from Open-Meteo with the page's place (bd95wloc, else the time zone's city, looked up),
+unit, codes, retries (20 s, 1, 2, 5 min) and 15-minute look-ups (a click opens Weather; RUDOLF_WX_BASE for tests), the
+note as the page's textarea (typing through GTK's input method, Backspace, Delete, Enter, the arrows, Home and End with
+Shift and Ctrl, Ctrl+A, Ctrl+C/X/V, Ctrl+Z/Y with what comes back selected, the mouse placing the caret and selecting, a
+double-click a word, the right-click's menu as the page's textMenu, the resizer, scrolling to the caret; saved half a
+second after the last change); the pointer's shapes. App windows' pages draw no widgets (no timers in every window).
+same_t.sh: 56 parts in 39 cases pass (new: widgets (all five), widgets-ask (the weather asking where, an empty note),
+widgets-top, widgets-over (over the icons and a gradient: the blur), widget-picker); the behaviour on both engines:
+`SAME_SCRIPT=wgbeh_t.js sh same_t.sh` 12/12 (dragging and where it is saved, typing, Backspace and Enter, Ctrl+A, Ctrl+Z,
+the note's menu and its greyed rows, no menu on a header, the ✕, the picker and where a new one goes, the weather's click,
+the shell's list reaching the page's storage). deskapi59_t.sh 40/40 (new 38-40), native59_t.sh 70/70.
+Known differences left (item 2): a long note scrolls without Chromium's scrollbar; a widget dragged over the desktop's
+icons covers a dragged icon (the page draws a dragged icon above the widgets); the weather's guessed city (from the time
+zone) is kept by the shell for the session only (the page saves it as bd95wloc); the textarea's height after resizing is
+kept until the widgets are drawn again, as the page's.
+**Next:** items 3 to 12 in order, one PR each, stacked, each passing same_t.sh for its part, and docs/plan-2.0.md after
 them. Native is not the default yet.
 
 **Becoming the default:** after items 1-12 pass on the host and on the Vivobook (a week of betas on Native), the

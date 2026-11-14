@@ -9,11 +9,15 @@
  *   POST desktop/lock          the lock screen is up: desktop/session answers 423 until desktop/unlock
  *   POST desktop/unlock        body {"p":PASSWORD}, the session's account's
  *   GET  desktop/session       {"id","n","r","pk","fk"} for the one-app pages (oneapp59.js); 404 without a session
- *   GET  desktop/settings      the page's settings the shell draws, the pinned apps, the notifications' count, "gen"
+ *   GET  desktop/settings      the page's settings the shell draws, the pinned apps, the notifications' count, "gen",
+ *                              (1.6.0) the desktop's widgets ("widgets", "wgown") and the weather's place and unit ("wloc", "wunit")
  *   GET  desktop/apps          the start menu's list and the drawn backgrounds' pictures, as the page wrote them
  *   POST desktop/apps          (the page, after each sign-in)
  *   GET  desktop/cells?acct=ID       (1.6.0) where the shell put the desktop's icons: {"NAME":[COLUMN,ROW]}
  *   POST desktop/cells?acct=ID       (the shell, when an icon is moved)
+ *   POST desktop/widgets?acct=ID     (1.6.0) the shell's desktop widgets (the page's bd95widgets:ID list), kept here with the
+ *                                    page's value it replaced: desktop/settings gives it ("widgets", "wgown") until the
+ *                                    page's own value changes (another engine's desktop, or a page that took the shell's)
  *   GET  desktop/wallpaper?acct=ID   a picture of your own (JPEG), as the page gave it, else (1.5.9 step 7) made here from
  *                                    the page's database mirror (idbm: the record "wp:PICTURE" of rudolfos/kv)
  *   POST desktop/wallpaper?acct=ID[&img=PICTURE]   (the page, when it loads or changes one)
@@ -535,7 +539,22 @@ static void api_desktop_settings(struct req *r)
 	if (wa[0]) dwp_current(&l, wa, img, sizeof img);
 	if (!in && wa[0] && set) { char *v = dj_str(dj_get(set, "wpimg")); if (!v || strcmp(v, img)) img[0] = 0; free(v); }   /* (bd95set is someone else's) */
 	int wok = wa[0] && img[0] && !dwp_ensure(wa, img);
-	sadd(&o, ",\"notes\":%d,\"wallpaper\":%s,\"wpacct\":", nt ? dj_count(nt) : 0, wok ? "true" : "false"); sjson(&o, wok ? wa : ""); sadd(&o, "}");
+	sadd(&o, ",\"notes\":%d,\"wallpaper\":%s,\"wpacct\":", nt ? dj_count(nt) : 0, wok ? "true" : "false"); sjson(&o, wok ? wa : "");
+	/* 1.6.0 (Part 12, item 2): the desktop's widgets: the shell's own list while the page's (bd95widgets:ID) is still the one it
+	   replaced, else the page's; the weather widget's place and unit (weather47.js: bd95wloc, bd95wunit) */
+	char *wg = NULL, *own = NULL; int wgown = 0;
+	if (in) {
+		snprintf(k, sizeof k, "bd95widgets:%s", s.id); wg = dls_get(&l, k);
+		char op[400]; snprintf(op, sizeof op, "%s/.rudolf-widgets/%s.json", desk_dir, s.id); own = home_acct_ok(s.id) ? slurp(op, NULL) : NULL;
+		if (own) { char *was = dj_str(dj_get(own, "was")); const char *li = dj_get(own, "list"); wgown = was && li && *dj_ws(li) == '[' && dj_end(li, 0) && !strcmp(was, wg ? wg : ""); free(was); }
+	}
+	sadd(&o, ",\"widgets\":"); if (wgown) dj_raw(&o, dj_get(own, "list"), "[]"); else if (wg && *dj_ws(wg) == '[' && dj_end(wg, 0)) dj_raw(&o, wg, "[]"); else sadd(&o, "[]");
+	sadd(&o, ",\"wgown\":%s,\"wloc\":", wgown ? "true" : "false");
+	char *wl = dls_get(&l, "bd95wloc"), *wu = dls_get(&l, "bd95wunit");
+	if (wl && *dj_ws(wl) == '{' && dj_end(wl, 0)) dj_raw(&o, wl, "null"); else sadd(&o, "null");
+	sadd(&o, ",\"wunit\":"); if (wu && *dj_ws(wu) == '"' && dj_end(wu, 0)) dj_raw(&o, wu, "\"\""); else sadd(&o, "\"\"");
+	sadd(&o, "}");
+	free(wg); free(own); free(wl); free(wu);
 	free(set); free(pins); free(nt); dls_close(&l); explicit_bzero(&s, sizeof s); reply_json(r->fd, &o);
 }
 
@@ -627,6 +646,19 @@ static int api_desktop(struct req *r, const char *w, int post)
 		if (mkdir(d, 0755) == 0 && chown(d, desk_uid, desk_uid)) {}
 		if (dput(p, r->body, r->blen)) reply_err(r->fd, 500, "could not save"); else reply_ok(r->fd, "saved");
 		return 1;
+	}
+	/* 1.6.0 (Part 12, item 2): the shell's widgets, with the page's value they replace (desktop/settings) */
+	if (!strcmp(w, "widgets")) {
+		const char *a = qparam(r->query, "acct"); char d[300], p[400];
+		if (!home_acct_ok(a)) { reply_err(r->fd, 400, "bad account"); return 1; }
+		snprintf(d, sizeof d, "%s/.rudolf-widgets", desk_dir); snprintf(p, sizeof p, "%s/%s.json", d, a);
+		if (!post) { size_t n; char *b = slurp(p, &n); if (!b) { reply_err(r->fd, 404, "none"); return 1; } reply(r->fd, 200, "application/json", b, n, NULL); free(b); return 1; }
+		if (!r->body || r->blen > (256u << 10) || *dj_ws(r->body) != '[' || !dj_end(r->body, 0) || *dj_ws(dj_end(r->body, 0))) { reply_err(r->fd, 400, "a JSON array, at most 256 KB"); return 1; }
+		dls l; dls_open(&l); char k[160]; snprintf(k, sizeof k, "bd95widgets:%s", a); char *was = dls_get(&l, k); dls_close(&l);
+		str o = {0}; sadd(&o, "{\"list\":%.*s,\"was\":", (int)r->blen, r->body); sjson(&o, was ? was : ""); sadd(&o, "}"); free(was);
+		if (mkdir(d, 0755) == 0 && chown(d, desk_uid, desk_uid)) {}
+		if (dput(p, o.b, o.n)) reply_err(r->fd, 500, "could not save"); else reply_ok(r->fd, "saved");
+		free(o.b); return 1;
 	}
 	if (!strcmp(w, "wallpaper")) {
 		const char *a = qparam(r->query, "acct"); char d[300], p[400];

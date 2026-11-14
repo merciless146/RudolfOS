@@ -16280,6 +16280,12 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
   await rdPost('desktop/apps',JSON.stringify({apps,bg,hide,icons,desk,cells,menu,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
 function oaPng(src,n){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>{try{const c=document.createElement('canvas');c.width=c.height=n;c.getContext('2d').drawImage(im,0,0,n,n);res(c.toDataURL('image/png'))}catch(e){rej(e)}};im.onerror=()=>rej(new Error('icon'));im.src=src})}
 {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);setTimeout(oaCatalog,2500);return r}}
+/* (1.6.0 Part 12, item 2) the desktop's widgets are the native shell's to draw: an app's own page draws none (no clock, monitor or
+   weather timers in every window), and takes the shell's list into the page's storage (bd95widgets:ID), where Standard and the
+   other engines read it; rudolfd gives the shell's list while the page's is the one the shell replaced ("wgown") */
+if(ONEAPP){wgDraw=function(){wgTimers.forEach(clearInterval);wgTimers=[];DESK.querySelectorAll('.wgt').forEach(x=>x.remove())};
+ const _u2=userLogin;userLogin=async function(){const r=await _u2.apply(this,arguments);try{if(typeof RD!='undefined'&&RD&&USER&&oaNative()){const s=await rd('desktop/settings');
+  if(s&&s.wgown&&Array.isArray(s.widgets)&&s.acct==uid()&&JSON.stringify(s.widgets)!==localStorage.getItem(WGK())){WG=s.widgets;svj(WGK(),s.widgets)}}}catch(e){}return r}}
 /* (1.6.0 Part 12, item 1's second part) given again when the Desktop folder's files change */
 {let t=0,last=null;EXPL.add(()=>{try{const k=Object.keys(deskFiles()||{}).sort().join('|');
  if(last!==null&&k!=last&&typeof USER!='undefined'&&USER&&!(ONEAPP&&OA.done)){clearTimeout(t);t=setTimeout(oaCatalog,1200)}last=k}catch(e){}})}
