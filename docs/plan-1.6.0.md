@@ -161,6 +161,40 @@ something to the system. Rudolf OS has neither, so these requests fail or are ig
 - **Tests:** an app's sleep inhibitor keeps the computer awake and the screen saver away until it is released; an
   admin request from a Flatpak or Debian app shows the prompt and is refused for a standard account.
 
+### 12. The native desktop becomes the default (added on 2026-11-13)
+Decided on 2026-11-13 from 1.5.9's measurements (docs/plan-1.5.9.md 12.3a: at idle 854 MB used against Standard's
+1,110 MB and Lite's 952 MB; the desktop up 9 s sooner than Standard). The shell (rudolf-native) gets everything the
+web desktop's shell has, and Native becomes the engine a new installation and an update start with; Standard and Lite
+stay, chosen in Settings › System health › Desktop engine, and Standard stays what a Native that gives up falls back
+to. The apps stay web pages in one-app WebKit windows (1.5.9 Part 12) until 2.0 moves them (docs/plan-2.0.md).
+
+**What the shell gets (each against the page's behaviour, with screenshots compared under Xvfb):**
+1. **The desktop:** icons (the page's bd95icons: arranging, renaming, opening, the right-click menu, Properties),
+   drag and drop of files onto it and between windows, and the desktop's right-click menu (New, Display Properties).
+2. **Widgets** (the page's widgets: clock, weather, notes, system), drawn natively, their settings read from rudolfd.
+3. **The taskbar complete:** left and right positions, auto-hide, the workspaces' buttons, the notifications'
+   pop-ups and their centre, the volume and network pop-ups (not only their Settings pages), the calendar under the
+   clock, the battery's menu, the 🎙️ indicator during calls.
+4. **Workspaces:** as the page's (several, Super+Ctrl+arrows, a window moved between them, the taskbar's list per
+   workspace).
+5. **The window keys:** Super+Tab and Alt+Tab with previews, Super+arrows (snap left and right, maximise), Super+D,
+   Alt+F4, Win+L; the page's global shortcuts (desktop/shortcuts from rudolfd, as the settings).
+6. **The screen saver and its lock:** the idle count from rudolf-display, the screen savers themselves still the
+   page's (one full-screen one-app window `#saver=NAME`), the lock screen native, not during a call or full screen.
+7. **Several monitors:** the wallpaper and a taskbar on each, windows moved between them (RandR).
+8. **The Phone screen and Blitzen's panel:** as windows of their own (one-app mode) docked as the page docks them.
+9. **Tablet mode and the on-screen keyboard** (1.5.9 Part 2) under the native shell.
+10. **Accessibility:** the screen reader reads the shell (ATK through GTK), the magnifier, high contrast, large
+    pointer, keyboard-only use of the taskbar and the start menu.
+11. **Game mode, remote access, the devlink's screenshot, Wine and Linux apps** checked unchanged under it.
+12. **Memory:** each one-app page runs only its app's code (the page's other modules not started in one-app mode),
+    measured again: one app open within 120 MB of idle.
+
+**Becoming the default:** after items 1-12 pass on the host and on the Vivobook (a week of betas on Native), the
+release's default engine is Native for new installations; an update keeps the engine the computer had, and Settings
+offers the change once ("Rudolf OS's new desktop uses less memory and starts faster"). Native's safeguards stay
+(1.5.9 Part 12 step 5). The release check measures Native at idle on the Vivobook and fails over 900 MB used.
+
 ## Hardware to test with
 - **The MiFi 7730L** (USB tethering and Wi-Fi), with an active SIM (or a prepaid data SIM).
   First (moved from 1.5.9, where it could not be found): with USB tethering on, which USB network driver it needs
@@ -197,11 +231,14 @@ something to the system. Rudolf OS has neither, so these requests fail or are ig
 6. Part 7: the ARM64 release with all of the above, after QEMU aarch64 and one ARM64 computer.
 7. Part 8 (USB printers): usblp and the hotplug script, ipp-usb in the system layer with its budget, rudolfd's
    print/find and print/job, Settings › Devices; the HP desktop's user's printer last.
-8. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
+8. Part 12 (the native desktop, its shell items 1-12 in order), alongside the rest: it is the desktop's, the other
+   parts the system's. Native becomes the default only after its week of betas.
+9. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
 
 ## After 1.6.0: the native desktop decision (added on 2026-11-12)
-(2026-11-13: the prototype moved into 1.5.9 as a third desktop engine, Native (test): docs/plan-1.5.9.md Part 12. The
-decision below still waits for its measurements on the Vivobook.)
+(2026-11-13: the prototype moved into 1.5.9 as a third desktop engine, Native (test): docs/plan-1.5.9.md Part 12.
+**Decided on 2026-11-13 after its measurements: native.** The shell in 1.6.0 (Part 12 above), the apps in 2.0
+(docs/plan-2.0.md). The reasoning below is kept as it was written.)
 Before the first phone (1.6.x), decide whether Rudolf OS's shell becomes native (drawn by its own program, not by a
 web engine). Not before 1.6.0: its work is mostly the system's (modems, the SIM, ARM64), its desktop parts (Messages,
 the taskbar's signal, Settings › Mobile network) are planned in the desktop page and would otherwise be built twice,
