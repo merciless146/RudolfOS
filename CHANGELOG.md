@@ -3,6 +3,9 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.6.0 (planned work)
+- New: the native desktop (Native engine, docs/plan-1.6.0.md Part 12, item 1, first part): the desktop's icons, as the page shows them for the account (its shortcuts, pictures and places), on the page's grid at the icon size and display scaling: a double-click opens, dragging moves an icon to the nearest free place (kept by rudolfd), Arrange icons by name, Refresh, and the icon's and the desktop's menus. Files on the desktop come next.
+
 ## 1.5.9 (in progress)
 Summary: In progress.
 - Fixed: Native (test)'s six bugs seen on the Vivobook (plan 12.3b step 7): a picture of your own shows from the first start (rudolfd makes the shell's copy from the page's database mirror when no page has given it yet); the screen shows the arrow, not X's bare cross; the taskbar follows Display Properties' display scaling and draws the apps' pictures as the page does (not emoji), with the version on the start button; drop-downs in app windows are drawn as in Lite (the page now knows Native's app windows are WebKit); the development link's red banner is drawn once by the shell at the top of the screen (windows kept below it, End now, and it asks about commands itself), no longer inside every app window, where it hid Settings' search box.

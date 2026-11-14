@@ -302,6 +302,7 @@ static void text_atz(cairo_t *cr, const char *t, double x, double y, double w, d
 typedef struct { int x, y, w, h; char kind[12], arg[80]; } Hit;
 static Hit HITS[96]; static int NHITS;
 static void state_write(void);
+typedef struct JV JV; static void di_layout(void); static void di_load(JV *cat);   /* (the desktop's icons, below) */
 
 /* ------------------------------------------------------------------ pictures */
 static GdkPixbuf *pix_from_bytes(GByteArray *b)
@@ -1300,7 +1301,7 @@ static void settings_load(void)
 	int moved = strcmp(n.tb, S.tb) != 0 || n.scale != S.scale; S = n;
 	/* the page's display scaling: the taskbar, the title bars and the start menu at the page's size (1.5.9 step 7) */
 	Z = S.scale / 100.0; BARH = (int)lround(46 * Z); TH = (int)lround(30 * Z);
-	css_apply(); wall_make(); if (moved) { bar_place(); if (WM_OK) wm_relayout(); } bar_redraw(); if (SAREA) gtk_widget_queue_draw(SAREA); if (WM_OK) frames_redraw();
+	css_apply(); wall_make(); if (moved) { bar_place(); if (WM_OK) wm_relayout(); di_layout(); if (DESKAREA) gtk_widget_queue_draw(DESKAREA); } bar_redraw(); if (SAREA) gtk_widget_queue_draw(SAREA); if (WM_OK) frames_redraw();
 }
 static void apps_load(void)
 {
@@ -1317,6 +1318,7 @@ static void apps_load(void)
 		GdkPixbuf *px = pix_from_bytes(b); g_byte_array_free(b, TRUE); if (px) g_hash_table_insert(ICONS, g_strdup(ics->k[i]), px);
 	}
 	VER[0] = 0; jstr(v, "ver", VER, sizeof VER);
+	di_load(v); if (DESKAREA) gtk_widget_queue_draw(DESKAREA);
 	free(APPS); APPS = L; NAPPS = n;
 	if (BG) g_hash_table_destroy(BG); BG = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	JV *bg = jprop(v, "bg");
@@ -1352,6 +1354,170 @@ static gboolean tick_tray(gpointer d) { (void)d; tray_load(); return G_SOURCE_CO
 static gboolean tick_clock(gpointer d) { (void)d; char o[32]; snprintf(o, sizeof o, "%s", CLOCK_T); clock_text(); if (strcmp(o, CLOCK_T)) bar_redraw(); if (S.dyn[0] && !S.wpimg) wall_make(); return G_SOURCE_CONTINUE; }
 /* the session's watchdog and trial need to hear from the desktop, as the page's heartbeat */
 static gboolean tick_heart(gpointer d) { (void)d; http("POST", "/api/heartbeat", NULL, 0, NULL); return G_SOURCE_CONTINUE; }
+
+/* ------------------------------------------------------------------ the desktop's icons (1.6.0 Part 12, item 1)
+   The page's desktop icons, as the page shows them for the account (desktop/apps "desk": each icon's name, what it
+   opens and its picture; "cells": where the page put them), drawn on the wallpaper on the page's grid (84 x 86 at the
+   icon size "is" and the display scaling). A click selects, a double-click (or Enter) opens, dragging moves an icon to
+   the nearest free cell (kept by rudolfd for the shell: desktop/cells, the page's places used until then); the
+   icon's menu (Open) and the desktop's (Arrange icons by name, Refresh, Display Properties, File Explorer, Task Manager,
+   Settings). Files on the desktop and dropping files come with item 1's second part. */
+typedef struct { char n[80], k[40], kind[12], ic[24], icon[48]; int c, r, sel; } DIcon;
+static DIcon DI[96]; static int NDI; static char DI_ACCT[80]; static int DI_IS = 100;
+static char DI_MENU[8] = "-";   /* (the menu last opened, for the tests) */
+static GHashTable *DI_CELLS;   /* name -> "c,r" (the shell's own, else the page's) */
+static int di_w(void) { return (int)lround(84 * DI_IS / 100.0 * Z); }
+static int di_h(void) { return (int)lround(86 * DI_IS / 100.0 * Z); }
+static int di_shown(void) { return USER_ID[0] && !LOCKED && NDI && !strcmp(DI_ACCT, USER_ID); }
+static void di_grid(int *nc, int *nr) { *nc = (SW - 8) / di_w(); *nr = (work_h() - 8) / di_h(); if (*nc < 1) *nc = 1; if (*nr < 1) *nr = 1; }
+static void di_xy(const DIcon *d, int *x, int *y) { *x = 8 + d->c * di_w(); *y = work_top() + 8 + d->r * di_h(); }
+static int di_used(int c, int r, int skip) { for (int i = 0; i < NDI; i++) if (i != skip && DI[i].c == c && DI[i].r == r) return 1; return 0; }
+/* the nearest free cell to (c, r), as the page's freeCell */
+static void di_free(int c, int r, int skip, int *oc, int *orr)
+{
+	int nc, nr; di_grid(&nc, &nr);
+	for (int k = 0; k < nc + nr; k++) for (int a = -k; a <= k; a++) for (int b = -k; b <= k; b++) {
+		if (abs(a) != k && abs(b) != k) continue; int x = c + a, y = r + b;
+		if (x >= 0 && y >= 0 && x < nc && y < nr && !di_used(x, y, skip)) { *oc = x; *orr = y; return; } }
+	*oc = 0; *orr = 0;
+}
+/* the page's layIcons: icons with a place keep it (or the nearest free), the others fill the columns */
+static void di_layout(void)
+{
+	int nc, nr; di_grid(&nc, &nr);
+	for (int i = 0; i < NDI; i++) DI[i].c = DI[i].r = -1;
+	for (int i = 0; i < NDI; i++) { const char *p = DI_CELLS ? g_hash_table_lookup(DI_CELLS, DI[i].n) : NULL; int c, r;
+		if (p && sscanf(p, "%d,%d", &c, &r) == 2) { int fc, fr; di_free(c < nc ? c : nc - 1, r < nr ? r : nr - 1, i, &fc, &fr); DI[i].c = fc; DI[i].r = fr; } }
+	for (int i = 0; i < NDI; i++) if (DI[i].c < 0) { int done = 0;
+		for (int c = 0; c < nc && !done; c++) for (int r = 0; r < nr && !done; r++) if (!di_used(c, r, i)) { DI[i].c = c; DI[i].r = r; done = 1; }
+		if (!done) DI[i].c = DI[i].r = 0; }
+}
+static void di_save(void)
+{
+	if (!USER_ID[0]) return;
+	GString *b = g_string_new("{");
+	for (int i = 0; i < NDI; i++) { if (i) g_string_append_c(b, ','); json_esc(b, DI[i].n); g_string_append_printf(b, ":[%d,%d]", DI[i].c, DI[i].r);
+		char v[24]; snprintf(v, sizeof v, "%d,%d", DI[i].c, DI[i].r); g_hash_table_insert(DI_CELLS, g_strdup(DI[i].n), g_strdup(v)); }
+	g_string_append_c(b, '}'); char *a = g_uri_escape_string(USER_ID, NULL, FALSE), p[200]; snprintf(p, sizeof p, "/api/desktop/cells?acct=%s", a); g_free(a);
+	http("POST", p, b->str, b->len, NULL); g_string_free(b, TRUE);
+}
+/* from desktop/apps (the page's list) and desktop/cells (the shell's places) */
+static void di_load(JV *cat)
+{
+	NDI = 0; DI_ACCT[0] = 0; if (!cat) return;
+	jstr(cat, "acct", DI_ACCT, sizeof DI_ACCT); DI_IS = (int)jnum(cat, "is", 100); if (DI_IS < 50 || DI_IS > 200) DI_IS = 100;
+	JV *a = jprop(cat, "desk");
+	for (int i = 0; i < 96; i++) { JV *o = jat(a, i); if (!o) break; DIcon *d = &DI[NDI]; memset(d, 0, sizeof *d);
+		jstr(o, "n", d->n, sizeof d->n); jstr(o, "k", d->k, sizeof d->k); jstr(o, "kind", d->kind, sizeof d->kind); jstr(o, "ic", d->ic, sizeof d->ic); jstr(o, "icon", d->icon, sizeof d->icon);
+		if (d->n[0]) NDI++; }
+	if (DI_CELLS) g_hash_table_destroy(DI_CELLS); DI_CELLS = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+	JV *pc = jprop(cat, "cells");
+	for (int i = 0; pc && pc->t == 5 && i < pc->len; i++) { JV *v = pc->v[i]; if (jat(v, 1)) { char s[24]; snprintf(s, sizeof s, "%d,%d", (int)jat(v, 0)->n, (int)jat(v, 1)->n); g_hash_table_insert(DI_CELLS, g_strdup(pc->k[i]), g_strdup(s)); } }
+	if (DI_ACCT[0]) {   /* (the shell's own places, once it has moved an icon) */
+		char *e = g_uri_escape_string(DI_ACCT, NULL, FALSE), p[200]; snprintf(p, sizeof p, "/api/desktop/cells?acct=%s", e); g_free(e);
+		JV *mine = jget(p);
+		for (int i = 0; mine && i < mine->len; i++) { JV *v = mine->v[i]; if (mine->k && jat(v, 1)) { char s[24]; snprintf(s, sizeof s, "%d,%d", (int)jat(v, 0)->n, (int)jat(v, 1)->n); g_hash_table_insert(DI_CELLS, g_strdup(mine->k[i]), g_strdup(s)); } }
+		jfree(mine);
+	}
+	di_layout();
+}
+static void di_draw(cairo_t *cr)
+{
+	if (!di_shown()) return;
+	int w = di_w(), h = di_h(), pic = (int)lround(40 * DI_IS / 100.0 * Z);
+	for (int i = 0; i < NDI; i++) { DIcon *d = &DI[i]; int x, y; di_xy(d, &x, &y);
+		if (d->sel) { rrect(cr, x + 2, y + 2, w - 4, h - 4, 6 * Z); RGB a = accent(); cairo_set_source_rgba(cr, a.r, a.g, a.b, .35); cairo_fill(cr); }
+		GdkPixbuf *p = d->ic[0] && ICONS ? g_hash_table_lookup(ICONS, d->ic) : NULL;
+		if (p) { double s = (double)pic / gdk_pixbuf_get_width(p); cairo_save(cr); cairo_translate(cr, x + (w - pic) / 2.0, y + 6 * Z); cairo_scale(cr, s, s);
+			gdk_cairo_set_source_pixbuf(cr, p, 0, 0); cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD); cairo_paint(cr); cairo_restore(cr); }
+		else { char f[24]; snprintf(f, sizeof f, "Sans %d", (int)lround(pic * .6)); text_at(cr, d->icon[0] ? d->icon : "▫", x, y + 6 * Z, w, pic, f, (RGB){1, 1, 1}, 1); }
+		/* the name: white with a shadow, two lines at most, as the page's */
+		PangoLayout *pl = pango_cairo_create_layout(cr); char fn[32]; snprintf(fn, sizeof fn, "Sans %.1f", 9.5 * Z); PangoFontDescription *fd = pango_font_description_from_string(fn);
+		pango_layout_set_font_description(pl, fd); pango_layout_set_text(pl, d->n, -1); pango_layout_set_width(pl, (w - 6) * PANGO_SCALE); pango_layout_set_wrap(pl, PANGO_WRAP_WORD_CHAR);
+		pango_layout_set_alignment(pl, PANGO_ALIGN_CENTER); pango_layout_set_height(pl, -2); pango_layout_set_ellipsize(pl, PANGO_ELLIPSIZE_END);
+		double ty = y + 6 * Z + pic + 4 * Z;
+		cairo_set_source_rgba(cr, 0, 0, 0, .75); cairo_move_to(cr, x + 3 + 1, ty + 1); pango_cairo_show_layout(cr, pl);
+		cairo_set_source_rgb(cr, 1, 1, 1); cairo_move_to(cr, x + 3, ty); pango_cairo_show_layout(cr, pl);
+		pango_font_description_free(fd); g_object_unref(pl);
+	}
+}
+static gboolean desk_area_draw(GtkWidget *w, cairo_t *cr, gpointer d) { desk_draw(w, cr, d); di_draw(cr); return TRUE; }
+static int di_at(double x, double y)
+{
+	if (!di_shown()) return -1;
+	for (int i = 0; i < NDI; i++) { int ix, iy; di_xy(&DI[i], &ix, &iy); if (x >= ix && x < ix + di_w() && y >= iy && y < iy + di_h()) return i; }
+	return -1;
+}
+static void di_open(int i)
+{
+	if (i < 0 || i >= NDI) return; DIcon *d = &DI[i];
+	if (d->k[0]) app_open(d->k, NULL);
+}
+static void di_select(int i) { for (int k = 0; k < NDI; k++) DI[k].sel = k == i; if (DESKAREA) gtk_widget_queue_draw(DESKAREA); state_write(); }
+static int di_cmp(const void *a, const void *b) { return g_utf8_collate(((const DIcon *)a)->n, ((const DIcon *)b)->n); }
+static void di_arrange(void)
+{
+	qsort(DI, NDI, sizeof DI[0], di_cmp); int nc, nr; di_grid(&nc, &nr);
+	for (int i = 0; i < NDI; i++) { DI[i].c = i / nr; DI[i].r = i % nr; }
+	di_save(); gtk_widget_queue_draw(DESKAREA); state_write();
+}
+static void on_di_menu(GtkMenuItem *m, gpointer d)
+{
+	(void)m; const char *w = d;
+	if (!strcmp(w, "open")) { for (int i = 0; i < NDI; i++) if (DI[i].sel) di_open(i); }
+	else if (!strcmp(w, "arrange")) di_arrange();
+	else if (!strcmp(w, "refresh")) { apps_load(); }
+	else app_open(w, NULL);
+}
+static void di_menu(GdkEventButton *e, int icon)
+{
+	static GtkWidget *M[2]; int k = icon ? 1 : 0;
+	if (!M[k]) {
+		M[k] = gtk_menu_new(); static const char *const IM[][2] = {{"Open", "open"}}, *const DM[][2] = {{"Arrange icons by name", "arrange"}, {"Refresh", "refresh"},
+			{"-", ""}, {"Open File Explorer", "explorer"}, {"Task Manager", "taskmgr"}, {"-", ""}, {"Open settings…", "settings"}};
+		int n = icon ? 1 : 7;
+		for (int i = 0; i < n; i++) { const char *l = icon ? IM[i][0] : DM[i][0], *v = icon ? IM[i][1] : DM[i][1];
+			GtkWidget *it = !strcmp(l, "-") ? gtk_separator_menu_item_new() : gtk_menu_item_new_with_label(l);
+			if (strcmp(l, "-")) g_signal_connect(it, "activate", G_CALLBACK(on_di_menu), (gpointer)v);
+			gtk_menu_shell_append(GTK_MENU_SHELL(M[k]), it); }
+		gtk_widget_show_all(M[k]);
+	}
+	gtk_menu_popup_at_pointer(GTK_MENU(M[k]), (GdkEvent *)e);
+	snprintf(DI_MENU, sizeof DI_MENU, "%s", icon ? "icon" : "desk"); state_write();
+}
+static struct { int i, on, moved; double sx, sy; } DID = { -1, 0, 0, 0, 0 };
+static gboolean desk_press(GtkWidget *w, GdkEventButton *e, gpointer d)
+{
+	(void)w; (void)d; menu_hide(); int i = di_at(e->x, e->y);
+	if (e->type == GDK_2BUTTON_PRESS && e->button == 1) { if (i >= 0) di_open(i); return TRUE; }
+	if (e->type != GDK_BUTTON_PRESS) return TRUE;
+	if (e->button == 3) { if (!USER_ID[0] || LOCKED) return TRUE; di_select(i); di_menu(e, i >= 0); return TRUE; }
+	if (e->button == 1) { di_select(i); DID.i = i; DID.on = i >= 0; DID.moved = 0; DID.sx = e->x; DID.sy = e->y; }
+	return TRUE;
+}
+static gboolean desk_motion(GtkWidget *w, GdkEventMotion *e, gpointer d)
+{
+	(void)w; (void)d; if (!DID.on) return FALSE;
+	if (!DID.moved && hypot(e->x - DID.sx, e->y - DID.sy) < 5) return FALSE;
+	DID.moved = 1; return FALSE;
+}
+static gboolean desk_release(GtkWidget *w, GdkEventButton *e, gpointer d)
+{
+	(void)w; (void)d; if (e->button != 1 || !DID.on) return TRUE; DID.on = 0;
+	if (DID.moved && DID.i >= 0 && DID.i < NDI) {
+		/* (the place under the icon's top-left corner, moved as the pointer was) */
+		int nc, nr, ix, iy; di_grid(&nc, &nr); di_xy(&DI[DID.i], &ix, &iy); int c = (int)lround((ix + e->x - DID.sx - 8) / (double)di_w()), r = (int)lround((iy + e->y - DID.sy - work_top() - 8) / (double)di_h());
+		if (c < 0) c = 0; if (r < 0) r = 0; if (c >= nc) c = nc - 1; if (r >= nr) r = nr - 1;
+		int fc, fr; di_free(c, r, DID.i, &fc, &fr); DI[DID.i].c = fc; DI[DID.i].r = fr; di_save(); gtk_widget_queue_draw(DESKAREA); state_write();
+	}
+	return TRUE;
+}
+static gboolean desk_key(GtkWidget *w, GdkEventKey *e, gpointer d)
+{
+	(void)w; (void)d; if (e->keyval == GDK_KEY_Return || e->keyval == GDK_KEY_KP_Enter) { for (int i = 0; i < NDI; i++) if (DI[i].sel) { di_open(i); return TRUE; } }
+	if (e->keyval == GDK_KEY_F5) { apps_load(); return TRUE; }
+	return FALSE;
+}
 
 /* ------------------------------------------------------------------ the development link (1.5.9 step 7)
    While the development link is on (Settings › Security › Development link, devlink40.js) the page drew a red banner
@@ -1460,6 +1626,8 @@ static void state_write(void)
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
 			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : "-", c->title); }
 	g_string_append_printf(s, "wm %d\nicons %u %s\n", WM_OK, ICONS ? g_hash_table_size(ICONS) : 0, VER[0] ? VER : "-");
+	for (int i = 0; di_shown() && i < NDI; i++) { int x, y; di_xy(&DI[i], &x, &y); g_string_append_printf(s, "dicon %d %d %d %d %d %d %s|%s\n", DI[i].c, DI[i].r, x, y, di_w(), DI[i].sel, DI[i].k, DI[i].n); }
+	g_string_append_printf(s, "dmenu %s\n", DI_MENU);
 	g_string_append_printf(s, "devlink %d %d\ndlask %s\n", DL_ON && DLBAN && gtk_widget_get_visible(DLBAN), TOPRES, DLASK && gtk_widget_get_visible(DLASK) ? DL_PEND : "-");
 	char tmp[600]; snprintf(tmp, sizeof tmp, "%s.tmp", STATEF); g_file_set_contents(tmp, s->str, s->len, NULL); rename(tmp, STATEF); g_string_free(s, TRUE);
 }
@@ -1488,7 +1656,11 @@ int main(int argc, char **argv)
 	/* the wallpaper, below everything */
 	DESK = gtk_window_new(GTK_WINDOW_TOPLEVEL); gtk_window_set_decorated(GTK_WINDOW(DESK), FALSE); gtk_window_set_type_hint(GTK_WINDOW(DESK), GDK_WINDOW_TYPE_HINT_DESKTOP);
 	gtk_window_set_title(GTK_WINDOW(DESK), "Desktop"); gtk_window_set_keep_below(GTK_WINDOW(DESK), TRUE); gtk_window_set_default_size(GTK_WINDOW(DESK), SW, SH); gtk_window_move(GTK_WINDOW(DESK), 0, 0);
-	DESKAREA = gtk_drawing_area_new(); g_signal_connect(DESKAREA, "draw", G_CALLBACK(desk_draw), NULL); gtk_container_add(GTK_CONTAINER(DESK), DESKAREA);
+	DESKAREA = gtk_drawing_area_new(); g_signal_connect(DESKAREA, "draw", G_CALLBACK(desk_area_draw), NULL); gtk_container_add(GTK_CONTAINER(DESK), DESKAREA);
+	/* the desktop's icons (1.6.0 Part 12, item 1) */
+	gtk_widget_add_events(DESKAREA, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK | GDK_KEY_PRESS_MASK); gtk_widget_set_can_focus(DESKAREA, TRUE);
+	g_signal_connect(DESKAREA, "button-press-event", G_CALLBACK(desk_press), NULL); g_signal_connect(DESKAREA, "button-release-event", G_CALLBACK(desk_release), NULL);
+	g_signal_connect(DESKAREA, "motion-notify-event", G_CALLBACK(desk_motion), NULL); g_signal_connect(DESKAREA, "key-press-event", G_CALLBACK(desk_key), NULL);
 	g_signal_connect(DESK, "delete-event", G_CALLBACK(gtk_true), NULL);
 	gtk_widget_show_all(DESK);
 	/* the taskbar, above everything */
