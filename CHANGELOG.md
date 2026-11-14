@@ -12,6 +12,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- Changed: the plan: on the native desktop, Oracle will run on Chromium with Rudolf's tab shell, as on Standard (real tabs, the same sign-ins and private tabs), started only while Oracle is open (plan Part 12, step 8).
 - New: Display Properties says "Note: Dynamic effects are disabled on power-saver mode." under Dynamic Backgrounds, only while power saver (or battery saver) is on, when Spirit Falls' petals and lanterns and Glacier Lake's aurora stand still.
 - Changed: Rudolf OS's calendars show weeks from Sunday to Saturday (they began on Monday): the Calendar app, the calendar under the taskbar's clock and the calendar widget.
 - New: private browsing in Oracle: New private tab in Oracle's ☰ menu, Ctrl+Shift+N, and when you right-click Oracle's icon (on the taskbar, in the Start menu, on the desktop, or an open Oracle window's taskbar button). A private window is marked 🕶️ Private in dark violet; its pages are not kept in History, its cookies and site data are kept in memory only (with Standard and Lite) and forgotten when the last private window closes; pop-ups from it stay private. Help › Privacy explains what is kept (bookmarks, downloads) and who can still see what you visit.
