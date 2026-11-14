@@ -94,7 +94,10 @@ provisioning (downloading a carrier's eSIM profile), and 5G standalone features 
 - The leanness budgets (docs/plan-1.5.8.md Part 8) and the cellular budget (15 MB) in the release check.
 
 ## Steps
-1. Parts 1 and 2 on the USB stick and the MiFi (1.5.9's ModemManager): modem found, SIM PIN, APN, connect.
+1. Parts 1 and 2 on the USB stick and the MiFi (1.5.9's ModemManager): modem found, SIM PIN, APN, connect. First
+   (moved from 1.5.9, where neither was available): the stick shows in Settings › Network › Cellular modems with
+   ModemManager run without udev (#280), and /run/rudolf/modem.log has no "Invalid rule match"; the self-test's
+   modem line passes. (The stick belongs to the HP desktop's user: it is borrowed for these checks.)
 2. Part 3 (priorities and failover) and part 4 (data and money).
 3. Part 5 (signal and status) and the self-test.
 4. Part 6 (Messages).
