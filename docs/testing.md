@@ -11,7 +11,8 @@ This covers the start-up (initramfs/init), rudolf-init, the session, the desktop
 1. **The fallback comes first.** Before the change itself reaches a computer, there is a way back that needs no
    working desktop, and it is tested: a failing desktop engine gives way to the standard one (qt/host/deskfall57_t.sh),
    a system slot that cannot start gives way to the previous one (qt/host/startfall57_t.sh), and a stick's rescue system to it when none can (startfall58_t.sh), Recovery mode starts the
-   installed system with safe settings, and Ctrl+Alt+Backspace starts the safe desktop (qt/host/desksafe58_t.sh).
+   installed system with safe settings (1.5.9: from recovery.efi, only the official system/r once checked,
+   qt/host/recoveryefi59_t.sh, and in QEMU with Secure Boot, qt/sb/recovery_sb_t.sh), and Ctrl+Alt+Backspace starts the safe desktop (qt/host/desksafe58_t.sh).
 2. **Test it from the system itself, not from the build machine.** A program run on the release machine finds that
    machine's libraries. Run it from the built layer (a chroot of base.sfs, as webkit-check.yml does), so a library it
    opens while running (dlopen: graphics, sound, plug-ins) and the layer lacks fails the check. ldd does not see those.

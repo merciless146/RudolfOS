@@ -27,7 +27,8 @@ latest beta: **2026111402** (not promoted).
    test meeting; the 🎙️ indicator and its mute; no screen saver during a call; a tel: link.
 6. **Game mode and memory** (Part 9, on 2026111308 or newer): FNF to the end; the idle reading; Task Manager's
    breakdown; Clear cache.
-7. **Developer mode and Return to official** in QEMU with Secure Boot (8.7), and 8.4's recovery.efi: to be done with the
+7. **Developer mode and Return to official** in QEMU with Secure Boot (8.7), and 8.4's recovery.efi (its host and QEMU
+   Secure Boot tests done on 2026-11-14, qt/sb/recovery_sb_t.sh; on the computer itself still): to be done with the
    person present (it changes how the computer starts).
 8. **Part 5 (Waydroid)** measured on the Vivobook before it is offered; **Part 6** waits for the phone (the one plugged
    in on 2026-11-13 identifies as a MediaTek "S24Ultra": an S24 Ultra look-alike, see below).
@@ -341,6 +342,35 @@ Whatever the normal start runs, the boot menu's "Recovery mode" starts the offic
   boot-ok when its release list is signed by the official key and is newer (hard links; a layer from this drive's disc
   is taken from there), never in recovery mode; Recovery mode starts it first. Next: recovery.efi on the ESP, the
   recovery initramfs's own checks, the repair at each start, and the QEMU Secure Boot test.
+- **Done (2026-11-14), step 2: recovery.efi and its checks.** systools/mkefi.sh makes `/EFI/rudolf/recovery.efi`
+  beside rudolf.efi on every disc's and boot image's ESP, signed in the same step with SB_KEY (the workflow's secret
+  RUDOLF_SB_KEY; no key in the repository): `mkuki.py --recovery KEYFILE`, the same kernel and a second initramfs in the
+  bundle's `.initrd` (unpacked over the kernel's own) holding `/etc/rudolf-recovery` (the mark), `/etc/rudolf-official-key`
+  (iso/trusted-keys.txt, exactly one key: the official one; RUDOLF_TEST_KEYS in local test builds only) and an empty
+  initramfs for the handover; its fixed options add rudolf.recovery=1. The boot menu's "Recovery mode" entry
+  (loader/entries/rudolf-recovery.conf) starts recovery.efi. With the mark, initramfs/init starts only `system/r`, after
+  `official_check`: its manifest's signature with the official key alone (rudolf-verity check; extra-keys never read,
+  and said when one is there), the list being a system list naming each of the five files once, and every file's size
+  and SHA-256; then kexec of system/r's kernel (rudolf.slot=r rudolf.official=1, Secure Boot's lockdown passed on).
+  Anything wrong: a refusal naming the file and the reason, and nothing else started in its place (a rescue stick is the
+  way on). With no system/r on the drive at all (a disc or stick never installed), the drive's own system, its layers
+  checked with the official key alone, even with Secure Boot off. Without the mark (older boot files, rudolf.efi)
+  nothing changed. Found in QEMU and fixed: a kernel started with a boot loader's initramfs leaves the firmware's table
+  for it behind, and the kernel started by kexec took that freed memory for its own initramfs and stopped ("Cannot find
+  place for new RAMDISK"): rudolf-kexec now takes an optional initramfs, and the handover gives it the empty one.
+  Tests: qt/host/recoveryefi59_t.sh (19: a good system/r starts; a changed byte, another size, a wrong signature, a changed
+  list, a developer-signed system/r, the same with extra-keys holding that developer's key, an incomplete one and a
+  missing layer are each refused with their reason; extra-keys present does not stop an official one; no system/r: the
+  drive's own system checked with the official key alone; without the mark as before; mkuki.py's bundle and its one key);
+  qt/sb/recovery_sb_t.sh (7, QEMU on OVMF with Secure Boot, Microsoft's keys plus a TEST certificate, TEST keys only,
+  the pinned Secure Boot parts and a released kernel with this tree's start-up script over its own: Secure Boot on and
+  locked down, system/r checked and started by kexec, its own start-up running; a changed layer and a list signed by
+  another key refused; a recovery.efi changed after signing refused by the firmware). Not tested: on the owner's
+  computer (the owner does that in person), and with a kernel built from this tree (the QEMU test puts the new start-up
+  script over a released kernel's). The ESP grows by one kernel (about 12 MB; the EFI image now about 28 MB, close to the
+  32 MB an El Torito entry can name: watch it when the kernel grows). Next: the repair at each start (the official build checks recovery.efi and system/r and
+  restores them from the official release), restoring the official rudolf.efi in Return to official (8.5), and on a
+  computer that never ran the official build, system/r downloaded when Developer mode is turned on.
 - **What it can do:** everything Recovery mode does now (safe settings, the devlink and remote access, Make a stick),
   plus "Return to official Rudolf OS" (8.5) in its first screen.
 - **Who may change it:** only rudolf-update, with an official release. A custom build's updater is told by the official
@@ -403,6 +433,10 @@ A new `docs/custom-builds.md`, linked from the README, for someone who forks Rud
 - QEMU (with Secure Boot, OVMF and the official keys enrolled): an official install; Developer mode with a test key
   and a custom release; Recovery mode starts the official `system/r`; a tampered `system/r` and a tampered
   `recovery.efi` (refused by the initramfs and by Secure Boot); Return to official, keeping files and erasing them.
+- **Done (2026-11-14):** the host test of the recovery initramfs (qt/host/recoveryefi59_t.sh) and, in QEMU with Secure Boot
+  (TEST keys), Recovery mode starting a checked `system/r`, a tampered `system/r` and a tampered `recovery.efi` refused
+  (qt/sb/recovery_sb_t.sh; see 8.4's step 2). Not yet in QEMU: an official install, Developer mode with a custom
+  release, Return to official.
 
 ## Part 9: game mode frees memory for the game (added on 2026-11-11)
 Found on the Vivobook (1.5.8 beta 2026111108, Standard desktop): Friday Night Funkin' on Newgrounds holds about
@@ -790,12 +824,46 @@ click with an action of its own runs it in that page (rudolf-native writes "act 
 evaluates __oaToastAct there, as a user's click). oracle_native_t.sh 19 (new 4d: a notification from Oracle the shell's
 pop-up, counted at once, the page drawing none; its click Calculator's window, opened by its action in Oracle's page).
 
-**Next (12.3c, second part):** step 5's rest, what the page in Chromium needs from the native desktop: the desktop
-page's own full screen (its stand-in fills Oracle's window, not the screen: rare in Oracle), downloads into the account's
-Downloads with the native taskbar's progress, the file dialogs and Open with, the clipboard, the volume and the 🎙️ during
-calls, the keys (keys56.js, Ctrl+Shift+N) and the devlink's screenshot, each checked on both engines; then same_t.sh's
-comparison of Oracle's window against Standard's, and the Vivobook's measurements (Native with Oracle open against
-Standard's 1,167 MB; idle again after Oracle closes; FNF's frame rate on both engines).
+**Step 5, the rest (2026-11-14, this PR):** what the page in Chromium needs from the native desktop, each checked in
+oracle_native_t.sh (39 checks now; it runs with Rudolf OS's own Chromium policy, rudolf.json, in a private mount, a real sound
+server through Rudolf OS's hotkey script when PulseAudio is there, and the stand-in rudolfd's new dl/, idbm/, mic and volume):
+- **The desktop page's own full screen** (shell26.js's stand-in fills the page, which on Standard is the screen): the page tells
+  rudolf-launch ({op:'fs'} through the binding, oneapp59.js __oaFs), which puts that shell window in Chromium's full screen
+  (Browser.setWindowBounds on the page's parent target); the window manager gives it the screen; Esc puts it back (4e).
+- **The keys:** Chromium acted on Ctrl+W, Ctrl+F4, Ctrl+T, Ctrl+N, Ctrl+Q and Alt+F4 in Oracle's window (Ctrl+W in a website
+  closed the window and Chromium with it; Ctrl+Q every Oracle window), as rudolf-display hands them over only for Standard's
+  RudolfDesktop window. rudolf-native now grabs them on Oracle's windows and gives them back through XTest (libXtst, opened at run
+  time) as Standard's Ctrl+F20..F23 and Alt+F20, which the page and the shell's tabs read as the keys (rudolf-display and the shell
+  unchanged). Ctrl+Shift+N in Oracle (and ☰ › New private tab) opens a private window of its own (oaPrivWin: the native desktop
+  opens Oracle's jump "New private tab"), not one inside Oracle's page (4f).
+- **The clipboard** needed nothing: copied in Oracle, pasted in a WebKit window and back (4g). **The devlink's screenshot**
+  (rudolf-display --shot) shows Oracle's window (4h).
+- **Downloads** (the owner's rule: as Standard, which shows them in about:downloads and the notifications, not on the taskbar):
+  Chromium saves into /run/rudolf/dl/.incoming by the policy, Oracle's page files them, the notification is the native pop-up
+  (4i). Fixed: every WebKit app window (a page of its own) polled .incoming too, so two pages could take one file (one said
+  saved, the other stopped): in one-app mode only Oracle's page files downloads (dl27.js dlMine).
+- **Open with** (in Oracle, and in any app's own window): the chosen app opened inside that page; now the native desktop's do-fs
+  page opens the file in the app's own window, as its own Open with dialog does (oneapp59.js, rudolf-native open_with) (4k).
+- **The microphone and the volume:** a call in Oracle is a recording app of the sound server, so rudolfd's /api/mic shows the
+  native taskbar's 🎙️; its click mutes the microphone; Oracle's sound is a stream of the system's output, whose volume and mute
+  the taskbar's pop-up shows and sets (4j; needed nothing).
+- **The file dialogs:** with Rudolf OS's policy (AllowFileSelectionDialogs false) a website's file input opens no dialog, as on
+  Standard (4l); without it (another Chromium build), Chromium's own dialog is a window of its own, centred over Oracle's, framed
+  as a dialog, not as Oracle (no insets, not on the taskbar) (9). The page's own file inputs use its picker (picker26.js).
+- Found, not changed (Standard's too, for the owner): (1) the shell's script in a website's tab (Oracle's keys, the tab's title)
+  is sometimes missing from a new tab, even after a reload (iso/shell makeTab gives the address while addContentScripts is still
+  pending): in such a tab Ctrl+W, T and N do nothing, on both engines. (2) Ctrl+Shift+N inside a website does nothing on
+  Standard: rudolf-display hands it over as Ctrl+Shift+F22, which the shell's PAGE_JS does not read as "cpn"; Native does the
+  same now.
+- Not yet (12.3c): a second Oracle window asked for from inside Oracle (webOpen, a link opened in a new window, a website's
+  new window) still opens inside Oracle's page (step 2 is done for the pin and the jumps only); closing Oracle's last window
+  while a download is still arriving closes Chromium and stops it (on Standard it goes on); a WebKit window already open does
+  not see a file Oracle's page saved until it opens again (the mirror is read at a page's start).
+
+**Next (12.3c, the rest):** a second Oracle window from inside Oracle as a window of the same Chromium (above); Chromium kept
+while a download is arriving; then same_t.sh's comparison of Oracle's window against Standard's, and the Vivobook's
+measurements (the owner's: Native with Oracle open against Standard's 1,167 MB; idle again after Oracle closes; FNF's frame
+rate on both engines).
 
 ### 12.4 Tests
 - Host, under Xvfb: rudolf-native draws its wallpaper and taskbar (screenshots compared), a window gets a frame,
@@ -1237,6 +1305,13 @@ Settings. **Done (2026-11-14):**
   page's JSON (dls_open); Content-Length taken as a number whatever it was (a negative one, a second one or garbage
   now get 400). 420 s without a crash after the fixes.
 - Still to do from 15.5: rudolfd's root work split into helpers (1.6.0, as planned).
+- **Fixed (2026-11-14, found on the Vivobook's beta 2026111421):** the listeners line failed with the Claude app open
+  (its sockets in Debian's /run/user/1000 and /tmp, held by uid 1001 inside Debian's container) and with Chromium's
+  newer socket folder (/tmp/org.chromium.Chromium.*, no dot). A Unix socket not in the list whose holder (found by the
+  socket's inode) is a non-root process inside Debian's container or a Flatpak sandbox, in /tmp or /run/user inside
+  it, is now counted as a Linux app's own; a TCP port, or a socket held outside the containers, still fails. Also the
+  Debian line is skipped, not failed, when Debian's files cannot be looked at (the read-only devlink). Checked on the
+  Vivobook: 26 passed, 0 failed. Test: listeners59_t.sh 13/13.
 
 ### 15.6 Security fixes arrive soon
 - A scheduled check (GitHub Actions, daily) compares the Chromium and the kernel in the latest release with the newest
@@ -1257,4 +1332,5 @@ Tests: qt/host/seccheck59_t.py (12, stand-ins for GitHub, the snap store and the
 **Status:** planned (2026-11-14). 15.1 first, then 15.2, 15.4, 15.5, 15.6; 15.3 when 15.1 is done (it changes the same
 code). Each in its own PR. (2026-11-14: 15.1, 15.2, 15.4, 15.6 and 15.5 done; 15.3's first and second steps done (the second: X authorization,
 Debian, Wine and Library packages as the account's user), its QEMU check next, as its note says; Part 12 step 8,
-12.3c: its first part done (steps 1-4 and 6), step 5 next, as its note says.)
+12.3c: steps 1-6 done (step 5's rest on 2026-11-14), a second Oracle window from inside Oracle and keeping Chromium while a
+download arrives next, as its note says.)

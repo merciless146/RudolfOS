@@ -10,6 +10,7 @@ of it has to change.
 | 1 | `EFI/BOOT/BOOTX64.EFI`, shim (Ubuntu's `shim-signed`) | the firmware (Microsoft's UEFI CA, in every PC) | Microsoft |
 | 2 | `EFI/BOOT/grubx64.efi`, systemd-boot: the boot menu | shim: the key enrolled in its key list (MOK) | the Rudolf OS key |
 | 3 | `EFI/rudolf/rudolf.efi`, the kernel bundle: systemd's stub, the kernel with its initramfs, fixed options | shim, through systemd-boot | the Rudolf OS key |
+| 3r | `EFI/rudolf/recovery.efi` (1.5.9), the official recovery start-up file, started by the menu's Recovery mode: the same kernel and a second initramfs in the bundle (the recovery mark and the official release key alone); it starts only `system/r` on RUDOLFDATA after checking its signed release list with that key and every file's size and SHA-256 (never Developer mode's extra key) | shim, through systemd-boot | the Rudolf OS key |
 | 4 | the system layers (`RUDOLF/*.SFS`) | dm-verity, against the root hashes in the signed release list `RUDOLF/MANIFEST.TXT` | the release key (Ed25519) |
 | 5 | an updated kernel in a slot on RUDOLFDATA (kexec) | the running kernel: the Rudolf OS certificate is built in as trusted | the Rudolf OS key |
 

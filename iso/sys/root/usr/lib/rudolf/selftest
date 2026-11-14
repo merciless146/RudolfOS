@@ -78,6 +78,7 @@ K=$(rd1 "$RUN/debian/init.pid")
 if [ ! -e "$P/debian/.rudolf-ready" ]; then skip debian "Linux (Debian) is not set up"
 elif [ -z "$K" ] || [ "$(rd1 "$PROC/$K/comm")" != debian-init ]; then skip debian "Linux (Debian) is not running now"
 elif [ -z "$ACCT" ]; then skip debian "nobody is signed in"
+elif ! ls "$PROC/$K/root/home/" >/dev/null 2>&1; then skip debian "Debian's files cannot be looked at from here (run the self-test as root: Settings › System health)"
 else
 	bad=""; for f in Documents Pictures Music Videos; do [ "$(ino "$PROC/$K/root/home/rudolf/$f")" = "$(ino "$P/accounts/$ACCT/$f")" ] || bad="$bad $f"; done
 	if [ -z "$bad" ]; then pass debian "Debian's programs see the account's folders"; else fail debian "Debian's programs do not see the account's:$bad"; fi
@@ -148,7 +149,7 @@ else
 		awk "$HEX"'NR>1&&$4=="0A"{split($2,a,":");x=a[1];ad=x;if(x=="00000000000000000000000000000000")ad="::";else if(x=="00000000000000000000000001000000")ad="::1";printf "tcp6 %s:%d\n",ad,h(a[2])}' "$PROC/net/tcp6" 2>/dev/null
 		awk 'NR>1&&$4=="00010000"&&$8!=""{print "unix " $8}' "$PROC/net/unix" 2>/dev/null; } | sort -u)
 	pats=$(grep -v '^#' "$LST" | awk -F'\t' 'NF>=3&&($1=="tcp"||$1=="tcp6"||$1=="unix"){print $1 " " $2 " " $3}')
-	unk=""; n=0
+	unk=""; n=0; LAPPS=""
 	for l in $(echo "$got" | tr ' ' '|'); do k=${l%%|*}; w=${l#*|}; n=$((n+1)); hit=""
 		while read -r pk pw pp; do [ "$pk" = "$k" ] || continue
 			# (a pattern's * stands for any characters; the patterns come from the list, not from the computer)
@@ -158,8 +159,28 @@ $pats
 E
 		[ -n "$hit" ] || unk="$unk $k $w,"
 	done
+	# 2026-11-14: a Unix socket of a Linux app's own, in Debian's container or a Flatpak sandbox (the Claude app's,
+	# an Electron app's SingletonSocket), in a folder of its own inside that container (its /tmp or runtime folder,
+	# 0700 for its user): the app's business, not a door into Rudolf OS. Found through the socket's inode and the
+	# process holding it; anything else stays a failure (and a TCP port of a Linux app always does).
+	case "$unk" in *"unix "*)
+		DR=""; [ -n "$K" ] && DR=$(stat -L -c %d:%i "$PROC/$K/root" 2>/dev/null)
+		FD=$(for f in "$PROC"/[0-9]*/fd/*; do t=$(readlink "$f" 2>/dev/null); case "$t" in socket:*) q=${f#"$PROC"/}; echo "${t#socket:} ${q%%/*}";; esac; done)
+		left=""; apps=0
+		for e in $(echo "$unk" | tr ' ' '|' | tr ',' ' '); do e=${e#|}; k=${e%%|*}; w=${e#*|}; own=""
+			if [ "$k" = unix ]; then case "$w" in /tmp/*|/run/user/*)
+				ino=$(awk -v p="$w" 'NR>1&&$4=="00010000"&&$8==p{print $7; exit}' "$PROC/net/unix" 2>/dev/null)
+				pid=$(echo "$FD" | awk -v i="[$ino]" '$1==i{print $2; exit}')
+				if [ -n "$ino" ] && [ -n "$pid" ] && [ "$(stat -c %u "$PROC/$pid" 2>/dev/null)" != 0 ]; then
+					if [ -n "$DR" ] && [ "$(stat -L -c %d:%i "$PROC/$pid/root" 2>/dev/null)" = "$DR" ]; then own=1
+					elif [ -e "$PROC/$pid/root/.flatpak-info" ]; then own=1; fi
+				fi;; esac; fi
+			if [ -n "$own" ]; then apps=$((apps+1)); else left="$left $k $w,"; fi
+		done
+		unk=$left; [ $apps -gt 0 ] && LAPPS=" (and $apps of Linux apps' own, inside their containers)";;
+	esac
 	if [ -n "$unk" ]; then fail listeners "something listens that the list of listeners does not name:${unk%,}"
-	else pass listeners "$n listening, each named in the list (who may use it and how it checks)"; fi
+	else pass listeners "$n listening, each named in the list (who may use it and how it checks)${LAPPS}"; fi
 fi
 
 # ---- 1.5.8: every sound chip answered at start-up (or was reset): one that did not has no card, so no speakers

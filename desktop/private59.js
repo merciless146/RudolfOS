@@ -21,6 +21,7 @@ function privClosed(W) {
 function oraclePrivate(u) {
   const W = [...PRIV_W].filter(w => w.el && w.el.isConnected).pop();
   if (W) { W.focus(); if (W.oNewTab) W.oNewTab(u); return W }
+  if (!u && typeof oaPrivWin == 'function' && oaPrivWin()) return;   // (1.5.9, 12.3c: Oracle's own window on the native desktop: a new one)
   browser(u || null, {priv: 1});
 }
 /* the private window's start page (browser()'s about:home in a private window) */
