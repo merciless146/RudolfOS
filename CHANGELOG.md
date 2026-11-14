@@ -20,6 +20,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- New: Recovery mode in the boot menu now starts its own start-up file, recovery.efi, signed with the Rudolf OS key. It starts only the official recovery system kept on this computer (system/r), after checking that its release list is signed by the official key (never by Developer mode's extra key) and that every file has the size and SHA-256 that list says. A changed or wrongly signed recovery system is refused, with the file and the reason shown, and nothing else is started in its place.
 - Fixed: the self-test's listeners check failed while a Linux app ran (the Claude app's own sockets inside Debian, Chromium's newer socket folder), and its Debian check failed when run over the read-only development link; a Linux app's own sockets inside its container are now said as such, and the Debian check says when it cannot look.
 - New: the self-test says which system runs (the Official Rudolf OS, or a Custom build in Developer mode with the key that signed it), and every development link result names the system that answered.
 - Fixed: the development link could not be switched on with the official builds. It needed Developer mode, which can only be turned on by trusting a developer's key. It now has its own switch, "Allow the development link on this computer" (an administrator's password; unticking it ends the link), and Developer mode moved from Update and recovery to Settings › Security, just above the development link.
