@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- New: Settings › Date, time and language › Share my language with apps (on by default): Library apps such as games are told Rudolf OS's language, when they start and whenever it changes, so they can show their own menus in it. Off, apps are not told which language you use.
 - Fixed: the screen saver no longer stays off for good after something went full screen in a window that was then minimised or hidden (that also kept game mode on), or after a saver's picture was taken away; why the saver waits (something full screen, sound playing, a microphone in use) is written to the page log.
 - New: the Feather Sky static background: Rudolf's logo in a sky of swirling white feathers (a night-blue version in dark mode).
 - New: two static backgrounds: Carbon Fibre (Rudolf's logo in brushed metal on carbon fibre, for work and gaming) and Moonlit Stag (Rudolf on a boulder above a mountain lake, at night in dark mode and at dawn in light mode).

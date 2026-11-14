@@ -156,6 +156,8 @@
 ["Date format","Date"],
 ["Preview","Date"],
 ["Language","",1],
+["Apps","Language"],
+["Share my language with apps","Language"],
 ["Clock from the internet","",1],
 ["Internet time","Clock from the internet"],
 ["Desktop engine","",1]],"kbd":
