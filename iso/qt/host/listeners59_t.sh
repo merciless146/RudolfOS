@@ -27,6 +27,7 @@ ok "4. every listening daemon the system's scripts start is in the list (X, D-Bu
 unk=$(grep -nE '(^|[ \t;&|(])(nc|ncat|socat|httpd|busybox httpd|sshd|dropbear|telnetd|inetd|x11vnc|vncserver)( |$)|-m http\.server|--listen[= ]|-listen tcp' $S 2>/dev/null | grep -v '^[^:]*:[0-9]*:\s*#' | head -5)
 ok "5. nothing else in the scripts that serves on a port (nc -l, socat, httpd, sshd, VNC, X's -listen tcp)" "$([ -z "$unk" ] && echo 1)" "$unk"
 ok "6. X is started without TCP (-nolisten tcp), each time" "$(n1=$(grep -cE '^\s*(Xorg|Xvfb) ' $SYS/root/usr/lib/rudolf/session); n2=$(grep -E '^\s*(Xorg|Xvfb) ' $SYS/root/usr/lib/rudolf/session | grep -c -- '-nolisten tcp'); [ "$n1" -gt 0 ] && [ "$n1" = "$n2" ] && echo 1)" ""
+ok "6b. X is started with authorization (15.3), each time: -auth with the session's cookie, never -ac on its line" "$(n1=$(grep -cE '^\s*(Xorg|Xvfb) ' $SYS/root/usr/lib/rudolf/session); n2=$(grep -E '^\s*(Xorg|Xvfb) ' $SYS/root/usr/lib/rudolf/session | grep -- '\$XAUTH' | grep -vc -- ' -ac '); [ "$n1" -gt 0 ] && [ "$n1" = "$n2" ] && grep -q 'XAUTH="-auth \$XAUTHF"' $SYS/root/usr/lib/rudolf/session && echo 1)" ""
 # the self-test's line on a stand-in /proc
 P=$W/proc; mkdir -p $P/net
 H='  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode'

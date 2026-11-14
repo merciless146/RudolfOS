@@ -1036,11 +1036,42 @@ second check). 1.6.0 Part 11 (elogind and polkit) stays in 1.6.0.
   program but another account's, rudolfd started again, an account removed and its uid not given again), peer59_t.sh
   (20, with 9b: a process of another user in the desktop's group refused), dl140_t.js (System health's line).
 
-**Next (15.3, second step):** Debian and Wine as the account's user (rudolf-debian makes the same uid in Debian's
-passwd and runs its terminal and apps as it; Wine's prefix in the account's home); Library packages (rpk run) as it;
-X authorization instead of `-ac` (each account's user given the display, not every program); the QEMU check with two
-accounts (a Flatpak app, a Debian terminal and Wine refused the other's files; sign-out; the move on an existing
-data partition).
+**Done, second step (2026-11-14):**
+- **X authorization instead of `-ac`:** the session makes a new cookie at each start (`rudolf-display --xcookie
+  /run/rudolf/xauth`, root's only, FamilyWild) and starts Xvfb and Xorg with `-auth` (Xvfb also `-noreset`, so the
+  list survives the last client); the display is then given by user, X's server-interpreted `localuser` (the socket's
+  peer, no cookie needed): `rudolf-display --xallow root rudolf` and the signed-in account's user (from
+  acct-session.env, so an X that starts again for a new resolution keeps it). rudolfd gives it at sign-in
+  (au_xaccess, `--xallow acctUID`) and takes it back at sign-out (`--xdeny`). Another account's programs and every
+  other user's are refused. If no cookie can be made, X starts open (-ac) as before and the session log says so (the
+  desktop never fails to start for it). The list of listeners says so (X's two lines).
+- **Debian and Wine as the account's user:** while an account is signed in with its files on the disk, rudolf-debian
+  maps Debian's "rudolf" (1000 inside) onto the account's user (acctUID) instead of the desktop's; its group stays
+  1000 (the devices' group, which the accounts' users are in). Decided against making a second uid in Debian's
+  passwd: Debian's user, password, sudo and files stay as they are, only who it is outside changes. Its home is the
+  account's folder (so Wine's prefix, ~/.wine, the programs Wine installs and their launchers and icons are the
+  account's; the shell's settings are copied from /etc/skel when the folder has none); its /run/user/1000 is its own
+  tmpfs with the account's session bus and the accounts' sound socket (/run/rudolf/pulse/native) bound in. Debian's
+  own root cannot go into those (they are not its users'), so rudolf-debian places them from outside, as rebind does
+  (open_tree, then move_mount in Debian's mount namespace). The map is made when Debian starts and kept beside its
+  pid (/run/rudolf/debian/init.uid): when the account changes (rebind at sign-in and sign-out, or any command),
+  Debian is stopped and started again for the new user on the next command. An acct-session.env that does not hold
+  up (the user not acctUID, its home not that user's) is not taken: the desktop's user, as before. rudolfd looks for
+  Wine's launchers' icons and Wine's drive_c (an app's Properties) in the account's home (au_home_has).
+- **Library packages as the account's user:** `rpk run` (pkg/run) and POST pkg/exec start as the signed-in account's
+  user, with its home and session; nobody signed in: the desktop's, as before.
+- Tests: qt/host/xauth59_t.sh (10: the session's own x_auth and x_allow on an Xvfb started as the session starts it;
+  root, rudolf and the account's user only, another account's and a service's refused, sign-out and sign-in again,
+  a bad user name, no cookie → -ac), debacct59_t.sh (13: Debian as acct1001 on Rudolf OS and 1000 inside, its
+  home the account's folder and not the desktop's, its programs' uid, the bus and sound socket, the launchers from
+  the account's folder, sign-out stops it and the next command is the desktop's, signed in again, a bad
+  environment), users59_t.sh (24: --xallow/--xdeny at sign-in and sign-out, au_home_has), listeners59_t.sh 6b (X
+  is started with -auth, never -ac). debhome_t.sh, debfiles_t.sh, debscript_t.sh, peer59_t.sh, homeapi_t.sh unchanged.
+
+**Next (15.3, third step):** the QEMU check with two accounts (a Flatpak app, a Debian terminal and Wine refused the
+other's files; the display refused to a program of the other account; sign-out; the move on an existing data
+partition), on a host with QEMU and a built disc (this session's host had neither); the Chromium window for websites
+on Lite (part of the desktop, so the desktop's user) stays as it is. Then Part 12 step 8 (12.3c).
 
 ### 15.4 The devlink is off unless it is being used
 Found: the devlink runs commands sent through a GitHub repository; on the Vivobook it was on with "Ask first" off, so
@@ -1142,5 +1173,6 @@ Settings › About: Chromium (the release's, else the browser's own) and Release
 Tests: qt/host/seccheck59_t.py (12, stand-ins for GitHub, the snap store and the mainline list), devmode59_t.js 10b.
 
 **Status:** planned (2026-11-14). 15.1 first, then 15.2, 15.4, 15.5, 15.6; 15.3 when 15.1 is done (it changes the same
-code). Each in its own PR. (2026-11-14: 15.1, 15.2, 15.4, 15.6 and 15.5 done; 15.3's first step done, its second step
-next, as its note says; then Part 12 step 8, 12.3c.)
+code). Each in its own PR. (2026-11-14: 15.1, 15.2, 15.4, 15.6 and 15.5 done; 15.3's first and second steps done (the second: X authorization,
+Debian, Wine and Library packages as the account's user), its QEMU check next, as its note says; then Part 12 step 8,
+12.3c.)

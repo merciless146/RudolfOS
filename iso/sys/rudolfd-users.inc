@@ -15,8 +15,11 @@
  * The move of existing computers (au_migrate, once per account at start): what the desktop's user owned in the
  * account's folder becomes the account user's (ownership only, nothing copied), logged in the health log; what
  * cannot be moved is named there (Accounts) and in System health.
- * Not yet as the account's user (plan 15.3's next step): Debian and Wine (rudolf-debian's own users), the Chromium
- * window for websites on Lite (part of the desktop). */
+ * Second step (1.5.9): the display is the account user's only while it is signed in (au_xaccess: X's "localuser"
+ * access, as the session gives it to root and the desktop's user; X runs with authorization, no longer -ac); Debian
+ * and Wine run as it (rudolf-debian maps Debian's "rudolf" onto the account's user, with the account's folder as its
+ * home); Library packages too (rpk run, POST pkg/exec). Not as the account's user: the Chromium window for websites
+ * on Lite (part of the desktop). */
 #ifndef AU_MAP_DEF
 #define AU_MAP_DEF PERSIST "/etc/rudolf/account-users"
 #endif
@@ -211,6 +214,17 @@ static void au_start(void)
 	if (changed) au_write(e, n);
 }
 
+/* ---- the display (1.5.9, 15.3's second step): given to the account's user at sign-in, taken back at sign-out */
+static char au_display[256] = "/usr/bin/rudolf-display";   /* (host fixtures choose) */
+static int au_xaccess(const char *user, int allow)
+{
+	if (access(au_display, X_OK)) return 0;
+	char c[500]; snprintf(c, sizeof c, "DISPLAY=:0 XAUTHORITY=" RUN "/xauth timeout 5 %s --%s %s >/dev/null 2>&1", au_display, allow ? "xallow" : "xdeny", user);
+	int r = run(c);
+	if (r) health_add("account", "the display could not be %s the Linux user %s", allow ? "given to" : "taken from", user);
+	return r;
+}
+
 /* ---- the account's session: at sign-in with its files on the disk (home_bind), until sign-out (home_unbind) */
 #define AU_ENV RUN "/acct-session.env"
 /* au_keep (rudolfd-home.inc): the same account bound again (rudolfd started again in its session): its programs go on */
@@ -219,6 +233,7 @@ static void au_session_stop(const char *id)
 	if (au_keep) return;
 	unsigned uid = au_uid(id); if (!uid) { unlink(AU_ENV); return; }
 	unlink(AU_ENV);
+	char xn[32]; au_name(uid, xn, sizeof xn); au_xaccess(xn, 0);
 	int left = au_kill_user(uid);
 	if (left) health_add("account", "%d programs of the account %.80s did not stop at sign-out", left, id);
 	char nm[32], h[300], rd[300]; au_name(uid, nm, sizeof nm); snprintf(h, sizeof h, "%s/%s", au_homes, nm); snprintf(rd, sizeof rd, "%s/%u", au_runuser, uid);
@@ -247,6 +262,7 @@ static int au_session_start(const char *id)
 	char t[300]; snprintf(t, sizeof t, "%s.tmp", AU_ENV); int f = open(t, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
 	if (f >= 0) { if (write(f, e.b, e.n) < 0) {} close(f); rename(t, AU_ENV); }
 	int bus = strstr(e.b, "DBUS_SESSION_BUS_ADDRESS") != NULL; free(e.b);
+	au_xaccess(nm, 1);   /* (its programs may use the display: the Linux apps' windows) */
 	if (!home_nobind && bus && !access("/usr/bin/rudolf-portal", X_OK)) {
 		char c[600]; snprintf(c, sizeof c, "su -s /bin/sh %s -c 'set -a; . " AU_ENV "; set +a; exec setsid /usr/bin/rudolf-portal' </dev/null >>" RUN "/portal-%u.log 2>&1 &", nm, uid);
 		run(c);
@@ -261,6 +277,18 @@ static void au_app_user(char *user, size_t un, char *env, size_t en)
 	char *cur = slurp(HOME_SESSION, NULL); if (!cur) return; trim(cur);
 	unsigned uid = au_uid(cur); free(cur); if (!uid) return;
 	au_name(uid, user, un); snprintf(env, en, AU_ENV);
+}
+
+/* p is below SUB in the signed-in account's home (its session running): Wine's prefix, the icons Wine makes */
+static int au_home_has(const char *p, const char *sub)
+{
+	if (!au_on || !p || strstr(p, "/../") || access(AU_ENV, R_OK)) return 0;
+	char *ev = slurp(AU_ENV, NULL); if (!ev) return 0;
+	char *h = strstr(ev, "\nHOME="); int ok = 0;
+	if (h) { h += 6; char *e = strchr(h, '\n'); if (e) *e = 0;
+		char want[400]; snprintf(want, sizeof want, "%s%s", h, sub);
+		size_t l = strlen(want); ok = *h == '/' && !strncmp(p, want, l); }
+	free(ev); return ok;
 }
 
 /* GET accounts/users: each account's Linux user (System health) */

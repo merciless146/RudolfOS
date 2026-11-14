@@ -19,6 +19,7 @@ R=$T/m/accounts; E=/etc; MAP=$T/m/etc/account-users; HM=$T/home; RU=$T/runuser; 
 grep -q '^audio:' $E/group || echo 'audio:x:29:' >> $E/group; grep -q '^video:' $E/group || echo 'video:x:44:' >> $E/group
 grep -q '^input:' $E/group || echo 'input:x:101:' >> $E/group; grep -q '^rudolf:' $E/group || echo 'rudolf:x:1000:' >> $E/group
 N=0; F=0; ok() { N=$((N+1)); case "$2" in *[!1]*|'') r=0;; *) r=1;; esac; if [ $r = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $(echo "$3" | head -c 700)"; F=$((F+1)); fi; }
+printf '#!/bin/sh\necho "$*" >> %s/xlog\n' $T > $T/rdisp; chmod 755 $T/rdisp; export USERS_DISPLAY=$T/rdisp   # (rudolf-display's stand-in)
 t() { $T/t $T/ls.json $R $E $MAP $HM $RU "$@"; }
 as() { u=$1; shift; setpriv --reuid=$u --regid=$u --init-groups "$@" 2>&1; }
 H=/run/rudolf/health.log; [ -e /run/rudolf/persistent ] || H=/run/rudolf/health.log
@@ -44,6 +45,9 @@ o=$(t appuser); ok "5. nobody signed in: Linux apps run as the desktop's user, a
 o=$(t session-start uAnnA1b2 appuser)
 ok "6. signed in (files on the disk): the account's session, its apps as its own user" "$(echo "$o" | grep -q 'session-start 0' && echo "$o" | grep -q '^acct1001 /run/rudolf/acct-session.env$' && echo 1)" "$o"
 ok "...its home is its folder (/home/acct1001), its runtime folder its own (0700)" "$([ "$(stat -c %u $HM/acct1001/Documents/diary.txt)" = 1001 ] && [ "$(stat -c %u:%a $RU/1001)" = 1001:700 ] && grep -q "^HOME=$HM/acct1001$" /run/rudolf/acct-session.env && grep -q "^XDG_RUNTIME_DIR=$RU/1001$" /run/rudolf/acct-session.env && grep -q '^PULSE_SERVER=unix:/run/rudolf/pulse/native$' /run/rudolf/acct-session.env && echo 1)" "$(cat /run/rudolf/acct-session.env)"
+ok "...the display is given to its user (rudolf-display --xallow acct1001; X has authorization since 15.3's second step)" "$(grep -qx -- '--xallow acct1001' $T/xlog && echo 1)" "$(cat $T/xlog 2>&1)"
+o=$(t homehas $HM/acct1001/.wine/drive_c/Program\ Files /.wine/drive_c/ homehas /home/rudolf/.wine/drive_c/x /.wine/drive_c/)
+ok "...Wine's prefix and Wine's icons are looked for in its home (Debian's home is the account's folder)" "$(echo "$o" | head -1 | grep -qx 'homehas 1' && echo "$o" | tail -1 | grep -qx 'homehas 0' && echo 1)" "$o"
 setpriv --reuid=1001 --regid=1001 --init-groups sleep 300 & P1=$!; setpriv --reuid=1001 --regid=1001 --init-groups sh -c 'trap "" TERM; while :; do sleep 1; done' & P2=$!
 setpriv --reuid=1002 --regid=1002 --init-groups sleep 300 & P3=$!; timeout 1 tail -f /dev/null
 o=$(t rebind uAnnA1b2); timeout 0.5 tail -f /dev/null
@@ -51,6 +55,7 @@ ok "6b. rudolfd started again while the account is signed in: its programs go on
 o=$(t session-stop uAnnA1b2 appuser); timeout 1 tail -f /dev/null
 ok "7. signing out stops every program of the account's user (one that ignores TERM too)" "$(! kill -0 $P1 2>/dev/null && ! kill -0 $P2 2>/dev/null && echo 1)" "$(ps -o pid,user,cmd -p $P1,$P2)"
 ok "...not another account's" "$(kill -0 $P3 2>/dev/null && echo 1)"; kill $P3 2>/dev/null
+ok "...the display taken back from its user (--xdeny acct1001)" "$(grep -qx -- '--xdeny acct1001' $T/xlog && echo 1)" "$(cat $T/xlog)"
 ok "...its home and runtime folder gone, and the apps back to the desktop's user" "$(! mountpoint -q $HM/acct1001 && [ ! -e $RU/1001 ] && [ ! -e /run/rudolf/acct-session.env ] && echo "$o" | grep -q '^rudolf /run/rudolf/session.env$' && echo 1)" "$o"
 o=$(t users); ok "8. GET accounts/users: each account's user, moved or not, who is signed in" "$(echo "$o" | grep -q '"id":"uAnnA1b2","uid":1001,"user":"acct1001","moved":true,"signedIn":false' && echo 1)" "$o"
 node -e "const f='$T/ls.json',j=require(f),u=JSON.parse(j.data.bd95user);u.accts=u.accts.filter(a=>a.n!='Old');u.accts.push({n:'New',h:'p2\$x\$y',r:'user',id:'uNew00000'});j.data.bd95user=JSON.stringify(u);require('fs').writeFileSync(f,JSON.stringify(j))"

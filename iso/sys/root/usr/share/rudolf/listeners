@@ -12,8 +12,8 @@ tcp	*:53	dnsmasq	only while Share this connection is on (the hotspot's interface
 tcp6	*:53	dnsmasq	only while Share this connection is on	devices joined to the hotspot	as above
 udp	*:53	dnsmasq	only while Share this connection is on	devices joined to the hotspot	as above
 udp	*:67	dnsmasq	only while Share this connection is on (DHCP)	devices joined to the hotspot	as above
-unix	@/tmp/.X11-unix/X0	Xorg	always (the display)	every program on the computer	none (-ac): X has no access control yet; 15.3 (a user per account) needs X authorization next, 1.6.0
-unix	/tmp/.X11-unix/X0	Xorg	always (the display)	every program on the computer	as above (Xvfb on the software display: the same socket)
+unix	@/tmp/.X11-unix/X0	Xorg	always (the display)	root, the desktop's user and the signed-in account's own Linux user (15.3)	X authorization (1.5.9): a cookie at each start, root's only (-auth /run/rudolf/xauth), and the display given by user (X's localuser, the socket's peer): rudolf-display --xallow, by the session and rudolfd at sign-in, --xdeny at sign-out
+unix	/tmp/.X11-unix/X0	Xorg	always (the display)	as above	as above (Xvfb on the software display: the same socket)
 unix	/run/dbus/system_bus_socket	dbus-daemon	while Bluetooth or the modem service runs	every program on the computer	D-Bus's own policy (/etc/rudolf/dbus-system.conf): BlueZ, bluealsa and ModemManager only, method calls checked by the bus
 unix	/run/user/*/bus	dbus-daemon	the session (signed in)	the desktop user's programs	the socket is the user's (0700 runtime folder); D-Bus checks the user (EXTERNAL)
 unix	/run/user/*/pulse/native	pulseaudio	the session	the desktop user's programs	the runtime folder is the user's (0700); auth-anonymous inside it

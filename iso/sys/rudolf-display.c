@@ -16,6 +16,10 @@
  *   rudolf-display --shot          write the X screen to stdout as a PPM image
  *   rudolf-display --modes         JSON: the screen modes and refresh rates of the monitor (Xorg)
  *   rudolf-display --clip-get      print the text on the clipboard (CLIPBOARD, shared by Chromium and Linux apps)
+ *   rudolf-display --xcookie FILE  (1.5.9, plan 15.3) write a new X authorization file (a random MIT-MAGIC-COOKIE-1,
+ *                                  root's only) for the X server's -auth: without it, X lets every program in
+ *   rudolf-display --xallow USER... | --xdeny USER...   give the display to these local users or take it away
+ *                                  (X's server-interpreted "localuser" access, checked by the socket's peer)
  *   rudolf-display --mode WxH|auto HZ   set the monitor's mode of that size with the nearest refresh rate (Xorg);
  *                                  exit status 3 when the monitor has no mode of that size (the session then
  *                                  uses the software display, which scales)
@@ -1077,7 +1081,8 @@ static void wm_cycle(void)
 }
 
 /* windows come and go between our calls (BadWindow and the like): never fatal */
-static int x_error(Display *d, XErrorEvent *e) { (void)d; (void)e; return 0; }
+static int x_errors_seen;
+static int x_error(Display *d, XErrorEvent *e) { (void)d; (void)e; x_errors_seen++; return 0; }
 static Display *open_display(void)
 {
 	Display *d = NULL;
@@ -1235,8 +1240,45 @@ static int clip_get(void)
 	return 1;
 }
 
+/* 1.5.9 (plan 15.3): X authorization. Until 1.5.9 X was started with -ac, so every program on the computer, whoever
+   ran it, could see the screen, read the keys and type into the desktop. Now X needs authorization: the session makes
+   a cookie only root can read (--xcookie) and gives the display, by user, to root, the desktop's user and the
+   signed-in account's own Linux user (--xallow, rudolfd at sign-in); signing out takes it away (--xdeny). */
+static int x_cookie(const char *path)
+{
+	unsigned char k[16]; int r = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+	if (r < 0 || read(r, k, sizeof k) != (ssize_t)sizeof k) { if (r >= 0) close(r); return 1; }
+	close(r);
+	/* an Xauthority entry: family FamilyWild (any address), no address, no display number (any), the cookie */
+	static const char nm[] = "MIT-MAGIC-COOKIE-1"; unsigned char b[64]; size_t o = 0;
+	b[o++] = 0xff; b[o++] = 0xff; b[o++] = 0; b[o++] = 0;
+	b[o++] = 0; b[o++] = 0;
+	b[o++] = 0; b[o++] = sizeof nm - 1; memcpy(b + o, nm, sizeof nm - 1); o += sizeof nm - 1;
+	b[o++] = 0; b[o++] = sizeof k; memcpy(b + o, k, sizeof k); o += sizeof k;
+	char t[600]; snprintf(t, sizeof t, "%s.tmp", path); unlink(t);
+	int f = open(t, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+	if (f < 0 || write(f, b, o) != (ssize_t)o) { if (f >= 0) close(f); unlink(t); return 1; }
+	close(f); if (rename(t, path)) { unlink(t); return 1; }
+	return 0;
+}
+static int x_access(int add, int n, char **users)
+{
+	if (!(dpy = open_display())) return 2;
+	int bad = 0;
+	for (int i = 0; i < n; i++) {
+		if (!users[i][0] || strlen(users[i]) > 32 || strpbrk(users[i], " :/\n")) { bad = 1; continue; }
+		XServerInterpretedAddress si = { (int)strlen("localuser"), (int)strlen(users[i]), "localuser", users[i] };
+		XHostAddress h = { FamilyServerInterpreted, (int)sizeof si, (char *)&si };
+		if (add) XAddHost(dpy, &h); else XRemoveHost(dpy, &h);
+	}
+	XSync(dpy, False);
+	return bad || x_errors_seen ? 1 : 0;
+}
+
 int main(int argc, char **argv)
 {
+	if (argc > 2 && !strcmp(argv[1], "--xcookie")) return x_cookie(argv[2]);
+	if (argc > 2 && (!strcmp(argv[1], "--xallow") || !strcmp(argv[1], "--xdeny"))) return x_access(argv[1][3] == 'a', argc - 2, argv + 2);
 	if (argc > 1 && !strcmp(argv[1], "--size")) { fb_open(); printf("%d %d\n", fbw, fbh); return 0; }
 	if (argc > 1 && !strcmp(argv[1], "--xsize")) {
 		if (!(dpy = open_display())) return 2;
