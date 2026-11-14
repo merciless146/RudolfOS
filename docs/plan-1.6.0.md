@@ -286,7 +286,7 @@ cases (new: tbm-bar, tbm-start, tbm-pin-notepad, tbm-pin-browser, tbm-vol, tbm-n
 the behaviour on both engines: `SAME_SCRIPT=tbbeh_t.js sh same_t.sh` 10/10 (Maximize, Restore, Minimize, Restore all
 windows, Always on top and its tick, Unpin from taskbar, New private tab, Command Prompt, Close all windows: the
 menus' rows and the windows and pins after each).
-Known differences left (item 3): a window's Move to workspace N rows do nothing yet (item 4).
+Known differences left (item 3): a window's Move to workspace N rows do nothing yet (item 4; done in the workspaces' PR).
 Item 3, second part, first half (the PR after #325): the tray's pop-ups drawn by the shell as the page's, in a window of
 their own (as the menus): the calendar under the clock (shell25.js #calp: the time, the long date, the month with ◀ and
 ▶, the weeks from Sunday with the columns as Chromium's automatic table layout shares them out, today in the accent
@@ -342,9 +342,20 @@ networks: Settings › Network has them); rudolfd's events (events/wait) go to t
 window open a page's event-driven notifications (memory, Bluetooth, the power button's dialog) are not seen until one is
 (a hidden page for the desktop's own events, item 11); the toasts' window shows what was behind it when it appeared (no
 compositor).
-**Next:** item 3's last part, second half (the taskbar at the left or the right; the page has no auto-hide, so Native
-has none), then items 4 to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and
-docs/plan-2.0.md after them. Native is not the default yet.
+Item 4, the workspaces (the PR after the taskbar at the left or the right): three, as the page's (shell25.js wsGo):
+the taskbar's 1 2 3 buttons (the one shown on, those with windows marked as the page's .has) switch, Ctrl+Alt+Left and
+Right go to the one before or after (with Shift the window in front goes too), a window's menu's Move to workspace N
+rows move it (rebuilt per window, the page's rows), the taskbar lists the shown workspace's windows only, a window
+brought to the front (a toast's action, Alt+Tab later) switches to its workspace, a pinned app open elsewhere opens a
+new window here (as the page's pin click), and "Workspace N" is said in a toast (none with Do not disturb). The
+shell's state file has ws and clientws lines for the tests. Fixed with it: a toast with no body is 2 px taller, as
+the page's empty body's margin makes it. same_t.sh: new ws2, ws2-dark (the bar and the toast); the behaviour on both
+engines: `SAME_SCRIPT=wsbeh_t.js sh same_t.sh` 11/11 (the workspace shown, the windows shown, the taskbar's windows,
+the workspaces with windows and the menu's rows after each of ten steps). If the taskbar at the left or the right
+(#346) merges first, its vertical bar gets the same filtering when this is merged with it.
+**Next:** item 5 (the window keys: Super+Tab and Alt+Tab with previews, Super+arrows, Super+D), then items 6 to 12 in
+order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md after them. Native is not
+the default yet.
 
 **Becoming the default:** after items 1-12 pass on the host and on the Vivobook (a week of betas on Native), the
 release's default engine is Native for new installations; an update keeps the engine the computer had, and Settings

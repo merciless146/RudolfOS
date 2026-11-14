@@ -560,7 +560,7 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
    own requests are not redirected to us, so they are framed as they are shown). The taskbar lists them all. */
 #define BW 1   /* (the page's windows' 1 px edge; the title bar's height, TH, follows the display scaling) */
 typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
-	char ak[40]; Window clip; int il, it, ir, ib; } Client;   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
+	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
 static GList *CLIENTS;   /* oldest first */
 static Client *FOCUS;
 static Display *DPY; static Window ROOT; static int WM_OK;
@@ -658,11 +658,16 @@ static void send_proto(Window w, Atom p, Time t)
 	XEvent e = {0}; e.xclient.type = ClientMessage; e.xclient.window = w; e.xclient.message_type = A_PROTO; e.xclient.format = 32;
 	e.xclient.data.l[0] = p; e.xclient.data.l[1] = t; XSendEvent(DPY, w, False, NoEventMask, &e);
 }
+#define NWS 3
+static int WSC = 1;   /* (the workspace shown: item 4) */
+static void toast_text(const char *t, const char *b, int ms);
+static int ws_of(Client *c); static void ws_apply(void); static gboolean ws_said(gpointer d);
 static void wm_focus(Client *c)
 {
+	if (c && c->off && ws_of(c) != WSC) { WSC = ws_of(c); ws_apply(); bar_redraw(); g_timeout_add(80, ws_said, GINT_TO_POINTER(WSC)); }   /* (W.focus: wsGo(W.ws) first) */
 	Client *old = FOCUS; FOCUS = c;
 	if (c) {
-		if (c->min) { c->min = 0; XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); }
+		if (c->min) { c->min = 0; if (!c->off) XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); }
 		XRaiseWindow(DPY, c->frame);
 		/* its dialogs stay above it */
 		for (GList *l = CLIENTS; l; l = l->next) { Client *d = l->data; if (d->trans == c->w && !d->min) XRaiseWindow(DPY, d->frame); }
@@ -681,9 +686,31 @@ static Client *top_client(void)
 {
 	/* the topmost window still shown (stacking order from the server) */
 	Window r, p, *k = NULL; unsigned n = 0; Client *best = NULL;
-	if (XQueryTree(DPY, ROOT, &r, &p, &k, &n)) for (unsigned i = 0; i < n; i++) { Client *c = client_of(k[i]); if (c && !c->min && !c->hidden && c->frame == k[i]) best = c; }
+	if (XQueryTree(DPY, ROOT, &r, &p, &k, &n)) for (unsigned i = 0; i < n; i++) { Client *c = client_of(k[i]); if (c && !c->min && !c->hidden && !c->off && c->frame == k[i]) best = c; }
 	if (k) XFree(k); return best;
 }
+/* ---- (1.6.0 Part 12, item 4) the workspaces, as the page's (shell25.js: NWS 3, WS; wsGo, wsMove): a window is in one; only the
+   current one's windows are shown and listed on the taskbar; going to another brings its last used window to the front and
+   says so ("Workspace N", a quiet pop-up of 1.2 s); a window focused in another workspace takes the desktop there */
+static int ws_has(int n) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (!c->trans && c->ws == n) return 1; } return 0; }
+static int ws_of(Client *c) { Client *o = c->trans ? client_of(c->trans) : NULL; return o && o != c ? o->ws : c->ws; }
+static void ws_apply(void)
+{
+	desk_shadows();
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; int off = ws_of(c) != WSC;
+		if (off && !c->off) { c->off = 1; if (!c->min && !c->hidden) XUnmapWindow(DPY, c->frame); }
+		else if (!off && c->off) { c->off = 0; if (!c->min && !c->hidden) XMapWindow(DPY, c->frame); } }
+	if (FOCUS && FOCUS->off) FOCUS = NULL;
+}
+/* ("Workspace N", once the taskbar shows it: the pop-up's window keeps a copy of what is behind it when it comes) */
+static gboolean ws_said(gpointer d) { char t[32]; snprintf(t, sizeof t, "Workspace %d", GPOINTER_TO_INT(d)); if (!S.dnd) toast_text(t, "", 1200); return G_SOURCE_REMOVE; }
+static void ws_go(int n)
+{
+	if (n < 1) n = 1; if (n > NWS) n = NWS; if (n == WSC) { bar_redraw(); return; }
+	WSC = n; ws_apply(); wm_focus(top_client()); bar_redraw(); state_write();
+	g_timeout_add(80, ws_said, GINT_TO_POINTER(WSC));
+}
+static void ws_move(Client *c, int n) { if (!c) return; if (n < 1) n = 1; if (n > NWS) n = NWS; c->ws = n; ws_apply(); if (!FOCUS) wm_focus(top_client()); bar_redraw(); state_write(); }
 static void wm_minimise(Client *c)
 {
 	desk_shadows();
@@ -805,7 +832,7 @@ static void wm_manage(Window w, AppWin *own)
 {
 	if (client_of(w)) return;
 	XWindowAttributes wa; if (!XGetWindowAttributes(DPY, w, &wa) || wa.override_redirect) return;
-	Client *c = g_new0(Client, 1); c->w = w; c->app = own; c->cw = wa.width; c->ch = wa.height;
+	Client *c = g_new0(Client, 1); c->w = w; c->app = own; c->cw = wa.width; c->ch = wa.height; c->ws = WSC;
 	if (!XGetTransientForHint(DPY, w, &c->trans)) c->trans = None;
 	if (!own) oracle_client(c, &wa);   /* (1.5.9, 12.3c: Oracle's Chromium is Oracle's window) */
 	wm_title(c);
@@ -854,7 +881,7 @@ static void wm_hide_all(int hide)
 {
 	desk_shadows();
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->min) continue;
-		if (hide && !c->hidden) { c->hidden = 1; XUnmapWindow(DPY, c->frame); } else if (!hide && c->hidden) { c->hidden = 0; XMapWindow(DPY, c->frame); } }
+		if (hide && !c->hidden) { c->hidden = 1; if (!c->off) XUnmapWindow(DPY, c->frame); } else if (!hide && c->hidden) { c->hidden = 0; if (!c->off) XMapWindow(DPY, c->frame); } }
 	if (!hide) wm_focus(FOCUS ? FOCUS : top_client());
 }
 /* the title bars' height or the work area changed (the display scaling, the development link's banner) */
@@ -913,6 +940,11 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 	switch (e->type) {
 	case KeyPress:   /* (the page's global shortcuts the shell has: Meta+L, lock the screen: shell25.js) */
 		if (e->xkey.window == ROOT && e->xkey.keycode == XKeysymToKeycode(DPY, XK_l) && (e->xkey.state & Mod4Mask)) { if (USER_ID[0] && !LOCKED) power("lock"); return GDK_FILTER_REMOVE; }
+		/* (item 4: Ctrl+Alt+Left/Right, the previous or next workspace; with Shift the window goes too: shell25.js's shortcuts wsl, wsr, wsml, wsmr) */
+		if (e->xkey.window == ROOT && (e->xkey.state & ControlMask) && (e->xkey.state & Mod1Mask) && (e->xkey.keycode == XKeysymToKeycode(DPY, XK_Left) || e->xkey.keycode == XKeysymToKeycode(DPY, XK_Right))) {
+			if (USER_ID[0] && !LOCKED) { int d = e->xkey.keycode == XKeysymToKeycode(DPY, XK_Left) ? -1 : 1; Client *w = FOCUS && !FOCUS->trans ? FOCUS : NULL;
+				if ((e->xkey.state & ShiftMask) && w) { ws_move(w, w->ws + d); ws_go(w->ws); wm_focus(w); } else ws_go(WSC + d); }
+			return GDK_FILTER_REMOVE; }
 		/* (Meta+N, the notifications; Meta+A, quick settings: shell25.js's shortcuts) */
 		if (e->xkey.window == ROOT && (e->xkey.state & Mod4Mask) && (e->xkey.keycode == XKeysymToKeycode(DPY, XK_n) || e->xkey.keycode == XKeysymToKeycode(DPY, XK_a))) {
 			if (USER_ID[0] && !LOCKED) fl_open(e->xkey.keycode == XKeysymToKeycode(DPY, XK_n) ? FL_NC : FL_QS); return GDK_FILTER_REMOVE; }
@@ -1017,7 +1049,8 @@ static void wm_init(void)
 	/* the screen itself (where no window is, and while windows start) shows the arrow, not X's bare "✕" (1.5.9 step 7) */
 	XDefineCursor(DPY, ROOT, CUR[0]);
 	gdk_window_add_filter(NULL, wm_filter, NULL);
-	{ static const unsigned M[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask }; for (int i = 0; i < 4; i++) for (int k = 0; k < 3; k++) XGrabKey(DPY, XKeysymToKeycode(DPY, k == 0 ? XK_l : k == 1 ? XK_n : XK_a), Mod4Mask | M[i], ROOT, True, GrabModeAsync, GrabModeAsync); }
+	{ static const unsigned M[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask }; for (int i = 0; i < 4; i++) for (int k = 0; k < 3; k++) XGrabKey(DPY, XKeysymToKeycode(DPY, k == 0 ? XK_l : k == 1 ? XK_n : XK_a), Mod4Mask | M[i], ROOT, True, GrabModeAsync, GrabModeAsync);
+	  for (int i = 0; i < 4; i++) for (int k = 0; k < 2; k++) for (int sh = 0; sh < 2; sh++) XGrabKey(DPY, XKeysymToKeycode(DPY, k ? XK_Right : XK_Left), ControlMask | Mod1Mask | (sh ? ShiftMask : 0) | M[i], ROOT, True, GrabModeAsync, GrabModeAsync); }
 	/* windows already there (rudolf-native started again): framed */
 	Window r, p, *k = NULL; unsigned n = 0;
 	if (XQueryTree(DPY, ROOT, &r, &p, &k, &n)) for (unsigned i = 0; i < n; i++) {
@@ -1437,8 +1470,8 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 	/* the workspaces (as the page's: the first is the one shown; the native shell has one until item 4) */
 	rx -= 4 + 4 * 22 + 3 * 2;
 	{ static const char *const WT[4] = {"1", "2", "3", "▦"}; double wx = rx;
-		for (int k = 0; k < 4; k++, ri++) { Box b = tb_box(k == 0 ? TB_WSON : TB_WS, HV("ws", WT[k]), PR("ws", WT[k])); double y = mid - 11;
-			if (k == 0) b.fg = tb_vars().on && !strcmp(tb_vars().st, "mono") ? b.fg : b.fg; else if (WINS || CLIENTS) { /* (.has: windows there) */ }
+		for (int k = 0; k < 4; k++, ri++) { Box b = tb_box(k + 1 == WSC ? TB_WSON : TB_WS, HV("ws", WT[k]), PR("ws", WT[k])); double y = mid - 11;
+			if (k < 3 && k + 1 != WSC && ws_has(k + 1) && !tb_vars().on) b.fg = cx("#e5e7eb", 1);   /* (#wsw button.has: windows there) */
 			box_paint(cr, wx, y, 22, 22, &b); hit_add(wx, y, 22, 22, "ws", WT[k]);
 			double tw = css_width(cr, WT[k], UIFAM, 400, 11); css_text(cr, WT[k], UIFAM, 400, 11, wx + (22 - tw) / 2, y + b.bw, 22 - 2 * b.bw, b.fg, 0); wx += 24; } }
 	rx -= 4 + 4;
@@ -1446,7 +1479,7 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 		rx -= w; box_paint(cr, rx, y, w, 26, &b); hit_add(rx, y, w, 26, "bat", NULL);
 		ic_bat(cr, rx + b.bw + 6, mid - 7, b.filt); css_text(cr, t, SYSUI, 600, 12, rx + b.bw + 6 + 26 + 3, y + b.bw, 26 - 2 * b.bw, b.fg, 0); rx -= 4; ri++; }
 	/* the open windows (#tasks: buttons of at most 150 px, 3 px apart, their picture at 18 px and the title) */
-	GList *TL = NULL; if (WM_OK) { for (GList *l = CLIENTS; l; l = l->next) if (!((Client *)l->data)->trans) TL = g_list_append(TL, l->data); } else TL = g_list_copy(WINS);
+	GList *TL = NULL; if (WM_OK) { for (GList *l = CLIENTS; l; l = l->next) if (!((Client *)l->data)->trans && ((Client *)l->data)->ws == WSC) TL = g_list_append(TL, l->data); } else TL = g_list_copy(WINS);   /* (the workspace's own: item 4) */
 	int n = g_list_length(TL), j = 0; double avail = rx - tasks_x, tw = n ? fmin(150, (avail - 3 * (n - 1)) / n) : 0; i = 200;
 	for (GList *l = TL; l && tw >= 24; l = l->next, j++, i++) {
 		Client *c = WM_OK ? l->data : NULL; AppWin *a = c ? c->app : l->data; int act = c ? c == FOCUS && !c->min : a == ACTIVE;
@@ -1496,7 +1529,7 @@ static void bar_click(int h)
 	if (h < 0) return; Hit *t = &HITS[h];
 	if (!strcmp(t->kind, "start")) menu_toggle();
 	else if (!strcmp(t->kind, "pin")) {
-		for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!strcmp(a->k, t->arg)) { appwin_activate(a); return; } }   /* already open: to the front */
+		for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; Client *c = WM_OK ? client_of_app(a) : NULL; if (!strcmp(a->k, t->arg) && (!c || c->ws == WSC)) { appwin_activate(a); return; } }   /* already open in this workspace: to the front (else a new window, as the page's) */
 		for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->ak[0] && !strcmp(c->ak, t->arg) && !c->trans) { wm_focus(c); return; } }   /* (Oracle's Chromium: 12.3c) */
 		app_open(t->arg, NULL);
 	}
@@ -1514,7 +1547,7 @@ static void bar_click(int h)
 	else if (!strcmp(t->kind, "qs")) fl_open(3);   /* (quick settings) */
 	else if (!strcmp(t->kind, "notes")) fl_open(4);   /* (the notifications' centre) */
 	else if (!strcmp(t->kind, "bat")) { char ex[24]; snprintf(ex, sizeof ex, "&page=health"); app_open_ex("settings", NULL, ex, 0); }   /* (power31.js pwrShow: System health) */
-	else if (!strcmp(t->kind, "ws")) return;   /* (the workspaces: plan 1.6.0 Part 12, item 4) */
+	else if (!strcmp(t->kind, "ws")) { if (t->arg[0] >= '1' && t->arg[0] <= '0' + NWS) ws_go(t->arg[0] - '0'); return; }   /* (the workspaces: item 4; ▦, all windows, is item 5's) */
 	else app_open("settings", NULL);
 }
 static void hk_set(int h, char *k, char *a) { if (h >= 0) { snprintf(k, 12, "%s", HITS[h].kind); snprintf(a, 80, "%s", HITS[h].arg); } else k[0] = a[0] = 0; }
@@ -3261,6 +3294,7 @@ static void on_tb_act(const char *a)
 		Client *c = client_of(TBM_W); if (!c) return;
 		if (!strcmp(a, "wn:restore")) { if (c->min) wm_focus(c); else if (c->max) wm_maximise(c, 0); }
 		else if (!strcmp(a, "wn:min")) wm_minimise(c);
+		else if (!strncmp(a, "wn:ws:", 6)) ws_move(c, atoi(a + 6));   /* (wsMove: the window goes; the workspace shown stays) */
 		else if (!strcmp(a, "wn:max")) { wm_focus(c); wm_maximise(c, 1); }
 		else if (!strcmp(a, "wn:top")) { c->ontop = !c->ontop; wm_focus(c); }
 		else if (!strcmp(a, "wn:center")) { if (c->max) wm_maximise(c, 0); wm_focus(c); c->x = MAX(0, (SW - fw_of(c)) / 2); c->y = work_top() + MAX(0, (work_h() - fh_of(c)) / 2); place(c); state_write(); }
@@ -3283,17 +3317,22 @@ static void win_menu_build(Client *c, JV *pm)
 	CMI m[24]; int n = 0; memset(m, 0, sizeof m); char title[256] = ""; jstr(pm, "title", title, sizeof title); if (!title[0]) snprintf(title, sizeof title, "%s", c->title);
 	JV *it = jprop(pm, "items");
 	if (!it) {   /* (a window without a page of its own: the page's rows the shell can do) */
-		static const char *const R[][3] = { { "Restore", "❐", "" }, { "Minimize", "_", "" }, { "Maximize", "□", "" }, { "-", "", "" }, { "Always on top", "", "" }, { "Center on screen", "", "" }, { "-", "", "" }, { "Close", "✕", "Alt+F4" } };
+		static const char *const R[][3] = { { "Restore", "❐", "" }, { "Minimize", "_", "" }, { "Maximize", "□", "" }, { "-", "", "" }, { "Always on top", "", "" }, { "Center on screen", "", "" }, { "-", "", "" }, { "Move to workspace ", "", "" }, { "-", "", "" }, { "Close", "✕", "Alt+F4" } };
 		for (unsigned i = 0; i < G_N_ELEMENTS(R); i++) { CMI *x = &m[n++]; if (R[i][0][0] == '-') { x->sep = 1; continue; } snprintf(x->label, sizeof x->label, "%s", R[i][0]); snprintf(x->icon, sizeof x->icon, "%s", R[i][1]); snprintf(x->key, sizeof x->key, "%s", R[i][2]); }
 	} else for (int i = 0; i < it->len && n < 24; i++) { JV *o = jat(it, i); CMI *x = &m[n++]; if (jbool(o, "sep")) { x->sep = 1; continue; }
 		jstr(o, "label", x->label, sizeof x->label); jstr(o, "icon", x->icon, sizeof x->icon); jstr(o, "key", x->key, sizeof x->key); x->dis = jbool(o, "dis"); }
+	/* (the page's "Move to workspace N" rows are its own page's (always workspace 1's): the window's, here) */
+	{ int at = -1, k = 0; CMI t[24]; for (int i = 0; i < n; i++) { if (!m[i].sep && !strncmp(m[i].label, "Move to workspace ", 18)) { if (at < 0) { at = k;
+				for (int w = 1; w <= NWS && k < 24; w++) if (w != c->ws) { memset(&t[k], 0, sizeof t[k]); snprintf(t[k].label, sizeof t[k].label, "Move to workspace %d", w); snprintf(t[k].act, sizeof t[k].act, "wn:ws:%d", w); k++; } } continue; }
+			if (k < 24) t[k++] = m[i]; }
+	  memcpy(m, t, k * sizeof t[0]); n = k; }
 	for (int i = 0; i < n; i++) { CMI *x = &m[i]; if (x->sep) continue; const char *L = x->label;
+		if (!strncmp(x->act, "wn:ws:", 6)) continue;
 		if (!strcmp(L, "Restore")) { snprintf(x->act, sizeof x->act, "wn:restore"); x->dis = !(c->min || c->max); }
 		else if (!strcmp(L, "Minimize")) { snprintf(x->act, sizeof x->act, "wn:min"); x->dis = c->min; }
 		else if (!strcmp(L, "Maximize")) { snprintf(x->act, sizeof x->act, "wn:max"); x->dis = c->max; }
 		else if (!strcmp(L, "Always on top")) { snprintf(x->act, sizeof x->act, "wn:top"); snprintf(x->icon, sizeof x->icon, "%s", c->ontop ? "✓" : ""); }
 		else if (!strcmp(L, "Center on screen")) snprintf(x->act, sizeof x->act, "wn:center");
-		else if (!strncmp(L, "Move to workspace ", 18)) snprintf(x->act, sizeof x->act, "wn:ws");   /* (the workspaces: item 4) */
 		else if (!strcmp(L, "Close")) snprintf(x->act, sizeof x->act, "wn:close");
 		else if (!strncmp(L, "Force quit ", 11)) snprintf(x->act, sizeof x->act, "wn:fq");
 		else if (c->app && jump_of(c->app->k, L) >= 0) snprintf(x->act, sizeof x->act, "jump:%.38s|%.50s", c->app->k, L);
@@ -3792,7 +3831,7 @@ static double toast_lay(cairo_t *cr, const Toast *t, char (*tl)[320], int *ntl, 
 {
 	double l13 = fl_lh(cr, 400, 13), l11 = fl_lh(cr, 400, 11);
 	*ntl = css_wrap(cr, t->t, UIFAM, 700, 13, 320, tl, 4); *nbl = t->b[0] ? css_wrap(cr, t->b, UIFAM, 400, 13, 320, bl, 8) : 0;
-	return 1 + 10 + *ntl * l13 + (*nbl ? 2 + *nbl * l13 : 0) + (t->why ? fmax(l13, l11 + 3) : 0) + 10 + 1;
+	return 1 + 10 + *ntl * l13 + 2 + *nbl * l13 /* the body (an empty one still has its 2px margin) */ + (t->why ? fmax(l13, l11 + 3) : 0) + 10 + 1;
 }
 /* its state now: how far in (0 to 1), how far out (0 to 1); 0 when gone */
 static int toast_at(const Toast *t, gint64 now, double *in, double *out)
@@ -3817,7 +3856,7 @@ static void toast_paint(cairo_t *cr)
 			cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD); nc_rr(cr, x, yy, 349, h, 10, 10, 10, 10); nc_rr(cr, x + 4, yy + 1, 344, h - 2, 6, 9, 9, 9); srca(cr, lc); cairo_fill(cr); cairo_restore(cr); }
 		double tx = x + 16, ty = TSY[i] + 11;
 		for (int k = 0; k < ntl[i]; k++) css_text(cr, tl[i][k], UIFAM, 700, 13, tx, ty + k * l13, l13, fg, 0); ty += ntl[i] * l13;
-		if (nbl[i]) { ty += 2; for (int k = 0; k < nbl[i]; k++) css_text(cr, bl[i][k], UIFAM, 400, 13, tx, ty + k * l13, l13, mut, 0); ty += nbl[i] * l13; }
+		{ ty += 2; for (int k = 0; k < nbl[i]; k++) css_text(cr, bl[i][k], UIFAM, 400, 13, tx, ty + k * l13, l13, mut, 0); ty += nbl[i] * l13; }
 		if (t->why) { double ww = css_width(cr, "⚡︎ Why?", UIFAM, 400, 11) + 14, wx = tx + 6, wy = ty + 1; Box k; memset(&k, 0, sizeof k); k.rad = 4; k.bw = 1;
 			if (dark) { k.bg = cx("#1e293b", 1); k.bc = cx("#334155", 1); } else { k.bg = cx("#ffffff", 1); k.bc = cx("#d1d5db", 1); }
 			box_paint(cr, wx, wy, ww, l11 + 2, &k); css_text(cr, "⚡︎ Why?", UIFAM, 400, 11, wx + 7, wy + 1, l11, cx(dark ? "#e2e8f0" : "#000000", 1), 0);
@@ -3886,6 +3925,9 @@ static gboolean toast_motion(GtkWidget *w, GdkEventMotion *e, gpointer d)
 static void fget_js(void *v, const char *k, char *o, size_t n) { jsstr((JSCValue *)v, k, o, n); }
 static void fget_jv(void *v, const char *k, char *o, size_t n) { jstr((JV *)v, k, o, n); }
 static void toast_add(AppWin *from, JSCValue *v) { toast_addf(from, NULL, fget_js, v); }
+/* (a pop-up of the shell's own, as the page's notify(t, b, {quiet: true, toast: ms}): "Workspace N") */
+static void fget_tt(void *v, const char *k, char *o, size_t n) { const char *const *f = v; snprintf(o, n, "%s", !strcmp(k, "t") ? f[0] : !strcmp(k, "b") ? f[1] : !strcmp(k, "ms") ? f[2] : ""); }
+static void toast_text(const char *t, const char *b, int ms) { char m[16]; snprintf(m, sizeof m, "%d", ms); const char *f[3] = {t, b, m}; toast_addf(NULL, NULL, fget_tt, (void *)f); }
 static void toast_addf(AppWin *from, const char *sid, FGet g, void *v)
 {
 	if (!USER_ID[0]) return; if (NTST == 8) { memmove(&TST[0], &TST[1], 7 * sizeof TST[0]); NTST--; }
@@ -3994,6 +4036,7 @@ static void state_write(void)
 	GString *s = g_string_new(NULL); int top = !strcmp(S.tb, "top"), by = top ? TOPRES : SH - BARH;
 	g_string_append_printf(s, "screen %d %d\nuser %s\nlocked %d\nsignin %d\nmenu %d\nbar %d %d %d %d %d\nclock %s|%s\n", SW, SH, USER_ID[0] ? USER_N : "-", LOCKED,
 		SIGN && gtk_widget_get_visible(SIGN), MENU && gtk_widget_get_visible(MENU), BAR && gtk_widget_get_visible(BAR), 0, by, SW, BARH, CLOCK_T, CLOCK_D);
+	g_string_append_printf(s, "ws %d\n", WSC);   /* (item 4: the workspace shown) */
 	g_string_append_printf(s, "notes %d %d %d\nmic %d %d\n", S.dnd, nt_unread(), NNT, MIC_N, MIC_MUTED);   /* (the bell: do not disturb, its count, the list's length) */   /* (item 3: the call's 🎙️; the notifications' pop-ups) */
 	for (int i = 0; i < NTST; i++) g_string_append_printf(s, "toast %d %d %d %d %d|%s\n", TST[i].why, (int)lround(TSX[i] * Z), (int)lround(TSY[i] * Z), (int)lround(349 * Z), (int)lround(TST[i].h * Z), TST[i].t);
 	for (int i = 0; i < NHITS; i++) g_string_append_printf(s, "hit %s %s %d %d %d %d\n", HITS[i].kind, HITS[i].arg[0] ? HITS[i].arg : "-", HITS[i].x, HITS[i].y + by, HITS[i].w, HITS[i].h);
@@ -4008,6 +4051,7 @@ static void state_write(void)
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data;
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
 			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : c->ak[0] ? c->ak : "-", c->title);
+		g_string_append_printf(s, "clientws %lx %d %d\n", (unsigned long)c->w, c->ws, c->off);   /* (item 4: its workspace, shown or not) */
 		if (c->app && c->app->win && c->app->view && GTK_IS_WIDGET(c->app->view)) { GtkAllocation al; gtk_widget_get_allocation(c->app->view, &al); g_string_append_printf(s, "view %lx %d %d\n", (unsigned long)c->w, al.width, al.height); } }   /* (the page's own size: its window's) */
 	g_string_append_printf(s, "wm %d\nicons %u %s\n", WM_OK, ICONS ? g_hash_table_size(ICONS) : 0, VER[0] ? VER : "-");
 	for (int i = 0; di_shown() && i < NDI; i++) { int x, y; di_xy(&DI[i], &x, &y); g_string_append_printf(s, "dicon %d %d %d %d %d %d %s|%s|%s\n", DI[i].c, DI[i].r, x, y, di_w(), DI[i].sel, DI[i].k, DI[i].kind, DI[i].n); }
