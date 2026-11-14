@@ -192,7 +192,8 @@ to. The apps stay web pages in one-app WebKit windows (1.5.9 Part 12) until 2.0 
 1. **The desktop:** icons (the page's bd95icons: arranging, renaming, opening, the right-click menu, Properties),
    drag and drop of files onto it and between windows, and the desktop's right-click menu (New, Display Properties).
 2. **Widgets** (the page's widgets: clock, weather, notes, system), drawn natively, their settings read from rudolfd.
-3. **The taskbar complete:** left and right positions, auto-hide, the workspaces' buttons, the notifications'
+3. **The taskbar complete:** the pinned apps' and open windows' right-click menus as the page's, with each app's own
+   entries (Oracle's New private tab, 1.5.9), left and right positions, auto-hide, the workspaces' buttons, the notifications'
    pop-ups and their centre, the volume and network pop-ups (not only their Settings pages), the calendar under the
    clock, the battery's menu, the 🎙️ indicator during calls.
 4. **Workspaces:** as the page's (several, Super+Ctrl+arrows, a window moved between them, the taskbar's list per

@@ -850,3 +850,15 @@ To be tested with the HP desktop's user, who has the USB printer: docs/plan-1.6.
 11. Part 12 (the native desktop engine, a prototype): the one-app mode and rudolfd's settings first, then rudolf-native's
     wallpaper and taskbar, its window manager, the engine choice; measured on the Vivobook last.
 12. Part 13 (USB printers): moved to 1.6.0 (its Part 8).
+
+## Part 14: private browsing in Oracle (added on 2026-11-14)
+Asked for: private browsing in Oracle, with a private tab opened by right-clicking Oracle's icon. Done (desktop/private59.js):
+New private tab in Oracle's ☰ menu, Ctrl+Shift+N (also inside a website's page: the shell and rudolf-webkit pass it on as
+`cpn`), and in the right-click menus of Oracle's taskbar icon, its Start menu entry, its desktop icon and an open Oracle
+window's taskbar button. A private window: dark violet, 🕶️ Private, "(Private)" in its title; no History; its tabs use a
+part named `priv-ACCOUNT-SESSION`, which the Chromium shell gives a partition without `persist:` and rudolf-webkit an
+ephemeral context (in memory only); cleared when the last private window closes, a new name for the next private
+session; pop-ups from it stay private. Kept: bookmarks and downloads (said on its start page and in Help › Privacy).
+Not private: websites shown in frames when Oracle's tabs are not running (the start page says so), and on Native until
+its taskbar menus come (docs/plan-1.6.0.md Part 12, item 3). Test: qt/shell2/private59_t.js. The shell changed, so the
+first start of a beta with it replaces the shell in the profile (websites ask to sign in again, once).

@@ -88,7 +88,8 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
 
 /* ===== TABS: Oracle's website tabs =====
    desktop -> shell {rudolfShell: 'tab', op, tid, ...}
-     open {url, part, adopt?}   a new tab (part: whose tab, so each Rudolf OS account has its own cookies);
+     open {url, part, adopt?}   a new tab (part: whose tab, so each Rudolf OS account has its own cookies; a part
+                                beginning "priv-" is a private window's, kept in memory only);
                                 adopt: a tab the shell already made for a page's new window (tabev 'newwin')
      go {url} | back | forward | reload | stop | zoom {z} | focus | close
      busy {id}                  (1.5.9) may the tab sleep (game mode)? answered by tabev busy {id, m, f}
@@ -107,7 +108,7 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
    shell -> desktop {rudolfShell: 'tabev', tid, ev, ...}
      nav {url, back, fwd}       the page's address changed (also inside the page); back/fwd: its own history
      load {loading}             title {title}       focus       close (the page closed itself)
-     keys {k}                   a shortcut pressed inside the page: ct cw cn cl cr f5 back fwd z+ z- z0 ntab ptab af4
+     keys {k}                   a shortcut pressed inside the page: ct cw cn cl cr f5 back fwd z+ z- z0 ntab ptab af4 cpn (Ctrl+Shift+N)
                                 (Ctrl+W, T, N, Q arrive as Ctrl+F20..F23, Alt+F4 as Alt+F20: see rudolf-display's desk_key; af4 closes the window)
      newwin {url, ntid, popup}  the page opened a window: a new tab ntid already holds it (opener kept)
      dialog {did, kind, text, def}   perm {pid, perm, url}   blocked {url, why, main}   gone {why}
@@ -136,7 +137,7 @@ const PAGE_JS = `(()=>{const N=${JSON.stringify(NONCE)},say=o=>{try{console.debu
 const SUB={F20:'w',F21:'t',F22:'n',F23:'q'};
 const UI=new Set(['CKeyH','CKeyJ','CKeyD','CKeyU','CKeyS','CKeyO','CSKeyN','CSKeyT','CSKeyW','CSKeyO','CSKeyB','CSDelete','CSKeyA','CSKeyM','ASKeyI','SEscape','F1','F7','AHome']);
 addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey,k=SUB[e.code]&&e.ctrlKey?SUB[e.code]:e.key;let a='';
- if(c&&!e.altKey&&!e.shiftKey&&/^[twlrn]$/i.test(k))a='c'+k.toLowerCase();else if(c&&k=='q')a='none';else if(k=='F5')a='f5';
+ if(c&&e.shiftKey&&!e.altKey&&e.code=='KeyN')a='cpn';else if(c&&!e.altKey&&!e.shiftKey&&/^[twlrn]$/i.test(k))a='c'+k.toLowerCase();else if(c&&k=='q')a='none';else if(k=='F5')a='f5';
  else if(e.altKey&&!c&&(k=='ArrowLeft'||k=='ArrowRight'))a=k=='ArrowLeft'?'back':'fwd';else if(e.altKey&&!c&&(k=='F4'||e.code=='F20'))a='af4';
  else if(c&&!e.altKey&&(k=='+'||k=='='||k=='-'||k=='0'))a='z'+(k=='='?'+':k);else if(c&&k=='Tab')a=e.shiftKey?'ptab':'ntab';
  else if((c&&(e.code=='KeyR'||e.code=='F5'))||(e.shiftKey&&!c&&e.code=='F5'))a='f5';
@@ -236,10 +237,13 @@ const darkJS = on => `(()=>{const id='rudolf-dark';let s=document.getElementById
   let l=document.body?L(getComputedStyle(document.body).backgroundColor):null;if(l==null)l=L(getComputedStyle(document.documentElement).backgroundColor);if(l!=null&&l<.4&&s.isConnected)s.remove()}catch(e){}};
  if(document.readyState=='loading')document.addEventListener('DOMContentLoaded',chk,{once:true});else chk()})()`;
 const darken = t => { if (DARK) t.f.executeScript({code: darkJS(true)}).catch(() => {}) };
+/* whose cookies and site storage: an account's are kept on the disk (persist:); a private window's (1.5.9, "priv-…")
+   are in memory only, and a new private session gets a new name, so nothing of an earlier one is seen again */
+const partName = p => { const n = 'web-' + String(p || 'x').replace(/[^a-z0-9_-]/gi, '').slice(0, 40); return /^priv-/.test(String(p || '')) ? n : 'persist:' + n };
 function makeTab(tid, part) {
   const f = document.createElement('controlledframe');
   f.className = 'tab';
-  f.setAttribute('partition', 'persist:web-' + String(part || 'x').replace(/[^a-z0-9_-]/gi, '').slice(0, 40));
+  f.setAttribute('partition', partName(part));
   f.setAttribute('allowtransparency', 'off');
   document.body.appendChild(f);
   const t = {tid, part, f, url: '', r: null};
@@ -338,7 +342,7 @@ function onTab(m) {
   if (m.op == 'ruffle') { const r = m.cfg || {}; RUFFLE = {on: !!r.on, urls: [].concat(r.urls || []).filter(u => /^https?:\/\//.test(u)).slice(0, 4), config: Object.assign({}, r.config || {})}; return }
   if (m.op == 'perm') { const p = PERM.get(m.pid); PERM.delete(m.pid); if (p) try { m.allow ? p.allow() : p.deny() } catch (e) {} return }
   if (m.op == 'clear') {
-    const f = document.createElement('controlledframe'); f.setAttribute('partition', 'persist:web-' + String(m.part || 'x').replace(/[^a-z0-9_-]/gi, '').slice(0, 40)); f.style.display = 'none'; document.body.appendChild(f);
+    const f = document.createElement('controlledframe'); f.setAttribute('partition', partName(m.part)); f.style.display = 'none'; document.body.appendChild(f);
     const done = ok => { f.remove(); toDesk({rudolfShell: 'cleared', id: m.id, ok}) };
     try { f.clearData({since: 0}, {appcache: true, cache: true, cookies: true, fileSystems: true, indexedDB: true, localStorage: true, persistentCookies: true, sessionCookies: true, webSQL: true}).then(() => done(true), () => done(false)) } catch (e) { done(false) }
     return;
