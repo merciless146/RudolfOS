@@ -720,6 +720,12 @@ idle unchanged after Oracle closes, FNF in Oracle on both engines (frame rate th
 
 **Status:** planned (2026-11-14), not started. It is built after the native session's item in progress, in its own
 PR; it touches iso/shell/shell.js (so, as with Part 14, a beta with it replaces the shell in the profile once).
+(2026-11-14, the unattended security session, after 15.4, 15.6, 15.5 and 15.3's first step: not started here. The
+build host of that session had neither WebKitGTK's nor GTK 3's development files (rudolf-native cannot be built) nor
+Rudolf's Chromium with Isolated Web Apps (the shell cannot run; Playwright's is Chrome for Testing), and no network
+for packages, so neither oracle_native_t.sh nor the shell's part could be run; untested GTK code was not written.
+Next: on a host with libwebkit2gtk-4.1-dev and Rudolf's Chromium, or in the webkit-check workflow's runner, after the
+open native PR (native15-tray-more, which changes rudolf-native.c) is merged.)
 
 ### 12.4 Tests
 - Host, under Xvfb: rudolf-native draws its wallpaper and taskbar (screenshots compared), a window gets a frame,
@@ -1115,4 +1121,5 @@ Settings › About: Chromium (the release's, else the browser's own) and Release
 Tests: qt/host/seccheck59_t.py (12, stand-ins for GitHub, the snap store and the mainline list), devmode59_t.js 10b.
 
 **Status:** planned (2026-11-14). 15.1 first, then 15.2, 15.4, 15.5, 15.6; 15.3 when 15.1 is done (it changes the same
-code). Each in its own PR.
+code). Each in its own PR. (2026-11-14: 15.1, 15.2, 15.4, 15.6 and 15.5 done; 15.3's first step done, its second step
+next, as its note says; then Part 12 step 8, 12.3c.)
