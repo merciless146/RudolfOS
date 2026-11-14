@@ -16,8 +16,10 @@ latest beta: **2026111402** (not promoted).
 ### What needs the Vivobook (or the person) before 1.5.9 is promoted
 1. **A beta with everything:** 2026111401: install it; the self-test (its modem line says "no cellular modem").
 2. **iw and the radios** (#267): Settings › Network › Wi-Fi › This computer's Wi-Fi radios lists 2.4 and 5 GHz.
-3. **The hotspot** (Part 4): with the phone's USB tethering as the connection, Share this connection on the RTL8821CE;
-   a phone joins it and browses. (If the chip cannot be an access point, the setting says so.)
+3. ~~**The hotspot** (Part 4): with the phone's USB tethering as the connection, Share this connection on the RTL8821CE;
+   a phone joins it and browses.~~ Moved to 1.6.0 (2026-11-13: the RTL8821CE offers AP mode and the hotspot says it
+   needs another connection to share, both read on 2026111403; the MediaTek phone never offered USB tethering, only
+   MTP or ADB, so there was no connection to share. The MiFi's USB tethering is the uplink in 1.6.0).
 4. ~~**The modem service** (Part 1): the USB modem stick plugged in: Settings › Network › Cellular modems shows it
    (ModemManager without udev is the open question).~~ Moved to 1.6.0 (2026-11-13: the stick belongs to the HP
    desktop's user and is not available for 1.5.9; 1.5.9 ships ModemManager tested only on the host).
@@ -136,8 +138,9 @@ bootloader read over the devlink (read only).
   wifi.sh does not start a connection on the access point. rudolfd `net/hotspot` (the request through a root-only
   file); Settings › Network › Share this connection. ci_release.sh adds hostapd, hostapd_cli and dnsmasq with a budget of
   their own, 6 MB (beta 2026111314 stopped: with ModemManager's they came to 13 MB, over the shared 10 MB; ModemManager
-  keeps its 10 MB). To check on the Vivobook (iw is in the base layer from #267): AP mode on the RTL8821CE,
-  with the USB tethering of the phone as the connection.
+  keeps its 10 MB). Checked on the Vivobook (2026111403): the RTL8821CE offers AP mode, and not AP and a Wi-Fi
+  connection at once, so a cable, USB tethering or a modem is shared. The full check (a device joins and browses)
+  moved to 1.6.0, with the MiFi's USB tethering as the connection (the MediaTek phone does not tether over USB).
 
 ## Part 5: Android apps with Waydroid, in Debian (docs/plan-1.5.8.md 7.3)
 - Waydroid installed into Debian on demand, binderfs mounted into Debian's container, the Android image downloaded
@@ -626,7 +629,7 @@ To be tested with the HP desktop's user, who has the USB printer: docs/plan-1.6.
 1. Part 1 (ModemManager, read only); its device checks, with the USB stick and the MiFi, moved to 1.6.0.
 2. Part 2 (tablet mode, keyboard, rotation).
 3. Part 3 (ARM64 build and its QEMU checks).
-4. Part 4 (Share this connection), after the Vivobook's Wi-Fi chip is checked.
+4. Part 4 (Share this connection); its device check moved to 1.6.0 (the MiFi as the connection).
 5. Part 5 (Waydroid in Debian), measured first.
 6. Part 6 (the phone prepared).
 7. Part 7 (calls): 7.1 WebKit's WebRTC plug-ins measured and added, the CI call test on both engines, 7.2 the
