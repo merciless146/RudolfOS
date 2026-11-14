@@ -351,6 +351,76 @@ release's default engine is Native for new installations; an update keeps the en
 offers the change once ("Rudolf OS's new desktop uses less memory and starts faster"). Native's safeguards stay
 (1.5.9 Part 12 step 5). The release check measures Native at idle on the Vivobook and fails over 900 MB used.
 
+### 13. Signed system extensions (added on 2026-11-14)
+Asked for: a way to add system parts (a driver, firmware, a tool, a printer filter) to one computer without a new
+release, instead of a conventional package manager. Decided (2026-11-14): not a package manager that changes the base
+(apt or pacman style: every computer would end up different, updates could fail half-way, the base's signature would
+no longer cover what runs, and rollback would stop being clean), but **signed system extensions**: read-only layers
+over the unchanged base, as systemd's sysext and Fedora's image-based editions do. The base stays one signed image,
+the same on every computer, with its a/b spare and recovery.
+
+#### 13.1 What an extension is
+- **An rpk package of a new kind, `sysext`** (iso/sys/rpk.c: the same file format, download, signature check,
+  revocation and `rpk install/remove`), holding files for the system: usr/bin, usr/lib (programs and libraries),
+  lib/firmware, lib/modules/KVER/extra (kernel modules), usr/lib/udev/rules.d (after Part 9), usr/lib/cups or
+  usr/lib/rudolf/print filters (Part 8), and at most one start script, usr/lib/rudolf/ext.d/NAME.start.
+- **Signed only by a system key** (/etc/rudolf/rpk-keys: the release key, RPK_SIGNING_KEY, used by the workflow that
+  builds them). A Library or developer key can never sign one (rpk refuses, as it refuses Library programs today).
+- **Tied to the base it was built for:** PKGINFO `base = ABI` (a hash of the base layer's libraries, written into the
+  base as usr/share/rudolf/base-abi by ci_release.sh) and, for kernel modules, `kernel = KVER`. Kernel modules are
+  built in the same run as the kernel, so they carry its module signature.
+
+#### 13.2 How it is put in place
+- **At each start, before the desktop** (the initramfs, or early in init): every installed, enabled extension that
+  matches this base's ABI (and kernel) is mounted read-only at /run/rudolf/ext/NAME, and the system's /usr,
+  /lib/firmware and /lib/modules/KVER/extra become read-only overlays (overlayfs, lower layers only: the extensions
+  over the base, in a fixed order by name). Nothing is ever written into the base.
+- **A file the base already has may not be replaced** (checked while assembling): an extension adds, it does not
+  override, so one cannot change what the signed base does. A clash leaves that extension out, named in System
+  health.
+- **Start scripts** run as root once the overlays are up (only from system-signed extensions), each with a time
+  limit, their output in the health log.
+- **Added while running:** a new extension's files are available after a restart, said in the install dialog; a
+  firmware or kernel module extension may offer "Restart now".
+
+#### 13.3 Safety
+- **A bad extension cannot stop Rudolf starting:** the first start after installing one is a trial (as Native's): if
+  the desktop does not come up, the next start leaves out the extensions installed since the last good start and says
+  so. The start menu's recovery entry and Recovery mode always start without extensions.
+- **Updates:** before switching slots, rudolf-update fetches each installed extension's build for the new base (the
+  extensions' repository has one per base ABI). One that has no build for it yet is kept but left out after the
+  update, with a notice and System health's line, and comes back when its build appears. An update never fails
+  because of an extension.
+- **Revocation:** the signed list's R lines disable an extension at the next refresh, as for Library packages.
+- **Only an administrator** installs or removes one (the administrator's password), and the self-test lists the
+  extensions in use and fails on a clash or a mismatch.
+
+#### 13.4 Where you see them
+Settings › Update and recovery › **System extensions**: the ones installed (name, what they add, version, size, in use
+or left out and why), Install… (from the extensions' list, with an administrator's password), Remove, and "Start once
+without extensions". System health's line for each one left out. The App Store does not show them (they are not
+apps).
+
+#### 13.5 Building and publishing them
+A workflow (`extensions.yml`, started by the owner, never by a session) builds each extension from its recipe in
+iso/ext/NAME/ (where its files come from, the base ABI and kernel it is for) in the same environment as the release,
+signs it with RPK_SIGNING_KEY and publishes it with the release's assets, with a signed index. The release check
+fails when an extension that a release's notes promise has no build for that release.
+
+#### 13.6 The first extensions
+1. **USB printers (Part 8):** ipp-usb and the filters for printers that are not IPP Everywhere, so the base does not
+   carry them for every computer. Part 8 is built on this part.
+2. **Rarely needed firmware** now in the base (to be listed from the drivers layer), moved out to make the download
+   smaller, after the extensions have run through a release.
+3. **Developer tools** (curl, strace, tcpdump), for Developer mode.
+
+#### 13.7 Tests
+Host tests: an extension's signature (a Library key refused), the ABI and kernel checks, the overlay assembled in a
+private mount namespace with two extensions in order, a clash refused, a start script with its time limit. QEMU: an
+extension installed and in use after a restart; a broken one (its start script hangs, or it stops the desktop)
+left out on the next start; an update to a base with and without the extension's build; Recovery mode without
+extensions; removal leaving nothing behind.
+
 ## Hardware to test with
 - **The MiFi 7730L** (USB tethering and Wi-Fi), with an active SIM (or a prepaid data SIM).
   First (moved from 1.5.9, where it could not be found): with USB tethering on, which USB network driver it needs
@@ -385,8 +455,9 @@ offers the change once ("Rudolf OS's new desktop uses less memory and starts fas
 4. Part 6 (Messages).
 5. The FCC-unlock path on a laptop module.
 6. Part 7: the ARM64 release with all of the above, after QEMU aarch64 and one ARM64 computer.
-7. Part 8 (USB printers): usblp and the hotplug script, ipp-usb in the system layer with its budget, rudolfd's
-   print/find and print/job, Settings › Devices; the HP desktop's user's printer last.
+7. Part 13 (signed system extensions), then Part 8 (USB printers) on it: usblp and the hotplug script, ipp-usb and
+   the printer filters as the first extension, rudolfd's print/find and print/job, Settings › Devices; the HP
+   desktop's user's printer last.
 8. Part 12 (the native desktop, its shell items 1-12 in order), alongside the rest: it is the desktop's, the other
    parts the system's. Native becomes the default only after its week of betas.
 9. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
