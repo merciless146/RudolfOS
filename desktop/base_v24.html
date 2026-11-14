@@ -1711,7 +1711,8 @@ function wordpro(path,seed){
  const metaCss=()=>WP_CSS_DOC;
  function serialize(){const c=ed.cloneNode(true);c.querySelectorAll('mark.wp-fm').forEach(m=>m.replaceWith(...m.childNodes));c.querySelectorAll('.wp-pb').forEach(b=>b.style.height='');const m=Object.assign({},meta,{cols:ed.style.columnCount||''});
   return `<!--wp:${encodeURIComponent(JSON.stringify(m))}--><style data-wp>${metaCss()}</style>`+c.innerHTML}
- function clean(h){return String(h).replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<(iframe|object|embed|link|meta)[^>]*>/gi,'').replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,'')}
+ /* 1.5.9 (plan 15.2): sanitize59.js's safeHtml (the browser's own parser, not patterns); the old patterns only if it is missing */
+ function clean(h){if(typeof safeHtml=='function')return safeHtml(h);return String(h).replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<(iframe|object|embed|link|meta)[^>]*>/gi,'').replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,'')}
  function loadDoc(s,name){let h=String(s);const m=/^<!--wp:([^>]*?)-->/.exec(h);if(m){try{Object.assign(meta,JSON.parse(decodeURIComponent(m[1])))}catch(e){}h=h.slice(m[0].length);ed.style.columnCount=meta.cols||''}h=h.replace(/<style data-wp>[\s\S]*?<\/style>/,'');
   if(!/<[a-z][\s\S]*>/i.test(h)){h=h.split(/\r?\n/).map(l=>'<p>'+(l?esc(l):'<br>')+'</p>').join('')}
   ed.innerHTML=clean(h);ensureBlock();ed.querySelectorAll('.wp-fnl,.wp-toc').forEach(e=>e.contentEditable='false');dirty=false;ttl();layout();outlineUpd();updStat()}

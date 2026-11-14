@@ -2228,7 +2228,8 @@ function wordpro(path,seed){
  const metaCss=()=>(typeof wpWmCss=='function'?wpWmCss(meta):'')+WP_CSS_DOC;
  function serialize(){const c=ed.cloneNode(true);c.querySelectorAll('mark.wp-fm').forEach(m=>m.replaceWith(...m.childNodes));c.querySelectorAll('.wp-pb').forEach(b=>b.style.height='');const m=Object.assign({},meta,{cols:ed.style.columnCount||''});
   return `<!--wp:${encodeURIComponent(JSON.stringify(m))}--><style data-wp>${metaCss()}</style>`+c.innerHTML}
- function clean(h){return String(h).replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<(iframe|object|embed|link|meta)[^>]*>/gi,'').replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,'')}
+ /* 1.5.9 (plan 15.2): sanitize59.js's safeHtml (the browser's own parser, not patterns); the old patterns only if it is missing */
+ function clean(h){if(typeof safeHtml=='function')return safeHtml(h);return String(h).replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<(iframe|object|embed|link|meta)[^>]*>/gi,'').replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,'')}
  function loadDoc(s,name){let h=String(s);const m=/^<!--wp:([^>]*?)-->/.exec(h);if(m){try{Object.assign(meta,JSON.parse(decodeURIComponent(m[1])))}catch(e){}h=h.slice(m[0].length);ed.style.columnCount=meta.cols||''}h=h.replace(/<style data-wp>[\s\S]*?<\/style>/,'');
   if(!/<[a-z][\s\S]*>/i.test(h)){h=h.split(/\r?\n/).map(l=>'<p>'+(l?esc(l):'<br>')+'</p>').join('')}
   ed.innerHTML=clean(h);ensureBlock();ed.querySelectorAll('.wp-fnl,.wp-toc').forEach(e=>e.contentEditable='false');dirty=false;ttl();layout();outlineUpd();updStat()}
@@ -15044,6 +15045,58 @@ let CM_APP = null;
 .opriv .ob{background:#3b0764!important;color:#f5f3ff}.opriv .ob button{color:#f5f3ff}.opriv .ob input{background:#1e1b4b!important;color:#f5f3ff!important;border-color:#6d28d9!important}
 .opriv .obm{background:#2e1065!important}.opriv .obm button{color:#ddd6fe!important}.opriv .stat{background:#2e1065!important;color:#c4b5fd!important}
 .opv{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;margin:0 4px;border-radius:999px;background:#7c3aed;color:#fff;font-size:12px;font-weight:600;white-space:nowrap}`; document.head.appendChild(st)}
+
+/* ===== Rudolf OS 1.5.9 (plan 15.2): HTML from a file, made safe before it is shown in the desktop's page
+   safeHtml(html): the same HTML with nothing in it that can run. Parsed by the browser itself (DOMParser: an inert
+   document, where nothing runs or loads), not by patterns, so the tricks that get past patterns (a slash for a space
+   before onerror, entities, upper case, SVG and MathML, nested markup) do not work. Then:
+   - elements that run or load things are removed with their contents: script, iframe, frame, frameset, object, embed,
+     applet, base, link, meta, noscript, template, portal, SVG's animate, set and animateTransform (they can set an
+     href to javascript:), SVG's foreignObject and MathML's annotation-xml (HTML inside them);
+   - every attribute whose name begins with "on" is removed, and srcdoc, formaction, action, ping;
+   - a link or source (href, src, xlink:href, poster, background, data, srcset, cite, longdesc) is kept only when it is
+     relative, an anchor (#), or http, https, mailto, tel, blob, or data: for a picture (not SVG, which can carry script);
+   - style attributes with expression(, javascript: or behavior: are removed;
+   - the result is parsed and checked again (until nothing changes), so markup that would turn into something else
+     when the browser reads it a second time cannot slip through.
+   Used by WordPro's clean() (opening a document, pasting) and wherever a file's HTML is shown in the desktop's page. */
+const SAFE_DROP = new Set(['SCRIPT','IFRAME','FRAME','FRAMESET','OBJECT','EMBED','APPLET','BASE','LINK','META','NOSCRIPT','TEMPLATE','PORTAL','ANIMATE','SET','ANIMATETRANSFORM','ANIMATEMOTION','FOREIGNOBJECT','ANNOTATION-XML','HANDLER','LISTENER']);
+const SAFE_URLA = new Set(['href','src','xlink:href','poster','background','data','srcset','cite','longdesc','lowsrc','dynsrc','codebase','manifest','icon','formaction','action']);
+function safeUrl(v) {
+  const s = String(v || '').replace(/[\u0000-\u0020\u007f-\u009f\u00ad\u200b-\u200f\u2028\u2029\ufeff]/g, '').toLowerCase();
+  if (!s || s[0] == '#' || s[0] == '/' || s[0] == '.' || s[0] == '?') return true;
+  const m = /^([a-z][a-z0-9+.-]*):/.exec(s); if (!m) return true;   /* (no scheme: relative) */
+  if (/^(https?|mailto|tel|blob)$/.test(m[1])) return true;
+  return m[1] == 'data' && /^data:image\/(png|jpe?g|gif|webp|bmp|avif|x-icon)[;,]/.test(s);
+}
+function safeClean(root) {
+  let changed = false;
+  const all = [...root.querySelectorAll('*')];
+  for (const el of all) {
+    if (!el.isConnected && el !== root) continue;
+    const tag = (el.localName || el.tagName || '').toUpperCase();
+    if (SAFE_DROP.has(tag)) { el.remove(); changed = true; continue }
+    for (const a of [...el.attributes]) {
+      const n = a.name.toLowerCase(), v = a.value;
+      if (n.startsWith('on') || n == 'srcdoc' || n == 'formaction' || n == 'action' || n == 'ping' || n == 'is') { el.removeAttribute(a.name); changed = true; continue }
+      if (SAFE_URLA.has(n) || n.endsWith(':href')) {
+        const ok = n == 'srcset' ? String(v).split(',').every(x => safeUrl(x.trim().split(/\s+/)[0])) : safeUrl(v);
+        if (!ok) { el.removeAttribute(a.name); changed = true }
+        continue }
+      if (n == 'style' && /expression\s*\(|javascript\s*:|behavior\s*:|-moz-binding/i.test(v)) { el.removeAttribute(a.name); changed = true }
+    }
+  }
+  return changed;
+}
+function safeHtml(html) {
+  let h = String(html == null ? '' : html);
+  for (let round = 0; round < 4; round++) {
+    const d = new DOMParser().parseFromString('<!doctype html><body>' + h, 'text/html');
+    const changed = safeClean(d.body), out = d.body.innerHTML;
+    if (!changed && out == h) return out;
+    h = out }
+  return '';   /* (never settles: not shown) */
+}
 
 /* ===== Rudolf OS 1.5.8: orchestral sound cues (asked on 2026-11-11).
    Settings › Sound: Classic chime and Soft bells (Startup), Classic and Bright ding (Login success), Classic ding and

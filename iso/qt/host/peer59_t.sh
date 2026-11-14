@@ -52,6 +52,8 @@ o=$(run x5 /lib/ no); c=$(code "$o")
 ok "...and /lib/ is not refused as the page is" "$([ "$c" != 403 ] && echo 1)" "$c"
 c=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/); c2=$(curl -s -o /dev/null -w '%{http_code}' -H "X-Rudolf-Token: $TOK" http://127.0.0.1:8080/api/ping)
 ok "6. root (rudolfd's helpers, the devlink) is allowed: the page and the API" "$([ "$c" = 200 ] && [ "$c2" = 200 ] && echo 1)" "$c $c2"
+hd=$(curl -s -D - -o /dev/null http://127.0.0.1:8080/)
+ok "6b. (plan 15.2) the page comes with its policy: no plug-in content, no <base> elsewhere" "$(echo "$hd" | grep -qi "^Content-Security-Policy: object-src 'none'; base-uri 'self'" && echo 1)" "$hd"
 o=$(run d3 /api/ping desk)
 ok "7. a second desktop process (another of the browser's) is allowed too" "$([ "$(code "$o")" = 200 ] && echo 1)" "$o"
 ok "...and the last one that answered is remembered (tried first next time), root-only" "$([ "$(cat /run/rudolf/peer-hint 2>/dev/null)" = "$(cat $T/pid.d3)" ] && [ "$(stat -c %a /run/rudolf/peer-hint)" = 600 ] && echo 1)" "$(cat /run/rudolf/peer-hint 2>/dev/null) $(cat $T/pid.d3)"

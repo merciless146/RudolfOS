@@ -61,6 +61,11 @@ for p in rm:
     if p.startswith('usr/bin/') and re.search(r'(?<![\w.-])' + re.escape(os.path.basename(p)) + r'(?![\w.-])', mk):
         bad.append(f'mkrootfs.sh still copies {p}, which base-remove.txt removes')
 
+# ---- 1.5.9 (plan 15.2): every place the page makes HTML from data is one that was reviewed (htmlsinks.py)
+import subprocess as _sp
+_h = _sp.run([sys.executable, os.path.join(ISO, 'systools', 'htmlsinks.py')], capture_output=True, text=True)
+if _h.returncode: bad.extend(l for l in _h.stdout.splitlines() if 'review the new ones' in l)
+
 for b in bad:
     print('deadcheck:', b)
 print(f'deadcheck: {"FAILED" if bad else "ok"} ({len(bad)} found)')
