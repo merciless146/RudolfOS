@@ -1229,6 +1229,13 @@ Settings. **Done (2026-11-14):**
   page's JSON (dls_open); Content-Length taken as a number whatever it was (a negative one, a second one or garbage
   now get 400). 420 s without a crash after the fixes.
 - Still to do from 15.5: rudolfd's root work split into helpers (1.6.0, as planned).
+- **Fixed (2026-11-14, found on the Vivobook's beta 2026111421):** the listeners line failed with the Claude app open
+  (its sockets in Debian's /run/user/1000 and /tmp, held by uid 1001 inside Debian's container) and with Chromium's
+  newer socket folder (/tmp/org.chromium.Chromium.*, no dot). A Unix socket not in the list whose holder (found by the
+  socket's inode) is a non-root process inside Debian's container or a Flatpak sandbox, in /tmp or /run/user inside
+  it, is now counted as a Linux app's own; a TCP port, or a socket held outside the containers, still fails. Also the
+  Debian line is skipped, not failed, when Debian's files cannot be looked at (the read-only devlink). Checked on the
+  Vivobook: 26 passed, 0 failed. Test: listeners59_t.sh 13/13.
 
 ### 15.6 Security fixes arrive soon
 - A scheduled check (GitHub Actions, daily) compares the Chromium and the kernel in the latest release with the newest
