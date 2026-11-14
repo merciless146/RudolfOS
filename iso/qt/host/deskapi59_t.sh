@@ -104,5 +104,14 @@ o=$(t "POST logout" "GET settings" | sed -n 2p); ok "36. before sign-in: the las
 # 1.6.0 (Part 12, item 1): where the shell put the desktop's icons
 printf '{"Notepad":[3,1]}' > $T/cells; o=$(t "GET cells?acct=uAnnA1b2" "POST cells?acct=uAnnA1b2 <$T/cells" "GET cells?acct=uAnnA1b2" "POST cells?acct=uAnnA1b2 <$T/bad" "GET cells?acct=../x")
 ok "37. the desktop's icons' places: none at first, then kept per account; only whole JSON, a real account" "$(echo "$o" | sed -n 1p | grep -q '|{}$' && echo "$o" | sed -n 3p | grep -q '"Notepad":\[3,1\]' && echo "$o" | sed -n 4p | grep -q 400 && echo "$o" | sed -n 5p | grep -q 400 && echo 1)" "$o"
+# 1.6.0 (Part 12, item 2): the desktop's widgets: the page's list, the shell's own while the page's is the one it replaced
+body '{"n":"Ann","p":"pw-ann ü"}'; t "POST login <$T/b" >/dev/null
+wgls() { node -e "const f=require('fs'),l=JSON.parse(f.readFileSync('$T/ls.json'));l.data['bd95widgets:uAnnA1b2']=process.argv[1];l.data.bd95wloc=JSON.stringify({lat:1,lon:2,name:'X',cc:'US'});l.data.bd95wunit='\"C\"';f.writeFileSync('$T/ls.json',JSON.stringify(l))" "$1"; }
+wgls '[{"t":"clock","x":10,"y":20,"txt":""}]'; o=$(t "GET settings" | sed 's/^[^|]*|//')
+ok "38. widgets: the page's list, the weather's place and unit, in the settings" "$(echo "$o" | grep -q '"widgets":\[{"t":"clock","x":10,"y":20,"txt":""}\],"wgown":false,"wloc":{"lat":1,"lon":2,"name":"X","cc":"US"},"wunit":"C"' && echo 1)" "$o"
+printf '%s' '[{"t":"note","x":5,"y":6,"txt":"a b"}]' > $T/wg; o=$(t "POST widgets?acct=uAnnA1b2 <$T/wg" "GET settings" "POST widgets?acct=uAnnA1b2 <$T/bad" "POST widgets?acct=../x <$T/wg")
+ok "39. ...the shell's own list wins while the page's is unchanged; only a JSON array, a real account" "$(echo "$o" | sed -n 2p | grep -q '"widgets":\[{"t":"note","x":5,"y":6,"txt":"a b"}\],"wgown":true' && echo "$o" | sed -n 3p | grep -q 400 && echo "$o" | sed -n 4p | grep -q 400 && echo 1)" "$o"
+wgls '[{"t":"cal","x":1,"y":2,"txt":""}]'; o=$(t "GET settings" | sed 's/^[^|]*|//')
+ok "40. ...and the page's again once the page's own list changes (another engine's desktop)" "$(echo "$o" | grep -q '"widgets":\[{"t":"cal","x":1,"y":2,"txt":""}\],"wgown":false' && echo 1)" "$o"
 umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]
