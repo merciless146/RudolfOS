@@ -1,0 +1,33 @@
+# rudolfd's API for the parts that draw the desktop
+
+rudolfd (iso/sys/rudolfd.c) serves the desktop page on http://127.0.0.1:8080/ and an API under `/api/`. Every API
+request carries the `X-Rudolf-Token` header: a random token made at each start and written only into the page rudolfd
+serves (`window.RUDOLFD.token`), so websites cannot use the API. Replies are JSON with `"ok": true`, or `"ok": false`
+and an `"error"` to show, with an HTTP status (400 a bad request, 403 refused, 404 not there, 409 not possible now,
+423 locked, 429 wait, 500 failed).
+
+Plan 1.5.9, 11.4: what new features need keeps its logic and state in rudolfd and the services, so that what draws the
+desktop (the page today; the native desktop engine being prototyped, plan Part 12) only shows state and sends choices.
+Each part's API is written down here with its first use. (Older endpoints are described where they are made, in
+rudolfd.c and its .inc files.)
+
+## The native desktop engine (1.5.9, plan Part 12; rudolfd-desktop.inc)
+What rudolf-native needs that only the desktop page knew. Settings, pinned apps and accounts are read from the copy of
+the page's storage rudolfd keeps (`POST lsync`, /home/rudolf/.rudolf-ls.json: `{"gen":N,"data":{key: string}}`);
+rudolf-native never reads that copy itself, and never sees a password hash or a key except the session's.
+
+| Request | What it does |
+|---|---|
+| `GET desktop/accounts` | The sign-in screen's accounts: `{"setup", "guest", "last", "accounts":[{"id","n","r","key","old"}]}`. `r` admin or user; `key`: signs in with a security key (only Standard can); `old`: a password hash from before 1.4 (sign in once with Standard); `last`: the account used last; `guest`: the guest may sign in; `setup`: Rudolf OS has been set up. |
+| `POST desktop/login` | Body `{"n":NAME,"p":PASSWORD}` or `{"guest":true}`. Checks the password as the page does (`p2$SALT$HASH`: PBKDF2-HMAC-SHA-256, 210 000 rounds), makes the password's key (PBKDF2 with the account's salt `ks`), opens the file key (`fk`, AES-256-GCM), and for an account whose files are on the disk opens its encrypted folder with the home folder's key (HKDF-SHA-512 of the file key, salt "rudolf-os home folder", info the account's id) and the session's binds, as `home/unlock?session=1`. Replies `{"id","n","r"}`. A wrong password: 403 and the health log ("signin"); five in a row: 429 for 15 s. |
+| `POST desktop/logout` | Locks the account's folder (as `home/lock`) and ends the session. |
+| `POST desktop/lock` | The lock screen is up: `desktop/session` answers 423 until unlocked. |
+| `POST desktop/unlock` | Body `{"p":PASSWORD}`: the session's account's password (the guest: none). |
+| `GET desktop/session` | For the one-app pages (desktop/oneapp59.js): `{"id","n","r","pk","fk"}`, the account and its two keys as hex (the password's key and the file key: what the page itself derives at sign-in), so `index.html#app=NAME` signs in without the password. 404 without a session, 423 while locked. Kept root-only in /run/rudolf/native-session. |
+| `GET desktop/settings` | What the shell draws, for the session's account (`bd95set:ID`), before sign-in the last settings (`bd95set`): `{"gen","acct","s":{…},"pins":[…],"notes":N,"wallpaper":bool}`. `s` has, as the page keeps them: bs, b1, b2, dyn, dm, lat, wpimg, wpfit (background); tb, tbstyle, tbac, tbacm, tbbstyle, tbbac, tbbacm (taskbar); twstyle, twacm (title bars); accent, darkui, ck, h24, df, tz, doff, ff, fs, lang. `pins`: the pinned apps (`bd95pins:ID`); `notes`: how many notifications the page keeps (`bd95notif:ID`); `gen` changes whenever the page's storage does. |
+| `GET desktop/apps` | `{"apps":[{"k","name","icon","kw"}],"bg":{KEY:{"n","d","l"}},"hide":[…],"acct"}`: the start menu's list, the drawn backgrounds' dark and light pictures (files beside the page, www/a/) and the account's hidden apps, as the page wrote them. |
+| `POST desktop/apps` | The page, after each sign-in (any engine): that JSON, at most 1 MB. Kept in /home/rudolf/.rudolf-apps.json. |
+| `GET desktop/wallpaper?acct=ID` | A picture of your own (JPEG), as the page gave it; 404 when there is none. |
+| `POST desktop/wallpaper?acct=ID` | The page, when it loads or changes a picture of your own (it lives in the page's IndexedDB): the JPEG it made of it, at most 16 MB; an empty body removes it. Kept in /home/rudolf/.rudolf-wallpaper/ID.jpg. |
+
+`desktop/engine` and `desktop/priority` are older (1.5.7: Settings' desktop engine; Task Manager's priority).

@@ -3428,6 +3428,7 @@ static void api_vault(struct req *r, const char *what, int post)
 }
 #include <sys/mount.h>
 #include "rudolfd-home.inc"
+#include "rudolfd-desktop.inc"   /* 1.5.9: the native desktop's API (plan Part 12) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
 {
@@ -3767,6 +3768,7 @@ static void api(struct req *r)
 	/* 1.5.7 (plan Part 4): System Settings › Desktop engine. GET: the choice, the engine in use, and whether this Rudolf
 	   OS has the Lite engine (rudolf-webkit, in the system layer). POST engine=webkit|chromium keeps the choice
 	   (/persist/etc), which rudolf-init takes at the next start-up */
+	if (!strncmp(p, "desktop/", 8) && api_desktop(r, p + 8, post)) return;   /* 1.5.9: rudolfd-desktop.inc */
 	if (!strcmp(p, "desktop/engine")) {
 		int have = !access("/usr/bin/rudolf-webkit", X_OK);
 		if (post) {

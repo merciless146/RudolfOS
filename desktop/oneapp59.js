@@ -81,3 +81,20 @@ function oaClosed(why){if(document.getElementById('oaclosed'))return;const d=doc
  d.innerHTML=`<div style='font-size:20px;font-weight:600'></div><div class='oaw'></div><button>Open again</button>`;
  d.firstChild.textContent=why?n:n+' is closed';d.querySelector('.oaw').textContent=why;
  d.querySelector('button').onclick=()=>location.reload();document.body.appendChild(d);document.title=n}
+/* ===== 1.5.9 (plan Part 12, step 2): what the page gives the native shell through rudolfd =====
+   - desktop/apps, after each sign-in (any engine): the start menu's list (each app's key, name, icon and search words,
+     and the account's hidden apps) and the drawn backgrounds' pictures (DYN: each one's light and dark file);
+   - desktop/wallpaper: a picture of your own, which lives in this page's storage (IndexedDB), as the JPEG the page
+     already made of it, whenever it is loaded or changed (once per picture). ===== */
+async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
+ try{const apps=Object.values(APPS).filter(a=>a&&a.k&&a.name&&typeof a.open=='function').map(a=>({k:a.k,name:String(a.name),icon:String(a.icon||''),kw:String(a.kw||'')}));
+  const bg={};if(typeof DYN=='object')for(const k in DYN){const d=DYN[k];bg[k]={n:d.n||k,d:d.d||'',l:d.l||''}}
+  let hide=[];try{hide=ld(HIDEK(),[])}catch(e){}
+  await rdPost('desktop/apps',JSON.stringify({apps,bg,hide,acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
+{const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);setTimeout(oaCatalog,2500);return r}}
+let OA_WP='';
+async function oaWallpaper(){if(typeof RD=='undefined'||!RD||!USER||USER.r=='guest')return;const id=S.wpimg||'';
+ if(!id||id!=WPID||!/^data:image\/jpeg;base64,/.test(WPURL||''))return;const key=uid()+':'+id;if(OA_WP==key)return;OA_WP=key;
+ try{const b=atob(WPURL.slice(WPURL.indexOf(',')+1)),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);
+  await rdPost('desktop/wallpaper?acct='+encodeURIComponent(uid()),u)}catch(e){OA_WP='';console.warn('desktop/wallpaper',e)}}
+{const _wl=wpLoad;wpLoad=function(){const p=_wl.apply(this,arguments);Promise.resolve(p).then(()=>setTimeout(oaWallpaper,0)).catch(()=>{});return p}}

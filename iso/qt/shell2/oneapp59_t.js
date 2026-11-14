@@ -10,7 +10,7 @@ const M = {calls: [], session: null};
 // the lsync copy's flush, as rudolfd's page has it (the stand-in records it)
 const LS = "window.__rudolfLsFlush=()=>fetch('/api/lsync',{method:'POST',headers:{'X-Rudolf-Token':'t'},body:'{}'});";
 const srv = http.createServer((q, s) => { const [u0, qs] = q.url.split('?'); const u = decodeURIComponent(u0);
-  q.on('data', () => {}); q.on('end', () => {
+  const bs = []; q.on('data', d => bs.push(d)); q.on('end', () => { if (u == '/api/desktop/apps' || u == '/api/desktop/wallpaper') M[u.slice(13)] = {q: qs, b: Buffer.concat(bs)};
     if (u == '/' || u == '/index.html') { s.writeHead(200, {'content-type': 'text/html'});
       return s.end(fs.readFileSync(path.join(WWW, 'index.html'), 'utf8').replace('<head>', '<head><script>window.RUDOLFD={token:"t",base:"",boot:"uefi",media:"disk",live:0,recovery:0};' + LS + '</script>')) }
     if (u.startsWith('/api/')) { M.calls.push(q.method + ' ' + u.slice(5));
@@ -58,6 +58,15 @@ const URL0 = 'http://127.0.0.1:8295/';
     ok(`${k} 5. closed: its settings written first (the lsync copy), then "closed" (a browser tab a script cannot close)`, c.closed && !c.main && M.calls.filter(x => x == 'POST lsync').length > n0, [c, n0]);
     await p.close();
   }
+  // what the page gives the native shell (step 2): the start menu's list and the drawn backgrounds, after sign-in
+  p = await open('#app=calc'); await p.waitForSelector('.win.oamain', {timeout: 20000});
+  const jpg = await p.evaluate(`(async()=>{const c=document.createElement('canvas');c.width=c.height=8;const u=c.toDataURL('image/jpeg',0.9);await kvSet(wpKey('wtest'),u);S.wpimg='wtest';applySet();return u.length})()`);
+  await wait(1500);
+  ok('16. a picture of your own: a copy for the shell (desktop/wallpaper, the JPEG, for this account)', M.wallpaper && M.wallpaper.q == 'acct=' + acct.id && M.wallpaper.b[0] == 0xff && M.wallpaper.b[1] == 0xd8, M.wallpaper && [M.wallpaper.q, M.wallpaper.b.length, jpg]);
+  await wait(1500);
+  const cat = M.apps && JSON.parse(M.apps.b.toString());
+  ok('15. after sign-in the page gives rudolfd the start menu\'s list and the backgrounds\' pictures (desktop/apps)', cat && cat.apps.some(a => a.k == 'notepad' && a.name == 'Notepad' && a.icon) && cat.bg.alpine && /^a\//.test(cat.bg.alpine.d) && cat.acct == acct.id, cat && {n: cat.apps.length, bg: Object.keys(cat.bg)});
+  await p.close();
   // Settings with a change not applied: closing asks, as its ✕ does; the window stays until answered
   p = await open('#app=settings'); await p.waitForSelector('.win.oamain', {timeout: 20000});
   await p.evaluate("SW.show('disp',1)"); await wait(800); await p.selectOption('#dtws', 'retro'); await wait(300);
