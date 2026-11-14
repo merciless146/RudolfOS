@@ -12,6 +12,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- Changed: the plan: a security part (Part 15): only the desktop gets the page and its API token (programs on the computer can read it today), files opened in apps kept apart from the rest of the desktop, a Linux user per account (moved from 1.6.0), the devlink off unless used, fewer and hardened listening services, and a daily check for Chromium and kernel security updates.
 - Changed: the plan: on the native desktop, Oracle will run on Chromium with Rudolf's tab shell, as on Standard (real tabs, the same sign-ins and private tabs), started only while Oracle is open (plan Part 12, step 8).
 - New: Display Properties says "Note: Dynamic effects are disabled on power-saver mode." under Dynamic Backgrounds, only while power saver (or battery saver) is on, when Spirit Falls' petals and lanterns and Glacier Lake's aurora stand still.
 - Changed: Rudolf OS's calendars show weeks from Sunday to Saturday (they began on Monday): the Calendar app, the calendar under the taskbar's clock and the calendar widget.
