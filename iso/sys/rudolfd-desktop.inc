@@ -550,7 +550,8 @@ static void api_desktop_settings(struct req *r)
 	char k[160]; snprintf(k, sizeof k, in ? "bd95set:%s" : "bd95set", s.id);
 	char *set = dls_get(&l, k); if (!set && in) set = dls_get(&l, "bd95set");
 	static const char *const KEYS[] = { "bs", "b1", "b2", "dyn", "dm", "lat", "wpimg", "wpfit", "tb", "tbstyle", "tbac", "tbacm", "tbbstyle", "tbbac",
-		"tbbacm", "twstyle", "twacm", "accent", "darkui", "ck", "h24", "df", "tz", "doff", "ff", "fs", "lang", "scale", "icons", "icstyle", NULL };
+		"tbbacm", "twstyle", "twacm", "accent", "darkui", "ck", "h24", "df", "tz", "doff", "ff", "fs", "lang", "scale", "icons", "icstyle",
+		"nl", "dnd", "sr", "mag", "cb", "vk", "touch", NULL };   /* (1.6.0: quick settings' switches) */
 	str o = {0}; sadd(&o, "{\"ok\":true,\"gen\":%.0f,\"acct\":", l.file ? dj_num(dj_get(l.file, "gen"), 0) : 0); sjson(&o, in ? s.id : "");
 	sadd(&o, ",\"s\":{"); int n = 0;
 	for (int i = 0; KEYS[i]; i++) { const char *v = set ? dj_get(set, KEYS[i]) : NULL; if (!v || !dj_end(v, 0)) continue; sadd(&o, "%s\"%s\":", n++ ? "," : "", KEYS[i]); dj_raw(&o, v, "null"); }
@@ -580,6 +581,8 @@ static void api_desktop_settings(struct req *r)
 	/* 1.6.0 (Part 12, item 3): the Calendar's events (apps25b.js CALK: bd95cal:ID), for the calendar under the clock */
 	char *ce = NULL; if (in) { snprintf(k, sizeof k, "bd95cal:%s", s.id); ce = dls_get(&l, k); }
 	sadd(&o, ",\"cal\":"); if (ce && *dj_ws(ce) == '[' && dj_end(ce, 0)) dj_raw(&o, ce, "[]"); else sadd(&o, "[]");
+	/* (and the notifications' list, bd95notif:ID, for their centre) */
+	sadd(&o, ",\"notif\":"); if (nt && *dj_ws(nt) == '[' && dj_end(nt, 0)) dj_raw(&o, nt, "[]"); else sadd(&o, "[]");
 	sadd(&o, "}");
 	free(wg); free(own); free(wl); free(wu); free(ce);
 	free(set); free(pins); free(nt); dls_close(&l); explicit_bzero(&s, sizeof s); reply_json(r->fd, &o);

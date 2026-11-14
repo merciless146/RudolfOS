@@ -9,14 +9,15 @@ const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 
 const T = {'.wasm': 'application/wasm', '.js': 'text/javascript', '.mjs': 'text/javascript', '.html': 'text/html'};
 const TOKEN = 'github_pat_PAGETEST_secret_0123456789';
 const now = () => Math.floor(Date.now() / 1000);
-const M = {developer: true, since: 0, calls: [], bodies: [], on: false, repo: '', until: 0, ask: true, restart: false, home: false, hasToken: false, pending: null, answers: []};
+const M = {developer: true, since: 0, calls: [], bodies: [], on: false, repo: '', until: 0, ask: true, restart: false, home: false, hasToken: false, pending: null, answers: [], change: false};
 const LOG = '{"t":"2026-10-27T08:00:00Z","id":"000001","kind":"sh","what":"uname -a","result":"status 0","approved":"allowed on the computer"}\n';
 const api = (a, q, body) => { const Q = new URLSearchParams(q || ''); M.calls.push(a + (q ? '?' + q : '')); if (body && body.length) M.bodies.push(a + ':' + body.toString());
-  if (a == 'devlink') return {ok: true, available: true, on: M.on, repo: M.repo, until: M.until, secondsLeft: M.on ? M.until - now() : 0, restart: M.restart, ask: M.ask, home: M.home, hasToken: M.hasToken, persistent: true, developer: M.developer, since: M.on ? M.since : 0, by: M.on ? 'Ann' : '', lastCommand: M.on ? JSON.parse(LOG) : null, status: M.on ? {state: 'on', last: '', error: ''} : M.idle ? {state: 'ended (4 hours without a command)', at: M.idle} : {state: 'off'}, ...(M.on && M.pending ? {pending: M.pending} : {})};
+  if (a == 'devlink') return {ok: true, change: M.on && M.change, available: true, on: M.on, repo: M.repo, until: M.until, secondsLeft: M.on ? M.until - now() : 0, restart: M.restart, ask: M.ask, home: M.home, hasToken: M.hasToken, persistent: true, developer: M.developer, since: M.on ? M.since : 0, by: M.on ? 'Ann' : '', lastCommand: M.on ? JSON.parse(LOG) : null, status: M.on ? {state: 'on', last: '', error: ''} : M.idle ? {state: 'ended (4 hours without a command)', at: M.idle} : {state: 'off'}, ...(M.on && M.pending ? {pending: M.pending} : {})};
   if (a == 'devlink/on') { if (Q.get('repo') == 'owner/public') return {ok: false, error: 'the repository is public: use a private one, so nobody else can read what is run here', __status: 400};
-    M.on = true; M.since = now(); M.repo = Q.get('repo'); M.until = now() + 3600 * +Q.get('hours'); M.ask = Q.get('ask') == '1'; M.restart = Q.get('restart') == '1'; M.home = Q.get('home') == '1'; M.hasToken = true; return {ok: true, message: 'on'} }
+    M.on = true; M.since = now(); M.repo = Q.get('repo'); M.until = now() + 3600 * +Q.get('hours'); M.ask = Q.get('ask') == '1'; M.restart = Q.get('restart') == '1'; M.home = Q.get('home') == '1'; M.change = Q.get('change') == '1'; M.hasToken = true; return {ok: true, message: 'on'} }
   if (a == 'accounts/users') return {ok: true, on: true, users: [{id: 'u1', uid: 1001, user: 'acct1001', moved: true}, {id: 'u2', uid: 1002, user: 'acct1002', moved: false}], moveFailed: M.moveFailed || ''};
-  if (a == 'devlink/off') { M.on = false; return {ok: true, message: 'off'} }
+  if (a == 'devlink/off') { M.on = false; M.change = false; return {ok: true, message: 'off'} }
+  if (a == 'devlink/change') { if (Q.get('on') == '1') { const b = JSON.parse(body.toString() || '{}'); if (b.n != 'Ann' || b.p != 'pw-ann') return {ok: false, error: 'Wrong password', __status: 403}; M.change = true } else M.change = false; return {ok: true} }
   if (a == 'devlink/answer') { M.answers.push(Q.get('id') + ':' + Q.get('a')); M.pending = null; return {ok: true} }
   if (a == 'devlink/log') return {ok: true, log: LOG};
   if (a == 'system') return {ok: true, renderer: 'AMD', display: 'gpu', audio: '', net: '', services: {sound: true}, machine: 'Test', firmware: 'Test', kernel: {boot: 'uefi', messages: '', release: '6.18'}, cpu: {}, memory: {total: 8e9}, gpu: '', storage: '', input: '', uptime: 100, load: [0, 0, 0]};
@@ -39,7 +40,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const open = async () => { await q("(()=>{wins.slice().forEach(w=>w.close());settings('sec');return 1})()"); await p.waitForSelector('.dl40 .dls', {timeout: 8000}).catch(() => 0); await wait(800) };
   await open();
   const t0 = await q("document.querySelector('.dl40 .dls').textContent");
-  ok('Settings › Security has the Development link, off, saying what it allows and "test computer only"', /^Off\./.test(t0) && /full control/.test(t0) && /test computer only/.test(t0), t0);
+  ok('Settings › Security has the Development link, off, saying what it allows and "test computer only"', /^Off\./.test(t0) && /read-only unless you allow changes/.test(t0) && /test computer only/.test(t0), t0);
   ok('...with the repository, the token (hidden), how long, Ask first (ticked), stay across a restart, home folders (not ticked)', await q("(()=>{const f=document.querySelector('.dl40');return !!f.querySelector('.dlr')&&f.querySelector('.dlk').type=='password'&&f.querySelector('.dlh').value=='2'&&f.querySelector('.dla').checked&&!f.querySelector('.dlb').checked&&!f.querySelector('.dlhome').checked})()"));
   const sw = "[...document.querySelectorAll('.dl40 button')].find(x=>x.textContent=='Switch on…').click()";
   M.developer = false; await open();
@@ -84,7 +85,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('the log lists what was run, its result and who allowed it', /000001\s+sh\s+status 0\s+\(allowed on the computer\)/.test(lg) && /uname -a/.test(lg), lg);
   await q("document.querySelectorAll('.rmodal').forEach(x=>x.remove())");
   const rep = await q("sysReport('').then(r=>r.text)");
-  ok('the system report says the link is on, until when and from where, without the token', /Development link: on until .* \(owner\/rudolfos-devlink, asks first\)/.test(rep) && !rep.includes(TOKEN), (rep.match(/Development link.*/) || [''])[0]);
+  ok('the system report says the link is on, until when and from where, without the token', /Development link: on until .* \(owner\/rudolfos-devlink, read-only, asks first\)/.test(rep) && !rep.includes(TOKEN), (rep.match(/Development link.*/) || [''])[0]);
   await q("(()=>{wins.slice().forEach(w=>w.close());settings('health');return 1})()"); await p.waitForSelector('.dl59h .dl59t', {timeout: 8000}).catch(() => 0); await wait(800);
   const hl = await q("(()=>{const d=document.querySelector('.dl59h .dl59t');return d?d.textContent:''})()");
   ok('15.4: System health lists the link as on, since when, by whom, its last command', /^On since /.test(hl) && /switched on by Ann/.test(hl) && /last command: 000001 \(sh\)/.test(hl), hl);
@@ -99,5 +100,23 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   M.idle = now(); await wait(9000);
   const nt = await q("__NT.filter(x=>/Development link/.test(x))");
   ok('15.4: when it ended itself after 4 hours without a command, a notification says so, once', nt.length == 1 && /4 hours went by without a command/.test(nt[0]), nt);
+  // 1.5.9 (plan 15.7): read-only unless "Allow changes to this computer"
+  await q("(()=>{wins.slice().forEach(w=>w.close());settings('sec');return 1})()"); await wait(1500);
+  ok('15.7: the switch-on form has "Allow changes to this computer", unticked', await q("(()=>{const c=document.querySelector('.dl40 .dlch');return !!c&&!c.checked})()"));
+  await q(`(()=>{document.querySelector('.dl40 .dlr').value='owner/rudolfos-devlink';document.querySelector('.dl40 .dlk').value='${TOKEN}';${sw};return 1})()`); await wait(1500);
+  ok('15.7: switched on without it: read-only (change=0 asked for)', M.on && !M.change && M.calls.some(c => /^devlink\/on\?.*&change=0/.test(c)), M.calls.slice(-3));
+  await wait(4500);
+  ok('...the banner says read-only', /can look at this computer \(read-only\)/.test(await q("(()=>{const b=document.getElementById('devlinkBanner');return b?b.textContent:''})()")));
+  await q("(()=>{wins.slice().forEach(w=>w.close());settings('sec');return 1})()"); await wait(1500);
+  const cb0 = await q("(()=>{const c=document.querySelector('.dl40 .dlc');return c?[c.checked,c.disabled]:null})()");
+  ok('15.7: while on, Settings shows the box, unticked and enabled for an administrator', cb0 && !cb0[0] && !cb0[1], cb0);
+  await q("(()=>{window.ELEV=[];const c=document.querySelector('.dl40 .dlc');c.checked=true;c.onchange();return 1})()"); await wait(1500);
+  const el2 = await q('ELEV.at(-1)');
+  ok('15.7: ticking it asks for an administrator\'s password (fresh), saying what it allows', el2 && /change this computer/.test(el2[0]) && el2[2] && el2[2].cred, el2);
+  ok('...and rudolfd is given the name and password; now it can change this computer', M.change && M.bodies.some(x => /^devlink\/change:.*"n":"Ann".*"p":"pw-ann"/.test(x)), M.bodies.slice(-2));
+  await wait(4500);
+  ok('...the banner says so', /can change this computer/.test(await q("(()=>{const b=document.getElementById('devlinkBanner');return b?b.textContent:''})()")));
+  await q("(()=>{window.ELEV=[];const c=document.querySelector('.dl40 .dlc');c.checked=false;c.onchange();return 1})()"); await wait(1200);
+  ok('15.7: unticking it needs no password, and it is read-only again', !M.change && (await q('ELEV.length')) == 0);
   console.log(`${R.filter(x => x).length}/${R.length} passed`); await b.close(); srv.close(); process.exit(R.every(x => x) ? 0 : 1);
 })().catch(e => { console.log('ERROR', e); process.exit(1) });

@@ -5,7 +5,10 @@
  *   cmd/NNNNNN.json      a command, written by the developer: {"kind": "sh"|"screenshot"|"get"|"put"|"restart"|"end", ...}
  *   res/NNNNNN.json      its result, written here: {"id","kind","started","ended","status","stdout","stderr","files",...}
  *   res/NNNNNN/NAME      files sent with a result (a screenshot, a file asked for with "get")
- * Commands run one at a time, in order, as root. The owner switches the link on in Settings > Security (rudolfd
+ * Commands run one at a time, in order. 1.5.9 (plan 15.7): read-only unless the owner ticked "Allow changes to this
+ * computer" (an administrator's password; off again at every start): then sh runs as nobody with only the power
+ * to read (CAP_DAC_READ_SEARCH), in a private view where every mount is read-only (a fresh /tmp of its own), without
+ * rudolfd's token; put and restart are refused; screenshot and get still work. Allowed: as root, as before. The owner switches the link on in Settings > Security (rudolfd
  * starts this program), with an administrator's password, in Developer mode only, for 1 to 8 hours; a banner shows
  * while it runs, and with "Ask first" (on again at every start) every command waits for Allow on the screen. 1.5.9:
  * it ends itself after 4 hours without a command. See docs/plan-1.4.0.md.
@@ -31,8 +34,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mount.h>
+#include <sys/prctl.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
+#include <grp.h>
+#include <sched.h>
+#include <linux/capability.h>
 #include <time.h>
 #include <unistd.h>
 #include <openssl/evp.h>
@@ -284,6 +293,54 @@ static int gh_put(const char *path, const void *d, size_t n, const char *msg)
 	free(c); return -1;
 }
 
+/* ---------------- 1.5.9 (plan 15.7): read-only unless "Allow changes to this computer" */
+static int may_change(void) { char *v = cfg("change"); int r = v && *v == '1'; free(v); return r; }
+/* in the child, before running a read-only command: a private mount namespace with every mount read-only except a
+   fresh /tmp and the command's own work folder (where its output files are), then nobody (uid and gid 65534) keeping
+   only CAP_DAC_READ_SEARCH (it reads every file but writes none it does not own), no new privileges, no token.
+   Returns 0, or -1 with the reason on stderr (the command is then not run). */
+static int ro_enter(const char *workdir, const char *sp, const char *op, const char *ep, int *o, int *e, int *sf)
+{
+	if (unshare(CLONE_NEWNS)) { perror("read-only: unshare"); return -1; }
+	if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL)) { perror("read-only: private mounts"); return -1; }
+	if (mount(workdir, workdir, NULL, MS_BIND, NULL)) { perror("read-only: work folder"); return -1; }
+	/* the link's own GitHub token is not for its commands to read: an empty file over it in this view */
+	{ char tk[300]; path2(tk, sizeof tk, DIR_, "token"); if (!access(tk, F_OK) && mount("/dev/null", tk, NULL, MS_BIND, NULL)) { perror("read-only: hiding the token"); return -1; } }
+	/* the output files are opened on the work folder's own mount, so no other mount has a writer here */
+	*o = open(op, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600); *e = open(ep, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+	if (*o < 0 || *e < 0) { perror("read-only: output files"); return -1; }
+	/* the script, opened now: the fresh /tmp may cover the work folder (the host tests keep it under /tmp) */
+	*sf = open(sp, O_RDONLY); if (*sf < 0) { perror("read-only: the script"); return -1; }
+	FILE *mi = fopen("/proc/self/mountinfo", "r"); if (!mi) { perror("read-only: mountinfo"); return -1; }
+	char line[4096]; int bad = 0;
+	while (fgets(line, sizeof line, mi)) {
+		char mp[2048], opts[512];
+		if (sscanf(line, "%*d %*d %*s %*s %2047s %511s", mp, opts) != 2) continue;
+		/* (mountinfo escapes spaces as \040; such a path is used as it is written, so it is skipped by the compare) */
+		if (!strcmp(mp, workdir)) continue;
+		unsigned long fl = MS_REMOUNT | MS_BIND | MS_RDONLY;
+		if (strstr(opts, "nosuid")) fl |= MS_NOSUID;
+		if (strstr(opts, "nodev")) fl |= MS_NODEV;
+		if (strstr(opts, "noexec")) fl |= MS_NOEXEC;
+		if (strstr(opts, "noatime")) fl |= MS_NOATIME; else if (strstr(opts, "relatime")) fl |= MS_RELATIME;
+		if (strstr(opts, "nodiratime")) fl |= MS_NODIRATIME;
+		if (mount(NULL, mp, NULL, fl, NULL) && errno != ENOENT && errno != EINVAL) { fprintf(stderr, "read-only: %s: %s\n", mp, strerror(errno)); bad = 1; }
+	}
+	fclose(mi);
+	if (bad) return -1;
+	if (mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV, "mode=1777,size=64m")) { perror("read-only: /tmp"); return -1; }
+	/* then nobody, with only the power to read */
+	if (prctl(PR_SET_KEEPCAPS, 1) || setgroups(0, NULL) || setresgid(65534, 65534, 65534) || setresuid(65534, 65534, 65534)) { perror("read-only: nobody"); return -1; }
+	struct __user_cap_header_struct h = { _LINUX_CAPABILITY_VERSION_3, 0 }; struct __user_cap_data_struct d[2]; memset(d, 0, sizeof d);
+	d[0].effective = d[0].permitted = d[0].inheritable = 1u << CAP_DAC_READ_SEARCH;
+	if (syscall(SYS_capset, &h, d)) { perror("read-only: capabilities"); return -1; }
+	for (int cap = 0; cap <= 63; cap++) if (cap != CAP_DAC_READ_SEARCH) prctl(PR_CAPBSET_DROP, cap, 0, 0, 0);
+	if (prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, CAP_DAC_READ_SEARCH, 0, 0)) { perror("read-only: ambient"); return -1; }
+	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) { perror("read-only: no new privileges"); return -1; }
+	unsetenv("RUDOLF_TOKEN"); setenv("HOME", "/tmp", 1);
+	return 0;
+}
+
 /* ---------------- running a command */
 typedef struct { char id[8], kind[16]; char *json; } cmd;
 typedef struct { buf out, err; int status; char statustxt[64], files[4][120]; int nfiles; char error[300]; } result;
@@ -303,12 +360,22 @@ static void run_sh(cmd *c, result *r)
 	char sp[300], op[300], ep[300];
 	snprintf(sp, sizeof sp, "%s/work/%s.sh", RUND, c->id); snprintf(op, sizeof op, "%s/work/%s.out", RUND, c->id); snprintf(ep, sizeof ep, "%s/work/%s.err", RUND, c->id);
 	write_file(sp, script, strlen(script), 0700); free(script);
+	int ro = !may_change(); char wd[300]; snprintf(wd, sizeof wd, "%s/work", RUND);
+	if (ro) chmod(sp, 0755);   /* (nobody reads the script) */
 	pid_t p = fork();
 	if (p == 0) {
 		setsid();
-		int o = open(op, O_WRONLY | O_CREAT | O_TRUNC, 0600), e = open(ep, O_WRONLY | O_CREAT | O_TRUNC, 0600), n = open("/dev/null", O_RDONLY);
+		int o = -1, e = -1, sf = -1, n = open("/dev/null", O_RDONLY);
+		if (ro) {
+			if (ro_enter(wd, sp, op, ep, &o, &e, &sf)) {
+				int f = e >= 0 ? e : open(ep, O_WRONLY | O_CREAT | O_APPEND, 0600);
+				if (f >= 0) { dprintf(f, "the command was not run: the read-only view could not be made\n"); }
+				_exit(126);
+			}
+		} else { o = open(op, O_WRONLY | O_CREAT | O_TRUNC, 0600); e = open(ep, O_WRONLY | O_CREAT | O_TRUNC, 0600); }
 		dup2(n, 0); dup2(o, 1); dup2(e, 2);
-		if (chdir("/root")) { if (chdir("/")) {} }
+		if (ro) { if (chdir("/tmp")) { if (chdir("/")) {} } char fp[32]; snprintf(fp, sizeof fp, "/dev/fd/%d", sf); execl("/bin/sh", "sh", fp, (char *)NULL); _exit(127); }
+		else if (chdir("/root")) { if (chdir("/")) {} }
 		execl("/bin/sh", "sh", sp, (char *)NULL); _exit(127);
 	}
 	time_t end = time(NULL) + lim; int st = 0, done = 0;
@@ -457,6 +524,8 @@ static int execute(cmd *c)
 	if (!strcmp(c->kind, "sh")) run_sh(c, &r);
 	else if (!strcmp(c->kind, "screenshot")) run_screenshot(c, &r);
 	else if (!strcmp(c->kind, "get")) run_get(c, &r);
+	else if ((!strcmp(c->kind, "put") || !strcmp(c->kind, "restart")) && !may_change()) {
+		snprintf(r.error, sizeof r.error, "refused: the link is read-only (%s changes this computer: the owner can tick \"Allow changes to this computer\" in Settings › Security › Development link)", c->kind); r.status = -1; }
 	else if (!strcmp(c->kind, "put")) run_put(c, &r);
 	else if (!strcmp(c->kind, "restart")) { r.status = 0; go = 0; }
 	else if (!strcmp(c->kind, "end")) { r.status = 0; go = 0; }
@@ -468,7 +537,7 @@ static int execute(cmd *c)
 	if (report(c, &r, t0, approved)) status("on", c->id, "the result could not be sent to GitHub");
 	free(r.out.b); free(r.err.b);
 	if (!strcmp(c->kind, "end")) { cfg_set("on", "0"); status("ended (an end command)", c->id, ""); }
-	if (!strcmp(c->kind, "restart")) { status("restarting", c->id, ""); sync(); rd_post("power?action=reboot"); sleep(30); }
+	if (!strcmp(c->kind, "restart") && !*r.error) { status("restarting", c->id, ""); sync(); rd_post("power?action=reboot"); sleep(30); }
 	return go;
 }
 

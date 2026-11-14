@@ -59,6 +59,7 @@ typedef struct {
 	char bs[16], b1[16], b2[16], dyn[48], dm[8], wpfit[12], tb[8], tbstyle[12], tbacm[12], tbbstyle[12], tbbacm[12];
 	char twstyle[12], twacm[12], accent[16], df[8], tz[64], acct[80], wpacct[80], icons[12], ff[48];
 	int tbac, tbbac, h24, wpimg, wallpaper, notes, npins, scale, darkui; double lat, doff, gen; char pins[24][40];
+	int nl, dnd, sr, mag, hc, vk, touch;   /* (quick settings' switches: item 3) */
 } Settings;
 static Settings S;
 typedef struct { char k[40], name[80], icon[48], kw[200], ic[24]; } App;
@@ -72,7 +73,7 @@ static Acct ACC[32]; static int NACC, GUEST_OK, SETUP; static char LASTACC[80];
 static char USER_ID[80], USER_N[128], USER_R[12];   /* signed in ("" = not) */
 static int LOCKED;
 /* the tray */
-static int NET_RSSI = 1, NET_UP = -1, NET_WIFI, VOL = -1, MUTED, BAT = -1, CHARGING;
+static int NET_RSSI = 1, NET_UP = -1, NET_WIFI, VOL = -1, MUTED, BAT = -1, CHARGING; static char NET_DESC[200];   /* (net31.js net31Desc of the network used) */
 
 /* where windows go: below the development link's banner, beside the taskbar */
 static int work_top(void) { return TOPRES + (!strcmp(S.tb, "top") ? BARH : 0); }
@@ -279,7 +280,7 @@ static GdkPixbuf *LOGO;
 static cairo_surface_t *DESKC; static int DESKD;   /* (the desktop as drawn, and whether to draw it again) */
 static GtkWidget *DESK, *DESKAREA, *BAR, *BARAREA, *MENU, *SIGN, *DLBAN, *DLASK, *PWR;
 /* (the tray's pop-ups: item 3, below) */
-static void fl_open(int kind); static void cal_events_load(JV *v);
+static void fl_open(int kind); static void cal_events_load(JV *v); static void nt_load(JV *v);
 static double VOLB[4], CLKD[2];   /* (as drawn, the page's units from the bar's corner: the volume's button; the clock's date, its <small>) */
 static void desk_dirty(void) { DESKD = 1; if (DESKAREA) gtk_widget_queue_draw(DESKAREA); }
 static void desk_shadows(void) { if (DESKAREA) gtk_widget_queue_draw(DESKAREA); }
@@ -1370,6 +1371,9 @@ static void bar_click(int h)
 	}
 	else if (!strcmp(t->kind, "clock")) fl_open(1);   /* (the calendar under the clock, as the page's) */
 	else if (!strcmp(t->kind, "vol")) fl_open(2);   /* (the volume's pop-up) */
+	else if (!strcmp(t->kind, "qs")) fl_open(3);   /* (quick settings) */
+	else if (!strcmp(t->kind, "notes")) fl_open(4);   /* (the notifications' centre) */
+	else if (!strcmp(t->kind, "bat")) { char ex[24]; snprintf(ex, sizeof ex, "&page=health"); app_open_ex("settings", NULL, ex, 0); }   /* (power31.js pwrShow: System health) */
 	else if (!strcmp(t->kind, "ws")) return;   /* (the workspaces: plan 1.6.0 Part 12, item 4) */
 	else app_open("settings", NULL);
 }
@@ -1985,6 +1989,7 @@ static void settings_load(void)
 	jstr(s, "accent", n.accent, sizeof n.accent); jstr(s, "df", n.df, sizeof n.df); jstr(s, "tz", n.tz, sizeof n.tz); jstr(s, "ff", n.ff, sizeof n.ff);
 	char wp[64] = ""; jstr(s, "wpimg", wp, sizeof wp); n.wpimg = wp[0] != 0;
 	jstr(s, "icons", n.icons, sizeof n.icons); n.scale = (int)jnum(s, "scale", 100); if (n.scale < 75 || n.scale > 250) n.scale = 100;
+	n.nl = jbool(s, "nl"); n.dnd = jbool(s, "dnd"); n.sr = jbool(s, "sr"); n.mag = jbool(s, "mag"); n.vk = jbool(s, "vk"); n.touch = jbool(s, "touch"); { char cb[16] = ""; jstr(s, "cb", cb, sizeof cb); n.hc = !strcmp(cb, "contrast"); }
 	n.darkui = jbool(s, "darkui"); n.tbac = jbool(s, "tbac"); n.tbbac = jbool(s, "tbbac"); n.h24 = jbool(s, "h24"); n.doff = jnum(s, "doff", 0); n.lat = jnum(s, "lat", NAN);
 	if (!n.bs[0]) snprintf(n.bs, sizeof n.bs, "solid"); if (!n.b1[0]) snprintf(n.b1, sizeof n.b1, "#008080"); if (!n.b2[0]) snprintf(n.b2, sizeof n.b2, "#000080");
 	if (!n.tb[0]) snprintf(n.tb, sizeof n.tb, "bottom"); if (!n.wpfit[0]) snprintf(n.wpfit, sizeof n.wpfit, "fill"); if (!n.dm[0]) snprintf(n.dm, sizeof n.dm, "auto");
@@ -1993,6 +1998,7 @@ static void settings_load(void)
 	int moved = strcmp(n.tb, S.tb) != 0 || n.scale != S.scale; S = n; ui_family(S.ff);
 	wg_load(v);   /* (the widgets: item 2) */
 	cal_events_load(v);   /* (the calendar under the clock: item 3) */
+	nt_load(v);   /* (the notifications' list: item 3) */
 	  jfree(v);
 	/* the page's display scaling: the taskbar, the title bars and the start menu at the page's size (1.5.9 step 7) */
 	Z = S.scale / 100.0; BARH = (int)lround(46 * Z); TH = (int)lround(35 * Z);
@@ -2034,8 +2040,14 @@ static void tray_load(void)
 		jstr(o, "ip", ip, sizeof ip); jstr(o, "state", st, sizeof st); if (!pass) { n++; if (jbool(o, "wireless")) anywifi = 1; }
 		if (ip[0] && (pass ? !strcmp(st, "up") : jbool(o, "default"))) { pick = i; break; } }
 	NET_RSSI = 1;
-	if (pick >= 0) { JV *o = jat(ifs, pick); up = 1; wifi = jbool(o, "wireless"); JV *r = jprop(o, "rssi"); if (r && r->t == 2) NET_RSSI = (int)r->n; }
-	else wifi = anywifi || !n;
+	if (pick >= 0) { JV *o = jat(ifs, pick); up = 1; wifi = jbool(o, "wireless"); JV *r = jprop(o, "rssi"); if (r && r->t == 2) NET_RSSI = (int)r->n;
+		/* (net31Desc: Wi-Fi with its name (wpa_cli's escapes undone: wfDecode), else Ethernet with its name and speed) */
+		char nm[64] = "", ss[160] = "", dec[160] = ""; jstr(o, "name", nm, sizeof nm); jstr(o, "ssid", ss, sizeof ss);
+		{ int j = 0; for (const char *c = ss; *c && j < (int)sizeof dec - 1; c++) { if (*c == '\\' && c[1]) { c++; if (*c == 'x' && g_ascii_isxdigit(c[1]) && g_ascii_isxdigit(c[2])) { dec[j++] = (char)(g_ascii_xdigit_value(c[1]) * 16 + g_ascii_xdigit_value(c[2])); c += 2; }
+				else dec[j++] = *c == 'n' ? '\n' : *c == 'r' ? '\r' : *c == 't' ? '\t' : *c == 'e' ? 27 : *c; } else dec[j++] = *c; } dec[j] = 0; }
+		double sp = jnum(o, "speed", 0); char spd[32] = ""; if (sp > 0) { if (sp >= 1000) { char g[24]; g_ascii_formatd(g, sizeof g, "%g", sp / 1000); snprintf(spd, sizeof spd, ", %s Gb/s", g); } else snprintf(spd, sizeof spd, ", %.0f Mb/s", sp); }
+		if (wifi) snprintf(NET_DESC, sizeof NET_DESC, "Wi-Fi — connected%s%s%s", dec[0] ? " (" : "", dec, dec[0] ? ")" : ""); else snprintf(NET_DESC, sizeof NET_DESC, "Ethernet — connected (%s%s)", nm, spd); }
+	else { wifi = anywifi || !n; NET_DESC[0] = 0; }
 	NET_UP = v ? up : -1; NET_WIFI = wifi; jfree(v);
 	v = jget("/api/volume"); if (v && jbool(v, "ok")) { VOL = (int)jnum(v, "volume", -1); MUTED = jbool(v, "muted"); } else VOL = -1; jfree(v);
 	/* the battery as the page reads it (power31.js: rudolfd's power/status, its "battery" and "ac") */
@@ -3179,7 +3191,7 @@ static void bar_menu(GdkEventButton *e, int h)
    (osd31.js sysVolPop, .vp: the system volume as Chromium draws a range input and a checkbox, Mute, Desktop sounds…,
    placed over its button as flyPlace places it). Drawn by the shell in a window of their own, as the page's menus
    (CMWIN); a click outside closes them (one on the taskbar goes on to the taskbar), a click on their button again too. */
-enum { FL_NONE, FL_CAL, FL_VOL };
+enum { FL_NONE, FL_CAL, FL_VOL, FL_QS, FL_NC };
 static const char *const FLMON[12] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
 /* (the page's clockParts: System Settings' time zone and offset) */
 static GDateTime *fl_now(void)
@@ -3209,6 +3221,106 @@ static void fl_button(cairo_t *cr, const char *t, double x, double y, double w, 
 	css_text(cr, t, UIFAM, 400, 13, x + (w - tw) / 2, y + (h - (a + d)) / 2, a + d, cx(dark ? "#e2e8f0" : "#000000", 1), 0);
 }
 static double fl_lh(cairo_t *cr, int wt, double px) { double d, a = css_ascent(cr, UIFAM, wt, px, &d); return a + d; }
+/* ---- quick settings (shell25.js #qsp: the page's eight switches as tiles, three to a row, the network's line, Lock,
+   Settings and Power) and the notifications' centre (#ncp: Do not disturb, Clear all, each notification with its time,
+   its ✕ and, for a failure, Blitzen's ⚡ Why?). A switch, Do not disturb, ✕ and Clear all are the page's own: done by a
+   page unseen (#app=do-qs&item=WORDS, #app=do-nc&op=...), shown at once here and read back from rudolfd after. */
+typedef struct { char t[160], b[300], k[12]; double at; } Note;
+static Note NT[60]; static int NNT;
+static void nt_load(JV *v)
+{
+	NNT = 0; JV *a = jprop(v, "notif");
+	for (int i = 0; a && a->t == 4 && i < a->len && NNT < 60; i++) { JV *o = jat(a, i); if (!o || o->t != 5) continue; Note *n = &NT[NNT++]; memset(n, 0, sizeof *n);
+		jstr(o, "t", n->t, sizeof n->t); jstr(o, "b", n->b, sizeof n->b); jstr(o, "k", n->k, sizeof n->k); n->at = jnum(o, "at", 0); }
+	if (FLK && FLAREA) gtk_widget_queue_draw(FLAREA);
+}
+/* (blitzdiag57.js bzIsError: a failure, which Blitzen can be asked about) */
+static int nt_why(const Note *n)
+{
+	if (!strcmp(n->k, "error") || !strcmp(n->k, "Error") || !strcmp(n->k, "Warning")) return 1;
+	char t[480]; snprintf(t, sizeof t, "%s %s", n->t, n->b);
+	return g_regex_match_simple("could ?n[o']t|cannot|can't|failed|failure|error|not found|refused|denied|crash|stopped|timed out|timeout|no answer|did not|went wrong|not respond|white screen|restarted", t, G_REGEX_CASELESS, 0);
+}
+static const char *const QSI[8] = {"🌙", "🌅", "🔕", "🗣️", "🔍", "◐", "⌨️", "🖐️"},
+	*const QSL[8] = {"Dark mode", "Night light", "Do not disturb", "Screen reader", "Magnifier", "High contrast", "On-screen keyboard", "Touch mode"};
+static int qs_get(int i) { switch (i) { case 0: return !strcmp(S.dm, "dark"); case 1: return S.nl; case 2: return S.dnd; case 3: return S.sr; case 4: return S.mag; case 5: return S.hc; case 6: return S.vk; default: return S.touch; } }
+static void qs_set(int i, int v) { switch (i) { case 0: snprintf(S.dm, sizeof S.dm, "%s", v ? "dark" : "light"); break; case 1: S.nl = v; break; case 2: S.dnd = v; break; case 3: S.sr = v; break; case 4: S.mag = v; break; case 5: S.hc = v; break; case 6: S.vk = v; break; default: S.touch = v; } }
+/* the line box of writing with pictures in it (a fallback font's taller line, as Chromium's) */
+static double fl_line(cairo_t *cr, const char *t, int wt, double px)
+{
+	(void)t; double a, d, ea, ed; a = css_ascent(cr, UIFAM, wt, px, &d); ea = css_ascent(cr, "Noto Color Emoji", wt, px, &ed);   /* (the emoji font's ascent and descent, each rounded, the larger of each) */
+	return fmax(a, ea) + fmax(d, ed);
+}
+static void qs_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int top)
+{
+	RGBA fg = cx(dark ? "#e2e8f0" : "#111827", 1), mut = cx(dark ? "#94a3b8" : "#6b7280", 1); double W = 340, cw = (W - 12) / 3, l11 = fl_lh(cr, 400, 11), l20 = fl_lh(cr, 400, 20);
+	/* the tiles' heights: each row as tall as its tallest (a name on two lines) */
+	int nl8[8]; for (int i = 0; i < 8; i++) { PangoLayout *pl = css_layout(cr, QSL[i], UIFAM, 400, 11); pango_layout_set_width(pl, (int)((cw - 10) * PANGO_SCALE)); pango_layout_set_wrap(pl, PANGO_WRAP_WORD); nl8[i] = pango_layout_get_line_count(pl); g_object_unref(pl); }
+	double rh[3]; for (int r = 0; r < 3; r++) { int m = 1; for (int c = 0; c < 3; c++) { int i = r * 3 + c; if (i < 8 && nl8[i] > m) m = nl8[i]; } rh[r] = 2 + 20 + l20 + 4 + m * l11; }
+	double l12 = fl_lh(cr, 400, 12), bh = 3 + 3 + 2 + fl_line(cr, "🔒 Lock", 400, 13);
+	double ch = rh[0] + rh[1] + rh[2] + 12 + 8 + l12 + 10 + bh;
+	FLW = W + 22; FLH = ch + 22; FLX = vw - 8 - FLW; FLY = top ? 52 + TOPRES / Z : vh - 52 - FLH;
+	if (!draw) return;
+	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 12; shd_add(&b, 0, 14, 36, cx("#000000", .35), 0); box_paint(cr, FLX, FLY, FLW, FLH, &b);
+	double x = FLX + 11, y = FLY + 11;
+	for (int i = 0; i < 8; i++) { int r = i / 3, c = i % 3, on = qs_get(i); double tx = x + c * (cw + 6), ty = y; for (int q = 0; q < r; q++) ty += rh[q] + 6;
+		Box t; memset(&t, 0, sizeof t); t.rad = 10; t.bw = 1; if (on) { t.bg = ca(accent(), 1); t.bc = ca(accent(), 1); } else { t.bg = cx(dark ? "#1e293b" : "#f3f4f6", 1); t.bc = cx(dark ? "#334155" : "#d1d5db", 1); }
+		box_paint(cr, tx, ty, cw, rh[r], &t); RGBA ink = on ? cx("#ffffff", 1) : fg;
+		double iw = css_width(cr, QSI[i], UIFAM, 400, 20); css_text(cr, QSI[i], UIFAM, 400, 20, tx + (cw - iw) / 2, ty + 11, l20, ink, 0);
+		PangoLayout *pl = css_layout(cr, QSL[i], UIFAM, 400, 11); pango_layout_set_width(pl, (int)((cw - 10) * PANGO_SCALE)); pango_layout_set_wrap(pl, PANGO_WRAP_WORD);
+		double a, d; css_metrics(pl, &a, &d); int n = pango_layout_get_line_count(pl); srca(cr, ink);
+		for (int k = 0; k < n; k++) { PangoLayoutLine *L = pango_layout_get_line_readonly(pl, k); PangoRectangle lr; pango_layout_line_get_extents(L, NULL, &lr);
+			double lw = lr.width / (double)PANGO_SCALE; cairo_move_to(cr, tx + 5 + (cw - 10 - lw) / 2 - lr.x / (double)PANGO_SCALE, round(ty + 11 + l20 + 4 + k * l11 + a)); pango_cairo_show_layout_line(cr, L); }
+		g_object_unref(pl); char k[16]; snprintf(k, sizeof k, "qs:%d", i); fl_btn(k, tx, ty, cw, rh[r]); }
+	y += rh[0] + rh[1] + rh[2] + 12 + 8;
+	{ char t[260]; snprintf(t, sizeof t, "🌐 %s", NET_UP > 0 && NET_DESC[0] ? NET_DESC : "Not connected"); css_text(cr, t, UIFAM, 400, 12, x, y, l12, mut, W); }
+	y += l12 + 10;
+	static const char *const QB[3] = {"🔒 Lock", "⚙️ Settings", "⏻ Power"}, *const QBK[3] = {"lock", "settings", "power"};
+	for (int i = 0; i < 3; i++) { double bx = x + i * (cw + 6); fl_button(cr, QB[i], bx, y, cw, bh, FLHOV >= 0 && !strcmp(FLBK[FLHOV], QBK[i]), dark); fl_btn(QBK[i], bx, y, cw, bh); }
+}
+static double FLSCROLL;   /* (the notifications' centre scrolled: the page's flyout is at most 70 % of the screen's height) */
+static void nc_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int top)
+{
+	RGBA fg = cx(dark ? "#e2e8f0" : "#111827", 1), mut = cx(dark ? "#94a3b8" : "#6b7280", 1), bd = cx(dark ? "#334155" : "#d1d5db", 1); double W = 340;
+	double l13 = fl_lh(cr, 400, 13), lb = fl_lh(cr, 700, 13), l12 = fl_lh(cr, 400, 12), bh = 3 + l13 + 3 + 2, sm = 13 * 5 / 6.0, xw = css_width(cr, "✕", UIFAM, 400, 13) + 8;
+	double ih[60], list = 0;
+	for (int i = 0; i < NNT; i++) { ih[i] = 2 + 16 + lb + 2 + (nt_why(&NT[i]) ? fmax(l12, 2 + fl_lh(cr, 400, 11)) : l12); list += ih[i] + 6; }
+	if (!NNT) list = 28 + l13;
+	double ch = bh + 8 + list; FLW = W + 22; FLH = fmin(ch + 22, vh * .7); FLX = vw - 8 - FLW; FLY = top ? 52 + TOPRES / Z : vh - 52 - FLH;
+	double maxs = fmax(0, ch + 22 - FLH); if (FLSCROLL > maxs) FLSCROLL = maxs; if (FLSCROLL < 0) FLSCROLL = 0;
+	if (!draw) return;
+	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = bd; b.rad = 12; shd_add(&b, 0, 14, 36, cx("#000000", .35), 0); box_paint(cr, FLX, FLY, FLW, FLH, &b);
+	cairo_save(cr); rrect(cr, FLX + 1, FLY + 1, FLW - 2, FLH - 2, 11); cairo_clip(cr);
+	double x = FLX + 11, y = FLY + 11 - FLSCROLL;
+	/* Notifications · Do not disturb · Clear all */
+	css_text(cr, "Notifications", UIFAM, 700, 13, x, y + (bh - lb) / 2, lb, fg, 0);
+	double cw = css_width(cr, "Clear all", UIFAM, 400, 13) + 22, cx0 = x + W - cw; fl_button(cr, "Clear all", cx0, y, cw, bh, FLHOV >= 0 && !strcmp(FLBK[FLHOV], "clear"), dark); fl_btn("clear", cx0, y, cw, bh);
+	{ double tw = css_width(cr, " Do not disturb", UIFAM, 400, 13), lw = 20 + 4 + tw, lx = cx0 - 6 - lw, cby = y + (bh - 13) / 2;
+		Box c; memset(&c, 0, sizeof c); c.bg = cx(S.dnd ? "#0075ff" : "#ffffff", 1); c.bw = 1; c.bc = cx(S.dnd ? "#0075ff" : "#767676", 1); c.rad = 2; box_paint(cr, lx + 4, cby, 13, 13, &c);
+		if (S.dnd) { cairo_move_to(cr, lx + 7, cby + 6.5); cairo_line_to(cr, lx + 9.5, cby + 9); cairo_line_to(cr, lx + 14, cby + 4); cairo_set_source_rgb(cr, 1, 1, 1); cairo_set_line_width(cr, 1.8); cairo_stroke(cr); }
+		css_text(cr, " Do not disturb", UIFAM, 400, 13, lx + 24, y + (bh - l13) / 2, l13, fg, 0); fl_btn("dnd", lx, y + (bh - 19) / 2, lw, 19); }
+	y += bh + 8;
+	if (!NNT) { double tw = css_width(cr, "No new notifications", UIFAM, 400, 13); css_text(cr, "No new notifications", UIFAM, 400, 13, x + (W - tw) / 2, y + 14, l13, (RGBA){ fg.r, fg.g, fg.b, .65 }, 0); }
+	for (int i = 0; i < NNT; i++) { Note *n = &NT[i]; int err = !strcmp(n->k, "error"); double h = ih[i];
+		Box it; memset(&it, 0, sizeof it); it.bw = 1; it.bc = bd; it.rad = 8; box_paint(cr, x, y, W, h, &it);
+		if (err) { cairo_save(cr); rrect(cr, x, y, W, h, 8); cairo_clip(cr); cairo_rectangle(cr, x, y, 4, h); srca(cr, cx("#ef4444", 1)); cairo_fill(cr); cairo_restore(cr); }
+		double ix = x + (err ? 4 : 1) + 8, iw = W - (err ? 4 : 1) - 1 - 16, iy = y + 9;
+		/* the title, its time (smaller), ✕ */
+		char tm[32]; { GTimeZone *tz = S.tz[0] ? g_time_zone_new_identifier(S.tz) : NULL; if (!tz) tz = g_time_zone_new_local(); GDateTime *d = g_date_time_new_from_unix_utc((gint64)(n->at / 1000)), *l = d ? g_date_time_to_timezone(d, tz) : NULL;
+			int hh = l ? g_date_time_get_hour(l) : 0, mm = l ? g_date_time_get_minute(l) : 0; if (S.h24) snprintf(tm, sizeof tm, "%02d:%02d", hh, mm); else snprintf(tm, sizeof tm, "%d:%02d %s", hh % 12 ? hh % 12 : 12, mm, hh < 12 ? "AM" : "PM");
+			if (l) g_date_time_unref(l); if (d) g_date_time_unref(d); g_time_zone_unref(tz); }
+		double tmw = css_width(cr, tm, UIFAM, 400, sm), xx = ix + iw - xw, tx = xx - 6 - tmw;
+		css_text(cr, n->t, UIFAM, 700, 13, ix, iy, lb, fg, tx - 6 - ix);
+		double as, ds; as = css_ascent(cr, UIFAM, 400, sm, &ds); double base = iy + floor((lb - (css_ascent(cr, UIFAM, 700, 13, NULL) + 0)) / 2);   /* (the small time on the title's middle) */
+		(void)base; css_text(cr, tm, UIFAM, 400, sm, tx, iy + (lb - (as + ds)) / 2, as + ds, fg, 0);
+		css_text(cr, "✕", UIFAM, 400, 13, xx + 4, iy, lb, cx(dark ? "#e2e8f0" : "#000000", 1), 0); { char k[16]; snprintf(k, sizeof k, "nx:%d", i); fl_btn(k, xx, iy, xw, lb); }
+		double by = iy + lb + 2; int why = nt_why(n); double bl = why ? fmax(l12, 2 + fl_lh(cr, 400, 11)) : l12;
+		double tw = css_text(cr, n->b, UIFAM, 400, 12, ix, by + floor((bl - l12) / 2), l12, mut, why ? iw - 70 : iw);
+		if (why) { double ww = css_width(cr, "⚡\uFE0E Why?", UIFAM, 400, 11) + 14, wx = ix + tw + 6; Box w; memset(&w, 0, sizeof w); w.bg = cx(dark ? "#1e293b" : "#ffffff", 1); w.bw = 1; w.bc = bd; w.rad = 4;
+			box_paint(cr, wx, by, ww, bl, &w); css_text(cr, "⚡\uFE0E Why?", UIFAM, 400, 11, wx + 7, by + 1, bl - 2, cx(dark ? "#e2e8f0" : "#000000", 1), 0); char k[16]; snprintf(k, sizeof k, "why:%d", i); fl_btn(k, wx, by, ww, bl); }
+		y += h + 6; }
+	cairo_restore(cr);
+}
 /* ---- the calendar's table: Chromium's automatic table layout (each column its widest cell, the rest shared out as wide as they are) */
 static void cal_cols(cairo_t *cr, int y, int mo, double total, double *cw)
 {
@@ -3269,6 +3381,8 @@ static void fl_layout(cairo_t *cr, int draw)
 		fl_button(cr, "Open Calendar", x, y, W, bh, FLHOV >= 0 && !strcmp(FLBK[FLHOV], "open"), dark); fl_btn("open", x, y, W, bh);
 		return;
 	}
+	if (FLK == FL_QS) { qs_layout(cr, draw, dark, vw, vh, top); return; }
+	if (FLK == FL_NC) { nc_layout(cr, draw, dark, vw, vh, top); return; }
 	/* the volume (.vp .svp) */
 	double l12 = fl_lh(cr, 400, 12), l11 = fl_lh(cr, 400, 11), lb = fl_lh(cr, 700, 12);
 	FLW = 210 + 24 + 2; FLH = 10 + lb + 6 + 20 + 8 + 19 + 8 + l11 + 10 + 2;
@@ -3316,9 +3430,23 @@ static void fl_act(const char *k, int dbl)
 	else if (k[0] >= '0' && k[0] <= '9') { if (dbl) { char ex[40]; snprintf(ex, sizeof ex, "&day=%s", k); fl_close(); app_open_ex("calendar", NULL, ex, 0); } return; }
 	else if (!strcmp(k, "mute")) { char q[16]; snprintf(q, sizeof q, "muted=%d", !FLMUTE); fl_volume_set(q); }
 	else if (!strcmp(k, "sounds")) { fl_close(); tb_settings("vol"); return; }
+	else if (!strncmp(k, "qs:", 3)) { int i = atoi(k + 3); if (i < 0 || i > 7) return; qs_set(i, !qs_get(i)); char *e = qesc(QSL[i]), ex[160]; snprintf(ex, sizeof ex, "&item=%s", e); g_free(e); app_open_ex("do-qs", NULL, ex, 1);
+		if (i == 2) bar_redraw(); }
+	else if (!strcmp(k, "lock")) { fl_close(); power("lock"); return; }
+	else if (!strcmp(k, "settings")) { fl_close(); app_open("settings", NULL); return; }
+	else if (!strcmp(k, "power")) { fl_close(); power_dialog(); return; }
+	else if (!strcmp(k, "clear")) { NNT = 0; app_open_ex("do-nc", NULL, "&op=clear", 1); }
+	else if (!strcmp(k, "dnd")) { S.dnd = !S.dnd; char ex[40]; snprintf(ex, sizeof ex, "&op=dnd&on=%d", S.dnd); app_open_ex("do-nc", NULL, ex, 1); bar_redraw(); }
+	else if (!strncmp(k, "nx:", 3)) { int i = atoi(k + 3); if (i < 0 || i >= NNT) return; char ex[40]; snprintf(ex, sizeof ex, "&op=dismiss&i=%d", i); memmove(&NT[i], &NT[i + 1], (NNT - i - 1) * sizeof NT[0]); NNT--; app_open_ex("do-nc", NULL, ex, 1); }
+	else if (!strncmp(k, "why:", 4)) { int i = atoi(k + 4); char ex[40]; snprintf(ex, sizeof ex, "&op=why&i=%d", i); fl_close(); app_open_ex("do-nc", NULL, ex, 0); return; }
 	if (FLAREA) gtk_widget_queue_draw(FLAREA); state_write();
 }
 static void fl_resize(void);
+static gboolean fl_scroll(GtkWidget *w, GdkEventScroll *e, gpointer d)
+{
+	(void)w; (void)d; if (FLK != FL_NC) return TRUE; double dy = e->direction == GDK_SCROLL_UP ? -1 : e->direction == GDK_SCROLL_DOWN ? 1 : 0; if (e->direction == GDK_SCROLL_SMOOTH) dy = e->delta_y;
+	FLSCROLL += dy * 53; gtk_widget_queue_draw(FLAREA); return TRUE;   /* (Chromium's wheel step at 100 %) */
+}
 static gboolean fl_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
 	(void)w; (void)d; double x = (e->x + FLWX) / Z, y = (e->y + FLWY) / Z;
@@ -3329,7 +3457,7 @@ static gboolean fl_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 		int top = !strcmp(S.tb, "top"), by = top ? TOPRES : SH - BARH; double rx = e->x_root, ry = e->y_root - by;
 		/* (the clock's date is not the clock's own element: there the page's calendar closes and opens again, at this month) */
 		if (BAR && ry >= 0 && ry < BARH && e->button == 1) { int h = hit_at(rx, ry); int date = h >= 0 && !strcmp(HITS[h].kind, "clock") && rx / Z >= CLKD[0] && rx / Z < CLKD[1];
-			if (h >= 0 && (date || !((kind == FL_CAL && !strcmp(HITS[h].kind, "clock")) || (kind == FL_VOL && !strcmp(HITS[h].kind, "vol"))))) bar_click(h); }   /* (at once: the button's release does not come to the taskbar after the grab) */
+			if (h >= 0 && (date || !((kind == FL_CAL && !strcmp(HITS[h].kind, "clock")) || (kind == FL_VOL && !strcmp(HITS[h].kind, "vol")) || (kind == FL_QS && !strcmp(HITS[h].kind, "qs")) || (kind == FL_NC && !strcmp(HITS[h].kind, "notes"))))) bar_click(h); }   /* (at once: the button's release does not come to the taskbar after the grab) */
 		return TRUE; }
 	int i = fl_at(e->x, e->y); if (e->button != 1 || i < 0) return TRUE;
 	if (e->type == GDK_2BUTTON_PRESS) { fl_act(FLBK[i], 1); return TRUE; }
@@ -3346,7 +3474,7 @@ static gboolean fl_release(GtkWidget *w, GdkEventButton *e, gpointer d)
 static gboolean fl_motion(GtkWidget *w, GdkEventMotion *e, gpointer d)
 {
 	(void)w; (void)d; if (FLDRAG) { fl_range(e->x); return TRUE; }
-	int h = fl_at(e->x, e->y); if (h >= 0 && (!strcmp(FLBK[h], "range") || (FLBK[h][0] >= '0' && FLBK[h][0] <= '9'))) h = -1;
+	int h = fl_at(e->x, e->y); if (h >= 0 && (!strcmp(FLBK[h], "range") || !strncmp(FLBK[h], "qs:", 3) || !strcmp(FLBK[h], "dnd") || !strncmp(FLBK[h], "nx:", 3) || (FLBK[h][0] >= '0' && FLBK[h][0] <= '9'))) h = -1;
 	if (h != FLHOV) { FLHOV = h; gtk_widget_queue_draw(FLAREA); }
 	GdkWindow *g = gtk_widget_get_window(FLWIN); if (g) { static GdkCursor *ptr; if (!ptr) ptr = gdk_cursor_new_from_name(gdk_display_get_default(), "pointer"); int k = fl_at(e->x, e->y); gdk_window_set_cursor(g, k >= 0 && !strcmp(FLBK[k], "sounds") ? ptr : NULL); }
 	return TRUE;
@@ -3370,10 +3498,11 @@ static void fl_open(int kind)
 	if (!USER_ID[0] || LOCKED) return; int was = FLK; fl_close(); cm_close(); menu_hide(); if (was == kind) return;   /* (its button again: closed) */
 	if (!FLWIN) { FLWIN = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(FLWIN), "Pop-up"); FLAREA = gtk_drawing_area_new();
 		/* (the pointer grabbed for the window itself, not its owner's other windows: a click anywhere comes here, as the page's pointerdown) */
-		gtk_widget_add_events(FLWIN, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK); gtk_container_add(GTK_CONTAINER(FLWIN), FLAREA);
+		gtk_widget_add_events(FLWIN, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK | GDK_SCROLL_MASK); gtk_container_add(GTK_CONTAINER(FLWIN), FLAREA);
+		g_signal_connect(FLWIN, "scroll-event", G_CALLBACK(fl_scroll), NULL);
 		g_signal_connect(FLAREA, "draw", G_CALLBACK(fl_draw), NULL); g_signal_connect(FLWIN, "button-press-event", G_CALLBACK(fl_press), NULL);
 		g_signal_connect(FLWIN, "button-release-event", G_CALLBACK(fl_release), NULL); g_signal_connect(FLWIN, "motion-notify-event", G_CALLBACK(fl_motion), NULL); }
-	FLK = kind; FLHOV = FLPRESS = -1;
+	FLK = kind; FLHOV = FLPRESS = -1; FLSCROLL = 0;
 	if (kind == FL_CAL) { GDateTime *n = fl_now(); FL_Y = g_date_time_get_year(n); FL_M = g_date_time_get_month(n); g_date_time_unref(n); }
 	else { JV *v = jget("/api/volume"); if (v && jbool(v, "ok")) { FLVOL = VOL = (int)jnum(v, "volume", -1); FLMUTE = MUTED = jbool(v, "muted"); } else { FLVOL = VOL; FLMUTE = MUTED; } jfree(v); }
 	if (FLBG) { g_object_unref(FLBG); FLBG = NULL; }
@@ -3502,7 +3631,9 @@ static void state_write(void)
 		for (int i = 0; i < NCMI; i++) { if (!CMIT[i].sep) g_string_append_printf(s, "cmitem %d %d %d %s|%s\n", (int)lround((CMX + 5 + 50) * Z), (int)lround((ry + 12) * Z), CMIT[i].dis, CMIT[i].act, CMIT[i].label); ry += cm_row_h(&CMIT[i]); } }
 	g_string_append_printf(s, "dialog %s %s|%s\n", DGK == DLG_RENAME ? "rename" : DGK == DLG_OPENWITH ? "openwith" : "-", DGK ? DGNAME : "-", DGMSG);
 	for (int i = 0; DGK && i < NDGB; i++) g_string_append_printf(s, "dgbtn %d %d %d\n", i, (int)lround((DGB[i].x + DGB[i].w / 2) * Z), (int)lround((DGB[i].y + DGB[i].h / 2) * Z));
-	if (FLK) { g_string_append_printf(s, "fly %s %d %d %d %d %d-%02d %d %d\n", FLK == FL_CAL ? "cal" : "vol", (int)lround(FLX * Z), (int)lround(FLY * Z), (int)lround(FLW * Z), (int)lround(FLH * Z), FL_Y, FL_M, FLVOL, FLMUTE);
+	if (FLK) { g_string_append_printf(s, "fly %s %d %d %d %d %d-%02d %d %d\n", FLK == FL_CAL ? "cal" : FLK == FL_VOL ? "vol" : FLK == FL_QS ? "qs" : "nc", (int)lround(FLX * Z), (int)lround(FLY * Z), (int)lround(FLW * Z), (int)lround(FLH * Z), FL_Y, FL_M, FLVOL, FLMUTE);
+		if (FLK == FL_QS) { g_string_append(s, "flyqs"); for (int i = 0; i < 8; i++) if (qs_get(i)) g_string_append_printf(s, " %s", QSL[i]); g_string_append_c(s, '\n'); }
+		if (FLK == FL_NC) { g_string_append_printf(s, "flync %d %d", NNT, S.dnd); for (int i = 0; i < NNT; i++) g_string_append_printf(s, "|%s", NT[i].t); g_string_append_c(s, '\n'); }
 		for (int i = 0; i < NFLB; i++) g_string_append_printf(s, "flybtn %s %d %d\n", FLBK[i], (int)lround((FLB[i].x + FLB[i].w / 2) * Z), (int)lround((FLB[i].y + FLB[i].h / 2) * Z)); }
 	else g_string_append(s, "fly -\n");
 	g_string_append_printf(s, "devlink %d %d\ndlask %s\n", DL_ON && DLBAN && gtk_widget_get_visible(DLBAN), TOPRES, DLASK && gtk_widget_get_visible(DLASK) ? DL_PEND : "-");

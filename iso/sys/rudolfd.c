@@ -3073,7 +3073,9 @@ static void dl_cfg_write(const char *repo, long long until, int restart, int ask
 	char d[128], p[160], t[160]; dl_dir(d, sizeof d); mkdir(d, 0700); snprintf(p, sizeof p, "%s/config", d); snprintf(t, sizeof t, "%s/config.new", d);
 	char *since = dl_cfg("since"), *by = dl_cfg("by");
 	long long sn = on ? (since && atoll(since) > 0 ? atoll(since) : (long long)time(NULL)) : 0;
-	str s = {0}; sadd(&s, "on=%d\nrepo=%s\nuntil=%lld\nrestart=%d\nask=%d\nhome=%d\nsince=%lld\nby=%s\n", on, repo, until, restart, ask, home, sn, by ? by : "");
+	/* 1.5.9 (15.7): "Allow changes to this computer" is kept while the link is on, and off whenever it is off */
+	int chg = on && dl_cfg_on("change");
+	str s = {0}; sadd(&s, "on=%d\nrepo=%s\nuntil=%lld\nrestart=%d\nask=%d\nhome=%d\nsince=%lld\nby=%s\nchange=%d\n", on, repo, until, restart, ask, home, sn, by ? by : "", chg);
 	free(since); free(by);
 	int f = open(t, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600); if (f >= 0) { if (write(f, s.b, s.n) < 0) {} fsync(f); close(f); rename(t, p); }
 	free(s.b);
@@ -3135,9 +3137,10 @@ static void dl_boot(void)
 	/* 1.5.9 (15.4): Ask first is on again after every start (turning it off lasts until the next one), and the link
 	   stays on only when "Keep on after restarting" was ticked, its time is not up and Developer mode is still on */
 	dl_cfg_write(repo ? repo : "", until, dl_cfg_on("restart"), 1, dl_cfg_on("home"), 1); free(repo);
+	dl_cfg_set("change", "0");   /* 1.5.9 (15.7): read-only again after every start */
 	if (dl_cfg_on("restart") && !access(RUN "/persistent", F_OK) && until > (long long)time(NULL) && !access(DLBIN, X_OK) && dl_devmode()) {
 		fprintf(stderr, "rudolfd: the development link stays on until %lld (Ask first)\n", until);
-		health_add("security", "the development link stayed on after the restart (Keep on after restarting), with Ask first on"); dl_start();
+		health_add("security", "the development link stayed on after the restart (Keep on after restarting), with Ask first on, read-only"); dl_start();
 	} else { dl_set_off(); health_add("security", "the development link was switched off by the restart"); }
 }
 static int id6(const char *s) { if (!s || strlen(s) != 6) return 0; for (int i = 0; i < 6; i++) if (!isdigit((unsigned char)s[i])) return 0; return 1; }
@@ -3153,6 +3156,7 @@ static void api_devlink(struct req *r, const char *what, int post)
 		/* 1.5.9 (15.4): Developer mode, since when it is on and who switched it on, its last command (the log's last line) */
 		char *since = dl_cfg("since"), *by = dl_cfg("by"), lp[160]; snprintf(lp, sizeof lp, "%s/log", d);
 		sadd(&s, ",\"developer\":%s,\"since\":%lld,\"by\":", dl_devmode() ? "true" : "false", pid && since ? atoll(since) : 0LL); sjson(&s, pid && by ? by : "");
+		sadd(&s, ",\"change\":%s", pid && dl_cfg_on("change") ? "true" : "false");   /* 1.5.9 (15.7) */
 		free(since); free(by);
 		{ char *lg = slurp(lp, NULL); char *ll = NULL;
 		  if (lg) { trim(lg); ll = strrchr(lg, '\n'); ll = ll ? ll + 1 : lg; }
@@ -3175,8 +3179,8 @@ static void api_devlink(struct req *r, const char *what, int post)
 		int hours = h ? atoi(h) : 0;
 		if (!dl_repo_ok(repo)) { reply_err(r->fd, 400, "write the repository as owner/name (letters, digits, - _ .)"); return; }
 		if (hours != 1 && hours != 2 && hours != 4 && hours != 8) { reply_err(r->fd, 400, "for 1, 2, 4 or 8 hours"); return; }
-		char *rs = qparam(r->query, "restart"), *as = qparam(r->query, "ask"), *hs = qparam(r->query, "home");
-		int restart = rs && *rs == '1', askf = !as || *as != '0', home = hs && *hs == '1';
+		char *rs = qparam(r->query, "restart"), *as = qparam(r->query, "ask"), *hs = qparam(r->query, "home"), *cs = qparam(r->query, "change");
+		int restart = rs && *rs == '1', askf = !as || *as != '0', home = hs && *hs == '1', chg = cs && *cs == '1';
 		if (restart && access(RUN "/persistent", F_OK)) { free(an); dfree_secret(atok); reply_err(r->fd, 400, "keeping it on after restarting needs the files kept on this drive (RUDOLFDATA)"); return; }
 		mkdir(d, 0700); chmod(d, 0700);
 		char tp[160], tn[170]; snprintf(tp, sizeof tp, "%s/token", d); snprintf(tn, sizeof tn, "%s/token.new", d);
@@ -3198,10 +3202,26 @@ static void api_devlink(struct req *r, const char *what, int post)
 		dl_stop(); rename(tn, tp); chmod(tp, 0600);
 		dl_set_off(); dl_cfg_set("by", an);   /* since: now */
 		dl_cfg_write(repo, (long long)time(NULL) + hours * 3600LL, restart, askf, home, 1);
+		dl_cfg_set("change", chg ? "1" : "0");   /* 1.5.9 (15.7): read-only unless ticked */
 		dl_start();
 		if (!dl_pid()) { free(an); reply_err(r->fd, 500, "the development link did not start"); return; }
-		health_add("security", "the development link was switched on by %.80s for %d h (%.100s; Ask first %s%s)", an, hours, repo, askf ? "on" : "off", restart ? ", kept on after restarting" : "");
+		health_add("security", "the development link was switched on by %.80s for %d h (%.100s; Ask first %s; %s%s)", an, hours, repo, askf ? "on" : "off", chg ? "can change this computer" : "read-only", restart ? ", kept on after restarting" : "");
 		free(an); reply_ok(r->fd, "on"); return;
+	}
+	/* 1.5.9 (15.7): "Allow changes to this computer" while the link is on: ticking it needs Developer mode and an
+	   administrator's name and password (the body, as devlink/on); unticking needs nothing */
+	if (!strcmp(what, "change") && post) {
+		char *ons = qparam(r->query, "on"); int want = ons && *ons == '1';
+		if (!dl_pid()) { reply_err(r->fd, 409, "the development link is off"); return; }
+		if (!want) { if (dl_cfg_on("change")) { dl_cfg_set("change", "0"); health_add("security", "the development link was made read-only"); } reply_ok(r->fd, "read-only"); return; }
+		if (!dl_devmode()) { reply_err(r->fd, 403, "only in Developer mode (Settings › Update and recovery)"); return; }
+		char *an = NULL, *ap = NULL, why[200] = "";
+		if (r->body && r->blen && r->body[0] == '{') { an = dbody_field(r, "n"); ap = dbody_field(r, "p"); }
+		int adm = an && ap ? desk_admin_check(an, ap, why, sizeof why) : -1;
+		dfree_secret(ap);
+		if (adm) { free(an); reply_err(r->fd, adm == 429 ? 429 : 403, why[0] ? why : "an administrator's name and password are needed"); return; }
+		dl_cfg_set("change", "1"); health_add("security", "the development link was allowed to change this computer by %.80s", an); free(an);
+		reply_ok(r->fd, "can change this computer"); return;
 	}
 	if (!strcmp(what, "off") && post) { int was = dl_pid(); dl_stop(); dl_set_off(); if (was) health_add("security", "the development link was switched off"); reply_ok(r->fd, "off"); return; }
 	if (!strcmp(what, "forget") && post) { char tp[160]; dl_stop(); dl_set_off(); snprintf(tp, sizeof tp, "%s/token", d); unlink(tp); reply_ok(r->fd, "the token is deleted"); return; }
