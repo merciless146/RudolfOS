@@ -16237,6 +16237,15 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
   if(j&&typeof APP_JUMPS=='object'&&APP_JUMPS[ONEAPP.k]){const it=APP_JUMPS[ONEAPP.k]().find(x=>x[0]==j);if(it){OA.want=1;try{it[1]()}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}}
   if(ONEAPP.k=='settings'&&sp&&typeof settings=='function'){OA.want=1;try{settings(sp)}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}
   if(da0=='pin'){try{pinSet(q.get('k')||'',q.get('on')=='1')}catch(e){}return oaFin({})}
+  /* (1.6.0 Part 12, item 3) quick settings' switches and the notifications' centre as the native shell draws them: the page's own
+     panels made unseen and the same button pressed (#app=do-qs&item=WORDS; #app=do-nc&op=clear|dnd&on=0|1|dismiss&i=N|why&i=N) */
+  if(da0=='qs'){try{qsToggle();const b=[...document.querySelectorAll('#qsp .qst')].find(x=>(x.querySelector('span')||{}).textContent==q.get('item'));if(b)b.click();qsClose()}catch(e){console.warn(e)}return oaFin({})}
+  if(da0=='nc'){const op=q.get('op')||'';try{NC=ld(NCK(),[]);ncToggle(true);const p=document.getElementById('ncp');
+    if(op=='clear')p.querySelector('.clr').click();
+    else if(op=='dnd'){const c=p.querySelector('.dnd');if(c.checked!=(q.get('on')=='1')){c.checked=q.get('on')=='1';c.dispatchEvent(new Event('change'))}}
+    else if(op=='dismiss'||op=='why'){const it=p.querySelectorAll('.nitem')[+q.get('i')||0],b=it&&it.querySelector(op=='why'?'.bzwhy':'.nx');if(op=='why')OA.want=1;if(b)b.click()}
+    p.remove()}catch(e){console.warn(e)}
+   if(op=='why'){setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}return oaFin({})}
   if(da0=='mute'){try{const m=S.snd&&S.snd.master;if(m){m.on=!m.on;trayVol()}}catch(e){}setTimeout(()=>oaFin({}),400);return}}
  /* (1.6.0 Part 12, item 3) a day double-clicked in the calendar under the native shell's clock: the Calendar at that day */
  {const cd=ONEAPP.q.get('day');if(ONEAPP.k=='calendar'&&cd&&/^\d{4}-\d\d-\d\d$/.test(cd))setTimeout(()=>{try{window.__calGo&&__calGo(cd)}catch(e){}},800)}
