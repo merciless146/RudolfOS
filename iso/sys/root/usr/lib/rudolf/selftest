@@ -121,6 +121,30 @@ elif grep -q . "$G/cgroup.procs" 2>/dev/null; then pass desktop-guard "only the 
 else skip desktop-guard "no desktop running"; fi
 YS=$(rd1 "$PROC/sys/kernel/yama/ptrace_scope")
 case "$YS" in 1|2|3) pass ptrace "programs cannot read each other's memory (Yama $YS)";; '') fail ptrace "this kernel has no Yama: a program can read the browser's memory";; *) fail ptrace "Yama is off (ptrace_scope 0)";; esac
+# 1.5.9 (plan 15.5): nothing listens that the list of listeners (/usr/share/rudolf/listeners) does not name: TCP ports
+# being listened on (/proc/net/tcp, tcp6: state 0A) and Unix sockets accepting connections (/proc/net/unix: flags
+# 00010000), each matched against the list's places (* any name, @ abstract)
+LST=${ST_LISTENERS:-/usr/share/rudolf/listeners}
+if [ ! -r "$LST" ]; then fail listeners "the list of listeners is missing ($LST)"
+else
+	HEX='function h(x,  i,v){v=0;x=toupper(x);for(i=1;i<=length(x);i++)v=v*16+index("0123456789ABCDEF",substr(x,i,1))-1;return v}'
+	got=$( { awk "$HEX"'NR>1&&$4=="0A"{split($2,a,":");x=a[1];printf "tcp %d.%d.%d.%d:%d\n",h(substr(x,7,2)),h(substr(x,5,2)),h(substr(x,3,2)),h(substr(x,1,2)),h(a[2])}' "$PROC/net/tcp" 2>/dev/null
+		awk "$HEX"'NR>1&&$4=="0A"{split($2,a,":");x=a[1];ad=x;if(x=="00000000000000000000000000000000")ad="::";else if(x=="00000000000000000000000001000000")ad="::1";printf "tcp6 %s:%d\n",ad,h(a[2])}' "$PROC/net/tcp6" 2>/dev/null
+		awk 'NR>1&&$4=="00010000"&&$8!=""{print "unix " $8}' "$PROC/net/unix" 2>/dev/null; } | sort -u)
+	pats=$(grep -v '^#' "$LST" | awk -F'\t' 'NF>=3&&($1=="tcp"||$1=="tcp6"||$1=="unix"){print $1 " " $2 " " $3}')
+	unk=""; n=0
+	for l in $(echo "$got" | tr ' ' '|'); do k=${l%%|*}; w=${l#*|}; n=$((n+1)); hit=""
+		while read -r pk pw pp; do [ "$pk" = "$k" ] || continue
+			# (a pattern's * stands for any characters; the patterns come from the list, not from the computer)
+			case "$w" in $pw) hit=$pp; break;; esac
+		done <<E
+$pats
+E
+		[ -n "$hit" ] || unk="$unk $k $w,"
+	done
+	if [ -n "$unk" ]; then fail listeners "something listens that the list of listeners does not name:${unk%,}"
+	else pass listeners "$n listening, each named in the list (who may use it and how it checks)"; fi
+fi
 
 # ---- 1.5.8: every sound chip answered at start-up (or was reset): one that did not has no card, so no speakers
 DM=$( { [ -n "$ST_DMESG" ] && cat "$ST_DMESG" || dmesg; } 2>/dev/null)

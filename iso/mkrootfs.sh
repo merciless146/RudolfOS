@@ -7,6 +7,7 @@ OUT=$(realpath -m "$1"); WWW=$(realpath "$2")
 HERE=$(cd "$(dirname "$0")" && pwd)
 SRC=$HERE/src
 SYS=$HERE/sys
+. "$HERE/systools/hardflags.sh"   # 1.5.9 (plan 15.5): the programs built hardened, as ci_release.sh builds them
 CHROME=${CHROME_DIR:-/opt/pw-browsers/chromium-1194/chrome-linux}
 # 1.5.9 (plan Part 3): the build machine's library folder (x86_64-linux-gnu, aarch64-linux-gnu), so the same script
 # makes the ARM64 root file system on an ARM64 machine; its program loader (/lib64/ld-linux-x86-64.so.2,
@@ -118,22 +119,22 @@ for x in $(for p in bluez bluez-alsa-utils libasound2-plugin-bluez; do dpkg -L $
 cp -a /etc/mke2fs.conf etc/ 2>/dev/null || true
 
 # ---------- Rudolf OS system programs and scripts
-gcc -O2 -o usr/bin/rudolf-display "$SYS/rudolf-display.c" -lX11 /usr/lib/$MA/libXtst.so.6 /usr/lib/$MA/libXfixes.so.3 /usr/lib/$MA/libXrandr.so.2 -lm
-gcc -O2 -o usr/bin/rudolf-launch "$SYS/rudolf-launch.c"
-gcc -O2 -o usr/bin/rudolf-memguard "$SYS/rudolf-memguard.c"
-gcc -O2 -o usr/bin/rudolf-remote "$SYS/rudolf-remote.c" -lssl -lcrypto -lX11 -lXext /usr/lib/$MA/libXtst.so.6 -lz   # 1.5.0: remote access
-gcc -O2 -o usr/bin/rudolfd "$SYS/rudolfd.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
-gcc -O2 -o usr/bin/rpk "$SYS/rpk.c" -lcrypto
-gcc -O2 -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl
-gcc -O2 -o usr/bin/rudolf-print "$SYS/rudolf-print.c" -ldl
-gcc -O2 -o usr/bin/rudolf-devlink "$SYS/rudolf-devlink.c" -lcrypto -ldl
-gcc -O2 -o usr/bin/rudolf-apps "$SYS/rudolf-apps.c" -lz
-gcc -O2 -o usr/bin/rudolf-debian "$SYS/rudolf-debian.c" -lcrypto -ldl
-gcc -O2 -o usr/bin/rudolf-fscheck "$SYS/rudolf-fscheck.c"
-gcc -O2 -o usr/bin/rudolf-ai "$SYS/rudolf-ai.c" -lcrypto -ldl
+gcc -O2 $HARD -o usr/bin/rudolf-display "$SYS/rudolf-display.c" -lX11 /usr/lib/$MA/libXtst.so.6 /usr/lib/$MA/libXfixes.so.3 /usr/lib/$MA/libXrandr.so.2 -lm
+gcc -O2 $HARD -o usr/bin/rudolf-launch "$SYS/rudolf-launch.c"
+gcc -O2 $HARD -o usr/bin/rudolf-memguard "$SYS/rudolf-memguard.c"
+gcc -O2 $HARD -o usr/bin/rudolf-remote "$SYS/rudolf-remote.c" -lssl -lcrypto -lX11 -lXext /usr/lib/$MA/libXtst.so.6 -lz   # 1.5.0: remote access
+gcc -O2 $HARD -o usr/bin/rudolfd "$SYS/rudolfd.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
+gcc -O2 $HARD -o usr/bin/rpk "$SYS/rpk.c" -lcrypto
+gcc -O2 $HARD -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl
+gcc -O2 $HARD -o usr/bin/rudolf-print "$SYS/rudolf-print.c" -ldl
+gcc -O2 $HARD -o usr/bin/rudolf-devlink "$SYS/rudolf-devlink.c" -lcrypto -ldl
+gcc -O2 $HARD -o usr/bin/rudolf-apps "$SYS/rudolf-apps.c" -lz
+gcc -O2 $HARD -o usr/bin/rudolf-debian "$SYS/rudolf-debian.c" -lcrypto -ldl
+gcc -O2 $HARD -o usr/bin/rudolf-fscheck "$SYS/rudolf-fscheck.c"
+gcc -O2 $HARD -o usr/bin/rudolf-ai "$SYS/rudolf-ai.c" -lcrypto -ldl
 # Blitzen's model engine (systools/mkllama.sh: llama.cpp's llama-server, static); the model is downloaded later
 mkdir -p usr/lib/rudolf; [ -x "$SRC/llama-build/bin/llama-server" ] && cp "$SRC/llama-build/bin/llama-server" usr/lib/rudolf/
-gcc -O2 -o usr/bin/rudolf-portal "$SYS/rudolf-portal.c" $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0)
+gcc -O2 $HARD -o usr/bin/rudolf-portal "$SYS/rudolf-portal.c" $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0)
 # speech: eSpeak NG 1.52.0 (built from src/espeak-ng, see BUILD.TXT) with the nine desktop languages only
 ES=$SRC/espeak-ng/inst/usr
 if [ -x $ES/bin/espeak-ng ]; then
@@ -143,15 +144,15 @@ if [ -x $ES/bin/espeak-ng ]; then
 fi
 # where this build looks for system updates (set UPDATE_URL when building releases)
 mkdir -p etc/rudolf; printf "%s\n" "${UPDATE_URL:-}" > etc/rudolf/update-url
-gcc -O2 -static -o usr/bin/cdp-eval "$SYS/cdp-eval.c"
+gcc -O2 $HARD_STATIC -o usr/bin/cdp-eval "$SYS/cdp-eval.c"
 cp -L /usr/lib/$MA/libXtst.so.6 usr/lib/$MA/
 copy_deps usr/bin/rudolf-display usr/bin/rudolf-remote usr/bin/rudolfd usr/bin/rpk usr/bin/rudolf-update usr/bin/rudolf-apps usr/bin/rudolf-portal usr/bin/rudolf-debian usr/bin/rudolf-ai
 cp -a "$SYS/root/." .
 # 1.5.7 (plan Part 4): the Lite desktop engine (WebKitGTK), when this machine has it (the release workflow always does)
 if pkg-config --exists webkit2gtk-4.1 gtk+-3.0 2>/dev/null; then
 	# (1.5.9, plan Part 12: and rudolf-native, the native desktop engine's prototype)
-	gcc -O2 -Wno-deprecated-declarations -o /tmp/rudolf-webkit.$$ "$SYS/rudolf-webkit.c" $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) &&
-	gcc -O2 -Wno-deprecated-declarations -o /tmp/rudolf-native.$$ "$SYS/rudolf-native.c" $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm &&
+	gcc -O2 $HARD -Wno-deprecated-declarations -o /tmp/rudolf-webkit.$$ "$SYS/rudolf-webkit.c" $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) &&
+	gcc -O2 $HARD -Wno-deprecated-declarations -o /tmp/rudolf-native.$$ "$SYS/rudolf-native.c" $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm &&
 	"$HERE/systools/addwebkit.sh" "$OUT" /tmp/rudolf-webkit.$$ /tmp/rudolf-native.$$; rm -f /tmp/rudolf-webkit.$$ /tmp/rudolf-native.$$
 else echo "mkrootfs: no WebKitGTK here (libwebkit2gtk-4.1-dev): this build has no Lite desktop engine"; fi
 mkdir -p usr/share/rudolf

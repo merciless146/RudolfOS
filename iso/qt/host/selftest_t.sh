@@ -6,7 +6,7 @@ HERE=$(cd "$(dirname "$0")" && pwd); S=$HERE/../../sys/root/usr/lib/rudolf/selft
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT; NP=0; NF=0
 ok() { if [ "$2" = 1 ]; then NP=$((NP+1)); echo "PASS $1"; else NF=$((NF+1)); echo "FAIL $1 - $3"; fi; }
 has() { echo "$OUT" | grep -q "$1"; }
-export ST_SYS=$W/sys ST_RUN=$W/run ST_PERSIST=$W/persist ST_HOME=$W/home ST_DEV=$W/dev ST_PROC=$W/proc
+export ST_SYS=$W/sys ST_RUN=$W/run ST_PERSIST=$W/persist ST_HOME=$W/home ST_DEV=$W/dev ST_PROC=$W/proc ST_LISTENERS=$HERE/../../sys/root/usr/share/rudolf/listeners   # (1.5.9: see listeners59_t.sh)
 A=$ST_PERSIST/accounts/u-ann
 mkdir -p $ST_RUN $ST_PERSIST/var/log $ST_PERSIST/etc $ST_HOME $ST_DEV $ST_PROC/self $A $ST_SYS/class/power_supply/BAT0 $ST_SYS/block/zram0 $ST_SYS/fs/cgroup/desktop $ST_SYS/class/net/eth0
 for f in Documents Pictures Music Videos Downloads; do mkdir -p $A/$f; ln -s $A/$f $ST_HOME/$f; done   # (a link stands for the bind)

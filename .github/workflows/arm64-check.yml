@@ -31,25 +31,27 @@ jobs:
       - name: The C helpers and rudolfd
         run: |
           cd iso; MA=$(gcc -print-multiarch); echo "multiarch $MA"; B=$PWD/out-arm64; mkdir -p $B
-          gcc -O2 -o $B/rudolf-display sys/rudolf-display.c -lX11 /usr/lib/$MA/libXtst.so.6 /usr/lib/$MA/libXfixes.so.3 /usr/lib/$MA/libXrandr.so.2 -lm
-          gcc -O2 -o $B/rudolfd sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
-          gcc -O2 -o $B/rudolf-update sys/rudolf-update.c -lcrypto -ldl
-          gcc -O2 -o $B/rudolf-launch sys/rudolf-launch.c
-          gcc -O2 -o $B/rudolf-memguard sys/rudolf-memguard.c
-          gcc -O2 -o $B/rudolf-shellfix sys/rudolf-shellfix.c
-          gcc -O2 -o $B/rudolf-remote sys/rudolf-remote.c -lssl -lcrypto -lX11 -lXext /usr/lib/$MA/libXtst.so.6 -lz
-          gcc -O2 -static -o $B/cdp-eval sys/cdp-eval.c
-          gcc -O2 -o $B/rudolf-debian sys/rudolf-debian.c -lcrypto -ldl
-          gcc -O2 -o $B/rudolf-fscheck sys/rudolf-fscheck.c
-          gcc -O2 -o $B/rudolf-portal sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0)
-          gcc -O2 -o $B/rudolf-apps sys/rudolf-apps.c -lz
-          gcc -O2 -o $B/rpk sys/rpk.c -lcrypto
-          gcc -O2 -o $B/rudolf-ai sys/rudolf-ai.c -lcrypto -ldl
-          gcc -O2 -o $B/rudolf-print sys/rudolf-print.c -ldl
-          gcc -O2 -o $B/rudolf-devlink sys/rudolf-devlink.c -lcrypto -ldl
+          . systools/hardflags.sh   # 1.5.9 (plan 15.5): built hardened, as the release builds them, and checked below
+          gcc -O2 $HARD -o $B/rudolf-display sys/rudolf-display.c -lX11 /usr/lib/$MA/libXtst.so.6 /usr/lib/$MA/libXfixes.so.3 /usr/lib/$MA/libXrandr.so.2 -lm
+          gcc -O2 $HARD -o $B/rudolfd sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          gcc -O2 $HARD -o $B/rudolf-update sys/rudolf-update.c -lcrypto -ldl
+          gcc -O2 $HARD -o $B/rudolf-launch sys/rudolf-launch.c
+          gcc -O2 $HARD -o $B/rudolf-memguard sys/rudolf-memguard.c
+          gcc -O2 $HARD -o $B/rudolf-shellfix sys/rudolf-shellfix.c
+          gcc -O2 $HARD -o $B/rudolf-remote sys/rudolf-remote.c -lssl -lcrypto -lX11 -lXext /usr/lib/$MA/libXtst.so.6 -lz
+          gcc -O2 $HARD_STATIC -o $B/cdp-eval sys/cdp-eval.c
+          gcc -O2 $HARD -o $B/rudolf-debian sys/rudolf-debian.c -lcrypto -ldl
+          gcc -O2 $HARD -o $B/rudolf-fscheck sys/rudolf-fscheck.c
+          gcc -O2 $HARD -o $B/rudolf-portal sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0)
+          gcc -O2 $HARD -o $B/rudolf-apps sys/rudolf-apps.c -lz
+          gcc -O2 $HARD -o $B/rpk sys/rpk.c -lcrypto
+          gcc -O2 $HARD -o $B/rudolf-ai sys/rudolf-ai.c -lcrypto -ldl
+          gcc -O2 $HARD -o $B/rudolf-print sys/rudolf-print.c -ldl
+          gcc -O2 $HARD -o $B/rudolf-devlink sys/rudolf-devlink.c -lcrypto -ldl
           gcc -Os -static -nostdlib -fno-builtin -fno-stack-protector -fno-asynchronous-unwind-tables -o $B/rudolf-kexec sys/rudolf-kexec.c
-          gcc -Os -static -o $B/rudolf-verity sys/rudolf-verity.c
+          gcc -Os $HARD_STATIC -o $B/rudolf-verity sys/rudolf-verity.c
           file $B/* | sed 's/,.*//' ; ! file $B/* | grep -v "ARM aarch64"
+          python3 systools/hardcheck.py $(ls $B/* | grep -v rudolf-kexec)   # (BTI and PAC on ARM64; rudolf-kexec has no C library)
           $B/rudolf-kexec 2>&1 | grep -q "usage: rudolf-kexec" && echo "rudolf-kexec runs (ARM64 system calls)"
           $B/rudolf-memguard --warn 3415 340 3415 2387 | grep -qx 1 && echo "rudolf-memguard runs"
           echo "::notice title=ARM64::the C helpers and rudolfd build and run on ARM64 ($MA)"
