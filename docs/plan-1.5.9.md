@@ -10,7 +10,7 @@ Done in code and tests (PRs #260–#281, rudolfos-library #31; each part's "Done
 check (since #280 ModemManager runs without udev; since #281 the self-test has a modem line), Part 3 steps 1–5 (QEMU
 starts the ARM64 build directly, through UEFI firmware and with Chromium as the desktop), Part 4 up to the device
 check, Part 7 except the Vivobook call checks, Part 8 except 8.4's recovery.efi and the TPM and hardware keys, Part 9,
-Part 10's pictures, fonts and lazy apps, Part 11. Part 12 (the native desktop engine, a prototype): its implementation design is written (12.5), steps 1–5 follow as stacked PRs; Part 13 (USB printers) moved to 1.6.0. The
+Part 10's pictures, fonts and lazy apps, Part 11. Part 12 (the native desktop engine, a prototype) is not started; Part 13 (USB printers) moved to 1.6.0. The
 latest beta: **2026111402** (not promoted).
 
 ### What needs the Vivobook (or the person) before 1.5.9 is promoted
@@ -656,10 +656,6 @@ Five pull requests, one per step of 12.3, each stacked on the one before (the ow
   when there is one; in a browser the other app opens in the same page as before;
 - in one-app windows other than Settings, does not write the accounts (bd95user): several pages share the same
   storage, and only Settings changes accounts.
-- shares drive C: with the other one-app pages: a page that writes it (fs:system in IndexedDB) tells the others on a
-  BroadcastChannel ("rudolf-fs"), and they read it again before their next write, so one window's save never puts back
-  another's older copy; an unknown NAME says "This app is not on this Rudolf OS" and closes; one-app pages send no
-  heartbeat (the shell does: step 5).
 Both engines: Playwright's Chromium (oneapp59_t.js) and WebKitGTK (oneapp59_ci.py, run in the Lite engine check):
 each of a list of apps opens alone, fills the window, has the app's title, and closes cleanly.
 
@@ -748,15 +744,6 @@ times in a row as it starts, gives it up now. Given up means Standard (Chromium)
 ("the Native desktop did not start (…), so the standard engine is used from now on"), as Lite. The watchdog's other
 rules stay. The release build (ci_release.sh, mkrootfs.sh, arm64_base.sh) builds rudolf-native and the webkit-check
 workflow builds it and runs native59_t.sh.
-
-**Decisions taken here**
-- The sign-in's check and key unwrapping need cryptography in rudolfd: written in plain C (decrypt and check only),
-  not a new library (12.1), and checked against Node's WebCrypto.
-- The one-app pages get the account's keys from rudolfd (desktop/session, with the token, only while signed in and
-  not locked): the page holds the same keys after its own sign-in; rudolf-native never sees them, nor any hash.
-- rudolfd forks for every connection, so the native session lives in a root-only file, not in memory.
-- The frames are X windows of ours drawn with cairo (not GTK windows), so every client (GTK, Chromium, Wine, Flatpak)
-  is handled the same way.
 
 **Not in the prototype** (12.2, and these): the taskbar at the left or right, Super+Tab and the other window keys,
 the screen saver and its lock, notifications as pop-ups (the count only), several monitors, the Phone screen and
