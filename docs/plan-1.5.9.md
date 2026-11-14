@@ -1026,6 +1026,27 @@ Sign-in). Tests: qt/host/devlink_t.sh (devlink_t.py 47, now with the idle end, a
 qt/shell2/dl140_t.js (23). Still to do: qt/sb/t140_t.py (QEMU) must sign in as an administrator in Developer mode
 before it switches the link on; updated with its next run.
 
+### 15.7 The devlink can only look unless it is allowed to change the computer (added on 2026-11-14)
+Asked for: whether the devlink may change the laptop, switched with a checkbox and an administrator's password in
+Settings. **Done (2026-11-14):**
+- **Settings › Security › Development link:** "Allow changes to this computer", under Ask first, both in the
+  switch-on form and while the link is on. Unticked by default; ticking it asks for an administrator's name and
+  password, checked by rudolfd (`devlink/change?on=1`, as `devlink/on`), only in Developer mode; unticking needs
+  nothing. It is unticked again at every start (`dl_boot`) and whenever the link is off. The banner says "can look at
+  this computer (read-only)" or "can change this computer"; the Allow prompt says which; System health's line and the
+  system report name it; switching it is in the health log (Security), with who.
+- **Read-only is enforced by the system, not trusted** (rudolf-devlink.c `ro_enter`): an `sh` command runs in a
+  private mount namespace where every mount is read-only except its own output folder, with a fresh /tmp of its own;
+  the link's GitHub token is covered by an empty file in that view; then it runs as nobody (uid and gid 65534) with
+  only CAP_DAC_READ_SEARCH (it reads every file but writes none, mounts nothing, signals no other process, changes
+  no kernel setting) and no new privileges, without rudolfd's token (and rudolfd refuses it anyway: not the desktop,
+  15.1). `put` and `restart` are refused, saying how to allow them; `screenshot` and `get` still work.
+- **What read-only cannot do:** read another user's process memory figures (/proc/PID/smaps: memory per process,
+  as the engine measurements use), switch user (`su`), or run the self-test's parts that need root; those need the
+  box ticked.
+- Tests: qt/host/devlink_t.py (56: nine new, with a real namespace), qt/host/devlink59_t.sh (31: seven new),
+  qt/shell2/dl140_t.js (31: eight new).
+
 ### 15.5 Fewer and harder doors
 - **The list of everything that listens** (TCP and Unix sockets: rudolfd's 8080 and 8099, remote access, the portal,
   Bluetooth's agent, the devlink), each with who may use it and how it checks; a test fails if something listens that
