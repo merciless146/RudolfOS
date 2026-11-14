@@ -3,7 +3,8 @@
 # stand-in rudolfd (fixtures/native_rd.py) serving the real desktop page: the sign-in screen (a wrong and a right
 # password), the heartbeat, the wallpaper (colours, a gradient, a drawn background, a picture of your own), the taskbar
 # (at the bottom and the top, its accent colour, the pinned apps, the tray, the clock), the start menu and its search,
-# app windows in one-app mode sharing one WebKit web process, the lock screen and signing out. What is where comes from
+# app windows in one-app mode sharing one WebKit web process, the lock screen and signing out; (step 4) the window
+# manager: frames, focus, moving, resizing, maximise, minimise, the taskbar's list, full screen, dialogs, close. What is where comes from
 # rudolf-native's own account of it (RUDOLF_NATIVE_STATE); colours from screenshots. Needs Xvfb, xdotool, ImageMagick,
 # node, python3, gcc and WebKitGTK's headers (libwebkit2gtk-4.1-dev).   sh native59_t.sh [RUDOLF-NATIVE]
 HERE=$(cd "$(dirname "$0")" && pwd); T=$(mktemp -d /tmp/native59.XXXXXX); PORT=8298; DSP=:79
@@ -20,7 +21,7 @@ set_s '{"s":{"bs":"solid","b1":"#112233","b2":"#000080","tb":"bottom","accent":"
 python3 $HERE/fixtures/native_rd.py $PORT $D > $T/rd.log 2>&1 & RDP=$!
 Xvfb $DSP -screen 0 1280x800x24 -nolisten tcp >/dev/null 2>&1 & XV=$!
 export DISPLAY=$DSP LIBGL_ALWAYS_SOFTWARE=1
-trap 'kill $NP $RDP $XV 2>/dev/null; pkill -f "$T/" 2>/dev/null; rm -rf $T' EXIT
+trap 'kill $NP $RDP $XV $XP $IP 2>/dev/null; pkill -f "$T/" 2>/dev/null; rm -rf $T' EXIT
 w8() { i=0; while [ $i -lt ${2:-80} ]; do eval "$1" && return 0; timeout 0.25 tail -f /dev/null; i=$((i+1)); done; return 1; }
 w8 'xdpyinfo >/dev/null 2>&1 || xdotool getmouselocation >/dev/null 2>&1' 40
 (cd $D && HOME=$D RUDOLF_NATIVE_STATE=$D/state exec $BIN --size=1280x800 --draw=soft --base=http://127.0.0.1:$PORT > $T/native.log 2>&1) & NP=$!
@@ -75,13 +76,57 @@ n=$(ps -eo comm | grep -c '^WebKitWebProces'); ok "21. ...both windows share one
 timeout 2 tail -f /dev/null; shot; ok "22. ...and they draw (the Calculator's dark keys, Notepad's white page)" "$( ! close "$(px 300 300)" "246 245 244" 3 && echo 1)" "$(px 300 300)"
 click $(hit pin calc); timeout 1 tail -f /dev/null
 ok "23. a pinned app already open is brought to the front, not opened again" "$([ "$(grep -c '^app ' $D/state)" = 2 ] && grep -q '^app calc [0-9a-f]* 1' $D/state && echo 1)" "$(grep '^app' $D/state)"
+# ---- the window manager (step 4)
+XC=$T/xc; gcc -O2 -o $XC $HERE/fixtures/xwmclient.c -lX11 || { echo "FAIL build xwmclient"; exit 1; }
+cl() { grep "^client $1 " $D/state | head -1; }          # client ID FRAME X Y W H min= max= full= focus= app= TITLE
+cv() { cl $1 | awk -v f=$2 '{print $f}'; }               # one field: 4 x, 5 y, 6 w, 7 h
+flag() { cl $1 | grep -o "$2=[0-9]" | cut -d= -f2; }
+ok "28. rudolf-native is the window manager; the app windows are framed" "$([ "$(st wm)" = 1 ] && [ "$(grep -c '^client .* app=calc' $D/state)" = 1 ] && [ "$(grep -c '^client .* app=notepad' $D/state)" = 1 ] && echo 1)" "$(grep '^client\|^wm' $D/state)"
+$XC app > $T/xc.log & XP=$!
+w8 'grep -q "^id" $T/xc.log'; ID=$(sed -n 's/^id 0x//p' $T/xc.log | head -1)
+w8 '[ -n "$(cl $ID)" ]' 40
+ok "29. a Linux app's window gets a frame, the keyboard and WM_STATE" "$([ "$(flag $ID focus)" = 1 ] && [ "$($XC getfocus)" = "0x$ID" ] && [ "$($XC wmstate 0x$ID)" = 1 ] && echo 1)" "$(cl $ID) $($XC getfocus)"
+w8 'grep -q "^take_focus [1-9]" $T/xc.log' 20; ok "30. ...WM_TAKE_FOCUS with a server time (as Wine needs)" "$(grep -q '^take_focus [1-9]' $T/xc.log && echo 1)" "$(cat $T/xc.log)"
+ok "31. ...its title on the taskbar" "$(grep -q "^hit win $ID " $D/state && grep -q "^client $ID .* Starport stand-in$" $D/state && echo 1)" "$(grep '^hit win' $D/state)"
+timeout 0.5 tail -f /dev/null; shot; X=$(cv $ID 4); Y=$(cv $ID 5); W=$(cv $ID 6)
+ok "32. ...the active title bar in the accent colour" "$(close "$(px $((X+60)) $((Y+15)))" "37 99 235" 3 && echo 1)" "$(px $((X+60)) $((Y+15)))"
+xdotool mousemove $((X+60)) $((Y+15)) mousedown 1; for k in 1 2 3 4 5; do xdotool mousemove $((X+60+k*40)) $((Y+15+k*20)); timeout 0.1 tail -f /dev/null; done; xdotool mouseup 1; timeout 0.5 tail -f /dev/null
+ok "33. dragging the title bar moves it" "$([ "$(cv $ID 4)" = $((X+200)) ] && [ "$(cv $ID 5)" = $((Y+100)) ] && echo 1)" "$(cl $ID) from $X $Y"
+ok "34. ...and the window is told where it is (a ConfigureNotify with the screen's coordinates)" "$(grep -q "^geom $((X+200+4)) $((Y+100+30)) 400 300" $T/xc.log && echo 1)" "$(grep geom $T/xc.log | tail -2)"
+X=$(cv $ID 4); Y=$(cv $ID 5); FW=$((W+8)); FH=$(( $(cv $ID 7) + 34 ))
+xdotool mousemove $((X+FW-2)) $((Y+FH-2)) mousedown 1; for k in 1 2 3 4; do xdotool mousemove $((X+FW-2+k*20)) $((Y+FH-2+k*15)); timeout 0.1 tail -f /dev/null; done; xdotool mouseup 1; timeout 0.5 tail -f /dev/null
+ok "35. dragging the bottom-right corner resizes it" "$([ "$(cv $ID 6)" = 480 ] && [ "$(cv $ID 7)" = 360 ] && echo 1)" "$(cl $ID)"
+W=$(cv $ID 6); FW=$((W+8)); click $((X+FW-61)) $((Y+15)); timeout 0.5 tail -f /dev/null
+ok "36. maximise: the whole screen above the taskbar" "$([ "$(flag $ID max)" = 1 ] && [ "$(cv $ID 4) $(cv $ID 5) $(cv $ID 6) $(cv $ID 7)" = "0 0 1272 720" ] && echo 1)" "$(cl $ID)"
+xdotool mousemove 300 15 click --repeat 2 --delay 80 1; timeout 0.5 tail -f /dev/null
+ok "37. a double-click on the title bar: back to its size and place" "$([ "$(flag $ID max)" = 0 ] && [ "$(cv $ID 4) $(cv $ID 6)" = "$X 480" ] && echo 1)" "$(cl $ID)"
+click $((X+FW-97)) $((Y+15)); timeout 0.5 tail -f /dev/null
+ok "38. minimise: out of sight (WM_STATE iconic), the next window gets the keyboard" "$([ "$(flag $ID min)" = 1 ] && [ "$($XC wmstate 0x$ID)" = 3 ] && [ "$(flag $ID focus)" = 0 ] && grep -q '^client .* focus=1 ' $D/state && echo 1)" "$(grep '^client' $D/state) $($XC wmstate 0x$ID)"
+click $(hit win $ID); timeout 0.5 tail -f /dev/null
+ok "39. its taskbar button brings it back, in front" "$([ "$(flag $ID min)" = 0 ] && [ "$(flag $ID focus)" = 1 ] && [ "$($XC getfocus)" = "0x$ID" ] && echo 1)" "$(cl $ID)"
+CID=$(grep '^client .* app=calc' $D/state | cut -d' ' -f2); click $(( $(cv $CID 4) + 820 )) $(( $(cv $CID 5) + 520 )); timeout 0.5 tail -f /dev/null
+ok "40. a click into another window gives it the keyboard (and the click)" "$([ "$(flag $CID focus)" = 1 ] && [ "$(flag $ID focus)" = 0 ] && echo 1)" "$(grep '^client' $D/state)"
+$XC full 0x$ID 1; timeout 0.5 tail -f /dev/null
+ok "41. a window asking for full screen covers the whole screen, taskbar too" "$([ "$(flag $ID full)" = 1 ] && grep -q '^geom 0 0 1280 800' $T/xc.log && [ "$($XC stack | tail -1)" = "0x$(cl $ID | cut -d' ' -f3)" ] && echo 1)" "$(cl $ID); $(tail -2 $T/xc.log); $($XC stack | tail -2)"
+$XC full 0x$ID 0; timeout 0.5 tail -f /dev/null
+ok "42. ...and back" "$([ "$(flag $ID full)" = 0 ] && [ "$(cv $ID 6)" = 480 ] && echo 1)" "$(cl $ID)"
+$XC inno > $T/inno.log & IP=$!; w8 'grep -q "^dlg" $T/inno.log'; DLG=$(sed -n 's/^dlg 0x//p' $T/inno.log); OW=$(sed -n 's/^id 0x//p' $T/inno.log); w8 '[ -n "$(cl $DLG)" ]' 20
+ok "43. a dialog is centred over its window" "$(dx=$(( $(cv $DLG 4) + ($(cv $DLG 6) + 8) / 2 - $(cv $OW 4) - ($(cv $OW 6) + 8) / 2 )); [ ${dx#-} -le 2 ] && echo 1)" "$(cl $OW) / $(cl $DLG)"
+ok "44. ...and is not on the taskbar" "$( ! grep -q "^hit win $DLG " $D/state && echo 1)"
+kill $IP 2>/dev/null; w8 '[ -z "$(cl $DLG)" ]' 20
+X=$(cv $ID 4); Y=$(cv $ID 5); FW=$(( $(cv $ID 6) + 8 )); click $((X+FW-25)) $((Y+15))
+w8 'grep -q "^delete" $T/xc.log' 20; w8 '[ -z "$(cl $ID)" ]' 20
+ok "45. close: WM_DELETE_WINDOW, the program closes its window, the frame and the taskbar button go" "$(grep -q '^delete' $T/xc.log && [ -z "$(cl $ID)" ] && ! grep -q "^hit win $ID " $D/state && echo 1)" "$(cat $T/xc.log | tail -2)"
+NID=$(grep '^client .* app=notepad' $D/state | cut -d' ' -f2); X=$(cv $NID 4); Y=$(cv $NID 5); FW=$(( $(cv $NID 6) + 8 )); click $((X+FW-25)) $((Y+15))
+w8 '[ -z "$(cl $NID)" ]' 40
+ok "46. an app window's close button asks the page (as its ✕), which closes it" "$([ -z "$(cl $NID)" ] && ! grep -q '^app notepad' $D/state && echo 1)" "$(grep '^client\|^app' $D/state)"
 # ---- lock and sign out
 click $(hit start -); w8 '[ "$(st menu)" = 1 ]' 20; L=$(grep '^menubtn lock ' $D/state | awk '{print $3+int($5/2), $4+int($6/2)}'); click $L
-w8 '[ "$(st locked)" = 1 ]' 20; ok "24. Lock: the lock screen, rudolfd told (new app windows get no session meanwhile)" "$([ "$(st locked)" = 1 ] && [ "$(st signin)" = 1 ] && grep -q 'POST desktop/lock' $D/calls && echo 1)" "$(head -6 $D/state)"
+w8 '[ "$(st locked)" = 1 ]' 20; ok "24. Lock: the lock screen, rudolfd told (new app windows get no session meanwhile)" "$([ "$(st locked)" = 1 ] && [ "$(st signin)" = 1 ] && grep -q 'POST desktop/lock' $D/calls && [ "$($XC stack | tail -1)" = "0x$(xdotool search --name '^Sign in$' | head -1 | xargs printf '%x')" ] && echo 1)" "$(head -6 $D/state)"
 xdotool type --delay 15 'nope'; xdotool key Return; w8 '[ -n "$(st signmsg)" ]' 20
 ok "25. ...a wrong password: refused" "$([ "$(st locked)" = 1 ] && [ "$(st signmsg)" = 'The password is incorrect.' ] && echo 1)" "$(st signmsg)"
 LC_ALL=C.UTF-8 xdotool type --delay 30 "$PW"; xdotool key Return; w8 '[ "$(st locked)" = 0 ]' 40
-ok "26. ...the right one: back, the windows as they were" "$([ "$(st locked)" = 0 ] && [ "$(grep -c '^app ' $D/state)" = 2 ] && echo 1)" "$(head -6 $D/state)"
+ok "26. ...the right one: back, the windows as they were" "$([ "$(st locked)" = 0 ] && [ "$(grep -c '^app ' $D/state)" = 1 ] && [ "$(flag $CID min)" = 0 ] && echo 1)" "$(grep '^app\|^client\|^locked' $D/state)"
 click $(hit start -); w8 '[ "$(st menu)" = 1 ]' 20; L=$(grep '^menubtn logout ' $D/state | awk '{print $3+int($5/2), $4+int($6/2)}'); click $L
 w8 '[ "$(st signin)" = 1 ]' 20; ok "27. Sign out: the app windows close, rudolfd ends the session, the sign-in screen" "$([ "$(st user)" = - ] && [ "$(grep -c '^app ' $D/state)" = 0 ] && grep -q 'POST desktop/logout' $D/calls && echo 1)" "$(head -6 $D/state)"
 kill $NP 2>/dev/null

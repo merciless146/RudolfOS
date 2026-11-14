@@ -13,10 +13,12 @@
    - The windows of the last session are not reopened (each app window would reopen them), and only Settings writes the
      accounts (all app windows share the same storage). ===== */
 const ONEAPP=(()=>{try{const h=String(location.hash||'').replace(/^#/,'');if(!h)return null;const q=new URLSearchParams(h),k=q.get('app');
- return k&&/^[a-z0-9_-]{1,40}$/i.test(k)?{k,file:q.get('file')||''}:null}catch(e){return null}})();
+ return k&&/^[a-z0-9_-]{1,40}$/i.test(k)?{k,file:q.get('file')||'',w:+q.get('w')||0}:null}catch(e){return null}})();
 const OA={main:null,want:0,opened:0,done:0,login:0};
 const oaNative=()=>!!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rudolfNative);
-function oaPost(m){try{if(oaNative())window.webkit.messageHandlers.rudolfNative.postMessage(m)}catch(e){}}
+/* (w: which of the shell's windows this is, from #app=NAME&w=N: WebKit gives every window the native shell opens the same
+   message handler, so the shell knows the sender by it) */
+function oaPost(m){try{if(oaNative())window.webkit.messageHandlers.rudolfNative.postMessage(Object.assign({w:ONEAPP?ONEAPP.w:0},m))}catch(e){}}
 const oaHex=h=>h&&/^([0-9a-f]{2})+$/i.test(h)?Uint8Array.from(h.match(/../g),x=>parseInt(x,16)):null;
 if(ONEAPP){
  document.documentElement.classList.add('oneapp');
