@@ -322,7 +322,9 @@ static char *dj_str(const char *p)
 		case 'u': {
 			unsigned c = 0; for (int i = 1; i <= 4; i++) { int v = hexval(p[i]); if (v < 0) { free(s.b); return NULL; } c = c << 4 | v; } p += 4;
 			if (c >= 0xd800 && c < 0xdc00 && p[1] == '\\' && p[2] == 'u') {
-				unsigned d = 0; int okk = 1; for (int i = 3; i <= 6; i++) { int v = hexval(p[i]); if (v < 0) okk = 0; else d = d << 4 | v; }
+				/* (1.5.9, found by the fuzz test: stop at the first character that is not a digit, or a string ending in
+				   "\ud800\u" read past its end) */
+				unsigned d = 0; int okk = 1; for (int i = 3; i <= 6; i++) { int v = hexval(p[i]); if (v < 0) { okk = 0; break; } d = d << 4 | v; }
 				if (okk && d >= 0xdc00 && d < 0xe000) { c = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00); p += 6; }
 			}
 			dj_utf8(&s, c); break; }
@@ -342,7 +344,9 @@ static void dj_raw(str *s, const char *p, const char *def)   /* the value at p a
 
 /* ------------------------------------------------------------------ the page's storage (the lsync copy) */
 typedef struct { char *file; const char *data; } dls;
-static int dls_open(dls *l) { l->file = slurp(desk_ls, NULL); l->data = l->file ? dj_get(l->file, "data") : NULL; return l->data != NULL; }
+/* (1.5.9, found by the fuzz test: a copy that is not the page's JSON was kept and never freed by the callers that give
+   up when this fails; now nothing is kept then) */
+static int dls_open(dls *l) { l->file = slurp(desk_ls, NULL); l->data = l->file ? dj_get(l->file, "data") : NULL; if (!l->data) { free(l->file); l->file = NULL; } return l->data != NULL; }
 static void dls_close(dls *l) { free(l->file); l->file = NULL; l->data = NULL; }
 /* a key's value (the page keeps JSON in strings): malloc'd, NULL when it is not there */
 static char *dls_get(dls *l, const char *key) { return l->data ? dj_str(dj_get(l->data, key)) : NULL; }

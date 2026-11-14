@@ -4357,6 +4357,31 @@ static void api(struct req *r)
 	reply_err(r->fd, 404, "unknown API");
 }
 
+/* the request's head (the text before the blank line, NUL-terminated): method, path, query, token, range and the body's
+   length. 0, or -1 when it is not a request. (1.5.9, plan 15.5: on its own, so the host's fuzz test drives it) */
+static int req_head(char *hdr, struct req *r, size_t *clen)
+{
+	char url[4096] = "";
+	*clen = 0;
+	if (sscanf(hdr, "%7s %4095s", r->method, url) != 2) return -1;
+	char *q = strchr(url, '?');
+	if (q) { *q = 0; snprintf(r->query, sizeof r->query, "%s", q + 1); }
+	snprintf(r->path, sizeof r->path, "%s", url);
+	for (char *l = strstr(hdr, "\r\n"); l; l = strstr(l + 2, "\r\n")) {
+		char *h = l + 2;
+		if (!strncasecmp(h, "Content-Length:", 15)) {
+			/* (15.5: a negative, unreadable or second length is not a length) */
+			const char *v = h + 15; while (*v == ' ' || *v == '\t') v++;
+			char *e; errno = 0; unsigned long long c = isdigit((unsigned char)*v) ? strtoull(v, &e, 10) : 0;
+			if (!isdigit((unsigned char)*v) || errno || (*e && *e != '\r' && *e != ' ' && *e != '\t') || (*clen && *clen != c)) return -1;
+			*clen = c > (unsigned long long)SIZE_MAX / 2 ? SIZE_MAX / 2 : (size_t)c;
+		}
+		else if (!strncasecmp(h, "X-Rudolf-Token:", 15)) { char *v = h + 15; while (*v == ' ') v++; snprintf(r->tok, sizeof r->tok, "%.*s", (int)strcspn(v, "\r"), v); }
+		else if (!strncasecmp(h, "Range:", 6)) { char *v = h + 6; while (*v == ' ') v++; snprintf(r->range, sizeof r->range, "%.*s", (int)strcspn(v, "\r"), v); }
+	}
+	return 0;
+}
+
 static void handle(int fd)
 {
 	dl_store_state();   /* 1.5.6: this process's view of the downloads store */
@@ -4378,18 +4403,8 @@ static void handle(int fd)
 	*end = 0;
 	char *body0 = end + 4;
 	size_t have = n - (body0 - hdr);
-	char url[4096] = "";
-	if (sscanf(hdr, "%7s %4095s", r.method, url) != 2) return;
-	char *q = strchr(url, '?');
-	if (q) { *q = 0; snprintf(r.query, sizeof r.query, "%s", q + 1); }
-	snprintf(r.path, sizeof r.path, "%s", url);
 	size_t clen = 0;
-	for (char *l = strstr(hdr, "\r\n"); l; l = strstr(l + 2, "\r\n")) {
-		char *h = l + 2;
-		if (!strncasecmp(h, "Content-Length:", 15)) clen = strtoul(h + 15, NULL, 10);
-		else if (!strncasecmp(h, "X-Rudolf-Token:", 15)) { char *v = h + 15; while (*v == ' ') v++; snprintf(r.tok, sizeof r.tok, "%.*s", (int)strcspn(v, "\r"), v); }
-		else if (!strncasecmp(h, "Range:", 6)) { char *v = h + 6; while (*v == ' ') v++; snprintf(r.range, sizeof r.range, "%.*s", (int)strcspn(v, "\r"), v); }
-	}
+	if (req_head(hdr, &r, &clen)) { reply_err(fd, 400, "bad request"); return; }
 	if (clen > MAXBODY) { reply_err(fd, 413, "too large"); return; }
 	if (clen) {
 		r.body = malloc(clen + 1);

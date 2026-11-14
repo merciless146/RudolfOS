@@ -1057,6 +1057,36 @@ Settings. **Done (2026-11-14):**
 - **rudolfd's root work split out over time:** the API stays as it is, but what needs root (disks, updates, accounts,
   power) moves into small helpers it runs, so rudolfd itself can drop to the rudolf user after start (1.6.0 continues).
 
+**Done (2026-11-14):**
+- **The list:** `iso/sys/root/usr/share/rudolf/listeners` (in the base layer): each listener's kind, place, program, when,
+  who may use it and how it checks: rudolfd's 8080, Blitzen's engine on 8099 (llama-server, as the ai user, with its
+  key), remote access's 8443, Chromium's 9222 on test discs only, the hotspot's dnsmasq, X's sockets, the system and
+  session D-Bus, PulseAudio, Flatpak's, the Debian terminals', Wi-Fi's and the hotspot's control sockets, Chromium's,
+  Wine's and Waydroid's. Bluetooth's agent, the portal and the devlink listen on nothing of their own (D-Bus clients;
+  the devlink only connects out). Found while listing it: X runs with `-ac` (no access control: any local program may
+  use the display); with 15.3's users that needs X authorization (said in the list; 1.6.0).
+- **The test:** rudolf-selftest's new `listeners` line reads /proc/net/tcp, tcp6 and unix and fails naming each
+  listener the list does not name; `qt/host/listeners59_t.sh` (10): the sources (a C program in sys/ that binds and
+  listens, a listening daemon a script starts, anything like nc -l, socat, sshd or VNC) and the self-test's line on a
+  stand-in /proc. ci_release.sh runs it before each release.
+- **Built hardened:** `iso/systools/hardflags.sh` (HARD: `-fstack-protector-strong -D_FORTIFY_SOURCE=3 -fPIE -pie
+  -Wl,-z,relro,-z,now`, with `-fcf-protection=full` on x86-64 and `-mbranch-protection=standard` on ARM64; HARD_STATIC
+  with `-static-pie` for cdp-eval and rudolf-verity), used by ci_release.sh, mkrootfs.sh (so arm64_base.sh),
+  arm64_kernel.sh, testkernel.sh and the ARM64 workflow. rudolf-kexec (no C library) is the one left as it was.
+  `iso/systools/hardcheck.py` reads each built program (readelf: ELF type DYN, GNU_RELRO and BIND_NOW,
+  __stack_chk_fail, the _chk functions, IBT and SHSTK or BTI and PAC) and the release fails on one without them.
+  Test: `qt/host/hardcheck59_t.sh` (6).
+- **Fuzzed:** `qt/host/fuzz/rudolfd_fuzz.c`, compiled from rudolfd.c: the request's head (now its own function,
+  `req_head`), qparam and urldecode, the JSON reader (dj_*), the page's storage behind desktop/accounts and
+  desktop/settings, and sjson read back by dj_str. With libFuzzer when clang has it, else its own coverage-guided
+  mutation fuzzer under AddressSanitizer and UBSan (this build host has no libFuzzer). Corpus in
+  `qt/host/fuzz/corpus` (a fixed crash kept as `fixed-*`). `qt/host/fuzz59_t.sh` runs it for FUZZ_SECONDS (60;
+  ci_release.sh: 120 before each release). Found and fixed: dj_str read past the end of a string ending in
+  `\ud800\u` (a broken surrogate pair; heap read of 1 to 3 bytes); the page's storage copy leaked when it was not the
+  page's JSON (dls_open); Content-Length taken as a number whatever it was (a negative one, a second one or garbage
+  now get 400). 420 s without a crash after the fixes.
+- Still to do from 15.5: rudolfd's root work split into helpers (1.6.0, as planned).
+
 ### 15.6 Security fixes arrive soon
 - A scheduled check (GitHub Actions, daily) compares the Chromium and the kernel in the latest release with the newest
   ones Ubuntu has published; when either has a security update, it opens an issue "Security update available:
