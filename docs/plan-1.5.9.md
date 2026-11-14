@@ -1334,3 +1334,57 @@ code). Each in its own PR. (2026-11-14: 15.1, 15.2, 15.4, 15.6 and 15.5 done; 15
 Debian, Wine and Library packages as the account's user), its QEMU check next, as its note says; Part 12 step 8,
 12.3c: steps 1-6 done (step 5's rest on 2026-11-14), a second Oracle window from inside Oracle and keeping Chromium while a
 download arrives next, as its note says.)
+
+
+## Part 16: Browse with Tor in Oracle (added on 2026-11-14)
+Asked for: a "Browse with Tor" button in Oracle's window, at the right end of the bookmarks bar (below the ☰ menu), a
+toggle shown pressed (white outline) or not (black outline), its symbol an onion, its tooltip "Browse Oracle with Tor".
+Decided with the owner: pressing it sends **that window** through Tor (every tab of it, private: nothing kept); pressing
+it again reopens the window's tabs normally; other Oracle windows and apps are untouched. In 1.5.9.
+
+**What it is, said plainly in the window:** Tor hides the computer's address from the sites and what is visited from
+the network; it is not Tor Browser's anonymity (sites can still recognise Chromium by its fingerprint). The Tor
+window's private-tab page says so and links Tor Browser (Flathub: Apps) for real anonymity. Many sites are slower or
+ask for a captcha over Tor; Google's sign-in often refuses it.
+
+**The symbol:** the Tor Project's onion logo is its trademark, and its policy does not allow changed or product uses
+of it without permission, so the button draws an onion of its own (SVG, lavender, in the button's size), never the
+Tor logo. The word "Tor" is used only to say what it uses (the tooltip, the notes), as the policy allows.
+
+### 16.1 Tor in the system layer
+- `tor` (Ubuntu 24.04's package: /usr/bin/tor and the libraries it needs that the base lacks, libevent's) copied into
+  the base layer by ci_release.sh with a budget of its own, 6 MB; `tor` added to the CI's apt-get install.
+- A system user `tor` (uid 951) made by mkrootfs.sh, as `ai` is. rudolfd starts Tor only while a Tor window is open:
+  `tor --SocksPort 127.0.0.1:9050 --DataDirectory /run/rudolf/tor --Log "notice file /run/rudolf/tor/log"
+  --User tor --ClientOnly 1 --AvoidDiskWrites 1` (no relay, nothing on RUDOLFDATA: a fresh Tor each time), stopped a
+  minute after the last Tor window closes. The firewall lets it out as any program; nothing listens but 127.0.0.1:9050
+  (added to the list of listeners: who may use it: programs on this computer; how it checks: loopback only).
+- rudolfd `tor/status` (off, starting with Tor's bootstrap percentage from its log, on, failed with the log's last
+  line), `tor/start`, `tor/stop`; the page asks it. Health log: started, ready, stopped, failed.
+
+### 16.2 The Tor window
+- Pressing the button in an Oracle window: Tor is started (the window shows "Connecting to Tor… N %"), then the window's
+  tabs open in a **Tor window**: Rudolf's Chromium started through `rudolf-launch --oracle` (as Oracle on Native,
+  12.3c) with the shell at `#app=browser&tor=1&url=…` for each tab, its own profile in /run (tmpfs, deleted when it
+  closes, never Standard's), `--proxy-server=socks5://127.0.0.1:9050` (Chromium resolves names through the SOCKS5
+  proxy, so no DNS leaves outside Tor), `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`, no extensions but
+  Ruffle, the shell installed from its file; it runs as the desktop's user in the desktop's memory group (15.1), and
+  the desktop page inside it (http://127.0.0.1:8080, loopback, not proxied) is the same page in one-app mode. The
+  normal window closes once the Tor window is there.
+- On Standard the window is shown by rudolf-display above the desktop as the sign-in window is (class RudolfTor); on
+  Native rudolf-native frames it as Oracle (its title bar and taskbar button, with the onion).
+- In the Tor window: the button pressed (white outline), the toolbar violet as a private tab with the onion beside
+  "Private", every tab private (its part in memory, Part 14), history and downloads not kept as such (downloads still
+  go into Downloads, as private tabs'). Pressing the button again: the tabs open in a normal Oracle window and the Tor
+  window closes. New tabs and new windows from it stay Tor windows.
+- If Tor cannot connect in 60 s (no internet, Tor blocked): the window says so with Tor's last line, and stays normal.
+
+### 16.3 Tests
+- Host: rudolfd's tor/start, status and stop with a stand-in tor (its bootstrap lines), the user and the options, the
+  stop after the last window; ci_release's budget check; the listeners list.
+- Browser (Playwright): the button where asked, its pressed/unpressed outlines, the tooltip, the onion drawn (no Tor
+  logo), the calls to rudolfd and the Tor window's hash; the Tor window's page (onion, violet, the note and the link).
+- Xvfb (as oracle_native_t.sh): a Tor window from a normal one through a stand-in SOCKS5 proxy that records what it is
+  asked (every site's request goes through it, names unresolved locally; nothing for 127.0.0.1); unpressing returns.
+- On the Vivobook (the owner, after a beta): the button, a site over Tor (check.torproject.org says "Congratulations"),
+  back to normal.
