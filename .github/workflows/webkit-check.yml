@@ -7,7 +7,7 @@
 name: Lite engine check
 on:
   push:
-    paths: ['iso/sys/rudolf-webkit.c', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
+    paths: ['iso/sys/rudolf-webkit.c', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**', 'desktop/oneapp59.js']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -60,6 +60,11 @@ jobs:
           python3 iso/qt/webkit/tabs58_ci.py ./rudolf-webkit | tee tabs-result.txt; r=${PIPESTATUS[0]}
           echo "::notice title=Oracle's tabs in WebKit::$(tail -1 tabs-result.txt) — $(grep -E '^FAIL' tabs-result.txt | tr '\n' '|')"
           head -c 3000 tabs.txt; exit $r
+      - name: The page's one-app mode in rudolf-webkit (1.5.9, plan Part 12 step 1)
+        run: |
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
+          python3 iso/qt/webkit/oneapp59_ci.py ./rudolf-webkit iso/www | tee oneapp-result.txt; r=${PIPESTATUS[0]}
+          echo "::notice title=One-app mode in WebKit::$(tail -1 oneapp-result.txt) — $(grep -E '^FAIL' oneapp-result.txt | tr '\n' '|')"; exit $r
       - name: The desktop page in rudolf-webkit from the base layer itself (chroot)
         run: |
           B=$RUNNER_TEMP/base; [ -x $B/usr/bin/rudolf-webkit ] || { echo "::error title=Base layer::no rudolf-webkit in it"; exit 1; }

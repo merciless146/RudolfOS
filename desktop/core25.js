@@ -15,7 +15,8 @@ const rdPost=(p,body)=>rd(p,{method:'POST',body});
    answers as soon as there is something (up to 25 s); without it (an older rudolfd), every 2.5 s as before */
 const EVH=[];function evOn(f){EVH.push(f)}
 function evDispatch(t){t=t||'';if(/^power \d/m.test(t))A.off&&A.off();if(typeof devEvents=='function')devEvents(t);for(const f of EVH){try{f(t)}catch(x){console.warn(x)}}}
-if(RD){const hb=()=>rdPost('heartbeat').catch(()=>{});hb();setInterval(hb,8000);
+if(RD){/* 1.5.9: not from an app's one-app page (oneapp59.js): the native shell sends it, and the session must not take an app for a living desktop */
+ const hb=()=>rdPost('heartbeat').catch(()=>{});if(!/^#app=/.test(location.hash||'')){hb();setInterval(hb,8000)}
  (async()=>{let wait=true;const nap=ms=>new Promise(r=>setTimeout(r,ms));
   for(;;){try{const t0=Date.now(),e=await rd(wait?'events/wait':'events');evDispatch(e.events);if(!wait||!e.events&&Date.now()-t0<500)await nap(wait?1000:2500)}catch(x){if(wait&&/unknown API|404/i.test(x.message||''))wait=false;await nap(2500)}}})()}
 /* ---------- notifications used by every V25 module (the shell adds a centre on top) ---------- */
@@ -288,7 +289,7 @@ async function idleCheck(){if(idleWoke()||!USER||idleBusy)return;idleBusy=true;c
 /* what holds the saver off, said once each time it changes */
 let idleLast='';function idleNote(m){if(m==idleLast)return;idleLast=m;try{window.__rdlog&&__rdlog('idle: '+m)}catch(e){}}
 function idleWhat(el){try{const w=el.closest&&el.closest('.win');return (el.tagName||'').toLowerCase()+(el.id?'#'+el.id:'')+(w?' in “'+((w.querySelector('.tb .t')||{}).textContent||'a window')+'”':'')}catch(e){return 'an element'}}
-setInterval(idleCheck,15000);
+setInterval(()=>idleCheck(),15000);   /* (1.5.9: through its name, so the one-app mode can replace it: oneapp59.js) */
 /* ---------- parental controls: allowed apps and a daily time limit ---------- */
 const APPCAT=[['browser','Oracle Browser',/^Oracle/],['explorer','File Explorer',/^File Explorer|^Exploring/],['notepad','Notepad',/Notepad/],['prompt','Rudolf Prompt',/^Rudolf Prompt/],['blocklua','BlockLua Builder',/^BlockLua/],['calc','Calculator',/^Calculator/],['wordlite','WordLite',/^WordLite/],['wordpro','WordPro',/^WordPro/],['paint','Paint',/^Paint/],['boards','Board Games',/^Board Games|^Checkers|^Chess/],['poker','Card Games',/^Card Games/],['galaxy','WOS Galaxy Map',/^WOS Galaxy Map/],['media','Media Player',/^Media Player/],['gameboy','Emu',/^Emu|Emu$|Game Boy|GBA|\.GBA?C?\b/i],['flash','Flash Player',/Flash/],['quake','Quake Engine',/^Quake/],['gpulab','GPU Lab',/^GPU Lab/],['settings','Settings',/^Settings|^Display Properties/]];
 let parentT=0;
