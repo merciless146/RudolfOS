@@ -19,6 +19,10 @@ const dlBase=p=>String(p).split('/').pop();
 const dlCName=n=>String(n).toUpperCase().replace(/[\\\/:*?"<>|]/g,'_').slice(0,60)||'DOWNLOAD';
 const DLN={kill:new Set(),seen:new Set(),pend:[],busy:false,chain:Promise.resolve(),ask:Promise.resolve(),warned:0,t:0};
 const dlOn=()=>!!(RD&&window.__sys);
+/* (1.5.9, docs/plan-1.5.9.md 12.3c) on the native desktop every app's window is a page of its own (oneapp59.js): only Oracle's
+   files what arrives in .incoming, as the one desktop page does on Standard, or two pages took the same file (one said it was
+   saved, the other that it stopped) */
+const dlMine=()=>!(typeof ONEAPP!='undefined'&&ONEAPP&&ONEAPP.k!='browser');
 function dlHost(u){try{return new URL(u).hostname}catch(e){return''}}
 function dlDone(rec,st,why,extra){Object.assign(rec,{st,why:why||''},extra||{});const i=DLN.pend.indexOf(rec);if(i>=0)DLN.pend.splice(i,1);saveDl();try{window.__dlHook&&window.__dlHook()}catch(e){}
  const ok=st=='saved';
@@ -40,7 +44,7 @@ function dlHandOff(u,rec){const f=document.createElement('iframe');f.setAttribut
 function dlMatch(it){const N=dlCName(it.name);let r=DLN.pend.find(x=>x.st=='wait'&&x.part==it.name+'.crdownload')||DLN.pend.find(x=>x.st=='wait'&&x.n==N);
  if(!r){const c=DLN.pend.filter(x=>x.st=='wait'&&!x.part&&Date.now()-x.t<600e3);if(c.length==1)r=c[0]}
  if(!r){r={n:N,u:'',t:Date.now(),sz:0,st:'wait',why:'',nat:1};DLS.push(r);if(DLS.length>100)DLS.shift();DLN.pend.push(r)}return r}
-async function dlPoll(){clearTimeout(DLN.t);if(!dlOn())return;if(DLN.busy){DLN.t=setTimeout(dlPoll,1500);return}DLN.busy=true;let active=false;
+async function dlPoll(){clearTimeout(DLN.t);if(!dlOn()||!dlMine())return;if(DLN.busy){DLN.t=setTimeout(dlPoll,1500);return}DLN.busy=true;let active=false;
  try{const j=await rd('dl/incoming');const items=j.items||[];
   for(const it of items){const key=it.name+'\0'+it.size+'\0'+it.mtime;
    if(it.partial){active=true;const r=DLN.pend.find(x=>x.st=='wait'&&(!x.part||x.part==it.name))||null;if(r){r.sz=it.size;r.part=it.name;if(r.gs!==it.size){r.gs=it.size;r.gt=Date.now()}}

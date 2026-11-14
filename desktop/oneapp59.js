@@ -75,6 +75,12 @@ let OA_SHT='';function oaShell(m){if(!ONEAPP)return;if(m.op=='title'){OA_SHT=m.t
  /* (12.3c step 5) the rest goes to the native desktop itself: rudolf-launch's binding on its private pipe, in Oracle's windows only */
  else if(oaChromium())try{window.rudolfNativeOracle(JSON.stringify(Object.assign({w:ONEAPP.w||0},m)))}catch(e){}}
 function oaChromium(){return typeof window.rudolfNativeOracle=='function'}
+/* (12.3c step 5) the page's own full screen (shell26.js's stand-in fills the page): Oracle's window on the native desktop is not the
+   screen, as the shell's window is on Standard, so the window goes full screen too (rudolf-launch, through the binding) */
+if(ONEAPP)window.__oaFs=on=>{if(oaChromium())oaPost({op:'fs',on:on?1:0})};
+/* (12.3c step 5) a new private window (Ctrl+Shift+N, ☰ › New private tab) from Oracle's window on the native desktop: a window of its own, as
+   on Standard, not one inside this page (the native desktop opens Oracle's jump "New private tab", as from its taskbar button) */
+function oaPrivWin(){if(!(ONEAPP&&ONEAPP.k=='browser'&&OA.main&&oaChromium()))return false;oaPost({op:'open',app:'browser',jump:'New private tab'});return true}
 /* (the native desktop is there: WebKit's message handler, or Oracle's binding in Rudolf's Chromium) */
 const oaOut=()=>oaNative()||oaChromium();
 if(ONEAPP)addEventListener('rudolf-shell',()=>{if(OA_SHT)shellSend({rudolfShell:'oa',op:'title',t:OA_SHT})});
@@ -98,6 +104,9 @@ html.oneapp .win.oamain>.tb{display:none!important}html.oneapp .win.oamain>.body
  /* (Settings at a page, asked by another app's window or a notification's action: Settings' own window, at that page) */
  {const _st=settings;settings=function(sec){if(OA.main&&ONEAPP.k!='settings'&&oaOut()){oaPost({op:'open',app:'settings',page:typeof sec=='string'?sec:''});return}return _st.apply(this,arguments)}}
  {const _lw=launchWith;launchWith=function(k,p){if(OA.main&&k!=ONEAPP.k&&oaOut()&&APPS[k]){oaPost({op:'open',app:k,file:Array.isArray(p)?p.join('\\'):String(p||'')});return}return _lw.apply(this,arguments)}}
+ /* (1.5.9, 12.3c step 5) Open with: the chosen app in a window of its own, as on Standard (not one inside this page): made by the
+    native desktop's do-fs page, as its own Open with dialog does (oaFs op=openwith) */
+ if(typeof OPENERS!='undefined')OPENERS.forEach(x=>{const f=x[4];if(!f||x[0]==ONEAPP.k)return;x[4]=p=>{if(OA.main&&oaOut()&&Array.isArray(p)){oaPost({op:'openwith',key:x[0],file:p.join('\\')});return}return f(p)}});
  /* the first sign-in screen: the native session's account instead, when there is one */
  {const _sl=showLogin;let first=1;showLogin=function(){if(first&&!OA.opened){first=0;oaStart(_sl);return}if(OA.opened&&OA.done)return;return _sl.apply(this,arguments)}}
  /* after any sign-in: the app */

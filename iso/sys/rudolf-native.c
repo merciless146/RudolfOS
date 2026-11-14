@@ -444,6 +444,7 @@ static void nt_notef(FGet g, void *v);
 static void toast_add(AppWin *from, JSCValue *v);
 static void tb_settings(const char *page);
 static void nt_note(JSCValue *v);
+static void open_with(const char *file, const char *key);
 static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d)
 {
 	(void)m; (void)d; JSCValue *v = webkit_javascript_result_get_js_value(r); if (!jsc_value_is_object(v)) return;
@@ -455,6 +456,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "done")) page_done(v);
 	else if (!strcmp(op, "title")) { jsstr(v, "icon", x, sizeof x); if (x[0]) snprintf(a->icon, sizeof a->icon, "%s", x); bar_redraw(); }
 	else if (!strcmp(op, "drop")) { jsstr(v, "in", x, sizeof x); jsstr(v, "file", f, sizeof f); drop_in(f, x); }
+	else if (!strcmp(op, "openwith")) { jsstr(v, "key", x, sizeof x); jsstr(v, "file", f, sizeof f); open_with(f, x); }   /* (Open with: the app's own window) */
 	else if (!strcmp(op, "toast")) toast_add(a, v);   /* (a notification's pop-up, drawn by the shell: item 3) */
 	else if (!strcmp(op, "note")) nt_note(v);   /* (a notification kept: in the centre at once, before the page's storage reaches rudolfd) */
 	else if (!strcmp(op, "open")) { jsstr(v, "app", x, sizeof x); jsstr(v, "file", f, sizeof f); char pg[48] = ""; jsstr(v, "page", pg, sizeof pg);
@@ -772,7 +774,7 @@ static gboolean oracle_busy_end(gpointer d) { (void)d; OR_BUSY = 0; oracle_busy(
 /* (12.3c step 5) what Oracle's page in Chromium tells the native desktop (oneapp59.js oaPost, through rudolf-launch's binding
    rudolfNativeOracle): "msg JSON" lines, as the WebKit windows' rudolfNative messages. Another app asked for: a window of
    its own (Settings at a page: Settings' own window there) */
-static void tb_settings(const char *page);
+static void tb_settings(const char *page); static void tb_jump(const char *k, const char *label);
 static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 {
 	(void)d; if (c & (G_IO_HUP | G_IO_ERR)) { if (!(c & G_IO_IN)) return G_SOURCE_REMOVE; }
@@ -780,9 +782,12 @@ static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 	if (st == G_IO_STATUS_EOF || st == G_IO_STATUS_ERROR) { g_free(l); return G_SOURCE_REMOVE; }
 	char sid[80] = ""; const char *js = NULL;
 	if (l && !strncmp(l, "msg ", 4)) { const char *b = strchr(l + 4, ' '); if (b && b - (l + 4) < (long)sizeof sid && l[4] != '{') { memcpy(sid, l + 4, b - (l + 4)); sid[b - (l + 4)] = 0; js = b + 1; } }
-	if (js && js[0] == '{' && strspn(sid, "0123456789ABCDEFabcdef") == strlen(sid)) { JV *v = jparse(js); char op[16] = "", app[48] = "", file[1024] = "", pg[48] = "";
-		if (v) { jstr(v, "op", op, sizeof op); jstr(v, "app", app, sizeof app); jstr(v, "file", file, sizeof file); jstr(v, "page", pg, sizeof pg); }
-		if (!strcmp(op, "open") && app[0] && USER_ID[0] && !LOCKED) { if (!strcmp(app, "settings") && pg[0]) tb_settings(pg); else app_open(app, file[0] ? file : NULL); }
+	if (js && js[0] == '{' && strspn(sid, "0123456789ABCDEFabcdef") == strlen(sid)) { JV *v = jparse(js); char op[16] = "", app[48] = "", file[1024] = "", pg[48] = "", jp[64] = "";
+		if (v) { jstr(v, "op", op, sizeof op); jstr(v, "app", app, sizeof app); jstr(v, "file", file, sizeof file); jstr(v, "page", pg, sizeof pg); jstr(v, "jump", jp, sizeof jp); }
+		/* (an app's jump, as its taskbar button's menu: Oracle's New private tab, a window of its own) */
+		if (!strcmp(op, "open") && app[0] && jp[0] && USER_ID[0] && !LOCKED) { tb_jump(app, jp); }   /* (the page knows its jumps; one it does not know closes its window) */
+		else if (!strcmp(op, "open") && app[0] && USER_ID[0] && !LOCKED) { if (!strcmp(app, "settings") && pg[0]) tb_settings(pg); else app_open(app, file[0] ? file : NULL); }
+		else if (!strcmp(op, "openwith") && v) { char key[48] = ""; jstr(v, "key", key, sizeof key); open_with(file, key); }   /* (Open with: the app's own window) */
 		else if (!strcmp(op, "toast") && v) toast_addf(NULL, sid, fget_jv, v);   /* (the page's notification: the native shell's pop-up) */
 		else if (!strcmp(op, "note") && v) nt_notef(fget_jv, v);   /* (and in the centre, counted, at once) */
 		jfree(v); }
@@ -829,6 +834,47 @@ static int oracle_open(const char *file, const char *extra)
 	oracle_busy(1); OR_BUSY = g_timeout_add_seconds(20, oracle_busy_end, NULL);
 	return 1;
 }
+/* (12.3c step 5) Oracle's keys, as on Standard. Chromium acts on Ctrl+W, Ctrl+F4, Ctrl+T, Ctrl+N, Ctrl+Q and Alt+F4 before a page
+   sees them (closing Oracle's window, or quitting Chromium with every Oracle window on Ctrl+Q); on Standard rudolf-display hands
+   them to the desktop's Chromium window (class RudolfDesktop) as Ctrl+F20..F23 and Alt+F20, which the page and Oracle's real
+   tabs read as the keys again (rudolf-display.c desk_key; shell26.js DESK_SUB; the shell's PAGE_JS). Oracle's Chromium here is
+   RudolfOracle, which rudolf-display leaves alone, so the window manager does the same for Oracle's windows: those keys are
+   grabbed on them and given back through XTest as the same F20..F23 key codes (evdev's, + 8), Ctrl, Shift and Alt still held. */
+typedef int (*XtFake)(Display *, unsigned, Bool, unsigned long);
+static XtFake xt_fake(void)
+{
+	static XtFake f; static int tried; if (tried) return f; tried = 1;
+	void *h = dlopen("libXtst.so.6", RTLD_NOW | RTLD_LOCAL); if (h) f = (XtFake)dlsym(h, "XTestFakeKeyEvent");
+	if (!f) fprintf(stderr, "rudolf-native: no XTest (libXtst.so.6): Oracle's Ctrl+W, T, N, Q and Alt+F4 stay Chromium's\n");
+	return f;
+}
+#define OKEY_F20 198   /* (KEY_F20 + 8; F21..F23 follow) */
+static int oracle_key_sub(unsigned kc, unsigned st)
+{
+	int ctrl = (st & ControlMask) != 0, alt = (st & Mod1Mask) != 0;
+	if (ctrl && !alt) { if (kc == XKeysymToKeycode(DPY, XK_w) || kc == XKeysymToKeycode(DPY, XK_F4)) return OKEY_F20; if (kc == XKeysymToKeycode(DPY, XK_t)) return OKEY_F20 + 1;
+		if (kc == XKeysymToKeycode(DPY, XK_n)) return OKEY_F20 + 2; if (kc == XKeysymToKeycode(DPY, XK_q)) return OKEY_F20 + 3; }
+	if (alt && !ctrl && kc == XKeysymToKeycode(DPY, XK_F4)) return OKEY_F20;
+	return 0;
+}
+static void oracle_keys(Window w)
+{
+	if (!xt_fake()) return;
+	static const unsigned M[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask };
+	const KeySym ck[5] = { XK_w, XK_F4, XK_t, XK_n, XK_q };
+	for (int i = 0; i < 4; i++) for (int sh = 0; sh < 2; sh++) {
+		unsigned s = M[i] | (sh ? ShiftMask : 0);
+		for (int k = 0; k < 5; k++) XGrabKey(DPY, XKeysymToKeycode(DPY, ck[k]), ControlMask | s, w, False, GrabModeAsync, GrabModeAsync);
+		XGrabKey(DPY, XKeysymToKeycode(DPY, XK_F4), Mod1Mask | s, w, False, GrabModeAsync, GrabModeAsync);
+	}
+}
+static int oracle_key(XKeyEvent *e)
+{
+	int sub = oracle_key_sub(e->keycode, e->state); XtFake f = xt_fake(); if (!sub || !f) return 0;
+	/* (the grab ends here, so the key codes reach Oracle's window, which has the keyboard; the key's own release goes there too) */
+	XUngrabKeyboard(DPY, e->time); f(DPY, (unsigned)sub, True, CurrentTime); f(DPY, (unsigned)sub, False, CurrentTime); XFlush(DPY);
+	return 1;
+}
 static void oracle_client(Client *c, XWindowAttributes *wa)
 {
 	XClassHint ch = {0}; if (!XGetClassHint(DPY, c->w, &ch)) return;
@@ -837,6 +883,7 @@ static void oracle_client(Client *c, XWindowAttributes *wa)
 	snprintf(c->ak, sizeof c->ak, "browser");
 	const char *in = getenv("RUDOLF_ORACLE_INSET"); int t = 28, l = 4, r = 4, b = 4; if (in) sscanf(in, "%d %d %d %d", &t, &l, &r, &b);
 	c->it = t; c->il = l; c->ir = r; c->ib = b; c->cw = wa->width - l - r; c->ch = wa->height - t - b; if (c->cw < 100) c->cw = 100; if (c->ch < 100) c->ch = 100;
+	oracle_keys(c->w);
 	oracle_busy(0);
 }
 static void oracle_gone(void) { }
@@ -951,6 +998,7 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 	(void)ev; (void)d; XEvent *e = xev; Client *c;
 	switch (e->type) {
 	case KeyPress:   /* (the page's global shortcuts the shell has: Meta+L, lock the screen: shell25.js) */
+		if ((c = client_of(e->xkey.window)) && c->ak[0] && e->xkey.window == c->w && oracle_key(&e->xkey)) return GDK_FILTER_REMOVE;   /* (Oracle's keys, as on Standard: 12.3c) */
 		if (e->xkey.window == ROOT && e->xkey.keycode == XKeysymToKeycode(DPY, XK_l) && (e->xkey.state & Mod4Mask)) { if (USER_ID[0] && !LOCKED) power("lock"); return GDK_FILTER_REMOVE; }
 		/* (item 4: Ctrl+Alt+Left/Right, the previous or next workspace; with Shift the window goes too: shell25.js's shortcuts wsl, wsr, wsml, wsmr) */
 		if (e->xkey.window == ROOT && (e->xkey.state & ControlMask) && (e->xkey.state & Mod1Mask) && (e->xkey.keycode == XKeysymToKeycode(DPY, XK_Left) || e->xkey.keycode == XKeysymToKeycode(DPY, XK_Right))) {
@@ -2534,6 +2582,13 @@ static void dg_ok(void)
 {
 	if (DGK != DLG_RENAME || DGBUSY) return; DGBUSY = 1; DGMSG[0] = 0;
 	char *t = qesc(DGVAL), *ex = g_strdup_printf("&op=rename&to=%s", t); app_open_ex("do-fs", DGFILE, ex, 1); g_free(t); g_free(ex); gtk_widget_queue_draw(DGAREA);
+}
+/* (1.5.9, 12.3c) Open with chosen in an app's own page (oneapp59.js: its dialog, in Oracle's window or a WebKit window): the app's
+   window of its own, as the shell's Open with dialog makes it */
+static void open_with(const char *file, const char *key)
+{
+	if (!file || !file[0] || !key || !key[0] || strlen(key) > 39 || strspn(key, "abcdefghijklmnopqrstuvwxyz0123456789_-") != strlen(key) || !USER_ID[0] || LOCKED) return;
+	char *ex = g_strdup_printf("&op=openwith&key=%s", key); app_open_ex("do-fs", file, ex, 0); g_free(ex);
 }
 static void dg_pick(int i)
 {

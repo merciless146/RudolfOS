@@ -24,6 +24,7 @@
  * DevTools binding on this private pipe (no website tab has it): what the page tells the native desktop, as its
  * rudolfNative message handler does in WebKit, is written to standard output, one line each: "msg SESSION JSON" (SESSION:
  * the page's, for an answer). On CONTROL, "act SESSION ID" runs a notification's own action in that page (a toast's click).
+ * The page's own full screen ({"op":"fs","on":1|0}, shell26.js's stand-in) is done here: its window in Chromium's full screen.
  *
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
@@ -238,7 +239,17 @@ static void o_line(char *l)
 	o_nq++;
 }
 /* the desktop pages attached for their messages (12.3c step 5) */
-static struct { char target[64]; int attach_id; } o_pg[64]; static int o_npg;
+static struct { char target[64], parent[64], session[80]; int attach_id; } o_pg[64]; static int o_npg;
+/* (12.3c step 5) the desktop page's own full screen (shell26.js's stand-in fills the page, which is the window): its window, the
+   shell's (the page's parent target), in Chromium's full screen, so the window manager gives it the screen as on Standard */
+static struct { int id, on; } o_fs[8];
+static void o_fullscreen(const char *sid, int on)
+{
+	for (int i = 0; i < o_npg; i++) if (!strcmp(o_pg[i].session, sid) && o_pg[i].parent[0]) {
+		for (int k = 0; k < 8; k++) if (!o_fs[k].id) { char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%s\"}", o_pg[i].parent); o_fs[k].id = next_id; o_fs[k].on = on; send_cmd("Browser.getWindowForTarget", p); return; }
+		return;
+	}
+}
 /* a JSON string's value at key (its escapes undone): the binding's payload */
 static int json_str(const char *msg, const char *key, char *out, size_t n)
 {
@@ -268,13 +279,20 @@ static int o_handle(const char *msg)
 	long id = strstr(msg, "\"method\"") ? 0 : num_field(msg, "id");
 	/* (12.3c step 5) a desktop page attached: its binding; what it calls goes to standard output */
 	for (int i = 0; id > 0 && i < o_npg; i++) if (o_pg[i].attach_id == id) {
-		char sid[80]; field(msg, "sessionId", sid, sizeof sid); o_pg[i].attach_id = 0;
+		char sid[80]; field(msg, "sessionId", sid, sizeof sid); o_pg[i].attach_id = 0; snprintf(o_pg[i].session, sizeof o_pg[i].session, "%s", sid);
 		if (sid[0]) { int k; send_session(sid, "Runtime.addBinding", "{\"name\":\"rudolfNativeOracle\"}", &k); }
+		return 1;
+	}
+	for (int k = 0; id > 0 && k < 8; k++) if (o_fs[k].id == id) {
+		long wid = num_field(msg, "windowId"); o_fs[k].id = 0;
+		if (wid > 0) { char p[160]; snprintf(p, sizeof p, "{\"windowId\":%ld,\"bounds\":{\"windowState\":\"%s\"}}", wid, o_fs[k].on ? "fullscreen" : "normal"); send_cmd("Browser.setWindowBounds", p); }
 		return 1;
 	}
 	if (strstr(msg, "\"method\":\"Runtime.bindingCalled\"") && strstr(msg, "\"name\":\"rudolfNativeOracle\"")) {
 		static char pl[16384]; char sid[80]; field(msg, "sessionId", sid, sizeof sid);
-		if (sid[0] && !json_str(msg, "payload", pl, sizeof pl) && pl[0] == '{') { printf("msg %s %s\n", sid, pl); fflush(stdout); }
+		if (sid[0] && !json_str(msg, "payload", pl, sizeof pl) && pl[0] == '{') {
+			if (strstr(pl, "\"op\":\"fs\"")) o_fullscreen(sid, strstr(pl, "\"on\":1") != NULL);   /* (the page's own full screen: here) */
+			else { printf("msg %s %s\n", sid, pl); fflush(stdout); } }
 		return 1;
 	}
 	if (strstr(msg, "\"sessionId\"") && !strstr(msg, "\"method\":\"Target.")) return 1;   /* (the attached pages' own events) */
@@ -288,7 +306,7 @@ static int o_handle(const char *msg)
 		if (!strncmp(url, "isolated-app://", 15) && (!strcmp(ty, "page") || !strcmp(ty, "app"))) { if (o_win_slot(t, 1) >= 0) o_had = 1; }
 		else if (!strcmp(ty, "webview") && !strncmp(url, "http://127.0.0.1:8080/#app=", 27)) {   /* (a window's desktop page: attached once) */
 			int k = -1; for (int i = 0; i < o_npg; i++) if (!strcmp(o_pg[i].target, t)) k = i;
-			if (k < 0 && o_npg < 64) { k = o_npg++; snprintf(o_pg[k].target, sizeof o_pg[0].target, "%s", t);
+			if (k < 0 && o_npg < 64) { k = o_npg++; snprintf(o_pg[k].target, sizeof o_pg[0].target, "%s", t); o_pg[k].session[0] = 0; field(msg, "parentId", o_pg[k].parent, sizeof o_pg[k].parent);
 				char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%s\",\"flatten\":true}", t); o_pg[k].attach_id = next_id; send_cmd("Target.attachToTarget", p); } }
 		else if (!strcmp(ty, "page") && strncmp(url, "devtools://", 11)) { char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%s\"}", t); send_cmd("Target.closeTarget", p); }
 		return 1;

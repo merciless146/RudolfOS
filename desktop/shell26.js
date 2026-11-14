@@ -21,7 +21,7 @@ addEventListener('message', e => {
   const m = e.data;
   if (!m || typeof m.rudolfShell != 'string' || e.source == null) return;
   if (!SHELL_ORIGIN || e.origin !== SHELL_ORIGIN) return;           // only Rudolf OS's own shell
-  if (m.rudolfShell == 'hello') { if (!SHELL) fsStandIn(on => { SHELL_FS = on; return true }); SHELL = e.source; SHELL_VER = String(m.version || ''); SHELL_CAPS = Array.isArray(m.caps) ? m.caps.map(String) : []; document.documentElement.classList.add('inshell'); shellSend({rudolfShell: 'ready'}); if (typeof rtOn == 'function' && rtOn()) dispatchEvent(new Event('rudolf-shell')); return }
+  if (m.rudolfShell == 'hello') { if (!SHELL) fsStandIn(on => { SHELL_FS = on; try { window.__oaFs && window.__oaFs(on) } catch (x) {} return true }); SHELL = e.source; SHELL_VER = String(m.version || ''); SHELL_CAPS = Array.isArray(m.caps) ? m.caps.map(String) : []; document.documentElement.classList.add('inshell'); shellSend({rudolfShell: 'ready'}); if (typeof rtOn == 'function' && rtOn()) dispatchEvent(new Event('rudolf-shell')); return }
   if (m.rudolfShell == 'log') { SHELL_LOG.push(new Date().toISOString().slice(11, 19) + ' ' + String(m.m || '').slice(0, 500)); if (SHELL_LOG.length > 50) SHELL_LOG.shift(); return }
   if (m.id && SHELL_WAIT.has(m.id)) { SHELL_WAIT.get(m.id)(m); SHELL_WAIT.delete(m.id); return }
   if (m.rudolfShell == 'newwindow' && /^https?:/i.test(m.url || '')) { if (typeof webOpen == 'function') webOpen(m.url); return }
@@ -42,7 +42,8 @@ for (const type of ['keydown', 'keyup']) addEventListener(type, e => {
 /* fullscreen inside the shell. Controlled Frame does not let its page go fullscreen, but the shell's window already
    fills the screen, so the desktop gets a stand-in: requestFullscreen() makes the element fill the page,
    document.fullscreenElement and the fullscreenchange events behave as usual, and Esc leaves. While something is
-   fullscreen, Oracle's real tabs are hidden (SHELL_FS). The same function as the shell's (iso/shell/shell.js). */
+   fullscreen, Oracle's real tabs are hidden (SHELL_FS). The same function as the shell's (iso/shell/shell.js). (1.5.9, 12.3c)
+   Oracle's window on the native desktop is not the screen: there the page asks for its window's full screen (oneapp59.js __oaFs). */
 let SHELL_FS = false;
 function fsStandIn(notify) {
   if (window.__rudolfFs) return; window.__rudolfFs = 1;
