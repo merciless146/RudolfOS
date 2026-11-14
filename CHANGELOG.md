@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- Fixed: plugging in an Android phone with USB debugging or file transfer on no longer says Rudolf OS has no driver for it: apps use those directly, without a driver.
 - New: the PDF Viewer prints (🖨️ Print, or Ctrl+P): the PDF itself, on its own paper size, to a network printer (IPP Everywhere / AirPrint) or saved as a copy, through the same print dialog as WordPro.
 - Fixed: the self-test said the desktop's browser was not in the desktop's memory group when it was.
 - Fixed: the start-up chime plays when the sign-in screen appears, not only after the first key or click there (on installed Rudolf OS; the browser version still needs a key or click first, as browsers require).
