@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- New: Display Properties › Taskbar › Buttons: the taskbar's buttons (start, pinned apps, open windows, workspaces, the tray) in a style of their own (Standard, Wireframe, Monochrome, Candy, Retro), in the accent colour as Normal, Negative or Complementary when "Match the theme colours" is ticked, otherwise in each style's own colours.
 - Fixed: plugging in an Android phone with USB debugging or file transfer on no longer says Rudolf OS has no driver for it: apps use those directly, without a driver.
 - New: the PDF Viewer prints (🖨️ Print, or Ctrl+P): the PDF itself, on its own paper size, to a network printer (IPP Everywhere / AirPrint) or saved as a copy, through the same print dialog as WordPro.
 - Fixed: the self-test said the desktop's browser was not in the desktop's memory group when it was.
