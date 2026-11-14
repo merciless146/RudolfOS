@@ -78,8 +78,20 @@ static int LOCKED;
 static int NET_RSSI = 1, NET_UP = -1, NET_WIFI, VOL = -1, MUTED, BAT = -1, CHARGING, MIC_N = 0, MIC_MUTED;   /* (MIC_N: apps using a microphone, call59.js) */ static char NET_DESC[200];   /* (net31.js net31Desc of the network used) */
 
 /* where windows go: below the development link's banner, beside the taskbar */
+/* (1.6.0 Part 12, item 3's last part) the taskbar at the left or the right (body.left/.right #bar: a column as wide as its
+   widest part, max-content, from the screen's top to its bottom); BARW its width, measured as the page's (bar_measure) */
+static int BARW = 0;
+static int tb_side(void) { return !strcmp(S.tb, "left") ? 1 : !strcmp(S.tb, "right") ? 2 : 0; }
+static int bar_x(void) { return tb_side() == 2 ? SW - BARW : 0; }
+static int bar_y(void) { return tb_side() || !strcmp(S.tb, "top") ? TOPRES : SH - BARH; }
+static int bar_w(void) { return tb_side() ? BARW : SW; }
+static int bar_h(void) { return tb_side() ? SH - TOPRES : BARH; }
+static int work_left(void) { return tb_side() == 1 ? BARW : 0; }
+static int work_w(void) { return SW - (tb_side() ? BARW : 0); }
+static int desk_left(void) { return tb_side() == 1 ? BARW + (int)lround(4 * Z) : 0; }   /* (#desk's inset: var(--bw) beside a bar at the left or the right) */
+static int desk_w(void) { return SW - (tb_side() ? BARW + (int)lround(4 * Z) : 0); }
 static int work_top(void) { return TOPRES + (!strcmp(S.tb, "top") ? BARH : 0); }
-static int work_h(void) { return SH - TOPRES - BARH; }
+static int work_h(void) { return SH - TOPRES - (tb_side() ? 0 : BARH); }
 
 /* ------------------------------------------------------------------ rudolfd over HTTP (127.0.0.1) */
 /* one request; the status code (0: rudolfd did not answer); *out (may be NULL) gets the body, NUL-terminated */
@@ -721,7 +733,7 @@ static void wm_minimise(Client *c)
 static void wm_maximise(Client *c, int on)
 {
 	if (c->full || on == c->max) return;
-	if (on) { c->sx = c->x; c->sy = c->y; c->scw = c->cw; c->sch = c->ch; c->x = 0; c->y = work_top(); c->cw = SW - 2 * BW; c->ch = work_h() - TH - BW; }
+	if (on) { c->sx = c->x; c->sy = c->y; c->scw = c->cw; c->sch = c->ch; c->x = work_left(); c->y = work_top(); c->cw = work_w() - 2 * BW; c->ch = work_h() - TH - BW; }
 	else { c->x = c->sx; c->y = c->sy; c->cw = c->scw; c->ch = c->sch; }
 	c->max = on; place(c); frame_draw(c); state_write();
 }
@@ -888,7 +900,7 @@ static void wm_hide_all(int hide)
 static void wm_relayout(void)
 {
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data;
-		if (c->max) { c->x = 0; c->y = work_top(); c->cw = SW - 2 * BW; c->ch = work_h() - TH - BW; }
+		if (c->max) { c->x = work_left(); c->y = work_top(); c->cw = work_w() - 2 * BW; c->ch = work_h() - TH - BW; }
 		else if (!c->full && c->y < work_top()) c->y = work_top();
 		place(c); frame_draw(c); }
 	state_write();
@@ -1074,9 +1086,9 @@ static void appwin_size(AppWin *a, int w, int h)
 {
 	Client *c = WM_OK ? client_of_app(a) : NULL; if (!c || c->max || c->full || w < 80 || h < 60) return;
 	int n = 0; for (GList *l = CLIENTS; l; l = l->next) { Client *o = l->data; if (o != c && !o->trans) n++; }
-	double dw = SW / Z, avail = work_h() / Z; w = (int)fmin(w, dw - 8); h = (int)fmin(h, avail - 8);
+	double dw = desk_w() / Z, avail = work_h() / Z; w = (int)fmin(w, dw - 8); h = (int)fmin(h, avail - 8);   /* (the page's #desk: beside a bar at the left or the right) */
 	double x = fmax(0, fmin(40 + n * 26, dw - w - 4)), y = fmax(0, fmin(20 + n * 26, avail - h - 4));
-	c->cw = (int)lround(w * Z); c->ch = (int)lround((h - 34) * Z); c->x = (int)lround(x * Z); c->y = work_top() + (int)lround(y * Z);
+	c->cw = (int)lround(w * Z); c->ch = (int)lround((h - 34) * Z); c->x = desk_left() + (int)lround(x * Z); c->y = work_top() + (int)lround(y * Z);
 	place(c); frame_draw(c); state_write();
 }
 static void frame_redraw_app(AppWin *a) { Client *c = WM_OK ? client_of_app(a) : NULL; if (c) { wm_title(c); frame_draw(c); } }
@@ -1408,12 +1420,13 @@ static void hit_add(double x, double y, double w, double h, const char *k, const
 /* the bar's own height (46 px, 47 with Wireframe's top edge) and where its middle is (from the bar's top) */
 static double bar_mid(void) { return 23; }
 /* the bar: TOP: its window is at the top; W, H: its size in the page's units; the hovered and pressed parts by kind */
+static void bar_paint_v(cairo_t *cr, double W, double H);
 static void bar_paint(cairo_t *cr, double W, double H, int top)
 {
 	(void)H; NHITS = 0; double mid = bar_mid(); int hv = HOVER, pr = PRESS;
 	Box bar = tb_box(TB_BAR, 0, 0);
 	/* (Wireframe's see-through bar shows the wallpaper behind, blurred: the window's own copy of it) */
-	if (bar.bg.a < 1 && WALL) { cairo_save(cr); cairo_scale(cr, 1 / Z, 1 / Z); cairo_set_source_surface(cr, WALL, 0, top ? -TOPRES : -(SH - BARH)); cairo_paint(cr); cairo_restore(cr); }
+	if (bar.bg.a < 1 && WALL) { cairo_save(cr); cairo_scale(cr, 1 / Z, 1 / Z); cairo_set_source_surface(cr, WALL, -bar_x(), -bar_y()); cairo_paint(cr); cairo_restore(cr); }
 	Box bar2 = bar; bar2.nsh = 0; for (int i = 0; i < bar.nsh; i++) if (bar.sh[i].inset) bar2.sh[bar2.nsh++] = bar.sh[i];
 	box_paint(cr, 0, 0, W, 46, &bar2);
 	if (!strcmp(tb_vars().st, "wire") && tb_vars().on && top) { srca(cr, cmix(tb_vars().fg, .7, CLEAR)); cairo_rectangle(cr, 0, 45, W, 1); cairo_fill(cr); }
@@ -1499,17 +1512,111 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 	#undef HV
 	#undef PR
 }
+/* ---- (1.6.0 Part 12, item 3's last part) the taskbar at the left or the right (base_v24.html body.left/.right #bar: a column,
+   3 px of padding, its parts 4 px apart and as wide as the column (align-items: stretch), the column as wide as its widest
+   part (width: max-content); the start button the logo over the version (styles25.css: 10 px, centred), the pinned apps in
+   a row, the open windows' buttons 22 px high one under the other, then at the bottom the battery, the workspaces (4 px in
+   from each side), the network, the sound, the call's 🎙️, quick settings, the notifications and the clock (its date hidden) */
+static double bar_v_cw(cairo_t *cr)
+{
+	char sl[64]; snprintf(sl, sizeof sl, "Rudolf OS%s%s", VER[0] ? " " : "", VER); clock_text();
+	Box bb = tb_box(TB_BAT, 0, 0), bn = tb_box(TB_NET, 0, 0), bq = tb_box(TB_QSB, 0, 0), bs = tb_box(TB_START, 0, 0), bt = tb_box(TB_TRAY, 0, 0);
+	double w = fmax(30, css_width(cr, sl, SYSUI, 600, 10)) + 8 + 2 * bs.bw;
+	if (S.npins) w = fmax(w, S.npins * 34 + (S.npins - 1) * 2);
+	if (BAT >= 0) { char t[16]; snprintf(t, sizeof t, "%d%%", BAT); w = fmax(w, 2 * bb.bw + 6 + 26 + 3 + css_width(cr, t, SYSUI, 600, 12) + 6); }
+	w = fmax(w, 4 + 4 * 22 + 3 * 2 + 4); w = fmax(w, 22 + 12 + 2 * bn.bw); w = fmax(w, 22 + 14 + 2 * bn.bw);
+	w = fmax(w, fmax(30, 12 + css_width(cr, "🔔", UIFAM, 400, 15) + 2 * bq.bw));
+	w = fmax(w, 2 * bt.bw + 20 + css_width(cr, CLOCK_T, UIFAM, 400, 13));
+	return ceil(w);
+}
+static void bar_measure(void)
+{
+	if (!tb_side()) { BARW = 0; return; }
+	cairo_surface_t *t = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1); cairo_t *c = cairo_create(t); double cw = bar_v_cw(c); cairo_destroy(c); cairo_surface_destroy(t);
+	BARW = (int)lround((cw + 6) * Z);
+}
+static void bar_paint_v(cairo_t *cr, double W, double H)
+{
+	NHITS = 0; Box bar = tb_box(TB_BAR, 0, 0);
+	if (bar.bg.a < 1 && WALL) { cairo_save(cr); cairo_scale(cr, 1 / Z, 1 / Z); cairo_set_source_surface(cr, WALL, -bar_x(), -bar_y()); cairo_paint(cr); cairo_restore(cr); }
+	Box bar2 = bar; bar2.nsh = 0; for (int i = 0; i < bar.nsh; i++) if (bar.sh[i].inset) bar2.sh[bar2.nsh++] = bar.sh[i];
+	box_paint(cr, 0, 0, W, H, &bar2);
+	#define HV(k, a) (!strcmp(HOV_K, k) && !strcmp(HOV_A, a))
+	#define PR(k, a) (!strcmp(PRS_K, k) && !strcmp(PRS_A, a))
+	double x = 3, cw = W - 6, y = 3;
+	/* the start button (column: padding 4px 4px 5px, the logo, 3 px, .stv 10px/1.15, centred) */
+	{ Box b = tb_box(TB_START, HV("start", ""), PR("start", "")); char sl[64]; snprintf(sl, sizeof sl, "Rudolf OS%s%s", VER[0] ? " " : "", VER);
+		double lh = 11.5, h = 4 + 30 + 3 + lh + 5 + 2 * b.bw, tw = css_width(cr, sl, SYSUI, 600, 10);
+		box_paint(cr, x, y, cw, h, &b); hit_add(x, y, cw, h, "start", NULL);
+		pix_at(cr, LOGO30 ? LOGO30 : LOGO, x + (cw - 30) / 2, y + b.bw + 4, 30, b.filt);
+		css_text(cr, sl, SYSUI, 600, 10, x + (cw - tw) / 2, y + b.bw + 4 + 30 + 3, lh, (RGBA){b.fg.r, b.fg.g, b.fg.b, .9}, 0);
+		y += h + 4; }
+	/* the pinned apps (a row, 2 px apart) */
+	if (S.npins) { double px0 = x; for (int p = 0; p < S.npins; p++) {
+			Box b = tb_box(TB_PIN, HV("pin", S.pins[p]), PR("pin", S.pins[p])); box_paint(cr, px0, y, 34, 34, &b); hit_add(px0, y, 34, 34, "pin", S.pins[p]);
+			const App *ap = app_find(S.pins[p]); GdkPixbuf *px = app_pix(ap);
+			if (px) pix_at(cr, px, px0 + 5, y + 5, 24, b.filt); else css_text(cr, ap ? ap->icon : "▫", UIFAM, 400, 18, px0 + 5, y, 34, b.fg, 0);
+			px0 += 36; }
+		y += 34 + 4; }
+	double tasks_y = y;
+	/* from the bottom: the clock (#tray: 3px 10px, 26 px, its date hidden), the notifications, quick settings, the call, the sound,
+	   the network, the workspaces, the battery */
+	double by = H - 3;
+	{ Box b = tb_box(TB_TRAY, HV("clock", ""), 0); clock_text(); double h = 2 * b.bw + 32; by -= h;
+		box_paint(cr, x, by, cw, h, &b); hit_add(x, by, cw, h, "clock", NULL); CLKD[0] = CLKD[1] = -1;
+		css_text(cr, CLOCK_T, UIFAM, 400, 13, x + b.bw + 10, by + b.bw + 3, 26, b.fg, cw - 2 * b.bw - 20); by -= 4; }
+	static const char *const QK[2] = {"notes", "qs"}; const char *QT[2] = {S.dnd ? "🔕" : "🔔", "☰"};
+	for (int q = 0; q < 2; q++) {
+		Box b = tb_box(TB_QSB, HV(QK[q], ""), PR(QK[q], "")); double tw = css_width(cr, QT[q], UIFAM, 400, 15); by -= 30;
+		box_paint(cr, x, by, cw, 30, &b); hit_add(x, by, cw, 30, QK[q], NULL); css_text(cr, QT[q], UIFAM, 400, 15, x + (cw - tw) / 2, by + b.bw, 30 - 2 * b.bw, b.fg, 0);
+		if (q == 0 && nt_unread() > 0) { char n[16]; snprintf(n, sizeof n, "%d", nt_unread()); double nw = css_width(cr, n, UIFAM, 400, 9) + 8; Box bd; memset(&bd, 0, sizeof bd); bd.bg = cx("#ef4444", 1); bd.rad = 7;
+			box_paint(cr, x + cw - nw, by + 1, nw, 13, &bd); css_text(cr, n, UIFAM, 400, 9, x + cw - nw + 4, by + 1, 13, cx("#ffffff", 1), 0); }
+		by -= 4; }
+	if (MIC_N > 0) { Box b = tb_box(TB_QSB, HV("call", ""), PR("call", "")); const char *ic = MIC_MUTED ? "🔇" : "🎙️"; double tw = css_width(cr, ic, UIFAM, 400, 15); by -= 30;
+		box_paint(cr, x, by, cw, 30, &b); hit_add(x, by, cw, 30, "call", NULL); css_text(cr, ic, UIFAM, 400, 15, x + (cw - tw) / 2, by + b.bw, 30 - 2 * b.bw, cx(MIC_MUTED ? "#b91c1c" : "#16a34a", 1), 0); by -= 4; }
+	{ Box b = tb_box(TB_NET, HV("vol", ""), PR("vol", "")); by -= 26; box_paint(cr, x, by, cw, 26, &b); hit_add(x, by, cw, 26, "vol", NULL); VOLB[0] = x; VOLB[1] = by; VOLB[2] = cw; VOLB[3] = 26;
+		ic_vol(cr, x + (cw - 22) / 2, by + 2, b.filt); by -= 4; }
+	{ Box b = tb_box(TB_NET, HV("net", ""), PR("net", "")); by -= 26; box_paint(cr, x, by, cw, 26, &b); hit_add(x, by, cw, 26, "net", NULL); NETB[0] = x; NETB[1] = by; NETB[2] = cw; NETB[3] = 26;
+		ic_net(cr, x + (cw - 22) / 2, by + 2, b.filt); by -= 4; }
+	{ static const char *const WT[4] = {"1", "2", "3", "▦"}; by -= 22; double wx = x + 4;
+		for (int k = 0; k < 4; k++) { Box b = tb_box(k + 1 == WSC ? TB_WSON : TB_WS, HV("ws", WT[k]), PR("ws", WT[k]));
+			if (k < 3 && k + 1 != WSC && ws_has(k + 1) && !tb_vars().on) b.fg = cx("#e5e7eb", 1);   /* (#wsw button.has) */
+			box_paint(cr, wx, by, 22, 22, &b); hit_add(wx, by, 22, 22, "ws", WT[k]);
+			double tw = css_width(cr, WT[k], UIFAM, 400, 11); css_text(cr, WT[k], UIFAM, 400, 11, wx + (22 - tw) / 2, by + b.bw, 22 - 2 * b.bw, b.fg, 0); wx += 24; }
+		by -= 4; }
+	if (BAT >= 0) { Box b = tb_box(TB_BAT, HV("bat", ""), PR("bat", "")); char t[16]; snprintf(t, sizeof t, "%d%%", BAT); by -= 26;
+		box_paint(cr, x, by, cw, 26, &b); hit_add(x, by, cw, 26, "bat", NULL);
+		ic_bat(cr, x + b.bw + 6, by + 6, b.filt); css_text(cr, t, SYSUI, 600, 12, x + b.bw + 6 + 26 + 3, by + b.bw, 26 - 2 * b.bw, b.fg, 0); by -= 4; }
+	/* the open windows (#tasks: a column of 22 px buttons, 3 px apart; padding 1px 6px, the picture at 18 px and the title) */
+	GList *TL = NULL; if (WM_OK) { for (GList *l = CLIENTS; l; l = l->next) if (!((Client *)l->data)->trans && ((Client *)l->data)->ws == WSC) TL = g_list_append(TL, l->data); } else TL = g_list_copy(WINS);   /* (the workspace's own: item 4) */
+	double ty = tasks_y;
+	for (GList *l = TL; l && ty + 22 <= by + 4; l = l->next) {
+		Client *c = WM_OK ? l->data : NULL; AppWin *a = c ? c->app : l->data; int act = c ? c == FOCUS && !c->min : a == ACTIVE;
+		char wid[24]; snprintf(wid, sizeof wid, "%lx", c ? (unsigned long)c->w : (unsigned long)(uintptr_t)a);
+		Box b = tb_box(act ? TB_TASKON : TB_TASK, HV("win", wid), PR("win", wid)); box_paint(cr, x, ty, cw, 22, &b); hit_add(x, ty, cw, 22, "win", wid);
+		double d, A = css_ascent(cr, UIFAM, act ? 600 : 400, 13, &d), lt = fmin(-A, -14), lb = fmax(d, 4), base = ty + b.bw + 1 + (20 - 2 * b.bw - (lb - lt)) / 2 - lt;
+		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = app_pix(ap); double tx = x + b.bw + 6;
+		cairo_save(cr); cairo_rectangle(cr, x + b.bw + 6, ty, cw - 2 * b.bw - 12, 22); cairo_clip(cr);
+		if (px) { pix_at(cr, px, tx, base + 4 - 18, 18, b.filt); tx += 18; }
+		const char *ti = a ? a->title : c->title, *ico = a ? a->icon : ap ? ap->icon : ""; char *tt = px ? g_strdup_printf(" %s", ti) : g_strdup_printf("%s%s%s", ico, ico[0] ? " " : "", ti);
+		css_text(cr, tt, UIFAM, act ? 600 : 400, 13, tx, base - A, A + d, b.fg, x + cw - b.bw - 6 - tx); g_free(tt);
+		cairo_restore(cr); ty += 22 + 3;
+	}
+	g_list_free(TL);
+	#undef HV
+	#undef PR
+}
 static gboolean bar_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 {
 	(void)d; int top = !strcmp(S.tb, "top");
 	double W = gtk_widget_get_allocated_width(wd) / Z, H = gtk_widget_get_allocated_height(wd) / Z;
-	cairo_scale(cr, Z, Z); bar_paint(cr, W, H, top); state_write();
+	cairo_scale(cr, Z, Z); if (tb_side()) bar_paint_v(cr, W, H); else bar_paint(cr, W, H, top); state_write();
 	return TRUE;
 }
 /* the bar's shadow and Wireframe's top edge, which fall outside its window: drawn on the desktop (desk_area_draw) */
 static void bar_outside(cairo_t *cr)
 {
-	if (!USER_ID[0] || LOCKED || !strcmp(S.tb, "top")) return;
+	if (!USER_ID[0] || LOCKED || !strcmp(S.tb, "top") || tb_side()) return;   /* (at the left or the right: its shadow, 1 px up, is off the screen) */
 	Box b = tb_box(TB_BAR, 0, 0); TbVars V = tb_vars(); double y = (SH - BARH) / Z;
 	cairo_save(cr); cairo_scale(cr, Z, Z);
 	if (V.on && !strcmp(V.st, "wire")) { srca(cr, cmix(V.fg, .7, CLEAR)); cairo_rectangle(cr, 0, y - 1, SW / Z, 1); cairo_fill(cr); }
@@ -1564,7 +1671,7 @@ static gboolean bar_leave(GtkWidget *w, GdkEventCrossing *e, gpointer d) { (void
 static void bar_place(void)
 {
 	if (!BAR) return; int top = !strcmp(S.tb, "top");
-	gtk_widget_set_size_request(BAR, SW, BARH); gtk_window_move(GTK_WINDOW(BAR), 0, top ? TOPRES : SH - BARH); gtk_window_resize(GTK_WINDOW(BAR), SW, BARH);
+	(void)top; gtk_widget_set_size_request(BAR, bar_w(), bar_h()); gtk_window_move(GTK_WINDOW(BAR), bar_x(), bar_y()); gtk_window_resize(GTK_WINDOW(BAR), bar_w(), bar_h());
 }
 
 /* ------------------------------------------------------------------ the windows' frames, as the page's (1.6.0 Part 12)
@@ -1860,9 +1967,11 @@ static void menu_toggle(void)
 	/* the menu's size: 230 px wide inside 6 px of padding and a 1 px border; its list's height, at most the screen less 70 px */
 	{ cairo_surface_t *t = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1); cairo_t *c = cairo_create(t); MCONT = menu_layout(c) + 75; cairo_destroy(c); cairo_surface_destroy(t); }
 	double vh = (SH - TOPRES) / Z; MBW = 244; MBH = fmin(MCONT, vh - 70) + 14; MBX = 2; MBY = top ? TOPRES / Z + 50 : (SH / Z) - 48 - MBH;
+	/* (body.left #menu: left var(--bw), top 4px; body.right #menu: right var(--bw); --bw is the bar's width and 4 px) */
+	if (tb_side()) { MBY = TOPRES / Z + 4; MBX = tb_side() == 1 ? BARW / Z + 4 : SW / Z - (BARW / Z + 4) - MBW; }
 	/* the window: the menu and its shadow's room (32 px around, 12 px lower), on the screen */
 	int x0 = (int)floor((MBX - 32) * Z), y0 = (int)floor((MBY - 20) * Z), x1 = (int)ceil((MBX + MBW + 32) * Z), y1 = (int)ceil((MBY + MBH + 44) * Z);
-	MX = MAX(0, x0); MY = MAX(TOPRES, y0); MW = MIN(SW, x1) - MX; MH = MIN(top ? SH : SH - BARH, y1) - MY;
+	MX = MAX(0, x0); MY = MAX(TOPRES, y0); MW = MIN(SW, x1) - MX; MH = MIN(top || tb_side() ? SH : SH - BARH, y1) - MY;
 	if (MBG) g_object_unref(MBG); MBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), MX, MY, MW, MH);
 	gtk_window_resize(GTK_WINDOW(MENU), MW, MH); gtk_widget_set_size_request(MAREA, MW, MH); gtk_window_move(GTK_WINDOW(MENU), MX, MY);
 	caret_restart(); gtk_widget_show_all(MENU); gtk_window_present(GTK_WINDOW(MENU)); gtk_widget_grab_focus(MAREA); wm_restack();
@@ -2177,6 +2286,7 @@ static void settings_load(void)
 	  jfree(v);
 	/* the page's display scaling: the taskbar, the title bars and the start menu at the page's size (1.5.9 step 7) */
 	Z = S.scale / 100.0; BARH = (int)lround(46 * Z); TH = (int)lround(35 * Z);
+	{ int ow = BARW; bar_measure(); if (BARW != ow) moved = 1; }   /* (the taskbar at the left or the right: as wide as its widest part) */
 	css_apply(); wall_make(); if (moved) { bar_place(); if (WM_OK) wm_relayout(); di_layout(); if (DESKAREA) desk_dirty(); } bar_redraw(); if (SAREA) gtk_widget_queue_draw(SAREA); if (WM_OK) frames_redraw();
 }
 static void apps_load(void)
@@ -2512,8 +2622,8 @@ static GHashTable *DI_CELLS;   /* name -> "c,r" (the shell's own, else the page'
 static int di_w(void) { return (int)lround(84 * DI_IS / 100.0 * Z); }
 static int di_h(void) { return (int)lround(86 * DI_IS / 100.0 * Z); }
 static int di_shown(void) { return USER_ID[0] && !LOCKED && NDI && !strcmp(DI_ACCT, USER_ID); }
-static void di_grid(int *nc, int *nr) { *nc = (SW - 8) / di_w(); *nr = (work_h() - 8) / di_h(); if (*nc < 1) *nc = 1; if (*nr < 1) *nr = 1; }
-static void di_xy(const DIcon *d, int *x, int *y) { *x = (int)lround(8 * Z) + d->c * di_w(); *y = work_top() + (int)lround(((!strcmp(S.tb, "top") ? 2 : 0) + 8) * Z) + d->r * di_h(); }   /* (the page's #desk: 2 px below a taskbar at the top) */
+static void di_grid(int *nc, int *nr) { *nc = (desk_w() - 8) / di_w(); *nr = (work_h() - 8) / di_h(); if (*nc < 1) *nc = 1; if (*nr < 1) *nr = 1; }
+static void di_xy(const DIcon *d, int *x, int *y) { *x = desk_left() + (int)lround(8 * Z) + d->c * di_w(); *y = work_top() + (int)lround(((!strcmp(S.tb, "top") ? 2 : 0) + 8) * Z) + d->r * di_h(); }   /* (the page's #desk: 2 px below a taskbar at the top) */
 static int di_used(int c, int r, int skip) { for (int i = 0; i < NDI; i++) if (i != skip && DI[i].c == c && DI[i].r == r) return 1; return 0; }
 /* the nearest free cell to (c, r), as the page's freeCell */
 static void di_free(int c, int r, int skip, int *oc, int *orr)
@@ -2730,7 +2840,7 @@ static gboolean desk_release(GtkWidget *w, GdkEventButton *e, gpointer d)
 		Client *cw = dd->fp[0] && WM_OK ? client_at((int)e->x_root, (int)e->y_root) : NULL;
 		if (cw && cw->app && !cw->app->hidden && strcmp(cw->app->k, "explorer")) { drop_in(dd->fp, cw->app->k); state_write(); return TRUE; }
 		/* (the place under the icon's top-left corner, moved as the pointer was) */
-		int nc, nr, ix, iy; di_grid(&nc, &nr); di_xy(&DI[DID.i], &ix, &iy); int c = (int)lround((ix + e->x - DID.sx - 8) / (double)di_w()), r = (int)lround((iy + e->y - DID.sy - work_top() - 8) / (double)di_h());
+		int nc, nr, ix, iy; di_grid(&nc, &nr); di_xy(&DI[DID.i], &ix, &iy); int c = (int)lround((ix + e->x - DID.sx - desk_left() - 8) / (double)di_w()), r = (int)lround((iy + e->y - DID.sy - work_top() - 8) / (double)di_h());
 		if (c < 0) c = 0; if (r < 0) r = 0; if (c >= nc) c = nc - 1; if (r >= nr) r = nr - 1;
 		int fc, fr; di_free(c, r, DID.i, &fc, &fr); DI[DID.i].c = fc; DI[DID.i].r = fr; di_save(); desk_dirty(); state_write();
 	}
@@ -2810,7 +2920,7 @@ static double wg_body(const Wg *w)
 	return l13;
 }
 static double wg_h(const Wg *w) { return 6 + lh_of(UIFAM, 400, 11) + 6 + 4 + wg_body(w) + 12; }
-static void wg_rect(const Wg *w, double *x, double *y, double *ww, double *hh) { *x = w->x; *y = wg_top0() + w->y; *ww = wg_w(w); *hh = wg_h(w); }
+static void wg_rect(const Wg *w, double *x, double *y, double *ww, double *hh) { *x = desk_left() / Z + w->x; *y = wg_top0() + w->y; *ww = wg_w(w); *hh = wg_h(w); }
 /* (a picture blurred: three box blurs a channel, as a8_blur) */
 static void rgb_blur(cairo_surface_t *m, double sigma)
 {
@@ -3276,7 +3386,7 @@ static void on_tb_act(const char *a)
 	else if (!strcmp(a, "restoreall")) { GList *L = g_list_copy(CLIENTS); for (GList *l = L; l; l = l->next) { Client *c = l->data; if (g_list_find(CLIENTS, c) && tb_win(c) && c->min) wm_focus(c); } g_list_free(L); }
 	else if (!strcmp(a, "cascade")) { int i = 0; GList *L = g_list_copy(CLIENTS); double dy = !strcmp(S.tb, "top") ? 2 : 0;   /* (the page's: 20 + 28 px a window, from the desktop's corner) */
 		for (GList *l = L; l; l = l->next) { Client *c = l->data; if (!g_list_find(CLIENTS, c) || !tb_win(c) || c->min) continue; if (c->max) wm_maximise(c, 0);
-			c->x = (int)lround((20 + i * 28) * Z); c->y = work_top() + (int)lround((dy + 20 + i * 28) * Z); place(c); wm_focus(c); i++; }
+			c->x = desk_left() + (int)lround((20 + i * 28) * Z); c->y = work_top() + (int)lround((dy + 20 + i * 28) * Z); place(c); wm_focus(c); i++; }
 		g_list_free(L); }
 	else if (!strcmp(a, "closeall")) { GList *L = g_list_copy(CLIENTS); for (GList *l = L; l; l = l->next) { Client *c = l->data; if (g_list_find(CLIENTS, c) && tb_win(c)) { if (c->app) appwin_ask_close(c->app); else wm_close(c); } } g_list_free(L); }
 	else if (!strcmp(a, "tbset")) tb_settings("disp");
@@ -3297,7 +3407,7 @@ static void on_tb_act(const char *a)
 		else if (!strncmp(a, "wn:ws:", 6)) ws_move(c, atoi(a + 6));   /* (wsMove: the window goes; the workspace shown stays) */
 		else if (!strcmp(a, "wn:max")) { wm_focus(c); wm_maximise(c, 1); }
 		else if (!strcmp(a, "wn:top")) { c->ontop = !c->ontop; wm_focus(c); }
-		else if (!strcmp(a, "wn:center")) { if (c->max) wm_maximise(c, 0); wm_focus(c); c->x = MAX(0, (SW - fw_of(c)) / 2); c->y = work_top() + MAX(0, (work_h() - fh_of(c)) / 2); place(c); state_write(); }
+		else if (!strcmp(a, "wn:center")) { if (c->max) wm_maximise(c, 0); wm_focus(c); c->x = desk_left() + MAX(0, (desk_w() - fw_of(c)) / 2); c->y = work_top() + MAX(0, (work_h() - fh_of(c)) / 2); place(c); state_write(); }
 		else if (!strcmp(a, "wn:close")) { if (c->app) appwin_ask_close(c->app); else wm_close(c); }
 		else if (!strcmp(a, "wn:fq")) { if (c->app) { char k[40]; snprintf(k, sizeof k, "%s", c->app->k); GList *L = g_list_copy(WINS);   /* (the page's: every window of the app, without asking) */
 				for (GList *l = L; l; l = l->next) { AppWin *w = l->data; if (g_list_find(WINS, w) && !w->hidden && !strcmp(w->k, k)) appwin_close_now(w); } g_list_free(L); } else XKillClient(DPY, c->w); }
@@ -3583,8 +3693,10 @@ static void fl_button_px(cairo_t *cr, const char *t, double px, double x, double
 }
 static void fl_place_over(const double *B, int top)
 {
-	double vw = SW / Z, vh = SH / Z, bx = B[0], by = B[1] + (top ? TOPRES : SH - BARH) / Z, bw = B[2], bh = B[3];
-	FLX = bx + bw / 2 - FLW / 2; FLY = top ? by + bh + 8 : by - FLH - 8; FLX = fmax(4, fmin(vw - FLW - 4, FLX)); FLY = fmax(4, fmin(vh - FLH - 4, FLY));
+	double vw = SW / Z, vh = SH / Z, bx = B[0] + bar_x() / Z, by = B[1] + bar_y() / Z, bw = B[2], bh = B[3];
+	FLX = bx + bw / 2 - FLW / 2; FLY = top ? by + bh + 8 : by - FLH - 8;
+	if (tb_side() == 1) { FLX = bx + bw + 8; FLY = by; } else if (tb_side() == 2) { FLX = bx - FLW - 8; FLY = by; }   /* (flyPlace: beside a bar at the left or the right) */
+	FLX = fmax(4, fmin(vw - FLW - 4, FLX)); FLY = fmax(4, fmin(vh - FLH - 4, FLY));
 }
 /* the network (.np: 330 px of content, 10 px 12 px around it, 12 px type) */
 static void fl_net(cairo_t *cr, int draw, int dark, int top)
@@ -3678,8 +3790,7 @@ static void fl_layout(cairo_t *cr, int draw)
 	/* the volume (.vp .svp) */
 	double l12 = fl_lh(cr, 400, 12), l11 = fl_lh(cr, 400, 11), lb = fl_lh(cr, 700, 12);
 	FLW = 210 + 24 + 2; FLH = 10 + lb + 6 + 20 + 8 + 19 + 8 + l11 + 10 + 2;
-	{ double bx = VOLB[0], by = VOLB[1] + (top ? TOPRES : SH - BARH) / Z, bw = VOLB[2], bh = VOLB[3];
-		FLX = bx + bw / 2 - FLW / 2; FLY = top ? by + bh + 8 : by - FLH - 8; FLX = fmax(4, fmin(vw - FLW - 4, FLX)); FLY = fmax(4, fmin(vh - FLH - 4, FLY)); }
+	fl_place_over(VOLB, top);
 	if (!draw) return;
 	Box b; memset(&b, 0, sizeof b); b.bg = cx("#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 10; shd_add(&b, 0, 10, 26, cx("#000000", .3), 0); box_paint(cr, FLX, FLY, FLW, FLH, &b);
 	RGBA ink = cx("#111111", 1); double x = FLX + 13, y = FLY + 11;
@@ -3750,9 +3861,9 @@ static gboolean fl_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 		if (e->type != GDK_BUTTON_PRESS) return TRUE;
 		/* (a click elsewhere closes it; on the taskbar it goes on: another of the tray's buttons, not this one's again) */
 		int kind = FLK; fl_close();
-		int top = !strcmp(S.tb, "top"), by = top ? TOPRES : SH - BARH; double rx = e->x_root, ry = e->y_root - by;
+		double rx = e->x_root - bar_x(), ry = e->y_root - bar_y();
 		/* (the clock's date is not the clock's own element: there the page's calendar closes and opens again, at this month) */
-		if (BAR && ry >= 0 && ry < BARH && e->button == 1) { int h = hit_at(rx, ry); int date = h >= 0 && !strcmp(HITS[h].kind, "clock") && rx / Z >= CLKD[0] && rx / Z < CLKD[1];
+		if (BAR && rx >= 0 && rx < bar_w() && ry >= 0 && ry < bar_h() && e->button == 1) { int h = hit_at(rx, ry); int date = h >= 0 && !strcmp(HITS[h].kind, "clock") && rx / Z >= CLKD[0] && rx / Z < CLKD[1];
 			if (h >= 0 && (date || !((kind == FL_CAL && !strcmp(HITS[h].kind, "clock")) || (kind == FL_VOL && !strcmp(HITS[h].kind, "vol")) || (kind == FL_NET && !strcmp(HITS[h].kind, "net")) || (kind == FL_QS && !strcmp(HITS[h].kind, "qs")) || (kind == FL_NC && !strcmp(HITS[h].kind, "notes"))))) bar_click(h); }   /* (at once: the button's release does not come to the taskbar after the grab) */
 		return TRUE; }
 	int i = fl_at(e->x, e->y); if (e->button != 1 || i < 0) return TRUE;
@@ -4033,13 +4144,13 @@ static gboolean tick_devlink(gpointer d)
 static void state_write(void)
 {
 	if (!STATEF) return;
-	GString *s = g_string_new(NULL); int top = !strcmp(S.tb, "top"), by = top ? TOPRES : SH - BARH;
+	GString *s = g_string_new(NULL); int by = bar_y(), bx = bar_x();
 	g_string_append_printf(s, "screen %d %d\nuser %s\nlocked %d\nsignin %d\nmenu %d\nbar %d %d %d %d %d\nclock %s|%s\n", SW, SH, USER_ID[0] ? USER_N : "-", LOCKED,
-		SIGN && gtk_widget_get_visible(SIGN), MENU && gtk_widget_get_visible(MENU), BAR && gtk_widget_get_visible(BAR), 0, by, SW, BARH, CLOCK_T, CLOCK_D);
+		SIGN && gtk_widget_get_visible(SIGN), MENU && gtk_widget_get_visible(MENU), BAR && gtk_widget_get_visible(BAR), bx, by, bar_w(), bar_h(), CLOCK_T, CLOCK_D);
 	g_string_append_printf(s, "ws %d\n", WSC);   /* (item 4: the workspace shown) */
 	g_string_append_printf(s, "notes %d %d %d\nmic %d %d\n", S.dnd, nt_unread(), NNT, MIC_N, MIC_MUTED);   /* (the bell: do not disturb, its count, the list's length) */   /* (item 3: the call's 🎙️; the notifications' pop-ups) */
 	for (int i = 0; i < NTST; i++) g_string_append_printf(s, "toast %d %d %d %d %d|%s\n", TST[i].why, (int)lround(TSX[i] * Z), (int)lround(TSY[i] * Z), (int)lround(349 * Z), (int)lround(TST[i].h * Z), TST[i].t);
-	for (int i = 0; i < NHITS; i++) g_string_append_printf(s, "hit %s %s %d %d %d %d\n", HITS[i].kind, HITS[i].arg[0] ? HITS[i].arg : "-", HITS[i].x, HITS[i].y + by, HITS[i].w, HITS[i].h);
+	for (int i = 0; i < NHITS; i++) g_string_append_printf(s, "hit %s %s %d %d %d %d\n", HITS[i].kind, HITS[i].arg[0] ? HITS[i].arg : "-", HITS[i].x + bx, HITS[i].y + by, HITS[i].w, HITS[i].h);
 	/* the start menu's rows on the screen (mrow ACTION x y w h) */
 	for (int i = 0; MENU && gtk_widget_get_visible(MENU) && i < NMR; i++) { MRow *r = &MR[i]; if (!r->shown || r->t != 'l' || strstr(r->cls, "offh")) continue;
 		double y = MBY + 7 - MSCROLL + 75 + r->y; if (y < MBY || y + r->h > MBY + MBH) continue;

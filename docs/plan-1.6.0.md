@@ -342,20 +342,34 @@ networks: Settings › Network has them); rudolfd's events (events/wait) go to t
 window open a page's event-driven notifications (memory, Bluetooth, the power button's dialog) are not seen until one is
 (a hidden page for the desktop's own events, item 11); the toasts' window shows what was behind it when it appeared (no
 compositor).
-Item 4, the workspaces (the PR after the taskbar at the left or the right): three, as the page's (shell25.js wsGo):
+Item 3's last part, second half (the PR after #344): the taskbar at the left or the right (Display Properties' Taskbar:
+left, right), drawn by the shell as the page's body.left/.right #bar: a column from the screen's top to its bottom, 3 px of
+padding, its parts 4 px apart and as wide as the column, the column as wide as its widest part (max-content: the pinned
+apps' row, the version under the logo, the clock...; measured with the page's fonts, bar_measure); the start button the
+logo over the version (10 px, centred); the pinned apps in a row; the open windows' buttons 22 px high one under the
+other; at the bottom the battery, the workspaces, the network, the sound, the call's 🎙️, quick settings, the
+notifications and the clock (its date hidden, as the page's). The desktop's icons, the widgets and the windows' first
+places beside it (#desk's inset, var(--bw): the bar's width and 4 px), maximised windows and Cascade in the rest of the
+screen, the start menu beside it at the top (left or right: var(--bw), top 4 px), the network's and the volume's pop-ups
+beside their buttons (flyPlace), quick settings, the centre and the calendar where the page puts them (at the bottom
+right, as the page does); clicks outside a pop-up reach the bar wherever it is. The page has no auto-hide, so Native has
+none. same_t.sh: new bar-left, bar-right (and the icons beside them), bar-left-win (a window's button and its title bar),
+bar-left-candy, bar-right-retro, menu-left, menu-right, fly-vol-left, fly-net-right, fly-qs-left. Item 3 is done.
+Item 4, the workspaces (the PR after #346): three, as the page's (shell25.js wsGo):
 the taskbar's 1 2 3 buttons (the one shown on, those with windows marked as the page's .has) switch, Ctrl+Alt+Left and
 Right go to the one before or after (with Shift the window in front goes too), a window's menu's Move to workspace N
 rows move it (rebuilt per window, the page's rows), the taskbar lists the shown workspace's windows only, a window
 brought to the front (a toast's action, Alt+Tab later) switches to its workspace, a pinned app open elsewhere opens a
 new window here (as the page's pin click), and "Workspace N" is said in a toast (none with Do not disturb). The
 shell's state file has ws and clientws lines for the tests. Fixed with it: a toast with no body is 2 px taller, as
-the page's empty body's margin makes it. same_t.sh: new ws2, ws2-dark (the bar and the toast); the behaviour on both
+the page's empty body's margin makes it. same_t.sh: new ws2, ws2-dark (the bar and the toast), ws2-left; the behaviour on both
 engines: `SAME_SCRIPT=wsbeh_t.js sh same_t.sh` 11/11 (the workspace shown, the windows shown, the taskbar's windows,
-the workspaces with windows and the menu's rows after each of ten steps). If the taskbar at the left or the right
-(#346) merges first, its vertical bar gets the same filtering when this is merged with it.
+the workspaces with windows and the menu's rows after each of ten steps). The bar
+at the left or the right (#346) lists and marks them the same way.
 **Next:** item 5 (the window keys: Super+Tab and Alt+Tab with previews, Super+arrows, Super+D), then items 6 to 12 in
 order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md after them. Native is not
-the default yet.
+the default yet. The security line's next steps (as of 2026-11-14): docs/plan-1.5.9.md 15.3's third step (the QEMU check
+with two accounts, needing a host with QEMU and a built disc) and 12.3c's second part (Oracle on Native: step 5's rest).
 
 **Becoming the default:** after items 1-12 pass on the host and on the Vivobook (a week of betas on Native), the
 release's default engine is Native for new installations; an update keeps the engine the computer had, and Settings
