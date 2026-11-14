@@ -558,7 +558,7 @@ Google's own terms rather than Chromium's open-source licence. Rudolf OS ships o
 Chromium has security fixes every few weeks, and they reach Rudolf OS only with a release. A scheduled workflow, once
 a day, compares the snap's stable Chromium with the stable release's and, when it is newer, opens (or updates) one
 GitHub issue: "Chromium X is available (security fixes): the stable release has Y". A beta with it is then one
-dispatch; promotion stays the person's choice.
+dispatch; promotion stays the person's choice. (1.5.9 15.6's security check replaces it, with the kernel too.)
 
 ### 11.3 A clear message when a system layer does not match its release
 When a layer differs from the signed release list, rudolf-verity reports the device-mapper's error ("table: Argument
@@ -1041,6 +1041,16 @@ before it switches the link on; updated with its next run.
   ones Ubuntu has published; when either has a security update, it opens an issue "Security update available:
   Chromium 1xx.x" for the owner, who decides whether to build a beta. It never builds or promotes by itself.
 - Settings › About shows the Chromium and kernel versions and the release's date.
+
+**Done (2026-11-14):** `.github/workflows/security-check.yml` (daily, 14:17 UTC; contents read, issues write) runs
+`iso/systools/seccheck.py`: the latest release is the newer (by serial) of the stable and beta manifests on gh-pages;
+Chromium against Ubuntu's chromium snap (stable, amd64), the kernel against Ubuntu's mainline builds
+(kernel.ubuntu.com/mainline) of the release's own series only (6.18.x for 6.18.63: a new series is not a security
+update). Newer: one issue "Security update available: Chromium X, kernel Y" (label security-update) with what the
+release has; while one is open (or 11.2's older chromium-update issue) it is updated, never a second. It replaces
+11.2's chromium-check.yml. It only reads and writes that issue: nothing is built, released, promoted or dispatched.
+Settings › About: Chromium (the release's, else the browser's own) and Released (its date) beside the Linux kernel.
+Tests: qt/host/seccheck59_t.py (12, stand-ins for GitHub, the snap store and the mainline list), devmode59_t.js 10b.
 
 **Status:** planned (2026-11-14). 15.1 first, then 15.2, 15.4, 15.5, 15.6; 15.3 when 15.1 is done (it changes the same
 code). Each in its own PR.
