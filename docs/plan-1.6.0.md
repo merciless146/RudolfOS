@@ -303,8 +303,25 @@ page's own outcomes). Known differences left: the slider's own sound when let go
 the checkbox by the keyboard; the network's and the battery's pop-ups, quick settings (☰), the notifications' pop-ups
 and centre (🔔), the taskbar at the left or right, auto-hide, the workspaces' buttons and the 🎙️ indicator are item 3's
 second part's second half.
-**Next:** item 3's second part's second half, then items 4 to 12 in order, one PR each, stacked, each passing same_t.sh for its
-part, and docs/plan-2.0.md after them. Native is not the default yet.
+Item 3, second part, second half, first piece (the PR after #328): the tray's other pop-ups drawn by the shell as the page's: the
+network's (net31.js net31Pop: the adapters, the one in use in the accent colour, the others tinted when hovered, "This system
+has no Wi-Fi tools…", Network Settings…; placed as flyPlace places it, before the Wi-Fi part is filled in, so it grows
+downwards from there), quick settings (shell25.js qsToggle: the eight tiles, on at once, the page's own tile clicked in a
+hidden page, #app=do-qs&k=WORDS&on=0|1, the shell keeping what it shows until rudolfd's settings agree or 15 s; the network's
+words; Lock, Settings, Power) and the notifications' centre (ncToggle: rudolfd's desktop/settings now gives the notifications,
+"notif"; their times, ⚡ Why? (#app=do-why), Do not disturb, ✕ and Clear all (#app=do-nc), what was dismissed not brought back by
+an older answer; scrolled by the wheel when longer than 70vh). The bell shows 🔕 with Do not disturb and counts the ones come
+since signing in or since the centre was opened (the page's ncUnread); Meta+A and Meta+N; the battery's button opens Settings
+at Power and battery (#app=settings&page=health&at=pwr31). A page's settings saved in one window reach the others (the storage
+event: applySet, a11yApply, themeApply), as Standard's one page. same_t.sh: new fly-net, fly-qs, fly-qs-on, fly-qs-dark,
+fly-nc, fly-nc-list, fly-nc-dnd (78 parts pass); the behaviour on both engines: `SAME_SCRIPT=traybeh_t.js sh same_t.sh` 25/25.
+Known differences left: with Wi-Fi tools (a real computer's Wi-Fi), the network's pop-up does not have the page's Wi-Fi part
+(networks in range, joining one, saved networks: Settings › Network has them); a long notifications' list scrolls without
+Chromium's scrollbar; night light, the screen reader, the magnifier, high contrast, the on-screen keyboard and touch mode are
+turned on for the pages, and the shell's own parts do not show them yet (items 9 and 10).
+**Next:** item 3's second part's rest (the notifications' pop-ups, the 🎙️ indicator, the taskbar at the left or right,
+auto-hide), then items 4 to 12 in order, one PR each, stacked, each passing same_t.sh for its part, and docs/plan-2.0.md after
+them. Native is not the default yet.
 
 **Becoming the default:** after items 1-12 pass on the host and on the Vivobook (a week of betas on Native), the
 release's default engine is Native for new installations; an update keeps the engine the computer had, and Settings

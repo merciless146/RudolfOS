@@ -3267,13 +3267,18 @@ static void net_desc(const NetIf *f, char *o, size_t n)
 }
 /* the notifications (the page's bd95notif:ID, newest first; from rudolfd's desktop/settings "notif") */
 typedef struct { char t[200], b[600], k[12]; double at; } NcItem;
-static NcItem NCL[60]; static int NNCL; static double NC_SEEN;   /* (NC_SEEN: the newest one seen: the page's ncUnread counts the ones after it) */
+static NcItem NCL[60]; static int NNCL; static double NC_SEEN;
+/* (dismissed or cleared here: an answer of rudolfd's from before the page's own storage had them gone does not bring them back, for 15 s) */
+static struct { double at; char t[200]; gint64 when; } NCX[16]; static int NNCX; static double NC_CLR; static gint64 NC_CLRT;   /* (NC_SEEN: the newest one seen: the page's ncUnread counts the ones after it) */
 static int nc_unread(void) { int n = 0; for (int i = 0; i < NNCL; i++) if (NCL[i].at > NC_SEEN) n++; return n; }
 static void nc_load(JV *v)
 {
 	NNCL = 0; JV *a = jprop(v, "notif");
+	gint64 now = g_get_monotonic_time(); int k = 0; for (int i = 0; i < NNCX; i++) if (now - NCX[i].when < 15000000) NCX[k++] = NCX[i]; NNCX = k;
 	for (int i = 0; a && a->t == 4 && i < a->len && NNCL < 60; i++) { JV *o = jat(a, i); if (!o || o->t != 5) continue; NcItem *n = &NCL[NNCL++]; memset(n, 0, sizeof *n);
-		jstr(o, "t", n->t, sizeof n->t); jstr(o, "b", n->b, sizeof n->b); jstr(o, "k", n->k, sizeof n->k); n->at = jnum(o, "at", 0); if (!n->k[0]) snprintf(n->k, sizeof n->k, "info"); }
+		jstr(o, "t", n->t, sizeof n->t); jstr(o, "b", n->b, sizeof n->b); jstr(o, "k", n->k, sizeof n->k); n->at = jnum(o, "at", 0); if (!n->k[0]) snprintf(n->k, sizeof n->k, "info");
+		int gone = NC_CLRT && now - NC_CLRT < 15000000 && n->at <= NC_CLR; for (int j = 0; j < NNCX && !gone; j++) gone = NCX[j].at == n->at && !strcmp(NCX[j].t, n->t);
+		if (gone) NNCL--; }
 }
 /* (blitzdiag57.js bzIsError: the ones Blitzen can explain get "⚡\uFE0E Why?") */
 static int nc_why(const NcItem *n)
@@ -3544,8 +3549,9 @@ static void fl_act(const char *k, int dbl)
 	else if (!strcmp(k, "qoff")) { fl_close(); power_dialog(); return; }
 	/* (the notifications': Do not disturb (the page's checkbox does as the tile does), Clear all, one dismissed (✕), Blitzen asked why) */
 	else if (!strcmp(k, "dnd")) { S.dnd = !S.dnd; QSV[2] = S.dnd; QS_WANT[2] = S.dnd; QS_WT[2] = g_get_monotonic_time(); bar_redraw(); char ex[80]; snprintf(ex, sizeof ex, "&k=Do%%20not%%20disturb&on=%d", S.dnd); tb_page("do-qs", ex, 1); }
-	else if (!strcmp(k, "clr")) { NNCL = 0; tb_page("do-nc", "&op=clear", 1); bar_redraw(); }
-	else if (!strncmp(k, "nx:", 3)) { int i = atoi(k + 3); if (i >= 0 && i < NNCL) { char ex[96]; snprintf(ex, sizeof ex, "&op=dismiss&i=%d&at=%.0f", i, NCL[i].at); memmove(&NCL[i], &NCL[i + 1], (NNCL - i - 1) * sizeof NCL[0]); NNCL--;
+	else if (!strcmp(k, "clr")) { NC_CLR = 0; for (int i = 0; i < NNCL; i++) NC_CLR = fmax(NC_CLR, NCL[i].at); NC_CLRT = g_get_monotonic_time(); NNCL = 0; tb_page("do-nc", "&op=clear", 1); bar_redraw(); }
+	else if (!strncmp(k, "nx:", 3)) { int i = atoi(k + 3); if (i >= 0 && i < NNCL) { char ex[96]; snprintf(ex, sizeof ex, "&op=dismiss&i=%d&at=%.0f", i, NCL[i].at);
+			if (NNCX == 16) { memmove(&NCX[0], &NCX[1], 15 * sizeof NCX[0]); NNCX--; } NCX[NNCX].at = NCL[i].at; snprintf(NCX[NNCX].t, sizeof NCX[0].t, "%s", NCL[i].t); NCX[NNCX++].when = g_get_monotonic_time(); memmove(&NCL[i], &NCL[i + 1], (NNCL - i - 1) * sizeof NCL[0]); NNCL--;
 			tb_page("do-nc", ex, 1); bar_redraw(); } }
 	else if (!strncmp(k, "why:", 4)) { int i = atoi(k + 4); if (i >= 0 && i < NNCL) { char *t = qesc(NCL[i].t), *b = qesc(NCL[i].b), *ex = g_strdup_printf("&t=%s&b=%s", t, b); app_open_ex("do-why", NULL, ex, 0); g_free(t); g_free(b); g_free(ex); } return; }
 	if (FLAREA) gtk_widget_queue_draw(FLAREA); state_write();
