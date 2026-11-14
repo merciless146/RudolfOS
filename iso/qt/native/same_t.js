@@ -71,12 +71,22 @@ CASES.push({n: 'fly-qs-on', set: {dnd: true, sr: true}, fly: 'qs', parts: ['fly'
 CASES.push({n: 'fly-qs-dark', set: {dm: 'dark', darkui: true}, fly: 'qs', parts: ['fly']});
 CASES.push({n: 'fly-nc', set: {}, more: NOTES, fly: 'notes', parts: ['fly']});
 CASES.push({n: 'fly-nc-empty', set: {}, fly: 'notes', parts: ['fly']});
+CASES.push({n: 'fly-net', set: {}, fly: 'net', parts: ['fly']});   /* (the network's pop-up: item 3's last part) */
+/* (item 3) the notifications' pop-ups (a page's notifications: rudolfd's "memory closed" events, apps57.js; one, two, the dark theme, the
+   taskbar at the top) and the call's 🎙️ (an app using the microphone, muted or not) */
+CASES.push({n: 'toast', set: {}, act: 'notepad', ev: ['memory closed Paint 300'], parts: ['toast']});
+CASES.push({n: 'toast-two', set: {}, act: 'notepad', ev: ['memory closed Paint 300', 'memory closed Calculator 2048'], parts: ['toast', 'bar']});
+CASES.push({n: 'toast-dark', set: {dm: 'dark', darkui: true}, act: 'notepad', ev: ['memory closed Paint 300'], parts: ['toast']});
+CASES.push({n: 'toast-top', set: {tb: 'top'}, act: 'notepad', ev: ['memory closed Paint 300'], parts: ['toast']});
+CASES.push({n: 'call', set: {}, mic: ['Oracle'], parts: ['bar']});
+CASES.push({n: 'call-muted', set: {}, mic: ['Oracle'], micmuted: 1, parts: ['bar']});
 CASES.push({n: 'tbm-bar-win', set: {}, more: PINS2, act: 'notepad', rc: 'bar', parts: ['ctx']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
+const micSet = c => { fs.writeFileSync(path.join(D, 'mic'), JSON.stringify(c.mic || [])); if (c.mic) cp.execSync(`curl -s --noproxy '*' -X POST -H 'X-Rudolf-Token: tok160same' '${BASE}/api/mic?muted=${c.micmuted ? 1 : 0}'`) };
 async function stdCase(c) {
-  state(c.set, c.more);
+  state(c.set, c.more); micSet(c);
   const ctx = await BR.newContext({viewport: {width: W, height: H}, deviceScaleFactor: 1, timezoneId: 'UTC'});
   await ctx.clock.install({time: new Date('2026-11-14T09:41:00Z')});
   /* (nothing from outside: the internet's check answers, as on a connected computer, the rest is refused) */
@@ -113,7 +123,9 @@ async function stdCase(c) {
       const r = await p.evaluate(() => { const e = [...document.querySelectorAll('.ctx .cmi')].find(x => x.textContent.includes('Add a widget')); const q = e.getBoundingClientRect(); return [q.left + 50, q.top + q.height / 2] });
       await p.mouse.click(r[0], r[1]); await p.clock.runFor(300); await wait(200) }
     if (/menu$|wgpick/.test(c.act || '')) await p.mouse.move(W / 2, H - 200);
-    if (c.fly) { await p.click({clock: '#tray', vol: '#vol', qs: '#qsb', notes: '#ncb'}[c.fly]); await p.clock.runFor(400); await wait(300);
+    if (c.ev) { for (const e of c.ev) { const n0 = await p.evaluate(() => document.querySelectorAll('#ntoasts .ntoast').length); fs.writeFileSync(path.join(D, 'event'), e);
+        await p.waitForFunction(n0 => document.querySelectorAll('#ntoasts .ntoast').length > n0, n0, {timeout: 20000}) } await wait(900) }
+    if (c.fly) { await p.click({clock: '#tray', vol: '#vol', net: '#net', qs: '#qsb', notes: '#ncb'}[c.fly]); await p.clock.runFor(400); await wait(300);
       if (c.next) { await p.click('#calp .cn'); await p.clock.runFor(300); await wait(200) } await p.mouse.move(300, 300) }
   }
   rects.screen = [0, 0, W, H]; rects.wallpaper = [0, 0, W, H];
@@ -124,13 +136,15 @@ async function stdCase(c) {
   rects.title = await p.evaluate(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.offsetParent).pop(); const t = w && w.querySelector('.tb'); if (!t) return null; const r = w.getBoundingClientRect(), q = t.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(q.bottom - r.top)] });
   { const r = await rectOf('.ctx'); rects.ctx = r ? [r[0] - 4, r[1] - 4, r[2] + 8, r[3] + 8] : null; rects.dlg = await rectOf('.rmodal .rmbox') }   /* (a menu with its focus ring) */
   for (let i = 0; i < (c.wg || 0); i++) rects['wg' + i] = await p.evaluate(i => { const e = document.querySelectorAll('#desk > .wgt')[i]; if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.left) - 20, Math.round(r.top) - 10, Math.round(r.width) + 40, Math.round(r.height) + 40] }, i);   /* (with its shadow) */
-  { const r = await rectOf('#calp') || await rectOf('.svp') || await rectOf('#qsp') || await rectOf('#ncp'); rects.fly = r }
+  { const r = await rectOf('#ntoasts'); rects.toast = r ? [r[0] - 30, r[1] - 16, r[2] + 42, r[3] + 52] : null }   /* (with their shadows) */
+  { const r = await rectOf('#calp') || await rectOf('.svp') || await rectOf('#qsp') || await rectOf('#ncp') || await rectOf('.np'); rects.fly = r }
   rects.desc = await p.evaluate(() => ({bar: document.getElementById('bar').className, body: document.body.className}));
   const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f});
   await ctx.close(); return {f, rects, errs, pt};
 }
 // ---- Native: rudolf-native under Xvfb, the same storage
 let NP = null, NLOG = path.join(OUT, 'native.log');
+function nlines0(k) { try { return fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').filter(x => x.startsWith(k + ' ')) } catch (e) { return [] } }
 function nst(k) { try { const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => x.startsWith(k + ' ')); return l ? l.slice(k.length + 1) : null } catch (e) { return null } }
 function nhit(k) { try { const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => x.startsWith('hit ' + k + ' ')); if (!l) return null; const a = l.split(' ').slice(3).map(Number); return [a[0] + a[2] / 2, a[1] + a[3] / 2] } catch (e) { return null } }
 async function until(f, ms) { const t = Date.now(); while (Date.now() - t < (ms || 20000)) { if (await f()) return true; await wait(200) } return false }
@@ -160,7 +174,7 @@ async function natFiles() {
   xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(300);
 }
 async function natCase(c, s) {
-  state(c.set, c.more);
+  state(c.set, c.more); micSet(c);
   if (c.signin) {
     try { fs.unlinkSync(path.join(D, 'session')) } catch (e) {}
     if (NP) { NP.kill(); NP = null; await wait(500) }
@@ -178,6 +192,8 @@ async function natCase(c, s) {
   if (c.act == 'notepad') { const h = nhit('pin notepad'); if (h) xdo('mousemove ' + h.join(' ') + ' click 1');
     await until(() => /^client .* app=notepad/m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3000); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500);
     const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => /^client .* app=notepad/.test(x)); if (l) { const a = l.split(' '); cl = [+a[3], +a[4], +a[5], +a[6]] } }
+  if (c.mic) { await until(() => (nst('mic') || '').startsWith(c.mic.length + ' ' + (c.micmuted ? 1 : 0)), 12000); await wait(600) }
+  if (c.ev) { for (const e of c.ev) { const n0 = nlines0('toast').length; fs.writeFileSync(path.join(D, 'event'), e); await until(() => nlines0('toast').length > n0, 20000) } xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(900) }
   if (c.act == 'lock') { xdo('key super+l'); await until(() => nst('locked') == '1', 8000); await wait(1200) }
   if (c.files) await natFiles();
   const nlines = k => { try { return fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').filter(x => x.startsWith(k + ' ')) } catch (e) { return [] } };
