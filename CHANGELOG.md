@@ -6,6 +6,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 ## 1.5.9 (in progress)
 Summary: In progress.
 - New: the PDF Viewer prints (🖨️ Print, or Ctrl+P): the PDF itself, on its own paper size, to a network printer (IPP Everywhere / AirPrint) or saved as a copy, through the same print dialog as WordPro.
+- Fixed: the self-test said the desktop's browser was not in the desktop's memory group when it was.
 - Fixed: the start-up chime plays when the sign-in screen appears, not only after the first key or click there (on installed Rudolf OS; the browser version still needs a key or click first, as browsers require).
 - Fixed: the sign-in page after a start-up showed a teal background instead of the desktop's picture: it now remembers which background the desktop has (your picture, a drawn background, or the colours) rather than how it looked at that moment, and a drawn background shows its light or dark picture for the time of day.
 - New: Settings › Date, time and language › Share my language with apps (on by default): Library apps such as games are told Rudolf OS's language, when they start and whenever it changes, so they can show their own menus in it. Off, apps are not told which language you use.

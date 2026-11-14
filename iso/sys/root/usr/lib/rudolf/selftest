@@ -97,6 +97,8 @@ else
 fi
 
 # ---- memory
+# (1.5.9: a cgroup's files report a size of 0, so whether the browser is in the desktop's group is read, not sized:
+#  test -s said "its browser is not in it" on the Vivobook with 14 of its processes there)
 Z="$SYS/block/zram0"
 MSET=$(sed -n 's/^zram=//p' "${ST_MEMCONF:-$P/etc/rudolf-memory}" 2>/dev/null | tail -1); [ -n "$MSET" ] || MSET=auto
 if [ "$MSET" = off ]; then skip compressed-memory "off (Settings › System health › Memory)"
@@ -109,7 +111,7 @@ elif [ "$(rd1 "$Z/disksize")" -gt 0 ] 2>/dev/null && grep -q zram0 "$PROC/swaps"
 else fail compressed-memory "made but not in use"; fi
 G="$SYS/fs/cgroup/desktop"
 if [ ! -d "$SYS/fs/cgroup" ] || [ ! -e "$SYS/fs/cgroup/cgroup.controllers" ]; then skip desktop-memory "no memory groups in this kernel"
-elif [ -e "$G/memory.low" ] && [ "$(rd1 "$G/memory.low")" != 0 ]; then pass desktop-memory "the desktop keeps $(( $(rd1 "$G/memory.low") / 1048576 )) MiB$( [ -s "$G/cgroup.procs" ] && echo ", with its browser in it" || echo ", but its browser is not in it")"
+elif [ -e "$G/memory.low" ] && [ "$(rd1 "$G/memory.low")" != 0 ]; then pass desktop-memory "the desktop keeps $(( $(rd1 "$G/memory.low") / 1048576 )) MiB$( grep -q . "$G/cgroup.procs" 2>/dev/null && echo ", with its browser in it" || echo ", but its browser is not in it")"
 else fail desktop-memory "the desktop's memory group is missing or keeps nothing"; fi
 
 # ---- 1.5.8: every sound chip answered at start-up (or was reset): one that did not has no card, so no speakers

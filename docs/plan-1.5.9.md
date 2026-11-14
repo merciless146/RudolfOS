@@ -10,7 +10,7 @@ Done in code and tests (PRs #260–#281, rudolfos-library #31; each part's "Done
 check (since #280 ModemManager runs without udev; since #281 the self-test has a modem line), Part 3 steps 1–5 (QEMU
 starts the ARM64 build directly, through UEFI firmware and with Chromium as the desktop), Part 4 up to the device
 check, Part 7 except the Vivobook call checks, Part 8 except 8.4's recovery.efi and the TPM and hardware keys, Part 9,
-Part 10's pictures, fonts and lazy apps, Part 11. Part 12 (the native desktop engine, a prototype) is not started. The
+Part 10's pictures, fonts and lazy apps, Part 11. Part 12 (the native desktop engine, a prototype) is not started; Part 13 (USB printers) moved to 1.6.0. The
 latest beta: **2026111402** (not promoted).
 
 ### What needs the Vivobook (or the person) before 1.5.9 is promoted
@@ -618,6 +618,9 @@ numbers (docs/plan-1.6.0.md, "the native desktop decision", now pointing here).
 - Browser: each app's one-app mode opens and closes cleanly, on both engines.
 - The session's engine choice and give-up (host test, as desksafe58_t.sh for Lite); CI builds rudolf-native.
 
+## Part 13: USB printers (moved to 1.6.0 on 2026-11-13)
+To be tested with the HP desktop's user, who has the USB printer: docs/plan-1.6.0.md Part 8. Nothing of it is in 1.5.9.
+
 ## Steps
 0. Part 11 first: 11.1 (the Chromium source) and 11.3, then 11.2; 11.4 holds for every part.
 1. Part 1 (ModemManager, read only); its device checks, with the USB stick and the MiFi, moved to 1.6.0.
@@ -638,3 +641,4 @@ numbers (docs/plan-1.6.0.md, "the native desktop decision", now pointing here).
     measured on both engines on the Vivobook; then the engines' limits (10.3).
 11. Part 12 (the native desktop engine, a prototype): the one-app mode and rudolfd's settings first, then rudolf-native's
     wallpaper and taskbar, its window manager, the engine choice; measured on the Vivobook last.
+12. Part 13 (USB printers): moved to 1.6.0 (its Part 8).
