@@ -446,12 +446,31 @@ extension installed and in use after a restart; a broken one (its start script h
 left out on the next start; an update to a base with and without the extension's build; Recovery mode without
 extensions; removal leaving nothing behind.
 
+### 14. A keyring for Linux apps: the Secret Service (added on 2026-11-14)
+Found on the Vivobook (2026-11-14): signing in to the Claude app for Linux with an e-mail address showed a notice that
+GNOME Keyring is not set up. Linux apps (the Claude app, VS Code, Chromium-based and Electron apps, mail and chat
+apps) keep their sign-ins and tokens through the Secret Service (org.freedesktop.secrets, libsecret). Rudolf OS has
+none, so they warn, keep the secret in a plain file (Electron's basic text store) or forget it and ask again after
+every restart.
+- **The service:** gnome-keyring-daemon's secrets component only (no SSH or GPG agent, no GUI of its own), in Debian's
+  container and for Flatpak apps (the portal's Secret interface), started with the account's session pieces (1.5.9's
+  Part 15.3: each account its own Linux user, so each account its own keyring, in its own encrypted home).
+- **Unlocked by the sign-in:** the keyring's password is the account's own; the sign-in (and the lock screen) hand it
+  to the daemon (as pam_gnome_keyring does) so no second password is asked; changing the account's password changes
+  the keyring's; signing out locks it. An account without a password gets a keyring kept with the account's encryption
+  key instead of a password.
+- **Prompts:** when an app asks to unlock or create a keyring the desktop draws the prompt (the one Settings uses), with
+  the app's name; never a GNOME window.
+- **Settings › Privacy › Saved passwords for apps:** which apps keep secrets, and Remove for each (and all of them when
+  the account is removed).
+- **Budget:** under 3 MB in the Debian layer and the system layer together, checked in ci_release.sh.
+- **Tests:** the Claude app (or a stand-in using libsecret) keeps its sign-in across a restart without a prompt; another
+  account cannot read it; a Flatpak app through the portal; the password change; the locked keyring after sign-out.
+
 ## Hardware to test with
-- **The MiFi 7730L** (USB tethering and Wi-Fi), with an active SIM (or a prepaid data SIM).
-  First (moved from 1.5.9, where it could not be found): with USB tethering on, which USB network driver it needs
-  (plan-1.5.8.md 6.1), before Parts 1 and 2 use it.
-  Then (moved from 1.5.9) Share this connection on the Vivobook with the MiFi's USB tethering as the connection: the
-  RTL8821CE as the access point, a phone joins it and browses (1.5.9 Part 4; its AP mode is already confirmed).
+- **The MiFi 7730L** (USB tethering and Wi-Fi), with an active SIM (or a prepaid data SIM). Found on 2026-11-14: its
+  USB network driver and Share this connection with it as the uplink are back in 1.5.9 (docs/plan-1.5.9.md); here it
+  is the modem for Parts 1 to 5 where it answers ModemManager.
 - **A USB cellular stick** with an MBIM or QMI modem (for example a Quectel EC25 or EG25-G in a USB adapter: the same
   family as the PinePhone's modem, useful again in 1.6.x).
 - **A laptop with a WWAN module, or an M.2 WWAN card in an adapter:** the Vivobook has no WWAN slot; a used ThinkPad
@@ -470,7 +489,7 @@ extensions; removal leaving nothing behind.
 
 ## Steps
 0. Part 9 (udev instead of mdev) first, so the modem work stands on it; then Part 10 (a Linux user for each account)
-   and Part 11 (elogind and polkit), which builds on Part 10's sessions.
+   and Part 11 (elogind and polkit), which builds on Part 10's sessions; Part 14 (the keyring for Linux apps) with them.
 1. Parts 1 and 2 on the USB stick and the MiFi (1.5.9's ModemManager): modem found, SIM PIN, APN, connect. First
    (moved from 1.5.9, where neither was available): the stick shows in Settings › Network › Cellular modems with
    ModemManager run without udev (#280), and /run/rudolf/modem.log has no "Invalid rule match"; the self-test's

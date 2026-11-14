@@ -16,10 +16,10 @@ latest beta: **2026111402** (not promoted).
 ### What needs the Vivobook (or the person) before 1.5.9 is promoted
 1. **A beta with everything:** 2026111401: install it; the self-test (its modem line says "no cellular modem").
 2. **iw and the radios** (#267): Settings › Network › Wi-Fi › This computer's Wi-Fi radios lists 2.4 and 5 GHz.
-3. ~~**The hotspot** (Part 4): with the phone's USB tethering as the connection, Share this connection on the RTL8821CE;
-   a phone joins it and browses.~~ Moved to 1.6.0 (2026-11-13: the RTL8821CE offers AP mode and the hotspot says it
-   needs another connection to share, both read on 2026111403; the MediaTek phone never offered USB tethering, only
-   MTP or ADB, so there was no connection to share. The MiFi's USB tethering is the uplink in 1.6.0).
+3. **The hotspot** (Part 4): with the MiFi's USB tethering as the connection, Share this connection on the RTL8821CE;
+   a phone joins it and browses. (Moved to 1.6.0 on 2026-11-13, when the MediaTek phone offered no USB tethering and
+   the MiFi could not be found; back in 1.5.9 on 2026-11-14: the MiFi is here. The RTL8821CE's AP mode was confirmed on
+   2026111403.)
 4. ~~**The modem service** (Part 1): the USB modem stick plugged in: Settings › Network › Cellular modems shows it
    (ModemManager without udev is the open question).~~ Moved to 1.6.0 (2026-11-13: the stick belongs to the HP
    desktop's user and is not available for 1.5.9; 1.5.9 ships ModemManager tested only on the host).
@@ -56,8 +56,9 @@ bootloader read over the devlink (read only).
   the lock and sign-in screen settings and the shutting-down screen; the moving parts of the dynamic backgrounds
   (Spirit Falls' petals and lanterns, Glacier Lake's northern lights) in Lite.
 - **QEMU:** the devlink answering with the desktop disabled (plan-1.5.8.md 4.2).
-- ~~**The MiFi 7730L** with USB tethering on: which USB network driver it needs (plan-1.5.8.md 6.1).~~ Moved to 1.6.0
-  (2026-11-13: the MiFi could not be found; docs/plan-1.6.0.md, Hardware to test with).
+- **The MiFi 7730L** with USB tethering on: which USB network driver it needs (plan-1.5.8.md 6.1), and that Rudolf OS
+  uses it as a connection (Settings › Network). Back in 1.5.9 on 2026-11-14 (moved to 1.6.0 on 2026-11-13, when it
+  could not be found). Before the hotspot check above, which uses it.
 - **Kernel tuning** (proposed on 2026-11-12), if confirmed.
 
 ## Part 1: the modem service
@@ -140,7 +141,8 @@ bootloader read over the devlink (read only).
   their own, 6 MB (beta 2026111314 stopped: with ModemManager's they came to 13 MB, over the shared 10 MB; ModemManager
   keeps its 10 MB). Checked on the Vivobook (2026111403): the RTL8821CE offers AP mode, and not AP and a Wi-Fi
   connection at once, so a cable, USB tethering or a modem is shared. The full check (a device joins and browses)
-  moved to 1.6.0, with the MiFi's USB tethering as the connection (the MediaTek phone does not tether over USB).
+  moved to 1.6.0, then back on 2026-11-14 when the MiFi turned up: the MiFi's USB tethering as the connection (the
+  MediaTek phone does not tether over USB).
 
 ## Part 5: Android apps with Waydroid, in Debian (docs/plan-1.5.8.md 7.3)
 - Waydroid installed into Debian on demand, binderfs mounted into Debian's container, the Android image downloaded
@@ -949,10 +951,12 @@ To be tested with the HP desktop's user, who has the USB printer: docs/plan-1.6.
 
 ## Steps
 0. Part 11 first: 11.1 (the Chromium source) and 11.3, then 11.2; 11.4 holds for every part.
-1. Part 1 (ModemManager, read only); its device checks, with the USB stick and the MiFi, moved to 1.6.0.
+1. Part 1 (ModemManager, read only); its device check with the USB stick moved to 1.6.0; the MiFi's (2026-11-14:
+   its USB network driver, and whether ModemManager sees it) in 1.5.9.
 2. Part 2 (tablet mode, keyboard, rotation).
 3. Part 3 (ARM64 build and its QEMU checks).
-4. Part 4 (Share this connection); its device check moved to 1.6.0 (the MiFi as the connection).
+4. Part 4 (Share this connection); its device check, with the MiFi as the connection, in 1.5.9 (back from 1.6.0 on
+   2026-11-14).
 5. Part 5 (Waydroid in Debian), measured first.
 6. Part 6 (the phone prepared).
 7. Part 7 (calls): 7.1 WebKit's WebRTC plug-ins measured and added, the CI call test on both engines, 7.2 the
