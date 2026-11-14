@@ -23,6 +23,11 @@ app of the same kind is typically 15 to 40 MB.
 - **Settings and an app's own state** go through rudolfd (`desktop/settings` and a new `apps/state?app=NAME`), never
   into the web page's storage directly, so the page (Standard and Lite, still there) and native apps stay in step
   while both exist.
+- **The same look (the owner, 2026-11-14: Rudolf OS on Native appears and works exactly as on Standard):** a native
+  app is drawn to look like its web version, not like a stock GTK app: librudolf-ui carries a GTK CSS theme made from
+  the page's styles (its buttons, fields, menus, scrollbars, tabs, lists, the accent colour, light and dark), and each
+  app's windows are screenshot-compared with the web version as in docs/plan-1.6.0.md Part 12's rule (under 2 % of
+  pixels different, text anti-aliasing aside). An app is not switched over until it passes.
 - **The same behaviour:** each app's native version passes a checklist made from its web version (its menus, its
   shortcuts, its files, its settings, what its browser tests check), screenshots compared side by side under Xvfb.
 - **Until an app is native, its web version opens** in a one-app WebKit window as in 1.6.0. When the native version

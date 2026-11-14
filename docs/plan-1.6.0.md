@@ -168,6 +168,26 @@ web desktop's shell has, and Native becomes the engine a new installation and an
 stay, chosen in Settings › System health › Desktop engine, and Standard stays what a Native that gives up falls back
 to. The apps stay web pages in one-app WebKit windows (1.5.9 Part 12) until 2.0 moves them (docs/plan-2.0.md).
 
+**The rule (the owner, 2026-11-14): on Native, Rudolf OS appears and works exactly as it does on Standard
+(Chromium).** Native is a cheaper way of drawing the same desktop, not a different desktop:
+- **Looks:** every part the shell draws (wallpaper, taskbar and its buttons in each style, start menu, tray and its
+  pop-ups, clock, desktop icons and their labels, menus, title bars and window frames, sign-in and lock screens,
+  notifications) is compared with Standard's own drawing of the same state: the same page settings, the same screen
+  size, both screenshotted under Xvfb (Standard: the page in Chromium; Native: rudolf-native with one-app windows).
+  The same sizes, positions, colours, fonts (the page's font, sizes and weights: Pango given the same family), corner
+  radii, shadows, gradients and icons. A test per part, `iso/qt/native/same_t.sh`, measures the difference: it fails
+  over 2 % of pixels differing by more than a small tolerance (text anti-aliasing between Chromium and Pango is the
+  only expected difference), and keeps both pictures and the difference picture for the PR.
+- **Works:** each behaviour is checked against Standard's: the same clicks, right-click menus and their items in the
+  same order, keyboard shortcuts, drag and drop, animations and their timing, hover and pressed states, what is
+  remembered and where. A checklist per item, made from the page's code and its browser tests, goes in the PR with
+  each line ticked on both engines.
+- **Every difference is a bug**, fixed in Native (never by changing Standard to match), unless the owner agrees to it.
+  Items already merged (1.5.9 step 7, item 1's first part) are checked against this rule too, before item 2.
+- The apps already are the page in one-app windows; their remaining differences (WebKitGTK against Chromium: fonts,
+  scrollbars, form controls, select pop-ups) are found the same way and fixed in the page's one-app CSS or in the
+  window manager.
+
 **What the shell gets (each against the page's behaviour, with screenshots compared under Xvfb):**
 1. **The desktop:** icons (the page's bd95icons: arranging, renaming, opening, the right-click menu, Properties),
    drag and drop of files onto it and between windows, and the desktop's right-click menu (New, Display Properties).
