@@ -621,6 +621,154 @@ numbers (docs/plan-1.6.0.md, "the native desktop decision", now pointing here).
 - Browser: each app's one-app mode opens and closes cleanly, on both engines.
 - The session's engine choice and give-up (host test, as desksafe58_t.sh for Lite); CI builds rudolf-native.
 
+### 12.5 How it is built (the implementation design, 2026-11-14)
+Five pull requests, one per step of 12.3, each stacked on the one before (the owner merges them in order).
+
+**Files**
+- `desktop/oneapp59.js`: the page's one-app mode (step 1).
+- `iso/sys/rudolfd-desktop.inc` (included by rudolfd.c, as rudolfd-home.inc): the `desktop/*` endpoints, a small JSON
+  reader for the lsync copy, and the sign-in's cryptography (SHA-256, SHA-512, HMAC, PBKDF2, HKDF, AES-256-GCM in plain
+  C, checked against Node's WebCrypto: rudolfd keeps linking only zlib) (step 2). `docs/api.md` is started with them (11.4).
+- `iso/sys/rudolf-native.c`: the native shell, one GTK 3 process: wallpaper, taskbar, start menu, clock, tray, sign-in
+  and lock screens (step 3), the window manager and the app windows (step 4). Built like rudolf-webkit
+  (`gcc … $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11`), installed by addwebkit.sh beside it.
+- The session (`iso/sys/root/usr/lib/rudolf/session`), rudolf-display (it stops managing windows while rudolf-native
+  does), rudolfd's `desktop/engine`, engine57.js (Settings) and the release build scripts (step 5).
+- Tests: `iso/qt/shell2/oneapp59_t.js` and `iso/qt/webkit/oneapp59_ci.py` (step 1, Chromium and WebKit),
+  `iso/qt/host/deskapi59_t.sh` (step 2), `iso/qt/host/native59_t.sh` (steps 3 and 4, under Xvfb),
+  `iso/qt/host/engine59_t.sh` (step 5).
+
+**Step 1: the page's one-app mode.** `index.html#app=NAME` (NAME an app's key in APPS, such as notepad or settings;
+`&file=C:\PATH` opens a file with the app's openFile). The page:
+- adds `html.oneapp`: no taskbar, desktop icons, widgets or wallpaper; no boot sound, no session restore (the
+  windows of the last session are not reopened in each app window);
+- signs in without a sign-in screen when rudolfd has a native session (GET `desktop/session`, step 2: the account's
+  id, name and role, and its two keys as hex: `pk`, the password's key (PBKDF2, as `deriveKey`), and `fk`, the file
+  key; `userLogin` takes them in place of the password). Without one (the page opened in a browser, or Standard and
+  Lite by hand) it shows its usual sign-in screen, and the app alone after it;
+- opens the app, its window filling the page without the page's own title bar (the native frame has one); the
+  window's title becomes the page's title (`document.title`, which the native frame shows);
+- when that window closes (its own close, or the native frame's close button calling `window.__oneAppClose()`, which
+  asks the app as its ✕ does, so unsaved work is still asked about), waits for its files to be written (fsFlush, the
+  home folder's writes, the lsync copy) and closes the page (`window.close()`, and a `close` message to the native
+  shell); in a browser tab that cannot be closed by a script it shows "This app is closed" with Open again;
+- asks the native shell to open another app in a window of its own (a `rudolfNative` message `{op:'open',app,file}`),
+  when there is one; in a browser the other app opens in the same page as before;
+- in one-app windows other than Settings, does not write the accounts (bd95user): several pages share the same
+  storage, and only Settings changes accounts.
+Both engines: Playwright's Chromium (oneapp59_t.js) and WebKitGTK (oneapp59_ci.py, run in the Lite engine check):
+each of a list of apps opens alone, fills the window, has the app's title, and closes cleanly.
+
+**Step 2: rudolfd.** All under `/api/` with the token, as the rest of the API; read from the lsync copy
+(/home/rudolf/.rudolf-ls.json: `{"gen":N,"data":{key: string}}`), whose values the page wrote; rudolf-native never
+reads it itself.
+- `GET desktop/accounts`: the accounts for the sign-in screen: `[{id,n,r,pk}]` (pk: needs a security key), whether
+  the guest may sign in (bd95sys's guest) and the last account; never a hash or a key.
+- `POST desktop/login` (body `{"n":NAME,"p":PASSWORD}`): finds the account (bd95user), checks the password as the page
+  does (`p2$salt$hash`: PBKDF2-SHA-256, 210 000 rounds), derives the password's key with the account's salt (ks),
+  unwraps its file key (fk, AES-GCM), and for an account whose files are on the disk opens its encrypted folder with
+  the key the page makes (HKDF-SHA-512 of the file key, "rudolf-os home folder", the account's id) and the session's
+  binds, as `home/unlock?session=1`. The session is kept root-only in /run/rudolf/native-session (id, name, role, the
+  two keys): each rudolfd connection is its own process, so state lives in files. Five wrong passwords: 15 s of
+  "wait", as the page. Refused, with a reason the screen shows: an account with a security key, a password hash from
+  before 1.4 (sign in once with Standard), no such account. The guest: no password, no keys. A failed sign-in goes in
+  the health log as the page's do.
+- `POST desktop/logout`: locks the account's folder (home/lock) and removes the session. `POST desktop/lock` and
+  `POST desktop/unlock` (body `{"p":…}`, checked against the session's account) for the lock screen.
+- `GET desktop/session`: the session for the one-app pages (above); 404 without one.
+- `GET desktop/settings`: what the shell draws, for the session's account (bd95set:ID), before sign-in the last
+  settings (bd95set): background (bs, b1, b2, dyn, dm, lat, wpimg, wpfit), taskbar (tb, tbstyle, tbac, tbacm, tbbstyle,
+  tbbac, tbbacm), title bars (twstyle, twacm), accent, darkui, the clock (ck, h24, df, tz, doff), the pinned apps
+  (bd95pins:ID), the notifications' count (bd95notif:ID) and `gen` (the copy's generation: the shell asks every 3 s and redraws when it changed). Raw values as
+  the page keeps them; the shell computes the colours (acVariant, acInk and the shades, ported to C).
+- `GET desktop/apps`, `POST desktop/apps`: the start menu's list (key, name, icon) and the drawn backgrounds' pictures
+  (DYN: each one's light and dark file in www/a/), written by the page after each sign-in (any engine), kept in
+  /home/rudolf/.rudolf-apps.json.
+- `GET desktop/wallpaper?acct=ID`, `POST desktop/wallpaper?acct=ID`: a picture of your own. It lives in the page's
+  IndexedDB, so the page also gives rudolfd a copy (the JPEG it already shrinks to the screen) whenever it loads or
+  changes one; kept beside the account's settings in /home/rudolf/.rudolf-wallpaper/ID.jpg.
+- `docs/api.md` describes these (11.4).
+
+**Step 3: rudolf-native's wallpaper, taskbar, start menu, clock and tray.** One GTK 3 process, run as the desktop user,
+started by the session (step 5): `rudolf-native --size=WxH [--draw=gpu|mixed|soft] [--base=http://127.0.0.1:8080]`.
+It reads the token as the page gets it (rudolfd's page, `GET /`: nothing new is exposed), then talks to rudolfd over
+HTTP on 127.0.0.1 (a small blocking client in a worker thread; replies come back to GTK's loop with g_idle_add).
+- **The wallpaper:** a full-screen window (type hint DESKTOP, kept at the bottom): the picture of your own (fill, fit,
+  stretch, centre, tile), else the drawn background's light or dark picture (dm: light, dark, or automatic by the hour
+  of sunrise and sunset at the latitude, as the page's dynResolve; WebP through WebKit's own libwebp, opened with dlopen,
+  so a layer without it falls back to the colours), else the colours (bs: solid or the gradients, b1 and b2).
+- **The taskbar:** a window (type hint DOCK, on top, 40 px, at the bottom or the top as tb says; left and right are
+  drawn at the bottom in the prototype) drawn with cairo in the five styles (Standard, Wireframe, Monochrome, Candy,
+  Retro) and the accent colour (tbac, tbacm) for the bar, and the buttons' own style and colour (tbbstyle, tbbac,
+  tbbacm), as accent56.js and tbbtn59.js draw them: the start button, the pinned apps, the open windows (step 4), the
+  tray and the clock. Icons are the apps' emoji, drawn by Pango.
+- **The start menu:** a pop-up with a search box and the apps of desktop/apps (pinned first), and Sign out, Lock,
+  Restart and Shut down (rudolfd's power). Choosing an app opens its window (step 4); in step 3 a pinned app or a menu
+  item opens it as a plain WebKit window.
+- **The clock:** the time (12- or 24-hour, h24), the date (df), in the settings' time zone (tz) with the clock's offset
+  (doff); updated each minute. Clicking it opens the Clock app.
+- **The tray:** network (net), sound (volume), battery (power/status), the notifications' count (how many the page keeps in
+  bd95notif:ID, given by desktop/settings); each opens its Settings page in one-app mode (`#app=settings`); polled every 10 s.
+- **The sign-in screen:** the wallpaper, the accounts (desktop/accounts), name and password boxes, the guest button,
+  the message rudolfd gives; POST desktop/login; and the lock screen (Lock in the start menu, and after the screen
+  saver's time: not in the prototype) asks the password again (desktop/unlock). Once the sign-in screen is drawn the
+  shell sends `heartbeat` every 10 s, as the page does (the session's trial and watchdog need it).
+
+**Step 4: the window manager.** rudolf-native becomes the X window manager (SubstructureRedirect on the root, through a
+GDK event filter, so one GTK process does both).
+- Every top-level window that is not override-redirect (Linux apps, Chromium's window for websites and Oracle's real
+  tabs, Wine) is put in a frame: an X window of ours with the title bar drawn by the same cairo code as the app
+  windows' (the title bar styles: twstyle, twacm, the active window coloured, the others grey), minimise, maximise and
+  close (WM_DELETE_WINDOW, else XKillClient). Moving (dragging the title bar), resizing (the 6 px edges and corners),
+  double-click to maximise, focus on click (WM_TAKE_FOCUS and XSetInputFocus, as rudolf-display does), raising,
+  WM_STATE, _NET_CLIENT_LIST and _NET_ACTIVE_WINDOW. Dialogs (WM_TRANSIENT_FOR) are centred over their window. A window
+  asking for full screen (_NET_WM_STATE_FULLSCREEN, games) covers the whole screen, taskbar too, without its frame.
+- **App windows:** a pinned app or a menu item opens a GTK window of our own with a WebKitWebView showing
+  `http://127.0.0.1:8080/#app=NAME`, framed like the rest. All views are made with `related-view` set to the first one
+  (kept, hidden), so they share one WebKit web process, and one web context (the page's storage, ~/.rudolf-native, as
+  ~/.rudolf-webkit is Lite's). The frame's title follows the page's title; ✕ calls `window.__oneAppClose()` (the app may
+  ask to save), a second ✕ after 5 s closes it anyway; the page's `close` closes the window. A `rudolfNative` message
+  `open` opens another app's window. A web process that ends is reported in each window with Reload.
+- **The taskbar's list:** the open windows (ours and the others), the active one highlighted; a click focuses, or
+  minimises the active one; a pinned app with a window open focuses it rather than opening another.
+- rudolf-display keeps feeding input and copying the screen (software display) but stops managing windows while
+  /run/rudolf/wm-native exists (rudolf-native makes it at start and removes it at exit).
+
+**Step 5: the session.** Settings › System health › Desktop engine gets **Native (test)**; rudolfd's desktop/engine
+takes `engine=native` (when /usr/bin/rudolf-native is there), kept in /persist/etc/rudolf-desktop-engine as Lite's.
+The session's `native_usable` (the choice is native, not Recovery mode, not given up this start, the binary is there)
+comes before Lite's check; ENGINE=native starts `rudolf-native` as the desktop user in the desktop's memory group.
+Its safeguards are Lite's, shared: the trial mark (.trying) made when it starts and removed at its first heartbeat; a
+start that did not reach the sign-in screen gives it up at the next start; no heartbeat in 90 s, or closing three
+times in a row as it starts, gives it up now. Given up means Standard (Chromium) from then on, said in System health
+("the Native desktop did not start (…), so the standard engine is used from now on"), as Lite. The watchdog's other
+rules stay. The release build (ci_release.sh, mkrootfs.sh, arm64_base.sh) builds rudolf-native and the webkit-check
+workflow builds it and runs native59_t.sh.
+
+**Not in the prototype** (12.2, and these): the taskbar at the left or right, Super+Tab and the other window keys,
+the screen saver and its lock, notifications as pop-ups (the count only), several monitors, the Phone screen and
+Blitzen's panel, workspaces, desktop icons. Each one-app page runs the whole page's code (its timers too); what that
+costs is part of step 6's measurements.
+
+**Test plan**
+- Step 1: oneapp59_t.js (Chromium): for Notepad, Calculator, Settings, File Explorer, Paint and Task Manager: opened
+  with `#app=`, signed in from a stand-in desktop/session, the window fills the page, no taskbar or icons, the title is
+  the app's, `__oneAppClose()` closes it after its files are written (the stand-in sees the close), Notepad's
+  unsaved-changes question still comes; without a session the sign-in screen comes first, then the app alone; another
+  app asked for goes to the native shell's message. oneapp59_ci.py: the same in WebKitGTK.
+- Step 2: deskapi59_t.sh: rudolfd built with the test hooks, an lsync copy made by the real page (Node's WebCrypto for
+  the hashes and keys): accounts without hashes, a wrong password refused, the right one accepted and the home folder
+  unlocked with the page's key (the key checked against hdKeyHex's), five failures wait, the session's keys equal the
+  page's, settings and pins of the signed-in account, logout locks; the crypto against test vectors.
+- Steps 3 and 4: native59_t.sh under Xvfb with a stand-in rudolfd: the wallpaper's colours and picture (pixels sampled
+  from screenshots), the taskbar at the bottom and the top, a style and the accent colour on it, the clock's text, a
+  sign-in with a wrong and a right password; a stand-in X client gets a frame, focus, is moved, maximised, minimised
+  and restored from the taskbar and closed with WM_DELETE_WINDOW; a full-screen client covers the taskbar; a pinned
+  app opens its one-app WebKit window, whose title reaches the frame, and two app windows share one web process.
+- Step 5: engine59_t.sh (as desksafe58_t.sh and engine57_t.sh): the session chooses native, never in Recovery mode,
+  the trial mark and its give-up, the 90 s and three-closings give-ups back to Standard with the health message;
+  rudolfd's desktop/engine takes native; Settings offers Native (test).
+
 ## Part 13: USB printers (moved to 1.6.0 on 2026-11-13)
 To be tested with the HP desktop's user, who has the USB printer: docs/plan-1.6.0.md Part 8. Nothing of it is in 1.5.9.
 
