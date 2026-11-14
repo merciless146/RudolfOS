@@ -130,6 +130,7 @@ modems and the plans after it (Waydroid, PipeWire, a native or Wayland desktop) 
   self-test lists, the camera, Bluetooth, sound, a controller in Steam plugged in while it runs.
 
 ### 10. A Linux user for each account (added on 2026-11-13)
+**Moved into 1.5.9 on 2026-11-14 (docs/plan-1.5.9.md Part 15.3), as part of its security work.**
 Why: every Rudolf OS account runs as the same Linux user (rudolf, uid 1000). The desktop keeps the accounts apart, but
 Linux apps, Wine and Debian run as that one user and can read every account's files (the vault's own note says so).
 Conventional distributions give each person a Linux user of their own.

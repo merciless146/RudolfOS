@@ -862,3 +862,83 @@ session; pop-ups from it stay private. Kept: bookmarks and downloads (said on it
 Not private: websites shown in frames when Oracle's tabs are not running (the start page says so), and on Native until
 its taskbar menus come (docs/plan-1.6.0.md Part 12, item 3). Test: qt/shell2/private59_t.js. The shell changed, so the
 first start of a beta with it replaces the shell in the profile (websites ask to sign in again, once).
+
+## Part 15: security against a directed attack (added on 2026-11-14)
+Asked for after a review of how Rudolf OS stands against malware aimed at its owner (2026-11-14). Below the desktop it is
+strong: Secure Boot with Rudolf's own keys and a signed kernel image, read-only signed system layers, signed updates
+and Library packages, the a/b slots and recovery, Chromium's sandbox for websites, sandboxed Library web apps and
+downloads, the firewall, encrypted home folders. Above it, the review found five gaps; a directed attack would most
+likely get a program run (a game, an .exe, a Linux app) and go through gap 1. In this order:
+
+### 15.1 Only the desktop gets the page and its token (first: the most serious gap)
+Found: rudolfd serves the desktop page, with its per-boot API token and the page's stored data (rudolf-ls), to any
+program that connects to 127.0.0.1:8080 (serve_index has no check). A Linux app, a Wine program or a Flatpak with
+network access, all running as uid 1000 like the desktop, can read the token and then drive the API, which runs as
+root (disks, updates, factory reset, accounts).
+- **Who is connecting:** for each connection to 8080 (and every other loopback listener of rudolfd: 8099 and the rest,
+  listed in 15.5), rudolfd finds the socket's process: the peer's port in /proc/net/tcp (and tcp6) gives the socket's
+  inode and uid; the inode is looked for only among the processes of the desktop's cgroup (cgroup.procs: Chromium's,
+  rudolf-webkit's or rudolf-native's processes, and the Chromium of Oracle on Native, Part 12 step 8). Found there:
+  the desktop. Else: not the desktop. Done once per connection (keep-alive keeps the answer).
+- **What a program that is not the desktop gets:** not the page (403, "This page belongs to Rudolf OS's desktop"),
+  no /api/ (403 even with the right token), no rudolf-ls. What stays open to everyone, as now: /lib/ and /pkg/
+  (shared libraries with CORS for Oracle's sandboxed pages), /dlf/ (downloads, served sandboxed), the Library's web
+  apps (sandboxed, no origin).
+- **The other programs must not be in the desktop's cgroup:** every program rudolfd or the page starts (Linux apps,
+  Flatpak, Wine, Debian, emulators, the Chromium window for websites on Lite) goes into an apps cgroup of its own,
+  never inheriting the desktop's; checked by a test that starts each kind and reads its cgroup.
+- **Once each account is its own Linux user (15.3):** the desktop's uid (rudolf, 1000) is required as well, from the
+  same /proc/net/tcp line: a second check that costs nothing.
+- **Tests:** host tests of rudolfd: the page and the API from a process in the desktop's cgroup (allowed), from one
+  outside it with the right token (refused), the token never in a refused answer; QEMU: from a Flatpak app, a Wine
+  program and a Debian terminal, `curl 127.0.0.1:8080/` and an API call with a token read some other way, both refused;
+  the desktop on each engine unaffected (Standard, Lite, Native, Oracle on Native).
+
+### 15.2 A file opened in an app cannot reach the rest of the desktop
+Found: the built-in apps all run in the desktop's one page (one origin), so a scripting bug in how one app shows a file
+(a document, an SVG, an HTML or Markdown file, an e-book) would reach every app's data and the token.
+- **Every place a file's contents become HTML** (innerHTML, srcdoc, document.write of file-derived text, inline SVG,
+  data: and blob: documents) is listed by a check (`iso/systools/htmlsinks.py`, run before each PR like deadcheck)
+  and either escapes the text or shows it in a frame with `sandbox` and no `allow-same-origin` (no origin: no storage,
+  no token, no parent), its scripts off unless the app needs them (the PDF viewer's PDF.js, already a sandboxed page).
+  WordLite's and WordPro's .docx, the e-book reader, Markdown and HTML previews, SVG in the picture viewer (as <img>,
+  never inline), File Explorer's previews, Notepad's HTML view, the Help pages from packages.
+- **The page's own Content-Security-Policy**, sent by rudolfd: connect-src limited to rudolfd and the services the
+  desktop names (Open-Meteo, the Library, the update server, the time servers' HTTPS fallback), object-src none,
+  base-uri none, frame-ancestors the shell only; so injected code could not send anything out even if it ran. Inline
+  scripts stay allowed for now (the page is built that way); moving them to hashes is 1.6.0's.
+- **Tests:** a set of hostile files (scripts in every place each format allows them) opened in each app: nothing runs
+  in the desktop's origin (a canary in the page is never read); the CSP blocks a fetch to an outside address.
+
+### 15.3 Each account is its own Linux user (moved here from 1.6.0 Part 10)
+1.6.0 Part 10, as written there, done in 1.5.9: each account's Linux apps, Wine and Debian run as the account's own
+user (uid 1001 and up), so one account's programs cannot read another's files, and none is the desktop's user (15.1's
+second check). 1.6.0 Part 11 (elogind and polkit) stays in 1.6.0.
+
+### 15.4 The devlink is off unless it is being used
+Found: the devlink runs commands sent through a GitHub repository; on the Vivobook it was on with "Ask first" off, so
+anyone who got into that GitHub account could run commands on the computer.
+- "Ask first" on by default, and on again after each restart (turning it off lasts until the next start).
+- The devlink turns itself off after 4 hours with no command (said in a notification), and at every restart unless
+  "Keep on after restarting" is ticked (off by default).
+- Only an administrator can turn it on, with the administrator's password, and only in Developer mode (Part 8.3).
+- System health lists it as on, with since when and its last command.
+
+### 15.5 Fewer and harder doors
+- **The list of everything that listens** (TCP and Unix sockets: rudolfd's 8080 and 8099, remote access, the portal,
+  Bluetooth's agent, the devlink), each with who may use it and how it checks; a test fails if something listens that
+  the list does not name.
+- **rudolfd built hardened:** -fstack-protector-strong, -D_FORTIFY_SOURCE=3, PIE, full RELRO, -fcf-protection; the
+  release check verifies the flags on the binary. Its HTTP and JSON parsing fuzzed on the host (libFuzzer or AFL with
+  AddressSanitizer, a test corpus kept in the repository) before each release.
+- **rudolfd's root work split out over time:** the API stays as it is, but what needs root (disks, updates, accounts,
+  power) moves into small helpers it runs, so rudolfd itself can drop to the rudolf user after start (1.6.0 continues).
+
+### 15.6 Security fixes arrive soon
+- A scheduled check (GitHub Actions, daily) compares the Chromium and the kernel in the latest release with the newest
+  ones Ubuntu has published; when either has a security update, it opens an issue "Security update available:
+  Chromium 1xx.x" for the owner, who decides whether to build a beta. It never builds or promotes by itself.
+- Settings › About shows the Chromium and kernel versions and the release's date.
+
+**Status:** planned (2026-11-14). 15.1 first, then 15.2, 15.4, 15.5, 15.6; 15.3 when 15.1 is done (it changes the same
+code). Each in its own PR.
