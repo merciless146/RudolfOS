@@ -34,6 +34,12 @@ CASES.push({n: 'hover-candy', set: {tbstyle: 'candy'}, act: 'hover', parts: ['ba
 for (const st of STY) CASES.push({n: 'title-' + st, set: {twstyle: st}, act: 'notepad', parts: st == 'standard' ? ['title', 'bar'] : ['title']});
 CASES.push({n: 'title-negative', set: {twacm: 'negative'}, act: 'notepad', parts: ['title']});
 CASES.push({n: 'lock', set: {}, act: 'lock', parts: ['screen', 'signbox']});
+/* (item 1's second part) files in the Desktop folder, the desktop's and a file's menus, Rename and Open with */
+CASES.push({n: 'desk-files', set: {}, files: 1, parts: ['icons']});
+CASES.push({n: 'desk-menu', set: {}, files: 1, act: 'deskmenu', parts: ['ctx']});
+CASES.push({n: 'file-menu', set: {}, files: 1, act: 'filemenu', parts: ['ctx']});
+CASES.push({n: 'file-rename', set: {}, files: 1, act: 'rename', parts: ['dlg']});
+CASES.push({n: 'file-openwith', set: {}, files: 1, act: 'openwith', parts: ['dlg']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
@@ -46,7 +52,7 @@ async function stdCase(c) {
   const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(BASE + '/'); await p.waitForFunction(() => typeof userLogin == 'function' && document.getElementById('login') && getComputedStyle(document.getElementById('login')).display != 'none', null, {timeout: 60000});
   await p.clock.runFor(1500); await wait(500);
-  const rects = {};
+  const rects = {}; let pt = null;
   const rectOf = async sel => p.evaluate(s => { const e = typeof s == 'string' ? document.querySelector(s) : null; if (!e) return null; const r = e.getBoundingClientRect(); return r.width ? [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] : null }, sel);
   if (!c.signin) {
     await p.focus('#lp'); await p.keyboard.type(PW); await p.keyboard.press('Enter');
@@ -57,6 +63,13 @@ async function stdCase(c) {
     if (c.act == 'hover') { const r = await rectOf('#pins .pin:nth-child(2)'); await p.mouse.move(r[0] + r[2] / 2, r[1] + r[3] / 2); await p.clock.runFor(400); await wait(200) }
     if (c.act == 'notepad') { await p.evaluate(() => launch('notepad')); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } await p.mouse.move(W / 2, H - 200) }
     if (c.act == 'lock') { await p.evaluate(() => typeof lockScreen == 'function' ? lockScreen() : showLogin()); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } }
+    if (c.files) { await p.evaluate(() => { const d = deskFiles(); d['REPORT.TXT'] = 'hello'; d['PROJECTS'] = {}; fsSave(); EXPL.forEach(f => f()) }); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } }
+    const icAt = n => p.evaluate(n => { const e = [...document.querySelectorAll('#desk > .ic')].find(x => (x.dataset.fn || x.querySelector('span').textContent) == n); const r = e.getBoundingClientRect(); return [Math.round(r.left + r.width / 2), Math.round(r.top + 20)] }, n);
+    if (c.act == 'deskmenu') { pt = [1500, 500]; await p.mouse.click(pt[0], pt[1], {button: 'right'}); await p.clock.runFor(300); await wait(200) }
+    if (c.act == 'filemenu') { pt = await icAt('REPORT.TXT'); await p.mouse.click(pt[0], pt[1], {button: 'right'}); await p.clock.runFor(300); await wait(200) }
+    if (c.act == 'rename') { await p.evaluate(() => renameDlg(homePath('DESKTOP').concat('REPORT.TXT'))); await p.clock.runFor(300); await wait(200) }
+    if (c.act == 'openwith') { await p.evaluate(() => openWith(homePath('DESKTOP').concat('REPORT.TXT'))); await p.clock.runFor(300); await wait(200) }
+    if (/menu$/.test(c.act || '')) await p.mouse.move(W / 2, H - 200);
   }
   rects.screen = [0, 0, W, H]; rects.wallpaper = [0, 0, W, H];
   rects.bar = await rectOf('#bar'); rects.start = await rectOf('#start'); rects.pins = await rectOf('#pins'); rects.tray = await rectOf('#tray'); rects.clock = await rectOf('#tray .clk, #clock, #tray');
@@ -64,9 +77,10 @@ async function stdCase(c) {
   rects.icons = await p.evaluate(() => { const l = [...document.querySelectorAll('#desk > .ic')].filter(e => e.offsetParent).map(e => e.getBoundingClientRect()); if (!l.length) return null;
     const x = Math.min(...l.map(r => r.left)), y = Math.min(...l.map(r => r.top)); return [Math.round(x), Math.round(y), Math.round(Math.max(...l.map(r => r.right)) - x), Math.round(Math.max(...l.map(r => r.bottom)) - y)] });
   rects.title = await p.evaluate(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.offsetParent).pop(); const t = w && w.querySelector('.tb'); if (!t) return null; const r = w.getBoundingClientRect(), q = t.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(q.bottom - r.top)] });
+  { const r = await rectOf('.ctx'); rects.ctx = r ? [r[0] - 4, r[1] - 4, r[2] + 8, r[3] + 8] : null; rects.dlg = await rectOf('.rmodal .rmbox') }   /* (a menu with its focus ring) */
   rects.desc = await p.evaluate(() => ({bar: document.getElementById('bar').className, body: document.body.className}));
   const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f});
-  await ctx.close(); return {f, rects, errs};
+  await ctx.close(); return {f, rects, errs, pt};
 }
 // ---- Native: rudolf-native under Xvfb, the same storage
 let NP = null, NLOG = path.join(OUT, 'native.log');
@@ -84,7 +98,20 @@ async function natSettle(c) {
   const n0 = (calls().match(/GET desktop\/settings/g) || []).length;
   await until(() => (calls().match(/GET desktop\/settings/g) || []).length > n0 + 1, 15000); await wait(900);
 }
-async function natCase(c, first) {
+/* the files of the desktop-files cases, made as anyone would: the desktop's menu, New text document and New folder, Rename */
+let NATFILES = 0;
+async function natFiles() {
+  if (NATFILES) return; NATFILES = 1;
+  const has = n => { try { return fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').some(x => x.startsWith('dicon ') && x.endsWith('|' + n)) } catch (e) { return false } };
+  for (const [item, name] of [['New text document', 'REPORT.TXT'], ['New folder', 'PROJECTS']]) {
+    xdo('mousemove 1500 500 click 3'); await until(() => nst('cmenu') != null, 5000);
+    const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => x.startsWith('cmitem ') && x.endsWith('|' + item)); if (!l) continue; const a = l.split(' ');
+    xdo('mousemove ' + a[1] + ' ' + a[2] + ' click 1'); await until(() => (nst('dialog') || '').startsWith('rename'), 30000); await wait(400);
+    xdo('type --delay 30 ' + name); xdo('key Return'); await until(() => (nst('dialog') || '').startsWith('-'), 30000); await until(() => has(name), 15000); await wait(800);
+  }
+  xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(300);
+}
+async function natCase(c, s) {
   state(c.set, c.more);
   if (c.signin) {
     try { fs.unlinkSync(path.join(D, 'session')) } catch (e) {}
@@ -104,9 +131,17 @@ async function natCase(c, first) {
     await until(() => /^client .* app=notepad/m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3000); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500);
     const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => /^client .* app=notepad/.test(x)); if (l) { const a = l.split(' '); cl = [+a[3], +a[4], +a[5], +a[6]] } }
   if (c.act == 'lock') { xdo('key super+l'); await until(() => nst('locked') == '1', 8000); await wait(1200) }
+  if (c.files) await natFiles();
+  const nlines = k => { try { return fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').filter(x => x.startsWith(k + ' ')) } catch (e) { return [] } };
+  const cmClick = lbl => { const l = nlines('cmitem').find(x => x.endsWith('|' + lbl)); if (l) { const a = l.split(' '); xdo('mousemove ' + a[1] + ' ' + a[2] + ' click 1') } return !!l };
+  const fileAt = () => { const l = nlines('dicon').find(x => x.endsWith('|REPORT.TXT')); if (!l) return null; const a = l.split(' '); return [+a[3] + 42, +a[4] + 20] };
+  if (c.act == 'deskmenu') { xdo('mousemove 1500 500 click 3'); await until(() => nlines('cmenu').length, 5000); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500) }
+  if (c.act == 'filemenu') { const q = s.pt || fileAt(); if (q) xdo('mousemove ' + q.join(' ') + ' click 3'); await until(() => nlines('cmenu').length, 5000); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500) }
+  if (c.act == 'rename' || c.act == 'openwith') { const q = fileAt(); if (q) xdo('mousemove ' + q.join(' ') + ' click 3'); await until(() => nlines('cmenu').length, 5000);
+    cmClick(c.act == 'rename' ? 'Rename' : 'Open with…'); await until(() => (nst('dialog') || '').startsWith(c.act == 'rename' ? 'rename' : 'openwith'), 20000); xdo('mousemove ' + W / 2 + ' ' + (H - 100)); await wait(700) }
   const f = path.join(OUT, c.n + '.nat.png'); sh('import -window root ' + f);
   // (back as it was for the next case: the menu closed, the app window closed, unlocked)
-  if (c.act == 'menu') { xdo('key Escape'); await wait(400) }
+  if (c.act == 'menu' || /menu$|rename|openwith/.test(c.act || '')) { xdo('key Escape'); await wait(400) }
   if (c.act == 'notepad') {   /* (its ✕: 9 px from the frame's right edge, 7 px down, 24 by 22) */
     const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => /^client .* app=notepad/.test(x));
     if (l) { const a = l.split(' '); xdo('mousemove ' + (+a[3] + +a[5] + 2 - 9 - 12) + ' ' + (+a[4] + 7 + 11) + ' click 1') }
@@ -127,7 +162,7 @@ function cmp(name, a, b, ra, rb) {
     if (only && !only.includes(c.n)) continue;
     let s, n;
     try { s = await stdCase(c) } catch (e) { ok(c.n + ': Standard drew it', 0, e.message); continue }
-    try { n = await natCase(c) } catch (e) { ok(c.n + ': Native drew it', 0, e.message); continue }
+    try { n = await natCase(c, s) } catch (e) { ok(c.n + ': Native drew it', 0, e.message); continue }
     for (const part of c.parts) {
       let ra = s.rects[part], rb = null;
       if (part == 'title' && n.client && ra) rb = [n.client[0], n.client[1], ra[2], ra[3]];   /* (each engine's own window; the frame's border and title bar above the app) */

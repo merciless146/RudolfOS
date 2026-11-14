@@ -16034,8 +16034,13 @@ tbbApply();
    - The windows of the last session are not reopened (each app window would reopen them), and only Settings writes the
      accounts (all app windows share the same storage). ===== */
 const ONEAPP=(()=>{try{const h=String(location.hash||'').replace(/^#/,'');if(!h)return null;const q=new URLSearchParams(h),k=q.get('app');
- return k&&/^[a-z0-9_-]{1,40}$/i.test(k)?{k,file:q.get('file')||'',w:+q.get('w')||0}:null}catch(e){return null}})();
+ return k&&/^[a-z0-9_-]{1,40}$/i.test(k)?{k,file:q.get('file')||'',w:+q.get('w')||0,q}:null}catch(e){return null}})();
 const OA={main:null,want:0,opened:0,done:0,login:0};
+/* (an app's own window is not the desktop: its icons' grid is the screen's, not the window's, or every window opened, or a page never
+   shown, as do-desk's, would squeeze the desktop's places into its own size and keep them) */
+if(ONEAPP&&typeof gridInfo=='function'){const _gi=gridInfo;gridInfo=function(){const g=_gi();try{const q=ONEAPP.q,zf=parseFloat(document.documentElement.style.zoom)||1,top=document.body.classList.contains('top'),
+ sw=+q.get('sw')/(devicePixelRatio||1)||screen.width,sh=+q.get('sh')/(devicePixelRatio||1)||screen.height,W=sw/zf-16,H=sh/zf-(top?48:42)-16;
+ if(W>0&&H>0){g.nc=Math.max(1,Math.floor((W-8)/g.w));g.nr=Math.max(1,Math.floor((H-8)/g.h))}}catch(e){}return g}}
 const oaNative=()=>!!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rudolfNative);
 /* (w: which of the shell's windows this is, from #app=NAME&w=N: WebKit gives every window the native shell opens the same
    message handler, so the shell knows the sender by it) */
@@ -16078,13 +16083,43 @@ async function oaStart(showLogin0){
  try{userUI()}catch(e){}}
 function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
  try{LG.style.display='none'}catch(e){}
- const da=/^do-/.test(ONEAPP.k)?ONEAPP.k.slice(3):'',act=da?(typeof A=='object'&&typeof A[da]=='function'?A[da]:da=='blitzen'&&typeof blitzenApp=='function'?blitzenApp:null):null;
+ const da0=/^do-/.test(ONEAPP.k)?ONEAPP.k.slice(3):'';if(da0=='desk'||da0=='fs'){OA.want=1;(da0=='desk'?oaDesk:oaFs)();return}
+ const da=da0,act=da?(typeof A=='object'&&typeof A[da]=='function'?A[da]:da=='blitzen'&&typeof blitzenApp=='function'?blitzenApp:null):null;
  const app=APPS[ONEAPP.k]||(act?{name:da,open:act}:null);
  if(!app){oaClosed('There is no app called “'+ONEAPP.k+'”.');oaPost({op:'close'});return}
  OA.want=1;
  try{if(act)act();else if(ONEAPP.file&&app.openFile)launchWith(ONEAPP.k,resolve(ONEAPP.file,['C:']));else launch(ONEAPP.k)}catch(e){console.warn(e)}
  /* an app that opens no window (or not yet: a large app loads its files first) */
  setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed(app.name+' did not open a window.');oaPost({op:'close'})}},15000)}
+/* (1.6.0 Part 12, item 1's second part) the native desktop's menus do what the page's do: #app=do-desk&on=ICON&item=WORDS
+   gives the page's own menu for that desktop icon (its name, or a file's name; none: the desktop's) and chooses the item
+   with those words, as a click would. What opens a window is that window; what has none is done unseen and the page
+   closes; the page's own dialogs that the shell draws itself (Rename, Open with) are reported to it instead. */
+function oaFin(m){(async()=>{try{fsFlush()}catch(e){}try{await oaCatalog()}catch(e){}oaPost(Object.assign({op:'done'},m||{}));oaDone()})()}
+function oaDesk(){const q=ONEAPP.q,on=q.get('on')||'',item=(q.get('item')||'').trim(),D=document.getElementById('desk');
+ const el=on?[...D.querySelectorAll(':scope > .ic')].find(e=>(e.dataset.fn||((e.querySelector('span')||{}).textContent||'').trim())==on):null;
+ if(on&&!el)return oaFin({err:'There is no “'+on+'” on the desktop.'});
+ if(el&&el.dataset.fn&&/^open with/i.test(item)){const p=homePath('DESKTOP').concat(el.dataset.fn),L=openersFor(p);
+  return oaFin({ask:'openwith',file:p.join('\\'),ext:ext(p.at(-1))||'',apps:JSON.stringify((L.length?L:OPENERS.slice(0,2)).map(x=>[x[0],x[1],x[2]]))})}
+ (el||D).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:20,clientY:20}));
+ const it=[...document.querySelectorAll('.ctx .cmi')].find(e=>((e.querySelector('span')||e).textContent||'').trim()==item);
+ if(!it){document.querySelectorAll('.ctx').forEach(c=>c.remove());return oaFin({err:'There is no “'+item+'” in that menu.'})}
+ it.click();
+ setTimeout(()=>{if(OA.main)return;const m=document.querySelector('.rmodal');let r={};
+  if(m){const rn=m.querySelector('input.rn');const fn=(deskFiles()&&Object.keys(deskFiles()).find(n=>rn&&n==rn.value))||(rn&&rn.value)||'';
+   if(rn)r={ask:'rename',file:homePath('DESKTOP').concat(fn).join('\\'),name:fn};m.remove()}
+  oaFin(r)},500)}
+/* #app=do-fs&op=OP: the native desktop's own dialogs' answers, done by the page as its dialogs do them (rename: renameDlg's
+   checks and messages; openwith: Open with's choice, Always included) */
+function oaFs(){const q=ONEAPP.q,op=q.get('op')||'',p=resolve(ONEAPP.file||'',['C:']);
+ if(op=='rename'){const nv=String(q.get('to')||'').trim().toUpperCase(),d=dirOf(p);
+  if(!d||!(p.at(-1) in d))return oaFin({err:'The file is not there any more.'});
+  if(!validName(nv))return oaFin({err:'That name is not allowed.'});if(nv!=p.at(-1)&&nv in d)return oaFin({err:'That name is already used.'});
+  const v=d[p.at(-1)];delete d[p.at(-1)];d[nv]=v;fsSave();EXPL.forEach(f=>f());return oaFin({ok:1})}
+ if(op=='openwith'){const x=OPENERS.find(o=>o[0]==q.get('key'));if(!x)return oaFin({err:'That app cannot open it.'});
+  if(q.get('always')=='1'){const d=ld(defK(),{});d[ext(p.at(-1))]=x[0];svj(defK(),d)}
+  try{x[4]?x[4](p):openPathDefault(p)}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main)oaFin({})},1500);return}
+ oaFin({err:'Unknown: '+op})}
 function oaMain(W){OA.main=W;OA.want=0;
  /* (1.6.0 Part 12) the size the page gives the app's window (its 1 px edge and title bar included), for the native frame */
  oaPost({op:'size',ww:String(Math.round(parseFloat(W.el.style.width)||0)),wh:String(Math.round(parseFloat(W.el.style.height)||0))});W.el.classList.add('oamain');
@@ -16123,9 +16158,20 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
   /* (1.6.0 Part 12, item 1) the desktop's icons as this account sees them (the shortcuts, not the files yet), their
      places (bd95cells:ID) and the icon size, for the native shell's desktop */
   const desk=[];try{const D=document.getElementById('desk');if(D&&typeof icTarget=='function')for(const d of D.querySelectorAll(':scope > .ic')){
-   if(d.style.display=='none'||d.classList.contains('fic'))continue;const T=icTarget(d),im=d.querySelector('img.ico'),e=im?im.dataset.emo||'':((d.querySelector('b')||{}).textContent||'').trim();
+   if(d.style.display=='none')continue;
+   /* (1.6.0 Part 12, item 1's second part) the files and folders in the Desktop folder: their names, pictures, places */
+   if(d.classList.contains('fic')){const im=d.querySelector('img.ico'),e=im?im.dataset.emo||'':((d.querySelector('b')||{}).textContent||'').trim(),fn=d.dataset.fn,v=(deskFiles()||{})[fn];
+    const k=typeof EMO2IC=='object'?EMO2IC[e]||EMO2IC[e.replace(/\uFE0F/g,'')]:'';if(k&&!icons[k]&&S.icons!=='emoji')try{icons[k]=await oaPng(icSvg(k),48)}catch(x){}
+    desk.push({n:fn,k:'',kind:isDir(v)?'dir':'file',ic:k&&icons[k]?k:'',icon:e,cell:'file:'+fn,fp:homePath('DESKTOP').concat(fn).join('\\')});continue}
+   const T=icTarget(d),im=d.querySelector('img.ico'),e=im?im.dataset.emo||'':((d.querySelector('b')||{}).textContent||'').trim();
    const k=typeof EMO2IC=='object'?EMO2IC[e]||EMO2IC[e.replace(/\uFE0F/g,'')]:'';if(k&&!icons[k]&&S.icons!=='emoji')try{icons[k]=await oaPng(icSvg(k),48)}catch(x){}
-   desk.push({n:T.name,k:T.k&&APPS[T.k]?T.k:'',kind:T.kind,ic:k&&icons[k]?k:'',icon:e})}}catch(e){console.warn('desk',e)}
+   desk.push({n:T.name,k:T.k&&APPS[T.k]?T.k:'',kind:d.classList.contains('tr')?'trash':T.kind,full:d.classList.contains('full')?1:0,ic:k&&icons[k]?k:'',icon:e,cell:d.dataset.n||T.name})}}catch(e){console.warn('desk',e)}
+  /* (in an app's own window the desktop is laid out at the screen's size, not the window's: the places the page gives
+     are the desktop's) */
+  if(ONEAPP)try{const D=document.getElementById('desk'),zf=parseFloat(document.documentElement.style.zoom)||1,top=document.body.classList.contains('top'),
+    /* (the screen's size from the shell: a page never shown, as do-desk's, does not know its screen) */
+    q=ONEAPP.q||new URLSearchParams(''),sw=+q.get('sw')/(devicePixelRatio||1)||screen.width,sh=+q.get('sh')/(devicePixelRatio||1)||screen.height;
+   Object.assign(D.style,{position:'fixed',left:'0px',right:'auto',bottom:'auto',top:(top?48:0)+'px',width:(sw/zf-16)+'px',height:(sh/zf-(top?48:42)-16)+'px'});layIcons()}catch(e){}
   let cells={};try{cells=JSON.parse(localStorage.getItem(typeof cellKey=='function'?cellKey():'bd95cells')||'{}')}catch(e){}
   /* (1.6.0 Part 12, "The rule": Native looks as Standard) the start menu's list as the page shows it, row by row: its
      separators, headings, pictures, greyed and indented rows, with each row's writing as the page's styles give it */
@@ -16137,6 +16183,9 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
   await rdPost('desktop/apps',JSON.stringify({apps,bg,hide,icons,desk,cells,menu,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
 function oaPng(src,n){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>{try{const c=document.createElement('canvas');c.width=c.height=n;c.getContext('2d').drawImage(im,0,0,n,n);res(c.toDataURL('image/png'))}catch(e){rej(e)}};im.onerror=()=>rej(new Error('icon'));im.src=src})}
 {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);setTimeout(oaCatalog,2500);return r}}
+/* (1.6.0 Part 12, item 1's second part) given again when the Desktop folder's files change */
+{let t=0,last=null;EXPL.add(()=>{try{const k=Object.keys(deskFiles()||{}).sort().join('|');
+ if(last!==null&&k!=last&&typeof USER!='undefined'&&USER&&!(ONEAPP&&OA.done)){clearTimeout(t);t=setTimeout(oaCatalog,1200)}last=k}catch(e){}})}
 let OA_WP='';
 async function oaWallpaper(){if(typeof RD=='undefined'||!RD||!USER||USER.r=='guest')return;const id=S.wpimg||'';
  if(!id||id!=WPID||!/^data:image\/jpeg;base64,/.test(WPURL||''))return;const key=uid()+':'+id;if(OA_WP==key)return;OA_WP=key;
