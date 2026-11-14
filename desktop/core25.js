@@ -147,11 +147,12 @@ function persistS(){try{const v=JSON.stringify(SC||S);localStorage.setItem('bd95
 function trSave(){if(USER&&IDB&&IDB.db&&USER.r!='guest')kvPutNow('trash:'+uid(),TR);else if(!USER){try{localStorage.setItem('bd95trash',JSON.stringify(TR))}catch(e){}}trBadge();TRW.forEach(f=>f());return true}
 /* ---------- sign-in / sign-out ---------- */
 let SESSION=null;
-async function userLogin(a,pw){await FSREADY;
+async function userLogin(a,pw,keys){await FSREADY;   /* (1.5.9, plan Part 12: keys {pk,fk} in place of the password: the native session's, oneapp59.js) */
  if(!a.id){a.id='u'+b64e(crypto.getRandomValues(new Uint8Array(6))).replace(/[^a-z0-9]/gi,'');saveUser()}
- if(a.r!='guest'){if(!a.ks){a.ks=b64e(crypto.getRandomValues(new Uint8Array(16)));saveUser()}PKEY=await deriveKey(pw,a.ks);KEY=PKEY;FKRAW=null;
+ if(a.r!='guest'){if(!a.ks){a.ks=b64e(crypto.getRandomValues(new Uint8Array(16)));saveUser()}PKEY=keys&&keys.pk?await crypto.subtle.importKey('raw',keys.pk,{name:'AES-GCM'},false,['encrypt','decrypt']):await deriveKey(pw,a.ks);KEY=PKEY;FKRAW=null;
   /* 1.5.0 (acct50.js): the home folder's own file key, unlocked with the password */
-  if(a.fk){try{FKRAW=await acDec(PKEY,a.fk);KEY=await acFkKey(FKRAW)}catch(e){FKRAW=null}}}
+  if(keys&&keys.fk){FKRAW=keys.fk;KEY=await acFkKey(FKRAW)}
+  else if(a.fk){try{FKRAW=await acDec(PKEY,a.fk);KEY=await acFkKey(FKRAW)}catch(e){FKRAW=null}}}
  USER=a;
  /* settings */
  const us=ld('bd95set:'+uid(),null);if(us){for(const k in us)S[k]=us[k];SC=cln(S)}else persistS();
