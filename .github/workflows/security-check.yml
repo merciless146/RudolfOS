@@ -1,0 +1,19 @@
+# Security fixes arrive soon (docs/plan-1.5.9.md 15.6; it replaces 11.2's Chromium check). Once a day: the Chromium and
+# the kernel of the latest release against the newest ones Ubuntu has published (the chromium snap's stable channel,
+# Ubuntu's mainline builds of the release's kernel series). When either is newer, one GitHub issue "Security update
+# available: …" for the owner, kept up to date while it is open, never a second one. It builds, releases, promotes
+# and dispatches nothing: iso/systools/seccheck.py only reads, and writes that one issue.
+name: Security check
+on:
+  schedule: [{cron: '17 14 * * *'}]
+  workflow_dispatch:
+permissions: {contents: read, issues: write}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: iso/systools/seccheck.py, sparse-checkout-cone-mode: false}
+      - name: Compare
+        env: {GITHUB_TOKEN: '${{ github.token }}'}
+        run: python3 iso/systools/seccheck.py
