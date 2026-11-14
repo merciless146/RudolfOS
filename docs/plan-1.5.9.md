@@ -10,7 +10,8 @@ Done in code and tests (PRs #260–#281, rudolfos-library #31; each part's "Done
 check (since #280 ModemManager runs without udev; since #281 the self-test has a modem line), Part 3 steps 1–5 (QEMU
 starts the ARM64 build directly, through UEFI firmware and with Chromium as the desktop), Part 4 up to the device
 check, Part 7 except the Vivobook call checks, Part 8 except 8.4's recovery.efi and the TPM and hardware keys, Part 9,
-Part 10's pictures, fonts and lazy apps, Part 11. The latest beta with all of it: **2026111321** (not promoted).
+Part 10's pictures, fonts and lazy apps, Part 11. Part 12 (the native desktop engine, a prototype) is not started. The
+latest beta: **2026111402** (not promoted).
 
 ### What needs the Vivobook (or the person) before 1.5.9 is promoted
 1. **A beta with everything:** 2026111401: install it; the self-test (its modem line says "no cellular modem").
@@ -568,6 +569,55 @@ modem service, Share this connection, calls, game mode, developer mode) keeps it
 services, with the desktop only showing state and sending choices through rudolfd's API. Each part's API is written
 down in docs/api.md with its first use.
 
+## Part 12: the native desktop engine, a prototype (added on 2026-11-13)
+Asked for: the native desktop moved into 1.5.9, as a prototype third desktop engine (chosen on 2026-11-13 over
+"measurements only" and "the whole desktop rewritten"). The decision on a native Rudolf OS 2.0 still follows its
+numbers (docs/plan-1.6.0.md, "the native desktop decision", now pointing here).
+
+### 12.1 What it is
+- **Settings › System health › Desktop engine:** Standard (Chromium), Lite (WebKit) and **Native (test)**, with Lite's
+  safeguards: a trial mark, given up after a start that does not reach the sign-in screen (back to Standard, said in
+  System health), never in Recovery mode.
+- **rudolf-native** (C and GTK 3, which the system layer already has for Lite's WebKitGTK: no new libraries) draws:
+  - the wallpaper: a drawn background (its light or dark picture), a picture of your own, or the colours;
+  - the taskbar: the start menu, the pinned apps, the open windows, the clock, and the tray (network, sound, battery,
+    notifications' count) from rudolfd's API;
+  - every window's frame, as the window manager: the title bar (Part's title bar styles and colours: twstyle, twacm),
+    minimise, maximise, close, moving and resizing, focus;
+  - the sign-in and lock screens, with rudolfd checking the password (the accounts' hashes never reach rudolf-native).
+- **The apps stay web pages:** an app opens in a WebKit window of its own showing the desktop page in one-app mode
+  (`index.html#app=notepad`: the page starts that app alone, filling its window, without taskbar, icons or wallpaper).
+  All app windows share one WebKit web process, so the page's code is loaded once, not once per window. Linux apps and
+  Oracle's tabs (Chromium) are framed windows like any other.
+
+### 12.2 Decisions (2026-11-13)
+- **X11, not Wayland, for the prototype:** everything around the desktop is X11 today (rudolf-display's input and its
+  idle count, remote access, the devlink's screenshot, Linux apps, game mode, Xwayland not in the system layer). A
+  Wayland compositor would change all of them at once and the measurement would no longer compare engines alone.
+  Wayland becomes part of the 2.0 decision.
+- **State stays in rudolfd (11.4):** what the native shell needs that only the web page knows today (the desktop's
+  settings, the pinned apps, the accounts) is read through rudolfd's API, from the copy of the page's storage it
+  already keeps (lsync, /home/rudolf/.rudolf-ls.json); rudolf-native never parses the page's storage itself.
+- **Not in the prototype:** desktop icons' editing, widgets, Phone screen, Blitzen's panel, drag and drop between
+  windows, multiple workspaces. They come with 2.0 if it goes ahead.
+
+### 12.3 Steps
+1. The page's one-app mode (`#app=NAME`): one app, filling the window; closing it closes the page; on both engines.
+2. rudolfd: GET desktop/settings (background, title bars, taskbar position, pins, clock, accent) and desktop/apps
+   (the start menu's list, written by the page) from the lsync copy; POST login (checks a password, opens the
+   account's encrypted folder as the page's sign-in does).
+3. rudolf-native: wallpaper, taskbar, start menu, clock, tray.
+4. rudolf-native: the window manager (frames, focus, minimise, maximise, close, move, resize) and the taskbar's list.
+5. The session: Native (test) in Settings, its trial and give-up as Lite's.
+6. Measured on the Vivobook against Standard and Lite: memory at idle, with Oracle open, with FNF; time from power on
+   to the sign-in screen; battery drain at idle. Results in docs/testing.md; then the 2.0 decision.
+
+### 12.4 Tests
+- Host, under Xvfb: rudolf-native draws its wallpaper and taskbar (screenshots compared), a window gets a frame,
+  minimise, maximise and close work, a pinned app opens its one-app WebKit window.
+- Browser: each app's one-app mode opens and closes cleanly, on both engines.
+- The session's engine choice and give-up (host test, as desksafe58_t.sh for Lite); CI builds rudolf-native.
+
 ## Steps
 0. Part 11 first: 11.1 (the Chromium source) and 11.3, then 11.2; 11.4 holds for every part.
 1. Part 1 (ModemManager, read only); its device checks, with the USB stick and the MiFi, moved to 1.6.0.
@@ -586,3 +636,5 @@ down in docs/api.md with its first use.
    background work, the tray offer, the memory guard's order and its warning (9.2b); checked with FNF on the Vivobook before promotion.
 10. Part 10 (a lighter page): pictures and fonts out first, then the large apps one at a time behind stubs, each
     measured on both engines on the Vivobook; then the engines' limits (10.3).
+11. Part 12 (the native desktop engine, a prototype): the one-app mode and rudolfd's settings first, then rudolf-native's
+    wallpaper and taskbar, its window manager, the engine choice; measured on the Vivobook last.
