@@ -9,7 +9,8 @@
  * computer" (an administrator's password; off again at every start): then sh runs as nobody with only the power
  * to read (CAP_DAC_READ_SEARCH), in a private view where every mount is read-only (a fresh /tmp of its own), without
  * rudolfd's token; put and restart are refused; screenshot and get still work. Allowed: as root, as before. The owner switches the link on in Settings > Security (rudolfd
- * starts this program), with an administrator's password, in Developer mode only, for 1 to 8 hours; a banner shows
+ * starts this program), with an administrator's password, only when "Allow the development link on this computer" is
+ * ticked (2026-11-14; it was Developer mode), for 1 to 8 hours; a banner shows
  * while it runs, and with "Ask first" (on again at every start) every command waits for Allow on the screen. 1.5.9:
  * it ends itself after 4 hours without a command. See docs/plan-1.4.0.md.
  *
@@ -63,6 +64,10 @@ static volatile sig_atomic_t STOP;
 /* 1.5.9 (plan 15.4): the link turns itself off after IDLE seconds without a command (4 hours); the desktop says so in a
    notification (status.json's state "ended (4 hours without a command)"). RUDOLF_DEVLINK_IDLE (tests) shortens it. */
 static long IDLE = 4 * 3600; static time_t LASTACT;
+/* 1.5.9 (plan 8.3): which system answers, in every result ("system"): its version and whether it is the Official Rudolf
+   OS or a Custom build (with the key that signed it), from rudolf-update status, read once when the link starts.
+   RUDOLF_DEVLINK_UPDATE (tests) names a stand-in rudolf-update. */
+static char UPDBIN[256] = "/usr/bin/rudolf-update", SYSTEM[200];
 
 /* ---------------- small helpers */
 typedef struct { char *b; size_t n, cap; } buf;
@@ -474,6 +479,22 @@ static void describe(cmd *c, buf *w)
 	else bfmt(w, "%s", c->kind);
 }
 
+static void system_info(void)
+{
+	char c[300]; snprintf(c, sizeof c, "'%s' status 2>/dev/null", UPDBIN);
+	FILE *f = popen(c, "r"); if (!f) return;
+	buf o = {0}; char b[4096]; size_t n; while ((n = fread(b, 1, sizeof b, f)) > 0 && o.n < (1u << 20)) badd(&o, b, n);
+	pclose(f); if (!o.b) return; badd(&o, "", 1);
+	char *cur = strstr(o.b, "\"current\""), *ver = cur ? jget(cur, "version") : NULL, *ser = NULL, *sg = jget(o.b, "signer"), *key = jget(o.b, "signerKey");
+	if (cur) { const char *q = strstr(cur, "\"serial\":"); if (q) { ser = malloc(24); snprintf(ser, 24, "%lld", atoll(q + 9)); } }
+	char who[120];
+	if (sg && !strcmp(sg, "official")) snprintf(who, sizeof who, "Official Rudolf OS");
+	else if (sg && !strcmp(sg, "custom")) snprintf(who, sizeof who, "Custom build (signed by key %.8s…%.5s)", key ? key : "", key && strlen(key) > 6 ? key + strlen(key) - 6 : "");
+	else snprintf(who, sizeof who, "not from a signed release");
+	if (ver && *ver) snprintf(SYSTEM, sizeof SYSTEM, "Rudolf OS %s%s%s%s, %s", ver, ser && atoll(ser) ? " (" : "", ser && atoll(ser) ? ser : "", ser && atoll(ser) ? ")" : "", who);
+	free(ver); free(ser); free(sg); free(key); free(o.b);
+}
+
 /* the result, written to res/ID.json */
 static int report(cmd *c, result *r, time_t t0, const char *approved)
 {
@@ -483,7 +504,9 @@ static int report(cmd *c, result *r, time_t t0, const char *approved)
 	bfmt(&s, ",\"stdout\":"); bjson(&s, r->out.b ? r->out.b : "", r->out.n); bfmt(&s, ",\"stderr\":"); bjson(&s, r->err.b ? r->err.b : "", r->err.n);
 	bfmt(&s, ",\"files\":["); for (int i = 0; i < r->nfiles; i++) { if (i) bfmt(&s, ","); bjs(&s, r->files[i]); } bfmt(&s, "]");
 	if (*r->error) { bfmt(&s, ",\"error\":"); bjs(&s, r->error); }
-	bfmt(&s, ",\"approved\":"); bjs(&s, approved); bfmt(&s, "}\n");
+	bfmt(&s, ",\"approved\":"); bjs(&s, approved);
+	if (*SYSTEM) { bfmt(&s, ",\"system\":"); bjs(&s, SYSTEM); }
+	bfmt(&s, "}\n");
 	char gp[64]; snprintf(gp, sizeof gp, "res/%s.json", c->id);
 	int rc = -1;
 	for (int i = 0; i < 5 && rc && !STOP; i++) { rc = gh_put(gp, s.b, s.n, "result"); if (rc) sleep(5 << i); }
@@ -587,7 +610,7 @@ static int link_run(void)
 	{ char p[300]; path2(p, sizeof p, RUND, "pid"); char b[32]; snprintf(b, sizeof b, "%d\n", getpid()); write_file(p, b, strlen(b), 0644); }
 	char *on = cfg("on"); int ison = on && *on == '1'; free(on);
 	if (!ison || load()) { status("off", "", "not switched on"); return 1; }
-	log_prune(); interrupted();
+	log_prune(); interrupted(); system_info();
 	char etag[128] = "", url[400]; snprintf(url, sizeof url, "%s/repos/%s/contents/cmd?ref=link", API, REPO);
 	int back = 5; LASTACT = time(NULL); status("on", "", "");
 	while (!STOP) {
@@ -688,6 +711,7 @@ static void setup(void)
 		if ((v = getenv("RUDOLF_DEVLINK_HB"))) snprintf(HB, sizeof HB, "%s", v);
 		if ((v = getenv("RUDOLF_DEVLINK_HBWAIT"))) HBWAIT = atoi(v);
 		if ((v = getenv("RUDOLF_DEVLINK_IDLE")) && atol(v) > 0) IDLE = atol(v);
+		if ((v = getenv("RUDOLF_DEVLINK_UPDATE"))) snprintf(UPDBIN, sizeof UPDBIN, "%s", v);
 	}
 	mkdir(DIR_, 0700); chmod(DIR_, 0700);
 	if (!TESTMODE && dbg) {

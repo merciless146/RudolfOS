@@ -30,6 +30,22 @@ if [ $PERS = 1 ]; then
 	if [ -z "$fr" ]; then skip disk-space "not measured"; elif [ "$fr" -ge 5 ]; then pass disk-space "$fr % free"; else fail disk-space "only $fr % free: delete or move files"; fi
 fi
 
+# 1.5.9 (plan 8.3): which system runs: the Official Rudolf OS (every file in a release list signed by the official key),
+# or a Custom build in Developer mode (said, not a failure); whether the recovery system is the official one.
+# ST_UPDATE names a stand-in rudolf-update.
+U=${ST_UPDATE:-/usr/bin/rudolf-update}
+if [ ! -x "$U" ]; then skip build "no system updates on this start (a test disc)"
+else us=$("$U" status 2>/dev/null)
+	sg=$(printf '%s' "$us" | sed -n 's/.*"signer":"\([a-z]*\)".*/\1/p'); ky=$(printf '%s' "$us" | sed -n 's/.*"signerKey":"\([A-Za-z0-9+\/=]*\)".*/\1/p')
+	ro=$(printf '%s' "$us" | sed -n 's/.*"recoveryOfficial":\(true\|false\).*/\1/p'); dv=$(printf '%s' "$us" | sed -n 's/.*"developer":\(true\|false\).*/\1/p')
+	rn=""; [ "$ro" = false ] && [ $PERS = 1 ] && rn=" (no official recovery system kept yet: it is kept once an official release has started)"
+	case "$sg" in
+	official) pass build "Official Rudolf OS$([ "$dv" = true ] && echo ', Developer mode on')$rn";;
+	custom) pass build "Custom build, signed by key $(printf '%.8s' "$ky")… in Developer mode; Recovery mode starts the official Rudolf OS$rn";;
+	*) skip build "not started from a signed release (a disc or a build of one's own)";;
+	esac
+fi
+
 # ---- the signed-in account's folders, as Linux apps see them
 ACCT=$(rd1 "$RUN/home-session")
 if [ -z "$ACCT" ]; then skip folders "nobody is signed in with their files on the disk"

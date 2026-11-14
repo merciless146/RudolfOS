@@ -306,9 +306,13 @@ the official releases works; a build signed by anyone else is refused. The Libra
 - **Done (2026-11-13):** rudolf-update `developer on KEY URL | off` (the key in /persist/etc/rudolf/extra-keys, never
   the official one; the official keys alone count for "official" and for the recovery system), status's `signer`,
   `signerKey`, `developer`, `recoveryOfficial`; rudolfd `sys/developer`; Settings › Update and recovery › Developer mode (Settings › Security since 2026-11-14)
-  (warning, typed "I TRUST THIS DEVELOPER", the password every time) and Official / Custom in About. Not yet: the
-  "custom" mark in the Start menu, the self-test, Blitzen and the devlink reporting it; a custom build's own Secure
-  Boot key (a custom kernel started by kexec with Secure Boot on needs it enrolled).
+  (warning, typed "I TRUST THIS DEVELOPER", the password every time) and Official / Custom in About. Not yet: a
+  custom build's own Secure Boot key (a custom kernel started by kexec with Secure Boot on needs it enrolled).
+- **Done (2026-11-14), the reporting:** the Start menu's "custom" mark and Blitzen's "This computer" line (devmode59.js,
+  blitzdiag57.js: already there); the self-test's new `build` line (Official Rudolf OS, Developer mode on; a Custom
+  build with its key, not a failure; skipped on a disc or without system updates; whether an official recovery system
+  is kept yet); every devlink result's `system` ("Rudolf OS 1.5.9 (2026111414), Official Rudolf OS", from
+  rudolf-update status once at the link's start). Tests: selftest_t.sh 20-23, devlink_t.py.
 - Turning Developer mode off is 8.5.
 
 ### 8.4 Recovery mode is always the official Rudolf OS

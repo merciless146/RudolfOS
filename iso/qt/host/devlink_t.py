@@ -4,12 +4,13 @@ import base64, json, os, shutil, signal, subprocess, sys, tempfile, time, urllib
 
 HERE = os.path.dirname(os.path.abspath(__file__)); SYS = os.path.join(HERE, '..', '..', 'sys')
 T = tempfile.mkdtemp(); BIN = f'{T}/rudolf-devlink'
+open(f'{T}/upd', 'w').write('#!/bin/sh\n[ "$1" = status ] && echo \'{"ok":true,"current":{"serial":2026111414,"version":"1.5.9","kernel":"6.18"},"signer":"official","signerKey":"UqTqXIW8vtITjwoMix+MkFVZ0GAee9+kOS1WBIs/3mo=","developer":false}\'\n'); os.chmod(f'{T}/upd', 0o755)   # (8.3: a stand-in rudolf-update)
 subprocess.run(['gcc', '-O2', '-w', '-o', BIN, f'{SYS}/rudolf-devlink.c', '-lcrypto', '-ldl'], check=True)
 PORT = 18765; TOKEN = 'github_pat_TEST0123456789abcdefSECRET'; REPO = 'owner/rudolfos-devlink'; RDTOK = 'rdtoken0123'
 API = f'http://127.0.0.1:{PORT}'
 stub = subprocess.Popen([sys.executable, os.path.join(HERE, '..', 'ghstub.py'), str(PORT), TOKEN, REPO, RDTOK])
 DIR, RUN = f'{T}/dir', f'{T}/run'; os.makedirs(DIR); os.makedirs(RUN)
-ENV = dict(os.environ, RUDOLF_DEVLINK_TEST='1', RUDOLF_DEVLINK_API=API, RUDOLF_DEVLINK_DIR=DIR, RUDOLF_DEVLINK_RUN=RUN, RUDOLF_DEVLINK_RD=API, RUDOLF_TOKEN=RDTOK)
+ENV = dict(os.environ, RUDOLF_DEVLINK_UPDATE=f'{T}/upd', RUDOLF_DEVLINK_TEST='1', RUDOLF_DEVLINK_API=API, RUDOLF_DEVLINK_DIR=DIR, RUDOLF_DEVLINK_RUN=RUN, RUDOLF_DEVLINK_RD=API, RUDOLF_TOKEN=RDTOK)
 P = N = 0
 
 
@@ -73,6 +74,7 @@ ok('switched on: it says it is on, with no commands yet', statusj().get('state')
 cmd(1, kind='sh', script='echo hello; echo oops >&2; exit 3')
 cmd(2, kind='sh', script='echo second')
 r1, r2 = result(1), result(2)
+ok('8.3: each result says which system answered: its version, serial and that it is the official build', r1 and r1.get('system') == 'Rudolf OS 1.5.9 (2026111414), Official Rudolf OS', r1)
 ok('sh: stdout, stderr and the exit status come back', r1 and r1['stdout'] == 'hello\n' and r1['stderr'] == 'oops\n' and r1['status'] == 3, r1)
 ok('...commands run one at a time, in order', r1 and r2 and r2['stdout'] == 'second\n' and r1['ended'] <= r2['started'], (r1, r2))
 ok('...as root, and the result says it was not asked (Ask first off)', r1 and r1['approved'].startswith('not asked'), r1)
