@@ -286,10 +286,24 @@ cases (new: tbm-bar, tbm-start, tbm-pin-notepad, tbm-pin-browser, tbm-vol, tbm-n
 the behaviour on both engines: `SAME_SCRIPT=tbbeh_t.js sh same_t.sh` 10/10 (Maximize, Restore, Minimize, Restore all
 windows, Always on top and its tick, Unpin from taskbar, New private tab, Command Prompt, Close all windows: the
 menus' rows and the windows and pins after each).
-Known differences left (item 3): a window's Move to workspace N rows do nothing yet (item 4); the clock's calendar,
-the volume, network and battery pop-ups, the notifications' pop-ups and centre, the taskbar at the left or right,
-auto-hide, the workspaces' buttons and the 🎙️ indicator are item 3's second part.
-**Next:** item 3's second part, then items 4 to 12 in order, one PR each, stacked, each passing same_t.sh for its
+Known differences left (item 3): a window's Move to workspace N rows do nothing yet (item 4).
+Item 3, second part, first half (the PR after #325): the tray's pop-ups drawn by the shell as the page's, in a window of
+their own (as the menus): the calendar under the clock (shell25.js #calp: the time, the long date, the month with ◀ and
+▶, the weeks from Sunday with the columns as Chromium's automatic table layout shares them out, today in the accent
+colour, days with the Calendar's events (rudolfd's desktop/settings now gives them: "cal", bd95cal:ID) in bold and
+underlined, the next four events or "No upcoming events", Open Calendar, a day double-clicked opening the Calendar at it
+(#app=calendar&day=DATE); the dark theme's colours; at the top with the taskbar there) and the volume's (osd31.js
+sysVolPop: Chromium's range input and checkbox drawn as Chromium draws them, the slider setting rudolfd's volume as it
+moves, Mute, Desktop sounds… opening Settings' Volume Controls, placed over its button as flyPlace places it). A click
+outside closes them; one on the taskbar goes on to it (one pop-up gives way to the other); the clock again closes the
+calendar, except on its date, where the page's calendar closes and opens again at this month (the page's flyClose
+treats the date's <small> as outside the clock). same_t.sh: new cases fly-cal, fly-cal-next, fly-cal-dark, fly-cal-top,
+fly-vol; the behaviour on both engines: `SAME_SCRIPT=flybeh_t.js sh same_t.sh` 23/23 (19 steps compared, with the
+page's own outcomes). Known differences left: the slider's own sound when let go (sfx('notify')), and the slider and
+the checkbox by the keyboard; the network's and the battery's pop-ups, quick settings (☰), the notifications' pop-ups
+and centre (🔔), the taskbar at the left or right, auto-hide, the workspaces' buttons and the 🎙️ indicator are item 3's
+second part's second half.
+**Next:** item 3's second part's second half, then items 4 to 12 in order, one PR each, stacked, each passing same_t.sh for its
 part, and docs/plan-2.0.md after them. Native is not the default yet.
 
 **Becoming the default:** after items 1-12 pass on the host and on the Vivobook (a week of betas on Native), the

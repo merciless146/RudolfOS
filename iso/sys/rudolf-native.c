@@ -278,6 +278,9 @@ static GdkPixbuf *LOGO;
 /* ------------------------------------------------------------------ the wallpaper */
 static cairo_surface_t *DESKC; static int DESKD;   /* (the desktop as drawn, and whether to draw it again) */
 static GtkWidget *DESK, *DESKAREA, *BAR, *BARAREA, *MENU, *SIGN, *DLBAN, *DLASK, *PWR;
+/* (the tray's pop-ups: item 3, below) */
+static void fl_open(int kind); static void cal_events_load(JV *v);
+static double VOLB[4], CLKD[2];   /* (as drawn, the page's units from the bar's corner: the volume's button; the clock's date, its <small>) */
 static void desk_dirty(void) { DESKD = 1; if (DESKAREA) gtk_widget_queue_draw(DESKAREA); }
 static void desk_shadows(void) { if (DESKAREA) gtk_widget_queue_draw(DESKAREA); }
 static cairo_surface_t *WALL;   /* drawn at the screen's size */
@@ -1274,7 +1277,7 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 	{ Box b = tb_box(TB_TRAY, HV("clock", ""), 0); clock_text();
 		double t1 = css_width(cr, CLOCK_T, UIFAM, 400, 13), t2 = css_width(cr, CLOCK_D, UIFAM, 400, 13 * .85), w = b.bw * 2 + 10 + t1 + 8 + t2 + 10, h = b.bw * 2 + 32;
 		rx -= w; double y = mid - h / 2; box_paint(cr, rx, y, w, h, &b); hit_add(rx, y, w, h, "clock", NULL);
-		double tx = rx + b.bw + 10, ty = y + b.bw + 3;
+		double tx = rx + b.bw + 10, ty = y + b.bw + 3; CLKD[0] = tx + t1 + 8; CLKD[1] = CLKD[0] + t2;
 		css_text(cr, CLOCK_T, UIFAM, 400, 13, tx, ty, 26, b.fg, 0);
 		/* (the date: .85em, on the same baseline) */
 		double d1, a1 = css_ascent(cr, UIFAM, 400, 13, &d1), base = ty + floor((26 - (a1 + d1)) / 2) + a1;
@@ -1291,7 +1294,7 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 			box_paint(cr, rx + w - nw, y + 1, nw, 13, &bd); css_text(cr, n, UIFAM, 400, 9, rx + w - nw + 4, y + 1, 13, cx("#ffffff", 1), 0); }
 		rx -= 4;
 	}
-	{ Box b = tb_box(TB_NET, HV("vol", ""), PR("vol", "")); double w = 36 + 2 * b.bw, y = mid - 13; rx -= w; box_paint(cr, rx, y, w, 26, &b); hit_add(rx, y, w, 26, "vol", NULL);
+	{ Box b = tb_box(TB_NET, HV("vol", ""), PR("vol", "")); double w = 36 + 2 * b.bw, y = mid - 13; rx -= w; box_paint(cr, rx, y, w, 26, &b); hit_add(rx, y, w, 26, "vol", NULL); VOLB[0] = rx; VOLB[1] = y; VOLB[2] = w; VOLB[3] = 26;
 		ic_vol(cr, rx + b.bw + 7, y + 2, b.filt); rx -= 4; ri++; }
 	{ Box b = tb_box(TB_NET, HV("net", ""), PR("net", "")); double w = 34 + 2 * b.bw, y = mid - 13; rx -= w; box_paint(cr, rx, y, w, 26, &b); hit_add(rx, y, w, 26, "net", NULL);
 		ic_net(cr, rx + b.bw + 6, y + 2, b.filt); rx -= 4; ri++; }
@@ -1365,7 +1368,8 @@ static void bar_click(int h)
 		if (WM_OK) { Client *c = client_of((Window)id); if (c) { if (c == FOCUS && !c->min) wm_minimise(c); else wm_focus(c); } return; }
 		for (GList *l = WINS; l; l = l->next) if ((unsigned long)(uintptr_t)l->data == id) { appwin_activate(l->data); return; }
 	}
-	else if (!strcmp(t->kind, "clock")) app_open("clock", NULL);
+	else if (!strcmp(t->kind, "clock")) fl_open(1);   /* (the calendar under the clock, as the page's) */
+	else if (!strcmp(t->kind, "vol")) fl_open(2);   /* (the volume's pop-up) */
 	else if (!strcmp(t->kind, "ws")) return;   /* (the workspaces: plan 1.6.0 Part 12, item 4) */
 	else app_open("settings", NULL);
 }
@@ -1988,6 +1992,7 @@ static void settings_load(void)
 	JV *p = jprop(v, "pins"); for (int i = 0; i < 24; i++) { JV *o = jat(p, i); if (!o) break; if (o->t == 3) snprintf(n.pins[n.npins++], 40, "%s", o->s);  }
 	int moved = strcmp(n.tb, S.tb) != 0 || n.scale != S.scale; S = n; ui_family(S.ff);
 	wg_load(v);   /* (the widgets: item 2) */
+	cal_events_load(v);   /* (the calendar under the clock: item 3) */
 	  jfree(v);
 	/* the page's display scaling: the taskbar, the title bars and the start menu at the page's size (1.5.9 step 7) */
 	Z = S.scale / 100.0; BARH = (int)lround(46 * Z); TH = (int)lround(35 * Z);
@@ -3167,6 +3172,215 @@ static void bar_menu(GdkEventButton *e, int h)
 	int nw = tb_count(-1); m[0].dis = m[2].dis = m[4].dis = !nw; m[1].dis = !tb_count(1); tb_menu_show("Taskbar", m, 7, 1, "bar");
 }
 
+/* ------------------------------------------------------------------ the tray's pop-ups (1.6.0 Part 12, item 3, second part)
+   The calendar under the clock (shell25.js #calp, .flyout: the time, the long date, the month with ◀ and ▶, the weeks from
+   Sunday as the page's table lays them out, today in the accent colour, a day with an event of the Calendar's in bold and
+   underlined, the next four events, Open Calendar; a double-click on a day opens the Calendar at it) and the volume's
+   (osd31.js sysVolPop, .vp: the system volume as Chromium draws a range input and a checkbox, Mute, Desktop sounds…,
+   placed over its button as flyPlace places it). Drawn by the shell in a window of their own, as the page's menus
+   (CMWIN); a click outside closes them (one on the taskbar goes on to the taskbar), a click on their button again too. */
+enum { FL_NONE, FL_CAL, FL_VOL };
+static const char *const FLMON[12] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
+/* (the page's clockParts: System Settings' time zone and offset) */
+static GDateTime *fl_now(void)
+{
+	GTimeZone *tz = S.tz[0] ? g_time_zone_new_identifier(S.tz) : NULL; if (!tz) tz = g_time_zone_new_local();
+	GDateTime *n0 = g_date_time_new_now(tz), *n = g_date_time_add_seconds(n0, S.doff / 1000.0); g_date_time_unref(n0); g_time_zone_unref(tz); return n;
+}
+typedef struct { char d[12], t[12], title[160]; } CalEv;
+static CalEv CALEV[64]; static int NCALEV;
+static GtkWidget *FLWIN, *FLAREA; static GdkPixbuf *FLBG; static int FLK, FLWX, FLWY, FLHOV = -1, FLPRESS = -1, FL_Y, FL_M, FLVOL = -1, FLMUTE, FLDRAG;
+static double FLX, FLY, FLW, FLH;   /* the box (the page's units, on the screen) */
+static DRect FLB[48]; static char FLBK[48][16]; static int NFLB;   /* (what can be clicked: kind and place) */
+static void cal_events_load(JV *v)
+{
+	NCALEV = 0; JV *a = jprop(v, "cal");
+	for (int i = 0; a && a->t == 4 && i < a->len && NCALEV < 64; i++) { JV *o = jat(a, i); if (!o || o->t != 5) continue; CalEv *e = &CALEV[NCALEV++]; memset(e, 0, sizeof *e);
+		jstr(o, "d", e->d, sizeof e->d); jstr(o, "t", e->t, sizeof e->t); jstr(o, "title", e->title, sizeof e->title); }
+}
+static void fl_btn(const char *k, double x, double y, double w, double h) { if (NFLB < 48) { FLB[NFLB] = (DRect){ x, y, w, h }; snprintf(FLBK[NFLB], sizeof FLBK[0], "%s", k); NFLB++; } }
+static int fl_at(double px, double py) { double x = (px + FLWX) / Z, y = (py + FLWY) / Z; for (int i = NFLB - 1; i >= 0; i--) if (x >= FLB[i].x && x < FLB[i].x + FLB[i].w && y >= FLB[i].y && y < FLB[i].y + FLB[i].h) return i; return -1; }
+/* a page button (base_v24.html button: white, 1 px #d1d5db, 4 px corners, 3 px 10 px; hovered #eaf0ff and #a9bff5; the dark theme's flyout's #1e293b) */
+static void fl_button(cairo_t *cr, const char *t, double x, double y, double w, double h, int hv, int dark)
+{
+	Box k; memset(&k, 0, sizeof k); k.rad = 4; k.bw = 1;
+	if (dark) { k.bg = cx("#1e293b", 1); k.bc = cx("#334155", 1); } else { k.bg = cx(hv ? "#eaf0ff" : "#ffffff", 1); k.bc = cx(hv ? "#a9bff5" : "#d1d5db", 1); }
+	box_paint(cr, x, y, w, h, &k); double tw = css_width(cr, t, UIFAM, 400, 13), a, d; a = css_ascent(cr, UIFAM, 400, 13, &d);
+	css_text(cr, t, UIFAM, 400, 13, x + (w - tw) / 2, y + (h - (a + d)) / 2, a + d, cx(dark ? "#e2e8f0" : "#000000", 1), 0);
+}
+static double fl_lh(cairo_t *cr, int wt, double px) { double d, a = css_ascent(cr, UIFAM, wt, px, &d); return a + d; }
+/* ---- the calendar's table: Chromium's automatic table layout (each column its widest cell, the rest shared out as wide as they are) */
+static void cal_cols(cairo_t *cr, int y, int mo, double total, double *cw)
+{
+	static const char *const DN[7] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"}; double mx[7], sum = 0;
+	GDate *f = g_date_new_dmy(1, mo, y); int st = g_date_get_weekday(f) % 7, n = g_date_get_days_in_month(mo, y); g_date_free(f);
+	for (int c = 0; c < 7; c++) mx[c] = css_width(cr, DN[c], UIFAM, 700, 12);
+	for (int k = 1; k <= n; k++) { char s[8]; snprintf(s, sizeof s, "%d", k); int c = (st + k - 1) % 7; char key[12]; snprintf(key, sizeof key, "%04d-%02d-%02d", y, mo, k);
+		int ev = 0; for (int i = 0; i < NCALEV; i++) if (!strcmp(CALEV[i].d, key)) ev = 1; mx[c] = fmax(mx[c], css_width(cr, s, UIFAM, ev ? 700 : 400, 12)); }
+	for (int c = 0; c < 7; c++) { mx[c] += 8; sum += mx[c]; }
+	for (int c = 0; c < 7; c++) cw[c] = sum < total ? mx[c] * total / sum : mx[c];
+}
+static int ev_cmp(const void *a, const void *b) { const CalEv *x = a, *y = b; char p[40], q[40]; snprintf(p, sizeof p, "%s%s", x->d, x->t); snprintf(q, sizeof q, "%s%s", y->d, y->t); return strcmp(p, q); }
+/* the box's size and place, and (DRAW) its drawing */
+static void fl_layout(cairo_t *cr, int draw)
+{
+	int dark = menu_dark(); double vw = SW / Z, vh = SH / Z; int top = !strcmp(S.tb, "top"); NFLB = 0;
+	RGBA fg = cx(dark ? "#e2e8f0" : "#111827", 1), mut = cx(dark ? "#94a3b8" : "#6b7280", 1);
+	if (FLK == FL_CAL) {
+		GDateTime *now = fl_now(); int ty = g_date_time_get_year(now), tm = g_date_time_get_month(now), td = g_date_time_get_day_of_month(now);
+		char tim[32], lng[96]; int h = g_date_time_get_hour(now), mi = g_date_time_get_minute(now);
+		if (S.h24) snprintf(tim, sizeof tim, "%02d:%02d", h, mi); else snprintf(tim, sizeof tim, "%d:%02d %s", h % 12 ? h % 12 : 12, mi, h < 12 ? "AM" : "PM");
+		{ char *s = g_date_time_format(now, "%A, %B %-d, %Y"); snprintf(lng, sizeof lng, "%s", s ? s : ""); g_free(s); }
+		char iso[12]; snprintf(iso, sizeof iso, "%04d-%02d-%02d", ty, tm, td); g_date_time_unref(now);
+		GDate *f = g_date_new_dmy(1, FL_M, FL_Y); int st = g_date_get_weekday(f) % 7, n = g_date_get_days_in_month(FL_M, FL_Y); g_date_free(f); int rows = (st + n + 6) / 7;
+		CalEv up[4]; int nu = 0; { CalEv all[64]; int na = 0; for (int i = 0; i < NCALEV; i++) if (strcmp(CALEV[i].d, iso) >= 0) all[na++] = CALEV[i]; qsort(all, na, sizeof all[0], ev_cmp); for (int i = 0; i < na && nu < 4; i++) up[nu++] = all[i]; }
+		double l30 = fl_lh(cr, 300, 30), l13 = fl_lh(cr, 400, 13), l12 = fl_lh(cr, 400, 12), bh = 3 + l13 + 3 + 2, rh = 8 + l12;
+		double ch = l30 + l13 + 8 + bh + 8 + (1 + rows) * rh + 8 + (nu ? nu : 1) * l12 + 8 + bh;
+		FLW = 300 + 20 + 2; FLH = ch + 20 + 2; FLX = vw - 8 - FLW; FLY = top ? 52 + TOPRES / Z : vh - 52 - FLH;
+		if (!draw) return;
+		Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 12; shd_add(&b, 0, 14, 36, cx("#000000", .35), 0); box_paint(cr, FLX, FLY, FLW, FLH, &b);
+		double x = FLX + 11, y = FLY + 11, W = 300;
+		css_text(cr, tim, UIFAM, 300, 30, x, y, l30, fg, 0); y += l30; css_text(cr, lng, UIFAM, 400, 13, x, y, l13, mut, 0); y += l13 + 8;
+		/* ◀ November 2026 ▶ */
+		double pw = css_width(cr, "◀", UIFAM, 400, 13) + 22, nw = css_width(cr, "▶", UIFAM, 400, 13) + 22;
+		fl_button(cr, "◀", x, y, pw, bh, FLHOV >= 0 && !strcmp(FLBK[FLHOV], "prev"), dark); fl_btn("prev", x, y, pw, bh);
+		fl_button(cr, "▶", x + W - nw, y, nw, bh, FLHOV >= 0 && !strcmp(FLBK[FLHOV], "next"), dark); fl_btn("next", x + W - nw, y, nw, bh);
+		{ char m[64]; snprintf(m, sizeof m, "%s %d", FLMON[FL_M - 1], FL_Y); double mw = css_width(cr, m, UIFAM, 700, 13), bx = x + pw + 6, bw = W - pw - nw - 12;
+			css_text(cr, m, UIFAM, 700, 13, bx + (bw - mw) / 2, y + (bh - l13) / 2, l13, fg, 0); }
+		y += bh + 8;
+		double cw[7]; cal_cols(cr, FL_Y, FL_M, W, cw); static const char *const DN[7] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
+		{ double cx0 = x; for (int c = 0; c < 7; c++) { double tw = css_width(cr, DN[c], UIFAM, 700, 12); css_text(cr, DN[c], UIFAM, 700, 12, cx0 + (cw[c] - tw) / 2, y + 4, l12, fg, 0); cx0 += cw[c]; } }
+		for (int k = 1; k <= n; k++) { int c = (st + k - 1) % 7, r = (st + k - 1) / 7; double cx0 = x; for (int q = 0; q < c; q++) cx0 += cw[q]; double cy0 = y + rh * (r + 1);
+			char s[8], key[12]; snprintf(s, sizeof s, "%d", k); snprintf(key, sizeof key, "%04d-%02d-%02d", FL_Y, FL_M, k);
+			int ev = 0; for (int i = 0; i < NCALEV; i++) if (!strcmp(CALEV[i].d, key)) ev = 1; RGBA col = fg;
+			if (k == td && FL_M == tm && FL_Y == ty) { double ex = cx0, ey = cy0, ew = cw[c], eh = rh; snap(&ex, &ey, &ew, &eh); cairo_save(cr); cairo_translate(cr, ex + ew / 2, ey + eh / 2); cairo_scale(cr, ew / 2, eh / 2);
+				cairo_arc(cr, 0, 0, 1, 0, 2 * M_PI); cairo_restore(cr); srca(cr, ca(accent(), 1)); cairo_fill(cr); col = cx("#ffffff", 1); }
+			int wt = ev ? 700 : 400; double tw = css_width(cr, s, UIFAM, wt, 12), tx = cx0 + (cw[c] - tw) / 2; css_text(cr, s, UIFAM, wt, 12, tx, cy0 + 4, l12, col, 0);
+			if (ev) { /* (text-decoration: underline, at the font's own place and thickness) */
+				PangoLayout *pl = css_layout(cr, s, UIFAM, wt, 12); PangoFontMetrics *fm = pango_context_get_metrics(pango_layout_get_context(pl), pango_layout_get_font_description(pl), NULL);
+				double up_ = pango_font_metrics_get_underline_position(fm) / (double)PANGO_SCALE, th = fmax(1, round(pango_font_metrics_get_underline_thickness(fm) / (double)PANGO_SCALE)); pango_font_metrics_unref(fm);
+				double a, d; css_metrics(pl, &a, &d); g_object_unref(pl); double base = round(cy0 + 4 + floor((l12 - (a + d)) / 2) + a);
+				cairo_rectangle(cr, tx, round(base - up_), tw, th); srca(cr, col); cairo_fill(cr); }
+			fl_btn(key, cx0, cy0, cw[c], rh); }
+		y += (1 + rows) * rh + 8;
+		if (!nu) css_text(cr, "No upcoming events", UIFAM, 400, 12, x, y, l12, (RGBA){ fg.r, fg.g, fg.b, .7 }, 0);
+		for (int i = 0; i < nu; i++) { char t[400]; snprintf(t, sizeof t, "📅 %.11s %.11s%s— %.159s", up[i].d, up[i].t, up[i].t[0] ? " " : "", up[i].title); css_text(cr, t, UIFAM, 400, 12, x, y + i * l12, l12, fg, W); }
+		y += (nu ? nu : 1) * l12 + 8;
+		fl_button(cr, "Open Calendar", x, y, W, bh, FLHOV >= 0 && !strcmp(FLBK[FLHOV], "open"), dark); fl_btn("open", x, y, W, bh);
+		return;
+	}
+	/* the volume (.vp .svp) */
+	double l12 = fl_lh(cr, 400, 12), l11 = fl_lh(cr, 400, 11), lb = fl_lh(cr, 700, 12);
+	FLW = 210 + 24 + 2; FLH = 10 + lb + 6 + 20 + 8 + 19 + 8 + l11 + 10 + 2;
+	{ double bx = VOLB[0], by = VOLB[1] + (top ? TOPRES : SH - BARH) / Z, bw = VOLB[2], bh = VOLB[3];
+		FLX = bx + bw / 2 - FLW / 2; FLY = top ? by + bh + 8 : by - FLH - 8; FLX = fmax(4, fmin(vw - FLW - 4, FLX)); FLY = fmax(4, fmin(vh - FLH - 4, FLY)); }
+	if (!draw) return;
+	Box b; memset(&b, 0, sizeof b); b.bg = cx("#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 10; shd_add(&b, 0, 10, 26, cx("#000000", .3), 0); box_paint(cr, FLX, FLY, FLW, FLH, &b);
+	RGBA ink = cx("#111111", 1); double x = FLX + 13, y = FLY + 11;
+	css_text(cr, "Volume", UIFAM, 700, 12, x, y, lb, ink, 0); y += lb + 6;
+	/* the range (Chromium's: an 8 px track, #efefef with a #b2b2b2 edge, the value's part #0075ff, a 16 px thumb) */
+	{ double rx = x + 2, ry = y + 2, rw = 154, v = FLVOL < 0 ? 0 : FLVOL / 100.0, tc = rx + 8 + (rw - 16) * v;
+		Box t; memset(&t, 0, sizeof t); t.bg = cx("#efefef", 1); t.bw = 1; t.bc = cx("#b2b2b2", 1); t.rad = 4; box_paint(cr, rx, ry + 4, rw, 8, &t);
+		cairo_save(cr); cairo_rectangle(cr, rx - 1, ry, tc - rx + 1, 16); cairo_clip(cr); Box f; memset(&f, 0, sizeof f); f.bg = cx("#0075ff", 1); f.bw = 1; f.bc = cx("#3b75ba", 1); f.rad = 4; box_paint(cr, rx, ry + 4, rw, 8, &f); cairo_restore(cr);
+		cairo_arc(cr, tc, ry + 8, 8, 0, 2 * M_PI); srca(cr, cx("#0075ff", 1)); cairo_fill(cr); fl_btn("range", rx, ry, rw, 16);
+		char vt[16]; if (FLMUTE) snprintf(vt, sizeof vt, "Muted"); else snprintf(vt, sizeof vt, "%d%%", FLVOL < 0 ? 0 : FLVOL);
+		double tw = css_width(cr, vt, UIFAM, 400, 12); css_text(cr, vt, UIFAM, 400, 12, x + 210 - tw, y + (20 - l12) / 2, l12, ink, 0); }
+	y += 20 + 8;
+	/* Mute (a checkbox as Chromium draws one, 13 px, 3 px 3 px 3 px 4 px around it) */
+	{ double bx = x + 4, by = y + 3; Box c; memset(&c, 0, sizeof c); c.bg = cx(FLMUTE ? "#0075ff" : "#ffffff", 1); c.bw = 1; c.bc = cx(FLMUTE ? "#0075ff" : "#767676", 1); c.rad = 2; box_paint(cr, bx, by, 13, 13, &c);
+		if (FLMUTE) { cairo_move_to(cr, bx + 3, by + 6.5); cairo_line_to(cr, bx + 5.5, by + 9); cairo_line_to(cr, bx + 10, by + 4); cairo_set_source_rgb(cr, 1, 1, 1); cairo_set_line_width(cr, 1.8); cairo_stroke(cr); }
+		double a, d; a = css_ascent(cr, UIFAM, 400, 12, &d); css_text(cr, " Mute", UIFAM, 400, 12, bx + 13 + 3, by + 13 - a, a + d, ink, 0);   /* (the words' baseline on the box's bottom edge, as Chromium lines them up) */ fl_btn("mute", x, y, 210, 19); }
+	y += 19 + 8;
+	{ double tw = css_width(cr, "Desktop sounds…", UIFAM, 400, 11), a, d; a = css_ascent(cr, UIFAM, 400, 11, &d); RGBA bl = cx("#0000ee", 1);
+		css_text(cr, "Desktop sounds…", UIFAM, 400, 11, x, y, l11, bl, 0); cairo_rectangle(cr, x, round(y + a) + 1, tw, 1); srca(cr, bl); cairo_fill(cr); fl_btn("sounds", x, y, 210, l11); }
+}
+static gboolean fl_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
+{
+	(void)wd; (void)d; if (FLBG) { gdk_cairo_set_source_pixbuf(cr, FLBG, 0, 0); cairo_paint(cr); }
+	cairo_translate(cr, -FLWX, -FLWY); cairo_scale(cr, Z, Z); fl_layout(cr, 1); return TRUE;
+}
+static void fl_close(void)
+{
+	if (FLWIN && gtk_widget_get_visible(FLWIN)) { gdk_seat_ungrab(gdk_display_get_default_seat(gdk_display_get_default())); gtk_widget_hide(FLWIN); }
+	if (FLBG) { g_object_unref(FLBG); FLBG = NULL; } FLK = FL_NONE; FLHOV = FLPRESS = -1; FLDRAG = 0; state_write();
+}
+static void fl_volume_set(const char *q) { char p[80]; snprintf(p, sizeof p, "/api/volume?%s", q); JV *v = NULL; GByteArray *b; if (http("POST", p, NULL, 0, &b) == 200 && b) { v = jparse((char *)b->data); }
+	if (b) g_byte_array_free(b, TRUE); if (v && jbool(v, "ok")) { VOL = FLVOL = (int)jnum(v, "volume", FLVOL); MUTED = FLMUTE = jbool(v, "muted"); bar_redraw(); } jfree(v); }
+static void fl_range(double px) { double x = (px + FLWX) / Z; int v = FLVOL; for (int i = 0; i < NFLB; i++) if (!strcmp(FLBK[i], "range")) v = (int)lround((x - FLB[i].x - 8) / (154 - 16) * 100);
+	v = CLAMP(v, 0, 100); if (v == FLVOL && !FLMUTE) return; FLVOL = v; FLMUTE = 0; gtk_widget_queue_draw(FLAREA); char q[24]; snprintf(q, sizeof q, "set=%d", v); fl_volume_set(q); }
+static void fl_act(const char *k, int dbl)
+{
+	if (!strcmp(k, "prev")) { if (--FL_M < 1) { FL_M = 12; FL_Y--; } }
+	else if (!strcmp(k, "next")) { if (++FL_M > 12) { FL_M = 1; FL_Y++; } }
+	else if (!strcmp(k, "open")) { fl_close(); app_open("calendar", NULL); return; }
+	else if (k[0] >= '0' && k[0] <= '9') { if (dbl) { char ex[40]; snprintf(ex, sizeof ex, "&day=%s", k); fl_close(); app_open_ex("calendar", NULL, ex, 0); } return; }
+	else if (!strcmp(k, "mute")) { char q[16]; snprintf(q, sizeof q, "muted=%d", !FLMUTE); fl_volume_set(q); }
+	else if (!strcmp(k, "sounds")) { fl_close(); tb_settings("vol"); return; }
+	if (FLAREA) gtk_widget_queue_draw(FLAREA); state_write();
+}
+static void fl_resize(void);
+static gboolean fl_press(GtkWidget *w, GdkEventButton *e, gpointer d)
+{
+	(void)w; (void)d; double x = (e->x + FLWX) / Z, y = (e->y + FLWY) / Z;
+	if (x < FLX || x >= FLX + FLW || y < FLY || y >= FLY + FLH) {
+		if (e->type != GDK_BUTTON_PRESS) return TRUE;
+		/* (a click elsewhere closes it; on the taskbar it goes on: another of the tray's buttons, not this one's again) */
+		int kind = FLK; fl_close();
+		int top = !strcmp(S.tb, "top"), by = top ? TOPRES : SH - BARH; double rx = e->x_root, ry = e->y_root - by;
+		/* (the clock's date is not the clock's own element: there the page's calendar closes and opens again, at this month) */
+		if (BAR && ry >= 0 && ry < BARH && e->button == 1) { int h = hit_at(rx, ry); int date = h >= 0 && !strcmp(HITS[h].kind, "clock") && rx / Z >= CLKD[0] && rx / Z < CLKD[1];
+			if (h >= 0 && (date || !((kind == FL_CAL && !strcmp(HITS[h].kind, "clock")) || (kind == FL_VOL && !strcmp(HITS[h].kind, "vol"))))) bar_click(h); }   /* (at once: the button's release does not come to the taskbar after the grab) */
+		return TRUE; }
+	int i = fl_at(e->x, e->y); if (e->button != 1 || i < 0) return TRUE;
+	if (e->type == GDK_2BUTTON_PRESS) { fl_act(FLBK[i], 1); return TRUE; }
+	if (e->type != GDK_BUTTON_PRESS) return TRUE;
+	if (!strcmp(FLBK[i], "range")) { FLDRAG = 1; fl_range(e->x); return TRUE; }
+	FLPRESS = i; return TRUE;
+}
+static gboolean fl_release(GtkWidget *w, GdkEventButton *e, gpointer d)
+{
+	(void)w; (void)d; if (FLDRAG) { FLDRAG = 0; return TRUE; } int i = fl_at(e->x, e->y), p = FLPRESS; FLPRESS = -1;
+	if (i >= 0 && i == p) { char k[16]; snprintf(k, sizeof k, "%s", FLBK[i]); fl_act(k, 0); if (FLK) fl_resize(); }
+	return TRUE;
+}
+static gboolean fl_motion(GtkWidget *w, GdkEventMotion *e, gpointer d)
+{
+	(void)w; (void)d; if (FLDRAG) { fl_range(e->x); return TRUE; }
+	int h = fl_at(e->x, e->y); if (h >= 0 && (!strcmp(FLBK[h], "range") || (FLBK[h][0] >= '0' && FLBK[h][0] <= '9'))) h = -1;
+	if (h != FLHOV) { FLHOV = h; gtk_widget_queue_draw(FLAREA); }
+	GdkWindow *g = gtk_widget_get_window(FLWIN); if (g) { static GdkCursor *ptr; if (!ptr) ptr = gdk_cursor_new_from_name(gdk_display_get_default(), "pointer"); int k = fl_at(e->x, e->y); gdk_window_set_cursor(g, k >= 0 && !strcmp(FLBK[k], "sounds") ? ptr : NULL); }
+	return TRUE;
+}
+/* (its window: the box and its shadow; what is behind copied, there being no compositor) */
+static void fl_resize(void)
+{
+	cairo_surface_t *t = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 4, 4); cairo_t *c = cairo_create(t); fl_layout(c, 1); cairo_destroy(c); cairo_surface_destroy(t);   /* (its size, and its buttons' places) */
+	int x0 = (int)fmax(0, floor((FLX - 40) * Z)), y0 = (int)fmax(0, floor((FLY - 40) * Z)), x1 = (int)fmin(SW, ceil((FLX + FLW + 40) * Z)), y1 = (int)fmin(SH, ceil((FLY + FLH + 60) * Z));
+	int same = FLBG && FLWX == x0 && FLWY == y0 && gdk_pixbuf_get_width(FLBG) == x1 - x0 && gdk_pixbuf_get_height(FLBG) == y1 - y0;
+	if (!same) { int vis = FLWIN && gtk_widget_get_visible(FLWIN); if (vis) gtk_widget_hide(FLWIN);   /* (the copy of what is behind without the box itself) */
+		if (vis) { GdkDisplay *dp = gdk_display_get_default(); gdk_display_sync(dp); }
+		if (FLBG) g_object_unref(FLBG); FLWX = x0; FLWY = y0; FLBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), x0, y0, x1 - x0, y1 - y0);
+		gtk_widget_set_size_request(FLAREA, x1 - x0, y1 - y0); gtk_window_resize(GTK_WINDOW(FLWIN), x1 - x0, y1 - y0); gtk_window_move(GTK_WINDOW(FLWIN), x0, y0);
+		if (vis) { gtk_widget_show_all(FLWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(FLWIN)));
+			gdk_seat_grab(gdk_display_get_default_seat(gdk_display_get_default()), gtk_widget_get_window(FLWIN), GDK_SEAT_CAPABILITY_ALL, FALSE, NULL, NULL, NULL, NULL); } }
+	gtk_widget_queue_draw(FLAREA); state_write();
+}
+static void fl_open(int kind)
+{
+	if (!USER_ID[0] || LOCKED) return; int was = FLK; fl_close(); cm_close(); menu_hide(); if (was == kind) return;   /* (its button again: closed) */
+	if (!FLWIN) { FLWIN = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(FLWIN), "Pop-up"); FLAREA = gtk_drawing_area_new();
+		/* (the pointer grabbed for the window itself, not its owner's other windows: a click anywhere comes here, as the page's pointerdown) */
+		gtk_widget_add_events(FLWIN, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK); gtk_container_add(GTK_CONTAINER(FLWIN), FLAREA);
+		g_signal_connect(FLAREA, "draw", G_CALLBACK(fl_draw), NULL); g_signal_connect(FLWIN, "button-press-event", G_CALLBACK(fl_press), NULL);
+		g_signal_connect(FLWIN, "button-release-event", G_CALLBACK(fl_release), NULL); g_signal_connect(FLWIN, "motion-notify-event", G_CALLBACK(fl_motion), NULL); }
+	FLK = kind; FLHOV = FLPRESS = -1;
+	if (kind == FL_CAL) { GDateTime *n = fl_now(); FL_Y = g_date_time_get_year(n); FL_M = g_date_time_get_month(n); g_date_time_unref(n); }
+	else { JV *v = jget("/api/volume"); if (v && jbool(v, "ok")) { FLVOL = VOL = (int)jnum(v, "volume", -1); FLMUTE = MUTED = jbool(v, "muted"); } else { FLVOL = VOL; FLMUTE = MUTED; } jfree(v); }
+	if (FLBG) { g_object_unref(FLBG); FLBG = NULL; }
+	fl_resize(); gtk_widget_show_all(FLWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(FLWIN)));
+	gdk_seat_grab(gdk_display_get_default_seat(gdk_display_get_default()), gtk_widget_get_window(FLWIN), GDK_SEAT_CAPABILITY_ALL, FALSE, NULL, NULL, NULL, NULL); state_write();
+}
+
 /* ------------------------------------------------------------------ the development link (1.5.9 step 7)
    While the development link is on (Settings › Security › Development link, devlink40.js) the page drew a red banner
    over everything, and with "Ask first" asked about each command. In one-app windows the page no longer draws them (the
@@ -3288,6 +3502,9 @@ static void state_write(void)
 		for (int i = 0; i < NCMI; i++) { if (!CMIT[i].sep) g_string_append_printf(s, "cmitem %d %d %d %s|%s\n", (int)lround((CMX + 5 + 50) * Z), (int)lround((ry + 12) * Z), CMIT[i].dis, CMIT[i].act, CMIT[i].label); ry += cm_row_h(&CMIT[i]); } }
 	g_string_append_printf(s, "dialog %s %s|%s\n", DGK == DLG_RENAME ? "rename" : DGK == DLG_OPENWITH ? "openwith" : "-", DGK ? DGNAME : "-", DGMSG);
 	for (int i = 0; DGK && i < NDGB; i++) g_string_append_printf(s, "dgbtn %d %d %d\n", i, (int)lround((DGB[i].x + DGB[i].w / 2) * Z), (int)lround((DGB[i].y + DGB[i].h / 2) * Z));
+	if (FLK) { g_string_append_printf(s, "fly %s %d %d %d %d %d-%02d %d %d\n", FLK == FL_CAL ? "cal" : "vol", (int)lround(FLX * Z), (int)lround(FLY * Z), (int)lround(FLW * Z), (int)lround(FLH * Z), FL_Y, FL_M, FLVOL, FLMUTE);
+		for (int i = 0; i < NFLB; i++) g_string_append_printf(s, "flybtn %s %d %d\n", FLBK[i], (int)lround((FLB[i].x + FLB[i].w / 2) * Z), (int)lround((FLB[i].y + FLB[i].h / 2) * Z)); }
+	else g_string_append(s, "fly -\n");
 	g_string_append_printf(s, "devlink %d %d\ndlask %s\n", DL_ON && DLBAN && gtk_widget_get_visible(DLBAN), TOPRES, DLASK && gtk_widget_get_visible(DLASK) ? DL_PEND : "-");
 	char tmp[600]; snprintf(tmp, sizeof tmp, "%s.tmp", STATEF); g_file_set_contents(tmp, s->str, s->len, NULL); rename(tmp, STATEF); g_string_free(s, TRUE);
 }
