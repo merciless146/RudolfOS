@@ -25,7 +25,7 @@ done
 [ "$(git -C "$W/bb" rev-parse HEAD 2>/dev/null)" = "$BB_COMMIT" ] || { echo "busybox 1_36_1 could not be fetched"; exit 1; }
 cp systools/busybox.config "$W/bb/.config"; make -C "$W/bb" -s -j$(nproc) >/dev/null 2>&1; mkdir -p initramfs/bin; cp "$W/bb/busybox" initramfs/bin/
 gcc -Os -static -nostdlib -fno-builtin -fno-stack-protector -fno-asynchronous-unwind-tables -o initramfs/bin/rudolf-kexec sys/rudolf-kexec.c && strip initramfs/bin/rudolf-kexec
-gcc -Os -static -o initramfs/bin/rudolf-verity sys/rudolf-verity.c && strip initramfs/bin/rudolf-verity
+. systools/hardflags.sh; gcc -Os $HARD_STATIC -o initramfs/bin/rudolf-verity sys/rudolf-verity.c && strip initramfs/bin/rudolf-verity
 cp trusted-keys.txt initramfs/etc/rudolf-keys
 file initramfs/bin/busybox initramfs/bin/rudolf-kexec | grep -q "ARM aarch64" || { echo "the initramfs programs are not ARM64"; exit 1; }
 export SB_CERT=$(realpath boot/sb/rudolf-sb.crt)
