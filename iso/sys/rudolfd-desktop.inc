@@ -414,6 +414,25 @@ static int dpw_check(const char *h, const char *pw)
 static char *dbody_field(struct req *r, const char *k) { return r->body && r->blen ? dj_str(dj_get(r->body, k)) : NULL; }
 static void dfree_secret(char *p) { if (p) { explicit_bzero(p, strlen(p)); free(p); } }
 
+/* 1.5.9 (plan 15.4): is NAME an administrator and PW its password? 0 yes; else 403 (or 429 after five failures in a row,
+   as the sign-in) with the reason in why. For what needs an administrator checked by rudolfd itself (the development link) */
+static int desk_admin_check(const char *n, const char *pw, char *why, size_t wn)
+{
+	int w = dfail_wait();
+	if (w) { snprintf(why, wn, "Too many failed attempts. Please wait %d seconds and try again.", w); return 429; }
+	dls l; if (!dls_open(&l)) { snprintf(why, wn, "no accounts are set up"); return 403; }
+	char *list = dls_accounts(&l); const char *a = list && n ? dacct_find(list, n) : NULL; int rc = 403;
+	char *role = a ? dj_str(dj_get(a, "r")) : NULL, *h = a ? dj_str(dj_get(a, "h")) : NULL;
+	const char *pkq = a ? dj_get(a, "pk") : NULL;
+	if (!a || !role || strcmp(role, "admin")) snprintf(why, wn, "only an administrator can do this");
+	else if (pkq && *dj_ws(pkq) != 'n') snprintf(why, wn, "this administrator signs in with a security key: use an administrator with a password");
+	else { int st = dpw_check(h, pw);
+		if (st == -2) snprintf(why, wn, "this administrator's password is from an older Rudolf OS: sign in with it once first");
+		else if (st) { snprintf(why, wn, "Wrong password."); dfail_note(0); health_add("signin", "wrong administrator password for %.100s (development link)", n); }
+		else { rc = 0; dfail_note(1); } }
+	free(role); free(h); free(list); dls_close(&l); return rc;
+}
+
 static void api_desktop_login(struct req *r)
 {
 	int w = dfail_wait();

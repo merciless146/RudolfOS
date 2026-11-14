@@ -220,13 +220,15 @@ function shutdownDlg(){const o=document.createElement('div');o.className='rmodal
    else{say(x.message);o.querySelectorAll('button').forEach(b=>b.disabled=false)}return false}};
   if(!(await go(e.target.dataset.f==a))){return}if(a=='suspend'){o.remove();if(!SESSION)showLogin()}}}
 /* ---------- administrator permission (UAC / polkit style) ---------- */
-function elevate(reason){return new Promise(res=>{if(window.__elevTrust&&isAdmin()&&Date.now()-__elevTrust<120000)return res(true);
+/* (1.5.9, plan 15.4: elevate(reason,{cred:1}) answers {n,p}, the administrator and the password, for rudolfd to check
+   itself, and never trusts a recent approval) */
+function elevate(reason,opt){const cred=opt&&opt.cred;return new Promise(res=>{if(!cred&&window.__elevTrust&&isAdmin()&&Date.now()-__elevTrust<120000)return res(true);
  const admins=ACCTS.filter(a=>a.r=='admin');const o=document.createElement('div');o.className='rmodal';
  o.innerHTML=`<div class='rmbox' role='alertdialog' aria-label='Administrator permission'><h3>🛡️ Administrator permission</h3><p class='rmr'></p><div class='r2'><label>Account</label><select class='ea'></select><label>Password</label><input class='ep' autocomplete='off'></div><div class='rmmsg'></div><div class='rmrow'><button class='en'>Cancel</button><button class='ey pri'>Allow</button></div></div>`;
  o.querySelector('.rmr').textContent=reason;const sel=o.querySelector('.ea');admins.forEach(a=>{const op=document.createElement('option');op.textContent=a.n;op.value=a.n;sel.appendChild(op)});if(isAdmin())sel.value=USER.n;
  const P=maskInput(o.querySelector('.ep'));document.body.appendChild(o);setTimeout(()=>o.querySelector('.ep').focus(),30);
  const done=v=>{o.remove();res(v)};o.querySelector('.en').onclick=()=>done(false);
- const ok=async()=>{const a=admins.find(x=>x.n==sel.value);if(a&&await pwCheck(a,P.get())){logEvt('sys',`${a.n} approved: ${reason}`);if(isAdmin()&&a===USER)window.__elevTrust=Date.now();done(true)}else{o.querySelector('.rmmsg').textContent='Wrong password.';P.clear();sfx('error')}};
+ const ok=async()=>{const a=admins.find(x=>x.n==sel.value);if(a&&await pwCheck(a,P.get())){logEvt('sys',`${a.n} approved: ${reason}`);if(cred)return done({n:a.n,p:P.get()});if(isAdmin()&&a===USER)window.__elevTrust=Date.now();done(true)}else{o.querySelector('.rmmsg').textContent='Wrong password.';P.clear();sfx('error')}};
  o.querySelector('.ey').onclick=ok;o.querySelector('.ep').addEventListener('keydown',e=>{if(e.key=='Enter')ok();if(e.key=='Escape')done(false)})})}
 /* ---------- lock screen, screensaver, idle, sleep ---------- */
 let LOCKED=false,lastInput=Date.now(),SAVER=null,UNLOCKED_AT=0;

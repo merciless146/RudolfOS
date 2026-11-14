@@ -153,6 +153,20 @@ ok('with no record of what was done, only the command without a result runs (1.4
 ok('...the earlier ones (restarts among them) are not run again', ctl('/_powered')['powered'] == 1 and json.loads(files()['res/000001.json'])['stdout'] == 'hello\n', ctl('/_powered'))
 os.kill(d.pid, signal.SIGTERM); d.wait(15)
 
+# ---- 1.5.9 (plan 15.4): off by itself after a time without a command (4 hours; here 12 seconds)
+E3 = dict(ENV, RUDOLF_DEVLINK_IDLE='12')
+def start3():
+    try: os.remove(f'{RUN}/stop')
+    except FileNotFoundError: pass
+    return subprocess.Popen([BIN, 'run'], env=E3, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+config(); d = start3(); time.sleep(2)
+st = statusj(); ok('15.4: the status says when it ends without a command', st.get('idleEnds', 0) - time.time() > 2, st)
+d.wait(30)
+ok('15.4: no command for the time: it ends by itself, is off, and says why (for the notification)', d.poll() is not None and 'on=0' in open(f'{DIR}/config').read() and 'without a command' in statusj().get('state', ''), statusj())
+config(); d = start3(); time.sleep(4); cmd(25, kind='sh', script='echo keepalive'); r = result(25); time.sleep(11)
+ok('15.4: ...a command starts the time again', r and r['stdout'] == 'keepalive\n' and d.poll() is None, (r, statusj()))
+d.wait(30); ok('...and it ends that much later', d.poll() is not None and 'without a command' in statusj().get('state', ''), statusj())
+
 # ---- the token
 leaks = [k for k, v in files().items() if TOKEN.encode() in v]
 for root, _, fs in os.walk(T):
@@ -165,7 +179,7 @@ for root, _, fs in os.walk(T):
 ok('the token is in no result, status, log or state file', not leaks, leaks)
 ok('the token file is readable by its owner only', oct(os.stat(f'{DIR}/token').st_mode & 0o777) == '0o600')
 lines = open(f'{DIR}/log').read().strip().split('\n')
-ok('the log has every command, its result and who allowed it', len(lines) >= 19 and all('"approved"' in l for l in lines), len(lines))
+ok('the log has every command, its result and who allowed it', len(lines) >= 20 and all('"approved"' in l for l in lines), len(lines))
 
 # ---- 1.5.8 (4.2): Ask first with no desktop running: answered at once, not run
 hbf = f'{T}/heartbeat'; open(hbf, 'w').write('1')

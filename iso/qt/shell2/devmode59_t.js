@@ -5,7 +5,7 @@ const WWW = path.join(__dirname, '../../../iso/www');
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 500) : '')) };
 const KEY = 'kRBDN3Ys6i49gblu504quUt7NZHGZj/kexNTb6uoenY=';   // (a public key: the Library's, as a stand-in developer key)
 let dev = false, signer = 'official'; const posts = [];
-const status = () => ({ok: true, persistent: true, booted: 'a', current: {serial: 2026111301, version: '1.5.9'}, state: {good: 'a'}, slots: {a: {complete: true}, b: {}, r: {complete: true}}, canUpdate: true, signer, signerKey: signer == 'official' ? 'UqTqXIW8vtITjwoMix+MkFVZ0GAee9+kOS1WBIs/3mo=' : KEY, developer: dev, recoveryOfficial: true, url: dev ? 'https://dev.example.com/beta' : 'https://merciless146.github.io/RudolfOS/stable', auto: true, checked: 0, available: null});
+const status = () => ({ok: true, persistent: true, booted: 'a', current: {serial: 2026111301, version: '1.5.9', chromium: '158.0.8127.54', kernel: '6.18.63-rudolf', released: '2026-11-13'}, state: {good: 'a'}, slots: {a: {complete: true}, b: {}, r: {complete: true}}, canUpdate: true, signer, signerKey: signer == 'official' ? 'UqTqXIW8vtITjwoMix+MkFVZ0GAee9+kOS1WBIs/3mo=' : KEY, developer: dev, recoveryOfficial: true, url: dev ? 'https://dev.example.com/beta' : 'https://merciless146.github.io/RudolfOS/stable', auto: true, checked: 0, available: null});
 const api = (a, q, m) => { const sp = new URLSearchParams(q || '');
   if (a == 'sys/status') return status();
   if (a == 'sys/developer' && m == 'POST') { posts.push(sp.get('on') == '0' ? 'off' : 'on ' + sp.get('key') + ' ' + sp.get('url')); dev = sp.get('on') != '0'; return {ok: true, message: dev ? 'Developer mode is on: …' : 'Developer mode is off: …'} }
@@ -53,6 +53,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await p.type('.rmodal .ep', 'sesame'); await p.keyboard.press('Enter'); await wait(1200);
   signer = 'official'; await q("(()=>{const o=document.getElementById('abt');o&&o.remove();const d=document.createElement('div');d.id='abt';document.body.appendChild(d);aboutPanel(d);return 1})()"); await wait(800);
   ok('10. off: rudolfd told; About says Official Rudolf OS again', posts.at(-1) == 'off' && /✅ Official Rudolf OS/.test(await q("document.querySelector('#abt .devmab')?.textContent||''")), posts);
+  const ab = await q("document.querySelector('#abt .ab')?.textContent||''");
+  ok('10b. (plan 15.6) About shows the release\'s Chromium, the kernel and the release\'s date', /Chromium158\.0\.8127\.54/.test(ab) && /Linux kernel/.test(ab) && /Released\S*2026/.test(ab.replace(/\s+/g, '')), ab);
   dev = true; signer = 'custom'; d = await panel();
   ok('12. a custom build: "Return to official Rudolf OS" is offered', await q("!!document.querySelector('#dmt .dvr')"));
   await q("document.querySelector('#dmt .dvr').click()"); await wait(300);

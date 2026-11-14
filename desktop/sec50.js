@@ -60,7 +60,9 @@ function healthPanel(c,W){
    if(typeof bzCan=='function'&&bzCan()&&(['crash','browser','memory','fallback','signin'].includes(e.k)||bzIsError(e.m)))bzWhyBtn(r,{t:k[1]+': '+e.m,b:'',k:'error'},{when:e.t*1000});L.appendChild(r)})};
  sel.onchange=draw;c.querySelector('.hlr').onclick=draw;draw();
  /* 1.5.6: Power and battery (power31.js), moved here from System Settings */
- if(typeof pwrPanel=='function')try{pwrPanel(c,W)}catch(e){console.warn(e)}}
+ if(typeof pwrPanel=='function')try{pwrPanel(c,W)}catch(e){console.warn(e)}
+ /* 1.5.9 (plan 15.4): the development link, on or off, since when, its last command (devlink40.js) */
+ if(typeof devlHealthRow=='function')try{devlHealthRow(c)}catch(e){console.warn(e)}}
 /* lines for the system report (account names and addresses are scrubbed by srScrub like the rest) */
 async function hlReportLines(n){const h=await hlGet(n||50);if(!h||!h.events)return[];return h.events.map(e=>`${new Date(e.t*1000).toISOString().replace(/\.\d+Z$/,'Z')} ${(HL_KIND[e.k]||['',e.k])[1]}: ${e.m}`)}
 /* the desktop is up: how long the start took (uptime when the desktop page first came up after start-up) */
