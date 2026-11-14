@@ -16182,6 +16182,11 @@ if(ONEAPP&&typeof BroadcastChannel=='function'){const FSB=new BroadcastChannel('
    if(rec&&rec.ct&&KEY)o=JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:rec.iv},rec.k=='f'?KEY:(PKEY||KEY),rec.ct)));else if(rec&&rec.plain)o=JSON.parse(rec.plain);
    if(o&&isDir(o)){for(const k of Object.keys(HOME))delete HOME[k];Object.assign(HOME,o)}}
   EXPL.forEach(f=>{try{f()}catch(x){}})}catch(e){console.warn('one-app: the files again',e)}}}
+/* (1.6.0 Part 12, item 3) the settings are one: on Standard every window is one page with one S; here a page that saved its settings
+   (Settings, or the native shell's quick settings through a page of their own) changes the others too, as on Standard (WebKit tells
+   the other pages of a change to the storage they share) */
+if(ONEAPP)addEventListener('storage',e=>{try{if(!USER||e.key!='bd95set:'+uid()||!e.newValue)return;const us=JSON.parse(e.newValue);for(const k in us)S[k]=us[k];SC=cln(S);
+ try{applySet()}catch(x){}try{a11yApply()}catch(x){}try{themeApply()}catch(x){}try{ncBadge()}catch(x){}}catch(x){console.warn('one-app: the settings again',x)}});
 /* (an app's own window is not the desktop: its icons' grid is the screen's, not the window's, or every window opened, or a page never
    shown, as do-desk's, would squeeze the desktop's places into its own size and keep them) */
 if(ONEAPP&&typeof gridInfo=='function'){const _gi=gridInfo;gridInfo=function(){const g=_gi();try{const q=ONEAPP.q,zf=parseFloat(document.documentElement.style.zoom)||1,top=document.body.classList.contains('top'),
@@ -16235,9 +16240,20 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
     unpinned (#app=do-pin&k=KEY&on=0|1), the sound muted or not (#app=do-mute) */
  {const q=ONEAPP.q,j=q.get('jump'),sp=q.get('page');
   if(j&&typeof APP_JUMPS=='object'&&APP_JUMPS[ONEAPP.k]){const it=APP_JUMPS[ONEAPP.k]().find(x=>x[0]==j);if(it){OA.want=1;try{it[1]()}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}}
-  if(ONEAPP.k=='settings'&&sp&&typeof settings=='function'){OA.want=1;try{settings(sp)}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}
+  if(ONEAPP.k=='settings'&&sp&&typeof settings=='function'){OA.want=1;try{settings(sp)}catch(e){console.warn(e)}
+   {const at=q.get('at');if(at)setTimeout(()=>{const g=document.getElementById(at);g&&g.scrollIntoView({block:'start'})},300)}   /* (&at=ID: a part of the page shown, as pwrShow shows Power and battery) */setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}
   if(da0=='pin'){try{pinSet(q.get('k')||'',q.get('on')=='1')}catch(e){}return oaFin({})}
-  if(da0=='mute'){try{const m=S.snd&&S.snd.master;if(m){m.on=!m.on;trayVol()}}catch(e){}setTimeout(()=>oaFin({}),400);return}}
+  if(da0=='mute'){try{const m=S.snd&&S.snd.master;if(m){m.on=!m.on;trayVol()}}catch(e){}setTimeout(()=>oaFin({}),400);return}
+  /* (item 3, second part) quick settings' tiles (#app=do-qs&k=WORDS&on=0|1: the page's own tile clicked when it is not so already;
+     the notifications' Do not disturb does as its tile does), the notifications' centre (#app=do-nc&op=clear, or op=dismiss&i=N&at=AT:
+     what its Clear all and ✕ do), Blitzen asked about one (#app=do-why&t=TITLE&b=WORDS: its ⚡ Why?); the battery's button
+     is Settings at its part (#app=settings&page=health&at=pwr31, as pwrShow) */
+  if(da0=='qs'){try{const k=q.get('k')||'',on=q.get('on')=='1';qsClose();qsToggle();const P=document.getElementById('qsp'),b=P&&[...P.querySelectorAll('.qst')].find(x=>x.querySelector('span').textContent==k);
+   if(b&&b.classList.contains('on')!=on)b.click();qsClose()}catch(e){console.warn(e)}setTimeout(()=>oaFin({}),400);return}
+  if(da0=='nc'){try{NC=ld(NCK(),[]);const op=q.get('op');if(op=='clear'){NC=[];svj(NCK(),[])}
+   else if(op=='dismiss'){const i=+q.get('i'),at=+q.get('at');NC=NC.filter((x,j)=>!(j==i&&Math.round(+x.at)==at));svj(NCK(),NC)}}catch(e){console.warn(e)}return oaFin({})}
+  if(da0=='why'){const t=q.get('t')||'',b=q.get('b')||'';OA.want=1;try{bzWhy((t+(b?' — '+b:'')).slice(0,300),{detail:t+(b?'\n'+b:'')})}catch(e){console.warn(e)}
+   setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}}
  /* (1.6.0 Part 12, item 3) a day double-clicked in the calendar under the native shell's clock: the Calendar at that day */
  {const cd=ONEAPP.q.get('day');if(ONEAPP.k=='calendar'&&cd&&/^\d{4}-\d\d-\d\d$/.test(cd))setTimeout(()=>{try{window.__calGo&&__calGo(cd)}catch(e){}},800)}
  const da=da0,act=da?(typeof A=='object'&&typeof A[da]=='function'?A[da]:da=='blitzen'&&typeof blitzenApp=='function'?blitzenApp:null):null;
