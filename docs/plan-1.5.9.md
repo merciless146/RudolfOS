@@ -1213,5 +1213,5 @@ Tests: qt/host/seccheck59_t.py (12, stand-ins for GitHub, the snap store and the
 
 **Status:** planned (2026-11-14). 15.1 first, then 15.2, 15.4, 15.5, 15.6; 15.3 when 15.1 is done (it changes the same
 code). Each in its own PR. (2026-11-14: 15.1, 15.2, 15.4, 15.6 and 15.5 done; 15.3's first and second steps done (the second: X authorization,
-Debian, Wine and Library packages as the account's user), its QEMU check next, as its note says; then Part 12 step 8,
-12.3c.)
+Debian, Wine and Library packages as the account's user), its QEMU check next, as its note says; Part 12 step 8,
+12.3c: its first part done (steps 1-4 and 6), step 5 next, as its note says.)
