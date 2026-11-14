@@ -84,4 +84,13 @@ mkdir -p $ST_PROC/400 $W/mbin; echo ModemManager > $ST_PROC/400/comm; echo 'x In
 printf '#!/bin/sh\n[ "$1" = -L ] && echo "    /org/freedesktop/ModemManager1/Modem/0 [Quectel] EG25"\n' > $W/mbin/mmcli; chmod +x $W/mbin/mmcli
 OUT=$(PATH=$W/mbin:$PATH sh $S); ok "18. ...its rules not read: named" "$(has 'FAIL modem - ModemManager could not read its port rules' && echo 1)" "$OUT"
 : > $ST_RUN/modem.log; OUT=$(PATH=$W/mbin:$PATH sh $S); ok "19. ...found: passes" "$(has 'PASS modem - 1 modem(s) found by ModemManager' && echo 1)" "$OUT"
+# 1.5.9 (plan 8.3): which system runs (a stand-in rudolf-update status)
+OUT=$(ST_UPDATE=$W/none sh $S); ok "20. no system updates (a test disc): skipped" "$(has 'SKIP build - no system updates' && echo 1)" "$OUT"
+U=$W/upd; st() { printf '#!/bin/sh\necho %s\n' "'$1'" > $U; chmod +x $U; }
+st '{"ok":true,"current":{"serial":2026111414,"version":"1.5.9"},"signer":"official","signerKey":"UqTqXIW8vtITjwoMix+MkFVZ0GAee9+kOS1WBIs/3mo=","developer":false,"recoveryOfficial":true}'
+OUT=$(ST_UPDATE=$U sh $S); ok "21. ...the official build: passes, says so" "$(has 'PASS build - Official Rudolf OS$' && echo 1)" "$OUT"
+st '{"ok":true,"signer":"custom","signerKey":"kRBDN3Ys6i49gblu504quUt7NZHGZj/kexNTb6uoenY=","developer":true,"recoveryOfficial":false}'
+OUT=$(ST_UPDATE=$U sh $S); ok "22. ...a custom build: said with its key, not a failure" "$(has 'PASS build - Custom build, signed by key kRBDN3Ys… in Developer mode; Recovery mode starts the official Rudolf OS' && echo 1)" "$OUT"
+st '{"ok":true,"signer":"unknown","signerKey":null,"developer":false,"recoveryOfficial":false}'
+OUT=$(ST_UPDATE=$U sh $S); ok "23. ...not from a signed release: skipped" "$(has 'SKIP build - not started from a signed release' && echo 1)" "$OUT"
 echo "$NP/$((NP+NF)) passed"; [ $NF = 0 ]
