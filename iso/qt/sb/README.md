@@ -36,3 +36,16 @@ RPK_LIBRARY_KEYS). A Library package installs over the network and from the disc
 removed; one holding a program is refused; a release list signed with the Library key is refused by rudolf-update
 (the real one is accepted); and the health log has a `library` line for each (10 checks). The temporary keys are
 deleted at the end.
+
+## recovery_sb_t.sh (Rudolf OS 1.5.9, plan 8.4)
+
+`SB_PARTS=DIR KERNEL=vmlinuz sh recovery_sb_t.sh`: the official recovery start-up file (`EFI/rudolf/recovery.efi`)
+on OVMF with Secure Boot on (Microsoft's keys and a throwaway TEST certificate added to db with virt-fw-vars). The
+boot files are made by systools/mkefi.sh with TEST keys only (a test Secure Boot key; RUDOLF_TEST_KEYS as the release
+key), the menu set to Recovery mode. KERNEL is a released vmlinuz (a release's asset); recovery.efi gets this tree's
+start-up script, rudolf-verity and rudolf-kexec over its own (RUDOLF_UKI_TEST_INITRD, tests only), and RUDOLFDATA a
+system/r of that kernel and small stand-in layers signed by the test release key. Checks (7): Secure Boot on and the
+kernel locked down; system/r checked file by file and started (kexec of the signed kernel, with an empty initramfs
+of its own), its own start-up running; a changed layer and a list signed by another key refused, nothing started; a
+recovery.efi changed after signing refused by the firmware. About 6 minutes without KVM; RECSB_KEEP=1 keeps its
+folder (with the test keys) for a look.

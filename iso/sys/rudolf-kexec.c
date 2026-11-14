@@ -1,5 +1,9 @@
-/* rudolf-kexec KERNEL "COMMAND LINE" - start another kernel (with its built-in initramfs) without going
+/* rudolf-kexec KERNEL "COMMAND LINE" [INITRD] - start another kernel (with its built-in initramfs) without going
  * through the firmware. The disc's start-up script uses it to hand over to an updated system slot.
+ * 1.5.9 (docs/plan-1.5.9.md 8.4): INITRD, an (empty) initramfs given to the new kernel. A kernel started by the
+ * firmware with an initramfs of the boot loader's (recovery.efi's .initrd section) leaves the firmware's table that
+ * points to it (LINUX_EFI_INITRD) behind, and the new kernel, given none of its own, took that freed memory for an
+ * initramfs and stopped at once ("Cannot find place for new RAMDISK", found in QEMU); one given here is used instead.
  * Needs CONFIG_KEXEC_FILE. Built without a C library (x86-64 and, since 1.5.9, ARM64 system calls), so it adds
  * about 2 KB to the initramfs. GPL-2.0-or-later.   gcc -Os -static -nostdlib -fno-builtin -fno-stack-protector -o rudolf-kexec rudolf-kexec.c */
 #if defined(__aarch64__)
@@ -38,10 +42,12 @@ static void say(const char *s) { sc(SYS_write, 2, (long)s, len(s), 0, 0); }
 __attribute__((used)) void cmain(long *sp)
 {
 	long argc = sp[0]; char **argv = (char **)(sp + 1);
-	if (argc < 3) { say("usage: rudolf-kexec KERNEL CMDLINE\n"); sc(SYS_exit, 2, 0, 0, 0, 0); }
+	if (argc < 3) { say("usage: rudolf-kexec KERNEL CMDLINE [INITRD]\n"); sc(SYS_exit, 2, 0, 0, 0, 0); }
 	long k = OPEN_RO(argv[1]);
 	if (k < 0) { say("rudolf-kexec: cannot open the kernel\n"); sc(SYS_exit, 1, 0, 0, 0, 0); }
-	long r = sc(SYS_kexec_file_load, k, -1, len(argv[2]) + 1, (long)argv[2], 4 /* KEXEC_FILE_NO_INITRAMFS */);
+	long i = argc > 3 ? OPEN_RO(argv[3]) : -1;
+	if (argc > 3 && i < 0) { say("rudolf-kexec: cannot open the initramfs\n"); sc(SYS_exit, 1, 0, 0, 0, 0); }
+	long r = sc(SYS_kexec_file_load, k, i, len(argv[2]) + 1, (long)argv[2], i < 0 ? 4 /* KEXEC_FILE_NO_INITRAMFS */ : 0);
 	if (r) { say("rudolf-kexec: the kernel refused the new kernel\n"); sc(SYS_exit, 1, 0, 0, 0, 0); }
 	sc(SYS_sync, 0, 0, 0, 0, 0);
 	sc(SYS_reboot, 0xfee1dead, 672274793, 0x45584543 /* LINUX_REBOOT_CMD_KEXEC */, 0, 0);

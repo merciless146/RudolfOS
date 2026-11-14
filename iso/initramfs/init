@@ -49,6 +49,13 @@ case "$ENTRY" in
 	rudolf-ram*) CMD="$CMD rudolf.toram=1";;
 	rudolf-debug*) [ $SB = 1 ] && say "Rudolf OS: debug start is not available with Secure Boot on; starting normally." || CMD="$CMD rudolf.debug=1";;
 esac
+# 1.5.9 (plan 8.4): the official recovery start-up file (/EFI/rudolf/recovery.efi, the boot menu's Recovery mode) is
+# this kernel with a second, small initramfs inside the same signed file: /etc/rudolf-recovery (this mark) and
+# /etc/rudolf-official-key, the official release key alone. It starts only the official recovery system (system/r),
+# after checking it (official_check below), whatever the menu entry, and never asks Developer mode's extra key
+# (/persist/etc/rudolf/extra-keys) or the update address.
+OFFREC=""; OKEY=/etc/rudolf-official-key
+if [ -e /etc/rudolf-recovery ]; then OFFREC=1; has rudolf.recovery=1 || CMD="$CMD rudolf.recovery=1"; fi
 if [ -e /dev/fb0 ]; then
 	set -- $(tr , ' ' < /sys/class/graphics/fb0/virtual_size)
 	printf 'IMG_LEFT=%d\nIMG_TOP=%d\n' $(( (${1:-640} - 640) / 2 )) $(( (${2:-360} - 360) / 2 )) > /tmp/splash.ini
@@ -300,7 +307,61 @@ if [ -n "$REC" ] && [ -z "$SLOT" ] && [ -n "$MEDIA" ] && is_usb "$(disk_of "$MED
 		[ -n "$PERSIST" ] && mount -t ext4 -o rw,noatime "$PERSIST" /mnt/persist 2>/dev/null
 	done
 fi
-if [ -z "$SLOT" ] && [ -n "$PERSIST" ] && [ -f $SYSD/state ] && [ -n "$REC" ]; then
+# 1.5.9 (plan 8.4): official_check DIR: DIR's release list signed by the official key alone ($OKEY: never Developer
+# mode's extra key, which is not read here), and every file it lists there (the kernel and the four layers) of exactly
+# its size and SHA-256. RWHY: what is wrong, in plain words.
+official_check() {
+	RD=$1; RWHY=""
+	[ -s $RD/manifest.txt ] && [ -s $RD/manifest.sig ] || { RWHY="it has no signed release list"; return 1; }
+	[ -s $OKEY ] || { RWHY="this start-up file has no official key"; return 1; }
+	if ! rudolf-verity check $RD/manifest.txt $RD/manifest.sig $OKEY; then
+		RWHY="its release list is not signed by the official Rudolf OS key"
+		[ -s /mnt/persist/etc/rudolf/extra-keys ] && RWHY="$RWHY (Developer mode's extra key is not used in Recovery mode)"
+		return 1
+	fi
+	[ "$(head -1 $RD/manifest.txt)" = "rudolf-system 1" ] || { RWHY="its release list is not a Rudolf OS system list"; return 1; }
+	SEEN=" "; TAB=$(printf '\t')
+	while IFS="$TAB" read -r k n sz sh f; do
+		[ "$k" = L ] || continue
+		case "$n" in vmlinuz) RF=$RD/vmlinuz;; base|chromium|desktop|modules) RF=$RD/$n.sfs;; *) RWHY="its release list names an unknown file ($n)"; return 1;; esac
+		case "$SEEN" in *" $n "*) RWHY="its release list names $n twice"; return 1;; esac
+		[ -f "$RF" ] || { RWHY="its file $n is missing"; return 1; }
+		S=$(stat -c %s "$RF" 2>/dev/null)
+		[ "$S" = "$sz" ] || { RWHY="its file $n is not the size its signed list says ($S bytes, the list says $sz)"; return 1; }
+		say "Rudolf OS: checking the official recovery system: $n ($((sz / 1048576)) MB)..."
+		[ "$(sha256sum "$RF" | cut -c1-64)" = "$sh" ] || { RWHY="its file $n was changed (its SHA-256 is not the one in its signed list)"; return 1; }
+		SEEN="$SEEN$n "
+	done < $RD/manifest.txt
+	for n in vmlinuz base chromium desktop modules; do case "$SEEN" in *" $n "*) ;; *) RWHY="its release list does not name $n"; return 1;; esac; done
+	return 0
+}
+# The official recovery start-up file: system/r on this computer's RUDOLFDATA, checked, else nothing (a refusal that
+# says why and how to go on); with no system/r at all, the start drive's own system, only if its release list is
+# signed by the official key (its layers are checked with that key alone below, also with Secure Boot off).
+if [ -n "$OFFREC" ] && [ -z "$SLOT" ]; then
+	if [ -n "$PERSIST" ] && [ -e $SYSD/r ]; then
+		if slot_ok r && official_check $SYSD/r; then
+			cp $SYSD/r/vmlinuz /tmp/vmlinuz
+			NC="$CMD rudolf.slot=r rudolf.official=1"; [ $SB = 1 ] && NC="$NC rudolf.sb=1 lockdown=integrity"
+			if whole "$MEDIA"; then NC="$NC rudolf.mediadisk=$MEDIA"; elif [ -n "$MEDIA" ]; then NC="$NC rudolf.mediadev=$MEDIA"; fi; PU=$(blkid "$PERSIST" 2>/dev/null | sed -n 's/.* UUID="\([^"]*\)".*/\1/p'); [ -n "$PU" ] && NC="$NC rudolf.persist=$PU"
+			say "Rudolf OS: recovery mode - starting the official recovery system (release $(sed -n 's/^serial //p' $SYSD/r/manifest.txt), checked)."
+			note "official recovery: system/r checked -> slot r"; keeplog "handing over to slot r (official recovery)"
+			cd /; umount /mnt/persist; umount_media; sync
+			# (an empty initramfs of its own for the new kernel: this one came from recovery.efi's .initrd, whose firmware
+			# table the new kernel would otherwise take for its own; rudolf-kexec.c)
+			rudolf-kexec /tmp/vmlinuz "$NC" $([ -s /etc/rudolf-kexec-initrd ] && echo /etc/rudolf-kexec-initrd)
+			say "Rudolf OS: the official recovery system could not be started (kexec failed)."; keeplog "official recovery: kexec failed"; fail
+		fi
+		[ -z "$RWHY" ] && RWHY="it is incomplete"
+		say "Rudolf OS: Recovery mode refused the recovery system on this computer (system/r): $RWHY."
+		say "Nothing else is started in its place. Start from a rescue stick made from an official Rudolf OS"
+		say "(Make a stick, or the official image from GitHub) and choose Recovery mode there."
+		keeplog "official recovery refused: $RWHY"; fail
+	fi
+	say "Rudolf OS: no recovery system on this computer's drive: starting the system on this drive, if it is the official one."
+	note "official recovery: no system/r -> the drive's own system, official key only"
+fi
+if [ -z "$SLOT" ] && [ -n "$PERSIST" ] && [ -f $SYSD/state ] && [ -n "$REC" ] && [ -z "$OFFREC" ]; then
 	GOOD=$(st_get good); PREV=$(st_get prev); T=""; FIRST=""
 	# 1.5.9 (plan 8.4): the official recovery system first (slot r with "official": the newest release signed by the
 	# official key that started on this computer, kept by rudolf-update), so Recovery mode is the official Rudolf OS
@@ -400,6 +461,8 @@ elif [ -n "$MEDIA" ] && [ -s /mnt/media/rudolf/manifest.txt ]; then MAN=/mnt/med
 fi
 UNV=""
 mkdir -p /mnt/l
+# (1.5.9, plan 8.4: the official recovery start-up file checks with the official key alone)
+VKEYS=/etc/rudolf-keys; [ -n "$OFFREC" ] && VKEYS=$OKEY
 LOWER=""
 for L in desktop chromium modules base; do
 	F=""
@@ -429,8 +492,11 @@ for L in desktop chromium modules base; do
 	LOOP=$(losetup -f)
 	losetup -r "$LOOP" "$F" || { say "Rudolf OS: the system layer '$L' cannot be read."; [ -n "$SLOT" ] && slot_bad; fail; }
 	DEV=""; WHY="no signed release list"
-	if [ -n "$MAN" ]; then DEV=$(rudolf-verity open "$MAN" "$MSIG" /etc/rudolf-keys "$L" "$LOOP" 2>/tmp/verity.err) || DEV=""; [ -s /tmp/verity.err ] && WHY=$(sed 's/^rudolf-verity: //' /tmp/verity.err | tail -1); fi
+	if [ -n "$MAN" ]; then DEV=$(rudolf-verity open "$MAN" "$MSIG" "$VKEYS" "$L" "$LOOP" 2>/tmp/verity.err) || DEV=""; [ -s /tmp/verity.err ] && WHY=$(sed 's/^rudolf-verity: //' /tmp/verity.err | tail -1); fi
 	if [ -n "$DEV" ] && mount -t squashfs -o ro "$DEV" /mnt/l/$L 2>/dev/null; then :
+	elif [ -n "$OFFREC" ]; then
+		say "Rudolf OS: the system layer '$L' did not pass the check with the official key ($WHY). Recovery mode starts only the official Rudolf OS."
+		fail
 	elif [ $SB = 1 ]; then
 		say "Rudolf OS: the system layer '$L' did not pass the check ($WHY). With Secure Boot on, only a checked system starts."
 		[ -n "$SLOT" ] && slot_bad; fail
