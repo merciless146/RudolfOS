@@ -107,7 +107,7 @@ usb_identify() {
 	[ -n "$vid" ] || return 1
 	dc=$(cat $s/bDeviceClass 2>/dev/null)
 	[ "$dc" = 09 ] && return 1                       # hubs
-	cls=""; drv=0; kb=0; ms=0; joy=0; net=""; wl=0
+	cls=""; drv=0; kb=0; ms=0; joy=0; net=""; wl=0; phone=0
 	for i in $s/*:*; do
 		[ -f $i/bInterfaceClass ] || continue
 		c=$(cat $i/bInterfaceClass); sc=$(cat $i/bInterfaceSubClass); pr=$(cat $i/bInterfaceProtocol)
@@ -116,11 +116,18 @@ usb_identify() {
 		[ "$c" = 03 ] && [ "$pr" = 01 ] && kb=1
 		[ "$c" = 03 ] && [ "$pr" = 02 ] && ms=1
 		[ "$c" = ff ] && [ "$sc" = 5d ] && joy=1          # Xbox controllers
+		# (1.5.9) a phone's USB debugging (ADB: ff/42/01), file transfer (MTP: its interface says so) or photo transfer
+		# (PTP, class 06): apps use these directly (adb, scrcpy, the Files app), no kernel driver is meant to take them.
+		# They counted as "no driver", so plugging a phone in said Rudolf OS had no driver for it (the Vivobook, 2026-11-13)
+		[ "$c$sc$pr" = ff4201 ] && phone=1
+		[ "$c" = 06 ] && phone=1
+		case "$(cat $i/interface 2>/dev/null)" in *MTP*|*mtp*) phone=1;; esac
 		ls $i/input/*/ 2>/dev/null | grep -q '^js' && joy=1
 		for n in $i/net/*; do [ -e "$n" ] && net=1 && [ -e "$n/wireless" -o -e "$n/phy80211" ] && wl=1; done
 	done
 	[ -n "$cls" ] || cls=" $dc"
 	has() { case " $cls " in *" $1 "*) return 0;; esac; return 1; }
+	[ $phone = 1 ] && drv=1
 	if has 08; then kind="USB drive"
 	elif has 01; then kind="Audio device"
 	elif has 0e; then kind="Camera"
@@ -129,6 +136,7 @@ usb_identify() {
 	elif [ $kb = 1 ]; then kind="Keyboard"
 	elif [ $ms = 1 ]; then kind="Mouse"
 	elif has 03; then kind="Input device"
+	elif [ $phone = 1 ] && ! has 06; then kind="Phone"
 	elif has 06; then kind="Phone or camera"
 	elif has 07; then kind="Printer"
 	elif has e0; then kind="Bluetooth adapter"

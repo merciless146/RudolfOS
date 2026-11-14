@@ -27,6 +27,8 @@ usbdev() {  # name hub port vid pid speed ifclass driver product manufacturer
 usbdev 3-3 usb3 3 148f 5370 480 ff no "802.11 n WLAN" Ralink
 usbdev 3-1 usb3 1 0781 5567 480 08 drv "Cruzer Blade" SanDisk
 usbdev 3-2 usb3 3 13d3 3556 12 e0 drv "Bluetooth Radio" Realtek
+# (1.5.9) a phone with USB debugging only (ADB: ff/42/01), as the MediaTek phone on the Vivobook: needs no kernel driver
+usbdev 3-4 usb3 3 0e8d 201c 480 ff no "S24Ultra" MediaTek; echo 42 > $C/usb3/3-4/3-4:1.0/bInterfaceSubClass; echo 01 > $C/usb3/3-4/3-4:1.0/bInterfaceProtocol
 acpi() { local d=$S/bus/acpi/devices/$1; mkdir -p $d; [ -n "$2" ] && echo $2 > $d/status; [ "$3" = drv ] && { mkdir -p $T/i2c/$1; ln -s $S/drivers/x $T/i2c/$1/driver; ln -s $T/i2c/$1 $d/physical_node; }; }
 acpi CSC3551:00 15          # Cirrus amplifier, present, no driver
 acpi PNP0C50:00 15 drv      # the touchpad, with its driver
@@ -44,9 +46,11 @@ ok "not: the bridge, the sensor hub, the touchpad, an absent part, devices with 
 j=$(sh $D unsupported json)
 ok "the JSON is valid and has the four" $(node -e "const j=JSON.parse(process.argv[1]);process.stdout.write(j.ok&&j.devices.length==4&&j.devices.some(d=>d.kind=='Wi-Fi adapter'&&d.id=='148f:5370')?'1':'0')" "$j") "$j"
 l=$(sh $D list)
+ok "1.5.9: a phone with USB debugging (ADB) is not a device without a driver" $([ "$(echo "$o" | grep -c 0e8d)" = 0 ] && echo 1 || echo 0) "$o"
 ok "the device list is valid JSON" $(node -e "JSON.parse(process.argv[1]);process.stdout.write('1')" "$l" 2>/dev/null || echo 0) "$l"
 ok "the dongle: USB 2.0 (480) in a USB 2.0 port (480), no driver" $(has "$l" '"id":"148f:5370","driver":0,"speed":480,"port":480') "$l"
 ok "the drive: USB 2.0 (480) in a USB 3 port (its partner's 10000)" $(has "$l" '"id":"0781:5567","driver":1,"speed":480,"port":10000') "$l"
+ok "1.5.9: ...it is listed as a phone, with its driver (apps use it directly)" $(has "$l" '"kind":"Phone","name":"MediaTek S24Ultra","id":"0e8d:201c","driver":1') "$l"
 ok "the Bluetooth adapter: USB 1.1 (12)" $(has "$l" '"id":"13d3:3556","driver":1,"speed":12') "$l"
 mkdir -p $T/run; cat > $T/health <<'X'
 #!/bin/sh
