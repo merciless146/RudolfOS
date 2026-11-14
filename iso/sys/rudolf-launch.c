@@ -22,7 +22,8 @@
  * Chromium starts with no window; when the last of the shell's windows has closed, Chromium is closed and this exits.
  * (12.3c step 5) The desktop page in each window (http://127.0.0.1:8080/#app=...) gets rudolfNativeOracle(JSON), a
  * DevTools binding on this private pipe (no website tab has it): what the page tells the native desktop, as its
- * rudolfNative message handler does in WebKit, is written to standard output, one line each: "msg JSON".
+ * rudolfNative message handler does in WebKit, is written to standard output, one line each: "msg SESSION JSON" (SESSION:
+ * the page's, for an answer). On CONTROL, "act SESSION ID" runs a notification's own action in that page (a toast's click).
  *
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
@@ -218,6 +219,13 @@ static struct { char params[1400]; int id, tries; long long at; } o_q[32]; stati
 static void o_send(int i) { o_q[i].id = next_id; o_q[i].tries++; send_cmd("Target.createTarget", o_q[i].params); }
 static void o_line(char *l)
 {
+	/* (a toast's click: the notification's own action in the page that sent it) */
+	char sid[80], nid[48];
+	if (sscanf(l, "act %79s %47s", sid, nid) == 2) {
+		if (strspn(sid, "0123456789ABCDEFabcdef") != strlen(sid) || strspn(nid, "0123456789.") != strlen(nid)) return;
+		char p[200]; snprintf(p, sizeof p, "{\"expression\":\"window.__oaToastAct&&__oaToastAct('%s')\",\"userGesture\":true}", nid);
+		int k; send_session(sid, "Runtime.evaluate", p, &k); return;
+	}
 	unsigned w, h; int x, y; char hash[1100] = "";
 	if (sscanf(l, "open %u %u %d %d %1099s", &w, &h, &x, &y, hash) < 4) return;
 	/* (the hash as rudolf-native escapes it: letters, digits and the URL's own punctuation only) */
@@ -265,7 +273,8 @@ static int o_handle(const char *msg)
 		return 1;
 	}
 	if (strstr(msg, "\"method\":\"Runtime.bindingCalled\"") && strstr(msg, "\"name\":\"rudolfNativeOracle\"")) {
-		static char pl[16384]; if (!json_str(msg, "payload", pl, sizeof pl) && pl[0] == '{') { printf("msg %s\n", pl); fflush(stdout); }
+		static char pl[16384]; char sid[80]; field(msg, "sessionId", sid, sizeof sid);
+		if (sid[0] && !json_str(msg, "payload", pl, sizeof pl) && pl[0] == '{') { printf("msg %s %s\n", sid, pl); fflush(stdout); }
 		return 1;
 	}
 	if (strstr(msg, "\"sessionId\"") && !strstr(msg, "\"method\":\"Target.")) return 1;   /* (the attached pages' own events) */
