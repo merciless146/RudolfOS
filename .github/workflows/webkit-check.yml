@@ -19,10 +19,12 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-nice glib-networking xvfb imagemagick >/dev/null
       - name: Build rudolf-webkit
         run: gcc -O2 -Wall -Wno-deprecated-declarations -o rudolf-webkit iso/sys/rudolf-webkit.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0)
+      - name: Build rudolf-native (1.5.9, plan Part 12)
+        run: gcc -O2 -Wall -Wno-misleading-indentation -Wno-deprecated-declarations -o rudolf-native iso/sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
       - name: What addwebkit.sh adds (into an empty tree)
         run: |
           R=$RUNNER_TEMP/root; mkdir -p $R/usr/lib/x86_64-linux-gnu $R/usr/bin
-          iso/systools/addwebkit.sh $R ./rudolf-webkit | tee add.txt
+          iso/systools/addwebkit.sh $R ./rudolf-webkit ./rudolf-native | tee add.txt
           du -sh $R; find $R -type f | wc -l
           echo "::notice title=Added to the system layer (at most)::$(tail -1 add.txt) — $(du -sh $R | cut -f1) in $(find $R -type f | wc -l) files" 
       - name: What it adds to the latest release's base layer (the real size)
@@ -33,7 +35,7 @@ jobs:
           gh release download "$T" -R ${{ github.repository }} -p base.sfs -D $RUNNER_TEMP/prev
           B=$RUNNER_TEMP/base; sudo unsquashfs -q -d $B $RUNNER_TEMP/prev/base.sfs >/dev/null
           S0=$(stat -c %s $RUNNER_TEMP/prev/base.sfs)
-          iso/systools/addwebkit.sh $B ./rudolf-webkit | tee add2.txt
+          iso/systools/addwebkit.sh $B ./rudolf-webkit ./rudolf-native | tee add2.txt
           sudo mksquashfs $B $RUNNER_TEMP/new.sfs -comp xz -Xbcj x86 -b 1M -noappend -all-root -quiet -no-progress >/dev/null
           S1=$(stat -c %s $RUNNER_TEMP/new.sfs)
           echo "::notice title=The base layer of $T::$((S0/1048576)) MB now, $((S1/1048576)) MB with WebKit (+$(((S1-S0)/1048576)) MB compressed); $(tail -1 add2.txt)"

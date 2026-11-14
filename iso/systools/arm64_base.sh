@@ -63,6 +63,7 @@ run /usr/bin/pulseaudio --version | grep -q "pulseaudio 16.1" || { echo "PulseAu
 run /usr/sbin/wpa_supplicant -v | grep -q "wpa_supplicant v" || { echo "wpa_supplicant does not run"; exit 1; }
 run /usr/bin/rudolf-memguard --warn 3415 340 3415 2387 | grep -qx 1 || { echo "rudolf-memguard does not run"; exit 1; }
 [ -x "$R/usr/bin/rudolf-webkit" ] && [ -x "$R/usr/lib/$MA/webkit2gtk-4.1/WebKitWebProcess" ] || { echo "no WebKitGTK (the Lite engine) in the layer"; exit 1; }
+[ -x "$R/usr/bin/rudolf-native" ] || { echo "no rudolf-native (the Native engine, 1.5.9) in the layer"; exit 1; }
 # Chromium starts inside the layer and renders a page (as the release's start test does)
 if [ "$CH" != none ]; then
 	# (its libraries first: the snap's Chromium brings some of its own, the rest must be in the layer)

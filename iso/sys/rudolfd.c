@@ -377,7 +377,7 @@ static void serve_index(struct req *r, const char *root)
 		if (ls[i] == '<') { memcpy(q, "\\u003c", 6); q += 6; } else *q++ = ls[i];
 	}
 	/* 1.5.7: which engine shows the desktop (the session writes it): with WebKit, websites open in Chromium's window */
-	char eng[16] = "chromium"; { char *e = slurp(RUN "/desktop-engine", NULL); if (e) { trim(e); if (!strcmp(e, "webkit")) snprintf(eng, sizeof eng, "webkit"); free(e); } }
+	char eng[16] = "chromium"; { char *e = slurp(RUN "/desktop-engine", NULL); if (e) { trim(e); if (!strcmp(e, "webkit") || !strcmp(e, "native")) snprintf(eng, sizeof eng, "%s", e); free(e); } }
 	q += sprintf(q, "</script><script>window.RUDOLFD={token:\"%s\",base:\"\",boot:\"%s\",media:\"%s\",live:%d,recovery:%d,engine:\"%s\"};"
 		"(function(){var n=0;function s(m){if(++n>200)return;try{fetch('/api/clientlog',{method:'POST',headers:{'X-Rudolf-Token':RUDOLFD.token},body:new Date().toISOString()+' '+String(m).slice(0,3000)})}catch(e){}}"
 		"addEventListener('error',function(e){s('error: '+e.message+' @'+(e.filename||'').split('/').pop()+':'+e.lineno+':'+e.colno)});"
@@ -3770,24 +3770,28 @@ static void api(struct req *r)
 	   (/persist/etc), which rudolf-init takes at the next start-up */
 	if (!strncmp(p, "desktop/", 8) && api_desktop(r, p + 8, post)) return;   /* 1.5.9: rudolfd-desktop.inc */
 	if (!strcmp(p, "desktop/engine")) {
-		int have = !access("/usr/bin/rudolf-webkit", X_OK);
+		int have = !access("/usr/bin/rudolf-webkit", X_OK), native = !access("/usr/bin/rudolf-native", X_OK);   /* 1.5.9: Native (test), plan Part 12 */
 		if (post) {
 			if (access(RUN "/persistent", F_OK)) { reply_err(r->fd, 409, "settings are kept only on an installed Rudolf OS"); return; }
 			const char *e = qparam(r->query, "engine");
-			if (!e || (strcmp(e, "webkit") && strcmp(e, "chromium"))) { reply_err(r->fd, 400, "engine is webkit or chromium"); return; }
+			if (!e || (strcmp(e, "webkit") && strcmp(e, "chromium") && strcmp(e, "native"))) { reply_err(r->fd, 400, "engine is webkit, native or chromium"); return; }
 			if (!strcmp(e, "webkit") && !have) { reply_err(r->fd, 409, "this Rudolf OS has no Lite engine yet: update it first"); return; }
+			if (!strcmp(e, "native") && !native) { reply_err(r->fd, 409, "this Rudolf OS has no Native engine yet: update it first"); return; }
 			mkdir(PERSIST "/etc", 0755);
 			/* (1.5.7: a new choice starts a new trial: the last failure and trial marks go) */
 			unlink(PERSIST "/etc/rudolf-desktop-engine.failed"); unlink(PERSIST "/etc/rudolf-desktop-engine.trying");
 			if (!strcmp(e, "chromium")) unlink(PERSIST "/etc/rudolf-desktop-engine");
-			else if (write_str(PERSIST "/etc/rudolf-desktop-engine", "webkit\n")) { reply_err(r->fd, 500, "could not save"); return; }
+			else if (write_str(PERSIST "/etc/rudolf-desktop-engine", !strcmp(e, "native") ? "native\n" : "webkit\n")) { reply_err(r->fd, 500, "could not save"); return; }
 			reply_ok(r->fd, "saved"); return;
 		}
 		char *c = slurp(PERSIST "/etc/rudolf-desktop-engine", NULL), *n = slurp(RUN "/desktop-engine", NULL), *fw = slurp(PERSIST "/etc/rudolf-desktop-engine.failed", NULL);
 		if (c) trim(c); if (n) trim(n); if (fw) trim(fw);
-		str s = {0}; sadd(&s, "{\"ok\":true,\"choice\":\"%s\",\"now\":\"%s\",\"available\":%s,\"failed\":%s,\"persistent\":%s,\"gaveUp\":",
-			c && !strcmp(c, "webkit") ? "webkit" : "chromium", n && !strcmp(n, "webkit") ? "webkit" : "chromium", have ? "true" : "false",
-			access(RUN "/webkit-failed", F_OK) ? "false" : "true", access(RUN "/persistent", F_OK) ? "false" : "true");
+		const char *ch = c && !strcmp(c, "webkit") ? "webkit" : c && !strcmp(c, "native") ? "native" : "chromium";
+		/* failed: the chosen engine did not start this time (Standard was used) */
+		int failed = !strcmp(ch, "native") ? !access(RUN "/native-failed", F_OK) : !access(RUN "/webkit-failed", F_OK);
+		str s = {0}; sadd(&s, "{\"ok\":true,\"choice\":\"%s\",\"now\":\"%s\",\"available\":%s,\"nativeAvailable\":%s,\"failed\":%s,\"persistent\":%s,\"gaveUp\":",
+			ch, n && !strcmp(n, "webkit") ? "webkit" : n && !strcmp(n, "native") ? "native" : "chromium", have ? "true" : "false", native ? "true" : "false",
+			failed ? "true" : "false", access(RUN "/persistent", F_OK) ? "false" : "true");
 		/* 1.5.7: Lite given up for good by the session ("<time> <why>"), until it is chosen again */
 		sjson(&s, fw ? fw : ""); sadd(&s, "}");
 		free(c); free(n); free(fw); reply_json(r->fd, &s); return;
