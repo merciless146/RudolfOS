@@ -953,6 +953,17 @@ root (disks, updates, factory reset, accounts).
   program and a Debian terminal, `curl 127.0.0.1:8080/` and an API call with a token read some other way, both refused;
   the desktop on each engine unaffected (Standard, Lite, Native, Oracle on Native).
 
+**Done (2026-11-14, iso/sys/rudolfd-peer.inc):** "/", "/index.html" and every /api/ request are answered only for
+root and for processes of the desktop's memory group (the peer's socket found in /proc/net/tcp, its inode among the
+group's processes' descriptors; the last one that answered tried first, RUN/peer-hint). Others get 403 ("only Rudolf
+OS's desktop may use this"), said in System health under Security (with the Linux user, once a minute at most).
+A missing or empty desktop group is not enforced (so the desktop is never shut out of its own page), said once in
+System health and failed by the self-test's new desktop-guard line. Also: Yama in the kernel (SECURITY_YAMA,
+ptrace_scope 1), so a program cannot read the browser's memory for the token by ptrace either; the self-test's ptrace
+line checks it. Programs rudolfd starts are already its children, outside the desktop's group; rudolf-native and
+rudolf-webkit start none of their own. Test: qt/host/peer59_t.sh (17). Still to do from this step: the QEMU check from
+a Flatpak app, a Wine program and a Debian terminal (with the next beta).
+
 ### 15.2 A file opened in an app cannot reach the rest of the desktop
 Found: the built-in apps all run in the desktop's one page (one origin), so a scripting bug in how one app shows a file
 (a document, an SVG, an HTML or Markdown file, an e-book) would reach every app's data and the token.

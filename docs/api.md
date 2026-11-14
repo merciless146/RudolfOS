@@ -2,7 +2,9 @@
 
 rudolfd (iso/sys/rudolfd.c) serves the desktop page on http://127.0.0.1:8080/ and an API under `/api/`. Every API
 request carries the `X-Rudolf-Token` header: a random token made at each start and written only into the page rudolfd
-serves (`window.RUDOLFD.token`), so websites cannot use the API. Replies are JSON with `"ok": true`, or `"ok": false`
+serves (`window.RUDOLFD.token`), so websites cannot use the API. Since 1.5.9 the page and the API answer only the
+desktop's own processes (its memory group, /sys/fs/cgroup/desktop) and root: any other program on the computer gets
+403, even with the token (iso/sys/rudolfd-peer.inc). Replies are JSON with `"ok": true`, or `"ok": false`
 and an `"error"` to show, with an HTTP status (400 a bad request, 403 refused, 404 not there, 409 not possible now,
 423 locked, 429 wait, 500 failed).
 

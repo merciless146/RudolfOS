@@ -11,6 +11,8 @@
  * Every /api/ request must carry the X-Rudolf-Token header. The token is
  * random per boot and is only written into the page this server delivers,
  * so other web sites opened inside Rudolf OS cannot drive the API.
+ * Since 1.5.9 the page and the API are only for the desktop's own processes
+ * (and root): other programs on the computer are refused (rudolfd-peer.inc).
  *
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
@@ -3166,7 +3168,7 @@ static void api_devlink(struct req *r, const char *what, int post)
 static void health_path(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/health.log" : PERSIST "/var/log/health.log"); }
 static int health_kind_ok(const char *k)
 {
-	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", NULL };
+	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", NULL };
 	for (int i = 0; K[i]; i++) if (k && !strcmp(k, K[i])) return 1;
 	return 0;
 }
@@ -3429,6 +3431,7 @@ static void api_vault(struct req *r, const char *what, int post)
 #include <sys/mount.h>
 #include "rudolfd-home.inc"
 #include "rudolfd-desktop.inc"   /* 1.5.9: the native desktop's API (plan Part 12) */
+#include "rudolfd-peer.inc"      /* 1.5.9: only the desktop gets the page and the API (plan Part 15.1) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
 {
@@ -4326,6 +4329,7 @@ static void handle(int fd)
 	if (strstr(r.path, "..")) { reply_err(fd, 400, "bad path"); goto out; }
 	if (!strncmp(r.path, "/api/", 5)) {
 		if (strcmp(r.tok, token)) { reply_err(fd, 403, "missing token"); goto out; }
+		{ int pd = peer_desktop(fd); if (!pd) { peer_refused(fd, r.path); goto out; } if (pd < 0) peer_unchecked_note(); }   /* (plan 15.1) */
 		api(&r);
 		goto out;
 	}
@@ -4340,7 +4344,10 @@ static void handle(int fd)
 	}
 	char root[256];
 	www_root(root, sizeof root);
-	if (!strcmp(r.path, "/") || !strcmp(r.path, "/index.html")) { serve_index(&r, root); goto out; }
+	if (!strcmp(r.path, "/") || !strcmp(r.path, "/index.html")) {
+		/* the page carries the token and the page's storage: only for the desktop (plan 15.1) */
+		int pd = peer_desktop(fd); if (!pd) { peer_refused(fd, r.path); goto out; } if (pd < 0) peer_unchecked_note();
+		serve_index(&r, root); goto out; }
 	char fp[2400];
 	if (!strncmp(r.path, "/pkg/", 5)) {
 		/* web-app packages: only files under www/ (or web/ for add-ons) of a mounted package */

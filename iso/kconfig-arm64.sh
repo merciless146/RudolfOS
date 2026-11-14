@@ -43,6 +43,7 @@ y SYSTEM_TRUSTED_KEYRING SECONDARY_TRUSTED_KEYRING
 $C --set-str SYSTEM_TRUSTED_KEYS "${SB_CERT:?SB_CERT: the Secure Boot certificate (PEM)}"
 y KEXEC_SIG KEXEC_IMAGE_VERIFY_SIG SIGNED_PE_FILE_VERIFICATION
 y SECURITY SECURITYFS SECURITY_LOCKDOWN_LSM SECURITY_LOCKDOWN_LSM_EARLY LOCK_DOWN_KERNEL_FORCE_NONE
+y SECURITY_YAMA   # 1.5.9 (plan 15.1): see kconfig.sh
 $C --set-str LSM "lockdown,landlock,yama"
 y MD BLK_DEV_DM DM_VERITY CRYPTO_SHA256 EFIVAR_FS
 # memory (as kconfig.sh 1.4.7): zram with zstd, memory pressure for the memory guard, memory groups
@@ -68,7 +69,7 @@ $C --enable DEBUG_INFO_NONE
 make ARCH=arm64 olddefconfig >/dev/null
 # what Rudolf OS cannot start without is there
 for o in DRM_FBDEV_EMULATION KEXEC_FILE EFI_STUB SQUASHFS OVERLAY_FS BLK_DEV_LOOP DM_VERITY EXT4_FS SECURITY_LOCKDOWN_LSM MODULE_SIG_FORCE \
-	SWAP ZSMALLOC ZRAM ZRAM_DEF_COMP_ZSTD PSI LRU_GEN CGROUPS MEMCG VIRTIO_PCI VIRTIO_BLK VIRTIO_INPUT ANDROID_BINDER_IPC ANDROID_BINDERFS NF_TABLES; do
+	SWAP ZSMALLOC ZRAM ZRAM_DEF_COMP_ZSTD PSI LRU_GEN CGROUPS MEMCG VIRTIO_PCI VIRTIO_BLK VIRTIO_INPUT ANDROID_BINDER_IPC ANDROID_BINDERFS NF_TABLES SECURITY_YAMA; do
 	grep -q "^CONFIG_$o=y$" .config || { echo "kconfig-arm64.sh: $o is not on after olddefconfig"; exit 1; }
 done
 for o in DRM_VIRTIO_GPU SND_USB_AUDIO USB_NET_CDC_NCM USB_NET_QMI_WWAN; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig-arm64.sh: $o is not a module after olddefconfig"; exit 1; }; done

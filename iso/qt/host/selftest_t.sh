@@ -31,6 +31,7 @@ touch $ST_DEV/input/event3 $ST_DEV/input/event0 $ST_DEV/input/js0; chgrp 1000 $S
 mkdir -p $W/flatpak/app/com.valvesoftware.Steam $W/flatpak/app/com.discordapp.Discord $ST_PERSIST/flatpak $ST_PERSIST/debian/usr/bin; touch $ST_PERSIST/debian/usr/bin/wine; chmod 755 $ST_PERSIST/debian/usr/bin/wine
 printf '0x1\t0\tsteam\tsteamwebhelper\t0\tSteam\n0x2\t0\tsteam_app_945360\tsteam_app_945360\t1\tAmong Us\n' > $ST_RUN/windows
 echo 'MemTotal:        3145728 kB' > $ST_PROC/meminfo
+mkdir -p $ST_PROC/sys/kernel/yama; echo 1 > $ST_PROC/sys/kernel/yama/ptrace_scope   # (1.5.9: Yama on, as the kernel is built)
 find $W -newer $W/sys -type f 2>/dev/null | sort > $W/before; sleep 1
 OUT=$(sh $S); RC=$?
 ok "1. everything as it should be: no failure, exit 0" "$([ $RC = 0 ] && ! echo "$OUT" | grep -q ^FAIL && echo 1)" "$OUT"

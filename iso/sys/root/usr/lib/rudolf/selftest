@@ -113,6 +113,14 @@ G="$SYS/fs/cgroup/desktop"
 if [ ! -d "$SYS/fs/cgroup" ] || [ ! -e "$SYS/fs/cgroup/cgroup.controllers" ]; then skip desktop-memory "no memory groups in this kernel"
 elif [ -e "$G/memory.low" ] && [ "$(rd1 "$G/memory.low")" != 0 ]; then pass desktop-memory "the desktop keeps $(( $(rd1 "$G/memory.low") / 1048576 )) MiB$( grep -q . "$G/cgroup.procs" 2>/dev/null && echo ", with its browser in it" || echo ", but its browser is not in it")"
 else fail desktop-memory "the desktop's memory group is missing or keeps nothing"; fi
+# 1.5.9 (plan 15.1): only the desktop gets rudolfd's page and API (by its memory group), and Yama keeps programs from
+# reading another's memory (the browser's) by ptrace
+if [ ! -d "$SYS/fs/cgroup" ] || [ ! -e "$SYS/fs/cgroup/cgroup.controllers" ]; then skip desktop-guard "no memory groups in this kernel: any program can reach the desktop's page"
+elif [ -e "$RUN/peer-unchecked" ]; then fail desktop-guard "not enforced: the desktop's memory group was missing or empty when a program asked (see System health)"
+elif grep -q . "$G/cgroup.procs" 2>/dev/null; then pass desktop-guard "only the desktop gets its page and the system API"
+else skip desktop-guard "no desktop running"; fi
+YS=$(rd1 "$PROC/sys/kernel/yama/ptrace_scope")
+case "$YS" in 1|2|3) pass ptrace "programs cannot read each other's memory (Yama $YS)";; '') fail ptrace "this kernel has no Yama: a program can read the browser's memory";; *) fail ptrace "Yama is off (ptrace_scope 0)";; esac
 
 # ---- 1.5.8: every sound chip answered at start-up (or was reset): one that did not has no card, so no speakers
 DM=$( { [ -n "$ST_DMESG" ] && cat "$ST_DMESG" || dmesg; } 2>/dev/null)
