@@ -724,7 +724,8 @@ closed → no Chromium left; same_t.sh's comparison of Oracle's window (toolbar,
 Measured on the Vivobook: Native with Oracle open (target: no more than Standard with Oracle open, 1,167 MB), Native
 idle unchanged after Oracle closes, FNF in Oracle on both engines (frame rate the same).
 
-**Status (2026-11-14, first part done):** steps 1 to 4 and 6, with their test; step 5 next.
+**Status (2026-11-14):** steps 1 to 6 done with their test (step 5's rest below); same_t.sh's comparison and the Vivobook's
+measurements next.
 - **rudolf-launch --oracle CONTROL SHELL-ID CHROME ARGS...:** Chromium started with no window (--no-startup-window) and the
   private DevTools pipe, as Standard's rudolf-launch; each line `open W H X Y HASH` on the FIFO CONTROL opens the shell at
   `isolated-app://SHELL-ID/#HASH` as a window of its own (Target.createTarget with newWindow and the bounds; retried while
@@ -782,12 +783,56 @@ click with an action of its own runs it in that page (rudolf-native writes "act 
 evaluates __oaToastAct there, as a user's click). oracle_native_t.sh 19 (new 4d: a notification from Oracle the shell's
 pop-up, counted at once, the page drawing none; its click Calculator's window, opened by its action in Oracle's page).
 
-**Next (12.3c, second part):** step 5's rest, what the page in Chromium needs from the native desktop: the desktop
-page's own full screen (its stand-in fills Oracle's window, not the screen: rare in Oracle), downloads into the account's
-Downloads with the native taskbar's progress, the file dialogs and Open with, the clipboard, the volume and the 🎙️ during
-calls, the keys (keys56.js, Ctrl+Shift+N) and the devlink's screenshot, each checked on both engines; then same_t.sh's
-comparison of Oracle's window against Standard's, and the Vivobook's measurements (Native with Oracle open against
-Standard's 1,167 MB; idle again after Oracle closes; FNF's frame rate on both engines).
+**Step 5, the rest (2026-11-14, done):** what the page in Chromium needs from the native desktop, each found on the host and
+fixed in rudolf-native.c, rudolf-launch.c and the page's one-app code (oneapp59.js, osd31.js, dl27.js: Native's code paths only,
+Standard unchanged). oracle_native_t.sh 45 checks (4e to 4m, 6b, 6c; native59_t.sh 70/70, wmnative59_t.sh, oneapp59_t.js 42/42
+unchanged):
+- **The page's own full screen** (F11, a game in the page): the desktop page is a frame of the shell, whose full screen stayed
+  inside the window. The page tells the native desktop (op `fs`), which makes the window cover the screen (Chromium's own edges
+  still cut away: it is not in its own full screen) and puts it back after.
+- **Oracle's new windows** (Ctrl+N, Ctrl+Shift+N, a link from another app: browser()) opened as second windows inside Oracle's
+  page. Now windows of their own (op `open` with `url` and `priv`, `#app=browser&url=...&priv=1`), as on Standard; a private one
+  for Ctrl+Shift+N.
+- **Files and Open with:** a file opened from Oracle (openPath, Show in folder, an app's own function) opened inside Oracle's
+  window; now in that app's window of its own, made by a page of its own (`#app=do-fs&op=open&how=FUNCTION`), as the native
+  desktop's Open with is (in every app's own window: Explorer's too). A web page's file opened from another app's window (Open with › Oracle) opened Oracle in WebKit; now in
+  Rudolf's Chromium (`url=file:///...`).
+- **The files one** (found with downloads and Open with): Oracle's page keeps its files in Chromium's storage and the app windows
+  in WebKit's; they met only through rudolfd's mirror at a window's start, so a window already open neither saw the other's
+  changes nor kept them (its next save overwrote them in the mirror). Now a page that saved tells the native desktop once the
+  mirror has the files (op `mirror`), and the other engine's pages take the system's and the account's records from the mirror
+  (`__oaMirrorIn`; rudolf-launch's `mirror` line for Oracle's pages). A file is opened in another window only once the mirror has it.
+- **Downloads** go where Standard's go (Chromium's folder, the policy's), are listed in Oracle's Downloads and taken into the
+  account's Downloads with the notification as the native shell's pop-up; progress is in about:downloads and the notifications,
+  not on the taskbar, as Standard. Every app window polled the download folder (two could take the same file in): now one page
+  does, a Web Lock per engine, and the app windows leave it to Oracle's page while its Chromium runs (`odl=1`, `__oaChromeDl`).
+  **Closing Oracle during a download** showed Chromium's own "Download is in progress: exit Chromium anyway?" (its last window
+  closing; Standard's Chromium never closes): now the frame's ✕ asks the page, as its own ✕ (rudolf-launch finds the window's page
+  by its place), and the page's closing goes through rudolf-launch, which, during a download, takes the window off the screen and
+  the taskbar (`hide`: no workspace) and has its page close once Chromium's downloads have finished and it has taken them in
+  (Browser.setDownloadBehavior's events).
+- **File dialogs:** with Rudolf's policy (AllowFileSelectionDialogs off) Chromium opens none on either engine. Without it, its
+  dialog is a transient window (WM_TRANSIENT_FOR Oracle's): checked centred on Oracle's window (kept on the screen), not cut as
+  Oracle's window is, no second taskbar button. Nothing to fix.
+- **The clipboard:** copy in a website in Oracle and paste in a WebKit window, and back, worked (X's clipboard). What Oracle copied
+  went with Chromium; now rudolf-native keeps the text copied while Chromium runs and puts it back when Chromium has gone.
+- **The volume and the call's 🎙️:** the 🎙️ is the native taskbar's from rudolfd's mic (a call in a website counts), its click
+  mutes. The volume keys' indicator (rudolfd's osd event) was drawn inside whichever window's page read the event; now the page
+  sends it to the native desktop (op `osd`), which draws it at the top of the screen as osd31.js does.
+- **The keys:** Chromium's own keys (F5, Ctrl+R, Ctrl+H, Ctrl+J, Ctrl+Shift+O, Ctrl+Shift+Delete, Ctrl+S, Ctrl+O, Ctrl+P, Ctrl+D,
+  F1, F7, Shift+Esc) open nothing in Oracle's window and do not reload its page (keys56.js and the shell's rules, unchanged); F5
+  and Ctrl+R reload the website's tab.
+- **The devlink's screenshot** (rudolfd's: rudolf-display --shot, the X screen) shows Oracle's window as drawn. Nothing to fix.
+- Test support: the stand-in rudolfd (fixtures/native_rd.py) has the mirror (idbm), the download folder (dl), mic and volume,
+  and no-store as rudolfd; rudolf-native reads WebKit windows' pages for tests only through RUDOLF_NATIVE_TEST_EVAL.
+- Not tested here: the real rudolfd's mic list naming Oracle's Chromium during a call, the real policy file (the test gives
+  Chromium the policy's download folder as a preference), Lite's Oracle; nativee2e59_t.sh fails 4 of 6 here on main too (the
+  environment), not changed.
+
+**Next (12.3c, third part):** same_t.sh's comparison of Oracle's window against Standard's (toolbar, tabs, a site: it needs the
+shell and rudolf-launch in same_t.js, as oracle_native_t.sh has them); the general one-app gaps found on the way (rudolfd's
+events are read by whichever app window asks first: a power-button or drive event lands in a random window); then the Vivobook's measurements (Native with
+Oracle open against Standard's 1,167 MB; idle again after Oracle closes; FNF's frame rate on both engines: the owner's).
 
 ### 12.4 Tests
 - Host, under Xvfb: rudolf-native draws its wallpaper and taskbar (screenshots compared), a window gets a frame,

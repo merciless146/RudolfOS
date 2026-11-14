@@ -444,6 +444,15 @@ static void nt_notef(FGet g, void *v);
 static void toast_add(AppWin *from, JSCValue *v);
 static void tb_settings(const char *page);
 static void nt_note(JSCValue *v);
+/* (1.5.9, 12.3c) Oracle's Chromium and the WebKit windows: the files one (rudolfd's mirror), the indicator of the keys the native
+   desktop's, Oracle's new windows at an address or private */
+static void oracle_tell(const char *line);
+static void mirror_to_webkit(const char *id);
+static void osd_show(const char *k, const char *lv, const char *label, const char *n);
+static char *open_extra(const char *url, const char *priv);
+static void open_file(const char *file, const char *how);
+static GPid OR_PID; static int OR_RUN; static char OR_CTL[300];
+static int id_ok(const char *s) { return strspn(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == strlen(s) && strlen(s) < 64; }
 static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d)
 {
 	(void)m; (void)d; JSCValue *v = webkit_javascript_result_get_js_value(r); if (!jsc_value_is_object(v)) return;
@@ -458,7 +467,11 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "toast")) toast_add(a, v);   /* (a notification's pop-up, drawn by the shell: item 3) */
 	else if (!strcmp(op, "note")) nt_note(v);   /* (a notification kept: in the centre at once, before the page's storage reaches rudolfd) */
 	else if (!strcmp(op, "open")) { jsstr(v, "app", x, sizeof x); jsstr(v, "file", f, sizeof f); char pg[48] = ""; jsstr(v, "page", pg, sizeof pg);
-		if (!strcmp(x, "settings") && pg[0]) tb_settings(pg); else if (x[0]) app_open(x, f[0] ? f : NULL); }   /* (Settings at a page: its own window there) */
+		char u[1024] = "", pv[4] = ""; jsstr(v, "url", u, sizeof u); jsstr(v, "priv", pv, sizeof pv); char *ex = open_extra(u, pv);
+		if (!strcmp(x, "settings") && pg[0]) tb_settings(pg); else if (x[0]) app_open_ex(x, f[0] ? f : NULL, ex, 0); g_free(ex); }   /* (Settings at a page: its own window there) */
+	else if (!strcmp(op, "openfile")) { jsstr(v, "file", f, sizeof f); jsstr(v, "how", x, sizeof x); open_file(f, x); }   /* (a file another app's window opened: 12.3c) */
+	else if (!strcmp(op, "mirror")) { jsstr(v, "id", x, sizeof x); if (id_ok(x)) { char l[100]; snprintf(l, sizeof l, "mirror %s\n", x); oracle_tell(l); } }   /* (the files an app's window saved: Oracle's pages take them) */
+	else if (!strcmp(op, "osd")) { char k[16] = "", lv[8] = "", n[8] = ""; jsstr(v, "k", k, sizeof k); jsstr(v, "lv", lv, sizeof lv); jsstr(v, "label", x, sizeof x); jsstr(v, "n", n, sizeof n); osd_show(k, lv, x, n); }
 	else if (!strcmp(op, "size") && !a->sized) { a->sized = 1;
 		/* (a page doing something for the shell (#app=do-NAME) that made an app's window is that app's window now: the taskbar's
 		   button and what is dropped on it are the app's) */
@@ -524,7 +537,7 @@ static void on_ready(WebKitWebView *v, gpointer d) { (void)v; appwin_show(d); }
 static char *app_url(const char *k, const char *file, int id, const char *extra)
 {
 	char *fe = file ? g_uri_escape_string(file, NULL, FALSE) : NULL;
-	char *u = g_strdup_printf("http://%s:%d/#app=%s&w=%d&sw=%d&sh=%d%s%s%s", HOST, PORT, k, id, SW, SH, fe ? "&file=" : "", fe ? fe : "", extra ? extra : ""); g_free(fe); return u;
+	char *u = g_strdup_printf("http://%s:%d/#app=%s&w=%d&sw=%d&sh=%d%s%s%s%s", HOST, PORT, k, id, SW, SH, fe ? "&file=" : "", fe ? fe : "", OR_RUN ? "&odl=1" : "", extra ? extra : ""); g_free(fe); return u;
 }
 /* windows asked for and not made yet (made through an open window's window.open: see app_open) */
 typedef struct { char k[40]; int id, hidden; } Pending;
@@ -572,7 +585,7 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
    own requests are not redirected to us, so they are framed as they are shown). The taskbar lists them all. */
 #define BW 1   /* (the page's windows' 1 px edge; the title bar's height, TH, follows the display scaling) */
 typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
-	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
+	char ak[40]; Window clip; int il, it, ir, ib; int ws, off, pagefull; gint64 oask; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
 static GList *CLIENTS;   /* oldest first */
 static Client *FOCUS;
 static Display *DPY; static Window ROOT; static int WM_OK;
@@ -635,7 +648,7 @@ static void place(Client *c)
 	else XMoveResizeWindow(DPY, c->frame, c->x, c->y, fw_of(c), fh_of(c));
 	/* (Oracle's Chromium: its own title bar and edges cut away by the clip window; full screen, it draws none) */
 	if (c->clip) { XMoveResizeWindow(DPY, c->clip, BW, TH, c->cw, c->ch);
-		if (c->full) XMoveResizeWindow(DPY, c->w, 0, 0, c->cw, c->ch); else XMoveResizeWindow(DPY, c->w, -c->il, -c->it, c->cw + c->il + c->ir, c->ch + c->it + c->ib); }
+		if (c->full && !c->pagefull) XMoveResizeWindow(DPY, c->w, 0, 0, c->cw, c->ch); else XMoveResizeWindow(DPY, c->w, -c->il, -c->it, c->cw + c->il + c->ir, c->ch + c->it + c->ib); }   /* (pagefull: the page's own, 12.3c: Chromium still draws its edges) */
 	else XMoveResizeWindow(DPY, c->w, BW, TH, c->cw, c->ch);
 	/* (our own app window: GTK resizes itself to the size it was last asked for (its requests are not redirected: the shell's
 	   connection is GTK's), so it is asked for the window's size) */
@@ -676,6 +689,7 @@ static void toast_text(const char *t, const char *b, int ms);
 static int ws_of(Client *c); static void ws_apply(void); static gboolean ws_said(gpointer d);
 static void wm_focus(Client *c)
 {
+	if (c && !c->ws) c = NULL;   /* (a window going, in no workspace: 12.3c) */
 	if (c && c->off && ws_of(c) != WSC) { WSC = ws_of(c); ws_apply(); bar_redraw(); g_timeout_add(80, ws_said, GINT_TO_POINTER(WSC)); }   /* (W.focus: wsGo(W.ws) first) */
 	Client *old = FOCUS; FOCUS = c;
 	if (c) {
@@ -748,6 +762,13 @@ static void wm_fullscreen(Client *c, int on)
 static void wm_close(Client *c)
 {
 	if (c->app) { appwin_ask_close(c->app); return; }   /* (our own: the page is asked, as its ✕ does) */
+	/* (1.5.9, 12.3c) Oracle's window: its page is asked, as its own ✕ does (Chromium's window closed by the window manager asked
+	   "Download is in progress: exit Chromium anyway?", which Standard never shows); rudolf-launch finds the page by the window's place.
+	   A second ✕ after 5 s closes it anyway */
+	gint64 now = g_get_monotonic_time();
+	if (c->ak[0] && !c->trans && OR_RUN && (!c->oask || now - c->oask < 5000000)) { if (c->oask) return; c->oask = now;
+		int x = 0, y = 0; Window ch; XWindowAttributes wa; if (XTranslateCoordinates(DPY, c->w, ROOT, 0, 0, &x, &y, &ch) && XGetWindowAttributes(DPY, c->w, &wa)) {
+			char l[96]; snprintf(l, sizeof l, "close %d %d %d %d\n", x, y, wa.width, wa.height); oracle_tell(l); return; } }
 	if (has_proto(c->w, A_DEL)) send_proto(c->w, A_DEL, CurrentTime); else XKillClient(DPY, c->w);
 }
 /* ------------------------------------------------------------------ Oracle in Rudolf's Chromium (1.5.9, docs/plan-1.5.9.md 12.3c)
@@ -760,7 +781,7 @@ static void wm_close(Client *c)
    are framed here as the others, as Oracle (its picture, its title, the page's), with Chromium's own title bar and edges cut
    away (an Isolated Web App's window always has them: neither the "use system title bar" setting nor "borderless" applies).
    RUDOLF_ORACLE_CMD and RUDOLF_LAUNCH change the files (tests); RUDOLF_ORACLE_INSET="TOP LEFT RIGHT BOTTOM" Chromium's edges. */
-static GPid OR_PID; static int OR_RUN; static char OR_CTL[300]; static guint OR_BUSY;
+static guint OR_BUSY;
 static void oracle_busy(int on)
 {
 	if (!WM_OK) return;
@@ -773,16 +794,24 @@ static gboolean oracle_busy_end(gpointer d) { (void)d; OR_BUSY = 0; oracle_busy(
    rudolfNativeOracle): "msg JSON" lines, as the WebKit windows' rudolfNative messages. Another app asked for: a window of
    its own (Settings at a page: Settings' own window there) */
 static void tb_settings(const char *page);
+static void oracle_fs(int on);
+static void oracle_hide(int x, int y, int w, int h);
 static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 {
 	(void)d; if (c & (G_IO_HUP | G_IO_ERR)) { if (!(c & G_IO_IN)) return G_SOURCE_REMOVE; }
 	gchar *l = NULL; gsize n = 0; GIOStatus st = g_io_channel_read_line(ch, &l, &n, NULL, NULL);
 	if (st == G_IO_STATUS_EOF || st == G_IO_STATUS_ERROR) { g_free(l); return G_SOURCE_REMOVE; }
-	char sid[80] = ""; const char *js = NULL;
+	char sid[80] = ""; const char *js = NULL; int hx, hy, hw, hh;
+	/* (rudolf-launch: Oracle's last window is closing during a download: off the screen and the taskbar until its page closes it) */
+	if (l && sscanf(l, "hide %d %d %d %d", &hx, &hy, &hw, &hh) == 4) { oracle_hide(hx, hy, hw, hh); g_free(l); return G_SOURCE_CONTINUE; }
 	if (l && !strncmp(l, "msg ", 4)) { const char *b = strchr(l + 4, ' '); if (b && b - (l + 4) < (long)sizeof sid && l[4] != '{') { memcpy(sid, l + 4, b - (l + 4)); sid[b - (l + 4)] = 0; js = b + 1; } }
-	if (js && js[0] == '{' && strspn(sid, "0123456789ABCDEFabcdef") == strlen(sid)) { JV *v = jparse(js); char op[16] = "", app[48] = "", file[1024] = "", pg[48] = "";
-		if (v) { jstr(v, "op", op, sizeof op); jstr(v, "app", app, sizeof app); jstr(v, "file", file, sizeof file); jstr(v, "page", pg, sizeof pg); }
-		if (!strcmp(op, "open") && app[0] && USER_ID[0] && !LOCKED) { if (!strcmp(app, "settings") && pg[0]) tb_settings(pg); else app_open(app, file[0] ? file : NULL); }
+	if (js && js[0] == '{' && strspn(sid, "0123456789ABCDEFabcdef") == strlen(sid)) { JV *v = jparse(js); char op[16] = "", app[48] = "", file[1024] = "", pg[48] = "", u[1024] = "", pv[4] = "";
+		if (v) { jstr(v, "op", op, sizeof op); jstr(v, "app", app, sizeof app); jstr(v, "file", file, sizeof file); jstr(v, "page", pg, sizeof pg); jstr(v, "url", u, sizeof u); jstr(v, "priv", pv, sizeof pv); }
+		if (!strcmp(op, "open") && app[0] && USER_ID[0] && !LOCKED) { char *ex = open_extra(u, pv); if (!strcmp(app, "settings") && pg[0]) tb_settings(pg); else app_open_ex(app, file[0] ? file : NULL, ex, 0); g_free(ex); }
+		else if (!strcmp(op, "openfile") && v && USER_ID[0] && !LOCKED) { char how[24] = ""; jstr(v, "how", how, sizeof how); open_file(file, how); }   /* (a file Oracle's page opened in another app) */
+		else if (!strcmp(op, "fs") && v) { char on[4] = ""; jstr(v, "on", on, sizeof on); oracle_fs(!strcmp(on, "1")); }   /* (the page's own full screen: the window's) */
+		else if (!strcmp(op, "mirror") && v) { char id[64] = ""; jstr(v, "id", id, sizeof id); if (id_ok(id)) mirror_to_webkit(id); }   /* (the files Oracle's page saved: the app windows take them) */
+		else if (!strcmp(op, "osd") && v) { char k[16] = "", lv[8] = "", lb[256] = "", n[8] = ""; jstr(v, "k", k, sizeof k); jstr(v, "lv", lv, sizeof lv); jstr(v, "label", lb, sizeof lb); jstr(v, "n", n, sizeof n); osd_show(k, lv, lb, n); }
 		else if (!strcmp(op, "toast") && v) toast_addf(NULL, sid, fget_jv, v);   /* (the page's notification: the native shell's pop-up) */
 		else if (!strcmp(op, "note") && v) nt_notef(fget_jv, v);   /* (and in the centre, counted, at once) */
 		jfree(v); }
@@ -795,7 +824,42 @@ static void oracle_act(const char *sid, const char *nid)
 	char line[160]; snprintf(line, sizeof line, "act %s %s\n", sid, nid);
 	int f = open(OR_CTL, O_WRONLY | O_NONBLOCK | O_CLOEXEC); if (f >= 0) { if (write(f, line, strlen(line)) < 0) {} close(f); }
 }
-static void oracle_exited(GPid p, gint st, gpointer d) { (void)d; (void)st; g_spawn_close_pid(p); if (p == OR_PID) { OR_RUN = 0; OR_PID = 0; state_write(); } }
+/* a line for rudolf-launch (its FIFO): what Oracle's pages are to do */
+static void oracle_tell(const char *line)
+{
+	if (!OR_RUN) return;
+	int f = open(OR_CTL, O_WRONLY | O_NONBLOCK | O_CLOEXEC); if (f >= 0) { if (write(f, line, strlen(line)) < 0) {} close(f); }
+}
+/* (12.3c) the files Oracle's page saved (rudolfd's mirror has them): every app window's page takes them into WebKit's storage */
+static void mirror_to_webkit(const char *id)
+{
+	char js[160]; snprintf(js, sizeof js, "window.__oaMirrorIn&&__oaMirrorIn('%s')", id);
+	for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (a->view && !a->closing) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js, -1, NULL, NULL, NULL, NULL, NULL); }
+}
+/* the app windows leave downloads to Oracle's page while Oracle's Chromium runs (oneapp59.js oaDlSkip) */
+static void oracle_dl_flag(void)
+{
+	const char *js = OR_RUN ? "window.__oaChromeDl=1" : "window.__oaChromeDl=0";
+	for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (a->view) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js, -1, NULL, NULL, NULL, NULL, NULL); }
+}
+/* (12.3c) Oracle's new window at an address, or a private one: more of its address (#app=browser&url=...&priv=1) */
+static char *open_extra(const char *url, const char *priv)
+{
+	GString *e = g_string_new(NULL);
+	if (url && url[0] && (!strncmp(url, "http://", 7) || !strncmp(url, "https://", 8) || !strncmp(url, "about:", 6) || !strncmp(url, "file:///", 8))) { char *x = g_uri_escape_string(url, NULL, FALSE); g_string_append_printf(e, "&url=%s", x); g_free(x); }
+	if (priv && !strcmp(priv, "1")) g_string_append(e, "&priv=1");
+	if (!e->len) { g_string_free(e, TRUE); return NULL; }
+	return g_string_free(e, FALSE);
+}
+/* (12.3c) a file or folder an app's window opens in another app: a page of its own does it (#app=do-fs&op=open&how=FUNCTION: openPath, or
+   an app's own function), whose window is that app's */
+static void open_file(const char *file, const char *how)
+{
+	if (!file || !file[0] || (how && how[0] && !id_ok(how))) return;
+	char *ex = g_strdup_printf("&op=open%s%s", how && how[0] ? "&how=" : "", how && how[0] ? how : ""); app_open_ex("do-fs", file, ex, 0); g_free(ex);
+}
+static void clip_keep_restore(void);
+static void oracle_exited(GPid p, gint st, gpointer d) { (void)d; (void)st; g_spawn_close_pid(p); if (p == OR_PID) { OR_RUN = 0; OR_PID = 0; oracle_dl_flag(); clip_keep_restore(); state_write(); } }
 /* the shell's #...: letters, digits and the address's own punctuation (the rest escaped) */
 static void oracle_hash(GString *h, const char *s) { for (const char *c = s; *c; c++) { if (g_ascii_isalnum(*c) || strchr("&=._-~%+", *c)) g_string_append_c(h, *c); else g_string_append_printf(h, "%%%02X", (unsigned char)*c); } }
 static int oracle_open(const char *file, const char *extra)
@@ -815,7 +879,7 @@ static int oracle_open(const char *file, const char *extra)
 		if (ok && out >= 0) { GIOChannel *ch = g_io_channel_unix_new(out); g_io_channel_set_close_on_unref(ch, TRUE); g_io_add_watch(ch, G_IO_IN | G_IO_HUP | G_IO_ERR, oracle_msgs, NULL); g_io_channel_unref(ch); }
 		g_ptr_array_free(a, TRUE); g_strfreev(L);
 		if (!ok) { fprintf(stderr, "rudolf-native: Oracle: %s\n", er ? er->message : "?"); if (er) g_error_free(er); unlink(OR_CTL); return 0; }
-		OR_RUN = 1; g_child_watch_add(OR_PID, oracle_exited, NULL);
+		OR_RUN = 1; g_child_watch_add(OR_PID, oracle_exited, NULL); oracle_dl_flag();
 	}
 	/* the window: Oracle's place and size as an app window's first (the page's own size comes with its title) */
 	int n = g_list_length(CLIENTS) % 8, w = SW * 7 / 10, h = work_h() * 8 / 10; if (w < 640) w = SW; if (h < 400) h = work_h();
@@ -840,6 +904,22 @@ static void oracle_client(Client *c, XWindowAttributes *wa)
 	oracle_busy(0);
 }
 static void oracle_gone(void) { }
+/* (12.3c) Oracle's window found by its place (Chromium's own bounds): put in no workspace (ws 0), so neither shown nor listed */
+static void oracle_hide(int x, int y, int w, int h)
+{
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; int ax, ay; Window ch; XWindowAttributes wa;
+		if (!c->ak[0] || c->trans || !XTranslateCoordinates(DPY, c->w, ROOT, 0, 0, &ax, &ay, &ch) || !XGetWindowAttributes(DPY, c->w, &wa)) continue;
+		if (abs(ax - x) > 2 || abs(ay - y) > 2 || abs(wa.width - w) > 2 || abs(wa.height - h) > 2) continue;
+		c->ws = 0; ws_apply(); if (FOCUS == c || !FOCUS) wm_focus(top_client()); bar_redraw(); state_write(); return; }
+}
+/* (12.3c) the desktop page's own full screen in Oracle's window: the window covers the screen (the window in front, as the page
+   asked for it on a click or a key there) */
+static void oracle_fs(int on)
+{
+	Client *c = FOCUS && FOCUS->ak[0] && !FOCUS->trans ? FOCUS : NULL;
+	for (GList *l = CLIENTS; !c && l; l = l->next) { Client *x = l->data; if (x->ak[0] && !x->trans && (on ? !x->full : x->full)) c = x; }
+	if (c && c->full != on) { c->pagefull = on; wm_fullscreen(c, on); }
+}
 static void wm_manage(Window w, AppWin *own)
 {
 	if (client_of(w)) return;
@@ -4010,6 +4090,89 @@ static void toast_place(void)
 		gdk_window_input_shape_combine_region(gtk_widget_get_window(TWIN), rg, 0, 0); cairo_region_destroy(rg); }
 	gtk_widget_queue_draw(TAREA); state_write();
 }
+/* ------------------------------------------------------------------ the keys' indicator (1.5.9, 12.3c)
+   osd31.js's: the volume, the microphone or the brightness, at the top of the screen for 1.5 s (#osd: 28 px down, centred,
+   at least 230 px wide, 10 px by 16 px inside, 12 px corners, rgba(17,24,39,.92); its picture, a bar and the words). On the native
+   desktop the app windows' pages and Oracle's page send it here (op "osd") instead of drawing it inside their window. */
+static GtkWidget *OWIN, *OAREA; static GdkPixbuf *OBG; static guint OTIMER; static char OK_[16], OLV[8], OLB[256]; static int ON_, OX, OY, OW, OH;
+static void osd_icon(cairo_t *cr, double x, double y)
+{
+	cairo_save(cr); cairo_translate(cr, x, y); cairo_scale(cr, 22 / 24.0, 22 / 24.0); cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND); cairo_set_line_width(cr, 2);
+	if (!strcmp(OK_, "brightness")) { int on = (int)ceil((ON_ > 0 ? ON_ : 1) / 12.5); if (on < 1) on = 1;
+		for (int i = 0; i < 8; i++) { double a = i * G_PI / 4; srca(cr, cx(i < on ? "#fbbf24" : "#6b7280", 1)); cairo_move_to(cr, 12 + cos(a) * 7.5, 12 + sin(a) * 7.5); cairo_line_to(cr, 12 + cos(a) * 10.5, 12 + sin(a) * 10.5); cairo_stroke(cr); }
+		srca(cr, cx("#fbbf24", 1)); cairo_arc(cr, 12, 12, 4.5, 0, 2 * G_PI); cairo_fill(cr); }
+	else if (!strcmp(OK_, "mic")) { srca(cr, cx("#e5e7eb", 1)); nc_rr(cr, 9, 3, 6, 11, 3, 3, 3, 3); cairo_fill(cr);
+		cairo_arc_negative(cr, 12, 11, 6, G_PI, 0); cairo_stroke(cr); cairo_move_to(cr, 12, 17); cairo_line_to(cr, 12, 21); cairo_stroke(cr);
+		if (ON_) { cairo_set_line_width(cr, 2.2); srca(cr, cx("#ef4444", 1)); cairo_move_to(cr, 4, 4); cairo_line_to(cr, 20, 20); cairo_stroke(cr); } }
+	else { srca(cr, cx("#e5e7eb", 1)); cairo_move_to(cr, 3, 9); cairo_line_to(cr, 7, 9); cairo_line_to(cr, 12, 5); cairo_line_to(cr, 12, 19); cairo_line_to(cr, 7, 15); cairo_line_to(cr, 3, 15); cairo_close_path(cr); cairo_fill(cr);
+		if (ON_ > 0) { srca(cr, cx("#3b82f6", 1)); const double r[3] = { 3.6, 7, 10.5 }; for (int i = 0; i < ON_ && i < 3; i++) { cairo_arc(cr, 12, 12, r[i], -G_PI / 4.8, G_PI / 4.8); cairo_stroke(cr); } }
+		else { srca(cr, cx("#9ca3af", 1)); cairo_move_to(cr, 16, 9); cairo_line_to(cr, 21, 15); cairo_move_to(cr, 21, 9); cairo_line_to(cr, 16, 15); cairo_stroke(cr); } }
+	cairo_restore(cr);
+}
+/* (its size in the page's units: the words' width decides it when there is no bar) */
+static void osd_size(cairo_t *cr, double *w, double *h)
+{
+	double tw = css_width(cr, OLB, UIFAM, 600, 13), lh = 0, d; lh = css_ascent(cr, UIFAM, 600, 13, &d) + d;
+	*h = 20 + fmax(22, lh); *w = OLV[0] ? 230 : fmax(230, 32 + 22 + 10 + tw);
+}
+static void osd_paint(cairo_t *cr)
+{
+	double w, h; osd_size(cr, &w, &h);
+	srca(cr, cx("#111827", .92)); nc_rr(cr, 0, 0, w, h, 12, 12, 12, 12); cairo_fill(cr);
+	osd_icon(cr, 16, (h - 22) / 2);
+	double tx = 16 + 22 + 10, lw = OLV[0] ? fmax(52, css_width(cr, OLB, UIFAM, 600, 13)) : css_width(cr, OLB, UIFAM, 600, 13);
+	if (OLV[0]) { double bx = tx, bw = w - 16 - lw - 10 - bx, lv = CLAMP(atof(OLV), 0, 100);
+		srca(cr, cx("#374151", 1)); nc_rr(cr, bx, h / 2 - 3, bw, 6, 3, 3, 3, 3); cairo_fill(cr);
+		cairo_save(cr); nc_rr(cr, bx, h / 2 - 3, bw, 6, 3, 3, 3, 3); cairo_clip(cr); srca(cr, cx(!strcmp(OK_, "brightness") ? "#fbbf24" : "#3b82f6", 1)); cairo_rectangle(cr, bx, h / 2 - 3, bw * lv / 100, 6); cairo_fill(cr); cairo_restore(cr);
+		tx = w - 16 - lw; }
+	double tw = css_width(cr, OLB, UIFAM, 600, 13); css_text(cr, OLB, UIFAM, 600, 13, OLV[0] ? w - 16 - tw : tx, (h - 22) / 2, 22, cx("#f9fafb", 1), 0);
+}
+static gboolean osd_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
+{
+	(void)wd; (void)d; if (OBG) { gdk_cairo_set_source_pixbuf(cr, OBG, 0, 0); cairo_paint(cr); }
+	cairo_scale(cr, Z, Z); osd_paint(cr); return TRUE;
+}
+static gboolean osd_end(gpointer d) { (void)d; OTIMER = 0; if (OWIN) gtk_widget_hide(OWIN); OK_[0] = 0; state_write(); return G_SOURCE_REMOVE; }
+static void osd_show(const char *k, const char *lv, const char *label, const char *n)
+{
+	if (!k || (strcmp(k, "volume") && strcmp(k, "mic") && strcmp(k, "brightness")) || !USER_ID[0] || LOCKED) return;
+	if (FLK == FL_VOL) return;   /* (not while the volume's own pop-up is open, as the page's .svp) */
+	snprintf(OK_, sizeof OK_, "%s", k); snprintf(OLV, sizeof OLV, "%s", lv && strspn(lv, "0123456789") == strlen(lv) ? lv : ""); snprintf(OLB, sizeof OLB, "%s", label ? label : ""); ON_ = n ? atoi(n) : 0;
+	if (!OWIN) { OWIN = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(OWIN), "Indicator"); OAREA = gtk_drawing_area_new(); gtk_container_add(GTK_CONTAINER(OWIN), OAREA); g_signal_connect(OAREA, "draw", G_CALLBACK(osd_draw), NULL); }
+	cairo_surface_t *sf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 4, 4); cairo_t *c = cairo_create(sf); double w, h; osd_size(c, &w, &h); cairo_destroy(c); cairo_surface_destroy(sf);
+	int nw = (int)ceil(w * Z), nh = (int)ceil(h * Z);
+	/* (shown already at this size: what is behind is the copy it has; hidden and copied again, the window behind may not have
+	   drawn itself yet) */
+	if (!(gtk_widget_get_visible(OWIN) && OBG && nw == OW && nh == OH)) {
+		if (gtk_widget_get_visible(OWIN)) { gtk_widget_hide(OWIN); gdk_display_sync(gdk_display_get_default()); }
+		OW = nw; OH = nh; OX = (SW - OW) / 2; OY = (int)lround(28 * Z);
+		if (OBG) g_object_unref(OBG); OBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), OX, OY, OW, OH); }
+	gtk_widget_set_size_request(OAREA, OW, OH); gtk_window_resize(GTK_WINDOW(OWIN), OW, OH); gtk_window_move(GTK_WINDOW(OWIN), OX, OY);
+	gtk_widget_show_all(OWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(OWIN)));
+	{ cairo_region_t *rg = cairo_region_create(); gdk_window_input_shape_combine_region(gtk_widget_get_window(OWIN), rg, 0, 0); cairo_region_destroy(rg); }   /* (pointer-events: none) */
+	gtk_widget_queue_draw(OAREA); if (OTIMER) g_source_remove(OTIMER); OTIMER = g_timeout_add(1500, osd_end, NULL); state_write();
+}
+
+/* ------------------------------------------------------------------ the clipboard (1.5.9, 12.3c)
+   On Standard Chromium is the desktop and never closes, so what was copied in Oracle stays on the clipboard; here Oracle's Chromium
+   goes with its last window, and its clipboard with it. While it runs, what is copied is kept here (text) and put back on the
+   clipboard when Chromium has gone and nothing else holds it. */
+static char *CLIPKEEP;
+static void clip_got(GtkClipboard *cb, const gchar *t, gpointer d) { (void)cb; (void)d; if (t && OR_RUN) { g_free(CLIPKEEP); CLIPKEEP = g_strdup(t); } }
+static void clip_owner(GtkClipboard *cb, GdkEvent *e, gpointer d)
+{
+	(void)d; GdkEventOwnerChange *o = (GdkEventOwnerChange *)e;
+	if (o->reason == GDK_OWNER_CHANGE_NEW_OWNER) { if (OR_RUN) gtk_clipboard_request_text(cb, clip_got, NULL); }
+	else if (!OR_RUN) clip_keep_restore();
+}
+static void clip_keep_restore(void)
+{
+	if (!CLIPKEEP || OR_RUN) return;
+	Display *x = GDK_DISPLAY_XDISPLAY(gdk_display_get_default());
+	if (XGetSelectionOwner(x, XInternAtom(x, "CLIPBOARD", False)) == None) gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), CLIPKEEP, -1);
+	g_free(CLIPKEEP); CLIPKEEP = NULL;
+}
+static void clip_init(void) { g_signal_connect(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), "owner-change", G_CALLBACK(clip_owner), NULL); }
 static int toast_hit(double rx, double ry, int *why)
 {
 	double x = rx / Z, y = ry / Z; *why = 0;
@@ -4147,7 +4310,8 @@ static void state_write(void)
 	GString *s = g_string_new(NULL); int by = bar_y(), bx = bar_x();
 	g_string_append_printf(s, "screen %d %d\nuser %s\nlocked %d\nsignin %d\nmenu %d\nbar %d %d %d %d %d\nclock %s|%s\n", SW, SH, USER_ID[0] ? USER_N : "-", LOCKED,
 		SIGN && gtk_widget_get_visible(SIGN), MENU && gtk_widget_get_visible(MENU), BAR && gtk_widget_get_visible(BAR), bx, by, bar_w(), bar_h(), CLOCK_T, CLOCK_D);
-	g_string_append_printf(s, "ws %d\n", WSC);   /* (item 4: the workspace shown) */
+	g_string_append_printf(s, "ws %d\n", WSC);
+	if (OK_[0]) g_string_append_printf(s, "osd %s %s|%s %d %d %d %d\n", OK_, OLV[0] ? OLV : "-", OLB, OX, OY, OW, OH);   /* (the keys' indicator) */   /* (item 4: the workspace shown) */
 	g_string_append_printf(s, "notes %d %d %d\nmic %d %d\n", S.dnd, nt_unread(), NNT, MIC_N, MIC_MUTED);   /* (the bell: do not disturb, its count, the list's length) */   /* (item 3: the call's 🎙️; the notifications' pop-ups) */
 	for (int i = 0; i < NTST; i++) g_string_append_printf(s, "toast %d %d %d %d %d|%s\n", TST[i].why, (int)lround(TSX[i] * Z), (int)lround(TSY[i] * Z), (int)lround(349 * Z), (int)lround(TST[i].h * Z), TST[i].t);
 	for (int i = 0; i < NHITS; i++) g_string_append_printf(s, "hit %s %s %d %d %d %d\n", HITS[i].kind, HITS[i].arg[0] ? HITS[i].arg : "-", HITS[i].x + bx, HITS[i].y + by, HITS[i].w, HITS[i].h);
@@ -4159,7 +4323,7 @@ static void state_write(void)
 	for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; GdkWindow *g = a->win ? gtk_widget_get_window(a->win) : NULL;
 		Client *c = WM_OK ? client_of_app(a) : NULL;
 		g_string_append_printf(s, "app %s %lx %d %s\n", a->k, g ? (unsigned long)GDK_WINDOW_XID(g) : 0UL, c ? c == FOCUS : a == ACTIVE, a->title); }
-	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data;
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (!c->ws) continue;   /* (no workspace: going, 12.3c) */
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
 			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : c->ak[0] ? c->ak : "-", c->title);
 		g_string_append_printf(s, "clientws %lx %d %d\n", (unsigned long)c->w, c->ws, c->off);   /* (item 4: its workspace, shown or not) */
@@ -4188,6 +4352,33 @@ static void state_write(void)
 }
 
 /* ------------------------------------------------------------------ start */
+/* (tests only: RUDOLF_NATIVE_TEST_EVAL=FIFO, never set by the session) each line "KEY JS" runs JS in the shown app window of that
+   app and appends "KEY RESULT" to FIFO.out: the host tests read the WebKit windows' pages with it, as DevTools reads Chromium's */
+static char *TEVAL_OUT;
+static void teval_got(GObject *src, GAsyncResult *res, gpointer d)
+{
+	char *k = d; JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(src), res, NULL); char *t = v ? jsc_value_to_string(v) : g_strdup("ERROR");
+	for (char *c = t; *c; c++) if (*c == '\n') *c = ' ';
+	FILE *f = fopen(TEVAL_OUT, "a"); if (f) { fprintf(f, "%s %s\n", k, t); fclose(f); } g_free(t); g_free(k); if (v) g_object_unref(v);
+}
+static gboolean teval_line(GIOChannel *ch, GIOCondition c, gpointer d)
+{
+	(void)c; (void)d; gchar *l = NULL; gsize n = 0; GIOStatus st = g_io_channel_read_line(ch, &l, &n, NULL, NULL);
+	if (st == G_IO_STATUS_EOF || st == G_IO_STATUS_ERROR) { g_free(l); return G_SOURCE_REMOVE; }
+	char *sp = l ? strchr(l, ' ') : NULL;
+	if (sp) { *sp = 0; g_strchomp(sp + 1); AppWin *a = NULL; for (GList *w = WINS; w; w = w->next) { AppWin *x = w->data; if (!strcmp(x->k, l) && !x->hidden && x->view) { a = x; break; } }
+		if (a) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), sp + 1, -1, NULL, NULL, NULL, teval_got, g_strdup(l));
+		else { FILE *f = fopen(TEVAL_OUT, "a"); if (f) { fprintf(f, "%s NO WINDOW\n", l); fclose(f); } } }
+	g_free(l); return G_SOURCE_CONTINUE;
+}
+static void teval_init(void)
+{
+	const char *p = getenv("RUDOLF_NATIVE_TEST_EVAL"); if (!p || !*p) return;
+	int fd = open(p, O_RDWR | O_NONBLOCK | O_CLOEXEC); if (fd < 0) return;
+	TEVAL_OUT = g_strconcat(p, ".out", NULL); GIOChannel *ch = g_io_channel_unix_new(fd); g_io_channel_set_close_on_unref(ch, TRUE);
+	g_io_add_watch(ch, G_IO_IN, teval_line, NULL); g_io_channel_unref(ch);
+}
+
 int main(int argc, char **argv)
 {
 	for (int i = 1; i < argc; i++) {
@@ -4237,6 +4428,7 @@ int main(int argc, char **argv)
 	g_timeout_add_seconds(3, tick_settings, NULL); g_timeout_add_seconds(10, tick_tray, NULL); g_timeout_add_seconds(5, tick_mic, NULL); g_timeout_add_seconds(5, tick_clock, NULL);
 	tick_heart(NULL); g_timeout_add_seconds(10, tick_heart, NULL);
 	tick_devlink(NULL); g_timeout_add_seconds(4, tick_devlink, NULL);   /* (as the page: every 4 s) */
+	teval_init(); clip_init();
 	state_write();
 	gtk_main();
 	return 0;

@@ -40,7 +40,7 @@ function dlHandOff(u,rec){const f=document.createElement('iframe');f.setAttribut
 function dlMatch(it){const N=dlCName(it.name);let r=DLN.pend.find(x=>x.st=='wait'&&x.part==it.name+'.crdownload')||DLN.pend.find(x=>x.st=='wait'&&x.n==N);
  if(!r){const c=DLN.pend.filter(x=>x.st=='wait'&&!x.part&&Date.now()-x.t<600e3);if(c.length==1)r=c[0]}
  if(!r){r={n:N,u:'',t:Date.now(),sz:0,st:'wait',why:'',nat:1};DLS.push(r);if(DLS.length>100)DLS.shift();DLN.pend.push(r)}return r}
-async function dlPoll(){clearTimeout(DLN.t);if(!dlOn())return;if(DLN.busy){DLN.t=setTimeout(dlPoll,1500);return}DLN.busy=true;let active=false;
+async function dlPoll(){clearTimeout(DLN.t);if(!dlOn())return;if(typeof oaDlSkip=='function'&&oaDlSkip()){DLN.t=setTimeout(dlPoll,2000);return}   /* (1.5.9: another window takes them in, oneapp59.js) */if(DLN.busy){DLN.t=setTimeout(dlPoll,1500);return}DLN.busy=true;let active=false;
  try{const j=await rd('dl/incoming');const items=j.items||[];
   for(const it of items){const key=it.name+'\0'+it.size+'\0'+it.mtime;
    if(it.partial){active=true;const r=DLN.pend.find(x=>x.st=='wait'&&(!x.part||x.part==it.name))||null;if(r){r.sz=it.size;r.part=it.name;if(r.gs!==it.size){r.gs=it.size;r.gt=Date.now()}}

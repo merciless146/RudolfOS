@@ -10,8 +10,11 @@
 #   DIR/page.html      (when there) served as the page instead of the desktop page: a plain page for the window
 #                      manager's checks (a drop-down)
 #   DIR/iwa-id         (when there) the shell's ID, served as /iwa/id (Oracle in the shell: oracle_native_t.sh)
+#   DIR/idbm/          the page's database mirror (idbm/*, as rudolfd.c's api_idbm: one file a record, a generation)
+#   DIR/incoming/      Chromium's download folder (dl/incoming, dl/read, dl/file: del and keep, into DIR/dlhome/ACCT/)
+#   DIR/mic.json       what mic answers ({"users": [...], "muted": false}); POST mic?muted=N changes "muted"
 # Ann's password is in keys.json; a wrong one gets the page's message.   python3 native_rd.py PORT DIR
-import http.server, json, os, sys, threading
+import http.server, json, os, sys, threading, urllib.parse
 PORT = int(sys.argv[1]); D = sys.argv[2]; WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../www')
 TOK = 'tok59native'; ST = {'session': None, 'locked': False, 'gen': 1, 'mt': 0}
 LOCK = threading.Lock()
@@ -31,7 +34,7 @@ class H(http.server.BaseHTTPRequestHandler):
     def send(self, code, body, ctype='application/json'):
         b = body.encode() if isinstance(body, str) else body
         try:
-            self.send_response(code); self.send_header('content-type', ctype); self.send_header('content-length', str(len(b))); self.end_headers(); self.wfile.write(b)
+            self.send_response(code); self.send_header('content-type', ctype); self.send_header('content-length', str(len(b))); self.send_header('cache-control', 'no-store'); self.end_headers(); self.wfile.write(b)
         except Exception: pass
     def j(self, o, code=200): self.send(code, json.dumps(o))
     def err(self, code, m): self.j({'ok': False, 'error': m}, code)
@@ -129,10 +132,74 @@ class H(http.server.BaseHTTPRequestHandler):
         if w == 'devlink/answer':
             o = json.loads(rd('devlink.json', b'{}')); o.pop('pending', None); open(os.path.join(D, 'devlink.json'), 'w').write(json.dumps(o)); return self.j({'ok': True})
         if w == 'net': return self.j({'ok': True, 'interfaces': [{'name': 'lo', 'ip': '127.0.0.1', 'state': 'up', 'wireless': False}, {'name': 'wlan0', 'ip': '192.168.1.5', 'state': 'up', 'wireless': True}]})
-        if w == 'volume': return self.j({'ok': True, 'volume': 70, 'muted': False})
+        if w == 'volume':
+            v = json.loads(rd('volume.json', b'{"volume": 70, "muted": false}'))
+            if m == 'POST':
+                qs = urllib.parse.parse_qs(q)
+                if 'set' in qs: v['volume'] = max(0, min(100, int(qs['set'][0]))); v['muted'] = False
+                if 'muted' in qs: v['muted'] = qs['muted'][0] == '1'
+                open(os.path.join(D, 'volume.json'), 'w').write(json.dumps(v))
+            v['ok'] = True; return self.j(v)
+        if w == 'mic':
+            v = json.loads(rd('mic.json', b'{"users": [], "muted": false}'))
+            if m == 'POST': v['muted'] = urllib.parse.parse_qs(q).get('muted', ['0'])[0] == '1'; open(os.path.join(D, 'mic.json'), 'w').write(json.dumps(v))
+            v['ok'] = True; return self.j(v)
+        if w.startswith('idbm/'): return self.idbm(m, w[5:], urllib.parse.parse_qs(q), b)
+        if w.startswith('dl/'): return self.dl(m, w[3:], urllib.parse.parse_qs(q))
         if w == 'power/status': return self.j({'ok': True, 'ac': False, 'battery': {'name': 'BAT0', 'capacity': 81, 'status': 'Discharging'}})
         if w == 'info': return self.j({'ok': True, 'battery': [{'name': 'BAT0', 'type': 'Battery', 'capacity': 81, 'status': 'Discharging'}]})
         return self.j({'ok': True})
+    # the page's database mirror, as rudolfd.c's api_idbm
+    def idbm(self, m, w, qs, b):
+        I = os.path.join(D, 'idbm'); os.makedirs(I, exist_ok=True); f = (qs.get('f') or [''])[0]
+        gen = lambda: int((rd('idbm/gen') or b'0').decode() or 0)
+        if w in ('meta', 'list'):
+            items = sorted(x[:16] for x in os.listdir(I) if len(x) == 21 and x.endswith('.json'))
+            o = {'ok': True, 'gen': gen(), 'ready': os.path.exists(os.path.join(I, 'ready')), 'count': len(items)}
+            if w == 'list': o['items'] = items
+            return self.j(o)
+        ok = len(f) == 16 and all(c in '0123456789abcdef' for c in f)
+        if w == 'get':
+            x = rd('idbm/%s.json' % f) if ok else None
+            return self.send(200, x) if x else self.err(404, 'no such record')
+        if m != 'POST': return self.err(400, 'use POST')
+        with LOCK:
+            if w == 'put':
+                if not ok or not b.startswith(b'{'): return self.err(400, 'bad record')
+                open(os.path.join(I, '.%s.tmp' % f), 'wb').write(b); os.rename(os.path.join(I, '.%s.tmp' % f), os.path.join(I, '%s.json' % f))
+            elif w == 'del':
+                try: os.unlink(os.path.join(I, '%s.json' % f))
+                except OSError: pass
+            elif w == 'ready': open(os.path.join(I, 'ready'), 'w').write('1'); return self.j({'ok': True})
+            else: return self.err(404, 'unknown mirror action')
+            g = gen() + 1; open(os.path.join(I, 'gen'), 'w').write(str(g))
+        return self.j({'ok': True, 'gen': g})
+    # Chromium's download folder, as rudolfd.c's api_dl (incoming, read, file: del and keep, space)
+    def dl(self, m, w, qs):
+        IN = os.path.join(D, 'incoming'); os.makedirs(IN, exist_ok=True); g = lambda k, d='': (qs.get(k) or [d])[0]
+        name = os.path.basename(g('name'))
+        if w == 'incoming':
+            items = []
+            for x in sorted(os.listdir(IN)):
+                if x.startswith('.'): continue
+                st = os.stat(os.path.join(IN, x)); items.append({'name': x, 'size': st.st_size, 'mtime': int(st.st_mtime), 'partial': x.endswith('.crdownload')})
+            return self.j({'ok': True, 'items': items})
+        if w == 'space': return self.j({'ok': True, 'total': 100 << 30, 'free': 50 << 30, 'live': False})
+        if w == 'read':
+            try: data = open(os.path.join(IN, name), 'rb').read()
+            except OSError: return self.err(404, 'no such file')
+            off, ln = int(g('off', '0')), int(g('len', '0'))
+            data = data[off:] if off >= 0 else data[off:]; return self.send(200, data[:ln] if ln > 0 else data, 'application/octet-stream')
+        if w == 'file' and m == 'POST':
+            src = os.path.join(IN, name)
+            if not os.path.exists(src): return self.err(404, 'no such file')
+            to = g('to')
+            if to == 'del': os.unlink(src); return self.j({'ok': True, 'message': 'deleted'})
+            if to == 'keep':
+                dd = os.path.join(D, 'dlhome', os.path.basename(g('acct')) or 'nobody'); os.makedirs(dd, exist_ok=True); dst = os.path.join(dd, name); os.rename(src, dst)
+                return self.j({'ok': True, 'path': '/home/rudolf/Downloads/.accounts/%s/%s' % (os.path.basename(g('acct')), name), 'size': os.path.getsize(dst)})
+            return self.err(400, 'to?')
+        return self.err(404, 'unknown download action')
 class S(http.server.ThreadingHTTPServer):
     daemon_threads = True
     def handle_error(self, *a): pass
