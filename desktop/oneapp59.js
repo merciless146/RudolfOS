@@ -17,6 +17,36 @@
 const ONEAPP=(()=>{try{const h=String(location.hash||'').replace(/^#/,'');if(!h)return null;const q=new URLSearchParams(h),k=q.get('app');
  return k&&/^[a-z0-9_-]{1,40}$/i.test(k)?{k,file:q.get('file')||'',w:+q.get('w')||0,q}:null}catch(e){return null}})();
 const OA={main:null,want:0,opened:0,done:0,login:0};
+/* (1.6.0 Part 12, item 1) an Explorer window's files dragged into another window when the windows are pages of their own: FC.drag
+   is the page's own, so it goes with the drag as text/x-rudolf-paths and is taken back on the drop (a desktop file dropped on a
+   window: oaFs's op=drop) */
+if(ONEAPP){
+ const T='text/x-rudolf-paths',ours=e=>e.dataTransfer&&[...e.dataTransfer.types].includes(T);let lent=0;
+ document.addEventListener('dragstart',e=>{try{if(typeof FC=='object'&&FC.drag&&FC.drag.length&&e.dataTransfer)e.dataTransfer.setData(T,JSON.stringify(FC.drag))}catch(x){}});
+ document.addEventListener('dragenter',e=>{if(!ours(e)||typeof FC!='object')return;if(!lent&&!FC.drag){FC.drag=[];lent=1}else if(lent)lent++},true);
+ document.addEventListener('dragover',e=>{if(lent&&ours(e))try{e.dataTransfer.dropEffect=e.ctrlKey?'copy':'move'}catch(x){}},true);   /* (WebKit gives a drag from another page none) */
+ document.addEventListener('dragleave',e=>{if(lent&&--lent==0&&FC.drag&&!FC.drag.length)FC.drag=null},true);
+ document.addEventListener('drop',e=>{if(lent&&ours(e)){lent=0;try{FC.drag=JSON.parse(e.dataTransfer.getData(T))}catch(x){FC.drag=null}}},true);
+ document.addEventListener('dragend',()=>{if(lent){lent=0;if(FC.drag&&!FC.drag.length)FC.drag=null}});
+ /* a file dropped on this app's window: in a window of its own, as on Standard (the shell asks a page to do it: op=drop) */
+ const _dfw=window.__dropFileOnWindow;if(_dfw)window.__dropFileOnWindow=function(W,path){
+  if(W&&W===OA.main&&oaNative()&&W.app&&W.app!='explorer'&&W.app!='trash'){if(node(path)==null)return false;oaPost({op:'drop',file:path.join('\\'),in:String(W.app)});return true}
+  return _dfw.apply(this,arguments)}}
+/* (1.6.0 Part 12, item 1) the files are one: on Standard every window is one page with one file system; here each window is a
+   page of its own, so a page that saved tells the others, which read the files again (the system's and the account's home) and
+   show them as they are now (EXPL) - or a window would show, and save back, files another window changed */
+if(ONEAPP&&typeof BroadcastChannel=='function'){const FSB=new BroadcastChannel('rudolf-fs'),ME=Math.random().toString(36).slice(2);
+ const tell=()=>{try{homeChain.then(()=>FSB.postMessage({from:ME,id:typeof uid=='function'&&USER?uid():''}))}catch(e){}};
+ const _ff=fsFlush;fsFlush=function(){const d=fsDirty;const r=_ff.apply(this,arguments);if(d)setTimeout(tell,60);return r};
+ let busy=null;FSB.onmessage=e=>{const m=e.data||{};if(m.from==ME||!USER||!IDB||!IDB.db||!FSLOADED||(m.id&&m.id!=uid()))return;busy=(busy||Promise.resolve()).then(oaFsReload)};
+ async function oaFsReload(){try{
+  const sys=await kvGet('fs:system');
+  if(sys&&isDir(sys['C:'])){const C=fs['C:'],S=sys['C:'];for(const k of Object.keys(C))if(k!='USERS'&&!(k in S))delete C[k];for(const k in S)if(k!='USERS')C[k]=S[k];
+   for(const k of Object.keys(fs))if(k!='C:'&&!(k in sys))delete fs[k];for(const k in sys)if(k!='C:')fs[k]=sys[k]}
+  if(USER.r!='guest'&&HOME&&!HOMELOCKED){const rec=await kvGet('home:'+uid());let o=null;
+   if(rec&&rec.ct&&KEY)o=JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:rec.iv},rec.k=='f'?KEY:(PKEY||KEY),rec.ct)));else if(rec&&rec.plain)o=JSON.parse(rec.plain);
+   if(o&&isDir(o)){for(const k of Object.keys(HOME))delete HOME[k];Object.assign(HOME,o)}}
+  EXPL.forEach(f=>{try{f()}catch(x){}})}catch(e){console.warn('one-app: the files again',e)}}}
 /* (an app's own window is not the desktop: its icons' grid is the screen's, not the window's, or every window opened, or a page never
    shown, as do-desk's, would squeeze the desktop's places into its own size and keep them) */
 if(ONEAPP&&typeof gridInfo=='function'){const _gi=gridInfo;gridInfo=function(){const g=_gi();try{const q=ONEAPP.q,zf=parseFloat(document.documentElement.style.zoom)||1,top=document.body.classList.contains('top'),
@@ -100,10 +130,14 @@ function oaFs(){const q=ONEAPP.q,op=q.get('op')||'',p=resolve(ONEAPP.file||'',['
  if(op=='openwith'){const x=OPENERS.find(o=>o[0]==q.get('key'));if(!x)return oaFin({err:'That app cannot open it.'});
   if(q.get('always')=='1'){const d=ld(defK(),{});d[ext(p.at(-1))]=x[0];svj(defK(),d)}
   try{x[4]?x[4](p):openPathDefault(p)}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main)oaFin({})},1500);return}
+ /* (1.6.0 Part 12, item 1) a desktop file dropped on an app's window: what a11y25.js's __dropFileOnWindow does for that app (this
+    page's window, if it makes one, is the file's window) */
+ if(op=='drop'){const k=q.get('in')||'';let r=false;try{r=!!__dropFileOnWindow({app:k},p)}catch(e){console.warn(e)}
+  setTimeout(()=>{if(!OA.main)oaFin(r?{}:{err:'nothing'})},1500);return}
  oaFin({err:'Unknown: '+op})}
 function oaMain(W){OA.main=W;OA.want=0;
  /* (1.6.0 Part 12) the size the page gives the app's window (its 1 px edge and title bar included), for the native frame */
- oaPost({op:'size',ww:String(Math.round(parseFloat(W.el.style.width)||0)),wh:String(Math.round(parseFloat(W.el.style.height)||0))});W.el.classList.add('oamain');
+ oaPost({op:'size',ww:String(Math.round(parseFloat(W.el.style.width)||0)),wh:String(Math.round(parseFloat(W.el.style.height)||0)),app:String(W.app||'')});W.el.classList.add('oamain');
  const t=W.el.querySelector('.tb .t'),sync=()=>{const s=(t&&t.textContent||'').trim()||(APPS[ONEAPP.k]&&APPS[ONEAPP.k].name)||'Rudolf OS';if(document.title!=s){document.title=s;oaPost({op:'title',t:s,icon:W.icon||''})}};
  sync();if(t)new MutationObserver(sync).observe(t,{childList:true,characterData:true,subtree:true});
  /* (the window's own maximise and minimise mean nothing here: it always fills the page) */
@@ -146,7 +180,7 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
     desk.push({n:fn,k:'',kind:isDir(v)?'dir':'file',ic:k&&icons[k]?k:'',icon:e,cell:'file:'+fn,fp:homePath('DESKTOP').concat(fn).join('\\')});continue}
    const T=icTarget(d),im=d.querySelector('img.ico'),e=im?im.dataset.emo||'':((d.querySelector('b')||{}).textContent||'').trim();
    const k=typeof EMO2IC=='object'?EMO2IC[e]||EMO2IC[e.replace(/\uFE0F/g,'')]:'';if(k&&!icons[k]&&S.icons!=='emoji')try{icons[k]=await oaPng(icSvg(k),48)}catch(x){}
-   desk.push({n:T.name,k:T.k&&APPS[T.k]?T.k:'',kind:d.classList.contains('tr')?'trash':T.kind,full:d.classList.contains('full')?1:0,ic:k&&icons[k]?k:'',icon:e,cell:d.dataset.n||T.name})}}catch(e){console.warn('desk',e)}
+   desk.push({n:T.name,k:T.k&&APPS[T.k]?T.k:'',kind:d.classList.contains('tr')?'trash':T.kind,full:d.classList.contains('full')?1:0,own:d.classList.contains('dapp')?1:0,ic:k&&icons[k]?k:'',icon:e,cell:d.dataset.n||T.name})}}catch(e){console.warn('desk',e)}
   /* (in an app's own window the desktop is laid out at the screen's size, not the window's: the places the page gives
      are the desktop's) */
   if(ONEAPP)try{const D=document.getElementById('desk'),zf=parseFloat(document.documentElement.style.zoom)||1,top=document.body.classList.contains('top'),

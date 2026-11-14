@@ -81,15 +81,36 @@ xdotool type --delay 30 'notes.txt'; xdotool key Return; w8 '[ -n "$(di NOTES.TX
 ok "62. ...a name typed and Enter: the file's icon on the desktop (the page's upper case)" "$(di NOTES.TXT | grep -q '|file|NOTES.TXT$' && [ "$(st dialog | cut -d' ' -f1)" = - ] && echo 1)" "$(grep '^dicon\|^dialog' $D/state)"
 xdotool mousemove $(dc NOTES.TXT) click 3; w8 '[ "$(st dmenu)" = file ]' 20
 ok "63. a file's menu: Open, Open with…, Rename, Move to Trash, Properties" "$([ "$(st cmenu | cut -d' ' -f5-)" = NOTES.TXT ] && grep '^cmitem' $D/state | cut -d'|' -f2 | tr '\n' ',' | grep -q '^Open,Open with…,Rename,Move to Trash,Properties,$' && echo 1)" "$(grep '^cmenu\|^cmitem' $D/state)"
-xdotool key Escape; w8 '[ -z "$(st cmenu)" ]' 20; click $(dc NOTES.TXT); w8 'di NOTES.TXT | grep -q " 1 |file|"' 20; xdotool key F2; w8 '[ "$(st dialog | cut -d" " -f1)" = rename ]' 40; xdotool type --delay 30 'plan.txt'; xdotool key Return; w8 '[ -n "$(di PLAN.TXT)" ]' 80
+xdotool key Escape; w8 '[ -z "$(st cmenu)" ]' 20; for t in 1 2 3; do timeout 0.4 tail -f /dev/null; click $(dc NOTES.TXT); w8 'di NOTES.TXT | grep -q " 1 |file|"' 8 && break; done; xdotool key F2; w8 '[ "$(st dialog | cut -d" " -f1)" = rename ]' 40; xdotool type --delay 30 'plan.txt'; xdotool key Return; w8 '[ -n "$(di PLAN.TXT)" ]' 80
 ok "64. F2: Rename, the new name kept" "$([ -n "$(di PLAN.TXT)" ] && [ -z "$(di NOTES.TXT)" ] && echo 1)" "$(di NOTES.TXT) / $(di PLAN.TXT) / $(st dialog) / $(st dmenu)"
 xdotool mousemove 900 500 click 3; w8 '[ -n "$(cmi "New folder")" ]' 20; click $(cmi "New folder"); w8 '[ "$(st dialog | cut -d" " -f1)" = rename ]' 80
 xdotool type --delay 30 'plan.txt'; xdotool key Return; w8 '[ -n "$(st dialog | cut -d"|" -f2)" ]' 40
 ok "65. ...a name already used: the page's message, the dialog still open" "$([ "$(st dialog)" = "rename NEW FOLDER|That name is already used." ] && echo 1)" "$(st dialog)"
-xdotool key Escape; w8 '[ -n "$(di "NEW FOLDER")" ]' 40; click $(dc PLAN.TXT); w8 'di PLAN.TXT | grep -q " 1 |file|"' 20; xdotool key Delete; w8 '[ -z "$(di PLAN.TXT)" ]' 80
+xdotool key Escape; w8 '[ -n "$(di "NEW FOLDER")" ]' 40; for t in 1 2 3; do timeout 0.4 tail -f /dev/null; click $(dc PLAN.TXT); w8 'di PLAN.TXT | grep -q " 1 |file|"' 8 && break; done; xdotool key Delete; w8 '[ -z "$(di PLAN.TXT)" ]' 80
 xdotool mousemove $(dc Trash) click 3; w8 '[ "$(st dmenu)" = icon ]' 20
 ok "66. Delete: the file to the Trash, whose menu can empty it now" "$([ -z "$(di PLAN.TXT)" ] && [ -n "$(di 'NEW FOLDER')" ] && grep -q '^cmitem [0-9]* [0-9]* 0 icon:Empty trash…|Empty trash…$' $D/state && echo 1)" "$(grep '^dicon\|^cmitem' $D/state)"
 xdotool key Escape
+# ...dragging: a file onto an app's window, onto the Trash, and an Explorer window's file onto another window
+vw() { grep "^view $1 " $D/state | cut -d' ' -f3-; }
+closew() { X=$(cv $1 4); Y=$(cv $1 5); FW=$(( $(cv $1 6) + 2 )); click $((X+FW-21)) $((Y+18)); w8 "[ -z \"\$(cl $1)\" ]" 40; }
+drag() { xdotool mousemove $1 $2 mousedown 1; for k in 1 2 3 4 5 6 7 8 9 10; do xdotool mousemove $(( $1 + ($3 - $1) * k / 10 )) $(( $2 + ($4 - $2) * k / 10 )); timeout 0.15 tail -f /dev/null; done
+	for k in 1 2 3 4; do xdotool mousemove $(( $3 + k * 3 )) $(( $4 + k * 2 )); timeout 0.3 tail -f /dev/null; done; xdotool mouseup 1; }
+xdotool mousemove 900 500 click 3; w8 '[ -n "$(cmi "New text document")" ]' 20; click $(cmi "New text document"); w8 '[ "$(st dialog | cut -d" " -f1)" = rename ]' 80
+xdotool type --delay 30 'drag.txt'; xdotool key Return; w8 '[ -n "$(di DRAG.TXT)" ]' 80
+click $(hit pin notepad); w8 'grep -q "^client .* app=notepad " $D/state' 80; timeout 2 tail -f /dev/null
+NID=$(grep '^client .* app=notepad' $D/state | head -1 | cut -d' ' -f2); drag $(( $(cv $NID 4) + 150 )) $(( $(cv $NID 5) + 15 )) 900 450; timeout 1.5 tail -f /dev/null
+ok "67. an app's page is its window's size (GDK keeps its own events: not the size GTK asked for first)" "$([ "$(vw $NID)" = "$(cv $NID 6) $(cv $NID 7)" ] && echo 1)" "$(vw $NID) / $(cl $NID)"
+drag $(dc DRAG.TXT) $(( $(cv $NID 4) + 200 )) $(( $(cv $NID 5) + 200 )); w8 'grep -q "^app notepad .* DRAG.TXT - Notepad$" $D/state' 80
+ok "68. a desktop file dragged onto an app's window: opened in that app, in a window of its own; the icon stays" "$(grep -q '^app notepad .* DRAG.TXT - Notepad$' $D/state && [ -n "$(di DRAG.TXT)" ] && echo 1)" "$(grep '^app\|DRAG' $D/state)"
+DID2=$(grep '^client .* app=notepad .*DRAG.TXT' $D/state | head -1 | cut -d' ' -f2); [ -n "$DID2" ] && closew $DID2
+drag $(dc DRAG.TXT) $(dc Trash); w8 '[ -z "$(di DRAG.TXT)" ]' 80
+ok "69. ...onto the Trash: moved to the Trash" "$([ -z "$(di DRAG.TXT)" ] && echo 1)" "$(grep '^dicon' $D/state)"
+xdotool mousemove 1100 120 click 3; w8 '[ -n "$(cmi "Open File Explorer")" ]' 20; click $(cmi "Open File Explorer"); w8 'grep -q "^client .* app=explorer " $D/state' 80; timeout 2 tail -f /dev/null
+EID=$(grep '^client .* app=explorer' $D/state | head -1 | cut -d' ' -f2)
+# (Explorer at the account's home: its first row is the DESKTOP folder, at this test's font size)
+drag $(( $(cv $EID 4) + 250 )) $(( $(cv $EID 5) + 289 )) $(( $(cv $NID 4) + 300 )) $(( $(cv $NID 5) + 250 )); w8 'grep -q "^app explorer .* File Explorer - C:.USERS.ANN.DESKTOP$" $D/state' 80
+ok "70. an Explorer window's folder dragged onto another app's window (two pages): opened in File Explorer, as on Standard" "$(grep -q '^app explorer .* File Explorer - C:.USERS.ANN.DESKTOP$' $D/state && echo 1)" "$(grep '^app' $D/state | tr '\n' ' ')"
+xdotool key Escape; xdotool key Escape; for w in $(grep '^client .* app=\(notepad\|explorer\) ' $D/state | cut -d' ' -f2); do closew $w; done
 set_s '{"s":{"bs":"gradient","b1":"#ff0000","b2":"#0000ff","tb":"top","accent":"#16a34a","tbac":true,"tbacm":"negative","h24":false,"df":"dmy"},"pins":["calc"],"notes":0,"wallpaper":false}'
 w8 '[ "$(st bar | cut -d" " -f3)" = 0 ]' 40; timeout 1 tail -f /dev/null; shot
 ok "11. settings changed in the page: the taskbar moves to the top" "$([ "$(st bar)" = "1 0 0 1280 46" ] && echo 1)" "$(st bar)"

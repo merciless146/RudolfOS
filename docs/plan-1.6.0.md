@@ -238,9 +238,19 @@ Rename and Open with dialogs, drawn by the shell; what they do is done by the pa
 shell ("done": an error to show, or a dialog to ask) and posts the catalogue again. An app's window (and a hidden page)
 now lays the desktop's icons out at the screen's size, not its own (it used to squeeze the places kept for the shell).
 same_t.sh: 44 parts in 33 cases pass (new: desk-files, desk-menu, file-menu, file-rename, file-openwith).
-**Next:** item 1's second part, second half (a PR stacked on the first): dragging files onto the desktop and between
-windows, and the desktop menu's Show all windows (with item 5's Super+Tab); then items 2 to 12 in order, each passing
-same_t.sh for its part, and docs/plan-2.0.md after them. Native is not the default yet.
+Item 1's second part, second half (PR native11-desk-drag, stacked on #317): dragging. A desktop icon follows the
+pointer; a file dropped on an app's window opens in that app in a window of its own (a page asked by the shell,
+#app=do-fs&op=drop, doing what the page's __dropFileOnWindow does), a file or an own shortcut dropped on the Trash goes
+there; an Explorer window's files dragged onto another window (another page) are dropped there (they go with the drag
+as text/x-rudolf-paths and become the target page's FC.drag). Found on the way and fixed: the windows' pages did not
+share their files (each page has its own copy; a page that saves now tells the others through a BroadcastChannel and
+they read the files again); an app's page kept the size GTK first asked for, larger than its window, and was not
+repainted where a window uncovered it (the shell selected its own X events on its windows, replacing GDK's on the same
+connection); the shell could crash when a window closed before its frame. native59_t.sh 70/70 (new 67-70).
+Known differences left: files dropped from outside Rudolf OS onto the desktop (Standard saves them in the Desktop
+folder; the shell does not take X drops yet); the desktop menu's Show all windows (item 5) and Add a widget… (item 2).
+**Next:** items 2 to 12 in order, one PR each, stacked, each passing same_t.sh for its part, and docs/plan-2.0.md after
+them. Native is not the default yet.
 
 **Becoming the default:** after items 1-12 pass on the host and on the Vivobook (a week of betas on Native), the
 release's default engine is Native for new installations; an update keeps the engine the computer had, and Settings
