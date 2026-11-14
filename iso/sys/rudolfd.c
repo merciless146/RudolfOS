@@ -391,7 +391,11 @@ static void serve_index(struct req *r, const char *root)
 	size_t at = h ? (size_t)(h - html) + 6 : 0;
 	char *out = malloc(n + il + 1);
 	memcpy(out, html, at); memcpy(out + at, inj, il); memcpy(out + at + il, html + at, n - at);
-	reply(r->fd, 200, "text/html; charset=utf-8", out, n + il, NULL);
+	/* 1.5.9 (plan 15.2): the page's own policy: no plug-in content (object, embed) and no <base> pointing its links
+	   elsewhere. (connect-src is not limited: Oracle's downloads and the apps' imports fetch from any https address,
+	   so a list would stop only plain http; the protection is that nothing a file holds runs here: safeHtml and the
+	   sandboxed frames.) */
+	reply(r->fd, 200, "text/html; charset=utf-8", out, n + il, "Content-Security-Policy: object-src 'none'; base-uri 'self'\r\n");
 	free(out); free(html); free(inj);
 }
 

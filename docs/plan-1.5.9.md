@@ -980,6 +980,25 @@ Found: the built-in apps all run in the desktop's one page (one origin), so a sc
 - **Tests:** a set of hostile files (scripts in every place each format allows them) opened in each app: nothing runs
   in the desktop's origin (a canary in the page is never read); the CSP blocks a fetch to an outside address.
 
+**Done (2026-11-14):**
+- **Found by the hostile-files test** (`qt/shell2/hostile59_t.js`: 19 hostile files, each opened in every app that opens
+  it and by default, 64 openings, plus File Explorer, Open with, Properties, Recent and notifications): the apps
+  already escape names and contents, and Oracle shows HTML and SVG files in frames with `sandbox="allow-scripts"`
+  only (no origin). One gap: WordPro's clean() was a set of patterns. It kept `javascript:` links, and a slash in
+  place of a space (`<img src=x/onerror=…>`) or an SVG `<animate>` got script past it.
+- **desktop/sanitize59.js, safeHtml():** the browser's own parser (DOMParser, inert), removes what runs or loads,
+  every on* attribute, srcdoc and formaction, and links and sources other than relative, #, http(s), mailto, tel,
+  blob and data: pictures (not SVG); checked again until it settles, against mutation tricks. WordPro's clean()
+  (opening, pasting) uses it. Test: `qt/shell2/sanitize59_t.js` (29 ways past a cleaner and 7 kinds of script link,
+  what documents need kept, WordPro itself).
+- **`iso/systools/htmlsinks.py`**, run by deadcheck.py: the places that make HTML from data, counted per file against
+  `htmlsinks.json` (518 in 80 files on 2026-11-14: today's number, the hostile-files test is what checks them); a new
+  one fails the check until it is reviewed and the list updated.
+- **The page's policy** (rudolfd): `Content-Security-Policy: object-src 'none'; base-uri 'self'`. connect-src is not
+  limited: Oracle's downloads and the apps' imports fetch from any https address, so a list would stop only plain
+  http. Inline scripts stay allowed (1.6.0).
+- Still to do: the same test on the Vivobook's beta.
+
 ### 15.3 Each account is its own Linux user (moved here from 1.6.0 Part 10)
 1.6.0 Part 10, as written there, done in 1.5.9: each account's Linux apps, Wine and Debian run as the account's own
 user (uid 1001 and up), so one account's programs cannot read another's files, and none is the desktop's user (15.1's
