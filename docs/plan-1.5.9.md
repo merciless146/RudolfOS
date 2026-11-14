@@ -615,6 +615,38 @@ numbers (docs/plan-1.6.0.md, "the native desktop decision", now pointing here).
 6. Measured on the Vivobook against Standard and Lite: memory at idle, with Oracle open, with FNF; time from power on
    to the sign-in screen; battery drain at idle. Results in docs/testing.md; then the 2.0 decision.
 
+### 12.3a Step 6's measurements (2026-11-13, on the Vivobook, beta 2026111405, on battery)
+| | Standard | Lite | Native (test) |
+|---|---|---|---|
+| Memory used at idle (MemTotal − MemAvailable) | 1,110 MB | 952 MB | **854 MB** |
+| The engine's processes (PSS) | 676 MB (Chromium) | 388 MB (page 244, window 80, network 64) | **194 MB** (rudolf-native 125, network 69) |
+| The desktop's memory group | 885 MB | 455 MB | 437 MB |
+| Power at idle | 5.6 W | 5.5 W | 5.4 W |
+| Start to the desktop ("desktop up") | 31 s | 22 s | 22 s |
+| One app open | 1,167 MB (Oracle) | not read yet | 965 MB (Settings: its page 195 MB) |
+
+Native at idle runs no WebKit page at all (the shell is drawn by rudolf-native). With Settings open Native read 7.0 W
+once, just after Settings opened (its animated previews): to be read again. Still to read: Lite with an app open, FNF
+on each engine. **The decision (2026-11-13, the owner): Rudolf OS goes native**: the shell reaches the web desktop's
+features and becomes the default in 1.6.0 (docs/plan-1.6.0.md Part 12), then the apps are rewritten natively one by
+one for Rudolf OS 2.0 (docs/plan-2.0.md).
+
+### 12.3b Step 7: Native (test)'s bugs seen on the Vivobook (2026-11-13), fixed in 1.5.9
+1. At the first start the wallpaper is the colours (teal): the copy of a picture of your own
+   (/home/rudolf/.rudolf-wallpaper/ID.jpg) is written only once a page has loaded the picture. The shell should ask
+   rudolfd, which makes the copy itself from the account's picture when it is missing (or the sign-in screen draws the
+   drawn background meanwhile, then the picture as soon as it appears, without a restart).
+2. The root window shows X's bare "✕" pointer: set the root's cursor (left_ptr) when the window manager starts.
+3. The taskbar is pale and small and does not follow the taskbar's style or the buttons' style (tbstyle, tbbstyle):
+   draw it at the page's height and in its styles, compared with the page's taskbar in screenshots.
+4. The development link's banner shows inside every app window (Settings): in one-app mode the banner is not drawn;
+   the native shell shows it once, on its own.
+5. Drop-downs (`<select>`) in app windows are blank yellow boxes (Display Properties' Appearance, the Northern lights
+   colour, Glow): WebKitGTK's own pop-up menu for a select is not drawn under the native window manager (an
+   override-redirect or a transient pop-up window the manager mishandles); fix in the manager, with a host test that
+   opens a select under Xvfb.
+6. Settings' search box is hidden under that banner (goes with 4).
+
 ### 12.4 Tests
 - Host, under Xvfb: rudolf-native draws its wallpaper and taskbar (screenshots compared), a window gets a frame,
   minimise, maximise and close work, a pinned app opens its one-app WebKit window.
