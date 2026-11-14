@@ -19,5 +19,5 @@ python3 $HERE/same_rd.py $PORT $D > $T/rd.log 2>&1 & RDP=$!
 Xvfb $DSP -screen 0 1920x1080x24 -nolisten tcp >/dev/null 2>&1 & XV=$!
 trap 'kill $RDP $XV 2>/dev/null; pkill -f "$T/" 2>/dev/null; rm -rf $T/d $T/rudolf-native $T/cc' EXIT
 i=0; while [ $i -lt 40 ] && ! DISPLAY=$DSP xdotool getmouselocation >/dev/null 2>&1; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-SAME_FAKETIME=$FT node $HERE/same_t.js $BIN $D $OUT $PORT $DSP $ONLY; r=$?
+SAME_FAKETIME=$FT node $HERE/${SAME_SCRIPT:-same_t.js} $BIN $D $OUT $PORT $DSP $ONLY; r=$?
 echo "pictures: $OUT"; exit $r

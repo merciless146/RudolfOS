@@ -26,6 +26,7 @@
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
 #include <webkit2/webkit2.h>
+#include <libsoup/soup.h>
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
@@ -248,6 +249,9 @@ typedef struct { int x, y, w, h; char kind[12], arg[80]; } Hit;
 static Hit HITS[96]; static int NHITS;
 static void state_write(void);
 typedef struct JV JV; static void di_layout(void); static void di_load(JV *cat);   /* (the desktop's icons, below) */
+static void wg_paint(cairo_t *cr); static void wg_load(JV *v); static void wg_dirty_kind(const char *t); static void wg_picker(void);   /* (the widgets, below) */
+static int wg_shown(void); static int NWG_ALL_DIRTY;
+static gboolean wg_press(GdkEventButton *e); static gboolean wg_motion(GdkEventMotion *e); static gboolean wg_release(GdkEventButton *e); static gboolean note_key(GdkEventKey *e); static int NF;
 
 /* ------------------------------------------------------------------ pictures */
 static GdkPixbuf *pix_from_bytes(GByteArray *b)
@@ -1980,8 +1984,9 @@ static void settings_load(void)
 	if (!n.tb[0]) snprintf(n.tb, sizeof n.tb, "bottom"); if (!n.wpfit[0]) snprintf(n.wpfit, sizeof n.wpfit, "fill"); if (!n.dm[0]) snprintf(n.dm, sizeof n.dm, "auto");
 	jstr(v, "acct", n.acct, sizeof n.acct); jstr(v, "wpacct", n.wpacct, sizeof n.wpacct); n.gen = jnum(v, "gen", 0); n.notes = (int)jnum(v, "notes", 0); n.wallpaper = jbool(v, "wallpaper");
 	JV *p = jprop(v, "pins"); for (int i = 0; i < 24; i++) { JV *o = jat(p, i); if (!o) break; if (o->t == 3) snprintf(n.pins[n.npins++], 40, "%s", o->s);  }
-	  jfree(v);
 	int moved = strcmp(n.tb, S.tb) != 0 || n.scale != S.scale; S = n; ui_family(S.ff);
+	wg_load(v);   /* (the widgets: item 2) */
+	  jfree(v);
 	/* the page's display scaling: the taskbar, the title bars and the start menu at the page's size (1.5.9 step 7) */
 	Z = S.scale / 100.0; BARH = (int)lround(46 * Z); TH = (int)lround(35 * Z);
 	css_apply(); wall_make(); if (moved) { bar_place(); if (WM_OK) wm_relayout(); di_layout(); if (DESKAREA) desk_dirty(); } bar_redraw(); if (SAREA) gtk_widget_queue_draw(SAREA); if (WM_OK) frames_redraw();
@@ -2041,7 +2046,7 @@ static gboolean tick_settings(gpointer d)
 	return G_SOURCE_CONTINUE;
 }
 static gboolean tick_tray(gpointer d) { (void)d; tray_load(); return G_SOURCE_CONTINUE; }
-static gboolean tick_clock(gpointer d) { (void)d; char o[32]; snprintf(o, sizeof o, "%s", CLOCK_T); clock_text(); if (strcmp(o, CLOCK_T)) { bar_redraw(); if (SAREA && SIGN && gtk_widget_get_visible(SIGN)) gtk_widget_queue_draw(SAREA); } if (S.dyn[0] && !S.wpimg) wall_make(); return G_SOURCE_CONTINUE; }
+static gboolean tick_clock(gpointer d) { (void)d; char o[32]; snprintf(o, sizeof o, "%s", CLOCK_T); clock_text(); if (strcmp(o, CLOCK_T)) { bar_redraw(); wg_dirty_kind("clock"); wg_dirty_kind("cal"); if (SAREA && SIGN && gtk_widget_get_visible(SIGN)) gtk_widget_queue_draw(SAREA); } if (S.dyn[0] && !S.wpimg) wall_make(); return G_SOURCE_CONTINUE; }
 /* the session's watchdog and trial need to hear from the desktop, as the page's heartbeat */
 static gboolean tick_heart(gpointer d) { (void)d; http("POST", "/api/heartbeat", NULL, 0, NULL); return G_SOURCE_CONTINUE; }
 
@@ -2420,8 +2425,8 @@ static void di_draw(cairo_t *cr)
 static gboolean desk_area_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	/* (the wallpaper and the icons kept as drawn: windows moved over the desktop only show it again, with their shadows) */
-	if (!DESKC || DESKD) { if (!DESKC) DESKC = cairo_image_surface_create(CAIRO_FORMAT_RGB24, SW, SH); cairo_t *c2 = cairo_create(DESKC); desk_draw(w, c2, d); bar_outside(c2); di_draw(c2); cairo_destroy(c2); DESKD = 0; }
-	cairo_set_source_surface(cr, DESKC, 0, 0); cairo_paint(cr); frames_shadow(cr); return TRUE;
+	if (!DESKC || DESKD) { if (!DESKC) DESKC = cairo_image_surface_create(CAIRO_FORMAT_RGB24, SW, SH); cairo_t *c2 = cairo_create(DESKC); desk_draw(w, c2, d); bar_outside(c2); di_draw(c2); cairo_destroy(c2); DESKD = 0; NWG_ALL_DIRTY = 1; }
+	cairo_set_source_surface(cr, DESKC, 0, 0); cairo_paint(cr); wg_paint(cr); frames_shadow(cr); return TRUE;   /* (the widgets over the desktop: item 2) */
 }
 static int di_at(double x, double y)
 {
@@ -2459,6 +2464,7 @@ static void on_di_act(const char *a)
 	if (!strcmp(a, "arrange")) di_arrange();
 	else if (!strcmp(a, "refresh")) apps_load();
 	else if (!strncmp(a, "app:", 4)) app_open(a + 4, NULL);
+	else if (!strcmp(a, "wgpick")) wg_picker();
 	else if (!strcmp(a, "open") && d) di_open(i);
 	else if (!strcmp(a, "rename") && d && d->fp[0]) rename_ask(d->fp, d->n);
 	else if (!strncmp(a, "page:", 5)) di_page(NULL, a + 5, 0);
@@ -2471,7 +2477,7 @@ static void on_di_act(const char *a)
 static void di_menu(GdkEventButton *e, int icon)
 {
 	/* the page's menus, item by item (base_v24.html deskMenu, iconMenu; shell25.js's for files and the Trash) */
-	static const CMI DESKM[] = { CM("New folder", "📁", "", "pageh:New folder"), CM("New text document", "📄", "", "pageh:New text document"), CM("Add a widget…", "🧩", "", "page:Add a widget…"), CMS,
+	static const CMI DESKM[] = { CM("New folder", "📁", "", "pageh:New folder"), CM("New text document", "📄", "", "pageh:New text document"), CM("Add a widget…", "🧩", "", "wgpick"), CMS,
 		CM("Arrange icons by name", "", "", "arrange"), CM("Desktop icons…", "🖥️", "", "page:Desktop icons…"), CM("Refresh", "", "F5", "refresh"), CMS,
 		CM("Open File Explorer", "", "", "app:explorer"), CM("Open Command Prompt", "", "", "app:prompt"), CM("Show all windows", "", "Super+Tab", "overview"), CM("Task Manager", "📊", "Ctrl+Shift+Esc", "app:taskmgr"), CMS,
 		CM("Open settings…", "", "", "app:settings") };
@@ -2490,7 +2496,8 @@ static void di_menu(GdkEventButton *e, int icon)
 }
 static gboolean desk_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
-	(void)w; (void)d; menu_hide(); int i = di_at(e->x, e->y);
+	(void)w; (void)d; menu_hide(); if (wg_press(e)) return TRUE;   /* (a widget: item 2) */
+	int i = di_at(e->x, e->y);
 	if (e->type == GDK_2BUTTON_PRESS && e->button == 1) { if (i >= 0) di_open(i); return TRUE; }
 	if (e->type != GDK_BUTTON_PRESS) return TRUE;
 	if (e->button == 3) { if (!USER_ID[0] || LOCKED) return TRUE; di_select(i); di_menu(e, i >= 0); return TRUE; }
@@ -2499,7 +2506,7 @@ static gboolean desk_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 }
 static gboolean desk_motion(GtkWidget *w, GdkEventMotion *e, gpointer d)
 {
-	(void)w; (void)d; if (!DID.on) return FALSE;
+	(void)w; (void)d; if (!DID.on) { wg_motion(e); return FALSE; }
 	if (!DID.moved && hypot(e->x - DID.sx, e->y - DID.sy) < 5) return FALSE;
 	DID.moved = 1; DID.dx = e->x - DID.sx; DID.dy = e->y - DID.sy; desk_dirty(); return FALSE;   /* (the icon follows the pointer, as the page's) */
 }
@@ -2513,7 +2520,8 @@ static Client *client_at(int x, int y)
 }
 static gboolean desk_release(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
-	(void)w; (void)d; if (e->button != 1 || !DID.on) return TRUE; DID.on = 0;
+	(void)w; (void)d; if (wg_release(e)) return TRUE;
+	if (e->button != 1 || !DID.on) return TRUE; DID.on = 0;
 	if (DID.moved && DID.i >= 0 && DID.i < NDI) {
 		DIcon *dd = &DI[DID.i]; DID.moved = 0; desk_dirty();
 		/* (as the page's: a file or a shortcut of the account's own dropped on the Trash goes there; a file dropped on an app's window opens in it
@@ -2531,13 +2539,512 @@ static gboolean desk_release(GtkWidget *w, GdkEventButton *e, gpointer d)
 }
 static gboolean desk_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 {
-	(void)w; (void)d; if (e->keyval == GDK_KEY_Return || e->keyval == GDK_KEY_KP_Enter) { for (int i = 0; i < NDI; i++) if (DI[i].sel) { di_open(i); return TRUE; } }
+	(void)w; (void)d; if (NF >= 0 && note_key(e)) return TRUE;   /* (typing in a note) */
+	if (e->keyval == GDK_KEY_Return || e->keyval == GDK_KEY_KP_Enter) { for (int i = 0; i < NDI; i++) if (DI[i].sel) { di_open(i); return TRUE; } }
 	if (e->keyval == GDK_KEY_F5) { apps_load(); return TRUE; }
 	int i = di_sel(); if (i < 0) return FALSE; DIcon *di = &DI[i];
 	if (e->keyval == GDK_KEY_F2 && di->fp[0]) { rename_ask(di->fp, di->n); return TRUE; }
 	if (e->keyval == GDK_KEY_Delete) { if (di->fp[0]) di_page(di->n, "Move to Trash", 1); else if (strcmp(di->kind, "trash")) di_page(di->n, "Remove from desktop", 1); return TRUE; }
 	return FALSE;
 }
+
+/* ------------------------------------------------------------------ the desktop's widgets (1.6.0 Part 12, item 2)
+   The page's widgets (shell25.js WTYPES and wgDraw): the clock, the calendar, the sticky note, the system monitor and
+   the weather, each a box on the desktop where the account left it (the page's bd95widgets:ID, given by rudolfd's
+   desktop/settings; what the shell changes kept by rudolfd, desktop/widgets, until the page's own list changes),
+   drawn as the page's CSS draws it (styles25.css .wgt: 220 px wide, the note 240, rgba(15,23,42,.72) over the desktop
+   blurred 6 px, 12 px corners, the shadow 0 8px 22px rgba(0,0,0,.3); the header's picture and name at 11 px with its
+   ✕, at 80 %; the contents in the page's font). The header drags it (any button, as the page's pointer events), the ✕
+   removes it, the desktop's menu's Add a widget… shows the page's picker; the contents and timers are the page's: the
+   clock (every 10 s there; here when the minute changes), the system monitor every 3 s (rudolfd's stats), the weather
+   from Open-Meteo every 15 minutes (a failed look-up again in 20 s, 1, 2, then 5 minutes; a click opens Weather), the
+   note typed in as in the page's textarea (its menu, keys, undo; saved half a second after the last change). Each is
+   drawn into a picture of its own (with its shadow and what is behind it, blurred), laid over the desktop when shown. */
+static int wg_kind_n(const char *t);
+typedef struct { char t[12]; double x, y; char *txt; cairo_surface_t *sf; int ox, oy, dirty; double th; } Wg;   /* (th: the note's textarea's height) */
+#define MAXWG 32
+static Wg WG[MAXWG]; static int NWG;
+static const char *const WGT[][3] = { { "clock", "🕒", "Clock" }, { "cal", "📅", "Calendar" }, { "note", "🗒️", "Sticky note" }, { "mon", "📈", "System monitor" }, { "weather", "⛅", "Weather" } };
+static int wg_kind(const char *t) { for (int i = 0; i < 5; i++) if (!strcmp(WGT[i][0], t)) return i; return -1; }
+static int wg_shown(void) { return USER_ID[0] && !LOCKED && NWG > 0; }
+static guint WG_SAVE_T, WG_MON_T, WG_WX_T, WG_WXR_T;
+static struct { int i, on, moved; double sx, sy, ox, oy; } WGD = { -1, 0, 0, 0, 0, 0, 0 };   /* (a widget being dragged by its header) */
+static int WG_X = -1;   /* (the ✕ pressed: its widget) */
+static char MON_CPU[32] = "—", MON_MEM[64] = "—";
+/* the weather: 0 loading, 1 asks where, 2 shown, 3 no connection */
+static int WX_ST, WX_N, WX_GEN; static char WX_T[24], WX_C[64], WX_L[200];
+typedef struct { int ok, guess; double lat, lon; char name[160], cc[8], tz[64]; } WLoc;
+static WLoc WL, WGUESS; static char WUNIT[4];
+/* the note being typed in (its widget; -1: none), the caret and the selection's other end (bytes), its scrolling */
+static int NF = -1, NCAR, NANC, NBLINK, NSELW; static guint NBLINK_T; static double NSCR; static GtkIMContext *NIM;
+static GPtrArray *NUNDO, *NREDO;   /* (the texts before each change, with the caret: "CARET\nTEXT") */
+#define NOTEF "Courier New, monospace"
+static cairo_t *SCR;
+static cairo_t *scr(void) { if (!SCR) { cairo_surface_t *t = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 4, 4); SCR = cairo_create(t); cairo_surface_destroy(t); } return SCR; }
+static double lh_of(const char *fam, int wt, double px) { double d, a = css_ascent(scr(), fam, wt, px, &d); return a + d; }
+static double wg_w(const Wg *w) { return !strcmp(w->t, "note") ? 240 : 220; }
+static double wg_top0(void) { return (work_top() + (!strcmp(S.tb, "top") ? 2 * Z : 0)) / Z; }   /* (the page's #desk: its top, in the page's units) */
+/* the calendar's month in System Settings' time zone: its first day's weekday (Sunday 0), its days, today */
+static void cal_month(int *y, int *mo, int *d, int *st, int *n)
+{
+	GTimeZone *tz = S.tz[0] ? g_time_zone_new_identifier(S.tz) : NULL; if (!tz) tz = g_time_zone_new_local();
+	GDateTime *n0 = g_date_time_new_now(tz), *t = g_date_time_add_seconds(n0, S.doff / 1000.0);
+	*y = g_date_time_get_year(t); *mo = g_date_time_get_month(t); *d = g_date_time_get_day_of_month(t); g_date_time_unref(t); g_date_time_unref(n0); g_time_zone_unref(tz);
+	GDate *f = g_date_new_dmy(1, *mo, *y); *st = g_date_get_weekday(f) % 7; *n = g_date_get_days_in_month(*mo, *y); g_date_free(f);
+}
+static const char WXERR[] = "Weather needs an internet connection. Trying again…";
+static int wrap_lines(const char *t, const char *fam, int wt, double px, double w)
+{
+	PangoLayout *pl = css_layout(scr(), t, fam, wt, px); pango_layout_set_width(pl, (int)(w * PANGO_SCALE)); pango_layout_set_wrap(pl, PANGO_WRAP_WORD_CHAR);
+	int n = pango_layout_get_line_count(pl); g_object_unref(pl); return n;
+}
+static double wg_body(const Wg *w)
+{
+	double l13 = lh_of(UIFAM, 400, 13), bw = wg_w(w) - 24;
+	if (!strcmp(w->t, "clock")) return lh_of(UIFAM, 300, 34) + l13;
+	if (!strcmp(w->t, "cal")) { int y, mo, d, st, n; cal_month(&y, &mo, &d, &st, &n); return lh_of(UIFAM, 700, 13) + ((st + n + 6) / 7 + 1) * (8 + lh_of(UIFAM, 400, 12)); }
+	if (!strcmp(w->t, "note")) { double d; css_ascent(scr(), UIFAM, 400, 13, &d); return w->th + d; }   /* (the textarea on the line: its bottom on the baseline) */
+	if (!strcmp(w->t, "mon")) return 3 * l13;
+	if (WX_ST == 2) return lh_of(UIFAM, 300, 34) + 2 * l13;
+	if (WX_ST == 1) return lh_of(UIFAM, 400, 15) + l13;
+	if (WX_ST == 3) return wrap_lines(WXERR, UIFAM, 400, 13, bw) * l13;
+	return l13;
+}
+static double wg_h(const Wg *w) { return 6 + lh_of(UIFAM, 400, 11) + 6 + 4 + wg_body(w) + 12; }
+static void wg_rect(const Wg *w, double *x, double *y, double *ww, double *hh) { *x = w->x; *y = wg_top0() + w->y; *ww = wg_w(w); *hh = wg_h(w); }
+/* (a picture blurred: three box blurs a channel, as a8_blur) */
+static void rgb_blur(cairo_surface_t *m, double sigma)
+{
+	if (sigma <= 0) return; cairo_surface_flush(m);
+	int w = cairo_image_surface_get_width(m), h = cairo_image_surface_get_height(m), st = cairo_image_surface_get_stride(m); unsigned char *d = cairo_image_surface_get_data(m);
+	int r = (int)floor(sigma * 3 * sqrt(2 * M_PI) / 4 + .5); if (r < 1) return; unsigned char *t = g_malloc(MAX(w, h) * 4);
+	for (int pass = 0; pass < 3; pass++) for (int ch = 0; ch < 3; ch++) {
+		for (int y = 0; y < h; y++) { unsigned char *row = d + y * st; int sum = 0; for (int x = -r; x <= r; x++) sum += row[CLAMP(x, 0, w - 1) * 4 + ch];
+			for (int x = 0; x < w; x++) { t[x] = sum / (2 * r + 1); sum += row[MIN(x + r + 1, w - 1) * 4 + ch] - row[MAX(x - r, 0) * 4 + ch]; } for (int x = 0; x < w; x++) row[x * 4 + ch] = t[x]; }
+		for (int x = 0; x < w; x++) { int sum = 0; for (int y = -r; y <= r; y++) sum += d[CLAMP(y, 0, h - 1) * st + x * 4 + ch];
+			for (int y = 0; y < h; y++) { t[y] = sum / (2 * r + 1); sum += d[MIN(y + r + 1, h - 1) * st + x * 4 + ch] - d[MAX(y - r, 0) * st + x * 4 + ch]; } for (int y = 0; y < h; y++) d[y * st + x * 4 + ch] = t[y]; }
+	}
+	g_free(t); cairo_surface_mark_dirty(m);
+}
+/* ---- the note's text, as the textarea lays it out (14 px "Courier New", padding 6 px, wrapped at its width) */
+static double note_lh(void) { return lh_of(NOTEF, 400, 14); }
+static PangoLayout *note_layout(const Wg *w)
+{
+	PangoLayout *pl = css_layout(scr(), w->txt ? w->txt : "", NOTEF, 400, 14); pango_layout_set_width(pl, (int)((wg_w(w) - 24 - 12) * PANGO_SCALE));
+	pango_layout_set_wrap(pl, PANGO_WRAP_WORD_CHAR); return pl;
+}
+/* the caret's line and place in it (the page's units, from the text's top-left) */
+static void note_caret_xy(const Wg *w, int idx, double *x, double *y)
+{
+	PangoLayout *pl = note_layout(w); int line = 0, xp = 0; pango_layout_index_to_line_x(pl, idx, FALSE, &line, &xp); g_object_unref(pl);
+	*x = xp / (double)PANGO_SCALE; *y = line * note_lh();
+}
+static void note_draw(cairo_t *cr, const Wg *w, int i, double tx, double ty, double tw, double th)
+{
+	Box b; memset(&b, 0, sizeof b); b.bg = cx("#fef9c3", 1); b.rad = 6; box_paint(cr, tx, ty, tw, th, &b);
+	double bx = tx, by = ty, bw = tw, bh = th; snap(&bx, &by, &bw, &bh);
+	cairo_save(cr); rrect(cr, bx, by, bw, bh, 6); cairo_clip(cr);
+	double lh = note_lh(), a, dsc; a = css_ascent(cr, NOTEF, 400, 14, &dsc); double top = ty + 6 - (NF == i ? NSCR : 0);
+	if (!w->txt || !w->txt[0]) css_text(cr, "Type a note…", NOTEF, 400, 14, tx + 6, top, lh, cx("#757575", 1), 0);   /* (the placeholder: Chromium's grey) */
+	else {
+		PangoLayout *pl = css_layout(cr, w->txt, NOTEF, 400, 14); pango_layout_set_width(pl, (int)((tw - 12) * PANGO_SCALE)); pango_layout_set_wrap(pl, PANGO_WRAP_WORD_CHAR);
+		int nl = pango_layout_get_line_count(pl), s0 = MIN(NCAR, NANC), s1 = MAX(NCAR, NANC);
+		for (int l = 0; l < nl; l++) { PangoLayoutLine *L = pango_layout_get_line_readonly(pl, l); double ly = top + l * lh; if (ly > ty + th || ly + lh < ty) continue;
+			if (NF == i && s1 > s0) { int *rg = NULL, nr = 0; pango_layout_line_get_x_ranges(L, s0, s1, &rg, &nr);   /* (the selection, Chromium's colour) */
+				for (int k = 0; k < nr; k++) { cairo_rectangle(cr, tx + 6 + rg[2 * k] / (double)PANGO_SCALE, ly, (rg[2 * k + 1] - rg[2 * k]) / (double)PANGO_SCALE, lh); srca(cr, cx(NSELW ? "#3390ff" : "#c8c8c8", 1)); cairo_fill(cr); } g_free(rg); }
+			srca(cr, cx("#422006", 1)); cairo_move_to(cr, tx + 6, round(ly + a)); pango_cairo_show_layout_line(cr, L); }
+		g_object_unref(pl);
+	}
+	if (NF == i && NBLINK && NCAR == NANC) { double cx0, cy0; note_caret_xy(w, NCAR, &cx0, &cy0); cairo_rectangle(cr, round(tx + 6 + cx0), top + cy0, 1, lh); srca(cr, cx("#422006", 1)); cairo_fill(cr); }
+	cairo_restore(cr);
+	/* the resizer, as Chromium draws it: two lines, dark with a light edge, in the bottom-right corner */
+	double R = bx + bw, B = by + bh;
+	for (int k = 0; k < 2; k++) { int a0 = k ? 5 : 9; for (int p = 0; p < 2; p++) { srca(cr, p ? cx("#ffffff", .6) : cx("#000000", .6));
+			for (int s = 3; s <= a0; s++) cairo_rectangle(cr, R - s + p, B - (a0 + 3 - s), 1, 1); cairo_fill(cr); } }
+}
+static void wg_render(int i)
+{
+	Wg *w = &WG[i]; double X, Y, W, H; wg_rect(w, &X, &Y, &W, &H); int k = wg_kind(w->t); if (k < 0) return;
+	int ox = (int)floor((X - 26) * Z), oy = (int)floor((Y - 18) * Z), sw = (int)ceil((X + W + 26) * Z) - ox, sh = (int)ceil((Y + H + 38) * Z) - oy;
+	if (w->sf) cairo_surface_destroy(w->sf);
+	w->sf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, sw, sh); w->ox = ox; w->oy = oy; w->dirty = 0;
+	cairo_t *cr = cairo_create(w->sf); cairo_translate(cr, -ox, -oy); cairo_scale(cr, Z, Z);
+	Box b; memset(&b, 0, sizeof b); b.rad = 12; shd_add(&b, 0, 8, 22, cx("#000000", .3), 0); box_paint(cr, X, Y, W, H, &b);
+	double bx = X, by = Y, bw = W, bh = H; snap(&bx, &by, &bw, &bh);
+	if (DESKC) {   /* (backdrop-filter: blur(6px): the desktop behind it, as drawn) */
+		int m = (int)ceil(20 * Z), rx = (int)floor(bx * Z) - m, ry = (int)floor(by * Z) - m, rw = (int)ceil((bx + bw) * Z) + m - rx, rh = (int)ceil((by + bh) * Z) + m - ry;
+		cairo_surface_t *bk = cairo_image_surface_create(CAIRO_FORMAT_RGB24, rw, rh); cairo_t *bc = cairo_create(bk);
+		cairo_set_source_surface(bc, DESKC, -rx, -ry); cairo_pattern_set_extend(cairo_get_source(bc), CAIRO_EXTEND_PAD); cairo_paint(bc); cairo_destroy(bc); rgb_blur(bk, 6 * Z);
+		cairo_save(cr); rrect(cr, bx, by, bw, bh, 12); cairo_clip(cr); cairo_identity_matrix(cr); cairo_set_source_surface(cr, bk, rx - ox, ry - oy); cairo_paint(cr); cairo_restore(cr);
+		cairo_surface_destroy(bk);
+	}
+	memset(&b, 0, sizeof b); b.bg = cx("#0f172a", .72); b.rad = 12; box_paint(cr, X, Y, W, H, &b);
+	RGBA ink = cx("#e2e8f0", 1); double l11 = lh_of(UIFAM, 400, 11), l13 = lh_of(UIFAM, 400, 13);
+	/* the header (.wgh: opacity .8) */
+	cairo_push_group(cr); char hd[64]; snprintf(hd, sizeof hd, "%s %s", WGT[k][1], WGT[k][2]);
+	css_text(cr, hd, UIFAM, 400, 11, X + 8, Y + 6, l11, ink, 0);
+	css_text(cr, "✕", UIFAM, 400, 11, X + W - 8 - 4 - css_width(cr, "✕", UIFAM, 400, 11), Y + 6, l11, ink, 0);
+	cairo_pop_group_to_source(cr); cairo_paint_with_alpha(cr, .8);
+	double cx0 = X + 12, cy0 = Y + 6 + l11 + 6 + 4, cw = W - 24;
+	if (k == 0) { char t[32], d[64]; sign_clock_texts(t, sizeof t, d, sizeof d); double l34 = lh_of(UIFAM, 300, 34);
+		css_text(cr, t, UIFAM, 300, 34, cx0, cy0, l34, ink, 0); css_text(cr, d, UIFAM, 400, 13, cx0, cy0 + l34, l13, ink, 0); }
+	else if (k == 1) { int y, mo, d, st, n; cal_month(&y, &mo, &d, &st, &n);
+		GDateTime *f = g_date_time_new_utc(y, mo, 1, 12, 0, 0); char *mt = g_date_time_format(f, "%B %Y"); g_date_time_unref(f);
+		double lb = lh_of(UIFAM, 700, 13), l12 = lh_of(UIFAM, 400, 12), rh = 8 + l12, col = cw / 7, ty = cy0 + lb; css_text(cr, mt ? mt : "", UIFAM, 700, 13, cx0, cy0, lb, ink, 0); g_free(mt);
+		for (int c = 0; c < 7; c++) { char s[2] = { "SMTWTFS"[c], 0 }; css_text(cr, s, UIFAM, 700, 12, cx0 + c * col + (col - css_width(cr, s, UIFAM, 700, 12)) / 2, ty + 4, l12, ink, 0); }
+		for (int q = 1; q <= n; q++) { int p = st + q - 1, r = p / 7 + 1, c = p % 7; char s[12]; snprintf(s, sizeof s, "%d", q); double x = cx0 + c * col, yy = ty + r * rh;
+			if (q == d) { double ex = x, ey = yy, ew = col, eh = rh; snap(&ex, &ey, &ew, &eh); cairo_save(cr); cairo_translate(cr, ex + ew / 2, ey + eh / 2); cairo_scale(cr, ew / 2, eh / 2);
+				cairo_arc(cr, 0, 0, 1, 0, 2 * M_PI); cairo_restore(cr); srca(cr, ca(accent(), 1)); cairo_fill(cr); }   /* (td.tod: the accent, border-radius 50 %) */
+			css_text(cr, s, UIFAM, 400, 12, x + (col - css_width(cr, s, UIFAM, 400, 12)) / 2, yy + 4, l12, q == d ? cx("#ffffff", 1) : ink, 0); } }
+	else if (k == 2) note_draw(cr, w, i, cx0, cy0, cw, w->th);
+	else if (k == 3) { const char *L[3] = { "CPU: ", "Memory: ", "Windows: " }; char nw[16]; int c = 0; for (GList *l = WINS; l; l = l->next) if (!((AppWin *)l->data)->hidden) c++; snprintf(nw, sizeof nw, "%d", c);
+		const char *V[3] = { MON_CPU, MON_MEM, nw };
+		for (int r = 0; r < 3; r++) { double ww = css_text(cr, L[r], UIFAM, 400, 13, cx0, cy0 + r * l13, l13, ink, 0); css_text(cr, V[r], UIFAM, 700, 13, cx0 + ww, cy0 + r * l13, l13, ink, 0); } }
+	else if (WX_ST == 2) { double l34 = lh_of(UIFAM, 300, 34); css_text(cr, WX_T, UIFAM, 300, 34, cx0, cy0, l34, ink, 0); css_text(cr, WX_C, UIFAM, 400, 13, cx0, cy0 + l34, l13, ink, 0);
+		cairo_push_group(cr); css_text(cr, WX_L, UIFAM, 400, 13, cx0, cy0 + l34 + l13, l13, ink, 0); cairo_pop_group_to_source(cr); cairo_paint_with_alpha(cr, .75); }
+	else if (WX_ST == 1) { double l15 = lh_of(UIFAM, 400, 15); css_text(cr, "⛅ Where are you?", UIFAM, 400, 15, cx0, cy0, l15, ink, 0);
+		cairo_push_group(cr); css_text(cr, "Click to choose your city.", UIFAM, 400, 13, cx0, cy0 + l15, l13, ink, 0); cairo_pop_group_to_source(cr); cairo_paint_with_alpha(cr, .8); }
+	else if (WX_ST == 3) { PangoLayout *pl = css_layout(cr, WXERR, UIFAM, 400, 13); pango_layout_set_width(pl, (int)(cw * PANGO_SCALE)); pango_layout_set_wrap(pl, PANGO_WRAP_WORD_CHAR);
+		double a, d; css_metrics(pl, &a, &d); srca(cr, ink);
+		for (int l = 0; l < pango_layout_get_line_count(pl); l++) { cairo_move_to(cr, cx0, round(cy0 + l * l13 + a)); pango_cairo_show_layout_line(cr, pango_layout_get_line_readonly(pl, l)); }
+		g_object_unref(pl); }
+	else css_text(cr, "Loading…", UIFAM, 400, 13, cx0, cy0, l13, ink, 0);
+	cairo_destroy(cr);
+}
+/* (what is drawn again: the widget's old and new places) */
+static void wg_queue(int i)
+{
+	if (!DESKAREA || i < 0 || i >= NWG) return; Wg *w = &WG[i];
+	if (w->sf) gtk_widget_queue_draw_area(DESKAREA, w->ox, w->oy, cairo_image_surface_get_width(w->sf), cairo_image_surface_get_height(w->sf));
+	double X, Y, W, H; wg_rect(w, &X, &Y, &W, &H); gtk_widget_queue_draw_area(DESKAREA, (int)floor((X - 26) * Z), (int)floor((Y - 18) * Z), (int)ceil((W + 52) * Z) + 2, (int)ceil((H + 56) * Z) + 2);
+}
+static void wg_dirty(int i) { if (i < 0 || i >= NWG) return; WG[i].dirty = 1; wg_queue(i); }
+static void wg_dirty_kind(const char *t) { for (int i = 0; i < NWG; i++) if (!strcmp(WG[i].t, t)) wg_dirty(i); }
+static void wg_paint(cairo_t *cr)
+{
+	if (NWG_ALL_DIRTY) { NWG_ALL_DIRTY = 0; for (int i = 0; i < NWG; i++) WG[i].dirty = 1; }   /* (what is behind them changed) */
+	if (!wg_shown()) return;
+	for (int i = 0; i < NWG; i++) { Wg *w = &WG[i]; if (wg_kind(w->t) < 0) continue; if (!w->sf || w->dirty) wg_render(i);
+		cairo_set_source_surface(cr, w->sf, w->ox, w->oy); cairo_paint(cr); }
+}
+/* the list as JSON (the page's: t, x, y, txt) */
+static void num_js(GString *s, double v) { if (v == floor(v) && fabs(v) < 1e15) g_string_append_printf(s, "%.0f", v); else { char b[40]; g_ascii_formatd(b, sizeof b, "%.15g", v); g_string_append(s, b); } }
+static GString *wg_json(void)
+{
+	GString *b = g_string_new("[");
+	for (int i = 0; i < NWG; i++) { Wg *w = &WG[i]; if (i) g_string_append_c(b, ','); g_string_append(b, "{\"t\":"); json_esc(b, w->t);
+		g_string_append(b, ",\"x\":"); num_js(b, w->x); g_string_append(b, ",\"y\":"); num_js(b, w->y); g_string_append(b, ",\"txt\":"); json_esc(b, w->txt ? w->txt : ""); g_string_append_c(b, '}'); }
+	g_string_append_c(b, ']'); return b;
+}
+static gboolean wg_save_now(gpointer d)
+{
+	(void)d; WG_SAVE_T = 0; if (!USER_ID[0]) return G_SOURCE_REMOVE;
+	GString *b = wg_json(); char *a = g_uri_escape_string(USER_ID, NULL, FALSE), p[200]; snprintf(p, sizeof p, "/api/desktop/widgets?acct=%s", a); g_free(a);
+	http("POST", p, b->str, b->len, NULL); g_string_free(b, TRUE); state_write(); return G_SOURCE_REMOVE;
+}
+static void wg_save(void) { if (WG_SAVE_T) { g_source_remove(WG_SAVE_T); WG_SAVE_T = 0; } wg_save_now(NULL); }
+static void wg_save_soon(void) { if (WG_SAVE_T) g_source_remove(WG_SAVE_T); WG_SAVE_T = g_timeout_add(500, wg_save_now, NULL); }
+/* ---- the system monitor (rudolfd's stats, as the page reads them) */
+static gboolean wg_mon(gpointer d)
+{
+	(void)d; JV *v = jget("/api/stats"); snprintf(MON_CPU, sizeof MON_CPU, "—"); snprintf(MON_MEM, sizeof MON_MEM, "—");
+	JV *c = jprop(v, "cpu"), *t = jprop(v, "memTotal"), *a = jprop(v, "memAvailable");
+	if (c && c->t == 2 && t && t->t == 2 && a && a->t == 2) { snprintf(MON_CPU, sizeof MON_CPU, "%.0f%%", c->n);
+		snprintf(MON_MEM, sizeof MON_MEM, "%.0f / %.0f MB", floor((t->n - a->n) / 1048576 + .5), floor(t->n / 1048576 + .5)); }
+	jfree(v); wg_dirty_kind("mon"); return G_SOURCE_CONTINUE;
+}
+/* ---- the weather (weather47.js weatherLoc, wxF, wxT; shell25.js weatherNow): Open-Meteo's forecast for the place
+   chosen in Weather (bd95wloc), else for the city of System Settings' time zone (looked up with Open-Meteo's geocoding;
+   kept here), else it asks */
+static void wx_draw(void) { wg_dirty_kind("weather"); state_write(); }
+static gboolean wx_retry(gpointer d);
+static void wx_fail(int gen)
+{
+	if (gen != WX_GEN) return; WX_ST = 3; int n = ++WX_N; static const int AG[3] = { 20, 60, 120 };
+	if (WG_WXR_T) g_source_remove(WG_WXR_T); WG_WXR_T = g_timeout_add_seconds(n <= 3 ? AG[n - 1] : 300, wx_retry, NULL); wx_draw();
+}
+typedef struct { void (*cb)(JV *, int); int gen; SoupMessage *m; } WxReq;
+static void wx_got(GObject *src, GAsyncResult *res, gpointer d)
+{
+	WxReq *q = d; GBytes *b = soup_session_send_and_read_finish(SOUP_SESSION(src), res, NULL); JV *j = NULL;
+	if (b && soup_message_get_status(q->m) == 200) { gsize n = 0; const char *p = g_bytes_get_data(b, &n); char *s = g_strndup(p ? p : "", n); j = jparse(s); g_free(s); }
+	if (b) g_bytes_unref(b);
+	q->cb(j, q->gen); jfree(j); g_object_unref(q->m); g_free(q);
+}
+static SoupSession *WXS;
+static void wx_get(const char *url, void (*cb)(JV *, int), int gen)
+{
+	if (!WXS) { WXS = soup_session_new(); soup_session_set_timeout(WXS, 30); }
+	SoupMessage *m = soup_message_new("GET", url); if (!m) { cb(NULL, gen); return; }
+	WxReq *q = g_new0(WxReq, 1); q->cb = cb; q->gen = gen; q->m = m; soup_session_send_and_read_async(WXS, m, G_PRIORITY_DEFAULT, NULL, wx_got, q);
+}
+static const char *wx_base(void) { const char *b = getenv("RUDOLF_WX_BASE"); return b && *b ? b : "https://api.open-meteo.com"; }
+static const char *wx_geo(void) { const char *b = getenv("RUDOLF_WX_GEO"); return b && *b ? b : "https://geocoding-api.open-meteo.com"; }
+static WLoc WXLOC;   /* (the place being looked up) */
+static int wx_f(void) { if (WUNIT[0]) return WUNIT[0] == 'F'; return WXLOC.ok && (!strcmp(WXLOC.cc, "US") || !strcmp(WXLOC.cc, "LR") || !strcmp(WXLOC.cc, "MM")); }
+static void wx_forecast_got(JV *j, int gen)
+{
+	if (gen != WX_GEN) return; JV *c = jprop(j, "current"), *t = jprop(c, "temperature_2m"), *k = jprop(c, "weather_code"), *wd = jprop(c, "wind_speed_10m");
+	if (!t || t->t != 2 || !wd || wd->t != 2) { wx_fail(gen); return; }   /* (the page: an answer without them is an error too) */
+	int f = wx_f(); double v = f ? t->n * 9 / 5 + 32 : t->n; snprintf(WX_T, sizeof WX_T, "%.0f°%s", floor(v + .5), f ? "F" : "C");
+	static const struct { int c; const char *s; } CODE[] = { {0, "☀️ Clear"}, {1, "🌤️ Mostly clear"}, {2, "⛅ Partly cloudy"}, {3, "☁️ Cloudy"}, {45, "🌫️ Fog"}, {48, "🌫️ Fog"}, {51, "🌦️ Drizzle"},
+		{53, "🌦️ Drizzle"}, {55, "🌦️ Drizzle"}, {61, "🌧️ Rain"}, {63, "🌧️ Rain"}, {65, "🌧️ Heavy rain"}, {71, "🌨️ Snow"}, {73, "🌨️ Snow"}, {75, "🌨️ Heavy snow"}, {80, "🌦️ Showers"},
+		{81, "🌦️ Showers"}, {82, "🌧️ Heavy showers"}, {95, "⛈️ Thunderstorm"} };
+	snprintf(WX_C, sizeof WX_C, "🌡️"); for (unsigned i = 0; k && k->t == 2 && i < G_N_ELEMENTS(CODE); i++) if (CODE[i].c == k->n) snprintf(WX_C, sizeof WX_C, "%s", CODE[i].s);
+	char city[160]; snprintf(city, sizeof city, "%s", WXLOC.name); city[strcspn(city, ",")] = 0;
+	snprintf(WX_L, sizeof WX_L, "%s · wind %.0f %s", city, floor(wd->n + .5), f ? "mph" : "km/h");
+	WX_ST = 2; WX_N = 0; wx_draw();
+}
+static void wx_forecast(int gen)
+{
+	char la[40], lo[40], u[600]; g_ascii_formatd(la, sizeof la, "%.15g", WXLOC.lat); g_ascii_formatd(lo, sizeof lo, "%.15g", WXLOC.lon);
+	snprintf(u, sizeof u, "%s/v1/forecast?latitude=%s&longitude=%s&current=temperature_2m,weather_code,wind_speed_10m&timezone=auto&wind_speed_unit=%s", wx_base(), la, lo, wx_f() ? "mph" : "kmh");
+	wx_get(u, wx_forecast_got, gen);
+}
+static void wloc_read(JV *o, WLoc *l)
+{
+	memset(l, 0, sizeof *l); if (!o || o->t != 5) return; JV *a = jprop(o, "lat"), *b = jprop(o, "lon"); if (!a || a->t != 2 || !b || b->t != 2) return;
+	l->ok = 1; l->lat = a->n; l->lon = b->n; jstr(o, "name", l->name, sizeof l->name); jstr(o, "cc", l->cc, sizeof l->cc); jstr(o, "tz", l->tz, sizeof l->tz); l->guess = jbool(o, "guess");
+}
+static void wx_tz(char *tz, size_t n)
+{
+	if (S.tz[0]) { snprintf(tz, n, "%s", S.tz); return; }
+	GTimeZone *z = g_time_zone_new_local(); snprintf(tz, n, "%s", g_time_zone_get_identifier(z)); g_time_zone_unref(z);
+	if (tz[0] == '/' || !strcmp(tz, "localtime")) snprintf(tz, n, "UTC");
+}
+static void wx_geo_got(JV *j, int gen)
+{
+	if (gen != WX_GEN) return; if (!j) { wx_fail(gen); return; }
+	char tz[64]; wx_tz(tz, sizeof tz); char reg[64]; snprintf(reg, sizeof reg, "%s", tz); reg[strcspn(reg, "/")] = 0;
+	JV *r = jprop(j, "results"), *pick = NULL;
+	for (int pass = 0; pass < 3 && !pick; pass++) for (int i = 0; r && i < r->len; i++) { JV *g = jat(r, i); char z[64] = ""; jstr(g, "timezone", z, sizeof z);
+		if (pass == 2 || (pass == 0 && !strcmp(z, tz)) || (pass == 1 && !strncmp(z, reg, strlen(reg)) && (z[strlen(reg)] == '/' || !z[strlen(reg)]))) { pick = g; break; } }
+	if (!pick) { WX_ST = 1; wx_draw(); return; }
+	WLoc l; memset(&l, 0, sizeof l); l.ok = 1; l.guess = 1; l.lat = jnum(pick, "latitude", 0); l.lon = jnum(pick, "longitude", 0); snprintf(l.tz, sizeof l.tz, "%s", tz); jstr(pick, "country_code", l.cc, sizeof l.cc);
+	char nm[80] = "", a1[80] = "", co[80] = ""; jstr(pick, "name", nm, sizeof nm); jstr(pick, "admin1", a1, sizeof a1); jstr(pick, "country", co, sizeof co);
+	snprintf(l.name, sizeof l.name, "%s%s%s%s%s", nm, a1[0] && strcmp(a1, nm) ? ", " : "", a1[0] && strcmp(a1, nm) ? a1 : "", co[0] ? ", " : "", co);
+	WGUESS = l; WXLOC = l; wx_forecast(gen);
+}
+static void wx_go(void)
+{
+	if (WG_WXR_T) { g_source_remove(WG_WXR_T); WG_WXR_T = 0; }
+	int gen = ++WX_GEN;
+	if (WL.ok && !WL.guess) { WXLOC = WL; wx_forecast(gen); return; }
+	char tz[64]; wx_tz(tz, sizeof tz); char city[64] = "";
+	if (strchr(tz, '/') && g_ascii_strncasecmp(tz, "Etc", 3) && g_ascii_strncasecmp(tz, "UTC", 3) && g_ascii_strncasecmp(tz, "GMT", 3) && g_ascii_strncasecmp(tz, "SystemV", 7)) {
+		snprintf(city, sizeof city, "%s", strrchr(tz, '/') + 1); for (char *p = city; *p; p++) if (*p == '_') *p = ' '; }
+	if (!city[0]) { WX_ST = 1; wx_draw(); return; }
+	if (WL.ok && WL.guess && !strcmp(WL.tz, tz)) { WXLOC = WL; wx_forecast(gen); return; }
+	if (WGUESS.ok && !strcmp(WGUESS.tz, tz)) { WXLOC = WGUESS; wx_forecast(gen); return; }
+	char *e = g_uri_escape_string(city, NULL, FALSE), u[400]; snprintf(u, sizeof u, "%s/v1/search?language=en&count=10&name=%s", wx_geo(), e); g_free(e);
+	wx_get(u, wx_geo_got, gen);
+}
+static gboolean wx_retry(gpointer d) { (void)d; WG_WXR_T = 0; if (wg_kind_n("weather")) wx_go(); return G_SOURCE_REMOVE; }
+static gboolean wx_tick(gpointer d) { (void)d; wx_go(); return G_SOURCE_CONTINUE; }
+/* the page's wgDraw: everything drawn again, the timers started again (the weather says Loading… and looks again) */
+static void note_unfocus(void);
+static void wg_rebuild(void)
+{
+	note_unfocus();
+	if (WG_MON_T) { g_source_remove(WG_MON_T); WG_MON_T = 0; } if (WG_WX_T) { g_source_remove(WG_WX_T); WG_WX_T = 0; } if (WG_WXR_T) { g_source_remove(WG_WXR_T); WG_WXR_T = 0; }
+	for (int i = 0; i < NWG; i++) { WG[i].dirty = 1; WG[i].th = 120; }
+	if (USER_ID[0] && wg_kind_n("mon")) { wg_mon(NULL); WG_MON_T = g_timeout_add_seconds(3, wg_mon, NULL); }
+	if (USER_ID[0] && wg_kind_n("weather")) { WX_ST = 0; WX_N = 0; wx_go(); WG_WX_T = g_timeout_add_seconds(15 * 60, wx_tick, NULL); }
+	if (DESKAREA) gtk_widget_queue_draw(DESKAREA); state_write();
+}
+static void wg_clear(void) { for (int i = 0; i < NWG; i++) { g_free(WG[i].txt); if (WG[i].sf) cairo_surface_destroy(WG[i].sf); } memset(WG, 0, sizeof WG); NWG = 0; }
+/* from desktop/settings: the list (unless one is being moved or typed in), the weather's place and unit */
+static void wg_load(JV *v)
+{
+	WLoc nl; wloc_read(jprop(v, "wloc"), &nl); char nu[4] = ""; jstr(v, "wunit", nu, sizeof nu);
+	int wx = memcmp(&nl, &WL, sizeof nl) || strcmp(nu, WUNIT); WL = nl; snprintf(WUNIT, sizeof WUNIT, "%s", nu);
+	JV *a = jprop(v, "widgets"); if (WGD.on || WG_SAVE_T) return;
+	Wg n[MAXWG]; int nn = 0; memset(n, 0, sizeof n);
+	for (int i = 0; a && a->t == 4 && i < a->len && nn < MAXWG; i++) { JV *o = jat(a, i); if (!o || o->t != 5) continue; Wg *w = &n[nn++];
+		jstr(o, "t", w->t, sizeof w->t); w->x = jnum(o, "x", 0); w->y = jnum(o, "y", 0); JV *t = jprop(o, "txt"); w->txt = g_strdup(t && t->t == 3 ? t->s : ""); w->th = 120; }
+	/* (the same list: nothing to do) */
+	int same = nn == NWG; for (int i = 0; same && i < nn; i++) same = !strcmp(n[i].t, WG[i].t) && n[i].x == WG[i].x && n[i].y == WG[i].y && !strcmp(n[i].txt, WG[i].txt ? WG[i].txt : "");
+	if (same) { for (int i = 0; i < nn; i++) g_free(n[i].txt); if (wx && wg_kind_n("weather")) { WX_ST = 0; wx_go(); } return; }
+	wg_clear(); memcpy(WG, n, sizeof n); NWG = nn; wg_rebuild();
+}
+/* ---- the picker (the page's widgetPicker: the menu "Add a widget", where the page puts it) */
+static void on_wg_add(const char *a)
+{
+	if (strncmp(a, "wg:", 3) || wg_kind(a + 3) < 0 || NWG >= MAXWG || !USER_ID[0]) return;
+	Wg *w = &WG[NWG]; memset(w, 0, sizeof *w); snprintf(w->t, sizeof w->t, "%s", a + 3);
+	w->x = fmax(20, round(SW / Z) - 300 - NWG * 20); w->y = 40 + NWG * 30; w->txt = g_strdup(""); NWG++;
+	wg_save(); wg_rebuild();
+}
+static void wg_picker(void)
+{
+	CMI m[5]; memset(m, 0, sizeof m);
+	for (int i = 0; i < 5; i++) { snprintf(m[i].label, sizeof m[i].label, "%s", WGT[i][2]); snprintf(m[i].icon, sizeof m[i].icon, "%s", WGT[i][1]); snprintf(m[i].act, sizeof m[i].act, "wg:%s", WGT[i][0]); }
+	CM_RING = 1; cm_open((SW / Z / 2 - 90) * Z, (SH / Z / 3) * Z, "Add a widget", m, 5, on_wg_add); snprintf(DI_MENU, sizeof DI_MENU, "wgpick"); state_write();
+}
+/* ---- the note (the page's textarea) */
+static gboolean note_blink(gpointer d) { (void)d; NBLINK = !NBLINK; if (NF >= 0) wg_dirty(NF); return G_SOURCE_CONTINUE; }
+static void note_caret(void)
+{
+	NBLINK = 1; if (NBLINK_T) g_source_remove(NBLINK_T); NBLINK_T = g_timeout_add(500, note_blink, NULL);
+	if (NF < 0) return; Wg *w = &WG[NF]; double x, y, lh = note_lh(), vis = w->th - 12; note_caret_xy(w, NCAR, &x, &y);   /* (kept in sight, as the textarea scrolls) */
+	if (y < NSCR) NSCR = y; if (y + lh > NSCR + vis) NSCR = y + lh - vis; if (NSCR < 0) NSCR = 0; wg_dirty(NF);
+}
+static void note_unfocus(void) { if (NF >= 0 && NF < NWG) { int i = NF; NF = -1; wg_dirty(i); } NF = -1; NSCR = 0; if (NBLINK_T) { g_source_remove(NBLINK_T); NBLINK_T = 0; } if (NIM) gtk_im_context_focus_out(NIM); state_write(); }
+static void note_focus(int i)
+{
+	if (NF != i) { note_unfocus(); NF = i; NSCR = 0; NSELW = 1; if (NUNDO) g_ptr_array_set_size(NUNDO, 0); if (NREDO) g_ptr_array_set_size(NREDO, 0); }
+	if (!NUNDO) { NUNDO = g_ptr_array_new_with_free_func(g_free); NREDO = g_ptr_array_new_with_free_func(g_free); }
+	if (WM_OK) wm_focus(NULL); if (DESK && gtk_widget_get_window(DESK)) gdk_window_focus(gtk_widget_get_window(DESK), GDK_CURRENT_TIME); gtk_widget_grab_focus(DESKAREA);
+	if (NIM) gtk_im_context_focus_in(NIM); note_caret(); state_write();
+}
+static int note_len(void) { return NF >= 0 && WG[NF].txt ? (int)strlen(WG[NF].txt) : 0; }
+static void note_snap(GPtrArray *a) { g_ptr_array_add(a, g_strdup_printf("%d\n%s", NCAR, WG[NF].txt ? WG[NF].txt : "")); if (a->len > 100) g_ptr_array_remove_index(a, 0); }
+static void note_changed(void) { wg_save_soon(); note_caret(); state_write(); }
+/* the selection replaced by S (typing, pasting, deleting) */
+static void note_put(const char *s)
+{
+	if (NF < 0) return; Wg *w = &WG[NF]; const char *t = w->txt ? w->txt : ""; int a = MIN(NCAR, NANC), b = MAX(NCAR, NANC);
+	if (a == b && !*s) return; note_snap(NUNDO); g_ptr_array_set_size(NREDO, 0);
+	GString *n = g_string_new_len(t, a); g_string_append(n, s); g_string_append(n, t + b); g_free(w->txt); w->txt = g_string_free(n, FALSE);
+	NCAR = NANC = a + (int)strlen(s); note_changed();
+}
+static void note_undo(int redo)
+{
+	GPtrArray *from = redo ? NREDO : NUNDO, *to = redo ? NUNDO : NREDO; if (NF < 0 || !from->len) return;
+	note_snap(to); char *s = g_ptr_array_steal_index(from, from->len - 1), *nl = strchr(s, '\n'); Wg *w = &WG[NF];
+	/* (as Chromium: what comes back is selected, else the caret where the change was) */
+	const char *o = w->txt ? w->txt : "", *t = nl ? nl + 1 : ""; int lo = (int)strlen(o), lt = (int)strlen(t), a = 0, b = 0;
+	while (a < lo && a < lt && o[a] == t[a]) a++; while (b < lo - a && b < lt - a && o[lo - 1 - b] == t[lt - 1 - b]) b++;
+	while (a > 0 && (t[a] & 0xc0) == 0x80) a--;
+	g_free(w->txt); w->txt = g_strdup(t); NANC = a; NCAR = lt - b; if (NCAR < NANC) NCAR = NANC; g_free(s); note_changed();
+}
+static char *note_sel(void) { if (NF < 0) return NULL; int a = MIN(NCAR, NANC), b = MAX(NCAR, NANC); return b > a ? g_strndup(WG[NF].txt + a, b - a) : NULL; }
+static void note_copy(int cut) { char *s = note_sel(); if (!s) return; gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), s, -1); g_free(s); if (cut) note_put(""); }
+static void note_pasted(GtkClipboard *c, const char *t, gpointer d) { (void)c; int i = GPOINTER_TO_INT(d); if (t && NF == i) note_put(t); }
+static void note_paste(void) { if (NF >= 0) gtk_clipboard_request_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), note_pasted, GINT_TO_POINTER(NF)); }
+static void note_commit(GtkIMContext *im, const char *str, gpointer d) { (void)im; (void)d; if (NF >= 0) note_put(str); }
+/* the place in the text at (X, Y) (the page's units, from the text's top-left) */
+static int note_index(const Wg *w, double x, double y)
+{
+	PangoLayout *pl = note_layout(w); int nl = pango_layout_get_line_count(pl), l = (int)floor(y / note_lh()); if (l < 0) l = 0; if (l >= nl) l = nl - 1;
+	int idx = 0, tr = 0; pango_layout_line_x_to_index(pango_layout_get_line_readonly(pl, l), (int)(x * PANGO_SCALE), &idx, &tr);
+	const char *t = w->txt ? w->txt : ""; while (tr-- > 0 && t[idx]) idx = (int)(g_utf8_next_char(t + idx) - t);
+	g_object_unref(pl); return idx;
+}
+static int note_word(const char *t, int i, int dir)   /* (Ctrl+arrows, a double-click: words) */
+{
+	int n = (int)strlen(t);
+	if (dir < 0) { while (i > 0 && !g_unichar_isalnum(g_utf8_get_char(g_utf8_prev_char(t + i)))) i = (int)(g_utf8_prev_char(t + i) - t); while (i > 0 && g_unichar_isalnum(g_utf8_get_char(g_utf8_prev_char(t + i)))) i = (int)(g_utf8_prev_char(t + i) - t); }
+	else { while (i < n && !g_unichar_isalnum(g_utf8_get_char(t + i))) i = (int)(g_utf8_next_char(t + i) - t); while (i < n && g_unichar_isalnum(g_utf8_get_char(t + i))) i = (int)(g_utf8_next_char(t + i) - t); }
+	return i;
+}
+static gboolean note_key(GdkEventKey *e)
+{
+	if (NF < 0) return FALSE; Wg *w = &WG[NF]; const char *t = w->txt ? w->txt : ""; int n = (int)strlen(t), sh = e->state & GDK_SHIFT_MASK, ctl = e->state & GDK_CONTROL_MASK, kv = e->keyval;
+	if (ctl && !(e->state & GDK_MOD1_MASK)) {
+		if (kv == GDK_KEY_a || kv == GDK_KEY_A) { NANC = 0; NCAR = n; note_caret(); return TRUE; }
+		if (kv == GDK_KEY_c || kv == GDK_KEY_C || kv == GDK_KEY_Insert) { note_copy(0); return TRUE; }
+		if (kv == GDK_KEY_x || kv == GDK_KEY_X) { note_copy(1); return TRUE; }
+		if (kv == GDK_KEY_v || kv == GDK_KEY_V) { note_paste(); return TRUE; }
+		if (kv == GDK_KEY_z || kv == GDK_KEY_Z) { note_undo(sh); return TRUE; }
+		if (kv == GDK_KEY_y || kv == GDK_KEY_Y) { note_undo(1); return TRUE; }
+	}
+	int mv = -1;
+	if (kv == GDK_KEY_Left || kv == GDK_KEY_KP_Left) { if (!sh && NCAR != NANC) mv = MIN(NCAR, NANC); else mv = ctl ? note_word(t, NCAR, -1) : NCAR > 0 ? (int)(g_utf8_prev_char(t + NCAR) - t) : 0; }
+	else if (kv == GDK_KEY_Right || kv == GDK_KEY_KP_Right) { if (!sh && NCAR != NANC) mv = MAX(NCAR, NANC); else mv = ctl ? note_word(t, NCAR, 1) : NCAR < n ? (int)(g_utf8_next_char(t + NCAR) - t) : n; }
+	else if (kv == GDK_KEY_Up || kv == GDK_KEY_Down || kv == GDK_KEY_KP_Up || kv == GDK_KEY_KP_Down) { double x, y; note_caret_xy(w, NCAR, &x, &y); int up = kv == GDK_KEY_Up || kv == GDK_KEY_KP_Up;
+		PangoLayout *pl = note_layout(w); int nl = pango_layout_get_line_count(pl), l = (int)lround(y / note_lh()) + (up ? -1 : 1); g_object_unref(pl);
+		mv = l < 0 ? 0 : l >= nl ? n : note_index(w, x, l * note_lh() + 1); }
+	else if (kv == GDK_KEY_Home || kv == GDK_KEY_End || kv == GDK_KEY_KP_Home || kv == GDK_KEY_KP_End) { int end = kv == GDK_KEY_End || kv == GDK_KEY_KP_End;
+		if (ctl) mv = end ? n : 0; else { double x, y; note_caret_xy(w, NCAR, &x, &y); PangoLayout *pl = note_layout(w); int line = (int)lround(y / note_lh());
+			PangoLayoutLine *L = pango_layout_get_line_readonly(pl, line); mv = L ? (end ? L->start_index + L->length : L->start_index) : NCAR;
+			if (end && L && mv > L->start_index && t[mv - 1] == '\n') mv--; g_object_unref(pl); } }
+	if (mv >= 0) { NCAR = mv; if (!sh) NANC = mv; note_caret(); state_write(); return TRUE; }
+	if (kv == GDK_KEY_BackSpace) { if (NCAR == NANC && NCAR > 0) NANC = ctl ? note_word(t, NCAR, -1) : (int)(g_utf8_prev_char(t + NCAR) - t); note_put(""); return TRUE; }
+	if (kv == GDK_KEY_Delete || kv == GDK_KEY_KP_Delete) { if (sh && !ctl) { note_copy(1); return TRUE; } if (NCAR == NANC && NCAR < n) NANC = ctl ? note_word(t, NCAR, 1) : (int)(g_utf8_next_char(t + NCAR) - t); note_put(""); return TRUE; }
+	if (kv == GDK_KEY_Insert && sh) { note_paste(); return TRUE; }
+	if (kv == GDK_KEY_Return || kv == GDK_KEY_KP_Enter) { note_put("\n"); return TRUE; }
+	if (kv == GDK_KEY_Tab || kv == GDK_KEY_ISO_Left_Tab) { note_unfocus(); return TRUE; }   /* (the focus leaves the textarea) */
+	if (kv == GDK_KEY_Escape) return TRUE;
+	if (ctl || (e->state & GDK_MOD1_MASK)) return TRUE;
+	if (NIM && gtk_im_context_filter_keypress(NIM, e)) return TRUE;
+	return TRUE;
+}
+/* the textarea's menu (the page's textMenu) */
+static void on_note_menu(const char *a)
+{
+	if (NF < 0) return; note_focus(NF);
+	if (!strcmp(a, "undo")) note_undo(0); else if (!strcmp(a, "redo")) note_undo(1); else if (!strcmp(a, "cut")) note_copy(1); else if (!strcmp(a, "copy")) note_copy(0);
+	else if (!strcmp(a, "paste")) note_paste(); else if (!strcmp(a, "delete")) note_put(""); else if (!strcmp(a, "all")) { NANC = 0; NCAR = note_len(); note_caret(); }
+}
+static void note_menu(GdkEventButton *e)
+{
+	int sel = NCAR != NANC;
+	CMI m[9] = { CM("Undo", "", "Ctrl+Z", "undo"), CM("Redo", "", "Ctrl+Y", "redo"), CMS, CM("Cut", "", "Ctrl+X", "cut"), CM("Copy", "", "Ctrl+C", "copy"), CM("Paste", "", "Ctrl+V", "paste"),
+		CM("Delete", "", "", "delete"), CMS, CM("Select all", "", "Ctrl+A", "all") };
+	m[3].dis = m[4].dis = m[6].dis = !sel; CM_RING = 0; cm_open(e->x_root, e->y_root, "", m, 9, on_note_menu); snprintf(DI_MENU, sizeof DI_MENU, "text"); state_write();
+}
+/* ---- the pointer */
+enum { WP_NONE, WP_HEAD, WP_X, WP_BODY, WP_TEXT, WP_RESIZE };
+static int wg_at(double sx, double sy, int *part)
+{
+	*part = WP_NONE; if (!wg_shown()) return -1; double x = sx / Z, y = sy / Z;
+	for (int i = NWG - 1; i >= 0; i--) { Wg *w = &WG[i]; if (wg_kind(w->t) < 0) continue; double X, Y, W, H; wg_rect(w, &X, &Y, &W, &H);
+		if (x < X || x >= X + W || y < Y || y >= Y + H) continue; double hh = 6 + lh_of(UIFAM, 400, 11) + 6, xw = 4 + css_width(scr(), "✕", UIFAM, 400, 11) + 4;
+		if (y < Y + hh) *part = x >= X + W - 8 - xw && x < X + W - 8 && y >= Y + 6 && y < Y + hh - 6 ? WP_X : WP_HEAD;
+		else if (!strcmp(w->t, "note") && x >= X + 12 && x < X + W - 12 && y >= Y + hh + 4 && y < Y + hh + 4 + w->th) *part = x >= X + W - 12 - 14 && y >= Y + hh + 4 + w->th - 14 ? WP_RESIZE : WP_TEXT;
+		else *part = WP_BODY;
+		return i; }
+	return -1;
+}
+static struct { int on, sel, rs; double sy, th0; } NDR;   /* (a selection being made with the pointer; the textarea being resized) */
+static void note_point(GdkEventButton *e, int i, int ext)
+{
+	Wg *w = &WG[i]; double X, Y, W, H; wg_rect(w, &X, &Y, &W, &H); double hh = 6 + lh_of(UIFAM, 400, 11) + 6;
+	int idx = note_index(w, e->x / Z - (X + 12 + 6), e->y / Z - (Y + hh + 4 + 6) + (NF == i ? NSCR : 0)); int was = NF == i; note_focus(i);
+	NCAR = idx; if (!ext || !was) NANC = idx; note_caret();
+}
+static gboolean wg_press(GdkEventButton *e)
+{
+	int part, i = wg_at(e->x, e->y, &part); if (i < 0) { if (NF >= 0 && e->type == GDK_BUTTON_PRESS) note_unfocus(); return FALSE; }
+	Wg *w = &WG[i];
+	if (e->type == GDK_2BUTTON_PRESS && part == WP_TEXT && NF == i) { const char *t = w->txt ? w->txt : ""; NANC = note_word(t, NCAR, -1); NCAR = note_word(t, NANC, 1); note_caret(); return TRUE; }
+	if (e->type != GDK_BUTTON_PRESS) return TRUE;
+	if (part != WP_TEXT && part != WP_RESIZE && NF >= 0) note_unfocus();
+	if (part == WP_HEAD) { WGD.i = i; WGD.on = 1; WGD.moved = 0; WGD.sx = e->x; WGD.sy = e->y; WGD.ox = w->x; WGD.oy = w->y; return TRUE; }   /* (any button, as the page's pointerdown) */
+	if (part == WP_X) { if (e->button == 1) WG_X = i; return TRUE; }
+	if (part == WP_TEXT) { if (e->button == 3) {   /* (a right-click keeps the selection it is in, else puts the caret there) */
+			int in = 0; if (NF == i) { double X, Y, W, H; wg_rect(w, &X, &Y, &W, &H); int k = note_index(w, e->x / Z - (X + 12 + 6), e->y / Z - (Y + 6 + lh_of(UIFAM, 400, 11) + 6 + 4 + 6) + NSCR); in = k >= MIN(NCAR, NANC) && k <= MAX(NCAR, NANC); }
+			if (!in) note_point(e, i, 0); note_menu(e); return TRUE; } if (e->button == 1) { note_point(e, i, (e->state & GDK_SHIFT_MASK) != 0); NDR.on = 1; } return TRUE; }
+	if (part == WP_RESIZE && e->button == 1) { note_focus(i); NDR.rs = 1; NDR.sy = e->y; NDR.th0 = w->th; return TRUE; }
+	if (part == WP_BODY && e->button == 1 && !strcmp(w->t, "weather")) { WG_X = -2 - i; return TRUE; }   /* (a click: press and release on it) */
+	return TRUE;
+}
+static gboolean wg_motion(GdkEventMotion *e)
+{
+	if (WGD.on && WGD.i >= 0 && WGD.i < NWG) { Wg *w = &WG[WGD.i]; WGD.moved = 1; wg_queue(WGD.i);
+		w->x = fmax(0, WGD.ox + round((e->x - WGD.sx) / Z)); w->y = fmax(0, WGD.oy + round((e->y - WGD.sy) / Z)); w->dirty = 1; wg_queue(WGD.i); return TRUE; }
+	if (NDR.on && NF >= 0) { Wg *w = &WG[NF]; double X, Y, W, H; wg_rect(w, &X, &Y, &W, &H); double hh = 6 + lh_of(UIFAM, 400, 11) + 6;
+		NCAR = note_index(w, e->x / Z - (X + 12 + 6), e->y / Z - (Y + hh + 4 + 6) + NSCR); note_caret(); return TRUE; }
+	if (NDR.rs && NF >= 0) { wg_queue(NF); WG[NF].th = fmax(12, NDR.th0 + (e->y - NDR.sy) / Z); wg_dirty(NF); return TRUE; }
+	/* the pointer's shape, as the page's CSS: move over a header, the text cursor over the note, a hand over the weather */
+	int part, i = wg_at(e->x, e->y, &part); static int lastp = -1; int p = i < 0 ? 0 : part == WP_HEAD ? 1 : part == WP_TEXT ? 2 : part == WP_RESIZE ? 4 : part == WP_BODY && !strcmp(WG[i].t, "weather") ? 3 : 0;
+	if (p != lastp && gtk_widget_get_window(DESKAREA)) { lastp = p; static const char *const N[] = { "default", "move", "text", "pointer", "se-resize" };
+		GdkCursor *c = gdk_cursor_new_from_name(gdk_display_get_default(), N[p]); gdk_window_set_cursor(gtk_widget_get_window(DESKAREA), c); if (c) g_object_unref(c); }
+	return i >= 0;
+}
+static gboolean wg_release(GdkEventButton *e)
+{
+	if (WGD.on) { WGD.on = 0; if (WGD.moved) wg_save(); WGD.i = -1; state_write(); return TRUE; }   /* (the page's pointerup: saved, moved or not) */
+	if (NDR.on || NDR.rs) { NDR.on = NDR.rs = 0; return TRUE; }
+	if (WG_X != -1) { int was = WG_X, part, i = wg_at(e->x, e->y, &part); WG_X = -1;
+		if (was >= 0 && i == was && part == WP_X) { g_free(WG[i].txt); if (WG[i].sf) cairo_surface_destroy(WG[i].sf); memmove(&WG[i], &WG[i + 1], sizeof WG[0] * (NWG - i - 1)); NWG--; memset(&WG[NWG], 0, sizeof WG[0]); wg_save(); wg_rebuild(); }
+		else if (was <= -2 && i == -2 - was && part == WP_BODY) app_open("weather", NULL);
+		return TRUE; }
+	return FALSE;
+}
+static gboolean on_desk_out(GtkWidget *w, GdkEvent *e, gpointer d) { (void)w; (void)e; (void)d; if (NF >= 0 && !(CMWIN && gtk_widget_get_visible(CMWIN))) note_unfocus(); return FALSE; }
+static int wg_kind_n(const char *t) { int c = 0; for (int i = 0; i < NWG; i++) if (!strcmp(WG[i].t, t)) c++; return c; }
 
 /* ------------------------------------------------------------------ the development link (1.5.9 step 7)
    While the development link is on (Settings › Security › Development link, devlink40.js) the page drew a red banner
@@ -2650,6 +3157,10 @@ static void state_write(void)
 	g_string_append_printf(s, "wm %d\nicons %u %s\n", WM_OK, ICONS ? g_hash_table_size(ICONS) : 0, VER[0] ? VER : "-");
 	for (int i = 0; di_shown() && i < NDI; i++) { int x, y; di_xy(&DI[i], &x, &y); g_string_append_printf(s, "dicon %d %d %d %d %d %d %s|%s|%s\n", DI[i].c, DI[i].r, x, y, di_w(), DI[i].sel, DI[i].k, DI[i].kind, DI[i].n); }
 	g_string_append_printf(s, "dmenu %s\n", DI_MENU);
+	/* (item 2) the widgets on the screen: widget N TYPE X Y W H (the screen's pixels) PAGE-X PAGE-Y|TEXT; the note typed in; the weather */
+	for (int i = 0; wg_shown() && i < NWG; i++) { double X, Y, W, H; wg_rect(&WG[i], &X, &Y, &W, &H); char *t = g_strescape(WG[i].txt ? WG[i].txt : "", NULL);
+		g_string_append_printf(s, "widget %d %s %d %d %d %d %g %g|%s\n", i, WG[i].t, (int)lround(X * Z), (int)lround(Y * Z), (int)lround(W * Z), (int)lround(H * Z), WG[i].x, WG[i].y, t); g_free(t); }
+	g_string_append_printf(s, "wgnote %d %d %d\nweather %d %s|%s|%s\n", NF, NCAR, NANC, WX_ST, WX_T, WX_C, WX_L);
 	/* (the page's menu and dialogs as the shell shows them) */
 	if (CMWIN && gtk_widget_get_visible(CMWIN)) { g_string_append_printf(s, "cmenu %d %d %d %d %s\n", (int)lround(CMX * Z), (int)lround(CMY * Z), (int)lround(CMBW * Z), (int)lround(CMBH * Z), CMTITLE[0] ? CMTITLE : "-");
 		double ry = CMY + 5 + (CMTITLE[0] ? 22 : 0); for (int i = 0; i < NCMI; i++) { if (!CMIT[i].sep) g_string_append_printf(s, "cmitem %d %d %d %s|%s\n", (int)lround((CMX + 5 + 50) * Z), (int)lround((ry + 12) * Z), CMIT[i].dis, CMIT[i].act, CMIT[i].label); ry += cm_row_h(&CMIT[i]); } }
@@ -2689,6 +3200,9 @@ int main(int argc, char **argv)
 	g_signal_connect(DESKAREA, "button-press-event", G_CALLBACK(desk_press), NULL); g_signal_connect(DESKAREA, "button-release-event", G_CALLBACK(desk_release), NULL);
 	g_signal_connect(DESKAREA, "motion-notify-event", G_CALLBACK(desk_motion), NULL); g_signal_connect(DESKAREA, "key-press-event", G_CALLBACK(desk_key), NULL);
 	g_signal_connect(DESK, "delete-event", G_CALLBACK(gtk_true), NULL);
+	/* (the widgets' note: typing, item 2) */
+	gtk_widget_add_events(DESKAREA, GDK_BUTTON_MOTION_MASK | GDK_FOCUS_CHANGE_MASK); NIM = gtk_im_context_simple_new(); g_signal_connect(NIM, "commit", G_CALLBACK(note_commit), NULL);
+	g_signal_connect(DESKAREA, "realize", G_CALLBACK(im_realize), NIM); g_signal_connect(DESK, "focus-out-event", G_CALLBACK(on_desk_out), NULL);
 	gtk_widget_show_all(DESK);
 	/* the taskbar, above everything */
 	BAR = gtk_window_new(GTK_WINDOW_TOPLEVEL); gtk_window_set_decorated(GTK_WINDOW(BAR), FALSE); gtk_window_set_type_hint(GTK_WINDOW(BAR), GDK_WINDOW_TYPE_HINT_DOCK);

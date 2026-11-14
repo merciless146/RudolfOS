@@ -50,6 +50,10 @@ class H(http.server.BaseHTTPRequestHandler):
             note('%s %s%s' % (m, u[5:], '?' + q if q else ''))
             if self.headers.get('X-Rudolf-Token') != TOK: return self.err(403, 'missing token')
             return self.api(m, u[5:], q, b)
+        if u == '/v1/forecast':   # (Open-Meteo for Native: RUDOLF_WX_BASE; Standard's page gets the same through Playwright)
+            note('WX ' + q); return self.send(200, open(os.path.join(HERE, 'same_rd_wx.json'), 'rb').read())
+        if u == '/v1/search':
+            note('GEO ' + q); return self.j({'results': [{'name': 'Berlin', 'latitude': 52.52, 'longitude': 13.41, 'country_code': 'DE', 'timezone': 'Europe/Berlin', 'admin1': 'Land Berlin', 'country': 'Germany'}]})
         if u in ('/', '/index.html'):
             note('PAGE /')
             L = json.dumps(ls()).replace('<', '\\u003c')
@@ -100,8 +104,19 @@ class H(http.server.BaseHTTPRequestHandler):
             pins = sget(data, 'bd95pins:' + (sid or 'nobody'))
             nt = sget(data, 'bd95notif:' + (sid or 'nobody')) or []
             wall = bool(sid and st.get('wpimg') and rd('wall.jpg'))
+            # (1.6.0 item 2) the widgets: the shell's own list while the page's is the one it replaced, else the page's
+            wraw = data.get('bd95widgets:' + sid) if sid else None; own = None
+            try: own = json.loads(rd('widgets.json', b'null'))
+            except ValueError: pass
+            wgown = bool(sid and own and own.get('was') == (wraw or ''))
+            wg = own['list'] if wgown else (sget(data, 'bd95widgets:' + sid) if sid else None)
             return self.j({'ok': True, 'gen': L.get('gen', 1), 'acct': sid, 's': {k: st[k] for k in K if k in st},
-                           'pins': pins if isinstance(pins, list) else ["explorer", "browser", "notepad", "settings"], 'notes': len(nt), 'wallpaper': wall, 'wpacct': sid if wall else ''})
+                           'pins': pins if isinstance(pins, list) else ["explorer", "browser", "notepad", "settings"], 'notes': len(nt), 'wallpaper': wall, 'wpacct': sid if wall else '',
+                           'widgets': wg if isinstance(wg, list) else [], 'wgown': wgown, 'wloc': sget(data, 'bd95wloc'), 'wunit': sget(data, 'bd95wunit') or ''})
+        if w == 'desktop/widgets':
+            if m == 'POST':
+                sid = s['id'] if s else ''; open(os.path.join(D, 'widgets.json'), 'w').write(json.dumps({'list': json.loads(b), 'was': data.get('bd95widgets:' + sid) or ''})); return self.j({'ok': True})
+            x = rd('widgets.json'); return self.send(200, x) if x else self.err(404, 'none')
         if w == 'desktop/apps':
             if m == 'POST': open(os.path.join(D, 'apps.json'), 'wb').write(b); return self.j({'ok': True})
             given = rd('apps.json')
@@ -112,6 +127,7 @@ class H(http.server.BaseHTTPRequestHandler):
         if w == 'desktop/wallpaper':
             if m == 'POST': open(os.path.join(D, 'wall.jpg'), 'wb').write(b); return self.j({'ok': True})
             x = rd('wall.jpg'); return self.send(200, x, 'image/jpeg') if x else self.err(404, 'no picture')
+        if w == 'stats': return self.j({'ok': True, 'cpu': 12.3, 'load': 0.2, 'memTotal': 8589934592, 'memFree': 4294967296, 'memAvailable': 5368709120})
         if w == 'devlink': return self.j({'ok': True, 'available': True, 'on': False})
         if w == 'net': return self.j({'ok': True, 'interfaces': [{'name': 'wlan0', 'ip': '192.168.1.5/24', 'state': 'up', 'wireless': True, 'virtual': False, 'default': True, 'ssid': 'Home', 'rssi': -55}]})
         if w == 'volume': return self.j({'ok': True, 'volume': 70, 'muted': False})
