@@ -210,14 +210,29 @@ to. The apps stay web pages in one-app WebKit windows (1.5.9 Part 12) until 2.0 
 12. **Memory:** each one-app page runs only its app's code (the page's other modules not started in one-app mode),
     measured again: one app open within 120 MB of idle.
 
-**Status (2026-11-14, unattended session):** 1.5.9's step 7 (Native (test)'s six Vivobook bugs) is PR #311. Item 1's
-first part is the next PR, stacked on it: the desktop's icons (the shortcuts the account sees, with the page's
-pictures and places, on the page's grid at the icon size and display scaling), double-click to open, dragging to the
-nearest free cell (rudolfd's desktop/cells), Arrange icons by name, Refresh, the icon's menu (Open) and the desktop's
-(Arrange, Refresh, File Explorer, Task Manager, Settings); native59_t.sh 56 to 60, deskapi59_t.sh 37, oneapp59_t.js 15c.
+**Status (2026-11-14, unattended sessions):** 1.5.9's step 7 (Native (test)'s six Vivobook bugs, PR #311) and item 1's
+first part (the desktop's icons, PR #314) are merged. Then "The rule" for what was merged (the next PR): the comparison
+test `iso/qt/native/same_t.sh` (with same_rd.py, a stand-in rudolfd serving one state to both engines; same_state.js;
+pxdiff.py): Standard (the page in Playwright's Chromium) and Native (rudolf-native under Xvfb) at 1920x1080, each part
+cut out of both screenshots and compared (fails over 2 % of its pixels differing by more than 32 in a colour; the
+pictures kept). 39 parts in 28 cases pass: the sign-in screen, the wallpaper (colours, a gradient), the taskbar in the
+five styles, the five button styles, the accent colour's three modes, at the top, hovered (standard and Candy), the
+start button, the pinned apps, the tray and the clock (12 and 24 hours), the desktop's icons (the taskbar at the bottom
+and the top), the start menu, the title bars in the five styles and the Negative mode (with the taskbar's window
+button), the lock screen. Native now draws these with the page's CSS ported part by part (a box painter with the
+page's colours, gloss, edges, corners and shadows; Pango with the page's font family and Chromium's text placement);
+the start menu's list comes from the page (desktop/apps "menu"); an app's window gets the page's size and place
+(oneapp59.js's "size"); the frames have the page's 1 px edge, round corners (X shapes), resize handles and their shadow
+on the desktop; Meta+L locks; Start › Shut Down... is the page's Power dialog; rows the shell cannot do itself open the
+page's action in a one-app window (#app=do-NAME). Known differences left (each a bug for its item): the start menu's
+search filters the list (the page also searches settings and files, in a results list); the menu's opening animation;
+the tray's pop-ups, the calendar and the workspaces (items 3 and 4); the right-click menus of the taskbar, the start
+button and the window buttons; a window's shadow falls only on the desktop (no compositor), and Wireframe's blur
+behind the taskbar only shows over a picture as no blur; the dark theme's menu is drawn but not yet compared.
 **Next:** item 1's second part: files in the Desktop folder as icons (opened with their app, renamed, to the Trash),
 New folder / New text document, Properties, the Trash icon's own menu, dropping files onto the desktop and between
-windows; then items 2 to 12 in order, and docs/plan-2.0.md after them. Native is not the default yet.
+windows; then items 2 to 12 in order, each passing same_t.sh for its part, and docs/plan-2.0.md after them. Native is
+not the default yet.
 
 **Becoming the default:** after items 1-12 pass on the host and on the Vivobook (a week of betas on Native), the
 release's default engine is Native for new installations; an update keeps the engine the computer had, and Settings

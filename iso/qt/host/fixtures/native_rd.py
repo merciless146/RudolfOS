@@ -107,7 +107,10 @@ class H(http.server.BaseHTTPRequestHandler):
             # the desktop's icons as the page lists them for the account, and the page's places (1.6.0 Part 12, item 1)
             desk = [{'n': 'Notepad', 'k': 'notepad', 'kind': 'app', 'ic': 'notepad', 'icon': '🗒️'}, {'n': 'Calculator', 'k': 'calc', 'kind': 'app', 'ic': '', 'icon': '🧮'},
                     {'n': 'My Computer', 'k': 'explorer', 'kind': 'computer', 'ic': '', 'icon': '🖥️'}]
-            return self.j({'ok': True, 'apps': apps, 'bg': dyn, 'icons': icons, 'ver': '9.9.9', 'desk': desk, 'cells': {'Calculator': [2, 1]}, 'is': 100,
+            # the start menu's rows as the page gives them (1.6.0 Part 12: the shell draws the page's menu)
+            row = lambda a, t, ic='': {'t': 'li', 'a': a, 'v': '', 'cls': '', 'txt': t, 'ic': ic, 'emo': '', 'op': 1, 'fs': 14, 'fw': 400, 'col': 'rgb(0, 0, 0)', 'pl': 10, 'pt': 7, 'pb': 7, 'ls': 0, 'up': False}
+            menu = [row('notepad', 'Notepad', 'notepad'), row('calc', '🧮 Calculator'), row('clock', '⏰ Clock'), {'t': 'hr'}, row('settings', '⚙️ Settings'), {'t': 'hr'}, row('logoff', '🚪 Log Off'), row('off', '🔌 Shut Down...')]
+            return self.j({'ok': True, 'apps': apps, 'bg': dyn, 'icons': icons, 'ver': '9.9.9', 'desk': desk, 'cells': {'Calculator': [2, 1]}, 'is': 100, 'menu': menu,
                            'acct': s['session']['id'] if s['session'] else ''})
         if w == 'desktop/cells':
             if m == 'POST': open(os.path.join(D, 'cells.json'), 'wb').write(b); return self.j({'ok': True})
@@ -125,6 +128,7 @@ class H(http.server.BaseHTTPRequestHandler):
             o = json.loads(rd('devlink.json', b'{}')); o.pop('pending', None); open(os.path.join(D, 'devlink.json'), 'w').write(json.dumps(o)); return self.j({'ok': True})
         if w == 'net': return self.j({'ok': True, 'interfaces': [{'name': 'lo', 'ip': '127.0.0.1', 'state': 'up', 'wireless': False}, {'name': 'wlan0', 'ip': '192.168.1.5', 'state': 'up', 'wireless': True}]})
         if w == 'volume': return self.j({'ok': True, 'volume': 70, 'muted': False})
+        if w == 'power/status': return self.j({'ok': True, 'ac': False, 'battery': {'name': 'BAT0', 'capacity': 81, 'status': 'Discharging'}})
         if w == 'info': return self.j({'ok': True, 'battery': [{'name': 'BAT0', 'type': 'Battery', 'capacity': 81, 'status': 'Discharging'}]})
         return self.j({'ok': True})
 class S(http.server.ThreadingHTTPServer):

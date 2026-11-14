@@ -10,6 +10,8 @@
      it (a browser tab) the page says "This app is closed", with Open again.
    - Another app asked for opens in a window of its own (a rudolfNative message to the native shell); in a browser it
      opens in the same page, as before.
+   - (1.6.0 Part 12) #app=do-NAME: the start menu's other rows (Run..., the Programs folder, Emu, Blitzen): the page's own
+     action for that row, whose first window is the main window, as an app's.
    - The windows of the last session are not reopened (each app window would reopen them), and only Settings writes the
      accounts (all app windows share the same storage). ===== */
 const ONEAPP=(()=>{try{const h=String(location.hash||'').replace(/^#/,'');if(!h)return null;const q=new URLSearchParams(h),k=q.get('app');
@@ -57,13 +59,16 @@ async function oaStart(showLogin0){
  try{userUI()}catch(e){}}
 function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
  try{LG.style.display='none'}catch(e){}
- const app=APPS[ONEAPP.k];
+ const da=/^do-/.test(ONEAPP.k)?ONEAPP.k.slice(3):'',act=da?(typeof A=='object'&&typeof A[da]=='function'?A[da]:da=='blitzen'&&typeof blitzenApp=='function'?blitzenApp:null):null;
+ const app=APPS[ONEAPP.k]||(act?{name:da,open:act}:null);
  if(!app){oaClosed('There is no app called “'+ONEAPP.k+'”.');oaPost({op:'close'});return}
  OA.want=1;
- try{if(ONEAPP.file&&app.openFile)launchWith(ONEAPP.k,resolve(ONEAPP.file,['C:']));else launch(ONEAPP.k)}catch(e){console.warn(e)}
+ try{if(act)act();else if(ONEAPP.file&&app.openFile)launchWith(ONEAPP.k,resolve(ONEAPP.file,['C:']));else launch(ONEAPP.k)}catch(e){console.warn(e)}
  /* an app that opens no window (or not yet: a large app loads its files first) */
  setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed(app.name+' did not open a window.');oaPost({op:'close'})}},15000)}
-function oaMain(W){OA.main=W;OA.want=0;W.el.classList.add('oamain');
+function oaMain(W){OA.main=W;OA.want=0;
+ /* (1.6.0 Part 12) the size the page gives the app's window (its 1 px edge and title bar included), for the native frame */
+ oaPost({op:'size',ww:String(Math.round(parseFloat(W.el.style.width)||0)),wh:String(Math.round(parseFloat(W.el.style.height)||0))});W.el.classList.add('oamain');
  const t=W.el.querySelector('.tb .t'),sync=()=>{const s=(t&&t.textContent||'').trim()||(APPS[ONEAPP.k]&&APPS[ONEAPP.k].name)||'Rudolf OS';if(document.title!=s){document.title=s;oaPost({op:'title',t:s,icon:W.icon||''})}};
  sync();if(t)new MutationObserver(sync).observe(t,{childList:true,characterData:true,subtree:true});
  /* (the window's own maximise and minimise mean nothing here: it always fills the page) */
@@ -103,7 +108,14 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
    const k=typeof EMO2IC=='object'?EMO2IC[e]||EMO2IC[e.replace(/\uFE0F/g,'')]:'';if(k&&!icons[k]&&S.icons!=='emoji')try{icons[k]=await oaPng(icSvg(k),48)}catch(x){}
    desk.push({n:T.name,k:T.k&&APPS[T.k]?T.k:'',kind:T.kind,ic:k&&icons[k]?k:'',icon:e})}}catch(e){console.warn('desk',e)}
   let cells={};try{cells=JSON.parse(localStorage.getItem(typeof cellKey=='function'?cellKey():'bd95cells')||'{}')}catch(e){}
-  await rdPost('desktop/apps',JSON.stringify({apps,bg,hide,icons,desk,cells,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
+  /* (1.6.0 Part 12, "The rule": Native looks as Standard) the start menu's list as the page shows it, row by row: its
+     separators, headings, pictures, greyed and indented rows, with each row's writing as the page's styles give it */
+  const menu=[];try{const U=document.querySelector('#menu ul');if(U)for(const li of U.children){if(li.tagName=='HR'){menu.push({t:'hr'});continue}
+   if(li.tagName!='LI'||getComputedStyle(li).display=='none')continue;const im=li.querySelector('img.ico'),e=im?im.dataset.emo||'':'',k=e&&typeof EMO2IC=='object'?EMO2IC[e]||EMO2IC[e.replace(/\uFE0F/g,'')]:'';
+   if(k&&!icons[k]&&S.icons!=='emoji')try{icons[k]=await oaPng(icSvg(k),48)}catch(x){}
+   const c=getComputedStyle(li);menu.push({t:'li',a:li.dataset.a||'',v:li.dataset.v25||'',cls:String(li.className||''),txt:li.textContent.trim(),ic:k&&icons[k]?k:'',emo:e,op:+c.opacity,
+    fs:parseFloat(c.fontSize),fw:+c.fontWeight||400,col:c.color,pl:parseFloat(c.paddingLeft),pt:parseFloat(c.paddingTop),pb:parseFloat(c.paddingBottom),ls:parseFloat(c.letterSpacing)||0,up:c.textTransform=='uppercase'})}}catch(e){console.warn('menu',e)}
+  await rdPost('desktop/apps',JSON.stringify({apps,bg,hide,icons,desk,cells,menu,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
 function oaPng(src,n){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>{try{const c=document.createElement('canvas');c.width=c.height=n;c.getContext('2d').drawImage(im,0,0,n,n);res(c.toDataURL('image/png'))}catch(e){rej(e)}};im.onerror=()=>rej(new Error('icon'));im.src=src})}
 {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);setTimeout(oaCatalog,2500);return r}}
 let OA_WP='';

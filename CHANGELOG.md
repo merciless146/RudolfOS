@@ -4,6 +4,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.6.0 (planned work)
+- Fixed: the native desktop (Native engine) now looks as Standard does, measured part by part against the desktop page in Chromium (new test iso/qt/native/same_t.sh, docs/plan-1.6.0.md Part 12, "The rule"): the taskbar in its five styles, its buttons' styles and the accent colour's modes (the page's sizes, font, corners, gloss, edges and shadow; the network, sound and battery as the page draws them; the workspaces' buttons; the notifications' count), the desktop's icons (the page's font, wrapping, picture and text shadows), the start menu (the page's own list, with its search box, headings and greyed rows), the windows' frames and title bars in their five styles and colour modes (the page's sizes, round corners, shadow and resize handles; an app's window opens at the page's size and place), and the sign-in and lock screens. Meta+L locks the screen; Start › Shut Down... shows the page's Power dialog.
 - New: the native desktop (Native engine, docs/plan-1.6.0.md Part 12, item 1, first part): the desktop's icons, as the page shows them for the account (its shortcuts, pictures and places), on the page's grid at the icon size and display scaling: a double-click opens, dragging moves an icon to the nearest free place (kept by rudolfd), Arrange icons by name, Refresh, and the icon's and the desktop's menus. Files on the desktop come next.
 
 ## 1.5.9 (in progress)
