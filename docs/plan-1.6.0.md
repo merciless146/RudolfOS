@@ -109,6 +109,58 @@ PDF Viewer since 1.5.9) lists them as "USB: name".
 - **On real hardware:** the HP desktop's user's USB printer (on the HP desktop, or on the Vivobook if it can be
   borrowed), first read only (its interfaces and device ID: which kind it is), then a test page.
 
+### 9. udev instead of mdev (added on 2026-11-13)
+Why: mdev makes device nodes and runs scripts, but keeps no device database and tells no program about devices. Linux
+software finds hardware through udev (libudev): ModemManager (1.5.9 needed a workaround: #280), libinput, SDL and
+Steam's controllers, PipeWire, Waydroid and many Flatpak apps. Each gap became a workaround of its own; 1.6.0's
+modems and the plans after it (Waydroid, PipeWire, a native or Wayland desktop) lean on udev more.
+- **Which udev:** systemd-udevd on its own (from Debian's udev package; no systemd as init) or eudev, whichever is
+  smaller and keeps working in the build; measured against a budget in ci_release.sh. The hardware database (hwdb.bin)
+  and the packages' rules (ModemManager's, libinput's, the uaccess/joystick ones) come with it.
+- **Rudolf OS's own rules:** what /etc/mdev.conf does today (the modem service, devplug's USB and phone events, joystick
+  permissions, drives, cameras, the netplug and thunderbolt scripts) becomes rules in /usr/lib/udev/rules.d/90-rudolf.rules
+  calling the same scripts (their ACTION/MDEV environment mapped to udev's), so the scripts change little.
+- **Start-up:** rudolf-init starts udevd early, triggers coldplug and waits for it to settle (with a time limit) before
+  the display and the services start. Recovery mode keeps mdev as a fallback: if udevd does not start, mdev does, and
+  System health says so.
+- **What it lets go of:** the modem service's `--test-no-udev` and its port reporting (ModemManager finds its ports
+  itself again), devplug's own guesses where udev's tags say what a device is.
+- **Tests:** host tests of the rules with udevadm test on stand-in devices; QEMU (start-up time with udev against mdev,
+  a USB drive, a keyboard and a controller plugged in later); on the Vivobook over the devlink: every device the
+  self-test lists, the camera, Bluetooth, sound, a controller in Steam plugged in while it runs.
+
+### 10. A Linux user for each account (added on 2026-11-13)
+Why: every Rudolf OS account runs as the same Linux user (rudolf, uid 1000). The desktop keeps the accounts apart, but
+Linux apps, Wine and Debian run as that one user and can read every account's files (the vault's own note says so).
+Conventional distributions give each person a Linux user of their own.
+- **Users:** each account gets its own Linux user (uid 1001 and up), made when the account is made, removed when it is
+  removed; its home folder (/home/NAME, still encrypted with the account's key) owned by it and readable by nobody
+  else. The rudolf user stays for the desktop engine itself (the page and rudolfd's helpers).
+- **What runs as whom:** at sign-in, rudolfd starts the account's session pieces as its user: Flatpak apps, Debian and
+  Wine, the session D-Bus, PulseAudio (or PipeWire later), the portal; signing out stops them. Two accounts signed in
+  one after the other never share a running app.
+- **Shared things:** Downloads and the files the desktop page keeps per account move into each user's home; groups
+  for the devices people use (video, audio, input for controllers, the ADB phone) replace today's chmod to uid 1000.
+- **Moving existing computers:** the first start of 1.6.0 gives each existing account its user and moves its files
+  (ownership only, no copying), checked and logged; anything that cannot move stays readable to its account and is
+  named in System health.
+- **Tests:** two accounts on the host and in QEMU: one cannot read the other's files from a Flatpak app, a Debian
+  terminal or Wine; signing out stops the account's apps; the move on an existing data partition.
+
+### 11. Sessions and admin prompts for Linux apps: elogind and polkit (added on 2026-11-13)
+Why: Linux apps ask login1 (systemd-logind) whether to keep the computer awake (a game, a video, a download), who is
+signed in and which devices the person may use; and they ask polkit for an administrator's password before doing
+something to the system. Rudolf OS has neither, so these requests fail or are ignored.
+- **elogind** (logind without systemd): one seat, the signed-in account's session (with Part 10, its own user); apps'
+  inhibitors (sleep, idle, lid) are honoured by Rudolf OS's own power code, which already holds off sleep for video,
+  calls and games; rudolfd reads them through elogind instead of guessing.
+- **polkit**, with an agent drawn by the desktop: an app's request for an administrator shows the desktop's own
+  password prompt (the one Settings uses), and only administrators' passwords are accepted. Rules kept short and
+  read-only in the system layer.
+- **Budget:** both together under 5 MB in the system layer, checked in ci_release.sh.
+- **Tests:** an app's sleep inhibitor keeps the computer awake and the screen saver away until it is released; an
+  admin request from a Flatpak or Debian app shows the prompt and is refused for a standard account.
+
 ## Hardware to test with
 - **The MiFi 7730L** (USB tethering and Wi-Fi), with an active SIM (or a prepaid data SIM).
   First (moved from 1.5.9, where it could not be found): with USB tethering on, which USB network driver it needs
@@ -132,6 +184,8 @@ PDF Viewer since 1.5.9) lists them as "USB: name".
 - The leanness budgets (docs/plan-1.5.8.md Part 8) and the cellular budget (15 MB) in the release check.
 
 ## Steps
+0. Part 9 (udev instead of mdev) first, so the modem work stands on it; then Part 10 (a Linux user for each account)
+   and Part 11 (elogind and polkit), which builds on Part 10's sessions.
 1. Parts 1 and 2 on the USB stick and the MiFi (1.5.9's ModemManager): modem found, SIM PIN, APN, connect. First
    (moved from 1.5.9, where neither was available): the stick shows in Settings › Network › Cellular modems with
    ModemManager run without udev (#280), and /run/rudolf/modem.log has no "Invalid rule match"; the self-test's
