@@ -13,12 +13,13 @@ check, Part 7 except the Vivobook call checks, Part 8 except 8.4's recovery.efi 
 Part 10's pictures, fonts and lazy apps, Part 11. The latest beta with all of it: **2026111321** (not promoted).
 
 ### What needs the Vivobook (or the person) before 1.5.9 is promoted
-1. **A beta with everything:** 2026111321: install it; the self-test (with the modem stick plugged in, its modem line).
+1. **A beta with everything:** 2026111401: install it; the self-test (its modem line says "no cellular modem").
 2. **iw and the radios** (#267): Settings › Network › Wi-Fi › This computer's Wi-Fi radios lists 2.4 and 5 GHz.
 3. **The hotspot** (Part 4): with the phone's USB tethering as the connection, Share this connection on the RTL8821CE;
    a phone joins it and browses. (If the chip cannot be an access point, the setting says so.)
-4. **The modem service** (Part 1): the USB modem stick plugged in: Settings › Network › Cellular modems shows it
-   (ModemManager without udev is the open question).
+4. ~~**The modem service** (Part 1): the USB modem stick plugged in: Settings › Network › Cellular modems shows it
+   (ModemManager without udev is the open question).~~ Moved to 1.6.0 (2026-11-13: the stick belongs to the HP
+   desktop's user and is not available for 1.5.9; 1.5.9 ships ModemManager tested only on the host).
 5. **Calls** (Part 7.4): Meet's test call in Oracle on Standard, and on Lite (it opens in Chromium's window); Zoom's
    test meeting; the 🎙️ indicator and its mute; no screen saver during a call; a tel: link.
 6. **Game mode and memory** (Part 9, on 2026111308 or newer): FNF to the end; the idle reading; Task Manager's
@@ -52,7 +53,8 @@ bootloader read over the devlink (read only).
   the lock and sign-in screen settings and the shutting-down screen; the moving parts of the dynamic backgrounds
   (Spirit Falls' petals and lanterns, Glacier Lake's northern lights) in Lite.
 - **QEMU:** the devlink answering with the desktop disabled (plan-1.5.8.md 4.2).
-- **The MiFi 7730L** with USB tethering on: which USB network driver it needs (plan-1.5.8.md 6.1).
+- ~~**The MiFi 7730L** with USB tethering on: which USB network driver it needs (plan-1.5.8.md 6.1).~~ Moved to 1.6.0
+  (2026-11-13: the MiFi could not be found; docs/plan-1.6.0.md, Hardware to test with).
 - **Kernel tuning** (proposed on 2026-11-12), if confirmed.
 
 ## Part 1: the modem service
@@ -568,7 +570,7 @@ down in docs/api.md with its first use.
 
 ## Steps
 0. Part 11 first: 11.1 (the Chromium source) and 11.3, then 11.2; 11.4 holds for every part.
-1. Part 1 (ModemManager, read only), with the USB stick and the MiFi on the Vivobook over the devlink.
+1. Part 1 (ModemManager, read only); its device checks, with the USB stick and the MiFi, moved to 1.6.0.
 2. Part 2 (tablet mode, keyboard, rotation).
 3. Part 3 (ARM64 build and its QEMU checks).
 4. Part 4 (Share this connection), after the Vivobook's Wi-Fi chip is checked.

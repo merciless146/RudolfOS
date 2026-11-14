@@ -274,11 +274,20 @@ async function idleCheck(){if(idleWoke()||!USER||idleBusy)return;idleBusy=true;c
   const busy=(window.__mediaPlaying&&__mediaPlaying())||(RD&&await idleWait(mediaOther(),false));   /* (1.4.4) also a video in Oracle's real tabs or a Linux app */
   if(idleWoke()||!USER||lastInput!==t0||UNLOCKED_AT!==u0||LOCKED!==l0)return;
   const idle=ms/60000,fresh=Date.now()-UNLOCKED_AT<60000;
-  if(SYSC.sson&&SYSC.ssmin>0&&idle>=SYSC.ssmin&&!LOCKED&&!SAVER&&!fresh&&!document.fullscreenElement&&!document.pointerLockElement&&!busy)saverStart();
+  /* 1.5.9: a saver whose picture something else took away no longer counts as running; only a full-screen element that
+     is really on the screen holds the saver off (a game's window minimised while full screen kept it off for good: the
+     Vivobook, 2026-11-13); and why the saver waits is written to the page log (/run/rudolf/page.log) */
+  if(SAVER&&SAVER.c&&!SAVER.c.isConnected){const s=SAVER;SAVER=null;try{s.stop(false)}catch(e){}idleNote('a screen saver whose picture was gone was ended')}
+  const fsEl=document.fullscreenElement,fsOn=!!(fsEl&&fsEl.isConnected&&fsEl.getClientRects().length);
+  if(SYSC.sson&&SYSC.ssmin>0&&idle>=SYSC.ssmin&&!SAVER){const why=LOCKED?'':fresh?'':fsOn?'something is full screen ('+idleWhat(fsEl)+')':document.pointerLockElement?'a game has the pointer ('+idleWhat(document.pointerLockElement)+')':busy?'sound is playing or a microphone is in use':'';
+   if(LOCKED||fresh){}else if(why)idleNote('the screen saver waits: '+why+', idle '+Math.round(idle)+' min');else{idleLast='';saverStart()}}
   if(SYSC.lockmin>0&&idle>=SYSC.lockmin&&!LOCKED&&!fresh){saverStop();lockScreen()}
   const sm=RD&&PWR&&PWR.now&&PWR.now.sleep!=null?PWR.now.sleep:SYSC.suspmin;   /* (1.4.4) Power and battery's, for the power source in use */
   if(RD&&sm>0&&idle>=sm&&!busy&&!fresh){lastInput=Date.now();saverStop();lockScreen();rdPost('power?action=suspend').catch(()=>{})}}
  finally{idleBusy=false}}
+/* what holds the saver off, said once each time it changes */
+let idleLast='';function idleNote(m){if(m==idleLast)return;idleLast=m;try{window.__rdlog&&__rdlog('idle: '+m)}catch(e){}}
+function idleWhat(el){try{const w=el.closest&&el.closest('.win');return (el.tagName||'').toLowerCase()+(el.id?'#'+el.id:'')+(w?' in “'+((w.querySelector('.tb .t')||{}).textContent||'a window')+'”':'')}catch(e){return 'an element'}}
 setInterval(idleCheck,15000);
 /* ---------- parental controls: allowed apps and a daily time limit ---------- */
 const APPCAT=[['browser','Oracle Browser',/^Oracle/],['explorer','File Explorer',/^File Explorer|^Exploring/],['notepad','Notepad',/Notepad/],['prompt','Rudolf Prompt',/^Rudolf Prompt/],['blocklua','BlockLua Builder',/^BlockLua/],['calc','Calculator',/^Calculator/],['wordlite','WordLite',/^WordLite/],['wordpro','WordPro',/^WordPro/],['paint','Paint',/^Paint/],['boards','Board Games',/^Board Games|^Checkers|^Chess/],['poker','Card Games',/^Card Games/],['galaxy','WOS Galaxy Map',/^WOS Galaxy Map/],['media','Media Player',/^Media Player/],['gameboy','Emu',/^Emu|Emu$|Game Boy|GBA|\.GBA?C?\b/i],['flash','Flash Player',/Flash/],['quake','Quake Engine',/^Quake/],['gpulab','GPU Lab',/^GPU Lab/],['settings','Settings',/^Settings|^Display Properties/]];

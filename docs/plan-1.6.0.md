@@ -75,6 +75,8 @@ provisioning (downloading a carrier's eSIM profile), and 5G standalone features 
 
 ## Hardware to test with
 - **The MiFi 7730L** (USB tethering and Wi-Fi), with an active SIM (or a prepaid data SIM).
+  First (moved from 1.5.9, where it could not be found): with USB tethering on, which USB network driver it needs
+  (plan-1.5.8.md 6.1), before Parts 1 and 2 use it.
 - **A USB cellular stick** with an MBIM or QMI modem (for example a Quectel EC25 or EG25-G in a USB adapter: the same
   family as the PinePhone's modem, useful again in 1.6.x).
 - **A laptop with a WWAN module, or an M.2 WWAN card in an adapter:** the Vivobook has no WWAN slot; a used ThinkPad
@@ -92,7 +94,10 @@ provisioning (downloading a carrier's eSIM profile), and 5G standalone features 
 - The leanness budgets (docs/plan-1.5.8.md Part 8) and the cellular budget (15 MB) in the release check.
 
 ## Steps
-1. Parts 1 and 2 on the USB stick and the MiFi (1.5.9's ModemManager): modem found, SIM PIN, APN, connect.
+1. Parts 1 and 2 on the USB stick and the MiFi (1.5.9's ModemManager): modem found, SIM PIN, APN, connect. First
+   (moved from 1.5.9, where neither was available): the stick shows in Settings › Network › Cellular modems with
+   ModemManager run without udev (#280), and /run/rudolf/modem.log has no "Invalid rule match"; the self-test's
+   modem line passes. (The stick belongs to the HP desktop's user: it is borrowed for these checks.)
 2. Part 3 (priorities and failover) and part 4 (data and money).
 3. Part 5 (signal and status) and the self-test.
 4. Part 6 (Messages).
