@@ -60,6 +60,14 @@ bootloader read over the devlink (read only).
 - **The MiFi 7730L** with USB tethering on: which USB network driver it needs (plan-1.5.8.md 6.1), and that Rudolf OS
   uses it as a connection (Settings › Network). Back in 1.5.9 on 2026-11-14 (moved to 1.6.0 on 2026-11-13, when it
   could not be found). Before the hotspot check above, which uses it.
+  **Checked (2026-11-14, beta 2026111421):** with USB tethering on it becomes 1410:b020 and uses **rndis_host**
+  (eth0); it hands out 192.168.1.x with gateway 192.168.1.1. Its SIM has **no data plan** ("No Internet access; no
+  data plan"), so the hotspot check above needs a MiFi with data. **Found and fixed:** its link took the default route
+  from the working Wi-Fi (metric 100 against 600, the same network range) and cut the computer off, the devlink too.
+  udhcpc.sh now adds a new wired route behind the one in use (metric 900) until the internet answers through it
+  (ping -I), tries again every 30 s, keeps the Wi-Fi's DNS meanwhile, and marks it (RUN/nointernet/IF: rudolfd's
+  net gives "internet":false; the network menu and Settings say "No internet"). Checked on the Vivobook with the fixed
+  script: the Wi-Fi kept the internet and the devlink with the MiFi plugged in. Tests: netroute59_t.sh, net31_t.js 16.
 - **Kernel tuning** (proposed on 2026-11-12), if confirmed.
 
 ## Part 1: the modem service

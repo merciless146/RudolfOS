@@ -8,6 +8,8 @@ const SIT = {name: 'sit0', state: 'down', mac: '00:00:00:00', ip: '', wireless: 
 const NETS = {
   wifi: [{name: 'wlan0', state: 'up', mac: 'aa', ip: '192.168.1.20/24', wireless: true, rx: 1, tx: 1, virtual: false, default: true, ssid: 'Home', rssi: -55}, SIT],
   wired: [{name: 'eth0', state: 'up', mac: 'bb', ip: '10.0.2.15/24', wireless: false, rx: 1, tx: 1, virtual: false, default: true, speed: 1000}, SIT],
+  // 1.5.9: a USB tethering link held back (no internet through it), the Wi-Fi in use
+  mifi: [{name: 'wlan0', state: 'up', mac: 'aa', ip: '192.168.1.11/24', wireless: true, rx: 1, tx: 1, virtual: false, default: true, ssid: 'Home', rssi: -55}, {name: 'eth0', state: 'unknown', mac: 'cc', ip: '192.168.1.55/24', wireless: false, rx: 1, tx: 1, virtual: false, default: false, internet: false, speed: -1}, SIT],
   none: [{name: 'wlan0', state: 'down', mac: 'aa', ip: '', wireless: true, rx: 1, tx: 1, virtual: false, default: false}, SIT],
 };
 const M = {calls: [], ev: [], net: 'wifi', rd: true};
@@ -62,6 +64,11 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   i = await icon();
   ok('4. wired: the wired icon and "Ethernet — connected (eth0, 1 Gb/s)"', i[0].startsWith('Ethernet — connected (eth0, 1 Gb/s)') && i[1] == 'wired', i);
   ok('...and apps see the network (netUp)', await q("netUp()") === true);
+  M.net = 'mifi'; await q("net31Poll()"); await wait(800); i = await icon();
+  await q("$('#net').click()"); await wait(400);
+  const mp = await q("(()=>{const r=[...document.querySelectorAll('.np31 .npr')];return r.map(x=>x.innerText.replace(/\\s+/g,' ')+(x.classList.contains('on')?' [in use]':'')).join(' | ')})()");
+  ok('4b. a USB link without internet next to the Wi-Fi: the Wi-Fi is the one in use, the link says "No internet"', /^Wi-Fi/.test(i[0]) && /Wi-Fi · Home Connected \[in use\]/.test(mp) && /Ethernet \(eth0\) No internet/.test(mp) && !/eth0\) No internet \[in use\]/.test(mp), [i, mp]);
+  await q("document.querySelector('.np')&&document.querySelector('.np').remove()"); M.net = 'wired'; await q("net31Poll()"); await wait(800);
   await q("NETST.inet=false;netUpd()");
   ok('5. the internet check still marks "no internet access detected"', /no internet access detected/.test((await icon())[0]) && (await icon())[2] == 'limited', await icon());
   await q("NETST.inet=true;netUpd()");
