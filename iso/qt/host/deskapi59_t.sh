@@ -4,7 +4,7 @@
 # deskls.js), the sign-in (a wrong password refused and noted, the right one giving the page's own keys, five failures
 # waiting, an account on the disk opening its encrypted folder with the page's key), the session for one-app pages,
 # lock and unlock, logout locking the folder, the settings, pins and notifications' count of the signed-in account,
-# and the files the page gives the shell. Needs root (a loop device with ext4's encryption, a private mount namespace)
+# and the files the page gives the shell; (step 7) the picture of your own copied from the page's IndexedDB mirror. Needs root (a loop device with ext4's encryption, a private mount namespace)
 # and node.   sh deskapi59_t.sh
 [ "$(id -u)" = 0 ] || { echo "SKIP: needs root"; exit 0; }
 [ -z "$DAT_INNER" ] && exec env DAT_INNER=1 unshare -m sh "$0" "$@"
@@ -86,6 +86,18 @@ printf '{"apps":' > $T/bad; ok "29. ...only whole JSON" "$(has "$(t "POST apps <
 printf '\377\330\377\340fakejpeg' > $T/jpg; o=$(t "POST wallpaper?acct=uAnnA1b2 <$T/jpg" "GET wallpaper?acct=uAnnA1b2")
 ok "30. a picture of your own: kept for the shell" "$(echo "$o" | sed -n 2p | grep -c fakejpeg)" "$o"
 ok "31. ...only a JPEG, for a real account id" "$([ "$(has "$(t "POST wallpaper?acct=uAnnA1b2 <$T/apps")" 400)$(has "$(t "GET wallpaper?acct=../x")" 400)" = 11 ] && echo 1)"
-ok "32. other desktop/ requests are left to rudolfd (engine, priority)" "$(has "$(t "GET engine")" 'not a desktop request')"
+# 1.5.9 (step 7): the copy made from the page's IndexedDB mirror when it is missing or of another picture
+node -e "const fs=require('fs'),L=JSON.parse(fs.readFileSync('$T/ls.json'));for(const k of ['bd95set:uAnnA1b2','bd95set']){const s=JSON.parse(L.data[k]);s.wpimg='kq1x';L.data[k]=JSON.stringify(s)}fs.writeFileSync('$T/ls2.json',JSON.stringify(L));
+ let h=0xcbf29ce484222325n;for(const c of new TextEncoder().encode('rudolfos\\0kv\\0'+JSON.stringify('wp:kq1x'))){h^=BigInt(c);h=(h*0x100000001b3n)&0xffffffffffffffffn}
+ fs.mkdirSync('$D/.rudolf-idb',{recursive:true});fs.writeFileSync('$D/.rudolf-idb/'+h.toString(16).padStart(16,'0')+'.json',JSON.stringify({db:'rudolfos',store:'kv',key:'wp:kq1x',v:'data:image/jpeg;base64,'+Buffer.from('\\xff\\xd8\\xff\\xe0mirrorjpeg','latin1').toString('base64')}))"
+t2() { $T/t $R $T/ls2.json $D $RUNX "$@"; }
+rm -f $D/.rudolf-wallpaper/uAnnA1b2.jpg; body '{"n":"Ann","p":"pw-ann ü"}'; o=$(t2 "POST login <$T/b" "GET settings" "GET wallpaper?acct=uAnnA1b2")
+ok "32. no copy of the picture yet (the first start): made from the page's IndexedDB mirror" "$(echo "$o" | sed -n 2p | grep -q '"wallpaper":true,"wpacct":"uAnnA1b2"' && echo "$o" | sed -n 3p | grep -q mirrorjpeg && [ "$(cat $D/.rudolf-wallpaper/uAnnA1b2.src)" = kq1x ] && echo 1)" "$o"
+o=$(t2 "POST wallpaper?acct=uAnnA1b2&id=older <$T/jpg" "GET wallpaper?acct=uAnnA1b2" "GET settings" "GET wallpaper?acct=uAnnA1b2")
+ok "33. a copy of an older picture (the page said which): replaced by the one the settings name" "$(echo "$o" | sed -n 2p | grep -q fakejpeg && echo "$o" | sed -n 4p | grep -q mirrorjpeg && echo 1)" "$o"
+o=$(t2 "POST logout" "GET settings")
+ok "34. before sign-in: the picture of the account signed in last, whose settings these are" "$(echo "$o" | sed -n 2p | grep -q '"wallpaper":true,"wpacct":"uBobC3d4"' && echo 1)" "$o"
+o=$(t "GET settings"); ok "35. ...and none when the settings name no picture" "$(echo "$o" | grep -q '"wallpaper":false,"wpacct":""' && echo 1)" "$o"
+ok "36. other desktop/ requests are left to rudolfd (engine, priority)" "$(has "$(t "GET engine")" 'not a desktop request')"
 umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]

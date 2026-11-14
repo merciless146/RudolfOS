@@ -13,7 +13,8 @@
  *   GET  desktop/apps          the start menu's list and the drawn backgrounds' pictures, as the page wrote them
  *   POST desktop/apps          (the page, after each sign-in)
  *   GET  desktop/wallpaper?acct=ID   a picture of your own (JPEG), as the page gave it
- *   POST desktop/wallpaper?acct=ID   (the page, when it loads or changes one)
+ *   POST desktop/wallpaper?acct=ID&id=PIC   (the page, when it loads or changes one; PIC: the picture's id, wpimg).
+ *                              Missing or of an older picture, the copy is made from the IndexedDB mirror (dwp_ensure)
  *
  * The sign-in's cryptography is the page's (core25.js, acct50.js, home56.js), in plain C so rudolfd links nothing new:
  * the password hash "p2$SALT$HASH" is PBKDF2-HMAC-SHA-256 with 210 000 rounds; the password's key (PKEY) is the same
@@ -463,6 +464,44 @@ static void api_desktop_login(struct req *r)
 	explicit_bzero(&s, sizeof s); reply_json(r->fd, &o);
 }
 
+/* 1.5.9 (plan Part 12, step 7): the copy of a picture of your own (DIR/.rudolf-wallpaper/ACCT.jpg, its picture's id in
+   ACCT.src) is made here when it is missing or of another picture, from the page's IndexedDB as rudolfd's mirror keeps
+   it (DIR/.rudolf-idb: the record "wp:ID" of rudolfos/kv, named by the FNV-1a hash idbmName gives it, core25.js), so a
+   native desktop started before any page has loaded the picture still shows it (the Vivobook's first start: teal) */
+static int dput(const char *path, const char *b, size_t n);
+static void dwp_ensure(const char *acct, const char *id)
+{
+	if (!acct || !id || !home_acct_ok(acct) || !*id || strlen(id) > 24 || strspn(id, "abcdefghijklmnopqrstuvwxyz0123456789") != strlen(id)) return;
+	char d[300], p[400], sp[400]; snprintf(d, sizeof d, "%s/.rudolf-wallpaper", desk_dir); snprintf(p, sizeof p, "%s/%s.jpg", d, acct); snprintf(sp, sizeof sp, "%s/%s.src", d, acct);
+	char *have = slurp(sp, NULL); int same = have && !strcmp(have, id); free(have);
+	if (same || (!access(p, R_OK) && access(sp, F_OK))) return;   /* (a copy from before the .src files: the page keeps it right) */
+	char key[96]; snprintf(key, sizeof key, "rudolfos%ckv%c\"wp:%s\"", 0, 0, id);
+	size_t kl = 8 + 1 + 2 + 1 + strlen(id) + 5; uint64_t h = 0xcbf29ce484222325ULL;
+	for (size_t i = 0; i < kl; i++) { h ^= (unsigned char)key[i]; h *= 0x100000001b3ULL; }
+	char rp[400]; snprintf(rp, sizeof rp, "%s/.rudolf-idb/%016llx.json", desk_dir, (unsigned long long)h);
+	size_t n; char *rec = slurp(rp, &n); if (!rec) return;
+	const char *v = dj_get(rec, "v"), *k = dj_get(rec, "key"); static const char PRE[] = "\"data:image/jpeg;base64,";
+	char *ks = k ? dj_str(k) : NULL; int okk = ks && !strncmp(ks, "wp:", 3) && !strcmp(ks + 3, id); free(ks);
+	if (okk && v && !strncmp(dj_ws(v), PRE, sizeof PRE - 1)) {
+		const char *b = dj_ws(v) + sizeof PRE - 1, *e = strchr(b, '"');
+		if (e && e - b < (32 << 20)) {
+			char *b64 = strndup(b, e - b); size_t cap = (e - b) / 4 * 3 + 3; uint8_t *jpg = malloc(cap); int jl = b64 && jpg ? db64d(b64, jpg, cap) : -1;
+			if (jl > 2 && jpg[0] == 0xff && jpg[1] == 0xd8) {
+				if (mkdir(d, 0755) == 0 && chown(d, desk_uid, desk_uid)) {}
+				if (!dput(p, (char *)jpg, jl)) dput(sp, id, strlen(id));
+			}
+			free(b64); free(jpg);
+		}
+	}
+	free(rec);
+}
+/* the account signed in last (the sign-in screen draws its picture) */
+static void dlast_acct(dls *l, char *out, size_t on)
+{
+	char *list = dls_accounts(l); double best = -1; out[0] = 0;
+	for (int i = 0; list; i++) { const char *a = dj_at(list, i); if (!a) break; double t = dj_num(dj_get(a, "last"), 0); if (t > best) { best = t; dacct_id(a, out, on); } }
+	free(list);
+}
 /* the account's settings key: bd95set:ID (signed in) or bd95set (the last settings, before) */
 static void api_desktop_settings(struct req *r)
 {
@@ -470,7 +509,7 @@ static void api_desktop_settings(struct req *r)
 	char k[160]; snprintf(k, sizeof k, in ? "bd95set:%s" : "bd95set", s.id);
 	char *set = dls_get(&l, k); if (!set && in) set = dls_get(&l, "bd95set");
 	static const char *const KEYS[] = { "bs", "b1", "b2", "dyn", "dm", "lat", "wpimg", "wpfit", "tb", "tbstyle", "tbac", "tbacm", "tbbstyle", "tbbac",
-		"tbbacm", "twstyle", "twacm", "accent", "darkui", "ck", "h24", "df", "tz", "doff", "ff", "fs", "lang", NULL };
+		"tbbacm", "twstyle", "twacm", "accent", "darkui", "ck", "h24", "df", "tz", "doff", "ff", "fs", "lang", "scale", NULL };
 	str o = {0}; sadd(&o, "{\"ok\":true,\"gen\":%.0f,\"acct\":", l.file ? dj_num(dj_get(l.file, "gen"), 0) : 0); sjson(&o, in ? s.id : "");
 	sadd(&o, ",\"s\":{"); int n = 0;
 	for (int i = 0; KEYS[i]; i++) { const char *v = set ? dj_get(set, KEYS[i]) : NULL; if (!v || !dj_end(v, 0)) continue; sadd(&o, "%s\"%s\":", n++ ? "," : "", KEYS[i]); dj_raw(&o, v, "null"); }
@@ -478,8 +517,12 @@ static void api_desktop_settings(struct req *r)
 	snprintf(k, sizeof k, "bd95pins:%s", in ? s.id : "nobody"); char *pins = dls_get(&l, k);
 	if (pins && *dj_ws(pins) == '[' && dj_end(pins, 0)) dj_raw(&o, pins, "[]"); else sadd(&o, "[\"explorer\",\"browser\",\"notepad\",\"settings\"]");
 	snprintf(k, sizeof k, "bd95notif:%s", in ? s.id : "nobody"); char *nt = dls_get(&l, k);
-	char wp[400]; snprintf(wp, sizeof wp, "%s/.rudolf-wallpaper/%s.jpg", desk_dir, in ? s.id : "-");
-	sadd(&o, ",\"notes\":%d,\"wallpaper\":%s}", nt ? dj_count(nt) : 0, in && !access(wp, R_OK) ? "true" : "false");
+	/* a picture of your own: the account's; before sign-in, the last account's (whose settings these are) */
+	char wa[80] = ""; if (in) snprintf(wa, sizeof wa, "%s", s.id); else dlast_acct(&l, wa, sizeof wa);
+	char *wid = set ? dj_str(dj_get(set, "wpimg")) : NULL; if (wid && *wid && wa[0] && strcmp(wa, "guest")) dwp_ensure(wa, wid);
+	char wp[400]; snprintf(wp, sizeof wp, "%s/.rudolf-wallpaper/%s.jpg", desk_dir, wa[0] ? wa : "-");
+	int haswp = wid && *wid && wa[0] && home_acct_ok(wa) && !access(wp, R_OK); free(wid);
+	sadd(&o, ",\"notes\":%d,\"wallpaper\":%s,\"wpacct\":", nt ? dj_count(nt) : 0, haswp ? "true" : "false"); sjson(&o, haswp ? wa : ""); sadd(&o, "}");
 	free(set); free(pins); free(nt); dls_close(&l); explicit_bzero(&s, sizeof s); reply_json(r->fd, &o);
 }
 
@@ -568,7 +611,11 @@ static int api_desktop(struct req *r, const char *w, int post)
 		if (!r->body || !r->blen) { unlink(p); reply_ok(r->fd, "removed"); return 1; }
 		if (r->blen > (16u << 20) || (unsigned char)r->body[0] != 0xff || (unsigned char)r->body[1] != 0xd8) { reply_err(r->fd, 400, "a JPEG picture, at most 16 MB"); return 1; }
 		if (mkdir(d, 0755) == 0 && chown(d, desk_uid, desk_uid)) {}
-		if (dput(p, r->body, r->blen)) reply_err(r->fd, 500, "could not save"); else reply_ok(r->fd, "saved");
+		if (dput(p, r->body, r->blen)) { reply_err(r->fd, 500, "could not save"); return 1; }
+		/* (which picture it is: then desktop/settings knows a copy of an older picture from the mirror's newer one) */
+		const char *id = qparam(r->query, "id"); char sp[400]; snprintf(sp, sizeof sp, "%s/%s.src", d, a);
+		if (id && *id && strlen(id) <= 24 && strspn(id, "abcdefghijklmnopqrstuvwxyz0123456789") == strlen(id)) dput(sp, id, strlen(id)); else unlink(sp);
+		reply_ok(r->fd, "saved");
 		return 1;
 	}
 	return 0;

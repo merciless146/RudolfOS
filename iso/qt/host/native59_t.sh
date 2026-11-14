@@ -5,7 +5,9 @@
 # (at the bottom and the top, its accent colour, the pinned apps, the tray, the clock), the start menu and its search,
 # app windows in one-app mode sharing one WebKit web process, the lock screen and signing out; (step 4) the window
 # manager: frames, focus, moving, resizing, maximise, minimise, the taskbar's list, full screen, dialogs, close. What is where comes from
-# rudolf-native's own account of it (RUDOLF_NATIVE_STATE); colours from screenshots. Needs Xvfb, xdotool, ImageMagick,
+# rudolf-native's own account of it (RUDOLF_NATIVE_STATE); colours from screenshots. Step 7 (the Vivobook's bugs): the
+# pointer, the page's scale and the logo on a light bar, the picture of your own before its copy is made, a dropdown
+# in an app window, the development link's banner and question from the shell. Needs Xvfb, xdotool, ImageMagick,
 # node, python3, gcc and WebKitGTK's headers (libwebkit2gtk-4.1-dev).   sh native59_t.sh [RUDOLF-NATIVE]
 HERE=$(cd "$(dirname "$0")" && pwd); T=$(mktemp -d /tmp/native59.XXXXXX); PORT=8298; DSP=:79
 command -v Xvfb >/dev/null && command -v xdotool >/dev/null && command -v convert >/dev/null || { echo "SKIP: needs Xvfb, xdotool and ImageMagick"; exit 0; }
@@ -41,6 +43,15 @@ xdotool type --delay 15 'wrong'; xdotool key Return
 w8 '[ -n "$(st signmsg)" ]'; ok "4. a wrong password: rudolfd's message, still the sign-in screen" "$([ "$(st signmsg)" = 'The user name or password is incorrect.' ] && [ "$(st signin)" = 1 ] && echo 1)" "$(st signmsg)"
 LC_ALL=C.UTF-8 xdotool type --delay 30 "$PW"; xdotool key Return
 w8 '[ "$(st user)" = Ann ] && [ "$(st signin)" = 0 ]'; ok "5. the right password (not ASCII): signed in, the taskbar shown" "$([ "$(st user)" = Ann ] && [ "$(st bar)" = "1 0 754 1280 46" ] && echo 1)" "$(head -8 $D/state)"
+# 1.5.9 step 7: the pointer over the desktop is the usual arrow (left_ptr: its tip at the top left), not X's bare ✕
+cat > $T/cur.c <<'EOF2'
+#include <X11/Xlib.h>
+#include <X11/extensions/Xfixes.h>
+#include <stdio.h>
+int main(void) { Display *d = XOpenDisplay(NULL); if (!d) return 2; XFixesCursorImage *c = XFixesGetCursorImage(d); if (!c) return 3; printf("%d %d %d %d\n", c->width, c->height, c->xhot, c->yhot); return 0; }
+EOF2
+gcc -o $T/cur $T/cur.c -lX11 -lXfixes 2>/dev/null; xdotool mousemove 640 300; timeout 0.3 tail -f /dev/null
+c=$($T/cur); ok "47. the pointer over the desktop is the arrow, not X's bare ✕ (step 7)" "$(echo "$c" | awk '{exit !($3<4 && $4<4)}' && echo 1)" "$c"
 # ---- the wallpaper and the taskbar
 w8 'grep -q "^hit pin calc" $D/state'; timeout 1 tail -f /dev/null; shot
 ok "6. the wallpaper: the colour (solid)" "$(close "$(px 640 400)" "17 34 51" 2 && echo 1)" "$(px 640 400)"
@@ -59,7 +70,20 @@ w8 '[ "$(st bar | cut -d" " -f3)" = 754 ]' 40; timeout 2 tail -f /dev/null; shot
 a=$(px 300 300); b=$(px 900 500)
 ok "15. a drawn background: its dark picture (WebP, through WebKit's libwebp)" "$( ! close "$a" "$b" 10 && ! close "$a" "0 0 0" 10 && echo 1)" "$a / $b"
 ok "16. ...and the Retro taskbar: silver" "$(close "$(px 800 760)" "192 192 192" 2 && echo 1)" "$(px 800 760)"
-convert -size 64x64 xc:'#cc2244' $D/wall.jpg
+m=$(convert $T/s.png -crop 22x22+11+766 -colorspace Gray -format '%[fx:int(255*mean)]' info:)
+ok "48. ...its logo dark on the silver button, as the page's (not faded: step 7)" "$([ "$m" -lt 160 ] && echo 1)" "$m"
+set_s '{"s":{"bs":"solid","b1":"#008080","tb":"bottom","accent":"#2563eb","scale":125,"tbbstyle":"candy","fs":13},"pins":["notepad","calc","settings"],"notes":0,"wallpaper":false}'
+w8 '[ "$(st bar)" = "1 0 742 1280 58" ]' 40; timeout 1 tail -f /dev/null; shot
+ok "49. the page's scale (125 %): the taskbar and the title bars grow as the page's do (step 7)" "$([ "$(st bar)" = "1 0 742 1280 58" ] && [ "$(st scale)" = "1.25 58 38" ] && grep -q '^hit start - 4 750 174 43' $D/state && echo 1)" "$(st bar) / $(st scale) / $(grep '^hit start' $D/state)"
+p=$(hit net -); p=$(px $p); ok "50. ...the buttons in their own style (Candy: pink), the bar in its own (Standard: dark)" "$(echo "$p" | awk '{exit !($1>$2+60)}' && close "$(px 700 795)" "17 24 39" 3 && echo 1)" "$p / $(px 700 795)"
+# a picture of your own whose copy rudolfd has not made yet (the first start): a drawn background, not the colours;
+# then the copy appears (no change to the settings) and is drawn at once, without a restart
+rm -f $D/wall.jpg
+set_s '{"s":{"bs":"solid","b1":"#008080","tb":"bottom","wpimg":"w1","wpfit":"fill","accent":"#2563eb"},"pins":["notepad","calc","settings"],"notes":0,"wallpaper":"file"}'
+w8 '[ "$(st bar)" = "1 0 754 1280 46" ]' 40; timeout 2 tail -f /dev/null; shot
+a=$(px 640 400); ok "51. no copy of the picture yet: the first drawn background meanwhile, not teal (step 7)" "$( ! close "$a" "0 128 128" 12 && ! close "$a" "$(px 100 100)" 6 && echo 1)" "$a / $(px 100 100)"
+convert -size 64x64 xc:'#cc2244' $D/wall.jpg; timeout 5 tail -f /dev/null; shot
+ok "52. ...the copy appears: the picture, without a restart" "$(close "$(px 640 400)" "204 34 68" 8 && echo 1)" "$(px 640 400)"
 set_s '{"s":{"bs":"solid","b1":"#000000","tb":"bottom","wpimg":"w1","wpfit":"fill","accent":"#2563eb"},"pins":["notepad","calc","settings"],"notes":0,"wallpaper":true}'
 timeout 4 tail -f /dev/null; shot
 ok "17. a picture of your own (from the page, through rudolfd), filling the screen" "$(close "$(px 640 400)" "204 34 68" 8 && close "$(px 4 4)" "204 34 68" 8 && echo 1)" "$(px 640 400) $(px 4 4)"
@@ -120,6 +144,29 @@ ok "45. close: WM_DELETE_WINDOW, the program closes its window, the frame and th
 NID=$(grep '^client .* app=notepad' $D/state | cut -d' ' -f2); X=$(cv $NID 4); Y=$(cv $NID 5); FW=$(( $(cv $NID 6) + 8 )); click $((X+FW-25)) $((Y+15))
 w8 '[ -z "$(cl $NID)" ]' 40
 ok "46. an app window's close button asks the page (as its ✕), which closes it" "$([ -z "$(cl $NID)" ] && ! grep -q '^app notepad' $D/state && echo 1)" "$(grep '^client\|^app' $D/state)"
+# ---- 1.5.9 step 7: a dropdown in an app window (Settings › Display Properties' Appearance): drawn by the page in its
+# colours (WebKit's own look was a blank box), and its list opens (WebKit's pop-up, under the native window manager)
+click $(hit pin settings); w8 'grep -q "^app settings .* Settings$" $D/state' 120; SID=$(grep '^client .* app=settings' $D/state | cut -d' ' -f2)
+timeout 12 tail -f /dev/null; X=$(cv $SID 4); Y=$(cv $SID 5); shot
+p=$(px $((X+430)) $((Y+515))); ok "53. a dropdown in an app window: the page's dark colours, not a blank box" "$(close "$p" "11 18 32" 10 && echo 1)" "$p at $((X+430)) $((Y+515))"
+pop() { xwininfo -root -children 2>/dev/null | grep -c '^ *0x[0-9a-f]* "RudolfNative": ("RudolfNative" "RudolfNative")  [0-9]*x[0-9]*+'; }
+xwininfo -root -tree > $T/before; click $((X+480)) $((Y+515)); timeout 1.5 tail -f /dev/null; xwininfo -root -tree > $T/after; shot
+nw=$(diff $T/before $T/after | grep '^> *0x' | grep -o '[0-9]*x[0-9]*+[0-9-]*+[0-9-]*' | head -1)
+sd=$(echo "$nw" | grep -q x && convert $T/s.png -crop "$nw" -colorspace Gray -format '%[fx:int(1000*standard_deviation)]' info: 2>/dev/null)
+ok "54. ...its list opens, drawn (WebKit's pop-up under the window manager: its options' text on it)" "$(echo "$nw" | awk -Fx '{split($2,a,"+"); exit !($1>60 && a[1]>30)}' && [ "${sd:-0}" -gt 60 ] && echo 1)" "$nw sd=$sd"
+xdotool key Escape; timeout 0.5 tail -f /dev/null
+# ---- 1.5.9 step 7: the development link's banner, once, from the shell (not in every app window), and its question
+printf '%s' '{"ok":true,"available":true,"on":true,"repo":"owner/rudolf-devlink","secondsLeft":5400,"status":{"state":"on"},"pending":{"id":"c42","kind":"run","what":"uname -a"}}' > $D/devlink.json
+w8 '[ -n "$(st devlink)" ]' 30; timeout 3 tail -f /dev/null; shot
+ok "55. the development link on: a red banner along the top, with the time left" "$(st devlink | grep -q '^0 1280 28 ⚠ Development link on: commands from GitHub (owner/rudolf-devlink) .* 1 h 30 min left$' && close "$(px 300 6)" "176 0 32" 6 && echo 1)" "$(st devlink) $(px 300 6)"
+ok "56. ...the windows keep below it, and an app window's page draws no banner of its own" "$([ "$(cv $SID 5)" -ge 28 ] && ! close "$(px $(( $(cv $SID 4) + 300 )) $(( $(cv $SID 5) + 40 )))" "176 0 32" 30 && echo 1)" "$(cl $SID) $(px $(( $(cv $SID 4) + 300 )) $(( $(cv $SID 5) + 40 )))"
+q=$(st devask); ok "57. ...a command waiting: the question, once, from the shell" "$(echo "$q" | grep -q '^c42 no ' && echo 1)" "$q"
+click $(echo "$q" | awk '{print $3, $4}'); w8 'grep -q "POST devlink/answer?id=c42&a=refuse" $D/calls' 20
+printf '%s' '{"ok":true,"available":true,"on":true,"repo":"owner/rudolf-devlink","secondsLeft":5400,"status":{"state":"on"}}' > $D/devlink.json; timeout 5 tail -f /dev/null
+ok "58. ...Refuse answers rudolfd, and the question goes" "$(grep -q 'POST devlink/answer?id=c42&a=refuse' $D/calls && [ -z "$(st devask)" ] && echo 1)" "$(st devask) $(grep devlink $D/calls | tail -2)"
+click $(st devend); w8 'grep -q "POST devlink/off" $D/calls' 20; rm -f $D/devlink.json; w8 '[ -z "$(st devlink)" ]' 30
+ok "59. End now switches it off; the banner goes and the windows may use the top again" "$(grep -q 'POST devlink/off' $D/calls && [ -z "$(st devlink)" ] && echo 1)" "$(st devlink)"
+X=$(cv $SID 4); Y=$(cv $SID 5); FW=$(( $(cv $SID 6) + 8 )); click $((X+FW-25)) $((Y+15)); w8 '[ -z "$(cl $SID)" ]' 40
 # ---- lock and sign out
 click $(hit start -); w8 '[ "$(st menu)" = 1 ]' 20; L=$(grep '^menubtn lock ' $D/state | awk '{print $3+int($5/2), $4+int($6/2)}'); click $L
 w8 '[ "$(st locked)" = 1 ]' 20; ok "24. Lock: the lock screen, rudolfd told (new app windows get no session meanwhile)" "$([ "$(st locked)" = 1 ] && [ "$(st signin)" = 1 ] && grep -q 'POST desktop/lock' $D/calls && [ "$($XC stack | tail -1)" = "0x$(xdotool search --name '^Sign in$' | head -1 | xargs printf '%x')" ] && echo 1)" "$(head -6 $D/state)"

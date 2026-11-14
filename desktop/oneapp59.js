@@ -41,6 +41,9 @@ html.oneapp .win.oamain>.tb{display:none!important}html.oneapp .win.oamain>.body
  {const _sl=showLogin;let first=1;showLogin=function(){if(first&&!OA.opened){first=0;oaStart(_sl);return}if(OA.opened&&OA.done)return;return _sl.apply(this,arguments)}}
  /* after any sign-in: the app */
  {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);if(!OA.opened)setTimeout(oaOpen,0);return r}}
+ /* 1.5.9 (step 7): the development link's banner and its Allow / Refuse question come once, from the native shell,
+    not in every app window (where the banner also hid the top of the app: Settings' search box) */
+ if(oaNative()){devlBanner=()=>{const b=document.getElementById('devlinkBanner');if(b)b.remove()};devlAsk=()=>{const o=document.getElementById('devlinkAsk');if(o)o.remove()}}
  /* (the ✕ button, not W.close: apps that ask about unsaved work watch the button) */
  window.__oneAppClose=()=>{const m=OA.main;if(m&&m.el.isConnected){const c=m.el.querySelector('.tb .cl');if(c)c.click();else m.close()}else oaDone()};
 }
@@ -92,11 +95,11 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
  try{const apps=Object.values(APPS).filter(a=>a&&a.k&&a.name&&typeof a.open=='function').map(a=>({k:a.k,name:String(a.name),icon:String(a.icon||''),kw:String(a.kw||'')}));
   const bg={};if(typeof DYN=='object')for(const k in DYN){const d=DYN[k];bg[k]={n:d.n||k,d:d.d||'',l:d.l||''}}
   let hide=[];try{hide=ld(HIDEK(),[])}catch(e){}
-  await rdPost('desktop/apps',JSON.stringify({apps,bg,hide,acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
+  await rdPost('desktop/apps',JSON.stringify({apps,bg,hide,acct:uid(),ver:typeof RVER=='string'?RVER:''}))}catch(e){console.warn('desktop/apps',e)}}
 {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);setTimeout(oaCatalog,2500);return r}}
 let OA_WP='';
 async function oaWallpaper(){if(typeof RD=='undefined'||!RD||!USER||USER.r=='guest')return;const id=S.wpimg||'';
  if(!id||id!=WPID||!/^data:image\/jpeg;base64,/.test(WPURL||''))return;const key=uid()+':'+id;if(OA_WP==key)return;OA_WP=key;
  try{const b=atob(WPURL.slice(WPURL.indexOf(',')+1)),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);
-  await rdPost('desktop/wallpaper?acct='+encodeURIComponent(uid()),u)}catch(e){OA_WP='';console.warn('desktop/wallpaper',e)}}
+  await rdPost('desktop/wallpaper?acct='+encodeURIComponent(uid())+'&id='+encodeURIComponent(id),u)}catch(e){OA_WP='';console.warn('desktop/wallpaper',e)}}
 {const _wl=wpLoad;wpLoad=function(){const p=_wl.apply(this,arguments);Promise.resolve(p).then(()=>setTimeout(oaWallpaper,0)).catch(()=>{});return p}}

@@ -50,12 +50,16 @@ static int SOFT;                              /* --draw=soft: the lighter effect
 static const char *STATEF;                    /* RUDOLF_NATIVE_STATE: what is where, for the tests */
 typedef struct {
 	char bs[16], b1[16], b2[16], dyn[48], dm[8], wpfit[12], tb[8], tbstyle[12], tbacm[12], tbbstyle[12], tbbacm[12];
-	char twstyle[12], twacm[12], accent[16], df[8], tz[64], acct[80];
-	int tbac, tbbac, h24, wpimg, wallpaper, notes, npins; double lat, doff, gen; char pins[24][40];
+	char twstyle[12], twacm[12], accent[16], df[8], tz[64], acct[80], wpacct[80], ff[64];
+	int tbac, tbbac, h24, wpimg, wallpaper, notes, npins; double lat, doff, gen, scale, fs; char pins[24][40];
 } Settings;
 static Settings S;
 typedef struct { char k[40], name[80], icon[48], kw[200]; } App;
 static App *APPS; static int NAPPS; static GHashTable *BG;   /* key -> "dark\nlight" */
+static char FIRSTBG[48], RVER[24];   /* the first drawn background (the page's list), the page's version (desktop/apps) */
+/* the page's size (Display Properties › Scale, S.scale: the page zooms everything) and its font (S.ff, S.fs) */
+static double ZM = 1;
+static int TH = 30;   /* a window's title bar */
 typedef struct { char id[80], n[128], r[12]; int key, old; } Acct;
 static Acct ACC[32]; static int NACC, GUEST_OK, SETUP; static char LASTACC[80];
 static char USER_ID[80], USER_N[128], USER_R[12];   /* signed in ("" = not) */
@@ -284,6 +288,16 @@ static void text_at(cairo_t *cr, const char *t, double x, double y, double w, do
 	pango_font_description_free(fd); g_object_unref(pl);
 }
 
+/* a font as the page's: its family (Display Properties' font, S.ff) at a size in pixels, grown with the page's text
+   size (S.fs, 13 px by default) */
+static const char *fnt(char *b, size_t n, int bold, double px)
+{
+	char fam[64]; snprintf(fam, sizeof fam, "%s", S.ff[0] ? S.ff : "Sans");
+	for (char *p = fam; *p; p++) if (*p == '"' || *p == '\'' || *p == ';') *p = ' ';
+	double f = S.fs >= 8 && S.fs <= 40 ? S.fs / 13 : 1;
+	snprintf(b, n, "%s,Sans%s %.1fpx", fam, bold ? " Bold" : "", px * f); return b;
+}
+
 /* ------------------------------------------------------------------ the tests' view of the screen */
 typedef struct { int x, y, w, h; char kind[12], arg[80]; } Hit;
 static Hit HITS[96]; static int NHITS;
@@ -312,9 +326,10 @@ static GdkPixbuf *pix_get(const char *path) { GByteArray *b; int c = http("GET",
 static GdkPixbuf *LOGO;
 
 /* ------------------------------------------------------------------ the wallpaper */
-static GtkWidget *DESK, *DESKAREA, *BAR, *BARAREA, *MENU, *SIGN;
+static GtkWidget *DESK, *DESKAREA, *BAR, *BARAREA, *MENU, *SIGN, *DLWIN, *DLASK;
+static char DLTEXT[512], DLASKID[64];   /* the development link's banner and question (below) */
 static cairo_surface_t *WALL;   /* drawn at the screen's size */
-static char WALL_KEY[300];
+static char WALL_KEY[400];
 /* light or dark (the drawn backgrounds): the setting, else daylight at the latitude (the sun's height at noon and
    the day's length, as the page's sunCalc roughly), else 7 to 19 o'clock */
 static int is_dark(void)
@@ -362,17 +377,20 @@ static void paint_pix(cairo_t *cr, GdkPixbuf *p, int w, int h, const char *fit)
 }
 static void wall_make(void)
 {
-	char path[300] = "", key[300]; int dark = is_dark();
-	if (S.wpimg && S.wallpaper && S.acct[0]) snprintf(path, sizeof path, "/api/desktop/wallpaper?acct=%s", S.acct);
-	else if (S.dyn[0] && BG) { const char *v = g_hash_table_lookup(BG, S.dyn); if (v) { const char *nl = strchr(v, '\n'); if (dark || !nl) snprintf(path, sizeof path, "/%.*s", nl ? (int)(nl - v) : (int)strlen(v), v); else snprintf(path, sizeof path, "/%s", nl + 1); } }
+	char path[300] = "", key[400]; int dark = is_dark(), own = 0;
+	/* a picture of your own (rudolfd's copy: the account's, or before sign-in the last account's); while there is no
+	   copy yet, the first drawn background rather than the colours (1.5.9 step 7: the first start was teal) */
+	const char *dyn = S.dyn[0] ? S.dyn : S.wpimg ? FIRSTBG : "";
+	if (S.wpimg && S.wallpaper && S.wpacct[0]) { snprintf(path, sizeof path, "/api/desktop/wallpaper?acct=%s", S.wpacct); own = 1; }
+	else if (dyn[0] && BG) { const char *v = g_hash_table_lookup(BG, dyn); if (v) { const char *nl = strchr(v, '\n'); if (dark || !nl) snprintf(path, sizeof path, "/%.*s", nl ? (int)(nl - v) : (int)strlen(v), v); else snprintf(path, sizeof path, "/%s", nl + 1); } }
 	snprintf(key, sizeof key, "%s|%s|%s|%s|%s|%s|%d|%d", path, S.bs, S.b1, S.b2, S.wpfit, S.acct, SW, (int)S.gen);
 	if (WALL && !strcmp(key, WALL_KEY)) return;
 	snprintf(WALL_KEY, sizeof WALL_KEY, "%s", key);
 	if (!WALL) WALL = cairo_image_surface_create(CAIRO_FORMAT_RGB24, SW, SH);
 	cairo_t *cr = cairo_create(WALL); GdkPixbuf *p = path[0] ? pix_get(path) : NULL;
 	if (p) {   /* behind a picture: the first colour (a picture of your own), black or light grey (a drawn one) */
-		RGB bg = S.wpimg ? hexc(S.b1, "#000000") : dark ? (RGB){0, 0, 0} : hexc("#e5e7eb", NULL); src(cr, bg, 1); cairo_paint(cr);
-		paint_pix(cr, p, SW, SH, S.wpimg ? S.wpfit : "fill"); g_object_unref(p);
+		RGB bg = own ? hexc(S.b1, "#000000") : dark ? (RGB){0, 0, 0} : hexc("#e5e7eb", NULL); src(cr, bg, 1); cairo_paint(cr);
+		paint_pix(cr, p, SW, SH, own ? S.wpfit : "fill"); g_object_unref(p);
 	} else pattern_bg(cr, SW, SH);
 	cairo_destroy(cr);
 	if (DESKAREA) gtk_widget_queue_draw(DESKAREA);
@@ -385,6 +403,8 @@ static GList *WINS;   /* AppWin*, oldest first */
 static AppWin *ACTIVE;
 static WebKitWebContext *CTX; static WebKitUserContentManager *UCM; static int NEXTID;
 static void bar_redraw(void);
+static void dl_place(void);
+static void wm_restack(void);
 static void app_open(const char *k, const char *file);
 static void frame_redraw_app(AppWin *a);
 static const App *app_find(const char *k) { for (int i = 0; i < NAPPS; i++) if (!strcmp(APPS[i].k, k)) return &APPS[i]; return NULL; }
@@ -537,7 +557,6 @@ static void app_open(const char *k, const char *file)
    videos) covers the whole screen, taskbar too, without the frame. Our own app windows are framed the same way (our
    own requests are not redirected to us, so they are framed as they are shown). The taskbar lists them all. */
 #define BW 4
-#define TH 30
 typedef struct Client { Window w, frame; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden; char title[256]; AppWin *app; Window trans; Time last_click; } Client;
 static GList *CLIENTS;   /* oldest first */
 static Client *FOCUS;
@@ -579,6 +598,20 @@ static void place(Client *c)
 	else { XMoveResizeWindow(DPY, c->frame, c->x, c->y, fw_of(c), fh_of(c)); XMoveResizeWindow(DPY, c->w, BW, TH, c->cw, c->ch); }
 	tell_geom(c);
 }
+/* the screen without the taskbar and the development link's banner */
+static int DLH;   /* the banner's height while it shows */
+static int work_top(void) { return (!strcmp(S.tb, "top") ? BARH : 0) + DLH; }
+static int work_h(void) { return SH - BARH - DLH; }
+static int r_w(void) { return (int)lround(36 * ZM); }
+/* the scale or the banner changed: the frames' title bars and the maximised windows follow */
+static void frame_draw(Client *c);
+static void wm_relayout(void)
+{
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data;
+		if (c->max) { c->x = 0; c->y = work_top(); c->cw = SW - 2 * BW; c->ch = work_h() - TH - BW; }
+		else if (c->y < work_top() && !c->full) c->y = work_top();
+		place(c); frame_draw(c); }
+}
 /* the title bar's colours: the accent colour (Normal, Negative, Complementary) when active, grey otherwise */
 static Look title_look(int active)
 {
@@ -586,7 +619,7 @@ static Look title_look(int active)
 	RGB b = active ? variant(accent(), S.twacm) : hexc(!strcmp(st, "retro") ? "#808080" : "#9ca3af", NULL);
 	return look_make(st, b);
 }
-static void btn_rects(Client *c, int r[3][4]) { int fw = fw_of(c); for (int i = 0; i < 3; i++) { r[i][0] = fw - BW - 36 * (3 - i) - 2; r[i][1] = 4; r[i][2] = 34; r[i][3] = TH - 8; } }
+static void btn_rects(Client *c, int r[3][4]) { int fw = fw_of(c), bw = (int)lround(34 * ZM), g = (int)lround(2 * ZM); for (int i = 0; i < 3; i++) { r[i][0] = fw - BW - (bw + g) * (3 - i) - 2; r[i][1] = (int)lround(4 * ZM); r[i][2] = bw; r[i][3] = TH - 2 * r[i][1]; } }
 static void frame_draw(Client *c)
 {
 	if (!c->frame || c->full) return;
@@ -606,7 +639,7 @@ static void frame_draw(Client *c)
 	/* the icon and the title */
 	char t[320]; snprintf(t, sizeof t, "%s%s%s", c->app && c->app->icon[0] ? c->app->icon : "", c->app && c->app->icon[0] ? "  " : "", c->title);
 	RGB ink = !strcmp(L.st, "wire") ? hexc("#111827", NULL) : L.ink;
-	text_at(cr, t, 10, 0, fw - 140, TH, !strcmp(L.st, "retro") ? "Sans Bold 10" : "Sans 10", ink, 0);
+	char f1[96]; text_at(cr, t, 10, 0, fw - 40 - 3 * r_w(), TH, fnt(f1, sizeof f1, !strcmp(L.st, "retro"), 13 * ZM), ink, 0);
 	/* minimise, maximise, close */
 	int r[3][4]; btn_rects(c, r); static const char *const G[3] = {"–", "□", "✕"};
 	for (int i = 0; i < 3; i++) {
@@ -614,7 +647,7 @@ static void frame_draw(Client *c)
 		if (i == 2 && hv) B = look_make(L.st, hexc("#e11d48", NULL));
 		if (!strcmp(L.st, "retro")) B = look_make("retro", hexc("#c0c0c0", NULL));
 		face(cr, &B, r[i][0], r[i][1], r[i][2], r[i][3], hv, c->press == i + 1, 0);
-		text_at(cr, i == 1 && c->max ? "❐" : G[i], r[i][0], r[i][1], r[i][2], r[i][3], "Sans 10", !strcmp(B.st, "retro") ? hexc("#000000", NULL) : i == 2 && hv ? hexc("#ffffff", NULL) : ink, 1);
+		text_at(cr, i == 1 && c->max ? "❐" : G[i], r[i][0], r[i][1], r[i][2], r[i][3], fnt(f1, sizeof f1, 0, 13 * ZM), !strcmp(B.st, "retro") ? hexc("#000000", NULL) : i == 2 && hv ? hexc("#ffffff", NULL) : ink, 1);
 	}
 	cairo_destroy(cr); cairo_surface_destroy(sf);
 }
@@ -627,6 +660,8 @@ static void wm_restack(void)
 	if (!(FOCUS && FOCUS->full) && BAR && gtk_widget_get_visible(BAR)) XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(BAR)));
 	if (MENU && gtk_widget_get_visible(MENU)) XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(MENU)));
 	if (SIGN && gtk_widget_get_visible(SIGN)) XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(SIGN)));
+	if (DLWIN && gtk_widget_get_visible(DLWIN)) XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(DLWIN)));
+	if (DLASK && gtk_widget_get_visible(DLASK)) XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(DLASK)));
 }
 static void grab_clicks(Client *c, int on)
 {
@@ -673,8 +708,7 @@ static void wm_minimise(Client *c)
 static void wm_maximise(Client *c, int on)
 {
 	if (c->full || on == c->max) return;
-	int top = !strcmp(S.tb, "top");
-	if (on) { c->sx = c->x; c->sy = c->y; c->scw = c->cw; c->sch = c->ch; c->x = 0; c->y = top ? BARH : 0; c->cw = SW - 2 * BW; c->ch = SH - BARH - TH - BW; }
+	if (on) { c->sx = c->x; c->sy = c->y; c->scw = c->cw; c->sch = c->ch; c->x = 0; c->y = work_top(); c->cw = SW - 2 * BW; c->ch = work_h() - TH - BW; }
 	else { c->x = c->sx; c->y = c->sy; c->cw = c->scw; c->ch = c->sch; }
 	c->max = on; place(c); frame_draw(c); state_write();
 }
@@ -698,7 +732,7 @@ static void wm_manage(Window w, AppWin *own)
 	Client *c = g_new0(Client, 1); c->w = w; c->app = own; c->cw = wa.width; c->ch = wa.height;
 	if (!XGetTransientForHint(DPY, w, &c->trans)) c->trans = None;
 	wm_title(c);
-	int top = !strcmp(S.tb, "top"), ay = top ? BARH : 0, ah = SH - BARH;
+	int ay = work_top(), ah = work_h();
 	if (c->cw > SW - 2 * BW) c->cw = SW - 2 * BW; if (c->ch > ah - TH - BW) c->ch = ah - TH - BW;
 	Client *owner = c->trans ? client_of(c->trans) : NULL;
 	if (owner) { c->x = owner->x + (fw_of(owner) - fw_of(c)) / 2; c->y = owner->y + (fh_of(owner) - fh_of(c)) / 2; }
@@ -762,7 +796,7 @@ static void frame_press(Client *c, XButtonEvent *e)
 static void drag_motion(int rx, int ry)
 {
 	Client *c = DRAG.c; int dx = rx - DRAG.px, dy = ry - DRAG.py;
-	if (!DRAG.edge) { c->x = DRAG.x + dx; c->y = DRAG.y + dy; int top = !strcmp(S.tb, "top"); if (c->y < (top ? BARH : 0)) c->y = top ? BARH : 0; XMoveWindow(DPY, c->frame, c->x, c->y); return; }
+	if (!DRAG.edge) { c->x = DRAG.x + dx; c->y = DRAG.y + dy; if (c->y < work_top()) c->y = work_top(); XMoveWindow(DPY, c->frame, c->x, c->y); return; }
 	int x = DRAG.x, y = DRAG.y, w = DRAG.w, h = DRAG.h;
 	if (DRAG.edge & 1) { w = DRAG.w - dx; if (w < 160) w = 160; x = DRAG.x + DRAG.w - w; }
 	if (DRAG.edge & 2) { w = DRAG.w + dx; if (w < 160) w = 160; }
@@ -852,6 +886,10 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 static void wm_init(void)
 {
 	DPY = GDK_DISPLAY_XDISPLAY(gdk_display_get_default()); ROOT = DefaultRootWindow(DPY);
+	/* the usual arrow over the desktop (1.5.9 step 7: X's bare "✕" showed, as no window set one) */
+	static const unsigned SH_[9] = {XC_left_ptr, XC_left_side, XC_right_side, XC_top_side, XC_bottom_side, XC_top_left_corner, XC_top_right_corner, XC_bottom_left_corner, XC_bottom_right_corner};
+	for (int i = 0; i < 9; i++) CUR[i] = XCreateFontCursor(DPY, SH_[i]);
+	XDefineCursor(DPY, ROOT, CUR[0]);
 	XErrorHandler old = XSetErrorHandler(wm_errh); wm_err = 0;
 	XWindowAttributes ra; XGetWindowAttributes(DPY, ROOT, &ra);
 	XSelectInput(DPY, ROOT, ra.your_event_mask | SubstructureRedirectMask | SubstructureNotifyMask | PropertyChangeMask);
@@ -871,8 +909,6 @@ static void wm_init(void)
 	XChangeProperty(DPY, ROOT, A_NCHECK, XA_WINDOW, 32, PropModeReplace, (unsigned char *)&chk, 1);
 	XChangeProperty(DPY, chk, A_NCHECK, XA_WINDOW, 32, PropModeReplace, (unsigned char *)&chk, 1);
 	XChangeProperty(DPY, chk, A_NNAME, A_UTF8, 8, PropModeReplace, (unsigned char *)"rudolf-native", 13);
-	static const unsigned SH_[9] = {XC_left_ptr, XC_left_side, XC_right_side, XC_top_side, XC_bottom_side, XC_top_left_corner, XC_top_right_corner, XC_bottom_left_corner, XC_bottom_right_corner};
-	for (int i = 0; i < 9; i++) CUR[i] = XCreateFontCursor(DPY, SH_[i]);
 	gdk_window_add_filter(NULL, wm_filter, NULL);
 	/* windows already there (rudolf-native started again): framed */
 	Window r, p, *k = NULL; unsigned n = 0;
@@ -916,7 +952,8 @@ static void clock_text(void)
 	else snprintf(CLOCK_D, sizeof CLOCK_D, "%04d/%02d/%02d", Y, M, D);
 	g_date_time_unref(n); g_date_time_unref(n0); g_time_zone_unref(tz);
 }
-static void hit_add(int x, int y, int w, int h, const char *k, const char *a) { if (NHITS >= 96) return; Hit *t = &HITS[NHITS++]; t->x = x; t->y = y; t->w = w; t->h = h; snprintf(t->kind, sizeof t->kind, "%s", k); snprintf(t->arg, sizeof t->arg, "%s", a ? a : ""); }
+/* (the taskbar is drawn at the page's scale: its places are kept in the screen's pixels) */
+static void hit_add(int x, int y, int w, int h, const char *k, const char *a) { if (NHITS >= 96) return; Hit *t = &HITS[NHITS++]; t->x = (int)lround(x * ZM); t->y = (int)lround(y * ZM); t->w = (int)lround(w * ZM); t->h = (int)lround(h * ZM); snprintf(t->kind, sizeof t->kind, "%s", k); snprintf(t->arg, sizeof t->arg, "%s", a ? a : ""); }
 static const char *pin_icon(const char *k) { const App *a = app_find(k); return a && a->icon[0] ? a->icon : "▫"; }
 static void tray_text(int which, char *o, size_t n)
 {
@@ -928,16 +965,24 @@ static void tray_text(int which, char *o, size_t n)
 static gboolean bar_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 {
 	(void)d; int W = gtk_widget_get_allocated_width(wd), H = gtk_widget_get_allocated_height(wd), top = !strcmp(S.tb, "top");
+	/* drawn as the page draws it at 100 %, then grown with the page's scale */
+	cairo_scale(cr, ZM, ZM); W = (int)floor(W / ZM); H = (int)lround(H / ZM);
 	Look B = bar_look(), K = btn_look(); int plain = !btn_own() && !strcmp(B.st, "standard") && !S.tbac;
-	RGB fg = btn_own() ? K.ink : B.ink;
+	RGB fg = btn_own() ? K.ink : B.ink; char f1[96];
 	bar_fill(cr, &B, W, H, top); NHITS = 0;
 	int x = 3, by = (H - 34) / 2, i = 0;
 	/* the start button: the logo and the name */
 	hit_add(x, by, 139, 34, "start", NULL);
 	face(cr, &K, x, by, 139, 34, HOVER == i, PRESS == i, plain); i++;
 	if (LOGO) { cairo_save(cr); cairo_translate(cr, x + 8, by + 6); double s = 22.0 / gdk_pixbuf_get_width(LOGO); cairo_scale(cr, s, s);
-		gdk_cairo_set_source_pixbuf(cr, LOGO, 0, 0); if (B.black && !btn_own()) { cairo_paint_with_alpha(cr, .25); } else cairo_paint(cr); cairo_restore(cr); }
-	text_at(cr, "Rudolf OS", x + 36, by, 100, 34, "Sans Bold 10", fg, 0);
+		/* the logo is white: dark on a light bar or light buttons (brightness 22 %, as the page's filter; not faded) */
+		int dk = btn_own() ? K.black && strcmp(K.st, "wire") : B.black && (S.tbac || style_ok(S.tbstyle));
+		if (dk) { cairo_push_group(cr); gdk_cairo_set_source_pixbuf(cr, LOGO, 0, 0); cairo_paint(cr);
+			cairo_set_operator(cr, CAIRO_OPERATOR_ATOP); cairo_set_source_rgba(cr, 0, 0, 0, .78); cairo_paint(cr); cairo_pop_group_to_source(cr); }
+		else gdk_cairo_set_source_pixbuf(cr, LOGO, 0, 0);
+		cairo_paint(cr); cairo_restore(cr); }
+	char sl[48]; snprintf(sl, sizeof sl, "Rudolf OS%s%s", RVER[0] ? " " : "", RVER);
+	text_at(cr, sl, x + 36, by, 101, 34, fnt(f1, sizeof f1, 1, 13), fg, 0);
 	x += 143;
 	/* the pinned apps */
 	for (int p = 0; p < S.npins; p++, i++) {
@@ -951,7 +996,7 @@ static gboolean bar_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 	clock_text(); int cw = 140; rx -= cw;
 	hit_add(rx, by, cw, 34, "clock", NULL); face(cr, &K, rx, by, cw, 34, HOVER == NHITS - 1 + 0 && 0, 0, 0);
 	if (plain) { rrect(cr, rx, by + 1, cw, 32, 5); src(cr, hexc("#1f2937", NULL), 1); cairo_fill(cr); }
-	text_at(cr, CLOCK_T, rx + 8, by, 70, 34, "Sans 11", fg, 0); text_at(cr, CLOCK_D, rx + 70, by, cw - 76, 34, "Sans 8", fg, 2);
+	text_at(cr, CLOCK_T, rx + 8, by, 70, 34, fnt(f1, sizeof f1, 0, 14.5), fg, 0); text_at(cr, CLOCK_D, rx + 70, by, cw - 76, 34, fnt(f1, sizeof f1, 0, 11), fg, 2);
 	int tray_i0 = NHITS;
 	for (int k = 3; k >= 0; k--) {
 		if (k == 2 && BAT < 0) continue;
@@ -960,7 +1005,7 @@ static gboolean bar_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 		hit_add(rx, by + 4, tw, 26, KIND[k], NULL);
 		int me = i + (NHITS - 1 - tray_i0) + 64; face(cr, &K, rx, by + 4, tw, 26, HOVER == me, 0, 0);
 		if (plain) { rrect(cr, rx, by + 4, tw, 26, 5); src(cr, hexc(HOVER == me ? "#374151" : "#1f2937", NULL), 1); cairo_fill(cr); }
-		text_at(cr, t, rx, by + 4, tw, 26, "Sans 10", fg, 1);
+		text_at(cr, t, rx, by + 4, tw, 26, fnt(f1, sizeof f1, 0, 13), fg, 1);
 	}
 	/* the open windows, between */
 	/* (managing windows: every framed window, dialogs left out; else our app windows) */
@@ -974,7 +1019,7 @@ static gboolean bar_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 		int me = 200 + j; face(cr, &K, wx, by, tw - 4, 34, HOVER == me, 0, 0);
 		if (plain) { rrect(cr, wx, by, tw - 4, 34, 5); src(cr, hexc(HOVER == me ? "#374151" : minim ? "#111827" : "#1f2937", NULL), 1); cairo_fill(cr); }
 		if (act) { src(cr, accent(), 1); cairo_rectangle(cr, wx + 6, top ? by + 1 : by + 31, tw - 16, 3); cairo_fill(cr); }
-		text_at(cr, lab, wx + 8, by, tw - 20, 34, "Sans 10", minim ? shade(fg, fg.r > .5 ? -35 : 35) : fg, 0);
+		text_at(cr, lab, wx + 8, by, tw - 20, 34, fnt(f1, sizeof f1, 0, 13), minim ? shade(fg, fg.r > .5 ? -35 : 35) : fg, 0);
 	}
 	g_list_free(TL);
 	state_write();
@@ -1030,7 +1075,11 @@ static void css_apply(void)
 		".rn-card{background:rgba(17,24,39,.88);color:#f9fafb;border-radius:12px;padding:24px}.rn-card label{color:#f9fafb}"
 		".rn-card .rn-big{font-size:22px;font-weight:bold}.rn-card .rn-msg{color:#fca5a5}"
 		".rn-card button{background:#1f2937;color:#f9fafb;border:0;border-radius:6px;background-image:none;box-shadow:none;padding:6px 14px}"
-		".rn-card button.rn-go{background:%s}.rn-card entry{min-width:260px}", ac, ac);
+		".rn-card button.rn-go{background:%s}.rn-card entry{min-width:260px}"
+		".rn-dl{background:#b00020;color:#fff}.rn-dl label{color:#fff;font-weight:600;padding:0 10px}"
+		".rn-dl button label{color:#b00020}.rn-dl button{background:#fff;color:#b00020;border:0;border-radius:4px;padding:0 10px;margin:3px 10px;font-weight:bold;background-image:none;box-shadow:none;min-height:0}"
+		".rn-mono{font-family:monospace;background:rgba(0,0,0,.25);padding:8px}"
+		".rn-menu,.rn-card,.rn-dl{font-size:%.1fpx}", ac, ac, 13 * ZM * (S.fs >= 8 && S.fs <= 40 ? S.fs / 13 : 1));
 	gtk_css_provider_load_from_data(CSS, c, -1, NULL); g_free(c);
 }
 static void menu_hide(void) { if (MENU) gtk_widget_hide(MENU); }
@@ -1231,10 +1280,16 @@ static void settings_load(void)
 	if (!n.bs[0]) snprintf(n.bs, sizeof n.bs, "solid"); if (!n.b1[0]) snprintf(n.b1, sizeof n.b1, "#008080"); if (!n.b2[0]) snprintf(n.b2, sizeof n.b2, "#000080");
 	if (!n.tb[0]) snprintf(n.tb, sizeof n.tb, "bottom"); if (!n.wpfit[0]) snprintf(n.wpfit, sizeof n.wpfit, "fill"); if (!n.dm[0]) snprintf(n.dm, sizeof n.dm, "auto");
 	jstr(v, "acct", n.acct, sizeof n.acct); n.gen = jnum(v, "gen", 0); n.notes = (int)jnum(v, "notes", 0); n.wallpaper = jbool(v, "wallpaper");
+	jstr(v, "wpacct", n.wpacct, sizeof n.wpacct); if (!n.wpacct[0] && n.wallpaper) snprintf(n.wpacct, sizeof n.wpacct, "%s", n.acct);   /* (an older rudolfd) */
+	jstr(s, "ff", n.ff, sizeof n.ff); n.fs = jnum(s, "fs", 13); if (n.fs < 8 || n.fs > 40) n.fs = 13; n.scale = jnum(s, "scale", 100);
 	JV *p = jprop(v, "pins"); for (int i = 0; i < 24; i++) { JV *o = jat(p, i); if (!o) break; if (o->t == 3) snprintf(n.pins[n.npins++], 40, "%s", o->s);  }
 	  jfree(v);
 	int moved = strcmp(n.tb, S.tb) != 0; S = n;
-	css_apply(); wall_make(); if (moved) bar_place(); bar_redraw(); if (SAREA) gtk_widget_queue_draw(SAREA); if (WM_OK) frames_redraw();
+	/* the page's scale (75 to 250 %): the taskbar and the title bars grow with it, as the page's do */
+	double z = isnan(S.scale) || S.scale <= 0 ? 1 : fmax(.75, fmin(2.5, S.scale / 100)); int resized = 0;
+	if (fabs(z - ZM) > .001) { ZM = z; BARH = (int)lround(46 * ZM); TH = (int)lround(30 * ZM); resized = 1; }
+	css_apply(); wall_make(); if (moved || resized) bar_place(); if (resized) wm_relayout(); bar_redraw(); if (SAREA) gtk_widget_queue_draw(SAREA); if (WM_OK) frames_redraw();
+	if (DLTEXT[0]) dl_place();   /* (the taskbar moved or the scale changed: the banner follows) */
 }
 static void apps_load(void)
 {
@@ -1245,8 +1300,9 @@ static void apps_load(void)
 	
 	free(APPS); APPS = L; NAPPS = n;
 	if (BG) g_hash_table_destroy(BG); BG = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
-	JV *bg = jprop(v, "bg");
+	JV *bg = jprop(v, "bg"); FIRSTBG[0] = 0; jstr(v, "ver", RVER, sizeof RVER);
 	if (bg && bg->t == 5) {
+		if (bg->len) snprintf(FIRSTBG, sizeof FIRSTBG, "%s", bg->k[0]);
 		for (int i = 0; i < bg->len; i++) { JV *o = bg->v[i]; const char *kk = bg->k[i]; char d[200] = "", l[200] = ""; jstr(o, "d", d, sizeof d); jstr(o, "l", l, sizeof l);
 			if (d[0] && !strstr(d, "..") && !strstr(l, "..")) g_hash_table_insert(BG, g_strdup(kk), g_strdup_printf("%s\n%s", d, l[0] ? l : d));  }
 		}
@@ -1270,12 +1326,89 @@ static void tray_load(void)
 static gboolean tick_settings(gpointer d)
 {
 	(void)d; JV *v = jget("/api/desktop/settings"); if (!v) return G_SOURCE_CONTINUE;
-	double g = jnum(v, "gen", 0); char a[80] = ""; jstr(v, "acct", a, sizeof a); int notes = (int)jnum(v, "notes", 0); jfree(v);
-	if (g != S.gen || strcmp(a, S.acct) || notes != S.notes) { int newg = g != S.gen; settings_load(); if (newg) apps_load(); }
+	double g = jnum(v, "gen", 0); char a[80] = ""; jstr(v, "acct", a, sizeof a); int notes = (int)jnum(v, "notes", 0);
+	/* (and a copy of the picture of your own that has just appeared: drawn at once, without a restart) */
+	int wpf = jbool(v, "wallpaper"); char wa[80] = ""; jstr(v, "wpacct", wa, sizeof wa);
+	if (g != S.gen || strcmp(a, S.acct) || notes != S.notes || wpf != S.wallpaper || (wa[0] && strcmp(wa, S.wpacct))) { int newg = g != S.gen; jfree(v); settings_load(); if (newg) apps_load(); return G_SOURCE_CONTINUE; }
+	jfree(v);
 	return G_SOURCE_CONTINUE;
 }
 static gboolean tick_tray(gpointer d) { (void)d; tray_load(); return G_SOURCE_CONTINUE; }
 static gboolean tick_clock(gpointer d) { (void)d; char o[32]; snprintf(o, sizeof o, "%s", CLOCK_T); clock_text(); if (strcmp(o, CLOCK_T)) bar_redraw(); if (S.dyn[0] && !S.wpimg) wall_make(); return G_SOURCE_CONTINUE; }
+/* ------------------------------------------------------------------ the development link (devlink40.js, once)
+   While it is on: a red banner along the top of the screen with the time left and End now (the windows keep below it),
+   and with "Ask first" each command's Allow / Refuse question. The one-app pages leave both to the shell (1.5.9 step 7:
+   the page's banner was drawn inside every app window, over Settings' search box). */
+static GtkWidget *DLLAB, *DLASKT, *DLASKC;
+static void dl_off(GtkButton *b, gpointer d) { (void)b; (void)d; http("POST", "/api/devlink/off", NULL, 0, NULL); DLTEXT[0] = 0; dl_place(); }
+static void dl_answer(GtkButton *b, gpointer d)
+{
+	(void)b; char p[160]; snprintf(p, sizeof p, "/api/devlink/answer?id=%s&a=%s", DLASKID, (char *)d); http("POST", p, NULL, 0, NULL);
+	DLASKID[0] = 0; if (DLASK) gtk_widget_hide(DLASK); state_write();
+}
+static void dl_make(void)
+{
+	DLWIN = gtk_window_new(GTK_WINDOW_TOPLEVEL); gtk_window_set_decorated(GTK_WINDOW(DLWIN), FALSE); gtk_window_set_type_hint(GTK_WINDOW(DLWIN), GDK_WINDOW_TYPE_HINT_DOCK);
+	gtk_window_set_title(GTK_WINDOW(DLWIN), "Development link"); gtk_window_set_keep_above(GTK_WINDOW(DLWIN), TRUE); gtk_style_context_add_class(gtk_widget_get_style_context(DLWIN), "rn-dl");
+	GtkWidget *b = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10); gtk_container_add(GTK_CONTAINER(DLWIN), b);
+	DLLAB = gtk_label_new(""); gtk_label_set_xalign(GTK_LABEL(DLLAB), 0); gtk_label_set_ellipsize(GTK_LABEL(DLLAB), PANGO_ELLIPSIZE_END); gtk_box_pack_start(GTK_BOX(b), DLLAB, TRUE, TRUE, 0);
+	GtkWidget *e = gtk_button_new_with_label("End now"); g_signal_connect(e, "clicked", G_CALLBACK(dl_off), NULL); g_object_set_data(G_OBJECT(DLWIN), "end", e); gtk_box_pack_end(GTK_BOX(b), e, FALSE, FALSE, 0);
+	g_signal_connect(DLWIN, "delete-event", G_CALLBACK(gtk_true), NULL);
+	DLASK = gtk_window_new(GTK_WINDOW_TOPLEVEL); gtk_window_set_title(GTK_WINDOW(DLASK), "Development link: allow this command?");
+	gtk_window_set_keep_above(GTK_WINDOW(DLASK), TRUE); gtk_window_set_default_size(GTK_WINDOW(DLASK), 600, 320); gtk_style_context_add_class(gtk_widget_get_style_context(DLASK), "rn-card");
+	GtkWidget *v = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8); gtk_container_add(GTK_CONTAINER(DLASK), v);
+	GtkWidget *h = gtk_label_new("🔧 Allow this command?"); gtk_style_context_add_class(gtk_widget_get_style_context(h), "rn-big"); gtk_label_set_xalign(GTK_LABEL(h), 0); gtk_box_pack_start(GTK_BOX(v), h, FALSE, FALSE, 0);
+	DLASKT = gtk_label_new(""); gtk_label_set_xalign(GTK_LABEL(DLASKT), 0); gtk_label_set_line_wrap(GTK_LABEL(DLASKT), TRUE); gtk_box_pack_start(GTK_BOX(v), DLASKT, FALSE, FALSE, 0);
+	GtkWidget *sc = gtk_scrolled_window_new(NULL, NULL); DLASKC = gtk_label_new(""); gtk_label_set_selectable(GTK_LABEL(DLASKC), TRUE); gtk_label_set_line_wrap(GTK_LABEL(DLASKC), TRUE); gtk_label_set_xalign(GTK_LABEL(DLASKC), 0); gtk_label_set_yalign(GTK_LABEL(DLASKC), 0);
+	gtk_style_context_add_class(gtk_widget_get_style_context(DLASKC), "rn-mono"); gtk_container_add(GTK_CONTAINER(sc), DLASKC); gtk_box_pack_start(GTK_BOX(v), sc, TRUE, TRUE, 0);
+	GtkWidget *w = gtk_label_new("It runs with full control of this computer. Refuse anything you did not expect. Not answered in 10 minutes, it is refused.");
+	gtk_label_set_line_wrap(GTK_LABEL(w), TRUE); gtk_label_set_xalign(GTK_LABEL(w), 0); gtk_box_pack_start(GTK_BOX(v), w, FALSE, FALSE, 0);
+	GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8), *no = gtk_button_new_with_label("Refuse"), *yes = gtk_button_new_with_label("Allow");
+	gtk_style_context_add_class(gtk_widget_get_style_context(yes), "rn-go"); g_object_set_data(G_OBJECT(no), "what", "refuse"); g_object_set_data(G_OBJECT(yes), "what", "allow");
+	g_signal_connect(no, "clicked", G_CALLBACK(dl_answer), "refuse"); g_signal_connect(yes, "clicked", G_CALLBACK(dl_answer), "allow");
+	gtk_box_pack_end(GTK_BOX(row), yes, FALSE, FALSE, 0); gtk_box_pack_end(GTK_BOX(row), no, FALSE, FALSE, 0); gtk_box_pack_start(GTK_BOX(v), row, FALSE, FALSE, 0);
+	g_object_set_data(G_OBJECT(DLASK), "no", no); g_object_set_data(G_OBJECT(DLASK), "yes", yes);
+	g_signal_connect(DLASK, "delete-event", G_CALLBACK(gtk_true), NULL);
+}
+/* shown or hidden, at the top (under a taskbar at the top); the windows keep below it */
+static void dl_place(void)
+{
+	int h = DLTEXT[0] ? (int)lround(28 * ZM) : 0;
+	if (h && !DLWIN) dl_make();
+	if (DLWIN) {
+		if (h) { gtk_label_set_text(GTK_LABEL(DLLAB), DLTEXT); gtk_widget_set_tooltip_text(DLWIN, DLTEXT); gtk_window_resize(GTK_WINDOW(DLWIN), SW, h);
+			gtk_window_move(GTK_WINDOW(DLWIN), 0, !strcmp(S.tb, "top") ? BARH : 0); gtk_widget_show_all(DLWIN); }
+		else gtk_widget_hide(DLWIN);
+	}
+	if (h != DLH) { DLH = h; if (WM_OK) wm_relayout(); }
+	wm_restack(); state_write();
+}
+static gboolean tick_devlink(gpointer d)
+{
+	(void)d; JV *v = jget("/api/devlink"); char t[512] = "";
+	if (v && jbool(v, "on")) {
+		char repo[200] = "", st[64] = "", er[200] = ""; jstr(v, "repo", repo, sizeof repo); JV *s = jprop(v, "status"); jstr(s, "state", st, sizeof st); jstr(s, "error", er, sizeof er);
+		int m = (int)lround(fmax(0, jnum(v, "secondsLeft", 0)) / 60); char left[40];
+		if (m >= 60) snprintf(left, sizeof left, "%d h %d min", m / 60, m % 60); else snprintf(left, sizeof left, "%d min", m);
+		snprintf(t, sizeof t, "⚠ Development link on: commands from GitHub (%s) can control this computer · %s left%s%s%s%s", repo, left, st[0] && strcmp(st, "on") ? " · " : "", st[0] && strcmp(st, "on") ? st : "", er[0] ? " · " : "", er);
+	}
+	if (strcmp(t, DLTEXT)) { snprintf(DLTEXT, sizeof DLTEXT, "%s", t); dl_place(); }
+	/* the question, once: the newest command waiting */
+	JV *p = v && jbool(v, "on") ? jprop(v, "pending") : NULL; char id[64] = ""; jstr(p, "id", id, sizeof id);
+	if (strspn(id, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.") != strlen(id)) id[0] = 0;
+	if (id[0] && strcmp(id, DLASKID)) {
+		if (!DLASK) dl_make();
+		char repo[200] = "", kind[40] = "", w[4096] = "", l[400]; jstr(v, "repo", repo, sizeof repo); jstr(p, "kind", kind, sizeof kind); jstr(p, "what", w, sizeof w);
+		snprintf(l, sizeof l, "Command %s from %s (%s):", id, repo, kind); gtk_label_set_text(GTK_LABEL(DLASKT), l); gtk_label_set_text(GTK_LABEL(DLASKC), w);
+		snprintf(DLASKID, sizeof DLASKID, "%s", id); gtk_widget_show_all(DLASK);
+		/* (our own window, not framed: in the middle of the screen, Refuse with the keyboard, as the page's) */
+		int ww, wh; gtk_window_get_size(GTK_WINDOW(DLASK), &ww, &wh); gtk_window_move(GTK_WINDOW(DLASK), (SW - ww) / 2, (SH - wh) / 2);
+		gtk_window_present(GTK_WINDOW(DLASK)); GtkWidget *no = g_object_get_data(G_OBJECT(DLASK), "no"); if (no) gtk_widget_grab_focus(no);
+		GdkWindow *gw = gtk_widget_get_window(DLASK); if (gw) gdk_window_focus(gw, GDK_CURRENT_TIME); wm_restack(); state_write();
+	} else if (!id[0] && DLASKID[0]) { DLASKID[0] = 0; if (DLASK) gtk_widget_hide(DLASK); state_write(); }
+	jfree(v); return G_SOURCE_CONTINUE;
+}
+
 /* the session's watchdog and trial need to hear from the desktop, as the page's heartbeat */
 static gboolean tick_heart(gpointer d) { (void)d; http("POST", "/api/heartbeat", NULL, 0, NULL); return G_SOURCE_CONTINUE; }
 
@@ -1297,7 +1430,15 @@ static void state_write(void)
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data;
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
 			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : "-", c->title); }
-	g_string_append_printf(s, "wm %d\n", WM_OK);
+	g_string_append_printf(s, "wm %d\nscale %.2f %d %d\n", WM_OK, ZM, BARH, TH);
+	if (DLWIN && gtk_widget_get_visible(DLWIN)) { int x, y; gtk_window_get_position(GTK_WINDOW(DLWIN), &x, &y); g_string_append_printf(s, "devlink %d %d %d %s\n", y, SW, DLH, DLTEXT); }
+	if (DLASKID[0] && DLASK) { const char *k[2] = {"no", "yes"}; GdkWindow *g = gtk_widget_get_window(DLASK); int wx = 0, wy = 0; if (g) gdk_window_get_origin(g, &wx, &wy);
+		g_string_append_printf(s, "devask %s", DLASKID);
+		for (int i = 0; i < 2; i++) { GtkWidget *b = g_object_get_data(G_OBJECT(DLASK), k[i]); int x = 0, y = 0; GtkAllocation al; gtk_widget_get_allocation(b, &al); gtk_widget_translate_coordinates(b, DLASK, 0, 0, &x, &y);
+			g_string_append_printf(s, " %s %d %d", k[i], wx + x + al.width / 2, wy + y + al.height / 2); }
+		g_string_append_c(s, '\n'); }
+	if (DLWIN && gtk_widget_get_visible(DLWIN)) { GtkWidget *e = g_object_get_data(G_OBJECT(DLWIN), "end"); GdkWindow *g = gtk_widget_get_window(DLWIN); int wx = 0, wy = 0, x = 0, y = 0; GtkAllocation al;
+		if (e && g) { gdk_window_get_origin(g, &wx, &wy); gtk_widget_get_allocation(e, &al); gtk_widget_translate_coordinates(e, DLWIN, 0, 0, &x, &y); g_string_append_printf(s, "devend %d %d\n", wx + x + al.width / 2, wy + y + al.height / 2); } }
 	char tmp[600]; snprintf(tmp, sizeof tmp, "%s.tmp", STATEF); g_file_set_contents(tmp, s->str, s->len, NULL); rename(tmp, STATEF); g_string_free(s, TRUE);
 }
 
@@ -1343,6 +1484,7 @@ int main(int argc, char **argv)
 	else signin_show(0);
 	g_timeout_add_seconds(3, tick_settings, NULL); g_timeout_add_seconds(10, tick_tray, NULL); g_timeout_add_seconds(5, tick_clock, NULL);
 	tick_heart(NULL); g_timeout_add_seconds(10, tick_heart, NULL);
+	tick_devlink(NULL); g_timeout_add_seconds(4, tick_devlink, NULL);
 	state_write();
 	gtk_main();
 	return 0;

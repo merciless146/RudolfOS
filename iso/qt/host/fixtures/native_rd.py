@@ -4,7 +4,9 @@
 #   DIR/settings.json  what desktop/settings answers (its "gen" goes up whenever the file changes)
 #   DIR/ls.json, DIR/keys.json   the page's storage and Ann's keys (fixtures/deskls.js)
 #   DIR/calls          every request, one per line (the test reads it)
-#   DIR/wall.jpg       a picture of your own
+#   DIR/wall.jpg       a picture of your own ("wallpaper":"file" in settings.json: there when this file is, as rudolfd
+#                      says once it has made its copy, with no change to the settings' "gen")
+#   DIR/devlink.json   what GET devlink answers (the development link), when it is there
 # Ann's password is in keys.json; a wrong one gets the page's message.   python3 native_rd.py PORT DIR
 import http.server, json, os, sys, threading
 PORT = int(sys.argv[1]); D = sys.argv[2]; WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../www')
@@ -75,7 +77,9 @@ class H(http.server.BaseHTTPRequestHandler):
             p = os.path.join(D, 'settings.json'); mt = os.path.getmtime(p) if os.path.exists(p) else 0
             if mt != s['mt']: s['mt'] = mt; s['gen'] += 1
             o = json.loads(rd('settings.json', b'{}')); o.update({'ok': True, 'gen': s['gen'], 'acct': s['session']['id'] if s['session'] else ''})
+            if o.get('wallpaper') == 'file': o['wallpaper'] = os.path.exists(os.path.join(D, 'wall.jpg'))
             if not s['session']: o.update({'pins': [], 'notes': 0, 'wallpaper': False})
+            o['wpacct'] = (s['session']['id'] if s['session'] else '') if o.get('wallpaper') else ''
             return self.j(o)
         if w == 'desktop/apps':
             if m == 'POST': return self.j({'ok': True})
@@ -87,9 +91,11 @@ class H(http.server.BaseHTTPRequestHandler):
                 h = open(os.path.join(WWW, 'index.html'), encoding='utf-8').read(); mm = re.search(r'const DYN=(\{.*?\});', h)
                 for k, v in json.loads(mm.group(1)).items(): dyn[k] = {'n': v.get('n', k), 'd': v.get('d', ''), 'l': v.get('l', '')}
             except Exception: pass
-            return self.j({'ok': True, 'apps': apps, 'bg': dyn})
+            return self.j({'ok': True, 'apps': apps, 'bg': dyn, 'ver': '1.5.9'})
         if w == 'desktop/wallpaper':
             x = rd('wall.jpg'); return self.send(200, x, 'image/jpeg') if x else self.err(404, 'no picture')
+        if w == 'devlink':
+            x = rd('devlink.json'); return self.send(200, x) if x else self.j({'ok': True, 'available': True, 'on': False})
         if w == 'net': return self.j({'ok': True, 'interfaces': [{'name': 'lo', 'ip': '127.0.0.1', 'state': 'up', 'wireless': False}, {'name': 'wlan0', 'ip': '192.168.1.5', 'state': 'up', 'wireless': True}]})
         if w == 'volume': return self.j({'ok': True, 'volume': 70, 'muted': False})
         if w == 'info': return self.j({'ok': True, 'battery': [{'name': 'BAT0', 'type': 'Battery', 'capacity': 81, 'status': 'Discharging'}]})
