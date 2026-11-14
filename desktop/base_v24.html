@@ -727,6 +727,11 @@ function maskInput(inp){let pw='',sS=0,sE=0;inp.type='text';inp.autocomplete='of
  return{get:()=>pw,clear:()=>{pw='';inp.value=''}}}
 const LG=$('#login'),lu=$('#lu'),lp=$('#lp'),le=$('#le'),LP=maskInput(lp);let sGest=0;
 ['pointerdown','keydown'].forEach(ev=>LG.addEventListener(ev,()=>{if(!sGest&&LG.style.display!='none'){sGest=1;sfx('startup')}},true));
+/* 1.5.9: on installed Rudolf OS both engines let the page play sound without a key press first (Chromium's
+   --autoplay-policy, WebKit's media-playback-requires-user-gesture off), so the start-up chime plays as soon as the
+   sign-in screen is shown, not at the first key or click there. If the sound system is not ready to play (its context
+   still suspended after 30 s), it waits for the first key or click as before */
+if(window.RUDOLFD){let ckT=0;const ck=setInterval(()=>{if(sGest||++ckT>150){clearInterval(ck);return}if(getComputedStyle(LG).display=='none')return;const c=ac();if(c&&c.state=='running'){clearInterval(ck);sGest=1;sfx('startup')}},200)}
 /* (1.5.8: each window's onclose runs too, so Oracle's real tabs close with it; before, signing out left them running, hidden) */
 function closeAll(){wins.slice().forEach(w=>{try{w.onclose&&w.onclose()}catch(e){}try{w.el.remove();w.tb.remove()}catch(e){}});wins=[]}
 function showLogin(){closeAll();$('#menu').style.display='none';LG.style.display='flex';lu.value=USER.n;LP.clear();le.textContent='';setTimeout(()=>lp.focus(),30)}
