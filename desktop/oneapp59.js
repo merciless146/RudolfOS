@@ -95,6 +95,14 @@ async function oaStart(showLogin0){
 function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
  try{LG.style.display='none'}catch(e){}
  const da0=/^do-/.test(ONEAPP.k)?ONEAPP.k.slice(3):'';if(da0=='desk'||da0=='fs'){OA.want=1;(da0=='desk'?oaDesk:oaFs)();return}
+ /* (1.6.0 Part 12, item 3) the taskbar's menus' rows the shell leaves to the page: an app's jump (#app=KEY&jump=WORDS: Oracle's
+    New private tab, its window this page's main one), Settings at a page (#app=settings&page=disp), a pinned app pinned or
+    unpinned (#app=do-pin&k=KEY&on=0|1), the sound muted or not (#app=do-mute) */
+ {const q=ONEAPP.q,j=q.get('jump'),sp=q.get('page');
+  if(j&&typeof APP_JUMPS=='object'&&APP_JUMPS[ONEAPP.k]){const it=APP_JUMPS[ONEAPP.k]().find(x=>x[0]==j);if(it){OA.want=1;try{it[1]()}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}}
+  if(ONEAPP.k=='settings'&&sp&&typeof settings=='function'){OA.want=1;try{settings(sp)}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}
+  if(da0=='pin'){try{pinSet(q.get('k')||'',q.get('on')=='1')}catch(e){}return oaFin({})}
+  if(da0=='mute'){try{const m=S.snd&&S.snd.master;if(m){m.on=!m.on;trayVol()}}catch(e){}setTimeout(()=>oaFin({}),400);return}}
  const da=da0,act=da?(typeof A=='object'&&typeof A[da]=='function'?A[da]:da=='blitzen'&&typeof blitzenApp=='function'?blitzenApp:null):null;
  const app=APPS[ONEAPP.k]||(act?{name:da,open:act}:null);
  if(!app){oaClosed('There is no app called “'+ONEAPP.k+'”.');oaPost({op:'close'});return}
@@ -195,9 +203,18 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
    if(k&&!icons[k]&&S.icons!=='emoji')try{icons[k]=await oaPng(icSvg(k),48)}catch(x){}
    const c=getComputedStyle(li);menu.push({t:'li',a:li.dataset.a||'',v:li.dataset.v25||'',cls:String(li.className||''),txt:li.textContent.trim(),ic:k&&icons[k]?k:'',emo:e,op:+c.opacity,
     fs:parseFloat(c.fontSize),fw:+c.fontWeight||400,col:c.color,pl:parseFloat(c.paddingLeft),pt:parseFloat(c.paddingTop),pb:parseFloat(c.paddingBottom),ls:parseFloat(c.letterSpacing)||0,up:c.textTransform=='uppercase'})}}catch(e){console.warn('menu',e)}
-  await rdPost('desktop/apps',JSON.stringify({apps,bg,hide,icons,desk,cells,menu,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
+  /* (1.6.0 Part 12, item 3) each app's own rows in its taskbar menus (private59.js APP_JUMPS: words, picture, key) */
+  const jumps={};try{if(typeof APP_JUMPS=='object')for(const k in APP_JUMPS)jumps[k]=APP_JUMPS[k]().map(j=>[j[0],(j[3]&&j[3].icon)||'',(j[3]&&j[3].key)||''])}catch(e){}
+  await rdPost('desktop/apps',JSON.stringify({apps,bg,hide,icons,desk,cells,menu,jumps,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
 function oaPng(src,n){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>{try{const c=document.createElement('canvas');c.width=c.height=n;c.getContext('2d').drawImage(im,0,0,n,n);res(c.toDataURL('image/png'))}catch(e){rej(e)}};im.onerror=()=>rej(new Error('icon'));im.src=src})}
 {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);setTimeout(oaCatalog,2500);return r}}
+/* (1.6.0 Part 12, item 3) a window's taskbar button's menu is the page's own (winMenu: its rows, the app's jumps, Print, Force
+   quit): the shell reads it from the window's page (__oaWinMenu: the rows as JSON) and has a row the shell does not do itself
+   done by the page (__oaWinMenuDo: the row with those words clicked) */
+function oaMenuRead(){const m=document.querySelector('.ctx');if(!m)return null;return{title:(m.querySelector('.cmh')||{}).textContent||'',items:[...m.children].map(e=>e.tagName=='HR'?{sep:1}:e.classList.contains('cmi')?{label:e.querySelector('span').textContent,icon:e.querySelector('i').textContent,key:e.querySelector('kbd').textContent,dis:e.classList.contains('dis')?1:0}:null).filter(x=>x)}}
+function oaMenuShut(){document.querySelectorAll('.ctx').forEach(c=>c.remove());try{cmenuClose()}catch(e){}}
+if(ONEAPP){window.__oaWinMenu=()=>{try{if(!OA.main)return'';winMenu(OA.main,0,0);const r=oaMenuRead();oaMenuShut();return r?JSON.stringify(r):''}catch(e){oaMenuShut();return''}};
+ window.__oaWinMenuDo=l=>{try{if(!OA.main)return;winMenu(OA.main,0,0);const it=[...document.querySelectorAll('.ctx .cmi')].find(e=>e.querySelector('span').textContent==l);if(it&&!it.classList.contains('dis'))it.click();else oaMenuShut()}catch(e){oaMenuShut()}}}
 /* (1.6.0 Part 12, item 2) the desktop's widgets are the native shell's to draw: an app's own page draws none (no clock, monitor or
    weather timers in every window), and takes the shell's list into the page's storage (bd95widgets:ID), where Standard and the
    other engines read it; rudolfd gives the shell's list while the page's is the one the shell replaced ("wgown") */

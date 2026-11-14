@@ -50,6 +50,12 @@ CASES.push({n: 'widgets-ask', set: {}, more: {['bd95widgets:' + ACCT]: [{t: 'wea
 CASES.push({n: 'widgets-top', set: {tb: 'top', h24: true}, more: {['bd95widgets:' + ACCT]: WG.slice(0, 2), bd95wloc: WLOC}, wg: 2, parts: ['wg0', 'wg1']});
 CASES.push({n: 'widgets-over', set: {bs: 'gradient', b1: '#0f766e', b2: '#1e1b4b'}, more: {['bd95widgets:' + ACCT]: [{t: 'clock', x: 30, y: 60, txt: ''}, {t: 'mon', x: 60, y: 200, txt: ''}]}, wg: 2, parts: ['wg0', 'wg1']});   /* (over the icons: what is behind, blurred) */
 CASES.push({n: 'widget-picker', set: {}, act: 'wgpick', parts: ['ctx']});
+/* (item 3) the taskbar's right-click menus: the empty bar, the start button, a pinned app (Oracle's with its own row), a window's
+   button (read from the window's page), the sound, the network, the clock */
+const PINS2 = {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'calc', 'settings', 'browser']};
+for (const r of ['bar', 'start', 'pin:notepad', 'pin:browser', 'vol', 'net', 'clock']) CASES.push({n: 'tbm-' + r.replace(':', '-'), set: {}, more: PINS2, rc: r, parts: ['ctx']});
+CASES.push({n: 'tbm-win', set: {}, more: PINS2, act: 'notepad', rc: 'win:notepad', parts: ['ctx']});
+CASES.push({n: 'tbm-bar-win', set: {}, more: PINS2, act: 'notepad', rc: 'bar', parts: ['ctx']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
@@ -80,6 +86,13 @@ async function stdCase(c) {
     if (c.act == 'filemenu') { pt = await icAt('REPORT.TXT'); await p.mouse.click(pt[0], pt[1], {button: 'right'}); await p.clock.runFor(300); await wait(200) }
     if (c.act == 'rename') { await p.evaluate(() => renameDlg(homePath('DESKTOP').concat('REPORT.TXT'))); await p.clock.runFor(300); await wait(200) }
     if (c.act == 'openwith') { await p.evaluate(() => openWith(homePath('DESKTOP').concat('REPORT.TXT'))); await p.clock.runFor(300); await wait(200) }
+    if (c.rc) { const at = await p.evaluate(([r, H]) => { const [k, a] = r.split(':'); let e = null;
+        if (k == 'bar') return [1000, H - 21];
+        if (k == 'start') e = document.getElementById('start'); if (k == 'vol' || k == 'net') e = document.getElementById(k); if (k == 'clock') e = document.getElementById('tray');
+        if (k == 'pin') e = [...document.querySelectorAll('#pins > *')].find(b => b.title == APPS[a].name);
+        if (k == 'win') e = [...document.querySelectorAll('#tasks button')].find(b => { const W = winOf(b); return W && W.app == a });
+        const q = e.getBoundingClientRect(); return [Math.round(q.left + q.width / 2), Math.round(q.top + q.height / 2)] }, [c.rc, H]);
+      pt = at; await p.mouse.click(at[0], at[1], {button: 'right'}); await p.clock.runFor(300); await wait(200); await p.mouse.move(300, 300); await p.clock.runFor(200); await wait(100) }
     if (c.act == 'wgpick') { await p.mouse.click(1500, 500, {button: 'right'}); await p.clock.runFor(300); await wait(200);
       const r = await p.evaluate(() => { const e = [...document.querySelectorAll('.ctx .cmi')].find(x => x.textContent.includes('Add a widget')); const q = e.getBoundingClientRect(); return [q.left + 50, q.top + q.height / 2] });
       await p.mouse.click(r[0], r[1]); await p.clock.runFor(300); await wait(200) }
@@ -151,6 +164,10 @@ async function natCase(c, s) {
   const nlines = k => { try { return fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').filter(x => x.startsWith(k + ' ')) } catch (e) { return [] } };
   const cmClick = lbl => { const l = nlines('cmitem').find(x => x.endsWith('|' + lbl)); if (l) { const a = l.split(' '); xdo('mousemove ' + a[1] + ' ' + a[2] + ' click 1') } return !!l };
   const fileAt = () => { const l = nlines('dicon').find(x => x.endsWith('|REPORT.TXT')); if (!l) return null; const a = l.split(' '); return [+a[3] + 42, +a[4] + 20] };
+  if (c.rc) { const [k, a] = c.rc.split(':'); let q = k == 'bar' ? [1000, H - 21] : k == 'pin' ? nhit('pin ' + a) : k == 'win' ? null : nhit(k + ' -');
+    if (k == 'win') { const cl = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => new RegExp('^client .* app=' + a + ' ').test(x)); if (cl) q = nhit('win ' + cl.split(' ')[1]) }
+    if (q && s.pt && Math.abs(q[0] - s.pt[0]) < 6 && Math.abs(q[1] - s.pt[1]) < 6) q = s.pt;   /* (the same pixel as Standard's click, when the part is there) */
+    if (q) xdo('mousemove ' + q.map(Math.round).join(' ') + ' click 3'); await until(() => nlines('cmenu').length, 8000); xdo('mousemove 300 300'); await wait(600) }
   if (c.act == 'wgpick') { xdo('mousemove 1500 500 click 3'); await until(() => nlines('cmenu').length, 5000); cmClick('Add a widget…'); await until(() => (nlines('cmenu')[0] || '').endsWith('Add a widget'), 5000); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500) }
   if (c.act == 'deskmenu') { xdo('mousemove 1500 500 click 3'); await until(() => nlines('cmenu').length, 5000); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500) }
   if (c.act == 'filemenu') { const q = s.pt || fileAt(); if (q) xdo('mousemove ' + q.join(' ') + ' click 3'); await until(() => nlines('cmenu').length, 5000); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500) }
@@ -158,7 +175,7 @@ async function natCase(c, s) {
     cmClick(c.act == 'rename' ? 'Rename' : 'Open with…'); await until(() => (nst('dialog') || '').startsWith(c.act == 'rename' ? 'rename' : 'openwith'), 20000); xdo('mousemove ' + W / 2 + ' ' + (H - 100)); await wait(700) }
   const f = path.join(OUT, c.n + '.nat.png'); sh('import -window root ' + f);
   // (back as it was for the next case: the menu closed, the app window closed, unlocked)
-  if (c.act == 'menu' || /menu$|rename|openwith|wgpick/.test(c.act || '')) { xdo('key Escape'); await wait(400) }
+  if (c.act == 'menu' || c.rc || /menu$|rename|openwith|wgpick/.test(c.act || '')) { xdo('key Escape'); await wait(400) }
   if (c.act == 'notepad') {   /* (its ✕: 9 px from the frame's right edge, 7 px down, 24 by 22) */
     const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => /^client .* app=notepad/.test(x));
     if (l) { const a = l.split(' '); xdo('mousemove ' + (+a[3] + +a[5] + 2 - 9 - 12) + ' ' + (+a[4] + 7 + 11) + ' click 1') }
