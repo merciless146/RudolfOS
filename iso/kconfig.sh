@@ -88,6 +88,9 @@ y SYSTEM_TRUSTED_KEYRING SECONDARY_TRUSTED_KEYRING
 $C --set-str SYSTEM_TRUSTED_KEYS "${SB_CERT:?SB_CERT: the Secure Boot certificate (PEM)}"
 y KEXEC_SIG KEXEC_BZIMAGE_VERIFY_SIG SIGNED_PE_FILE_VERIFICATION
 y SECURITY SECURITYFS SECURITY_LOCKDOWN_LSM SECURITY_LOCKDOWN_LSM_EARLY LOCK_DOWN_KERNEL_FORCE_NONE
+# 1.5.9 (plan 15.1): Yama, so a program cannot read another's memory (the desktop's API token in the browser) by
+# ptrace just because it runs as the same user: only a process's parent may (ptrace_scope 1, its default)
+y SECURITY_YAMA
 $C --set-str LSM "lockdown,landlock,yama"
 y MD BLK_DEV_DM DM_VERITY CRYPTO_SHA256 EFIVAR_FS
 # processor microcode (1.2.4): AMD's updates built into the kernel, so the start applies them before anything
@@ -195,7 +198,7 @@ for o in $WWANM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is
 for o in $HOTKEYS; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig (a dependency is missing)"; exit 1; }; done
 grep -q "^CONFIG_IPV6_SIT=y\|^CONFIG_IPV6_SIT=m" .config && { echo "kconfig.sh: IPV6_SIT is still on"; exit 1; }
 # 1.4.7: the memory options are on
-for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU_GEN_ENABLED CGROUPS MEMCG; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
+for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU_GEN_ENABLED CGROUPS MEMCG SECURITY_YAMA; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 for o in $SOFM $AMPS $SPIM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the sound driver $o is not a module after olddefconfig"; exit 1; }; done
 for o in $SOFOLD; do grep -qE "^CONFIG_$o=(y|m)$" .config && { echo "kconfig.sh: $o is on: its SOF firmware is not shipped, so it must stay on HDA"; exit 1; }; done
 for o in $SOFY $SPIY; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the sound option $o is not on after olddefconfig"; exit 1; }; done
