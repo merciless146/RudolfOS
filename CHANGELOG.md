@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- New: rudolf-native, the native desktop engine's prototype (plan Part 12): the wallpaper, the taskbar in its styles and accent colours, the pinned apps, the tray, the clock, the start menu and the sign-in and lock screens drawn natively (GTK), each app in a WebKit window of its own, all sharing one WebKit process. Not offered in Settings yet.
 - New: rudolfd answers the native desktop engine's questions (plan Part 12): the accounts for its sign-in screen (never a hash), the sign-in itself, checked as the desktop page checks it and opening the account's encrypted folder, and the desktop's settings, pinned apps and start menu; the desktop page gives it the start menu's list and a copy of your own background picture. Written down in docs/api.md.
 - New: the desktop page's one-app mode (for the native desktop engine being prototyped, plan Part 12): index.html#app=NAME starts one app alone, filling the window, signed in from the native session; closing the app writes its files and closes the page.
 - New: Display Properties › Taskbar › Buttons: the taskbar's buttons (start, pinned apps, open windows, workspaces, the tray) in a style of their own (Standard, Wireframe, Monochrome, Candy, Retro), in the accent colour as Normal, Negative or Complementary when "Match the theme colours" is ticked, otherwise in each style's own colours.
