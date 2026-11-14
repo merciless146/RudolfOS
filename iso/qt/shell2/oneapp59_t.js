@@ -12,16 +12,17 @@ const LS = "window.__rudolfLsFlush=()=>fetch('/api/lsync',{method:'POST',headers
 const srv = http.createServer((q, s) => { const [u0, qs] = q.url.split('?'); const u = decodeURIComponent(u0);
   const bs = []; q.on('data', d => bs.push(d)); q.on('end', () => { if (u == '/api/desktop/apps' || u == '/api/desktop/wallpaper') M[u.slice(13)] = {q: qs, b: Buffer.concat(bs)};
     if (u == '/' || u == '/index.html') { s.writeHead(200, {'content-type': 'text/html'});
-      return s.end(fs.readFileSync(path.join(WWW, 'index.html'), 'utf8').replace('<head>', '<head><script>window.RUDOLFD={token:"t",base:"",boot:"uefi",media:"disk",live:0,recovery:0};' + LS + '</script>')) }
+      return s.end(fs.readFileSync(path.join(WWW, 'index.html'), 'utf8').replace('<head>', '<head><script>window.RUDOLFD={token:"t",base:"",boot:"uefi",media:"disk",live:0,recovery:0' + (M.engine ? ',engine:"' + M.engine + '"' : '') + '};' + LS + '</script>')) }
     if (u.startsWith('/api/')) { M.calls.push(q.method + ' ' + u.slice(5));
       if (u == '/api/events/wait') return setTimeout(() => { s.writeHead(200); s.end('{"ok":true,"events":[]}') }, 20000);
+      if (u == '/api/devlink' && M.devlink) { s.writeHead(200, {'content-type': 'application/json'}); return s.end(JSON.stringify(M.devlink)) }
       if (u == '/api/desktop/session') { if (!M.session) { s.writeHead(404, {'content-type': 'application/json'}); return s.end('{"ok":false,"error":"no native session"}') }
         s.writeHead(200, {'content-type': 'application/json'}); return s.end(JSON.stringify(M.session)) }
       s.writeHead(200, {'content-type': 'application/json'}); return s.end('{"ok":true}') }
     const f = path.join(WWW, path.normalize(u)); if (!f.startsWith(WWW) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { s.writeHead(404); return s.end() }
-    s.writeHead(200, {'content-type': T[path.extname(f)] || 'application/octet-stream'}); fs.createReadStream(f).pipe(s) }) }).listen(8295, '127.0.0.1');
+    s.writeHead(200, {'content-type': T[path.extname(f)] || 'application/octet-stream'}); fs.createReadStream(f).pipe(s) }) }).listen(+process.env.ONEAPP59_PORT || 8295, '127.0.0.1');
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const URL0 = 'http://127.0.0.1:8295/';
+const URL0 = 'http://127.0.0.1:' + (+process.env.ONEAPP59_PORT || 8295) + '/';
 (async () => {
   const b = await chromium.launch({executablePath: process.argv[2] || undefined}); const ctx = await b.newContext({viewport: {width: 1100, height: 760}});
   const errs = []; const watch = p => p.on('pageerror', e => { if (/\boa[A-Z]|oneapp|ONEAPP|userLogin/.test(e.stack || '')) errs.push(e.message) });
@@ -62,11 +63,22 @@ const URL0 = 'http://127.0.0.1:8295/';
   p = await open('#app=calc'); await p.waitForSelector('.win.oamain', {timeout: 20000});
   const jpg = await p.evaluate(`(async()=>{const c=document.createElement('canvas');c.width=c.height=8;const u=c.toDataURL('image/jpeg',0.9);await kvSet(wpKey('wtest'),u);S.wpimg='wtest';applySet();return u.length})()`);
   await wait(1500);
-  ok('16. a picture of your own: a copy for the shell (desktop/wallpaper, the JPEG, for this account)', M.wallpaper && M.wallpaper.q == 'acct=' + acct.id && M.wallpaper.b[0] == 0xff && M.wallpaper.b[1] == 0xd8, M.wallpaper && [M.wallpaper.q, M.wallpaper.b.length, jpg]);
+  ok('16. a picture of your own: a copy for the shell (desktop/wallpaper, the JPEG, for this account)', M.wallpaper && M.wallpaper.q == 'acct=' + acct.id + '&img=wtest' && M.wallpaper.b[0] == 0xff && M.wallpaper.b[1] == 0xd8, M.wallpaper && [M.wallpaper.q, M.wallpaper.b.length, jpg]);
   await wait(1500);
   const cat = M.apps && JSON.parse(M.apps.b.toString());
   ok('15. after sign-in the page gives rudolfd the start menu\'s list and the backgrounds\' pictures (desktop/apps)', cat && cat.apps.some(a => a.k == 'notepad' && a.name == 'Notepad' && a.icon) && cat.bg.alpine && /^a\//.test(cat.bg.alpine.d) && cat.acct == acct.id, cat && {n: cat.apps.length, bg: Object.keys(cat.bg)});
+  ok('15b. ...with the apps\' pictures as the page draws them (PNG, one per picture) and the version (1.5.9 step 7)', cat && cat.ver && cat.apps.some(a => a.k == 'notepad' && a.ic == 'notepad') && /^data:image\/png;base64,/.test(cat.icons && cat.icons.notepad || ''), cat && {ver: cat.ver, icons: Object.keys(cat.icons || {}).length});
   await p.close();
+  // 1.5.9 step 7: the development link's banner is not drawn in an app window; with the native shell it asks, not the page
+  M.devlink = {ok: true, available: true, on: true, repo: 'a/b', secondsLeft: 600, ask: true, status: {state: 'on'}, pending: {id: 'c1', kind: 'run', what: 'ls'}};
+  p = await open('#app=calc'); await p.waitForSelector('.win.oamain', {timeout: 20000}); await wait(1500);
+  let dl = await p.evaluate(`({ban:!!document.getElementById('devlinkBanner'),ask:!!document.getElementById('devlinkAsk')})`);
+  ok('17. the development link in an app window: no banner (it hid Settings\' search box); asked here without the native shell', !dl.ban && dl.ask, dl); await p.close();
+  M.engine = 'native';
+  p = await open('#app=calc', "window.webkit={messageHandlers:{rudolfNative:{postMessage:()=>{}}}};"); await p.waitForSelector('.win.oamain', {timeout: 20000}); await wait(1500);
+  dl = await p.evaluate(`({ban:!!document.getElementById('devlinkBanner'),ask:!!document.getElementById('devlinkAsk'),wk:document.documentElement.classList.contains('webkit')})`);
+  ok('18. ...with the native shell: neither (the shell shows them once); the page knows it is WebKit (its drop-downs drawn as Lite\'s)', !dl.ban && !dl.ask && dl.wk, dl); await p.close();
+  M.devlink = null; M.engine = '';
   // Settings with a change not applied: closing asks, as its ✕ does; the window stays until answered
   p = await open('#app=settings'); await p.waitForSelector('.win.oamain', {timeout: 20000});
   await p.evaluate("SW.show('disp',1)"); await wait(800); await p.selectOption('#dtws', 'retro'); await wait(300);

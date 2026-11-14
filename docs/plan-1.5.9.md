@@ -647,6 +647,24 @@ one for Rudolf OS 2.0 (docs/plan-2.0.md).
    opens a select under Xvfb.
 6. Settings' search box is hidden under that banner (goes with 4).
 
+**Done (2026-11-14), one pull request:** what each was, as found on the host (native59_t.sh tests 47 to 55,
+deskapi59_t.sh 33 to 36, oneapp59_t.js 15b, 17 and 18):
+1. rudolfd makes the copy itself: `desktop/settings` and `desktop/wallpaper` take the picture from the page's database
+   mirror (idbm, the record `wp:PICTURE`) when no page has given it, or gave another picture (ID.img says which);
+   before sign-in the last account's picture when the last settings show it (`wpacct`). The shell draws it as soon as
+   rudolfd has it, without a restart.
+2. The root window's cursor is set (the wallpaper's window inherited X's default).
+3. On the host the styles were followed (screenshots side by side with the page's taskbar in Chromium); what differed
+   was the size and the pictures: the shell ignored Display Properties' display scaling (`scale`, the page's zoom: a
+   laptop at 125 % or 150 % got a small bar) and drew the apps' emoji, pale or missing without a colour emoji font,
+   where the page draws its icons. Now the taskbar, title bars and start menu follow `scale`, and the page gives the
+   shell its icons as PNGs (desktop/apps `icons`), drawn in outlined buttons as the page's; the version is on the
+   start button. If the Vivobook still shows the styles ignored, a screenshot of both is needed.
+4. and 6. The page draws no banner in one-app mode; with the native shell it does not ask about commands either. The
+   shell draws the banner (24 px at the top, windows kept below it, End now) and asks (Refuse first).
+5. Not the window manager: WebKitGTK's pop-up list works under it (tested with a plain page). The page only gave its
+   own drop-down style (html.webkit, styles25.css, 1.5.7) to Lite: under Native it now does too.
+
 ### 12.4 Tests
 - Host, under Xvfb: rudolf-native draws its wallpaper and taskbar (screenshots compared), a window gets a frame,
   minimise, maximise and close work, a pinned app opens its one-app WebKit window.
