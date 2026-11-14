@@ -6,8 +6,9 @@
  *   res/NNNNNN.json      its result, written here: {"id","kind","started","ended","status","stdout","stderr","files",...}
  *   res/NNNNNN/NAME      files sent with a result (a screenshot, a file asked for with "get")
  * Commands run one at a time, in order, as root. The owner switches the link on in Settings > Security (rudolfd
- * starts this program), with an administrator's password, for 1 to 8 hours; a banner shows while it runs, and with
- * "Ask first" every command waits for Allow on the screen. See docs/plan-1.4.0.md.
+ * starts this program), with an administrator's password, in Developer mode only, for 1 to 8 hours; a banner shows
+ * while it runs, and with "Ask first" (on again at every start) every command waits for Allow on the screen. 1.5.9:
+ * it ends itself after 4 hours without a command. See docs/plan-1.4.0.md.
  *
  *   rudolf-devlink run                      the link (started by rudolfd; RUDOLF_TOKEN: rudolfd's API token)
  *   rudolf-devlink check REPO TOKEN-FILE    can the token write to that private repository? ("ok" or why not)
@@ -50,6 +51,9 @@ static int TESTMODE;
    reason, instead of waiting 10 minutes in silence. It is still not run. */
 static char HB[256] = "/run/rudolf/heartbeat"; static int HBWAIT = 60;
 static volatile sig_atomic_t STOP;
+/* 1.5.9 (plan 15.4): the link turns itself off after IDLE seconds without a command (4 hours); the desktop says so in a
+   notification (status.json's state "ended (4 hours without a command)"). RUDOLF_DEVLINK_IDLE (tests) shortens it. */
+static long IDLE = 4 * 3600; static time_t LASTACT;
 
 /* ---------------- small helpers */
 typedef struct { char *b; size_t n, cap; } buf;
@@ -208,7 +212,9 @@ static long http(const char *method, const char *url, int auth, const char *acce
 static void status(const char *state, const char *last, const char *err)
 {
 	char p[300]; path2(p, sizeof p, RUND, "status.json");
-	buf s = {0}; bfmt(&s, "{\"state\":"); bjs(&s, state); bfmt(&s, ",\"last\":"); bjs(&s, last); bfmt(&s, ",\"error\":"); bjs(&s, err); bfmt(&s, ",\"at\":%lld}\n", (long long)time(NULL));
+	buf s = {0}; bfmt(&s, "{\"state\":"); bjs(&s, state); bfmt(&s, ",\"last\":"); bjs(&s, last); bfmt(&s, ",\"error\":"); bjs(&s, err); bfmt(&s, ",\"at\":%lld", (long long)time(NULL));
+	if (LASTACT) bfmt(&s, ",\"idleEnds\":%lld", (long long)(LASTACT + IDLE));
+	bfmt(&s, "}\n");
 	write_file(p, s.b, s.n, 0644); free(s.b);
 }
 static char *cfg(const char *key)
@@ -447,7 +453,7 @@ static int execute(cmd *c)
 	char running[64]; snprintf(running, sizeof running, "running %s", c->id); status(running, c->id, "");
 	{ char p[300]; path2(p, sizeof p, DIR_, "state"); char l[80]; char *old = slurp(p, NULL); char last[16] = "000000"; if (old) { char *q = strstr(old, "last="); if (q) snprintf(last, sizeof last, "%.6s", q + 5); free(old); }
 	  snprintf(l, sizeof l, "last=%s\nrunning=%s\n", last, c->id); write_file(p, l, strlen(l), 0600); }
-	time_t t0 = time(NULL); int go = 1;
+	time_t t0 = time(NULL); int go = 1; LASTACT = t0;
 	if (!strcmp(c->kind, "sh")) run_sh(c, &r);
 	else if (!strcmp(c->kind, "screenshot")) run_screenshot(c, &r);
 	else if (!strcmp(c->kind, "get")) run_get(c, &r);
@@ -458,7 +464,7 @@ static int execute(cmd *c)
 	char res[400]; snprintf(res, sizeof res, "%s%s%d%s%s", *r.error ? r.error : "", *r.error ? " (" : "status ", r.status, *r.statustxt ? ", " : "", *r.statustxt ? r.statustxt : "");
 	if (*r.error) strcat(res, ")");
 	logline(c->id, c->kind, w.b, res, approved); free(w.b);
-	done_upto(c->id);
+	done_upto(c->id); LASTACT = time(NULL);
 	if (report(c, &r, t0, approved)) status("on", c->id, "the result could not be sent to GitHub");
 	free(r.out.b); free(r.err.b);
 	if (!strcmp(c->kind, "end")) { cfg_set("on", "0"); status("ended (an end command)", c->id, ""); }
@@ -514,10 +520,11 @@ static int link_run(void)
 	if (!ison || load()) { status("off", "", "not switched on"); return 1; }
 	log_prune(); interrupted();
 	char etag[128] = "", url[400]; snprintf(url, sizeof url, "%s/repos/%s/contents/cmd?ref=link", API, REPO);
-	int back = 5; status("on", "", "");
+	int back = 5; LASTACT = time(NULL); status("on", "", "");
 	while (!STOP) {
 		if (stop_asked()) { status("off", "", ""); break; }
 		if (expired()) { cfg_set("on", "0"); status("ended (its time was up)", "", ""); break; }
+		if (time(NULL) - LASTACT >= IDLE) { cfg_set("on", "0"); { char m[80]; snprintf(m, sizeof m, "ended (%ld %s without a command)", IDLE >= 3600 ? IDLE / 3600 : IDLE, IDLE >= 3600 ? (IDLE / 3600 == 1 ? "hour" : "hours") : "seconds"); status(m, "", ""); } break; }
 		buf m = {0}; char ne[128] = ""; NETERR[0] = 0;
 		long code = http("GET", url, 1, NULL, NULL, 0, etag, ne, &m, NULL, 4u << 20, 60);
 		if (code == 0 || code >= 500 || code == 429 || code == 403) {
@@ -611,6 +618,7 @@ static void setup(void)
 		if ((v = getenv("RUDOLF_DEVLINK_RD"))) snprintf(RDURL, sizeof RDURL, "%s", v);
 		if ((v = getenv("RUDOLF_DEVLINK_HB"))) snprintf(HB, sizeof HB, "%s", v);
 		if ((v = getenv("RUDOLF_DEVLINK_HBWAIT"))) HBWAIT = atoi(v);
+		if ((v = getenv("RUDOLF_DEVLINK_IDLE")) && atol(v) > 0) IDLE = atol(v);
 	}
 	mkdir(DIR_, 0700); chmod(DIR_, 0700);
 	if (!TESTMODE && dbg) {

@@ -1013,6 +1013,19 @@ anyone who got into that GitHub account could run commands on the computer.
 - Only an administrator can turn it on, with the administrator's password, and only in Developer mode (Part 8.3).
 - System health lists it as on, with since when and its last command.
 
+**Done (2026-11-14):** rudolfd's `devlink/on` refuses unless Developer mode is on (8.3's key file) and the request
+carries an administrator's name and password, checked by rudolfd itself against the page's accounts (the lsync copy,
+as the native sign-in: `desk_admin_check` in rudolfd-desktop.inc; five failures wait 15 s); the page's prompt
+(`elevate(reason,{cred:1})`) gives them, never a trust from an earlier prompt. At every start (`dl_boot`) Ask first is
+written on again; the link stays on only with "Keep on after restarting" (renamed, unticked each time the form is
+shown), its time not up and Developer mode still on; turning Developer mode off ends it too. rudolf-devlink ends
+itself after 4 hours without a command (`idleEnds` in its status; RUDOLF_DEVLINK_IDLE for tests), and the page
+notifies once. `GET devlink` gives `developer`, `since`, `by` and `lastCommand`: System health's "Development link"
+line. Switching on and off, the restart's choice and wrong administrator passwords go in the health log (Security,
+Sign-in). Tests: qt/host/devlink_t.sh (devlink_t.py 47, now with the idle end, and devlink59_t.sh 20: rudolfd's side),
+qt/shell2/dl140_t.js (23). Still to do: qt/sb/t140_t.py (QEMU) must sign in as an administrator in Developer mode
+before it switches the link on; updated with its next run.
+
 ### 15.5 Fewer and harder doors
 - **The list of everything that listens** (TCP and Unix sockets: rudolfd's 8080 and 8099, remote access, the portal,
   Bluetooth's agent, the devlink), each with who may use it and how it checks; a test fails if something listens that

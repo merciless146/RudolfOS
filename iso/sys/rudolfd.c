@@ -3035,8 +3035,22 @@ static int restart_browser(void) { return run("pkill -f '[-]-rudolf-kiosk' >/dev
  * docs/plan-1.4.0.md). Here: switching it on (the desktop asks for an administrator's password first; the token is
  * checked with GitHub, then kept root-only and never sent back), off, forgetting the token, the Allow prompt, the
  * log, and starting it again after a restart when the owner ticked that and its time is not up. */
+#ifndef DLBIN
 #define DLBIN "/usr/bin/rudolf-devlink"
+#endif
 #define DLRUN RUN "/devlink"
+/* 1.5.9 (plan 15.4): the link is off unless it is being used. Only in Developer mode (plan 8.3: its key file), only for
+   an administrator whose password rudolfd checks itself (from the page's accounts, as the native sign-in does), Ask
+   first on again at every start, off at every restart unless "Keep on after restarting" was ticked, and off by
+   itself after 4 hours without a command (rudolf-devlink). RUDOLFD_DEVMODE_FILE (tests) stands for the key file. */
+#ifndef DL_DEVKEYS
+#define DL_DEVKEYS PERSIST "/etc/rudolf/extra-keys"
+#endif
+static int dl_devmode(void) { const char *e = getenv("RUDOLFD_DEVMODE_FILE"); return !access(e && *e ? e : DL_DEVKEYS, F_OK); }
+static int desk_admin_check(const char *n, const char *pw, char *why, size_t wn);   /* rudolfd-desktop.inc */
+static char *dbody_field(struct req *r, const char *k);
+static void dfree_secret(char *p);
+static void health_add(const char *kind, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 static void dl_dir(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/devlink-store" : PERSIST "/devlink"); }
 static char *dl_cfg(const char *key)
 {
@@ -3050,9 +3064,22 @@ static int dl_cfg_on(const char *key) { char *v = dl_cfg(key); int r = v && *v =
 static void dl_cfg_write(const char *repo, long long until, int restart, int ask, int home, int on)
 {
 	char d[128], p[160], t[160]; dl_dir(d, sizeof d); mkdir(d, 0700); snprintf(p, sizeof p, "%s/config", d); snprintf(t, sizeof t, "%s/config.new", d);
-	str s = {0}; sadd(&s, "on=%d\nrepo=%s\nuntil=%lld\nrestart=%d\nask=%d\nhome=%d\n", on, repo, until, restart, ask, home);
+	char *since = dl_cfg("since"), *by = dl_cfg("by");
+	long long sn = on ? (since && atoll(since) > 0 ? atoll(since) : (long long)time(NULL)) : 0;
+	str s = {0}; sadd(&s, "on=%d\nrepo=%s\nuntil=%lld\nrestart=%d\nask=%d\nhome=%d\nsince=%lld\nby=%s\n", on, repo, until, restart, ask, home, sn, by ? by : "");
+	free(since); free(by);
 	int f = open(t, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600); if (f >= 0) { if (write(f, s.b, s.n) < 0) {} fsync(f); close(f); rename(t, p); }
 	free(s.b);
+}
+/* one key of the config changed, the others kept */
+static void dl_cfg_set(const char *key, const char *val)
+{
+	char d[128], p[160], t[160]; dl_dir(d, sizeof d); snprintf(p, sizeof p, "%s/config", d); snprintf(t, sizeof t, "%s/config.new", d);
+	char *c = slurp(p, NULL); str s = {0}; char k[64]; snprintf(k, sizeof k, "%s=", key);
+	for (char *l = c ? strtok(c, "\n") : NULL; l; l = strtok(NULL, "\n")) if (strncmp(l, k, strlen(k))) sadd(&s, "%s\n", l);
+	sadd(&s, "%s%s\n", k, val);
+	int f = open(t, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600); if (f >= 0) { if (write(f, s.b, s.n) < 0) {} fsync(f); close(f); rename(t, p); }
+	free(s.b); free(c);
 }
 static void dl_set_off(void)
 {
@@ -3097,9 +3124,14 @@ static void dl_stop(void)
 static void dl_boot(void)
 {
 	if (!dl_cfg_on("on")) return;
-	char *u = dl_cfg("until"); long long until = u ? atoll(u) : 0; free(u);
-	if (dl_cfg_on("restart") && !access(RUN "/persistent", F_OK) && until > (long long)time(NULL) && !access(DLBIN, X_OK)) { fprintf(stderr, "rudolfd: the development link stays on until %lld\n", until); dl_start(); }
-	else dl_set_off();
+	char *u = dl_cfg("until"), *repo = dl_cfg("repo"); long long until = u ? atoll(u) : 0; free(u);
+	/* 1.5.9 (15.4): Ask first is on again after every start (turning it off lasts until the next one), and the link
+	   stays on only when "Keep on after restarting" was ticked, its time is not up and Developer mode is still on */
+	dl_cfg_write(repo ? repo : "", until, dl_cfg_on("restart"), 1, dl_cfg_on("home"), 1); free(repo);
+	if (dl_cfg_on("restart") && !access(RUN "/persistent", F_OK) && until > (long long)time(NULL) && !access(DLBIN, X_OK) && dl_devmode()) {
+		fprintf(stderr, "rudolfd: the development link stays on until %lld (Ask first)\n", until);
+		health_add("security", "the development link stayed on after the restart (Keep on after restarting), with Ask first on"); dl_start();
+	} else { dl_set_off(); health_add("security", "the development link was switched off by the restart"); }
 }
 static int id6(const char *s) { if (!s || strlen(s) != 6) return 0; for (int i = 0; i < 6; i++) if (!isdigit((unsigned char)s[i])) return 0; return 1; }
 static void api_devlink(struct req *r, const char *what, int post)
@@ -3111,41 +3143,60 @@ static void api_devlink(struct req *r, const char *what, int post)
 		str s = {0}; sadd(&s, "{\"ok\":true,\"available\":%s,\"on\":%s,\"repo\":", access(DLBIN, X_OK) ? "false" : "true", pid ? "true" : "false"); sjson(&s, repo ? repo : "");
 		sadd(&s, ",\"until\":%lld,\"secondsLeft\":%lld,\"restart\":%s,\"ask\":%s,\"home\":%s,\"hasToken\":%s,\"persistent\":%s", until, pid && until > time(NULL) ? until - (long long)time(NULL) : 0,
 		     dl_cfg_on("restart") ? "true" : "false", dl_cfg_on("ask") || !repo ? "true" : "false", dl_cfg_on("home") ? "true" : "false", access(tp, F_OK) ? "false" : "true", access(RUN "/persistent", F_OK) ? "false" : "true");
+		/* 1.5.9 (15.4): Developer mode, since when it is on and who switched it on, its last command (the log's last line) */
+		char *since = dl_cfg("since"), *by = dl_cfg("by"), lp[160]; snprintf(lp, sizeof lp, "%s/log", d);
+		sadd(&s, ",\"developer\":%s,\"since\":%lld,\"by\":", dl_devmode() ? "true" : "false", pid && since ? atoll(since) : 0LL); sjson(&s, pid && by ? by : "");
+		free(since); free(by);
+		{ char *lg = slurp(lp, NULL); char *ll = NULL;
+		  if (lg) { trim(lg); ll = strrchr(lg, '\n'); ll = ll ? ll + 1 : lg; }
+		  sadd(&s, ",\"lastCommand\":%s", ll && *ll == '{' && ll[strlen(ll) - 1] == '}' ? ll : "null"); free(lg); }
 		if (st) { trim(st); sadd(&s, ",\"status\":%s", st[0] == '{' ? st : "null"); }
 		if (pend && pid) { trim(pend); sadd(&s, ",\"pending\":%s", pend[0] == '{' ? pend : "null"); }
 		sadd(&s, "}"); free(repo); free(u); free(st); free(pend); reply_json(r->fd, &s); return;
 	}
 	if (!strcmp(what, "on") && post) {
 		if (access(DLBIN, X_OK)) { reply_err(r->fd, 501, "this Rudolf OS has no development link"); return; }
+		/* 1.5.9 (15.4): only in Developer mode, only for an administrator, with the administrator's password checked here
+		   (the body: {"n":ADMIN,"p":PASSWORD,"token":NEW-TOKEN-OR-EMPTY}) */
+		if (!dl_devmode()) { reply_err(r->fd, 403, "the development link can be switched on only in Developer mode (Settings › Update and recovery)"); return; }
+		char *an = NULL, *ap = NULL, *atok = NULL, why[200] = "";
+		if (r->body && r->blen && r->body[0] == '{') { an = dbody_field(r, "n"); ap = dbody_field(r, "p"); atok = dbody_field(r, "token"); }
+		int adm = an && ap ? desk_admin_check(an, ap, why, sizeof why) : -1;
+		dfree_secret(ap);
+		if (adm) { free(an); dfree_secret(atok); reply_err(r->fd, adm == 429 ? 429 : 403, why[0] ? why : "an administrator's name and password are needed"); return; }
 		char *repo = qparam(r->query, "repo"), *h = qparam(r->query, "hours");
 		int hours = h ? atoi(h) : 0;
 		if (!dl_repo_ok(repo)) { reply_err(r->fd, 400, "write the repository as owner/name (letters, digits, - _ .)"); return; }
 		if (hours != 1 && hours != 2 && hours != 4 && hours != 8) { reply_err(r->fd, 400, "for 1, 2, 4 or 8 hours"); return; }
 		char *rs = qparam(r->query, "restart"), *as = qparam(r->query, "ask"), *hs = qparam(r->query, "home");
 		int restart = rs && *rs == '1', askf = !as || *as != '0', home = hs && *hs == '1';
-		if (restart && access(RUN "/persistent", F_OK)) { reply_err(r->fd, 400, "staying on across a restart needs the files kept on this drive (RUDOLFDATA)"); return; }
+		if (restart && access(RUN "/persistent", F_OK)) { free(an); dfree_secret(atok); reply_err(r->fd, 400, "keeping it on after restarting needs the files kept on this drive (RUDOLFDATA)"); return; }
 		mkdir(d, 0700); chmod(d, 0700);
 		char tp[160], tn[170]; snprintf(tp, sizeof tp, "%s/token", d); snprintf(tn, sizeof tn, "%s/token.new", d);
-		/* a new token in the body, or the one kept when switching on again */
-		size_t bl = r->body ? r->blen : 0; while (bl && isspace((unsigned char)r->body[bl - 1])) bl--;
-		const char *bt = r->body ? r->body : ""; while (bl && isspace((unsigned char)*bt)) { bt++; bl--; }
+		/* a new token, or the one kept when switching on again */
+		size_t bl = atok ? strlen(atok) : 0; const char *bt = atok ? atok : "";
+		while (bl && isspace((unsigned char)bt[bl - 1])) bl--;
+		while (bl && isspace((unsigned char)*bt)) { bt++; bl--; }
 		if (bl) {
-			if (bl > 255) { reply_err(r->fd, 400, "that is not a GitHub token"); return; }
-			int f = open(tn, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600); if (f < 0 || write(f, bt, bl) != (ssize_t)bl) { if (f >= 0) close(f); reply_err(r->fd, 500, "the token could not be stored"); return; }
+			if (bl > 255) { free(an); dfree_secret(atok); reply_err(r->fd, 400, "that is not a GitHub token"); return; }
+			int f = open(tn, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600); if (f < 0 || write(f, bt, bl) != (ssize_t)bl) { if (f >= 0) close(f); free(an); dfree_secret(atok); reply_err(r->fd, 500, "the token could not be stored"); return; }
 			fsync(f); close(f);
-		} else if (access(tp, F_OK)) { reply_err(r->fd, 400, "paste the token from GitHub"); return; }
+		} else if (access(tp, F_OK)) { free(an); dfree_secret(atok); reply_err(r->fd, 400, "paste the token from GitHub"); return; }
 		else { char *o = slurp(tp, NULL); write_str(tn, ""); chmod(tn, 0600); write_str(tn, o ? o : ""); free(o); }
+		dfree_secret(atok);
 		char cmdl[400]; snprintf(cmdl, sizeof cmdl, DLBIN " check '%s' '%s' 2>&1", repo, tn);
 		char *o = run_out(cmdl); if (o) trim(o);
-		if (!o || strcmp(o, "ok")) { unlink(tn); reply_err(r->fd, 400, o && *o ? o : "the token could not be checked"); free(o); return; }
+		if (!o || strcmp(o, "ok")) { unlink(tn); free(an); reply_err(r->fd, 400, o && *o ? o : "the token could not be checked"); free(o); return; }
 		free(o);
 		dl_stop(); rename(tn, tp); chmod(tp, 0600);
+		dl_set_off(); dl_cfg_set("by", an);   /* since: now */
 		dl_cfg_write(repo, (long long)time(NULL) + hours * 3600LL, restart, askf, home, 1);
 		dl_start();
-		if (!dl_pid()) { reply_err(r->fd, 500, "the development link did not start"); return; }
-		reply_ok(r->fd, "on"); return;
+		if (!dl_pid()) { free(an); reply_err(r->fd, 500, "the development link did not start"); return; }
+		health_add("security", "the development link was switched on by %.80s for %d h (%.100s; Ask first %s%s)", an, hours, repo, askf ? "on" : "off", restart ? ", kept on after restarting" : "");
+		free(an); reply_ok(r->fd, "on"); return;
 	}
-	if (!strcmp(what, "off") && post) { dl_stop(); dl_set_off(); reply_ok(r->fd, "off"); return; }
+	if (!strcmp(what, "off") && post) { int was = dl_pid(); dl_stop(); dl_set_off(); if (was) health_add("security", "the development link was switched off"); reply_ok(r->fd, "off"); return; }
 	if (!strcmp(what, "forget") && post) { char tp[160]; dl_stop(); dl_set_off(); snprintf(tp, sizeof tp, "%s/token", d); unlink(tp); reply_ok(r->fd, "the token is deleted"); return; }
 	if (!strcmp(what, "answer") && post) {
 		char *id = qparam(r->query, "id"), *a = qparam(r->query, "a");
@@ -4085,6 +4136,8 @@ static void api(struct req *r)
 				snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update developer on '%s' '%s' 2>&1", k, u);
 			}
 			char *o = run_out(cmd); trim(o);
+			/* 1.5.9 (15.4): the development link works only in Developer mode: off with it */
+			if (o && !strncmp(o, "Developer mode is ", 18) && !dl_devmode() && dl_pid()) { dl_stop(); dl_set_off(); health_add("security", "the development link was switched off with Developer mode"); }
 			if (o && !strncmp(o, "Developer mode is ", 18)) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "could not change Developer mode");
 			free(o); return;
 		}
