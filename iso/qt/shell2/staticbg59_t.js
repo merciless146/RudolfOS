@@ -18,7 +18,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const q = s => p.evaluate(s);
   await q(`(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});ACCTS=[{n:'Ann',r:'admin',h:'x'}];USER=ACCTS[0];S.accent='#2563eb';S.darkui=false;themeApply();return 1})()`);
   await q("notepad();settings('disp')"); await wait(1200);
-  const g = await q(`(()=>{const c=SW.body.querySelector('.sc');const labs=[...c.querySelectorAll(':scope > .r2 > label, .r2 > label')].map(l=>l.textContent.trim());
+  const g = await q(`(()=>{const c=SW.body.querySelector('.sc');const labs=[...c.querySelectorAll(':scope > .r2 > label, .r2 > label')].map(l=>ssClean(l));
     const names=id=>[...c.querySelectorAll('#'+id+' .dynb')].map(b=>b.dataset.dyn);return {labs,dyn:names('dynw'),st:names('dyns'),p:c.querySelectorAll('[data-p]').length,
     tools:['bs','b1','b2'].every(i=>!!c.querySelector('#'+i))}})()`);
   ok('1. Display Properties: no colour presets any more', !g.labs.includes('Presets') && g.p == 0, g.labs.slice(0, 6));

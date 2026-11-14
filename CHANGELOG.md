@@ -11,6 +11,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- New: Display Properties says "Note: Dynamic effects are disabled on power-saver mode." under Dynamic Backgrounds, only while power saver (or battery saver) is on, when Spirit Falls' petals and lanterns and Glacier Lake's aurora stand still.
 - Changed: Rudolf OS's calendars show weeks from Sunday to Saturday (they began on Monday): the Calendar app, the calendar under the taskbar's clock and the calendar widget.
 - New: private browsing in Oracle: New private tab in Oracle's ☰ menu, Ctrl+Shift+N, and when you right-click Oracle's icon (on the taskbar, in the Start menu, on the desktop, or an open Oracle window's taskbar button). A private window is marked 🕶️ Private in dark violet; its pages are not kept in History, its cookies and site data are kept in memory only (with Standard and Lite) and forgotten when the last private window closes; pop-ups from it stay private. Help › Privacy explains what is kept (bookmarks, downloads) and who can still see what you visit.
 - Changed: the plans: on the native desktop Rudolf OS must appear and work exactly as it does on Standard (Chromium): every part of the native shell, and later every native app, is compared with Standard's in screenshots and behaviour, and each difference is a bug (plan-1.6.0.md Part 12, plan-2.0.md).
