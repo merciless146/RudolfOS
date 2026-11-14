@@ -316,8 +316,35 @@ Clear all, one panel giving way to the other, Settings). Known differences left:
 shell keeps and shows the switch; their effects are items 9 and 10); the centre's scrollbar; the notifications'
 pop-ups (toasts) as they come; the network's pop-up (its Wi-Fi list), the taskbar at the left or right, auto-hide, the
 workspaces' buttons and the 🎙️ indicator are item 3's last part.
-**Next:** item 3's last part, then items 4 to 12 in order, one PR each, stacked, each passing same_t.sh for its
-part, and docs/plan-2.0.md after them. Native is not the default yet.
+Item 3's last part, first half (the PR after #340; #336 and #339 ported onto main, 2026-11-14: #336 was closed unmerged
+because its quick settings and notifications' centre were a second implementation of #332's, and #339 was merged only
+into #336's branch; their other parts are here, on #332's quick settings and centre, nothing of #336's second
+implementation brought back): the network's pop-up (🌐, net31.js net31Pop, .np: the adapters, the one in use in the
+accent colour, the others tinted when hovered, "This system has no Wi-Fi tools…", Network Settings…, placed by flyPlace
+before the Wi-Fi part is filled in); the notifications' pop-ups (an app window's page sends its toast to the shell,
+oneapp59.js wrapping __notifCentre.add: op "toast", and "note" so the centre and the bell have it at once, kept 15 s until
+rudolfd's answer has it; drawn as the page's .ntoast in the screen's corner, 12 px from the right, 56 px from the bottom
+or the top, the newest at the bottom, 8 px apart, ntin's .25 s in, .35 s out, in a window that takes clicks only on the
+toasts; a click does the notification's own action in its page (__oaToastAct), else opens the centre; ⚡ Why? asks
+Blitzen as the centre's own does); the taskbar's 🎙️ (call59.js: rudolfd's mic every 5 s, a click muting the microphone
+for everything, 🔇); the bell as the page's (🔕 with Do not disturb; its count the page's ncUnread: those come since
+signing in or since the centre was opened, not all kept); Meta+N and Meta+A open the centre and quick settings; a page's
+settings saved in one window reach the other windows (the storage event: applySet, a11yApply, themeApply), as Standard's
+one page. Fixed on the way: a notification dismissed or cleared in the centre came back with an older answer of
+rudolfd's (kept gone for 15 s now); the shell's dark pop-ups and menus followed the dark theme's switch alone (S.darkui),
+not the light or dark mode (the page's html.dark: darkui !== false and dynResolve's mode); Settings asked for at a page
+by another app's window (a notification's action, settings('health')) opens Settings' own window there (op "open" with
+"page"). same_t.sh: new fly-net, toast, toast-two (and the bell's count), toast-dark, toast-top, call, call-muted; the
+behaviour on both engines: `SAME_SCRIPT=toastbeh_t.js sh same_t.sh` (a toast, its click doing its action, one going by
+itself, none with Do not disturb but counted, the 🎙️ muting and back). Known differences left: with Wi-Fi tools (a real
+computer's Wi-Fi), the network's pop-up does not have the page's Wi-Fi part (networks in range, joining one, saved
+networks: Settings › Network has them); rudolfd's events (events/wait) go to the page that asks first, so with no app
+window open a page's event-driven notifications (memory, Bluetooth, the power button's dialog) are not seen until one is
+(a hidden page for the desktop's own events, item 11); the toasts' window shows what was behind it when it appeared (no
+compositor).
+**Next:** item 3's last part, second half (the taskbar at the left or the right; the page has no auto-hide, so Native
+has none), then items 4 to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and
+docs/plan-2.0.md after them. Native is not the default yet.
 
 **Becoming the default:** after items 1-12 pass on the host and on the Vivobook (a week of betas on Native), the
 release's default engine is Native for new installations; an update keeps the engine the computer had, and Settings
