@@ -7,7 +7,8 @@
 # (rtOn()), a local site in a real tab (a Controlled Frame), a second window (New private tab) in the same Chromium, the
 # last window closed -> no Chromium left; the site's cookie kept in the profile (seen when Oracle opens again); without
 # Chromium, Oracle's WebKit window as before, said once. (Step 5) another app asked for from Oracle opens in a window of
-# its own, through rudolf-launch's binding (rudolfNativeOracle), which no website tab has.
+# its own, through rudolf-launch's binding (rudolfNativeOracle), which no website tab has; its notifications are the native
+# shell's pop-ups, their click its own action; a website's full screen covers the screen.
 # Runs in a network namespace of its own (the shell's desktop is http://127.0.0.1:8080). Needs root, Xvfb, xdotool,
 # ImageMagick, node, python3, gcc, ip and WebKitGTK's headers.   sh oracle_native_t.sh
 [ "$(id -u)" = 0 ] || { echo "SKIP: needs root (a network namespace)"; exit 0; }
@@ -91,6 +92,15 @@ ok "4b. another app opened from Oracle (rudolf-launch's binding, its private pip
 ok "...and no website tab has the binding" "$([ "$(ev http://127.0.0.1:8333/ 'typeof rudolfNativeOracle')" = '"undefined"' ] && echo 1)" "$(ev http://127.0.0.1:8333/ 'typeof rudolfNativeOracle')"
 # (Notepad closed again: its ✕, 9 px from the frame's right edge)
 NL=$(grep "^client .* app=notepad" $D/state | head -1); if [ -n "$NL" ]; then set -- $NL; xdotool mousemove $(($4 + $6 + 2 - 21)) $(($5 + 18)) click 1; w8 '! grep -q "^client .* app=notepad" $D/state' 40; fi
+# ---- (step 5) Oracle's notifications: the native shell's pop-ups and centre; a click does the notification's own action in its page
+ev http://127.0.0.1:8080/ 'notify("Oracle test","A notification from Oracle",{action:()=>launch("calc")}),1' >/dev/null
+w8 'grep -q "^toast .*|Oracle test" $D/state' 60
+TL=$(grep "^toast .*|Oracle test" $D/state | head -1); NL=$(st notes)
+ok "4d. a notification from Oracle's page: the native shell's pop-up in the screen's corner, counted on the bell and in the centre at once" "$([ -n "$TL" ] && [ "$(echo "$NL" | cut -d' ' -f2)" -ge 1 ] && [ "$(ev http://127.0.0.1:8080/ 'document.querySelectorAll("#ntoasts .ntoast").length')" = 0 ] && echo 1)" "$TL | notes $NL"
+set -- $TL; xdotool mousemove $(($3 + $5 / 2)) $(($4 + 20)) click 1
+w8 'grep -q "^app calc " $D/state' 60
+ok "...its click does the notification's own action, run in Oracle's page (here: Calculator, a window of its own)" "$(grep -q '^app calc ' $D/state && ! grep -q '^toast .*|Oracle test' $D/state && echo 1)" "$(grep -E '^(app|toast)' $D/state)"
+CL2=$(grep "^client .* app=calc" $D/state | head -1); if [ -n "$CL2" ]; then set -- $CL2; xdotool mousemove $(($4 + $6 + 2 - 21)) $(($5 + 18)) click 1; w8 '! grep -q "^client .* app=calc" $D/state' 40; fi
 # ---- (step 5) a website's full screen (a game, a video) is the window's: the native desktop's full screen, the taskbar under it
 ev http://127.0.0.1:8333/ 'document.documentElement.requestFullscreen().then(()=>1,e=>String(e))' >/dev/null
 w8 'grep -q "^client .* full=1 .* app=browser" $D/state' 60

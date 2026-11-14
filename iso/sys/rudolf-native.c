@@ -423,6 +423,12 @@ static guint VALLOC_T;
 static gboolean view_alloc_late(gpointer d) { (void)d; VALLOC_T = 0; state_write(); return G_SOURCE_REMOVE; }
 static void on_view_alloc(GtkWidget *w, GdkRectangle *r, gpointer d) { (void)w; (void)r; (void)d; if (!VALLOC_T) VALLOC_T = g_timeout_add(200, view_alloc_late, NULL); }
 static void on_view_close(WebKitWebView *v, gpointer d) { (void)v; appwin_close_now(d); }
+/* (a message's fields, from WebKit's message handler (JSCValue) or Oracle's Chromium (JV, 12.3c): the same ops) */
+typedef void (*FGet)(void *v, const char *k, char *o, size_t n);
+static void fget_js(void *v, const char *k, char *o, size_t n);
+static void fget_jv(void *v, const char *k, char *o, size_t n);
+static void toast_addf(AppWin *from, const char *sid, FGet g, void *v);
+static void nt_notef(FGet g, void *v);
 static void toast_add(AppWin *from, JSCValue *v);
 static void tb_settings(const char *page);
 static void nt_note(JSCValue *v);
@@ -733,11 +739,22 @@ static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 	(void)d; if (c & (G_IO_HUP | G_IO_ERR)) { if (!(c & G_IO_IN)) return G_SOURCE_REMOVE; }
 	gchar *l = NULL; gsize n = 0; GIOStatus st = g_io_channel_read_line(ch, &l, &n, NULL, NULL);
 	if (st == G_IO_STATUS_EOF || st == G_IO_STATUS_ERROR) { g_free(l); return G_SOURCE_REMOVE; }
-	if (l && !strncmp(l, "msg {", 5)) { JV *v = jparse(l + 4); char op[16] = "", app[48] = "", file[1024] = "", pg[48] = "";
+	char sid[80] = ""; const char *js = NULL;
+	if (l && !strncmp(l, "msg ", 4)) { const char *b = strchr(l + 4, ' '); if (b && b - (l + 4) < (long)sizeof sid && l[4] != '{') { memcpy(sid, l + 4, b - (l + 4)); sid[b - (l + 4)] = 0; js = b + 1; } }
+	if (js && js[0] == '{' && strspn(sid, "0123456789ABCDEFabcdef") == strlen(sid)) { JV *v = jparse(js); char op[16] = "", app[48] = "", file[1024] = "", pg[48] = "";
 		if (v) { jstr(v, "op", op, sizeof op); jstr(v, "app", app, sizeof app); jstr(v, "file", file, sizeof file); jstr(v, "page", pg, sizeof pg); }
 		if (!strcmp(op, "open") && app[0] && USER_ID[0] && !LOCKED) { if (!strcmp(app, "settings") && pg[0]) tb_settings(pg); else app_open(app, file[0] ? file : NULL); }
+		else if (!strcmp(op, "toast") && v) toast_addf(NULL, sid, fget_jv, v);   /* (the page's notification: the native shell's pop-up) */
+		else if (!strcmp(op, "note") && v) nt_notef(fget_jv, v);   /* (and in the centre, counted, at once) */
 		jfree(v); }
 	g_free(l); return G_SOURCE_CONTINUE;
+}
+/* a toast's click, for Oracle's page: its notification's own action, run in that page (rudolf-launch: act SESSION ID) */
+static void oracle_act(const char *sid, const char *nid)
+{
+	if (!OR_RUN || strspn(nid, "0123456789.") != strlen(nid) || !nid[0] || strspn(sid, "0123456789ABCDEFabcdef") != strlen(sid)) return;
+	char line[160]; snprintf(line, sizeof line, "act %s %s\n", sid, nid);
+	int f = open(OR_CTL, O_WRONLY | O_NONBLOCK | O_CLOEXEC); if (f >= 0) { if (write(f, line, strlen(line)) < 0) {} close(f); }
 }
 static void oracle_exited(GPid p, gint st, gpointer d) { (void)d; (void)st; g_spawn_close_pid(p); if (p == OR_PID) { OR_RUN = 0; OR_PID = 0; state_write(); } }
 /* the shell's #...: letters, digits and the address's own punctuation (the rest escaped) */
@@ -3379,10 +3396,11 @@ static void nt_load(JV *v)
 	if (FLK && FLAREA) gtk_widget_queue_draw(FLAREA);
 }
 /* (a page's notification, oneapp59.js op "note": in the centre and counted at once) */
-static void nt_note(JSCValue *v)
+static void nt_note(JSCValue *v) { nt_notef(fget_js, v); }
+static void nt_notef(FGet g, void *v)
 {
 	if (NNT == 60) NNT--; memmove(&NT[1], &NT[0], NNT * sizeof NT[0]); NNT++; Note *n = &NT[0]; memset(n, 0, sizeof *n); char at[40] = "";
-	jsstr(v, "t", n->t, sizeof n->t); jsstr(v, "b", n->b, sizeof n->b); jsstr(v, "k", n->k, sizeof n->k); jsstr(v, "at", at, sizeof at); n->at = g_ascii_strtod(at, NULL);
+	g(v, "t", n->t, sizeof n->t); g(v, "b", n->b, sizeof n->b); g(v, "k", n->k, sizeof n->k); g(v, "at", at, sizeof at); n->at = g_ascii_strtod(at, NULL);
 	if (NNTP == 8) { memmove(&NTP[0], &NTP[1], 7 * sizeof NTP[0]); memmove(&NTPT[0], &NTPT[1], 7 * sizeof NTPT[0]); NNTP--; } NTP[NNTP] = *n; NTPT[NNTP++] = g_get_monotonic_time();
 	bar_redraw(); if (FLK == FL_NC && FLAREA) fl_resize();
 }
@@ -3758,7 +3776,7 @@ static void fl_open(int kind)
    App windows' pages send theirs here (oneapp59.js, op "toast") rather than drawing them in their own window. A click
    does what the page's does: the notification's own action in its page, else the notifications' centre; ⚡ Why? asks
    Blitzen (as the centre's ⚡ Why?). Drawn in a window of its own over a copy of what is behind, as the pop-ups. */
-typedef struct { char t[200], b[600], k[12], nid[40]; int why, act, win; gint64 born, ms; double h; } Toast;
+typedef struct { char t[200], b[600], k[12], nid[40], sid[80]; int why, act, win; gint64 born, ms; double h; } Toast;   /* (sid: Oracle's page in Chromium that sent it, 12.3c) */
 static Toast TST[8]; static int NTST; static GtkWidget *TWIN, *TAREA; static GdkPixbuf *TBG; static int TWX, TWY, TWW, TWH; static guint TTICK;
 static double TSX[8], TSY[8], TWHY[8][4];   /* (each one's place as drawn, the page's units on the screen; its ⚡ Why?) */
 /* (a CSS cubic-bezier timing function at T) */
@@ -3854,6 +3872,7 @@ static gboolean toast_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 	Toast t = TST[i]; memmove(&TST[i], &TST[i + 1], (NTST - i - 1) * sizeof TST[0]); NTST--; toast_place();   /* (d.remove()) */
 	/* (⚡ Why?: Blitzen asked about it, as the centre's own (#app=do-nc&op=why&i=N); not kept yet: the centre) */
 	if (why) { int k = -1; for (int j = 0; j < NNT && k < 0; j++) if (!strcmp(NT[j].t, t.t)) k = j; if (k >= 0) { char ex[40]; snprintf(ex, sizeof ex, "&op=why&i=%d", k); app_open_ex("do-nc", NULL, ex, 0); return TRUE; } }
+	if (t.act && t.sid[0]) { oracle_act(t.sid, t.nid); return TRUE; }   /* (Oracle's page in Chromium: its own action, through rudolf-launch) */
 	if (t.act) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (a->id == t.win && a->view) { char js[120]; snprintf(js, sizeof js, "window.__oaToastAct&&__oaToastAct('%s')", t.nid);
 				webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js, -1, NULL, NULL, NULL, NULL, NULL); return TRUE; } } return TRUE; }
 	if (FLK == FL_NC) fl_close(); fl_open(FL_NC);   /* (ncToggle(true): the centre, opened again if it was) */
@@ -3864,12 +3883,16 @@ static gboolean toast_motion(GtkWidget *w, GdkEventMotion *e, gpointer d)
 	(void)w; (void)d; GdkWindow *g = gtk_widget_get_window(TWIN); static GdkCursor *ptr; if (!ptr) ptr = gdk_cursor_new_from_name(gdk_display_get_default(), "pointer");
 	int why; if (g) gdk_window_set_cursor(g, toast_hit(e->x_root, e->y_root, &why) >= 0 ? ptr : NULL); return TRUE;
 }
-static void toast_add(AppWin *from, JSCValue *v)
+static void fget_js(void *v, const char *k, char *o, size_t n) { jsstr((JSCValue *)v, k, o, n); }
+static void fget_jv(void *v, const char *k, char *o, size_t n) { jstr((JV *)v, k, o, n); }
+static void toast_add(AppWin *from, JSCValue *v) { toast_addf(from, NULL, fget_js, v); }
+static void toast_addf(AppWin *from, const char *sid, FGet g, void *v)
 {
 	if (!USER_ID[0]) return; if (NTST == 8) { memmove(&TST[0], &TST[1], 7 * sizeof TST[0]); NTST--; }
 	Toast *t = &TST[NTST++]; memset(t, 0, sizeof *t); char x[32] = "";
-	jsstr(v, "t", t->t, sizeof t->t); jsstr(v, "b", t->b, sizeof t->b); jsstr(v, "k", t->k, sizeof t->k); jsstr(v, "id", t->nid, sizeof t->nid);
-	jsstr(v, "ms", x, sizeof x); t->ms = atoi(x) > 0 ? atoi(x) : 5000; jsstr(v, "why", x, sizeof x); t->why = !strcmp(x, "true") || !strcmp(x, "1"); jsstr(v, "act", x, sizeof x); t->act = !strcmp(x, "true") || !strcmp(x, "1");
+	g(v, "t", t->t, sizeof t->t); g(v, "b", t->b, sizeof t->b); g(v, "k", t->k, sizeof t->k); g(v, "id", t->nid, sizeof t->nid);
+	g(v, "ms", x, sizeof x); t->ms = atoi(x) > 0 ? atoi(x) : 5000; g(v, "why", x, sizeof x); t->why = !strcmp(x, "true") || !strcmp(x, "1"); g(v, "act", x, sizeof x); t->act = !strcmp(x, "true") || !strcmp(x, "1");
+	if (sid) snprintf(t->sid, sizeof t->sid, "%s", sid);
 	if (!t->k[0]) snprintf(t->k, sizeof t->k, "info"); t->win = from ? from->id : 0; t->born = g_get_monotonic_time();
 	toast_place(); if (!g_signal_handler_find(TWIN, G_SIGNAL_MATCH_FUNC, 0, 0, NULL, toast_press, NULL)) { g_signal_connect(TWIN, "button-press-event", G_CALLBACK(toast_press), NULL); g_signal_connect(TWIN, "motion-notify-event", G_CALLBACK(toast_motion), NULL); }
 	toast_anim();

@@ -769,8 +769,14 @@ needed nothing more: a website's full screen in Oracle (a game, a video) is the 
 Chromium's window asks the window manager for full screen and covers the screen, the taskbar under it, and goes back into
 its frame after (oracle_native_t.sh 4c, 17 checks now).
 
-**Next (12.3c, second part):** step 5's rest, what the page in Chromium needs from the native desktop: notifications
-(the page's toasts and "note" through the same channel to the native shell's pop-ups, once #342 is on main), the desktop
+**Step 5, second piece (2026-11-14, the PR after #343):** Oracle's notifications: the page's toasts and notes (#342's ops
+"toast" and "note", oneapp59.js oaOut()) go through rudolf-launch's binding ("msg SESSION JSON": the page's DevTools
+session kept with each toast) to the native shell's pop-ups and its centre and bell, as from a WebKit window; a toast's
+click with an action of its own runs it in that page (rudolf-native writes "act SESSION ID" on the FIFO, rudolf-launch
+evaluates __oaToastAct there, as a user's click). oracle_native_t.sh 19 (new 4d: a notification from Oracle the shell's
+pop-up, counted at once, the page drawing none; its click Calculator's window, opened by its action in Oracle's page).
+
+**Next (12.3c, second part):** step 5's rest, what the page in Chromium needs from the native desktop: the desktop
 page's own full screen (its stand-in fills Oracle's window, not the screen: rare in Oracle), downloads into the account's
 Downloads with the native taskbar's progress, the file dialogs and Open with, the clipboard, the volume and the 🎙️ during
 calls, the keys (keys56.js, Ctrl+Shift+N) and the devlink's screenshot, each checked on both engines; then same_t.sh's
