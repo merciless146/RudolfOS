@@ -13,6 +13,14 @@
  * It exits with Chromium. If the shell never brings the desktop up, the session's watchdog notices (no
  * heartbeat) and starts the desktop page without the shell.
  *
+ *   rudolf-launch --oracle CONTROL SHELL-ID CHROME [ARGS...]      (1.5.9, docs/plan-1.5.9.md 12.3c)
+ *
+ * Oracle on the native desktop: one Chromium for every Oracle window, each window the shell with Oracle alone in it
+ * (isolated-app://SHELL-ID/#app=browser&...: the shell passes its #... on to the desktop page, which opens Oracle in
+ * one-app mode with the shell's real tabs). CONTROL is a FIFO rudolf-native writes to, one line per window:
+ *   open W H X Y HASH       a window of W x H at X,Y (0 0 0 0: Chromium's choice) for isolated-app://SHELL-ID/#HASH
+ * Chromium starts with no window; when the last of the shell's windows has closed, Chromium is closed and this exits.
+ *
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
 #define _GNU_SOURCE
@@ -200,12 +208,68 @@ static void handle(const char *msg)
 	}
 }
 
+/* ---- Oracle's windows (--oracle) */
+static int oracle, o_had, o_n; static char o_id[64];
+static struct { char target[64]; } o_win[64];
+static struct { char params[1400]; int id, tries; long long at; } o_q[32]; static int o_nq;
+static void o_send(int i) { o_q[i].id = next_id; o_q[i].tries++; send_cmd("Target.createTarget", o_q[i].params); }
+static void o_line(char *l)
+{
+	unsigned w, h; int x, y; char hash[1100] = "";
+	if (sscanf(l, "open %u %u %d %d %1099s", &w, &h, &x, &y, hash) < 4) return;
+	/* (the hash as rudolf-native escapes it: letters, digits and the URL's own punctuation only) */
+	for (const char *c = hash; *c; c++) if (!strchr("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789%&=._-~+", *c)) return;
+	if (o_nq >= 32) return;
+	char g[160] = ""; if (w >= 200 && h >= 150 && w < 20000 && h < 20000) snprintf(g, sizeof g, ",\"left\":%d,\"top\":%d,\"width\":%u,\"height\":%u", x, y, w, h);
+	snprintf(o_q[o_nq].params, sizeof o_q[0].params, "{\"url\":\"isolated-app://%s/%s%s\",\"newWindow\":true%s}", o_id, hash[0] ? "#" : "", hash, g);
+	o_q[o_nq].tries = 0; o_q[o_nq].at = 0; o_q[o_nq].id = 0;
+	if (ready) o_send(o_nq);
+	o_nq++;
+}
+static int o_win_slot(const char *t, int add)
+{
+	for (int i = 0; i < o_n; i++) if (!strcmp(o_win[i].target, t)) return i;
+	if (!add || o_n >= 64) return -1;
+	snprintf(o_win[o_n].target, sizeof o_win[0].target, "%s", t); return o_n++;
+}
+static int o_handle(const char *msg)
+{
+	char t[64], ty[32], url[512];
+	if (debug) fprintf(stderr, "launch << %.300s\n", msg);
+	long id = strstr(msg, "\"method\"") ? 0 : num_field(msg, "id");
+	for (int i = 0; id > 0 && i < o_nq; i++) if (o_q[i].id == id) {
+		if (strstr(msg, "\"error\"") && o_q[i].tries < 60) { o_q[i].at = now_ms() + 1000; return 1; }
+		memmove(&o_q[i], &o_q[i + 1], (o_nq - i - 1) * sizeof o_q[0]); o_nq--; return 1;
+	}
+	if (strstr(msg, "\"method\":\"Target.targetCreated\"") || strstr(msg, "\"method\":\"Target.targetInfoChanged\"")) {
+		field(msg, "type", ty, sizeof ty); field(msg, "url", url, sizeof url); field(msg, "targetId", t, sizeof t);
+		if (!t[0]) return 1;
+		if (!strncmp(url, "isolated-app://", 15) && (!strcmp(ty, "page") || !strcmp(ty, "app"))) { if (o_win_slot(t, 1) >= 0) o_had = 1; }
+		else if (!strcmp(ty, "page") && strncmp(url, "devtools://", 11)) { char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%s\"}", t); send_cmd("Target.closeTarget", p); }
+		return 1;
+	}
+	if (strstr(msg, "\"method\":\"Target.targetDestroyed\"")) {
+		field(msg, "targetId", t, sizeof t); int k = o_win_slot(t, 0);
+		if (k >= 0) { o_win[k] = o_win[--o_n];
+			/* the last of Oracle's windows: Chromium goes with it (the native desktop's memory is the point) */
+			if (!o_n && o_had && !o_nq) send_cmd("Browser.close", NULL); }
+		return 1;
+	}
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
+	const char *ctl = NULL;
+	if (argc > 1 && !strcmp(argv[1], "--oracle")) { if (argc < 5) { fprintf(stderr, "usage: rudolf-launch --oracle CONTROL SHELL-ID CHROME [ARGS...]\n"); return 2; }
+		oracle = 1; ctl = argv[2]; argv += 2; argc -= 2; }
 	if (argc < 3) { fprintf(stderr, "usage: rudolf-launch SHELL-ID CHROME [ARGS...]\n"); return 2; }
 	const char *id = argv[1];
 	if (strlen(id) != 56 || strspn(id, "abcdefghijklmnopqrstuvwxyz234567") != 56) { fprintf(stderr, "rudolf-launch: bad shell ID\n"); return 2; }
-	snprintf(shell_url, sizeof shell_url, "isolated-app://%s/", id);
+	snprintf(shell_url, sizeof shell_url, "isolated-app://%s/", id); snprintf(o_id, sizeof o_id, "%s", id);
+	int cfd = -1, cfw = -1; (void)cfw;
+	if (oracle) { cfd = open(ctl, O_RDONLY | O_NONBLOCK | O_CLOEXEC); cfw = open(ctl, O_WRONLY | O_NONBLOCK | O_CLOEXEC);   /* (kept open: no end of file between writers) */
+		struct stat st; if (cfd < 0 || fstat(cfd, &st) || !S_ISFIFO(st.st_mode)) { fprintf(stderr, "rudolf-launch: %s is not a FIFO\n", ctl); return 2; } }
 	debug = getenv("RUDOLF_LAUNCH_DEBUG") != NULL;
 	int a[2], b[2];
 	if (pipe(a) || pipe(b)) { perror("pipe"); return 1; }
@@ -226,7 +290,7 @@ int main(int argc, char **argv)
 		   Google's sign-in refuses such a browser ("This browser or app may not be secure"). Oracle's tabs are
 		   the person's own browsing: the pipe only opens the shell, so pages are not told. */
 		args[n++] = "--disable-blink-features=AutomationControlled";
-		args[n++] = "about:blank";
+		if (oracle) args[n++] = "--no-startup-window"; else args[n++] = "about:blank";
 		args[n] = NULL;
 		execv(args[0], args);
 		perror("rudolf-launch: exec"); _exit(127);
@@ -245,22 +309,31 @@ int main(int argc, char **argv)
 		snprintf(p, sizeof p, "{\"permission\":{\"name\":\"pointer-lock\"},\"setting\":\"granted\",\"origin\":\"isolated-app://%s\"}", id);
 		send_cmd("Browser.setPermission", p);
 	}
+	if (oracle) ready = 1;   /* (no starting page to wait for: Chromium answers the first window when it can, retried) */
+	static char cbuf[4096]; size_t cl = 0;
 	for (;;) {
-		struct pollfd pf = {from_chrome, POLLIN, 0};
-		int r = poll(&pf, 1, 1000);
+		struct pollfd pfs[2] = {{from_chrome, POLLIN, 0}, {cfd, POLLIN, 0}};
+		int r = poll(pfs, oracle ? 2 : 1, 1000); struct pollfd pf = pfs[0];
 		if (r < 0 && errno == EINTR) continue;
-		if (r > 0) {
+		if (oracle && r > 0 && (pfs[1].revents & POLLIN)) {
+			ssize_t g = read(cfd, cbuf + cl, sizeof cbuf - 1 - cl);
+			if (g > 0) { cl += g; cbuf[cl] = 0; char *e; while ((e = memchr(cbuf, '\n', cl))) { *e = 0; o_line(cbuf); cl -= (size_t)(e + 1 - cbuf); memmove(cbuf, e + 1, cl); } if (cl >= sizeof cbuf - 1) cl = 0; }
+		}
+		if (r > 0 && (pf.revents & (POLLIN | POLLHUP))) {
 			ssize_t got = read(from_chrome, buf + blen, sizeof buf - blen - 1);
 			if (got <= 0) break;                     /* Chromium has gone */
 			blen += got;
 			size_t start = 0;
-			for (size_t i = 0; i < blen; i++) if (buf[i] == 0) { handle(buf + start); start = i + 1; }
+			for (size_t i = 0; i < blen; i++) if (buf[i] == 0) { if (!oracle || !o_handle(buf + start)) { if (!oracle) handle(buf + start); } start = i + 1; }
 			memmove(buf, buf + start, blen - start); blen -= start;
 			if (blen >= sizeof buf - 1) blen = 0;        /* a message too large to matter (none expected) */
 		}
+		if (oracle) { for (int i = 0; i < o_nq; i++) if (!o_q[i].id || (o_q[i].at && now_ms() >= o_q[i].at)) { o_q[i].at = 0; o_send(i); } }
+		else {
 		if (retry_at && now_ms() >= retry_at) { retry_at = 0; open_shell(); }
 		tm_tick(now_ms());
 		if (!ready && now_ms() - t0 > 20000 && !open_id) { ready = 1; open_shell(); }   /* no page event: try anyway */
+		}
 		int st;
 		if (waitpid(pid, &st, WNOHANG) == pid) return WIFEXITED(st) ? WEXITSTATUS(st) : 1;
 	}
