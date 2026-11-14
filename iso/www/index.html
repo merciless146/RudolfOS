@@ -15119,7 +15119,23 @@ function lkDesktopBg() {
   const cs = getComputedStyle(document.body), img = cs.backgroundImage, col = cs.backgroundColor;
   return img && img != 'none' ? {img} : col && col != 'rgba(0, 0, 0, 0)' ? {col} : null;
 }
-function lkRemember() { if (!USER) return; const b = lkDesktopBg(); if (b && (!b.img || b.img.length < 2e6)) svj(LK_LAST, b) }
+/* 1.5.9: what the desktop's background is, as a reference, not its pixels: a picture of your own by its id (read from
+   the store when shown), a drawn background by its name (its light or dark picture chosen when shown), otherwise the
+   colours. The pixels were remembered before; while a picture was still being read after a start-up, that was the
+   colours under it, so the sign-in page showed teal instead of the picture (the Vivobook, 2026-11-13) */
+function lkRef() {
+  if (S.wpimg) return {wp: S.wpimg, fit: S.wpfit || 'fill'};
+  if (S.dyn && typeof DYN == 'object' && DYN[S.dyn]) return {dyn: S.dyn};
+  return lkDesktopBg();
+}
+function lkRemember() { if (!USER) return; const b = lkRef(); if (b && (!b.img || b.img.length < 2e6)) svj(LK_LAST, b) }
+/* a reference -> the layer's background (a picture is read from the store: then set on the layer when it arrives) */
+function lkPaint(layer, bg) {
+  const set = (img, fit) => { layer.style.background = `${bg.col || '#0b1020'} ${img ? img + (fit == 'fit' ? ' center/contain no-repeat' : fit == 'stretch' ? ' center/100% 100% no-repeat' : fit == 'center' ? ' center/auto no-repeat' : fit == 'tile' ? ' left top/auto repeat' : ' center/cover no-repeat') : ''}` };
+  if (bg.dyn) { const w = DYN[bg.dyn]; let light = false; try { light = dynResolve().mode == 'light' } catch (e) {} set(w ? `url("${light ? w.l : w.d}")` : '', 'fill'); return }
+  if (bg.wp) { set('', ''); if (typeof kvGet == 'function') kvGet('wp:' + bg.wp).then(v => { if (typeof v == 'string' && v.startsWith('data:image') && layer.isConnected) set(`url("${v}")`, bg.fit) }).catch(() => {}); return }
+  set(bg.img || '', 'fill');
+}
 /* the background layers, behind the screen's own content */
 function lkApply(el, kind) {
   if (!el) return; const c = lkConf();
@@ -15127,11 +15143,11 @@ function lkApply(el, kind) {
   let bg = null;
   if (c.bg == 'picture') { const p = ld(LK_PICK, null); if (p) bg = {img: 'url("' + p + '")'} }
   else if (c.bg == 'color') bg = {col: c.color};
-  else bg = (kind == 'lock' && USER && lkDesktopBg()) || ld(LK_LAST, null);
+  else bg = (kind == 'lock' && USER && lkRef()) || ld(LK_LAST, null);
   if (bg) {
     const b = document.createElement('div'); b.className = 'lkbgl';
-    b.style.cssText = `position:absolute;inset:${c.blur ? -3 * c.blur : 0}px;z-index:-2;pointer-events:none;background:${bg.col || '#0b1020'} ${bg.img ? bg.img + ' center/cover no-repeat' : ''};${c.blur ? `filter:blur(${c.blur}px);` : ''}`;
-    el.prepend(b);
+    b.style.cssText = `position:absolute;inset:${c.blur ? -3 * c.blur : 0}px;z-index:-2;pointer-events:none;${c.blur ? `filter:blur(${c.blur}px);` : ''}`;
+    lkPaint(b, bg); el.prepend(b);
   }
   const d = document.createElement('div'); d.className = 'lkbgl'; d.style.cssText = `position:absolute;inset:0;z-index:-1;pointer-events:none;background:rgba(0,0,0,${(c.dim || 0) / 100})`;
   el.prepend(d);
@@ -15153,6 +15169,8 @@ function lkLoginClock() {
   const tick = () => { if (L.style.display == 'none') return; const c = clockParts(); ck.querySelector('.lkclock').textContent = c.time; ck.querySelector('.lkdate').textContent = c.longNoYear };
   tick(); clearInterval(window.__lkLoginIv); window.__lkLoginIv = setInterval(tick, 1000);
 }
+/* (1.5.9) and each time the background is set (a reference is right at any moment, also before the picture is read) */
+{ const _as = applySet; applySet = function () { const r = _as.apply(this, arguments); try { lkRemember() } catch (e) {} return r } }
 { const _lock = lockScreen; lockScreen = function () { lkRemember(); _lock.apply(this, arguments); lkApply(document.getElementById('lockov'), 'lock') } }
 { const _show = showLogin; showLogin = function () { lkRemember(); const r = _show.apply(this, arguments); lkLoginClock(); lkApply($('#login'), 'login'); return r } }
 setTimeout(() => { try { lkLoginClock(); lkApply($('#login'), 'login') } catch (e) {} }, 0);

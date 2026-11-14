@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- Fixed: the sign-in page after a start-up showed a teal background instead of the desktop's picture: it now remembers which background the desktop has (your picture, a drawn background, or the colours) rather than how it looked at that moment, and a drawn background shows its light or dark picture for the time of day.
 - New: Settings › Date, time and language › Share my language with apps (on by default): Library apps such as games are told Rudolf OS's language, when they start and whenever it changes, so they can show their own menus in it. Off, apps are not told which language you use.
 - Fixed: the screen saver no longer stays off for good after something went full screen in a window that was then minimised or hidden (that also kept game mode on), or after a saver's picture was taken away; why the saver waits (something full screen, sound playing, a microphone in use) is written to the page log.
 - New: the Feather Sky static background: Rudolf's logo in a sky of swirling white feathers (a night-blue version in dark mode).
