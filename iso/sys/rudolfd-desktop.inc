@@ -10,7 +10,8 @@
  *   POST desktop/unlock        body {"p":PASSWORD}, the session's account's
  *   GET  desktop/session       {"id","n","r","pk","fk"} for the one-app pages (oneapp59.js); 404 without a session
  *   GET  desktop/settings      the page's settings the shell draws, the pinned apps, the notifications' count, "gen",
- *                              (1.6.0) the desktop's widgets ("widgets", "wgown") and the weather's place and unit ("wloc", "wunit")
+ *                              (1.6.0) the desktop's widgets ("widgets", "wgown") and the weather's place and unit ("wloc", "wunit");
+ *                              the Calendar's events ("cal", bd95cal:ID) for the calendar under the clock
  *   GET  desktop/apps          the start menu's list and the drawn backgrounds' pictures, as the page wrote them
  *   POST desktop/apps          (the page, after each sign-in)
  *   GET  desktop/cells?acct=ID       (1.6.0) where the shell put the desktop's icons: {"NAME":[COLUMN,ROW]}
@@ -553,8 +554,11 @@ static void api_desktop_settings(struct req *r)
 	char *wl = dls_get(&l, "bd95wloc"), *wu = dls_get(&l, "bd95wunit");
 	if (wl && *dj_ws(wl) == '{' && dj_end(wl, 0)) dj_raw(&o, wl, "null"); else sadd(&o, "null");
 	sadd(&o, ",\"wunit\":"); if (wu && *dj_ws(wu) == '"' && dj_end(wu, 0)) dj_raw(&o, wu, "\"\""); else sadd(&o, "\"\"");
+	/* 1.6.0 (Part 12, item 3): the Calendar's events (apps25b.js CALK: bd95cal:ID), for the calendar under the clock */
+	char *ce = NULL; if (in) { snprintf(k, sizeof k, "bd95cal:%s", s.id); ce = dls_get(&l, k); }
+	sadd(&o, ",\"cal\":"); if (ce && *dj_ws(ce) == '[' && dj_end(ce, 0)) dj_raw(&o, ce, "[]"); else sadd(&o, "[]");
 	sadd(&o, "}");
-	free(wg); free(own); free(wl); free(wu);
+	free(wg); free(own); free(wl); free(wu); free(ce);
 	free(set); free(pins); free(nt); dls_close(&l); explicit_bzero(&s, sizeof s); reply_json(r->fd, &o);
 }
 

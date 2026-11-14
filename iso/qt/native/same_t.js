@@ -55,6 +55,14 @@ CASES.push({n: 'widget-picker', set: {}, act: 'wgpick', parts: ['ctx']});
 const PINS2 = {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'calc', 'settings', 'browser']};
 for (const r of ['bar', 'start', 'pin:notepad', 'pin:browser', 'vol', 'net', 'clock']) CASES.push({n: 'tbm-' + r.replace(':', '-'), set: {}, more: PINS2, rc: r, parts: ['ctx']});
 CASES.push({n: 'tbm-win', set: {}, more: PINS2, act: 'notepad', rc: 'win:notepad', parts: ['ctx']});
+/* (item 3, second part) the tray's pop-ups: the calendar under the clock (with the Calendar's events; the next month; the dark
+   theme; the taskbar at the top) and the volume's */
+const CALEV = {['bd95cal:' + ACCT]: [{d: '2026-11-20', t: '10:00', title: 'Dentist'}, {d: '2026-11-14', t: '', title: 'Lunch with Bob'}, {d: '2026-10-02', t: '', title: 'Past'}]};
+CASES.push({n: 'fly-cal', set: {}, more: CALEV, fly: 'clock', parts: ['fly']});
+CASES.push({n: 'fly-cal-next', set: {}, more: CALEV, fly: 'clock', next: 1, parts: ['fly']});
+CASES.push({n: 'fly-cal-dark', set: {dm: 'dark', darkui: true}, fly: 'clock', parts: ['fly']});
+CASES.push({n: 'fly-cal-top', set: {tb: 'top', h24: true}, fly: 'clock', parts: ['fly']});
+CASES.push({n: 'fly-vol', set: {}, fly: 'vol', parts: ['fly']});
 CASES.push({n: 'tbm-bar-win', set: {}, more: PINS2, act: 'notepad', rc: 'bar', parts: ['ctx']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
@@ -97,6 +105,8 @@ async function stdCase(c) {
       const r = await p.evaluate(() => { const e = [...document.querySelectorAll('.ctx .cmi')].find(x => x.textContent.includes('Add a widget')); const q = e.getBoundingClientRect(); return [q.left + 50, q.top + q.height / 2] });
       await p.mouse.click(r[0], r[1]); await p.clock.runFor(300); await wait(200) }
     if (/menu$|wgpick/.test(c.act || '')) await p.mouse.move(W / 2, H - 200);
+    if (c.fly) { await p.click(c.fly == 'clock' ? '#tray' : '#vol'); await p.clock.runFor(400); await wait(300);
+      if (c.next) { await p.click('#calp .cn'); await p.clock.runFor(300); await wait(200) } await p.mouse.move(300, 300) }
   }
   rects.screen = [0, 0, W, H]; rects.wallpaper = [0, 0, W, H];
   rects.bar = await rectOf('#bar'); rects.start = await rectOf('#start'); rects.pins = await rectOf('#pins'); rects.tray = await rectOf('#tray'); rects.clock = await rectOf('#tray .clk, #clock, #tray');
@@ -106,6 +116,7 @@ async function stdCase(c) {
   rects.title = await p.evaluate(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.offsetParent).pop(); const t = w && w.querySelector('.tb'); if (!t) return null; const r = w.getBoundingClientRect(), q = t.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(q.bottom - r.top)] });
   { const r = await rectOf('.ctx'); rects.ctx = r ? [r[0] - 4, r[1] - 4, r[2] + 8, r[3] + 8] : null; rects.dlg = await rectOf('.rmodal .rmbox') }   /* (a menu with its focus ring) */
   for (let i = 0; i < (c.wg || 0); i++) rects['wg' + i] = await p.evaluate(i => { const e = document.querySelectorAll('#desk > .wgt')[i]; if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.left) - 20, Math.round(r.top) - 10, Math.round(r.width) + 40, Math.round(r.height) + 40] }, i);   /* (with its shadow) */
+  { const r = await rectOf('#calp') || await rectOf('.svp'); rects.fly = r }
   rects.desc = await p.evaluate(() => ({bar: document.getElementById('bar').className, body: document.body.className}));
   const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f});
   await ctx.close(); return {f, rects, errs, pt};
@@ -173,7 +184,11 @@ async function natCase(c, s) {
   if (c.act == 'filemenu') { const q = s.pt || fileAt(); if (q) xdo('mousemove ' + q.join(' ') + ' click 3'); await until(() => nlines('cmenu').length, 5000); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500) }
   if (c.act == 'rename' || c.act == 'openwith') { const q = fileAt(); if (q) xdo('mousemove ' + q.join(' ') + ' click 3'); await until(() => nlines('cmenu').length, 5000);
     cmClick(c.act == 'rename' ? 'Rename' : 'Open with…'); await until(() => (nst('dialog') || '').startsWith(c.act == 'rename' ? 'rename' : 'openwith'), 20000); xdo('mousemove ' + W / 2 + ' ' + (H - 100)); await wait(700) }
+  if (c.fly) { const q = nhit(c.fly + ' -'); if (q) xdo('mousemove ' + q.map(Math.round).join(' ') + ' click 1'); await until(() => (nst('fly') || '-') != '-', 8000); await wait(500);
+    if (c.next) { const l = nlines('flybtn').find(x => x.startsWith('flybtn next ')); if (l) { const a = l.split(' '); xdo('mousemove ' + a[2] + ' ' + a[3] + ' click 1') } await wait(700) }
+    xdo('mousemove 300 300'); await wait(500) }
   const f = path.join(OUT, c.n + '.nat.png'); sh('import -window root ' + f);
+  if (c.fly) { xdo('mousemove 300 300 click 1'); await until(() => (nst('fly') || '-') == '-', 5000); await wait(300) }
   // (back as it was for the next case: the menu closed, the app window closed, unlocked)
   if (c.act == 'menu' || c.rc || /menu$|rename|openwith|wgpick/.test(c.act || '')) { xdo('key Escape'); await wait(400) }
   if (c.act == 'notepad') {   /* (its ✕: 9 px from the frame's right edge, 7 px down, 24 by 22) */

@@ -112,7 +112,7 @@ class H(http.server.BaseHTTPRequestHandler):
             wg = own['list'] if wgown else (sget(data, 'bd95widgets:' + sid) if sid else None)
             return self.j({'ok': True, 'gen': L.get('gen', 1), 'acct': sid, 's': {k: st[k] for k in K if k in st},
                            'pins': pins if isinstance(pins, list) else ["explorer", "browser", "notepad", "settings"], 'notes': len(nt), 'wallpaper': wall, 'wpacct': sid if wall else '',
-                           'widgets': wg if isinstance(wg, list) else [], 'wgown': wgown, 'wloc': sget(data, 'bd95wloc'), 'wunit': sget(data, 'bd95wunit') or ''})
+                           'widgets': wg if isinstance(wg, list) else [], 'wgown': wgown, 'wloc': sget(data, 'bd95wloc'), 'wunit': sget(data, 'bd95wunit') or '', 'cal': (sget(data, 'bd95cal:' + sid) if sid else None) or []})
         if w == 'desktop/widgets':
             if m == 'POST':
                 sid = s['id'] if s else ''; open(os.path.join(D, 'widgets.json'), 'w').write(json.dumps({'list': json.loads(b), 'was': data.get('bd95widgets:' + sid) or ''})); return self.j({'ok': True})
@@ -130,7 +130,14 @@ class H(http.server.BaseHTTPRequestHandler):
         if w == 'stats': return self.j({'ok': True, 'cpu': 12.3, 'load': 0.2, 'memTotal': 8589934592, 'memFree': 4294967296, 'memAvailable': 5368709120})
         if w == 'devlink': return self.j({'ok': True, 'available': True, 'on': False})
         if w == 'net': return self.j({'ok': True, 'interfaces': [{'name': 'wlan0', 'ip': '192.168.1.5/24', 'state': 'up', 'wireless': True, 'virtual': False, 'default': True, 'ssid': 'Home', 'rssi': -55}]})
-        if w == 'volume': return self.j({'ok': True, 'volume': 70, 'muted': False})
+        if w == 'volume':   # (kept: set=N, muted=0|1, step=up|down, as rudolfd's)
+            if m == 'POST':
+                for kv in q.split('&'):
+                    k, _, v = kv.partition('=')
+                    if k == 'set' and v.isdigit(): ST['vol'] = max(0, min(100, int(v))); ST['muted'] = False
+                    if k == 'muted': ST['muted'] = v == '1'
+                    if k == 'step': ST['vol'] = max(0, min(100, ST.get('vol', 70) + (5 if v == 'up' else -5)))
+            return self.j({'ok': True, 'volume': ST.get('vol', 70), 'muted': ST.get('muted', False)})
         if w == 'power/status': return self.j({'ok': True, 'ac': False, 'battery': {'name': 'BAT0', 'capacity': 81, 'status': 'Discharging'}, 'now': {'saver': False}})
         if w == 'info': return self.j({'ok': True, 'battery': [{'name': 'BAT0', 'type': 'Battery', 'capacity': 81, 'status': 'Discharging'}]})
         return self.j({'ok': True})

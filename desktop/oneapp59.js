@@ -103,6 +103,8 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
   if(ONEAPP.k=='settings'&&sp&&typeof settings=='function'){OA.want=1;try{settings(sp)}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}
   if(da0=='pin'){try{pinSet(q.get('k')||'',q.get('on')=='1')}catch(e){}return oaFin({})}
   if(da0=='mute'){try{const m=S.snd&&S.snd.master;if(m){m.on=!m.on;trayVol()}}catch(e){}setTimeout(()=>oaFin({}),400);return}}
+ /* (1.6.0 Part 12, item 3) a day double-clicked in the calendar under the native shell's clock: the Calendar at that day */
+ {const cd=ONEAPP.q.get('day');if(ONEAPP.k=='calendar'&&cd&&/^\d{4}-\d\d-\d\d$/.test(cd))setTimeout(()=>{try{window.__calGo&&__calGo(cd)}catch(e){}},800)}
  const da=da0,act=da?(typeof A=='object'&&typeof A[da]=='function'?A[da]:da=='blitzen'&&typeof blitzenApp=='function'?blitzenApp:null):null;
  const app=APPS[ONEAPP.k]||(act?{name:da,open:act}:null);
  if(!app){oaClosed('There is no app called “'+ONEAPP.k+'”.');oaPost({op:'close'});return}
