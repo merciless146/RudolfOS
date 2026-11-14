@@ -26,6 +26,18 @@ for (const m of ['normal', 'negative', 'comp']) CASES.push({n: 'bar-accent-' + m
 for (const st of STY) CASES.push({n: 'btn-' + st, set: {tbbstyle: st}, parts: ['bar']});
 CASES.push({n: 'btn-accent', set: {tbbac: true, tbbacm: 'normal'}, parts: ['bar']});
 CASES.push({n: 'bar-top', set: {tb: 'top'}, parts: ['bar', 'icons']});
+/* (item 3's last part) the taskbar at the left and the right: the bar, the icons beside it, a window's button and title bar, the
+   start menu, the styles, the pop-ups placed beside it (flyPlace) or where the page puts them */
+CASES.push({n: 'bar-left', set: {tb: 'left'}, parts: ['bar', 'icons']});
+CASES.push({n: 'bar-right', set: {tb: 'right', h24: true}, parts: ['bar', 'icons']});
+CASES.push({n: 'bar-left-win', set: {tb: 'left'}, act: 'notepad', parts: ['bar', 'title']});
+CASES.push({n: 'bar-left-candy', set: {tb: 'left', tbstyle: 'candy'}, parts: ['bar']});
+CASES.push({n: 'bar-right-retro', set: {tb: 'right', tbstyle: 'retro'}, parts: ['bar']});
+CASES.push({n: 'menu-left', set: {tb: 'left'}, act: 'menu', parts: ['menu']});
+CASES.push({n: 'menu-right', set: {tb: 'right'}, act: 'menu', parts: ['menu']});
+CASES.push({n: 'fly-vol-left', set: {tb: 'left'}, fly: 'vol', parts: ['fly']});
+CASES.push({n: 'fly-net-right', set: {tb: 'right'}, fly: 'net', parts: ['fly']});
+CASES.push({n: 'fly-qs-left', set: {tb: 'left'}, fly: 'qs', parts: ['fly']});
 CASES.push({n: 'clock-24', set: {h24: true, df: 'ymd'}, parts: ['clock']});
 CASES.push({n: 'wall-gradient', set: {bs: 'gradient', b1: '#0f766e', b2: '#1e1b4b'}, parts: ['wallpaper']});
 CASES.push({n: 'menu', set: {}, act: 'menu', parts: ['menu']});
