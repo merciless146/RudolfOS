@@ -229,7 +229,7 @@ search filters the list (the page also searches settings and files, in a results
 the tray's pop-ups, the calendar and the workspaces (items 3 and 4); the right-click menus of the taskbar, the start
 button and the window buttons; a window's shadow falls only on the desktop (no compositor), and Wireframe's blur
 behind the taskbar only shows over a picture as no blur; the dark theme's menu is drawn but not yet compared.
-The comparison test is merged (PR #316). Item 1's second part, first half (PR native10-desk-files, on main): the
+The comparison test is merged (PR #316). Item 1's second part, first half (PR #317, on main): the
 Desktop folder's files and folders as icons in the page's places; the page's right-click menus (the desktop's, a
 file's, the Trash's, an app's: items, order, keys, disabled rows, hover, the focus ring as Chromium shows it) and its
 Rename and Open with dialogs, drawn by the shell; what they do is done by the page itself in a hidden one-app window
