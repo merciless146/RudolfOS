@@ -92,11 +92,16 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
  try{const apps=Object.values(APPS).filter(a=>a&&a.k&&a.name&&typeof a.open=='function').map(a=>({k:a.k,name:String(a.name),icon:String(a.icon||''),kw:String(a.kw||'')}));
   const bg={};if(typeof DYN=='object')for(const k in DYN){const d=DYN[k];bg[k]={n:d.n||k,d:d.d||'',l:d.l||''}}
   let hide=[];try{hide=ld(HIDEK(),[])}catch(e){}
-  await rdPost('desktop/apps',JSON.stringify({apps,bg,hide,acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
+  /* (1.5.9 step 7) the apps' pictures as the page draws them (icSvg: the icon style, not the emoji, which the system
+     may draw pale or not at all), as small PNGs, one per picture */
+  const icons={};if(typeof EMO2IC=='object'&&typeof icSvg=='function'&&S.icons!=='emoji')for(const a of apps){const e=a.icon,k=EMO2IC[e]||EMO2IC[e.replace(/\uFE0F/g,'')];
+   if(!k)continue;a.ic=k;if(!icons[k])try{icons[k]=await oaPng(icSvg(k),48)}catch(e){delete a.ic}}
+  await rdPost('desktop/apps',JSON.stringify({apps,bg,hide,icons,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
+function oaPng(src,n){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>{try{const c=document.createElement('canvas');c.width=c.height=n;c.getContext('2d').drawImage(im,0,0,n,n);res(c.toDataURL('image/png'))}catch(e){rej(e)}};im.onerror=()=>rej(new Error('icon'));im.src=src})}
 {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);setTimeout(oaCatalog,2500);return r}}
 let OA_WP='';
 async function oaWallpaper(){if(typeof RD=='undefined'||!RD||!USER||USER.r=='guest')return;const id=S.wpimg||'';
  if(!id||id!=WPID||!/^data:image\/jpeg;base64,/.test(WPURL||''))return;const key=uid()+':'+id;if(OA_WP==key)return;OA_WP=key;
  try{const b=atob(WPURL.slice(WPURL.indexOf(',')+1)),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);
-  await rdPost('desktop/wallpaper?acct='+encodeURIComponent(uid()),u)}catch(e){OA_WP='';console.warn('desktop/wallpaper',e)}}
+  await rdPost('desktop/wallpaper?acct='+encodeURIComponent(uid())+'&img='+encodeURIComponent(id),u)}catch(e){OA_WP='';console.warn('desktop/wallpaper',e)}}
 {const _wl=wpLoad;wpLoad=function(){const p=_wl.apply(this,arguments);Promise.resolve(p).then(()=>setTimeout(oaWallpaper,0)).catch(()=>{});return p}}

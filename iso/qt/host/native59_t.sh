@@ -4,10 +4,12 @@
 # password), the heartbeat, the wallpaper (colours, a gradient, a drawn background, a picture of your own), the taskbar
 # (at the bottom and the top, its accent colour, the pinned apps, the tray, the clock), the start menu and its search,
 # app windows in one-app mode sharing one WebKit web process, the lock screen and signing out; (step 4) the window
-# manager: frames, focus, moving, resizing, maximise, minimise, the taskbar's list, full screen, dialogs, close. What is where comes from
+# manager: frames, focus, moving, resizing, maximise, minimise, the taskbar's list, full screen, dialogs, close; (step 7)
+# the arrow on the screen, the apps' pictures, the display scaling, a drop-down in an app window, the development link's
+# banner and question. What is where comes from
 # rudolf-native's own account of it (RUDOLF_NATIVE_STATE); colours from screenshots. Needs Xvfb, xdotool, ImageMagick,
 # node, python3, gcc and WebKitGTK's headers (libwebkit2gtk-4.1-dev).   sh native59_t.sh [RUDOLF-NATIVE]
-HERE=$(cd "$(dirname "$0")" && pwd); T=$(mktemp -d /tmp/native59.XXXXXX); PORT=8298; DSP=:79
+HERE=$(cd "$(dirname "$0")" && pwd); T=$(mktemp -d /tmp/native59.XXXXXX); PORT=${NATIVE59_PORT:-8298}; DSP=${NATIVE59_DSP:-:79}
 command -v Xvfb >/dev/null && command -v xdotool >/dev/null && command -v convert >/dev/null || { echo "SKIP: needs Xvfb, xdotool and ImageMagick"; exit 0; }
 BIN=$1
 if [ -z "$BIN" ]; then BIN=$T/rudolf-native
@@ -48,6 +50,12 @@ ok "7. the taskbar: the standard dark bar" "$(close "$(px 800 757)" "17 24 39" 2
 ok "8. ...the start button, then the pinned apps in order" "$(grep '^hit ' $D/state | head -4 | awk '{printf "%s:%s ", $2, $3}' | grep -q '^start:- pin:notepad pin:calc pin:settings' && echo 1)" "$(grep '^hit' $D/state)"
 ok "9. ...the tray (network, sound, battery, notifications) and the clock" "$(for k in net vol bat notes clock; do grep -q "^hit $k " $D/state || echo no; done | grep -q no || echo 1)" "$(grep '^hit' $D/state)"
 ok "10. ...the clock in 24 hours (h24) and the date as year/month/day (df)" "$(st clock | grep -qE '^[0-2][0-9]:[0-5][0-9]\|20[0-9][0-9]/[01][0-9]/[0-3][0-9]$' && echo 1)" "$(st clock)"
+# 1.5.9 step 7 (docs/plan-1.5.9.md 12.3b)
+printf '%s\n' '#include <X11/Xlib.h>' '#include <X11/extensions/Xfixes.h>' '#include <stdio.h>' \
+	'int main(void) { Display *d = XOpenDisplay(NULL); if (!d) return 2; XFixesCursorImage *c = XFixesGetCursorImage(d); if (!c) return 1; printf("%d %d %d %d\n", c->width, c->height, c->xhot, c->yhot); return 0; }' > $T/cur.c
+gcc -o $T/cur $T/cur.c -lX11 -lXfixes 2>/dev/null; xdotool mousemove 640 300; timeout 0.5 tail -f /dev/null; c=$($T/cur 2>/dev/null)
+ok "47. the screen shows the arrow, not X's bare cross (step 7, bug 2)" "$(echo "$c" | awk '$3<=3 && $4<=3 {print 1}')" "$c"
+P=$(hit pin notepad); ok "48. a pinned app shows its picture as the page draws it, and the start button the version (bug 3)" "$(close "$(px $P)" "16 185 129" 6 && [ "$(st icons)" = "1 9.9.9" ] && echo 1)" "$(px $P) $(st icons)"
 set_s '{"s":{"bs":"gradient","b1":"#ff0000","b2":"#0000ff","tb":"top","accent":"#16a34a","tbac":true,"tbacm":"negative","h24":false,"df":"dmy"},"pins":["calc"],"notes":0,"wallpaper":false}'
 w8 '[ "$(st bar | cut -d" " -f3)" = 0 ]' 40; timeout 1 tail -f /dev/null; shot
 ok "11. settings changed in the page: the taskbar moves to the top" "$([ "$(st bar)" = "1 0 0 1280 46" ] && echo 1)" "$(st bar)"
@@ -63,6 +71,9 @@ convert -size 64x64 xc:'#cc2244' $D/wall.jpg
 set_s '{"s":{"bs":"solid","b1":"#000000","tb":"bottom","wpimg":"w1","wpfit":"fill","accent":"#2563eb"},"pins":["notepad","calc","settings"],"notes":0,"wallpaper":true}'
 timeout 4 tail -f /dev/null; shot
 ok "17. a picture of your own (from the page, through rudolfd), filling the screen" "$(close "$(px 640 400)" "204 34 68" 8 && close "$(px 4 4)" "204 34 68" 8 && echo 1)" "$(px 640 400) $(px 4 4)"
+set_s '{"s":{"bs":"solid","b1":"#112233","tb":"bottom","accent":"#2563eb","scale":150},"pins":["notepad","calc","settings"],"notes":2,"wallpaper":false}'
+w8 '[ "$(st bar | cut -d" " -f5)" = 69 ]' 40; timeout 1 tail -f /dev/null
+ok "49. the display scaling (150 %): the taskbar at the page's size (bug 3)" "$([ "$(st bar)" = "1 0 731 1280 69" ] && [ "$(grep '^hit pin notepad' $D/state | awk '{print $7}')" = 51 ] && echo 1)" "$(st bar) $(grep '^hit pin' $D/state)"
 # ---- the start menu and app windows
 set_s '{"s":{"bs":"solid","b1":"#112233","tb":"bottom","accent":"#2563eb","h24":true},"pins":["notepad","calc","settings"],"notes":2,"wallpaper":false}'
 timeout 4 tail -f /dev/null
@@ -120,6 +131,17 @@ ok "45. close: WM_DELETE_WINDOW, the program closes its window, the frame and th
 NID=$(grep '^client .* app=notepad' $D/state | cut -d' ' -f2); X=$(cv $NID 4); Y=$(cv $NID 5); FW=$(( $(cv $NID 6) + 8 )); click $((X+FW-25)) $((Y+15))
 w8 '[ -z "$(cl $NID)" ]' 40
 ok "46. an app window's close button asks the page (as its ✕), which closes it" "$([ -z "$(cl $NID)" ] && ! grep -q '^app notepad' $D/state && echo 1)" "$(grep '^client\|^app' $D/state)"
+# ---- a drop-down in an app window (bug 5: WebKit's own pop-up under the window manager)
+cp $HERE/fixtures/native_select.html $D/page.html; click $(hit pin notepad)
+w8 'grep -q "^client .* app=notepad .*Drop-down$" $D/state' 80; timeout 1.5 tail -f /dev/null
+SC=$(grep '^client .* app=notepad' $D/state | cut -d' ' -f2); X=$(cv $SC 4); Y=$(cv $SC 5)
+click $((X+4+150)) $((Y+30+40)); timeout 1.5 tail -f /dev/null; shot
+ncol() { convert $T/s.png -crop 290x60+$((X+4+25))+$((Y+30+64)) -format '%k' info:; }
+ok "50. a drop-down opens its list over the window, drawn (its items' writing, the chosen one highlighted)" "$([ "$(ncol)" -gt 4 ] && echo 1)" "$(ncol)"
+xdotool key Down Return; w8 'grep -q "^client .* app=notepad .*chose two$" $D/state' 20
+ok "51. ...and choosing in it works" "$(grep -q '^client .* app=notepad .*chose two$' $D/state && echo 1)" "$(grep '^client' $D/state)"
+rm -f $D/page.html; X=$(cv $SC 4); Y=$(cv $SC 5); FW=$(( $(cv $SC 6) + 8 )); click $((X+FW-25)) $((Y+15)); timeout 6 tail -f /dev/null
+[ -n "$(cl $SC)" ] && { click $((X+FW-25)) $((Y+15)); w8 '[ -z "$(cl $SC)" ]' 20; }
 # ---- lock and sign out
 click $(hit start -); w8 '[ "$(st menu)" = 1 ]' 20; L=$(grep '^menubtn lock ' $D/state | awk '{print $3+int($5/2), $4+int($6/2)}'); click $L
 w8 '[ "$(st locked)" = 1 ]' 20; ok "24. Lock: the lock screen, rudolfd told (new app windows get no session meanwhile)" "$([ "$(st locked)" = 1 ] && [ "$(st signin)" = 1 ] && grep -q 'POST desktop/lock' $D/calls && [ "$($XC stack | tail -1)" = "0x$(xdotool search --name '^Sign in$' | head -1 | xargs printf '%x')" ] && echo 1)" "$(head -6 $D/state)"
@@ -129,5 +151,14 @@ LC_ALL=C.UTF-8 xdotool type --delay 30 "$PW"; xdotool key Return; w8 '[ "$(st lo
 ok "26. ...the right one: back, the windows as they were" "$([ "$(st locked)" = 0 ] && [ "$(grep -c '^app ' $D/state)" = 1 ] && [ "$(flag $CID min)" = 0 ] && echo 1)" "$(grep '^app\|^client\|^locked' $D/state)"
 click $(hit start -); w8 '[ "$(st menu)" = 1 ]' 20; L=$(grep '^menubtn logout ' $D/state | awk '{print $3+int($5/2), $4+int($6/2)}'); click $L
 w8 '[ "$(st signin)" = 1 ]' 20; ok "27. Sign out: the app windows close, rudolfd ends the session, the sign-in screen" "$([ "$(st user)" = - ] && [ "$(grep -c '^app ' $D/state)" = 0 ] && grep -q 'POST desktop/logout' $D/calls && echo 1)" "$(head -6 $D/state)"
+# ---- the development link (bugs 4 and 6: shown once by the shell, not in every app window)
+printf '%s' '{"ok":true,"available":true,"on":true,"repo":"someone/devlink","secondsLeft":3600,"ask":true,"status":{"state":"on"},"pending":{"id":"c7","kind":"run","what":"uname -a"}}' > $D/devlink.json
+w8 '[ "$(st devlink)" = "1 24" ]' 40; timeout 1 tail -f /dev/null; shot
+ok "52. the development link on: the shell's red banner at the top of the screen" "$([ "$(st devlink)" = "1 24" ] && close "$(px 1170 12)" "176 0 32" 6 && echo 1)" "$(st devlink) $(px 1170 12)"
+w8 '[ "$(st dlask)" = c7 ]' 20; ok "53. ...and a command waiting: the shell asks, Refuse first" "$([ "$(st dlask)" = c7 ] && echo 1)" "$(st dlask)"
+xdotool key Return; w8 'grep -q "POST devlink/answer?id=c7&a=refuse" $D/calls' 20
+ok "54. ...refused: rudolfd told, the question gone" "$(grep -q 'POST devlink/answer?id=c7&a=refuse' $D/calls && w8 '[ "$(st dlask)" = - ]' 20 && echo 1)" "$(grep devlink $D/calls | tail -3)"
+click 1220 12; w8 '[ "$(st devlink)" = "0 0" ]' 30
+ok "55. End now: the link turned off, the banner gone" "$(grep -q 'POST devlink/off' $D/calls && [ "$(st devlink)" = "0 0" ] && echo 1)" "$(st devlink)"
 kill $NP 2>/dev/null
 echo "$((N-F))/$N passed"; [ $F = 0 ]

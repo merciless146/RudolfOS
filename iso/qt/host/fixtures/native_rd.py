@@ -5,6 +5,10 @@
 #   DIR/ls.json, DIR/keys.json   the page's storage and Ann's keys (fixtures/deskls.js)
 #   DIR/calls          every request, one per line (the test reads it)
 #   DIR/wall.jpg       a picture of your own
+#   DIR/apps.json      the start menu's list as the page gave it (POST desktop/apps), else a small one
+#   DIR/devlink.json   the development link's state (devlink: off when missing)
+#   DIR/page.html      (when there) served as the page instead of the desktop page: a plain page for the window
+#                      manager's checks (a drop-down)
 # Ann's password is in keys.json; a wrong one gets the page's message.   python3 native_rd.py PORT DIR
 import http.server, json, os, sys, threading
 PORT = int(sys.argv[1]); D = sys.argv[2]; WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../www')
@@ -42,6 +46,9 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.api(m, u[5:], q, b)
         if u in ('/', '/index.html'):
             note('PAGE /')
+            # (DIR/page.html, when there: served instead of the desktop page, for the window manager's checks)
+            alt = rd('page.html')
+            if alt is not None: return self.send(200, alt, 'text/html; charset=utf-8')
             return self.send(200, open(os.path.join(WWW, 'index.html'), encoding='utf-8').read().replace('<head>', '<head>' + INJ, 1), 'text/html; charset=utf-8')
         f = os.path.normpath(os.path.join(WWW, u.lstrip('/')))
         if f.startswith(os.path.normpath(WWW)) and os.path.isfile(f):
@@ -76,10 +83,14 @@ class H(http.server.BaseHTTPRequestHandler):
             if mt != s['mt']: s['mt'] = mt; s['gen'] += 1
             o = json.loads(rd('settings.json', b'{}')); o.update({'ok': True, 'gen': s['gen'], 'acct': s['session']['id'] if s['session'] else ''})
             if not s['session']: o.update({'pins': [], 'notes': 0, 'wallpaper': False})
+            o['wpacct'] = s['session']['id'] if s['session'] and o.get('wallpaper') else ''
             return self.j(o)
         if w == 'desktop/apps':
-            if m == 'POST': return self.j({'ok': True})
-            apps = [{'k': 'notepad', 'name': 'Notepad', 'icon': '🗒️', 'kw': 'text'}, {'k': 'calc', 'name': 'Calculator', 'icon': '🧮', 'kw': 'sums'},
+            # (what the page gives, after a page signed in, is kept and given back, as rudolfd does)
+            if m == 'POST': open(os.path.join(D, 'apps.json'), 'wb').write(b); return self.j({'ok': True})
+            given = rd('apps.json')
+            if given: return self.send(200, given)
+            apps = [{'k': 'notepad', 'name': 'Notepad', 'icon': '🗒️', 'kw': 'text', 'ic': 'notepad'}, {'k': 'calc', 'name': 'Calculator', 'icon': '🧮', 'kw': 'sums'},
                     {'k': 'settings', 'name': 'Settings', 'icon': '⚙️', 'kw': ''}, {'k': 'clock', 'name': 'Clock', 'icon': '⏰', 'kw': 'alarm'}]
             dyn = {}
             try:
@@ -87,9 +98,24 @@ class H(http.server.BaseHTTPRequestHandler):
                 h = open(os.path.join(WWW, 'index.html'), encoding='utf-8').read(); mm = re.search(r'const DYN=(\{.*?\});', h)
                 for k, v in json.loads(mm.group(1)).items(): dyn[k] = {'n': v.get('n', k), 'd': v.get('d', ''), 'l': v.get('l', '')}
             except Exception: pass
-            return self.j({'ok': True, 'apps': apps, 'bg': dyn})
+            # Notepad's picture: a green square (a PNG, as the page makes them from its icons)
+            import base64, struct, zlib
+            def png(w, h, rgb):
+                raw = b''.join(b'\0' + bytes(rgb) * w for _ in range(h)); ch = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+                return b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + ch(b'IDAT', zlib.compress(raw)) + ch(b'IEND', b'')
+            icons = {'notepad': 'data:image/png;base64,' + base64.b64encode(png(48, 48, (16, 185, 129))).decode()}
+            return self.j({'ok': True, 'apps': apps, 'bg': dyn, 'icons': icons, 'ver': '9.9.9'})
         if w == 'desktop/wallpaper':
             x = rd('wall.jpg'); return self.send(200, x, 'image/jpeg') if x else self.err(404, 'no picture')
+        # the development link: DIR/devlink.json as rudolfd's devlink answers (off when missing); End now removes it,
+        # an answer removes the question
+        if w == 'devlink': return self.j(json.loads(rd('devlink.json', b'{"ok":true,"available":true,"on":false}')))
+        if w == 'devlink/off':
+            try: os.unlink(os.path.join(D, 'devlink.json'))
+            except OSError: pass
+            return self.j({'ok': True})
+        if w == 'devlink/answer':
+            o = json.loads(rd('devlink.json', b'{}')); o.pop('pending', None); open(os.path.join(D, 'devlink.json'), 'w').write(json.dumps(o)); return self.j({'ok': True})
         if w == 'net': return self.j({'ok': True, 'interfaces': [{'name': 'lo', 'ip': '127.0.0.1', 'state': 'up', 'wireless': False}, {'name': 'wlan0', 'ip': '192.168.1.5', 'state': 'up', 'wireless': True}]})
         if w == 'volume': return self.j({'ok': True, 'volume': 70, 'muted': False})
         if w == 'info': return self.j({'ok': True, 'battery': [{'name': 'BAT0', 'type': 'Battery', 'capacity': 81, 'status': 'Discharging'}]})

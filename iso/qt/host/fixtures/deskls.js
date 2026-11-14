@@ -19,7 +19,7 @@ const hdKey = async (raw, id) => hex(await s.deriveBits({name: 'HKDF', hash: 'SH
   }
   accts.push({n: 'Old', h: 'a'.repeat(64), r: 'user', id: 'uOld00000'});
   accts.push({n: 'Keyed', h: await pwMake('k'), r: 'user', id: 'uKey00000', ks: 'AAAAAAAAAAAAAAAAAAAAAA==', pk: {jwk: {}, alg: -7}});
-  const set = {bs: 'solid', b1: '#112233', b2: '#000080', tb: 'top', accent: '#16a34a', tbstyle: 'candy', tbac: true, tbacm: 'comp', twstyle: 'retro', twacm: 'negative', h24: true, dyn: 'alpine', dm: 'dark', ignored: 'x'};
+  const set = {bs: 'solid', b1: '#112233', b2: '#000080', tb: 'top', accent: '#16a34a', tbstyle: 'candy', tbac: true, tbacm: 'comp', twstyle: 'retro', twacm: 'negative', h24: true, dyn: 'alpine', dm: 'dark', wpimg: 'mp1abc', scale: 125, ignored: 'x'};
   const data = {bd95user: JSON.stringify({accts}), bd95setup: '1', bd95sys: JSON.stringify({guest: true, ssmin: 10}),
     'bd95set:uAnnA1b2': JSON.stringify(set), bd95set: JSON.stringify({bs: 'solid', b1: '#445566', tb: 'bottom'}),
     'bd95pins:uAnnA1b2': JSON.stringify(['notepad', 'calc']), 'bd95notif:uAnnA1b2': JSON.stringify([{t: 'a'}, {t: 'b'}, {t: 'c'}]), other: '"\\u2028 \\ud83d\\ude00"'};

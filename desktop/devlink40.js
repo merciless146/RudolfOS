@@ -9,7 +9,11 @@ const devlLeft=s=>{const m=Math.max(0,Math.round((s||0)/60));return m>=60?Math.f
 const devlUntil=s=>s&&s.until?new Date(s.until*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'';
 function devlSummary(s){if(!s||!s.available)return'not available';if(!s.on)return'off';return'on until '+devlUntil(s)+' ('+s.repo+(s.ask?', asks first':', runs without asking')+')'}
 async function devlOff(){try{await rdPost('devlink/off')}catch(e){}devlPoll()}
+/* 1.5.9 (plan 12.3b step 7): an app window of the Native desktop (one-app mode) draws no banner: it covered the top of
+   every app (Settings' search box); the native shell shows the banner once, and asks about commands itself */
+const devlOneApp=()=>typeof ONEAPP!='undefined'&&!!ONEAPP;
 function devlBanner(s){let b=document.getElementById('devlinkBanner');
+ if(devlOneApp())s=null;
  if(!s||!s.on){if(b)b.remove();document.documentElement.style.removeProperty('--dl-top');return}
  if(!b){b=document.createElement('div');b.id='devlinkBanner';b.setAttribute('role','alert');
   b.style.cssText='position:fixed;left:0;right:0;top:0;z-index:2147483647;display:flex;align-items:center;gap:10px;padding:3px 10px;background:#b00020;color:#fff;font:600 13px system-ui,sans-serif;box-shadow:0 1px 4px #0006;pointer-events:auto';
@@ -18,7 +22,7 @@ function devlBanner(s){let b=document.getElementById('devlinkBanner');
  const st=s.status||{};let t='⚠ Development link on: commands from GitHub ('+s.repo+') can control this computer · '+devlLeft(s.secondsLeft)+' left';
  if(st.state&&st.state!='on')t+=' · '+st.state;if(st.error)t+=' · '+st.error;
  b.querySelector('.dlt').textContent=t;b.title=t}
-function devlAsk(s){const p=s&&s.on&&s.pending;let o=document.getElementById('devlinkAsk');
+function devlAsk(s){const p=s&&s.on&&!(devlOneApp()&&typeof oaNative=='function'&&oaNative())&&s.pending;let o=document.getElementById('devlinkAsk');
  if(!p){if(o)o.remove();DEVLASKED='';return}
  if(DEVLASKED==p.id&&o)return;if(o)o.remove();DEVLASKED=p.id;
  o=document.createElement('div');o.id='devlinkAsk';o.className='rmodal';o.style.zIndex='2147483646';

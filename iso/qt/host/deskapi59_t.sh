@@ -87,5 +87,19 @@ printf '\377\330\377\340fakejpeg' > $T/jpg; o=$(t "POST wallpaper?acct=uAnnA1b2 
 ok "30. a picture of your own: kept for the shell" "$(echo "$o" | sed -n 2p | grep -c fakejpeg)" "$o"
 ok "31. ...only a JPEG, for a real account id" "$([ "$(has "$(t "POST wallpaper?acct=uAnnA1b2 <$T/apps")" 400)$(has "$(t "GET wallpaper?acct=../x")" 400)" = 11 ] && echo 1)"
 ok "32. other desktop/ requests are left to rudolfd (engine, priority)" "$(has "$(t "GET engine")" 'not a desktop request')"
+# 1.5.9 step 7: the picture of your own made from the page's database mirror (idbm), as the page names its records
+rm -rf $D/.rudolf-wallpaper; mkdir -p $D/.rudolf-idb
+node -e "
+const n=(db,st,key)=>{let h=0xcbf29ce484222325n;const b=new TextEncoder().encode(db+'\0'+st+'\0'+JSON.stringify(key));for(const c of b){h^=BigInt(c);h=(h*0x100000001b3n)&0xffffffffffffffffn}return h.toString(16).padStart(16,'0')};
+const fs=require('fs'),jpg=Buffer.from([0xff,0xd8,0xff,0xe0,...Buffer.from('mirrored picture')]),j2=Buffer.from([0xff,0xd8,0xff,0xe0,...Buffer.from('second picture')]);
+fs.writeFileSync('$D/.rudolf-idb/'+n('rudolfos','kv','wp:mp1abc')+'.json',JSON.stringify({db:'rudolfos',store:'kv',key:'wp:mp1abc',v:'data:image/jpeg;base64,'+jpg.toString('base64')}));
+fs.writeFileSync('$T/second.jpg',j2)"
+body '{"n":"Ann","p":"pw-ann ü"}'; t "POST login <$T/b" >/dev/null
+o=$(t "GET settings" | sed 's/^[^|]*|//')
+ok "33. a picture of your own that no page has given yet: made from the page's database mirror (the first start of Native)" "$(echo "$o" | grep -q '"wallpaper":true,"wpacct":"uAnnA1b2"' && grep -q 'mirrored picture' $D/.rudolf-wallpaper/uAnnA1b2.jpg && [ "$(cat $D/.rudolf-wallpaper/uAnnA1b2.img)" = mp1abc ] && echo 1)" "$o"
+o=$(t "GET wallpaper?acct=uAnnA1b2"); ok "34. ...and given to the shell; the display scale is in the settings" "$([ "$(has "$o" 'mirrored picture')" = 1 ] && t "GET settings" | grep -q '"scale":125' && echo 1)" "$o"
+o=$(t "POST wallpaper?acct=uAnnA1b2&img=other1 <$T/second.jpg" "GET wallpaper?acct=uAnnA1b2")
+ok "35. a copy of another picture (the page changed it, the settings not yet written) is replaced by the settings' picture" "$(echo "$o" | sed -n 2p | grep -c 'mirrored picture')" "$o"
+o=$(t "POST logout" "GET settings" | sed -n 2p); ok "36. before sign-in: the last account's picture only if the last settings (bd95set) show it" "$(has "$o" '"wallpaper":false,"wpacct":""')" "$o"
 umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]
