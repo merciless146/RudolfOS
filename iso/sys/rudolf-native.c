@@ -398,6 +398,16 @@ static void on_title(GObject *o, GParamSpec *p, gpointer d)
 	(void)o; (void)p; AppWin *a = d; const char *t = webkit_web_view_get_title(WEBKIT_WEB_VIEW(a->view));
 	if (t && *t) { snprintf(a->title, sizeof a->title, "%s", t); gtk_window_set_title(GTK_WINDOW(a->win), t); frame_redraw_app(a); bar_redraw(); state_write(); }
 }
+/* a file dropped on an app's window (the desktop's icon, or another window's files): done by the page as a11y25.js's
+   __dropFileOnWindow does it for that app, in a page of its own (oneapp59.js oaFs op=drop): its window is the file's */
+static void drop_in(const char *file, const char *k)
+{
+	if (!file || !file[0] || !k || !k[0] || strspn(k, "abcdefghijklmnopqrstuvwxyz0123456789_-") != strlen(k)) return;
+	char *ex = g_strdup_printf("&op=drop&in=%s", k); app_open_ex("do-fs", file, ex, !strcmp(k, "trash")); g_free(ex);
+}
+static guint VALLOC_T;
+static gboolean view_alloc_late(gpointer d) { (void)d; VALLOC_T = 0; state_write(); return G_SOURCE_REMOVE; }
+static void on_view_alloc(GtkWidget *w, GdkRectangle *r, gpointer d) { (void)w; (void)r; (void)d; if (!VALLOC_T) VALLOC_T = g_timeout_add(200, view_alloc_late, NULL); }
 static void on_view_close(WebKitWebView *v, gpointer d) { (void)v; appwin_close_now(d); }
 static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d)
 {
@@ -409,17 +419,24 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	if (!strcmp(op, "close")) appwin_close_now(a);
 	else if (!strcmp(op, "done")) page_done(v);
 	else if (!strcmp(op, "title")) { jsstr(v, "icon", x, sizeof x); if (x[0]) snprintf(a->icon, sizeof a->icon, "%s", x); bar_redraw(); }
+	else if (!strcmp(op, "drop")) { jsstr(v, "in", x, sizeof x); jsstr(v, "file", f, sizeof f); drop_in(f, x); }
 	else if (!strcmp(op, "open")) { jsstr(v, "app", x, sizeof x); jsstr(v, "file", f, sizeof f); if (x[0]) app_open(x, f[0] ? f : NULL); }
-	else if (!strcmp(op, "size") && !a->sized) { a->sized = 1; jsstr(v, "ww", x, sizeof x); int ww = atoi(x); jsstr(v, "wh", x, sizeof x); int wh = atoi(x); appwin_size(a, ww, wh); }
+	else if (!strcmp(op, "size") && !a->sized) { a->sized = 1;
+		/* (a page doing something for the shell (#app=do-NAME) that made an app's window is that app's window now: the taskbar's
+		   button and what is dropped on it are the app's) */
+		jsstr(v, "app", x, sizeof x); if (!strncmp(a->k, "do-", 3) && x[0] && strlen(x) < sizeof a->k && strspn(x, "abcdefghijklmnopqrstuvwxyz0123456789_-") == strlen(x)) { snprintf(a->k, sizeof a->k, "%s", x); bar_redraw(); } jsstr(v, "ww", x, sizeof x); int ww = atoi(x); jsstr(v, "wh", x, sizeof x); int wh = atoi(x); appwin_size(a, ww, wh); }
 }
 static gboolean on_crash_reload(gpointer v) { webkit_web_view_reload(WEBKIT_WEB_VIEW(v)); return G_SOURCE_REMOVE; }
 static void on_crash(WebKitWebView *v, WebKitWebProcessTerminationReason r, gpointer d)
 {
 	(void)d; fprintf(stderr, "rudolf-native: an app's page stopped (%d): loading it again\n", (int)r); g_timeout_add_seconds(1, on_crash_reload, v);
 }
+static void clients_forget(AppWin *a);
 static void on_win_destroy(GtkWidget *w, gpointer d)
 {
-	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL; g_free(a); bar_redraw(); state_write();
+	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL;
+	clients_forget(a);   /* (its frame goes when X says so: not this window's any more) */
+	g_free(a); bar_redraw(); state_write();
 }
 static gboolean on_win_focus(GtkWidget *w, GdkEvent *e, gpointer d) { (void)w; (void)e; ACTIVE = d; bar_redraw(); return FALSE; }
 /* ask the app to close, as its ✕ does (it may ask about unsaved work); a second ask after 5 s closes it anyway */
@@ -450,6 +467,7 @@ static AppWin *appwin_new(const char *k, WebKitWebView *rel, int id)
 	g_signal_connect(a->view, "close", G_CALLBACK(on_view_close), a);
 	g_signal_connect(a->view, "web-process-terminated", G_CALLBACK(on_crash), a);
 	g_signal_connect(a->view, "create", G_CALLBACK(on_create), a);
+	g_signal_connect(a->view, "size-allocate", G_CALLBACK(on_view_alloc), a);
 	a->win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title(GTK_WINDOW(a->win), a->title); gtk_window_set_decorated(GTK_WINDOW(a->win), FALSE);
 	int n = g_list_length(WINS), w = SW * 7 / 10, h = work_h() * 8 / 10; if (w < 640) w = SW; if (h < 400) h = work_h();
@@ -519,6 +537,7 @@ static Atom A_PROTO, A_DEL, A_TAKE, A_WMSTATE, A_NSTATE, A_NFULL, A_NACTIVE, A_N
 static Cursor CUR[9];
 static int wm_err;
 static int wm_errh(Display *d, XErrorEvent *e) { (void)d; if (e->error_code == BadAccess) wm_err = 1; return 0; }
+static void clients_forget(AppWin *a) { for (GList *l = CLIENTS; l; l = l->next) if (((Client *)l->data)->app == a) ((Client *)l->data)->app = NULL; }
 static Client *client_of(Window w) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->w == w || c->frame == w || (w && (c->rz[0] == w || c->rz[1] == w || c->rz[2] == w))) return c; } return NULL; }
 static int rz_of(Client *c, Window w) { for (int i = 0; i < 3; i++) if (c->rz[i] && c->rz[i] == w) return i; return -1; }
 static Client *client_of_app(AppWin *a) { for (GList *l = CLIENTS; l; l = l->next) if (((Client *)l->data)->app == a) return l->data; return NULL; }
@@ -567,6 +586,9 @@ static void place(Client *c)
 {
 	if (c->full) { XMoveResizeWindow(DPY, c->frame, -BW, -TH, SW + 2 * BW, SH + TH + BW); XMoveResizeWindow(DPY, c->w, BW, TH, SW, SH); c->cw = SW; c->ch = SH; }
 	else { XMoveResizeWindow(DPY, c->frame, c->x, c->y, fw_of(c), fh_of(c)); XMoveResizeWindow(DPY, c->w, BW, TH, c->cw, c->ch); }
+	/* (our own app window: GTK resizes itself to the size it was last asked for (its requests are not redirected: the shell's
+	   connection is GTK's), so it is asked for the window's size) */
+	if (c->app && c->app->win && !c->full) { int gw = 0, gh = 0; gtk_window_get_size(GTK_WINDOW(c->app->win), &gw, &gh); if (gw != c->cw || gh != c->ch) gtk_window_resize(GTK_WINDOW(c->app->win), c->cw, c->ch); }
 	frame_shape(c); rz_place(c); tell_geom(c); if (!DRAG.c) desk_shadows();
 }
 static void frame_draw(Client *c);
@@ -667,7 +689,9 @@ static void wm_manage(Window w, AppWin *own)
 	XSetWindowAttributes at = {0}; at.event_mask = SubstructureRedirectMask | SubstructureNotifyMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | ExposureMask | LeaveWindowMask;
 	at.background_pixel = BlackPixel(DPY, DefaultScreen(DPY));
 	c->frame = XCreateWindow(DPY, ROOT, c->x, c->y, fw_of(c), fh_of(c), 0, CopyFromParent, InputOutput, CopyFromParent, CWEventMask | CWBackPixel, &at);
-	XSelectInput(DPY, w, PropertyChangeMask | (own ? 0 : StructureNotifyMask));
+	/* (our own windows share GDK's connection to X: selecting events replaces GDK's own mask, so GDK's stays (its sizes, its
+	   exposures; else a page keeps its first size, larger than its window, and is not drawn again where a window uncovers it)) */
+	XSelectInput(DPY, w, PropertyChangeMask | (own ? wa.your_event_mask : StructureNotifyMask));
 	XAddToSaveSet(DPY, w); XSetWindowBorderWidth(DPY, w, 0);
 	if (wa.map_state != IsUnmapped) c->ignore_unmap++;   /* (reparenting a shown window unmaps it once) */
 	XReparentWindow(DPY, w, c->frame, BW, TH); XResizeWindow(DPY, w, c->cw, c->ch);
@@ -773,7 +797,7 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 			(e->xconfigure.width != c->cw || e->xconfigure.height != c->ch)) { c->cw = e->xconfigure.width; c->ch = e->xconfigure.height; XResizeWindow(DPY, c->frame, fw_of(c), fh_of(c)); frame_draw(c); }
 		return GDK_FILTER_CONTINUE;
 	case UnmapNotify:
-		if ((c = client_of(e->xunmap.window)) && c->w == e->xunmap.window) {
+		if ((c = client_of(e->xunmap.window)) && c->w == e->xunmap.window && (e->xunmap.event == c->frame || e->xunmap.send_event)) {   /* (not GDK's own copy: our windows') */
 			if (c->ignore_unmap > 0) { c->ignore_unmap--; return GDK_FILTER_CONTINUE; }
 			if (e->xunmap.event == c->frame || e->xunmap.send_event) wm_unmanage(c, 0);
 		}
@@ -2276,7 +2300,8 @@ static void page_done(JSCValue *v)
    the nearest free cell (kept by rudolfd for the shell: desktop/cells, the page's places used until then); the
    icon's menu (Open) and the desktop's (Arrange icons by name, Refresh, Display Properties, File Explorer, Task Manager,
    Settings). Files on the desktop and dropping files come with item 1's second part. */
-typedef struct { char n[80], k[40], kind[12], ic[24], icon[48], cell[96], fp[512]; int c, r, sel, full; } DIcon;   /* (fp: a file's or folder's path, cell: the page's key for its place) */
+typedef struct { char n[80], k[40], kind[12], ic[24], icon[48], cell[96], fp[512]; int c, r, sel, full, own; } DIcon;   /* (own: a shortcut of the account's own, the page's .dapp) */
+static struct { int i, on, moved; double sx, sy, dx, dy; } DID = { -1, 0, 0, 0, 0, 0, 0 };   /* (an icon being dragged, DX DY from its place) */   /* (fp: a file's or folder's path, cell: the page's key for its place) */
 static DIcon DI[96]; static int NDI; static char DI_ACCT[80]; static int DI_IS = 100;
 static char DI_MENU[8] = "-";   /* (the menu last opened, for the tests) */
 static GHashTable *DI_CELLS;   /* name -> "c,r" (the shell's own, else the page's) */
@@ -2318,12 +2343,15 @@ static void di_save(void)
 /* from desktop/apps (the page's list) and desktop/cells (the shell's places) */
 static void di_load(JV *cat)
 {
+	/* (the chosen icons stay chosen when the catalogue comes again, as the page's elements keep their class) */
+	char was[8][96]; int nw = 0; for (int i = 0; i < NDI && nw < 8; i++) if (DI[i].sel) g_strlcpy(was[nw++], DI[i].cell, sizeof was[0]);
 	NDI = 0; DI_ACCT[0] = 0; if (!cat) return;
 	jstr(cat, "acct", DI_ACCT, sizeof DI_ACCT); DI_IS = (int)jnum(cat, "is", 100); if (DI_IS < 50 || DI_IS > 200) DI_IS = 100;
 	JV *a = jprop(cat, "desk");
 	for (int i = 0; i < 96; i++) { JV *o = jat(a, i); if (!o) break; DIcon *d = &DI[NDI]; memset(d, 0, sizeof *d);
 		jstr(o, "n", d->n, sizeof d->n); jstr(o, "k", d->k, sizeof d->k); jstr(o, "kind", d->kind, sizeof d->kind); jstr(o, "ic", d->ic, sizeof d->ic); jstr(o, "icon", d->icon, sizeof d->icon);
-		jstr(o, "fp", d->fp, sizeof d->fp); jstr(o, "cell", d->cell, sizeof d->cell); if (!d->cell[0]) g_strlcpy(d->cell, d->n, sizeof d->cell); d->full = jbool(o, "full");
+		jstr(o, "fp", d->fp, sizeof d->fp); jstr(o, "cell", d->cell, sizeof d->cell); if (!d->cell[0]) g_strlcpy(d->cell, d->n, sizeof d->cell); d->full = jbool(o, "full"); d->own = jbool(o, "own");
+		for (int j = 0; j < nw; j++) if (!strcmp(was[j], d->cell)) d->sel = 1;
 		if (d->n[0]) NDI++; }
 	if (DI_CELLS) g_hash_table_destroy(DI_CELLS); DI_CELLS = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	JV *pc = jprop(cat, "cells");
@@ -2348,7 +2376,9 @@ static void di_draw(cairo_t *cr)
 	double xh; { PangoLayout *pl = css_layout(cr, "x", UIFAM, 400, 34 * k); PangoRectangle ink; pango_layout_get_extents(pl, &ink, NULL); xh = ink.height / (double)PANGO_SCALE; g_object_unref(pl); }
 	double imtop = -xh / 2 - pic / 2, ltop = fmin(-a34, imtop), lbot = fmax(d34, imtop + pic), bh = lbot - ltop;
 	double fa, fd; fa = css_ascent(cr, UIFAM, 400, fpx, &fd);
-	for (int i = 0; i < NDI; i++) { DIcon *d = &DI[i]; int sx, sy; di_xy(d, &sx, &sy); double X = sx / Z, Y = sy / Z;
+	int drag = DID.on && DID.moved && DID.i >= 0 && DID.i < NDI;
+	for (int j = 0; j < NDI; j++) { int i = !drag ? j : j == NDI - 1 ? DID.i : j < DID.i ? j : j + 1;   /* (the one dragged drawn last, over the others: z-index 5) */
+		DIcon *d = &DI[i]; int sx, sy; di_xy(d, &sx, &sy); if (drag && i == DID.i) { sx += (int)lround(DID.dx); sy += (int)lround(DID.dy); } double X = sx / Z, Y = sy / Z;
 		cairo_save(cr); cairo_scale(cr, Z, Z);
 		/* the picture and its drop shadow (0 2px 3px rgba(0,0,0,.35)) */
 		GdkPixbuf *p = d->ic[0] && ICONS ? g_hash_table_lookup(ICONS, d->ic) : NULL; double ix = round(X + (bw - pic) / 2), iy = round(Y + (imtop - ltop));
@@ -2458,7 +2488,6 @@ static void di_menu(GdkEventButton *e, int icon)
 	CM_RING = !d; cm_open(e->x_root, e->y_root, title, m, n, on_di_act);
 	snprintf(DI_MENU, sizeof DI_MENU, "%s", d ? (d->fp[0] ? "file" : "icon") : "desk"); state_write();
 }
-static struct { int i, on, moved; double sx, sy; } DID = { -1, 0, 0, 0, 0 };
 static gboolean desk_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
 	(void)w; (void)d; menu_hide(); int i = di_at(e->x, e->y);
@@ -2472,12 +2501,27 @@ static gboolean desk_motion(GtkWidget *w, GdkEventMotion *e, gpointer d)
 {
 	(void)w; (void)d; if (!DID.on) return FALSE;
 	if (!DID.moved && hypot(e->x - DID.sx, e->y - DID.sy) < 5) return FALSE;
-	DID.moved = 1; return FALSE;
+	DID.moved = 1; DID.dx = e->x - DID.sx; DID.dy = e->y - DID.sy; desk_dirty(); return FALSE;   /* (the icon follows the pointer, as the page's) */
+}
+/* the window seen at X Y (the screen's pixels): the top one whose frame is there */
+static Client *client_at(int x, int y)
+{
+	Window r, p, *k = NULL; unsigned n = 0; Client *best = NULL;
+	if (XQueryTree(DPY, ROOT, &r, &p, &k, &n)) for (unsigned i = 0; i < n; i++) { Client *c = client_of(k[i]); if (!c || c->min || c->hidden || c->frame != k[i]) continue;
+		XWindowAttributes a; if (XGetWindowAttributes(DPY, c->frame, &a) && a.map_state == IsViewable && x >= a.x && x < a.x + a.width && y >= a.y && y < a.y + a.height) best = c; }
+	if (k) XFree(k); return best;
 }
 static gboolean desk_release(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
 	(void)w; (void)d; if (e->button != 1 || !DID.on) return TRUE; DID.on = 0;
 	if (DID.moved && DID.i >= 0 && DID.i < NDI) {
+		DIcon *dd = &DI[DID.i]; DID.moved = 0; desk_dirty();
+		/* (as the page's: a file or a shortcut of the account's own dropped on the Trash goes there; a file dropped on an app's window opens in it
+		   (shell25.js deskIconDrag, desk54.js deskDrag, a11y25.js __dropFileOnWindow); else the icon goes to the nearest free place) */
+		int t = di_at(e->x, e->y);
+		if (t >= 0 && t != DID.i && !strcmp(DI[t].kind, "trash") && (dd->fp[0] || dd->own)) { di_page(dd->n, dd->fp[0] ? "Move to Trash" : "Remove from desktop", 1); state_write(); return TRUE; }
+		Client *cw = dd->fp[0] && WM_OK ? client_at((int)e->x_root, (int)e->y_root) : NULL;
+		if (cw && cw->app && !cw->app->hidden && strcmp(cw->app->k, "explorer")) { drop_in(dd->fp, cw->app->k); state_write(); return TRUE; }
 		/* (the place under the icon's top-left corner, moved as the pointer was) */
 		int nc, nr, ix, iy; di_grid(&nc, &nr); di_xy(&DI[DID.i], &ix, &iy); int c = (int)lround((ix + e->x - DID.sx - 8) / (double)di_w()), r = (int)lround((iy + e->y - DID.sy - work_top() - 8) / (double)di_h());
 		if (c < 0) c = 0; if (r < 0) r = 0; if (c >= nc) c = nc - 1; if (r >= nr) r = nr - 1;
@@ -2601,7 +2645,8 @@ static void state_write(void)
 		g_string_append_printf(s, "app %s %lx %d %s\n", a->k, g ? (unsigned long)GDK_WINDOW_XID(g) : 0UL, c ? c == FOCUS : a == ACTIVE, a->title); }
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data;
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
-			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : "-", c->title); }
+			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : "-", c->title);
+		if (c->app && c->app->win && c->app->view && GTK_IS_WIDGET(c->app->view)) { GtkAllocation al; gtk_widget_get_allocation(c->app->view, &al); g_string_append_printf(s, "view %lx %d %d\n", (unsigned long)c->w, al.width, al.height); } }   /* (the page's own size: its window's) */
 	g_string_append_printf(s, "wm %d\nicons %u %s\n", WM_OK, ICONS ? g_hash_table_size(ICONS) : 0, VER[0] ? VER : "-");
 	for (int i = 0; di_shown() && i < NDI; i++) { int x, y; di_xy(&DI[i], &x, &y); g_string_append_printf(s, "dicon %d %d %d %d %d %d %s|%s|%s\n", DI[i].c, DI[i].r, x, y, di_w(), DI[i].sel, DI[i].k, DI[i].kind, DI[i].n); }
 	g_string_append_printf(s, "dmenu %s\n", DI_MENU);
