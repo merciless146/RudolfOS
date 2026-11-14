@@ -906,9 +906,9 @@ To be tested with the HP desktop's user, who has the USB printer: docs/plan-1.6.
 11. Part 12 (the native desktop engine, a prototype): the one-app mode and rudolfd's settings first, then rudolf-native's
     wallpaper and taskbar, its window manager, the engine choice; measured on the Vivobook last.
     Then step 7 (the Vivobook's bugs, done: #311) and step 8 (Oracle on Chromium on Native, 12.3c), before promotion.
+12. Part 13 (USB printers): moved to 1.6.0 (its Part 8).
 13. Part 15 (security against a directed attack): 15.1 (only the desktop gets the page and its token) first, then
     15.2, 15.4, 15.5, 15.6, and 15.3 (a Linux user per account, from 1.6.0); before promotion.
-12. Part 13 (USB printers): moved to 1.6.0 (its Part 8).
 
 ## Part 14: private browsing in Oracle (added on 2026-11-14)
 Asked for: private browsing in Oracle, with a private tab opened by right-clicking Oracle's icon. Done (desktop/private59.js):
