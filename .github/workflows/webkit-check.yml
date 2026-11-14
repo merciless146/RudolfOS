@@ -7,7 +7,7 @@
 name: Lite engine check
 on:
   push:
-    paths: ['iso/sys/rudolf-webkit.c', 'desktop/oneapp59.js', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
+    paths: ['iso/sys/rudolf-webkit.c', 'iso/sys/rudolf-native.c', 'iso/qt/host/native59_t.sh', 'iso/qt/host/fixtures/native_rd.py', 'desktop/oneapp59.js', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -65,6 +65,12 @@ jobs:
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
           python3 iso/qt/webkit/oneapp59_ci.py ./rudolf-webkit | tee oneapp-result.txt; r=${PIPESTATUS[0]}
           echo "::notice title=One-app mode in WebKit::$(tail -1 oneapp-result.txt) — $(grep -E '^FAIL' oneapp-result.txt | tr '\n' '|' | sed 's/::/: /g')"; exit $r
+      - name: The native desktop engine (1.5.9, plan Part 12) on a virtual screen
+        run: |
+          sudo apt-get install -y -qq xdotool x11-utils >/dev/null
+          sh iso/qt/host/native59_t.sh | tee native-result.txt; r=$?
+          echo "::notice title=Native desktop engine::$(tail -1 native-result.txt) — $(grep -E '^FAIL' native-result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
+          grep -q ' passed$' native-result.txt && ! grep -q '^FAIL' native-result.txt
       - name: The desktop page in rudolf-webkit from the base layer itself (chroot)
         run: |
           B=$RUNNER_TEMP/base; [ -x $B/usr/bin/rudolf-webkit ] || { echo "::error title=Base layer::no rudolf-webkit in it"; exit 1; }

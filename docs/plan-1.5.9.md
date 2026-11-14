@@ -692,7 +692,9 @@ reads it itself.
 **Step 3: rudolf-native's wallpaper, taskbar, start menu, clock and tray.** One GTK 3 process, run as the desktop user,
 started by the session (step 5): `rudolf-native --size=WxH [--draw=gpu|mixed|soft] [--base=http://127.0.0.1:8080]`.
 It reads the token as the page gets it (rudolfd's page, `GET /`: nothing new is exposed), then talks to rudolfd over
-HTTP on 127.0.0.1 (a small blocking client in a worker thread; replies come back to GTK's loop with g_idle_add).
+HTTP on 127.0.0.1 (a small blocking client; the sign-in in a worker thread, its reply back to GTK's loop with g_idle_add).
+JSON is read by a small reader of its own (found in step 3: a JavaScriptCore context made in the shell's own process
+stopped WebKit's views from drawing).
 - **The wallpaper:** a full-screen window (type hint DESKTOP, kept at the bottom): the picture of your own (fill, fit,
   stretch, centre, tile), else the drawn background's light or dark picture (dm: light, dark, or automatic by the hour
   of sunrise and sunset at the latitude, as the page's dynResolve; WebP through WebKit's own libwebp, opened with dlopen,
@@ -724,8 +726,10 @@ GDK event filter, so one GTK process does both).
   WM_STATE, _NET_CLIENT_LIST and _NET_ACTIVE_WINDOW. Dialogs (WM_TRANSIENT_FOR) are centred over their window. A window
   asking for full screen (_NET_WM_STATE_FULLSCREEN, games) covers the whole screen, taskbar too, without its frame.
 - **App windows:** a pinned app or a menu item opens a GTK window of our own with a WebKitWebView showing
-  `http://127.0.0.1:8080/#app=NAME`, framed like the rest. All views are made with `related-view` set to the first one
-  (kept, hidden), so they share one WebKit web process, and one web context (the page's storage, ~/.rudolf-native, as
+  `http://127.0.0.1:8080/#app=NAME`, framed like the rest. The first app window starts the web process; every other one is
+  opened by an open app window (the page's own `window.open`, kept as webNativeOpen), which WebKit keeps in that process,
+  so they share one WebKit web process (found in step 3: a view merely made `related-view` to another, or to a hidden
+  one, got a process of its own or drew nothing, WebKitGTK 2.52), and one web context (the page's storage, ~/.rudolf-native, as
   ~/.rudolf-webkit is Lite's). The frame's title follows the page's title; ✕ calls `window.__oneAppClose()` (the app may
   ask to save), a second ✕ after 5 s closes it anyway; the page's `close` closes the window. A `rudolfNative` message
   `open` opens another app's window. A web process that ends is reported in each window with Reload.
