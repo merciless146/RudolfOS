@@ -3054,7 +3054,7 @@ static int restart_browser(void) { return run("pkill -f '[-]-rudolf-kiosk' >/dev
 #define DLBIN "/usr/bin/rudolf-devlink"
 #endif
 #define DLRUN RUN "/devlink"
-/* 1.5.9 (plan 15.4): the link is off unless it is being used. Only in Developer mode (plan 8.3: its key file), only for
+/* 1.5.9 (plan 15.4): the link is off unless it is being used. Only when allowed on this computer (dl_allowed), only for
    an administrator whose password rudolfd checks itself (from the page's accounts, as the native sign-in does), Ask
    first on again at every start, off at every restart unless "Keep on after restarting" was ticked, and off by
    itself after 4 hours without a command (rudolf-devlink). RUDOLFD_DEVMODE_FILE (tests) stands for the key file. */
@@ -3062,6 +3062,16 @@ static int restart_browser(void) { return run("pkill -f '[-]-rudolf-kiosk' >/dev
 #define DL_DEVKEYS PERSIST "/etc/rudolf/extra-keys"
 #endif
 static int dl_devmode(void) { const char *e = getenv("RUDOLFD_DEVMODE_FILE"); return !access(e && *e ? e : DL_DEVKEYS, F_OK); }
+/* 1.5.9 (15.4, changed 2026-11-14): the link's own switch, "Allow the development link on this computer" (Settings ›
+   Security, an administrator's password), in place of Developer mode: Developer mode (8.3) can only be turned on by
+   trusting a developer's key, which a computer running the official builds has no reason to do. Untouched, the link
+   cannot be switched on; unticking it ends the link. A file kept on RUDOLFDATA (in /run without it), root's only.
+   RUDOLFD_DEVLINK_ALLOW_FILE (tests) stands for it. */
+#ifndef DL_ALLOWF
+#define DL_ALLOWF PERSIST "/etc/rudolf/devlink-allowed"
+#endif
+static const char *dl_allowf(void) { const char *e = getenv("RUDOLFD_DEVLINK_ALLOW_FILE"); return e && *e ? e : access(RUN "/persistent", F_OK) ? RUN "/devlink-allowed" : DL_ALLOWF; }
+static int dl_allowed(void) { return !access(dl_allowf(), F_OK); }
 static int desk_admin_check(const char *n, const char *pw, char *why, size_t wn);   /* rudolfd-desktop.inc */
 static char *dbody_field(struct req *r, const char *k);
 static void dfree_secret(char *p);
@@ -3143,10 +3153,10 @@ static void dl_boot(void)
 	if (!dl_cfg_on("on")) return;
 	char *u = dl_cfg("until"), *repo = dl_cfg("repo"); long long until = u ? atoll(u) : 0; free(u);
 	/* 1.5.9 (15.4): Ask first is on again after every start (turning it off lasts until the next one), and the link
-	   stays on only when "Keep on after restarting" was ticked, its time is not up and Developer mode is still on */
+	   stays on only when "Keep on after restarting" was ticked, its time is not up and the link is still allowed */
 	dl_cfg_write(repo ? repo : "", until, dl_cfg_on("restart"), 1, dl_cfg_on("home"), 1); free(repo);
 	dl_cfg_set("change", "0");   /* 1.5.9 (15.7): read-only again after every start */
-	if (dl_cfg_on("restart") && !access(RUN "/persistent", F_OK) && until > (long long)time(NULL) && !access(DLBIN, X_OK) && dl_devmode()) {
+	if (dl_cfg_on("restart") && !access(RUN "/persistent", F_OK) && until > (long long)time(NULL) && !access(DLBIN, X_OK) && dl_allowed()) {
 		fprintf(stderr, "rudolfd: the development link stays on until %lld (Ask first)\n", until);
 		health_add("security", "the development link stayed on after the restart (Keep on after restarting), with Ask first on, read-only"); dl_start();
 	} else { dl_set_off(); health_add("security", "the development link was switched off by the restart"); }
@@ -3163,7 +3173,7 @@ static void api_devlink(struct req *r, const char *what, int post)
 		     dl_cfg_on("restart") ? "true" : "false", dl_cfg_on("ask") || !repo ? "true" : "false", dl_cfg_on("home") ? "true" : "false", access(tp, F_OK) ? "false" : "true", access(RUN "/persistent", F_OK) ? "false" : "true");
 		/* 1.5.9 (15.4): Developer mode, since when it is on and who switched it on, its last command (the log's last line) */
 		char *since = dl_cfg("since"), *by = dl_cfg("by"), lp[160]; snprintf(lp, sizeof lp, "%s/log", d);
-		sadd(&s, ",\"developer\":%s,\"since\":%lld,\"by\":", dl_devmode() ? "true" : "false", pid && since ? atoll(since) : 0LL); sjson(&s, pid && by ? by : "");
+		sadd(&s, ",\"allowed\":%s,\"developer\":%s,\"since\":%lld,\"by\":", dl_allowed() ? "true" : "false", dl_devmode() ? "true" : "false", pid && since ? atoll(since) : 0LL); sjson(&s, pid && by ? by : "");
 		sadd(&s, ",\"change\":%s", pid && dl_cfg_on("change") ? "true" : "false");   /* 1.5.9 (15.7) */
 		free(since); free(by);
 		{ char *lg = slurp(lp, NULL); char *ll = NULL;
@@ -3175,9 +3185,9 @@ static void api_devlink(struct req *r, const char *what, int post)
 	}
 	if (!strcmp(what, "on") && post) {
 		if (access(DLBIN, X_OK)) { reply_err(r->fd, 501, "this Rudolf OS has no development link"); return; }
-		/* 1.5.9 (15.4): only in Developer mode, only for an administrator, with the administrator's password checked here
-		   (the body: {"n":ADMIN,"p":PASSWORD,"token":NEW-TOKEN-OR-EMPTY}) */
-		if (!dl_devmode()) { reply_err(r->fd, 403, "the development link can be switched on only in Developer mode (Settings › Update and recovery)"); return; }
+		/* 1.5.9 (15.4): only when allowed on this computer, only for an administrator, with the administrator's password
+		   checked here (the body: {"n":ADMIN,"p":PASSWORD,"token":NEW-TOKEN-OR-EMPTY}) */
+		if (!dl_allowed()) { reply_err(r->fd, 403, "the development link is not allowed on this computer (Settings › Security: Allow the development link)"); return; }
 		char *an = NULL, *ap = NULL, *atok = NULL, why[200] = "";
 		if (r->body && r->blen && r->body[0] == '{') { an = dbody_field(r, "n"); ap = dbody_field(r, "p"); atok = dbody_field(r, "token"); }
 		int adm = an && ap ? desk_admin_check(an, ap, why, sizeof why) : -1;
@@ -3216,13 +3226,13 @@ static void api_devlink(struct req *r, const char *what, int post)
 		health_add("security", "the development link was switched on by %.80s for %d h (%.100s; Ask first %s; %s%s)", an, hours, repo, askf ? "on" : "off", chg ? "can change this computer" : "read-only", restart ? ", kept on after restarting" : "");
 		free(an); reply_ok(r->fd, "on"); return;
 	}
-	/* 1.5.9 (15.7): "Allow changes to this computer" while the link is on: ticking it needs Developer mode and an
+	/* 1.5.9 (15.7): "Allow changes to this computer" while the link is on: ticking it needs the link allowed and an
 	   administrator's name and password (the body, as devlink/on); unticking needs nothing */
 	if (!strcmp(what, "change") && post) {
 		char *ons = qparam(r->query, "on"); int want = ons && *ons == '1';
 		if (!dl_pid()) { reply_err(r->fd, 409, "the development link is off"); return; }
 		if (!want) { if (dl_cfg_on("change")) { dl_cfg_set("change", "0"); health_add("security", "the development link was made read-only"); } reply_ok(r->fd, "read-only"); return; }
-		if (!dl_devmode()) { reply_err(r->fd, 403, "only in Developer mode (Settings › Update and recovery)"); return; }
+		if (!dl_allowed()) { reply_err(r->fd, 403, "the development link is not allowed on this computer (Settings › Security)"); return; }
 		char *an = NULL, *ap = NULL, why[200] = "";
 		if (r->body && r->blen && r->body[0] == '{') { an = dbody_field(r, "n"); ap = dbody_field(r, "p"); }
 		int adm = an && ap ? desk_admin_check(an, ap, why, sizeof why) : -1;
@@ -3230,6 +3240,27 @@ static void api_devlink(struct req *r, const char *what, int post)
 		if (adm) { free(an); reply_err(r->fd, adm == 429 ? 429 : 403, why[0] ? why : "an administrator's name and password are needed"); return; }
 		dl_cfg_set("change", "1"); health_add("security", "the development link was allowed to change this computer by %.80s", an); free(an);
 		reply_ok(r->fd, "can change this computer"); return;
+	}
+	/* 15.4 (2026-11-14): Allow the development link on this computer: ticking it needs an administrator's name and
+	   password (the body, as devlink/on); unticking needs nothing and ends the link at once */
+	if (!strcmp(what, "allow") && post) {
+		char *ons = qparam(r->query, "on"); int want = ons && *ons == '1'; const char *af = dl_allowf();
+		if (!want) {
+			int was = dl_pid(); dl_stop(); dl_set_off();
+			if (!access(af, F_OK)) { unlink(af); health_add("security", "the development link was disallowed on this computer%s", was ? " (and switched off)" : ""); }
+			reply_ok(r->fd, "not allowed"); return;
+		}
+		char *an = NULL, *ap = NULL, why[200] = "";
+		if (r->body && r->blen && r->body[0] == '{') { an = dbody_field(r, "n"); ap = dbody_field(r, "p"); }
+		int adm = an && ap ? desk_admin_check(an, ap, why, sizeof why) : -1;
+		dfree_secret(ap);
+		if (adm) { free(an); reply_err(r->fd, adm == 429 ? 429 : 403, why[0] ? why : "an administrator's name and password are needed"); return; }
+		if (!getenv("RUDOLFD_DEVLINK_ALLOW_FILE") && strncmp(af, RUN, strlen(RUN))) { mkdir(PERSIST "/etc", 0755); mkdir(PERSIST "/etc/rudolf", 0755); }
+		int w = open(af, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+		if (w < 0) { free(an); reply_err(r->fd, 500, "it could not be saved"); return; }
+		close(w); chmod(af, 0600);
+		health_add("security", "the development link was allowed on this computer by %.80s", an); free(an);
+		reply_ok(r->fd, "allowed"); return;
 	}
 	if (!strcmp(what, "off") && post) { int was = dl_pid(); dl_stop(); dl_set_off(); if (was) health_add("security", "the development link was switched off"); reply_ok(r->fd, "off"); return; }
 	if (!strcmp(what, "forget") && post) { char tp[160]; dl_stop(); dl_set_off(); snprintf(tp, sizeof tp, "%s/token", d); unlink(tp); reply_ok(r->fd, "the token is deleted"); return; }
@@ -4175,8 +4206,6 @@ static void api(struct req *r)
 				snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update developer on '%s' '%s' 2>&1", k, u);
 			}
 			char *o = run_out(cmd); trim(o);
-			/* 1.5.9 (15.4): the development link works only in Developer mode: off with it */
-			if (o && !strncmp(o, "Developer mode is ", 18) && !dl_devmode() && dl_pid()) { dl_stop(); dl_set_off(); health_add("security", "the development link was switched off with Developer mode"); }
 			if (o && !strncmp(o, "Developer mode is ", 18)) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "could not change Developer mode");
 			free(o); return;
 		}

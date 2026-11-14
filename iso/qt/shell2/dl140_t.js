@@ -1,7 +1,7 @@
 // 1.4.0 in the desktop page, with a stand-in rudolfd, in Chromium: Settings › Security › Development link (switching
 // on asks for an administrator's password; the token goes in the body, never into the page again), the banner over
 // everything with End now, the Allow prompt (Allow and Refuse), the log, the system report. 1.5.9 (plan 15.4): only in
-// Developer mode, the administrator's name and password sent for rudolfd to check, Ask first ticked and Keep on after
+// "Allow the development link on this computer" (its own switch, 2026-11-14), the administrator's name and password sent for rudolfd to check, Ask first ticked and Keep on after
 // restarting not, every time, the notification when it ended itself, System health's line. node dl140_t.js [CHROME]
 const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
 const WWW = path.join(__dirname, '../../..', 'iso/www');
@@ -9,13 +9,14 @@ const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 
 const T = {'.wasm': 'application/wasm', '.js': 'text/javascript', '.mjs': 'text/javascript', '.html': 'text/html'};
 const TOKEN = 'github_pat_PAGETEST_secret_0123456789';
 const now = () => Math.floor(Date.now() / 1000);
-const M = {developer: true, since: 0, calls: [], bodies: [], on: false, repo: '', until: 0, ask: true, restart: false, home: false, hasToken: false, pending: null, answers: [], change: false};
+const M = {allowed: true, developer: false, since: 0, calls: [], bodies: [], on: false, repo: '', until: 0, ask: true, restart: false, home: false, hasToken: false, pending: null, answers: [], change: false};
 const LOG = '{"t":"2026-10-27T08:00:00Z","id":"000001","kind":"sh","what":"uname -a","result":"status 0","approved":"allowed on the computer"}\n';
 const api = (a, q, body) => { const Q = new URLSearchParams(q || ''); M.calls.push(a + (q ? '?' + q : '')); if (body && body.length) M.bodies.push(a + ':' + body.toString());
-  if (a == 'devlink') return {ok: true, change: M.on && M.change, available: true, on: M.on, repo: M.repo, until: M.until, secondsLeft: M.on ? M.until - now() : 0, restart: M.restart, ask: M.ask, home: M.home, hasToken: M.hasToken, persistent: true, developer: M.developer, since: M.on ? M.since : 0, by: M.on ? 'Ann' : '', lastCommand: M.on ? JSON.parse(LOG) : null, status: M.on ? {state: 'on', last: '', error: ''} : M.idle ? {state: 'ended (4 hours without a command)', at: M.idle} : {state: 'off'}, ...(M.on && M.pending ? {pending: M.pending} : {})};
+  if (a == 'devlink') return {ok: true, change: M.on && M.change, available: true, on: M.on, repo: M.repo, until: M.until, secondsLeft: M.on ? M.until - now() : 0, restart: M.restart, ask: M.ask, home: M.home, hasToken: M.hasToken, persistent: true, allowed: M.allowed, developer: M.developer, since: M.on ? M.since : 0, by: M.on ? 'Ann' : '', lastCommand: M.on ? JSON.parse(LOG) : null, status: M.on ? {state: 'on', last: '', error: ''} : M.idle ? {state: 'ended (4 hours without a command)', at: M.idle} : {state: 'off'}, ...(M.on && M.pending ? {pending: M.pending} : {})};
   if (a == 'devlink/on') { if (Q.get('repo') == 'owner/public') return {ok: false, error: 'the repository is public: use a private one, so nobody else can read what is run here', __status: 400};
     M.on = true; M.since = now(); M.repo = Q.get('repo'); M.until = now() + 3600 * +Q.get('hours'); M.ask = Q.get('ask') == '1'; M.restart = Q.get('restart') == '1'; M.home = Q.get('home') == '1'; M.change = Q.get('change') == '1'; M.hasToken = true; return {ok: true, message: 'on'} }
   if (a == 'accounts/users') return {ok: true, on: true, users: [{id: 'u1', uid: 1001, user: 'acct1001', moved: true}, {id: 'u2', uid: 1002, user: 'acct1002', moved: false}], moveFailed: M.moveFailed || ''};
+  if (a == 'devlink/allow') { if (Q.get('on') == '1') { const b = JSON.parse(body.toString() || '{}'); if (b.n != 'Ann' || b.p != 'pw-ann') return {ok: false, error: 'Wrong password', __status: 403}; M.allowed = true } else { M.allowed = false; M.on = false } return {ok: true} }
   if (a == 'devlink/off') { M.on = false; M.change = false; return {ok: true, message: 'off'} }
   if (a == 'devlink/change') { if (Q.get('on') == '1') { const b = JSON.parse(body.toString() || '{}'); if (b.n != 'Ann' || b.p != 'pw-ann') return {ok: false, error: 'Wrong password', __status: 403}; M.change = true } else M.change = false; return {ok: true} }
   if (a == 'devlink/answer') { M.answers.push(Q.get('id') + ':' + Q.get('a')); M.pending = null; return {ok: true} }
@@ -25,6 +26,7 @@ const api = (a, q, body) => { const Q = new URLSearchParams(q || ''); M.calls.pu
   if (a == 'info') return {ok: true, live: false, boot: 'uefi', media: 'disk', uptime: 100, load: [0, 0, 0], memTotal: 8e9, memAvailable: 4e9, kernel: '6.18'};
   if (a == 'secureboot/status') return {ok: true, efi: true, on: false};
   if (a == 'crashes') return {ok: true, crashes: []};
+  if (a == 'sys/status') return {ok: true, persistent: true, signer: 'official', developer: false};
   return {ok: true} };
 const srv = http.createServer((q, s) => { const [u0, qs] = q.url.split('?'); const u = decodeURIComponent(u0); const ch = []; q.on('data', c => ch.push(c)); q.on('end', () => {
   if (u == '/' || u == '/index.html') { s.writeHead(200, {'content-type': 'text/html'}); return s.end(fs.readFileSync(path.join(WWW, 'index.html'), 'utf8').replace('<head>', '<head><script>window.RUDOLFD={token:"t",base:"",boot:"uefi",media:"disk",live:0,recovery:0};</script>')) }
@@ -43,10 +45,14 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('Settings › Security has the Development link, off, saying what it allows and "test computer only"', /^Off\./.test(t0) && /read-only unless you allow changes/.test(t0) && /test computer only/.test(t0), t0);
   ok('...with the repository, the token (hidden), how long, Ask first (ticked), stay across a restart, home folders (not ticked)', await q("(()=>{const f=document.querySelector('.dl40');return !!f.querySelector('.dlr')&&f.querySelector('.dlk').type=='password'&&f.querySelector('.dlh').value=='2'&&f.querySelector('.dla').checked&&!f.querySelector('.dlb').checked&&!f.querySelector('.dlhome').checked})()"));
   const sw = "[...document.querySelectorAll('.dl40 button')].find(x=>x.textContent=='Switch on…').click()";
-  M.developer = false; await open();
-  ok('15.4: not in Developer mode, Switch on is disabled and says why', await q("(()=>{const b=[...document.querySelectorAll('.dl40 button')].find(x=>x.textContent=='Switch on…');return b.disabled&&/only in Developer mode/.test(document.querySelector('.dl40').textContent)})()"));
-  M.developer = true; await open();
-  ok('15.4: in Developer mode, an administrator can', await q("!([...document.querySelectorAll('.dl40 button')].find(x=>x.textContent=='Switch on…').disabled)"));
+  M.allowed = false; await open();
+  ok('15.4: not allowed on this computer, Switch on is disabled and says why (the box unticked)', await q("(()=>{const b=[...document.querySelectorAll('.dl40 button')].find(x=>x.textContent=='Switch on…');return b.disabled&&!document.querySelector('.dl40 .dlal').checked&&/Allow the development link on this computer first/.test(document.querySelector('.dl40').textContent)})()"));
+  await q("ELEV.length=0"); await q("(()=>{const c=document.querySelector('.dl40 .dlal');c.checked=true;c.dispatchEvent(new Event('change'));return 1})()"); await wait(800);
+  const EL = await q("ELEV");
+  ok('...ticking it asks an administrator\'s password, fresh, and rudolfd checks it', M.allowed && EL.length == 1 && /Allow the development link/.test(EL[0][0]) && !EL[0][1] && EL[0][2] && EL[0][2].cred && M.bodies.some(x => x.startsWith('devlink/allow:') && x.includes('pw-ann')), [EL, M.bodies]);
+  ok('...then an administrator can switch it on (Developer mode off: no developer key needed)', await q("!([...document.querySelectorAll('.dl40 button')].find(x=>x.textContent=='Switch on…').disabled)&&document.querySelector('.dl40 .dlal').checked"));
+  ok('...Developer mode is just above the development link in Security', await q("(()=>{const d=document.querySelector('.devm'),l=document.querySelector('.dl40');return !!d&&!!l&&d.nextElementSibling==l&&/Developer mode/.test(d.textContent)})()"));
+  M.allowed = true; await open();
   ok('15.4: it says it turns itself off after 4 hours without a command, and at restarts', /4 hours without a command/.test(await q("document.querySelector('.dl40').textContent")) && /Keep on after restarting/.test(await q("document.querySelector('.dl40').textContent")));
   await q(`(()=>{document.querySelector('.dl40 .dlr').value='not a repo';${sw};return 1})()`); await wait(300);
   ok('a repository not written owner/name is refused before anything is asked', /owner\/name/.test(await q("document.querySelector('.dl40 .dlerr').textContent")) && !M.calls.some(c => c.startsWith('devlink/on')));
