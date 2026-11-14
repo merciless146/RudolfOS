@@ -3,7 +3,9 @@
    on this computer through a private GitHub repository the owner owns (rudolf-devlink; rudolfd: devlink, devlink/on,
    off, forget, answer, log). While it is on: a red banner over everything with the time left and End now, and with
    Ask first every command waits here for Allow or Refuse. See docs/plan-1.4.0.md.
-   1.5.9 (plan 15.4): off unless it is being used. Only in Developer mode, only an administrator, whose password
+   1.5.9 (plan 15.4): off unless it is being used. Only when "Allow the development link on this computer" is ticked
+   (its own switch, an administrator's password; 2026-11-14, in place of Developer mode, which needs a developer's key
+   the official builds have no use for), only an administrator, whose password
    rudolfd checks itself; Ask first on again after every restart; off at every restart unless "Keep on after
    restarting"; off by itself after 4 hours without a command (said in a notification); System health shows it. */
 window.__devlink40=1;
@@ -59,6 +61,17 @@ async function devlLog(){let l='';try{l=(await rd('devlink/log')).log||''}catch(
  const rows=l.trim()?l.trim().split('\n').map(x=>{try{const j=JSON.parse(x);return j.t.replace('T',' ').replace('Z',' UTC')+'  '+j.id+'  '+j.kind+'  '+j.result+'  ('+j.approved+')\n    '+(j.what||'').replace(/\n/g,'\n    ')}catch(e){return x}}):['Nothing has been run yet.'];
  const o=document.createElement('div');o.className='rmodal';o.innerHTML=`<div class='rmbox' role='dialog' aria-label='Development link log' style='max-width:760px'><h3>Development link: log (30 days)</h3><pre style='max-height:60vh;overflow:auto;white-space:pre-wrap;font:12px monospace'></pre><div class='rmrow'><button class='pri'>Close</button></div></div>`;
  o.querySelector('pre').textContent=rows.reverse().join('\n');o.querySelector('button').onclick=()=>o.remove();document.body.appendChild(o)}
+/* 2026-11-14: "Allow the development link on this computer": ticking it asks an administrator's password (rudolfd
+   checks it); unticking needs none and ends the link at once */
+function devlAllowRow(f,s,adm,redraw){const d=document.createElement('div');d.className='dlalw';
+ d.innerHTML="<label style='display:block;margin:6px 0;font-weight:600'><input type='checkbox' class='dlal'> Allow the development link on this computer</label><p class='msg'>Unticked, it cannot be switched on at all; unticking it ends it at once. Ticking it needs an administrator's password.</p><p class='msg dlalerr' style='color:#e66'></p>";
+ f.prepend(d);const cb=d.querySelector('.dlal');cb.checked=!!s.allowed;cb.disabled=!adm&&!s.allowed;
+ cb.onchange=async()=>{const e=d.querySelector('.dlalerr');e.textContent='';
+  if(!cb.checked){try{await rdPost('devlink/allow?on=0');typeof logEvt=='function'&&logEvt('sys',`${USER?USER.n:'?'} disallowed the development link`)}catch(x){e.textContent=x.message}devlPoll();redraw();return}
+  window.__elevTrust=0;const cr=await elevate('Allow the development link on this computer: an administrator can then let commands from a GitHub repository look at (or, if allowed, change) this computer.',{cred:1});
+  if(!cr){cb.checked=false;return}
+  try{await rd('devlink/allow?on=1',{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p})})}catch(x){e.textContent=x.message||'It could not be allowed.';cb.checked=false;return}
+  redraw()}}
 async function devlSection(c,W){
  const box=document.createElement('div');box.className='dl40';c.appendChild(box);
  const draw=async()=>{let s=null;try{s=await rd('devlink')}catch(e){}
@@ -69,13 +82,14 @@ async function devlSection(c,W){
   if(!s||!s.available){t.textContent='This Rudolf OS has no development link.';return}
   if(s.on){const st=s.status||{};t.textContent='On until '+devlUntil(s)+' ('+devlLeft(s.secondsLeft)+' left): commands from the GitHub repository '+s.repo+' '+(s.change?'can change this computer':'can look at this computer (read-only)')+(s.ask?'; each one waits for you to allow it':', without asking')+(s.restart?', also after a restart (with Ask first on again)':', until the computer restarts')+'. It turns itself off after 4 hours without a command.'+(st.state&&st.state!='on'?' Now: '+st.state+'.':'')+(st.error?' '+st.error+'.':'');
    f.innerHTML="<label style='display:block;margin:6px 0'><input type='checkbox' class='dlc'> Allow changes to this computer</label><p class='msg'>Unticked, its commands can only look: read files and logs, take screenshots, measure. Ticked, they can also install, change settings and restart. Ticking it needs an administrator's password; it is unticked again at every start.</p><p class='msg dlcerr' style='color:#b91c1c'></p>";
-   const cb=f.querySelector('.dlc');cb.checked=!!s.change;cb.disabled=!s.change&&(!adm||s.developer===false);
+   const cb=f.querySelector('.dlc');cb.checked=!!s.change;cb.disabled=!s.change&&(!adm||s.allowed===false);
    cb.onchange=async()=>{const e=f.querySelector('.dlcerr');e.textContent='';
     if(!cb.checked){try{await rdPost('devlink/change?on=0')}catch(x){e.textContent=x.message}devlPoll();draw();return}
     window.__elevTrust=0;const cr=await elevate('Allow the development link to change this computer: commands from '+s.repo+' can then install, change settings and restart it.',{cred:1});
     if(!cr){cb.checked=false;return}
     try{await rd('devlink/change?on=1',{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p})})}catch(x){e.textContent=x.message||'It could not be allowed.';cb.checked=false;return}
     devlPoll();draw()};
+   devlAllowRow(f,s,adm,draw);
    btn('End now',async()=>{await devlOff();draw()},1);btn('Log…',devlLog);return}
   t.textContent='Off. When it is on, a developer you choose (for example a Claude session) can run tests on this computer through a private GitHub repository you own: run commands (read-only unless you allow changes), take screenshots and send files; with changes allowed, also bring files and restart it. Use it on a test computer only, never on one with personal files. A red banner shows while it is on.';
   f.innerHTML=`<div class='r2' style='grid-template-columns:auto 1fr;gap:6px 10px;margin:6px 0'><label>Repository</label><input class='dlr' placeholder='owner/name (private)' spellcheck='false' autocomplete='off'>
@@ -88,17 +102,17 @@ async function devlSection(c,W){
 <p class='msg'>It turns itself off after 4 hours without a command, and when the computer restarts unless you keep it on. On github.com, make a private repository, then a fine-grained personal access token for that repository only, with the permission <b>Contents: Read and write</b>. Paste it here; it is checked with GitHub, kept where only the system can read it, and never shown again. Revoking it on GitHub ends all access.</p><p class='msg dlerr' style='color:#e66'></p>`;
   const r=f.querySelector('.dlr'),k=f.querySelector('.dlk'),b=f.querySelector('.dlb');r.value=s.repo||'';if(s.hasToken)k.placeholder='kept from last time (paste a new one to replace it)';
   if(!s.persistent){b.disabled=true;b.parentNode.title='Needs the files kept on this drive (RUDOLFDATA)'}else b.checked=false;f.querySelector('.dla').checked=true;f.querySelector('.dlhome').checked=!!s.home;
-  const dev=s.developer!==false;
+  const dev=s.allowed!==false;devlAllowRow(f,s,adm,draw);
   btn('Switch on…',async ev=>{const e=f.querySelector('.dlerr');e.textContent='';
    if(!/^[\w.-]+\/[\w.-]+$/.test(r.value.trim())){e.textContent='Write the repository as owner/name.';return}
    if(!k.value.trim()&&!s.hasToken){e.textContent='Paste the token from GitHub.';return}
-   if(!dev){e.textContent='Turn on Developer mode first (Update and recovery).';return}
+   if(!dev){e.textContent='Tick "Allow the development link on this computer" first.';return}
    window.__elevTrust=0;const cr=await elevate('Switch the development link on: commands from the GitHub repository '+r.value.trim()+' can '+(f.querySelector('.dlch').checked?'change':'look at')+' this computer for '+f.querySelector('.dlh').value+' hour(s).',{cred:1});if(!cr)return;
    ev.target.disabled=true;e.textContent='Checking the token with GitHub…';
    try{await rd('devlink/on?repo='+encodeURIComponent(r.value.trim())+'&hours='+f.querySelector('.dlh').value+'&ask='+(f.querySelector('.dla').checked?1:0)+'&restart='+(b.checked?1:0)+'&home='+(f.querySelector('.dlhome').checked?1:0)+'&change='+(f.querySelector('.dlch').checked?1:0),{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p,token:k.value.trim()})});k.value='';devlPoll();draw()}
    catch(x){e.textContent=x.message||'It could not be switched on.';ev.target.disabled=false}},1,1).disabled=!adm||!dev;
   if(s.hasToken)btn('Forget the token',async()=>{if(!await elevate('Delete the development link\'s token from this computer.'))return;try{await rdPost('devlink/forget')}catch(e){}draw()},0,1);
   btn('Log…',devlLog);
-  if(!adm||!dev){const n=document.createElement('span');n.className='msg';n.textContent=!dev?' It can be switched on only in Developer mode (Update and recovery), by an administrator.':' An administrator can switch it on.';row.appendChild(n)}};
+  if(!adm||!dev){const n=document.createElement('span');n.className='msg';n.textContent=!dev?' Allow the development link on this computer first (above).':' An administrator can switch it on.';row.appendChild(n)}};
  draw()}
 if(typeof secPanelS=='function'){const _sp2=secPanelS;secPanelS=function(c,W){const r=_sp2.apply(this,arguments);try{devlSection(c,W)}catch(e){}return r}}

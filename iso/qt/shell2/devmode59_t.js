@@ -1,4 +1,4 @@
-// 1.5.9 (plan 8.3): Settings › Update and recovery › Developer mode (administrators: a strong warning, a typed
+// 1.5.9 (plan 8.3): Settings › Security › Developer mode (in Update and recovery until 2026-11-14) (administrators: a strong warning, a typed
 // confirmation, the password every time), and Official / Custom in About. A stand-in rudolfd.   node devmode59_t.js [CHROME]
 const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
 const WWW = path.join(__dirname, '../../../iso/www');
@@ -28,7 +28,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await p.goto('http://127.0.0.1:8275/'); await p.waitForFunction(() => typeof devmOn == 'function', null, {timeout: 30000});
   const q = s => p.evaluate(s);
   await q(`(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});ACCTS=[{n:'Ann',r:'admin',h:'x'},{n:'Ben',r:'user',h:'y'}];USER=ACCTS[1];pwCheck=async(a,pw)=>a.n=='Ann'&&pw=='sesame';return 1})()`);
-  const panel = async () => { await q("(()=>{const o=document.getElementById('dmt');o&&o.remove();const d=document.createElement('div');d.id='dmt';document.body.appendChild(d);updPanel(d);return 1})()"); await wait(1200); return q("(()=>{const b=document.querySelector('#dmt .devm');return b?[b.textContent.replace(/\\s+/g,' '),b.querySelector('.dvb').disabled]:null})()") };
+  const panel = async () => { await q("(()=>{const o=document.getElementById('dmt');o&&o.remove();const d=document.createElement('div');d.id='dmt';document.body.appendChild(d);secPanelS(d);return 1})()"); await wait(1200); return q("(()=>{const b=document.querySelector('#dmt .devm');return b?[b.textContent.replace(/\\s+/g,' '),b.querySelector('.dvb').disabled]:null})()") };
   let d = await panel();
   ok('1. a standard user sees Developer mode off and the official system, and cannot change it', d && /Developer mode\s*Off · this system: Official Rudolf OS/.test(d[0]) && d[1] && /Only an administrator/.test(d[0]), d);
   await q('USER=ACCTS[0];window.__elevTrust=Date.now()'); d = await panel();

@@ -1,5 +1,6 @@
 /* ===== Rudolf OS 1.5.9 (docs/plan-1.5.9.md 8.3): Developer mode, and Official or Custom =====
-   Settings › Update and recovery › Developer mode (administrators): one more trusted key, a developer's publisher key,
+   Settings › Security › Developer mode (administrators; moved from Update and recovery on 2026-11-14, next to the
+   development link): one more trusted key, a developer's publisher key,
    and their update address, so a build of their own installs like an update (rudolf-update developer on KEY URL; the
    key is kept on RUDOLFDATA, never in the system image, and the official key stays). A strong warning, the
    administrator's password every time and a typed confirmation first. Turning it off removes the key and the address.
@@ -44,9 +45,9 @@ function devmReturn(after){if(!isAdmin())return notify('Return to official Rudol
   after&&after()}}
 /* in Recovery mode, when this computer normally runs a custom build: the way back, at once */
 if(RD&&window.RUDOLFD&&RUDOLFD.recovery)setTimeout(async()=>{try{const s=await rd('sys/status');if(s&&s.developer)notify('This computer runs a custom build','Recovery mode is the official Rudolf OS. To go back to it for good, use Return to official Rudolf OS.',{kind:'warning',action:()=>devmReturn()})}catch(e){}},8000);
-/* Settings › Update and recovery: the section, below the update card */
-{const _up=updPanel;updPanel=function(c){_up.apply(this,arguments);if(!RD)return;const x=c.querySelector('.updx');if(!x)return;
- const box=document.createElement('div');box.className='devm';x.appendChild(box);
+/* Settings › Security: the section, just above the development link (2026-11-14; it was in Update and recovery) */
+{const _sp=secPanelS;secPanelS=function(c){const r=_sp.apply(this,arguments);if(!RD)return r;
+ const box=document.createElement('div');box.className='devm';const dl=c.querySelector('.dl40');if(dl)dl.before(box);else c.appendChild(box);
  const draw=async()=>{let s=null;try{s=await rd('sys/status')}catch(e){}if(!box.isConnected||!s||!('developer' in s)){box.innerHTML='';return}
   const adm=isAdmin(),b=devmBuild(s);
   box.innerHTML=`<h4 class='sh4'>Developer mode</h4><div class='sysucard ${s.developer?'warn':''}'><div><b>${s.developer?'On':'Off'}</b>${b?' · this system: '+pkgEsc(b):''}</div>
@@ -54,7 +55,7 @@ if(RD&&window.RUDOLFD&&RUDOLFD.recovery)setTimeout(async()=>{try{const s=await r
 <div class='rmrow' style='justify-content:flex-start'><button class='dvb'${adm?'':' disabled'}>${s.developer?'Turn off Developer mode…':'Turn on Developer mode…'}</button>${s.developer||s.signer=='custom'?`<button class='dvr'${adm?'':' disabled'}>Return to official Rudolf OS…</button>`:''}</div>${adm?'':"<div class='msg'>Only an administrator can change this.</div>"}`;
   box.querySelector('.dvb').onclick=()=>s.developer?devmOff(draw):devmOn(draw);
   const rb=box.querySelector('.dvr');if(rb)rb.onclick=()=>devmReturn(draw)};
- draw()}}
+ draw();return r}}
 /* Settings › About: Official or Custom, under the version */
 {const _ab=aboutPanel;aboutPanel=function(c){_ab.apply(this,arguments);if(!RD)return;
  rd('sys/status').then(s=>{const b=devmBuild(s);if(!b||!c.isConnected)return;const v=c.querySelector('.msg');if(!v)return;

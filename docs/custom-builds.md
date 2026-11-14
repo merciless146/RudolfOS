@@ -70,7 +70,7 @@ python3 iso/pkgtools/rpk-tool.py build --key "$KEYS/rpk-signing.key" "$PKG" "$OU
 
 - **On your own computer, from your disc:** start your disc image. With Secure Boot on, enroll your certificate first
   (MokManager, see `docs/secure-boot.md`), or turn Secure Boot off.
-- **On an official Rudolf OS, by update:** Settings › Update and recovery › Developer mode › Turn on. Give your release
+- **On an official Rudolf OS, by update:** Settings › Security › Developer mode › Turn on. Give your release
   key's public half (the 44 characters in `rpk-signing.pub`) and your update address (`https://YOU.github.io/RudolfOS/beta`).
   An administrator confirms with a typed sentence and their password. Rudolf OS then also installs releases signed by
   your key:

@@ -303,7 +303,7 @@ the official releases works; a build signed by anyone else is refused. The Libra
   enrolled (8.4 depends on it).
 - **Done (2026-11-13):** rudolf-update `developer on KEY URL | off` (the key in /persist/etc/rudolf/extra-keys, never
   the official one; the official keys alone count for "official" and for the recovery system), status's `signer`,
-  `signerKey`, `developer`, `recoveryOfficial`; rudolfd `sys/developer`; Settings › Update and recovery › Developer mode
+  `signerKey`, `developer`, `recoveryOfficial`; rudolfd `sys/developer`; Settings › Update and recovery › Developer mode (Settings › Security since 2026-11-14)
   (warning, typed "I TRUST THIS DEVELOPER", the password every time) and Official / Custom in About. Not yet: the
   "custom" mark in the Start menu, the self-test, Blitzen and the devlink reporting it; a custom build's own Secure
   Boot key (a custom kernel started by kexec with Secure Boot on needs it enrolled).
@@ -1135,7 +1135,8 @@ anyone who got into that GitHub account could run commands on the computer.
 - "Ask first" on by default, and on again after each restart (turning it off lasts until the next start).
 - The devlink turns itself off after 4 hours with no command (said in a notification), and at every restart unless
   "Keep on after restarting" is ticked (off by default).
-- Only an administrator can turn it on, with the administrator's password, and only in Developer mode (Part 8.3).
+- Only an administrator can turn it on, with the administrator's password, and only when allowed on this computer (its
+  own switch; it was Developer mode, Part 8.3, until 2026-11-14: see below).
 - System health lists it as on, with since when and its last command.
 
 **Done (2026-11-14):** rudolfd's `devlink/on` refuses unless Developer mode is on (8.3's key file) and the request
@@ -1150,6 +1151,15 @@ line. Switching on and off, the restart's choice and wrong administrator passwor
 Sign-in). Tests: qt/host/devlink_t.sh (devlink_t.py 47, now with the idle end, and devlink59_t.sh 20: rudolfd's side),
 qt/shell2/dl140_t.js (23). Still to do: qt/sb/t140_t.py (QEMU) must sign in as an administrator in Developer mode
 before it switches the link on; updated with its next run.
+**Changed (2026-11-14, found on the Vivobook):** Developer mode was the wrong gate. It is turned on only by trusting a
+developer's publisher key (8.3), and the official key is refused there, so a computer running the official builds (the
+Vivobook) could never switch the link on. The link has its own switch instead: Settings › Security › Development link ›
+"Allow the development link on this computer" (an administrator's password, checked by rudolfd: `POST devlink/allow?on=1`
+with the name and password in the body; unticking needs none and ends the link at once). Kept in
+/persist/etc/rudolf/devlink-allowed (root's, 0600; /run without RUDOLFDATA); `GET devlink` gives `allowed`. Not ticked,
+`devlink/on` and `devlink/change?on=1` are refused and a kept-on link is off at the restart. Developer mode itself moved
+from Update and recovery to Settings › Security, just above the development link, and no longer touches the link.
+Tests: devlink59_t.sh 38, dl140_t.js 35, devmode59_t.js 17.
 
 ### 15.7 The devlink can only look unless it is allowed to change the computer (added on 2026-11-14)
 Asked for: whether the devlink may change the laptop, switched with a checkbox and an administrator's password in
