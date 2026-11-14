@@ -3,6 +3,8 @@
 # machine has no network, so the link's connections go over a second serial port (../sertun.c in the guest,
 # ../sertun.py here); a test disc (rudolf.debug=1) lets the link use the stand-in (/persist/devlink/test-api).
 #   python3 t140_t.py DISC.iso      DISC.iso: a 1.4.0 test disc (mkdisc.sh with RUDOLF_UKI_TEST_CMDLINE=rudolf.debug=1)
+# 1.5.9 (plan 15.4): switching the link on now needs Developer mode and an administrator's name and password in the
+# request body ({"n","p","token"}); this test still sends the token alone and needs updating with its next run.
 import base64, json, os, re, shutil, struct, subprocess, sys, time, urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
