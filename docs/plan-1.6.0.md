@@ -271,8 +271,25 @@ Known differences left (item 2): a long note scrolls without Chromium's scrollba
 icons covers a dragged icon (the page draws a dragged icon above the widgets); the weather's guessed city (from the time
 zone) is kept by the shell for the session only (the page saves it as bd95wloc); the textarea's height after resizing is
 kept until the widgets are drawn again, as the page's.
-**Next:** items 3 to 12 in order, one PR each, stacked, each passing same_t.sh for its part, and docs/plan-2.0.md after
-them. Native is not the default yet.
+Item 3, first part (the PR after item 2's): the taskbar's right-click menus, drawn by the shell as the page's cmenu,
+row by row, placed as the page places them (above the pointer when they would not fit below; a window's menu where
+the page put it before adding its Print row): the taskbar's (barMenu: Show desktop, Restore all windows, Cascade
+windows, Close all windows, Taskbar settings, greyed as the page's), the start button's, a pinned app's (with the
+app's own rows from desktop/apps "jumps", private59.js APP_JUMPS: Oracle's New private tab, opened as
+#app=browser&jump=New private tab, its window the page's private one), a window's button's (read from the window's own
+page, oneapp59.js __oaWinMenu: the page's rows, Print / Save as PDF… and Force quit among them; Restore, Minimize,
+Maximize, Always on top (the window kept above the others, its tick), Center on screen, Close and Force quit done by
+the shell, the page's own rows by the page, __oaWinMenuDo), the sound's (Mute, as #app=do-mute), the network's and the
+clock's (Settings at the page's section: #app=settings&page=PAGE); unpinning as #app=do-pin. same_t.sh: 65 parts in 48
+cases (new: tbm-bar, tbm-start, tbm-pin-notepad, tbm-pin-browser, tbm-vol, tbm-net, tbm-clock, tbm-win, tbm-bar-win);
+the behaviour on both engines: `SAME_SCRIPT=tbbeh_t.js sh same_t.sh` 10/10 (Maximize, Restore, Minimize, Restore all
+windows, Always on top and its tick, Unpin from taskbar, New private tab, Command Prompt, Close all windows: the
+menus' rows and the windows and pins after each).
+Known differences left (item 3): a window's Move to workspace N rows do nothing yet (item 4); the clock's calendar,
+the volume, network and battery pop-ups, the notifications' pop-ups and centre, the taskbar at the left or right,
+auto-hide, the workspaces' buttons and the 🎙️ indicator are item 3's second part.
+**Next:** item 3's second part, then items 4 to 12 in order, one PR each, stacked, each passing same_t.sh for its
+part, and docs/plan-2.0.md after them. Native is not the default yet.
 
 **Becoming the default:** after items 1-12 pass on the host and on the Vivobook (a week of betas on Native), the
 release's default engine is Native for new installations; an update keeps the engine the computer had, and Settings

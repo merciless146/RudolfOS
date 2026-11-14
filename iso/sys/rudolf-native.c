@@ -249,7 +249,7 @@ typedef struct { int x, y, w, h; char kind[12], arg[80]; } Hit;
 static Hit HITS[96]; static int NHITS;
 static void state_write(void);
 typedef struct JV JV; static void di_layout(void); static void di_load(JV *cat);   /* (the desktop's icons, below) */
-static void wg_paint(cairo_t *cr); static void wg_load(JV *v); static void wg_dirty_kind(const char *t); static void wg_picker(void);   /* (the widgets, below) */
+static void wg_paint(cairo_t *cr); static void wg_load(JV *v); static void jumps_load(JV *v); static void wg_dirty_kind(const char *t); static void wg_picker(void);   /* (the widgets, below) */
 static int wg_shown(void); static int NWG_ALL_DIRTY;
 static gboolean wg_press(GdkEventButton *e); static gboolean wg_motion(GdkEventMotion *e); static gboolean wg_release(GdkEventButton *e); static gboolean note_key(GdkEventKey *e); static int NF;
 
@@ -533,7 +533,7 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
    videos) covers the whole screen, taskbar too, without the frame. Our own app windows are framed the same way (our
    own requests are not redirected to us, so they are framed as they are shown). The taskbar lists them all. */
 #define BW 1   /* (the page's windows' 1 px edge; the title bar's height, TH, follows the display scaling) */
-typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden; char title[256]; AppWin *app; Window trans; Time last_click; } Client;
+typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click; } Client;
 static GList *CLIENTS;   /* oldest first */
 static Client *FOCUS;
 static Display *DPY; static Window ROOT; static int WM_OK;
@@ -603,6 +603,7 @@ static void wm_restack(void)
 {
 	if (!WM_OK) return;
 	if (DESK && gtk_widget_get_window(DESK)) XLowerWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(DESK)));
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->ontop && !c->min) XRaiseWindow(DPY, c->frame); }   /* (Always on top: item 3) */
 	if (!(FOCUS && FOCUS->full) && BAR && gtk_widget_get_visible(BAR)) XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(BAR)));
 	if (MENU && gtk_widget_get_visible(MENU)) XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(MENU)));
 	if (SIGN && gtk_widget_get_visible(SIGN)) XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(SIGN)));
@@ -1369,7 +1370,8 @@ static void bar_click(int h)
 	else app_open("settings", NULL);
 }
 static void hk_set(int h, char *k, char *a) { if (h >= 0) { snprintf(k, 12, "%s", HITS[h].kind); snprintf(a, 80, "%s", HITS[h].arg); } else k[0] = a[0] = 0; }
-static gboolean bar_press(GtkWidget *w, GdkEventButton *e, gpointer d) { (void)w; (void)d; if (e->type == GDK_BUTTON_PRESS && e->button == 1) { PRESS = hit_at(e->x, e->y); hk_set(PRESS, PRS_K, PRS_A); bar_redraw(); } return TRUE; }
+static void bar_menu(GdkEventButton *e, int h);
+static gboolean bar_press(GtkWidget *w, GdkEventButton *e, gpointer d) { (void)w; (void)d; if (e->type == GDK_BUTTON_PRESS && e->button == 3) { bar_menu(e, hit_at(e->x, e->y)); return TRUE; } if (e->type == GDK_BUTTON_PRESS && e->button == 1) { PRESS = hit_at(e->x, e->y); hk_set(PRESS, PRS_K, PRS_A); bar_redraw(); } return TRUE; }
 static gboolean bar_release(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
 	(void)w; (void)d; if (e->button != 1) return TRUE; int h = hit_at(e->x, e->y); int was = PRESS; PRESS = -1; PRS_K[0] = PRS_A[0] = 0; bar_redraw();
@@ -2006,7 +2008,7 @@ static void apps_load(void)
 		GdkPixbuf *px = pix_from_bytes(b); g_byte_array_free(b, TRUE); if (px) g_hash_table_insert(ICONS, g_strdup(ics->k[i]), px);
 	}
 	VER[0] = 0; jstr(v, "ver", VER, sizeof VER);
-	di_load(v); menu_rows_load(v); if (DESKAREA) desk_dirty();
+	di_load(v); menu_rows_load(v); jumps_load(v); if (DESKAREA) desk_dirty();
 	free(APPS); APPS = L; NAPPS = n;
 	if (BG) g_hash_table_destroy(BG); BG = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	JV *bg = jprop(v, "bg");
@@ -2074,6 +2076,7 @@ static void cm_measure(cairo_t *cr)
 	CMIW = w; CMBW = w + 8 + 2; CMBH = h + 8 + 2;
 }
 static int CM_RING = 1;   /* (the menu shows its focus ring) */
+static int CM_LATE;      /* (rows the page adds after placing its menu) */
 static gboolean cm_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 {
 	(void)wd; (void)d; if (CMBG) { gdk_cairo_set_source_pixbuf(cr, CMBG, 0, 0); cairo_paint(cr); }
@@ -2135,7 +2138,8 @@ static void cm_open(double px, double py, const char *title, const CMI *items, i
 	cm_close(); NCMI = n > 24 ? 24 : n; memcpy(CMIT, items, sizeof(CMI) * NCMI); snprintf(CMTITLE, sizeof CMTITLE, "%s", title ? title : ""); CM_CB = cb;
 	{ cairo_surface_t *t = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 4, 4); cairo_t *c = cairo_create(t); cm_measure(c); cairo_destroy(c); cairo_surface_destroy(t); }
 	double vw = SW / Z, vh = SH / Z; CMX = px / Z; CMY = py / Z;
-	if (CMX + CMBW > vw - 4) CMX = fmax(4, vw - CMBW - 4); if (CMY + CMBH > vh - 4) CMY = fmax(4, vh - CMBH - 4);
+	double ph = CMBH - CM_LATE * 25; CM_LATE = 0;   /* (a window's menu: placed by the page before its Print row was added, apps25b.js) */
+	ph = round(ph); CMX = fmax(2, fmin(CMX, vw - round(CMBW) - 4)); CMY = fmax(2, CMY + ph > vh - 4 ? CMY - ph : CMY);   /* (offsetWidth and offsetHeight: whole pixels) */   /* (the page's cmenu: kept on the screen, above the pointer when it would not fit below) */
 	if (!CMWIN) { CMWIN = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(CMWIN), "Menu"); CMAREA = gtk_drawing_area_new(); gtk_widget_set_can_focus(CMAREA, TRUE);
 		gtk_widget_add_events(CMAREA, GDK_BUTTON_PRESS_MASK | GDK_POINTER_MOTION_MASK | GDK_KEY_PRESS_MASK); gtk_container_add(GTK_CONTAINER(CMWIN), CMAREA);
 		g_signal_connect(CMAREA, "draw", G_CALLBACK(cm_draw), NULL); g_signal_connect(CMAREA, "motion-notify-event", G_CALLBACK(cm_motion), NULL);
@@ -2479,7 +2483,7 @@ static void di_menu(GdkEventButton *e, int icon)
 	/* the page's menus, item by item (base_v24.html deskMenu, iconMenu; shell25.js's for files and the Trash) */
 	static const CMI DESKM[] = { CM("New folder", "📁", "", "pageh:New folder"), CM("New text document", "📄", "", "pageh:New text document"), CM("Add a widget…", "🧩", "", "wgpick"), CMS,
 		CM("Arrange icons by name", "", "", "arrange"), CM("Desktop icons…", "🖥️", "", "page:Desktop icons…"), CM("Refresh", "", "F5", "refresh"), CMS,
-		CM("Open File Explorer", "", "", "app:explorer"), CM("Open Command Prompt", "", "", "app:prompt"), CM("Show all windows", "", "Super+Tab", "overview"), CM("Task Manager", "📊", "Ctrl+Shift+Esc", "app:taskmgr"), CMS,
+		CM("Open File Explorer", "", "", "app:explorer"), CM("Open Command Prompt", "", "", "app:terminal"), CM("Show all windows", "", "Super+Tab", "overview"), CM("Task Manager", "📊", "Ctrl+Shift+Esc", "app:taskmgr"), CMS,
 		CM("Open settings…", "", "", "app:settings") };
 	static const CMI FILEM[] = { CM("Open", "↗", "", "icon:Open"), CM("Open with…", "", "", "iconh:Open with…"), CMS, CM("Rename", "", "F2", "rename"), CM("Move to Trash", "", "Del", "iconh:Move to Trash"), CMS,
 		CM("Properties", "", "", "icon:Properties") };
@@ -3046,6 +3050,123 @@ static gboolean wg_release(GdkEventButton *e)
 static gboolean on_desk_out(GtkWidget *w, GdkEvent *e, gpointer d) { (void)w; (void)e; (void)d; if (NF >= 0 && !(CMWIN && gtk_widget_get_visible(CMWIN))) note_unfocus(); return FALSE; }
 static int wg_kind_n(const char *t) { int c = 0; for (int i = 0; i < NWG; i++) if (!strcmp(WG[i].t, t)) c++; return c; }
 
+/* ------------------------------------------------------------------ the taskbar's menus (1.6.0 Part 12, item 3)
+   The page's right-click menus on the taskbar, item by item (base_v24.html barMenu and the start button's; shell25.js
+   the pinned apps' and winMenu; the tray's Sound, Network and Clock menus), with each app's own rows (private59.js
+   APP_JUMPS, given in desktop/apps "jumps": Oracle's New private tab). A window's menu is read from its own page
+   (oneapp59.js __oaWinMenu: its rows, Print / Save as PDF… and Force quit among them); what the shell does itself
+   (Restore, Minimize, Maximize, Always on top, Center on screen, Close, Force quit, the taskbar's rows) it does, the
+   rest the page does (a window's own rows in its page, __oaWinMenuDo; pinning, muting, Settings at a page and the jumps
+   in a page of their own). */
+typedef struct { char k[40], label[96], icon[24], key[32]; } Jump;
+static Jump JUMPS[16]; static int NJUMPS;
+static Window TBM_W; static char TBM_K[40]; static double TBM_X, TBM_Y;   /* (the window or app whose menu it is; where) */
+static void jumps_load(JV *v)
+{
+	NJUMPS = 0; JV *j = jprop(v, "jumps");
+	for (int i = 0; j && j->t == 5 && i < j->len; i++) for (int n = 0; n < 8 && NJUMPS < 16; n++) { JV *r = jat(j->v[i], n); if (!r) break; Jump *x = &JUMPS[NJUMPS++];
+		snprintf(x->k, sizeof x->k, "%s", j->k[i]); JV *a = jat(r, 0), *b = jat(r, 1), *c = jat(r, 2);
+		snprintf(x->label, sizeof x->label, "%s", a && a->t == 3 ? a->s : ""); snprintf(x->icon, sizeof x->icon, "%s", b && b->t == 3 ? b->s : ""); snprintf(x->key, sizeof x->key, "%s", c && c->t == 3 ? c->s : ""); }
+}
+static int tb_win(Client *c) { return c && !c->hidden && !c->trans && (!c->app || !c->app->hidden); }   /* (the page's wins: the taskbar's windows) */
+static int tb_count(int min) { int n = 0; for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (tb_win(c) && (min < 0 || c->min == min)) n++; } return n; }
+static int app_running(const char *k) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!a->hidden && !strcmp(a->k, k)) return 1; } return 0; }
+static void tb_page(const char *k, const char *extra, int hidden) { app_open_ex(k, NULL, extra, hidden); }
+static void tb_settings(const char *page) { char *e = qesc(page), ex[96]; snprintf(ex, sizeof ex, "&page=%s", e); g_free(e); tb_page("settings", ex, 0); }
+static void tb_jump(const char *k, const char *label) { char *e = qesc(label), ex[300]; snprintf(ex, sizeof ex, "&jump=%s", e); g_free(e); tb_page(k, ex, 0); }
+static void on_tb_act(const char *a)
+{
+	if (!strcmp(a, "showdesk")) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (tb_win(c) && !c->min) wm_minimise(c); } }
+	else if (!strcmp(a, "restoreall")) { GList *L = g_list_copy(CLIENTS); for (GList *l = L; l; l = l->next) { Client *c = l->data; if (g_list_find(CLIENTS, c) && tb_win(c) && c->min) wm_focus(c); } g_list_free(L); }
+	else if (!strcmp(a, "cascade")) { int i = 0; GList *L = g_list_copy(CLIENTS); double dy = !strcmp(S.tb, "top") ? 2 : 0;   /* (the page's: 20 + 28 px a window, from the desktop's corner) */
+		for (GList *l = L; l; l = l->next) { Client *c = l->data; if (!g_list_find(CLIENTS, c) || !tb_win(c) || c->min) continue; if (c->max) wm_maximise(c, 0);
+			c->x = (int)lround((20 + i * 28) * Z); c->y = work_top() + (int)lround((dy + 20 + i * 28) * Z); place(c); wm_focus(c); i++; }
+		g_list_free(L); }
+	else if (!strcmp(a, "closeall")) { GList *L = g_list_copy(CLIENTS); for (GList *l = L; l; l = l->next) { Client *c = l->data; if (g_list_find(CLIENTS, c) && tb_win(c)) { if (c->app) appwin_ask_close(c->app); else wm_close(c); } } g_list_free(L); }
+	else if (!strcmp(a, "tbset")) tb_settings("disp");
+	else if (!strncmp(a, "set:", 4)) tb_settings(a + 4);
+	else if (!strncmp(a, "app:", 4)) app_open(a + 4, NULL);
+	else if (!strcmp(a, "run")) app_open("do-run", NULL);
+	else if (!strcmp(a, "off")) power_dialog();
+	else if (!strcmp(a, "mute")) tb_page("do-mute", NULL, 1);
+	else if (!strncmp(a, "pnew:", 5)) app_open(a + 5, NULL);
+	else if (!strncmp(a, "pclose:", 7)) { GList *L = g_list_copy(WINS); for (GList *l = L; l; l = l->next) { AppWin *w = l->data; if (g_list_find(WINS, w) && !w->hidden && !strcmp(w->k, a + 7)) appwin_ask_close(w); } g_list_free(L); }
+	else if (!strncmp(a, "pin0:", 5) || !strncmp(a, "pin1:", 5)) { char *e = qesc(a + 5), ex[120]; snprintf(ex, sizeof ex, "&k=%s&on=%c", e, a[3]); g_free(e); tb_page("do-pin", ex, 1); }
+	else if (!strncmp(a, "jump:", 5)) { char k[40]; const char *bar = strchr(a + 5, '|'); if (!bar) return; snprintf(k, sizeof k, "%.*s", (int)(bar - a - 5), a + 5); tb_jump(k, bar + 1); }
+	else if (!strncmp(a, "wn:", 3) || !strncmp(a, "wp:", 3)) {
+		Client *c = client_of(TBM_W); if (!c) return;
+		if (!strcmp(a, "wn:restore")) { if (c->min) wm_focus(c); else if (c->max) wm_maximise(c, 0); }
+		else if (!strcmp(a, "wn:min")) wm_minimise(c);
+		else if (!strcmp(a, "wn:max")) { wm_focus(c); wm_maximise(c, 1); }
+		else if (!strcmp(a, "wn:top")) { c->ontop = !c->ontop; wm_focus(c); }
+		else if (!strcmp(a, "wn:center")) { if (c->max) wm_maximise(c, 0); wm_focus(c); c->x = MAX(0, (SW - fw_of(c)) / 2); c->y = work_top() + MAX(0, (work_h() - fh_of(c)) / 2); place(c); state_write(); }
+		else if (!strcmp(a, "wn:close")) { if (c->app) appwin_ask_close(c->app); else wm_close(c); }
+		else if (!strcmp(a, "wn:fq")) { if (c->app) { char k[40]; snprintf(k, sizeof k, "%s", c->app->k); GList *L = g_list_copy(WINS);   /* (the page's: every window of the app, without asking) */
+				for (GList *l = L; l; l = l->next) { AppWin *w = l->data; if (g_list_find(WINS, w) && !w->hidden && !strcmp(w->k, k)) appwin_close_now(w); } g_list_free(L); } else XKillClient(DPY, c->w); }
+		else if (!strncmp(a, "wp:", 3) && c->app && c->app->view) { GString *js = g_string_new("window.__oaWinMenuDo&&__oaWinMenuDo("); json_esc(js, a + 3); g_string_append_c(js, ')');
+			webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(c->app->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE); }
+	}
+	state_write();
+}
+static void tb_menu_show(const char *title, CMI *m, int n, int ring, const char *what)
+{
+	CM_RING = ring; cm_open(TBM_X, TBM_Y, title, m, n, on_tb_act); snprintf(DI_MENU, sizeof DI_MENU, "%s", what); state_write();
+}
+/* a window's menu, from its page */
+static int jump_of(const char *k, const char *label) { for (int i = 0; i < NJUMPS; i++) if (!strcmp(JUMPS[i].k, k) && !strcmp(JUMPS[i].label, label)) return i; return -1; }
+static void win_menu_build(Client *c, JV *pm)
+{
+	CMI m[24]; int n = 0; memset(m, 0, sizeof m); char title[256] = ""; jstr(pm, "title", title, sizeof title); if (!title[0]) snprintf(title, sizeof title, "%s", c->title);
+	JV *it = jprop(pm, "items");
+	if (!it) {   /* (a window without a page of its own: the page's rows the shell can do) */
+		static const char *const R[][3] = { { "Restore", "❐", "" }, { "Minimize", "_", "" }, { "Maximize", "□", "" }, { "-", "", "" }, { "Always on top", "", "" }, { "Center on screen", "", "" }, { "-", "", "" }, { "Close", "✕", "Alt+F4" } };
+		for (unsigned i = 0; i < G_N_ELEMENTS(R); i++) { CMI *x = &m[n++]; if (R[i][0][0] == '-') { x->sep = 1; continue; } snprintf(x->label, sizeof x->label, "%s", R[i][0]); snprintf(x->icon, sizeof x->icon, "%s", R[i][1]); snprintf(x->key, sizeof x->key, "%s", R[i][2]); }
+	} else for (int i = 0; i < it->len && n < 24; i++) { JV *o = jat(it, i); CMI *x = &m[n++]; if (jbool(o, "sep")) { x->sep = 1; continue; }
+		jstr(o, "label", x->label, sizeof x->label); jstr(o, "icon", x->icon, sizeof x->icon); jstr(o, "key", x->key, sizeof x->key); x->dis = jbool(o, "dis"); }
+	for (int i = 0; i < n; i++) { CMI *x = &m[i]; if (x->sep) continue; const char *L = x->label;
+		if (!strcmp(L, "Restore")) { snprintf(x->act, sizeof x->act, "wn:restore"); x->dis = !(c->min || c->max); }
+		else if (!strcmp(L, "Minimize")) { snprintf(x->act, sizeof x->act, "wn:min"); x->dis = c->min; }
+		else if (!strcmp(L, "Maximize")) { snprintf(x->act, sizeof x->act, "wn:max"); x->dis = c->max; }
+		else if (!strcmp(L, "Always on top")) { snprintf(x->act, sizeof x->act, "wn:top"); snprintf(x->icon, sizeof x->icon, "%s", c->ontop ? "✓" : ""); }
+		else if (!strcmp(L, "Center on screen")) snprintf(x->act, sizeof x->act, "wn:center");
+		else if (!strncmp(L, "Move to workspace ", 18)) snprintf(x->act, sizeof x->act, "wn:ws");   /* (the workspaces: item 4) */
+		else if (!strcmp(L, "Close")) snprintf(x->act, sizeof x->act, "wn:close");
+		else if (!strncmp(L, "Force quit ", 11)) snprintf(x->act, sizeof x->act, "wn:fq");
+		else if (c->app && jump_of(c->app->k, L) >= 0) snprintf(x->act, sizeof x->act, "jump:%.38s|%.50s", c->app->k, L);
+		else snprintf(x->act, sizeof x->act, "wp:%.90s", L); }
+	for (int i = 0; i < n; i++) if (!strcmp(m[i].label, "Print / Save as PDF…")) CM_LATE = 1;
+	tb_menu_show(title, m, n, 0, "win");
+}
+static void win_menu_got(GObject *src, GAsyncResult *res, gpointer d)
+{
+	Window w = (Window)GPOINTER_TO_SIZE(d); JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(src), res, NULL);
+	char *s = v && jsc_value_is_string(v) ? jsc_value_to_string(v) : NULL; JV *pm = s && *s ? jparse(s) : NULL; g_free(s); if (v) g_object_unref(v);
+	Client *c = client_of(w); if (c && w == TBM_W) win_menu_build(c, pm); jfree(pm);
+}
+static void bar_menu(GdkEventButton *e, int h)
+{
+	TBM_X = e->x_root; TBM_Y = e->y_root; const char *k = h >= 0 ? HITS[h].kind : "", *arg = h >= 0 ? HITS[h].arg : "";
+	if (!USER_ID[0] || LOCKED) return;
+	if (!strcmp(k, "start")) { menu_hide(); CMI m[6] = { CM("File Explorer", "📁", "", "app:explorer"), CM("Command Prompt", "⬛", "", "app:terminal"), CM("Settings", "⚙️", "", "app:settings"), CM("Run…", "🏃", "", "run"), CMS,
+			CM("Sign out / shut down…", "🔌", "", "off") }; tb_menu_show("Rudolf OS", m, 6, 0, "start"); return; }
+	if (!strcmp(k, "pin")) { const App *ap = app_find(arg); CMI m[12]; int n = 0; memset(m, 0, sizeof m); snprintf(TBM_K, sizeof TBM_K, "%s", arg);
+		m[n] = (CMI)CM("Open a new window", "", "", ""); snprintf(m[n++].act, sizeof m[0].act, "pnew:%s", arg);
+		for (int j = 0; j < NJUMPS && n < 8; j++) if (!strcmp(JUMPS[j].k, arg)) { CMI *x = &m[n++]; snprintf(x->label, sizeof x->label, "%s", JUMPS[j].label); snprintf(x->icon, sizeof x->icon, "%s", JUMPS[j].icon);
+			snprintf(x->key, sizeof x->key, "%s", JUMPS[j].key); snprintf(x->act, sizeof x->act, "jump:%.38s|%.50s", arg, JUMPS[j].label); }
+		m[n] = (CMI)CM("Close all windows", "", "", ""); snprintf(m[n].act, sizeof m[0].act, "pclose:%s", arg); m[n++].dis = !app_running(arg);
+		m[n++] = (CMI)CMS; m[n] = (CMI)CM("Unpin from taskbar", "", "", ""); snprintf(m[n++].act, sizeof m[0].act, "pin0:%s", arg);
+		tb_menu_show(ap ? ap->name : arg, m, n, 0, "pin"); return; }
+	if (!strcmp(k, "win")) { Client *c = WM_OK ? client_of((Window)strtoul(arg, NULL, 16)) : NULL; if (!c) return; TBM_W = c->w;
+		if (c->app && c->app->view) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(c->app->view), "window.__oaWinMenu?__oaWinMenu():''", -1, NULL, NULL, NULL, win_menu_got, GSIZE_TO_POINTER(c->w));
+		else win_menu_build(c, NULL);
+		return; }
+	if (!strcmp(k, "vol")) { CMI m[2] = { CM("", "", "", "mute"), CM("Volume controls…", "", "", "set:vol") }; snprintf(m[0].label, sizeof m[0].label, "%s", MUTED ? "Unmute" : "Mute"); tb_menu_show("Sound", m, 2, 0, "vol"); return; }
+	if (!strcmp(k, "net")) { CMI m[1] = { CM("Network settings…", "", "", "set:net") }; tb_menu_show("Network", m, 1, 0, "net"); return; }
+	if (!strcmp(k, "clock")) { CMI m[2] = { CM("Adjust date and time…", "", "", "set:sys"), CM("Language and accessibility…", "", "", "set:acc") }; tb_menu_show("Clock", m, 2, 1, "clock"); return; }
+	CMI m[7] = { CM("Show desktop", "", "", "showdesk"), CM("Restore all windows", "", "", "restoreall"), CM("Cascade windows", "", "", "cascade"), CMS, CM("Close all windows", "", "", "closeall"), CMS, CM("Taskbar settings", "", "", "tbset") };
+	int nw = tb_count(-1); m[0].dis = m[2].dis = m[4].dis = !nw; m[1].dis = !tb_count(1); tb_menu_show("Taskbar", m, 7, 1, "bar");
+}
+
 /* ------------------------------------------------------------------ the development link (1.5.9 step 7)
    While the development link is on (Settings › Security › Development link, devlink40.js) the page drew a red banner
    over everything, and with "Ask first" asked about each command. In one-app windows the page no longer draws them (the
@@ -3163,7 +3284,8 @@ static void state_write(void)
 	g_string_append_printf(s, "wgnote %d %d %d\nweather %d %s|%s|%s\n", NF, NCAR, NANC, WX_ST, WX_T, WX_C, WX_L);
 	/* (the page's menu and dialogs as the shell shows them) */
 	if (CMWIN && gtk_widget_get_visible(CMWIN)) { g_string_append_printf(s, "cmenu %d %d %d %d %s\n", (int)lround(CMX * Z), (int)lround(CMY * Z), (int)lround(CMBW * Z), (int)lround(CMBH * Z), CMTITLE[0] ? CMTITLE : "-");
-		double ry = CMY + 5 + (CMTITLE[0] ? 22 : 0); for (int i = 0; i < NCMI; i++) { if (!CMIT[i].sep) g_string_append_printf(s, "cmitem %d %d %d %s|%s\n", (int)lround((CMX + 5 + 50) * Z), (int)lround((ry + 12) * Z), CMIT[i].dis, CMIT[i].act, CMIT[i].label); ry += cm_row_h(&CMIT[i]); } }
+		double ry = CMY + 5 + (CMTITLE[0] ? 22 : 0); for (int i = 0, k = 0; i < NCMI; i++) { if (!CMIT[i].sep && CMIT[i].icon[0]) g_string_append_printf(s, "cmicon %d %s\n", k, CMIT[i].icon); if (!CMIT[i].sep) k++; }
+		for (int i = 0; i < NCMI; i++) { if (!CMIT[i].sep) g_string_append_printf(s, "cmitem %d %d %d %s|%s\n", (int)lround((CMX + 5 + 50) * Z), (int)lround((ry + 12) * Z), CMIT[i].dis, CMIT[i].act, CMIT[i].label); ry += cm_row_h(&CMIT[i]); } }
 	g_string_append_printf(s, "dialog %s %s|%s\n", DGK == DLG_RENAME ? "rename" : DGK == DLG_OPENWITH ? "openwith" : "-", DGK ? DGNAME : "-", DGMSG);
 	for (int i = 0; DGK && i < NDGB; i++) g_string_append_printf(s, "dgbtn %d %d %d\n", i, (int)lround((DGB[i].x + DGB[i].w / 2) * Z), (int)lround((DGB[i].y + DGB[i].h / 2) * Z));
 	g_string_append_printf(s, "devlink %d %d\ndlask %s\n", DL_ON && DLBAN && gtk_widget_get_visible(DLBAN), TOPRES, DLASK && gtk_widget_get_visible(DLASK) ? DL_PEND : "-");
