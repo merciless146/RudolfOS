@@ -67,7 +67,20 @@ function prState(info){const st={3:'Ready',4:'Printing',5:'Stopped'}[info.state]
 
 /* ---------- the dialog ---------- */
 function wpPrint(W,html,o){if(!RD)return false;prDialog(W,html,o);return true}
+/* 1.5.9: the PDF Viewer's File › Print: the PDF itself, to a printer or saved as a copy, on Rudolf OS through the same
+   dialog (its paper is the PDF's own: its first page's size, named when it is a common one); in a plain browser, the
+   browser's own print dialog shows it */
+const PR_PAPERS=[['Letter',612,792],['A4',595,842],['Legal',612,1008],['A5',420,595],['Executive',522,756]];
+async function pdfPrint(W,doc,name,say){if(!doc){say&&say('Open a PDF to print it.');return}
+ let bytes;try{bytes=await doc.getData()}catch(e){say&&say('This PDF could not be read for printing.');return}
+ const blob=new Blob([bytes],{type:'application/pdf'});let size='',land=false;
+ try{const v=(await doc.getPage(1)).getViewport({scale:1}),w=Math.min(v.width,v.height),h=Math.max(v.width,v.height);land=v.width>v.height;
+  const m=PR_PAPERS.find(([,a,b])=>Math.abs(a-w)<6&&Math.abs(b-h)<6);size=m?m[0]:''}catch(e){}
+ if(RD){prDialog(W,null,{pdf:blob,size,land,title:name||'Document'});return}
+ const u=URL.createObjectURL(blob),f=document.createElement('iframe');f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0';f.src=u;
+ f.onload=()=>{try{f.contentWindow.focus();f.contentWindow.print()}catch(e){window.open(u,'_blank')}setTimeout(()=>{f.remove();URL.revokeObjectURL(u)},60000)};document.body.appendChild(f)}
 async function prDialog(W,html,o){
+ const PNOTE=o.pdf?'(the PDF\'s own)':'(File › Page setup)';
  const ov=document.createElement('div');ov.className='rmodal';const title=String(o.title||'Document').replace(/\.[^.]*$/,'');
  ov.innerHTML=`<div class='rmbox prdlg' role='dialog' aria-label='Print'><h3>Print</h3><div class='prgrid'><div class='prprev' aria-label='Preview'><div class='msg'>Preparing the preview…</div></div>
 <div class='propts'><label>Printer</label><select class='pdst'><option value='pdf'>Save as PDF</option></select>
@@ -76,7 +89,7 @@ async function prDialog(W,html,o){
 <label>Copies</label><div><input type='number' class='pcop' min='1' max='99' value='1' style='width:60px'></div>
 <label>Color</label><div><select class='pcol'><option value='color'>Color</option><option value='monochrome'>Black and white</option></select></div>
 <label>Two-sided</label><div><select class='psid'><option value='one-sided'>Off</option><option value='two-sided-long-edge'>Flip on long edge</option><option value='two-sided-short-edge'>Flip on short edge</option></select></div>
-<label>Paper</label><div class='ppap'>${prEsc(o.size||'Letter')}${o.land?' landscape':''} <span class='msg'>(File › Page setup)</span></div></div></div>
+<label>Paper</label><div class='ppap'>${o.size||!o.pdf?prEsc(o.size||'Letter')+(o.land?' landscape':''):'As in the PDF'} <span class='msg'>${PNOTE}</span></div></div></div>
 <div class='msg pmsg' aria-live='polite'></div><div class='rmrow'><button class='pfind' title='Search the network again'>Find printers</button><span style='flex:1'></span><button class='pcan'>Cancel</button><button class='pgo pri' disabled>Save…</button></div></div>`;
  document.body.appendChild(ov);const q=s=>ov.querySelector(s),msg=t=>q('.pmsg').textContent=t||'';
  let pdf=null,pages=0,info=null,busy=false;const infos={};
@@ -102,11 +115,12 @@ async function prDialog(W,html,o){
   if(!plan){q('.pst').textContent+=' — this printer needs a driver; Rudolf OS prints to IPP Everywhere and AirPrint printers.';return}
   opts(true);q('.pcol').disabled=!info.color&&!(info.colorModes||[]).includes('color');if(q('.pcol').disabled)q('.pcol').value='monochrome';
   const sides=info.sides||[];q('.psid').querySelectorAll('option').forEach(op=>op.disabled=op.value!='one-sided'&&!sides.includes(op.value));if(sides.length<2)q('.psid').value='one-sided';
-  const media=PR_MEDIA[o.size]||'';q('.ppap').querySelector('.msg').textContent=media&&(info.media||[]).length&&!(info.media||[]).includes(media)?'(this printer may not have this paper)':'(File › Page setup)';
+  const media=PR_MEDIA[o.size]||'';q('.ppap').querySelector('.msg').textContent=media&&(info.media||[]).length&&!(info.media||[]).includes(media)?'(this printer may not have this paper)':PNOTE;
   go.disabled=!pdf||busy}
  q('.pdst').onchange=pick;
  /* preview */
- try{const r=await fetch('/api/print/pdf',{method:'POST',headers:{'X-Rudolf-Token':RD.token},body:html});if(!r.ok){let e='HTTP '+r.status;try{e=(await r.json()).error||e}catch(x){}throw new Error(e)}pdf=await r.blob()}
+ /* (1.5.9) a PDF already (the PDF Viewer's) is printed as it is; a document page is made into a PDF first */
+ try{if(o.pdf)pdf=o.pdf;else{const r=await fetch('/api/print/pdf',{method:'POST',headers:{'X-Rudolf-Token':RD.token},body:html});if(!r.ok){let e='HTTP '+r.status;try{e=(await r.json()).error||e}catch(x){}throw new Error(e)}pdf=await r.blob()}}
  catch(e){q('.prprev').innerHTML=`<div class='msg'>The pages could not be prepared: ${prEsc(e.message)}</div>`;find();return}
  if(!ov.isConnected)return;
  try{const lib=await pdfLib(),doc=await lib.getDocument({data:new Uint8Array(await pdf.arrayBuffer())}).promise;pages=doc.numPages;q('.pto').value=pages;q('.pfrom').max=q('.pto').max=pages;
