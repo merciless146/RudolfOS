@@ -52,6 +52,13 @@ if(ONEAPP&&typeof BroadcastChannel=='function'){const FSB=new BroadcastChannel('
    the other pages of a change to the storage they share) */
 if(ONEAPP)addEventListener('storage',e=>{try{if(!USER||e.key!='bd95set:'+uid()||!e.newValue)return;const us=JSON.parse(e.newValue);for(const k in us)S[k]=us[k];SC=cln(S);
  try{applySet()}catch(x){}try{a11yApply()}catch(x){}try{themeApply()}catch(x){}try{ncBadge()}catch(x){}}catch(x){console.warn('one-app: the settings again',x)}});
+/* (1.6.0 Part 12, item 3) a notification's pop-up is the native shell's: shown in the screen's corner as on Standard, not in this window
+   (its click: the notification's own action, run here, __oaToastAct) */
+if(ONEAPP&&window.__notifCentre){const NA=window.__notifCentre.add,ACTS={};window.__oaToastAct=id=>{const f=ACTS[id];delete ACTS[id];if(f)try{f()}catch(e){console.warn(e)}};
+ window.__notifCentre.add=function(title,body,opt){const H=document.getElementById('ntoasts'),k=H?H.children.length:0,n=NA.apply(this,arguments);
+  try{if(oaNative()&&!(opt&&opt.quiet))oaPost({op:'note',t:n.t,b:n.b,k:n.k,at:String(n.at)})}catch(e){}   /* (in the centre at once, and counted on its button) */
+  try{const h=document.getElementById('ntoasts');if(oaNative()&&h&&h.children.length>k){const d=h.lastElementChild;d.remove();const id=String(n.id);if(n.act)ACTS[id]=n.act;
+   oaPost({op:'toast',t:n.t,b:n.b,k:n.k,id,ms:String((opt&&opt.toast)||5000),why:d.querySelector('.bzwhy')?'1':'0',act:n.act?'1':'0'})}}catch(e){console.warn(e)}return n}}
 /* (an app's own window is not the desktop: its icons' grid is the screen's, not the window's, or every window opened, or a page never
    shown, as do-desk's, would squeeze the desktop's places into its own size and keep them) */
 if(ONEAPP&&typeof gridInfo=='function'){const _gi=gridInfo;gridInfo=function(){const g=_gi();try{const q=ONEAPP.q,zf=parseFloat(document.documentElement.style.zoom)||1,top=document.body.classList.contains('top'),
@@ -78,6 +85,8 @@ html.oneapp .win.oamain>.tb{display:none!important}html.oneapp .win.oamain>.body
  {const _w=win;win=function(...a){const W=_w.apply(this,a);if(OA.want&&!OA.main&&W&&W.el)oaMain(W);return W}}
  /* another app: a window of its own when the native shell is there */
  {const _l=launch;launch=function(k){if(OA.main&&k!=ONEAPP.k&&oaNative()&&APPS[k]){oaPost({op:'open',app:k});return}return _l.apply(this,arguments)}}
+ /* (Settings at a page, asked by another app's window or a notification's action: Settings' own window, at that page) */
+ {const _st=settings;settings=function(sec){if(OA.main&&ONEAPP.k!='settings'&&oaNative()){oaPost({op:'open',app:'settings',page:typeof sec=='string'?sec:''});return}return _st.apply(this,arguments)}}
  {const _lw=launchWith;launchWith=function(k,p){if(OA.main&&k!=ONEAPP.k&&oaNative()&&APPS[k]){oaPost({op:'open',app:k,file:Array.isArray(p)?p.join('\\'):String(p||'')});return}return _lw.apply(this,arguments)}}
  /* the first sign-in screen: the native session's account instead, when there is one */
  {const _sl=showLogin;let first=1;showLogin=function(){if(first&&!OA.opened){first=0;oaStart(_sl);return}if(OA.opened&&OA.done)return;return _sl.apply(this,arguments)}}

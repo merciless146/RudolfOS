@@ -67,7 +67,14 @@ class H(http.server.BaseHTTPRequestHandler):
         self.send(404, 'not found', 'text/plain')
     def api(self, m, w, q, b):
         L = ls(); data = L['data']; s = session()
-        if w == 'events/wait': time.sleep(3); return self.j({'ok': True, 'events': []})
+        if w == 'events/wait':   # (DIR/event: one event for the page that asks first, as rudolfd's)
+            for _ in range(30):
+                with LOCK:
+                    e = rd('event')
+                    if e:
+                        os.unlink(os.path.join(D, 'event')); return self.j({'ok': True, 'events': e.decode()})
+                time.sleep(.1)
+            return self.j({'ok': True, 'events': ''})
         if w == 'lsync':
             if m == 'POST':
                 o = json.loads(b); o['gen'] = max(int(o.get('gen') or 0), int(L.get('gen') or 0) + 1)
@@ -129,6 +136,9 @@ class H(http.server.BaseHTTPRequestHandler):
             x = rd('wall.jpg'); return self.send(200, x, 'image/jpeg') if x else self.err(404, 'no picture')
         if w == 'stats': return self.j({'ok': True, 'cpu': 12.3, 'load': 0.2, 'memTotal': 8589934592, 'memFree': 4294967296, 'memAvailable': 5368709120})
         if w == 'devlink': return self.j({'ok': True, 'available': True, 'on': False})
+        if w == 'mic':   # (DIR/mic: the apps using a microphone, a JSON list; muted=0|1 kept, as rudolfd's)
+            if m == 'POST': ST['micmuted'] = q == 'muted=1'
+            return self.j({'ok': True, 'users': json.loads(rd('mic', b'[]')), 'muted': ST.get('micmuted', False)})
         if w == 'net': return self.j({'ok': True, 'interfaces': [{'name': 'wlan0', 'ip': '192.168.1.5/24', 'state': 'up', 'wireless': True, 'virtual': False, 'default': True, 'ssid': 'Home', 'rssi': -55}]})
         if w == 'volume':   # (kept: set=N, muted=0|1, step=up|down, as rudolfd's)
             if m == 'POST':

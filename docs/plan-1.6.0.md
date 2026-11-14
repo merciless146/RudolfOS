@@ -319,9 +319,25 @@ Known differences left: with Wi-Fi tools (a real computer's Wi-Fi), the network'
 (networks in range, joining one, saved networks: Settings › Network has them); a long notifications' list scrolls without
 Chromium's scrollbar; night light, the screen reader, the magnifier, high contrast, the on-screen keyboard and touch mode are
 turned on for the pages, and the shell's own parts do not show them yet (items 9 and 10).
-**Next:** item 3's second part's rest (the notifications' pop-ups, the 🎙️ indicator, the taskbar at the left or right,
-auto-hide), then items 4 to 12 in order, one PR each, stacked, each passing same_t.sh for its part, and docs/plan-2.0.md after
-them. Native is not the default yet.
+Item 3, second part, second half, second piece (the PR after the one above): the notifications' pop-ups: an app window's page
+sends its notification's toast to the shell (oneapp59.js wraps __notifCentre.add: op "toast"; and op "note", so the centre and
+the bell have it at once, kept until rudolfd's answer has it), which draws it as the page's .ntoast in the screen's corner (12 px
+from the right, 56 px from the bottom or the top; the newest at the bottom, 8 px apart; ntin's .25 s ease-out in, after its time
+.35 s out), in a window of its own that only takes clicks on the toasts themselves (their shadows let the taskbar's clicks
+through); a click does what the page's does (the notification's own action, run by its page, __oaToastAct; else the centre),
+⚡ Why? asks Blitzen; the taskbar's 🎙️ (call59.js: rudolfd's mic every 5 s, a click muting the microphone for everything, 🔇).
+Fixed on the way: the shell's dark pop-ups and menus followed only the dark theme's switch (S.darkui), not the light or dark mode
+(the page's html.dark: darkui !== false and dynResolve's mode); Settings asked for at a page from another app's window (a
+notification's action, settings('health')) opens Settings' own window there (op "open" with "page"). same_t.sh: new toast,
+toast-two (and the bell's count), toast-dark, toast-top, call, call-muted (85 parts pass); the behaviour on both engines:
+`SAME_SCRIPT=toastbeh_t.js sh same_t.sh` 9/9 (a toast, its click doing its action, one going by itself, none with Do not
+disturb but counted, the 🎙️ muting and back). Known differences left: rudolfd's events (events/wait) go to the page that asks
+first: with app windows open that is one of them, which then shows the notification; with none open, a page's event-driven
+notifications (memory, Bluetooth, the power button's dialog) are not seen until an app is open (a hidden page for the desktop's
+own events, item 11); the toasts' window shows what was behind it when it appeared (no compositor).
+**Next:** item 3's last part (the taskbar at the left or the right; the page has no auto-hide, so Native has none), then items 4
+to 12 in order, one PR each, stacked, each passing same_t.sh for its part, and docs/plan-2.0.md after them. Native is not the
+default yet.
 
 **Becoming the default:** after items 1-12 pass on the host and on the Vivobook (a week of betas on Native), the
 release's default engine is Native for new installations; an update keeps the engine the computer had, and Settings
