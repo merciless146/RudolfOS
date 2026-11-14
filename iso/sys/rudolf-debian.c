@@ -25,6 +25,14 @@
  * also cameras (/dev/video*, media*, v4l-subdev*) and game controllers (/dev/input, /dev/uinput, hidraw*), which
  * Rudolf OS gives to group 1000 (mdev.conf): Debian's rudolf's own group, so its programs can open them.
  *
+ * 1.5.9 (plan 15.3, second step): while an account is signed in with its files on the disk, Debian is that account's:
+ * Debian's "rudolf" (1000) is the account's own Linux user (acctUID, rudolfd's /run/rudolf/acct-session.env) instead
+ * of the desktop's, and its home folder is the account's folder (so Wine's prefix, ~/.wine, and the launchers Wine
+ * makes are the account's too); its runtime folder has the account's session D-Bus and the accounts' sound socket.
+ * Debian's own user, password and files stay as they were. The map is made when Debian starts, so Debian is stopped
+ * when the account changes (rudolfd's rebind at sign-in and sign-out) and started again for the new one on demand.
+ * Nobody signed in (or an account without its own user): the desktop's user, as before.
+ *
  * Terminal protocol (one request per connection to ID.sock):
  *   "R <offset> [<s>]\n"    -> "<new offset>\n" + output bytes after <offset> (waits up to <s>, default 20 s);
  *                              "X <exit code>\n" once the shell has ended and everything was read
@@ -83,13 +91,45 @@ static int write_str(const char *p, const char *s) { int f = open(p, O_WRONLY | 
 static void mkdirs(const char *d, mode_t m) { char t[512]; snprintf(t, sizeof t, "%s", d); for (char *p = t + 1; *p; p++) if (*p == '/') { *p = 0; mkdir(t, m); *p = '/'; } mkdir(t, m); }
 static int installed(void) { return !access(ROOT "/etc/rudolf-debian", F_OK) && !access(ROOT "/.rudolf-ready", F_OK); }
 
+/* ------------------------------------------------------------------ whose Debian it is (1.5.9, plan 15.3) */
+#ifndef ACCT_ENV
+#define ACCT_ENV "/run/rudolf/acct-session.env"
+#endif
+#define INITUID RUND "/init.uid"
+static unsigned d_uid = 1000;                 /* who Debian's "rudolf" is on Rudolf OS */
+static char d_home[300] = "", d_rt[300] = ""; /* the account's home and runtime folder (account mode only) */
+static int acct_mode(void) { return d_uid != 1000; }
+static void who(void)
+{
+	d_uid = 1000; d_home[0] = d_rt[0] = 0;
+	char *t = slurp(ACCT_ENV, NULL); if (!t) return;
+	char user[40] = "", home[300] = "", rt[300] = "";
+	for (char *l = strtok(t, "\n"); l; l = strtok(NULL, "\n")) {
+		if (!strncmp(l, "USER=", 5)) snprintf(user, sizeof user, "%s", l + 5);
+		else if (!strncmp(l, "HOME=", 5)) snprintf(home, sizeof home, "%s", l + 5);
+		else if (!strncmp(l, "XDG_RUNTIME_DIR=", 16)) snprintf(rt, sizeof rt, "%s", l + 16);
+	}
+	free(t);
+	/* rudolfd's account users are acctUID (uid 1001 and up), at HOME .../acctUID */
+	char *e = NULL; unsigned long u = strncmp(user, "acct", 4) ? 0 : strtoul(user + 4, &e, 10);
+	const char *hb = strrchr(home, '/');
+	if (!u || !e || *e || u < 1001 || u > 59999 || home[0] != '/' || strstr(home, "..") || !hb || strcmp(hb + 1, user) || rt[0] != '/' || strstr(rt, "..")) return;
+	struct stat st; if (stat(home, &st) || !S_ISDIR(st.st_mode) || st.st_uid != u) return;
+	d_uid = (unsigned)u; snprintf(d_home, sizeof d_home, "%s", home); snprintf(d_rt, sizeof d_rt, "%s", rt);
+}
+/* the person's own folder, as Rudolf OS (outside) sees it */
+static const char *out_home(void) { return acct_mode() ? d_home : "/home/rudolf"; }
+
 /* ------------------------------------------------------------------ namespaces */
 static void write_maps(pid_t pid)
 {
-	char p[64], m[128];
-	snprintf(m, sizeof m, "0 %d 1000\n1000 1000 1\n1001 %d 64535\n", SHIFT, SHIFT + 1001);
+	char p[64], m[128], g[128];
+	/* Debian's rudolf (1000) is d_uid (the desktop's user, or the signed-in account's); its group stays 1000, the
+	   devices' group (cameras, controllers), which the accounts' users are in too */
+	snprintf(m, sizeof m, "0 %d 1000\n1000 %u 1\n1001 %d 64535\n", SHIFT, d_uid, SHIFT + 1001);
+	snprintf(g, sizeof g, "0 %d 1000\n1000 1000 1\n1001 %d 64535\n", SHIFT, SHIFT + 1001);
 	snprintf(p, sizeof p, "/proc/%d/uid_map", pid); if (write_str(p, m)) die("cannot set the user map (%s)", strerror(errno));
-	snprintf(p, sizeof p, "/proc/%d/gid_map", pid); if (write_str(p, m)) die("cannot set the group map (%s)", strerror(errno));
+	snprintf(p, sizeof p, "/proc/%d/gid_map", pid); if (write_str(p, g)) die("cannot set the group map (%s)", strerror(errno));
 }
 /* fork a child in a new user namespace (mapped as above) that is root inside; returns like fork() */
 static pid_t fork_userns(void)
@@ -180,6 +220,17 @@ static void keeper_main(void)   /* pid 1 inside: set up the file system, then re
 	mount("tmpfs", ROOT "/run", "tmpfs", MS_NOSUID | MS_NODEV, "mode=755");
 	mkdirs(ROOT "/run/lock", 01777); chmod(ROOT "/run/lock", 01777);
 	if (!access("/tmp/.X11-unix", F_OK)) bindmnt("/tmp/.X11-unix", ROOT "/tmp/.X11-unix", 1);
+	if (acct_mode()) {
+		/* 1.5.9 (15.3): the account's: a runtime folder of Debian's own, its user's (Debian's 1000), with the mount
+		   points for the account's session bus and the sound socket, which acct_binds() places from outside (the
+		   keeper itself, Debian's root, may not go into them); the home folder likewise */
+		mkdirs(ROOT "/run/user", 0755); mkdir(ROOT "/run/user/1000", 0700); mount("tmpfs", ROOT "/run/user/1000", "tmpfs", MS_NOSUID | MS_NODEV, "mode=700,uid=1000,gid=1000,size=1m");
+		mkdirs(ROOT "/run/user/1000/pulse", 0755);
+		{ int f = open(ROOT "/run/user/1000/bus", O_WRONLY | O_CREAT | O_CLOEXEC, 0600); if (f >= 0) close(f);
+		  f = open(ROOT "/run/user/1000/pulse/native", O_WRONLY | O_CREAT | O_CLOEXEC, 0600); if (f >= 0) close(f); }
+		mkdirs(ROOT "/home/rudolf", 0755);
+		goto homed;
+	}
 	if (!access("/run/user/1000", F_OK)) bindmnt("/run/user/1000", ROOT "/run/user/1000", 1);
 	/* 1.5.6: /home/rudolf without what is mounted on it. The signed-in account's folders bound there by rudolfd would
 	   come in as part of this copy, which in Debian's user namespace locks them in place: rebind could never take
@@ -197,6 +248,7 @@ static void keeper_main(void)   /* pid 1 inside: set up the file system, then re
 	{ char t[300]; ssize_t n = readlink("/home/rudolf/Downloads", t, sizeof t - 1);
 	  if (n > 0) { t[n] = 0; char d[400]; snprintf(d, sizeof d, ROOT "%s", t);
 	    if (t[0] == '/' && !strstr(t, "..") && !strncmp(t, "/persist/", 9)) bindmnt(!access("/run/rudolf/dl/.", F_OK) ? "/run/rudolf/dl" : t, d, 1); } }
+homed:
 	if (access("/etc/resolv.conf", F_OK)) write_str("/etc/resolv.conf", "");
 	bindmnt("/etc/resolv.conf", ROOT "/etc/resolv.conf", 0);
 	sethostname("rudolf", 6);
@@ -213,9 +265,16 @@ static void keeper_main(void)   /* pid 1 inside: set up the file system, then re
 	for (;;) { if (wait(NULL) < 0 && errno == ECHILD) pause(); }
 }
 static int cmd_rebind(void);
+static void stop(void);
+static int acct_binds(pid_t k);
+static unsigned keeper_uid(void) { char *t = slurp(INITUID, NULL); unsigned u = t ? (unsigned)strtoul(t, NULL, 10) : 1000; free(t); return u ? u : 1000; }
 static pid_t start(void)
 {
-	pid_t k = keeper_pid(); if (k) return k;
+	who();
+	pid_t k = keeper_pid();
+	/* 1.5.9 (15.3): Debian started for another user (an account signed in or out since): stopped, started again */
+	if (k && keeper_uid() != d_uid) { stop(); k = 0; }
+	if (k) return k;
 	if (!installed()) die("Debian is not set up");
 	mkdirs(RUND, 0755);
 	int r[2], q2[2]; if (pipe(r) || pipe(q2)) die("pipe");
@@ -237,8 +296,10 @@ static pid_t start(void)
 	if (n >= 3 && c[0] == 2) die("the Debian sandbox did not start: %s failed (%s)", kstep(c[1]), strerror(c[2]));
 	if (n < 1 || c[0] != 1 || q <= 0) die("the Debian sandbox did not start (%s)", q <= 0 ? "no process" : "no ready signal");
 	char s[32]; snprintf(s, sizeof s, "%d\n", q); write_str(INITPID, s);
+	snprintf(s, sizeof s, "%u\n", d_uid); write_str(INITUID, s);
 	k = keeper_pid(); if (!k) die("the Debian sandbox did not start");
-	cmd_rebind();   /* 1.5.6: the signed-in account's folders */
+	if (acct_mode()) { if (acct_binds(k)) { stop(); die("the account's folder could not be given to Debian"); } }
+	else cmd_rebind();   /* 1.5.6: the signed-in account's folders */
 	return k;
 }
 static void stop(void)
@@ -246,7 +307,7 @@ static void stop(void)
 	pid_t k = keeper_pid(); if (!k) return;
 	kill(k, SIGKILL);
 	for (int i = 0; i < 50 && keeper_pid(); i++) usleep(100000);
-	unlink(INITPID);
+	unlink(INITPID); unlink(INITUID);
 }
 static void env_for(int root, const char *home)
 {
@@ -593,7 +654,7 @@ static int find_icon(const char *icon, char *out, size_t n)
 		snprintf(out, n, ROOT "/usr/share/icons/%s/%s/apps/%s.svg", themes[t], sizes[i], icon); if (!access(out, R_OK)) return 1;
 	}
 	/* 1.4.9: the person's own icons (Wine puts each installed Windows program's icon here) */
-	for (int i = 0; sizes[i]; i++) { snprintf(out, n, "/home/rudolf/.local/share/icons/hicolor/%s/apps/%s.png", sizes[i], icon); if (!access(out, R_OK)) return 1; }
+	for (int i = 0; sizes[i]; i++) { snprintf(out, n, "%s/.local/share/icons/hicolor/%s/apps/%s.png", out_home(), sizes[i], icon); if (!access(out, R_OK)) return 1; }
 	snprintf(out, n, ROOT "/usr/share/pixmaps/%s.png", icon); if (!access(out, R_OK)) return 1;
 	snprintf(out, n, ROOT "/usr/share/pixmaps/%s.svg", icon); if (!access(out, R_OK)) return 1;
 	snprintf(out, n, ROOT "/usr/share/pixmaps/%s.xpm", icon); return !access(out, R_OK);
@@ -605,7 +666,9 @@ static const char *const APPDIRS[] = { "/usr/share/applications", "/usr/share/wi
    for each Windows program it installs (Starport GE: wine/Programs/StarportGE/Starport GE.desktop). Their IDs are
    "u-" and the launcher's path inside that folder in hex, so any file name works. Only launchers shown in menus are
    listed (Wine's per-file-type ones, wine-extension-*, are not), and none with the name of one of Debian's own. */
-#define UAPPS "/home/rudolf/.local/share/applications"
+#define UAPPS "/home/rudolf/.local/share/applications"   /* (inside Debian) */
+/* the same folder as Rudolf OS sees it: the desktop's /home/rudolf, or the signed-in account's home (1.5.9) */
+static const char *uapps_out(void) { static char b[400]; snprintf(b, sizeof b, "%s/.local/share/applications", out_home()); return b; }
 static void hexid(const char *rel, char *out, size_t n) { size_t o = snprintf(out, n, "u-"); for (const char *c = rel; *c && o + 3 < n; c++) o += snprintf(out + o, n - o, "%02x", (unsigned char)*c); }
 static int unhexid(const char *id, char *rel, size_t n)
 {
@@ -642,7 +705,7 @@ static void user_apps(const char *dir, const char *rel, int depth, int *first)
 }
 static int cmd_apps(void)
 {
-	printf("{\"ok\":true,\"apps\":["); int first = 1;
+	who(); printf("{\"ok\":true,\"apps\":["); int first = 1;
 	for (int di = 0; APPDIRS[di] && installed(); di++) {
 	char dp[256]; snprintf(dp, sizeof dp, ROOT "%s", APPDIRS[di]);
 	DIR *d = opendir(dp); struct dirent *e;
@@ -660,14 +723,14 @@ static int cmd_apps(void)
 	}
 	if (d) closedir(d);
 	}
-	if (installed()) user_apps(UAPPS, "", 0, &first);
+	if (installed()) user_apps(uapps_out(), "", 0, &first);
 	printf("]}\n"); return 0;
 }
 static int cmd_launch(const char *id, const char *file)
 {
 	for (const char *c = id; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("._-+", *c)) die("bad app id");
 	char p[900]; desk k; int found = 0;
-	if (!strncmp(id, "u-", 2)) { char rel[700]; if (unhexid(id, rel, sizeof rel)) die("bad app id"); snprintf(p, sizeof p, UAPPS "/%s.desktop", rel); found = !read_desk(p, &k); }
+	if (!strncmp(id, "u-", 2)) { char rel[700]; if (unhexid(id, rel, sizeof rel)) die("bad app id"); who(); snprintf(p, sizeof p, "%s/%s.desktop", uapps_out(), rel); found = !read_desk(p, &k); }
 	for (int di = 0; APPDIRS[di] && !found; di++) { snprintf(p, sizeof p, ROOT "%s/%s.desktop", APPDIRS[di], id); found = !read_desk(p, &k); }
 	if (!found) die("no such app");
 	/* Exec= split into words; %f %F %u %U become the file (if any), other field codes are dropped */
@@ -725,9 +788,38 @@ static int rb_count(const char *mi, const char *path)
 	}
 	return n;
 }
+/* 1.5.9 (15.3): Debian as the account's user: its folder is Debian's /home/rudolf, its session bus and the accounts'
+   sound socket in Debian's /run/user/1000 (clones made here, as Rudolf OS's root, attached inside, as rebind does) */
+static int acct_binds(pid_t k)
+{
+	char bus[340], snd[] = "/run/rudolf/pulse/native"; snprintf(bus, sizeof bus, "%s/bus", d_rt);
+	const char *src[3] = {d_home, bus, snd}, *dst[3] = {"/home/rudolf", "/run/user/1000/bus", "/run/user/1000/pulse/native"};
+	int fds[3];
+	for (int i = 0; i < 3; i++) { struct stat st; fds[i] = lstat(src[i], &st) ? -1 : syscall(SYS_open_tree, AT_FDCWD, src[i], RB_OPEN_TREE_CLONE | O_CLOEXEC); }
+	if (fds[0] < 0) { for (int i = 1; i < 3; i++) if (fds[i] >= 0) close(fds[i]); return -1; }
+	char p[64]; snprintf(p, sizeof p, "/proc/%d/ns/mnt", k); int ns = open(p, O_RDONLY | O_CLOEXEC);
+	if (ns < 0) { for (int i = 0; i < 3; i++) if (fds[i] >= 0) close(fds[i]); return -1; }
+	pid_t c = fork(); if (c < 0) die("fork");
+	if (!c) {
+		if (setns(ns, CLONE_NEWNS)) _exit(1);
+		for (int i = 0; i < 3; i++) if (fds[i] >= 0 && syscall(SYS_move_mount, fds[i], "", AT_FDCWD, dst[i], RB_MOVE_MOUNT_F_EMPTY_PATH)) {
+			fprintf(stderr, "rudolf-debian: %s: %s\n", dst[i], strerror(errno)); if (!i) _exit(1); }
+		_exit(0);
+	}
+	close(ns); for (int i = 0; i < 3; i++) if (fds[i] >= 0) close(fds[i]);
+	int st; waitpid(c, &st, 0);
+	if (!WIFEXITED(st) || WEXITSTATUS(st)) return -1;
+	/* its shell's settings when it has none (as setup does for the desktop's) */
+	char *a2[] = {"/bin/sh", "-c", "for f in .bashrc .profile .bash_logout; do [ -e \"$HOME/$f\" ] || [ ! -e /etc/skel/$f ] || cp /etc/skel/$f \"$HOME/\"; done", NULL};
+	run_in(0, NULL, a2);
+	return 0;
+}
 static int cmd_rebind(void)
 {
 	pid_t k = keeper_pid(); if (!k) return 0;
+	/* 1.5.9 (15.3): signed in or out as another user: Debian stops (its next command starts it for the new one) */
+	who(); if (keeper_uid() != d_uid) { stop(); return 0; }
+	if (acct_mode()) return 0;   /* (the account's whole folder is Debian's home: nothing to place) */
 	char *acct = slurp("/run/rudolf/home-session", NULL); if (acct) { char *e = strpbrk(acct, "\r\n"); if (e) *e = 0; }
 	for (const char *c = acct; c && *c; c++) if (!isalnum((unsigned char)*c) && *c != '-' && *c != '_') { free(acct); acct = NULL; break; }
 	/* Downloads is the account's own only while the downloads store has its bind (rudolfd: dl_store_bound) */

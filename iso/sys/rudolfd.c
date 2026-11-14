@@ -184,13 +184,15 @@ static int safe_media_path(const char *p)
 
 /* 1.5.6: an app's own folder, to look at in File Explorer from its Properties (read only: list, read, search): the
    Linux apps from Flathub, Windows programs in Wine, Debian's programs, Rudolf OS's own desktop files */
+static int au_home_has(const char *p, const char *sub);   /* rudolfd-users.inc (1.5.9, 15.3's second step) */
 static int app_view_path(const char *p)
 {
 	static const char *const R[] = {"/var/lib/flatpak/app/", "/home/rudolf/.wine/drive_c/", "/persist/debian/usr/", "/persist/debian/opt/", "/usr/share/rudolf/www/", NULL};
 	if (!p || strstr(p, "/../") || strstr(p, "/./") || strlen(p) > 1024) return 0;
 	size_t n = strlen(p); if (n >= 3 && !strcmp(p + n - 3, "/..")) return 0;
 	for (int i = 0; R[i]; i++) { size_t l = strlen(R[i]); if (!strncmp(p, R[i], l) || (n == l - 1 && !strncmp(p, R[i], n))) return 1; }
-	return 0;
+	/* 1.5.9 (15.3): Wine's prefix is the signed-in account's own (Debian's home is the account's folder) */
+	return au_home_has(p, "/.wine/drive_c/");
 }
 
 static void urldecode(char *s)
@@ -1798,7 +1800,8 @@ static void api_debian(struct req *r, const char *what)
 	if (!strcmp(what, "icon")) {
 		const char *pth = qparam(r->query, "path");
 		/* (1.4.9) also the person's own icons, where Wine puts each installed Windows program's */
-		if (!pth || (strncmp(pth, "/persist/debian/usr/share/", 26) && strncmp(pth, "/home/rudolf/.local/share/icons/", 32)) || strstr(pth, "..")) { reply_err(r->fd, 400, "bad icon"); return; }
+		/* (1.5.9, 15.3: the signed-in account's own, as Debian's home is its folder) */
+		if (!pth || (strncmp(pth, "/persist/debian/usr/share/", 26) && strncmp(pth, "/home/rudolf/.local/share/icons/", 32) && !au_home_has(pth, "/.local/share/icons/")) || strstr(pth, "..")) { reply_err(r->fd, 400, "bad icon"); return; }
 		serve_file(r, pth); return;
 	}
 	if (!strcmp(what, "settings")) {
@@ -1997,7 +2000,8 @@ static void api_ai(struct req *r, const char *what)
 	}
 	reply_err(r->fd, 404, "unknown Blitzen action");
 }
-/* runs "rpk run NAME ARGS..." as the desktop user with the request body as its input */
+/* runs "rpk run NAME ARGS..." as the desktop user with the request body as its input (1.5.9, 15.3: as the signed-in
+   account's own Linux user while there is one) */
 static void api_pkg_exec(struct req *r)
 {
 	char nm[48], args[2048];
@@ -2007,6 +2011,9 @@ static void api_pkg_exec(struct req *r)
 	char *argv[66]; int n = 0; argv[n++] = "/usr/bin/rpk"; argv[n++] = "run"; argv[n++] = nm;
 	if (*args) for (char *t = args, *e; t && n < 64; t = e) { e = strchr(t, '\x1f'); if (e) *e++ = 0; argv[n++] = t; }
 	argv[n] = NULL;
+	char au[32], ae[160], ah[300] = "/home/rudolf"; au_app_user(au, sizeof au, ae, sizeof ae);
+	struct passwd *apw = strcmp(au, "rudolf") ? getpwnam(au) : NULL; uid_t xu = apw ? apw->pw_uid : 1000; gid_t xg = apw ? apw->pw_gid : 1000;
+	if (apw) snprintf(ah, sizeof ah, "%s", apw->pw_dir); else snprintf(au, sizeof au, "rudolf");
 	int in[2], out[2], er[2];
 	if (pipe(in) || pipe(out) || pipe(er)) { reply_err(r->fd, 500, "cannot start"); return; }
 	signal(SIGCHLD, SIG_DFL);
@@ -2015,9 +2022,9 @@ static void api_pkg_exec(struct req *r)
 	if (!pid) {
 		setsid(); dup2(in[0], 0); dup2(out[1], 1); dup2(er[1], 2);
 		for (int fd = 3; fd < 256; fd++) close(fd);
-		if (chdir("/home/rudolf")) { if (chdir("/tmp")) {} }
-		if (setgroups(0, NULL) || setgid(1000) || setuid(1000)) _exit(126);
-		clearenv(); setenv("HOME", "/home/rudolf", 1); setenv("USER", "rudolf", 1); setenv("LANG", "C.UTF-8", 1); setenv("PATH", "/usr/bin:/bin", 1);
+		if (setgroups(0, NULL) || setgid(xg) || setuid(xu)) _exit(126);
+		if (chdir(ah)) { if (chdir("/tmp")) {} }
+		clearenv(); setenv("HOME", ah, 1); setenv("USER", au, 1); setenv("LANG", "C.UTF-8", 1); setenv("PATH", "/usr/bin:/bin", 1);
 		execv(argv[0], argv); _exit(127);
 	}
 	close(in[0]); close(out[1]); close(er[1]);
@@ -2062,8 +2069,9 @@ static void api_pkg(struct req *r, const char *what)
 	if (!strcmp(what, "run")) {
 		q = qparam(r->query, "name"); if (!q || !pkg_names_ok(q) || strchr(q, ',')) { reply_err(r->fd, 400, "bad package name"); return; }
 		if (native_pid()) { write_str(RUN "/wm", "game"); reply_err(r->fd, 409, "another full-screen app is running"); return; }
-		snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh rudolf -c 'set -a; . " RUN "/session.env; set +a; exec /usr/bin/rpk run %s' "
-			"</dev/null >>" RUN "/native.log 2>&1 & echo $! > " RUN "/native.pid", q);
+		{ char au[32], ae[160]; au_app_user(au, sizeof au, ae, sizeof ae);   /* 1.5.9 (15.3): as the account's own user */
+		  snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh %s -c 'set -a; . %s; set +a; exec /usr/bin/rpk run %s' "
+			"</dev/null >>" RUN "/native.log 2>&1 & echo $! > " RUN "/native.pid", au, ae, q); }
 		run(cmd); write_str(RUN "/wm", "game"); reply_ok(r->fd, "started"); return;
 	}
 	if (!strcmp(what, "source") || !strcmp(what, "key")) {

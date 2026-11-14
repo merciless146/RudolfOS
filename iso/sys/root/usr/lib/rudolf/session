@@ -35,6 +35,20 @@ read_screen() {
 }
 # 1.4.5: rudolf-display passes the kernel's key codes (+8) to X, which are evdev key codes; Xvfb's own keymap is not
 # (with it, the arrow keys, Page Up and Down, Home, End and Delete arrived as other keys: Page Down as the menu key)
+# 1.5.9 (plan 15.3): X with authorization, not -ac (every program on the computer could watch the screen and type
+# into the desktop). A new cookie at each start, root's only; the display is given by user (X's "localuser"): root,
+# the desktop's user, and the signed-in account's own Linux user (rudolfd adds it at sign-in, takes it away at
+# sign-out). If no cookie can be made, X starts without access control as before, and the session log says so.
+XAUTHF=/run/rudolf/xauth
+x_auth() {
+	XAUTH="-auth $XAUTHF"
+	rudolf-display --xcookie $XAUTHF || { XAUTH=-ac; echo "$(date) X: no authorization file could be made: the display is open to every program"; }
+}
+x_allow() {
+	[ "$XAUTH" = -ac ] && return 0
+	XAUTHORITY=$XAUTHF rudolf-display --xallow root rudolf $(sed -n 's/^USER=\(acct[0-9]*\)$/\1/p' /run/rudolf/acct-session.env 2>/dev/null) ||
+		echo "$(date) X: the display could not be given to its users"
+}
 keys_evdev() { DISPLAY=:0 setxkbmap -rules evdev -model pc105 -layout us >/dev/null 2>&1 || echo "$(date) setxkbmap failed"; }
 start_soft() {
 	set -- $(rudolf-display --size)
@@ -45,18 +59,22 @@ start_soft() {
 	SFPS=$FPS; [ "$SFPS" -gt 60 ] && SFPS=60; export RUDOLF_FPS=$SFPS
 	S=native; [ "$W" = "$FBW" ] && [ "$H" = "$FBH" ] || S=scaled
 	echo "$W $H $SFPS $S ${FBW}x${FBH}" > /run/rudolf/screen-actual
-	Xvfb :0 -screen 0 ${W}x${H}x24 -fbdir /run/xvfb -nolisten tcp -ac -dpi 96 -nocursor +extension XFIXES +extension XTEST &
+	x_auth
+	Xvfb :0 -screen 0 ${W}x${H}x24 -fbdir /run/xvfb -nolisten tcp $XAUTH -noreset -dpi 96 -nocursor +extension XFIXES +extension XTEST &
 	XPID=$!
 	for i in $(seq 50); do [ -e /tmp/.X11-unix/X0 ] && break; sleep 0.1; done
+	x_allow
 	DISPARGS=/run/xvfb/Xvfb_screen0; MODE=soft
 	keys_evdev
 }
 start_gpu() {
 	rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
-	Xorg :0 vt1 -config /usr/lib/rudolf/xorg.conf -nolisten tcp -ac -noreset -novtswitch -dpi 96 \
+	x_auth
+	Xorg :0 vt1 -config /usr/lib/rudolf/xorg.conf -nolisten tcp $XAUTH -noreset -novtswitch -dpi 96 \
 		-logfile /run/rudolf/Xorg.log -verbose 3 &
 	XPID=$!
 	for i in $(seq 150); do [ -e /tmp/.X11-unix/X0 ] && break; kill -0 $XPID 2>/dev/null || break; sleep 0.1; done
+	[ -e /tmp/.X11-unix/X0 ] && kill -0 $XPID 2>/dev/null && x_allow
 	if [ -e /tmp/.X11-unix/X0 ] && kill -0 $XPID 2>/dev/null && rudolf-display --xsize >/dev/null 2>&1; then
 		# the chosen resolution and refresh rate: the monitor's mode of that size; a size the monitor does not
 		# have is scaled by the software display instead (Xorg's own scaling does not work on every card)
