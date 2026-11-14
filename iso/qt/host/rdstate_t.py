@@ -5,7 +5,7 @@ it again from the mounts at each request). Every variable that outlives a functi
 safe; a new one fails this test until it is reviewed and added.   python3 rdstate_t.py"""
 import os, re, sys
 SYS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../sys')
-SRC = {f: open(os.path.join(SYS, f)).read() for f in ('rudolfd.c', 'rudolfd-home.inc')}
+SRC = {f: open(os.path.join(SYS, f)).read() for f in ('rudolfd.c', 'rudolfd-home.inc', 'rudolfd-desktop.inc')}
 # file-scope variables: name -> (the functions that may set them, why that is safe)
 GLOBAL = {
     'token': ({'main'}, 'made once at start, before the first request'),
@@ -20,6 +20,9 @@ GLOBAL = {
     'home_root': (set(), 'a constant, changed only by the host tests'),
     'home_uid': (set(), 'a constant, changed only by the host tests'),
     'home_nobind': (set(), 'a constant, changed only by the host tests'),
+    'desk_ls': (set(), 'a constant (1.5.9, rudolfd-desktop.inc), changed only by the host tests'),
+    'desk_dir': (set(), 'as desk_ls'), 'desk_run': (set(), 'as desk_ls'), 'desk_uid': (set(), 'as desk_ls'),
+    'DSBOX': ({'daes_tables'}, 'the AES S-box, the same in every process, made the first time a process needs it'),
 }
 # variables kept inside a function (static): (function, name) -> why
 LOCAL = {
