@@ -1,8 +1,9 @@
 #!/bin/bash
 # Add WebKitGTK (the desktop's Lite engine, System Settings › Desktop engine; 1.5.7, plan Part 4) to a base layer
 # tree, from this Ubuntu 24.04 (apt-get install libwebkit2gtk-4.1-dev gstreamer1.0-plugins-base
-# gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav glib-networking):   addwebkit.sh ROOT BINARY
-# BINARY is rudolf-webkit, built here against libwebkit2gtk-4.1. Copied into ROOT: the binary (usr/bin), WebKit's
+# gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav glib-networking):   addwebkit.sh ROOT BINARY [NATIVE]
+# BINARY is rudolf-webkit, built here against libwebkit2gtk-4.1 (1.5.9: and NATIVE, rudolf-native, the native desktop
+# engine's prototype, plan Part 12, built against the same; it opens WebKit's libwebp itself, which WebKit brings). Copied into ROOT: the binary (usr/bin), WebKit's
 # helper processes and injected bundle (usr/lib/MULTIARCH/webkit2gtk-4.1), the GStreamer plug-ins the
 # desktop's media need (sound, Ogg, WebM, MP4 containers, WAV; no H.264 or AAC: Chromium plays those, the Lite engine
 # not yet) and its plug-in scanner, GLib's TLS module (https for the desktop's own requests, such as the weather),
@@ -10,13 +11,14 @@
 # Prints the size added. Fails when WebKitGTK is not installed here. GPL-2.0-or-later.
 set -e
 MA=${MA:-$(gcc -print-multiarch)}; [ -n "$MA" ] || MA=x86_64-linux-gnu   # (1.5.9: the build machine's library folder; aarch64-linux-gnu on ARM64)
-R=$1; BIN=$2; [ -d "$R/usr/lib/$MA" ] && [ -x "$BIN" ] || { echo "usage: $0 ROOT BINARY"; exit 1; }
+R=$1; BIN=$2; NAT=$3; [ -d "$R/usr/lib/$MA" ] && [ -x "$BIN" ] && { [ -z "$NAT" ] || [ -x "$NAT" ]; } || { echo "usage: $0 ROOT BINARY [NATIVE]"; exit 1; }
 ML=/usr/lib/$MA; WK=$ML/webkit2gtk-4.1
 [ -x "$WK/WebKitWebProcess" ] && [ -x "$WK/WebKitNetworkProcess" ] || { echo "addwebkit: WebKitGTK 4.1 is not installed here (apt-get install libwebkit2gtk-4.1-dev)"; exit 1; }
 SUDO=; [ -w "$R/usr/lib/$MA" ] || SUDO=sudo
 B0=$(du -sk "$R" | cut -f1)
 LIST=$(mktemp)
 $SUDO install -m 0755 "$BIN" "$R/usr/bin/rudolf-webkit"; echo "$BIN" >> "$LIST"
+[ -n "$NAT" ] && { $SUDO install -m 0755 "$NAT" "$R/usr/bin/rudolf-native"; echo "$NAT" >> "$LIST"; }
 # WebKit's helper processes and its injected bundle
 $SUDO mkdir -p "$R$WK"; $SUDO cp -a "$WK/." "$R$WK/"; find "$WK" -type f >> "$LIST"
 # GStreamer: the core's plug-in scanner and the plug-ins the desktop's sound and video need.

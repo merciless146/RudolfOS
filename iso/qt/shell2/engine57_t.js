@@ -16,7 +16,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
       window.fetch = (u, o) => { u = String(u); const q = new URL(u, location.href); const a = q.pathname.replace('/api/', ''); const J = (x, st) => Promise.resolve(new Response(JSON.stringify(Object.assign({ok: !st}, x)), {status: st || 200, headers: {'content-type': 'application/json'}}));
         if (u.includes('/api/')) M.calls.push(((o && o.method) || 'GET') + ' ' + a + q.search);
         if (a == 'desktop/engine') { if (o && o.method == 'POST') { const e = q.searchParams.get('engine'); if (e) M.choice = e; return J({message: 'saved'}) }
-          return J({choice: M.choice, now: M.now, available: M.avail !== false, failed: false, persistent: true, gaveUp: M.gaveUp || ''}) }
+          return J({choice: M.choice, now: M.now, available: M.avail !== false, nativeAvailable: M.navail !== false, failed: false, persistent: true, gaveUp: M.gaveUp || ''}) }
         if (a == 'shell') return J({id: 'x', on: true, failed: false, active: false, ready: true, installed: true});
         if (a == 'job') return J({running: false, status: 0, log: 'Setting up gir1.2-webkit2-4.1\ndone installed\n'});
         if (a == 'health') return J({events: [], now: 0});
@@ -30,7 +30,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q(`(async()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});ACCTS.length=0;ACCTS.push({n:'ann',h:await pwMake('a1'),r:'admin'});saveUser();USER=ACCTS[0];await userLogin(USER,'a1');window.__elevTrust=Date.now();return 1})()`);
   await wait(800); await q("(()=>{settings('sys');return 1})()"); await wait(1500);
   let t = await q("(()=>{const d=document.querySelector('.eng57');return d?{txt:d.innerText,v:d.querySelector('#eng57').value,opts:[...d.querySelectorAll('#eng57 option')].map(o=>o.textContent)}:null})()");
-  ok('2. System Settings › Desktop engine: a list with Standard (Chromium) and Lite (WebKit, test); what is in use now', t && t.v == 'chromium' && JSON.stringify(t.opts) == '["Standard (Chromium)","Lite (WebKit, test)"]' && /In use now: Lite \(WebKit\)/.test(t.txt) && /changes when the computer restarts/.test(t.txt), t);
+  ok('2. System Settings › Desktop engine: a list with Standard (Chromium) and Lite (WebKit, test); what is in use now', t && t.v == 'chromium' && JSON.stringify(t.opts) == '["Standard (Chromium)","Lite (WebKit, test)","Native (test)"]' && /In use now: Lite \(WebKit\)/.test(t.txt) && /changes when the computer restarts/.test(t.txt), t);
   await q("(()=>{const s=document.querySelector('#eng57');s.value='webkit';s.dispatchEvent(new Event('change'));return 1})()"); await wait(1500);
   const c = await q("M.calls.filter(x=>/desktop\\/engine\\?/.test(x))"); t = await q("(()=>{const d=document.querySelector('.eng57');return {v:d.querySelector('#eng57').value,txt:d.innerText}})()");
   ok('3. choosing Lite saves it; it is used after the computer restarts', JSON.stringify(c) == '["POST desktop/engine?engine=webkit"]' && t.v == 'webkit', [c, t]);
@@ -40,6 +40,17 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("(()=>{M.gaveUp='2026-11-10T21:59:00Z it closed 3 times in a row as it started';M.choice='chromium';document.querySelectorAll('.eng57').forEach(e=>e.remove());enginePanel57(document.querySelector('#sdp').closest('div').parentElement);return 1})()"); await wait(800);
   t = await q("document.querySelector('.eng57 .engnow').textContent");
   ok('4b. Lite given up by the session: Settings says when and why, and that choosing it again tries once more', /Lite was turned off on .+ because it closed 3 times in a row as it started\. Choose it again/.test(t), t);
+  // 1.5.9 (plan Part 12): Native (test), the native desktop engine's prototype, with Lite's safeguards
+  await q("(()=>{M.gaveUp='2026-11-14T10:00:00Z no answer from it in 90 s (Native)';M.choice='chromium';document.querySelectorAll('.eng57').forEach(e=>e.remove());enginePanel57(document.querySelector('#sdp').closest('div').parentElement);return 1})()"); await wait(800);
+  t = await q("document.querySelector('.eng57 .engnow').textContent");
+  ok('4c. 1.5.9: Native given up by the session: Settings names Native, when and why', /Native was turned off on .+ because no answer from it in 90 s\. Choose it again/.test(t) && !/\(Native\)/.test(t), t);
+  await q("(()=>{M.gaveUp='';M.calls.length=0;M.choice='chromium';document.querySelectorAll('.eng57').forEach(e=>e.remove());enginePanel57(document.querySelector('#sdp').closest('div').parentElement);return 1})()"); await wait(800);
+  await q("(()=>{const s=document.querySelector('#eng57');s.value='native';s.dispatchEvent(new Event('change'));return 1})()"); await wait(1500);
+  ok('4d. 1.5.9: choosing Native (test) saves it, for the next restart', JSON.stringify(await q("M.calls.filter(x=>/desktop\\/engine\\?/.test(x))")) == '["POST desktop/engine?engine=native"]' && /Native \(test\) is used after the computer restarts/.test(await q("document.querySelector('.eng57 .engnow').textContent")), await q("[M.calls,document.querySelector('.eng57 .engnow').textContent]"));
+  await q("(()=>{M.navail=false;M.choice='chromium';document.querySelectorAll('.eng57').forEach(e=>e.remove());enginePanel57(document.querySelector('#sdp').closest('div').parentElement);return 1})()"); await wait(800);
+  const o3 = await q("(()=>{const o=document.querySelector('#eng57 option[value=native]');return {d:o.disabled,t:o.textContent}})()");
+  ok('4e. 1.5.9: a Rudolf OS without rudolf-native: Native cannot be chosen, and it says why', o3.d && /update Rudolf OS first/.test(o3.t), o3);
+  await q("M.navail=true;M.choice='chromium'");
   await q("M.gaveUp=''");
   await q("(()=>{M.avail=false;M.choice='chromium';document.querySelectorAll('.eng57').forEach(e=>e.remove());enginePanel57(document.querySelector('#sdp').closest('div').parentElement);return 1})()"); await wait(800);
   const o2 = await q("(()=>{const o=document.querySelector('#eng57 option[value=webkit]');return {d:o.disabled,t:o.textContent}})()");

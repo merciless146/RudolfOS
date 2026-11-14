@@ -149,7 +149,10 @@ copy_deps usr/bin/rudolf-display usr/bin/rudolf-remote usr/bin/rudolfd usr/bin/r
 cp -a "$SYS/root/." .
 # 1.5.7 (plan Part 4): the Lite desktop engine (WebKitGTK), when this machine has it (the release workflow always does)
 if pkg-config --exists webkit2gtk-4.1 gtk+-3.0 2>/dev/null; then
-	gcc -O2 -Wno-deprecated-declarations -o /tmp/rudolf-webkit.$$ "$SYS/rudolf-webkit.c" $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) && "$HERE/systools/addwebkit.sh" "$OUT" /tmp/rudolf-webkit.$$; rm -f /tmp/rudolf-webkit.$$
+	# (1.5.9, plan Part 12: and rudolf-native, the native desktop engine's prototype)
+	gcc -O2 -Wno-deprecated-declarations -o /tmp/rudolf-webkit.$$ "$SYS/rudolf-webkit.c" $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) &&
+	gcc -O2 -Wno-deprecated-declarations -o /tmp/rudolf-native.$$ "$SYS/rudolf-native.c" $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm &&
+	"$HERE/systools/addwebkit.sh" "$OUT" /tmp/rudolf-webkit.$$ /tmp/rudolf-native.$$; rm -f /tmp/rudolf-webkit.$$ /tmp/rudolf-native.$$
 else echo "mkrootfs: no WebKitGTK here (libwebkit2gtk-4.1-dev): this build has no Lite desktop engine"; fi
 mkdir -p usr/share/rudolf
 cp -a "$WWW" usr/share/rudolf/www

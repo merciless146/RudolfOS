@@ -186,6 +186,25 @@ webkit_usable() {
 	[ -e /run/rudolf/webkit-failed ] && return 1
 	[ -x /usr/bin/rudolf-webkit ]
 }
+# 1.5.9 (plan Part 12): the Native desktop (rudolf-native: Settings › System health › Desktop engine › Native (test)), a
+# prototype, with Lite's safeguards: taken at start-up as Lite's choice, never in recovery mode, not after it failed this
+# start; on trial until it answers once (its heartbeat, sent once its sign-in screen is up); given up for good, back to
+# Standard, after a start that never answered, no answer in 90 s, or closing three times in a row as it starts.
+native_usable() {
+	[ "$(cat /run/rudolf/engine-choice 2>/dev/null)" = native ] || return 1
+	grep -q 'rudolf.recovery=1' $RCMD && return 1
+	[ -e /run/rudolf/native-failed ] && return 1
+	[ -x /usr/bin/rudolf-native ]
+}
+native_give_up() {
+	echo "$(date) the Native desktop did not start ($1) - using Chromium"; touch /run/rudolf/native-failed; rm -f /run/rudolf/wm-native
+	if [ -e /run/rudolf/persistent ]; then rm -f /persist/etc/rudolf-desktop-engine /persist/etc/rudolf-desktop-engine.trying
+		echo "$(date -u +%FT%TZ) $1 (Native)" > /persist/etc/rudolf-desktop-engine.failed; sync; fi   # (Settings says which engine)
+	rudolfd --health browser "the Native desktop did not start ($1), so the standard engine is used from now on (Settings › System health › Desktop engine)"
+}
+native_trial_check() { [ "$FIRST" = 1 ] && [ -e /persist/etc/rudolf-desktop-engine.trying ] && native_usable && native_give_up "it did not reach the sign-in screen at the last start"; return 0; }
+native_trial_mark() { [ $ENGINE = native ] && [ -e /run/rudolf/persistent ] && [ ! -e /persist/etc/rudolf-desktop-engine.trying ] && date -u +%FT%TZ > /persist/etc/rudolf-desktop-engine.trying; return 0; }
+native_trial_ok() { [ $ENGINE = native ] && [ -e /run/rudolf/heartbeat ] && [ -e /persist/etc/rudolf-desktop-engine.trying ] && rm -f /persist/etc/rudolf-desktop-engine.trying; return 0; }
 shell_usable() {
 	[ ${#SHELLID} = 56 ] || return 1
 	grep -q 'rudolf.recovery=1' $RCMD && return 1
@@ -236,6 +255,7 @@ desk_exited() {
 	if [ ! -e /run/rudolf/heartbeat ] && [ "$1" -lt 60 ]; then FAST=$((FAST + 1)); else FAST=0; fi
 	[ $FAST -ge 3 ] || return 0
 	if [ $ENGINE = webkit ]; then webkit_give_up "it closed $FAST times in a row as it started"; FAST=0
+	elif [ $ENGINE = native ]; then native_give_up "it closed $FAST times in a row as it started"; FAST=0
 	elif [ $SHELLON = 1 ]; then echo "$(date) the shell closed $FAST times as it started - using the desktop page directly"; touch /run/rudolf/shell-failed; FAST=0
 	elif [ $FAST = 3 ]; then rudolfd --health browser "the desktop browser closed 3 times in a row as it started"; fi
 	return 0
@@ -258,9 +278,10 @@ while :; do
 	# kept for browsing. Only when Debian has it and it has not failed this start (then Chromium, as before)
 	# 1.5.7: Lite is on trial until its desktop answers once: a start that never got there (the computer was switched
 	# off at a grey screen, say) gives it up at the next start
-	webkit_trial_check
+	native_trial_check; webkit_trial_check
 	ENGINE=chromium; webkit_usable && { ENGINE=webkit; START=http://127.0.0.1:8080/; SHELLON=0; LAUNCH=""; echo "$START" > /run/rudolf/desktop-url; }
-	webkit_trial_mark
+	native_usable && { ENGINE=native; START=http://127.0.0.1:8080/; SHELLON=0; LAUNCH=""; echo "$START" > /run/rudolf/desktop-url; }
+	webkit_trial_mark; native_trial_mark
 	echo $ENGINE > /run/rudolf/desktop-engine
 	# the web frames extension lets websites load inside the desktop page's frames (it removes their frame protections)
 	# and spots sign-in pages; with the shell, Oracle's tabs are real pages and it is left out
@@ -269,14 +290,22 @@ while :; do
 	FEDCM_OFF=,FedCm; grep -qx 'fedcm=1' /persist/etc/rudolf-browser.conf 2>/dev/null && FEDCM_OFF=
 	# 1.5.6: the browser starts in the desktop's memory group (see memory); this loop goes back out right after
 	DCG=/sys/fs/cgroup/desktop/cgroup.procs; [ -e $DCG ] && echo $$ > $DCG 2>/dev/null
-	if [ $ENGINE = webkit ]; then
-		# 1.5.8: how WebKit draws (see rudolf-webkit.c): the graphics card for everything only when Settings say "full";
-		# by default the processor draws and the graphics card puts the layers together; no graphics card: software
-		WKSOFT=--draw=soft; [ $MODE = gpu ] && WKSOFT=--draw=mixed; [ $MODE = gpu ] && [ "$SETTING" = full ] && WKSOFT=--draw=gpu
+	# 1.5.8: how WebKit draws (see rudolf-webkit.c): the graphics card for everything only when Settings say "full";
+	# by default the processor draws and the graphics card puts the layers together; no graphics card: software
+	WKSOFT=--draw=soft; [ $MODE = gpu ] && WKSOFT=--draw=mixed; [ $MODE = gpu ] && [ "$SETTING" = full ] && WKSOFT=--draw=gpu
+	# 1.5.9 (plan Part 12): rudolf-native is the window manager: rudolf-display only feeds input and shows the screen while
+	# /run/rudolf/wm-native exists (made here: rudolf-native runs as the desktop user, who cannot write /run/rudolf)
+	if [ $ENGINE = native ]; then touch /run/rudolf/wm-native; else rm -f /run/rudolf/wm-native; fi
+	# 1.5.9: the screen's size as display_up wrote it (W is the watchdog's clock after the first start, so a desktop started
+	# again was given the time as its width)
+	SCW=$W; SCH=$H; [ -s /run/rudolf/screen ] && read SCW SCH < /run/rudolf/screen
+	if [ $ENGINE = native ]; then
+		su -s /bin/sh rudolf -c "exec /usr/bin/rudolf-native --rudolf-kiosk --size=${SCW}x$SCH $WKSOFT --base=http://127.0.0.1:8080" >>/run/rudolf/native-desktop.log 2>&1 &
+	elif [ $ENGINE = webkit ]; then
 		# 1.5.8: Settings › System health › Log video problems: GStreamer's warnings and errors (WebKit's video and sound)
 		# go to /run/rudolf/webkit-video.log, which the system report includes; kept under 4 MB by the loop below
 		VLOG=; grep -q '^video_log=1' /persist/etc/rudolf-memory 2>/dev/null && { VLOG="GST_DEBUG=*:2 GST_DEBUG_NO_COLOR=1 GST_DEBUG_FILE=/run/rudolf/webkit-video.log"; : > /run/rudolf/webkit-video.log; chown rudolf /run/rudolf/webkit-video.log; }
-		su -s /bin/sh rudolf -c "exec env $VLOG /usr/bin/rudolf-webkit --rudolf-kiosk --size=${W}x$H $WKSOFT $START" >>/run/rudolf/webkit-desktop.log 2>&1 &
+		su -s /bin/sh rudolf -c "exec env $VLOG /usr/bin/rudolf-webkit --rudolf-kiosk --size=${SCW}x$SCH $WKSOFT $START" >>/run/rudolf/webkit-desktop.log 2>&1 &
 	else
 	# 1.5.8: Chromium 157 never replaces the installed shell from its file ("App is already installed"), so a release's
 	# changes to Oracle's tabs never arrived. Once per start, when the profile's copy is not the system's, rudolf-shellfix
@@ -315,7 +344,7 @@ while :; do
 		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] || [ -e /run/rudolf/shell-switch ] && break; done
 		W=$(date +%s); if [ $((W - LASTW)) -gt 40 ]; then echo "$(date) woke after $((W - LASTW)) s - the desktop has 90 s to answer"; GRACE=$((W + 90)); fi; LASTW=$W
 		if [ -e /run/rudolf/screen-restart ]; then rm -f /run/rudolf/screen-restart; display_restart; break; fi
-		webkit_trial_ok; desk_up_mark; shell_switch_limit
+		webkit_trial_ok; native_trial_ok; desk_up_mark; shell_switch_limit
 		# the desktop has handed its data over (or Settings changed): start the browser again, with the shell if it can
 		if [ -e /run/rudolf/shell-switch ]; then rm -f /run/rudolf/shell-switch; echo "$(date) starting the browser again (shell)"
 			pkill -f '[-]-rudolf-kiosk'; for i in 1 2 3 4 5 6; do kill -0 $B 2>/dev/null || break; sleep 1; done; pkill -9 -f '[-]-rudolf-kiosk'; break; fi
@@ -329,6 +358,11 @@ while :; do
 		# 1.5.7: the WebKit desktop did not come up (no heartbeat in 90 s): Chromium from now on (until restart)
 		if [ $ENGINE = webkit ] && [ $((NOW - START_T)) -gt 90 ] && [ ! -e /run/rudolf/heartbeat ]; then
 			webkit_give_up "no answer from it in 90 s"
+			kill $B 2>/dev/null; pkill -f '[-]-rudolf-kiosk'; sleep 3; pkill -9 -f '[-]-rudolf-kiosk'; break
+		fi
+		# 1.5.9: the Native desktop, likewise
+		if [ $ENGINE = native ] && [ $((NOW - START_T)) -gt 90 ] && [ ! -e /run/rudolf/heartbeat ]; then
+			native_give_up "no answer from it in 90 s"
 			kill $B 2>/dev/null; pkill -f '[-]-rudolf-kiosk'; sleep 3; pkill -9 -f '[-]-rudolf-kiosk'; break
 		fi
 		# the shell did not bring the desktop up: use the desktop page by itself from now on (until restart)

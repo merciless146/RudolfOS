@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- New: Settings › System health › Desktop engine › Native (test): the native desktop engine's prototype (plan Part 12), with Lite's safeguards: on trial until its sign-in screen appears, and given up for Standard (said in System health and Settings) after a start that does not get there; never in Recovery mode. Ctrl+Alt+Backspace turns it off too.
 - New: the native desktop engine's prototype is a window manager too (plan Part 12): every window gets a title bar in the title bar styles and colours, with minimise, maximise and close, moving and resizing, focus on click, full screen for games and videos, dialogs centred over their window, and the open windows on the taskbar.
 - New: rudolf-native, the native desktop engine's prototype (plan Part 12): the wallpaper, the taskbar in its styles and accent colours, the pinned apps, the tray, the clock, the start menu and the sign-in and lock screens drawn natively (GTK), each app in a WebKit window of its own, all sharing one WebKit process. Not offered in Settings yet.
 - New: rudolfd answers the native desktop engine's questions (plan Part 12): the accounts for its sign-in screen (never a hash), the sign-in itself, checked as the desktop page checks it and opening the account's encrypted folder, and the desktop's settings, pinned apps and start menu; the desktop page gives it the start menu's list and a copy of your own background picture. Written down in docs/api.md.
