@@ -62,6 +62,7 @@ def make_drive(path):
         with open(D, 'rb') as d: shutil.copyfileobj(d, f)
     os.remove(D)
 
+INIT_JS = "(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};if(!window.__cww){window.__cww=1;window.__cw=[];const w=console.warn,er=console.error;console.warn=function(...a){__cw.push('W '+a.map(x=>x&&x.message?x.message:String(x)).join(' ').slice(0,300));return w.apply(this,a)};console.error=function(...a){__cw.push('E '+a.map(x=>x&&x.message?x.message:String(x)).join(' ').slice(0,300));return er.apply(this,a)};addEventListener('error',e=>__cw.push('X '+e.message));addEventListener('unhandledrejection',e=>__cw.push('R '+(e.reason&&e.reason.message||e.reason)));try{const n0=window.notify;if(typeof n0=='function')window.notify=function(t,b){__cw.push('N '+t+': '+String(b).slice(0,200));return n0.apply(this,arguments)}}catch(e){}try{const l0=window.logEvt;if(typeof l0=='function')window.logEvt=function(k,m){__cw.push('L '+k+': '+String(m).slice(0,200));return l0.apply(this,arguments)}}catch(e){}try{const u0=window.userLogout;if(typeof u0=='function')window.userLogout=function(){__cw.push('O sign-out '+String(new Error().stack).split('\\n').slice(2,5).join(' < ').slice(0,300));return u0.apply(this,arguments)}}catch(e){}}return 1})()"
 def boot(tag, slot):
     extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf160', '-serial', f'unix:{TUN},server,nowait',
              '-kernel', f'{(W + "/out/channel") if False else REL}/vmlinuz', '-append', f'quiet loglevel=3 consoleblank=0 rudolf.slot={slot} rudolf.debug=1']
@@ -82,7 +83,17 @@ def boot(tag, slot):
         return r
     end = time.time() + 600
     while up and time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'", 20) is not True: time.sleep(5)
-    js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};if(!window.__cww){window.__cww=1;window.__cw=[];const w=console.warn,er=console.error;console.warn=function(...a){__cw.push('W '+a.map(x=>x&&x.message?x.message:String(x)).join(' ').slice(0,300));return w.apply(this,a)};console.error=function(...a){__cw.push('E '+a.map(x=>x&&x.message?x.message:String(x)).join(' ').slice(0,300));return er.apply(this,a)};addEventListener('error',e=>__cw.push('X '+e.message));addEventListener('unhandledrejection',e=>__cw.push('R '+(e.reason&&e.reason.message||e.reason)))}return 1})()")
+    js(INIT_JS)
+    # the desktop's page settled: the same page for 20 s (the first start loads it again once the desktop is ready)
+    if up:
+        end = time.time() + 300; t0 = None; since = time.time()
+        while time.time() < end:
+            t = js("Math.round(performance.timeOrigin)", 20)
+            if t != t0: t0 = t; since = time.time()
+            elif time.time() - since >= 20: break
+            time.sleep(5)
+        js(INIT_JS)
+        out('page settled', tag, round(time.time() - since), 's', g.sh("grep -iE 'restart|switch|not responding|did not' /run/rudolf/session.log | grep -v '^+' | tail -5", 30).strip()[-600:])
     return vm, g, up, js
 # a command run in the guest from a script file (a long command line echoed back over the serial line mixed with its
 # output), its output written to this test's log in full
@@ -118,7 +129,7 @@ def diag(js, why):
     out('--- ' + why + ':', js(DIAG_JS, 30))
     out(g_last.sh("cat /run/rudolf/desktop-engine; busybox wget -q -O- http://127.0.0.1:9222/json/list 2>&1 | grep -E '\"(url|type)\"'; cat /run/rudolf/home-session; "
                   "ls -la /persist/accounts; cat /persist/etc/rudolf/account-users; tail -30 /run/rudolf/rudolfd.log; tail -20 /run/rudolf/page.log; "
-                  "tail -8 /persist/var/log/health.log 2>/dev/null", 60))
+                  "tail -8 /persist/var/log/health.log 2>/dev/null; grep -iE 'restart|switch|not responding|did not' /run/rudolf/session.log | grep -v '^+' | tail -8", 60))
 def on_disk(js, n, pw, secs=300):
     r = wait_for(js, "!!(USER&&USER.disk&&hdOn())", secs, 5)
     if r is True: return True
@@ -151,9 +162,10 @@ def dlresult(i, t=240):
         if f: return json.loads(f)
         time.sleep(3)
     return None
-def tunnel(sh):
-    o = sh('pgrep -f "t160/sertun /dev/ttyS1" >/dev/null || (setsid sh -c \'while :; do /persist/t160/sertun /dev/ttyS1 18765; echo "sertun ended: $?" >&2; sleep 2; done\' '
-           '</dev/null >/dev/null 2>>/tmp/sertun.err &); sleep 2; pgrep -f "t160/sertun /dev/ttyS1" >/dev/null && echo TUNNEL-UP; cat /tmp/sertun.err 2>/dev/null | tail -3', 30)
+def tunnel(g, sh):
+    g.put(f'{W}/sertun', '/tmp/sertun', '755')
+    o = sh('pgrep -f "^/tmp/sertun /dev/ttyS1" >/dev/null || (setsid sh -c \'while :; do /tmp/sertun /dev/ttyS1 18765; echo "sertun ended: $?" >&2; sleep 2; done\' '
+           '</dev/null >/dev/null 2>>/tmp/sertun.err &); sleep 3; ls -l /tmp/sertun; pgrep -f "^/tmp/sertun /dev/ttyS1" >/dev/null && echo TUNNEL-UP; tail -3 /tmp/sertun.err 2>/dev/null', 30)
     return 'TUNNEL-UP' in o
 def dlpost(js, what, body):
     return js(f"rd({json.dumps(what)},{{method:'POST',body:{json.dumps(json.dumps(body))}}}).then(r=>r.message||'ok',e=>'ERR '+e.message)", 120)
@@ -179,7 +191,7 @@ try:
     out(users)
     # as before 1.5.9: the folders the desktop's user's, and not yet moved
     sh(f"chown -R 1000:1000 /persist/accounts/{BOSS} /persist/accounts/{KID}; sed -i 's/ moved$//' /persist/etc/rudolf/account-users; sync")
-    vm.stop(); time.sleep(3)
+    sh('sync', 60); vm.stop(); time.sleep(3)
     vm, g, up, js = boot('a2', 'a'); sh = lambda c, t=60: run(g, c, t)
     ok('2. started again', up)
     if not up: raise SystemExit
@@ -224,7 +236,7 @@ try:
     ok('12. a recovery system file changed: found at the check, made again from the official system', 'made again from this official system' in o and 'SAME' in o, o)
     o = sh(f"RU_NOAUTOFETCH=1 {U} developer on '{DEVPUB}' https://dev.example/rudolf; printf 'good=a\\nprev=\\nnext=b\\ntries=2\\nfailed=\\n' > /persist/os/system/state; sync", 60)
     ok('13. 8.7: Developer mode on with a developer\'s key', 'Developer mode is on' in o, o)
-    vm.stop(); time.sleep(3)
+    sh('sync', 60); vm.stop(); time.sleep(3)
     vm, g, up, js = boot('b', 'b'); sh = lambda c, t=60: run(g, c, t)
     if RU: g.put(RU, '/tmp/ru160')
     o = sh(f"cat /etc/rudolf/slot; {U} boot-ok; {U} status", 300) if up else 'not up'
@@ -232,7 +244,7 @@ try:
     o = sh(f"RU_NOESP=1 {U} return-official keep 2>&1; cat /persist/os/system/state", 600) if up else ''
     ok('15. Return to official (keep): the official recovery system goes into the spare slot, to start next', 'Returning to the official Rudolf OS' in o and 'ret=1' in o, o)
     nxt = (re.search(r'^next=(\w)', o, re.M) or [None, 'a'])[1]
-    vm.stop(); time.sleep(3)
+    sh('sync', 60); vm.stop(); time.sleep(3)
     vm, g, up, js = boot('c', nxt); sh = lambda c, t=60: run(g, c, t)
     if RU and up: g.put(RU, '/tmp/ru160')
     o = sh(f"{U} boot-ok; {U} status; echo; ls -1 /persist/os/system | cat; cat /persist/etc/rudolf/extra-keys 2>&1", 300) if up else 'not up'
@@ -240,9 +252,8 @@ try:
     # 1.5.9 15.4: switching the development link on: only where it is allowed, and only with an administrator's name
     # and password (t140 switched it on with the token alone, as before 1.5.9)
     if up:
-        g.put(f'{W}/sertun', '/tmp/sertun', '755')
-        sh("mkdir -p /persist/t160 && cp /tmp/sertun /persist/t160/sertun; mkdir -p -m 700 /persist/devlink; echo http://127.0.0.1:18765 > /persist/devlink/test-api; rm -f /persist/devlink/allowed", 30)
-        out('tunnel', tunnel(sh))
+        sh("mkdir -p -m 700 /persist/devlink; echo http://127.0.0.1:18765 > /persist/devlink/test-api; rm -f /persist/devlink/allowed", 30)
+        out('tunnel', tunnel(g, sh))
         q = f"devlink/on?repo={REPO.replace('/', '%2F')}&hours=1&ask=0&restart=1&home=0"
         r0 = dlpost(js, q, {'n': 'boss', 'p': 'b1', 'token': DLTOKEN})
         r1 = dlpost(js, 'devlink/allow?on=1', {'n': 'kid', 'p': 'k1'})
@@ -258,11 +269,11 @@ try:
         ok('18. ...with the administrator\'s password it is on, and a command from the repository runs (read-only, as nobody: "Allow changes" is off)', r5 == 'on' and r and r.get('stdout') == '65534\nlinked\n', [r5, r])
         # 1.5.8 4.2: on again by itself after a restart, and answering with the desktop not running. (1.5.9 15.4: Ask first
         # is on again after every start, so with no desktop a command is answered at once; with Ask first turned off it runs)
-        vm.stop(); time.sleep(3)
+        sh('sync', 60); vm.stop(); time.sleep(3)
         vm, g, up, js = boot('d', nxt); sh = lambda c, t=60: run(g, c, t)
         if up:
             sh("pkill -f /usr/lib/rudolf/session; sleep 1; pkill -9 -f '[-]-rudolf-kiosk'; pkill -9 -f rudolf-native; sleep 2; rm -f /run/rudolf/heartbeat; pgrep -f 'rudolf-devlink run' >/dev/null && echo LINK-RUNS", 60)
-            out('tunnel', tunnel(sh))   # (after the desktop is stopped)
+            out('tunnel', tunnel(g, sh))   # (after the desktop is stopped)
             def link_state():
                 sh("cat /run/rudolf/devlink/status 2>&1; ls /run/rudolf/devlink; tail -5 /persist/devlink/log 2>&1; grep -v token /persist/devlink/config; cat /persist/devlink/state; "
                    "pgrep -fl sertun; cat /tmp/sertun.err; tail -15 /run/rudolf/devlink/daemon.log 2>&1; tail -8 /run/rudolf/session.log", 60)
