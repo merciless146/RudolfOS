@@ -1393,6 +1393,9 @@ Settings. **Done (2026-11-14):**
   it, is now counted as a Linux app's own; a TCP port, or a socket held outside the containers, still fails. Also the
   Debian line is skipped, not failed, when Debian's files cannot be looked at (the read-only devlink). Checked on the
   Vivobook: 26 passed, 0 failed. Test: listeners59_t.sh 13/13.
+- **Also (2026-11-15, beta 2026111502):** over the read-only devlink (not root) the Claude app's sockets could not be traced
+  to it, so listeners failed; not root, sockets in /tmp or /run/user that cannot be traced are now a skip with the
+  reason (a TCP port, or a socket elsewhere, still fails). Test: listeners59_t.sh 15/15 (new 9c).
 
 ### 15.6 Security fixes arrive soon
 - A scheduled check (GitHub Actions, daily) compares the Chromium and the kernel in the latest release with the newest

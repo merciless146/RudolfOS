@@ -54,6 +54,11 @@ ln -s 'socket:[3001]' $P/300/fd/5; ln -s 'socket:[3002]' $P/300/fd/6; ln -s 'soc
 o=$(st); ok "9b. a Linux app's own sockets in Debian's container: its, said; Chromium's newer socket folder named: passes" "$(echo "$o" | grep -q "^PASS listeners - 4 listening, each named in the list (who may use it and how it checks) (and 2 of Linux apps' own, inside their containers)" && echo 1)" "$o"
 printf '0000000000000000: 00000002 00000000 00010000 0001 01 3004 /tmp/sneaky/sock\n' >> $P/net/unix
 o=$(st); ok "...a socket in /tmp held by a program outside the containers still fails" "$(echo "$o" | grep -q '^FAIL listeners - .*unix /tmp/sneaky/sock' && ! echo "$o" | grep -q 'scoped_dir' && echo 1)" "$o"
+# not root (the read-only development link): an app's socket in /tmp that cannot be traced is said, not failed; a port still fails
+if [ "$(id -u)" = 0 ] && command -v setpriv >/dev/null; then
+	chmod -R a+rX $W; o=$(setpriv --reuid=65534 --regid=65534 --clear-groups env ST_SYS=$W/sys ST_RUN=$W/run ST_PERSIST=$W/persist ST_HOME=$W/home ST_DEV=$W/dev ST_PROC=$P ST_LISTENERS=$L sh $SYS/root/usr/lib/rudolf/selftest 2>/dev/null | grep '^[A-Z]* listeners ')
+	ok "9c. not root: a socket in /tmp that cannot be traced is skipped, said why" "$(echo "$o" | grep -q "^SKIP listeners - the sockets of other users' programs cannot be looked at from here" && echo 1)" "$o"
+fi
 o=$(ST_SYS=$W/sys ST_RUN=$W/run ST_PROC=$P ST_LISTENERS=$W/none sh $SYS/root/usr/lib/rudolf/selftest 2>/dev/null | grep ' listeners ')
 ok "10. without the list, the self-test says so" "$(echo "$o" | grep -q '^FAIL listeners - the list of listeners is missing' && echo 1)" "$o"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

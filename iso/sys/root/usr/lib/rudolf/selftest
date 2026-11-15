@@ -179,7 +179,10 @@ E
 		done
 		unk=$left; [ $apps -gt 0 ] && LAPPS=" (and $apps of Linux apps' own, inside their containers)";;
 	esac
-	if [ -n "$unk" ]; then fail listeners "something listens that the list of listeners does not name:${unk%,}"
+	# (not root, as over the read-only development link: other users' processes cannot be looked into, so a Unix socket
+	# in a /tmp or runtime folder cannot be told to be a Linux app's own; said, not failed)
+	if [ -n "$unk" ] && [ "$(id -u)" != 0 ] && ! echo "$unk" | tr ',' '\n' | grep -v '^ *$' | grep -qv '^ *unix /\(tmp\|run/user\)/'; then skip listeners "the sockets of other users' programs cannot be looked at from here (run the self-test as root: Settings › System health):${unk%,}"
+	elif [ -n "$unk" ]; then fail listeners "something listens that the list of listeners does not name:${unk%,}"
 	else pass listeners "$n listening, each named in the list (who may use it and how it checks)${LAPPS}"; fi
 fi
 
