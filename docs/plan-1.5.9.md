@@ -1068,6 +1068,16 @@ Not private: websites shown in frames when Oracle's tabs are not running (the st
 its taskbar menus come (docs/plan-1.6.0.md Part 12, item 3) and Oracle runs on Chromium there (Part 12, step 8). Test: qt/shell2/private59_t.js. The shell changed, so the
 first start of a beta with it replaces the shell in the profile (websites ask to sign in again, once).
 
+### 14.1 Bookmarks: the "+" on the bookmarks bar (added on 2026-11-14)
+Asked for: a "+" as the bookmarks bar's rightmost button, asking whether to add a bookmark by URL, from the browsing
+history, or as an internal file or PDF. **Done (2026-11-14, desktop/bmadd59.js):** the prompt's three choices; by
+address (an address without a scheme gets https://; one that Oracle cannot open, or a page already bookmarked, is
+refused and said); from the history (newest first, each page once, searchable; a private window offers the account's
+history, adding nothing to it); a file through the desktop's file picker (documents, PDFs, pages, pictures), saved as
+file:///C:/…. Names are text, cut to 18 characters as the ☆'s. Found on the way and fixed: pickVfsFile answered null
+for every file chosen (closing its window ran its onclose first), so Open in Presentation, Spreadsheet and others
+did nothing. Test: qt/shell2/bmadd59_t.js 14/14 (devkey59, wallpaper, private59 unchanged).
+
 ## Part 15: security against a directed attack (added on 2026-11-14)
 Asked for after a review of how Rudolf OS stands against malware aimed at its owner (2026-11-14). Below the desktop it is
 strong: Secure Boot with Rudolf's own keys and a signed kernel image, read-only signed system layers, signed updates
