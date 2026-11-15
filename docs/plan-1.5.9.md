@@ -221,6 +221,18 @@ numbers need the service's own calling plan (Google Voice in the US, Zoom Phone,
 - `tel:` links (a phone number on a web page): offered to the calling site the person chooses once (Google Voice,
   Zoom, Teams), or to Phone screen (1.5.8 Part 7) to call from the Android phone on the desk.
 
+### 7.2a Choosing and testing the microphone (added on 2026-11-14)
+Asked for: a Test in the microphone section of Settings, showing on an equalizer whether the microphone chosen in the
+section's list hears anything. **Done (desktop/mictest59.js):** Volume Controls › Microphones gets a list of the sound
+server's microphones (rudolfd `GET audio/mics`, from `sound mics`: name, description, the default; monitors left out)
+and choosing one makes it every app's microphone, a call's moved to it (`POST audio/mic?name=`, `sound mic NAME`,
+names checked). Test opens the chosen microphone in the page (echo cancelling, noise suppression and gain off, so what
+it shows is what the microphone gives) and draws 24 bars over about 80 Hz to 8 kHz (green, amber, red) and a level
+meter, 30 times a second; it says whether anything was heard. It stops with Stop test, when Settings closes, after two
+minutes, and starts again on a newly chosen microphone. Nothing heard is kept or sent. In the browser version the
+browser's own microphones are listed. Tests: qt/shell2/mictest59_t.js 8/8 (Chromium's fake microphone), sound59_t.sh
+24-27.
+
 ### 7.4 The call test
 **Found (2026-11-14, Meet on the Vivobook, beta 2026111421):** the default microphone was the headset jack's (the
 HD-Audio card that has the speakers, "analog-input-headphone-mic", nothing plugged in), not the built-in one (the AMD

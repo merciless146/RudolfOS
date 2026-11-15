@@ -20,6 +20,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- New: Settings › Volume Controls › Microphones has a list of the microphones (the one chosen becomes every app's, a call's too) and a Test button: an equalizer and a level meter show what the chosen microphone hears.
 - Fixed: calls heard nothing on laptops whose built-in microphones are on another sound chip than the speakers (the Vivobook's AMD microphones): the headset jack's microphone was made the default even with nothing plugged in. It is now the default only when a headset is plugged in.
 - New: Oracle's bookmarks bar ends with a "+" that adds a bookmark by its address, from the browsing history (newest first, searchable), or as a file on this computer (a document or a PDF).
 - Fixed: choosing a file in the desktop's own file picker (Open a presentation or a spreadsheet, and others) answered as if nothing had been chosen.
