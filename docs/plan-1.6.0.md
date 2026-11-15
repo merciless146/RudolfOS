@@ -597,7 +597,44 @@ test; selects given other padding by their own rules (games' and the media playe
   soft), and the dialogs with a touch screen.
 Left of the findings (the next PRs): N5, N6, N7, N8, N9, N11, N12 (look wrong), N13, N14, N15, N17, N19 (minor).
 
-**Next:** the rest of the test findings, then items 9 to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md
+**Test findings fixed, second PR (2026-11-15, unattended session): the nine that look wrong and the minor ones** (on the first PR's
+branch: it needs its test cases' js, read and nowin).
+- N5, N6, N9, N13 (the form controls in the native desktop's WebKit windows): Chromium's own controls, measured from its drawing and
+  given as the browser's defaults (oneapp59.js, html.oawk, a cascade layer under the page's own rules, as Chromium's built-in styles
+  are under them): a range is a 129×16 box with an 8 px track (#0075ff up to the knob's centre, #efefef after, each with its 1 px
+  edge) and a 16 px knob, greyed when disabled (its filled part kept as the value changes: by the person, the page's script or its
+  attributes); a colour box 50×27 with the swatch inset; radio buttons Chromium's ring and dot; a progress bar 10em by 1em with the
+  range's track; a time field Chromium's clock icon and a date field its calendar, with Chromium's room for them; a number field's
+  arrows only under the pointer (first PR). A list's chevron also when the page gives the list a background of its own (an inline
+  style: WordLite's lists, File Explorer's sort and view, the Media Player's speed). rudolf-native gives WebKit Chromium's locale
+  (en-US) when the system has none, so times are "07:00 AM" as on Standard.
+- N7, N8: the Storage API on in WebKit (navigator.storage.estimate: File Explorer's status line and About's Storage used), with an
+  origin's share of the disk as Chromium's (60 %); Folders on this device (Import a folder…, Export selection to a folder…) through
+  a stand-in for Chromium's folder picker: the shell's folder dialog, and the folder's files read and written by the shell inside
+  the folder chosen only (rudolf-native hfs_msg); About's Graphics the graphics chip's name from GL, as Chromium gives it ("ANGLE
+  (VENDOR, RENDERER, OpenGL VERSION)"; WebKit says "Apple GPU" everywhere). About's Chromium row comes from rudolfd's sys/status on
+  both engines (the test's stand-in now answers it).
+- N11, N12: the dynamic backgrounds' moving parts drawn by the shell as the page draws them, over the picture and under the icons:
+  Glacier Lake's northern lights at night (aurora58.js: the three curtains, the accent colour's rule, the lake's mask, 100 ms
+  frames), Spirit Falls' petals and, at night, its sky lanterns (statue58.js: 66 ms frames), with the page's stops (a window over
+  60 % of the screen, full screen, locked, the screen saver; half the frames on battery; still with Reduce motion). Spirit Falls'
+  statue is the page's own picture of it (its animal, light or dark, glow), drawn by the page at the screen's size and given with
+  the catalogue (oneapp59.js oaCatalog fx.statue; given again when it changes, op "cat").
+- N14: a window whose own icon is not its app's (Flash Player's "not installed" window) shows its own picture in the frame and on
+  the taskbar button (the page's icSvg, given with op "title").
+- N17: an iframe's sandbox flags that WebKit does not know (allow-presentation) are left out instead of logged as errors.
+- N19: native59_t.sh test 21 counts the web processes of its own rudolf-native only (its processes' tree): it counted every
+  WebKit process on the host, so another WebKit program (another test running) made it 2. Not Rudolf's: one web process is shared.
+- same_t.sh: new ctl-volume, ctl-mouse, ctl-media, ctl-wordlite, ctl-clock (the whole window), explorer (and what it says),
+  about (its rows), dyn-lake, dyn-oasis-dark (the share of the screen moving in 3 s on both), dyn-oasis (the statue), title-icon,
+  sandbox-flags (nothing in Native's log).
+- For the owner: N15, the window opening animation (Standard's 0.18 s fade and scale from 96 %): fading a window needs a
+  compositor, which the native shell does not have; it could be drawn by the shell over the screen for those 0.18 s from the
+  window's picture (Composite, as the overview takes them) — a decision whether that is wanted for 0.18 s. N16's end-of-video count
+  and N18's underflow lines (first PR). On the Vivobook: About's Graphics row on both engines (Chromium's ANGLE may use Vulkan there,
+  which names the chip differently), the folder picker with a USB drive, the moving backgrounds' smoothness with real drawing.
+
+**Next:** items 9 to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md
 after them. Native is not
 the default yet. The security line's next steps (as of 2026-11-14): docs/plan-1.5.9.md 15.3's third step (the QEMU check
 with two accounts, needing a host with QEMU and a built disc) and 12.3c's second part (Oracle on Native: step 5's rest).
