@@ -138,7 +138,10 @@ w8 'grep -q "^app calc .* Calculator$" $D/state' 80
 ok "19. ...searching and Enter: the app in a window of its own, signed in, its title from the page (one-app mode)" "$(grep -q '^app calc [0-9a-f]* 1 Calculator$' $D/state && [ "$(st menu)" = 0 ] && echo 1)" "$(grep '^app' $D/state; tail -3 $T/native.log)"
 click $(hit pin notepad); w8 'grep -q "^app notepad .* Notepad$" $D/state' 80
 ok "20. a pinned app opens its window" "$(grep -q '^app notepad [0-9a-f]* 1' $D/state && echo 1)" "$(grep '^app' $D/state)"
-n=$(ps -eo comm | grep -c '^WebKitWebProces'); ok "21. ...both windows share one WebKit web process" "$([ "$n" = 1 ] && echo 1)" "$n"
+# (test finding N19) this rudolf-native's own web processes only (the processes under it), not every WebKit page on the computer: a host
+# running other WebKit programs (another test, a browser) counted theirs too
+n=$(ps -eo pid=,ppid=,comm= | awk -v r=$NP '{p[$1]=$2; c[$1]=$3} END {a[r]=1; do {m=0; for (k in p) if (!(k in a) && (p[k] in a)) {a[k]=1; m=1}} while (m); n=0; for (k in a) if (c[k] ~ /^WebKitWebProces/) n++; print n}')
+ok "21. ...both windows share one WebKit web process" "$([ "$n" = 1 ] && echo 1)" "$n $(ps -eo pid,ppid,comm | grep -i webkit | head -5)"
 timeout 2 tail -f /dev/null; shot; ok "22. ...and they draw (the Calculator's dark keys, Notepad's white page)" "$( ! close "$(px 300 300)" "246 245 244" 3 && echo 1)" "$(px 300 300)"
 click $(hit pin calc); timeout 1 tail -f /dev/null
 ok "23. a pinned app already open is brought to the front, not opened again" "$([ "$(grep -c '^app ' $D/state)" = 2 ] && grep -q '^app calc [0-9a-f]* 1' $D/state && echo 1)" "$(grep '^app' $D/state)"

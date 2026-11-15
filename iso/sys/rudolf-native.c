@@ -376,7 +376,7 @@ static void wall_make(void)
 static gboolean desk_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (WALL) { cairo_set_source_surface(cr, WALL, 0, 0); cairo_paint(cr); } return TRUE; }
 
 /* ------------------------------------------------------------------ app windows (WebKit, one-app mode) */
-typedef struct AppWin { GtkWidget *win, *view; char k[40], title[256], icon[48]; int closing, id, sized, hidden, modal, pw, ph, wasontop, mfull; gint64 close_t; } AppWin;   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
+typedef struct AppWin { GtkWidget *win, *view; char k[40], title[256], icon[48]; int closing, id, sized, hidden, modal, pw, ph, wasontop, mfull; gint64 close_t; GdkPixbuf *pix; } AppWin;   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
 static GList *WINS;   /* AppWin*, oldest first */
 static AppWin *ACTIVE;
 static WebKitWebContext *CTX; static WebKitUserContentManager *UCM; static int NEXTID;
@@ -499,7 +499,13 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	char op[16] = "", x[256] = "", f[1024] = ""; jsstr(v, "op", op, sizeof op);
 	if (!strcmp(op, "close")) appwin_close_now(a);
 	else if (!strcmp(op, "done")) page_done(v);
-	else if (!strcmp(op, "title")) { jsstr(v, "icon", x, sizeof x); if (x[0]) snprintf(a->icon, sizeof a->icon, "%s", x); bar_redraw(); }
+	else if (!strcmp(op, "title")) { jsstr(v, "icon", x, sizeof x); if (x[0]) snprintf(a->icon, sizeof a->icon, "%s", x);
+		/* (test finding N14) the window's own picture when it is not its app's (the page's icSvg of W.icon): its title bar and taskbar button */
+		JSCValue *pv = jsc_value_object_get_property(v, "png"); if (pv && jsc_value_is_string(pv)) { char *u = jsc_value_to_string(pv); static const char PRE[] = "data:image/png;base64,";
+			if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
+			if (!strncmp(u, PRE, sizeof PRE - 1)) { gsize n = 0; guchar *raw = g_base64_decode(u + sizeof PRE - 1, &n); GByteArray *b = g_byte_array_new_take(raw, n); guint8 z = 0; g_byte_array_append(b, &z, 1); a->pix = pix_from_bytes(b); g_byte_array_free(b, TRUE); }
+			g_free(u); frame_redraw_app(a); } if (pv) g_object_unref(pv);
+		bar_redraw(); }
 	else if (!strcmp(op, "drop")) { jsstr(v, "in", x, sizeof x); jsstr(v, "file", f, sizeof f); drop_in(f, x); }
 	else if (!strcmp(op, "openwith")) { jsstr(v, "key", x, sizeof x); jsstr(v, "file", f, sizeof f); open_with(f, x); }   /* (Open with: the app's own window) */
 	else if (!strcmp(op, "toast")) toast_add(a, v);   /* (a notification's pop-up, drawn by the shell: item 3) */
@@ -528,7 +534,7 @@ static void on_crash(WebKitWebView *v, WebKitWebProcessTerminationReason r, gpoi
 static void clients_forget(AppWin *a);
 static void on_win_destroy(GtkWidget *w, gpointer d)
 {
-	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL;
+	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL; if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
 	clients_forget(a);   /* (its frame goes when X says so: not this window's any more) */
 	g_free(a); bar_redraw(); state_write();
 }
@@ -1765,7 +1771,7 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 		box_paint(cr, wx, y, tw, 34, &b); hit_add(wx, y, tw, 34, "win", wid);
 		/* the line: the picture (vertical-align -4px) and the title, centred in the button's content (34 less 1 px above and below) */
 		double d, A = css_ascent(cr, UIFAM, act ? 600 : 400, 13, &d), lt = fmin(-A, -14), lb = fmax(d, 4), base = y + b.bw + 1 + (32 - 2 * b.bw - (lb - lt)) / 2 - lt;
-		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = app_pix(ap); double tx = wx + b.bw + 6;
+		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap); double tx = wx + b.bw + 6;
 		cairo_save(cr); cairo_rectangle(cr, wx + b.bw + 6, y, tw - 2 * b.bw - 12, 34); cairo_clip(cr);
 		if (px) { pix_at(cr, px, tx, base + 4 - 18, 18, b.filt); tx += 18; }
 		const char *ti = a ? a->title : c->title, *ico = a ? a->icon : ap ? ap->icon : ""; char *tt = px ? g_strdup_printf(" %s", ti) : g_strdup_printf("%s%s%s", ico, ico[0] ? " " : "", ti);
@@ -1859,7 +1865,7 @@ static void bar_paint_v(cairo_t *cr, double W, double H)
 		char wid[24]; snprintf(wid, sizeof wid, "%lx", c ? (unsigned long)c->w : (unsigned long)(uintptr_t)a);
 		Box b = tb_box(act ? TB_TASKON : TB_TASK, HV("win", wid), PR("win", wid)); box_paint(cr, x, ty, cw, 22, &b); hit_add(x, ty, cw, 22, "win", wid);
 		double d, A = css_ascent(cr, UIFAM, act ? 600 : 400, 13, &d), lt = fmin(-A, -14), lb = fmax(d, 4), base = ty + b.bw + 1 + (20 - 2 * b.bw - (lb - lt)) / 2 - lt;
-		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = app_pix(ap); double tx = x + b.bw + 6;
+		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap); double tx = x + b.bw + 6;
 		cairo_save(cr); cairo_rectangle(cr, x + b.bw + 6, ty, cw - 2 * b.bw - 12, 22); cairo_clip(cr);
 		if (px) { pix_at(cr, px, tx, base + 4 - 18, 18, b.filt); tx += 18; }
 		const char *ti = a ? a->title : c->title, *ico = a ? a->icon : ap ? ap->icon : ""; char *tt = px ? g_strdup_printf(" %s", ti) : g_strdup_printf("%s%s%s", ico, ico[0] ? " " : "", ti);
@@ -2001,7 +2007,7 @@ static void frame_draw(Client *c)
 	else box_paint(cr, 1, 1, W - 2, 34, &tb);
 	cairo_restore(cr);
 	/* the picture, the title, the buttons */
-	int wt = !strcmp(st, "retro") && V.on ? 700 : 600; AppWin *a = c->app; const App *ap = a ? app_find(a->k) : c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = app_pix(ap);
+	int wt = !strcmp(st, "retro") && V.on ? 700 : 600; AppWin *a = c->app; const App *ap = a ? app_find(a->k) : c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap);
 	int filt = V.on && !strcmp(st, "mono") ? 1 : 0;
 	if (px) pix_at(cr, px, 9, 10, 16, filt); else if (a && a->icon[0]) css_text(cr, a->icon, UIFAM, wt, 13, 9, 10.5, 15, fg, 0); else if (!a && ap && ap->icon[0]) css_text(cr, ap->icon, UIFAM, wt, 13, 9, 10.5, 15, fg, 0);
 	int r[3][4]; btn_rects(c, r); double tx = 1 + 8 + 16 + 3, tmax = r[0][0] / Z - 3 - tx;

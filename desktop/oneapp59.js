@@ -165,6 +165,10 @@ html.oawk select:not([multiple]):not([size]){background-image:url("data:image/sv
 :where(html.oawk) progress:where([value])::-webkit-progress-bar{border-radius:4px;background:#efefef;box-shadow:inset 0 0 0 1px #b2b2b2}
 :where(html.oawk) progress:where([value])::-webkit-progress-value{border-radius:4px;background:#0075ff;box-shadow:inset 0 0 0 1px #3b75ba}
 }`;document.head.appendChild(st);
+  /* (N17) an iframe's sandbox flags that WebKit does not know (allow-presentation, which the page's browser gives its tabs) are left out
+     rather than logged as errors on every tab ("…is an invalid sandbox flag"); Chromium knows them all, so they are not missed there */
+  {const sa=Element.prototype.setAttribute,ok=(()=>{try{const f=document.createElement('iframe');return t=>{try{return f.sandbox.supports(t)}catch(e){return true}}}catch(e){return()=>true}})();
+   Element.prototype.setAttribute=function(n,v){if(this.tagName=='IFRAME'&&String(n).toLowerCase()=='sandbox')v=String(v).split(/\s+/).filter(t=>t&&ok(t)).join(' ');return sa.call(this,n,v)}}
   /* (N8) the graphics chip's name, as Chromium gives it (WebKit gives every page "Apple GPU"): the native shell's (window.__oaGpu) */
   if(window.__oaGpu)for(const C of [window.WebGLRenderingContext,window.WebGL2RenderingContext])if(C){const g=C.prototype.getParameter;
    C.prototype.getParameter=function(p){if(p===0x9246)return String(__oaGpu.r);if(p===0x9245)return String(__oaGpu.v);return g.call(this,p)}}
@@ -316,6 +320,10 @@ function oaMain(W){OA.main=W;OA.want=0;
  oaPost({op:'size',ww:String(Math.round(parseFloat(W.el.style.width)||0)),wh:String(Math.round(parseFloat(W.el.style.height)||0)),app:String(W.app||'')});W.el.classList.add('oamain');
  const t=W.el.querySelector('.tb .t'),sync=()=>{const s=(t&&t.textContent||'').trim()||(APPS[ONEAPP.k]&&APPS[ONEAPP.k].name)||'Rudolf OS';if(document.title!=s){document.title=s;oaPost({op:'title',t:s,icon:W.icon||''})}};
  sync();if(t)new MutationObserver(sync).observe(t,{childList:true,characterData:true,subtree:true});
+ /* (1.6.0 Part 12, test finding N14) a window whose own icon is not its app's (Flash Player's "not installed" window): its picture as the
+    page draws it in the title bar (icSvg), for the native frame and the taskbar button, which otherwise show the app's */
+ try{const ai=(APPS[ONEAPP.k]||{}).icon||'',wi=String(W.icon||''),k=typeof EMO2IC=='object'?EMO2IC[wi]||EMO2IC[wi.replace(/\uFE0F/g,'')]:'';
+  if(wi&&wi!=ai&&k&&S.icons!=='emoji'&&typeof icSvg=='function')oaPng(icSvg(k),48).then(png=>oaPost({op:'title',t:document.title,icon:wi,png})).catch(()=>{})}catch(e){}
  /* (the window's own maximise and minimise mean nothing here: it always fills the page) */
  /* (closed however it closes: its ✕, its own menu's Exit, a closing animation: the window leaves the page) */
  const mo=new MutationObserver(()=>{if(!W.el.isConnected){mo.disconnect();oaDone()}});mo.observe(document.body,{childList:true,subtree:true});

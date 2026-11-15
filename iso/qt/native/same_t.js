@@ -159,6 +159,12 @@ CASES.push({n: 'about', set: {}, more: PINSL, app: 'settings', js: "settings('ab
 CASES.push({n: 'dyn-lake', set: {dyn: 'lake', dm: 'dark', aur: true}, moving: 3000, parts: ['moving']});
 CASES.push({n: 'dyn-oasis', set: {dyn: 'oasis', dm: 'light', rmotion: true}, parts: ['statue']});
 CASES.push({n: 'dyn-oasis-dark', set: {dyn: 'oasis', dm: 'dark', accent: '#db2777'}, moving: 3000, parts: ['statue', 'moving']});
+/* (N17) an iframe given the sandbox flags the page's browser gives its tabs: WebKit logged "'allow-presentation' is an invalid sandbox flag"
+   for each (nolog: not in Native's log during the case) */
+CASES.push({n: 'sandbox-flags', set: {}, app: 'notepad', js: "const f = document.createElement('iframe'); f.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-downloads allow-presentation'); document.body.appendChild(f); setTimeout(() => f.remove(), 500)",
+  nolog: /invalid sandbox flag/, parts: []});
+/* (N14) a window whose own icon is not its app's (Flash Player's "not installed" window): its title bar's picture, as the page draws it */
+CASES.push({n: 'title-icon', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'flash']}, app: 'flash', parts: ['title']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
@@ -376,7 +382,9 @@ function cmp(name, a, b, ra, rb, shift) {
     if (c.media && !fs.existsSync(path.join(D, 'tm', c.media))) { console.log('SKIP ' + c.n + ': no test media (ffmpeg)'); continue }
     let s, n;
     try { s = await stdCase(c) } catch (e) { ok(c.n + ': Standard drew it', 0, e.message); continue }
+    const log0 = (() => { try { return fs.statSync(NLOG).size } catch (e) { return 0 } })();
     try { n = await natCase(c, s) } catch (e) { ok(c.n + ': Native drew it', 0, e.message); continue }
+    if (c.nolog) { let t = ''; try { t = fs.readFileSync(NLOG, 'utf8').slice(log0) } catch (e) {} const m = t.split('\n').filter(l => c.nolog.test(l)); ok(c.n + ': nothing in Native\'s log like ' + c.nolog, !m.length, m.slice(0, 3)) }
     if (c.read) ok(c.n + ': the page reads the same on both (' + c.read.slice(0, 60) + '…)', s.read === n.read, {std: s.read, nat: n.read});
     for (const part of c.parts || []) {
       if (part == 'moving') { const mv = e => { try { return JSON.parse(cp.execFileSync('python3', [path.join(__dirname, 'pxdiff.py'), path.join(OUT, c.n + '.' + e + '.png'), path.join(OUT, c.n + '.' + e + '2.png'), [0, 0, W, H].join(','), [0, 0, W, H].join(','), String(TOL), path.join(OUT, c.n + '.moving.' + e), '0']).toString()).pct } catch (x) { return -1 } };
