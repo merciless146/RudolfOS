@@ -63,6 +63,7 @@ typedef struct {
 	char twstyle[12], twacm[12], accent[16], df[8], tz[64], acct[80], wpacct[80], icons[12], ff[48];
 	int tbac, tbbac, h24, wpimg, wallpaper, notes, npins, scale, darkui; double lat, doff, gen; char pins[24][40];
 	int nl, dnd, sr, mag, hc, vk, touch;   /* (quick settings' switches: item 3) */
+	int aur, rmotion; char aurm[12], lnm[12];   /* (the dynamic backgrounds' moving parts: test findings N11, N12) */
 } Settings;
 static Settings S;
 typedef struct { char k[40], name[80], icon[48], kw[200], ic[24]; } App;
@@ -301,6 +302,7 @@ static double NETB[4];   /* (as drawn: the network's button, for its pop-up's pl
 static int nt_unread(void);
 static double VOLB[4], CLKD[2];   /* (as drawn, the page's units from the bar's corner: the volume's button; the clock's date, its <small>) */
 static void desk_dirty(void) { DESKD = 1; if (DESKAREA) gtk_widget_queue_draw(DESKAREA); }
+typedef struct JV JV; static void fx_cat(JV *cat); static void fx_draw(cairo_t *cr); static void fx_update(void); static int FXD;   /* (the dynamic backgrounds' moving parts: below) */
 static void desk_shadows(void) { if (DESKAREA) gtk_widget_queue_draw(DESKAREA); }
 static cairo_surface_t *WALL;   /* drawn at the screen's size */
 static char WALL_KEY[300];
@@ -369,6 +371,7 @@ static void wall_make(void)
 	} else pattern_bg(cr, SW, SH);
 	cairo_destroy(cr);
 	if (DESKAREA) desk_dirty();
+	fx_update();
 }
 static gboolean desk_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (WALL) { cairo_set_source_surface(cr, WALL, 0, 0); cairo_paint(cr); } return TRUE; }
 
@@ -387,6 +390,7 @@ static const App *app_find(const char *k) { for (int i = 0; i < NAPPS; i++) if (
 static void appwin_size(AppWin *a, int w, int h);
 static void appwin_modal(AppWin *a, int on);
 static void appwin_fs(AppWin *a, int on);
+static gboolean apps_reload(gpointer d);
 static void wins_ask(AppWin *to); static void win_op(const char *id, const char *what);   /* (Task Manager's windows: test finding N3) */
 static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d);
 static char *gpu_script(void);
@@ -507,6 +511,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "osd")) { char k[16] = "", lv[8] = "", n[8] = ""; jsstr(v, "k", k, sizeof k); jsstr(v, "lv", lv, sizeof lv); jsstr(v, "label", x, sizeof x); jsstr(v, "n", n, sizeof n); osd_show(k, lv, x, n); }
 	else if (!strcmp(op, "fs")) { jsstr(v, "on", x, sizeof x); appwin_fs(a, x[0] == '1'); }   /* (the page's own full screen: the window covers the screen, test finding N1) */
 	else if (!strcmp(op, "hfs")) hfs_msg(a, v);   /* (File Explorer's Folders on this device: the folder picker and its files, N7) */
+	else if (!strcmp(op, "cat")) g_timeout_add(300, apps_reload, NULL);   /* (a page gave its catalogue again: the statue's picture, N12) */
 	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
 	else if (!strcmp(op, "winop")) { jsstr(v, "id", x, sizeof x); jsstr(v, "do", f, sizeof f); win_op(x, f); }
 	else if (!strcmp(op, "modal")) { jsstr(v, "on", x, sizeof x); appwin_modal(a, x[0] == '1'); }   /* (a page's dialog: over the whole screen, as Standard's) */
@@ -2542,6 +2547,7 @@ static void settings_load(void)
 	jstr(s, "icons", n.icons, sizeof n.icons); n.scale = (int)jnum(s, "scale", 100); if (n.scale < 75 || n.scale > 250) n.scale = 100;
 	n.nl = jbool(s, "nl"); n.dnd = jbool(s, "dnd"); n.sr = jbool(s, "sr"); n.mag = jbool(s, "mag"); n.vk = jbool(s, "vk"); n.touch = jbool(s, "touch"); { char cb[16] = ""; jstr(s, "cb", cb, sizeof cb); n.hc = !strcmp(cb, "contrast"); }
 	{ JV *dk = jprop(s, "darkui"); n.darkui = !(dk && dk->t == 1 && !dk->n); }   /* (S.darkui!==false) */
+	{ JV *au = jprop(s, "aur"); n.aur = !(au && au->t == 1 && !au->n); } n.rmotion = jbool(s, "rmotion"); jstr(s, "aurm", n.aurm, sizeof n.aurm); jstr(s, "lnm", n.lnm, sizeof n.lnm);   /* (DEFS.disp aur:true) */
 	n.tbac = jbool(s, "tbac"); n.tbbac = jbool(s, "tbbac"); n.h24 = jbool(s, "h24"); n.doff = jnum(s, "doff", 0); n.lat = jnum(s, "lat", NAN);
 	if (!n.bs[0]) snprintf(n.bs, sizeof n.bs, "solid"); if (!n.b1[0]) snprintf(n.b1, sizeof n.b1, "#008080"); if (!n.b2[0]) snprintf(n.b2, sizeof n.b2, "#000080");
 	if (!n.tb[0]) snprintf(n.tb, sizeof n.tb, "bottom"); if (!n.wpfit[0]) snprintf(n.wpfit, sizeof n.wpfit, "fill"); if (!n.dm[0]) snprintf(n.dm, sizeof n.dm, "auto");
@@ -2579,9 +2585,11 @@ static void apps_load(void)
 	if (BG) g_hash_table_destroy(BG); BG = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	JV *bg = jprop(v, "bg");
 	if (bg && bg->t == 5) {
-		for (int i = 0; i < bg->len; i++) { JV *o = bg->v[i]; const char *kk = bg->k[i]; char d[200] = "", l[200] = ""; jstr(o, "d", d, sizeof d); jstr(o, "l", l, sizeof l);
-			if (d[0] && !strstr(d, "..") && !strstr(l, "..")) g_hash_table_insert(BG, g_strdup(kk), g_strdup_printf("%s\n%s", d, l[0] ? l : d));  }
+		for (int i = 0; i < bg->len; i++) { JV *o = bg->v[i]; const char *kk = bg->k[i]; char d[200] = "", l[200] = "", am[200] = ""; jstr(o, "d", d, sizeof d); jstr(o, "l", l, sizeof l); jstr(o, "am", am, sizeof am);
+			if (d[0] && !strstr(d, "..") && !strstr(l, "..")) g_hash_table_insert(BG, g_strdup(kk), g_strdup_printf("%s\n%s", d, l[0] ? l : d));
+			if (am[0] && !strstr(am, "..") && am[0] != '/' && !strchr(am, ':')) { char *k2 = g_strconcat("am:", kk, NULL); g_hash_table_insert(BG, k2, g_strdup(am)); } }
 		}
+	fx_cat(v);   /* (the statue's picture: N12) */
 	 jfree(v);
 	WALL_KEY[0] = 0; wall_make(); bar_redraw(); if (MAREA) gtk_widget_queue_draw(MAREA);
 }
@@ -3070,8 +3078,159 @@ static void di_draw(cairo_t *cr)
 static gboolean desk_area_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	/* (the wallpaper and the icons kept as drawn: windows moved over the desktop only show it again, with their shadows) */
-	if (!DESKC || DESKD) { if (!DESKC) DESKC = cairo_image_surface_create(CAIRO_FORMAT_RGB24, SW, SH); cairo_t *c2 = cairo_create(DESKC); desk_draw(w, c2, d); bar_outside(c2); di_draw(c2); cairo_destroy(c2); DESKD = 0; NWG_ALL_DIRTY = 1; }
+	if (!DESKC || DESKD || FXD) { if (!DESKC) DESKC = cairo_image_surface_create(CAIRO_FORMAT_RGB24, SW, SH); cairo_t *c2 = cairo_create(DESKC); desk_draw(w, c2, d); fx_draw(c2); bar_outside(c2); di_draw(c2); cairo_destroy(c2);
+		if (DESKD) NWG_ALL_DIRTY = 1; DESKD = 0; FXD = 0; }   /* (a moving background's frame: the widgets keep what they show behind them) */
 	cairo_set_source_surface(cr, DESKC, 0, 0); cairo_paint(cr); wg_paint(cr); frames_shadow(cr); return TRUE;   /* (the widgets over the desktop: item 2) */
+}
+
+/* ------------------------------------------------------------------ the dynamic backgrounds' moving parts (test findings N11, N12)
+   On Standard, Glacier Lake at night has the northern lights over its sky and in its water (aurora58.js), and Spirit Falls its stone
+   statue on the right bank, its falling petals and, at night, its sky lanterns (statue58.js); the native desktop drew the picture
+   alone. Here they are drawn as the page draws them, over the picture and under the icons: the same curtains, colours (the accent
+   colour by Display Properties' rule), masks (the picture's own, DYN.KEY.am, given with the catalogue), sizes and places (the
+   picture's 1600×1067 laid as the background is: centre and cover), frames (the lights every 100 ms, the petals and lanterns every
+   66 ms, as in Chromium) and stops (not while a window covers most of the screen or one is full screen, while locked or the screen
+   saver runs; half the frames on battery; one still frame with Reduce motion). The statue is the page's own picture of it (its
+   animal, light or dark, glow), drawn by the page and given with the catalogue (oneapp59.js oaCatalog: fx.statue). */
+static GdkPixbuf *ST_PIX; static double ST_BOX[4]; static char ST_KEY[96];
+static void fx_cat(JV *cat)
+{
+	JV *fx = jprop(cat, "fx"), *st = jprop(fx, "statue"); char png[64] = ""; jstr(st, "key", png, sizeof png);
+	if (!st || !strcmp(png, ST_KEY)) { if (!st && ST_PIX) { g_object_unref(ST_PIX); ST_PIX = NULL; ST_KEY[0] = 0; } return; }
+	snprintf(ST_KEY, sizeof ST_KEY, "%s", png); if (ST_PIX) { g_object_unref(ST_PIX); ST_PIX = NULL; }
+	JV *b = jprop(st, "box"); for (int i = 0; i < 4; i++) { JV *x = jat(b, i); ST_BOX[i] = x && x->t == 2 ? x->n : 0; }
+	JV *u = jprop(st, "png"); static const char PRE[] = "data:image/png;base64,";
+	if (u && u->t == 3 && !strncmp(u->s, PRE, sizeof PRE - 1)) { gsize n = 0; guchar *raw = g_base64_decode(u->s + sizeof PRE - 1, &n); GByteArray *ba = g_byte_array_new_take(raw, n); guint8 z = 0; g_byte_array_append(ba, &z, 1); ST_PIX = pix_from_bytes(ba); g_byte_array_free(ba, TRUE); }
+}
+static GdkPixbuf *FX_MASK[2]; static char FX_MASKP[2][200];   /* (0: the lake's, 1: the falls') */
+static cairo_surface_t *AUR_SKY, *AUR_CV, *PET_CV, *LAN_CV, *FX_MS[2];
+static guint FX_T, PET_T; static gint64 FX_T0, PET_LAST; static int FX_SLOWT;
+static void cover(double *s, double *ox, double *oy) { *s = fmax(SW / 1600.0, SH / 1067.0); *ox = (SW - 1600 * *s) / 2; *oy = (SH - 1067 * *s) / 2; }
+static int fx_shown(void) { return S.dyn[0] && !S.wpimg && BG && g_hash_table_lookup(BG, S.dyn); }   /* (dynShown: not a picture of one's own) */
+static int fx_aur(void) { char k[64]; snprintf(k, sizeof k, "am:%s", "lake"); return S.aur && !strcmp(S.dyn, "lake") && g_hash_table_lookup(BG, k) && fx_shown() && is_dark(); }
+static int fx_oasis(void) { return !strcmp(S.dyn, "oasis") && fx_shown(); }
+/* (DYNOV: seen, not covered by a window over 60 % of the screen, nothing full screen; with the power: half the frames on battery) */
+static int fx_seen(void)
+{
+	if (LOCKED || !USER_ID[0]) return 0;
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->min || c->off || c->hidden || c->trans) continue;
+		if (c->full) return 0; if ((double)fw_of(c) * fh_of(c) >= .6 * SW * SH) return 0; if (c->app && !strcmp(c->app->k, "do-saver")) return 0; }
+	return 1;
+}
+static cairo_surface_t *fx_mask(int i)
+{
+	char k[64]; snprintf(k, sizeof k, "am:%s", i ? "oasis" : "lake"); const char *am = BG ? g_hash_table_lookup(BG, k) : NULL; if (!am) return NULL;
+	if (strcmp(FX_MASKP[i], am)) { snprintf(FX_MASKP[i], sizeof FX_MASKP[i], "%s", am); if (FX_MASK[i]) g_object_unref(FX_MASK[i]); char pth[220]; snprintf(pth, sizeof pth, "/%s", am); FX_MASK[i] = pix_get(pth);
+		if (FX_MS[i]) { cairo_surface_destroy(FX_MS[i]); FX_MS[i] = NULL; } }
+	if (!FX_MASK[i]) return NULL;
+	if (!FX_MS[i]) { int w = i ? 800 : 400, h = i ? 534 : 267; FX_MS[i] = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h); cairo_t *c = cairo_create(FX_MS[i]);
+		cairo_scale(c, (double)w / gdk_pixbuf_get_width(FX_MASK[i]), (double)h / gdk_pixbuf_get_height(FX_MASK[i])); gdk_cairo_set_source_pixbuf(c, FX_MASK[i], 0, 0); cairo_paint(c); cairo_destroy(c); }
+	return FX_MS[i];
+}
+/* ---- the northern lights (aurora58.js: aurColours, aurStrip, aurDraw) */
+static const struct { double y0, amp, k, sp, h, ph, a; } AUR_RIB[3] = {{250, 50, .0042, .11, 210, 0, .78}, {300, 34, .0061, -.08, 150, 2.1, .6}, {190, 30, .0029, .06, 130, 4.2, .45}};
+static void aur_draw(void)
+{
+	cairo_surface_t *m = fx_mask(0); if (!m) return;
+	RGB base = variant(accent(), S.aurm[0] ? S.aurm : "normal"); double h, sa, l; rgb2hsl(base, &h, &sa, &l); sa = fmax(sa, 38);
+	RGB lo = hsl2rgb(h, sa, fmax(52, fmin(68, l + 8))), hi = hsl2rgb(h + 38, fmax(30, sa - 8), fmax(40, fmin(58, l)));
+	int still = S.rmotion; double t = still ? 40 : (g_get_monotonic_time() - FX_T0) / 1e6;
+	if (!AUR_SKY) { AUR_SKY = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 400, 267); AUR_CV = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 400, 267); }
+	cairo_t *k = cairo_create(AUR_SKY); cairo_set_operator(k, CAIRO_OPERATOR_CLEAR); cairo_paint(k); cairo_set_operator(k, CAIRO_OPERATOR_OVER); cairo_scale(k, .25, .25);
+	for (int i = 0; i < 3; i++) for (int x = -24; x < 1624; x += 8) { const double *r = &AUR_RIB[i].y0;
+		double by = r[0] + r[1] * sin(r[2] * x + r[5] + t * r[3]) + 12 * sin(.013 * x - t * .4 + r[5]),
+			a = r[6] * (.5 + .5 * sin(.021 * x + t * 1.1 + r[5])) * (.55 + .45 * sin(.0057 * x - t * .45)) + .06, hh = r[4] * (.7 + .3 * sin(.009 * x + t * .5 + r[5]));
+		a = fmax(0, fmin(1, a)); if (a <= 0 || hh <= 0) continue;
+		cairo_pattern_t *g = cairo_pattern_create_linear(0, by, 0, by - hh);
+		cairo_pattern_add_color_stop_rgba(g, 0, lo.r, lo.g, lo.b, 0); cairo_pattern_add_color_stop_rgba(g, .04, lo.r, lo.g, lo.b, a); cairo_pattern_add_color_stop_rgba(g, .22, lo.r, lo.g, lo.b, .75 * a);
+		cairo_pattern_add_color_stop_rgba(g, .6, hi.r, hi.g, hi.b, .32 * a); cairo_pattern_add_color_stop_rgba(g, 1, hi.r, hi.g, hi.b, 0);
+		cairo_rectangle(k, x, by - hh, 9, hh); cairo_set_source(k, g); cairo_fill(k); cairo_pattern_destroy(g); }
+	cairo_destroy(k);
+	cairo_t *g = cairo_create(AUR_CV); cairo_set_operator(g, CAIRO_OPERATOR_SOURCE); cairo_set_source_surface(g, AUR_SKY, 0, 0); cairo_paint(g);
+	/* (the lake: the same light upside down about the water line, twice; the mask keeps it to the open water and dims it) */
+	cairo_set_operator(g, CAIRO_OPERATOR_ADD); cairo_save(g); cairo_matrix_t mx; cairo_matrix_init(&mx, 1, 0, 0, -1, 0, 2 * 550 * .25); cairo_transform(g, &mx);
+	cairo_set_source_surface(g, AUR_SKY, 0, 0); cairo_paint(g); cairo_paint(g); cairo_restore(g);
+	cairo_set_operator(g, CAIRO_OPERATOR_DEST_IN); cairo_set_source_surface(g, m, 0, 0); cairo_paint(g); cairo_destroy(g);
+}
+/* ---- Spirit Falls: the petals (both), the sky lanterns (at night), statue58.js petNew, petStep, petDraw, lanNew, lanStep, lanDraw */
+typedef struct { double x, y, s, ph, sp, vy, wy, life; int landed; RGB c; } Petal; typedef struct { double x, y, z, ph, vy, fl, life; } Lantern;
+static Petal PS[70]; static Lantern LS[28]; static int PET_MODE = -1;   /* (0 light, 1 dark) */
+static double rnd(void) { return g_random_double(); }
+static void pet_new(Petal *p, int any)
+{
+	static const char *L[] = {"#ffc2d6", "#ffe3ec", "#ff9fc0", "#ffd3e1"}, *D[] = {"#e79ac0", "#f6c4dc", "#c66d9e", "#f0b3d0"};
+	p->x = any ? rnd() * 1700 - 60 : rnd() * 640 - 80; p->y = any ? 60 + rnd() * 700 : 90 + rnd() * 380; p->s = 3 + rnd() * 3.5; p->ph = rnd() * 6.283; p->sp = .6 + rnd() * .8;
+	p->vy = 10 + rnd() * 22; p->wy = 648 + pow(rnd(), .7) * 410; p->c = hexc((PET_MODE == 0 ? L : D)[(int)(rnd() * 4) & 3], "#ffc2d6"); p->landed = 0; p->life = 1;
+}
+static void lan_new(Lantern *p, int any)
+{
+	double z = .35 + rnd() * .65, x = rnd() < .74 ? rnd() * 1180 : 1180 + rnd() * 440; p->x = x; p->y = any ? 10 + rnd() * 190 : 190 + rnd() * 40; p->z = z; p->ph = rnd() * 6.283; p->vy = (3 + rnd() * 5) * z; p->fl = rnd() * 6.283; p->life = any ? 1 : 0;
+}
+static void pet_step(double dt, double t)
+{
+	double wind = 34 + 20 * sin(t * .23) + 10 * sin(t * .71 + 1);
+	for (int i = 0; i < 70; i++) { Petal *p = &PS[i];
+		if (!p->landed) { p->x += (wind * p->sp + 14 * sin(t * 1.3 + p->ph)) * dt; p->y += (p->vy + 10 * sin(t * 1.7 + p->ph * 2)) * dt; if (p->y >= p->wy) { p->landed = 1; p->y = p->wy; } }
+		else { p->x += wind * .12 * dt; p->life -= dt / 9; }
+		if (p->x > 1680 || p->life <= 0) pet_new(p, 0); }
+	for (int i = 0; i < 28; i++) { Lantern *p = &LS[i]; p->y -= p->vy * dt; p->x += sin(t * .4 + p->ph) * 3 * dt * p->z; p->life = fmin(1, p->life + dt / 4); if (p->y < -30) lan_new(p, 0); }
+}
+static void pet_draw(double t)
+{
+	if (!PET_CV) { PET_CV = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 800, 534); LAN_CV = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 800, 534); }
+	cairo_t *g = cairo_create(LAN_CV); cairo_set_operator(g, CAIRO_OPERATOR_CLEAR); cairo_paint(g); cairo_set_operator(g, CAIRO_OPERATOR_OVER);
+	cairo_surface_t *m = fx_mask(1);
+	if (PET_MODE == 1 && m) {
+		RGB o = variant(accent(), S.lnm[0] ? S.lnm : "normal"); double h, sa, l; rgb2hsl(o, &h, &sa, &l); double s2 = fmax(sa, 60);
+		RGB body = hsl2rgb(h, s2, fmax(60, fmin(72, l + 14))), glow = hsl2rgb(h, s2, 62), core = hsl2rgb(h, fmin(100, s2 + 10), 88);
+		cairo_save(g); cairo_scale(g, .5, .5);
+		for (int i = 0; i < 28; i++) { Lantern *p = &LS[i]; double sz = 14 * p->z, fl = .85 + .15 * sin(t * 7 + p->fl) * sin(t * 3.1 + p->ph), a = fmax(0, fmin(1, p->life)); if (a <= 0) continue;
+			cairo_pattern_t *gr = cairo_pattern_create_radial(p->x, p->y, 0, p->x, p->y, sz * 3.2); cairo_pattern_add_color_stop_rgba(gr, 0, glow.r, glow.g, glow.b, .55 * fl * a); cairo_pattern_add_color_stop_rgba(gr, 1, glow.r, glow.g, glow.b, 0);
+			cairo_rectangle(g, p->x - sz * 3.2, p->y - sz * 3.2, sz * 6.4, sz * 6.4); cairo_set_source(g, gr); cairo_fill(g); cairo_pattern_destroy(gr);
+			cairo_move_to(g, p->x - sz * .55, p->y - sz * .75); cairo_line_to(g, p->x + sz * .55, p->y - sz * .75); cairo_line_to(g, p->x + sz * .42, p->y + sz * .6); cairo_line_to(g, p->x - sz * .42, p->y + sz * .6); cairo_close_path(g);
+			src(g, body, a); cairo_fill_preserve(g);
+			cairo_pattern_t *cg = cairo_pattern_create_linear(0, p->y - sz * .75, 0, p->y + sz * .6); cairo_pattern_add_color_stop_rgba(cg, 0, 1, 1, 1, 0); cairo_pattern_add_color_stop_rgba(cg, 1, core.r, core.g, core.b, .9 * fl * a);
+			cairo_set_source(g, cg); cairo_fill(g); cairo_pattern_destroy(cg);
+			cairo_set_source_rgba(g, 40 / 255.0, 20 / 255.0, 20 / 255.0, .35 * a); cairo_rectangle(g, p->x - sz * .55, p->y - sz * .78, sz * 1.1, sz * .12); cairo_fill(g);
+			cairo_set_source_rgba(g, 1, 240 / 255.0, 200 / 255.0, fl * a); cairo_arc(g, p->x, p->y + sz * .5, sz * .12, 0, 6.283); cairo_fill(g); }
+		cairo_restore(g); cairo_set_operator(g, CAIRO_OPERATOR_DEST_IN); cairo_set_source_surface(g, m, 0, 0); cairo_paint(g); }
+	cairo_destroy(g);
+	g = cairo_create(PET_CV); cairo_set_operator(g, CAIRO_OPERATOR_CLEAR); cairo_paint(g); cairo_set_operator(g, CAIRO_OPERATOR_OVER); cairo_scale(g, .5, .5);
+	for (int i = 0; i < 70; i++) { Petal *p = &PS[i]; cairo_save(g); cairo_translate(g, p->x, p->y); double al = fmax(0, fmin(1, p->life)) * (p->landed ? .85 : 1);
+		if (p->landed) { double tp = (p->y - 640) / 427; cairo_scale(g, 1, .4 + .2 * tp); } else { cairo_rotate(g, p->ph + t * p->sp * 1.6); cairo_scale(g, 1, .25 + .75 * fabs(cos(t * 2 * p->sp + p->ph))); }
+		cairo_scale(g, p->s, p->s * .62); cairo_arc(g, 0, 0, 1, 0, 6.283); cairo_restore(g); src(g, p->c, al); cairo_fill(g); }
+	cairo_destroy(g);
+}
+static gboolean aur_tick(gpointer d) { (void)d; if (!fx_seen()) return G_SOURCE_CONTINUE; if (!CHARGING && BAT >= 0 && (FX_SLOWT ^= 1)) return G_SOURCE_CONTINUE; aur_draw(); FXD = 1; if (DESKAREA) gtk_widget_queue_draw(DESKAREA); return G_SOURCE_CONTINUE; }
+static gboolean pet_tick(gpointer d)
+{
+	(void)d; if (!fx_seen()) { PET_LAST = 0; return G_SOURCE_CONTINUE; } if (!CHARGING && BAT >= 0 && (FX_SLOWT ^= 1)) return G_SOURCE_CONTINUE;
+	gint64 now = g_get_monotonic_time(); double dt = fmin(.2, PET_LAST ? (now - PET_LAST) / 1e6 : 0); PET_LAST = now; double t = (now - FX_T0) / 1e6;
+	pet_step(dt, t); pet_draw(t); FXD = 1; if (DESKAREA) gtk_widget_queue_draw(DESKAREA); return G_SOURCE_CONTINUE;
+}
+/* (aurUpdate, stUpdate: what is shown with these settings; the timers started or stopped) */
+static void fx_update(void)
+{
+	if (!FX_T0) FX_T0 = g_get_monotonic_time();
+	int a = BG && fx_aur(), o = BG && fx_oasis();
+	if (!a && FX_T) { g_source_remove(FX_T); FX_T = 0; }
+	if (a) { aur_draw(); if (!S.rmotion && !FX_T) FX_T = g_timeout_add(100, aur_tick, NULL); else if (S.rmotion && FX_T) { g_source_remove(FX_T); FX_T = 0; } }
+	if (!o && PET_T) { g_source_remove(PET_T); PET_T = 0; }
+	if (o) { int mode = is_dark(); if (mode != PET_MODE) { PET_MODE = mode; for (int i = 0; i < 70; i++) pet_new(&PS[i], 1); for (int i = 0; i < 28; i++) lan_new(&LS[i], 1); }
+		pet_draw(S.rmotion ? 0 : (g_get_monotonic_time() - FX_T0) / 1e6);
+		if (!S.rmotion && !PET_T) PET_T = g_timeout_add(66, pet_tick, NULL); else if (S.rmotion && PET_T) { g_source_remove(PET_T); PET_T = 0; } }
+	FXD = 1;
+}
+static void fx_draw(cairo_t *cr)
+{
+	if (!BG) return; double s, ox, oy; cover(&s, &ox, &oy);
+	if (fx_aur() && AUR_CV) { cairo_save(cr); cairo_translate(cr, ox, oy); cairo_scale(cr, 1600 * s / 400, 1067 * s / 267); cairo_set_source_surface(cr, AUR_CV, 0, 0);
+		cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR); cairo_paint(cr); cairo_restore(cr); }
+	if (fx_oasis()) {
+		if (LAN_CV && PET_MODE == 1) { cairo_save(cr); cairo_translate(cr, ox, oy); cairo_scale(cr, 1600 * s / 800, 1067 * s / 534); cairo_set_source_surface(cr, LAN_CV, 0, 0); cairo_paint(cr); cairo_restore(cr); }
+		if (ST_PIX && ST_BOX[2] > 0) { cairo_save(cr); cairo_translate(cr, ox + ST_BOX[0] * s, oy + ST_BOX[1] * s);
+			cairo_scale(cr, ST_BOX[2] * s / gdk_pixbuf_get_width(ST_PIX), ST_BOX[3] * s / gdk_pixbuf_get_height(ST_PIX)); gdk_cairo_set_source_pixbuf(cr, ST_PIX, 0, 0); cairo_paint(cr); cairo_restore(cr); }
+		if (PET_CV) { cairo_save(cr); cairo_translate(cr, ox, oy); cairo_scale(cr, 1600 * s / 800, 1067 * s / 534); cairo_set_source_surface(cr, PET_CV, 0, 0); cairo_paint(cr); cairo_restore(cr); } }
 }
 static int di_at(double x, double y)
 {

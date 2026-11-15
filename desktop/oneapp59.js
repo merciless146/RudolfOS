@@ -340,7 +340,14 @@ function oaClosed(why){if(document.getElementById('oaclosed'))return;const d=doc
      already made of it, whenever it is loaded or changed (once per picture). ===== */
 async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
  try{const apps=Object.values(APPS).filter(a=>a&&a.k&&a.name&&typeof a.open=='function').map(a=>({k:a.k,name:String(a.name),icon:String(a.icon||''),kw:String(a.kw||'')}));
-  const bg={};if(typeof DYN=='object')for(const k in DYN){const d=DYN[k];bg[k]={n:d.n||k,d:d.d||'',l:d.l||''}}
+  const bg={};if(typeof DYN=='object')for(const k in DYN){const d=DYN[k];bg[k]={n:d.n||k,d:d.d||'',l:d.l||'',am:d.am||''}}
+  /* (1.6.0 Part 12, test finding N12) Spirit Falls' statue as this page draws it (statue58.js: its animal, light or dark, its glow), a
+     picture at the screen's size for the native shell, which draws the background's moving parts itself (N11) */
+  const fx={};try{if(S.dyn=='oasis'&&typeof stSvg=='function'&&typeof ST=='object'&&ST.box){let mode='light';try{mode=dynResolve().mode}catch(e){}const G=stGlow(),key=stAnimal()+'|'+mode+'|'+G;
+   const q=ONEAPP?ONEAPP.q:new URLSearchParams(''),sw=+q.get('sw')||screen.width,sh=+q.get('sh')||screen.height,sc=Math.max(sw/1600,sh/1067),b=ST.box;
+   const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=stSvg(stAnimal(),mode,G)});
+   const c=document.createElement('canvas');c.width=Math.max(1,Math.round(b[2]*sc));c.height=Math.max(1,Math.round(b[3]*sc));c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+   fx.statue={key,box:b,png:c.toDataURL('image/png')};OA_ST=key}}catch(e){console.warn('statue',e)}
   let hide=[];try{hide=ld(HIDEK(),[])}catch(e){}
   /* (1.5.9 step 7) the apps' pictures as the page draws them (icSvg: the icon style, not the emoji, which the system
      may draw pale or not at all), as small PNGs, one per picture */
@@ -373,7 +380,11 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
     fs:parseFloat(c.fontSize),fw:+c.fontWeight||400,col:c.color,pl:parseFloat(c.paddingLeft),pt:parseFloat(c.paddingTop),pb:parseFloat(c.paddingBottom),ls:parseFloat(c.letterSpacing)||0,up:c.textTransform=='uppercase'})}}catch(e){console.warn('menu',e)}
   /* (1.6.0 Part 12, item 3) each app's own rows in its taskbar menus (private59.js APP_JUMPS: words, picture, key) */
   const jumps={};try{if(typeof APP_JUMPS=='object')for(const k in APP_JUMPS)jumps[k]=APP_JUMPS[k]().map(j=>[j[0],(j[3]&&j[3].icon)||'',(j[3]&&j[3].key)||''])}catch(e){}
-  await rdPost('desktop/apps',JSON.stringify({apps,bg,hide,icons,desk,cells,menu,jumps,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
+  await rdPost('desktop/apps',JSON.stringify({apps,bg,fx,hide,icons,desk,cells,menu,jumps,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
+/* (N12) the statue changes with the accent colour, its glow's rule and light or dark: given again, and the native shell told */
+let OA_ST='';if(typeof stUpdate=='function'){const _su=stUpdate;let t=0;stUpdate=function(){const r=_su.apply(this,arguments);
+ try{if(ONEAPP&&oaNative()&&USER&&S.dyn=='oasis'){let mode='light';try{mode=dynResolve().mode}catch(e){}const k=stAnimal()+'|'+mode+'|'+stGlow();
+  if(k!==OA_ST){OA_ST=k;clearTimeout(t);t=setTimeout(()=>oaCatalog().then(()=>oaPost({op:'cat'})),600)}}}catch(e){}return r}}
 function oaPng(src,n){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>{try{const c=document.createElement('canvas');c.width=c.height=n;c.getContext('2d').drawImage(im,0,0,n,n);res(c.toDataURL('image/png'))}catch(e){rej(e)}};im.onerror=()=>rej(new Error('icon'));im.src=src})}
 {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);setTimeout(oaCatalog,2500);return r}}
 /* (1.6.0 Part 12, item 3) a window's taskbar button's menu is the page's own (winMenu: its rows, the app's jumps, Print, Force

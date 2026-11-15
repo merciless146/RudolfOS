@@ -153,6 +153,12 @@ CASES.push({n: 'explorer', set: {}, more: PINSL, app: 'explorer', parts: ['win']
   read: "JSON.stringify([[...document.querySelectorAll('.win *')].some(e => !e.children.length && /^Folders on this device$/i.test(e.textContent.trim())), ([...document.querySelectorAll('.win *')].map(e => !e.children.length && /Storage: /.test(e.textContent) ? e.textContent : '').find(x => x) || '').replace(/[\\d.]+ (B|KB|MB|GB|TB)/g, 'N')])"});
 CASES.push({n: 'about', set: {}, more: PINSL, app: 'settings', js: "settings('about')", jswait: 1500,
   read: "JSON.stringify([...document.querySelectorAll('.ab tr')].map(r => [r.cells[0].textContent, /^(Storage used|Graphics)$/.test(r.cells[0].textContent) ? (r.cells[0].textContent == 'Graphics' ? /^ANGLE \\(/.test(r.cells[1].textContent) : /^[\\d.]+ (B|KB|MB) of [\\d.]+ (MB|GB|TB)$/.test(r.cells[1].textContent)) : r.cells[1].textContent]))"});
+/* (N11, N12) the dynamic backgrounds' moving parts: Glacier Lake at night (the northern lights: the share of the screen that changes in
+   3 s, at least 0.5 % on both: Standard 1.7 % when found, Native 0), Spirit Falls (its statue where the page puts it, with Reduce motion
+   so the petals stand still; and the petals moving, without it) */
+CASES.push({n: 'dyn-lake', set: {dyn: 'lake', dm: 'dark', aur: true}, moving: 3000, parts: ['moving']});
+CASES.push({n: 'dyn-oasis', set: {dyn: 'oasis', dm: 'light', rmotion: true}, parts: ['statue']});
+CASES.push({n: 'dyn-oasis-dark', set: {dyn: 'oasis', dm: 'dark', accent: '#db2777'}, moving: 3000, parts: ['statue', 'moving']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
@@ -229,7 +235,9 @@ async function stdCase(c) {
   rects.altab = await rectOf('#altab'); rects.desk = await rectOf('#desk');
   rects.desc = await p.evaluate(() => ({bar: document.getElementById('bar').className, body: document.body.className}));
   const read = c.read ? await p.evaluate(js => { try { return String((0, eval)(js)) } catch (e) { return 'ERROR ' + e.message } }, c.read) : null;
-  const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f}); if (c.saver) fs.unlinkSync(path.join(D, 'idle'));
+  rects.statue = await rectOf('#dynstatue img');
+  const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f});
+  if (c.moving) { for (let i = 0; i < c.moving / 250; i++) { await p.clock.runFor(250); await wait(60) } await p.screenshot({path: path.join(OUT, c.n + '.std2.png')}) } if (c.saver) fs.unlinkSync(path.join(D, 'idle'));
   if (c.key == 'altab') await p.keyboard.up('Alt');
   await ctx.close(); return {f, rects, errs, pt, read};
 }
@@ -325,6 +333,7 @@ async function natCase(c, s) {
     xdo('mousemove 300 300'); await wait(500) }
   const read = c.read ? await neval(c.app, 'String((() => { try { return ' + c.read + ' } catch (e) { return "ERROR " + e.message } })())') : null;
   const f = path.join(OUT, c.n + '.nat.png'); sh('import -window root ' + f);
+  if (c.moving) { await wait(c.moving); sh('import -window root ' + path.join(OUT, c.n + '.nat2.png')) }
   if (c.undo) { await neval(c.app, 'void((() => { try { ' + c.undo + ' } catch (e) {} })())'); await wait(1200) }
   if (c.saver) { fs.writeFileSync(path.join(D, 'idle'), '0'); await until(() => (nst('saver') || '').startsWith('0') && !/ app=do-saver /.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 10000); fs.unlinkSync(path.join(D, 'idle')); await wait(800) }
   if (c.key == 'altab') { xdo('keyup alt'); await until(() => (nst('altab') || '-') == '-', 5000); await wait(400) }
@@ -370,6 +379,8 @@ function cmp(name, a, b, ra, rb, shift) {
     try { n = await natCase(c, s) } catch (e) { ok(c.n + ': Native drew it', 0, e.message); continue }
     if (c.read) ok(c.n + ': the page reads the same on both (' + c.read.slice(0, 60) + '…)', s.read === n.read, {std: s.read, nat: n.read});
     for (const part of c.parts || []) {
+      if (part == 'moving') { const mv = e => { try { return JSON.parse(cp.execFileSync('python3', [path.join(__dirname, 'pxdiff.py'), path.join(OUT, c.n + '.' + e + '.png'), path.join(OUT, c.n + '.' + e + '2.png'), [0, 0, W, H].join(','), [0, 0, W, H].join(','), String(TOL), path.join(OUT, c.n + '.moving.' + e), '0']).toString()).pct } catch (x) { return -1 } };
+        const a = mv('std'), b = mv('nat'); ok(c.n + ' moving: ' + a + ' % of Standard\'s screen and ' + b + ' % of Native\'s change in ' + c.moving / 1000 + ' s (at least 0.5 % on both)', a >= .5 && b >= .5, {a, b}); continue }
       if (part == 'picture') { const f = x => +cp.execFileSync('python3', ['-c', PICPY, x]).toString(), a = f(s.f), b = f(n.f);
         ok(c.n + ' picture: ' + a + ' % of Standard\'s screen and ' + b + ' % of Native\'s show the video (at least 60 %)', a >= 60 && b >= 60 && Math.abs(a - b) <= 10, {a, b}); continue }
       let ra = s.rects[part], rb = null;
