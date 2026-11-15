@@ -552,6 +552,24 @@ static void dpms(int off)
 	if (enable) enable(dpy);
 	force(dpy, off ? 3 : 0); XFlush(dpy);   /* DPMSModeOff : DPMSModeOn */
 }
+/* 1.6.0 (plan Part 11): an app holds the screen on (rudolf-portal's files in /run/rudolf/inhibit with the idle flag,
+   its owner's, its portal running), as rudolfd's inhibit_scan reads them */
+static int idle_held(void)
+{
+	DIR *d = opendir("/run/rudolf/inhibit"); struct dirent *e; int n = 0;
+	while (d && (e = readdir(d))) {
+		unsigned uid, ck; long pid; char x; if (sscanf(e->d_name, "%u-%ld-%u%c", &uid, &pid, &ck, &x) != 3 || pid <= 1) continue;
+		char f[400], pp[64], comm[32] = "", l[300]; struct stat st; snprintf(f, sizeof f, "/run/rudolf/inhibit/%s", e->d_name);
+		if (lstat(f, &st) || !S_ISREG(st.st_mode) || st.st_uid != uid) continue;
+		snprintf(pp, sizeof pp, "/proc/%ld/comm", pid); FILE *c = fopen(pp, "r"); if (c) { if (!fgets(comm, sizeof comm, c)) comm[0] = 0; fclose(c); }
+		if (strncmp(comm, "rudolf-portal", 13) || stat(pp, &st) || st.st_uid != uid) continue;
+		FILE *g = fopen(f, "r"); if (!g) continue;
+		while (fgets(l, sizeof l, g)) if (!strncmp(l, "flags=", 6) && (strtoul(l + 6, NULL, 10) & 8)) n++;
+		fclose(g);
+	}
+	if (d) closedir(d);
+	return n;
+}
 static void screen_blank(int off)
 {
 	if (off == blanked) return;
@@ -601,9 +619,10 @@ static void power_tick(long long t)
 	}
 	/* on battery, once a minute: battery saver goes on by itself at its level */
 	if (ac == 0 && t - last_apply >= 60000) { last_apply = t; runbg("/usr/lib/rudolf/power", "apply", NULL); }
-	static long long last_read; static int mins = -1;
-	if (t - last_read >= 1000) { last_read = t; mins = power_now_int("screen"); }
-	if (!blanked && mins > 0 && last_in_ms && t - last_in_ms >= mins * 60000LL) screen_blank(1);
+	static long long last_read; static int mins = -1, held;
+	if (t - last_read >= 1000) { last_read = t; mins = power_now_int("screen"); held = idle_held(); }
+	/* (1.6.0, plan Part 11: not while an app asks to keep the screen on: a video, a game, a call) */
+	if (!blanked && !held && mins > 0 && last_in_ms && t - last_in_ms >= mins * 60000LL) screen_blank(1);
 }
 static void mark_input(void)
 {

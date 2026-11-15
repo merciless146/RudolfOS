@@ -6,6 +6,9 @@ export HOME=/root
 mount -t tmpfs -o mode=0755,nosuid tmpfs /run
 mount -t tmpfs -o mode=1777,nosuid tmpfs /tmp
 mkdir -p /run/rudolf /run/xvfb /tmp/.X11-unix /dev/shm /media
+# 1.6.0 (plan Part 11): apps' requests to keep the screen on or the computer awake (rudolf-portal writes them; anyone may
+# add one, only its owner removes it, only root lists them)
+mkdir -p /run/rudolf/inhibit && chmod 1733 /run/rudolf/inhibit
 chmod 1777 /tmp/.X11-unix
 mkdir -p /var/tmp; chmod 1777 /tmp /var/tmp
 mount -t tmpfs -o mode=1777 tmpfs /dev/shm
