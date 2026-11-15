@@ -1,0 +1,35 @@
+#!/bin/sh
+# rudolf-fetch (1.6.0): Rudolf's logo with this computer's details beside it, as other distributions' "fetch"
+# commands show theirs. Read only: it changes nothing. In the Terminal (Debian) it is /usr/local/bin/rudolf-fetch,
+# bound read-only by rudolf-debian with Rudolf's own files in /usr/share/rudolf-os and the facts Debian cannot see
+# (the desktop engine, the update channel) in /run/rudolf-os/facts; outside Debian it reads Rudolf's own.
+#   rudolf-fetch [--plain]   (--plain: no colours; also when the output is not a terminal or NO_COLOR is set)
+D=/usr/share/rudolf-os; [ -r $D/logo.txt ] || D=/usr/share/rudolf
+F=/run/rudolf-os/facts
+col=1; { [ "$1" = --plain ] || [ -n "${NO_COLOR:-}" ] || ! [ -t 1 ]; } && col=0
+fact() { [ -r $F ] && sed -n "s/^$1=//p" $F | head -1; }
+ver=$(cat $D/VERSION 2>/dev/null); [ -n "$ver" ] || ver=unknown
+eng=$(fact engine); [ -n "$eng" ] || eng=$(cat /run/rudolf/engine-choice 2>/dev/null)
+case "$eng" in native) eng=Native;; webkit) eng=Lite;; ""|chromium|standard) eng=Standard;; esac
+chan=$(fact channel)
+if [ -z "$chan" ]; then u=$(sed -n 's/^url=//p' /persist/os/update.conf 2>/dev/null); case "$u" in */beta) chan=beta;; */stable|"") chan=stable;; *) chan=custom;; esac; fi
+cpu=$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo 2>/dev/null | head -1 | sed 's/(R)//g; s/(TM)//g; s/  */ /g')
+mem=$(awk '/^MemTotal:/{t=$2} /^MemAvailable:/{a=$2} END{if(t)printf "%.1f GiB / %.1f GiB", (t-a)/1048576, t/1048576}' /proc/meminfo 2>/dev/null)
+up=$(awk '{s=int($1); d=int(s/86400); h=int(s%86400/3600); m=int(s%3600/60); if(d) printf "%d d %d h %d min",d,h,m; else if(h) printf "%d h %d min",h,m; else printf "%d min",m}' /proc/uptime 2>/dev/null)
+disk=$(df -Pk / 2>/dev/null | awk 'NR==2{printf "%.0f GiB / %.0f GiB", $3/1048576, $2/1048576}')
+who="$(id -un 2>/dev/null || echo rudolf)@$(hostname 2>/dev/null || echo rudolf)"
+if [ $col = 1 ]; then R=$(printf '\033[1;31m'); N=$(printf '\033[0m'); logo=$D/logo.ansi; else R=; N=; logo=$D/logo.txt; fi
+[ -r "$logo" ] || logo=$D/logo.txt
+line() { [ -n "$2" ] && printf '%s%s:%s %s' "$R" "$1" "$N" "$2"; }
+set -- "$R$who$N" "$(echo "$who" | sed 's/./-/g')" "$(line OS "Rudolf OS $ver")" "$(line Kernel "$(uname -r)")" \
+	"$(line Desktop "$eng")" "$(line Updates "$chan")" "$(line CPU "$cpu")" "$(line Memory "$mem")" "$(line Disk "$disk")" "$(line Uptime "$up")"
+i=0
+while IFS= read -r l || [ -n "$l" ]; do
+	i=$((i + 1)); info=""
+	if [ $i -ge 3 ] && [ $# -gt 0 ]; then info=$1; shift; fi
+	if [ -n "$info" ]; then
+		# the logo's line padded to 34 columns (counted without the nose's colour codes)
+		w=$(printf '%s' "$l" | sed 's/\x1b\[[0-9;]*m//g' | wc -m); pad=$((34 - w)); [ $pad -lt 1 ] && pad=1
+		printf '%s%*s%s\n' "$l" $pad '' "$info"
+	else printf '%s\n' "$l"; fi
+done < "$logo"
