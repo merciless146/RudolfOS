@@ -242,6 +242,16 @@ if [ -z "$W" ]; then skip wifi "no Wi-Fi adapter"
 elif running wpa_supplicant; then
 	if ip -4 addr show "$W" 2>/dev/null | grep -q 'inet '; then pass wifi "$W has an address"; else skip wifi "$W is not connected to a network now"; fi
 else fail wifi "the Wi-Fi service is not running ($W)"; fi
+# 1.6.0 (plan Part 9): devices through udev: udevd running and answering, its database filled; mdev only as the fallback
+dv=$(rd1 "$RUN/devices")
+case "$dv" in
+udev) if ! running systemd-udevd; then fail devices "udev was started but is not running now (devices plugged in are not set up): $RUN/udev.log"
+	elif [ -z "$(ls "${UDEVDB:-/run/udev/data}" 2>/dev/null | head -1)" ]; then fail devices "udev runs but its device database is empty ($RUN/udev.log)"
+	else pass devices "udev: $(ls "${UDEVDB:-/run/udev/data}" | wc -l) devices in its database"; fi;;
+*rudolf.udev=0*) skip devices "mdev, as asked at start-up (rudolf.udev=0)";;
+mdev*) fail devices "the devices are set up by mdev, the fallback, not udev ${dv#mdev }";;
+*) skip devices "not said at start-up ($RUN/devices)";;
+esac
 # 1.5.9 (plan Part 1): a cellular modem: ModemManager runs while one is there, can read its own rules (it runs without
 # udev, /usr/lib/rudolf/modem) and has found it (mmcli only reads)
 md=$(ls "$DEV"/cdc-wdm* "$DEV"/wwan* 2>/dev/null | head -3 | tr '\n' ' ')

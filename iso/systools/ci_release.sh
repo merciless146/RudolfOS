@@ -255,6 +255,26 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	echo "::notice title=Tor::$((TRB / 1024)) KB added to the base layer"
 	grep -q '^tor:' "$W/broot/etc/passwd" || echo "tor:x:951:951:Tor (Oracle's Tor windows):/run/rudolf/tor:/bin/false" | sudo tee -a "$W/broot/etc/passwd" >/dev/null
 	grep -q '^tor:' "$W/broot/etc/group" || echo "tor:x:951:" | sudo tee -a "$W/broot/etc/group" >/dev/null
+	# 1.6.0 (plan Part 9): udev instead of mdev (rudolf-init starts it; mdev stays as the fallback): systemd-udevd on its
+	# own and udevadm, from this Ubuntu 24.04's udev package (no systemd as init), with its helpers, its rules (not the
+	# ones for systemd's own seats and consoles, nor the renaming of network interfaces: Rudolf OS's scripts know eth0,
+	# wlan0 and the adapters by their kernel names) and the hardware database built from its hwdb.d; the groups its
+	# rules name; the libraries the base layer lacks, at the paths they are found at (libsystemd-shared's own folder)
+	UDF=$(dpkg -L udev 2>/dev/null | grep -E '^/usr/(bin/udevadm|lib/systemd/systemd-udevd|lib/udev/[^/]+|lib/udev/rules\.d/[^/]+\.rules|lib/udev/hwdb\.d/[^/]+\.hwdb)$')
+	echo "$UDF" | grep -q '^/usr/bin/udevadm$' && echo "$UDF" | grep -q '/systemd-udevd$' || { echo "udev is missing on the build machine (apt-get install udev)"; exit 1; }
+	UDB=0
+	for x in $UDF; do [ -e "$x" ] && [ ! -d "$x" ] || continue
+		case "${x##*/}" in 71-seat.rules|73-seat-late.rules|80-net-setup-link.rules|90-vconsole.rules|99-systemd.rules) continue;; esac
+		sudo mkdir -p "$W/broot$(dirname "$x")"; sudo cp -a "$x" "$W/broot$x"; [ -L "$x" ] || UDB=$((UDB + $(stat -c %s "$x")))
+		case "$x" in *.rules|*.hwdb) continue;; esac
+		[ -L "$x" ] && continue; file -b "$x" 2>/dev/null | grep -q ELF || continue
+		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { sudo mkdir -p "$W/broot$(dirname "$l")"; sudo cp -L "$l" "$W/broot$l"; UDB=$((UDB + $(stat -L -c %s "$l"))); echo "  udev needs $l ($(($(stat -L -c %s "$l") / 1024)) KB)"; }; done
+	done
+	if command -v systemd-hwdb >/dev/null; then sudo systemd-hwdb --root="$W/broot" update --usr; else sudo udevadm hwdb --update --root="$W/broot" --usr; fi
+	[ -s "$W/broot/usr/lib/udev/hwdb.bin" ] || { echo "udev's hardware database (hwdb.bin) was not made"; exit 1; }
+	sudo rm -rf "$W/broot/usr/lib/udev/hwdb.d"   # (built into hwdb.bin)
+	for g in disk:6 lp:7 kmem:15 dialout:20 cdrom:24 tape:26 render:990 kvm:991 sgx:992; do grep -q "^${g%%:*}:" "$W/broot/etc/group" || echo "${g%%:*}:x:${g#*:}:" | sudo tee -a "$W/broot/etc/group" >/dev/null; done
+	echo "::notice title=udev::$((UDB / 1024)) KB added to the base layer, its hardware database $(($(stat -c %s "$W/broot/usr/lib/udev/hwdb.bin") / 1024)) KB (read as needed)"
 	# 1.5.9: and iw: the Wi-Fi chip's bands (Settings › Network › Wi-Fi › This computer's Wi-Fi radios, wifi.sh radios
 	# and band); it was never in the base layer, so on the Vivobook (2026111308) those found no bands at all
 	for x in /usr/sbin/nft /usr/sbin/tune2fs /usr/sbin/iw; do

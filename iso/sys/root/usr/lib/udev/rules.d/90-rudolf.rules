@@ -1,0 +1,31 @@
+# Rudolf OS 1.6.0 (docs/plan-1.6.0.md Part 9): what /etc/mdev.conf did, as udev rules, after the packages' own (50-60
+# set names, links and the hardware database's properties; 80-drivers.rules loads drivers, as mdev's modprobe line did).
+# Owners and modes as mdev gave them (they come later, so they win); the same scripts run, through udev-run, which gives
+# them mdev's environment (MDEV) and lets them run on without holding up udev.
+
+# sound: the audio group; a sound card that comes or goes is opened in PulseAudio, or closed (sound hotplug, 1.5.4)
+SUBSYSTEM=="sound", GROUP="29", MODE="0660"
+SUBSYSTEM=="sound", KERNEL=="controlC[0-9]*", ACTION!="bind|unbind", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/sound hotplug"
+# graphics: everyone may draw (the desktop, games, Linux apps); the framebuffer, the video group
+SUBSYSTEM=="drm", KERNEL=="card[0-9]*|renderD[0-9]*", GROUP="44", MODE="0666"
+KERNEL=="fb0", GROUP="44", MODE="0660"
+# input: root's only (rudolf-display reads them), except game controllers, which joyperm gives the desktop user (1.5.4)
+SUBSYSTEM=="input", GROUP="0", MODE="0640"
+SUBSYSTEM=="input", KERNEL=="event[0-9]*", ACTION!="bind|unbind", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/joyperm"
+# controllers' raw devices, Steam Input's virtual controllers (uinput), Proton's NT synchronization: the devices' group
+# (1000), placed in Debian as they come (rudolf-debian devices)
+KERNEL=="hidraw[0-9]*", GROUP="1000", MODE="0660", RUN+="/usr/lib/rudolf/udev-run /usr/bin/rudolf-debian devices"
+KERNEL=="uinput", GROUP="1000", MODE="0660", RUN+="/usr/lib/rudolf/udev-run /usr/bin/rudolf-debian devices"
+KERNEL=="ntsync", GROUP="1000", MODE="0660"
+# cameras (V4L2) and their media controllers: the devices' group, placed in Debian (1.5.6, 1.5.7)
+SUBSYSTEM=="video4linux", GROUP="1000", MODE="0660", RUN+="/usr/lib/rudolf/udev-run /usr/bin/rudolf-debian devices"
+SUBSYSTEM=="media", KERNEL=="media[0-9]*", GROUP="1000", MODE="0660", RUN+="/usr/lib/rudolf/udev-run /usr/bin/rudolf-debian devices"
+# a cellular modem's devices start ModemManager, and stop it when the last one goes (1.5.9 Part 1)
+KERNEL=="cdc-wdm[0-9]*|wwan[0-9]*|ttyUSB[0-9]*", GROUP="0", MODE="0660", ACTION!="bind|unbind", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/modem hotplug"
+# plugged-in devices: USB devices identified, USB drives and SD cards mounted (devplug)
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", MODE="0660", ACTION=="add|remove", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/devplug"
+SUBSYSTEM=="block", KERNEL=="sd[a-z]|sd[a-z][0-9]*|mmcblk[0-9]|mmcblk[0-9]p[0-9]*", GROUP="6", MODE="0660", ACTION=="add|change|remove", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/devplug"
+# Thunderbolt and USB4 devices: approved by themselves, kept, or asked about (1.5.4)
+SUBSYSTEM=="thunderbolt", ACTION!="bind|unbind", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/thunderbolt plug"
+# a network adapter plugged in later gets an address as cables at start-up do (1.5.8)
+SUBSYSTEM=="net", ACTION=="add|remove", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/netplug"

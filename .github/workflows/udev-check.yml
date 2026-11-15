@@ -1,0 +1,26 @@
+# docs/plan-1.6.0.md Part 9: udev instead of mdev. qt/host/udev60_t.sh with Ubuntu 24.04's udev (the one the base layer
+# takes): rudolf-init's start of it and its fallback, udev-run, and 90-rudolf.rules read by udevadm verify and tried on
+# the runner's own devices with udevadm test (put where the system's rules are, on this throw-away machine only).
+name: udev
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['iso/sys/root/usr/lib/udev/**', 'iso/sys/root/usr/lib/rudolf/udev-run', 'iso/sys/root/sbin/rudolf-init', 'iso/sys/root/etc/mdev.conf',
+      'iso/sys/root/usr/lib/rudolf/modem', 'iso/qt/host/udev60_t.sh', '.github/workflows/udev-check.yml']
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq udev >/dev/null
+      - name: The rules where udev reads them
+        run: sudo cp iso/sys/root/usr/lib/udev/rules.d/90-rudolf.rules /usr/lib/udev/rules.d/
+      - name: udev60_t.sh
+        run: sudo sh iso/qt/host/udev60_t.sh
+      - name: The packages' rules the base layer takes (the ones left out are named)
+        run: |
+          dpkg -L udev | grep -E '/rules\.d/[^/]+\.rules$' | sort
+          for r in 71-seat.rules 73-seat-late.rules 80-net-setup-link.rules 90-vconsole.rules 99-systemd.rules; do echo "left out: $r"; done
+          test -f /usr/lib/udev/rules.d/80-drivers.rules && echo "80-drivers.rules: drivers loaded by udev (mdev's modprobe line)"

@@ -1,0 +1,12 @@
+#!/bin/sh
+# Rudolf OS 1.6.0 (docs/plan-1.6.0.md Part 9): runs one of the scripts mdev ran (90-rudolf.rules) for a udev event, with
+# mdev's environment: MDEV, the device's name under /dev (or the network interface's), as mdev gave it; ACTION,
+# SUBSYSTEM, DEVTYPE, DEVPATH and INTERFACE are udev's, the same names. Started on its own (a new session), so a script
+# that takes long (devplug mounting a drive, the modem service starting ModemManager) never holds up udev's next event;
+# what it says goes to /run/rudolf/udev-run.log.
+#   udev-run PROGRAM [ARGS...]
+[ $# -ge 1 ] && [ -x "$1" ] || exit 0
+if [ -n "$DEVNAME" ]; then MDEV=${DEVNAME#/dev/}; elif [ -n "$INTERFACE" ]; then MDEV=$INTERFACE; else MDEV=; fi
+export MDEV
+setsid "$@" </dev/null >>${UDEV_RUN_LOG:-/run/rudolf/udev-run.log} 2>&1 &
+exit 0

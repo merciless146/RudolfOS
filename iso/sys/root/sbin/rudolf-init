@@ -16,8 +16,23 @@ hostname rudolf
 ip link set lo up
 hwclock -s -u 2>/dev/null
 /usr/lib/rudolf/clockfloor 2>/dev/null   # 1.4.4: never earlier than this release (a hardware clock that lost its time)
-mdev -s
-mdev -d 2>/dev/null
+# 1.6.0 (docs/plan-1.6.0.md Part 9): devices through udev (systemd-udevd on its own): its rules (/usr/lib/udev/rules.d,
+# Rudolf OS's own in 90-rudolf.rules, which run the scripts mdev ran), its hardware database, and the device database
+# Linux software reads (libudev: ModemManager, SDL and Steam's controllers, PipeWire, Flatpak apps). The devices already
+# there are announced again (coldplug) and waited for, at most 15 s. If udevd cannot start (or rudolf.udev=0 is given),
+# mdev does as before, and System health says so (/run/rudolf/devices: "udev" or "mdev REASON").
+UDEVD=/usr/lib/systemd/systemd-udevd
+dev_mdev() { echo "mdev $1" > /run/rudolf/devices; mdev -s; mdev -d 2>/dev/null; }
+if grep -q rudolf.udev=0 $RCMD; then dev_mdev "(rudolf.udev=0 was given at start-up)"
+elif [ ! -x $UDEVD ] || ! command -v udevadm >/dev/null; then dev_mdev "(udev is not part of this build)"
+elif $UDEVD --daemon --resolve-names=early 2>>/run/rudolf/udev.log && udevadm control --ping --timeout=5 2>>/run/rudolf/udev.log; then
+	echo udev > /run/rudolf/devices
+	udevadm trigger --type=subsystems --action=add 2>>/run/rudolf/udev.log
+	udevadm trigger --type=devices --action=add 2>>/run/rudolf/udev.log
+	udevadm settle --timeout=15 2>>/run/rudolf/udev.log || echo "$(date) udev: devices still being set up after 15 s, starting anyway" >> /run/rudolf/udev.log
+else
+	pkill -x systemd-udevd 2>/dev/null; dev_mdev "(udevd did not start: see /run/rudolf/udev.log)"
+fi
 # (1.5.9: on ARM64 the serial port is ttyAMA0, QEMU's virt machine and most ARM boards; x86 has none)
 DBGTTY=/dev/ttyS0; [ -c /dev/ttyAMA0 ] && DBGTTY=/dev/ttyAMA0
 grep -q rudolf.debug=1 $RCMD && ( while :; do setsid sh -c "exec sh -l <$DBGTTY >$DBGTTY 2>&1"; sleep 1; done ) &
