@@ -498,7 +498,10 @@ static void print_status(void)
 	char names[MAXP][48]; int ni = list_installed(names, MAXP);
 	printf("{\"ok\":true,\"persistent\":%s,\"root\":", strcmp(ROOT, "/run/rudolf/pkg") ? "true" : "false"); jstr(ROOT);
 	printf(",\"keys\":%d,\"sources\":[", NKEYS);
-	for (int i = 0; i < NSRC; i++) { printf("%s{\"loc\":", i ? "," : ""); jstr(SRC[i].loc); printf(",\"type\":"); jstr(SRC[i].type); printf(",\"ok\":%s,\"library\":%s,\"count\":%d,\"serial\":%lld,\"error\":", SRC[i].ok ? "true" : "false", SRC[i].lib ? "true" : "false", SRC[i].count, SRC[i].serial); jstr(SRC[i].ok ? "" : SRC[i].err); putchar('}'); }
+	/* (1.6.0; checked: when a web source's list was last downloaded, from its cached file's time; 0 if never: the App Store
+	   says how old the Library's list is, beside its Refresh button) */
+	for (int i = 0; i < NSRC; i++) { long long ck = 0; if (!strcmp(SRC[i].type, "web")) { char ci[400], cs[400]; struct stat cst; idx_paths(i, ci, cs, sizeof ci); if (!stat(ci, &cst)) ck = (long long)cst.st_mtime; }
+		printf("%s{\"loc\":", i ? "," : ""); jstr(SRC[i].loc); printf(",\"type\":"); jstr(SRC[i].type); printf(",\"ok\":%s,\"library\":%s,\"count\":%d,\"serial\":%lld,\"checked\":%lld,\"error\":", SRC[i].ok ? "true" : "false", SRC[i].lib ? "true" : "false", SRC[i].count, SRC[i].serial, ck); jstr(SRC[i].ok ? "" : SRC[i].err); putchar('}'); }
 	printf("],\"installed\":[");
 	for (int i = 0; i < ni; i++) {
 		info_t in; if (installed_info(names[i], &in)) continue;
