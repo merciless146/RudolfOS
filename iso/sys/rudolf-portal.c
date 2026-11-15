@@ -9,6 +9,9 @@
  *   ProxyResolver Lookup                         -> the proxy set in Rudolf OS, or none (1.2.8)
  *   NetworkMonitor GetStatus, GetAvailable, ...   -> online (1.2.8)
  *   Secret        RetrieveSecret                 -> the app's own secret, for libsecret in a Flatpak sandbox (1.6.0)
+ *   Inhibit       Inhibit                        -> the app keeps the screen on or the computer awake (1.6.0)
+ * and as org.freedesktop.ScreenSaver and org.freedesktop.PowerManagement.Inhibit (Inhibit, UnInhibit), which apps
+ * outside a sandbox ask (Chromium and Electron apps, SDL games, Steam, video players), 1.6.0.
  * and as org.gnome.keyring.SystemPrompter (gcr's prompter, 1.6.0): gnome-keyring-daemon's questions (a new keyring's
  * password, unlocking one) drawn by the desktop, the password handed back through gcr's secret exchange,
  * and as org.freedesktop.Notifications for apps that notify directly (libnotify).
@@ -140,6 +143,106 @@ static gboolean check_answers(gpointer u)
 	return TRUE;
 }
 
+/* ---------------- 1.6.0 (docs/plan-1.6.0.md Part 11): apps keeping the screen on (idle) or the computer awake (sleep).
+   Each held request is a file in /run/rudolf/inhibit (1733: anyone may add, only the owner removes, only root lists),
+   named UID-PID-COOKIE and holding its flags (4 sleep, 8 idle), the app and its reason; rudolfd and rudolf-display
+   read them (a file whose portal is gone, or not its owner's, is not counted). Released when the app asks, or when it
+   leaves the bus; a portal that starts again clears its own old ones. */
+#define INH_SLEEP 4
+#define INH_IDLE 8
+typedef struct { guint32 cookie, flags; char *sender, *path; guint reg, watch; } inhibitor;
+static GList *INH; static guint32 INH_SEQ;
+static const char *inh_dir(void) { const char *d = getenv("RUDOLF_INHIBIT_DIR"); return d && *d ? d : "/run/rudolf/inhibit"; }
+static void inh_file(guint32 cookie, char *f, size_t n) { snprintf(f, n, "%s/%u-%ld-%u", inh_dir(), (unsigned)getuid(), (long)getpid(), cookie); }
+static void inh_clean(const char *s, GString *o) { for (const unsigned char *p = (const unsigned char *)(s ? s : ""); *p && o->len < 200; p++) g_string_append_c(o, *p < 32 ? ' ' : *p); }
+static void inh_drop(inhibitor *h)
+{
+	char f[300]; inh_file(h->cookie, f, sizeof f); unlink(f);
+	if (h->reg) g_dbus_connection_unregister_object(BUS, h->reg);
+	if (h->watch) g_bus_unwatch_name(h->watch);
+	INH = g_list_remove(INH, h); g_free(h->sender); g_free(h->path); g_free(h);
+}
+static void inh_vanished(GDBusConnection *c, const char *name, gpointer u)
+{
+	(void)c; (void)u;
+	for (GList *l = INH; l;) { GList *n = l->next; inhibitor *h = l->data; if (!strcmp(h->sender, name)) inh_drop(h); l = n; }
+}
+static guint32 inh_add(const char *sender, const char *app, const char *reason, guint32 flags, const char *path)
+{
+	inhibitor *h = g_new0(inhibitor, 1); h->cookie = ++INH_SEQ; h->flags = flags; h->sender = g_strdup(sender); h->path = g_strdup(path);
+	h->watch = g_bus_watch_name_on_connection(BUS, sender, G_BUS_NAME_WATCHER_FLAGS_NONE, NULL, inh_vanished, NULL, NULL);
+	INH = g_list_append(INH, h);
+	char f[300], t[310]; inh_file(h->cookie, f, sizeof f); snprintf(t, sizeof t, "%s.t", f);
+	GString *b = g_string_new(NULL); g_string_append_printf(b, "flags=%u\napp=", flags); inh_clean(app, b); g_string_append(b, "\nreason="); inh_clean(reason, b); g_string_append_c(b, '\n');
+	if (g_file_set_contents(t, b->str, b->len, NULL)) { chmod(t, 0644); rename(t, f); }
+	g_string_free(b, TRUE); return h->cookie;
+}
+static int inh_remove(const char *sender, guint32 cookie)
+{
+	for (GList *l = INH; l; l = l->next) { inhibitor *h = l->data; if (h->cookie == cookie && !strcmp(h->sender, sender)) { inh_drop(h); return 1; } }
+	return 0;
+}
+/* the portal's Inhibit: a Request object the app closes to end it */
+static void inh_req_method(GDBusConnection *c, const char *sender, const char *path, const char *iface, const char *method, GVariant *p, GDBusMethodInvocation *inv, gpointer u)
+{
+	(void)c; (void)iface; (void)method; (void)p; (void)u;
+	for (GList *l = INH; l; l = l->next) { inhibitor *h = l->data; if (h->path && !strcmp(h->path, path) && !strcmp(h->sender, sender)) { g_dbus_method_invocation_return_value(inv, NULL); inh_drop(h); return; } }
+	g_dbus_method_invocation_return_value(inv, NULL);
+}
+static const GDBusInterfaceVTable INH_REQ_VT = {inh_req_method, NULL, NULL, {0}};
+static void portal_inhibit(GDBusMethodInvocation *inv, const char *sender, const char *app, GVariant *p)
+{
+	const char *win; guint32 fl; GVariant *o; g_variant_get(p, "(&su@a{sv})", &win, &fl, &o); (void)win;
+	guint32 want = fl & (INH_SLEEP | INH_IDLE);
+	char *path = request_path(sender, o); const char *reason = opt_s(o, "reason");
+	guint32 ck = inh_add(sender, *app ? app : "a Linux app", reason, want, path);
+	for (GList *l = INH; l; l = l->next) { inhibitor *h = l->data; if (h->cookie == ck) h->reg = g_dbus_connection_register_object(BUS, path, REQ_INFO->interfaces[0], &INH_REQ_VT, NULL, NULL, NULL); }
+	g_dbus_method_invocation_return_value(inv, g_variant_new("(o)", path)); g_free(path); g_variant_unref(o);
+}
+/* org.freedesktop.ScreenSaver (the screen stays on, so no saver, lock or sleep) and org.freedesktop.PowerManagement.Inhibit
+   (the computer stays awake) */
+static void ss_method(GDBusConnection *c, const char *sender, const char *path, const char *iface, const char *method, GVariant *p, GDBusMethodInvocation *inv, gpointer u)
+{
+	(void)c; (void)path; (void)u;
+	int pm = !strcmp(iface, "org.freedesktop.PowerManagement.Inhibit");
+	if (!strcmp(method, "Inhibit")) { const char *app, *reason; g_variant_get(p, "(&s&s)", &app, &reason);
+		char *fp = caller_app(sender); guint32 ck = inh_add(sender, *fp ? fp : app, reason, pm ? INH_SLEEP : INH_IDLE, NULL); g_free(fp);
+		g_dbus_method_invocation_return_value(inv, g_variant_new("(u)", ck)); }
+	else if (!strcmp(method, "UnInhibit")) { guint32 ck; g_variant_get(p, "(u)", &ck); inh_remove(sender, ck); g_dbus_method_invocation_return_value(inv, NULL); }
+	else if (!strcmp(method, "HasInhibit")) { int any = 0; for (GList *l = INH; l; l = l->next) if (((inhibitor *)l->data)->flags & INH_SLEEP) any = 1; g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", any)); }
+	else if (!strcmp(method, "GetActive")) g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", FALSE));
+	else if (!strcmp(method, "GetActiveTime") || !strcmp(method, "GetSessionIdleTime")) g_dbus_method_invocation_return_value(inv, g_variant_new("(u)", 0));
+	else g_dbus_method_invocation_return_value(inv, NULL);   /* SimulateUserActivity, SetActive: nothing (the desktop decides) */
+}
+static const GDBusInterfaceVTable SS_VT = {ss_method, NULL, NULL, {0}};
+static const char SS_XML[] = "<node><interface name='org.freedesktop.ScreenSaver'>"
+	"<method name='Inhibit'><arg type='s' direction='in'/><arg type='s' direction='in'/><arg type='u' direction='out'/></method>"
+	"<method name='UnInhibit'><arg type='u' direction='in'/></method>"
+	"<method name='GetActive'><arg type='b' direction='out'/></method>"
+	"<method name='GetActiveTime'><arg type='u' direction='out'/></method>"
+	"<method name='GetSessionIdleTime'><arg type='u' direction='out'/></method>"
+	"<method name='SimulateUserActivity'/>"
+	"<method name='SetActive'><arg type='b' direction='in'/><arg type='b' direction='out'/></method>"
+	"</interface><interface name='org.freedesktop.PowerManagement.Inhibit'>"
+	"<method name='Inhibit'><arg type='s' direction='in'/><arg type='s' direction='in'/><arg type='u' direction='out'/></method>"
+	"<method name='UnInhibit'><arg type='u' direction='in'/></method>"
+	"<method name='HasInhibit'><arg type='b' direction='out'/></method>"
+	"</interface></node>";
+static void inh_start(void)
+{
+	/* (this user's files left by an earlier portal: their apps are gone with it) */
+	GDir *d = g_dir_open(inh_dir(), 0, NULL); const char *nm; char pre[32]; snprintf(pre, sizeof pre, "%u-", (unsigned)getuid());
+	while (d && (nm = g_dir_read_name(d))) if (g_str_has_prefix(nm, pre)) { char *f = g_build_filename(inh_dir(), nm, NULL); unlink(f); g_free(f); }
+	if (d) g_dir_close(d);
+	GDBusNodeInfo *si = g_dbus_node_info_new_for_xml(SS_XML, NULL);
+	g_dbus_connection_register_object(BUS, "/org/freedesktop/ScreenSaver", si->interfaces[0], &SS_VT, NULL, NULL, NULL);
+	g_dbus_connection_register_object(BUS, "/ScreenSaver", si->interfaces[0], &SS_VT, NULL, NULL, NULL);
+	g_dbus_connection_register_object(BUS, "/org/freedesktop/PowerManagement/Inhibit", si->interfaces[1], &SS_VT, NULL, NULL, NULL);
+	g_dbus_connection_register_object(BUS, "/org/freedesktop/PowerManagement", si->interfaces[1], &SS_VT, NULL, NULL, NULL);
+	g_bus_own_name_on_connection(BUS, "org.freedesktop.ScreenSaver", G_BUS_NAME_OWNER_FLAGS_REPLACE, NULL, NULL, NULL, NULL);
+	g_bus_own_name_on_connection(BUS, "org.freedesktop.PowerManagement", G_BUS_NAME_OWNER_FLAGS_REPLACE, NULL, NULL, NULL, NULL);
+}
+
 /* ---------------- 1.6.0: the Secret portal. libsecret inside a Flatpak sandbox keeps the app's secrets in a file of its
    own (~/.var/app/ID/data/keyrings), encrypted with a secret the portal gives it; that secret is the app's own, made
    once, in the account's folder (encrypted with the account's key, its user's only, 0700/0600), as gnome-keyring's own
@@ -266,6 +369,9 @@ static void portal_method(GDBusConnection *c, const char *sender, const char *pa
 			if (*t) { if (strstr(t, "://")) snprintf(buf, sizeof buf, "%s", t); else snprintf(buf, sizeof buf, "http://%s", t); px = buf; } }
 		const char *list[] = {px, NULL};
 		g_dbus_method_invocation_return_value(inv, g_variant_new("(^as)", list)); g_free(t);
+	} else if (!strcmp(iface, "org.freedesktop.portal.Inhibit")) {
+		if (!strcmp(method, "Inhibit")) portal_inhibit(inv, sender, app, p);
+		else g_dbus_method_invocation_return_dbus_error(inv, "org.freedesktop.portal.Error.NotAllowed", "session state monitoring is not offered");
 	} else if (!strcmp(iface, "org.freedesktop.portal.Secret")) {
 		retrieve_secret(inv, sender, app, p);
 	} else if (!strcmp(iface, "org.freedesktop.portal.NetworkMonitor")) {
@@ -339,6 +445,11 @@ static const char XML[] =
 	"<method name='GetStatus'><arg type='a{sv}' direction='out'/></method>"
 	"<method name='CanReach'><arg type='s' direction='in'/><arg type='u' direction='in'/><arg type='b' direction='out'/></method>"
 	"<signal name='changed'/>"
+	"<property name='version' type='u' access='read'/></interface>"
+	"<interface name='org.freedesktop.portal.Inhibit'>"
+	"<method name='Inhibit'><arg type='s' direction='in'/><arg type='u' direction='in'/><arg type='a{sv}' direction='in'/><arg type='o' direction='out'/></method>"
+	"<method name='CreateMonitor'><arg type='s' direction='in'/><arg type='a{sv}' direction='in'/><arg type='o' direction='out'/></method>"
+	"<method name='QueryEndResponse'><arg type='o' direction='in'/></method>"
 	"<property name='version' type='u' access='read'/></interface>"
 	"<interface name='org.freedesktop.portal.Secret'>"
 	"<method name='RetrieveSecret'><arg type='h' direction='in'/><arg type='a{sv}' direction='in'/><arg type='o' direction='out'/></method>"
@@ -735,6 +846,7 @@ int main(int argc, char **argv)
 	g_dbus_connection_register_object(BUS, "/org/gnome/keyring/Prompter", kinfo->interfaces[0], &KP_VT, NULL, NULL, NULL);
 	g_bus_own_name_on_connection(BUS, "org.gnome.keyring.SystemPrompter", G_BUS_NAME_OWNER_FLAGS_REPLACE, NULL, NULL, NULL, NULL);
 	mon_start();
+	inh_start();
 	g_timeout_add(200, check_answers, NULL);
 	fprintf(stderr, "rudolf-portal: ready\n");
 	g_main_loop_run(g_main_loop_new(NULL, FALSE));

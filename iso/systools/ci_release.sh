@@ -275,6 +275,11 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot/usr/lib/udev/hwdb.d"   # (built into hwdb.bin)
 	for g in disk:6 lp:7 kmem:15 dialout:20 cdrom:24 tape:26 render:990 kvm:991 sgx:992; do grep -q "^${g%%:*}:" "$W/broot/etc/group" || echo "${g%%:*}:x:${g#*:}:" | sudo tee -a "$W/broot/etc/group" >/dev/null; done
 	echo "::notice title=udev::$((UDB / 1024)) KB added to the base layer, its hardware database $(($(stat -c %s "$W/broot/usr/lib/udev/hwdb.bin") / 1024)) KB (read as needed)"
+	# 1.6.0 (plan Part 15; 1.5.9 8.4): sbverify, for /usr/lib/rudolf/espcheck: the start-up files on the drive checked as
+	# signed by Rudolf OS's Secure Boot key (its certificate is /usr/share/rudolf/rudolf-sb.crt)
+	x=/usr/bin/sbverify; [ -x "$x" ] || { echo "$x is missing on the build machine (apt-get install sbsigntool)"; exit 1; }
+	sudo install -m 0755 "$x" "$W/broot/usr/bin/sbverify"
+	for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; done
 	# 1.5.9: and iw: the Wi-Fi chip's bands (Settings › Network › Wi-Fi › This computer's Wi-Fi radios, wifi.sh radios
 	# and band); it was never in the base layer, so on the Vivobook (2026111308) those found no bands at all
 	for x in /usr/sbin/nft /usr/sbin/tune2fs /usr/sbin/iw; do

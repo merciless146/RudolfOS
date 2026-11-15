@@ -214,6 +214,44 @@ something to the system. Rudolf OS has neither, so these requests fail or are ig
 - **Tests:** an app's sleep inhibitor keeps the computer awake and the screen saver away until it is released; an
   admin request from a Flatpak or Debian app shows the prompt and is refused for a standard account.
 
+**Done, first step (2026-11-15): apps keeping the screen on or the computer awake**, without elogind:
+- **Where apps ask:** looked at before building: Flatpak apps ask the portal (org.freedesktop.portal.Inhibit); Chromium
+  and Electron apps, SDL games, Steam and video players ask org.freedesktop.ScreenSaver or
+  org.freedesktop.PowerManagement.Inhibit on the session bus. Debian's programs and Flatpak apps have no system bus
+  on Rudolf OS, so login1's Inhibit (what elogind would add) is not where Linux apps here ask.
+- **rudolf-portal** (on each account's session bus, and the desktop user's) answers all three: Inhibit, UnInhibit,
+  the portal's Inhibit and its Request's Close (flags 4 sleep and 8 idle kept; log-out and user-switch are not held),
+  ScreenSaver's GetActive and the rest. Each held request is a file in /run/rudolf/inhibit (rudolf-init: 1733),
+  UID-PID-COOKIE with its flags, the app (a Flatpak app by its ID) and its reason; it goes when the app lets go or
+  leaves the bus, and a portal started again clears its own.
+- **What they hold:** rudolfd's `GET media` adds `idleHeld`, `sleepHeld` and `heldBy` (inhibit_scan: only a file that
+  is its owner's and whose portal still runs). The screen held: no screen saver, no idle lock, no sleep (the page's
+  idleCheck, desktop/inhibit60.js), and the screen stays on (rudolf-display); the page log says which app holds it.
+  The computer held awake: no sleep, the saver and the lock as usual. Closing the lid still sleeps (the person's own
+  choice, as on other desktops).
+- Tests: qt/host/inhibit60_t.sh 12 (rudolf-portal on a private bus with fixtures/inhibitclient.c: each of the three,
+  let go, an app leaving the bus, flags, a portal gone and started again, a file of the wrong owner; rudolfd's
+  inhibit_scan, fixtures/inhibitscan.c), qt/shell2/inhibit60_t.js 6; call59_t.js, saver59_t.js, saver_t.js, portal_t.sh
+  unchanged.
+
+**For the owner to decide: elogind and polkit themselves.** Found while building the step above:
+- elogind's other parts (sessions, seats, "who is signed in") are asked for by system services (GNOME's, NetworkManager,
+  polkit), not by the Linux apps Rudolf OS runs: Flatpak apps and Debian's programs cannot reach the system bus here.
+- polkit: a Linux app's request for an administrator goes, on Rudolf OS, to Debian's own world (Debian has its own
+  user, password and sudo) or is not possible from a Flatpak sandbox; polkitd on the system itself would have nothing
+  asking it. It would also need its agent to answer as root (polkit-agent-helper-1, setuid) with a password the
+  accounts' Linux users do not have (theirs is the desktop's sign-in), so rudolfd would answer it.
+- So the proposal: leave elogind and polkit out of 1.6.0 (and the 5 MB budget with them), and take them up only if an
+  app or a later part (Waydroid, PipeWire, a Wayland desktop) needs them. Udev's seat rules (71-seat, 73-seat-late)
+  stay out with them.
+- **Decided (2026-11-15): left out**, as asked ("If leaving out elogind and polkit causes no issues or possible
+  conflicts with Rudolf or its cross-distribution compatibility, then let's leave it out"). Checked first: nothing in
+  Rudolf OS asks for either (no program here uses login1 or polkit; the system bus serves only BlueZ, bluealsa and
+  ModemManager, which run without them); a Flatpak app with `--system-talk-name=org.freedesktop.login1` gets no
+  answer, as it got none before, and such apps (a few use login1's sleep signal) carry on without it; Debian's
+  programs never had a logind; nothing that ran before changes, and apps made for other distributions keep the
+  standard ways they use here (the portals, the Secret Service, ScreenSaver and PowerManagement). Part 11 is done.
+
 ### 12. The native desktop becomes the default (added on 2026-11-13)
 Decided on 2026-11-13 from 1.5.9's measurements (docs/plan-1.5.9.md 12.3a: at idle 854 MB used against Standard's
 1,110 MB and Lite's 952 MB; the desktop up 9 s sooner than Standard). The shell (rudolf-native) gets everything the

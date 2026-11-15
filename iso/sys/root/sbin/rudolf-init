@@ -6,6 +6,9 @@ export HOME=/root
 mount -t tmpfs -o mode=0755,nosuid tmpfs /run
 mount -t tmpfs -o mode=1777,nosuid tmpfs /tmp
 mkdir -p /run/rudolf /run/xvfb /tmp/.X11-unix /dev/shm /media
+# 1.6.0 (plan Part 11): apps' requests to keep the screen on or the computer awake (rudolf-portal writes them; anyone may
+# add one, only its owner removes it, only root lists them)
+mkdir -p /run/rudolf/inhibit && chmod 1733 /run/rudolf/inhibit
 chmod 1777 /tmp/.X11-unix
 mkdir -p /var/tmp; chmod 1777 /tmp /var/tmp
 mount -t tmpfs -o mode=1777 tmpfs /dev/shm
@@ -138,7 +141,7 @@ starts_keep() {
 	  echo "entry=$(cat $SK_E/boot-entry 2>/dev/null)"; echo "options=$(cat $SK_E/cmdline 2>/dev/null)"; } > $SK_S/0/start.txt
 	cp $SK_E/initramfs.log $SK_S/0/initramfs.log 2>/dev/null
 	tail -n 40 $SK_P/var/log/boot-decisions.log > $SK_S/0/boot-decisions.log 2>/dev/null
-	mkdir -p $SK_R/devlink; for f in session.log webkit-desktop.log native-desktop.log Xorg.log devlink/daemon.log; do : >> $SK_S/0/${f##*/}; ln -sf $SK_S/0/${f##*/} $SK_R/$f; done
+	mkdir -p $SK_R/devlink; for f in session.log webkit-desktop.log native-desktop.log page.log Xorg.log devlink/daemon.log; do : >> $SK_S/0/${f##*/}; ln -sf $SK_S/0/${f##*/} $SK_R/$f; done
 	echo $SK_S/0 > $SK_R/start-logs
 }
 if mountpoint -q /persist; then starts_keep

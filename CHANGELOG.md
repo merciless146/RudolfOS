@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- Linux apps can keep the screen on or the computer awake: a game, a video or a download in a Linux app now holds off the screen saver, the lock, the screen turning off and sleep while it asks.
 - Devices are now set up by udev, as on other Linux distributions, so Linux apps, Steam and the modem service find hardware the usual way; mdev stays as a fallback if udev cannot start.
 - The keyring's own questions are now asked by Rudolf OS: when an app creates a new keyring or needs one unlocked, the desktop asks for its password in Rudolf's own prompt, naming the app, instead of the request failing.
 - Settings › Privacy › Saved passwords for apps: see which apps keep sign-ins in this account's keyring and remove them; Flatpak apps can now keep theirs too (the Secret portal).

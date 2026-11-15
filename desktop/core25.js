@@ -282,11 +282,12 @@ async function idleCheck(){if(idleWoke()||!USER||idleBusy)return;idleBusy=true;c
      Vivobook, 2026-11-13); and why the saver waits is written to the page log (/run/rudolf/page.log) */
   if(SAVER&&SAVER.c&&!SAVER.c.isConnected){const s=SAVER;SAVER=null;try{s.stop(false)}catch(e){}idleNote('a screen saver whose picture was gone was ended')}
   const fsEl=document.fullscreenElement,fsOn=!!(fsEl&&fsEl.isConnected&&fsEl.getClientRects().length);
-  if(SYSC.sson&&SYSC.ssmin>0&&idle>=SYSC.ssmin&&!SAVER){const why=LOCKED?'':fresh?'':fsOn?'something is full screen ('+idleWhat(fsEl)+')':document.pointerLockElement?'a game has the pointer ('+idleWhat(document.pointerLockElement)+')':busy?'sound is playing or a microphone is in use':'';
+  if(SYSC.sson&&SYSC.ssmin>0&&idle>=SYSC.ssmin&&!SAVER){const why=LOCKED?'':fresh?'':fsOn?'something is full screen ('+idleWhat(fsEl)+')':document.pointerLockElement?'a game has the pointer ('+idleWhat(document.pointerLockElement)+')':busy?(typeof INH60!='undefined'&&INH60.idle?'an app asked to keep the screen on ('+inhWho()+')':'sound is playing or a microphone is in use'):'';
    if(LOCKED||fresh){}else if(why)idleNote('the screen saver waits: '+why+', idle '+Math.round(idle)+' min');else{idleLast='';saverStart()}}
-  if(SYSC.lockmin>0&&idle>=SYSC.lockmin&&!LOCKED&&!fresh){saverStop();lockScreen()}
+  const held=typeof INH60!='undefined'?INH60:{idle:0,sleep:0};   /* (1.6.0, plan Part 11: what the apps asked to keep on) */
+  if(SYSC.lockmin>0&&idle>=SYSC.lockmin&&!LOCKED&&!fresh&&!held.idle){saverStop();lockScreen()}
   const sm=RD&&PWR&&PWR.now&&PWR.now.sleep!=null?PWR.now.sleep:SYSC.suspmin;   /* (1.4.4) Power and battery's, for the power source in use */
-  if(RD&&sm>0&&idle>=sm&&!busy&&!fresh){lastInput=Date.now();saverStop();lockScreen();rdPost('power?action=suspend').catch(()=>{})}}
+  if(RD&&sm>0&&idle>=sm&&!busy&&!held.idle&&!held.sleep&&!fresh){lastInput=Date.now();saverStop();lockScreen();rdPost('power?action=suspend').catch(()=>{})}}
  finally{idleBusy=false}}
 /* what holds the saver off, said once each time it changes */
 let idleLast='';function idleNote(m){if(m==idleLast)return;idleLast=m;try{window.__rdlog&&__rdlog('idle: '+m)}catch(e){}}
