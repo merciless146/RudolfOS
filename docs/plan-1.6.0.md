@@ -597,6 +597,10 @@ app checked on the Vivobook (its notice gone, signed in after a restart).
 - **Code**
   - **The native desktop (1.5.9 12.3c):** same_t.sh's comparison of Oracle's window on Native against Standard's
     (toolbar, tabs, a site): the rule "Native appears and functions exactly as Chromium mode". With Part 12 above.
+    (2026-11-15: not done yet. Checked with item 5: oracle_native_t.sh gives the same results with and without it (37 of
+    41 on a host without a sound server; 4g, 4h and 9 fail there on main too), Oracle's own Alt+F4 still Chromium's.
+    The comparison needs Standard's Oracle drawn the same way in Playwright, the shell built with a test key, as
+    oracle_native_t.sh does for Native.)
   - **The official recovery (1.5.9 8.4, 8.5):** the repair at each start (the official build checks recovery.efi and
     system/r and restores them from the official release); Return to official restoring the official rudolf.efi; on a
     computer that never ran the official build, system/r downloaded when Developer mode is turned on. The EFI image is
