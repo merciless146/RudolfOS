@@ -41,6 +41,7 @@ def make_drive(path):
 def boot(tag):
     extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolfcell',
              '-kernel', f'{REL}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1']
+    os.makedirs('cell60' + tag, exist_ok=True); open(f'cell60{tag}/vars.fd', 'ab').close()   # (unused without Secure Boot: sbvm copies one from SB_PARTS otherwise)
     vm = sbvm.VM('cell60' + tag, PARTS, [], secure=False, mem=MEM, extra=extra)
     g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3)
     time.sleep(30); end = time.time() + 900; up = False
