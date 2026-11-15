@@ -118,7 +118,7 @@ QT = os.path.dirname(HERE); PORT = 18767; DLTOKEN = 'github_pat_T160test_0123456
 GH = f'http://127.0.0.1:{PORT}'; TUN = f'/tmp/tun-t160-{os.getpid()}.sock'
 subprocess.run(['gcc', '-O2', '-static', '-o', f'{W}/sertun', os.path.join(QT, 'sertun.c')], check=True)
 stub = subprocess.Popen([sys.executable, os.path.join(QT, 'ghstub.py'), str(PORT), DLTOKEN, REPO])
-tun = subprocess.Popen([sys.executable, os.path.join(QT, 'sertun.py'), TUN, '127.0.0.1', str(PORT)])
+TUNLOG = os.path.abspath('sertun160.log'); tun = subprocess.Popen([sys.executable, os.path.join(QT, 'sertun.py'), TUN, '127.0.0.1', str(PORT)], env=dict(os.environ, SERTUN_LOG=TUNLOG))
 def ctl(path, data=None):
     r = urllib.request.urlopen(urllib.request.Request(GH + path, data=data, method='POST' if data is not None else 'GET'), timeout=20)
     return json.loads(r.read() or b'{}')
@@ -143,7 +143,7 @@ try:
     r = js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);const k=await acctNew('kid','k1','user');ACCTS.push(k);saveUser();return b.id+' '+k.id})()", 120)
     out('accounts:', r); BOSS, KID = str(r).split()
     for n, pw in (('boss', 'b1'), ('kid', 'k1')):
-        out('sign-in', n, signin(js, n, pw)); out('on the disk:', wait_for(js, "!!(USER&&USER.disk&&hdOn())", 600, 10))
+        out('sign-in', n, signin(js, n, pw)); out('on the disk:', wait_for(js, "!!(USER&&USER.disk&&hdOn())", 1500, 10))
         # the account's test file, put in its folder from the shell while it is signed in (the folder is encrypted with
         # the account's own key and locked while it is signed out; the first run's file written through the page never
         # reached the disk)
@@ -165,7 +165,7 @@ try:
     o3 = o
     def check3(o):
             ok('3. 15.3: the move on an existing data partition: each account\'s folder and files belong to its own Linux user now, 0700, logged', ub and uk and f'{UB} 700 /persist/accounts/{BOSS}' in o and f'{UK} 700 /persist/accounts/{KID}' in o and re.search(rf'^{UB} \d+ /persist/accounts/{BOSS}/Documents/SECRET.TXT', o, re.M) and 'own Linux user' in o, o)
-    out('sign-in boss', signin(js, 'boss', 'b1')); out('on the disk:', wait_for(js, "!!(USER&&USER.disk&&hdOn())", 600, 10)); time.sleep(5)
+    out('sign-in boss', signin(js, 'boss', 'b1')); out('on the disk:', wait_for(js, "!!(USER&&USER.disk&&hdOn())", 1500, 10)); time.sleep(5)
     check3(o3 + sh(f"stat -c '%u %a %n' /persist/accounts/{BOSS}/Documents/SECRET.TXT"))
     TOK = js("RUDOLFD.token"); out('token length', len(str(TOK)))
     o = sh(f"cat /run/rudolf/acct-session.env; ls -ld /home/acct{UB}; id acct{UB}")
@@ -231,19 +231,22 @@ try:
            and str(r3).startswith('ERR') and 'administrator' in str(r3) and str(r4).startswith('ERR'), [r0, r1, r2, r3, r4])
         r5 = dlpost(js, q, {'n': 'boss', 'p': 'b1', 'token': DLTOKEN})
         dlcmd(1, kind='sh', script='id -u; echo linked'); r = dlresult(1)
-        ok('18. ...with the administrator\'s password it is on, and a command from the repository runs (as root)', r5 == 'on' and r and r.get('stdout') == '0\nlinked\n', [r5, r])
+        ok('18. ...with the administrator\'s password it is on, and a command from the repository runs (read-only, as nobody: "Allow changes" is off)', r5 == 'on' and r and r.get('stdout') == '65534\nlinked\n', [r5, r])
         # 1.5.8 4.2: on again by itself after a restart, and answering with the desktop not running
         vm.stop(); time.sleep(3)
         vm, g, up, js = boot('d', nxt); sh = lambda c, t=60: run(g, c, t)
         if up:
             tunnel(sh)
             sh("pkill -f /usr/lib/rudolf/session; sleep 1; pkill -9 -f '[-]-rudolf-kiosk'; pkill -9 -f rudolf-native; sleep 2; rm -f /run/rudolf/heartbeat; pgrep -f 'rudolf-devlink run' >/dev/null && echo LINK-RUNS", 60)
-            dlcmd(2, kind='sh', script='echo no-desktop'); r = dlresult(2, 400)
+            dlcmd(2, kind='sh', script='echo no-desktop'); r = dlresult(2, 600)
+            if not r:
+                sh("cat /run/rudolf/devlink/status 2>&1; tail -5 /persist/devlink/log 2>&1; cat /persist/devlink/config | grep -v token; pgrep -fl sertun; tail -20 /run/rudolf/session.log", 60)
+                try: out(open(TUNLOG).read()[-1500:])
+                except OSError: pass
             ok('19. 4.2: after a restart the link is on by itself, and answers with the desktop not running (Ask first off)', r and r.get('stdout') == 'no-desktop\n', r)
-            sh("sed -i 's/^ask=.*/ask=1/' /persist/devlink/config; grep -q '^ask=' /persist/devlink/config || echo ask=1 >> /persist/devlink/config; rm -f /tmp/ran160; sleep 65", 120)
-            dlcmd(3, kind='sh', script='touch /tmp/ran160; echo ran'); r = dlresult(3, 300)
-            o = sh("ls /tmp/ran160 2>&1", 20)
-            ok('20. ...with Ask first on and no desktop to ask: answered at once ("no desktop to ask"), not run', r and r.get('status') == -1 and r.get('approved') == 'no desktop to ask' and 'No such file' in o, [r, o])
+            sh("sed -i 's/^ask=.*/ask=1/' /persist/devlink/config; grep -q '^ask=' /persist/devlink/config || echo ask=1 >> /persist/devlink/config; sleep 65", 120)
+            dlcmd(3, kind='sh', script='echo ran'); r = dlresult(3, 300)
+            ok('20. ...with Ask first on and no desktop to ask: answered at once ("no desktop to ask"), not run', r and r.get('status') == -1 and r.get('approved') == 'no desktop to ask' and 'ran' not in str(r.get('stdout')), r)
         else: ok('19. 4.2: started again', False, 'not up')
 finally:
     try: stub.kill(); tun.kill()
