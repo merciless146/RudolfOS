@@ -144,7 +144,7 @@ PDF Viewer since 1.5.9) lists them as "USB: name".
   one, a USB stick; ipp-usb's stand-in in front of qt/fakeprinter.py, printed to through its address; the jobs to
   stand-in /dev/usb/lpN; without the extension; unplugged; rudolfd's address check (fixtures/printuri.c); the rules,
   mdev's lines, the kernel, the self-test), qt/shell2/usbprint60_t.js 13 (and the print dialog's list), udev60_t.sh 13,
-  pdfprint59_t.js 8.
+  pdfprint59_t.js 8; .github/workflows/sysext-check.yml runs both host tests (sysext60_t.sh, usbprint60_t.sh) on pull requests.
 
 **Next:** extensions.yml's first run (the owner's) to publish `usbprint` for the first release with a base ABI; the QEMU
 check with a USB printer passed through (or QEMU's usb-printer-like device) and ipp-usb itself; on the HP desktop's
