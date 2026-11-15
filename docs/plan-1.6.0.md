@@ -551,6 +551,7 @@ work." So several monitors are built on the three workspaces, on Standard and Na
 three displays, each showing one of the workspaces with its own wallpaper and taskbar; a window moved to another
 workspace moves to that display. One display keeps today's behaviour (the three workspaces switched from the taskbar).
 The mobile build's three panels are the same three workspaces, swiped left and right.
+When (owner, 2026-11-15): after the 1.6.0 beta, in 1.6.x; it needs real monitors to test.
 **Item 8 (2026-11-15, unattended session): the Phone screen and Blitzen's panel.** Both are page windows (apk58.js
 phoneScreen, blitzen26.js blitzenApp; the page docks neither), so Native shows each in a one-app window opened from its pin.
 Checked against Standard with same_t.sh, new cases phone-nolinux, phone-noscrcpy, phone-ready, phone-dark, blitzen-setup,
