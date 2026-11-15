@@ -145,6 +145,31 @@ static void sjson(str *s, const char *v)
 
 static int run(const char *cmd) { int r = system(cmd); return WIFEXITED(r) ? WEXITSTATUS(r) : -1; }
 
+/* 1.6.0 (plan Part 11): the apps' held requests to keep the screen on (idle) or the computer awake (sleep), from
+   rudolf-portal's files in INHIBIT_DIR (UID-PID-COOKIE, its owner's, its portal still running): counts, and the apps'
+   names into apps (JSON strings, comma-separated) if given */
+#ifndef INHIBIT_DIR
+#define INHIBIT_DIR "/run/rudolf/inhibit"
+#endif
+static void inhibit_scan(int *idle, int *sleep_, str *apps)
+{
+	*idle = *sleep_ = 0; DIR *d = opendir(INHIBIT_DIR); struct dirent *e; int k = 0;
+	while (d && (e = readdir(d))) {
+		unsigned uid; long pid; unsigned ck; char x; if (sscanf(e->d_name, "%u-%ld-%u%c", &uid, &pid, &ck, &x) != 3 || pid <= 1) continue;
+		char f[400]; snprintf(f, sizeof f, INHIBIT_DIR "/%s", e->d_name); struct stat st;
+		if (lstat(f, &st) || !S_ISREG(st.st_mode) || st.st_uid != uid || st.st_size > 1024) continue;
+		char pp[64]; snprintf(pp, sizeof pp, "/proc/%ld/comm", pid); FILE *c = fopen(pp, "r"); char comm[32] = ""; if (c) { if (!fgets(comm, sizeof comm, c)) comm[0] = 0; fclose(c); }
+		if (strncmp(comm, "rudolf-portal", 13)) { unlink(f); continue; }   /* (its portal is gone: so is its app's request) */
+		if (stat(pp, &st) || st.st_uid != uid) continue;
+		FILE *g = fopen(f, "r"); if (!g) continue; char l[300], app[220] = ""; unsigned fl = 0;
+		while (fgets(l, sizeof l, g)) { l[strcspn(l, "\n")] = 0; if (!strncmp(l, "flags=", 6)) fl = (unsigned)strtoul(l + 6, NULL, 10); else if (!strncmp(l, "app=", 4)) snprintf(app, sizeof app, "%s", l + 4); }
+		fclose(g);
+		if (fl & 8) (*idle)++;
+		if (fl & 4) (*sleep_)++;
+		if (apps && (fl & 12) && k < 20) { if (k++) sadd(apps, ","); sjson(apps, *app ? app : "an app"); }
+	}
+	if (d) closedir(d);
+}
 static char *run_out(const char *cmd)
 {
 	FILE *p = popen(cmd, "r");
@@ -4274,7 +4299,10 @@ static void api(struct req *r)
 		/* 1.5.9 (plan 7.2): and the apps recording from a microphone (a call): the screen saver, the lock and sleep
 		   wait for those too */
 		char *u = run_out("/usr/lib/rudolf/hotkey mic users 2>/dev/null"); int m = 0; if (u) for (char *c = u; *c; c++) if (*c == '\n') m++;
-		str js = {0}; sadd(&js, "{\"ok\":true,\"playing\":%d,\"mic\":%d}", n < 0 ? 0 : n, m); reply_json(r->fd, &js); free(u); return;
+		/* 1.6.0 (plan Part 11): and what the apps asked to keep on: the screen (idle: no saver, lock or sleep) or the
+		   computer (sleep), through the portal, org.freedesktop.ScreenSaver or PowerManagement */
+		int hi, hs; str ap = {0}; sadd(&ap, "%s", ""); inhibit_scan(&hi, &hs, &ap);
+		str js = {0}; sadd(&js, "{\"ok\":true,\"playing\":%d,\"mic\":%d,\"idleHeld\":%d,\"sleepHeld\":%d,\"heldBy\":[%s]}", n < 0 ? 0 : n, m, hi, hs, ap.b); free(ap.b); reply_json(r->fd, &js); free(u); return;
 	}
 	/* 1.5.9 (plan 7.2): GET mic: the apps using a microphone and whether it is muted; POST mic?muted=0|1 */
 	if (!strcmp(p, "mic")) {
