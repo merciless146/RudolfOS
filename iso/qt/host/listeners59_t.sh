@@ -53,7 +53,9 @@ ln -s 'socket:[3001]' $P/300/fd/5; ln -s 'socket:[3002]' $P/300/fd/6; ln -s 'soc
 { head -1 $P/net/unix; printf '0000000000000000: 00000002 00000000 00010000 0001 01 3001 /run/user/1000/claude-cowork-vm.sock\n0000000000000000: 00000002 00000000 00010000 0001 01 3002 /tmp/scoped_dirhldzNi/SingletonSocket\n0000000000000000: 00000002 00000000 00010000 0001 01 3003 /tmp/org.chromium.Chromium.5rKOls/SingletonSocket\n'; } > $P/net/unix.y; mv $P/net/unix.y $P/net/unix
 o=$(st); ok "9b. a Linux app's own sockets in Debian's container: its, said; Chromium's newer socket folder named: passes" "$(echo "$o" | grep -q "^PASS listeners - 4 listening, each named in the list (who may use it and how it checks) (and 2 of Linux apps' own, inside their containers)" && echo 1)" "$o"
 printf '0000000000000000: 00000002 00000000 00010000 0001 01 3004 /tmp/sneaky/sock\n' >> $P/net/unix
-o=$(st); ok "...a socket in /tmp held by a program outside the containers still fails" "$(echo "$o" | grep -q '^FAIL listeners - .*unix /tmp/sneaky/sock' && ! echo "$o" | grep -q 'scoped_dir' && echo 1)" "$o"
+# (as root it fails; run as another user, as on CI's runner, the self-test cannot trace it and says so: #368, tested below)
+if [ "$(id -u)" = 0 ]; then LX='^FAIL listeners - .*unix /tmp/sneaky/sock'; else LX='^SKIP listeners - .*cannot be looked at from here.*unix /tmp/sneaky/sock'; fi
+o=$(st); ok "...a socket in /tmp held by a program outside the containers still fails (as root; not root: said, as #368)" "$(echo "$o" | grep -q "$LX" && ! echo "$o" | grep -q 'scoped_dir' && echo 1)" "$o"
 # not root (the read-only development link): an app's socket in /tmp that cannot be traced is said, not failed; a port still fails
 if [ "$(id -u)" = 0 ] && command -v setpriv >/dev/null; then
 	chmod -R a+rX $W; o=$(setpriv --reuid=65534 --regid=65534 --clear-groups env ST_SYS=$W/sys ST_RUN=$W/run ST_PERSIST=$W/persist ST_HOME=$W/home ST_DEV=$W/dev ST_PROC=$P ST_LISTENERS=$L sh $SYS/root/usr/lib/rudolf/selftest 2>/dev/null | grep '^[A-Z]* listeners ')
