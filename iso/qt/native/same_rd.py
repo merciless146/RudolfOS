@@ -152,6 +152,9 @@ class H(http.server.BaseHTTPRequestHandler):
                     if k == 'muted': ST['muted'] = v == '1'
                     if k == 'step': ST['vol'] = max(0, min(100, ST.get('vol', 70) + (5 if v == 'up' else -5)))
             return self.j({'ok': True, 'volume': ST.get('vol', 70), 'muted': ST.get('muted', False)})
+        # (item 8) Linux's and Blitzen's state for the Phone screen's and Blitzen's windows (DIR/deb, DIR/ai: JSON, as the test sets them)
+        if w == 'debian/status': return self.j(dict({'ok': True}, **json.loads(rd('deb', b'{}') or b'{}')))
+        if w == 'ai/status': return self.j(dict({'ok': True}, **json.loads(rd('ai', b'{}') or b'{}')))
         if w == 'power/status': return self.j({'ok': True, 'ac': False, 'battery': {'name': 'BAT0', 'capacity': 81, 'status': 'Discharging'}, 'now': {'saver': False}})
         if w == 'info': return self.j({'ok': True, 'battery': [{'name': 'BAT0', 'type': 'Battery', 'capacity': 81, 'status': 'Discharging'}]})
         return self.j({'ok': True})

@@ -4830,6 +4830,9 @@ int main(int argc, char **argv)
 	STATEF = getenv("RUDOLF_NATIVE_STATE");
 	g_set_prgname("RudolfNative"); gdk_set_program_class("RudolfNative");
 	gtk_init(&argc, &argv);
+	/* (1.6.0 Part 12, item 8) the apps' text as Chromium draws it: grey anti-aliasing, slight hinting (the shell's own Pango
+	   text is drawn so already); without XSETTINGS, GTK would give WebKit full hinting, its letters wider than Chromium's */
+	if (!getenv("RUDOLF_NATIVE_GTKHINT")) g_object_set(gtk_settings_get_default(), "gtk-xft-antialias", 1, "gtk-xft-hinting", 1, "gtk-xft-hintstyle", "hintslight", "gtk-xft-rgba", "none", NULL);
 	wm_init();
 	if (SW <= 0 || SH <= 0) { GdkScreen *scr = gdk_screen_get_default(); SW = gdk_screen_get_width(scr); SH = gdk_screen_get_height(scr); }
 	/* rudolfd may still be starting */
