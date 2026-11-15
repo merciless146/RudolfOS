@@ -30,6 +30,7 @@ devs() { # sinks|sources
 }
 case "$1 $2 $3" in
 "list short modules") cat $ST/mods;;
+"list sources ") cat $ST/srclist 2>/dev/null;;
 "list short sinks") devs sinks;;
 "list short sources") devs sources;;
 "list short sink-inputs") cat $ST/sins 2>/dev/null;;
@@ -113,4 +114,22 @@ ok "18. the call ends: back to A2DP, the call output removed" "$(grep -q bt_call
 echo "$BUDS" > $ST/btcon; sh $BT audio >/dev/null; sleep 0.8
 ok "19. the headset disconnects: its output and microphone go, the speaker stays, the watcher stops" "$(grep -q 'AA_BB_CC_DD_EE_10' $ST/mods && echo 0 || { grep -q 'bt_AA_BB_CC_DD_EE_20 ' $ST/mods && [ ! -e $T/run/bt-callmode.pid ] && echo 1; })" "$(cat $ST/mods)"
 grep -q 'hfp-ag' $BT && grep -q -- "--help 2>&1 | grep -q 'hfp-ag'" $BT; ok "20. bluealsa gets the headset profiles only when it has them" "$([ $? = 0 ] && echo 1)"
+# 2026-11-14 (the Vivobook): the speakers' card has only a headset jack microphone, nothing plugged in; the built-in
+# microphones are another card's (acp6x): set_default keeps the built-in one; a headset plugged in is taken
+reset; printf '1\tmodule-alsa-card\tdevice_id=1 name=card1 tsched=1\n2\tmodule-alsa-card\tdevice_id=2 name=card2 tsched=1\n' > $ST/mods; echo 3 > $ST/next
+printf 'Source #2\n\tName: alsa_input.card1.analog-stereo\n\tPorts:\n\t\tanalog-input-headphone-mic: Microphone (type: Mic, priority: 8700, availability group: Legacy 1, availability unknown)\n\tActive Port: analog-input-headphone-mic\nSource #1\n\tName: alsa_input.card2.analog-stereo\n\tPorts:\n\t\tanalog-input: Analog Input (type: Analog, priority: 10000, availability unknown)\n\tActive Port: analog-input\n' > $ST/srclist
+sh $SND default 1 >/dev/null 2>&1
+ok "21. the speakers' card's microphone is an empty headset jack: the built-in one (another card) is the default" "$([ "$(cat $ST/dsrc)" = alsa_input.card2.analog-stereo ] && [ "$(cat $ST/dsink)" = alsa_output.card1.analog-stereo ] && echo 1)" "$(cat $ST/dsrc) $(cat $ST/dsink)"
+sed -i 's/availability group: Legacy 1, availability unknown/availability group: Legacy 1, available/' $ST/srclist; sh $SND default 1 >/dev/null 2>&1
+ok "...a headset plugged in (the jack available): its microphone" "$([ "$(cat $ST/dsrc)" = alsa_input.card1.analog-stereo ] && echo 1)" "$(cat $ST/dsrc)"
+: > $ST/srclist; sh $SND default 1 >/dev/null 2>&1
+ok "...without the port list: the card's own, as before" "$([ "$(cat $ST/dsrc)" = alsa_input.card1.analog-stereo ] && echo 1)" "$(cat $ST/dsrc)"
+# 2026-11-14: Settings' list of microphones (sound mics) and the choice (sound mic NAME)
+reset; printf '1\tmodule-alsa-card\tdevice_id=1 name=card1 tsched=1\n2\tmodule-alsa-card\tdevice_id=2 name=card2 tsched=1\n' > $ST/mods; echo 3 > $ST/next; echo alsa_input.card1.analog-stereo > $ST/dsrc
+printf 'Source #0\n\tName: alsa_output.card1.analog-stereo.monitor\n\tDescription: Monitor of HD-Audio\nSource #2\n\tName: alsa_input.card1.analog-stereo\n\tDescription: HD-Audio Generic Analog Stereo\nSource #1\n\tName: alsa_input.card2.analog-stereo\n\tDescription: acp6x Stereo\n' > $ST/srclist
+printf '50\talsa_input.card1.analog-stereo\t9\tprotocol-native.c\n' > $ST/souts
+o=$(sh $SND mics); ok "24. the microphones: name, description, the default marked; no monitors" "$([ "$o" = "$(printf 'alsa_input.card1.analog-stereo\tHD-Audio Generic Analog Stereo\t1\nalsa_input.card2.analog-stereo\tacp6x Stereo\t0')" ] && echo 1)" "$o"
+o=$(sh $SND mic alsa_input.card2.analog-stereo); ok "...one chosen: the default, a call's microphone moved to it" "$([ "$(cat $ST/dsrc)" = alsa_input.card2.analog-stereo ] && grep -q '^50	alsa_input.card2.analog-stereo' $ST/souts && echo 1)" "$o $(cat $ST/dsrc)"
+o=$(sh $SND mic 'x;reboot'); r=$?; ok "...a name that is not a microphone's is refused" "$([ $r = 2 ] && [ "$(cat $ST/dsrc)" = alsa_input.card2.analog-stereo ] && echo 1)" "$o"
+o=$(sh $SND mic alsa_input.card9.none); r=$?; ok "...as is one that does not exist" "$([ $r = 2 ] && echo 1)" "$o"
 echo "$N tests, $F failed"; [ $F = 0 ]

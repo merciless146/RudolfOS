@@ -4377,6 +4377,20 @@ static void api(struct req *r)
 		char b[64]; snprintf(b, sizeof b, "%.3f %.3f %d %d %d\n", s, a, tap, nat, typ); write_str(RUN "/pointer", b);
 		reply_ok(r->fd, "ok"); return;
 	}
+	/* 2026-11-14: GET audio/mics: the microphones (Settings' list); POST audio/mic?name=SOURCE: the default one */
+	if (!strcmp(p, "audio/mics") && !post) {
+		char *o = run_out("/usr/lib/rudolf/sound mics 2>/dev/null"); str js = {0}; sadd(&js, "{\"ok\":true,\"mics\":["); int first = 1;
+		if (o) for (char *l = strtok(o, "\n"); l; l = strtok(NULL, "\n")) { char *t1 = strchr(l, '\t'); if (!t1) continue; *t1++ = 0; char *t2 = strchr(t1, '\t'); if (!t2) continue; *t2++ = 0;
+			sadd(&js, "%s{\"name\":", first ? "" : ","); sjson(&js, l); sadd(&js, ",\"desc\":"); sjson(&js, t1); sadd(&js, ",\"default\":%s}", *t2 == '1' ? "true" : "false"); first = 0; }
+		sadd(&js, "]}"); free(o); reply_json(r->fd, &js); return;
+	}
+	if (!strcmp(p, "audio/mic") && post) {
+		char *n = qparam(r->query, "name");
+		if (!n || !*n || strlen(n) > 200 || strspn(n, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:-") != strlen(n)) { reply_err(r->fd, 400, "bad microphone"); return; }
+		char cmd[300]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/sound mic '%s' >>" RUN "/sound.log 2>&1", n);
+		if (run(cmd)) { reply_err(r->fd, 409, "that microphone could not be chosen"); return; }
+		reply_ok(r->fd, "microphone chosen"); return;
+	}
 	if (!strcmp(p, "audio")) {
 		char *c = qparam(r->query, "card");
 		if (c) {
