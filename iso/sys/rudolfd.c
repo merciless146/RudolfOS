@@ -4230,6 +4230,8 @@ static void api(struct req *r)
 		int have = !access("/usr/bin/rudolf-webkit", X_OK), native = !access("/usr/bin/rudolf-native", X_OK);   /* 1.5.9: Native (test), plan Part 12 */
 		if (post) {
 			if (access(RUN "/persistent", F_OK)) { reply_err(r->fd, 409, "settings are kept only on an installed Rudolf OS"); return; }
+			/* 1.6.0 (plan Part 12, "Becoming the default"): Settings' offer of the native desktop, made once (offered=1) */
+			if (qparam(r->query, "offered")) { mkdir(PERSIST "/etc", 0755); if (write_str(PERSIST "/etc/rudolf-native-offered", "1\n")) { reply_err(r->fd, 500, "could not save"); return; } reply_ok(r->fd, "saved"); return; }
 			const char *e = qparam(r->query, "engine");
 			if (!e || (strcmp(e, "webkit") && strcmp(e, "chromium") && strcmp(e, "native"))) { reply_err(r->fd, 400, "engine is webkit, native or chromium"); return; }
 			if (!strcmp(e, "webkit") && !have) { reply_err(r->fd, 409, "this Rudolf OS has no Lite engine yet: update it first"); return; }
@@ -4237,6 +4239,7 @@ static void api(struct req *r)
 			mkdir(PERSIST "/etc", 0755);
 			/* (1.5.7: a new choice starts a new trial: the last failure and trial marks go) */
 			unlink(PERSIST "/etc/rudolf-desktop-engine.failed"); unlink(PERSIST "/etc/rudolf-desktop-engine.trying");
+			write_str(PERSIST "/etc/rudolf-native-offered", "1\n");   /* (a choice made: the native desktop is not offered again) */
 			if (!strcmp(e, "chromium")) unlink(PERSIST "/etc/rudolf-desktop-engine");
 			else if (write_str(PERSIST "/etc/rudolf-desktop-engine", !strcmp(e, "native") ? "native\n" : "webkit\n")) { reply_err(r->fd, 500, "could not save"); return; }
 			reply_ok(r->fd, "saved"); return;
@@ -4250,7 +4253,9 @@ static void api(struct req *r)
 			ch, n && !strcmp(n, "webkit") ? "webkit" : n && !strcmp(n, "native") ? "native" : "chromium", have ? "true" : "false", native ? "true" : "false",
 			failed ? "true" : "false", access(RUN "/persistent", F_OK) ? "false" : "true");
 		/* 1.5.7: Lite given up for good by the session ("<time> <why>"), until it is chosen again */
-		sjson(&s, fw ? fw : ""); sadd(&s, "}");
+		sjson(&s, fw ? fw : "");
+		/* 1.6.0: offer the native desktop once to a computer updated on Standard (a new installation starts with it: install.sh) */
+		sadd(&s, ",\"offer\":%s}", native && !strcmp(ch, "chromium") && !fw && !access(RUN "/persistent", F_OK) && access(PERSIST "/etc/rudolf-native-offered", F_OK) ? "true" : "false");
 		free(c); free(n); free(fw); reply_json(r->fd, &s); return;
 	}
 	/* 1.5.7: Task Manager opened by Ctrl+Alt+Del or Ctrl+Shift+Esc puts the desktop's processes first (rudolf-display
