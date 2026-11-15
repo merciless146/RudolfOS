@@ -19,6 +19,7 @@ function safeUrl(v) {
   if (!s || s[0] == '#' || s[0] == '/' || s[0] == '.' || s[0] == '?') return true;
   const m = /^([a-z][a-z0-9+.-]*):/.exec(s); if (!m) return true;   /* (no scheme: relative) */
   if (/^(https?|mailto|tel|blob)$/.test(m[1])) return true;
+  if (m[1] == 'file') return /^file:\/\/\/c:\//.test(s);   /* (2026-11-14: a link to a file on C:, Rudolf OS's own files: WordPro, Oracle) */
   return m[1] == 'data' && /^data:image\/(png|jpe?g|gif|webp|bmp|avif|x-icon)[;,]/.test(s);
 }
 function safeClean(root) {

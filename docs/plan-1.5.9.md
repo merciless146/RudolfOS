@@ -1136,6 +1136,19 @@ and its RUDOLFDATA is mounted read-only, named "Rudolf OS data (another Rudolf O
 installation's; accounts there are encrypted). Checked on the Vivobook with the fixed script: sda3 mounted read-only
 and announced, sda1/sda2 and the internal drive left alone. Test: qt/host/devrudolf59_t.sh 7/7; devunsup_t.sh 18/18.
 
+### 14.4 WordPro's hyperlinks (added on 2026-11-14)
+Asked for: hyperlink creation and management as in other word processors. WordPro had a two-field dialog (text and
+address), Ctrl+K, and Ctrl+click opening web addresses and places. **Done (desktop/wplinks59.js):** the Hyperlink dialog
+(Ctrl+K, Insert › Hyperlink…, a link's menu) links to a web address, a place in the document (its headings, given ids,
+and bookmarks), a file on this computer (filedlg59.js's Open; file:///C:/…) or an e-mail address with a subject, with
+the text to show and a ScreenTip; editing keeps the link's formatting; Remove link keeps the text. Insert › Bookmark…
+(named places, listed with Go to and Delete). A link's right-click menu: Open link, Edit link…, Copy link address,
+Remove link. Ctrl+click opens each kind (Oracle, the place, the file's app, the e-mail window). Typed web and e-mail
+addresses become links after a space or Enter (switchable). Insert › Links in this document… lists every link (⚠ for
+a place or file that is gone) with Go to, Edit, Remove, and Remove all links. Only https, http, mailto, #place and
+file:///C: addresses are made; safeUrl (sanitize59.js) now keeps file:///C: links too. Test: qt/shell2/wplinks59_t.js
+18/18; office, editors59, sanitize59, hostile59 unchanged.
+
 ## Part 15: security against a directed attack (added on 2026-11-14)
 Asked for after a review of how Rudolf OS stands against malware aimed at its owner (2026-11-14). Below the desktop it is
 strong: Secure Boot with Rudolf's own keys and a signed kernel image, read-only signed system layers, signed updates

@@ -20,6 +20,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- New: WordPro's hyperlinks as in other word processors: link to a web address, a place in the document (a heading or a bookmark), a file on this computer or an e-mail address with a subject; the text to show and a ScreenTip; bookmarks; a link's right-click menu (Open, Edit, Copy address, Remove); typed web and e-mail addresses becoming links; and a list of every link with Go to, Edit, Remove and Remove all.
 - New: Tor in the system (for Oracle's Browse with Tor, plan 16.1): it runs only while a Tor window is open, as a user of its own, listening only on this computer (127.0.0.1:9050), with nothing kept on the disk; System health notes when it starts, is ready, stops or fails.
 - Fixed: the Save As box of Notepad, WordLite, WordPro and Paint (and the Run box) ignored typing: its Enter handler cancelled every other key.
 - New: Notepad, WordLite and WordPro save and open through a dialog like the File Explorer: folders, a name, and the file type from a list (Notepad: text, Markdown, web page, Lua, CSV, JSON, batch; WordLite and WordPro: rich document, web page, text). Notepad and WordLite keep several documents in tabs under their buttons (New, Open, Ctrl+T, Ctrl+W, Ctrl+Tab), a file opened from elsewhere joins the open window as a tab, and unsaved tabs are asked about.
