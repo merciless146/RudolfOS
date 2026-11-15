@@ -39,7 +39,12 @@ int main(int argc, char **argv)
 		int open_c = 1, host_open = 1;
 		while (host_open) {
 			struct pollfd p[2] = { { T, POLLIN, 0 }, { c, open_c ? POLLIN : 0, 0 } };
-			if (poll(p, 2, -1) < 0) continue;
+			/* (the program here has closed its side: the host's close is waited for 30 s, not for ever, so a frame lost
+			   while the host side was not connected, as across a restart of the test machine, does not hold up every
+			   later connection) */
+			int pr = poll(p, 2, open_c ? -1 : 30000);
+			if (pr < 0) continue;
+			if (pr == 0) { fprintf(stderr, "sertun: no close from the host in 30 s: the next connection\n"); break; }
 			if (p[1].revents & (POLLIN | POLLHUP | POLLERR)) {
 				ssize_t k = read(c, b, sizeof b);
 				if (k > 0) frame('D', b, k); else { open_c = 0; shutdown(c, SHUT_RD); frame('C', NULL, 0); }

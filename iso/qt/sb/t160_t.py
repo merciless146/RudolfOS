@@ -109,6 +109,26 @@ def wait_for(js, expr, secs, every=5):
         if r is True: return True
         time.sleep(every)
     return r
+# what the page, rudolfd and the guest say when the account's folder is not open (USER.disk && hdOn()) in time
+DIAG_JS = ("(()=>{const t=f=>{try{return f()}catch(e){return 'ERR '+e.message}};return JSON.stringify({href:t(()=>location.href),"
+           "loaded:t(()=>Math.round(performance.timeOrigin/1000)),now:Math.round(Date.now()/1000),si:t(()=>window.__si),user:t(()=>USER&&USER.n),"
+           "disk:t(()=>USER&&USER.disk),fk:t(()=>!!(USER&&USER.fk)),hd:t(()=>HD.acct),moving:t(()=>HD.moving),locked:t(()=>HOMELOCKED),home:t(()=>!!HOME),"
+           "uid:t(()=>uid()),accts:t(()=>ACCTS.map(a=>a.n+':'+a.id+':'+(a.disk?1:0))),err:t(()=>(window.__cw||[]).slice(-15))})})()")
+def diag(js, why):
+    out('--- ' + why + ':', js(DIAG_JS, 30))
+    out(g_last.sh("cat /run/rudolf/desktop-engine; busybox wget -q -O- http://127.0.0.1:9222/json/list 2>&1 | grep -E '\"(url|type)\"'; cat /run/rudolf/home-session; "
+                  "ls -la /persist/accounts; cat /persist/etc/rudolf/account-users; tail -30 /run/rudolf/rudolfd.log; tail -20 /run/rudolf/page.log; "
+                  "tail -8 /persist/var/log/health.log 2>/dev/null", 60))
+def on_disk(js, n, pw, secs=300):
+    r = wait_for(js, "!!(USER&&USER.disk&&hdOn())", secs, 5)
+    if r is True: return True
+    diag(js, f'{n}: the folder not open after {secs} s ({r})')
+    # once more, as the person would: signed out and in again
+    out('signed out', signout(js)); out('sign-in again', n, signin(js, n, pw))
+    r = wait_for(js, "!!(USER&&USER.disk&&hdOn())", secs, 5)
+    if r is not True: diag(js, f'{n}: still not open after signing in again ({r})')
+    else: out(f'NOTE: {n}\'s folder opened only at the second sign-in')
+    return r
 def signout(js):
     return js("(async()=>{try{fsFlush()}catch(e){}try{await homeChain}catch(e){}if(USER)userLogout();await new Promise(r=>setTimeout(r,4000));return 'out'})()", 180)
 
@@ -131,7 +151,10 @@ def dlresult(i, t=240):
         if f: return json.loads(f)
         time.sleep(3)
     return None
-def tunnel(sh): sh('pgrep -f "sertun /dev/ttyS1" >/dev/null || (setsid /persist/t160/sertun /dev/ttyS1 18765 </dev/null >/dev/null 2>&1 &); echo started', 20)
+def tunnel(sh):
+    o = sh('pgrep -f "t160/sertun /dev/ttyS1" >/dev/null || (setsid sh -c \'while :; do /persist/t160/sertun /dev/ttyS1 18765; echo "sertun ended: $?" >&2; sleep 2; done\' '
+           '</dev/null >/dev/null 2>>/tmp/sertun.err &); sleep 2; pgrep -f "t160/sertun /dev/ttyS1" >/dev/null && echo TUNNEL-UP; cat /tmp/sertun.err 2>/dev/null | tail -3', 30)
+    return 'TUNNEL-UP' in o
 def dlpost(js, what, body):
     return js(f"rd({json.dumps(what)},{{method:'POST',body:{json.dumps(json.dumps(body))}}}).then(r=>r.message||'ok',e=>'ERR '+e.message)", 120)
 make_drive(DRV)
@@ -143,12 +166,13 @@ try:
     r = js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);const k=await acctNew('kid','k1','user');ACCTS.push(k);saveUser();return b.id+' '+k.id})()", 120)
     out('accounts:', r); BOSS, KID = str(r).split()
     for n, pw in (('boss', 'b1'), ('kid', 'k1')):
-        out('sign-in', n, signin(js, n, pw)); out('on the disk:', wait_for(js, "!!(USER&&USER.disk&&hdOn())", 1500, 10))
+        out('sign-in', n, signin(js, n, pw)); out('on the disk:', on_disk(js, n, pw))
         # the account's test file, put in its folder from the shell while it is signed in (the folder is encrypted with
         # the account's own key and locked while it is signed out; the first run's file written through the page never
         # reached the disk)
         aid = BOSS if n == 'boss' else KID
-        out(sh(f"d=/persist/accounts/{aid}/Documents; mkdir -p $d && echo '{n} secret' > $d/SECRET.TXT && sync; ls -l $d/SECRET.TXT"))
+        # (only into the account's own folder: one made here would be a plain, unencrypted one)
+        out(sh(f"[ -d /persist/accounts/{aid} ] || {{ echo 'NO FOLDER for {n}'; exit 0; }}; d=/persist/accounts/{aid}/Documents; mkdir -p $d && echo '{n} secret' > $d/SECRET.TXT && sync; ls -l $d/SECRET.TXT"))
         out(signout(js))
     time.sleep(5)
     users = sh("cat /persist/etc/rudolf/account-users; ls -ln /persist/accounts")
@@ -165,7 +189,7 @@ try:
     o3 = o
     def check3(o):
             ok('3. 15.3: the move on an existing data partition: each account\'s folder and files belong to its own Linux user now, 0700, logged', ub and uk and f'{UB} 700 /persist/accounts/{BOSS}' in o and f'{UK} 700 /persist/accounts/{KID}' in o and re.search(rf'^{UB} \d+ /persist/accounts/{BOSS}/Documents/SECRET.TXT', o, re.M) and 'own Linux user' in o, o)
-    out('sign-in boss', signin(js, 'boss', 'b1')); out('on the disk:', wait_for(js, "!!(USER&&USER.disk&&hdOn())", 1500, 10)); time.sleep(5)
+    out('sign-in boss', signin(js, 'boss', 'b1')); out('on the disk:', on_disk(js, 'boss', 'b1')); time.sleep(5)
     check3(o3 + sh(f"stat -c '%u %a %n' /persist/accounts/{BOSS}/Documents/SECRET.TXT"))
     TOK = js("RUDOLFD.token"); out('token length', len(str(TOK)))
     o = sh(f"cat /run/rudolf/acct-session.env; ls -ld /home/acct{UB}; id acct{UB}")
@@ -218,7 +242,7 @@ try:
     if up:
         g.put(f'{W}/sertun', '/tmp/sertun', '755')
         sh("mkdir -p /persist/t160 && cp /tmp/sertun /persist/t160/sertun; mkdir -p -m 700 /persist/devlink; echo http://127.0.0.1:18765 > /persist/devlink/test-api; rm -f /persist/devlink/allowed", 30)
-        tunnel(sh)
+        out('tunnel', tunnel(sh))
         q = f"devlink/on?repo={REPO.replace('/', '%2F')}&hours=1&ask=0&restart=1&home=0"
         r0 = dlpost(js, q, {'n': 'boss', 'p': 'b1', 'token': DLTOKEN})
         r1 = dlpost(js, 'devlink/allow?on=1', {'n': 'kid', 'p': 'k1'})
@@ -232,21 +256,27 @@ try:
         r5 = dlpost(js, q, {'n': 'boss', 'p': 'b1', 'token': DLTOKEN})
         dlcmd(1, kind='sh', script='id -u; echo linked'); r = dlresult(1)
         ok('18. ...with the administrator\'s password it is on, and a command from the repository runs (read-only, as nobody: "Allow changes" is off)', r5 == 'on' and r and r.get('stdout') == '65534\nlinked\n', [r5, r])
-        # 1.5.8 4.2: on again by itself after a restart, and answering with the desktop not running
+        # 1.5.8 4.2: on again by itself after a restart, and answering with the desktop not running. (1.5.9 15.4: Ask first
+        # is on again after every start, so with no desktop a command is answered at once; with Ask first turned off it runs)
         vm.stop(); time.sleep(3)
         vm, g, up, js = boot('d', nxt); sh = lambda c, t=60: run(g, c, t)
         if up:
-            tunnel(sh)
             sh("pkill -f /usr/lib/rudolf/session; sleep 1; pkill -9 -f '[-]-rudolf-kiosk'; pkill -9 -f rudolf-native; sleep 2; rm -f /run/rudolf/heartbeat; pgrep -f 'rudolf-devlink run' >/dev/null && echo LINK-RUNS", 60)
-            dlcmd(2, kind='sh', script='echo no-desktop'); r = dlresult(2, 600)
-            if not r:
-                sh("cat /run/rudolf/devlink/status 2>&1; tail -5 /persist/devlink/log 2>&1; cat /persist/devlink/config | grep -v token; pgrep -fl sertun; tail -20 /run/rudolf/session.log", 60)
+            out('tunnel', tunnel(sh))   # (after the desktop is stopped)
+            def link_state():
+                sh("cat /run/rudolf/devlink/status 2>&1; ls /run/rudolf/devlink; tail -5 /persist/devlink/log 2>&1; grep -v token /persist/devlink/config; cat /persist/devlink/state; "
+                   "pgrep -fl sertun; cat /tmp/sertun.err; tail -15 /run/rudolf/devlink/daemon.log 2>&1; tail -8 /run/rudolf/session.log", 60)
                 try: out(open(TUNLOG).read()[-1500:])
                 except OSError: pass
-            ok('19. 4.2: after a restart the link is on by itself, and answers with the desktop not running (Ask first off)', r and r.get('stdout') == 'no-desktop\n', r)
-            sh("sed -i 's/^ask=.*/ask=1/' /persist/devlink/config; grep -q '^ask=' /persist/devlink/config || echo ask=1 >> /persist/devlink/config; sleep 65", 120)
-            dlcmd(3, kind='sh', script='echo ran'); r = dlresult(3, 300)
-            ok('20. ...with Ask first on and no desktop to ask: answered at once ("no desktop to ask"), not run', r and r.get('status') == -1 and r.get('approved') == 'no desktop to ask' and 'ran' not in str(r.get('stdout')), r)
+            o = sh("grep '^ask=' /persist/devlink/config", 20)
+            dlcmd(2, kind='sh', script='echo ran'); r = dlresult(2, 600)
+            if not r: link_state()
+            ok('19. 4.2: after a restart the link is on by itself (Ask first on again, 15.4), and with no desktop to ask a command is answered at once ("no desktop to ask"), not run',
+               'ask=1' in o and r and r.get('status') == -1 and r.get('approved') == 'no desktop to ask' and 'ran' not in str(r.get('stdout')), [o, r])
+            sh("sed -i 's/^ask=.*/ask=0/' /persist/devlink/config; grep '^ask=' /persist/devlink/config", 20)
+            dlcmd(3, kind='sh', script='echo no-desktop'); r = dlresult(3, 600)
+            if not r: link_state()
+            ok('20. ...with Ask first off, the link answers with the desktop not running', r and r.get('stdout') == 'no-desktop\n', r)
         else: ok('19. 4.2: started again', False, 'not up')
 finally:
     try: stub.kill(); tun.kill()
