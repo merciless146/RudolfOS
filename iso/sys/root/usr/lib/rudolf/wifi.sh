@@ -43,6 +43,8 @@ need() {
 	[ -n "$IF" ] && [ -e "$NET/$IF/wireless" ] || { echo "No Wi-Fi adapter was found."; exit 3; }
 }
 start() {
+	# (1.6.0 Part 2: airplane mode keeps the radio off until it is turned off: /usr/lib/rudolf/modem airplane)
+	[ -e /run/rudolf/airplane ] && { echo "Airplane mode is on: turn it off in quick settings to use Wi-Fi."; exit 5; }
 	need
 	# 1.5.9 (plan Part 4): the Wi-Fi is the hotspot's access point: not started as a connection under it
 	[ "$(cat /run/rudolf/hotspot/if 2>/dev/null)" = "$IF" ] && { echo "The Wi-Fi is sharing a connection (hotspot): turn the hotspot off to connect."; exit 5; }

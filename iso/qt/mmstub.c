@@ -12,6 +12,7 @@
      add ID [key=value ...]    a modem (keys below)        remove ID   it disappears (unplugged)
      set ID key=value ...      change it                   sms ID NUMBER TEXT...   an incoming message
      quit
+   (a value can carry %20 for a space, as in a URL)
    keys: maker model rev device (its sysfs path) drivers plugin imei port (its primary port) iface (the bearer's network
    interface) sim=0|1 pin puk (the SIM's codes; with a PIN the SIM starts locked) mccmnc opname spn iccid imsi own
    reg=home|roaming|searching|denied|idle tech=lte|5gnr|umts|hspa|edge signal=0-100 rsrp rsrq sinr rssi (LTE's, in dB)
@@ -373,7 +374,7 @@ static void setkv(Modem *x, const char *k, const char *v)
 	else fprintf(stderr, "mmstub: unknown key %s\n", k);
 #undef S_
 }
-static void apply(Modem *x, char **w) { for (int i = 0; w[i]; i++) { char *e = strchr(w[i], '='); if (!e) continue; *e = 0; setkv(x, w[i], e + 1); *e = '='; } }
+static void apply(Modem *x, char **w) { for (int i = 0; w[i]; i++) { char *e = strchr(w[i], '='); if (!e) continue; *e = 0; char *v = g_uri_unescape_string(e + 1, NULL); setkv(x, w[i], v ? v : e + 1); g_free(v); *e = '='; } }
 static void add_modem(int id, char **w)
 {
 	if (by_id(id)) { fprintf(stderr, "mmstub: modem %d is there already\n", id); return; }
