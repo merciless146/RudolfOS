@@ -8,9 +8,9 @@
    WebKitGTK's own, blank boxes in the theme's colours (Display Properties' Appearance, the Northern lights colour) */
 if(typeof RD!='undefined'&&RD&&(RD.engine=='webkit'||RD.engine=='native'&&!!(window.webkit&&window.webkit.messageHandlers)))document.documentElement.classList.add('webkit');
 async function enginePanel57(c){if(!RD)return;const d=document.createElement('div');d.className='eng57';c.appendChild(d);
- const draw=async()=>{let e;try{e=await rd('desktop/engine')}catch(x){d.innerHTML='';return}const adm=isAdmin(),nm=v=>v=='webkit'?'Lite (WebKit)':v=='native'?'Native (test)':'Standard (Chromium)';
-  d.innerHTML=`<h4 class='sh4'>Desktop engine</h4><div class='r2'><label for='eng57'>Desktop engine</label><div><select id='eng57'><option value='chromium'>Standard (Chromium)</option><option value='webkit'>Lite (WebKit, test)</option><option value='native'>Native (test)</option></select>
-<div class='msg engnow'></div></div></div><div class='msg'>Lite runs the desktop and its apps in WebKit, a lighter web engine: it takes much less memory, which leaves more for apps and games. Websites then open in Chromium's own window. It is a test in 1.5.7: some things may look or work differently (videos in H.264 or AAC play only with Standard for now). The engine changes when the computer restarts. If the desktop shows nothing or keeps restarting, hold <kbd>Ctrl+Alt+Backspace</kbd> for a second: it starts again with Standard.</div><div class='msg'>Native is a prototype of a desktop drawn without a web engine (the taskbar, the start menu, the windows' frames and the sign-in screen); each app opens in a window of its own. It is a test in 1.5.9, to measure how much memory and time it saves: icons on the desktop, widgets and some other parts are not there yet.</div>`;
+ const draw=async()=>{let e;try{e=await rd('desktop/engine')}catch(x){d.innerHTML='';return}const adm=isAdmin(),nm=v=>v=='webkit'?'Lite (WebKit)':v=='native'?'Native':'Standard (Chromium)';
+  d.innerHTML=`<h4 class='sh4'>Desktop engine</h4><div class='r2'><label for='eng57'>Desktop engine</label><div><select id='eng57'><option value='chromium'>Standard (Chromium)</option><option value='webkit'>Lite (WebKit, test)</option><option value='native'>Native</option></select>
+<div class='msg engnow'></div></div></div><div class='msg'>Lite runs the desktop and its apps in WebKit, a lighter web engine: it takes much less memory, which leaves more for apps and games. Websites then open in Chromium's own window. It is a test in 1.5.7: some things may look or work differently (videos in H.264 or AAC play only with Standard for now). The engine changes when the computer restarts. If the desktop shows nothing or keeps restarting, hold <kbd>Ctrl+Alt+Backspace</kbd> for a second: it starts again with Standard.</div><div class='msg'>Native draws the desktop itself, without a web engine (the taskbar, the start menu, the windows' frames, the desktop and the sign-in screen), and opens each app in a window of its own: it looks and works as Standard, uses less memory and starts faster. A new installation starts with it. If it does not start, Standard is used.</div>`;
   const q=s=>d.querySelector(s),sel=q('#eng57');sel.value=e.choice;sel.disabled=!adm||!e.persistent;
   if(!e.available){const o=sel.querySelector('option[value=webkit]');o.disabled=true;o.textContent+=' — update Rudolf OS first'}
   /* 1.5.9 (plan Part 12): the native desktop engine, a prototype (rudolf-native) */
@@ -23,6 +23,12 @@ async function enginePanel57(c){if(!RD)return;const d=document.createElement('di
    try{await rdPost('desktop/engine?engine='+sel.value);notify('Desktop engine',nm(sel.value)+' is used after the computer restarts.',{quiet:true})}
    catch(x){notify('Desktop engine',x.message,{kind:'error'})}draw()}};
  draw()}
+/* 1.6.0 (plan Part 12, "Becoming the default"): a computer updated on Standard is offered the native desktop once, after an
+   administrator signs in (a new installation starts with it); the offer opens Settings at the desktop engine */
+async function engineOffer60(){if(!RD||!USER||!isAdmin())return;let e;try{e=await rd('desktop/engine')}catch(x){return}if(!e||!e.offer)return;
+ try{await rdPost('desktop/engine?offered=1')}catch(x){return}
+ notify("Rudolf OS's new desktop","Rudolf OS's new desktop uses less memory and starts faster. Choose Native in Settings › System health › Desktop engine to try it; you can go back to Standard there.",{action:()=>settings('sys')})}
+(function(){const o=window.__afterLogin;window.__afterLogin=()=>{o&&o();setTimeout(()=>{engineOffer60().catch(()=>{})},5000)}})();
 {const _s=sysPanelS;sysPanelS=function(c,W){const r=_s.apply(this,arguments);try{enginePanel57(c)}catch(e){console.warn(e)}return r}}
 /* 1.5.8: Settings on the Lite desktop (WebKit): the pages scrolled sideways and on past their end (empty space under
    Apply / Revert), from the sticky footer's negative offsets; WebKit gets a plain sticky footer */

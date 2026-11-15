@@ -512,6 +512,17 @@ with two accounts, needing a host with QEMU and a built disc) and 12.3c's second
 release's default engine is Native for new installations; an update keeps the engine the computer had, and Settings
 offers the change once ("Rudolf OS's new desktop uses less memory and starts faster"). Native's safeguards stay
 (1.5.9 Part 12 step 5). The release check measures Native at idle on the Vivobook and fails over 900 MB used.
+**Prepared (2026-11-15, unattended session), for the owner's decision:** the switch, in its own PR, not to be merged before
+the week of betas on Native above (items 1-12 are not all done yet: see the Status above). A new installation starts with
+Native (install.sh writes the choice into the new data partition when the system has rudolf-native and Chromium; at its
+first start it is on trial as any chosen engine, and the session goes back to Standard if it does not come up); an update
+keeps the engine the computer had (nothing is written by rudolf-update; no choice is Standard, as before); a computer
+updated on Standard is offered Native once, after an administrator signs in: a notification ("Rudolf OS's new desktop
+uses less memory and starts faster…") whose click opens Settings at the desktop engine (rudolfd's desktop/engine "offer":
+Native there, Standard in use, never given up on this computer, an installed Rudolf OS, not offered before; POST
+offered=1, and any engine chosen in Settings, keep it as made in /persist/etc/rudolf-native-offered). Settings names it
+Native (no longer "Native (test)"). Tests: qt/host/nativedefault60_t.sh 12, qt/shell2/engine57_t.js 20 (new 4f-4i).
+Not done here: the release check's 900 MB measurement on the Vivobook.
 
 ### 13. Signed system extensions (added on 2026-11-14)
 Asked for: a way to add system parts (a driver, firmware, a tool, a printer filter) to one computer without a new
