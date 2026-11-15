@@ -80,6 +80,11 @@ function oaChromium(){return typeof window.rudolfNativeOracle=='function'}
 if(ONEAPP)window.__oaFs=on=>{if(oaChromium())oaPost({op:'fs',on:on?1:0})};
 /* (12.3c step 5) a new private window (Ctrl+Shift+N, ☰ › New private tab) from Oracle's window on the native desktop: a window of its own, as
    on Standard, not one inside this page (the native desktop opens Oracle's jump "New private tab", as from its taskbar button) */
+/* (12.3c) another of Oracle's windows at a website, asked for from Oracle's window on the native desktop (a website opened from another
+   place, webOpen; Ctrl+N; a link opened in a new window): a window of its own in the same Chromium, as on Standard, not one inside
+   this page. A website's own pop-up (a sign-in window: its tab is this window's, adopt) and private windows (oaPrivWin) stay as they are */
+if(ONEAPP)window.__oaWinOut=(u,bo)=>{if(!(ONEAPP.k=='browser'&&OA.main&&oaChromium())||(bo&&(bo.adopt||bo.priv)))return false;
+ oaPost({op:'open',app:'browser',url:typeof u=='string'&&/^(https?:|about:)/i.test(u)?u:''});return true};
 function oaPrivWin(){if(!(ONEAPP&&ONEAPP.k=='browser'&&OA.main&&oaChromium()))return false;oaPost({op:'open',app:'browser',jump:'New private tab'});return true}
 /* (the native desktop is there: WebKit's message handler, or Oracle's binding in Rudolf's Chromium) */
 const oaOut=()=>oaNative()||oaChromium();
@@ -103,6 +108,7 @@ html.oneapp .win.oamain>.tb{display:none!important}html.oneapp .win.oamain>.body
  {const _l=launch;launch=function(k){if(OA.main&&k!=ONEAPP.k&&oaOut()&&APPS[k]){oaPost({op:'open',app:k});return}return _l.apply(this,arguments)}}
  /* (Settings at a page, asked by another app's window or a notification's action: Settings' own window, at that page) */
  {const _st=settings;settings=function(sec){if(OA.main&&ONEAPP.k!='settings'&&oaOut()){oaPost({op:'open',app:'settings',page:typeof sec=='string'?sec:''});return}return _st.apply(this,arguments)}}
+ {const _b=browser;browser=function(u,bo){if(window.__oaWinOut(u,bo))return null;return _b.apply(this,arguments)}}
  {const _lw=launchWith;launchWith=function(k,p){if(OA.main&&k!=ONEAPP.k&&oaOut()&&APPS[k]){oaPost({op:'open',app:k,file:Array.isArray(p)?p.join('\\'):String(p||'')});return}return _lw.apply(this,arguments)}}
  /* (1.5.9, 12.3c step 5) Open with: the chosen app in a window of its own, as on Standard (not one inside this page): made by the
     native desktop's do-fs page, as its own Open with dialog does (oaFs op=openwith) */
@@ -152,6 +158,9 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
  if(!app){oaClosed('There is no app called “'+ONEAPP.k+'”.');oaPost({op:'close'});return}
  OA.want=1;
  /* (1.5.9, 12.3c) Oracle without Rudolf's Chromium on the native desktop (none, or it would not start): said once */
+ /* (12.3c) another of Oracle's windows, at a website (#app=browser&url=…) */
+ {const u=ONEAPP.k=='browser'?ONEAPP.q.get('url')||'':'';if(u&&/^(https?:|about:)/i.test(u)){setTimeout(()=>{try{browser(u)}catch(e){console.warn(e)}},0);
+  setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed(app.name+' did not open a window.');oaPost({op:'close'})}},15000);return}}
  if(ONEAPP.k=='browser'&&ONEAPP.q.get('nochrome')=='1')setTimeout(()=>{try{notify('Oracle','Websites will work better on Standard: Oracle is running without Rudolf\u2019s Chromium here, so some sites cannot open in its tabs.')}catch(e){}},1500);
  try{if(act)act();else if(ONEAPP.file&&app.openFile)launchWith(ONEAPP.k,resolve(ONEAPP.file,['C:']));else launch(ONEAPP.k)}catch(e){console.warn(e)}
  /* an app that opens no window (or not yet: a large app loads its files first) */

@@ -20,6 +20,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- Fixed: Oracle on the native desktop: a website opened from another place, and Ctrl+N or New window in Oracle, open another Oracle window of their own, as on Standard, instead of a window inside Oracle's window.
 - New: Oracle's bookmarks bar ends with a "+" that adds a bookmark by its address, from the browsing history (newest first, searchable), or as a file on this computer (a document or a PDF).
 - Fixed: choosing a file in the desktop's own file picker (Open a presentation or a spreadsheet, and others) answered as if nothing had been chosen.
 - Changed: the plan: Browse with Tor in Oracle (Part 16): a button on the bookmarks bar sends that window through Tor, which runs only while it is used.

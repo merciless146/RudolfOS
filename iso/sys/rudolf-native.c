@@ -775,6 +775,7 @@ static gboolean oracle_busy_end(gpointer d) { (void)d; OR_BUSY = 0; oracle_busy(
    rudolfNativeOracle): "msg JSON" lines, as the WebKit windows' rudolfNative messages. Another app asked for: a window of
    its own (Settings at a page: Settings' own window there) */
 static void tb_settings(const char *page); static void tb_jump(const char *k, const char *label);
+static char *qesc(const char *v);
 static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 {
 	(void)d; if (c & (G_IO_HUP | G_IO_ERR)) { if (!(c & G_IO_IN)) return G_SOURCE_REMOVE; }
@@ -783,9 +784,13 @@ static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 	char sid[80] = ""; const char *js = NULL;
 	if (l && !strncmp(l, "msg ", 4)) { const char *b = strchr(l + 4, ' '); if (b && b - (l + 4) < (long)sizeof sid && l[4] != '{') { memcpy(sid, l + 4, b - (l + 4)); sid[b - (l + 4)] = 0; js = b + 1; } }
 	if (js && js[0] == '{' && strspn(sid, "0123456789ABCDEFabcdef") == strlen(sid)) { JV *v = jparse(js); char op[16] = "", app[48] = "", file[1024] = "", pg[48] = "", jp[64] = "";
-		if (v) { jstr(v, "op", op, sizeof op); jstr(v, "app", app, sizeof app); jstr(v, "file", file, sizeof file); jstr(v, "page", pg, sizeof pg); jstr(v, "jump", jp, sizeof jp); }
+		char url[1024] = "";
+		if (v) { jstr(v, "op", op, sizeof op); jstr(v, "app", app, sizeof app); jstr(v, "file", file, sizeof file); jstr(v, "page", pg, sizeof pg); jstr(v, "jump", jp, sizeof jp); jstr(v, "url", url, sizeof url); }
+		if (url[0] && g_ascii_strncasecmp(url, "http://", 7) && g_ascii_strncasecmp(url, "https://", 8) && g_ascii_strncasecmp(url, "about:", 6)) url[0] = 0;
 		/* (an app's jump, as its taskbar button's menu: Oracle's New private tab, a window of its own) */
 		if (!strcmp(op, "open") && app[0] && jp[0] && USER_ID[0] && !LOCKED) { tb_jump(app, jp); }   /* (the page knows its jumps; one it does not know closes its window) */
+		/* (another of Oracle's windows at a website: a window of its own in the same Chromium, #app=browser&url=...) */
+		else if (!strcmp(op, "open") && !strcmp(app, "browser") && url[0] && USER_ID[0] && !LOCKED) { char *e = qesc(url), *ex = g_strdup_printf("&url=%s", e); app_open_ex("browser", NULL, ex, 0); g_free(e); g_free(ex); }
 		else if (!strcmp(op, "open") && app[0] && USER_ID[0] && !LOCKED) { if (!strcmp(app, "settings") && pg[0]) tb_settings(pg); else app_open(app, file[0] ? file : NULL); }
 		else if (!strcmp(op, "openwith") && v) { char key[48] = ""; jstr(v, "key", key, sizeof key); open_with(file, key); }   /* (Open with: the app's own window) */
 		else if (!strcmp(op, "toast") && v) toast_addf(NULL, sid, fget_jv, v);   /* (the page's notification: the native shell's pop-up) */

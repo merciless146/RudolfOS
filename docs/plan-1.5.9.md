@@ -856,14 +856,26 @@ server through Rudolf OS's hotkey script when PulseAudio is there, and the stand
   Standard: rudolf-display hands it over as Ctrl+Shift+F22, which the shell's PAGE_JS does not read as "cpn"; Native does the
   same now.
 - Not yet (12.3c): a second Oracle window asked for from inside Oracle (webOpen, a link opened in a new window, a website's
-  new window) still opens inside Oracle's page (step 2 is done for the pin and the jumps only); closing Oracle's last window
+  new window) still opens inside Oracle's page (step 2 is done for the pin and the jumps only; done since, below); closing Oracle's last window
   while a download is still arriving closes Chromium and stops it (on Standard it goes on); a WebKit window already open does
   not see a file Oracle's page saved until it opens again (the mirror is read at a page's start).
 
-**Next (12.3c, the rest):** a second Oracle window from inside Oracle as a window of the same Chromium (above); Chromium kept
-while a download is arriving; then same_t.sh's comparison of Oracle's window against Standard's, and the Vivobook's
-measurements (the owner's: Native with Oracle open against Standard's 1,167 MB; idle again after Oracle closes; FNF's frame
-rate on both engines).
+**A second Oracle window from inside Oracle (2026-11-15, the PR after #357):** another of Oracle's windows that its page asks for
+(webOpen: a website opened from another place, a link of the desktop page opened in a new window; Ctrl+N and ☰ › New window:
+browser() while the page has its main window) is now a window of its own in the same Chromium (oneapp59.js __oaWinOut: op open
+with the url; rudolf-native opens Oracle with #app=browser&url=…; oaOpen makes that window the page's main one at the site), as
+on Standard, not a window inside Oracle's page. A website's own pop-up (a sign-in window: its tab already belongs to this
+window, adopt) and private windows (oaPrivWin, done) stay as they were. oracle_native_t.sh 36 (new 4m: webOpen from Oracle's
+page, another Oracle window at that site, of the same Chromium, closed again; the checks that opened a site with webOpen now
+use Oracle's own new tab). Unchanged: native59_t.sh 70/70, wmnative59_t.sh 3/3, oneapp59_t.js 42/42, private59_t.js 16/16,
+fs58_t.js 5/5.
+
+**Next (12.3c, the rest):** Chromium kept while a download is arriving; a WebKit window already open seeing a file Oracle saved
+(the mirror is read at a page's start only); then same_t.sh's comparison of Oracle's window against Standard's, and the
+Vivobook's measurements (the owner's: Native with Oracle open against Standard's 1,167 MB; idle again after Oracle closes;
+FNF's frame rate on both engines). Found while testing, for the owner (not changed, as it is the shell's, which Standard runs
+too): F12, Ctrl+Shift+I and Ctrl+Shift+J in a website's tab open Chromium's DevTools for the shell itself (the shell's PAGE_JS
+stops Chromium's other keys in tabs, not these; seen on Native, Standard not checked).
 
 ### 12.4 Tests
 - Host, under Xvfb: rudolf-native draws its wallpaper and taskbar (screenshots compared), a window gets a frame,

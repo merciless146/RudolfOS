@@ -106,8 +106,8 @@ ok "...the page has the whole window inside the frame (Chromium's own title bar 
 import -window root $T/s1.png 2>/dev/null
 p=$(convert $T/s1.png -format "%[fx:int(255*p{$((CX+300)),$((CY+36))}.r)] %[fx:int(255*p{$((CX+300)),$((CY+36))}.g)] %[fx:int(255*p{$((CX+300)),$((CY+36))}.b)]" info:)
 ok "...no title bar of Chromium's own below the frame's (its light blue)" "$([ "$p" != '211 227 253' ] && echo 1)" "$p"
-# ---- a website in a real tab
-ev http://127.0.0.1:8080/ 'webOpen("http://127.0.0.1:8333/"),1' >/dev/null
+# ---- a website in a real tab (Oracle's own new tab: webOpen opens another Oracle window, 4m)
+ev http://127.0.0.1:8080/ 'OA.main.oNewTab("http://127.0.0.1:8333/"),1' >/dev/null
 w8 'targets | grep -q "^webview http://127.0.0.1:8333/"' 80
 ok "4. a website opened in Oracle is a real tab (a Controlled Frame of the shell), not a frame of the page" "$(targets | grep -q '^webview http://127.0.0.1:8333/' && echo 1)" "$(targets)"
 w8 '[ "$(ev http://127.0.0.1:8333/ "document.cookie")" = "\"oracle59=kept\"" ]' 40
@@ -136,7 +136,7 @@ FL=$(grep "^client .* app=browser" $D/state | head -1)
 ok "4c. a website in Oracle going full screen: Oracle's window covers the screen (the native desktop's full screen)" "$(echo "$FL" | grep -q ' 1280 800 min=0 max=0 full=1' && [ "$(ev http://127.0.0.1:8333/ '[innerWidth,innerHeight].join()')" = '"1280,800"' ] && echo 1)" "$FL $(ev http://127.0.0.1:8333/ '[innerWidth,innerHeight].join()')"
 ev http://127.0.0.1:8333/ 'document.exitFullscreen().then(()=>1,e=>String(e))' >/dev/null
 w8 'grep -q "^client .* full=0 .* app=browser" $D/state' 60
-ok "...and back in its frame when it leaves" "$(grep -q '^client .* full=0 .* app=browser Oracle' $D/state && echo 1)" "$(grep '^client' $D/state)"
+ok "...and back in its frame when it leaves" "$(grep -q '^client .* full=0 .* app=browser .*Oracle$' $D/state && echo 1)" "$(grep '^client' $D/state)"
 # ==== (step 5's rest) what the page in Chromium needs from the native desktop, each as on Standard
 PG=http://127.0.0.1:8080/
 # (where things are on the screen: Oracle's page starts 4, 28 px inside Chromium's window (its own edges cut away); a point in the
@@ -165,8 +165,8 @@ ev $PG 'window.__tk=[];addEventListener("message",e=>{const m=e.data||{};if(m.ru
 timeout 1 tail -f /dev/null; xdotool mousemove $(tabxy 500 150) click 1; timeout 1 tail -f /dev/null
 n0=$(ntabs); xdotool key ctrl+t; w8 '[ "$(ntabs)" = $((n0 + 1)) ]' 20
 ok "4f. Ctrl+T in a website in Oracle: a new tab (as on Standard), Chromium's own Ctrl+T not acting" "$([ "$(ntabs)" = $((n0 + 1)) ] && [ "$(nora)" = 1 ] && [ "$(chromes)" = 1 ] && echo 1)" "$n0 $(ntabs) $(nora) $(chromes) keys $(ev $PG '__tk.join()' one) at $(tabxy 500 150) $(ev $PG '[...document.querySelectorAll(".otab")].map(t=>t.textContent).join("|")' one)"
-# (back to the website's tab, the front window's first: a click on it, then on the page)
-set -- $(corg); o=$(ev $PG '(()=>{const W=wins.filter(W=>W.app=="browser"&&W.el.isConnected).sort((a,b)=>(+a.el.style.zIndex||0)-(+b.el.style.zIndex||0)).pop();const r=W.el.querySelector(".otab").getBoundingClientRect();return Math.round(r.left+20)+" "+Math.round(r.top+r.height/2)})()' one | tr -d '"'); set -- $1 $2 $o
+# (back to the website's tab: a click on it, then on the page)
+set -- $(corg); o=$(ev $PG '(()=>{const W=wins.filter(W=>W.app=="browser"&&W.el.isConnected).sort((a,b)=>(+a.el.style.zIndex||0)-(+b.el.style.zIndex||0)).pop();const r=([...W.el.querySelectorAll(".otab")].find(t=>t.textContent.startsWith("Test site"))||W.el.querySelector(".otab")).getBoundingClientRect();return Math.round(r.left+20)+" "+Math.round(r.top+r.height/2)})()' one | tr -d '"'); set -- $1 $2 $o
 xdotool mousemove $(($1 + $3)) $(($2 + $4)) click 1; timeout 1 tail -f /dev/null; xdotool mousemove $(tabxy 500 150) click 1; timeout 0.5 tail -f /dev/null; xdotool key ctrl+w
 w8 '[ "$(ntabs)" = $n0 ]' 20; timeout 1 tail -f /dev/null
 ok "...Ctrl+W in a website: its tab closes; Oracle's window and Chromium stay (before: Chromium closed the window, and with it Chromium)" "$([ "$(ntabs)" = $n0 ] && [ "$(nora)" = 1 ] && [ "$(chromes)" = 1 ] && ! targets | grep -q '^webview http://127.0.0.1:8333/$' && echo 1)" "$(ntabs) $(nora) $(chromes) keys $(ev $PG '__tk.join()' one) $(targets)"
@@ -177,7 +177,7 @@ P2=$(grep "^client .* app=browser .*(Private)" $D/state | head -1); if [ -n "$P2
 xdotool mousemove $(adxy) click 1; timeout 0.5 tail -f /dev/null; xdotool key ctrl+q; timeout 1.5 tail -f /dev/null
 ok "...Ctrl+Q: Chromium does not quit (every Oracle window went with it)" "$([ "$(nora)" = 1 ] && [ "$(chromes)" = 1 ] && echo 1)" "$(nora) $(chromes)"
 # ---- the clipboard: copied in Oracle, pasted in a WebKit window (Notepad), copied there, pasted back in Oracle
-ev $PG 'webOpen("http://127.0.0.1:8333/up.html"),1' one >/dev/null
+ev $PG 'OA.main.oNewTab("http://127.0.0.1:8333/up.html"),1' one >/dev/null
 w8 'targets | grep -q "^webview http://127.0.0.1:8333/up.html"' 60; timeout 1.5 tail -f /dev/null
 xdotool mousemove $(tabxy 100 120) click 1; timeout 0.5 tail -f /dev/null
 xdotool type --delay 20 "copied in Oracle"; xdotool key ctrl+a ctrl+c; timeout 0.5 tail -f /dev/null
@@ -234,6 +234,16 @@ if [ -n "$POL" ]; then
 n1=$(grep -c "^client " $D/state); xdotool mousemove $(tabxy 60 30) click 1; timeout 3 tail -f /dev/null
 ok "4l. a website's file input in Oracle, with Rudolf OS's Chromium policy: no file dialog opens, as on Standard" "$([ "$(grep -c '^client ' $D/state)" = "$n1" ] && echo 1)" "$(grep '^client ' $D/state)"
 fi
+# ---- (12.3c) a website opened from Oracle's page (webOpen: another app's link, a file's address) and Ctrl+N: another Oracle window of
+# the same Chromium, at that site, as on Standard (a window of the desktop of its own), not a window inside Oracle's page
+nb=$(grep -c "^client .* app=browser" $D/state)
+ev http://127.0.0.1:8080/ 'webOpen("http://127.0.0.1:8333/?w2"),1' >/dev/null
+w8 '[ "$(grep -c "^client .* app=browser" $D/state)" = $((nb + 1)) ] && targets | grep -q "^webview http://127.0.0.1:8333/?w2"' 120
+o=$(ev http://127.0.0.1:8080/ 'wins.filter(W=>W.app=="browser").length')
+ok "4m. a website opened from Oracle's page (webOpen): another Oracle window at that site, of the same Chromium, not a window inside the page" "$([ "$(grep -c '^client .* app=browser' $D/state)" = $((nb + 1)) ] && [ "$(chromes)" = 1 ] && targets | grep -q '^webview http://127.0.0.1:8333/?w2' && ! echo "$o" | grep -q '2' && echo 1)" "$nb $(grep '^client' $D/state) | $o | $(targets)"
+ev http://127.0.0.1:8080/ 'ONEAPP.q.get("url")&&window.__oneAppClose(),1' >/dev/null
+w8 '[ "$(grep -c "^client .* app=browser" $D/state)" = $nb ]' 80
+ok "...closed again: its window goes, Oracle's first stays" "$([ "$(grep -c '^client .* app=browser' $D/state)" = $nb ] && [ "$(chromes)" = 1 ] && echo 1)" "$(grep '^client' $D/state)"
 # ---- a second window: the pin's Open a new window, in the same Chromium (the pin itself brings Oracle to the front)
 xdotool mousemove $(hit pin browser) click 1; timeout 2 tail -f /dev/null; n1=$(grep -c "^client .* app=browser" $D/state)
 xdotool mousemove $(hit pin browser) click 3; w8 'grep -q "^cmitem .*pnew:browser" $D/state' 40
@@ -255,7 +265,7 @@ for p in $POL; do rm -f $p/rudolf.json; done
 # ---- again: the same profile, the cookie still there
 xdotool mousemove $(hit pin browser) click 1
 w8 '[ "$(ev http://127.0.0.1:8080/ "typeof rtOn==\"function\"&&rtOn()&&!!OA.main")" = true ]' 120
-ev http://127.0.0.1:8080/ 'webOpen("http://127.0.0.1:8333/"),1' >/dev/null
+ev http://127.0.0.1:8080/ 'OA.main.oNewTab("http://127.0.0.1:8333/"),1' >/dev/null
 w8 'targets | grep -q "^webview http://127.0.0.1:8333/"' 80; timeout 1 tail -f /dev/null
 o=$(ev http://127.0.0.1:8333/ 'document.cookie')
 ok "7. Oracle opened again: Chromium started again with the same profile, the site's sign-in (its cookie) kept" "$([ "$o" = '"oracle59=kept"' ] && [ "$(chromes)" = 1 ] && echo 1)" "$o $(targets)"
@@ -263,7 +273,7 @@ ok "7. Oracle opened again: Chromium started again with the same profile, the si
 # centred over Oracle's (maximised here, so the dialog fits inside it), framed as a dialog: not as Oracle, not cut, not on the taskbar
 CL=$(grep "^client .* app=browser" $D/state | head -1); set -- $CL; xdotool mousemove $(($4 + 300)) $(($5 + 12)) click --repeat 2 --delay 80 1
 w8 'grep -q "^client .* max=1 .* app=browser" $D/state' 40
-ev $PG 'webOpen("http://127.0.0.1:8333/up.html"),1' one >/dev/null; w8 'targets | grep -q "^webview http://127.0.0.1:8333/up.html"' 60; timeout 1 tail -f /dev/null
+ev $PG 'OA.main.oNewTab("http://127.0.0.1:8333/up.html"),1' one >/dev/null; w8 'targets | grep -q "^webview http://127.0.0.1:8333/up.html"' 60; timeout 1 tail -f /dev/null
 xdotool mousemove $(tabxy 60 30) click 1
 w8 'grep "^client " $D/state | grep -qv "app=browser"' 40; timeout 1 tail -f /dev/null
 DG=$(grep "^client " $D/state | grep -v "app=browser" | head -1); CL=$(grep "^client .* app=browser" $D/state | head -1)
