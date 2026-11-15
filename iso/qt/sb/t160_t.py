@@ -11,7 +11,7 @@
 #        the official recovery system made from the official one, checked and made again when changed (the rudolf-update
 #        of this tree, put into the guest: the release's own may be older).
 #   python3 t160_t.py REL-DIR [RUDOLF-UPDATE]   (SB_PARTS and QEMU as for t150; root; QEMU_ACCEL=kvm where it can)
-import os, sys, time, re, subprocess, shutil, struct, json, base64
+import os, sys, time, re, subprocess, shutil, struct, json, base64, urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE); ISO = os.path.dirname(QT)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
 import sbvm
@@ -63,7 +63,7 @@ def make_drive(path):
     os.remove(D)
 
 def boot(tag, slot):
-    extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf160',
+    extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf160', '-serial', f'unix:{TUN},server,nowait',
              '-kernel', f'{(W + "/out/channel") if False else REL}/vmlinuz', '-append', f'quiet loglevel=3 consoleblank=0 rudolf.slot={slot} rudolf.debug=1']
     global g_last
     vm = sbvm.VM('t160' + tag, PARTS, [], secure=False, mem=MEM, extra=extra)
@@ -112,6 +112,28 @@ def wait_for(js, expr, secs, every=5):
 def signout(js):
     return js("(async()=>{try{fsFlush()}catch(e){}try{await homeChain}catch(e){}if(USER)userLogout();await new Promise(r=>setTimeout(r,4000));return 'out'})()", 180)
 
+# 15.4 and 1.5.8 4.2: the development link, with a stand-in for GitHub here (../ghstub.py); the test machine has no
+# network, so the link's connections go over its second serial port (../sertun.c in the guest, ../sertun.py here)
+QT = os.path.dirname(HERE); PORT = 18767; DLTOKEN = 'github_pat_T160test_0123456789abcdefSECRET'; REPO = 'owner/rudolfos-devlink'
+GH = f'http://127.0.0.1:{PORT}'; TUN = f'/tmp/tun-t160-{os.getpid()}.sock'
+subprocess.run(['gcc', '-O2', '-static', '-o', f'{W}/sertun', os.path.join(QT, 'sertun.c')], check=True)
+stub = subprocess.Popen([sys.executable, os.path.join(QT, 'ghstub.py'), str(PORT), DLTOKEN, REPO])
+tun = subprocess.Popen([sys.executable, os.path.join(QT, 'sertun.py'), TUN, '127.0.0.1', str(PORT)])
+def ctl(path, data=None):
+    r = urllib.request.urlopen(urllib.request.Request(GH + path, data=data, method='POST' if data is not None else 'GET'), timeout=20)
+    return json.loads(r.read() or b'{}')
+def dlfiles(): return {k: base64.b64decode(v) for k, v in ctl('/_files').items()}
+def dlcmd(i, **kw): ctl(f'/_put?path=cmd/{i:06d}.json', json.dumps(kw).encode())
+def dlresult(i, t=240):
+    end = time.time() + t
+    while time.time() < end:
+        f = dlfiles().get(f'res/{i:06d}.json')
+        if f: return json.loads(f)
+        time.sleep(3)
+    return None
+def tunnel(sh): sh('pgrep -f "sertun /dev/ttyS1" >/dev/null || (setsid /persist/t160/sertun /dev/ttyS1 18765 </dev/null >/dev/null 2>&1 &); echo started', 20)
+def dlpost(js, what, body):
+    return js(f"rd({json.dumps(what)},{{method:'POST',body:{json.dumps(json.dumps(body))}}}).then(r=>r.message||'ok',e=>'ERR '+e.message)", 120)
 make_drive(DRV)
 vm = None
 try:
@@ -185,7 +207,41 @@ try:
     if RU and up: g.put(RU, '/tmp/ru160')
     o = sh(f"{U} boot-ok; {U} status; echo; ls -1 /persist/os/system | cat; cat /persist/etc/rudolf/extra-keys 2>&1", 300) if up else 'not up'
     ok('16. ...the official release started again: official, Developer mode off, the custom build\'s slot cleared', up and '"signer":"official"' in o and '"developer":false' in o and not re.search(r'^b$', o, re.M) and '"b":{"complete":false' in o, o)
+    # 1.5.9 15.4: switching the development link on: only where it is allowed, and only with an administrator's name
+    # and password (t140 switched it on with the token alone, as before 1.5.9)
+    if up:
+        g.put(f'{W}/sertun', '/tmp/sertun', '755')
+        sh("mkdir -p /persist/t160 && cp /tmp/sertun /persist/t160/sertun; mkdir -p -m 700 /persist/devlink; echo http://127.0.0.1:18765 > /persist/devlink/test-api; rm -f /persist/devlink/allowed", 30)
+        tunnel(sh)
+        q = f"devlink/on?repo={REPO.replace('/', '%2F')}&hours=1&ask=0&restart=1&home=0"
+        r0 = dlpost(js, q, {'n': 'boss', 'p': 'b1', 'token': DLTOKEN})
+        r1 = dlpost(js, 'devlink/allow?on=1', {'n': 'kid', 'p': 'k1'})
+        r2 = dlpost(js, 'devlink/allow?on=1', {'n': 'boss', 'p': 'b1'})
+        r3 = dlpost(js, q, {'n': 'kid', 'p': 'k1', 'token': DLTOKEN})
+        r4 = dlpost(js, q, {'token': DLTOKEN})
+        out('devlink:', [r0, r1, r2, r3, r4])
+        ok('17. 15.4: the link is refused until allowed, allowing it and switching it on need an administrator (a user\'s password and none refused)',
+           str(r0).startswith('ERR') and 'not allowed' in str(r0) and str(r1).startswith('ERR') and 'administrator' in str(r1) and not str(r2).startswith('ERR')
+           and str(r3).startswith('ERR') and 'administrator' in str(r3) and str(r4).startswith('ERR'), [r0, r1, r2, r3, r4])
+        r5 = dlpost(js, q, {'n': 'boss', 'p': 'b1', 'token': DLTOKEN})
+        dlcmd(1, kind='sh', script='id -u; echo linked'); r = dlresult(1)
+        ok('18. ...with the administrator\'s password it is on, and a command from the repository runs (as root)', r5 == 'on' and r and r.get('stdout') == '0\nlinked\n', [r5, r])
+        # 1.5.8 4.2: on again by itself after a restart, and answering with the desktop not running
+        vm.stop(); time.sleep(3)
+        vm, g, up, js = boot('d', nxt); sh = lambda c, t=60: run(g, c, t)
+        if up:
+            tunnel(sh)
+            sh("pkill -f /usr/lib/rudolf/session; sleep 1; pkill -9 -f '[-]-rudolf-kiosk'; pkill -9 -f rudolf-native; sleep 2; rm -f /run/rudolf/heartbeat; pgrep -f 'rudolf-devlink run' >/dev/null && echo LINK-RUNS", 60)
+            dlcmd(2, kind='sh', script='echo no-desktop'); r = dlresult(2, 400)
+            ok('19. 4.2: after a restart the link is on by itself, and answers with the desktop not running (Ask first off)', r and r.get('stdout') == 'no-desktop\n', r)
+            sh("sed -i 's/^ask=.*/ask=1/' /persist/devlink/config; grep -q '^ask=' /persist/devlink/config || echo ask=1 >> /persist/devlink/config; rm -f /tmp/ran160; sleep 65", 120)
+            dlcmd(3, kind='sh', script='touch /tmp/ran160; echo ran'); r = dlresult(3, 300)
+            o = sh("ls /tmp/ran160 2>&1", 20)
+            ok('20. ...with Ask first on and no desktop to ask: answered at once ("no desktop to ask"), not run', r and r.get('status') == -1 and r.get('approved') == 'no desktop to ask' and 'No such file' in o, [r, o])
+        else: ok('19. 4.2: started again', False, 'not up')
 finally:
+    try: stub.kill(); tun.kill()
+    except Exception: pass
     try: vm and vm.stop()
     except Exception: pass
     shutil.rmtree(W, ignore_errors=True)
