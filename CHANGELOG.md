@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- The native desktop shows the Phone screen and Blitzen exactly as the standard desktop does: apps' text, drop-down lists and check boxes in its windows are drawn as in the standard desktop.
 - Fixed: when memory ran out, the memory guard could close the desktop's own page (it then stopped responding and the browser was restarted, back to the sign-in screen). The desktop now says which page process is its own until that works, the guard checks that it is still that process, and while it is not known no page of the desktop's browser is closed.
 - New: printers plugged in by USB: the print dialog lists them as "USB: name" and Settings › Devices shows each one and its kind. Printers that print over USB with IPP (most sold since about 2015) and PostScript printers need the new USB printers system extension; printers that read PDF print straight away; others are named as needing a driver Rudolf OS does not have.
 - New: signed system extensions (Settings › Update and recovery › System extensions): parts such as printer support added to Rudolf OS without a new release, laid over the system read-only at each start and never changing it; only Rudolf OS's own signed ones, installed by an administrator, left out if one would replace a part of Rudolf OS or keeps it from starting, with Start once without extensions.
