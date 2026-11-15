@@ -250,6 +250,15 @@ tty:x:5:
 audio:x:29:rudolf
 video:x:44:rudolf
 input:x:101:
+disk:x:6:
+lp:x:7:
+kmem:x:15:
+dialout:x:20:
+cdrom:x:24:
+tape:x:26:
+render:x:990:
+kvm:x:991:
+sgx:x:992:
 rudolf:x:1000:
 messagebus:x:102:
 ai:x:950:

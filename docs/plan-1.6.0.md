@@ -129,6 +129,58 @@ modems and the plans after it (Waydroid, PipeWire, a native or Wayland desktop) 
   a USB drive, a keyboard and a controller plugged in later); on the Vivobook over the devlink: every device the
   self-test lists, the camera, Bluetooth, sound, a controller in Steam plugged in while it runs.
 
+**Done (2026-11-15), in code; measured and checked on the Vivobook at its first beta** (asked for: "Implement the
+transition to udev as we previously planned, and just plan checks and manual tests to ensure everything still works
+properly"; no memory budget, as said):
+- **Which udev:** systemd-udevd on its own and udevadm, from Ubuntu 24.04's udev package (the base layer's libraries
+  come from it): its helpers (ata_id, cdrom_id, scsi_id, v4l_id, …), its rules, and the hardware database (hwdb.bin,
+  built from its hwdb.d in ci_release.sh), with the libraries the base layer lacks (libsystemd-shared's at its own
+  path). Left out: 71-seat and 73-seat-late (systemd-logind's), 90-vconsole and 99-systemd (systemd's), and
+  80-net-setup-link (it would rename network interfaces; Rudolf OS's scripts know eth0, wlan0 and the adapters by the
+  kernel's names). The groups its rules name (disk, lp, kmem, dialout, cdrom, tape, render, kvm, sgx) are in
+  /etc/group (ci_release.sh for an existing base layer, mkrootfs.sh for a new one).
+- **Rudolf OS's own rules:** /usr/lib/udev/rules.d/90-rudolf.rules, every line of /etc/mdev.conf that set an owner
+  or ran a script: the same owners and modes (as numbers), the same scripts (sound, joyperm, rudolf-debian devices,
+  modem, devplug, thunderbolt, netplug) through /usr/lib/rudolf/udev-run, which gives them mdev's MDEV (the name under
+  /dev, or the interface) beside udev's ACTION, SUBSYSTEM, DEVTYPE, DEVPATH, and starts them in a session of their
+  own so a slow one (mounting a drive, starting ModemManager) never holds up udev. Drivers are loaded by udev's
+  80-drivers.rules (mdev's modprobe line). The scripts themselves did not change.
+- **Start-up:** rudolf-init starts udevd (`--daemon --resolve-names=early`), checks it answers, announces the devices
+  already there (subsystems, then devices) and waits for them, 15 s at most. If udevd does not start or answer, if
+  udev is not in the build, or with `rudolf.udev=0` on the start-up line, mdev does as before. /run/rudolf/devices
+  says which ("udev", or "mdev (why)"); the self-test's new **devices** line fails on the fallback (skipped when asked
+  for), and when udevd stopped or its database is empty.
+- **What it let go of:** the modem service starts ModemManager with udev as on other Linux (no `--test-no-udev`, no
+  reports of each port: it finds them through udev itself); with mdev, as in 1.5.9. Debian gets udev's database
+  (/run/udev, read only), so Steam and SDL find controllers as on other Linux; Flatpak binds it into its sandboxes
+  itself. devplug's own guesses were left as they are.
+- Tests: qt/host/udev60_t.sh (13 here: rudolf-init's own lines with stand-ins, its four ways to mdev, udev-run, every
+  mdev.conf script in a rule, the modem service, the self-test's line; with udevadm in CI also udevadm verify and
+  udevadm test on the runner's devices), .github/workflows/udev-check.yml.
+
+**Checks and manual tests for the first 1.6.0 beta** (on the Vivobook over the devlink, and by the owner where said):
+1. **Start-up:** /run/rudolf/devices says `udev`; the self-test's devices line passes; /run/rudolf/udev.log has no
+   errors; start-up to the desktop no slower than 1.5.9's (System health › Last starts: 39 s on 2026111503).
+2. **Every device the self-test lists:** its lines all as on 1.5.9 (sound, Wi-Fi, Bluetooth, the camera, the GPU,
+   storage, the listeners); `ls -l /dev/input /dev/dri /dev/snd /dev/video* /dev/hidraw*`: the owners and modes as
+   under mdev (input root 0640, controllers 1000, dri 0666, snd audio 0660, cameras 1000).
+3. **Network:** the interfaces keep their names (wlan0, eth0, usb0); Wi-Fi connects; the MiFi over USB gets an
+   address (netplug) and shows in Network Settings; unplugged, it goes.
+4. **Sound:** speakers and microphone; headphones in the jack and out; a USB or Bluetooth headset comes and goes (sound
+   hotplug).
+5. **A USB stick** plugged in, mounted and shown in the File Explorer, safely removed; an SD card if the computer has a
+   reader; another Rudolf OS stick (read only, 1.5.9's 14.4).
+6. **The camera** in Settings and in Meet (owner); in a Linux app (Debian or Flatpak).
+7. **A game controller** plugged in later: in Rudolf's games, and in Steam while it runs (owner); Steam Input.
+8. **Keyboard, touchpad, a USB mouse** plugged in later; the brightness and volume keys (rudolf-display).
+9. **The modem** (the USB stick when there is one): ModemManager started with udev, `mmcli -L` lists it, the
+   self-test's modem line passes; unplugged, it stops.
+10. **Thunderbolt or USB4** if the computer has it (the test laptop): a device approved or asked about.
+11. **Sleep and wake** (the lid): devices back, Wi-Fi reconnects.
+12. **The fallback:** one start with `rudolf.udev=0` (Developer mode's start-up options, or the boot menu's e): mdev,
+    everything above still works as on 1.5.9, the self-test's devices line skipped.
+13. **Memory at idle** on the Vivobook, read once with and once without (rudolf.udev=0), for the record only.
+
 ### 10. A Linux user for each account (added on 2026-11-13)
 **Moved into 1.5.9 on 2026-11-14 (docs/plan-1.5.9.md Part 15.3), as part of its security work.**
 Why: every Rudolf OS account runs as the same Linux user (rudolf, uid 1000). The desktop keeps the accounts apart, but
