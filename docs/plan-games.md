@@ -198,6 +198,11 @@ Asked for on 2026-11-11 and built (rudolfos-library#7).
 - On the Vivobook (devlink and remote access): each game played on Standard and Lite, with memory and frame rate noted
   in docs/testing.md.
 
+## Holiday Holdout (25 Days 1.3.1)
+
+Asked for on 2026-11-15: 25 Days is renamed **Holiday Holdout** (the package stays `rudolf-frostbarricade`): its
+package title, page title and title screen (rudolfos-library), and the Games list here (desktop/games58.js).
+
 ## 25 Days (Frost Barricade 1.3)
 
 Asked for on 2026-11-12. The game is renamed **25 Days** (the package stays `rudolf-frostbarricade`, so saves carry on).
