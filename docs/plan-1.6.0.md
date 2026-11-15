@@ -498,8 +498,55 @@ the page's empty body's margin makes it. same_t.sh: new ws2, ws2-dark (the bar a
 engines: `SAME_SCRIPT=wsbeh_t.js sh same_t.sh` 11/11 (the workspace shown, the windows shown, the taskbar's windows,
 the workspaces with windows and the menu's rows after each of ten steps). The bar
 at the left or the right (#346) lists and marks them the same way.
-**Next:** item 5 (the window keys: Super+Tab and Alt+Tab with previews, Super+arrows, Super+D), then items 6 to 12 in
-order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md after them. Native is not
+Item 5, the window keys (2026-11-15, unattended session): the page's keyboard shortcuts done by the shell (shell25.js SHORT,
+in its order: Super+E File Explorer, Super+D the desktop (this workspace's windows minimised), Super+R Run, Super+L lock,
+Super+I Settings (the one already open brought to the front), Ctrl+Esc and Super by itself the start menu (metaAlone: Super
+let go with nothing pressed between), Super+Tab the overview, Alt+F4 the window in front closed (Oracle's own Alt+F4 kept
+Chromium's, 12.3c), Super+Up maximise, Super+Down restore or minimise, Ctrl+Alt+arrows and with Shift the workspaces (item
+4), Super+N and Super+A (item 3), F1 Help), each with the account's own key from Settings › Keyboard (shell25.js kbMap:
+bd95kb:ID, which rudolfd's desktop/settings now gives as "kb"; an empty one is the default, as the page's kbOf); the keys
+grabbed on the root window, Super and the switcher's with the keyboard sent there while held (GTK's own windows take keys
+through XInput 2, so a key pressed with Super held otherwise went to the window in front). Alt+Tab's switcher (#altab: the
+windows in the order last used (each client's last focus, the page's MRU), the second one chosen, Tab and Shift+Tab, Alt+` too,
+Escape, chosen when Alt is let go or clicked; each window's picture, title and "workspace N", the chosen one in the accent
+colour with its words white; the box on half a pixel where translate(-50%,-50%) puts it, its words on whole pixels, as
+Chromium draws them). Super+Tab's overview (overview(): this workspace's windows, minimised ones too, in ceil(sqrt(n))
+columns over #desk (42 px above a taskbar at the bottom, 48 px below one at the top), each scaled to its cell less 40 by 60
+px, never larger, with the 3 px ring in the accent colour and its shadow, over the desktop shaded rgba(15,23,42,.55); a click
+picks one, Escape, a click elsewhere or Super+Tab again goes back; the windows' pictures through the Composite extension
+(libXcomposite, loaded when there: each window redirected off screen only while the overview is shown). The page has no
+"snap to the left or right" (Super+Left and Right), and its Alt+Tab shows the windows' pictures, not previews: the shell
+does as the page does. Fixed with it: the start menu closed itself when a key's grab took the keyboard for a moment (its
+focus-out now checks where the keyboard's focus went). same_t.sh: new altab, altab-accent, overview (107 parts in 75
+cases pass; ws2's toast is timing-dependent on Standard, as on main); the behaviour on both engines: `SAME_SCRIPT=keybeh_t.js
+sh same_t.sh` 21/21 (20 steps and the start menu open by Ctrl+Esc compared: the window in front, the windows open and
+minimised, the maximised one, the start menu). Known differences left (item 5): F11, the page's own full screen, stays with
+the window in front on Native; a key pressed while Super is held that is not a shortcut goes nowhere (the page's other
+Super keys, Super+V, Super+Space, Super+. and the magnifier's, are items 9 and 10); the overview's pictures are taken once
+when it opens (the page's windows keep moving under it).
+Item 6, the screen saver and its lock (2026-11-15, unattended session): the shell looks every 15 s as core25.js idleCheck
+does: the time since the last input (rudolfd's idle: rudolf-display's count), Display Properties' screen saver and Power
+settings (bd95sys, which rudolfd's desktop/settings now gives as "sys": on, after how long, the style, the clock on it, "lock
+when it ends", lock after, sleep after) and what holds it off (rudolfd's media: sound playing, a microphone in use, an app
+keeping the screen on (Part 11's Inhibit); a window full screen; a minute after unlocking, UNLOCKED_AT). The saver itself is
+the page's (saver31.js ssRun) in a window of its own (#app=do-saver&style=NAME&time=0|1, oneapp59.js), which the shell shows
+full screen above everything, the taskbar too, and leaves off the taskbar and Alt+Tab; input (rudolfd's idle under 1.5 s,
+looked at every second, as ssRun) closes it, and the lock screen follows when it ran more than 3 s with "lock when the screen
+saver ends" (saverStop). Lock after N minutes and sleep after the power source's time (Power and battery's, else suspmin)
+as the page. Fixed with it: every app window's page ran idleCheck too, so on Native each would have started its own saver
+(inside its window) and locked: one-app pages no longer do (the shell does it once). same_t.sh: new saver (the stars full
+screen over a desktop: 1.18 %); the behaviour on both engines: `SAME_SCRIPT=savbeh_t.js sh same_t.sh` 7/7 (an hour idle with
+sound playing, a microphone, an app keeping the screen on: no saver; then the saver; input after 4 s: the saver ends and
+the screen locks; unlocked; idle again at once: no saver for a minute). Known differences left (item 6): Display
+Properties' Preview button runs the saver inside Settings' own window on Native (the page's preview is full screen); lock
+after N minutes and sleep are not in the behaviour test (they need a minute after unlocking each).
+**Item 7 needs the owner's decision (2026-11-15):** the page has no several-monitor desktop (Standard shows one desktop on one
+screen; rudolf-display gives Chromium one output), so "a taskbar and the wallpaper on each monitor" on Native would make Native
+differ from Standard, against "The rule". Either Standard gets it too (a change to Standard, which the rule forbids without
+the owner), or Native keeps one desktop as Standard and item 7 is dropped or moved to 2.0. Left undone until then.
+**Next:** item 8 (the Phone screen and Blitzen's panel: both are already page windows, so Native shows them in one-app windows
+and scrcpy's own window framed as a Linux app's; what is left is checking them against Standard with same_t.sh), then items 9
+to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md after them. Native is not
 the default yet. The security line's next steps (as of 2026-11-14): docs/plan-1.5.9.md 15.3's third step (the QEMU check
 with two accounts, needing a host with QEMU and a built disc) and 12.3c's second part (Oracle on Native: step 5's rest).
 
@@ -727,6 +774,10 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
 - **Code**
   - **The native desktop (1.5.9 12.3c):** same_t.sh's comparison of Oracle's window on Native against Standard's
     (toolbar, tabs, a site): the rule "Native appears and functions exactly as Chromium mode". With Part 12 above.
+    (2026-11-15: not done yet. Checked with item 5: oracle_native_t.sh gives the same results with and without it (37 of
+    41 on a host without a sound server; 4g, 4h and 9 fail there on main too), Oracle's own Alt+F4 still Chromium's.
+    The comparison needs Standard's Oracle drawn the same way in Playwright, the shell built with a test key, as
+    oracle_native_t.sh does for Native.)
   - **The official recovery (1.5.9 8.4, 8.5):** the repair at each start (the official build checks recovery.efi and
     system/r and restores them from the official release); Return to official restoring the official rudolf.efi; on a
     computer that never ran the official build, system/r downloaded when Developer mode is turned on. The EFI image is
