@@ -12,7 +12,7 @@
  *   GET  desktop/settings      the page's settings the shell draws, the pinned apps, the notifications' count, "gen",
  *                              (1.6.0) the desktop's widgets ("widgets", "wgown") and the weather's place and unit ("wloc", "wunit");
  *                              the Calendar's events ("cal", bd95cal:ID) for the calendar under the clock
- *                              and the account's own keyboard shortcuts ("kb", bd95kb:ID)
+ *                              and the account's own keyboard shortcuts ("kb", bd95kb:ID); the screen saver's settings ("sys", bd95sys)
  *   GET  desktop/apps          the start menu's list and the drawn backgrounds' pictures, as the page wrote them
  *   POST desktop/apps          (the page, after each sign-in)
  *   GET  desktop/cells?acct=ID       (1.6.0) where the shell put the desktop's icons: {"NAME":[COLUMN,ROW]}
@@ -587,6 +587,8 @@ static void api_desktop_settings(struct req *r)
 	/* 1.6.0 (Part 12, item 5): the account's own keyboard shortcuts (shell25.js kbK: bd95kb:ID, Settings › Keyboard) */
 	char *kb = NULL; if (in) { snprintf(k, sizeof k, "bd95kb:%s", s.id); kb = dls_get(&l, k); }
 	sadd(&o, ",\"kb\":"); if (kb && *dj_ws(kb) == '{' && dj_end(kb, 0)) dj_raw(&o, kb, "{}"); else sadd(&o, "{}");
+	/* (item 6: the computer's screen saver, lock and sleep settings, core25.js SYSK: bd95sys) */
+	char *sy = dls_get(&l, "bd95sys"); sadd(&o, ",\"sys\":"); if (sy && *dj_ws(sy) == '{' && dj_end(sy, 0)) dj_raw(&o, sy, "{}"); else sadd(&o, "{}"); free(sy);
 	sadd(&o, "}");
 	free(wg); free(own); free(wl); free(wu); free(ce); free(kb);
 	free(set); free(pins); free(nt); dls_close(&l); explicit_bzero(&s, sizeof s); reply_json(r->fd, &o);

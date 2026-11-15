@@ -103,6 +103,9 @@ CASES.push({n: 'ws2-left', set: {tb: 'left'}, act: 'notepad', ws: 2, parts: ['ba
 CASES.push({n: 'altab', set: {}, more: PINS2, act: 'two', key: 'altab', parts: ['altab']});
 CASES.push({n: 'altab-accent', set: {accent: '#db2777'}, more: PINS2, act: 'two', key: 'altab', parts: ['altab']});
 CASES.push({n: 'overview', set: {}, more: PINS2, act: 'two', key: 'overview', parts: ['desk']});
+/* (item 6) the screen saver, after an hour without input (rudolfd's idle, as the test sets it): the page's own, full screen over
+   everything (Native: in a window of its own) */
+CASES.push({n: 'saver', set: {}, more: {bd95sys: {sson: true, ssmin: 1, ssstyle: 'stars', lockss: false}}, saver: 1, parts: ['screen']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
@@ -149,6 +152,9 @@ async function stdCase(c) {
       const r = await p.evaluate(() => { const e = [...document.querySelectorAll('.ctx .cmi')].find(x => x.textContent.includes('Add a widget')); const q = e.getBoundingClientRect(); return [q.left + 50, q.top + q.height / 2] });
       await p.mouse.click(r[0], r[1]); await p.clock.runFor(300); await wait(200) }
     if (/menu$|wgpick/.test(c.act || '')) await p.mouse.move(W / 2, H - 200);
+    /* (idleCheck, which the page's 15 s timer runs, called at once: the page's clock is the test's, and the saver's frames, timers of
+       no delay under it, are not run: its first picture) */
+    if (c.saver) { fs.writeFileSync(path.join(D, 'idle'), '3600000'); await p.evaluate(() => idleCheck()); await wait(1500) }
     if (c.ev) { for (const e of c.ev) { const n0 = await p.evaluate(() => document.querySelectorAll('#ntoasts .ntoast').length); fs.writeFileSync(path.join(D, 'event'), e);
         await p.waitForFunction(n0 => document.querySelectorAll('#ntoasts .ntoast').length > n0, n0, {timeout: 20000}) } await wait(900) }
     if (c.fly) { await p.click({clock: '#tray', vol: '#vol', net: '#net', qs: '#qsb', notes: '#ncb'}[c.fly]); await p.clock.runFor(400); await wait(300);
@@ -166,7 +172,7 @@ async function stdCase(c) {
   { const r = await rectOf('#calp') || await rectOf('.svp') || await rectOf('#qsp') || await rectOf('#ncp') || await rectOf('.np'); rects.fly = r }
   rects.altab = await rectOf('#altab'); rects.desk = await rectOf('#desk');
   rects.desc = await p.evaluate(() => ({bar: document.getElementById('bar').className, body: document.body.className}));
-  const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f});
+  const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f}); if (c.saver) fs.unlinkSync(path.join(D, 'idle'));
   if (c.key == 'altab') await p.keyboard.up('Alt');
   await ctx.close(); return {f, rects, errs, pt};
 }
@@ -224,6 +230,7 @@ async function natCase(c, s) {
       await until(() => new RegExp('^client .* app=' + k + ' ', 'm').test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3000) } xdo('mousemove ' + W / 2 + ' ' + (H - 100)); await wait(500) }
   if (c.key == 'altab') { xdo('keydown alt key Tab'); await until(() => (nst('altab') || '-') != '-', 5000); await wait(500) }
   if (c.key == 'overview') { xdo('key super+Tab'); await until(() => /^ovwin .* 1$/m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 5000); await wait(600) }
+  if (c.saver) { fs.writeFileSync(path.join(D, 'idle'), '3600000'); await until(() => (nst('saver') || '').startsWith('1') && /^client .* full=1 .* app=do-saver /m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 40000); await wait(2500) }
   if (c.mic) { await until(() => (nst('mic') || '').startsWith(c.mic.length + ' ' + (c.micmuted ? 1 : 0)), 12000); await wait(600) }
   if (c.ws) { const h = nhit('ws ' + c.ws); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1'); await until(() => nst('ws') == String(c.ws) && nlines0('toast').length > 0, 8000); xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(700) }
   if (c.ev) { for (const e of c.ev) { const n0 = nlines0('toast').length; fs.writeFileSync(path.join(D, 'event'), e); await until(() => nlines0('toast').length > n0, 20000) } xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(900) }
@@ -245,6 +252,7 @@ async function natCase(c, s) {
     if (c.next) { const l = nlines('flybtn').find(x => x.startsWith('flybtn next ')); if (l) { const a = l.split(' '); xdo('mousemove ' + a[2] + ' ' + a[3] + ' click 1') } await wait(700) }
     xdo('mousemove 300 300'); await wait(500) }
   const f = path.join(OUT, c.n + '.nat.png'); sh('import -window root ' + f);
+  if (c.saver) { fs.writeFileSync(path.join(D, 'idle'), '0'); await until(() => (nst('saver') || '').startsWith('0') && !/ app=do-saver /.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 10000); fs.unlinkSync(path.join(D, 'idle')); await wait(800) }
   if (c.key == 'altab') { xdo('keyup alt'); await until(() => (nst('altab') || '-') == '-', 5000); await wait(400) }
   if (c.key == 'overview') { xdo('key Escape'); await until(() => nst('overview') == '0', 5000); await wait(400) }
   if (c.act == 'two') for (let i = 0; i < 2; i++) {   /* (the one in front first: its ✕ may be over the other's) */

@@ -98,6 +98,10 @@ class H(http.server.BaseHTTPRequestHandler):
             except OSError: pass
             return self.j({'ok': True})
         if w == 'desktop/lock': ST['locked'] = True; return self.j({'ok': True})
+        # (item 6) the time since the last input (DIR/idle, ms; none: unknown) and what is playing (DIR/media, JSON), as the test sets them
+        if w == 'idle':
+            x = rd('idle'); return self.j({'ok': True, 'idle': int(x) if x and x.strip() else None})
+        if w == 'media': return self.j(dict({'ok': True, 'playing': 0, 'mic': 0}, **json.loads(rd('media', b'{}') or b'{}')))
         if w == 'desktop/unlock':
             o = json.loads(b or b'{}')
             if o.get('p') != KEYS['Ann']['pw']: return self.err(403, 'The password is incorrect.')
@@ -119,7 +123,7 @@ class H(http.server.BaseHTTPRequestHandler):
             wg = own['list'] if wgown else (sget(data, 'bd95widgets:' + sid) if sid else None)
             return self.j({'ok': True, 'gen': L.get('gen', 1), 'acct': sid, 's': {k: st[k] for k in K if k in st},
                            'pins': pins if isinstance(pins, list) else ["explorer", "browser", "notepad", "settings"], 'notes': len(nt), 'wallpaper': wall, 'wpacct': sid if wall else '',
-                           'widgets': wg if isinstance(wg, list) else [], 'wgown': wgown, 'wloc': sget(data, 'bd95wloc'), 'wunit': sget(data, 'bd95wunit') or '', 'cal': (sget(data, 'bd95cal:' + sid) if sid else None) or [], 'notif': nt if isinstance(nt, list) else [], 'kb': (sget(data, 'bd95kb:' + sid) if sid else None) or {}})
+                           'widgets': wg if isinstance(wg, list) else [], 'wgown': wgown, 'wloc': sget(data, 'bd95wloc'), 'wunit': sget(data, 'bd95wunit') or '', 'cal': (sget(data, 'bd95cal:' + sid) if sid else None) or [], 'notif': nt if isinstance(nt, list) else [], 'kb': (sget(data, 'bd95kb:' + sid) if sid else None) or {}, 'sys': sget(data, 'bd95sys') or {}})
         if w == 'desktop/widgets':
             if m == 'POST':
                 sid = s['id'] if s else ''; open(os.path.join(D, 'widgets.json'), 'w').write(json.dumps({'list': json.loads(b), 'was': data.get('bd95widgets:' + sid) or ''})); return self.j({'ok': True})

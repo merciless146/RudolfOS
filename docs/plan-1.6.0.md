@@ -482,7 +482,23 @@ minimised, the maximised one, the start menu). Known differences left (item 5): 
 the window in front on Native; a key pressed while Super is held that is not a shortcut goes nowhere (the page's other
 Super keys, Super+V, Super+Space, Super+. and the magnifier's, are items 9 and 10); the overview's pictures are taken once
 when it opens (the page's windows keep moving under it).
-**Next:** item 6 (the screen saver and its lock), then items 7 to 12 in
+Item 6, the screen saver and its lock (2026-11-15, unattended session): the shell looks every 15 s as core25.js idleCheck
+does: the time since the last input (rudolfd's idle: rudolf-display's count), Display Properties' screen saver and Power
+settings (bd95sys, which rudolfd's desktop/settings now gives as "sys": on, after how long, the style, the clock on it, "lock
+when it ends", lock after, sleep after) and what holds it off (rudolfd's media: sound playing, a microphone in use, an app
+keeping the screen on (Part 11's Inhibit); a window full screen; a minute after unlocking, UNLOCKED_AT). The saver itself is
+the page's (saver31.js ssRun) in a window of its own (#app=do-saver&style=NAME&time=0|1, oneapp59.js), which the shell shows
+full screen above everything, the taskbar too, and leaves off the taskbar and Alt+Tab; input (rudolfd's idle under 1.5 s,
+looked at every second, as ssRun) closes it, and the lock screen follows when it ran more than 3 s with "lock when the screen
+saver ends" (saverStop). Lock after N minutes and sleep after the power source's time (Power and battery's, else suspmin)
+as the page. Fixed with it: every app window's page ran idleCheck too, so on Native each would have started its own saver
+(inside its window) and locked: one-app pages no longer do (the shell does it once). same_t.sh: new saver (the stars full
+screen over a desktop: 1.18 %); the behaviour on both engines: `SAME_SCRIPT=savbeh_t.js sh same_t.sh` 7/7 (an hour idle with
+sound playing, a microphone, an app keeping the screen on: no saver; then the saver; input after 4 s: the saver ends and
+the screen locks; unlocked; idle again at once: no saver for a minute). Known differences left (item 6): Display
+Properties' Preview button runs the saver inside Settings' own window on Native (the page's preview is full screen); lock
+after N minutes and sleep are not in the behaviour test (they need a minute after unlocking each).
+**Next:** item 7 (several monitors), then items 8 to 12 in
 order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md after them. Native is not
 the default yet. The security line's next steps (as of 2026-11-14): docs/plan-1.5.9.md 15.3's third step (the QEMU check
 with two accounts, needing a host with QEMU and a built disc) and 12.3c's second part (Oracle on Native: step 5's rest).

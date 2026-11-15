@@ -265,7 +265,7 @@ typedef struct { int x, y, w, h; char kind[12], arg[80]; } Hit;
 static Hit HITS[96]; static int NHITS;
 static void state_write(void);
 typedef struct JV JV; static void di_layout(void); static void di_load(JV *cat);   /* (the desktop's icons, below) */
-static void sc_load(JV *v); static void wg_paint(cairo_t *cr); static void wg_load(JV *v); static void jumps_load(JV *v); static void wg_dirty_kind(const char *t); static void wg_picker(void);   /* (the widgets, below) */
+static gint64 UNLOCK_T; static void sys_load(JV *v); static void sc_load(JV *v); static void wg_paint(cairo_t *cr); static void wg_load(JV *v); static void jumps_load(JV *v); static void wg_dirty_kind(const char *t); static void wg_picker(void);   /* (the widgets, below) */
 static int wg_shown(void); static int NWG_ALL_DIRTY;
 static gboolean wg_press(GdkEventButton *e); static gboolean wg_motion(GdkEventMotion *e); static gboolean wg_release(GdkEventButton *e); static gboolean note_key(GdkEventKey *e); static int NF;
 
@@ -1041,6 +1041,7 @@ static void wm_manage(Window w, AppWin *own)
 	/* asked for full screen before it was shown */
 	Atom type; int fmt; unsigned long n = 0, after; unsigned char *d = NULL;
 	if (XGetWindowProperty(DPY, w, A_NSTATE, 0, 32, False, XA_ATOM, &type, &fmt, &n, &after, &d) == Success && d) { for (unsigned long i = 0; i < n; i++) if (((Atom *)d)[i] == A_NFULL) { c->full = 0; wm_fullscreen(c, 1); } XFree(d); }
+	if (own && !strcmp(own->k, "do-saver")) { c->ontop = 1; wm_fullscreen(c, 1); }   /* (the screen saver: over everything, the taskbar too: item 6) */
 	wm_focus(c);
 }
 static void wm_unmanage(Client *c, int gone)
@@ -2322,6 +2323,7 @@ static gboolean signin_done(gpointer p)
 	JV *v = jparse(j->reply);
 	if (j->code == 200) {
 		if (!SIGN_LOCK) { jstr(v, "id", USER_ID, sizeof USER_ID); jstr(v, "n", USER_N, sizeof USER_N); jstr(v, "r", USER_R, sizeof USER_R); }
+		if (SIGN_LOCK && LOCKED) UNLOCK_T = g_get_monotonic_time();   /* (UNLOCKED_AT: no saver or lock for a minute: item 6) */
 		LOCKED = 0; gtk_widget_hide(SIGN); explicit_bzero(SN_PASS, sizeof SN_PASS); SN_MSG[0] = 0; if (SCARET_T) { g_source_remove(SCARET_T); SCARET_T = 0; }
 		settings_load(); apps_load(); if (BAR) gtk_widget_show_all(BAR); wm_restack();
 		if (WM_OK) wm_hide_all(0); else for (GList *l = WINS; l; l = l->next) gtk_widget_show(((AppWin *)l->data)->win);
@@ -2453,6 +2455,7 @@ static void settings_load(void)
 	cal_events_load(v);   /* (the calendar under the clock: item 3) */
 	nt_load(v);   /* (the notifications' list: item 3) */
 	sc_load(v);   /* (the account's own keys: item 5) */
+	sys_load(v);   /* (the screen saver's and the lock's settings: item 6) */
 	  jfree(v);
 	/* the page's display scaling: the taskbar, the title bars and the start menu at the page's size (1.5.9 step 7) */
 	Z = S.scale / 100.0; BARH = (int)lround(46 * Z); TH = (int)lround(35 * Z);
@@ -3550,7 +3553,7 @@ static void jumps_load(JV *v)
 		snprintf(x->k, sizeof x->k, "%s", j->k[i]); JV *a = jat(r, 0), *b = jat(r, 1), *c = jat(r, 2);
 		snprintf(x->label, sizeof x->label, "%s", a && a->t == 3 ? a->s : ""); snprintf(x->icon, sizeof x->icon, "%s", b && b->t == 3 ? b->s : ""); snprintf(x->key, sizeof x->key, "%s", c && c->t == 3 ? c->s : ""); }
 }
-static int tb_win(Client *c) { return c && !c->hidden && !c->trans && (!c->app || !c->app->hidden); }   /* (the page's wins: the taskbar's windows) */
+static int tb_win(Client *c) { return c && !c->hidden && !c->trans && (!c->app || (!c->app->hidden && strcmp(c->app->k, "do-saver"))); }   /* (not the screen saver: item 6) */   /* (the page's wins: the taskbar's windows) */
 static int tb_count(int min) { int n = 0; for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (tb_win(c) && (min < 0 || c->min == min)) n++; } return n; }
 static int app_running(const char *k) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!a->hidden && !strcmp(a->k, k)) return 1; }
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->ak[0] && !strcmp(c->ak, k)) return 1; } return 0; }   /* (and Oracle's Chromium's windows: 12.3c) */
@@ -4523,6 +4526,66 @@ static void ov_end(Client *pick)
 }
 static void ov_toggle(void) { if (OV_ON) ov_end(NULL); else ov_start(); }
 
+/* ------------------------------------------------------------------ the screen saver and its lock (1.6.0 Part 12, item 6)
+   core25.js idleCheck, every 15 s: the time since the last input (rudolfd's idle, rudolf-display's count), the settings of
+   Display Properties › Screen saver and Power (bd95sys: sson, ssmin, ssstyle, sstime, lockss, lockmin, suspmin), and what
+   holds it off (rudolfd's media: sound playing, a microphone in use, an app keeping the screen on; something full screen; a
+   minute after unlocking). The saver itself is still the page's (saver31.js ssRun) in a full-screen window of its own
+   (#app=do-saver&style=NAME), above everything; input (rudolfd's idle under 1.5 s, checked every second, as ssRun) ends
+   it, and the lock screen follows when it ran more than 3 s with "lock when the screen saver ends" (saverStop). Locking
+   after lockmin and sleeping after the power source's time (Power and battery, else suspmin) as the page does. */
+static struct { int sson, ssmin, lockss, lockmin, suspmin, sstime; char ssstyle[24]; } SYS = { 0, 10, 1, 0, 0, 1, "stars" };
+static void sys_load(JV *v)
+{
+	JV *o = jprop(v, "sys"); JV *x;
+	SYS.ssmin = (int)jnum(o, "ssmin", 10); SYS.lockmin = (int)jnum(o, "lockmin", 0); SYS.suspmin = (int)jnum(o, "suspmin", 0);
+	x = jprop(o, "sson"); SYS.sson = x ? jbool(o, "sson") : SYS.ssmin > 0;   /* (core25.js: sson unset is ssmin > 0) */
+	if (!SYS.ssmin) SYS.ssmin = 10;
+	x = jprop(o, "lockss"); SYS.lockss = x ? jbool(o, "lockss") : 1;
+	x = jprop(o, "sstime"); SYS.sstime = x ? jbool(o, "sstime") : 1;
+	char st[24] = ""; jstr(o, "ssstyle", st, sizeof st); snprintf(SYS.ssstyle, sizeof SYS.ssstyle, "%s", st[0] && strspn(st, "abcdefghijklmnopqrstuvwxyz") == strlen(st) ? st : "stars");
+}
+static int SAV_ON, IDLE_N; static gint64 SAV_T; static guint SAV_POLL; static char SAV_WHY[96];
+static AppWin *sav_win(void) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!strcmp(a->k, "do-saver") && !a->closing) return a; } return NULL; }
+static long long idle_ms(void) { JV *v = jget("/api/idle"); long long m = v ? (long long)jnum(v, "idle", -1) : -1; jfree(v); return m; }
+static void sav_stop(int may_lock)
+{
+	if (!SAV_ON) return; SAV_ON = 0; if (SAV_POLL) { g_source_remove(SAV_POLL); SAV_POLL = 0; }
+	AppWin *a = sav_win(); if (a) appwin_close_now(a);
+	int lock = may_lock && SYS.lockss && g_get_monotonic_time() - SAV_T > 3000000;
+	if (lock && !LOCKED) power("lock");
+	state_write();
+}
+static gboolean sav_poll(gpointer d)
+{
+	(void)d; if (!SAV_ON) { SAV_POLL = 0; return G_SOURCE_REMOVE; }
+	if (!sav_win() && g_get_monotonic_time() - SAV_T > 20000000) { SAV_ON = 0; SAV_POLL = 0; snprintf(SAV_WHY, sizeof SAV_WHY, "a screen saver whose picture was gone was ended"); state_write(); return G_SOURCE_REMOVE; }
+	long long m = idle_ms(); if (m >= 0 && m < 1500 && g_get_monotonic_time() - SAV_T > 1500000) { SAV_POLL = 0; sav_stop(1); return G_SOURCE_REMOVE; }
+	return G_SOURCE_CONTINUE;
+}
+static void sav_start(void)
+{
+	if (SAV_ON || !USER_ID[0] || LOCKED) return; SAV_ON = 1; SAV_T = g_get_monotonic_time();
+	if (AT_ON) at_end(0); if (OV_ON) ov_end(NULL); if (MENU && gtk_widget_get_visible(MENU)) menu_hide(); if (FLK) fl_close();
+	char ex[80]; snprintf(ex, sizeof ex, "&style=%s&time=%d", SYS.ssstyle, SYS.sstime); app_open_ex("do-saver", NULL, ex, 0);
+	if (!SAV_POLL) SAV_POLL = g_timeout_add(1000, sav_poll, NULL); state_write();
+}
+static int full_shown(void) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->full && !c->min && !c->off && !(c->app && !strcmp(c->app->k, "do-saver"))) return 1; } return 0; }
+static gboolean tick_idle(gpointer d)
+{
+	(void)d; if (!USER_ID[0] || !WM_OK) return G_SOURCE_CONTINUE;
+	long long ms = idle_ms(); if (ms < 0) return G_SOURCE_CONTINUE; IDLE_N++;
+	JV *m = jget("/api/media"); int busy = m && (jnum(m, "playing", 0) > 0 || jnum(m, "mic", 0) > 0 || jnum(m, "idleHeld", 0) > 0), held = m && jnum(m, "idleHeld", 0) > 0, sheld = m && jnum(m, "sleepHeld", 0) > 0; jfree(m);
+	double idle = ms / 60000.0; int fresh = UNLOCK_T && g_get_monotonic_time() - UNLOCK_T < 60000000;
+	if (SYS.sson && SYS.ssmin > 0 && idle >= SYS.ssmin && !SAV_ON) {
+		const char *why = LOCKED || fresh ? "" : full_shown() ? "something is full screen" : busy ? (held ? "an app asked to keep the screen on" : "sound is playing or a microphone is in use") : NULL;
+		if (why) { if (why[0]) snprintf(SAV_WHY, sizeof SAV_WHY, "the screen saver waits: %s", why); } else { SAV_WHY[0] = 0; sav_start(); } }
+	if (SYS.lockmin > 0 && idle >= SYS.lockmin && !LOCKED && !fresh && !held) { sav_stop(0); power("lock"); }
+	int sm = SYS.suspmin; JV *p = jget("/api/power/status"); JV *now = jprop(p, "now"); JV *sl = jprop(now, "sleep"); if (sl && sl->t == 2) sm = (int)sl->n; jfree(p);
+	if (sm > 0 && idle >= sm && !busy && !held && !sheld && !fresh) { sav_stop(0); if (!LOCKED) power("lock"); http("POST", "/api/power?action=suspend", NULL, 0, NULL); }
+	state_write(); return G_SOURCE_CONTINUE;
+}
+
 /* ------------------------------------------------------------------ the clipboard (1.5.9, 12.3c)
    On Standard Chromium is the desktop and never closes, so what was copied in Oracle stays on the clipboard; here Oracle's Chromium
    goes with its last window, and its clipboard with it. While it runs, what is copied is kept here (text) and put back on the
@@ -4685,6 +4748,7 @@ static void state_write(void)
 	if (AT_ON) { g_string_append_printf(s, "altab %d %d %d %d %d %d", AT_N, AT_I, AX, AY, AW, AH); for (int i = 0; i < AT_N; i++) g_string_append_printf(s, "|%s", AT_L[i]->title); g_string_append_c(s, '\n'); }
 	else g_string_append(s, "altab -\n");
 	g_string_append_printf(s, "overview %d\n", OV_ON ? OVN : 0);
+	g_string_append_printf(s, "saver %d %s|%s\nidlechecks %d\n", SAV_ON, SYS.ssstyle, SAV_WHY, IDLE_N);   /* (item 6) */
 	for (int i = 0; OV_ON && i < OVN; i++) g_string_append_printf(s, "ovwin %lx %d %d %d %d %d\n", (unsigned long)OVL[i].c->w, (int)lround(OVL[i].x), (int)lround(OVL[i].y), (int)lround(OVL[i].w), (int)lround(OVL[i].h), OVL[i].pic != NULL);
 	if (OK_[0]) g_string_append_printf(s, "osd %s %s|%s %d %d %d %d\n", OK_, OLV[0] ? OLV : "-", OLB, OX, OY, OW, OH);   /* (the keys' indicator) */
 	g_string_append_printf(s, "notes %d %d %d\nmic %d %d\n", S.dnd, nt_unread(), NNT, MIC_N, MIC_MUTED);   /* (the bell: do not disturb, its count, the list's length) */   /* (item 3: the call's 🎙️; the notifications' pop-ups) */
@@ -4800,7 +4864,7 @@ int main(int argc, char **argv)
 	JV *ses = jget("/api/desktop/session");
 	if (ses) { jstr(ses, "id", USER_ID, sizeof USER_ID); jstr(ses, "n", USER_N, sizeof USER_N); jstr(ses, "r", USER_R, sizeof USER_R); jfree(ses); gtk_widget_show_all(BAR); }
 	else signin_show(0);
-	g_timeout_add_seconds(3, tick_settings, NULL); g_timeout_add_seconds(10, tick_tray, NULL); g_timeout_add_seconds(5, tick_mic, NULL); g_timeout_add_seconds(5, tick_clock, NULL);
+	g_timeout_add_seconds(3, tick_settings, NULL); g_timeout_add_seconds(10, tick_tray, NULL); g_timeout_add_seconds(5, tick_mic, NULL); g_timeout_add_seconds(15, tick_idle, NULL); g_timeout_add_seconds(5, tick_clock, NULL);
 	tick_heart(NULL); g_timeout_add_seconds(10, tick_heart, NULL);
 	tick_devlink(NULL); g_timeout_add_seconds(4, tick_devlink, NULL);   /* (as the page: every 4 s) */
 	teval_init(); clip_init();
