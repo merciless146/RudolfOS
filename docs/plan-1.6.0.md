@@ -489,6 +489,13 @@ every restart.
   - **The native session's logs kept across a restart** (found on 2026-11-15: rudolf-native's output, the page log,
     the Tor window's log and rudolfd's log are in /run and were lost with the restart; only session.log, the kernel's
     and the health log were kept in /persist/var/log/starts).
+    **Done for the native desktop's own log (2026-11-15):** /run/rudolf/native-desktop.log (rudolf-native, and Oracle's
+    Chromium there) is kept in each start's folder by rudolf-init, under 4 MB, and the system report has it ("native",
+    "nativeBefore"). Settings › System health › Log video problems now works on Native as on Lite: GStreamer's warnings
+    from rudolf-native's WebKit to webkit-video.log, and Oracle's Chromium there with its media/ messages
+    (--enable-logging=stderr --vmodule=*/media/*=1) in the native desktop's log; read at the next start of the desktop.
+    Asked for: "the native desktop has a lot of stuff that isn't working or is still very buggy". Test:
+    qt/host/videolog60_t.sh 9, qt/host/startlogs58_t.sh 11. Still in /run: the page log and the Tor window's log.
   - **Kernel tuning** (proposed on 2026-11-12), if confirmed.
   - **rudolfd's root work split into helpers** (1.5.9 15.5, already planned here).
 - **QEMU checks (CI)**

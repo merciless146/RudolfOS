@@ -13,7 +13,7 @@ echo '23:01:02 Rudolf OS: hello from the start-up' > $W/etc/initramfs.log; mkdir
 for n in 1 2 3 4 5; do (. $W/keep.sh; starts_keep); echo "start $n" > $W/run/session.log; done
 S=$W/p/var/log/starts
 ok "1. the last 4 starts are kept, newest in 0" $([ -d $S/3 ] && [ ! -d $S/4 ] && grep -qx 'start 5' $S/0/session.log && grep -qx 'start 2' $S/3/session.log; echo $?)
-ok "2. /run's logs are written straight into this start's folder" $([ "$(readlink $W/run/session.log)" = $S/0/session.log ] && [ "$(readlink $W/run/webkit-desktop.log)" = $S/0/webkit-desktop.log ] && [ "$(readlink $W/run/devlink/daemon.log)" = $S/0/daemon.log ] && [ "$(cat $W/run/start-logs)" = $S/0 ]; echo $?)
+ok "2. /run's logs are written straight into this start's folder" $([ "$(readlink $W/run/session.log)" = $S/0/session.log ] && [ "$(readlink $W/run/webkit-desktop.log)" = $S/0/webkit-desktop.log ] && [ "$(readlink $W/run/native-desktop.log)" = $S/0/native-desktop.log ] && [ "$(readlink $W/run/devlink/daemon.log)" = $S/0/daemon.log ] && [ "$(cat $W/run/start-logs)" = $S/0 ]; echo $?)
 ok "3. what started: slot, release, menu entry, options, and the start-up's own lines" $(grep -qx 'slot=b' $S/0/start.txt && grep -qx 'release=2026111100' $S/0/start.txt && grep -q 'entry=rudolf-start.conf' $S/0/start.txt && grep -q 'hello from the start-up' $S/0/initramfs.log && grep -q 'old decision' $S/0/boot-decisions.log; echo $?)
 ok "4. only root reads them" $([ "$(stat -c %a $S)" = 700 ]; echo $?)
 # the session's mark
