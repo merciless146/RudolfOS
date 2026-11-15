@@ -1,0 +1,19 @@
+#!/bin/sh
+# 1.6.0 (docs/plan-1.6.0.md Part 14): the keyring for Linux apps, the Secret Service (org.freedesktop.secrets), which
+# apps such as the Claude app, VS Code, Electron and Chromium-based apps, mail and chat apps keep their sign-ins in.
+# rudolfd starts it at sign-in as the account's Linux user, with its session's environment (acct-session.env), and
+# signing out stops it with the account's other programs. Only the secrets part of gnome-keyring-daemon: no SSH or GPG
+# agent, no window of its own.
+# The keyring is the account's "login" keyring in its own folder (~/.local/share/keyrings), which is encrypted with the
+# account's key and readable by its user only (0700): so it needs no second password, is shut away with the folder at
+# sign-out, follows a password change, and goes when the account is removed. Made the first time, as a keyring with no
+# password of its own (gnome-keyring's text format); a keyring already there is never changed.
+#   keyring start
+[ "$1" = start ] || { echo "usage: keyring start" >&2; exit 2; }
+[ -n "$HOME" ] && [ "$HOME" != / ] && [ -d "$HOME" ] && [ -n "$DBUS_SESSION_BUS_ADDRESS" ] || { echo "keyring: no session (HOME, DBUS_SESSION_BUS_ADDRESS)" >&2; exit 1; }
+umask 077
+K=${XDG_DATA_HOME:-$HOME/.local/share}/keyrings
+mkdir -p "$K" && chmod 700 "$K" || exit 1
+[ -e "$K/login.keyring" ] || printf '[keyring]\ndisplay-name=Login\nctime=0\nmtime=0\nlock-on-idle=false\nlock-after=false\n' > "$K/login.keyring"
+[ -e "$K/default" ] || printf 'login\n' > "$K/default"
+exec ${KEYRING_DAEMON:-gnome-keyring-daemon} --foreground --components=secrets

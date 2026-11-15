@@ -9,7 +9,9 @@
 [ -z "$US59_INNER" ] && exec env US59_INNER=1 unshare -m sh "$0" "$@"
 HERE=$(cd "$(dirname "$0")" && pwd); T=$(mktemp -d /tmp/users59.XXXXXX); chmod 755 $T
 mount -t tmpfs none /run; mkdir -p /run/rudolf
-gcc -O1 -w -o $T/t $HERE/fixtures/usersapi.c -lz 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
+# (1.6.0 Part 14: the keyring's stand-in, which says who started it, with which session, and stays until stopped)
+printf '#!/bin/sh\necho "$(id -u) $HOME $XDG_CURRENT_DESKTOP ${DBUS_SESSION_BUS_ADDRESS:+bus} $*" >> %s/krlog\nexec sleep 300\n' $T > $T/kr; chmod 755 $T/kr; : > $T/krlog; chmod 666 $T/krlog
+gcc -O1 -w -DAU_KEYRING="\"$T/kr\"" -DAU_KEYRING_DAEMON="\"$T/kr\"" -o $T/t $HERE/fixtures/usersapi.c -lz 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
 node $HERE/fixtures/deskls.js $T/ls.json $T/keys.json || { echo "FAIL node"; exit 1; }
 truncate -s 64M $T/img; mkfs.ext4 -q -F $T/img; mkdir $T/m; mount -o loop $T/img $T/m || { echo "SKIP: no loop device"; exit 0; }
 # (the users must be real for setpriv: this namespace's /etc is a copy, which rudolfd writes as it writes the system's)
@@ -46,6 +48,9 @@ o=$(t session-start uAnnA1b2 appuser)
 ok "6. signed in (files on the disk): the account's session, its apps as its own user" "$(echo "$o" | grep -q 'session-start 0' && echo "$o" | grep -q '^acct1001 /run/rudolf/acct-session.env$' && echo 1)" "$o"
 ok "...its home is its folder (/home/acct1001), its runtime folder its own (0700)" "$([ "$(stat -c %u $HM/acct1001/Documents/diary.txt)" = 1001 ] && [ "$(stat -c %u:%a $RU/1001)" = 1001:700 ] && grep -q "^HOME=$HM/acct1001$" /run/rudolf/acct-session.env && grep -q "^XDG_RUNTIME_DIR=$RU/1001$" /run/rudolf/acct-session.env && grep -q '^PULSE_SERVER=unix:/run/rudolf/pulse/native$' /run/rudolf/acct-session.env && echo 1)" "$(cat /run/rudolf/acct-session.env)"
 ok "...the display is given to its user (rudolf-display --xallow acct1001; X has authorization since 15.3's second step)" "$(grep -qx -- '--xallow acct1001' $T/xlog && echo 1)" "$(cat $T/xlog 2>&1)"
+timeout 1 tail -f /dev/null
+ok "6c. (1.6.0 Part 14) its keyring started as its user, in its session (its home, its bus), the desktop named GNOME's too for Electron apps" "$(grep -qx "1001 $HM/acct1001 Rudolf:GNOME bus start" $T/krlog && grep -qx 'XDG_CURRENT_DESKTOP=Rudolf:GNOME' /run/rudolf/acct-session.env && echo 1)" "$(cat $T/krlog 2>&1; cat /run/rudolf/acct-session.env)"
+KRP=$(pgrep -u 1001 -f "sleep 300" | head -1)
 o=$(t homehas $HM/acct1001/.wine/drive_c/Program\ Files /.wine/drive_c/ homehas /home/rudolf/.wine/drive_c/x /.wine/drive_c/)
 ok "...Wine's prefix and Wine's icons are looked for in its home (Debian's home is the account's folder)" "$(echo "$o" | head -1 | grep -qx 'homehas 1' && echo "$o" | tail -1 | grep -qx 'homehas 0' && echo 1)" "$o"
 setpriv --reuid=1001 --regid=1001 --init-groups sleep 300 & P1=$!; setpriv --reuid=1001 --regid=1001 --init-groups sh -c 'trap "" TERM; while :; do sleep 1; done' & P2=$!
@@ -55,6 +60,7 @@ ok "6b. rudolfd started again while the account is signed in: its programs go on
 o=$(t session-stop uAnnA1b2 appuser); timeout 1 tail -f /dev/null
 ok "7. signing out stops every program of the account's user (one that ignores TERM too)" "$(! kill -0 $P1 2>/dev/null && ! kill -0 $P2 2>/dev/null && echo 1)" "$(ps -o pid,user,cmd -p $P1,$P2)"
 ok "...not another account's" "$(kill -0 $P3 2>/dev/null && echo 1)"; kill $P3 2>/dev/null
+ok "...its keyring stopped with it (shut away until the next sign-in)" "$([ -n "$KRP" ] && ! kill -0 $KRP 2>/dev/null && echo 1)" "KRP=$KRP $(ps -u 1001 -o pid,cmd 2>&1)"
 ok "...the display taken back from its user (--xdeny acct1001)" "$(grep -qx -- '--xdeny acct1001' $T/xlog && echo 1)" "$(cat $T/xlog)"
 ok "...its home and runtime folder gone, and the apps back to the desktop's user" "$(! mountpoint -q $HM/acct1001 && [ ! -e $RU/1001 ] && [ ! -e /run/rudolf/acct-session.env ] && echo "$o" | grep -q '^rudolf /run/rudolf/session.env$' && echo 1)" "$o"
 o=$(t users); ok "8. GET accounts/users: each account's user, moved or not, who is signed in" "$(echo "$o" | grep -q '"id":"uAnnA1b2","uid":1001,"user":"acct1001","moved":true,"signedIn":false' && echo 1)" "$o"

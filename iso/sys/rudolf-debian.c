@@ -98,14 +98,16 @@ static int installed(void) { return !access(ROOT "/etc/rudolf-debian", F_OK) && 
 #define INITUID RUND "/init.uid"
 static unsigned d_uid = 1000;                 /* who Debian's "rudolf" is on Rudolf OS */
 static char d_home[300] = "", d_rt[300] = ""; /* the account's home and runtime folder (account mode only) */
+static char d_desk[40] = "Rudolf";            /* the desktop's name for its programs: the account's session's (1.6.0 Part 14) */
 static int acct_mode(void) { return d_uid != 1000; }
 static void who(void)
 {
-	d_uid = 1000; d_home[0] = d_rt[0] = 0;
+	d_uid = 1000; d_home[0] = d_rt[0] = 0; snprintf(d_desk, sizeof d_desk, "Rudolf");
 	char *t = slurp(ACCT_ENV, NULL); if (!t) return;
-	char user[40] = "", home[300] = "", rt[300] = "";
+	char user[40] = "", home[300] = "", rt[300] = "", desk[40] = "";
 	for (char *l = strtok(t, "\n"); l; l = strtok(NULL, "\n")) {
-		if (!strncmp(l, "USER=", 5)) snprintf(user, sizeof user, "%s", l + 5);
+		if (!strncmp(l, "XDG_CURRENT_DESKTOP=", 20)) snprintf(desk, sizeof desk, "%s", l + 20);
+		else if (!strncmp(l, "USER=", 5)) snprintf(user, sizeof user, "%s", l + 5);
 		else if (!strncmp(l, "HOME=", 5)) snprintf(home, sizeof home, "%s", l + 5);
 		else if (!strncmp(l, "XDG_RUNTIME_DIR=", 16)) snprintf(rt, sizeof rt, "%s", l + 16);
 	}
@@ -116,6 +118,7 @@ static void who(void)
 	if (!u || !e || *e || u < 1001 || u > 59999 || home[0] != '/' || strstr(home, "..") || !hb || strcmp(hb + 1, user) || rt[0] != '/' || strstr(rt, "..")) return;
 	struct stat st; if (stat(home, &st) || !S_ISDIR(st.st_mode) || st.st_uid != u) return;
 	d_uid = (unsigned)u; snprintf(d_home, sizeof d_home, "%s", home); snprintf(d_rt, sizeof d_rt, "%s", rt);
+	if (!strcmp(desk, "Rudolf:GNOME")) snprintf(d_desk, sizeof d_desk, "%s", desk);   /* (only the two names rudolfd writes) */
 }
 /* the person's own folder, as Rudolf OS (outside) sees it */
 static const char *out_home(void) { return acct_mode() ? d_home : "/home/rudolf"; }
@@ -316,7 +319,8 @@ static void env_for(int root, const char *home)
 	setenv("HOME", home, 1); setenv("USER", root ? "root" : "rudolf", 1); setenv("LOGNAME", root ? "root" : "rudolf", 1);
 	setenv("SHELL", "/bin/bash", 1); setenv("LANG", "C.UTF-8", 1); setenv("TERM", "xterm-256color", 1);
 	setenv("DISPLAY", ":0", 1); setenv("XDG_RUNTIME_DIR", root ? "/run/user/0" : "/run/user/1000", 1);
-	setenv("XDG_CURRENT_DESKTOP", "Rudolf", 1); setenv("XDG_SESSION_TYPE", "x11", 1);
+	/* (1.6.0 Part 14: the account's keyring on its session bus: named GNOME's too, so Electron apps keep sign-ins in it) */
+	setenv("XDG_CURRENT_DESKTOP", !root && acct_mode() ? d_desk : "Rudolf", 1); setenv("XDG_SESSION_TYPE", "x11", 1);
 	if (!access("/run/user/1000/pulse/native", F_OK)) setenv("PULSE_SERVER", "unix:/run/user/1000/pulse/native", 1);
 	if (!root && !access("/run/user/1000/bus", F_OK)) setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus", 1);
 	if (root) setenv("DEBIAN_FRONTEND", "noninteractive", 0);

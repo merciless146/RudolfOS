@@ -255,6 +255,16 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	echo "::notice title=Tor::$((TRB / 1024)) KB added to the base layer"
 	grep -q '^tor:' "$W/broot/etc/passwd" || echo "tor:x:951:951:Tor (Oracle's Tor windows):/run/rudolf/tor:/bin/false" | sudo tee -a "$W/broot/etc/passwd" >/dev/null
 	grep -q '^tor:' "$W/broot/etc/group" || echo "tor:x:951:" | sudo tee -a "$W/broot/etc/group" >/dev/null
+	# 1.6.0 (plan Part 14): the keyring for Linux apps, gnome-keyring-daemon's secrets part (/usr/lib/rudolf/keyring starts
+	# it at sign-in, as the account's user), with what it needs that the base layer lacks, in a budget of its own, 3 MB
+	KRB=0
+	for x in /usr/bin/gnome-keyring-daemon; do
+		[ -x "$x" ] || { echo "$x is missing on the build machine (apt-get install gnome-keyring)"; exit 1; }
+		sudo install -m 0755 "$x" "$W/broot/usr/bin/gnome-keyring-daemon"; KRB=$((KRB + $(stat -c %s "$x")))
+		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; KRB=$((KRB + $(stat -L -c %s "$l"))); echo "  the keyring needs $l ($(($(stat -L -c %s "$l") / 1024)) KB)"; }; done
+	done
+	[ $KRB -lt 3145728 ] || { echo "the keyring adds $((KRB / 1024)) KB to the base layer: over its 3 MB budget (docs/plan-1.6.0.md Part 14)"; exit 1; }
+	echo "::notice title=The keyring::$((KRB / 1024)) KB added to the base layer"
 	# 1.5.9: and iw: the Wi-Fi chip's bands (Settings › Network › Wi-Fi › This computer's Wi-Fi radios, wifi.sh radios
 	# and band); it was never in the base layer, so on the Vivobook (2026111308) those found no bands at all
 	for x in /usr/sbin/nft /usr/sbin/tune2fs /usr/sbin/iw; do
