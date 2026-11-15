@@ -57,16 +57,16 @@ def extras(path):
         for l in re.findall(r'=> (/\S+)', subprocess.run(['ldd', x], capture_output=True, text=True).stdout): libs.add(l)
     for l in libs: put(l, l, 'libs')
     open(f'{T}/setup.sh', 'w').write(r'''X=$(dirname "$0")
-cp -a $X/root/. /
-# (each library only where the running system has none)
-cd $X/libs && find . -type f | while read -r f; do [ -e "/${f#./}" ] || { mkdir -p "/$(dirname "${f#./}")"; cp -a "$f" "/${f#./}"; }; done; cd /
+# place DIR all|new: each file of DIR at its path (BusyBox's cp -a makes no folders on the way): all, or only new ones
+place() { (cd $X/$1 && find . -type f) | while read -r f; do t="/${f#./}"; [ $2 = new ] && [ -e "$t" ] && continue; mkdir -p "${t%/*}"; cp -p "$X/$1/${f#./}" "$t"; done; }
+place root all; place libs new
 if [ "$(cat /run/rudolf/devices 2>/dev/null)" = udev ]; then echo "this release has udev"
-else cp -an $X/udev/. /
+else place udev new
 	for g in disk:6 lp:7 kmem:15 dialout:20 cdrom:24 tape:26 render:990 kvm:991 sgx:992; do grep -q "^${g%%:*}:" /etc/group || echo "${g%%:*}:x:${g#*:}:" >> /etc/group; done
 	pkill '^mdev$'; echo > /proc/sys/kernel/hotplug
 	/usr/lib/systemd/systemd-udevd --daemon --resolve-names=early 2>>/run/rudolf/udev.log && udevadm control --ping --timeout=5 2>>/run/rudolf/udev.log && echo udev > /run/rudolf/devices
 	udevadm trigger --type=subsystems --action=add 2>>/run/rudolf/udev.log; udevadm trigger --type=devices --action=add 2>>/run/rudolf/udev.log; udevadm settle --timeout=15 2>>/run/rudolf/udev.log
-	echo "udev from the test machine: $(cat /run/rudolf/devices)"; fi
+	echo "udev from the test machine: $(cat /run/rudolf/devices 2>/dev/null)"; tail -5 /run/rudolf/udev.log 2>/dev/null; fi
 ''')
     if os.path.exists(path): os.remove(path)
     subprocess.run(['truncate', '-s', '200M', path], check=True)
