@@ -1,0 +1,64 @@
+# Rudolf OS 1.6.0 (docs/plan-1.6.0.md Part 13): signed system extensions. Started by the owner only (Run workflow), never
+# on a schedule and never by a session: builds each extension from its recipe (iso/ext/NAME/recipe.json) for one system
+# release's base (its base layer's ABI, usr/share/rudolf/base-abi, and its kernel), on the same Ubuntu 24.04 the base
+# layer's libraries come from, signs it with the release key (RPK_SIGNING_KEY, as the release workflow signs) and
+# publishes it with a signed list in the release "ext-ABI16" (the first 16 characters of the ABI), which every computer
+# with that base reads (/usr/share/rudolf/sysext-source, written by ci_release.sh). Extensions already there for that
+# base are kept; one built again replaces its older build. Settings › Update and recovery › System extensions installs
+# them (an administrator's password); the App Store never shows them.
+name: System extensions
+on:
+  workflow_dispatch:
+    inputs:
+      release: {description: 'Serial of the system release to build for (its tag is rSERIAL)', required: true}
+      names: {description: 'Extensions to build (folders in iso/ext, space-separated); empty: all', required: false, default: ''}
+permissions: {contents: write}
+concurrency: {group: rudolf-extensions, cancel-in-progress: false}
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools python3-cryptography binutils >/dev/null
+      - name: Signing key
+        env: {KEY: '${{ secrets.RPK_SIGNING_KEY }}'}
+        run: |
+          test -n "$KEY" || { echo "::error title=Missing secret::Add RPK_SIGNING_KEY under Settings > Secrets and variables > Actions > Repository secrets"; exit 1; }
+          printf '%s\n' "$KEY" > "$RUNNER_TEMP/rpk.key" && chmod 600 "$RUNNER_TEMP/rpk.key"
+          # the tools read the raw 32-byte key in base64; a PEM file is converted here, and it must match iso/trusted-keys.txt
+          python3 iso/systools/keycheck.py "$RUNNER_TEMP/rpk.key" iso/trusted-keys.txt
+      - name: The release's base and kernel
+        env: {GH_TOKEN: '${{ github.token }}', S: '${{ inputs.release }}'}
+        run: |
+          case "$S" in ''|*[!0-9]*) echo "::error::the release is its serial (digits)"; exit 1;; esac
+          mkdir -p rel && gh release download "r$S" -D rel -p base.sfs -p modules.sfs
+          sudo unsquashfs -q -d base rel/base.sfs >/dev/null
+          ABI=$(head -1 base/usr/share/rudolf/base-abi 2>/dev/null); [ -n "$ABI" ] || { echo "::error::release r$S has no base ABI (usr/share/rudolf/base-abi): it is older than the system extensions"; exit 1; }
+          KV=$(unsquashfs -l rel/modules.sfs 2>/dev/null | sed -n 's#^squashfs-root/lib/modules/\([^/]*\)$#\1#p' | head -1)
+          echo "ABI=$ABI" >> $GITHUB_ENV; echo "KV=$KV" >> $GITHUB_ENV; echo "TAG=ext-$(echo "$ABI" | cut -c1-16)" >> $GITHUB_ENV
+          echo "::notice title=Base::release r$S, ABI $ABI, Linux $KV"
+      - name: Build and sign
+        env: {GH_TOKEN: '${{ github.token }}', NAMES: '${{ inputs.names }}', KEYFILE: '${{ runner.temp }}/rpk.key'}
+        run: |
+          mkdir -p out debs
+          # what is published for this base already stays (and is listed again)
+          gh release view "$TAG" >/dev/null 2>&1 && gh release download "$TAG" -D out -p '*.rpk' || true
+          L=$NAMES; [ -n "$L" ] || L=$(ls iso/ext)
+          for n in $L; do
+            [ -f "iso/ext/$n/recipe.json" ] || { echo "::error::no recipe iso/ext/$n/recipe.json"; exit 1; }
+            # (an extension with kernel modules is built for this release's kernel: "kernel": true in its recipe)
+            K=; python3 -c 'import json,sys;sys.exit(0 if json.load(open(sys.argv[1])).get("kernel") else 1)' "iso/ext/$n/recipe.json" && K=$KV
+            KVER=$K sh iso/systools/mkext.sh "$n" base "$KEYFILE" out debs
+          done
+          python3 iso/pkgtools/rpk-tool.py index out --key "$KEYFILE" --serial "$(date -u +%Y%m%d%H)"
+          ls -l out/*.rpk
+      - name: Publish
+        env: {GH_TOKEN: '${{ github.token }}', S: '${{ inputs.release }}'}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Rudolf OS system extensions ($TAG)" --notes "Signed system extensions for the Rudolf OS base of release r$S (base ABI $ABI). Installed from Settings › Update and recovery › System extensions."
+          gh release upload "$TAG" out/*.rpk out/index.txt out/index.sig --clobber
+      - name: Forget the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/rpk.key"

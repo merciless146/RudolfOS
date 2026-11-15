@@ -261,5 +261,15 @@ elif grep -q 'Invalid rule match' "$RUN/modem.log" 2>/dev/null; then fail modem 
 else n=$(mmcli -L 2>/dev/null | grep -c '/Modem/')
 	if [ "$n" -gt 0 ]; then pass modem "$n modem(s) found by ModemManager"; else fail modem "ModemManager runs but has found no modem (${md% }): see $RUN/modem.log"; fi; fi
 
+# 1.6.0 (plan Part 13): the signed system extensions this start laid over the base (/usr/lib/rudolf/sysext): those in
+# use, and a failure for each one left out (a clash with the base, built for another base or kernel, its file changed,
+# revoked, or left out after a start that never reached the desktop)
+XS="$RUN/ext/state"; xh=$(awk -F'\t' '$1=="start"{print $2; exit}' "$XS" 2>/dev/null)
+if [ ! -f "$XS" ]; then skip extensions "not laid over at this start (no data partition)"
+elif [ "$xh" = "none installed" ]; then skip extensions "none installed"
+elif [ "$xh" != "with extensions" ]; then skip extensions "$xh"
+else xu=$(awk -F'\t' '$3=="in-use"{printf "%s %s, ", $1, $2}' "$XS"); xl=$(awk -F'\t' '$3=="left-out"{printf "%s %s (%s); ", $1, $2, $4}' "$XS")
+	if [ -n "$xl" ]; then fail extensions "left out: ${xl%; }${xu:+; in use: ${xu%, }}"; else pass extensions "in use: ${xu%, }"; fi; fi
+
 echo "$NP passed, $NF failed, $NS skipped"
 [ $NF = 0 ]

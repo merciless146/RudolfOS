@@ -1,0 +1,102 @@
+#!/bin/sh
+# Rudolf OS 1.6.0 (docs/plan-1.6.0.md Part 13): signed system extensions, laid over the unchanged base at each start.
+# An extension is an rpk package of kind sysext (rpk install, signed by the release key only, for this base's ABI and
+# kernel: see rpk.c). rudolf-init runs "sysext assemble" early, before udev and the drivers, so an extension's udev
+# rules, firmware and kernel modules are there when the devices are set up:
+#   - each installed extension that still passes "rpk sysext-check" (its signature again, the base, the kernel, not
+#     revoked) is mounted read-only at /run/rudolf/ext/NAME, in name order;
+#   - one that has a file the base already has (or an earlier extension has) is left out: an extension adds, it never
+#     replaces, so it cannot change what the signed base does;
+#   - /usr and /lib/firmware become read-only overlays (the extensions over the base); /lib/modules/KVER an overlay with
+#     a scratch layer in /run, for depmod's lists (the base itself is never written);
+#   - each start script (usr/lib/rudolf/ext.d/NAME.start) runs as root with a time limit, its output in
+#     /run/rudolf/ext/NAME.log and a health-log line when it fails.
+# The trial: the extensions used for the first time are written down; the session marks the start good once the
+# desktop answers ("sysext good"). If it never did, the next start leaves those out (Settings › Update and recovery ›
+# System extensions says why, with Try again). Recovery mode (rudolf.recovery=1), rudolf.noext=1 and "Start once without
+# extensions" (sysext skip-once, from Settings) start with none. What this start did: /run/rudolf/ext/state
+# ("start<TAB>HOW", then NAME<TAB>VERSION<TAB>in-use|left-out<TAB>WHY lines), read by rpk sysext-status.
+#   sysext assemble | good | skip-once | retry NAME | status
+# For the host test: SYSEXT_TOP (the system's root), SYSEXT_RUN, SYSEXT_CMDLINE, SYSEXT_RPK, SYSEXT_KVER,
+# SYSEXT_HEALTH (the health log's command), SYSEXT_TIMEOUT, SYSEXT_TEST_PATH (stand-ins first); RPK_ROOT is rpk's own.
+# GPL-2.0-or-later.
+export PATH=${SYSEXT_TEST_PATH:+$SYSEXT_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
+TOP=${SYSEXT_TOP:-}; RUNE=${SYSEXT_RUN:-/run/rudolf/ext}; RPK=${SYSEXT_RPK:-/usr/bin/rpk}
+KVER=${SYSEXT_KVER:-$(uname -r)}; TL=${SYSEXT_TIMEOUT:-20}
+CMDL=${SYSEXT_CMDLINE:-/etc/rudolf/cmdline}; [ -s "$CMDL" ] || CMDL=/proc/cmdline
+HEALTH=${SYSEXT_HEALTH-/usr/bin/rudolfd --health extension}
+if [ -z "$RPK_ROOT" ]; then if [ -e /run/rudolf/persistent ] || mountpoint -q /persist 2>/dev/null; then RPK_ROOT=/persist/pkg; else RPK_ROOT=/run/rudolf/pkg; fi; fi
+export RPK_ROOT RPK_KERNEL=$KVER RPK_BASE_ABI=${RPK_BASE_ABI:-$TOP/usr/share/rudolf/base-abi}
+R=$RPK_ROOT; SX=$R/sysext; TAB=$(printf '\t')
+health() { [ -n "$HEALTH" ] && $HEALTH "$1" >/dev/null 2>&1; echo "$(date -u +%FT%TZ) $1" >> $RUNE/sysext.log; return 0; }
+ver() { sed -n 's/^version *= *//p' "$R/db/$1.info" 2>/dev/null | head -1; }
+# the installed extensions, in name order
+names() { for f in "$R"/db/*.info; do [ -f "$f" ] || continue; grep -q '^kind *= *sysext$' "$f" && basename "$f" .info; done | LC_ALL=C sort; }
+st() { printf '%s\t%s\t%s\t%s\n' "$1" "$(ver "$1")" "$2" "$3" >> $RUNE/state; }
+
+assemble() {
+	mkdir -p $RUNE; chmod 755 $RUNE; : > $RUNE/state; : > $RUNE/.files
+	L=$(names); none=
+	if grep -q 'rudolf.recovery=1' "$CMDL" 2>/dev/null; then none="Recovery mode starts without system extensions"
+	elif grep -q 'rudolf.noext=1' "$CMDL" 2>/dev/null; then none="started without system extensions, as asked at start-up (rudolf.noext=1)"
+	elif [ -e "$SX/skip-once" ]; then rm -f "$SX/skip-once"; none="started once without system extensions, as asked in Settings"; fi
+	if [ -z "$L" ]; then printf 'start\tnone installed\n' >> $RUNE/state; return 0; fi
+	if [ -n "$none" ]; then printf 'start\t%s\n' "$none" >> $RUNE/state; for n in $L; do st $n left-out "$none"; done; health "$none"; return 0; fi
+	printf 'start\twith extensions\n' >> $RUNE/state
+	# the trial: those used for the first time at the last start, when its desktop never came up, are left out
+	if [ -s "$SX/trying" ]; then mkdir -p "$SX/off"
+		while read -r n v; do [ -n "$n" ] && [ "$(ver $n)" = "$v" ] || continue
+			echo "the desktop did not come up at the last start, the first with $n $v: left out (Try again in Settings)" > "$SX/off/$n"
+			health "left out the system extension $n $v: the desktop did not come up at the first start with it"; done < "$SX/trying"
+		rm -f "$SX/trying"; fi
+	USED=
+	for n in $L; do v=$(ver $n)
+		if [ -s "$SX/off/$n" ]; then st $n left-out "$(head -1 "$SX/off/$n")"; continue; fi
+		w=$($RPK sysext-check $n 2>&1) || { st $n left-out "$w"; health "left out the system extension $n $v: $w"; continue; }
+		d=$RUNE/$n; mkdir -p $d
+		mount -t squashfs -o loop,ro "$R/store/$n.rpk" $d 2>>$RUNE/sysext.log || { st $n left-out "its image could not be mounted"; health "left out the system extension $n $v: its image could not be mounted"; rmdir $d; continue; }
+		# an extension adds, never replaces: no file the base (or an extension before it) has already
+		c=$(cd $d && find usr lib ! -type d 2>/dev/null | while read -r f; do if [ -e "$TOP/$f" ] || [ -L "$TOP/$f" ]; then echo "$f"; break; fi; grep -qxF "$f" $RUNE/.files && { echo "$f"; break; }; done)
+		if [ -n "$c" ]; then umount -d $d 2>/dev/null; rmdir $d; w="it would replace /$c, which the system already has"; st $n left-out "$w"; health "left out the system extension $n $v: $w"; continue; fi
+		(cd $d && find usr lib ! -type d 2>/dev/null) >> $RUNE/.files
+		USED="$USED $n"; st $n in-use ""
+	done
+	[ -n "$USED" ] || return 0
+	# the overlays: read-only, the extensions (in name order) over the base, which stays where it is under them
+	for t in usr lib/firmware; do lo=
+		for n in $USED; do [ -d $RUNE/$n/$t ] && lo="$lo:$RUNE/$n/$t"; done
+		[ -n "$lo" ] || continue
+		[ -d "$TOP/$t" ] || { health "the system has no /$t: the extensions' files there are not used"; continue; }
+		mkdir -p $RUNE/.base/$t && mount --bind "$TOP/$t" $RUNE/.base/$t && mount -t overlay -o ro,lowerdir=${lo#:}:$RUNE/.base/$t sysext "$TOP/$t" || health "the overlay for /$t could not be made"
+	done
+	t=lib/modules/$KVER; lo=; for n in $USED; do [ -d $RUNE/$n/$t ] && lo="$lo:$RUNE/$n/$t"; done
+	if [ -n "$lo" ] && [ -d "$TOP/$t" ]; then
+		mkdir -p $RUNE/.base/$t $RUNE/.mod/u $RUNE/.mod/w
+		if mount --bind "$TOP/$t" $RUNE/.base/$t && mount -t overlay -o lowerdir=${lo#:}:$RUNE/.base/$t,upperdir=$RUNE/.mod/u,workdir=$RUNE/.mod/w sysext "$TOP/$t"; then
+			depmod -a ${TOP:+-b "$TOP"} $KVER 2>>$RUNE/sysext.log || health "depmod could not list the extensions' kernel modules"
+		else health "the overlay for /$t could not be made"; fi
+	fi
+	# the start scripts, as root, each with its time limit
+	for n in $USED; do s="$TOP/usr/lib/rudolf/ext.d/$n.start"; [ -f "$s" ] || continue
+		echo "$(date -u +%FT%TZ) start" >> $RUNE/$n.log
+		timeout -s KILL $TL sh "$s" >> $RUNE/$n.log 2>&1 </dev/null; rc=$?
+		if [ $rc = 137 ] || [ $rc = 124 ]; then health "the system extension $n's start script did not finish in $TL s: stopped"
+		elif [ $rc != 0 ]; then health "the system extension $n's start script failed ($rc): $(tail -n 1 $RUNE/$n.log | cut -c1-160)"; fi
+	done
+	# the trial: what is used for the first time (or a new version) is on trial until the desktop answers
+	mkdir -p "$SX"; : > "$SX/trying.new"
+	for n in $USED; do grep -qxF "$n $(ver $n)" "$SX/good" 2>/dev/null || echo "$n $(ver $n)" >> "$SX/trying.new"; done
+	if [ -s "$SX/trying.new" ]; then mv "$SX/trying.new" "$SX/trying"; else rm -f "$SX/trying.new"; fi
+	return 0
+}
+# the desktop answered (the session, at its heartbeat): this start's extensions are good
+good() { grep -q "^start${TAB}with extensions$" $RUNE/state 2>/dev/null || return 0; mkdir -p "$SX"
+	awk -F'\t' '$3=="in-use"{print $1" "$2}' $RUNE/state > "$SX/good.new" && mv "$SX/good.new" "$SX/good"; rm -f "$SX/trying"; }
+case "$1" in
+assemble) assemble ;;
+good) good ;;
+skip-once) mkdir -p "$SX" && : > "$SX/skip-once" && echo "The next start is without system extensions." ;;
+retry) case "$2" in ''|*[!a-z0-9_-]*) echo "usage: sysext retry NAME"; exit 2;; esac; rm -f "$SX/off/$2"; echo "$2 is tried again at the next start." ;;
+status) cat $RUNE/state 2>/dev/null ;;
+*) echo "usage: sysext assemble | good | skip-once | retry NAME | status"; exit 2 ;;
+esac

@@ -2252,6 +2252,45 @@ static void api_pkg(struct req *r, const char *what)
 	reply_err(r->fd, 404, "unknown package action");
 }
 
+/* ------------------------------------------------------------- system extensions (1.6.0, docs/plan-1.6.0.md Part 13)
+ * Settings › Update and recovery › System extensions: what is installed and what this start did with it (rpk
+ * sysext-status), and, only for an administrator whose password rudolfd checks itself (the body {"n":ADMIN,"p":PASSWORD}):
+ * install one from the extensions' list, remove one, try a left-out one again, start once without any. The files take
+ * effect at the next start (/usr/lib/rudolf/sysext). */
+#ifndef SX_RPK
+#define SX_RPK "/usr/bin/rpk"
+#endif
+#ifndef SX_SH
+#define SX_SH "/usr/lib/rudolf/sysext"
+#endif
+static int desk_admin_check(const char *n, const char *pw, char *why, size_t wn);   /* rudolfd-desktop.inc */
+static void dfree_secret(char *p);
+static void health_add(const char *kind, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void api_sysext(struct req *r, const char *what, int post)
+{
+	if (access(SX_RPK, X_OK) || access(SX_SH, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no system extensions"); return; }
+	if (!strcmp(what, "status")) { char *o = run_out(SX_RPK " sysext-status 2>/dev/null"); if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "rpk failed"); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
+	if (!post) { reply_err(r->fd, 405, "use POST"); return; }
+	if (strcmp(what, "install") && strcmp(what, "remove") && strcmp(what, "retry") && strcmp(what, "skip-once")) { reply_err(r->fd, 404, "unknown extension action"); return; }
+	char *q = qparam(r->query, "name"); char name[48] = "";
+	if (strcmp(what, "skip-once")) { if (!q || !*q || strlen(q) > 40 || strspn(q, "abcdefghijklmnopqrstuvwxyz0123456789-_") != strlen(q)) { reply_err(r->fd, 400, "bad extension name"); return; } snprintf(name, sizeof name, "%s", q); }
+	char *an = NULL, *ap = NULL, why[200] = "";
+	if (r->body && r->blen && r->body[0] == '{') { an = dbody_field(r, "n"); ap = dbody_field(r, "p"); }
+	int adm = an && ap ? desk_admin_check(an, ap, why, sizeof why) : -1;
+	dfree_secret(ap);
+	if (adm) { free(an); reply_err(r->fd, adm == 429 ? 429 : 403, why[0] ? why : "an administrator's name and password are needed"); return; }
+	char cmd[300];
+	if (!strcmp(what, "install") || !strcmp(what, "remove")) {
+		if (access(RUN "/persistent", F_OK)) { free(an); reply_err(r->fd, 409, "system extensions need Rudolf OS installed (or a RUDOLFDATA partition): they are kept there"); return; }
+		if (job_running()) { free(an); reply_err(r->fd, 409, "another task is still running"); return; }
+		health_add("extension", "%s of the system extension %s asked by %.60s", !strcmp(what, "install") ? "installation" : "removal", name, an);
+		snprintf(cmd, sizeof cmd, SX_RPK " %s --system %s", what, name); start_job("extensions", cmd); free(an); reply_ok(r->fd, "started"); return;
+	}
+	if (!strcmp(what, "retry")) snprintf(cmd, sizeof cmd, SX_SH " retry %s 2>&1", name); else snprintf(cmd, sizeof cmd, SX_SH " skip-once 2>&1");
+	health_add("extension", "%s asked by %.60s", !strcmp(what, "retry") ? "trying the system extension again" : "the next start without system extensions", an);
+	free(an); char *o = run_out(cmd); reply_ok(r->fd, o ? o : ""); free(o);
+}
+
 /* ------------------------------------------------------------- Task Manager (1.2) */
 /* the kernel, the hardware and the services, for Task Manager's System and Hardware tabs and system reports.
    Lists that are many lines (drivers, kernel messages, devices) are plain text, one item a line. Nothing that
@@ -3438,7 +3477,7 @@ static void api_devlink(struct req *r, const char *what, int post)
 static void health_path(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/health.log" : PERSIST "/var/log/health.log"); }
 static int health_kind_ok(const char *k)
 {
-	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", "tor", NULL };
+	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", "tor", "extension", NULL };
 	for (int i = 0; K[i]; i++) if (k && !strcmp(k, K[i])) return 1;
 	return 0;
 }
@@ -4419,6 +4458,7 @@ static void api(struct req *r)
 	if (!strncmp(p, "pkg/", 4)) { api_pkg(r, p + 4); return; }
 	if (!strncmp(p, "print/", 6)) { api_print(r, p + 6); return; }
 	if (!strncmp(p, "keyring/", 8)) { api_keyring(r, p + 8, post); return; }   /* 1.6.0 (plan Part 14) */
+	if (!strncmp(p, "sysext/", 7)) { api_sysext(r, p + 7, post); return; }   /* 1.6.0 (plan Part 13) */
 	if (!strncmp(p, "apps/", 5)) { api_apps(r, p + 5); return; }
 	if (!strncmp(p, "debian/", 7)) { api_debian(r, p + 7); return; }
 	if (!strncmp(p, "ai/", 3)) { api_ai(r, p + 3); return; }

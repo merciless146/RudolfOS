@@ -159,6 +159,7 @@ mkdir -p usr/share/rudolf
 cp -a "$WWW" usr/share/rudolf/www
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" usr/share/rudolf/VERSION
 date -u +%F > usr/share/rudolf/released   # 1.4.4: the clock floor (clockfloor)
+sh "$HERE/systools/baseabi.sh" . > usr/share/rudolf/base-abi   # 1.6.0 (plan Part 13): for signed system extensions
 
 # ---------- kernel modules (Wi-Fi and other optional drivers)
 if [ -d "$HERE/modules/lib/modules" ]; then cp -a "$HERE/modules/lib/modules" usr/lib/; fi

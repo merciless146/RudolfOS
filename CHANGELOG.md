@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- New: signed system extensions (Settings › Update and recovery › System extensions): parts such as printer support added to Rudolf OS without a new release, laid over the system read-only at each start and never changing it; only Rudolf OS's own signed ones, installed by an administrator, left out if one would replace a part of Rudolf OS or keeps it from starting, with Start once without extensions.
 - Devices are now set up by udev, as on other Linux distributions, so Linux apps, Steam and the modem service find hardware the usual way; mdev stays as a fallback if udev cannot start.
 - Settings › Privacy › Saved passwords for apps: see which apps keep sign-ins in this account's keyring and remove them; Flatpak apps can now keep theirs too (the Secret portal).
 - New: App Store › Rudolf OS Library says when its list of apps was last checked (and when the Library published it), with a Refresh button at the end of its first line: the list was kept until it stopped working, so a working list days old never showed new apps or updates (Ember Reach on the Vivobook, 2026-11-14)
