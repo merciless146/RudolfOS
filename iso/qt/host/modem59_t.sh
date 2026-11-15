@@ -1,6 +1,6 @@
 #!/bin/sh
 # 1.5.9 (plan Part 1): /usr/lib/rudolf/modem: ModemManager runs only while a modem is there (mdev's hotplug), and
-# status reads each modem (maker, model, SIM, operator, signal) from mmcli. Stand-ins for ModemManager, mmcli,
+# status reads each modem (maker, model, SIM, operator, signal) from mmcli (1.6.0: its key-value output). Stand-ins for ModemManager, mmcli,
 # dbus-daemon, pgrep and pkill.   sh modem59_t.sh
 HERE=$(cd "$(dirname "$0")" && pwd); M=$HERE/../../sys/root/usr/lib/rudolf/modem; T=$(mktemp -d); trap 'rm -rf $T' EXIT
 N=0; F=0; ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $3"; F=$((F+1)); fi; }
@@ -14,9 +14,11 @@ cat > $B/mmcli <<'E'
 case "$*" in
 --report-kernel-event=*) echo "${1#*=}" >> $ST/events ;;
 "-L") exit 0 ;;
-"-J -L") echo '{"modem-list":["/org/freedesktop/ModemManager1/Modem/0"]}' ;;
-"-J -m 0") echo '{"modem":{"3gpp":{"imei":"861234567890123","operator-code":"310260","operator-name":"T-Mobile","registration-state":"home"},"generic":{"access-technologies":["lte"],"drivers":["qmi_wwan","option"],"equipment-identifier":"861234567890123","manufacturer":"Quectel","model":"EG25","revision":"EG25GGBR07A08M2G","sim":"/org/freedesktop/ModemManager1/SIM/0","signal-quality":{"recent":"yes","value":"74"},"state":"registered","state-failed-reason":"--","unlock-required":"--"}}}' ;;
-"-J -i 0") echo '{"sim":{"properties":{"active":"yes","operator-name":"T-Mobile"}}}' ;;
+"-K -L") echo 'modem-list.value[1] : /org/freedesktop/ModemManager1/Modem/0' ;;
+"-m 0 -K") printf '%s\n' 'modem.generic.manufacturer : Quectel' 'modem.generic.model : EG25' 'modem.generic.revision : EG25GGBR07A08M2G' 'modem.generic.drivers.length : 2' 'modem.generic.drivers.value[1] : qmi_wwan' 'modem.generic.drivers.value[2] : option' \
+  'modem.generic.equipment-identifier : 861234567890123' 'modem.generic.sim : /org/freedesktop/ModemManager1/SIM/0' 'modem.generic.state : registered' 'modem.generic.state-failed-reason : --' 'modem.generic.unlock-required : --' \
+  'modem.generic.signal-quality.value : 74' 'modem.generic.access-technologies.length : 1' 'modem.generic.access-technologies.value[1] : lte' 'modem.3gpp.operator-name : T-Mobile' 'modem.3gpp.imei : 861234567890123' ;;
+"-i 0 -K") echo 'sim.dbus-path : /org/freedesktop/ModemManager1/SIM/0' ;;
 esac
 E
 chmod +x $B/*
@@ -37,7 +39,7 @@ print(1 if d["running"] and m["maker"]=="Quectel" and m["model"]=="EG25" and m["
 ok "4. ...the IMEI shortened (it identifies the device)" $(echo "$o" | grep -q '"imei":"861234…"' && echo 1 || echo 0) "$o"
 rm $T/dev/cdc-wdm0 $T/dev/wwan0at0; rm -rf $S/class/tty/ttyUSB2; : > $T/events; MDEV=cdc-wdm0 ACTION=remove sh $M hotplug
 ok "5. the last modem gone: ModemManager is told, then stops" $([ ! -e $T/mm-running ] && grep -q killed $T/log && grep -qx 'action=remove,subsystem=usbmisc,name=cdc-wdm0' $T/events && echo 1 || echo 0) "$(cat $T/log; cat $T/events)"
-o=$(sh $M status); ok "6. not running: an empty list" $([ "$o" = '{"running":false,"modems":[]}' ] && echo 1 || echo 0) "$o"
+o=$(sh $M status); ok "6. not running: an empty list" $([ "$o" = '{"running":false,"modems":[],"notes":[]}' ] && echo 1 || echo 0) "$o"
 grep -q '^-cdc-wdm\[0-9\]+ 0:0 660 \*/usr/lib/rudolf/modem hotplug' $HERE/../../sys/root/etc/mdev.conf; ok "7. mdev runs it for modem devices" $([ $? = 0 ] && echo 1 || echo 0)
 touch $T/old-mm; rm -f $T/log; touch $T/dev/cdc-wdm0; MDEV=cdc-wdm0 ACTION=add sh $M hotplug
 ok "8. an older ModemManager without --test-no-udev: --no-auto-scan" $(grep -q "MM --log-level=WARN --no-auto-scan" $T/log && echo 1 || echo 0) "$(cat $T/log)"

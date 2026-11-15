@@ -217,11 +217,16 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; done
 	done
 	# 1.5.9 (plan Part 1): ModemManager (read only in 1.5.9: /usr/lib/rudolf/modem) with libqmi, libmbim and libqrtr,
-	# its plug-ins and the operators' database (mobile-broadband-provider-info, for 1.6.0's APNs); under 12 MB in all
-	# (10 MB until 2026-11-13: beta 2026111316 came to just over it; raised to 12 MB, as asked). Its udev rules too:
-	# with no udev, ModemManager applies them itself (/usr/lib/rudolf/modem runs it with --test-no-udev)
-	MMF=$(for p in modemmanager mobile-broadband-provider-info libqmi-proxy libmbim-proxy; do dpkg -L $p; done 2>/dev/null | grep -E '/(ModemManager|mmcli|qmi-proxy|mbim-proxy)$|/ModemManager/[^/]*\.so$|/ModemManager/fcc-unlock\.available\.d/|/serviceproviders\.xml$|/dbus-1/system\.d/org\.freedesktop\.ModemManager1\.conf$|/udev/rules\.d/[0-9]+-mm-[^/]*\.rules$')
+	# its plug-ins and the operators' database (mobile-broadband-provider-info, for 1.6.0's APNs). Its udev rules too:
+	# with no udev, ModemManager applies them itself (/usr/lib/rudolf/modem runs it with --test-no-udev).
+	# 1.6.0 (plan Part 1): QMI, MBIM, QRTR and AT (the plug-ins, libqrtr-glib for Qualcomm's QRTR modules, qmi-proxy and
+	# mbim-proxy); its FCC unlock scripts (off until an administrator turns one on: /usr/lib/rudolf/modem fcc) and what
+	# they run (qmicli, mbimcli from libqmi-utils and libmbim-utils; bash for MediaTek's); the sizes printed, no budget
+	# (the owner dropped the size budgets for 1.6.0)
+	MMF=$(for p in modemmanager mobile-broadband-provider-info libqmi-proxy libmbim-proxy libqmi-utils libmbim-utils; do dpkg -L $p; done 2>/dev/null | grep -E '/(ModemManager|mmcli|qmi-proxy|mbim-proxy|qmicli|mbimcli)$|/ModemManager/[^/]*\.so$|/ModemManager/fcc-unlock\.available\.d/|/serviceproviders\.xml$|/dbus-1/system\.d/org\.freedesktop\.ModemManager1\.conf$|/udev/rules\.d/[0-9]+-mm-[^/]*\.rules$')
 	echo "$MMF" | grep -q '/ModemManager$' && echo "$MMF" | grep -q '/mmcli$' || { echo "ModemManager is missing on the build machine (apt-get install modemmanager mobile-broadband-provider-info)"; exit 1; }
+	echo "$MMF" | grep -q '/qmicli$' && echo "$MMF" | grep -q '/mbimcli$' || { echo "qmicli or mbimcli is missing on the build machine (apt-get install libqmi-utils libmbim-utils): the FCC unlock scripts need them"; exit 1; }
+	echo "$MMF" | grep -q '/fcc-unlock\.available\.d/' || { echo "ModemManager's FCC unlock scripts are not in the modemmanager package"; exit 1; }
 	echo "$MMF" | grep -q -- '-mm-candidate\.rules$' || { echo "ModemManager's udev rules (80-mm-candidate.rules) are not in the modemmanager package: without them it sees no modem on Rudolf OS"; exit 1; }
 	MMB=0
 	for x in $MMF; do [ -f "$x" ] || continue; sudo mkdir -p "$W/broot$(dirname "$x")"; sudo cp -L "$x" "$W/broot$x"; MMB=$((MMB + $(stat -c %s "$x")))
@@ -231,8 +236,11 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	# (what it is made of, largest first: each file of the packages and each library it brought)
 	MML=$(for x in $MMF; do [ -f "$x" ] && echo "$(stat -c %s "$x") $x"; done; for x in $MMF; do case "$x" in *.xml|*.conf|*.rules) continue;; esac; [ -f "$x" ] && ldd "$x" 2>/dev/null | awk '/=>/{print $3}'; done | sort -u | while read -r l; do [ -n "$l" ] && [ -e "$l" ] && ! echo "$MMF" | grep -qx "$l" && echo "$(stat -L -c %s "$l") $l (library)"; done)
 	echo "$MML" | sort -rn | head -15 | awk '{printf "  %6d KB %s %s\n", $1/1024, $2, $3}'
-	[ $MMB -lt 12582912 ] || { echo "ModemManager adds $((MMB / 1024)) KB to the base layer: over its 12 MB budget (docs/plan-1.5.9.md Part 1)"; exit 1; }
-	echo "::notice title=ModemManager::$((MMB / 1024)) KB added to the base layer"
+	# (bash, for the FCC unlock script of MediaTek's modules (14c3): the base layer's sh is BusyBox's ash)
+	if [ ! -e "$W/broot/bin/bash" ] && [ ! -e "$W/broot/usr/bin/bash" ]; then sudo install -m 0755 /bin/bash "$W/broot/usr/bin/bash"; [ -L "$W/broot/bin" ] || sudo ln -sf /usr/bin/bash "$W/broot/bin/bash"; MMB=$((MMB + $(stat -L -c %s /bin/bash)))
+		for l in $(ldd /bin/bash | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; MMB=$((MMB + $(stat -L -c %s "$l"))); }; done; fi
+	echo "  ModemManager and its parts: $((MMB / 1024)) KB in all ($(echo "$MMF" | grep -c 'fcc-unlock\.available\.d/') FCC unlock scripts, $(echo "$MMF" | grep -c '/ModemManager/[^/]*\.so$') plug-ins)"
+	echo "::notice title=ModemManager::$((MMB / 1024)) KB added to the base layer (QMI, MBIM, QRTR and AT; no budget in 1.6.0)"
 	# (the hotspot's tools have their own budget, 6 MB: with ModemManager's, the two came to 13 MB in 2026111314's build)
 	HSB=0
 	# 1.5.9 (plan Part 4): Share this connection: hostapd and hostapd_cli (the access point) and dnsmasq (addresses)
