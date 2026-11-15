@@ -124,4 +124,12 @@ sed -i 's/availability group: Legacy 1, availability unknown/availability group:
 ok "...a headset plugged in (the jack available): its microphone" "$([ "$(cat $ST/dsrc)" = alsa_input.card1.analog-stereo ] && echo 1)" "$(cat $ST/dsrc)"
 : > $ST/srclist; sh $SND default 1 >/dev/null 2>&1
 ok "...without the port list: the card's own, as before" "$([ "$(cat $ST/dsrc)" = alsa_input.card1.analog-stereo ] && echo 1)" "$(cat $ST/dsrc)"
+# 2026-11-14: Settings' list of microphones (sound mics) and the choice (sound mic NAME)
+reset; printf '1\tmodule-alsa-card\tdevice_id=1 name=card1 tsched=1\n2\tmodule-alsa-card\tdevice_id=2 name=card2 tsched=1\n' > $ST/mods; echo 3 > $ST/next; echo alsa_input.card1.analog-stereo > $ST/dsrc
+printf 'Source #0\n\tName: alsa_output.card1.analog-stereo.monitor\n\tDescription: Monitor of HD-Audio\nSource #2\n\tName: alsa_input.card1.analog-stereo\n\tDescription: HD-Audio Generic Analog Stereo\nSource #1\n\tName: alsa_input.card2.analog-stereo\n\tDescription: acp6x Stereo\n' > $ST/srclist
+printf '50\talsa_input.card1.analog-stereo\t9\tprotocol-native.c\n' > $ST/souts
+o=$(sh $SND mics); ok "24. the microphones: name, description, the default marked; no monitors" "$([ "$o" = "$(printf 'alsa_input.card1.analog-stereo\tHD-Audio Generic Analog Stereo\t1\nalsa_input.card2.analog-stereo\tacp6x Stereo\t0')" ] && echo 1)" "$o"
+o=$(sh $SND mic alsa_input.card2.analog-stereo); ok "...one chosen: the default, a call's microphone moved to it" "$([ "$(cat $ST/dsrc)" = alsa_input.card2.analog-stereo ] && grep -q '^50	alsa_input.card2.analog-stereo' $ST/souts && echo 1)" "$o $(cat $ST/dsrc)"
+o=$(sh $SND mic 'x;reboot'); r=$?; ok "...a name that is not a microphone's is refused" "$([ $r = 2 ] && [ "$(cat $ST/dsrc)" = alsa_input.card2.analog-stereo ] && echo 1)" "$o"
+o=$(sh $SND mic alsa_input.card9.none); r=$?; ok "...as is one that does not exist" "$([ $r = 2 ] && echo 1)" "$o"
 echo "$N tests, $F failed"; [ $F = 0 ]
