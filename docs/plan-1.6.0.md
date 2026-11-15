@@ -800,6 +800,9 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
     first); GPU drawing for Lite measured; Oracle's WebKit tabs (YouTube, Google sign-in with FedCM, a download, full
     screen, memory with 5 tabs); the lock and sign-in screen settings and the shutting-down screen; the dynamic
     backgrounds' moving parts.
+    **Decided (owner, 2026-11-15): not in 1.6.0.** Native replaces Lite as the desktop; Lite stays as a compatibility
+    option in Settings › System health › Desktop engine, kept working as it is, and these are worked on and refined
+    in a later release.
   - **A lighter desktop page (1.5.9 10.3, 10.4):** the engines' limits measured; the ~200 MB that belongs to no
     process; WPE WebKit as a later Lite engine; the 10.4 targets measured on the Vivobook.
   - **The native session's logs kept across a restart** (found on 2026-11-15: rudolf-native's output, the page log,
