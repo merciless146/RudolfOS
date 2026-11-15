@@ -144,23 +144,29 @@ try:
     out('accounts:', r); BOSS, KID = str(r).split()
     for n, pw in (('boss', 'b1'), ('kid', 'k1')):
         out('sign-in', n, signin(js, n, pw)); out('on the disk:', wait_for(js, "!!(USER&&USER.disk&&hdOn())", 600, 10))
+        # the account's test file, put in its folder from the shell while it is signed in (the folder is encrypted with
+        # the account's own key and locked while it is signed out; the first run's file written through the page never
+        # reached the disk)
+        aid = BOSS if n == 'boss' else KID
+        out(sh(f"d=/persist/accounts/{aid}/Documents; mkdir -p $d && echo '{n} secret' > $d/SECRET.TXT && sync; ls -l $d/SECRET.TXT"))
         out(signout(js))
     time.sleep(5)
     users = sh("cat /persist/etc/rudolf/account-users; ls -ln /persist/accounts")
     out(users)
-    # each account's test file, put in its folder here (the desktop's own file saving is not what these checks are
-    # about: the first run's file written through the page never reached the disk before the sign-out)
-    out(sh(f"for a in {BOSS}:boss {KID}:kid; do d=/persist/accounts/${{a%%:*}}/Documents; mkdir -p $d; echo \"${{a#*:}} secret\" > $d/SECRET.TXT; done; ls -l /persist/accounts/*/Documents/SECRET.TXT"))
     # as before 1.5.9: the folders the desktop's user's, and not yet moved
     sh(f"chown -R 1000:1000 /persist/accounts/{BOSS} /persist/accounts/{KID}; sed -i 's/ moved$//' /persist/etc/rudolf/account-users; sync")
     vm.stop(); time.sleep(3)
     vm, g, up, js = boot('a2', 'a'); sh = lambda c, t=60: run(g, c, t)
     ok('2. started again', up)
     if not up: raise SystemExit
-    o = sh(f"cat /persist/etc/rudolf/account-users; stat -c '%u %a %n' /persist/accounts/{BOSS} /persist/accounts/{BOSS}/Documents/SECRET.TXT /persist/accounts/{KID}; grep -h 'own Linux user' /persist/var/log/health*.log /run/rudolf/health*.log 2>/dev/null | tail -3")
+    # (the file is looked at once boss is signed in: its folder is locked until then)
+    o = sh(f"cat /persist/etc/rudolf/account-users; stat -c '%u %a %n' /persist/accounts/{BOSS} /persist/accounts/{KID}; grep -h 'own Linux user' /persist/var/log/health*.log /run/rudolf/health*.log 2>/dev/null | tail -3")
     ub = re.search(rf'^{BOSS} (\d+)', o, re.M); uk = re.search(rf'^{KID} (\d+)', o, re.M); UB, UK = (ub.group(1) if ub else '?'), (uk.group(1) if uk else '?')
-    ok('3. 15.3: the move on an existing data partition: each account\'s folder and files belong to its own Linux user now, 0700, logged', ub and uk and f'{UB} 700 /persist/accounts/{BOSS}' in o and f'{UK} 700 /persist/accounts/{KID}' in o and re.search(rf'^{UB} \d+ /persist/accounts/{BOSS}/Documents/SECRET.TXT', o, re.M) and 'own Linux user' in o, o)
+    o3 = o
+    def check3(o):
+            ok('3. 15.3: the move on an existing data partition: each account\'s folder and files belong to its own Linux user now, 0700, logged', ub and uk and f'{UB} 700 /persist/accounts/{BOSS}' in o and f'{UK} 700 /persist/accounts/{KID}' in o and re.search(rf'^{UB} \d+ /persist/accounts/{BOSS}/Documents/SECRET.TXT', o, re.M) and 'own Linux user' in o, o)
     out('sign-in boss', signin(js, 'boss', 'b1')); out('on the disk:', wait_for(js, "!!(USER&&USER.disk&&hdOn())", 600, 10)); time.sleep(5)
+    check3(o3 + sh(f"stat -c '%u %a %n' /persist/accounts/{BOSS}/Documents/SECRET.TXT"))
     TOK = js("RUDOLFD.token"); out('token length', len(str(TOK)))
     o = sh(f"cat /run/rudolf/acct-session.env; ls -ld /home/acct{UB}; id acct{UB}")
     ok('4. signed in: the account\'s session, its home its own folder', f'HOME=/home/acct{UB}' in o, o)
