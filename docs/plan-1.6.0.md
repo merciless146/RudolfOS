@@ -566,6 +566,7 @@ half pixels of line boxes differently (Blitzen's suggestions' text 1 px higher i
 of the phone, framed by the shell as a Linux app's, as on Standard) needs a phone, so it is a Vivobook check, not a host
 test; selects given other padding by their own rules (games' and the media player's) have the chevron but not Chromium's
 20 px after the text.
+**Test findings (2026-11-15, unattended session):** Native compared with Standard across the desktop, the apps, video and sound, with Log video problems on: 19 findings (3 break: full-screen video black, the file dialog cut off inside the app's window, Task Manager lists only itself). See docs/native-findings-2026-11-15.md.
 **Next:** items 9 to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md
 after them. Native is not
 the default yet. The security line's next steps (as of 2026-11-14): docs/plan-1.5.9.md 15.3's third step (the QEMU check
