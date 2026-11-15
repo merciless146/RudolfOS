@@ -41,27 +41,32 @@ removable() {
 	return 1
 }
 
-# Rudolf OS's own disc, stick or data partition
+# the disk Rudolf OS runs from: a partition of it in use outside /media (its system, its RUDOLFDATA). 2026-11-14:
+# before, any disk with a RUDOLFDATA or an ISO 9660 partition counted, so another Rudolf OS stick (an older one, plugged
+# in) never showed in the File Explorer at all (found on the Vivobook with a 1.4.1 stick)
+MOUNTS=${RUDOLF_MOUNTS:-/proc/mounts}
 system_disk() {
-	local p n b
-	for p in /sys/block/$1/$1* /sys/block/$1; do
-		n=${p##*/}; [ -e /dev/$n ] || continue
-		b=$(blkid /dev/$n 2>/dev/null)
-		case "$b" in *LABEL=\"RUDOLFDATA\"*|*TYPE=\"iso9660\"*) return 0;; esac
-	done
-	grep -q "^/dev/$1" /proc/mounts && ! grep -q "^/dev/$1[^ ]* /media/" /proc/mounts && return 0
+	grep -q "^/dev/$1" $MOUNTS && ! grep -q "^/dev/$1[^ ]* /media/" $MOUNTS && return 0
+	# (its start-up image: the loop device's file on one of its partitions)
+	[ -n "$RUDOLF_SYS" ] || for l in /sys/block/loop*/loop/backing_file; do [ -f "$l" ] || continue; f=$(cat "$l"); m=$(df -P "$f" 2>/dev/null | awk 'NR==2{print $1}'); case "$m" in /dev/$1*) return 0;; esac; done
 	return 1
+}
+# a partition of another Rudolf OS disc or stick: its start-up parts are not shown, its RUDOLFDATA only read
+rudolf_part() {
+	local b; b=$(blkid /dev/$1 2>/dev/null)
+	case "$b" in *TYPE=\"iso9660\"*|*LABEL=\"RUDOLF\ EFI\"*|*LABEL=\"RUDOLF_BOOT*) echo boot;; *LABEL=\"RUDOLFDATA\"*) echo data;; esac
 }
 
 mount_part() {
-	local p=$1 mp=/media/$1 fs t
+	local p=$1 mp=/media/$1 fs t ro=$2
 	grep -q "^/dev/$p " /proc/mounts && return 0
 	fs=$(blkid /dev/$p 2>/dev/null | sed -n 's/.* TYPE="\([^"]*\)".*/\1/p')
 	[ -n "$fs" ] || return 1
 	case $fs in swap|crypto_LUKS|LVM2_member|linux_raid_member|BitLocker) return 1;; esac
 	t=""; [ "$fs" = ntfs ] && t="-t ntfs3"
 	mkdir -p $mp
-	mount $t -o rw,nosuid,nodev,noexec /dev/$p $mp 2>/dev/null || mount $t -o ro,nosuid,nodev,noexec /dev/$p $mp 2>/dev/null || { rmdir $mp; return 1; }
+	if [ "$ro" = ro ]; then mount $t -o ro,nosuid,nodev,noexec /dev/$p $mp 2>/dev/null || { rmdir $mp; return 1; }
+	else mount $t -o rw,nosuid,nodev,noexec /dev/$p $mp 2>/dev/null || mount $t -o ro,nosuid,nodev,noexec /dev/$p $mp 2>/dev/null || { rmdir $mp; return 1; }; fi
 	return 0
 }
 
@@ -86,8 +91,9 @@ block_add() {
 	[ "$p" = "$d" ] && ls /sys/block/$d/ 2>/dev/null | grep -q "^$d.*[0-9]$" && return 0
 	for i in 1 2 3 4 5 6; do blkid /dev/$p >/dev/null 2>&1 && break; sleep 0.5; done
 	[ -e $RUN/busy/$d ] && return 0
-	mount_part $p || return 0
-	j=$(drive_json $p); echo "$j" > $RUN/drives/$p
+	k=$(rudolf_part $p); [ "$k" = boot ] && return 0
+	if [ "$k" = data ]; then mount_part $p ro || return 0; else mount_part $p || return 0; fi
+	j=$(drive_json $p); [ "$k" = data ] && j=$(echo "$j" | sed 's/"label":"[^"]*"/"label":"Rudolf OS data (another Rudolf OS, read-only)"/'); echo "$j" > $RUN/drives/$p
 	event "{\"a\":\"add\",${j#\{}"
 }
 

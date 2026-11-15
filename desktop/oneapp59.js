@@ -36,7 +36,10 @@ if(ONEAPP){
    page of its own, so a page that saved tells the others, which read the files again (the system's and the account's home) and
    show them as they are now (EXPL) - or a window would show, and save back, files another window changed */
 if(ONEAPP&&typeof BroadcastChannel=='function'){const FSB=new BroadcastChannel('rudolf-fs'),ME=Math.random().toString(36).slice(2);
- const tell=()=>{try{homeChain.then(()=>FSB.postMessage({from:ME,id:typeof uid=='function'&&USER?uid():''}))}catch(e){}};
+ const tell=()=>{try{homeChain.then(()=>FSB.postMessage({from:ME,id:typeof uid=='function'&&USER?uid():''}))}catch(e){}
+  /* (1.5.9, 12.3c) and the other engine's windows: Oracle's page is in Chromium, the apps' in WebKit, each with storage of its own;
+     once rudolfd's mirror has the files, the native desktop tells the others, which take them from there (__oaMirrorIn) */
+  try{if(oaOut())oaDrained().then(()=>oaPost({op:'mirror',id:typeof uid=='function'&&USER?uid():''}))}catch(e){}};
  const _ff=fsFlush;fsFlush=function(){const d=fsDirty;const r=_ff.apply(this,arguments);if(d)setTimeout(tell,60);return r};
  let busy=null;FSB.onmessage=e=>{const m=e.data||{};if(m.from==ME||!USER||!IDB||!IDB.db||!FSLOADED||(m.id&&m.id!=uid()))return;busy=(busy||Promise.resolve()).then(oaFsReload)};
  async function oaFsReload(){try{
@@ -46,7 +49,16 @@ if(ONEAPP&&typeof BroadcastChannel=='function'){const FSB=new BroadcastChannel('
   if(USER.r!='guest'&&HOME&&!HOMELOCKED){const rec=await kvGet('home:'+uid());let o=null;
    if(rec&&rec.ct&&KEY)o=JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:rec.iv},rec.k=='f'?KEY:(PKEY||KEY),rec.ct)));else if(rec&&rec.plain)o=JSON.parse(rec.plain);
    if(o&&isDir(o)){for(const k of Object.keys(HOME))delete HOME[k];Object.assign(HOME,o)}}
-  EXPL.forEach(f=>{try{f()}catch(x){}})}catch(e){console.warn('one-app: the files again',e)}}}
+  EXPL.forEach(f=>{try{f()}catch(x){}})}catch(e){console.warn('one-app: the files again',e)}}
+ /* (1.5.9, 12.3c) the files another engine's window saved: the system's and this account's records from rudolfd's mirror into this
+    engine's storage (not sent back to the mirror), then read again as above */
+ window.__oaMirrorIn=id=>{if(!USER||!IDB||!IDB.db||!FSLOADED||(id&&id!=uid())||typeof RD=='undefined'||!RD)return;busy=(busy||Promise.resolve()).then(async()=>{
+  for(const k of ['fs:system','home:'+uid()])try{const r=await fetch('/api/idbm/get?f='+idbmName('rudolfos','kv',k),{headers:{'X-Rudolf-Token':RD.token},cache:'no-store'});if(!r.ok)continue;
+   const j=await r.json();if(j.db!='rudolfos'||j.store!='kv'||j.key!==k)continue;const v=await idbmDec(j.v);await idbmRaw('rudolfos','kv','readwrite',st=>st.put(v,k))}catch(e){console.warn('one-app: the mirror',k,e)}
+  await oaFsReload()})}}
+/* (1.5.9, 12.3c) the files written and rudolfd's mirror up to date (before another engine's window is told, or opens a file) */
+async function oaDrained(){try{fsFlush()}catch(e){}try{await homeChain}catch(e){}
+ for(let i=0;i<100&&typeof IDBM=='object'&&(IDBM.busy||IDBM.queue.size);i++)await new Promise(r=>setTimeout(r,100))}
 /* (1.6.0 Part 12, item 3) the settings are one: on Standard every window is one page with one S; here a page that saved its settings
    (Settings, or the native shell's quick settings through a page of their own) changes the others too, as on Standard (WebKit tells
    the other pages of a change to the storage they share) */
@@ -71,10 +83,19 @@ function oaPost(m){try{if(oaNative())window.webkit.messageHandlers.rudolfNative.
 /* (1.5.9, docs/plan-1.5.9.md 12.3c) Oracle on the native desktop is this page in the shell, in Rudolf's Chromium (its real tabs):
    the window's title and its closing go to the shell, which is the window (a title kept until the shell has said hello) */
 let OA_SHT='';function oaShell(m){if(!ONEAPP)return;if(m.op=='title'){OA_SHT=m.t;if(typeof SHELL!='undefined'&&SHELL)shellSend({rudolfShell:'oa',op:'title',t:m.t})}
- else if(m.op=='close'&&typeof SHELL!='undefined'&&SHELL)shellSend({rudolfShell:'oa',op:'close'})
+ /* (closing: rudolf-launch decides, as Chromium asks "Download is in progress: exit anyway?" when its last window closes during a
+    download, which Standard never shows: then the window goes from the screen and its page closes once the downloads are in) */
+ else if(m.op=='close'&&typeof SHELL!='undefined'&&SHELL){if(oaChromium()){try{window.rudolfNativeOracle(JSON.stringify({w:ONEAPP.w||0,op:'closing'}))}catch(e){}
+  clearTimeout(OA_CLT);OA_CLT=setTimeout(()=>window.__oaCloseNow(),15000)}else shellSend({rudolfShell:'oa',op:'close'})}
  /* (12.3c step 5) the rest goes to the native desktop itself: rudolf-launch's binding on its private pipe, in Oracle's windows only */
  else if(oaChromium())try{window.rudolfNativeOracle(JSON.stringify(Object.assign({w:ONEAPP.w||0},m)))}catch(e){}}
 function oaChromium(){return typeof window.rudolfNativeOracle=='function'}
+let OA_CLT=0;
+window.__oaCloseNow=()=>{clearTimeout(OA_CLT);try{shellSend({rudolfShell:'oa',op:'close'})}catch(e){}};
+window.__oaCloseLater=()=>clearTimeout(OA_CLT);
+/* (told by rudolf-launch once Chromium's downloads have finished: closed when this page has filed them, as the desktop does) */
+window.__oaCloseWhenDone=()=>{const t0=Date.now(),go=()=>{const busy=typeof DLN=='object'&&(DLN.busy||DLN.ing>0||DLN.pend.some(x=>/^(wait|check|approve)$/.test(x.st)));
+ if(busy&&Date.now()-t0<120e3)return setTimeout(go,1000);window.__oaCloseNow()};setTimeout(go,2500)};
 /* (12.3c step 5) the page's own full screen (shell26.js's stand-in fills the page): Oracle's window on the native desktop is not the
    screen, as the shell's window is on Standard, so the window goes full screen too (rudolf-launch, through the binding) */
 if(ONEAPP)window.__oaFs=on=>{if(oaChromium())oaPost({op:'fs',on:on?1:0})};
@@ -100,13 +121,18 @@ html.oneapp .win.oamain>.tb{display:none!important}html.oneapp .win.oamain>.body
  /* the first window made for the app is its main window: it fills the page and gives the page its title */
  {const _w=win;win=function(...a){const W=_w.apply(this,a);if(OA.want&&!OA.main&&W&&W.el)oaMain(W);return W}}
  /* another app: a window of its own when the native shell is there */
- {const _l=launch;launch=function(k){if(OA.main&&k!=ONEAPP.k&&oaOut()&&APPS[k]){oaPost({op:'open',app:k});return}return _l.apply(this,arguments)}}
+ {const _l=launch;launch=function(k){if(OA.main&&k!=ONEAPP.k&&oaOut()&&APPS[k]){oaDrained().then(()=>oaPost({op:'open',app:k}));return}return _l.apply(this,arguments)}}
  /* (Settings at a page, asked by another app's window or a notification's action: Settings' own window, at that page) */
  {const _st=settings;settings=function(sec){if(OA.main&&ONEAPP.k!='settings'&&oaOut()){oaPost({op:'open',app:'settings',page:typeof sec=='string'?sec:''});return}return _st.apply(this,arguments)}}
- {const _lw=launchWith;launchWith=function(k,p){if(OA.main&&k!=ONEAPP.k&&oaOut()&&APPS[k]){oaPost({op:'open',app:k,file:Array.isArray(p)?p.join('\\'):String(p||'')});return}return _lw.apply(this,arguments)}}
+ {const _lw=launchWith;launchWith=function(k,p){if(OA.main&&k!=ONEAPP.k&&oaOut()&&APPS[k]){const f=Array.isArray(p)?p.join('\\'):String(p||'');oaDrained().then(()=>oaPost({op:'open',app:k,file:f}));return}return _lw.apply(this,arguments)}}
+ /* (1.5.9, 12.3c) Oracle's new window (Ctrl+N, a link or a website's new window from inside Oracle, a web page's file from another app:
+    browser()) is a window of its own, as on Standard, not a second window inside this page: Oracle's, in Rudolf's Chromium. (Not a
+    website's pop-up, whose tab this window's shell already holds with its opener (a sign-in's): adopt, kept here) */
+ if(typeof browser=='function'){const _br=browser;browser=function(u,bo){if(!(bo&&bo.adopt)&&(ONEAPP.k!='browser'||(OA.main&&OA.main.el&&OA.main.el.isConnected))&&oaOut()){
+  oaPost({op:'open',app:'browser',url:typeof u=='string'&&/^(https?:|about:|file:\/\/\/)/i.test(u)?u:'',priv:bo&&bo.priv?'1':''});return null}return _br.apply(this,arguments)}}
  /* (1.5.9, 12.3c step 5) Open with: the chosen app in a window of its own, as on Standard (not one inside this page): made by the
     native desktop's do-fs page, as its own Open with dialog does (oaFs op=openwith) */
- if(typeof OPENERS!='undefined')OPENERS.forEach(x=>{const f=x[4];if(!f||x[0]==ONEAPP.k)return;x[4]=p=>{if(OA.main&&oaOut()&&Array.isArray(p)){oaPost({op:'openwith',key:x[0],file:p.join('\\')});return}return f(p)}});
+ if(typeof OPENERS!='undefined')OPENERS.forEach(x=>{const f=x[4];if(!f||x[0]==ONEAPP.k)return;x[4]=p=>{if(OA.main&&oaOut()&&Array.isArray(p)){const fp=p.join('\\');oaDrained().then(()=>oaPost({op:'openwith',key:x[0],file:fp}));return}return f(p)}});
  /* the first sign-in screen: the native session's account instead, when there is one */
  {const _sl=showLogin;let first=1;showLogin=function(){if(first&&!OA.opened){first=0;oaStart(_sl);return}if(OA.opened&&OA.done)return;return _sl.apply(this,arguments)}}
  /* after any sign-in: the app */
@@ -138,6 +164,9 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
    try{browser(L.length?hm(L[0]):null,q.get('tor')=='1'?{priv:1,tor:1}:{});L.slice(1).forEach(u=>{if(OA.main&&OA.main.oNewTab)OA.main.oNewTab(hm(u))})}catch(e){console.warn(e)}
    setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}
   if(j&&typeof APP_JUMPS=='object'&&APP_JUMPS[ONEAPP.k]){const it=APP_JUMPS[ONEAPP.k]().find(x=>x[0]==j);if(it){OA.want=1;try{it[1]()}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}}
+  /* (1.5.9, 12.3c) Oracle's new window at an address, or a private one at an address (#app=browser&url=ADDRESS[&priv=1]) */
+  if(ONEAPP.k=='browser'&&q.get('url')&&typeof browser=='function'){OA.want=1;const u=q.get('url');try{if(q.get('priv')=='1'&&typeof oraclePrivate=='function')oraclePrivate(u);else browser(u)}catch(e){console.warn(e)}
+   setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}
   if(ONEAPP.k=='settings'&&sp&&typeof settings=='function'){OA.want=1;try{settings(sp)}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}
   if(da0=='pin'){try{pinSet(q.get('k')||'',q.get('on')=='1')}catch(e){}return oaFin({})}
   /* (1.6.0 Part 12, item 3) quick settings' switches and the notifications' centre as the native shell draws them: the page's own

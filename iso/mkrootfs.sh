@@ -241,6 +241,7 @@ root:x:0:0:root:/root:/bin/sh
 rudolf:x:1000:1000:Rudolf OS:/home/rudolf:/bin/sh
 messagebus:x:100:102::/nonexistent:/bin/false
 ai:x:950:950:Blitzen model engine:/persist/ai/cache:/bin/false
+tor:x:951:951:Tor (Oracle's Tor windows):/run/rudolf/tor:/bin/false
 nobody:x:65534:65534:nobody:/:/bin/false
 E
 cat > etc/group <<'E'
@@ -252,6 +253,7 @@ input:x:101:
 rudolf:x:1000:
 messagebus:x:102:
 ai:x:950:
+tor:x:951:
 nogroup:x:65534:
 E
 echo 'root:*:19000:0:99999:7:::' > etc/shadow; echo 'rudolf:*:19000:0:99999:7:::' >> etc/shadow; chmod 600 etc/shadow

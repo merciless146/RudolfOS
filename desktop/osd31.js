@@ -12,7 +12,13 @@ function osdSvg(k,n){
 const volN=()=>SV.m||!SV.v?0:SV.v<=33?1:SV.v<=66?2:3;
 /* the indicator: icon, bar and percentage near the top of the screen for 1.5 s (not while a popup of its own is open) */
 let osdT=0;
-function osdShow(k,txt){if(document.querySelector('.svp,.bvp'))return;let o=$('#osd');
+function osdShow(k,txt){if(document.querySelector('.svp,.bvp'))return;
+ /* (1.5.9) an app's own window on the native desktop (Oracle's page in Chromium, an app's in WebKit): the indicator is the native
+    desktop's, at the top of the screen as here, not inside the window whose page happened to read the event */
+ if(typeof ONEAPP!='undefined'&&ONEAPP&&typeof oaOut=='function'&&oaOut()){const v=k=='volume'?(SV.v==null?'':String(SV.m?0:SV.v)):k=='brightness'?(SV.bl==null?'':String(SV.bl)):'';
+  const lb=k=='volume'?(SV.v==null?'No sound output':SV.m?'Muted':SV.v+'%'):k=='brightness'?(SV.bl==null?'This screen\u2019s brightness cannot be changed here':SV.bl+'%'):(txt?'Microphone off':'Microphone on');
+  oaPost({op:'osd',k,lv:v,label:lb,n:String(k=='volume'?volN():k=='mic'?(txt?1:0):(SV.bl==null?100:SV.bl))});return}
+ let o=$('#osd');
  if(!o){o=document.createElement('div');o.id='osd';o.setAttribute('role','status');o.setAttribute('aria-live','polite');o.style.cssText='position:fixed;left:50%;top:28px;transform:translateX(-50%);z-index:2000000;display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:12px;background:rgba(17,24,39,.92);color:#f9fafb;font:600 13px system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.35);pointer-events:none;min-width:230px';document.body.appendChild(o)}
  let lv=null,icon='',label='';
  if(k=='volume'){if(SV.v==null){icon=osdSvg('volume',0);label='No sound output'}else{lv=SV.m?0:SV.v;icon=osdSvg('volume',volN());label=SV.m?'Muted':SV.v+'%'}}

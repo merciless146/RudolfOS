@@ -3391,7 +3391,7 @@ static void api_devlink(struct req *r, const char *what, int post)
 static void health_path(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/health.log" : PERSIST "/var/log/health.log"); }
 static int health_kind_ok(const char *k)
 {
-	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", NULL };
+	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", "tor", NULL };
 	for (int i = 0; K[i]; i++) if (k && !strcmp(k, K[i])) return 1;
 	return 0;
 }
@@ -3513,6 +3513,111 @@ static void health_boot(void)
 		free(seen); free(stt);
 	}
 	free(sl); free(ver);
+}
+/* ------------------------------------------------------------- 1.5.9 (docs/plan-1.5.9.md 16.1): Tor, for Oracle's Tor windows
+ * Started only while a Tor window is open (the page asks: POST tor/start), as the user "tor", listening on 127.0.0.1:9050 only
+ * (SOCKS5, for the Tor window's Chromium), no relay, everything it keeps in RUN/tor (memory: a fresh Tor each time, removed when
+ * it stops). Each open Tor window asks again every 20 s (tor/start); with no window asking for 90 s (a window that went
+ * without saying so) Tor stops. POST tor/stop: the last Tor window closed, so it stops a minute later unless a window asks again (now=1: at once).
+ * GET tor/status: {state: off|starting|on|failed, pct (Tor's bootstrap percentage), line (its log's last line), secs (since it
+ * started)}. The health log says when it started, was ready, stopped or failed. TOR_BIN and TOR_USER change the program and
+ * the user (the host tests). */
+#ifndef TOR_BIN
+#define TOR_BIN "/usr/bin/tor"
+#endif
+#ifndef TOR_USER
+#define TOR_USER "tor"
+#endif
+#define TOR_DIR RUN "/tor"
+static int tor_alive(pid_t p)
+{
+	if (p <= 1 || kill(p, 0)) return 0;
+	char f[64], c[32] = ""; snprintf(f, sizeof f, "/proc/%d/stat", (int)p); char *k = slurp(f, NULL);
+	/* (its name, and not a zombie) */
+	if (k) { char *a = strchr(k, '('), *e = strrchr(k, ')'); if (a && e && e > a && e - a < 30) { snprintf(c, sizeof c, "%.*s", (int)(e - a - 1), a + 1); if (e[1] == ' ' && e[2] == 'Z') c[0] = 0; } free(k); }
+	return !strcmp(c, "tor");
+}
+static pid_t tor_pid(void)
+{
+	char *s = slurp(RUN "/tor.pid", NULL); pid_t p = s ? (pid_t)atoi(s) : 0; free(s);
+	return tor_alive(p) ? p : 0;
+}
+/* the log's last line, and the last "Bootstrapped N%" (-1: none yet) */
+static int tor_log(char *last, size_t n)
+{
+	size_t len = 0; char *l = slurp(TOR_DIR "/log", &len); int pct = -1; if (last && n) last[0] = 0;
+	for (char *p = l; p && *p; ) { char *e = strchr(p, '\n'); if (e) *e = 0;
+		char *b = strstr(p, "Bootstrapped "); if (b) pct = atoi(b + 13);
+		if (*p && last) { char *m = strstr(p, "] "); snprintf(last, n, "%s", m ? m + 2 : p); }
+		p = e ? e + 1 : NULL; }
+	if (last) for (char *c = last; *c; c++) if ((unsigned char)*c < 32) *c = ' ';
+	free(l); return pct;
+}
+static void tor_kill(const char *why)
+{
+	pid_t p = tor_pid(); unlink(RUN "/tor.pid");   /* (first: rudolfd's loop takes a Tor gone with its file there for one that failed) */
+	if (p) { kill(p, SIGTERM); for (int i = 0; i < 30 && tor_alive(p); i++) usleep(100000); if (tor_alive(p)) kill(p, SIGKILL); for (int i = 0; i < 10 && tor_alive(p); i++) usleep(100000); }
+	unlink(RUN "/tor.stopat"); unlink(RUN "/tor.t0"); unlink(RUN "/tor.ready"); unlink(RUN "/tor.seen");
+	run("rm -rf " TOR_DIR);   /* (nothing kept) */
+	if (p && why) health_add("tor", "Tor stopped (%s)", why);
+}
+static int tor_start(void)
+{
+	char b[32]; snprintf(b, sizeof b, "%lld\n", (long long)time(NULL)); write_str(RUN "/tor.seen", b);   /* (a Tor window is there) */
+	if (tor_pid()) { unlink(RUN "/tor.stopat"); return 0; }
+	tor_kill(NULL); unlink(RUN "/tor.failed");
+	struct passwd *pw = getpwnam(TOR_USER); if (!pw) { write_str(RUN "/tor.failed", "there is no user " TOR_USER " on this system\n"); return -1; }
+	if (access(TOR_BIN, X_OK)) { write_str(RUN "/tor.failed", "Tor is not on this system\n"); return -1; }
+	if (mkdir(TOR_DIR, 0700) || chown(TOR_DIR, pw->pw_uid, pw->pw_gid)) { write_str(RUN "/tor.failed", "its folder could not be made\n"); return -1; }
+	int fd[2]; if (pipe2(fd, O_CLOEXEC)) return -1;
+	pid_t c = fork();
+	if (c < 0) { close(fd[0]); close(fd[1]); return -1; }
+	if (c == 0) {   /* (twice: Tor is nobody's child but init's, and outlives this request) */
+		close(fd[0]); setsid(); pid_t g = fork();
+		if (g != 0) { if (write(fd[1], &g, sizeof g) < 0) {} _exit(0); }
+		int nul = open("/dev/null", O_RDWR); if (nul >= 0) { dup2(nul, 0); dup2(nul, 1); dup2(nul, 2); }
+		for (int i = 3; i < 1024; i++) if (i != fd[1]) close(i);
+		execl(TOR_BIN, "tor", "--ignore-missing-torrc", "-f", TOR_DIR "/torrc", "--defaults-torrc", TOR_DIR "/torrc-defaults",
+			"--SocksPort", "127.0.0.1:9050", "--DataDirectory", TOR_DIR, "--Log", "notice file " TOR_DIR "/log", "--User", TOR_USER,
+			"--ClientOnly", "1", "--AvoidDiskWrites", "1", "--RunAsDaemon", "0", (char *)NULL);
+		_exit(127);
+	}
+	close(fd[1]); pid_t g = 0; ssize_t n = read(fd[0], &g, sizeof g); char x; while (read(fd[0], &x, 1) > 0) {}   /* (until Tor is Tor: the pipe closes as it starts) */
+	close(fd[0]); waitpid(c, NULL, 0);
+	if (n != sizeof g || g <= 0) return -1;
+	snprintf(b, sizeof b, "%d\n", (int)g); write_str(RUN "/tor.pid", b);
+	snprintf(b, sizeof b, "%lld\n", (long long)time(NULL)); write_str(RUN "/tor.t0", b);
+	health_add("tor", "Tor started (for a Tor window in Oracle)");
+	return 0;
+}
+static void api_tor(struct req *r, const char *what, int post)
+{
+	if (!strcmp(what, "start") || !strcmp(what, "stop")) {
+		if (!post) { reply_err(r->fd, 405, "use POST"); return; }
+		if (!strcmp(what, "start")) { if (tor_start()) { char *f = slurp(RUN "/tor.failed", NULL); if (f) trim(f); reply_err(r->fd, 500, f && *f ? f : "Tor did not start"); free(f); return; } }
+		else { const char *now = qparam(r->query, "now");
+			if (now && !strcmp(now, "1")) tor_kill("asked");
+			else if (tor_pid()) { char b[32]; snprintf(b, sizeof b, "%lld\n", (long long)time(NULL) + 60); write_str(RUN "/tor.stopat", b); } }
+	} else if (strcmp(what, "status")) { reply_err(r->fd, 404, "unknown Tor action"); return; }
+	char line[300]; int pct = tor_log(line, sizeof line); pid_t p = tor_pid();
+	char *t0 = slurp(RUN "/tor.t0", NULL); long long secs = t0 ? (long long)time(NULL) - atoll(t0) : 0; free(t0);
+	char *fl = p ? NULL : slurp(RUN "/tor.failed", NULL); if (fl) trim(fl);
+	str s = {0}; sadd(&s, "{\"ok\":true,\"state\":\"%s\",\"pct\":%d,\"secs\":%lld,\"stopping\":%s,\"line\":", p ? (pct >= 100 ? "on" : "starting") : fl ? "failed" : "off",
+		pct < 0 ? 0 : pct, p ? secs : 0, p && !access(RUN "/tor.stopat", F_OK) ? "true" : "false");
+	sjson(&s, fl ? fl : line); sadd(&s, ",\"socks\":\"127.0.0.1:9050\"}"); free(fl); reply_json(r->fd, &s);
+}
+/* (in rudolfd's own loop, each second: the stop a minute after the last window, "ready" once, and a Tor that ended by itself) */
+static void tor_tick(void)
+{
+	if (access(RUN "/tor.pid", F_OK)) return;
+	pid_t p = tor_pid();
+	if (!p) { char last[300]; tor_log(last, sizeof last); write_str(RUN "/tor.failed", last[0] ? last : "Tor ended");
+		health_add("tor", "Tor failed: %s", last[0] ? last : "it ended"); unlink(RUN "/tor.pid"); unlink(RUN "/tor.stopat"); unlink(RUN "/tor.t0"); unlink(RUN "/tor.ready"); run("rm -rf " TOR_DIR); return; }
+	char *sa = slurp(RUN "/tor.stopat", NULL); long long at = sa ? atoll(sa) : 0; free(sa);
+	if (at && time(NULL) >= at) { tor_kill("a minute after the last Tor window closed"); return; }
+	char *se = slurp(RUN "/tor.seen", NULL); long long seen = se ? atoll(se) : 0; free(se);
+	if (!at && seen && time(NULL) - seen > 90) { tor_kill("no Tor window asked for it in 90 s"); return; }
+	if (access(RUN "/tor.ready", F_OK) && tor_log(NULL, 0) >= 100) { write_str(RUN "/tor.ready", "1\n"); health_add("tor", "Tor is ready (connected to the Tor network)"); }
 }
 /* GET firewall: {on, blocked}; POST firewall?on=1|0 (the desktop asks for an administrator's password first) */
 static void api_firewall(struct req *r, int post)
@@ -4105,6 +4210,7 @@ static void api(struct req *r)
 	}
 	if (!strncmp(p, "idbm/", 5)) { api_idbm(r, p + 5, post); return; }
 	if (!strncmp(p, "dl/", 3)) { api_dl(r, p + 3, post); return; }
+	if (!strncmp(p, "tor/", 4)) { api_tor(r, p + 4, post); return; }   /* (1.5.9, 16.1: Tor for Oracle's Tor windows) */
 	if (!strncmp(p, "secureboot/", 11)) { api_secureboot(r, p + 11, post); return; }
 	if (!strcmp(p, "bootmenu")) { api_bootmenu(r, "", post); return; }
 	if (!strncmp(p, "bootmenu/", 9)) { api_bootmenu(r, p + 9, post); return; }
@@ -4370,6 +4476,20 @@ static void api(struct req *r)
 		if (s < 0.2) s = 0.2; if (s > 5) s = 5; if (a < 1) a = 1; if (a > 3) a = 3;
 		char b[64]; snprintf(b, sizeof b, "%.3f %.3f %d %d %d\n", s, a, tap, nat, typ); write_str(RUN "/pointer", b);
 		reply_ok(r->fd, "ok"); return;
+	}
+	/* 2026-11-14: GET audio/mics: the microphones (Settings' list); POST audio/mic?name=SOURCE: the default one */
+	if (!strcmp(p, "audio/mics") && !post) {
+		char *o = run_out("/usr/lib/rudolf/sound mics 2>/dev/null"); str js = {0}; sadd(&js, "{\"ok\":true,\"mics\":["); int first = 1;
+		if (o) for (char *l = strtok(o, "\n"); l; l = strtok(NULL, "\n")) { char *t1 = strchr(l, '\t'); if (!t1) continue; *t1++ = 0; char *t2 = strchr(t1, '\t'); if (!t2) continue; *t2++ = 0;
+			sadd(&js, "%s{\"name\":", first ? "" : ","); sjson(&js, l); sadd(&js, ",\"desc\":"); sjson(&js, t1); sadd(&js, ",\"default\":%s}", *t2 == '1' ? "true" : "false"); first = 0; }
+		sadd(&js, "]}"); free(o); reply_json(r->fd, &js); return;
+	}
+	if (!strcmp(p, "audio/mic") && post) {
+		char *n = qparam(r->query, "name");
+		if (!n || !*n || strlen(n) > 200 || strspn(n, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:-") != strlen(n)) { reply_err(r->fd, 400, "bad microphone"); return; }
+		char cmd[300]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/sound mic '%s' >>" RUN "/sound.log 2>&1", n);
+		if (run(cmd)) { reply_err(r->fd, 409, "that microphone could not be chosen"); return; }
+		reply_ok(r->fd, "microphone chosen"); return;
 	}
 	if (!strcmp(p, "audio")) {
 		char *c = qparam(r->query, "card");
@@ -4675,6 +4795,7 @@ int main(int argc, char **argv)
 		reap();
 		time_tick();
 		health_tick();
+		tor_tick();
 		if (poll(&pf, 1, 1000) <= 0) continue;
 		int c = accept4(s, NULL, NULL, SOCK_CLOEXEC);
 		if (c < 0) continue;

@@ -16,6 +16,7 @@ ok "2. every C program in sys/ that listens is in the list" "$([ -z "$miss" ] &&
 # what the C programs start that listens (llama-server's --port)
 miss=""; grep -l -- '"--port"' $SYS/*.c | while read -r c; do grep -q llama-server $c && { listed llama-server || echo llama-server; }; done > $W/m; miss=$(cat $W/m)
 ok "3. a server a program starts with a port (Blitzen's llama-server) is in the list" "$([ -z "$miss" ] && echo 1)" "not listed: $miss"
+ok "3b. ...and Tor's SOCKS port, which rudolfd starts for Oracle's Tor windows (16.1): loopback only" "$(if grep -q -- '"--SocksPort"' $SYS/rudolfd.c; then grep -q -- '"--SocksPort", "127.0.0.1:9050"' $SYS/rudolfd.c && listed tor && echo 1; else echo 1; fi)" "$(grep -n -- '--SocksPort' $SYS/rudolfd.c)"
 # the daemons the scripts start: each known kind must be listed; anything else that looks like a listener fails
 S=$(find $SYS/root -type f \( -path '*/usr/lib/rudolf/*' -o -path '*/sbin/*' -o -path '*/etc/*' \) ! -name '*.js' ! -name '*.json' ! -name '*.html' ! -name '*.css' ! -name listeners)
 miss=""

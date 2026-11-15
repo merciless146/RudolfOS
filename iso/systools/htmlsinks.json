@@ -9,7 +9,7 @@
 "apps30.js": 1,
 "apps57.js": 2,
 "aurora58.js": 1,
-"base_v24.html": 140,
+"base_v24.html": 141,
 "blitzdiag57.js": 3,
 "blitzen26.js": 21,
 "bmadd59.js": 3,
@@ -22,8 +22,10 @@
 "devmode59.js": 3,
 "display26.js": 5,
 "dl27.js": 1,
+"doctabs59.js": 1,
 "emu26.js": 11,
 "engine57.js": 1,
+"filedlg59.js": 1,
 "files25.js": 9,
 "games30.js": 7,
 "gamesleep59.js": 1,
@@ -37,6 +39,7 @@
 "lock58.js": 3,
 "mail25.js": 1,
 "mem47.js": 1,
+"mictest59.js": 2,
 "native25.js": 1,
 "net31.js": 3,
 "notey25.js": 1,
@@ -80,5 +83,6 @@
 "wallpaper31.js": 1,
 "web46.js": 1,
 "wifi26.js": 17,
-"wp25.js": 4
+"wp25.js": 4,
+"wplinks59.js": 3
 }

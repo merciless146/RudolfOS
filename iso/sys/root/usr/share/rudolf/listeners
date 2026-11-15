@@ -7,6 +7,7 @@ tcp	127.0.0.1:8080	rudolfd	always	the desktop's processes (its memory group) and
 tcp	127.0.0.1:8099	llama-server	while Blitzen's model is loaded (rudolf-ai)	rudolfd	runs as the "ai" user; answers only requests with the random key in /run/rudolf/ai/key (root only), which rudolfd adds; loopback only
 tcp	0.0.0.0:8443	rudolf-remote	only while remote access is on (Settings › Remote access)	people on the network with the pairing code, then a Rudolf OS account	TLS (the computer's own certificate); the 6-digit pairing code once per browser, an account's password (PBKDF2), five wrong tries lock it a minute; the person at the computer approves unless the account may connect unattended; the firewall
 tcp6	:::8443	rudolf-remote	only while remote access is on	as above	as above
+tcp	127.0.0.1:9050	tor	only while a Tor window is open in Oracle (rudolfd starts it, 1.5.9 16.1)	the Tor windows' Chromium (SOCKS5); any program on this computer could	none beyond loopback (it is a SOCKS proxy to the Tor network, as Tor Browser's own); runs as the "tor" user, client only, its files in memory
 tcp	127.0.0.1:9222	chromium	only on a test disc (rudolf.debug=1): never on a release	root's test scripts (cdp-eval)	none beyond loopback: a test disc is for testing only
 tcp	*:53	dnsmasq	only while Share this connection is on (the hotspot's interface)	devices joined to the hotspot	WPA2/WPA3 with the hotspot's password; --bind-interfaces, not loopback
 tcp6	*:53	dnsmasq	only while Share this connection is on	devices joined to the hotspot	as above

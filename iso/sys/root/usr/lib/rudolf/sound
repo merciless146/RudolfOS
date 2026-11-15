@@ -80,6 +80,8 @@ add_card() {
 	fi
 	open_outputs "$1"
 }
+# "jack-empty" when a microphone's active port is a headset or headphone jack with nothing known to be plugged in
+jackmic() { asuser "pactl list sources" 2>/dev/null | awk -v n="$1" '$1=="Name:"{cur=$2} cur==n && $1=="Active" && $2=="Port:"{ap=$3} cur==n && /^[ \t]+[A-Za-z0-9_-]+: .*\(/{p=$1; sub(/:$/,"",p); L[p]=$0} END {l=L[ap]; if (ap ~ /(headphone|headset|front|rear)-mic|mic-jack|^analog-input-mic$/ && (l ~ /not available/ || l ~ /availability unknown/)) print "jack-empty"; else print "ok"}'; }
 set_default() {
 	S=$(asuser "pactl list short sinks" 2>/dev/null | awk -v p="alsa_output.card$1." 'index($2,p)==1{print $2; exit}')
 	[ -n "$S" ] && asuser "pactl set-default-sink $S" && echo "default output: $S"
@@ -87,6 +89,14 @@ set_default() {
 	# microphone becomes the default one, with what records from it (the call's microphone)
 	[ -n "$S" ] && for i in $(asuser "pactl list short sink-inputs" 2>/dev/null | cut -f1); do asuser "pactl move-sink-input $i $S" >/dev/null 2>&1; done
 	M=$(asuser "pactl list short sources" 2>/dev/null | awk -v p="alsa_input.card$1." 'index($2,p)==1{print $2; exit}')
+	# 2026-11-14 (found on the Vivobook): the speakers' card's own microphone may be only its headset jack (the
+	# Vivobook's HD-Audio "headphone-mic", while the built-in microphones are on the AMD chip, acp6x, another card):
+	# Meet heard nothing. The jack's microphone is the default only when PulseAudio says something is plugged in;
+	# otherwise another card's microphone is (the built-in one), when there is one.
+	if [ -n "$M" ] && [ "$(jackmic "$M")" = jack-empty ]; then
+		O=$(asuser "pactl list short sources" 2>/dev/null | awk -v p="alsa_input.card$1." '$2 ~ /^alsa_input\./ && $2 !~ /\.monitor$/ && index($2,p)!=1 {print $2; exit}')
+		[ -n "$O" ] && { echo "the headset jack's microphone has nothing plugged in: the built-in one ($O)" >> ${LOG:-/dev/null}; M=$O; }
+	fi
 	if [ -n "$M" ]; then asuser "pactl set-default-source $M" >/dev/null 2>&1 && echo "default microphone: $M"
 		for i in $(asuser "pactl list short source-outputs" 2>/dev/null | cut -f1); do asuser "pactl move-source-output $i $M" >/dev/null 2>&1; done; fi
 	# the echo canceller moves to the new output and microphone
@@ -158,6 +168,20 @@ hotplug)
 default)
 	[ -S $SOCK ] || exit 1
 	set_default "$2";;
+# 2026-11-14: Settings › Volume Controls › Microphones: the microphones (name TAB description TAB 1 for the default),
+# and one chosen as the default, with what records now (a call) moved to it
+mics)
+	[ -S $SOCK ] || exit 1
+	D=$(asuser "pactl info" 2>/dev/null | sed -n 's/^Default Source: //p'); case "$D" in echocancel*) D=$(cat $ECHOM 2>/dev/null); D=${D#* };; esac
+	asuser "pactl list sources" 2>/dev/null | awk -v d="$D" -F': ' '/^[ \t]*Name: /{n=$2} /^[ \t]*Description: /{if (n ~ /^(alsa_input|bluez_source|bt_in)/ && n !~ /\.monitor$/) printf "%s\t%s\t%d\n", n, $2, n==d}';;
+mic)
+	[ -S $SOCK ] || exit 1
+	case "$2" in ""|*[!A-Za-z0-9._:-]*) echo "bad microphone"; exit 2;; esac
+	asuser "pactl list short sources" 2>/dev/null | cut -f2 | grep -qx -- "$2" || { echo "no such microphone"; exit 2; }
+	asuser "pactl set-default-source $2" || exit 1
+	for i in $(asuser "pactl list short source-outputs" 2>/dev/null | awk -F'\t' '$4 !~ /echo-cancel/ {print $1}'); do asuser "pactl move-source-output $i $2" >/dev/null 2>&1; done
+	{ [ -f "$ECHOF" ] || [ -s $ECHOM ]; } && echo_apply >/dev/null
+	echo "default microphone: $2";;
 status)
 	[ -S $SOCK ] || { echo "sound server not running"; exit 1; }
 	asuser "pactl info" | grep -E 'Server Name|Server Version|Default Sink|Default Source'
