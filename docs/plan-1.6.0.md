@@ -566,7 +566,7 @@ half pixels of line boxes differently (Blitzen's suggestions' text 1 px higher i
 of the phone, framed by the shell as a Linux app's, as on Standard) needs a phone, so it is a Vivobook check, not a host
 test; selects given other padding by their own rules (games' and the media player's) have the chevron but not Chromium's
 20 px after the text.
-**Test findings (2026-11-15, unattended session):** Native compared with Standard across the desktop, the apps, video and sound, with Log video problems on: 19 findings (3 break: full-screen video black, the file dialog cut off inside the app's window, Task Manager lists only itself). See docs/native-findings-2026-11-15.md.
+**Test findings (2026-11-15, unattended session):** Native compared with Standard across the desktop, the apps, video and sound, with Log video problems on: 19 findings (3 break: full-screen video black, the file dialog cut off inside the app's window, Task Manager lists only itself). See docs/native-findings-2026-11-15.md. A second run added 13 more (2 break: Log video problems' file emptied by each new app window, right-click menus inside apps cut off at the window's edge), in the same report's "Second run" section.
 **Next:** items 9 to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md
 after them. Native is not
 the default yet. The security line's next steps (as of 2026-11-14): docs/plan-1.5.9.md 15.3's third step (the QEMU check
@@ -863,6 +863,20 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
   - **Waydroid (1.5.9 Part 5):** measured on the Vivobook with Lite before it is offered.
   - **The first phone (1.5.9 Part 6):** chosen and bought by the owner (a PinePhone Pro or a OnePlus 6/6T), its device
     package from postmarketOS's; the MediaTek "S24Ultra" is not flashed or unlocked without the owner's decision.
+
+### 16. Beta versions opt-in (added on 2026-11-15)
+Asked for by the owner after a computer on 1.5.7 was updated to the in-progress 1.6.0 beta instead of 1.5.9 (its
+update address was the beta channel's): "Beta versions should be an opt-in checkbox on the update and recovery
+settings section. It should require an administrator's username and password to turn on. If it's turned off, the next
+time the computer is updated should bring it to the latest stable release instead."
+**Done (2026-11-15):** Settings › Update and recovery › Get beta versions. On: the desktop's administrator prompt, and
+rudolfd checks the name and password itself (sys/beta?on=1, as the development link does) before `rudolf-update set
+channel beta` sets the official beta address. Off: `set channel stable` sets the official stable address and marks
+"tostable": the next check and download take the latest stable release even though its number is lower than the
+beta's (the beta's list already seen is forgotten, the stable one is checked with the official key as always), then
+the mark is cleared. The official beta address can no longer be typed in as the update address; Developer mode keeps
+its own address (refused while it is on). A computer already on the beta address shows the box ticked. Test:
+qt/host/beta60_t.sh 12. Manual check: on the HP desktop, untick it and update: 1.5.9 comes next.
 
 ## Hardware to test with
 - **The MiFi 7730L** (USB tethering and Wi-Fi), with an active SIM (or a prepaid data SIM). Found on 2026-11-14: its

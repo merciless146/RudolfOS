@@ -34,6 +34,8 @@ function sysuRestart(){if(!(SW&&wins.includes(SW))){settings('upd');return setTi
 ${st.failed?`<div class='msg warn'>The update in slot ${pkgEsc(st.failed.toUpperCase())} did not start, so Rudolf OS went back to the previous version. It will try the next release.</div>`:''}</div>
 <div class='rmrow' style='justify-content:flex-start'><button class='ucheck'>Check now</button>${av&&!nx&&s.persistent&&s.canUpdate!==false?`<button class='udl'>Download (only the changes)</button>`:''}${nx?`<button class='urs'>Restart now</button>`:''}${st.good&&st.good!='disc'||st.prev?`<button class='urb'>Roll back system…</button>`:''}</div>
 <label class='ck'><input type='checkbox' class='uauto'${s.auto?' checked':''}${adm?'':' disabled'}> Download security updates automatically</label>
+<label class='ck'><input type='checkbox' class='ubeta'${s.beta?' checked':''}${adm&&!s.developer?'':' disabled'}> Get beta versions</label>
+<p class='msg ubetamsg'>${s.beta?'This computer gets beta versions: early releases for testing, which can have problems. Turn this off to go back to the latest stable release at the next update.':s.toStable?'Beta versions are off: the next update brings the latest stable release.':'Beta versions are early releases for testing. Turning them on needs an administrator\'s name and password.'}</p>
 <details class='uadv'><summary>Update address</summary><div class='rmrow' style='justify-content:flex-start'><input class='uurl' value='${pkgEsc(s.url)}' placeholder='https://…/stable' style='flex:1'${adm?'':' disabled'}><button class='usave'${adm?'':' disabled'}>Save</button></div><p class='msg'>Releases must be signed by a key this computer trusts; others are refused.</p></details>
 <pre class='jl ulog' hidden></pre>`;
   const q=s=>box.querySelector(s),log=q('.ulog');
@@ -44,6 +46,13 @@ ${st.failed?`<div class='msg warn'>The update in slot ${pkgEsc(st.failed.toUpper
   q('.urs')&&(q('.urs').onclick=sysuRestart);
   q('.urb')&&(q('.urb').onclick=async()=>{if(!await elevate('Go back to the previous version of Rudolf OS'))return;try{const r=await rdPost('sys/rollback');notify('Roll back',(r.message||'').trim()||'Done.')}catch(e){notify('Roll back',e.message,{kind:'error'})}draw()});
   q('.uauto').onchange=async e=>{const v=e.target.checked;if(!await elevate(v?'Turn on automatic security updates':'Turn off automatic security updates')){e.target.checked=!v;return}try{await rdPost('sys/set?k=auto&v='+(v?1:0))}catch(er){notify('Updates',er.message,{kind:'error'})}draw()};
+  /* 1.6.0 (owner, 2026-11-15): beta versions are opt-in: on needs an administrator's name and password (checked by
+     rudolfd); off brings the latest stable release at the next update */
+  q('.ubeta').onchange=async e=>{const v=e.target.checked;
+   if(v){const cr=await elevate('Get beta versions of Rudolf OS',{cred:true});if(!cr){e.target.checked=false;return}
+    try{await rd('sys/beta?on=1',{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p})});notify('Updates','Beta versions are on. Checking for updates…');job('check')}catch(er){e.target.checked=false;notify('Updates',er.message,{kind:'error'});draw()}return}
+   if(!await elevate('Stop getting beta versions of Rudolf OS')){e.target.checked=true;return}
+   try{await rdPost('sys/beta?on=0');notify('Updates','Beta versions are off: the next update brings the latest stable release. Checking for updates…');job('check')}catch(er){e.target.checked=true;notify('Updates',er.message,{kind:'error'});draw()}};
   q('.usave').onclick=async()=>{const v=q('.uurl').value.trim();if(v&&!/^https?:\/\//.test(v))return notify('Updates','The address starts with https://',{kind:'error'});if(!await elevate('Change where Rudolf OS gets updates'))return;try{await rdPost('sys/set?k=url&v='+encodeURIComponent(v));notify('Updates','Saved. Checking for updates…');job('check')}catch(e){notify('Updates',e.message,{kind:'error'})}}};
  draw()}}
 /* ---------- daily check and download ---------- */
