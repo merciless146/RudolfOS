@@ -498,8 +498,13 @@ sound playing, a microphone, an app keeping the screen on: no saver; then the sa
 the screen locks; unlocked; idle again at once: no saver for a minute). Known differences left (item 6): Display
 Properties' Preview button runs the saver inside Settings' own window on Native (the page's preview is full screen); lock
 after N minutes and sleep are not in the behaviour test (they need a minute after unlocking each).
-**Next:** item 7 (several monitors), then items 8 to 12 in
-order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md after them. Native is not
+**Item 7 needs the owner's decision (2026-11-15):** the page has no several-monitor desktop (Standard shows one desktop on one
+screen; rudolf-display gives Chromium one output), so "a taskbar and the wallpaper on each monitor" on Native would make Native
+differ from Standard, against "The rule". Either Standard gets it too (a change to Standard, which the rule forbids without
+the owner), or Native keeps one desktop as Standard and item 7 is dropped or moved to 2.0. Left undone until then.
+**Next:** item 8 (the Phone screen and Blitzen's panel: both are already page windows, so Native shows them in one-app windows
+and scrcpy's own window framed as a Linux app's; what is left is checking them against Standard with same_t.sh), then items 9
+to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md after them. Native is not
 the default yet. The security line's next steps (as of 2026-11-14): docs/plan-1.5.9.md 15.3's third step (the QEMU check
 with two accounts, needing a host with QEMU and a built disc) and 12.3c's second part (Oracle on Native: step 5's rest).
 
