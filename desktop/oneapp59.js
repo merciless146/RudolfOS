@@ -98,6 +98,9 @@ window.__oaCloseWhenDone=()=>{const t0=Date.now(),go=()=>{const busy=typeof DLN=
  if(busy&&Date.now()-t0<120e3)return setTimeout(go,1000);window.__oaCloseNow()};setTimeout(go,2500)};
 /* (12.3c step 5) the page's own full screen (shell26.js's stand-in fills the page): Oracle's window on the native desktop is not the
    screen, as the shell's window is on Standard, so the window goes full screen too (rudolf-launch, through the binding) */
+/* (1.6.0 Part 12, item 6) an app's window never starts the screen saver, the lock or sleep itself (core25.js idleCheck, every
+   15 s in every page): the native shell does, once for the whole screen */
+if(ONEAPP)idleWoke=()=>true;
 if(ONEAPP)window.__oaFs=on=>{if(oaChromium())oaPost({op:'fs',on:on?1:0})};
 /* (12.3c step 5) a new private window (Ctrl+Shift+N, ☰ › New private tab) from Oracle's window on the native desktop: a window of its own, as
    on Standard, not one inside this page (the native desktop opens Oracle's jump "New private tab", as from its taskbar button) */
@@ -157,6 +160,10 @@ async function oaStart(showLogin0){
 function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
  try{LG.style.display='none'}catch(e){}
  const da0=/^do-/.test(ONEAPP.k)?ONEAPP.k.slice(3):'';if(da0=='desk'||da0=='fs'){OA.want=1;(da0=='desk'?oaDesk:oaFs)();return}
+ /* (1.6.0 Part 12, item 6) the native desktop's screen saver: the page's own (ssRun) in this window, which the shell shows full
+    screen above everything and closes when the person is back (#app=do-saver&style=NAME&time=0|1) */
+ if(da0=='saver'&&typeof ssRun=='function'){OA.want=1;const q=ONEAPP.q,st=q.get('style');try{if(q.get('time'))SYSC.sstime=q.get('time')=='1';
+   document.documentElement.style.background='#000';document.title='Screen saver';ssRun({style:SS_STYLES.some(x=>x[0]==st)?st:SYSC.ssstyle})}catch(e){console.warn(e)}return}
  /* (1.6.0 Part 12, item 3) the taskbar's menus' rows the shell leaves to the page: an app's jump (#app=KEY&jump=WORDS: Oracle's
     New private tab, its window this page's main one), Settings at a page (#app=settings&page=disp), a pinned app pinned or
     unpinned (#app=do-pin&k=KEY&on=0|1), the sound muted or not (#app=do-mute) */
