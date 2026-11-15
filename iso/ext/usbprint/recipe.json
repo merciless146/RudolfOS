@@ -1,0 +1,14 @@
+{
+ "name": "usbprint",
+ "version": "1.0",
+ "title": "USB printers",
+ "summary": "Printing to printers plugged in by USB: IPP over USB (ipp-usb) and PostScript printers (Poppler's pdftops)",
+ "license": "BSD-2-Clause (ipp-usb), GPL-2.0-or-later (Poppler)",
+ "debs": ["ipp-usb", "poppler-utils", "libpoppler134", "libavahi-client3", "libavahi-common3"],
+ "map": {"sbin/ipp-usb": "usr/sbin/ipp-usb"},
+ "files": ["usr/bin/pdftops", "usr/bin/pdftocairo", "usr/share/ipp-usb", "usr/lib/*-linux-gnu/libpoppler.so.134*",
+           "usr/lib/*-linux-gnu/libavahi-client.so.3*", "usr/lib/*-linux-gnu/libavahi-common.so.3*"],
+ "tree": "tree",
+ "start": "usbprint.start",
+ "need": ["usr/sbin/ipp-usb", "usr/lib/rudolf/print/pdftops", "usr/lib/rudolf/print/pdftocairo"]
+}

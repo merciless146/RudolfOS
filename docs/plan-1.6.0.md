@@ -109,6 +109,48 @@ PDF Viewer since 1.5.9) lists them as "USB: name".
 - **On real hardware:** the HP desktop's user's USB printer (on the HP desktop, or on the Vivobook if it can be
   borrowed), first read only (its interfaces and device ID: which kind it is), then a test page.
 
+**Done, first step (2026-11-15), on Part 13's signed system extensions:**
+- **Kernel:** USB_PRINTER (usblp) a module, checked after olddefconfig in kconfig.sh and kconfig-arm64.sh.
+- **Devices:** 90-rudolf.rules runs /usr/lib/rudolf/usbprint for a printer's interface (by ENV{INTERFACE}=="7/1/*", so
+  also when it goes; add, remove and bind) and for usblp's /dev/usb/lpN; mdev's fallback has the same two lines
+  (before its modalias line). udevadm verify passes on the rules.
+- **/usr/lib/rudolf/usbprint** (hotplug, scan): every USB printer there is, written to /run/rudolf/usb-printers (kind,
+  name, address, IEEE 1284 device ID, sysfs name): IPP over USB (an interface 7/1/4: usblp unbound from that printer's
+  interfaces, ipp-usb started in its udev mode, which ends after the last one, and its port read from its state file:
+  ipp://127.0.0.1:PORT/ipp/print; no address without the extension), PDF or PostScript (the device ID's command set:
+  its /dev/usb/lpN), or "needs a driver" (PCL-only, host-based); plugged in and unplugged said in
+  /run/rudolf/usbprint.log; the name from the device's strings or its device ID (short and long field names).
+- **The first extension, `usbprint`** (iso/ext/usbprint: recipe.json, its start script, its filters' links): ipp-usb
+  (from Ubuntu's /sbin, put in usr/sbin), Poppler's pdftops and pdftocairo (as /usr/lib/rudolf/print/pdftops and
+  pdftocairo), libpoppler and Avahi's client libraries where the base lacks them (mkext.sh leaves out what the base has),
+  ipp-usb's quirks; its start script writes ipp-usb's settings (loopback only, no DNS-SD: Rudolf has no Avahi, the
+  address goes through /run/rudolf/usb-printers instead, ports from 60000, short logs). No budget in ci_release.sh (the
+  base does not carry it); mkext.sh prints its size: about 9.9 MB of files with all its libraries, 2.2 MB to download
+  where the base has libpoppler and Avahi's client (measured here on Ubuntu 24.04, 2026-11-15).
+- **rudolf-print:** find adds the USB printers as "USB: name" (an IPP over USB one at ipp-usb's address, printed to as a
+  network printer; a plain one as usb://lpN; one that cannot print as usb://KIND/SYSNAME); `rudolf-print usb` (JSON for
+  Settings: kind, ready); info for usb:// (formats; a PostScript one only with the extension's pdftops; one needing a
+  driver has no format, so the print dialog says it needs a driver; an IPP over USB one without the extension says to
+  install it); send to usb://lpN writes the PDF as it is (the pages picked with pdftocairo when the extension is there,
+  else all of them, said) or PostScript from pdftops (with the pages), once per copy.
+- **rudolfd:** print/find as before (with them); print/usb; a printer's address may be usb://... (no "..", quotes or
+  ports).
+- **Settings › Devices › Printers plugged in by USB** (desktop/usbprint60.js): each one's name (as text) and kind (IPP
+  over USB, reads PDF, reads PostScript, needs a driver), ready or needing the USB printers extension (a System
+  extensions… button), read again with Refresh and when a USB device comes or goes.
+- **The self-test:** a "usb-printer" line (each one and its kind; fails when an IPP over USB one has no address or
+  ipp-usb does not answer there; skipped with none).
+- Tests: qt/host/usbprint60_t.sh 31 (a stand-in sysfs: an IPP over USB printer, a PostScript one, a PCL-only one, a PDF
+  one, a USB stick; ipp-usb's stand-in in front of qt/fakeprinter.py, printed to through its address; the jobs to
+  stand-in /dev/usb/lpN; without the extension; unplugged; rudolfd's address check (fixtures/printuri.c); the rules,
+  mdev's lines, the kernel, the self-test), qt/shell2/usbprint60_t.js 13 (and the print dialog's list), udev60_t.sh 13,
+  pdfprint59_t.js 8; .github/workflows/sysext-check.yml runs both host tests (sysext60_t.sh, usbprint60_t.sh) on pull requests.
+
+**Next:** extensions.yml's first run (the owner's) to publish `usbprint` for the first release with a base ABI; the QEMU
+check with a USB printer passed through (or QEMU's usb-printer-like device) and ipp-usb itself; on the HP desktop's
+user's printer (borrowed): first read only (its interfaces and device ID: which kind), then a test page; ARM64's recipe
+(the file globs are by architecture already; the release ext-ABI16 differs per base).
+
 ### 9. udev instead of mdev (added on 2026-11-13)
 Why: mdev makes device nodes and runs scripts, but keeps no device database and tells no program about devices. Linux
 software finds hardware through udev (libudev): ModemManager (1.5.9 needed a workaround: #280), libinput, SDL and
@@ -593,6 +635,53 @@ private mount namespace with two extensions in order, a clash refused, a start s
 extension installed and in use after a restart; a broken one (its start script hangs, or it stops the desktop)
 left out on the next start; an update to a base with and without the extension's build; Recovery mode without
 extensions; removal leaving nothing behind.
+
+**Done, first step (2026-11-15):**
+- **rpk** (iso/sys/rpk.c): kind `sysext`. Installed only with `--system` (rudolfd gives it after checking an administrator's
+  password; the App Store's `pkg/install` cannot install or remove one), only when signed by a key in
+  /etc/rudolf/rpk-keys itself (the release key: not a Library or developer key, nor one added with `rpk key add`), with
+  PKGINFO `base` equal to this base's /usr/share/rudolf/base-abi and `kernel` (when given) to the running kernel, holding
+  only PKGINFO, licenses/, usr/, lib/firmware/ and lib/modules/KVER/extra/ (no device files) and at most one start
+  script, usr/lib/rudolf/ext.d/NAME.start. Never mounted at /pkg; left out of `rpk status` (the App Store);
+  `rpk sysext-status` (JSON for Settings: installed, what this start did, the list's available ones) and
+  `rpk sysext-check NAME` (its file's signature again, base, kernel, revocation). `rpk update` updates an installed one
+  as the apps. Health log lines of their own (kind "extension"). The extensions' list: /usr/share/rudolf/sysext-source.
+- **The assembly** (/usr/lib/rudolf/sysext, run by rudolf-init before udev, from /persist/pkg): each installed extension
+  that passes sysext-check mounted read-only at /run/rudolf/ext/NAME in name order; one with a file the base (or an
+  earlier extension) has is left out, said in /run/rudolf/ext/state and the health log; /usr and /lib/firmware become
+  read-only overlays (the extensions over a bind of the base); /lib/modules/KVER an overlay with a scratch upper layer in
+  /run for depmod's lists (the base never written); start scripts as root, 20 s each (killed after), output in
+  /run/rudolf/ext/NAME.log, a failure in the health log. The trial: what is used for the first time (or a new version)
+  is written to /persist/pkg/sysext/trying; the session's watchdog marks the start good at the desktop's first heartbeat
+  (`sysext good`); if it never came, the next start leaves those out (sysext/off/NAME, with Try again). None in Recovery
+  mode (rudolf.recovery=1), with rudolf.noext=1, or once after "Start once without extensions".
+- **rudolfd:** GET sysext/status; POST sysext/install, remove (as jobs), retry, skip-once, each only with an
+  administrator's name and password in the body, checked by rudolfd (desk_admin_check, as the development link's).
+- **Settings › Update and recovery › System extensions** (desktop/sysext60.js, after Security updates): each one's
+  name, what it adds, version, size and state (in use, in use after a restart, left out and why), Remove (asks first),
+  Try again, Install… (the list for this base), Check for extensions, Start once without extensions, Restart now; a
+  standard account's buttons off; drawn as text.
+- **The self-test:** an "extensions" line (those in use; fails on one left out, with why).
+- **Building:** iso/systools/baseabi.sh (the base's libraries' hash), written by ci_release.sh into the base
+  (usr/share/rudolf/base-abi, and sysext-source: the release ext-ABI16) and by mkrootfs.sh; iso/systools/mkext.sh (an
+  extension from iso/ext/NAME/recipe.json: Ubuntu 24.04's packages, what the base has already left out, every library
+  its programs need found, its size printed, signed); .github/workflows/extensions.yml (workflow_dispatch only, for one
+  release's base and kernel: signs with RPK_SIGNING_KEY as the release does, publishes the extensions and a signed index
+  in the release ext-ABI16, keeping those already there). rpk-tool.py: `sysext-recipe`.
+- Tests: qt/host/sysext60_t.sh 47 (throw-away keys made by the test: the App Store's way refused; the system key
+  accepted, a Library key and an added key refused; another base, another kernel, files outside usr/ and lib/, a start
+  script not its own, kernel modules without the kernel line refused; two extensions laid over a stand-in root in a
+  private mount namespace, in order, read-only, with depmod; the start script; the trial, Try again and good; a clash
+  with the base and with another extension; a start script stopped after its time limit; Recovery mode, rudolf.noext=1,
+  Start once without; a file changed after installing; another base after an update; a revocation; the list in
+  Settings and not in the App Store; removal; the self-test's line; rudolfd's requests with an administrator's password
+  only), qt/shell2/sysext60_t.js 16, rpklib_t.sh 15, devcert59_t.sh 14, selftest_t.sh 25.
+
+**Next:** the QEMU checks of 13.7 (an extension in use after a restart, a broken one left out, an update with and without
+the extension's build, Recovery mode, removal); rudolf-update fetching each installed extension's build for the new base
+before switching slots (now an update to a new base leaves them out, said, until their build is installed); extensions
+with kernel modules built in the kernel's own run (signed with its module key); the release check for promised
+extensions; the first run of extensions.yml (the owner's, for the first release with a base ABI).
 
 ### 14. A keyring for Linux apps: the Secret Service (added on 2026-11-14)
 Found on the Vivobook (2026-11-14): signing in to the Claude app for Linux with an e-mail address showed a notice that

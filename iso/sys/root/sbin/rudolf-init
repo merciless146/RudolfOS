@@ -19,6 +19,10 @@ hostname rudolf
 ip link set lo up
 hwclock -s -u 2>/dev/null
 /usr/lib/rudolf/clockfloor 2>/dev/null   # 1.4.4: never earlier than this release (a hardware clock that lost its time)
+# 1.6.0 (docs/plan-1.6.0.md Part 13): the signed system extensions installed on this computer, laid over the unchanged
+# base read-only (/usr/lib/rudolf/sysext), before the devices are set up, so their udev rules, firmware and kernel
+# modules are there for them; none in Recovery mode, with rudolf.noext=1, or once when asked in Settings
+[ -x /usr/lib/rudolf/sysext ] && mountpoint -q /persist && RPK_ROOT=/persist/pkg /usr/lib/rudolf/sysext assemble >>/run/rudolf/sysext.log 2>&1
 # 1.6.0 (docs/plan-1.6.0.md Part 9): devices through udev (systemd-udevd on its own): its rules (/usr/lib/udev/rules.d,
 # Rudolf OS's own in 90-rudolf.rules, which run the scripts mdev ran), its hardware database, and the device database
 # Linux software reads (libudev: ModemManager, SDL and Steam's controllers, PipeWire, Flatpak apps). The devices already
