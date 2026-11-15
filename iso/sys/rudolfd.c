@@ -4532,8 +4532,29 @@ static void api(struct req *r)
 			const char *v = qparam(r->query, "v"); if (!v) v = "";
 			if (strcmp(kk, "url") && strcmp(kk, "auto")) { reply_err(r->fd, 400, "k is url or auto"); return; }
 			for (const char *c = v; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("/:._-~%+", *c)) { reply_err(r->fd, 400, "bad character"); return; }
+			/* 1.6.0: the official beta address only through Get beta versions (an administrator's password, below) */
+			if (!strcmp(kk, "url") && strstr(v, "merciless146.github.io/RudolfOS/beta")) { reply_err(r->fd, 403, "turn on Get beta versions instead (it needs an administrator's name and password)"); return; }
 			snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update set %s '%s' 2>&1", kk, v);
 			char *o = run_out(cmd); if (o && *o) { reply_err(r->fd, 400, o); free(o); return; } free(o); reply_ok(r->fd, "saved"); return;
+		}
+		/* 1.6.0 (owner, 2026-11-15): Get beta versions, opt-in. On: an administrator's name and password, checked here
+		   (the body: {"n":ADMIN,"p":PASSWORD}). Off: nothing is needed, and the next update brings the latest stable
+		   release (rudolf-update set channel stable). */
+		if (!strcmp(w, "beta") && !strcmp(r->method, "POST")) {
+			const char *on = qparam(r->query, "on"); int want = on && *on == '1';
+			if (want) {
+				char *an = NULL, *ap = NULL, why[200] = "";
+				if (r->body && r->blen && r->body[0] == '{') { an = dbody_field(r, "n"); ap = dbody_field(r, "p"); }
+				int adm = an && ap ? desk_admin_check(an, ap, why, sizeof why) : -1;
+				dfree_secret(ap);
+				if (adm) { free(an); reply_err(r->fd, adm == 429 ? 429 : 403, why[0] ? why : "an administrator's name and password are needed"); return; }
+				char *o = run_out("/usr/bin/rudolf-update set channel beta 2>&1");
+				health_add("security", "beta versions were turned on by %.80s", an); free(an);
+				reply_ok(r->fd, o && *o ? o : "beta versions are on"); free(o); return;
+			}
+			char *o = run_out("/usr/bin/rudolf-update set channel stable 2>&1");
+			health_add("security", "beta versions were turned off: the next update brings the latest stable release");
+			reply_ok(r->fd, o && *o ? o : "beta versions are off"); free(o); return;
 		}
 		/* 1.5.9 (plan 8.3): Developer mode on (key, address) or off; the desktop asks an administrator's password and a
 		   typed confirmation first */
