@@ -55,6 +55,29 @@ This is the largest part here. Owner's call: keep it in 1.6.1, or give it a rele
 1.6.0 left these without a release; they are here so they are not lost. They need hardware with an eSIM and a 5G
 modem.
 
+### 6. Closing the gap with Android (added on 2026-11-15)
+Asked for on 2026-11-15, after comparing 1.6.1 with Android: the items that decide whether someone could carry a
+Rudolf phone every day. Each is measured on the first phone (Part 4) and compared with the same phone on Android
+where it can be.
+- **Android apps through Waydroid, made dependable:** set up from Settings, apps from F-Droid and an app store the
+  owner chooses, their windows and notifications in Rudolf's own; a list of apps that work and that refuse (banking
+  apps that check the device), kept in the docs. Measured on the Vivobook first (docs/plan-1.6.0.md: "Waydroid
+  measured on the Vivobook with Lite before it is offered").
+- **Battery life:** the phone's idle and screen-on drain measured, then: the modem, Wi-Fi and the screen put to sleep
+  when not needed, suspend with the modem waking it for a call or a text, apps in the background held back as
+  Android's Doze does; targets set from the measurements, shown in Settings › Battery.
+- **Calls with the carrier:** voice calls over 4G (VoLTE) where the modem and carrier allow, Wi-Fi calling if the
+  carrier offers it, a call to a real phone and an emergency-call check on each device (Part 4), the call's sound
+  through the earpiece, speaker and a headset.
+- **The camera:** photos and video with the phone's cameras (libcamera), in a Camera app; quality compared with
+  Android's on the same phone.
+- **The phone's sensors and hardware:** auto-rotation, proximity (the screen off at the ear), brightness, GPS for maps
+  and weather, the fingerprint reader where the phone has one, vibration.
+- **Messaging apps people need:** what works through Waydroid or the web (Signal, WhatsApp Web), and what does not,
+  said plainly in the docs.
+- **Tests:** each measured and written in docs/testing.md; the battery and call results on the owner's phone and
+  carrier.
+
 ## Not moved here
 - **elogind and polkit** (1.6.0 Part 11): left out by decision on 2026-11-15, since Rudolf OS's own inhibit portal and
   prompts cover what apps ask. Taken up again only if an app or a later part needs them.
@@ -65,4 +88,4 @@ modem.
 ## Steps
 1. Part 1, several monitors, after the 1.6.0 beta.
 2. Part 3, Lite's leftovers, one PR each.
-3. Parts 2 and 4 with the first phone; Part 5 when the hardware is there.
+3. Parts 2 and 4 with the first phone, then Part 6 on it; Part 5 when the hardware is there.
