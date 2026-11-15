@@ -52,7 +52,7 @@ class VM:
                 subprocess.run(f'bzcat {os.path.join(q, "pc-bios", "edk2-x86_64-code.fd.bz2")} > {plain}', shell=True, check=True)
             fw = ['-machine', 'q35', '-drive', f'if=pflash,format=raw,readonly=on,file={plain}']
         a = [os.path.join(q, 'build', 'qemu-system-x86_64'), '-L', os.path.join(q, 'pc-bios')] + fw + [
-             '-m', str(mem), '-smp', '2', '-accel', 'tcg,thread=multi', '-vga', 'std', '-display', 'none',
+             '-m', str(mem), '-smp', '2', '-accel', os.environ.get('QEMU_ACCEL', 'tcg,thread=multi'), '-vga', 'std', '-display', 'none',
              '-qmp', f'unix:{s.qmp_path},server,nowait', '-serial', f'unix:{s.ser_path},server,nowait',
              '-device', 'e1000,netdev=n0', '-netdev', 'hubport,id=n0,hubid=0', '-usb', '-device', 'usb-tablet']
         for i, d in enumerate(drives):

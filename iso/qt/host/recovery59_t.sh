@@ -25,7 +25,7 @@ slot() { local S=$1 SER=$2 K=$3; rm -rf $T/l $T/out $T/sys/$S; mkdir -p $T/l $T/
 	cp $T/l/*.sfs $T/l/vmlinuz $T/out/channel/manifest.txt $T/out/channel/manifest.sig $T/sys/$S/
 	printf 'serial %s\nversion 1.5.9\n' $SER > $T/sys/$S/RELEASE; echo 1 > $T/sys/$S/complete
 	[ "${NOCHROM:-}" = 1 ] && mv $T/sys/$S/chromium.sfs $T/media/rudolf/chromium.sfs; return 0; }
-run() { RU_SYSD=$T/sys RU_MEDIA=$T/media RU_CONF=$T/conf RU_KEYS=$T/keys RU_SLOT=$T/slot RU_CMDLINE=$T/cmd RU_MOUNTS=$T/mounts RU_SYSBLOCK=$T/sysblock $RU "$@" 2>&1; }
+run() { RU_NOAUTOFETCH=1 RU_NOESP=1 RU_SYSD=$T/sys RU_MEDIA=$T/media RU_CONF=$T/conf RU_KEYS=$T/keys RU_SLOT=$T/slot RU_CMDLINE=$T/cmd RU_MOUNTS=$T/mounts RU_SYSBLOCK=$T/sysblock $RU "$@" 2>&1; }
 : > $T/cmd; : > $T/mounts; mkdir -p $T/sys
 slot a 2026111301 official; printf 'good=a\nprev=\nnext=\ntries=0\n' > $T/sys/state; echo a > $T/slot
 o=$(run boot-ok)

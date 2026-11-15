@@ -1,0 +1,49 @@
+#!/bin/sh
+# Rudolf OS 1.6.0 (docs/plan-1.6.0.md Part 15; 1.5.9 8.4, 8.5): the start-up files on this drive, checked and put back.
+# The drive's EFI image (the disc image at its start: efi/efiboot.img) holds EFI/rudolf/rudolf.efi (the normal start)
+# and EFI/rudolf/recovery.efi (Recovery mode, always the official Rudolf OS). Each is official when its Secure Boot
+# signature is Rudolf OS's (sbverify with /usr/share/rudolf/rudolf-sb.crt): a custom build may replace rudolf.efi, and
+# anything may have changed either.
+#   espcheck status         start=official|other|missing recovery=official|other|missing (and exit 0 when both official)
+#   espcheck boot SLOT      (rudolf-update boot-ok, when SLOT is an official release) both official: nothing; else said in
+#                           the health log and repaired
+#   espcheck repair SLOT    the boot image of SLOT's release (boot.iso, beside its files on GitHub) downloaded, its
+#                           checksum and both start-up files in it checked as official, then staged with bootfiles.sh:
+#                           written before anything else at the next start
+# Test overrides: ESP_IMG (the EFI image), SBVERIFY, SB_CERT, ESP_SYSD (the slots), ESP_DL (where the image is kept),
+# ESP_FETCH, ESP_STAGE (commands), ESP_HEALTH (a command: health KIND MESSAGE), ESP_PATH (stand-ins first in PATH).
+export PATH=${ESP_PATH:+$ESP_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
+IMG=${ESP_IMG:-/live/media/efi/efiboot.img}; SBV=${SBVERIFY:-sbverify}; CERT=${SB_CERT:-/usr/share/rudolf/rudolf-sb.crt}
+SYSD=${ESP_SYSD:-/persist/os/system}; DL=${ESP_DL:-/persist/os/esp-repair}
+FETCH=${ESP_FETCH:-rudolf-update fetch}; STAGE=${ESP_STAGE:-/usr/lib/rudolf/bootfiles.sh stage}
+health() { if [ -n "$ESP_HEALTH" ]; then $ESP_HEALTH "$1" "$2"; else rudolfd --health "$1" "$2" 2>/dev/null; fi; echo "$2"; }
+T=$(mktemp -d /tmp/espcheck.XXXXXX); trap 'umount $T/e 2>/dev/null; umount $T/i 2>/dev/null; rm -rf $T' EXIT
+# the two files of an EFI image (IMAGE), into T/out: official, other or missing each
+look() { mkdir -p $T/e; umount $T/e 2>/dev/null
+	if ! mount -t vfat -o ro,loop "$1" $T/e 2>/dev/null; then echo "start=missing recovery=missing"; return; fi
+	r=; for f in rudolf recovery; do p=$T/e/EFI/rudolf/$f.efi; [ "$f" = rudolf ] && k=start || k=recovery
+		if [ ! -s "$p" ]; then v=missing; elif $SBV --cert "$CERT" "$p" >/dev/null 2>&1; then v=official; else v=other; fi; r="$r $k=$v"; done
+	umount $T/e; echo "${r# }"; }
+case "$1" in
+status) s=$(look "$IMG"); echo "$s"; [ "$s" = "start=official recovery=official" ];;
+boot|repair)
+	SL=$2; case "$SL" in a|b|r) ;; *) echo "usage: espcheck boot|repair SLOT"; exit 2;; esac
+	if [ "$1" = boot ]; then s=$(look "$IMG"); [ "$s" = "start=official recovery=official" ] && exit 0
+		health boot "the start-up files on this drive are not all the official ones ($s): the official ones are put back from the release's boot image"; fi
+	M=$SYSD/$SL/manifest.txt; [ -s "$M" ] || { health boot "the start-up files could not be put back: slot $SL has no release list"; exit 1; }
+	U=$(awk -F'\t' '$1=="L" && $2=="vmlinuz" {print $5}' "$M"); SER=$(sed -n 's/^serial //p' "$M")
+	case "$U" in https://*/vmlinuz) B=${U%/vmlinuz}/boot.iso;; *) health boot "the start-up files could not be put back: release $SER names no download address"; exit 1;; esac
+	mkdir -p "$DL"; rm -f "$DL/boot.iso" "$DL/boot.iso.sha256"
+	# (at each start only once a day, so a release without a boot image is not downloaded for at every start)
+	if [ "$1" = boot ] && [ -n "$(find "$DL/tried" -mmin -1440 2>/dev/null)" ]; then echo "tried less than a day ago"; exit 0; fi; : > "$DL/tried"
+	if ! $FETCH "$B" "$DL/boot.iso" >/dev/null 2>&1 || ! $FETCH "$B.sha256" "$DL/boot.iso.sha256" >/dev/null 2>&1; then
+		rm -f "$DL/boot.iso"; health boot "the start-up files could not be put back: release $SER's boot image could not be downloaded (tried again at the next start)"; exit 3; fi
+	H=$(cut -c1-64 "$DL/boot.iso.sha256"); [ "$(sha256sum "$DL/boot.iso" | cut -c1-64)" = "$H" ] || { rm -f "$DL/boot.iso"; health boot "the start-up files could not be put back: release $SER's boot image does not match its checksum"; exit 4; }
+	mkdir -p $T/i; mount -t iso9660 -o ro,loop "$DL/boot.iso" $T/i 2>/dev/null || { rm -f "$DL/boot.iso"; health boot "the start-up files could not be put back: release $SER's boot image cannot be read"; exit 4; }
+	s=$(look $T/i/efi/efiboot.img); umount $T/i
+	[ "$s" = "start=official recovery=official" ] || { rm -f "$DL/boot.iso"; health boot "the start-up files could not be put back: release $SER's boot image holds files not signed by Rudolf OS ($s)"; exit 4; }
+	if RUDOLF_IMG_SHA=$H $STAGE "$DL/boot.iso" > $T/stage.log 2>&1; then rm -f "$DL/boot.iso" "$DL/boot.iso.sha256" "$DL/tried"
+		health boot "the official start-up files of release $SER are written at the next start"; exit 0; fi
+	rm -f "$DL/boot.iso"; health boot "the start-up files could not be put back: $(tail -1 $T/stage.log)"; exit 5;;
+*) echo "usage: espcheck status|boot SLOT|repair SLOT"; exit 2;;
+esac

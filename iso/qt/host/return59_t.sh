@@ -22,7 +22,7 @@ slot() { local S=$1 SER=$2 K=$3; rm -rf $T/l $T/out $T/p/os/system/$S; mkdir -p 
 	python3 $I/systools/make_release.py --layers $T/l --kernel $T/l/vmlinuz --out $T/out --key $T/$K.key --serial $SER --version $4 >/dev/null 2>&1 || { echo "make_release failed"; exit 1; }
 	cp $T/l/*.sfs $T/l/vmlinuz $T/out/channel/manifest.txt $T/out/channel/manifest.sig $T/p/os/system/$S/
 	printf 'serial %s\nversion %s\n' $SER $4 > $T/p/os/system/$S/RELEASE; echo 1 > $T/p/os/system/$S/complete; }
-run() { RU_SYSD=$T/p/os/system RU_MEDIA=$T/media RU_CONF=$T/p/os/update.conf RU_KEYS=$T/keys RU_EXTRA=$T/p/etc/extra-keys RU_SLOT=$T/slot RU_CMDLINE=$T/cmd RU_MOUNTS=$T/mounts RU_SYSBLOCK=$T/sysblock $RU "$@" 2>&1; }
+run() { RU_NOAUTOFETCH=1 RU_NOESP=1 RU_SYSD=$T/p/os/system RU_MEDIA=$T/media RU_CONF=$T/p/os/update.conf RU_KEYS=$T/keys RU_EXTRA=$T/p/etc/extra-keys RU_SLOT=$T/slot RU_CMDLINE=$T/cmd RU_MOUNTS=$T/mounts RU_SYSBLOCK=$T/sysblock $RU "$@" 2>&1; }
 st() { sed -n "s/^$1=//p" $T/p/os/system/state; }
 setup() { rm -rf $T/p $T/media; mkdir -p $T/p/os/system $T/media/rudolf; : > $T/cmd; : > $T/mounts
 	slot a 2026111301 official 1.5.9; printf 'good=a\nprev=\nnext=\ntries=0\n' > $T/p/os/system/state; echo a > $T/slot; run boot-ok >/dev/null

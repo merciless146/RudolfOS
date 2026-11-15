@@ -456,7 +456,7 @@ static void touchpad_frame(struct dev *v)
    open browser windows over the desktop. While the desktop's Chromium window (class RudolfDesktop) has the
    keyboard, those keys arrive as F20 (W, F4), F21 (T), F22 (N) and F23 (Q), still with Ctrl held (and Alt+F4 as Alt+F20); the desktop and
    Oracle's real tabs read Ctrl+F20 as Ctrl+W and so on (shell26.js: DESK_SUB). Linux apps and the browser window
-   for sign-in sites get the keys unchanged. */
+   for sign-in sites get the keys unchanged. (1.6.0: Oracle's Tor windows, class RudolfTor, as the desktop.) */
 static int mod_ctrl, mod_alt, shift_down;
 static unsigned char key_sub[256];
 static int desk_focused(void)
@@ -470,7 +470,10 @@ static int desk_focused(void)
 	for (int i = 0; i < 12 && w != None && w != PointerRoot; i++) {
 		XClassHint h = {0};
 		if (XGetClassHint(dpy, w, &h)) {
-			was = h.res_class && !strcmp(h.res_class, "RudolfDesktop");   /* the session starts it with --class=RudolfDesktop */
+			/* the session starts it with --class=RudolfDesktop; 1.6.0 (plan Part 15): and Oracle's Tor windows on Standard
+			   (--class=RudolfTor, the desktop page in one-app mode, which reads the keys as the desktop does): Ctrl+W
+			   closed the whole Tor window instead of its tab, Ctrl+T and Ctrl+N opened Chromium's own windows */
+			was = h.res_class && (!strcmp(h.res_class, "RudolfDesktop") || !strcmp(h.res_class, "RudolfTor"));
 			if (h.res_name) XFree(h.res_name);
 			if (h.res_class) XFree(h.res_class);
 			return was;
@@ -552,6 +555,24 @@ static void dpms(int off)
 	if (enable) enable(dpy);
 	force(dpy, off ? 3 : 0); XFlush(dpy);   /* DPMSModeOff : DPMSModeOn */
 }
+/* 1.6.0 (plan Part 11): an app holds the screen on (rudolf-portal's files in /run/rudolf/inhibit with the idle flag,
+   its owner's, its portal running), as rudolfd's inhibit_scan reads them */
+static int idle_held(void)
+{
+	DIR *d = opendir("/run/rudolf/inhibit"); struct dirent *e; int n = 0;
+	while (d && (e = readdir(d))) {
+		unsigned uid, ck; long pid; char x; if (sscanf(e->d_name, "%u-%ld-%u%c", &uid, &pid, &ck, &x) != 3 || pid <= 1) continue;
+		char f[400], pp[64], comm[32] = "", l[300]; struct stat st; snprintf(f, sizeof f, "/run/rudolf/inhibit/%s", e->d_name);
+		if (lstat(f, &st) || !S_ISREG(st.st_mode) || st.st_uid != uid) continue;
+		snprintf(pp, sizeof pp, "/proc/%ld/comm", pid); FILE *c = fopen(pp, "r"); if (c) { if (!fgets(comm, sizeof comm, c)) comm[0] = 0; fclose(c); }
+		if (strncmp(comm, "rudolf-portal", 13) || stat(pp, &st) || st.st_uid != uid) continue;
+		FILE *g = fopen(f, "r"); if (!g) continue;
+		while (fgets(l, sizeof l, g)) if (!strncmp(l, "flags=", 6) && (strtoul(l + 6, NULL, 10) & 8)) n++;
+		fclose(g);
+	}
+	if (d) closedir(d);
+	return n;
+}
 static void screen_blank(int off)
 {
 	if (off == blanked) return;
@@ -601,9 +622,10 @@ static void power_tick(long long t)
 	}
 	/* on battery, once a minute: battery saver goes on by itself at its level */
 	if (ac == 0 && t - last_apply >= 60000) { last_apply = t; runbg("/usr/lib/rudolf/power", "apply", NULL); }
-	static long long last_read; static int mins = -1;
-	if (t - last_read >= 1000) { last_read = t; mins = power_now_int("screen"); }
-	if (!blanked && mins > 0 && last_in_ms && t - last_in_ms >= mins * 60000LL) screen_blank(1);
+	static long long last_read; static int mins = -1, held;
+	if (t - last_read >= 1000) { last_read = t; mins = power_now_int("screen"); held = idle_held(); }
+	/* (1.6.0, plan Part 11: not while an app asks to keep the screen on: a video, a game, a call) */
+	if (!blanked && !held && mins > 0 && last_in_ms && t - last_in_ms >= mins * 60000LL) screen_blank(1);
 }
 static void mark_input(void)
 {
