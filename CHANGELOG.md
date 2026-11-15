@@ -20,6 +20,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- Fixed: the Save As box of Notepad, WordLite, WordPro and Paint (and the Run box) ignored typing: its Enter handler cancelled every other key.
+- New: Notepad, WordLite and WordPro save and open through a dialog like the File Explorer: folders, a name, and the file type from a list (Notepad: text, Markdown, web page, Lua, CSV, JSON, batch; WordLite and WordPro: rich document, web page, text). Notepad and WordLite keep several documents in tabs under their buttons (New, Open, Ctrl+T, Ctrl+W, Ctrl+Tab), a file opened from elsewhere joins the open window as a tab, and unsaved tabs are asked about.
 - Fixed: calls heard nothing on laptops whose built-in microphones are on another sound chip than the speakers (the Vivobook's AMD microphones): the headset jack's microphone was made the default even with nothing plugged in. It is now the default only when a headset is plugged in.
 - New: Oracle's bookmarks bar ends with a "+" that adds a bookmark by its address, from the browsing history (newest first, searchable), or as a file on this computer (a document or a PDF).
 - Fixed: choosing a file in the desktop's own file picker (Open a presentation or a spreadsheet, and others) answered as if nothing had been chosen.
