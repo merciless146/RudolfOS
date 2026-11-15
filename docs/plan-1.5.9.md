@@ -1114,6 +1114,19 @@ file:///C:/…. Names are text, cut to 18 characters as the ☆'s. Found on the 
 for every file chosen (closing its window ran its onclose first), so Open in Presentation, Spreadsheet and others
 did nothing. Test: qt/shell2/bmadd59_t.js 14/14 (devkey59, wallpaper, private59 unchanged).
 
+### 14.2 Saving and opening in Notepad, WordLite and WordPro; their tabs (added on 2026-11-14)
+Found on the Vivobook: the Save As box took no typing (nameDlg's `onkeydown=e=>e.key=='Enter'&&go()` returned false,
+cancelling every other key; the Run box had the same line). Asked for: saving opens a dialog like the File Explorer,
+choosing where and with which file type; Notepad and WordLite open documents and keep them in tabs under the title bar
+and buttons. **Done:** desktop/filedlg59.js `fileDlg` (folders, Up, Documents, New folder; a name typed, or a file
+clicked; the type list filters and puts its extension on the name, a typed extension kept; an existing file replaced
+only after asking; names checked); desktop/doctabs59.js `docTabs` (the tab row, • for unsaved, asked before closing a
+tab or the window; Ctrl+S, Ctrl+Shift+S, Ctrl+O, Ctrl+T, Ctrl+W, Ctrl+Tab; a file opened from elsewhere goes into
+the open window); Notepad and WordLite rebuilt on them (WordLite shows a document through safeHtml, and saves as rich
+document, web page or text); WordPro's Save, Save As, Open and Export use the dialog. Paint keeps its name box (now
+typable). Not yet: saving to a USB drive from these dialogs (they list C:, the account's files). Test:
+qt/shell2/editors59_t.js 16/16; altf4, office, sanitize59, staticbg59, tablet58, titlebar59 unchanged.
+
 ### 14.3 USB drives: another Rudolf OS stick (added on 2026-11-14)
 Found on the Vivobook: a SanDisk stick holding Rudolf OS 1.4.1 (ISO 9660, RUDOLF EFI, RUDOLFDATA) was detected
 (usb-storage, sda) but not in the File Explorer's drives: devplug's system_disk counted every disk with a RUDOLFDATA
