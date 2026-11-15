@@ -83,6 +83,11 @@ def boot(tag, slot):
     while up and time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'", 20) is not True: time.sleep(5)
     js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};return 1})()")
     return vm, g, up, js
+# a command run in the guest from a script file (a long command line echoed back over the serial line mixed with its
+# output), its output written to this test's log in full
+def run(g, c, t=60):
+    f = os.path.join(W, 'c160.sh'); open(f, 'w').write(c + '\n'); g.put(f, '/tmp/c160.sh', '644')
+    o = g.sh('sh /tmp/c160.sh 2>&1', t); out('$', c[:200].replace('\n', ' ; ')); out(o.rstrip()[-3000:]); return o
 def signin(js, n, pw, secs=900):
     r = js(f"(()=>{{if(window.__si=='wait')return 'already';const a=ACCTS.find(x=>x.n=={json.dumps(n)});if(!a)return 'no account';window.__si='wait';"
            f"(async()=>{{try{{if(!(await pwCheck(a,{json.dumps(pw)}))){{__si='bad';return}}if(USER)userLogout();const L=document.getElementById('login');USER=a;"
@@ -100,7 +105,7 @@ def signout(js):
 make_drive(DRV)
 vm = None
 try:
-    vm, g, up, js = boot('a', 'a'); sh = lambda c, t=60: g.sh(c, t)
+    vm, g, up, js = boot('a', 'a'); sh = lambda c, t=60: run(g, c, t)
     ok('1. the release starts (slot a)', up, 'not up')
     if not up: raise SystemExit
     r = js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);const k=await acctNew('kid','k1','user');ACCTS.push(k);saveUser();return b.id+' '+k.id})()", 120)
@@ -113,7 +118,7 @@ try:
     # as before 1.5.9: the folders the desktop's user's, and not yet moved
     sh(f"chown -R 1000:1000 /persist/accounts/{BOSS} /persist/accounts/{KID}; sed -i 's/ moved$//' /persist/etc/rudolf/account-users; sync")
     vm.stop(); time.sleep(3)
-    vm, g, up, js = boot('a2', 'a'); sh = lambda c, t=60: g.sh(c, t)
+    vm, g, up, js = boot('a2', 'a'); sh = lambda c, t=60: run(g, c, t)
     ok('2. started again', up)
     if not up: raise SystemExit
     o = sh(f"cat /persist/etc/rudolf/account-users; stat -c '%u %a %n' /persist/accounts/{BOSS} /persist/accounts/{BOSS}/Documents/SECRET.TXT /persist/accounts/{KID}; grep -h 'own Linux user' /persist/var/log/health*.log /run/rudolf/health*.log 2>/dev/null | tail -3")
@@ -133,13 +138,14 @@ try:
     # Debian: a stand-in (busybox), as t156; it runs as the account's user
     sh("D=/persist/debian; mkdir -p $D/bin $D/lib $D/lib64 $D/etc $D/proc $D/sys $D/dev $D/tmp $D/run $D/home/rudolf $D/root $D/.oldroot; cp /bin/busybox $D/bin/; for l in $(ldd /bin/busybox 2>/dev/null | grep -o '/[^ ]*'); do mkdir -p $D$(dirname $l); cp -L $l $D$l; done; "
        "for c in sh cat echo ls wget id; do ln -sf busybox $D/bin/$c; done; echo 'rudolf:x:1000:1000::/home/rudolf:/bin/sh' > $D/etc/passwd; echo test > $D/etc/rudolf-debian; touch $D/.rudolf-ready; chown -R 200000:200000 $D", 120)
-    o = sh(f"rudolf-debian rebind >/dev/null 2>&1; rudolf-debian run -- sh -c 'id -u; cat /home/rudolf/Documents/SECRET.TXT; wget -q -O- --header \"X-Rudolf-Token: {TOK}\" http://127.0.0.1:8080/api/info; echo; ls /home/rudolf/../ 2>&1' 2>&1; ps -o uid= -C sleep 2>/dev/null | head -1", 180)
+    o = sh(f"rudolf-debian rebind >/dev/null 2>&1; rudolf-debian run -- sh -c 'id -u; cat /home/rudolf/Documents/SECRET.TXT; wget -q -O- --header \"X-Rudolf-Token: {TOK}\" http://127.0.0.1:8080/api/info; echo; ls /home/rudolf/../ 2>&1' 2>&1", 180)
     ok('8. Debian (Wine runs in it): its programs are the account\'s, see its folder only, and are refused the API', 'boss secret' in o and 'kid secret' not in o and '"ok":true' not in o, o)
     o = sh(f"{AS} env DISPLAY=:0 rudolf-display --xsize 2>&1; echo rc=$?; setpriv --reuid={UK} --regid={UK} --init-groups env DISPLAY=:0 rudolf-display --xsize 2>&1; echo rc=$?")
     rcs = re.findall(r'^rc=(\d+)', o, re.M)
     ok('9. 15.3: the display: the signed-in account\'s programs may use it, the other account\'s user is refused', rcs[:1] == ['0'] and len(rcs) == 2 and rcs[1] != '0', o)
-    sh(f"({AS} sleep 600 &) ; sleep 1"); o1 = sh(f"pgrep -u {UB} -x sleep | head -1")
-    out(signout(js)); time.sleep(6); o2 = sh(f"pgrep -u {UB} -x sleep; ls /home/acct{UB} 2>&1 | head -2")
+    mine = f'for p in /proc/[0-9]*; do [ "$(stat -c %u $p 2>/dev/null)" = {UB} ] && grep -qx sleep $p/comm 2>/dev/null && echo ${{p#/proc/}}; done'
+    sh(f"({AS} sleep 600 &) ; sleep 1"); o1 = sh(mine)
+    out(signout(js)); time.sleep(6); o2 = sh(mine + f"; ls /home/acct{UB} 2>&1 | head -2")
     ok('10. 15.3: signing out stops every program of the account\'s user, its home goes', o1.strip() and not re.search(r'^\d+$', o2, re.M) and ('No such file' in o2 or not o2.strip()), [o1, o2])
     # 8.7 (without Secure Boot) and the recovery repair, with this tree's rudolf-update
     U = 'rudolf-update'
@@ -152,7 +158,7 @@ try:
     o = sh(f"RU_NOAUTOFETCH=1 {U} developer on '{DEVPUB}' https://dev.example/rudolf; printf 'good=a\\nprev=\\nnext=b\\ntries=2\\nfailed=\\n' > /persist/os/system/state; sync", 60)
     ok('13. 8.7: Developer mode on with a developer\'s key', 'Developer mode is on' in o, o)
     vm.stop(); time.sleep(3)
-    vm, g, up, js = boot('b', 'b'); sh = lambda c, t=60: g.sh(c, t)
+    vm, g, up, js = boot('b', 'b'); sh = lambda c, t=60: run(g, c, t)
     if RU: g.put(RU, '/tmp/ru160')
     o = sh(f"cat /etc/rudolf/slot; {U} boot-ok; {U} status | head -c 600", 300) if up else 'not up'
     ok('14. ...a release signed by that key starts from slot b, the system says it is a custom build, the recovery system stays official', up and '"signer":"custom"' in o and '"recoveryOfficial":true' in o, o)
@@ -160,7 +166,7 @@ try:
     ok('15. Return to official (keep): the official recovery system goes into the spare slot, to start next', 'Returning to the official Rudolf OS' in o and 'ret=1' in o, o)
     nxt = (re.search(r'^next=(\w)', o, re.M) or [None, 'a'])[1]
     vm.stop(); time.sleep(3)
-    vm, g, up, js = boot('c', nxt); sh = lambda c, t=60: g.sh(c, t)
+    vm, g, up, js = boot('c', nxt); sh = lambda c, t=60: run(g, c, t)
     if RU and up: g.put(RU, '/tmp/ru160')
     o = sh(f"{U} boot-ok; {U} status | head -c 700; ls /persist/os/system; cat /persist/etc/rudolf/extra-keys 2>&1", 300) if up else 'not up'
     ok('16. ...the official release started again: official, Developer mode off, the custom build\'s slot cleared', up and '"signer":"official"' in o and '"developer":false' in o and 'Cleared the custom build in slot b' in o, o)
