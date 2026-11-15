@@ -5,33 +5,29 @@ Asked for on 2026-11-10, with docs/plan-1.6.0.md (the first cellular release): w
 metered connections); 1.5.9 adds the modem service, the tablet layout and the ARM64 build; 1.6.0 builds the cellular
 experience on them. It starts once 1.5.8 is promoted.
 
-## Status (2026-11-13, after the unattended work session)
-Done in code and tests (PRs #260–#281, rudolfos-library #31; each part's "Done" note says what): Part 1 up to the device
-check (since #280 ModemManager runs without udev; since #281 the self-test has a modem line), Part 3 steps 1–5 (QEMU
-starts the ARM64 build directly, through UEFI firmware and with Chromium as the desktop), Part 4 up to the device
-check, Part 7 except the Vivobook call checks, Part 8 except 8.4's recovery.efi and the TPM and hardware keys, Part 9,
-Part 10's pictures, fonts and lazy apps, Part 11. Part 12 (the native desktop engine, a prototype) is not started; Part 13 (USB printers) moved to 1.6.0. The
-latest beta: **2026111402** (not promoted).
+## Status (2026-11-15: finished, for promotion to stable)
+**Done in code and tests:** Parts 1 (ModemManager, up to the device check), 2, 3 (steps 1–5: the ARM64 build in QEMU),
+4 (up to the device check), 7 (calls: CI tests on both engines, the 🎙️ indicator, devices, the calls page; 7.2a the
+microphone list and Test), 8 (keys, the Library's chain of trust, Developer mode, custom builds, recovery.efi and
+Return to official proven in QEMU with Secure Boot), 9 (game mode memory), 10 (a lighter desktop page: pictures, fonts,
+apps loaded when used), 11, 12 (the native desktop engine, Native (test), with Oracle on Chromium: 12.3c steps 1–6),
+14 (private browsing, the bookmarks' "+", Save and Open dialogs and tabs, another Rudolf OS stick, WordPro's links),
+15 (15.1, 15.2, 15.4–15.7; 15.3's first two steps) and 16 (Browse with Tor; the Standard Tor window's fix in #369).
+Part 13 (USB printers) moved to 1.6.0 on 2026-11-13. The last beta checked on the Vivobook: 2026111502.
 
-### What needs the Vivobook (or the person) before 1.5.9 is promoted
-1. **A beta with everything:** 2026111401: install it; the self-test (its modem line says "no cellular modem").
-2. **iw and the radios** (#267): Settings › Network › Wi-Fi › This computer's Wi-Fi radios lists 2.4 and 5 GHz.
-3. **The hotspot** (Part 4): with the MiFi's USB tethering as the connection, Share this connection on the RTL8821CE;
-   a phone joins it and browses. (Moved to 1.6.0 on 2026-11-13, when the MediaTek phone offered no USB tethering and
-   the MiFi could not be found; back in 1.5.9 on 2026-11-14: the MiFi is here. The RTL8821CE's AP mode was confirmed on
-   2026111403.)
-4. ~~**The modem service** (Part 1): the USB modem stick plugged in: Settings › Network › Cellular modems shows it
-   (ModemManager without udev is the open question).~~ Moved to 1.6.0 (2026-11-13: the stick belongs to the HP
-   desktop's user and is not available for 1.5.9; 1.5.9 ships ModemManager tested only on the host).
-5. **Calls** (Part 7.4): Meet's test call in Oracle on Standard, and on Lite (it opens in Chromium's window); Zoom's
-   test meeting; the 🎙️ indicator and its mute; no screen saver during a call; a tel: link.
-6. **Game mode and memory** (Part 9, on 2026111308 or newer): the idle reading; Task Manager's breakdown; Clear
-   cache. (FNF to the end: not needed, the owner said on 2026-11-14.)
-7. **Developer mode and Return to official** in QEMU with Secure Boot (8.7), and 8.4's recovery.efi (its host and QEMU
-   Secure Boot tests done on 2026-11-14, qt/sb/recovery_sb_t.sh; on the computer itself still): to be done with the
-   person present (it changes how the computer starts).
-8. **Part 5 (Waydroid)** measured on the Vivobook before it is offered; **Part 6** waits for the phone (the one plugged
-   in on 2026-11-13 identifies as a MediaTek "S24Ultra": an S24 Ultra look-alike, see below).
+**Moved to 1.6.0 on 2026-11-15** (docs/plan-1.6.0.md Part 15, at the owner's request: "Move all remaining items to the
+1.6.0 plan and finalize 1.5.9"): everything below still marked as to do, next, or for the Vivobook: 12.3c's
+comparison of Oracle's window; 8.4's repair at each start and 8.5's rest; 16.2's keys in the Tor window; the Lite
+items moved from 1.5.8; 10.3 and 10.4's measurements; the QEMU checks of 15.1, 15.3, 15.4 and 8.7; the Vivobook's
+checks (calls 7.4, game mode 9, the Wi-Fi radios, 15.2, recovery.efi on the computer, the new features); the hotspot
+(Part 4, waiting for a MiFi with data); ARM64's test channel (Part 3); Waydroid (Part 5); the phone (Part 6); kernel
+tuning. The notes below are kept as they were written.
+
+### Before promotion
+1. PR #369 (the Tor window on Standard) merged, then one beta with everything (rudolf-release, no promote).
+2. That beta on the Vivobook: it starts, the self-test is clean, the desktop signs in (Standard and Native (test)).
+3. Promoted when the owner says so (rudolf-release, promote = its serial); then 1.6.0's version (VERSION, RVER) and
+   1.5.9's date in the CHANGELOG, as for 1.5.8.
 
 ### The phone plugged in on 2026-11-13
 USB `0e8d:2008`, "MediaTek" / "S24Ultra", MTP only: a MediaTek phone presenting itself as a Galaxy S24 Ultra (the real

@@ -4,6 +4,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.6.0 (planned work)
+- Planned: what 1.5.9 had left, moved here on 2026-11-15 (docs/plan-1.6.0.md Part 15): the native desktop's comparison with Standard, the official recovery's repair at each start, the Vivobook's call and feature checks, QEMU security checks, Lite's tab fixes, the hotspot, ARM64's test channel, Waydroid and the first phone.
 - Planned: a keyring for Linux apps (the Secret Service), unlocked by the account's sign-in, so apps such as the Claude app keep their sign-ins without a plain file or a second password.
 - New: the native desktop (Native engine, docs/plan-1.6.0.md Part 12, item 4): workspaces as on Standard: the taskbar's 1 2 3 buttons, Ctrl+Alt+Left and Right (with Shift the window goes too), a window's Move to workspace N, the taskbar listing the shown workspace's windows, "Workspace N" said in a toast (compared with Chromium: new same_t.sh cases ws2, ws2-dark, ws2-left; the same steps on both engines: new test iso/qt/native/wsbeh_t.js). Fixed: a notification with no text under its title is as tall as the page's.
 - New: the native desktop (Native engine, docs/plan-1.6.0.md Part 12, item 3's last part): the taskbar at the left or the right of the screen, as on Standard: a column as wide as its widest part, the start button, the pinned apps, the open windows one under the other and the tray at the bottom; the desktop's icons, windows, the start menu and the pop-ups placed beside it.
@@ -19,7 +20,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 - New: the native desktop (Native engine, docs/plan-1.6.0.md Part 12, item 1, first part): the desktop's icons, as the page shows them for the account (its shortcuts, pictures and places), on the page's grid at the icon size and display scaling: a double-click opens, dragging moves an icon to the nearest free place (kept by rudolfd), Arrange icons by name, Refresh, and the icon's and the desktop's menus. Files on the desktop come next.
 
 ## 1.5.9 (in progress)
-Summary: In progress.
+Summary: A native desktop to try (Native, test), Browse with Tor in Oracle, protections against a directed attack, developer mode with custom builds and an official recovery, more memory for games, calls and microphone tests, and Save and Open dialogs with document tabs (docs/plan-1.5.9.md)
 - Fixed: Browse with Tor on Standard: clicking the Tor window's bookmarks bar, address box or buttons no longer jumps back to the desktop, and the Tor window is signed in as the desktop is instead of showing the sign-in screen.
 - Fixed: the self-test run over the read-only development link failed its listeners check when a Linux app was open (it cannot look into other users' programs there); it now says so instead.
 - New: Browse with Tor in Oracle: an onion button at the right end of the bookmarks bar sends that window's tabs through Tor, in a private Tor window of its own (Rudolf's Chromium through Tor: sites do not see the computer's address, and no site's name or WebRTC address leaves outside Tor); pressing it again brings the tabs back to a normal window. The window says plainly that this is not Tor Browser's anonymity and links Tor Browser (plan 16.2).
