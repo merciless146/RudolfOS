@@ -467,6 +467,33 @@ every restart.
 - **Tests:** the Claude app (or a stand-in using libsecret) keeps its sign-in across a restart without a prompt; another
   account cannot read it; a Flatpak app through the portal; the password change; the locked keyring after sign-out.
 
+**Done, first step (2026-11-15):**
+- **The service:** /usr/lib/rudolf/keyring, started by rudolfd at sign-in (au_session_start, after the session bus and
+  the portal) as the account's Linux user with its session's environment: gnome-keyring-daemon `--foreground
+  --components=secrets` (no SSH or GPG agent, no window), on the account's session bus, which Debian's programs (its
+  /run/user/1000/bus) and Flatpak apps with `--talk-name=org.freedesktop.secrets` reach. Signing out stops it with the
+  account's other programs. Its log: /run/rudolf/keyring-UID.log; its socket ($XDG_RUNTIME_DIR/keyring/) is in the
+  list of listeners.
+- **Unlocked by the sign-in, without the password:** decided instead of handing the password to the daemon. The
+  keyring is the account's "login" keyring in its own folder (~/.local/share/keyrings), made the first time as a
+  keyring with no password of its own (gnome-keyring's text format) and the default. The folder is encrypted with
+  the account's key, is only its user's (0700, the files 0600), and is there only while the account is signed in: so
+  no second password is asked, a password change needs nothing, sign-out shuts it away, and removing the account
+  removes it. A keyring already there (one made in Debian with a password, say) is never changed.
+- **Electron and Chromium-based apps** keep sign-ins in the Secret Service only for desktops they know (otherwise a
+  plain file): with the keyring, the account's session names the desktop "Rudolf:GNOME" (acct-session.env, and
+  rudolf-debian takes it from there, only that name). The desktop's own processes keep "Rudolf".
+- **Budget:** gnome-keyring-daemon and the libraries the base layer lacks, 3 MB, checked in ci_release.sh (the
+  release workflow installs gnome-keyring on the build machine).
+- Tests: qt/host/keyring60_t.sh (5 here; 8 with the real daemon and secret-tool in CI: a secret kept through libsecret
+  with no prompt, still there after the daemon starts again, its files the user's only, another user refused),
+  users59_t.sh 26 (6c: started as the account's user in its session; 7: stopped at sign-out), debacct59_t.sh 16 (3b),
+  .github/workflows/keyring-check.yml.
+
+**Next:** the prompts drawn by the desktop (an app asking for a new keyring: gcr's prompter is not there, so such a
+request fails for now); the portal's Secret interface for Flatpak apps without the bus name; Settings › Privacy ›
+Saved passwords for apps; the Claude app checked on the Vivobook (its notice gone, signed in after a restart).
+
 ### 15. Moved from 1.5.9 (2026-11-15)
 1.5.9 was finished on 2026-11-15 for promotion to stable; what it had left moved here, as written in docs/plan-1.5.9.md
 (each item's part there has the details).

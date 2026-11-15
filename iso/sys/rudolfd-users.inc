@@ -227,6 +227,12 @@ static int au_xaccess(const char *user, int allow)
 
 /* ---- the account's session: at sign-in with its files on the disk (home_bind), until sign-out (home_unbind) */
 #define AU_ENV RUN "/acct-session.env"
+#ifndef AU_KEYRING
+#define AU_KEYRING "/usr/lib/rudolf/keyring"
+#endif
+#ifndef AU_KEYRING_DAEMON
+#define AU_KEYRING_DAEMON "/usr/bin/gnome-keyring-daemon"
+#endif
 /* au_keep (rudolfd-home.inc): the same account bound again (rudolfd started again in its session): its programs go on */
 static void au_session_stop(const char *id)
 {
@@ -253,7 +259,10 @@ static int au_session_start(const char *id)
 	if (!home_nobind && mount(src, h, NULL, MS_BIND, NULL)) { health_add("account", "the account %.80s's folder could not be its Linux user's home (%s)", id, strerror(errno)); return -1; }
 	mkdir(au_runuser, 0755); mkdir(rd, 0700); if (chown(rd, uid, uid)) {} chmod(rd, 0700);
 	str e = {0};
-	sadd(&e, "DISPLAY=:0\nHOME=%s\nUSER=%s\nLOGNAME=%s\nXDG_RUNTIME_DIR=%s\nXDG_CURRENT_DESKTOP=Rudolf\nPULSE_SERVER=unix:" RUN "/pulse/native\n", h, nm, nm, rd);
+	/* (1.6.0, Part 14: with the keyring, the desktop is also named GNOME's, after Rudolf: Electron and Chromium-based apps
+	   keep their sign-ins in the Secret Service only for desktops they know, else in a plain file) */
+	int kr = !home_nobind && !access(AU_KEYRING_DAEMON, X_OK) && !access(AU_KEYRING, X_OK);
+	sadd(&e, "DISPLAY=:0\nHOME=%s\nUSER=%s\nLOGNAME=%s\nXDG_RUNTIME_DIR=%s\nXDG_CURRENT_DESKTOP=%s\nPULSE_SERVER=unix:" RUN "/pulse/native\n", h, nm, nm, rd, kr ? "Rudolf:GNOME" : "Rudolf");
 	/* its own session D-Bus, and the desktop portal on it (file dialogs, links, notifications) */
 	if (!home_nobind && !access("/usr/bin/dbus-daemon", X_OK)) {
 		char c[900]; snprintf(c, sizeof c, "su -s /bin/sh %s -c 'dbus-daemon --session --fork --nopidfile --address=unix:path=%s/bus' >/dev/null 2>&1", nm, rd);
@@ -265,6 +274,11 @@ static int au_session_start(const char *id)
 	au_xaccess(nm, 1);   /* (its programs may use the display: the Linux apps' windows) */
 	if (!home_nobind && bus && !access("/usr/bin/rudolf-portal", X_OK)) {
 		char c[600]; snprintf(c, sizeof c, "su -s /bin/sh %s -c 'set -a; . " AU_ENV "; set +a; exec setsid /usr/bin/rudolf-portal' </dev/null >>" RUN "/portal-%u.log 2>&1 &", nm, uid);
+		run(c);
+	}
+	/* 1.6.0 (Part 14): the keyring for its Linux apps (the Secret Service), as its user, in its own folder */
+	if (kr && bus) {
+		char c[600]; snprintf(c, sizeof c, "su -s /bin/sh %s -c 'set -a; . " AU_ENV "; set +a; exec setsid " AU_KEYRING " start' </dev/null >>" RUN "/keyring-%u.log 2>&1 &", nm, uid);
 		run(c);
 	}
 	return 0;

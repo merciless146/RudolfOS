@@ -49,6 +49,12 @@ o=$($R run -- sh -c 'cat /home/rudolf/.profile' 2>&1)
 ok "...its shell settings put in the account's folder when it has none" "$(echo "$o" | grep -q '# skel' && [ "$(stat -c %u $A/.profile)" = 1001 ] && echo 1)" "$o"
 o=$($R run -- sh -c '[ -S /run/user/1000/bus ] && echo BUS; [ -S /run/user/1000/pulse/native ] && echo SOUND; env' 2>&1)
 ok "3. its runtime folder: the account's session bus and the sound socket, the environment pointing at them" "$(echo "$o" | grep -q BUS && echo "$o" | grep -q SOUND && echo "$o" | grep -q 'PULSE_SERVER=unix:/run/user/1000/pulse/native' && echo "$o" | grep -q 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus' && echo 1)" "$o"
+ok "...the desktop's name for its programs: Rudolf, as the session says nothing else" "$(echo "$o" | grep -qx 'XDG_CURRENT_DESKTOP=Rudolf' && echo 1)" "$o"
+echo 'XDG_CURRENT_DESKTOP=Rudolf:GNOME' >> /run/rudolf/acct-session.env; o=$($R run -- env 2>&1)
+ok "3b. (1.6.0 Part 14) with the account's keyring, as its session says: Rudolf:GNOME (Electron apps keep sign-ins in it)" "$(echo "$o" | grep -qx 'XDG_CURRENT_DESKTOP=Rudolf:GNOME' && echo 1)" "$o"
+sed -i 's/^XDG_CURRENT_DESKTOP=.*/XDG_CURRENT_DESKTOP=KDE;rm -rf/' /run/rudolf/acct-session.env; o=$($R run -- env 2>&1)
+ok "...any other name in it is not taken" "$(echo "$o" | grep -qx 'XDG_CURRENT_DESKTOP=Rudolf' && echo 1)" "$o"
+sed -i '/^XDG_CURRENT_DESKTOP=/d' /run/rudolf/acct-session.env
 K=$(cat /run/rudolf/debian/init.pid 2>/dev/null)
 ok "...Debian was started for that user (kept beside its process id)" "$([ "$(cat /run/rudolf/debian/init.uid 2>/dev/null)" = 1001 ] && echo 1)" "$(cat /run/rudolf/debian/init.uid 2>&1)"
 o=$($R apps 2>&1); mkdir -p $A/.local/share/applications; printf '[Desktop Entry]\nType=Application\nName=Ann Tool\nExec=sh\n' > $A/.local/share/applications/anntool.desktop
