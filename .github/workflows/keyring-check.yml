@@ -6,7 +6,7 @@ name: Keyring
 on:
   workflow_dispatch:
   pull_request:
-    paths: ['iso/sys/root/usr/lib/rudolf/keyring', 'iso/sys/rudolfd-users.inc', 'iso/sys/rudolf-debian.c', 'iso/qt/host/keyring60_t.sh',
+    paths: ['iso/sys/root/usr/lib/rudolf/keyring', 'iso/sys/rudolf-portal.c', 'iso/qt/host/keyportal60_t.sh', 'iso/qt/host/fixtures/secretclient.c', 'iso/sys/rudolfd-users.inc', 'iso/sys/rudolf-debian.c', 'iso/qt/host/keyring60_t.sh',
       '.github/workflows/keyring-check.yml']
 permissions: {contents: read}
 jobs:
@@ -15,9 +15,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq gnome-keyring libsecret-tools dbus util-linux e2fsprogs nodejs zlib1g-dev >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gnome-keyring libsecret-tools dbus util-linux e2fsprogs nodejs zlib1g-dev libglib2.0-dev pkg-config >/dev/null
       - name: The keyring, with the real daemon
         run: sudo sh iso/qt/host/keyring60_t.sh
+      - name: The Secret portal (Flatpak apps) and Settings' list
+        run: sudo sh iso/qt/host/keyportal60_t.sh
       - name: Its size (the daemon and the libraries it needs)
         run: |
           x=/usr/bin/gnome-keyring-daemon; t=$(stat -c %s $x); echo "$t $x"

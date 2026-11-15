@@ -23,6 +23,12 @@ int main(int argc, char **argv)
 		else if (!strcmp(c, "appuser")) { char u[32], e[160]; au_app_user(u, sizeof u, e, sizeof e); printf("%s %s\n", u, e); }
 		else if (!strcmp(c, "homehas") && i + 2 < argc) { printf("homehas %d\n", au_home_has(argv[i + 1], argv[i + 2])); i += 2; }
 		else if (!strcmp(c, "uid") && i + 1 < argc) printf("%u\n", au_uid(argv[++i]));
+		else if ((!strcmp(c, "keyring-list") || !strcmp(c, "keyring-forget")) && (c[8] == 'l' || i + 1 < argc)) {   /* (1.6.0 Part 14) */
+			struct req r; memset(&r, 0, sizeof r); char tf[] = "/tmp/usersapi-XXXXXX"; r.fd = mkstemp(tf); unlink(tf);
+			if (c[8] == 'f') snprintf(r.query, sizeof r.query, "id=%s", argv[++i]);
+			api_keyring(&r, c + 8, c[8] == 'f'); lseek(r.fd, 0, SEEK_SET); char b[65536]; ssize_t n = read(r.fd, b, sizeof b - 1); b[n > 0 ? n : 0] = 0; close(r.fd);
+			char *bd = strstr(b, "\r\n\r\n"); printf("%s\n", bd ? bd + 4 : b);
+		}
 		else if (!strcmp(c, "users")) {
 			struct req r; memset(&r, 0, sizeof r); char tf[] = "/tmp/usersapi-XXXXXX"; r.fd = mkstemp(tf); unlink(tf);
 			api_account_users(&r); lseek(r.fd, 0, SEEK_SET); char b[65536]; ssize_t n = read(r.fd, b, sizeof b - 1); b[n > 0 ? n : 0] = 0; close(r.fd);

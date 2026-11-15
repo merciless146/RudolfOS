@@ -5,7 +5,7 @@
 # changed; gnome-keyring-daemon's secrets part only. With gnome-keyring-daemon and secret-tool (CI: apt-get install
 # gnome-keyring libsecret-tools dbus): a secret kept by an app (secret-tool, libsecret, as the Claude app and Electron
 # apps keep their sign-ins) is found again after the daemon starts again (a restart) without any prompt, and another
-# user cannot read the keyring.   sh keyring60_t.sh
+# user cannot read the keyring; Settings' list names it and Remove forgets it (rudolf-portal).   sh keyring60_t.sh
 HERE=$(cd "$(dirname "$0")" && pwd); KR=$HERE/../../sys/root/usr/lib/rudolf/keyring; T=$(mktemp -d /tmp/kr60.XXXXXX)
 trap 'kill $(cat $T/pids 2>/dev/null) 2>/dev/null; rm -rf $T' EXIT
 N=0; F=0; ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $(echo "$3" | head -c 600)"; F=$((F+1)); fi; }
@@ -38,6 +38,13 @@ if command -v gnome-keyring-daemon >/dev/null && command -v secret-tool >/dev/nu
 	i=0; until $S secret-tool search --all x x >/dev/null 2>&1 || [ $i -ge 50 ]; do i=$((i+1)); timeout 0.2 tail -f /dev/null; done
 	ok "7. started again (as after a restart): the secret is still there, with no prompt" "$([ "$($S timeout 10 secret-tool lookup app claude account ann)" = token-123 ] && echo 1)" "$(cat $T/kr.log)"
 	ok "...kept in the account's folder, its user's only" "$([ "$(stat -c %a $H/.local/share/keyrings)" = 700 ] && [ "$(stat -c %a $H/.local/share/keyrings/login.keyring)" = 600 ] && grep -q 'Claude sign-in' $H/.local/share/keyrings/login.keyring && echo 1)" "$(ls -la $H/.local/share/keyrings)"
+	# Settings › Privacy › Saved passwords for apps: rudolf-portal --keyring-list and --keyring-forget on the real keyring
+	if pkg-config --exists gio-2.0 gio-unix-2.0 2>/dev/null && gcc -O2 -w -o $T/rp $HERE/../../sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) 2>/dev/null; then
+		o=$($S $T/rp --keyring-list); id=$(echo "$o" | grep -o '"id":"/org/freedesktop/secrets/collection/[^"]*","label":"Claude sign-in"' | sed 's/"id":"\([^"]*\)".*/\1/')
+		ok "9. Saved passwords for apps: the keyring's item named (its label, never the secret)" "$(echo "$o" | grep -q '^{"ok":true,"keyring":true,"items":\[' && [ -n "$id" ] && ! echo "$o" | grep -q token-123 && echo 1)" "$o"
+		o=$($S $T/rp --keyring-forget "$id" 2>&1); l=$($S timeout 10 secret-tool lookup app claude account ann 2>&1)
+		ok "...Remove: gone from the keyring (the app is signed out of it), with no prompt" "$(echo "$o" | grep -q '"ok":true' && [ -z "$l" ] && ! $S $T/rp --keyring-list | grep -q 'Claude sign-in' && echo 1)" "$o / $l"
+	else echo "SKIP 9: no GLib headers to build rudolf-portal"; fi
 	if [ "$(id -u)" = 0 ] && command -v setpriv >/dev/null; then chmod 755 $T; o=$(setpriv --reuid=65534 --regid=65534 --clear-groups cat $H/.local/share/keyrings/login.keyring 2>&1); r=$?
 		ok "8. another user cannot read it" "$([ $r != 0 ] && echo 1)" "$o"; fi
 else echo "SKIP 6-8: gnome-keyring-daemon, secret-tool or dbus-daemon is not here (CI installs them)"; fi

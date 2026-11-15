@@ -8,10 +8,14 @@
  *   Settings      ReadAll, Read, ReadOne         -> colour scheme
  *   ProxyResolver Lookup                         -> the proxy set in Rudolf OS, or none (1.2.8)
  *   NetworkMonitor GetStatus, GetAvailable, ...   -> online (1.2.8)
+ *   Secret        RetrieveSecret                 -> the app's own secret, for libsecret in a Flatpak sandbox (1.6.0)
  * and as org.freedesktop.Notifications for apps that notify directly (libnotify).
  * Questions go to the desktop through rudolfd: a JSON file per request in /run/rudolf/portal/req,
  * the answer comes back in /run/rudolf/portal/resp. Files are handed over by path, so an app can use
  * a chosen file only where its sandbox lets it read and write (most desktop apps may use the home folder).
+ * 1.6.0 (docs/plan-1.6.0.md Part 14): also, run by rudolfd as the signed-in account's user for Settings › Privacy ›
+ * Saved passwords for apps:  rudolf-portal --keyring-list  (JSON: what the account's keyring and its Flatpak apps'
+ * secrets hold, names only, never a secret) and  rudolf-portal --keyring-forget ID  (one of them removed).
  * Copyright (C) 2026 the Rudolf OS authors. SPDX-License-Identifier: GPL-2.0-or-later */
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
@@ -19,6 +23,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/random.h>
+#include <sys/stat.h>
 
 #define DIR_ "/run/rudolf/portal"
 static GDBusConnection *BUS;
@@ -123,6 +131,62 @@ static gboolean check_answers(gpointer u)
 	return TRUE;
 }
 
+/* ---------------- 1.6.0: the Secret portal. libsecret inside a Flatpak sandbox keeps the app's secrets in a file of its
+   own (~/.var/app/ID/data/keyrings), encrypted with a secret the portal gives it; that secret is the app's own, made
+   once, in the account's folder (encrypted with the account's key, its user's only, 0700/0600), as gnome-keyring's own
+   portal keeps it in the keyring. Only for a sandboxed app (its Flatpak ID): other programs use the Secret Service. */
+static int app_id_ok(const char *a)
+{
+	size_t n = a ? strlen(a) : 0; if (!n || n > 255 || a[0] == '.' || strstr(a, "..")) return 0;
+	for (const char *c = a; *c; c++) if (!g_ascii_isalnum(*c) && *c != '.' && *c != '_' && *c != '-') return 0;
+	return 1;
+}
+static char *secrets_dir(void)
+{
+	const char *h = g_get_home_dir(); if (!h || !*h || !strcmp(h, "/")) return NULL;
+	return g_build_filename(h, ".local", "share", "rudolf", "app-secrets", NULL);
+}
+/* the app's secret (64 bytes), made the first time; NULL if it cannot be kept */
+static GBytes *app_secret(const char *app)
+{
+	char *d = secrets_dir(); if (!d) return NULL;
+	if (g_mkdir_with_parents(d, 0700) || chmod(d, 0700)) { g_free(d); return NULL; }
+	char *f = g_build_filename(d, app, NULL); g_free(d);
+	gchar *b = NULL; gsize n = 0;
+	if (g_file_get_contents(f, &b, &n, NULL) && n == 64) { g_free(f); return g_bytes_new_take(b, n); }
+	g_free(b);
+	guchar k[64]; if (getrandom(k, sizeof k, 0) != (ssize_t)sizeof k) { g_free(f); return NULL; }
+	char *t = g_strdup_printf("%s.tmp", f); int fd = open(t, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600); int ok = 0;
+	if (fd >= 0) { ok = write(fd, k, sizeof k) == (ssize_t)sizeof k; if (close(fd)) ok = 0; if (ok) ok = !rename(t, f); if (!ok) unlink(t); }
+	g_free(t); g_free(f);
+	GBytes *r = ok ? g_bytes_new(k, sizeof k) : NULL; explicit_bzero(k, sizeof k); return r;
+}
+typedef struct { char *sender, *path; guint reg; } secret_req;
+static gboolean secret_respond(gpointer u)
+{
+	secret_req *q = u; GVariantBuilder res; g_variant_builder_init(&res, G_VARIANT_TYPE("a{sv}"));
+	g_dbus_connection_emit_signal(BUS, q->sender, q->path, "org.freedesktop.portal.Request", "Response", g_variant_new("(ua{sv})", 0, &res), NULL);
+	g_dbus_connection_unregister_object(BUS, q->reg); g_free(q->sender); g_free(q->path); g_free(q); return FALSE;
+}
+static void retrieve_secret(GDBusMethodInvocation *inv, const char *sender, const char *app, GVariant *p)
+{
+	gint32 h; GVariant *o; g_variant_get(p, "(h@a{sv})", &h, &o);
+	GUnixFDList *fds = g_dbus_message_get_unix_fd_list(g_dbus_method_invocation_get_message(inv));
+	int fd = fds ? g_unix_fd_list_get(fds, h, NULL) : -1;
+	if (fd < 0) { g_variant_unref(o); g_dbus_method_invocation_return_dbus_error(inv, "org.freedesktop.portal.Error.InvalidArgument", "no file descriptor"); return; }
+	if (!app_id_ok(app)) { close(fd); g_variant_unref(o); g_dbus_method_invocation_return_dbus_error(inv, "org.freedesktop.portal.Error.NotAllowed", "only an app in a sandbox (Flatpak) is given a secret; other programs use the Secret Service"); return; }
+	GBytes *s = app_secret(app);
+	if (!s) { close(fd); g_variant_unref(o); g_dbus_method_invocation_return_dbus_error(inv, "org.freedesktop.portal.Error.Failed", "the app's secret could not be kept (no account signed in?)"); return; }
+	gsize n; const guchar *k = g_bytes_get_data(s, &n); size_t w = 0;
+	while (w < n) { ssize_t x = write(fd, k + w, n - w); if (x < 0 && errno == EINTR) continue; if (x <= 0) break; w += (size_t)x; }
+	close(fd); g_bytes_unref(s);
+	if (w != n) { g_variant_unref(o); g_dbus_method_invocation_return_dbus_error(inv, "org.freedesktop.portal.Error.Failed", "the secret could not be written"); return; }
+	secret_req *q = g_new0(secret_req, 1); q->sender = g_strdup(sender); q->path = request_path(sender, o); g_variant_unref(o);
+	q->reg = g_dbus_connection_register_object(BUS, q->path, REQ_INFO->interfaces[0], &REQ_VT, NULL, NULL, NULL);
+	g_dbus_method_invocation_return_value(inv, g_variant_new("(o)", q->path));
+	g_idle_add(secret_respond, q);
+}
+
 /* ---------------- the portal interfaces */
 static void portal_method(GDBusConnection *c, const char *sender, const char *path, const char *iface, const char *method, GVariant *p, GDBusMethodInvocation *inv, gpointer u)
 {
@@ -193,6 +257,8 @@ static void portal_method(GDBusConnection *c, const char *sender, const char *pa
 			if (*t) { if (strstr(t, "://")) snprintf(buf, sizeof buf, "%s", t); else snprintf(buf, sizeof buf, "http://%s", t); px = buf; } }
 		const char *list[] = {px, NULL};
 		g_dbus_method_invocation_return_value(inv, g_variant_new("(^as)", list)); g_free(t);
+	} else if (!strcmp(iface, "org.freedesktop.portal.Secret")) {
+		retrieve_secret(inv, sender, app, p);
 	} else if (!strcmp(iface, "org.freedesktop.portal.NetworkMonitor")) {
 		/* 1.2.8: online, not metered, full connectivity (GNetworkMonitorPortal); Rudolf OS shows the real state itself */
 		if (!strcmp(method, "GetAvailable") || !strcmp(method, "CanReach")) g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", TRUE));
@@ -265,6 +331,9 @@ static const char XML[] =
 	"<method name='CanReach'><arg type='s' direction='in'/><arg type='u' direction='in'/><arg type='b' direction='out'/></method>"
 	"<signal name='changed'/>"
 	"<property name='version' type='u' access='read'/></interface>"
+	"<interface name='org.freedesktop.portal.Secret'>"
+	"<method name='RetrieveSecret'><arg type='h' direction='in'/><arg type='a{sv}' direction='in'/><arg type='o' direction='out'/></method>"
+	"<property name='version' type='u' access='read'/></interface>"
 	"</node>";
 static const char REQ_XML[] = "<node><interface name='org.freedesktop.portal.Request'><method name='Close'/>"
 	"<signal name='Response'><arg type='u'/><arg type='a{sv}'/></signal></interface></node>";
@@ -275,8 +344,72 @@ static const char NOTIF_XML[] = "<node><interface name='org.freedesktop.Notifica
 	"<method name='GetServerInformation'><arg type='s' direction='out'/><arg type='s' direction='out'/><arg type='s' direction='out'/><arg type='s' direction='out'/></method>"
 	"</interface></node>";
 
-int main(void)
+/* ---------------- 1.6.0: Settings › Privacy › Saved passwords for apps (as the account's user, from rudolfd) */
+#define SS "org.freedesktop.secrets"
+static GVariant *ss_prop(GDBusConnection *b, const char *path, const char *iface, const char *prop)
 {
+	GVariant *r = g_dbus_connection_call_sync(b, SS, path, "org.freedesktop.DBus.Properties", "Get", g_variant_new("(ss)", iface, prop),
+		G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NO_AUTO_START, 5000, NULL, NULL);
+	if (!r) return NULL;
+	GVariant *v; g_variant_get(r, "(v)", &v); g_variant_unref(r); return v;
+}
+static int keyring_list(void)
+{
+	GDBusConnection *b = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
+	GString *j = g_string_new("{\"ok\":true,\"keyring\":"); int n = 0;
+	GVariant *cols = b ? ss_prop(b, "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "Collections") : NULL;
+	g_string_append(j, cols ? "true" : "false"); g_string_append(j, ",\"items\":[");
+	if (cols) { GVariantIter ci; const char *cp; g_variant_iter_init(&ci, cols);
+		while (g_variant_iter_next(&ci, "&o", &cp)) {
+			GVariant *its = ss_prop(b, cp, "org.freedesktop.Secret.Collection", "Items"); if (!its) continue;
+			GVariant *cl = ss_prop(b, cp, "org.freedesktop.Secret.Collection", "Label");
+			GVariantIter ii; const char *ip; g_variant_iter_init(&ii, its);
+			while (g_variant_iter_next(&ii, "&o", &ip) && n < 500) {
+				GVariant *lb = ss_prop(b, ip, "org.freedesktop.Secret.Item", "Label"), *at = ss_prop(b, ip, "org.freedesktop.Secret.Item", "Attributes");
+				const char *app = NULL, *schema = NULL; if (at) { g_variant_lookup(at, "application", "&s", &app); if (!app) g_variant_lookup(at, "app_id", "&s", &app); g_variant_lookup(at, "xdg:schema", "&s", &schema); }
+				if (n++) g_string_append_c(j, ',');
+				g_string_append(j, "{\"id\":"); jstr(j, ip); g_string_append(j, ",\"label\":"); jstr(j, lb ? g_variant_get_string(lb, NULL) : "");
+				g_string_append(j, ",\"app\":"); jstr(j, app); g_string_append(j, ",\"schema\":"); jstr(j, schema);
+				g_string_append(j, ",\"keyring\":"); jstr(j, cl ? g_variant_get_string(cl, NULL) : ""); g_string_append(j, ",\"kind\":\"item\"}");
+				if (lb) g_variant_unref(lb);
+				if (at) g_variant_unref(at);
+			}
+			g_variant_unref(its); if (cl) g_variant_unref(cl);
+		}
+		g_variant_unref(cols); }
+	/* the Flatpak apps' own secrets (the Secret portal) */
+	char *d = secrets_dir(); GDir *dir = d ? g_dir_open(d, 0, NULL) : NULL; const char *nm;
+	while (dir && (nm = g_dir_read_name(dir)) && n < 600) { if (!app_id_ok(nm) || g_str_has_suffix(nm, ".tmp")) continue;
+		if (n++) g_string_append_c(j, ',');
+		g_string_append(j, "{\"id\":"); char *id = g_strdup_printf("app:%s", nm); jstr(j, id); g_free(id);
+		g_string_append(j, ",\"label\":"); jstr(j, nm); g_string_append(j, ",\"app\":"); jstr(j, nm); g_string_append(j, ",\"kind\":\"flatpak\"}"); }
+	if (dir) g_dir_close(dir); g_free(d);
+	g_string_append(j, "]}\n"); fputs(j->str, stdout); g_string_free(j, TRUE); return 0;
+}
+static int keyring_forget(const char *id)
+{
+	if (!id) return 2;
+	if (!strncmp(id, "app:", 4)) {
+		if (!app_id_ok(id + 4)) { fprintf(stderr, "not an app\n"); return 2; }
+		char *d = secrets_dir(); if (!d) return 1; char *f = g_build_filename(d, id + 4, NULL); g_free(d);
+		int r = unlink(f); g_free(f); if (r && errno != ENOENT) { perror("unlink"); return 1; } puts("{\"ok\":true}"); return 0;
+	}
+	/* an item of the account's keyring: /org/freedesktop/secrets/collection/NAME/ITEM */
+	const char *pre = "/org/freedesktop/secrets/collection/";
+	if (strncmp(id, pre, strlen(pre)) || !g_variant_is_object_path(id) || strstr(id, "/../")) { fprintf(stderr, "not an item\n"); return 2; }
+	const char *rest = id + strlen(pre), *sl = strchr(rest, '/'); if (!sl || !sl[1] || strchr(sl + 1, '/')) { fprintf(stderr, "not an item\n"); return 2; }
+	GDBusConnection *b = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL); if (!b) return 1;
+	GError *e = NULL; GVariant *r = g_dbus_connection_call_sync(b, SS, id, "org.freedesktop.Secret.Item", "Delete", NULL, G_VARIANT_TYPE("(o)"), G_DBUS_CALL_FLAGS_NO_AUTO_START, 5000, NULL, &e);
+	if (!r) { fprintf(stderr, "%s\n", e ? e->message : "failed"); return 1; }
+	const char *pr; g_variant_get(r, "(&o)", &pr); int needs = strcmp(pr, "/"); g_variant_unref(r);
+	if (needs) { fprintf(stderr, "the keyring asks for a prompt to remove it\n"); return 1; }
+	puts("{\"ok\":true}"); return 0;
+}
+
+int main(int argc, char **argv)
+{
+	if (argc > 1 && !strcmp(argv[1], "--keyring-list")) return keyring_list();
+	if (argc > 2 && !strcmp(argv[1], "--keyring-forget")) return keyring_forget(argv[2]);
 	GError *e = NULL;
 	g_mkdir_with_parents(DIR_ "/req", 0755); g_mkdir_with_parents(DIR_ "/resp", 0755);
 	BUS = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &e);
