@@ -561,9 +561,38 @@ every restart.
   refused), keyring60_t.sh 9 with the real daemon (the item named, Remove: gone, no prompt), users59_t.sh 29 (6d, the
   list and forget as the account's user, anything else refused, nobody signed in), qt/shell2/keyring60_t.js 11.
 
-**Next:** the prompts drawn by the desktop (an app asking for a new keyring: gcr's prompter is not there, so such a
-request fails for now: gnome-keyring asks gcr's Prompter on the session bus, with its secret exchange); the Claude
-app checked on the Vivobook (its notice gone, signed in after a restart).
+**Done, third step (2026-11-15): the prompts drawn by the desktop.**
+- **rudolf-portal is gcr's prompter** (org.gnome.keyring.SystemPrompter on the account's session bus, which
+  gnome-keyring-daemon asks; gcr-prompter, a GNOME window, is not in Rudolf OS): gcr's protocol as gcr-system-prompter.c
+  speaks it (org.gnome.keyring.internal.Prompter's BeginPrompting, PerformPrompt and StopPrompting; the daemon's
+  org.gnome.keyring.internal.Prompter.Callback PromptReady and PromptDone; one prompt at a time, the others waiting;
+  the properties sent back as gcr sends them, a new password's strength among them, so the daemon asks "Store
+  passwords unencrypted?" only for an empty one), and its secret exchange "[sx-aes-1]" as gcr-secret-exchange.c does it
+  (Diffie-Hellman in IKE's 1536-bit group, HKDF-SHA256 to a 16-byte key, AES-128-CBC with PKCS#7 padding, its key-file
+  messages), with OpenSSL's libcrypto, which the base layer already has (no new library; the portal is built with
+  -lcrypto in mkrootfs.sh, ci_release.sh and the ARM64 check). Weak public keys (1, p-1, p) are refused.
+- **Who asked:** the portal watches its own bus (the same user's: the bus's monitoring) for an app calling a Secret
+  Service prompt's Prompt(), which the daemon's question follows, and names that app: its Flatpak ID (the App Store's
+  name for it), else its program (claude: Claude, code: Visual Studio Code, ...), else "An app".
+- **The question** goes to the desktop as the portal's others do (a request in /run/rudolf/portal/req, kind
+  "keyring": the daemon's title, message, description and warning, a new password or not, its choice, its buttons'
+  words), drawn in keyring60.js in Settings' prompt style (the administrator's prompt: 🔑, who asked, the daemon's words
+  as text, the password fields that hide what is typed, a new one asked twice and a mismatch said, the choice as a tick
+  box), in front of the app on the screen (promptFront). The answer (yes with the password, or no) goes back through
+  portal/answer; rudolfd now writes answers 0600 and owned by the user whose portal asked (they were 0644). The portal
+  reads it, wipes it and hands the password to the daemon encrypted. A question the daemon withdraws (the app went
+  away) is removed, and the desktop closes it.
+- Tests: qt/host/keyprompt60_t.sh 9 (1: the secret exchange against another implementation, fixtures/sxpeer.py with
+  python3-cryptography, and against libgcr's own GcrSecretExchange, 13 checks; 2-3: the build and rudolfd's 0600; with the real gnome-keyring-daemon on a private
+  bus that cannot start gcr's prompter, fixtures/krapp.py (python3-secretstorage) and fixtures/krdesk.py standing in
+  for the desktop: 4 no prompter, the request fails; 5 a new keyring with its password, who asked; 6 unlocking, a wrong
+  password then the right one, its secret read; 7 Cancel; 8 a keyring with no password and the daemon's confirmation;
+  9 the app gone while asked, the question withdrawn, the next one answered), in .github/workflows/keyring-check.yml;
+  qt/shell2/keyprompt60_t.js 17; portal_t.sh 8, keyportal60_t.sh 10, keyring60_t.sh 12 (its restart now waits for the
+  old daemon to end: it failed now and then), keyring60_t.js 11.
+
+**Next:** the Claude app checked on the Vivobook (its notice gone, signed in after a restart) and an app asking for a new
+keyring there (the prompt drawn by the desktop on Standard and on Native).
 
 ### 15. Moved from 1.5.9 (2026-11-15)
 1.5.9 was finished on 2026-11-15 for promotion to stable; what it had left moved here, as written in docs/plan-1.5.9.md

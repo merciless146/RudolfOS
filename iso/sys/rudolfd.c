@@ -1203,9 +1203,11 @@ static void api_portal(struct req *r, const char *what)
 		snprintf(id, sizeof id, "%s", iq);
 		if (r->blen < 2 || r->blen > 65536 || r->body[0] != '{') { reply_err(r->fd, 400, "bad answer"); return; }
 		char f[300], t[320], q[300]; snprintf(f, sizeof f, PORTALD "/resp/%s.json", id); snprintf(t, sizeof t, "%s.tmp", f); snprintf(q, sizeof q, PORTALD "/req/%s.json", id);
-		int fd = open(t, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+		/* (1.6.0: the answer may hold a password (the keyring's prompts): only for the user whose portal asked, the owner
+		   of its question, 0600) */
+		unlink(t); int fd = open(t, O_WRONLY | O_CREAT | O_EXCL | O_TRUNC | O_CLOEXEC, 0600); struct stat st; unsigned ou = 1000, og = 1000; if (!stat(q, &st)) { ou = st.st_uid; og = st.st_gid; }
 		if (fd < 0 || write(fd, r->body, r->blen) != (ssize_t)r->blen) { if (fd >= 0) close(fd); reply_err(r->fd, 500, "could not answer"); return; }
-		close(fd); if (chown(t, 1000, 1000)) {} rename(t, f); unlink(q);
+		if (fchown(fd, ou, og)) {} close(fd); rename(t, f); unlink(q);
 		/* back to the window that asked */
 		const char *back = qparam(r->query, "back");
 		if (back && *back) { char *e; unsigned long x = strtoul(back, &e, 16); if (x && !*e) { char b[40]; snprintf(b, sizeof b, "win %lx\n", x); write_str(RUN "/wm", b); } }

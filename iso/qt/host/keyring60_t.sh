@@ -33,13 +33,13 @@ if command -v gnome-keyring-daemon >/dev/null && command -v secret-tool >/dev/nu
 	i=0; until $S secret-tool search --all x x >/dev/null 2>&1 || [ $i -ge 50 ]; do i=$((i+1)); timeout 0.2 tail -f /dev/null; done
 	echo -n "token-123" | $S timeout 10 secret-tool store --label="Claude sign-in" app claude account ann 2>$T/st.err; r=$?
 	ok "6. (gnome-keyring-daemon) an app keeps a secret through the Secret Service (libsecret), with no prompt" "$([ $r = 0 ] && [ "$($S timeout 10 secret-tool lookup app claude account ann)" = token-123 ] && echo 1)" "$r $(cat $T/st.err $T/kr.log)"
-	kill $(cat $T/krpid); timeout 1 tail -f /dev/null
+	kill $(cat $T/krpid); i=0; while kill -0 $(cat $T/krpid) 2>/dev/null && [ $i -lt 50 ]; do i=$((i+1)); timeout 0.1 tail -f /dev/null; done; timeout 0.5 tail -f /dev/null
 	$S sh $KR start >> $T/kr.log 2>&1 & echo $! >> $T/pids
 	i=0; until $S secret-tool search --all x x >/dev/null 2>&1 || [ $i -ge 50 ]; do i=$((i+1)); timeout 0.2 tail -f /dev/null; done
 	ok "7. started again (as after a restart): the secret is still there, with no prompt" "$([ "$($S timeout 10 secret-tool lookup app claude account ann)" = token-123 ] && echo 1)" "$(cat $T/kr.log)"
 	ok "...kept in the account's folder, its user's only" "$([ "$(stat -c %a $H/.local/share/keyrings)" = 700 ] && [ "$(stat -c %a $H/.local/share/keyrings/login.keyring)" = 600 ] && grep -q 'Claude sign-in' $H/.local/share/keyrings/login.keyring && echo 1)" "$(ls -la $H/.local/share/keyrings)"
 	# Settings › Privacy › Saved passwords for apps: rudolf-portal --keyring-list and --keyring-forget on the real keyring
-	if pkg-config --exists gio-2.0 gio-unix-2.0 2>/dev/null && gcc -O2 -w -o $T/rp $HERE/../../sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) 2>/dev/null; then
+	if pkg-config --exists gio-2.0 gio-unix-2.0 2>/dev/null && gcc -O2 -w -o $T/rp $HERE/../../sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto 2>/dev/null; then
 		o=$($S $T/rp --keyring-list); id=$(echo "$o" | grep -o '"id":"/org/freedesktop/secrets/collection/[^"]*","label":"Claude sign-in"' | sed 's/"id":"\([^"]*\)".*/\1/')
 		ok "9. Saved passwords for apps: the keyring's item named (its label, never the secret)" "$(echo "$o" | grep -q '^{"ok":true,"keyring":true,"items":\[' && [ -n "$id" ] && ! echo "$o" | grep -q token-123 && echo 1)" "$o"
 		o=$($S $T/rp --keyring-forget "$id" 2>&1); l=$($S timeout 10 secret-tool lookup app claude account ann 2>&1)
