@@ -65,8 +65,9 @@ def make_drive(path):
 def boot(tag, slot):
     extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf160',
              '-kernel', f'{(W + "/out/channel") if False else REL}/vmlinuz', '-append', f'quiet loglevel=3 consoleblank=0 rudolf.slot={slot} rudolf.debug=1']
+    global g_last
     vm = sbvm.VM('t160' + tag, PARTS, [], secure=False, mem=MEM, extra=extra)
-    g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3)
+    g = Guest.__new__(Guest); g_last = g; g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3)
     time.sleep(30); end = time.time() + 900; up = False
     while time.time() < end:
         try:
@@ -81,7 +82,7 @@ def boot(tag, slot):
         return r
     end = time.time() + 600
     while up and time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'", 20) is not True: time.sleep(5)
-    js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};return 1})()")
+    js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};if(!window.__cww){window.__cww=1;window.__cw=[];const w=console.warn,er=console.error;console.warn=function(...a){__cw.push('W '+a.map(x=>x&&x.message?x.message:String(x)).join(' ').slice(0,300));return w.apply(this,a)};console.error=function(...a){__cw.push('E '+a.map(x=>x&&x.message?x.message:String(x)).join(' ').slice(0,300));return er.apply(this,a)};addEventListener('error',e=>__cw.push('X '+e.message));addEventListener('unhandledrejection',e=>__cw.push('R '+(e.reason&&e.reason.message||e.reason)))}return 1})()")
     return vm, g, up, js
 # a command run in the guest from a script file (a long command line echoed back over the serial line mixed with its
 # output), its output written to this test's log in full
@@ -98,6 +99,8 @@ def signin(js, n, pw, secs=900):
         s = js("window.__si", 30)
         if isinstance(s, str) and s != 'wait': return s
         time.sleep(5)
+    out('page:', js("JSON.stringify({si:window.__si,user:USER&&USER.n,accts:ACCTS.map(a=>a.n),err:(window.__cw||[]).slice(-5)})", 30))
+    out(g_last.sh("tail -25 /run/rudolf/rudolfd.log; tail -15 /run/rudolf/page.log; tail -15 /run/rudolf/session.log; ps w | grep -v ' \\[' | tail -40", 60))
     return 'still signing in'
 def wait_for(js, expr, secs, every=5):
     end = time.time() + secs; r = None
