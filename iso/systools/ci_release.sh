@@ -177,7 +177,7 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -o "$B/rudolf-debian" sys/rudolf-debian.c -lcrypto -ldl
 	gcc -O2 $HARD -o "$B/rudolf-fscheck" sys/rudolf-fscheck.c
 	# 1.2.9: the desktop portal and the app catalogue reader for Linux apps (never rebuilt here before either)
-	gcc -O2 $HARD -o "$B/rudolf-portal" sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0)
+	gcc -O2 $HARD -o "$B/rudolf-portal" sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto
 	gcc -O2 $HARD -o "$B/rudolf-apps" sys/rudolf-apps.c -lz
 	# 1.3.0: the package tool, the assistant and printing too (the same commands as mkrootfs.sh)
 	gcc -O2 $HARD -o "$B/rpk" sys/rpk.c -lcrypto

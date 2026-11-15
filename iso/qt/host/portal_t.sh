@@ -2,7 +2,7 @@
 # rudolf-portal (1.2.9) on the host: the interfaces GLib inside a Flatpak sandbox asks for (ProxyResolver: Sober's
 # sign-in page; NetworkMonitor), on a private session bus. sh portal_t.sh   (needs gcc, glib, dbus-run-session)
 D=$(cd "$(dirname "$0")/../../sys" && pwd); T=$(mktemp -d)
-gcc -O2 -w -o "$T/rudolf-portal" "$D/rudolf-portal.c" $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) || exit 1
+gcc -O2 -w -o "$T/rudolf-portal" "$D/rudolf-portal.c" $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto || exit 1
 cat > "$T/t.sh" <<'EOS'
 P=0; N=0; ok() { N=$((N + 1)); if [ "$1" = 0 ]; then P=$((P + 1)); echo "PASS $2"; else echo "FAIL $2 - $3"; fi; }
 c() { gdbus call --session -d org.freedesktop.portal.Desktop -o /org/freedesktop/portal/desktop -m "$@" 2>&1; }
