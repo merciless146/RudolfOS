@@ -244,6 +244,13 @@ something to the system. Rudolf OS has neither, so these requests fail or are ig
 - So the proposal: leave elogind and polkit out of 1.6.0 (and the 5 MB budget with them), and take them up only if an
   app or a later part (Waydroid, PipeWire, a Wayland desktop) needs them. Udev's seat rules (71-seat, 73-seat-late)
   stay out with them.
+- **Decided (2026-11-15): left out**, as asked ("If leaving out elogind and polkit causes no issues or possible
+  conflicts with Rudolf or its cross-distribution compatibility, then let's leave it out"). Checked first: nothing in
+  Rudolf OS asks for either (no program here uses login1 or polkit; the system bus serves only BlueZ, bluealsa and
+  ModemManager, which run without them); a Flatpak app with `--system-talk-name=org.freedesktop.login1` gets no
+  answer, as it got none before, and such apps (a few use login1's sleep signal) carry on without it; Debian's
+  programs never had a logind; nothing that ran before changes, and apps made for other distributions keep the
+  standard ways they use here (the portals, the Secret Service, ScreenSaver and PowerManagement). Part 11 is done.
 
 ### 12. The native desktop becomes the default (added on 2026-11-13)
 Decided on 2026-11-13 from 1.5.9's measurements (docs/plan-1.5.9.md 12.3a: at idle 854 MB used against Standard's

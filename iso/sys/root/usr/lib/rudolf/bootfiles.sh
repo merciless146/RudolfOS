@@ -27,7 +27,8 @@ check_image() {
 		SRC=$(cat /etc/rudolf/media); M=/live/media
 		[ -b "$SRC" ] && mountpoint -q $M || die "This Rudolf OS's own image cannot be read." 7
 	else
-		case "$SRC" in *..*) die "Bad file name." 7;; /home/rudolf/*.iso|/home/rudolf/*.ISO) ;; *) die "The image must be a .iso file in your home folder." 7;; esac
+		# (1.6.0: or espcheck's download of the official boot image, /persist/os/esp-repair/boot.iso)
+		case "$SRC" in *..*) die "Bad file name." 7;; /home/rudolf/*.iso|/home/rudolf/*.ISO|/persist/os/esp-repair/boot.iso) ;; *) die "The image must be a .iso file in your home folder." 7;; esac
 		[ -f "$SRC" ] || /usr/lib/rudolf/joinparts.sh "$SRC" || exit 7
 		[ -f "$SRC" ] || die "No such file: $SRC" 7
 		if [ -n "$RUDOLF_IMG_SHA" ]; then
