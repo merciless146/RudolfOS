@@ -255,16 +255,6 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	echo "::notice title=Tor::$((TRB / 1024)) KB added to the base layer"
 	grep -q '^tor:' "$W/broot/etc/passwd" || echo "tor:x:951:951:Tor (Oracle's Tor windows):/run/rudolf/tor:/bin/false" | sudo tee -a "$W/broot/etc/passwd" >/dev/null
 	grep -q '^tor:' "$W/broot/etc/group" || echo "tor:x:951:" | sudo tee -a "$W/broot/etc/group" >/dev/null
-	# 1.6.0 (plan Part 14): the keyring for Linux apps, gnome-keyring-daemon's secrets part (/usr/lib/rudolf/keyring starts
-	# it at sign-in, as the account's user), with what it needs that the base layer lacks, in a budget of its own, 3 MB
-	KRB=0
-	for x in /usr/bin/gnome-keyring-daemon; do
-		[ -x "$x" ] || { echo "$x is missing on the build machine (apt-get install gnome-keyring)"; exit 1; }
-		sudo install -m 0755 "$x" "$W/broot/usr/bin/gnome-keyring-daemon"; KRB=$((KRB + $(stat -c %s "$x")))
-		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; KRB=$((KRB + $(stat -L -c %s "$l"))); echo "  the keyring needs $l ($(($(stat -L -c %s "$l") / 1024)) KB)"; }; done
-	done
-	[ $KRB -lt 3145728 ] || { echo "the keyring adds $((KRB / 1024)) KB to the base layer: over its 3 MB budget (docs/plan-1.6.0.md Part 14)"; exit 1; }
-	echo "::notice title=The keyring::$((KRB / 1024)) KB added to the base layer"
 	# 1.5.9: and iw: the Wi-Fi chip's bands (Settings › Network › Wi-Fi › This computer's Wi-Fi radios, wifi.sh radios
 	# and band); it was never in the base layer, so on the Vivobook (2026111308) those found no bands at all
 	for x in /usr/sbin/nft /usr/sbin/tune2fs /usr/sbin/iw; do
@@ -288,6 +278,18 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -Wno-deprecated-declarations -o "$B/rudolf-native" sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm || { echo "rudolf-native did not build"; exit 1; }
 	python3 systools/hardcheck.py "$B/rudolf-webkit" "$B/rudolf-native" || { echo "rudolf-webkit or rudolf-native was built without the hardening flags (plan 15.5)"; exit 1; }
 	systools/addwebkit.sh "$W/broot" "$B/rudolf-webkit" "$B/rudolf-native"
+	# 1.6.0 (plan Part 14): the keyring for Linux apps, gnome-keyring-daemon's secrets part (/usr/lib/rudolf/keyring starts
+	# it at sign-in, as the account's user), with what it needs that the base layer lacks, in a budget of its own, 3 MB.
+	# After WebKit, whose libraries it
+	# shares (GLib, GIO, libgcrypt, p11-kit), so only what is the keyring's own is counted
+	KRB=0
+	for x in /usr/bin/gnome-keyring-daemon; do
+		[ -x "$x" ] || { echo "$x is missing on the build machine (apt-get install gnome-keyring)"; exit 1; }
+		sudo install -m 0755 "$x" "$W/broot/usr/bin/gnome-keyring-daemon"; KRB=$((KRB + $(stat -c %s "$x")))
+		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; KRB=$((KRB + $(stat -L -c %s "$l"))); echo "  the keyring needs $l ($(($(stat -L -c %s "$l") / 1024)) KB)"; }; done
+	done
+	[ $KRB -lt 3145728 ] || { echo "the keyring adds $((KRB / 1024)) KB to the base layer: over its 3 MB budget (docs/plan-1.6.0.md Part 14)"; exit 1; }
+	echo "::notice title=The keyring::$((KRB / 1024)) KB added to the base layer"
 	sudo mkdir -p "$W/broot/etc/rudolf"; sudo cp trusted-keys.txt "$W/broot/etc/rudolf/rpk-keys"
 	sudo cp VERSION "$W/broot/usr/share/rudolf/VERSION"
 	# 1.4.4: the build date; rudolf-init never lets the clock read earlier than this (a reset hardware clock)
