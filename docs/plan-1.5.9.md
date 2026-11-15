@@ -1114,7 +1114,6 @@ file:///C:/…. Names are text, cut to 18 characters as the ☆'s. Found on the 
 for every file chosen (closing its window ran its onclose first), so Open in Presentation, Spreadsheet and others
 did nothing. Test: qt/shell2/bmadd59_t.js 14/14 (devkey59, wallpaper, private59 unchanged).
 
-<<<<<<< HEAD
 ### 14.2 Saving and opening in Notepad, WordLite and WordPro; their tabs (added on 2026-11-14)
 Found on the Vivobook: the Save As box took no typing (nameDlg's `onkeydown=e=>e.key=='Enter'&&go()` returned false,
 cancelling every other key; the Run box had the same line). Asked for: saving opens a dialog like the File Explorer,
@@ -1127,7 +1126,7 @@ the open window); Notepad and WordLite rebuilt on them (WordLite shows a documen
 document, web page or text); WordPro's Save, Save As, Open and Export use the dialog. Paint keeps its name box (now
 typable). Not yet: saving to a USB drive from these dialogs (they list C:, the account's files). Test:
 qt/shell2/editors59_t.js 16/16; altf4, office, sanitize59, staticbg59, tablet58, titlebar59 unchanged.
-=======
+
 ### 14.3 USB drives: another Rudolf OS stick (added on 2026-11-14)
 Found on the Vivobook: a SanDisk stick holding Rudolf OS 1.4.1 (ISO 9660, RUDOLF EFI, RUDOLFDATA) was detected
 (usb-storage, sda) but not in the File Explorer's drives: devplug's system_disk counted every disk with a RUDOLFDATA
@@ -1136,7 +1135,6 @@ outside /media, or the disk holding the start-up image's file); another Rudolf O
 and its RUDOLFDATA is mounted read-only, named "Rudolf OS data (another Rudolf OS, read-only)" (its files are another
 installation's; accounts there are encrypted). Checked on the Vivobook with the fixed script: sda3 mounted read-only
 and announced, sda1/sda2 and the internal drive left alone. Test: qt/host/devrudolf59_t.sh 7/7; devunsup_t.sh 18/18.
->>>>>>> origin/usb-rudolf-sticks
 
 ## Part 15: security against a directed attack (added on 2026-11-14)
 Asked for after a review of how Rudolf OS stands against malware aimed at its owner (2026-11-14). Below the desktop it is
