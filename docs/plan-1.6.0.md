@@ -544,6 +544,13 @@ after N minutes and sleep are not in the behaviour test (they need a minute afte
 screen; rudolf-display gives Chromium one output), so "a taskbar and the wallpaper on each monitor" on Native would make Native
 differ from Standard, against "The rule". Either Standard gets it too (a change to Standard, which the rule forbids without
 the owner), or Native keeps one desktop as Standard and item 7 is dropped or moved to 2.0. Left undone until then.
+**Item 7 decided (owner, 2026-11-15):** "Rudolf OS has three workspaces that can be selected in the bottom right of the
+taskbar. These workspaces will be the basis for Rudolf being able to support up to three monitors/displays, as well as
+having three panels for the mobile build that can be selected by swiping left/right similar to how Android phones
+work." So several monitors are built on the three workspaces, on Standard and Native alike (the rule holds): up to
+three displays, each showing one of the workspaces with its own wallpaper and taskbar; a window moved to another
+workspace moves to that display. One display keeps today's behaviour (the three workspaces switched from the taskbar).
+The mobile build's three panels are the same three workspaces, swiped left and right.
 **Item 8 (2026-11-15, unattended session): the Phone screen and Blitzen's panel.** Both are page windows (apk58.js
 phoneScreen, blitzen26.js blitzenApp; the page docks neither), so Native shows each in a one-app window opened from its pin.
 Checked against Standard with same_t.sh, new cases phone-nolinux, phone-noscrcpy, phone-ready, phone-dark, blitzen-setup,
