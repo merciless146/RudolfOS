@@ -1372,6 +1372,20 @@ Tor logo. The word "Tor" is used only to say what it uses (the tooltip, the note
 - rudolfd `tor/status` (off, starting with Tor's bootstrap percentage from its log, on, failed with the log's last
   line), `tor/start`, `tor/stop`; the page asks it. Health log: started, ready, stopped, failed.
 
+**16.1 done (2026-11-15, its own PR):** rudolfd's `tor/start` (POST; a second window gets the same Tor), `tor/status`
+({state, pct, line, secs, stopping}) and `tor/stop` (POST: in a minute, unless a Tor window asks again; `now=1` at once),
+and its loop's check each second (the stop when due, "ready" once at Bootstrapped 100 %, a Tor that ended by itself:
+failed, with its log's last line). Tor is started as written above, with `--ignore-missing-torrc` (no torrc on the
+system) and `--RunAsDaemon 0`, twice forked so it is init's child; its folder /run/rudolf/tor (0700, the user's) is removed
+when it stops. As written, nothing else changed: the firewall already lets every program out, and only 127.0.0.1:9050 is
+new in the listeners list (listeners59_t.sh 3b checks the port rudolfd gives). The user `tor` (951) is made by
+mkrootfs.sh and, because the base layer is built from the previous one, added by ci_release.sh when missing. The health
+log's kind "tor" (System health: 🧅 Tor). Tests: qt/host/tor59_t.sh 22 (a stand-in tor for the bootstrap lines, the
+stop, the failure; the real Ubuntu tor here, 0.4.9.11: it listens on 127.0.0.1:9050 and nothing else, as the given user,
+and leaves nothing behind). Not tested here: ci_release's real size (measured by the CI's notice: Tor 2.8 MB, and from
+this machine libevent 0.3 MB and, if the base lacks them, libsystemd's 2.5 MB with libgcrypt: near the budget), and Tor
+on the Vivobook. Without the geoip files (not copied: 10 MB) Tor warns once and works.
+
 ### 16.2 The Tor window
 - Pressing the button in an Oracle window: Tor is started (the window shows "Connecting to Tor… N %"), then the window's
   tabs open in a **Tor window**: Rudolf's Chromium started through `rudolf-launch --oracle` (as Oracle on Native,

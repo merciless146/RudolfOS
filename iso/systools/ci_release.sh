@@ -243,6 +243,18 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	done
 	[ $HSB -lt 6291456 ] || { echo "the hotspot tools add $((HSB / 1048576)) MB to the base layer: over their 6 MB budget (docs/plan-1.5.9.md Part 4)"; exit 1; }
 	echo "::notice title=The hotspot::$((HSB / 1024)) KB added to the base layer"
+	# 1.5.9 (plan 16.1): Tor, for Oracle's Tor windows (rudolfd starts it only while one is open), with what it needs that the
+	# base layer lacks (libevent's), in a budget of its own, 6 MB; and its user (951), which a base layer made before has not
+	TRB=0
+	for x in /usr/bin/tor; do
+		[ -x "$x" ] || { echo "$x is missing on the build machine (apt-get install tor)"; exit 1; }
+		sudo install -m 0755 "$x" "$W/broot/usr/bin/tor"; TRB=$((TRB + $(stat -c %s "$x")))
+		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; TRB=$((TRB + $(stat -L -c %s "$l"))); echo "  Tor needs $l ($(($(stat -L -c %s "$l") / 1024)) KB)"; }; done
+	done
+	[ $TRB -lt 6291456 ] || { echo "Tor adds $((TRB / 1024)) KB to the base layer: over its 6 MB budget (docs/plan-1.5.9.md 16.1)"; exit 1; }
+	echo "::notice title=Tor::$((TRB / 1024)) KB added to the base layer"
+	grep -q '^tor:' "$W/broot/etc/passwd" || echo "tor:x:951:951:Tor (Oracle's Tor windows):/run/rudolf/tor:/bin/false" | sudo tee -a "$W/broot/etc/passwd" >/dev/null
+	grep -q '^tor:' "$W/broot/etc/group" || echo "tor:x:951:" | sudo tee -a "$W/broot/etc/group" >/dev/null
 	# 1.5.9: and iw: the Wi-Fi chip's bands (Settings › Network › Wi-Fi › This computer's Wi-Fi radios, wifi.sh radios
 	# and band); it was never in the base layer, so on the Vivobook (2026111308) those found no bands at all
 	for x in /usr/sbin/nft /usr/sbin/tune2fs /usr/sbin/iw; do

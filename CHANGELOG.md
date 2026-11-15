@@ -20,6 +20,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- New: Tor in the system (for Oracle's Browse with Tor, plan 16.1): it runs only while a Tor window is open, as a user of its own, listening only on this computer (127.0.0.1:9050), with nothing kept on the disk; System health notes when it starts, is ready, stops or fails.
 - New: Oracle's bookmarks bar ends with a "+" that adds a bookmark by its address, from the browsing history (newest first, searchable), or as a file on this computer (a document or a PDF).
 - Fixed: choosing a file in the desktop's own file picker (Open a presentation or a spreadsheet, and others) answered as if nothing had been chosen.
 - Changed: the plan: Browse with Tor in Oracle (Part 16): a button on the bookmarks bar sends that window through Tor, which runs only while it is used.
