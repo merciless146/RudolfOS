@@ -139,6 +139,20 @@ CASES.push({n: 'tm-apps', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'no
 const MPJS = "(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.getClientRects().length).pop(); w.querySelector('.ou').click(); const d = w.querySelector('.dlg'); d.querySelector('input').value = location.origin + '/tm/t.webm'; [...d.querySelectorAll('button')].pop().click(); " +
   "const go = v => { v.muted = true; v.pause(); v.addEventListener('seeked', () => w.querySelector('.fs').click(), {once: true}); v.currentTime = 2 }; const v = w.querySelector('video'); if (v.readyState >= 2) go(v); else v.addEventListener('loadeddata', () => go(v), {once: true}) })()";
 CASES.push({n: 'video-fs', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'media', 'settings']}, app: 'media', media: 't.webm', shellfs: 1, js: MPJS, jswait: 3000, undo: "document.fullscreenElement && document.exitFullscreen()", parts: ['picture']});
+/* (the test findings that look wrong: N5, N6, N7, N8, N9, N13) the apps' windows whole ('win': WebKit's page against Chromium's, a pixel's
+   match one pixel away allowed): Settings' Volume Controls and Mouse and touchpad (sliders, lists), the Media Player (seek bar, volume,
+   speed), WordLite (font and size lists, the colour box), the Clock's alarms (a time field), File Explorer (Folders on this device, the
+   status line), and what Settings › About says (read from both pages; the storage's numbers and the graphics chip are each engine's own) */
+const PINSL = {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'settings', 'media', 'wordlite', 'clock']};
+CASES.push({n: 'ctl-volume', set: {}, more: PINSL, app: 'settings', js: "settings('vol')", parts: ['win']});
+CASES.push({n: 'ctl-mouse', set: {}, more: PINSL, app: 'settings', js: "settings('mouse')", parts: ['win']});
+CASES.push({n: 'ctl-media', set: {}, more: PINSL, app: 'media', parts: ['win']});
+CASES.push({n: 'ctl-wordlite', set: {}, more: PINSL, app: 'wordlite', parts: ['win']});
+CASES.push({n: 'ctl-clock', set: {}, more: PINSL, app: 'clock', parts: ['win']});
+CASES.push({n: 'explorer', set: {}, more: PINSL, app: 'explorer', parts: ['win'],
+  read: "JSON.stringify([[...document.querySelectorAll('.win *')].some(e => !e.children.length && /^Folders on this device$/i.test(e.textContent.trim())), ([...document.querySelectorAll('.win *')].map(e => !e.children.length && /Storage: /.test(e.textContent) ? e.textContent : '').find(x => x) || '').replace(/[\\d.]+ (B|KB|MB|GB|TB)/g, 'N')])"});
+CASES.push({n: 'about', set: {}, more: PINSL, app: 'settings', js: "settings('about')", jswait: 1500,
+  read: "JSON.stringify([...document.querySelectorAll('.ab tr')].map(r => [r.cells[0].textContent, /^(Storage used|Graphics)$/.test(r.cells[0].textContent) ? (r.cells[0].textContent == 'Graphics' ? /^ANGLE \\(/.test(r.cells[1].textContent) : /^[\\d.]+ (B|KB|MB) of [\\d.]+ (MB|GB|TB)$/.test(r.cells[1].textContent)) : r.cells[1].textContent]))"});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;

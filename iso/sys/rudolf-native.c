@@ -389,11 +389,18 @@ static void appwin_modal(AppWin *a, int on);
 static void appwin_fs(AppWin *a, int on);
 static void wins_ask(AppWin *to); static void win_op(const char *id, const char *what);   /* (Task Manager's windows: test finding N3) */
 static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d);
+static char *gpu_script(void);
 static void ctx_make(void)
 {
 	if (CTX) return;
 	char *home = g_build_filename(g_get_home_dir(), ".rudolf-native", NULL), *data = g_build_filename(home, "data", NULL), *cache = g_build_filename(home, "cache", NULL);
-	WebKitWebsiteDataManager *m = webkit_website_data_manager_new("base-data-directory", data, "base-cache-directory", cache, NULL);
+	/* (N7, N8) an origin's share of the disk as Chromium's (60 %; WebKit's own is 1 GB), so navigator.storage.estimate()'s quota is the
+	   size Standard says */
+	WebKitWebsiteDataManager *m = webkit_website_data_manager_new("base-data-directory", data, "base-cache-directory", cache,
+#if WEBKIT_CHECK_VERSION(2, 42, 0)
+		"origin-storage-ratio", 0.6, "total-storage-ratio", 0.8,
+#endif
+		NULL);
 	WebKitMemoryPressureSettings *mps = webkit_memory_pressure_settings_new();   /* as rudolf-webkit (1.5.8) */
 	webkit_memory_pressure_settings_set_memory_limit(mps, 768); webkit_memory_pressure_settings_set_conservative_threshold(mps, 0.33);
 	webkit_memory_pressure_settings_set_strict_threshold(mps, 0.5); webkit_memory_pressure_settings_set_kill_threshold(mps, 0); webkit_memory_pressure_settings_set_poll_interval(mps, 15);
@@ -405,8 +412,29 @@ static void ctx_make(void)
 	UCM = webkit_user_content_manager_new();
 	webkit_user_content_manager_register_script_message_handler(UCM, "rudolfNative");
 	g_signal_connect(UCM, "script-message-received::rudolfNative", G_CALLBACK(on_msg), NULL);
+	{ char *g = gpu_script(); if (g) { webkit_user_content_manager_add_script(UCM, webkit_user_script_new(g, WEBKIT_USER_CONTENT_INJECT_TOP_FRAME, WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, NULL, NULL)); g_free(g); } }
 	if (SOFT) webkit_user_content_manager_add_style_sheet(UCM, webkit_user_style_sheet_new(
 		"*,*::before,*::after{box-shadow:none!important;text-shadow:none!important;backdrop-filter:none!important}", WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES, WEBKIT_USER_STYLE_LEVEL_USER, NULL, NULL));
+}
+static void json_esc(GString *s, const char *v);
+/* (test finding N8) the graphics chip's name, as Chromium gives it to the page (WEBGL_debug_renderer_info: "ANGLE (VENDOR, RENDERER,
+   OpenGL VERSION)", what Settings › About shows under Graphics); WebKit gives every page "Apple GPU". Read once from a GL context of
+   the desktop's window (GTK's, through libepoxy, which GTK has loaded), given to the pages as window.__oaGpu (oneapp59.js) */
+static char *gpu_script(void)
+{
+	char ven[128] = "", ren[256] = "", ver[64] = "";
+	GdkWindow *w = DESK ? gtk_widget_get_window(DESK) : NULL; GError *e = NULL; GdkGLContext *gl = w ? gdk_window_create_gl_context(w, &e) : NULL;
+	typedef const unsigned char *(*GetStr)(unsigned); GetStr *gs = (GetStr *)dlsym(RTLD_DEFAULT, "epoxy_glGetString");
+	if (gl && gdk_gl_context_realize(gl, NULL) && gs && *gs) { gdk_gl_context_make_current(gl);
+		const char *a = (const char *)(*gs)(0x1F00), *b = (const char *)(*gs)(0x1F01), *c = (const char *)(*gs)(0x1F02);
+		if (a) snprintf(ven, sizeof ven, "%s", a); if (b) snprintf(ren, sizeof ren, "%s", b); if (c) sscanf(c, "%63s", ver); gdk_gl_context_clear_current(); }
+	if (e) g_error_free(e); if (gl) g_object_unref(gl);
+	if (!ren[0]) return NULL;
+	/* (ANGLE's names for the vendors it knows) */
+	const char *v = strstr(ven, "Intel") ? "Intel" : (strstr(ven, "AMD") || strstr(ven, "ATI")) ? "AMD" : strstr(ven, "NVIDIA") ? "NVIDIA" : ven;
+	char *r = g_strdup_printf("ANGLE (%s, %s, OpenGL %s)", v, ren, ver), *vv = g_strdup_printf("Google Inc. (%s)", v);
+	GString *js = g_string_new("window.__oaGpu={r:"); json_esc(js, r); g_string_append(js, ",v:"); json_esc(js, vv); g_string_append(js, "};");
+	g_free(r); g_free(vv); return g_string_free(js, FALSE);
 }
 static int local_url(const char *u)
 {
@@ -449,6 +477,7 @@ static void toast_add(AppWin *from, JSCValue *v);
 static void tb_settings(const char *page);
 static void nt_note(JSCValue *v);
 static void open_with(const char *file, const char *key);
+static void hfs_msg(AppWin *a, JSCValue *v);   /* (folders on this device: test finding N7) */
 /* (1.5.9, 12.3c) Oracle's Chromium and the WebKit windows: the files one (rudolfd's mirror), the indicator of the keys the native
    desktop's, Oracle's new windows at an address or private */
 static GPid OR_PID; static int OR_RUN; static char OR_CTL[300]; static const char *TOR_CTL_P;   /* (Part 16: the Tor windows' rudolf-launch FIFO, once it runs) */
@@ -477,6 +506,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "mirror")) { jsstr(v, "id", x, sizeof x); if (id_ok(x)) { char l[100]; snprintf(l, sizeof l, "mirror %s\n", x); oracle_tell(l); } }   /* (the files an app's window saved: Oracle's pages take them) */
 	else if (!strcmp(op, "osd")) { char k[16] = "", lv[8] = "", n[8] = ""; jsstr(v, "k", k, sizeof k); jsstr(v, "lv", lv, sizeof lv); jsstr(v, "label", x, sizeof x); jsstr(v, "n", n, sizeof n); osd_show(k, lv, x, n); }
 	else if (!strcmp(op, "fs")) { jsstr(v, "on", x, sizeof x); appwin_fs(a, x[0] == '1'); }   /* (the page's own full screen: the window covers the screen, test finding N1) */
+	else if (!strcmp(op, "hfs")) hfs_msg(a, v);   /* (File Explorer's Folders on this device: the folder picker and its files, N7) */
 	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
 	else if (!strcmp(op, "winop")) { jsstr(v, "id", x, sizeof x); jsstr(v, "do", f, sizeof f); win_op(x, f); }
 	else if (!strcmp(op, "modal")) { jsstr(v, "on", x, sizeof x); appwin_modal(a, x[0] == '1'); }   /* (a page's dialog: over the whole screen, as Standard's) */
@@ -520,6 +550,14 @@ static AppWin *appwin_new(const char *k, WebKitWebView *rel, int id)
 		"enable-webgl", TRUE, "media-playback-requires-user-gesture", FALSE, "enable-page-cache", FALSE, "enable-write-console-messages-to-stdout", TRUE,
 		"javascript-can-open-windows-automatically", TRUE, NULL);
 	webkit_settings_set_hardware_acceleration_policy(st, HWPOL);
+#if WEBKIT_CHECK_VERSION(2, 42, 0)
+	/* (test findings N7, N8) navigator.storage.estimate(), which Chromium has: File Explorer's status line and Settings › About say
+	   how much of its storage the page uses (WebKitGTK leaves the Storage API off) */
+	{ WebKitFeatureList *fl = webkit_settings_get_all_features();
+	  for (gsize i = 0; i < webkit_feature_list_get_length(fl); i++) { WebKitFeature *ft = webkit_feature_list_get(fl, i); const char *id = webkit_feature_get_identifier(ft);
+		if (!strcmp(id, "StorageAPI") || !strcmp(id, "StorageAPIEstimate")) webkit_settings_set_feature_enabled(st, ft, TRUE); }
+	  webkit_feature_list_unref(fl); }
+#endif
 	g_signal_connect(a->view, "decide-policy", G_CALLBACK(on_decide), NULL);
 	g_signal_connect(a->view, "permission-request", G_CALLBACK(on_perm), NULL);
 	g_signal_connect(a->view, "notify::title", G_CALLBACK(on_title), a);
@@ -2769,6 +2807,65 @@ static void dg_ok(void)
 }
 /* (1.5.9, 12.3c) Open with chosen in an app's own page (oneapp59.js: its dialog, in Oracle's window or a WebKit window): the app's
    window of its own, as the shell's Open with dialog makes it */
+/* (1.6.0 Part 12, test finding N7) File Explorer's "Folders on this device" (Import a folder…, Export selection to a folder…): on
+   Standard the page has Chromium's folder picker (showDirectoryPicker: a folder of the computer chosen in a dialog, its files read
+   and written by the page); WebKit has none, so the section was missing. Here the page's stand-in (oneapp59.js) asks the shell: "pick"
+   shows a folder dialog (read, or read and write as asked) and answers a handle for the folder chosen; "ls", "read", "write", "mkdir",
+   "stat" work inside a folder so chosen only (a name with a / or that is "." or ".." is refused, and so is a path that leaves the
+   folder through a link), as the page's own handles do. The answer goes back to the page as __oaHfsIn(ID, JSON). */
+typedef struct { char *path; int rw; AppWin *a; } HfsRoot;
+static GPtrArray *HFS;
+static void hfs_reply(AppWin *a, const char *id, GString *j)
+{
+	if (g_list_find(WINS, a) && a->view) { GString *js = g_string_new("window.__oaHfsIn&&__oaHfsIn("); json_esc(js, id); g_string_append(js, ","); json_esc(js, j->str); g_string_append(js, ")");
+		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE); }
+	g_string_free(j, TRUE);
+}
+static void hfs_err(AppWin *a, const char *id, const char *name, const char *msg) { GString *j = g_string_new("{\"err\":"); json_esc(j, name); g_string_append(j, ",\"msg\":"); json_esc(j, msg); g_string_append(j, "}"); hfs_reply(a, id, j); }
+/* the path inside root T: its parts checked, then the real path kept under the root's real path */
+static char *hfs_path(AppWin *a, const char *t, const char *rel, int must)
+{
+	int i = atoi(t); if (!HFS || i < 1 || i > (int)HFS->len) return NULL; HfsRoot *r = g_ptr_array_index(HFS, i - 1); if (r->a != a) return NULL;
+	char **parts = g_strsplit(rel ? rel : "", "/", -1); GString *p = g_string_new(r->path); int bad = 0;
+	for (char **x = parts; *x; x++) { if (!**x) continue; if (!strcmp(*x, ".") || !strcmp(*x, "..")) { bad = 1; break; } g_string_append_c(p, '/'); g_string_append(p, *x); }
+	g_strfreev(parts); if (bad) { g_string_free(p, TRUE); return NULL; }
+	char *rp = realpath(must ? p->str : r->path, NULL), *rr = realpath(r->path, NULL); int ok = rp && rr && (!strncmp(rp, rr, strlen(rr)) && (rp[strlen(rr)] == 0 || rp[strlen(rr)] == '/'));
+	free(rp); free(rr); if (!ok) { g_string_free(p, TRUE); return NULL; }
+	return g_string_free(p, FALSE);
+}
+static int hfs_name_ok(const char *n) { return n && *n && !strchr(n, '/') && strcmp(n, ".") && strcmp(n, "..") && strlen(n) < 256; }
+static void hfs_msg(AppWin *a, JSCValue *v)
+{
+	char id[24] = "", what[16] = "", t[16] = "", p[1024] = "", n[260] = "", mode[16] = ""; jsstr(v, "id", id, sizeof id); jsstr(v, "do", what, sizeof what);
+	jsstr(v, "t", t, sizeof t); jsstr(v, "p", p, sizeof p); jsstr(v, "n", n, sizeof n); jsstr(v, "mode", mode, sizeof mode);
+	if (!strcmp(what, "pick")) {
+		GtkWidget *d = gtk_file_chooser_dialog_new("Select a folder", GTK_WINDOW(a->win), GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, "_Cancel", GTK_RESPONSE_CANCEL, "_Select", GTK_RESPONSE_ACCEPT, NULL);
+		gtk_window_set_modal(GTK_WINDOW(d), TRUE); gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(d), g_get_home_dir());
+		int r = gtk_dialog_run(GTK_DIALOG(d)); char *f = r == GTK_RESPONSE_ACCEPT ? gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(d)) : NULL; gtk_widget_destroy(d);
+		if (!f) { hfs_err(a, id, "AbortError", "The user aborted a request."); return; }
+		if (!HFS) HFS = g_ptr_array_new(); HfsRoot *ro = g_new0(HfsRoot, 1); ro->path = f; ro->rw = !strcmp(mode, "readwrite"); ro->a = a; g_ptr_array_add(HFS, ro);
+		char *bn = g_path_get_basename(f); GString *j = g_string_new(""); g_string_append_printf(j, "{\"t\":\"%u\",\"name\":", HFS->len); json_esc(j, bn); g_string_append(j, "}"); g_free(bn); hfs_reply(a, id, j); return; }
+	int ti = atoi(t); HfsRoot *ro = HFS && ti >= 1 && ti <= (int)HFS->len ? g_ptr_array_index(HFS, ti - 1) : NULL;
+	char *dir = hfs_path(a, t, p, 1); if (!dir || !ro) { g_free(dir); hfs_err(a, id, "NotFoundError", "A requested file or directory could not be found."); return; }
+	if (!strcmp(what, "ls")) { GDir *gd = g_dir_open(dir, 0, NULL); GString *j = g_string_new("{\"l\":["); int k = 0; const char *e;
+		while (gd && (e = g_dir_read_name(gd))) { char *f = g_build_filename(dir, e, NULL); g_string_append(j, k++ ? "," : ""); g_string_append(j, "["); json_esc(j, e); g_string_append_printf(j, ",%d]", g_file_test(f, G_FILE_TEST_IS_DIR)); g_free(f); }
+		if (gd) g_dir_close(gd); g_string_append(j, "]}"); hfs_reply(a, id, j); g_free(dir); return; }
+	if (!hfs_name_ok(n) && strcmp(what, "read")) { g_free(dir); hfs_err(a, id, "TypeError", "Name is not allowed."); return; }
+	char *f = !strcmp(what, "read") ? g_strdup(dir) : g_build_filename(dir, n, NULL); g_free(dir);
+	if (!strcmp(what, "read")) { gchar *b = NULL; gsize len = 0; struct stat sb;
+		if (stat(f, &sb) || !S_ISREG(sb.st_mode) || sb.st_size > 64 * 1048576 || !g_file_get_contents(f, &b, &len, NULL)) hfs_err(a, id, "NotReadableError", "The file could not be read.");
+		else { gchar *b64 = g_base64_encode((guchar *)b, len); GString *j = g_string_new("{\"b\":\""); g_string_append(j, b64); g_string_append_printf(j, "\",\"m\":%lld}", (long long)sb.st_mtime * 1000); g_free(b64); hfs_reply(a, id, j); }
+		g_free(b); g_free(f); return; }
+	if (!strcmp(what, "stat")) { int dirp = g_file_test(f, G_FILE_TEST_IS_DIR), there = g_file_test(f, G_FILE_TEST_EXISTS);
+		GString *j = g_string_new(""); g_string_append_printf(j, "{\"there\":%d,\"dir\":%d}", there, dirp); hfs_reply(a, id, j); g_free(f); return; }
+	if (!ro->rw) { g_free(f); hfs_err(a, id, "NotAllowedError", "The request is not allowed."); return; }
+	if (!strcmp(what, "mkdir")) { if (g_mkdir_with_parents(f, 0755)) hfs_err(a, id, "InvalidModificationError", "The folder could not be made."); else hfs_reply(a, id, g_string_new("{}")); g_free(f); return; }
+	if (!strcmp(what, "write")) { gsize len = 0; JSCValue *b = jsc_value_object_get_property(v, "b"); char *bs = b && jsc_value_is_string(b) ? jsc_value_to_string(b) : g_strdup(""); if (b) g_object_unref(b);
+		guchar *d = g_base64_decode(bs, &len); g_free(bs);
+		if (!g_file_set_contents(f, (char *)d, len, NULL)) hfs_err(a, id, "InvalidModificationError", "The file could not be written."); else hfs_reply(a, id, g_string_new("{}"));
+		g_free(d); g_free(f); return; }
+	g_free(f); hfs_err(a, id, "TypeError", "Unknown.");
+}
 static void open_with(const char *file, const char *key)
 {
 	if (!file || !file[0] || !key || !key[0] || strlen(key) > 39 || strspn(key, "abcdefghijklmnopqrstuvwxyz0123456789_-") != strlen(key) || !USER_ID[0] || LOCKED) return;
@@ -4941,6 +5038,10 @@ int main(int argc, char **argv)
 	/* (1.6.0 Part 12, item 8) the apps' text as Chromium draws it: grey anti-aliasing, slight hinting (the shell's own Pango
 	   text is drawn so already); without XSETTINGS, GTK would give WebKit full hinting, its letters wider than Chromium's */
 	if (!getenv("RUDOLF_NATIVE_GTKHINT")) g_object_set(gtk_settings_get_default(), "gtk-xft-antialias", 1, "gtk-xft-hinting", 1, "gtk-xft-hintstyle", "hintslight", "gtk-xft-rgba", "none", NULL);
+	/* (test finding N9) the apps' dates and times in Chromium's locale when the system has none: Chromium then uses en-US (a time
+	   field "07:00 AM"), WebKit the C locale ("07:00", no AM or PM). Set for WebKit's own processes, after GTK has set this one's */
+	{ const char *l = getenv("LC_ALL"); if (!l || !*l) l = getenv("LC_TIME"); if (!l || !*l) l = getenv("LANG");
+	  if (!l || !*l || !strcmp(l, "C") || !strncmp(l, "C.", 2) || !strcmp(l, "POSIX")) { g_unsetenv("LC_ALL"); g_unsetenv("LC_TIME"); g_setenv("LANG", "en_US.UTF-8", TRUE); } }
 	wm_init();
 	if (SW <= 0 || SH <= 0) { GdkScreen *scr = gdk_screen_get_default(); SW = gdk_screen_get_width(scr); SH = gdk_screen_get_height(scr); }
 	/* rudolfd may still be starting */
