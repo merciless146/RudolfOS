@@ -122,10 +122,13 @@ try:
     out('accounts:', r); BOSS, KID = str(r).split()
     for n, pw in (('boss', 'b1'), ('kid', 'k1')):
         out('sign-in', n, signin(js, n, pw)); out('on the disk:', wait_for(js, "!!(USER&&USER.disk&&hdOn())", 600, 10))
-        js(f"(async()=>{{node(homePath('DOCUMENTS'))['SECRET.TXT']='{n} secret\\n';fsSave();fsFlush();await homeChain;try{{if(typeof HD!='undefined')await HD.chain}}catch(e){{}}return 1}})()", 120); time.sleep(5); out(signout(js))
+        out(signout(js))
     time.sleep(5)
     users = sh("cat /persist/etc/rudolf/account-users; ls -ln /persist/accounts")
     out(users)
+    # each account's test file, put in its folder here (the desktop's own file saving is not what these checks are
+    # about: the first run's file written through the page never reached the disk before the sign-out)
+    out(sh(f"for a in {BOSS}:boss {KID}:kid; do d=/persist/accounts/${{a%%:*}}/Documents; mkdir -p $d; echo \"${{a#*:}} secret\" > $d/SECRET.TXT; done; ls -l /persist/accounts/*/Documents/SECRET.TXT"))
     # as before 1.5.9: the folders the desktop's user's, and not yet moved
     sh(f"chown -R 1000:1000 /persist/accounts/{BOSS} /persist/accounts/{KID}; sed -i 's/ moved$//' /persist/etc/rudolf/account-users; sync")
     vm.stop(); time.sleep(3)
