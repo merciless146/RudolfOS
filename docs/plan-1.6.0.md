@@ -544,9 +544,30 @@ after N minutes and sleep are not in the behaviour test (they need a minute afte
 screen; rudolf-display gives Chromium one output), so "a taskbar and the wallpaper on each monitor" on Native would make Native
 differ from Standard, against "The rule". Either Standard gets it too (a change to Standard, which the rule forbids without
 the owner), or Native keeps one desktop as Standard and item 7 is dropped or moved to 2.0. Left undone until then.
-**Next:** item 8 (the Phone screen and Blitzen's panel: both are already page windows, so Native shows them in one-app windows
-and scrcpy's own window framed as a Linux app's; what is left is checking them against Standard with same_t.sh), then items 9
-to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md after them. Native is not
+**Item 8 (2026-11-15, unattended session): the Phone screen and Blitzen's panel.** Both are page windows (apk58.js
+phoneScreen, blitzen26.js blitzenApp; the page docks neither), so Native shows each in a one-app window opened from its pin.
+Checked against Standard with same_t.sh, new cases phone-nolinux, phone-noscrcpy, phone-ready, phone-dark, blitzen-setup,
+blitzen-chat and blitzen-oldcpu (the states rudolfd gives: Linux not set up, scrcpy missing, ready, the dark theme; Blitzen
+not downloaded, ready, an old processor; same_rd.py answers debian/status and ai/status from the test's files). A new part,
+'win', is the whole window: frame, title bar and the app's page, WebKit's against Chromium's. Found and fixed (in Native):
+- WebKit's text was wider than Chromium's: without XSETTINGS, GTK gave WebKit full hinting. rudolf-native now sets grey
+  anti-aliasing and slight hinting (as the shell's own Pango text already is) before its first window
+  (RUDOLF_NATIVE_GTKHINT=1 leaves GTK's). The Phone screen's ready window went from 6.7 % to 1.6 % differing pixels with it.
+- Drop-down lists were GTK's taller combo boxes, pushing Blitzen's bar and everything under it down 8 px; check boxes and
+  radio buttons had WebKit's size and margins. The page's one-app CSS for WebKit windows (html.oawk, oneapp59.js, only when
+  the native shell's message handler is there) draws a list as Chromium does (the page's border, padding and colours, the
+  chevron, 4 px more room before the text and 20 after it, 2 px taller), and check boxes and radio buttons with Chromium's
+  13 px and margins. A list given its own padding by a rule of its own keeps that padding (with the chevron).
+- Blitzen's greeting (line height 1.5 at 13 px): WebKit makes each line 19 px and Chromium 20 px; given 20 px there.
+The 'win' part allows a pixel's match one pixel away (pxdiff.py's new SHIFT, only for 'win'): the engines still round other
+half pixels of line boxes differently (Blitzen's suggestions' text 1 px higher inside their buttons in WebKit). The frame
+('title') and the taskbar are compared as every part. Results: 12/12 (win 0.12 % to 1.33 %, title 0.29 % to 1.41 %, bar
+0.93 % to 1.05 %); the whole same_t.sh 116 of 117 in one run (ws2-dark's toast caught while it was still appearing, 3.6 %; 1.09 % run alone, with or without the hinting); native59_t.sh 70/70, wmnative59_t.sh 3/3, oneapp59_t.js 42/42. Known differences left (item 8): scrcpy's own window (an X window
+of the phone, framed by the shell as a Linux app's, as on Standard) needs a phone, so it is a Vivobook check, not a host
+test; selects given other padding by their own rules (games' and the media player's) have the chevron but not Chromium's
+20 px after the text.
+**Next:** items 9 to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md
+after them. Native is not
 the default yet. The security line's next steps (as of 2026-11-14): docs/plan-1.5.9.md 15.3's third step (the QEMU check
 with two accounts, needing a host with QEMU and a built disc) and 12.3c's second part (Oracle on Native: step 5's rest).
 

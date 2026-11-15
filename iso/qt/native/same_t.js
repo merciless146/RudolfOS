@@ -106,12 +106,25 @@ CASES.push({n: 'overview', set: {}, more: PINS2, act: 'two', key: 'overview', pa
 /* (item 6) the screen saver, after an hour without input (rudolfd's idle, as the test sets it): the page's own, full screen over
    everything (Native: in a window of its own) */
 CASES.push({n: 'saver', set: {}, more: {bd95sys: {sson: true, ssmin: 1, ssstyle: 'stars', lockss: false}}, saver: 1, parts: ['screen']});
+/* (item 8) the Phone screen's and Blitzen's windows, opened from the taskbar (one-app windows on Native): the whole window, its frame
+   and what it shows, each in the states rudolfd gives (Linux not set up, scrcpy missing, ready; Blitzen not downloaded, ready).
+   The frame and title bar ('title') compared as every part; the whole window ('win') with its page, WebKit's against Chromium's,
+   allowing a pixel's match one pixel away (the engines round line boxes' half pixels differently) */
+const PINS8 = {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'phonescreen', 'blitzen']};
+CASES.push({n: 'phone-nolinux', set: {}, more: PINS8, app: 'phonescreen', rd: {deb: {installed: false}}, parts: ['win', 'title', 'bar']});
+CASES.push({n: 'phone-noscrcpy', set: {}, more: PINS8, app: 'phonescreen', rd: {deb: {installed: true, scrcpy: false}}, parts: ['win']});
+CASES.push({n: 'phone-ready', set: {}, more: PINS8, app: 'phonescreen', rd: {deb: {installed: true, scrcpy: true}}, parts: ['win']});
+CASES.push({n: 'phone-dark', set: {dm: 'dark', darkui: true}, more: PINS8, app: 'phonescreen', rd: {deb: {installed: true, scrcpy: true}}, parts: ['win']});
+CASES.push({n: 'blitzen-setup', set: {}, more: PINS8, app: 'blitzen', rd: {ai: {cpu: 1, installed: false, persistent: true, size_hint: '0.7 GB'}}, parts: ['win', 'title', 'bar']});
+CASES.push({n: 'blitzen-chat', set: {}, more: PINS8, app: 'blitzen', rd: {ai: {cpu: 1, installed: true, persistent: true}}, parts: ['win']});
+CASES.push({n: 'blitzen-oldcpu', set: {twstyle: 'candy'}, more: PINS8, app: 'blitzen', rd: {ai: {cpu: 0}}, parts: ['win', 'title']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
 const micSet = c => { fs.writeFileSync(path.join(D, 'mic'), JSON.stringify(c.mic || [])); if (c.mic) cp.execSync(`curl -s --noproxy '*' -X POST -H 'X-Rudolf-Token: tok160same' '${BASE}/api/mic?muted=${c.micmuted ? 1 : 0}'`) };
+const rdSet = c => { for (const k of ['deb', 'ai']) { const f = path.join(D, k); if (c.rd && c.rd[k]) fs.writeFileSync(f, JSON.stringify(c.rd[k])); else try { fs.unlinkSync(f) } catch (e) {} } };
 async function stdCase(c) {
-  state(c.set, c.more); micSet(c);
+  state(c.set, c.more); micSet(c); rdSet(c);
   const ctx = await BR.newContext({viewport: {width: W, height: H}, deviceScaleFactor: 1, timezoneId: 'UTC'});
   await ctx.clock.install({time: new Date('2026-11-14T09:41:00Z')});
   /* (nothing from outside: the internet's check answers, as on a connected computer, the rest is refused) */
@@ -130,6 +143,7 @@ async function stdCase(c) {
     if (c.act == 'menu') { await p.click('#start'); await p.clock.runFor(600); await wait(300) }
     if (c.act == 'hover') { const r = await rectOf('#pins .pin:nth-child(2)'); await p.mouse.move(r[0] + r[2] / 2, r[1] + r[3] / 2); await p.clock.runFor(400); await wait(200) }
     if (c.act == 'notepad') { await p.evaluate(() => launch('notepad')); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } await p.mouse.move(W / 2, H - 200) }
+    if (c.app) { await p.evaluate(k => launch(k), c.app); for (let i = 0; i < 8; i++) { await p.clock.runFor(400); await wait(150) } await p.mouse.move(W / 2, H - 200); await wait(300) }
     if (c.act == 'two') { for (const k of ['notepad', 'calc']) { await p.evaluate(k => launch(k), k); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } } await p.mouse.move(W / 2, H - 100) }
     if (c.key == 'altab') { await p.keyboard.down('Alt'); await p.keyboard.press('Tab'); await p.clock.runFor(200); await wait(200) }
     if (c.key == 'overview') { await p.keyboard.press('Meta+Tab'); for (let i = 0; i < 4; i++) { await p.clock.runFor(200); await wait(150) } }
@@ -170,6 +184,7 @@ async function stdCase(c) {
   for (let i = 0; i < (c.wg || 0); i++) rects['wg' + i] = await p.evaluate(i => { const e = document.querySelectorAll('#desk > .wgt')[i]; if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.left) - 20, Math.round(r.top) - 10, Math.round(r.width) + 40, Math.round(r.height) + 40] }, i);   /* (with its shadow) */
   { const r = await rectOf('#ntoasts'); rects.toast = r ? [r[0] - 30, r[1] - 16, r[2] + 42, r[3] + 52] : null }   /* (with their shadows) */
   { const r = await rectOf('#calp') || await rectOf('.svp') || await rectOf('#qsp') || await rectOf('#ncp') || await rectOf('.np'); rects.fly = r }
+  rects.win = await p.evaluate(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.offsetParent).pop(); if (!w) return null; const r = w.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] });
   rects.altab = await rectOf('#altab'); rects.desk = await rectOf('#desk');
   rects.desc = await p.evaluate(() => ({bar: document.getElementById('bar').className, body: document.body.className}));
   const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f}); if (c.saver) fs.unlinkSync(path.join(D, 'idle'));
@@ -208,7 +223,7 @@ async function natFiles() {
   xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(300);
 }
 async function natCase(c, s) {
-  state(c.set, c.more); micSet(c);
+  state(c.set, c.more); micSet(c); rdSet(c);
   if (c.signin) {
     try { fs.unlinkSync(path.join(D, 'session')) } catch (e) {}
     if (NP) { NP.kill(); NP = null; await wait(500) }
@@ -226,6 +241,9 @@ async function natCase(c, s) {
   if (c.act == 'notepad') { const h = nhit('pin notepad'); if (h) xdo('mousemove ' + h.join(' ') + ' click 1');
     await until(() => /^client .* app=notepad/m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3000); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500);
     const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => /^client .* app=notepad/.test(x)); if (l) { const a = l.split(' '); cl = [+a[3], +a[4], +a[5], +a[6]] } }
+  if (c.app) { const re = new RegExp('^client .* app=' + c.app + ' ', 'm'), h = nhit('pin ' + c.app); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1');
+    await until(() => re.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3500); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500);
+    const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => re.test(x)); if (l) { const a = l.split(' '); cl = [+a[3], +a[4], +a[5], +a[6]] } }
   if (c.act == 'two') { for (const k of ['notepad', 'calc']) { const h = nhit('pin ' + k); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1');
       await until(() => new RegExp('^client .* app=' + k + ' ', 'm').test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3000) } xdo('mousemove ' + W / 2 + ' ' + (H - 100)); await wait(500) }
   if (c.key == 'altab') { xdo('keydown alt key Tab'); await until(() => (nst('altab') || '-') != '-', 5000); await wait(500) }
@@ -263,6 +281,9 @@ async function natCase(c, s) {
   // (back as it was for the next case: the menu closed, the app window closed, unlocked)
   if (c.act == 'menu' || c.rc || /menu$|rename|openwith|wgpick/.test(c.act || '')) { xdo('key Escape'); await wait(400) }
   if (c.ws) { const h = nhit('ws 1'); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1'); await until(() => nst('ws') == '1', 5000); await wait(1800) }   /* (back to workspace 1, its pop-up gone) */
+  if (c.app) { const re = new RegExp('^client .* app=' + c.app + ' ', 'm'); const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => re.test(x));
+    if (l) { const a = l.split(' '); xdo('mousemove ' + (+a[3] + +a[5] + 2 - 9 - 12) + ' ' + (+a[4] + 7 + 11) + ' click 1') }
+    await until(() => !re.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 10000); await wait(800) }
   if (c.act == 'notepad') {   /* (its ✕: 9 px from the frame's right edge, 7 px down, 24 by 22) */
     const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => /^client .* app=notepad/.test(x));
     if (l) { const a = l.split(' '); xdo('mousemove ' + (+a[3] + +a[5] + 2 - 9 - 12) + ' ' + (+a[4] + 7 + 11) + ' click 1') }
@@ -271,9 +292,9 @@ async function natCase(c, s) {
   return {f, client: cl};
 }
 // ---- the comparison
-function cmp(name, a, b, ra, rb) {
+function cmp(name, a, b, ra, rb, shift) {
   const o = path.join(OUT, name);
-  try { const r = JSON.parse(cp.execFileSync('python3', [path.join(__dirname, 'pxdiff.py'), a, b, ra.join(','), (rb || ra).join(','), String(TOL), o]).toString()); return r }
+  try { const r = JSON.parse(cp.execFileSync('python3', [path.join(__dirname, 'pxdiff.py'), a, b, ra.join(','), (rb || ra).join(','), String(TOL), o, String(shift || 0)]).toString()); return r }
   catch (e) { return {pct: 100, err: String(e.message).slice(0, 300)} }
 }
 (async () => {
@@ -286,9 +307,9 @@ function cmp(name, a, b, ra, rb) {
     try { n = await natCase(c, s) } catch (e) { ok(c.n + ': Native drew it', 0, e.message); continue }
     for (const part of c.parts) {
       let ra = s.rects[part], rb = null;
-      if (part == 'title' && n.client && ra) rb = [n.client[0], n.client[1], ra[2], ra[3]];   /* (each engine's own window; the frame's border and title bar above the app) */
+      if ((part == 'title' || part == 'win') && n.client && ra) rb = [n.client[0], n.client[1], ra[2], ra[3]];   /* (each engine's own window; the frame's border and title bar above the app) */
       if (!ra) { ok(c.n + ' ' + part + ': Standard has it', 0, s.rects); continue }
-      const r = cmp(c.n + '.' + part, s.f, n.f, ra, rb);
+      const r = cmp(c.n + '.' + part, s.f, n.f, ra, rb, part == 'win' ? 1 : 0);   /* (a whole window: its page drawn by WebKit, a pixel's match one pixel away allowed) */
       rows.push([c.n, part, r.pct]);
       ok(c.n + ' ' + part + ': ' + (r.pct != null ? r.pct.toFixed(2) : '?') + ' % of the pixels differ (at most ' + LIMIT + ' %)', r.pct <= LIMIT, r);
     }

@@ -117,6 +117,16 @@ html.oneapp .win.oamain{position:fixed!important;left:0!important;top:0!importan
 html.oneapp .win.oamain>.tb{display:none!important}html.oneapp .win.oamain>.body{border-radius:0!important}
 #oaclosed{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#e5e7eb;color:#111827;font:16px system-ui,sans-serif}
 #oaclosed button{font:inherit;padding:6px 16px;border-radius:6px;border:1px solid #9ca3af;background:#fff;cursor:pointer}`;document.head.appendChild(st)}
+ /* (1.6.0 Part 12, item 8) WebKitGTK's form controls as Chromium draws them (the windows of the native desktop): a drop-down list
+    is GTK's taller combo box there; here Chromium's (its border, padding and colours the page's, the chevron 20 px from its
+    text, 4 px more room before its text, 2 px taller); check boxes and radio buttons with Chromium's size and margins. The page's own
+    select rule's padding gets the same room; a list given other
+    padding by a rule of its own keeps it, with the chevron. A line height of 1.5 at 13 px is 19 px in WebKit (it drops the half
+    pixel) and 20 px in Chromium: Blitzen's greeting is given Chromium's. */
+ if(oaNative()){document.documentElement.classList.add('oawk');const st=document.createElement('style');st.textContent=`html.oawk select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7'%3E%3Cpath d='M1.5 1.5L5 5l3.5-3.5' fill='none' stroke='%23111' stroke-width='2'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 2px center}
+:where(html.oawk) select:where(:not([multiple]):not([size])){padding:4px 22px 4px 10px}
+:where(html.oawk) input:where([type=checkbox]){margin:3px 3px 3px 4px;width:13px;height:13px}:where(html.oawk) input:where([type=radio]){margin:3px 3px 0 5px;width:13px;height:13px}
+html.oawk .blzhello{line-height:20px}html.oawk .blzhello *{line-height:1.5}`;document.head.appendChild(st)}
  /* the windows of the last session stay closed; the notifications' list is still read (the count) */
  window.__sessionRestore=()=>{try{NC=ld(NCK(),[]);ncUnread=0;ncBadge()}catch(e){}};
  /* only Settings writes the accounts */
