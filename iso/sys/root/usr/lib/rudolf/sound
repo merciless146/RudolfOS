@@ -168,6 +168,20 @@ hotplug)
 default)
 	[ -S $SOCK ] || exit 1
 	set_default "$2";;
+# 2026-11-14: Settings › Volume Controls › Microphones: the microphones (name TAB description TAB 1 for the default),
+# and one chosen as the default, with what records now (a call) moved to it
+mics)
+	[ -S $SOCK ] || exit 1
+	D=$(asuser "pactl info" 2>/dev/null | sed -n 's/^Default Source: //p'); case "$D" in echocancel*) D=$(cat $ECHOM 2>/dev/null); D=${D#* };; esac
+	asuser "pactl list sources" 2>/dev/null | awk -v d="$D" -F': ' '/^[ \t]*Name: /{n=$2} /^[ \t]*Description: /{if (n ~ /^(alsa_input|bluez_source|bt_in)/ && n !~ /\.monitor$/) printf "%s\t%s\t%d\n", n, $2, n==d}';;
+mic)
+	[ -S $SOCK ] || exit 1
+	case "$2" in ""|*[!A-Za-z0-9._:-]*) echo "bad microphone"; exit 2;; esac
+	asuser "pactl list short sources" 2>/dev/null | cut -f2 | grep -qx -- "$2" || { echo "no such microphone"; exit 2; }
+	asuser "pactl set-default-source $2" || exit 1
+	for i in $(asuser "pactl list short source-outputs" 2>/dev/null | awk -F'\t' '$4 !~ /echo-cancel/ {print $1}'); do asuser "pactl move-source-output $i $2" >/dev/null 2>&1; done
+	{ [ -f "$ECHOF" ] || [ -s $ECHOM ]; } && echo_apply >/dev/null
+	echo "default microphone: $2";;
 status)
 	[ -S $SOCK ] || { echo "sound server not running"; exit 1; }
 	asuser "pactl info" | grep -E 'Server Name|Server Version|Default Sink|Default Source'
