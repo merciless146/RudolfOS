@@ -487,6 +487,7 @@ static int cmd_download(void)
    and only by a newer release. Hard links (no extra room while the slot keeps the same files); a layer the slot
    takes from the disc on this drive is linked or copied from there. Recovery mode starts slot r first (initramfs).
    Updates never write it (they go to a or b). */
+static int official_slot_(const char *s);
 static int recovery_refresh(const char *bs)
 {
 	if (strcmp(bs, "a") && strcmp(bs, "b")) return 0;
@@ -523,6 +524,93 @@ static int recovery_refresh(const char *bs)
 	{ char *a[] = {"rm", "-rf", rp, NULL}; spawn(a); } if (rename(tn, rp)) { say("could not finish the recovery system"); return 1; }
 	sync(); say("Recovery system: Rudolf OS release %lld (official).", m.serial); return 0;
 }
+/* 1.6.0 (docs/plan-1.6.0.md Part 15; 1.5.9 8.4): the official recovery system checked at each start (boot-ok) and
+   repaired. Its release list must be signed by the official key and every file there at its listed size; once a week
+   (r/checked), every file's SHA-256 too. Anything wrong: it is made again from this system when this one is an
+   official release, or (an official one is not running) left for the next official one, said either way. */
+static int recovery_ok(int full)
+{
+	char rp[300], mp[400], gp[400], ck[400], om[400]; snprintf(rp, sizeof rp, "%s/r", SYSD);
+	snprintf(ck, sizeof ck, "%s/complete", rp); snprintf(om, sizeof om, "%s/official", rp);
+	if (access(ck, F_OK) || access(om, F_OK)) return 0;
+	snprintf(mp, sizeof mp, "%s/manifest.txt", rp); snprintf(gp, sizeof gp, "%s/manifest.sig", rp);
+	size_t ml, sl; char *mt = slurp(mp, &ml), *sg = slurp(gp, &sl);
+	int ok = mt && sg && sl == 64 && official(verify((unsigned char *)mt, ml, (unsigned char *)sg)); free(sg);
+	man_t m; char *cp = mt ? strdup(mt) : NULL; if (ok && parse_manifest(cp, &m)) ok = 0;
+	for (int i = 0; ok && i < NL; i++) {
+		lay_t *y = mlayer(&m, LAYERS[i]); if (!y) { ok = 0; break; }
+		char f[420], hex[65]; struct stat s2; snprintf(f, sizeof f, "%s/%s%s", rp, y->name, strcmp(y->name, "vmlinuz") ? ".sfs" : "");
+		if (stat(f, &s2) || s2.st_size != y->size) { say("The official recovery system's %s is missing or changed.", y->name); ok = 0; break; }
+		if (full && (sha256_file(f, hex) || strcmp(hex, y->sha))) { say("The official recovery system's %s does not match its signed release list.", y->name); ok = 0; }
+	}
+	free(mt); free(cp); return ok;
+}
+static void recovery_check(const char *bs)
+{
+	char rp[300], ck[400], ts[420]; snprintf(rp, sizeof rp, "%s/r", SYSD); snprintf(ck, sizeof ck, "%s/complete", rp); snprintf(ts, sizeof ts, "%s/checked", rp);
+	if (access(rp, F_OK)) return;   /* (none yet: recovery_refresh makes it from the first official system that starts) */
+	/* (only one that says it is the official recovery system: a 1.5.8 stick's rescue system has no mark, and is left) */
+	{ char om[420]; snprintf(om, sizeof om, "%s/official", rp); if (access(om, F_OK) || access(ck, F_OK)) return; }
+	char *t = slurp(ts, NULL); long long last = t ? atoll(t) : 0; free(t); time_t now = time(NULL);
+	int full = now - last > 7 * 86400;
+	if (recovery_ok(full)) { if (full) { char n[32]; snprintf(n, sizeof n, "%lld\n", (long long)now); write_file(ts, n); } return; }
+	char tn[320]; snprintf(tn, sizeof tn, "%s.bad", rp); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } rename(rp, tn); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); }
+	if (official_slot_(bs)) { say("The official recovery system was not as it should be: it is made again from this official system.");
+		if (!recovery_refresh(bs)) { char n[32]; snprintf(n, sizeof n, "%lld\n", (long long)now); write_file(ts, n); } }
+	else say("The official recovery system was not as it should be and was removed: the next official release that starts makes it again (or Developer mode downloads it).");
+}
+/* 1.6.0 (1.5.9 8.4): the official recovery system downloaded, for a computer that never ran an official release (a
+   developer's own disc, Developer mode on): the newest release at the official address (OFFICIAL_URL, not the
+   developer's), its list checked with the official key only, its files with their SHA-256; files already on this
+   computer with the same SHA-256 are linked instead. Nothing is started from it except by Recovery mode. */
+#ifndef OFFICIAL_URL
+#define OFFICIAL_URL "https://merciless146.github.io/RudolfOS/stable"
+#endif
+static int cmd_recovery_fetch(void)
+{
+	if (recovery_start()) { say("Not while in recovery mode."); return 1; }
+	if (recovery_ok(0)) { say("The official recovery system is already on this computer."); return 0; }
+	if (lockf_()) die("another update is running");
+	const char *url = getenv("RU_OFFICIAL_URL") ? getenv("RU_OFFICIAL_URL") : OFFICIAL_URL;
+	char rp[300], tn[310], mu[400], su[400], mp[420], sp[420]; snprintf(rp, sizeof rp, "%s/r", SYSD); snprintf(tn, sizeof tn, "%s.new", rp);
+	{ char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } mkdirs(tn);
+	snprintf(mu, sizeof mu, "%s/manifest.txt", url); snprintf(su, sizeof su, "%s/manifest.sig", url);
+	snprintf(mp, sizeof mp, "%s/manifest.txt", tn); snprintf(sp, sizeof sp, "%s/manifest.sig", tn);
+	say("Downloading the official recovery system from %s", url);
+	if (http_to_file(mu, mp) || http_to_file(su, sp)) { say("Could not reach the official update address."); return 3; }
+	size_t ml, sl; char *mt = slurp(mp, &ml), *sg = slurp(sp, &sl);
+	int ok = mt && sg && sl == 64 && official(verify((unsigned char *)mt, ml, (unsigned char *)sg)); free(sg);
+	man_t m; char *cp = mt ? strdup(mt) : NULL; if (ok && parse_manifest(cp, &m)) ok = 0;
+	if (!ok) { free(mt); free(cp); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } say("Refused: the release list there is not signed by the official Rudolf OS key."); return 4; }
+	long long need = 0; for (int i = 0; i < m.nl; i++) need += m.L[i].size;
+	struct statvfs v; if (!statvfs(SYSD, &v) && (long long)v.f_bavail * v.f_frsize < need) { free(mt); free(cp); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } die("not enough free space on RUDOLFDATA (about %lld MB needed)", need / 1048576); }
+	for (int i = 0; i < NL; i++) {
+		lay_t *y = mlayer(&m, LAYERS[i]); char out[420], hex[65], fu[500], c3[3][300]; int done = 0;
+		snprintf(out, sizeof out, "%s/%s%s", tn, y->name, strcmp(y->name, "vmlinuz") ? ".sfs" : "");
+		layer_path("a", y->name, c3[0], 300); layer_path("b", y->name, c3[1], 300); layer_path("disc", y->name, c3[2], 300);
+		for (int c = 0; c < 3 && !done; c++) { struct stat s; if (stat(c3[c], &s) || s.st_size != y->size || sha256_file(c3[c], hex) || strcmp(hex, y->sha)) continue;
+			if (!link(c3[c], out)) done = 1; else { char *a[] = {"cp", c3[c], out, NULL}; done = !spawn(a); } }
+		if (done) { say("%s: already on this computer", y->name); continue; }
+		url_join(url, y->file, fu, sizeof fu); say("%s: downloading (%lld MB)", y->name, (y->size + 1048575) / 1048576);
+		if (http_to_file(fu, out) || sha256_file(out, hex) || strcmp(hex, y->sha)) { free(mt); free(cp); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } say("%s: the download failed or does not match the official release list; try again later.", y->name); return 5; }
+	}
+	char rel[1200], f[420]; snprintf(rel, sizeof rel, "serial %lld\nversion %s\nreleased %s\nchromium %s\nkernel %s\nnotes %s\n", m.serial, m.version, m.released, m.chromium, m.kernel, m.notes);
+	snprintf(f, sizeof f, "%s/RELEASE", tn); write_file(f, rel);
+	char note[300], ts[40]; time_t now = time(NULL); strftime(ts, sizeof ts, "%Y-%m-%d %H:%M", localtime(&now));
+	snprintf(note, sizeof note, "official recovery system: release %lld, downloaded from the official address, %s; only official releases update it\n", m.serial, ts);
+	snprintf(f, sizeof f, "%s/official", tn); write_file(f, note); snprintf(f, sizeof f, "%s/complete", tn); write_file(f, "1\n"); sync();
+	{ char *a[] = {"rm", "-rf", rp, NULL}; spawn(a); } if (rename(tn, rp)) die("could not finish the recovery system");
+	free(mt); free(cp); sync(); say("Recovery system: Rudolf OS %s (official), downloaded.", m.version); return 0;
+}
+/* 1.6.0: started on its own (a new session; its output to LOG), so the caller does not wait for it */
+static void detach(char *const argv[], const char *log)
+{
+	pid_t p = fork(); if (p) { if (p > 0) waitpid(p, NULL, 0); return; }
+	if (fork()) _exit(0);
+	setsid(); int f = open(log, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600), z = open("/dev/null", O_RDONLY);
+	if (z >= 0) dup2(z, 0); if (f >= 0) { dup2(f, 1); dup2(f, 2); }
+	execv(argv[0], argv); _exit(127);
+}
 /* 1.5.9 (docs/plan-1.5.9.md 8.5): Return to official Rudolf OS, from Settings or from Recovery mode. Developer mode
    off (the extra key and the developer's address gone); the official recovery system (slot r) put into the spare slot,
    or, without one, the newest official release downloaded there (checked with the official key only); it starts at the
@@ -535,6 +623,7 @@ static int official_slot(const char *s)
 	size_t ml, sl; char *mt = slurp(mp, &ml), *sg = slurp(gp, &sl); int v = mt && sg && sl == 64 ? verify((unsigned char *)mt, ml, (unsigned char *)sg) : 0;
 	free(mt); free(sg); return official(v);
 }
+static int official_slot_(const char *s) { return official_slot(s); }
 static int cmd_return(int erase)
 {
 	char bs[8]; booted(bs);
@@ -570,6 +659,10 @@ static int cmd_return(int erase)
 	if (erase) { char fr[400]; snprintf(fr, sizeof fr, "%s/../../.factory-reset", SYSD); write_file(fr, "1\n"); sync(); }
 	char rp[400]; snprintf(rp, sizeof rp, "%s/%s/RELEASE", SYSD, T); kv_t rl; kv_read(rp, &rl, ' ');
 	say("Returning to the official Rudolf OS %s: it starts the next time the computer restarts%s.", kv(&rl, "version"), erase ? ", with everything erased (a factory reset)" : ", with your accounts, files and apps");
+	/* 1.6.0 (8.5 step 3): the official start-up files (rudolf.efi) put back from that release's boot image: staged now
+	   (espcheck downloads and checks it), or at the official system's first start (boot-ok) if that fails */
+	if (!getenv("RU_NOESP")) { const char *e = getenv("RU_ESPCHECK") ? getenv("RU_ESPCHECK") : "/usr/lib/rudolf/espcheck";
+		if (!access(e, X_OK)) { char *a[] = {(char *)e, "repair", (char *)T, NULL}; detach(a, "/run/rudolf/espcheck.log"); } }
 	return 0;
 }
 /* (after Return to official: the official system started; the custom build's slots are cleared) */
@@ -582,13 +675,23 @@ static void return_done(const char *bs, kv_t *st, const char *stp)
 		if (!strcmp(kv(st, "prev"), sl[i])) kv_set(st, "prev", ""); say("Cleared the custom build in slot %s.", sl[i]); }
 	kv_set(st, "ret", ""); kv_write(stp, st, '='); sync(); say("Back to the official Rudolf OS.");
 }
+/* 1.6.0 (plan Part 15; 1.5.9 8.4, 8.5): the start-up files on the drive (rudolf.efi, recovery.efi) checked by the
+   official system at each start, and the official ones put back from its release's boot image when they are not
+   (/usr/lib/rudolf/espcheck, in the background: it may download) */
+static void esp_check(const char *bs)
+{
+	if (!official_slot_(bs) || getenv("RU_NOESP")) return;
+	const char *e = getenv("RU_ESPCHECK") ? getenv("RU_ESPCHECK") : "/usr/lib/rudolf/espcheck";
+	if (access(e, X_OK)) return;
+	char *a[] = {(char *)e, "boot", (char *)bs, NULL}; detach(a, getenv("RU_ESPLOG") ? getenv("RU_ESPLOG") : "/run/rudolf/espcheck.log");
+}
 static int cmd_bootok(void)
 {
 	char bs[8], stp[300]; booted(bs); snprintf(stp, sizeof stp, "%s/state", SYSD); kv_t st; kv_read(stp, &st, '=');
 	if (!strcmp(bs, "disc")) return 0;
 	if (recovery_start()) return 0;   /* 1.5.7: a desktop in recovery mode does not prove the normal start works */
 	/* (1.5.9: the last good system, started again: the recovery system is made if it is missing or older) */
-	if (strcmp(kv(&st, "next"), bs)) { if (!strcmp(kv(&st, "good"), bs)) recovery_refresh(bs); return 0; }
+	if (strcmp(kv(&st, "next"), bs)) { if (!strcmp(kv(&st, "good"), bs)) { recovery_check(bs); recovery_refresh(bs); esp_check(bs); } return 0; }
 	char g[300]; snprintf(g, sizeof g, "%s", kv(&st, "good"));
 	kv_set(&st, "prev", g); kv_set(&st, "good", bs); kv_set(&st, "next", ""); kv_set(&st, "tries", "0"); kv_set(&st, "failed", "");
 	kv_write(stp, &st, '='); sync();
@@ -596,7 +699,9 @@ static int cmd_bootok(void)
 	if (!access("/persist/os/current/index.html", F_OK)) write_file("/persist/os/disabled", "system update\n");
 	say("Keeping the updated system (slot %s).", bs);
 	return_done(bs, &st, stp);
+	recovery_check(bs);
 	recovery_refresh(bs);   /* (1.5.9: the official recovery system follows the newest official release that started) */
+	esp_check(bs);
 	return 0;
 }
 static int cmd_rollback(void)
@@ -715,8 +820,15 @@ int main(int argc, char **argv)
 		char line[200]; snprintf(line, sizeof line, "# Developer mode (Settings > Updates): a developer's publisher key\n%s\n", argv[3]);
 		if (write_file(EXTRAF, line)) die("could not keep the key");
 		kv_set(&cf, "url", u); kv_set(&cf, "devurl", u); if (kv_write(CONFP, &cf, '=')) return 1;
-		say("Developer mode is on: releases signed by this key are installed too, from %s. The official recovery system stays official.", u); return 0;
+		say("Developer mode is on: releases signed by this key are installed too, from %s. The official recovery system stays official.", u);
+		/* 1.6.0 (1.5.9 8.4): a computer that never ran an official release has none: it is downloaded now */
+		if (!recovery_ok(0)) { say("There is no official recovery system on this computer yet: it is being downloaded from the official address.");
+			if (!getenv("RU_NOAUTOFETCH")) { char self[300]; ssize_t n = readlink("/proc/self/exe", self, sizeof self - 1); if (n > 0) { self[n] = 0; char *a[] = {self, "recovery-fetch", NULL}; detach(a, "/run/rudolf/recovery-fetch.log"); } } }
+		return 0;
 	}
+	if (!strcmp(c, "recovery-fetch")) return cmd_recovery_fetch();   /* 1.6.0 */
+	if (!strcmp(c, "recovery-check")) { char bs[8]; booted(bs); if (recovery_start()) return 1; recovery_check(bs); return recovery_ok(0) ? 0 : 1; }
+	if (!strcmp(c, "fetch") && argc == 4) { if (strncmp(argv[2], "https://", 8) && !getenv("RU_OFFICIAL_URL")) die("https only"); return http_to_file(argv[2], argv[3]) ? 3 : 0; }   /* (espcheck's download) */
 	if (!strcmp(c, "return-official") && argc == 3 && (!strcmp(argv[2], "keep") || !strcmp(argv[2], "erase"))) return cmd_return(!strcmp(argv[2], "erase"));
 	if (!strcmp(c, "set") && argc >= 4) {
 		kv_t cf; kv_read(CONFP, &cf, '=');

@@ -7,7 +7,7 @@
 # Needs root (a chroot for the sandbox), gcc, GLib, dbus-run-session.   sh keyportal60_t.sh
 [ "$(id -u)" = 0 ] || { echo "SKIP: needs root (the sandbox's root)"; exit 0; }
 HERE=$(cd "$(dirname "$0")" && pwd); D=$HERE/../../sys; T=$(mktemp -d /tmp/kp60.XXXXXX); chmod 755 $T
-CF=$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0)
+CF="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto"
 gcc -O2 -w -o $T/rudolf-portal $D/rudolf-portal.c $CF && gcc -O2 -w -o $T/client $HERE/fixtures/secretclient.c $CF || { echo "FAIL build"; exit 1; }
 cat > $T/t.sh <<'EOS'
 N=0; F=0; ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $(echo "$3" | head -c 600)"; F=$((F+1)); fi; }

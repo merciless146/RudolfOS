@@ -242,6 +242,17 @@ if [ -z "$W" ]; then skip wifi "no Wi-Fi adapter"
 elif running wpa_supplicant; then
 	if ip -4 addr show "$W" 2>/dev/null | grep -q 'inet '; then pass wifi "$W has an address"; else skip wifi "$W is not connected to a network now"; fi
 else fail wifi "the Wi-Fi service is not running ($W)"; fi
+# 1.6.0 (plan Part 15): the start-up files on the drive: recovery.efi always Rudolf OS's own (Recovery mode); rudolf.efi
+# too unless a custom build replaced it (Developer mode). Read as root only (espcheck mounts the drive's EFI image).
+if [ "$(id -u)" != 0 ] || [ ! -x /usr/lib/rudolf/espcheck ] || [ ! -e "${ESP_IMG:-/live/media/efi/efiboot.img}" ]; then skip startfiles "not checked here (it needs root and the drive's EFI image)"
+else es=$(/usr/lib/rudolf/espcheck status 2>/dev/null)
+	case "$es" in
+	"start=official recovery=official") pass startfiles "rudolf.efi and recovery.efi are signed by Rudolf OS";;
+	"start=other recovery=official") if [ -s /persist/etc/rudolf/extra-keys ]; then pass startfiles "recovery.efi is Rudolf OS's; rudolf.efi is a custom build's (Developer mode)"
+		else fail startfiles "rudolf.efi is not signed by Rudolf OS, and Developer mode is off: an official start puts it back"; fi;;
+	*) fail startfiles "the start-up files are not as they should be ($es): an official start puts them back";;
+	esac
+fi
 # 1.6.0 (plan Part 9): devices through udev: udevd running and answering, its database filled; mdev only as the fallback
 dv=$(rd1 "$RUN/devices")
 case "$dv" in
