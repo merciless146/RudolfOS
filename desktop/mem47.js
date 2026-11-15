@@ -35,12 +35,18 @@ function memGone(t,why,o){
    desktop says so, each time it loads. rudolfd notes every page process's processor time, the desktop keeps its
    processor busy for half a second, and the page process that used that time is the desktop's
    (/run/rudolf/desktop-renderer). Tried up to 3 times, when the desktop has settled. */
+/* 1.6.0: tried until it works (20 s, then a minute, then every 5 minutes: after 3 tries it used to stop, and the guard
+   then took the desktop's page for an ordinary one: on the Vivobook it ended it), and again whenever the guard says
+   it does not know ("memory iam": the process named is gone, or none was) */
+let memIamBusy=0,memIamT=0;
 async function memIam(n){
- if(typeof RD=='undefined'||!RD)return;
+ if(typeof RD=='undefined'||!RD||memIamBusy)return;
+ memIamBusy=1;clearTimeout(memIamT);
  try{await rdPost('memory/iam?step=start');const t=performance.now();let x=0;while(performance.now()-t<600)x+=Math.sqrt(x+1);
-  const r=await rdPost('memory/iam?step=end');window.__memIam=r;if(r&&r.ok)return}catch(e){}
- if((n||0)<2)setTimeout(()=>memIam((n||0)+1),20000)}
+  const r=await rdPost('memory/iam?step=end');window.__memIam=r;if(r&&r.ok){memIamBusy=0;return}}catch(e){}
+ memIamBusy=0;n=n||0;memIamT=setTimeout(()=>memIam(n+1),n<1?20000:n<3?60000:300000)}
 setTimeout(()=>memIam(0),15000);
+if(typeof evOn=='function')evOn(t=>{if(/^memory iam$/m.test(String(t)))memIam(0)});
 /* 1.5.8 (2026-11-12): the memory guard says at once when it ends a page ("memory page PID MB"). On the Vivobook it
    ended Friday Night Funkin' (1.9 GB) after a song while full screen; the game is a frame inside Newgrounds' page,
    so only that frame stopped (Chromium's sad face) and Oracle's tab never heard of it: the screen stayed full screen
