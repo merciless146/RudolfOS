@@ -20,6 +20,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- New: Tor in the system (for Oracle's Browse with Tor, plan 16.1): it runs only while a Tor window is open, as a user of its own, listening only on this computer (127.0.0.1:9050), with nothing kept on the disk; System health notes when it starts, is ready, stops or fails.
 - Fixed: the Save As box of Notepad, WordLite, WordPro and Paint (and the Run box) ignored typing: its Enter handler cancelled every other key.
 - New: Notepad, WordLite and WordPro save and open through a dialog like the File Explorer: folders, a name, and the file type from a list (Notepad: text, Markdown, web page, Lua, CSV, JSON, batch; WordLite and WordPro: rich document, web page, text). Notepad and WordLite keep several documents in tabs under their buttons (New, Open, Ctrl+T, Ctrl+W, Ctrl+Tab), a file opened from elsewhere joins the open window as a tab, and unsaved tabs are asked about.
 - Fixed: another Rudolf OS stick plugged in (an older one, for example) never showed in the File Explorer: every disk with a Rudolf OS partition was hidden, not only the one Rudolf OS runs from. It now shows; its data partition opens read-only and its start-up parts stay hidden.
