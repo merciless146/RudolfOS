@@ -109,6 +109,48 @@ PDF Viewer since 1.5.9) lists them as "USB: name".
 - **On real hardware:** the HP desktop's user's USB printer (on the HP desktop, or on the Vivobook if it can be
   borrowed), first read only (its interfaces and device ID: which kind it is), then a test page.
 
+**Done, first step (2026-11-15), on Part 13's signed system extensions:**
+- **Kernel:** USB_PRINTER (usblp) a module, checked after olddefconfig in kconfig.sh and kconfig-arm64.sh.
+- **Devices:** 90-rudolf.rules runs /usr/lib/rudolf/usbprint for a printer's interface (by ENV{INTERFACE}=="7/1/*", so
+  also when it goes; add, remove and bind) and for usblp's /dev/usb/lpN; mdev's fallback has the same two lines
+  (before its modalias line). udevadm verify passes on the rules.
+- **/usr/lib/rudolf/usbprint** (hotplug, scan): every USB printer there is, written to /run/rudolf/usb-printers (kind,
+  name, address, IEEE 1284 device ID, sysfs name): IPP over USB (an interface 7/1/4: usblp unbound from that printer's
+  interfaces, ipp-usb started in its udev mode, which ends after the last one, and its port read from its state file:
+  ipp://127.0.0.1:PORT/ipp/print; no address without the extension), PDF or PostScript (the device ID's command set:
+  its /dev/usb/lpN), or "needs a driver" (PCL-only, host-based); plugged in and unplugged said in
+  /run/rudolf/usbprint.log; the name from the device's strings or its device ID (short and long field names).
+- **The first extension, `usbprint`** (iso/ext/usbprint: recipe.json, its start script, its filters' links): ipp-usb
+  (from Ubuntu's /sbin, put in usr/sbin), Poppler's pdftops and pdftocairo (as /usr/lib/rudolf/print/pdftops and
+  pdftocairo), libpoppler and Avahi's client libraries where the base lacks them (mkext.sh leaves out what the base has),
+  ipp-usb's quirks; its start script writes ipp-usb's settings (loopback only, no DNS-SD: Rudolf has no Avahi, the
+  address goes through /run/rudolf/usb-printers instead, ports from 60000, short logs). No budget in ci_release.sh (the
+  base does not carry it); mkext.sh prints its size: about 9.9 MB of files with all its libraries, 2.2 MB to download
+  where the base has libpoppler and Avahi's client (measured here on Ubuntu 24.04, 2026-11-15).
+- **rudolf-print:** find adds the USB printers as "USB: name" (an IPP over USB one at ipp-usb's address, printed to as a
+  network printer; a plain one as usb://lpN; one that cannot print as usb://KIND/SYSNAME); `rudolf-print usb` (JSON for
+  Settings: kind, ready); info for usb:// (formats; a PostScript one only with the extension's pdftops; one needing a
+  driver has no format, so the print dialog says it needs a driver; an IPP over USB one without the extension says to
+  install it); send to usb://lpN writes the PDF as it is (the pages picked with pdftocairo when the extension is there,
+  else all of them, said) or PostScript from pdftops (with the pages), once per copy.
+- **rudolfd:** print/find as before (with them); print/usb; a printer's address may be usb://... (no "..", quotes or
+  ports).
+- **Settings › Devices › Printers plugged in by USB** (desktop/usbprint60.js): each one's name (as text) and kind (IPP
+  over USB, reads PDF, reads PostScript, needs a driver), ready or needing the USB printers extension (a System
+  extensions… button), read again with Refresh and when a USB device comes or goes.
+- **The self-test:** a "usb-printer" line (each one and its kind; fails when an IPP over USB one has no address or
+  ipp-usb does not answer there; skipped with none).
+- Tests: qt/host/usbprint60_t.sh 31 (a stand-in sysfs: an IPP over USB printer, a PostScript one, a PCL-only one, a PDF
+  one, a USB stick; ipp-usb's stand-in in front of qt/fakeprinter.py, printed to through its address; the jobs to
+  stand-in /dev/usb/lpN; without the extension; unplugged; rudolfd's address check (fixtures/printuri.c); the rules,
+  mdev's lines, the kernel, the self-test), qt/shell2/usbprint60_t.js 13 (and the print dialog's list), udev60_t.sh 13,
+  pdfprint59_t.js 8.
+
+**Next:** extensions.yml's first run (the owner's) to publish `usbprint` for the first release with a base ABI; the QEMU
+check with a USB printer passed through (or QEMU's usb-printer-like device) and ipp-usb itself; on the HP desktop's
+user's printer (borrowed): first read only (its interfaces and device ID: which kind), then a test page; ARM64's recipe
+(the file globs are by architecture already; the release ext-ABI16 differs per base).
+
 ### 9. udev instead of mdev (added on 2026-11-13)
 Why: mdev makes device nodes and runs scripts, but keeps no device database and tells no program about devices. Linux
 software finds hardware through udev (libudev): ModemManager (1.5.9 needed a workaround: #280), libinput, SDL and

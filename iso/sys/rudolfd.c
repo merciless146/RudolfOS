@@ -1563,7 +1563,9 @@ static void api_torwin(struct req *r, const char *what, int post)
  * desktop user. Printers: rudolf-print talks IPP Everywhere / AirPrint to network printers (no CUPS). */
 static int print_uri_ok(const char *u)
 {
-	if (!u || strlen(u) > 300 || (strncmp(u, "ipp://", 6) && strncmp(u, "ipps://", 7))) return 0;
+	/* (1.6.0, plan Part 8: usb://lpN, a plain USB printer, and usb://KIND/SYSNAME, one rudolf-print says cannot print) */
+	if (!u || strlen(u) > 300 || (strncmp(u, "ipp://", 6) && strncmp(u, "ipps://", 7) && strncmp(u, "usb://", 6))) return 0;
+	if (!strncmp(u, "usb://", 6) && (strstr(u, "..") || strchr(u + 6, ':'))) return 0;
 	for (; *u; u++) if (!isalnum((unsigned char)*u) && !strchr(":/._-~%[]", *u)) return 0;
 	return 1;
 }
@@ -1596,6 +1598,12 @@ static void api_print(struct req *r, const char *what)
 	if (!strcmp(what, "find")) {
 		char *o = run_out("/usr/bin/rudolf-print find 2>/dev/null");
 		if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "printer search failed"); return; }
+		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
+	}
+	/* 1.6.0 (plan Part 8): the USB printers alone, for Settings › Devices (rudolf-print usb: /run/rudolf/usb-printers) */
+	if (!strcmp(what, "usb")) {
+		char *o = run_out("/usr/bin/rudolf-print usb 2>/dev/null");
+		if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "the USB printers could not be read"); return; }
 		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
 	}
 	char uri[320]; { const char *u = qparam(r->query, "uri"); if (!print_uri_ok(u)) { reply_err(r->fd, 400, "a printer address looks like ipp://192.168.1.20/ipp/print"); return; } snprintf(uri, sizeof uri, "%s", u); }

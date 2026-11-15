@@ -1,0 +1,22 @@
+#!/bin/sh
+# Rudolf OS 1.6.0 (docs/plan-1.6.0.md Parts 8 and 13): the USB printers extension's start script (run as root by
+# /usr/lib/rudolf/sysext once it is laid over the system, with a time limit). ipp-usb's settings: only on this computer
+# (loopback), no announcing on the network (Rudolf OS has no Avahi: /usr/lib/rudolf/usbprint tells rudolf-print the
+# address in /run/rudolf/usb-printers instead), ports from 60000, few log lines.
+# (Printers plugged in are found by udev, which runs after this, at start-up and later.)
+mkdir -p /etc/ipp-usb /var/ipp-usb/dev /var/ipp-usb/lock /var/log/ipp-usb
+cat > /etc/ipp-usb/ipp-usb.conf <<'C'
+[network]
+  http-min-port = 60000
+  http-max-port = 65535
+  dns-sd = disable
+  interface = loopback
+  ipv6 = disable
+[logging]
+  device-log = error
+  main-log = error
+  console-log = error
+  max-file-size = 256K
+  max-backup-files = 1
+C
+echo "ipp-usb is set up"

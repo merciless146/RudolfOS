@@ -271,5 +271,14 @@ elif [ "$xh" != "with extensions" ]; then skip extensions "$xh"
 else xu=$(awk -F'\t' '$3=="in-use"{printf "%s %s, ", $1, $2}' "$XS"); xl=$(awk -F'\t' '$3=="left-out"{printf "%s %s (%s); ", $1, $2, $4}' "$XS")
 	if [ -n "$xl" ]; then fail extensions "left out: ${xl%; }${xu:+; in use: ${xu%, }}"; else pass extensions "in use: ${xu%, }"; fi; fi
 
+# 1.6.0 (plan Part 8): printers plugged in by USB (/usr/lib/rudolf/usbprint): each one found and its kind; an IPP over
+# USB one has ipp-usb's address (the USB printers extension) and ipp-usb answers there (rudolf-print info only asks)
+UP="$RUN/usb-printers"; RPR=${ST_PRINT:-/usr/bin/rudolf-print}
+if [ ! -s "$UP" ]; then skip usb-printer "no USB printer plugged in"
+else upl=$(awk -F'\t' '{printf "%s (%s), ", $2, $1}' "$UP"); upb=
+	if awk -F'\t' '$1=="ipp" && $3==""' "$UP" | grep -q .; then upb="an IPP over USB printer has no address: the USB printers extension is not installed, or ipp-usb did not start ($RUN/usbprint.log)"
+	else for u in $(awk -F'\t' '$1=="ipp"{print $3}' "$UP"); do [ -x "$RPR" ] && ! timeout 10 "$RPR" info "$u" >/dev/null 2>&1 && upb="ipp-usb does not answer at $u ($RUN/ipp-usb.log)"; done; fi
+	if [ -n "$upb" ]; then fail usb-printer "$upb; found: ${upl%, }"; else pass usb-printer "${upl%, }"; fi; fi
+
 echo "$NP passed, $NF failed, $NS skipped"
 [ $NF = 0 ]
