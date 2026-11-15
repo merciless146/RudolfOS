@@ -19,7 +19,7 @@ echo 2c7c > $U/idVendor; echo 030a > $U/idProduct; ln -s ../../../devices/pci000
 echo 0x8086 > $S/bus/pci/devices/0000:05:00.0/vendor; echo 0x7360 > $S/bus/pci/devices/0000:05:00.0/device
 printf '#!/bin/sh\nexit 0\n' > $T/fa/2c7c; ln -s 2c7c $T/fa/2c7c:030a
 # (ModemManager "runs": the stand-in is on the bus; pgrep answers for it, so nothing of the computer's is looked at)
-printf '#!/bin/sh\n[ "$2" = ModemManager ] && [ ! -e %s/mm-off ] && exit 0; exit 1\n' $T > $T/b/pgrep; chmod +x $T/b/pgrep
+printf '#!/bin/sh\n[ "$1" = "^ModemManager\$" ] && [ ! -e %s/mm-off ] && exit 0; exit 1\n' $T > $T/b/pgrep; chmod +x $T/b/pgrep
 export RUDOLF_TEST_PATH=$T/b RUDOLF_MODEM_SYS=$S RUDOLF_MM_FCC_AVAIL=$T/fa RUDOLF_MM_FCC_DIR=$T/fd RUDOLF_MODEM_PERSIST=$T/p RUDOLF_MODEM_LOG=$T/mlog RUDOLF_RUN=$T/run
 echo "add 0 pin=1234 puk=12345678 device=/sys/devices/pci0000:00/0000:00:14.0/usb1/1-2 model=EM05-G rev=EM05GFAR07A07M1G" > $T/init
 mmstub_up $T/mm $T/init || exit 0
@@ -69,7 +69,7 @@ ok "15. turned off: the link goes, and it is no longer kept" "$(echo "$o" | grep
 o=$(a "GET mobile/fcc?id=2c7c:030a&on=1"); ok "...(a GET changes nothing)" "$(echo "$o" | grep -q '^HTTP/1.1 405' && echo 1)" "$o"
 # kept across a restart: ModemManager's start puts the kept ones in place first (the link removed as a fresh start has it)
 echo 2c7c:030a > $T/p/modem-fcc; echo 'nonsense/../x' >> $T/p/modem-fcc; rm -f $T/fd/*; touch $T/mm-off
-printf '#!/bin/sh\n[ "$1" = --help-all ] && exit 0\necho "MM $*" >> %s/mmlog\n' $T > $T/b/ModemManager; printf '#!/bin/sh\nexec "$@"\n' > $T/b/setsid; printf '#!/bin/sh\nexit 0\n' > $T/b/dbus-daemon; chmod +x $T/b/*
+printf '#!/bin/sh\n[ "$1" = --help ] && exit 0\necho "MM $*" >> %s/mmlog\n' $T > $T/b/ModemManager; printf '#!/bin/sh\nexec "$@"\n' > $T/b/setsid; printf '#!/bin/sh\nexit 0\n' > $T/b/dbus-daemon; chmod +x $T/b/*
 o=$(RUDOLF_DEVICES=$T/udev sh -c "echo udev > $T/udev; sh $M start" 2>&1)
 ok "16. at ModemManager's start the kept FCC unlocks are put in place (only valid ids), then it starts" "$([ "$(readlink $T/fd/2c7c:030a)" = "$T/fa/2c7c:030a" ] && [ "$(ls $T/fd | wc -l)" = 1 ] && grep -q '^MM --log-level=WARN' $T/mmlog && echo 1)" "$o $(ls $T/fd) $(cat $T/mmlog 2>&1)"
 rm -f $T/mm-off
