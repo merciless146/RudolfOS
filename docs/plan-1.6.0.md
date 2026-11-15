@@ -490,9 +490,28 @@ every restart.
   users59_t.sh 26 (6c: started as the account's user in its session; 7: stopped at sign-out), debacct59_t.sh 16 (3b),
   .github/workflows/keyring-check.yml.
 
+**Done, second step (2026-11-15):**
+- **The Secret portal for Flatpak apps** (rudolf-portal, org.freedesktop.portal.Secret version 1): libsecret inside a
+  Flatpak sandbox keeps the app's secrets in a file of its own (~/.var/app/ID/data/keyrings), encrypted with a secret
+  the portal gives it through RetrieveSecret(fd). That secret is the app's own (64 random bytes), made once and kept
+  in the account's folder (~/.local/share/rudolf/app-secrets/ID, 0700/0600): so it is as safe as the keyring, the
+  same each time, another app's different. A program outside a sandbox is refused (it uses the Secret Service).
+- **Settings › Privacy › Saved passwords for apps** (desktop/keyring60.js), after the camera: who saved what (the app's
+  name, or what kind of app from its schema; a Flatpak app by its ID), drawn as text; Remove after asking (the app is
+  signed out of what it kept there), Remove all. rudolfd's `GET keyring/list` and `POST keyring/forget?id=` run
+  `rudolf-portal --keyring-list` / `--keyring-forget ID` as the signed-in account's user in its session: the
+  Secret Service's collections and items (labels and the app's attribute only, never a secret) and the Flatpak apps'
+  secrets; forgetting deletes the item (Item.Delete; one that would need a prompt is said) or the app's secret (its
+  keyring file can then no longer be read: the app starts again signed out). Nobody signed in: nothing to list. The
+  health log says when one was removed.
+- Tests: qt/host/keyportal60_t.sh 10 (an app in a sandbox, a root with /.flatpak-info, given its secret, the same
+  again, another app another, outside a sandbox refused, 0700/0600, the list, forget and a new secret, bad ids
+  refused), keyring60_t.sh 9 with the real daemon (the item named, Remove: gone, no prompt), users59_t.sh 29 (6d, the
+  list and forget as the account's user, anything else refused, nobody signed in), qt/shell2/keyring60_t.js 11.
+
 **Next:** the prompts drawn by the desktop (an app asking for a new keyring: gcr's prompter is not there, so such a
-request fails for now); the portal's Secret interface for Flatpak apps without the bus name; Settings › Privacy ›
-Saved passwords for apps; the Claude app checked on the Vivobook (its notice gone, signed in after a restart).
+request fails for now: gnome-keyring asks gcr's Prompter on the session bus, with its secret exchange); the Claude
+app checked on the Vivobook (its notice gone, signed in after a restart).
 
 ### 15. Moved from 1.5.9 (2026-11-15)
 1.5.9 was finished on 2026-11-15 for promotion to stable; what it had left moved here, as written in docs/plan-1.5.9.md

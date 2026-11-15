@@ -11,7 +11,9 @@ HERE=$(cd "$(dirname "$0")" && pwd); T=$(mktemp -d /tmp/users59.XXXXXX); chmod 7
 mount -t tmpfs none /run; mkdir -p /run/rudolf
 # (1.6.0 Part 14: the keyring's stand-in, which says who started it, with which session, and stays until stopped)
 printf '#!/bin/sh\necho "$(id -u) $HOME $XDG_CURRENT_DESKTOP ${DBUS_SESSION_BUS_ADDRESS:+bus} $*" >> %s/krlog\nexec sleep 300\n' $T > $T/kr; chmod 755 $T/kr; : > $T/krlog; chmod 666 $T/krlog
-gcc -O1 -w -DAU_KEYRING="\"$T/kr\"" -DAU_KEYRING_DAEMON="\"$T/kr\"" -o $T/t $HERE/fixtures/usersapi.c -lz 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
+# (and rudolf-portal's: --keyring-list and --keyring-forget, saying who ran it)
+printf '#!/bin/sh\nif [ "$1" = --keyring-list ]; then echo "{\\"ok\\":true,\\"keyring\\":true,\\"items\\":[{\\"id\\":\\"app:org.x\\",\\"label\\":\\"$(id -u) $HOME\\"}]}"; else echo "$(id -u) forget $2" >> %s/krlog; echo "{\\"ok\\":true}"; fi\n' $T > $T/rp; chmod 755 $T/rp
+gcc -O1 -w -DAU_KEYRING="\"$T/kr\"" -DAU_KEYRING_DAEMON="\"$T/kr\"" -DAU_PORTAL="\"$T/rp\"" -o $T/t $HERE/fixtures/usersapi.c -lz 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
 node $HERE/fixtures/deskls.js $T/ls.json $T/keys.json || { echo "FAIL node"; exit 1; }
 truncate -s 64M $T/img; mkfs.ext4 -q -F $T/img; mkdir $T/m; mount -o loop $T/img $T/m || { echo "SKIP: no loop device"; exit 0; }
 # (the users must be real for setpriv: this namespace's /etc is a copy, which rudolfd writes as it writes the system's)
@@ -51,6 +53,9 @@ ok "...the display is given to its user (rudolf-display --xallow acct1001; X has
 timeout 1 tail -f /dev/null
 ok "6c. (1.6.0 Part 14) its keyring started as its user, in its session (its home, its bus), the desktop named GNOME's too for Electron apps" "$(grep -qx "1001 $HM/acct1001 Rudolf:GNOME bus start" $T/krlog && grep -qx 'XDG_CURRENT_DESKTOP=Rudolf:GNOME' /run/rudolf/acct-session.env && echo 1)" "$(cat $T/krlog 2>&1; cat /run/rudolf/acct-session.env)"
 KRP=$(pgrep -u 1001 -f "sleep 300" | head -1)
+o=$(t keyring-list); ok "6d. Saved passwords for apps (GET keyring/list): the account's, read as its user in its session" "$(echo "$o" | grep -q "^{\"ok\":true,\"signedIn\":true,\"keyring\":true,\"items\":\[{\"id\":\"app:org.x\",\"label\":\"1001 $HM/acct1001\"}\]}$" && echo 1)" "$o"
+o=$(t keyring-forget app:org.x keyring-forget "/org/freedesktop/secrets/collection/login/3" keyring-forget "app:x';id;'" keyring-forget /etc/passwd)
+ok "...POST keyring/forget: one removed, as the account's user; anything else refused" "$(grep -qx '1001 forget app:org.x' $T/krlog && grep -qx '1001 forget /org/freedesktop/secrets/collection/login/3' $T/krlog && [ "$(echo "$o" | grep -c '"ok":true')" = 2 ] && [ "$(echo "$o" | grep -c 'one of the list')" = 2 ] && [ "$(grep -c forget $T/krlog)" = 2 ] && echo 1)" "$o $(cat $T/krlog)"
 o=$(t homehas $HM/acct1001/.wine/drive_c/Program\ Files /.wine/drive_c/ homehas /home/rudolf/.wine/drive_c/x /.wine/drive_c/)
 ok "...Wine's prefix and Wine's icons are looked for in its home (Debian's home is the account's folder)" "$(echo "$o" | head -1 | grep -qx 'homehas 1' && echo "$o" | tail -1 | grep -qx 'homehas 0' && echo 1)" "$o"
 setpriv --reuid=1001 --regid=1001 --init-groups sleep 300 & P1=$!; setpriv --reuid=1001 --regid=1001 --init-groups sh -c 'trap "" TERM; while :; do sleep 1; done' & P2=$!
@@ -63,6 +68,7 @@ ok "...not another account's" "$(kill -0 $P3 2>/dev/null && echo 1)"; kill $P3 2
 ok "...its keyring stopped with it (shut away until the next sign-in)" "$([ -n "$KRP" ] && ! kill -0 $KRP 2>/dev/null && echo 1)" "KRP=$KRP $(ps -u 1001 -o pid,cmd 2>&1)"
 ok "...the display taken back from its user (--xdeny acct1001)" "$(grep -qx -- '--xdeny acct1001' $T/xlog && echo 1)" "$(cat $T/xlog)"
 ok "...its home and runtime folder gone, and the apps back to the desktop's user" "$(! mountpoint -q $HM/acct1001 && [ ! -e $RU/1001 ] && [ ! -e /run/rudolf/acct-session.env ] && echo "$o" | grep -q '^rudolf /run/rudolf/session.env$' && echo 1)" "$o"
+o=$(t keyring-list); ok "...nobody signed in: nothing to list" "$(echo "$o" | grep -q '"signedIn":false' && echo 1)" "$o"
 o=$(t users); ok "8. GET accounts/users: each account's user, moved or not, who is signed in" "$(echo "$o" | grep -q '"id":"uAnnA1b2","uid":1001,"user":"acct1001","moved":true,"signedIn":false' && echo 1)" "$o"
 node -e "const f='$T/ls.json',j=require(f),u=JSON.parse(j.data.bd95user);u.accts=u.accts.filter(a=>a.n!='Old');u.accts.push({n:'New',h:'p2\$x\$y',r:'user',id:'uNew00000'});j.data.bd95user=JSON.stringify(u);require('fs').writeFileSync(f,JSON.stringify(j))"
 setpriv --reuid=1003 --regid=1003 --init-groups sleep 300 & P4=$!; timeout 0.5 tail -f /dev/null

@@ -293,6 +293,41 @@ static void au_app_user(char *user, size_t un, char *env, size_t en)
 	au_name(uid, user, un); snprintf(env, en, AU_ENV);
 }
 
+/* 1.6.0 (plan Part 14): Settings › Privacy › Saved passwords for apps. GET keyring/list: what the signed-in account's
+   keyring and its Flatpak apps' secrets hold (names only; rudolf-portal --keyring-list, run as the account's user in
+   its session); POST keyring/forget?id=ID: one removed. Nobody signed in (or the guest): nothing to list. */
+#ifndef AU_PORTAL
+#define AU_PORTAL "/usr/bin/rudolf-portal"
+#endif
+static int au_keyring_id_ok(const char *id)
+{
+	size_t n = id ? strlen(id) : 0; if (!n || n > 300 || strstr(id, "..")) return 0;
+	for (const char *c = id; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("_./:-", *c)) return 0;
+	return !strncmp(id, "app:", 4) || !strncmp(id, "/org/freedesktop/secrets/collection/", 36);
+}
+static void api_keyring(struct req *r, const char *what, int post)
+{
+	char au[32], ae[160]; au_app_user(au, sizeof au, ae, sizeof ae);
+	if (!strcmp(au, "rudolf")) { if (post) reply_err(r->fd, 409, "no account is signed in"); else { str s = {0}; sadd(&s, "{\"ok\":true,\"signedIn\":false,\"keyring\":false,\"items\":[]}"); reply_json(r->fd, &s); } return; }
+	char c[700];
+	if (!post && !strcmp(what, "list")) {
+		snprintf(c, sizeof c, "su -s /bin/sh %s -c 'set -a; . %s; set +a; exec " AU_PORTAL " --keyring-list' 2>/dev/null", au, ae);
+		char *o = run_out(c); trim(o);
+		static const char OK[] = "{\"ok\":true,";
+		if (strncmp(o, OK, sizeof OK - 1) || o[strlen(o) - 1] != '}') { free(o); reply_err(r->fd, 500, "the keyring could not be read"); return; }
+		str s = {0}; sadd(&s, "{\"ok\":true,\"signedIn\":true,%s", o + sizeof OK - 1); free(o); reply_json(r->fd, &s); return;
+	}
+	if (post && !strcmp(what, "forget")) {
+		const char *id = qparam(r->query, "id");
+		if (!au_keyring_id_ok(id)) { reply_err(r->fd, 400, "id: one of the list's"); return; }
+		snprintf(c, sizeof c, "su -s /bin/sh %s -c 'set -a; . %s; set +a; exec " AU_PORTAL " --keyring-forget \"$0\"' '%s' 2>&1", au, ae, id);
+		char *o = run_out(c); trim(o); int ok = !strncmp(o, "{\"ok\":true", 10);
+		if (!ok) { reply_err(r->fd, 500, *o ? o : "it could not be removed"); free(o); return; }
+		free(o); health_add("account", "a saved password for apps was removed (Settings › Privacy)"); reply_ok(r->fd, "removed"); return;
+	}
+	reply_err(r->fd, 404, "unknown keyring action");
+}
+
 /* p is below SUB in the signed-in account's home (its session running): Wine's prefix, the icons Wine makes */
 static int au_home_has(const char *p, const char *sub)
 {

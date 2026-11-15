@@ -4418,6 +4418,7 @@ static void api(struct req *r)
 	if (!strncmp(p, "native/", 7)) { api_native(r, p + 7); return; }
 	if (!strncmp(p, "pkg/", 4)) { api_pkg(r, p + 4); return; }
 	if (!strncmp(p, "print/", 6)) { api_print(r, p + 6); return; }
+	if (!strncmp(p, "keyring/", 8)) { api_keyring(r, p + 8, post); return; }   /* 1.6.0 (plan Part 14) */
 	if (!strncmp(p, "apps/", 5)) { api_apps(r, p + 5); return; }
 	if (!strncmp(p, "debian/", 7)) { api_debian(r, p + 7); return; }
 	if (!strncmp(p, "ai/", 3)) { api_ai(r, p + 3); return; }
