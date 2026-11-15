@@ -1,18 +1,18 @@
 rudolf-system 1
-serial 2026111503
-version 1.5.9.261115
+serial 2026111506
+version 1.6.0.261115
 released 2026-11-15
 expires 2026-11-29
 urgent 0
 chromium 158.0.8127.18
 kernel 6.18.63-rudolf
-notes 1.5.9: A native desktop to try (Native, test), Browse with Tor in Oracle, protections against a directed attack, developer mode with custom builds and an official recovery, more memory for games, calls and microphone tests, and Save and Open dialogs with document tabs (docs/plan-1.5.9.md)
-L	vmlinuz	11823736	d679fd7b3c0f16a6808ed551483349252a527f20035f9132f2bc73ab5fdc7438	https://github.com/merciless146/RudolfOS/releases/download/r2026111503/vmlinuz
-L	base	305164288	da0371a0bb357f435d1494b96b0b859b766aaab36f46d9fd113353a7f31f09da	https://github.com/merciless146/RudolfOS/releases/download/r2026111503/base.sfs
-L	chromium	149966848	d8a8262511a48622a596781c068a1e060742fee552c7fb49593769eb6be2eae8	https://github.com/merciless146/RudolfOS/releases/download/r2026111503/chromium.sfs
-L	desktop	6275072	041e07d693822815d728251fb2f6ffaade04f981b7c8c5eb70a0bc7eb8e3c398	https://github.com/merciless146/RudolfOS/releases/download/r2026111503/desktop.sfs
-L	modules	101314560	e0a4f3a0b34f835bcd64adae8049ba69c8745ef275b2b2b5c48ff26496955c48	https://github.com/merciless146/RudolfOS/releases/download/r2026111503/modules.sfs
-V	base	73919	4a88017e4dccb8f413eab94451ed426112c2b209e18adfba7ab94ccdfb49f15f	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
+notes 1.6.0: In progress.
+L	vmlinuz	11823736	d679fd7b3c0f16a6808ed551483349252a527f20035f9132f2bc73ab5fdc7438	https://github.com/merciless146/RudolfOS/releases/download/r2026111506/vmlinuz
+L	base	305164288	ae9358b27c019f839416feeea13c91f8803db56a4f9e971cfdf01a7c379023f1	https://github.com/merciless146/RudolfOS/releases/download/r2026111506/base.sfs
+L	chromium	149966848	d8a8262511a48622a596781c068a1e060742fee552c7fb49593769eb6be2eae8	https://github.com/merciless146/RudolfOS/releases/download/r2026111506/chromium.sfs
+L	desktop	6275072	edd143de3b8d924443d7c3c67419295b2ffbb53ed817a48d08ff065c4c120322	https://github.com/merciless146/RudolfOS/releases/download/r2026111506/desktop.sfs
+L	modules	101314560	e0a4f3a0b34f835bcd64adae8049ba69c8745ef275b2b2b5c48ff26496955c48	https://github.com/merciless146/RudolfOS/releases/download/r2026111506/modules.sfs
+V	base	73919	651db8b3ae792ea352276e4d331d1ad9cc38795aabd38988dbc60b746fca566f	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
 V	chromium	36325	b5385a42cbd7f5c64776c89abda64f97c5ee531836fdd2daef4e814f68fb50f1	da3143e0b76e95a8fb9b20d6cd921581143496db9de69f0900a337920b32f7f8
-V	desktop	1519	7de52a88eaf560adfde7cdee58ce2e63744e88bd314bd4b2812455d3c9baaaa6	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
+V	desktop	1519	c68cf719b4425625f0f1f32a0c5a1cd47c8933e3eced7c07aaada699bca6ca7f	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
 V	modules	24540	f121232c6bffa71797104454091b8e3cd258f5694542d2cee2c8641fa02a66f2	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
