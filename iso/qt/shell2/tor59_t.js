@@ -108,6 +108,12 @@ const calls = re => M.calls.filter(c => re.test(c));
   ok('8. a new window from the Tor window (browser(): Ctrl+N, a link\'s new window): another Tor window, not a normal one', calls(/^POST torwin\/open\?url=https%3A%2F%2Fexample\.org%2F/).length == 1 && await p.evaluate("wins.filter(w=>w.oNewTab).length==1"), M.calls);
   await p.evaluate("oraclePrivate('https://example.net/'),1"); await wait(300);
   ok('...New private tab there: a tab of the Tor window', await p.evaluate("OA.main.body.querySelectorAll('.otab').length==3&&wins.filter(w=>w.oNewTab).length==1"), await p.evaluate("OA.main.body.querySelectorAll('.otab').length"));
+  // 1.6.0 (plan Part 15): Ctrl+W as rudolf-display hands it to the Tor window now (Ctrl+F20, as to the desktop): its tab
+  await p.evaluate("(()=>{const a=OA.main.el.querySelector('input');a&&a.focus();return document.activeElement&&document.activeElement.tagName})()");
+  { const cdp = await p.context().newCDPSession(p);   /* (a trusted Ctrl+F20: Playwright has no name for F20) */
+    for (const type of ['rawKeyDown', 'keyUp']) await cdp.send('Input.dispatchKeyEvent', {type, modifiers: 2, code: 'F20', key: 'F20', windowsVirtualKeyCode: 131, nativeVirtualKeyCode: 131}); }
+  await wait(500);
+  ok('8b. Ctrl+W in the Tor window (Ctrl+F20 from rudolf-display): closes its tab, not the window', await p.evaluate("OA.main&&OA.main.el.isConnected&&OA.main.body.querySelectorAll('.otab').length==2"), await p.evaluate("OA.main?OA.main.body.querySelectorAll('.otab').length:'no window'"));
   // pressed again: its tabs back to a normal window (rudolfd), and it closes
   M.calls = []; await p.evaluate("OA.main.body.querySelector('.otor').click(),1"); await wait(1500);
   const bkc = calls(/^POST torwin\/back/);

@@ -23,7 +23,7 @@ slot() { local S=$1 SER=$2 K=$3; rm -rf $T/l $T/out $T/sys/$S; mkdir -p $T/l $T/
 	python3 $I/systools/make_release.py --layers $T/l --kernel $T/l/vmlinuz --out $T/out --key $T/$K.key --serial $SER --version 1.5.9 >/dev/null 2>&1 || { echo "make_release failed"; exit 1; }
 	cp $T/l/*.sfs $T/l/vmlinuz $T/out/channel/manifest.txt $T/out/channel/manifest.sig $T/sys/$S/
 	printf 'serial %s\nversion 1.5.9\n' $SER > $T/sys/$S/RELEASE; echo 1 > $T/sys/$S/complete; }
-run() { RU_SYSD=$T/sys RU_MEDIA=$T/media RU_CONF=$T/conf RU_KEYS=$T/keys RU_EXTRA=$T/extra-keys RU_SLOT=$T/slot RU_CMDLINE=$T/cmd RU_MOUNTS=$T/mounts RU_SYSBLOCK=$T/sysblock $RU "$@" 2>&1; }
+run() { RU_NOAUTOFETCH=1 RU_NOESP=1 RU_SYSD=$T/sys RU_MEDIA=$T/media RU_CONF=$T/conf RU_KEYS=$T/keys RU_EXTRA=$T/extra-keys RU_SLOT=$T/slot RU_CMDLINE=$T/cmd RU_MOUNTS=$T/mounts RU_SYSBLOCK=$T/sysblock $RU "$@" 2>&1; }
 : > $T/cmd; : > $T/mounts
 slot a 2026111301 official; printf 'good=a\nprev=\nnext=\ntries=0\n' > $T/sys/state; echo a > $T/slot; run boot-ok >/dev/null
 j() { run status | python3 -c "import json,sys;d=json.load(sys.stdin);print(d$1)"; }

@@ -456,7 +456,7 @@ static void touchpad_frame(struct dev *v)
    open browser windows over the desktop. While the desktop's Chromium window (class RudolfDesktop) has the
    keyboard, those keys arrive as F20 (W, F4), F21 (T), F22 (N) and F23 (Q), still with Ctrl held (and Alt+F4 as Alt+F20); the desktop and
    Oracle's real tabs read Ctrl+F20 as Ctrl+W and so on (shell26.js: DESK_SUB). Linux apps and the browser window
-   for sign-in sites get the keys unchanged. */
+   for sign-in sites get the keys unchanged. (1.6.0: Oracle's Tor windows, class RudolfTor, as the desktop.) */
 static int mod_ctrl, mod_alt, shift_down;
 static unsigned char key_sub[256];
 static int desk_focused(void)
@@ -470,7 +470,10 @@ static int desk_focused(void)
 	for (int i = 0; i < 12 && w != None && w != PointerRoot; i++) {
 		XClassHint h = {0};
 		if (XGetClassHint(dpy, w, &h)) {
-			was = h.res_class && !strcmp(h.res_class, "RudolfDesktop");   /* the session starts it with --class=RudolfDesktop */
+			/* the session starts it with --class=RudolfDesktop; 1.6.0 (plan Part 15): and Oracle's Tor windows on Standard
+			   (--class=RudolfTor, the desktop page in one-app mode, which reads the keys as the desktop does): Ctrl+W
+			   closed the whole Tor window instead of its tab, Ctrl+T and Ctrl+N opened Chromium's own windows */
+			was = h.res_class && (!strcmp(h.res_class, "RudolfDesktop") || !strcmp(h.res_class, "RudolfTor"));
 			if (h.res_name) XFree(h.res_name);
 			if (h.res_class) XFree(h.res_class);
 			return was;

@@ -2069,6 +2069,7 @@ static void api_ai_facts(struct req *r)
 	facts_add(&s, "nativeBefore", PERSIST "/var/log/starts/1/native-desktop.log", 40);
 	facts_add(&s, "bootDecisions", PERSIST "/var/log/boot-decisions.log", 30);
 	facts_add(&s, "page", RUN "/page.log", 60);
+	facts_add(&s, "pageBefore", PERSIST "/var/log/starts/1/page.log", 30);   /* 1.6.0 (plan Part 15): kept across a restart */
 	facts_add(&s, "shutdown", PERSIST "/var/log/shutdown.log", 20);
 	{ char *jn = slurp(RUN "/job.name", NULL); if (jn) trim(jn); sadd(&s, ",\"jobName\":"); sjson(&s, jn ? jn : ""); free(jn); }
 	facts_add(&s, "job", RUN "/job.log", 60);
@@ -4508,7 +4509,15 @@ static void api(struct req *r)
 	}
 	if (!strcmp(p, "clientlog")) {   /* desktop errors, kept for the Event Viewer and diagnostics */
 		struct stat st;
-		if (!stat(RUN "/page.log", &st) && st.st_size > 262144) rename(RUN "/page.log", RUN "/page.log.1");
+		/* (1.6.0, plan Part 15: kept on the disk for each start, rudolf-init's link into var/log/starts/0: past 256 KB the
+		   first half goes, through the link, instead of the file being renamed away from it) */
+		struct stat ls;
+		if (!stat(RUN "/page.log", &st) && st.st_size > 262144) {
+			if (!lstat(RUN "/page.log", &ls) && S_ISLNK(ls.st_mode)) { size_t n = 0; char *c = slurp(RUN "/page.log", &n);
+				if (c && n > 131072) { int t = open(RUN "/page.log", O_WRONLY | O_TRUNC); if (t >= 0) { if (write(t, c + n - 131072, 131072) < 0) {} close(t); } }
+				free(c); }
+			else rename(RUN "/page.log", RUN "/page.log.1");
+		}
 		int f = open(RUN "/page.log", O_WRONLY | O_CREAT | O_APPEND, 0600);
 		if (f >= 0) { size_t n = r->blen > 4096 ? 4096 : r->blen; if (n && write(f, r->body, n) < 0) {} if (write(f, "\n", 1) < 0) {} close(f); }
 		reply_ok(r->fd, "ok"); return;
