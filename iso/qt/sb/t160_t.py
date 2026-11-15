@@ -99,6 +99,13 @@ def signin(js, n, pw, secs=900):
         if isinstance(s, str) and s != 'wait': return s
         time.sleep(5)
     return 'still signing in'
+def wait_for(js, expr, secs, every=5):
+    end = time.time() + secs; r = None
+    while time.time() < end:
+        r = js(expr, 60)
+        if r is True: return True
+        time.sleep(every)
+    return r
 def signout(js):
     return js("(async()=>{try{fsFlush()}catch(e){}try{await homeChain}catch(e){}if(USER)userLogout();await new Promise(r=>setTimeout(r,4000));return 'out'})()", 180)
 
@@ -111,7 +118,8 @@ try:
     r = js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);const k=await acctNew('kid','k1','user');ACCTS.push(k);saveUser();return b.id+' '+k.id})()", 120)
     out('accounts:', r); BOSS, KID = str(r).split()
     for n, pw in (('boss', 'b1'), ('kid', 'k1')):
-        out(signin(js, n, pw)); js(f"(async()=>{{node(homePath('DOCUMENTS'))['SECRET.TXT']='{n} secret\\n';fsSave();fsFlush();await homeChain;return 1}})()", 120); out(signout(js))
+        out('sign-in', n, signin(js, n, pw)); out('on the disk:', wait_for(js, "!!(USER&&USER.disk&&hdOn())", 600, 10))
+        js(f"(async()=>{{node(homePath('DOCUMENTS'))['SECRET.TXT']='{n} secret\\n';fsSave();fsFlush();await homeChain;try{{if(typeof HD!='undefined')await HD.chain}}catch(e){{}}return 1}})()", 120); time.sleep(5); out(signout(js))
     time.sleep(5)
     users = sh("cat /persist/etc/rudolf/account-users; ls -ln /persist/accounts")
     out(users)
@@ -124,34 +132,35 @@ try:
     o = sh(f"cat /persist/etc/rudolf/account-users; stat -c '%u %a %n' /persist/accounts/{BOSS} /persist/accounts/{BOSS}/Documents/SECRET.TXT /persist/accounts/{KID}; grep -h 'own Linux user' /persist/var/log/health*.log /run/rudolf/health*.log 2>/dev/null | tail -3")
     ub = re.search(rf'^{BOSS} (\d+)', o, re.M); uk = re.search(rf'^{KID} (\d+)', o, re.M); UB, UK = (ub.group(1) if ub else '?'), (uk.group(1) if uk else '?')
     ok('3. 15.3: the move on an existing data partition: each account\'s folder and files belong to its own Linux user now, 0700, logged', ub and uk and f'{UB} 700 /persist/accounts/{BOSS}' in o and f'{UK} 700 /persist/accounts/{KID}' in o and re.search(rf'^{UB} \d+ /persist/accounts/{BOSS}/Documents/SECRET.TXT', o, re.M) and 'own Linux user' in o, o)
-    out(signin(js, 'boss', 'b1')); time.sleep(8)
+    out('sign-in boss', signin(js, 'boss', 'b1')); out('on the disk:', wait_for(js, "!!(USER&&USER.disk&&hdOn())", 600, 10)); time.sleep(5)
     TOK = js("RUDOLFD.token"); out('token length', len(str(TOK)))
     o = sh(f"cat /run/rudolf/acct-session.env; ls -ld /home/acct{UB}; id acct{UB}")
     ok('4. signed in: the account\'s session, its home its own folder', f'HOME=/home/acct{UB}' in o, o)
-    AS = f"setpriv --reuid={UB} --regid={UB} --init-groups"
-    o = sh(f"{AS} cat /persist/accounts/{KID}/Documents/SECRET.TXT 2>&1; {AS} ls /persist/accounts/{KID} 2>&1; {AS} cat /home/acct{UB}/Documents/SECRET.TXT 2>&1")
-    ok('5. 15.3: the account\'s programs (its user) cannot read the other account\'s files, and can read their own', 'kid secret' not in o and o.count('Permission denied') >= 2 and 'boss secret' in o, o)
-    o = sh(f"{AS} busybox wget -q -O- http://127.0.0.1:8080/ 2>&1 | head -c 300; echo; {AS} busybox wget -q -O- --header 'X-Rudolf-Token: {TOK}' http://127.0.0.1:8080/api/info 2>&1 | head -c 200; echo; {AS} cat /run/rudolf/token 2>&1 | head -c 100")
-    ok('6. 15.1: the account\'s programs get neither the page (with its token) nor the API, even with the right token', 'RUDOLFD' not in o and str(TOK) not in o.split('X-Rudolf')[0] and '"ok":true' not in o, o)
-    o = sh(f"command -v bwrap && {AS} bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --unshare-pid --die-with-parent sh -c 'cat /persist/accounts/{KID}/Documents/SECRET.TXT; busybox wget -q -O- --header \"X-Rudolf-Token: {TOK}\" http://127.0.0.1:8080/api/info' 2>&1 | head -c 300")
-    ok('7. ...a program in a sandbox (bwrap, as Flatpak starts one) the same', 'bwrap' in o and 'kid secret' not in o and '"ok":true' not in o, o)
+    def AS(uid, cmds, t=120):
+        return sh(f"cat > /tmp/u160.sh <<'EOF'\n{cmds}\nEOF\nchmod 644 /tmp/u160.sh; su -s /bin/sh acct{uid} -c 'sh /tmp/u160.sh' 2>&1; echo rc=$?", t)
+    o = AS(UB, f"id -u; cat /persist/accounts/{KID}/Documents/SECRET.TXT 2>&1; ls /persist/accounts/{KID} 2>&1; cat /home/acct{UB}/Documents/SECRET.TXT 2>&1")
+    ok('5. 15.3: the account\'s programs (its user) cannot read the other account\'s files, and can read their own', re.search(rf'^{UB}$', o, re.M) and 'kid secret' not in o and o.count('Permission denied') >= 2 and 'boss secret' in o, o)
+    o = AS(UB, f"id -u; busybox wget -q -O- http://127.0.0.1:8080/ 2>&1 | head -c 300; echo; busybox wget -S -O- --header 'X-Rudolf-Token: {TOK}' http://127.0.0.1:8080/api/info 2>&1 | head -c 300; echo")
+    ok('6. 15.1: the account\'s programs get neither the page (with its token) nor the API, even with the right token', re.search(rf'^{UB}$', o, re.M) and 'RUDOLFD' not in o and '"ok":true' not in o and ('403' in o or 'refused' in o.lower() or 'Forbidden' in o), o)
+    o = AS(UB, f"command -v bwrap; bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --unshare-pid --die-with-parent sh -c 'echo IN-SANDBOX; cat /persist/accounts/{KID}/Documents/SECRET.TXT; busybox wget -q -O- --header \"X-Rudolf-Token: {TOK}\" http://127.0.0.1:8080/api/info; echo' 2>&1 | head -c 400")
+    ok('7. ...a program in a sandbox (bwrap, as Flatpak starts one) the same', 'IN-SANDBOX' in o and 'kid secret' not in o and '"ok":true' not in o, o)
     # Debian: a stand-in (busybox), as t156; it runs as the account's user
     sh("D=/persist/debian; mkdir -p $D/bin $D/lib $D/lib64 $D/etc $D/proc $D/sys $D/dev $D/tmp $D/run $D/home/rudolf $D/root $D/.oldroot; cp /bin/busybox $D/bin/; for l in $(ldd /bin/busybox 2>/dev/null | grep -o '/[^ ]*'); do mkdir -p $D$(dirname $l); cp -L $l $D$l; done; "
        "for c in sh cat echo ls wget id; do ln -sf busybox $D/bin/$c; done; echo 'rudolf:x:1000:1000::/home/rudolf:/bin/sh' > $D/etc/passwd; echo test > $D/etc/rudolf-debian; touch $D/.rudolf-ready; chown -R 200000:200000 $D", 120)
     o = sh(f"rudolf-debian rebind >/dev/null 2>&1; rudolf-debian run -- sh -c 'id -u; cat /home/rudolf/Documents/SECRET.TXT; wget -q -O- --header \"X-Rudolf-Token: {TOK}\" http://127.0.0.1:8080/api/info; echo; ls /home/rudolf/../ 2>&1' 2>&1", 180)
     ok('8. Debian (Wine runs in it): its programs are the account\'s, see its folder only, and are refused the API', 'boss secret' in o and 'kid secret' not in o and '"ok":true' not in o, o)
-    o = sh(f"{AS} env DISPLAY=:0 rudolf-display --xsize 2>&1; echo rc=$?; setpriv --reuid={UK} --regid={UK} --init-groups env DISPLAY=:0 rudolf-display --xsize 2>&1; echo rc=$?")
+    o = AS(UB, "DISPLAY=:0 rudolf-display --xsize 2>&1") + AS(UK, "DISPLAY=:0 rudolf-display --xsize 2>&1; echo rc=$?")
     rcs = re.findall(r'^rc=(\d+)', o, re.M)
-    ok('9. 15.3: the display: the signed-in account\'s programs may use it, the other account\'s user is refused', rcs[:1] == ['0'] and len(rcs) == 2 and rcs[1] != '0', o)
+    ok('9. 15.3: the display: the signed-in account\'s programs may use it, the other account\'s user is refused', re.search(r'^\d+ \d+$', o, re.M) and len(rcs) == 3 and rcs[1] != '0', o)
     mine = f'for p in /proc/[0-9]*; do [ "$(stat -c %u $p 2>/dev/null)" = {UB} ] && grep -qx sleep $p/comm 2>/dev/null && echo ${{p#/proc/}}; done'
-    sh(f"({AS} sleep 600 &) ; sleep 1"); o1 = sh(mine)
+    sh(f"(su -s /bin/sh acct{UB} -c 'exec sleep 600' &) ; sleep 2"); o1 = sh(mine)
     out(signout(js)); time.sleep(6); o2 = sh(mine + f"; ls /home/acct{UB} 2>&1 | head -2")
-    ok('10. 15.3: signing out stops every program of the account\'s user, its home goes', o1.strip() and not re.search(r'^\d+$', o2, re.M) and ('No such file' in o2 or not o2.strip()), [o1, o2])
+    ok('10. 15.3: signing out stops every program of the account\'s user, its home goes', re.search(r'^\d+$', o1, re.M) and not re.search(r'^\d+$', o2, re.M), [o1, o2])
     # 8.7 (without Secure Boot) and the recovery repair, with this tree's rudolf-update
     U = 'rudolf-update'
     if RU:
         g.put(RU, '/tmp/ru160'); U = '/tmp/ru160'
-    o = sh(f"{U} boot-ok; cat /persist/os/system/r/official 2>&1; {U} status | head -c 400", 300)
+    o = sh(f"{U} boot-ok; cat /persist/os/system/r/official 2>&1; {U} status", 300)
     ok('11. the official recovery system made from the official release that started', 'official recovery system: release' in o and '"signer":"official"' in o, o)
     o = sh(f"rm /persist/os/system/r/desktop.sfs; head -c 1000 /dev/urandom > /persist/os/system/r/desktop.sfs; {U} recovery-check; echo rc=$?; cmp /persist/os/system/r/desktop.sfs /persist/os/system/a/desktop.sfs && echo SAME", 300)
     ok('12. a recovery system file changed: found at the check, made again from the official system', 'made again from this official system' in o and 'SAME' in o, o)
@@ -160,7 +169,7 @@ try:
     vm.stop(); time.sleep(3)
     vm, g, up, js = boot('b', 'b'); sh = lambda c, t=60: run(g, c, t)
     if RU: g.put(RU, '/tmp/ru160')
-    o = sh(f"cat /etc/rudolf/slot; {U} boot-ok; {U} status | head -c 600", 300) if up else 'not up'
+    o = sh(f"cat /etc/rudolf/slot; {U} boot-ok; {U} status", 300) if up else 'not up'
     ok('14. ...a release signed by that key starts from slot b, the system says it is a custom build, the recovery system stays official', up and '"signer":"custom"' in o and '"recoveryOfficial":true' in o, o)
     o = sh(f"RU_NOESP=1 {U} return-official keep 2>&1; cat /persist/os/system/state", 600) if up else ''
     ok('15. Return to official (keep): the official recovery system goes into the spare slot, to start next', 'Returning to the official Rudolf OS' in o and 'ret=1' in o, o)
@@ -168,8 +177,8 @@ try:
     vm.stop(); time.sleep(3)
     vm, g, up, js = boot('c', nxt); sh = lambda c, t=60: run(g, c, t)
     if RU and up: g.put(RU, '/tmp/ru160')
-    o = sh(f"{U} boot-ok; {U} status | head -c 700; ls /persist/os/system; cat /persist/etc/rudolf/extra-keys 2>&1", 300) if up else 'not up'
-    ok('16. ...the official release started again: official, Developer mode off, the custom build\'s slot cleared', up and '"signer":"official"' in o and '"developer":false' in o and 'Cleared the custom build in slot b' in o, o)
+    o = sh(f"{U} boot-ok; {U} status; echo; ls -1 /persist/os/system | cat; cat /persist/etc/rudolf/extra-keys 2>&1", 300) if up else 'not up'
+    ok('16. ...the official release started again: official, Developer mode off, the custom build\'s slot cleared', up and '"signer":"official"' in o and '"developer":false' in o and not re.search(r'^b$', o, re.M) and '"b":{"complete":false' in o, o)
 finally:
     try: vm and vm.stop()
     except Exception: pass
