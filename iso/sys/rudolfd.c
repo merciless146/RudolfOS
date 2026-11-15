@@ -1415,6 +1415,105 @@ static void api_web(struct req *r, const char *what)
 	reply_err(r->fd, 404, "unknown browser window action");
 }
 
+/* ------------------------------------------------------------- 1.5.9 (docs/plan-1.5.9.md 16.2): Oracle's Tor windows on Standard
+ * On Standard, Oracle is the desktop page in the desktop's own Chromium; a Tor window is Rudolf's Chromium of its own going
+ * through Tor, started here as the desktop's user in the desktop's memory group with what the session wrote in RUN/tor-chrome
+ * (the shell's ID, then the program and its arguments, as for Oracle on the native desktop) through rudolf-launch --oracle, a
+ * profile of its own in RUN/torwin-profile (memory: made fresh, removed when Chromium goes) with WebRTC only through the proxy
+ * (its Controlled Frames read the profile's setting, not the command line's), and each window the shell at
+ * #app=browser&tor=1&url=...: Oracle alone, private. rudolf-display shows it as every app window (the taskbar's).
+ *   POST torwin/open?url=U&url=U...   a Tor window with these tabs (another window of the running one, or a new Chromium)
+ *   POST torwin/back?url=U...          a Tor window's tabs, for a normal Oracle window: the desktop page takes them with
+ *   GET  torwin/back                   {open: a Tor window's Chromium runs, urls: [...]} (once)
+ * TORWIN_USER and TORWIN_LAUNCH change the user and rudolf-launch (the host tests). */
+#ifndef TORWIN_USER
+#define TORWIN_USER "rudolf"
+#endif
+#ifndef TORWIN_LAUNCH
+#define TORWIN_LAUNCH "/usr/bin/rudolf-launch"
+#endif
+#define TORWIN_CTL RUN "/torwin.ctl"
+#define TORWIN_PROF RUN "/torwin-profile"
+static int torwin_url_ok(const char *u) { return u && strlen(u) < 2000 && (!strncmp(u, "http://", 7) || !strncmp(u, "https://", 8) || !strncmp(u, "about:", 6) || !strncmp(u, "file:///", 8)); }
+static int torwin_running(void)
+{
+	char *s = slurp(RUN "/torwin.pid", NULL); pid_t p = s ? atoi(s) : 0; free(s);
+	if (p <= 1 || kill(p, 0)) return 0;
+	char f[64]; snprintf(f, sizeof f, "/proc/%d/stat", (int)p); char *k = slurp(f, NULL); int z = k && strstr(k, ") Z "); free(k);
+	return !z;
+}
+/* the query's url=... values (at most 12), each escaped again for the shell's # */
+static void torwin_hash(const char *query, const char *base, str *h)
+{
+	sadd(h, "%s", base); int n = 0; const char *p = query;
+	while (p && *p && n < 12) {
+		const char *e = strchr(p, '&'); size_t l = e ? (size_t)(e - p) : strlen(p);
+		if (l > 4 && !strncmp(p, "url=", 4) && l < 6000) { char v[6000]; memcpy(v, p + 4, l - 4); v[l - 4] = 0; urldecode(v);
+			if (torwin_url_ok(v)) { sadd(h, "&url="); for (const unsigned char *c = (const unsigned char *)v; *c; c++) { if (isalnum(*c) || strchr("-._~", *c)) sadd(h, "%c", *c); else sadd(h, "%%%02X", *c); } n++; } }
+		p = e ? e + 1 : NULL;
+	}
+}
+static int torwin_start(void)
+{
+	char *t = slurp(RUN "/tor-chrome", NULL); if (!t) return -1;
+	char *L[200]; int n = 0; for (char *l = strtok(t, "\n"); l && n < 199; l = strtok(NULL, "\n")) if (*l) L[n++] = l; L[n] = NULL;
+	struct passwd *pw = getpwnam(TORWIN_USER);
+	if (n < 2 || strlen(L[0]) != 56 || access(L[1], X_OK) || access(TORWIN_LAUNCH, X_OK) || !pw) { free(t); return -1; }
+	unlink(TORWIN_CTL); run("rm -rf " TORWIN_PROF);
+	if (mkfifo(TORWIN_CTL, 0600) || chown(TORWIN_CTL, pw->pw_uid, pw->pw_gid) || mkdir(TORWIN_PROF, 0700) || chown(TORWIN_PROF, pw->pw_uid, pw->pw_gid)) { free(t); return -1; }
+	mkdir(TORWIN_PROF "/Default", 0700); if (chown(TORWIN_PROF "/Default", pw->pw_uid, pw->pw_gid)) {}
+	write_str(TORWIN_PROF "/Default/Preferences", "{\"webrtc\":{\"ip_handling_policy\":\"disable_non_proxied_udp\",\"multiple_routes_enabled\":false,\"nonproxied_udp_enabled\":false}}\n");
+	if (chown(TORWIN_PROF "/Default/Preferences", pw->pw_uid, pw->pw_gid)) {}
+	char *env = slurp(RUN "/session.env", NULL);
+	pid_t c = fork();
+	if (c < 0) { free(t); free(env); return -1; }
+	if (c == 0) {   /* (the watcher: waits for Chromium's launcher, then removes the profile) */
+		setsid(); int nul = open("/dev/null", O_RDWR); if (nul >= 0) { dup2(nul, 0); dup2(nul, 1); } 
+		int lg = open(RUN "/torwin.log", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600); if (lg >= 0) { dup2(lg, 2); dup2(lg, 1); }
+		pid_t g = fork();
+		if (g == 0) {
+			FILE *cg = fopen("/sys/fs/cgroup/desktop/cgroup.procs", "w"); if (cg) { fprintf(cg, "%d\n", (int)getpid()); fclose(cg); }   /* (the desktop's memory group: 15.1) */
+			if (initgroups(pw->pw_name, pw->pw_gid) || setgid(pw->pw_gid) || setuid(pw->pw_uid)) _exit(126);
+			clearenv(); setenv("HOME", pw->pw_dir, 1); setenv("USER", pw->pw_name, 1); setenv("PATH", "/usr/bin:/bin", 1); setenv("FONTCONFIG_FILE", "/etc/fonts/fonts.conf", 1);
+			setenv("GOOGLE_API_KEY", "no", 1); setenv("GOOGLE_DEFAULT_CLIENT_ID", "no", 1); setenv("GOOGLE_DEFAULT_CLIENT_SECRET", "no", 1);
+			for (char *e = env ? strtok(env, " \n") : NULL; e; e = strtok(NULL, " \n")) { char *q = strchr(e, '='); if (q && q > e) { *q = 0; setenv(e, q + 1, 1); } }
+			char *a[210]; int k = 0; a[k++] = TORWIN_LAUNCH; a[k++] = "--oracle"; a[k++] = TORWIN_CTL; a[k++] = L[0];
+			for (int i = 1; i < n && k < 206; i++) a[k++] = L[i];
+			a[k++] = "--user-data-dir=" TORWIN_PROF; a[k] = NULL;
+			for (int i = 3; i < 1024; i++) close(i);
+			execv(TORWIN_LAUNCH, a); _exit(127);
+		}
+		if (g > 0) { while (waitpid(g, NULL, 0) < 0 && errno == EINTR) {} }
+		run("rm -rf " TORWIN_PROF); unlink(TORWIN_CTL); unlink(RUN "/torwin.pid"); _exit(0);
+	}
+	char b[32]; snprintf(b, sizeof b, "%d\n", (int)c); write_str(RUN "/torwin.pid", b);
+	free(t); free(env); return 0;
+}
+static void api_torwin(struct req *r, const char *what, int post)
+{
+	if (!strcmp(what, "back")) {
+		if (post) {   /* (a Tor window's tabs, one list a line, for the desktop page) */
+			str h = {0}; torwin_hash(r->query, "", &h); str j = {0}; sadd(&j, "[");
+			int k = 0; for (char *p = h.b ? strstr(h.b, "&url=") : NULL; p; ) { p += 5; char *e = strstr(p, "&url="); char v[6000]; size_t l = e ? (size_t)(e - p) : strlen(p); if (l >= sizeof v) l = sizeof v - 1; memcpy(v, p, l); v[l] = 0; urldecode(v); sadd(&j, k++ ? "," : ""); sjson(&j, v); p = e; }
+			sadd(&j, "]\n"); free(h.b);
+			if (k) { int f = open(RUN "/torwin.back", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600); if (f >= 0) { if (write(f, j.b, j.n) < 0) {} close(f); } }
+			free(j.b); reply_ok(r->fd, "given back"); return;
+		}
+		char *b = slurp(RUN "/torwin.back", NULL); unlink(RUN "/torwin.back");
+		str s = {0}; sadd(&s, "{\"ok\":true,\"open\":%s,\"urls\":", torwin_running() ? "true" : "false");
+		/* (the first list waiting; the others stay for the next ask) */
+		char *nl = b ? strchr(b, '\n') : NULL; if (b && nl && b[0] == '[') { sadd(&s, "%.*s", (int)(nl - b), b); if (nl[1]) write_str(RUN "/torwin.back", nl + 1); } else sadd(&s, "[]");
+		sadd(&s, "}"); free(b); reply_json(r->fd, &s); return;
+	}
+	if (strcmp(what, "open")) { reply_err(r->fd, 404, "unknown Tor window action"); return; }
+	if (!post) { reply_err(r->fd, 405, "use POST"); return; }
+	if (!torwin_running() && torwin_start()) { reply_err(r->fd, 500, "Browse with Tor needs Rudolf's Chromium with its shell, which this computer does not have"); return; }
+	str h = {0}; sadd(&h, "open 0 0 0 0 "); torwin_hash(r->query, "app=browser&tor=1", &h); sadd(&h, "\n");
+	int ok = 0; for (int i = 0; i < 80 && !ok; i++) { int f = open(TORWIN_CTL, O_WRONLY | O_NONBLOCK | O_CLOEXEC); if (f >= 0) { ok = write(f, h.b, h.n) == (ssize_t)h.n; close(f); } if (!ok) usleep(100000); }
+	free(h.b);
+	if (!ok) { reply_err(r->fd, 500, "the Tor window's Chromium did not start"); return; }
+	reply_ok(r->fd, "opened");
+}
 /* ------------------------------------------------------------- printing
  * PDF: the page WordPro builds is printed by a headless Chromium (the one on the disc), running as the
  * desktop user. Printers: rudolf-print talks IPP Everywhere / AirPrint to network printers (no CUPS). */
@@ -4279,6 +4378,7 @@ static void api(struct req *r)
 	if (!strncmp(p, "term/", 5)) { api_term(r, p + 5); return; }
 	if (!strncmp(p, "portal/", 7)) { api_portal(r, p + 7); return; }
 	if (!strncmp(p, "web/", 4)) { api_web(r, p + 4); return; }
+	if (!strncmp(p, "torwin/", 7)) { api_torwin(r, p + 7, !strcmp(r->method, "POST")); return; }   /* (1.5.9, 16.2: Oracle's Tor windows on Standard) */
 	if (!strncmp(p, "sys/", 4)) {
 		const char *w = p + 4; char cmd[700];
 		if (access("/usr/bin/rudolf-update", X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no system updates"); return; }

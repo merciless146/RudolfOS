@@ -265,6 +265,26 @@ oracle_chrome() {
 		--load-extension=$RUF --disable-gpu-watchdog --disk-cache-size=67108864 $PROXY $EXTRA; do echo "$a"; done; } > /run/rudolf/oracle-chrome.t &&
 		chmod 644 /run/rudolf/oracle-chrome.t && mv /run/rudolf/oracle-chrome.t /run/rudolf/oracle-chrome
 }
+# 1.5.9 (docs/plan-1.5.9.md 16.2): Oracle's Tor windows (Browse with Tor): Rudolf's Chromium of their own, through Tor's SOCKS5
+# proxy on 127.0.0.1:9050 (Chromium gives a SOCKS5 proxy the sites' names, so no name is looked up outside Tor, and no name
+# is looked up here at all but the desktop's own address), WebRTC only through the proxy, no extension but Ruffle, the shell
+# installed from its file; its profile is given by whoever starts it (rudolf-native on the native desktop, rudolfd on
+# Standard), in memory, removed when it closes. Written as oracle-chrome (the shell's ID, then the program and its
+# arguments, one a line), for every engine. Without the shell or Chromium: none (Oracle's Tor button says it cannot).
+tor_chrome() {
+	rm -f /run/rudolf/tor-chrome
+	[ ${#SHELLID} = 56 ] && [ -n "$SHELLINST" ] && [ -x /opt/chromium/chrome ] && [ -x /usr/bin/rudolf-launch ] || return 0
+	{ echo "$SHELLID"; for a in /opt/chromium/chrome --class=RudolfTor \
+		--no-first-run --no-default-browser-check --noerrdialogs --disable-infobars \
+		--disable-session-crashed-bubble --disable-translate --password-store=basic \
+		--disable-features=Translate,MediaRouter,DialMediaRouteProvider,OptimizationHints,PrivacySandboxSettings4,Vulkan,WebGPUService,SkiaGraphite,OptimizationGuideOnDeviceModel,FedCm --disable-vulkan-surface \
+		$GLFLAGS --autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream \
+		--enable-features=SharedArrayBuffer,IsolatedWebApps$SHELLFEAT $SHELLINST \
+		--load-extension=$RUF --disable-gpu-watchdog --disk-cache-size=33554432 \
+		--proxy-server=socks5://127.0.0.1:9050 --force-webrtc-ip-handling-policy=disable_non_proxied_udp; do echo "$a"; done
+	  echo "--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1"; } > /run/rudolf/tor-chrome.t &&
+		chmod 644 /run/rudolf/tor-chrome.t && mv /run/rudolf/tor-chrome.t /run/rudolf/tor-chrome
+}
 LOGPOLL=0
 DBG=""
 grep -q 'rudolf.debug=1' $RCMD && DBG="--enable-logging=stderr --v=0 --remote-debugging-port=9222"
@@ -351,6 +371,7 @@ while :; do
 	# 1.5.9: the screen's size as display_up wrote it (W is the watchdog's clock after the first start, so a desktop started
 	# again was given the time as its width)
 	SCW=$W; SCH=$H; [ -s /run/rudolf/screen ] && read SCW SCH < /run/rudolf/screen
+	tor_chrome
 	if [ $ENGINE = native ]; then
 		oracle_chrome
 		su -s /bin/sh rudolf -c "exec /usr/bin/rudolf-native --rudolf-kiosk --size=${SCW}x$SCH $WKSOFT --base=http://127.0.0.1:8080" >>/run/rudolf/native-desktop.log 2>&1 &

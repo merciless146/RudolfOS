@@ -22,7 +22,7 @@ const dlOn=()=>!!(RD&&window.__sys);
 /* (1.5.9, docs/plan-1.5.9.md 12.3c) on the native desktop every app's window is a page of its own (oneapp59.js): only Oracle's
    files what arrives in .incoming, as the one desktop page does on Standard, or two pages took the same file (one said it was
    saved, the other that it stopped) */
-const dlMine=()=>!(typeof ONEAPP!='undefined'&&ONEAPP&&ONEAPP.k!='browser');
+const dlMine=()=>!(typeof ONEAPP!='undefined'&&ONEAPP&&ONEAPP.k!='browser')&&!(typeof torDlSkip=='function'&&torDlSkip());   /* (and while a Tor window is open, its: tor59.js) */
 function dlHost(u){try{return new URL(u).hostname}catch(e){return''}}
 function dlDone(rec,st,why,extra){Object.assign(rec,{st,why:why||''},extra||{});const i=DLN.pend.indexOf(rec);if(i>=0)DLN.pend.splice(i,1);saveDl();try{window.__dlHook&&window.__dlHook()}catch(e){}
  const ok=st=='saved';

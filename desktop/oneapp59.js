@@ -158,6 +158,11 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
     New private tab, its window this page's main one), Settings at a page (#app=settings&page=disp), a pinned app pinned or
     unpinned (#app=do-pin&k=KEY&on=0|1), the sound muted or not (#app=do-mute) */
  {const q=ONEAPP.q,j=q.get('jump'),sp=q.get('page');
+  /* (1.5.9, plan Part 16) a Tor window with these tabs (#app=browser&tor=1&url=...&url=...), or a normal window given back a Tor
+     window's tabs (untor=1): its first window this page's main one, the other tabs in it */
+  if(ONEAPP.k=='browser'&&(q.get('tor')=='1'||q.get('untor')=='1')&&typeof browser=='function'){OA.want=1;const L=q.getAll('url').filter(u=>/^(https?:\/\/|about:|file:\/\/\/)/i.test(u)).slice(0,12),hm=u=>/^about:home/.test(u)?null:u;
+   try{browser(L.length?hm(L[0]):null,q.get('tor')=='1'?{priv:1,tor:1}:{});L.slice(1).forEach(u=>{if(OA.main&&OA.main.oNewTab)OA.main.oNewTab(hm(u))})}catch(e){console.warn(e)}
+   setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}
   if(j&&typeof APP_JUMPS=='object'&&APP_JUMPS[ONEAPP.k]){const it=APP_JUMPS[ONEAPP.k]().find(x=>x[0]==j);if(it){OA.want=1;try{it[1]()}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}}
   /* (1.5.9, 12.3c) Oracle's new window at an address, or a private one at an address (#app=browser&url=ADDRESS[&priv=1]) */
   if(ONEAPP.k=='browser'&&q.get('url')&&typeof browser=='function'){OA.want=1;const u=q.get('url');try{if(q.get('priv')=='1'&&typeof oraclePrivate=='function')oraclePrivate(u);else browser(u)}catch(e){console.warn(e)}

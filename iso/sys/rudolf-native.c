@@ -447,7 +447,7 @@ static void nt_note(JSCValue *v);
 static void open_with(const char *file, const char *key);
 /* (1.5.9, 12.3c) Oracle's Chromium and the WebKit windows: the files one (rudolfd's mirror), the indicator of the keys the native
    desktop's, Oracle's new windows at an address or private */
-static GPid OR_PID; static int OR_RUN; static char OR_CTL[300];
+static GPid OR_PID; static int OR_RUN; static char OR_CTL[300]; static const char *TOR_CTL_P;   /* (Part 16: the Tor windows' rudolf-launch FIFO, once it runs) */
 static void oracle_tell(const char *line);
 static void mirror_to_webkit(const char *id);
 static void osd_show(const char *k, const char *lv, const char *label, const char *n);
@@ -766,7 +766,7 @@ static void wm_close(Client *c)
 	   "Download is in progress: exit Chromium anyway?", which Standard never shows); rudolf-launch finds the page by the window's place.
 	   A second ✕ after 5 s closes it anyway */
 	gint64 now = g_get_monotonic_time();
-	if (c->ak[0] && !c->trans && OR_RUN && (!c->oask || now - c->oask < 5000000)) { if (c->oask) return; c->oask = now;
+	if (c->ak[0] && !c->trans && (OR_RUN || (TOR_CTL_P && TOR_CTL_P[0])) && (!c->oask || now - c->oask < 5000000)) { if (c->oask) return; c->oask = now;
 		int x = 0, y = 0; Window ch; XWindowAttributes wa; if (XTranslateCoordinates(DPY, c->w, ROOT, 0, 0, &x, &y, &ch) && XGetWindowAttributes(DPY, c->w, &wa)) {
 			char l[96]; snprintf(l, sizeof l, "close %d %d %d %d\n", x, y, wa.width, wa.height); oracle_tell(l); return; } }
 	if (has_proto(c->w, A_DEL)) send_proto(c->w, A_DEL, CurrentTime); else XKillClient(DPY, c->w);
@@ -794,6 +794,7 @@ static gboolean oracle_busy_end(gpointer d) { (void)d; OR_BUSY = 0; oracle_busy(
    rudolfNativeOracle): "msg JSON" lines, as the WebKit windows' rudolfNative messages. Another app asked for: a window of
    its own (Settings at a page: Settings' own window there) */
 static void tb_settings(const char *page); static void tb_jump(const char *k, const char *label);
+static int tor_open(const char *urls); static void tor_back(const char *urls);   /* (1.5.9, Part 16: Oracle's Tor windows) */
 static void oracle_hide(int x, int y, int w, int h);
 static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 {
@@ -813,6 +814,7 @@ static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 		else if (!strcmp(op, "mirror") && v) { char id[64] = ""; jstr(v, "id", id, sizeof id); if (id_ok(id)) mirror_to_webkit(id); }   /* (the files Oracle's page saved: the app windows take them) */
 		else if (!strcmp(op, "osd") && v) { char k[16] = "", lv[8] = "", lb[256] = "", n[8] = ""; jstr(v, "k", k, sizeof k); jstr(v, "lv", lv, sizeof lv); jstr(v, "label", lb, sizeof lb); jstr(v, "n", n, sizeof n); osd_show(k, lv, lb, n); }
 		else if (!strcmp(op, "openwith") && v) { char key[48] = ""; jstr(v, "key", key, sizeof key); open_with(file, key); }   /* (Open with: the app's own window) */
+		else if ((!strcmp(op, "tor") || !strcmp(op, "untor")) && v && USER_ID[0] && !LOCKED) { static char us[13 * 2048]; jstr(v, "url", us, sizeof us); if (op[0] == 't') tor_open(us); else tor_back(us); }   /* (Part 16: a Tor window with these tabs; and back) */
 		else if (!strcmp(op, "toast") && v) toast_addf(NULL, sid, fget_jv, v);   /* (the page's notification: the native shell's pop-up) */
 		else if (!strcmp(op, "note") && v) nt_notef(fget_jv, v);   /* (and in the centre, counted, at once) */
 		jfree(v); }
@@ -821,15 +823,17 @@ static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 /* a toast's click, for Oracle's page: its notification's own action, run in that page (rudolf-launch: act SESSION ID) */
 static void oracle_act(const char *sid, const char *nid)
 {
-	if (!OR_RUN || strspn(nid, "0123456789.") != strlen(nid) || !nid[0] || strspn(sid, "0123456789ABCDEFabcdef") != strlen(sid)) return;
+	if ((!OR_RUN && !(TOR_CTL_P && TOR_CTL_P[0])) || strspn(nid, "0123456789.") != strlen(nid) || !nid[0] || strspn(sid, "0123456789ABCDEFabcdef") != strlen(sid)) return;
 	char line[160]; snprintf(line, sizeof line, "act %s %s\n", sid, nid);
 	int f = open(OR_CTL, O_WRONLY | O_NONBLOCK | O_CLOEXEC); if (f >= 0) { if (write(f, line, strlen(line)) < 0) {} close(f); }
+	if (TOR_CTL_P && TOR_CTL_P[0]) { f = open(TOR_CTL_P, O_WRONLY | O_NONBLOCK | O_CLOEXEC); if (f >= 0) { if (write(f, line, strlen(line)) < 0) {} close(f); } }   /* (a Tor window's page: Part 16) */
 }
 /* a line for rudolf-launch (its FIFO): what Oracle's pages are to do */
 static void oracle_tell(const char *line)
 {
-	if (!OR_RUN) return;
-	int f = open(OR_CTL, O_WRONLY | O_NONBLOCK | O_CLOEXEC); if (f >= 0) { if (write(f, line, strlen(line)) < 0) {} close(f); }
+	int f = OR_RUN ? open(OR_CTL, O_WRONLY | O_NONBLOCK | O_CLOEXEC) : -1; if (f >= 0) { if (write(f, line, strlen(line)) < 0) {} close(f); }
+	/* (and the Tor windows' rudolf-launch: their pages and windows, Part 16) */
+	f = TOR_CTL_P && TOR_CTL_P[0] ? open(TOR_CTL_P, O_WRONLY | O_NONBLOCK | O_CLOEXEC) : -1; if (f >= 0) { if (write(f, line, strlen(line)) < 0) {} close(f); }
 }
 /* (12.3c) the files Oracle's page saved (rudolfd's mirror has them): every app window's page takes them into WebKit's storage */
 static void mirror_to_webkit(const char *id)
@@ -882,6 +886,63 @@ static int oracle_open(const char *file, const char *extra)
 	oracle_busy(1); OR_BUSY = g_timeout_add_seconds(20, oracle_busy_end, NULL);
 	return 1;
 }
+/* ------------------------------------------------------------------ Oracle's Tor windows (1.5.9, docs/plan-1.5.9.md Part 16)
+   A Tor window is Rudolf's Chromium of its own going through Tor: started here as Oracle's (rudolf-launch --oracle) with what
+   the session writes in /run/rudolf/tor-chrome (the shell's ID, then the program and its arguments: Tor's SOCKS5 proxy, so
+   no name is looked up outside Tor, WebRTC only through it), a profile of its own in the user's runtime folder (memory),
+   made fresh each time and removed when Chromium goes; each window the shell at #app=browser&tor=1&url=...&url=..., which
+   the page opens as Oracle alone, private. Framed as Oracle (RudolfTor, as RudolfOracle); what its pages tell the native
+   desktop is read as Oracle's (oracle_msgs). Oracle's page asks with op "tor" (its tabs, one a line), and a Tor window gives
+   its tabs back to a normal Oracle window with op "untor". RUDOLF_TOR_CMD changes the file (tests). */
+static GPid TOR_PID; static int TOR_RUN; static char TOR_CTL[300], TOR_PROF[300];
+static void tor_rmprof(void) { if (!TOR_PROF[0]) return; gchar *a[] = { "rm", "-rf", TOR_PROF, NULL }; g_spawn_sync(NULL, a, NULL, G_SPAWN_SEARCH_PATH | G_SPAWN_STDOUT_TO_DEV_NULL | G_SPAWN_STDERR_TO_DEV_NULL, NULL, NULL, NULL, NULL, NULL, NULL); }
+static void tor_exited(GPid p, gint st, gpointer d) { (void)d; (void)st; g_spawn_close_pid(p); if (p == TOR_PID) { TOR_RUN = 0; TOR_PID = 0; tor_rmprof(); unlink(TOR_CTL); state_write(); } }
+/* the address's own tabs: each http(s), about: or file:/// address, escaped, at most 12 */
+static GString *tor_hash(const char *base, const char *urls)
+{
+	GString *h = g_string_new(base); int n = 0; gchar **L = g_strsplit(urls ? urls : "", "\n", 13);
+	for (int i = 0; L[i] && n < 12; i++) { const char *u = L[i]; if (strlen(u) > 2000 || !(!strncmp(u, "http://", 7) || !strncmp(u, "https://", 8) || !strncmp(u, "about:", 6) || !strncmp(u, "file:///", 8))) continue;
+		char *e = g_uri_escape_string(u, NULL, FALSE); g_string_append_printf(h, "&url=%s", e); g_free(e); n++; }
+	g_strfreev(L); return h;
+}
+static int tor_open(const char *urls)
+{
+	if (!USER_ID[0] || LOCKED) return 0;
+	const char *cf = getenv("RUDOLF_TOR_CMD"); if (!cf) cf = "/run/rudolf/tor-chrome";
+	const char *ln = getenv("RUDOLF_LAUNCH"); if (!ln) ln = "/usr/bin/rudolf-launch";
+	if (!TOR_RUN) {
+		gchar *t = NULL; if (!g_file_get_contents(cf, &t, NULL, NULL) || access(ln, X_OK)) { g_free(t); fprintf(stderr, "rudolf-native: Tor window: no Chromium with the shell (%s)\n", cf);
+			toast_text("The Tor window could not open", "Browse with Tor needs Rudolf's Chromium with its shell, which this computer does not have.", 8000); return 0; }
+		gchar **L = g_strsplit(t, "\n", 0); g_free(t); int n = 0; while (L[n]) n++;
+		if (n < 2 || strlen(L[0]) != 56 || access(L[1], X_OK)) { g_strfreev(L); fprintf(stderr, "rudolf-native: Tor window: %s names no Chromium or shell\n", cf); return 0; }
+		snprintf(TOR_CTL, sizeof TOR_CTL, "%s/rudolf-tor.ctl", g_get_user_runtime_dir()); unlink(TOR_CTL);
+		snprintf(TOR_PROF, sizeof TOR_PROF, "%s/rudolf-tor-profile", g_get_user_runtime_dir()); tor_rmprof();
+		if (mkfifo(TOR_CTL, 0600) || mkdir(TOR_PROF, 0700)) { g_strfreev(L); fprintf(stderr, "rudolf-native: Tor window: %s\n", strerror(errno)); return 0; }
+		/* (WebRTC only through the proxy in its tabs too: the command line's --force-webrtc-ip-handling-policy reaches Chromium's own
+		   pages, not the shell's Controlled Frames, which read the profile's own setting) */
+		{ char *dd = g_build_filename(TOR_PROF, "Default", NULL), *pf = g_build_filename(dd, "Preferences", NULL); mkdir(dd, 0700);
+		  g_file_set_contents(pf, "{\"webrtc\":{\"ip_handling_policy\":\"disable_non_proxied_udp\",\"multiple_routes_enabled\":false,\"nonproxied_udp_enabled\":false}}", -1, NULL); g_free(dd); g_free(pf); }
+		char *pa = g_strdup_printf("--user-data-dir=%s", TOR_PROF);
+		GPtrArray *a = g_ptr_array_new(); g_ptr_array_add(a, (gpointer)ln); g_ptr_array_add(a, "--oracle"); g_ptr_array_add(a, TOR_CTL); g_ptr_array_add(a, L[0]);
+		for (int i = 1; i < n; i++) if (L[i][0]) g_ptr_array_add(a, L[i]);
+		g_ptr_array_add(a, pa); g_ptr_array_add(a, NULL); GError *er = NULL;
+		int out = -1, ok = g_spawn_async_with_pipes(NULL, (gchar **)a->pdata, NULL, G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL, &TOR_PID, NULL, &out, NULL, &er);
+		if (ok && out >= 0) { GIOChannel *ch = g_io_channel_unix_new(out); g_io_channel_set_close_on_unref(ch, TRUE); g_io_add_watch(ch, G_IO_IN | G_IO_HUP | G_IO_ERR, oracle_msgs, NULL); g_io_channel_unref(ch); }
+		g_ptr_array_free(a, TRUE); g_strfreev(L); g_free(pa);
+		if (!ok) { fprintf(stderr, "rudolf-native: Tor window: %s\n", er ? er->message : "?"); if (er) g_error_free(er); unlink(TOR_CTL); tor_rmprof(); return 0; }
+		TOR_RUN = 1; TOR_CTL_P = TOR_CTL; g_child_watch_add(TOR_PID, tor_exited, NULL);
+	}
+	int n = g_list_length(CLIENTS) % 8, w = SW * 7 / 10, h = work_h() * 8 / 10; if (w < 640) w = SW; if (h < 400) h = work_h();
+	GString *hs = tor_hash("app=browser&tor=1", urls);
+	char *line = g_strdup_printf("open %d %d %d %d %s\n", w, h, 40 + n * 28, work_top() + 20 + n * 28, hs->str); g_string_free(hs, TRUE);
+	int ok = 0; for (int i = 0; i < 50 && !ok; i++) { int f = open(TOR_CTL, O_WRONLY | O_NONBLOCK | O_CLOEXEC); if (f >= 0) { ok = write(f, line, strlen(line)) == (ssize_t)strlen(line); close(f); } if (!ok) g_usleep(100000); }
+	g_free(line);
+	if (!ok) { fprintf(stderr, "rudolf-native: Tor window: Chromium did not take the window\n"); return 0; }
+	oracle_busy(1); OR_BUSY = g_timeout_add_seconds(20, oracle_busy_end, NULL);
+	return 1;
+}
+/* a Tor window's tabs, back in a normal Oracle window */
+static void tor_back(const char *urls) { GString *hs = tor_hash("&untor=1", urls); app_open_ex("browser", NULL, hs->str, 0); g_string_free(hs, TRUE); }
 /* (12.3c step 5) Oracle's keys, as on Standard. Chromium acts on Ctrl+W, Ctrl+F4, Ctrl+T, Ctrl+N, Ctrl+Q and Alt+F4 before a page
    sees them (closing Oracle's window, or quitting Chromium with every Oracle window on Ctrl+Q); on Standard rudolf-display hands
    them to the desktop's Chromium window (class RudolfDesktop) as Ctrl+F20..F23 and Alt+F20, which the page and Oracle's real
@@ -926,7 +987,7 @@ static int oracle_key(XKeyEvent *e)
 static void oracle_client(Client *c, XWindowAttributes *wa)
 {
 	XClassHint ch = {0}; if (!XGetClassHint(DPY, c->w, &ch)) return;
-	int is = ch.res_class && !strcmp(ch.res_class, "RudolfOracle"); if (ch.res_name) XFree(ch.res_name); if (ch.res_class) XFree(ch.res_class);
+	int is = ch.res_class && (!strcmp(ch.res_class, "RudolfOracle") || !strcmp(ch.res_class, "RudolfTor"));   /* (and Oracle's Tor windows: Part 16) */ if (ch.res_name) XFree(ch.res_name); if (ch.res_class) XFree(ch.res_class);
 	if (!is || c->trans) return;
 	snprintf(c->ak, sizeof c->ak, "browser");
 	const char *in = getenv("RUDOLF_ORACLE_INSET"); int t = 28, l = 4, r = 4, b = 4; if (in) sscanf(in, "%d %d %d %d", &t, &l, &r, &b);
@@ -4377,7 +4438,7 @@ static void state_write(void)
 		if (FLK == FL_NC) { g_string_append_printf(s, "flync %d %d", NNT, S.dnd); for (int i = 0; i < NNT; i++) g_string_append_printf(s, "|%s", NT[i].t); g_string_append_c(s, '\n'); }
 		for (int i = 0; i < NFLB; i++) g_string_append_printf(s, "flybtn %s %d %d\n", FLBK[i], (int)lround((FLB[i].x + FLB[i].w / 2) * Z), (int)lround((FLB[i].y + FLB[i].h / 2) * Z)); }
 	else g_string_append(s, "fly -\n");
-	g_string_append_printf(s, "oracle %d %d\n", OR_RUN, (int)OR_PID);   /* (12.3c: Oracle's Chromium running, rudolf-launch's process) */
+	g_string_append_printf(s, "oracle %d %d\ntor %d %d\n", OR_RUN, (int)OR_PID, TOR_RUN, (int)TOR_PID);   /* (12.3c: Oracle's Chromium running, rudolf-launch's process) */
 	g_string_append_printf(s, "devlink %d %d\ndlask %s\n", DL_ON && DLBAN && gtk_widget_get_visible(DLBAN), TOPRES, DLASK && gtk_widget_get_visible(DLASK) ? DL_PEND : "-");
 	char tmp[600]; snprintf(tmp, sizeof tmp, "%s.tmp", STATEF); g_file_set_contents(tmp, s->str, s->len, NULL); rename(tmp, STATEF); g_string_free(s, TRUE);
 }
