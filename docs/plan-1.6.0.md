@@ -908,6 +908,50 @@ the mark is cleared. The official beta address can no longer be typed in as the 
 its own address (refused while it is on). A computer already on the beta address shows the box ticked. Test:
 qt/host/beta60_t.sh 12. Manual check: on the HP desktop, untick it and update: 1.5.9 comes next.
 
+## Cellular and ARM64: QEMU and host tests first, hardware after (owner, 2026-11-15)
+Asked for: "Set up the plan to cover whatever can be done in QEMU first. Everything that requires hardware testing can
+come afterwards in that plan." This replaces the order of Steps 1 to 6 below for Parts 1 to 7. Each stage is one or
+more PRs, each with its tests; none is published in a beta before the owner merges it. The first 1.6.0 beta is built
+without this work (it waits only for the QEMU security checks of Part 15).
+
+**Stage A: built and proven without hardware (host tests, browser tests and QEMU)**
+1. **Modems (Part 1):** ModemManager with QMI, MBIM, QRTR and AT in the system layer (the sizes printed in the build);
+   rudolfd's `mobile/*` reading its D-Bus API; the FCC-unlock offer and the partly supported modules' notes in
+   Settings. Tested against a stand-in ModemManager on the session's own D-Bus (a modem with a SIM, locked, unlocked,
+   one that disappears) and, in QEMU, ModemManager itself starting with udev and no modem (nothing runs, nothing
+   logged as an error).
+2. **SIM and network (Part 2):** Settings › Mobile network: the PIN and PUK (administrators, three tries, the PUK's
+   warning), the APN from mobile-broadband-provider-info by the SIM's operator code (letters' case kept: docs/plan-
+   1.6.1.md Part 7) or by hand, roaming off by default, the network type, airplane mode in quick settings. Host and
+   browser tests against the stand-in.
+3. **The connection (Part 3):** connect and disconnect, connect automatically, the priorities (cable, Wi-Fi, cellular)
+   and the failover within seconds, the firewall on the cellular interface, IPv6-only with clat. Tested in QEMU with a
+   stand-in cellular interface (a veth or usbnet-like link given the stand-in modem's addresses) beside a virtual
+   Wi-Fi link (mac80211_hwsim) that is taken down and brought back: traffic moves to cellular and back, the
+   notification, the firewall's rules on it.
+4. **Data and money (Part 4):** metered by default, the month's data from the interface counters across a restart (in
+   QEMU), the limit's warning at 80 % and data off at 100 %, no automatic update downloads on cellular. Host and
+   browser tests.
+5. **Signal and status (Part 5):** the taskbar's bars, type and operator, the signal's details in Settings, modem
+   events in System health, the self-test's modem line, all from the stand-in's changing values.
+6. **Messages (Part 6):** the Messages app (conversations, read and send, delivery reports, multi-part and Unicode,
+   notifications, the locked desktop showing only the sender), kept in the account's folder and the encrypted folder.
+   Tested with the stand-in's SMS interface (incoming and sent messages) and in the browser.
+7. **ARM64 (Part 7):** the ARM64 build with Parts 1 to 6, its own update lists (`beta/arm64/`, `stable/arm64/`) and a
+   UEFI disc image, started and checked in QEMU aarch64 (AAVMF): start-up, the desktop, an update between two test
+   releases, the stand-in modem's Settings pages. Not published until stage B's ARM64 computer.
+
+**Stage B: on hardware, with the owner (after stage A is merged and in a beta)**
+1. The USB cellular stick (borrowed from the HP desktop's user) and the MiFi 7730L on the Vivobook: the modem found
+   (Settings › Network › Cellular modems, no "Invalid rule match" in /run/rudolf/modem.log, the self-test's modem
+   line), the SIM's PIN, the APN filled in, connected, Wi-Fi failover and back, data counted, sleep and wake,
+   unplugged and plugged in again. With a prepaid T-Mobile-network SIM (Mint or Tello: docs/plan-1.6.1.md Part 7).
+2. Messages to and from a real phone through the stick or the MiFi.
+3. The FCC-unlock path on a laptop with a WWAN card (a used ThinkPad with a Fibocom L850-GL or Quectel EM05-G: the
+   Vivobook has no slot).
+4. One ARM64 computer that starts with UEFI, then the first ARM64 release published.
+5. The release checks below that need devices ("On real hardware over the devlink").
+
 ## Hardware to test with
 - **The MiFi 7730L** (USB tethering and Wi-Fi), with an active SIM (or a prepaid data SIM). Found on 2026-11-14: its
   USB network driver and Share this connection with it as the uplink are back in 1.5.9 (docs/plan-1.5.9.md); here it
@@ -931,7 +975,7 @@ qt/host/beta60_t.sh 12. Manual check: on the HP desktop, untick it and update: 1
 ## Steps
 0. Part 9 (udev instead of mdev) first, so the modem work stands on it; then Part 10 (a Linux user for each account)
    and Part 11 (elogind and polkit), which builds on Part 10's sessions; Part 14 (the keyring for Linux apps) with them.
-1. Parts 1 and 2 on the USB stick and the MiFi (1.5.9's ModemManager): modem found, SIM PIN, APN, connect. First
+1. (Order changed on 2026-11-15: see "Cellular and ARM64: QEMU and host tests first" above; steps 1 to 6 are now its stages A and B.) Parts 1 and 2 on the USB stick and the MiFi (1.5.9's ModemManager): modem found, SIM PIN, APN, connect. First
    (moved from 1.5.9, where neither was available): the stick shows in Settings › Network › Cellular modems with
    ModemManager run without udev (#280), and /run/rudolf/modem.log has no "Invalid rule match"; the self-test's
    modem line passes. (The stick belongs to the HP desktop's user: it is borrowed for these checks.)
