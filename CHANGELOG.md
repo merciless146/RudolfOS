@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- The native desktop is the desktop a new installation starts with (it uses less memory and starts faster); a computer that is updated keeps its desktop engine, and Settings offers the native desktop once. Settings › System health › Desktop engine still has Standard and Lite, and Standard is used if Native does not start.
 - Devices are now set up by udev, as on other Linux distributions, so Linux apps, Steam and the modem service find hardware the usual way; mdev stays as a fallback if udev cannot start.
 - Settings › Privacy › Saved passwords for apps: see which apps keep sign-ins in this account's keyring and remove them; Flatpak apps can now keep theirs too (the Secret portal).
 - New: App Store › Rudolf OS Library says when its list of apps was last checked (and when the Library published it), with a Refresh button at the end of its first line: the list was kept until it stopped working, so a working list days old never showed new apps or updates (Ember Reach on the Vivobook, 2026-11-14)
