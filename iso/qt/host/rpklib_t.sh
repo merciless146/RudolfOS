@@ -56,6 +56,20 @@ ok "13. health log: the refused program and the refused replacement" $([ "$(has 
 ok "14. health log: nothing for the system's own package" $(has "$H" "sysapp 1.0" | tr 1 x | tr 0 1 | tr x 0) "$H"
 $T/rpk remove rudolf-quake >/dev/null 2>&1; H=$(cat $T/hlog)
 ok "15. health log: the Library removal" $(has "$H" "library removed rudolf-quake 1.1.0, from the Rudolf OS Library") "$H"
+# 1.6.0: the Library published a new version (same file name) after this computer kept the list: the download no
+# longer matches the kept list, so the list is fetched again and the new version installed (Ember Reach 0.4.0 on the
+# Vivobook, 2026-11-15). A web source here (a local server), as the Library is.
+mkdir -p $T/web; mk rudolf-ember 0.3.11 addon lib $T/web/rudolf-ember.rpk; python3 $TOOL index $T/web --key $T/lib/rpk-signing.key --serial 10 >/dev/null
+(cd $T/web && exec python3 -m http.server 8461 --bind 127.0.0.1 >/dev/null 2>&1) & WEB=$!
+for i in 1 2 3 4 5 6 7 8 9 10; do python3 -c 'import urllib.request;urllib.request.urlopen("http://127.0.0.1:8461/index.txt")' 2>/dev/null && break; sleep 0.3; done
+printf 'http://127.0.0.1:8461\n' > $T/sources; $T/rpk refresh >/dev/null 2>&1
+mk rudolf-ember 0.4.0 addon lib $T/web/rudolf-ember.rpk; python3 $TOOL index $T/web --key $T/lib/rpk-signing.key --serial 11 >/dev/null
+o=$($T/rpk install rudolf-ember 2>&1); r=$?
+ok "16. a new version published after the list was kept: the list is fetched again and the new version installed" $([ $r = 0 ] && grep -q "rudolf-ember 0.4.0" $T/mnt/rudolf-ember/www/hello.txt && [ "$(has "$o" "checking the list again")" = 1 ] && echo 1 || echo 0) "$r $o"
+$T/rpk remove rudolf-ember >/dev/null 2>&1; head -c 5000 /dev/urandom > $T/web/rudolf-ember.rpk
+o=$($T/rpk install rudolf-ember 2>&1); r=$?
+ok "17. ...a download that matches no signed list is still refused (one more try only, nothing installed)" $([ $r != 0 ] && [ ! -e $T/root/store/rudolf-ember.rpk ] && [ "$(echo "$o" | grep -c 'does not match')" = 2 ] && echo 1 || echo 0) "$r $o"
+kill $WEB 2>/dev/null
 # rudolf-update never reads library-keys
 ok "10. rudolf-update reads only rpk-keys (never library-keys)" $(grep -q "library-keys" $I/sys/rudolf-update.c && echo 0 || echo 1)
 echo "$((N-F))/$N passed"; [ $F = 0 ]

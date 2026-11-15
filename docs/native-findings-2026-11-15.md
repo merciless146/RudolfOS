@@ -108,3 +108,71 @@ These came from running both engines against one stand-in rudolfd:
 - No WebKitGTK headers, xdotool, faketime, PulseAudio or GStreamer tools at first. All were installed with apt for this run.
 - No D-Bus session bus. WebKit warned once: "Unable to get session D-Bus address".
 - No GPU (software drawing only), no sound card (a null sink) and no camera.
+
+## Second run (2026-11-15, a later unattended session): further findings
+
+A second scheduled session ran the same task in parallel, starting before the PR above was merged. It used
+`same_t.sh`'s own machinery: a scratch copy of same_t.js, not committed, with these added cases:
+
+- every app's window, and eight apps in dark mode
+- all 18 Settings pages, in light mode and dark mode
+- window handling, right-click menus inside apps, and the file and print dialogs
+- the Media Player with generated WebM, MP4, Ogg and WAV media, recorded through a PulseAudio null sink
+- the moving backgrounds, the screen savers and the sign-in screen
+- night light and touch mode
+
+Steps inside apps ran on Native through `RUDOLF_NATIVE_TEST_EVAL`, and clicks were real X input at Standard's
+coordinates. Standard was run **without Playwright's `--hide-scrollbars`**, so it shows the scrollbars Rudolf's
+Chromium shows.
+
+It saw again, independently, findings N1 (black full-screen video), N2 (the file dialog cut off: also Save as), N4
+(Report a problem in a "Rudolf OS" window; Print's Save as PDF inside Notepad's window), N5, N6, N7, N8, N11, N12 and
+N16. The findings below are the ones the first run does not list.
+
+| # | Area | Steps | Standard | Native | V/A | Severity | Log video problems (Native / Standard) | Pictures |
+|---|---|---|---|---|---|---|---|---|
+| N20 | Log video problems: the log is emptied | Switch on, play a video, then open any other app window | (Standard has no such log, N18) | Each app window's WebKitWebProcess opens `GST_DEBUG_FILE` itself, and GStreamer opens that file for writing (emptying it) unless its name starts with `+`. The session sets `GST_DEBUG_FILE=/run/rudolf/webkit-video.log` (no `+`), so every new app window empties the log. In this run it held 90 lines while the WebM played, and was 0 bytes at the end of the run. A video's warnings are gone as soon as another window opens, before anyone reads the report. | — | breaks (the switch loses what it is for) | (that is the finding) / none | (none) |
+| N21 | Right-click menus inside apps | File Explorer: right-click a folder. Notepad: type, then right-click in the middle of the text. | The page's menu at the pointer. It may extend past the window's edge and keeps all its rows (Explorer's ends with Properties). | The menu is kept inside the app's window (its page's viewport). Explorer's moves up and to the right, and is cut off at the window's bottom: Properties and the rows above it are missing. Notepad's opens at the top of the window, not at the pointer, with a blue focus ring. (The first run saw Notepad's menu match: a click near the top of the text leaves room below.) | V | breaks (Explorer's last rows cannot be reached) | none / none | run2-explorer-right-click.png, run2-notepad-right-click.png |
+| N22 | Scrollbars in the apps | Settings (any long page), File Explorer's left pane, WordPro (the page and Notey's bubble), Help, the start menu's list | Chromium's classic scrollbar: arrows and a grey thumb, dark on dark pages. It takes about 15 px of width. | None while not scrolling (GTK's overlay scrollbars). The content is wider, so lines wrap differently: "Errors & invalid input" and "Saves & notifications" in Volume Controls take one line, not two, and the rows below move. "Open websites as real browser tabs…" wraps differently in Settings › Oracle. WordPro's page is centred 8 px further right. | V | looks wrong | none / none | run2-scrollbars-wordpro.png, run2-settings-volume-sliders.png |
+| N23 | The harness hides N22 | `iso/qt/native/same_t.js` | Playwright starts Chromium with `--hide-scrollbars` by default, so same_t.sh's Standard pictures have no scrollbars. Rudolf's Chromium shows them (no such flag in the session). | — | — | minor (the test cannot see N22: `chromium.launch({ignoreDefaultArgs: ['--hide-scrollbars']})` would make it see them) | — | (none) |
+| N24 | Settings › Display Properties | Open Settings (it opens at Display Properties) | The background tiles at the page's height | Each picture tile is 4-5 px taller, so everything below moves down: 11.8 % of the window differs (10.2 % in dark mode, the same with another accent colour) | V | looks wrong | none / none | run2-settings-display-tiles.png |
+| N25 | Text boxes the page does not style | Help's "Search help", Oracle's search box, the Media Player's URL box | A 1 px dark-grey border with square corners, and a grey placeholder | GTK's entry: a light grey, rounded border and a paler placeholder | V | looks wrong | none / none | run2-help-text-input.png |
+| N26 | Check boxes | Settings (Volume, Mouse, System health, Display), light and dark | Chromium's check box; dark grey in dark mode | A different blue box and tick, 1-2 px higher; white boxes in dark mode | V | minor | none / none | run2-settings-volume-sliders.png, run2-dark-system-health.png |
+| N27 | Title bars in dark mode | Any app with dark mode on (File Explorer, Settings, Task Manager, WordPro, Media Player, Prompt, App Store, Calendar) | A bold ✕; the frame's 1 px edge dark | A thinner ✕, and a light (white-ish) edge along the frame's top and right. 3.2-3.5 % of the title bar differs in every dark case (0.2-0.4 % in light mode). | V | looks wrong | none / none | run2-dark-title-bar.png (3× enlarged) |
+| N28 | GPU Lab | GPU Lab › Graphics info | ANGLE (SwiftShader), Vendor Google, "Acceleration: Software rendering (no graphics card in use) — 3D will be slow" | Renderer "Apple GPU", Vendor "Apple Inc.", **"Acceleration: Hardware (graphics card)"**, although Native ran with `--draw=soft`. This is the same masked string as N8, but here it also tells the user the wrong thing about speed. | V | looks wrong | none / none | run2-gpu-lab-renderer.png |
+| N29 | Video frame callbacks | Play test.webm and count `video.requestVideoFrameCallback` calls | 20, 55 and 90 calls after 1, 2 and 3 s | 0 calls: the callback never fires, although the video plays. `hwcheck30.js` counts a camera's frames this way, so the hardware check's camera frame rate would read 0 on Native. | — | looks wrong (the hardware check) | Native: the same GStreamer lines as any play (42-43 "invalid colorimetry, using default" / "Need to specify a color matrix when using YUV format (I420)" per video, 2-3 "Got underflow", 2 "Failed to remove temporary file") / none | (none) |
+| N30 | Start menu's search box | Click Start | A grey border; a scrollbar beside the list | A blue focus ring round the search box; no scrollbar (N22) | V | minor | none / none | (none) |
+| N31 | Oracle's WebKit stand-in (host only, as N17) | Open Oracle; press Ctrl+T | The page's search box has the focus; Ctrl+T leaves 1 tab | The address bar has the focus (blue ring); Ctrl+T opens a second tab | V | minor (Ctrl+T on Standard may be Chromium's own key, which Playwright does not pass to the page: a Vivobook check) | none / none | (none) |
+| N32 | Desktop sounds from app windows | Media Player › URL… › Add, recorded from the null sink | A short 1.3 kHz UI sound before the tone | Not heard. The recording may have started late, so this is unconfirmed: a Vivobook check. | A | minor (unconfirmed) | none / none | (none) |
+
+**Known differences, still there** (Part 12, items 9 and 10):
+
+- **Night light:** Standard tints the whole screen (desktop, taskbar and windows). Native tints only the inside of
+  the app's window. See run2-night-light.png.
+- **Touch mode:** Standard's title bars get taller. Native's stay as they are and only the page inside changes. See
+  run2-touch-mode.png.
+
+**Second run's counts:** 13 findings not in the first run (2 break, 6 look wrong, 5 minor), plus the two known ones
+above. With the first run's 19 that makes **32 findings: 5 break, 15 look wrong, 12 minor**.
+
+**What matched in the second run:**
+
+- Sound: WebM and MP4 at 440 Hz; Ogg and WAV at 880 Hz. Level -25.8 to -26.1 dBFS on both engines, at the same
+  volume. On Native, under 2 % of the recording was anything other than the tone, with no gaps.
+- In-window video: a frame paused at 2.0 s is the same picture on both engines.
+- Window handling, each within 0.1-0.8 %: maximise, restore, moving, resizing by the corner, minimise and back from
+  the taskbar, a title-bar double-click, typing and Ctrl+A.
+- The screen savers: rudolf, rain, mystify, bubbles, aurora, fireworks, clock and stars.
+- The sign-in screen with a wrong password (0.21 %), and in dark mode.
+- 34 apps' first windows within 2 %. Only Settings (N24), WordPro (N22), GPU Lab (N28), Help (N22, N25) and WOS
+  Galaxy Map (N6) were over.
+- The same JavaScript answers on both engines for every Settings page.
+- The harness:
+  - `same_t.sh` 117/117
+  - flybeh 23/23, keybeh 21/21, qsbeh 15/15, savbeh 7/7, tbbeh 10/10, toastbeh 9/9, wgbeh 12/12, wsbeh 11/11
+  - `native59_t.sh` 70/70. Test 21 passed this time, so N19's failure comes and goes.
+  - `wmnative59_t.sh` 3/3, `videolog60_t.sh` 9/9 and `oneapp59_t.js` 42/42.
+  - `oracle_native_t.sh` skipped: the host has no `xclip` or `ip`.
+
+**Not compared in the second run:** Sound Recorder and Camera. Playwright's Chromium hung on `getUserMedia` at launch
+(also with fake devices). The Vivobook checks listed above stand.

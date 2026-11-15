@@ -379,6 +379,35 @@ static int cmd_speedtest(void)
 	printf("bytes %lld\nms %lld\n", want, (long long)((b.tv_sec - a.tv_sec) * 1000 + (b.tv_nsec - a.tv_nsec) / 1000000));
 	return 0;
 }
+/* 1.6.0 (owner, 2026-11-15): beta versions are opt-in. Settings › Update and recovery's "Get beta versions" (an
+   administrator's name and password to turn on, checked by rudolfd) sets the official beta address; turned off, it
+   sets the official stable address and "tostable": the next update brings the latest stable release even when its
+   number is lower than the beta's that runs (the beta's numbers run ahead of stable's). Set by "set channel". */
+#ifndef OFFICIAL_URL
+#define OFFICIAL_URL "https://merciless146.github.io/RudolfOS/stable"
+#endif
+static const char *off_url(int beta)
+{
+	static char b[2][300];
+	const char *st = getenv("RU_OFFICIAL_URL") ? getenv("RU_OFFICIAL_URL") : OFFICIAL_URL;
+	if (!beta) { snprintf(b[0], sizeof b[0], "%s", st); return b[0]; }
+	if (getenv("RU_OFFICIAL_BETA")) { snprintf(b[1], sizeof b[1], "%s", getenv("RU_OFFICIAL_BETA")); return b[1]; }
+	size_t n = strlen(st); if (n > 7 && !strcmp(st + n - 7, "/stable")) snprintf(b[1], sizeof b[1], "%.*s/beta", (int)(n - 7), st); else snprintf(b[1], sizeof b[1], "%s", st);
+	return b[1];
+}
+static void eff_url(kv_t *cf, char *o, size_t n)
+{
+	snprintf(o, n, "%s", kv(cf, "url"));
+	if (!*o) { char *d = slurp("/etc/rudolf/update-url", NULL); if (d) { snprintf(o, n, "%s", d); char *nl = strchr(o, '\n'); if (nl) *nl = 0; free(d); } }
+	size_t l = strlen(o); while (l && o[l - 1] == '/') o[--l] = 0;
+}
+static int on_beta(kv_t *cf) { char u[300]; eff_url(cf, u, sizeof u); return !strcmp(u, off_url(1)); }
+/* whether a release (its serial) is the one to install: newer, or (leaving the betas) the stable one, whatever its number */
+static int wanted(long long serial, long long cur)
+{
+	if (serial > cur) return 1;
+	kv_t cf; kv_read(CONFP, &cf, '='); return !strcmp(kv(&cf, "tostable"), "1") && serial != cur && !on_beta(&cf);
+}
 static int cmd_check(int quiet)
 {
 	kv_t cf; kv_read(CONFP, &cf, '='); const char *url = kv(&cf, "url");
@@ -403,6 +432,7 @@ static int cmd_check(int quiet)
 	rename(mp, ap); rename(sp, sp2);
 	kv_t cf2; kv_read(CONFP, &cf2, '='); char ts[32]; snprintf(ts, sizeof ts, "%ld", (long)now); kv_set(&cf2, "checked", ts); kv_write(CONFP, &cf2, '=');
 	if (m.serial > cur) say("Update available: Rudolf OS %s (%s)%s", m.version, m.notes, m.urgent ? " - urgent security fix" : "");
+	else if (wanted(m.serial, cur)) say("Update available: Rudolf OS %s, the latest stable release (beta versions were turned off)", m.version);
 	else say("Rudolf OS is up to date (%s).", kv(&r, "version")[0] ? kv(&r, "version") : "this release");
 	free(t); free(g);
 	return 0;
@@ -417,7 +447,7 @@ static int cmd_download(void)
 	char sig[300]; snprintf(sig, sizeof sig, "%s/available.sig", SYSD);
 	{ size_t ml, sl; char *mt = slurp(ap, &ml), *sg = slurp(sig, &sl); int ok = mt && sg && sl == 64 && verify((unsigned char *)mt, ml, (unsigned char *)sg); free(mt); free(sg); if (!ok) die("the saved release list is not signed"); }
 	kv_t cr; cur_release(&cr);
-	if (!FORCE_DL && m.serial <= atoll(kv(&cr, "serial"))) { say("Already up to date."); return 0; }
+	if (!FORCE_DL && !wanted(m.serial, atoll(kv(&cr, "serial")))) { say("Already up to date."); return 0; }
 	char bs[8]; booted(bs); kv_t st; char stp[300]; snprintf(stp, sizeof stp, "%s/state", SYSD); kv_read(stp, &st, '=');
 	/* the spare slot: never the one running, never the last good one */
 	const char *T = strcmp(bs, "a") && strcmp(kv(&st, "good"), "a") ? "a" : strcmp(bs, "b") && strcmp(kv(&st, "good"), "b") ? "b" : NULL;
@@ -475,6 +505,7 @@ static int cmd_download(void)
 	snprintf(rp, sizeof rp, "%s/complete", tn); write_file(rp, "1\n");
 	sync();
 	{ char *a[] = {"rm", "-rf", tp, NULL}; spawn(a); } if (rename(tn, tp)) die("could not finish the slot");
+	{ kv_t c2; kv_read(CONFP, &c2, '='); if (*kv(&c2, "tostable")) { kv_set(&c2, "tostable", ""); kv_write(CONFP, &c2, '='); } }
 	kv_read(stp, &st, '='); kv_set(&st, "next", T); kv_set(&st, "tries", "2"); kv_set(&st, "failed", "");
 	if (!*kv(&st, "good")) kv_set(&st, "good", strcmp(bs, "disc") ? bs : "disc");
 	kv_write(stp, &st, '='); sync();
@@ -744,11 +775,12 @@ static int cmd_status(void)
 	  char rk[400]; snprintf(rk, sizeof rk, "%s/r/official", SYSD);
 	  printf(",\"developer\":%s,\"recoveryOfficial\":%s", access(EXTRAF, F_OK) ? "false" : "true", access(rk, F_OK) ? "false" : "true"); }
 	printf(",\"url\":"); jstr(*kv(&cf, "url") ? kv(&cf, "url") : d ? d : ""); printf(",\"auto\":%s", strcmp(kv(&cf, "auto"), "0") ? "true" : "false");
+	printf(",\"beta\":%s,\"toStable\":%s", on_beta(&cf) ? "true" : "false", !strcmp(kv(&cf, "tostable"), "1") ? "true" : "false");
 	printf(",\"checked\":%lld,\"available\":", atoll(kv(&cf, "checked")));
 	char ap[300], sp[300]; snprintf(ap, sizeof ap, "%s/available.txt", SYSD); snprintf(sp, sizeof sp, "%s/available.sig", SYSD);
 	size_t ml, sl; char *mt = slurp(ap, &ml), *sg = slurp(sp, &sl); man_t m; int okm = 0;
 	if (mt && sg && sl == 64 && verify((unsigned char *)mt, ml, (unsigned char *)sg)) { char *c = strdup(mt); okm = !parse_manifest(c, &m); free(c); }
-	if (okm && m.serial > atoll(kv(&r, "serial"))) {
+	if (okm && wanted(m.serial, atoll(kv(&r, "serial")))) {
 		long long sz = 0; for (int i = 0; i < m.nl; i++) sz += m.L[i].size;
 		printf("{\"serial\":%lld,\"version\":", m.serial); jstr(m.version); printf(",\"notes\":"); jstr(m.notes); printf(",\"released\":"); jstr(m.released);
 		printf(",\"chromium\":"); jstr(m.chromium); printf(",\"kernel\":"); jstr(m.kernel); printf(",\"urgent\":%s,\"size\":%lld}", m.urgent ? "true" : "false", sz);
@@ -768,7 +800,7 @@ int main(int argc, char **argv)
 	if (getenv("RU_MOUNTS")) snprintf(MOUNTSF, sizeof MOUNTSF, "%s", getenv("RU_MOUNTS"));
 	if (getenv("RU_SYSBLOCK")) snprintf(SYSBLK, sizeof SYSBLK, "%s", getenv("RU_SYSBLOCK"));
 	if (getenv("RU_EXTRA")) snprintf(EXTRAF, sizeof EXTRAF, "%s", getenv("RU_EXTRA"));
-	if (argc < 2) { fputs("usage: rudolf-update status|check|download|boot-ok|rollback|set url URL|set auto 0|1|rzs-make FILE OUT\n", stderr); return 2; }
+	if (argc < 2) { fputs("usage: rudolf-update status|check|download|boot-ok|rollback|set url URL|set auto 0|1|set channel beta|stable|rzs-make FILE OUT\n", stderr); return 2; }
 	const char *c = argv[1];
 	if (!strcmp(c, "rzs-make")) { if (argc < 4) die("usage: rzs-make FILE OUT.rzs"); return rzs_make(argv[2], argv[3]); }
 	if (!strcmp(c, "delta") && argc >= 5) {
@@ -834,7 +866,17 @@ int main(int argc, char **argv)
 		kv_t cf; kv_read(CONFP, &cf, '=');
 		if (!strcmp(argv[2], "url")) { const char *u = argv[3]; if (*u && strncmp(u, "https://", 8) && strncmp(u, "http://", 7)) die("the address starts with https://"); for (const char *q = u; *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/:._-~%+", *q)) die("bad character in the address"); kv_set(&cf, "url", u); }
 		else if (!strcmp(argv[2], "auto")) kv_set(&cf, "auto", strcmp(argv[3], "0") ? "1" : "0");
-		else die("set url|auto");
+		else if (!strcmp(argv[2], "channel") && (!strcmp(argv[3], "beta") || !strcmp(argv[3], "stable"))) {
+			if (!access(EXTRAF, F_OK)) die("Developer mode is on: its own address is used (turn Developer mode off first)");
+			int beta = !strcmp(argv[3], "beta"), was = on_beta(&cf);
+			kv_set(&cf, "url", off_url(beta)); kv_set(&cf, "tostable", !beta && was ? "1" : "");
+			/* the list already seen is the other channel's: forget it (the next one is checked with the official key as always) */
+			if (beta != was) { char ap[300]; snprintf(ap, sizeof ap, "%s/available.txt", SYSD); unlink(ap); snprintf(ap, sizeof ap, "%s/available.sig", SYSD); unlink(ap); }
+			if (kv_write(CONFP, &cf, '=')) return 1;
+			say(beta ? "Beta versions are on: updates now come from %s." : was ? "Beta versions are off: the next update brings the latest stable release (%s)." : "Updates come from %s.", off_url(beta));
+			return 0;
+		}
+		else die("set url|auto|channel");
 		return kv_write(CONFP, &cf, '=') ? 1 : 0;
 	}
 	die("unknown command %s", c); return 2;
