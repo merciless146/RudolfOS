@@ -6,6 +6,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 ## 1.6.0 (in progress)
 Summary: In progress.
 - The native desktop is the desktop a new installation starts with (it uses less memory and starts faster); a computer that is updated keeps its desktop engine, and Settings offers the native desktop once. Settings › System health › Desktop engine still has Standard and Lite, and Standard is used if Native does not start.
+- The native desktop has the screen saver and its lock, as the standard desktop (not while sound plays, a call or a full-screen app is on, or an app keeps the screen on).
+- The native desktop has the window keys now, as the standard desktop: Alt+Tab's switcher, Super+Tab's overview of all windows, Super+D, Super+Up and Down, Alt+F4, Super+E, R, I and L, Ctrl+Esc and Super for the start menu, F1, and your own keys from Settings › Keyboard.
 - Linux apps can keep the screen on or the computer awake: a game, a video or a download in a Linux app now holds off the screen saver, the lock, the screen turning off and sleep while it asks.
 - Devices are now set up by udev, as on other Linux distributions, so Linux apps, Steam and the modem service find hardware the usual way; mdev stays as a fallback if udev cannot start.
 - The keyring's own questions are now asked by Rudolf OS: when an app creates a new keyring or needs one unlocked, the desktop asks for its password in Rudolf's own prompt, naming the app, instead of the request failing.
