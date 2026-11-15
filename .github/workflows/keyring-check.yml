@@ -1,12 +1,13 @@
 # docs/plan-1.6.0.md Part 14: the keyring for Linux apps with the real gnome-keyring-daemon and libsecret (secret-tool):
 # a secret kept, found again after the daemon starts again, with no prompt; and the keyring's size in the base layer
-# (3 MB, also checked by ci_release.sh). Not qt/host/users59_t.sh: its accounts' users are uid 1001 and up, and on
+# (3 MB, also checked by ci_release.sh); its prompts answered by rudolf-portal (keyprompt60_t.sh). Not qt/host/users59_t.sh: its accounts' users are uid 1001 and up, and on
 # GitHub's runner 1001 is the runner's own user, which its sign-out check stops (the first run was cancelled so).
 name: Keyring
 on:
   workflow_dispatch:
   pull_request:
     paths: ['iso/sys/root/usr/lib/rudolf/keyring', 'iso/sys/rudolf-portal.c', 'iso/qt/host/keyportal60_t.sh', 'iso/qt/host/fixtures/secretclient.c', 'iso/sys/rudolfd-users.inc', 'iso/sys/rudolf-debian.c', 'iso/qt/host/keyring60_t.sh',
+      'iso/qt/host/keyprompt60_t.sh', 'iso/qt/host/fixtures/sxpeer.py', 'iso/qt/host/fixtures/krapp.py', 'iso/qt/host/fixtures/krdesk.py', 'iso/sys/rudolfd.c',
       '.github/workflows/keyring-check.yml']
 permissions: {contents: read}
 jobs:
@@ -15,11 +16,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq gnome-keyring libsecret-tools dbus util-linux e2fsprogs nodejs zlib1g-dev libglib2.0-dev pkg-config >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gnome-keyring libsecret-tools dbus util-linux e2fsprogs nodejs zlib1g-dev libglib2.0-dev libssl-dev pkg-config python3-secretstorage python3-cryptography >/dev/null
       - name: The keyring, with the real daemon
         run: sudo sh iso/qt/host/keyring60_t.sh
       - name: The Secret portal (Flatpak apps) and Settings' list
         run: sudo sh iso/qt/host/keyportal60_t.sh
+      - name: The keyring's prompts (rudolf-portal in gcr's prompter's place, its secret exchange, the real daemon)
+        run: sudo sh iso/qt/host/keyprompt60_t.sh
       - name: Its size (the daemon and the libraries it needs)
         run: |
           x=/usr/bin/gnome-keyring-daemon; t=$(stat -c %s $x); echo "$t $x"
