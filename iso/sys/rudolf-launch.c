@@ -25,6 +25,11 @@
  * rudolfNative message handler does in WebKit, is written to standard output, one line each: "msg SESSION JSON" (SESSION:
  * the page's, for an answer). On CONTROL, "act SESSION ID" runs a notification's own action in that page (a toast's click).
  * The page's own full screen ({"op":"fs","on":1|0}, shell26.js's stand-in) is done here: its window in Chromium's full screen.
+ * (12.3c) On CONTROL, "mirror ACCOUNT" has every desktop page take the files an app's window saved from rudolfd's mirror
+ * (__oaMirrorIn); "close X Y W H" asks the page of the window at that place to close, as its own ✕ (the frame's ✕ on the native
+ * desktop). Chromium is not closed under a download in progress: the last window's page says it is closing ({"op":"closing"}),
+ * its window goes off the screen ("hide X Y W H" on standard output) and the page closes once the downloads have finished and
+ * it has taken them in; then Chromium closes.
  *
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
@@ -217,6 +222,13 @@ static void handle(const char *msg)
 static int oracle, o_had, o_n; static char o_id[64];
 static struct { char target[64]; } o_win[64];
 static struct { char params[1400]; int id, tries; long long at; } o_q[32]; static int o_nq;
+/* the desktop pages attached for their messages (12.3c step 5) */
+static struct { char target[64], parent[64], session[80]; int attach_id; } o_pg[64]; static int o_npg;
+/* (12.3c) a window's frame ✕ on the native desktop: its page asked to close, the window found by its place ("close X Y W H") */
+static struct { int x, y, w, h; } o_cl; static struct { char target[64]; int id; } o_clq[64]; static int o_ncl;
+/* (12.3c) downloads in progress: Chromium is not closed under them when Oracle's last window closes (on Standard Chromium never
+   closes); it closes once they have finished, and the desktop page takes them in as every download */
+static struct { char guid[64]; } o_dl[32]; static int o_ndl, o_closing, o_hide_id; static char o_defer[80];
 static void o_send(int i) { o_q[i].id = next_id; o_q[i].tries++; send_cmd("Target.createTarget", o_q[i].params); }
 static void o_line(char *l)
 {
@@ -227,19 +239,34 @@ static void o_line(char *l)
 		char p[200]; snprintf(p, sizeof p, "{\"expression\":\"window.__oaToastAct&&__oaToastAct('%s')\",\"userGesture\":true}", nid);
 		int k; send_session(sid, "Runtime.evaluate", p, &k); return;
 	}
+	/* (the files an app's window saved, in rudolfd's mirror: every desktop page here takes them, 12.3c) */
+	char mid[64];
+	if (sscanf(l, "mirror %63s", mid) == 1) {
+		if (strspn(mid, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != strlen(mid)) return;
+		char p[200]; snprintf(p, sizeof p, "{\"expression\":\"window.__oaMirrorIn&&__oaMirrorIn('%s')\"}", mid);
+		for (int i = 0; i < o_npg; i++) if (o_pg[i].session[0]) { int k; send_session(o_pg[i].session, "Runtime.evaluate", p, &k); }
+		return;
+	}
+	/* (the frame's ✕ on the native desktop: the window at that place is asked for its bounds, one by one, 12.3c) */
+	int cx, cy, cw, ch;
+	if (sscanf(l, "close %d %d %d %d", &cx, &cy, &cw, &ch) == 4) {
+		o_cl.x = cx; o_cl.y = cy; o_cl.w = cw; o_cl.h = ch; o_ncl = 0;
+		for (int i = 0; i < o_n && o_ncl < 64; i++) { char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%.63s\"}", o_win[i].target);
+			memcpy(o_clq[o_ncl].target, o_win[i].target, sizeof o_clq[0].target); o_clq[o_ncl++].id = next_id; send_cmd("Browser.getWindowForTarget", p); }
+		return;
+	}
 	unsigned w, h; int x, y; char hash[1100] = "";
 	if (sscanf(l, "open %u %u %d %d %1099s", &w, &h, &x, &y, hash) < 4) return;
 	/* (the hash as rudolf-native escapes it: letters, digits and the URL's own punctuation only) */
 	for (const char *c = hash; *c; c++) if (!strchr("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789%&=._-~+", *c)) return;
 	if (o_nq >= 32) return;
 	char g[160] = ""; if (w >= 200 && h >= 150 && w < 20000 && h < 20000) snprintf(g, sizeof g, ",\"left\":%d,\"top\":%d,\"width\":%u,\"height\":%u", x, y, w, h);
+	o_closing = 0;
 	snprintf(o_q[o_nq].params, sizeof o_q[0].params, "{\"url\":\"isolated-app://%s/%s%s\",\"newWindow\":true%s}", o_id, hash[0] ? "#" : "", hash, g);
 	o_q[o_nq].tries = 0; o_q[o_nq].at = 0; o_q[o_nq].id = 0;
 	if (ready) o_send(o_nq);
 	o_nq++;
 }
-/* the desktop pages attached for their messages (12.3c step 5) */
-static struct { char target[64], parent[64], session[80]; int attach_id; } o_pg[64]; static int o_npg;
 /* (12.3c step 5) the desktop page's own full screen (shell26.js's stand-in fills the page, which is the window): its window, the
    shell's (the page's parent target), in Chromium's full screen, so the window manager gives it the screen as on Standard */
 static struct { int id, on; } o_fs[8];
@@ -265,6 +292,17 @@ static int json_str(const char *msg, const char *key, char *out, size_t n)
 		default: out[o++] = *p; }
 	}
 	out[o] = 0; return 0;
+}
+/* (12.3c) a page closing its window: the last one during a download goes from the screen instead, and its page stays until the
+   downloads are in, as on Standard, where Chromium never closes; otherwise it closes now */
+static void o_closing_page(const char *sid)
+{
+	int k = -1, q; for (int i = 0; i < o_npg; i++) if (!strcmp(o_pg[i].session, sid)) k = i;
+	if (k >= 0 && o_ndl > 0 && o_n <= 1 && o_pg[k].parent[0]) {
+		fprintf(stderr, "rudolf-launch: Oracle's last window closed with %d download(s) in progress: Chromium waits for them\n", o_ndl);
+		snprintf(o_defer, sizeof o_defer, "%s", sid); send_session(sid, "Runtime.evaluate", "{\"expression\":\"window.__oaCloseLater&&__oaCloseLater()\"}", &q);
+		char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%.63s\"}", o_pg[k].parent); o_hide_id = next_id; send_cmd("Browser.getWindowForTarget", p);
+	} else send_session(sid, "Runtime.evaluate", "{\"expression\":\"window.__oaCloseNow&&__oaCloseNow()\"}", &q);
 }
 static int o_win_slot(const char *t, int add)
 {
@@ -292,9 +330,33 @@ static int o_handle(const char *msg)
 		static char pl[16384]; char sid[80]; field(msg, "sessionId", sid, sizeof sid);
 		if (sid[0] && !json_str(msg, "payload", pl, sizeof pl) && pl[0] == '{') {
 			if (strstr(pl, "\"op\":\"fs\"")) o_fullscreen(sid, strstr(pl, "\"on\":1") != NULL);   /* (the page's own full screen: here) */
+			else if (strstr(pl, "\"op\":\"closing\"")) o_closing_page(sid);   /* (its window closing: here, 12.3c) */
 			else { printf("msg %s %s\n", sid, pl); fflush(stdout); } }
 		return 1;
 	}
+	if (id > 0 && o_hide_id && id == o_hide_id) {   /* (the window that goes from the screen while Chromium finishes its downloads) */
+		o_hide_id = 0; const char *b = strstr(msg, "\"bounds\"");
+		if (b) { printf("hide %ld %ld %ld %ld\n", num_field(b, "left"), num_field(b, "top"), num_field(b, "width"), num_field(b, "height")); fflush(stdout); }
+		return 1;
+	}
+	for (int i = 0; id > 0 && i < o_ncl; i++) if (o_clq[i].id == id) {   /* (the window asked to close: is it this one?) */
+		o_clq[i].id = 0; const char *b = strstr(msg, "\"bounds\"");
+		if (b && labs(num_field(b, "left") - o_cl.x) <= 2 && labs(num_field(b, "top") - o_cl.y) <= 2 && labs(num_field(b, "width") - o_cl.w) <= 2 && labs(num_field(b, "height") - o_cl.h) <= 2) {
+			int done = 0;
+			for (int k = 0; k < o_npg; k++) if (!strcmp(o_pg[k].parent, o_clq[i].target) && o_pg[k].session[0]) { int q;
+				send_session(o_pg[k].session, "Runtime.evaluate", "{\"expression\":\"window.__oneAppClose?(window.__oneAppClose(),1):window.close()\",\"userGesture\":true}", &q); done = 1; }
+			if (!done) { char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%s\"}", o_clq[i].target); send_cmd("Target.closeTarget", p); }
+			o_ncl = 0; }
+		return 1;
+	}
+	/* (downloads: begun, then finished or cancelled; the last one's end closes what waited for it) */
+	if (strstr(msg, "\"method\":\"Browser.downloadWillBegin\"")) { char g[64]; field(msg, "guid", g, sizeof g); if (g[0] && o_ndl < 32) snprintf(o_dl[o_ndl++].guid, sizeof o_dl[0].guid, "%s", g); return 1; }
+	if (strstr(msg, "\"method\":\"Browser.downloadProgress\"")) { char g[64], stt[24]; field(msg, "guid", g, sizeof g); field(msg, "state", stt, sizeof stt);
+		if (strcmp(stt, "inProgress")) for (int i = 0; i < o_ndl; i++) if (!strcmp(o_dl[i].guid, g)) { o_dl[i] = o_dl[--o_ndl]; break; }
+		if (!o_ndl && o_defer[0]) { int q; fprintf(stderr, "rudolf-launch: the downloads have finished: Oracle's page takes them in and closes\n");
+			send_session(o_defer, "Runtime.evaluate", "{\"expression\":\"window.__oaCloseWhenDone&&__oaCloseWhenDone()\"}", &q); o_defer[0] = 0; }
+		if (!o_ndl && o_closing && !o_n && !o_nq) { fprintf(stderr, "rudolf-launch: the downloads have finished: Chromium closes\n"); send_cmd("Browser.close", NULL); }
+		return 1; }
 	if (strstr(msg, "\"sessionId\"") && !strstr(msg, "\"method\":\"Target.")) return 1;   /* (the attached pages' own events) */
 	for (int i = 0; id > 0 && i < o_nq; i++) if (o_q[i].id == id) {
 		if (strstr(msg, "\"error\"") && o_q[i].tries < 60) { o_q[i].at = now_ms() + 1000; return 1; }
@@ -316,7 +378,8 @@ static int o_handle(const char *msg)
 		for (int i = 0; i < o_npg; i++) if (!strcmp(o_pg[i].target, t)) { o_pg[i] = o_pg[--o_npg]; break; }
 		if (k >= 0) { o_win[k] = o_win[--o_n];
 			/* the last of Oracle's windows: Chromium goes with it (the native desktop's memory is the point) */
-			if (!o_n && o_had && !o_nq) send_cmd("Browser.close", NULL); }
+			if (!o_n && o_had && !o_nq) { if (o_ndl) { o_closing = 1; fprintf(stderr, "rudolf-launch: Oracle's last window closed with %d download(s) in progress: Chromium waits for them\n", o_ndl); }
+				else send_cmd("Browser.close", NULL); } }
 		return 1;
 	}
 	return 0;
@@ -373,7 +436,8 @@ int main(int argc, char **argv)
 		snprintf(p, sizeof p, "{\"permission\":{\"name\":\"pointer-lock\"},\"setting\":\"granted\",\"origin\":\"isolated-app://%s\"}", id);
 		send_cmd("Browser.setPermission", p);
 	}
-	if (oracle) ready = 1;   /* (no starting page to wait for: Chromium answers the first window when it can, retried) */
+	if (oracle) { ready = 1;   /* (no starting page to wait for: Chromium answers the first window when it can, retried) */
+		send_cmd("Browser.setDownloadBehavior", "{\"behavior\":\"default\",\"eventsEnabled\":true}"); }   /* (where the policy says; told of each one: 12.3c) */
 	static char cbuf[4096]; size_t cl = 0;
 	for (;;) {
 		struct pollfd pfs[2] = {{from_chrome, POLLIN, 0}, {cfd, POLLIN, 0}};

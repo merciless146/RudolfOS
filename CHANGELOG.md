@@ -20,6 +20,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- Fixed: on the Native desktop (test), a second Oracle window opened from inside Oracle (a link opened in a new window, Ctrl+N) or a link from another app opened inside Oracle's window or in a separate browser window. Each is now an Oracle window of its own, as on Standard (plan 12.3c).
+- Fixed: on the Native desktop (test), a file saved in Oracle was not seen by an app's window that was already open, and that window's next save could undo it (and the other way). Both now see each other's files at once.
+- Fixed: on the Native desktop (test), closing Oracle while a download was still arriving asked Chromium's "Download is in progress" question or stopped the download. The window now goes, and the download is still taken into Downloads and told.
+- Fixed: on the Native desktop (test), text copied in Oracle was lost when Oracle closed, and the volume keys' indicator showed inside whichever window happened to read the key. The text stays on the clipboard, and the indicator shows at the top of the screen, as on Standard.
 - New: Oracle's bookmarks bar ends with a "+" that adds a bookmark by its address, from the browsing history (newest first, searchable), or as a file on this computer (a document or a PDF).
 - Fixed: choosing a file in the desktop's own file picker (Open a presentation or a spreadsheet, and others) answered as if nothing had been chosen.
 - Changed: the plan: Browse with Tor in Oracle (Part 16): a button on the bookmarks bar sends that window through Tor, which runs only while it is used.

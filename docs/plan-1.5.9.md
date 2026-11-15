@@ -860,10 +860,41 @@ server through Rudolf OS's hotkey script when PulseAudio is there, and the stand
   while a download is still arriving closes Chromium and stops it (on Standard it goes on); a WebKit window already open does
   not see a file Oracle's page saved until it opens again (the mirror is read at a page's start).
 
-**Next (12.3c, the rest):** a second Oracle window from inside Oracle as a window of the same Chromium (above); Chromium kept
-while a download is arriving; then same_t.sh's comparison of Oracle's window against Standard's, and the Vivobook's
-measurements (the owner's: Native with Oracle open against Standard's 1,167 MB; idle again after Oracle closes; FNF's frame
-rate on both engines).
+**Step 5, the third part (2026-11-15, ported from PR #355, closed unmerged: only what #352 did not have, on main's code):**
+oracle_native_t.sh 50 checks (new 4m to 4o, 6b, 6c; step 4's and 4g's tabs now opened in the window itself, as webOpen
+opens a window of its own):
+- **Oracle's second windows** (webOpen, a link opened in a new window, Ctrl+N, a link from another app's window, a web file from
+  an app): windows of their own in the same Chromium, as on Standard (oneapp59.js: browser() and, in an app's window, webOpen,
+  send {op:'open',app:'browser',url,priv}; rudolf-native's open_extra makes `#app=browser&url=ADDRESS&priv=1`, which the new
+  window's page opens). Ctrl+Shift+N keeps #352's jump. A link from an app's window (WebKit) no longer goes to rudolfd's
+  separate Chromium web window (web/open) but to Oracle, as on Standard. With several Oracle windows now usual, one of them
+  takes the downloads in (a Web Lock among Oracle's pages; #352's dlMine kept for the other apps) (4m).
+- **The files one while windows are open:** Oracle's page keeps its files in Chromium's storage and the app windows in WebKit's;
+  they met only at a window's start through rudolfd's mirror, so an open window neither saw the other's save nor kept it (its
+  next save overwrote it in the mirror). Now a page that saved tells the native desktop once the mirror has the files (op
+  `mirror`; oaDrained waits for the mirror's queue), and the other engine's pages take the system's and the account's records
+  from the mirror (`__oaMirrorIn`; rudolf-launch's `mirror ACCOUNT` line for Oracle's pages, rudolf-native for the WebKit
+  windows). Another app's window (launch, launchWith, Open with) is opened only once the mirror has the files (4n).
+- **The volume keys' indicator** (rudolfd's osd event, read by whichever window's page asked first) was drawn inside that
+  window: the page now sends it to the native desktop (op `osd`), which draws it at the top of the screen as osd31.js does
+  (28 px down, centred, at least 230 px wide), from either engine (4o).
+- **The clipboard after Chromium has gone:** what was copied in Oracle went with Chromium (on Standard Chromium never closes);
+  rudolf-native keeps the text copied while Chromium runs and puts it back when it has gone and nothing else holds it (6b).
+- **Closing Oracle's last window during a download** showed Chromium's "Download is in progress: exit anyway?" (from the frame's
+  ✕) or stopped the download: now the frame's ✕ asks the page, as its own ✕ (rudolf-launch finds the window's page by its place:
+  `close X Y W H`), the page's closing goes through rudolf-launch ({op:'closing'}), which during a download takes the window off
+  the screen and the taskbar (`hide`: no workspace) and has its page close once Chromium's downloads have finished
+  (Browser.setDownloadBehavior's events) and it has taken them in; then Chromium closes (6c, 7).
+- Test support: rudolf-native reads the WebKit windows' pages for tests only through RUDOLF_NATIVE_TEST_EVAL (never set by
+  the session). native59_t.sh 70/70, wmnative59_t.sh 3/3, oneapp59_t.js 42/42, private59_t.js 16/16, webkit
+  oneapp59_ci.py 26/26 and the dl tests unchanged.
+- Not ported from #355 (main has #352's own way): the page's full screen, Open with, Ctrl+Shift+N, the download takers'
+  odl flag. Not tested here: the real rudolfd's mirror (its stand-in, fixtures/native_rd.py); the Vivobook.
+
+**Next (12.3c, the rest):** same_t.sh's comparison of Oracle's window against Standard's (toolbar, tabs, a site: it needs the
+shell and rudolf-launch inside same_t.js, as oracle_native_t.sh has them); rudolfd's events read by whichever app window asks
+first (a power-button or drive event lands in one window); then the Vivobook's measurements (the owner's: Native with Oracle
+open against Standard's 1,167 MB; idle again after Oracle closes; FNF's frame rate on both engines).
 
 ### 12.4 Tests
 - Host, under Xvfb: rudolf-native draws its wallpaper and taskbar (screenshots compared), a window gets a frame,
@@ -1342,8 +1373,8 @@ Tests: qt/host/seccheck59_t.py (12, stand-ins for GitHub, the snap store and the
 **Status:** planned (2026-11-14). 15.1 first, then 15.2, 15.4, 15.5, 15.6; 15.3 when 15.1 is done (it changes the same
 code). Each in its own PR. (2026-11-14: 15.1, 15.2, 15.4, 15.6 and 15.5 done; 15.3's first and second steps done (the second: X authorization,
 Debian, Wine and Library packages as the account's user), its QEMU check next, as its note says; Part 12 step 8,
-12.3c: steps 1-6 done (step 5's rest on 2026-11-14), a second Oracle window from inside Oracle and keeping Chromium while a
-download arrives next, as its note says.)
+12.3c: steps 1-6 done (step 5's rest on 2026-11-14, its third part on 2026-11-15: second windows, the files one, closing
+during a download), same_t.sh's comparison next, as its note says.)
 
 
 ## Part 16: Browse with Tor in Oracle (added on 2026-11-14)

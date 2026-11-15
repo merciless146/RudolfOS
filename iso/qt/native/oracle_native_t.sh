@@ -17,6 +17,12 @@
 # own with the file; the microphone in a call and the volume (a real sound server through Rudolf OS's hotkey, when
 # PulseAudio is there); a website's file dialog: none with Rudolf OS's policy, as on Standard, and without it Chromium's
 # dialog a plain window centred over Oracle's (not framed or cut as Oracle).
+# (Step 5's third part, from PR #355) Oracle's second windows (a link opened in a new window, Ctrl+N, a link from another
+# app's window) Oracle windows of their own, as on Standard; the files one between Oracle's page (Chromium's storage) and an
+# app's window (WebKit's), both ways, at once; the volume keys' indicator the native desktop's, from either engine; text
+# copied in Oracle still on the clipboard after Chromium has gone; the last window closed during a download: no Chromium
+# question, the window goes, its page takes the download in, then Chromium closes. The WebKit windows' pages are read through
+# rudolf-native's test hook (RUDOLF_NATIVE_TEST_EVAL).
 # Runs in network and mount namespaces of its own (the shell's desktop is http://127.0.0.1:8080; Rudolf OS's Chromium
 # policy and /run/rudolf in a private mount). Needs root, Xvfb, xdotool, ImageMagick, node, python3, gcc, ip and
 # WebKitGTK's headers; PulseAudio (pulseaudio, pactl) for the microphone and the volume.   sh oracle_native_t.sh
@@ -58,7 +64,22 @@ mkdir -p $T/site; printf '%s' '<!doctype html><title>Test site</title><p id=p>si
 # another page: a file input, a text box, a download (a page of one colour, for the screenshot)
 printf '%s' '<!doctype html><title>Upload</title><body style="margin:0;background:#33aa77"><input type=file id=f style="position:fixed;left:20px;top:20px"><textarea id=t style="position:fixed;left:20px;top:80px;width:300px;height:80px"></textarea><a id=dl href="/notes59.txt" download style="position:fixed;left:20px;top:180px">download</a></body>' > $T/site/up.html
 printf 'A download from Oracle.\n' > $T/site/notes59.txt
-(cd $T/site && exec python3 -m http.server 8333 --bind 127.0.0.1 >/dev/null 2>&1) & SP=$!
+# (the site's server: its files, and slow59.txt, a download that waits halfway until the test makes the file go59)
+cat > $T/site.py <<'PYEOF'
+import http.server, os, sys, time
+class H(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def do_GET(self):
+        if self.path.startswith('/slow59.txt'):
+            self.send_response(200); self.send_header('content-type', 'application/octet-stream'); self.send_header('content-length', str(16 * 8192)); self.end_headers()
+            for i in range(16):
+                self.wfile.write(b'x' * 8192); self.wfile.flush(); time.sleep(0.3)
+                while i == 8 and not os.path.exists('go59'): time.sleep(0.2)   # (half of it, then the rest once the test says so)
+            return
+        return super().do_GET()
+os.chdir(sys.argv[1]); http.server.ThreadingHTTPServer(('127.0.0.1', 8333), H).serve_forever()
+PYEOF
+python3 $T/site.py $T/site >/dev/null 2>&1 & SP=$!
 # what the session writes for rudolf-native (Standard's flags; --no-sandbox as root here)
 cmdf() { printf '%s\n' $ID "$CHROME" --no-sandbox --class=RudolfOracle --user-data-dir=$T/prof --no-first-run --no-default-browser-check --password-store=basic \
 	--enable-features=SharedArrayBuffer,IsolatedWebApps,IsolatedWebAppDevMode --install-isolated-web-app-from-file=$T/shell.swbn --disable-gpu \
@@ -69,8 +90,8 @@ Xvfb $DSP -screen 0 1280x800x24 -nolisten tcp >/dev/null 2>&1 & XV=$!
 export DISPLAY=$DSP LIBGL_ALWAYS_SOFTWARE=1
 w8() { i=0; while [ $i -lt ${2:-80} ]; do eval "$1" && return 0; timeout 0.25 tail -f /dev/null; i=$((i+1)); done; return 1; }
 w8 'xdotool getmouselocation >/dev/null 2>&1' 40
-mkdir -p $T/run; chmod 700 $T/run
-(cd $D && HOME=$D XDG_RUNTIME_DIR=$T/run RUDOLF_NATIVE_STATE=$D/state RUDOLF_ORACLE_CMD=$T/oracle-chrome RUDOLF_LAUNCH=$T/rudolf-launch exec $T/rudolf-native --size=1280x800 --draw=soft --base=http://127.0.0.1:8080 > $T/native.log 2>&1) & NP=$!
+mkdir -p $T/run; chmod 700 $T/run; mkfifo $T/ev; : > $T/ev.out
+(cd $D && RUDOLF_NATIVE_TEST_EVAL=$T/ev HOME=$D XDG_RUNTIME_DIR=$T/run RUDOLF_NATIVE_STATE=$D/state RUDOLF_ORACLE_CMD=$T/oracle-chrome RUDOLF_LAUNCH=$T/rudolf-launch exec $T/rudolf-native --size=1280x800 --draw=soft --base=http://127.0.0.1:8080 > $T/native.log 2>&1) & NP=$!
 N=0; F=0
 ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $(echo "$3" | head -c 900)"; F=$((F+1)); fi; }
 st() { grep "^$1 " $D/state 2>/dev/null | head -1 | cut -d' ' -f2-; }
@@ -83,6 +104,8 @@ const [pre, expr, one] = process.argv.slice(1);
     ws.onopen = () => ws.send(JSON.stringify({id: 1, method: "Runtime.evaluate", params: {expression: expr, returnByValue: true, awaitPromise: true, userGesture: true}}));
     ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id == 1) { clearTimeout(to); ws.close(); res(m.result.result ? m.result.result.value : m.result) } } }));
   console.log(JSON.stringify(r.length == 1 ? r[0] : r)) })().catch(e => console.log("ERR " + e.message))' "$1" "$2" "$3" 2>&1; }
+# (a WebKit app window's page, through rudolf-native's test hook: wev APP JS)
+wev() { n0=$(grep -c "^$1 " $T/ev.out); printf '%s %s\n' "$1" "$2" > $T/ev; i=0; while [ $i -lt 40 ]; do [ "$(grep -c "^$1 " $T/ev.out)" -gt "$n0" ] && break; timeout 0.25 tail -f /dev/null; i=$((i+1)); done; grep "^$1 " $T/ev.out | tail -1 | cut -d' ' -f2-; }
 targets() { node -e 'fetch("http://127.0.0.1:9335/json/list").then(r=>r.json()).then(l=>console.log(l.map(t=>t.type+" "+t.url).join("\n"))).catch(()=>{})' 2>/dev/null; }
 # (Chromium's browser processes of this profile: not its helpers (--type=), not rudolf-launch)
 chromes() { n=0; for p in $(pgrep -f -- "--user-data-dir=$T/prof"); do c=$( { tr '\0' ' ' < /proc/$p/cmdline; } 2>/dev/null); case "$c" in *--type=*|*rudolf-launch*|'') ;; *) n=$((n+1));; esac; done; echo $n; }
@@ -107,7 +130,7 @@ import -window root $T/s1.png 2>/dev/null
 p=$(convert $T/s1.png -format "%[fx:int(255*p{$((CX+300)),$((CY+36))}.r)] %[fx:int(255*p{$((CX+300)),$((CY+36))}.g)] %[fx:int(255*p{$((CX+300)),$((CY+36))}.b)]" info:)
 ok "...no title bar of Chromium's own below the frame's (its light blue)" "$([ "$p" != '211 227 253' ] && echo 1)" "$p"
 # ---- a website in a real tab
-ev http://127.0.0.1:8080/ 'webOpen("http://127.0.0.1:8333/"),1' >/dev/null
+ev http://127.0.0.1:8080/ 'OA.main.oNewTab("http://127.0.0.1:8333/"),1' >/dev/null
 w8 'targets | grep -q "^webview http://127.0.0.1:8333/"' 80
 ok "4. a website opened in Oracle is a real tab (a Controlled Frame of the shell), not a frame of the page" "$(targets | grep -q '^webview http://127.0.0.1:8333/' && echo 1)" "$(targets)"
 w8 '[ "$(ev http://127.0.0.1:8333/ "document.cookie")" = "\"oracle59=kept\"" ]' 40
@@ -136,7 +159,7 @@ FL=$(grep "^client .* app=browser" $D/state | head -1)
 ok "4c. a website in Oracle going full screen: Oracle's window covers the screen (the native desktop's full screen)" "$(echo "$FL" | grep -q ' 1280 800 min=0 max=0 full=1' && [ "$(ev http://127.0.0.1:8333/ '[innerWidth,innerHeight].join()')" = '"1280,800"' ] && echo 1)" "$FL $(ev http://127.0.0.1:8333/ '[innerWidth,innerHeight].join()')"
 ev http://127.0.0.1:8333/ 'document.exitFullscreen().then(()=>1,e=>String(e))' >/dev/null
 w8 'grep -q "^client .* full=0 .* app=browser" $D/state' 60
-ok "...and back in its frame when it leaves" "$(grep -q '^client .* full=0 .* app=browser Oracle' $D/state && echo 1)" "$(grep '^client' $D/state)"
+ok "...and back in its frame when it leaves" "$(grep -q '^client .* full=0 .* app=browser .*Oracle' $D/state && echo 1)" "$(grep '^client' $D/state)"
 # ==== (step 5's rest) what the page in Chromium needs from the native desktop, each as on Standard
 PG=http://127.0.0.1:8080/
 # (where things are on the screen: Oracle's page starts 4, 28 px inside Chromium's window (its own edges cut away); a point in the
@@ -161,12 +184,12 @@ ok "...Esc: the page leaves it and the window is back in its frame" "$(grep -q '
 # ---- the keys (keys56.js's rules; Chromium's own Ctrl+W, T, N, Q and Alt+F4 handed over as on Standard, rudolf-display's desk_key)
 # (the website of 4, its tab with the shell's script (its title, "Test site", comes from it))
 w8 '[ "$(ev $PG "[...document.querySelectorAll(\".otab\")].some(t=>t.textContent.startsWith(\"Test site\"))" one)" = true ]' 20
-ev $PG 'window.__tk=[];addEventListener("message",e=>{const m=e.data||{};if(m.rudolfShell=="tabev"&&m.ev=="keys")__tk.push(m.k)});wins.filter(W=>W.app=="browser"&&W!==OA.main).pop().focus(),1' one >/dev/null
+ev $PG 'window.__tk=[];addEventListener("message",e=>{const m=e.data||{};if(m.rudolfShell=="tabev"&&m.ev=="keys")__tk.push(m.k)});OA.main.focus(),1' one >/dev/null
 timeout 1 tail -f /dev/null; xdotool mousemove $(tabxy 500 150) click 1; timeout 1 tail -f /dev/null
 n0=$(ntabs); xdotool key ctrl+t; w8 '[ "$(ntabs)" = $((n0 + 1)) ]' 20
 ok "4f. Ctrl+T in a website in Oracle: a new tab (as on Standard), Chromium's own Ctrl+T not acting" "$([ "$(ntabs)" = $((n0 + 1)) ] && [ "$(nora)" = 1 ] && [ "$(chromes)" = 1 ] && echo 1)" "$n0 $(ntabs) $(nora) $(chromes) keys $(ev $PG '__tk.join()' one) at $(tabxy 500 150) $(ev $PG '[...document.querySelectorAll(".otab")].map(t=>t.textContent).join("|")' one)"
-# (back to the website's tab, the front window's first: a click on it, then on the page)
-set -- $(corg); o=$(ev $PG '(()=>{const W=wins.filter(W=>W.app=="browser"&&W.el.isConnected).sort((a,b)=>(+a.el.style.zIndex||0)-(+b.el.style.zIndex||0)).pop();const r=W.el.querySelector(".otab").getBoundingClientRect();return Math.round(r.left+20)+" "+Math.round(r.top+r.height/2)})()' one | tr -d '"'); set -- $1 $2 $o
+# (back to the website's tab: a click on it, then on the page)
+set -- $(corg); o=$(ev $PG '(()=>{const W=wins.filter(W=>W.app=="browser"&&W.el.isConnected).sort((a,b)=>(+a.el.style.zIndex||0)-(+b.el.style.zIndex||0)).pop();const r=[...W.el.querySelectorAll(".otab")].find(t=>t.textContent.startsWith("Test site")).getBoundingClientRect();return Math.round(r.left+20)+" "+Math.round(r.top+r.height/2)})()' one | tr -d '"'); set -- $1 $2 $o
 xdotool mousemove $(($1 + $3)) $(($2 + $4)) click 1; timeout 1 tail -f /dev/null; xdotool mousemove $(tabxy 500 150) click 1; timeout 0.5 tail -f /dev/null; xdotool key ctrl+w
 w8 '[ "$(ntabs)" = $n0 ]' 20; timeout 1 tail -f /dev/null
 ok "...Ctrl+W in a website: its tab closes; Oracle's window and Chromium stay (before: Chromium closed the window, and with it Chromium)" "$([ "$(ntabs)" = $n0 ] && [ "$(nora)" = 1 ] && [ "$(chromes)" = 1 ] && ! targets | grep -q '^webview http://127.0.0.1:8333/$' && echo 1)" "$(ntabs) $(nora) $(chromes) keys $(ev $PG '__tk.join()' one) $(targets)"
@@ -177,7 +200,7 @@ P2=$(grep "^client .* app=browser .*(Private)" $D/state | head -1); if [ -n "$P2
 xdotool mousemove $(adxy) click 1; timeout 0.5 tail -f /dev/null; xdotool key ctrl+q; timeout 1.5 tail -f /dev/null
 ok "...Ctrl+Q: Chromium does not quit (every Oracle window went with it)" "$([ "$(nora)" = 1 ] && [ "$(chromes)" = 1 ] && echo 1)" "$(nora) $(chromes)"
 # ---- the clipboard: copied in Oracle, pasted in a WebKit window (Notepad), copied there, pasted back in Oracle
-ev $PG 'webOpen("http://127.0.0.1:8333/up.html"),1' one >/dev/null
+ev $PG 'OA.main.oNewTab("http://127.0.0.1:8333/up.html"),1' one >/dev/null
 w8 'targets | grep -q "^webview http://127.0.0.1:8333/up.html"' 60; timeout 1.5 tail -f /dev/null
 xdotool mousemove $(tabxy 100 120) click 1; timeout 0.5 tail -f /dev/null
 xdotool type --delay 20 "copied in Oracle"; xdotool key ctrl+a ctrl+c; timeout 0.5 tail -f /dev/null
@@ -234,6 +257,38 @@ if [ -n "$POL" ]; then
 n1=$(grep -c "^client " $D/state); xdotool mousemove $(tabxy 60 30) click 1; timeout 3 tail -f /dev/null
 ok "4l. a website's file input in Oracle, with Rudolf OS's Chromium policy: no file dialog opens, as on Standard" "$([ "$(grep -c '^client ' $D/state)" = "$n1" ] && echo 1)" "$(grep '^client ' $D/state)"
 fi
+# ==== (step 5's third part) Oracle's second windows are Oracle windows of their own, as on Standard (before: windows inside its page)
+ev $PG 'window.__first=1' >/dev/null
+ev $PG 'webOpen("http://127.0.0.1:8333/?w2"),1' one >/dev/null
+w8 '[ "$(nora)" = 2 ] && targets | grep -q "^webview http://127.0.0.1:8333/?w2"' 120
+o=$(ev $PG 'wins.filter(W=>W.app=="browser"&&W.el.isConnected).length')
+ok "4m. a link opened in a new window in Oracle (webOpen): an Oracle window of its own at that address, of the same Chromium" "$([ "$(nora)" = 2 ] && [ "$(chromes)" = 1 ] && targets | grep -q '^webview http://127.0.0.1:8333/?w2' && [ "$o" = '[1,1]' ] && echo 1)" "$o | $(grep '^client' $D/state) | $(targets)"
+ev $PG 'window.__first?0:(window.__oneAppClose(),1)' >/dev/null; w8 '[ "$(nora)" = 1 ]' 60
+xdotool mousemove $(adxy) click 1; timeout 0.5 tail -f /dev/null; xdotool key ctrl+n
+w8 '[ "$(nora)" = 2 ]' 120; w8 '[ "$(ev $PG "!!OA.main")" = "[true,true]" ]' 80
+o=$(ev $PG 'wins.filter(W=>W.app=="browser"&&W.el.isConnected).length')
+ok "...Ctrl+N: a new Oracle window of its own, of the same Chromium" "$([ "$(nora)" = 2 ] && [ "$(chromes)" = 1 ] && [ "$o" = '[1,1]' ] && echo 1)" "$o | $(grep '^client' $D/state)"
+ev $PG 'window.__first?0:(window.__oneAppClose(),1)' >/dev/null; w8 '[ "$(nora)" = 1 ]' 60
+ev $PG 'launch("notepad"),1' one >/dev/null; w8 'grep -q "^client .* app=notepad" $D/state' 80
+w8 '[ "$(wev notepad "String(typeof FSLOADED!=\"undefined\"&&FSLOADED&&!!OA.main)")" = true ]' 80
+: > $D/calls; wev notepad 'webOpen("http://127.0.0.1:8333/?w3"),1' >/dev/null
+w8 '[ "$(nora)" = 2 ] && targets | grep -q "^webview http://127.0.0.1:8333/?w3"' 120
+ok "...a link from another app's window (Notepad's, WebKit): an Oracle window of its own in Rudolf's Chromium, not a WebKit window or Chromium's web window" "$([ "$(nora)" = 2 ] && [ "$(chromes)" = 1 ] && targets | grep -q '^webview http://127.0.0.1:8333/?w3' && ! grep -q '^app browser ' $D/state && ! grep -q 'web/open' $D/calls && echo 1)" "$(grep -E '^(client|app) ' $D/state) | $(grep web/ $D/calls)"
+ev $PG 'window.__first?0:(window.__oneAppClose(),1)' >/dev/null; w8 '[ "$(nora)" = 1 ]' 60
+# ---- the files are one: what Oracle's page (Chromium's storage) saves is in an open app window's (WebKit's) at once, and back
+ev $PG '(()=>{node(homePath("DOCUMENTS"))["LIVE59.TXT"]="from Oracle";fsSave();return 1})()' one >/dev/null
+w8 '[ "$(wev notepad "String((node(homePath(\"DOCUMENTS\"))||{})[\"LIVE59.TXT\"])")" = "from Oracle" ]' 60
+ok "4n. a file Oracle's page saved: in the open Notepad window's files at once (rudolfd's mirror, op mirror)" "$([ "$(wev notepad 'String((node(homePath("DOCUMENTS"))||{})["LIVE59.TXT"])')" = 'from Oracle' ] && echo 1)" "$(wev notepad 'Object.keys(node(homePath("DOCUMENTS"))||{}).join()')"
+wev notepad '(()=>{node(homePath("DOCUMENTS"))["BACK59.TXT"]="from Notepad";fsSave();return 1})()' >/dev/null
+w8 '[ "$(ev $PG "String((node(homePath(\"DOCUMENTS\"))||{})[\"BACK59.TXT\"])" one)" = "\"from Notepad\"" ]' 60
+ok "...and one an app window saved: in Oracle's page at once (neither overwrites the other)" "$([ "$(ev $PG 'String((node(homePath("DOCUMENTS"))||{})["BACK59.TXT"])' one)" = '"from Notepad"' ] && [ "$(wev notepad 'String((node(homePath("DOCUMENTS"))||{})["LIVE59.TXT"])')" = 'from Oracle' ] && [ "$(ev $PG 'String((node(homePath("DOCUMENTS"))||{})["LIVE59.TXT"])' one)" = '"from Oracle"' ] && echo 1)" "$(ev $PG 'Object.keys(node(homePath("DOCUMENTS"))||{}).join()' one)"
+# ---- the volume keys' indicator (rudolfd's osd event, read by whichever window): the native desktop's, at the top of the screen
+o=$(ev $PG 'osdEvents("osd volume 35"),(document.getElementById("osd")||{style:{}}).style.display||"none"' one); w8 'grep -q "^osd volume 35|35% " $D/state' 20
+set -- $(grep '^osd ' $D/state | cut -d'|' -f2)
+ok "4o. the volume keys' indicator read by Oracle's page: drawn by the native desktop at the top of the screen, centred (not inside Oracle's window)" "$(grep -q '^osd volume 35|35% ' $D/state && [ "$o" = '"none"' ] && [ "$3" = 28 ] && [ $(($2 + $4 / 2 - 640)) -ge -1 ] && [ $(($2 + $4 / 2 - 640)) -le 1 ] && [ "$4" -ge 230 ] && echo 1)" "$o | $(grep '^osd' $D/state)"
+o=$(wev notepad 'osdEvents("osd mic muted"),String((document.getElementById("osd")||{style:{}}).style.display||"none")'); w8 'grep -q "^osd mic - *|Microphone off" $D/state' 20
+ok "...and read by an app's window (WebKit): the same indicator" "$(grep -q '^osd mic -|Microphone off' $D/state && [ "$o" = none ] && echo 1)" "$o | $(grep '^osd' $D/state)"
+xclose notepad
 # ---- a second window: the pin's Open a new window, in the same Chromium (the pin itself brings Oracle to the front)
 xdotool mousemove $(hit pin browser) click 1; timeout 2 tail -f /dev/null; n1=$(grep -c "^client .* app=browser" $D/state)
 xdotool mousemove $(hit pin browser) click 3; w8 'grep -q "^cmitem .*pnew:browser" $D/state' 40
@@ -241,6 +296,10 @@ P=$(grep "^cmitem .*pnew:browser" $D/state | head -1 | awk '{print $2, $3}'); cl
 w8 '[ "$(grep -c "^client .* app=browser" $D/state)" = 2 ]' 120
 ok "5. the pin while Oracle is open: Oracle to the front (no second window); its menu's Close all windows not greyed" "$([ "$n1" = 1 ] && [ "$cl" = 0 ] && echo 1)" "$n1 $cl"
 ok "...its Open a new window: a second Oracle window, of the same Chromium" "$([ "$(grep -c '^client .* app=browser' $D/state)" = 2 ] && [ "$(chromes)" = 1 ] && [ "$(targets | grep -c '^app isolated-app://')" = 2 ] && echo 1)" "$(grep '^client' $D/state) | chromes $(chromes) | $(targets) | menu: $P $(grep '^cmitem' $D/state | head -8)"
+# (a download that is still arriving when the last window closes; text copied in Oracle)
+if [ -n "$POL" ]; then ev http://127.0.0.1:8333/up.html '(()=>{const a=document.createElement("a");a.href="/slow59.txt";a.download="";document.body.appendChild(a);a.click();return 1})()' >/dev/null
+	w8 'ls /run/rudolf/dl/.incoming | grep -q crdownload' 60; fi
+ev http://127.0.0.1:8333/up.html '(()=>{t.value="last words";t.select();return document.execCommand("copy")})()' >/dev/null
 # ---- the windows closed: Chromium goes with the last (one by the page's own ✕, the other by the frame's)
 ev http://127.0.0.1:8080/ 'window.__oneAppClose(),1' one >/dev/null
 w8 '[ "$(grep -c "^client .* app=browser" $D/state)" -le 1 ]' 60; timeout 1 tail -f /dev/null
@@ -248,22 +307,34 @@ timeout 1 tail -f /dev/null
 for try in 1 2 3; do F2=$(grep "^client .* app=browser" $D/state | head -1); [ -n "$F2" ] || break; set -- $F2; xdotool mousemove $(($4 + $6 - 10)) $(($5 + 17)); timeout 0.3 tail -f /dev/null; xdotool click 1
 	w8 '! grep -q "^client .* app=browser" $D/state' 40 && break; done
 w8 '[ "$(grep -c "^client .* app=browser" $D/state)" = 0 ]' 120
-w8 '[ "$(st oracle | cut -d" " -f1)" = 0 ] && [ "$(chromes)" = 0 ]' 80
+if [ -n "$POL" ]; then
+ok "6c. the last Oracle window closed during a download: the window goes (no Chromium question), Chromium waits for the download" "$([ "$(grep -c '^client ' $D/state)" = 0 ] && ! grep -q '^hit win ' $D/state && grep -q 'Chromium waits for them' $T/native.log && [ "$(chromes)" = 1 ] && echo 1)" "$(grep -E '^(client|hit win)' $D/state) | chromes $(chromes) | $(ls -A /run/rudolf/dl/.incoming) | $(grep 'rudolf-launch' $T/native.log | tail -3)"
+: > $T/site/go59; fi
+w8 '[ "$(st oracle | cut -d" " -f1)" = 0 ] && [ "$(chromes)" = 0 ]' 120
 ok "6. Oracle's windows closed (the app's own ✕, the frame's ✕): they go, and Chromium with the last" "$([ "$(grep -c '^client .* app=browser' $D/state)" = 0 ] && [ "$(chromes)" = 0 ] && [ "$(st oracle | cut -d' ' -f1)" = 0 ] && echo 1)" "$(grep '^client' $D/state) | $(st oracle) | $(pgrep -af RudolfOracle | grep -v -- --type= | head -3)"
+[ -n "$POL" ] && ok "...the download finished: Oracle's page, off the screen, took it in (as the desktop does on Standard), then Chromium closed" "$(grep -q 'the downloads have finished' $T/native.log && [ -z "$(ls -A /run/rudolf/dl/.incoming)" ] && echo 1)" "$(ls -A /run/rudolf/dl/.incoming) | $(grep 'rudolf-launch' $T/native.log | tail -3)"
+# (copied in Oracle, then Oracle closed: still on the clipboard, as on Standard, where Chromium never goes; pasted in Notepad's window)
+xdotool mousemove $(hit pin notepad) click 1; w8 'grep -q "^client .* app=notepad" $D/state' 80
+w8 '[ "$(wev notepad "String(!!document.querySelector(\".win.oamain textarea\"))")" = true ]' 60
+NL=$(grep "^client .* app=notepad" $D/state | head -1); set -- $NL; xdotool mousemove $(($4 + $6 / 2)) $(($5 + $7 / 2)) click 1; timeout 0.5 tail -f /dev/null; xdotool key ctrl+v; timeout 0.5 tail -f /dev/null
+o=$(wev notepad 'document.querySelector(".win.oamain textarea").value')
+ok "6b. text copied in Oracle stays on the clipboard after Oracle (and Chromium) closed: pasted in Notepad" "$([ "$o" = 'last words' ] && echo 1)" "'$o'"
+wev notepad 'document.querySelector(".win.oamain textarea").value="",1' >/dev/null; xclose notepad
 # (from here without Rudolf OS's Chromium policy: 9 below needs Chromium's own file dialog)
 for p in $POL; do rm -f $p/rudolf.json; done
 # ---- again: the same profile, the cookie still there
 xdotool mousemove $(hit pin browser) click 1
 w8 '[ "$(ev http://127.0.0.1:8080/ "typeof rtOn==\"function\"&&rtOn()&&!!OA.main")" = true ]' 120
-ev http://127.0.0.1:8080/ 'webOpen("http://127.0.0.1:8333/"),1' >/dev/null
+ev http://127.0.0.1:8080/ 'OA.main.oNewTab("http://127.0.0.1:8333/"),1' >/dev/null
 w8 'targets | grep -q "^webview http://127.0.0.1:8333/"' 80; timeout 1 tail -f /dev/null
 o=$(ev http://127.0.0.1:8333/ 'document.cookie')
 ok "7. Oracle opened again: Chromium started again with the same profile, the site's sign-in (its cookie) kept" "$([ "$o" = '"oracle59=kept"' ] && [ "$(chromes)" = 1 ] && echo 1)" "$o $(targets)"
+[ -f $T/site/go59 ] && ok "...the download taken in while Oracle was closing is in Downloads, whole" "$([ "$(ev $PG 'String((node(downloadsPath())||{})["SLOW59.TXT"]||"").length' one)" = 131072 ] && echo 1)" "$(ev $PG 'JSON.stringify(DLS.map(r=>[r.n,r.st,r.why]))' one)"
 # ---- (step 5) a website's file input with Chromium's own file dialog (a Chromium without Rudolf OS's policy): a window of its own,
 # centred over Oracle's (maximised here, so the dialog fits inside it), framed as a dialog: not as Oracle, not cut, not on the taskbar
 CL=$(grep "^client .* app=browser" $D/state | head -1); set -- $CL; xdotool mousemove $(($4 + 300)) $(($5 + 12)) click --repeat 2 --delay 80 1
 w8 'grep -q "^client .* max=1 .* app=browser" $D/state' 40
-ev $PG 'webOpen("http://127.0.0.1:8333/up.html"),1' one >/dev/null; w8 'targets | grep -q "^webview http://127.0.0.1:8333/up.html"' 60; timeout 1 tail -f /dev/null
+ev $PG 'OA.main.oNewTab("http://127.0.0.1:8333/up.html"),1' one >/dev/null; w8 'targets | grep -q "^webview http://127.0.0.1:8333/up.html"' 60; timeout 1 tail -f /dev/null
 xdotool mousemove $(tabxy 60 30) click 1
 w8 'grep "^client " $D/state | grep -qv "app=browser"' 40; timeout 1 tail -f /dev/null
 DG=$(grep "^client " $D/state | grep -v "app=browser" | head -1); CL=$(grep "^client .* app=browser" $D/state | head -1)
