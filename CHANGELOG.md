@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- New: App Store › Rudolf OS Library says when its list of apps was last checked (and when the Library published it), with a Refresh button at the end of its first line: the list was kept until it stopped working, so a working list days old never showed new apps or updates (Ember Reach on the Vivobook, 2026-11-14)
 - A keyring for Linux apps: apps such as the Claude app, VS Code and other Electron apps now keep their sign-ins in the account's own keyring (the Secret Service), unlocked by signing in, instead of warning that GNOME Keyring is not set up or asking again after every restart.
 - Settings › System health › Log video problems works on the native desktop too (its video and sound warnings, and Oracle's video and sound messages there), and the native desktop's log is now kept across a restart and included in the system report.
 - Planned: what 1.5.9 had left, moved here on 2026-11-15 (docs/plan-1.6.0.md Part 15): the native desktop's comparison with Standard, the official recovery's repair at each start, the Vivobook's call and feature checks, QEMU security checks, Lite's tab fixes, the hotspot, ARM64's test channel, Waydroid and the first phone.

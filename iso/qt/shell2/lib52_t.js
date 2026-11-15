@@ -12,13 +12,15 @@ const AV = {
   'rudolf-emu': {name: 'rudolf-emu', version: '1.0.0', kind: 'addon', size: 364616, title: 'Emu', summary: 'Plays Nintendo DS and Super Nintendo games you own', icon: '🕹️', license: 'GPL-2.0-or-later (DeSmuME), MIT (LakeSnes)', source: LIB, library: true, installed: null},
   'jq': {name: 'jq', version: '1.7', kind: 'cli', size: 300000, title: 'jq', summary: 'JSON', icon: '', license: 'MIT', source: '/live/media/rudolf/pkg', library: false, installed: null}};
 const M = {inst: {}, calls: [], dsGames: ['Mario.nds'], job: {running: false, status: 0, log: ''}};
-const status = () => ({ok: true, persistent: true, sources: [{loc: '/live/media/rudolf/pkg', type: 'disc', ok: true, library: false}, {loc: LIB, type: 'web', ok: true, library: true, count: 2}],
+const status = () => ({ok: true, persistent: true, sources: [{loc: '/live/media/rudolf/pkg', type: 'disc', ok: true, library: false}, {loc: LIB, type: 'web', ok: true, library: true, count: Object.values(AV).filter(a => a.library).length, serial: M.serial || 202611111321, checked: M.checked || 1794445320}],
   installed: Object.values(M.inst), available: Object.values(AV).map(a => ({...a, installed: M.inst[a.name] ? M.inst[a.name].version : null}))});
 const api = (a, q) => {
   M.calls.push(a + (q ? '?' + q : ''));
   const n = new URLSearchParams(q || '').get('name');
   if (a == 'pkg/status') return status();
   if (a == 'pkg/install') { const x = AV[n]; M.inst[n] = {name: n, version: x.version, kind: x.kind, title: x.title, summary: x.summary, icon: x.icon, license: x.license, signed: x.library ? 'library' : 'system', mounted: true, update: null}; M.job = {running: false, status: 0, log: 'Installed ' + n + ' ' + x.version}; return {ok: true} }
+  /* 1.6.0: Refresh: a newer list with one more app */
+  if (a == 'pkg/refresh') { M.serial = 202611150640; M.checked = Math.floor(Date.now() / 1000); AV['rudolf-emberreach'] = {name: 'rudolf-emberreach', version: '0.3.3', kind: 'webapp', size: 254024, title: 'Ember Reach', summary: 'A galaxy', icon: '🌌', license: 'GPL-3.0-or-later', source: LIB, library: true, installed: null}; M.job = {running: false, status: 0, log: 'Checking ' + LIB + '\n  3 packages'}; return {ok: true} }
   if (a == 'pkg/remove') { delete M.inst[n]; M.job = {running: false, status: 0, log: 'Removed ' + n}; return {ok: true} }
   if (a == 'job') return {ok: true, ...M.job};
   if (a == 'fs/list') return {ok: true, items: M.dsGames.map(x => ({name: x, dir: false, size: 1, mtime: 1}))};
@@ -98,6 +100,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   delete M.inst['rudolf-emu']; M.dsGames = []; M.calls.length = 0;
   await p.evaluate(async () => { localStorage.removeItem('bd95lib52'); await libMigrate() }); await wait(500);
   ok('13. a computer without DS games downloads nothing', !M.calls.some(c => /pkg\/install/.test(c)) && /"done":1/.test(await p.evaluate(() => localStorage.getItem('bd95lib52'))), M.calls);
+  /* 1.6.0: the list's age and Refresh, at the end of the Library's sentence */
+  await p.evaluate(() => { const W = appStore(); W.showLibrary() }); await wait(1200);
+  const r15 = await p.evaluate(() => { const pp = [...document.querySelectorAll('p.msg')].find(x => /never change Rudolf OS itself/.test(x.textContent)), b = pp && pp.querySelector('.lib52rb'); return {text: pp ? pp.textContent : '', last: !!b && pp.lastElementChild.contains(b), cards: document.querySelectorAll('.lib52c').length} });
+  ok('15. the Library\'s sentence ends with when its list was checked (and published) and a Refresh button', /itself\. List checked .*\(published .*\)\. 🔄 Refresh$/.test(r15.text) && r15.last, r15);
+  M.calls.length = 0; await p.evaluate(() => document.querySelector('.lib52rb').click()); await wait(2500);
+  const r16 = await p.evaluate(() => ({cards: [...document.querySelectorAll('.lib52c b')].map(x => x.textContent), text: document.querySelector('.lib52rt').textContent}));
+  ok('16. Refresh checks the Library now (rpk refresh), and the tab shows the new list with its new app', M.calls.includes('pkg/refresh') && r16.cards.includes('Ember Reach') && r16.cards.length == r15.cards + 1 && /published (15 Nov|Nov 15)/.test(r16.text), r16);
   ok('14. no page errors', !errs.length, errs);
   console.log(`${R.filter(x => x).length}/${R.length} passed`); await b.close(); srv.close(); process.exit(R.every(x => x) ? 0 : 1);
 })();

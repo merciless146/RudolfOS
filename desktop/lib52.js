@@ -30,16 +30,31 @@ let LIBCAT=null;
 async function libCatalog(){if(LIBCAT)return LIBCAT;const c={};let got=false;try{const r=await fetch(LIB_URL+'/catalog.json',{cache:'no-store'});if(r.ok){((await r.json()).apps||[]).forEach(a=>c[a.name]=a);got=true}}catch(e){}
  /* 1.5.7: a list that could not be had (offline) is not kept: it is asked for again next time */
  if(got)LIBCAT=c;return c}
+/* 1.6.0: the list's age and a Refresh button, after the Library's sentence: the list is kept until it fails, so a
+   working list days old never showed new apps (Ember Reach on the Vivobook, 2026-11-14). checked: when it was last
+   downloaded (rpk status); serial: when the Library published it (YYYYMMDDHHMM, UTC) */
+const libWhen=d=>d.toLocaleString([],{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+const libSerial=n=>{const m=String(n||'').match(/^(\d{4})(\d\d)(\d\d)(\d\d)(\d\d)$/);return m?new Date(Date.UTC(+m[1],m[2]-1,+m[3],+m[4],+m[5])):null};
+function libRefreshRow(B,src,log){const r=B.querySelector('.lib52r');if(!r)return;r.textContent='';
+ const t=document.createElement('span');t.className='lib52rt';const pub=libSerial(src&&src.serial);
+ t.textContent=src&&src.checked?'List checked '+libWhen(new Date(src.checked*1000))+(pub?' (published '+libWhen(pub)+')':'')+'. ':src&&src.ok?'List checked earlier. ':'';
+ const b=document.createElement('button');b.className='lib52rb';b.textContent='🔄 Refresh';b.title='Check the Rudolf OS Library for new apps and updates now';b.style.cssText='margin-left:4px;padding:1px 10px';
+ b.onclick=async()=>{if(b.disabled)return;b.disabled=true;B.querySelectorAll('.lib52c button').forEach(x=>x.disabled=true);b.textContent='Checking…';log.hidden=false;log.textContent='';
+  let ok=false;try{ok=await pkgJob('pkg/refresh',l=>{log.textContent+=l+'\n';log.scrollTop=log.scrollHeight})}catch(e){log.textContent+=e.message+'\n'}
+  if(!ok){log.textContent+='The Library could not be checked. Check the internet connection, then try again.\n';b.disabled=false;b.textContent='🔄 Refresh';B.querySelectorAll('.lib52c button').forEach(x=>x.disabled=false);return}
+  LIBCAT=null;libTab(B)};
+ r.appendChild(t);r.appendChild(b)}
 async function libTab(B){
- B.innerHTML=`<p class='msg' style='margin:0 0 10px'>Apps made for Rudolf OS that not every computer needs. They come from the <b>Rudolf OS Library</b>, signed with its own key: it can add apps, but it can never change Rudolf OS itself.</p><div class='libl'></div><pre class='jl liblog' hidden></pre>`;
+ B.innerHTML=`<p class='msg' style='margin:0 0 10px'>Apps made for Rudolf OS that not every computer needs. They come from the <b>Rudolf OS Library</b>, signed with its own key: it can add apps, but it can never change Rudolf OS itself. <span class='lib52r'></span></p><div class='libl'></div><pre class='jl liblog' hidden></pre>`;
  const L=B.querySelector('.libl'),log=B.querySelector('.liblog');
  if(!RD){L.innerHTML="<p class='msg'>The Library needs Rudolf OS itself (the bootable disc, a USB drive or the hard disk).</p>";return}
  L.innerHTML="<p class='msg'>Loading…</p>";
  /* 1.5.7: offline: the Library's list waits for the internet, then shows */
  if(typeof netLive=='function'&&!netLive()){L.innerHTML="<p class='msg'>Waiting for the internet to get the Library’s list… It shows by itself once this computer is online.</p>";await netWait(10000);   /* (after 10 s it is tried anyway: rudolfd may not know the network) */
  if(!B.isConnected)return;L.innerHTML="<p class='msg'>Loading…</p>"}
- let s=await pkgStatus(true);const src=s&&(s.sources||[]).find(x=>x.loc==LIB_URL);
- if(src&&!src.ok){L.innerHTML="<p class='msg'>Getting the Library’s list…</p>";try{await pkgJob('pkg/refresh')}catch(e){}s=await pkgStatus(true)}
+ let s=await pkgStatus(true);let src=s&&(s.sources||[]).find(x=>x.loc==LIB_URL);
+ if(src&&!src.ok){L.innerHTML="<p class='msg'>Getting the Library’s list…</p>";try{await pkgJob('pkg/refresh')}catch(e){}s=await pkgStatus(true);src=s&&(s.sources||[]).find(x=>x.loc==LIB_URL)}
+ libRefreshRow(B,src,log);
  const cat=await libCatalog();if(!B.isConnected)return;
  const av=(s&&s.available||[]).filter(p=>p.library),inst=(s&&s.installed||[]).filter(p=>p.signed=='library'||p.signed=='developer');   /* (1.5.9: and outside developers' apps, plan 8.2) */
  const names=[...new Set([...av.map(p=>p.name),...inst.map(p=>p.name)])];L.innerHTML='';
