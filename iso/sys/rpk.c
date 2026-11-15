@@ -458,10 +458,11 @@ static const char *sysext_walk(const char *top, const char *rel, const char *nam
 	closedir(dd); return bad;
 }
 /* verifies a downloaded or local package file and installs it in place of any older copy */
+static int MISMATCH;   /* (1.6.0) the last install_file was refused because the download did not match the list */
 static int install_file(const char *path, const char *want_name, const char *want_sha, int from_disc)
 {
-	const char *why = NULL; VCLASS = 0;
-	if (want_sha) { char hex[65]; if (sha256_file(path, -1, hex) || strcmp(hex, want_sha)) { say("  refused: the download does not match the package list"); return -1; } }
+	const char *why = NULL; VCLASS = 0; MISMATCH = 0;
+	if (want_sha) { char hex[65]; if (sha256_file(path, -1, hex) || strcmp(hex, want_sha)) { MISMATCH = 1; say("  refused: the download does not match the package list"); return -1; } }
 	if (from_disc && want_sha) { if (verify_rpk(path, &why) < 0 && strcmp(why, "the signature is not from a trusted key")) { say("  refused: %s", why); return -1; } }
 	else if (verify_rpk(path, &why) < 0) { say("  refused: %s", why); return -1; }
 	int cls = VCLASS;   /* 0 only for an unsigned package from the disc's own list, which the system trusts */
@@ -532,8 +533,18 @@ static int install_name(const char *name)
 	info_t cur; if (!installed_info(name, &cur) && strverscmp(iget(&cur, "version"), k->version) >= 0) { say("%s %s is already installed", name, iget(&cur, "version")); return 0; }
 	say("Getting %s %s (%lld KB) from %s", name, k->version, (k->size + 1023) / 1024, SRC[k->src].loc);
 	char dl[400]; snprintf(dl, sizeof dl, "%s/tmp", ROOT); mkdirs(dl); snprintf(dl, sizeof dl, "%s/tmp/%s.download", ROOT, name);
-	if (fetch(&SRC[k->src], k->file, dl)) { say("  download failed"); unlink(dl); return -1; }
-	int r = install_file(dl, name, k->sha, !strcmp(SRC[k->src].type, "disc")); unlink(dl); return r;
+	int net = strcmp(SRC[k->src].type, "disc");
+	int r = fetch(&SRC[k->src], k->file, dl) ? (say("  download failed"), -2) : install_file(dl, name, k->sha, !net); unlink(dl);
+	/* 1.6.0: the package list kept on this computer was older than the package: the Library publishes a new version
+	   under the same file name (Ember Reach 0.4.0 on 2026-11-15, minutes after it was published, while the App Store
+	   had the list with 0.3.11), so the download did not match the list, or was gone. The list is fetched again
+	   (checked with its key as always) and the package got once more. */
+	static int retried;
+	if (r && net && (MISMATCH || r == -2) && !retried) {
+		retried = 1; say("  the package list on this computer is older than the Library's: checking the list again");
+		refresh(); load_available(); r = install_name(name); retried = 0; return r;
+	}
+	return r ? -1 : 0;
 }
 static int remove_pkg(const char *name)
 {
