@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- New: rudolf-fetch in the Terminal: Rudolf's logo (the nose in red) with this computer's details beside it: Rudolf OS's version, the kernel, the desktop engine, the update channel, the processor, memory, disk and uptime.
 - Fixed: Get in App Store › Rudolf OS Library failed for an app the Library had just updated (Ember Reach 0.4.0): the computer's list still named the older version, so the download was refused as not matching. Rudolf OS now checks the list again and gets the new version.
 - New: beta versions are opt-in: Settings › Update and recovery › Get beta versions (an administrator's name and password to turn on). Turned off, the next update brings the latest stable release, even from a newer beta.
 - The native desktop shows the Phone screen and Blitzen exactly as the standard desktop does: apps' text, drop-down lists and check boxes in its windows are drawn as in the standard desktop.
