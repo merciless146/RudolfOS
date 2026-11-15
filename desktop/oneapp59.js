@@ -143,12 +143,15 @@ html.oneapp .win.oamain>.tb{display:none!important}html.oneapp .win.oamain>.body
 async function oaStart(showLogin0){
  let s=null;
  if(typeof RD!='undefined'&&RD){try{s=await rd('desktop/session')}catch(e){s=null}}
+ /* (1.5.9, plan 16.2) a Tor window on Standard: no native session there; the desktop page gave rudolfd its account and file key
+    when it asked for the window (torwin/session), so the window is signed in as the desktop is, not at a sign-in screen */
+ if(!(s&&s.id)&&typeof RD!='undefined'&&RD&&ONEAPP&&ONEAPP.q.get('tor')=='1'){try{s=await rd('torwin/session')}catch(e){s=null}}
  let a=null;
  if(s&&s.id){a=s.r=='guest'?{n:'Guest',r:'guest',id:'guest',h:''}:ACCTS.find(x=>x.id==s.id)||null}
  if(!a){OA.login=1;return showLogin0()}
  try{LG.style.display='none'}catch(e){}
  USER=a;
- try{await userLogin(a,null,a.r=='guest'?null:{pk:oaHex(s.pk),fk:oaHex(s.fk)})}
+ try{const ks={pk:oaHex(s.pk),fk:oaHex(s.fk)};if(a.r!='guest'&&!ks.pk&&!ks.fk)throw new Error('no keys');await userLogin(a,null,a.r=='guest'?null:ks)}
  catch(e){console.warn('one-app sign-in',e);OA.login=1;USER=ACCTS[0]||null;return showLogin0()}
  try{userUI()}catch(e){}}
 function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;

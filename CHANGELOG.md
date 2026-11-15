@@ -20,6 +20,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- Fixed: Browse with Tor on Standard: clicking the Tor window's bookmarks bar, address box or buttons no longer jumps back to the desktop, and the Tor window is signed in as the desktop is instead of showing the sign-in screen.
 - Fixed: the self-test run over the read-only development link failed its listeners check when a Linux app was open (it cannot look into other users' programs there); it now says so instead.
 - New: Browse with Tor in Oracle: an onion button at the right end of the bookmarks bar sends that window's tabs through Tor, in a private Tor window of its own (Rudolf's Chromium through Tor: sites do not see the computer's address, and no site's name or WebRTC address leaves outside Tor); pressing it again brings the tabs back to a normal window. The window says plainly that this is not Tor Browser's anonymity and links Tor Browser (plan 16.2).
 - New: WordPro's hyperlinks as in other word processors: link to a web address, a place in the document (a heading or a bookmark), a file on this computer or an e-mail address with a subject; the text to show and a ScreenTip; bookmarks; a link's right-click menu (Open, Edit, Copy address, Remove); typed web and e-mail addresses becoming links; and a list of every link with Go to, Edit, Remove and Remove all.

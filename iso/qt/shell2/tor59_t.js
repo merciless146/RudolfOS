@@ -16,7 +16,7 @@ const M = {calls: [], session: null, engine: 'chromium', st: [], back: null, ope
 const LS = "window.__rudolfLsFlush=()=>fetch('/api/lsync',{method:'POST',headers:{'X-Rudolf-Token':'t'},body:'{}'});";
 const J = (s, o, c) => { s.writeHead(c || 200, {'content-type': 'application/json'}); s.end(JSON.stringify(o)) };
 http.createServer((q, s) => { const [u0, qs] = q.url.split('?'); const u = decodeURIComponent(u0);
-  q.on('data', () => {}); q.on('end', () => {
+  let bd = ''; q.on('data', c => bd += c); q.on('end', () => {
     if (u == '/' || u == '/index.html') { s.writeHead(200, {'content-type': 'text/html'});
       return s.end(fs.readFileSync(path.join(WWW, 'index.html'), 'utf8').replace('<head>', '<head><script>window.RUDOLFD={token:"t",base:"",boot:"uefi",media:"disk",live:0,recovery:0,engine:"' + M.engine + '"};' + LS + (M.native ? 'window.__nat=[];window.rudolfNativeOracle=j=>__nat.push(JSON.parse(j));' : '') + '</script>')) }
     if (u.startsWith('/api/')) { M.calls.push(q.method + ' ' + u.slice(5) + (qs ? '?' + qs : ''));
@@ -24,6 +24,8 @@ http.createServer((q, s) => { const [u0, qs] = q.url.split('?'); const u = decod
       if (u == '/api/desktop/session') return M.session ? J(s, M.session) : J(s, {ok: false, error: 'no native session'}, 404);
       if (u == '/api/tor/status') return J(s, Object.assign({ok: true, pct: 0, line: '', secs: 1, stopping: false}, M.st.length > 1 ? M.st.shift() : M.st[0] || {state: 'off'}));
       if (u == '/api/tor/start' && M.startErr) return J(s, {ok: false, error: M.startErr}, 500);
+      if (u == '/api/torwin/session') { if (q.method == 'POST') { M.tws = bd ? JSON.parse(bd) : null; return J(s, {ok: true}) } return M.tws ? J(s, Object.assign({ok: true}, M.tws)) : J(s, {ok: false, error: 'no session given'}, 404) }
+      if (u == '/api/apps/windows') return J(s, {ok: true, mode: M.wm || 'desktop', windows: M.wm ? [{win: '1600003', class: 'RudolfTor', title: 'Oracle (Tor)', shown: true}] : []});
       if (u == '/api/torwin/back' && q.method == 'GET') { const b = M.back; M.back = null; return J(s, {ok: true, open: M.open, urls: b || []}) }
       return J(s, {ok: true}) }
     const f = path.join(WWW, path.normalize(u)); if (!f.startsWith(WWW) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { s.writeHead(404); return s.end() }
@@ -57,6 +59,7 @@ const calls = re => M.calls.filter(c => re.test(c));
   ok('2. pressed: Tor started (POST tor/start), the window says "Connecting to Tor… N %"', calls(/^POST tor\/start/).length == 1 && /Connecting to Tor… (0|30) %/.test(bar || ''), [bar, M.calls]);
   await wait(3500);
   const ow = calls(/^POST torwin\/open/);
+  ok('3a. (Standard) before asking for the Tor window, the desktop page gives rudolfd its account and file key (torwin/session), for the window to sign in as it', M.calls.findIndex(c => /^POST torwin\/session/.test(c)) >= 0 && M.calls.findIndex(c => /^POST torwin\/session/.test(c)) < M.calls.findIndex(c => /^POST torwin\/open/.test(c)) && M.tws && M.tws.id == acct.id && M.tws.fk == acct.fk && M.tws.r == 'admin' && !M.tws.pk, [M.tws && Object.keys(M.tws), M.calls]);
   ok('3. connected: the window\'s tabs open in a Tor window (rudolfd\'s torwin/open, each tab), and the window closes', ow.length == 1 && ow[0].includes('url=' + encodeURIComponent('https://example.com/')) && ow[0].includes('url=' + encodeURIComponent('https://example.org/x?y=1')) && await q("!wins.some(w=>w.oNewTab)"), [ow, await q("wins.length")]);
   // the tabs given back by a Tor window: a normal Oracle window with them
   M.back = ['https://example.net/', 'about:home']; await wait(2600);
@@ -76,8 +79,8 @@ const calls = re => M.calls.filter(c => re.test(c));
   const ns = await q("(()=>{const d=wins.find(w=>w.oNewTab).body.querySelector('.otorbar');return d&&d.textContent})()");
   ok('...no Tor on the system: said', /Tor could not start: Tor is not on this system/.test(ns || ''), ns);
   await p.close();
-  // ---- the Tor window's page (Standard: rudolfd opened it)
-  M.calls = []; M.st = [{state: 'on', pct: 100}];
+  // ---- the Tor window's page (Standard: rudolfd opened it; no native session on Standard)
+  M.calls = []; M.st = [{state: 'on', pct: 100}]; M.session = null;
   p = await ctx.newPage(); watch(p);
   await p.goto(URL0 + '#app=browser&tor=1&url=' + encodeURIComponent('https://example.com/') + '&url=' + encodeURIComponent('about:home'));
   await p.waitForSelector('.win.oamain .otor', {timeout: 30000}); await wait(800);
@@ -88,6 +91,15 @@ const calls = re => M.calls.filter(c => re.test(c));
      ob:getComputedStyle(W.body.querySelector('.ob')).backgroundColor}})()`);
   ok('7. the Tor window: Oracle alone, private, its two tabs, the button pressed (white outline)', tw.tor && tw.priv && tw.cls && tw.tabs == 2 && tw.pressed == 'true' && tw.bl == 'rgb(255, 255, 255)', tw);
   ok('...the onion beside "Private · Tor", violet, "(Tor)" in its title', tw.onion && /Private · Tor/.test(tw.badge) && /\(Tor\)/.test(tw.title) && tw.ob == 'rgb(46, 16, 101)', tw);
+  const si = await p.evaluate(`(()=>{const lg=document.getElementById('login');return {user:USER&&USER.id,fk:!!FKRAW,login:!!lg&&getComputedStyle(lg).display!='none'&&lg.getClientRects().length>0}})()`);
+  ok('7a. (Standard) the Tor window is signed in as the desktop is (torwin/session), with no sign-in screen', si.user == acct.id && si.fk && !si.login && calls(/^GET torwin\/session/).length >= 1, [si, M.calls]);
+  // clicks on its own bars and buttons stay in it: rudolf-display has it in front (wm "win ..."), the desktop is not brought back
+  M.wm = 'win 1600003'; await p.evaluate("lxWinPoll()"); await wait(300); M.calls = [];
+  for (const c of ['.win.oamain .obm', '.win.oamain input']) { const l = p.locator(c).first(); if (await l.count()) await l.click({position: {x: 3, y: 3}}).catch(() => {}) }
+  await p.locator('.win.oamain .obmadd').first().click().catch(() => {}); await wait(600);
+  const pr = await p.evaluate("!!document.querySelector('.rmodal')");
+  ok('7b. clicks on the Tor window\'s bookmarks bar, address box and "+" (its prompt) stay in it: the desktop is not brought back (no apps/desktop)', !calls(/^POST apps\/desktop/).length && pr && await p.evaluate("LX.mode").then(m => m == 'win 1600003'), [pr, M.calls]);
+  await p.evaluate("document.querySelectorAll('.rmodal').forEach(o=>o.remove())"); M.wm = null; await p.evaluate("lxWinPoll()"); await wait(200);
   await p.evaluate("(()=>{const W=OA.main,a=[...W.body.querySelectorAll('.otab')].pop();a.click();return 1})()"); await wait(400);
   const hm = await p.evaluate("[...OA.main.body.querySelectorAll('.fh iframe')].map(f=>f.srcdoc||'').join('')");
   ok('...its start page says plainly that Tor hides the address but is not Tor Browser\'s anonymity, and links Tor Browser (Flathub)', /This window goes through Tor/.test(hm) && /not Tor Browser's anonymity/.test(hm) && /flathub\.org\/apps\/org\.torproject\.torbrowser-launcher/.test(hm), hm.slice(0, 300));
@@ -107,7 +119,7 @@ const calls = re => M.calls.filter(c => re.test(c));
   ok('10. an open Tor window asks rudolfd for Tor every 20 s (tor/start)', calls(/^POST tor\/start/).length >= 1, M.calls);
   await p.close();
   // ---- the native desktop: op "tor" and "untor" (Oracle's page in Chromium, the binding)
-  M.engine = 'native'; M.native = 1; M.st = [{state: 'on', pct: 100}];
+  M.engine = 'native'; M.native = 1; M.st = [{state: 'on', pct: 100}]; M.session = {ok: true, id: acct.id, n: 'Ann', r: 'admin', pk: acct.pk, fk: acct.fk};
   p = await ctx.newPage(); watch(p);
   await p.goto(URL0 + '#app=browser'); await p.waitForSelector('.win.oamain .otor', {timeout: 30000}); await wait(500);
   M.calls = []; await p.evaluate("OA.main.oNewTab('https://example.com/a'),OA.main.body.querySelector('.otor').click(),1"); await wait(2500);

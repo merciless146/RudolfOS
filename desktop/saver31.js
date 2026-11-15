@@ -46,7 +46,8 @@ function ssLoop(c,style,opt){opt=opt||{};const g=ssCtx(c),w=c.width,h=c.height,f
 /* the full-screen saver (saverStart in core25) */
 /* (1.4.4) on installed Rudolf OS, app windows (Oracle's real tabs, Linux apps) are above the desktop page: the
    desktop is brought to the front while the saver runs, and the window that was shown comes back after it */
-async function ssFront(){try{const j=await rdPost('apps/windows');const m=j.mode||'desktop';if(m!='desktop')await rdPost('apps/desktop');return m}catch(e){return 'desktop'}}
+async function ssFront(){if(typeof ONEAPP!='undefined'&&ONEAPP)return 'desktop';   /* (1.5.9: a one-app page's prompt is in its own window, which is in front) */
+ try{const j=await rdPost('apps/windows');const m=j.mode||'desktop';if(m!='desktop')await rdPost('apps/desktop');return m}catch(e){return 'desktop'}}
 function ssBack(m){if(!m||m=='desktop')return;const w=/^win ([0-9a-f]+)/.exec(m);(w?rdPost('apps/show?win='+w[1]):m=='web'?rdPost('web/show'):Promise.resolve()).catch(()=>{})}
 /* 1.5.6: a prompt that needs the person (the development link's "Allow this command?", a remote connection) comes in
    front of the app or game on the screen, and the app comes back when it is answered. On the Vivobook the
