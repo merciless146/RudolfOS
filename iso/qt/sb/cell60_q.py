@@ -16,7 +16,7 @@ LOG = open('cell60.txt', 'w'); R = []
 def out(*a):
     s = ' '.join(str(x) for x in a); print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
 def ok(n, c, d=''):
-    R.append(bool(c)); out(('PASS ' if c else 'FAIL ') + n + (' - ' + str(d)[:700] if d != '' and not c else ''))
+    R.append(bool(c)); out(('PASS ' if c else 'FAIL ') + n + (' - ' + str(d)[-1500:].replace('\n', ' | ') if d != '' and not c else ''))
 man = open(f'{REL}/manifest.txt').read(); mv = lambda k: re.search(rf'^{k} (.*)$', man, re.M).group(1)
 DMB = 2000; DRV = os.path.abspath('cell60.img'); MEM = int(os.environ.get('MEM', '3072'))
 SYSROOT = os.path.join(ISO, 'sys', 'root')
@@ -62,10 +62,10 @@ try:
     g.put(os.path.join(SYSROOT, 'usr/lib/rudolf/modem'), '/usr/lib/rudolf/modem')
     time.sleep(20)   # (the start-up's devices settled)
     o = sh("cat /run/rudolf/devices; pgrep -x ModemManager >/dev/null && echo MM-RUNNING || echo MM-NOT-RUNNING; ls /dev/cdc-wdm* /dev/wwan* 2>&1 | head -3; cat /run/rudolf/modem.log 2>&1 | tail -5")
-    ok('1. devices through udev; no modem, so ModemManager was not started by itself', o.startswith('udev') and 'MM-NOT-RUNNING' in o, o)
+    ok('1. devices through udev; no modem, so ModemManager was not started by itself', re.search(r'^udev\s*$', o, re.M) and 'MM-NOT-RUNNING' in o, o)
     o = sh("ACTION=add MDEV=ttyS0 /usr/lib/rudolf/modem hotplug; sleep 1; pgrep -x ModemManager >/dev/null && echo MM-RUNNING || echo MM-NOT-RUNNING")
     ok("...a port that is not a modem's (a serial port) does not start it", 'MM-NOT-RUNNING' in o, o)
-    o = sh("rm -f /run/rudolf/modem.log; /usr/lib/rudolf/modem start; echo rc=$?; sleep 5; pgrep -x ModemManager >/dev/null && echo MM-RUNNING; mmcli -L 2>&1; cat /run/rudolf/modem.log", 120)
+    o = sh("command -v ModemManager mmcli; rm -f /run/rudolf/modem.log; /usr/lib/rudolf/modem start; echo rc=$?; sleep 5; pgrep -x ModemManager >/dev/null && echo MM-RUNNING; mmcli -L 2>&1; cat /run/rudolf/modem.log", 120)
     ok('2. started by hand: ModemManager runs with udev (not told of ports by Rudolf OS), on the system bus, finds no modem', 'rc=0' in o and 'MM-RUNNING' in o and 'ModemManager started (with udev)' in o and 'No modems were found' in o, o)
     log = sh("sleep 15; cat /run/rudolf/modem.log", 60)
     lines = [l for l in log.splitlines() if l.strip() and 'ModemManager started' not in l and l.strip() != 'cat /run/rudolf/modem.log']
