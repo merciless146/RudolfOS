@@ -1085,6 +1085,15 @@ file:///C:/…. Names are text, cut to 18 characters as the ☆'s. Found on the 
 for every file chosen (closing its window ran its onclose first), so Open in Presentation, Spreadsheet and others
 did nothing. Test: qt/shell2/bmadd59_t.js 14/14 (devkey59, wallpaper, private59 unchanged).
 
+### 14.3 USB drives: another Rudolf OS stick (added on 2026-11-14)
+Found on the Vivobook: a SanDisk stick holding Rudolf OS 1.4.1 (ISO 9660, RUDOLF EFI, RUDOLFDATA) was detected
+(usb-storage, sda) but not in the File Explorer's drives: devplug's system_disk counted every disk with a RUDOLFDATA
+or ISO 9660 partition as Rudolf OS's own. **Fixed:** only the disk Rudolf OS runs from is its own (a partition in use
+outside /media, or the disk holding the start-up image's file); another Rudolf OS stick's start-up parts are not shown
+and its RUDOLFDATA is mounted read-only, named "Rudolf OS data (another Rudolf OS, read-only)" (its files are another
+installation's; accounts there are encrypted). Checked on the Vivobook with the fixed script: sda3 mounted read-only
+and announced, sda1/sda2 and the internal drive left alone. Test: qt/host/devrudolf59_t.sh 7/7; devunsup_t.sh 18/18.
+
 ## Part 15: security against a directed attack (added on 2026-11-14)
 Asked for after a review of how Rudolf OS stands against malware aimed at its owner (2026-11-14). Below the desktop it is
 strong: Secure Boot with Rudolf's own keys and a signed kernel image, read-only signed system layers, signed updates

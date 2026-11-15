@@ -20,6 +20,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- Fixed: another Rudolf OS stick plugged in (an older one, for example) never showed in the File Explorer: every disk with a Rudolf OS partition was hidden, not only the one Rudolf OS runs from. It now shows; its data partition opens read-only and its start-up parts stay hidden.
 - Fixed: calls heard nothing on laptops whose built-in microphones are on another sound chip than the speakers (the Vivobook's AMD microphones): the headset jack's microphone was made the default even with nothing plugged in. It is now the default only when a headset is plugged in.
 - New: Oracle's bookmarks bar ends with a "+" that adds a bookmark by its address, from the browsing history (newest first, searchable), or as a file on this computer (a document or a PDF).
 - Fixed: choosing a file in the desktop's own file picker (Open a presentation or a spreadsheet, and others) answered as if nothing had been chosen.
