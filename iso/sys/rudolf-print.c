@@ -11,6 +11,12 @@
  * URI is ipp://host[:port]/path or ipps://... (printers use self-made certificates on the local network,
  * so ipps is encrypted but not checked against a certificate authority).
  * RP_MDNS=ADDR:PORT sends the discovery query there instead of the multicast group (tests).
+ * 1.6.0 (docs/plan-1.6.0.md Part 8): USB printers, from /run/rudolf/usb-printers (written by /usr/lib/rudolf/usbprint;
+ * RP_USB elsewhere for tests), are listed by find as "USB: name": an IPP over USB printer at ipp-usb's local address
+ * (printed to as a network printer), a plain one as usb://lpN (its job written to /dev/usb/lpN: a PDF as it is, for a
+ * PostScript printer through the USB printers extension's pdftops; RP_USBDEV and RP_FILTERS elsewhere for tests), one that
+ * needs a driver, or an IPP over USB one without the extension, as usb://... that says so.
+ *   rudolf-print usb                      the USB printers alone (JSON, for Settings › Devices)
  *
  * Copyright (C) 2026 the Rudolf OS authors. SPDX-License-Identifier: GPL-2.0-or-later */
 #define _GNU_SOURCE
@@ -18,6 +24,7 @@
 #include <ctype.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <stdarg.h>
@@ -168,8 +175,10 @@ static void list_json(ipr *r, const char *name, const char *key)
 	putchar(']');
 }
 static const ipa *one(ipr *r, const char *name) { for (int i = 0; i < r->n; i++) if (!strcmp(r->a[i].name, name)) return &r->a[i]; return NULL; }
+static int usb_info(const char *uri);
 static int cmd_info(const char *uri)
 {
+	if (!strncmp(uri, "usb://", 6)) return usb_info(uri);   /* (1.6.0) */
 	ipr r; int e = get_attrs(uri, &r);
 	if (e == -1) die("The printer does not answer. Check that it is switched on and on the same network.");
 	if (e == -2) die("This device does not accept IPP print jobs at that address.");
@@ -191,6 +200,7 @@ static int cmd_info(const char *uri)
 
 /* ---------------- sending a job */
 static int okword(const char *s) { if (!*s || strlen(s) > 80) return 0; for (; *s; s++) if (!isalnum((unsigned char)*s) && !strchr("-_.", *s)) return 0; return 1; }
+static int usb_send(const char *uri, const char *file, const char *fmt, int copies, int p1, int p2);
 static int cmd_send(int argc, char **argv)
 {
 	const char *uri = argv[2], *file = argv[3], *fmt = argv[4];
@@ -207,6 +217,7 @@ static int cmd_send(int argc, char **argv)
 	if (copies < 1 || copies > 99) copies = 1;
 	if (strcmp(fmt, "application/pdf") && strcmp(fmt, "image/pwg-raster") && strcmp(fmt, "image/urf")) die("unknown document format");
 	struct stat st; if (stat(file, &st) || !st.st_size) die("the document is empty");
+	if (!strncmp(uri, "usb://", 6)) return usb_send(uri, file, fmt, copies, p1, p2);   /* (1.6.0: a plain USB printer) */
 	buf q = {0}; ipp_head(&q, 0x0002, uri);
 	attr_s(&q, T_NAME, "job-name", *title ? title : "Document"); attr_s(&q, T_MIME, "document-format", fmt);
 	put8(&q, T_JOB);
@@ -227,6 +238,112 @@ static int cmd_send(int argc, char **argv)
 	const ipa *id = one(&r, "job-id"), *js_ = one(&r, "job-state");
 	printf("{\"ok\":true,\"job\":%d,\"state\":%d,\"status\":%d", id ? id->ival : 0, js_ ? js_->ival : 0, r.status);
 	printf(",\"message\":"); js(r.status ? "Sent. The printer ignored some settings it does not support." : "Sent to the printer."); printf("}\n");
+	return 0;
+}
+
+/* ---------------- (1.6.0) USB printers: /run/rudolf/usb-printers, one a line: KIND\tNAME\tURI\tDEVICE-ID\tSYSNAME
+   KIND: ipp (IPP over USB; URI ipp-usb's address, or empty without the extension), pdf, postscript, driver */
+typedef struct { char kind[16], name[160], uri[200], devid[600], sys[64], model[160]; } usbp;
+static usbp U[16]; static int NU;
+static void usb_load(void)
+{
+	NU = 0; FILE *f = fopen(getenv("RP_USB") ? getenv("RP_USB") : "/run/rudolf/usb-printers", "r"); if (!f) return;
+	char l[1400];
+	while (NU < 16 && fgets(l, sizeof l, f)) {
+		l[strcspn(l, "\r\n")] = 0; char *c[5] = {0}; int n = 0; char *p = l;
+		while (n < 5) { c[n++] = p; char *t = strchr(p, '\t'); if (!t) break; *t = 0; p = t + 1; }
+		if (n < 5 || !*c[0]) continue;
+		usbp *u = &U[NU]; memset(u, 0, sizeof *u);
+		snprintf(u->kind, sizeof u->kind, "%s", c[0]); snprintf(u->name, sizeof u->name, "%s", *c[1] ? c[1] : "USB printer");
+		snprintf(u->devid, sizeof u->devid, "%s", c[3]); snprintf(u->sys, sizeof u->sys, "%s", c[4]);
+		if (!strcmp(u->kind, "ipp") && *c[2]) snprintf(u->uri, sizeof u->uri, "%s", c[2]);
+		else if (!strncmp(c[2], "/dev/usb/lp", 11)) snprintf(u->uri, sizeof u->uri, "usb://%s", c[2] + 9);
+		else snprintf(u->uri, sizeof u->uri, "usb://%s/%s", u->kind, u->sys);
+		/* the model from the device ID (MDL:, else the name) */
+		const char *m = strstr(u->devid, "MDL:"); if (!m) m = strstr(u->devid, "MODEL:");
+		if (m) { m = strchr(m, ':') + 1; size_t k = strcspn(m, ";"); snprintf(u->model, sizeof u->model, "%.*s", (int)(k < 150 ? k : 150), m); } else snprintf(u->model, sizeof u->model, "%s", u->name);
+		NU++;
+	}
+	fclose(f);
+}
+static const char *usb_kind_text(const usbp *u)
+{
+	if (!strcmp(u->kind, "ipp")) return strncmp(u->uri, "ipp", 3) ? "IPP over USB (needs the USB printers extension)" : "IPP over USB";
+	if (!strcmp(u->kind, "pdf")) return "PDF"; if (!strcmp(u->kind, "postscript")) return "PostScript";
+	return "needs a driver";
+}
+static char *usb_filter(const char *name, char *out, size_t n);
+static void usb_json(const usbp *u, int full)
+{
+	printf("{\"name\":"); { char n[200]; snprintf(n, sizeof n, "USB: %s", u->name); js(full ? u->name : n); } printf(",\"uri\":"); js(u->uri);
+	printf(",\"model\":"); js(u->model); printf(",\"location\":\"USB\",\"usb\":"); js(u->kind); printf(",\"kind\":"); js(usb_kind_text(u));
+	if (full) { char f[300]; int ready = !strcmp(u->kind, "ipp") ? !strncmp(u->uri, "ipp", 3) : !strcmp(u->kind, "pdf") ? 1 : !strcmp(u->kind, "postscript") ? usb_filter("pdftops", f, sizeof f) != NULL : 0;
+		printf(",\"ready\":%s,\"deviceId\":", ready ? "true" : "false"); js(u->devid); printf(",\"sys\":"); js(u->sys); }
+	putchar('}');
+}
+static int cmd_usb(void)
+{
+	usb_load(); printf("{\"ok\":true,\"printers\":[");
+	for (int i = 0; i < NU; i++) { if (i) putchar(','); usb_json(&U[i], 1); }
+	printf("]}\n"); return 0;
+}
+static const usbp *usb_find(const char *uri) { usb_load(); for (int i = 0; i < NU; i++) if (!strcmp(U[i].uri, uri)) return &U[i]; return NULL; }
+static char *usb_filter(const char *name, char *out, size_t n)
+{
+	snprintf(out, n, "%s/%s", getenv("RP_FILTERS") ? getenv("RP_FILTERS") : "/usr/lib/rudolf/print", name);
+	return access(out, X_OK) ? NULL : out;
+}
+#define NEED_EXT "install the USB printers extension (Settings › Update and recovery › System extensions)"
+static int usb_info(const char *uri)
+{
+	const usbp *u = usb_find(uri); char f[300];
+	if (!u) die("The printer is not plugged in (or was unplugged).");
+	if (!strcmp(u->kind, "ipp")) die("This printer prints over USB with IPP: " NEED_EXT " to print to it.");
+	if (!strcmp(u->kind, "postscript") && !usb_filter("pdftops", f, sizeof f)) die("This printer reads PostScript: " NEED_EXT " to print to it.");
+	int can = !strcmp(u->kind, "pdf") || !strcmp(u->kind, "postscript");
+	printf("{\"ok\":true,\"uri\":"); js(uri); printf(",\"name\":"); js(u->name); printf(",\"model\":"); js(u->model);
+	printf(",\"location\":\"USB\",\"state\":3,\"color\":true,\"message\":"); js(can ? "" : "It needs a driver Rudolf OS does not have.");
+	printf(",\"usb\":"); js(u->kind); printf(",\"formats\":[%s],\"sides\":[\"one-sided\"],\"copies\":[[1,99]]", can ? "\"application/pdf\"" : "");
+	printf(",\"pageRanges\":[%s]}\n", usb_filter(!strcmp(u->kind, "pdf") ? "pdftocairo" : "pdftops", f, sizeof f) ? "true" : "false"); return 0;
+}
+/* a plain printer's job: the PDF (the pages asked for, through pdftocairo, when the extension is there) or PostScript from
+   pdftops, written to its /dev/usb/lpN, once per copy */
+static int usb_send(const char *uri, const char *file, const char *fmt, int copies, int p1, int p2)
+{
+	const usbp *u = usb_find(uri); char flt[300], cmd[1400], tmp[64] = "";
+	if (!u) die("The printer is not plugged in (or was unplugged).");
+	if (strcmp(u->kind, "pdf") && strcmp(u->kind, "postscript")) die(!strcmp(u->kind, "ipp") ? "This printer prints over USB with IPP: " NEED_EXT " to print to it." : "This printer needs a driver Rudolf OS does not have.");
+	if (strcmp(fmt, "application/pdf")) die("The printer cannot take this kind of document.");
+	if (strncmp(uri, "usb://lp", 8) || strspn(uri + 8, "0123456789") != strlen(uri + 8) || !uri[8]) die("not a USB printer");
+	char dev[160]; snprintf(dev, sizeof dev, "%s/%s", getenv("RP_USBDEV") ? getenv("RP_USBDEV") : "/dev/usb", uri + 6);
+	int ranged = p1 > 0 && p2 >= p1, all = 0;
+	const char *src = file;
+	if (!strcmp(u->kind, "postscript")) {
+		if (!usb_filter("pdftops", flt, sizeof flt)) die("This printer reads PostScript: " NEED_EXT " to print to it.");
+		strcpy(tmp, "/tmp/rprint-usb-XXXXXX"); int t = mkstemp(tmp); if (t < 0) die("no room for the print job"); close(t);
+		char rg[40] = ""; if (ranged) snprintf(rg, sizeof rg, "-f %d -l %d ", p1, p2);
+		snprintf(cmd, sizeof cmd, "'%s' -q %s'%s' '%s'", flt, rg, file, tmp);
+		if (system(cmd)) { unlink(tmp); die("The document could not be made into PostScript."); }
+		src = tmp;
+	} else if (ranged) {
+		if (usb_filter("pdftocairo", flt, sizeof flt)) {
+			strcpy(tmp, "/tmp/rprint-usb-XXXXXX"); int t = mkstemp(tmp); if (t < 0) die("no room for the print job"); close(t);
+			snprintf(cmd, sizeof cmd, "'%s' -q -pdf -f %d -l %d '%s' '%s'", flt, p1, p2, file, tmp);
+			if (system(cmd)) { unlink(tmp); die("The pages could not be picked out of the document."); }
+			src = tmp;
+		} else all = 1;   /* (without the extension a range cannot be picked out: all the pages are printed) */
+	}
+	FILE *in = NULL; size_t total = 0;
+	for (int c = 0; c < copies; c++) {
+		in = fopen(src, "rb"); if (!in) { if (*tmp) unlink(tmp); die("the document is empty"); }
+		int o = open(dev, O_WRONLY | O_CLOEXEC); if (o < 0) { fclose(in); if (*tmp) unlink(tmp); die("The printer does not answer (%s: %s). Check that it is switched on and plugged in.", uri + 6, strerror(errno)); }
+		char b[65536]; size_t n;
+		while ((n = fread(b, 1, sizeof b, in)) > 0) { size_t w = 0; while (w < n) { ssize_t k = write(o, b + w, n - w); if (k < 0) { if (errno == EINTR) continue; close(o); fclose(in); if (*tmp) unlink(tmp); die("The printer stopped taking the job (%s).", strerror(errno)); } w += k; } total += n; }
+		close(o); fclose(in);
+	}
+	if (*tmp) unlink(tmp);
+	printf("{\"ok\":true,\"job\":0,\"state\":9,\"status\":0,\"bytes\":%zu,\"message\":", total);
+	js(all ? "Sent to the printer: all the pages (picking pages needs the USB printers extension)." : "Sent to the printer."); printf("}\n");
 	return 0;
 }
 
@@ -328,6 +445,8 @@ static int cmd_find(void)
 		if (!first) putchar(','); first = 0;
 		printf("{\"name\":"); js(label); printf(",\"uri\":"); js(uri); printf(",\"model\":"); js(s->ty); printf(",\"location\":"); js(s->note); printf("}");
 	}
+	/* (1.6.0) and the USB printers */
+	usb_load(); for (int i = 0; i < NU; i++) { if (!first) putchar(','); first = 0; usb_json(&U[i], 0); }
 	printf("]}\n"); return 0;
 }
 
@@ -335,8 +454,9 @@ int main(int argc, char **argv)
 {
 	setvbuf(stdout, NULL, _IOFBF, 1 << 16);
 	if (argc >= 2 && !strcmp(argv[1], "find")) return cmd_find();
+	if (argc >= 2 && !strcmp(argv[1], "usb")) return cmd_usb();
 	if (argc >= 3 && !strcmp(argv[1], "info")) return cmd_info(argv[2]);
 	if (argc >= 5 && !strcmp(argv[1], "send")) return cmd_send(argc, argv);
-	fprintf(stderr, "usage: rudolf-print find | info URI | send URI FILE FORMAT [copies=N] [sides=KW] [color=KW] [media=KW] [pages=A-B] [title-file=PATH]\n");
+	fprintf(stderr, "usage: rudolf-print find | usb | info URI | send URI FILE FORMAT [copies=N] [sides=KW] [color=KW] [media=KW] [pages=A-B] [title-file=PATH]\n");
 	return 2;
 }

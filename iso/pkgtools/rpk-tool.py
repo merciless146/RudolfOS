@@ -15,6 +15,11 @@
   rpk-tool.py build PKGDIR OUT.rpk --key KEY --cert CERT
                                                  (1.5.9, a developer) a package with its certificate
   The index takes revocations from REPODIR/revoked.txt: "key KEY" or "pkg NAME VERSION|*" lines.
+  rpk-tool.py sysext-recipe RECIPE.json OUTDIR --base-abi ABI [--kernel KVER] [--debs DIR] [--from-system]
+                                                 (1.6.0, plan Part 13) lay out a system extension (kind sysext) from its
+                                                 recipe (iso/ext/NAME/recipe.json): its Debian packages' files under usr/
+                                                 (or this machine's own with --from-system), its own files, its start
+                                                 script; prints its size
 
 Package file layout: [squashfs][64-byte Ed25519 signature][b"RPKSIG01"]; the signature covers
 b"rpk1 " + hex SHA-256 of the squashfs part. index.sig is the Ed25519 signature of index.txt."""
@@ -28,7 +33,7 @@ MKSQ = os.path.join(SQ, 'mksquashfs') if os.path.exists(os.path.join(SQ, 'mksqua
 UNSQ = os.path.join(SQ, 'unsquashfs') if os.path.exists(os.path.join(SQ, 'unsquashfs')) else 'unsquashfs'
 MAGIC = b'RPKSIG01'
 NAME = re.compile(r'^[a-z0-9][a-z0-9_-]{0,39}$')
-KINDS = ('cli', 'app', 'webapp', 'addon')
+KINDS = ('cli', 'app', 'webapp', 'addon', 'sysext')
 
 def die(m): sys.exit('rpk-tool: ' + m)
 
@@ -59,6 +64,7 @@ def check_info(info, where):
         if not info.get(k): die(f'{where}: PKGINFO needs {k}')
     if not NAME.match(info['name']): die(f'{where}: bad name {info["name"]!r}')
     if info['kind'] not in KINDS: die(f'{where}: kind must be one of {KINDS}')
+    if info['kind'] == 'sysext' and not info.get('base'): die(f'{where}: a system extension needs base (the base ABI it is built for)')
     for k, v in info.items():
         if '\t' in v or '\n' in v: die(f'{where}: {k} has a tab or newline')
 
@@ -186,6 +192,53 @@ def index(repo, key, serial, days):
     open(os.path.join(repo, 'index.sig'), 'wb').write(load_key(key).sign(text))
     print(f'{repo}: {len(rows)} packages, serial {serial}')
 
+def sysext_recipe(recipe, outdir, abi, kernel, debs, from_system):
+    """(1.6.0) a system extension's files: "files" (paths under usr/ to take from the Debian packages or this machine,
+    globs allowed), "map" (a file kept elsewhere, put under usr/), "tree" (the recipe's own files, laid over), "start" (its start script); "need" lists programs that must be
+    there. Only usr/, lib/firmware and lib/modules/KVER/extra may be filled (rpk refuses anything else)."""
+    r = json.load(open(recipe)); rdir = os.path.dirname(os.path.abspath(recipe)); name = r['name']
+    if os.path.exists(outdir): shutil.rmtree(outdir)
+    os.makedirs(os.path.join(outdir, 'licenses'))
+    src = '/'
+    if not from_system:
+        src = tempfile.mkdtemp()
+        for d in r.get('debs', []):
+            m = glob.glob(os.path.join(debs, f'{d}_*.deb'))
+            if not m: die(f'no {d}_*.deb in {debs}')
+            subprocess.run(['dpkg-deb', '-x', m[0], src], check=True)
+    for d in r.get('debs', []):
+        cp = os.path.join(src, 'usr/share/doc', d, 'copyright')
+        if os.path.exists(cp): shutil.copy(cp, os.path.join(outdir, 'licenses', d + '.copyright'))
+    for pat in r.get('files', []):
+        if not (pat.startswith('usr/') or pat.startswith('lib/firmware/')): die(f'{recipe}: {pat}: only usr/ and lib/firmware/')
+        hits = glob.glob(os.path.join(src, pat))
+        if not hits: die(f'{recipe}: nothing matches {pat}')
+        for h in hits:
+            rel = os.path.relpath(h, src); t = os.path.join(outdir, rel); os.makedirs(os.path.dirname(t), exist_ok=True)
+            if os.path.isdir(h) and not os.path.islink(h): shutil.copytree(h, t, symlinks=True, dirs_exist_ok=True)
+            elif os.path.islink(h) and not os.path.isabs(os.readlink(h)): os.symlink(os.readlink(h), t)
+            else: shutil.copy2(os.path.realpath(h), t)
+    for a, b in r.get('map', {}).items():   # a file the package keeps elsewhere (Ubuntu's /sbin), put under usr/
+        if not b.startswith('usr/'): die(f'{recipe}: map: {b}: only under usr/')
+        h = os.path.join(src, a)
+        if not os.path.exists(h): die(f'{recipe}: map: {a} is not in the packages')
+        t = os.path.join(outdir, b); os.makedirs(os.path.dirname(t), exist_ok=True); shutil.copy2(os.path.realpath(h), t)
+    if r.get('tree'): shutil.copytree(os.path.join(rdir, r['tree']), outdir, symlinks=True, dirs_exist_ok=True)
+    if r.get('start'):
+        t = os.path.join(outdir, 'usr/lib/rudolf/ext.d', name + '.start'); os.makedirs(os.path.dirname(t), exist_ok=True)
+        shutil.copy(os.path.join(rdir, r['start']), t); os.chmod(t, 0o755)
+    for n in r.get('need', []):
+        if not os.path.exists(os.path.join(outdir, n.lstrip('/'))): die(f'{recipe}: {n} is not in the extension')
+    if not from_system: shutil.rmtree(src)
+    info = {k: str(r[k]) for k in ('name', 'version', 'title', 'summary', 'license') if k in r}
+    info['kind'] = 'sysext'; info['base'] = abi
+    if kernel: info['kernel'] = kernel
+    with open(os.path.join(outdir, 'PKGINFO'), 'w') as f:
+        for k, v in info.items(): f.write(f'{k} = {v}\n')
+    check_info(info, recipe)
+    size = sum(os.lstat(os.path.join(dp, f)).st_size for dp, _, fs in os.walk(outdir) for f in fs)
+    print(f'laid out the system extension {name} {info["version"]} in {outdir}: {size // 1024} KB of files')
+
 def local_deb(pkg, outdir):
     os.makedirs(outdir, exist_ok=True)
     st = subprocess.run(['dpkg-query', '-W', '-f', '${Package}\t${Version}\t${Architecture}', pkg], capture_output=True, text=True, check=True).stdout.split('\t')
@@ -210,6 +263,7 @@ if __name__ == '__main__':
     p = s.add_parser('cert'); p.add_argument('out'); p.add_argument('--key', required=True); p.add_argument('--name', required=True); p.add_argument('--github', required=True); p.add_argument('--pubkey', required=True); p.add_argument('--prefix', required=True); p.add_argument('--days', type=int, default=365)
     p = s.add_parser('index'); p.add_argument('repo'); p.add_argument('--key', required=True); p.add_argument('--serial', type=int, default=int(datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d%H'))); p.add_argument('--expires-days', type=int, default=0)
     p = s.add_parser('local-deb'); p.add_argument('package'); p.add_argument('outdir')
+    p = s.add_parser('sysext-recipe'); p.add_argument('recipe'); p.add_argument('outdir'); p.add_argument('--base-abi', required=True); p.add_argument('--kernel', default=''); p.add_argument('--debs', default='.'); p.add_argument('--from-system', action='store_true')
     o = a.parse_args()
     if o.cmd == 'keygen': keygen(o.dir)
     elif o.cmd == 'from-recipe': from_recipe(o.recipe, o.outdir, o.debs, o.rootfs)
@@ -217,3 +271,4 @@ if __name__ == '__main__':
     elif o.cmd == 'cert': cert(o.out, o.key, o.name, o.github, o.pubkey, o.prefix, o.days)
     elif o.cmd == 'index': index(o.repo, o.key, o.serial, o.expires_days)
     elif o.cmd == 'local-deb': local_deb(o.package, o.outdir)
+    elif o.cmd == 'sysext-recipe': sysext_recipe(o.recipe, o.outdir, o.base_abi, o.kernel, o.debs, o.from_system)

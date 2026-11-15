@@ -1,0 +1,75 @@
+#!/bin/sh
+# Rudolf OS 1.6.0 (docs/plan-1.6.0.md Part 8): printers plugged in by USB. udev (90-rudolf.rules), or mdev as the
+# fallback, runs "usbprint hotplug" when a printer's interface (USB class 7) or a usblp device (/dev/usb/lpN) comes or
+# goes; it looks at every USB printer there is and writes /run/rudolf/usb-printers for rudolf-print (one a line:
+# KIND<TAB>NAME<TAB>ADDRESS<TAB>IEEE-1284-DEVICE-ID<TAB>SYSNAME):
+#   ipp         IPP over USB (an interface 7/1/4: most printers since about 2015): usblp is made to let go of its
+#               interfaces, ipp-usb (the USB printers extension, docs/plan-1.6.0.md Part 13) serves it on this computer
+#               only, and ADDRESS is ipp-usb's (ipp://127.0.0.1:PORT/ipp/print); empty without the extension
+#   pdf, postscript   a plain printer (7/1/1-3) whose device ID lists PDF or PostScript: ADDRESS is its /dev/usb/lpN
+#   driver      any other (PCL-only, host-based): it needs a driver Rudolf OS does not have
+# ipp-usb runs while an IPP over USB printer is plugged in (its udev mode ends it after the last one). Plugged in and
+# unplugged printers are said in /run/rudolf/usbprint.log.
+#   usbprint hotplug | scan | list
+# For the host test: RUDOLF_USBPRINT_SYS (sysfs), RUDOLF_RUN, RUDOLF_IPPUSB (the program), RUDOLF_IPPUSB_STATE (its
+# devices' state files), RUDOLF_IPPUSB_WAIT (tenths of a second to wait for its port), RUDOLF_TEST_PATH.
+# GPL-2.0-or-later.
+export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
+SYS=${RUDOLF_USBPRINT_SYS:-/sys}; R=${RUDOLF_RUN:-/run/rudolf}; OUT=$R/usb-printers; LOG=$R/usbprint.log
+IPPUSB=${RUDOLF_IPPUSB:-/usr/sbin/ipp-usb}; ST=${RUDOLF_IPPUSB_STATE:-/var/ipp-usb/dev}; WAITT=${RUDOLF_IPPUSB_WAIT:-80}
+TAB=$(printf '\t')
+rd() { head -c 900 "$1" 2>/dev/null | tr -d '\r\n\t'; }
+# one field of an IEEE 1284 device ID (MFG, MDL, CMD, ...; long or short names)
+did() { printf '%s' "$1" | awk -v k="$2" 'BEGIN{RS=";"; n=split(k, K, "|")} {i=index($0, ":"); if (!i) next; key=toupper(substr($0, 1, i - 1)); gsub(/^[ \n]+|[ \n]+$/, "", key)
+	for (j = 1; j <= n; j++) if (key == K[j]) { v=substr($0, i + 1); gsub(/^ +| +$/, "", v); print v; exit } }'; }
+# a plain printer's kind from its device ID's command set
+kind_of() { c=$(did "$1" 'COMMAND SET|CMD' | tr 'a-z' 'A-Z' | tr -d ' '); case ",$c," in *,PDF,*) echo pdf;; *,POSTSCRIPT,*|*,PS,*|*,PS2,*|*,PS3,*|*,BR-SCRIPT*) echo postscript;; *) echo driver;; esac; }
+running() { pgrep -x ipp-usb >/dev/null 2>&1; }
+# ipp-usb's port for a device (its state file, VVVV-PPPP-..., "http-port = N")
+ippport() { for f in "$ST"/$1-$2-*.state "$ST"/$1-$2.state; do [ -f "$f" ] && sed -n 's/^ *http-port *= *\([0-9][0-9]*\).*/\1/p' "$f" | head -1 && return 0; done; return 1; }
+
+scan() {
+	: > $OUT.new; ipp=0
+	for dv in "$SYS"/bus/usb/devices/*; do
+		case "${dv##*/}" in *:*) continue;; esac
+		ifs=; has4=
+		for i in "$dv"/"${dv##*/}":*; do [ "$(rd $i/bInterfaceClass)" = 07 ] || continue; ifs="$ifs $i"; [ "$(rd $i/bInterfaceProtocol)" = 04 ] && has4=1; done
+		[ -n "$ifs" ] || continue
+		sn=${dv##*/}; vid=$(rd $dv/idVendor); pid=$(rd $dv/idProduct)
+		nm=$(printf '%s %s' "$(rd $dv/manufacturer)" "$(rd $dv/product)" | sed 's/^ *//; s/ *$//')
+		id=; for i in $ifs; do [ -n "$id" ] || id=$(rd $i/ieee1284_id); done
+		[ -n "$nm" ] || nm=$(printf '%s %s' "$(did "$id" 'MANUFACTURER|MFG')" "$(did "$id" 'MODEL|MDL')" | sed 's/^ *//; s/ *$//')
+		[ -n "$nm" ] || nm="USB printer $vid:$pid"
+		if [ -n "$has4" ]; then
+			# IPP over USB: ipp-usb needs the interfaces, usblp lets go of them
+			for i in $ifs; do [ "$(basename "$(readlink $i/driver 2>/dev/null)")" = usblp ] && { echo "${i##*/}" > "$SYS/bus/usb/drivers/usblp/unbind" 2>/dev/null || echo "$(date) $sn: usblp could not let go of ${i##*/}" >> $LOG; }; done
+			ipp=1; addr=
+			if [ -x "$IPPUSB" ]; then
+				running || { setsid "$IPPUSB" udev </dev/null >>$R/ipp-usb.log 2>&1 9>&- & echo "$(date) ipp-usb started" >> $LOG; }
+				n=0; while [ $n -lt $WAITT ]; do p=$(ippport $vid $pid) && break; sleep 0.1; n=$((n + 1)); done
+				[ -n "$p" ] && addr="ipp://127.0.0.1:$p/ipp/print" || echo "$(date) $sn: ipp-usb gave no address yet" >> $LOG
+			fi
+			printf 'ipp\t%s\t%s\t%s\t%s\n' "$nm" "$addr" "$id" "$sn" >> $OUT.new
+		else
+			lp=; for i in $ifs; do for n in "$i"/usbmisc/lp* "$i"/usb/lp*; do [ -e "$n" ] && lp=/dev/usb/${n##*/}; done; done
+			[ -n "$lp" ] || continue   # (usblp not bound yet: its lp device's own event comes)
+			printf '%s\t%s\t%s\t%s\t%s\n' "$(kind_of "$id")" "$nm" "$lp" "$id" "$sn" >> $OUT.new
+		fi
+	done
+	# plugged in, unplugged
+	[ -f $OUT ] || : > $OUT
+	if ! cmp -s $OUT.new $OUT; then
+		awk -F'\t' -v t="$(date)" 'FILENAME==ARGV[1]{o[$5]=1;next} {if(!o[$5]) print t" plugged in: "$2" ("$1")"}' $OUT $OUT.new >> $LOG
+		awk -F'\t' -v t="$(date)" 'FILENAME==ARGV[1]{n[$5]=1;next} {if(!n[$5]) print t" unplugged: "$2}' $OUT.new $OUT >> $LOG
+	fi
+	mv -f $OUT.new $OUT; chmod 644 $OUT
+	[ $ipp = 0 ] && running && { pkill -x ipp-usb; echo "$(date) ipp-usb stopped (no IPP over USB printer left)" >> $LOG; }
+	return 0
+}
+case "$1" in
+hotplug|scan)
+	mkdir -p $R; [ "$1" = hotplug ] && sleep 0.3   # (the interfaces of one printer come together)
+	if command -v flock >/dev/null; then ( flock 9; scan ) 9>$R/usbprint.lock; else scan; fi ;;
+list) cat $OUT 2>/dev/null ;;
+*) echo "usage: usbprint hotplug | scan | list"; exit 2 ;;
+esac

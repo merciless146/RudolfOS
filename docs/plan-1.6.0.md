@@ -109,6 +109,48 @@ PDF Viewer since 1.5.9) lists them as "USB: name".
 - **On real hardware:** the HP desktop's user's USB printer (on the HP desktop, or on the Vivobook if it can be
   borrowed), first read only (its interfaces and device ID: which kind it is), then a test page.
 
+**Done, first step (2026-11-15), on Part 13's signed system extensions:**
+- **Kernel:** USB_PRINTER (usblp) a module, checked after olddefconfig in kconfig.sh and kconfig-arm64.sh.
+- **Devices:** 90-rudolf.rules runs /usr/lib/rudolf/usbprint for a printer's interface (by ENV{INTERFACE}=="7/1/*", so
+  also when it goes; add, remove and bind) and for usblp's /dev/usb/lpN; mdev's fallback has the same two lines
+  (before its modalias line). udevadm verify passes on the rules.
+- **/usr/lib/rudolf/usbprint** (hotplug, scan): every USB printer there is, written to /run/rudolf/usb-printers (kind,
+  name, address, IEEE 1284 device ID, sysfs name): IPP over USB (an interface 7/1/4: usblp unbound from that printer's
+  interfaces, ipp-usb started in its udev mode, which ends after the last one, and its port read from its state file:
+  ipp://127.0.0.1:PORT/ipp/print; no address without the extension), PDF or PostScript (the device ID's command set:
+  its /dev/usb/lpN), or "needs a driver" (PCL-only, host-based); plugged in and unplugged said in
+  /run/rudolf/usbprint.log; the name from the device's strings or its device ID (short and long field names).
+- **The first extension, `usbprint`** (iso/ext/usbprint: recipe.json, its start script, its filters' links): ipp-usb
+  (from Ubuntu's /sbin, put in usr/sbin), Poppler's pdftops and pdftocairo (as /usr/lib/rudolf/print/pdftops and
+  pdftocairo), libpoppler and Avahi's client libraries where the base lacks them (mkext.sh leaves out what the base has),
+  ipp-usb's quirks; its start script writes ipp-usb's settings (loopback only, no DNS-SD: Rudolf has no Avahi, the
+  address goes through /run/rudolf/usb-printers instead, ports from 60000, short logs). No budget in ci_release.sh (the
+  base does not carry it); mkext.sh prints its size: about 9.9 MB of files with all its libraries, 2.2 MB to download
+  where the base has libpoppler and Avahi's client (measured here on Ubuntu 24.04, 2026-11-15).
+- **rudolf-print:** find adds the USB printers as "USB: name" (an IPP over USB one at ipp-usb's address, printed to as a
+  network printer; a plain one as usb://lpN; one that cannot print as usb://KIND/SYSNAME); `rudolf-print usb` (JSON for
+  Settings: kind, ready); info for usb:// (formats; a PostScript one only with the extension's pdftops; one needing a
+  driver has no format, so the print dialog says it needs a driver; an IPP over USB one without the extension says to
+  install it); send to usb://lpN writes the PDF as it is (the pages picked with pdftocairo when the extension is there,
+  else all of them, said) or PostScript from pdftops (with the pages), once per copy.
+- **rudolfd:** print/find as before (with them); print/usb; a printer's address may be usb://... (no "..", quotes or
+  ports).
+- **Settings › Devices › Printers plugged in by USB** (desktop/usbprint60.js): each one's name (as text) and kind (IPP
+  over USB, reads PDF, reads PostScript, needs a driver), ready or needing the USB printers extension (a System
+  extensions… button), read again with Refresh and when a USB device comes or goes.
+- **The self-test:** a "usb-printer" line (each one and its kind; fails when an IPP over USB one has no address or
+  ipp-usb does not answer there; skipped with none).
+- Tests: qt/host/usbprint60_t.sh 31 (a stand-in sysfs: an IPP over USB printer, a PostScript one, a PCL-only one, a PDF
+  one, a USB stick; ipp-usb's stand-in in front of qt/fakeprinter.py, printed to through its address; the jobs to
+  stand-in /dev/usb/lpN; without the extension; unplugged; rudolfd's address check (fixtures/printuri.c); the rules,
+  mdev's lines, the kernel, the self-test), qt/shell2/usbprint60_t.js 13 (and the print dialog's list), udev60_t.sh 13,
+  pdfprint59_t.js 8; .github/workflows/sysext-check.yml runs both host tests (sysext60_t.sh, usbprint60_t.sh) on pull requests.
+
+**Next:** extensions.yml's first run (the owner's) to publish `usbprint` for the first release with a base ABI; the QEMU
+check with a USB printer passed through (or QEMU's usb-printer-like device) and ipp-usb itself; on the HP desktop's
+user's printer (borrowed): first read only (its interfaces and device ID: which kind), then a test page; ARM64's recipe
+(the file globs are by architecture already; the release ext-ABI16 differs per base).
+
 ### 9. udev instead of mdev (added on 2026-11-13)
 Why: mdev makes device nodes and runs scripts, but keeps no device database and tells no program about devices. Linux
 software finds hardware through udev (libudev): ModemManager (1.5.9 needed a workaround: #280), libinput, SDL and
@@ -456,8 +498,55 @@ the page's empty body's margin makes it. same_t.sh: new ws2, ws2-dark (the bar a
 engines: `SAME_SCRIPT=wsbeh_t.js sh same_t.sh` 11/11 (the workspace shown, the windows shown, the taskbar's windows,
 the workspaces with windows and the menu's rows after each of ten steps). The bar
 at the left or the right (#346) lists and marks them the same way.
-**Next:** item 5 (the window keys: Super+Tab and Alt+Tab with previews, Super+arrows, Super+D), then items 6 to 12 in
-order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md after them. Native is not
+Item 5, the window keys (2026-11-15, unattended session): the page's keyboard shortcuts done by the shell (shell25.js SHORT,
+in its order: Super+E File Explorer, Super+D the desktop (this workspace's windows minimised), Super+R Run, Super+L lock,
+Super+I Settings (the one already open brought to the front), Ctrl+Esc and Super by itself the start menu (metaAlone: Super
+let go with nothing pressed between), Super+Tab the overview, Alt+F4 the window in front closed (Oracle's own Alt+F4 kept
+Chromium's, 12.3c), Super+Up maximise, Super+Down restore or minimise, Ctrl+Alt+arrows and with Shift the workspaces (item
+4), Super+N and Super+A (item 3), F1 Help), each with the account's own key from Settings › Keyboard (shell25.js kbMap:
+bd95kb:ID, which rudolfd's desktop/settings now gives as "kb"; an empty one is the default, as the page's kbOf); the keys
+grabbed on the root window, Super and the switcher's with the keyboard sent there while held (GTK's own windows take keys
+through XInput 2, so a key pressed with Super held otherwise went to the window in front). Alt+Tab's switcher (#altab: the
+windows in the order last used (each client's last focus, the page's MRU), the second one chosen, Tab and Shift+Tab, Alt+` too,
+Escape, chosen when Alt is let go or clicked; each window's picture, title and "workspace N", the chosen one in the accent
+colour with its words white; the box on half a pixel where translate(-50%,-50%) puts it, its words on whole pixels, as
+Chromium draws them). Super+Tab's overview (overview(): this workspace's windows, minimised ones too, in ceil(sqrt(n))
+columns over #desk (42 px above a taskbar at the bottom, 48 px below one at the top), each scaled to its cell less 40 by 60
+px, never larger, with the 3 px ring in the accent colour and its shadow, over the desktop shaded rgba(15,23,42,.55); a click
+picks one, Escape, a click elsewhere or Super+Tab again goes back; the windows' pictures through the Composite extension
+(libXcomposite, loaded when there: each window redirected off screen only while the overview is shown). The page has no
+"snap to the left or right" (Super+Left and Right), and its Alt+Tab shows the windows' pictures, not previews: the shell
+does as the page does. Fixed with it: the start menu closed itself when a key's grab took the keyboard for a moment (its
+focus-out now checks where the keyboard's focus went). same_t.sh: new altab, altab-accent, overview (107 parts in 75
+cases pass; ws2's toast is timing-dependent on Standard, as on main); the behaviour on both engines: `SAME_SCRIPT=keybeh_t.js
+sh same_t.sh` 21/21 (20 steps and the start menu open by Ctrl+Esc compared: the window in front, the windows open and
+minimised, the maximised one, the start menu). Known differences left (item 5): F11, the page's own full screen, stays with
+the window in front on Native; a key pressed while Super is held that is not a shortcut goes nowhere (the page's other
+Super keys, Super+V, Super+Space, Super+. and the magnifier's, are items 9 and 10); the overview's pictures are taken once
+when it opens (the page's windows keep moving under it).
+Item 6, the screen saver and its lock (2026-11-15, unattended session): the shell looks every 15 s as core25.js idleCheck
+does: the time since the last input (rudolfd's idle: rudolf-display's count), Display Properties' screen saver and Power
+settings (bd95sys, which rudolfd's desktop/settings now gives as "sys": on, after how long, the style, the clock on it, "lock
+when it ends", lock after, sleep after) and what holds it off (rudolfd's media: sound playing, a microphone in use, an app
+keeping the screen on (Part 11's Inhibit); a window full screen; a minute after unlocking, UNLOCKED_AT). The saver itself is
+the page's (saver31.js ssRun) in a window of its own (#app=do-saver&style=NAME&time=0|1, oneapp59.js), which the shell shows
+full screen above everything, the taskbar too, and leaves off the taskbar and Alt+Tab; input (rudolfd's idle under 1.5 s,
+looked at every second, as ssRun) closes it, and the lock screen follows when it ran more than 3 s with "lock when the screen
+saver ends" (saverStop). Lock after N minutes and sleep after the power source's time (Power and battery's, else suspmin)
+as the page. Fixed with it: every app window's page ran idleCheck too, so on Native each would have started its own saver
+(inside its window) and locked: one-app pages no longer do (the shell does it once). same_t.sh: new saver (the stars full
+screen over a desktop: 1.18 %); the behaviour on both engines: `SAME_SCRIPT=savbeh_t.js sh same_t.sh` 7/7 (an hour idle with
+sound playing, a microphone, an app keeping the screen on: no saver; then the saver; input after 4 s: the saver ends and
+the screen locks; unlocked; idle again at once: no saver for a minute). Known differences left (item 6): Display
+Properties' Preview button runs the saver inside Settings' own window on Native (the page's preview is full screen); lock
+after N minutes and sleep are not in the behaviour test (they need a minute after unlocking each).
+**Item 7 needs the owner's decision (2026-11-15):** the page has no several-monitor desktop (Standard shows one desktop on one
+screen; rudolf-display gives Chromium one output), so "a taskbar and the wallpaper on each monitor" on Native would make Native
+differ from Standard, against "The rule". Either Standard gets it too (a change to Standard, which the rule forbids without
+the owner), or Native keeps one desktop as Standard and item 7 is dropped or moved to 2.0. Left undone until then.
+**Next:** item 8 (the Phone screen and Blitzen's panel: both are already page windows, so Native shows them in one-app windows
+and scrcpy's own window framed as a Linux app's; what is left is checking them against Standard with same_t.sh), then items 9
+to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md after them. Native is not
 the default yet. The security line's next steps (as of 2026-11-14): docs/plan-1.5.9.md 15.3's third step (the QEMU check
 with two accounts, needing a host with QEMU and a built disc) and 12.3c's second part (Oracle on Native: step 5's rest).
 
@@ -465,6 +554,17 @@ with two accounts, needing a host with QEMU and a built disc) and 12.3c's second
 release's default engine is Native for new installations; an update keeps the engine the computer had, and Settings
 offers the change once ("Rudolf OS's new desktop uses less memory and starts faster"). Native's safeguards stay
 (1.5.9 Part 12 step 5). The release check measures Native at idle on the Vivobook and fails over 900 MB used.
+**Prepared (2026-11-15, unattended session), for the owner's decision:** the switch, in its own PR, not to be merged before
+the week of betas on Native above (items 1-12 are not all done yet: see the Status above). A new installation starts with
+Native (install.sh writes the choice into the new data partition when the system has rudolf-native and Chromium; at its
+first start it is on trial as any chosen engine, and the session goes back to Standard if it does not come up); an update
+keeps the engine the computer had (nothing is written by rudolf-update; no choice is Standard, as before); a computer
+updated on Standard is offered Native once, after an administrator signs in: a notification ("Rudolf OS's new desktop
+uses less memory and starts faster…") whose click opens Settings at the desktop engine (rudolfd's desktop/engine "offer":
+Native there, Standard in use, never given up on this computer, an installed Rudolf OS, not offered before; POST
+offered=1, and any engine chosen in Settings, keep it as made in /persist/etc/rudolf-native-offered). Settings names it
+Native (no longer "Native (test)"). Tests: qt/host/nativedefault60_t.sh 12, qt/shell2/engine57_t.js 20 (new 4f-4i).
+Not done here: the release check's 900 MB measurement on the Vivobook.
 
 ### 13. Signed system extensions (added on 2026-11-14)
 Asked for: a way to add system parts (a driver, firmware, a tool, a printer filter) to one computer without a new
@@ -536,6 +636,53 @@ extension installed and in use after a restart; a broken one (its start script h
 left out on the next start; an update to a base with and without the extension's build; Recovery mode without
 extensions; removal leaving nothing behind.
 
+**Done, first step (2026-11-15):**
+- **rpk** (iso/sys/rpk.c): kind `sysext`. Installed only with `--system` (rudolfd gives it after checking an administrator's
+  password; the App Store's `pkg/install` cannot install or remove one), only when signed by a key in
+  /etc/rudolf/rpk-keys itself (the release key: not a Library or developer key, nor one added with `rpk key add`), with
+  PKGINFO `base` equal to this base's /usr/share/rudolf/base-abi and `kernel` (when given) to the running kernel, holding
+  only PKGINFO, licenses/, usr/, lib/firmware/ and lib/modules/KVER/extra/ (no device files) and at most one start
+  script, usr/lib/rudolf/ext.d/NAME.start. Never mounted at /pkg; left out of `rpk status` (the App Store);
+  `rpk sysext-status` (JSON for Settings: installed, what this start did, the list's available ones) and
+  `rpk sysext-check NAME` (its file's signature again, base, kernel, revocation). `rpk update` updates an installed one
+  as the apps. Health log lines of their own (kind "extension"). The extensions' list: /usr/share/rudolf/sysext-source.
+- **The assembly** (/usr/lib/rudolf/sysext, run by rudolf-init before udev, from /persist/pkg): each installed extension
+  that passes sysext-check mounted read-only at /run/rudolf/ext/NAME in name order; one with a file the base (or an
+  earlier extension) has is left out, said in /run/rudolf/ext/state and the health log; /usr and /lib/firmware become
+  read-only overlays (the extensions over a bind of the base); /lib/modules/KVER an overlay with a scratch upper layer in
+  /run for depmod's lists (the base never written); start scripts as root, 20 s each (killed after), output in
+  /run/rudolf/ext/NAME.log, a failure in the health log. The trial: what is used for the first time (or a new version)
+  is written to /persist/pkg/sysext/trying; the session's watchdog marks the start good at the desktop's first heartbeat
+  (`sysext good`); if it never came, the next start leaves those out (sysext/off/NAME, with Try again). None in Recovery
+  mode (rudolf.recovery=1), with rudolf.noext=1, or once after "Start once without extensions".
+- **rudolfd:** GET sysext/status; POST sysext/install, remove (as jobs), retry, skip-once, each only with an
+  administrator's name and password in the body, checked by rudolfd (desk_admin_check, as the development link's).
+- **Settings › Update and recovery › System extensions** (desktop/sysext60.js, after Security updates): each one's
+  name, what it adds, version, size and state (in use, in use after a restart, left out and why), Remove (asks first),
+  Try again, Install… (the list for this base), Check for extensions, Start once without extensions, Restart now; a
+  standard account's buttons off; drawn as text.
+- **The self-test:** an "extensions" line (those in use; fails on one left out, with why).
+- **Building:** iso/systools/baseabi.sh (the base's libraries' hash), written by ci_release.sh into the base
+  (usr/share/rudolf/base-abi, and sysext-source: the release ext-ABI16) and by mkrootfs.sh; iso/systools/mkext.sh (an
+  extension from iso/ext/NAME/recipe.json: Ubuntu 24.04's packages, what the base has already left out, every library
+  its programs need found, its size printed, signed); .github/workflows/extensions.yml (workflow_dispatch only, for one
+  release's base and kernel: signs with RPK_SIGNING_KEY as the release does, publishes the extensions and a signed index
+  in the release ext-ABI16, keeping those already there). rpk-tool.py: `sysext-recipe`.
+- Tests: qt/host/sysext60_t.sh 47 (throw-away keys made by the test: the App Store's way refused; the system key
+  accepted, a Library key and an added key refused; another base, another kernel, files outside usr/ and lib/, a start
+  script not its own, kernel modules without the kernel line refused; two extensions laid over a stand-in root in a
+  private mount namespace, in order, read-only, with depmod; the start script; the trial, Try again and good; a clash
+  with the base and with another extension; a start script stopped after its time limit; Recovery mode, rudolf.noext=1,
+  Start once without; a file changed after installing; another base after an update; a revocation; the list in
+  Settings and not in the App Store; removal; the self-test's line; rudolfd's requests with an administrator's password
+  only), qt/shell2/sysext60_t.js 16, rpklib_t.sh 15, devcert59_t.sh 14, selftest_t.sh 25.
+
+**Next:** the QEMU checks of 13.7 (an extension in use after a restart, a broken one left out, an update with and without
+the extension's build, Recovery mode, removal); rudolf-update fetching each installed extension's build for the new base
+before switching slots (now an update to a new base leaves them out, said, until their build is installed); extensions
+with kernel modules built in the kernel's own run (signed with its module key); the release check for promised
+extensions; the first run of extensions.yml (the owner's, for the first release with a base ABI).
+
 ### 14. A keyring for Linux apps: the Secret Service (added on 2026-11-14)
 Found on the Vivobook (2026-11-14): signing in to the Claude app for Linux with an e-mail address showed a notice that
 GNOME Keyring is not set up. Linux apps (the Claude app, VS Code, Chromium-based and Electron apps, mail and chat
@@ -599,9 +746,38 @@ every restart.
   refused), keyring60_t.sh 9 with the real daemon (the item named, Remove: gone, no prompt), users59_t.sh 29 (6d, the
   list and forget as the account's user, anything else refused, nobody signed in), qt/shell2/keyring60_t.js 11.
 
-**Next:** the prompts drawn by the desktop (an app asking for a new keyring: gcr's prompter is not there, so such a
-request fails for now: gnome-keyring asks gcr's Prompter on the session bus, with its secret exchange); the Claude
-app checked on the Vivobook (its notice gone, signed in after a restart).
+**Done, third step (2026-11-15): the prompts drawn by the desktop.**
+- **rudolf-portal is gcr's prompter** (org.gnome.keyring.SystemPrompter on the account's session bus, which
+  gnome-keyring-daemon asks; gcr-prompter, a GNOME window, is not in Rudolf OS): gcr's protocol as gcr-system-prompter.c
+  speaks it (org.gnome.keyring.internal.Prompter's BeginPrompting, PerformPrompt and StopPrompting; the daemon's
+  org.gnome.keyring.internal.Prompter.Callback PromptReady and PromptDone; one prompt at a time, the others waiting;
+  the properties sent back as gcr sends them, a new password's strength among them, so the daemon asks "Store
+  passwords unencrypted?" only for an empty one), and its secret exchange "[sx-aes-1]" as gcr-secret-exchange.c does it
+  (Diffie-Hellman in IKE's 1536-bit group, HKDF-SHA256 to a 16-byte key, AES-128-CBC with PKCS#7 padding, its key-file
+  messages), with OpenSSL's libcrypto, which the base layer already has (no new library; the portal is built with
+  -lcrypto in mkrootfs.sh, ci_release.sh and the ARM64 check). Weak public keys (1, p-1, p) are refused.
+- **Who asked:** the portal watches its own bus (the same user's: the bus's monitoring) for an app calling a Secret
+  Service prompt's Prompt(), which the daemon's question follows, and names that app: its Flatpak ID (the App Store's
+  name for it), else its program (claude: Claude, code: Visual Studio Code, ...), else "An app".
+- **The question** goes to the desktop as the portal's others do (a request in /run/rudolf/portal/req, kind
+  "keyring": the daemon's title, message, description and warning, a new password or not, its choice, its buttons'
+  words), drawn in keyring60.js in Settings' prompt style (the administrator's prompt: 🔑, who asked, the daemon's words
+  as text, the password fields that hide what is typed, a new one asked twice and a mismatch said, the choice as a tick
+  box), in front of the app on the screen (promptFront). The answer (yes with the password, or no) goes back through
+  portal/answer; rudolfd now writes answers 0600 and owned by the user whose portal asked (they were 0644). The portal
+  reads it, wipes it and hands the password to the daemon encrypted. A question the daemon withdraws (the app went
+  away) is removed, and the desktop closes it.
+- Tests: qt/host/keyprompt60_t.sh 9 (1: the secret exchange against another implementation, fixtures/sxpeer.py with
+  python3-cryptography, and against libgcr's own GcrSecretExchange, 13 checks; 2-3: the build and rudolfd's 0600; with the real gnome-keyring-daemon on a private
+  bus that cannot start gcr's prompter, fixtures/krapp.py (python3-secretstorage) and fixtures/krdesk.py standing in
+  for the desktop: 4 no prompter, the request fails; 5 a new keyring with its password, who asked; 6 unlocking, a wrong
+  password then the right one, its secret read; 7 Cancel; 8 a keyring with no password and the daemon's confirmation;
+  9 the app gone while asked, the question withdrawn, the next one answered), in .github/workflows/keyring-check.yml;
+  qt/shell2/keyprompt60_t.js 17; portal_t.sh 8, keyportal60_t.sh 10, keyring60_t.sh 12 (its restart now waits for the
+  old daemon to end: it failed now and then), keyring60_t.js 11.
+
+**Next:** the Claude app checked on the Vivobook (its notice gone, signed in after a restart) and an app asking for a new
+keyring there (the prompt drawn by the desktop on Standard and on Native).
 
 ### 15. Moved from 1.5.9 (2026-11-15)
 1.5.9 was finished on 2026-11-15 for promotion to stable; what it had left moved here, as written in docs/plan-1.5.9.md
@@ -609,6 +785,10 @@ app checked on the Vivobook (its notice gone, signed in after a restart).
 - **Code**
   - **The native desktop (1.5.9 12.3c):** same_t.sh's comparison of Oracle's window on Native against Standard's
     (toolbar, tabs, a site): the rule "Native appears and functions exactly as Chromium mode". With Part 12 above.
+    (2026-11-15: not done yet. Checked with item 5: oracle_native_t.sh gives the same results with and without it (37 of
+    41 on a host without a sound server; 4g, 4h and 9 fail there on main too), Oracle's own Alt+F4 still Chromium's.
+    The comparison needs Standard's Oracle drawn the same way in Playwright, the shell built with a test key, as
+    oracle_native_t.sh does for Native.)
   - **The official recovery (1.5.9 8.4, 8.5):** the repair at each start (the official build checks recovery.efi and
     system/r and restores them from the official release); Return to official restoring the official rudolf.efi; on a
     computer that never ran the official build, system/r downloaded when Developer mode is turned on. The EFI image is

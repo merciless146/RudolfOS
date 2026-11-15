@@ -1,0 +1,24 @@
+# docs/plan-1.6.0.md Parts 13 and 8: signed system extensions and USB printers. qt/host/sysext60_t.sh (rpk and
+# /usr/lib/rudolf/sysext with throw-away keys the test makes: signatures, the base ABI and kernel, the overlay in a
+# private mount namespace, clashes, start scripts, the trial, rudolfd's requests) and qt/host/usbprint60_t.sh (the
+# hotplug script on a stand-in sysfs, rudolf-print's USB printers, a pretend IPP printer behind ipp-usb's address). The
+# Settings pages' browser tests (qt/shell2/sysext60_t.js, usbprint60_t.js) run with the others. Never the release key.
+name: System extensions check
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['iso/sys/rpk.c', 'iso/sys/root/usr/lib/rudolf/sysext', 'iso/sys/root/usr/lib/rudolf/usbprint', 'iso/sys/rudolf-print.c',
+      'iso/sys/root/usr/lib/rudolf/selftest', 'iso/pkgtools/rpk-tool.py', 'iso/ext/**', 'iso/systools/mkext.sh', 'iso/systools/baseabi.sh',
+      'iso/qt/host/sysext60_t.sh', 'iso/qt/host/usbprint60_t.sh', 'iso/qt/host/fixtures/sysextapi.c', 'iso/qt/host/fixtures/printuri.c', '.github/workflows/sysext-check.yml']
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools python3-cryptography libssl-dev zlib1g-dev >/dev/null
+      - name: sysext60_t.sh
+        run: sudo sh iso/qt/host/sysext60_t.sh
+      - name: usbprint60_t.sh
+        run: sudo sh iso/qt/host/usbprint60_t.sh   # (as root: its stand-in ipp-usb is never the runner's user's process)

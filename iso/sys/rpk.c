@@ -24,7 +24,15 @@
  * next refresh (unmounted, with the reason in status).
  * Sources: the disc's own repository (/live/media/rudolf/pkg), the system's sources (/etc/rudolf/rpk-sources: the
  * Library) and lines in <root>/sources.
- * <root> is /persist/pkg on an installed system and /run/rudolf/pkg on a live one (lost at shutdown). */
+ * <root> is /persist/pkg on an installed system and /run/rudolf/pkg on a live one (lost at shutdown).
+ * 1.6.0 (docs/plan-1.6.0.md Part 13): kind  sysext  is a signed system extension: files for the system (usr/, lib/firmware,
+ * lib/modules/KVER/extra, at most one start script usr/lib/rudolf/ext.d/NAME.start) that /usr/lib/rudolf/sysext lays over
+ * the unchanged base at the next start, read-only. Only a key in /etc/rudolf/rpk-keys itself (the release key) may sign
+ * one: never a Library or developer key, nor a key added with "rpk key add". PKGINFO's  base = ABI  must be this base's
+ * (/usr/share/rudolf/base-abi) and  kernel = KVER , when given, the running kernel's. An extension is never mounted at
+ * /pkg/<name> and is not shown with the apps (status leaves it out: sysext-status lists them for Settings).
+ *     rpk sysext-check NAME    the installed extension's signature (system key), base, kernel, revocation: "ok" or why
+ *     rpk sysext-status        JSON: installed and available extensions, and what the last start did with them */
 #define _GNU_SOURCE
 #include <ctype.h>
 #include <dirent.h>
@@ -40,6 +48,8 @@
 #include <time.h>
 #include <unistd.h>
 #include <openssl/evp.h>
+/* (1.6.0) names are checked to 40 characters and paths fit their buffers: GCC's guesses about longer ones are noise */
+#pragma GCC diagnostic ignored "-Wformat-truncation"
 
 #define MAGIC "RPKSIG01"
 #define TRAILER 72
@@ -56,7 +66,9 @@ typedef struct { char *name, *version, *kind, *file, *sha, *title, *summary, *ic
 typedef struct { char loc[512], type[8]; long long serial; int ok, count, lib; char err[160]; } src_t;
 static pkg_t AV[MAXP]; static int NAV;
 static src_t SRC[16]; static int NSRC;
-static unsigned char KEYS[16][32]; static int NKEYS, KLIB[16];
+static unsigned char KEYS[16][32]; static int NKEYS, KLIB[16], KSYS[16];   /* KSYS: (1.6.0) the key is in /etc/rudolf/rpk-keys itself */
+static int VSYSFILE;
+static int SXOK;   /* (1.6.0) "--system" given (rudolfd, after an administrator's password): a system extension may be installed or removed */   /* (1.6.0) a key from /etc/rudolf/rpk-keys itself made the last signature verify() accepted */
 /* 1.5.9: the revocations the signed package lists carry, and the certificate verify_rpk last accepted */
 typedef struct { char what[4]; char a[64]; char b[64]; } rev_t;
 static rev_t REV[256]; static int NREV;
@@ -67,13 +79,16 @@ static void say(const char *f, ...) { va_list a; va_start(a, f); vprintf(f, a); 
 /* 1.5.4: a health-log line (Settings > Security > Health log) for each Library install, update, removal and refusal:
    rudolfd --health library MESSAGE; RPK_HEALTH replaces the program (tests), "" turns it off */
 static int spawn(char *const argv[], int quiet);
+static const char *HKIND = "library";
 static void lib_health(const char *f, ...)
 {
 	const char *prog = getenv("RPK_HEALTH") ? getenv("RPK_HEALTH") : "/usr/bin/rudolfd";
 	if (!*prog || access(prog, X_OK)) return;
 	char m[300]; va_list a; va_start(a, f); vsnprintf(m, sizeof m, f, a); va_end(a);
-	char *argv[] = {(char *)prog, "--health", "library", m, NULL}; spawn(argv, 1);
+	char *argv[] = {(char *)prog, "--health", (char *)HKIND, m, NULL}; spawn(argv, 1);
 }
+/* (1.6.0) a health-log line about a system extension (kind "extension") */
+#define sx_health(...) do { HKIND = "extension"; lib_health(__VA_ARGS__); HKIND = "library"; } while (0)
 static int valid_name(const char *n)
 {
 	if (!n || !*n || strlen(n) > 40 || !(islower((unsigned char)*n) || isdigit((unsigned char)*n))) return 0;
@@ -121,7 +136,7 @@ static int sha256_file(const char *path, long long limit, char hex[65])
 	for (int i = 0; i < 32; i++) sprintf(hex + 2 * i, "%02x", md[i]);
 	return 0;
 }
-static void load_keys_from(const char *path, int lib)
+static void load_keys_from(const char *path, int lib, int sysfile)
 {
 	char *t = slurp(path, NULL); if (!t) return;
 	for (char *l = strtok(t, "\n"); l && NKEYS < 16; l = strtok(NULL, "\n")) {
@@ -129,29 +144,30 @@ static void load_keys_from(const char *path, int lib)
 		if (!*l || *l == '#') continue;
 		char *e = l; while (*e && !isspace((unsigned char)*e)) e++; *e = 0;
 		unsigned char raw[64]; int n = EVP_DecodeBlock(raw, (unsigned char *)l, strlen(l));
-		if (strlen(l) == 44 && n >= 32) { KLIB[NKEYS] = lib; memcpy(KEYS[NKEYS++], raw, 32); }
+		if (strlen(l) == 44 && n >= 32) { KLIB[NKEYS] = lib; KSYS[NKEYS] = sysfile; memcpy(KEYS[NKEYS++], raw, 32); }
 	}
 	free(t);
 }
 static void load_keys(void)
 {
 	char p[300]; NKEYS = 0;
-	load_keys_from(getenv("RPK_KEYS") ? getenv("RPK_KEYS") : SYS_KEYS, 0);
-	load_keys_from(getenv("RPK_LIBRARY_KEYS") ? getenv("RPK_LIBRARY_KEYS") : LIB_KEYS, 1);
-	snprintf(p, sizeof p, "%s/keys", ROOT); load_keys_from(p, 0);
+	load_keys_from(getenv("RPK_KEYS") ? getenv("RPK_KEYS") : SYS_KEYS, 0, 1);
+	load_keys_from(getenv("RPK_LIBRARY_KEYS") ? getenv("RPK_LIBRARY_KEYS") : LIB_KEYS, 1, 0);
+	snprintf(p, sizeof p, "%s/keys", ROOT); load_keys_from(p, 0, 0);
 }
 /* 0: no trusted key signed it; 1: a system key did; 2: only a Library key did */
 static int verify(const unsigned char *msg, size_t len, const unsigned char *sig)
 {
-	int lib = 0;
+	int lib = 0, sys = 0; VSYSFILE = 0;
 	for (int i = 0; i < NKEYS; i++) {
 		EVP_PKEY *k = EVP_PKEY_new_raw_public_key(EVP_PKEY_ED25519, NULL, KEYS[i], 32); if (!k) continue;
 		EVP_MD_CTX *c = EVP_MD_CTX_new(); int ok = EVP_DigestVerifyInit(c, NULL, NULL, NULL, k) == 1 && EVP_DigestVerify(c, sig, 64, msg, len) == 1;
 		EVP_MD_CTX_free(c); EVP_PKEY_free(k);
-		if (ok && !KLIB[i]) return 1;
-		if (ok) lib = 1;
+		if (ok && KSYS[i]) { VSYSFILE = 1; return 1; }
+		if (ok && !KLIB[i]) sys = 1;
+		else if (ok) lib = 1;
 	}
-	return lib ? 2 : 0;
+	return sys ? 1 : lib ? 2 : 0;
 }
 static int VCLASS;   /* what verify_rpk found: 1 a system key, 2 only a Library key, 3 a developer's certificate */
 static int key_b64(const char *b, unsigned char out[32]) { unsigned char raw[64]; return strlen(b) == 44 && EVP_DecodeBlock(raw, (const unsigned char *)b, 44) >= 32 ? (memcpy(out, raw, 32), 0) : -1; }
@@ -243,8 +259,9 @@ static void load_sources(void)
 	NSRC = 0; const char *d = getenv("RPK_DISC") ? getenv("RPK_DISC") : DISC_REPO;
 	struct stat st; if (!stat(d, &st) && S_ISDIR(st.st_mode)) { add_src(d); strcpy(SRC[0].type, "disc"); }
 	char p[300]; snprintf(p, sizeof p, "%s/sources", ROOT);
-	const char *files[2] = { getenv("RPK_SOURCES") ? getenv("RPK_SOURCES") : SYS_SOURCES, p };
-	for (int f = 0; f < 2; f++) {
+	/* (1.6.0) and the system extensions' list for this base (written into the base by ci_release.sh) */
+	const char *files[3] = { getenv("RPK_SOURCES") ? getenv("RPK_SOURCES") : SYS_SOURCES, p, getenv("RPK_SYSEXT_SOURCE") ? getenv("RPK_SYSEXT_SOURCE") : "/usr/share/rudolf/sysext-source" };
+	for (int f = 0; f < 3; f++) {
 		char *t = slurp(files[f], NULL); if (!t) continue;
 		for (char *l = strtok(t, "\n"); l; l = strtok(NULL, "\n")) {
 			if (*l != '/' && strncmp(l, "http", 4)) continue;
@@ -365,8 +382,10 @@ static int is_mounted(const char *dir)
 	char *m = slurp("/proc/self/mounts", NULL); if (!m) return 0;
 	char pat[300]; snprintf(pat, sizeof pat, " %s ", dir); int r = strstr(m, pat) != NULL; free(m); return r;
 }
+static int installed_info(const char *name, info_t *in);
 static int mount_pkg(const char *name)
 {
+	{ info_t in; if (!installed_info(name, &in) && !strcmp(iget(&in, "kind"), "sysext")) return 0; }   /* (1.6.0: laid over the system at start, not here) */
 	char file[400], dir[300]; snprintf(file, sizeof file, "%s/store/%s.rpk", ROOT, name); snprintf(dir, sizeof dir, "%s/%s", MNT, name);
 	if (is_mounted(dir)) return 0;
 	{ char dis[400]; snprintf(dis, sizeof dis, "%s/db/%s.disabled", ROOT, name); if (!access(dis, F_OK)) return 0; }   /* (1.5.9: revoked) */
@@ -389,6 +408,55 @@ static int list_installed(char names[][48], int max)
 	for (int i = 0; i < n; i++) for (int j = i + 1; j < n; j++) if (strcmp(names[i], names[j]) > 0) { char t[48]; memcpy(t, names[i], 48); memcpy(names[i], names[j], 48); memcpy(names[j], t, 48); }
 	return n;
 }
+/* ---------------- (1.6.0, plan Part 13) system extensions */
+#include <sys/utsname.h>
+#define BASE_ABI "/usr/share/rudolf/base-abi"
+/* this base's ABI (a hash of its libraries, written by ci_release.sh), or "" */
+static void base_abi(char out[80])
+{
+	out[0] = 0; char *t = slurp(getenv("RPK_BASE_ABI") ? getenv("RPK_BASE_ABI") : BASE_ABI, NULL); if (!t) return;
+	size_t n = strcspn(t, " \t\r\n"); if (n < 80) { memcpy(out, t, n); out[n] = 0; } free(t);
+}
+static void kernel_rel(char out[80])
+{
+	if (getenv("RPK_KERNEL")) { snprintf(out, 80, "%s", getenv("RPK_KERNEL")); return; }
+	struct utsname u; if (uname(&u)) out[0] = 0; else snprintf(out, 80, "%s", u.release);
+}
+/* why an extension's PKGINFO does not fit this system (NULL: it fits) */
+static const char *sysext_fits(info_t *in)
+{
+	static char why[200]; char abi[80], kr[80]; base_abi(abi); kernel_rel(kr);
+	const char *b = iget(in, "base"), *k = iget(in, "kernel");
+	if (!*abi) return "this Rudolf OS has no base ABI (/usr/share/rudolf/base-abi): it takes no system extensions";
+	if (!*b) return "it does not say which Rudolf OS base it was built for";
+	if (strcmp(b, abi)) { snprintf(why, sizeof why, "it was built for another Rudolf OS base (%.16s, this one is %.16s)", b, abi); return why; }
+	if (*k && strcmp(k, kr)) { snprintf(why, sizeof why, "it was built for Linux %.40s, this computer runs %.40s", k, kr); return why; }
+	return NULL;
+}
+/* what an extension may hold: PKGINFO, licenses/, and under usr/, lib/firmware/ and lib/modules/KVER/extra/ only (KVER
+   its kernel line); at most one start script, usr/lib/rudolf/ext.d/NAME.start; no device files. NULL: it may */
+static const char *sysext_walk(const char *top, const char *rel, const char *name, const char *kver, int *starts)
+{
+	char d[1200]; snprintf(d, sizeof d, "%s%s%s", top, *rel ? "/" : "", rel);
+	DIR *dd = opendir(d); if (!dd) return "its files cannot be read";
+	struct dirent *e; const char *bad = NULL;
+	while (!bad && (e = readdir(dd))) {
+		if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+		char r[1200]; snprintf(r, sizeof r, "%s%s%s", rel, *rel ? "/" : "", e->d_name);
+		char f[1300]; snprintf(f, sizeof f, "%s/%s", top, r); struct stat st; if (lstat(f, &st)) { bad = "its files cannot be read"; break; }
+		int dir = S_ISDIR(st.st_mode);
+		if (!*rel) { if (!strcmp(r, "PKGINFO") && S_ISREG(st.st_mode)) continue; if (dir && (!strcmp(r, "licenses") || !strcmp(r, "usr") || !strcmp(r, "lib"))) { if (strcmp(r, "licenses")) bad = sysext_walk(top, r, name, kver, starts); continue; }
+			bad = "it holds files outside usr/, lib/firmware and lib/modules"; break; }
+		if (!strcmp(rel, "lib")) { if (dir && (!strcmp(e->d_name, "firmware") || !strcmp(e->d_name, "modules"))) { bad = sysext_walk(top, r, name, kver, starts); continue; } bad = "it holds files in lib/ other than firmware and modules"; break; }
+		if (!strcmp(rel, "lib/modules")) { if (dir && *kver && !strcmp(e->d_name, kver)) { bad = sysext_walk(top, r, name, kver, starts); continue; } bad = "its kernel modules are not for the kernel its PKGINFO names"; break; }
+		if (!strncmp(rel, "lib/modules/", 12) && !strchr(rel + 12, '/')) { if (dir && !strcmp(e->d_name, "extra")) { bad = sysext_walk(top, r, name, kver, starts); continue; } bad = "its kernel modules must be in lib/modules/KVER/extra"; break; }
+		if (!S_ISREG(st.st_mode) && !dir && !S_ISLNK(st.st_mode)) { bad = "it holds a device, pipe or socket"; break; }
+		if (!strcmp(rel, "usr/lib/rudolf/ext.d")) { char want[100]; snprintf(want, sizeof want, "%s.start", name);
+			if (strcmp(e->d_name, want) || !S_ISREG(st.st_mode)) { bad = "its only start script may be usr/lib/rudolf/ext.d/NAME.start"; break; } (*starts)++; continue; }
+		if (dir) bad = sysext_walk(top, r, name, kver, starts);
+	}
+	closedir(dd); return bad;
+}
 /* verifies a downloaded or local package file and installs it in place of any older copy */
 static int install_file(const char *path, const char *want_name, const char *want_sha, int from_disc)
 {
@@ -402,7 +470,8 @@ static int install_file(const char *path, const char *want_name, const char *wan
 	if (spawn(a, 1)) { say("  refused: the package image cannot be opened"); return -1; }
 	info_t in; char ip[400]; snprintf(ip, sizeof ip, "%s/PKGINFO", tmpd);
 	int bad = read_info(ip, &in) || !valid_name(iget(&in, "name")) || !*iget(&in, "version") || (want_name && strcmp(iget(&in, "name"), want_name));
-	const char *kd = iget(&in, "kind"); if (strcmp(kd, "cli") && strcmp(kd, "app") && strcmp(kd, "webapp") && strcmp(kd, "addon")) bad = 1;
+	const char *kd = iget(&in, "kind"); if (strcmp(kd, "cli") && strcmp(kd, "app") && strcmp(kd, "webapp") && strcmp(kd, "addon") && strcmp(kd, "sysext")) bad = 1;
+	int sx = !strcmp(kd, "sysext");
 	if (*iget(&in, "signed")) bad = 1;   /* rpk writes that line itself */
 	char name[48]; snprintf(name, sizeof name, "%s", iget(&in, "name"));
 	char dbf[400], dbt[420]; snprintf(dbf, sizeof dbf, "%s/db/%s.info", ROOT, name); snprintf(dbt, sizeof dbt, "%s.new", dbf);
@@ -413,7 +482,18 @@ static int install_file(const char *path, const char *want_name, const char *wan
 	if (!bad && revoked("pkg", iget(&in, "name"), iget(&in, "version"))) refuse = "this package was revoked by the Rudolf OS Library";
 	/* (1.5.9) an outside developer's package: only names under the prefix its certificate gives */
 	if (!bad && !refuse && cls == 3 && strncmp(iget(&in, "name"), CERT.prefix, strlen(CERT.prefix))) refuse = "its name is not one its developer certificate allows";
-	if (!bad && lib && strcmp(kd, "addon") && strcmp(kd, "webapp")) refuse = "a Rudolf OS Library package can only hold files for the desktop";
+	if (!bad && lib && !sx && strcmp(kd, "addon") && strcmp(kd, "webapp")) refuse = "a Rudolf OS Library package can only hold files for the desktop";
+	/* (1.6.0) a system extension: signed by the release key (a key in /etc/rudolf/rpk-keys itself, never one added with
+	   "rpk key add"), for this base and kernel, holding only what an extension may; nor may it replace an app's package */
+	if (!bad && !refuse && sx) {
+		int starts = 0;
+		if (!SXOK) refuse = "a system extension is installed by an administrator, in Settings › Update and recovery › System extensions (rpk install --system)";
+		else if (cls != 1 || !VSYSFILE) refuse = "a system extension must be signed by Rudolf OS's release key";
+		else if ((refuse = sysext_fits(&in))) {}
+		else if ((refuse = sysext_walk(tmpd, "", iget(&in, "name"), iget(&in, "kernel"), &starts))) {}
+		else if (starts > 1) refuse = "it has more than one start script";
+	}
+	if (!bad && !refuse) { info_t cur; if (!installed_info(name, &cur) && (!strcmp(iget(&cur, "kind"), "sysext")) != sx) refuse = sx ? "an app's package of that name is installed" : "a system extension of that name is installed"; }
 	/* (1.5.9: an outside developer's package replaces only its own developer's, never the Library's or the system's) */
 	if (!bad && lib && !refuse) { info_t cur; if (!installed_info(name, &cur)) {
 		if (cls == 3) { if (strcmp(iget(&cur, "signed"), "developer") || strcmp(iget(&cur, "certkey"), CERT.key)) refuse = "it would replace a package from someone else"; }
@@ -422,7 +502,7 @@ static int install_file(const char *path, const char *want_name, const char *wan
 		if (!bad) { FILE *o = fopen(dbt, "a"); if (o) { fprintf(o, "\nsigned = %s\n", cls == 3 ? "developer" : lib ? "library" : "system");
 			if (cls == 3) fprintf(o, "certkey = %s\ndeveloper = %s\ngithub = %s\n", CERT.key, CERT.name, CERT.github); fclose(o); } else bad = 1; } }
 	{ char *u[] = {"umount", "-d", tmpd, NULL}; spawn(u, 1); }
-	if (refuse) { unlink(dbt); say("  refused: %s", refuse); lib_health("refused %s %s, signed by the Rudolf OS Library: %s", name, iget(&in, "version"), refuse); return -1; }
+	if (refuse) { unlink(dbt); say("  refused: %s", refuse); if (sx) sx_health("refused the system extension %s %s: %s", name, iget(&in, "version"), refuse); else if (lib) lib_health("refused %s %s, signed by the Rudolf OS Library: %s", name, iget(&in, "version"), refuse); return -1; }
 	if (bad) { unlink(dbt); say("  refused: the package information is missing or invalid"); return -1; }
 	char store[400], st2[420]; snprintf(store, sizeof store, "%s/store", ROOT); mkdirs(store);
 	snprintf(store, sizeof store, "%s/store/%s.rpk", ROOT, name); snprintf(st2, sizeof st2, "%s.new", store);
@@ -430,6 +510,13 @@ static int install_file(const char *path, const char *want_name, const char *wan
 	char was[64] = ""; { info_t cur; if (!installed_info(name, &cur)) snprintf(was, sizeof was, "%s", iget(&cur, "version")); }
 	umount_pkg(name);
 	rename(st2, store); rename(dbt, dbf);
+	if (sx) {   /* (1.6.0) laid over the system at the next start, by /usr/lib/rudolf/sysext; tried once (see there) */
+		char p[400]; snprintf(p, sizeof p, "%s/db/%s.disabled", ROOT, name); unlink(p); snprintf(p, sizeof p, "%s/sysext/off/%s", ROOT, name); unlink(p);
+		say("Installed the system extension %s %s: it is in use after the next restart", name, iget(&in, "version"));
+		if (*was) sx_health("updated the system extension %s from %s to %s (in use after a restart)", name, was, iget(&in, "version"));
+		else sx_health("installed the system extension %s %s (in use after a restart)", name, iget(&in, "version"));
+		return 0;
+	}
 	if (mount_pkg(name)) { say("  installed %s %s, but it could not be mounted", name, iget(&in, "version")); return -1; }
 	{ char dis[400]; snprintf(dis, sizeof dis, "%s/db/%s.disabled", ROOT, name); unlink(dis); }   /* (a newer version that is not revoked) */
 	say("Installed %s %s", name, iget(&in, "version"));
@@ -451,8 +538,15 @@ static int install_name(const char *name)
 static int remove_pkg(const char *name)
 {
 	info_t in; if (installed_info(name, &in)) { say("%s is not installed", name); return -1; }
+	if (!strcmp(iget(&in, "kind"), "sysext") && !SXOK) { say("%s is a system extension: an administrator removes it in Settings › Update and recovery (rpk remove --system)", name); return -1; }
 	umount_pkg(name);
 	char p[400]; snprintf(p, sizeof p, "%s/store/%s.rpk", ROOT, name); unlink(p); snprintf(p, sizeof p, "%s/db/%s.info", ROOT, name); unlink(p);
+	snprintf(p, sizeof p, "%s/db/%s.disabled", ROOT, name); unlink(p);
+	if (!strcmp(iget(&in, "kind"), "sysext")) {   /* (1.6.0) nothing of it is left once the computer restarts */
+		snprintf(p, sizeof p, "%s/sysext/off/%s", ROOT, name); unlink(p);
+		say("Removed the system extension %s: its files are gone after the next restart", name);
+		sx_health("removed the system extension %s %s (gone after a restart)", name, iget(&in, "version")); return 0;
+	}
 	say("Removed %s", name);
 	if (!strcmp(iget(&in, "signed"), "library")) lib_health("removed %s %s, from the Rudolf OS Library", name, iget(&in, "version"));
 	return 0;
@@ -503,10 +597,12 @@ static void print_status(void)
 	for (int i = 0; i < NSRC; i++) { long long ck = 0; if (!strcmp(SRC[i].type, "web")) { char ci[400], cs[400]; struct stat cst; idx_paths(i, ci, cs, sizeof ci); if (!stat(ci, &cst)) ck = (long long)cst.st_mtime; }
 		printf("%s{\"loc\":", i ? "," : ""); jstr(SRC[i].loc); printf(",\"type\":"); jstr(SRC[i].type); printf(",\"ok\":%s,\"library\":%s,\"count\":%d,\"serial\":%lld,\"checked\":%lld,\"error\":", SRC[i].ok ? "true" : "false", SRC[i].lib ? "true" : "false", SRC[i].count, SRC[i].serial, ck); jstr(SRC[i].ok ? "" : SRC[i].err); putchar('}'); }
 	printf("],\"installed\":[");
+	int fi = 1;
 	for (int i = 0; i < ni; i++) {
 		info_t in; if (installed_info(names[i], &in)) continue;
+		if (!strcmp(iget(&in, "kind"), "sysext")) continue;   /* (1.6.0: system extensions are not apps: sysext-status) */
 		char dir[300]; snprintf(dir, sizeof dir, "%s/%s", MNT, names[i]); pkg_t *b = best(names[i]);
-		printf("%s{", i ? "," : "");
+		printf("%s{", fi ? "" : ","); fi = 0;
 		for (int j = 0; j < in.n; j++) { jstr(in.k[j]); putchar(':'); jstr(in.v[j]); putchar(','); }
 		{ char dis[400]; snprintf(dis, sizeof dis, "%s/db/%s.disabled", ROOT, names[i]); char *w = slurp(dis, NULL); if (w) { char *nl = strchr(w, '\n'); if (nl) *nl = 0; printf("\"disabled\":"); jstr(w); putchar(','); free(w); } }
 		printf("\"mounted\":%s,\"update\":", is_mounted(dir) ? "true" : "false");
@@ -516,7 +612,7 @@ static void print_status(void)
 	printf("],\"available\":[");
 	int first = 1;
 	for (int i = 0; i < NAV; i++) {
-		if (best(AV[i].name) != &AV[i]) continue;
+		if (best(AV[i].name) != &AV[i] || !strcmp(AV[i].kind, "sysext")) continue;
 		pkg_t *k = &AV[i]; info_t in; int inst = !installed_info(k->name, &in);
 		printf("%s{\"name\":", first ? "" : ","); first = 0; jstr(k->name); printf(",\"version\":"); jstr(k->version); printf(",\"kind\":"); jstr(k->kind);
 		printf(",\"size\":%lld,\"title\":", k->size); jstr(k->title); printf(",\"summary\":"); jstr(k->summary); printf(",\"icon\":"); jstr(k->icon);
@@ -526,6 +622,59 @@ static void print_status(void)
 	printf("]}\n");
 }
 
+/* (1.6.0) why an installed extension cannot be used now (NULL: it can): its file's signature again (a system key), the
+   base and kernel it was built for, a revocation */
+static const char *sysext_check(const char *name)
+{
+	static char why[240]; info_t in;
+	if (installed_info(name, &in) || strcmp(iget(&in, "kind"), "sysext")) return "it is not an installed system extension";
+	char dis[400]; snprintf(dis, sizeof dis, "%s/db/%s.disabled", ROOT, name); char *w = slurp(dis, NULL);
+	if (w) { w[strcspn(w, "\n")] = 0; snprintf(why, sizeof why, "%s", w); free(w); return why; }
+	char f[400]; snprintf(f, sizeof f, "%s/store/%s.rpk", ROOT, name); const char *v = NULL; VCLASS = 0;
+	if (verify_rpk(f, &v) < 0) { snprintf(why, sizeof why, "its file is no longer the signed one (%s)", v); return why; }
+	if (VCLASS != 1 || !VSYSFILE) return "it is not signed by Rudolf OS's release key";
+	return sysext_fits(&in);
+}
+static void sysext_status(void)
+{
+	char names[MAXP][48]; int ni = list_installed(names, MAXP); char abi[80], kr[80]; base_abi(abi); kernel_rel(kr);
+	char sp[400]; snprintf(sp, sizeof sp, "%s", getenv("RPK_SYSEXT_STATE") ? getenv("RPK_SYSEXT_STATE") : "/run/rudolf/ext/state"); char *st = slurp(sp, NULL);
+	printf("{\"ok\":true,\"persistent\":%s,\"base\":", strcmp(ROOT, "/run/rudolf/pkg") ? "true" : "false"); jstr(abi); printf(",\"kernel\":"); jstr(kr);
+	{ char so[400]; snprintf(so, sizeof so, "%s/sysext/skip-once", ROOT); printf(",\"skipOnce\":%s", access(so, F_OK) ? "false" : "true"); }
+	/* what the start did ("start" line: with extensions, or why none) */
+	printf(",\"started\":"); { char *m = NULL; if (st) for (char *l = st; l && *l; ) { char *e = strchr(l, '\n'); if (!strncmp(l, "start\t", 6)) { m = strndup(l + 6, e ? (size_t)(e - l - 6) : strlen(l + 6)); break; } l = e ? e + 1 : NULL; }
+		jstr(m ? m : "not yet"); free(m); }
+	printf(",\"installed\":["); int first = 1;
+	for (int i = 0; i < ni; i++) {
+		info_t in; if (installed_info(names[i], &in) || strcmp(iget(&in, "kind"), "sysext")) continue;
+		printf("%s{\"name\":", first ? "" : ","); first = 0; jstr(names[i]);
+		const char *K[] = {"version", "title", "summary", "license", "base", "kernel", NULL};
+		for (int k = 0; K[k]; k++) { printf(",\"%s\":", K[k]); jstr(iget(&in, K[k])); }
+		char f[400]; struct stat fs; snprintf(f, sizeof f, "%s/store/%s.rpk", ROOT, names[i]); printf(",\"size\":%lld", stat(f, &fs) ? 0LL : (long long)fs.st_size);
+		/* this start (lines NAME VERSION STATE WHY): in use or left out; "next" when installed (or updated) since */
+		char state[24] = "next", why[300] = "";
+		if (st) { char pat[64]; snprintf(pat, sizeof pat, "%s\t", names[i]);
+			for (char *l = st; l && *l; ) { char *e = strchr(l, '\n'); size_t n = e ? (size_t)(e - l) : strlen(l);
+				if (!strncmp(l, pat, strlen(pat))) { char ln[600]; snprintf(ln, sizeof ln, "%.*s", (int)(n < 599 ? n : 599), l); char *p = ln + strlen(pat), *t2 = strchr(p, '\t'); if (t2) *t2++ = 0; char *t3 = t2 ? strchr(t2, '\t') : NULL; if (t3) *t3++ = 0;
+					if (!strcmp(p, iget(&in, "version"))) { snprintf(state, sizeof state, "%s", t2 ? t2 : ""); snprintf(why, sizeof why, "%s", t3 ? t3 : ""); } }
+				l = e ? e + 1 : NULL; } }
+		char off[400]; snprintf(off, sizeof off, "%s/sysext/off/%s", ROOT, names[i]); char *o = slurp(off, NULL);
+		const char *now = sysext_check(names[i]);
+		printf(",\"state\":"); jstr(state); printf(",\"why\":"); jstr(why);
+		if (o) { o[strcspn(o, "\n")] = 0; printf(",\"off\":"); jstr(o); free(o); }
+		if (now) { printf(",\"problem\":"); jstr(now); }
+		printf("}");
+	}
+	printf("],\"available\":["); first = 1;
+	for (int i = 0; i < NAV; i++) {
+		pkg_t *k = &AV[i]; if (strcmp(k->kind, "sysext") || best(k->name) != k || SRC[k->src].lib) continue;
+		info_t in; int inst = !installed_info(k->name, &in);
+		printf("%s{\"name\":", first ? "" : ","); first = 0; jstr(k->name); printf(",\"version\":"); jstr(k->version);
+		printf(",\"size\":%lld,\"title\":", k->size); jstr(k->title); printf(",\"summary\":"); jstr(k->summary); printf(",\"license\":"); jstr(k->license);
+		printf(",\"installed\":"); if (inst) jstr(iget(&in, "version")); else printf("null"); printf("}");
+	}
+	printf("]}\n"); free(st);
+}
 static void lock(void)
 {
 	char p[300]; snprintf(p, sizeof p, "%s/.lock", ROOT); int f = open(p, O_CREAT | O_RDWR | O_CLOEXEC, 0600);
@@ -544,7 +693,8 @@ static void usage(void)
 	     "  rpk refresh              download the package lists again\n"
 	     "  rpk run NAME [COMMAND] [ARGS]  start a program from a package\n"
 	     "  rpk source list|add|remove [ADDRESS]   where packages come from\n"
-	     "  rpk key add BASE64       trust another signing key (administrators)");
+	     "  rpk key add BASE64       trust another signing key (administrators)\n"
+	     "  rpk sysext-status        system extensions (JSON); rpk sysext-check NAME: can it be used?");
 }
 
 int main(int argc, char **argv)
@@ -554,11 +704,15 @@ int main(int argc, char **argv)
 	snprintf(MNT, sizeof MNT, "%s", getenv("RPK_MNT") ? getenv("RPK_MNT") : "/pkg");
 	if (argc < 2 || !strcmp(argv[1], "help") || !strcmp(argv[1], "--help")) { usage(); return argc < 2; }
 	const char *c = argv[1];
+	/* (1.6.0) --system after the command: system extensions too (rudolfd gives it once an administrator's password is checked) */
+	if (argc > 2 && !strcmp(argv[2], "--system")) { SXOK = 1; for (int i = 2; i < argc - 1; i++) argv[i] = argv[i + 1]; argc--; argv[argc] = NULL; }
 	if (!strcmp(c, "run")) { if (argc < 3) die("usage: rpk run NAME [COMMAND] [ARGS]"); if (!valid_name(argv[2])) die("bad package name"); return run_pkg(argv[2], argc > 3 ? argv[3] : NULL, argv + 4, argc > 4 ? argc - 4 : 0); }
 	mkdirs(ROOT); mkdirs(MNT);
 	{ char p[300]; snprintf(p, sizeof p, "%s/index", ROOT); mkdirs(p); }
 	load_keys(); load_sources();
 	if (!strcmp(c, "status")) { load_available(); print_status(); return 0; }
+	if (!strcmp(c, "sysext-status")) { load_available(); sysext_status(); return 0; }
+	if (!strcmp(c, "sysext-check")) { if (argc < 3 || !valid_name(argv[2])) die("usage: rpk sysext-check NAME"); load_available(); const char *w = sysext_check(argv[2]); say("%s", w ? w : "ok"); return w ? 1 : 0; }
 	if (!strcmp(c, "mount-all")) { char n[MAXP][48]; int k = list_installed(n, MAXP), bad = 0; for (int i = 0; i < k; i++) if (mount_pkg(n[i])) { fprintf(stderr, "rpk: %s could not be mounted\n", n[i]); bad++; } return bad != 0; }
 	if (!strcmp(c, "list")) {
 		char n[MAXP][48]; int k = list_installed(n, MAXP); if (!k) say("No packages installed. See: rpk search");
@@ -623,7 +777,9 @@ int main(int argc, char **argv)
 	if (!strcmp(c, "update")) {
 		lock(); refresh(); load_available();
 		char n[MAXP][48]; int k = list_installed(n, MAXP), done = 0, bad = 0;
-		for (int i = 0; i < k; i++) { info_t in; pkg_t *b = best(n[i]); if (installed_info(n[i], &in) || !b || strverscmp(b->version, iget(&in, "version")) <= 0) continue; done++; if (install_name(n[i])) bad++; }
+		for (int i = 0; i < k; i++) { info_t in; pkg_t *b = best(n[i]); if (installed_info(n[i], &in) || !b || strverscmp(b->version, iget(&in, "version")) <= 0) continue; done++;
+			SXOK = !strcmp(iget(&in, "kind"), "sysext");   /* (1.6.0: an extension an administrator installed gets its updates as the apps do) */
+			if (install_name(n[i])) bad++; SXOK = 0; }
 		say(done ? "Updated %d package(s)." : "Everything is up to date.", done - bad);
 		return bad != 0;
 	}

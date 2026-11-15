@@ -61,6 +61,8 @@ m SND_USB_AUDIO SND_VIRTIO
 # mobile data (as kconfig.sh 1.5.8): USB modems and phones sharing their connection
 m USB_NET_RNDIS_HOST USB_NET_CDC_NCM USB_NET_CDC_MBIM USB_NET_QMI_WWAN USB_SERIAL_OPTION
 y USB_USBNET USB_SERIAL WWAN
+# USB printers (1.6.0 Part 8, as kconfig.sh): usblp
+m USB_PRINTER
 # Android apps (Waydroid, Part 5)
 y ANDROID_BINDER_IPC ANDROID_BINDERFS
 $C --set-str ANDROID_BINDER_DEVICES ""
@@ -72,6 +74,6 @@ for o in DRM_FBDEV_EMULATION KEXEC_FILE EFI_STUB SQUASHFS OVERLAY_FS BLK_DEV_LOO
 	SWAP ZSMALLOC ZRAM ZRAM_DEF_COMP_ZSTD PSI LRU_GEN CGROUPS MEMCG VIRTIO_PCI VIRTIO_BLK VIRTIO_INPUT ANDROID_BINDER_IPC ANDROID_BINDERFS NF_TABLES SECURITY_YAMA; do
 	grep -q "^CONFIG_$o=y$" .config || { echo "kconfig-arm64.sh: $o is not on after olddefconfig"; exit 1; }
 done
-for o in DRM_VIRTIO_GPU SND_USB_AUDIO USB_NET_CDC_NCM USB_NET_QMI_WWAN; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig-arm64.sh: $o is not a module after olddefconfig"; exit 1; }; done
+for o in DRM_VIRTIO_GPU SND_USB_AUDIO USB_NET_CDC_NCM USB_NET_QMI_WWAN USB_PRINTER; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig-arm64.sh: $o is not a module after olddefconfig"; exit 1; }; done
 grep -q "^CONFIG_PSI_DEFAULT_DISABLED=y" .config && { echo "kconfig-arm64.sh: PSI is off by default"; exit 1; }
 true

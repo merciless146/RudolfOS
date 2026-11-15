@@ -29,3 +29,8 @@ SUBSYSTEM=="block", KERNEL=="sd[a-z]|sd[a-z][0-9]*|mmcblk[0-9]|mmcblk[0-9]p[0-9]
 SUBSYSTEM=="thunderbolt", ACTION!="bind|unbind", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/thunderbolt plug"
 # a network adapter plugged in later gets an address as cables at start-up do (1.5.8)
 SUBSYSTEM=="net", ACTION=="add|remove", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/netplug"
+# USB printers (1.6.0 Part 8): an IPP over USB printer (interface 7/1/4) is given to ipp-usb, usblp made to let go of it;
+# a plain one's /dev/usb/lpN and device ID recorded for rudolf-print (usbprint). By the interface's class (INTERFACE, as
+# the kernel gives it, also when it goes) and by usblp's own devices
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_interface", ENV{INTERFACE}=="7/1/*", ACTION=="add|remove|bind", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/usbprint hotplug"
+SUBSYSTEM=="usbmisc", KERNEL=="lp[0-9]*", GROUP="0", MODE="0660", ACTION=="add|remove", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/usbprint hotplug"

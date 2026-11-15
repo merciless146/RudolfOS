@@ -1228,9 +1228,11 @@ static void api_portal(struct req *r, const char *what)
 		snprintf(id, sizeof id, "%s", iq);
 		if (r->blen < 2 || r->blen > 65536 || r->body[0] != '{') { reply_err(r->fd, 400, "bad answer"); return; }
 		char f[300], t[320], q[300]; snprintf(f, sizeof f, PORTALD "/resp/%s.json", id); snprintf(t, sizeof t, "%s.tmp", f); snprintf(q, sizeof q, PORTALD "/req/%s.json", id);
-		int fd = open(t, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+		/* (1.6.0: the answer may hold a password (the keyring's prompts): only for the user whose portal asked, the owner
+		   of its question, 0600) */
+		unlink(t); int fd = open(t, O_WRONLY | O_CREAT | O_EXCL | O_TRUNC | O_CLOEXEC, 0600); struct stat st; unsigned ou = 1000, og = 1000; if (!stat(q, &st)) { ou = st.st_uid; og = st.st_gid; }
 		if (fd < 0 || write(fd, r->body, r->blen) != (ssize_t)r->blen) { if (fd >= 0) close(fd); reply_err(r->fd, 500, "could not answer"); return; }
-		close(fd); if (chown(t, 1000, 1000)) {} rename(t, f); unlink(q);
+		if (fchown(fd, ou, og)) {} close(fd); rename(t, f); unlink(q);
 		/* back to the window that asked */
 		const char *back = qparam(r->query, "back");
 		if (back && *back) { char *e; unsigned long x = strtoul(back, &e, 16); if (x && !*e) { char b[40]; snprintf(b, sizeof b, "win %lx\n", x); write_str(RUN "/wm", b); } }
@@ -1588,7 +1590,9 @@ static void api_torwin(struct req *r, const char *what, int post)
  * desktop user. Printers: rudolf-print talks IPP Everywhere / AirPrint to network printers (no CUPS). */
 static int print_uri_ok(const char *u)
 {
-	if (!u || strlen(u) > 300 || (strncmp(u, "ipp://", 6) && strncmp(u, "ipps://", 7))) return 0;
+	/* (1.6.0, plan Part 8: usb://lpN, a plain USB printer, and usb://KIND/SYSNAME, one rudolf-print says cannot print) */
+	if (!u || strlen(u) > 300 || (strncmp(u, "ipp://", 6) && strncmp(u, "ipps://", 7) && strncmp(u, "usb://", 6))) return 0;
+	if (!strncmp(u, "usb://", 6) && (strstr(u, "..") || strchr(u + 6, ':'))) return 0;
 	for (; *u; u++) if (!isalnum((unsigned char)*u) && !strchr(":/._-~%[]", *u)) return 0;
 	return 1;
 }
@@ -1621,6 +1625,12 @@ static void api_print(struct req *r, const char *what)
 	if (!strcmp(what, "find")) {
 		char *o = run_out("/usr/bin/rudolf-print find 2>/dev/null");
 		if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "printer search failed"); return; }
+		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
+	}
+	/* 1.6.0 (plan Part 8): the USB printers alone, for Settings › Devices (rudolf-print usb: /run/rudolf/usb-printers) */
+	if (!strcmp(what, "usb")) {
+		char *o = run_out("/usr/bin/rudolf-print usb 2>/dev/null");
+		if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "the USB printers could not be read"); return; }
 		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
 	}
 	char uri[320]; { const char *u = qparam(r->query, "uri"); if (!print_uri_ok(u)) { reply_err(r->fd, 400, "a printer address looks like ipp://192.168.1.20/ipp/print"); return; } snprintf(uri, sizeof uri, "%s", u); }
@@ -2276,6 +2286,45 @@ static void api_pkg(struct req *r, const char *what)
 		snprintf(cmd, sizeof cmd, "/usr/bin/rpk install-file %s; s=$?; rm -f %s; exit $s", path, path); start_job("packages", cmd); reply_ok(r->fd, "started"); return;
 	}
 	reply_err(r->fd, 404, "unknown package action");
+}
+
+/* ------------------------------------------------------------- system extensions (1.6.0, docs/plan-1.6.0.md Part 13)
+ * Settings › Update and recovery › System extensions: what is installed and what this start did with it (rpk
+ * sysext-status), and, only for an administrator whose password rudolfd checks itself (the body {"n":ADMIN,"p":PASSWORD}):
+ * install one from the extensions' list, remove one, try a left-out one again, start once without any. The files take
+ * effect at the next start (/usr/lib/rudolf/sysext). */
+#ifndef SX_RPK
+#define SX_RPK "/usr/bin/rpk"
+#endif
+#ifndef SX_SH
+#define SX_SH "/usr/lib/rudolf/sysext"
+#endif
+static int desk_admin_check(const char *n, const char *pw, char *why, size_t wn);   /* rudolfd-desktop.inc */
+static void dfree_secret(char *p);
+static void health_add(const char *kind, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void api_sysext(struct req *r, const char *what, int post)
+{
+	if (access(SX_RPK, X_OK) || access(SX_SH, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no system extensions"); return; }
+	if (!strcmp(what, "status")) { char *o = run_out(SX_RPK " sysext-status 2>/dev/null"); if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "rpk failed"); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
+	if (!post) { reply_err(r->fd, 405, "use POST"); return; }
+	if (strcmp(what, "install") && strcmp(what, "remove") && strcmp(what, "retry") && strcmp(what, "skip-once")) { reply_err(r->fd, 404, "unknown extension action"); return; }
+	char *q = qparam(r->query, "name"); char name[48] = "";
+	if (strcmp(what, "skip-once")) { if (!q || !*q || strlen(q) > 40 || strspn(q, "abcdefghijklmnopqrstuvwxyz0123456789-_") != strlen(q)) { reply_err(r->fd, 400, "bad extension name"); return; } snprintf(name, sizeof name, "%s", q); }
+	char *an = NULL, *ap = NULL, why[200] = "";
+	if (r->body && r->blen && r->body[0] == '{') { an = dbody_field(r, "n"); ap = dbody_field(r, "p"); }
+	int adm = an && ap ? desk_admin_check(an, ap, why, sizeof why) : -1;
+	dfree_secret(ap);
+	if (adm) { free(an); reply_err(r->fd, adm == 429 ? 429 : 403, why[0] ? why : "an administrator's name and password are needed"); return; }
+	char cmd[300];
+	if (!strcmp(what, "install") || !strcmp(what, "remove")) {
+		if (access(RUN "/persistent", F_OK)) { free(an); reply_err(r->fd, 409, "system extensions need Rudolf OS installed (or a RUDOLFDATA partition): they are kept there"); return; }
+		if (job_running()) { free(an); reply_err(r->fd, 409, "another task is still running"); return; }
+		health_add("extension", "%s of the system extension %s asked by %.60s", !strcmp(what, "install") ? "installation" : "removal", name, an);
+		snprintf(cmd, sizeof cmd, SX_RPK " %s --system %s", what, name); start_job("extensions", cmd); free(an); reply_ok(r->fd, "started"); return;
+	}
+	if (!strcmp(what, "retry")) snprintf(cmd, sizeof cmd, SX_SH " retry %s 2>&1", name); else snprintf(cmd, sizeof cmd, SX_SH " skip-once 2>&1");
+	health_add("extension", "%s asked by %.60s", !strcmp(what, "retry") ? "trying the system extension again" : "the next start without system extensions", an);
+	free(an); char *o = run_out(cmd); reply_ok(r->fd, o ? o : ""); free(o);
 }
 
 /* ------------------------------------------------------------- Task Manager (1.2) */
@@ -3464,7 +3513,7 @@ static void api_devlink(struct req *r, const char *what, int post)
 static void health_path(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/health.log" : PERSIST "/var/log/health.log"); }
 static int health_kind_ok(const char *k)
 {
-	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", "tor", NULL };
+	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", "tor", "extension", NULL };
 	for (int i = 0; K[i]; i++) if (k && !strcmp(k, K[i])) return 1;
 	return 0;
 }
@@ -4181,6 +4230,8 @@ static void api(struct req *r)
 		int have = !access("/usr/bin/rudolf-webkit", X_OK), native = !access("/usr/bin/rudolf-native", X_OK);   /* 1.5.9: Native (test), plan Part 12 */
 		if (post) {
 			if (access(RUN "/persistent", F_OK)) { reply_err(r->fd, 409, "settings are kept only on an installed Rudolf OS"); return; }
+			/* 1.6.0 (plan Part 12, "Becoming the default"): Settings' offer of the native desktop, made once (offered=1) */
+			if (qparam(r->query, "offered")) { mkdir(PERSIST "/etc", 0755); if (write_str(PERSIST "/etc/rudolf-native-offered", "1\n")) { reply_err(r->fd, 500, "could not save"); return; } reply_ok(r->fd, "saved"); return; }
 			const char *e = qparam(r->query, "engine");
 			if (!e || (strcmp(e, "webkit") && strcmp(e, "chromium") && strcmp(e, "native"))) { reply_err(r->fd, 400, "engine is webkit, native or chromium"); return; }
 			if (!strcmp(e, "webkit") && !have) { reply_err(r->fd, 409, "this Rudolf OS has no Lite engine yet: update it first"); return; }
@@ -4188,6 +4239,7 @@ static void api(struct req *r)
 			mkdir(PERSIST "/etc", 0755);
 			/* (1.5.7: a new choice starts a new trial: the last failure and trial marks go) */
 			unlink(PERSIST "/etc/rudolf-desktop-engine.failed"); unlink(PERSIST "/etc/rudolf-desktop-engine.trying");
+			write_str(PERSIST "/etc/rudolf-native-offered", "1\n");   /* (a choice made: the native desktop is not offered again) */
 			if (!strcmp(e, "chromium")) unlink(PERSIST "/etc/rudolf-desktop-engine");
 			else if (write_str(PERSIST "/etc/rudolf-desktop-engine", !strcmp(e, "native") ? "native\n" : "webkit\n")) { reply_err(r->fd, 500, "could not save"); return; }
 			reply_ok(r->fd, "saved"); return;
@@ -4201,7 +4253,9 @@ static void api(struct req *r)
 			ch, n && !strcmp(n, "webkit") ? "webkit" : n && !strcmp(n, "native") ? "native" : "chromium", have ? "true" : "false", native ? "true" : "false",
 			failed ? "true" : "false", access(RUN "/persistent", F_OK) ? "false" : "true");
 		/* 1.5.7: Lite given up for good by the session ("<time> <why>"), until it is chosen again */
-		sjson(&s, fw ? fw : ""); sadd(&s, "}");
+		sjson(&s, fw ? fw : "");
+		/* 1.6.0: offer the native desktop once to a computer updated on Standard (a new installation starts with it: install.sh) */
+		sadd(&s, ",\"offer\":%s}", native && !strcmp(ch, "chromium") && !fw && !access(RUN "/persistent", F_OK) && access(PERSIST "/etc/rudolf-native-offered", F_OK) ? "true" : "false");
 		free(c); free(n); free(fw); reply_json(r->fd, &s); return;
 	}
 	/* 1.5.7: Task Manager opened by Ctrl+Alt+Del or Ctrl+Shift+Esc puts the desktop's processes first (rudolf-display
@@ -4448,6 +4502,7 @@ static void api(struct req *r)
 	if (!strncmp(p, "pkg/", 4)) { api_pkg(r, p + 4); return; }
 	if (!strncmp(p, "print/", 6)) { api_print(r, p + 6); return; }
 	if (!strncmp(p, "keyring/", 8)) { api_keyring(r, p + 8, post); return; }   /* 1.6.0 (plan Part 14) */
+	if (!strncmp(p, "sysext/", 7)) { api_sysext(r, p + 7, post); return; }   /* 1.6.0 (plan Part 13) */
 	if (!strncmp(p, "apps/", 5)) { api_apps(r, p + 5); return; }
 	if (!strncmp(p, "debian/", 7)) { api_debian(r, p + 7); return; }
 	if (!strncmp(p, "ai/", 3)) { api_ai(r, p + 3); return; }
