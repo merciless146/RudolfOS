@@ -258,6 +258,22 @@ static void keeper_main(void)   /* pid 1 inside: set up the file system, then re
 homed:
 	if (access("/etc/resolv.conf", F_OK)) write_str("/etc/resolv.conf", "");
 	bindmnt("/etc/resolv.conf", ROOT "/etc/resolv.conf", 0);
+	/* 1.6.0: rudolf-fetch in the Terminal (Rudolf's logo and this computer's details), read only: Rudolf's own files
+	   (the logo, VERSION) in /usr/share/rudolf-os, the command as /usr/local/bin/rudolf-fetch, and the facts Debian
+	   cannot see (the desktop engine, the update channel) in /run/rudolf-os/facts. Nothing else in Debian changes. */
+	if (!access("/usr/lib/rudolf/rudolf-fetch", X_OK)) {
+		mkdirs(ROOT "/usr/share/rudolf-os", 0755);
+		if (!bindmnt("/usr/share/rudolf", ROOT "/usr/share/rudolf-os", 1)) mount(NULL, ROOT "/usr/share/rudolf-os", NULL, MS_REMOUNT | MS_BIND | MS_RDONLY, NULL);
+		mkdirs(ROOT "/usr/local/bin", 0755);
+		if (!bindmnt("/usr/lib/rudolf/rudolf-fetch", ROOT "/usr/local/bin/rudolf-fetch", 0)) mount(NULL, ROOT "/usr/local/bin/rudolf-fetch", NULL, MS_REMOUNT | MS_BIND | MS_RDONLY, NULL);
+		char f[400] = "", e[32] = "", u[300] = ""; char *t = slurp("/run/rudolf/engine-choice", NULL);
+		if (t) { snprintf(e, sizeof e, "%s", t); e[strcspn(e, "\n")] = 0; free(t); }
+		t = slurp("/persist/os/update.conf", NULL);
+		if (t) { char *q = strstr(t, "url="); if (q && (q == t || q[-1] == '\n')) { snprintf(u, sizeof u, "%s", q + 4); u[strcspn(u, "\n")] = 0; } free(t); }
+		size_t ul = strlen(u); const char *ch = !ul || (ul >= 7 && !strcmp(u + ul - 7, "/stable")) ? "stable" : ul >= 5 && !strcmp(u + ul - 5, "/beta") ? "beta" : "custom";
+		snprintf(f, sizeof f, "engine=%s\nchannel=%s\n", e, ch);
+		mkdirs(ROOT "/run/rudolf-os", 0755); write_str(ROOT "/run/rudolf-os/facts", f);
+	}
 	sethostname("rudolf", 6);
 	if (chdir(ROOT)) KFAIL(15);
 	mkdir(".oldroot", 0700);
