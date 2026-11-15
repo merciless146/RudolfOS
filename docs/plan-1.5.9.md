@@ -862,13 +862,30 @@ server through Rudolf OS's hotkey script when PulseAudio is there, and the stand
   pending): in such a tab Ctrl+W, T and N do nothing, on both engines. (2) Ctrl+Shift+N inside a website does nothing on
   Standard: rudolf-display hands it over as Ctrl+Shift+F22, which the shell's PAGE_JS does not read as "cpn"; Native does the
   same now.
-- Not yet (12.3c): a second Oracle window asked for from inside Oracle (webOpen, a link opened in a new window, a website's
-  new window) still opens inside Oracle's page (step 2 is done for the pin and the jumps only); closing Oracle's last window
-  while a download is still arriving closes Chromium and stops it (on Standard it goes on); a WebKit window already open does
-  not see a file Oracle's page saved until it opens again (the mirror is read at a page's start).
+- **Then (2026-11-15, the PR after #356; ported from the closed #355, branch oracle-native-desk):**
+  - **A second Oracle window from inside Oracle** (webOpen, Ctrl+N, a link opened in a new window; a web page's file opened from
+    another app's window): browser() in an app's own window asks the native desktop (op `open` with `url`, `priv`; the page opens
+    `#app=browser&url=...`), so it is an Oracle window of its own, of the same Chromium, as on Standard (4m). A website's pop-up
+    (a sign-in's, browser() with `adopt`) stays inside the window whose shell holds its tab and opener.
+  - **Closing Oracle's last window while a download is arriving:** Chromium asked "Download is in progress: exit Chromium
+    anyway?" (its last window closing; Standard's Chromium never closes). Now the frame's ✕ asks the page as its own ✕ does
+    (rudolf-launch finds the window's page by its place: `close X Y W H`), and the page's closing goes through rudolf-launch
+    (`{op:'closing'}`), which, while Chromium reports a download in progress (Browser.setDownloadBehavior's events), takes the
+    window off the screen and the taskbar (`hide`: no workspace) and has its page close once the download has arrived and the
+    page has filed it into Downloads; then Chromium closes (6c).
+  - **The files one:** a WebKit window already open now sees a file Oracle's page saved, and the other way round: a page that saved
+    tells the native desktop once rudolfd's mirror has the files (op `mirror`), and the other engine's pages take the system's and
+    the account's records from the mirror (`__oaMirrorIn`); a file is opened in another window (launch, launchWith, Open with)
+    only once the mirror has it (4n).
+  - **The clipboard after Chromium has gone:** rudolf-native keeps the text copied while Chromium runs and puts it back when
+    Chromium has gone and nothing holds the clipboard (6b).
+  - **The volume keys' indicator** (rudolfd's osd event, read by whichever app window asks first) was drawn inside that window;
+    now the page sends it to the native desktop (op `osd`), which draws it at the top of the screen as osd31.js does (4o).
+  - oracle_native_t.sh 46 checks (with PulseAudio; 41 without), the WebKit windows' pages read through rudolf-native's test hook
+    (RUDOLF_NATIVE_TEST_EVAL, never set by the session); the earlier checks open websites in Oracle's own window (oNewTab), as
+    webOpen now opens a window of its own. native59_t.sh 70/70, wmnative59_t.sh, oneapp59_t.js 42/42, webkit oneapp59_ci.py 26/26.
 
-**Next (12.3c, the rest):** a second Oracle window from inside Oracle as a window of the same Chromium (above); Chromium kept
-while a download is arriving; then same_t.sh's comparison of Oracle's window against Standard's, and the Vivobook's
+**Next (12.3c, the rest):** same_t.sh's comparison of Oracle's window against Standard's, and the Vivobook's
 measurements (the owner's: Native with Oracle open against Standard's 1,167 MB; idle again after Oracle closes; FNF's frame
 rate on both engines).
 
@@ -1358,8 +1375,7 @@ Tests: qt/host/seccheck59_t.py (12, stand-ins for GitHub, the snap store and the
 **Status:** planned (2026-11-14). 15.1 first, then 15.2, 15.4, 15.5, 15.6; 15.3 when 15.1 is done (it changes the same
 code). Each in its own PR. (2026-11-14: 15.1, 15.2, 15.4, 15.6 and 15.5 done; 15.3's first and second steps done (the second: X authorization,
 Debian, Wine and Library packages as the account's user), its QEMU check next, as its note says; Part 12 step 8,
-12.3c: steps 1-6 done (step 5's rest on 2026-11-14), a second Oracle window from inside Oracle and keeping Chromium while a
-download arrives next, as its note says.)
+12.3c: steps 1-6 done (step 5's rest on 2026-11-14 and 15), same_t.sh's comparison of Oracle's window next, as its note says.)
 
 
 ## Part 16: Browse with Tor in Oracle (added on 2026-11-14)
