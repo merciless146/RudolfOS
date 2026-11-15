@@ -102,6 +102,10 @@ window.__oaCloseWhenDone=()=>{const t0=Date.now(),go=()=>{const busy=typeof DLN=
    15 s in every page): the native shell does, once for the whole screen */
 if(ONEAPP)idleWoke=()=>true;
 if(ONEAPP)window.__oaFs=on=>{if(oaChromium())oaPost({op:'fs',on:on?1:0})};
+/* (1.6.0 Part 12, test finding N1) the same in the native desktop's WebKit windows: the shell's stand-in (an element made full screen fills
+   the page, Esc leaves) and the window covering the screen, as Standard's page is the screen (WebKit's own full screen showed a video
+   black there, with only WebKit's control bar) */
+if(ONEAPP&&oaNative()&&typeof fsStandIn=='function')fsStandIn(on=>{oaPost({op:'fs',on:on?'1':'0'});return true});
 /* (12.3c step 5) a new private window (Ctrl+Shift+N, ☰ › New private tab) from Oracle's window on the native desktop: a window of its own, as
    on Standard, not one inside this page (the native desktop opens Oracle's jump "New private tab", as from its taskbar button) */
 function oaPrivWin(){if(!(ONEAPP&&ONEAPP.k=='browser'&&OA.main&&oaChromium()))return false;oaPost({op:'open',app:'browser',jump:'New private tab'});return true}
@@ -122,11 +126,33 @@ html.oneapp .win.oamain>.tb{display:none!important}html.oneapp .win.oamain>.body
     text, 4 px more room before its text, 2 px taller); check boxes and radio buttons with Chromium's size and margins. The page's own
     select rule's padding gets the same room; a list given other
     padding by a rule of its own keeps it, with the chevron. A line height of 1.5 at 13 px is 19 px in WebKit (it drops the half
-    pixel) and 20 px in Chromium: Blitzen's greeting is given Chromium's. */
+    pixel) and 20 px in Chromium: Blitzen's greeting is given Chromium's.
+    (Test findings N4, N10) a ticked box in Chromium's blue (#0075ff; WebKitGTK's own is GTK's accent); a number field's arrows only
+    while the pointer is over it, as Chromium shows them (the Print dialog's Pages and Copies). */
  if(oaNative()){document.documentElement.classList.add('oawk');const st=document.createElement('style');st.textContent=`html.oawk select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7'%3E%3Cpath d='M1.5 1.5L5 5l3.5-3.5' fill='none' stroke='%23111' stroke-width='2'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 2px center}
 :where(html.oawk) select:where(:not([multiple]):not([size])){padding:4px 22px 4px 10px}
 :where(html.oawk) input:where([type=checkbox]){margin:3px 3px 3px 4px;width:13px;height:13px}:where(html.oawk) input:where([type=radio]){margin:3px 3px 0 5px;width:13px;height:13px}
-html.oawk .blzhello{line-height:20px}html.oawk .blzhello *{line-height:1.5}`;document.head.appendChild(st)}
+html.oawk .blzhello{line-height:20px}html.oawk .blzhello *{line-height:1.5}
+:where(html.oawk) input:where([type=checkbox],[type=radio]){accent-color:#0075ff}
+html.oawk input[type=number]::-webkit-inner-spin-button{opacity:0}html.oawk input[type=number]:hover::-webkit-inner-spin-button{opacity:1}`;document.head.appendChild(st)}
+ /* (1.6.0 Part 12, test findings N2, N4, N10) the page's dialogs (.rmodal: Open and Save, Print, Allow access?, Close anyway?,
+    Report a problem; .natdlg: a game's download) are over the whole desktop on Standard, dimmed, centred on the screen. Here the
+    page's window is the app's own, so a dialog would be drawn inside it and cut off: the native shell makes the window cover the
+    screen for as long as one is open, with a picture of the screen as it was behind it (the page's own dimming over it), and puts
+    it back after. The dialog stays unseen (and can still take the focus) until the picture is there (oamwait), and the app's window keeps its size meanwhile. */
+ if(oaNative()){const sel='body>.rmodal,body>.natdlg';let on=0,bg=null,st=null;
+  const end=()=>{document.documentElement.classList.remove('oamodal','oamwait');if(bg){bg.remove();bg=null}if(st){st.remove();st=null}};
+  const chk=()=>{const v=!!document.querySelector(sel);if(v==!!on)return;
+   if(v){on=1;const r=OA.main&&OA.main.el?OA.main.el.getBoundingClientRect():null;st=document.createElement('style');
+    if(r&&r.width)st.textContent=`html.oamodal .win.oamain{right:auto!important;bottom:auto!important;width:${Math.round(r.width)}px!important;height:${Math.round(r.height)}px!important}`;
+    document.head.appendChild(st);document.documentElement.classList.add('oamodal','oamwait');oaPost({op:'modal',on:'1'})}
+   else{on=0;end();oaPost({op:'modal',on:'0'})}};
+  const obs=()=>new MutationObserver(chk).observe(document.body,{childList:true});if(document.body)obs();else addEventListener('DOMContentLoaded',obs);
+  /* (the shell's picture of the screen, once the window covers it; none: shown over the page's own background) */
+  window.__oaModalBg=src=>{if(!on)return;if(bg)bg.remove();if(!src){document.documentElement.classList.remove('oamwait');return}
+   bg=document.createElement('img');bg.id='oamodalbg';bg.alt='';const show=()=>{if(on)document.documentElement.classList.remove('oamwait')};bg.onload=show;bg.onerror=show;bg.src=src;document.body.appendChild(bg)};
+  const ms=document.createElement('style');ms.textContent=`#oamodalbg{position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:1000002;pointer-events:none;user-select:none}
+html.oamwait .rmodal,html.oamwait .natdlg,html.oamwait #oamodalbg{opacity:0!important}`;document.head.appendChild(ms)}
  /* the windows of the last session stay closed; the notifications' list is still read (the count) */
  window.__sessionRestore=()=>{try{NC=ld(NCK(),[]);ncUnread=0;ncBadge()}catch(e){}};
  /* only Settings writes the accounts */
@@ -315,6 +341,19 @@ function oaMenuRead(){const m=document.querySelector('.ctx');if(!m)return null;r
 function oaMenuShut(){document.querySelectorAll('.ctx').forEach(c=>c.remove());try{cmenuClose()}catch(e){}}
 if(ONEAPP){window.__oaWinMenu=()=>{try{if(!OA.main)return'';winMenu(OA.main,0,0);const r=oaMenuRead();oaMenuShut();return r?JSON.stringify(r):''}catch(e){oaMenuShut();return''}};
  window.__oaWinMenuDo=l=>{try{if(!OA.main)return;winMenu(OA.main,0,0);const it=[...document.querySelectorAll('.ctx .cmi')].find(e=>e.querySelector('span').textContent==l);if(it&&!it.classList.contains('dis'))it.click();else oaMenuShut()}catch(e){oaMenuShut()}}}
+/* (1.6.0 Part 12, test finding N3) Task Manager's Apps on the native desktop: every window, as Standard's one page has them in wins. The
+   shell gives its list (rudolf-native wins_ask: each window the taskbar would show, in any workspace, oldest first, with its page's
+   own __oaMe: the weight Task Manager estimates from the window); this page's own window is its OA.main, the others stand-ins whose
+   Switch to and End task the shell does (op "winop"; End task closes the window as Standard's does, without asking: __oaEnd) */
+if(ONEAPP&&oaNative()){let OW=null,waitL=[];
+ window.__oaMe=()=>{const m=OA.main;if(!m||!m.el||!m.el.isConnected)return null;let mb=null;try{mb=domWeight(m.el).mb}catch(e){}return{mb}};
+ window.__oaWinsIn=j=>{try{const l=JSON.parse(j);OW=Array.isArray(l)?l:null}catch(e){OW=null}const f=waitL;waitL=[];f.forEach(r=>r())};
+ window.__oaEnd=()=>{const m=OA.main;if(m&&m.el&&m.el.isConnected){try{m.onclose=null}catch(e){}try{m.close()}catch(e){oaDone()}}else oaDone()};
+ window.oaWinsAsk=()=>new Promise(r=>{waitL.push(r);oaPost({op:'wins'});setTimeout(r,1000)});
+ window.oaWins=()=>!OW?wins:OW.map(o=>{if(o.w&&o.w==ONEAPP.w&&OA.main)return OA.main;
+  const el=document.createElement('div');el.className='win'+(o.act?' act':'');const t=document.createElement('span');t.className='t';t.textContent=String(o.title||'');el.appendChild(t);
+  return{oaFake:1,app:String(o.app||''),icon:String(o.icon||''),min:!!o.min,ws:+o.ws||1,el,tb:{remove(){}},oaMb:o.me&&typeof o.me.mb=='number'?o.me.mb:null,
+   focus(){oaPost({op:'winop',id:String(o.id),do:'focus'})},close(){oaPost({op:'winop',id:String(o.id),do:'end'})}}})}
 /* (1.6.0 Part 12, item 2) the desktop's widgets are the native shell's to draw: an app's own page draws none (no clock, monitor or
    weather timers in every window), and takes the shell's list into the page's storage (bd95widgets:ID), where Standard and the
    other engines read it; rudolfd gives the shell's list while the page's is the one the shell replaced ("wgown") */

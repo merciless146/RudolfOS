@@ -118,6 +118,27 @@ CASES.push({n: 'phone-dark', set: {dm: 'dark', darkui: true}, more: PINS8, app: 
 CASES.push({n: 'blitzen-setup', set: {}, more: PINS8, app: 'blitzen', rd: {ai: {cpu: 1, installed: false, persistent: true, size_hint: '0.7 GB'}}, parts: ['win', 'title', 'bar']});
 CASES.push({n: 'blitzen-chat', set: {}, more: PINS8, app: 'blitzen', rd: {ai: {cpu: 1, installed: true, persistent: true}}, parts: ['win']});
 CASES.push({n: 'blitzen-oldcpu', set: {twstyle: 'candy'}, more: PINS8, app: 'blitzen', rd: {ai: {cpu: 0}}, parts: ['win', 'title']});
+/* (the test findings of 2026-11-15, docs/native-findings-2026-11-15.md) the page's dialogs over the whole desktop, dimmed, centred on the
+   screen, as Standard's (N2: Notepad's Open; N4: Close anyway?, the camera's Allow access? before its window; N10: the Print dialog):
+   the dialog and the whole screen under it. js: run in the app's page (Native: in its window, RUDOLF_NATIVE_TEST_EVAL); undo: after the
+   pictures (Native), so its window can close */
+const PINSF = {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'calc', 'settings', 'camera']};
+const UNDLG = "document.querySelectorAll('.rmodal,.natdlg').forEach(x => x.remove())";
+CASES.push({n: 'dlg-open', set: {}, more: PINSF, app: 'notepad', js: "fileDlg({mode: 'open'})", undo: UNDLG, parts: ['dlg', 'screen']});
+CASES.push({n: 'dlg-ask', set: {}, more: PINSF, app: 'notepad', js: "docAsk('1 document has changes that are not saved. Close anyway?', 'Close', 'Keep open')", undo: UNDLG, parts: ['dlg', 'screen']});
+CASES.push({n: 'dlg-print', set: {}, more: PINSF, app: 'notepad', js: "prDialog(null, '<p>Hello</p>', {title: 'Report'})", undo: UNDLG, parts: ['dlg', 'screen']});
+CASES.push({n: 'dlg-camera', set: {}, more: PINSF, app: 'camera', nowin: 1, undo: "document.querySelector('.rmodal .n') && document.querySelector('.rmodal .n').click()", parts: ['dlg', 'screen']});
+CASES.push({n: 'dlg-dark', set: {dm: 'dark', darkui: true}, more: PINSF, app: 'notepad', js: "fileDlg({mode: 'save', name: 'NOTES.TXT'})", undo: UNDLG, parts: ['dlg', 'screen']});
+/* (N3) Task Manager's Apps with Notepad and Settings open: a row for each window (its app, title, status, workspace), as on Standard */
+CASES.push({n: 'tm-apps', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'calc', 'settings', 'taskmgr']}, pre: ['notepad', 'settings'], app: 'taskmgr',
+  read: "JSON.stringify([...document.querySelectorAll('.tmt tbody tr')].map(r => [...r.children].slice(0, 4).map(c => c.textContent)).concat([[...document.querySelectorAll('.tmst')].map(x => x.textContent.split(' · ')[0])]))", parts: []});
+/* (N1) a video made full screen with the Media Player's ⛶ (paused at 2 s): the picture fills the screen on both (the test's own video,
+   DIR/tm/t.webm, made by same_t.sh with ffmpeg; the case is skipped without it). Standard's page is given the shell's full screen
+   (shell26.js fsStandIn, as the shell's "hello" does), as in the session. 'picture': the share of the screen in the video's colour bars,
+   not every pixel (the engines may show a frame or two apart) */
+const MPJS = "(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.getClientRects().length).pop(); w.querySelector('.ou').click(); const d = w.querySelector('.dlg'); d.querySelector('input').value = location.origin + '/tm/t.webm'; [...d.querySelectorAll('button')].pop().click(); " +
+  "const go = v => { v.muted = true; v.pause(); v.addEventListener('seeked', () => w.querySelector('.fs').click(), {once: true}); v.currentTime = 2 }; const v = w.querySelector('video'); if (v.readyState >= 2) go(v); else v.addEventListener('loadeddata', () => go(v), {once: true}) })()";
+CASES.push({n: 'video-fs', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'media', 'settings']}, app: 'media', media: 't.webm', shellfs: 1, js: MPJS, jswait: 3000, undo: "document.fullscreenElement && document.exitFullscreen()", parts: ['picture']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
@@ -143,7 +164,13 @@ async function stdCase(c) {
     if (c.act == 'menu') { await p.click('#start'); await p.clock.runFor(600); await wait(300) }
     if (c.act == 'hover') { const r = await rectOf('#pins .pin:nth-child(2)'); await p.mouse.move(r[0] + r[2] / 2, r[1] + r[3] / 2); await p.clock.runFor(400); await wait(200) }
     if (c.act == 'notepad') { await p.evaluate(() => launch('notepad')); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } await p.mouse.move(W / 2, H - 200) }
-    if (c.app) { await p.evaluate(k => launch(k), c.app); for (let i = 0; i < 8; i++) { await p.clock.runFor(400); await wait(150) } await p.mouse.move(W / 2, H - 200); await wait(300) }
+    for (const k of c.pre || []) { await p.evaluate(k => { launch(k) }, k); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } }   /* (apps open before c.app) */
+    if (c.app && c.nowin) { await p.mouse.click(W / 2, H - 200); await p.evaluate(k => { launch(k) }, c.app); await p.clock.runFor(100); await wait(800); await p.mouse.move(W / 2, H - 200) }   /* (an app asking before its window: a dialog open, see c.js) */
+    else if (c.app) { await p.evaluate(k => { launch(k) }, c.app); for (let i = 0; i < 8; i++) { await p.clock.runFor(400); await wait(150) } await p.mouse.move(W / 2, H - 200); await wait(300) }
+    if (c.shellfs) await p.evaluate(() => { if (typeof fsStandIn == 'function') fsStandIn(() => true) });
+    if (c.js) { const r = await p.evaluate(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.offsetParent).pop(); const q = w && w.querySelector('.tb .t'); if (!q) return null; const b = q.getBoundingClientRect(); return [b.left + 4, b.top + b.height / 2] });
+      if (r) { await p.mouse.click(r[0], r[1]); await p.mouse.move(W / 2, H - 200) }   /* (the last input a click on the app's title bar, not the password's keys: Chromium rings a button a script focuses only after keys) */
+      await p.evaluate(js => { try { (0, eval)(js) } catch (e) { console.warn(e) } }, c.js); await p.clock.runFor(100); await wait(c.jswait || 800) }   /* (not longer: the page's timers under the test's clock would run without end with a dialog open) */
     if (c.act == 'two') { for (const k of ['notepad', 'calc']) { await p.evaluate(k => launch(k), k); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } } await p.mouse.move(W / 2, H - 100) }
     if (c.key == 'altab') { await p.keyboard.down('Alt'); await p.keyboard.press('Tab'); await p.clock.runFor(200); await wait(200) }
     if (c.key == 'overview') { await p.keyboard.press('Meta+Tab'); for (let i = 0; i < 4; i++) { await p.clock.runFor(200); await wait(150) } }
@@ -187,9 +214,10 @@ async function stdCase(c) {
   rects.win = await p.evaluate(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.offsetParent).pop(); if (!w) return null; const r = w.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] });
   rects.altab = await rectOf('#altab'); rects.desk = await rectOf('#desk');
   rects.desc = await p.evaluate(() => ({bar: document.getElementById('bar').className, body: document.body.className}));
+  const read = c.read ? await p.evaluate(js => { try { return String((0, eval)(js)) } catch (e) { return 'ERROR ' + e.message } }, c.read) : null;
   const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f}); if (c.saver) fs.unlinkSync(path.join(D, 'idle'));
   if (c.key == 'altab') await p.keyboard.up('Alt');
-  await ctx.close(); return {f, rects, errs, pt};
+  await ctx.close(); return {f, rects, errs, pt, read};
 }
 // ---- Native: rudolf-native under Xvfb, the same storage
 let NP = null, NLOG = path.join(OUT, 'native.log');
@@ -198,13 +226,23 @@ function nst(k) { try { const l = fs.readFileSync(path.join(D, 'state'), 'utf8')
 function nhit(k) { try { const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => x.startsWith('hit ' + k + ' ')); if (!l) return null; const a = l.split(' ').slice(3).map(Number); return [a[0] + a[2] / 2, a[1] + a[3] / 2] } catch (e) { return null } }
 async function until(f, ms) { const t = Date.now(); while (Date.now() - t < (ms || 20000)) { if (await f()) return true; await wait(200) } return false }
 function natStart() {
-  const env = Object.assign({}, process.env, {DISPLAY: DSP, HOME: D, RUDOLF_NATIVE_STATE: path.join(D, 'state'), LIBGL_ALWAYS_SOFTWARE: '1', TZ: 'UTC', RUDOLF_WX_BASE: BASE, RUDOLF_WX_GEO: BASE,
+  const env = Object.assign({}, process.env, {DISPLAY: DSP, HOME: D, RUDOLF_NATIVE_STATE: path.join(D, 'state'), RUDOLF_NATIVE_TEST_EVAL: TEVAL(), LIBGL_ALWAYS_SOFTWARE: '1', TZ: 'UTC', RUDOLF_WX_BASE: BASE, RUDOLF_WX_GEO: BASE,
     LD_PRELOAD: process.env.SAME_FAKETIME || '', FAKETIME: '2026-11-14 09:41:00', FAKETIME_DONT_FAKE_MONOTONIC: '1', FAKETIME_NO_CACHE: '1'});
   if (!env.LD_PRELOAD) delete env.LD_PRELOAD;
   for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY', 'all_proxy', 'ALL_PROXY']) delete env[k];   /* (Open-Meteo is the test's own) */
   const lg = fs.openSync(NLOG, 'a'); NP = cp.spawn(BIN, ['--size=' + W + 'x' + H, '--draw=soft', '--base=' + BASE], {env, stdio: ['ignore', lg, lg], cwd: D});
 }
 const xdo = a => sh('xdotool ' + a);
+/* (1.6.0 Part 12, the test findings) a script run in an app window's page on Native (rudolf-native's RUDOLF_NATIVE_TEST_EVAL: "KEY JS"
+   lines on a FIFO, "KEY RESULT" lines back in FIFO.out), as Standard's is run in its page */
+let TEV = null, TEVN = 0;
+function TEVAL() { if (!TEV) { TEV = path.join(D, 'teval'); try { fs.unlinkSync(TEV) } catch (e) {} cp.execSync('mkfifo ' + TEV) } return TEV }
+async function neval(k, js) {
+  const o = TEV + '.out', got = () => { try { return fs.readFileSync(o, 'utf8').split('\n').filter(x => x.startsWith(k + ' ')) } catch (e) { return [] } }, n0 = got().length;
+  const fd = fs.openSync(TEV, fs.constants.O_RDWR | fs.constants.O_NONBLOCK); fs.writeSync(fd, k + ' ' + js.replace(/\n/g, ' ') + '\n'); fs.closeSync(fd);
+  await until(() => got().length > n0, 8000); const r = got()[n0]; return r == null ? null : r.slice(k.length + 1);
+}
+
 async function natSettle(c) {
   const n0 = (calls().match(/GET desktop\/settings/g) || []).length;
   await until(() => (calls().match(/GET desktop\/settings/g) || []).length > n0 + 1, 15000); await wait(900);
@@ -241,9 +279,11 @@ async function natCase(c, s) {
   if (c.act == 'notepad') { const h = nhit('pin notepad'); if (h) xdo('mousemove ' + h.join(' ') + ' click 1');
     await until(() => /^client .* app=notepad/m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3000); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500);
     const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => /^client .* app=notepad/.test(x)); if (l) { const a = l.split(' '); cl = [+a[3], +a[4], +a[5], +a[6]] } }
+  for (const k of c.pre || []) { const re = new RegExp('^client .* app=' + k + ' ', 'm'), h = nhit('pin ' + k); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1'); await until(() => re.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(2500) }
   if (c.app) { const re = new RegExp('^client .* app=' + c.app + ' ', 'm'), h = nhit('pin ' + c.app); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1');
     await until(() => re.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3500); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500);
     const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => re.test(x)); if (l) { const a = l.split(' '); cl = [+a[3], +a[4], +a[5], +a[6]] } }
+  if (c.js) { await neval(c.app, 'void((() => { try { ' + c.js + ' } catch (e) { console.warn(e) } })())'); await wait(Math.max(2500, c.jswait || 0)) }
   if (c.act == 'two') { for (const k of ['notepad', 'calc']) { const h = nhit('pin ' + k); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1');
       await until(() => new RegExp('^client .* app=' + k + ' ', 'm').test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3000) } xdo('mousemove ' + W / 2 + ' ' + (H - 100)); await wait(500) }
   if (c.key == 'altab') { xdo('keydown alt key Tab'); await until(() => (nst('altab') || '-') != '-', 5000); await wait(500) }
@@ -269,7 +309,9 @@ async function natCase(c, s) {
   if (c.fly) { const q = nhit(c.fly + ' -'); if (q) xdo('mousemove ' + q.map(Math.round).join(' ') + ' click 1'); await until(() => (nst('fly') || '-') != '-', 8000); await wait(500);
     if (c.next) { const l = nlines('flybtn').find(x => x.startsWith('flybtn next ')); if (l) { const a = l.split(' '); xdo('mousemove ' + a[2] + ' ' + a[3] + ' click 1') } await wait(700) }
     xdo('mousemove 300 300'); await wait(500) }
+  const read = c.read ? await neval(c.app, 'String((() => { try { return ' + c.read + ' } catch (e) { return "ERROR " + e.message } })())') : null;
   const f = path.join(OUT, c.n + '.nat.png'); sh('import -window root ' + f);
+  if (c.undo) { await neval(c.app, 'void((() => { try { ' + c.undo + ' } catch (e) {} })())'); await wait(1200) }
   if (c.saver) { fs.writeFileSync(path.join(D, 'idle'), '0'); await until(() => (nst('saver') || '').startsWith('0') && !/ app=do-saver /.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 10000); fs.unlinkSync(path.join(D, 'idle')); await wait(800) }
   if (c.key == 'altab') { xdo('keyup alt'); await until(() => (nst('altab') || '-') == '-', 5000); await wait(400) }
   if (c.key == 'overview') { xdo('key Escape'); await until(() => nst('overview') == '0', 5000); await wait(400) }
@@ -284,14 +326,20 @@ async function natCase(c, s) {
   if (c.app) { const re = new RegExp('^client .* app=' + c.app + ' ', 'm'); const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => re.test(x));
     if (l) { const a = l.split(' '); xdo('mousemove ' + (+a[3] + +a[5] + 2 - 9 - 12) + ' ' + (+a[4] + 7 + 11) + ' click 1') }
     await until(() => !re.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 10000); await wait(800) }
+  for (const k of (c.pre || []).slice().reverse()) { const re = new RegExp('^client .* app=' + k + ' ', 'm'); const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => re.test(x));
+    if (l) { const a = l.split(' '); xdo('mousemove ' + (+a[3] + +a[5] + 2 - 9 - 12) + ' ' + (+a[4] + 7 + 11) + ' click 1') }
+    await until(() => !re.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 10000); await wait(800) }
   if (c.act == 'notepad') {   /* (its ✕: 9 px from the frame's right edge, 7 px down, 24 by 22) */
     const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => /^client .* app=notepad/.test(x));
     if (l) { const a = l.split(' '); xdo('mousemove ' + (+a[3] + +a[5] + 2 - 9 - 12) + ' ' + (+a[4] + 7 + 11) + ' click 1') }
     await until(() => !/^client .* app=notepad/m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 10000); await wait(800) }
   if (c.act == 'lock') { xdo("type --delay 40 '" + PW.replace(/'/g, "'\\''") + "'"); xdo('key Return'); await until(() => nst('locked') == '0', 8000); await wait(800) }
-  return {f, client: cl};
+  return {f, client: cl, read};
 }
 // ---- the comparison
+/* (the share of a screenshot in testsrc2's colour bars: the video's picture, not a black screen) */
+const PICPY = "import sys\nfrom PIL import Image\nd=Image.open(sys.argv[1]).convert('RGB').resize((480,270)).tobytes()\nB=[(191,191,0),(0,191,191),(0,191,0),(191,0,191),(191,0,0),(0,0,191),(255,255,0),(0,255,255),(0,255,0),(255,0,255),(255,0,0),(0,0,255)]\n" +
+  "n=sum(1 for i in range(0,len(d),3) if any(abs(d[i]-b[0])<48 and abs(d[i+1]-b[1])<48 and abs(d[i+2]-b[2])<48 for b in B))\nprint(round(100*n/(480*270)))";
 function cmp(name, a, b, ra, rb, shift) {
   const o = path.join(OUT, name);
   try { const r = JSON.parse(cp.execFileSync('python3', [path.join(__dirname, 'pxdiff.py'), a, b, ra.join(','), (rb || ra).join(','), String(TOL), o, String(shift || 0)]).toString()); return r }
@@ -302,10 +350,14 @@ function cmp(name, a, b, ra, rb, shift) {
   const rows = [];
   for (const c of CASES) {
     if (only && !only.includes(c.n)) continue;
+    if (c.media && !fs.existsSync(path.join(D, 'tm', c.media))) { console.log('SKIP ' + c.n + ': no test media (ffmpeg)'); continue }
     let s, n;
     try { s = await stdCase(c) } catch (e) { ok(c.n + ': Standard drew it', 0, e.message); continue }
     try { n = await natCase(c, s) } catch (e) { ok(c.n + ': Native drew it', 0, e.message); continue }
-    for (const part of c.parts) {
+    if (c.read) ok(c.n + ': the page reads the same on both (' + c.read.slice(0, 60) + '…)', s.read === n.read, {std: s.read, nat: n.read});
+    for (const part of c.parts || []) {
+      if (part == 'picture') { const f = x => +cp.execFileSync('python3', ['-c', PICPY, x]).toString(), a = f(s.f), b = f(n.f);
+        ok(c.n + ' picture: ' + a + ' % of Standard\'s screen and ' + b + ' % of Native\'s show the video (at least 60 %)', a >= 60 && b >= 60 && Math.abs(a - b) <= 10, {a, b}); continue }
       let ra = s.rects[part], rb = null;
       if ((part == 'title' || part == 'win') && n.client && ra) rb = [n.client[0], n.client[1], ra[2], ra[3]];   /* (each engine's own window; the frame's border and title bar above the app) */
       if (!ra) { ok(c.n + ' ' + part + ': Standard has it', 0, s.rects); continue }

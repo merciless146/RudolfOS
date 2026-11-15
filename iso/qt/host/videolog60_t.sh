@@ -19,7 +19,7 @@ run() { # ENGINE SWITCH
 	  su() { shift 4; echo "$1" >> $T/su; }; chown() { :; }; oracle_chrome() { echo "$EXTRA" > $T/extra; }
 	  . $T/block.sh; wait; echo "$EXTRA" > $T/after ) 2>$T/err; }
 run native 1
-ok "1. Native, the switch on: rudolf-native started with GStreamer's warnings to webkit-video.log" "$(grep -q '^exec env GST_DEBUG=\*:2 GST_DEBUG_NO_COLOR=1 GST_DEBUG_FILE=/run/rudolf/webkit-video.log /usr/bin/rudolf-native ' $T/su && [ -f /run/rudolf/webkit-video.log ] && echo 1)" "$(cat $T/su $T/err)"
+ok "1. Native, the switch on: rudolf-native started with GStreamer's warnings to webkit-video.log (not downloadbuffer's temporary file, N18)" "$(grep -q '^exec env GST_DEBUG=\*:2,downloadbuffer:1 GST_DEBUG_NO_COLOR=1 GST_DEBUG_FILE=/run/rudolf/webkit-video.log /usr/bin/rudolf-native ' $T/su && [ -f /run/rudolf/webkit-video.log ] && echo 1)" "$(cat $T/su $T/err)"
 ok "...Oracle's Chromium there with its media/ messages, its other flags kept, and nothing added for later" "$(grep -q -- '--keep-me --enable-logging=stderr --v=0 --vmodule=\*/media/\*=1' $T/extra && [ "$(cat $T/after)" = "--keep-me" ] && echo 1)" "$(cat $T/extra $T/after)"
 run native 0
 ok "2. Native, the switch off: neither (no GStreamer log, Oracle's flags as they were)" "$(grep -q '^exec env  */usr/bin/rudolf-native ' $T/su && ! grep -q GST_DEBUG $T/su && [ "$(cat $T/extra)" = "--keep-me" ] && [ ! -e /run/rudolf/webkit-video.log ] && echo 1)" "$(cat $T/su $T/extra)"

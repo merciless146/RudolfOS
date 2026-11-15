@@ -39,6 +39,9 @@ function tmTabs(pages) {
   return [...(typeof RT != 'undefined' ? RT : new Map()).values()].filter(t => t.W).map(t => ({t, title: t.title(), url: t.url(), used: mem.has(t.url()) ? mem.get(t.url()) : null}));
 }
 
+/* (1.6.0 Part 12, test finding N3) the windows listed: the page's own (wins), which on Standard are every window; on the native desktop each
+   app's window is a page of its own, so there the shell's list (oneapp59.js oaWins: the same rows, Switch to and End task done by the shell) */
+const tmWins = () => typeof window.oaWins == 'function' ? window.oaWins() : wins;
 function taskmgr26() {
   if (window.__tmW && wins.includes(__tmW)) { __tmW.focus(); return __tmW }
   const W = window.__tmW = appWin('taskmgr', 'Task Manager', '📊', 860, 580);
@@ -54,6 +57,7 @@ function taskmgr26() {
   W.body.querySelector('.tmrep').onclick = () => sysReportDialog();
 
   async function sample() {
+    if (typeof window.oaWinsAsk == 'function') await window.oaWinsAsk();
     try {
       if (RD) {
         const s = await rd('stats'); L.cpu = s.cpu; L.mem = s.memTotal - s.memAvailable; L.memT = s.memTotal; L.temp = s.tempC; L.bat = s.battery;
@@ -108,9 +112,9 @@ function taskmgr26() {
     const t = document.createElement('table'); t.className = 'tmt';
     t.innerHTML = '<thead><tr><th>App</th><th>Window</th><th>Status</th><th>Workspace</th><th style="text-align:right">Memory</th><th></th></tr></thead><tbody></tbody>';
     const tb = t.querySelector('tbody');
-    wins.forEach(o => {
-      const w = domWeight(o.el), tr = tb.insertRow();
-      tr.innerHTML = `<td></td><td></td><td>${o.min ? 'Minimized' : o.el.classList.contains('act') ? 'Active' : 'Running'}</td><td>${o.ws || 1}</td><td style='text-align:right' title='estimated from the window'>${w.mb.toFixed(1)} MB</td><td><button class='sw'>Switch to</button> <button class='et'>End task</button></td>`;
+    tmWins().forEach(o => {
+      const w = o.oaFake ? {mb: o.oaMb} : domWeight(o.el), tr = tb.insertRow();
+      tr.innerHTML = `<td></td><td></td><td>${o.min ? 'Minimized' : o.el.classList.contains('act') ? 'Active' : 'Running'}</td><td>${o.ws || 1}</td><td style='text-align:right' title='estimated from the window'>${w.mb == null ? '—' : w.mb.toFixed(1) + ' MB'}</td><td><button class='sw'>Switch to</button> <button class='et'>End task</button></td>`;
       tr.children[0].textContent = (o.icon || '') + ' ' + (o.app && APPS[o.app] ? APPS[o.app].name : '—'); tr.children[1].textContent = o.el.querySelector('.t').textContent;
       tr.querySelector('.sw').onclick = () => o.focus();
       tr.querySelector('.et').onclick = () => { if (o === W) return; try { o.onclose = null } catch (e) {} o.close(); if (wins.includes(o)) { o.el.remove(); o.tb.remove(); wins.splice(wins.indexOf(o), 1) } notify('Task ended', o.el.querySelector('.t').textContent, {quiet: true}); draw() };
@@ -202,7 +206,7 @@ function taskmgr26() {
     if (RD) card('Network', fmtB(L.net || 0) + '/s');
     if (L.temp != null) card('Temperature', L.temp.toFixed(0) + ' °C');
     (L.bat || []).forEach(b => card('Battery', b.capacity + '%' + (b.status ? ' · ' + b.status : '')));
-    card('Windows', wins.length); card('CPU threads', navigator.hardwareConcurrency || '—');
+    card('Windows', tmWins().length); card('CPU threads', navigator.hardwareConcurrency || '—');
     B.appendChild(cards);
     B.appendChild(h4(RD ? 'CPU (last minute)' : 'Desktop load (how busy the page is)')); B.appendChild(graph(hist.cpu, 'CPU', '#38bdf8', 100));
     B.appendChild(h4('Memory in use')); B.appendChild(graph(hist.mem, 'Memory', '#a78bfa', 100));
@@ -281,7 +285,7 @@ function taskmgr26() {
     if (tab == 'procs' && !full && B.querySelector('.tmp')) { const y = B.scrollTop, f = document.activeElement && document.activeElement.classList.contains('tmf'); B.innerHTML = ''; drawProcs(); B.scrollTop = y; if (f) { const i = B.querySelector('.tmf'); i.focus(); i.setSelectionRange(i.value.length, i.value.length) } }
     else if (tab == 'system' || tab == 'hw') { if (full) { B.innerHTML = 'Loading…'; (tab == 'system' ? drawSystem : drawHw)() } }
     else { B.innerHTML = ''; ({apps: drawApps, procs: drawProcs, perf: drawPerf, start: drawStart})[tab]() }
-    st.textContent = `${wins.length} window(s)${procs ? ' · ' + procs.items.length + ' processes' : ''} · ${RD ? 'Rudolf OS on this computer' : 'Rudolf OS in a browser'}`;
+    st.textContent = `${tmWins().length} window(s)${procs ? ' · ' + procs.items.length + ' processes' : ''} · ${RD ? 'Rudolf OS on this computer' : 'Rudolf OS in a browser'}`;
   }
   sample().then(() => draw(true));
   iv = setInterval(async () => { if (W.min) return; await sample(); if (tab == 'apps' || tab == 'procs' || tab == 'perf') draw() }, 2000);
@@ -334,7 +338,7 @@ async function sysReport(problem) {
     ['Storage', info && info.persistTotal > 0 ? fmtB(info.persistFree) + ' free of ' + fmtB(info.persistTotal) : 'live (not installed)'],
     ['Network', typeof netUp == 'function' ? (netUp() ? 'connected' : 'not connected') : (navigator.onLine ? 'online' : 'offline')],
     ['Services', sys ? `display ${yes(sv.display)}, sound ${yes(sv.sound)}, wifi ${yes(sv.wifi)}, X ${yes(sv.x)}, linux apps ${yes(sv.linuxApps)}` : '—'],
-    ['Windows', wins.length + (typeof RT != 'undefined' && RT.size ? ', real tabs ' + RT.size : '')],
+    ['Windows', tmWins().length + (typeof RT != 'undefined' && RT.size ? ', real tabs ' + RT.size : '')],
     ['Kernel warnings', sys ? String(tmLines(k.messages).length) : '—'],
     ['Hardware check', typeof hwcSummary == 'function' ? hwcSummary() : '—'],
   ];

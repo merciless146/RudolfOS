@@ -377,9 +377,10 @@ while :; do
 	# 1.5.8: Settings › System health › Log video problems: GStreamer's warnings and errors (WebKit's video and sound)
 	# go to /run/rudolf/webkit-video.log, which the system report includes; kept under 4 MB by the loop below.
 	# 1.6.0: the native desktop too (its WebKit: the desktop's pages, Lite's tabs, sounds and videos), and Oracle's
-	# Chromium there writes its video and sound messages (media/) to the native desktop's log
+	# Chromium there writes its video and sound messages (media/) to the native desktop's log. (Test finding N18) Without
+	# downloadbuffer's warning: WebKit removes its own temporary file, so every video gave "Failed to remove temporary file"
 	VLOG=; ORVL=; if [ $ENGINE != chromium ] && grep -q '^video_log=1' /persist/etc/rudolf-memory 2>/dev/null; then
-		VLOG="GST_DEBUG=*:2 GST_DEBUG_NO_COLOR=1 GST_DEBUG_FILE=/run/rudolf/webkit-video.log"; : > /run/rudolf/webkit-video.log; chown rudolf /run/rudolf/webkit-video.log
+		VLOG="GST_DEBUG=*:2,downloadbuffer:1 GST_DEBUG_NO_COLOR=1 GST_DEBUG_FILE=/run/rudolf/webkit-video.log"; : > /run/rudolf/webkit-video.log; chown rudolf /run/rudolf/webkit-video.log
 		[ $ENGINE = native ] && ORVL="--enable-logging=stderr --v=0 --vmodule=*/media/*=1"
 	fi
 	if [ $ENGINE = native ]; then

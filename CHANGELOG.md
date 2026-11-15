@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- The native desktop's dialogs (Open and Save, Print, Allow access?, Close anyway?, a game's download) now appear over the whole desktop, dimmed and centred, as in the standard desktop, instead of inside the app's window where their buttons could be cut off.
+- Fixed on the native desktop: a video in full screen showed a black screen; Task Manager listed only its own window (it now lists every window, with Switch to and End task).
 - The native desktop shows the Phone screen and Blitzen exactly as the standard desktop does: apps' text, drop-down lists and check boxes in its windows are drawn as in the standard desktop.
 - Fixed: when memory ran out, the memory guard could close the desktop's own page (it then stopped responding and the browser was restarted, back to the sign-in screen). The desktop now says which page process is its own until that works, the guard checks that it is still that process, and while it is not known no page of the desktop's browser is closed.
 - New: printers plugged in by USB: the print dialog lists them as "USB: name" and Settings › Devices shows each one and its kind. Printers that print over USB with IPP (most sold since about 2015) and PostScript printers need the new USB printers system extension; printers that read PDF print straight away; others are named as needing a driver Rudolf OS does not have.
