@@ -78,6 +78,35 @@ where it can be.
 - **Tests:** each measured and written in docs/testing.md; the battery and call results on the owner's phone and
   carrier.
 
+### 7. T-Mobile and the prepaid services on its network (added on 2026-11-15)
+Asked for on 2026-11-15: "Plan for T-Mobile and adjacent prepaid service coverage in 1.6.1." The US has no 3G left,
+so calls need VoLTE, and carriers decide which phones get it. T-Mobile's network is the friendliest to Linux phones
+(reports in the Pine64 wiki's carrier list and forum, 2020 to 2024); AT&T and Verizon are later.
+- **The carriers covered:** T-Mobile (postpaid and prepaid), Mint Mobile, Tello, US Mobile on its T-Mobile network,
+  Simple Mobile, Metro by T-Mobile, Ultra Mobile and Google Fi (data and calls; Fi's first activation needs an
+  Android phone and its picture messages do not work: said in Settings). The list is checked again before work
+  starts, since prepaid brands change networks.
+- **The first phone: the PinePhone Pro** (Part 4). Its modem (Quectel EG25-G) has working VoLTE; the OnePlus 6's VoLTE
+  does not work yet in postmarketOS (pmaports issue 1878), so it waits.
+- **Set up by itself:** Settings › Mobile network recognises the carrier from the SIM (its MCC/MNC and its name) and
+  fills in the APN exactly, letters' case included (US Mobile's "PWG" failed in lowercase on a PinePhone Pro; Simple
+  Mobile's is "Simple"), with the picture messages' settings (MMSC, proxy). The APNs come from the operators'
+  database 1.6.0 already ships, with Rudolf's own corrections for these carriers kept beside it.
+- **VoLTE turned on:** the modem's IMS/VoLTE set up for T-Mobile (its carrier profile on the EG25-G), checked after
+  every start and after a SIM change; Settings says whether calls go over 4G.
+- **Wi-Fi calling** where T-Mobile offers it on the phone (VoWiFi through the modem's IMS), else said plainly.
+- **Texts and picture messages:** SMS (1.6.0 Part 6) and MMS through the APN's MMSC, in the Messages app.
+- **Activation help:** what each carrier needs (activate online, the phone's IMEI given to the carrier, support asked
+  to turn VoLTE on for the line), written in the docs and linked from Settings when the SIM has no service.
+- **5G:** not on the PinePhone Pro (an LTE modem). T-Mobile's 5G is tested later with a 5G modem card in a laptop
+  (Part 5).
+- **Tests:** a prepaid Mint or Tello SIM first (cheap, no contract), then T-Mobile itself: data, a call each way, a
+  call to and from a landline, an emergency-call check as Part 4 says, texts and picture messages each way,
+  Wi-Fi calling, roaming off, the APN filled in from a fresh SIM, and a call during a weak signal. Results in
+  docs/testing.md, with the carrier and date. A host test of the APN table (each carrier's MCC/MNC and name gives the
+  right APN, case kept).
+- **Later:** AT&T's network (stricter about devices), then Verizon (approved phones only).
+
 ## Not moved here
 - **elogind and polkit** (1.6.0 Part 11): left out by decision on 2026-11-15, since Rudolf OS's own inhibit portal and
   prompts cover what apps ask. Taken up again only if an app or a later part needs them.
@@ -88,4 +117,4 @@ where it can be.
 ## Steps
 1. Part 1, several monitors, after the 1.6.0 beta.
 2. Part 3, Lite's leftovers, one PR each.
-3. Parts 2 and 4 with the first phone, then Part 6 on it; Part 5 when the hardware is there.
+3. Parts 2 and 4 with the first phone, then Part 6 on it and Part 7 with a T-Mobile-network SIM; Part 5 when the hardware is there.
