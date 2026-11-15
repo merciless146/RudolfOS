@@ -23,7 +23,9 @@ BUS=/run/dbus/system_bus_socket; LOG=${RUDOLF_MODEM_LOG:-/run/rudolf/modem.log};
 SYS=${RUDOLF_MODEM_SYS:-/sys}; R=${RUDOLF_RUN:-/run/rudolf}; P=${RUDOLF_MODEM_PERSIST:-/persist/etc}
 FA=${RUDOLF_MM_FCC_AVAIL:-/usr/share/ModemManager/fcc-unlock.available.d}; FD=${RUDOLF_MM_FCC_DIR:-/etc/ModemManager/fcc-unlock.d}
 MM=$(command -v ModemManager)
-running() { pgrep -x ModemManager >/dev/null 2>&1; }
+# (1.6.0: by its name as a pattern: BusyBox's pgrep -x never matched it, so 1.5.9 started ModemManager again for each
+# port and never stopped it, found in QEMU, qt/sb/cell60_q.py)
+running() { pgrep '^ModemManager$' >/dev/null 2>&1; }
 # a port's subsystem as ModemManager names it (empty: not a port it is told of)
 subsys() { case "$1" in cdc-wdm*) echo usbmisc;; ttyUSB*|ttyACM*) echo tty;; wwan*) [ -e $SYS/class/net/$1 ] && echo net || echo wwan;;
 	*) case "$(readlink -f $SYS/class/net/$1/device/driver 2>/dev/null)" in */qmi_wwan|*/cdc_mbim|*/mhi_net|*/mhi_wwan_mbim) echo net;; esac;; esac; }
@@ -53,7 +55,8 @@ start() {
 	# (no polkit on Rudolf OS: only root talks to it, through rudolfd)
 	# 1.6.0 (plan Part 9): with udev running, ModemManager finds its ports itself (udev's database, its own rules'
 	# ID_MM_CANDIDATE); with mdev (the fallback), as in 1.5.9: without udev, told of each port
-	if with_udev; then NOU=; else NOU=--test-no-udev; $MM --help-all 2>/dev/null | grep -q test-no-udev || NOU=--no-auto-scan; fi
+	# (its test options are in --help: 1.5.9 asked --help-all, which it does not know, and always took --no-auto-scan)
+	if with_udev; then NOU=; else NOU=--test-no-udev; $MM --help 2>/dev/null | grep -q test-no-udev || NOU=--no-auto-scan; fi
 	setsid $MM --log-level=WARN $NOU >>$LOG 2>&1 </dev/null &
 	echo "$(date) ModemManager started (${NOU:-with udev})" >> $LOG
 	# on the bus, then (without udev) told of the ports already there
@@ -61,7 +64,7 @@ start() {
 	with_udev && return 0
 	for p in $(ports); do report add $p; done
 }
-stop() { running || return 0; pkill -x ModemManager; echo "$(date) ModemManager stopped (no modem left)" >> $LOG; }
+stop() { running || return 0; pkill '^ModemManager$'; echo "$(date) ModemManager stopped (no modem left)" >> $LOG; }
 esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 # a modem's USB or PCI id (vvvv:pppp) from its sysfs path (ModemManager's Device), the device itself or a parent
 devid() { d=$SYS${1#/sys}; for i in 1 2 3 4; do

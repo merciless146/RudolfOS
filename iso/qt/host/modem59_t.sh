@@ -5,9 +5,9 @@
 HERE=$(cd "$(dirname "$0")" && pwd); M=$HERE/../../sys/root/usr/lib/rudolf/modem; T=$(mktemp -d); trap 'rm -rf $T' EXIT
 N=0; F=0; ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $3"; F=$((F+1)); fi; }
 B=$T/bin; mkdir -p $B $T/dev; export ST=$T
-printf '#!/bin/sh\n[ "$1" = --help-all ] && { [ -e $ST/old-mm ] || echo "  --test-no-udev   Run without udev support even if available"; exit 0; }\necho "MM $*" >> $ST/log; touch $ST/mm-running\n' > $B/ModemManager
-printf '#!/bin/sh\n[ "$1" = -x ] && [ "$2" = ModemManager ] && [ -e $ST/mm-running ] && exit 0\n[ "$1" = -f ] && exit 0\nexit 1\n' > $B/pgrep
-printf '#!/bin/sh\n[ "$2" = ModemManager ] && rm -f $ST/mm-running && echo "killed" >> $ST/log\n' > $B/pkill
+printf '#!/bin/sh\n[ "$1" = --help ] && { [ -e $ST/old-mm ] || echo "  --test-no-udev   Run without udev support even if available"; exit 0; }\necho "MM $*" >> $ST/log; touch $ST/mm-running\n' > $B/ModemManager
+printf '#!/bin/sh\n[ "$1" = '^ModemManager$' ] && [ -e $ST/mm-running ] && exit 0\n[ "$1" = -f ] && exit 0\nexit 1\n' > $B/pgrep
+printf '#!/bin/sh\n[ "$1" = '^ModemManager$' ] && rm -f $ST/mm-running && echo "killed" >> $ST/log\n' > $B/pkill
 printf '#!/bin/sh\nexit 0\n' > $B/dbus-daemon; printf '#!/bin/sh\nexec "$@"\n' > $B/setsid
 cat > $B/mmcli <<'E'
 #!/bin/sh
