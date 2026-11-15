@@ -467,6 +467,58 @@ every restart.
 - **Tests:** the Claude app (or a stand-in using libsecret) keeps its sign-in across a restart without a prompt; another
   account cannot read it; a Flatpak app through the portal; the password change; the locked keyring after sign-out.
 
+### 15. Moved from 1.5.9 (2026-11-15)
+1.5.9 was finished on 2026-11-15 for promotion to stable; what it had left moved here, as written in docs/plan-1.5.9.md
+(each item's part there has the details).
+- **Code**
+  - **The native desktop (1.5.9 12.3c):** same_t.sh's comparison of Oracle's window on Native against Standard's
+    (toolbar, tabs, a site): the rule "Native appears and functions exactly as Chromium mode". With Part 12 above.
+  - **The official recovery (1.5.9 8.4, 8.5):** the repair at each start (the official build checks recovery.efi and
+    system/r and restores them from the official release); Return to official restoring the official rudolf.efi; on a
+    computer that never ran the official build, system/r downloaded when Developer mode is turned on. The EFI image is
+    near the 32 MB an El Torito entry can name: watch it as the kernel grows.
+  - **Browse with Tor (1.5.9 16.2):** Ctrl+W, T, N and Q in a website in the Tor window on Standard are still
+    Chromium's (rudolf-display remaps them only for RudolfDesktop), with a test of rudolf-display's keys.
+  - **Lite (from 1.5.8, through 1.5.9):** the desktop's menus and windows behind Oracle's tab pages (the covered tab's
+    still picture while a menu is open); stutter in Oracle's tabs; Google sign-in for GitHub (symptoms to be described
+    first); GPU drawing for Lite measured; Oracle's WebKit tabs (YouTube, Google sign-in with FedCM, a download, full
+    screen, memory with 5 tabs); the lock and sign-in screen settings and the shutting-down screen; the dynamic
+    backgrounds' moving parts.
+  - **A lighter desktop page (1.5.9 10.3, 10.4):** the engines' limits measured; the ~200 MB that belongs to no
+    process; WPE WebKit as a later Lite engine; the 10.4 targets measured on the Vivobook.
+  - **The native session's logs kept across a restart** (found on 2026-11-15: rudolf-native's output, the page log,
+    the Tor window's log and rudolfd's log are in /run and were lost with the restart; only session.log, the kernel's
+    and the health log were kept in /persist/var/log/starts).
+  - **Kernel tuning** (proposed on 2026-11-12), if confirmed.
+  - **rudolfd's root work split into helpers** (1.5.9 15.5, already planned here).
+- **QEMU checks (CI)**
+  - 1.5.9 15.1: a Flatpak app, a Wine program and a Debian terminal refused the desktop's page and token.
+  - 1.5.9 15.3, third step: two accounts (a Flatpak app, a Debian terminal and Wine refused the other's files; the
+    display refused to the other account's program; sign-out; the move on an existing data partition).
+  - 1.5.9 15.4: qt/sb/t140_t.py signs in as an administrator before it switches the devlink on.
+  - 1.5.9 8.7: Developer mode and Return to official with Secure Boot.
+  - From 1.5.8 (4.2): the devlink answering with the desktop disabled.
+- **On the Vivobook**
+  - **Calls (1.5.9 7.4):** Meet in Oracle on Standard and on Lite; Zoom's test meeting, then the Zoom app; Teams; a
+    call to a real phone; a headset's microphone during a call; memory during a 10-minute call. Results in
+    docs/testing.md.
+  - **1.5.9's features on its stable release:** Tor at check.torproject.org (and the Tor window's sign-in and clicks,
+    #369); the microphone Test; Save and Open; WordPro's links; a USB stick in the File Explorer; the Wi-Fi radios
+    (2.4 and 5 GHz) in Settings; 15.2's test (a file opened in an app cannot reach the desktop).
+  - **Game mode and memory (1.5.9 9):** the idle reading; Task Manager's breakdown; Clear cache.
+  - **recovery.efi on the computer itself (1.5.9 8.4):** only with the owner present.
+  - **The Native session of 2026-11-15:** a program refused the system API 8 s before the restart ("not the desktop
+    (Linux user 1000)"), two "bad device" requests, the shell's Chromium restarted twice and exited at once, and the
+    shutdown record "desktop:none". With what the owner saw.
+- **Waiting**
+  - **The hotspot (1.5.9 Part 4):** Share this connection with the MiFi's USB tethering as the connection: a MiFi with
+    a data plan. (Also below, Hardware to test with.)
+  - **ARM64 (1.5.9 Part 3):** the test channel beta-arm64/ (needs the owner's OK), then the update and recovery checks
+    on it; Part 7 above.
+  - **Waydroid (1.5.9 Part 5):** measured on the Vivobook with Lite before it is offered.
+  - **The first phone (1.5.9 Part 6):** chosen and bought by the owner (a PinePhone Pro or a OnePlus 6/6T), its device
+    package from postmarketOS's; the MediaTek "S24Ultra" is not flashed or unlocked without the owner's decision.
+
 ## Hardware to test with
 - **The MiFi 7730L** (USB tethering and Wi-Fi), with an active SIM (or a prepaid data SIM). Found on 2026-11-14: its
   USB network driver and Share this connection with it as the uplink are back in 1.5.9 (docs/plan-1.5.9.md); here it
@@ -504,7 +556,9 @@ every restart.
    desktop's user's printer last.
 8. Part 12 (the native desktop, its shell items 1-12 in order), alongside the rest: it is the desktop's, the other
    parts the system's. Native becomes the default only after its week of betas.
-9. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
+9. Part 15 (moved from 1.5.9): its Vivobook checks on the first 1.6.0 beta; its code items alongside the parts they
+   belong to (12.3c's comparison with Part 12, the recovery with Part 13's signed layers, the QEMU checks first).
+10. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
 
 ## After 1.6.0: the native desktop decision (added on 2026-11-12)
 (2026-11-13: the prototype moved into 1.5.9 as a third desktop engine, Native (test): docs/plan-1.5.9.md Part 12.
