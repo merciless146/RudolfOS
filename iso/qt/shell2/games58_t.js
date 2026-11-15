@@ -50,7 +50,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 	const nf = await p.evaluate(() => ({menu: [...document.querySelectorAll('#menu ul li[data-a=nightflight]')].map(l => l.textContent), lib: LIB_APPS['rudolf-nightflight'] && LIB_APPS['rudolf-nightflight'].app}));
 	ok('1b. ...and Night Flight, downloaded from the Library when first opened', nf.menu.length == 1 && /Night Flight/.test(nf.menu[0]) && nf.lib == 'nightflight', nf);
 	const fbm = await p.evaluate(() => [...document.querySelectorAll('#menu ul li[data-a=frostbarricade]')].map(l => l.textContent));
-	ok('1c. ...and 25 Days (formerly Frost Barricade)', fbm.length == 1 && /25 Days/.test(fbm[0]), fbm);
+	ok('1c. ...and Holiday Holdout (formerly 25 Days, and Frost Barricade)', fbm.length == 1 && /Holiday Holdout/.test(fbm[0]), fbm);
 	const bdm = await p.evaluate(() => ({menu: [...document.querySelectorAll('#menu ul li[data-a=blockdrop]')].map(l => l.textContent), lib: LIB_APPS['rudolf-blockdrop'] && LIB_APPS['rudolf-blockdrop'].app}));
 	ok('1d. ...and Block Drop, downloaded from the Library when first opened', bdm.menu.length == 1 && /Block Drop/.test(bdm.menu[0]) && bdm.lib == 'blockdrop', bdm);
 	const lpm = await p.evaluate(() => ({menu: [...document.querySelectorAll('#menu ul li[data-a=logicpack]')].map(l => l.textContent), lib: LIB_APPS['rudolf-logicpack'] && LIB_APPS['rudolf-logicpack'].app}));
