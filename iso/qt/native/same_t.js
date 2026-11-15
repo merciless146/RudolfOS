@@ -98,6 +98,11 @@ CASES.push({n: 'tbm-bar-win', set: {}, more: PINS2, act: 'notepad', rc: 'bar', p
 CASES.push({n: 'ws2', set: {}, act: 'notepad', ws: 2, parts: ['bar', 'toast']});
 CASES.push({n: 'ws2-dark', set: {dm: 'dark', darkui: true}, act: 'notepad', ws: 2, parts: ['bar', 'toast']});
 CASES.push({n: 'ws2-left', set: {tb: 'left'}, act: 'notepad', ws: 2, parts: ['bar']});
+/* (item 5) the window keys: Alt+Tab's switcher held open over two windows (Notepad, then Calculator: Notepad chosen), with the dark
+   theme and the accent colour; Super+Tab's overview of the two */
+CASES.push({n: 'altab', set: {}, more: PINS2, act: 'two', key: 'altab', parts: ['altab']});
+CASES.push({n: 'altab-accent', set: {accent: '#db2777'}, more: PINS2, act: 'two', key: 'altab', parts: ['altab']});
+CASES.push({n: 'overview', set: {}, more: PINS2, act: 'two', key: 'overview', parts: ['desk']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
@@ -122,6 +127,9 @@ async function stdCase(c) {
     if (c.act == 'menu') { await p.click('#start'); await p.clock.runFor(600); await wait(300) }
     if (c.act == 'hover') { const r = await rectOf('#pins .pin:nth-child(2)'); await p.mouse.move(r[0] + r[2] / 2, r[1] + r[3] / 2); await p.clock.runFor(400); await wait(200) }
     if (c.act == 'notepad') { await p.evaluate(() => launch('notepad')); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } await p.mouse.move(W / 2, H - 200) }
+    if (c.act == 'two') { for (const k of ['notepad', 'calc']) { await p.evaluate(k => launch(k), k); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } } await p.mouse.move(W / 2, H - 100) }
+    if (c.key == 'altab') { await p.keyboard.down('Alt'); await p.keyboard.press('Tab'); await p.clock.runFor(200); await wait(200) }
+    if (c.key == 'overview') { await p.keyboard.press('Meta+Tab'); for (let i = 0; i < 4; i++) { await p.clock.runFor(200); await wait(150) } }
     if (c.ws) { await p.click('#wsw button:nth-child(' + c.ws + ')'); for (let i = 0; i < 2; i++) { await p.clock.runFor(300); await wait(150) } await p.mouse.move(W / 2, H / 3); await wait(300) }
     if (c.act == 'lock') { await p.evaluate(() => typeof lockScreen == 'function' ? lockScreen() : showLogin()); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } }
     if (c.files) { await p.evaluate(() => { const d = deskFiles(); d['REPORT.TXT'] = 'hello'; d['PROJECTS'] = {}; fsSave(); EXPL.forEach(f => f()) }); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } }
@@ -156,8 +164,10 @@ async function stdCase(c) {
   for (let i = 0; i < (c.wg || 0); i++) rects['wg' + i] = await p.evaluate(i => { const e = document.querySelectorAll('#desk > .wgt')[i]; if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.left) - 20, Math.round(r.top) - 10, Math.round(r.width) + 40, Math.round(r.height) + 40] }, i);   /* (with its shadow) */
   { const r = await rectOf('#ntoasts'); rects.toast = r ? [r[0] - 30, r[1] - 16, r[2] + 42, r[3] + 52] : null }   /* (with their shadows) */
   { const r = await rectOf('#calp') || await rectOf('.svp') || await rectOf('#qsp') || await rectOf('#ncp') || await rectOf('.np'); rects.fly = r }
+  rects.altab = await rectOf('#altab'); rects.desk = await rectOf('#desk');
   rects.desc = await p.evaluate(() => ({bar: document.getElementById('bar').className, body: document.body.className}));
   const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f});
+  if (c.key == 'altab') await p.keyboard.up('Alt');
   await ctx.close(); return {f, rects, errs, pt};
 }
 // ---- Native: rudolf-native under Xvfb, the same storage
@@ -210,6 +220,10 @@ async function natCase(c, s) {
   if (c.act == 'notepad') { const h = nhit('pin notepad'); if (h) xdo('mousemove ' + h.join(' ') + ' click 1');
     await until(() => /^client .* app=notepad/m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3000); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500);
     const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => /^client .* app=notepad/.test(x)); if (l) { const a = l.split(' '); cl = [+a[3], +a[4], +a[5], +a[6]] } }
+  if (c.act == 'two') { for (const k of ['notepad', 'calc']) { const h = nhit('pin ' + k); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1');
+      await until(() => new RegExp('^client .* app=' + k + ' ', 'm').test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3000) } xdo('mousemove ' + W / 2 + ' ' + (H - 100)); await wait(500) }
+  if (c.key == 'altab') { xdo('keydown alt key Tab'); await until(() => (nst('altab') || '-') != '-', 5000); await wait(500) }
+  if (c.key == 'overview') { xdo('key super+Tab'); await until(() => /^ovwin .* 1$/m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 5000); await wait(600) }
   if (c.mic) { await until(() => (nst('mic') || '').startsWith(c.mic.length + ' ' + (c.micmuted ? 1 : 0)), 12000); await wait(600) }
   if (c.ws) { const h = nhit('ws ' + c.ws); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1'); await until(() => nst('ws') == String(c.ws) && nlines0('toast').length > 0, 8000); xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(700) }
   if (c.ev) { for (const e of c.ev) { const n0 = nlines0('toast').length; fs.writeFileSync(path.join(D, 'event'), e); await until(() => nlines0('toast').length > n0, 20000) } xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(900) }
@@ -231,6 +245,12 @@ async function natCase(c, s) {
     if (c.next) { const l = nlines('flybtn').find(x => x.startsWith('flybtn next ')); if (l) { const a = l.split(' '); xdo('mousemove ' + a[2] + ' ' + a[3] + ' click 1') } await wait(700) }
     xdo('mousemove 300 300'); await wait(500) }
   const f = path.join(OUT, c.n + '.nat.png'); sh('import -window root ' + f);
+  if (c.key == 'altab') { xdo('keyup alt'); await until(() => (nst('altab') || '-') == '-', 5000); await wait(400) }
+  if (c.key == 'overview') { xdo('key Escape'); await until(() => nst('overview') == '0', 5000); await wait(400) }
+  if (c.act == 'two') for (let i = 0; i < 2; i++) {   /* (the one in front first: its ✕ may be over the other's) */
+    const L = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').filter(x => /^client .* app=(notepad|calc) /.test(x)), l = L.find(x => / focus=1 /.test(x)) || L[0]; if (!l) break; const k = l.match(/ app=(\S+)/)[1];
+    if (l) { const a = l.split(' '); xdo('mousemove ' + (+a[3] + +a[5] + 2 - 9 - 12) + ' ' + (+a[4] + 7 + 11) + ' click 1') }
+    await until(() => !new RegExp('^client .* app=' + k + ' ', 'm').test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 10000); await wait(800) }
   if (c.fly) { xdo('mousemove 300 300 click 1'); await until(() => (nst('fly') || '-') == '-', 5000); await wait(300) }
   // (back as it was for the next case: the menu closed, the app window closed, unlocked)
   if (c.act == 'menu' || c.rc || /menu$|rename|openwith|wgpick/.test(c.act || '')) { xdo('key Escape'); await wait(400) }

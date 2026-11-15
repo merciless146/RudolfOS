@@ -31,6 +31,7 @@
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
 #include <X11/cursorfont.h>
+#include <X11/XKBlib.h>
 #include <cairo-xlib.h>
 #include <arpa/inet.h>
 #include <dlfcn.h>
@@ -264,7 +265,7 @@ typedef struct { int x, y, w, h; char kind[12], arg[80]; } Hit;
 static Hit HITS[96]; static int NHITS;
 static void state_write(void);
 typedef struct JV JV; static void di_layout(void); static void di_load(JV *cat);   /* (the desktop's icons, below) */
-static void wg_paint(cairo_t *cr); static void wg_load(JV *v); static void jumps_load(JV *v); static void wg_dirty_kind(const char *t); static void wg_picker(void);   /* (the widgets, below) */
+static void sc_load(JV *v); static void wg_paint(cairo_t *cr); static void wg_load(JV *v); static void jumps_load(JV *v); static void wg_dirty_kind(const char *t); static void wg_picker(void);   /* (the widgets, below) */
 static int wg_shown(void); static int NWG_ALL_DIRTY;
 static gboolean wg_press(GdkEventButton *e); static gboolean wg_motion(GdkEventMotion *e); static gboolean wg_release(GdkEventButton *e); static gboolean note_key(GdkEventKey *e); static int NF;
 
@@ -585,7 +586,7 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
    own requests are not redirected to us, so they are framed as they are shown). The taskbar lists them all. */
 #define BW 1   /* (the page's windows' 1 px edge; the title bar's height, TH, follows the display scaling) */
 typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
-	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
+	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
 static GList *CLIENTS;   /* oldest first */
 static Client *FOCUS;
 static Display *DPY; static Window ROOT; static int WM_OK;
@@ -685,7 +686,7 @@ static void send_proto(Window w, Atom p, Time t)
 }
 #define NWS 3
 static int WSC = 1;   /* (the workspace shown: item 4) */
-static void toast_text(const char *t, const char *b, int ms);
+static void toast_text(const char *t, const char *b, int ms); static void fget_tt(void *v, const char *k, char *o, size_t n);
 static int ws_of(Client *c); static void ws_apply(void); static gboolean ws_said(gpointer d);
 static void wm_focus(Client *c)
 {
@@ -693,6 +694,7 @@ static void wm_focus(Client *c)
 	if (c && c->off && ws_of(c) != WSC) { WSC = ws_of(c); ws_apply(); bar_redraw(); g_timeout_add(80, ws_said, GINT_TO_POINTER(WSC)); }   /* (W.focus: wsGo(W.ws) first) */
 	Client *old = FOCUS; FOCUS = c;
 	if (c) {
+		c->used = g_get_monotonic_time();   /* (the page's MRU: item 5) */
 		if (c->min) { c->min = 0; if (!c->off) XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); }
 		XRaiseWindow(DPY, c->frame);
 		/* its dialogs stay above it */
@@ -1109,22 +1111,17 @@ static void frame_release(Client *c, XButtonEvent *e)
 	int b = c->press; c->press = 0; frame_draw(c);
 	if (b && b == btn_at(c, e->x, e->y)) { if (b == 1) wm_minimise(c); else if (b == 2) wm_maximise(c, !c->max); else wm_close(c); }
 }
-static void power(const char *what);
+static void power(const char *what); static int sc_key(XKeyEvent *e); static void sc_grab(void);
 static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 {
 	(void)ev; (void)d; XEvent *e = xev; Client *c;
 	switch (e->type) {
-	case KeyPress:   /* (the page's global shortcuts the shell has: Meta+L, lock the screen: shell25.js) */
+	case KeyPress:   /* (the page's global shortcuts: item 5, sc_key) */
 		if ((c = client_of(e->xkey.window)) && c->ak[0] && e->xkey.window == c->w && oracle_key(&e->xkey)) return GDK_FILTER_REMOVE;   /* (Oracle's keys, as on Standard: 12.3c) */
-		if (e->xkey.window == ROOT && e->xkey.keycode == XKeysymToKeycode(DPY, XK_l) && (e->xkey.state & Mod4Mask)) { if (USER_ID[0] && !LOCKED) power("lock"); return GDK_FILTER_REMOVE; }
-		/* (item 4: Ctrl+Alt+Left/Right, the previous or next workspace; with Shift the window goes too: shell25.js's shortcuts wsl, wsr, wsml, wsmr) */
-		if (e->xkey.window == ROOT && (e->xkey.state & ControlMask) && (e->xkey.state & Mod1Mask) && (e->xkey.keycode == XKeysymToKeycode(DPY, XK_Left) || e->xkey.keycode == XKeysymToKeycode(DPY, XK_Right))) {
-			if (USER_ID[0] && !LOCKED) { int d = e->xkey.keycode == XKeysymToKeycode(DPY, XK_Left) ? -1 : 1; Client *w = FOCUS && !FOCUS->trans ? FOCUS : NULL;
-				if ((e->xkey.state & ShiftMask) && w) { ws_move(w, w->ws + d); ws_go(w->ws); wm_focus(w); } else ws_go(WSC + d); }
-			return GDK_FILTER_REMOVE; }
-		/* (Meta+N, the notifications; Meta+A, quick settings: shell25.js's shortcuts) */
-		if (e->xkey.window == ROOT && (e->xkey.state & Mod4Mask) && (e->xkey.keycode == XKeysymToKeycode(DPY, XK_n) || e->xkey.keycode == XKeysymToKeycode(DPY, XK_a))) {
-			if (USER_ID[0] && !LOCKED) fl_open(e->xkey.keycode == XKeysymToKeycode(DPY, XK_n) ? FL_NC : FL_QS); return GDK_FILTER_REMOVE; }
+		if (sc_key(&e->xkey)) return GDK_FILTER_REMOVE;
+		break;
+	case KeyRelease:
+		if (sc_key(&e->xkey)) return GDK_FILTER_REMOVE;
 		break;
 	case MapRequest:
 		if (!(c = client_of(e->xmaprequest.window))) wm_manage(e->xmaprequest.window, NULL); else { XMapWindow(DPY, c->w); wm_focus(c); }
@@ -1226,8 +1223,7 @@ static void wm_init(void)
 	/* the screen itself (where no window is, and while windows start) shows the arrow, not X's bare "✕" (1.5.9 step 7) */
 	XDefineCursor(DPY, ROOT, CUR[0]);
 	gdk_window_add_filter(NULL, wm_filter, NULL);
-	{ static const unsigned M[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask }; for (int i = 0; i < 4; i++) for (int k = 0; k < 3; k++) XGrabKey(DPY, XKeysymToKeycode(DPY, k == 0 ? XK_l : k == 1 ? XK_n : XK_a), Mod4Mask | M[i], ROOT, True, GrabModeAsync, GrabModeAsync);
-	  for (int i = 0; i < 4; i++) for (int k = 0; k < 2; k++) for (int sh = 0; sh < 2; sh++) XGrabKey(DPY, XKeysymToKeycode(DPY, k ? XK_Right : XK_Left), ControlMask | Mod1Mask | (sh ? ShiftMask : 0) | M[i], ROOT, True, GrabModeAsync, GrabModeAsync); }
+	sc_grab();   /* (the page's shortcuts, the switcher and Super: item 5) */
 	/* windows already there (rudolf-native started again): framed */
 	Window r, p, *k = NULL; unsigned n = 0;
 	if (XQueryTree(DPY, ROOT, &r, &p, &k, &n)) for (unsigned i = 0; i < n; i++) {
@@ -2107,7 +2103,15 @@ static void menu_commit(GtkIMContext *im, const char *str, gpointer d)
 	if (l + n < sizeof MQ) { memcpy(MQ + l, str, n); MQ[l + n] = 0; }
 	MSCROLL = 0; MHOV = -1; caret_restart(); gtk_widget_queue_draw(MAREA); state_write();
 }
-static gboolean on_menu_out(GtkWidget *w, GdkEvent *e, gpointer d) { (void)w; (void)e; (void)d; menu_hide(); return FALSE; }
+/* (a key's grab, the shell's own shortcuts: item 5, takes the keyboard for a moment without moving its focus: the menu stays then) */
+static gboolean menu_out_late(gpointer d)
+{
+	(void)d; if (!MENU || !gtk_widget_get_visible(MENU) || !gtk_widget_get_window(MENU)) return G_SOURCE_REMOVE;
+	Window f = None, r, p, *k = NULL; int rv; unsigned n; XGetInputFocus(DPY, &f, &rv); Window m = GDK_WINDOW_XID(gtk_widget_get_window(MENU));
+	for (Window w = f; w && w != ROOT && w != PointerRoot; ) { if (w == m) return G_SOURCE_REMOVE; if (!XQueryTree(DPY, w, &r, &p, &k, &n)) break; if (k) XFree(k); k = NULL; w = p; }
+	menu_hide(); return G_SOURCE_REMOVE;
+}
+static gboolean on_menu_out(GtkWidget *w, GdkEvent *e, gpointer d) { (void)w; (void)e; (void)d; if (WM_OK) g_timeout_add(30, menu_out_late, NULL); else menu_hide(); return FALSE; }
 static void menu_make(void)
 {
 	MENU = gtk_window_new(GTK_WINDOW_TOPLEVEL); gtk_window_set_decorated(GTK_WINDOW(MENU), FALSE);
@@ -2448,6 +2452,7 @@ static void settings_load(void)
 	wg_load(v);   /* (the widgets: item 2) */
 	cal_events_load(v);   /* (the calendar under the clock: item 3) */
 	nt_load(v);   /* (the notifications' list: item 3) */
+	sc_load(v);   /* (the account's own keys: item 5) */
 	  jfree(v);
 	/* the page's display scaling: the taskbar, the title bars and the start menu at the page's size (1.5.9 step 7) */
 	Z = S.scale / 100.0; BARH = (int)lround(46 * Z); TH = (int)lround(35 * Z);
@@ -4245,6 +4250,279 @@ static void osd_show(const char *k, const char *lv, const char *label, const cha
 	gtk_widget_queue_draw(OAREA); if (OTIMER) g_source_remove(OTIMER); OTIMER = g_timeout_add(1500, osd_end, NULL); state_write();
 }
 
+/* ------------------------------------------------------------------ the window keys (1.6.0 Part 12, item 5)
+   shell25.js's keyboard shortcuts (SHORT: the registry with each account's own keys, bd95kb:ID from rudolfd's desktop/settings
+   "kb", as Settings › Keyboard changes them), done by the shell; Super alone opens the start menu (metaAlone); Alt+Tab's switcher
+   (#altab: the windows in the order last used, the second one chosen, Tab and Shift+Tab, Escape, chosen when Alt is let go) and
+   Super+Tab's overview (all the workspace's windows side by side over the shaded desktop, as overview(): a click picks one).
+   The page has no "snap left or right", so neither has the shell. */
+typedef struct { const char *id, *def; void (*fn)(void); } Sc;
+static Client *act_win(void)   /* (actWin: the last used window shown in this workspace) */
+{
+	Client *b = NULL; for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (!tb_win(c) || c->min || ws_of(c) != WSC) continue; if (!b || c->used > b->used) b = c; }
+	return b;
+}
+static void sc_files(void) { app_open("explorer", NULL); }
+static void sc_desktop(void) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (tb_win(c) && !c->min && ws_of(c) == WSC) wm_minimise(c); } }
+static void sc_run(void) { app_open("do-run", NULL); }
+static void sc_lock(void) { power("lock"); }
+static void sc_settings(void) { for (GList *l = WINS; l; l = l->next) { AppWin *w = l->data; if (!w->hidden && !strcmp(w->k, "settings")) { Client *c = WM_OK ? client_of_app(w) : NULL; if (c) wm_focus(c); else appwin_activate(w); return; } } app_open("settings", NULL); }
+static void sc_start(void) { menu_toggle(); }
+static void ov_toggle(void);
+static void sc_close(void) { Client *c = act_win(); if (c) wm_close(c); }
+static void sc_max(void) { Client *c = act_win(); if (c && !c->max) { wm_focus(c); wm_maximise(c, 1); } }
+static void sc_min(void) { Client *c = act_win(); if (!c) return; if (c->max) wm_maximise(c, 0); else wm_minimise(c); }
+static void sc_wsl(void) { ws_go(WSC - 1); }
+static void sc_wsr(void) { ws_go(WSC + 1); }
+static void sc_wsm(int d) { Client *w = act_win(); if (w) { ws_move(w, w->ws + d); ws_go(w->ws); wm_focus(w); } }
+static void sc_wsml(void) { sc_wsm(-1); }
+static void sc_wsmr(void) { sc_wsm(1); }
+static void sc_notif(void) { fl_open(FL_NC); }
+static void sc_quick(void) { fl_open(FL_QS); }
+static void sc_help(void) { app_open("help", NULL); }
+/* (shell25.js's order; F11, the page's own full screen, is not the shell's: on Native the window in front keeps it) */
+static const Sc SC[] = {
+	{"files", "Meta+E", sc_files}, {"desktop", "Meta+D", sc_desktop}, {"run", "Meta+R", sc_run}, {"lock", "Meta+L", sc_lock}, {"settings", "Meta+I", sc_settings},
+	{"start", "Ctrl+Escape", sc_start}, {"overview", "Meta+Tab", ov_toggle}, {"close", "Alt+F4", sc_close}, {"max", "Meta+ArrowUp", sc_max}, {"min", "Meta+ArrowDown", sc_min},
+	{"wsl", "Ctrl+Alt+ArrowLeft", sc_wsl}, {"wsr", "Ctrl+Alt+ArrowRight", sc_wsr}, {"wsml", "Ctrl+Alt+Shift+ArrowLeft", sc_wsml}, {"wsmr", "Ctrl+Alt+Shift+ArrowRight", sc_wsmr},
+	{"notif", "Meta+N", sc_notif}, {"quick", "Meta+A", sc_quick}, {"help", "F1", sc_help} };
+#define NSC (int)G_N_ELEMENTS(SC)
+static char SCKB[NSC][48];   /* (the account's own keys: the combination; \1: the default; "": one the shell cannot take) */
+static unsigned SCMOD[NSC]; static KeyCode SCKC[NSC];
+/* comboOf's "Ctrl+Alt+Shift+Meta+KEY" (e.key, a letter in capitals) as X's modifiers and key */
+static int sc_parse(const char *s, unsigned *mod, KeySym *ks)
+{
+	*mod = 0; *ks = NoSymbol; if (!s || !*s) return 0;
+	char b[48]; snprintf(b, sizeof b, "%s", s); char *k = b;
+	for (;;) { char *p = strchr(k, '+'); if (!p || !p[1]) break; *p = 0;
+		if (!strcmp(k, "Ctrl")) *mod |= ControlMask; else if (!strcmp(k, "Alt")) *mod |= Mod1Mask; else if (!strcmp(k, "Shift")) *mod |= ShiftMask; else if (!strcmp(k, "Meta")) *mod |= Mod4Mask; else return 0;
+		k = p + 1; }
+	static const char *const P[][2] = {{".", "period"}, {",", "comma"}, {"/", "slash"}, {"-", "minus"}, {"=", "equal"}, {";", "semicolon"}, {"'", "apostrophe"}, {"[", "bracketleft"},
+		{"]", "bracketright"}, {"\\", "backslash"}, {"`", "grave"}, {"Space", "space"}, {"Enter", "Return"}, {"Backspace", "BackSpace"}, {"PageUp", "Prior"}, {"PageDown", "Next"},
+		{"PrintScreen", "Print"}, {"ContextMenu", "Menu"}};
+	for (unsigned i = 0; i < G_N_ELEMENTS(P); i++) if (!strcmp(k, P[i][0])) { *ks = XStringToKeysym(P[i][1]); return *ks != NoSymbol; }
+	if (!strncmp(k, "Arrow", 5)) k += 5;
+	if (strlen(k) == 1 && g_ascii_isalpha(*k)) { char l[2] = { g_ascii_tolower(*k), 0 }; *ks = XStringToKeysym(l); }
+	else *ks = XStringToKeysym(k);
+	return *ks != NoSymbol;
+}
+static int SC_LOADED;
+static const char *sc_combo(int i) { return !SC_LOADED || SCKB[i][0] == 1 ? SC[i].def : SCKB[i]; }   /* (\1: the default) */
+static void sc_grab(void)
+{
+	static const unsigned M[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask };
+	for (int i = 0; i < NSC; i++) { if (SCKC[i]) for (int m = 0; m < 4; m++) XUngrabKey(DPY, SCKC[i], SCMOD[i] | M[m], ROOT); SCKC[i] = 0; }
+	for (int i = 0; i < NSC; i++) { KeySym ks; unsigned mod; if (!sc_parse(sc_combo(i), &mod, &ks)) continue; KeyCode kc = XKeysymToKeycode(DPY, ks); if (!kc) continue;
+		SCKC[i] = kc; SCMOD[i] = mod; for (int m = 0; m < 4; m++) XGrabKey(DPY, kc, mod | M[m], ROOT, True, GrabModeAsync, GrabModeAsync); }
+	/* (with the keys sent to the root window while held, not to the window in front: GTK's own windows take keys through XInput 2) */
+	/* (Super by itself: the start menu when it is let go with nothing pressed between; Alt+Tab, Alt+` and with Shift: the switcher) */
+	KeyCode sl = XKeysymToKeycode(DPY, XK_Super_L), sr = XKeysymToKeycode(DPY, XK_Super_R), tb = XKeysymToKeycode(DPY, XK_Tab), gr = XKeysymToKeycode(DPY, XK_grave);
+	for (int m = 0; m < 4; m++) { if (sl) XGrabKey(DPY, sl, M[m], ROOT, False, GrabModeAsync, GrabModeAsync); if (sr) XGrabKey(DPY, sr, M[m], ROOT, False, GrabModeAsync, GrabModeAsync);
+		for (int s = 0; s < 2; s++) { if (tb) XGrabKey(DPY, tb, Mod1Mask | (s ? ShiftMask : 0) | M[m], ROOT, True, GrabModeAsync, GrabModeAsync); if (gr) XGrabKey(DPY, gr, Mod1Mask | (s ? ShiftMask : 0) | M[m], ROOT, True, GrabModeAsync, GrabModeAsync); } }
+}
+/* (rudolfd's desktop/settings "kb": the account's bd95kb:ID, {id: "Ctrl+...", id: ""}) */
+static void sc_load(JV *v)
+{
+	char old[NSC][48]; memcpy(old, SCKB, sizeof old);
+	for (int i = 0; i < NSC; i++) { SCKB[i][0] = 1; SCKB[i][1] = 0; }
+	JV *kb = jprop(v, "kb");
+	for (int i = 0; kb && kb->t == 5 && i < kb->len; i++) { JV *o = kb->v[i]; if (!o || o->t != 3 || strlen(o->s) >= 48) continue;
+		for (int k = 0; k < NSC; k++) if (!strcmp(SC[k].id, kb->k[i]) && o->s[0]) { snprintf(SCKB[k], 48, "%s", o->s); unsigned m; KeySym ks; if (!sc_parse(o->s, &m, &ks)) SCKB[k][0] = 0; } }   /* ("": the default, as kbOf) */
+	/* (a key given to another shortcut is that one's: Settings takes it from the first, as kbMap) */
+	int was = SC_LOADED; SC_LOADED = 1; if (WM_OK && (!was || memcmp(old, SCKB, sizeof old))) sc_grab();
+}
+static int META_ALONE;
+static void at_key(int back); static void at_end(int pick); static int AT_ON; static int OV_ON; static void ov_end(Client *pick);
+/* the keys the shell has (wm_filter): 1 when taken */
+static int sc_key(XKeyEvent *e)
+{
+	KeySym ks = XkbKeycodeToKeysym(DPY, e->keycode, 0, 0); unsigned st = e->state & (ControlMask | Mod1Mask | ShiftMask | Mod4Mask);
+	if (e->type == KeyRelease) {
+		if ((ks == XK_Super_L || ks == XK_Super_R) && META_ALONE) { META_ALONE = 0; if (USER_ID[0] && !LOCKED && !DGK) sc_start(); return 1; }
+		if (AT_ON && (ks == XK_Alt_L || ks == XK_Alt_R || ks == XK_Meta_L || !(e->state & Mod1Mask))) { at_end(1); return 1; }
+		return ks == XK_Super_L || ks == XK_Super_R;
+	}
+	if (ks == XK_Super_L || ks == XK_Super_R) { META_ALONE = 1; return 1; }
+	META_ALONE = 0;
+	if (AT_ON && ks == XK_Escape) { at_end(0); return 1; }
+	if (OV_ON && ks == XK_Escape) { ov_end(NULL); return 1; }
+	if ((ks == XK_Tab || ks == XK_grave || ks == XK_ISO_Left_Tab) && (st & Mod1Mask) && !(st & ControlMask)) { if (USER_ID[0] && !LOCKED) at_key((st & ShiftMask) != 0); return 1; }
+	if (AT_ON) return 1;
+	for (int i = 0; i < NSC; i++) { if (!SCKC[i] || SCKC[i] != e->keycode || SCMOD[i] != st) continue;
+		/* (Alt+F4 on Oracle's window: Chromium's own, as on Standard: 12.3c) */
+		if (!strcmp(SC[i].id, "close") && FOCUS && FOCUS->ak[0] && !FOCUS->app && oracle_key(e)) return 1;
+		if (USER_ID[0] && !LOCKED && !DGK) SC[i].fn();
+		return 1; }
+	return 0;
+}
+
+/* ---- Alt+Tab (shell25.js SWT, altDraw; styles25.css #altab, .atc): in the middle of the screen at 40 % of its height, 14 px inside,
+   rgba(15,23,42,.92) with 14 px corners; each window 120 px wide in 10 px of padding and a 2 px edge, 10 px apart (wrapping at 90 % of
+   the screen's width): its app's picture (34 px), its title (12 px, cut with an ellipsis) and "workspace N" (10 px, at .6); the one
+   chosen in the accent colour, its words white */
+static GtkWidget *AWIN, *AAREA; static GdkPixbuf *ABG; static int AT_I, AT_N, AX, AY, AW, AH; static double AFX, AFY; static Client *AT_L[64];
+static int at_per(void) { int per = (int)floor((SW / Z * 0.9 - 28 + 10) / 154); return per < 1 ? 1 : per; }
+static void at_size(double *w, double *h)
+{
+	int per = at_per(), n = AT_N, rows = (n + per - 1) / per, cols = n < per ? n : per;
+	*w = 28 + cols * 154 - 10; *h = 28 + rows * 103 - 10;
+}
+static const char *at_icon(Client *c)
+{
+	const char *k = c->app ? c->app->k : c->ak; const App *a = k[0] ? app_find(k) : NULL;
+	if (c->app && c->app->icon[0]) return c->app->icon; return a && a->icon[0] ? a->icon : "▢";
+}
+static void at_rect(int i, double *x, double *y)
+{
+	double w, h; at_size(&w, &h); int per = at_per(), r = i / per, col = i % per, k = AT_N - r * per; if (k > per) k = per;
+	*x = 14 + (w - 28 - (k * 154 - 10)) / 2 + col * 154; *y = 14 + r * 103;
+}
+/* (pass 0: the boxes, where translate(-50%,-50%) puts them, on half a pixel; pass 1: the words and pictures, which Chromium puts on whole
+   pixels) */
+static void at_paint(cairo_t *cr, int pass)
+{
+	double w, h; at_size(&w, &h);
+	if (!pass) { srca(cr, cx("#0f172a", .92)); nc_rr(cr, 0, 0, w, h, 14, 14, 14, 14); cairo_fill(cr); }
+	for (int i = 0; i < AT_N; i++) { Client *c = AT_L[i]; double x, y; at_rect(i, &x, &y); int on = i == AT_I;
+		if (!pass) { if (on) { srca(cr, ca(accent(), 1)); nc_rr(cr, x, y, 144, 93, 10, 10, 10, 10); cairo_fill(cr); } continue; }
+		RGBA fg = on ? cx("#ffffff", 1) : cx("#e2e8f0", 1);
+		const char *ic = at_icon(c); double iw = css_width(cr, ic, UIFAM, 400, 34); css_text(cr, ic, UIFAM, 400, 34, x + 12 + (120 - iw) / 2, y + 12, 40, fg, 0);
+		double tw = css_width(cr, c->title, UIFAM, 400, 12); css_text(cr, c->title, UIFAM, 400, 12, x + 12 + (tw < 120 ? (120 - tw) / 2 : 0), y + 56, 14, fg, tw > 120 ? 120 : 0);
+		char ws[48]; snprintf(ws, sizeof ws, "%sworkspace %d", c->min ? "minimized · " : "", ws_of(c)); RGBA f2 = fg; f2.a = on ? 1 : .6;   /* (the chosen one's: opacity 1, the page's highlight rule) */
+		double ww = css_width(cr, ws, UIFAM, 400, 10); css_text(cr, ws, UIFAM, 400, 10, x + 12 + (ww < 120 ? (120 - ww) / 2 : 0), y + 70, 11, f2, ww > 120 ? 120 : 0); }
+}
+static gboolean at_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
+{
+	(void)wd; (void)d; if (ABG) { gdk_cairo_set_source_pixbuf(cr, ABG, 0, 0); cairo_paint(cr); }
+	cairo_save(cr); cairo_translate(cr, AFX, AFY); cairo_scale(cr, Z, Z); at_paint(cr, 0); cairo_restore(cr);
+	cairo_translate(cr, round(AFX), round(AFY)); cairo_scale(cr, Z, Z); at_paint(cr, 1); return TRUE;   /* (translate(-50%,-50%): on half a pixel, as Chromium draws it) */
+}
+static gboolean at_click(GtkWidget *wd, GdkEventButton *e, gpointer d)
+{
+	(void)wd; (void)d; double x = (e->x - AFX) / Z, y = (e->y - AFY) / Z;
+	for (int i = 0; i < AT_N; i++) { double ix, iy; at_rect(i, &ix, &iy); if (x >= ix && x < ix + 144 && y >= iy && y < iy + 93) { AT_I = i; at_end(1); return TRUE; } }
+	return TRUE;
+}
+static void at_show(void)
+{
+	if (!AWIN) { AWIN = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(AWIN), "Switch windows"); AAREA = gtk_drawing_area_new(); gtk_container_add(GTK_CONTAINER(AWIN), AAREA);
+		gtk_widget_add_events(AAREA, GDK_BUTTON_PRESS_MASK); g_signal_connect(AAREA, "draw", G_CALLBACK(at_draw), NULL); g_signal_connect(AAREA, "button-press-event", G_CALLBACK(at_click), NULL); }
+	double w, h; at_size(&w, &h); double fx = (SW / Z - w) / 2 * Z, fy = (SH / Z * 0.4 - h / 2) * Z; int nw = (int)ceil(w * Z + fx - floor(fx)), nh = (int)ceil(h * Z + fy - floor(fy));
+	if (!(gtk_widget_get_visible(AWIN) && ABG && nw == AW && nh == AH)) {
+		if (gtk_widget_get_visible(AWIN)) { gtk_widget_hide(AWIN); gdk_display_sync(gdk_display_get_default()); }
+		AW = nw; AH = nh; AX = (int)floor(fx); AY = (int)floor(fy);
+		if (ABG) g_object_unref(ABG); ABG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), AX, AY, AW, AH); }
+	AFX = fx - AX; AFY = fy - AY; gtk_widget_set_size_request(AAREA, AW, AH); gtk_window_resize(GTK_WINDOW(AWIN), AW, AH); gtk_window_move(GTK_WINDOW(AWIN), AX, AY);
+	gtk_widget_show_all(AWIN); XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(AWIN))); gtk_widget_queue_draw(AAREA); state_write();
+}
+static int at_cmp(gconstpointer a, gconstpointer b) { gint64 x = ((const Client *)a)->used, y = ((const Client *)b)->used; return x > y ? -1 : x < y; }
+static void at_key(int back)
+{
+	if (OV_ON) ov_end(NULL);
+	if (!AT_ON) {
+		GList *L = NULL; for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (tb_win(c) && c->ws) L = g_list_prepend(L, c); }
+		L = g_list_sort(L, at_cmp); AT_N = 0; for (GList *l = L; l && AT_N < 64; l = l->next) AT_L[AT_N++] = l->data; g_list_free(L);
+		if (!AT_N) return;
+		AT_ON = 1; AT_I = 0; XGrabKeyboard(DPY, ROOT, False, GrabModeAsync, GrabModeAsync, CurrentTime);
+	}
+	AT_I = (AT_I + (back ? -1 : 1) + AT_N) % AT_N; at_show();
+}
+static void at_end(int pick)
+{
+	if (!AT_ON) return; AT_ON = 0; XUngrabKeyboard(DPY, CurrentTime); if (AWIN) gtk_widget_hide(AWIN);
+	Client *c = pick && AT_I < AT_N ? AT_L[AT_I] : NULL; AT_N = 0;
+	if (c && g_list_find(CLIENTS, c)) wm_focus(c); state_write();
+}
+
+/* ---- Super+Tab: the overview (shell25.js overview, ovEnd; styles25.css #ovsh, .win.ovw). This workspace's windows (minimised too) in
+   a grid of ceil(sqrt(n)) columns over the desktop, each scaled to fit its cell less 40 by 60 px (never larger), centred in it, with a
+   3 px ring in the accent colour and the shadow 0 12px 30px rgba(0,0,0,.4); the desktop under them shaded rgba(15,23,42,.55); a click
+   on a window brings it to the front, elsewhere (or Escape, or Super+Tab again) goes back. The windows' pictures come from the X
+   server's Composite extension (each window kept off screen while the overview is shown), loaded when there. */
+typedef Window (*XcName)(Display *, Window); typedef void (*XcRedir)(Display *, Window, int);
+static XcName XC_NAME; static XcRedir XC_RED, XC_UNRED;
+static int xc_ok(void)
+{
+	static int tried; if (tried) return XC_NAME != NULL; tried = 1;
+	void *h = dlopen("libXcomposite.so.1", RTLD_NOW | RTLD_LOCAL); if (h) { XC_NAME = (XcName)dlsym(h, "XCompositeNameWindowPixmap"); XC_RED = (XcRedir)dlsym(h, "XCompositeRedirectWindow"); XC_UNRED = (XcRedir)dlsym(h, "XCompositeUnredirectWindow"); }
+	if (!XC_NAME || !XC_RED || !XC_UNRED) { XC_NAME = NULL; fprintf(stderr, "rudolf-native: no Composite (libXcomposite.so.1): the overview shows the windows' frames only\n"); }
+	return XC_NAME != NULL;
+}
+typedef struct { Client *c; double x, y, w, h, s; int wasmin; cairo_surface_t *pic; } OvW;
+static GtkWidget *OVWIN, *OVAREA; static OvW OVL[32]; static int OVN; static guint OVT;
+/* (#desk as the page has it: 42 px above a taskbar at the bottom, 48 px below one at the top, beside one at the left or right) */
+static void ov_desk(double *x, double *y, double *w, double *h)
+{
+	int top = !strcmp(S.tb, "top"); *x = desk_left(); *w = desk_w();
+	*y = TOPRES + (top ? lround(48 * Z) : 0); *h = SH - *y - (tb_side() || top ? 0 : lround(42 * Z));
+}
+static void ov_layout(void)
+{
+	double dx, dy, dw, dh; ov_desk(&dx, &dy, &dw, &dh); int n = OVN, cols = (int)ceil(sqrt(n)), rows = (n + cols - 1) / cols; double cw = dw / cols, ch = dh / rows;
+	for (int i = 0; i < n; i++) { OvW *o = &OVL[i]; double w = fw_of(o->c), h = fh_of(o->c); double s = fmin(fmin((cw - 40 * Z) / w, (ch - 60 * Z) / h), 1);
+		double cxx = (i % cols) * cw + cw / 2, cyy = (i / cols) * ch + ch / 2; o->s = s; o->w = w * s; o->h = h * s; o->x = dx + cxx - o->w / 2; o->y = dy + cyy - o->h / 2; }
+}
+static void ov_grab(void)
+{
+	for (int i = 0; i < OVN; i++) { OvW *o = &OVL[i]; if (o->pic) { cairo_surface_destroy(o->pic); o->pic = NULL; }
+		XWindowAttributes wa; if (!xc_ok() || !XGetWindowAttributes(DPY, o->c->frame, &wa) || wa.map_state != IsViewable) continue;
+		Pixmap pm = XC_NAME(DPY, o->c->frame); if (!pm) continue;
+		cairo_surface_t *xs = cairo_xlib_surface_create(DPY, pm, wa.visual, wa.width, wa.height);
+		o->pic = cairo_image_surface_create(CAIRO_FORMAT_RGB24, wa.width, wa.height); cairo_t *c = cairo_create(o->pic); cairo_set_source_surface(c, xs, 0, 0); cairo_paint(c); cairo_destroy(c);
+		cairo_surface_destroy(xs); XFreePixmap(DPY, pm); }
+}
+static gboolean ov_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
+{
+	(void)wd; (void)d; double ox, oy, ow, oh; ov_desk(&ox, &oy, &ow, &oh);
+	cairo_translate(cr, -ox, -oy);
+	if (DESKC) { cairo_set_source_surface(cr, DESKC, 0, 0); cairo_paint(cr); } wg_paint(cr);
+	srca(cr, cx("#0f172a", .55)); cairo_rectangle(cr, ox, oy, ow, oh); cairo_fill(cr);
+	double r0 = tw_rad() * Z;
+	for (int i = 0; i < OVN; i++) { OvW *o = &OVL[i]; double s = o->s, r = r0 * s;
+		/* (the shadow, then the ring: box-shadow's second, then its first) */
+		int pad = (int)ceil(40 * Z * s) + 4; cairo_surface_t *m = cairo_image_surface_create(CAIRO_FORMAT_A8, (int)ceil(o->w) + 2 * pad, (int)ceil(o->h) + 2 * pad); cairo_t *mc = cairo_create(m);
+		rrect(mc, pad, pad, o->w, o->h, r); cairo_set_source_rgba(mc, 0, 0, 0, 1); cairo_fill(mc); cairo_destroy(mc); a8_blur(m, 15 * Z * s);
+		cairo_save(cr); cairo_set_source_rgba(cr, 0, 0, 0, .4); cairo_mask_surface(cr, m, round(o->x - pad), round(o->y - pad + 12 * Z * s)); cairo_restore(cr); cairo_surface_destroy(m);
+		srca(cr, ca(accent(), 1)); rrect(cr, o->x - 3 * Z * s, o->y - 3 * Z * s, o->w + 6 * Z * s, o->h + 6 * Z * s, r + 3 * Z * s); cairo_fill(cr);
+		cairo_save(cr); rrect(cr, o->x, o->y, o->w, o->h, r); cairo_clip(cr);
+		if (o->pic) { cairo_translate(cr, o->x, o->y); cairo_scale(cr, s, s); cairo_set_source_surface(cr, o->pic, 0, 0); cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD); cairo_paint(cr); }
+		else { srca(cr, cx("#ffffff", 1)); cairo_paint(cr); }
+		cairo_restore(cr); }
+	return TRUE;
+}
+static gboolean ov_click(GtkWidget *wd, GdkEventButton *e, gpointer d)
+{
+	(void)wd; (void)d; double ox, oy, ow, oh; ov_desk(&ox, &oy, &ow, &oh); double x = e->x + ox, y = e->y + oy; Client *pick = NULL;
+	for (int i = OVN - 1; i >= 0 && !pick; i--) { OvW *o = &OVL[i]; if (x >= o->x && x < o->x + o->w && y >= o->y && y < o->y + o->h) pick = o->c; }
+	ov_end(pick); return TRUE;
+}
+static gboolean ov_shot(gpointer d) { (void)d; OVT = 0; if (!OV_ON) return G_SOURCE_REMOVE; ov_grab(); if (OVAREA) gtk_widget_queue_draw(OVAREA); state_write(); return G_SOURCE_REMOVE; }
+static void ov_start(void)
+{
+	OVN = 0; for (GList *l = CLIENTS; l && OVN < 32; l = l->next) { Client *c = l->data; if (tb_win(c) && c->ws && ws_of(c) == WSC) { memset(&OVL[OVN], 0, sizeof OVL[0]); OVL[OVN++].c = c; } }
+	if (!OVN) { const char *f[3] = {"No windows are open on this workspace", "", "5000"}; nt_notef(fget_tt, (void *)f); toast_text(f[0], "", 5000); return; }
+	if (AT_ON) at_end(0); if (MENU && gtk_widget_get_visible(MENU)) menu_hide(); if (FLK) fl_close();
+	OV_ON = 1; ov_layout();
+	if (!OVWIN) { OVWIN = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(OVWIN), "Show all windows"); OVAREA = gtk_drawing_area_new(); gtk_container_add(GTK_CONTAINER(OVWIN), OVAREA);
+		gtk_widget_add_events(OVAREA, GDK_BUTTON_PRESS_MASK); g_signal_connect(OVAREA, "draw", G_CALLBACK(ov_draw), NULL); g_signal_connect(OVAREA, "button-press-event", G_CALLBACK(ov_click), NULL); }
+	{ double ox, oy, ow, oh; ov_desk(&ox, &oy, &ow, &oh); gtk_widget_set_size_request(OVAREA, (int)ow, (int)oh); gtk_window_resize(GTK_WINDOW(OVWIN), (int)ow, (int)oh); gtk_window_move(GTK_WINDOW(OVWIN), (int)ox, (int)oy); }
+	gtk_widget_show_all(OVWIN); XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(OVWIN)));
+	/* (under the overview: each window off screen, the minimised ones shown there too, as the page shows them) */
+	for (int i = 0; i < OVN; i++) { OvW *o = &OVL[i]; if (xc_ok()) XC_RED(DPY, o->c->frame, 0 /* CompositeRedirectAutomatic */); if (o->c->min) { o->wasmin = 1; XMapWindow(DPY, o->c->frame); } }
+	XGrabKeyboard(DPY, ROOT, False, GrabModeAsync, GrabModeAsync, CurrentTime);
+	XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(OVWIN))); XSync(DPY, False);
+	if (OVT) g_source_remove(OVT); OVT = g_timeout_add(250, ov_shot, NULL); desk_shadows(); state_write();
+}
+static void ov_end(Client *pick)
+{
+	if (!OV_ON) return; OV_ON = 0; if (OVT) { g_source_remove(OVT); OVT = 0; } XUngrabKeyboard(DPY, CurrentTime);
+	for (int i = 0; i < OVN; i++) { OvW *o = &OVL[i]; if (!g_list_find(CLIENTS, o->c)) continue; if (xc_ok()) XC_UNRED(DPY, o->c->frame, 0);
+		if (o->wasmin && o->c != pick && o->c->min) XUnmapWindow(DPY, o->c->frame); if (o->pic) { cairo_surface_destroy(o->pic); o->pic = NULL; } }
+	OVN = 0; if (OVWIN) gtk_widget_hide(OVWIN); desk_shadows();
+	if (pick && g_list_find(CLIENTS, pick)) wm_focus(pick); state_write();
+}
+static void ov_toggle(void) { if (OV_ON) ov_end(NULL); else ov_start(); }
+
 /* ------------------------------------------------------------------ the clipboard (1.5.9, 12.3c)
    On Standard Chromium is the desktop and never closes, so what was copied in Oracle stays on the clipboard; here Oracle's Chromium
    goes with its last window, and its clipboard with it. While it runs, what is copied is kept here (text) and put back on the
@@ -4403,6 +4681,11 @@ static void state_write(void)
 	g_string_append_printf(s, "screen %d %d\nuser %s\nlocked %d\nsignin %d\nmenu %d\nbar %d %d %d %d %d\nclock %s|%s\n", SW, SH, USER_ID[0] ? USER_N : "-", LOCKED,
 		SIGN && gtk_widget_get_visible(SIGN), MENU && gtk_widget_get_visible(MENU), BAR && gtk_widget_get_visible(BAR), bx, by, bar_w(), bar_h(), CLOCK_T, CLOCK_D);
 	g_string_append_printf(s, "ws %d\n", WSC);   /* (item 4: the workspace shown) */
+	/* (item 5: Alt+Tab's switcher, the chosen one and the windows' titles; the overview's windows where they are drawn) */
+	if (AT_ON) { g_string_append_printf(s, "altab %d %d %d %d %d %d", AT_N, AT_I, AX, AY, AW, AH); for (int i = 0; i < AT_N; i++) g_string_append_printf(s, "|%s", AT_L[i]->title); g_string_append_c(s, '\n'); }
+	else g_string_append(s, "altab -\n");
+	g_string_append_printf(s, "overview %d\n", OV_ON ? OVN : 0);
+	for (int i = 0; OV_ON && i < OVN; i++) g_string_append_printf(s, "ovwin %lx %d %d %d %d %d\n", (unsigned long)OVL[i].c->w, (int)lround(OVL[i].x), (int)lround(OVL[i].y), (int)lround(OVL[i].w), (int)lround(OVL[i].h), OVL[i].pic != NULL);
 	if (OK_[0]) g_string_append_printf(s, "osd %s %s|%s %d %d %d %d\n", OK_, OLV[0] ? OLV : "-", OLB, OX, OY, OW, OH);   /* (the keys' indicator) */
 	g_string_append_printf(s, "notes %d %d %d\nmic %d %d\n", S.dnd, nt_unread(), NNT, MIC_N, MIC_MUTED);   /* (the bell: do not disturb, its count, the list's length) */   /* (item 3: the call's 🎙️; the notifications' pop-ups) */
 	for (int i = 0; i < NTST; i++) g_string_append_printf(s, "toast %d %d %d %d %d|%s\n", TST[i].why, (int)lround(TSX[i] * Z), (int)lround(TSY[i] * Z), (int)lround(349 * Z), (int)lround(TST[i].h * Z), TST[i].t);
