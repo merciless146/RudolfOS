@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- Settings › System health › Log video problems works on the native desktop too (its video and sound warnings, and Oracle's video and sound messages there), and the native desktop's log is now kept across a restart and included in the system report.
 - Planned: what 1.5.9 had left, moved here on 2026-11-15 (docs/plan-1.6.0.md Part 15): the native desktop's comparison with Standard, the official recovery's repair at each start, the Vivobook's call and feature checks, QEMU security checks, Lite's tab fixes, the hotspot, ARM64's test channel, Waydroid and the first phone.
 - Planned: a keyring for Linux apps (the Secret Service), unlocked by the account's sign-in, so apps such as the Claude app keep their sign-ins without a plain file or a second password.
 - New: the native desktop (Native engine, docs/plan-1.6.0.md Part 12, item 4): workspaces as on Standard: the taskbar's 1 2 3 buttons, Ctrl+Alt+Left and Right (with Shift the window goes too), a window's Move to workspace N, the taskbar listing the shown workspace's windows, "Workspace N" said in a toast (compared with Chromium: new same_t.sh cases ws2, ws2-dark, ws2-left; the same steps on both engines: new test iso/qt/native/wsbeh_t.js). Fixed: a notification with no text under its title is as tall as the page's.

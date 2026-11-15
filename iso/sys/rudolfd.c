@@ -2038,7 +2038,10 @@ static void api_ai_facts(struct req *r)
 	/* 1.5.8: the start before this one (its desktop may never have come up) and what the start-up decided */
 	facts_add(&s, "sessionBefore", PERSIST "/var/log/starts/1/session.log", 40);
 	facts_add(&s, "liteBefore", PERSIST "/var/log/starts/1/webkit-desktop.log", 20);
-	facts_add(&s, "liteVideo", RUN "/webkit-video.log", 80);   /* (Settings › System health › Log video problems) */
+	facts_add(&s, "liteVideo", RUN "/webkit-video.log", 80);   /* (Settings › System health › Log video problems; Lite and Native) */
+	/* 1.6.0: the native desktop's own messages (rudolf-native, and Oracle's Chromium there), this start's and the one before */
+	facts_add(&s, "native", RUN "/native-desktop.log", 80);
+	facts_add(&s, "nativeBefore", PERSIST "/var/log/starts/1/native-desktop.log", 40);
 	facts_add(&s, "bootDecisions", PERSIST "/var/log/boot-decisions.log", 30);
 	facts_add(&s, "page", RUN "/page.log", 60);
 	facts_add(&s, "shutdown", PERSIST "/var/log/shutdown.log", 20);
@@ -2466,7 +2469,7 @@ static void api_memory_settings(struct req *r, int post)
 		if (zq && *zq) { if (strcmp(zq, "auto") && strcmp(zq, "small") && strcmp(zq, "off")) { reply_err(r->fd, 400, "zram is auto, small or off"); return; } snprintf(z, sizeof z, "%s", zq); }
 		const char *cq = qparam(r->query, "closeApps");
 		if (cq && *cq) { if (strcmp(cq, "0") && strcmp(cq, "1")) { reply_err(r->fd, 400, "closeApps is 0 or 1"); return; } ca = cq[0] == '1'; }
-		const char *vq = qparam(r->query, "videoLog");   /* 1.5.8: the Lite desktop logs GStreamer's warnings (session) */
+		const char *vq = qparam(r->query, "videoLog");   /* 1.5.8: the Lite desktop logs GStreamer's warnings (session); 1.6.0: Native too */
 		if (vq && *vq) { if (strcmp(vq, "0") && strcmp(vq, "1")) { reply_err(r->fd, 400, "videoLog is 0 or 1"); return; } vl = vq[0] == '1'; }
 		mkdir(PERSIST "/etc", 0755);
 		char b[96]; snprintf(b, sizeof b, "zram=%s\nclose_apps=%d\nvideo_log=%d\n", z, ca, vl); write_str(MEMCONF ".tmp", b);
