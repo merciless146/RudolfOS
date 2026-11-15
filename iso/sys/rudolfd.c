@@ -3418,7 +3418,8 @@ static void health_boot(void)
 /* ------------------------------------------------------------- 1.5.9 (docs/plan-1.5.9.md 16.1): Tor, for Oracle's Tor windows
  * Started only while a Tor window is open (the page asks: POST tor/start), as the user "tor", listening on 127.0.0.1:9050 only
  * (SOCKS5, for the Tor window's Chromium), no relay, everything it keeps in RUN/tor (memory: a fresh Tor each time, removed when
- * it stops). POST tor/stop: the last Tor window closed, so it stops a minute later unless a window asks again (now=1: at once).
+ * it stops). Each open Tor window asks again every 20 s (tor/start); with no window asking for 90 s (a window that went
+ * without saying so) Tor stops. POST tor/stop: the last Tor window closed, so it stops a minute later unless a window asks again (now=1: at once).
  * GET tor/status: {state: off|starting|on|failed, pct (Tor's bootstrap percentage), line (its log's last line), secs (since it
  * started)}. The health log says when it started, was ready, stopped or failed. TOR_BIN and TOR_USER change the program and
  * the user (the host tests). */
@@ -3457,12 +3458,13 @@ static void tor_kill(const char *why)
 {
 	pid_t p = tor_pid(); unlink(RUN "/tor.pid");   /* (first: rudolfd's loop takes a Tor gone with its file there for one that failed) */
 	if (p) { kill(p, SIGTERM); for (int i = 0; i < 30 && tor_alive(p); i++) usleep(100000); if (tor_alive(p)) kill(p, SIGKILL); for (int i = 0; i < 10 && tor_alive(p); i++) usleep(100000); }
-	unlink(RUN "/tor.stopat"); unlink(RUN "/tor.t0"); unlink(RUN "/tor.ready");
+	unlink(RUN "/tor.stopat"); unlink(RUN "/tor.t0"); unlink(RUN "/tor.ready"); unlink(RUN "/tor.seen");
 	run("rm -rf " TOR_DIR);   /* (nothing kept) */
 	if (p && why) health_add("tor", "Tor stopped (%s)", why);
 }
 static int tor_start(void)
 {
+	char b[32]; snprintf(b, sizeof b, "%lld\n", (long long)time(NULL)); write_str(RUN "/tor.seen", b);   /* (a Tor window is there) */
 	if (tor_pid()) { unlink(RUN "/tor.stopat"); return 0; }
 	tor_kill(NULL); unlink(RUN "/tor.failed");
 	struct passwd *pw = getpwnam(TOR_USER); if (!pw) { write_str(RUN "/tor.failed", "there is no user " TOR_USER " on this system\n"); return -1; }
@@ -3484,7 +3486,7 @@ static int tor_start(void)
 	close(fd[1]); pid_t g = 0; ssize_t n = read(fd[0], &g, sizeof g); char x; while (read(fd[0], &x, 1) > 0) {}   /* (until Tor is Tor: the pipe closes as it starts) */
 	close(fd[0]); waitpid(c, NULL, 0);
 	if (n != sizeof g || g <= 0) return -1;
-	char b[32]; snprintf(b, sizeof b, "%d\n", (int)g); write_str(RUN "/tor.pid", b);
+	snprintf(b, sizeof b, "%d\n", (int)g); write_str(RUN "/tor.pid", b);
 	snprintf(b, sizeof b, "%lld\n", (long long)time(NULL)); write_str(RUN "/tor.t0", b);
 	health_add("tor", "Tor started (for a Tor window in Oracle)");
 	return 0;
@@ -3514,6 +3516,8 @@ static void tor_tick(void)
 		health_add("tor", "Tor failed: %s", last[0] ? last : "it ended"); unlink(RUN "/tor.pid"); unlink(RUN "/tor.stopat"); unlink(RUN "/tor.t0"); unlink(RUN "/tor.ready"); run("rm -rf " TOR_DIR); return; }
 	char *sa = slurp(RUN "/tor.stopat", NULL); long long at = sa ? atoll(sa) : 0; free(sa);
 	if (at && time(NULL) >= at) { tor_kill("a minute after the last Tor window closed"); return; }
+	char *se = slurp(RUN "/tor.seen", NULL); long long seen = se ? atoll(se) : 0; free(se);
+	if (!at && seen && time(NULL) - seen > 90) { tor_kill("no Tor window asked for it in 90 s"); return; }
 	if (access(RUN "/tor.ready", F_OK) && tor_log(NULL, 0) >= 100) { write_str(RUN "/tor.ready", "1\n"); health_add("tor", "Tor is ready (connected to the Tor network)"); }
 }
 /* GET firewall: {on, blocked}; POST firewall?on=1|0 (the desktop asks for an administrator's password first) */

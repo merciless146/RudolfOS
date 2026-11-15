@@ -56,6 +56,10 @@ ok "...a Tor window again within the minute: it keeps running" "$(echo "$o" | ta
 t "POST tor/stop" >/dev/null; echo $(( $(date +%s) - 1 )) > /run/rudolf/tor.stopat; t tick >/dev/null
 o=$(t "GET tor/status")
 ok "8. a minute after: stopped, its folder gone (nothing kept), the health log says so" "$([ "$(js "$o" "j['state']")" = off ] && ! alive $P && [ ! -e /run/rudolf/tor ] && hl | grep -q 'Tor stopped (a minute after the last Tor window closed)' && echo 1)" "$o $(hl | tail -2)"
+t "POST tor/start" >/dev/null; w8 '[ -s /run/rudolf/tor.pid ]'; P=$(cat /run/rudolf/tor.pid); echo $(( $(date +%s) - 60 )) > /run/rudolf/tor.seen; t tick >/dev/null
+ok "8b. Tor windows ask again every 20 s: asked 60 s ago, Tor still runs" "$(alive $P && echo 1)" "$(cat /run/rudolf/tor.seen)"
+echo $(( $(date +%s) - 91 )) > /run/rudolf/tor.seen; t tick >/dev/null
+ok "...no window asking for 90 s (one that went without saying so): Tor stops" "$(! alive $P && hl | grep -q 'Tor stopped (no Tor window asked for it in 90 s)' && echo 1)" "$(hl | tail -1)"
 t "POST tor/start" >/dev/null; w8 '[ -s /run/rudolf/tor.pid ]'; P=$(cat /run/rudolf/tor.pid); o=$(t "POST tor/stop?now=1")
 ok "9. tor/stop?now=1: at once" "$([ "$(js "$o" "j['state']")" = off ] && ! alive $P && echo 1)" "$o"
 : > $T/die; t "POST tor/start" >/dev/null; w8 '! alive $(cat /run/rudolf/tor.pid 2>/dev/null || echo 1)' 40; timeout 0.5 tail -f /dev/null; t tick >/dev/null; o=$(t "GET tor/status")
