@@ -960,7 +960,11 @@ without this work (it waits only for the QEMU security checks of Part 15).
   Tests: qt/host/modem60_t.sh (23 checks: the real mmcli against the stand-in, rudolfd's requests compiled from
   rudolfd.c), qt/host/modem59_t.sh (the 1.5.9 service, 10), qt/shell2/modem60_t.js (12) and modem59_t.js (5), and in
   QEMU qt/sb/cell60_q.py on the newest beta (ModemManager with udev and no modem: not started by itself, started by hand
-  it finds no modem and logs nothing; its parts there; stopped), all in .github/workflows/cellular-check.yml.
+  it finds no modem and logs nothing; its parts there; stopped), all in .github/workflows/cellular-check.yml. (The
+  beta then, 2026111506, was made before Part 9: the check starts udev from the test machine, Ubuntu 24.04's as the base
+  layer takes it, as rudolf-init does; with a newer beta it uses the release's own.) Found in QEMU and fixed: BusyBox's
+  pgrep -x never matched ModemManager, so 1.5.9 started it again for each port and never stopped it; and it asked
+  ModemManager's --help-all (unknown to it) for --test-no-udev, so it always ran with --no-auto-scan.
   Stage B checks: the USB stick and the MiFi in Settings › Network › Cellular modems (maker, model, SIM, operator),
   no "Invalid rule match" and no error in /run/rudolf/modem.log; on a laptop with an FCC-locked card (a ThinkPad with
   a Fibocom L850-GL or Quectel EM05-G), the offer shown, turned on by an administrator, the radio on after a restart,
