@@ -25,8 +25,8 @@ latest beta: **2026111402** (not promoted).
    desktop's user and is not available for 1.5.9; 1.5.9 ships ModemManager tested only on the host).
 5. **Calls** (Part 7.4): Meet's test call in Oracle on Standard, and on Lite (it opens in Chromium's window); Zoom's
    test meeting; the 🎙️ indicator and its mute; no screen saver during a call; a tel: link.
-6. **Game mode and memory** (Part 9, on 2026111308 or newer): FNF to the end; the idle reading; Task Manager's
-   breakdown; Clear cache.
+6. **Game mode and memory** (Part 9, on 2026111308 or newer): the idle reading; Task Manager's breakdown; Clear
+   cache. (FNF to the end: not needed, the owner said on 2026-11-14.)
 7. **Developer mode and Return to official** in QEMU with Secure Boot (8.7), and 8.4's recovery.efi (its host and QEMU
    Secure Boot tests done on 2026-11-14, qt/sb/recovery_sb_t.sh; on the computer itself still): to be done with the
    person present (it changes how the computer starts).
@@ -222,6 +222,13 @@ numbers need the service's own calling plan (Google Voice in the US, Zoom Phone,
   Zoom, Teams), or to Phone screen (1.5.8 Part 7) to call from the Android phone on the desk.
 
 ### 7.4 The call test
+**Found (2026-11-14, Meet on the Vivobook, beta 2026111421):** the default microphone was the headset jack's (the
+HD-Audio card that has the speakers, "analog-input-headphone-mic", nothing plugged in), not the built-in one (the AMD
+chip's, acp6x, another card), so a call heard nothing: 7.2's set_default made "the same card's microphone" the
+default. Fixed (sound: jackmic): the jack's microphone is the default only when PulseAudio says something is plugged
+into it; otherwise another card's (the built-in) is. The Vivobook's jack reports "availability unknown" (no jack
+detection), so a headset's microphone there is chosen by hand (Volume Controls). Checked on the Vivobook with the
+fixed script: card1's speakers, card2's microphone. Test: sound59_t.sh 21-23.
 - **Automatic, in CI (both engines):** a test page with a WebRTC call between two tabs (a loopback peer connection
   with a fake camera and microphone: Chromium's `--use-fake-device-for-media-stream`, GStreamer's `videotestsrc` and
   `audiotestsrc` for WebKit): the connection comes up, audio and video arrive, and the permission question was asked.
