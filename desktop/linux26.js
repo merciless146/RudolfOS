@@ -120,8 +120,10 @@ function lxTaskbar(){const T=$('#tasks');if(!T)return;T.querySelectorAll('.lxtb'
   b.querySelector('.lxtt').textContent=label;b.title=label;b.classList.toggle('on',!!w.shown);b.setAttribute('aria-pressed',w.shown?'true':'false')})}
 async function lxWinPoll(){try{const j=await lxApi('apps/windows');const was=LX.mode;LX.wins=j.windows||[];LX.mode=j.mode||'desktop';const sh=LX.wins.find(w=>w.shown);if(sh)LX.shown=sh.win;lxTaskbar();if(typeof gameModeTick=='function')gameModeTick();
   if(was.startsWith('win')&&LX.mode=='desktop')lxSync()}catch(e){}}
-/* a click on the visible part of the desktop (the taskbar) while an app is in front brings the desktop back */
-addEventListener('pointerdown',e=>{if(RD&&LX.mode.startsWith('win')&&!e.target.closest('.lxtb')&&!(TRAYX.web&&TRAYX.web.contains(e.target))){LX.mode='desktop';lxApi('apps/desktop').then(lxWinPoll).catch(()=>{})}},true);
+/* a click on the visible part of the desktop (the taskbar) while an app is in front brings the desktop back. (1.5.9: not in a
+   one-app page, a Tor window's on Standard: that page is itself the app window in front, so every click on its bookmarks bar,
+   address box or buttons brought the desktop back (the Vivobook, 2026-11-14)) */
+addEventListener('pointerdown',e=>{if(RD&&!(typeof ONEAPP!='undefined'&&ONEAPP)&&LX.mode.startsWith('win')&&!e.target.closest('.lxtb')&&!(TRAYX.web&&TRAYX.web.contains(e.target))){LX.mode='desktop';lxApi('apps/desktop').then(lxWinPoll).catch(()=>{})}},true);
 /* ---------- the portal: file dialogs, links, notifications from apps ---------- */
 async function lxPortalPoll(){let j;try{j=await lxApi('portal/poll')}catch(e){return}
  for(const q of j.requests||[]){if(LX.seen.has(q.id))continue;LX.seen.add(q.id);lxPortal(q.id,q.req).catch(e=>console.warn('portal',e))}}

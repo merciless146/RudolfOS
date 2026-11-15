@@ -1425,6 +1425,11 @@ static void api_web(struct req *r, const char *what)
  *   POST torwin/open?url=U&url=U...   a Tor window with these tabs (another window of the running one, or a new Chromium)
  *   POST torwin/back?url=U...          a Tor window's tabs, for a normal Oracle window: the desktop page takes them with
  *   GET  torwin/back                   {open: a Tor window's Chromium runs, urls: [...]} (once)
+ *   POST torwin/session                body {"id","n","r","fk"}: the desktop page's account, given before torwin/open, so that
+ *                                      the Tor window's page is signed in as the desktop is (Standard has no native session:
+ *                                      without this it showed the sign-in screen); {} or no body forgets it
+ *   GET  torwin/session                {"id","n","r","fk"} while the Tor window's Chromium runs, else 404. A root-only file
+ *                                      in RUN, removed when that Chromium goes (as the native session, desktop/session)
  * TORWIN_USER and TORWIN_LAUNCH change the user and rudolf-launch (the host tests). */
 #ifndef TORWIN_USER
 #define TORWIN_USER "rudolf"
@@ -1434,6 +1439,44 @@ static void api_web(struct req *r, const char *what)
 #endif
 #define TORWIN_CTL RUN "/torwin.ctl"
 #define TORWIN_PROF RUN "/torwin-profile"
+#define TORWIN_SESS RUN "/torwin-session"
+static int torwin_running(void);
+static char *dbody_field(struct req *r, const char *k);   /* rudolfd-desktop.inc */
+static void dfree_secret(char *p);
+static int torwin_sess_ok(const char *id, const char *n, const char *rl, const char *fk)
+{
+	if (!id || !*id || strlen(id) > 40 || !n || !*n || strlen(n) > 200 || !rl || !fk) return 0;
+	for (const char *c = id; *c; c++) if (!isalnum((unsigned char)*c) && *c != '_' && *c != '-') return 0;
+	for (const char *c = n; *c; c++) if ((unsigned char)*c < 32) return 0;
+	if (!strcmp(rl, "guest")) return !strcmp(id, "guest") && !*fk;
+	if (strcmp(rl, "admin") && strcmp(rl, "user")) return 0;
+	if (strlen(fk) != 64) return 0;
+	for (const char *c = fk; *c; c++) if (!isxdigit((unsigned char)*c)) return 0;
+	return 1;
+}
+static void api_torwin_session(struct req *r, int post)
+{
+	if (!post) {
+		if (!torwin_running()) { reply_err(r->fd, 404, "no Tor window"); return; }
+		char *b = slurp(TORWIN_SESS, NULL); if (!b) { reply_err(r->fd, 404, "no session given"); return; }
+		char *L[4] = {0}; int k = 0; for (char *p = b, *e; k < 4 && p; p = e ? e + 1 : NULL) { e = strchr(p, '\n'); if (e) *e = 0; L[k++] = p; }
+		if (k < 4 || !torwin_sess_ok(L[0], L[1], L[2], L[3])) { explicit_bzero(b, strlen(b)); free(b); reply_err(r->fd, 404, "no session given"); return; }
+		str o = {0}; sadd(&o, "{\"ok\":true,\"id\":"); sjson(&o, L[0]); sadd(&o, ",\"n\":"); sjson(&o, L[1]); sadd(&o, ",\"r\":"); sjson(&o, L[2]); sadd(&o, ",\"fk\":"); sjson(&o, L[3]); sadd(&o, "}");
+		explicit_bzero(b, strlen(b)); free(b); reply_json(r->fd, &o); return;
+	}
+	char *id = dbody_field(r, "id"), *n = dbody_field(r, "n"), *rl = dbody_field(r, "r"), *fk = dbody_field(r, "fk");
+	if (!id && !n && !rl && !fk) { unlink(TORWIN_SESS); reply_ok(r->fd, "forgotten"); return; }
+	if (!fk) fk = strdup("");
+	if (!torwin_sess_ok(id, n, rl, fk)) { free(id); free(n); free(rl); dfree_secret(fk); reply_err(r->fd, 400, "an account: id, n, r (and fk, 64 hex digits, unless a guest)"); return; }
+	char tp[] = RUN "/torwin-session.XXXXXX"; int f = mkstemp(tp); int ok = 0;
+	if (f >= 0) { if (fchmod(f, 0600) == 0) { str w = {0}; sadd(&w, "%s\n%s\n%s\n%s\n", id, n, rl, fk); ok = write(f, w.b, w.n) == (ssize_t)w.n; explicit_bzero(w.b, w.n); free(w.b); }
+		if (close(f)) ok = 0;
+		if (ok) ok = !rename(tp, TORWIN_SESS);
+		if (!ok) unlink(tp); }
+	free(id); free(n); free(rl); dfree_secret(fk);
+	if (!ok) { reply_err(r->fd, 500, "could not keep it"); return; }
+	reply_ok(r->fd, "given");
+}
 static int torwin_url_ok(const char *u) { return u && strlen(u) < 2000 && (!strncmp(u, "http://", 7) || !strncmp(u, "https://", 8) || !strncmp(u, "about:", 6) || !strncmp(u, "file:///", 8)); }
 static int torwin_running(void)
 {
@@ -1484,7 +1527,7 @@ static int torwin_start(void)
 			execv(TORWIN_LAUNCH, a); _exit(127);
 		}
 		if (g > 0) { while (waitpid(g, NULL, 0) < 0 && errno == EINTR) {} }
-		run("rm -rf " TORWIN_PROF); unlink(TORWIN_CTL); unlink(RUN "/torwin.pid"); _exit(0);
+		run("rm -rf " TORWIN_PROF); unlink(TORWIN_CTL); unlink(RUN "/torwin.pid"); unlink(TORWIN_SESS); _exit(0);
 	}
 	char b[32]; snprintf(b, sizeof b, "%d\n", (int)c); write_str(RUN "/torwin.pid", b);
 	free(t); free(env); return 0;
@@ -1505,6 +1548,7 @@ static void api_torwin(struct req *r, const char *what, int post)
 		char *nl = b ? strchr(b, '\n') : NULL; if (b && nl && b[0] == '[') { sadd(&s, "%.*s", (int)(nl - b), b); if (nl[1]) write_str(RUN "/torwin.back", nl + 1); } else sadd(&s, "[]");
 		sadd(&s, "}"); free(b); reply_json(r->fd, &s); return;
 	}
+	if (!strcmp(what, "session")) { api_torwin_session(r, post); return; }
 	if (strcmp(what, "open")) { reply_err(r->fd, 404, "unknown Tor window action"); return; }
 	if (!post) { reply_err(r->fd, 405, "use POST"); return; }
 	if (!torwin_running() && torwin_start()) { reply_err(r->fd, 500, "Browse with Tor needs Rudolf's Chromium with its shell, which this computer does not have"); return; }

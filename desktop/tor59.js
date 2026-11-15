@@ -41,7 +41,12 @@ const torUrls=ctx=>{const L=(ctx.urls()||[]).filter(TOR_URL_OK).map(u=>/^about:h
 const torQs=L=>L.map(u=>'url='+encodeURIComponent(u)).join('&');
 /* a Tor window with these tabs: the native desktop's, or on Standard rudolfd's */
 async function torOpenWin(L){if(torNative()){oaPost({op:'tor',url:L.join('\n')});return}
- await rdPost('torwin/open?'+torQs(L));torBackPoll()}
+ if(!torWin())await torHand();await rdPost('torwin/open?'+torQs(L));torBackPoll()}
+/* (Standard) the account the Tor window signs in as: this page's, with its file key (rudolfd keeps it root-only while the Tor
+   window's Chromium runs, as the native session is kept). A Tor window opening another keeps the one given. */
+async function torHand(){try{if(!USER)return;const hx=u=>[...new Uint8Array(u)].map(x=>x.toString(16).padStart(2,'0')).join('');
+ const b=USER.r=='guest'?{id:'guest',n:'Guest',r:'guest'}:FKRAW?{id:USER.id,n:USER.n,r:USER.r=='admin'?'admin':'user',fk:hx(FKRAW)}:null;
+ if(b)await rdPost('torwin/session',JSON.stringify(b))}catch(e){console.warn('Tor window sign-in',e)}}
 /* pressed in a normal window */
 async function torEnter(ctx){const W=ctx.W;
  if(typeof RD=='undefined'||!RD){torBar(W,'Browse with Tor needs the installed Rudolf OS.',1);return}

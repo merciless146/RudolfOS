@@ -1,6 +1,6 @@
 /* 1.5.9 (plan 16.2): rudolfd's torwin/* requests (Standard's Tor windows), compiled from rudolfd.c itself (main renamed), as
    deskapi.c. torwinapi "METHOD torwin/what?query" ...: each request's status line and body, one per line. Built with
-   -DTORWIN_USER="..." -DTORWIN_LAUNCH="..." (the host tests). */
+   -DTORWIN_USER="..." -DTORWIN_LAUNCH="..." (the host tests). "METHOD torwin/what?query BODY": with that body. */
 #define main rudolfd_main
 #include "../../../sys/rudolfd.c"
 #undef main
@@ -9,6 +9,7 @@ static void one(const char *spec)
 	struct req r; memset(&r, 0, sizeof r);
 	char sp[4096]; snprintf(sp, sizeof sp, "%s", spec);
 	char *sp2 = strchr(sp, ' '); if (!sp2) return; *sp2 = 0;
+	char *qb = strchr(sp2 + 1, ' '); if (qb) { *qb++ = 0; r.body = qb; r.blen = strlen(qb); }   /* ("POST torwin/session {...}": a body) */
 	snprintf(r.method, sizeof r.method, "%s", sp);
 	char *q = strchr(sp2 + 1, '?'); if (q) { *q = 0; snprintf(r.query, sizeof r.query, "%s", q + 1); }
 	snprintf(r.path, sizeof r.path, "%s", sp2 + 1);

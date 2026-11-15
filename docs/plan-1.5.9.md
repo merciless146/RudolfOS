@@ -1518,6 +1518,22 @@ the way:
   WebRTC address, back, the profile removed), qt/host/torwin59_t.sh 11 (Standard's torwin/* from rudolfd.c with Chromium:
   the same through the proxy, a second window, back, the profile removed). Not tested here: real Tor's network (no Tor
   network from here: 16.1's test runs the real tor to its SOCKS port only), rudolf-display showing the window, the Vivobook.
+- **Found on the Vivobook (2026-11-14, beta 2026111502, Standard): a click on the Tor window's bookmarks bar, address box,
+  footer or buttons brought the desktop back, and the Tor window asked for the desktop's sign-in.** Recorded with the
+  window's Chromium logging and /run/rudolf/wm: wm went from "win 1600003" (the Tor window) to "desktop" at each click.
+  Two causes, both because the Tor window's page is the desktop page in one-app mode in a Chromium of its own:
+  - linux26.js's "a click on the desktop while an app is in front brings the desktop back" (pointerdown → apps/desktop) ran
+    in the Tor window's page too, where the app in front is that page's own window; and its prompts (the "+", Save, …)
+    brought the desktop forward through promptFront → ssFront. Neither runs in a one-app page now (ONEAPP).
+  - Standard has no native session (desktop/session is rudolf-native's), so the page showed the sign-in screen. Now the
+    desktop page gives rudolfd its account and file key before torwin/open (`POST torwin/session`, body {id,n,r,fk}; a
+    guest's without a key), kept root-only in /run/rudolf/torwin-session and given (`GET torwin/session`) only while the Tor
+    window's Chromium runs; removed when it goes, or by `POST torwin/session` with `{}`. The window signs in with the file
+    key alone (userLogin: no password key, so it never rewrites the account). An account without a file key (none since
+    1.5.0) still gets the sign-in screen. The tests had given the Standard Tor window a native session, which hid this.
+  - Tests: qt/shell2/tor59_t.js 24 (3a the hand-off before torwin/open, 7a signed in with no sign-in screen, 7b clicks and
+    the "+" prompt with the window in front: no apps/desktop; 7b fails on the old linux26.js), qt/host/torsess59_t.sh 7
+    (rudolfd's torwin/session: kept 0600, given only while the Chromium runs, a guest, bad accounts refused, forgotten).
 
 ### 16.3 Tests
 - Host: rudolfd's tor/start, status and stop with a stand-in tor (its bootstrap lines), the user and the options, the
