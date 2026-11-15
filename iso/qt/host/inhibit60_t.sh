@@ -5,7 +5,7 @@
 # own; rudolfd's inhibit_scan (compiled from rudolfd.c) counts them for the media answer, and leaves out a file that is
 # not its owner's or whose portal is gone. Needs gcc, GLib, dbus-run-session.   sh inhibit60_t.sh
 HERE=$(cd "$(dirname "$0")" && pwd); D=$HERE/../../sys; T=$(mktemp -d /tmp/inh60.XXXXXX); chmod 755 $T
-CF=$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0)
+CF="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto"
 mkdir -p $T/inh; chmod 1777 $T/inh
 gcc -O2 -w -o $T/rudolf-portal $D/rudolf-portal.c $CF && gcc -O2 -w -o $T/client $HERE/fixtures/inhibitclient.c $CF && gcc -O1 -w -DINHIBIT_DIR="\"$T/inh\"" -o $T/scan $HERE/fixtures/inhibitscan.c -lz || { echo "FAIL build"; exit 1; }
 cat > $T/t.sh <<'EOS'
