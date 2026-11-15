@@ -423,16 +423,18 @@ static void ctx_make(void)
 static void json_esc(GString *s, const char *v);
 /* (test finding N8) the graphics chip's name, as Chromium gives it to the page (WEBGL_debug_renderer_info: "ANGLE (VENDOR, RENDERER,
    OpenGL VERSION)", what Settings › About shows under Graphics); WebKit gives every page "Apple GPU". Read once from a GL context of
-   the desktop's window (GTK's, through libepoxy, which GTK has loaded), given to the pages as window.__oaGpu (oneapp59.js) */
+   a window of its own (GTK's, through libepoxy, which GTK has loaded), given to the pages as window.__oaGpu (oneapp59.js) */
 static char *gpu_script(void)
 {
 	char ven[128] = "", ren[256] = "", ver[64] = "";
-	GdkWindow *w = DESK ? gtk_widget_get_window(DESK) : NULL; GError *e = NULL; GdkGLContext *gl = w ? gdk_window_create_gl_context(w, &e) : NULL;
+	/* (a window of its own, never shown: GDK draws a window that has had a GL context with GL from then on, and the desktop's went blank) */
+	GtkWidget *tw = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_resize(GTK_WINDOW(tw), 1, 1); gtk_widget_realize(tw);
+	GdkWindow *w = gtk_widget_get_window(tw); GError *e = NULL; GdkGLContext *gl = w ? gdk_window_create_gl_context(w, &e) : NULL;
 	typedef const unsigned char *(*GetStr)(unsigned); GetStr *gs = (GetStr *)dlsym(RTLD_DEFAULT, "epoxy_glGetString");
 	if (gl && gdk_gl_context_realize(gl, NULL) && gs && *gs) { gdk_gl_context_make_current(gl);
 		const char *a = (const char *)(*gs)(0x1F00), *b = (const char *)(*gs)(0x1F01), *c = (const char *)(*gs)(0x1F02);
 		if (a) snprintf(ven, sizeof ven, "%s", a); if (b) snprintf(ren, sizeof ren, "%s", b); if (c) sscanf(c, "%63s", ver); gdk_gl_context_clear_current(); }
-	if (e) g_error_free(e); if (gl) g_object_unref(gl);
+	if (e) g_error_free(e); if (gl) g_object_unref(gl); gtk_widget_destroy(tw);
 	if (!ren[0]) return NULL;
 	/* (ANGLE's names for the vendors it knows) */
 	const char *v = strstr(ven, "Intel") ? "Intel" : (strstr(ven, "AMD") || strstr(ven, "ATI")) ? "AMD" : strstr(ven, "NVIDIA") ? "NVIDIA" : ven;
