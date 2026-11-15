@@ -84,16 +84,15 @@ def boot(tag, slot):
     end = time.time() + 600
     while up and time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'", 20) is not True: time.sleep(5)
     js(INIT_JS)
-    # the desktop's page settled: the same page for 20 s (the first start loads it again once the desktop is ready)
+    # the desktop's page settled: the same page for 20 s (the first start loads it again once the desktop is ready:
+    # run 43768310701 lost boss's first sign-in to it). Waited for in the guest, in one command: questions sent from
+    # here while the page reloads pile up on the serial line (run 43772555039 lost its shell to that)
     if up:
-        end = time.time() + 300; t0 = None; since = time.time()
-        while time.time() < end:
-            t = js("Math.round(performance.timeOrigin)", 20)
-            if t != t0: t0 = t; since = time.time()
-            elif time.time() - since >= 20: break
-            time.sleep(5)
+        o = run(g, "last=; same=0; i=0; while [ $i -lt 40 ]; do i=$((i+1)); v=$(timeout 20 cdp-eval 'Math.round(performance.timeOrigin)' 2>/dev/null | grep -o '\"value\":[0-9]*' | head -1); "
+                   "if [ -n \"$v\" ] && [ \"$v\" = \"$last\" ]; then same=$((same+5)); else same=0; last=$v; fi; [ $same -ge 20 ] && break; sleep 5; done; "
+                   "echo \"SETTLED $same $last after $i\"; grep -iE 'restart|switch|not responding|did not' /run/rudolf/session.log | grep -v '^+' | tail -5", 1100)
+        out('page settled', tag, 'SETTLED 2' in o or 'SETTLED 3' in o)
         js(INIT_JS)
-        out('page settled', tag, round(time.time() - since), 's', g.sh("grep -iE 'restart|switch|not responding|did not' /run/rudolf/session.log | grep -v '^+' | tail -5", 30).strip()[-600:])
     return vm, g, up, js
 # a command run in the guest from a script file (a long command line echoed back over the serial line mixed with its
 # output), its output written to this test's log in full
