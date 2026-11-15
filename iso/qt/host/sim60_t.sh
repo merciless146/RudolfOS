@@ -17,7 +17,7 @@ trap 'mmstub_down; rm -rf $T' EXIT
 mount -t tmpfs none /run; mkdir -p /run/rudolf
 mkdir -p $T/b $T/p $T/rf/rfkill0 $T/rf/rfkill1 $T/rf/rfkill2 $T/sys
 echo wlan > $T/rf/rfkill0/type; echo 0 > $T/rf/rfkill0/soft; echo bluetooth > $T/rf/rfkill1/type; echo 1 > $T/rf/rfkill1/soft; echo wwan > $T/rf/rfkill2/type; echo 0 > $T/rf/rfkill2/soft
-printf '#!/bin/sh\n[ "$2" = ModemManager ] && exit 0; exit 1\n' > $T/b/pgrep; chmod +x $T/b/pgrep
+printf '#!/bin/sh\n[ "$1" = "^ModemManager\$" ] && exit 0; exit 1\n' > $T/b/pgrep; chmod +x $T/b/pgrep
 export RUDOLF_TEST_PATH=$T/b RUDOLF_MODEM_SYS=$T/sys RUDOLF_MODEM_PERSIST=$T/p RUDOLF_MODEM_LOG=$T/mlog RUDOLF_RUN=/run/rudolf RUDOLF_RFKILL=$T/rf RUDOLF_MBPI=$MBPI RUDOLF_APN_FIXES=$HERE/../../sys/root/usr/share/rudolf/apn-fixes
 cat > $T/init <<E
 add 0 pin=1234 puk=12345678 iccid=8901260123456789012 spn=T-Mobile
