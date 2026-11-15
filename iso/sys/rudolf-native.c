@@ -373,7 +373,7 @@ static void wall_make(void)
 static gboolean desk_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (WALL) { cairo_set_source_surface(cr, WALL, 0, 0); cairo_paint(cr); } return TRUE; }
 
 /* ------------------------------------------------------------------ app windows (WebKit, one-app mode) */
-typedef struct AppWin { GtkWidget *win, *view; char k[40], title[256], icon[48]; int closing, id, sized, hidden; gint64 close_t; } AppWin;   /* (hidden: a page doing something for the shell unseen) */
+typedef struct AppWin { GtkWidget *win, *view; char k[40], title[256], icon[48]; int closing, id, sized, hidden, modal, pw, ph, wasontop, mfull; gint64 close_t; } AppWin;   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
 static GList *WINS;   /* AppWin*, oldest first */
 static AppWin *ACTIVE;
 static WebKitWebContext *CTX; static WebKitUserContentManager *UCM; static int NEXTID;
@@ -385,6 +385,9 @@ static void page_done(JSCValue *v);
 static void frame_redraw_app(AppWin *a);
 static const App *app_find(const char *k) { for (int i = 0; i < NAPPS; i++) if (!strcmp(APPS[i].k, k)) return &APPS[i]; return NULL; }
 static void appwin_size(AppWin *a, int w, int h);
+static void appwin_modal(AppWin *a, int on);
+static void appwin_fs(AppWin *a, int on);
+static void wins_ask(AppWin *to); static void win_op(const char *id, const char *what);   /* (Task Manager's windows: test finding N3) */
 static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d);
 static void ctx_make(void)
 {
@@ -473,6 +476,10 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 		if (!strcmp(x, "settings") && pg[0]) tb_settings(pg); else if (x[0]) app_open_ex(x, f[0] ? f : NULL, ex, 0); g_free(ex); }   /* (Settings at a page: its own window there; Oracle at an address) */
 	else if (!strcmp(op, "mirror")) { jsstr(v, "id", x, sizeof x); if (id_ok(x)) { char l[100]; snprintf(l, sizeof l, "mirror %s\n", x); oracle_tell(l); } }   /* (the files an app's window saved: Oracle's pages take them) */
 	else if (!strcmp(op, "osd")) { char k[16] = "", lv[8] = "", n[8] = ""; jsstr(v, "k", k, sizeof k); jsstr(v, "lv", lv, sizeof lv); jsstr(v, "label", x, sizeof x); jsstr(v, "n", n, sizeof n); osd_show(k, lv, x, n); }
+	else if (!strcmp(op, "fs")) { jsstr(v, "on", x, sizeof x); appwin_fs(a, x[0] == '1'); }   /* (the page's own full screen: the window covers the screen, test finding N1) */
+	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
+	else if (!strcmp(op, "winop")) { jsstr(v, "id", x, sizeof x); jsstr(v, "do", f, sizeof f); win_op(x, f); }
+	else if (!strcmp(op, "modal")) { jsstr(v, "on", x, sizeof x); appwin_modal(a, x[0] == '1'); }   /* (a page's dialog: over the whole screen, as Standard's) */
 	else if (!strcmp(op, "size") && !a->sized) { a->sized = 1;
 		/* (a page doing something for the shell (#app=do-NAME) that made an app's window is that app's window now: the taskbar's
 		   button and what is dropped on it are the app's) */
@@ -1246,7 +1253,9 @@ static void wm_manage_app(AppWin *a)
    the desktop) */
 static void appwin_size(AppWin *a, int w, int h)
 {
-	Client *c = WM_OK ? client_of_app(a) : NULL; if (!c || c->max || c->full || w < 80 || h < 60) return;
+	Client *c = WM_OK ? client_of_app(a) : NULL; if (c && a->modal && w >= 80 && h >= 60) { a->pw = w; a->ph = h; return; }   /* (after the dialog: N4) */
+	if (c && c->hidden && !a->hidden && !LOCKED) { c->hidden = 0; if (!c->off && !c->min) XMapWindow(DPY, c->frame); wm_focus(c); }   /* (its window, after it asked: N4) */
+	if (!c || c->max || c->full || w < 80 || h < 60) return;
 	int n = 0; for (GList *l = CLIENTS; l; l = l->next) { Client *o = l->data; if (o != c && !o->trans) n++; }
 	double dw = desk_w() / Z, avail = work_h() / Z; w = (int)fmin(w, dw - 8); h = (int)fmin(h, avail - 8);   /* (the page's #desk: beside a bar at the left or the right) */
 	double x = fmax(0, fmin(40 + n * 26, dw - w - 4)), y = fmax(0, fmin(20 + n * 26, avail - h - 4));
@@ -1254,6 +1263,56 @@ static void appwin_size(AppWin *a, int w, int h)
 	place(c); frame_draw(c); state_write();
 }
 static void frame_redraw_app(AppWin *a) { Client *c = WM_OK ? client_of_app(a) : NULL; if (c) { wm_title(c); frame_draw(c); } }
+/* (1.6.0 Part 12, test findings N2, N4, N10) a page's dialog (oneapp59.js: .rmodal, .natdlg) is over the whole desktop on Standard,
+   dimmed and centred on the screen, with the windows and the taskbar under it. Here the app's window covers the screen while one
+   is open (full screen, above the taskbar), its page given a picture of the screen as it was (the page dims it as Standard's
+   dims the desktop), and goes back after. A page with no window of its own yet (an app asking before it opens one: the camera's
+   "Allow access?", a game's download) is out of sight while the picture is taken, has no taskbar button while it asks (Standard
+   has none) and is out of sight again after, until its window comes (its size then: a->pw, a->ph). */
+static void modal_send(AppWin *a, GdkPixbuf *pb)
+{
+	gchar *buf = NULL; gsize n = 0; char *js = NULL;
+	if (pb && gdk_pixbuf_save_to_buffer(pb, &buf, &n, "png", NULL, "compression", "1", NULL)) { gchar *b = g_base64_encode((guchar *)buf, n); js = g_strdup_printf("window.__oaModalBg&&__oaModalBg('data:image/png;base64,%s')", b); g_free(b); }
+	else js = g_strdup("window.__oaModalBg&&__oaModalBg('')");
+	if (a->view) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js, -1, NULL, NULL, NULL, NULL, NULL);
+	g_free(js); g_free(buf); if (pb) g_object_unref(pb);
+}
+static void modal_cover(AppWin *a)
+{
+	Client *c = WM_OK ? client_of_app(a) : NULL; if (!c || !a->modal) return;
+	GdkPixbuf *pb = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), 0, 0, SW, SH);
+	if (!c->full) a->wasontop = c->ontop; c->ontop = 1;
+	if (c->hidden) { c->hidden = 0; if (!c->off && !c->min) XMapWindow(DPY, c->frame); }
+	a->mfull = !c->full; if (!c->full) wm_fullscreen(c, 1); else wm_focus(c);
+	bar_redraw(); state_write(); modal_send(a, pb);
+}
+/* (1.6.0 Part 12, test finding N1) the page's full screen (a video's ⛶, F11, a game): on Standard the page is the screen and an element
+   made full screen fills it (shell26.js fsStandIn, the shell's stand-in); here the page is the app's window, so the page uses the same
+   stand-in (oneapp59.js) and the window covers the screen, above the taskbar, for as long. (WebKit's own full screen showed a video
+   black under the native shell, with WebKit's control bar alone.) */
+static void appwin_fs(AppWin *a, int on)
+{
+	Client *c = WM_OK ? client_of_app(a) : NULL; if (!c || a->modal) return;
+	if (on && !c->full) { a->wasontop = c->ontop; c->ontop = 1; wm_fullscreen(c, 1); }
+	else if (!on && c->full) { c->ontop = a->wasontop; wm_fullscreen(c, 0); }
+	bar_redraw(); state_write();
+}
+static gboolean modal_cover_late(gpointer d) { AppWin *a = d; if (g_list_find(WINS, a)) modal_cover(a); return G_SOURCE_REMOVE; }
+static void appwin_modal(AppWin *a, int on)
+{
+	Client *c = WM_OK ? client_of_app(a) : NULL;
+	if (on) { if (a->modal || a->hidden) return; a->modal = a->sized ? 1 : 2;
+		if (!c) { modal_send(a, NULL); return; }
+		/* (not the window itself in the picture: one with nothing of its own yet is taken away first, and what was under it drawn again) */
+		if (a->modal == 2 && !c->hidden && !c->full) { c->hidden = 1; XUnmapWindow(DPY, c->frame); XSync(DPY, False); g_timeout_add(250, modal_cover_late, a); return; }
+		modal_cover(a); return; }
+	if (!a->modal) return; int was = a->modal; a->modal = 0;
+	if (!c) return;
+	if (a->mfull) { c->ontop = a->wasontop; if (c->full) wm_fullscreen(c, 0); }
+	if (was == 2 && !a->sized) { c->hidden = 1; XUnmapWindow(DPY, c->frame); if (FOCUS == c) { FOCUS = NULL; wm_focus(top_client()); } }
+	else if (a->pw) { int w = a->pw, h = a->ph; a->pw = a->ph = 0; appwin_size(a, w, h); }
+	bar_redraw(); state_write();
+}
 
 static void appwin_activate(AppWin *a)
 {
@@ -3553,7 +3612,56 @@ static void jumps_load(JV *v)
 		snprintf(x->k, sizeof x->k, "%s", j->k[i]); JV *a = jat(r, 0), *b = jat(r, 1), *c = jat(r, 2);
 		snprintf(x->label, sizeof x->label, "%s", a && a->t == 3 ? a->s : ""); snprintf(x->icon, sizeof x->icon, "%s", b && b->t == 3 ? b->s : ""); snprintf(x->key, sizeof x->key, "%s", c && c->t == 3 ? c->s : ""); }
 }
-static int tb_win(Client *c) { return c && !c->hidden && !c->trans && (!c->app || (!c->app->hidden && strcmp(c->app->k, "do-saver"))); }   /* (not the screen saver: item 6) */   /* (the page's wins: the taskbar's windows) */
+/* (1.6.0 Part 12, test finding N3) Task Manager's Apps: on Standard the page's windows are all in its one page (wins); here each app's
+   window is a page of its own, so Task Manager's page asks the shell (op "wins") and is given every window the taskbar would list in any
+   workspace, oldest first (the app, title, icon, minimised, workspace, active), each with its page's own weight as Task Manager
+   estimates it (oneapp59.js __oaMe, asked of every page at once; a page that does not answer in 400 ms has none). "Switch to" and
+   "End task" come back as op "winop" (focus: brought to the front, its workspace shown; end: the window closed as Standard's End task
+   closes it, without asking about unsaved work: the page's own close, oaDone, so its files are written first). */
+typedef struct { AppWin *to; int n, left, sent; char **me; Client **cl; guint t; } WinsReq;
+static void json_esc(GString *s, const char *v);
+static void wins_free(WinsReq *q) { for (int i = 0; i < q->n; i++) g_free(q->me[i]); g_free(q->me); g_free(q->cl); g_free(q); }
+static void wins_send(WinsReq *q)
+{
+	if (q->sent) return; q->sent = 1; if (q->t) { g_source_remove(q->t); q->t = 0; }
+	if (g_list_find(WINS, q->to) && q->to->view) {
+		GString *s = g_string_new("[");
+		for (int i = 0, k = 0; i < q->n; i++) { Client *c = q->cl[i]; if (!g_list_find(CLIENTS, c)) continue; AppWin *a = c->app;
+			char id[24]; snprintf(id, sizeof id, "%lx", (unsigned long)c->frame);
+			g_string_append_printf(s, "%s{\"id\":\"%s\",\"w\":%d,\"app\":", k++ ? "," : "", id, a ? a->id : 0); json_esc(s, a ? a->k : c->ak);
+			g_string_append(s, ",\"title\":"); json_esc(s, c->title); g_string_append(s, ",\"icon\":"); json_esc(s, a ? a->icon : "");
+			g_string_append_printf(s, ",\"min\":%d,\"ws\":%d,\"act\":%d,\"me\":%s}", c->min, c->ws, c == FOCUS, q->me[i] && q->me[i][0] == '{' ? q->me[i] : "null"); }
+		g_string_append(s, "]"); GString *js = g_string_new("window.__oaWinsIn&&__oaWinsIn("); json_esc(js, s->str); g_string_append(js, ")");
+		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(q->to->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE); g_string_free(s, TRUE); }
+	if (q->left <= 0) wins_free(q);   /* (else the last answer frees it) */
+}
+typedef struct { WinsReq *q; int i; } WinsAns;
+static void wins_got(GObject *src, GAsyncResult *res, gpointer d)
+{
+	WinsAns *w = d; WinsReq *q = w->q; JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(src), res, NULL);
+	if (v && jsc_value_is_string(v) && !q->sent) q->me[w->i] = jsc_value_to_string(v);
+	if (v) g_object_unref(v); g_free(w); q->left--;
+	if (q->left <= 0) { if (!q->sent) wins_send(q); else wins_free(q); }
+}
+static gboolean wins_late(gpointer d) { WinsReq *q = d; q->t = 0; wins_send(q); return G_SOURCE_REMOVE; }
+static int tb_win(Client *c);
+static void wins_ask(AppWin *to)
+{
+	WinsReq *q = g_new0(WinsReq, 1); q->to = to; int n = g_list_length(CLIENTS); q->me = g_new0(char *, n + 1); q->cl = g_new0(Client *, n + 1);
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (!tb_win(c) || !c->ws || (!c->app && !c->ak[0])) continue; q->cl[q->n++] = c; }
+	q->left = 1;   /* (until every page is asked) */
+	for (int i = 0; i < q->n; i++) { AppWin *a = q->cl[i]->app; if (!a || !a->view) continue; WinsAns *w = g_new0(WinsAns, 1); w->q = q; w->i = i; q->left++;
+		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), "window.__oaMe?JSON.stringify(__oaMe()):''", -1, NULL, NULL, NULL, wins_got, w); }
+	q->left--; if (q->left <= 0) wins_send(q); else q->t = g_timeout_add(400, wins_late, q);
+}
+static void win_op(const char *id, const char *what)
+{
+	Window f = (Window)strtoul(id, NULL, 16); Client *c = NULL; for (GList *l = CLIENTS; l; l = l->next) if (((Client *)l->data)->frame == f) c = l->data;
+	if (!c || !f) return;
+	if (!strcmp(what, "focus")) { wm_focus(c); return; }
+	if (!strcmp(what, "end")) { if (c->app && c->app->view) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(c->app->view), "window.__oaEnd?__oaEnd():window.close()", -1, NULL, NULL, NULL, NULL, NULL); else wm_close(c); }
+}
+static int tb_win(Client *c) { return c && !c->hidden && !c->trans && (!c->app || (!c->app->hidden && c->app->modal != 2 && strcmp(c->app->k, "do-saver"))); }   /* (not the screen saver: item 6) */   /* (the page's wins: the taskbar's windows) */
 static int tb_count(int min) { int n = 0; for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (tb_win(c) && (min < 0 || c->min == min)) n++; } return n; }
 static int app_running(const char *k) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!a->hidden && !strcmp(a->k, k)) return 1; }
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->ak[0] && !strcmp(c->ak, k)) return 1; } return 0; }   /* (and Oracle's Chromium's windows: 12.3c) */
@@ -4570,7 +4678,7 @@ static void sav_start(void)
 	char ex[80]; snprintf(ex, sizeof ex, "&style=%s&time=%d", SYS.ssstyle, SYS.sstime); app_open_ex("do-saver", NULL, ex, 0);
 	if (!SAV_POLL) SAV_POLL = g_timeout_add(1000, sav_poll, NULL); state_write();
 }
-static int full_shown(void) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->full && !c->min && !c->off && !(c->app && !strcmp(c->app->k, "do-saver"))) return 1; } return 0; }
+static int full_shown(void) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->full && !c->min && !c->off && !(c->app && (!strcmp(c->app->k, "do-saver") || c->app->modal))) return 1; } return 0; }
 static gboolean tick_idle(gpointer d)
 {
 	(void)d; if (!USER_ID[0] || !WM_OK) return G_SOURCE_CONTINUE;

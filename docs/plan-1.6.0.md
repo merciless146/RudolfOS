@@ -567,7 +567,37 @@ of the phone, framed by the shell as a Linux app's, as on Standard) needs a phon
 test; selects given other padding by their own rules (games' and the media player's) have the chevron but not Chromium's
 20 px after the text.
 **Test findings (2026-11-15, unattended session):** Native compared with Standard across the desktop, the apps, video and sound, with Log video problems on: 19 findings (3 break: full-screen video black, the file dialog cut off inside the app's window, Task Manager lists only itself). See docs/native-findings-2026-11-15.md. A second run added 13 more (2 break: Log video problems' file emptied by each new app window, right-click menus inside apps cut off at the window's edge), in the same report's "Second run" section.
-**Next:** items 9 to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md
+**Test findings fixed, first PR (2026-11-15, unattended session): the three that break, and the page's dialogs.**
+- N2, N4, N10: the page's dialogs (.rmodal: Open and Save, Print, Allow access?, Close anyway?, Report a problem; .natdlg: a game's
+  download) are over the whole desktop on Standard, dimmed and centred on the screen. On Native the app's window now covers the
+  screen while one is open (full screen, above the taskbar), its page given a picture of the screen as it was (the page's own
+  dimming over it), and goes back to its place and size after (oneapp59.js: op "modal", the dialog unseen until the picture is
+  there; rudolf-native appwin_modal). An app asking before it has a window (the camera's Allow access?, a game's download) has no
+  window or taskbar button of its own any more: its page is out of sight until its window comes. The dialog's button gets the
+  focus (and Chromium's focus ring) as on Standard. A ticked box is drawn in Chromium's blue, and a number field's arrows show only
+  under the pointer (the Print dialog's Pages and Copies), as Chromium's.
+- N1: a video's ⛶ (and F11, a game's full screen) uses the shell's stand-in on Native too (shell26.js fsStandIn: the element fills
+  the page) with the window covering the screen (op "fs"), as Standard's page is the screen: the picture shows (WebKit's own full
+  screen showed it black under the native shell). Esc leaves, as on Standard.
+- N3: Task Manager's Apps lists every window on Native, as Standard's one page does: the shell gives its list (op "wins": each
+  window the taskbar would show, in every workspace, with its page's own weight, oneapp59.js __oaMe); Switch to and End task are
+  done by the shell (op "winop"; End task closes the window as Standard's does, its files written first). The status line and the
+  system report count every window too (tm26.js tmWins, the page's own list on Standard).
+- N18: Log video problems no longer logs downloadbuffer's "Failed to remove temporary file" for every video (WebKit removes its own
+  temporary file); GStreamer's underflow and clock-skew warnings stay (they are what a stutter looks like).
+- N16, partly: with the full screen fixed, WebKit counts a video's frames while it plays as Chromium does (getVideoPlaybackQuality:
+  51, 102, 153 at 1.7, 3.4 and 5.1 s); at the video's end WebKit stops counting (153 of 180 for a 6 s video, Chromium 180). Nothing in
+  Rudolf OS reads it, and Oracle, where websites do, is Chromium on Native: for the owner (below).
+- same_t.sh: new cases dlg-open, dlg-ask, dlg-print, dlg-camera, dlg-dark (the dialog and the whole screen under it), tm-apps (Task
+  Manager's rows, read from the page on both engines: "read", run in Native's window through RUDOLF_NATIVE_TEST_EVAL) and video-fs
+  (the Media Player's ⛶: the share of the screen showing the video, on both; the test's own video made with ffmpeg, served by
+  same_rd.py at /tm/). videolog60_t.sh checks GST_DEBUG's downloadbuffer:1.
+- For the owner: N16's end-of-video count (a WebKit counter; accept as a WebKit difference, or not); whether GStreamer's "Got underflow"
+  at each video's end should be left out of Log video problems too (N18); N1 with real drawing on the Vivobook (--draw other than
+  soft), and the dialogs with a touch screen.
+Left of the findings (the next PRs): N5, N6, N7, N8, N9, N11, N12 (look wrong), N13, N14, N15, N17, N19 (minor).
+
+**Next:** the rest of the test findings, then items 9 to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md
 after them. Native is not
 the default yet. The security line's next steps (as of 2026-11-14): docs/plan-1.5.9.md 15.3's third step (the QEMU check
 with two accounts, needing a host with QEMU and a built disc) and 12.3c's second part (Oracle on Native: step 5's rest).

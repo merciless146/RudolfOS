@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- The native desktop's dialogs (Open and Save, Print, Allow access?, Close anyway?, a game's download) now appear over the whole desktop, dimmed and centred, as in the standard desktop, instead of inside the app's window where their buttons could be cut off.
+- Fixed on the native desktop: a video in full screen showed a black screen; Task Manager listed only its own window (it now lists every window, with Switch to and End task).
 - New: rudolf-fetch in the Terminal: Rudolf's logo (the nose in red) with this computer's details beside it: Rudolf OS's version, the kernel, the desktop engine, the update channel, the processor, memory, disk and uptime.
 - Fixed: Get in App Store › Rudolf OS Library failed for an app the Library had just updated (Ember Reach 0.4.0): the computer's list still named the older version, so the download was refused as not matching. Rudolf OS now checks the list again and gets the new version.
 - New: beta versions are opt-in: Settings › Update and recovery › Get beta versions (an administrator's name and password to turn on). Turned off, the next update brings the latest stable release, even from a newer beta.

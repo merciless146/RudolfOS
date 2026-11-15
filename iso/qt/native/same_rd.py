@@ -6,7 +6,7 @@
 #     (desktop/settings from bd95set:ID, bd95pins:ID and bd95notif:ID; desktop/apps as the page gave it).
 # Files in DIR:  ls.json (the storage: {"gen":N,"data":{...}}, the test rewrites it between cases), keys.json (Ann's
 # password, fixtures/deskls.js), calls (every request), session (when there: Native starts signed in as Ann),
-# wall.jpg (a picture of your own).        python3 same_rd.py PORT DIR
+# wall.jpg (a picture of your own), tm/ (test media, served at /tm/NAME).        python3 same_rd.py PORT DIR
 import http.server, json, os, re, sys, threading, time
 PORT = int(sys.argv[1]); D = sys.argv[2]; HERE = os.path.dirname(os.path.abspath(__file__))
 WWW = os.path.join(HERE, '../../www'); TOK = 'tok160same'; LOCK = threading.Lock()
@@ -60,6 +60,10 @@ class H(http.server.BaseHTTPRequestHandler):
             inj = ('<script type="application/json" id="rudolf-ls">%s</script><script>window.RUDOLFD={token:"%s",base:"",boot:"uefi",media:"disk",live:0,recovery:0,engine:"chromium"};%s</script>'
                    % (L, TOK, LSJS))
             return self.send(200, open(os.path.join(WWW, 'index.html'), encoding='utf-8').read().replace('<head>', '<head>' + inj, 1), 'text/html; charset=utf-8')
+        if u.startswith('/tm/'):   # (the test's media: DIR/tm/NAME, made by the test with ffmpeg; test finding N1)
+            f = os.path.join(D, 'tm', os.path.basename(u))
+            if os.path.isfile(f):
+                return self.send(200, open(f, 'rb').read(), {'.webm': 'video/webm', '.mp4': 'video/mp4', '.ogg': 'audio/ogg', '.wav': 'audio/wav'}.get(os.path.splitext(f)[1], 'application/octet-stream'))
         f = os.path.normpath(os.path.join(WWW, u.lstrip('/')))
         if f.startswith(os.path.normpath(WWW)) and os.path.isfile(f):
             ct = {'.js': 'text/javascript', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.png': 'image/png', '.woff2': 'font/woff2', '.woff': 'font/woff', '.wasm': 'application/wasm', '.svg': 'image/svg+xml'}.get(os.path.splitext(f)[1], 'application/octet-stream')
