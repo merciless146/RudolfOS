@@ -150,12 +150,47 @@ static struct proc *browser_of(struct proc *p)
    does not say which process holds which page, and a start-time rule failed: Chromium starts a spare page process
    early and gives it to the next tab (1.4.7's QEMU test: the test page was taken for the desktop's own). The shell
    (the Isolated Web App) and the spare process are small, so as the largest they are never ended either. */
+/* 1.6.0: and the file is checked. On the Vivobook (2026-11-15) the guard ended a 765 MiB page process that was the
+   desktop's own: the desktop then stopped, and the session restarted the browser. The desktop says which process is
+   its own once, 15 s after it loads, and when that fails (memory short, the processor busy) the file named an older
+   process, or none. Now the file counts only if it names a page process that is still running and started before
+   the file was written (else that number now belongs to another process). When it does not while the desktop runs
+   in Chromium, the desktop's own is not known: no page process of the desktop's browser is ended (any of them could
+   be the desktop), and the desktop is asked to say again ("memory iam" in /run/rudolf/events). Pages of other
+   browsers (sign-in windows, Oracle's own Chromium on the native desktop) are ended as before. */
+static const char *desk_file(void) { return once && getenv("MG_DESKFILE") ? getenv("MG_DESKFILE") : RUN "/desktop-renderer"; }
+static long long boot_time(void)   /* when the system started (seconds since 1970): now less the uptime */
+{
+	char u[64]; struct timespec t; if (readf("/proc/uptime", u, sizeof u) <= 0) return 0;
+	clock_gettime(CLOCK_REALTIME, &t); return (long long)(t.tv_sec - atof(u));
+}
+/* the desktop's page process: its pid; 0 when the desktop does not run in Chromium (nothing to keep); -1 when it does
+   and its page process is not known */
 static int desktop_pid(void)
 {
-	static char b[32]; if (readf(RUN "/desktop-renderer", b, sizeof b) <= 0) return 0;
-	return atoi(b);
+	static char b[32]; struct stat st; int d = 0;
+	if (readf(desk_file(), b, sizeof b) > 0 && !stat(desk_file(), &st)) d = atoi(b);
+	struct proc *p = d > 0 ? find(d) : NULL;
+	if (p && p->kind == 'r' && !p->ext && hz > 0 && boot_time() + (long long)(p->start / hz) <= (long long)st.st_mtime + 2) return d;
+	for (int i = 0; i < np; i++) if (ps[i].kind == 'b') return -1;
+	return 0;
+}
+/* how long the desktop's browser has run, in seconds (0: none) */
+static long browser_age(void)
+{
+	char u[64]; if (readf("/proc/uptime", u, sizeof u) <= 0 || hz <= 0) return 0;
+	for (int i = 0; i < np; i++) if (ps[i].kind == 'b') return (long)(atof(u) - (double)ps[i].start / hz);
+	return 0;
 }
 static int desktop_own(struct proc *p, struct proc *b) { (void)b; int d = desktop_pid(); return d > 0 && p->pid == d; }
+/* a page process that may be the desktop's own: the desktop's while it is not known, any page process of the desktop's
+   browser */
+static int maybe_desktop(struct proc *p)
+{
+	int d = desktop_pid(); if (d > 0) return p->pid == d;
+	if (d < 0) { struct proc *b = browser_of(p); return b && b->kind == 'b'; }
+	return 0;
+}
 static void set_adj(int pid, int adj)
 {
 	char path[64], cur[16], v[16]; snprintf(path, sizeof path, "/proc/%d/oom_score_adj", pid);
@@ -179,10 +214,10 @@ static void protect(void)
    holds any more (left behind when the browser was restarted: it only holds memory) */
 static struct proc *victim(void)
 {
-	struct proc *best = NULL;
+	struct proc *best = NULL; long long min = once && getenv("MG_MIN_MIB") ? atoll(getenv("MG_MIN_MIB")) << 20 : MIN_RSS;
 	for (int i = 0; i < np; i++) {
 		struct proc *p = &ps[i];
-		if (p->kind != 'r' || p->ext || p->rss < MIN_RSS || desktop_own(p, NULL)) continue;
+		if (p->kind != 'r' || p->ext || p->rss < min || maybe_desktop(p)) continue;
 		if (!best || p->rss > best->rss) best = p;
 	}
 	return best;
@@ -440,7 +475,7 @@ int main(int argc, char **argv)
 		printf("memory: %lld MiB available of %lld MiB, stall %.1f%%\n", avail >> 20, total >> 20, psi_full10());
 		for (int i = 0; i < np; i++) { struct proc *p = &ps[i], *b; if (p->kind != 'r') continue; b = browser_of(p);
 			printf("renderer %d: %lld MiB%s%s%s\n", p->pid, p->rss >> 20, p->ext ? " (extension)" : "", !b ? " (no browser)" : b->kind == 'w' ? " (web window)" : "",
-				desktop_own(p, NULL) ? " (the desktop's own: kept)" : ""); }
+				desktop_own(p, NULL) ? " (the desktop's own: kept)" : maybe_desktop(p) ? " (the desktop's own not known: kept)" : ""); }
 		struct proc *v = victim(); if (v) printf("would end: %d (%lld MiB)\n", v->pid, v->rss >> 20); else printf("would end: none\n");
 		struct app *a = app_victim();
 		for (int k = 0; k < napps; k++) printf("app %s: %lld MiB, %d sandbox(es)%s\n", apps[k].id, apps[k].rss >> 20, apps[k].nroots, &apps[k] == a ? " (no window open: would quit it)" : "");
@@ -456,7 +491,7 @@ int main(int argc, char **argv)
 	int pf = open("/proc/pressure/memory", O_RDWR | O_NONBLOCK | O_CLOEXEC);
 	if (pf >= 0 && write(pf, "full 150000 1000000", 20) < 0) { close(pf); pf = -1; }
 	logf_("started%s%s", pf < 0 ? " (no memory pressure trigger: once a second)" : "", off ? " (ending pages is off: rudolf.nomemguard=1)" : "");
-	int low = 0, stall = 0; time_t last_kill = 0, last_protect = 0, was_crit = 0, warned = 0; struct timespec fire0 = {0, 0};
+	int low = 0, stall = 0; time_t last_kill = 0, last_protect = 0, was_crit = 0, warned = 0, last_ask = 0; struct timespec fire0 = {0, 0};
 	for (;;) {
 		struct pollfd p = { pf, POLLPRI, 0 };
 		int fired = 0;
@@ -481,7 +516,13 @@ int main(int argc, char **argv)
 			if (!was_crit) logf_("memory is low: %lld MiB available of %lld MiB, swap %lld of %lld MiB free, stall %.0f%%%s", avail >> 20, total >> 20, swf >> 20, swt >> 20, full, thrash && !hard && low < 2 && stall < 3 ? " (thrashing: the kernel reports stalls)" : "");
 			was_crit = now; }
 		else if (was_crit && now - was_crit > 10) { logf_("memory is back: %lld MiB available", avail >> 20); was_crit = 0; }
-		if (now - last_protect >= 5 || crit) { scan(); protect(); last_protect = now; }
+		if (now - last_protect >= 5 || crit) { scan(); protect(); last_protect = now;
+			/* 1.6.0: the desktop's own page process not known: the desktop is asked to say again, once its browser
+			   has run a minute (it says so itself 15 s after it loads), and every 2 minutes while it is not known */
+			if (desktop_pid() < 0 && now - last_ask >= 120 && browser_age() >= 60) {
+				int f = open(RUN "/events", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644); if (f >= 0) { if (write(f, "memory iam\n", 11) < 0) {} close(f); }
+				if (!last_ask || now - last_ask > 600) logf_("the desktop's own page process is not known (%s): the desktop was asked to say which it is; until then no page of the desktop's browser is ended", access(RUN "/desktop-renderer", F_OK) ? "it has not said" : "the process it named is gone");
+				last_ask = now; } }
 		/* 1.5.9 (plan 9.2b): before it is critical, a warning. Under 12% of the memory available: the desktop is told which page is the largest ("memory warn PID MB"), and shows the
 		   warning, over a full-screen game too. Once a minute at most, and again only after memory was back above
 		   20%. It changes nothing about when a page is ended. */
@@ -515,7 +556,7 @@ int main(int argc, char **argv)
 				struct proc *big = NULL;
 				for (int i = 0; i < np; i++) if (ps[i].kind == 'r' && (!big || ps[i].rss > big->rss)) big = &ps[i];
 				if (big) logf_("no web page to end: the largest page renderer (%d, %lld MiB) is %s", big->pid, big->rss >> 20,
-					big->ext ? "an extension" : desktop_own(big, NULL) ? "the desktop's own" : "under 200 MiB");
+					big->ext ? "an extension" : desktop_own(big, NULL) ? "the desktop's own" : maybe_desktop(big) ? "the desktop's browser's, and the desktop's own page is not known" : "under 200 MiB");
 				else logf_("no web page to end (no page renderers: a program holds the memory)");
 				logf_("no app without a window open to quit either");
 				last_kill = now;
