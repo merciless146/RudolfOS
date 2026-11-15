@@ -20,6 +20,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.5.9 (in progress)
 Summary: In progress.
+- New: Browse with Tor in Oracle: an onion button at the right end of the bookmarks bar sends that window's tabs through Tor, in a private Tor window of its own (Rudolf's Chromium through Tor: sites do not see the computer's address, and no site's name or WebRTC address leaves outside Tor); pressing it again brings the tabs back to a normal window. The window says plainly that this is not Tor Browser's anonymity and links Tor Browser (plan 16.2).
 - New: Oracle's bookmarks bar ends with a "+" that adds a bookmark by its address, from the browsing history (newest first, searchable), or as a file on this computer (a document or a PDF).
 - Fixed: choosing a file in the desktop's own file picker (Open a presentation or a spreadsheet, and others) answered as if nothing had been chosen.
 - Changed: the plan: Browse with Tor in Oracle (Part 16): a button on the bookmarks bar sends that window through Tor, which runs only while it is used.

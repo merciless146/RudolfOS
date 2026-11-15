@@ -1389,6 +1389,48 @@ Tor logo. The word "Tor" is used only to say what it uses (the tooltip, the note
   window closes. New tabs and new windows from it stay Tor windows.
 - If Tor cannot connect in 60 s (no internet, Tor blocked): the window says so with Tor's last line, and stays normal.
 
+**16.2 done (2026-11-15, its own PR; 16.1 in the PR before it, both based on main):** as written, with these found on
+the way:
+- **The button** (tor59.js, after the bookmarks bar's "+" in browser()'s sync): right-aligned at the bar's far right
+  (margin-left:auto), black outline not pressed, white pressed, tooltip "Browse Oracle with Tor", aria-pressed; the onion
+  is Rudolf OS's own SVG (a kitchen onion: lavender bulb, the skin's lines, a pointed top, roots; no picture, no words).
+- **Pressing:** tor/start, the bar "Connecting to Tor… N %" from tor/status each second (Cancel), then the window's tabs (at
+  most 12) in a Tor window and the window closes; failed or not on in 60 s: the bar says so with Tor's last line, tor/stop,
+  the window stays. On Native the page sends op "tor" (its tabs, one a line) and rudolf-native starts the Tor window's
+  Chromium itself (tor_open, as Oracle's: rudolf-launch --oracle, RUDOLF_TOR_CMD, its own FIFO; the profile
+  $XDG_RUNTIME_DIR/rudolf-tor-profile, made fresh, removed when Chromium goes); its windows (class RudolfTor) framed and keyed
+  as Oracle's, their pages' messages read as Oracle's. On Standard rudolfd starts it (`POST torwin/open?url=…`: rudolf-launch
+  --oracle as the desktop's user in the desktop's memory group, the profile /run/rudolf/torwin-profile, removed by a watcher
+  when Chromium goes; another torwin/open is another window of the same Chromium); rudolf-display shows it as every app window.
+- **The flags** are the session's (tor_chrome, written for every engine as /run/rudolf/tor-chrome): Oracle's, without the
+  account's profile, proxy and extensions but Ruffle, with `--proxy-server=socks5://127.0.0.1:9050`,
+  `--force-webrtc-ip-handling-policy=disable_non_proxied_udp` and `--host-resolver-rules="MAP * ~NOTFOUND , EXCLUDE
+  127.0.0.1"` (nothing but the desktop's own address is ever looked up on this computer, even if a path ignored the proxy).
+- **Found: WebRTC leaked in the tabs.** The command line's WebRTC policy reaches Chromium's own pages but not the shell's
+  Controlled Frames (Oracle's tabs): a site in the Tor window gathered this computer's address (a host candidate). The tabs
+  read the profile's setting, so both launchers write the fresh profile's Default/Preferences with
+  `webrtc.ip_handling_policy=disable_non_proxied_udp` (and no other routes): then no UDP candidate (tested, against a normal
+  window that does gather one). **Chromium's SOCKS5 DNS works as written:** every site's name goes to the proxy (SOCKS5's
+  name form), none is looked up here, and the desktop page (127.0.0.1:8080) is not proxied.
+- **The Tor window:** the page at #app=browser&tor=1&url=…&url=… (oneapp59.js oaOpen) opens Oracle alone, private (browser()'s
+  priv) with W.tor: violet, the onion with "Private · Tor", "(Tor)" in its title, its start page (privHome → torHome) saying
+  plainly what Tor hides and that it is not Tor Browser's anonymity, with Tor Browser's Flathub page linked. New windows from it
+  (browser(): Ctrl+N, a link's new window) are Tor windows; New private tab is a tab of it. It asks tor/start every 20 s and
+  tor/stop when it closes (16.1's 90 s stop covers one that went without saying). Pressing again: its tabs back to a normal
+  Oracle window (Native: op "untor", #app=browser&untor=1&url=…; Standard: `POST torwin/back`, which the desktop page takes
+  with `GET torwin/back` every 2 s while a Tor window runs), and it closes.
+- **Not as written on Standard:** the Tor window's page has no native desktop to tell, so there it is an Oracle page of its own
+  (oaChromium off): another app opened from it, or its notifications, show inside it; its downloads are left to the desktop
+  page (which takes every download on Standard). On Native, while Tor runs, Oracle's other windows leave downloads to the Tor
+  window's page (tor/status, every 5 s). Ctrl+W, T, N, Q in a website in the Tor window on Standard are still Chromium's
+  (rudolf-display remaps them only for RudolfDesktop): next, with a test of rudolf-display's keys.
+- Tests (16.3): qt/shell2/tor59_t.js 21 (Playwright: the button, outlines, tooltip, onion, the calls, 60 s, failure, the Tor
+  window's page and its start page, new windows, back, Native's ops), qt/native/tor_native_t.sh 14 (Xvfb, rudolf-native, the
+  session's flags, a stand-in SOCKS5 proxy recording what it is asked: names only through it, nothing for 127.0.0.1:8080, no
+  WebRTC address, back, the profile removed), qt/host/torwin59_t.sh 11 (Standard's torwin/* from rudolfd.c with Chromium:
+  the same through the proxy, a second window, back, the profile removed). Not tested here: real Tor's network (no Tor
+  network from here: 16.1's test runs the real tor to its SOCKS port only), rudolf-display showing the window, the Vivobook.
+
 ### 16.3 Tests
 - Host: rudolfd's tor/start, status and stop with a stand-in tor (its bootstrap lines), the user and the options, the
   stop after the last window; ci_release's budget check; the listeners list.

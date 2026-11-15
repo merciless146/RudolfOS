@@ -26,6 +26,7 @@ function oraclePrivate(u) {
 }
 /* the private window's start page (browser()'s about:home in a private window) */
 function privHome(doc, esc) {
+  if (typeof torWin == 'function' && torWin() && typeof torHome == 'function') return torHome(doc, esc);   // (1.5.9, Part 16: a Tor window's)
   const real = typeof rtOn == 'function' && rtOn();
   return doc('Private browsing', `<div style='max-width:560px;margin:10px auto;line-height:1.55'>
  <div style='font-size:46px;text-align:center'>🕶️</div>

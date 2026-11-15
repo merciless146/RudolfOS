@@ -15,6 +15,9 @@
 #                      that asked ("chrome" or "webkit", from its User-Agent)
 #   DIR/idbm/          (when there) rudolfd's mirror of the pages' databases (rudolfd.c api_idbm), so a file one engine's page
 #                      saved (Oracle's, in Chromium) is seen by a page started after it in the other (a WebKit window)
+#   DIR/inject.js      (when there) a script given to the page before its own (a test's: no network status here)
+#   DIR/torwin-fix     (when there) the path of fixtures/torwinapi.c built: torwin/* answered by rudolfd's own code (16.2)
+#   DIR/tor-on         (made by tor/start) rudolfd's Tor stood in: tor/status says on (1.5.9, plan 16.1)
 #   DIR/hotkey         (when there) the path of Rudolf OS's hotkey script: mic and volume answered through it as rudolfd does
 #                      (the sound server: pactl, PULSE_SERVER from the environment)
 # Ann's password is in keys.json; a wrong one gets the page's message.   python3 native_rd.py PORT DIR
@@ -58,7 +61,7 @@ class H(http.server.BaseHTTPRequestHandler):
             # (DIR/page.html, when there: served instead of the desktop page, for the window manager's checks)
             alt = rd('page.html')
             if alt is not None: return self.send(200, alt, 'text/html; charset=utf-8')
-            return self.send(200, open(os.path.join(WWW, 'index.html'), encoding='utf-8').read().replace('<head>', '<head>' + INJ, 1), 'text/html; charset=utf-8')
+            return self.send(200, open(os.path.join(WWW, 'index.html'), encoding='utf-8').read().replace('<head>', '<head>' + INJ + ('<script>%s</script>' % rd('inject.js').decode() if rd('inject.js') else ''), 1), 'text/html; charset=utf-8')
         if u == '/iwa/id' and rd('iwa-id') is not None: return self.send(200, rd('iwa-id'), 'text/plain')
         f = os.path.normpath(os.path.join(WWW, u.lstrip('/')))
         if f.startswith(os.path.normpath(WWW)) and os.path.isfile(f):
@@ -136,6 +139,20 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.j({'ok': True})
         if w == 'devlink/answer':
             o = json.loads(rd('devlink.json', b'{}')); o.pop('pending', None); open(os.path.join(D, 'devlink.json'), 'w').write(json.dumps(o)); return self.j({'ok': True})
+        # (1.5.9, plan 16.2) Standard's Tor windows: rudolfd's own torwin/* (fixtures/torwinapi.c, its path in DIR/torwin-fix)
+        if w.startswith('torwin/') and rd('torwin-fix'):
+            import subprocess
+            o = subprocess.run([rd('torwin-fix').decode().strip(), '%s %s%s' % (m, w, '?' + q if q else '')], capture_output=True, timeout=30).stdout.decode()
+            st, _, body = o.strip().partition('|'); code = int(st.split()[1]) if len(st.split()) > 1 and st.split()[1].isdigit() else 500
+            return self.send(code, body)
+        # (1.5.9, plan 16.1) rudolfd's Tor, stood in: on once started (DIR/tor-on), off when stopped at once
+        if w in ('tor/start', 'tor/stop', 'tor/status'):
+            if w == 'tor/start' and m == 'POST': open(os.path.join(D, 'tor-on'), 'w').write('1')
+            if w == 'tor/stop' and m == 'POST' and 'now=1' in q:
+                try: os.unlink(os.path.join(D, 'tor-on'))
+                except OSError: pass
+            on = os.path.exists(os.path.join(D, 'tor-on'))
+            return self.j({'ok': True, 'state': 'on' if on else 'off', 'pct': 100 if on else 0, 'line': '', 'secs': 1, 'stopping': False})
         if w == 'net': return self.j({'ok': True, 'interfaces': [{'name': 'lo', 'ip': '127.0.0.1', 'state': 'up', 'wireless': False}, {'name': 'wlan0', 'ip': '192.168.1.5', 'state': 'up', 'wireless': True}]})
         if w.startswith('dl/') and rd('dl-dir') is not None: return self.dl(m, w[3:], q)
         if w in ('mic', 'volume') and rd('hotkey') is not None: return self.hotkey(m, w, q)
