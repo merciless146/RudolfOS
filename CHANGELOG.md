@@ -3,7 +3,8 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
-## 1.6.0 (planned work)
+## 1.6.0 (in progress)
+Summary: In progress.
 - Planned: what 1.5.9 had left, moved here on 2026-11-15 (docs/plan-1.6.0.md Part 15): the native desktop's comparison with Standard, the official recovery's repair at each start, the Vivobook's call and feature checks, QEMU security checks, Lite's tab fixes, the hotspot, ARM64's test channel, Waydroid and the first phone.
 - Planned: a keyring for Linux apps (the Secret Service), unlocked by the account's sign-in, so apps such as the Claude app keep their sign-ins without a plain file or a second password.
 - New: the native desktop (Native engine, docs/plan-1.6.0.md Part 12, item 4): workspaces as on Standard: the taskbar's 1 2 3 buttons, Ctrl+Alt+Left and Right (with Shift the window goes too), a window's Move to workspace N, the taskbar listing the shown workspace's windows, "Workspace N" said in a toast (compared with Chromium: new same_t.sh cases ws2, ws2-dark, ws2-left; the same steps on both engines: new test iso/qt/native/wsbeh_t.js). Fixed: a notification with no text under its title is as tall as the page's.
@@ -19,7 +20,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 - Fixed: the native desktop (Native engine) now looks as Standard does, measured part by part against the desktop page in Chromium (new test iso/qt/native/same_t.sh, docs/plan-1.6.0.md Part 12, "The rule"): the taskbar in its five styles, its buttons' styles and the accent colour's modes (the page's sizes, font, corners, gloss, edges and shadow; the network, sound and battery as the page draws them; the workspaces' buttons; the notifications' count), the desktop's icons (the page's font, wrapping, picture and text shadows), the start menu (the page's own list, with its search box, headings and greyed rows), the windows' frames and title bars in their five styles and colour modes (the page's sizes, round corners, shadow and resize handles; an app's window opens at the page's size and place), and the sign-in and lock screens. Meta+L locks the screen; Start › Shut Down... shows the page's Power dialog.
 - New: the native desktop (Native engine, docs/plan-1.6.0.md Part 12, item 1, first part): the desktop's icons, as the page shows them for the account (its shortcuts, pictures and places), on the page's grid at the icon size and display scaling: a double-click opens, dragging moves an icon to the nearest free place (kept by rudolfd), Arrange icons by name, Refresh, and the icon's and the desktop's menus. Files on the desktop come next.
 
-## 1.5.9 (in progress)
+## 1.5.9 (2026-11-15)
 Summary: A native desktop to try (Native, test), Browse with Tor in Oracle, protections against a directed attack, developer mode with custom builds and an official recovery, more memory for games, calls and microphone tests, and Save and Open dialogs with document tabs (docs/plan-1.5.9.md)
 - Fixed: Browse with Tor on Standard: clicking the Tor window's bookmarks bar, address box or buttons no longer jumps back to the desktop, and the Tor window is signed in as the desktop is instead of showing the sign-in screen.
 - Fixed: the self-test run over the read-only development link failed its listeners check when a Linux app was open (it cannot look into other users' programs there); it now says so instead.
