@@ -17,6 +17,7 @@ needs in 1.5.8 and 1.5.9. It follows the mobile work in docs/plan-1.5.8.md (Part
 **Not in 1.6.0:** voice calls and emergency calls (a computer is not a phone, and emergency calling must be tested on
 each device before it is offered: 1.6.x, with the first phone), phones themselves (1.6.x, docs/plan-1.5.8.md 8.3), eSIM
 provisioning (downloading a carrier's eSIM profile), and 5G standalone features beyond what the modem does by itself.
+Everything moved past 1.6.0 is gathered in docs/plan-1.6.1.md (2026-11-15).
 
 ## Leanness
 - Cellular support adds about 6 to 10 MB to the base layer (ModemManager, libqmi, libmbim, libqrtr, the operators'
