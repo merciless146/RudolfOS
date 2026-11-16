@@ -11,7 +11,7 @@ const OPENERS=[ /* key, label, icon, test(ext,value), open(path) */
  ['sheet','SpreadsheetPro','📊',e=>e=='CSV'||e=='TSV'||e=='RSHEET'||e=='XLSX'||e=='XLSM',p=>launchWith('sheet',p)],
  ['deck','PresentPro','📽️',e=>e=='RDECK'||e=='PPTX',p=>launchWith('deck',p)],
  ['archive','Archive Manager','📦',e=>e=='ZIP'||e=='TAR',p=>launchWith('archive',p)],
- ['browser','Oracle Browser','🌐',e=>e=='HTM'||e=='HTML'||e=='SVG',p=>browser('file:///'+p.join('/'))],
+ ['browser','Oracle Browser','\u{1F310}\uFE0F',e=>e=='HTM'||e=='HTML'||e=='SVG',p=>browser('file:///'+p.join('/'))],
  ['prompt','Rudolf Prompt (run)','⬛',e=>e=='LUA'||e=='BAT'||e=='WASM',null],
  ['fonts','Font Viewer','🔤',e=>/^(TTF|OTF|WOFF2?)$/.test(e),p=>launchWith('fonts',p)],
  ['emu','Emu','🦤',e=>/^(SFC|SMC|NDS)$/.test(e),p=>window.emuOpenDrive&&emuOpenDrive(p)]];
