@@ -129,10 +129,12 @@ ok "...Ctrl+T in it: a new tab of the Tor window, as in Oracle's windows; no win
 # (the new tab closed again with Ctrl+W there, in the window's own page: the tabs as step 7 expects them)
 xdotool key ctrl+w; w8 '[ "$(ntab)" = $n0 ]' 20
 ok "...Ctrl+W in the new tab (the Tor window's own page): it closes, the window stays" "$([ "$(ntab)" = $n0 ] && [ "$(torw)" = 1 ] && echo 1)" "$n0 $(ntab) $(torw)"
-keyson; xdotool key ctrl+n; w8 '[ "$(torw)" = 2 ] && [ "$(grep -c "^client .* app=browser .*(Tor)" $D/state)" = 2 ]' 120
+keyson; A0=$(node -e 'fetch("http://127.0.0.1:9336/json/list").then(r=>r.json()).then(l=>console.log(l.filter(t=>t.type=="app").map(t=>t.id).join("\n")))'); xdotool key ctrl+n; w8 '[ "$(torw)" = 2 ] && [ "$(grep -c "^client .* app=browser .*(Tor)" $D/state)" = 2 ]' 120
 ok "...Ctrl+N: a new Tor window (the native desktop's op tor), of the same Chromium, framed as Oracle; not a normal or Chromium's own window" "$([ "$(torw)" = 2 ] && [ "$(grep -c '^client .* app=browser .*(Tor)' $D/state)" = 2 ] && [ "$(procs --class=RudolfTor)" = 1 ] && [ "$(procs --class=RudolfOracle)" = 0 ] && echo 1)" "$(torw) | $(grep '^client' $D/state) | $(xnames)"
-CLOSE2='(()=>{if(typeof OA=="object"&&OA.main&&![...OA.main.body.querySelectorAll(".otab")].some(t=>/Keys 59/.test(t.textContent)))window.__oneAppClose();return 1})()'
-w8 'evt "$PGT" "$CLOSE2" >/dev/null; timeout 0.5 tail -f /dev/null; [ "$(torw)" = 1 ] && [ "$(grep -c "^client .* app=browser" $D/state)" = 1 ]' 60 || echo "(the new Tor window did not close: $(grep '^client' $D/state))"
+# (the new Tor window closed again: its shell's target, the one that was not there before Ctrl+N, through DevTools)
+apps() { node -e 'fetch("http://127.0.0.1:9336/json/list").then(r=>r.json()).then(l=>console.log(l.filter(t=>t.type=="app").map(t=>t.id).join("\n"))).catch(()=>{})' 2>/dev/null; }
+for a in $(apps); do echo "$A0" | grep -qx "$a" || node -e 'fetch("http://127.0.0.1:9336/json/close/"+process.argv[1]).catch(()=>{})' $a; done
+w8 '[ "$(torw)" = 1 ] && [ "$(grep -c "^client .* app=browser" $D/state)" = 1 ]' 40 || echo "(the new Tor window did not close: $(targets 9336))"
 keyson; n1=$(ntab); xdotool key ctrl+q; timeout 1.5 tail -f /dev/null
 o=$(evt http://keys59.test/ 'K.join()' one)
 ok "...Ctrl+Q (Ctrl+F23, as the site sees it let go): nothing, as in Oracle's windows (Chromium did not quit, the window and its tabs stay)" "$([ "$(procs --class=RudolfTor)" = 1 ] && [ "$(torw)" = 1 ] && [ "$(ntab)" = $n1 ] && echo "$o" | grep -q F23 && echo 1)" "$(procs --class=RudolfTor) $(torw) $n1 $(ntab) keys $o"

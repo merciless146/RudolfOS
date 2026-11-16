@@ -108,11 +108,12 @@ o=$(evt http://keys59.test/ 'document.getElementById("i").value' one)
 ok "10. keys typed in a website in the Tor window reach the site as they are (w, t, n, q: rudolf-display leaves them alone)" "$([ "$o" = '"wtnq"' ] && [ "$(ntab)" = $n0 ] && echo 1)" "$o tabs $n0 $(ntab) window $TW"
 DISPLAY=$DSP $T/dispkeys feed $TW ctrl+t; w8 '[ "$(ntab)" = $((n0 + 1)) ]' 20
 ok "...Ctrl+T in it (Ctrl+F21 from rudolf-display): a new tab of the Tor window, as in Oracle's windows; no window of Chromium's own" "$([ "$(ntab)" = $((n0 + 1)) ] && [ "$(torw)" = 1 ] && [ "$(procs --class=RudolfTor)" = 1 ] && [ "$(targets | grep -c '^page ')" -le 1 ] && echo 1)" "$n0 $(ntab) | $(targets)"
-keyson; c0=$(grep -c 'POST torwin/open' $D/calls); DISPLAY=$DSP $T/dispkeys feed $TW ctrl+n; w8 '[ "$(torw)" = 2 ]' 120
+keyson; A0=$(node -e 'fetch("http://127.0.0.1:9337/json/list").then(r=>r.json()).then(l=>console.log(l.filter(t=>t.type=="app").map(t=>t.id).join("\n")))'); c0=$(grep -c 'POST torwin/open' $D/calls); DISPLAY=$DSP $T/dispkeys feed $TW ctrl+n; w8 '[ "$(torw)" = 2 ]' 120
 ok "...Ctrl+N (Ctrl+F22): a new Tor window (rudolfd's torwin/open), of the same Chromium, not a normal or Chromium's own window" "$([ "$(torw)" = 2 ] && [ "$(grep -c 'POST torwin/open' $D/calls)" -gt $c0 ] && [ "$(procs --class=RudolfTor)" = 1 ] && echo 1)" "$(torw) $(grep -c 'POST torwin/open' $D/calls)/$c0 | $(targets)"
-# (the new Tor window closed again, once its page is up)
-CLOSE2='(()=>{if(typeof OA=="object"&&OA.main&&![...OA.main.body.querySelectorAll(".otab")].some(t=>/Keys 59/.test(t.textContent)))window.__oneAppClose();return 1})()'
-w8 'evt "$PGT" "$CLOSE2" >/dev/null; timeout 0.5 tail -f /dev/null; [ "$(torw)" = 1 ]' 60 || echo "(the new Tor window did not close: $(evt "$PGT" '[location.hash,typeof OA=="object"&&!!OA.main,typeof window.__oneAppClose].join("|")'))"
+# (the new Tor window closed again: its shell's target, the one that was not there before Ctrl+N, through DevTools)
+apps() { node -e 'fetch("http://127.0.0.1:9337/json/list").then(r=>r.json()).then(l=>console.log(l.filter(t=>t.type=="app").map(t=>t.id).join("\n"))).catch(()=>{})' 2>/dev/null; }
+for a in $(apps); do echo "$A0" | grep -qx "$a" || node -e 'fetch("http://127.0.0.1:9337/json/close/"+process.argv[1]).catch(()=>{})' $a; done
+w8 '[ "$(torw)" = 1 ]' 40 || echo "(the new Tor window did not close: $(targets))"
 keyson; n1=$(ntab); DISPLAY=$DSP $T/dispkeys feed $TW ctrl+q; timeout 1.5 tail -f /dev/null
 o=$(evt http://keys59.test/ 'K.join()' one)
 ok "...Ctrl+Q (Ctrl+F23, as the site sees it let go): nothing, as in Oracle's windows (Chromium did not quit, the window and its tabs stay)" "$([ "$(procs --class=RudolfTor)" = 1 ] && [ "$(torw)" = 1 ] && [ "$(ntab)" = $n1 ] && echo "$o" | grep -q F23 && echo 1)" "$(procs --class=RudolfTor) $(torw) $n1 $(ntab) keys $o"
