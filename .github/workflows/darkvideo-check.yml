@@ -1,0 +1,44 @@
+# 1.6.0: Oracle's dark pages over a video (YouTube's progress bar drawn as a negative, the Vivobook, 2026-11-15), in the
+# newest beta's own Chromium (its chromium.sfs): iso/qt/host/darkvideo60_t.sh with main's shell.js (before) and this
+# tree's (after). Nothing is published; no website is visited (the page and its video are made in the test).
+name: Dark pages video check
+on:
+  workflow_dispatch:
+    inputs:
+      serial: {description: 'A release to test (its serial); empty: the newest beta', required: false, default: ''}
+  push:
+    branches: [oracle-dark-video]
+    paths: ['iso/shell/shell.js', 'desktop/web46.js', 'iso/qt/host/darkvideo60*', '.github/workflows/darkvideo-check.yml']
+permissions: {contents: read}
+jobs:
+  darkvideo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with: {fetch-depth: 0}
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq squashfs-tools ffmpeg >/dev/null
+          mkdir -p pw && cd pw && npm init -y >/dev/null && npm install -s playwright-core@1.56.1 >/dev/null && ln -s playwright-core node_modules/playwright
+          sudo npx playwright-core install-deps chromium >/dev/null 2>&1 || true
+      - name: The release's Chromium
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S='${{ inputs.serial }}'; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel && gh release download "r$S" -D rel -p 'chromium.sfs'
+          unsquashfs -q -d chr rel/chromium.sfs opt/chromium >/dev/null
+          ls chr/opt/chromium/chrome && chr/opt/chromium/chrome --version || true
+          echo "::notice title=Dark pages video check::release $S, $(chr/opt/chromium/chrome --version 2>/dev/null)"
+      - name: Before (main's shell.js)
+        continue-on-error: true
+        run: |
+          git show origin/main:iso/shell/shell.js > main-shell.js
+          NODE_PATH=$PWD/pw/node_modules CHROME=$PWD/chr/opt/chromium/chrome SHELLJS=$PWD/main-shell.js sh iso/qt/host/darkvideo60_t.sh | tee before.txt
+      - name: After (this tree's shell.js)
+        run: NODE_PATH=$PWD/pw/node_modules CHROME=$PWD/chr/opt/chromium/chrome sh iso/qt/host/darkvideo60_t.sh | tee after.txt; grep -q '^all passed' after.txt
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: darkvideo, retention-days: 7, path: "before.txt\nafter.txt"}
