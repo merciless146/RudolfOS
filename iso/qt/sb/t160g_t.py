@@ -15,6 +15,11 @@
 # RUDOLFDATA partition (/persist/flatpak, /persist/debian); the guest has no network.
 #   python3 t160g_t.py REL-DIR      (SB_PARTS and QEMU as for t150/t160; root; QEMU_ACCEL=kvm where it can)
 #   T160G_STK=1: also SuperTuxKart from Flathub (about 1 GB), started through apps/run
+#   T160G_SIM=1: on a release built before the fix (its libglx.so looks in "/usr/lib/$MA/dri"), the fix simulated: that
+#   module with the folder's name changed to /run/gldri (a link to /usr/lib/x86_64-linux-gnu/dri), bound over the
+#   release's, and the display started again, before anyone signs in (check 0 is then a note)
+# Cause found by this test (beta 2026111611): Xorg.log "AIGLX error: dlopen of /usr/lib/$MA/dri/swrast_dri.so failed",
+# "GLX: no usable GL providers found for screen 0": no program, root's included, got a GLX visual (iso/xshim.sh, 1.5.9).
 import os, sys, time, re, subprocess, shutil, struct, json, base64
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE); ISO = os.path.dirname(QT)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
@@ -23,7 +28,7 @@ from guest import Guest
 from ser import Ser
 REL = os.path.abspath(sys.argv[1])
 PARTS = os.environ.get('SB_PARTS', '/nonexistent'); LOG = open('t160g.txt', 'w'); R = []
-STK = os.environ.get('T160G_STK') == '1'
+STK = os.environ.get('T160G_STK') == '1'; SIM = os.environ.get('T160G_SIM') == '1'
 def out(*a):
     s = ' '.join(str(x) for x in a); print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
 def ok(n, c, d=''):
@@ -41,6 +46,14 @@ subprocess.run(['gcc', '-O2', '-o', f'{T}/t160g/glxdraw', f'{G}/glxdraw.c', '-lG
 # the app: glxdraw and a script saying what the sandbox has, on the Platform runtime; exported as Flatpak does it
 A = f'{W}/app'; os.makedirs(f'{A}/files/bin'); os.makedirs(f'{A}/files/share/applications'); os.makedirs(f'{A}/export/share/applications')
 shutil.copy(f'{T}/t160g/glxdraw', f'{A}/files/bin/glxdraw')
+# the release's GLX module (the X server's): where it looks for Mesa's DRI drivers
+GM = 'usr/lib/xorg/modules/extensions/libglx.so'
+subprocess.run(['unsquashfs', '-n', '-f', '-d', f'{W}/base', f'{REL}/base.sfs', GM], check=True, stdout=subprocess.DEVNULL)
+glx = open(f'{W}/base/{GM}', 'rb').read(); BAD = b'/usr/lib/$MA/dri\0'
+GLXDIR = re.findall(rb'/usr/lib/[^\0]*/dri(?=\0)', glx)
+PATCHED = False
+if SIM and BAD in glx:
+    open(f'{T}/t160g/libglx.so', 'wb').write(glx.replace(BAD, b'/run/gldri'.ljust(len(BAD), b'\0'))); PATCHED = True
 open(f'{A}/files/bin/gltest', 'w').write('#!/bin/sh\n'
     'echo "GLTEST uid=$(id -u) groups=$(id -G) DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY"\n'
     'ls -l /dev/dri/ 2>&1 | tr "\\n" " "; echo; ls -la /tmp/.X11-unix/ 2>&1 | tr "\\n" " "; echo\n'
@@ -141,6 +154,20 @@ try:
     vm, g, up, js = boot('a'); sh = lambda c, t=60: run(g, c, t)
     ok('1. the release starts (slot a)', up, 'not up')
     if not up: raise SystemExit
+    n0 = '0. the X server\'s GLX looks for Mesa\'s DRI drivers in /usr/lib/x86_64-linux-gnu/dri'
+    if PATCHED: out(f'NOTE {n0}: not in this release ({GLXDIR}); the fix is simulated')
+    else: ok(n0, GLXDIR == [b'/usr/lib/x86_64-linux-gnu/dri'], GLXDIR)
+    if PATCHED:
+        o = sh("ln -sfn /usr/lib/x86_64-linux-gnu/dri /run/gldri; mount --bind /persist/t160g/libglx.so /usr/lib/xorg/modules/extensions/libglx.so && echo BOUND; "
+               "S0=$(stat -c %Y /run/rudolf/Xorg.log); touch /run/rudolf/screen-restart; for i in $(seq 90); do sleep 2; [ \"$(stat -c %Y /run/rudolf/Xorg.log 2>/dev/null)\" != \"$S0\" ] && grep -q 'GLX:' /run/rudolf/Xorg.log && break; done; "
+               "grep -E 'AIGLX|GLX:' /run/rudolf/Xorg.log", 300)
+        out('the fix simulated, the display started again:', 'BOUND' in o)
+        time.sleep(20)
+        end = time.time() + 600
+        while time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'", 20) is not True: time.sleep(5)
+        run(g, "last=; same=0; i=0; while [ $i -lt 40 ]; do i=$((i+1)); v=$(timeout 20 cdp-eval 'Math.round(performance.timeOrigin)' 2>/dev/null | grep -o '\"value\":[0-9]*' | head -1); "
+               "if [ -n \"$v\" ] && [ \"$v\" = \"$last\" ]; then same=$((same+5)); else same=0; last=$v; fi; [ $same -ge 20 ] && break; sleep 5; done; echo \"SETTLED $same $last after $i\"", 1100)
+        js(INIT_JS)
     r = js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);const k=await acctNew('kid','k1','user');ACCTS.push(k);saveUser();return b.id+' '+k.id})()", 120)
     out('accounts:', r); BOSS, KID = str(r).split()
     # (kid signed in once, so it has its own Linux user; then boss, whose session the apps run in)
@@ -183,7 +210,7 @@ try:
         sh("rm -f /run/rudolf/apps/net.supertuxkart.SuperTuxKart.log")
         r = js("lxApi('apps/run?id=net.supertuxkart.SuperTuxKart&desktop=net.supertuxkart.SuperTuxKart').then(()=>'ok',e=>'ERR '+e.message)", 60); out('apps/run STK:', r)
         time.sleep(150)
-        o = sh(f"tail -c 3000 /run/rudolf/apps/net.supertuxkart.SuperTuxKart.log; echo; pgrep -u acct{UB} -fl supertuxkart | head -3; echo PROCS=$(pgrep -u acct{UB} -f supertuxkart | wc -l)", 60)
+        o = sh(f"grep -iE 'error|fatal|opengl|glx|renderer|driver' /run/rudolf/apps/net.supertuxkart.SuperTuxKart.log | tail -20; tail -c 1500 /run/rudolf/apps/net.supertuxkart.SuperTuxKart.log; echo; pgrep -u acct{UB} -fl supertuxkart | head -3; echo PROCS=$(pgrep -u acct{UB} -f supertuxkart | wc -l)", 60)
         vm.shot('stk')
         ok('8. SuperTuxKart (Flathub) started by the desktop as the account\'s user is running after 150 s, with no OpenGL error', re.search(r'PROCS=[1-9]', o) and not re.search(r'(?i)opengl.*(fail|error|not supported)|no GLX|could not create', o), o)
 finally:

@@ -23,3 +23,8 @@ CFLAGS="-I$XS/shim/include" $MESON setup b --prefix=/usr --sysconfdir=/etc --loc
 	-Dvendor_name="Rudolf OS" -Dvendor_name_short=Rudolf
 ninja -C b
 DESTDIR=$XS/stage $MESON install -C b --quiet
+# 1.6.0: GLX's DRI driver folder is this system's (1.5.9 built "/usr/lib/$MA/dri", a name with no folder, into libglx.so,
+# so no program got OpenGL through X11: Unvanquished's "Couldn't load a renderer.")
+GLXM=$XS/stage/usr/lib/xorg/modules/extensions/libglx.so
+strings "$GLXM" | grep -qx "/usr/lib/$MA/dri" ||
+	{ echo "xbuild.sh: libglx.so does not look for the DRI drivers in /usr/lib/$MA/dri: $(strings "$GLXM" | grep '/dri$' | head -3)"; exit 1; }

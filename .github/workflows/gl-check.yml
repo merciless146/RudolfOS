@@ -2,6 +2,9 @@
 # "Couldn't load a renderer." on Standard): GLX outside a sandbox, a Flatpak app (Flathub's runtime and GL extension)
 # started by the desktop as the account's user, a Debian program run as the account, and the display still refused to
 # another account's user. On the newest beta release (or a serial given). Nothing is published.
+# Two runs: the release as it is ("as released": its X server must look for Mesa's drivers in the right folder; a release
+# built before the fix of 2026-11-16 fails there, so that run may fail) and with the fix simulated on such a release
+# (T160G_SIM=1: its GLX module's folder corrected and bound over it), which must pass.
 name: OpenGL for Linux apps
 on:
   workflow_dispatch:
@@ -18,12 +21,16 @@ jobs:
   gl:
     runs-on: ubuntu-24.04
     timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix: {sim: ['0', '1']}
+    continue-on-error: ${{ matrix.sim == '0' }}
     steps:
       - uses: actions/checkout@v5
       - name: Tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography bzip2 flatpak debootstrap libgl-dev libx11-dev >/dev/null
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography bzip2 flatpak debootstrap squashfs-tools libgl-dev libx11-dev >/dev/null
           [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
           Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
           for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
@@ -41,10 +48,10 @@ jobs:
           if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
           else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
           ls -la rel; echo "::notice title=OpenGL check::release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
-      - name: t160g (OpenGL for an account's Flatpak and Debian apps)
+      - name: t160g (OpenGL for an account's Flatpak and Debian apps; fix simulated ${{ matrix.sim }})
         run: |
           STK='${{ inputs.stk }}'; [ -n "$STK" ] || STK=1
-          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} T160G_STK=$STK python3 ../iso/qt/sb/t160g_t.py ../rel
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} T160G_STK=$STK T160G_SIM=${{ matrix.sim }} python3 ../iso/qt/sb/t160g_t.py ../rel
       - if: always()
         uses: actions/upload-artifact@v4
-        with: {name: t160g, retention-days: 7, path: "run/t160g.txt\nrun/t160g*/qemu.log\nrun/t160g*/*.png"}
+        with: {name: 't160g-sim${{ matrix.sim }}', retention-days: 7, path: "run/t160g.txt\nrun/t160g*/qemu.log\nrun/t160g*/*.png"}
