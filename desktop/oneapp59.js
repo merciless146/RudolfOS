@@ -304,6 +304,9 @@ html.oamwait .rmodal,html.oamwait .natdlg,html.oamwait #oamodalbg{opacity:0!impo
  /* (the ✕ button, not W.close: apps that ask about unsaved work watch the button) */
  window.__oneAppClose=()=>{const m=OA.main;if(m&&m.el.isConnected){const c=m.el.querySelector('.tb .cl');if(c)c.click();else m.close()}else oaDone()};
 }
+/* (a switch changed by a page doing it for the shell: in rudolfd's copy, and the shell told, before the page closes) */
+function oaQsTold(){OA_QST=(async()=>{try{if(window.__rudolfLsFlush)await window.__rudolfLsFlush()}catch(e){}try{if(USER)oaPost({op:'set',id:uid()})}catch(e){}})()}
+let OA_QST=null;
 async function oaStart(showLogin0){
  let s=null;
  if(typeof RD!='undefined'&&RD){try{s=await rd('desktop/session')}catch(e){s=null}}
@@ -368,6 +371,9 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
     /* (High contrast and Touch mode are kept as S.cb and S.touch, which the tile's own copy to SC (its keys hc, tm) leaves out: on Standard
        the one page shows them at once; here the other windows and the shell read what is saved) */
     if(SC){SC.cb=S.cb;SC.touch=S.touch;persistS()}}catch(e){console.warn(e)}
+   /* (2026-11-16, k160_t.py in QEMU: the shell showed a switch off that every window had on) the change in rudolfd's copy and the shell told
+      before this page closes: the save's own word to the shell (persistS's "set", 120 ms later) went with the page when it closed first */
+   oaQsTold();
    if(!sr)return oaFin({});const t0=Date.now(),said=()=>{const a=window.__srAudio,ss=window.speechSynthesis;if(Date.now()-t0>8000||(Date.now()-t0>1500&&!(ss&&ss.speaking)&&!(a&&!a.ended&&!a.paused)))return oaFin({});setTimeout(said,250)};setTimeout(said,400);return}
   /* (1.6.0) the native desktop's on-screen keyboard: the page's own (#vkb, its keys for the language chosen) filling a window of its own
      that never takes the keyboard; a key goes to the shell, which gives it to the page of the window in front (__oaVkIn) */
@@ -375,7 +381,10 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
    {const st=document.createElement('style');st.textContent=`html.oavk,html.oavk body{background:#e5e7eb!important;overflow:hidden!important;zoom:1!important}html.oavk body>*:not(#vkb){visibility:hidden!important}
 html.oavk #vkb{display:block!important;visibility:visible!important;position:fixed!important;left:0!important;top:0!important;right:0!important;bottom:auto!important;transform:none!important;width:100%!important;max-width:none!important;border:0!important;border-radius:0!important;box-shadow:none!important;zoom:var(--oavkz,1)}`;document.head.appendChild(st)}
    vkInsert=c=>oaPost({op:'vk',c:String(c)});vkSpecial=k=>oaPost({op:'vk',sp:String(k)});
-   vkShown=true;S.vk=true;try{vkDraw();vkEl.style.display='block'}catch(e){console.warn(e)}document.title='On-screen keyboard';
+   /* (2026-11-16, k160_t.py in QEMU: Dark mode on also put the on-screen keyboard on) this page shows the keyboard without turning the
+      setting on in its own settings (S.vk), which it saved when it took another window's change, so the shell read vk on; it saves nothing */
+   vkShown=true;{const _vs=vkSync;vkSync=function(){const o=S.vk;S.vk=true;try{return _vs.apply(this,arguments)}finally{S.vk=o}}}persistS=function(){try{oaSnap()}catch(e){}};
+   try{vkDraw();vkEl.style.display='block'}catch(e){console.warn(e)}document.title='On-screen keyboard';
    const z=Math.max(75,Math.min(250,+S.scale||100))/100;H.style.setProperty('--oavkz',z);H.style.zoom='';
    /* (its height for the window; its letters' places for the tests' state) */
    const tell=()=>oaPost({op:'vk',h:String(Math.ceil(vkEl.getBoundingClientRect().height/z)),keys:[...vkEl.querySelectorAll('.vk-k')].slice(0,60).map(b=>{const r=b.getBoundingClientRect();return encodeURIComponent(b.dataset.c||'')+' '+Math.round(r.left+r.width/2)+' '+Math.round(r.top+r.height/2)}).join('|')});
@@ -391,7 +400,7 @@ html.oavk #vkb{display:block!important;visibility:visible!important;position:fix
     else if(op=='dnd'){const c=p.querySelector('.dnd');if(c.checked!=(q.get('on')=='1')){c.checked=q.get('on')=='1';c.dispatchEvent(new Event('change'))}}
     else if(op=='dismiss'||op=='why'){const it=p.querySelectorAll('.nitem')[+q.get('i')||0],b=it&&it.querySelector(op=='why'?'.bzwhy':'.nx');if(op=='why')OA.want=1;if(b)b.click()}
     p.remove()}catch(e){console.warn(e)}
-   if(op=='why'){setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}return oaFin({})}
+   if(op=='why'){setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}if(op=='dnd')oaQsTold();return oaFin({})}
   if(da0=='mute'){try{const m=S.snd&&S.snd.master;if(m){m.on=!m.on;trayVol()}}catch(e){}setTimeout(()=>oaFin({}),400);return}}
  /* (1.6.0 Part 12, item 3) a day double-clicked in the calendar under the native shell's clock: the Calendar at that day */
  {const cd=ONEAPP.q.get('day');if(ONEAPP.k=='calendar'&&cd&&/^\d{4}-\d\d-\d\d$/.test(cd))setTimeout(()=>{try{window.__calGo&&__calGo(cd)}catch(e){}},800)}
@@ -416,7 +425,7 @@ html.oavk #vkb{display:block!important;visibility:visible!important;position:fix
    gives the page's own menu for that desktop icon (its name, or a file's name; none: the desktop's) and chooses the item
    with those words, as a click would. What opens a window is that window; what has none is done unseen and the page
    closes; the page's own dialogs that the shell draws itself (Rename, Open with) are reported to it instead. */
-function oaFin(m){(async()=>{try{fsFlush()}catch(e){}try{await oaCatalog()}catch(e){}oaPost(Object.assign({op:'done'},m||{}));oaDone()})()}
+function oaFin(m){(async()=>{try{if(OA_QST)await OA_QST}catch(e){}try{fsFlush()}catch(e){}try{await oaCatalog()}catch(e){}oaPost(Object.assign({op:'done'},m||{}));oaDone()})()}
 function oaDesk(){const q=ONEAPP.q,on=q.get('on')||'',item=(q.get('item')||'').trim(),D=document.getElementById('desk');
  const el=on?[...D.querySelectorAll(':scope > .ic')].find(e=>(e.dataset.fn||((e.querySelector('span')||{}).textContent||'').trim())==on):null;
  if(on&&!el)return oaFin({err:'There is no “'+on+'” on the desktop.'});

@@ -401,6 +401,7 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
 static void appwin_show(AppWin *a);
 static void srch_ready(AppWin *a);
 static void snd_page(const char *k, double v, const char *pj); static void snd_click(void);
+static int fl_outside(void); static void seat_grab(GtkWidget *w, int owner); static void qs_keep(void);
 static int oracle_open(const char *file, const char *extra);   /* (1.5.9, 12.3c: Oracle in Rudolf's Chromium) */
 static void page_done(JSCValue *v);
 static void frame_redraw_app(AppWin *a);
@@ -1298,7 +1299,7 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 		if ((c = client_of(e->xexpose.window)) && c->frame == e->xexpose.window) { if (!e->xexpose.count) frame_draw(c); return GDK_FILTER_REMOVE; }
 		return GDK_FILTER_CONTINUE;
 	case ButtonPress:
-		if ((c = client_of(e->xbutton.window))) {
+		if ((c = client_of(e->xbutton.window))) { fl_outside();
 			int ri = rz_of(c, e->xbutton.window); if (ri >= 0) { XButtonEvent b = e->xbutton; rz_to_frame(c, ri, &b.x, &b.y); frame_press(c, &b); return GDK_FILTER_REMOVE; }
 			if (c->frame == e->xbutton.window) frame_press(c, &e->xbutton);
 			else { wm_focus(c); XAllowEvents(DPY, ReplayPointer, e->xbutton.time); }   /* a click into a window: it gets the focus, and the click */
@@ -2049,7 +2050,8 @@ static gboolean bar_scroll(GtkWidget *w, GdkEventScroll *e, gpointer d)
 	double dy = e->direction == GDK_SCROLL_UP ? -1 : e->direction == GDK_SCROLL_DOWN ? 1 : 0; if (e->direction == GDK_SCROLL_SMOOTH) dy = e->delta_y;
 	if (dy) hk_post(dy < 0 ? "/api/brightness/step?d=up" : "/api/brightness/step?d=down", 1); return TRUE;
 }
-static gboolean bar_press(GtkWidget *w, GdkEventButton *e, gpointer d) { (void)w; (void)d; if (e->type == GDK_BUTTON_PRESS && e->button == 3) { bar_menu(e, hit_at(e->x, e->y)); return TRUE; } if (e->type == GDK_BUTTON_PRESS && e->button == 1) { PRESS = hit_at(e->x, e->y); hk_set(PRESS, PRS_K, PRS_A); bar_redraw(); } return TRUE; }
+static int fl_bar_press(GdkEventButton *e, int h);
+static gboolean bar_press(GtkWidget *w, GdkEventButton *e, gpointer d) { (void)w; (void)d; if (fl_bar_press(e, hit_at(e->x, e->y))) return TRUE; if (e->type == GDK_BUTTON_PRESS && e->button == 3) { bar_menu(e, hit_at(e->x, e->y)); return TRUE; } if (e->type == GDK_BUTTON_PRESS && e->button == 1) { PRESS = hit_at(e->x, e->y); hk_set(PRESS, PRS_K, PRS_A); bar_redraw(); } return TRUE; }
 static gboolean bar_release(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
 	(void)w; (void)d; if (e->button != 1) return TRUE; int h = hit_at(e->x, e->y); int was = PRESS; PRESS = -1; PRS_K[0] = PRS_A[0] = 0; bar_redraw();
@@ -2902,7 +2904,7 @@ static void settings_load(void)
 	if (!n.tb[0]) snprintf(n.tb, sizeof n.tb, "bottom"); if (!n.wpfit[0]) snprintf(n.wpfit, sizeof n.wpfit, "fill"); if (!n.dm[0]) snprintf(n.dm, sizeof n.dm, "auto");
 	jstr(v, "acct", n.acct, sizeof n.acct); jstr(v, "wpacct", n.wpacct, sizeof n.wpacct); n.gen = jnum(v, "gen", 0); n.notes = (int)jnum(v, "notes", 0); n.wallpaper = jbool(v, "wallpaper");
 	JV *p = jprop(v, "pins"); for (int i = 0; i < 24; i++) { JV *o = jat(p, i); if (!o) break; if (o->t == 3) snprintf(n.pins[n.npins++], KN, "%s", o->s);  }
-	int moved = strcmp(n.tb, S.tb) != 0 || n.scale != S.scale; S = n; ui_family(S.ff); snd_set(s);   /* (the desktop's sounds: report 2) */
+	int moved = strcmp(n.tb, S.tb) != 0 || n.scale != S.scale; S = n; qs_keep(); ui_family(S.ff); snd_set(s);   /* (the desktop's sounds: report 2) */
 	wg_load(v);   /* (the widgets: item 2) */
 	cal_events_load(v);   /* (the calendar under the clock: item 3) */
 	nt_load(v);   /* (the notifications' list: item 3) */
@@ -3088,7 +3090,7 @@ static void cm_open(double px, double py, const char *title, const CMI *items, i
 	CMWX = x0; CMWY = y0; CMBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), x0, y0, x1 - x0, y1 - y0);
 	gtk_widget_set_size_request(CMAREA, x1 - x0, y1 - y0); gtk_window_resize(GTK_WINDOW(CMWIN), x1 - x0, y1 - y0); gtk_window_move(GTK_WINDOW(CMWIN), x0, y0);
 	CMHOV = -1; gtk_widget_show_all(CMWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(CMWIN)));
-	gdk_seat_grab(gdk_display_get_default_seat(gdk_display_get_default()), gtk_widget_get_window(CMWIN), GDK_SEAT_CAPABILITY_ALL, TRUE, NULL, NULL, NULL, NULL);
+	seat_grab(CMWIN, TRUE);   /* (as the pop-ups': once the menu is on the screen) */
 	gtk_widget_grab_focus(CMAREA); state_write();
 }
 
@@ -3282,7 +3284,7 @@ static void dg_open(int kind)
 	DGK = kind; DGHOV = -1; DGFOC = 0; DGALW = 0; DGBUSY = 0; DGMSG[0] = 0; DGCARET = 1;
 	gtk_widget_set_size_request(DGAREA, SW, SH); gtk_window_resize(GTK_WINDOW(DGWIN), SW, SH); gtk_window_move(GTK_WINDOW(DGWIN), 0, 0);
 	gtk_widget_show_all(DGWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(DGWIN)));
-	gdk_seat_grab(gdk_display_get_default_seat(gdk_display_get_default()), gtk_widget_get_window(DGWIN), GDK_SEAT_CAPABILITY_ALL, TRUE, NULL, NULL, NULL, NULL);
+	seat_grab(DGWIN, TRUE);
 	gtk_widget_grab_focus(DGAREA); gtk_im_context_focus_in(DGIM); if (DGCARET_T) g_source_remove(DGCARET_T); DGCARET_T = g_timeout_add(500, dg_blink, NULL); state_write();
 }
 static void rename_ask(const char *file, const char *name) { snprintf(DGFILE, sizeof DGFILE, "%s", file); snprintf(DGNAME, sizeof DGNAME, "%s", name); snprintf(DGVAL, sizeof DGVAL, "%s", name); DGSEL = 1; dg_open(DLG_RENAME); }
@@ -3657,7 +3659,7 @@ static void di_menu(GdkEventButton *e, int icon)
 }
 static gboolean desk_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
-	(void)w; (void)d; menu_hide(); if (wg_press(e)) return TRUE;   /* (a widget: item 2) */
+	(void)w; (void)d; menu_hide(); if (fl_outside()) return TRUE; if (wg_press(e)) return TRUE;   /* (a widget: item 2) */
 	int i = di_at(e->x, e->y);
 	if (e->type == GDK_2BUTTON_PRESS && e->button == 1) { if (i >= 0) di_open(i); return TRUE; }
 	if (e->type != GDK_BUTTON_PRESS) return TRUE;
@@ -4900,10 +4902,35 @@ static gboolean fl_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 	(void)wd; (void)d; if (FLBG) { gdk_cairo_set_source_pixbuf(cr, FLBG, 0, 0); cairo_paint(cr); }
 	cairo_translate(cr, -FLWX, -FLWY); cairo_scale(cr, Z, Z); fl_layout(cr, 1); return TRUE;
 }
+/* (2026-11-16, k160_t.py in QEMU: a click on the desktop did not close quick settings) a pop-up takes the pointer so that a click anywhere
+   else comes to it and closes it, as the page's pointerdown does; the grab was asked for at once after showing the window, and X refuses a
+   grab of a window not on the screen yet (a slower computer, QEMU: GrabNotViewable), so the clicks went past it. Asked again until it
+   holds, while the pop-up is shown (and the desktop, the taskbar and the windows close it too: fl_outside) */
+typedef struct { GtkWidget *w; int owner, n; } GrabTry;
+static int FL_GRAB;   /* (tests: the pop-up holds the pointer) */
+static gboolean seat_grab_try(gpointer d)
+{
+	GrabTry *t = d; GdkWindow *g = t->w && gtk_widget_get_visible(t->w) ? gtk_widget_get_window(t->w) : NULL;
+	if (!g) { g_free(t); return G_SOURCE_REMOVE; }
+	GdkGrabStatus st = gdk_window_is_viewable(g) ? gdk_seat_grab(gdk_display_get_default_seat(gdk_display_get_default()), g, GDK_SEAT_CAPABILITY_ALL, t->owner, NULL, NULL, NULL, NULL) : GDK_GRAB_NOT_VIEWABLE;
+	if (t->w == FLWIN) { FL_GRAB = st == GDK_GRAB_SUCCESS; state_write(); }
+	if (st == GDK_GRAB_SUCCESS || ++t->n > 80) { g_free(t); return G_SOURCE_REMOVE; }
+	return G_SOURCE_CONTINUE;
+}
+static void seat_grab(GtkWidget *w, int owner) { GrabTry *t = g_new0(GrabTry, 1); t->w = w; t->owner = owner; if (seat_grab_try(t) == G_SOURCE_CONTINUE) g_timeout_add(25, seat_grab_try, t); }
+/* a press the pop-up did not take (its grab not there yet): elsewhere, so it closes, as the page's */
+static int fl_outside(void) { if (!FLK) return 0; fl_close(); return 1; }
+/* (the taskbar pressed with a pop-up open that its grab missed: closed, as fl_press does; its own button closes it, another goes on to open its own) */
+static int fl_bar_press(GdkEventButton *e, int h)
+{
+	if (!FLK || e->type != GDK_BUTTON_PRESS) return 0; int k = FLK; fl_close();
+	return e->button != 1 || h < 0 || (k == FL_QS && !strcmp(HITS[h].kind, "qs")) || (k == FL_NC && !strcmp(HITS[h].kind, "notes")) || (k == FL_CAL && !strcmp(HITS[h].kind, "clock"))
+		|| (k == FL_VOL && !strcmp(HITS[h].kind, "vol")) || (k == FL_NET && !strcmp(HITS[h].kind, "net")) || (k == FL_BRI && !strcmp(HITS[h].kind, "bri"));
+}
 static void fl_close(void)
 {
 	if (FLWIN && gtk_widget_get_visible(FLWIN)) { gdk_seat_ungrab(gdk_display_get_default_seat(gdk_display_get_default())); gtk_widget_hide(FLWIN); }
-	if (FLBG) { g_object_unref(FLBG); FLBG = NULL; } FLK = FL_NONE; FLHOV = FLPRESS = -1; FLDRAG = 0; state_write();
+	FL_GRAB = 0; if (FLBG) { g_object_unref(FLBG); FLBG = NULL; } FLK = FL_NONE; FLHOV = FLPRESS = -1; FLDRAG = 0; state_write();
 }
 static void fl_volume_set(const char *q) { char p[80]; snprintf(p, sizeof p, "/api/volume?%s", q); JV *v = NULL; GByteArray *b; if (http("POST", p, NULL, 0, &b) == 200 && b) { v = jparse((char *)b->data); }
 	if (b) g_byte_array_free(b, TRUE); if (v && jbool(v, "ok")) { VOL = FLVOL = (int)jnum(v, "volume", FLVOL); MUTED = FLMUTE = jbool(v, "muted"); bar_redraw(); } jfree(v); }
@@ -4912,9 +4939,45 @@ static void fl_range(double px) { double x = (px + FLWX) / Z; int v = FLVOL;
 		b = CLAMP(b, 5, 100); if (b != BRI) { bri_set(b); gtk_widget_queue_draw(FLAREA); } return; } for (int i = 0; i < NFLB; i++) if (!strcmp(FLBK[i], "range")) v = (int)lround((x - FLB[i].x - 8) / (154 - 16) * 100);
 	v = CLAMP(v, 0, 100); if (v == FLVOL && !FLMUTE) return; FLVOL = v; FLMUTE = 0; gtk_widget_queue_draw(FLAREA); char q[24]; snprintf(q, sizeof q, "set=%d", v); fl_volume_set(q); }
 /* a switch changed: here at once, the page's own (#app=do-qs: saved as the page saves it, which the windows' pages hear) */
+/* (2026-11-16, k160_t.py in QEMU: the shell's switches disagreed with the windows) a switch the shell changed stays as it showed it until the
+   saved settings have it too (the page doing it saves it a moment later: settings read in between, another window's save, are older) */
+static struct { int on; gint64 t; } QSP[8];
+static void qs_pending(int i, int on) { if (i >= 0 && i < 8) { QSP[i].on = on; QSP[i].t = g_get_monotonic_time(); } }
+static void qs_keep(void)
+{
+	gint64 now = g_get_monotonic_time();
+	for (int i = 0; i < 8; i++) if (QSP[i].t) { if (now - QSP[i].t > 20 * G_USEC_PER_SEC || qs_get(i) == QSP[i].on) QSP[i].t = 0; else qs_set(i, QSP[i].on); }
+}
+/* (a JSON value written again as the page's JSON.stringify writes it: numbers as short as they read back the same) */
+static void jv_dump(GString *o, const JV *v)
+{
+	if (!v || v->t == 0) { g_string_append(o, "null"); return; }
+	if (v->t == 1) { g_string_append(o, v->n ? "true" : "false"); return; }
+	if (v->t == 2) { if (!isfinite(v->n)) { g_string_append(o, "null"); return; } char b[40]; for (int p = 1; p <= 17; p++) { g_snprintf(b, sizeof b, "%.*g", p, v->n); if (g_ascii_strtod(b, NULL) == v->n) break; }
+		char *e = strchr(b, ','); if (e) *e = '.'; g_string_append(o, b); return; }
+	if (v->t == 3) { json_esc(o, v->s); return; }
+	g_string_append_c(o, v->t == 4 ? '[' : '{');
+	for (int i = 0; i < v->len; i++) { if (i) g_string_append_c(o, ','); if (v->t == 5) { json_esc(o, v->k[i]); g_string_append_c(o, ':'); } jv_dump(o, v->v[i]); }
+	g_string_append_c(o, v->t == 4 ? ']' : '}');
+}
+/* (2026-11-16, k160_t.py in QEMU: the shell's switches and the windows' disagreed, on for the windows and off for the shell) a switch is
+   saved where every window and the shell read it, at once, by the shell: the account's settings in rudolfd's copy of the pages' storage
+   (bd95set:ID, as the page's tile saves it: dm, nl, dnd, sr, mag, cb, vk, touch), then the shell and every window told (settings_changed:
+   the windows take it from that copy). The page doing the rest (#app=do-qs: the screen reader's words) finds it already so. */
+static void qs_save(int i, int on)
+{
+	static const char *const K[8] = { "dm", "nl", "dnd", "sr", "mag", "cb", "vk", "touch" }; if (i < 0 || i > 7 || !USER_ID[0] || !id_ok(USER_ID)) return;
+	char p[160]; snprintf(p, sizeof p, "/api/lsync?key=bd95set%%3A%s", USER_ID); JV *r = jget(p); JV *vv = jprop(r, "v"); JV *set = vv && vv->t == 3 && vv->s[0] == '{' ? jparse(vv->s) : NULL;
+	if (!set) { jfree(r); return; }
+	JV *x = jprop(set, K[i]); if (!x) { set->k = g_renew(char *, set->k, set->len + 1); set->v = g_renew(JV *, set->v, set->len + 1); set->k[set->len] = g_strdup(K[i]); x = set->v[set->len++] = g_new0(JV, 1); }
+	g_free(x->s); x->s = NULL; if (i == 0 || i == 5) { x->t = 3; x->s = g_strdup(i == 0 ? (on ? "dark" : "light") : (on ? "contrast" : "none")); } else { x->t = 1; x->n = on; }
+	GString *js = g_string_new(NULL); jv_dump(js, set); GString *b = g_string_new("{\"gen\":0,\"part\":1,\"set\":{"); char k[100]; snprintf(k, sizeof k, "bd95set:%s", USER_ID); json_esc(b, k); g_string_append_c(b, ':'); json_esc(b, js->str); g_string_append(b, "},\"del\":[]}");
+	int c = http("POST", "/api/lsync", b->str, b->len, NULL); g_string_free(js, TRUE); g_string_free(b, TRUE); jfree(set); jfree(r);
+	if (c == 200) settings_changed(USER_ID, NULL);
+}
 static void qs_toggle(int i)
 {
-	if (i < 0 || i > 7) return; int on = !qs_get(i); qs_set(i, on); char *e = qesc(QSL[i]), ex[160]; snprintf(ex, sizeof ex, "&item=%s&on=%d", e, on); g_free(e); app_open_ex("do-qs", NULL, ex, 1);
+	if (i < 0 || i > 7) return; int on = !qs_get(i); qs_set(i, on); qs_pending(i, on); qs_save(i, on); char *e = qesc(QSL[i]), ex[160]; snprintf(ex, sizeof ex, "&item=%s&on=%d", e, on); g_free(e); app_open_ex("do-qs", NULL, ex, 1);
 	if (i == 2) bar_redraw();
 	if (i == 4) { MAG_SAVED = on; if (on && S.magz > 0) MAGZ = S.magz; mag_set(on); }   /* (the magnifier now; its keys only zoom) */
 	a11y_apply(); if (WM_OK && (i == 0 || i == 5)) frames_redraw(); state_write();   /* (1.6.0: at once, for the whole screen: its colour, the magnifier, the keyboard, touch mode's sizes) */
@@ -4935,7 +4998,7 @@ static void fl_act(const char *k, int dbl)
 	else if (!strcmp(k, "settings")) { fl_close(); sc_settings(); return; }   /* (Settings' window, the one open if there is one, as the page's settings()) */
 	else if (!strcmp(k, "power")) { fl_close(); power_dialog(); return; }
 	else if (!strcmp(k, "clear")) { NT_CLR = 0; for (int i = 0; i < NNT; i++) NT_CLR = fmax(NT_CLR, NT[i].at); NT_CLRT = g_get_monotonic_time(); NNT = 0; NNTP = 0; app_open_ex("do-nc", NULL, "&op=clear", 1); bar_redraw(); }
-	else if (!strcmp(k, "dnd")) { S.dnd = !S.dnd; char ex[40]; snprintf(ex, sizeof ex, "&op=dnd&on=%d", S.dnd); app_open_ex("do-nc", NULL, ex, 1); bar_redraw(); }
+	else if (!strcmp(k, "dnd")) { S.dnd = !S.dnd; qs_pending(2, S.dnd); qs_save(2, S.dnd); char ex[40]; snprintf(ex, sizeof ex, "&op=dnd&on=%d", S.dnd); app_open_ex("do-nc", NULL, ex, 1); bar_redraw(); }
 	else if (!strncmp(k, "nx:", 3)) { int i = atoi(k + 3); if (i < 0 || i >= NNT) return; char ex[40]; snprintf(ex, sizeof ex, "&op=dismiss&i=%d", i);
 		if (NNTX == 16) { memmove(&NTX[0], &NTX[1], 15 * sizeof NTX[0]); NNTX--; } NTX[NNTX].at = NT[i].at; snprintf(NTX[NNTX].t, sizeof NTX[0].t, "%s", NT[i].t); NTX[NNTX++].when = g_get_monotonic_time();
 		for (int j = 0; j < NNTP; j++) if (NTP[j].at == NT[i].at && !strcmp(NTP[j].t, NT[i].t)) { memmove(&NTP[j], &NTP[j + 1], (NNTP - j - 1) * sizeof NTP[0]); memmove(&NTPT[j], &NTPT[j + 1], (NNTP - j - 1) * sizeof NTPT[0]); NNTP--; break; }
@@ -4997,8 +5060,7 @@ static void fl_resize(void)
 		if (vis) { GdkDisplay *dp = gdk_display_get_default(); gdk_display_sync(dp); }
 		if (FLBG) g_object_unref(FLBG); FLWX = x0; FLWY = y0; FLBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), x0, y0, x1 - x0, y1 - y0);
 		gtk_widget_set_size_request(FLAREA, x1 - x0, y1 - y0); gtk_window_resize(GTK_WINDOW(FLWIN), x1 - x0, y1 - y0); gtk_window_move(GTK_WINDOW(FLWIN), x0, y0);
-		if (vis) { gtk_widget_show_all(FLWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(FLWIN)));
-			gdk_seat_grab(gdk_display_get_default_seat(gdk_display_get_default()), gtk_widget_get_window(FLWIN), GDK_SEAT_CAPABILITY_ALL, FALSE, NULL, NULL, NULL, NULL); } }
+		if (vis) { gtk_widget_show_all(FLWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(FLWIN))); seat_grab(FLWIN, FALSE); } }
 	gtk_widget_queue_draw(FLAREA); state_write();
 }
 static void fl_open(int kind)
@@ -5019,7 +5081,7 @@ static void fl_open(int kind)
 	if (kind == FL_NC) { for (int i = 0; i < NNT; i++) NT_SEEN = fmax(NT_SEEN, NT[i].at); bar_redraw(); }   /* (ncToggle: what is in the centre is seen) */
 	if (FLBG) { g_object_unref(FLBG); FLBG = NULL; }
 	fl_resize(); gtk_widget_show_all(FLWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(FLWIN)));
-	gdk_seat_grab(gdk_display_get_default_seat(gdk_display_get_default()), gtk_widget_get_window(FLWIN), GDK_SEAT_CAPABILITY_ALL, FALSE, NULL, NULL, NULL, NULL); state_write();
+	seat_grab(FLWIN, FALSE); state_write();
 }
 
 /* ---- the X server's Composite extension (libXcomposite, loaded when there): the windows' own pictures, which the server keeps up to
@@ -6193,7 +6255,7 @@ static void state_write(void)
 	g_string_append_printf(s, "a11y dark=%d nl=%d dnd=%d sr=%d mag=%d hc=%d vk=%d touch=%d magz=%g\ngamma %d %d\n", menu_dark(), nl_on(), S.dnd, S.sr, MAG_ON, S.hc, VKW && gtk_widget_get_visible(VKW), S.touch, MAGZ, GAMMA_OK == 1, GAMMA_ON);
 	{ int pv = PWR && gtk_widget_get_visible(PWR); g_string_append_printf(s, "power %d\npowertop %d\npowerrows ", pv, x_on_top(PWR)); for (int i = 0; pv && i < NPWR; i++) g_string_append_printf(s, "|%s", PWRT[i]); g_string_append_c(s, '\n');
 	  for (int i = 0; pv && i < NPWR; i++) g_string_append_printf(s, "pwrbtn %s %d %d\n", PWRK[i], (int)lround((PWRB[i][0] + PWRB[i][2] / 2) * Z), (int)lround((PWRB[i][1] + PWRB[i][3] / 2) * Z)); }
-	g_string_append_printf(s, "signtop %d\nbright %d %d\n", x_on_top(SIGN), BRI_HAS, BRI);
+	g_string_append_printf(s, "signtop %d\nbright %d %d\nflgrab %d\n", x_on_top(SIGN), BRI_HAS, BRI, FL_GRAB);
 	if (VKW && gtk_widget_get_visible(VKW)) { char *k = g_strdup(VKKEYS); for (char *t = strtok(k, "|"); t; t = strtok(NULL, "|")) { char ch[32]; int kx, ky; if (sscanf(t, "%31s %d %d", ch, &kx, &ky) == 3) { char *u = g_uri_unescape_string(ch, NULL); g_string_append_printf(s, "vkkey %s %d %d\n", u ? u : ch, VKX + kx, VKY + ky); g_free(u); } } g_free(k); }
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->ontop) g_string_append_printf(s, "ontop %s\n", c->app ? c->app->k : c->ak[0] ? c->ak : "-"); }
 	g_string_append_printf(s, "notes %d %d %d\nmic %d %d\n", S.dnd, nt_unread(), NNT, MIC_N, MIC_MUTED);   /* (the bell: do not disturb, its count, the list's length) */   /* (item 3: the call's 🎙️; the notifications' pop-ups) */
