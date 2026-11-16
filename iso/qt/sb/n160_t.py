@@ -292,7 +292,7 @@ try:
               "v.setUint32(24,44100,true);v.setUint32(28,88200,true);v.setUint16(32,2,true);v.setUint16(34,16,true);s(36,'data');v.setUint32(40,n*2,true);for(let i=0;i<n;i++)v.setInt16(44+i*2,Math.sin(i*2*Math.PI*660/44100)*12000,true);"
               "const a=new Audio(URL.createObjectURL(new Blob([b],{type:'audio/wav'})));window.__ta=a;a.play().then(()=>window.__tp='playing',e=>window.__tp='refused '+e.name);return 1})()")
     time.sleep(4); tev('notepad', AUD_JS)
-    o = sh("for i in 1 2 3 4; do sleep 1; " + AS_RUDOLF % 'pactl list sink-inputs' + " | awk '/^Sink Input/{c=\"\"} /Corked:/{c=$2} /media.role = \"music\"/{print \"corked=\" c}' | tail -1; done", 60)
+    o = sh("for i in 1 2 3 4; do sleep 1; " + AS_RUDOLF % 'pactl list sink-inputs' + " | awk '/^Sink Input/{c=\"\"} /Corked:/{c=$2} /media.role = \"music\"|application.process.binary = \"WebKitWebProcess\"/{print \"corked=\" c}' | sort -u | tr '\\n' ' '; echo; done", 60)
     tp = tev('notepad', "window.__tp+'|'+__ta.currentTime.toFixed(1)+'|'+__ta.paused")
     ok('2d. a native app window\'s <audio> (the Media Player\'s kind) plays: its stream not corked while it plays', 'corked=no' in o or 'corked=' not in o and 'playing' in str(tp), [o, tp])
     # (the owner's report 2) a page that mutes a sound (a muted video, the Media Player's mute, an app's volume at 0): later sounds of
