@@ -83,7 +83,9 @@ ok "...(a modem that is not there, on= other than 1 or 0, a GET: refused)" "$(ec
 if [ ! -e /proc/sys/net/ipv6 ] || ! command -v tayga >/dev/null; then echo "SKIP 13-14. IPv6-only with a CLAT: this kernel has no IPv6 or tayga is not installed"
 else
 	link wwan1 cfar1
-	far "ip link set cfar1 up; ip -6 addr add 2001:db8:1::1/64 dev cfar1; ip -6 route replace 2001:db8:1::/64 dev cfar1; echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
+	# (tayga, with the well-known prefix, will not translate the documentation addresses (203.0.113.0/24): a public one,
+	# 9.9.9.9, on the far side's loopback, inside these namespaces only)
+	far "ip addr add 9.9.9.9/32 dev lo; ip link set cfar1 up; ip -6 addr add 2001:db8:1::1/64 dev cfar1; ip -6 route replace 2001:db8:1::/64 dev cfar1; echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
 		printf 'tun-device nat64\nipv4-addr 192.168.255.1\nipv6-addr 2001:db8:ffff::1\nprefix 64:ff9b::/96\ndynamic-pool 192.168.255.0/24\ndata-dir $T/nat64\n' > $T/nat64.conf; mkdir -p $T/nat64
 		tayga -c $T/nat64.conf --mktun >/dev/null; ip link set nat64 up; ip route add 192.168.255.0/24 dev nat64; ip -6 route add 64:ff9b::/96 dev nat64; ip -6 route add 2001:db8:ffff::1 dev nat64; tayga -c $T/nat64.conf -p $T/nat64.pid; sleep 1; cat $T/nat64.pid; pgrep -a tayga"
 	PIDS="$PIDS $(cat $T/nat64.pid 2>/dev/null)"
@@ -92,7 +94,7 @@ else
 	o=$(a "POST mobile/connect?id=1&on=1"); w8 '[ "$(via)" = clat ]' 20
 	ok "13. an IPv6-only network: connected with its IPv6 address, and a CLAT (464XLAT) carries IPv4" "$(echo "$o" | grep -q Connected && ip -6 addr show dev wwan1 | grep -q '2001:db8:1::2/64' && [ "$(via)" = clat ] && grep -q '^map 192.0.0.1 2001:db8:1:0::c1a7' /run/rudolf/clat/tayga.conf && echo 1)" "$o $(ip route) $(ip -6 route) $(cat /run/rudolf/clat/tayga.conf 2>&1)"
 	echo "(the CLAT: $(cat /run/rudolf/clat/tayga.conf | tr '\n' ' ') $(pgrep -a tayga | tr '\n' ' '))"
-	ok "14. ...an IPv4 site reached through the operator's NAT64 (the well-known prefix, none found in its DNS)" "$(w8 reach 20 && grep -q '^prefix 64:ff9b::/96' /run/rudolf/clat/tayga.conf && echo 1)" "$(ping -c1 -W2 203.0.113.1 2>&1 | tail -2) $(far 'ip route; ip -6 route' 2>&1)"
+	ok "14. ...an IPv4 site reached through the operator's NAT64 (the well-known prefix, none found in its DNS)" "$(w8 'ping -c1 -W2 9.9.9.9 >/dev/null 2>&1' 20 && grep -q '^prefix 64:ff9b::/96' /run/rudolf/clat/tayga.conf && echo 1)" "$(ping -c1 -W2 9.9.9.9 2>&1 | tail -3) $(far 'ip route; ip -6 route' 2>&1)"
 	a "POST mobile/connect?id=1&on=0" >/dev/null
 	ok "...disconnected: the CLAT goes too" "$(! ip link show clat >/dev/null 2>&1 && [ ! -e /run/rudolf/clat ] && echo 1)" "$(ip link)"
 fi
