@@ -11,6 +11,7 @@
 #      desktop started again with the session going on; the windows counted are the open ones
 #   5. the notice after an update pops up once (from the shell's start-up page, not from each app window), "Real browser tabs
 #      are ready" never on Native, however many windows open
+#   6. Ctrl+Alt+T in an app's window opens the Terminal's own window (not a second window inside that app's)
 # Needs Xvfb, xdotool, node (and Playwright's Chromium for the page opened by hand), python3, gcc and WebKitGTK's headers.
 #   sh native160_t.sh [RUDOLF-NATIVE]
 HERE=$(cd "$(dirname "$0")" && pwd); T=$(mktemp -d /tmp/native160.XXXXXX); PORT=${NATIVE160_PORT:-8616}; DSP=${NATIVE160_DSP:-:86}
@@ -107,6 +108,11 @@ t0=$(date +%s%N); w8 '[ "$(ev notepad "S.darkui")" = 1 ]' 20; t1=$(date +%s%N)
 timeout 4 tail -f /dev/null
 ok "3g. dark mode from Settings' window: Notepad's window has it within 2 s, and both still answer" "$([ "$(ev notepad 'S.darkui')" = 1 ] && [ $(( (t1 - t0) / 1000000 )) -lt 2000 ] && [ "$(ev settings '1+1')" = 2 ] && echo 1)" "set: $o; Notepad: $(ev notepad 'S.darkui') after $(( (t1 - t0) / 1000000 )) ms"
 ok "3h. ...and only Settings' window sent the settings: the windows that took them do not send them back (no echo between the windows)" "$([ "$(tail -n +$((n3g+1)) $D/lsync.log | grep -c '^part .*bd95set:uAnnA1b2')" = 1 ] && echo 1)" "$(tail -n +$((n3g+1)) $D/lsync.log | tr '\n' ';')"
+# ---- 6. Ctrl+Alt+T in an app's window
+t0n=$(napps terminal); ev notepad 'OA.main.focus(),1' >/dev/null; W=$(grep '^app notepad ' $D/state | awk '{print $3}'); xdotool windowactivate --sync $((0x$W)) 2>/dev/null; timeout 0.5 tail -f /dev/null; xdotool key ctrl+alt+t
+w8 "[ \$(napps terminal) -gt $t0n ]" 60
+o=$(ev notepad 'wins.length')
+ok "6. Ctrl+Alt+T in Notepad's window opens the Terminal's own window, not a second one inside Notepad's" "$([ $(napps terminal) -gt $t0n ] && [ "$o" = 1 ] && echo 1)" "$(grep '^app ' $D/state) | Notepad's windows: $o"
 # ---- 4. the native desktop started again, the session going on: the widgets' timers and values again
 kill $NP; wait $NP 2>/dev/null; rm -f $D/state; start
 w8 '[ "$(st user)" = Ann ]' 120; w8 'st mon | grep -q "^12%|"' 40

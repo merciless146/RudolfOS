@@ -438,6 +438,29 @@ static int desk_admin_check(const char *n, const char *pw, char *why, size_t wn)
 	free(role); free(h); free(list); dls_close(&l); return rc;
 }
 
+/* (1.6.0, the owner's report 6) the encrypted folder (Debian, Linux and Windows programs, Linux apps, Downloads: vault50.js), opened
+   at the native sign-in as the page's own sign-in opens it on Standard: the account's copy of the data key in vault.json ({salt, iv,
+   ct}: AES-256-GCM with a key from the password, PBKDF2-SHA256, 210 000 rounds) unwrapped with the password and added to the
+   kernel. Without it a computer started on Native never opened it, and the Terminal had no Linux (Command Prompt tabs only).
+   Nothing happens when encryption is off, the folder is open already, or the account has no copy (the page makes one at a
+   Standard sign-in); a failure only goes into the health log. */
+static void dvault_signin(const char *id, const char *pw)
+{
+	if (!id || !*id || !pw || !vault_set() || vault_open()) return;
+	char *j = slurp(VAULT_J, NULL); if (!j) return;
+	const char *ac = dj_get(j, "accts"), *box = ac && *dj_ws(ac) == '{' ? dj_get(ac, id) : NULL;
+	char *sa = box ? dj_str(dj_get(box, "salt")) : NULL, *iv = box ? dj_str(dj_get(box, "iv")) : NULL, *ct = box ? dj_str(dj_get(box, "ct")) : NULL;
+	uint8_t sb[64], ivb[16], ctb[128], k[32], dk[112];
+	int sl = sa ? db64d(sa, sb, sizeof sb) : -1, il = iv ? db64d(iv, ivb, sizeof ivb) : -1, cl = ct ? db64d(ct, ctb, sizeof ctb) : -1;
+	free(sa); free(iv); free(ct); free(j);
+	if (!box) return;
+	if (sl <= 0 || il != 12 || cl != 64 + 16) { health_add("vault", "an account's copy of the data key is not readable (native sign-in)"); return; }
+	dpbkdf2_256(pw, sb, sl, DESK_ROUNDS, k, 32);
+	int bad = daes_gcm_open(k, ivb, ctb, cl, dk); explicit_bzero(k, sizeof k);
+	if (bad) { health_add("vault", "an account's copy of the data key did not open (native sign-in)"); return; }
+	char m[200]; int code = vault_add_key(dk, m, sizeof m); explicit_bzero(dk, sizeof dk);
+	if (code) health_add("vault", "the encrypted folder did not open at the native sign-in: %.150s", m);
+}
 static void api_desktop_login(struct req *r)
 {
 	int w = dfail_wait();
@@ -470,7 +493,7 @@ static void api_desktop_login(struct req *r)
 		/* the password's key (the account's salt), and the file key it seals */
 		char *ks = dj_str(dj_get(a, "ks")); uint8_t salt[96], pk[32], fk[64]; int sl = ks ? db64d(ks, salt, sizeof salt) : -1, fl = -1; free(ks);
 		if (sl <= 0) { dfree_secret(pw); free(list); dls_close(&l); reply_err(r->fd, 409, "This account has no key yet: sign in once with the Standard desktop engine."); return; }
-		dpbkdf2_256(pw, salt, sl, DESK_ROUNDS, pk, 32); dfree_secret(pw); dhex(pk, 32, s.pk);
+		dpbkdf2_256(pw, salt, sl, DESK_ROUNDS, pk, 32); dvault_signin(s.id, pw); dfree_secret(pw); dhex(pk, 32, s.pk);
 		const char *box = dj_get(a, "fk");
 		if (box && *dj_ws(box) == '{') {
 			char *iv = dj_str(dj_get(box, "iv")), *ct = dj_str(dj_get(box, "ct")); uint8_t ivb[16], ctb[128];

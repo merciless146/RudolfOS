@@ -121,7 +121,8 @@ function debSetupPage(W){const st=DEB.st;W.setTitle('Set up Linux (Debian 13)');
   notify('Debian is ready','Open the Terminal from the Start menu any time.');await debStatus();try{await debLib()}catch(e){err.textContent=e.message;return}W.setTitle('Terminal');debTermUI(W);lxSync()}}
 regApp('terminal',{name:'Terminal',icon:'⬛',kw:'terminal command prompt cmd dos linux debian apt shell bash command line console sudo lua bat',open:()=>terminalApp(),re:/^(Terminal|Set up Linux|Command Prompt)/});
 /* (1.5.6: the Start menu's own Terminal entry opens both; the separate "Terminal (Linux)" entry is gone) */
-addEventListener('keydown',e=>{if(e.ctrlKey&&e.altKey&&(e.key=='t'||e.key=='T')&&USER){e.preventDefault();terminalApp()}});
+/* (1.6.0, the owner's report 6: in an app's own window on the native desktop, the Terminal's own window, as the shell opens it) */
+addEventListener('keydown',e=>{if(e.ctrlKey&&e.altKey&&(e.key=='t'||e.key=='T')&&USER){e.preventDefault();if(typeof ONEAPP!='undefined'&&ONEAPP&&ONEAPP.k!='terminal')launch('terminal');else terminalApp()}});
 /* ---------- Linux check (1.2.7): what Linux apps and the terminal need, from rudolf-fscheck (rudolfd debian/check) ---------- */
 const LXCHK=[['persist','Data partition'],['persist_fs','File system'],['persist_kind','Kind'],['persist_features','Features'],['persist_inode_size','Inode size'],['persist_opts','Mounted with'],
  ['tmpfile_persist','Temporary files on the data partition'],['tmpfile_flatpak','…in Flatpak\'s folder'],['tmpfile_flatpak_repo','…in Flatpak\'s repository'],['tmpfile_var_tmp','…in /var/tmp'],['tmpfile_tmp','…in /tmp'],['tmpfile_debian','…in Debian'],
