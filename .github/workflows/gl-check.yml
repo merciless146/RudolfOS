@@ -20,8 +20,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        channel: [beta, stable]
-        display: [gpu, soft]
+        # the newest beta as released (Xorg's GLX with no driver) and with this tree's GLX module (the fix), on Xorg (QEMU's
+        # graphics); the software display (Xvfb, its own GLX); the stable release (1.5.9, the first with the broken path)
+        include:
+          - {channel: beta, display: gpu, glx: release}
+          - {channel: beta, display: gpu, glx: tree}
+          - {channel: beta, display: soft, glx: release}
+          - {channel: stable, display: gpu, glx: release}
     steps:
       - uses: actions/checkout@v5
       - name: Tools
@@ -45,9 +50,17 @@ jobs:
           if [ "$(git show origin/gh-pages:$C/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:$C/manifest.txt > rel/manifest.txt; git show origin/gh-pages:$C/manifest.sig > rel/manifest.sig
           else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
           echo "::notice title=OpenGL apps check::$C: release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
+      - name: This tree's X server (its GLX module)
+        if: matrix.glx == 'tree'
+        run: |
+          sudo apt-get install -y -qq meson ninja-build libpixman-1-dev x11-xkb-utils xorg-sgml-doctools libxfont2 libxshmfence1 libxkbfile1 \
+            libpciaccess0 libepoxy0 libgbm1 libudev-dev libssl-dev >/dev/null
+          cd iso && systools/xfetch.sh f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2 && bash xbuild.sh > ../xbuild.log 2>&1 || { tail -40 ../xbuild.log; exit 1; }
+          G=$PWD/src/xorg/stage/usr/lib/xorg/modules/extensions/libglx.so; grep -aoh '/usr/lib/[^/[:cntrl:]]*/dri' $G | sort -u
+          echo "GL160_GLX=$G" >> $GITHUB_ENV
       - name: gl160 (OpenGL as the account's user)
         run: |
-          mkdir -p run && cd run && sudo -E env GL160_SOFT=${{ matrix.display == 'soft' && '1' || '0' }} SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/gl160_t.py ../rel
+          mkdir -p run && cd run && sudo -E env GL160_GLX=${GL160_GLX:-} GL160_SOFT=${{ matrix.display == 'soft' && '1' || '0' }} SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/gl160_t.py ../rel
       - if: always()
         uses: actions/upload-artifact@v4
-        with: {name: 'gl160-${{ matrix.channel }}-${{ matrix.display }}', retention-days: 7, path: "run/gl160.txt\nrun/gl160*/qemu.log\nrun/gl160*/*.png"}
+        with: {name: 'gl160-${{ matrix.channel }}-${{ matrix.display }}-${{ matrix.glx }}', retention-days: 7, path: "run/gl160.txt\nrun/gl160*/qemu.log\nrun/gl160*/*.png"}

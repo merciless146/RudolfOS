@@ -45,7 +45,11 @@ cp "$X/MesaLib/dist/include/GL/gl.h" "$X/MesaLib/dist/include/GL/glext.h" "$P/in
 cp "$X/MesaLib/dist/include/GL/internal/dri_interface.h" "$P/include/GL/internal/"
 pc gl 21.3.7 GL "$L/libGL.so.1" ""   # libglx.so calls glXGetProcAddressARB: glvnd's libGL (shipped with libGLX.so.0)
 pc dri 21.3.7 "" "" ""
-sed -i 's|^includedir=.*|&\ndridriverdir=/usr/lib/$MA/dri|' "$P/lib/pkgconfig/dri.pc"
+# (1.6.0: in double quotes, so the folder is the machine's own. From 1.5.9 to 1.6.0's first betas it was quoted as
+# '/usr/lib/$MA/dri', and the X server looked for its drivers in a folder named that: its GLX had no driver, so no
+# program could make an OpenGL context through X11 ("Couldn't load a renderer." in Unvanquished; SuperTuxKart's
+# "Could not initialize display!"), whoever ran it; the desktop draws through EGL and GBM, which find Mesa themselves)
+sed -i "s|^includedir=.*|&\ndridriverdir=/usr/lib/$MA/dri|" "$P/lib/pkgconfig/dri.pc"
 # libepoxy (headers generated from the Khronos registry; host runtime 1.5.10)
 mkdir -p "$P/include/epoxy"; E=$X/libepoxy/dist
 cp "$E/include/epoxy/common.h" "$E/include/epoxy/gl.h" "$E/include/epoxy/egl.h" "$E/include/epoxy/glx.h" "$P/include/epoxy/"

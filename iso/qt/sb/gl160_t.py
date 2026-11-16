@@ -18,7 +18,10 @@ import sbvm
 from guest import Guest
 from ser import Ser
 REL = os.path.abspath(sys.argv[1]); STK = os.environ.get('GL160_STK', '1') == '1'
-SOFT = os.environ.get('GL160_SOFT') == '1'   # (the software display, Xvfb, instead of Xorg on QEMU's graphics)
+SOFT = os.environ.get('GL160_SOFT') == '1'
+# GL160_GLX: an X server GLX module (libglx.so) built from this tree, put in place of the release's before the test, to
+# show a fix to it on a release built before it
+GLX = os.environ.get('GL160_GLX', '')   # (the software display, Xvfb, instead of Xorg on QEMU's graphics)
 PARTS = os.environ.get('SB_PARTS', '/nonexistent'); LOG = open('gl160.txt', 'w'); R = []
 def out(*a):
     s = ' '.join(str(x) for x in a); print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
@@ -64,6 +67,7 @@ open(f'{D}/etc/passwd', 'w').write('root:x:0:0::/root:/bin/sh\nrudolf:x:1000:100
 open(f'{D}/etc/rudolf-debian', 'w').write('test\n'); open(f'{D}/.rudolf-ready', 'w').close()
 subprocess.run(['chmod', '-R', 'a+rX', D], check=True); subprocess.run(['chown', '-R', '200000:200000', D], check=True)
 subprocess.run(['chown', '-R', '1000:1000', f'{T}/home/rudolf'], check=True)
+if GLX: os.makedirs(f'{T}/glx'); shutil.copy(GLX, f'{T}/glx/libglx.so')
 out('the stand-in:', subprocess.run(['du', '-sh', D], capture_output=True, text=True).stdout.strip())
 
 def make_drive(path):
@@ -101,13 +105,15 @@ def boot(tag):
             if not (isinstance(r, tuple) and (r[0] == 'ERR' or (r[0] == 'EXC' and 'ReferenceError' in str(r[1])))): return r
             time.sleep(15)
         return r
-    end = time.time() + 600
-    while up and time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'", 20) is not True: time.sleep(5)
-    if up:
-        o = run(g, "last=; same=0; i=0; while [ $i -lt 40 ]; do i=$((i+1)); v=$(timeout 20 cdp-eval 'Math.round(performance.timeOrigin)' 2>/dev/null | grep -o '\"value\":[0-9]*' | head -1); "
-                   "if [ -n \"$v\" ] && [ \"$v\" = \"$last\" ]; then same=$((same+5)); else same=0; last=$v; fi; [ $same -ge 20 ] && break; sleep 5; done; echo \"SETTLED $same\"", 1100)
-    js(INIT_JS)
+    if up: settle(g, js)
     return vm, g, up, js
+# the desktop's page settled: the same page for 20 s
+def settle(g, js):
+    end = time.time() + 600
+    while time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'", 20) is not True: time.sleep(5)
+    run(g, "last=; same=0; i=0; while [ $i -lt 40 ]; do i=$((i+1)); v=$(timeout 20 cdp-eval 'Math.round(performance.timeOrigin)' 2>/dev/null | grep -o '\"value\":[0-9]*' | head -1); "
+           "if [ -n \"$v\" ] && [ \"$v\" = \"$last\" ]; then same=$((same+5)); else same=0; last=$v; fi; [ $same -ge 20 ] && break; sleep 5; done; echo \"SETTLED $same\"", 1100)
+    js(INIT_JS)
 def run(g, c, t=60):
     f = os.path.join(W, 'c160.sh'); open(f, 'w').write(c + '\n'); g.put(f, '/tmp/c160.sh', '644')
     o = g.sh('sh /tmp/c160.sh 2>&1', t); out('$', c[:300].replace('\n', ' ; ')); out(o.rstrip()[-4000:]); return o
@@ -144,6 +150,15 @@ try:
     vm, g, up, js = boot('a'); sh = lambda c, t=60: run(g, c, t)
     ok('1. the release starts', up, 'not up')
     if not up: raise SystemExit
+    if GLX:
+        # this tree's GLX module in place of the release's, and the display started again (as a new resolution does)
+        o = sh("mount --bind /persist/glx/libglx.so /usr/lib/xorg/modules/extensions/libglx.so && echo BOUND; md5sum /usr/lib/xorg/modules/extensions/libglx.so; "
+               "rm -f /run/rudolf/display-mode; touch /run/rudolf/screen-restart; i=0; while [ $i -lt 90 ] && [ ! -s /run/rudolf/display-mode ]; do i=$((i+1)); sleep 2; done; cat /run/rudolf/display-mode", 240)
+        out('NOTE this tree\'s GLX module:', 'BOUND' in o); time.sleep(20); settle(g, js)
+    # the X server's GLX: a GL provider for the screen (Xorg on the graphics card; the software display's Xvfb has its own)
+    o = sh("cat /run/rudolf/display-mode; grep -E 'GLX|AIGLX|swrast' /run/rudolf/Xorg.log 2>/dev/null", 30)
+    if o.strip().split('\n')[0].strip() == 'gpu':
+        ok('1b. Xorg\'s GLX loads Mesa\'s driver: a GL provider for the screen', re.search(r'GLX: Initialized \w+ GL provider for screen', o) and 'AIGLX error' not in o, o)
     r = js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);saveUser();return b.id})()", 120)
     out('account:', r)
     out('sign-in', signin(js, 'boss', 'b1')); si = wait_for(js, "!!(USER&&USER.disk&&hdOn())", 400)

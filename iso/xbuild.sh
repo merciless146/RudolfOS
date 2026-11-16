@@ -23,3 +23,7 @@ CFLAGS="-I$XS/shim/include" $MESON setup b --prefix=/usr --sysconfdir=/etc --loc
 	-Dvendor_name="Rudolf OS" -Dvendor_name_short=Rudolf
 ninja -C b
 DESTDIR=$XS/stage $MESON install -C b --quiet
+# 1.6.0: GLX loads Mesa's drivers from the folder Rudolf OS ships them in (mkrootfs.sh, the base layer: /usr/lib/$MA/dri).
+# From 1.5.9 its folder was "/usr/lib/$MA/dri" word for word (xshim.sh), so no program had OpenGL through X11.
+GD=$(grep -aoh '/usr/lib/[^/[:cntrl:]]*/dri' "$XS/stage/usr/lib/xorg/modules/extensions/libglx.so" | sort -u)
+[ "$GD" = "/usr/lib/$MA/dri" ] || { echo "the X server's GLX looks for Mesa's drivers in '$GD', not /usr/lib/$MA/dri"; exit 1; }
