@@ -17355,7 +17355,9 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
   /* (1.6.0) on=0|1: the switch as the shell shows it now, so a page that had not heard of a change yet does not undo it; the screen
      reader's "Screen reader on" said before the page closes (srSpeak: the voices', or rudolfd's say) */
   if(da0=='qs'){let sr=0;try{qsToggle();const it=q.get('item'),on=q.get('on'),b=[...document.querySelectorAll('#qsp .qst')].find(x=>(x.querySelector('span')||{}).textContent==it);
-    if(b&&(on==null||(b.classList.contains('on')?'1':'0')!=on)){b.click();sr=it=='Screen reader'&&!!S.sr}qsClose()
+    if(b&&(on==null||(b.classList.contains('on')?'1':'0')!=on)){b.click();sr=it=='Screen reader'&&!!S.sr}
+    /* (2026-11-16) the shell saves the switch itself now, so this page may have it already: the screen reader still says so, as the tile does */
+    else if(b&&it=='Screen reader'){try{window.__srApply&&__srApply()}catch(e){}sr=!!S.sr}qsClose()
     /* (High contrast and Touch mode are kept as S.cb and S.touch, which the tile's own copy to SC (its keys hc, tm) leaves out: on Standard
        the one page shows them at once; here the other windows and the shell read what is saved) */
     if(SC){SC.cb=S.cb;SC.touch=S.touch;persistS()}}catch(e){console.warn(e)}
