@@ -1,0 +1,45 @@
+# 1.6.0 (docs/plan-1.6.0.md Part 12 "The rule", 12.3c; "Before stable" item 9): Oracle's window on Native compared with
+# Standard's (iso/qt/native/same_oracle_t.sh, then same_oracle.py): the looks part by part and what the same steps do, with
+# Playwright's Chromium and with the newest beta's own Chromium (from its chromium.sfs). The pictures are kept as an
+# artifact for the PR. Nothing is published.
+name: Oracle on Native and Standard
+on:
+  workflow_dispatch:
+    inputs:
+      serial: {description: 'A release whose Chromium to use (its serial); empty: the newest beta', required: false, default: ''}
+  push:
+    branches: [oracle-same-native]
+    paths: ['iso/qt/native/same_oracle_t.sh', 'iso/qt/native/same_oracle.py', 'iso/qt/native/pxdiff.py', 'iso/qt/host/fixtures/dispkeys.c', 'iso/sys/rudolf-native.c', 'iso/sys/rudolf-launch.c', 'iso/shell/**', 'iso/www/index.html', '.github/workflows/oracle-same-check.yml']
+  pull_request:
+    paths: ['iso/qt/native/same_oracle_t.sh', 'iso/qt/native/same_oracle.py', 'iso/qt/native/pxdiff.py', 'iso/sys/rudolf-native.c', 'iso/shell/**', '.github/workflows/oracle-same-check.yml']
+permissions: {contents: read}
+jobs:
+  same:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: {chrome: [playwright, beta]}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools and the Chromium
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xdotool imagemagick iproute2 squashfs-tools python3-pil libwebkit2gtk-4.1-dev libxtst-dev libxrandr-dev libxfixes-dev fonts-dejavu-core >/dev/null
+          if [ ${{ matrix.chrome }} = playwright ]; then
+            npm i -s --no-save playwright@1.63.0 >/dev/null && PLAYWRIGHT_BROWSERS_PATH=$PWD/pw npx playwright install chromium >/dev/null
+            echo "CHROME_BIN=$(ls -d $PWD/pw/chromium-*/chrome-linux*/chrome | tail -1)" >> $GITHUB_ENV
+          else
+            git fetch -q --depth 1 origin gh-pages
+            S='${{ inputs.serial }}'; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+            mkdir -p rel && gh release download "r$S" -D rel -p chromium.sfs && sudo unsquashfs -q -n -d rel/c rel/chromium.sfs opt/chromium
+            echo "CHROME_BIN=$PWD/rel/c/opt/chromium/chrome" >> $GITHUB_ENV; echo "::notice title=Oracle same::the beta's Chromium from release $S"
+          fi
+      - name: Oracle on Native and on Standard
+        run: |
+          $CHROME_BIN --version; mkdir -p out
+          sudo -E env CHROME=$CHROME_BIN sh iso/qt/native/same_oracle_t.sh $PWD/out
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: 'oracle-same-${{ matrix.chrome }}', retention-days: 7, path: out}

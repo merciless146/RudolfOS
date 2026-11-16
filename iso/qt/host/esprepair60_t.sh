@@ -78,7 +78,7 @@ printf '#!/bin/sh\neval "f=\\${$#}"; grep -q SIGNED-BY-RUDOLF "$f"\n' > $T/bin/s
 chmod 755 $T/bin/*
 efi() { rm -rf $T/e; mkdir -p $T/e/EFI/rudolf; printf "start %s" "$1" > $T/e/EFI/rudolf/rudolf.efi; printf "recovery %s" "$2" > $T/e/EFI/rudolf/recovery.efi; (cd $T/e && tar -cf "$3" EFI); }
 efi SIGNED-BY-RUDOLF SIGNED-BY-RUDOLF $T/esp.img
-E() { rm -f $T/dl/tried; ESP_PATH=$T/bin ESP_IMG=$T/esp.img SB_CERT=/dev/null ESP_SYSD=$T/sys ESP_DL=$T/dl ESP_HEALTH="echo HEALTH" ESP_FETCH="$T/bin/fetch" ESP_STAGE="$T/bin/stage" sh $I/sys/root/usr/lib/rudolf/espcheck "$@" 2>&1; }
+E() { rm -f $T/dl/tried; ESP_TRIES=${ESP_TRIES:-1} ESP_WAIT=0 ESP_PATH=$T/bin ESP_IMG=$T/esp.img SB_CERT=/dev/null ESP_SYSD=$T/sys ESP_DL=$T/dl ESP_HEALTH="echo HEALTH" ESP_FETCH="$T/bin/fetch" ESP_STAGE="$T/bin/stage" sh $I/sys/root/usr/lib/rudolf/espcheck "$@" 2>&1; }
 o=$(E status); ok "9. espcheck status: both start-up files signed by Rudolf OS" "$([ "$o" = "start=official recovery=official" ] && echo 0)" "$o"
 efi custom SIGNED-BY-RUDOLF $T/esp.img; o=$(E status); r=$?
 ok "...a custom build's rudolf.efi: said (and not 0)" "$([ "$o" = "start=other recovery=official" ] && [ $r != 0 ] && echo 0)" "$o"
@@ -100,10 +100,16 @@ o=$(E boot a)
 ok "11. a boot image whose recovery.efi is not signed by Rudolf OS: refused, nothing staged" "$(echo "$o" | grep -q 'holds files not signed by Rudolf OS (start=official recovery=other)' && [ ! -e $T/staged ] && [ ! -e $T/dl/boot.iso ] && echo 0)" "$o"
 echo 0000 > $T/web/boot.iso.sha256; o=$(E repair a)
 ok "...one that does not match its checksum: refused" "$(echo "$o" | grep -q 'does not match its checksum' && [ ! -e $T/staged ] && echo 0)" "$o"
-printf '#!/bin/sh\nexit 3\n' > $T/bin/fetch; o=$(E boot a)
-ok "...no network: said, tried again at the next start" "$(echo "$o" | grep -q 'could not be downloaded (tried again at the next start)' && echo 0)" "$o"
-efi SIGNED-BY-RUDOLF other $T/esp.img; o=$(E boot a >/dev/null; ESP_PATH=$T/bin ESP_IMG=$T/esp.img SB_CERT=/dev/null ESP_SYSD=$T/sys ESP_DL=$T/dl ESP_HEALTH="echo HEALTH" ESP_FETCH="$T/bin/fetch" ESP_STAGE="$T/bin/stage" sh $I/sys/root/usr/lib/rudolf/espcheck boot a 2>&1)
-ok "...at each start at most once a day" "$(echo "$o" | grep -q 'tried less than a day ago' && echo 0)" "$o"
+E2() { ESP_TRIES=1 ESP_WAIT=0 ESP_PATH=$T/bin ESP_IMG=$T/esp.img SB_CERT=/dev/null ESP_SYSD=$T/sys ESP_DL=$T/dl ESP_HEALTH="echo HEALTH" ESP_FETCH="$T/bin/fetch" ESP_STAGE="$T/bin/stage" sh $I/sys/root/usr/lib/rudolf/espcheck "$@" 2>&1; }
+efi SIGNED-BY-RUDOLF other $T/esp.img; o=$(E boot a >/dev/null; E2 boot a)
+ok "...a refused image: at each start at most once a day" "$(echo "$o" | grep -q 'tried less than a day ago' && echo 0)" "$o"
+mv $T/bin/fetch $T/bin/fetch.ok; printf '#!/bin/sh\nexit 3\n' > $T/bin/fetch; chmod 755 $T/bin/fetch; o=$(E boot a)
+ok "...no network: said, and tried again at the next start (not counted as the day's try)" "$(o2=$(E2 boot a); echo "$o" | grep -q 'could not be downloaded (tried again at the next start)' && echo "$o2" | grep -q 'could not be downloaded' && echo 0)" "$o"
+# (1.6.0, found in QEMU: the first heartbeat often comes before Wi-Fi is connected) the network a little later
+(cd $T/web && sha256sum boot.iso > boot.iso.sha256); efi SIGNED-BY-RUDOLF SIGNED-BY-RUDOLF $T/bi-efi.img; cp $T/bi-efi.img $T/bi/efi/efiboot.img; (cd $T/bi && tar -cf $T/web/boot.iso efi rudolf); (cd $T/web && sha256sum boot.iso > boot.iso.sha256)
+printf '#!/bin/sh\nn=$(cat %s/fails 2>/dev/null || echo 0); [ $n -lt 2 ] && { echo $((n+1)) > %s/fails; exit 3; }; exec %s/bin/fetch.ok "$@"\n' $T $T $T > $T/bin/fetch; chmod 755 $T/bin/fetch; rm -f $T/staged
+o=$(ESP_TRIES=3 E boot a)
+ok "...the network comes up a little later: waited for (attempts a while apart), then downloaded, checked and staged" "$(grep -q "staged $T/dl/boot.iso" $T/staged && [ "$(cat $T/fails)" = 2 ] && ! echo "$o" | grep -q 'could not be downloaded' && echo 0)" "$o"
 o=$(E repair x); ok "...a slot that is not a, b or r: refused" "$(echo "$o" | grep -q usage && echo 0)" "$o"
 grep -q 'esp_check(bs);' $I/sys/rudolf-update.c && grep -q '"repair", (char \*)T' $I/sys/rudolf-update.c
 ok "12. rudolf-update runs it at each start of an official system (boot-ok), and Return to official stages the official files at once" "$([ $? = 0 ] && echo 0)"

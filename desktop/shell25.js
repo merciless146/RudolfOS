@@ -3,7 +3,7 @@
 /* ---------- app registry ---------- */
 const APPS={};
 function regApp(k,o){APPS[k]=Object.assign({k},o);return APPS[k]}
-[['explorer','File Explorer','📁',()=>explorer(),/^File Explorer|^Exploring/],['browser','Oracle Browser','🌐',()=>browser(),/^Oracle/],['notepad','Notepad','🗒️',()=>notepad(),/^Notepad|Notepad$/],
+[['explorer','File Explorer','📁',()=>explorer(),/^File Explorer|^Exploring/],['browser','Oracle Browser','\u{1F310}\uFE0F',()=>browser(),/^Oracle/],['notepad','Notepad','🗒️',()=>notepad(),/^Notepad|Notepad$/],
  ['prompt','Rudolf Prompt','⬛',()=>prompt(),/^Rudolf Prompt/],['blocklua','BlockLua Builder','🧱',()=>blocklua(),/^BlockLua/],['calc','Calculator','🧮',()=>calc(),/^Calculator/],
  ['wordlite','WordLite','📄',()=>A.wordlite?A.wordlite():wordpad(),/^WordLite/],['wordpro','WordPro','📝',()=>wordpro(),/^WordPro/],['paint','Paint','🎨',()=>paint(),/^Paint/],
  ['boards','Board Games','♟️',()=>boards(),/^Board Games|^Checkers|^Chess/],['poker','Card Games','🃏',()=>poker(),/^Card Games/],['galaxy','WOS Galaxy Map','🌌',()=>galaxy(),/^WOS Galaxy Map/],

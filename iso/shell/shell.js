@@ -139,7 +139,8 @@ function fwWhy(u) {
   return null;
 }
 /* inside every page (isolated world): Oracle's shortcuts, and the title */
-const PAGE_JS = `(()=>{const N=${JSON.stringify(NONCE)},say=o=>{try{console.debug(N+JSON.stringify(o))}catch(e){}};
+const PAGE_JS = `(()=>{const R=document.documentElement;if(window.__rudolfPJ||R&&R.hasAttribute('data-rudolf-pj'))return;window.__rudolfPJ=1;if(R)R.setAttribute('data-rudolf-pj','');
+const N=${JSON.stringify(NONCE)},say=o=>{try{console.debug(N+JSON.stringify(o))}catch(e){}};
 const SUB={F20:'w',F21:'t',F22:'n',F23:'q'};
 const UI=new Set(['CKeyH','CKeyJ','CKeyD','CKeyU','CKeyS','CKeyO','CSKeyN','CSKeyT','CSKeyW','CSKeyO','CSKeyB','CSDelete','CSKeyA','CSKeyM','ASKeyI','SEscape','F1','F7','AHome']);
 addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey,k=SUB[e.code]&&e.ctrlKey?SUB[e.code]:e.key;let a='';
@@ -174,7 +175,10 @@ function tabEvents(t) {
     try { back = await f.canGoBack(); fwd = await f.canGoForward() } catch (e) {}
     toTab(t.tid, 'nav', {url: t.url, back, fwd});
   };
-  f.addEventListener('loadcommit', e => { if (e.isTopLevel) { t.url = e.url; navState() } });
+  /* (1.6.0) PAGE_JS in every page of the tab: the content scripts reached only the first tab of an account's partition,
+     so in Oracle's other website tabs Ctrl+T, Ctrl+W and the other keys did nothing (and their titles were not told);
+     PAGE_JS runs once in a page, whichever gives it first */
+  f.addEventListener('loadcommit', e => { if (e.isTopLevel) { t.url = e.url; navState(); if (/^https?:/i.test(e.url || '')) f.executeScript({code: PAGE_JS}).catch(() => {}) } });
   f.addEventListener('loadstart', e => {
     if (!e.isTopLevel) return;
     const why = fwWhy(e.url || '');
@@ -261,7 +265,11 @@ function makeTab(tid, part) {
   TABS.set(tid, t);
   f.addEventListener('loadcommit', e => { if (e.isTopLevel) darken(t) });
   f.addEventListener('contentload', () => darken(t));
-  try { f.addContentScripts([{name: 'oracle', urlPatterns: ['http://*/*', 'https://*/*'], js: {code: PAGE_JS}, runAt: 'document-start', allFrames: false},
+  /* (1.6.0) registering the content scripts takes a moment: a tab opened with its address (a link's new tab, Oracle's
+     oNewTab) waits for them before its first page (t.ready). (They reach only an account's first tab in Chromium 153: see
+     tabEvents' loadcommit, which gives PAGE_JS to every page.) */
+  t.ready = Promise.resolve();
+  try { t.ready = f.addContentScripts([{name: 'oracle', urlPatterns: ['http://*/*', 'https://*/*'], js: {code: PAGE_JS}, runAt: 'document-start', allFrames: false},
     {name: 'flash', urlPatterns: ['http://*/*', 'https://*/*'], js: {code: FLASH_JS}, runAt: 'document-idle', allFrames: true}]).catch(e => note('content scripts:', String(e))) } catch (e) { note('content scripts:', String(e)) }
   try {
     const i = f.request.createWebRequestInterceptor({urlPatterns: ['*://*/*'], blocking: true,
@@ -323,7 +331,7 @@ const TAB_OPS = {
     if (t) { TABS.delete(t.tid); t.tid = String(m.tid); TABS.set(t.tid, t); return }   // the page's new window
     if (TABS.has(String(m.tid)) || TABS.size >= 60) return;
     t = makeTab(String(m.tid), String(m.part || 'x'));
-    if (/^https?:/i.test(m.url || '')) { t.url = m.url; t.f.src = m.url }
+    if (/^https?:/i.test(m.url || '')) { const tt = t; tt.url = m.url; tt.ready.then(() => { if (TABS.get(tt.tid) === tt && tt.url === m.url && !tt.f.src) tt.f.src = m.url }) }
   },
   go: (m, t) => { if (/^https?:/i.test(m.url || '')) { t.url = m.url; t.f.src = m.url } },
   back: (m, t) => t.f.back().catch(() => {}),

@@ -38,6 +38,10 @@ reset 'good=a\nprev=b\nnext=\ntries=0\nfailed=\n'; rm -rf $S/r; rm $S/a/complete
 ok "7. a stick made before 1.5.8 (no rescue system), nothing that starts: boot files only, as before" $(echo "$o" | grep -q 'boot files only' && ! echo "$o" | grep -q 'rudolf.slot=r'; echo $?) "$o"
 reset 'good=a\nprev=b\nnext=\ntries=0\nfailed=\n'; rm /mnt/media/rudolf/bootonly; for f in base chromium desktop modules; do echo x > /mnt/media/rudolf/$f.sfs; done; rm $S/a/complete; o=$(run "rudolf.boot=uefi" "")
 ok "8. a whole disc image: its own system, as before (the rescue system is for boot images)" $(! echo "$o" | grep -q 'rudolf.slot=r' && echo "$o" | grep -q LAYERS-OK; echo $?) "$o"
+reset 'good=b\nprev=a\nnext=a\ntries=2\nfailed=\nret=1\n'; o=$(run "rudolf.boot=uefi" "")
+ok "8b. (1.6.0) Return to official's mark (ret=1) is kept when the start-up tries the official system (it was dropped, and the custom slot never cleared)" $(echo "$o" | grep -q 'KEXEC .*rudolf.slot=a' && grep -qx 'ret=1' $S/state && grep -qx 'tries=1' $S/state && [ "$(grep -c '^next=' $S/state)" = 1 ]; echo $?) "$o $(cat $S/state)"
+reset 'good=b\nprev=a\nnext=a\ntries=0\nfailed=\nret=1\n'; o=$(run "rudolf.boot=uefi" "")
+ok "...and when that try is given up (back to the custom build), the mark stays for the next try" $(grep -qx 'ret=1' $S/state && grep -qx 'failed=a' $S/state; echo $?) "$o $(cat $S/state)"
 # 1.5.9 (plan 8.4): Recovery mode starts the official recovery system (slot r marked official) before the last good one
 reset 'good=a\nprev=b\nnext=\ntries=0\nfailed=\n'; echo 'official recovery system' > $S/r/official; o=$(run "rudolf.boot=uefi rudolf.recovery=1" "")
 ok "9. Recovery mode with an official recovery system: that one, though slot a can start" $(echo "$o" | grep -q 'KEXEC .*rudolf.recovery=1.*rudolf.slot=r'; echo $?) "$o"

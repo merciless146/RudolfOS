@@ -273,7 +273,10 @@ fi
 # ---- which system to start
 SYSD=/mnt/persist/os/system
 st_get() { sed -n "s/^$1=//p" $SYSD/state 2>/dev/null; }
-st_write() { { echo "good=$GOOD"; echo "prev=$PREV"; echo "next=$NEXT"; echo "tries=$TRIES"; echo "failed=$FAILED"; } > $SYSD/state.new && sync && mv $SYSD/state.new $SYSD/state && sync; }
+# (1.6.0: the lines it does not own are kept: rudolf-update's ret=1 (Return to official) was lost at the start that
+#  tried the official system, so its custom build's slot was never cleared; found in QEMU, qt/sb/t160r_t.py)
+st_write() { { echo "good=$GOOD"; echo "prev=$PREV"; echo "next=$NEXT"; echo "tries=$TRIES"; echo "failed=$FAILED"
+	grep -v -e '^good=' -e '^prev=' -e '^next=' -e '^tries=' -e '^failed=' $SYSD/state 2>/dev/null || :; } > $SYSD/state.new && sync && mv $SYSD/state.new $SYSD/state && sync; }
 slot_ok() { [ -s $SYSD/$1/vmlinuz ] && [ -e $SYSD/$1/complete ]; }
 # a slot whose system cannot start (a layer damaged or failing its check): never again, back to the previous one
 slot_bad() {

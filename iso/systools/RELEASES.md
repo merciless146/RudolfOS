@@ -23,6 +23,12 @@ Promote the serial that was tested, not "the beta": scheduled builds publish a n
 kernel changes (1.2.5: 2026102102 was tested, 2026102311 had replaced it). Before promoting, check
 `git show origin/gh-pages:beta/manifest.txt | grep ^serial`; if it changed since the tests, test that serial (the
 stage tests and the regression suites) or promote the tested one.
+1.6.0: promoting also adds the release to `gh-pages/stable/history.txt` (every release ever promoted, signed with the
+release key: systools/stable_history.py; every run of the workflow keeps it following `stable/`). Computers use it
+for Settings' "Roll back to last stable version": the button shows only on a build that is not on it (or with Get
+beta versions on). Each release list also says how the release keeps the accounts' data (`datafmt N`, `readsfmt
+LO-HI`, from iso/datafmt): raise `datafmt` in iso/datafmt and in sys/rudolf-update.c (DATAFMT, READS_MIN, READS_MAX)
+when a release keeps the data in a way the release before it cannot read, so going back to that one is refused.
 
 A new version (iso/VERSION and a new section at the top of CHANGELOG.md): Run workflow with disc = the version
 (for example 1.1.1). After building the release it also publishes the disc image `disc-<version>`

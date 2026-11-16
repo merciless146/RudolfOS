@@ -30,6 +30,9 @@
  * asks the page of the window at that place to close, as its own ✕ (the frame's ✕ on the native desktop). A page closing its window
  * says so ({"op":"closing"}): the last one while a download is arriving is taken off the screen ("hide X Y W H" on standard output)
  * and its page closes once Chromium's downloads have finished and it has filed them (Chromium never asks "Download is in progress").
+ * (1.6.0) Each desktop page's title (the window's title as the page has it: {"op":"title","t":...}, sent as it changes and asked for
+ * once the binding is there) is written as "title X Y W H JSON-STRING", X Y W H its window's place: Rudolf's Chromium 158 left an
+ * Oracle window's own title at the shell's name, which is all the native desktop saw.
  *
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
@@ -223,7 +226,24 @@ static int oracle, o_had, o_n; static char o_id[64];
 static struct { char target[64]; } o_win[64];
 static struct { char params[1400]; int id, tries; long long at; } o_q[32]; static int o_nq;
 /* the desktop pages attached for their messages (12.3c step 5) */
-static struct { char target[64], parent[64], session[80]; int attach_id; } o_pg[64]; static int o_npg;
+static struct { char target[64], parent[64], session[80]; int attach_id; char title[600]; } o_pg[64]; static int o_npg;
+/* (1.6.0) the titles waiting for their window's place */
+static struct { int id; char title[600]; } o_tq[16];
+/* a JSON string's literal at key, quotes and escapes as they are ("" when none) */
+static int raw_str(const char *msg, const char *key, char *out, size_t n)
+{
+	char k[64]; snprintf(k, sizeof k, "\"%s\":\"", key); const char *p = strstr(msg, k); if (!p) return -1; p += strlen(k) - 1;
+	size_t o = 0; out[o++] = *p++;
+	for (; *p && o + 3 < n; p++) { if (*p == '\\' && p[1]) { out[o++] = *p++; out[o++] = *p; continue; } out[o++] = *p; if (*p == '"') break; }
+	if (out[o - 1] != '"' || o < 2) { out[0] = 0; return -1; }
+	out[o] = 0; return 0;
+}
+static void o_title(int k)
+{
+	if (!o_pg[k].parent[0]) return;
+	for (int i = 0; i < 16; i++) if (!o_tq[i].id) { char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%.63s\"}", o_pg[k].parent);
+		o_tq[i].id = next_id; snprintf(o_tq[i].title, sizeof o_tq[i].title, "%s", o_pg[k].title); send_cmd("Browser.getWindowForTarget", p); return; }
+}
 /* (12.3c) downloads in progress: Chromium is not closed under them when Oracle's last window closes (on Standard Chromium never
    closes): that window goes from the screen, and its page closes once they have finished and it has filed them */
 static struct { char guid[64]; } o_dl[32]; static int o_ndl, o_hide_id; static char o_defer[80];
@@ -313,12 +333,19 @@ static int o_handle(const char *msg)
 	/* (12.3c step 5) a desktop page attached: its binding; what it calls goes to standard output */
 	for (int i = 0; id > 0 && i < o_npg; i++) if (o_pg[i].attach_id == id) {
 		char sid[80]; field(msg, "sessionId", sid, sizeof sid); o_pg[i].attach_id = 0; snprintf(o_pg[i].session, sizeof o_pg[i].session, "%s", sid);
-		if (sid[0]) { int k; send_session(sid, "Runtime.addBinding", "{\"name\":\"rudolfNativeOracle\"}", &k); }
+		if (sid[0]) { int k; send_session(sid, "Runtime.addBinding", "{\"name\":\"rudolfNativeOracle\"}", &k);
+			/* (1.6.0: its title, said before the binding was there) */
+			send_session(sid, "Runtime.evaluate", "{\"expression\":\"window.__oaTitleAgain&&__oaTitleAgain()\"}", &k); }
 		return 1;
 	}
 	for (int k = 0; id > 0 && k < 8; k++) if (o_fs[k].id == id) {
 		long wid = num_field(msg, "windowId"); o_fs[k].id = 0;
 		if (wid > 0) { char p[160]; snprintf(p, sizeof p, "{\"windowId\":%ld,\"bounds\":{\"windowState\":\"%s\"}}", wid, o_fs[k].on ? "fullscreen" : "normal"); send_cmd("Browser.setWindowBounds", p); }
+		return 1;
+	}
+	for (int i = 0; id > 0 && i < 16; i++) if (o_tq[i].id == id) {   /* (1.6.0: a page's title, with its window's place) */
+		o_tq[i].id = 0; const char *b = strstr(msg, "\"bounds\"");
+		if (b) { printf("title %ld %ld %ld %ld %s\n", num_field(b, "left"), num_field(b, "top"), num_field(b, "width"), num_field(b, "height"), o_tq[i].title); fflush(stdout); }
 		return 1;
 	}
 	if (id > 0 && o_hide_id && id == o_hide_id) {   /* (the window that goes from the screen while Chromium finishes its downloads) */
@@ -351,6 +378,8 @@ static int o_handle(const char *msg)
 		static char pl[16384]; char sid[80]; field(msg, "sessionId", sid, sizeof sid);
 		if (sid[0] && !json_str(msg, "payload", pl, sizeof pl) && pl[0] == '{') {
 			if (strstr(pl, "\"op\":\"fs\"")) o_fullscreen(sid, strstr(pl, "\"on\":1") != NULL);   /* (the page's own full screen: here) */
+			else if (strstr(pl, "\"op\":\"title\"")) {   /* (1.6.0: its title, with its window's place) */
+				char ti[600]; for (int k = 0; k < o_npg; k++) if (!strcmp(o_pg[k].session, sid)) { if (!raw_str(pl, "t", ti, sizeof ti)) { snprintf(o_pg[k].title, sizeof o_pg[k].title, "%s", ti); o_title(k); } break; } }
 			else { printf("msg %s %s\n", sid, pl); fflush(stdout); } }
 		return 1;
 	}
@@ -372,8 +401,9 @@ static int o_handle(const char *msg)
 		if (!strncmp(url, "isolated-app://", 15) && (!strcmp(ty, "page") || !strcmp(ty, "app"))) { if (o_win_slot(t, 1) >= 0) o_had = 1; }
 		else if (!strcmp(ty, "webview") && !strncmp(url, "http://127.0.0.1:8080/#app=", 27)) {   /* (a window's desktop page: attached once) */
 			int k = -1; for (int i = 0; i < o_npg; i++) if (!strcmp(o_pg[i].target, t)) k = i;
-			if (k < 0 && o_npg < 64) { k = o_npg++; snprintf(o_pg[k].target, sizeof o_pg[0].target, "%s", t); o_pg[k].session[0] = 0; field(msg, "parentId", o_pg[k].parent, sizeof o_pg[k].parent);
-				char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%s\",\"flatten\":true}", t); o_pg[k].attach_id = next_id; send_cmd("Target.attachToTarget", p); } }
+			if (k < 0 && o_npg < 64) { k = o_npg++; snprintf(o_pg[k].target, sizeof o_pg[0].target, "%s", t); o_pg[k].session[0] = 0; o_pg[k].title[0] = 0; field(msg, "parentId", o_pg[k].parent, sizeof o_pg[k].parent);
+				char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%s\",\"flatten\":true}", t); o_pg[k].attach_id = next_id; send_cmd("Target.attachToTarget", p); }
+			}
 		else if (!strcmp(ty, "page") && strncmp(url, "devtools://", 11)) { char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%s\"}", t); send_cmd("Target.closeTarget", p); }
 		return 1;
 	}
