@@ -1450,9 +1450,11 @@ static void modal_send(AppWin *a, GdkPixbuf *pb)
 	if (a->view) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js, -1, NULL, NULL, NULL, NULL, NULL);
 	g_free(js); g_free(buf); if (pb) g_object_unref(pb);
 }
+static gint64 PT_SHOWN;   /* (1.6.0, tests: when the portal's page last showed a dialog over the screen, ms since 1970) */
 static void modal_cover(AppWin *a)
 {
 	Client *c = WM_OK ? client_of_app(a) : NULL; if (!c || !a->modal) return;
+	if (!strcmp(a->k, "do-portal")) PT_SHOWN = g_get_real_time() / 1000;
 	GdkPixbuf *pb = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), 0, 0, SW, SH);
 	if (!c->full) a->wasontop = c->ontop; c->ontop = 1;
 	if (c->hidden) { c->hidden = 0; if (!c->off && !c->min) XMapWindow(DPY, c->frame); }
@@ -6401,7 +6403,7 @@ static void state_write(void)
 	g_string_append_printf(s, "screen %d %d\nuser %s\nlocked %d\nsignin %d\nmenu %d\nbar %d %d %d %d %d\nclock %s|%s\n", SW, SH, USER_ID[0] ? USER_N : "-", LOCKED,
 		SIGN && gtk_widget_get_visible(SIGN), MENU && gtk_widget_get_visible(MENU), BAR && gtk_widget_get_visible(BAR), bx, by, bar_w(), bar_h(), CLOCK_T, CLOCK_D);
 	g_string_append_printf(s, "ws %d\n", WSC);   /* (item 4: the workspace shown) */
-	{ AppWin *pp = pt_page(); g_string_append_printf(s, "portal %s %u\n", pp ? (pp->pready ? "ready" : "starting") : "-", PT_GIVEN ? g_hash_table_size(PT_GIVEN) : 0); }   /* (1.6.0: the portal's page; the requests handed out) */
+	{ AppWin *pp = pt_page(); g_string_append_printf(s, "portal %s %u\nportalshown %lld\n", pp ? (pp->pready ? "ready" : "starting") : "-", PT_GIVEN ? g_hash_table_size(PT_GIVEN) : 0, (long long)PT_SHOWN); }   /* (1.6.0: the portal's page; the requests handed out) */
 	g_string_append_printf(s, "keys grabbed=%d superraw=%d kbcap=%s\n", KB_GRABBED, !SUPER_GRAB, KBCAP && g_list_find(WINS, KBCAP) ? KBCAP->k : "-");   /* (the computer check's keys, 1.6.0) */
 	if (MENU && gtk_widget_get_visible(MENU)) g_string_append_printf(s, "menuq %s\n", MQ[0] ? MQ : "-");
 	/* (2026-11-16) what the start menu's search found: srch GROUP X Y W H TEXT (the screen's pixels), the chosen one, the menu's box */
@@ -6445,6 +6447,7 @@ static void state_write(void)
 			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : c->ak[0] ? c->ak : "-", c->title);
 		g_string_append_printf(s, "clientws %lx %d %d\n", (unsigned long)c->w, c->ws, c->off);   /* (item 4: its workspace, shown or not) */
 		if (c->ontop) g_string_append_printf(s, "clienttop %lx\n", (unsigned long)c->w);   /* (Always on top: the title bars' test) */
+		if (c->hidden) g_string_append_printf(s, "clienthidden %lx\n", (unsigned long)c->w);   /* (1.6.0: out of sight, as the portal's page between its dialogs) */
 		if (c->app && c->app->win && c->app->view && GTK_IS_WIDGET(c->app->view)) { GtkAllocation al; gtk_widget_get_allocation(c->app->view, &al); g_string_append_printf(s, "view %lx %d %d\n", (unsigned long)c->w, al.width, al.height); } }   /* (the page's own size: its window's) */
 	g_string_append_printf(s, "wm %d\nicons %u %s\n", WM_OK, ICONS ? g_hash_table_size(ICONS) : 0, VER[0] ? VER : "-");
 	for (int i = 0; di_shown() && i < NDI; i++) { int x, y; di_xy(&DI[i], &x, &y); g_string_append_printf(s, "dicon %d %d %d %d %d %d %s|%s|%s\n", DI[i].c, DI[i].r, x, y, di_w(), DI[i].sel, DI[i].k, DI[i].kind, DI[i].n); if (strchr(DI[i].k, ':')) g_string_append_printf(s, "diconic %s %s %d\n", DI[i].k, DI[i].ic[0] ? DI[i].ic : "-", DI[i].ic[0] && ICONS && g_hash_table_lookup(ICONS, DI[i].ic) ? 1 : 0); }

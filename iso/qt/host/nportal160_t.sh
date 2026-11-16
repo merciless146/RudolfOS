@@ -57,7 +57,8 @@ xdotool type --delay 30 'pw-new1'; xdotool key Tab; xdotool type --delay 30 'pw-
 w8 '[ "$(answers k100-1)" -ge 1 ]' 40; timeout 2 tail -f /dev/null
 ok "2c. typed in as a person would: answered once, with the password" "$([ "$(answers k100-1)" = 1 ] && grep -q '^k100-1 {"response":0,"password":"pw-new1"' $D/portal/answers && [ ! -e $D/portal/req/k100-1.json ] && echo 1)" "$(cat $D/portal/answers 2>/dev/null)"
 w8 '! grep -q "^ontop do-portal$" $D/state' 20
-ok "2d. the prompt is gone from the screen; the portal's page stays for the next one" "$(! grep -q '^ontop do-portal$' $D/state && ! grep -q '^hit task.*do-portal' $D/state && [ "$(st portal | cut -d' ' -f1)" = ready ] && echo 1)" "$(grep -E '^(ontop|client|page|app|portal) ' $D/state)"
+pw=$(grep ' app=do-portal ' $D/state | head -1 | cut -d' ' -f2)
+ok "2d. the prompt is gone from the screen (the portal's page out of sight, no taskbar button); the page stays for the next one" "$(! grep -q '^ontop do-portal$' $D/state && [ -n "$pw" ] && grep -q "^clienthidden $pw$" $D/state && ! grep -q '^hit task.*do-portal' $D/state && [ "$(st portal | cut -d' ' -f1)" = ready ] && echo 1)" "$(grep -E '^(ontop|client|page|app|portal) ' $D/state)"
 # ---- 3. two app windows open: a file dialog, once, by the portal's page only
 click() { xdotool mousemove $1 $2 click 1; }
 click $(hit pin notepad); w8 'grep -q "^app notepad " $D/state' 120; click $(hit pin calc); w8 'grep -q "^app calc " $D/state' 120; timeout 4 tail -f /dev/null
