@@ -19,6 +19,7 @@
 #   DIR/torwin-fix     (when there) the path of fixtures/torwinapi.c built: torwin/* answered by rudolfd's own code (16.2)
 #   DIR/tor-on         (made by tor/start) rudolfd's Tor stood in: tor/status says on (1.5.9, plan 16.1)
 #   DIR/stats-on, DIR/shell.json, DIR/lsync.json   (1.6.0) stats answered; the shell's state; the pages' last lsync copy
+#   DIR/health-on, DIR/system.json, DIR/sleep-ms   (1.6.0, hwcnative160_t.sh) the health log, the system's answer, sleep as rudolfd's
 #   DIR/hotkey         (when there) the path of Rudolf OS's hotkey script: mic and volume answered through it as rudolfd does
 #                      (the sound server: pactl, PULSE_SERVER from the environment)
 # Ann's password is in keys.json; a wrong one gets the page's message.   python3 native_rd.py PORT DIR
@@ -174,6 +175,25 @@ class H(http.server.BaseHTTPRequestHandler):
         # DIR/lsync.log (part KEYS, or all N)
         if w == 'stats' and rd('stats-on') is not None: return self.j({'ok': True, 'cpu': 12.5, 'load': 0.1, 'memTotal': 4 << 30, 'memFree': 1 << 30, 'memAvailable': 3 << 30, 'battery': None, 'brightness': None, 'tempC': None, 'processes': ''})
         if w == 'shell' and rd('shell.json') is not None: return self.send(200, rd('shell.json'))
+        # (1.6.0, hwcnative160_t.sh) when DIR/health-on is there: the health log (a start-up a minute ago, then what was noted: DIR/health.log);
+        # DIR/system.json: rudolfd's system answer; GET sleep and a suspend as rudolfd's (sleep_now: DIR/sleep-ms is the time it slept, an
+        # empty file a sleep the kernel refused)
+        if w == 'health' and rd('health-on') is not None:
+            import time
+            if m == 'POST':
+                with LOCK: open(os.path.join(D, 'health.log'), 'ab').write(b + b'\n')
+                return self.j({'ok': True, 'message': 'noted'})
+            ev = [json.loads(l) for l in (rd('health.log', b'') or b'').decode().splitlines() if l.strip().startswith('{')]
+            ev = [{'t': int(time.time()) - (len(ev) - i), 'k': e.get('k'), 'm': e.get('m')} for i, e in enumerate(ev)]
+            return self.j({'ok': True, 'now': int(time.time()), 'uptime': 40, 'events': list(reversed([{'t': int(time.time()) - 60, 'k': 'start', 'm': 'start-up (a)'}] + ev))})
+        if w == 'system' and rd('system.json') is not None: return self.send(200, rd('system.json'))
+        if w == 'sleep' and rd('sleep-ms') is not None:
+            v = rd('sleep.json'); return self.send(200, b'{"ok":true,"last":' + (v or b'null') + b',"mode":"s2idle","wakealarm":true}')
+        if w == 'power' and m == 'POST' and 'action=suspend' in q and rd('sleep-ms') is not None:
+            import time; ms = (rd('sleep-ms') or b'').decode().strip(); n = int(rd('sleep-n', b'0') or 0) + 1; open(os.path.join(D, 'sleep-n'), 'w').write(str(n))
+            rec = {'seq': int(time.time() * 1000), 'at': int(time.time()), 'asked': 10, 'slept_ms': int(ms) if ms else 0, 'ok': bool(ms), 'error': '' if ms else 'Device or resource busy',
+                   'success': 1 if ms else 0, 'fail': 0 if ms else 1, 'hw_us': -1, 'mode': 's2idle'}
+            open(os.path.join(D, 'sleep.json'), 'w').write(json.dumps(rec)); return self.j({'ok': True, 'message': 'suspending'})
         if w == 'lsync' and m == 'POST':
             with LOCK:
                 open(os.path.join(D, 'lsync.json'), 'wb').write(b); n = int(rd('lsync-n', b'0') or 0) + 1; open(os.path.join(D, 'lsync-n'), 'w').write(str(n))
