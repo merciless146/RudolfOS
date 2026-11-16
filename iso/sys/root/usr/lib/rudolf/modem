@@ -295,7 +295,10 @@ clat_start() {   # IF V6ADDR: IPv4 through the operator's NAT64 (tayga as a CLAT
 	# (tayga's own IPv6 address, ::c1a8 beside the CLAT's: tayga needs one with the well-known prefix 64:ff9b::/96)
 	printf 'tun-device clat\nipv4-addr 192.0.0.2\nipv6-addr %s\nprefix %s\nmap 192.0.0.1 %s\ndata-dir %s/clat\n' "${C%c1a7}c1a8" "$P" "$C" "$R" > $R/clat/tayga.conf
 	tayga -c $R/clat/tayga.conf --mktun >/dev/null 2>&1 || { note "Mobile data: IPv6 only" "The CLAT could not start (no TUN device?): IPv4-only sites cannot be reached."; return 1; }
-	ip link set clat up; ip link set clat mtu 1260; ip addr add 192.0.0.1/32 dev clat; ip route replace default dev clat metric $CM
+	# (its MTU 20 below the link's, as IPv4 packets grow by 20 bytes into IPv6 ones; never under 1280, where Linux turns
+	# IPv6 off on the device and nothing comes back through it)
+	u=$(cat /sys/class/net/$1/mtu 2>/dev/null || echo 1500); u=$((u - 20)); [ $u -lt 1280 ] && u=1280
+	ip link set clat up; ip link set clat mtu $u; ip addr add 192.0.0.1/32 dev clat; ip route replace default dev clat metric $CM
 	ip -6 route replace "$C/128" dev clat; ip -6 route replace "${C%c1a7}c1a8/128" dev clat
 	echo 1 > $PROCNET/ipv6/conf/all/forwarding 2>/dev/null; for f in $PROCNET/ipv6/conf/*/accept_ra; do [ "$(cat $f 2>/dev/null)" = 1 ] && echo 2 > $f; done
 	tayga -c $R/clat/tayga.conf -p $R/clat/tayga.pid >/dev/null 2>&1
