@@ -556,6 +556,8 @@ static void api_desktop_settings(struct req *r)
 	str o = {0}; sadd(&o, "{\"ok\":true,\"gen\":%.0f,\"acct\":", l.file ? dj_num(dj_get(l.file, "gen"), 0) : 0); sjson(&o, in ? s.id : "");
 	sadd(&o, ",\"s\":{"); int n = 0;
 	for (int i = 0; KEYS[i]; i++) { const char *v = set ? dj_get(set, KEYS[i]) : NULL; if (!v || !dj_end(v, 0)) continue; sadd(&o, "%s\"%s\":", n++ ? "," : "", KEYS[i]); dj_raw(&o, v, "null"); }
+	{ static const char *const K2[] = { "nlv", "nlsched", "magz", NULL };   /* (1.6.0: Night light's strength and hours, the magnifier's zoom: the native shell does them for the whole screen) */
+	  for (int i = 0; K2[i]; i++) { const char *v = set ? dj_get(set, K2[i]) : NULL; if (!v || !dj_end(v, 0)) continue; sadd(&o, "%s\"%s\":", n++ ? "," : "", K2[i]); dj_raw(&o, v, "null"); } }
 	sadd(&o, "},\"pins\":");
 	snprintf(k, sizeof k, "bd95pins:%s", in ? s.id : "nobody"); char *pins = dls_get(&l, k);
 	if (pins && *dj_ws(pins) == '[' && dj_end(pins, 0)) dj_raw(&o, pins, "[]"); else sadd(&o, "[\"explorer\",\"browser\",\"notepad\",\"settings\"]");

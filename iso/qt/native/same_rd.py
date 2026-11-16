@@ -74,6 +74,8 @@ class H(http.server.BaseHTTPRequestHandler):
         self.send(404, 'not found', 'text/plain')
     def api(self, m, w, q, b):
         L = ls(); data = L['data']; s = session()
+        if w in ('events/wait', 'events') and rd('wm-native') is not None and 'shell=1' not in q:   # (1.6.0: rudolfd's on the native desktop: the shell's only)
+            time.sleep(2); return self.j({'ok': True, 'events': '', 'native': True})
         if w == 'events/wait':   # (DIR/event: one event for the page that asks first, as rudolfd's)
             for _ in range(30):
                 with LOCK:
@@ -128,6 +130,7 @@ class H(http.server.BaseHTTPRequestHandler):
             except ValueError: pass
             wgown = bool(sid and own and own.get('was') == (wraw or ''))
             wg = own['list'] if wgown else (sget(data, 'bd95widgets:' + sid) if sid else None)
+            K = K + ["nlv", "nlsched", "magz"]   # (1.6.0: Night light's strength and hours, the magnifier's zoom)
             return self.j({'ok': True, 'gen': L.get('gen', 1), 'acct': sid, 's': {k: st[k] for k in K if k in st},
                            'pins': pins if isinstance(pins, list) else ["explorer", "browser", "notepad", "settings"], 'notes': len(nt), 'wallpaper': wall, 'wpacct': sid if wall else '',
                            'widgets': wg if isinstance(wg, list) else [], 'wgown': wgown, 'wloc': sget(data, 'bd95wloc'), 'wunit': sget(data, 'bd95wunit') or '', 'cal': (sget(data, 'bd95cal:' + sid) if sid else None) or [], 'notif': nt if isinstance(nt, list) else [], 'kb': (sget(data, 'bd95kb:' + sid) if sid else None) or {}, 'sys': sget(data, 'bd95sys') or {}})
@@ -161,7 +164,8 @@ class H(http.server.BaseHTTPRequestHandler):
                     k, _, v = kv.partition('=')
                     if k == 'set' and v.isdigit(): ST['vol'] = max(0, min(100, int(v))); ST['muted'] = False
                     if k == 'muted': ST['muted'] = v == '1'
-                    if k == 'step': ST['vol'] = max(0, min(100, ST.get('vol', 70) + (5 if v == 'up' else -5)))
+                    if k == 'step' and v == 'mute': ST['muted'] = not ST.get('muted', False)
+                    elif k == 'step': ST['vol'] = max(0, min(100, ST.get('vol', 70) + (5 if v == 'up' else -5))); ST['muted'] = False
             return self.j({'ok': True, 'volume': ST.get('vol', 70), 'muted': ST.get('muted', False)})
         # (item 8) Linux's and Blitzen's state for the Phone screen's and Blitzen's windows (DIR/deb, DIR/ai: JSON, as the test sets them)
         if w == 'debian/status': return self.j(dict({'ok': True}, **json.loads(rd('deb', b'{}') or b'{}')))
@@ -182,7 +186,18 @@ class H(http.server.BaseHTTPRequestHandler):
         # (the memory guard's "which page process is the desktop's": the stand-in has no processes; answered, the page would keep its
         # processor busy for 0.6 s by performance.now(), which the test's clock holds still, and never finish)
         if w == 'memory/iam': return self.err(404, 'no processes here')
-        if w == 'info': return self.j({'ok': True, 'battery': [{'name': 'BAT0', 'type': 'Battery', 'capacity': 81, 'status': 'Discharging'}]})
+        if w == 'info': return self.j({'ok': True, 'backlight': rd('backlight') is not None, 'battery': [{'name': 'BAT0', 'type': 'Battery', 'capacity': 81, 'status': 'Discharging'}]})
+        # (1.6.0) DIR/backlight: the screen's brightness (0-100), as rudolfd's brightness and brightness/step (hotkey's 5 % steps, at least 5 %)
+        if w in ('brightness', 'brightness/step'):
+            x = rd('backlight')
+            if x is None: return self.err(404, 'this screen has no adjustable backlight')
+            v = int(x.strip() or b'70')
+            if m == 'POST':
+                if w == 'brightness/step': v = max(5, min(100, v + (5 if 'd=up' in q else -5)))
+                elif 'value=' in q: v = max(5, min(100, int(q.split('value=')[1].split('&')[0] or 0)))
+                with open(os.path.join(D, 'backlight'), 'w') as f: f.write(str(v))
+            return self.j({'ok': True, 'brightness': v})
+        if w == 'bootmenu': return self.j(dict({'ok': True, 'uefi': True, 'loader': True, 'windows': []}, **json.loads(rd('bootmenu', b'{}') or b'{}')))
         return self.j({'ok': True})
 class S(http.server.ThreadingHTTPServer):
     daemon_threads = True

@@ -118,9 +118,13 @@ static void fb_open(void)
 	fblen = f.smem_len;
 }
 
+/* 1.6.0: the X screen's colour ramps (XRandR's gamma: the native desktop's Night light and High contrast, rudolf-native sets them
+   for the whole screen as Xorg applies them on the graphics card): the software display applies them as it copies the picture */
+static int gamma_on; static uint8_t glut[3][256];
 /* write one pixel (0x00RRGGBB) to a framebuffer row pointer */
 static inline void put_px(uint8_t *row, int x, uint32_t c)
 {
+	if (gamma_on) c = (uint32_t)glut[0][c >> 16 & 255] << 16 | (uint32_t)glut[1][c >> 8 & 255] << 8 | glut[2][c & 255];
 	if (fbswap) c = (c & 0xFF00) | (c >> 16 & 0xFF) | (c & 0xFF) << 16;
 	switch (fbbpp) {
 	case 32: ((uint32_t *)row)[x] = c; break;
@@ -134,7 +138,7 @@ static void fb_row(int y, int x0, int x1, const uint32_t *src)
 	if (y < 0 || y >= fbh) return;
 	if (x1 > fbw) x1 = fbw;
 	uint8_t *row = fbmem + (size_t)y * fbstride;
-	if (fbbpp == 32 && !fbswap) { memcpy(row + x0 * 4, src + x0, (x1 - x0) * 4); return; }
+	if (fbbpp == 32 && !fbswap && !gamma_on) { memcpy(row + x0 * 4, src + x0, (x1 - x0) * 4); return; }
 	for (int x = x0; x < x1; x++) put_px(row, x, src[x]);
 }
 
@@ -261,6 +265,22 @@ static int sync_scaled(void)
 }
 
 /* copy changed 8-line bands from the X image to the framebuffer */
+/* (once a second: the first screen's ramps; a change draws the whole picture again) */
+static void gamma_poll(void)
+{
+	int ev, er; if (!XRRQueryExtension(dpy, &ev, &er)) return;
+	XRRScreenResources *r = XRRGetScreenResourcesCurrent(dpy, DefaultRootWindow(dpy)); if (!r) return;
+	XRRCrtcGamma *g = r->ncrtc > 0 ? XRRGetCrtcGamma(dpy, r->crtcs[0]) : NULL; XRRFreeScreenResources(r);
+	if (!g) return;
+	uint8_t nl[3][256]; int ident = 1;
+	if (g->size >= 2) for (int c = 0; c < 3; c++) { unsigned short *ramp = c == 0 ? g->red : c == 1 ? g->green : g->blue;
+		for (int i = 0; i < 256; i++) { int j = i * (g->size - 1) / 255; nl[c][i] = (uint8_t)(ramp[j] >> 8); if (abs(nl[c][i] - i) > 1) ident = 0; } }
+	int sz = g->size; XRRFreeGamma(g);
+	if (sz < 2) return;
+	if (ident == !gamma_on && (ident || !memcmp(nl, glut, sizeof nl))) return;
+	memcpy(glut, nl, sizeof nl); gamma_on = !ident;
+	if (shadow) memset(shadow, 0xFF, (size_t)xw * xh * 4);   /* (every row again) */
+}
 static int sync_screen(void)
 {
 	if (scaled) return sync_scaled();
@@ -1357,7 +1377,7 @@ int main(int argc, char **argv)
 		long long t = now_ms();
 		if (t - last_scan > 2000) { scan_devices(); last_scan = t; }
 		power_tick(t);
-		if (t - last_set > 1000) { read_settings(); fit_windows(); last_set = t; }
+		if (t - last_set > 1000) { read_settings(); fit_windows(); if (!input_only) gamma_poll(); last_set = t; }
 		else if (t - last_wmchk > 100) { last_wmchk = t; if (wm_changed()) fit_windows(); }
 		struct pollfd pf[MAXDEV + 1];
 		for (int i = 0; i < ndev; i++) pf[i].fd = devs[i].fd, pf[i].events = POLLIN;
