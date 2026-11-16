@@ -159,6 +159,14 @@ class H(http.server.BaseHTTPRequestHandler):
         # (item 8) Linux's and Blitzen's state for the Phone screen's and Blitzen's windows (DIR/deb, DIR/ai: JSON, as the test sets them)
         if w == 'debian/status': return self.j(dict({'ok': True}, **json.loads(rd('deb', b'{}') or b'{}')))
         if w == 'ai/status': return self.j(dict({'ok': True}, **json.loads(rd('ai', b'{}') or b'{}')))
+        if w in ('mobile/status', 'mobile/connect'):   # (1.6.0 Part 3: DIR/mobile, "connected" or "registered": a modem with its SIM unlocked)
+            st = (rd('mobile', b'') or b'').decode().strip()
+            if w == 'mobile/connect' and m == 'POST' and st:
+                st = 'connected' if 'on=1' in q else 'registered'
+                with open(os.path.join(D, 'mobile'), 'w') as f: f.write(st)
+                return self.j({'ok': True, 'message': 'Connected' if st == 'connected' else 'Disconnected'})
+            mods = [{'id': 0, 'maker': 'Quectel', 'model': 'EG25-G', 'state': st, 'failed': '', 'locked': '', 'sim': True, 'iface': 'wwan0' if st == 'connected' else ''}] if st else []
+            return self.j({'ok': True, 'running': bool(st), 'modems': mods, 'notes': [], 'route': 'eth0', 'cellular': False})
         if w == 'mobile/airplane':   # (1.6.0 Part 2: quick settings' Airplane mode; DIR/airplane: 1 or 0)
             if m == 'POST':
                 with open(os.path.join(D, 'airplane'), 'w') as f: f.write('1' if 'on=1' in q else '0')
