@@ -176,7 +176,7 @@ try:
             time.sleep(0.5); st = state()
             if st_get(st, 'power') == '1': got = round(time.time() - t1, 1); break   # (each reading over the serial line takes 2-3 s)
         left = sh("cat /run/rudolf/events 2>/dev/null | head -5; echo END", 20, False)
-        inpage = tev('notepad', "document.querySelectorAll('.rmodal').length")
+        inpage = tev('notepad', "document.querySelectorAll('.rmodal').length").split('\n')[-1].replace('notepad ', '')
         ok(f'B1. Native, {fn} in front: the power button shows the shell\'s power dialog at once (at the first readings), above every window, in no page', got is not None and got <= 8 and st_get(st, 'powertop') == '1' and left.strip() == 'END' and inpage == '0', (got, st_get(st, 'powertop'), left, inpage))
         vm.shot(f'nat-power-{fn.split()[-1]}'); g.q.key('esc'); time.sleep(1.5)
         api(sh, 'volume?set=50', True); st0 = state(); v0 = api(sh, 'volume'); g.q.key('volumeup'); time.sleep(1.2); st = state(); v1 = api(sh, 'volume'); o1 = st_get(st, 'osdlast') or ''
@@ -199,10 +199,15 @@ try:
     QSL = ['Dark mode', 'Night light', 'Do not disturb', 'Screen reader', 'Magnifier', 'High contrast', 'On-screen keyboard', 'Touch mode', 'Airplane mode']
     for i, t in enumerate(QSL):
         for on in (1, 0):
+            pid0 = sh("pgrep -f 'rudolf-native [-]-rudolf-kiosk'", 20, False).strip()
             st = state(); h = hit(st, 'qs -')
-            if h: at(*h); time.sleep(1.5)
-            st = state(); m = re.search(rf'^flybtn qs:{i} (\d+) (\d+)$', st, re.M)
+            if h: at(*h)
+            for _ in range(8):
+                time.sleep(1); st = state()
+                if (st_get(st, 'fly') or '').startswith('qs'): break
+            m = re.search(rf'^flybtn qs:{i} (\d+) (\d+)$', st, re.M)
             if m: at(int(m.group(1)), int(m.group(2)))
+            else: out('quick settings did not open:', st_get(st, 'fly'))
             time.sleep(1); at(SW * 3 // 4, SH - 140); time.sleep(9); st = state()   # (a click on the desktop closes quick settings, as on Standard)
             gm = sh("DISPLAY=:0 XAUTHORITY=/run/rudolf/xauth xrandr --verbose 2>/dev/null | grep -m1 Gamma", 20, False).strip()
             sigs = {k: tev(k, SIG) for k in ('notepad', 'calc')}
@@ -210,11 +215,19 @@ try:
             if on: vm.shot(f'nat-tile-{i}')
             a = dict(kv.split('=') for kv in (st_get(st, 'a11y') or '').split() if '=' in kv)
             key = ['dark', 'nl', 'dnd', 'sr', 'mag', 'hc', 'vk', 'touch', None][i]
-            if key: ok(f'Q{i}. Native: {t} {"on" if on else "off"}: the shell', a.get(key) == str(on), a)
-    st = state(); h = hit(st, 'qs -'); at(*h); time.sleep(1.5); st = state(); m = re.search(r'^flybtn power (\d+) (\d+)$', st, re.M); at(int(m.group(1)), int(m.group(2))); time.sleep(2); st = state()
+            pid1 = sh("pgrep -f 'rudolf-native [-]-rudolf-kiosk'", 20, False).strip()
+            if pid1 != pid0: out('THE NATIVE DESKTOP RESTARTED', pid0, pid1, sh("tail -30 /run/rudolf/native-desktop.log", 30, False))
+            if key: ok(f'Q{i}. Native: {t} {"on" if on else "off"}: the shell', a.get(key) == str(on) and pid1 == pid0, a)
+    def qs_btn(k):
+        st = state(); h = hit(st, 'qs -')
+        if h: at(*h)
+        time.sleep(3); st = state(); m = re.search(rf'^flybtn {k} (\d+) (\d+)$', st, re.M)
+        if m: at(int(m.group(1)), int(m.group(2)))
+        time.sleep(3); return state()
+    st = qs_btn('power')
     ok('Q9. Native: quick settings › Power: the power dialog above every window, Standard\'s choices', st_get(st, 'power') == '1' and st_get(st, 'powertop') == '1', st_get(st, 'powerrows'))
     g.q.key('esc'); time.sleep(1.5)
-    st = state(); h = hit(st, 'qs -'); at(*h); time.sleep(1.5); st = state(); m = re.search(r'^flybtn lock (\d+) (\d+)$', st, re.M); at(int(m.group(1)), int(m.group(2))); time.sleep(4); st = state()
+    st = qs_btn('lock')
     ok('Q10. Native: quick settings › Lock: the lock screen above every window', st_get(st, 'locked') == '1' and st_get(st, 'signtop') == '1', (st_get(st, 'locked'), st_get(st, 'signtop')))
     vm.shot('nat-lock')
     out(sh("tail -40 /run/rudolf/native-desktop.log", 30, False))

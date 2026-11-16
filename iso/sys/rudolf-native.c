@@ -5229,14 +5229,15 @@ static gboolean mag_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	cairo_set_source_rgb(cr, 0, 0, 0); cairo_paint(cr);
 	cairo_translate(cr, MAGPX, MAGPY); cairo_scale(cr, MAGZ, MAGZ); cairo_translate(cr, -MAGPX, -MAGPY);
 	if (!XQueryTree(DPY, ROOT, &rr, &pr, &ch, &n)) return TRUE;
-	int (*old)(Display *, XErrorEvent *) = XSetErrorHandler(wm_errh);
+	/* (a window may go while it is read: GDK's own error trap, so an error from X never ends the shell) */
+	GdkDisplay *gd = gdk_display_get_default(); gdk_x11_display_error_trap_push(gd);
 	for (unsigned i = 0; i < n; i++) { if (ch[i] == me) continue; XWindowAttributes at; if (!XGetWindowAttributes(DPY, ch[i], &at) || at.map_state != IsViewable || at.class != InputOutput) continue;
 		if (at.x >= SW || at.y >= SH || at.x + at.width <= 0 || at.y + at.height <= 0) continue;
 		Pixmap pm = name(DPY, ch[i]); if (!pm) continue; int bw = at.border_width;
 		cairo_surface_t *s = cairo_xlib_surface_create(DPY, pm, at.visual, at.width + 2 * bw, at.height + 2 * bw);
 		cairo_set_source_surface(cr, s, at.x, at.y); cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR); cairo_paint(cr);
-		cairo_surface_destroy(s); XFreePixmap(DPY, pm); }
-	XSync(DPY, False); XSetErrorHandler(old); if (ch) XFree(ch);
+		cairo_set_source_rgb(cr, 0, 0, 0); cairo_surface_flush(cairo_get_target(cr)); cairo_surface_finish(s); cairo_surface_destroy(s); XFreePixmap(DPY, pm); }   /* (drawn before its picture goes) */
+	XSync(DPY, False); gdk_x11_display_error_trap_pop_ignored(gd); if (ch) XFree(ch);
 	return TRUE;
 }
 static gboolean mag_tick(gpointer d)
@@ -5352,8 +5353,9 @@ static int x_on_top(GtkWidget *w)
 	if (!w || !gtk_widget_get_visible(w) || !DPY) return 0; Window me = GDK_WINDOW_XID(gtk_widget_get_window(w)), rr, pr, *ch = NULL; unsigned n = 0; int top = 0;
 	Client *c = client_of(me); if (c) me = c->frame;
 	if (!XQueryTree(DPY, ROOT, &rr, &pr, &ch, &n)) return 0;
+	GdkDisplay *gd = gdk_display_get_default(); gdk_x11_display_error_trap_push(gd);   /* (a window going meanwhile) */
 	for (int i = (int)n - 1; i >= 0; i--) { XWindowAttributes at; if (!XGetWindowAttributes(DPY, ch[i], &at) || at.map_state != IsViewable || at.override_redirect) continue; top = ch[i] == me; break; }
-	if (ch) XFree(ch); return top;
+	gdk_x11_display_error_trap_pop_ignored(gd); if (ch) XFree(ch); return top;
 }
 
 /* ------------------------------------------------------------------ the window keys (1.6.0 Part 12, item 5)
