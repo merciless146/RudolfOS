@@ -138,6 +138,9 @@ def flow(tag, vm, g, js, sh, launch):
         if 'redirect sent' in lg: break
         time.sleep(4)
     out('the app\'s log:', lg)
+    out('the desktop:', js("JSON.stringify({href:location.href,shell:typeof SHELL!='undefined'&&!!SHELL,wins:wins.map(w=>w.el.innerText.split('\\n')[0].slice(0,40)),"
+        "rt:typeof RT!='undefined'?[...RT.entries()].map(([k,v])=>[k,v.url&&v.url(),v.shown&&v.shown()]):null,seen:[...LX.seen],cw:(window.__cw||[]).slice(-12)})", 40))
+    vm.shot(f'l160{tag}-page')
     o = sh("ls -ld /run/rudolf/portal/req /run/rudolf/portal/resp; ls -l /run/rudolf/portal/req; tail -n 5 /run/rudolf/portal-*.log 2>/dev/null", 30)
     ok(f'{tag}2b. the account\'s portal may leave its questions for the desktop (the folder: sticky, every user\'s)', 'drwx-wx-wt' in o, o)
     ok(f'{tag}2. the app\'s xdg-open (as Electron\'s shell.openExternal) succeeds', 'xdg-open exit 0' in lg, lg)
@@ -174,13 +177,8 @@ try:
         js("(()=>{setTimeout(()=>location.reload(),300);return 1})()", 30); time.sleep(20)
         r = wait_for(js, "typeof acctNew=='function'&&typeof userLogin=='function'&&typeof lkOpen=='function'", 600)
         ok('S0b. this tree\'s page, rudolfd and Debian programs in place', (not FIX) or (r is True and 'rudolfd ' in o), [r, o[-600:]])
-        js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};return 1})()")
-        r = js("(async()=>{ACCTS.length=0;const a=await acctNew('john','j1','admin');ACCTS.push(a);saveUser();return a.id})()", 120); out('account', r)
-        SI = ("(async()=>{try{const a=ACCTS.find(x=>x.n=='john');if(USER)userLogout();USER=a;await userLogin(a,'j1');lastInput=Date.now();"
-              "const L=document.getElementById('login');if(L)L.style.display='none';return 'in '+USER.n}catch(e){return 'ERR '+e.message}})()")
-        out('sign-in:', js(SI, 300))
-        # the desktop's one-time move into the shell (Oracle's real tabs): by itself right after start-up, else on the
-        # person's click on "Real browser tabs are ready" (its action, shell/switch, as the notice's click does)
+        # the desktop's one-time move into the shell (Oracle's real tabs) first, before anyone signs in: by itself right
+        # after start-up, else as the click on "Real browser tabs are ready" does (shell/switch)
         end = time.time() + 900; asked = 0
         while time.time() < end and js("typeof SHELL!='undefined'&&!!SHELL", 20) is not True:
             st = js("(async()=>{try{return JSON.stringify(await rd('shell'))}catch(e){return 'ERR '+e.message}})()", 30)
@@ -188,12 +186,16 @@ try:
                 out('the shell, not moved into by itself:', st, '- as the notice\'s click does')
                 js("(()=>{try{fsFlush()}catch(e){}setTimeout(()=>rdPost('shell/switch').catch(()=>{}),600);return 1})()", 30); asked += 1; time.sleep(40)
             time.sleep(10)
-        # (signed in again only when the move's restart left the page signed out: signing out and in at once while the
-        # account's session was starting left it half made, its portal gone)
-        for _ in range(3):
-            if wait_for(js, "!!(USER&&USER.n=='john'&&USER.disk&&hdOn())", 180) is True: break
-            if js("!!(USER&&USER.n=='john')", 20) is True: continue
-            out('sign-in again (after the move into the shell):', js(SI, 300))
+        wait_for(js, "typeof acctNew=='function'&&typeof userLogin=='function'&&typeof lkOpen=='function'", 300)
+        js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};"
+           "if(!window.__cw){window.__cw=[];const w=console.warn,er=console.error;console.warn=function(...a){__cw.push('W '+a.map(String).join(' ').slice(0,300));return w.apply(this,a)};"
+           "console.error=function(...a){__cw.push('E '+a.map(String).join(' ').slice(0,300));return er.apply(this,a)};addEventListener('error',e=>__cw.push('X '+e.message))}return 1})()")
+        r = js("(async()=>{ACCTS.length=0;const a=await acctNew('john','j1','admin');ACCTS.push(a);saveUser();return a.id})()", 120); out('account', r)
+        SI = ("(async()=>{try{const a=ACCTS.find(x=>x.n=='john');if(USER)userLogout();USER=a;await userLogin(a,'j1');lastInput=Date.now();"
+              "const L=document.getElementById('login');if(L)L.style.display='none';return 'in '+USER.n}catch(e){return 'ERR '+e.message}})()")
+        out('sign-in:', js(SI, 300))
+        if wait_for(js, "!!(USER&&USER.n=='john'&&USER.disk&&hdOn())", 300) is not True:
+            time.sleep(30); out('sign-in again:', js(SI, 300)); wait_for(js, "!!(USER&&USER.n=='john'&&USER.disk&&hdOn())", 300)
         ok('S0c. the desktop in the shell (Oracle\'s real tabs), the account signed in with its own folder', js("!!(SHELL&&USER&&USER.n=='john'&&hdOn())", 30) is True,
            js("JSON.stringify({shell:typeof SHELL!='undefined'&&!!SHELL,user:USER&&USER.n,hd:typeof hdOn=='function'&&hdOn()})", 30))
         out('engine/shell:', js("JSON.stringify({engine:RD&&RD.engine,shell:typeof SHELL!='undefined'&&!!SHELL,user:USER&&USER.n,hd:typeof hdOn=='function'&&hdOn(),lk:typeof lkOpen})", 30))
