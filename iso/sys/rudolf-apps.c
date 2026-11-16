@@ -329,7 +329,7 @@ static void remote_extra(const char *id, str *s)
 static int cmd_launch(const char *desk, const char *argfile)
 {
 	if (!id_ok(desk)) return 2;
-	char file[1100] = "";
+	char file[8200] = "";   /* (1.6.0: or a link of the app's own scheme, up to 8000 characters: a sign-in's answer) */
 	if (argfile && *argfile) { FILE *f = fopen(argfile, "r"); if (f) { if (!fgets(file, sizeof file, f)) file[0] = 0; fclose(f); } unlink(argfile); file[strcspn(file, "\n")] = 0; }
 	const char *ex = getenv("RA_EXPORTS") ? getenv("RA_EXPORTS") : EXPORTS;
 	char dp[600]; snprintf(dp, sizeof dp, "%s/applications/%s.desktop", ex, desk);
