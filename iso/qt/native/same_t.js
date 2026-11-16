@@ -156,7 +156,7 @@ CASES.push({n: 'wopen', set: {}, act: 'notepad', wopen: 1, parts: ['wopen']});
    at the end (getVideoPlaybackQuality) as Chromium's, within 10 */
 const MPFRAMES = "(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.getClientRects().length).pop(); w.querySelector('.ou').click(); const d = w.querySelector('.dlg'); d.querySelector('input').value = location.origin + '/tm/t.webm'; [...d.querySelectorAll('button')].pop().click(); " +
   "const v = w.querySelector('video'); v.muted = true; v.loop = false; window.__vf = {cb: 0, end: -1}; const f = () => { __vf.cb++; v.requestVideoFrameCallback(f) }; v.requestVideoFrameCallback(f); v.addEventListener('ended', () => { __vf.end = v.getVideoPlaybackQuality().totalVideoFrames }, {once: true}); v.play() })()";
-CASES.push({n: 'video-frames', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'media', 'settings']}, app: 'media', media: 't.webm', js: MPFRAMES, jswait: 8500, read: "JSON.stringify(window.__vf)", parts: ['frames']});
+CASES.push({n: 'video-frames', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'media', 'settings']}, app: 'media', media: 't.webm', js: MPFRAMES, jswait: 8500, readx: "JSON.stringify(window.__vf)", parts: ['frames']});
 /* (N28) GPU Lab's Graphics info: hardware or software drawing, as each engine draws (Playwright's Chromium: SwiftShader; Native here:
    --draw=soft) */
 CASES.push({n: 'gpulab', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'gpulab', 'settings']}, app: 'gpulab', jswait: 1500,
@@ -193,13 +193,15 @@ CASES.push({n: 'title-icon', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 
 CASES.push({n: 'app-menu', set: {}, more: PINSL, app: 'explorer', appctx: 'DOCUMENTS', parts: ['ctx']});
 CASES.push({n: 'title-dark', set: {dm: 'dark', darkui: true}, more: PINSL, app: 'explorer', parts: ['title']});
 CASES.push({n: 'help', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'help']}, app: 'help', parts: ['win']});
+/* (what this session's cases read besides their pictures: wopen, video-frames; each engine's, for the case being run) */
+const XTRA = {std: {}, nat: {}};
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
 const micSet = c => { fs.writeFileSync(path.join(D, 'mic'), JSON.stringify(c.mic || [])); if (c.mic) cp.execSync(`curl -s --noproxy '*' -X POST -H 'X-Rudolf-Token: tok160same' '${BASE}/api/mic?muted=${c.micmuted ? 1 : 0}'`) };
 const rdSet = c => { for (const k of ['deb', 'ai', 'net']) { const f = path.join(D, k); if (c.rd && c.rd[k]) fs.writeFileSync(f, JSON.stringify(c.rd[k])); else try { fs.unlinkSync(f) } catch (e) {} } };
 async function stdCase(c) {
-  let s0wopen = null;
+  XTRA.std = {}; XTRA.nat = {};
   state(c.set, c.more); micSet(c); rdSet(c);
   const ctx = await BR.newContext({viewport: {width: W, height: H}, deviceScaleFactor: 1, timezoneId: 'UTC'});
   await ctx.clock.install({time: new Date('2026-11-14T09:41:00Z')});
@@ -218,7 +220,7 @@ async function stdCase(c) {
     await p.mouse.move(W / 2, H / 3);
     if (c.act == 'menu') { await p.click('#start'); await p.clock.runFor(600); await wait(300) }
     if (c.act == 'hover') { const r = await rectOf('#pins .pin:nth-child(2)'); await p.mouse.move(r[0] + r[2] / 2, r[1] + r[3] / 2); await p.clock.runFor(400); await wait(200) }
-    if (c.act == 'notepad' && c.wopen) { s0wopen = await p.evaluate(() => { launch('notepad'); const w = [...document.querySelectorAll('.win')].pop(), cs = getComputedStyle(w); return [w.classList.contains('wopen'), cs.animationName, cs.animationDuration].join(' ') }) }
+    if (c.act == 'notepad' && c.wopen) { XTRA.std.wopen = await p.evaluate(() => { launch('notepad'); const w = [...document.querySelectorAll('.win')].pop(), cs = getComputedStyle(w); return [w.classList.contains('wopen'), cs.animationName, cs.animationDuration].join(' ') }) }
     if (c.act == 'notepad') { if (!c.wopen) await p.evaluate(() => launch('notepad')); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } await p.mouse.move(W / 2, H - 200) }
     for (const k of c.pre || []) { await p.evaluate(k => { launch(k) }, k); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } }   /* (apps open before c.app) */
     if (c.app && c.nowin) { await p.mouse.click(W / 2, H - 200); await p.evaluate(k => { launch(k) }, c.app); await p.clock.runFor(100); await wait(800); await p.mouse.move(W / 2, H - 200) }   /* (an app asking before its window: a dialog open, see c.js) */
@@ -275,11 +277,12 @@ async function stdCase(c) {
   rects.altab = await rectOf('#altab'); rects.desk = await rectOf('#desk');
   rects.desc = await p.evaluate(() => ({bar: document.getElementById('bar').className, body: document.body.className}));
   const read = c.read ? await p.evaluate(js => { try { return String((0, eval)(js)) } catch (e) { return 'ERROR ' + e.message } }, c.read) : null;
+  if (c.readx) XTRA.std.readx = await p.evaluate(js => { try { return String((0, eval)(js)) } catch (e) { return 'ERROR ' + e.message } }, c.readx);
   rects.statue = await rectOf('#dynstatue img');
   const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f});
   if (c.moving) { for (let i = 0; i < c.moving / 250; i++) { await p.clock.runFor(250); await wait(60) } await p.screenshot({path: path.join(OUT, c.n + '.std2.png')}) } if (c.saver) fs.unlinkSync(path.join(D, 'idle'));
   if (c.key == 'altab') await p.keyboard.up('Alt');
-  await ctx.close(); return {f, rects, errs, pt, read, wopen: s0wopen};
+  await ctx.close(); return {f, rects, errs, pt, read};
 }
 // ---- Native: rudolf-native under Xvfb, the same storage
 let NP = null, NLOG = path.join(OUT, 'native.log');
@@ -338,10 +341,9 @@ async function natCase(c, s) {
   if (c.act == 'menu') { const h = nhit('start'); if (h) xdo('mousemove ' + h.join(' ') + ' click 1'); await until(() => nst('menu') == '1', 5000); xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(800) }
   if (c.act == 'hover') { const h = nhit('pin notepad'); if (h) xdo('mousemove ' + h.map(Math.round).join(' ')); await wait(800) }
   let cl = null;
-  let wo = null;
   if (c.act == 'notepad' && c.wopen) { const h = nhit('pin notepad'), st = () => nst('wopen') || '0'; if (h) xdo('mousemove ' + h.join(' ') + ' click 1');
     const T = Date.now(); while (st() == '0' && Date.now() - T < 30000) await wait(5); const t0 = Date.now(); sh('xwd -silent -root > ' + path.join(OUT, 'wopen.mid.xwd'));
-    while (st() != '0' && Date.now() - t0 < 3000) await wait(5); wo = {ms: Date.now() - t0}; await wait(400); sh('import -window root ' + path.join(OUT, 'wopen.end.png'));
+    while (st() != '0' && Date.now() - t0 < 3000) await wait(5); const wo = XTRA.nat.wopen = {ms: Date.now() - t0}; await wait(400); sh('import -window root ' + path.join(OUT, 'wopen.end.png'));
     const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => /^client .* app=notepad/.test(x)); if (l) { const a = l.split(' '); wo.r = [+a[3], +a[4], +a[5] + 2, +a[6] + 2] }
     for (const k of ['mid']) sh('convert xwd:' + path.join(OUT, 'wopen.' + k + '.xwd') + ' ' + path.join(OUT, 'wopen.' + k + '.png') + ' && rm -f ' + path.join(OUT, 'wopen.' + k + '.xwd')); cl = wo.r ? [wo.r[0], wo.r[1], wo.r[2] - 2, wo.r[3] - 2] : null; await wait(2500) }
   else if (c.act == 'notepad') { const h = nhit('pin notepad'); if (h) xdo('mousemove ' + h.join(' ') + ' click 1');
@@ -382,6 +384,7 @@ async function natCase(c, s) {
     if (c.next) { const l = nlines('flybtn').find(x => x.startsWith('flybtn next ')); if (l) { const a = l.split(' '); xdo('mousemove ' + a[2] + ' ' + a[3] + ' click 1') } await wait(700) }
     xdo('mousemove 300 300'); await wait(500) }
   const read = c.read ? await neval(c.app, 'String((() => { try { return ' + c.read + ' } catch (e) { return "ERROR " + e.message } })())') : null;
+  if (c.readx) XTRA.nat.readx = await neval(c.app, 'String((() => { try { return ' + c.readx + ' } catch (e) { return "ERROR " + e.message } })())');
   const f = path.join(OUT, c.n + '.nat.png'); sh('import -window root ' + f);
   if (c.moving) { await wait(c.moving); sh('import -window root ' + path.join(OUT, c.n + '.nat2.png')) }
   if (c.undo) { await neval(c.app, 'void((() => { try { ' + c.undo + ' } catch (e) {} })())'); await wait(1200) }
@@ -407,7 +410,7 @@ async function natCase(c, s) {
     if (l) { const a = l.split(' '); xdo('mousemove ' + (+a[3] + +a[5] + 2 - 9 - 12) + ' ' + (+a[4] + 7 + 11) + ' click 1') }
     await until(() => !/^client .* app=notepad/m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 10000); await wait(800) }
   if (c.act == 'lock') { xdo("type --delay 40 '" + PW.replace(/'/g, "'\\''") + "'"); xdo('key Return'); await until(() => nst('locked') == '0', 8000); await wait(800) }
-  return {f, client: cl, read, wopen: wo};
+  return {f, client: cl, read};
 }
 // ---- the comparison
 /* (the share of a screenshot in testsrc2's colour bars: the video's picture, not a black screen) */
@@ -430,16 +433,16 @@ function cmp(name, a, b, ra, rb, shift) {
     const log0 = (() => { try { return fs.statSync(NLOG).size } catch (e) { return 0 } })();
     try { n = await natCase(c, s) } catch (e) { ok(c.n + ': Native drew it', 0, e.message); continue }
     if (c.nolog) { let t = ''; try { t = fs.readFileSync(NLOG, 'utf8').slice(log0) } catch (e) {} const m = t.split('\n').filter(l => c.nolog.test(l)); ok(c.n + ': nothing in Native\'s log like ' + c.nolog, !m.length, m.slice(0, 3)) }
-    if (c.read && !(c.parts || []).includes('frames')) ok(c.n + ': the page reads the same on both (' + c.read.slice(0, 60) + '…)', s.read === n.read, {std: s.read, nat: n.read});
+    if (c.read) ok(c.n + ': the page reads the same on both (' + c.read.slice(0, 60) + '…)', s.read === n.read, {std: s.read, nat: n.read});
     for (const part of c.parts || []) {
       if (part == 'moving') { const mv = e => { try { return JSON.parse(cp.execFileSync('python3', [path.join(__dirname, 'pxdiff.py'), path.join(OUT, c.n + '.' + e + '.png'), path.join(OUT, c.n + '.' + e + '2.png'), [0, 0, W, H].join(','), [0, 0, W, H].join(','), String(TOL), path.join(OUT, c.n + '.moving.' + e), '0']).toString()).pct } catch (x) { return -1 } };
         const a = mv('std'), b = mv('nat'); ok(c.n + ' moving: ' + a + ' % of Standard\'s screen and ' + b + ' % of Native\'s change in ' + c.moving / 1000 + ' s (at least 0.25 % on both)', a >= .25 && b >= .25, {a, b}); continue }
       if (part == 'picture') { const f = x => +cp.execFileSync('python3', ['-c', PICPY, x]).toString(), a = f(s.f), b = f(n.f);
         ok(c.n + ' picture: ' + a + ' % of Standard\'s screen and ' + b + ' % of Native\'s show the video (at least 60 %)', a >= 60 && b >= 60 && Math.abs(a - b) <= 10, {a, b}); continue }
-      if (part == 'frames') { let a = {}, b = {}; try { a = JSON.parse(s.read) } catch (e) {} try { b = JSON.parse(n.read) } catch (e) {}
-        ok(c.n + ': frame callbacks ' + a.cb + ' on Standard and ' + b.cb + ' on Native (at least 60 each); frames counted at the end ' + a.end + ' and ' + b.end + ' (within 10)', a.cb >= 60 && b.cb >= 60 && a.end > 0 && Math.abs(a.end - b.end) <= 10, {std: s.read, nat: n.read}); continue }
-      if (part == 'wopen') { const w = n.wopen || {}; const d = w.r ? cmp(c.n + '.wopen', path.join(OUT, 'wopen.mid.png'), path.join(OUT, 'wopen.end.png'), w.r, w.r, 0) : {pct: 0};
-        ok(c.n + ': Standard animates its window (' + s.wopen + '); Native\'s animation ran ' + w.ms + ' ms (100-600) with ' + d.pct + ' % of the window not yet itself at its start (at least 3 %)', /^true wopen 0\.18s$/.test(s.wopen || '') && w.ms >= 100 && w.ms <= 600 && d.pct >= 3, {std: s.wopen, nat: w, d}); continue }
+      if (part == 'frames') { let a = {}, b = {}; try { a = JSON.parse(XTRA.std.readx) } catch (e) {} try { b = JSON.parse(XTRA.nat.readx) } catch (e) {}
+        ok(c.n + ': frame callbacks ' + a.cb + ' on Standard and ' + b.cb + ' on Native (at least 60 each); frames counted at the end ' + a.end + ' and ' + b.end + ' (within 10)', a.cb >= 60 && b.cb >= 60 && a.end > 0 && Math.abs(a.end - b.end) <= 10, XTRA); continue }
+      if (part == 'wopen') { const w = XTRA.nat.wopen || {}; const d = w.r ? cmp(c.n + '.wopen', path.join(OUT, 'wopen.mid.png'), path.join(OUT, 'wopen.end.png'), w.r, w.r, 0) : {pct: 0};
+        ok(c.n + ': Standard animates its window (' + XTRA.std.wopen + '); Native\'s animation ran ' + w.ms + ' ms (100-600) with ' + d.pct + ' % of the window not yet itself at its start (at least 3 %)', /^true wopen 0\.18s$/.test(XTRA.std.wopen || '') && w.ms >= 100 && w.ms <= 600 && d.pct >= 3, {std: XTRA.std.wopen, nat: w, d}); continue }
       let ra = s.rects[part], rb = null;
       if ((part == 'title' || part == 'win') && n.client && ra) rb = [n.client[0], n.client[1], ra[2], ra[3]];   /* (each engine's own window; the frame's border and title bar above the app) */
       if (!ra) { ok(c.n + ' ' + part + ': Standard has it', 0, s.rects); continue }
