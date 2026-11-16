@@ -8425,7 +8425,7 @@ HELP.splice(HELP.findIndex(h=>h[0]=='apps')+1,0,['packages','Packages (rpk)',()=
    checks, shows the state in Settings > Update and recovery, and offers Restart and Roll back. */
 let SYSU=null;
 async function sysuStatus(){if(!RD)return null;try{SYSU=await rd('sys/status')}catch(e){SYSU=null}return SYSU}
-async function sysuJob(what,onLine){await rdPost('sys/'+what);let seen=0;
+async function sysuJob(what,onLine,body){await(body?rd('sys/'+what,{method:'POST',body}):rdPost('sys/'+what));let seen=0;
  for(;;){await new Promise(r=>setTimeout(r,700));const j=await rd('job');const ls=(j.log||'').split('\n');
   if(onLine)for(;seen<ls.length-1;seen++)onLine(ls[seen]);if(!j.running){if(onLine&&ls[seen])onLine(ls[seen]);await sysuStatus();return j.status}}}
 const sysuWhen=t=>{if(!t)return'never';const d=new Date(t*1000),n=new Date();return(d.toDateString()==n.toDateString()?'today':d.toLocaleDateString())+' at '+d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})};
@@ -8452,7 +8452,7 @@ function sysuRestart(){if(!(SW&&wins.includes(SW))){settings('upd');return setTi
   box.innerHTML=`<h4 class='sh4'>Security updates</h4><div class='sysucard ${cls}'><div>${line}</div>
 <div class='msg'>Rudolf OS ${pkgEsc(cur.version||RVER)}${cur.chromium?' · Chromium '+pkgEsc(cur.chromium):''}${cur.kernel?' · Linux '+pkgEsc(cur.kernel):''} · checked ${sysuWhen(s.checked)}${s.booted=='r'?' · the rescue system':s.booted!='disc'?' · system slot '+s.booted.toUpperCase():''}</div>
 ${st.failed?`<div class='msg warn'>The update in slot ${pkgEsc(st.failed.toUpperCase())} did not start, so Rudolf OS went back to the previous version. It will try the next release.</div>`:''}</div>
-<div class='rmrow' style='justify-content:flex-start'><button class='ucheck'>Check now</button>${av&&!nx&&s.persistent&&s.canUpdate!==false?`<button class='udl'>${sysuDlLabel(av)}</button>`:''}${nx?`<button class='urs'>Restart now</button>`:''}${st.good&&st.good!='disc'||st.prev?`<button class='urb'>Roll back system…</button>`:''}</div>
+<div class='rmrow' style='justify-content:flex-start'><button class='ucheck'>Check now</button>${av&&!nx&&s.persistent&&s.canUpdate!==false?`<button class='udl'>${sysuDlLabel(av)}</button>`:''}${nx?`<button class='urs'>Restart now</button>`:''}${st.good&&st.good!='disc'||st.prev?`<button class='urb'>Roll back system…</button>`:''}${sysuStableShown(s)?`<button class='ustable'${adm?'':' disabled'} title='${adm?'':'Only an administrator can do this.'}'>Roll back to last stable version…</button>`:''}</div>
 <label class='ck'><input type='checkbox' class='uauto'${s.auto?' checked':''}${adm?'':' disabled'}> Download security updates automatically</label>
 <label class='ck'><input type='checkbox' class='ubeta'${s.beta?' checked':''}${adm&&!s.developer?'':' disabled'}> Get beta versions</label>
 <p class='msg ubetamsg'>${s.beta?'This computer gets beta versions: early releases for testing, which can have problems. Turn this off to go back to the latest stable release at the next update.':s.toStable?'Beta versions are off: the next update brings the latest stable release.':'Beta versions are early releases for testing. Turning them on needs an administrator\'s name and password.'}</p>
@@ -8460,10 +8460,11 @@ ${st.failed?`<div class='msg warn'>The update in slot ${pkgEsc(st.failed.toUpper
 <pre class='jl ulog' hidden></pre>`;
   const q=s=>box.querySelector(s),log=q('.ulog');
   box.querySelectorAll('button').forEach(b=>b.disabled=busy||b.disabled);
-  const job=async w=>{busy=true;log.hidden=false;log.textContent='';draw();try{await sysuJob(w,l=>{log.textContent+=l+'\n';log.scrollTop=log.scrollHeight})}catch(e){log.textContent+=e.message+'\n'}busy=false;const keep=log.textContent;await draw();const L=box.querySelector('.ulog');L.hidden=false;L.textContent=keep};
+  const job=async(w,body)=>{busy=true;log.hidden=false;log.textContent='';draw();let r=null;try{r=await sysuJob(w,l=>{log.textContent+=l+'\n';log.scrollTop=log.scrollHeight},body)}catch(e){log.textContent+=e.message+'\n'}busy=false;const keep=log.textContent;await draw();const L=box.querySelector('.ulog');L.hidden=false;L.textContent=keep;return{status:r,log:keep}};
   q('.ucheck').onclick=()=>job('check');
   q('.udl')&&(q('.udl').onclick=()=>job('download'));
   q('.urs')&&(q('.urs').onclick=sysuRestart);
+  q('.ustable')&&(q('.ustable').onclick=()=>sysuToStable(s,job,draw));
   q('.urb')&&(q('.urb').onclick=async()=>{if(!await elevate('Go back to the previous version of Rudolf OS'))return;try{const r=await rdPost('sys/rollback');notify('Roll back',(r.message||'').trim()||'Done.')}catch(e){notify('Roll back',e.message,{kind:'error'})}draw()});
   q('.uauto').onchange=async e=>{const v=e.target.checked;if(!await elevate(v?'Turn on automatic security updates':'Turn off automatic security updates')){e.target.checked=!v;return}try{await rdPost('sys/set?k=auto&v='+(v?1:0))}catch(er){notify('Updates',er.message,{kind:'error'})}draw()};
   /* 1.6.0 (owner, 2026-11-15): beta versions are opt-in: on needs an administrator's name and password (checked by
@@ -8475,6 +8476,41 @@ ${st.failed?`<div class='msg warn'>The update in slot ${pkgEsc(st.failed.toUpper
    try{await rdPost('sys/beta?on=0');notify('Updates','Beta versions are off: the next update brings the latest stable release. Checking for updates…');job('check')}catch(er){e.target.checked=true;notify('Updates',er.message,{kind:'error'});draw()}};
   q('.usave').onclick=async()=>{const v=q('.uurl').value.trim();if(v&&!/^https?:\/\//.test(v))return notify('Updates','The address starts with https://',{kind:'error'});if(!await elevate('Change where Rudolf OS gets updates'))return;try{await rdPost('sys/set?k=url&v='+encodeURIComponent(v));notify('Updates','Saved. Checking for updates…');job('check')}catch(e){notify('Updates',e.message,{kind:'error'})}}};
  draw()}}
+/* ---------- 1.6.0 (the owner, 2026-11-16): Roll back to last stable version ----------
+   Shown only when Get beta versions is on, or when this system is not a release the update server lists as published
+   stable (a beta, a test build, a developer's build: rudolf-update checks the running release against the stable
+   channel's signed list and its signed history). It checks for updates (so the last stable release is the server's
+   now), says which release it goes to, refuses with why when that release cannot read this computer's data (the data
+   record each release carries), asks an administrator's name and password (checked by rudolfd), then: that release
+   from the other system slot when it is still there, else downloaded as an update; Get beta versions off; a restart.
+   On a developer's build it is Return to official Rudolf OS (Settings › Security). */
+function sysuStableShown(s){return !!(s&&s.persistent&&s.canUpdate!==false&&('runningStable' in s)&&(s.beta||s.runningStable===false))}
+async function sysuToStable(s,job,draw){const T='Roll back to last stable version';
+ if(!isAdmin())return notify(T,'Only an administrator can do this.',{kind:'error'});
+ if(s.developer||s.signer=='custom'){if(typeof devmReturn=='function')return devmReturn(draw);return notify(T,'This computer runs a custom build: use Return to official Rudolf OS in Settings › Security.',{kind:'error'})}
+ /* what the update server says now: the check refreshes the last stable release and its history */
+ await job('check');
+ let i=null;try{i=await rd('sys/stable')}catch(e){return notify(T,e.message,{kind:'error'})}
+ if(!i||!i.stable)return sysuDlg(T,'<p>Rudolf OS could not find out which release is the last stable one. Check the connection, then try again.</p>',[['OK']]);
+ if(i.how=='official'){if(typeof devmReturn=='function')return devmReturn(draw);return}
+ const v=`Rudolf OS ${pkgEsc(i.stable.version)} (stable, released ${pkgEsc(i.stable.released||'?')})`;
+ if(!i.compatible)return sysuDlg('Cannot roll back to '+i.stable.version,`<p><b>${v}</b></p><p class='ustwhy'>${pkgEsc(i.why)}</p><p>Your system stays as it is. Updates keep coming as before.</p>`,[['OK']]);
+ const notes=(i.notes||[]).length?`<p>While ${pkgEsc(i.stable.version)} runs:</p><ul class='ustnotes'>${i.notes.map(n=>`<li>${pkgEsc(n.charAt(0).toUpperCase()+n.slice(1))}.</li>`).join('')}</ul><p class='msg'>They are kept for when a newer version comes back.</p>`:'';
+ const how=i.how=='running'?`This computer already runs ${v}. Get beta versions is turned off, so it stays on the stable releases.`
+  :`${v} starts the next time the computer restarts${i.how=='slot'?': it is still on this computer, so nothing is downloaded':': it is downloaded first, as updates are (only the changes)'}. Get beta versions is turned off, so the next update does not bring the beta back. Your accounts, files and apps are kept.`;
+ if(!await sysuDlg(T,`<p>${how}</p>${notes}`,[['Cancel'],[i.how=='running'?'Turn off beta versions':'Roll back',1,1]]))return;
+ const cr=await elevate(`Roll back to ${i.stable.version}, the last stable version of Rudolf OS`,{cred:true});if(!cr)return;
+ const r=await job('tostable',JSON.stringify({n:cr.n,p:cr.p}));
+ const last=((r&&r.log)||'').trim().split('\n').pop()||'';
+ if(!r||r.status!==0)return notify(T,last||'It did not work.',{kind:'error'});
+ typeof logEvt=='function'&&logEvt('sys',`${USER?USER.n:'?'} rolled back to ${i.stable.version}, the last stable version`);
+ if(i.how=='running')return notify(T,last);
+ sysuDlg('Restart to roll back',`<p>${v} starts when the computer restarts. Save your work first.</p>`,[['Later'],['Restart now',1,1]]).then(go=>go&&rdPost('power?action=reboot').catch(e=>notify('Restart',e.message,{kind:'error'})))}
+/* a dialog over Settings (the page's rmodal): HTML made by the caller from escaped text; resolves with the button's value */
+function sysuDlg(title,html,btns){return new Promise(res=>{const o=document.createElement('div');o.className='rmodal';
+ o.innerHTML=`<div class='rmbox ustdlg' role='alertdialog' style='max-width:520px'><h3></h3>${html}<div class='rmrow'></div></div>`;o.querySelector('h3').textContent=title;o.firstChild.setAttribute('aria-label',title);
+ const row=o.querySelector('.rmrow');btns.forEach(([t,val,pri])=>{const b=document.createElement('button');b.textContent=t;if(pri)b.className='pri';b.onclick=()=>{o.remove();res(val||0)};row.appendChild(b)});
+ document.body.appendChild(o);const pb=row.querySelector('.pri')||row.lastChild;pb&&pb.focus()})}
 /* ---------- daily check and download ---------- */
 async function sysuTick(){if(!RD||!USER||window.LOCKED||window.__bsaver||(typeof gameMode=='function'&&gameMode()))return;   /* (1.4.4) not while battery saver is on */
  const s=await sysuStatus();if(!s||!s.persistent||!s.auto||!s.url||s.canUpdate===false)return;   /* (1.5.7: not from a stick or in recovery) */
