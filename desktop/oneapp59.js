@@ -15,7 +15,7 @@
    - The windows of the last session are not reopened (each app window would reopen them), and only Settings writes the
      accounts (all app windows share the same storage). ===== */
 const ONEAPP=(()=>{try{const h=String(location.hash||'').replace(/^#/,'');if(!h)return null;const q=new URLSearchParams(h),k=q.get('app');
- return k&&/^[a-z0-9_-]{1,40}$/i.test(k)?{k,file:q.get('file')||'',w:+q.get('w')||0,q}:null}catch(e){return null}})();
+ return k&&/^[a-z0-9_:.+-]{1,127}$/i.test(k)?{k,file:q.get('file')||'',w:+q.get('w')||0,q}:null}catch(e){return null}})();   /* (2026-11-16: also the Library's, Linux's and Windows' programs: pkg:NAME, lx:ID.desktop, lx:deb-ID) */
 const OA={main:null,want:0,opened:0,done:0,login:0};
 /* (the sign-in screen hidden from the first paint in an app's window: shown again, base_v24.html's head) */
 function oaLoginUnhide(){try{document.documentElement.classList.remove('oalg')}catch(e){}}
@@ -163,6 +163,17 @@ if(ONEAPP&&oaNative()&&typeof fsStandIn=='function')fsStandIn(on=>{oaPost({op:'f
 function oaPrivWin(){if(!(ONEAPP&&ONEAPP.k=='browser'&&OA.main&&oaChromium()))return false;oaPost({op:'open',app:'browser',jump:'New private tab'});return true}
 /* (the native desktop is there: WebKit's message handler, or Oracle's binding in Rudolf's Chromium) */
 const oaOut=()=>oaNative()||oaChromium();
+/* (2026-11-16, the owner's Vivobook: no sound when a window opened or closed, or a button was pressed, on Native) the desktop's sounds
+   (base_v24.html sfx: Volume Controls' volumes and styles) are played by the native shell, which draws the taskbar, the menus and the
+   frames and plays theirs: this page sends its own (a window opened and closed, a button in it, a notification, an error) with the
+   volume and tones it would play, once; its own Web Audio is not used (a window's page has no click yet, so WebKit kept it silent).
+   A page doing something for the shell unseen (#app=do-NAME) clicks the page's buttons for the shell, which played that click already */
+if(ONEAPP&&typeof sfx=='function'&&typeof PAT=='object'){let syn=false;addEventListener('click',e=>{syn=!e.isTrusted},true);const _sfx=sfx;
+ sfx=function(n,force){if(!oaOut())return _sfx.apply(this,arguments);
+  try{window.__a11y&&a11ySound(n)}catch(e){}const m=S.snd.master,s=S.snd[n];if(!s||!PAT[n])return;if(!force&&(!m.on||!s.on))return;const v=(m.vol/100)*(s.vol/100);if(v<=0)return;
+  if(/^do-/.test(ONEAPP.k)&&syn&&(n=='click'||n=='game'))return;
+  window.__sfx.push([n,+v.toFixed(3)]);let t=PAT[n];try{if(window.__a11y)t=sndPat(n)}catch(e){}
+  oaPost({op:'sfx',k:n,v:String(+v.toFixed(4)),p:JSON.stringify({t:(t||[]).map(x=>x.slice(0,5))})})}}
 /* (1.6.0 Part 12, item 12) the memory guard's "this is the desktop's page process" (mem47.js memIam: the processor kept busy for 0.6 s,
    15 s after loading and again until rudolfd knows it) is the Standard desktop's: on the native desktop no page is the desktop, and an
    app's window or Oracle's page claiming it would keep the guard from ending it. Not done there (every app window spent 0.6 s of
@@ -353,6 +364,15 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
   if(ONEAPP.k=='browser'&&q.get('url')&&typeof browser=='function'){OA.want=1;const u=q.get('url');try{if(q.get('priv')=='1'&&typeof oraclePrivate=='function')oraclePrivate(u);else browser(u)}catch(e){console.warn(e)}
    setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}
   if(ONEAPP.k=='settings'&&sp&&typeof settings=='function'){OA.want=1;try{settings(sp)}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}
+  /* (2026-11-16, the owner's Vivobook) the start menu's search as Standard's: the page's own startSearch for the native shell, which draws
+     what it finds (#app=do-srch, unseen, kept while the menu is used): each row's group, words, picture and place, and what it opens (an
+     app, a page of Settings, a file, a sum's value to copy), found by running its action with those four standing in */
+  if(da0=='srch'&&typeof startSearch=='function'){window.__oaSrch=qq=>{let L=[];try{L=startSearch(String(qq||''))}catch(e){}
+    return JSON.stringify({r:L.map(it=>{const o={g:String(it.g||''),t:String(it.t||''),i:String(it.i||''),sub:String(it.sub||'')};
+     if(it.g=='Calculator'){o.a='copy';o.v=String(it.t).split(' = ').pop();return o}
+     const sv=[launch,settings,openPath];try{launch=k=>{o.a='app';o.k=String(k)};settings=k=>{o.a='set';o.k=typeof k=='string'?k:''};openPath=p=>{o.a='file';o.p=Array.isArray(p)?p.join('\\'):String(p)};it.f()}
+     catch(e){}finally{[launch,settings,openPath]=sv}return o})})};
+   oaAppsReady().then(()=>oaPost({op:'srch'}));return}
   if(da0=='pin'){try{pinSet(q.get('k')||'',q.get('on')=='1')}catch(e){}return oaFin({})}
   /* (1.6.0 Part 12, item 3) quick settings' switches and the notifications' centre as the native shell draws them: the page's own
      panels made unseen and the same button pressed (#app=do-qs&item=WORDS; #app=do-nc&op=clear|dnd&on=0|1|dismiss&i=N|why&i=N) */
@@ -392,13 +412,19 @@ html.oavk #vkb{display:block!important;visibility:visible!important;position:fix
  {const cd=ONEAPP.q.get('day');if(ONEAPP.k=='calendar'&&cd&&/^\d{4}-\d\d-\d\d$/.test(cd))setTimeout(()=>{try{window.__calGo&&__calGo(cd)}catch(e){}},800)}
  const da=da0,act=da?(typeof A=='object'&&typeof A[da]=='function'?A[da]:da=='blitzen'&&typeof blitzenApp=='function'?blitzenApp:null):null;
  const app=APPS[ONEAPP.k]||(act?{name:da,open:act}:null);
+ /* (2026-11-16, the owner's Vivobook) a Library package's, a Linux app's or a Windows program's key: this page has its app once it has asked
+    rudolfd for them (pkgRegister, lxRegister: on Standard long done when anything is opened) */
+ if(!app&&!act&&/^(pkg|lx|native|rapp):/.test(ONEAPP.k)&&!OA.waited){OA.waited=1;OA.opened=0;oaAppsReady().then(oaOpen);return}
  if(!app){oaClosed('There is no app called “'+ONEAPP.k+'”.');oaPost({op:'close'});return}
  OA.want=1;
  /* (1.5.9, 12.3c) Oracle without Rudolf's Chromium on the native desktop (none, or it would not start): said once */
  if(ONEAPP.k=='browser'&&ONEAPP.q.get('nochrome')=='1')setTimeout(()=>{try{notify('Oracle','Websites will work better on Standard: Oracle is running without Rudolf\u2019s Chromium here, so some sites cannot open in its tabs.')}catch(e){}},1500);
  try{if(act)act();else if(ONEAPP.file&&app.openFile)launchWith(ONEAPP.k,resolve(ONEAPP.file,['C:']));
   else if(ONEAPP.k=='taskmgr'&&ONEAPP.q.get('urgent')=='1'&&typeof tmUrgent=='function')tmUrgent();   /* (1.6.0: Ctrl+Alt+Del's, tmtop57.js) */
-  else launch(ONEAPP.k)}catch(e){console.warn(e)}
+  else{const r=launch(ONEAPP.k);
+   /* (2026-11-16) a program rudolfd runs (a Linux app, a Windows program, a Library app in full screen) opens no window of this page's: as on
+      Standard, once rudolfd has it (its "Starting…" said), this page closes unseen; if it made a window after all, that window stays */
+   if(oaExt(ONEAPP.k)){Promise.resolve(r).catch(e=>console.warn(e)).then(()=>setTimeout(()=>{if(!OA.main&&!OA.done)oaDone()},2500));return}}}catch(e){console.warn(e)}
  /* an app that opens no window (or not yet: a large app loads its files first) */
  setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed(app.name+' did not open a window.');oaPost({op:'close'})}},15000)}
 /* (1.6.0 Part 12, item 1's second part) the native desktop's menus do what the page's do: #app=do-desk&on=ICON&item=WORDS
@@ -426,6 +452,8 @@ function oaFs(){const q=ONEAPP.q,op=q.get('op')||'',p=resolve(ONEAPP.file||'',['
   if(!d||!(p.at(-1) in d))return oaFin({err:'The file is not there any more.'});
   if(!validName(nv))return oaFin({err:'That name is not allowed.'});if(nv!=p.at(-1)&&nv in d)return oaFin({err:'That name is already used.'});
   const v=d[p.at(-1)];delete d[p.at(-1)];d[nv]=v;fsSave();EXPL.forEach(f=>f());return oaFin({ok:1})}
+ /* (2026-11-16) a file found by the start menu's search: opened as the page's search opens it (openPath: its app, its window this page's) */
+ if(op=='open'){try{openPath(p)}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main)oaFin({})},1500);return}
  if(op=='openwith'){const x=OPENERS.find(o=>o[0]==q.get('key'));if(!x)return oaFin({err:'That app cannot open it.'});
   if(q.get('always')=='1'){const d=ld(defK(),{});d[ext(p.at(-1))]=x[0];svj(defK(),d)}
   try{x[4]?x[4](p):openPathDefault(p)}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main)oaFin({})},1500);return}
@@ -475,7 +503,8 @@ function oaClosed(why){if(document.getElementById('oaclosed'))return;const d=doc
    - desktop/wallpaper: a picture of your own, which lives in this page's storage (IndexedDB), as the JPEG the page
      already made of it, whenever it is loaded or changed (once per picture). ===== */
 async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
- try{const apps=Object.values(APPS).filter(a=>a&&a.k&&a.name&&typeof a.open=='function').map(a=>({k:a.k,name:String(a.name),icon:String(a.icon||''),kw:String(a.kw||'')}));
+ const sig=oaCatSig();
+ try{const apps=Object.values(APPS).filter(a=>a&&a.k&&a.name&&typeof a.open=='function').map(a=>Object.assign({k:a.k,name:String(a.name),icon:String(a.icon||''),kw:String(a.kw||'')},oaExt(a.k)?{x:1}:{}));
   const bg={};if(typeof DYN=='object')for(const k in DYN){const d=DYN[k];bg[k]={n:d.n||k,d:d.d||'',l:d.l||'',am:d.am||''}}
   /* (1.6.0 Part 12, test finding N12) Spirit Falls' statue as this page draws it (statue58.js: its animal, light or dark, its glow), a
      picture at the screen's size for the native shell, which draws the background's moving parts itself (N11) */
@@ -489,6 +518,9 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
      may draw pale or not at all), as small PNGs, one per picture */
   const icons={};if(typeof EMO2IC=='object'&&typeof icSvg=='function'&&S.icons!=='emoji')for(const a of apps){const e=a.icon,k=EMO2IC[e]||EMO2IC[e.replace(/\uFE0F/g,'')];
    if(!k)continue;a.ic=k;if(!icons[k])try{icons[k]=await oaPng(icSvg(k),48)}catch(e){delete a.ic}}
+  /* (2026-11-16) an app's own picture (a Linux app's, a Windows program's: its package's icon, as Standard shows it) instead */
+  const own=async k=>{if(!APPS[k]||typeof APPS[k].img!='function')return '';const ik=oaImgKey(k);if(icons[ik])return ik;const png=await oaImgPng(k);if(!png)return '';icons[ik]=png;return ik};
+  await Promise.all(apps.filter(a=>APPS[a.k]&&typeof APPS[a.k].img=='function').map(async a=>{const ik=await own(a.k);if(ik)a.ic=ik}));
   /* (1.6.0 Part 12, item 1) the desktop's icons as this account sees them (the shortcuts, not the files yet), their
      places (bd95cells:ID) and the icon size, for the native shell's desktop */
   const desk=[];try{const D=document.getElementById('desk');if(D&&typeof icTarget=='function')for(const d of D.querySelectorAll(':scope > .ic')){
@@ -499,7 +531,8 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
     desk.push({n:fn,k:'',kind:isDir(v)?'dir':'file',ic:k&&icons[k]?k:'',icon:e,cell:'file:'+fn,fp:homePath('DESKTOP').concat(fn).join('\\')});continue}
    const T=icTarget(d),im=d.querySelector('img.ico'),e=im?im.dataset.emo||'':((d.querySelector('b')||{}).textContent||'').trim();
    const k=typeof EMO2IC=='object'?EMO2IC[e]||EMO2IC[e.replace(/\uFE0F/g,'')]:'';if(k&&!icons[k]&&S.icons!=='emoji')try{icons[k]=await oaPng(icSvg(k),48)}catch(x){}
-   desk.push({n:T.name,k:T.k&&APPS[T.k]?T.k:'',kind:d.classList.contains('tr')?'trash':T.kind,full:d.classList.contains('full')?1:0,own:d.classList.contains('dapp')?1:0,ic:k&&icons[k]?k:'',icon:e,cell:d.dataset.n||T.name})}}catch(e){console.warn('desk',e)}
+   const ik=T.k&&APPS[T.k]?await own(T.k):'';
+   desk.push({n:T.name,k:T.k&&APPS[T.k]?T.k:'',kind:d.classList.contains('tr')?'trash':T.kind,full:d.classList.contains('full')?1:0,own:d.classList.contains('dapp')?1:0,ic:ik||(k&&icons[k]?k:''),icon:e,cell:d.dataset.n||T.name})}}catch(e){console.warn('desk',e)}
   /* (in an app's own window the desktop is laid out at the screen's size, not the window's: the places the page gives
      are the desktop's) */
   if(ONEAPP)try{const D=document.getElementById('desk'),zf=parseFloat(document.documentElement.style.zoom)||1,top=document.body.classList.contains('top'),
@@ -512,20 +545,53 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
   const menu=[];try{const U=document.querySelector('#menu ul');if(U)for(const li of U.children){if(li.tagName=='HR'){menu.push({t:'hr'});continue}
    if(li.tagName!='LI'||getComputedStyle(li).display=='none')continue;const im=li.querySelector('img.ico'),e=im?im.dataset.emo||'':'',k=e&&typeof EMO2IC=='object'?EMO2IC[e]||EMO2IC[e.replace(/\uFE0F/g,'')]:'';
    if(k&&!icons[k]&&S.icons!=='emoji')try{icons[k]=await oaPng(icSvg(k),48)}catch(x){}
-   const c=getComputedStyle(li);menu.push({t:'li',a:li.dataset.a||'',v:li.dataset.v25||'',cls:String(li.className||''),txt:li.textContent.trim(),ic:k&&icons[k]?k:'',emo:e,op:+c.opacity,
+   const ik=!im&&li.dataset.v25?await own(li.dataset.v25):'';
+   const c=getComputedStyle(li);menu.push({t:'li',a:li.dataset.a||'',v:li.dataset.v25||'',cls:String(li.className||''),txt:li.textContent.trim(),ic:ik||(k&&icons[k]?k:''),emo:e,op:+c.opacity,
     fs:parseFloat(c.fontSize),fw:+c.fontWeight||400,col:c.color,pl:parseFloat(c.paddingLeft),pt:parseFloat(c.paddingTop),pb:parseFloat(c.paddingBottom),ls:parseFloat(c.letterSpacing)||0,up:c.textTransform=='uppercase'})}}catch(e){console.warn('menu',e)}
   /* (1.6.0 Part 12, item 3) each app's own rows in its taskbar menus (private59.js APP_JUMPS: words, picture, key) */
   const jumps={};try{if(typeof APP_JUMPS=='object')for(const k in APP_JUMPS)jumps[k]=APP_JUMPS[k]().map(j=>[j[0],(j[3]&&j[3].icon)||'',(j[3]&&j[3].key)||''])}catch(e){}
   /* (1.6.0, the owner's report 2) the desktop's own sounds' styles (Settings › Volume Controls: each sound's tones, base_v24.html SPRE and PAT),
      which the native shell plays itself at its sign-in and shut-down screens */
   const sndp={};try{if(typeof SNDS=='object'&&typeof PAT=='object')for(const [k] of SNDS)sndp[k]=(typeof SPRE=='object'&&SPRE[k]?SPRE[k].map(x=>x[1]||PAT[k]):[PAT[k]]).map(p=>(p||[]).map(t=>t.slice(0,5)))}catch(e){}
-  await rdPost('desktop/apps',JSON.stringify({apps,bg,fx,hide,icons,desk,cells,menu,jumps,sndp,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
+  await rdPost('desktop/apps',JSON.stringify({apps,bg,fx,hide,icons,desk,cells,menu,jumps,sndp,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}));OA_CSIG=sig}catch(e){console.warn('desktop/apps',e)}}
 /* (N12) the statue changes with the accent colour, its glow's rule and light or dark: given again, and the native shell told */
 let OA_ST='';if(typeof stUpdate=='function'){const _su=stUpdate;let t=0;stUpdate=function(){const r=_su.apply(this,arguments);
  try{if(ONEAPP&&oaNative()&&USER&&S.dyn=='oasis'){let mode='light';try{mode=dynResolve().mode}catch(e){}const k=stAnimal()+'|'+mode+'|'+stGlow();
   if(k!==OA_ST){OA_ST=k;clearTimeout(t);t=setTimeout(()=>oaCatalog().then(()=>oaPost({op:'cat'})),600)}}}catch(e){}return r}}
-function oaPng(src,n){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>{try{const c=document.createElement('canvas');c.width=c.height=n;c.getContext('2d').drawImage(im,0,0,n,n);res(c.toDataURL('image/png'))}catch(e){rej(e)}};im.onerror=()=>rej(new Error('icon'));im.src=src})}
-{const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);setTimeout(oaCatalog,2500);return r}}
+/* (2026-11-16, the owner's Vivobook: Library, Linux and Windows apps did not open on Native, nor show their icons) the apps rudolfd runs
+   itself, with no window of the page's (Standard's launch() starts them: lxRun, debian/launch, pkg/run, nativeOpen; a cloud game is Oracle's
+   window): the native shell opens their page unseen ("x" in the catalogue) */
+function oaExt(k){const a=APPS[k];if(!a)return false;if(a.lxApp||/^native:/.test(k))return true;
+ if(typeof CLOUD_GAMES=='object'&&CLOUD_GAMES.some(g=>g.k==k))return true;
+ if(a.pkg){try{const p=typeof PKGS=='object'&&PKGS&&(PKGS.installed||[]).find(x=>x.name==a.pkg);return !!(p&&p.kind=='app')}catch(e){}}return false}
+/* the apps rudolfd knows (the Library's packages, the Linux and Windows programs), asked for once: on Standard the desktop has them long
+   before anything is opened; each native window is a page of its own that signed in just now */
+let OA_RDY=null;
+function oaAppsReady(){if(!OA_RDY)OA_RDY=Promise.race([(async()=>{if(typeof RD=='undefined'||!RD)return;
+  try{if(typeof pkgStatus=='function')await pkgStatus(true)}catch(e){}try{if(typeof lxInstalled=='function')await lxInstalled(true)}catch(e){}
+  try{if(typeof debApps=='function'){await debApps();if(typeof lxRegister=='function')lxRegister()}}catch(e){}try{if(typeof nativeRegister=='function')nativeRegister()}catch(e){}})(),
+ new Promise(r=>setTimeout(r,12000))]);return OA_RDY}
+/* an app's own picture that is not one of the page's (a Linux app's or a Windows program's icon, from its package: a.img, lxImg), as a PNG for
+   the native shell, which shows the page's pictures (icons): Standard draws them from the same place */
+const OA_IMG={};
+async function oaImgPng(k){const a=APPS[k];if(!a||typeof a.img!='function')return null;if(OA_IMG[k])return OA_IMG[k];
+ const b=document.createElement('b');b.style.cssText='position:fixed;left:-9999px;top:0;width:48px;height:48px';document.body.appendChild(b);
+ try{a.img(b);let im=null;for(let i=0;i<60;i++){im=b.querySelector('img');if(im&&im.complete&&im.naturalWidth)break;await new Promise(r=>setTimeout(r,100))}
+  if(!im||!im.naturalWidth)return null;return OA_IMG[k]=await oaPng(im.src,48)}catch(e){return null}finally{b.remove()}}
+const oaImgKey=k=>{let h=5381;for(const c of k)h=(h*33+c.codePointAt(0))>>>0;return 'im'+h.toString(36)};
+/* (the catalogue given again, at once, when what it lists changed in this page: the apps rudolfd knows came, a desktop icon was added or
+   removed (Desktop icons…, Add to desktop): Standard's one page shows such a change at once; the shell read the catalogue only when a page
+   signed in, so an icon came when the next window opened) */
+let OA_CSIG=null,OA_CT=0;
+function oaCatSig(){try{const a=Object.keys(APPS).filter(k=>APPS[k]&&APPS[k].name&&typeof APPS[k].open=='function').sort();
+ return JSON.stringify([a,USER?ld(DESKADD(),[]):0,USER?ld(DESKHIDE(),[]):0,USER?ld(HIDEK(),[]):0,Object.keys(OA_IMG).length])}catch(e){return ''}}
+function oaCatPush(){if(!ONEAPP||!oaNative()||!USER||OA.done)return;clearTimeout(OA_CT);OA_CT=setTimeout(()=>{if((OA_CSIG===null&&!OA.main)||oaCatSig()===OA_CSIG)return;   /* (before the first one, at sign-in, that one has it; unless this page's window changed it) */oaCatalog().then(()=>oaPost({op:'cat'}))},150)}
+if(ONEAPP){for(const f of ['pkgRegister','lxRegister','nativeRegister','deskApply'])if(typeof window[f]=='function'){const o=window[f];window[f]=function(){const r=o.apply(this,arguments);try{oaCatPush()}catch(e){}return r}}
+ /* (Desktop icons…: the apps rudolfd knows are in its list once this page has them, as on Standard: Ember Reach was missing until Restore) */
+ if(typeof deskIconsDlg=='function'){const _di=deskIconsDlg;deskIconsDlg=function(){const W=_di.apply(this,arguments);try{oaAppsReady().then(()=>{const q=W&&W.body&&W.body.querySelector('.dsq');if(q&&W.el&&W.el.isConnected)q.dispatchEvent(new Event('input'))})}catch(e){}return W}}}
+const OA_PNG=new Map();
+function oaPng(src,n){const ck=n+'|'+src;if(src.length<200000&&OA_PNG.has(ck))return Promise.resolve(OA_PNG.get(ck));return new Promise((res,rej)=>{const im=new Image();im.onload=()=>{try{const c=document.createElement('canvas');c.width=c.height=n;c.getContext('2d').drawImage(im,0,0,n,n);const u=c.toDataURL('image/png');if(src.length<200000)OA_PNG.set(ck,u);res(u)}catch(e){rej(e)}};im.onerror=()=>rej(new Error('icon'));im.src=src})}
+{const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);setTimeout(oaCatalog,2500);if(ONEAPP&&oaNative())oaAppsReady().then(()=>setTimeout(oaCatPush,3000));return r}}
 /* (1.6.0 Part 12, item 3) a window's taskbar button's menu is the page's own (winMenu: its rows, the app's jumps, Print, Force
    quit): the shell reads it from the window's page (__oaWinMenu: the rows as JSON) and has a row the shell does not do itself
    done by the page (__oaWinMenuDo: the row with those words clicked) */
