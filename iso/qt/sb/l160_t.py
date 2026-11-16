@@ -76,21 +76,22 @@ def run(g, c, t=60, show=True):
     if show: out('$', c[:160].replace('\n', ' ; ')); out(o.rstrip()[-2500:])
     return o
 # (this tree's cdp-eval when given, with CDP_TARGET: the target pick() chose, as Standard's shell can leave more than one
-# page of the desktop's in Chromium's list, and cdp-eval would take the first)
-CDP = "T=$(cat /run/l160x/target 2>/dev/null); if [ -x /run/l160x/cdp-eval ]; then CDP_TARGET=$T /run/l160x/cdp-eval"
+# page of the desktop's in Chromium's list, and cdp-eval would take the first). The expression goes in a file and a short
+# script runs it: busybox ash cuts a command line at 1024 characters (the shell was left inside a quote)
+JSSH = ('#!/bin/sh\nT=$(cat /run/l160x/target 2>/dev/null); E=$(cat "$1")\n'
+        'if [ -x /run/l160x/cdp-eval ]; then CDP_TARGET=$T exec /run/l160x/cdp-eval "$E"; else exec cdp-eval "$E"; fi\n')
 def jsfn(g):
+    put_small(g, JSSH, '/tmp/js.sh')
     def js1(e, t):
-        b = base64.b64encode(e.encode()).decode()
-        if len(b) < 800: o = g.sh(f'{CDP} "$(echo {b} | base64 -d)"; else cdp-eval "$(echo {b} | base64 -d)"; fi 2>&1', t)
-        else:
-            open(f'{W}/l.js', 'w').write(e); g.put(f'{W}/l.js', '/tmp/l.js', '644')
-            o = g.sh(f'{CDP} "$(cat /tmp/l.js)"; else cdp-eval "$(cat /tmp/l.js)"; fi 2>&1', t)
+        put_small(g, e, '/tmp/l.js')
+        o = g.sh('sh /tmp/js.sh /tmp/l.js 2>&1', t)
         m = re.search(r'\{"id":1.*\}', o)
         if not m: return ('ERR', o[-400:])
         res = json.loads(m.group(0)).get('result', {})
         if 'exceptionDetails' in res: return ('EXC', res['exceptionDetails'].get('exception', {}).get('description', '')[:300])
         return res.get('result', {}).get('value')
     def js(e, t=90):
+        if t == 'once': return js1(e, 20)   # (one try: pick() asks each target once)
         for _ in range(3):
             r = js1(e, t)
             if not (isinstance(r, tuple) and (r[0] == 'ERR' or (r[0] == 'EXC' and 'ReferenceError' in str(r[1])))): return r
@@ -103,10 +104,10 @@ def pick(g, js, show=True):
     try: L = json.loads(o[o.index('['):o.rindex(']') + 1])
     except Exception: L = []
     best, info = None, []
-    for t in L:
-        if not str(t.get('url', '')).startswith('http://127.0.0.1:8080/'): continue
+    for t in L[:12]:
+        if not str(t.get('url', '')).startswith('http://127.0.0.1:8080/') or t.get('type') not in ('page', 'webview', 'other', 'iframe'): continue
         g.sh(f"echo {t['id']} > /run/l160x/target", 10)
-        r = js("JSON.stringify({shell:typeof SHELL!='undefined'&&!!SHELL,oracle:typeof wins!='undefined'&&wins.some(w=>w.body&&w.body.querySelector('.otabs')),user:typeof USER!='undefined'&&USER&&USER.n})", 20)
+        r = js("JSON.stringify({shell:typeof SHELL!='undefined'&&!!SHELL,oracle:typeof wins!='undefined'&&wins.some(w=>w.body&&w.body.querySelector('.otabs')),user:typeof USER!='undefined'&&USER&&USER.n})", 'once')
         try: d = json.loads(r)
         except Exception: d = {}
         sc = (2 if d.get('shell') else 0) + (1 if d.get('oracle') else 0)
@@ -173,7 +174,8 @@ def flow(tag, vm, g, js, sh, launch):
     ok(f'{tag}3. ...and the sign-in page opens in Oracle, which follows its redirect to the app\'s scheme', 'page asked' in lg and 'redirect sent' in lg, lg)
     d = None; end = time.time() + 90
     while time.time() < end:
-        pick(g, js, False); d = js(DLG, 40)
+        d = js(DLG, 40)
+        if not (isinstance(d, str) and '"ad":"' in d): pick(g, js, False); d = js(DLG, 40)   # (Native's Oracle window: a new target)
         try: d = json.loads(d)
         except Exception: d = {'raw': d}
         if d.get('dlg'): break
