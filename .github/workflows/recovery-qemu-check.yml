@@ -1,0 +1,51 @@
+# docs/plan-1.6.0.md Part 15 ("Before stable" 7; docs/plan-1.5.9.md 8.4, 8.5, 8.7): the official recovery on the real
+# release in QEMU (iso/qt/sb/t160r_t.py): a computer installed from the release's boot image, its start-up files and
+# recovery system changed and deleted, then put back at the next starts (downloaded from GitHub through QEMU's user
+# network); Return to official from a custom build; Developer mode on a computer that never ran the official build;
+# with Secure Boot on (OVMF with Microsoft's keys and a TEST certificate): Developer mode, Return to official and
+# Recovery mode. TEST keys only (a developer key and a Secure Boot key made inside the test, deleted with it). Run by a
+# push that changes .github/recovery160-run.txt (serial=SERIAL, empty: the newest beta; parts=123). Nothing is published.
+name: Official recovery QEMU check
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/recovery160-run.txt']
+permissions: {contents: read}
+jobs:
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: for k in serial parts; do echo "N_$k=$(sed -n "s/^$k=//p" .github/recovery160-run.txt 2>/dev/null | head -1)" >> $GITHUB_ENV; done
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs mtools sbsigntool systemd-boot-efi binutils python3-cryptography python3-pip libssl-dev bzip2 nasm >/dev/null
+          command -v virt-fw-vars || sudo pip3 install --break-system-packages -q virt-firmware
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.fd /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+          ls /usr/lib/systemd/boot/efi/
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S="$N_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs' -p boot.iso -p boot.iso.sha256
+          (cd rel && sha256sum -c boot.iso.sha256)
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel; echo "::notice title=Official recovery QEMU check::release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
+      - name: The EFI image's size (efisize60_t.sh)
+        run: BOOTISO=rel/boot.iso sh iso/qt/host/efisize60_t.sh
+      - name: t160r (8.4, 8.5, 8.7)
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU PARTS_RUN=${N_parts:-123} QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/t160r_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: t160r, retention-days: 7, path: "run/t160r.txt\nrun/t160r*/qemu.log\nrun/t160r*/serial.txt"}
