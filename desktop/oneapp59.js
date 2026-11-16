@@ -501,7 +501,10 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
     fs:parseFloat(c.fontSize),fw:+c.fontWeight||400,col:c.color,pl:parseFloat(c.paddingLeft),pt:parseFloat(c.paddingTop),pb:parseFloat(c.paddingBottom),ls:parseFloat(c.letterSpacing)||0,up:c.textTransform=='uppercase'})}}catch(e){console.warn('menu',e)}
   /* (1.6.0 Part 12, item 3) each app's own rows in its taskbar menus (private59.js APP_JUMPS: words, picture, key) */
   const jumps={};try{if(typeof APP_JUMPS=='object')for(const k in APP_JUMPS)jumps[k]=APP_JUMPS[k]().map(j=>[j[0],(j[3]&&j[3].icon)||'',(j[3]&&j[3].key)||''])}catch(e){}
-  await rdPost('desktop/apps',JSON.stringify({apps,bg,fx,hide,icons,desk,cells,menu,jumps,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
+  /* (1.6.0, the owner's report 2) the desktop's own sounds' styles (Settings › Volume Controls: each sound's tones, base_v24.html SPRE and PAT),
+     which the native shell plays itself at its sign-in and shut-down screens */
+  const sndp={};try{if(typeof SNDS=='object'&&typeof PAT=='object')for(const [k] of SNDS)sndp[k]=(typeof SPRE=='object'&&SPRE[k]?SPRE[k].map(x=>x[1]||PAT[k]):[PAT[k]]).map(p=>(p||[]).map(t=>t.slice(0,5)))}catch(e){}
+  await rdPost('desktop/apps',JSON.stringify({apps,bg,fx,hide,icons,desk,cells,menu,jumps,sndp,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}))}catch(e){console.warn('desktop/apps',e)}}
 /* (N12) the statue changes with the accent colour, its glow's rule and light or dark: given again, and the native shell told */
 let OA_ST='';if(typeof stUpdate=='function'){const _su=stUpdate;let t=0;stUpdate=function(){const r=_su.apply(this,arguments);
  try{if(ONEAPP&&oaNative()&&USER&&S.dyn=='oasis'){let mode='light';try{mode=dynResolve().mode}catch(e){}const k=stAnimal()+'|'+mode+'|'+stGlow();
