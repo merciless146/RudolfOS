@@ -7,7 +7,9 @@
 # as Oracle, its tabs those of the window, which closed; every site's request goes through the proxy with the site's name
 # (looked up by Tor, never here), nothing for the desktop's own 127.0.0.1:8080; WebRTC finds no address of this computer;
 # the tab private; pressed again -> its tabs in a normal Oracle window (Oracle's own Chromium), the Tor window and its
-# Chromium gone with its profile, Tor told. In network and mount namespaces of its own. Needs root, Xvfb, xdotool, node,
+# Chromium gone with its profile, Tor told. (1.6.0, plan Part 15, "Before stable" item 10) Ctrl+W, T, N and Q in a website in the
+# Tor window are Rudolf's, as in Oracle's windows (rudolf-native's key grab on RudolfTor): the tab closed, a new tab, a new Tor
+# window, Q nothing (the site sees Ctrl+F23); the site's own typing untouched. In network and mount namespaces of its own. Needs root, Xvfb, xdotool, node,
 # python3, gcc, ip and WebKitGTK's headers.   sh tor_native_t.sh
 [ "$(id -u)" = 0 ] || { echo "SKIP: needs root (a network namespace)"; exit 0; }
 [ -z "$TN59_INNER" ] && exec env TN59_INNER=1 unshare -n -m sh "$0" "$@"
@@ -23,6 +25,9 @@ trap 'kill $NP $RDP $XV $SP $XP 2>/dev/null; pkill -f "$T/" 2>/dev/null; timeout
 gcc -O2 -Wall -Wno-misleading-indentation -Wno-deprecated-declarations -o $T/rudolf-native $REPO/iso/sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
 gcc -O2 -Wall -o $T/rudolf-launch $REPO/iso/sys/rudolf-launch.c 2>>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
 grep -q warning $T/cc && { cat $T/cc; echo "FAIL build warnings"; exit 1; }
+# (a window's place on the screen)
+printf '%s\n' '#include <X11/Xlib.h>' '#include <stdio.h>' '#include <stdlib.h>' 'int main(int c,char**v){Display*d=XOpenDisplay(0);int x,y;Window k;if(!d||c<2)return 1;XTranslateCoordinates(d,strtoul(v[1],0,0),DefaultRootWindow(d),0,0,&x,&y,&k);printf("%d %d\n",x,y);return 0;}' > $T/xabs.c
+gcc -o $T/xabs $T/xabs.c -lX11 || { echo "FAIL build xabs"; exit 1; }
 python3 $REPO/iso/systools/mkiwa.py key $T/test.key >/dev/null; ID=$(python3 $REPO/iso/systools/mkiwa.py id $T/test.key)
 python3 $REPO/iso/systools/mkiwa.py build $REPO/iso/shell $T/shell.swbn $T/test.key >/dev/null || { echo "FAIL the shell"; exit 1; }
 D=$T/d; mkdir -p $D; node $REPO/iso/qt/host/fixtures/deskls.js $D/ls.json $D/keys.json || { echo "FAIL node"; exit 1; }
@@ -32,6 +37,7 @@ echo $ID > $D/iwa-id; echo /run/rudolf/dl/.incoming > $D/dl-dir; mkdir -p $D/idb
 printf '%s\n' '{"s":{"bs":"solid","b1":"#112233","b2":"#000080","tb":"bottom","accent":"#2563eb"},"pins":["notepad","browser"],"notes":0,"wallpaper":false}' > $D/settings.json
 # a website (site59.test through the proxy; 127.0.0.1:8333 directly)
 mkdir -p $T/site; printf '%s' '<!doctype html><title>Site 59</title><p id=p>through tor</p>' > $T/site/index.html
+printf '%s' '<!doctype html><title>Keys 59</title><input id=i style="position:fixed;left:20px;top:20px"><script>K=[];addEventListener("keyup",e=>{if(e.ctrlKey)K.push(e.code)},true)</script>' > $T/site/keys.html
 (cd $T/site && exec python3 -m http.server 8333 --bind 127.0.0.1 >/dev/null 2>&1) & SP=$!
 python3 $REPO/iso/qt/host/fixtures/socks59.py 9050 8333 $T/socks.log & XP=$!; : > $T/socks.log
 # Oracle's Chromium, as the session writes it for rudolf-native (Standard's flags; --no-sandbox as root here)
@@ -90,8 +96,8 @@ ok "3. framed by the native desktop as Oracle (the onion's window, \"(Tor)\" in 
 o=$(evt http://127.0.0.1:8080/ '(()=>{const W=OA.main,b=W.body.querySelector(".otor");return [W.body.querySelectorAll(".otab").length,!!W.priv,b.getAttribute("aria-pressed"),getComputedStyle(b).borderTopColor].join("|")})()' one)
 ok "...its tabs the window's (2), private, the onion pressed (white outline)" "$([ "$o" = '"2|true|true|rgb(255, 255, 255)"' ] && echo 1)" "$o"
 w8 'grep -q "^CONNECT site59.test 80 name" $T/socks.log' 80
-w8 '[ "$(evt http://site59.test/ "document.title")" = "\"Site 59\"" ]' 80
-ok "4. the site in the Tor window, a real tab (the shell's): through Tor's proxy, given its name (looked up by Tor, never on this computer), and shown" "$(grep -q '^CONNECT site59.test 80 name' $T/socks.log && [ "$(evt http://site59.test/ 'document.title')" = '"Site 59"' ] && ! grep -q ' ipv[46]$' $T/socks.log && targets 9336 | grep -q '^webview http://site59.test/' && echo 1)" "$(targets 9336) | $(grep -v google $T/socks.log)"
+w8 '[ "$(evt http://site59.test/ "document.title" one)" = "\"Site 59\"" ]' 80
+ok "4. the site in the Tor window, a real tab (the shell's): through Tor's proxy, given its name (looked up by Tor, never on this computer), and shown" "$(grep -q '^CONNECT site59.test 80 name' $T/socks.log && [ "$(evt http://site59.test/ 'document.title' one)" = '"Site 59"' ] && ! grep -q ' ipv[46]$' $T/socks.log && targets 9336 | grep -q '^webview http://site59.test/' && echo 1)" "$(targets 9336) | $(grep -v google $T/socks.log)"
 ok "...the desktop's own page (127.0.0.1:8080) not through the proxy" "$(! grep -q ' 8080 ' $T/socks.log && echo 1)" "$(cat $T/socks.log)"
 RTC='new Promise(r=>{const pc=new RTCPeerConnection({iceServers:[{urls:"stun:127.0.0.1:3478"}]});const c=[];pc.onicecandidate=e=>{if(e.candidate)c.push(e.candidate.candidate);else r(c.join("|"))};pc.createDataChannel("x");pc.createOffer().then(o=>pc.setLocalDescription(o));setTimeout(()=>r(c.join("|")),6000)})'
 RTCT=$(evt http://site59.test/ "$RTC")
@@ -100,6 +106,36 @@ o=$(evt http://site59.test/ 'fetch("http://127.0.0.1:8333/").then(r=>"reached "+
 o2=$(evt http://site59.test/ 'fetch("http://other59.test/").then(r=>"reached "+r.status,e=>"refused")')
 ok "...and every other name goes to the proxy too (other59.test asked of it)" "$(grep -q '^CONNECT other59.test 80 name' $T/socks.log && echo 1)" "$o2 | $(cat $T/socks.log)"
 ok "6. the normal Oracle's Chromium closed with its last window (Oracle's other windows and apps untouched)" "$(w8 '[ "$(procs --class=RudolfOracle)" = 0 ]' 80 && echo 1)" "$(procs --class=RudolfOracle) $(st oracle)"
+# ---- 1.6.0 (plan Part 15, "Before stable" item 10): Ctrl+W, T, N and Q in a website in the Tor window are Rudolf's, as in Oracle's
+# windows (rudolf-native grabs them on the Tor window, RudolfTor as RudolfOracle, and gives them back as Ctrl+F20..F23): close the
+# tab, a new tab, a new Tor window, and Q nothing; the site's own typing untouched. Real keys (xdotool) into a click in the site.
+PGT="http://127.0.0.1:8080/#app=browser&tor=1"
+evt "$PGT" 'OA.main.oNewTab("http://keys59.test/keys.html"),1' one >/dev/null
+w8 '[ "$(evt http://keys59.test/ document.title one)" = "\"Keys 59\"" ]' 80
+ntab() { evt "$PGT" 'OA.main.body.querySelectorAll(".otab").length' one; }
+torw() { targets 9336 | grep -c "^webview $PGT"; }
+# (the Keys 59 tab in front, then a click in its text box: the Tor window's page starts 4, 28 px inside Chromium's window)
+keyson() { evt "$PGT" '(()=>{const o=[...OA.main.body.querySelectorAll(".otab")].find(t=>/Keys 59/.test(t.textContent));o&&o.click();return !!o})()' one >/dev/null; timeout 0.5 tail -f /dev/null
+  set -- $(grep "^client .* app=browser" $D/state | head -1); set -- $($T/xabs 0x$2)
+  o=$(evt "$PGT" '(()=>{let b=null;for(const[,t]of RT)if(t.shown()&&(!b||t.z()>=b.z()))b=t;if(!b)return"";const r=b.el.getBoundingClientRect();return Math.round(r.left)+" "+Math.round(r.top)})()' one | tr -d '"')
+  set -- $1 $2 $o; xdotool mousemove $(($1 + 4 + $3 + 60)) $(($2 + 28 + $4 + 30)) click 1; timeout 0.5 tail -f /dev/null; }
+keyson; n0=$(ntab); xdotool type --delay 40 wtnq; timeout 0.5 tail -f /dev/null
+o=$(evt http://keys59.test/ 'document.getElementById("i").value' one)
+ok "8. keys typed in a website in the Tor window reach the site as they are (w, t, n, q)" "$([ "$o" = '"wtnq"' ] && [ "$(ntab)" = $n0 ] && echo 1)" "$o tabs $n0 $(ntab) | $(grep '^client' $D/state)"
+xdotool key ctrl+t; w8 '[ "$(ntab)" = $((n0 + 1)) ]' 20
+ok "...Ctrl+T in it: a new tab of the Tor window, as in Oracle's windows; no window of Chromium's own" "$([ "$(ntab)" = $((n0 + 1)) ] && [ "$(torw)" = 1 ] && [ "$(procs --class=RudolfTor)" = 1 ] && [ "$(grep -c '^client ' $D/state)" = 1 ] && echo 1)" "$n0 $(ntab) | $(grep '^client' $D/state) | $(targets 9336)"
+# (the new tab closed again with Ctrl+W there, in the window's own page: the tabs as step 7 expects them)
+xdotool key ctrl+w; w8 '[ "$(ntab)" = $n0 ]' 20
+ok "...Ctrl+W in the new tab (the Tor window's own page): it closes, the window stays" "$([ "$(ntab)" = $n0 ] && [ "$(torw)" = 1 ] && echo 1)" "$n0 $(ntab) $(torw)"
+keyson; xdotool key ctrl+n; w8 '[ "$(torw)" = 2 ] && [ "$(grep -c "^client .* app=browser .*(Tor)" $D/state)" = 2 ]' 120
+ok "...Ctrl+N: a new Tor window (the native desktop's op tor), of the same Chromium, framed as Oracle; not a normal or Chromium's own window" "$([ "$(torw)" = 2 ] && [ "$(grep -c '^client .* app=browser .*(Tor)' $D/state)" = 2 ] && [ "$(procs --class=RudolfTor)" = 1 ] && [ "$(procs --class=RudolfOracle)" = 0 ] && echo 1)" "$(torw) | $(grep '^client' $D/state)"
+CLOSE2='(()=>{if(typeof OA=="object"&&OA.main&&![...OA.main.body.querySelectorAll(".otab")].some(t=>/Keys 59/.test(t.textContent)))window.__oneAppClose();return 1})()'
+w8 'evt "$PGT" "$CLOSE2" >/dev/null; timeout 0.5 tail -f /dev/null; [ "$(torw)" = 1 ] && [ "$(grep -c "^client .* app=browser" $D/state)" = 1 ]' 60 || echo "(the new Tor window did not close: $(grep '^client' $D/state))"
+keyson; n1=$(ntab); xdotool key ctrl+q; timeout 1.5 tail -f /dev/null
+o=$(evt http://keys59.test/ 'K.join()' one)
+ok "...Ctrl+Q (Ctrl+F23, as the site sees it let go): nothing, as in Oracle's windows (Chromium did not quit, the window and its tabs stay)" "$([ "$(procs --class=RudolfTor)" = 1 ] && [ "$(torw)" = 1 ] && [ "$(ntab)" = $n1 ] && echo "$o" | grep -q F23 && echo 1)" "$(procs --class=RudolfTor) $(torw) $n1 $(ntab) keys $o"
+keyson; xdotool key ctrl+w; w8 '[ "$(ntab)" = $((n1 - 1)) ]' 20
+ok "...Ctrl+W: the website's tab closes; the Tor window and its Chromium stay" "$([ "$(ntab)" = $((n1 - 1)) ] && [ "$(torw)" = 1 ] && [ "$(procs --class=RudolfTor)" = 1 ] && [ "$(evt http://keys59.test/ 1 one)" = "NO TARGET" ] && grep -q '^client .* app=browser .*(Tor)' $D/state && echo 1)" "$n1 $(ntab) $(torw) | $(grep '^client' $D/state)"
 # ---- pressed again: the tabs in a normal Oracle window, the Tor window and its Chromium gone with the profile, Tor told
 : > $D/calls 2>/dev/null
 evt http://127.0.0.1:8080/ 'OA.main.body.querySelector(".otor").click(),1' one >/dev/null
