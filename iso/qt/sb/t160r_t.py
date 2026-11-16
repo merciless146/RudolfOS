@@ -67,6 +67,11 @@ CUST = f'{W}/cust/channel'
 run_(['mcopy', '-n', '-i', f'{BOOT}@@{EOFF}', '::/EFI/rudolf/rudolf.efi', f'{W}/rudolf-off.efi'])
 run_(['sbattach', '--remove', f'{W}/rudolf-off.efi']); shutil.move(f'{W}/rudolf-off.efi', f'{W}/rudolf-custom.efi')
 
+# this tree's start-up script, rudolf-verity and rudolf-kexec, unpacked over the release kernel's own (as recovery_sb_t.sh)
+os.makedirs(f'{W}/ov/bin'); shutil.copy(f'{ISO}/initramfs/init', f'{W}/ov/init'); os.chmod(f'{W}/ov/init', 0o755)
+run_(['gcc', '-Os', '-static', '-o', f'{W}/ov/bin/rudolf-verity', f'{ISO}/sys/rudolf-verity.c'])
+run_(['gcc', '-Os', '-static', '-nostdlib', '-fno-builtin', '-fno-stack-protector', '-fno-asynchronous-unwind-tables', '-o', f'{W}/ov/bin/rudolf-kexec', f'{ISO}/sys/rudolf-kexec.c'])
+OVCPIO = f'{W}/ov.cpio'; subprocess.run(f'cd {W}/ov && find . | cpio -o -H newc --quiet -R 0:0 > {OVCPIO}', shell=True, check=True)
 def slot_files(T, s, src_manifest, serial, ver):
     d = f'{T}/os/system/{s}'; os.makedirs(d)
     shutil.copy(f'{REL}/vmlinuz', f'{d}/vmlinuz')
@@ -101,11 +106,11 @@ class TSer(Ser):   # the serial line, also written to a file (the start-up's mes
     def read(s, t=1.0):
         o = super().read(t); s.lf.write(o); s.lf.flush(); return o
 N = [0]
-def boot(tag, drive, vars_keep, secure_code=True, kernel_cmd=None, wait=1200, net=True):
+def boot(tag, drive, vars_keep, secure_code=True, kernel_cmd=None, wait=1200, net=True, initrd=None):
     N[0] += 1; name = f't160r{N[0]}{tag}'
-    extra = ['-drive', f'file={drive},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf160r,bootindex=0']
+    extra = ['-drive', f'file={drive},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf160r' + (',bootindex=0' if kernel_cmd is None else '')]
     if net: extra += ['-netdev', 'user,id=n1', '-device', 'e1000,netdev=n1']
-    if kernel_cmd is not None: extra += ['-kernel', f'{REL}/vmlinuz', '-append', kernel_cmd]
+    if kernel_cmd is not None: extra += ['-kernel', f'{REL}/vmlinuz', '-append', kernel_cmd] + (['-initrd', initrd] if initrd else [])
     vm = sbvm.VM(name, PARTS, [], secure=secure_code, vars_from=vars_keep, mem=MEM, extra=extra)
     vm.keep = vars_keep; vm.serlog = os.path.join(vm.dir, 'serial.txt')
     g = Guest.__new__(Guest); g.N = vm.name; g.s = TSer(vm.ser_path, vm.serlog); g.q = vm.q; g.s.read(0.3)
@@ -167,8 +172,8 @@ def part1():
         # ---- the next start: system/r made again; the boot image downloaded, checked, staged
         vm, g, up = boot('repair1', D1, V1)
         okp = up and wait_in(g, '[ -s /persist/os/bootimg/pending ]', 900, 'staged')
-        o = run(g, STATUS + "; cat /run/rudolf/espcheck.log; cat /persist/os/bootimg/pending; ls -l /persist/os/system/r; grep -h '\"k\":\"boot\"' /persist/var/log/health.log | tail -4; tail -5 /run/rudolf/update.log", 120)
-        ok('4. at the next start: system/r made again from the official system (its deleted layer back)', up and 'made again from this official system' in o and re.search(r' desktop\.sfs', o), o)
+        o = run(g, STATUS + "; cat /run/rudolf/espcheck.log; cat /persist/os/bootimg/pending; ls -1 /persist/os/system/r | cat; grep -h '\"k\":\"boot\"' /persist/var/log/health.log | tail -4; tail -5 /run/rudolf/update.log", 120)
+        ok('4. at the next start: system/r made again from the official system (its deleted layer back)', up and 'made again from this official system' in o and re.search(r'^desktop\.sfs$', o, re.M), o)
         ok('5. ...the release\'s boot image downloaded from GitHub, its checksum and both start-up files checked, staged for the next start (said in System health)', okp
            and f'serial={SER}' in o and 'are written at the next start' in o and 'not all the official ones' in o, o)
         stop(vm, g)
@@ -206,12 +211,14 @@ def part1():
         ok('11. Return to official (keep): Developer mode off, the official system from system/r into slot a to start next, the official boot files staged',
            'Returning to the official Rudolf OS' in o and re.search(r'^next=a$', o, re.M) and okp, o)
         stop(vm, g)
-        vm, g, up = boot('returned', D1, V1)
-        o = run(g, "sleep 30; " + STATUS + "; cat /persist/etc/rudolf/extra-keys 2>&1", 180) if up else 'not up'
+        # (this start with this tree's start-up script over the release kernel's own, given as a second initramfs: the
+        #  released one drops Return to official's mark when it tries the official system, fixed in initramfs/init)
+        vm, g, up = boot('returned', D1, V1, kernel_cmd='quiet loglevel=3 consoleblank=0 rudolf.boot=uefi rudolf.debug=1', initrd=OVCPIO)
+        o = run(g, "sleep 30; " + STATUS + "; cat /persist/etc/rudolf/extra-keys 2>&1; grep -h -e 'Cleared' -e 'Back to the official' /run/rudolf/update.log", 180) if up else 'not up'
         if up and '"developer":false' not in o: o += run(g, "sleep 60; rudolf-update status; ls /persist/os/system", 120)
         ok('12. ...the next starts: the official rudolf.efi written again, the official system (slot a), Official, Developer mode off, the custom build\'s slot cleared',
            up and re.search(r'^SLOT=a$', o, re.M) and 'start=official recovery=official' in o and '"signer":"official"' in o and '"developer":false' in o
-           and '"b":{"complete":false' in o and 'No such file' in o, o)
+           and '"b":{"complete":false' in o and 'No such file' in o and 'Cleared the custom build in slot b' in o, o)
         stop(vm, g); vm = None
         os.remove(D1)
 
@@ -222,7 +229,8 @@ def part2():
             open(f'{T}/os/update.conf', 'w').write('auto=0\n')
         make_drive(D2, None, official=False, extra=ex2, dmb=3200)
         CMD = 'quiet loglevel=3 consoleblank=0 rudolf.debug=1'
-        vm, g, up = boot('neverofficial', D2, None, secure_code=False, kernel_cmd=CMD)
+        V2 = f'{W}/vars2.fd'; shutil.copy(f'{PARTS}/OVMF_VARS_4M.fd', V2)
+        vm, g, up = boot('neverofficial', D2, V2, kernel_cmd=CMD)
         o = run(g, STATUS, 120) if up else 'not up'
         ok('13. a custom build alone (never the official one): no official recovery system', up and re.search(r'"signer":"(custom|unknown)"', o) and re.search(r'"recoveryOfficial":false', o), o)
         if up:
@@ -232,7 +240,7 @@ def part2():
             ok('14. Developer mode turned on: the official recovery system downloaded from the official address, checked with the official key',
                'being downloaded from the official address' in o and okr and 'downloaded from the official address' in o and '"recoveryOfficial":true' in o, o)
             stop(vm, g)
-            vm, g, up = boot('recovery', D2, None, secure_code=False, kernel_cmd=CMD + ' rudolf.recovery=1')
+            vm, g, up = boot('recovery', D2, V2, kernel_cmd=CMD + ' rudolf.recovery=1')
             o = run(g, "echo SLOT=$(cat /etc/rudolf/slot); cat /etc/rudolf/cmdline; head -3 /persist/os/system/r/RELEASE", 60) if up else 'not up'
             ok('15. ...Recovery mode starts it (slot r, the official release)', up and re.search(r'^SLOT=r$', o, re.M), o)
         stop(vm, g); vm = None
