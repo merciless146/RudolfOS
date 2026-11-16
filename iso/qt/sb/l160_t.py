@@ -179,16 +179,26 @@ try:
         SI = ("(async()=>{try{const a=ACCTS.find(x=>x.n=='john');if(USER)userLogout();USER=a;await userLogin(a,'j1');lastInput=Date.now();"
               "const L=document.getElementById('login');if(L)L.style.display='none';return 'in '+USER.n}catch(e){return 'ERR '+e.message}})()")
         out('sign-in:', js(SI, 300))
-        end = time.time() + 600
-        while time.time() < end and js("typeof SHELL!='undefined'&&!!SHELL", 20) is not True: time.sleep(10)
-        if js("!!USER&&USER.n=='john'", 20) is not True: out('sign-in again after the move into the shell:', js(SI, 300))
-        wait_for(js, "!!(USER&&USER.disk&&hdOn())", 300)
+        # the desktop's one-time move into the shell (Oracle's real tabs): by itself right after start-up, else on the
+        # person's click on "Real browser tabs are ready" (its action, shell/switch, as the notice's click does)
+        end = time.time() + 900; asked = 0
+        while time.time() < end and js("typeof SHELL!='undefined'&&!!SHELL", 20) is not True:
+            st = js("(async()=>{try{return JSON.stringify(await rd('shell'))}catch(e){return 'ERR '+e.message}})()", 30)
+            if asked < 3 and isinstance(st, str) and '"installed":true' in st and '"active":true' not in st:
+                out('the shell, not moved into by itself:', st, '- as the notice\'s click does')
+                js("(()=>{try{fsFlush()}catch(e){}setTimeout(()=>rdPost('shell/switch').catch(()=>{}),600);return 1})()", 30); asked += 1; time.sleep(40)
+            time.sleep(10)
+        for _ in range(3):
+            if js("!!(USER&&USER.n=='john'&&USER.disk&&hdOn())", 20) is True: break
+            out('sign-in again (after the move into the shell):', js(SI, 300)); wait_for(js, "!!(USER&&USER.disk&&hdOn())", 120)
+        ok('S0c. the desktop in the shell (Oracle\'s real tabs), the account signed in with its own folder', js("!!(SHELL&&USER&&USER.n=='john'&&hdOn())", 30) is True,
+           js("JSON.stringify({shell:typeof SHELL!='undefined'&&!!SHELL,user:USER&&USER.n,hd:typeof hdOn=='function'&&hdOn()})", 30))
         out('engine/shell:', js("JSON.stringify({engine:RD&&RD.engine,shell:typeof SHELL!='undefined'&&!!SHELL,user:USER&&USER.n,hd:typeof hdOn=='function'&&hdOn(),lk:typeof lkOpen})", 30))
         js("(()=>{window.UNL=()=>{const L=document.getElementById('login');if(L&&USER)L.style.display='none'};UNL();return 1})()", 30)
         r = js("(async()=>{DEB.st=null;DEB.appsAt=0;await debApps();lxRegister();return JSON.stringify(lxLaunchers().filter(x=>x.deb).map(x=>[x.deb,x.mime]))})()", 120)
         out('Debian\'s apps in the desktop:', r)
         def launch_s():
-            out('launch:', js("(()=>{UNL();const x=lxLaunchers().find(x=>x.deb=='teststand');if(!x)return 'no launcher';lxRun(x);return 'started'})()", 30))
+            out('launch:', js("(()=>{const L=document.getElementById('login');if(L&&USER)L.style.display='none';const x=lxLaunchers().find(x=>x.deb=='teststand');if(!x)return 'no launcher';lxRun(x);return 'started'})()", 30))
         flow('S', vm, g, js, sh, launch_s)
         js("(async()=>{try{fsFlush()}catch(e){}try{await __rudolfLsFlush()}catch(e){}return 1})()", 60)
         sh("echo native > /persist/etc/rudolf-desktop-engine; rm -f /persist/etc/rudolf-desktop-engine.failed; sync", 60)
@@ -221,6 +231,9 @@ try:
                 if sv(s, 'user') == 'john': break
         ok('N0c. signed in on the native sign-in screen', sv(s, 'user') == 'john', s[:600])
         sh("for i in $(seq 1 40); do [ -f /run/rudolf/acct-session.env ] && pgrep rudolf-portal >/dev/null && break; sleep 3; done; cat /run/rudolf/acct-session.env | grep -v PASS; pgrep -a rudolf-portal", 150)
+        # (Oracle's windows on Native are Rudolf's Chromium, started at the first one with the session's flags: with the
+        # DevTools port too here, as Standard's has with rudolf.debug=1, so the test can read and press Oracle's dialog)
+        sh("grep -qx -- '--remote-debugging-port=9222' /run/rudolf/oracle-chrome || echo '--remote-debugging-port=9222' >> /run/rudolf/oracle-chrome; tail -3 /run/rudolf/oracle-chrome", 30)
         time.sleep(20)
         def launch_n():
             # (the desktop's API, as the Start menu's launcher calls it: debian/launch)
