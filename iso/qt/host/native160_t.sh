@@ -5,6 +5,9 @@
 #   1. an app's window shows no sign-in screen in any of its frames while it signs in with the native session (a probe given to
 #      the page before its own code: #login looked at on every animation frame); the page opened by hand (no native session)
 #      still shows it, and the desktop's own page (no #app=) shows it at once, as before
+#   2. sound: the shell's own sounds (the start-up chime, the sign-in sound) heard; an app window's WebAudio and <audio> heard, its
+#      stream playing; after a page muted a sound, the next one still at its own volume (PulseAudio kept the muted stream's volume
+#      for every WebKit stream of that role), and a page's own volume still applied
 #   3. a setting saved in Settings' window reaches the other open window within a second and the shell at once (op "set": the
 #      page's storage sent to rudolfd, the settings read again), and a window that missed it never writes the old value back
 #   4. the system monitor and the weather widgets have their timers and live values after signing in and after the native

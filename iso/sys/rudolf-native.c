@@ -5346,8 +5346,8 @@ static void state_write(void)
 	for (int i = 0; wg_shown() && i < NWG; i++) { double X, Y, W, H; wg_rect(&WG[i], &X, &Y, &W, &H); char *t = g_strescape(WG[i].txt ? WG[i].txt : "", NULL);
 		g_string_append_printf(s, "widget %d %s %d %d %d %d %g %g|%s\n", i, WG[i].t, (int)lround(X * Z), (int)lround(Y * Z), (int)lround(W * Z), (int)lround(H * Z), WG[i].x, WG[i].y, t); g_free(t); }
 	g_string_append_printf(s, "wgnote %d %d %d\nweather %d %s|%s|%s\n", NF, NCAR, NANC, WX_ST, WX_T, WX_C, WX_L);
-	g_string_append_printf(s, "mon %s|%s|%d|%d\n", MON_CPU, MON_MEM, wg_nwin(), WG_MON_T != 0);
-	g_string_append(s, "sounds"); for (int i = 0; i < SNDN; i++) g_string_append_printf(s, " %s:%d", SNDK[i], SND_PLAYED[i]); g_string_append_c(s, '\n');   /* (report 2) */   /* (the system monitor's values, its timer) */
+	g_string_append_printf(s, "mon %s|%s|%d|%d\n", MON_CPU, MON_MEM, wg_nwin(), WG_MON_T != 0);   /* (the system monitor's values, its timer) */
+	g_string_append(s, "sounds"); for (int i = 0; i < SNDN; i++) g_string_append_printf(s, " %s:%d", SNDK[i], SND_PLAYED[i]); g_string_append_c(s, '\n');   /* (report 2) */
 	/* (the page's menu and dialogs as the shell shows them) */
 	if (CMWIN && gtk_widget_get_visible(CMWIN)) { g_string_append_printf(s, "cmenu %d %d %d %d %s\n", (int)lround(CMX * Z), (int)lround(CMY * Z), (int)lround(CMBW * Z), (int)lround(CMBH * Z), CMTITLE[0] ? CMTITLE : "-");
 		double ry = CMY + 5 + (CMTITLE[0] ? 22 : 0); for (int i = 0, k = 0; i < NCMI; i++) { if (!CMIT[i].sep && CMIT[i].icon[0]) g_string_append_printf(s, "cmicon %d %s\n", k, CMIT[i].icon); if (!CMIT[i].sep) k++; }
