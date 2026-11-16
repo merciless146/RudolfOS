@@ -39,6 +39,12 @@ trap 'kill $NP $RDP $XV 2>/dev/null; pkill -f "$T/" 2>/dev/null; rm -rf $T' EXIT
 w8() { i=0; while [ $i -lt ${2:-80} ]; do eval "$1" && return 0; timeout 0.25 tail -f /dev/null; i=$((i+1)); done; return 1; }
 w8 'xdotool getmouselocation >/dev/null 2>&1' 40
 mkfifo $D/ev
+# (2) a sound server of its own (a null sink), when this computer has PulseAudio: the shell's sounds and the windows' recorded
+PA=; if command -v pulseaudio >/dev/null && command -v parec >/dev/null; then export XDG_RUNTIME_DIR=$T/xdg; mkdir -p -m 700 $XDG_RUNTIME_DIR
+	pulseaudio -n --daemonize=yes --exit-idle-time=-1 --use-pid-file=no -L "module-null-sink sink_name=n160" -L "module-native-protocol-unix auth-anonymous=1 socket=$XDG_RUNTIME_DIR/pulse/native" >/dev/null 2>&1
+	export PULSE_SERVER=unix:$XDG_RUNTIME_DIR/pulse/native; w8 'pactl info >/dev/null 2>&1' 40 && pactl set-default-sink n160 && PA=1; fi
+rec() { [ -n "$PA" ] || return; parec -d n160.monitor --format=s16le --rate=44100 --channels=1 > $T/rec.$1 & echo $! > $T/rec.pid; }
+recstop() { [ -n "$PA" ] || return; kill $(cat $T/rec.pid) 2>/dev/null; wait $(cat $T/rec.pid) 2>/dev/null; python3 -c "import array,sys;a=array.array('h',open(sys.argv[1],'rb').read()[:-1] if len(open(sys.argv[1],'rb').read())%2 else open(sys.argv[1],'rb').read());print(max([abs(x) for x in a] or [0]))" $T/rec.$1; }
 start() { (cd $D && HOME=$D RUDOLF_WX_BASE=http://127.0.0.1:9 RUDOLF_WX_GEO=http://127.0.0.1:9 RUDOLF_NATIVE_STATE=$D/state RUDOLF_NATIVE_TEST_EVAL=$D/ev exec $BIN --size=1280x800 --draw=soft --base=http://127.0.0.1:$PORT >> $T/native.log 2>&1) & NP=$!; }
 start
 N=0; F=0
@@ -52,12 +58,15 @@ open_app() { k=$1; q=$2; n0=$(napps $k); xdotool mousemove $(hit start -) click 
 	w8 "[ \$(napps $k) -gt $n0 ]" 120; }
 # toasts seen (the shell's pop-ups), sampled
 TL=$T/toasts; : > $TL; watch_toasts() { while :; do grep '^toast ' $D/state 2>/dev/null | sed 's/^[^|]*|//' | while read -r t; do echo "$(date +%s) $t"; done >> $TL; timeout 0.5 tail -f /dev/null; done; }
-watch_toasts & WP=$!; trap 'kill $WP $NP $RDP $XV 2>/dev/null; pkill -f "$T/" 2>/dev/null; rm -rf $T' EXIT
+watch_toasts & WP=$!; trap 'kill $WP $NP $RDP $XV 2>/dev/null; [ -n "$PA" ] && pactl exit 2>/dev/null; pkill -f "$T/" 2>/dev/null; rm -rf $T' EXIT
 pops() { awk -v p="$1" 'index($0,p){t=$1; if(!l||t-l>20)n++; l=t} END{print n+0}' $TL; }
 w8 '[ "$(st signin)" = 1 ]' 120
-LC_ALL=C.UTF-8 xdotool type --delay 40 "$PW"; xdotool key Return
+rec login; LC_ALL=C.UTF-8 xdotool type --delay 40 "$PW"; xdotool key Return
 w8 '[ "$(st user)" = Ann ] && [ "$(st signin)" = 0 ]' 120
 ok "0. signed in" "$([ "$(st user)" = Ann ] && echo 1)" "$(head -5 $D/state)"
+ok "2a. the shell's own sounds as the page's: the start-up chime at the sign-in screen, the sign-in sound" "$(st sounds | grep -q 'startup:1 login:1 ' && echo 1)" "$(st sounds)"
+timeout 1.5 tail -f /dev/null; L=$(recstop login)
+[ -n "$PA" ] && ok "2b. ...heard (PulseAudio: the loudest sample $L)" "$([ "${L:-0}" -gt 1000 ] && echo 1)" "$L"
 # ---- 4. the widgets after signing in
 w8 'st mon | grep -q "^12%|"' 40
 ok "4a. the system monitor shows the stats (CPU, memory) with its timer running" "$(st mon | grep -q '^12%|1024 / 4096 MB|[0-9]*|1$' && echo 1)" "$(st mon)"
@@ -75,6 +84,11 @@ o=$(ev calc 'JSON.stringify(__lgSeen)'); o2=$(ev settings 'JSON.stringify(__lgSe
 ok "1b. ...nor Calculator's nor Settings' window" "$([ "$o" = '[]' ] && [ "$o2" = '[]' ] && echo 1)" "$o | $o2"
 o=$(ev notepad 'getComputedStyle(document.getElementById("login")).display+"|"+document.documentElement.classList.contains("oalg")')
 ok "1c. ...and the sign-in screen is not left hidden by the window's first-paint rule (it is the page's own none)" "$([ "$o" = 'none|false' ] && echo 1)" "$o"
+# ---- 2. a sound in an app's window (WebKit), recorded
+if [ -n "$PA" ]; then rec page
+	o=$(ev notepad '(()=>{const c=new AudioContext(),o=c.createOscillator();o.frequency.value=440;o.connect(c.destination);o.start();setTimeout(()=>{o.stop();c.close()},3500);return c.state})()')
+	timeout 0.8 tail -f /dev/null; [ -n "$N160_DEBUG" ] && { pactl list sink-inputs | grep -E 'Sink Input|binary|application.name|media.role|Corked|Mute'; P=$(pgrep -f WebKitWebProcess | head -1); tr '\0' '\n' < /proc/$P/environ | grep -E 'PULSE|XDG|GST'; grep -oE '[^ ]*(gstpulse|gstalsa|libpulse|gstautodetect)[^ ]*' /proc/$P/maps | sort -u; pgrep -a bwrap; }
+	timeout 3.5 tail -f /dev/null; L=$(recstop page); ok "2c. an app window's own sound (WebKit's): heard (the loudest sample $L)" "$([ "${L:-0}" -gt 1000 ] && echo 1)" "$o $L"; fi
 # ---- 5. still once, with three windows opened; never "Real browser tabs are ready"
 timeout 8 tail -f /dev/null
 ok "5b. the update notice still popped up once with three app windows opened" "$([ "$(pops 'Rudolf OS was updated')" = 1 ] && echo 1)" "$(cat $TL | sort -u -k2 | head)"

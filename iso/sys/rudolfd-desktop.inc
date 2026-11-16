@@ -575,7 +575,7 @@ static void api_desktop_settings(struct req *r)
 	char *set = dls_get(&l, k); if (!set && in) set = dls_get(&l, "bd95set");
 	static const char *const KEYS[] = { "bs", "b1", "b2", "dyn", "dm", "lat", "wpimg", "wpfit", "tb", "tbstyle", "tbac", "tbacm", "tbbstyle", "tbbac",
 		"tbbacm", "twstyle", "twacm", "accent", "darkui", "ck", "h24", "df", "tz", "doff", "ff", "fs", "lang", "scale", "icons", "icstyle",
-		"nl", "dnd", "sr", "mag", "cb", "vk", "touch", NULL };   /* (1.6.0: quick settings' switches) */
+		"nl", "dnd", "sr", "mag", "cb", "vk", "touch", "snd", NULL };   /* (1.6.0: quick settings' switches; the desktop's sounds, the owner's report 2) */
 	str o = {0}; sadd(&o, "{\"ok\":true,\"gen\":%.0f,\"acct\":", l.file ? dj_num(dj_get(l.file, "gen"), 0) : 0); sjson(&o, in ? s.id : "");
 	sadd(&o, ",\"s\":{"); int n = 0;
 	for (int i = 0; KEYS[i]; i++) { const char *v = set ? dj_get(set, KEYS[i]) : NULL; if (!v || !dj_end(v, 0)) continue; sadd(&o, "%s\"%s\":", n++ ? "," : "", KEYS[i]); dj_raw(&o, v, "null"); }
