@@ -1301,7 +1301,7 @@ repository doesn't recognize as a stable/promoted version is detected to be runn
       not shown), said in the prompt. 1.5.9 was published without the record: known by its version to read layouts 1
       and 2. No reverse step is needed for 1.5.9; 1.5.8 and older (layout 1 only) are refused.
     - **Tests:** qt/host/tostable60_t.sh, qt/shell2/tostable60_t.js, and in QEMU on the real releases
-      qt/sb/t160r_t.py (workflow "Roll back to stable check"): the beta rolled back to 1.5.9, the account made on the
+      qt/sb/t160r_t.py (workflow "Roll back to stable check", 12/12: run 43911026403): the beta rolled back to 1.5.9, the account made on the
       beta opened by 1.5.9, back up to the beta, the refusal with 1.5.8's real signed list.
     - **For the owner on the Vivobook:** the button on the beta; hidden with Get beta versions off on a stable release;
       its prompt. A real roll back to 1.5.9 only if the owner chooses (it replaces the beta until it is installed again).
