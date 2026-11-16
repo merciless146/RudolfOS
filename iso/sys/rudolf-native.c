@@ -437,17 +437,47 @@ static void json_esc(GString *s, const char *v);
 /* (test finding N8) the graphics chip's name, as Chromium gives it to the page (WEBGL_debug_renderer_info: "ANGLE (VENDOR, RENDERER,
    OpenGL VERSION)", what Settings › About shows under Graphics); WebKit gives every page "Apple GPU". Read once from a GL context of
    a window of its own (GTK's, through libepoxy, which GTK has loaded), given to the pages as window.__oaGpu (oneapp59.js) */
+/* (1.6.0, the owner's system report: "Pages drawn with: Apple GPU", and so in QEMU) where GDK has no OpenGL of its own (X without
+   GLX's acceleration, or GTK refusing it), the chip from EGL, which WebKit itself draws with: a context without a surface on the X
+   display (libEGL, which WebKit has loaded), its GL_VENDOR, GL_RENDERER and GL_VERSION */
+static void egl_names(char *ven, size_t nv, char *ren, size_t nr, char *ver, size_t nvr)
+{
+	typedef void *(*GetDisp)(void *); typedef unsigned (*Init)(void *, int *, int *); typedef unsigned (*Bind)(unsigned);
+	typedef void *(*MkCtx)(void *, void *, void *, const int *); typedef unsigned (*Cur)(void *, void *, void *, void *);
+	typedef unsigned (*DelCtx)(void *, void *); typedef void *(*Proc)(const char *); typedef const unsigned char *(*GetStr)(unsigned);
+	typedef unsigned (*Choose)(void *, const int *, void **, int, int *);
+	void *h = dlopen("libEGL.so.1", RTLD_NOW | RTLD_LOCAL); if (!h) return;
+	GetDisp gd = (GetDisp)dlsym(h, "eglGetDisplay"); Init in = (Init)dlsym(h, "eglInitialize"); Bind bi = (Bind)dlsym(h, "eglBindAPI"); MkCtx mk = (MkCtx)dlsym(h, "eglCreateContext");
+	Cur cu = (Cur)dlsym(h, "eglMakeCurrent"); DelCtx dc = (DelCtx)dlsym(h, "eglDestroyContext"); Proc gp = (Proc)dlsym(h, "eglGetProcAddress"); Choose ch = (Choose)dlsym(h, "eglChooseConfig");
+	(void)nvr;
+	if (!gd || !in || !bi || !mk || !cu || !dc || !gp || !ch) return;
+	void *d = gd(gdk_x11_get_default_xdisplay()); int ma, mi; if (!d || !in(d, &ma, &mi)) return;
+	enum { E_NONE = 0x3038, E_OPENGL_ES_API = 0x30A0, E_RENDERABLE = 0x3040, E_ES2_BIT = 0x0004, E_CTX_VER = 0x3098, E_SURFACE_TYPE = 0x3033, E_PBUFFER_BIT = 0x0001 };
+	bi(E_OPENGL_ES_API); const int ca[] = { E_RENDERABLE, E_ES2_BIT, E_SURFACE_TYPE, E_PBUFFER_BIT, E_NONE }, xa[] = { E_CTX_VER, 2, E_NONE };
+	void *cfg = NULL; int n = 0; ch(d, ca, &cfg, 1, &n);
+	void *c = mk(d, n > 0 ? cfg : NULL, NULL, xa);
+	if (c && cu(d, NULL, NULL, c)) {   /* (EGL_KHR_surfaceless_context: Mesa's) */
+		GetStr gs = (GetStr)gp("glGetString");
+		if (gs) { const char *a = (const char *)gs(0x1F00), *b = (const char *)gs(0x1F01), *v = (const char *)gs(0x1F02);
+			if (a) snprintf(ven, nv, "%s", a); if (b) snprintf(ren, nr, "%s", b);
+			if (v) { const char *x = strstr(v, "OpenGL ES "); if (x) v = x + 10; sscanf(v, "%63s", ver); } }
+		cu(d, NULL, NULL, NULL); }
+	if (c) dc(d, c);
+	/* (libEGL stays loaded and the display initialised: WebKit uses the same) */
+}
 static char *gpu_script(void)
 {
 	char ven[128] = "", ren[256] = "", ver[64] = "";
 	/* (a window of its own, never shown: GDK draws a window that has had a GL context with GL from then on, and the desktop's went blank) */
 	GtkWidget *tw = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_resize(GTK_WINDOW(tw), 1, 1); gtk_widget_realize(tw);
-	GdkWindow *w = gtk_widget_get_window(tw); GError *e = NULL; GdkGLContext *gl = w ? gdk_window_create_gl_context(w, &e) : NULL;
+	GdkWindow *w = getenv("RUDOLF_NATIVE_TEST_NOGDKGL") ? NULL : gtk_widget_get_window(tw);   /* (tests: as where GDK has no OpenGL) */
+	GError *e = NULL; GdkGLContext *gl = w ? gdk_window_create_gl_context(w, &e) : NULL;
 	typedef const unsigned char *(*GetStr)(unsigned); GetStr *gs = (GetStr *)dlsym(RTLD_DEFAULT, "epoxy_glGetString");
 	if (gl && gdk_gl_context_realize(gl, NULL) && gs && *gs) { gdk_gl_context_make_current(gl);
 		const char *a = (const char *)(*gs)(0x1F00), *b = (const char *)(*gs)(0x1F01), *c = (const char *)(*gs)(0x1F02);
 		if (a) snprintf(ven, sizeof ven, "%s", a); if (b) snprintf(ren, sizeof ren, "%s", b); if (c) sscanf(c, "%63s", ver); gdk_gl_context_clear_current(); }
 	if (e) g_error_free(e); if (gl) g_object_unref(gl); gtk_widget_destroy(tw);
+	if (!ren[0]) egl_names(ven, sizeof ven, ren, sizeof ren, ver, sizeof ver);
 	if (!ren[0]) return NULL;
 	/* (ANGLE's names for the vendors it knows) */
 	const char *v = strstr(ven, "Intel") ? "Intel" : (strstr(ven, "AMD") || strstr(ven, "ATI")) ? "AMD" : strstr(ven, "NVIDIA") ? "NVIDIA" : ven;
@@ -6152,6 +6182,37 @@ static void teval_init(void)
 	g_io_add_watch(ch, G_IO_IN, teval_line, NULL); g_io_channel_unref(ch);
 }
 
+/* (1.6.0, the owner's health log: one start-up "ready" after 197 s, the others after 27-37 s) The health log's "the desktop was ready N s
+   after start-up" comes from the desktop page when it first loads after a start (sec50.js). On Standard that page is up behind the
+   sign-in screen; on Native the pages load only once someone has signed in (the first app's window, the start-up page), so the time
+   included how long the sign-in screen waited for its password. The shell says it here instead, as soon as its sign-in screen (or the
+   desktop, a session going on) is shown, with what took the time: when the shell itself started (the session's part before it) and
+   how long it took to show its screen. Once per start-up, as the page's (a 'ready' newer than the last 'start'; within 15 minutes). */
+static double proc_up(void) { double u = -1; FILE *f = fopen("/proc/uptime", "r"); if (f) { if (fscanf(f, "%lf", &u) != 1) u = -1; fclose(f); } return u; }
+static double self_started(void)
+{
+	char b[1024]; FILE *f = fopen("/proc/self/stat", "r"); if (!f) return -1; size_t n = fread(b, 1, sizeof b - 1, f); fclose(f); b[n] = 0;
+	char *p = strrchr(b, ')'); if (!p) return -1; unsigned long long st = 0; int i = 0;   /* (field 22, after the name in parentheses) */
+	for (char *t = strtok(p + 2, " "); t; t = strtok(NULL, " ")) if (++i == 20) { st = strtoull(t, NULL, 10); break; }
+	long hz = sysconf(_SC_CLK_TCK); return hz > 0 && st ? (double)st / hz : -1;
+}
+static gboolean ready_note(gpointer what)
+{
+	double st = self_started(), up0 = proc_up();
+	GByteArray *b = NULL; if (http("GET", "/api/health?n=20", NULL, 0, &b) != 200 || !b) { if (b) g_byte_array_free(b, TRUE); return G_SOURCE_REMOVE; }
+	g_byte_array_append(b, (const guint8 *)"", 1); JV *v = jparse((const char *)b->data); g_byte_array_free(b, TRUE);
+	double up = jnum(v, "uptime", up0); if (up < 0 || up > 900) { jfree(v); return G_SOURCE_REMOVE; }   /* (rudolfd's uptime, as the page's) */
+	if (up0 >= 0 && st >= 0) st -= up0 - up;   /* (the shell's start on the same clock) */
+	JV *ev = jprop(v, "events"); double ts = -1, tr = -1;   /* (newest first) */
+	for (int i = 0; ev && i < ev->len; i++) { JV *e = jat(ev, i); char k[16] = ""; jstr(e, "k", k, sizeof k); double t = jnum(e, "t", -1);
+		if (!strcmp(k, "start") && ts < 0) ts = t; if (!strcmp(k, "ready") && tr < 0) tr = t; }
+	jfree(v);
+	if (ts < 0 || (tr >= 0 && tr >= ts)) return G_SOURCE_REMOVE;
+	char m[300]; snprintf(m, sizeof m, "the desktop was ready %.0f s after start-up (Native: %s shown; the desktop program started at %.0f s, its screen %.0f s later)", up, (const char *)what, st, st >= 0 ? up - st : -1);
+	GString *j = g_string_new("{\"k\":\"ready\",\"m\":"); json_esc(j, m); g_string_append(j, "}");
+	http("POST", "/api/health", j->str, j->len, NULL); g_string_free(j, TRUE); fprintf(stderr, "rudolf-native: %s\n", m);
+	return G_SOURCE_REMOVE;
+}
 int main(int argc, char **argv)
 {
 	for (int i = 1; i < argc; i++) {
@@ -6218,6 +6279,7 @@ int main(int argc, char **argv)
 	/* signed in already: the session goes on (read above); else the sign-in screen */
 	if (USER_ID[0]) { gtk_widget_show_all(BAR); start_page(); }
 	else { signin_show(0); snd_play("startup"); }   /* (the start-up chime at the sign-in screen, as the page's: report 2) */
+	g_timeout_add(1500, ready_note, USER_ID[0] ? "the desktop" : "the sign-in screen");   /* (the health log's start-up time: 1.6.0) */
 	g_timeout_add_seconds(3, tick_settings, NULL); g_timeout_add_seconds(10, tick_tray, NULL); g_timeout_add_seconds(5, tick_mic, NULL); g_timeout_add_seconds(15, tick_idle, NULL); g_timeout_add_seconds(5, tick_clock, NULL);
 	tick_heart(NULL); g_timeout_add_seconds(10, tick_heart, NULL);
 	tick_devlink(NULL); g_timeout_add_seconds(4, tick_devlink, NULL);   /* (as the page: every 4 s) */

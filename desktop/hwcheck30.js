@@ -8,19 +8,31 @@ const HWC_STEPS=[['sound','Sound'],['mic','Microphone'],['net','Network'],['usb'
 function hwcLast(){const r=ld(HWC_K,null);return r&&r.results?r:null}
 /* one line for the system report: "sound pass, mic fail (no level), …" */
 function hwcSummary(r){r=r||hwcLast();if(!r)return 'not run';const d=new Date(r.at);return HWC_STEPS.filter(([k])=>r.results[k]).map(([k,n])=>`${n.toLowerCase()} ${r.results[k].s}${r.results[k].d?' ('+r.results[k].d+')':''}`).join(', ')+' · '+d.toISOString().slice(0,16).replace('T',' ')}
-/* a tone on the current output: 440 Hz then 660 Hz, a second each */
-function hwcTone(){try{const a=new AudioContext(),o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);g.gain.value=0.2;o.frequency.value=440;o.frequency.setValueAtTime(660,a.currentTime+1);o.start();o.stop(a.currentTime+2);o.onended=()=>a.close();return true}catch(e){return false}}
-/* the microphone's loudest moment over ms, in dBFS (null: no microphone or not allowed) */
-async function hwcMicPeak(ms,onLevel){let st;try{st=await navigator.mediaDevices.getUserMedia({audio:true})}catch(e){return{err:e.name=='NotFoundError'?'no microphone':e.name=='NotAllowedError'?'not allowed':e.message}}
- const a=new AudioContext(),src=a.createMediaStreamSource(st),an=a.createAnalyser();an.fftSize=2048;src.connect(an);const buf=new Float32Array(an.fftSize);let peak=0;const t0=performance.now();
- await new Promise(res=>{const tick=()=>{an.getFloatTimeDomainData(buf);let m=0;for(const v of buf)m=Math.max(m,Math.abs(v));peak=Math.max(peak,m);onLevel&&onLevel(m);if(performance.now()-t0<ms)requestAnimationFrame(tick);else res()};tick()});
+/* a tone on the current output: 440 Hz then 660 Hz, a second each. 1.6.0: one sound context for the step (hwcToneEnd closes it), and the
+   tones only once it is running, its clock moving (WebKit's, on the Native desktop, opens its sound output a moment after the context
+   is made: a tone started at once was not heard, nor "Play again" with a new context each time) */
+let HWC_AC=null;
+async function hwcTone(){try{if(!HWC_AC||HWC_AC.state=='closed')HWC_AC=new AudioContext();const a=HWC_AC;try{await a.resume()}catch(e){}
+ const c0=a.currentTime,t0=performance.now();while(a.currentTime<=c0+0.1&&performance.now()-t0<3000)await new Promise(r=>setTimeout(r,50));
+ const o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);g.gain.value=0.2;const t=a.currentTime+0.4;o.frequency.setValueAtTime(440,t);o.frequency.setValueAtTime(660,t+1);o.start(t);o.stop(t+2);return true}catch(e){return false}}
+function hwcToneEnd(){const a=HWC_AC;HWC_AC=null;if(a)try{a.close()}catch(e){}}
+/* the microphone's loudest moment over ms, in dBFS (null: no microphone or not allowed). 1.6.0: the ms counted from the microphone's first
+   sound (up to 3 s more for it to start: WebKit's, on the Native desktop, takes a moment to open the device, and a check that measured
+   only those first 3 s heard nothing), the context resumed first */
+async function hwcMicPeak(ms,onLevel){let st;try{st=await navigator.mediaDevices.getUserMedia({audio:true})}catch(e){return{err:e.name=='NotFoundError'?'no microphone':e.name=='NotAllowedError'?'not allowed':e.name=='OverconstrainedError'?'no microphone was found':e.message}}
+ const a=new AudioContext();try{await a.resume()}catch(e){}const src=a.createMediaStreamSource(st),an=a.createAnalyser();an.fftSize=2048;src.connect(an);const buf=new Float32Array(an.fftSize);let peak=0,on=null;const t0=performance.now();
+ await new Promise(res=>{const tick=()=>{an.getFloatTimeDomainData(buf);let m=0;for(const v of buf)m=Math.max(m,Math.abs(v));peak=Math.max(peak,m);onLevel&&onLevel(m);const t=performance.now();if(on==null&&m>0)on=t;
+  if(t-t0<ms+3000&&(on==null||t-on<ms))requestAnimationFrame(tick);else res()};tick()});
  st.getTracks().forEach(t=>t.stop());a.close();return{db:peak>0?20*Math.log10(peak):-120}}
-/* a spinning WebGL scene for ms: frames per second (null: no WebGL) */
-async function hwcFps(cv,ms){const g=cv.getContext('webgl');if(!g)return null;const vs=g.createShader(g.VERTEX_SHADER);g.shaderSource(vs,'attribute vec2 p;uniform float t;void main(){float c=cos(t),s=sin(t);gl_Position=vec4(p.x*c-p.y*s,p.x*s+p.y*c,0,1);}');g.compileShader(vs);
- const fs=g.createShader(g.FRAGMENT_SHADER);g.shaderSource(fs,'precision mediump float;uniform float t;void main(){gl_FragColor=vec4(.5+.5*sin(t),.4,.8,1);}');g.compileShader(fs);const pr=g.createProgram();g.attachShader(pr,vs);g.attachShader(pr,fs);g.linkProgram(pr);g.useProgram(pr);
+/* a spinning WebGL scene for ms: frames per second (null: no WebGL). 1.6.0: the uniform t has the same precision in both shaders (the
+   vertex shader's default was highp, the fragment shader's mediump: WebGL refuses to link that, so Chromium and WebKit alike drew only
+   the dark background while frames were counted, the owner's "graphically flawed" step); a scene that does not link, or draws
+   nothing, is said (hwcFps.err, hwcFps.drawn) */
+async function hwcFps(cv,ms){hwcFps.err='';hwcFps.drawn=false;const g=cv.getContext('webgl');if(!g)return null;const vs=g.createShader(g.VERTEX_SHADER);g.shaderSource(vs,'precision mediump float;attribute vec2 p;uniform float t;void main(){float c=cos(t),s=sin(t);gl_Position=vec4(p.x*c-p.y*s,p.x*s+p.y*c,0,1);}');g.compileShader(vs);
+ const fs=g.createShader(g.FRAGMENT_SHADER);g.shaderSource(fs,'precision mediump float;uniform float t;void main(){gl_FragColor=vec4(.5+.5*sin(t),.4,.8,1);}');g.compileShader(fs);const pr=g.createProgram();g.attachShader(pr,vs);g.attachShader(pr,fs);g.linkProgram(pr);if(!g.getProgramParameter(pr,g.LINK_STATUS)){hwcFps.err=String(g.getProgramInfoLog(pr)||'the picture could not be made').trim().slice(0,120)}g.useProgram(pr);
  const b=g.createBuffer();g.bindBuffer(g.ARRAY_BUFFER,b);const tri=[];for(let i=0;i<300;i++){const a=i/300*6.283,r=.3+.6*((i*7919)%100)/100;tri.push(Math.cos(a)*r,Math.sin(a)*r,Math.cos(a+.05)*r*.5,Math.sin(a+.05)*r*.5,0,0)}
  g.bufferData(g.ARRAY_BUFFER,new Float32Array(tri),g.STATIC_DRAW);const loc=g.getAttribLocation(pr,'p');g.enableVertexAttribArray(loc);g.vertexAttribPointer(loc,2,g.FLOAT,false,0,0);const ut=g.getUniformLocation(pr,'t');
- let n=0;const t0=performance.now();await new Promise(res=>{const f=()=>{const t=(performance.now()-t0)/1000;g.clearColor(.1,.1,.15,1);g.clear(g.COLOR_BUFFER_BIT);g.uniform1f(ut,t);g.drawArrays(g.TRIANGLES,0,tri.length/2);n++;if(performance.now()-t0<ms)requestAnimationFrame(f);else res()};f()});
+ let n=0;const t0=performance.now();await new Promise(res=>{const f=()=>{const t=(performance.now()-t0)/1000;g.clearColor(.1,.1,.15,1);g.clear(g.COLOR_BUFFER_BIT);g.uniform1f(ut,t);g.drawArrays(g.TRIANGLES,0,tri.length/2);n++;if(!hwcFps.drawn){const px=new Uint8Array(4*9*9);g.readPixels((cv.width>>1)-4,(cv.height>>1)-4,9,9,g.RGBA,g.UNSIGNED_BYTE,px);for(let i=0;i<px.length;i+=4)if(Math.abs(px[i+1]-102)<8&&px[i+2]>190){hwcFps.drawn=true;break}}if(performance.now()-t0<ms)requestAnimationFrame(f);else res()};f()});
  return n/((performance.now()-t0)/1000)}
 /* the keyboard drawn by key position (KeyboardEvent.code); its labels come from the layout in use when Chromium
    can tell (navigator.keyboard.getLayoutMap) */
@@ -49,7 +61,8 @@ function hwCheck(){const o=document.createElement('div');o.className='natdlg hwc
   async sound(){B.innerHTML=`<p>Turn the volume up. Rudolf OS plays two tones on the speakers or headphones in use now.</p><p class='msg hws'></p>`;let s=null;try{s=await rd('system')}catch(e){}
    const cards=s?tmLines(s.audio).filter(l=>/^\s*\d/.test(l)).length:0;B.querySelector('.hws').textContent=cards?`${cards} sound card${cards>1?'s':''}. Another output (HDMI, headphones) can be chosen in Settings › Sound, then checked again.`:'No sound card was found.';
    if(!cards&&RD){set('sound','fail','no sound card');btn('Next',next,1);return}
-   hwcTone();btn('Play again',()=>hwcTone());btn('No, nothing',()=>{set('sound','fail','not heard');next()});btn('Yes, I heard both',()=>{set('sound','pass');next()},1)},
+   try{const v=RD?await rd('volume'):null;if(v&&(v.muted||v.volume===0))B.querySelector('.hws').textContent+=' The sound is muted now: turn it on (the speaker in the taskbar), then Play again.'}catch(e){}
+   cleanup=hwcToneEnd;hwcTone();btn('Play again',()=>hwcTone());btn('No, nothing',()=>{set('sound','fail','not heard');next()});btn('Yes, I heard both',()=>{set('sound','pass');next()},1)},
   async mic(){B.innerHTML=`<p>Say something for three seconds.</p><div class='hwmb' style='height:14px;background:#e5e7eb;border-radius:7px;overflow:hidden'><i style='display:block;height:100%;width:0;background:#16a34a'></i></div><p class='msg hwmm'>Listening…</p>`;
    const bar=B.querySelector('i');const r=await hwcMicPeak(3000,m=>bar.style.width=Math.min(100,m*300)+'%');const M=B.querySelector('.hwmm');
    if(r.err){set('mic','fail',r.err);M.textContent='The microphone could not be used: '+r.err+'.';btn('Next',next,1);return}
@@ -72,8 +85,9 @@ function hwCheck(){const o=document.createElement('div');o.className='natdlg hwc
    if(!done){BT.innerHTML='';B.querySelector('.hwum').textContent='Nothing appeared. Try another port or another stick.';set('usb','fail','nothing appeared');btn('Next',next,1)}},
   async gfx(){B.innerHTML=`<canvas width='320' height='180' style='width:100%;max-width:320px;border-radius:6px;background:#111'></canvas><ul class='hwgu'><li>Drawing a moving picture…</li></ul>`;let s=null;try{s=await rd('system')}catch(e){}
    const fps=await hwcFps(B.querySelector('canvas'),3000),U=B.querySelector('.hwgu');U.innerHTML='';const li=t=>{const l=document.createElement('li');l.textContent=t;U.appendChild(l)};
-   li('The screen is drawn by '+(RD?tmDrawn(s):'the browser'));li('Pages are drawn with '+tmPages());li(fps==null?'WebGL: not available':`Frames per second: ${fps.toFixed(0)}`);
-   const soft=RD&&s&&!s.renderer,ok=fps!=null&&fps>=24;set('gfx',ok&&!soft?'pass':'fail',(soft?'processor drawing, ':'')+(fps==null?'no WebGL':fps.toFixed(0)+' fps'));
+   li('The screen is drawn by '+(RD?tmDrawn(s):'the browser'));li('Pages are drawn with '+tmPages(s));li(fps==null?'WebGL: not available':`Frames per second: ${fps.toFixed(0)}`);
+   const soft=RD&&s&&!s.renderer,drawn=fps!=null&&hwcFps.drawn,ok=fps!=null&&fps>=24&&drawn;if(fps!=null&&!drawn)li('The moving picture was not drawn'+(hwcFps.err?': '+hwcFps.err:'.'));
+   set('gfx',ok&&!soft?'pass':'fail',(soft?'processor drawing, ':'')+(fps==null?'no WebGL':fps.toFixed(0)+' fps'+(drawn?'':', nothing drawn')));
    if(soft)li('Rudolf OS is not using a graphics card. Settings › Display › Graphics card has the choices.');btn('Next',next,1)},
   async keys(){keysMode=true;const L=await hwcKeyLabels(),seen=new Set();
    B.innerHTML=`<p>Press every key once. Each one lights up when Rudolf OS sees it. (Ctrl+W, Ctrl+T, Ctrl+N and Ctrl+Q are kept by Rudolf OS: press Ctrl and those letters on their own.)</p><div class='hwkb' style='display:flex;flex-direction:column;gap:3px;font:11px sans-serif;user-select:none'>${HWC_KROWS.map(r=>`<div style='display:flex;gap:3px'>${r.map(c=>`<span data-c='${c}' style='flex:${HWC_KWIDE[c]||1};min-width:0;padding:5px 0;text-align:center;border:1px solid #9ca3af;border-radius:4px;background:#f3f4f6;color:#111'>${lxEsc(L[c])}</span>`).join('')}</div>`).join('')}</div><p class='msg hwkm'>0 of ${HWC_KROWS.flat().length} keys</p>`;

@@ -5,7 +5,15 @@
 #      of the check, Super the start menu, and the keys after them went there; WebKit named Super "OSLeft"); the shell's keys are
 #      given back when the step ends; outside it a bare arrow, F5 and Ctrl reach the app, Super alone opens the start menu and the
 #      app sees MetaLeft as on Standard, F1 still opens Help, Meta+E File Explorer; Settings › Keyboard's "Press keys…" takes Meta+E
-# Needs Xvfb, xdotool, node, python3, gcc and WebKitGTK's headers.   sh hwcnative160_t.sh [RUDOLF-NATIVE]
+#   2. the microphone step opens a real microphone (a PulseAudio test source) and hears it; the tone is heard
+#   3. the drawing step draws its picture (its shaders link) at a frame rate
+#   4. the system report describes the computer, not the window: the graphics chip (from EGL where GDK has no OpenGL, as on the
+#      release in QEMU), the screen's size, the native desktop
+#   5. "Save to a file" saves into the account's Documents with the full path said; "Open the folder" opens File Explorer's own
+#      window there, listing it
+#   7. the health log's start-up line comes from the native shell when its sign-in screen shows (not from the first app's page,
+#      after signing in)
+# Needs Xvfb, xdotool, node, python3, gcc and WebKitGTK's headers (PulseAudio for 2).   sh hwcnative160_t.sh [RUDOLF-NATIVE]
 HERE=$(cd "$(dirname "$0")" && pwd); T=$(mktemp -d /tmp/hwcn160.XXXXXX); PORT=${HWCN160_PORT:-8642}; DSP=${HWCN160_DSP:-:87}
 command -v Xvfb >/dev/null && command -v xdotool >/dev/null || { echo "SKIP: needs Xvfb and xdotool"; exit 0; }
 BIN=$1
@@ -28,7 +36,7 @@ mkfifo $D/ev
 PA=; if command -v pulseaudio >/dev/null && command -v parec >/dev/null; then export XDG_RUNTIME_DIR=$T/xdg; mkdir -p -m 700 $XDG_RUNTIME_DIR $T/pahome
 	HOME=$T/pahome pulseaudio -n --daemonize=yes --exit-idle-time=-1 --use-pid-file=no -L "module-null-sink sink_name=h160" -L "module-sine-source source_name=mic160 frequency=440" -L "module-native-protocol-unix auth-anonymous=1 socket=$XDG_RUNTIME_DIR/pulse/native" >/dev/null 2>&1
 	export PULSE_SERVER=unix:$XDG_RUNTIME_DIR/pulse/native; w8 'pactl info >/dev/null 2>&1' 40 && pactl set-default-sink h160 && pactl set-default-source mic160 && PA=1; fi
-(cd $D && HOME=$D RUDOLF_NATIVE_STATE=$D/state RUDOLF_NATIVE_TEST_EVAL=$D/ev exec $BIN --size=1280x800 --draw=soft --base=http://127.0.0.1:$PORT > $T/native.log 2>&1) & NP=$!
+(cd $D && HOME=$D RUDOLF_NATIVE_TEST_NOGDKGL=1 RUDOLF_NATIVE_STATE=$D/state RUDOLF_NATIVE_TEST_EVAL=$D/ev exec $BIN --size=1280x800 --draw=soft --base=http://127.0.0.1:$PORT > $T/native.log 2>&1) & NP=$!
 N=0; F=0
 ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $(echo "$3" | head -c 900)"; F=$((F+1)); fi; }
 st() { grep "^$1 " $D/state 2>/dev/null | head -1 | cut -d' ' -f2-; }
@@ -37,14 +45,33 @@ napps() { grep -c "^app $1 " $D/state 2>/dev/null; }
 rec() { [ -n "$PA" ] || return; parec -d h160.monitor --format=s16le --rate=44100 --channels=1 > $T/rec.$1 & echo $! > $T/rec.pid; }
 recstop() { [ -n "$PA" ] || return; kill $(cat $T/rec.pid) 2>/dev/null; wait $(cat $T/rec.pid) 2>/dev/null; python3 -c "import array,sys;d=open(sys.argv[1],'rb').read();d=d[:len(d)//2*2];a=array.array('h',d);print(max([abs(x) for x in a] or [0]))" $T/rec.$1; }
 w8 '[ "$(st signin)" = 1 ]' 120
+# ---- 7. the start-up line, from the sign-in screen
+w8 'grep -q "ready" $D/health.log 2>/dev/null' 40
+h=$(cat $D/health.log 2>/dev/null)
+ok "7. the health log's start-up line is the shell's, at its sign-in screen, with when the shell started" "$(echo "$h" | grep -q '"k":"ready","m":"the desktop was ready [0-9]* s after start-up (Native: the sign-in screen shown; the desktop program started at [0-9-]* s' && echo 1)" "$h"
 LC_ALL=C.UTF-8 xdotool type --delay 40 "$PW"; xdotool key Return
 w8 '[ "$(st user)" = Ann ] && [ "$(st signin)" = 0 ]' 120
 ok "0. signed in" "$([ "$(st user)" = Ann ] && echo 1)" "$(head -5 $D/state)"
 timeout 6 tail -f /dev/null
+ok "7b. ...and only once: no app window's page notes it again after signing in" "$([ "$(grep -c '"k":"ready"' $D/health.log)" = 1 ] && echo 1)" "$(cat $D/health.log)"
 xdotool key ctrl+shift+Escape; w8 '[ "$(napps taskmgr)" -ge 1 ]' 120; timeout 8 tail -f /dev/null
 ok "0b. Task Manager's window" "$([ "$(napps taskmgr)" -ge 1 ] && echo 1)" "$(grep '^app' $D/state)"
 GO='(()=>{window.__G="?";(async()=>{if(!window.__H||!document.body.contains(__H))window.__H=hwCheck();for(let k=0;k<90;k++){const h=__H.querySelector("h3").textContent;if(h==%s){__G="at "+h;return}const bs=[...__H.querySelectorAll(".hwcbt button")];const b=bs.find(x=>x.textContent=="Skip")||bs.find(x=>x.className=="pri");if(b)b.click();await new Promise(r=>setTimeout(r,800))}__G="stuck at "+__H.querySelector("h3").textContent})();return 1})()'
 go() { ev taskmgr "$(printf "$GO" "\"$1\"")" >/dev/null; w8 "ev taskmgr '__G' | grep -q '^at '" 80; ev taskmgr '__G'; }
+# ---- 2. sound and microphone (the first steps)
+if [ -n "$PA" ]; then
+	ev taskmgr '(()=>{window.__H=hwCheck();return 1})()' >/dev/null; timeout 2 tail -f /dev/null
+	rec tone; ev taskmgr '(()=>{hwcTone();return 1})()' >/dev/null; timeout 2.6 tail -f /dev/null; L=$(recstop tone)
+	ok "2a. the sound step's tone is heard (the loudest sample $L)" "$([ "${L:-0}" -gt 1000 ] && echo 1)" "$L"
+	go Microphone >/dev/null; timeout 5 tail -f /dev/null
+	o=$(ev taskmgr '__H.querySelector(".hwmm").textContent')
+	ok "2b. the microphone step opens the microphone (no \"Invalid constraint\") and hears it" "$(echo "$o" | grep -q '^Heard you (loudest' && echo 1)" "$o"
+	ev taskmgr '(()=>{__H.remove();window.__H=null;return 1})()' >/dev/null
+fi
+# ---- 3. the drawing
+go Graphics >/dev/null; timeout 4.5 tail -f /dev/null
+o=$(ev taskmgr '__H.querySelector(".hwgu").innerText.replace(/\n/g," | ")+" || "+JSON.stringify({drawn:hwcFps.drawn,err:hwcFps.err})')
+ok "3. the drawing step draws its picture (the shaders link) at a frame rate" "$(echo "$o" | grep -q 'Frames per second: [1-9]' && echo "$o" | grep -q '"drawn":true,"err":""' && echo 1)" "$o"
 # ---- 1. the keyboard step
 go Keyboard >/dev/null; timeout 1 tail -f /dev/null
 ok "1a. the keyboard step has every key: the shell's grabs are off while Task Manager is in front" "$(st keys | grep -q '^grabbed=0 superraw=1 kbcap=taskmgr' && echo 1)" "$(st keys)"
@@ -73,6 +100,19 @@ timeout 1 tail -f /dev/null; k0=$(st keys); n0=$(napps explorer); xdotool key su
 o2=$(ev settings '(()=>{const r=[...document.querySelectorAll(".kbt tbody tr")].find(x=>/Open Help/.test(x.textContent));return r?r.querySelector("kbd").textContent:"?"})()')
 ok "1h. Settings › Keyboard's Press keys…: Meta+E goes to the page (the shell's keys off meanwhile), not File Explorer" "$([ "$o" = ok ] && echo "$k0" | grep -q 'grabbed=0' && [ "$(napps explorer)" = "$n0" ] && echo "$o2" | grep -q 'E' && st keys | grep -q 'grabbed=1' && echo 1)" "$o | $k0 | $o2 | $(st keys) | $(grep '^app' $D/state)"
 ev settings '(()=>{try{localStorage.removeItem("bd95kb:"+uid())}catch(e){}return 1})()' >/dev/null
+# ---- 4. the system report
+o=$(ev taskmgr '(()=>{window.__R="?";sysReport("").then(r=>__R=r.summary.replace(/\n/g," ## "),e=>__R="ERR "+e);return 1})()'); w8 "ev taskmgr '__R' | grep -q 'Desktop size'" 240; o=$(ev taskmgr '__R')
+ok "4. the system report describes the computer: the graphics chip, the screen's size (not the window's), the native desktop" "$(echo "$o" | grep -q 'Desktop: native' && echo "$o" | grep -q 'Desktop size: 1280x800 @1' && echo "$o" | grep -q 'Pages drawn with: ANGLE (Mesa, llvmpipe' && ! echo "$o" | grep -q 'Apple GPU' && echo 1)" "$o"
+o=$(ev taskmgr '(()=>{const g=window.__oaGpu,t=TMGL;TMGL="Apple GPU";delete window.__oaGpu;const r=tmPages({renderer:"AMD Radeon 610M (radeonsi, mendocino)"});window.__oaGpu=g;TMGL=t;return r})()')
+ok "4b. ...where the shell could not name the chip (WebKit's \"Apple GPU\"), the graphics card X draws with" "$([ "$o" = 'ANGLE (AMD Radeon 610M (radeonsi, mendocino))' ] && echo 1)" "$o"
+# ---- 5. the report saved to a file
+ev taskmgr '(()=>{sysReportDialog();setTimeout(()=>document.querySelector(".rmodal .srs").click(),500);return 1})()' >/dev/null
+w8 "ev taskmgr '(document.querySelector(\".rmodal .srm\")||{}).textContent' | grep -q Saved" 240
+o=$(ev taskmgr '(document.querySelector(".rmodal .srm")||{}).textContent+"|"+!!document.querySelector(".rmodal .srf")+"|"+JSON.stringify(Object.keys(node(homePath("DOCUMENTS"))||{}))+"|"+JSON.stringify(Object.keys(fs["C:"].DOCUMENTS||{}))')
+ok "5a. Save to a file: into the account's own Documents, the full path said, the folder offered (not C:\\DOCUMENTS)" "$(echo "$o" | grep -qE '^Saved as C:\\USERS\\ANN\\DOCUMENTS\\REPORT-[0-9]{12}\.TXT\. You can send it later\.\|true\|.*REPORT-[0-9]{12}\.TXT' && echo "$o" | grep -qE '\|\[\]$' && echo 1)" "$o"
+n0=$(napps explorer); ev taskmgr '(()=>{document.querySelector(".rmodal .srf").click();return 1})()' >/dev/null; w8 "[ \$(napps explorer) -gt $n0 ]" 80; timeout 6 tail -f /dev/null
+o=$(ev explorer '(()=>{const t=document.body.innerText;return (/REPORT-\d{12}\.TXT/.test(t)?"listed":"not listed")+"|"+(/Documents/.test(t)?"docs":"")+"|"+JSON.stringify(Object.keys(node(homePath("DOCUMENTS"))||{}))})()')
+ok "5b. ...Open the folder: File Explorer's own window at Documents lists it" "$(echo "$o" | grep -q '^listed|docs' && echo 1)" "$o $(grep '^app' $D/state)"
 n0=$(napps explorer); xdotool key super+e; w8 "[ \$(napps explorer) -gt $n0 ]" 60
 ok "1g. Meta+E opens File Explorer (an exact combination the shell keeps)" "$([ "$(napps explorer)" -gt "$n0" ] && echo 1)" "$(grep '^app' $D/state)"
 echo "$F of $N failed"; [ $F = 0 ]
