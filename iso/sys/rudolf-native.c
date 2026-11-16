@@ -715,7 +715,7 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
 static double tw_tbh(void);   /* (the title bar's height in the page's pixels: tw_geom) */
 static int BW = 1;   /* (the page's windows' 1 px edge, 2 px with high contrast; the title bar's height, TH, follows the display scaling, the font size and the touch mode: tw_th) */
 typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
-	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; int opened; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
+	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; int opened; char ptitle[256]; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
 static void wopen_start(Client *c);
 static GList *CLIENTS;   /* oldest first */
 static Client *FOCUS;
@@ -739,6 +739,9 @@ static void wm_title(Client *c)
 	if (!c->title[0]) { char *nm = NULL; if (XFetchName(DPY, c->w, &nm) && nm) { snprintf(c->title, sizeof c->title, "%s", nm); XFree(nm); } }
 	for (char *p = c->title; *p; p++) if (*p == '\n' || *p == '\t') *p = ' ';
 	/* (Oracle's Chromium: an app's window is titled "Rudolf OS - PAGE'S TITLE", the shell's name first; the page's alone) */
+	/* (1.6.0) the title its page has (rudolf-launch: "title X Y W H ..."), whatever Chromium calls its window: Rudolf's Chromium 158 kept
+	   an Oracle window's own title at the shell's name ("Rudolf OS"), so the frame and the taskbar said "Oracle" for every page */
+	if (c->ak[0] && c->ptitle[0]) { snprintf(c->title, sizeof c->title, "%s", c->ptitle); return; }
 	if (c->ak[0] && !strncmp(c->title, "Rudolf OS - ", 12)) memmove(c->title, c->title + 12, strlen(c->title + 12) + 1);
 	else if (c->ak[0] && !strcmp(c->title, "Rudolf OS")) { const App *ap = app_find(c->ak); snprintf(c->title, sizeof c->title, "%s", ap ? ap->name : "Oracle"); }
 }
@@ -936,7 +939,7 @@ static gboolean oracle_busy_end(gpointer d) { (void)d; OR_BUSY = 0; oracle_busy(
    its own (Settings at a page: Settings' own window there) */
 static void tb_settings(const char *page); static void tb_jump(const char *k, const char *label);
 static int tor_open(const char *urls); static void tor_back(const char *urls);   /* (1.5.9, Part 16: Oracle's Tor windows) */
-static void oracle_hide(int x, int y, int w, int h);
+static void oracle_hide(int x, int y, int w, int h); static void oracle_title(int x, int y, int w, int h, const char *t);
 static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 {
 	(void)d; if (c & (G_IO_HUP | G_IO_ERR)) { if (!(c & G_IO_IN)) return G_SOURCE_REMOVE; }
@@ -946,6 +949,9 @@ static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 	/* (rudolf-launch: Oracle's last window is closing while a download is still arriving: off the screen and the taskbar until its
 	   page has filed it and closes) */
 	if (l && sscanf(l, "hide %d %d %d %d", &hx, &hy, &hw, &hh) == 4) { oracle_hide(hx, hy, hw, hh); g_free(l); return G_SOURCE_CONTINUE; }
+	{ int nn = 0; if (l && sscanf(l, "title %d %d %d %d %n", &hx, &hy, &hw, &hh, &nn) == 4 && nn > 0 && l[nn] == '"') {
+		g_strchomp(l); char *o = g_strdup_printf("{\"t\":%s}", l + nn); JV *v = jparse(o); char tt[256] = ""; if (v) { jstr(v, "t", tt, sizeof tt); jfree(v); }
+		g_free(o); if (tt[0]) oracle_title(hx, hy, hw, hh, tt); g_free(l); return G_SOURCE_CONTINUE; } }
 	if (l && !strncmp(l, "msg ", 4)) { const char *b = strchr(l + 4, ' '); if (b && b - (l + 4) < (long)sizeof sid && l[4] != '{') { memcpy(sid, l + 4, b - (l + 4)); sid[b - (l + 4)] = 0; js = b + 1; } }
 	if (js && js[0] == '{' && strspn(sid, "0123456789ABCDEFabcdef") == strlen(sid)) { JV *v = jparse(js); char op[16] = "", app[KN] = "", file[1024] = "", pg[48] = "", jp[64] = "", u[1024] = "", pv[4] = "";
 		if (v) { jstr(v, "op", op, sizeof op); jstr(v, "app", app, sizeof app); jstr(v, "file", file, sizeof file); jstr(v, "page", pg, sizeof pg); jstr(v, "jump", jp, sizeof jp); jstr(v, "url", u, sizeof u); jstr(v, "priv", pv, sizeof pv); }
@@ -1152,6 +1158,34 @@ static void oracle_client(Client *c, XWindowAttributes *wa)
 	oracle_busy(0);
 }
 static void oracle_gone(void) { }
+/* (1.6.0) an Oracle window's title as its page has it, the window found by its place (Chromium's own bounds); kept for a window not
+   managed yet (its first title comes as it opens), given to it as it is (oracle_client) */
+static struct { int x, y, w, h; char t[256]; gint64 at; } OR_TQ[8];
+static int oracle_at(Client *c, int x, int y, int w, int h)
+{
+	int ax, ay; Window ch; XWindowAttributes wa;
+	if (!c->ak[0] || c->trans || !XTranslateCoordinates(DPY, c->w, ROOT, 0, 0, &ax, &ay, &ch) || !XGetWindowAttributes(DPY, c->w, &wa)) return 0;
+	return abs(ax - x) <= 2 && abs(ay - y) <= 2 && abs(wa.width - w) <= 2 && abs(wa.height - h) <= 2;
+}
+static void oracle_title_set(Client *c, const char *t)
+{
+	if (!strcmp(c->ptitle, t)) return;
+	snprintf(c->ptitle, sizeof c->ptitle, "%s", t); for (char *p = c->ptitle; *p; p++) if (*p == '\n' || *p == '\t') *p = ' ';
+	wm_title(c); frame_draw(c); bar_redraw(); state_write();
+}
+static void oracle_title(int x, int y, int w, int h, const char *t)
+{
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (oracle_at(c, x, y, w, h)) { oracle_title_set(c, t); return; } }
+	fprintf(stderr, "rudolf-native: Oracle's title \"%.60s\" for a window at %d,%d %dx%d not here yet\n", t, x, y, w, h);
+	int k = 0; for (int i = 1; i < 8; i++) if (OR_TQ[i].at < OR_TQ[k].at) k = i;
+	OR_TQ[k].x = x; OR_TQ[k].y = y; OR_TQ[k].w = w; OR_TQ[k].h = h; OR_TQ[k].at = g_get_monotonic_time(); snprintf(OR_TQ[k].t, sizeof OR_TQ[k].t, "%s", t);
+}
+static void oracle_title_take(Client *c)
+{
+	gint64 now = g_get_monotonic_time(); int best = -1;
+	for (int i = 0; i < 8; i++) if (OR_TQ[i].t[0] && now - OR_TQ[i].at < 20 * G_USEC_PER_SEC && oracle_at(c, OR_TQ[i].x, OR_TQ[i].y, OR_TQ[i].w, OR_TQ[i].h) && (best < 0 || OR_TQ[i].at > OR_TQ[best].at)) best = i;
+	if (best >= 0) { oracle_title_set(c, OR_TQ[best].t); OR_TQ[best].t[0] = 0; }
+}
 /* (12.3c) Oracle's window found by its place (Chromium's own bounds): put in no workspace (ws 0), so neither shown nor listed */
 static void oracle_hide(int x, int y, int w, int h)
 {
@@ -1197,6 +1231,7 @@ static void wm_manage(Window w, AppWin *own)
 	if (XGetWindowProperty(DPY, w, A_NSTATE, 0, 32, False, XA_ATOM, &type, &fmt, &n, &after, &d) == Success && d) { for (unsigned long i = 0; i < n; i++) if (((Atom *)d)[i] == A_NFULL) { c->full = 0; wm_fullscreen(c, 1); } XFree(d); }
 	if (own && !strcmp(own->k, "do-saver")) { c->ontop = 1; wm_fullscreen(c, 1); }   /* (the screen saver: over everything, the taskbar too: item 6) */
 	if (own && TM_TOP && !strcmp(own->k, "taskmgr")) { c->ontop = 1; TM_TOP = 0; }   /* (1.6.0: Ctrl+Alt+Del's Task Manager, above every window) */
+	if (c->ak[0]) { XSync(DPY, False); oracle_title_take(c); }   /* (1.6.0: Oracle's page's title, when it came first) */
 	wm_focus(c);
 	if (!own) wopen_start(c);   /* (another program's window (Oracle's, a Linux app's) opens as the page's do; an app's own, at its page's size: appwin_size) */
 }

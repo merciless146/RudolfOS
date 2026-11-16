@@ -135,7 +135,7 @@ if(ONEAPP&&oaNative()&&window.KeyboardEvent){const P=KeyboardEvent.prototype,d=k
  if(dgm)P.getModifierState=function(k){if(k=='Meta'||k=='OS'){const o=os(this);if(o?this.type=='keydown':held)return true}return dgm.call(this,k)}}
 /* (1.5.9, docs/plan-1.5.9.md 12.3c) Oracle on the native desktop is this page in the shell, in Rudolf's Chromium (its real tabs):
    the window's title and its closing go to the shell, which is the window (a title kept until the shell has said hello) */
-let OA_SHT='';function oaShell(m){if(!ONEAPP)return;if(m.op=='title'){OA_SHT=m.t;if(typeof SHELL!='undefined'&&SHELL)shellSend({rudolfShell:'oa',op:'title',t:m.t})}
+let OA_SHT='';function oaShell(m){if(!ONEAPP)return;if(m.op=='title'){OA_SHT=m.t;if(typeof SHELL!='undefined'&&SHELL)shellSend({rudolfShell:'oa',op:'title',t:m.t});oaTitleNative()}
  /* (closing: rudolf-launch decides, as Chromium asks "Download is in progress: exit anyway?" when its last window closes during a
     download, which Standard never shows: then the window goes from the screen and its page closes once the downloads are in) */
  else if(m.op=='close'&&typeof SHELL!='undefined'&&SHELL){if(oaChromium()){try{window.rudolfNativeOracle(JSON.stringify({w:ONEAPP.w||0,op:'closing'}))}catch(e){}
@@ -143,6 +143,10 @@ let OA_SHT='';function oaShell(m){if(!ONEAPP)return;if(m.op=='title'){OA_SHT=m.t
  /* (12.3c step 5) the rest goes to the native desktop itself: rudolf-launch's binding on its private pipe, in Oracle's windows only */
  else if(oaChromium())try{window.rudolfNativeOracle(JSON.stringify(Object.assign({w:ONEAPP.w||0},m)))}catch(e){}}
 function oaChromium(){return typeof window.rudolfNativeOracle=='function'}
+/* (1.6.0) the title to the native desktop too (rudolf-launch's binding): Rudolf's Chromium 158 kept an Oracle window's own title at
+   the shell's name, so its frame and taskbar button said "Oracle" whatever the page; asked for again once the binding is there */
+function oaTitleNative(){if(OA_SHT&&oaChromium())try{window.rudolfNativeOracle(JSON.stringify({w:ONEAPP.w||0,op:'title',t:String(OA_SHT).slice(0,250)}))}catch(e){}}
+window.__oaTitleAgain=()=>{oaTitleNative();return 1};
 let OA_CLT=0;
 window.__oaCloseNow=()=>{clearTimeout(OA_CLT);try{shellSend({rudolfShell:'oa',op:'close'})}catch(e){}};
 window.__oaCloseLater=()=>clearTimeout(OA_CLT);
