@@ -8,12 +8,21 @@ const HWC_STEPS=[['sound','Sound'],['mic','Microphone'],['net','Network'],['usb'
 function hwcLast(){const r=ld(HWC_K,null);return r&&r.results?r:null}
 /* one line for the system report: "sound pass, mic fail (no level), …" */
 function hwcSummary(r){r=r||hwcLast();if(!r)return 'not run';const d=new Date(r.at);return HWC_STEPS.filter(([k])=>r.results[k]).map(([k,n])=>`${n.toLowerCase()} ${r.results[k].s}${r.results[k].d?' ('+r.results[k].d+')':''}`).join(', ')+' · '+d.toISOString().slice(0,16).replace('T',' ')}
-/* a tone on the current output: 440 Hz then 660 Hz, a second each */
-function hwcTone(){try{const a=new AudioContext(),o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);g.gain.value=0.2;o.frequency.value=440;o.frequency.setValueAtTime(660,a.currentTime+1);o.start();o.stop(a.currentTime+2);o.onended=()=>a.close();return true}catch(e){return false}}
-/* the microphone's loudest moment over ms, in dBFS (null: no microphone or not allowed) */
-async function hwcMicPeak(ms,onLevel){let st;try{st=await navigator.mediaDevices.getUserMedia({audio:true})}catch(e){return{err:e.name=='NotFoundError'?'no microphone':e.name=='NotAllowedError'?'not allowed':e.message}}
- const a=new AudioContext(),src=a.createMediaStreamSource(st),an=a.createAnalyser();an.fftSize=2048;src.connect(an);const buf=new Float32Array(an.fftSize);let peak=0;const t0=performance.now();
- await new Promise(res=>{const tick=()=>{an.getFloatTimeDomainData(buf);let m=0;for(const v of buf)m=Math.max(m,Math.abs(v));peak=Math.max(peak,m);onLevel&&onLevel(m);if(performance.now()-t0<ms)requestAnimationFrame(tick);else res()};tick()});
+/* a tone on the current output: 440 Hz then 660 Hz, a second each. 1.6.0: one sound context for the step (hwcToneEnd closes it), and the
+   tones only once it is running, its clock moving (WebKit's, on the Native desktop, opens its sound output a moment after the context
+   is made: a tone started at once was not heard, nor "Play again" with a new context each time) */
+let HWC_AC=null;
+async function hwcTone(){try{if(!HWC_AC||HWC_AC.state=='closed')HWC_AC=new AudioContext();const a=HWC_AC;try{await a.resume()}catch(e){}
+ const c0=a.currentTime,t0=performance.now();while(a.currentTime<=c0+0.1&&performance.now()-t0<3000)await new Promise(r=>setTimeout(r,50));
+ const o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);g.gain.value=0.2;const t=a.currentTime+0.15;o.frequency.setValueAtTime(440,t);o.frequency.setValueAtTime(660,t+1);o.start(t);o.stop(t+2);return true}catch(e){return false}}
+function hwcToneEnd(){const a=HWC_AC;HWC_AC=null;if(a)try{a.close()}catch(e){}}
+/* the microphone's loudest moment over ms, in dBFS (null: no microphone or not allowed). 1.6.0: the ms counted from the microphone's first
+   sound (up to 3 s more for it to start: WebKit's, on the Native desktop, takes a moment to open the device, and a check that measured
+   only those first 3 s heard nothing), the context resumed first */
+async function hwcMicPeak(ms,onLevel){let st;try{st=await navigator.mediaDevices.getUserMedia({audio:true})}catch(e){return{err:e.name=='NotFoundError'?'no microphone':e.name=='NotAllowedError'?'not allowed':e.name=='OverconstrainedError'?'no microphone was found':e.message}}
+ const a=new AudioContext();try{await a.resume()}catch(e){}const src=a.createMediaStreamSource(st),an=a.createAnalyser();an.fftSize=2048;src.connect(an);const buf=new Float32Array(an.fftSize);let peak=0,on=null;const t0=performance.now();
+ await new Promise(res=>{const tick=()=>{an.getFloatTimeDomainData(buf);let m=0;for(const v of buf)m=Math.max(m,Math.abs(v));peak=Math.max(peak,m);onLevel&&onLevel(m);const t=performance.now();if(on==null&&m>0)on=t;
+  if(t-t0<ms+3000&&(on==null||t-on<ms))requestAnimationFrame(tick);else res()};tick()});
  st.getTracks().forEach(t=>t.stop());a.close();return{db:peak>0?20*Math.log10(peak):-120}}
 /* a spinning WebGL scene for ms: frames per second (null: no WebGL). 1.6.0: the uniform t has the same precision in both shaders (the
    vertex shader's default was highp, the fragment shader's mediump: WebGL refuses to link that, so Chromium and WebKit alike drew only
@@ -56,7 +65,7 @@ function hwCheck(){const o=document.createElement('div');o.className='natdlg hwc
   async sound(){B.innerHTML=`<p>Turn the volume up. Rudolf OS plays two tones on the speakers or headphones in use now.</p><p class='msg hws'></p>`;let s=null;try{s=await rd('system')}catch(e){}
    const cards=s?tmLines(s.audio).filter(l=>/^\s*\d/.test(l)).length:0;B.querySelector('.hws').textContent=cards?`${cards} sound card${cards>1?'s':''}. Another output (HDMI, headphones) can be chosen in Settings › Sound, then checked again.`:'No sound card was found.';
    if(!cards&&RD){set('sound','fail','no sound card');btn('Next',next,1);return}
-   hwcTone();btn('Play again',()=>hwcTone());btn('No, nothing',()=>{set('sound','fail','not heard');next()});btn('Yes, I heard both',()=>{set('sound','pass');next()},1)},
+   cleanup=hwcToneEnd;hwcTone();btn('Play again',()=>hwcTone());btn('No, nothing',()=>{set('sound','fail','not heard');next()});btn('Yes, I heard both',()=>{set('sound','pass');next()},1)},
   async mic(){B.innerHTML=`<p>Say something for three seconds.</p><div class='hwmb' style='height:14px;background:#e5e7eb;border-radius:7px;overflow:hidden'><i style='display:block;height:100%;width:0;background:#16a34a'></i></div><p class='msg hwmm'>Listening…</p>`;
    const bar=B.querySelector('i');const r=await hwcMicPeak(3000,m=>bar.style.width=Math.min(100,m*300)+'%');const M=B.querySelector('.hwmm');
    if(r.err){set('mic','fail',r.err);M.textContent='The microphone could not be used: '+r.err+'.';btn('Next',next,1);return}

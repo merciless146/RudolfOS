@@ -131,6 +131,11 @@ try:
     if not up: raise RuntimeError('did not start')
     end = time.time() + 600
     while time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'", 20) is not True: time.sleep(5)
+    if FIX:   # (this tree's page on Standard too: the same fixes in Chromium)
+        sh("FX=; for d in /dev/nvme*n1; do blkid $d 2>/dev/null | grep -q HWCFIX && FX=$d; done; mkdir -p /tmp/fx; [ -n \"$FX\" ] && mount -o ro $FX /tmp/fx; "
+           "WWW=/usr/share/rudolf/www; [ -f /persist/os/current/index.html ] && WWW=/persist/os/current; [ -f /tmp/fx/index.html ] && cp /tmp/fx/index.html /tmp/page.html && chmod 644 /tmp/page.html && mount --bind /tmp/page.html $WWW/index.html; echo $WWW", 60)
+        js("location.reload();1", 20); time.sleep(20); end = time.time() + 300
+        while time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'&&typeof hwcToneEnd=='function'", 20) is not True: time.sleep(5)
     time.sleep(40); js(INIT_JS)
     r = js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);saveUser();return b.id})()", 120); out('account', r)
     r = js("(async()=>{try{const a=ACCTS.find(x=>x.n=='boss');if(USER)userLogout();USER=a;await userLogin(a,'b1');lastInput=Date.now();"
@@ -204,6 +209,14 @@ try:
     api(sh, 'volume?set=80', True); t1 = time.time() - VMT['n']; tev('taskmgr', "(()=>{hwcTone();return 1})()"); time.sleep(1)
     o = sh(AS_RUDOLF % 'pactl list sink-inputs' + " | grep -E 'Sink Input|application.name|application.process.binary|Mute|Corked'; " + AS_RUDOLF % 'pactl list sinks short' + "; " + AS_RUDOLF % 'pactl list sources short', 30, False)
     time.sleep(2.5); t2 = time.time() - VMT['n']; out('Native tone streams:', o)
+    t3 = time.time() - VMT['n']
+    tev('taskmgr', "(()=>{window.__TN=[];const a=new AudioContext();const o=a.createOscillator(),g=a.createGain();g.gain.value=.3;o.connect(g);g.connect(a.destination);o.frequency.value=500;o.start();const t0=performance.now();"
+        "const iv=setInterval(()=>{__TN.push(Math.round(performance.now()-t0)+':'+a.state+':'+a.currentTime.toFixed(2));if(performance.now()-t0>6000){clearInterval(iv);o.stop();a.close()}},500);return 1})()")
+    for k in range(3):
+        time.sleep(1.5); out('streams at', k, sh(AS_RUDOLF % 'pactl list sink-inputs' + " | grep -E 'Sink Input|application.name|Corked|Mute|Volume: front'", 30, False).replace('\n', ' | '))
+    time.sleep(2); out('a 6 s oscillator, its context:', tev('taskmgr', "__TN.join(' ')")); t4 = time.time() - VMT['n']
+    out('native log (sound):', sh("grep -iE 'gst|pulse|audio|sound' /run/rudolf/native-desktop.log | tail -12", 30, False))
+    t5 = time.time() - VMT['n']; tev('taskmgr', "(()=>{hwcTone();return 1})()"); time.sleep(4); tev('taskmgr', "(()=>{hwcTone();return 1})()"); time.sleep(4); t6 = time.time() - VMT['n']
     # the microphone
     tev('taskmgr', MIC_JS); time.sleep(7); r = tev('taskmgr', "window.__M"); out('Native microphone:', r)
     if 'Invalid constraint' in r or '"devices":[]' in r:
@@ -232,7 +245,7 @@ try:
     # the report saved to a file
     tev('taskmgr', "(()=>{sysReportDialog();setTimeout(()=>document.querySelector('.rmodal .srs').click(),800);return 1})()"); time.sleep(15)
     r = tev('taskmgr', "(()=>{const m=document.querySelector('.rmodal .srm');return (m?m.textContent:'?')+'|'+(document.querySelector('.rmodal .srf')?'folder':'')})()"); out('report saved:', r)
-    m = re.search(r'Saved as (C:\\\\USERS\\\\[^\\\\]+\\\\DOCUMENTS\\\\REPORT-\d+\.TXT)', r); time.sleep(5)
+    m = re.search(r'Saved as (C:\\USERS\\[^\\]+\\DOCUMENTS\\REPORT-\d+\.TXT)', r); time.sleep(5)
     disk = sh("find /persist /home -name 'REPORT-*.TXT' 2>/dev/null | head -5", 30, False); out('on the disk:', disk)
     ok('N8. Native: "Save to a file" saves into the account\'s Documents, says the full path and offers the folder; the file is on the disk', m is not None and 'folder' in r and 'REPORT-' in disk, (r, disk))
     if m:
@@ -248,14 +261,25 @@ try:
     out('the kernel\'s sleep in QEMU:', o)
     if FIX:
         r = api(sh, 'sleep'); out('GET sleep:', r)
-        tev('taskmgr', GO_JS % "'Sleep'"); time.sleep(40); out('to Sleep:', tev('taskmgr', "window.__G"))
+        tev('taskmgr', "(()=>{try{__H.remove()}catch(e){}window.__H=null;return 1})()"); tev('taskmgr', GO_JS % "'Sleep'")
+        for _ in range(30):
+            time.sleep(8); r = tev('taskmgr', "window.__G")
+            if r.startswith(('at ', 'stuck', 'ERR')): break
+        out('to Sleep:', r)
         tev('taskmgr', "(()=>{[...__H.querySelectorAll('.hwcbt button')].find(b=>/Sleep for/.test(b.textContent)).click();return 1})()"); time.sleep(60)
-        r = tev('taskmgr', "__H.querySelector('.hwcb').innerText"); r2 = api(sh, 'sleep'); out('sleep step:', r, r2)
+        r = tev('taskmgr', "__H.querySelector('.hwcb').innerText.replace(/\\n/g,' ')"); r2 = api(sh, 'sleep'); out('sleep step:', r, r2)
         okk = re.search(r'"slept_ms":(\d+)', r2); asleep = int(okk.group(1)) if okk else 0
         ok('N10. Native: the sleep step says what rudolfd measured (asleep by the kernel\'s clocks, or why not), never only the time waited',
            ('Awake again after' in r and asleep >= 5000) or ('did not sleep' in r and asleep < 5000), (r, r2))
     vm.stop(); time.sleep(3)
-    L = wav_loud(os.path.abspath('hwc160-n.wav'), t1 - 1, t2 + 2); out('Native tone in the recording:', L)
+    WN = os.path.abspath('hwc160-n.wav')
+    for a_, b_, n_ in ((t3, t4, 'the 6 s oscillator'), (t5, t6, 'hwcTone twice (this tree\'s)')):
+        on = None
+        for x in range(int((b_ - a_ + 2) * 4)):
+            v = wav_loud(WN, a_ + x / 4, a_ + (x + 1) / 4)
+            if isinstance(v, int) and v > 500: on = x / 4; break
+        out(f'{n_}: loudest', wav_loud(WN, a_ - 1, b_ + 2), 'sound starts', on, 's after it was started')
+    L = wav_loud(WN, t1 - 1, t2 + 2); out('Native tone in the recording:', L)
     ok('N11. Native: the check\'s tone is heard (QEMU\'s recording), as on Standard', isinstance(L, int) and L > 500, L)
 except RuntimeError as e:
     ok('the run went on: ' + str(e), False)

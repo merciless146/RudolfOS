@@ -327,7 +327,7 @@ static void sleep_now(int asked)
 static void api_sleep(struct req *r)
 {
 	char *v = slurp(RUN "/sleep.json", NULL); str j = {0}; char mode[24]; mem_sleep_now(mode, sizeof mode);
-	sadd(&j, "{\"last\":%s,\"mode\":", v && *v == '{' ? v : "null"); sjson(&j, mode);
+	sadd(&j, "{\"ok\":true,\"last\":%s,\"mode\":", v && *v == '{' ? v : "null"); sjson(&j, mode);
 	sadd(&j, ",\"wakealarm\":%s}", access("/sys/class/rtc/rtc0/wakealarm", W_OK) ? "false" : "true"); free(v); reply_json(r->fd, &j);
 }
 static void reply_ok(int fd, const char *m)
