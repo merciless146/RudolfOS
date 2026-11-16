@@ -6,7 +6,7 @@
 // (Run by same_t.sh, which starts same_rd.py and Xvfb.)
 const {chromium} = require('playwright'); const fs = require('fs'), path = require('path'), cp = require('child_process');
 const [BIN, D, OUT, PORT, DSP, ONLY] = process.argv.slice(2);
-const W = 1920, H = 1080, LIMIT = +(process.env.SAME_LIMIT || 2), TOL = +(process.env.SAME_TOL || 32);
+const W = +(process.env.SAME_W || 1920), H = +(process.env.SAME_H || 1080), LIMIT = +(process.env.SAME_LIMIT || 2), TOL = +(process.env.SAME_TOL || 32);
 const BASE = 'http://127.0.0.1:' + PORT;
 const KEYS = JSON.parse(fs.readFileSync(path.join(D, 'keys.json'))), PW = KEYS.Ann.pw;
 const wait = ms => new Promise(r => setTimeout(r, ms));

@@ -232,7 +232,7 @@ html.oamwait .rmodal,html.oamwait .natdlg,html.oamwait #oamodalbg{opacity:0!impo
  /* only Settings writes the accounts */
  if(ONEAPP.k!='settings'){const _su=saveUser;saveUser=function(){if(OA.opened)return;return _su.apply(this,arguments)}}
  /* the first window made for the app is its main window: it fills the page and gives the page its title */
- {const _w=win;win=function(...a){const W=_w.apply(this,a);if(OA.want&&!OA.main&&W&&W.el)oaMain(W);return W}}
+ {const _w=win;win=function(...a){const W=_w.apply(this,a);if(OA.want&&!OA.main&&W&&W.el){W.__oaReq=[a[2],a[3]];oaMain(W)}return W}}
  /* another app: a window of its own when the native shell is there */
  {const _l=launch;launch=function(k){if(OA.main&&k!=ONEAPP.k&&oaOut()&&APPS[k]){oaDrained().then(()=>oaPost({op:'open',app:k}));return}return _l.apply(this,arguments)}}
  /* (Settings at a page, asked by another app's window or a notification's action: Settings' own window, at that page) */
@@ -343,9 +343,18 @@ function oaFs(){const q=ONEAPP.q,op=q.get('op')||'',p=resolve(ONEAPP.file||'',['
  if(op=='drop'){const k=q.get('in')||'';let r=false;try{r=!!__dropFileOnWindow({app:k},p)}catch(e){console.warn(e)}
   setTimeout(()=>{if(!OA.main)oaFin(r?{}:{err:'nothing'})},1500);return}
  oaFin({err:'Unknown: '+op})}
+/* (2026-11-16, found on the beta in QEMU at 1280×800) the size Standard's win() gives the window: what the app asked for, kept inside the
+   screen's desktop (the screen less the taskbar), not inside this page's own window, which may be smaller when it is made (Settings
+   came out 87 px shorter than on Standard on a 1280×800 screen) */
+function oaScreenSize(W){const st=[Math.round(parseFloat(W.el.style.width)||0),Math.round(parseFloat(W.el.style.height)||0)];
+ try{const r=W.__oaReq||[],w=parseFloat(r[0]),h=parseFloat(r[1]),q=ONEAPP.q,zf=parseFloat(document.documentElement.style.zoom)||1,top=document.body.classList.contains('top'),
+  side=document.body.classList.contains('left')||document.body.classList.contains('right'),
+  sw=+q.get('sw')/(devicePixelRatio||1)||screen.width,sh=+q.get('sh')/(devicePixelRatio||1)||screen.height,dw=sw/zf,avail=sh/zf-(side?0:top?48:42);
+  if(w>0&&h>0&&dw>0&&avail>0)return{ww:String(Math.round(Math.min(w,dw-8))),wh:String(Math.round(Math.min(h,avail-8)))}}catch(e){}
+ return{ww:String(st[0]),wh:String(st[1])}}
 function oaMain(W){OA.main=W;OA.want=0;
  /* (1.6.0 Part 12) the size the page gives the app's window (its 1 px edge and title bar included), for the native frame */
- oaPost({op:'size',ww:String(Math.round(parseFloat(W.el.style.width)||0)),wh:String(Math.round(parseFloat(W.el.style.height)||0)),app:String(W.app||'')});W.el.classList.add('oamain');
+ oaPost({op:'size',...oaScreenSize(W),app:String(W.app||'')});W.el.classList.add('oamain');
  const t=W.el.querySelector('.tb .t'),sync=()=>{const s=(t&&t.textContent||'').trim()||(APPS[ONEAPP.k]&&APPS[ONEAPP.k].name)||'Rudolf OS';if(document.title!=s){document.title=s;oaPost({op:'title',t:s,icon:W.icon||''})}};
  sync();if(t)new MutationObserver(sync).observe(t,{childList:true,characterData:true,subtree:true});
  /* (1.6.0 Part 12, test finding N14) a window whose own icon is not its app's (Flash Player's "not installed" window): its picture as the
