@@ -83,7 +83,7 @@ async function hlReportLines(n){const h=await hlGet(n||50);if(!h||!h.events)retu
 async function startsShow(){const W=appWin('starts','Last starts','🕓',640,460);W.body.style.cssText='overflow:auto;padding:10px;background:var(--wbg,#fff)';
  W.body.innerHTML="<p class='msg'>Loading…</p>";let j;try{j=await rd('system/starts')}catch(e){W.body.innerHTML=`<p class='msg warn'>${esc2(e.message)}</p>`;return W}
  const L=j.starts||[];if(!L.length){W.body.innerHTML="<p class='msg'>No start has been recorded yet: they are kept from this version on.</p>";return W}
- const eng=e=>e=='webkit'?'Lite (WebKit)':e=='chromium'?'Standard (Chromium)':'';
+ const eng=e=>e=='webkit'?'Lite (WebKit)':e=='native'?'Native':e=='chromium'?'Standard (Chromium)':'';   /* (1.6.0: and Native, which showed as "()") */
  W.body.innerHTML=`<p class='msg'>The last ${L.length} starts of this computer, newest first. Their logs are in <code>/persist/var/log/starts</code> (0 is this start).</p>`+L.map(s=>{
   const t=s.time&&!isNaN(Date.parse(s.time))?new Date(s.time).toLocaleString():s.time||'?';
   const ok=s.desktopUp!=null,now=s.n==0;
