@@ -452,6 +452,8 @@ A new `docs/custom-builds.md`, linked from the README, for someone who forks Rud
   (TEST keys), Recovery mode starting a checked `system/r`, a tampered `system/r` and a tampered `recovery.efi` refused
   (qt/sb/recovery_sb_t.sh; see 8.4's step 2). Not yet in QEMU: an official install, Developer mode with a custom
   release, Return to official.
+- **Done (2026-11-16, in 1.6.0):** all of it in QEMU on the real release, with and without Secure Boot: qt/sb/t160o_t.py
+  (docs/plan-1.6.0.md Part 15).
 
 ## Part 9: game mode frees memory for the game (added on 2026-11-11)
 Found on the Vivobook (1.5.8 beta 2026111108, Standard desktop): Friday Night Funkin' on Newgrounds holds about
