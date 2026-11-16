@@ -1269,14 +1269,17 @@ Part 15's lists and the Vivobook's beta 2026111611 (the owner's reports of 2026-
    10 minutes; the owner does these); Tor at check.torproject.org and its window; the microphone Test; Save and Open;
    WordPro's links; a USB stick in File Explorer; the Wi-Fi radios; 15.2's test; game mode and memory.
 
-**Decide (the owner): in 1.6.0 or moved to 1.6.1:**
-- **Part 8, USB printers:** extensions.yml's first run to publish `usbprint`, then the HP desktop user's printer.
-- **Part 7, ARM64:** its first release needs one ARM64 computer that starts with UEFI (stage B item 4); without one,
-  1.6.0 ships x86 only and ARM64 moves with the phone (1.6.1 Part 4).
-- **Part 12.3c:** same_t.sh's comparison of Oracle's window on Native against Standard's.
-- **Browse with Tor:** Ctrl+W, T, N and Q in the Tor window on Standard still Chromium's.
+**Decided by the owner on 2026-11-16:** "Oracle on Native and Tor window shortcuts can be in the 1.6.0 build. USB
+printers and ARM64 can be delayed until 1.6.1."
+9. **Part 12.3c:** same_t.sh's comparison of Oracle's window on Native against Standard's (toolbar, tabs, a site).
+10. **Browse with Tor:** Ctrl+W, T, N and Q in a website in the Tor window on Standard are Rudolf's, as in its other
+    windows (rudolf-display's keys), with a test.
+- **Moved to 1.6.1:** Part 8 (USB printers: extensions.yml's first run to publish `usbprint`, then the HP desktop user's
+  printer; docs/plan-1.6.1.md Part 9) and Part 7 (ARM64: its first release on one ARM64 computer that starts with UEFI;
+  with the phone, docs/plan-1.6.1.md Part 4). 1.6.0 ships for x86 computers, and prints to network printers (IPP
+  Everywhere and AirPrint through rudolf-print, as since 1.5.x) and to PDF.
 
-**Moved or not in 1.6.0 (already decided):** Lite's leftovers (1.6.1 Part 3); mobile data and the SIM on hardware
+**Moved or not in 1.6.0 (already decided):** USB printers and ARM64 (above); Lite's leftovers (1.6.1 Part 3); mobile data and the SIM on hardware
 (1.6.1 Part 8); the hotspot over the MiFi (1.6.1 Part 8); Waydroid (1.6.1 Part 6); the first phone (1.6.1 Part 4);
 several monitors (1.6.1 Part 1).
 
