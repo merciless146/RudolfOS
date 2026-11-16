@@ -32,7 +32,7 @@ function sysuRestart(){if(!(SW&&wins.includes(SW))){settings('upd');return setTi
   box.innerHTML=`<h4 class='sh4'>Security updates</h4><div class='sysucard ${cls}'><div>${line}</div>
 <div class='msg'>Rudolf OS ${pkgEsc(cur.version||RVER)}${cur.chromium?' · Chromium '+pkgEsc(cur.chromium):''}${cur.kernel?' · Linux '+pkgEsc(cur.kernel):''} · checked ${sysuWhen(s.checked)}${s.booted=='r'?' · the rescue system':s.booted!='disc'?' · system slot '+s.booted.toUpperCase():''}</div>
 ${st.failed?`<div class='msg warn'>The update in slot ${pkgEsc(st.failed.toUpperCase())} did not start, so Rudolf OS went back to the previous version. It will try the next release.</div>`:''}</div>
-<div class='rmrow' style='justify-content:flex-start'><button class='ucheck'>Check now</button>${av&&!nx&&s.persistent&&s.canUpdate!==false?`<button class='udl'>Download (only the changes)</button>`:''}${nx?`<button class='urs'>Restart now</button>`:''}${st.good&&st.good!='disc'||st.prev?`<button class='urb'>Roll back system…</button>`:''}</div>
+<div class='rmrow' style='justify-content:flex-start'><button class='ucheck'>Check now</button>${av&&!nx&&s.persistent&&s.canUpdate!==false?`<button class='udl'>${sysuDlLabel(av)}</button>`:''}${nx?`<button class='urs'>Restart now</button>`:''}${st.good&&st.good!='disc'||st.prev?`<button class='urb'>Roll back system…</button>`:''}</div>
 <label class='ck'><input type='checkbox' class='uauto'${s.auto?' checked':''}${adm?'':' disabled'}> Download security updates automatically</label>
 <label class='ck'><input type='checkbox' class='ubeta'${s.beta?' checked':''}${adm&&!s.developer?'':' disabled'}> Get beta versions</label>
 <p class='msg ubetamsg'>${s.beta?'This computer gets beta versions: early releases for testing, which can have problems. Turn this off to go back to the latest stable release at the next update.':s.toStable?'Beta versions are off: the next update brings the latest stable release.':'Beta versions are early releases for testing. Turning them on needs an administrator\'s name and password.'}</p>
@@ -65,9 +65,13 @@ async function sysuTick(){if(!RD||!USER||window.LOCKED||window.__bsaver||(typeof
  if(typeof netLive=='function'&&!netLive()){if(!sysuTick.wait){sysuTick.wait=1;netWait().then(()=>setTimeout(()=>{sysuTick.wait=0;sysuTick()},20000))}return}
  try{const j=await rd('job');if(j.running)return}catch(e){return}
  try{if(Date.now()/1000-(s.checked||0)>=20*3600)await sysuJob('check');const s2=SYSU;
- /* 1.5.8: on a metered connection (cellular data) the update is found but not downloaded by itself */
- if(s2&&s2.available&&(typeof netMetered=='function'&&netMetered())){if(!sysuTick.metered){sysuTick.metered=1;notify('Update available','Rudolf OS '+(s2.available.version||'')+' was not downloaded: this connection is metered. Download it in Settings › Updates when you want, or on another network.',{app:'Updates',action:()=>settings('upd')})}return}
+ /* 1.5.8: on a metered connection (cellular data) the update is found but not downloaded by itself; 1.6.0 (Part 4): offered
+    with its size ("Download over mobile data: up to 42 MB": the layers' size, as only the changes come) */
+ if(s2&&s2.available&&(typeof netMetered=='function'&&netMetered())){if(!sysuTick.metered){sysuTick.metered=1;notify('Update available','Rudolf OS '+(s2.available.version||'')+' was not downloaded: this connection is metered'+(MTR&&MTR.auto=='modem'?' (mobile data)':'')+'. '+sysuDlLabel(s2.available)+' in Settings › Updates when you want, or wait for another network.',{app:'Updates',action:()=>settings('upd')})}return}
  if(s2&&s2.available){await sysuJob('download');const s3=SYSU,n=s3&&s3.state&&s3.state.next;
    if(n&&s3.slots[n].complete){sysuTick.told=1;notify(s2.available.urgent?'Urgent security update ready':'Security update ready','Restart to finish installing Rudolf OS '+s3.slots[n].version+'.',{action:sysuRestart,kind:s2.available.urgent?'warning':'info'})}}sysuTick.fails=0}
  catch(e){/* 1.5.7: a check that failed is tried again in 5 minutes (3 times), not in an hour */if((sysuTick.fails=(sysuTick.fails||0)+1)<=3)setTimeout(sysuTick,300000)}}
 if(RD){setTimeout(sysuTick,10*60*1000);setInterval(sysuTick,60*60*1000)}
+/* 1.6.0 (plan Part 4): the download button's words: on mobile data, with the size it can come to */
+function sysuDlLabel(av){const mb=av&&av.size?Math.max(1,Math.round(av.size/1e6)):0,cell=typeof netMetered=='function'&&netMetered()&&MTR&&MTR.auto=='modem';
+ return cell?'Download over mobile data'+(mb?': up to '+mb+' MB':''):typeof netMetered=='function'&&netMetered()?'Download on this metered connection'+(mb?': up to '+mb+' MB':''):'Download (only the changes)'}

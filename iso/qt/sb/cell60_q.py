@@ -14,6 +14,8 @@
 #          service: Wi-Fi carries the traffic, cellular kept in reserve (its route behind), the firewall's cellular set;
 #          Wi-Fi taken down: traffic on cellular within seconds (counted on the far side), the notice; Wi-Fi brought
 #          back: traffic on Wi-Fi again, the notice.
+#   item 4 (Part 4): the month's mobile data from the cellular link's counters (netplug tick), for the SIM, metered by
+#          itself; the guest restarted: the count kept (RUDOLFDATA), read back with the same SIM.
 #   python3 cell60_q.py REL-DIR   (QEMU and SB_PARTS as for t160; root; QEMU_ACCEL=kvm where it can)
 import os, sys, time, re, subprocess, shutil, struct, json
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE); ISO = os.path.dirname(QT)
@@ -53,7 +55,7 @@ def extras(path):
     T = os.path.abspath(path + '.tree'); shutil.rmtree(T, ignore_errors=True); os.makedirs(f'{T}/root'); os.makedirs(f'{T}/libs')
     def put(src, dst, base='root'):
         d = f'{T}/{base}{dst}'; os.makedirs(os.path.dirname(d), exist_ok=True); shutil.copy2(src, d, follow_symlinks=True)
-    for f in ('usr/lib/rudolf/modem', 'usr/lib/rudolf/udev-run', 'usr/lib/udev/rules.d/90-rudolf.rules', 'usr/lib/rudolf/firewall', 'usr/lib/rudolf/udhcpc.sh', 'usr/share/rudolf/apn-fixes'): put(os.path.join(SYSROOT, f), '/' + f)
+    for f in ('usr/lib/rudolf/modem', 'usr/lib/rudolf/udev-run', 'usr/lib/udev/rules.d/90-rudolf.rules', 'usr/lib/rudolf/firewall', 'usr/lib/rudolf/udhcpc.sh', 'usr/share/rudolf/apn-fixes', 'usr/lib/rudolf/netplug'): put(os.path.join(SYSROOT, f), '/' + f)
     # (item 3) the stand-in ModemManager built here for the guest (named ModemManager there, so the modem service sees it
     # run), and iproute2's ip (moving an interface into another network namespace) with what it needs
     os.makedirs(f'{T}/bin', exist_ok=True)
@@ -168,8 +170,19 @@ cat /tmp/c3; nsenter -t $FP -n ip link 2>&1 | grep -o '^[0-9]*: [^:]*'""", 60)
     ok('...and the notice (both desktops: mobile/notes): mobile data carries the traffic now', 'Using mobile data|The Wi-Fi connection is gone' in o, o)
     o = sh(f"ip link set {W0} up; for i in $(seq 90); do ip route get 203.0.113.1 | grep -q 'dev {W0}' && break; sleep 1; done; ip route get 203.0.113.1; ping -c1 -W3 203.0.113.1 >/dev/null && echo REACH; sleep 4; tail -2 /run/rudolf/cell-notes; ip route", 150)
     ok('13. Wi-Fi brought back: the traffic on Wi-Fi again, cellular back in reserve, the notice', re.search(rf'203\.0\.113\.1 via 192\.168\.50\.1 dev {W0}', o) and 'REACH' in o and 'Back on Wi-Fi' in o and re.search(rf'dev {C} .*metric 700', o), o)
+    # ---- item 4: data and money ----
+    o = sh(f"sh /usr/lib/rudolf/netplug is {C}; sh /usr/lib/rudolf/netplug tick; ping -c 30 -s 60000 -W 3 -I {C} 203.0.113.1 >/dev/null; sh /usr/lib/rudolf/netplug tick; /usr/lib/rudolf/modem usage 0; grep sim: /persist/var/lib/rudolf/netusage", 180)
+    um = re.search(r'"used":(\d+)', o); USED = int(um.group(1)) if um else 0
+    ok(f'15. the cellular link metered by itself; what it carried counted from its counters for the SIM ({USED} bytes), kept on RUDOLFDATA', re.search(r'^1\s*$', o, re.M) and USED > 3000000 and re.search(r'^\d{4}-\d\d-\d\d sim:[0-9a-f]{16} \d+', o, re.M), o)
     o = sh("/usr/lib/rudolf/modem disconnect 0; ip route; nft list set inet rudolf cellular; kill $(cat /run/rudolf/modem-watch.pid) 2>/dev/null; pkill '^ModemManager$'", 60)
     ok('14. Disconnect: the cellular route and firewall entry gone', 'Disconnected' in o and f'dev {C}' not in o and f'"{C}"' not in o, o)
+    # (item 4) restarted: the month's count is still there
+    vm.stop(); time.sleep(3)
+    vm, g, up = boot('b'); sh = lambda c, t=60: g.sh(c, t)
+    o = sh("mkdir -p /mnt/cx; for d in /dev/nvme*n1; do mount -o ro $d /mnt/cx 2>/dev/null && [ -e /mnt/cx/setup.sh ] && break; umount /mnt/cx 2>/dev/null; done; sh /mnt/cx/setup.sh; /usr/lib/rudolf/modem start >/dev/null 2>&1; /usr/lib/rudolf/modem stop; "
+           "printf 'add 0 iccid=8901260123456789012 enabled=1\\n' > /tmp/mminit; (DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket MMSTUB_TEST_MACHINE=1 setsid /mnt/cx/bin/ModemManager --init /tmp/mminit </dev/null >/tmp/mmstub.out 2>&1 &); sleep 3; /usr/lib/rudolf/modem usage 0", 240) if up else 'not up'
+    um = re.search(r'"used":(\d+)', o)
+    ok(f'16. started again: the month\'s mobile data still counted for the SIM ({um.group(1) if um else "?"} bytes)', up and um and int(um.group(1)) == USED, o)
 finally:
     try: vm and vm.stop()
     except Exception: pass

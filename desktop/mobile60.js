@@ -6,6 +6,9 @@
      (Rudolf's corrections first), or typed in exactly, letters' case kept (docs/plan-1.6.1.md Part 7);
    - roaming: off by default, with what it may cost; the network type (5G, 4G, 3G) where the modem lets it be chosen.
    Quick settings: ✈️ Airplane mode: Wi-Fi, Bluetooth and the modems off together, and back as they were.
+   (Part 4) Data this month (from the interface's counters, per SIM, its month from the day chosen), a monthly limit
+   with a notice at 80 % and, if chosen, mobile data off at 100 %; updates on mobile data offered with their size
+   (sysupd25.js), never downloaded by themselves.
    (Part 3) Connect and Disconnect (Settings › Mobile network, and quick settings' 📶 Mobile data with a modem whose
    SIM is unlocked), Connect automatically; the notices when mobile data takes over from Wi-Fi or a cable and when it
    goes back (rudolfd's mobile/notes, which the native desktop shows the same way). */
@@ -66,6 +69,9 @@ async function mobSettings(el,m){let s=null;try{s=await rd('mobile/settings?id='
   <div class='mobcf'><div class='r2'><label>APN</label><input class='mobapn' autocomplete='off' spellcheck='false' autocapitalize='off'><label>User name</label><input class='mobuser' autocomplete='off' spellcheck='false' autocapitalize='off'><label>Password</label><input class='mobpass' type='password' autocomplete='off'></div>
   <div class='msg'>Type the APN exactly as your operator writes it: some networks refuse it in other capitals. The user name and password are usually empty.</div><button class='mobsave'>Save</button></div>
   <h4 class='sh4'>Connect automatically</h4><label><input type='checkbox' class='mobautoc'> Connect to mobile data by itself</label><div class='msg'>On the SIM's home network; abroad only when roaming is allowed below. Wi-Fi and cables come first: mobile data stays in reserve and takes over within seconds when they drop.</div>
+  <h4 class='sh4'>Data this month</h4><div class='msg mobuse'></div><div class='mobbar' style='height:8px;border-radius:4px;background:#e5e7eb;overflow:hidden;margin:4px 0'><div class='mobbarv' style='height:100%;width:0;background:#16a34a'></div></div>
+  <div class='r2'><label>Monthly limit (MB)</label><input class='moblim' type='number' min='0' step='100' style='width:110px'><label>The month starts on day</label><select class='mobsd'></select></div>
+  <label><input type='checkbox' class='mobdoff'> Turn mobile data off at the limit</label><div class='msg'>A notice at 80 %. Counted on this computer from what the modem sends and receives: your operator's count can differ a little.</div>
   <h4 class='sh4'>Roaming</h4><label><input type='checkbox' class='mobroam'> Use mobile data when roaming</label><div class='msg'>Off by default: abroad, or on another operator's network, data can cost much more than at home.</div>
   <h4 class='sh4'>Network type</h4><div class='r2'><label>Use</label><select class='mobmode'></select></div><div class='msg mobmodem'></div>`;
  const q=x=>el.querySelector(x);
@@ -77,6 +83,12 @@ async function mobSettings(el,m){let s=null;try{s=await rd('mobile/settings?id='
   if(!(await set('apn',a)))return;await set('apnuser',q('.mobuser').value);const pw=q('.mobpass').value;if(pw&&await set('apnpass',pw))s.apnpass=true;q('.mobpass').value='';q('.mobpass').placeholder=s.apnpass?'(kept: type to change)':'';
   notify('📶 Mobile network','Saved: the APN is '+a+'.',{app:'Network'})};
  q('.mobautoc').checked=s.autoconnect!==false;q('.mobautoc').onchange=async e=>{if(!(await set('autoconnect',e.target.checked?1:0)))e.target.checked=!e.target.checked};
+ const u=s.usage||{},fmt=b=>b>=1e9?(b/1e9).toFixed(2)+' GB':Math.round((b||0)/1e6)+' MB';
+ q('.mobuse').textContent=fmt(u.used)+(u.limit?' of '+u.limit+' MB ('+u.pct+' %)':'')+' since '+(u.start||'the 1st')+(u.next?', until '+u.next:'')+(u.off?' · mobile data is off: the limit is reached (Connect to go on: it may cost)':'');
+ q('.mobbarv').style.width=Math.min(100,u.pct||0)+'%';q('.mobbarv').style.background=(u.pct||0)>=100?'#dc2626':(u.pct||0)>=80?'#d97706':'#16a34a';q('.mobbar').style.display=u.limit?'':'none';
+ q('.moblim').value=u.limit||0;q('.moblim').onchange=async e=>{const v=Math.max(0,Math.round(+e.target.value||0));if(!(await set('limit',v)))e.target.value=u.limit||0};
+ for(let i=1;i<=28;i++){const o=document.createElement('option');o.value=i;o.textContent=i;q('.mobsd').appendChild(o)}q('.mobsd').value=u.startday||1;q('.mobsd').onchange=async e=>{if(!(await set('startday',e.target.value)))e.target.value=u.startday||1};
+ q('.mobdoff').checked=!!u.dataoff;q('.mobdoff').onchange=async e=>{if(!(await set('dataoff',e.target.checked?1:0)))e.target.checked=!e.target.checked};
  q('.mobroam').checked=!!s.roaming;q('.mobroam').onchange=async e=>{if(!(await set('roaming',e.target.checked?1:0)))e.target.checked=!e.target.checked};
  const sel=q('.mobmode');(s.modes||['auto']).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=MOB_MODE[k]||k;sel.appendChild(o)});sel.value=s.mode||'auto';
  if((s.modes||[]).length<2)q('.mobmodem').textContent='This modem does not let the network type be chosen.';
