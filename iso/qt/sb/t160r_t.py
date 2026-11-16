@@ -156,7 +156,8 @@ try:
     r = js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);saveUser();return b.id})()", 120)
     BOSS = str(r); out('account', BOSS)
     out('sign-in', signin(js, 'boss', 'b1')); od = on_disk(js); out('on the disk:', od)
-    o = sh(f"cat /persist/etc/rudolf/account-users; d=/persist/accounts/{BOSS}/Documents; mkdir -p $d && echo 'made on the beta' > $d/BETA.TXT && chown --reference=/persist/accounts/{BOSS} $d $d/BETA.TXT && sync; "
+    # (the file put there from the shell, as the account's own: busybox's chown has no --reference)
+    o = sh(f"cat /persist/etc/rudolf/account-users; d=/persist/accounts/{BOSS}/Documents; u=$(stat -c %u /persist/accounts/{BOSS}); mkdir -p $d && echo 'made on the beta' > $d/BETA.TXT && chown $u:$u $d $d/BETA.TXT && sync; "
            f"stat -c '%u %a %n' /persist/accounts/{BOSS} $d/BETA.TXT; cat /run/rudolf/acct-session.env | grep HOME; ls -la /home/acct*/.local/share/keyrings 2>&1 | head -5")
     m = re.search(rf'^{BOSS} (\d+)', o, re.M); UB = m.group(1) if m else '?'
     ok('1. an account on the beta: its own Linux user, its folder and a file of its own', od is True and m and f'{UB} 700 /persist/accounts/{BOSS}' in o and re.search(rf'^{UB} \d+ \S+BETA.TXT', o, re.M), o)
@@ -171,7 +172,7 @@ try:
     ok('3. stable-info: 1.5.9 is in slot a, it reads this computer\'s data (layout 2; 1.5.9, released without a record, known to read 1 and 2), and what it does not use is said',
        i.get('how') == 'slot' and i.get('slot') == 'a' and i.get('compatible') is True and i.get('dataFmt') == 2 and (i.get('stable') or {}).get('reads') == [1, 2] and len(i.get('notes') or []) == 3, o)
     r = js("rd('sys/status').then(s=>JSON.stringify([s.runningStable,s.stableVersion]),e=>'ERR '+e.message)", 60)
-    ok('2b. the page asks rudolfd (sys/status, which runs rudolf-update): what shows the button is there (not a stable release; the last stable one 1.5.9)', r == json.dumps([False, ms('version')]), r)
+    ok('2b. the page asks rudolfd (sys/status, which runs rudolf-update): what shows the button is there (not a stable release; the last stable one 1.5.9)', isinstance(r, str) and r.startswith('[') and json.loads(r) == [False, ms('version')], r)
     o = sh(f"{U} to-stable; echo rc=$?; cat /persist/os/system/state /persist/os/update.conf", 120); st = state(sh)
     ok('4. to-stable: slot a starts next, nothing downloaded, Get beta versions off (the stable address, no "tostable")',
        'rc=0' in o and 'nothing to download' in o and st.get('next') == 'a' and st.get('tries') == '2' and f'url={OFF}' in o and 'tostable=1' not in o and 'downloading' not in o, o)
@@ -203,8 +204,9 @@ try:
     out(signout(js)); time.sleep(3)
     # ---- the refusal: the stable channel naming 1.5.8 (its real signed list), on a computer that never saw a later one
     put_ru(g, sh); out('tunnel', tunnel(g, sh)); channel('stable', OLD)
-    sh("rm -f /persist/os/system/stable.txt /persist/os/system/stable.sig; cp /persist/os/system/state /tmp/state0; cp /persist/os/update.conf /tmp/conf0")
-    o = sh(f"{U} check >/dev/null; {U} stable-info; {U} to-stable; echo rc=$?; cmp /tmp/state0 /persist/os/system/state && cmp /tmp/conf0 /persist/os/update.conf && echo UNCHANGED", 180); i = J(o)
+    # (what to-stable must not change is kept after the check, which writes down when it checked)
+    o = sh(f"rm -f /persist/os/system/stable.txt /persist/os/system/stable.sig; {U} check >/dev/null; cp /persist/os/system/state /tmp/state0; cp /persist/os/update.conf /tmp/conf0; "
+           f"{U} stable-info; {U} to-stable; echo rc=$?; cmp /tmp/state0 /persist/os/system/state && cmp /tmp/conf0 /persist/os/update.conf && ! ls /persist/os/system | grep -q '[.]new$' && echo UNCHANGED", 180); i = J(o)
     ok('10. a stable release that cannot read this computer\'s data (1.5.8: one Linux user for every account) is refused, saying why; nothing changed',
        i.get('compatible') is False and 'rc=8' in o and 'cannot read the accounts and files on this computer' in o and 'UNCHANGED' in o, o)
 finally:
