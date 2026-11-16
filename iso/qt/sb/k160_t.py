@@ -104,7 +104,7 @@ try:
            "const L=document.getElementById('login');if(L)L.style.display='none';return 'in '+USER.n}catch(e){return 'ERR '+e.message}})()", 300)
     out('sign-in (Standard):', r); wait_for(js, "!!(USER&&USER.disk&&hdOn())", 300); time.sleep(10)
     out('the input devices rudolf-display reads:', sh("cat /run/rudolf/inputs 2>/dev/null | head -20", 30, False))
-    v0 = api(sh, 'volume'); g.q.cmd('system_powerdown'); t1 = time.time()
+    api(sh, 'volume?set=50', True); v0 = api(sh, 'volume'); g.q.cmd('system_powerdown'); t1 = time.time()
     r = wait_for(js, "document.querySelectorAll('.rmodal').length>0", 15, 0.5); out('Standard power dialog after', round(time.time() - t1, 1), 's')
     ok('S1. Standard: the power button shows the page\'s power dialog', r is True, r)
     js("document.querySelectorAll('.rmodal').forEach(e=>e.remove());1")
@@ -123,17 +123,19 @@ try:
     if not up: raise SystemExit
     o = sh("for i in $(seq 1 60); do pgrep -x rudolf-native >/dev/null && break; sleep 3; done; cat /run/rudolf/desktop-engine; pgrep -x rudolf-native", 240)
     ok('0c. the Native desktop runs', 'native' in o, o)
-    o = sh("FX=; for d in /dev/nvme*n1; do [ \"$(blkid -s LABEL -o value $d 2>/dev/null)\" = K160FIX ] && FX=$d; done; mkdir -p /tmp/fx; [ -n \"$FX\" ] && mount -o ro $FX /tmp/fx; ls -la /tmp/fx; "
+    o = sh("FX=; for d in /dev/nvme*n1; do blkid $d 2>/dev/null | grep -q K160FIX && FX=$d; done; echo fix=$FX; mkdir -p /tmp/fx; [ -n \"$FX\" ] && mount -o ro $FX /tmp/fx; ls -la /tmp/fx; "
            "WWW=/usr/share/rudolf/www; [ -f /persist/os/current/index.html ] && WWW=/persist/os/current; [ -f /tmp/fx/index.html ] && cp /tmp/fx/index.html /tmp/page.html && chmod 644 /tmp/page.html && mount --bind /tmp/page.html $WWW/index.html; "
            "if [ -f /tmp/fx/rudolf-native ]; then cp /tmp/fx/rudolf-native /tmp/rn.real; else cp /usr/bin/rudolf-native /tmp/rn.real; fi; chmod 755 /tmp/rn.real; "
            "rm -f /tmp/teval /tmp/teval.out; mkfifo -m 666 /tmp/teval; "
            "printf '#!/bin/sh\\nexport RUDOLF_NATIVE_STATE=/tmp/nstate RUDOLF_NATIVE_TEST_EVAL=/tmp/teval\\nexec /tmp/rn.real \"$@\"\\n' > /tmp/rn; chmod 755 /tmp/rn; mount --bind /tmp/rn /usr/bin/rudolf-native; "
-           "pkill -x rudolf-native; for i in $(seq 1 40); do [ -s /tmp/nstate ] && break; sleep 2; done; head -3 /tmp/nstate", 240)
+           "pkill -x rudolf-native; for i in $(seq 1 90); do [ -s /tmp/nstate ] && break; sleep 2; done; head -3 /tmp/nstate; pgrep -a rn.real; tail -5 /run/rudolf/native-desktop.log", 300)
     ok('0d. the native desktop started again with the tests\' views' + (' and this tree\'s files' if FIX else ''), 'screen ' in o, o)
     state = lambda: sh("cat /tmp/nstate", 30, False)
     def st_get(st, k):
         m = re.search(rf'^{k} (.*)$', st, re.M); return m.group(1) if m else None
-    st = state(); SW, SH = [int(x) for x in st_get(st, 'screen').split()]
+    st = state()
+    if not st_get(st, 'screen'): raise SystemExit
+    SW, SH = [int(x) for x in st_get(st, 'screen').split()]
     def at(x, y, btn='left'): g.q.at(x, y, btn, SW, SH)
     def tev(key, expr, t=30):
         n0 = sh("wc -l < /tmp/teval.out 2>/dev/null || echo 0", 20, False).strip().split('\n')[-1]
@@ -174,7 +176,7 @@ try:
         inpage = tev('notepad', "document.querySelectorAll('.rmodal').length")
         ok(f'B1. Native, {fn} in front: the power button shows the shell\'s power dialog at once, above every window, in no page', got is not None and got <= 3 and st_get(st, 'powertop') == '1' and left.strip() == 'END' and inpage == '0', (got, st_get(st, 'powertop'), left, inpage))
         vm.shot(f'nat-power-{fn.split()[-1]}'); g.q.key('esc'); time.sleep(1.5)
-        v0 = api(sh, 'volume'); g.q.key('volumeup'); time.sleep(1.2); st = state(); v1 = api(sh, 'volume')
+        api(sh, 'volume?set=50', True); v0 = api(sh, 'volume'); g.q.key('volumeup'); time.sleep(1.2); st = state(); v1 = api(sh, 'volume')
         ok(f'B2. Native, {fn} in front: the volume-up key (Fn+F3) changes the volume with the shell\'s indicator', v1 != v0 and (st_get(st, 'osd') or '').startswith('volume'), (v0, v1, st_get(st, 'osd')))
         time.sleep(2); g.q.key('volumedown'); time.sleep(1.2); st = state(); v2 = api(sh, 'volume')
         ok(f'B3. Native, {fn} in front: the volume-down key (Fn+F2) too', v2 != v1 and (st_get(st, 'osd') or '').startswith('volume'), (v1, v2, st_get(st, 'osd')))
