@@ -75,7 +75,7 @@ async function nat() {
   nclick(nhit('pin calc')); await until(() => clientOf('calc'), 30000); await wait(2500);
   await step(STEPS[5], () => neval('calc', `(()=>{notify('Hello','From an app');return 1})()`), 2500);
   await step(STEPS[6], async () => { const r = JSON.parse(await neval('calc', `JSON.stringify((()=>{const b=[...document.querySelectorAll('.win button')].find(x=>x.textContent.trim()=='7');const r=b.getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2]})())`));
-    const l = clientOf('calc').split(' '); nclick([parseInt(l[3]) + 1 + r[0], parseInt(l[4]) + 35 + r[1]]) }, 1500);
+    const l = clientOf('calc').split(' '); nclick([parseInt(l[3]) + 1 + r[0], parseInt(l[4]) + 35 + r[1]]) }, 3500);   /* (its page may be busy a moment: a window just told of a setting) */
   await step(STEPS[7], async () => { nclick(nhit('pin explorer')); await until(() => clientOf('explorer'), 30000) }, 4000);
   nclick([1500, 500], 3); await until(() => nlines('cmitem').some(l => l.endsWith('|Arrange icons by name')), 5000);
   await step(STEPS[8], () => { const l = nlines('cmitem').find(l => l.endsWith('|Arrange icons by name')).split(' '); nclick([+l[1], +l[2]]) }, 1500);
