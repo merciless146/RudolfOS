@@ -89,6 +89,12 @@ if [ -n "$PA" ]; then rec page
 	o=$(ev notepad '(()=>{const c=new AudioContext(),o=c.createOscillator();o.frequency.value=440;o.connect(c.destination);o.start();setTimeout(()=>{o.stop();c.close()},3500);return c.state})()')
 	timeout 0.8 tail -f /dev/null; [ -n "$N160_DEBUG" ] && { pactl list sink-inputs | grep -E 'Sink Input|binary|application.name|media.role|Corked|Mute'; P=$(pgrep -f WebKitWebProcess | head -1); tr '\0' '\n' < /proc/$P/environ | grep -E 'PULSE|XDG|GST'; grep -oE '[^ ]*(gstpulse|gstalsa|libpulse|gstautodetect)[^ ]*' /proc/$P/maps | sort -u; pgrep -a bwrap; }
 	timeout 3.5 tail -f /dev/null; L=$(recstop page); ok "2c. an app window's own sound (WebKit's): heard (the loudest sample $L)" "$([ "${L:-0}" -gt 1000 ] && echo 1)" "$o $L"; fi
+# ---- 2. a media element's sound in an app's window (the Media Player's way: <audio>), its stream playing (not corked) and heard
+if [ -n "$PA" ]; then rec media
+	o=$(ev notepad '(()=>{const n=44100*3,b=new ArrayBuffer(44+n*2),v=new DataView(b),s=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};s(0,"RIFF");v.setUint32(4,36+n*2,true);s(8,"WAVEfmt ");v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,44100,true);v.setUint32(28,88200,true);v.setUint16(32,2,true);v.setUint16(34,16,true);s(36,"data");v.setUint32(40,n*2,true);for(let i=0;i<n;i++)v.setInt16(44+i*2,Math.sin(i*2*Math.PI*660/44100)*12000,true);const a=new Audio(URL.createObjectURL(new Blob([b],{type:"audio/wav"})));window.__ta=a;a.play().then(()=>window.__tp="playing",e=>window.__tp="refused "+e.name);return 1})()')
+	cs=""; for i in 1 2 3 4; do timeout 0.8 tail -f /dev/null; cs="$cs $(pactl list sink-inputs | grep -A12 'media.role = "music"' >/dev/null; pactl list sink-inputs | awk '/^Sink Input/{c=""} /Corked:/{c=$2} /media.role = "music"/{print c}' | head -1)"; done
+	timeout 1 tail -f /dev/null; L=$(recstop media); o2=$(ev notepad 'window.__tp+"|"+__ta.currentTime.toFixed(1)')
+	ok "2d. an app window's <audio> (the Media Player's kind): its stream plays, not corked, and is heard (the loudest sample $L)" "$(echo "$cs" | grep -q 'no' && [ "${L:-0}" -gt 1000 ] && echo 1)" "corked:$cs | $o2 | $L"; fi
 # ---- 5. still once, with three windows opened; never "Real browser tabs are ready"
 timeout 8 tail -f /dev/null
 ok "5b. the update notice still popped up once with three app windows opened" "$([ "$(pops 'Rudolf OS was updated')" = 1 ] && echo 1)" "$(cat $TL | sort -u -k2 | head)"
