@@ -49,3 +49,14 @@ kernel locked down; system/r checked file by file and started (kexec of the sign
 of its own), its own start-up running; a changed layer and a list signed by another key refused, nothing started; a
 recovery.efi changed after signing refused by the firmware. About 6 minutes without KVM; RECSB_KEEP=1 keeps its
 folder (with the test keys) for a look.
+
+## gl160_t.py (Rudolf OS 1.6.0)
+
+`python3 gl160_t.py REL-DIR` (as t160; needs the network for Flathub; workflow "OpenGL apps check"): OpenGL for Linux
+apps on a real release, with an account signed in. A frame drawn and read back through GLX (glxq/glxdraw.c) and SDL2
+(glxq/sdlgl.c, as Unvanquished and SuperTuxKart start) by root, by the account's own Linux user on Rudolf OS, in Debian
+(a stand-in of the test machine's own programs and Mesa, run by rudolf-debian) and in a Flatpak (Flathub's
+org.freedesktop.Platform with its GL extension, started as rudolfd starts apps); SuperTuxKart from Flathub started from
+the desktop (GL160_STK=0 leaves it out). On Xorg it first checks that GLX loaded Mesa's driver (`GLX: Initialized ... GL
+provider`: from 1.5.9 to 1.6.0's first betas it looked in "/usr/lib/$MA/dri"). GL160_SOFT=1: the software display
+(Xvfb); GL160_GLX=libglx.so: this tree's GLX module in place of the release's (the display started again with it).
