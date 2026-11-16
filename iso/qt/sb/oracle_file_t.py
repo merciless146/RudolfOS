@@ -113,19 +113,21 @@ try:
     if js("!!USER&&USER.n=='john'", 20) is not True: out('sign-in again after the move:', signin(js, 'john', 'j1'))
     out('engine/shell:', js("JSON.stringify({engine:RD&&RD.engine,shell:typeof SHELL!='undefined'&&!!SHELL,ua:navigator.userAgent,user:USER&&USER.n})", 30))
     r = js(f"(()=>{{let d=fs['C:'];for(const k of homePath('DOCUMENTS').slice(1))d=d[k]||(d[k]={{}});d['CALL-TEST.HTML']={json.dumps(CALL)};fsSave();try{{fsFlush()}}catch(e){{}};return homePath('DOCUMENTS').join('/')}})()", 60)
+    # the sign-in screen came back over the desktop in QEMU (signed in all the same): hidden before each page (UNL)
+    out('sign-in screen shown:', js("(()=>{const L=document.getElementById('login');const v=L&&getComputedStyle(L).display;window.UNL=()=>{const L=document.getElementById('login');if(L&&USER)L.style.display='none'};UNL();return v})()", 30))
     out('documents:', r); DOCS = r if isinstance(r, str) else 'C:/USERS/JOHN/DOCUMENTS'
     PAGES = ['file:///C:/README.TXT', 'file:///C:/WELCOME.HTM', f'file:///{DOCS}/CALL-TEST.HTML', 'about:oracle', 'about:files?p=C:']
     blank, opened, n = [], [], 0
     for k in range(ROUNDS):
         for same in (False, True):
-            if same: js("(()=>{wins.slice().forEach(w=>{if(w.body&&w.body.querySelector('.otabs'))w.close()});browser('about:home');return 1})()", 30); time.sleep(3)
+            if same: js("(()=>{wins.slice().forEach(w=>{if(w.body&&w.body.querySelector('.otabs'))w.close()});UNL();browser('about:home');return 1})()", 30); time.sleep(3)
             for u in PAGES:
                 if same:   # one window, the address typed (as a bookmark's click)
-                    js(f"(()=>{{const W=wins.filter(w=>w.body&&w.body.querySelector('.otabs')).pop(),ad=W.body.querySelector('.ad');ad.value={json.dumps(u)};ad.dispatchEvent(new KeyboardEvent('keydown',{{key:'Enter',bubbles:true}}));return 1}})()", 30)
+                    js(f"(()=>{{UNL();const W=wins.filter(w=>w.body&&w.body.querySelector('.otabs')).pop(),ad=W.body.querySelector('.ad');ad.value={json.dumps(u)};ad.dispatchEvent(new KeyboardEvent('keydown',{{key:'Enter',bubbles:true}}));return 1}})()", 30)
                 elif 'CALL-TEST' in u:   # File Explorer's double-click: openPath
-                    js("(()=>{wins.slice().forEach(w=>{if(w.body&&w.body.querySelector('.otabs'))w.close()});openPath(homePath('DOCUMENTS').concat('CALL-TEST.HTML'));return 1})()", 30)
+                    js("(()=>{wins.slice().forEach(w=>{if(w.body&&w.body.querySelector('.otabs'))w.close()});UNL();openPath(homePath('DOCUMENTS').concat('CALL-TEST.HTML'));return 1})()", 30)
                 else:
-                    js(f"(()=>{{wins.slice().forEach(w=>{{if(w.body&&w.body.querySelector('.otabs'))w.close()}});browser({json.dumps(u)});return 1}})()", 30)
+                    js(f"(()=>{{wins.slice().forEach(w=>{{if(w.body&&w.body.querySelector('.otabs'))w.close()}});UNL();browser({json.dumps(u)});return 1}})()", 30)
                 time.sleep(3); n += 1
                 o = js(FRAME, 30)
                 try: o = json.loads(o)
@@ -140,7 +142,7 @@ try:
     ok(f'2. Oracle\'s pages are drawn, never a blank white page ({n} pages: README.TXT, WELCOME.HTM, an .HTML file from File Explorer, about:oracle, about:files; fresh windows and one window)', not blank, blank[:6])
     ok('3. they stay in sandboxed frames (allow-scripts; the desktop page not reachable from them)', not opened, opened[:3])
     # the phone-number test: the page's tel: link, clicked with QEMU's pointer
-    js("(()=>{wins.slice().forEach(w=>{if(w.body&&w.body.querySelector('.otabs'))w.close()});document.querySelectorAll('.rmodal').forEach(x=>x.remove());try{S.telApp=''}catch(e){}openPath(homePath('DOCUMENTS').concat('CALL-TEST.HTML'));return 1})()", 30)
+    js("(()=>{wins.slice().forEach(w=>{if(w.body&&w.body.querySelector('.otabs'))w.close()});UNL();document.querySelectorAll('.rmodal').forEach(x=>x.remove());try{S.telApp=''}catch(e){}openPath(homePath('DOCUMENTS').concat('CALL-TEST.HTML'));return 1})()", 30)
     time.sleep(4); o = js(FRAME, 30)
     try: o = json.loads(o)
     except Exception: o = {}
