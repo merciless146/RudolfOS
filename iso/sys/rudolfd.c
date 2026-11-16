@@ -62,7 +62,9 @@
 #include <zlib.h>
 
 #define WWW      "/usr/share/rudolf/www"
-#define PERSIST  "/persist"
+#ifndef PERSIST
+#define PERSIST  "/persist"   /* (the host tests may give another: deskapi59_t.sh) */
+#endif
 #define RUN      "/run/rudolf"
 #define MAXBODY  (512u << 20)
 
@@ -3815,6 +3817,47 @@ static void api_vault_get(struct req *r)
 	free(j); sadd(&s, "}"); reply_json(r->fd, &s);
 }
 static int vault_json_ok(const char *b, size_t n) { if (!b || n < 2 || n > 256 * 1024 || b[0] != '{' || b[n - 1] != '}') return 0; for (size_t i = 0; i < n; i++) if ((unsigned char)b[i] < 32 && b[i] != '\n') return 0; return 1; }
+/* the data key (64 bytes) added to the kernel: the encrypted folder opened (made at the first unlock); 0, or an HTTP status and
+   why in m. (1.6.0: also from the native desktop's sign-in, rudolfd-desktop.inc, which has the password the page's
+   vault50.js unwraps it with) */
+static int vault_add_key(const unsigned char *key, char *m, size_t mn)
+{
+	if (!vault_set()) { snprintf(m, mn, "encryption is not set up"); return 409; }
+	if (!access(RUN "/vault-restart", F_OK)) { snprintf(m, mn, "restart the computer first: the drive was prepared for encryption"); return 409; }
+	int fd = open(PERSIST, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+	struct fscrypt_add_key_arg *a = calloc(1, sizeof *a + 64);
+	if (fd < 0 || !a) { if (fd >= 0) close(fd); free(a); snprintf(m, mn, "the drive could not be opened"); return 500; }
+	a->key_spec.type = FSCRYPT_KEY_SPEC_TYPE_IDENTIFIER; a->raw_size = 64; memcpy(a->raw, key, 64);
+	int rc = ioctl(fd, FS_IOC_ADD_ENCRYPTION_KEY, a); int er = errno;
+	unsigned char id[FSCRYPT_KEY_IDENTIFIER_SIZE]; memcpy(id, a->key_spec.u.identifier, sizeof id);
+	explicit_bzero(a, sizeof *a + 64); free(a); close(fd);
+	if (rc) { snprintf(m, mn, "the key could not be added (%s)", er == ENOTTY || er == EOPNOTSUPP ? "this kernel or drive does not support encryption" : strerror(er)); return 500; }
+	char hex[2 * sizeof id + 2]; for (size_t i = 0; i < sizeof id; i++) sprintf(hex + 2 * i, "%02x", id[i]); strcat(hex, "\n");
+	char *have = slurp(VAULT_ID, NULL);
+	if (have) {
+		int same = !strncmp(have, hex, 32); free(have);
+		if (!same) { vault_key_spec_remove(id); health_add("vault", "unlocking failed: the key did not match"); snprintf(m, mn, "that key does not open the encrypted folder"); return 403; }
+	} else {
+		/* the first unlock: make the folder with this key's policy */
+		if (mkdir(VAULT_DIR, 0755) && errno != EEXIST) { snprintf(m, mn, "the encrypted folder could not be made"); return 500; }
+		int vd = open(VAULT_DIR, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+		struct fscrypt_policy_v2 p; memset(&p, 0, sizeof p);
+		p.version = FSCRYPT_POLICY_V2; p.contents_encryption_mode = FSCRYPT_MODE_AES_256_XTS; p.filenames_encryption_mode = FSCRYPT_MODE_AES_256_CTS; p.flags = FSCRYPT_POLICY_FLAGS_PAD_32;
+		memcpy(p.master_key_identifier, id, sizeof id);
+		int pr = vd < 0 ? -1 : ioctl(vd, FS_IOC_SET_ENCRYPTION_POLICY, &p); int pe = errno; if (vd >= 0) close(vd);
+		if (pr) { vault_key_spec_remove(id); snprintf(m, mn, "the encrypted folder could not be made (%s)", pe == EOPNOTSUPP ? "the drive is not prepared for encryption: restart and try again" : pe == ENOTEMPTY ? "/persist/vault is not empty" : strerror(pe)); return 500; }
+		write_str(VAULT_ID, hex); write_str(PERSIST "/etc/vault.moving", "");
+	}
+	write_str(RUN "/vault-unlocked", "1\n");
+	/* Downloads in the encrypted folder: the folders the session could not make while it was locked (1.5.1) */
+	/* 1.5.6: the downloads store's bind, which could not be made while the folder was locked; with an account
+	   signed in, its binds again so that Downloads joins them */
+	dl_home_boot();
+	{ struct stat lst; if (!lstat(PERSIST "/flatpak", &lst) && S_ISLNK(lst.st_mode)) run("mountpoint -q /var/lib/flatpak || mount --bind " VAULT_DIR "/flatpak /var/lib/flatpak"); }
+	health_add("vault", "the encrypted folder was unlocked");
+	if (!access(PERSIST "/etc/vault.moving", F_OK) && !job_running()) start_job("vault", "/usr/lib/rudolf/vault-move");
+	return 0;
+}
 static void api_vault(struct req *r, const char *what, int post)
 {
 	if (!post) { api_vault_get(r); return; }
@@ -3848,44 +3891,12 @@ static void api_vault(struct req *r, const char *what, int post)
 	}
 	/* unlock: the data key, 128 hex digits */
 	if (!strcmp(what, "unlock")) {
-		if (!vault_set()) { reply_err(r->fd, 409, "encryption is not set up"); return; }
-		if (!access(RUN "/vault-restart", F_OK)) { reply_err(r->fd, 409, "restart the computer first: the drive was prepared for encryption"); return; }
 		unsigned char key[64]; const char *h = r->body ? r->body : "";
 		if (r->blen < 128) { reply_err(r->fd, 400, "bad key"); return; }
 		for (int i = 0; i < 64; i++) { int a = hexval(h[2 * i]), b = hexval(h[2 * i + 1]); if (a < 0 || b < 0) { explicit_bzero(key, sizeof key); reply_err(r->fd, 400, "bad key"); return; } key[i] = a << 4 | b; }
 		explicit_bzero(r->body, r->blen);
-		int fd = open(PERSIST, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-		struct fscrypt_add_key_arg *a = calloc(1, sizeof *a + sizeof key);
-		if (fd < 0 || !a) { if (fd >= 0) close(fd); free(a); explicit_bzero(key, sizeof key); reply_err(r->fd, 500, "the drive could not be opened"); return; }
-		a->key_spec.type = FSCRYPT_KEY_SPEC_TYPE_IDENTIFIER; a->raw_size = sizeof key; memcpy(a->raw, key, sizeof key); explicit_bzero(key, sizeof key);
-		int rc = ioctl(fd, FS_IOC_ADD_ENCRYPTION_KEY, a); int er = errno;
-		unsigned char id[FSCRYPT_KEY_IDENTIFIER_SIZE]; memcpy(id, a->key_spec.u.identifier, sizeof id);
-		explicit_bzero(a, sizeof *a + sizeof key); free(a); close(fd);
-		if (rc) { char m[160]; snprintf(m, sizeof m, "the key could not be added (%s)", er == ENOTTY || er == EOPNOTSUPP ? "this kernel or drive does not support encryption" : strerror(er)); reply_err(r->fd, 500, m); return; }
-		char hex[2 * sizeof id + 2]; for (size_t i = 0; i < sizeof id; i++) sprintf(hex + 2 * i, "%02x", id[i]); strcat(hex, "\n");
-		char *have = slurp(VAULT_ID, NULL);
-		if (have) {
-			int same = !strncmp(have, hex, 32); free(have);
-			if (!same) { vault_key_spec_remove(id); health_add("vault", "unlocking failed: the key did not match"); reply_err(r->fd, 403, "that key does not open the encrypted folder"); return; }
-		} else {
-			/* the first unlock: make the folder with this key's policy */
-			if (mkdir(VAULT_DIR, 0755) && errno != EEXIST) { reply_err(r->fd, 500, "the encrypted folder could not be made"); return; }
-			int vd = open(VAULT_DIR, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-			struct fscrypt_policy_v2 p; memset(&p, 0, sizeof p);
-			p.version = FSCRYPT_POLICY_V2; p.contents_encryption_mode = FSCRYPT_MODE_AES_256_XTS; p.filenames_encryption_mode = FSCRYPT_MODE_AES_256_CTS; p.flags = FSCRYPT_POLICY_FLAGS_PAD_32;
-			memcpy(p.master_key_identifier, id, sizeof id);
-			int pr = vd < 0 ? -1 : ioctl(vd, FS_IOC_SET_ENCRYPTION_POLICY, &p); int pe = errno; if (vd >= 0) close(vd);
-			if (pr) { vault_key_spec_remove(id); char m[200]; snprintf(m, sizeof m, "the encrypted folder could not be made (%s)", pe == EOPNOTSUPP ? "the drive is not prepared for encryption: restart and try again" : pe == ENOTEMPTY ? "/persist/vault is not empty" : strerror(pe)); reply_err(r->fd, 500, m); return; }
-			write_str(VAULT_ID, hex); write_str(PERSIST "/etc/vault.moving", "");
-		}
-		write_str(RUN "/vault-unlocked", "1\n");
-		/* Downloads in the encrypted folder: the folders the session could not make while it was locked (1.5.1) */
-		/* 1.5.6: the downloads store's bind, which could not be made while the folder was locked; with an account
-		   signed in, its binds again so that Downloads joins them */
-		dl_home_boot();
-		{ struct stat lst; if (!lstat(PERSIST "/flatpak", &lst) && S_ISLNK(lst.st_mode)) run("mountpoint -q /var/lib/flatpak || mount --bind " VAULT_DIR "/flatpak /var/lib/flatpak"); }
-		health_add("vault", "the encrypted folder was unlocked");
-		if (!access(PERSIST "/etc/vault.moving", F_OK) && !job_running()) start_job("vault", "/usr/lib/rudolf/vault-move");
+		char m[200]; int code = vault_add_key(key, m, sizeof m); explicit_bzero(key, sizeof key);
+		if (code) { reply_err(r->fd, code, m); return; }
 		api_vault_get(r); return;
 	}
 	/* move: run the move again (after making room) */

@@ -3486,7 +3486,7 @@ static void di_menu(GdkEventButton *e, int icon)
 	/* the page's menus, item by item (base_v24.html deskMenu, iconMenu; shell25.js's for files and the Trash) */
 	static const CMI DESKM[] = { CM("New folder", "📁", "", "pageh:New folder"), CM("New text document", "📄", "", "pageh:New text document"), CM("Add a widget…", "🧩", "", "wgpick"), CMS,
 		CM("Arrange icons by name", "", "", "arrange"), CM("Desktop icons…", "🖥️", "", "page:Desktop icons…"), CM("Refresh", "", "F5", "refresh"), CMS,
-		CM("Open File Explorer", "", "", "app:explorer"), CM("Open Command Prompt", "", "", "app:terminal"), CM("Show all windows", "", "Super+Tab", "overview"), CM("Task Manager", "📊", "Ctrl+Shift+Esc", "app:taskmgr"), CMS,
+		CM("Open File Explorer", "", "", "app:explorer"), CM("Open Command Prompt", "", "", "app:prompt"), CM("Show all windows", "", "Super+Tab", "overview"), CM("Task Manager", "📊", "Ctrl+Shift+Esc", "app:taskmgr"), CMS,
 		CM("Open settings…", "", "", "app:settings") };
 	static const CMI FILEM[] = { CM("Open", "↗", "", "icon:Open"), CM("Open with…", "", "", "iconh:Open with…"), CMS, CM("Rename", "", "F2", "rename"), CM("Move to Trash", "", "Del", "iconh:Move to Trash"), CMS,
 		CM("Properties", "", "", "icon:Properties") };
@@ -4255,7 +4255,7 @@ static void bar_menu(GdkEventButton *e, int h)
 {
 	TBM_X = e->x_root; TBM_Y = e->y_root; const char *k = h >= 0 ? HITS[h].kind : "", *arg = h >= 0 ? HITS[h].arg : "";
 	if (!USER_ID[0] || LOCKED) return;
-	if (!strcmp(k, "start")) { menu_hide(); CMI m[6] = { CM("File Explorer", "📁", "", "app:explorer"), CM("Command Prompt", "⬛", "", "app:terminal"), CM("Settings", "⚙️", "", "app:settings"), CM("Run…", "🏃", "", "run"), CMS,
+	if (!strcmp(k, "start")) { menu_hide(); CMI m[6] = { CM("File Explorer", "📁", "", "app:explorer"), CM("Command Prompt", "⬛", "", "app:prompt"), CM("Settings", "⚙️", "", "app:settings"), CM("Run…", "🏃", "", "run"), CMS,
 			CM("Sign out / shut down…", "🔌", "", "off") }; tb_menu_show("Rudolf OS", m, 6, 0, "start"); return; }
 	if (!strcmp(k, "pin")) { const App *ap = app_find(arg); CMI m[12]; int n = 0; memset(m, 0, sizeof m); snprintf(TBM_K, sizeof TBM_K, "%s", arg);
 		m[n] = (CMI)CM("Open a new window", "", "", ""); snprintf(m[n++].act, sizeof m[0].act, "pnew:%s", arg);
