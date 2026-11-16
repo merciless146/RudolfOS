@@ -1,0 +1,43 @@
+# docs/native-findings-2026-11-15.md, "Status on 2026-11-16": the native desktop against Standard on the newest beta in QEMU
+# (qt/sb/t160n_t.py): sound card, two screens, sleep and waking, Settings' Bluetooth and Sound pages, what the system sees.
+# Nothing is published. Set up as qemu-checks.yml.
+name: Native areas (QEMU)
+on:
+  workflow_dispatch:
+    inputs:
+      serial: {description: 'A release to test (its serial); empty: the newest beta', required: false, default: ''}
+  push:
+    branches: ['native-areas-qemu']
+    paths: ['iso/qt/sb/t160n_t.py', '.github/workflows/native-areas.yml']
+permissions: {contents: read}
+jobs:
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography python3-pil bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S='${{ inputs.serial }}'; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel; echo "::notice title=Native areas::release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
+      - name: t160n (Standard, then Native)
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/t160n_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: t160n, retention-days: 7, path: "run/t160n.txt\nrun/n160*/qemu.log\nrun/n160*/*.png\nrun/w160n/*.png"}
