@@ -75,7 +75,7 @@ targets() { node -e 'fetch("http://127.0.0.1:'$1'/json/list").then(r=>r.json()).
 cpids() { for p in $(pgrep -f -- "$1"); do [ "$(cat /proc/$p/comm 2>/dev/null)" = chrome ] || continue; c=$( { tr '\0' ' ' < /proc/$p/cmdline; } 2>/dev/null); case "$c" in *--type=*|'') ;; *) echo $p;; esac; done; }
 procs() { cpids "$1" | wc -l | tr -d ' '; }
 # (the X window names of the clients, for a failure's details)
-xnames() { for w in $(grep '^client ' $D/state | awk '{print $2}'); do printf '%s: %s; ' $w "$(xdotool getwindowname 0x$w 2>&1)"; done; }
+xnames() { for w in $(grep '^client ' $D/state | awk '{print $2}'); do printf '%s: %s; ' $w "$(xdotool getwindowname 0x$w 2>&1)"; done; grep -i "title" $T/native.log | tail -5; }
 w8 '[ "$(st signin)" = 1 ]' 120
 PW=$(node -e "console.log(require('$D/keys.json').Ann.pw)"); LC_ALL=C.UTF-8 xdotool type --delay 30 "$PW"; xdotool key Return
 w8 '[ "$(st user)" = Ann ] && grep -q "^hit pin browser" $D/state' 120 || { echo "FAIL signing in"; tail $T/native.log; exit 1; }

@@ -1176,6 +1176,7 @@ static void oracle_title_set(Client *c, const char *t)
 static void oracle_title(int x, int y, int w, int h, const char *t)
 {
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (oracle_at(c, x, y, w, h)) { oracle_title_set(c, t); return; } }
+	fprintf(stderr, "rudolf-native: Oracle's title \"%.60s\" for a window at %d,%d %dx%d not here yet\n", t, x, y, w, h);
 	int k = 0; for (int i = 1; i < 8; i++) if (OR_TQ[i].at < OR_TQ[k].at) k = i;
 	OR_TQ[k].x = x; OR_TQ[k].y = y; OR_TQ[k].w = w; OR_TQ[k].h = h; OR_TQ[k].at = g_get_monotonic_time(); snprintf(OR_TQ[k].t, sizeof OR_TQ[k].t, "%s", t);
 }
