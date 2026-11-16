@@ -114,6 +114,25 @@ const oaNative=()=>!!(window.webkit&&window.webkit.messageHandlers&&window.webki
 /* (w: which of the shell's windows this is, from #app=NAME&w=N: WebKit gives every window the native shell opens the same
    message handler, so the shell knows the sender by it) */
 function oaPost(m){try{if(oaNative())window.webkit.messageHandlers.rudolfNative.postMessage(Object.assign({w:ONEAPP?ONEAPP.w:0},m));else oaShell(m)}catch(e){}}
+/* (1.6.0, the owner's computer check on the Vivobook) a page that wants every key for a moment (the check's keyboard step, Settings ›
+   Keyboard's Press keys…): on Standard the page's own handler sees them all first; on Native the shell's global keys are grabbed, so it
+   is asked to let them through while this window is in front (op kbcap). Nothing elsewhere. */
+/* (1.6.0) a folder opened in File Explorer from an app's window: Explorer's own window, at that folder (#app=explorer&file=) */
+function oaOpenFolder(dir){if(!(ONEAPP&&oaOut()&&OA.main))return false;oaDrained().then(()=>oaPost({op:'open',app:'explorer',file:dir.join('\\')}));return true}
+/* (1.6.0) the screen's size in the page's pixels (the system report's Desktop size; on Standard the page is the whole screen) */
+function oaDeskSize(){if(!ONEAPP)return null;const q=ONEAPP.q,d=devicePixelRatio||1,w=+q.get('sw')/d||screen.width,h=+q.get('sh')/d||screen.height;return[Math.round(w),Math.round(h)]}
+function oaKeyCap(on){if(ONEAPP&&oaNative()){window.__oaKbcap=!!on;oaPost({op:'kbcap',on:on?'1':'0'})}}
+/* (1.6.0) WebKitGTK names the Super keys as an old draft did (code "OSLeft"/"OSRight", key "Super", keyCode 0, metaKey false); Chromium,
+   as the standard has it, "MetaLeft"/"MetaRight", "Meta", 91/92 and metaKey while it is held: the check's ❖ never lit up, and a page's
+   Meta+key never matched. Given as Chromium gives them in Native's windows. */
+if(ONEAPP&&oaNative()&&window.KeyboardEvent){const P=KeyboardEvent.prototype,d=k=>Object.getOwnPropertyDescriptor(P,k),dc=d('code'),dk=d('key'),dkc=d('keyCode'),dw=d('which'),dm=d('metaKey'),dgm=P.getModifierState;let held=0;
+ const os=e=>{const c=dc.get.call(e);return c=='OSLeft'?1:c=='OSRight'?2:0};
+ addEventListener('keydown',e=>{const o=os(e);if(o)held|=o},true);addEventListener('keyup',e=>{const o=os(e);if(o)held&=~o},true);addEventListener('blur',()=>{held=0});
+ if(dc&&dc.get)Object.defineProperty(P,'code',{configurable:true,enumerable:dc.enumerable,get(){const c=dc.get.call(this);return c=='OSLeft'?'MetaLeft':c=='OSRight'?'MetaRight':c}});
+ if(dk&&dk.get)Object.defineProperty(P,'key',{configurable:true,enumerable:dk.enumerable,get(){const k=dk.get.call(this);return k=='Super'||k=='OS'?'Meta':k}});
+ for(const [n,dd] of [['keyCode',dkc],['which',dw]])if(dd&&dd.get)Object.defineProperty(P,n,{configurable:true,enumerable:dd.enumerable,get(){const v=dd.get.call(this),o=os(this);return o&&!v?(o==1?91:92):v}});
+ if(dm&&dm.get)Object.defineProperty(P,'metaKey',{configurable:true,enumerable:dm.enumerable,get(){const o=os(this);return dm.get.call(this)||(o?this.type=='keydown':!!held)}});
+ if(dgm)P.getModifierState=function(k){if(k=='Meta'||k=='OS'){const o=os(this);if(o?this.type=='keydown':held)return true}return dgm.call(this,k)}}
 /* (1.5.9, docs/plan-1.5.9.md 12.3c) Oracle on the native desktop is this page in the shell, in Rudolf's Chromium (its real tabs):
    the window's title and its closing go to the shell, which is the window (a title kept until the shell has said hello) */
 let OA_SHT='';function oaShell(m){if(!ONEAPP)return;if(m.op=='title'){OA_SHT=m.t;if(typeof SHELL!='undefined'&&SHELL)shellSend({rudolfShell:'oa',op:'title',t:m.t})}
@@ -381,7 +400,8 @@ html.oavk #vkb{display:block!important;visibility:visible!important;position:fix
  OA.want=1;
  /* (1.5.9, 12.3c) Oracle without Rudolf's Chromium on the native desktop (none, or it would not start): said once */
  if(ONEAPP.k=='browser'&&ONEAPP.q.get('nochrome')=='1')setTimeout(()=>{try{notify('Oracle','Websites will work better on Standard: Oracle is running without Rudolf\u2019s Chromium here, so some sites cannot open in its tabs.')}catch(e){}},1500);
- try{if(act)act();else if(ONEAPP.file&&app.openFile)launchWith(ONEAPP.k,resolve(ONEAPP.file,['C:']));
+ try{if(act)act();else if(ONEAPP.file&&ONEAPP.k=='explorer'&&typeof explorer=='function'){const p=resolve(ONEAPP.file,['C:']);explorer(isDir(node(p))?p:p.slice(0,-1))}   /* (1.6.0: a folder: tm26.js srOpenFolder) */
+  else if(ONEAPP.file&&app.openFile)launchWith(ONEAPP.k,resolve(ONEAPP.file,['C:']));
   else if(ONEAPP.k=='taskmgr'&&ONEAPP.q.get('urgent')=='1'&&typeof tmUrgent=='function')tmUrgent();   /* (1.6.0: Ctrl+Alt+Del's, tmtop57.js) */
   else launch(ONEAPP.k)}catch(e){console.warn(e)}
  /* an app that opens no window (or not yet: a large app loads its files first) */

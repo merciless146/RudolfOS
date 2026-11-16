@@ -104,12 +104,14 @@ shortcut('fullscreen','Full screen on or off','F11',()=>fullToggle());
 function fullToggle(){if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});else document.documentElement.requestFullscreen().then(()=>{try{navigator.keyboard&&navigator.keyboard.lock&&navigator.keyboard.lock()}catch(e){}}).catch(()=>notify('Full screen is not available here',''))}
 let metaAlone=false;
 addEventListener('keydown',e=>{if(LOCKED||document.querySelector('#lockov,.rmodal'))return;
+ if(window.__oaKbcap)return;   /* (1.6.0: a Native window that has every key for a moment, oaKeyCap: its own windows' shortcuts too) */
+
  if(e.key=='Meta'||e.key=='OS'){metaAlone=!e.repeat;return}metaAlone=false;
  if(e.target&&e.target.closest&&e.target.closest('.kbcap'))return;
  const c=comboOf(e);if(!c)return;const s=SHORT.find(x=>kbOf(x)==c);if(!s)return;
  if(document.pointerLockElement&&!c.startsWith('Ctrl+Alt'))return;
  e.preventDefault();e.stopPropagation();try{s.fn()}catch(x){console.warn(x)}},true);
-addEventListener('keyup',e=>{if((e.key=='Meta'||e.key=='OS')&&metaAlone&&!LOCKED){metaAlone=false;startToggle()}},true);
+addEventListener('keyup',e=>{if((e.key=='Meta'||e.key=='OS')&&metaAlone&&!LOCKED&&!window.__oaKbcap){metaAlone=false;startToggle()}},true);
 function startToggle(){const m=$('#menu');if(m.style.display=='flex'){m.style.display='none'}else{m.style.display='flex';setTimeout(()=>{const s=$('#ssearch');s&&s.focus()},20)}}
 /* ---------- Alt+Tab switcher ---------- */
 let SWT=null;

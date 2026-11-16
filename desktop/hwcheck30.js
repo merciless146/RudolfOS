@@ -15,12 +15,15 @@ async function hwcMicPeak(ms,onLevel){let st;try{st=await navigator.mediaDevices
  const a=new AudioContext(),src=a.createMediaStreamSource(st),an=a.createAnalyser();an.fftSize=2048;src.connect(an);const buf=new Float32Array(an.fftSize);let peak=0;const t0=performance.now();
  await new Promise(res=>{const tick=()=>{an.getFloatTimeDomainData(buf);let m=0;for(const v of buf)m=Math.max(m,Math.abs(v));peak=Math.max(peak,m);onLevel&&onLevel(m);if(performance.now()-t0<ms)requestAnimationFrame(tick);else res()};tick()});
  st.getTracks().forEach(t=>t.stop());a.close();return{db:peak>0?20*Math.log10(peak):-120}}
-/* a spinning WebGL scene for ms: frames per second (null: no WebGL) */
-async function hwcFps(cv,ms){const g=cv.getContext('webgl');if(!g)return null;const vs=g.createShader(g.VERTEX_SHADER);g.shaderSource(vs,'attribute vec2 p;uniform float t;void main(){float c=cos(t),s=sin(t);gl_Position=vec4(p.x*c-p.y*s,p.x*s+p.y*c,0,1);}');g.compileShader(vs);
- const fs=g.createShader(g.FRAGMENT_SHADER);g.shaderSource(fs,'precision mediump float;uniform float t;void main(){gl_FragColor=vec4(.5+.5*sin(t),.4,.8,1);}');g.compileShader(fs);const pr=g.createProgram();g.attachShader(pr,vs);g.attachShader(pr,fs);g.linkProgram(pr);g.useProgram(pr);
+/* a spinning WebGL scene for ms: frames per second (null: no WebGL). 1.6.0: the uniform t has the same precision in both shaders (the
+   vertex shader's default was highp, the fragment shader's mediump: WebGL refuses to link that, so Chromium and WebKit alike drew only
+   the dark background while frames were counted, the owner's "graphically flawed" step); a scene that does not link, or draws
+   nothing, is said (hwcFps.err, hwcFps.drawn) */
+async function hwcFps(cv,ms){hwcFps.err='';hwcFps.drawn=false;const g=cv.getContext('webgl');if(!g)return null;const vs=g.createShader(g.VERTEX_SHADER);g.shaderSource(vs,'precision mediump float;attribute vec2 p;uniform float t;void main(){float c=cos(t),s=sin(t);gl_Position=vec4(p.x*c-p.y*s,p.x*s+p.y*c,0,1);}');g.compileShader(vs);
+ const fs=g.createShader(g.FRAGMENT_SHADER);g.shaderSource(fs,'precision mediump float;uniform float t;void main(){gl_FragColor=vec4(.5+.5*sin(t),.4,.8,1);}');g.compileShader(fs);const pr=g.createProgram();g.attachShader(pr,vs);g.attachShader(pr,fs);g.linkProgram(pr);if(!g.getProgramParameter(pr,g.LINK_STATUS)){hwcFps.err=String(g.getProgramInfoLog(pr)||'the picture could not be made').trim().slice(0,120)}g.useProgram(pr);
  const b=g.createBuffer();g.bindBuffer(g.ARRAY_BUFFER,b);const tri=[];for(let i=0;i<300;i++){const a=i/300*6.283,r=.3+.6*((i*7919)%100)/100;tri.push(Math.cos(a)*r,Math.sin(a)*r,Math.cos(a+.05)*r*.5,Math.sin(a+.05)*r*.5,0,0)}
  g.bufferData(g.ARRAY_BUFFER,new Float32Array(tri),g.STATIC_DRAW);const loc=g.getAttribLocation(pr,'p');g.enableVertexAttribArray(loc);g.vertexAttribPointer(loc,2,g.FLOAT,false,0,0);const ut=g.getUniformLocation(pr,'t');
- let n=0;const t0=performance.now();await new Promise(res=>{const f=()=>{const t=(performance.now()-t0)/1000;g.clearColor(.1,.1,.15,1);g.clear(g.COLOR_BUFFER_BIT);g.uniform1f(ut,t);g.drawArrays(g.TRIANGLES,0,tri.length/2);n++;if(performance.now()-t0<ms)requestAnimationFrame(f);else res()};f()});
+ let n=0;const t0=performance.now();await new Promise(res=>{const f=()=>{const t=(performance.now()-t0)/1000;g.clearColor(.1,.1,.15,1);g.clear(g.COLOR_BUFFER_BIT);g.uniform1f(ut,t);g.drawArrays(g.TRIANGLES,0,tri.length/2);n++;if(!hwcFps.drawn){const px=new Uint8Array(4*9*9);g.readPixels((cv.width>>1)-4,(cv.height>>1)-4,9,9,g.RGBA,g.UNSIGNED_BYTE,px);for(let i=0;i<px.length;i+=4)if(Math.abs(px[i+1]-102)<8&&px[i+2]>190){hwcFps.drawn=true;break}}if(performance.now()-t0<ms)requestAnimationFrame(f);else res()};f()});
  return n/((performance.now()-t0)/1000)}
 /* the keyboard drawn by key position (KeyboardEvent.code); its labels come from the layout in use when Chromium
    can tell (navigator.keyboard.getLayoutMap) */
@@ -38,6 +41,10 @@ async function hwcKeyLabels(){const L={};HWC_KROWS.flat().forEach(c=>L[c]=HWC_KN
 function hwcBatHealth(b){const wh=(e,c)=>e!=null?e/1e6:c!=null&&b.voltage_min_design>0?c*b.voltage_min_design/1e12:null;
  const full=wh(b.energy_full,b.charge_full),design=wh(b.energy_full_design,b.charge_full_design);
  return{full,design,pct:full!=null&&design>0?Math.round(full/design*100):null,cycles:b.cycle_count>0?b.cycle_count:null}}
+/* (1.6.0) a sleep that really slept (rudolfd's GET sleep after it): the kernel says it worked (one more in suspend_stats' success, no error)
+   and the computer was asleep (CLOCK_BOOTTIME ahead of CLOCK_MONOTONIC) for most of the 10 seconds asked */
+function hwcSlept(L){return !!(L&&L.ok&&L.success!==0&&L.slept_ms>=Math.max(3000,(L.asked||10)*1000*0.6))}
+function hwcSleepWhy(L,slept){if(slept)return'';if(!L)return'no answer after waking';if(!L.ok)return'the kernel refused: '+(L.error||'error');if(L.success===0)return'the kernel counted no sleep';return'it was asleep '+(L.slept_ms/1000).toFixed(1)+' s of '+(L.asked||10)}
 function hwCheck(){const o=document.createElement('div');o.className='natdlg hwc';const R={};let i=0;
  o.innerHTML=`<div class='natbox' role='dialog' aria-modal='true' aria-labelledby='hwct' style='max-width:520px;width:90vw'><div class='msg hwcn'></div><h3 id='hwct'></h3><div class='hwcb'></div><div class='stbtn hwcbt' style='justify-content:flex-end'></div></div>`;
  document.body.appendChild(o);const T=o.querySelector('h3'),B=o.querySelector('.hwcb'),BT=o.querySelector('.hwcbt'),N=o.querySelector('.hwcn');
@@ -72,14 +79,15 @@ function hwCheck(){const o=document.createElement('div');o.className='natdlg hwc
    if(!done){BT.innerHTML='';B.querySelector('.hwum').textContent='Nothing appeared. Try another port or another stick.';set('usb','fail','nothing appeared');btn('Next',next,1)}},
   async gfx(){B.innerHTML=`<canvas width='320' height='180' style='width:100%;max-width:320px;border-radius:6px;background:#111'></canvas><ul class='hwgu'><li>Drawing a moving picture…</li></ul>`;let s=null;try{s=await rd('system')}catch(e){}
    const fps=await hwcFps(B.querySelector('canvas'),3000),U=B.querySelector('.hwgu');U.innerHTML='';const li=t=>{const l=document.createElement('li');l.textContent=t;U.appendChild(l)};
-   li('The screen is drawn by '+(RD?tmDrawn(s):'the browser'));li('Pages are drawn with '+tmPages());li(fps==null?'WebGL: not available':`Frames per second: ${fps.toFixed(0)}`);
-   const soft=RD&&s&&!s.renderer,ok=fps!=null&&fps>=24;set('gfx',ok&&!soft?'pass':'fail',(soft?'processor drawing, ':'')+(fps==null?'no WebGL':fps.toFixed(0)+' fps'));
+   li('The screen is drawn by '+(RD?tmDrawn(s):'the browser'));li('Pages are drawn with '+tmPages(s));li(fps==null?'WebGL: not available':`Frames per second: ${fps.toFixed(0)}`);
+   const soft=RD&&s&&!s.renderer,drawn=fps!=null&&hwcFps.drawn,ok=fps!=null&&fps>=24&&drawn;if(fps!=null&&!drawn)li('The moving picture was not drawn'+(hwcFps.err?': '+hwcFps.err:'.'));
+   set('gfx',ok&&!soft?'pass':'fail',(soft?'processor drawing, ':'')+(fps==null?'no WebGL':fps.toFixed(0)+' fps'+(drawn?'':', nothing drawn')));
    if(soft)li('Rudolf OS is not using a graphics card. Settings › Display › Graphics card has the choices.');btn('Next',next,1)},
   async keys(){keysMode=true;const L=await hwcKeyLabels(),seen=new Set();
    B.innerHTML=`<p>Press every key once. Each one lights up when Rudolf OS sees it. (Ctrl+W, Ctrl+T, Ctrl+N and Ctrl+Q are kept by Rudolf OS: press Ctrl and those letters on their own.)</p><div class='hwkb' style='display:flex;flex-direction:column;gap:3px;font:11px sans-serif;user-select:none'>${HWC_KROWS.map(r=>`<div style='display:flex;gap:3px'>${r.map(c=>`<span data-c='${c}' style='flex:${HWC_KWIDE[c]||1};min-width:0;padding:5px 0;text-align:center;border:1px solid #9ca3af;border-radius:4px;background:#f3f4f6;color:#111'>${lxEsc(L[c])}</span>`).join('')}</div>`).join('')}</div><p class='msg hwkm'>0 of ${HWC_KROWS.flat().length} keys</p>`;
    const total=HWC_KROWS.flat().length,M=B.querySelector('.hwkm');
    const kd=e=>{if(!document.body.contains(o))return;e.preventDefault();e.stopPropagation();const el=B.querySelector(`[data-c='${e.code}']`);if(el&&!seen.has(e.code)){seen.add(e.code);el.style.background='#16a34a';el.style.color='#fff';M.textContent=`${seen.size} of ${total} keys`}};
-   addEventListener('keydown',kd,true);addEventListener('keyup',kd,true);cleanup=()=>{removeEventListener('keydown',kd,true);removeEventListener('keyup',kd,true)};
+   addEventListener('keydown',kd,true);addEventListener('keyup',kd,true);if(typeof oaKeyCap=='function')oaKeyCap(1);cleanup=()=>{removeEventListener('keydown',kd,true);removeEventListener('keyup',kd,true);if(typeof oaKeyCap=='function')oaKeyCap(0)};
    btn('Skip',()=>{set('keys','skip');next()});btn('Done',()=>{const miss=HWC_KROWS.flat().filter(c=>!seen.has(c));tidy();BT.innerHTML='';
     if(!miss.length){M.textContent='Every key works.';set('keys','pass',total+' keys');btn('Next',next,1);return}
     const names=[...new Set(miss.map(c=>L[c]))];M.textContent=`These did not answer: ${names.join(' ')}. Some keyboards do not have all of them (a right Ctrl or AltGr, for example).`;
@@ -119,12 +127,16 @@ function hwCheck(){const o=document.createElement('div');o.className='natdlg hwc
     try{f.requestFullscreen&&f.requestFullscreen().catch(()=>{})}catch(e){}},1)},
   async sleep(){let bat=false;try{bat=((await rd('stats')).battery||[]).length>0}catch(e){}
    B.innerHTML=`<p>${bat?'On a laptop, check that it wakes up properly:':'Optional:'} the computer sleeps for 10 seconds and wakes by itself. Save your work first.</p>`;
-   btn('Skip',()=>{set('sleep','skip');next()},!bat);btn('Sleep for 10 seconds',async()=>{BT.innerHTML='';B.innerHTML='<p>Going to sleep…</p>';const t0=Date.now();
+   btn('Skip',()=>{set('sleep','skip');next()},!bat);btn('Sleep for 10 seconds',async()=>{BT.innerHTML='';B.innerHTML='<p>Going to sleep…</p>';
+    /* (1.6.0) whether it really slept, from rudolfd (GET sleep: the time asleep by the kernel's clocks, its count of sleeps, the hardware's
+       low-power time): the time the page waited said "woke" on the Vivobook, whose sleep returned at once */
+    let s0=null;try{s0=await rd('sleep')}catch(e){}const seq0=s0&&s0.last?s0.last.seq:0,t0=Date.now();
     try{await rdPost('power?action=suspend&wake=10')}catch(e){B.innerHTML='<p></p>';B.firstChild.textContent='Sleep is not available: '+e.message;set('sleep','fail','not available');btn('Next',next,1);return}
-    await new Promise(r=>setTimeout(r,4000));for(let k=0;k<40&&Date.now()-t0<8000;k++)await new Promise(r=>setTimeout(r,500));
-    let s=null;try{s=await rd('system')}catch(e){}const sv=s&&s.services||{},slept=Date.now()-t0>=9000;
-    B.innerHTML=`<p>${slept?'Awake again.':'The computer did not seem to sleep.'} Sound: ${sv.sound?'working':'not running'}. Network: ${typeof netUp=='function'&&netUp()?'connected':'not connected'}.</p>`;
-    set('sleep',slept&&sv.sound!==false?'pass':'fail',slept?'woke':'did not sleep');btn('Next',next,1)},bat)},
+    let L=null;for(let k=0;k<60&&Date.now()-t0<45000;k++){await new Promise(r=>setTimeout(r,k?750:1500));try{const r=await rd('sleep');if(r&&r.last&&r.last.seq!=seq0){L=r.last;break}}catch(e){}}
+    let s=null;try{s=await rd('system')}catch(e){}const sv=s&&s.services||{};
+    const slept=hwcSlept(L,s0),why=hwcSleepWhy(L,slept);
+    B.innerHTML=`<p></p>`;B.firstChild.textContent=`${slept?'Awake again after '+(L.slept_ms/1000).toFixed(0)+' seconds asleep.':'The computer did not sleep'+(why?' ('+why+')':'')+'.'} Sound: ${sv.sound?'working':'not running'}. Network: ${typeof netUp=='function'&&netUp()?'connected':'not connected'}.`;
+    set('sleep',slept&&sv.sound!==false?'pass':'fail',slept?'woke after '+(L.slept_ms/1000).toFixed(0)+' s'+(L.mode?', '+L.mode:''):'did not sleep'+(why?': '+why:''));btn('Next',next,1)},bat)},
   done(){T.textContent='Results';N.textContent='';const rec={at:Date.now(),results:R};svj(HWC_K,rec);
    B.innerHTML=`<table class='tmt'><tbody>${HWC_STEPS.map(([k,n])=>R[k]?`<tr><td>${n}</td><td><b class='hwr ${R[k].s}'>${{pass:'✓ works',fail:'✗ problem',skip:'– skipped'}[R[k].s]}</b></td><td class='msg'>${lxEsc(R[k].d)}</td></tr>`:'').join('')}</tbody></table><p class='msg'>The result is added to the system report. Nothing personal is in it.</p>`;
    if(Object.values(R).some(x=>x.s=='fail')&&typeof sysReportDialog=='function')btn('Report a problem…',()=>{close();sysReportDialog()});btn('Done',close,1)}};

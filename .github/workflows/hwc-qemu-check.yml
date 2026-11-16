@@ -1,0 +1,48 @@
+# Task Manager's "Check this computer…" on the Native desktop against Standard, on the real release in QEMU (iso/qt/sb/hwc160_t.py):
+# the owner's Vivobook report of 2026-11-16. Run by a push that changes .github/hwc160-run.txt, whose lines say: serial=SERIAL
+# (empty: the newest beta), fix=1 (this branch's rudolf-native, rudolfd and page put in place of the release's). Nothing is published.
+name: Computer check QEMU check
+on:
+  push:
+    paths: ['.github/hwc160-run.txt']
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: for k in serial fix; do echo "N_$k=$(sed -n "s/^$k=//p" .github/hwc160-run.txt | head -1)" >> $GITHUB_ENV; done
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S="$N_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel; echo "::notice title=Computer check QEMU check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)), fix=$N_fix"
+      - name: This tree's rudolf-native and page
+        if: env.N_fix == '1'
+        run: |
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev zlib1g-dev >/dev/null
+          mkdir -p fix && gcc -O2 -Wno-deprecated-declarations -o fix/rudolf-native iso/sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
+          gcc -O2 -o fix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          cp iso/www/index.html fix/ && ls -la fix && echo "HWC_FIX=$PWD/fix" >> $GITHUB_ENV
+      - name: hwc160
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} HWC_FIX=${HWC_FIX:-} python3 ../iso/qt/sb/hwc160_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: hwc160, retention-days: 7, path: "run/hwc160.txt\nrun/hwc160*/qemu.log\nrun/hwc160*/*.png"}
