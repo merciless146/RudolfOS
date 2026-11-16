@@ -75,11 +75,17 @@ def run(g, c, t=60, show=True):
     o = g.sh('sh /tmp/c160.sh 2>&1', t)
     if show: out('$', c[:160].replace('\n', ' ; ')); out(o.rstrip()[-2500:])
     return o
+# (this tree's cdp-eval when given, with CDP_TARGET: the target pick() chose, as Standard's shell can leave more than one
+# page of the desktop's in Chromium's list, and cdp-eval would take the first)
+CDP = "T=$(cat /run/l160x/target 2>/dev/null); if [ -x /run/l160x/cdp-eval ]; then CDP_TARGET=$T /run/l160x/cdp-eval"
 def jsfn(g):
     def js1(e, t):
-        if len(base64.b64encode(e.encode())) < 800: return g.js(e, t)
-        open(f'{W}/l.js', 'w').write(e); g.put(f'{W}/l.js', '/tmp/l.js', '644')
-        o = g.sh('cdp-eval "$(cat /tmp/l.js)" 2>&1', t); m = re.search(r'\{"id":1.*\}', o)
+        b = base64.b64encode(e.encode()).decode()
+        if len(b) < 800: o = g.sh(f'{CDP} "$(echo {b} | base64 -d)"; else cdp-eval "$(echo {b} | base64 -d)"; fi 2>&1', t)
+        else:
+            open(f'{W}/l.js', 'w').write(e); g.put(f'{W}/l.js', '/tmp/l.js', '644')
+            o = g.sh(f'{CDP} "$(cat /tmp/l.js)"; else cdp-eval "$(cat /tmp/l.js)"; fi 2>&1', t)
+        m = re.search(r'\{"id":1.*\}', o)
         if not m: return ('ERR', o[-400:])
         res = json.loads(m.group(0)).get('result', {})
         if 'exceptionDetails' in res: return ('EXC', res['exceptionDetails'].get('exception', {}).get('description', '')[:300])
@@ -91,6 +97,24 @@ def jsfn(g):
             time.sleep(10)
         return r
     return js
+def pick(g, js, show=True):
+    """the desktop's page among Chromium's targets: the one in the shell (Oracle's real tabs), with an Oracle window if any"""
+    o = g.sh("busybox wget -q -O- http://127.0.0.1:9222/json/list 2>&1", 30)
+    try: L = json.loads(o[o.index('['):o.rindex(']') + 1])
+    except Exception: L = []
+    best, info = None, []
+    for t in L:
+        if not str(t.get('url', '')).startswith('http://127.0.0.1:8080/'): continue
+        g.sh(f"echo {t['id']} > /run/l160x/target", 10)
+        r = js("JSON.stringify({shell:typeof SHELL!='undefined'&&!!SHELL,oracle:typeof wins!='undefined'&&wins.some(w=>w.body&&w.body.querySelector('.otabs')),user:typeof USER!='undefined'&&USER&&USER.n})", 20)
+        try: d = json.loads(r)
+        except Exception: d = {}
+        sc = (2 if d.get('shell') else 0) + (1 if d.get('oracle') else 0)
+        info.append([t['id'][:8], t.get('type'), t.get('url', '')[:70], d])
+        if best is None or sc > best[0]: best = (sc, t['id'])
+    g.sh(f"echo {best[1] if best else ''} > /run/l160x/target", 10)
+    if show: out('the desktop\'s pages in Chromium:', info, '- chosen:', best)
+    return best
 def wait_for(js, expr, secs, every=5):
     end = time.time() + secs; r = None
     while time.time() < end:
@@ -108,6 +132,7 @@ APPLY = ("FX=$(blkid | grep 'LABEL=\"L160FIX\"' | cut -d: -f1 | head -1); echo f
          "if [ -f /tmp/fx/index.html ]; then cp /tmp/fx/index.html $X/page.html; chmod 644 $X/page.html; mount --bind $X/page.html $WWW/index.html; grep -c 'function lkOpen' $WWW/index.html; fi; "
          "if [ -f /tmp/fx/rudolf-debian ]; then rudolf-debian stop 2>/dev/null; cp /tmp/fx/rudolf-debian $X/rudolf-debian; chmod 755 $X/rudolf-debian; mount --bind $X/rudolf-debian /usr/bin/rudolf-debian; fi; "
          "if [ -f /tmp/fx/rudolf-open ]; then mkdir -p $X/lib; cp -a /usr/lib/rudolf/. $X/lib/; cp /tmp/fx/rudolf-open $X/lib/rudolf-open; chmod 755 $X/lib/rudolf-open; mount --bind $X/lib /usr/lib/rudolf; ls -l /usr/lib/rudolf/rudolf-open; fi; "
+         "if [ -f /tmp/fx/cdp-eval ]; then cp /tmp/fx/cdp-eval $X/cdp-eval; chmod 755 $X/cdp-eval; fi; "
          "if [ -f /tmp/fx/rudolf-portal ]; then cp /tmp/fx/rudolf-portal $X/rudolf-portal; chmod 755 $X/rudolf-portal; mount --bind $X/rudolf-portal /usr/bin/rudolf-portal; fi; "
          "if [ -f /tmp/fx/rudolfd ]; then cp /tmp/fx/rudolfd $X/rudolfd; chmod 755 $X/rudolfd; mount --bind $X/rudolfd /usr/bin/rudolfd; P=$(pidof rudolfd | tr ' ' '\\n' | sort -n | head -1); kill $P; sleep 2; (setsid /usr/bin/rudolfd >> /run/rudolf/rudolfd.log 2>&1 < /dev/null &); sleep 3; echo rudolfd $(pidof rudolfd); fi")
 # Debian: a stand-in with busybox (installed, as t160's), the test app and its launcher (the scheme it opens)
@@ -138,6 +163,7 @@ def flow(tag, vm, g, js, sh, launch):
         if 'redirect sent' in lg: break
         time.sleep(4)
     out('the app\'s log:', lg)
+    pick(g, js)
     out('the desktop:', js("JSON.stringify({href:location.href,shell:typeof SHELL!='undefined'&&!!SHELL,wins:wins.map(w=>w.el.innerText.split('\\n')[0].slice(0,40)),"
         "rt:typeof RT!='undefined'?[...RT.entries()].map(([k,v])=>[k,v.url&&v.url(),v.shown&&v.shown()]):null,seen:[...LX.seen],cw:(window.__cw||[]).slice(-12)})", 40))
     vm.shot(f'l160{tag}-page')
@@ -147,7 +173,7 @@ def flow(tag, vm, g, js, sh, launch):
     ok(f'{tag}3. ...and the sign-in page opens in Oracle, which follows its redirect to the app\'s scheme', 'page asked' in lg and 'redirect sent' in lg, lg)
     d = None; end = time.time() + 90
     while time.time() < end:
-        d = js(DLG, 40)
+        pick(g, js, False); d = js(DLG, 40)
         try: d = json.loads(d)
         except Exception: d = {'raw': d}
         if d.get('dlg'): break
@@ -186,6 +212,7 @@ try:
                 out('the shell, not moved into by itself:', st, '- as the notice\'s click does')
                 js("(()=>{try{fsFlush()}catch(e){}setTimeout(()=>rdPost('shell/switch').catch(()=>{}),600);return 1})()", 30); asked += 1; time.sleep(40)
             time.sleep(10)
+        pick(g, js)
         wait_for(js, "typeof acctNew=='function'&&typeof userLogin=='function'&&typeof lkOpen=='function'", 300)
         js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};"
            "if(!window.__cw){window.__cw=[];const w=console.warn,er=console.error;console.warn=function(...a){__cw.push('W '+a.map(String).join(' ').slice(0,300));return w.apply(this,a)};"
@@ -195,7 +222,7 @@ try:
               "const L=document.getElementById('login');if(L)L.style.display='none';return 'in '+USER.n}catch(e){return 'ERR '+e.message}})()")
         out('sign-in:', js(SI, 300))
         if wait_for(js, "!!(USER&&USER.n=='john'&&USER.disk&&hdOn())", 300) is not True:
-            time.sleep(30); out('sign-in again:', js(SI, 300)); wait_for(js, "!!(USER&&USER.n=='john'&&USER.disk&&hdOn())", 300)
+            pick(g, js); time.sleep(30); out('sign-in again:', js(SI, 300)); wait_for(js, "!!(USER&&USER.n=='john'&&USER.disk&&hdOn())", 300)
         ok('S0c. the desktop in the shell (Oracle\'s real tabs), the account signed in with its own folder', js("!!(SHELL&&USER&&USER.n=='john'&&hdOn())", 30) is True,
            js("JSON.stringify({shell:typeof SHELL!='undefined'&&!!SHELL,user:USER&&USER.n,hd:typeof hdOn=='function'&&hdOn()})", 30))
         out('engine/shell:', js("JSON.stringify({engine:RD&&RD.engine,shell:typeof SHELL!='undefined'&&!!SHELL,user:USER&&USER.n,hd:typeof hdOn=='function'&&hdOn(),lk:typeof lkOpen})", 30))

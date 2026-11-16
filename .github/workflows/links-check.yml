@@ -75,6 +75,7 @@ jobs:
           gcc -O2 $HARD_STATIC -o fix/rudolf-open iso/sys/rudolf-open.c
           gcc -O2 $HARD -o fix/rudolf-portal iso/sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto
           gcc -O2 -static -o fix/teststand iso/qt/teststand.c
+          gcc -O2 $HARD_STATIC -o fix/cdp-eval iso/sys/cdp-eval.c
           cp iso/www/index.html fix/ && ls -la fix && echo "L160_FIX=$PWD/fix" >> $GITHUB_ENV
       - name: l160 (Standard, then Native)
         run: |
