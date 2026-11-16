@@ -119,7 +119,7 @@ try:
     o = sh("/usr/lib/rudolf/modem stop; sleep 2; pgrep '^ModemManager$' >/dev/null && echo MM-RUNNING || echo MM-NOT-RUNNING; tail -2 /run/rudolf/modem.log")
     ok('6. stopped again (as when the last modem goes)', 'MM-NOT-RUNNING' in o and 'ModemManager stopped' in o, o)
     o = sh("/usr/lib/rudolf/modem status")
-    ok('7. ...status: not running, an empty list', '{"running":false,"modems":[],"notes":[]}' in o, o)
+    ok('7. ...status: not running, an empty list', '{"running":false,"modems":[],"notes":[]' in o, o)
 finally:
     try: vm and vm.stop()
     except Exception: pass

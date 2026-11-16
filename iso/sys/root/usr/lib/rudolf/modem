@@ -22,8 +22,12 @@
 #                               (auto, 5g, 4g, 3g: applied at once)
 #   modem apn MCCMNC [SIM-NAME [NETWORK-NAME]]   the operator's settings: "name|apn|user|password|source"
 #   modem airplane on|off|status   Wi-Fi, Bluetooth and the modems off together, and back as they were
+# 1.6.0 (Part 3): the connection
+#   modem connect MODEM | disconnect MODEM   (by the person: Disconnect keeps it off until Connect)
+#   modem watch                 (started with ModemManager) turns modems on, connects automatically, notes failover
 # The places can be moved for the host tests: RUDOLF_MODEM_SYS, RUDOLF_MODEM_DEV, RUDOLF_RUN, RUDOLF_MODEM_LOG,
-# RUDOLF_MODEM_PERSIST, RUDOLF_MM_FCC_AVAIL, RUDOLF_MM_FCC_DIR, RUDOLF_MBPI, RUDOLF_APN_FIXES, RUDOLF_RFKILL.
+# RUDOLF_MODEM_PERSIST, RUDOLF_MM_FCC_AVAIL, RUDOLF_MM_FCC_DIR, RUDOLF_MBPI, RUDOLF_APN_FIXES, RUDOLF_RFKILL,
+# RUDOLF_RESOLV, RUDOLF_PROCNET, RUDOLF_NAT64, RUDOLF_CELL_METRIC, RUDOLF_FIREWALL.
 # GPL-2.0-or-later.
 export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
 BUS=/run/dbus/system_bus_socket; LOG=${RUDOLF_MODEM_LOG:-/run/rudolf/modem.log}; DEVS=${RUDOLF_MODEM_DEV:-/dev}
@@ -68,10 +72,12 @@ start() {
 	echo "$(date) ModemManager started (${NOU:-with udev})" >> $LOG
 	# on the bus, then (without udev) told of the ports already there
 	for i in $(seq 50); do mmcli -L >/dev/null 2>&1 && break; sleep 0.2; done
+	watch_start
 	with_udev && return 0
 	for p in $(ports); do report add $p; done
 }
-stop() { running || return 0; pkill '^ModemManager$'; echo "$(date) ModemManager stopped (no modem left)" >> $LOG; }
+stop() { for f in $R/cellular/*; do [ -f "$f" ] && ifdown_cell "$(cat $f)"; done; rm -f $R/modem-watch.pid
+	running || return 0; pkill '^ModemManager$'; echo "$(date) ModemManager stopped (no modem left)" >> $LOG; }
 esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 # a modem's USB or PCI id (vvvv:pppp) from its sysfs path (ModemManager's Device), the device itself or a parent
 devid() { d=$SYS${1#/sys}; for i in 1 2 3 4; do
@@ -105,21 +111,22 @@ END{pin=puk="";n=V["modem.generic.unlock-retries.length"]+0
 	sim=V["sim.dbus-path"]!=""?"true":"false"
 	imei=v("modem.3gpp.imei");if(imei=="")imei=v("modem.generic.equipment-identifier");if(length(imei)>6)imei=substr(imei,1,6)"…"
 	printf "{\"id\":%s,\"maker\":\"%s\",\"model\":\"%s\",\"firmware\":\"%s\",\"driver\":\"%s\",\"plugin\":\"%s\",\"state\":\"%s\",\"failed\":\"%s\",\"locked\":\"%s\",\"retries\":{\"pin\":%s,\"puk\":%s},", id,e(v("modem.generic.manufacturer")),e(v("modem.generic.model")),e(v("modem.generic.revision")),e(list("modem.generic.drivers")),e(v("modem.generic.plugin")),v("modem.generic.state"),v("modem.generic.state-failed-reason"),v("modem.generic.unlock-required"),pin==""?"null":pin,puk==""?"null":puk
-	printf "\"sim\":%s,\"simOp\":\"%s\",\"simName\":\"%s\",\"operator\":\"%s\",\"opcode\":\"%s\",\"reg\":\"%s\",\"signal\":\"%s\",\"tech\":\"%s\",\"imei\":\"%s\",\"power\":\"%s\",\"port\":\"%s\",\"usb\":\"%s\",\"fcc\":\"%s\",\"fccId\":\"%s\"}", sim,e(v("sim.properties.operator-code")),e(v("sim.properties.operator-name")),e(v("modem.3gpp.operator-name")),e(v("modem.3gpp.operator-code")),v("modem.3gpp.registration-state"),v("modem.generic.signal-quality.value"),e(list("modem.generic.access-technologies")),e(imei),v("modem.generic.power-state"),e(v("modem.generic.primary-port")),usb,fcc,fccid}'
+	printf "\"sim\":%s,\"simOp\":\"%s\",\"simName\":\"%s\",\"operator\":\"%s\",\"opcode\":\"%s\",\"reg\":\"%s\",\"signal\":\"%s\",\"tech\":\"%s\",\"imei\":\"%s\",\"power\":\"%s\",\"port\":\"%s\",\"usb\":\"%s\",\"fcc\":\"%s\",\"fccId\":\"%s\",\"iface\":\"%s\"}", sim,e(v("sim.properties.operator-code")),e(v("sim.properties.operator-name")),e(v("modem.3gpp.operator-name")),e(v("modem.3gpp.operator-code")),v("modem.3gpp.registration-state"),v("modem.generic.signal-quality.value"),e(list("modem.generic.access-technologies")),e(imei),v("modem.generic.power-state"),e(v("modem.generic.primary-port")),usb,fcc,fccid,cif}'
 status() {
-	L=$(mmcli -K -L 2>/dev/null); rc=$?; R=false; [ $rc = 0 ] && running && R=true
-	printf '{"running":%s,"modems":[' "$R"; first=1
-	if [ $R = true ]; then
+	L=$(mmcli -K -L 2>/dev/null); rc=$?; RN=false; [ $rc = 0 ] && running && RN=true
+	printf '{"running":%s,"modems":[' "$RN"; first=1
+	if [ $RN = true ]; then
 		for p in $(printf '%s\n' "$L" | grep -o '/org/freedesktop/ModemManager1/Modem/[0-9]*'); do
 			n=${p##*/}; K=$(mmcli -m $n -K 2>/dev/null) || continue
 			S=$(printf '%s\n' "$K" | sed -n 's/^modem\.generic\.sim  *: //p'); SK=""
 			case "$S" in /org/*) SK=$(mmcli -i "${S##*/}" -K 2>/dev/null);; esac
 			U=$(devid "$(printf '%s\n' "$K" | sed -n 's/^modem\.generic\.device  *: //p')"); set -- $(fcc_of "$U")
 			[ $first = 1 ] || printf ','; first=0
-			printf '%s\n%s\n' "$K" "$SK" | awk -v id="$n" -v usb="$U" -v fcc="$1" -v fccid="${2#-}" "$J_AWK"
+			printf '%s\n%s\n' "$K" "$SK" | awk -v id="$n" -v usb="$U" -v fcc="$1" -v fccid="${2#-}" -v cif="$(cellif_of $n)" "$J_AWK"
 		done
 	fi
-	printf '],"notes":%s}\n' "$(notes)"
+	b=$(best); c=false; { [ -n "$b" ] && { [ -e $R/cellular/$b ] || [ "$b" = clat ]; }; } && c=true
+	printf '],"notes":%s,"route":"%s","cellular":%s}\n' "$(notes)" "$b" "$c"
 }
 # 1.6.0 (Part 1): the FCC unlock turned on or off for one module (rudolfd: an administrator's name and password first)
 fcc() {
@@ -222,6 +229,7 @@ settings() {   # MODEM: the SIM's settings and what is automatic
 $A
 EOF
 		printf '"auto":{"name":%s,"apn":%s,"user":%s,"source":%s},' "$(js_s "$an")" "$(js_s "$aa")" "$(js_s "$au")" "$(js_s "$asrc")"; else printf '"auto":null,'; fi
+	printf '"autoconnect":%s,"off":%s,' "$([ "$(cget "$F" autoconnect)" = 0 ] && echo false || echo true)" "$([ -e "$(offkey)" ] && echo true || echo false)"
 	printf '"apn":%s,"apnuser":%s,"apnpass":%s,"roaming":%s,"mode":%s,"modes":[%s]}\n' "$(js_s "$(cget "$F" apn)")" "$(js_s "$(cget "$F" apnuser)")" "$([ -n "$(cget "$F" apnpass)" ] && echo true || echo false)" \
 		"$([ "$(cget "$F" roaming)" = 1 ] && echo true || echo false)" "$(js_s "$(mode_now)")" "$(mode_choices | sed 's/\([a-z0-9]*\)/"\1"/g; s/ /,/g')"; }
 # the APN in use for this SIM: the one typed in, else the automatic one ("apn|user|password")
@@ -235,6 +243,7 @@ setting() {   # MODEM KEY VALUE (rudolfd has checked the value's characters)
 		[ -z "$3" ] && { cset "$F" apnuser ""; cset "$F" apnpass ""; };;
 	apnuser|apnpass) printf '%s' "$3" | grep -qE "^[^,'\"\\\\]{0,64}$" || { echo "That name or password has a character the modem cannot take (a comma or a quote)."; return 1; }; cset "$F" "$2" "$3";;
 	roaming) case "$3" in 0|1) cset "$F" roaming "$3";; *) echo "roaming: 0 or 1"; return 1;; esac;;
+	autoconnect) case "$3" in 0|1) cset "$F" autoconnect "$3";; *) echo "autoconnect: 0 or 1"; return 1;; esac;;
 	mode) case "$3" in auto|5g|4g|3g) ;; *) echo "mode: auto, 5g, 4g or 3g"; return 1;; esac; mode_apply "$1" "$3" || return 1; cset "$F" mode "$3";;
 	*) echo "no such setting: $2"; return 1;; esac
 	echo "saved"; }
@@ -251,6 +260,120 @@ airplane() {
 		while read -r k a b c; do case "$k" in rf) [ "$c" = 0 ] && [ -e "$RF/$a/soft" ] && echo 0 > "$RF/$a/soft" 2>/dev/null;; mm) [ "$b" = on ] && timeout 30 mmcli -m "$a" --enable >/dev/null 2>&1;; esac; done < $AS
 		rm -f $AS; echo "$(date) airplane mode off" >> $LOG; echo "Airplane mode is off";;
 	*) printf '{"on":%s}\n' "$([ -e $AS ] && echo true || echo false)";; esac; }
+# ---- 1.6.0 (Part 3): the connection ----
+# Cable, then Wi-Fi, then cellular: their default routes' metrics (100, 600, 700; udhcpc.sh gives the first two), and
+# routes on an interface whose link went down ignored at once (ignore_routes_with_linkdown), so cellular stays connected
+# but unused while Wi-Fi works and carries the traffic as soon as Wi-Fi drops. ModemManager connects (its bearer);
+# Rudolf OS sets the interface up as the bearer says (static addresses, or DHCP where the modem hands them out that way),
+# its DNS (RUN/dns/IF, as udhcpc.sh keeps them), the firewall's cellular set (firewall cellular add IF), and, on an
+# IPv6-only network, a CLAT (tayga, 464XLAT: IPv4 programs reach IPv4 sites through the operator's NAT64).
+# A watch (modem watch, while ModemManager runs) turns modems on, connects automatically (the SIM's "auto", on by
+# default; not while roaming unless roaming is allowed; not after Disconnect until Connect; not in airplane mode), and
+# notes when the connection in use moves to cellular or back (RUN/cell-notes: rudolfd's mobile/notes, both desktops).
+CM=${RUDOLF_CELL_METRIC:-700}; RESOLV=${RUDOLF_RESOLV:-/etc/resolv.conf}; PROCNET=${RUDOLF_PROCNET:-/proc/sys/net}
+NAT64=${RUDOLF_NAT64:-}; FW=${RUDOLF_FIREWALL:-/usr/lib/rudolf/firewall}
+best() { ip route 2>/dev/null | awk '/^default/{d="";m=0;for(i=1;i<NF;i++){if($i=="dev")d=$(i+1);if($i=="metric")m=$(i+1)}if(d!=""&&$0!~/linkdown/)print m+0, d}' | sort -n | head -1 | cut -d' ' -f2; }
+resolv() { b=$(best); [ -n "$b" ] && [ -f "$R/dns/$b" ] && cat "$R/dns/$b" > "$RESOLV" 2>/dev/null; true; }
+note() { mkdir -p $R; n=$(( $(sed -n '$s/|.*//p' $R/cell-notes 2>/dev/null || echo 0) + 1 )); printf '%s|%s|%s\n' "$n" "$1" "$2" >> $R/cell-notes
+	[ "$(wc -l < $R/cell-notes)" -gt 40 ] && { tail -20 $R/cell-notes > $R/cell-notes.new; mv $R/cell-notes.new $R/cell-notes; }; echo "$(date) $1: $2" >> $LOG; }
+bkv() { printf '%s\n' "$BK" | sed -n "s/^bearer\.$1  *: //p" | head -1 | sed 's/^--$//'; }
+bkl() { printf '%s\n' "$BK" | sed -n "s/^bearer\.$1\.value\[[0-9]*\]  *: //p"; [ -n "$(bkv "$1")" ] && bkv "$1"; }
+bearer_of() { printf '%s\n' "$MK" | sed -n 's#^modem\.generic\.bearers\.value\[[0-9]*\]  *: /org/freedesktop/ModemManager1/Bearer/##p' | head -1; }
+cellif_of() { for f in $R/cellular/*; do [ -f "$f" ] && [ "$(cat $f)" = "$1" ] && { echo "${f##*/}"; return; }; done; }
+linkdown_ignored() { for v in ipv4 ipv6; do for c in all default; do f=$PROCNET/$v/conf/$c/ignore_routes_with_linkdown; [ -w "$f" ] && echo 1 > "$f"; done; done; }
+# the operator's NAT64 prefix (RFC 7050: ipv4only.arpa's IPv6 addresses through its DNS), else the well-known one
+nat64() { [ -n "$NAT64" ] && { echo "$NAT64"; return; }
+	for d in $(sed -n 's/^nameserver //p' "$R/dns/$1" 2>/dev/null); do a=$(nslookup -type=AAAA ipv4only.arpa "$d" 2>/dev/null | sed -n 's/^Address: *\([0-9a-fA-F:]*:c000:aa\)$/\1/p' | head -1)
+		[ -n "$a" ] && { echo "${a%c000:aa}/96"; return; }; done; echo 64:ff9b::/96; }
+# the CLAT's own IPv6 address: in the cellular interface's /64 (the operator routes all of it to the modem), ::c1a7
+v6c1a7() { printf '%s\n' "$1" | awk -F'::' '{n=split($1,h,":");if(NF>1){m=split($2,t,":")}else m=0;if($1=="")n=0;k=0
+	for(i=1;i<=n;i++)g[++k]=h[i];for(i=n+m;i<8;i++)g[++k]="0";for(i=1;i<=m;i++)g[++k]=t[i];printf "%s:%s:%s:%s::c1a7\n",g[1],g[2],g[3],g[4]}'; }
+clat_stop() { [ -s $R/clat/tayga.pid ] && kill "$(cat $R/clat/tayga.pid)" 2>/dev/null; ip link del clat 2>/dev/null; ip route del default dev clat 2>/dev/null; rm -rf $R/clat $R/dns/clat; }
+clat_start() {   # IF V6ADDR: IPv4 through the operator's NAT64 (tayga as a CLAT, 192.0.0.1 here)
+	command -v tayga >/dev/null || { note "Mobile data: IPv6 only" "This network has no IPv4 and this build has no CLAT: IPv4-only sites cannot be reached."; return 1; }
+	clat_stop; mkdir -p $R/clat; P=$(nat64 "$1"); C=$(v6c1a7 "$2")
+	printf 'tun-device clat\nipv4-addr 192.0.0.2\nprefix %s\nmap 192.0.0.1 %s\ndata-dir %s/clat\n' "$P" "$C" "$R" > $R/clat/tayga.conf
+	tayga -c $R/clat/tayga.conf --mktun >/dev/null 2>&1 || { note "Mobile data: IPv6 only" "The CLAT could not start (no TUN device?): IPv4-only sites cannot be reached."; return 1; }
+	ip link set clat up; ip link set clat mtu 1260; ip addr add 192.0.0.1/32 dev clat; ip route replace default dev clat metric $CM
+	ip -6 route replace "$C/128" dev clat
+	echo 1 > $PROCNET/ipv6/conf/all/forwarding 2>/dev/null; for f in $PROCNET/ipv6/conf/*/accept_ra; do [ "$(cat $f 2>/dev/null)" = 1 ] && echo 2 > $f; done
+	tayga -c $R/clat/tayga.conf -p $R/clat/tayga.pid >/dev/null 2>&1
+	cp "$R/dns/$1" "$R/dns/clat" 2>/dev/null; echo "$1 $P $C" > $R/clat/info; }
+ifup_cell() {   # MODEM: its bearer's interface set up as ModemManager says
+	MK=$(mmcli -m "$1" -K 2>/dev/null); B=$(bearer_of); [ -n "$B" ] || return 1; BK=$(mmcli -b "$B" -K 2>/dev/null)
+	[ "$(bkv status.connected)" = yes ] || return 1; IF=$(bkv status.interface); [ -n "$IF" ] || return 1
+	mkdir -p $R/cellular $R/dns; echo "$1" > $R/cellular/$IF; linkdown_ignored
+	ip link set "$IF" up; mtu=$(bkv ipv4-config.mtu); [ -n "$mtu" ] && ip link set "$IF" mtu "$mtu" 2>/dev/null
+	m4=$(bkv ipv4-config.method); a4=$(bkv ipv4-config.address); p4=$(bkv ipv4-config.prefix); g4=$(bkv ipv4-config.gateway)
+	m6=$(bkv ipv6-config.method); a6=$(bkv ipv6-config.address); p6=$(bkv ipv6-config.prefix); g6=$(bkv ipv6-config.gateway)
+	{ for d in $(bkl ipv4-config.dns) $(bkl ipv6-config.dns); do echo "nameserver $d"; done; } > $R/dns/$IF
+	if [ "$m4" = static ] && [ -n "$a4" ]; then ip -4 addr flush dev "$IF"; ip addr add "$a4/${p4:-32}" dev "$IF"
+		if [ -n "$g4" ]; then ip route replace default via "$g4" dev "$IF" metric $CM; else ip route replace default dev "$IF" metric $CM; fi
+	elif [ "$m4" = dhcp ]; then mkdir -p $R/udhcpc; [ -e $R/udhcpc/$IF.pid ] || udhcpc -b -i "$IF" -p $R/udhcpc/$IF.pid -s /usr/lib/rudolf/udhcpc.sh >/dev/null 2>&1; fi
+	if [ "$m6" = static ] && [ -n "$a6" ]; then ip -6 addr add "$a6/${p6:-64}" dev "$IF" 2>/dev/null
+		if [ -n "$g6" ]; then ip -6 route replace default via "$g6" dev "$IF" metric $CM; else ip -6 route replace default dev "$IF" metric $CM; fi
+	elif [ -n "$m6" ]; then echo 2 > $PROCNET/ipv6/conf/$IF/accept_ra 2>/dev/null; fi
+	$FW cellular add "$IF" >/dev/null 2>&1
+	if [ -z "$a4" ] && [ "$m4" != dhcp ] && [ -n "$a6" ]; then clat_start "$IF" "$a6"; fi
+	resolv; echo "$(date) modem $1 connected on $IF (${a4:-no IPv4}${a6:+, $a6})" >> $LOG; }
+ifdown_cell() {   # MODEM
+	IF=$(cellif_of "$1"); [ -n "$IF" ] || return 0
+	[ -n "$(cat $R/clat/info 2>/dev/null | cut -d' ' -f1 | grep -x "$IF")" ] && clat_stop
+	p=$(cat $R/udhcpc/$IF.pid 2>/dev/null); [ -n "$p" ] && kill "$p" 2>/dev/null; rm -f $R/udhcpc/$IF.pid
+	ip route del default dev "$IF" 2>/dev/null; ip -6 route del default dev "$IF" 2>/dev/null; ip addr flush dev "$IF" 2>/dev/null
+	$FW cellular del "$IF" >/dev/null 2>&1
+	rm -f $R/cellular/$IF $R/dns/$IF; resolv; }
+offkey() { echo "$R/cell-off/$(basename "$(simconf)" .conf)"; }
+connect() {   # MODEM [user]: ModemManager connects with the SIM's APN and roaming setting, then the interface is set up
+	modem_ok "$1" || { echo "There is no such modem."; return 1; }
+	[ -e $R/airplane ] && { echo "Airplane mode is on: turn it off to use mobile data."; return 1; }
+	[ "$2" = user ] && rm -f "$(offkey)"
+	[ -e "$R/data-off/$(basename "$(simconf)" .conf)" ] && [ "$2" != user ] && return 1
+	F=$(simconf); A=$(apn_use); apn=$(echo "$A" | cut -d'|' -f1); u=$(echo "$A" | cut -d'|' -f2); pw=$(echo "$A" | cut -d'|' -f3)
+	roam=no; [ "$(cget "$F" roaming)" = 1 ] && roam=yes
+	reg=$(mkv "$MK" 'modem\.3gpp\.registration-state'); [ "$reg" = roaming ] && [ $roam = no ] && { echo "Roaming: mobile data is off while roaming (Settings › Mobile network)."; return 1; }
+	st=$(mkv "$MK" 'modem\.generic\.state'); case "$st" in connected) ifup_cell "$1"; echo "Connected"; return 0;; disabled) timeout 30 mmcli -m "$1" --enable >/dev/null 2>&1;; esac
+	props="ip-type=ipv4v6,allow-roaming=$roam"; [ -n "$apn" ] && props="apn=$apn,$props"; [ -n "$u" ] && props="$props,user=$u"; [ -n "$pw" ] && props="$props,password=$pw"
+	o=$(timeout 90 mmcli -m "$1" --simple-connect="$props" 2>&1) || { w=${o##*: }; w=${w%\'}
+		case "$o" in *MissingOrUnknownApn*|*UnknownApn*) echo "The network refused the APN ($apn): check it in Settings › Mobile network (capitals matter on some networks).";;
+		*Unauthorized*oaming*) echo "Roaming: the network refused mobile data while roaming.";; *) echo "Could not connect: $w";; esac
+		echo "$(date) modem $1: could not connect: $o" >> $LOG; return 1; }
+	ifup_cell "$1" || { echo "Connected, but the modem gave no network interface."; return 1; }; echo "Connected"; }
+disconnect() {   # MODEM [user]: by the person (Disconnect): not connected again automatically until Connect
+	modem_ok "$1" || { echo "There is no such modem."; return 1; }
+	[ "$2" = user ] && { mkdir -p $R/cell-off; : > "$(offkey)"; }
+	ifdown_cell "$1"; timeout 30 mmcli -m "$1" --simple-disconnect >/dev/null 2>&1; echo "Disconnected"; }
+watch() {
+	echo $$ > $R/modem-watch.pid; last=$(best); k=0
+	while running && [ "$(cat $R/modem-watch.pid 2>/dev/null)" = $$ ]; do
+		if [ $k = 0 ] && [ ! -e $R/airplane ]; then
+			for p in $(mmcli -K -L 2>/dev/null | grep -o '/org/freedesktop/ModemManager1/Modem/[0-9]*'); do n=${p##*/}; MK=$(mmcli -m $n -K 2>/dev/null) || continue
+				st=$(mkv "$MK" 'modem\.generic\.state'); F=$(simconf)
+				case "$st" in
+				disabled) timeout 30 mmcli -m $n --enable >/dev/null 2>&1;;
+				registered) [ "$(cget "$F" autoconnect)" = 0 ] || [ -e "$(offkey)" ] || connect $n >/dev/null 2>&1;;
+				connected) [ -n "$(cellif_of $n)" ] || ifup_cell $n;;
+				esac
+			done
+			# a modem that is gone, or no longer connected: its interface undone
+			for f in $R/cellular/*; do [ -f "$f" ] || continue; n=$(cat $f); s=$(mmcli -m $n -K 2>/dev/null | sed -n 's/^modem\.generic\.state  *: //p'); [ "$s" = connected ] || ifdown_cell $n; done
+		fi
+		k=$(( (k + 1) % 3 ))
+		now=$(best)
+		if [ "$now" != "$last" ]; then
+			if [ -n "$now" ] && { [ -e $R/cellular/$now ] || [ "$now" = clat ]; }; then
+				case "$last" in "") note "📶 Mobile data connected" "The computer is online through the cellular modem (metered: updates and other large downloads wait).";;
+				*) note "📶 Using mobile data" "The $(kindname "$last") connection is gone: mobile data carries the traffic now (metered: updates and other large downloads wait).";; esac
+			elif [ -n "$last" ] && { [ -e $R/cellular/$last ] || [ "$last" = clat ] || [ -n "$(cat $R/cell-last 2>/dev/null)" ]; } && [ -n "$now" ]; then
+				[ -n "$(cat $R/cell-last 2>/dev/null)" ] && note "📶 Back on $(kindname "$now")" "Mobile data stays connected, unused, in case $(kindname "$now") drops again."
+			fi
+			{ [ -e $R/cellular/$now ] || [ "$now" = clat ]; } && echo "$now" > $R/cell-last || rm -f $R/cell-last
+			last=$now; resolv
+		fi
+		sleep 2
+	done; }
+kindname() { if [ -e "$SYS/class/net/$1/wireless" ] || [ -e "$SYS/class/net/$1/phy80211" ] || [ "$(cat $R/wifi-if 2>/dev/null)" = "$1" ]; then echo Wi-Fi; else case "$1" in wl*) echo Wi-Fi;; *) echo cable;; esac; fi; }
+watch_start() { [ -s $R/modem-watch.pid ] && kill -0 "$(cat $R/modem-watch.pid)" 2>/dev/null && return 0; (setsid "$0" watch </dev/null >/dev/null 2>&1 &); }
 case "$1" in
 hotplug)
 	# (one at a time: a modem's ports come together, and the first one starts ModemManager and reports them all)
@@ -267,5 +390,8 @@ settings) settings "$2" ;;
 set) setting "$2" "$3" "$4" ;;
 apn) apn_find "$2" "$3" "$4" ;;
 airplane) airplane "$2" ;;
-*) echo "usage: modem hotplug|start|stop|status|fcc|pin|puk|settings|set|apn|airplane"; exit 2 ;;
+connect) connect "$2" user ;;
+disconnect) disconnect "$2" user ;;
+watch) watch ;;
+*) echo "usage: modem hotplug|start|stop|status|fcc|pin|puk|settings|set|apn|airplane|connect|disconnect|watch"; exit 2 ;;
 esac
