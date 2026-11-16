@@ -1965,7 +1965,7 @@ static void bar_click(int h)
 	else if (!strcmp(t->kind, "vol")) fl_open(2);   /* (the volume's pop-up) */
 	else if (!strcmp(t->kind, "net")) fl_open(FL_NET);   /* (the network's pop-up, net31.js net31Pop) */
 	else if (!strcmp(t->kind, "bri")) fl_open(FL_BRI);   /* (1.6.0: the brightness's pop-up, briPop) */
-	else if (!strcmp(t->kind, "vkt")) { VK_SHOWN = !VK_SHOWN; vk_sync(); }   /* (1.6.0: the on-screen keyboard shown or hidden, vkt.onclick) */
+	else if (!strcmp(t->kind, "vkt")) { VK_SHOWN = !VK_SHOWN; vk_sync(); state_write(); }   /* (1.6.0: the on-screen keyboard shown or hidden, vkt.onclick) */
 	else if (!strcmp(t->kind, "call")) { char p[40]; snprintf(p, sizeof p, "/api/mic?muted=%d", !MIC_MUTED); GByteArray *b = NULL; JV *v = NULL;   /* (call59Toggle: the microphone muted for everything, or not) */
 		if (http("POST", p, NULL, 0, &b) == 200 && b) v = jparse((char *)b->data); if (b) g_byte_array_free(b, TRUE);
 		if (v) { MIC_MUTED = jbool(v, "muted"); JV *u = jprop(v, "users"); if (u && u->t == 4) MIC_N = u->len; } jfree(v); bar_redraw(); }
@@ -4548,7 +4548,7 @@ static void qs_toggle(int i)
 	if (i < 0 || i > 7) return; int on = !qs_get(i); qs_set(i, on); char *e = qesc(QSL[i]), ex[160]; snprintf(ex, sizeof ex, "&item=%s&on=%d", e, on); g_free(e); app_open_ex("do-qs", NULL, ex, 1);
 	if (i == 2) bar_redraw();
 	if (i == 4) { MAG_SAVED = on; if (on && S.magz > 0) MAGZ = S.magz; mag_set(on); }   /* (the magnifier now; its keys only zoom) */
-	a11y_apply(); if (WM_OK && (i == 0 || i == 5)) frames_redraw();   /* (1.6.0: at once, for the whole screen: its colour, the magnifier, the keyboard, touch mode's sizes) */
+	a11y_apply(); if (WM_OK && (i == 0 || i == 5)) frames_redraw(); state_write();   /* (1.6.0: at once, for the whole screen: its colour, the magnifier, the keyboard, touch mode's sizes) */
 }
 static void fl_act(const char *k, int dbl)
 {
@@ -5028,14 +5028,13 @@ static void mag_set(int on)
 		{ cairo_region_t *rg = cairo_region_create(); gdk_window_input_shape_combine_region(gtk_widget_get_window(MAGW), rg, 0, 0); cairo_region_destroy(rg); }   /* (the pointer goes through) */
 		if (!MAG_T) MAG_T = g_timeout_add(50, mag_tick, NULL); mag_tick(NULL);
 	} else { if (MAGW) gtk_widget_hide(MAGW); if (redir) redir(DPY, ROOT, CompositeRedirectAutomatic); }
-	state_write();
 }
 static void mag_zoom(double dz)
 {
 	/* (magin: on at 1.5, else half a step more, at most 8; magout: half a step less, off at 1) */
 	if (dz > 0) { if (!S.mag) { S.mag = 1; MAGZ = 1.5; } else MAGZ = fmin(8, MAGZ + .5); }
 	else { MAGZ = fmax(1, MAGZ - .5); if (MAGZ <= 1) { S.mag = 0; MAGZ = 2; } }
-	mag_set(S.mag);
+	mag_set(S.mag); state_write();
 }
 
 /* ------------------------------------------------------------------ the on-screen keyboard (base_v24.html #vkb, vkSync, the taskbar's ⌨)
@@ -5057,9 +5056,9 @@ static void vk_sync(void)
 		ctx_make(); VKW = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(VKW), "On-screen keyboard"); gtk_window_set_accept_focus(GTK_WINDOW(VKW), FALSE);
 		VKV = GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", CTX, "user-content-manager", UCM, NULL)); gtk_container_add(GTK_CONTAINER(VKW), VKV);
 		char *u = app_url("do-vk", NULL, 0, NULL); webkit_web_view_load_uri(WEBKIT_WEB_VIEW(VKV), u); g_free(u); }
-	if (!VKW) { state_write(); return; }
+	if (!VKW) return;
 	if (show) { vk_place(); gtk_widget_show_all(VKW); XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(VKW))); } else gtk_widget_hide(VKW);
-	bar_redraw(); state_write();
+	bar_redraw();   /* (no state written here: a11y_apply runs inside settings_load, in the middle of signing in) */
 }
 /* (a window that is not a page of the shell's, Oracle's in Chromium or a Linux app's: the key typed as the keyboard would, through
    XTest; a character the keyboard map lacks is put on a spare key for the moment, as xdotool does) */
@@ -5086,7 +5085,7 @@ static void vk_xtest(const char *c, const char *sp)
 static void vk_msg(JSCValue *v)
 {
 	char c[64] = "", sp[16] = "", x[8] = "", h[8] = ""; jsstr(v, "c", c, sizeof c); jsstr(v, "sp", sp, sizeof sp); jsstr(v, "x", x, sizeof x); jsstr(v, "h", h, sizeof h); jsstr(v, "keys", VKKEYS, sizeof VKKEYS);
-	if (x[0] == '1') { VK_SHOWN = 0; vk_sync(); return; }
+	if (x[0] == '1') { VK_SHOWN = 0; vk_sync(); state_write(); return; }
 	if (atoi(h) > 50 && atoi(h) < 800) { VK_H = atoi(h); VK_LOADED = 1; if (VKW && gtk_widget_get_visible(VKW)) vk_place(); return; }
 	if (!c[0] && !sp[0]) return;
 	Client *f = FOCUS; AppWin *a = f && f->app ? f->app : NULL; if (!a && !WM_OK) a = ACTIVE;
@@ -5109,7 +5108,7 @@ static void a11y_apply(void)
 	static int TH0; int th = (int)lround(40 * Z);
 	if (S.touch && TH < th) { TH0 = TH; TH = th; if (WM_OK) { wm_relayout(); frames_redraw(); } }
 	else if (!S.touch && TH0) { if (TH == th) TH = TH0; TH0 = 0; if (WM_OK) { wm_relayout(); frames_redraw(); } }
-	bar_redraw(); state_write();
+	bar_redraw();
 }
 /* (the user script every page of the shell gets: what the shell does for the whole screen, so the page does not do it again) */
 static char *shell_script(void)
@@ -5163,7 +5162,7 @@ static void sc_taskmgr(void) { tm_urgent(); }
 static void sc_sr(void) { qs_toggle(3); }
 static void sc_magin(void) { mag_zoom(1); }
 static void sc_magout(void) { mag_zoom(-1); }
-static void sc_magoff(void) { S.mag = 0; mag_set(0); }
+static void sc_magoff(void) { S.mag = 0; mag_set(0); state_write(); }
 static void sc_page(const char *id)
 {
 	Client *f = FOCUS; AppWin *a = f && f->app ? f->app : NULL; if (!a && !WM_OK) a = ACTIVE; if (!a || !a->view || a->hidden) return;
