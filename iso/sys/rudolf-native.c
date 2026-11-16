@@ -34,6 +34,7 @@
 #include <X11/XKBlib.h>
 #include <X11/extensions/Xrandr.h>
 #include <X11/extensions/Xcomposite.h>
+#include <X11/extensions/XInput2.h>
 #include <cairo-xlib.h>
 #include <arpa/inet.h>
 #include <dlfcn.h>
@@ -271,7 +272,7 @@ static void text_atz(cairo_t *cr, const char *t, double x, double y, double w, d
 /* ------------------------------------------------------------------ the tests' view of the screen */
 typedef struct { int x, y, w, h; char kind[12], arg[80]; } Hit;
 static Hit HITS[96]; static int NHITS;
-static void state_write(void);
+static void state_write(void); static void kb_sync(void);
 typedef struct JV JV; static void di_layout(void); static void di_load(JV *cat);   /* (the desktop's icons, below) */
 static gint64 UNLOCK_T; static void sys_load(JV *v); static void sc_load(JV *v); static void wg_paint(cairo_t *cr); static void wg_load(JV *v); static void jumps_load(JV *v); static void wg_dirty_kind(const char *t); static void wg_picker(void);   /* (the widgets, below) */
 static int wg_shown(void); static int NWG_ALL_DIRTY;
@@ -502,6 +503,7 @@ static void toast_add(AppWin *from, JSCValue *v);
 static void tb_settings(const char *page);
 static void nt_note(JSCValue *v);
 static void open_with(const char *file, const char *key);
+static void kbcap_msg(AppWin *a, int on);
 static void hfs_msg(AppWin *a, JSCValue *v);   /* (folders on this device: test finding N7) */
 static void ctx_msg(AppWin *a, JSCValue *v);   /* (an app's right-click menu, over the screen: test finding N21) */
 /* (1.5.9, 12.3c) Oracle's Chromium and the WebKit windows: the files one (rudolfd's mirror), the indicator of the keys the native
@@ -544,6 +546,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "set")) { jsstr(v, "id", x, sizeof x); if (id_ok(x)) settings_changed(x, a); }   /* (a window saved its settings: the shell and the other windows at once) */
 	else if (!strcmp(op, "osd")) { char k[16] = "", lv[8] = "", n[8] = ""; jsstr(v, "k", k, sizeof k); jsstr(v, "lv", lv, sizeof lv); jsstr(v, "label", x, sizeof x); jsstr(v, "n", n, sizeof n); osd_show(k, lv, x, n); }
 	else if (!strcmp(op, "fs")) { jsstr(v, "on", x, sizeof x); appwin_fs(a, x[0] == '1'); }   /* (the page's own full screen: the window covers the screen, test finding N1) */
+	else if (!strcmp(op, "kbcap")) { jsstr(v, "on", x, sizeof x); kbcap_msg(a, x[0] == '1'); }   /* (a page that has every key for a moment: the computer check's keyboard, Settings' Press keys…) */
 	else if (!strcmp(op, "hfs")) hfs_msg(a, v);
 	else if (!strcmp(op, "ctx")) ctx_msg(a, v);   /* (File Explorer's Folders on this device: the folder picker and its files, N7) */
 	else if (!strcmp(op, "sfx")) { char k[16] = "", vv[24] = ""; jsstr(v, "k", k, sizeof k); jsstr(v, "v", vv, sizeof vv); char *pj = NULL; JSCValue *pv = jsc_value_object_get_property(v, "p");
@@ -564,10 +567,10 @@ static void on_crash(WebKitWebView *v, WebKitWebProcessTerminationReason r, gpoi
 {
 	(void)d; fprintf(stderr, "rudolf-native: an app's page stopped (%d): loading it again\n", (int)r); g_timeout_add_seconds(1, on_crash_reload, v);
 }
-static void clients_forget(AppWin *a); static void srch_gone(AppWin *a);
+static void clients_forget(AppWin *a); static void kbcap_gone(AppWin *a); static void srch_gone(AppWin *a);
 static void on_win_destroy(GtkWidget *w, gpointer d)
 {
-	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL; srch_gone(a); if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
+	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL; kbcap_gone(a); srch_gone(a); if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
 	clients_forget(a);   /* (its frame goes when X says so: not this window's any more) */
 	g_free(a); bar_redraw(); state_write();
 }
@@ -804,7 +807,7 @@ static void wm_focus(Client *c)
 		XSetInputFocus(DPY, GDK_WINDOW_XID(gtk_widget_get_window(DESK)), RevertToPointerRoot, CurrentTime);   /* (no window: the desktop has the keyboard, as the page's) */
 	if (old && old != c && g_list_find(CLIENTS, old)) { grab_clicks(old, 1); frame_draw(old); }
 	if (c) frame_draw(c);
-	wm_restack(); client_list(); bar_redraw(); state_write();
+	wm_restack(); client_list(); bar_redraw(); kb_sync(); state_write();
 }
 static Client *top_client(void)
 {
@@ -1250,7 +1253,8 @@ static void frame_release(Client *c, XButtonEvent *e)
 	if (b && b == btn_at(c, e->x, e->y)) { if (b == 1) wm_minimise(c); else if (b == 2) wm_maximise(c, !c->max); else wm_close(c); }
 }
 static double snd_play(const char *k); static void snd_set(JV *s); static void snd_cat(JV *v);   /* (the desktop's sounds, below: report 2) */
-static void power(const char *what); static int sc_key(XKeyEvent *e); static void sc_grab(void);
+static void power(const char *what); static int sc_key(XKeyEvent *e); static void sc_grab(void); static void xi_raw_init(void); static void kb_sync(void);
+static int XI_OP; static void xi_raw(XIRawEvent *r, int press);
 static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 {
 	(void)ev; (void)d; XEvent *e = xev; Client *c;
@@ -1261,6 +1265,10 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 		break;
 	case KeyRelease:
 		if (sc_key(&e->xkey)) return GDK_FILTER_REMOVE;
+		break;
+	case GenericEvent:   /* (XInput 2's raw keys: Super alone, 1.6.0) */
+		if (XI_OP >= 0 && e->xcookie.extension == XI_OP && e->xcookie.data && (e->xcookie.evtype == XI_RawKeyPress || e->xcookie.evtype == XI_RawKeyRelease)) {
+			xi_raw(e->xcookie.data, e->xcookie.evtype == XI_RawKeyPress); return GDK_FILTER_REMOVE; }
 		break;
 	case MapRequest:
 		if (!(c = client_of(e->xmaprequest.window))) wm_manage(e->xmaprequest.window, NULL); else { XMapWindow(DPY, c->w); wm_focus(c); }
@@ -1362,7 +1370,7 @@ static void wm_init(void)
 	/* the screen itself (where no window is, and while windows start) shows the arrow, not X's bare "✕" (1.5.9 step 7) */
 	XDefineCursor(DPY, ROOT, CUR[0]);
 	gdk_window_add_filter(NULL, wm_filter, NULL);
-	sc_grab();   /* (the page's shortcuts, the switcher and Super: item 5) */
+	xi_raw_init(); sc_grab();   /* (the page's shortcuts, the switcher and Super: item 5) */
 	/* windows already there (rudolf-native started again): framed */
 	Window r, p, *k = NULL; unsigned n = 0;
 	if (XQueryTree(DPY, ROOT, &r, &p, &k, &n)) for (unsigned i = 0; i < n; i++) {
@@ -5733,22 +5741,70 @@ static int hw_key(KeySym ks, unsigned st)
 	return 1;
 }
 static const char *sc_combo(int i) { return !SC_LOADED || SCKB[i][0] == 1 ? SC[i].def : SCKB[i]; }   /* (\1: the default) */
+/* (1.6.0, the owner's computer check on the Vivobook) the keys a page asks to have to itself (op "kbcap"): the keyboard step of Task
+   Manager's Check this computer, Settings › Keyboard's "Press keys…". On Standard the page's own shortcut handler sees every key first and
+   those two take it there (the check's listener still sees F1 and Meta; Settings' capture is skipped by the handler); on Native the
+   shell's grabs took the keys from the page (F1 opened Help in front of the check, Super the start menu, and the keys after them went
+   there: 19 keys "did not answer"). While the window that asked is in front, the shell grabs none of its shortcuts and Super alone
+   opens nothing; the hardware keys and Ctrl+Alt+Del stay the shell's, as rudolf-display keeps them before Chromium on Standard. */
+static AppWin *KBCAP; static int AT_ON, OV_ON;
+static int kb_free(void) { return KBCAP && g_list_find(WINS, KBCAP) && FOCUS && FOCUS->app == KBCAP; }
+/* (1.6.0) Super by itself, as the page's metaAlone: seen from XInput 2's raw key events on the root window (every key, whichever
+   window has the keyboard, without grabbing it), so the window in front gets Super's own press and release as a page does on
+   Standard (the check's ❖ never answered: the grab kept it from every app). Without XInput 2: grabbed, as before. */
+static int XI_OP = -1; static int SUPER_GRAB = 1;
+static void xi_raw_init(void)
+{
+	typedef int (*XiSel)(Display *, Window, XIEventMask *, int);
+	XiSel f = (XiSel)dlsym(RTLD_DEFAULT, "XISelectEvents");
+	if (!f) { void *h = dlopen("libXi.so.6", RTLD_NOW | RTLD_LOCAL); if (h) f = (XiSel)dlsym(h, "XISelectEvents"); }
+	int op, ev, er; if (!f || !XQueryExtension(DPY, "XInputExtension", &op, &ev, &er)) { fprintf(stderr, "rudolf-native: no XInput 2: Super is grabbed\n"); return; }
+	unsigned char m[XIMaskLen(XI_LASTEVENT)] = {0}; XISetMask(m, XI_RawKeyPress); XISetMask(m, XI_RawKeyRelease);
+	XIEventMask em = { XIAllMasterDevices, sizeof m, m };
+	if (f(DPY, ROOT, &em, 1) == Success) { XI_OP = op; SUPER_GRAB = 0; }
+}
+static int META_ALONE;
+static int KB_GRABBED = -1;   /* (the grabs as they are: 1 the shortcuts', 0 none while a page has the keys) */
 static void sc_grab(void)
 {
 	static const unsigned M[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask };
+	static KeyCode sl0, sr0, tb0, gr0;
 	for (int i = 0; i < NSC; i++) { if (SCKC[i]) for (int m = 0; m < 4; m++) XUngrabKey(DPY, SCKC[i], SCMOD[i] | M[m], ROOT); SCKC[i] = 0; }
-	for (int i = 0; i < NSC; i++) { KeySym ks; unsigned mod; if (!sc_parse(sc_combo(i), &mod, &ks)) continue; KeyCode kc = XKeysymToKeycode(DPY, ks); if (!kc) continue;
-		SCKC[i] = kc; SCMOD[i] = mod; for (int m = 0; m < 4; m++) XGrabKey(DPY, kc, mod | M[m], ROOT, True, GrabModeAsync, GrabModeAsync); }
+	for (int m = 0; m < 4; m++) { if (sl0) XUngrabKey(DPY, sl0, M[m], ROOT); if (sr0) XUngrabKey(DPY, sr0, M[m], ROOT);
+		for (int s = 0; s < 2; s++) { if (tb0) XUngrabKey(DPY, tb0, Mod1Mask | (s ? ShiftMask : 0) | M[m], ROOT); if (gr0) XUngrabKey(DPY, gr0, Mod1Mask | (s ? ShiftMask : 0) | M[m], ROOT); } }
+	sl0 = sr0 = tb0 = gr0 = 0;
 	/* (1.6.0) the hardware keys and Ctrl+Alt+Del, whichever window is in front: on the computer rudolf-display takes them before X does
 	   (and rudolfd's events bring them here), but where X has them (QEMU, xdotool, a keyboard X reads itself) the shell does what
 	   Standard does: the volume and the brightness a step (rudolfd, as the keys' hotkey), the microphone muted, the power dialog, Task Manager */
-	for (int i = 0; HWK[i]; i++) { KeyCode kc = XKeysymToKeycode(DPY, XStringToKeysym(HWK[i])); if (kc) for (int m = 0; m < 4; m++) XGrabKey(DPY, kc, M[m], ROOT, True, GrabModeAsync, GrabModeAsync); }
-	{ KeyCode kc = XKeysymToKeycode(DPY, XK_Delete); if (kc) for (int m = 0; m < 4; m++) XGrabKey(DPY, kc, ControlMask | Mod1Mask | M[m], ROOT, True, GrabModeAsync, GrabModeAsync); }
+	static int hw; if (!hw) { hw = 1;
+		for (int i = 0; HWK[i]; i++) { KeyCode kc = XKeysymToKeycode(DPY, XStringToKeysym(HWK[i])); if (kc) for (int m = 0; m < 4; m++) XGrabKey(DPY, kc, M[m], ROOT, True, GrabModeAsync, GrabModeAsync); }
+		{ KeyCode kc = XKeysymToKeycode(DPY, XK_Delete); if (kc) for (int m = 0; m < 4; m++) XGrabKey(DPY, kc, ControlMask | Mod1Mask | M[m], ROOT, True, GrabModeAsync, GrabModeAsync); } }
+	KB_GRABBED = !kb_free();
+	if (!KB_GRABBED) return;   /* (a page has the keys: kbcap) */
+	/* (only the exact combinations: each with its modifiers, Caps Lock and Num Lock either way; every other key, a bare arrow or F-key,
+	   Ctrl, Alt, reaches the window in front as on Standard) */
+	for (int i = 0; i < NSC; i++) { KeySym ks; unsigned mod; if (!sc_parse(sc_combo(i), &mod, &ks)) continue; KeyCode kc = XKeysymToKeycode(DPY, ks); if (!kc) continue;
+		SCKC[i] = kc; SCMOD[i] = mod; for (int m = 0; m < 4; m++) XGrabKey(DPY, kc, mod | M[m], ROOT, True, GrabModeAsync, GrabModeAsync); }
 	/* (with the keys sent to the root window while held, not to the window in front: GTK's own windows take keys through XInput 2) */
-	/* (Super by itself: the start menu when it is let go with nothing pressed between; Alt+Tab, Alt+` and with Shift: the switcher) */
+	/* (Super by itself: the start menu when it is let go with nothing pressed between, from the raw events (xi_raw_init); Alt+Tab, Alt+`
+	   and with Shift: the switcher) */
 	KeyCode sl = XKeysymToKeycode(DPY, XK_Super_L), sr = XKeysymToKeycode(DPY, XK_Super_R), tb = XKeysymToKeycode(DPY, XK_Tab), gr = XKeysymToKeycode(DPY, XK_grave);
+	if (!SUPER_GRAB) sl = sr = 0;
+	sl0 = sl; sr0 = sr; tb0 = tb; gr0 = gr;
 	for (int m = 0; m < 4; m++) { if (sl) XGrabKey(DPY, sl, M[m], ROOT, False, GrabModeAsync, GrabModeAsync); if (sr) XGrabKey(DPY, sr, M[m], ROOT, False, GrabModeAsync, GrabModeAsync);
 		for (int s = 0; s < 2; s++) { if (tb) XGrabKey(DPY, tb, Mod1Mask | (s ? ShiftMask : 0) | M[m], ROOT, True, GrabModeAsync, GrabModeAsync); if (gr) XGrabKey(DPY, gr, Mod1Mask | (s ? ShiftMask : 0) | M[m], ROOT, True, GrabModeAsync, GrabModeAsync); } }
+}
+/* (the grabs again when the window in front changes to or from one that has the keys) */
+static void kb_sync(void) { if (!WM_OK) return; if (!kb_free() && KBCAP && !g_list_find(WINS, KBCAP)) KBCAP = NULL; if (KB_GRABBED != !kb_free()) { sc_grab(); state_write(); } }
+static void kbcap_gone(AppWin *a) { if (KBCAP == a) { KBCAP = NULL; kb_sync(); } }
+static void kbcap_msg(AppWin *a, int on) { if (on) KBCAP = a; else if (KBCAP == a) KBCAP = NULL; META_ALONE = 0; kb_sync(); }
+/* (a raw key: Super alone, as the page's metaAlone: any other key pressed between cancels it; a repeat is not a press) */
+static void xi_raw(XIRawEvent *r, int press)
+{
+	if (r->flags & XIKeyRepeat) return;
+	KeySym ks = XkbKeycodeToKeysym(DPY, (KeyCode)r->detail, 0, 0); int sup = ks == XK_Super_L || ks == XK_Super_R;
+	if (press) { META_ALONE = sup && !kb_free(); return; }
+	if (sup && META_ALONE) { META_ALONE = 0; if (USER_ID[0] && !LOCKED && !DGK && !AT_ON && !kb_free()) sc_start(); }
 }
 /* (rudolfd's desktop/settings "kb": the account's bd95kb:ID, {id: "Ctrl+...", id: ""}) */
 static void sc_load(JV *v)
@@ -5761,18 +5817,17 @@ static void sc_load(JV *v)
 	/* (a key given to another shortcut is that one's: Settings takes it from the first, as kbMap) */
 	int was = SC_LOADED; SC_LOADED = 1; if (WM_OK && (!was || memcmp(old, SCKB, sizeof old))) sc_grab();
 }
-static int META_ALONE;
-static void at_key(int back); static void at_end(int pick); static int AT_ON; static int OV_ON; static void ov_end(Client *pick);
+static void at_key(int back); static void at_end(int pick); static void ov_end(Client *pick);
 /* the keys the shell has (wm_filter): 1 when taken */
 static int sc_key(XKeyEvent *e)
 {
 	KeySym ks = XkbKeycodeToKeysym(DPY, e->keycode, 0, 0); unsigned st = e->state & (ControlMask | Mod1Mask | ShiftMask | Mod4Mask);
 	if (e->type == KeyRelease) {
-		if ((ks == XK_Super_L || ks == XK_Super_R) && META_ALONE) { META_ALONE = 0; if (USER_ID[0] && !LOCKED && !DGK) sc_start(); return 1; }
+		if ((ks == XK_Super_L || ks == XK_Super_R) && META_ALONE && SUPER_GRAB) { META_ALONE = 0; if (USER_ID[0] && !LOCKED && !DGK && !kb_free()) sc_start(); return 1; }
 		if (AT_ON && (ks == XK_Alt_L || ks == XK_Alt_R || ks == XK_Meta_L || !(e->state & Mod1Mask))) { at_end(1); return 1; }
-		return ks == XK_Super_L || ks == XK_Super_R;
+		return SUPER_GRAB && (ks == XK_Super_L || ks == XK_Super_R);
 	}
-	if (ks == XK_Super_L || ks == XK_Super_R) { META_ALONE = 1; return 1; }
+	if (SUPER_GRAB && (ks == XK_Super_L || ks == XK_Super_R)) { META_ALONE = 1; return 1; }
 	META_ALONE = 0;
 	if (AT_ON && ks == XK_Escape) { at_end(0); return 1; }
 	if (OV_ON && ks == XK_Escape) { ov_end(NULL); return 1; }
@@ -6174,6 +6229,7 @@ static void state_write(void)
 	g_string_append_printf(s, "screen %d %d\nuser %s\nlocked %d\nsignin %d\nmenu %d\nbar %d %d %d %d %d\nclock %s|%s\n", SW, SH, USER_ID[0] ? USER_N : "-", LOCKED,
 		SIGN && gtk_widget_get_visible(SIGN), MENU && gtk_widget_get_visible(MENU), BAR && gtk_widget_get_visible(BAR), bx, by, bar_w(), bar_h(), CLOCK_T, CLOCK_D);
 	g_string_append_printf(s, "ws %d\n", WSC);   /* (item 4: the workspace shown) */
+	g_string_append_printf(s, "keys grabbed=%d superraw=%d kbcap=%s\n", KB_GRABBED, !SUPER_GRAB, KBCAP && g_list_find(WINS, KBCAP) ? KBCAP->k : "-");   /* (the computer check's keys, 1.6.0) */
 	if (MENU && gtk_widget_get_visible(MENU)) g_string_append_printf(s, "menuq %s\n", MQ[0] ? MQ : "-");
 	/* (2026-11-16) what the start menu's search found: srch GROUP X Y W H TEXT (the screen's pixels), the chosen one, the menu's box */
 	if (MENU && gtk_widget_get_visible(MENU) && MQ[0]) { for (int i = 0; i < NSRI; i++) { double ry = MBY + 38 + SRI[i].y - SRSCROLL; g_string_append_printf(s, "srch %s %d %d %d %d %s\n", SRI[i].g, (int)lround((MBX + 11) * Z), (int)lround(ry * Z), (int)lround((MBW - 22) * Z), (int)lround(SRI[i].h * Z), SRI[i].t); }
