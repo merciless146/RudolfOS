@@ -78,9 +78,18 @@ def run(g, c, t=60, show=True):
     if show: out('$', c[:160].replace('\n', ' ; ')); out(o.rstrip()[-2500:])
     return o
 def jsfn(g):
+    def js1(e, t):
+        # (a long expression from a file: busybox ash cuts a command line at 1024 characters)
+        if len(base64.b64encode(e.encode())) < 800: return g.js(e, t)
+        open(f'{W}/l.js', 'w').write(e); g.put(f'{W}/l.js', '/tmp/l.js', '644')
+        o = g.sh('cdp-eval "$(cat /tmp/l.js)" 2>&1', t); m = re.search(r'\{"id":1.*\}', o)
+        if not m: return ('ERR', o[-400:])
+        res = json.loads(m.group(0)).get('result', {})
+        if 'exceptionDetails' in res: return ('EXC', res['exceptionDetails'].get('exception', {}).get('description', '')[:300])
+        return res.get('result', {}).get('value')
     def js(e, t=90):
-        for _ in range(5):
-            r = g.js(e, t)
+        for _ in range(3):
+            r = js1(e, t)
             if not (isinstance(r, tuple) and (r[0] == 'ERR' or (r[0] == 'EXC' and 'ReferenceError' in str(r[1])))): return r
             time.sleep(10)
         return r
@@ -152,7 +161,7 @@ try:
     vm, g, up = boot('n'); sh = lambda c, t=60, show=True: run(g, c, t, show)
     ok('0b. the release starts again', up)
     if not up: raise SystemExit
-    o = sh("for i in $(seq 1 60); do pgrep -x rudolf-native >/dev/null && break; sleep 3; done; cat /run/rudolf/desktop-engine; pgrep -x rudolf-native; tail -5 /run/rudolf/native-desktop.log", 240)
+    o = sh("for i in $(seq 1 60); do pgrep -f /usr/bin/rudolf-native >/dev/null && break; sleep 3; done; cat /run/rudolf/desktop-engine; pgrep -f /usr/bin/rudolf-native | head -3; mount | grep -E ' /tmp | /run ' ; tail -5 /run/rudolf/native-desktop.log", 240)
     ok('0c. the Native desktop runs', 'native' in o and re.search(r'^\d+$', o, re.M), o)
     # the tests' views (RUDOLF_NATIVE_STATE, RUDOLF_NATIVE_TEST_EVAL) through a wrapper bound over the program, the fixes if
     # given; the page with a probe of its own first frames: when #login shows in an app's window (__lgSeen)
@@ -161,14 +170,18 @@ try:
              "if(performance.now()-t0<15000)requestAnimationFrame(f);else window.__lgFrames=n}requestAnimationFrame(f);"
              "document.addEventListener('readystatechange',()=>{const e=document.getElementById('login');if(e&&document.readyState=='interactive'){const c=getComputedStyle(e);if(c.display!='none')window.__lgFirst=1}})})()</script>")
     open(f'{W}/probe.html', 'w').write(PROBE); g.put(f'{W}/probe.html', '/tmp/probe.html', '644')
-    o = sh("set -x; FX=; for d in /dev/nvme*n1; do [ \"$(blkid -s LABEL -o value $d 2>/dev/null)\" = N160FIX ] && FX=$d; done; mkdir -p /tmp/fx; [ -n \"$FX\" ] && mount -o ro $FX /tmp/fx; ls -la /tmp/fx; "
+    o = sh("FX=; for d in /dev/nvme*n1; do [ \"$(blkid -s LABEL -o value $d 2>/dev/null)\" = N160FIX ] && FX=$d; done; mkdir -p /tmp/fx; [ -n \"$FX\" ] && mount -o ro $FX /tmp/fx; ls -la /tmp/fx; "
            "WWW=/usr/share/rudolf/www; [ -f /persist/os/current/index.html ] && WWW=/persist/os/current; echo www=$WWW; "
            "if [ -f /tmp/fx/index.html ]; then cp /tmp/fx/index.html /tmp/page.html; else cp $WWW/index.html /tmp/page.html; fi; "
            "awk 'BEGIN{while((getline l < \"/tmp/probe.html\")>0)p=p l} {if(!d&&(i=index($0,\"<head>\"))>0){print substr($0,1,i+5) p substr($0,i+6);d=1}else print}' /tmp/page.html > /tmp/page2.html; grep -c __lgSeen /tmp/page2.html; chmod 644 /tmp/page2.html; mount --bind /tmp/page2.html $WWW/index.html; "
-           "if [ -f /tmp/fx/rudolf-native ]; then cp /tmp/fx/rudolf-native /tmp/rn.real; else cp /usr/bin/rudolf-native /tmp/rn.real; fi; chmod 755 /tmp/rn.real; "
+           "X=/run/n160x; mkdir -p $X; mount -t tmpfs -o exec,mode=755 none $X; "
+           # (this tree's rudolfd: started in place of the release's, with its log; its new token is the one the pages get)
+           "if [ -f /tmp/fx/rudolfd ]; then cp /tmp/fx/rudolfd $X/rudolfd; chmod 755 $X/rudolfd; mount --bind $X/rudolfd /usr/bin/rudolfd; P=$(pidof rudolfd | tr ' ' '\\n' | sort -n | head -1); kill $P; sleep 2; (setsid /usr/bin/rudolfd >> /run/rudolf/rudolfd.log 2>&1 < /dev/null &); sleep 3; pidof rudolfd; fi; "
+           "if [ -f /tmp/fx/rudolf-launch ]; then cp /tmp/fx/rudolf-launch $X/rudolf-launch; chmod 755 $X/rudolf-launch; mount --bind $X/rudolf-launch /usr/bin/rudolf-launch; fi; "
+           "if [ -f /tmp/fx/rudolf-native ]; then cp /tmp/fx/rudolf-native $X/rn.real; else cp /usr/bin/rudolf-native $X/rn.real; fi; chmod 755 $X/rn.real; "
            "rm -f /tmp/teval /tmp/teval.out; mkfifo -m 666 /tmp/teval; "
-           "printf '#!/bin/sh\\nexport RUDOLF_NATIVE_STATE=/tmp/nstate RUDOLF_NATIVE_TEST_EVAL=/tmp/teval\\nexec /tmp/rn.real \"$@\"\\n' > /tmp/rn; chmod 755 /tmp/rn; mount --bind /tmp/rn /usr/bin/rudolf-native; "
-           "pkill -x rudolf-native; for i in $(seq 1 40); do [ -s /tmp/nstate ] && break; sleep 2; done; head -3 /tmp/nstate; md5sum /tmp/rn.real /usr/bin/rudolf-native", 240)
+           "printf '#!/bin/sh\\nexport RUDOLF_NATIVE_STATE=/tmp/nstate RUDOLF_NATIVE_TEST_EVAL=/tmp/teval\\nexec /run/n160x/rn.real \"$@\"\\n' > $X/rn; chmod 755 $X/rn; mount --bind $X/rn /usr/bin/rudolf-native; "
+           "pkill -f 'rudolf-native --rudolf-kiosk'; for i in $(seq 1 60); do [ -s /tmp/nstate ] && break; sleep 2; done; head -3 /tmp/nstate; ps w | grep -E 'rn.real|rudolf-native' | grep -v grep | head -5; tail -5 /run/rudolf/native-desktop.log; grep -v '^+' /run/rudolf/session.log | tail -5", 240)
     ok('0d. the native desktop started again with the tests\' views' + (' and this tree\'s files' if FIX else ''), 'screen ' in o, o)
     def state():
         return sh("cat /tmp/nstate", 30, False)
@@ -190,7 +203,7 @@ try:
             if st_get(st, 'user') == 'boss': break
     if st_get(st, 'user') != 'boss':
         out('typing at the sign-in screen did not sign in:', st[:800]); shot('signin')
-        sh("T=$(busybox wget -q -O- http://127.0.0.1:8080/ | grep -o 'token:\"[0-9a-f]*' | cut -d'\"' -f2); busybox wget -q -O- --header \"X-Rudolf-Token: $T\" --post-data '{\"n\":\"boss\",\"p\":\"b1\"}' http://127.0.0.1:8080/api/desktop/login; echo; pkill -x rn.real; sleep 10", 60)
+        sh("T=$(busybox wget -q -O- http://127.0.0.1:8080/ | grep -o 'token:\"[0-9a-f]*' | cut -d'\"' -f2); busybox wget -q -O- --header \"X-Rudolf-Token: $T\" --post-data '{\"n\":\"boss\",\"p\":\"b1\"}' http://127.0.0.1:8080/api/desktop/login; echo; pkill -f /run/n160x/rn.real; sleep 10", 60)
         for _ in range(20):
             time.sleep(3); st = state()
             if st_get(st, 'user') == 'boss': break
@@ -201,7 +214,7 @@ try:
     WEATHER = []     # (time, state)
     PIDS = set(); HB = []
     def sample(tag=''):
-        o = sh("cat /tmp/nstate; echo PID $(pgrep -x rn.real | tr '\\n' ' '); echo HBAGE $(( $(date +%s) - $(stat -c %Y /run/rudolf/heartbeat 2>/dev/null || echo 0) ))", 30, False)
+        o = sh("cat /tmp/nstate; echo PID $(pgrep -f /run/n160x/rn.real | tr '\\n' ' '); echo HBAGE $(( $(date +%s) - $(stat -c %Y /run/rudolf/heartbeat 2>/dev/null || echo 0) ))", 30, False)
         tnow = int(time.time() - t_in)
         for t in re.findall(r'^toast \d+ \d+ \d+ \d+ \d+\|(.*)$', o, re.M):
             if not SEEN or SEEN[-1][1] != t or tnow - SEEN[-1][0] > 30: SEEN.append((tnow, t))
@@ -304,7 +317,7 @@ try:
             close_app('terminal')
         if rnd == 4 and not restarted:
             # the native desktop started again (as the session's watchdog or a crash does): the session goes on
-            restarted = True; sh("pkill -x rn.real; sleep 8; pgrep -x rn.real", 60); idle(30)
+            restarted = True; sh("pkill -f /run/n160x/rn.real; sleep 8; pgrep -f /run/n160x/rn.real", 60); idle(30)
         # a minute and a half without input: the screen saver starts; then the pointer moves
         if rnd in (3, 6):
             idle(100); st = sample(); out('screen saver:', st_get(st, 'saver')); shot(f'saver{rnd}'); at(SW / 2, SH / 3); time.sleep(5); g.q.move(SW / 2 + 40, SH / 3, SW, SH); idle(10)

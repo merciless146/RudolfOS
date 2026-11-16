@@ -2,7 +2,7 @@
 # 2026-11-15 (the sign-in screen in app windows, sound, display settings live, the widgets, repeated notices, Terminal).
 # Run by a push that changes .github/n160-run.txt (on a branch of its own: a workflow only on a branch cannot be
 # dispatched), whose lines say: serial=SERIAL (empty: the newest beta), fix=1 (this branch's rudolf-native and page put in
-# place of the release's), minutes=N (how long the native desktop is used). Nothing is published.
+# place of the release's, with its rudolfd and rudolf-launch), minutes=N (how long the native desktop is used). Nothing is published.
 name: Native QEMU check
 on:
   push:
@@ -40,6 +40,7 @@ jobs:
         run: |
           sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev >/dev/null
           mkdir -p fix && gcc -O2 -Wno-deprecated-declarations -o fix/rudolf-native iso/sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
+          gcc -O2 -o fix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic && gcc -O2 -o fix/rudolf-launch iso/sys/rudolf-launch.c
           cp iso/www/index.html fix/ && ls -la fix && echo "N160_FIX=$PWD/fix" >> $GITHUB_ENV
       - name: n160
         run: |
