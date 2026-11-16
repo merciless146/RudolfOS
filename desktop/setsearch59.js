@@ -5,7 +5,7 @@
    What can be found: SETIDX, the pages' sections and settings as the build found them (desktop/settings-index.json,
    made by iso/qt/shell2/setsearch59_t.js --write), and each page again as it is shown (pages change with the
    computer: a modem, a second screen), so the search follows what this computer's pages really have. ===== */
-const SS_KEYS={disp:'screen monitor brightness wallpaper theme dark mode resolution scaling night light colours icons',vol:'sound audio speakers microphone headset volume echo calls',
+const SS_KEYS={mob:'cellular mobile data SIM card PIN PUK APN operator carrier roaming 5G 4G LTE 3G network type modem',disp:'screen monitor brightness wallpaper theme dark mode resolution scaling night light colours icons',vol:'sound audio speakers microphone headset volume echo calls',
  mm:'multimedia games controller video',net:'network wi-fi wifi internet ethernet hotspot proxy cellular modem connection',bt:'bluetooth headphones headset pair',
  web:'oracle browser sign-in passwords search engine',sys:'time date clock time zone language power sleep battery',kbd:'keyboard layout shortcuts input method compose',
  mouse:'mouse touchpad pointer cursor scrolling',devs:'devices printer usb camera hardware',acc:'accessibility screen reader magnifier captions vision hearing',
