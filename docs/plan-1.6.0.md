@@ -668,6 +668,20 @@ run"; on the second PR's branch: its test steps).
 - same_t.sh: new app-menu (File Explorer's menu on a folder), title-dark, help (its scrollbar and search box); videolog60_t.sh checks
   the "+".
 
+**Test findings, the rest (2026-11-16, unattended session; docs/native-findings-2026-11-15.md, "Status on 2026-11-16").**
+- N15: a new window fades in and grows from 96 % in 0.18 s (ease-out) as Standard's .win.wopen: a window of the shell's lies over it
+  for those 0.18 s and draws what is there from the windows' own pictures (Composite), the new one among them part of the way
+  (rudolf-native wopen_start; not with Reduce motion). Started at the window's first place (appwin_size) or, for another program's
+  window, when it is framed.
+- The overview's pictures are the windows' pixmaps under Composite, named again 25 times a second (a video keeps moving under
+  Super+Tab); a toast's background is drawn from the windows under it 20 times a second (comp_behind: each window redirected while a
+  toast needs it, drawn again when redirected or given back; one raised over the toast since, as the taskbar, given back at once);
+  a toast window going from two toasts to one is moved at once (it stayed 15 px off).
+- N16 not reproduced (180 frames at the end on both engines); N28 and N29 checked; N19's test 70/70.
+- same_t.sh: new cases wopen, overview-live, toast-live, video-frames, gpulab.
+- The areas never compared: iso/qt/sb/t160n_t.py on the newest beta in QEMU (workflow native-areas.yml), and the owner's checks in
+  docs/native-vivobook-checklist.md.
+
 Found while doing the findings, for items 11 and 12 (not changed yet): every one-app page runs the page's module-level timers as
 Standard's one page does, so with several app windows open some background work runs once per window: the Calendar's alarm check
 (apps25b.js, every minute: an alarm could be said once per open window), game mode (games58.js gameTick, gamesleep59.js), the home
