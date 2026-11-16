@@ -117,6 +117,10 @@ function oaPost(m){try{if(oaNative())window.webkit.messageHandlers.rudolfNative.
 /* (1.6.0, the owner's computer check on the Vivobook) a page that wants every key for a moment (the check's keyboard step, Settings ›
    Keyboard's Press keys…): on Standard the page's own handler sees them all first; on Native the shell's global keys are grabbed, so it
    is asked to let them through while this window is in front (op kbcap). Nothing elsewhere. */
+/* (1.6.0) a folder opened in File Explorer from an app's window: Explorer's own window, at that folder (#app=explorer&file=) */
+function oaOpenFolder(dir){if(!(ONEAPP&&oaOut()&&OA.main))return false;oaDrained().then(()=>oaPost({op:'open',app:'explorer',file:dir.join('\\')}));return true}
+/* (1.6.0) the screen's size in the page's pixels (the system report's Desktop size; on Standard the page is the whole screen) */
+function oaDeskSize(){if(!ONEAPP)return null;const q=ONEAPP.q,d=devicePixelRatio||1,w=+q.get('sw')/d||screen.width,h=+q.get('sh')/d||screen.height;return[Math.round(w),Math.round(h)]}
 function oaKeyCap(on){if(ONEAPP&&oaNative()){window.__oaKbcap=!!on;oaPost({op:'kbcap',on:on?'1':'0'})}}
 /* (1.6.0) WebKitGTK names the Super keys as an old draft did (code "OSLeft"/"OSRight", key "Super", keyCode 0, metaKey false); Chromium,
    as the standard has it, "MetaLeft"/"MetaRight", "Meta", 91/92 and metaKey while it is held: the check's ❖ never lit up, and a page's
@@ -419,7 +423,8 @@ html.oavk #vkb{display:block!important;visibility:visible!important;position:fix
  OA.want=1;
  /* (1.5.9, 12.3c) Oracle without Rudolf's Chromium on the native desktop (none, or it would not start): said once */
  if(ONEAPP.k=='browser'&&ONEAPP.q.get('nochrome')=='1')setTimeout(()=>{try{notify('Oracle','Websites will work better on Standard: Oracle is running without Rudolf\u2019s Chromium here, so some sites cannot open in its tabs.')}catch(e){}},1500);
- try{if(act)act();else if(ONEAPP.file&&app.openFile)launchWith(ONEAPP.k,resolve(ONEAPP.file,['C:']));
+ try{if(act)act();else if(ONEAPP.file&&ONEAPP.k=='explorer'&&typeof explorer=='function'){const p=resolve(ONEAPP.file,['C:']);(async()=>{for(let i=0;i<60&&!isDir(node(p));i++)await new Promise(r=>setTimeout(r,100));explorer(isDir(node(p))?p:p.slice(0,-1))})()}   /* (1.6.0: a folder: tm26.js srOpenFolder; the account's home read first) */
+  else if(ONEAPP.file&&app.openFile)launchWith(ONEAPP.k,resolve(ONEAPP.file,['C:']));
   else if(ONEAPP.k=='taskmgr'&&ONEAPP.q.get('urgent')=='1'&&typeof tmUrgent=='function')tmUrgent();   /* (1.6.0: Ctrl+Alt+Del's, tmtop57.js) */
   else{const r=launch(ONEAPP.k);
    /* (2026-11-16) a program rudolfd runs (a Linux app, a Windows program, a Library app in full screen) opens no window of this page's: as on
