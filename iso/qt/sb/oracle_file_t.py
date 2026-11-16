@@ -80,7 +80,14 @@ def signin(js, n, pw, secs=900):
 # the shown frame of the newest Oracle window: where it is (CSS pixels of the page), its sandbox, the window's address
 FRAME = ("JSON.stringify((()=>{const W=wins.filter(w=>w.body&&w.body.querySelector('.otabs')).pop();if(!W)return{err:'no Oracle window'};"
          "const fr=[...W.body.querySelectorAll('.fh iframe')].find(f=>f.style.display=='block');if(!fr)return{err:'no frame shown'};const r=fr.getBoundingClientRect();"
-         "return{rect:[r.x,r.y,r.width,r.height],iw:innerWidth,ih:innerHeight,sb:fr.getAttribute('sandbox'),cd:fr.contentDocument===null,ad:W.body.querySelector('.ad').value}})())")
+         "const e=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);"
+         "return{rect:[r.x,r.y,r.width,r.height],iw:innerWidth,ih:innerHeight,sb:fr.getAttribute('sandbox'),cd:fr.contentDocument===null,ad:W.body.querySelector('.ad').value,top:e===fr?'frame':e?e.tagName+'.'+String(e.className).slice(0,30):null}})())")
+
+def sketch(png, cols=80, rows=25):
+    """the screen in characters (darker: denser), for the log: the screenshots cannot always be looked at"""
+    from PIL import Image
+    im = Image.open(png).convert('L').resize((cols, rows)); ch = ' .:-=+*#%@'
+    return '\n'.join(''.join(ch[min(9, (255 - im.getpixel((x, y))) * 10 // 256)] for x in range(cols)) for y in range(rows))
 
 def drawn(png, o):
     """the share of pixels that are not white inside the frame (a few pixels in from its edges)"""
@@ -124,8 +131,10 @@ try:
                 try: o = json.loads(o)
                 except Exception: o = {'err': str(o)}
                 if 'rect' not in o: blank.append([k, same, u, o]); continue
-                d = drawn(vm.shot(f'r{k}{"s" if same else "f"}_{PAGES.index(u)}'), o)
-                if d < 0.005: blank.append([k, same, u, d])
+                png = vm.shot(f'r{k}{"s" if same else "f"}_{PAGES.index(u)}'); d = drawn(png, o)
+                if k == 0 and not same:
+                    from PIL import Image; out('screen', Image.open(png).size, 'page', o['iw'], o['ih'], 'frame', [round(v) for v in o['rect']], 'on top:', o.get('top')); out(sketch(png))
+                if d < 0.005 or o.get('top') != 'frame': blank.append([k, same, u, d, o.get('top')])
                 if not (o.get('sb') == 'allow-scripts' and o.get('cd')): opened.append([u, o])
                 out(f'{k} {"same window" if same else "fresh window"} {u}: {d}')
     ok(f'2. Oracle\'s pages are drawn, never a blank white page ({n} pages: README.TXT, WELCOME.HTM, an .HTML file from File Explorer, about:oracle, about:files; fresh windows and one window)', not blank, blank[:6])
