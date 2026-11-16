@@ -86,8 +86,8 @@ AMDPMY="SUSPEND PM_SLEEP ACPI_SLEEP X86_PLATFORM_DEVICES AMD_PMC RTC_CLASS RTC_D
 AMDPMM="AMD_PMF"
 y $AMDPMY AMD_NB AMD_NODE
 # (AMD_PMF needs the AMD secure processor's trusted apps, TEE and AMDTEE, and the sensor hub's driver)
-m CRYPTO_DEV_CCP CRYPTO_DEV_CCP_DD TEE AMDTEE AMD_SFH_HID $AMDPMM
-y CRYPTO_DEV_SP_PSP
+y CRYPTO_DEV_CCP CRYPTO_DEV_SP_PSP
+m CRYPTO_DEV_CCP_DD TEE AMDTEE AMD_SFH_HID $AMDPMM
 # Secure Boot (1.2.2): modules are signed at build time with a key made for that build only (and thrown away),
 # and unsigned ones are refused; kexec starts only kernels signed with the Rudolf OS Secure Boot key, which is
 # built in as a trusted key (SB_CERT: iso/boot/sb/rudolf-sb.crt, or a test certificate for local builds); with
