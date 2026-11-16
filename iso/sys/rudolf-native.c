@@ -76,6 +76,7 @@ static Acct ACC[32]; static int NACC, GUEST_OK, SETUP; static char LASTACC[80];
 static char USER_ID[80], USER_N[128], USER_R[12];   /* signed in ("" = not) */
 static int LOCKED;
 /* the tray */
+static int NET_CELL, NET_SIG = -1;   /* (1.6.0 Part 5: mobile data in use, its signal 0-100: net31.js's bars) */
 static int NET_RSSI = 1, NET_UP = -1, NET_WIFI, VOL = -1, MUTED, BAT = -1, CHARGING, MIC_N = 0, MIC_MUTED;   /* (MIC_N: apps using a microphone, call59.js) */ static char NET_DESC[200];   /* (net31.js net31Desc of the network used) */
 
 /* where windows go: below the development link's banner, beside the taskbar */
@@ -1569,7 +1570,10 @@ static void ic_net(cairo_t *cr, double x, double y, int filt)
 	int st = NET_UP > 0 ? 2 : 0;   /* on, else off */
 	RGBA col = st == 2 ? cx("#34d399", 1) : cx("#9ca3af", 1), dim = cx("#4b5563", 1);
 	cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND); cairo_set_line_join(cr, CAIRO_LINE_JOIN_MITER); cairo_set_line_width(cr, 2);
-	if (NET_WIFI) {
+	if (NET_CELL) {   /* (1.6.0 Part 5: net31.js's four bars from the modem's signal) */
+		int bars = st != 2 ? 0 : NET_SIG < 0 ? 4 : NET_SIG > 75 ? 4 : NET_SIG > 50 ? 3 : NET_SIG > 25 ? 2 : NET_SIG > 0 ? 1 : 0;
+		for (int k = 0; k < 4; k++) { rrect(cr, 2 + 5 * k, 17 - 4 * k, 4, 4 + 4 * k, 1); filt_src(cr, k < bars ? col : dim, filt); cairo_fill(cr); }
+	} else if (NET_WIFI) {
 		int bars = st != 2 || NET_RSSI > 0 ? 3 : NET_RSSI >= -60 ? 3 : NET_RSSI >= -70 ? 2 : 1;
 		static const double A[3][3] = {{8.5, 16, 5}, {5, 12.5, 10}, {2, 9, 15}}; static const double DX[3] = {7, 14, 20};
 		for (int k = 0; k < 3; k++) { svg_arc_lr(cr, A[k][0], A[k][1], A[k][2], DX[k], 1); filt_src(cr, k < bars ? col : dim, filt); cairo_stroke(cr); }
@@ -2553,17 +2557,21 @@ static void tray_load(void)
 	   address, else the first one up with an address; Wi-Fi's signal from its rssi */
 	JV *v = jget("/api/net"); int up = 0, wifi = 0, anywifi = 0, n = 0, pick = -1;
 	JV *ifs = jprop(v, "interfaces");
-	for (int pass = 0; pass < 2 && pick < 0; pass++) for (int i = 0; i < 16; i++) { JV *o = jat(ifs, i); if (!o) break; if (jbool(o, "virtual")) continue; char ip[64] = "", st[16] = "";
-		jstr(o, "ip", ip, sizeof ip); jstr(o, "state", st, sizeof st); if (!pass) { n++; if (jbool(o, "wireless")) anywifi = 1; }
+	/* (1.6.0 Parts 3 and 5: a cellular modem's connection counts as real, also IPv6-only, where the CLAT carries the default route) */
+	int clat = 0; for (int i = 0; i < 16; i++) { JV *o = jat(ifs, i); if (!o) break; char nm[32] = ""; jstr(o, "name", nm, sizeof nm); if (!strcmp(nm, "clat") && jbool(o, "default")) clat = 1; }
+	for (int pass = 0; pass < 2 && pick < 0; pass++) for (int i = 0; i < 16; i++) { JV *o = jat(ifs, i); if (!o) break; if (jbool(o, "virtual") && !jbool(o, "cellular")) continue; char ip[64] = "", st[16] = "";
+		jstr(o, "ip", ip, sizeof ip); jstr(o, "state", st, sizeof st); if (!pass) { n++; if (jbool(o, "wireless")) anywifi = 1; if (clat && jbool(o, "cellular")) { pick = i; break; } }
 		if (ip[0] && (pass ? !strcmp(st, "up") : jbool(o, "default"))) { pick = i; break; } }
-	NET_RSSI = 1;
+	NET_RSSI = 1; NET_CELL = 0; NET_SIG = -1;
 	if (pick >= 0) { JV *o = jat(ifs, pick); up = 1; wifi = jbool(o, "wireless"); JV *r = jprop(o, "rssi"); if (r && r->t == 2) NET_RSSI = (int)r->n;
 		/* (net31Desc: Wi-Fi with its name (wpa_cli's escapes undone: wfDecode), else Ethernet with its name and speed) */
 		char nm[64] = "", ss[160] = "", dec[160] = ""; jstr(o, "name", nm, sizeof nm); jstr(o, "ssid", ss, sizeof ss);
 		{ int j = 0; for (const char *c = ss; *c && j < (int)sizeof dec - 1; c++) { if (*c == '\\' && c[1]) { c++; if (*c == 'x' && g_ascii_isxdigit(c[1]) && g_ascii_isxdigit(c[2])) { dec[j++] = (char)(g_ascii_xdigit_value(c[1]) * 16 + g_ascii_xdigit_value(c[2])); c += 2; }
 				else dec[j++] = *c == 'n' ? '\n' : *c == 'r' ? '\r' : *c == 't' ? '\t' : *c == 'e' ? 27 : *c; } else dec[j++] = *c; } dec[j] = 0; }
 		double sp = jnum(o, "speed", 0); char spd[32] = ""; if (sp > 0) { if (sp >= 1000) { char g[24]; g_ascii_formatd(g, sizeof g, "%g", sp / 1000); snprintf(spd, sizeof spd, ", %s Gb/s", g); } else snprintf(spd, sizeof spd, ", %.0f Mb/s", sp); }
-		if (wifi) snprintf(NET_DESC, sizeof NET_DESC, "Wi-Fi — connected%s%s%s", dec[0] ? " (" : "", dec, dec[0] ? ")" : ""); else snprintf(NET_DESC, sizeof NET_DESC, "Ethernet — connected (%s%s)", nm, spd); }
+		if (jbool(o, "cellular")) { char ca[64] = "", te[16] = "", ct[96]; jstr(o, "carrier", ca, sizeof ca); jstr(o, "tech", te, sizeof te); NET_CELL = 1; JV *sg = jprop(o, "signal"); if (sg && sg->t == 2) NET_SIG = (int)sg->n;
+			snprintf(ct, sizeof ct, "%s%s%s", ca, ca[0] && te[0] ? " · " : "", te); snprintf(NET_DESC, sizeof NET_DESC, "Mobile data — connected%s%s%s", ct[0] ? " (" : "", ct, ct[0] ? ")" : ""); }
+		else if (wifi) snprintf(NET_DESC, sizeof NET_DESC, "Wi-Fi — connected%s%s%s", dec[0] ? " (" : "", dec, dec[0] ? ")" : ""); else snprintf(NET_DESC, sizeof NET_DESC, "Ethernet — connected (%s%s)", nm, spd); }
 	else { wifi = anywifi || !n; NET_DESC[0] = 0; }
 	NET_UP = v ? up : -1; NET_WIFI = wifi; jfree(v);
 	v = jget("/api/volume"); if (v && jbool(v, "ok")) { VOL = (int)jnum(v, "volume", -1); MUTED = jbool(v, "muted"); } else VOL = -1; jfree(v);
@@ -3975,7 +3983,7 @@ static void cal_cols(cairo_t *cr, int y, int mo, double total, double *cw)
 static int ev_cmp(const void *a, const void *b) { const CalEv *x = a, *y = b; char p[40], q[40]; snprintf(p, sizeof p, "%s%s", x->d, x->t); snprintf(q, sizeof q, "%s%s", y->d, y->t); return strcmp(p, q); }
 /* ---- (item 3's last part) the network's pop-up (net31.js net31Pop, .np: the adapters, the one in use in the accent colour, the
    others tinted when hovered, Network Settings…; placed as flyPlace places it before the Wi-Fi part is filled in) */
-typedef struct { char name[32], ssid[96], ip[64], state[16]; int wireless, speed; } NetIf;
+typedef struct { char name[32], ssid[96], ip[64], state[16], cell[96]; int wireless, speed, cellular; } NetIf;
 static NetIf NIF[8]; static int NNIF, NCUR = -1, NWTOOLS;
 /* (wfDecode: the SSID as wpa_supplicant writes it, \xNN for its bytes) */
 static void wf_decode(const char *s, char *o, size_t n)
@@ -3987,10 +3995,12 @@ static void wf_decode(const char *s, char *o, size_t n)
 static void net_read(void)
 {
 	JV *v = jget("/api/net"); NNIF = 0; NCUR = -1; NWTOOLS = v ? jbool(v, "wifiTools") : 0; JV *ifs = jprop(v, "interfaces"); int dflt[8] = {0};
-	for (int i = 0; ifs && i < 32 && NNIF < 8; i++) { JV *o = jat(ifs, i); if (!o) break; if (jbool(o, "virtual")) continue; NetIf *f = &NIF[NNIF]; memset(f, 0, sizeof *f);
+	int clat = 0; for (int i = 0; ifs && i < 32; i++) { JV *o = jat(ifs, i); if (!o) break; char nm[32] = ""; jstr(o, "name", nm, sizeof nm); if (!strcmp(nm, "clat") && jbool(o, "default")) clat = 1; }
+	for (int i = 0; ifs && i < 32 && NNIF < 8; i++) { JV *o = jat(ifs, i); if (!o) break; if (jbool(o, "virtual") && !jbool(o, "cellular")) continue; NetIf *f = &NIF[NNIF]; memset(f, 0, sizeof *f);
+		if ((f->cellular = jbool(o, "cellular"))) { char ca[64] = "", te[16] = ""; jstr(o, "carrier", ca, sizeof ca); jstr(o, "tech", te, sizeof te); snprintf(f->cell, sizeof f->cell, "%s%s%s", ca, ca[0] && te[0] ? " · " : "", te); if (clat) dflt[NNIF] = 2; }
 		jstr(o, "name", f->name, sizeof f->name); char ss[96] = ""; jstr(o, "ssid", ss, sizeof ss); wf_decode(ss, f->ssid, sizeof f->ssid); jstr(o, "ip", f->ip, sizeof f->ip); jstr(o, "state", f->state, sizeof f->state);
-		f->wireless = jbool(o, "wireless"); f->speed = (int)jnum(o, "speed", 0); dflt[NNIF] = jbool(o, "default"); NNIF++; }
-	for (int i = 0; i < NNIF && NCUR < 0; i++) if (dflt[i] && NIF[i].ip[0]) NCUR = i;
+		f->wireless = jbool(o, "wireless"); f->speed = (int)jnum(o, "speed", 0); if (!dflt[NNIF]) dflt[NNIF] = jbool(o, "default"); NNIF++; }
+	for (int i = 0; i < NNIF && NCUR < 0; i++) if (dflt[i] && (NIF[i].ip[0] || dflt[i] == 2)) NCUR = i;
 	for (int i = 0; i < NNIF && NCUR < 0; i++) if (NIF[i].ip[0] && !strcmp(NIF[i].state, "up")) NCUR = i;
 	jfree(v);
 }
@@ -4038,9 +4048,9 @@ static void fl_net(cairo_t *cr, int draw, int dark, int top)
 		RGBA bg = on ? ca(accent(), 1) : fl_hov(key) ? ca(accent(), .18) : (RGBA){0, 0, 0, 0};
 		if (bg.a > 0) { Box r; memset(&r, 0, sizeof r); r.bg = bg; r.rad = 6; box_paint(cr, x, y, 330, rh, &r); }
 		RGBA c1 = on ? cx("#ffffff", 1) : ink, c2 = on ? cx("#ffffff", 1) : cx("#15803d", 1);
-		char nm2[200]; if (f->wireless) { if (f->ssid[0] && f->ip[0]) snprintf(nm2, sizeof nm2, "Wi-Fi · %s", f->ssid); else snprintf(nm2, sizeof nm2, "Wi-Fi"); } else snprintf(nm2, sizeof nm2, "Ethernet (%s)", f->name);
-		const char *st = f->ip[0] ? "Connected" : !strcmp(f->state, "up") ? "No address" : f->wireless ? "Not connected" : "No cable";
-		const char *ic = f->wireless ? "📶" : "🔌"; double iw = css_width(cr, ic, UIFAM, 400, 12), sw = css_width(cr, st, UIFAM, 400, 11);
+		char nm2[200]; if (f->cellular) snprintf(nm2, sizeof nm2, "Mobile data%s%s", f->cell[0] ? " · " : "", f->cell); else if (f->wireless) { if (f->ssid[0] && f->ip[0]) snprintf(nm2, sizeof nm2, "Wi-Fi · %s", f->ssid); else snprintf(nm2, sizeof nm2, "Wi-Fi"); } else snprintf(nm2, sizeof nm2, "Ethernet (%s)", f->name);
+		const char *st = f->cellular && !on ? "In reserve" : f->cellular ? "Connected" : f->ip[0] ? "Connected" : !strcmp(f->state, "up") ? "No address" : f->wireless ? "Not connected" : "No cable";
+		const char *ic = f->wireless || f->cellular ? "📶" : "🔌"; double iw = css_width(cr, ic, UIFAM, 400, 12), sw = css_width(cr, st, UIFAM, 400, 11);
 		css_text(cr, ic, UIFAM, 400, 12, x + 6, y + 5, l12, c1, 0);
 		double bx = x + 6 + iw + 8, bw = 330 - 12 - iw - 8 - 8 - sw; css_text(cr, nm2, UIFAM, 600, 12, bx, y + 5, l12, c1, bw);
 		css_text(cr, st, UIFAM, 400, 11, x + 330 - 6 - sw, y + 5 + (l12 - l11) / 2, l11, c2, 0); fl_btn(key, x, y, 330, rh); y += rh; }

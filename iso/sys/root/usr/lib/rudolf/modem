@@ -28,6 +28,8 @@
 # 1.6.0 (Part 4): data and money
 #   modem usage MODEM           JSON: this SIM's data this month (its start day), the limit and how much of it
 #   (modem set: limit MB, startday 1-28, dataoff 0|1)
+# 1.6.0 (Part 5): signal and status
+#   modem signal MODEM          JSON: the signal's details (LTE's RSRP, RSRQ, SINR, RSSI; 5G's; 3G's)
 # The places can be moved for the host tests: RUDOLF_MODEM_SYS, RUDOLF_MODEM_DEV, RUDOLF_RUN, RUDOLF_MODEM_LOG,
 # RUDOLF_MODEM_PERSIST, RUDOLF_MM_FCC_AVAIL, RUDOLF_MM_FCC_DIR, RUDOLF_MBPI, RUDOLF_APN_FIXES, RUDOLF_RFKILL,
 # RUDOLF_RESOLV, RUDOLF_PROCNET, RUDOLF_NAT64, RUDOLF_CELL_METRIC, RUDOLF_FIREWALL.
@@ -297,6 +299,42 @@ limits() {   # MODEM (MK and its settings read)
 		else note "📶 This month's mobile data limit is reached" "$(mb "$u") of $l MB used, until $nb. Going on may cost: Settings › Mobile network can turn mobile data off at the limit."; fi
 	elif [ "$pct" -ge 80 ] && [ "$(cget "$F" warned80)" != "$a" ]; then cset "$F" warned80 "$a"
 		note "📶 $pct % of this month's mobile data used" "$(mb "$u") of $l MB, until $nb.$([ "$(cget "$F" dataoff)" = 1 ] && echo " Mobile data turns off at the limit.")"; fi; }
+# ---- 1.6.0 (Part 5): signal and status ----
+# The taskbar's network icon shows mobile data's bars, its type and operator (rudolfd's net: RUN/cellinfo/IF, which the
+# watch writes: "operator|type|signal"); Settings shows the signal's details (ModemManager's Signal interface: RSRP,
+# RSRQ, SINR, RSSI) for placing the computer or an antenna; System health is told of modem events (the SIM taken out,
+# the PIN blocked, no network for a minute, the module gone and back: rudolfd --health modem).
+HEALTH=${RUDOLF_HEALTH:-rudolfd --health}
+techname() { case ",$1," in *,5gnr,*) echo 5G;; *,lte,*) echo LTE;; *,hspa*|*,umts,*|*,hsdpa,*|*,hsupa,*) echo 3G;; *,edge,*|*,gprs,*|*,gsm,*) echo 2G;; *) echo "";; esac; }
+signal() {   # MODEM: JSON {lte:{rsrp,rsrq,sinr,rssi},nr5g:{...},umts:{rscp,ecio,rssi},rate}
+	modem_ok "$1" || { echo '{"error":"no such modem"}'; return 1; }
+	r=$(mmcli -m "$1" --signal-get -K 2>/dev/null | sed -n 's/^modem\.signal\.refresh\.rate  *: //p'); [ "${r:-0}" = 0 ] && { mmcli -m "$1" --signal-setup=5 >/dev/null 2>&1; sleep 1; }
+	mmcli -m "$1" --signal-get -K 2>/dev/null | awk 'function n(k){x=V[k];return (x==""||x=="--")?"null":x+0}
+		{i=index($0,":");if(!i)next;k=$0;sub(/ *:.*$/,"",k);v=substr($0,i+1);gsub(/^ +| +$/,"",v);V[k]=v}
+		END{printf "{\"rate\":%s,\"lte\":{\"rsrp\":%s,\"rsrq\":%s,\"sinr\":%s,\"rssi\":%s},\"nr5g\":{\"rsrp\":%s,\"rsrq\":%s,\"sinr\":%s},\"umts\":{\"rscp\":%s,\"ecio\":%s,\"rssi\":%s}}\n",
+		n("modem.signal.refresh.rate"),n("modem.signal.lte.rsrp"),n("modem.signal.lte.rsrq"),n("modem.signal.lte.snr"),n("modem.signal.lte.rssi"),n("modem.signal.5g.rsrp"),n("modem.signal.5g.rsrq"),n("modem.signal.5g.snr"),
+		n("modem.signal.umts.rscp"),n("modem.signal.umts.ecio"),n("modem.signal.umts.rssi")}'; }
+# (the watch, every 6 s, per modem): what the taskbar shows, and System health's events
+events() {   # MODEM (MK read)
+	mkdir -p $R/modemstate $R/cellinfo; S0=$R/modemstate/$1; name="$(mkv "$MK" 'modem\.generic\.manufacturer') $(mkv "$MK" 'modem\.generic\.model')"
+	sim=1; [ -n "$(sim_of "$MK")" ] || sim=0; lk=$(mkv "$MK" 'modem\.generic\.unlock-required'); st=$(mkv "$MK" 'modem\.generic\.state'); fr=$(mkv "$MK" 'modem\.generic\.state-failed-reason')
+	reg=$(mkv "$MK" 'modem\.3gpp\.registration-state'); dev=$(mkv "$MK" 'modem\.generic\.device-identifier')
+	if [ -f $S0 ]; then read -r psim plk preg pnoreg pdev < $S0; else psim=$sim; plk=$lk; preg=$reg; pnoreg=0; pdev=$dev
+		# (a modem that came back, by its device's id, within ten minutes of going: the module restarted)
+		g=$(grep -l "^$dev " $R/modemstate/gone.* 2>/dev/null | head -1); if [ -n "$g" ] && [ -n "$dev" ]; then t=$(( $(date +%s) - $(cut -d' ' -f2 $g) )); rm -f $g
+			[ $t -le 600 ] && $HEALTH modem "the cellular module ($name) restarted: it was gone for $t s" >/dev/null 2>&1; fi; fi
+	[ "$psim" = 1 ] && [ $sim = 0 ] && $HEALTH modem "the SIM card was taken out of the modem ($name)" >/dev/null 2>&1
+	[ "$psim" = 0 ] && [ $sim = 1 ] && $HEALTH modem "a SIM card was put in the modem ($name)" >/dev/null 2>&1
+	[ "$plk" != sim-puk ] && [ "$lk" = sim-puk ] && $HEALTH modem "the SIM's PIN is blocked (three wrong PINs): its PUK is needed ($name)" >/dev/null 2>&1
+	[ "$fr" = sim-error ] && [ "$plk" != blocked ] && { $HEALTH modem "the SIM card is blocked for good, or does not work ($name)" >/dev/null 2>&1; lk=blocked; }
+	noreg=0; case "$st" in enabled|searching) noreg=$(( ${pnoreg:-0} + 1 ));; esac
+	[ $noreg = 10 ] && $HEALTH modem "no network for a minute: the modem ($name) has found no network it may use (registration: ${reg:-none})" >/dev/null 2>&1
+	echo "$sim ${lk:--} ${reg:--} $noreg ${dev:--}" > $S0
+	IF=$(cellif_of "$1"); [ -n "$IF" ] && printf '%s|%s|%s\n' "$(mkv "$MK" 'modem\.3gpp\.operator-name' | tr -d '|' | sed 's/^--$//')" "$(techname "$(printf '%s\n' "$MK" | sed -n 's/^modem\.generic\.access-technologies\.value\[[0-9]*\]  *: //p' | tr '\n' ',')")" "$(mkv "$MK" 'modem\.generic\.signal-quality\.value')" > $R/cellinfo/$IF; }
+gone() {   # the modems no longer listed: their state kept a while, to tell a restart from a modem unplugged
+	for f in $R/modemstate/[0-9]*; do [ -f "$f" ] || continue; n=${f##*/}; echo " $1 " | grep -q " $n " && continue
+		read -r a b c d dev < $f; [ "$dev" != - ] && echo "$dev $(date +%s)" > $R/modemstate/gone.$n; rm -f $f
+		$HEALTH modem "the cellular modem went away (unplugged, or the module restarting)" >/dev/null 2>&1; done; }
 # ---- 1.6.0 (Part 3): the connection ----
 # Cable, then Wi-Fi, then cellular: their default routes' metrics (100, 600, 700; udhcpc.sh gives the first two), and
 # routes on an interface whose link went down ignored at once (ignore_routes_with_linkdown), so cellular stays connected
@@ -363,7 +401,7 @@ ifdown_cell() {   # MODEM
 	p=$(cat $R/udhcpc/$IF.pid 2>/dev/null); [ -n "$p" ] && kill "$p" 2>/dev/null; rm -f $R/udhcpc/$IF.pid
 	ip route del default dev "$IF" 2>/dev/null; ip -6 route del default dev "$IF" 2>/dev/null; ip addr flush dev "$IF" 2>/dev/null
 	$FW cellular del "$IF" >/dev/null 2>&1
-	rm -f $R/cellular/$IF $R/cellkey/$IF $R/dns/$IF; resolv; }
+	rm -f $R/cellular/$IF $R/cellkey/$IF $R/cellinfo/$IF $R/dns/$IF; resolv; }
 offkey() { echo "$R/cell-off/$(basename "$(simconf)" .conf)"; }
 connect() {   # MODEM [user]: ModemManager connects with the SIM's APN and roaming setting, then the interface is set up
 	modem_ok "$1" || { echo "There is no such modem."; return 1; }
@@ -389,7 +427,9 @@ watch() {
 	echo $$ > $R/modem-watch.pid; last=$(best); k=0
 	while running && [ "$(cat $R/modem-watch.pid 2>/dev/null)" = $$ ]; do
 		if [ $k = 0 ] && [ ! -e $R/airplane ]; then
+			ids=""
 			for p in $(mmcli -K -L 2>/dev/null | grep -o '/org/freedesktop/ModemManager1/Modem/[0-9]*'); do n=${p##*/}; MK=$(mmcli -m $n -K 2>/dev/null) || continue
+				ids="$ids $n"; events $n
 				st=$(mkv "$MK" 'modem\.generic\.state'); F=$(simconf)
 				case "$st" in
 				disabled) timeout 30 mmcli -m $n --enable >/dev/null 2>&1;;
@@ -397,6 +437,7 @@ watch() {
 				connected) [ -n "$(cellif_of $n)" ] || ifup_cell $n;;
 				esac
 			done
+			gone "$ids"
 			# a modem that is gone, or no longer connected: its interface undone
 			for f in $R/cellular/*; do [ -f "$f" ] || continue; n=$(cat $f); s=$(mmcli -m $n -K 2>/dev/null | sed -n 's/^modem\.generic\.state  *: //p'); [ "$s" = connected ] || ifdown_cell $n; done
 		fi
@@ -414,7 +455,7 @@ watch() {
 			{ [ -e $R/cellular/$now ] || [ "$now" = clat ]; } && echo "$now" > $R/cell-last || rm -f $R/cell-last
 			last=$now; resolv
 		fi
-		sleep 2
+		sleep ${RUDOLF_WATCH_TICK:-2}
 	done; }
 kindname() { if [ -e "$SYS/class/net/$1/wireless" ] || [ -e "$SYS/class/net/$1/phy80211" ] || [ "$(cat $R/wifi-if 2>/dev/null)" = "$1" ]; then echo Wi-Fi; else case "$1" in wl*) echo Wi-Fi;; *) echo cable;; esac; fi; }
 watch_start() { [ -s $R/modem-watch.pid ] && kill -0 "$(cat $R/modem-watch.pid)" 2>/dev/null && return 0; (setsid "$0" watch </dev/null >/dev/null 2>&1 &); }
@@ -438,6 +479,7 @@ connect) connect "$2" user ;;
 disconnect) disconnect "$2" user ;;
 watch) watch ;;
 usage) usage "$2" ;;
+signal) signal "$2" ;;
 limits) for f in $R/cellular/*; do [ -f "$f" ] || continue; n=$(cat $f); MK=$(mmcli -m $n -K 2>/dev/null) && limits $n; done ;;   # (what the watch does every half minute)
 *) echo "usage: modem hotplug|start|stop|status|fcc|pin|puk|settings|set|apn|airplane|connect|disconnect|watch"; exit 2 ;;
 esac

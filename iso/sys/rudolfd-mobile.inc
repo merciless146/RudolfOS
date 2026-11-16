@@ -11,6 +11,8 @@
      POST mobile/settings?id=N&k=apn|apnuser|apnpass|roaming|mode|autoconnect|limit|startday|dataoff&v=VALUE
                                        (Part 4: the settings' answer has "usage": this month's data, the limit)
      GET  mobile/airplane, POST mobile/airplane?on=1|0   Wi-Fi, Bluetooth and the modems off together, and back
+   (Part 5)
+     GET  mobile/signal?id=N           the signal's details: LTE's RSRP, RSRQ, SINR, RSSI; 5G's; 3G's (null: not given)
    (Part 3)
      POST mobile/connect?id=N&on=1|0   connect (and connect automatically again) or disconnect (until Connect)
      GET  mobile/notes?since=N         the cellular connection's notices (mobile data in use, back on Wi-Fi), for both
@@ -93,6 +95,12 @@ static int api_mobile2(struct req *r, const char *p, int post)
 		char *o = run_out(cmd); trim(o);
 		if (o && (!strcmp(o, "Connected") || !strcmp(o, "Disconnected"))) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "the modem service did not answer");
 		free(o); return 1;
+	}
+	if (!strcmp(p, "mobile/signal")) {   /* (Part 5) the signal's details */
+		if (!mobile_digits(id, 1, 4)) { reply_err(r->fd, 400, "id=MODEM"); return 1; }
+		char cmd[120]; snprintf(cmd, sizeof cmd, MODEM_SH " signal %s 2>/dev/null", id); char *o = run_out(cmd); trim(o);
+		if (!o || o[0] != '{' || strstr(o, "\"error\"")) { free(o); reply_err(r->fd, 404, "there is no such modem"); return 1; }
+		str js = {0}; sadd(&js, "{\"ok\":true,"); sadd(&js, "%s", o + 1); free(o); reply_json(r->fd, &js); return 1;
 	}
 	if (!strcmp(p, "mobile/notes")) {
 		long since = 0; const char *sn = qparam(r->query, "since"); if (sn) since = atol(sn);

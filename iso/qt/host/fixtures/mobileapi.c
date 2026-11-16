@@ -16,7 +16,8 @@ static void one(const char *spec)
 	snprintf(r.path, sizeof r.path, "%s", sp2 + 1);
 	if (body) { FILE *f = fopen(body, "rb"); if (f) { r.body = malloc(1 << 20); r.blen = fread(r.body, 1, (1 << 20) - 1, f); r.body[r.blen] = 0; fclose(f); } }
 	char tf[] = "/tmp/mobileapi-XXXXXX"; r.fd = mkstemp(tf); unlink(tf);
-	if (!api_mobile(&r, r.path, !strcmp(r.method, "POST"))) reply_err(r.fd, 404, "not a mobile request");
+	if (!strcmp(r.path, "net")) api_net(&r);   /* (1.6.0 Part 5: the network list, with a modem's connection) */
+	else if (!api_mobile(&r, r.path, !strcmp(r.method, "POST"))) reply_err(r.fd, 404, "not a mobile request");
 	lseek(r.fd, 0, SEEK_SET); char b[1 << 16]; ssize_t n; size_t tot = 0; char *all = NULL;
 	while ((n = read(r.fd, b, sizeof b)) > 0) { all = realloc(all, tot + n + 1); memcpy(all + tot, b, n); tot += n; }
 	close(r.fd); if (all) all[tot] = 0;

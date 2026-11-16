@@ -6,6 +6,8 @@
      (Rudolf's corrections first), or typed in exactly, letters' case kept (docs/plan-1.6.1.md Part 7);
    - roaming: off by default, with what it may cost; the network type (5G, 4G, 3G) where the modem lets it be chosen.
    Quick settings: ✈️ Airplane mode: Wi-Fi, Bluetooth and the modems off together, and back as they were.
+   (Part 5) The signal's details (RSRP, RSRQ, SINR) in Settings; the taskbar's network icon shows mobile data's bars,
+   type and operator (net31.js; the native desktop draws the same); System health's modem events (sec50.js).
    (Part 4) Data this month (from the interface's counters, per SIM, its month from the day chosen), a monthly limit
    with a notice at 80 % and, if chosen, mobile data off at 100 %; updates on mobile data offered with their size
    (sysupd25.js), never downloaded by themselves.
@@ -60,7 +62,7 @@ async function mobModem(m,redraw){
   sim.querySelector('.mobpukb').onclick=()=>{const puk=K.get(),pin=N1.get();if(!/^\d{8}$/.test(puk))return say('A PUK is 8 digits.',1);if(!/^\d{4,8}$/.test(pin))return say('The new PIN must be 4 to 8 digits.',1);if(pin!=N2.get())return say('The two new PINs are not the same.',1);
    codes('puk',{puk,pin},'Unblock the SIM card with its PUK and a new PIN')}}
  else{sim.innerHTML=`<div class='msg mobsimok'></div>`;sim.querySelector('.mobsimok').textContent='SIM card: '+(m.simName||'unnamed operator')+(m.simOp?' ('+m.simOp+')':'')+(m.reg=='roaming'?' · roaming now'+(m.operator?' on '+m.operator:''):'')}
- if(m.sim&&!m.locked&&m.failed!='sim-error'&&m.failed!='sim-missing'){mobConn(d.querySelector('.mobconnb'),m,redraw);await mobSettings(d.querySelector('.mobset'),m)}
+ if(m.sim&&!m.locked&&m.failed!='sim-error'&&m.failed!='sim-missing'){mobConn(d.querySelector('.mobconnb'),m,redraw);mobSignal(d.querySelector('.mobconnb'),m);await mobSettings(d.querySelector('.mobset'),m)}
  return d}
 async function mobSettings(el,m){let s=null;try{s=await rd('mobile/settings?id='+m.id)}catch(e){el.innerHTML=`<div class='msg'></div>`;el.firstChild.textContent='The SIM\'s settings could not be read: '+e.message;return}
  const set=async(k,v)=>{try{await rd('mobile/settings?id='+m.id+'&k='+k+'&v='+encodeURIComponent(v),{method:'POST'});return true}catch(e){notify('📶 Mobile network',e.message,{kind:'error',app:'Network'});return false}};
@@ -99,3 +101,16 @@ function mobConn(el,m,redraw){const on=m.state=='connected',d=document.createEle
  d.querySelector('.mobcs').textContent=on?(m.iface?'Connected'+(MOBUSE.cellular?' and in use':': kept in reserve while '+(/^wl/.test(MOBUSE.route)?'Wi-Fi':MOBUSE.route?'a cable':'another connection')+' carries the traffic'):'Connected'):m.state=='registered'?'Not connected':typeof mdmLine=='function'?mdmLine(m):m.state;
  const b=d.querySelector('.mobcb');b.textContent=on?'Disconnect':'Connect';b.onclick=async()=>{b.disabled=true;try{await mobConnect(m.id,!on)}catch(e){}b.disabled=false;redraw()};el.appendChild(d)}
 let MOBUSE={route:'',cellular:false};
+/* (Part 5) the signal's details, for placing the computer or an antenna: LTE's RSRP (strength), RSRQ (quality), SINR
+   (against the noise), and 5G's or 3G's; every 5 s while the page is open */
+const MOBQ=(v,good,fair,poor)=>v==null?'':v>=good?'excellent':v>=fair?'good':v>=poor?'fair':'poor';
+function mobSignal(el,m){if(!(m.state=='registered'||m.state=='connected'))return;const d=document.createElement('div');d.className='mobsig';
+ d.innerHTML=`<h4 class='sh4'>Signal</h4><div class='msg mobsigl'>Reading the signal…</div><div class='msg'>Move the computer (or an outside antenna) while watching these: they change every few seconds.</div>`;el.appendChild(d);
+ const L=d.querySelector('.mobsigl');let iv=null,seen=0;const one=async()=>{if(!d.isConnected){if(seen)clearInterval(iv);return}seen=1;let g=null;try{g=await rd('mobile/signal?id='+m.id)}catch(e){}if(!d.isConnected)return;
+  if(!g){L.textContent='The modem gives no signal details.';return}const p=[],u=(v,x)=>v==null?null:(Math.round(v*10)/10)+' '+x;
+  const lte=g.lte||{},nr=g.nr5g||{},um=g.umts||{};
+  if(lte.rsrp!=null)p.push('LTE: RSRP '+u(lte.rsrp,'dBm')+' ('+MOBQ(lte.rsrp,-80,-90,-100)+')'+(lte.rsrq!=null?' · RSRQ '+u(lte.rsrq,'dB')+' ('+MOBQ(lte.rsrq,-10,-15,-20)+')':'')+(lte.sinr!=null?' · SINR '+u(lte.sinr,'dB')+' ('+MOBQ(lte.sinr,20,13,0)+')':'')+(lte.rssi!=null?' · RSSI '+u(lte.rssi,'dBm'):''));
+  if(nr.rsrp!=null)p.push('5G: RSRP '+u(nr.rsrp,'dBm')+' ('+MOBQ(nr.rsrp,-80,-90,-100)+')'+(nr.rsrq!=null?' · RSRQ '+u(nr.rsrq,'dB'):'')+(nr.sinr!=null?' · SINR '+u(nr.sinr,'dB'):''));
+  if(um.rscp!=null)p.push('3G: RSCP '+u(um.rscp,'dBm')+(um.ecio!=null?' · Ec/Io '+u(um.ecio,'dB'):'')+(um.rssi!=null?' · RSSI '+u(um.rssi,'dBm'):''));
+  L.textContent=p.length?p.join('\n'):'The modem gives no signal details yet.';L.style.whiteSpace='pre-line'};
+ setTimeout(one,50);iv=setInterval(one,5000)}
