@@ -142,6 +142,8 @@ class H(http.server.BaseHTTPRequestHandler):
         if w == 'desktop/wallpaper':
             if m == 'POST': open(os.path.join(D, 'wall.jpg'), 'wb').write(b); return self.j({'ok': True})
             x = rd('wall.jpg'); return self.send(200, x, 'image/jpeg') if x else self.err(404, 'no picture')
+        if w == 'sys/status':   # (the release, as rudolf-update's status: Settings › About's Chromium row comes from it on both engines)
+            return self.j({'ok': True, 'current': {'version': '1.6.0', 'chromium': '142.0.7444.59', 'released': '2026-11-15'}})
         if w == 'stats': return self.j({'ok': True, 'cpu': 12.3, 'load': 0.2, 'memTotal': 8589934592, 'memFree': 4294967296, 'memAvailable': 5368709120})
         if w == 'devlink': return self.j({'ok': True, 'available': True, 'on': False})
         if w == 'mic':   # (DIR/mic: the apps using a microphone, a JSON list; muted=0|1 kept, as rudolfd's)
@@ -173,6 +175,9 @@ class H(http.server.BaseHTTPRequestHandler):
                 with open(os.path.join(D, 'airplane'), 'w') as f: f.write('1' if 'on=1' in q else '0')
             return self.j({'ok': True, 'on': rd('airplane', b'0').strip() == b'1'})
         if w == 'power/status': return self.j({'ok': True, 'ac': False, 'battery': {'name': 'BAT0', 'capacity': 81, 'status': 'Discharging'}, 'now': {'saver': False}})
+        # (the memory guard's "which page process is the desktop's": the stand-in has no processes; answered, the page would keep its
+        # processor busy for 0.6 s by performance.now(), which the test's clock holds still, and never finish)
+        if w == 'memory/iam': return self.err(404, 'no processes here')
         if w == 'info': return self.j({'ok': True, 'battery': [{'name': 'BAT0', 'type': 'Battery', 'capacity': 81, 'status': 'Discharging'}]})
         return self.j({'ok': True})
 class S(http.server.ThreadingHTTPServer):

@@ -63,6 +63,7 @@ typedef struct {
 	char twstyle[12], twacm[12], accent[16], df[8], tz[64], acct[80], wpacct[80], icons[12], ff[48];
 	int tbac, tbbac, h24, wpimg, wallpaper, notes, npins, scale, darkui; double lat, doff, gen; char pins[24][40];
 	int nl, dnd, sr, mag, hc, vk, touch;   /* (quick settings' switches: item 3) */
+	int aur, rmotion; char aurm[12], lnm[12];   /* (the dynamic backgrounds' moving parts: test findings N11, N12) */
 } Settings;
 static Settings S;
 typedef struct { char k[40], name[80], icon[48], kw[200], ic[24]; } App;
@@ -302,6 +303,7 @@ static double NETB[4];   /* (as drawn: the network's button, for its pop-up's pl
 static int nt_unread(void);
 static double VOLB[4], CLKD[2];   /* (as drawn, the page's units from the bar's corner: the volume's button; the clock's date, its <small>) */
 static void desk_dirty(void) { DESKD = 1; if (DESKAREA) gtk_widget_queue_draw(DESKAREA); }
+typedef struct JV JV; static void fx_cat(JV *cat); static void fx_draw(cairo_t *cr); static void fx_update(void); static int FXD;   /* (the dynamic backgrounds' moving parts: below) */
 static void desk_shadows(void) { if (DESKAREA) gtk_widget_queue_draw(DESKAREA); }
 static cairo_surface_t *WALL;   /* drawn at the screen's size */
 static char WALL_KEY[300];
@@ -370,11 +372,12 @@ static void wall_make(void)
 	} else pattern_bg(cr, SW, SH);
 	cairo_destroy(cr);
 	if (DESKAREA) desk_dirty();
+	fx_update();
 }
 static gboolean desk_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (WALL) { cairo_set_source_surface(cr, WALL, 0, 0); cairo_paint(cr); } return TRUE; }
 
 /* ------------------------------------------------------------------ app windows (WebKit, one-app mode) */
-typedef struct AppWin { GtkWidget *win, *view; char k[40], title[256], icon[48]; int closing, id, sized, hidden, modal, pw, ph, wasontop, mfull; gint64 close_t; } AppWin;   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
+typedef struct AppWin { GtkWidget *win, *view; char k[40], title[256], icon[48]; int closing, id, sized, hidden, modal, pw, ph, wasontop, mfull; gint64 close_t; GdkPixbuf *pix; } AppWin;   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
 static GList *WINS;   /* AppWin*, oldest first */
 static AppWin *ACTIVE;
 static WebKitWebContext *CTX; static WebKitUserContentManager *UCM; static int NEXTID;
@@ -388,13 +391,21 @@ static const App *app_find(const char *k) { for (int i = 0; i < NAPPS; i++) if (
 static void appwin_size(AppWin *a, int w, int h);
 static void appwin_modal(AppWin *a, int on);
 static void appwin_fs(AppWin *a, int on);
+static gboolean apps_reload(gpointer d);
 static void wins_ask(AppWin *to); static void win_op(const char *id, const char *what);   /* (Task Manager's windows: test finding N3) */
 static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d);
+static char *gpu_script(void);
 static void ctx_make(void)
 {
 	if (CTX) return;
 	char *home = g_build_filename(g_get_home_dir(), ".rudolf-native", NULL), *data = g_build_filename(home, "data", NULL), *cache = g_build_filename(home, "cache", NULL);
-	WebKitWebsiteDataManager *m = webkit_website_data_manager_new("base-data-directory", data, "base-cache-directory", cache, NULL);
+	/* (N7, N8) an origin's share of the disk as Chromium's (60 %; WebKit's own is 1 GB), so navigator.storage.estimate()'s quota is the
+	   size Standard says */
+	WebKitWebsiteDataManager *m = webkit_website_data_manager_new("base-data-directory", data, "base-cache-directory", cache,
+#if WEBKIT_CHECK_VERSION(2, 42, 0)
+		"origin-storage-ratio", 0.6, "total-storage-ratio", 0.8,
+#endif
+		NULL);
 	WebKitMemoryPressureSettings *mps = webkit_memory_pressure_settings_new();   /* as rudolf-webkit (1.5.8) */
 	webkit_memory_pressure_settings_set_memory_limit(mps, 768); webkit_memory_pressure_settings_set_conservative_threshold(mps, 0.33);
 	webkit_memory_pressure_settings_set_strict_threshold(mps, 0.5); webkit_memory_pressure_settings_set_kill_threshold(mps, 0); webkit_memory_pressure_settings_set_poll_interval(mps, 15);
@@ -406,8 +417,31 @@ static void ctx_make(void)
 	UCM = webkit_user_content_manager_new();
 	webkit_user_content_manager_register_script_message_handler(UCM, "rudolfNative");
 	g_signal_connect(UCM, "script-message-received::rudolfNative", G_CALLBACK(on_msg), NULL);
+	{ char *g = gpu_script(); if (g) { webkit_user_content_manager_add_script(UCM, webkit_user_script_new(g, WEBKIT_USER_CONTENT_INJECT_TOP_FRAME, WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, NULL, NULL)); g_free(g); } }
 	if (SOFT) webkit_user_content_manager_add_style_sheet(UCM, webkit_user_style_sheet_new(
 		"*,*::before,*::after{box-shadow:none!important;text-shadow:none!important;backdrop-filter:none!important}", WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES, WEBKIT_USER_STYLE_LEVEL_USER, NULL, NULL));
+}
+static void json_esc(GString *s, const char *v);
+/* (test finding N8) the graphics chip's name, as Chromium gives it to the page (WEBGL_debug_renderer_info: "ANGLE (VENDOR, RENDERER,
+   OpenGL VERSION)", what Settings › About shows under Graphics); WebKit gives every page "Apple GPU". Read once from a GL context of
+   a window of its own (GTK's, through libepoxy, which GTK has loaded), given to the pages as window.__oaGpu (oneapp59.js) */
+static char *gpu_script(void)
+{
+	char ven[128] = "", ren[256] = "", ver[64] = "";
+	/* (a window of its own, never shown: GDK draws a window that has had a GL context with GL from then on, and the desktop's went blank) */
+	GtkWidget *tw = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_resize(GTK_WINDOW(tw), 1, 1); gtk_widget_realize(tw);
+	GdkWindow *w = gtk_widget_get_window(tw); GError *e = NULL; GdkGLContext *gl = w ? gdk_window_create_gl_context(w, &e) : NULL;
+	typedef const unsigned char *(*GetStr)(unsigned); GetStr *gs = (GetStr *)dlsym(RTLD_DEFAULT, "epoxy_glGetString");
+	if (gl && gdk_gl_context_realize(gl, NULL) && gs && *gs) { gdk_gl_context_make_current(gl);
+		const char *a = (const char *)(*gs)(0x1F00), *b = (const char *)(*gs)(0x1F01), *c = (const char *)(*gs)(0x1F02);
+		if (a) snprintf(ven, sizeof ven, "%s", a); if (b) snprintf(ren, sizeof ren, "%s", b); if (c) sscanf(c, "%63s", ver); gdk_gl_context_clear_current(); }
+	if (e) g_error_free(e); if (gl) g_object_unref(gl); gtk_widget_destroy(tw);
+	if (!ren[0]) return NULL;
+	/* (ANGLE's names for the vendors it knows) */
+	const char *v = strstr(ven, "Intel") ? "Intel" : (strstr(ven, "AMD") || strstr(ven, "ATI")) ? "AMD" : strstr(ven, "NVIDIA") ? "NVIDIA" : ven;
+	char *r = g_strdup_printf("ANGLE (%s, %s, OpenGL %s)", v, ren, ver), *vv = g_strdup_printf("Google Inc. (%s)", v);
+	GString *js = g_string_new("window.__oaGpu={r:"); json_esc(js, r); g_string_append(js, ",v:"); json_esc(js, vv); g_string_append(js, "};");
+	g_free(r); g_free(vv); return g_string_free(js, FALSE);
 }
 static int local_url(const char *u)
 {
@@ -450,6 +484,7 @@ static void toast_add(AppWin *from, JSCValue *v);
 static void tb_settings(const char *page);
 static void nt_note(JSCValue *v);
 static void open_with(const char *file, const char *key);
+static void hfs_msg(AppWin *a, JSCValue *v);   /* (folders on this device: test finding N7) */
 /* (1.5.9, 12.3c) Oracle's Chromium and the WebKit windows: the files one (rudolfd's mirror), the indicator of the keys the native
    desktop's, Oracle's new windows at an address or private */
 static GPid OR_PID; static int OR_RUN; static char OR_CTL[300]; static const char *TOR_CTL_P;   /* (Part 16: the Tor windows' rudolf-launch FIFO, once it runs) */
@@ -467,7 +502,13 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	char op[16] = "", x[256] = "", f[1024] = ""; jsstr(v, "op", op, sizeof op);
 	if (!strcmp(op, "close")) appwin_close_now(a);
 	else if (!strcmp(op, "done")) page_done(v);
-	else if (!strcmp(op, "title")) { jsstr(v, "icon", x, sizeof x); if (x[0]) snprintf(a->icon, sizeof a->icon, "%s", x); bar_redraw(); }
+	else if (!strcmp(op, "title")) { jsstr(v, "icon", x, sizeof x); if (x[0]) snprintf(a->icon, sizeof a->icon, "%s", x);
+		/* (test finding N14) the window's own picture when it is not its app's (the page's icSvg of W.icon): its title bar and taskbar button */
+		JSCValue *pv = jsc_value_object_get_property(v, "png"); if (pv && jsc_value_is_string(pv)) { char *u = jsc_value_to_string(pv); static const char PRE[] = "data:image/png;base64,";
+			if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
+			if (!strncmp(u, PRE, sizeof PRE - 1)) { gsize n = 0; guchar *raw = g_base64_decode(u + sizeof PRE - 1, &n); GByteArray *b = g_byte_array_new_take(raw, n); guint8 z = 0; g_byte_array_append(b, &z, 1); a->pix = pix_from_bytes(b); g_byte_array_free(b, TRUE); }
+			g_free(u); frame_redraw_app(a); } if (pv) g_object_unref(pv);
+		bar_redraw(); }
 	else if (!strcmp(op, "drop")) { jsstr(v, "in", x, sizeof x); jsstr(v, "file", f, sizeof f); drop_in(f, x); }
 	else if (!strcmp(op, "openwith")) { jsstr(v, "key", x, sizeof x); jsstr(v, "file", f, sizeof f); open_with(f, x); }   /* (Open with: the app's own window) */
 	else if (!strcmp(op, "toast")) toast_add(a, v);   /* (a notification's pop-up, drawn by the shell: item 3) */
@@ -478,6 +519,8 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "mirror")) { jsstr(v, "id", x, sizeof x); if (id_ok(x)) { char l[100]; snprintf(l, sizeof l, "mirror %s\n", x); oracle_tell(l); } }   /* (the files an app's window saved: Oracle's pages take them) */
 	else if (!strcmp(op, "osd")) { char k[16] = "", lv[8] = "", n[8] = ""; jsstr(v, "k", k, sizeof k); jsstr(v, "lv", lv, sizeof lv); jsstr(v, "label", x, sizeof x); jsstr(v, "n", n, sizeof n); osd_show(k, lv, x, n); }
 	else if (!strcmp(op, "fs")) { jsstr(v, "on", x, sizeof x); appwin_fs(a, x[0] == '1'); }   /* (the page's own full screen: the window covers the screen, test finding N1) */
+	else if (!strcmp(op, "hfs")) hfs_msg(a, v);   /* (File Explorer's Folders on this device: the folder picker and its files, N7) */
+	else if (!strcmp(op, "cat")) g_timeout_add(300, apps_reload, NULL);   /* (a page gave its catalogue again: the statue's picture, N12) */
 	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
 	else if (!strcmp(op, "winop")) { jsstr(v, "id", x, sizeof x); jsstr(v, "do", f, sizeof f); win_op(x, f); }
 	else if (!strcmp(op, "modal")) { jsstr(v, "on", x, sizeof x); appwin_modal(a, x[0] == '1'); }   /* (a page's dialog: over the whole screen, as Standard's) */
@@ -494,7 +537,7 @@ static void on_crash(WebKitWebView *v, WebKitWebProcessTerminationReason r, gpoi
 static void clients_forget(AppWin *a);
 static void on_win_destroy(GtkWidget *w, gpointer d)
 {
-	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL;
+	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL; if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
 	clients_forget(a);   /* (its frame goes when X says so: not this window's any more) */
 	g_free(a); bar_redraw(); state_write();
 }
@@ -521,6 +564,14 @@ static AppWin *appwin_new(const char *k, WebKitWebView *rel, int id)
 		"enable-webgl", TRUE, "media-playback-requires-user-gesture", FALSE, "enable-page-cache", FALSE, "enable-write-console-messages-to-stdout", TRUE,
 		"javascript-can-open-windows-automatically", TRUE, NULL);
 	webkit_settings_set_hardware_acceleration_policy(st, HWPOL);
+#if WEBKIT_CHECK_VERSION(2, 42, 0)
+	/* (test findings N7, N8) navigator.storage.estimate(), which Chromium has: File Explorer's status line and Settings › About say
+	   how much of its storage the page uses (WebKitGTK leaves the Storage API off) */
+	{ WebKitFeatureList *fl = webkit_settings_get_all_features();
+	  for (gsize i = 0; i < webkit_feature_list_get_length(fl); i++) { WebKitFeature *ft = webkit_feature_list_get(fl, i); const char *id = webkit_feature_get_identifier(ft);
+		if (!strcmp(id, "StorageAPI") || !strcmp(id, "StorageAPIEstimate")) webkit_settings_set_feature_enabled(st, ft, TRUE); }
+	  webkit_feature_list_unref(fl); }
+#endif
 	g_signal_connect(a->view, "decide-policy", G_CALLBACK(on_decide), NULL);
 	g_signal_connect(a->view, "permission-request", G_CALLBACK(on_perm), NULL);
 	g_signal_connect(a->view, "notify::title", G_CALLBACK(on_title), a);
@@ -1726,7 +1777,7 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 		box_paint(cr, wx, y, tw, 34, &b); hit_add(wx, y, tw, 34, "win", wid);
 		/* the line: the picture (vertical-align -4px) and the title, centred in the button's content (34 less 1 px above and below) */
 		double d, A = css_ascent(cr, UIFAM, act ? 600 : 400, 13, &d), lt = fmin(-A, -14), lb = fmax(d, 4), base = y + b.bw + 1 + (32 - 2 * b.bw - (lb - lt)) / 2 - lt;
-		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = app_pix(ap); double tx = wx + b.bw + 6;
+		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap); double tx = wx + b.bw + 6;
 		cairo_save(cr); cairo_rectangle(cr, wx + b.bw + 6, y, tw - 2 * b.bw - 12, 34); cairo_clip(cr);
 		if (px) { pix_at(cr, px, tx, base + 4 - 18, 18, b.filt); tx += 18; }
 		const char *ti = a ? a->title : c->title, *ico = a ? a->icon : ap ? ap->icon : ""; char *tt = px ? g_strdup_printf(" %s", ti) : g_strdup_printf("%s%s%s", ico, ico[0] ? " " : "", ti);
@@ -1820,7 +1871,7 @@ static void bar_paint_v(cairo_t *cr, double W, double H)
 		char wid[24]; snprintf(wid, sizeof wid, "%lx", c ? (unsigned long)c->w : (unsigned long)(uintptr_t)a);
 		Box b = tb_box(act ? TB_TASKON : TB_TASK, HV("win", wid), PR("win", wid)); box_paint(cr, x, ty, cw, 22, &b); hit_add(x, ty, cw, 22, "win", wid);
 		double d, A = css_ascent(cr, UIFAM, act ? 600 : 400, 13, &d), lt = fmin(-A, -14), lb = fmax(d, 4), base = ty + b.bw + 1 + (20 - 2 * b.bw - (lb - lt)) / 2 - lt;
-		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = app_pix(ap); double tx = x + b.bw + 6;
+		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap); double tx = x + b.bw + 6;
 		cairo_save(cr); cairo_rectangle(cr, x + b.bw + 6, ty, cw - 2 * b.bw - 12, 22); cairo_clip(cr);
 		if (px) { pix_at(cr, px, tx, base + 4 - 18, 18, b.filt); tx += 18; }
 		const char *ti = a ? a->title : c->title, *ico = a ? a->icon : ap ? ap->icon : ""; char *tt = px ? g_strdup_printf(" %s", ti) : g_strdup_printf("%s%s%s", ico, ico[0] ? " " : "", ti);
@@ -1962,7 +2013,7 @@ static void frame_draw(Client *c)
 	else box_paint(cr, 1, 1, W - 2, 34, &tb);
 	cairo_restore(cr);
 	/* the picture, the title, the buttons */
-	int wt = !strcmp(st, "retro") && V.on ? 700 : 600; AppWin *a = c->app; const App *ap = a ? app_find(a->k) : c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = app_pix(ap);
+	int wt = !strcmp(st, "retro") && V.on ? 700 : 600; AppWin *a = c->app; const App *ap = a ? app_find(a->k) : c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap);
 	int filt = V.on && !strcmp(st, "mono") ? 1 : 0;
 	if (px) pix_at(cr, px, 9, 10, 16, filt); else if (a && a->icon[0]) css_text(cr, a->icon, UIFAM, wt, 13, 9, 10.5, 15, fg, 0); else if (!a && ap && ap->icon[0]) css_text(cr, ap->icon, UIFAM, wt, 13, 9, 10.5, 15, fg, 0);
 	int r[3][4]; btn_rects(c, r); double tx = 1 + 8 + 16 + 3, tmax = r[0][0] / Z - 3 - tx;
@@ -2508,6 +2559,7 @@ static void settings_load(void)
 	jstr(s, "icons", n.icons, sizeof n.icons); n.scale = (int)jnum(s, "scale", 100); if (n.scale < 75 || n.scale > 250) n.scale = 100;
 	n.nl = jbool(s, "nl"); n.dnd = jbool(s, "dnd"); n.sr = jbool(s, "sr"); n.mag = jbool(s, "mag"); n.vk = jbool(s, "vk"); n.touch = jbool(s, "touch"); { char cb[16] = ""; jstr(s, "cb", cb, sizeof cb); n.hc = !strcmp(cb, "contrast"); }
 	{ JV *dk = jprop(s, "darkui"); n.darkui = !(dk && dk->t == 1 && !dk->n); }   /* (S.darkui!==false) */
+	{ JV *au = jprop(s, "aur"); n.aur = !(au && au->t == 1 && !au->n); } n.rmotion = jbool(s, "rmotion"); jstr(s, "aurm", n.aurm, sizeof n.aurm); jstr(s, "lnm", n.lnm, sizeof n.lnm);   /* (DEFS.disp aur:true) */
 	n.tbac = jbool(s, "tbac"); n.tbbac = jbool(s, "tbbac"); n.h24 = jbool(s, "h24"); n.doff = jnum(s, "doff", 0); n.lat = jnum(s, "lat", NAN);
 	if (!n.bs[0]) snprintf(n.bs, sizeof n.bs, "solid"); if (!n.b1[0]) snprintf(n.b1, sizeof n.b1, "#008080"); if (!n.b2[0]) snprintf(n.b2, sizeof n.b2, "#000080");
 	if (!n.tb[0]) snprintf(n.tb, sizeof n.tb, "bottom"); if (!n.wpfit[0]) snprintf(n.wpfit, sizeof n.wpfit, "fill"); if (!n.dm[0]) snprintf(n.dm, sizeof n.dm, "auto");
@@ -2545,9 +2597,11 @@ static void apps_load(void)
 	if (BG) g_hash_table_destroy(BG); BG = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	JV *bg = jprop(v, "bg");
 	if (bg && bg->t == 5) {
-		for (int i = 0; i < bg->len; i++) { JV *o = bg->v[i]; const char *kk = bg->k[i]; char d[200] = "", l[200] = ""; jstr(o, "d", d, sizeof d); jstr(o, "l", l, sizeof l);
-			if (d[0] && !strstr(d, "..") && !strstr(l, "..")) g_hash_table_insert(BG, g_strdup(kk), g_strdup_printf("%s\n%s", d, l[0] ? l : d));  }
+		for (int i = 0; i < bg->len; i++) { JV *o = bg->v[i]; const char *kk = bg->k[i]; char d[200] = "", l[200] = "", am[200] = ""; jstr(o, "d", d, sizeof d); jstr(o, "l", l, sizeof l); jstr(o, "am", am, sizeof am);
+			if (d[0] && !strstr(d, "..") && !strstr(l, "..")) g_hash_table_insert(BG, g_strdup(kk), g_strdup_printf("%s\n%s", d, l[0] ? l : d));
+			if (am[0] && !strstr(am, "..") && am[0] != '/' && !strchr(am, ':')) { char *k2 = g_strconcat("am:", kk, NULL); g_hash_table_insert(BG, k2, g_strdup(am)); } }
 		}
+	fx_cat(v);   /* (the statue's picture: N12) */
 	 jfree(v);
 	WALL_KEY[0] = 0; wall_make(); bar_redraw(); if (MAREA) gtk_widget_queue_draw(MAREA);
 }
@@ -2777,6 +2831,65 @@ static void dg_ok(void)
 }
 /* (1.5.9, 12.3c) Open with chosen in an app's own page (oneapp59.js: its dialog, in Oracle's window or a WebKit window): the app's
    window of its own, as the shell's Open with dialog makes it */
+/* (1.6.0 Part 12, test finding N7) File Explorer's "Folders on this device" (Import a folder…, Export selection to a folder…): on
+   Standard the page has Chromium's folder picker (showDirectoryPicker: a folder of the computer chosen in a dialog, its files read
+   and written by the page); WebKit has none, so the section was missing. Here the page's stand-in (oneapp59.js) asks the shell: "pick"
+   shows a folder dialog (read, or read and write as asked) and answers a handle for the folder chosen; "ls", "read", "write", "mkdir",
+   "stat" work inside a folder so chosen only (a name with a / or that is "." or ".." is refused, and so is a path that leaves the
+   folder through a link), as the page's own handles do. The answer goes back to the page as __oaHfsIn(ID, JSON). */
+typedef struct { char *path; int rw; AppWin *a; } HfsRoot;
+static GPtrArray *HFS;
+static void hfs_reply(AppWin *a, const char *id, GString *j)
+{
+	if (g_list_find(WINS, a) && a->view) { GString *js = g_string_new("window.__oaHfsIn&&__oaHfsIn("); json_esc(js, id); g_string_append(js, ","); json_esc(js, j->str); g_string_append(js, ")");
+		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE); }
+	g_string_free(j, TRUE);
+}
+static void hfs_err(AppWin *a, const char *id, const char *name, const char *msg) { GString *j = g_string_new("{\"err\":"); json_esc(j, name); g_string_append(j, ",\"msg\":"); json_esc(j, msg); g_string_append(j, "}"); hfs_reply(a, id, j); }
+/* the path inside root T: its parts checked, then the real path kept under the root's real path */
+static char *hfs_path(AppWin *a, const char *t, const char *rel, int must)
+{
+	int i = atoi(t); if (!HFS || i < 1 || i > (int)HFS->len) return NULL; HfsRoot *r = g_ptr_array_index(HFS, i - 1); if (r->a != a) return NULL;
+	char **parts = g_strsplit(rel ? rel : "", "/", -1); GString *p = g_string_new(r->path); int bad = 0;
+	for (char **x = parts; *x; x++) { if (!**x) continue; if (!strcmp(*x, ".") || !strcmp(*x, "..")) { bad = 1; break; } g_string_append_c(p, '/'); g_string_append(p, *x); }
+	g_strfreev(parts); if (bad) { g_string_free(p, TRUE); return NULL; }
+	char *rp = realpath(must ? p->str : r->path, NULL), *rr = realpath(r->path, NULL); int ok = rp && rr && (!strncmp(rp, rr, strlen(rr)) && (rp[strlen(rr)] == 0 || rp[strlen(rr)] == '/'));
+	free(rp); free(rr); if (!ok) { g_string_free(p, TRUE); return NULL; }
+	return g_string_free(p, FALSE);
+}
+static int hfs_name_ok(const char *n) { return n && *n && !strchr(n, '/') && strcmp(n, ".") && strcmp(n, "..") && strlen(n) < 256; }
+static void hfs_msg(AppWin *a, JSCValue *v)
+{
+	char id[24] = "", what[16] = "", t[16] = "", p[1024] = "", n[260] = "", mode[16] = ""; jsstr(v, "id", id, sizeof id); jsstr(v, "do", what, sizeof what);
+	jsstr(v, "t", t, sizeof t); jsstr(v, "p", p, sizeof p); jsstr(v, "n", n, sizeof n); jsstr(v, "mode", mode, sizeof mode);
+	if (!strcmp(what, "pick")) {
+		GtkWidget *d = gtk_file_chooser_dialog_new("Select a folder", GTK_WINDOW(a->win), GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, "_Cancel", GTK_RESPONSE_CANCEL, "_Select", GTK_RESPONSE_ACCEPT, NULL);
+		gtk_window_set_modal(GTK_WINDOW(d), TRUE); gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(d), g_get_home_dir());
+		int r = gtk_dialog_run(GTK_DIALOG(d)); char *f = r == GTK_RESPONSE_ACCEPT ? gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(d)) : NULL; gtk_widget_destroy(d);
+		if (!f) { hfs_err(a, id, "AbortError", "The user aborted a request."); return; }
+		if (!HFS) HFS = g_ptr_array_new(); HfsRoot *ro = g_new0(HfsRoot, 1); ro->path = f; ro->rw = !strcmp(mode, "readwrite"); ro->a = a; g_ptr_array_add(HFS, ro);
+		char *bn = g_path_get_basename(f); GString *j = g_string_new(""); g_string_append_printf(j, "{\"t\":\"%u\",\"name\":", HFS->len); json_esc(j, bn); g_string_append(j, "}"); g_free(bn); hfs_reply(a, id, j); return; }
+	int ti = atoi(t); HfsRoot *ro = HFS && ti >= 1 && ti <= (int)HFS->len ? g_ptr_array_index(HFS, ti - 1) : NULL;
+	char *dir = hfs_path(a, t, p, 1); if (!dir || !ro) { g_free(dir); hfs_err(a, id, "NotFoundError", "A requested file or directory could not be found."); return; }
+	if (!strcmp(what, "ls")) { GDir *gd = g_dir_open(dir, 0, NULL); GString *j = g_string_new("{\"l\":["); int k = 0; const char *e;
+		while (gd && (e = g_dir_read_name(gd))) { char *f = g_build_filename(dir, e, NULL); g_string_append(j, k++ ? "," : ""); g_string_append(j, "["); json_esc(j, e); g_string_append_printf(j, ",%d]", g_file_test(f, G_FILE_TEST_IS_DIR)); g_free(f); }
+		if (gd) g_dir_close(gd); g_string_append(j, "]}"); hfs_reply(a, id, j); g_free(dir); return; }
+	if (!hfs_name_ok(n) && strcmp(what, "read")) { g_free(dir); hfs_err(a, id, "TypeError", "Name is not allowed."); return; }
+	char *f = !strcmp(what, "read") ? g_strdup(dir) : g_build_filename(dir, n, NULL); g_free(dir);
+	if (!strcmp(what, "read")) { gchar *b = NULL; gsize len = 0; struct stat sb;
+		if (stat(f, &sb) || !S_ISREG(sb.st_mode) || sb.st_size > 64 * 1048576 || !g_file_get_contents(f, &b, &len, NULL)) hfs_err(a, id, "NotReadableError", "The file could not be read.");
+		else { gchar *b64 = g_base64_encode((guchar *)b, len); GString *j = g_string_new("{\"b\":\""); g_string_append(j, b64); g_string_append_printf(j, "\",\"m\":%lld}", (long long)sb.st_mtime * 1000); g_free(b64); hfs_reply(a, id, j); }
+		g_free(b); g_free(f); return; }
+	if (!strcmp(what, "stat")) { int dirp = g_file_test(f, G_FILE_TEST_IS_DIR), there = g_file_test(f, G_FILE_TEST_EXISTS);
+		GString *j = g_string_new(""); g_string_append_printf(j, "{\"there\":%d,\"dir\":%d}", there, dirp); hfs_reply(a, id, j); g_free(f); return; }
+	if (!ro->rw) { g_free(f); hfs_err(a, id, "NotAllowedError", "The request is not allowed."); return; }
+	if (!strcmp(what, "mkdir")) { if (g_mkdir_with_parents(f, 0755)) hfs_err(a, id, "InvalidModificationError", "The folder could not be made."); else hfs_reply(a, id, g_string_new("{}")); g_free(f); return; }
+	if (!strcmp(what, "write")) { gsize len = 0; JSCValue *b = jsc_value_object_get_property(v, "b"); char *bs = b && jsc_value_is_string(b) ? jsc_value_to_string(b) : g_strdup(""); if (b) g_object_unref(b);
+		guchar *d = g_base64_decode(bs, &len); g_free(bs);
+		if (!g_file_set_contents(f, (char *)d, len, NULL)) hfs_err(a, id, "InvalidModificationError", "The file could not be written."); else hfs_reply(a, id, g_string_new("{}"));
+		g_free(d); g_free(f); return; }
+	g_free(f); hfs_err(a, id, "TypeError", "Unknown.");
+}
 static void open_with(const char *file, const char *key)
 {
 	if (!file || !file[0] || !key || !key[0] || strlen(key) > 39 || strspn(key, "abcdefghijklmnopqrstuvwxyz0123456789_-") != strlen(key) || !USER_ID[0] || LOCKED) return;
@@ -2981,8 +3094,159 @@ static void di_draw(cairo_t *cr)
 static gboolean desk_area_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	/* (the wallpaper and the icons kept as drawn: windows moved over the desktop only show it again, with their shadows) */
-	if (!DESKC || DESKD) { if (!DESKC) DESKC = cairo_image_surface_create(CAIRO_FORMAT_RGB24, SW, SH); cairo_t *c2 = cairo_create(DESKC); desk_draw(w, c2, d); bar_outside(c2); di_draw(c2); cairo_destroy(c2); DESKD = 0; NWG_ALL_DIRTY = 1; }
+	if (!DESKC || DESKD || FXD) { if (!DESKC) DESKC = cairo_image_surface_create(CAIRO_FORMAT_RGB24, SW, SH); cairo_t *c2 = cairo_create(DESKC); desk_draw(w, c2, d); fx_draw(c2); bar_outside(c2); di_draw(c2); cairo_destroy(c2);
+		if (DESKD) NWG_ALL_DIRTY = 1; DESKD = 0; FXD = 0; }   /* (a moving background's frame: the widgets keep what they show behind them) */
 	cairo_set_source_surface(cr, DESKC, 0, 0); cairo_paint(cr); wg_paint(cr); frames_shadow(cr); return TRUE;   /* (the widgets over the desktop: item 2) */
+}
+
+/* ------------------------------------------------------------------ the dynamic backgrounds' moving parts (test findings N11, N12)
+   On Standard, Glacier Lake at night has the northern lights over its sky and in its water (aurora58.js), and Spirit Falls its stone
+   statue on the right bank, its falling petals and, at night, its sky lanterns (statue58.js); the native desktop drew the picture
+   alone. Here they are drawn as the page draws them, over the picture and under the icons: the same curtains, colours (the accent
+   colour by Display Properties' rule), masks (the picture's own, DYN.KEY.am, given with the catalogue), sizes and places (the
+   picture's 1600×1067 laid as the background is: centre and cover), frames (the lights every 100 ms, the petals and lanterns every
+   66 ms, as in Chromium) and stops (not while a window covers most of the screen or one is full screen, while locked or the screen
+   saver runs; half the frames on battery; one still frame with Reduce motion). The statue is the page's own picture of it (its
+   animal, light or dark, glow), drawn by the page and given with the catalogue (oneapp59.js oaCatalog: fx.statue). */
+static GdkPixbuf *ST_PIX; static double ST_BOX[4]; static char ST_KEY[96];
+static void fx_cat(JV *cat)
+{
+	JV *fx = jprop(cat, "fx"), *st = jprop(fx, "statue"); char png[64] = ""; jstr(st, "key", png, sizeof png);
+	if (!st || !strcmp(png, ST_KEY)) { if (!st && ST_PIX) { g_object_unref(ST_PIX); ST_PIX = NULL; ST_KEY[0] = 0; } return; }
+	snprintf(ST_KEY, sizeof ST_KEY, "%s", png); if (ST_PIX) { g_object_unref(ST_PIX); ST_PIX = NULL; }
+	JV *b = jprop(st, "box"); for (int i = 0; i < 4; i++) { JV *x = jat(b, i); ST_BOX[i] = x && x->t == 2 ? x->n : 0; }
+	JV *u = jprop(st, "png"); static const char PRE[] = "data:image/png;base64,";
+	if (u && u->t == 3 && !strncmp(u->s, PRE, sizeof PRE - 1)) { gsize n = 0; guchar *raw = g_base64_decode(u->s + sizeof PRE - 1, &n); GByteArray *ba = g_byte_array_new_take(raw, n); guint8 z = 0; g_byte_array_append(ba, &z, 1); ST_PIX = pix_from_bytes(ba); g_byte_array_free(ba, TRUE); }
+}
+static GdkPixbuf *FX_MASK[2]; static char FX_MASKP[2][200];   /* (0: the lake's, 1: the falls') */
+static cairo_surface_t *AUR_SKY, *AUR_CV, *PET_CV, *LAN_CV, *FX_MS[2];
+static guint FX_T, PET_T; static gint64 FX_T0, PET_LAST; static int FX_SLOWT;
+static void cover(double *s, double *ox, double *oy) { *s = fmax(SW / 1600.0, SH / 1067.0); *ox = (SW - 1600 * *s) / 2; *oy = (SH - 1067 * *s) / 2; }
+static int fx_shown(void) { return S.dyn[0] && !S.wpimg && BG && g_hash_table_lookup(BG, S.dyn); }   /* (dynShown: not a picture of one's own) */
+static int fx_aur(void) { char k[64]; snprintf(k, sizeof k, "am:%s", "lake"); return S.aur && !strcmp(S.dyn, "lake") && g_hash_table_lookup(BG, k) && fx_shown() && is_dark(); }
+static int fx_oasis(void) { return !strcmp(S.dyn, "oasis") && fx_shown(); }
+/* (DYNOV: seen, not covered by a window over 60 % of the screen, nothing full screen; with the power: half the frames on battery) */
+static int fx_seen(void)
+{
+	if (LOCKED || !USER_ID[0]) return 0;
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->min || c->off || c->hidden || c->trans) continue;
+		if (c->full) return 0; if ((double)fw_of(c) * fh_of(c) >= .6 * SW * SH) return 0; if (c->app && !strcmp(c->app->k, "do-saver")) return 0; }
+	return 1;
+}
+static cairo_surface_t *fx_mask(int i)
+{
+	char k[64]; snprintf(k, sizeof k, "am:%s", i ? "oasis" : "lake"); const char *am = BG ? g_hash_table_lookup(BG, k) : NULL; if (!am) return NULL;
+	if (strcmp(FX_MASKP[i], am)) { snprintf(FX_MASKP[i], sizeof FX_MASKP[i], "%s", am); if (FX_MASK[i]) g_object_unref(FX_MASK[i]); char pth[220]; snprintf(pth, sizeof pth, "/%s", am); FX_MASK[i] = pix_get(pth);
+		if (FX_MS[i]) { cairo_surface_destroy(FX_MS[i]); FX_MS[i] = NULL; } }
+	if (!FX_MASK[i]) return NULL;
+	if (!FX_MS[i]) { int w = i ? 800 : 400, h = i ? 534 : 267; FX_MS[i] = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h); cairo_t *c = cairo_create(FX_MS[i]);
+		cairo_scale(c, (double)w / gdk_pixbuf_get_width(FX_MASK[i]), (double)h / gdk_pixbuf_get_height(FX_MASK[i])); gdk_cairo_set_source_pixbuf(c, FX_MASK[i], 0, 0); cairo_paint(c); cairo_destroy(c); }
+	return FX_MS[i];
+}
+/* ---- the northern lights (aurora58.js: aurColours, aurStrip, aurDraw) */
+static const struct { double y0, amp, k, sp, h, ph, a; } AUR_RIB[3] = {{250, 50, .0042, .11, 210, 0, .78}, {300, 34, .0061, -.08, 150, 2.1, .6}, {190, 30, .0029, .06, 130, 4.2, .45}};
+static void aur_draw(void)
+{
+	cairo_surface_t *m = fx_mask(0); if (!m) return;
+	RGB base = variant(accent(), S.aurm[0] ? S.aurm : "normal"); double h, sa, l; rgb2hsl(base, &h, &sa, &l); sa = fmax(sa, 38);
+	RGB lo = hsl2rgb(h, sa, fmax(52, fmin(68, l + 8))), hi = hsl2rgb(h + 38, fmax(30, sa - 8), fmax(40, fmin(58, l)));
+	int still = S.rmotion; double t = still ? 40 : (g_get_monotonic_time() - FX_T0) / 1e6;
+	if (!AUR_SKY) { AUR_SKY = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 400, 267); AUR_CV = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 400, 267); }
+	cairo_t *k = cairo_create(AUR_SKY); cairo_set_operator(k, CAIRO_OPERATOR_CLEAR); cairo_paint(k); cairo_set_operator(k, CAIRO_OPERATOR_OVER); cairo_scale(k, .25, .25);
+	for (int i = 0; i < 3; i++) for (int x = -24; x < 1624; x += 8) { const double *r = &AUR_RIB[i].y0;
+		double by = r[0] + r[1] * sin(r[2] * x + r[5] + t * r[3]) + 12 * sin(.013 * x - t * .4 + r[5]),
+			a = r[6] * (.5 + .5 * sin(.021 * x + t * 1.1 + r[5])) * (.55 + .45 * sin(.0057 * x - t * .45)) + .06, hh = r[4] * (.7 + .3 * sin(.009 * x + t * .5 + r[5]));
+		a = fmax(0, fmin(1, a)); if (a <= 0 || hh <= 0) continue;
+		cairo_pattern_t *g = cairo_pattern_create_linear(0, by, 0, by - hh);
+		cairo_pattern_add_color_stop_rgba(g, 0, lo.r, lo.g, lo.b, 0); cairo_pattern_add_color_stop_rgba(g, .04, lo.r, lo.g, lo.b, a); cairo_pattern_add_color_stop_rgba(g, .22, lo.r, lo.g, lo.b, .75 * a);
+		cairo_pattern_add_color_stop_rgba(g, .6, hi.r, hi.g, hi.b, .32 * a); cairo_pattern_add_color_stop_rgba(g, 1, hi.r, hi.g, hi.b, 0);
+		cairo_rectangle(k, x, by - hh, 9, hh); cairo_set_source(k, g); cairo_fill(k); cairo_pattern_destroy(g); }
+	cairo_destroy(k);
+	cairo_t *g = cairo_create(AUR_CV); cairo_set_operator(g, CAIRO_OPERATOR_SOURCE); cairo_set_source_surface(g, AUR_SKY, 0, 0); cairo_paint(g);
+	/* (the lake: the same light upside down about the water line, twice; the mask keeps it to the open water and dims it) */
+	cairo_set_operator(g, CAIRO_OPERATOR_ADD); cairo_save(g); cairo_matrix_t mx; cairo_matrix_init(&mx, 1, 0, 0, -1, 0, 2 * 550 * .25); cairo_transform(g, &mx);
+	cairo_set_source_surface(g, AUR_SKY, 0, 0); cairo_paint(g); cairo_paint(g); cairo_restore(g);
+	cairo_set_operator(g, CAIRO_OPERATOR_DEST_IN); cairo_set_source_surface(g, m, 0, 0); cairo_paint(g); cairo_destroy(g);
+}
+/* ---- Spirit Falls: the petals (both), the sky lanterns (at night), statue58.js petNew, petStep, petDraw, lanNew, lanStep, lanDraw */
+typedef struct { double x, y, s, ph, sp, vy, wy, life; int landed; RGB c; } Petal; typedef struct { double x, y, z, ph, vy, fl, life; } Lantern;
+static Petal PS[70]; static Lantern LS[28]; static int PET_MODE = -1;   /* (0 light, 1 dark) */
+static double rnd(void) { return g_random_double(); }
+static void pet_new(Petal *p, int any)
+{
+	static const char *L[] = {"#ffc2d6", "#ffe3ec", "#ff9fc0", "#ffd3e1"}, *D[] = {"#e79ac0", "#f6c4dc", "#c66d9e", "#f0b3d0"};
+	p->x = any ? rnd() * 1700 - 60 : rnd() * 640 - 80; p->y = any ? 60 + rnd() * 700 : 90 + rnd() * 380; p->s = 3 + rnd() * 3.5; p->ph = rnd() * 6.283; p->sp = .6 + rnd() * .8;
+	p->vy = 10 + rnd() * 22; p->wy = 648 + pow(rnd(), .7) * 410; p->c = hexc((PET_MODE == 0 ? L : D)[(int)(rnd() * 4) & 3], "#ffc2d6"); p->landed = 0; p->life = 1;
+}
+static void lan_new(Lantern *p, int any)
+{
+	double z = .35 + rnd() * .65, x = rnd() < .74 ? rnd() * 1180 : 1180 + rnd() * 440; p->x = x; p->y = any ? 10 + rnd() * 190 : 190 + rnd() * 40; p->z = z; p->ph = rnd() * 6.283; p->vy = (3 + rnd() * 5) * z; p->fl = rnd() * 6.283; p->life = any ? 1 : 0;
+}
+static void pet_step(double dt, double t)
+{
+	double wind = 34 + 20 * sin(t * .23) + 10 * sin(t * .71 + 1);
+	for (int i = 0; i < 70; i++) { Petal *p = &PS[i];
+		if (!p->landed) { p->x += (wind * p->sp + 14 * sin(t * 1.3 + p->ph)) * dt; p->y += (p->vy + 10 * sin(t * 1.7 + p->ph * 2)) * dt; if (p->y >= p->wy) { p->landed = 1; p->y = p->wy; } }
+		else { p->x += wind * .12 * dt; p->life -= dt / 9; }
+		if (p->x > 1680 || p->life <= 0) pet_new(p, 0); }
+	for (int i = 0; i < 28; i++) { Lantern *p = &LS[i]; p->y -= p->vy * dt; p->x += sin(t * .4 + p->ph) * 3 * dt * p->z; p->life = fmin(1, p->life + dt / 4); if (p->y < -30) lan_new(p, 0); }
+}
+static void pet_draw(double t)
+{
+	if (!PET_CV) { PET_CV = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 800, 534); LAN_CV = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 800, 534); }
+	cairo_t *g = cairo_create(LAN_CV); cairo_set_operator(g, CAIRO_OPERATOR_CLEAR); cairo_paint(g); cairo_set_operator(g, CAIRO_OPERATOR_OVER);
+	cairo_surface_t *m = fx_mask(1);
+	if (PET_MODE == 1 && m) {
+		RGB o = variant(accent(), S.lnm[0] ? S.lnm : "normal"); double h, sa, l; rgb2hsl(o, &h, &sa, &l); double s2 = fmax(sa, 60);
+		RGB body = hsl2rgb(h, s2, fmax(60, fmin(72, l + 14))), glow = hsl2rgb(h, s2, 62), core = hsl2rgb(h, fmin(100, s2 + 10), 88);
+		cairo_save(g); cairo_scale(g, .5, .5);
+		for (int i = 0; i < 28; i++) { Lantern *p = &LS[i]; double sz = 14 * p->z, fl = .85 + .15 * sin(t * 7 + p->fl) * sin(t * 3.1 + p->ph), a = fmax(0, fmin(1, p->life)); if (a <= 0) continue;
+			cairo_pattern_t *gr = cairo_pattern_create_radial(p->x, p->y, 0, p->x, p->y, sz * 3.2); cairo_pattern_add_color_stop_rgba(gr, 0, glow.r, glow.g, glow.b, .55 * fl * a); cairo_pattern_add_color_stop_rgba(gr, 1, glow.r, glow.g, glow.b, 0);
+			cairo_rectangle(g, p->x - sz * 3.2, p->y - sz * 3.2, sz * 6.4, sz * 6.4); cairo_set_source(g, gr); cairo_fill(g); cairo_pattern_destroy(gr);
+			cairo_move_to(g, p->x - sz * .55, p->y - sz * .75); cairo_line_to(g, p->x + sz * .55, p->y - sz * .75); cairo_line_to(g, p->x + sz * .42, p->y + sz * .6); cairo_line_to(g, p->x - sz * .42, p->y + sz * .6); cairo_close_path(g);
+			src(g, body, a); cairo_fill_preserve(g);
+			cairo_pattern_t *cg = cairo_pattern_create_linear(0, p->y - sz * .75, 0, p->y + sz * .6); cairo_pattern_add_color_stop_rgba(cg, 0, 1, 1, 1, 0); cairo_pattern_add_color_stop_rgba(cg, 1, core.r, core.g, core.b, .9 * fl * a);
+			cairo_set_source(g, cg); cairo_fill(g); cairo_pattern_destroy(cg);
+			cairo_set_source_rgba(g, 40 / 255.0, 20 / 255.0, 20 / 255.0, .35 * a); cairo_rectangle(g, p->x - sz * .55, p->y - sz * .78, sz * 1.1, sz * .12); cairo_fill(g);
+			cairo_set_source_rgba(g, 1, 240 / 255.0, 200 / 255.0, fl * a); cairo_arc(g, p->x, p->y + sz * .5, sz * .12, 0, 6.283); cairo_fill(g); }
+		cairo_restore(g); cairo_set_operator(g, CAIRO_OPERATOR_DEST_IN); cairo_set_source_surface(g, m, 0, 0); cairo_paint(g); }
+	cairo_destroy(g);
+	g = cairo_create(PET_CV); cairo_set_operator(g, CAIRO_OPERATOR_CLEAR); cairo_paint(g); cairo_set_operator(g, CAIRO_OPERATOR_OVER); cairo_scale(g, .5, .5);
+	for (int i = 0; i < 70; i++) { Petal *p = &PS[i]; cairo_save(g); cairo_translate(g, p->x, p->y); double al = fmax(0, fmin(1, p->life)) * (p->landed ? .85 : 1);
+		if (p->landed) { double tp = (p->y - 640) / 427; cairo_scale(g, 1, .4 + .2 * tp); } else { cairo_rotate(g, p->ph + t * p->sp * 1.6); cairo_scale(g, 1, .25 + .75 * fabs(cos(t * 2 * p->sp + p->ph))); }
+		cairo_scale(g, p->s, p->s * .62); cairo_arc(g, 0, 0, 1, 0, 6.283); cairo_restore(g); src(g, p->c, al); cairo_fill(g); }
+	cairo_destroy(g);
+}
+static gboolean aur_tick(gpointer d) { (void)d; if (!fx_seen()) return G_SOURCE_CONTINUE; if (!CHARGING && BAT >= 0 && (FX_SLOWT ^= 1)) return G_SOURCE_CONTINUE; aur_draw(); FXD = 1; if (DESKAREA) gtk_widget_queue_draw(DESKAREA); return G_SOURCE_CONTINUE; }
+static gboolean pet_tick(gpointer d)
+{
+	(void)d; if (!fx_seen()) { PET_LAST = 0; return G_SOURCE_CONTINUE; } if (!CHARGING && BAT >= 0 && (FX_SLOWT ^= 1)) return G_SOURCE_CONTINUE;
+	gint64 now = g_get_monotonic_time(); double dt = fmin(.2, PET_LAST ? (now - PET_LAST) / 1e6 : 0); PET_LAST = now; double t = (now - FX_T0) / 1e6;
+	pet_step(dt, t); pet_draw(t); FXD = 1; if (DESKAREA) gtk_widget_queue_draw(DESKAREA); return G_SOURCE_CONTINUE;
+}
+/* (aurUpdate, stUpdate: what is shown with these settings; the timers started or stopped) */
+static void fx_update(void)
+{
+	if (!FX_T0) FX_T0 = g_get_monotonic_time();
+	int a = BG && fx_aur(), o = BG && fx_oasis();
+	if (!a && FX_T) { g_source_remove(FX_T); FX_T = 0; }
+	if (a) { aur_draw(); if (!S.rmotion && !FX_T) FX_T = g_timeout_add(100, aur_tick, NULL); else if (S.rmotion && FX_T) { g_source_remove(FX_T); FX_T = 0; } }
+	if (!o && PET_T) { g_source_remove(PET_T); PET_T = 0; }
+	if (o) { int mode = is_dark(); if (mode != PET_MODE) { PET_MODE = mode; for (int i = 0; i < 70; i++) pet_new(&PS[i], 1); for (int i = 0; i < 28; i++) lan_new(&LS[i], 1); }
+		pet_draw(S.rmotion ? 0 : (g_get_monotonic_time() - FX_T0) / 1e6);
+		if (!S.rmotion && !PET_T) PET_T = g_timeout_add(66, pet_tick, NULL); else if (S.rmotion && PET_T) { g_source_remove(PET_T); PET_T = 0; } }
+	FXD = 1;
+}
+static void fx_draw(cairo_t *cr)
+{
+	if (!BG) return; double s, ox, oy; cover(&s, &ox, &oy);
+	if (fx_aur() && AUR_CV) { cairo_save(cr); cairo_translate(cr, ox, oy); cairo_scale(cr, 1600 * s / 400, 1067 * s / 267); cairo_set_source_surface(cr, AUR_CV, 0, 0);
+		cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR); cairo_paint(cr); cairo_restore(cr); }
+	if (fx_oasis()) {
+		if (LAN_CV && PET_MODE == 1) { cairo_save(cr); cairo_translate(cr, ox, oy); cairo_scale(cr, 1600 * s / 800, 1067 * s / 534); cairo_set_source_surface(cr, LAN_CV, 0, 0); cairo_paint(cr); cairo_restore(cr); }
+		if (ST_PIX && ST_BOX[2] > 0) { cairo_save(cr); cairo_translate(cr, ox + ST_BOX[0] * s, oy + ST_BOX[1] * s);
+			cairo_scale(cr, ST_BOX[2] * s / gdk_pixbuf_get_width(ST_PIX), ST_BOX[3] * s / gdk_pixbuf_get_height(ST_PIX)); gdk_cairo_set_source_pixbuf(cr, ST_PIX, 0, 0); cairo_paint(cr); cairo_restore(cr); }
+		if (PET_CV) { cairo_save(cr); cairo_translate(cr, ox, oy); cairo_scale(cr, 1600 * s / 800, 1067 * s / 534); cairo_set_source_surface(cr, PET_CV, 0, 0); cairo_paint(cr); cairo_restore(cr); } }
 }
 static int di_at(double x, double y)
 {
@@ -4988,6 +5252,10 @@ int main(int argc, char **argv)
 	/* (1.6.0 Part 12, item 8) the apps' text as Chromium draws it: grey anti-aliasing, slight hinting (the shell's own Pango
 	   text is drawn so already); without XSETTINGS, GTK would give WebKit full hinting, its letters wider than Chromium's */
 	if (!getenv("RUDOLF_NATIVE_GTKHINT")) g_object_set(gtk_settings_get_default(), "gtk-xft-antialias", 1, "gtk-xft-hinting", 1, "gtk-xft-hintstyle", "hintslight", "gtk-xft-rgba", "none", NULL);
+	/* (test finding N9) the apps' dates and times in Chromium's locale when the system has none: Chromium then uses en-US (a time
+	   field "07:00 AM"), WebKit the C locale ("07:00", no AM or PM). Set for WebKit's own processes, after GTK has set this one's */
+	{ const char *l = getenv("LC_ALL"); if (!l || !*l) l = getenv("LC_TIME"); if (!l || !*l) l = getenv("LANG");
+	  if (!l || !*l || !strcmp(l, "C") || !strncmp(l, "C.", 2) || !strcmp(l, "POSIX")) { g_unsetenv("LC_ALL"); g_unsetenv("LC_TIME"); g_setenv("LANG", "en_US.UTF-8", TRUE); } }
 	wm_init();
 	if (SW <= 0 || SH <= 0) { GdkScreen *scr = gdk_screen_get_default(); SW = gdk_screen_get_width(scr); SH = gdk_screen_get_height(scr); }
 	/* rudolfd may still be starting */
