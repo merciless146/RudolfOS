@@ -18,6 +18,7 @@ import sbvm
 from guest import Guest
 from ser import Ser
 REL = os.path.abspath(sys.argv[1]); STK = os.environ.get('GL160_STK', '1') == '1'
+SOFT = os.environ.get('GL160_SOFT') == '1'   # (the software display, Xvfb, instead of Xorg on QEMU's graphics)
 PARTS = os.environ.get('SB_PARTS', '/nonexistent'); LOG = open('gl160.txt', 'w'); R = []
 def out(*a):
     s = ' '.join(str(x) for x in a); print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
@@ -40,7 +41,9 @@ GLIBC = ('libc.so.6', 'libm.so.6', 'ld-linux-x86-64.so.2', 'libpthread.so.0', 'l
 def deps(p):
     o = subprocess.run(['ldd', p], capture_output=True, text=True).stdout
     return [m for m in re.findall(r'(/\S+)\s+\(0x', o)]
-want = [f'{D}/usr/bin/glxq', f'{D}/usr/bin/glxdraw', f'{D}/usr/bin/sdlgl', f'{LIB}/libGLX_mesa.so.0', f'{LIB}/libSDL2-2.0.so.0', '/bin/busybox']
+for n in ('glxinfo', 'xdpyinfo'):
+    if shutil.which(n): shutil.copy(shutil.which(n), f'{D}/usr/bin/{n}')
+want = [f'{D}/usr/bin/glxinfo', f'{D}/usr/bin/xdpyinfo', f'{D}/usr/bin/glxq', f'{D}/usr/bin/glxdraw', f'{D}/usr/bin/sdlgl', f'{LIB}/libGLX_mesa.so.0', f'{LIB}/libSDL2-2.0.so.0', '/bin/busybox']
 for n in ('swrast_dri.so', 'kms_swrast_dri.so', 'virtio_gpu_dri.so', 'libdril_dri.so'):
     if os.path.exists(f'{LIB}/dri/{n}'): shutil.copy(os.path.realpath(f'{LIB}/dri/{n}'), f'{D}{LIB}/dri/{n}'); want.append(f'{D}{LIB}/dri/{n}')
 seen = set()
@@ -82,7 +85,7 @@ INIT_JS = "(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj
 def boot(tag):
     extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf160g',
              '-netdev', 'user,id=u0', '-netdev', 'hubport,id=h1,hubid=0,netdev=u0',
-             '-kernel', f'{REL}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1']
+             '-kernel', f'{REL}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1' + (' rudolf.softdisplay=1' if SOFT else '')]
     vm = sbvm.VM('gl160' + tag, PARTS, [], secure=False, mem=MEM, extra=extra)
     g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3)
     time.sleep(30); end = time.time() + 900; up = False
@@ -130,10 +133,10 @@ def wait_for(js, expr, secs, every=5):
 # what an app is started with: rudolfd's own environment (su keeps it), then the session's file, as rudolfd does
 # (rudolfd.c api_apps "run" and api_native "run": setsid su -s /bin/sh USER -c 'set -a; . ENV; set +a; exec ...')
 ASAPP = """#!/bin/sh
-# asapp USER ENVFILE COMMAND ARGS...: as rudolfd starts an app: from rudolfd's own environment, su to the user, the
+# asapp USER ENVFILE SCRIPT: as rudolfd starts an app: from rudolfd's own environment, su to the user, the
 # session's file read (rudolfd.c api_apps "run", api_native "run")
 u=$1; e=$2; shift 2; RD=$(pgrep -o -x rudolfd)
-exec env -i $(tr '\\0' '\\n' < /proc/$RD/environ | grep -E '^[A-Za-z_][A-Za-z0-9_]*=[^ ]*$') su -s /bin/sh "$u" -c 'set -a; . "$0"; set +a; exec "$@"' "$e" "$@" </dev/null 2>&1
+exec env -i $(tr '\\0' '\\n' < /proc/$RD/environ | grep -E '^[A-Za-z_][A-Za-z0-9_]*=[^ ]*$') su -s /bin/sh "$u" -c "set -a; . $e; set +a; exec sh $1" </dev/null 2>&1
 """
 make_drive(DRV)
 vm = None
@@ -152,23 +155,29 @@ try:
     sh(f"cat /run/rudolf/display-mode /run/rudolf/display-reason; ls -ln /dev/dri /dev/dri/by-path 2>&1; id {AU}; id rudolf; grep -E '^(video|render|audio|input):' /etc/group; "
        f"ls -ld /run/user /run/user/* /tmp/.X11-unix /tmp/.X11-unix/*; ls -ln /run/rudolf/xauth; ls -ld /persist /persist/debian /var/lib/flatpak; "
        "RD=$(pgrep -o -x rudolfd); echo rudolfd=$RD; tr '\\0' '\\n' < /proc/$RD/environ; echo; cat /proc/$RD/status | grep -E '^(Uid|Gid|Groups)'; "
-       "grep -iE 'glx|dri|glamor|AIGLX' /run/rudolf/Xorg.log 2>/dev/null | head -20; tail -5 /run/rudolf/udev.log 2>/dev/null; pgrep -a systemd-udevd | head -2; "
+       "grep -iE 'glx|dri|glamor|swrast|provider|visual|fbconfig' /run/rudolf/Xorg.log 2>/dev/null; ls -la /usr/lib/xorg/modules/extensions; ls /usr/lib/x86_64-linux-gnu/dri | tr '\n' ' '; echo; ls /usr/lib/x86_64-linux-gnu | grep -iE 'GL|gallium|drm' | tr '\n' ' '; echo; pgrep -a Xvfb; pgrep -a Xorg; tail -5 /run/rudolf/udev.log 2>/dev/null; pgrep -a systemd-udevd | head -2; "
        "udevadm info -q all -n /dev/dri/card0 2>&1 | head -20; udevadm info -q all -n /dev/dri/renderD128 2>&1 | head -12", 120)
-    B = '/persist/debian'; LD = f'{B}/lib64/ld-linux-x86-64.so.2 --library-path {B}{LIB}'
-    GLENV = f'LIBGL_DRIVERS_PATH={B}{LIB}/dri LIBGL_DEBUG=verbose'
-    open(f'{W}/asapp', 'w').write(ASAPP); g.put(f'{W}/asapp', '/tmp/asapp', '755'); sh("cat /tmp/asapp", 20)
-    def gl(who, cmd): return sh(cmd.replace('asapp ', '/tmp/asapp '), 180)
-    # A. root (with the display's cookie) and B. the desktop's user: the display's own
-    o = sh(f"DISPLAY=:0 XAUTHORITY=/run/rudolf/xauth {GLENV} {LD} {B}/usr/bin/glxdraw; echo rc=$?", 120)
-    ok('3. root draws with OpenGL (the display\'s cookie): the machine can', 'drew ok' in o, o)
-    o = gl('rudolf', f"asapp rudolf /run/rudolf/session.env env {GLENV} {LD} {B}/usr/bin/glxdraw; echo rc=$?")
-    out('NOTE the desktop\'s user (rudolf), as apps before 1.5.9:', 'drew ok' in o)
+    B = '/persist/debian'
+    open(f'{W}/asapp', 'w').write(ASAPP); g.put(f'{W}/asapp', '/tmp/asapp', '755')
+    # a script run as root, or as a user as rudolfd starts an app
+    def AS(who, env, script, t=240):
+        c = f"cat > /tmp/gs.sh <<'GSEOF'\n{script}\nGSEOF\nchmod 755 /tmp/gs.sh; " + ("sh /tmp/gs.sh 2>&1" if who == 'root' else f"/tmp/asapp {who} {env} /tmp/gs.sh")
+        return sh(c, t)
+    # this machine's programs with their own loader, libraries and Mesa
+    HOSTGL = (f"G=\"LIBGL_DRIVERS_PATH={B}{LIB}/dri LIBGL_DEBUG=verbose\"; L=\"{B}/lib64/ld-linux-x86-64.so.2 --library-path {B}{LIB}\"\n"
+              f"id; echo DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR\n"
+              f"env $G $L {B}/usr/bin/glxinfo -B 2>&1 | head -25\nenv $G $L {B}/usr/bin/glxq\n"
+              f"env $G $L {B}/usr/bin/glxdraw; echo rc=$?\nenv $G $L {B}/usr/bin/sdlgl; echo rc=$?")
+    # A. root (with the display's cookie) and the desktop's user: the display's own
+    o = AS('root', '', 'export DISPLAY=:0 XAUTHORITY=/run/rudolf/xauth\n' + HOSTGL)
+    ok('3. root draws with OpenGL (the display\'s cookie): the machine can', o.count('drew ok') == 2, o)
+    o = AS('rudolf', '/run/rudolf/session.env', HOSTGL)
+    out('NOTE the desktop\'s user (rudolf), as apps before 1.5.9:', o.count('drew ok'))
     # C. the account's user on Rudolf OS itself
-    o = gl(AU, f"asapp {AU} /run/rudolf/acct-session.env env {GLENV} {LD} {B}/usr/bin/glxq; asapp {AU} /run/rudolf/acct-session.env env {GLENV} {LD} {B}/usr/bin/glxdraw; echo rc=$?; "
-               f"asapp {AU} /run/rudolf/acct-session.env env {GLENV} {LD} {B}/usr/bin/sdlgl; echo rc=$?; asapp {AU} /run/rudolf/acct-session.env sh -c 'id; env | sort'")
+    o = AS(AU, '/run/rudolf/acct-session.env', 'env | sort\n' + HOSTGL)
     ok('4. the account\'s user draws with OpenGL on Rudolf OS (GLX, and through SDL2 as the games)', o.count('drew ok') == 2, o)
     # D. Debian (the stand-in), as the account's user
-    o = sh(f"rudolf-debian rebind >/dev/null 2>&1; rudolf-debian run -- sh -c 'id; env | sort; LIBGL_DEBUG=verbose LD_LIBRARY_PATH={LIB} /usr/bin/glxdraw; echo rc=$?; LD_LIBRARY_PATH={LIB} /usr/bin/sdlgl; echo rc=$?' 2>&1", 240)
+    o = sh(f"rudolf-debian rebind >/dev/null 2>&1; rudolf-debian run -- sh -c 'id; env | sort; export LD_LIBRARY_PATH={LIB} LIBGL_DEBUG=verbose; /usr/bin/glxinfo -B 2>&1 | head -25; /usr/bin/glxdraw; echo rc=$?; /usr/bin/sdlgl; echo rc=$?' 2>&1", 240)
     ok('5. a Debian program run as the account\'s user draws with OpenGL (GLX and SDL2)', o.count('drew ok') == 2, o)
     # E. Flatpak: Flathub's runtime (and the GL extension it brings), started as rudolfd starts Flatpak apps
     o = sh("(flatpak remotes --system --columns=name | grep -qx flathub || flatpak remote-add --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo; "
@@ -180,14 +189,15 @@ try:
         time.sleep(30)
     o = sh("tail -15 /tmp/fpi.log; flatpak list --system --runtime --columns=application,branch,size", 120)
     ok('6. Flathub\'s runtime installed, with its GL extension (org.freedesktop.Platform.GL.default)', 'exit 0' in o and 'Platform.GL.default' in o, o)
-    for who, env, home in ((AU, '/run/rudolf/acct-session.env', f'/home/{AU}'), ('rudolf', '/run/rudolf/session.env', '/home/rudolf')):
-        sh(f"rm -rf {home}/gl160; mkdir -p {home}/gl160; cp {B}/usr/bin/glxdraw {B}/usr/bin/sdlgl {B}/usr/bin/glxq {home}/gl160/; chown -R $(id -u {who}):$(id -g {who}) {home}/gl160", 30)
+    for who, env, home in ((AU, '/run/rudolf/acct-session.env', f'/home/{AU}'), ('rudolf', '/run/rudolf/session.env', '/home/rudolf'), ('root', '', '/root')):
+        sh(f"rm -rf {home}/gl160; mkdir -p {home}/gl160; cp {B}/usr/bin/glxdraw {B}/usr/bin/sdlgl {B}/usr/bin/glxq {B}/usr/bin/glxinfo {home}/gl160/ 2>/dev/null; chown -R $(id -u {who}):$(id -g {who}) {home}/gl160", 30)
         FR = f"flatpak run --socket=x11 --device=dri --share=ipc --filesystem={home}/gl160:ro --env=LIBGL_DEBUG=verbose"
-        o = gl(who, f"asapp {who} {env} {FR} --command=sh {RT} -c 'id; ls -l /dev/dri; echo DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY; ls /usr/lib/x86_64-linux-gnu/GL /usr/lib/x86_64-linux-gnu/GL/default/lib/dri 2>&1 | head -12'; "
-                   f"asapp {who} {env} {FR} --command={home}/gl160/glxq {RT}; asapp {who} {env} {FR} --command={home}/gl160/glxdraw {RT}; echo rc=$?; "
-                   f"asapp {who} {env} {FR} --command={home}/gl160/sdlgl {RT}; echo rc=$?")
+        o = AS(who, env, ("export DISPLAY=:0 XAUTHORITY=/run/rudolf/xauth\n" if who == 'root' else '') +
+               f"{FR} --command=sh {RT} -c 'id; ls -l /dev/dri; echo DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY; ls /usr/lib/x86_64-linux-gnu/GL /usr/lib/x86_64-linux-gnu/GL/default/lib/dri 2>&1 | head -12'\n"
+               f"{FR} --command={home}/gl160/glxinfo {RT} -B 2>&1 | head -25\n{FR} --command={home}/gl160/glxq {RT}\n"
+               f"{FR} --command={home}/gl160/glxdraw {RT}; echo rc=$?\n{FR} --command={home}/gl160/sdlgl {RT}; echo rc=$?")
         if who == AU: ok('7. a Flatpak app run as the account\'s user (as rudolfd starts it) draws with OpenGL (GLX, and SDL2 as the games)', o.count('drew ok') == 2, o)
-        else: out('NOTE the same as the desktop\'s user (rudolf):', o.count('drew ok'))
+        else: out(f'NOTE the same as {who}:', o.count('drew ok'))
     # F. a real game from Flathub, started from the desktop's launcher (the App Store's), as the owner did
     if STK:
         APP = 'net.supertuxkart.SuperTuxKart'
@@ -202,7 +212,7 @@ try:
             js("(async()=>{try{await lxInstalled(true)}catch(e){};return 1})()", 120)
             r = js(f"lxApi('apps/run?id={APP}&desktop={APP}').then(()=>'started',e=>'ERR '+e.message)", 60)
             out('run:', r); time.sleep(120)
-            o = sh(f"pgrep -a -u {AU} | grep -iE 'supertux|bwrap' | cut -c1-200; tail -40 /run/rudolf/apps/{APP}.log", 60)
+            o = sh(f"U=$(id -u {AU}); for p in /proc/[0-9]*; do [ \"$(stat -c %u $p 2>/dev/null)\" = $U ] && tr '\\0' ' ' < $p/cmdline 2>/dev/null | cut -c1-200 && echo; done | grep -iE 'supertux'; tail -40 /run/rudolf/apps/{APP}.log", 60)
             vm.shot('stk')
             ok('8. SuperTuxKart from Flathub, started from the desktop, runs as the account\'s user (no OpenGL error)', 'supertuxkart' in o.lower() and not re.search(r"(?i)(couldn'?t|could not|failed to) (create|load|initiali[sz]e).*(opengl|gl |glx|context|renderer|irrlicht|video)|GLXBadContext|BadMatch|segmentation fault|No such file", o.split('$ ', 1)[-1]), o)
         else: ok('8. SuperTuxKart from Flathub installed', False, o)
