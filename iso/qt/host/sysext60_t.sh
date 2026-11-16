@@ -148,5 +148,5 @@ ok "...a bad name or action is refused" "$(has "$o" 'bad extension name')$(has "
 # (1.6.0, found in QEMU, qt/sb/t160x_t.py) the start-up marks the data partition as in use before the assembly, so its
 # health-log lines (left out, a start script stopped) go to the data partition's health log (System health), not /run's
 RI=$I/sys/root/sbin/rudolf-init; lt=$(grep -n '^mountpoint -q /persist && touch /run/rudolf/persistent' $RI | head -1 | cut -d: -f1); la=$(grep -n 'sysext assemble' $RI | grep -v '^#' | grep -v ':#' | head -1 | cut -d: -f1)
-ok "16. rudolf-init: the data partition is marked in use before the extensions are laid over (their health-log lines kept)" "$([ -n "$lt" ] && [ -n "$la" ] && [ "$lt" -lt "$la" ] && echo 1)" "touch at ${lt:-none}, assemble at ${la:-none}"
+ok "17. rudolf-init: the data partition is marked in use before the extensions are laid over (their health-log lines kept)" "$([ -n "$lt" ] && [ -n "$la" ] && [ "$lt" -lt "$la" ] && echo 1)" "touch at ${lt:-none}, assemble at ${la:-none}"
 echo "$((N-F))/$N passed"; [ $F = 0 ]
