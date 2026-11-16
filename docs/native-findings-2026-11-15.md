@@ -176,3 +176,53 @@ above. With the first run's 19 that makes **32 findings: 5 break, 15 look wrong,
 
 **Not compared in the second run:** Sound Recorder and Camera. Playwright's Chromium hung on `getUserMedia` at launch
 (also with fake devices). The Vivobook checks listed above stand.
+
+## Status on 2026-11-16
+
+An unattended session (2026-11-16) checked each finding against main (`d574670`, then `57babb5`), the open PRs and the
+four tasks started at 20:10-20:25 (owner's time), on this host (Xvfb 1920×1080, WebKitGTK 2.52.6, `--draw=soft`, faketime) with
+`same_t.sh`, its behaviour scripts and `native59_t.sh`, and on the newest beta (1.6.0.261116, serial 2026111602) in QEMU
+(`iso/qt/sb/t160n_t.py`, workflow `native-areas.yml`). "Fixed here" means in this session's PR (see the table's last column).
+
+| # | Finding | Status | Where | Checked on 2026-11-16 |
+|---|---|---|---|---|
+| N1 | Full-screen video black | fixed | #394 (`d363693`) | same_t `video-fs` passes; real drawing (GPU) is a Vivobook check |
+| N2 | File dialog cut off inside the window | fixed | #394 (`d363693`) | `dlg-open` passes |
+| N3 | Task Manager lists only itself | fixed | #394 (`d363693`) | `tm-apps` passes |
+| N4 | Page dialogs in a window of their own | fixed | #394 (`d363693`) | `dlg-ask`, `dlg-camera`, `dlg-print`, `dlg-dark` pass |
+| N5 | Sliders drawn by GTK | fixed | #394 (`6212d1f`) | `ctl-volume`, `ctl-mouse`, `ctl-media` pass |
+| N6 | Drop-down lists without chevrons | fixed | #394 (`6212d1f`) | `ctl-wordlite` passes |
+| N7 | File Explorer: Folders on this device, storage 0 B | fixed | #394 (`6212d1f`) | `explorer` passes |
+| N8 | About: "Apple GPU" | fixed | #394 (`6212d1f`, `068aa95`) | `about` passes |
+| N9 | 24-hour time field | fixed | #394 (`6212d1f`) | `ctl-clock` passes |
+| N10 | Print dialog inside the window | fixed | #394 (`d363693`) | `dlg-print` passes |
+| N11 | Glacier Lake without northern lights | fixed | #394 (`36507ee`) | `dyn-lake` passes |
+| N12 | Spirit Falls without its statue | fixed | #394 (`36507ee`) | `dyn-oasis`, `dyn-oasis-dark` pass |
+| N13 | Colour box drawn by GTK | fixed | #394 (`6212d1f`) | `ctl-wordlite` passes |
+| N14 | Flash Player's own icon | fixed | #394 (`cb33ba5`) | `title-icon` passes |
+| N15 | No window opening animation | **fixed here** | this session's PR (rudolf-native: `wopen_start`) | new same_t case `wopen`: Standard `.win.wopen` 0.18 s; Native's animation 183-190 ms, faded and at 96 % at its start. Fails on main (no animation) |
+| N16 | Video statistics stop near the end | not reproduced | — | new same_t case `video-frames`: 180 frames at `ended` on both engines with main's page (Chromium 180), and 174-180 frame callbacks on each. The 153 of the first run is not seen with WebKitGTK 2.52.6 here; a Vivobook check |
+| N17 | Sandbox flag error (WebKit stand-in) | fixed | #394 (`cb33ba5`) | `sandbox-flags` passes |
+| N18 | Log video problems' noise | fixed in part | #394 (`d363693`) | downloadbuffer's line gone; "Got underflow" at each end stays (the owner's decision, plan Part 12) |
+| N19 | Two WebKit web processes | fixed (the test) | #394 (`cb33ba5`) | `native59_t.sh` 70/70 with this session's binary, test 21 ("both windows share one WebKit web process") passes. Memory with real use is a Vivobook check |
+| N20 | Log emptied by each new window | fixed | #405 (`b83e625`) | `videolog60_t.sh` checks the "+" |
+| N21 | Right-click menus cut off | fixed | #405 (`b83e625`) | `app-menu` passes |
+| N22 | No scrollbars | fixed | #405 (`b83e625`) | `help`, `ctl-*` pass |
+| N23 | The harness hid scrollbars | fixed | #405 (`b83e625`) | same_t starts Chromium with its scrollbars |
+| N24 | Display Properties' tiles 4-5 px taller | fixed | #405 (`b83e625`, with N22) | Settings' cases pass (`ctl-volume`, `about`) |
+| N25 | Unstyled text boxes | fixed | #405 (`b83e625`) | `help` passes |
+| N26 | Check boxes | fixed | #394 (`d363693`: Chromium's blue) | `ctl-*` pass |
+| N27 | Title bars in dark mode | fixed; frames being finished | #405 (`b83e625`); task 20:20, PR #409 | `title-dark` passes |
+| N28 | GPU Lab says "Hardware" | fixed | #394 (`068aa95`: the chip's name from GL) | new same_t case `gpulab`: "Software rendering (no graphics card in use) — 3D will be slow" on both |
+| N29 | Video frame callbacks never called | fixed | #405 (`b83e625`) | new same_t case `video-frames`: 174-180 callbacks on both |
+| N30 | Start menu's search box and scrollbar | fixed | #405 (`510c0a3`) | `menu`, `menu-left`, `menu-right` pass |
+| N31 | Oracle's WebKit stand-in: focus, Ctrl+T | Vivobook check | — | real Native uses Chromium for Oracle; docs/native-vivobook-checklist.md |
+| N32 | Desktop sounds from app windows | being fixed | task 20:10 ("no sound in native app windows") | a Vivobook check after that task's PR |
+| — | The overview's pictures without a compositor (taken once when it opened) | **fixed here** | this session's PR (rudolf-native: `ov_grab`, `ov_live`) | new same_t case `overview-live` (a playing video under Super+Tab): 0.87-1.05 % of Standard's screen and 1.55 % of Native's change in 2 s; 0 % on main |
+| — | The toasts' pictures without a compositor (what was behind when they came) | **fixed here** | this session's PR (rudolf-native: `comp_behind`, `toast_live`) | new same_t case `toast-live` (Notepad moved under a toast): 1.40 % differs; 20.9 % on main. Also fixed: a toast window left 15 px off when two toasts became one |
+| — | Night light tints only the app windows | still open | plan Part 12, item 9 (its own PR series) | not changed here |
+| — | Touch mode's title bars | still open | plan Part 12, item 10 | not changed here |
+
+Not counted above, found on this host: the `menu`, `title-*`, `desk-menu` and `file-*` cases fail when `faketime` is missing
+(Native then takes the real hour, so automatic dark mode can differ from Standard's fixed 09:41); with faketime installed
+they pass. `same_t.sh` should say SKIP rather than compare then (left as it is).

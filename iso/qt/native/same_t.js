@@ -143,6 +143,27 @@ CASES.push({n: 'tm-apps', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'no
 const MPJS = "(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.getClientRects().length).pop(); w.querySelector('.ou').click(); const d = w.querySelector('.dlg'); d.querySelector('input').value = location.origin + '/tm/t.webm'; [...d.querySelectorAll('button')].pop().click(); " +
   "const go = v => { v.muted = true; v.pause(); v.addEventListener('seeked', () => w.querySelector('.fs').click(), {once: true}); v.currentTime = 2 }; const v = w.querySelector('video'); if (v.readyState >= 2) go(v); else v.addEventListener('loadeddata', () => go(v), {once: true}) })()";
 CASES.push({n: 'video-fs', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'media', 'settings']}, app: 'media', media: 't.webm', shellfs: 1, js: MPJS, jswait: 3000, undo: "document.fullscreenElement && document.exitFullscreen()", parts: ['picture']});
+/* (2026-11-16, the known differences "the overview's and the toasts' pictures without a compositor") the overview over a playing video:
+   its window's picture keeps moving, as Standard's windows do under the overview (the share of the screen changing in 2 s on both);
+   a toast over a window moved under it after it came: what is round it (its shadow, its corners) is that window on both */
+const MPLIVE = "(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.getClientRects().length).pop(); w.querySelector('.ou').click(); const d = w.querySelector('.dlg'); d.querySelector('input').value = location.origin + '/tm/t.webm'; [...d.querySelectorAll('button')].pop().click(); " +
+  "const v = w.querySelector('video'); v.muted = true; v.loop = true; v.play() })()";
+CASES.push({n: 'overview-live', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'media', 'settings']}, app: 'media', media: 't.webm', js: MPLIVE, jswait: 2500, key: 'overview', moving: 2000, parts: ['moving']});
+/* (what this session's cases read besides their pictures: wopen, video-frames; each engine's, for the case being run) */
+const XTRA = {std: {}, nat: {}};
+/* (N15) a window opening: Standard's .win.wopen (.18 s, from opacity 0 and 96 %); on Native the shell's animation over it, as long, its
+   picture part of the way through not yet the window's own */
+CASES.push({n: 'wopen', set: {}, act: 'notepad', wopen: 1, parts: ['wopen']});
+/* (N16, N29) a video played to its end in the Media Player: its frame callbacks called (requestVideoFrameCallback) and its count of frames
+   at the end (getVideoPlaybackQuality) as Chromium's, within 10 */
+const MPFRAMES = "(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.getClientRects().length).pop(); w.querySelector('.ou').click(); const d = w.querySelector('.dlg'); d.querySelector('input').value = location.origin + '/tm/t.webm'; [...d.querySelectorAll('button')].pop().click(); " +
+  "const v = w.querySelector('video'); v.muted = true; v.loop = false; window.__vf = {cb: 0, end: -1}; const f = () => { __vf.cb++; v.requestVideoFrameCallback(f) }; v.requestVideoFrameCallback(f); v.addEventListener('ended', () => { __vf.end = v.getVideoPlaybackQuality().totalVideoFrames }, {once: true}); v.play() })()";
+CASES.push({n: 'video-frames', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'media', 'settings']}, app: 'media', media: 't.webm', js: MPFRAMES, jswait: 8500, readx: "JSON.stringify(window.__vf)", parts: ['frames']});
+/* (N28) GPU Lab's Graphics info: hardware or software drawing, as each engine draws (Playwright's Chromium: SwiftShader; Native here:
+   --draw=soft) */
+CASES.push({n: 'gpulab', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'gpulab', 'settings']}, app: 'gpulab', jswait: 1500,
+  read: "(([...document.querySelectorAll('.win td')].find(e => e.textContent == 'Acceleration') || {}).nextElementSibling || {}).textContent"});
+CASES.push({n: 'toast-live', set: {}, act: 'notepad', ev: ['memory closed Paint 300'], drag: [W - 600, H - 330], parts: ['toast']});
 /* (the test findings that look wrong: N5, N6, N7, N8, N9, N13) the apps' windows whole ('win': WebKit's page against Chromium's, a pixel's
    match one pixel away allowed): Settings' Volume Controls and Mouse and touchpad (sliders, lists), the Media Player (seek bar, volume,
    speed), WordLite (font and size lists, the colour box), the Clock's alarms (a time field), File Explorer (Folders on this device, the
@@ -174,12 +195,36 @@ CASES.push({n: 'title-icon', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 
 CASES.push({n: 'app-menu', set: {}, more: PINSL, app: 'explorer', appctx: 'DOCUMENTS', parts: ['ctx']});
 CASES.push({n: 'title-dark', set: {dm: 'dark', darkui: true}, more: PINSL, app: 'explorer', parts: ['title']});
 CASES.push({n: 'help', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'help']}, app: 'help', parts: ['win']});
+/* (the owner's photo of 2026-11-15: an app's title bar on Native unlike Standard's) the title bars of Settings, File Explorer, Notepad,
+   Task Manager and Oracle (its own window, as Native opens it without Rudolf's Chromium), light and dark, each title bar style and two
+   accent colours; a window not in use beside one in use ('titlei'); the settings the page's title bar follows: the font size (the bar
+   grows with it), the font, the display scaling, the touch mode, high contrast, the window text colour (Wireframe's writing); Always
+   on top chosen from the title bar's own menu (its 📌); the pointer over each button */
+const PINST = {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'settings', 'taskmgr', 'browser', 'calc']};
+for (const ap of ['settings', 'explorer', 'notepad', 'taskmgr', 'browser']) for (const dm of ['light', 'dark']) for (const st of STY) for (const ac of ['#2563eb', '#db2777'])
+  CASES.push({n: 'tb-' + ap + '-' + dm + '-' + st + '-' + ac.slice(1), set: Object.assign({twstyle: st, accent: ac}, dm == 'dark' ? {dm: 'dark', darkui: true} : {dm: 'light'}), more: PINST, app: ap, parts: ['title']});
+for (const dm of ['light', 'dark']) for (const st of STY) CASES.push({n: 'tbi-' + dm + '-' + st, set: Object.assign({twstyle: st}, dm == 'dark' ? {dm: 'dark', darkui: true} : {dm: 'light'}), more: PINST, pre: ['notepad'], app: 'calc', parts: ['title', 'titlei']});
+const TBSET = {fs11: {fs: 11}, fs16: {fs: 16}, fs20: {fs: 20}, verdana: {ff: 'Verdana', fs: 14}, scale125: {scale: 125}, touch: {touch: true}, hc: {cb: 'contrast'}, 'hc-dark': {cb: 'contrast', dm: 'dark', darkui: true},
+  'tx-wire': {tx: '#7c2d12', twstyle: 'wire'}, 'fs18-retro': {fs: 18, twstyle: 'retro'}, 'touch-candy': {touch: true, twstyle: 'candy'}};
+for (const k in TBSET) CASES.push({n: 'tbs-' + k, set: Object.assign({dm: 'light'}, TBSET[k]), more: PINST, app: 'notepad', parts: ['title']});
+/* (the owner's photo) Settings › System Settings › Desktop engine: the engine in use and the one chosen, as rudolfd says for each (Standard's
+   page told chromium, Native's native) */
+const ENG = {chromium: {choice: 'chromium', now: 'chromium', available: true, nativeAvailable: true, failed: false, persistent: true, gaveUp: '', offer: false},
+  native: {choice: 'native', now: 'native', available: true, nativeAvailable: true, failed: false, persistent: true, gaveUp: '', offer: false}};
+const ENGREAD = "(() => { const s = document.querySelector('#eng57'), n = document.querySelector('.eng57 .engnow'); return s ? s.options[s.selectedIndex].text + ' | ' + (n ? n.textContent : '') : 'no panel' })()";
+CASES.push({n: 'engine', set: {dm: 'light'}, more: PINST, app: 'settings', rd: {engine: ENG}, js: "settings('sys')", jswait: 3000, read: ENGREAD,
+  expect: {std: 'Standard (Chromium) | In use now: Standard (Chromium).', nat: 'Native | In use now: Native.'}, parts: []});
+CASES.push({n: 'tbs-ontop', set: {dm: 'light'}, more: PINST, app: 'notepad', tbmenu: 'Always on top', parts: ['title']});
+CASES.push({n: 'tbs-max', set: {dm: 'light'}, more: PINST, app: 'notepad', tbmenu: 'Maximize', parts: ['title']});
+CASES.push({n: 'tbs-max-top', set: {dm: 'dark', darkui: true, tb: 'top', twstyle: 'candy'}, more: PINST, app: 'notepad', tbmenu: 'Maximize', parts: ['title']});
+for (const [i, st] of [[0, 'standard'], [1, 'standard'], [2, 'standard'], [2, 'retro'], [1, 'candy'], [2, 'wire']]) CASES.push({n: 'tbh-' + st + '-' + i, set: {dm: 'light', twstyle: st}, more: PINST, app: 'notepad', hoverbtn: i, parts: ['title']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
 const micSet = c => { fs.writeFileSync(path.join(D, 'mic'), JSON.stringify(c.mic || [])); if (c.mic) cp.execSync(`curl -s --noproxy '*' -X POST -H 'X-Rudolf-Token: tok160same' '${BASE}/api/mic?muted=${c.micmuted ? 1 : 0}'`) };
-const rdSet = c => { for (const k of ['deb', 'ai', 'net']) { const f = path.join(D, k); if (c.rd && c.rd[k]) fs.writeFileSync(f, JSON.stringify(c.rd[k])); else try { fs.unlinkSync(f) } catch (e) {} } };
+const rdSet = c => { for (const k of ['deb', 'ai', 'net', 'engine']) { const f = path.join(D, k); if (c.rd && c.rd[k]) fs.writeFileSync(f, JSON.stringify(c.rd[k])); else try { fs.unlinkSync(f) } catch (e) {} } };
 async function stdCase(c) {
+  XTRA.std = {}; XTRA.nat = {};
   state(c.set, c.more); micSet(c); rdSet(c);
   const ctx = await BR.newContext({viewport: {width: W, height: H}, deviceScaleFactor: 1, timezoneId: 'UTC'});
   await ctx.clock.install({time: new Date('2026-11-14T09:41:00Z')});
@@ -189,7 +234,7 @@ async function stdCase(c) {
   const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(BASE + '/'); await p.waitForFunction(() => typeof userLogin == 'function' && document.getElementById('login') && getComputedStyle(document.getElementById('login')).display != 'none', null, {timeout: 60000});
   await p.clock.runFor(1500); await wait(500);
-  const rects = {}; let pt = null;
+  const rects = {}; let pt = null, hov = null;
   const rectOf = async sel => p.evaluate(s => { const e = typeof s == 'string' ? document.querySelector(s) : null; if (!e) return null; const r = e.getBoundingClientRect(); return r.width ? [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] : null }, sel);
   if (!c.signin) {
     await p.focus('#lp'); await p.keyboard.type(PW); await p.keyboard.press('Enter');
@@ -198,7 +243,8 @@ async function stdCase(c) {
     await p.mouse.move(W / 2, H / 3);
     if (c.act == 'menu') { await p.click('#start'); await p.clock.runFor(600); await wait(300) }
     if (c.act == 'hover') { const r = await rectOf('#pins .pin:nth-child(2)'); await p.mouse.move(r[0] + r[2] / 2, r[1] + r[3] / 2); await p.clock.runFor(400); await wait(200) }
-    if (c.act == 'notepad') { await p.evaluate(() => launch('notepad')); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } await p.mouse.move(W / 2, H - 200) }
+    if (c.act == 'notepad' && c.wopen) { XTRA.std.wopen = await p.evaluate(() => { launch('notepad'); const w = [...document.querySelectorAll('.win')].pop(), cs = getComputedStyle(w); return [w.classList.contains('wopen'), cs.animationName, cs.animationDuration].join(' ') }) }
+    if (c.act == 'notepad') { if (!c.wopen) await p.evaluate(() => launch('notepad')); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } await p.mouse.move(W / 2, H - 200) }
     for (const k of c.pre || []) { await p.evaluate(k => { launch(k) }, k); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } }   /* (apps open before c.app) */
     if (c.app && c.nowin) { await p.mouse.click(W / 2, H - 200); await p.evaluate(k => { launch(k) }, c.app); await p.clock.runFor(100); await wait(800); await p.mouse.move(W / 2, H - 200) }   /* (an app asking before its window: a dialog open, see c.js) */
     else if (c.app) { await p.evaluate(k => { launch(k) }, c.app); for (let i = 0; i < 8; i++) { await p.clock.runFor(400); await wait(150) } await p.mouse.move(W / 2, H - 200); await wait(300) }
@@ -209,6 +255,12 @@ async function stdCase(c) {
       if (r) { await p.mouse.click(r[0], r[1]); await p.mouse.move(W / 2, H - 200) }   /* (the last input a click on the app's title bar, not the password's keys: Chromium rings a button a script focuses only after keys) */
       await p.evaluate(js => { try { (0, eval)(js) } catch (e) { console.warn(e) } }, c.js); await p.clock.runFor(100); await wait(c.jswait || 800) }   /* (not longer: the page's timers under the test's clock would run without end with a dialog open) */
     if (c.act == 'two') { for (const k of ['notepad', 'calc']) { await p.evaluate(k => launch(k), k); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } } await p.mouse.move(W / 2, H - 100) }
+    /* (the title bars: a row of the window's menu from a right-click on its title bar; the pointer over one of its buttons) */
+    const tbAt = (dx, dy) => p.evaluate(([dx, dy]) => { const w = [...document.querySelectorAll('.win.act')].find(e => e.offsetParent); const r = w.getBoundingClientRect(); return [Math.round(r.left + dx), Math.round(r.top + dy)] }, [dx, dy]);
+    if (c.tbmenu) { const q = await tbAt(200, 17); await p.mouse.click(q[0], q[1], {button: 'right'}); await p.clock.runFor(300); await wait(300);
+      const it = await p.evaluate(l => { const e = [...document.querySelectorAll('.ctx .cmi')].find(x => x.querySelector('span').textContent == l); if (!e) return null; const r = e.getBoundingClientRect(); return [r.left + 40, r.top + r.height / 2] }, c.tbmenu);
+      if (it) await p.mouse.click(it[0], it[1]); else await p.keyboard.press('Escape'); await p.clock.runFor(300); await wait(300); await p.mouse.move(W / 2, H - 200); await wait(200) }
+    if (c.hoverbtn !== undefined) { const q = await p.evaluate(i => { const w = [...document.querySelectorAll('.win.act')].find(e => e.offsetParent); const b = w.querySelectorAll('.tb button')[i].getBoundingClientRect(), r = w.getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2, Math.round(b.left + b.width / 2 - r.left), Math.round(b.top + b.height / 2 - r.top)] }, c.hoverbtn); hov = q.slice(2); await p.mouse.move(q[0], q[1]); await p.clock.runFor(200); await wait(300) }
     if (c.key == 'altab') { await p.keyboard.down('Alt'); await p.keyboard.press('Tab'); await p.clock.runFor(200); await wait(200) }
     if (c.key == 'overview') { await p.keyboard.press('Meta+Tab'); for (let i = 0; i < 4; i++) { await p.clock.runFor(200); await wait(150) } }
     if (c.ws) { await p.click('#wsw button:nth-child(' + c.ws + ')'); for (let i = 0; i < 2; i++) { await p.clock.runFor(300); await wait(150) } await p.mouse.move(W / 2, H / 3); await wait(300) }
@@ -235,6 +287,8 @@ async function stdCase(c) {
     if (c.saver) { fs.writeFileSync(path.join(D, 'idle'), '3600000'); await p.evaluate(() => idleCheck()); await wait(1500) }
     if (c.ev) { for (const e of c.ev) { const n0 = await p.evaluate(() => document.querySelectorAll('#ntoasts .ntoast').length); fs.writeFileSync(path.join(D, 'event'), e);
         await p.waitForFunction(n0 => document.querySelectorAll('#ntoasts .ntoast').length > n0, n0, {timeout: 20000}) } await wait(900) }
+    if (c.drag) { const r = await rectOf('.win'); if (r) { const a = [r[0] + 100, r[1] + 15], b = [c.drag[0] + 100, c.drag[1] + 15]; await p.mouse.move(a[0], a[1]); await p.mouse.down();
+        for (let i = 1; i <= 10; i++) { await p.mouse.move(a[0] + (b[0] - a[0]) * i / 10, a[1] + (b[1] - a[1]) * i / 10); await p.clock.runFor(16); await wait(30) } await p.mouse.up(); await p.mouse.move(W / 2, H / 3); await p.clock.runFor(100); await wait(400) } }
     if (c.fly) { await p.click({clock: '#tray', vol: '#vol', net: '#net', qs: '#qsb', notes: '#ncb'}[c.fly]); await p.clock.runFor(400); await wait(300);
       if (c.next) { await p.click('#calp .cn'); await p.clock.runFor(300); await wait(200) } await p.mouse.move(300, 300) }
   }
@@ -243,7 +297,9 @@ async function stdCase(c) {
   rects.menu = await rectOf('#menu'); rects.signbox = (await rectOf('#lockov .lkbox')) || (await rectOf('#login .lb'));
   rects.icons = await p.evaluate(() => { const l = [...document.querySelectorAll('#desk > .ic')].filter(e => e.offsetParent).map(e => e.getBoundingClientRect()); if (!l.length) return null;
     const x = Math.min(...l.map(r => r.left)), y = Math.min(...l.map(r => r.top)); return [Math.round(x), Math.round(y), Math.round(Math.max(...l.map(r => r.right)) - x), Math.round(Math.max(...l.map(r => r.bottom)) - y)] });
-  rects.title = await p.evaluate(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.offsetParent).pop(); const t = w && w.querySelector('.tb'); if (!t) return null; const r = w.getBoundingClientRect(), q = t.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(q.bottom - r.top)] });
+  rects.title = await p.evaluate(() => { const v = [...document.querySelectorAll('.win')].filter(e => e.offsetParent && e.getBoundingClientRect().width), w = v.find(e => e.classList.contains('act')) || v.pop();   /* (the window in use: Settings makes other .win of its own) */ const t = w && w.querySelector('.tb'); if (!t) return null; const r = w.getBoundingClientRect(), q = t.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(q.bottom - r.top)] });
+  rects.titlei = await p.evaluate(() => { const v = [...document.querySelectorAll('.win')].filter(e => e.offsetParent && e.getBoundingClientRect().width), w = v.find(e => !e.classList.contains('act')), a = v.find(e => e.classList.contains('act')); const t = w && w.querySelector('.tb'); if (!t) return null;
+    const r = w.getBoundingClientRect(), q = t.getBoundingClientRect(), o = a && a.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(Math.min(q.bottom, o && o.top > r.top ? o.top - 5 : 1e9) - r.top)] });   /* (another window's, not in use: above the one in use, which may cover its bar's foot) */
   { const r = await rectOf('.ctx'); rects.ctx = r ? [r[0] - 4, r[1] - 4, r[2] + 8, r[3] + 8] : null; rects.dlg = await rectOf('.rmodal .rmbox') }   /* (a menu with its focus ring) */
   for (let i = 0; i < (c.wg || 0); i++) rects['wg' + i] = await p.evaluate(i => { const e = document.querySelectorAll('#desk > .wgt')[i]; if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.left) - 20, Math.round(r.top) - 10, Math.round(r.width) + 40, Math.round(r.height) + 40] }, i);   /* (with its shadow) */
   { const r = await rectOf('#ntoasts'); rects.toast = r ? [r[0] - 30, r[1] - 16, r[2] + 42, r[3] + 52] : null }   /* (with their shadows) */
@@ -252,11 +308,12 @@ async function stdCase(c) {
   rects.altab = await rectOf('#altab'); rects.desk = await rectOf('#desk');
   rects.desc = await p.evaluate(() => ({bar: document.getElementById('bar').className, body: document.body.className}));
   const read = c.read ? await p.evaluate(js => { try { return String((0, eval)(js)) } catch (e) { return 'ERROR ' + e.message } }, c.read) : null;
+  if (c.readx) XTRA.std.readx = await p.evaluate(js => { try { return String((0, eval)(js)) } catch (e) { return 'ERROR ' + e.message } }, c.readx);
   rects.statue = await rectOf('#dynstatue img');
   const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f});
   if (c.moving) { for (let i = 0; i < c.moving / 250; i++) { await p.clock.runFor(250); await wait(60) } await p.screenshot({path: path.join(OUT, c.n + '.std2.png')}) } if (c.saver) fs.unlinkSync(path.join(D, 'idle'));
   if (c.key == 'altab') await p.keyboard.up('Alt');
-  await ctx.close(); return {f, rects, errs, pt, read};
+  await ctx.close(); return {f, rects, errs, pt, read, hov};
 }
 // ---- Native: rudolf-native under Xvfb, the same storage
 let NP = null, NLOG = path.join(OUT, 'native.log');
@@ -315,7 +372,12 @@ async function natCase(c, s) {
   if (c.act == 'menu') { const h = nhit('start'); if (h) xdo('mousemove ' + h.join(' ') + ' click 1'); await until(() => nst('menu') == '1', 5000); xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(800) }
   if (c.act == 'hover') { const h = nhit('pin notepad'); if (h) xdo('mousemove ' + h.map(Math.round).join(' ')); await wait(800) }
   let cl = null;
-  if (c.act == 'notepad') { const h = nhit('pin notepad'); if (h) xdo('mousemove ' + h.join(' ') + ' click 1');
+  if (c.act == 'notepad' && c.wopen) { const h = nhit('pin notepad'), st = () => nst('wopen') || '0'; if (h) xdo('mousemove ' + h.join(' ') + ' click 1');
+    const T = Date.now(); while (st() == '0' && Date.now() - T < 30000) await wait(5); const t0 = Date.now(); sh('xwd -silent -root > ' + path.join(OUT, 'wopen.mid.xwd'));
+    while (st() != '0' && Date.now() - t0 < 3000) await wait(5); const wo = XTRA.nat.wopen = {ms: Date.now() - t0}; await wait(400); sh('import -window root ' + path.join(OUT, 'wopen.end.png'));
+    const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => /^client .* app=notepad/.test(x)); if (l) { const a = l.split(' '); wo.r = [+a[3], +a[4], +a[5] + 2, +a[6] + 2] }
+    for (const k of ['mid']) sh('convert xwd:' + path.join(OUT, 'wopen.' + k + '.xwd') + ' ' + path.join(OUT, 'wopen.' + k + '.png') + ' && rm -f ' + path.join(OUT, 'wopen.' + k + '.xwd')); cl = wo.r ? [wo.r[0], wo.r[1], wo.r[2] - 2, wo.r[3] - 2] : null; await wait(2500) }
+  else if (c.act == 'notepad') { const h = nhit('pin notepad'); if (h) xdo('mousemove ' + h.join(' ') + ' click 1');
     await until(() => /^client .* app=notepad/m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3000); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500);
     const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => /^client .* app=notepad/.test(x)); if (l) { const a = l.split(' '); cl = [+a[3], +a[4], +a[5], +a[6]] } }
   for (const k of c.pre || []) { const re = new RegExp('^client .* app=' + k + ' ', 'm'), h = nhit('pin ' + k); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1'); await until(() => re.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(2500) }
@@ -327,12 +389,19 @@ async function natCase(c, s) {
   if (c.js) { await neval(c.app, 'void((() => { try { ' + c.js + ' } catch (e) { console.warn(e) } })())'); await wait(Math.max(2500, c.jswait || 0)) }
   if (c.act == 'two') { for (const k of ['notepad', 'calc']) { const h = nhit('pin ' + k); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1');
       await until(() => new RegExp('^client .* app=' + k + ' ', 'm').test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3000) } xdo('mousemove ' + W / 2 + ' ' + (H - 100)); await wait(500) }
+  if (c.tbmenu && cl) { xdo('mousemove ' + (cl[0] + 200) + ' ' + (cl[1] + 17) + ' click 3'); await until(() => nlines0('cmitem').length, 8000); await wait(300);
+    const l = nlines0('cmitem').find(x => x.endsWith('|' + c.tbmenu)); if (l) { const a = l.split(' '); xdo('mousemove ' + a[1] + ' ' + a[2] + ' click 1') } else xdo('key Escape'); await wait(1200); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500);
+    const l2 = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => new RegExp('^client .* app=' + c.app + ' ').test(x)); if (l2) { const a = l2.split(' '); cl = [+a[3], +a[4], +a[5], +a[6]] } }   /* (its place after: Maximize) */
+  if (c.hoverbtn !== undefined && cl && s.hov) { xdo('mousemove ' + (cl[0] + s.hov[0]) + ' ' + (cl[1] + s.hov[1])); await wait(700) }
+  let cli = null; if (c.pre && c.pre.length) { const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => new RegExp('^client .* app=' + c.pre[0] + ' ').test(x)); if (l) { const a = l.split(' '); cli = [+a[3], +a[4]] } }
   if (c.key == 'altab') { xdo('keydown alt key Tab'); await until(() => (nst('altab') || '-') != '-', 5000); await wait(500) }
   if (c.key == 'overview') { xdo('key super+Tab'); await until(() => /^ovwin .* 1$/m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 5000); await wait(600) }
   if (c.saver) { fs.writeFileSync(path.join(D, 'idle'), '3600000'); await until(() => (nst('saver') || '').startsWith('1') && /^client .* full=1 .* app=do-saver /m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 40000); await wait(2500) }
   if (c.mic) { await until(() => (nst('mic') || '').startsWith(c.mic.length + ' ' + (c.micmuted ? 1 : 0)), 12000); await wait(600) }
   if (c.ws) { const h = nhit('ws ' + c.ws); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1'); await until(() => nst('ws') == String(c.ws) && nlines0('toast').length > 0, 8000); xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(700) }
   if (c.ev) { for (const e of c.ev) { const n0 = nlines0('toast').length; fs.writeFileSync(path.join(D, 'event'), e); await until(() => nlines0('toast').length > n0, 20000) } xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(900) }
+  if (c.drag && cl) { const a = [cl[0] + 100, cl[1] + 15], b = [c.drag[0] + 100, c.drag[1] + 15]; xdo('mousemove ' + a.join(' ') + ' mousedown 1');
+    for (let i = 1; i <= 10; i++) { xdo('mousemove ' + Math.round(a[0] + (b[0] - a[0]) * i / 10) + ' ' + Math.round(a[1] + (b[1] - a[1]) * i / 10)); await wait(30) } xdo('mouseup 1'); xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(500) }
   if (c.act == 'lock') { xdo('key super+l'); await until(() => nst('locked') == '1', 8000); await wait(1200) }
   if (c.files) await natFiles();
   const nlines = k => { try { return fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').filter(x => x.startsWith(k + ' ')) } catch (e) { return [] } };
@@ -351,6 +420,7 @@ async function natCase(c, s) {
     if (c.next) { const l = nlines('flybtn').find(x => x.startsWith('flybtn next ')); if (l) { const a = l.split(' '); xdo('mousemove ' + a[2] + ' ' + a[3] + ' click 1') } await wait(700) }
     xdo('mousemove 300 300'); await wait(500) }
   const read = c.read ? await neval(c.app, 'String((() => { try { return ' + c.read + ' } catch (e) { return "ERROR " + e.message } })())') : null;
+  if (c.readx) XTRA.nat.readx = await neval(c.app, 'String((() => { try { return ' + c.readx + ' } catch (e) { return "ERROR " + e.message } })())');
   const f = path.join(OUT, c.n + '.nat.png'); sh('import -window root ' + f);
   if (c.moving) { await wait(c.moving); sh('import -window root ' + path.join(OUT, c.n + '.nat2.png')) }
   if (c.undo) { await neval(c.app, 'void((() => { try { ' + c.undo + ' } catch (e) {} })())'); await wait(1200) }
@@ -376,7 +446,7 @@ async function natCase(c, s) {
     if (l) { const a = l.split(' '); xdo('mousemove ' + (+a[3] + +a[5] + 2 - 9 - 12) + ' ' + (+a[4] + 7 + 11) + ' click 1') }
     await until(() => !/^client .* app=notepad/m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 10000); await wait(800) }
   if (c.act == 'lock') { xdo("type --delay 40 '" + PW.replace(/'/g, "'\\''") + "'"); xdo('key Return'); await until(() => nst('locked') == '0', 8000); await wait(800) }
-  return {f, client: cl, read};
+  return {f, client: cl, clienti: cli, read};
 }
 // ---- the comparison
 /* (the share of a screenshot in testsrc2's colour bars: the video's picture, not a black screen) */
@@ -399,14 +469,20 @@ function cmp(name, a, b, ra, rb, shift) {
     const log0 = (() => { try { return fs.statSync(NLOG).size } catch (e) { return 0 } })();
     try { n = await natCase(c, s) } catch (e) { ok(c.n + ': Native drew it', 0, e.message); continue }
     if (c.nolog) { let t = ''; try { t = fs.readFileSync(NLOG, 'utf8').slice(log0) } catch (e) {} const m = t.split('\n').filter(l => c.nolog.test(l)); ok(c.n + ': nothing in Native\'s log like ' + c.nolog, !m.length, m.slice(0, 3)) }
-    if (c.read) ok(c.n + ': the page reads the same on both (' + c.read.slice(0, 60) + '…)', s.read === n.read, {std: s.read, nat: n.read});
+    if (c.read && c.expect) ok(c.n + ': each page reads what its engine should (' + c.expect.std + ' / ' + c.expect.nat + ')', s.read === c.expect.std && n.read === c.expect.nat, {std: s.read, nat: n.read});
+    else if (c.read) ok(c.n + ': the page reads the same on both (' + c.read.slice(0, 60) + '…)', s.read === n.read, {std: s.read, nat: n.read});
     for (const part of c.parts || []) {
       if (part == 'moving') { const mv = e => { try { return JSON.parse(cp.execFileSync('python3', [path.join(__dirname, 'pxdiff.py'), path.join(OUT, c.n + '.' + e + '.png'), path.join(OUT, c.n + '.' + e + '2.png'), [0, 0, W, H].join(','), [0, 0, W, H].join(','), String(TOL), path.join(OUT, c.n + '.moving.' + e), '0']).toString()).pct } catch (x) { return -1 } };
         const a = mv('std'), b = mv('nat'); ok(c.n + ' moving: ' + a + ' % of Standard\'s screen and ' + b + ' % of Native\'s change in ' + c.moving / 1000 + ' s (at least 0.25 % on both)', a >= .25 && b >= .25, {a, b}); continue }
       if (part == 'picture') { const f = x => +cp.execFileSync('python3', ['-c', PICPY, x]).toString(), a = f(s.f), b = f(n.f);
         ok(c.n + ' picture: ' + a + ' % of Standard\'s screen and ' + b + ' % of Native\'s show the video (at least 60 %)', a >= 60 && b >= 60 && Math.abs(a - b) <= 10, {a, b}); continue }
+      if (part == 'frames') { let a = {}, b = {}; try { a = JSON.parse(XTRA.std.readx) } catch (e) {} try { b = JSON.parse(XTRA.nat.readx) } catch (e) {}
+        ok(c.n + ': frame callbacks ' + a.cb + ' on Standard and ' + b.cb + ' on Native (at least 60 each); frames counted at the end ' + a.end + ' and ' + b.end + ' (within 10)', a.cb >= 60 && b.cb >= 60 && a.end > 0 && Math.abs(a.end - b.end) <= 10, XTRA); continue }
+      if (part == 'wopen') { const w = XTRA.nat.wopen || {}; const d = w.r ? cmp(c.n + '.wopen', path.join(OUT, 'wopen.mid.png'), path.join(OUT, 'wopen.end.png'), w.r, w.r, 0) : {pct: 0};
+        ok(c.n + ': Standard animates its window (' + XTRA.std.wopen + '); Native\'s animation ran ' + w.ms + ' ms (100-600) with ' + d.pct + ' % of the window not yet itself at its start (at least 3 %)', /^true wopen 0\.18s$/.test(XTRA.std.wopen || '') && w.ms >= 100 && w.ms <= 600 && d.pct >= 3, {std: XTRA.std.wopen, nat: w, d}); continue }
       let ra = s.rects[part], rb = null;
-      if ((part == 'title' || part == 'win') && n.client && ra) rb = [n.client[0], n.client[1], ra[2], ra[3]];   /* (each engine's own window; the frame's border and title bar above the app) */
+      if ((part == 'title' || part == 'win') && n.client && ra) rb = [n.client[0], n.client[1], ra[2], ra[3]];
+      if (part == 'titlei' && n.clienti && ra) rb = [n.clienti[0], n.clienti[1], ra[2], ra[3]];   /* (each engine's own window; the frame's border and title bar above the app) */
       if (!ra) { ok(c.n + ' ' + part + ': Standard has it', 0, s.rects); continue }
       const r = cmp(c.n + '.' + part, s.f, n.f, ra, rb, part == 'win' ? 1 : 0);   /* (a whole window: its page drawn by WebKit, a pixel's match one pixel away allowed) */
       rows.push([c.n, part, r.pct]);

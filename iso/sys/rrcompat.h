@@ -46,5 +46,8 @@ void XRRFreeCrtcInfo(XRRCrtcInfo *);
 Status XRRSetCrtcConfig(Display *, XRRScreenResources *, RRCrtc, Time, int, int, RRMode, Rotation, RROutput *, int);
 void XRRSetScreenSize(Display *, Window, int, int, int, int);
 void XRRSetCrtcTransform(Display *, RRCrtc, XTransform *, const char *, XFixed *, int);
+typedef struct _XRRCrtcGamma { int size; unsigned short *red, *green, *blue; } XRRCrtcGamma;
+XRRCrtcGamma *XRRGetCrtcGamma(Display *, RRCrtc);
+void XRRFreeGamma(XRRCrtcGamma *);
 #endif
 #endif
