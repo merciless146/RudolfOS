@@ -45,7 +45,10 @@ cp "$X/MesaLib/dist/include/GL/gl.h" "$X/MesaLib/dist/include/GL/glext.h" "$P/in
 cp "$X/MesaLib/dist/include/GL/internal/dri_interface.h" "$P/include/GL/internal/"
 pc gl 21.3.7 GL "$L/libGL.so.1" ""   # libglx.so calls glXGetProcAddressARB: glvnd's libGL (shipped with libGLX.so.0)
 pc dri 21.3.7 "" "" ""
-sed -i 's|^includedir=.*|&\ndridriverdir=/usr/lib/$MA/dri|' "$P/lib/pkgconfig/dri.pc"
+# (1.6.0: in double quotes, so $MA is the folder's name: 1.5.9 wrote it in single quotes and the X server looked for its
+# drivers in "/usr/lib/$MA/dri", so its GLX had no OpenGL for any program: Unvanquished's "Couldn't load a renderer.")
+sed -i "s|^includedir=.*|&\ndridriverdir=/usr/lib/$MA/dri|" "$P/lib/pkgconfig/dri.pc"
+grep -qx "dridriverdir=/usr/lib/$MA/dri" "$P/lib/pkgconfig/dri.pc" || { echo "xshim.sh: dri.pc has no dridriverdir=/usr/lib/$MA/dri"; exit 1; }
 # libepoxy (headers generated from the Khronos registry; host runtime 1.5.10)
 mkdir -p "$P/include/epoxy"; E=$X/libepoxy/dist
 cp "$E/include/epoxy/common.h" "$E/include/epoxy/gl.h" "$E/include/epoxy/egl.h" "$E/include/epoxy/glx.h" "$P/include/epoxy/"
