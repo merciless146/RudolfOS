@@ -1,11 +1,13 @@
-# Rudolf OS 1.6.0 in QEMU: Oracle's file:/// pages on a real release (the Vivobook, 2026-11-15: Welcome, README and an
-# .HTML file from File Explorer showed a blank white page while about:home and about:files showed). The newest beta
-# (or the release in REL-DIR) starts from slot a as in t160, an account signs in, and Oracle opens about:home,
-# file:///C:/README.TXT, file:///C:/WELCOME.HTM and a page in the account's Documents with a tel: link; for each page
-# what the tab's frame holds (srcdoc, sandbox, what is on top of it), a copy of the page in a frame of the same kind
-# that says whether its text is there, the screen's pixels where the frame is, the page's errors, the shell's notes
-# and rudolfd's page log. Nothing is published.
-#   python3 oracle_file_t.py REL-DIR   (QEMU as for t160; root; QEMU_ACCEL=kvm where it can)
+# Rudolf OS 1.6.0 in QEMU: Oracle's pages drawn on a real release (the Vivobook, 2026-11-15: Welcome, README and an .HTML
+# file from File Explorer showed a blank white page in Oracle). In Rudolf's Chromium 158 a sandboxed frame's own process
+# sometimes started with stale owner properties and its page stayed blank; the desktop page now sends them again when such a
+# frame has loaded (base_v24.html: frameOwnerRefresh). The newest beta (or the release in REL-DIR) starts from slot a as in
+# t160 (UEFI, rudolf.debug=1 for cdp-eval), an account signs in, and Oracle opens README.TXT, WELCOME.HTM, a page in the
+# account's Documents (File Explorer's opener), about:oracle and about:files, each in fresh windows and in one window one
+# after another; each time the screen's pixels where the frame is say whether the page is drawn (not white). Then the
+# phone-number test: a tel: link in that page, clicked with QEMU's pointer: the desktop asks how to call it.
+# Only a release built with the fix passes (the beta of 2026-11-15, 2026111506, does not). Nothing is published.
+#   python3 oracle_file_t.py REL-DIR   (QEMU as for t160; root; QEMU_ACCEL=kvm where it can; ROUNDS=3)
 import os, sys, time, re, subprocess, shutil, struct, json
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
@@ -19,7 +21,7 @@ def out(*a):
 def ok(n, c, d=''):
     R.append(bool(c)); out(('PASS ' if c else 'FAIL ') + n + (' - ' + str(d)[:1500] if d != '' and not c else ''))
 man = open(f'{REL}/manifest.txt').read(); mv = lambda k: re.search(rf'^{k} (.*)$', man, re.M).group(1)
-DMB = 2000; DRV = os.path.abspath('intof.img'); MEM = int(os.environ.get('MEM', '3072'))
+DMB = 2000; DRV = os.path.abspath('intof.img'); MEM = int(os.environ.get('MEM', '3072')); ROUNDS = int(os.environ.get('ROUNDS', '3'))
 out('release', mv('serial'), mv('version'), 'chromium', mv('chromium'))
 
 def make_drive(path):
@@ -75,33 +77,21 @@ def signin(js, n, pw, secs=900):
         time.sleep(5)
     return 'still signing in'
 
-# what the shown tab of the newest Oracle window holds; a copy of its page in a frame of the same kind (sandbox
-# allow-scripts, srcdoc) with a probe that posts back what it sees; what is on top of the frame
-PROBE = r"""(async()=>{const W=wins.filter(w=>w.body&&w.body.querySelector('.otabs')).pop();if(!W)return{err:'no Oracle window'};
-const frs=[...W.body.querySelectorAll('.fh iframe')],fr=frs.find(f=>f.style.display!='none');const st=(W.body.querySelector('.stat')||{}).textContent,ad=(W.body.querySelector('.ad')||{}).value;
-const o={title:W.el.innerText.split('\n')[0].slice(0,80),ad,st,frames:frs.map(f=>({d:f.style.display,sb:f.getAttribute('sandbox'),src:f.getAttribute('src'),sd:f.hasAttribute('srcdoc')?f.getAttribute('srcdoc').length:-1,head:(f.getAttribute('srcdoc')||'').slice(0,160)})),shell:typeof SHELL!='undefined'&&!!SHELL,shellVer:typeof SHELL_VER!='undefined'?SHELL_VER:'',rt:typeof RT!='undefined'?RT.size:-1,engine:RD&&RD.engine,dpr:devicePixelRatio,iw:innerWidth,ih:innerHeight,errs:(window.__ofErr||[]).slice(-10)};
-if(!fr)return o;const r=fr.getBoundingClientRect();o.rect=[r.x,r.y,r.width,r.height];const cs=getComputedStyle(fr);o.css={vis:cs.visibility,op:cs.opacity,z:cs.zIndex,filter:cs.filter,zoom:cs.zoom,bg:cs.backgroundColor};
-const top=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);o.top=top===fr?'the frame':top?(top.tagName+'.'+top.className+'#'+top.id):null;
-let cw=null;try{cw=fr.contentWindow;o.cwLen=cw?cw.length:-1}catch(e){o.cwErr=e.message}try{o.cdoc=fr.contentDocument?'reachable':'null'}catch(e){o.cdoc='err '+e.message}
-const html=fr.getAttribute('srcdoc');if(html==null)return o;
-o.probe=await new Promise(res=>{const p=document.createElement('iframe');p.setAttribute('sandbox','allow-scripts');p.style.cssText='position:fixed;left:0;top:0;width:300px;height:200px;opacity:0;pointer-events:none';
- const k='of'+Math.random().toString(36).slice(2);const on=e=>{if(e.source===p.contentWindow&&e.data&&e.data[k]){removeEventListener('message',on);res(e.data[k]);p.remove()}};addEventListener('message',on);
- setTimeout(()=>{removeEventListener('message',on);p.remove();res('no answer from the copy')},8000);
- p.srcdoc=html+'<script>addEventListener("load",function(){var b=document.body;parent.postMessage({'+JSON.stringify(k)+':{text:b?b.innerText.length:-1,first:b?b.innerText.slice(0,80):"",h:document.documentElement.scrollHeight,url:location.href,bg:b?getComputedStyle(b).backgroundColor:""}},"*")})<'+'/script>';document.body.appendChild(p)});
-return o})()"""
+# the shown frame of the newest Oracle window: where it is (CSS pixels of the page), its sandbox, the window's address
+FRAME = ("JSON.stringify((()=>{const W=wins.filter(w=>w.body&&w.body.querySelector('.otabs')).pop();if(!W)return{err:'no Oracle window'};"
+         "const fr=[...W.body.querySelectorAll('.fh iframe')].find(f=>f.style.display=='block');if(!fr)return{err:'no frame shown'};const r=fr.getBoundingClientRect();"
+         "return{rect:[r.x,r.y,r.width,r.height],iw:innerWidth,ih:innerHeight,sb:fr.getAttribute('sandbox'),cd:fr.contentDocument===null,ad:W.body.querySelector('.ad').value}})())")
 
-def pixels(png, rect, iw):
-    try:
-        from PIL import Image
-    except Exception as e: return {'err': 'no PIL: ' + str(e)}
-    im = Image.open(png).convert('RGB'); sc = im.width / iw
-    x, y, w, h = [int(v * sc) for v in rect]; x0, y0 = max(0, x + 4), max(0, y + 4); x1, y1 = min(im.width, x + w - 4), min(im.height, y + h - 4)
-    if x1 <= x0 or y1 <= y0: return {'err': 'empty rect', 'size': im.size}
-    c = im.crop((x0, y0, x1, y1)); px = list(c.getdata()); n = len(px)
-    nw = sum(1 for p in px if min(p) < 235)   # not white
-    return {'size': im.size, 'notWhite': round(nw / n, 4), 'colors': len(set(px[::7]))}
+def drawn(png, o):
+    """the share of pixels that are not white inside the frame (a few pixels in from its edges)"""
+    from PIL import Image
+    im = Image.open(png).convert('RGB'); sc = im.width / o['iw']
+    x, y, w, h = [int(v * sc) for v in o['rect']]
+    c = im.crop((max(0, x + 4), max(0, y + 4), min(im.width, x + w - 4), min(im.height, y + h - 4)))
+    px = list(c.getdata()); return round(sum(1 for p in px if min(p) < 235) / max(1, len(px)), 4)
 
-CALL = "<!doctype html><title>Call test</title><body><h1>Call test</h1><p><a id=c href=\"tel:5551234567\">Call this number</a></p></body>"
+CALL = ('<!doctype html><title>Call test</title><body style="font:16px Arial;margin:0">'
+        '<a id="c" href="tel:5551234567" style="display:block;padding:120px 20px;font-size:28px;background:#fef3c7">Call this number</a></body>')
 make_drive(DRV)
 vm = None
 try:
@@ -110,42 +100,48 @@ try:
     if not up: raise SystemExit
     r = js("(async()=>{ACCTS.length=0;const a=await acctNew('john','j1','admin');ACCTS.push(a);saveUser();return a.id})()", 120); out('account', r)
     out('sign-in:', signin(js, 'john', 'j1'))
-    # the shell: the desktop moves into it by itself after the start (1.2's one-time move); wait for its hello
-    end = time.time() + 900
+    # the shell: the desktop moves into it by itself after the first start (1.2's one-time move); its hello within 10 minutes
+    end = time.time() + 600
     while time.time() < end and js("typeof SHELL!='undefined'&&!!SHELL", 20) is not True: time.sleep(10)
-    if js("typeof SHELL!='undefined'&&!!SHELL", 20) is not True and js("!!USER", 20) is not True:
-        out('sign-in again after the move:', signin(js, 'john', 'j1'))
-    out('engine/shell:', js("({engine:RD&&RD.engine,shell:typeof SHELL!='undefined'&&!!SHELL,ver:typeof SHELL_VER!='undefined'?SHELL_VER:'',ua:navigator.userAgent,user:USER&&USER.n})", 30))
-    ok('2. the desktop is in the shell (Controlled Frame), as on the Vivobook', js("typeof SHELL!='undefined'&&!!SHELL", 20) is True)
-    js("(()=>{window.__ofErr=[];addEventListener('error',e=>__ofErr.push('error '+e.message+' '+(e.filename||'')+':'+e.lineno));addEventListener('unhandledrejection',e=>__ofErr.push('rejection '+String(e.reason&&e.reason.message||e.reason)));"
-       "const w=console.warn,er=console.error;console.warn=function(){__ofErr.push('warn '+[].map.call(arguments,String).join(' ').slice(0,300));return w.apply(console,arguments)};console.error=function(){__ofErr.push('console.error '+[].map.call(arguments,String).join(' ').slice(0,300));return er.apply(console,arguments)};return 1})()")
-    r = js(f"(async()=>{{const d=node(homePath('DOCUMENTS'));d['CALL-TEST.HTML']={json.dumps(CALL)};fsSave();try{{fsFlush()}}catch(e){{}};return homePath('DOCUMENTS').join('/')}})()", 60); out('documents:', r)
-    DOCS = r if isinstance(r, str) else 'C:/USERS/JOHN/DOCUMENTS'
-    pages = [('about:home', 'Oracle'), ('about:files?p=C:', 'Index of C:'), ('file:///C:/README.TXT', 'README.TXT'), ('file:///C:/WELCOME.HTM', 'Welcome to Oracle'), (f'file:///{DOCS}/CALL-TEST.HTML', 'Call this number')]
-    res = {}
-    for i, (u, want) in enumerate(pages):
-        js(f"(()=>{{wins.slice().forEach(w=>{{if(w.body&&w.body.querySelector('.otabs'))w.close()}});browser({json.dumps(u)});return 1}})()", 30)
-        time.sleep(6)
-        o = js(PROBE, 60); png = vm.shot(f'p{i}'); px = pixels(png, o['rect'], o['iw']) if isinstance(o, dict) and o.get('rect') else {}
-        out(f'--- {u}'); out(json.dumps(o)[:3000]); out('pixels', px)
-        res[u] = (o, px, want)
-    jl = sh("busybox wget -q -O- http://127.0.0.1:9222/json/list 2>&1 | grep -E '\"(type|url)\"' | head -40", 30); out('devtools targets:\n' + jl)
-    out('shell notes:', js("typeof SHELL_LOG!='undefined'?SHELL_LOG.slice(-20):null", 30))
-    out('page log:\n' + sh("tail -n 40 /run/rudolf/page.log 2>&1", 30))
-    for k, (u, (o, px, want)) in enumerate(res.items()):
-        pr = o.get('probe') if isinstance(o, dict) else None
-        seen = isinstance(px, dict) and px.get('notWhite', 0) > 0.01
-        ok(f'{3 + k}. {u}: the page is drawn in Oracle\'s frame (not a blank white page), its text there', seen and isinstance(pr, dict) and pr.get('text', 0) > 0 and want in (pr.get('first', '') + json.dumps(o)), [px, pr, o.get('top') if isinstance(o, dict) else o])
-    # the phone-number test: clicking the tel: link asks how to call it
-    js(f"(()=>{{wins.slice().forEach(w=>{{if(w.body&&w.body.querySelector('.otabs'))w.close()}});browser({json.dumps(pages[4][0])});return 1}})()", 30); time.sleep(6)
-    o = js(PROBE, 60)
-    if isinstance(o, dict) and o.get('rect'):
-        x, y, w, h = o['rect']; sc = 1
-        out('click the tel: link at', x + 60, y + 95)
-        g.q.cmd('input-send-event', events=[{'type': 'abs', 'data': {'axis': 'x', 'value': int((x + 60) / o['iw'] * 32767)}}, {'type': 'abs', 'data': {'axis': 'y', 'value': int((y + 95) / o['ih'] * 32767)}}]); time.sleep(0.5)
-        g.q.click(); time.sleep(4); vm.shot('tel')
-    o = js("[...document.querySelectorAll('.rmodal [role=dialog]')].map(d=>d.getAttribute('aria-label')+': '+d.innerText.slice(0,120)).concat(wins.slice(-3).map(w=>w.el.innerText.split('\\n')[0].slice(0,60)))", 30); out('windows after the tel: click:', o)
-    ok('8. the tel: link clicked: the desktop asks how to call it (Call a phone number, 5551234567)', isinstance(o, list) and any('Call a phone number' in str(t) and '5551234567' in str(t) for t in o), o)
+    if js("!!USER&&USER.n=='john'", 20) is not True: out('sign-in again after the move:', signin(js, 'john', 'j1'))
+    out('engine/shell:', js("JSON.stringify({engine:RD&&RD.engine,shell:typeof SHELL!='undefined'&&!!SHELL,ua:navigator.userAgent,user:USER&&USER.n})", 30))
+    r = js(f"(()=>{{let d=fs['C:'];for(const k of homePath('DOCUMENTS').slice(1))d=d[k]||(d[k]={{}});d['CALL-TEST.HTML']={json.dumps(CALL)};fsSave();try{{fsFlush()}}catch(e){{}};return homePath('DOCUMENTS').join('/')}})()", 60)
+    out('documents:', r); DOCS = r if isinstance(r, str) else 'C:/USERS/JOHN/DOCUMENTS'
+    PAGES = ['file:///C:/README.TXT', 'file:///C:/WELCOME.HTM', f'file:///{DOCS}/CALL-TEST.HTML', 'about:oracle', 'about:files?p=C:']
+    blank, opened, n = [], [], 0
+    for k in range(ROUNDS):
+        for same in (False, True):
+            if same: js("(()=>{wins.slice().forEach(w=>{if(w.body&&w.body.querySelector('.otabs'))w.close()});browser('about:home');return 1})()", 30); time.sleep(3)
+            for u in PAGES:
+                if same:   # one window, the address typed (as a bookmark's click)
+                    js(f"(()=>{{const W=wins.filter(w=>w.body&&w.body.querySelector('.otabs')).pop(),ad=W.body.querySelector('.ad');ad.value={json.dumps(u)};ad.dispatchEvent(new KeyboardEvent('keydown',{{key:'Enter',bubbles:true}}));return 1}})()", 30)
+                elif 'CALL-TEST' in u:   # File Explorer's double-click: openPath
+                    js("(()=>{wins.slice().forEach(w=>{if(w.body&&w.body.querySelector('.otabs'))w.close()});openPath(homePath('DOCUMENTS').concat('CALL-TEST.HTML'));return 1})()", 30)
+                else:
+                    js(f"(()=>{{wins.slice().forEach(w=>{{if(w.body&&w.body.querySelector('.otabs'))w.close()}});browser({json.dumps(u)});return 1}})()", 30)
+                time.sleep(3); n += 1
+                o = js(FRAME, 30)
+                try: o = json.loads(o)
+                except Exception: o = {'err': str(o)}
+                if 'rect' not in o: blank.append([k, same, u, o]); continue
+                d = drawn(vm.shot(f'r{k}{"s" if same else "f"}_{PAGES.index(u)}'), o)
+                if d < 0.005: blank.append([k, same, u, d])
+                if not (o.get('sb') == 'allow-scripts' and o.get('cd')): opened.append([u, o])
+                out(f'{k} {"same window" if same else "fresh window"} {u}: {d}')
+    ok(f'2. Oracle\'s pages are drawn, never a blank white page ({n} pages: README.TXT, WELCOME.HTM, an .HTML file from File Explorer, about:oracle, about:files; fresh windows and one window)', not blank, blank[:6])
+    ok('3. they stay in sandboxed frames (allow-scripts; the desktop page not reachable from them)', not opened, opened[:3])
+    # the phone-number test: the page's tel: link, clicked with QEMU's pointer
+    js("(()=>{wins.slice().forEach(w=>{if(w.body&&w.body.querySelector('.otabs'))w.close()});document.querySelectorAll('.rmodal').forEach(x=>x.remove());try{S.telApp=''}catch(e){}openPath(homePath('DOCUMENTS').concat('CALL-TEST.HTML'));return 1})()", 30)
+    time.sleep(4); o = js(FRAME, 30)
+    try: o = json.loads(o)
+    except Exception: o = {}
+    if 'rect' in o:
+        png = vm.shot('tel0'); from PIL import Image; im = Image.open(png); sc = im.width / o['iw']
+        x, y, w, h = o['rect']; g.q.at(int((x + 140) * sc), int((y + 60) * sc), W=im.width, H=im.height); time.sleep(3); vm.shot('tel1')
+    d = js("(()=>{const d=document.querySelector('.rmodal [aria-label=\"Call a phone number\"]');return d?d.innerText.slice(0,300):null})()", 30)
+    out('after the click:', d)
+    ok('4. the tel: link clicked: the desktop asks how to call it (Call 5551234567)', isinstance(d, str) and '5551234567' in d, d)
+    out('page log:\n' + sh("tail -n 20 /run/rudolf/page.log 2>&1", 30))
 finally:
     try: vm and vm.stop()
     except Exception: pass

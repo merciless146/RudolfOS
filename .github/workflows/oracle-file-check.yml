@@ -1,6 +1,8 @@
-# Oracle's file:/// pages on a real release in QEMU (iso/qt/sb/oracle_file_t.py): the newest beta (or a release by its
-# serial) from slot a, an account signed in, the desktop in the shell, Oracle's Welcome and README pages and a page in
-# Documents with a tel: link. The same set-up as qemu-checks.yml. Nothing is published.
+# Oracle's pages drawn (the Vivobook, 2026-11-15: file:/// pages blank in Rudolf's Chromium 158).
+#   page: this tree's desktop page (iso/www/index.html) in the beta's own Chromium (from its chromium.sfs), and the beta's
+#         page the same way for comparison (iso/qt/shell2/oraclefile60_t.js); shows the fix before a new beta exists.
+#   qemu: the newest beta (or a release by its serial) itself in QEMU (iso/qt/sb/oracle_file_t.py), set up as
+#         qemu-checks.yml; passes once a beta is built with the fix. Nothing is published.
 name: Oracle file check
 on:
   workflow_dispatch:
@@ -8,11 +10,31 @@ on:
       serial: {description: 'A release to test (its serial); empty: the newest beta', required: false, default: ''}
   push:
     branches: [oracle-file-blank]
-    paths: ['iso/qt/sb/oracle_file_t.py', '.github/workflows/oracle-file-check.yml']
+    paths: ['iso/qt/sb/oracle_file_t.py', 'iso/qt/shell2/oraclefile60_t.js', 'iso/www/index.html', '.github/workflows/oracle-file-check.yml']
   pull_request:
-    paths: ['iso/qt/sb/oracle_file_t.py', '.github/workflows/oracle-file-check.yml']
+    paths: ['iso/qt/sb/oracle_file_t.py', 'iso/qt/shell2/oraclefile60_t.js', 'iso/www/index.html', '.github/workflows/oracle-file-check.yml']
 permissions: {contents: read}
 jobs:
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: The beta's Chromium and desktop page
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools >/dev/null
+          git fetch -q --depth 1 origin gh-pages
+          S='${{ inputs.serial }}'; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel && gh release download "r$S" -D rel -p chromium.sfs -p desktop.sfs
+          sudo unsquashfs -q -n -d rel/c rel/chromium.sfs opt/chromium && sudo unsquashfs -q -n -d rel/d rel/desktop.sfs usr/share/rudolf/www/index.html
+          sudo chown -R $USER rel; rel/c/opt/chromium/chrome --version; echo "::notice title=Oracle page check::release $S"
+          npm i -s --no-save playwright@1.63.0 >/dev/null
+      - name: This tree's page (must pass)
+        run: ROUNDS=6 node iso/qt/shell2/oraclefile60_t.js $PWD/rel/c/opt/chromium/chrome
+      - name: The beta's page (for comparison; expected to fail before the fix)
+        continue-on-error: true
+        run: PAGE=$PWD/rel/d/usr/share/rudolf/www/index.html node iso/qt/shell2/oraclefile60_t.js $PWD/rel/c/opt/chromium/chrome
   qemu:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
