@@ -72,8 +72,13 @@ def boot(tag):
         except OSError: pass
         time.sleep(4)
     return vm, g, up
+def put_small(g, data, remote):
+    # (small files in one command line, base64: g.put waits seconds for each)
+    b = base64.b64encode(data.encode()).decode()
+    if len(b) < 800: g.sh(f"echo {b} | base64 -d > {remote}", 20); return
+    f = os.path.join(W, 'p.tmp'); open(f, 'w').write(data); g.put(f, remote, '644')
 def run(g, c, t=60, show=True):
-    f = os.path.join(W, 'c.sh'); open(f, 'w').write(c + '\n'); g.put(f, '/tmp/c160.sh', '644')
+    put_small(g, c + '\n', '/tmp/c160.sh')
     o = g.sh('sh /tmp/c160.sh 2>&1', t)
     if show: out('$', c[:160].replace('\n', ' ; ')); out(o.rstrip()[-2500:])
     return o
@@ -170,7 +175,7 @@ try:
              "if(performance.now()-t0<15000)requestAnimationFrame(f);else window.__lgFrames=n}requestAnimationFrame(f);"
              "document.addEventListener('readystatechange',()=>{const e=document.getElementById('login');if(e&&document.readyState=='interactive'){const c=getComputedStyle(e);if(c.display!='none')window.__lgFirst=1}})})()</script>")
     open(f'{W}/probe.html', 'w').write(PROBE); g.put(f'{W}/probe.html', '/tmp/probe.html', '644')
-    o = sh("FX=; for d in /dev/nvme*n1; do [ \"$(blkid -s LABEL -o value $d 2>/dev/null)\" = N160FIX ] && FX=$d; done; mkdir -p /tmp/fx; [ -n \"$FX\" ] && mount -o ro $FX /tmp/fx; ls -la /tmp/fx; "
+    o = sh("FX=$(blkid | grep 'LABEL=\"N160FIX\"' | cut -d: -f1 | head -1); echo fix=$FX; mkdir -p /tmp/fx; [ -n \"$FX\" ] && mount -o ro $FX /tmp/fx; ls -la /tmp/fx; "
            "WWW=/usr/share/rudolf/www; [ -f /persist/os/current/index.html ] && WWW=/persist/os/current; echo www=$WWW; "
            "if [ -f /tmp/fx/index.html ]; then cp /tmp/fx/index.html /tmp/page.html; else cp $WWW/index.html /tmp/page.html; fi; "
            "awk 'BEGIN{while((getline l < \"/tmp/probe.html\")>0)p=p l} {if(!d&&(i=index($0,\"<head>\"))>0){print substr($0,1,i+5) p substr($0,i+6);d=1}else print}' /tmp/page.html > /tmp/page2.html; grep -c __lgSeen /tmp/page2.html; chmod 644 /tmp/page2.html; mount --bind /tmp/page2.html $WWW/index.html; "
@@ -182,7 +187,7 @@ try:
            "rm -f /tmp/teval /tmp/teval.out; mkfifo -m 666 /tmp/teval; "
            "printf '#!/bin/sh\\nexport RUDOLF_NATIVE_STATE=/tmp/nstate RUDOLF_NATIVE_TEST_EVAL=/tmp/teval\\nexec /run/n160x/rn.real \"$@\"\\n' > $X/rn; chmod 755 $X/rn; mount --bind $X/rn /usr/bin/rudolf-native; "
            "pkill -f 'rudolf-native --rudolf-kiosk'; for i in $(seq 1 60); do [ -s /tmp/nstate ] && break; sleep 2; done; head -3 /tmp/nstate; ps w | grep -E 'rn.real|rudolf-native' | grep -v grep | head -5; tail -5 /run/rudolf/native-desktop.log; grep -v '^+' /run/rudolf/session.log | tail -5", 240)
-    ok('0d. the native desktop started again with the tests\' views' + (' and this tree\'s files' if FIX else ''), 'screen ' in o, o)
+    ok('0d. the native desktop started again with the tests\' views' + (' and this tree\'s files' if FIX else ''), 'screen ' in o and (not FIX or 'index.html' in o), o)
     def state():
         return sh("cat /tmp/nstate", 30, False)
     def st_get(st, k):
@@ -192,7 +197,7 @@ try:
     def at(x, y, btn='left'): g.q.at(x, y, btn, SW, SH)
     def tev(key, expr, t=30):
         n0 = sh("wc -l < /tmp/teval.out 2>/dev/null || echo 0", 20, False).strip().split('\n')[-1]
-        open(f'{W}/j.js', 'w').write(expr.replace('\n', ' ')); g.put(f'{W}/j.js', '/tmp/j.js', '644')
+        put_small(g, expr.replace('\n', ' '), '/tmp/j.js')
         o = sh(f"timeout 5 sh -c '{{ printf \"%s \" {key}; cat /tmp/j.js; echo; }} > /tmp/teval'; for i in $(seq 1 {t}); do n=$(wc -l < /tmp/teval.out 2>/dev/null || echo 0); [ $n -gt {n0 or 0} ] && break; sleep 1; done; tail -n +$(({n0 or 0}+1)) /tmp/teval.out", t + 20, False)
         o = o.strip(); return o[len(key) + 1:] if o.startswith(key + ' ') else o
     # signing in at the native sign-in screen, as the owner does: the password typed
@@ -275,6 +280,14 @@ try:
     out('Native sound state:', NAT_SND)
     ok('2a. a native app window (WebKit) plays through PulseAudio: a stream from WebKitWebProcess', 'WebKitWebProcess' in o or re.search(r'application.name = "(WebKit|rudolf|Notepad)', o) is not None, o)
     ok('2b. ...the page\'s own sounds start (AudioContext running, <audio> playing)', '"ctx":"running"' in NAT_SND or '"ctx2":"running"' in NAT_SND, NAT_SND)
+    # (the Media Player's kind of sound: an <audio> element alone, its stream sampled while it plays: playing, not corked)
+    AUD_JS = ("(()=>{const n=44100*6,b=new ArrayBuffer(44+n*2),v=new DataView(b),s=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};s(0,'RIFF');v.setUint32(4,36+n*2,true);s(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);"
+              "v.setUint32(24,44100,true);v.setUint32(28,88200,true);v.setUint16(32,2,true);v.setUint16(34,16,true);s(36,'data');v.setUint32(40,n*2,true);for(let i=0;i<n;i++)v.setInt16(44+i*2,Math.sin(i*2*Math.PI*660/44100)*12000,true);"
+              "const a=new Audio(URL.createObjectURL(new Blob([b],{type:'audio/wav'})));window.__ta=a;a.play().then(()=>window.__tp='playing',e=>window.__tp='refused '+e.name);return 1})()")
+    time.sleep(4); tev('notepad', AUD_JS)
+    o = sh("for i in 1 2 3 4; do sleep 1; " + AS_RUDOLF % 'pactl list sink-inputs' + " | awk '/^Sink Input/{c=\"\"} /Corked:/{c=$2} /media.role = \"music\"/{print \"corked=\" c}' | tail -1; done", 60)
+    tp = tev('notepad', "window.__tp+'|'+__ta.currentTime.toFixed(1)+'|'+__ta.paused")
+    ok('2d. a native app window\'s <audio> (the Media Player\'s kind) plays: its stream not corked while it plays', 'corked=no' in o, [o, tp])
 
     # ---- 3. display settings applied live: from the Settings window, to the shell (rudolfd's desktop/settings) and the
     #         other window (Notepad), within a few seconds, and still so later
