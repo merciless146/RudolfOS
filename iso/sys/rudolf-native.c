@@ -5899,6 +5899,8 @@ static void state_write(void)
 	g_string_append_printf(s, "saver %d %s|%s\nidlechecks %d\n", SAV_ON, SYS.ssstyle, SAV_WHY, IDLE_N);   /* (item 6) */
 	for (int i = 0; OV_ON && i < OVN; i++) if (g_list_find(CLIENTS, OVL[i].c)) g_string_append_printf(s, "ovwin %lx %d %d %d %d %d\n", (unsigned long)OVL[i].c->w, (int)lround(OVL[i].x), (int)lround(OVL[i].y), (int)lround(OVL[i].w), (int)lround(OVL[i].h), OVL[i].pic != NULL);
 	if (OK_[0]) g_string_append_printf(s, "osd %s %s|%s %d %d %d %d\n", OK_, OLV[0] ? OLV : "-", OLB, OX, OY, OW, OH);   /* (the keys' indicator) */
+	{ static char last[300]; static int n; if (OK_[0]) { char l[300]; snprintf(l, sizeof l, "%s %s|%s", OK_, OLV[0] ? OLV : "-", OLB); if (strcmp(l, last)) { snprintf(last, sizeof last, "%s", l); n++; } }
+	  if (last[0]) g_string_append_printf(s, "osdlast %d %s\n", n, last); }   /* (1.6.0, tests: the last indicator shown, and how many) */
 	/* (1.6.0) quick settings' switches as the shell does them for the whole screen; the screen's colour (XRandR's gamma); the power dialog
 	   (its rows, above every window); the lock screen above every window; the windows kept on top */
 	g_string_append_printf(s, "a11y dark=%d nl=%d dnd=%d sr=%d mag=%d hc=%d vk=%d touch=%d magz=%g\ngamma %d %d\n", menu_dark(), nl_on(), S.dnd, S.sr, MAG_ON, S.hc, VKW && gtk_widget_get_visible(VKW), S.touch, MAGZ, GAMMA_OK == 1, GAMMA_ON);
