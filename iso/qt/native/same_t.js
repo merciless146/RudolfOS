@@ -174,11 +174,34 @@ CASES.push({n: 'title-icon', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 
 CASES.push({n: 'app-menu', set: {}, more: PINSL, app: 'explorer', appctx: 'DOCUMENTS', parts: ['ctx']});
 CASES.push({n: 'title-dark', set: {dm: 'dark', darkui: true}, more: PINSL, app: 'explorer', parts: ['title']});
 CASES.push({n: 'help', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'help']}, app: 'help', parts: ['win']});
+/* (the owner's photo of 2026-11-15: an app's title bar on Native unlike Standard's) the title bars of Settings, File Explorer, Notepad,
+   Task Manager and Oracle (its own window, as Native opens it without Rudolf's Chromium), light and dark, each title bar style and two
+   accent colours; a window not in use beside one in use ('titlei'); the settings the page's title bar follows: the font size (the bar
+   grows with it), the font, the display scaling, the touch mode, high contrast, the window text colour (Wireframe's writing); Always
+   on top chosen from the title bar's own menu (its 📌); the pointer over each button */
+const PINST = {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'settings', 'taskmgr', 'browser', 'calc']};
+for (const ap of ['settings', 'explorer', 'notepad', 'taskmgr', 'browser']) for (const dm of ['light', 'dark']) for (const st of STY) for (const ac of ['#2563eb', '#db2777'])
+  CASES.push({n: 'tb-' + ap + '-' + dm + '-' + st + '-' + ac.slice(1), set: Object.assign({twstyle: st, accent: ac}, dm == 'dark' ? {dm: 'dark', darkui: true} : {dm: 'light'}), more: PINST, app: ap, parts: ['title']});
+for (const dm of ['light', 'dark']) for (const st of STY) CASES.push({n: 'tbi-' + dm + '-' + st, set: Object.assign({twstyle: st}, dm == 'dark' ? {dm: 'dark', darkui: true} : {dm: 'light'}), more: PINST, pre: ['notepad'], app: 'calc', parts: ['title', 'titlei']});
+const TBSET = {fs11: {fs: 11}, fs16: {fs: 16}, fs20: {fs: 20}, verdana: {ff: 'Verdana', fs: 14}, scale125: {scale: 125}, touch: {touch: true}, hc: {cb: 'contrast'}, 'hc-dark': {cb: 'contrast', dm: 'dark', darkui: true},
+  'tx-wire': {tx: '#7c2d12', twstyle: 'wire'}, 'fs18-retro': {fs: 18, twstyle: 'retro'}, 'touch-candy': {touch: true, twstyle: 'candy'}};
+for (const k in TBSET) CASES.push({n: 'tbs-' + k, set: Object.assign({dm: 'light'}, TBSET[k]), more: PINST, app: 'notepad', parts: ['title']});
+/* (the owner's photo) Settings › System Settings › Desktop engine: the engine in use and the one chosen, as rudolfd says for each (Standard's
+   page told chromium, Native's native) */
+const ENG = {chromium: {choice: 'chromium', now: 'chromium', available: true, nativeAvailable: true, failed: false, persistent: true, gaveUp: '', offer: false},
+  native: {choice: 'native', now: 'native', available: true, nativeAvailable: true, failed: false, persistent: true, gaveUp: '', offer: false}};
+const ENGREAD = "(() => { const s = document.querySelector('#eng57'), n = document.querySelector('.eng57 .engnow'); return s ? s.options[s.selectedIndex].text + ' | ' + (n ? n.textContent : '') : 'no panel' })()";
+CASES.push({n: 'engine', set: {dm: 'light'}, more: PINST, app: 'settings', rd: {engine: ENG}, js: "settings('sys')", jswait: 3000, read: ENGREAD,
+  expect: {std: 'Standard (Chromium) | In use now: Standard (Chromium).', nat: 'Native | In use now: Native.'}, parts: []});
+CASES.push({n: 'tbs-ontop', set: {dm: 'light'}, more: PINST, app: 'notepad', tbmenu: 'Always on top', parts: ['title']});
+CASES.push({n: 'tbs-max', set: {dm: 'light'}, more: PINST, app: 'notepad', tbmenu: 'Maximize', parts: ['title']});
+CASES.push({n: 'tbs-max-top', set: {dm: 'dark', darkui: true, tb: 'top', twstyle: 'candy'}, more: PINST, app: 'notepad', tbmenu: 'Maximize', parts: ['title']});
+for (const [i, st] of [[0, 'standard'], [1, 'standard'], [2, 'standard'], [2, 'retro'], [1, 'candy'], [2, 'wire']]) CASES.push({n: 'tbh-' + st + '-' + i, set: {dm: 'light', twstyle: st}, more: PINST, app: 'notepad', hoverbtn: i, parts: ['title']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
 const micSet = c => { fs.writeFileSync(path.join(D, 'mic'), JSON.stringify(c.mic || [])); if (c.mic) cp.execSync(`curl -s --noproxy '*' -X POST -H 'X-Rudolf-Token: tok160same' '${BASE}/api/mic?muted=${c.micmuted ? 1 : 0}'`) };
-const rdSet = c => { for (const k of ['deb', 'ai', 'net']) { const f = path.join(D, k); if (c.rd && c.rd[k]) fs.writeFileSync(f, JSON.stringify(c.rd[k])); else try { fs.unlinkSync(f) } catch (e) {} } };
+const rdSet = c => { for (const k of ['deb', 'ai', 'net', 'engine']) { const f = path.join(D, k); if (c.rd && c.rd[k]) fs.writeFileSync(f, JSON.stringify(c.rd[k])); else try { fs.unlinkSync(f) } catch (e) {} } };
 async function stdCase(c) {
   state(c.set, c.more); micSet(c); rdSet(c);
   const ctx = await BR.newContext({viewport: {width: W, height: H}, deviceScaleFactor: 1, timezoneId: 'UTC'});
@@ -189,7 +212,7 @@ async function stdCase(c) {
   const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(BASE + '/'); await p.waitForFunction(() => typeof userLogin == 'function' && document.getElementById('login') && getComputedStyle(document.getElementById('login')).display != 'none', null, {timeout: 60000});
   await p.clock.runFor(1500); await wait(500);
-  const rects = {}; let pt = null;
+  const rects = {}; let pt = null, hov = null;
   const rectOf = async sel => p.evaluate(s => { const e = typeof s == 'string' ? document.querySelector(s) : null; if (!e) return null; const r = e.getBoundingClientRect(); return r.width ? [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] : null }, sel);
   if (!c.signin) {
     await p.focus('#lp'); await p.keyboard.type(PW); await p.keyboard.press('Enter');
@@ -209,6 +232,12 @@ async function stdCase(c) {
       if (r) { await p.mouse.click(r[0], r[1]); await p.mouse.move(W / 2, H - 200) }   /* (the last input a click on the app's title bar, not the password's keys: Chromium rings a button a script focuses only after keys) */
       await p.evaluate(js => { try { (0, eval)(js) } catch (e) { console.warn(e) } }, c.js); await p.clock.runFor(100); await wait(c.jswait || 800) }   /* (not longer: the page's timers under the test's clock would run without end with a dialog open) */
     if (c.act == 'two') { for (const k of ['notepad', 'calc']) { await p.evaluate(k => launch(k), k); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } } await p.mouse.move(W / 2, H - 100) }
+    /* (the title bars: a row of the window's menu from a right-click on its title bar; the pointer over one of its buttons) */
+    const tbAt = (dx, dy) => p.evaluate(([dx, dy]) => { const w = [...document.querySelectorAll('.win.act')].find(e => e.offsetParent); const r = w.getBoundingClientRect(); return [Math.round(r.left + dx), Math.round(r.top + dy)] }, [dx, dy]);
+    if (c.tbmenu) { const q = await tbAt(200, 17); await p.mouse.click(q[0], q[1], {button: 'right'}); await p.clock.runFor(300); await wait(300);
+      const it = await p.evaluate(l => { const e = [...document.querySelectorAll('.ctx .cmi')].find(x => x.querySelector('span').textContent == l); if (!e) return null; const r = e.getBoundingClientRect(); return [r.left + 40, r.top + r.height / 2] }, c.tbmenu);
+      if (it) await p.mouse.click(it[0], it[1]); else await p.keyboard.press('Escape'); await p.clock.runFor(300); await wait(300); await p.mouse.move(W / 2, H - 200); await wait(200) }
+    if (c.hoverbtn !== undefined) { const q = await p.evaluate(i => { const w = [...document.querySelectorAll('.win.act')].find(e => e.offsetParent); const b = w.querySelectorAll('.tb button')[i].getBoundingClientRect(), r = w.getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2, Math.round(b.left + b.width / 2 - r.left), Math.round(b.top + b.height / 2 - r.top)] }, c.hoverbtn); hov = q.slice(2); await p.mouse.move(q[0], q[1]); await p.clock.runFor(200); await wait(300) }
     if (c.key == 'altab') { await p.keyboard.down('Alt'); await p.keyboard.press('Tab'); await p.clock.runFor(200); await wait(200) }
     if (c.key == 'overview') { await p.keyboard.press('Meta+Tab'); for (let i = 0; i < 4; i++) { await p.clock.runFor(200); await wait(150) } }
     if (c.ws) { await p.click('#wsw button:nth-child(' + c.ws + ')'); for (let i = 0; i < 2; i++) { await p.clock.runFor(300); await wait(150) } await p.mouse.move(W / 2, H / 3); await wait(300) }
@@ -243,7 +272,9 @@ async function stdCase(c) {
   rects.menu = await rectOf('#menu'); rects.signbox = (await rectOf('#lockov .lkbox')) || (await rectOf('#login .lb'));
   rects.icons = await p.evaluate(() => { const l = [...document.querySelectorAll('#desk > .ic')].filter(e => e.offsetParent).map(e => e.getBoundingClientRect()); if (!l.length) return null;
     const x = Math.min(...l.map(r => r.left)), y = Math.min(...l.map(r => r.top)); return [Math.round(x), Math.round(y), Math.round(Math.max(...l.map(r => r.right)) - x), Math.round(Math.max(...l.map(r => r.bottom)) - y)] });
-  rects.title = await p.evaluate(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.offsetParent).pop(); const t = w && w.querySelector('.tb'); if (!t) return null; const r = w.getBoundingClientRect(), q = t.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(q.bottom - r.top)] });
+  rects.title = await p.evaluate(() => { const v = [...document.querySelectorAll('.win')].filter(e => e.offsetParent && e.getBoundingClientRect().width), w = v.find(e => e.classList.contains('act')) || v.pop();   /* (the window in use: Settings makes other .win of its own) */ const t = w && w.querySelector('.tb'); if (!t) return null; const r = w.getBoundingClientRect(), q = t.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(q.bottom - r.top)] });
+  rects.titlei = await p.evaluate(() => { const v = [...document.querySelectorAll('.win')].filter(e => e.offsetParent && e.getBoundingClientRect().width), w = v.find(e => !e.classList.contains('act')), a = v.find(e => e.classList.contains('act')); const t = w && w.querySelector('.tb'); if (!t) return null;
+    const r = w.getBoundingClientRect(), q = t.getBoundingClientRect(), o = a && a.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(Math.min(q.bottom, o && o.top > r.top ? o.top - 5 : 1e9) - r.top)] });   /* (another window's, not in use: above the one in use, which may cover its bar's foot) */
   { const r = await rectOf('.ctx'); rects.ctx = r ? [r[0] - 4, r[1] - 4, r[2] + 8, r[3] + 8] : null; rects.dlg = await rectOf('.rmodal .rmbox') }   /* (a menu with its focus ring) */
   for (let i = 0; i < (c.wg || 0); i++) rects['wg' + i] = await p.evaluate(i => { const e = document.querySelectorAll('#desk > .wgt')[i]; if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.left) - 20, Math.round(r.top) - 10, Math.round(r.width) + 40, Math.round(r.height) + 40] }, i);   /* (with its shadow) */
   { const r = await rectOf('#ntoasts'); rects.toast = r ? [r[0] - 30, r[1] - 16, r[2] + 42, r[3] + 52] : null }   /* (with their shadows) */
@@ -256,7 +287,7 @@ async function stdCase(c) {
   const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f});
   if (c.moving) { for (let i = 0; i < c.moving / 250; i++) { await p.clock.runFor(250); await wait(60) } await p.screenshot({path: path.join(OUT, c.n + '.std2.png')}) } if (c.saver) fs.unlinkSync(path.join(D, 'idle'));
   if (c.key == 'altab') await p.keyboard.up('Alt');
-  await ctx.close(); return {f, rects, errs, pt, read};
+  await ctx.close(); return {f, rects, errs, pt, read, hov};
 }
 // ---- Native: rudolf-native under Xvfb, the same storage
 let NP = null, NLOG = path.join(OUT, 'native.log');
@@ -327,6 +358,11 @@ async function natCase(c, s) {
   if (c.js) { await neval(c.app, 'void((() => { try { ' + c.js + ' } catch (e) { console.warn(e) } })())'); await wait(Math.max(2500, c.jswait || 0)) }
   if (c.act == 'two') { for (const k of ['notepad', 'calc']) { const h = nhit('pin ' + k); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1');
       await until(() => new RegExp('^client .* app=' + k + ' ', 'm').test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3000) } xdo('mousemove ' + W / 2 + ' ' + (H - 100)); await wait(500) }
+  if (c.tbmenu && cl) { xdo('mousemove ' + (cl[0] + 200) + ' ' + (cl[1] + 17) + ' click 3'); await until(() => nlines0('cmitem').length, 8000); await wait(300);
+    const l = nlines0('cmitem').find(x => x.endsWith('|' + c.tbmenu)); if (l) { const a = l.split(' '); xdo('mousemove ' + a[1] + ' ' + a[2] + ' click 1') } else xdo('key Escape'); await wait(1200); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500);
+    const l2 = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => new RegExp('^client .* app=' + c.app + ' ').test(x)); if (l2) { const a = l2.split(' '); cl = [+a[3], +a[4], +a[5], +a[6]] } }   /* (its place after: Maximize) */
+  if (c.hoverbtn !== undefined && cl && s.hov) { xdo('mousemove ' + (cl[0] + s.hov[0]) + ' ' + (cl[1] + s.hov[1])); await wait(700) }
+  let cli = null; if (c.pre && c.pre.length) { const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => new RegExp('^client .* app=' + c.pre[0] + ' ').test(x)); if (l) { const a = l.split(' '); cli = [+a[3], +a[4]] } }
   if (c.key == 'altab') { xdo('keydown alt key Tab'); await until(() => (nst('altab') || '-') != '-', 5000); await wait(500) }
   if (c.key == 'overview') { xdo('key super+Tab'); await until(() => /^ovwin .* 1$/m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 5000); await wait(600) }
   if (c.saver) { fs.writeFileSync(path.join(D, 'idle'), '3600000'); await until(() => (nst('saver') || '').startsWith('1') && /^client .* full=1 .* app=do-saver /m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 40000); await wait(2500) }
@@ -376,7 +412,7 @@ async function natCase(c, s) {
     if (l) { const a = l.split(' '); xdo('mousemove ' + (+a[3] + +a[5] + 2 - 9 - 12) + ' ' + (+a[4] + 7 + 11) + ' click 1') }
     await until(() => !/^client .* app=notepad/m.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 10000); await wait(800) }
   if (c.act == 'lock') { xdo("type --delay 40 '" + PW.replace(/'/g, "'\\''") + "'"); xdo('key Return'); await until(() => nst('locked') == '0', 8000); await wait(800) }
-  return {f, client: cl, read};
+  return {f, client: cl, clienti: cli, read};
 }
 // ---- the comparison
 /* (the share of a screenshot in testsrc2's colour bars: the video's picture, not a black screen) */
@@ -399,14 +435,16 @@ function cmp(name, a, b, ra, rb, shift) {
     const log0 = (() => { try { return fs.statSync(NLOG).size } catch (e) { return 0 } })();
     try { n = await natCase(c, s) } catch (e) { ok(c.n + ': Native drew it', 0, e.message); continue }
     if (c.nolog) { let t = ''; try { t = fs.readFileSync(NLOG, 'utf8').slice(log0) } catch (e) {} const m = t.split('\n').filter(l => c.nolog.test(l)); ok(c.n + ': nothing in Native\'s log like ' + c.nolog, !m.length, m.slice(0, 3)) }
-    if (c.read) ok(c.n + ': the page reads the same on both (' + c.read.slice(0, 60) + '…)', s.read === n.read, {std: s.read, nat: n.read});
+    if (c.read && c.expect) ok(c.n + ': each page reads what its engine should (' + c.expect.std + ' / ' + c.expect.nat + ')', s.read === c.expect.std && n.read === c.expect.nat, {std: s.read, nat: n.read});
+    else if (c.read) ok(c.n + ': the page reads the same on both (' + c.read.slice(0, 60) + '…)', s.read === n.read, {std: s.read, nat: n.read});
     for (const part of c.parts || []) {
       if (part == 'moving') { const mv = e => { try { return JSON.parse(cp.execFileSync('python3', [path.join(__dirname, 'pxdiff.py'), path.join(OUT, c.n + '.' + e + '.png'), path.join(OUT, c.n + '.' + e + '2.png'), [0, 0, W, H].join(','), [0, 0, W, H].join(','), String(TOL), path.join(OUT, c.n + '.moving.' + e), '0']).toString()).pct } catch (x) { return -1 } };
         const a = mv('std'), b = mv('nat'); ok(c.n + ' moving: ' + a + ' % of Standard\'s screen and ' + b + ' % of Native\'s change in ' + c.moving / 1000 + ' s (at least 0.25 % on both)', a >= .25 && b >= .25, {a, b}); continue }
       if (part == 'picture') { const f = x => +cp.execFileSync('python3', ['-c', PICPY, x]).toString(), a = f(s.f), b = f(n.f);
         ok(c.n + ' picture: ' + a + ' % of Standard\'s screen and ' + b + ' % of Native\'s show the video (at least 60 %)', a >= 60 && b >= 60 && Math.abs(a - b) <= 10, {a, b}); continue }
       let ra = s.rects[part], rb = null;
-      if ((part == 'title' || part == 'win') && n.client && ra) rb = [n.client[0], n.client[1], ra[2], ra[3]];   /* (each engine's own window; the frame's border and title bar above the app) */
+      if ((part == 'title' || part == 'win') && n.client && ra) rb = [n.client[0], n.client[1], ra[2], ra[3]];
+      if (part == 'titlei' && n.clienti && ra) rb = [n.clienti[0], n.clienti[1], ra[2], ra[3]];   /* (each engine's own window; the frame's border and title bar above the app) */
       if (!ra) { ok(c.n + ' ' + part + ': Standard has it', 0, s.rects); continue }
       const r = cmp(c.n + '.' + part, s.f, n.f, ra, rb, part == 'win' ? 1 : 0);   /* (a whole window: its page drawn by WebKit, a pixel's match one pixel away allowed) */
       rows.push([c.n, part, r.pct]);

@@ -43,6 +43,9 @@ class H(http.server.BaseHTTPRequestHandler):
     def body(self):
         n = int(self.headers.get('content-length') or 0); return self.rfile.read(n) if n else b''
     def do_GET(self): self.go('GET')
+    # (the engine the page is told it runs in, as rudolfd's /run/rudolf/desktop-engine: "chromium" for both unless DIR/engine is there,
+    # then "native" for WebKit's pages, Native's)
+    def engine(self): return 'native' if os.path.exists(os.path.join(D, 'engine')) and 'Chrome' not in (self.headers.get('User-Agent') or '') else 'chromium'
     def do_POST(self): self.go('POST')
     def go(self, m):
         u, _, q = self.path.partition('?'); b = self.body() if m == 'POST' else b''
@@ -57,8 +60,8 @@ class H(http.server.BaseHTTPRequestHandler):
         if u in ('/', '/index.html'):
             note('PAGE /')
             L = json.dumps(ls()).replace('<', '\\u003c')
-            inj = ('<script type="application/json" id="rudolf-ls">%s</script><script>window.RUDOLFD={token:"%s",base:"",boot:"uefi",media:"disk",live:0,recovery:0,engine:"chromium"};%s</script>'
-                   % (L, TOK, LSJS))
+            inj = ('<script type="application/json" id="rudolf-ls">%s</script><script>window.RUDOLFD={token:"%s",base:"",boot:"uefi",media:"disk",live:0,recovery:0,engine:"%s"};%s</script>'
+                   % (L, TOK, self.engine(), LSJS))
             return self.send(200, open(os.path.join(WWW, 'index.html'), encoding='utf-8').read().replace('<head>', '<head>' + inj, 1), 'text/html; charset=utf-8')
         if u.startswith('/tm/'):   # (the test's media: DIR/tm/NAME, made by the test with ffmpeg; test finding N1)
             f = os.path.join(D, 'tm', os.path.basename(u))
@@ -115,7 +118,7 @@ class H(http.server.BaseHTTPRequestHandler):
             sid = s['id'] if s else ''
             st = sget(data, 'bd95set:' + sid) if sid else None
             if st is None: st = sget(data, 'bd95set') or {}
-            K = ["bs", "b1", "b2", "dyn", "dm", "lat", "wpimg", "wpfit", "tb", "tbstyle", "tbac", "tbacm", "tbbstyle", "tbbac", "tbbacm", "twstyle", "twacm", "accent", "darkui", "ck", "h24", "df", "tz", "doff", "ff", "fs", "lang", "scale", "icons", "icstyle", "nl", "dnd", "sr", "mag", "cb", "vk", "touch"]
+            K = ["bs", "b1", "b2", "dyn", "dm", "lat", "wpimg", "wpfit", "tb", "tbstyle", "tbac", "tbacm", "tbbstyle", "tbbac", "tbbacm", "twstyle", "twacm", "accent", "darkui", "ck", "h24", "df", "tz", "doff", "ff", "fs", "lang", "scale", "icons", "icstyle", "nl", "dnd", "sr", "mag", "cb", "vk", "touch", "tx"]
             pins = sget(data, 'bd95pins:' + (sid or 'nobody'))
             nt = sget(data, 'bd95notif:' + (sid or 'nobody')) or []
             wall = bool(sid and st.get('wpimg') and rd('wall.jpg'))
@@ -144,6 +147,7 @@ class H(http.server.BaseHTTPRequestHandler):
             x = rd('wall.jpg'); return self.send(200, x, 'image/jpeg') if x else self.err(404, 'no picture')
         if w == 'sys/status':   # (the release, as rudolf-update's status: Settings › About's Chromium row comes from it on both engines)
             return self.j({'ok': True, 'current': {'version': '1.6.0', 'chromium': '142.0.7444.59', 'released': '2026-11-15'}})
+        if w == 'desktop/engine' and m == 'GET' and rd('engine'): return self.j(dict({'ok': True}, **json.loads(rd('engine'))[self.engine()]))   # (DIR/engine: rudolfd's answer for each engine's page)
         if w == 'stats': return self.j({'ok': True, 'cpu': 12.3, 'load': 0.2, 'memTotal': 8589934592, 'memFree': 4294967296, 'memAvailable': 5368709120})
         if w == 'devlink': return self.j({'ok': True, 'available': True, 'on': False})
         if w == 'mic':   # (DIR/mic: the apps using a microphone, a JSON list; muted=0|1 kept, as rudolfd's)

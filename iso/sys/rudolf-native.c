@@ -64,6 +64,7 @@ typedef struct {
 	int tbac, tbbac, h24, wpimg, wallpaper, notes, npins, scale, darkui; double lat, doff, gen; char pins[24][40];
 	int nl, dnd, sr, mag, hc, vk, touch;   /* (quick settings' switches: item 3) */
 	int aur, rmotion; char aurm[12], lnm[12];   /* (the dynamic backgrounds' moving parts: test findings N11, N12) */
+	int fs; char tx[16], cb[12];   /* (the title bars: the Font size, the Window text colour, the colour vision filter) */
 } Settings;
 static Settings S;
 typedef struct { char k[40], name[80], icon[48], kw[200], ic[24]; } App;
@@ -89,8 +90,6 @@ static int bar_x(void) { return tb_side() == 2 ? SW - BARW : 0; }
 static int bar_y(void) { return tb_side() || !strcmp(S.tb, "top") ? TOPRES : SH - BARH; }
 static int bar_w(void) { return tb_side() ? BARW : SW; }
 static int bar_h(void) { return tb_side() ? SH - TOPRES : BARH; }
-static int work_left(void) { return tb_side() == 1 ? BARW : 0; }
-static int work_w(void) { return SW - (tb_side() ? BARW : 0); }
 static int desk_left(void) { return tb_side() == 1 ? BARW + (int)lround(4 * Z) : 0; }   /* (#desk's inset: var(--bw) beside a bar at the left or the right) */
 static int desk_w(void) { return SW - (tb_side() ? BARW + (int)lround(4 * Z) : 0); }
 static int work_top(void) { return TOPRES + (!strcmp(S.tb, "top") ? BARH : 0); }
@@ -645,7 +644,8 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
    _NET_ACTIVE_WINDOW. Dialogs (WM_TRANSIENT_FOR) are centred over their window. Full screen (_NET_WM_STATE, games and
    videos) covers the whole screen, taskbar too, without the frame. Our own app windows are framed the same way (our
    own requests are not redirected to us, so they are framed as they are shown). The taskbar lists them all. */
-#define BW 1   /* (the page's windows' 1 px edge; the title bar's height, TH, follows the display scaling) */
+static double tw_tbh(void);   /* (the title bar's height in the page's pixels: tw_geom) */
+static int BW = 1;   /* (the page's windows' 1 px edge, 2 px with high contrast; the title bar's height, TH, follows the display scaling, the font size and the touch mode: tw_th) */
 typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
 	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
 static GList *CLIENTS;   /* oldest first */
@@ -807,10 +807,19 @@ static void wm_minimise(Client *c)
 	if (FOCUS == c) { FOCUS = NULL; wm_focus(top_client()); }
 	bar_redraw(); state_write();
 }
+/* (the owner's photo) a maximised window where the page puts it (base_v24.html .mx: left 0, top 0 of #desk, its width and height #desk's
+   less 6 px, its edge and round corners kept): #desk is the screen beside the taskbar (below a bar at the top, 2 px apart; over a bar at
+   the bottom by 4 px; beside one at the left or the right, 4 px apart) */
+static int desk_top(void) { return TOPRES + (!strcmp(S.tb, "top") ? BARH + (int)lround(2 * Z) : 0); }
+static void max_geom(Client *c)
+{
+	int top = !strcmp(S.tb, "top"), dt = desk_top(), dh = tb_side() ? SH - TOPRES : top ? SH - dt : SH - TOPRES - BARH + (int)lround(4 * Z);
+	c->x = desk_left(); c->y = dt; c->cw = (int)lround(desk_w() - 6 * Z); c->ch = (int)lround(dh - 6 * Z) - (TH - BW);
+}
 static void wm_maximise(Client *c, int on)
 {
 	if (c->full || on == c->max) return;
-	if (on) { c->sx = c->x; c->sy = c->y; c->scw = c->cw; c->sch = c->ch; c->x = work_left(); c->y = work_top(); c->cw = work_w() - 2 * BW; c->ch = work_h() - TH - BW; }
+	if (on) { c->sx = c->x; c->sy = c->y; c->scw = c->cw; c->sch = c->ch; max_geom(c); }
 	else { c->x = c->sx; c->y = c->sy; c->cw = c->scw; c->ch = c->sch; }
 	c->max = on; place(c); frame_draw(c); state_write();
 }
@@ -1128,7 +1137,7 @@ static void wm_hide_all(int hide)
 static void wm_relayout(void)
 {
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data;
-		if (c->max) { c->x = work_left(); c->y = work_top(); c->cw = work_w() - 2 * BW; c->ch = work_h() - TH - BW; }
+		if (c->max) max_geom(c);
 		else if (!c->full && c->y < work_top()) c->y = work_top();
 		place(c); frame_draw(c); }
 	state_write();
@@ -1143,9 +1152,22 @@ static int edge_at(Client *c, int x, int y)
 }
 static int btn_at(Client *c, int x, int y) { int r[3][4]; btn_rects(c, r); for (int i = 0; i < 3; i++) if (x >= r[i][0] && x < r[i][0] + r[i][2] && y >= r[i][1] && y < r[i][1] + r[i][3]) return i + 1; return 0; }
 static Cursor cursor_for(int e) { int i = e == 1 ? 1 : e == 2 ? 2 : e == 4 ? 3 : e == 8 ? 4 : e == 5 ? 5 : e == 6 ? 6 : e == 9 ? 7 : e == 10 ? 8 : 0; return CUR[i]; }
+static void win_menu_at(Client *c, int x, int y);
+/* (base_v24.html, a middle-click on a title bar) the window behind every other, the one now in front in use */
+static void wm_lower(Client *c)
+{
+	XLowerWindow(DPY, c->frame); wm_restack();
+	Window r, p, *k = NULL; unsigned n = 0; Client *top = NULL;
+	if (XQueryTree(DPY, ROOT, &r, &p, &k, &n)) for (unsigned i = 0; i < n; i++) { Client *o = client_of(k[i]); if (o && o != c && !o->min && !o->hidden && !o->off && !o->trans && o->frame == k[i]) top = o; }
+	if (k) XFree(k);
+	if (top) wm_focus(top); else state_write();
+}
 static void frame_press(Client *c, XButtonEvent *e)
 {
-	if (c != FOCUS) wm_focus(c);
+	if (c != FOCUS && e->button != 2) wm_focus(c);
+	/* (the owner's photo) the title bar's other buttons, as the page's (base_v24.html): a right-click there opens the window's menu at
+	   the pointer (winMenu: the page's own rows, as the taskbar button's), a middle-click sends the window behind the others */
+	if ((e->button == 3 || e->button == 2) && e->y < TH && !btn_at(c, e->x, e->y) && !c->full) { if (e->button == 3) win_menu_at(c, e->x_root, e->y_root); else wm_lower(c); return; }
 	if (e->button != 1) return;
 	int b = btn_at(c, e->x, e->y);
 	if (b) { c->press = b; frame_draw(c); return; }
@@ -1159,12 +1181,14 @@ static void frame_press(Client *c, XButtonEvent *e)
 static void drag_motion(int rx, int ry)
 {
 	Client *c = DRAG.c; int dx = rx - DRAG.px, dy = ry - DRAG.py;
-	if (!DRAG.edge) { c->x = DRAG.x + dx; c->y = DRAG.y + dy; if (c->y < work_top()) c->y = work_top(); XMoveWindow(DPY, c->frame, c->x, c->y); return; }
-	int x = DRAG.x, y = DRAG.y, w = DRAG.w, h = DRAG.h;
-	if (DRAG.edge & 1) { w = DRAG.w - dx; if (w < 160) w = 160; x = DRAG.x + DRAG.w - w; }
-	if (DRAG.edge & 2) { w = DRAG.w + dx; if (w < 160) w = 160; }
-	if (DRAG.edge & 4) { h = DRAG.h - dy; if (h < 80) h = 80; y = DRAG.y + DRAG.h - h; }
-	if (DRAG.edge & 8) { h = DRAG.h + dy; if (h < 80) h = 80; }
+	if (!DRAG.edge) { c->x = DRAG.x + dx; c->y = DRAG.y + dy; if (c->y < desk_top()) c->y = desk_top(); XMoveWindow(DPY, c->frame, c->x, c->y); return; }
+	/* (the owner's photo: as the page's addResize, shell25.js: the window's new size from its size with its edges (offsetWidth,
+	   offsetHeight) and the pointer's way, at least 200 by 120, its top not above the desktop's) */
+	int x = DRAG.x, y = DRAG.y, w = DRAG.w, h = DRAG.h, ow = DRAG.w + 2 * BW, oh = DRAG.h + TH + BW, tbh = TH - BW, mw = (int)lround(200 * Z), mh = (int)lround(120 * Z);
+	if (DRAG.edge & 1) { int nw = MAX(mw, ow - dx); w = nw; x = DRAG.x + (ow - nw); }
+	if (DRAG.edge & 2) w = MAX(mw, ow + dx);
+	if (DRAG.edge & 4) { int nh = MAX(mh, oh - dy), nt = MAX(desk_top(), DRAG.y + (oh - nh)); h = oh + DRAG.y - nt - tbh; y = nt; }
+	if (DRAG.edge & 8) h = MAX(mh, oh + dy) - tbh;
 	c->x = x; c->y = y; c->cw = w; c->ch = h; place(c); frame_draw(c);
 }
 static void frame_release(Client *c, XButtonEvent *e)
@@ -1313,7 +1337,7 @@ static void appwin_size(AppWin *a, int w, int h)
 	int n = 0; for (GList *l = CLIENTS; l; l = l->next) { Client *o = l->data; if (o != c && !o->trans) n++; }
 	double dw = desk_w() / Z, avail = work_h() / Z; w = (int)fmin(w, dw - 8); h = (int)fmin(h, avail - 8);   /* (the page's #desk: beside a bar at the left or the right) */
 	double x = fmax(0, fmin(40 + n * 26, dw - w - 4)), y = fmax(0, fmin(20 + n * 26, avail - h - 4));
-	c->cw = (int)lround(w * Z); c->ch = (int)lround((h - 34) * Z); c->x = desk_left() + (int)lround(x * Z); c->y = work_top() + (int)lround(y * Z);
+	c->cw = (int)lround(w * Z); c->ch = (int)lround((h - tw_tbh()) * Z); c->x = desk_left() + (int)lround(x * Z); c->y = work_top() + (int)lround(y * Z);
 	place(c); frame_draw(c); state_write();
 }
 static void frame_redraw_app(AppWin *a) { Client *c = WM_OK ? client_of_app(a) : NULL; if (c) { wm_title(c); frame_draw(c); } }
@@ -1402,7 +1426,7 @@ typedef struct {
 } Box;
 static void shd_add(Box *b, double dx, double dy, double blur, RGBA c, int inset) { if (b->nsh < 4) { Shd s = { dx, dy, blur, c, inset }; b->sh[b->nsh++] = s; } }
 /* (Chromium snaps a box's edges to whole pixels) */
-static void snap(double *x, double *y, double *w, double *h) { double x1 = round(*x + *w), y1 = round(*y + *h); *x = round(*x); *y = round(*y); *w = x1 - *x; *h = y1 - *y; }
+static void snap(double *x, double *y, double *w, double *h) { double x1 = round((*x + *w) * Z) / Z, y1 = round((*y + *h) * Z) / Z; *x = round(*x * Z) / Z; *y = round(*y * Z) / Z; *w = x1 - *x; *h = y1 - *y; }   /* (the screen's pixels: with the display scaling too) */
 static void box_paint(cairo_t *cr, double x, double y, double w, double h, const Box *b)
 {
 	snap(&x, &y, &w, &h); if (w <= 0 || h <= 0) return;
@@ -1494,7 +1518,8 @@ static double css_text(cairo_t *cr, const char *t, const char *fam, int wt, doub
 	if (max > 0) { pango_layout_set_width(pl, (int)(max * PANGO_SCALE)); pango_layout_set_ellipsize(pl, PANGO_ELLIPSIZE_END); }
 	PangoRectangle lr; pango_layout_get_extents(pl, NULL, &lr);
 	double base = top + floor((lh - (a + d)) / 2) + a, b = pango_layout_get_baseline(pl) / (double)PANGO_SCALE;   /* (Blink: the half-leading floored) */
-	srca(cr, c); cairo_move_to(cr, x, round(base) - b); pango_cairo_show_layout(cr, pl); g_object_unref(pl); return lr.width / (double)PANGO_SCALE;   /* (the baseline on a whole pixel, as Chromium's) */
+	{ double bx = x, by = base; cairo_user_to_device(cr, &bx, &by); by = round(by); cairo_device_to_user(cr, &bx, &by); base = by; }   /* (the baseline on a whole pixel of the screen, as Chromium's: with the display scaling too) */
+	srca(cr, c); cairo_move_to(cr, x, base - b); pango_cairo_show_layout(cr, pl); g_object_unref(pl); return lr.width / (double)PANGO_SCALE;
 }
 /* the baseline CSS gives a line of this font in a box of height H (centred: a button's or a flex item's content) */
 static double css_ascent(cairo_t *cr, const char *fam, int wt, double px, double *desc)
@@ -1969,62 +1994,117 @@ static TwVars tw_vars(void)
 	return v;
 }
 static double tw_rad(void) { return !strcmp(tw_vars().st, "retro") ? 0 : 8; }
+/* (the owner's photo of 2026-11-15: the title bar as the page lays it out for every setting, not only the defaults) the bar's
+   sizes in the page's pixels, as Chromium lays out .win>.tb (a flex row, 6px 8px inside, its items centred): the window's edge
+   (1 px; 2 px white with high contrast, html.hc), the title in the Font size setting (S.fs: the bar grows past 34 px for large
+   sizes), the touch mode's bigger bar and buttons (html.touch: at least 40 px inside, buttons 40 by 40), the picture's line
+   (a 16 px picture 3 px below the baseline, as .ico) */
+typedef struct { double b, tbh, C, a, d, lh, bw, bh, by, ty, iy; } TwGeom;
+static TwGeom tw_geom(void)
+{
+	static TwGeom K; static char kf[128]; char kn[128]; double fs = S.fs >= 6 && S.fs <= 72 ? S.fs : 13; int touch = S.touch;
+	snprintf(kn, sizeof kn, "%g %d %d %s", fs, touch, S.hc, UIFAM); if (!strcmp(kn, kf)) return K;   /* (measured once for the settings) */
+	TwGeom g; memset(&g, 0, sizeof g);
+	g.b = S.hc ? 2 : 1; g.bw = touch ? 40 : 24; g.bh = touch ? 40 : 22;
+	{ cairo_surface_t *t = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 4, 4); cairo_t *cr = cairo_create(t); g.a = css_ascent(cr, UIFAM, 600, fs, &g.d); cairo_destroy(cr); cairo_surface_destroy(t); }
+	g.lh = g.a + g.d; double ia = fmax(g.a, 13), id = fmax(g.d, 3), il = ia + id;   /* (the picture's line: its 16 px from 13 above the baseline to 3 below) */
+	g.C = fmax(fmax(g.bh, g.lh), il); if (touch) g.C = fmax(g.C, 40); g.tbh = g.C + 12;
+	g.by = 6 + (g.C - g.bh) / 2; g.ty = 6 + (g.C - g.lh) / 2; g.iy = 6 + (g.C - il) / 2 + (ia - 13);
+	K = g; snprintf(kf, sizeof kf, "%s", kn); return g;
+}
+/* the window's edge and title bar together, in the screen's pixels (the frame's top: TH) */
+static double tw_tbh(void) { return tw_geom().tbh; }
+static int tw_th(void) { TwGeom g = tw_geom(); return (int)lround((g.b + g.tbh) * Z); }
+static int tw_bw(void) { return S.hc ? (int)fmax(1, lround(2 * Z)) : 1; }
 static void btn_rects(Client *c, int r[3][4])
 {
-	int candy = !strcmp(tw_vars().st, "candy"); double fw = fw_of(c) / Z, x = fw - 1 - 8 - 24 - (candy ? 1 : 0);
-	for (int i = 2; i >= 0; i--) { r[i][0] = (int)lround(x * Z); r[i][1] = (int)lround(7 * Z); r[i][2] = (int)lround(24 * Z); r[i][3] = (int)lround(22 * Z); x -= 27 + (candy ? 2 : 0); }
+	TwGeom g = tw_geom(); int candy = !strcmp(tw_vars().st, "candy"); double eb = BW / Z, fw = fw_of(c) / Z, x = fw - eb - 8 - g.bw - (candy ? 1 : 0);
+	for (int i = 2; i >= 0; i--) { r[i][0] = (int)lround(x * Z); r[i][1] = (int)lround((eb + g.by) * Z); r[i][2] = (int)lround(g.bw * Z); r[i][3] = (int)lround(g.bh * Z); x -= g.bw + 3 + (candy ? 2 : 0); }
 }
 /* the frame's outline: round corners (X's shape: no compositor needed) */
 static void frame_shape(Client *c)
 {
 	GdkWindow *g = gdk_x11_window_foreign_new_for_display(gdk_display_get_default(), c->frame); if (!g) return;
-	int fw = fw_of(c), fh = fh_of(c); double r = c->max || c->full ? 0 : tw_rad() * Z;
+	int fw = fw_of(c), fh = fh_of(c); double r = c->full ? 0 : tw_rad() * Z;
 	cairo_region_t *rg = cairo_region_create();
 	for (int y = 0; y < fh; y++) { double dy = y < r ? r - y - .5 : y >= fh - r ? y - (fh - r) + .5 : 0, in = dy > 0 ? r - sqrt(fmax(0, r * r - dy * dy)) : 0;
 		int x0 = (int)floor(in + .5); cairo_rectangle_int_t rc = { x0, y, fw - 2 * x0, 1 }; cairo_region_union_rectangle(rg, &rc); }
 	gdk_window_shape_combine_region(g, rg, 0, 0); cairo_region_destroy(rg); g_object_unref(g);
 }
+/* (the owner's photo) Settings › Accessibility › Color vision, which the page puts on the whole screen (base_v24.html applyCB: html's
+   filter): grayscale(1), contrast(1.35) saturate(1.2) for High contrast, or the colour-blindness correction's matrix (cbValues), in
+   sRGB, on the frame as drawn (the app's page inside filters itself) */
+static void cb_filter(cairo_surface_t *sf)
+{
+	const char *m = S.cb; double M[3][3];
+	if (!m[0] || !strcmp(m, "none")) return;
+	if (!strcmp(m, "gray")) { static const double G[3][3] = {{.2126, .7152, .0722}, {.2126, .7152, .0722}, {.2126, .7152, .0722}}; memcpy(M, G, sizeof M); }
+	else if (!strcmp(m, "contrast")) { double t = 1.2; double A[3][3] = {{.213 + .787 * t, .715 - .715 * t, .072 - .072 * t}, {.213 - .213 * t, .715 + .285 * t, .072 - .072 * t}, {.213 - .213 * t, .715 - .715 * t, .072 + .928 * t}};
+		memcpy(M, A, sizeof M); }
+	else { static const char *const K[3] = {"protan", "deutan", "tritan"}; static const double S0[3][3][3] = {{{.567, .433, 0}, {.558, .442, 0}, {0, .242, .758}}, {{.625, .375, 0}, {.7, .3, 0}, {0, .3, .7}}, {{.95, .05, 0}, {0, .433, .567}, {0, .475, .525}}};
+		static const double CM[3][3][3] = {{{0, 0, 0}, {.7, 1, 0}, {.7, 0, 1}}, {{0, 0, 0}, {.7, 1, 0}, {.7, 0, 1}}, {{1, 0, .7}, {0, 1, .7}, {0, 0, 0}}};
+		int k = -1; for (int i = 0; i < 3; i++) if (!strcmp(m, K[i])) k = i; if (k < 0) return;
+		double E[3][3]; for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) E[i][j] = (i == j) - S0[k][i][j];
+		for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) { double v = (i == j); for (int q = 0; q < 3; q++) v += CM[k][i][q] * E[q][j]; M[i][j] = round(v * 10000) / 10000; } }
+	int con = !strcmp(m, "contrast");
+	cairo_surface_flush(sf); unsigned char *d = cairo_image_surface_get_data(sf); int st = cairo_image_surface_get_stride(sf), w = cairo_image_surface_get_width(sf), h = cairo_image_surface_get_height(sf);
+	for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) { unsigned char *p = d + y * st + x * 4; double al = p[3] / 255.0; if (al <= 0) continue;
+		double c[3] = { p[2] / 255.0 / al, p[1] / 255.0 / al, p[0] / 255.0 / al }, o[3];
+		if (con) for (int i = 0; i < 3; i++) c[i] = fmin(1, fmax(0, (c[i] - .5) * 1.35 + .5));   /* (contrast first, then saturate) */
+		for (int i = 0; i < 3; i++) o[i] = fmin(1, fmax(0, M[i][0] * c[0] + M[i][1] * c[1] + M[i][2] * c[2]));
+		p[2] = (unsigned char)lround(o[0] * al * 255); p[1] = (unsigned char)lround(o[1] * al * 255); p[0] = (unsigned char)lround(o[2] * al * 255); }
+	cairo_surface_mark_dirty(sf);
+}
 static int menu_dark(void);
 static void frame_draw(Client *c)
 {
 	if (!c->frame || c->full) return;
-	int fw = fw_of(c), fh = fh_of(c), act = c == FOCUS; TwVars V = tw_vars(); const char *st = V.st;
-	cairo_surface_t *sf = cairo_xlib_surface_create(DPY, c->frame, DefaultVisual(DPY, DefaultScreen(DPY)), fw, fh); cairo_t *cr = cairo_create(sf);
-	cairo_scale(cr, Z, Z); double W = fw / Z, H = fh / Z, R = c->max ? 0 : tw_rad();
+	int fw = fw_of(c), fh = fh_of(c), act = c == FOCUS; TwVars V = tw_vars(); const char *st = V.st; TwGeom G = tw_geom(); double eb = BW / Z, TB = (TH - BW) / Z;   /* (the edge and the bar on whole pixels of the screen, as Chromium snaps them under the display scaling) */
+	cairo_surface_t *sf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, fw, fh); cairo_t *cr = cairo_create(sf);   /* (drawn aside, then filtered as the page is: cb_filter) */
+	cairo_scale(cr, Z, Z); double W = fw / Z, H = fh / Z, R = tw_rad();   /* (maximised too: the page's .win.max keeps its corners) */
 	/* the window: its edge and its white */
-	/* (second run, N27) the page's html.dark .win: #0f172a with a #334155 edge, the other windows' bars #1e293b with #cbd5e1 writing */
-	int dk = menu_dark() && c->app;
+	/* (second run, N27) the page's html.dark .win: #0f172a with a #334155 edge, the other windows' bars #1e293b with #cbd5e1 writing;
+	   (the owner's photo) Oracle's window too, which is the page's window on Standard; high contrast: a 2 px white edge (html.hc .win) */
+	int dk = menu_dark();
 	srca(cr, cx(dk ? "#0f172a" : "#ffffff", 1)); cairo_paint(cr);
-	Box win; memset(&win, 0, sizeof win); win.bg = cx(dk ? "#0f172a" : "#ffffff", 1); win.bw = 1; win.bc = cx(dk ? "#334155" : "#9ca3af", 1); win.rad = R; box_paint(cr, 0, 0, W, H, &win);
-	/* the title bar (inside the edge: 34 px, its top corners 7 px) */
+	Box win; memset(&win, 0, sizeof win); win.bg = cx(dk ? "#0f172a" : "#ffffff", 1); win.bw = eb; win.bc = S.hc ? cx("#ffffff", 1) : cx(dk ? "#334155" : "#9ca3af", 1); win.rad = R; box_paint(cr, 0, 0, W, H, &win);
+	/* the title bar (inside the edge: 34 px or as tall as its writing, its top corners 7 px) */
 	Box tb; memset(&tb, 0, sizeof tb); RGBA fg; double tbo = 1;   /* (tbo: the bar's opacity: .72 for the other windows in Wireframe, Candy, Retro) */
-	if (!V.on) { tb.bg = act ? ca(accent(), 1) : cx(dk ? "#1e293b" : "#e5e7eb", 1); fg = act ? cx("#ffffff", 1) : cx(dk ? "#cbd5e1" : "#6b7280", 1); }
-	else if (!strcmp(st, "wire")) { tb.bg = cmix(V.bg, .14, CLEAR); fg = cx("#000000", 1); shd_add(&tb, 0, -2, 0, V.bg, 1); if (act) shd_add(&tb, 0, 0, 0, V.bg, 2); else tbo = .72; }
+	/* (the other windows' bar, html.dark's where no style rule of !important sets it; Wireframe's writing is the window's own: the
+	   Window text colour, or html.dark .win's) */
+	RGBA ibg = cx(dk ? "#1e293b" : "#e5e7eb", 1), ifg = cx(dk ? "#cbd5e1" : "#6b7280", 1), wtx = dk ? cx("#e2e8f0", 1) : cx(S.tx[0] == '#' ? S.tx : "#000000", 1);
+	if (!V.on) { tb.bg = act ? ca(accent(), 1) : ibg; fg = act ? cx("#ffffff", 1) : ifg; }
+	else if (!strcmp(st, "wire")) { tb.bg = cmix(V.bg, .14, CLEAR); fg = wtx; shd_add(&tb, 0, -2, 0, V.bg, 1); if (act) shd_add(&tb, 0, 0, 0, V.bg, 2); else tbo = .72; }
 	else if (!strcmp(st, "mono")) { tb.bg = act ? V.bg : cmix(V.bg, .35, cx("#9ca3af", 1)); fg = act ? V.fg : cx("#ffffff", 1); }
 	else if (!strcmp(st, "candy")) { if (act) { tb.ng = 3; tb.gc[0] = V.hi; tb.gc[1] = V.bg; tb.gc[2] = V.lo; tb.gp[0] = 0; tb.gp[1] = .48; tb.gp[2] = 1; shd_add(&tb, 0, 1, 0, cx("#ffffff", .5), 1); fg = V.fg; }
-		else { tb.bg = cx("#e5e7eb", 1); fg = cx("#6b7280", 1); tbo = .72; } }
-	else if (!strcmp(st, "retro")) { if (act) { tb.bg = V.bg; fg = V.fg; } else { tb.bg = cx("#e5e7eb", 1); fg = cx("#6b7280", 1); tbo = .72; } }
-	else { tb.bg = act ? V.bg : cx("#e5e7eb", 1); fg = act ? V.fg : cx("#6b7280", 1); }
+		else { tb.bg = ibg; fg = ifg; tbo = .72; } }
+	else if (!strcmp(st, "retro")) { if (act) { tb.bg = V.bg; fg = V.fg; } else { tb.bg = ibg; fg = ifg; tbo = .72; } }
+	else { tb.bg = act ? V.bg : ibg; fg = act ? V.fg : ifg; }
 	int grey = V.on && strcmp(st, "mono") && !act;   /* (twcol: the other windows' bars in grey) */
 	cairo_push_group(cr);
-	double tr = fmax(0, R - 1);
-	cairo_save(cr); rrect(cr, 1, 1, W - 2, 34, 0); cairo_clip(cr);
-	if (tr > 0) { cairo_new_path(cr); cairo_move_to(cr, 1, 35); cairo_line_to(cr, 1, 1 + tr); cairo_arc(cr, 1 + tr, 1 + tr, tr, M_PI, 1.5 * M_PI); cairo_arc(cr, W - 1 - tr, 1 + tr, tr, 1.5 * M_PI, 2 * M_PI); cairo_line_to(cr, W - 1, 35); cairo_close_path(cr); cairo_clip(cr); }
+	double tr = R > 0 ? 7 : 0;
+	cairo_save(cr); rrect(cr, eb, eb, W - 2 * eb, TB, 0); cairo_clip(cr);
+	if (tr > 0) { cairo_new_path(cr); cairo_move_to(cr, eb, eb + TB); cairo_line_to(cr, eb, eb + tr); cairo_arc(cr, eb + tr, eb + tr, tr, M_PI, 1.5 * M_PI); cairo_arc(cr, W - eb - tr, eb + tr, tr, 1.5 * M_PI, 2 * M_PI); cairo_line_to(cr, W - eb, eb + TB); cairo_close_path(cr); cairo_clip(cr); }
 	if (tb.nsh && tb.sh[tb.nsh - 1].inset == 2) {   /* (Wireframe's active bar: a 1 px line of its colour all round as well) */
-		tb.nsh--; box_paint(cr, 1, 1, W - 2, 34, &tb); srca(cr, V.bg); cairo_rectangle(cr, 1, 1, W - 2, 34); cairo_rectangle(cr, 2, 2, W - 4, 32); cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD); cairo_fill(cr); cairo_set_fill_rule(cr, CAIRO_FILL_RULE_WINDING); }
-	else if (!strcmp(st, "retro") && act && V.on) { cairo_pattern_t *g = cairo_pattern_create_linear(1, 0, W - 1, 0);
+		tb.nsh--; box_paint(cr, eb, eb, W - 2 * eb, TB, &tb); srca(cr, V.bg); cairo_rectangle(cr, eb, eb, W - 2 * eb, TB); cairo_rectangle(cr, eb + 1, eb + 1, W - 2 * eb - 2, TB - 2); cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD); cairo_fill(cr); cairo_set_fill_rule(cr, CAIRO_FILL_RULE_WINDING); }
+	else if (!strcmp(st, "retro") && act && V.on) { cairo_pattern_t *g = cairo_pattern_create_linear(eb, 0, W - eb, 0);
 		cairo_pattern_add_color_stop_rgb(g, 0, V.lo.r, V.lo.g, V.lo.b); cairo_pattern_add_color_stop_rgb(g, .45, V.bg.r, V.bg.g, V.bg.b); cairo_pattern_add_color_stop_rgb(g, 1, V.hi.r, V.hi.g, V.hi.b);
-		cairo_rectangle(cr, 1, 1, W - 2, 34); cairo_set_source(cr, g); cairo_fill(cr); cairo_pattern_destroy(g); }
-	else box_paint(cr, 1, 1, W - 2, 34, &tb);
+		cairo_rectangle(cr, eb, eb, W - 2 * eb, TB); cairo_set_source(cr, g); cairo_fill(cr); cairo_pattern_destroy(g); }
+	else box_paint(cr, eb, eb, W - 2 * eb, TB, &tb);
 	cairo_restore(cr);
 	/* the picture, the title, the buttons */
 	int wt = !strcmp(st, "retro") && V.on ? 700 : 600; AppWin *a = c->app; const App *ap = a ? app_find(a->k) : c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap);
-	int filt = V.on && !strcmp(st, "mono") ? 1 : 0;
-	if (px) pix_at(cr, px, 9, 10, 16, filt); else if (a && a->icon[0]) css_text(cr, a->icon, UIFAM, wt, 13, 9, 10.5, 15, fg, 0); else if (!a && ap && ap->icon[0]) css_text(cr, ap->icon, UIFAM, wt, 13, 9, 10.5, 15, fg, 0);
-	int r[3][4]; btn_rects(c, r); double tx = 1 + 8 + 16 + 3, tmax = r[0][0] / Z - 3 - tx;
-	css_text(cr, a ? a->title : c->title, UIFAM, wt, 13, tx, 10.5, 15, fg, tmax);
-	static const char *const G[3] = {"_", "□", "✕"};
-	for (int i = 0; i < 3; i++) { double bx = r[i][0] / Z, by = 7, bw = 24, bh = 22; int hv = c->hover == i + 1, pr = c->press == i + 1, cl = i == 2;
+	int filt = V.on && !strcmp(st, "mono") ? 1 : 0; double fs = S.fs >= 6 && S.fs <= 72 ? S.fs : 13, ix = eb + 8, ty = eb + G.ty;
+	if (px) pix_at(cr, px, ix, eb + G.iy, 16, filt); else if (a && a->icon[0]) css_text(cr, a->icon, UIFAM, wt, fs, ix, ty, G.lh, fg, 0); else if (!a && ap && ap->icon[0]) css_text(cr, ap->icon, UIFAM, wt, fs, ix, ty, G.lh, fg, 0);
+	int r[3][4]; btn_rects(c, r); double tx = ix + 16 + 3, tmax = r[0][0] / Z - (!strcmp(st, "candy") ? 1 : 0) - 3 - tx;
+	const char *tt = a ? a->title : c->title;
+	if (c->ontop) {   /* (Always on top: .win.ontop>.tb .t::after, " 📌" at 11 px on the title's line) */
+		double pa, pd; pa = css_ascent(cr, UIFAM, wt, 11, &pd); double tw = css_width(cr, tt, UIFAM, wt, fs), pw = css_width(cr, " 📌", UIFAM, wt, 11);
+		if (tw + pw <= tmax) { css_text(cr, tt, UIFAM, wt, fs, tx, ty, G.lh, fg, 0); css_text(cr, " 📌", UIFAM, wt, 11, tx + tw, ty + G.a - pa, pa + pd, fg, 0); }
+		else css_text(cr, tt, UIFAM, wt, fs, tx, ty, G.lh, fg, tmax);
+	} else css_text(cr, tt, UIFAM, wt, fs, tx, ty, G.lh, fg, tmax);
+	static const char *const GL[3] = {"_", "□", "✕"};
+	for (int i = 0; i < 3; i++) { double bx = r[i][0] / Z, by = r[i][1] / Z, bw = G.bw, bh = G.bh; int hv = c->hover == i + 1, pr = c->press == i + 1, cl = i == 2;
 		Box b; memset(&b, 0, sizeof b); b.rad = 4; RGBA bf = fg;
 		if (!V.on || !strcmp(st, "mono")) { if (hv) b.bg = cl ? cx("#e11d48", 1) : cx("#000000", .15); if (hv && cl) bf = cx("#ffffff", 1); }
 		else if (!strcmp(st, "wire")) { b.rad = 3; b.bw = 1; b.bc = cmix(fg, .55, CLEAR); if (hv) { b.bg = cl ? cx("#e11d48", 1) : cmix(V.bg, .22, CLEAR); if (cl) { bf = cx("#ffffff", 1); b.bc = cx("#e11d48", 1); } } }
@@ -2034,22 +2114,24 @@ static void frame_draw(Client *c)
 			else { shd_add(&b, -1, -1, 0, cx("#404040", 1), 1); shd_add(&b, 1, 1, 0, cx("#ffffff", 1), 1); shd_add(&b, -2, -2, 0, cx("#808080", 1), 1); shd_add(&b, 2, 2, 0, cx("#dfdfdf", 1), 1); } }
 		else { if (hv) b.bg = cl ? cx("#e11d48", 1) : cx("#000000", .15); if (hv && cl) bf = cx("#ffffff", 1); }
 		box_paint(cr, bx, by, bw, bh, &b);
-		const char *g = i == 1 && c->max ? "❐" : G[i]; double gw = css_width(cr, g, "Arial", 600, 12);
+		const char *g = GL[i];   /* (□ maximised too, as the page's) */ double gw = css_width(cr, g, "Arial", 600, 12);
 		css_text(cr, g, "Arial", 600, 12, bx + (bw - gw) / 2, by + b.bw, bh - 2 * b.bw, bf, 0); }
 	cairo_pop_group_to_source(cr);
 	if (grey) {   /* (filter: grayscale(1)) */
-		cairo_surface_t *g = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, fw, (int)ceil(36 * Z)); cairo_t *gc = cairo_create(g); cairo_set_source(gc, cairo_get_source(cr)); cairo_paint(gc); cairo_destroy(gc);
+		cairo_surface_t *g = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, fw, (int)ceil((eb + TB + 1) * Z)); cairo_t *gc = cairo_create(g); cairo_set_source(gc, cairo_get_source(cr)); cairo_paint(gc); cairo_destroy(gc);
 		cairo_surface_flush(g); unsigned char *d = cairo_image_surface_get_data(g); int stw = cairo_image_surface_get_stride(g);
 		for (int y = 0; y < cairo_image_surface_get_height(g); y++) for (int x = 0; x < fw; x++) { unsigned char *p = d + y * stw + x * 4; int l = (int)lround(.0722 * p[0] + .7152 * p[1] + .2126 * p[2]); p[0] = p[1] = p[2] = l > p[3] ? p[3] : l; }
 		cairo_surface_mark_dirty(g); cairo_save(cr); cairo_identity_matrix(cr); cairo_set_source_surface(cr, g, 0, 0); cairo_paint_with_alpha(cr, tbo); cairo_restore(cr); cairo_surface_destroy(g);
 	} else cairo_paint_with_alpha(cr, tbo);
-	cairo_destroy(cr); cairo_surface_destroy(sf);
+	cairo_destroy(cr); cb_filter(sf);
+	cairo_surface_t *xs = cairo_xlib_surface_create(DPY, c->frame, DefaultVisual(DPY, DefaultScreen(DPY)), fw, fh); cairo_t *xc = cairo_create(xs);
+	cairo_set_operator(xc, CAIRO_OPERATOR_SOURCE); cairo_set_source_surface(xc, sf, 0, 0); cairo_paint(xc); cairo_destroy(xc); cairo_surface_destroy(xs); cairo_surface_destroy(sf);
 }
 /* the windows' shadows, on the desktop beneath them (0 10px 28px rgba(0,0,0,.28)) */
 static void frames_shadow(cairo_t *cr)
 {
 	if (!WM_OK || LOCKED) return;
-	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->min || c->full || c->max || c->hidden || c->trans) continue;
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->min || c->full || c->hidden || c->trans) continue;   /* (a maximised window's too, as the page's .win.max) */
 		double x = c->x / Z, y = c->y / Z, w = fw_of(c) / Z, h = fh_of(c) / Z; int pad = 40;
 		cairo_surface_t *m = cairo_image_surface_create(CAIRO_FORMAT_A8, (int)ceil((w + 2 * pad) * Z), (int)ceil((h + 2 * pad) * Z)); cairo_t *mc = cairo_create(m);
 		cairo_scale(mc, Z, Z); rrect(mc, pad, pad, w, h, tw_rad()); cairo_set_source_rgba(mc, 0, 0, 0, 1); cairo_fill(mc); cairo_destroy(mc); a8_blur(m, 14 * Z);
@@ -2578,6 +2660,7 @@ static void settings_load(void)
 	{ JV *dk = jprop(s, "darkui"); n.darkui = !(dk && dk->t == 1 && !dk->n); }   /* (S.darkui!==false) */
 	{ JV *au = jprop(s, "aur"); n.aur = !(au && au->t == 1 && !au->n); } n.rmotion = jbool(s, "rmotion"); jstr(s, "aurm", n.aurm, sizeof n.aurm); jstr(s, "lnm", n.lnm, sizeof n.lnm);   /* (DEFS.disp aur:true) */
 	n.tbac = jbool(s, "tbac"); n.tbbac = jbool(s, "tbbac"); n.h24 = jbool(s, "h24"); n.doff = jnum(s, "doff", 0); n.lat = jnum(s, "lat", NAN);
+	n.fs = (int)jnum(s, "fs", 13); jstr(s, "tx", n.tx, sizeof n.tx); jstr(s, "cb", n.cb, sizeof n.cb);   /* (the title bars' writing: the page's body font size and colour) */
 	if (!n.bs[0]) snprintf(n.bs, sizeof n.bs, "solid"); if (!n.b1[0]) snprintf(n.b1, sizeof n.b1, "#008080"); if (!n.b2[0]) snprintf(n.b2, sizeof n.b2, "#000080");
 	if (!n.tb[0]) snprintf(n.tb, sizeof n.tb, "bottom"); if (!n.wpfit[0]) snprintf(n.wpfit, sizeof n.wpfit, "fill"); if (!n.dm[0]) snprintf(n.dm, sizeof n.dm, "auto");
 	jstr(v, "acct", n.acct, sizeof n.acct); jstr(v, "wpacct", n.wpacct, sizeof n.wpacct); n.gen = jnum(v, "gen", 0); n.notes = (int)jnum(v, "notes", 0); n.wallpaper = jbool(v, "wallpaper");
@@ -2590,7 +2673,8 @@ static void settings_load(void)
 	sys_load(v);   /* (the screen saver's and the lock's settings: item 6) */
 	  jfree(v);
 	/* the page's display scaling: the taskbar, the title bars and the start menu at the page's size (1.5.9 step 7) */
-	Z = S.scale / 100.0; BARH = (int)lround(46 * Z); TH = (int)lround(35 * Z);
+	Z = S.scale / 100.0; BARH = (int)lround(46 * Z);
+	{ int th = tw_th(), bw = tw_bw(); if (th != TH || bw != BW) moved = 1; TH = th; BW = bw; }   /* (the title bars' height and the windows' edge: tw_geom) */
 	{ int ow = BARW; bar_measure(); if (BARW != ow) moved = 1; }   /* (the taskbar at the left or the right: as wide as its widest part) */
 	css_apply(); wall_make(); if (moved) { bar_place(); if (WM_OK) wm_relayout(); di_layout(); if (DESKAREA) desk_dirty(); } bar_redraw(); if (SAREA) gtk_widget_queue_draw(SAREA); if (WM_OK) frames_redraw();
 }
@@ -4060,6 +4144,13 @@ static void win_menu_got(GObject *src, GAsyncResult *res, gpointer d)
 	char *s = v && jsc_value_is_string(v) ? jsc_value_to_string(v) : NULL; JV *pm = s && *s ? jparse(s) : NULL; g_free(s); if (v) g_object_unref(v);
 	Client *c = client_of(w); if (c && w == TBM_W) win_menu_build(c, pm); jfree(pm);
 }
+/* a window's menu at the pointer: its title bar's right-click (as the taskbar button's, from the window's page when it has one) */
+static void win_menu_at(Client *c, int x, int y)
+{
+	if (!USER_ID[0] || LOCKED) return; TBM_X = x; TBM_Y = y; TBM_W = c->w;
+	if (c->app && c->app->view) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(c->app->view), "window.__oaWinMenu?__oaWinMenu():''", -1, NULL, NULL, NULL, win_menu_got, GSIZE_TO_POINTER(c->w));
+	else win_menu_build(c, NULL);
+}
 static void bar_menu(GdkEventButton *e, int h)
 {
 	TBM_X = e->x_root; TBM_Y = e->y_root; const char *k = h >= 0 ? HITS[h].kind : "", *arg = h >= 0 ? HITS[h].arg : "";
@@ -5229,6 +5320,7 @@ static void state_write(void)
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
 			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : c->ak[0] ? c->ak : "-", c->title);
 		g_string_append_printf(s, "clientws %lx %d %d\n", (unsigned long)c->w, c->ws, c->off);   /* (item 4: its workspace, shown or not) */
+		if (c->ontop) g_string_append_printf(s, "clienttop %lx\n", (unsigned long)c->w);   /* (Always on top: the title bars' test) */
 		if (c->app && c->app->win && c->app->view && GTK_IS_WIDGET(c->app->view)) { GtkAllocation al; gtk_widget_get_allocation(c->app->view, &al); g_string_append_printf(s, "view %lx %d %d\n", (unsigned long)c->w, al.width, al.height); } }   /* (the page's own size: its window's) */
 	g_string_append_printf(s, "wm %d\nicons %u %s\n", WM_OK, ICONS ? g_hash_table_size(ICONS) : 0, VER[0] ? VER : "-");
 	for (int i = 0; di_shown() && i < NDI; i++) { int x, y; di_xy(&DI[i], &x, &y); g_string_append_printf(s, "dicon %d %d %d %d %d %d %s|%s|%s\n", DI[i].c, DI[i].r, x, y, di_w(), DI[i].sel, DI[i].k, DI[i].kind, DI[i].n); }
