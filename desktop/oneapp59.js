@@ -551,3 +551,7 @@ if(ONEAPP){
  window.__oaEv=t=>{try{evDispatch(String(t||'').split('\n').filter(l=>!/^power \d/.test(l)&&!/^osd /.test(l)&&l!='taskmgr').join('\n'))}catch(e){console.warn(e)}};
  window.__oaShort=id=>{const s=typeof SHORT=='object'?SHORT.find(x=>x.id==id):null;if(s)try{s.fn()}catch(e){console.warn(e)}};
  window.__oaTmUrgent=()=>{try{if(typeof tmUrgent=='function')tmUrgent()}catch(e){console.warn(e)}}}
+/* (1.6.0) an app's window, and a page the native shell opens to do something (#app=do-qs for each quick settings' switch), never offers
+   Standard's move to the browser shell ("Real browser tabs are ready"): its shell/switch restarted the whole native desktop, at every
+   switch pressed in the QEMU check on the real release (the same guard as shell26.js's in the Vivobook reports' fix; either is enough) */
+if(ONEAPP&&typeof shellOffer=='function'&&typeof RD!='undefined'&&RD&&RD.engine=='native')shellOffer=async()=>{};
