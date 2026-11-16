@@ -988,6 +988,31 @@ without this work (it waits only for the QEMU security checks of Part 15).
   connection made with it, roaming's setting, the network type changed and kept by the modem, airplane mode with the
   Vivobook's Wi-Fi and Bluetooth and the stick, and back.
 
+- **Item 3 (Part 3), done (PR "cell60-connect"):** /usr/lib/rudolf/modem connect and disconnect (ModemManager's
+  Simple.Connect with the SIM's APN, user and password, roaming allowed or not; the refusals said: the APN in the wrong
+  capitals, roaming), the bearer's interface set up as the modem says (static addresses, or DHCP through udhcpc.sh,
+  IPv6, MTU, DNS in RUN/dns/IF), its default route at metric 700 behind Wi-Fi's 600 and a cable's 100, routes on a link
+  that went down ignored at once (ignore_routes_with_linkdown); modem watch (started with ModemManager): turns modems on,
+  connects automatically ("Connect automatically", on by default; not while roaming unless allowed; not after
+  Disconnect until Connect; not in airplane mode), undoes the interface of a modem gone, and notes when the connection
+  in use moves to cellular or back (RUN/cell-notes; rudolfd's mobile/notes; the page's notify and the native desktop's
+  toast and centre, every 5 s). The firewall: a cellular set (firewall cellular add|del IF): filtered as every other
+  interface, never counted as the local network for remote access. IPv6-only: a CLAT (tayga, in the base layer now;
+  the kernel's TUN and veth as modules), the NAT64 prefix from the operator's DNS (RFC 7050) or the well-known one.
+  netplug leaves a modem's own interface to ModemManager (no DHCP on it). Settings › Mobile network: Connection
+  (connected and in use, or in reserve; Connect, Disconnect), Connect automatically; quick settings: 📶 Mobile data
+  (with a modem whose SIM is unlocked) on both engines.
+  Tests: qt/host/conn60_t.sh (22 checks in network namespaces of its own, TUN links: connect, Wi-Fi in use, Wi-Fi
+  down and cellular within seconds, the notices, Disconnect, reconnected after a drop, roaming, the APN's capitals,
+  Connect automatically off, IPv6-only with the CLAT through a NAT64), qt/shell2/conn60_t.js (13), qt/native/qsbeh_t.js
+  (Mobile data on both engines), and in QEMU (qt/sb/cell60_q.py items 8-14: mac80211_hwsim's two radios, one an access
+  point in a far namespace, the stand-in cellular link on two QEMU network cards, the stand-in ModemManager on the
+  guest's bus: Wi-Fi carries the traffic, taken down: cellular within seconds, counted on the far end, the notice;
+  brought back; Disconnect). The CLAT runs in QEMU only from a release whose kernel has TUN (this PR adds it).
+  Stage B checks: the USB stick on a T-Mobile-network SIM: connected by itself, the Vivobook's Wi-Fi turned off and
+  on (the notices, the traffic moving), IPv4 sites on T-Mobile's IPv6-only network (the CLAT), the firewall's
+  counters with the stick connected, sleep and wake, the stick unplugged and plugged in again.
+
 **Stage B: on hardware, with the owner (after stage A is merged and in a beta)**
 1. The USB cellular stick (borrowed from the HP desktop's user) and the MiFi 7730L on the Vivobook: the modem found
    (Settings › Network › Cellular modems, no "Invalid rule match" in /run/rudolf/modem.log, the self-test's modem

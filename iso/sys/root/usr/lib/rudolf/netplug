@@ -67,11 +67,14 @@ dhcp_down() {
 	[ -n "$RUDOLF_NOUP" ] && echo "-$1" >> "$RUN/up.log"
 }
 wired() { [ "$1" != lo ] && [ ! -e "$SYS/class/net/$1/wireless" ] && [ -e "$SYS/class/net/$1/device" ]; }
+# 1.6.0 (Part 3): a cellular modem's own interface (qmi_wwan, cdc_mbim...) is ModemManager's: /usr/lib/rudolf/modem
+# sets it up when it connects, as the modem says (DHCP there gives nothing, or flushes the addresses it set)
+mmif() { [ "$(kind "$1")" = usbmodem ] && command -v ${RUDOLF_MM:-ModemManager} >/dev/null 2>&1; }
 plug() {
 	i=${INTERFACE:-$MDEV}; case "$i" in ""|*/*|lo) return;; esac
 	case "$ACTION" in
 	add) wired "$i" || return 0; k=$(kind "$i"); n=$(name "$i")
-		dhcp_up "$i"
+		mmif "$i" || dhcp_up "$i"
 		event "{\"a\":\"add\",\"t\":\"net\",\"if\":\"$i\",\"kind\":\"$k\",\"name\":\"$n\",\"metered\":$( [ "$(is "$i")" = 1 ] && echo true || echo false)}";;
 	remove) [ -e "$RUN/udhcpc/$i.pid" ] || [ -n "$RUDOLF_NOUP" ] || return 0
 		dhcp_down "$i"; event "{\"a\":\"remove\",\"t\":\"net\",\"if\":\"$i\"}";;
@@ -106,7 +109,7 @@ setm() {
 }
 case "$1" in
 "") plug;;
-boot) sleep 1; for d in "$SYS"/class/net/*; do i=${d##*/}; wired "$i" && dhcp_up "$i"; done
+boot) sleep 1; for d in "$SYS"/class/net/*; do i=${d##*/}; wired "$i" && ! mmif "$i" && dhcp_up "$i"; done
 	[ -n "$RUDOLF_NOUP" ] && exit 0
 	( while sleep 60; do tick; done ) &;;
 kind|key|is|auto|name) [ -n "$2" ] && "$1" "$2";;

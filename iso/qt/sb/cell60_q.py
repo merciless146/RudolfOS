@@ -7,6 +7,13 @@
 #   item 1 (Part 1): ModemManager with udev and no modem: not started by itself; started by hand it runs with udev, finds
 #          no modem and logs nothing (no error, no warning); status says so; its plug-ins (QMI, MBIM, QRTR, AT) and FCC
 #          unlock scripts are there, the unlock off; stopped again.
+#   item 3 (Part 3): the connection beside a virtual Wi-Fi link: mac80211_hwsim's two radios, one an access point
+#          (hostapd, dnsmasq) in a far network namespace that holds "the internet" (203.0.113.1); a stand-in cellular
+#          link (two QEMU network cards on their own hub, one moved to the far side) that the stand-in ModemManager
+#          (qt/mmstub.c, on the guest's system bus) gives as its modem's interface. Connected with this tree's modem
+#          service: Wi-Fi carries the traffic, cellular kept in reserve (its route behind), the firewall's cellular set;
+#          Wi-Fi taken down: traffic on cellular within seconds (counted on the far side), the notice; Wi-Fi brought
+#          back: traffic on Wi-Fi again, the notice.
 #   python3 cell60_q.py REL-DIR   (QEMU and SB_PARTS as for t160; root; QEMU_ACCEL=kvm where it can)
 import os, sys, time, re, subprocess, shutil, struct, json
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE); ISO = os.path.dirname(QT)
@@ -46,7 +53,15 @@ def extras(path):
     T = os.path.abspath(path + '.tree'); shutil.rmtree(T, ignore_errors=True); os.makedirs(f'{T}/root'); os.makedirs(f'{T}/libs')
     def put(src, dst, base='root'):
         d = f'{T}/{base}{dst}'; os.makedirs(os.path.dirname(d), exist_ok=True); shutil.copy2(src, d, follow_symlinks=True)
-    for f in ('usr/lib/rudolf/modem', 'usr/lib/rudolf/udev-run', 'usr/lib/udev/rules.d/90-rudolf.rules'): put(os.path.join(SYSROOT, f), '/' + f)
+    for f in ('usr/lib/rudolf/modem', 'usr/lib/rudolf/udev-run', 'usr/lib/udev/rules.d/90-rudolf.rules', 'usr/lib/rudolf/firewall', 'usr/lib/rudolf/udhcpc.sh', 'usr/share/rudolf/apn-fixes'): put(os.path.join(SYSROOT, f), '/' + f)
+    # (item 3) the stand-in ModemManager built here for the guest (named ModemManager there, so the modem service sees it
+    # run), and iproute2's ip (moving an interface into another network namespace) with what it needs
+    os.makedirs(f'{T}/bin', exist_ok=True)
+    cf = subprocess.run('pkg-config --cflags --libs mm-glib gio-unix-2.0', shell=True, capture_output=True, text=True).stdout.split()
+    subprocess.run(['gcc', '-O2', '-w', '-o', f'{T}/bin/ModemManager', os.path.join(QT, 'mmstub.c')] + cf, check=True)
+    shutil.copy2('/usr/sbin/ip' if os.path.exists('/usr/sbin/ip') else '/bin/ip', f'{T}/bin/ip2', follow_symlinks=True)
+    for x in (f'{T}/bin/ModemManager', f'{T}/bin/ip2'):
+        for l in re.findall(r'=> (/\S+)', subprocess.run(['ldd', x], capture_output=True, text=True).stdout): put(l, l, 'libs')
     os.makedirs(f'{T}/udev', exist_ok=True)
     U = subprocess.run("dpkg -L udev 2>/dev/null | grep -E '^/usr/(bin/udevadm|lib/systemd/systemd-udevd|lib/udev/[^/]+|lib/udev/rules\\.d/[^/]+\\.rules)$'", shell=True, capture_output=True, text=True).stdout.split()
     libs = set()
@@ -75,6 +90,7 @@ else place udev new
 def boot(tag):
     extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolfcell',
              '-drive', f'file={XDRV},format=raw,if=none,id=cx', '-device', 'nvme,drive=cx,serial=cellx',
+             '-netdev', 'hubport,id=c1,hubid=1', '-device', 'e1000,netdev=c1,mac=52:54:00:ce:11:01', '-netdev', 'hubport,id=c2,hubid=1', '-device', 'e1000,netdev=c2,mac=52:54:00:ce:11:02',
              '-kernel', f'{REL}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1']
     os.makedirs('cell60' + tag, exist_ok=True); open(f'cell60{tag}/vars.fd', 'ab').close()   # (unused without Secure Boot: sbvm copies one from SB_PARTS otherwise)
     vm = sbvm.VM('cell60' + tag, PARTS, [], secure=False, mem=MEM, extra=extra)
@@ -119,7 +135,41 @@ try:
     o = sh("/usr/lib/rudolf/modem stop; sleep 2; pgrep '^ModemManager$' >/dev/null && echo MM-RUNNING || echo MM-NOT-RUNNING; tail -2 /run/rudolf/modem.log")
     ok('6. stopped again (as when the last modem goes)', 'MM-NOT-RUNNING' in o and 'ModemManager stopped' in o, o)
     o = sh("/usr/lib/rudolf/modem status")
-    ok('7. ...status: not running, an empty list', '{"running":false,"modems":[],"notes":[]}' in o, o)
+    ok('7. ...status: not running, an empty list', '{"running":false,"modems":[],"notes":[]' in o, o)
+    # ---- item 3: the connection ----
+    o = sh(r"""ifn() { for d in /sys/class/net/*; do [ "$(cat $d/address)" = "$1" ] && echo ${d##*/}; done; }; C=$(ifn 52:54:00:ce:11:01); CF=$(ifn 52:54:00:ce:11:02); echo "C=$C CF=$CF" > /tmp/c3
+for i in $C $CF; do [ -s /run/rudolf/udhcpc/$i.pid ] && kill $(cat /run/rudolf/udhcpc/$i.pid); done
+(unshare -n sh -c 'echo $$ > /tmp/far.pid; exec sleep 3600' </dev/null >/dev/null 2>&1 &); sleep 1; FP=$(cat /tmp/far.pid); echo "FP=$FP" >> /tmp/c3
+modprobe mac80211_hwsim radios=2; sleep 2; W1=; for d in /sys/class/net/*; do [ -e $d/phy80211 ] && W1=${d##*/}; done; W0=$(for d in /sys/class/net/*; do [ -e $d/phy80211 ] && echo ${d##*/}; done | head -1)
+echo "W0=$W0 W1=$W1" >> /tmp/c3; iw phy $(cat /sys/class/net/$W1/phy80211/name) set netns $FP; /mnt/cx/bin/ip2 link set $CF netns $FP || ip link set $CF netns $FP
+cat /tmp/c3; nsenter -t $FP -n ip link 2>&1 | grep -o '^[0-9]*: [^:]*'""", 60)
+    out(o); env3 = dict(re.findall(r'(\w+)=(\S*)', ' '.join(l for l in o.splitlines() if l.startswith(('C=', 'FP=', 'W0=')))))
+    C, CF, W0, W1 = env3.get('C', ''), env3.get('CF', ''), env3.get('W0', ''), env3.get('W1', '')
+    far = lambda c: f"nsenter -t $(cat /tmp/far.pid) -n sh -c '{c}'"
+    o = sh(far(f"ip link set lo up; ip addr add 203.0.113.1/32 dev lo; ip link set {CF} up; ip addr add 10.64.12.33/30 dev {CF}; ip link set {W1} up; ip addr add 192.168.50.1/24 dev {W1}; "
+               f"printf \"interface={W1}\\ndriver=nl80211\\nssid=cell60\\nhw_mode=g\\nchannel=6\\n\" > /tmp/far-ap.conf; hostapd -B -P /tmp/far-ap.pid /tmp/far-ap.conf; "
+               f"dnsmasq --conf-file=/dev/null --interface={W1} --bind-interfaces --dhcp-range=192.168.50.10,192.168.50.50,1h --dhcp-option=3,192.168.50.1 --port=0 --pid-file=/tmp/far-dns.pid --dhcp-leasefile=/tmp/far.leases; sleep 2; ip addr; cat /tmp/far-ap.pid"), 60)
+    out(o)
+    ok('8. the far side: the access point on the second Wi-Fi radio and the far end of the cellular link, in their own network namespace', bool(C and CF and W0 and W1) and '203.0.113.1' in o and '10.64.12.33' in o, o)
+    o = sh(f"printf 'cell60\\n\\nopen\\n' > /tmp/wreq; /usr/lib/rudolf/wifi.sh connect {W0} /tmp/wreq; for i in $(seq 60); do ip route | grep -q 'default .*dev {W0}' && break; sleep 1; done; ip route; ping -c1 -W3 203.0.113.1 >/dev/null && echo REACH", 120)
+    ok('9. Rudolf OS joins the virtual Wi-Fi (wifi.sh): its address and default route (metric 600), the internet reached', re.search(rf'default via 192\.168\.50\.1 dev {W0} .*metric 600', o) and 'REACH' in o, o)
+    o = sh(f"/usr/lib/rudolf/firewall on; printf 'add 0 iccid=8901260123456789012 iface={C} ip4=10.64.12.34/30 gw4=10.64.12.33 dns=10.177.0.34 enabled=1\\n' > /tmp/mminit; mkfifo /tmp/mmctl; "
+           "(DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket MMSTUB_TEST_MACHINE=1 setsid /mnt/cx/bin/ModemManager --ctl /tmp/mmctl --log /tmp/mmcalls --init /tmp/mminit </dev/null >/tmp/mmstub.out 2>&1 &); sleep 3; "
+           "mmcli -L; /usr/lib/rudolf/modem connect 0; ip route; cat /tmp/mmcalls", 120)
+    ok('10. the stand-in ModemManager on the guest\'s bus; Connect: its link set up (10.64.12.34), its route kept behind Wi-Fi\'s (700)', 'Connected' in o and re.search(rf'default via 10\.64\.12\.33 dev {C} .*metric 700', o) and 'Connect apn=fast.t-mobile.com' in o, o)
+    o = sh(f"ip route get 203.0.113.1; ping -c2 -W3 203.0.113.1 >/dev/null && echo REACH; nft list set inet rudolf cellular", 60)
+    ok('11. Wi-Fi works: the traffic on Wi-Fi, cellular unused; the cellular link in the firewall\'s set', re.search(rf'203\.0\.113\.1 via 192\.168\.50\.1 dev {W0}', o) and 'REACH' in o and f'"{C}"' in o, o)
+    rx = far(f"grep {CF}: /proc/net/dev | tr : \" \" | awk \"{{print \\$3}}\"")
+    o = sh(f"(setsid sh /usr/lib/rudolf/modem watch </dev/null >/dev/null 2>&1 &); sleep 4; R0=$({rx}); "
+           f"T0=$(cut -d' ' -f1 /proc/uptime); ip link set {W0} down; for i in $(seq 50); do ip route get 203.0.113.1 | grep -q 'dev {C}' && break; sleep 0.2; done; T1=$(cut -d' ' -f1 /proc/uptime); echo MS=$(awk \"BEGIN{{print int(($T1-$T0)*1000)}}\"); "
+           f"ping -c3 -W3 203.0.113.1 >/dev/null && echo REACH; R1=$({rx}); echo FARRX=$((R1 - R0)); sleep 4; cat /run/rudolf/cell-notes", 120)
+    ms = re.search(r'MS=(\d+)', o); ms = int(ms.group(1)) if ms else 99999; frx = re.search(r'FARRX=(\d+)', o); frx = int(frx.group(1)) if frx else 0
+    ok(f'12. Wi-Fi taken down: the traffic on cellular within seconds ({ms} ms), the internet reached through it (counted on the far end)', ms < 5000 and 'REACH' in o and frx >= 3, o)
+    ok('...and the notice (both desktops: mobile/notes): mobile data carries the traffic now', 'Using mobile data|The Wi-Fi connection is gone' in o, o)
+    o = sh(f"ip link set {W0} up; for i in $(seq 90); do ip route get 203.0.113.1 | grep -q 'dev {W0}' && break; sleep 1; done; ip route get 203.0.113.1; ping -c1 -W3 203.0.113.1 >/dev/null && echo REACH; sleep 4; tail -2 /run/rudolf/cell-notes; ip route", 150)
+    ok('13. Wi-Fi brought back: the traffic on Wi-Fi again, cellular back in reserve, the notice', re.search(rf'203\.0\.113\.1 via 192\.168\.50\.1 dev {W0}', o) and 'REACH' in o and 'Back on Wi-Fi' in o and re.search(rf'dev {C} .*metric 700', o), o)
+    o = sh("/usr/lib/rudolf/modem disconnect 0; ip route; nft list set inet rudolf cellular; kill $(cat /run/rudolf/modem-watch.pid) 2>/dev/null; pkill '^ModemManager$'", 60)
+    ok('14. Disconnect: the cellular route and firewall entry gone', 'Disconnected' in o and f'dev {C}' not in o and f'"{C}"' not in o, o)
 finally:
     try: vm and vm.stop()
     except Exception: pass
