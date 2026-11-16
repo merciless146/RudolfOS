@@ -16,7 +16,9 @@ static void one(const char *spec)
 	snprintf(r.path, sizeof r.path, "%s", sp2 + 1);
 	if (body) { FILE *f = fopen(body, "rb"); if (f) { r.body = malloc(32 << 20); r.blen = fread(r.body, 1, (32 << 20) - 1, f); r.body[r.blen] = 0; fclose(f); } }
 	char tf[] = "/tmp/deskapi-XXXXXX"; r.fd = mkstemp(tf); unlink(tf);
-	if (!api_desktop(&r, r.path, !strcmp(r.method, "POST"))) reply_err(r.fd, 404, "not a desktop request");
+	/* (1.6.0) the copy of the pages' storage: a page's changed keys put into it, one value read (rudolfd.c's lsync) */
+	if (!strcmp(r.path, "lsync")) { if (!strcmp(r.method, "GET")) { char *k = qparam(r.query, "key"); api_lsync_get(&r, k ? k : ""); } else if (r.body && lsync_part(r.body)) lsync_merge(&r); else reply_err(r.fd, 400, "not a part"); }
+	else if (!api_desktop(&r, r.path, !strcmp(r.method, "POST"))) reply_err(r.fd, 404, "not a desktop request");
 	lseek(r.fd, 0, SEEK_SET); char b[1 << 16]; ssize_t n; size_t tot = 0; char *all = NULL;
 	while ((n = read(r.fd, b, sizeof b)) > 0) { all = realloc(all, tot + n + 1); memcpy(all + tot, b, n); tot += n; }
 	close(r.fd); if (all) all[tot] = 0;

@@ -17,6 +17,9 @@
 const ONEAPP=(()=>{try{const h=String(location.hash||'').replace(/^#/,'');if(!h)return null;const q=new URLSearchParams(h),k=q.get('app');
  return k&&/^[a-z0-9_-]{1,40}$/i.test(k)?{k,file:q.get('file')||'',w:+q.get('w')||0,q}:null}catch(e){return null}})();
 const OA={main:null,want:0,opened:0,done:0,login:0};
+/* (the sign-in screen hidden from the first paint in an app's window: shown again, base_v24.html's head) */
+function oaLoginUnhide(){try{document.documentElement.classList.remove('oalg')}catch(e){}}
+if(!ONEAPP)oaLoginUnhide();
 /* (1.6.0 Part 12, item 1) an Explorer window's files dragged into another window when the windows are pages of their own: FC.drag
    is the page's own, so it goes with the drag as text/x-rudolf-paths and is taken back on the drop (a desktop file dropped on a
    window: oaFs's op=drop) */
@@ -62,8 +65,33 @@ async function oaDrained(){try{fsFlush()}catch(e){}try{await homeChain}catch(e){
 /* (1.6.0 Part 12, item 3) the settings are one: on Standard every window is one page with one S; here a page that saved its settings
    (Settings, or the native shell's quick settings through a page of their own) changes the others too, as on Standard (WebKit tells
    the other pages of a change to the storage they share) */
-if(ONEAPP)addEventListener('storage',e=>{try{if(!USER||e.key!='bd95set:'+uid()||!e.newValue)return;const us=JSON.parse(e.newValue);for(const k in us)S[k]=us[k];SC=cln(S);
- try{applySet()}catch(x){}try{a11yApply()}catch(x){}try{themeApply()}catch(x){}try{ncBadge()}catch(x){}}catch(x){console.warn('one-app: the settings again',x)}});
+/* (1.6.0, the owner's report 3: Settings' display choices did not reach the native desktop and the other windows at once, and a window
+   could put older settings back) Each window keeps what it last took (OA_SB, each saved setting as JSON): what differs from it is this
+   window's own change; when it saves, the others' newer choices are taken in first, so it never writes back what another window
+   changed. A save is told to the native shell at once (op "set", after the page's storage is in rudolfd's copy, which the shell
+   draws from), and the shell tells every other window (__oaSetIn) and Oracle's pages, as WebKit's storage events may not cross
+   between the windows' processes. */
+let OA_SB=null;
+const oaSnap=()=>{try{const o=SC||S,m={};for(const k in o)m[k]=JSON.stringify(o[k]);OA_SB=m}catch(e){}};
+const oaOwn=()=>{const o=SC||S,r=new Set();if(OA_SB)for(const k in o)if(JSON.stringify(o[k])!==OA_SB[k])r.add(k);if(SC)for(const k in S)if(JSON.stringify(S[k])!==JSON.stringify(SC[k]))r.add(k);return r};
+/* the saved settings us (another window's) taken in, this window's own unsaved changes kept; true when anything changed */
+function oaSetTake(us){if(!us||typeof us!='object')return false;const own=oaOwn();let ch=false;
+ for(const k in us){if(own.has(k))continue;const v=JSON.stringify(us[k]);if(JSON.stringify((SC||S)[k])===v&&JSON.stringify(S[k])===v)continue;S[k]=cln(us[k]);if(SC)SC[k]=cln(us[k]);ch=true}
+ oaSnap();for(const k of own)if(OA_SB)OA_SB[k]=JSON.stringify(us[k]);return ch}
+function oaSetApply(){try{applySet()}catch(x){}try{a11yApply()}catch(x){}try{themeApply()}catch(x){}try{ncBadge()}catch(x){}}
+const oaSetMine=()=>{try{return USER?JSON.parse(localStorage.getItem('bd95set:'+uid())||'null'):null}catch(e){return null}};
+if(ONEAPP){addEventListener('storage',e=>{try{if(!USER||e.key!='bd95set:'+uid()||!e.newValue)return;if(oaSetTake(JSON.parse(e.newValue)))oaSetApply()}catch(x){console.warn('one-app: the settings again',x)}});
+ /* (told by the native shell that another window saved: from the storage this window shares, or, in Oracle's Chromium, from rudolfd's
+    copy of the WebKit windows' storage) */
+ window.__oaSetIn=async id=>{try{if(!USER||(id&&id!=uid()))return;let us=null;
+   if(oaNative())us=oaSetMine();
+   else if(typeof RD!='undefined'&&RD){const r=await fetch('/api/lsync?key='+encodeURIComponent('bd95set:'+uid()),{headers:{'X-Rudolf-Token':RD.token},cache:'no-store'});const j=r.ok?await r.json():null;
+    if(j&&typeof j.v=='string'){us=JSON.parse(j.v);try{window.__rudolfLsQuiet?__rudolfLsQuiet('bd95set:'+uid(),j.v):localStorage.setItem('bd95set:'+uid(),j.v)}catch(e){}}}
+   if(us&&oaSetTake(us))oaSetApply()}catch(e){console.warn('one-app: the settings from the shell',e)}};
+ {let t=0;const tell=()=>{clearTimeout(t);t=setTimeout(async()=>{try{if(window.__rudolfLsFlush)await window.__rudolfLsFlush()}catch(e){}if(USER&&oaOut())oaPost({op:'set',id:uid()})},120)};
+  const _ps=persistS;persistS=function(){try{if(USER&&OA_SB){const cur=oaSetMine();if(cur&&oaSetTake(cur))setTimeout(oaSetApply,0)}}catch(e){}
+   const r=_ps.apply(this,arguments);oaSnap();tell();return r}}
+ {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);oaSnap();return r}}}
 /* (1.6.0 Part 12, item 3) a notification's pop-up is the native shell's: shown in the screen's corner as on Standard, not in this window
    (its click: the notification's own action, run here, __oaToastAct) */
 if(ONEAPP&&window.__notifCentre){const NA=window.__notifCentre.add,ACTS={};window.__oaToastAct=id=>{const f=ACTS[id];delete ACTS[id];if(f)try{f()}catch(e){console.warn(e)}};
@@ -98,6 +126,9 @@ window.__oaCloseWhenDone=()=>{const t0=Date.now(),go=()=>{const busy=typeof DLN=
  if(busy&&Date.now()-t0<120e3)return setTimeout(go,1000);window.__oaCloseNow()};setTimeout(go,2500)};
 /* (12.3c step 5) the page's own full screen (shell26.js's stand-in fills the page): Oracle's window on the native desktop is not the
    screen, as the shell's window is on Standard, so the window goes full screen too (rudolf-launch, through the binding) */
+/* (1.6.0, the owner's report 5) the notice after an update: only in the native shell's start-up page (do-start, below), never in an
+   app's window; Standard's desktop page shows it (a page of one app on Standard, a Tor window, leaves it to that page) */
+let OA_UPD=null;if(ONEAPP&&typeof updNotice=='function'){OA_UPD=updNotice;updNotice=async()=>{}}
 /* (1.6.0 Part 12, item 6) an app's window never starts the screen saver, the lock or sleep itself (core25.js idleCheck, every
    15 s in every page): the native shell does, once for the whole screen */
 if(ONEAPP)idleWoke=()=>true;
@@ -246,8 +277,10 @@ html.oamwait .rmodal,html.oamwait .natdlg,html.oamwait #oamodalbg{opacity:0!impo
  /* (1.5.9, 12.3c step 5) Open with: the chosen app in a window of its own, as on Standard (not one inside this page): made by the
     native desktop's do-fs page, as its own Open with dialog does (oaFs op=openwith) */
  if(typeof OPENERS!='undefined')OPENERS.forEach(x=>{const f=x[4];if(!f||x[0]==ONEAPP.k)return;x[4]=p=>{if(OA.main&&oaOut()&&Array.isArray(p)){const fp=p.join('\\');oaDrained().then(()=>oaPost({op:'openwith',key:x[0],file:fp}));return}return f(p)}});
- /* the first sign-in screen: the native session's account instead, when there is one */
- {const _sl=showLogin;let first=1;showLogin=function(){if(first&&!OA.opened){first=0;oaStart(_sl);return}if(OA.opened&&OA.done)return;return _sl.apply(this,arguments)}}
+ /* the first sign-in screen: the native session's account instead, when there is one. (The owner's report 1) Until then the sign-in
+    screen stays hidden from the window's first paint (base_v24.html's head: html.oalg), and shows only when this window really needs
+    a sign-in (no native session, its keys refused: a page opened by hand) */
+ {const _sl=showLogin,sl=function(){oaLoginUnhide();return _sl.apply(this,arguments)};let first=1;showLogin=function(){if(first&&!OA.opened){first=0;oaStart(sl);return}if(OA.opened&&OA.done)return;return sl.apply(this,arguments)}}
  /* after any sign-in: the app */
  {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);if(!OA.opened)setTimeout(oaOpen,0);return r}}
  /* (the ✕ button, not W.close: apps that ask about unsaved work watch the button) */
@@ -268,8 +301,18 @@ async function oaStart(showLogin0){
  catch(e){console.warn('one-app sign-in',e);OA.login=1;USER=ACCTS[0]||null;return showLogin0()}
  try{userUI()}catch(e){}}
 function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
- try{LG.style.display='none'}catch(e){}
+ try{LG.style.display='none'}catch(e){}oaLoginUnhide();
  const da0=/^do-/.test(ONEAPP.k)?ONEAPP.k.slice(3):'';if(da0=='desk'||da0=='fs'){OA.want=1;(da0=='desk'?oaDesk:oaFs)();return}
+ /* (1.6.0, the owner's report 5) what Standard's desktop page does once at each sign-in, the native shell has a page do unseen
+    (#app=do-start): the notice after an update (once per account and release, as on Standard). No app window shows it (each one is a
+    page signing in, and every window opened showed it again); its "click to see what's new" opens Help's What's new in a window of
+    its own; the page closes once its pop-ups are gone */
+ if(da0=='start'){try{whatsNew=()=>oaPost({op:'open',app:'help',page:'new'});
+   /* (the release seen is kept: devices26.js sets S.seenRel, but persistS writes the saved settings, SC, which it left out, so every
+      page signing in announced the release again; Standard's one page at a time is left as it is) */
+   if(OA_UPD)OA_UPD().then(()=>{if(SC&&S.seenRel&&SC.seenRel!==S.seenRel){SC.seenRel=S.seenRel;persistS()}}).catch(e=>console.warn(e))}catch(e){console.warn(e)}setTimeout(()=>oaFin({}),14000);return}
+ /* (Help at a topic, as What's new asks from the page above: #app=help&page=TOPIC) */
+ if(ONEAPP.k=='help'&&ONEAPP.q.get('page')&&typeof helpApp=='function'){OA.want=1;try{helpApp(ONEAPP.q.get('page'))}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}
  /* (1.6.0 Part 12, item 6) the native desktop's screen saver: the page's own (ssRun) in this window, which the shell shows full
     screen above everything and closes when the person is back (#app=do-saver&style=NAME&time=0|1) */
  if(da0=='saver'&&typeof ssRun=='function'){OA.want=1;const q=ONEAPP.q,st=q.get('style');try{if(q.get('time'))SYSC.sstime=q.get('time')=='1';

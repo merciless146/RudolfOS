@@ -438,6 +438,29 @@ static int desk_admin_check(const char *n, const char *pw, char *why, size_t wn)
 	free(role); free(h); free(list); dls_close(&l); return rc;
 }
 
+/* (1.6.0, the owner's report 6) the encrypted folder (Debian, Linux and Windows programs, Linux apps, Downloads: vault50.js), opened
+   at the native sign-in as the page's own sign-in opens it on Standard: the account's copy of the data key in vault.json ({salt, iv,
+   ct}: AES-256-GCM with a key from the password, PBKDF2-SHA256, 210 000 rounds) unwrapped with the password and added to the
+   kernel. Without it a computer started on Native never opened it, and the Terminal had no Linux (Command Prompt tabs only).
+   Nothing happens when encryption is off, the folder is open already, or the account has no copy (the page makes one at a
+   Standard sign-in); a failure only goes into the health log. */
+static void dvault_signin(const char *id, const char *pw)
+{
+	if (!id || !*id || !pw || !vault_set() || vault_open()) return;
+	char *j = slurp(VAULT_J, NULL); if (!j) return;
+	const char *ac = dj_get(j, "accts"), *box = ac && *dj_ws(ac) == '{' ? dj_get(ac, id) : NULL;
+	char *sa = box ? dj_str(dj_get(box, "salt")) : NULL, *iv = box ? dj_str(dj_get(box, "iv")) : NULL, *ct = box ? dj_str(dj_get(box, "ct")) : NULL;
+	uint8_t sb[64], ivb[16], ctb[128], k[32], dk[112];
+	int sl = sa ? db64d(sa, sb, sizeof sb) : -1, il = iv ? db64d(iv, ivb, sizeof ivb) : -1, cl = ct ? db64d(ct, ctb, sizeof ctb) : -1;
+	free(sa); free(iv); free(ct); free(j);
+	if (!box) return;
+	if (sl <= 0 || il != 12 || cl != 64 + 16) { health_add("vault", "an account's copy of the data key is not readable (native sign-in)"); return; }
+	dpbkdf2_256(pw, sb, sl, DESK_ROUNDS, k, 32);
+	int bad = daes_gcm_open(k, ivb, ctb, cl, dk); explicit_bzero(k, sizeof k);
+	if (bad) { health_add("vault", "an account's copy of the data key did not open (native sign-in)"); return; }
+	char m[200]; int code = vault_add_key(dk, m, sizeof m); explicit_bzero(dk, sizeof dk);
+	if (code) health_add("vault", "the encrypted folder did not open at the native sign-in: %.150s", m);
+}
 static void api_desktop_login(struct req *r)
 {
 	int w = dfail_wait();
@@ -470,7 +493,7 @@ static void api_desktop_login(struct req *r)
 		/* the password's key (the account's salt), and the file key it seals */
 		char *ks = dj_str(dj_get(a, "ks")); uint8_t salt[96], pk[32], fk[64]; int sl = ks ? db64d(ks, salt, sizeof salt) : -1, fl = -1; free(ks);
 		if (sl <= 0) { dfree_secret(pw); free(list); dls_close(&l); reply_err(r->fd, 409, "This account has no key yet: sign in once with the Standard desktop engine."); return; }
-		dpbkdf2_256(pw, salt, sl, DESK_ROUNDS, pk, 32); dfree_secret(pw); dhex(pk, 32, s.pk);
+		dpbkdf2_256(pw, salt, sl, DESK_ROUNDS, pk, 32); dvault_signin(s.id, pw); dfree_secret(pw); dhex(pk, 32, s.pk);
 		const char *box = dj_get(a, "fk");
 		if (box && *dj_ws(box) == '{') {
 			char *iv = dj_str(dj_get(box, "iv")), *ct = dj_str(dj_get(box, "ct")); uint8_t ivb[16], ctb[128];
@@ -714,4 +737,75 @@ static int api_desktop(struct req *r, const char *w, int post)
 		return 1;
 	}
 	return 0;
+}
+
+/* ------------------------------------------------------------------ 1.6.0: the page's storage copy on the native desktop
+ * (the owner's reports 3 and 5) Each app window there is a page of its own and Oracle's page is in Chromium, with storage of its own:
+ * each sent all of its storage (lsync), so the last to send put its older settings and notices back in the copy, which the shell
+ * draws from and every window opened later takes. There a page sends only what it changed, {gen, part:1, set:{KEY:VALUE}, del:[KEY]}
+ * (rudolfd.c LSJS), put into the copy here, under a lock (each request is a process of its own); the copy's gen is the larger of its
+ * own plus one and the page's, and is given back, so pages compare with rudolfd's numbering. */
+static int au_sync(void);   /* rudolfd-users.inc */
+static int lsync_part(const char *body) { const char *p = dj_get(body, "part"); return p && (*dj_ws(p) == '1' || dj_true(p)); }
+/* the members of the object at o, as written, each given to f (the key's text with its quotes, and its value) */
+static void dj_members(const char *o, void (*f)(const char *k, size_t kl, const char *v, size_t vl, void *d), void *d)
+{
+	o = dj_ws(o); if (!o || *o != '{') return;
+	const char *p = dj_ws(o + 1);
+	while (p && *p == '"') {
+		const char *ke = dj_end(p, 0); if (!ke) return;
+		const char *v = dj_ws(ke); if (*v != ':') return; v = dj_ws(v + 1);
+		const char *ve = dj_end(v, 0); if (!ve) return;
+		f(p, ke - p, v, ve - v, d);
+		p = dj_ws(ve); if (*p != ',') return; p = dj_ws(p + 1);
+	}
+}
+typedef struct { str *o; int n; const char *set, *del; } dls_mg;
+static int dj_has_key(const char *o, const char *k, size_t kl)   /* (the key's text with its quotes, as written) */
+{
+	o = dj_ws(o); if (!o || *o != '{') return 0;
+	const char *p = dj_ws(o + 1);
+	while (p && *p == '"') { const char *ke = dj_end(p, 0); if (!ke) return 0; if ((size_t)(ke - p) == kl && !memcmp(p, k, kl)) return 1;
+		p = dj_ws(ke); if (*p != ':') return 0; p = dj_end(dj_ws(p + 1), 0); if (!p) return 0; p = dj_ws(p); if (*p != ',') return 0; p = dj_ws(p + 1); }
+	return 0;
+}
+static int dj_arr_has(const char *a, const char *k, size_t kl)
+{
+	for (int i = 0;; i++) { const char *e = dj_at(a, i); if (!e) return 0; const char *ee = dj_end(e, 0); if (ee && (size_t)(ee - e) == kl && !memcmp(e, k, kl)) return 1; }
+}
+static void dls_keep(const char *k, size_t kl, const char *v, size_t vl, void *d)
+{
+	dls_mg *m = d; if (dj_has_key(m->set, k, kl) || (m->del && dj_arr_has(m->del, k, kl))) return;
+	sadd(m->o, "%s%.*s:%.*s", m->n++ ? "," : "", (int)kl, k, (int)vl, v);
+}
+static void dls_put(const char *k, size_t kl, const char *v, size_t vl, void *d)
+{
+	dls_mg *m = d; if (*v != '"') return;   /* (the storage's values are strings) */
+	sadd(m->o, "%s%.*s:%.*s", m->n++ ? "," : "", (int)kl, k, (int)vl, v);
+}
+#include <sys/file.h>
+static void lsync_merge(struct req *r)
+{
+	const char *set = dj_get(r->body, "set"), *del = dj_get(r->body, "del");
+	if (!set || *dj_ws(set) != '{' || !dj_end(set, 0) || (del && (*dj_ws(del) != '[' || !dj_end(del, 0)))) { reply_err(r->fd, 400, "bad data"); return; }
+	char lk[300]; snprintf(lk, sizeof lk, "%s.lock", desk_ls); int lf = open(lk, O_RDWR | O_CREAT | O_CLOEXEC, 0600); if (lf >= 0) flock(lf, LOCK_EX);
+	char *old = slurp(desk_ls, NULL); const char *od = old ? dj_get(old, "data") : NULL;
+	double og = old ? dj_num(dj_get(old, "gen"), 0) : 0, pg = dj_num(dj_get(r->body, "gen"), 0), ng = og + 1 > pg ? og + 1 : pg;
+	str o = {0}; sadd(&o, "{\"gen\":%.0f,\"data\":{", ng); dls_mg m = { &o, 0, set, del };
+	if (od) dj_members(od, dls_keep, &m);
+	dj_members(set, dls_put, &m); sadd(&o, "}}");
+	free(old);
+	char tp[300]; snprintf(tp, sizeof tp, "%s.tmp", desk_ls); int f = open(tp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+	int bad = f < 0 || write(f, o.b, o.n) != (ssize_t)o.n || fsync(f); if (f >= 0) close(f);
+	if (bad || rename(tp, desk_ls)) { unlink(tp); free(o.b); if (lf >= 0) close(lf); reply_err(r->fd, 500, "could not save"); return; }
+	free(o.b); if (lf >= 0) close(lf);
+	au_sync();
+	str a = {0}; sadd(&a, "{\"ok\":true,\"message\":\"saved\",\"gen\":%.0f}", ng); reply_json(r->fd, &a);
+}
+static void api_lsync_get(struct req *r, const char *key)
+{
+	dls l; dls_open(&l); const char *v = l.data ? dj_get(l.data, key) : NULL;
+	str o = {0}; sadd(&o, "{\"ok\":true,\"gen\":%.0f,\"v\":", l.file ? dj_num(dj_get(l.file, "gen"), 0) : 0);
+	if (v && *dj_ws(v) == '"') dj_raw(&o, v, "null"); else sadd(&o, "null");
+	sadd(&o, "}"); dls_close(&l); reply_json(r->fd, &o);
 }
