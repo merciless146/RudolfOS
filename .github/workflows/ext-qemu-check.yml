@@ -2,8 +2,8 @@
 # (iso/qt/sb/t160x_t.py): in use after a restart, broken ones left out, an update of the base with and without the
 # extension's build, Roll back system, Recovery mode. TEST keys only, made inside the test and deleted with it (the
 # extensions and the two custom builds of the release are signed with them). Run by a push that changes
-# .github/ext160-run.txt, whose lines say: serial=SERIAL (empty: the newest beta), fix=1 (this tree's rpk, sysext,
-# rudolf-init and session in the custom builds' desktop layer). Nothing is published.
+# .github/ext160-run.txt, whose lines say: serial=SERIAL (empty: the newest beta), fix=1 (this tree's rpk, sysext
+# and rudolf-init in the custom builds' desktop layer). Nothing is published.
 name: Extensions QEMU check
 on:
   workflow_dispatch:

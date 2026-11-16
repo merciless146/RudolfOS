@@ -56,7 +56,7 @@ def build(n, abi, serial):
     if FIX:   # this tree's extension tools in place of the release's
         os.makedirs(f'{d}/usr/bin', exist_ok=True); os.makedirs(f'{d}/usr/lib/rudolf', exist_ok=True); os.makedirs(f'{d}/sbin', exist_ok=True)
         run_(['gcc', '-O2', '-o', f'{d}/usr/bin/rpk', f'{ISO}/sys/rpk.c', '-lcrypto'])
-        for s, t in (('usr/lib/rudolf/sysext', 'usr/lib/rudolf/sysext'), ('sbin/rudolf-init', 'sbin/rudolf-init'), ('usr/lib/rudolf/session', 'usr/lib/rudolf/session')):
+        for s, t in (('usr/lib/rudolf/sysext', 'usr/lib/rudolf/sysext'), ('sbin/rudolf-init', 'sbin/rudolf-init')):
             shutil.copy(f'{ISO}/sys/root/{s}', f'{d}/{t}'); os.chmod(f'{d}/{t}', 0o755)
     L = f'{W}/l{n}'; os.makedirs(L)
     for x in ('base', 'chromium', 'modules'): os.link(f'{REL}/{x}.sfs', f'{L}/{x}.sfs')
@@ -166,7 +166,7 @@ try:
         ok('1. extensions signed by the (TEST) system key install for this base, in use after a restart', o.count('rc=0') == 4 and o.count('in use after the next restart') == 4
            and '"name":"hello","version":"1.0"' in o and '"state":"next"' in o and 'No such file' in o, o)
         o = run(g, f"{RPKI} /persist/t/hello-2.0.rpk; echo rc=$?; {RPKI} /persist/t/badsig-other.rpk; echo rc=$?", 60)
-        ok('...one built for another base and one signed by another key are refused', o.count('rc=1') == 2 and 'another Rudolf OS base' in o and "release key" in o, o)
+        ok('...one built for another base and one signed by another key are refused', o.count('rc=1') == 2 and 'another Rudolf OS base' in o and 'not from a trusted key' in o, o)
         # the changed file and the other key's signature, as anything that writes to the data partition could do
         run(g, "f=/persist/pkg/store/corrupt.rpk; s=$(stat -c %s $f); printf 'X' | dd of=$f bs=1 seek=$((s / 3)) conv=notrunc 2>/dev/null; "
                "cp /persist/t/badsig-other.rpk /persist/pkg/store/badsig.rpk; sync; md5sum /persist/pkg/store/*.rpk", 60)
@@ -215,7 +215,7 @@ try:
         ok('12. an update of the base without the extension\'s build: the computer starts on the new base, the old build left out (built for another base)',
            up and re.search(r'^SLOT=b$', o, re.M) and ABI2 in o and re.search(r'^hello\t1.0\tleft-out\t.*another Rudolf OS base', o, re.M) and 'not found' in o, o)
         ok('13. ...the desktop comes up and the update is kept; System health and the self-test say why it is left out', up2 and re.search(r'^good=b$', o3, re.M)
-           and 'another Rudolf OS base' in health(g, 'hello') and 'FAIL extensions - left out: hello 1.0' in o3, o2 + o3)
+           and re.search(r'left out the system extension hello 1.0: it was built for another Rudolf OS base', health(g, 'hello')) and 'FAIL extensions - left out: hello 1.0' in o3, o2 + o3)
         o = run(g, f"{RPKI} /persist/t/hello-2.0.rpk; echo rc=$?", 60)
         stop(vm, g)
         # ---- start 6: with the right build
