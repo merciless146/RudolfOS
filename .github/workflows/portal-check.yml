@@ -69,4 +69,7 @@ jobs:
           mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} P160_FIX=$PWD/../fix python3 ../iso/qt/sb/p160_t.py ../rel
       - if: always()
         uses: actions/upload-artifact@v4
-        with: {name: p160-fix${{ env.P_fix }}, retention-days: 7, path: "run/p160.txt\nrun/p160*/qemu.log\nrun/p160*/*.png\nrun/*.png"}
+        with:
+          name: p160-fix${{ env.P_fix }}
+          retention-days: 7
+          path: "run/p160.txt\nrun/p160*/qemu.log\nrun/p160*/*.png\nrun/*.png"
