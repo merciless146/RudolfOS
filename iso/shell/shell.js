@@ -234,13 +234,18 @@ let NEWN = 0, DLGN = 0, PERMN = 0;
 const DLG = new Map(), PERM = new Map();
 
 /* (1.2.2) dark pages, when Oracle asks for them: each page is turned dark as it loads (inverted, with pictures, videos
-   and frames turned back), unless it is dark already. The desktop sends {op: 'dark', on}. */
+   and frames turned back), unless it is dark already. The desktop sends {op: 'dark', on}.
+   (1.6.0) A layer that is turned back is turned back once: inside another one it has no filter of its own, and it has
+   no backdrop-filter, whose backdrop (the page below, already inverted by <html>'s filter) its own filter would turn
+   back as well. Either drew the video under it as a negative: YouTube's progress bar while the mouse is on it (the
+   Vivobook, 2026-11-15). And whether the page is dark already is read without the style: its white on <html> made a
+   dark page whose colour is on <html> (not on <body>) look light. (iso/qt/host/darkvideo60_t.sh) */
 let DARK = false;
-const DARK_CSS = 'html{filter:invert(.9) hue-rotate(180deg)!important;background:#fff!important}img,video,picture,canvas,iframe,embed,object,svg image,[style*="background-image"]{filter:invert(1) hue-rotate(180deg)!important}';
+const DARK_CSS = 'html{filter:invert(.9) hue-rotate(180deg)!important;background:#fff!important}img,video,picture,canvas,iframe,embed,object,svg image,[style*="background-image"]{filter:invert(1) hue-rotate(180deg)!important;backdrop-filter:none!important}:is(img,video,picture,canvas,iframe,embed,object,svg image,[style*="background-image"]) :is(img,video,picture,canvas,iframe,embed,object,svg image,[style*="background-image"]){filter:none!important}';
 const darkJS = on => `(()=>{const id='rudolf-dark';let s=document.getElementById(id);if(!${on}){if(s)s.remove();return}
  if(!s){s=document.createElement('style');s.id=id;s.textContent=${JSON.stringify(DARK_CSS)};(document.head||document.documentElement).appendChild(s)}
  const chk=()=>{try{const L=c=>{const m=/rgba?\\(([^)]+)\\)/.exec(c||'');if(!m)return null;const v=m[1].split(',').map(Number);if(v.length>3&&v[3]<.5)return null;return(.2126*v[0]+.7152*v[1]+.0722*v[2])/255};
-  let l=document.body?L(getComputedStyle(document.body).backgroundColor):null;if(l==null)l=L(getComputedStyle(document.documentElement).backgroundColor);if(l!=null&&l<.4&&s.isConnected)s.remove()}catch(e){}};
+  const sh=s.sheet;if(sh)sh.disabled=true;let l=document.body?L(getComputedStyle(document.body).backgroundColor):null;if(l==null)l=L(getComputedStyle(document.documentElement).backgroundColor);if(sh)sh.disabled=false;if(l!=null&&l<.4&&s.isConnected)s.remove()}catch(e){}};
  if(document.readyState=='loading')document.addEventListener('DOMContentLoaded',chk,{once:true});else chk()})()`;
 const darken = t => { if (DARK) t.f.executeScript({code: darkJS(true)}).catch(() => {}) };
 /* whose cookies and site storage: an account's are kept on the disk (persist:); a private window's (1.5.9, "priv-…")
