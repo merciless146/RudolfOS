@@ -8,7 +8,8 @@
      POST mobile/pin?id=N              the SIM's PIN: the body {"n":ADMIN,"p":PASSWORD,"pin":"1234"}
      POST mobile/puk?id=N              its PUK and a new PIN: {"n","p","puk":"12345678","pin":"1234"}
      GET  mobile/settings?id=N         the SIM's operator, the automatic APN, the one typed in, roaming, the network type
-     POST mobile/settings?id=N&k=apn|apnuser|apnpass|roaming|mode&v=VALUE
+     POST mobile/settings?id=N&k=apn|apnuser|apnpass|roaming|mode|autoconnect|limit|startday|dataoff&v=VALUE
+                                       (Part 4: the settings' answer has "usage": this month's data, the limit)
      GET  mobile/airplane, POST mobile/airplane?on=1|0   Wi-Fi, Bluetooth and the modems off together, and back
    (Part 3)
      POST mobile/connect?id=N&on=1|0   connect (and connect automatically again) or disconnect (until Connect)
@@ -78,7 +79,7 @@ static int api_mobile2(struct req *r, const char *p, int post)
 			if (!o || o[0] != '{' || strstr(o, "\"error\"")) { free(o); reply_err(r->fd, 404, "there is no such modem"); return 1; }
 			str js = {0}; sadd(&js, "{\"ok\":true,"); sadd(&js, "%s", o + 1); free(o); reply_json(r->fd, &js); return 1; }
 		const char *k = qparam(r->query, "k"), *v = qparam(r->query, "v");
-		if (!k || (strcmp(k, "apn") && strcmp(k, "apnuser") && strcmp(k, "apnpass") && strcmp(k, "roaming") && strcmp(k, "mode") && strcmp(k, "autoconnect")) || !mobile_value_ok(v)) { reply_err(r->fd, 400, "k=apn|apnuser|apnpass|roaming|mode|autoconnect&v=VALUE (no quotes, commas or backslashes)"); return 1; }
+		if (!k || (strcmp(k, "apn") && strcmp(k, "apnuser") && strcmp(k, "apnpass") && strcmp(k, "roaming") && strcmp(k, "mode") && strcmp(k, "autoconnect") && strcmp(k, "limit") && strcmp(k, "startday") && strcmp(k, "dataoff")) || !mobile_value_ok(v)) { reply_err(r->fd, 400, "k=apn|apnuser|apnpass|roaming|mode|autoconnect|limit|startday|dataoff&v=VALUE (no quotes, commas or backslashes)"); return 1; }
 		snprintf(cmd, sizeof cmd, MODEM_SH " set %s %s '%s' 2>&1", id, k, v); char *o = run_out(cmd); trim(o);
 		if (o && !strcmp(o, "saved")) { if (!strcmp(k, "roaming") && *v == '1') health_add("modem", "mobile data when roaming was turned on"); reply_ok(r->fd, o); }
 		else reply_err(r->fd, 400, o && *o ? o : "the setting was not saved");

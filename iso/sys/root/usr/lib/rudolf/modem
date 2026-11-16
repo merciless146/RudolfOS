@@ -25,6 +25,9 @@
 # 1.6.0 (Part 3): the connection
 #   modem connect MODEM | disconnect MODEM   (by the person: Disconnect keeps it off until Connect)
 #   modem watch                 (started with ModemManager) turns modems on, connects automatically, notes failover
+# 1.6.0 (Part 4): data and money
+#   modem usage MODEM           JSON: this SIM's data this month (its start day), the limit and how much of it
+#   (modem set: limit MB, startday 1-28, dataoff 0|1)
 # The places can be moved for the host tests: RUDOLF_MODEM_SYS, RUDOLF_MODEM_DEV, RUDOLF_RUN, RUDOLF_MODEM_LOG,
 # RUDOLF_MODEM_PERSIST, RUDOLF_MM_FCC_AVAIL, RUDOLF_MM_FCC_DIR, RUDOLF_MBPI, RUDOLF_APN_FIXES, RUDOLF_RFKILL,
 # RUDOLF_RESOLV, RUDOLF_PROCNET, RUDOLF_NAT64, RUDOLF_CELL_METRIC, RUDOLF_FIREWALL.
@@ -229,6 +232,7 @@ settings() {   # MODEM: the SIM's settings and what is automatic
 $A
 EOF
 		printf '"auto":{"name":%s,"apn":%s,"user":%s,"source":%s},' "$(js_s "$an")" "$(js_s "$aa")" "$(js_s "$au")" "$(js_s "$asrc")"; else printf '"auto":null,'; fi
+	printf '"usage":%s,' "$(usage "$1")"
 	printf '"autoconnect":%s,"off":%s,' "$([ "$(cget "$F" autoconnect)" = 0 ] && echo false || echo true)" "$([ -e "$(offkey)" ] && echo true || echo false)"
 	printf '"apn":%s,"apnuser":%s,"apnpass":%s,"roaming":%s,"mode":%s,"modes":[%s]}\n' "$(js_s "$(cget "$F" apn)")" "$(js_s "$(cget "$F" apnuser)")" "$([ -n "$(cget "$F" apnpass)" ] && echo true || echo false)" \
 		"$([ "$(cget "$F" roaming)" = 1 ] && echo true || echo false)" "$(js_s "$(mode_now)")" "$(mode_choices | sed 's/\([a-z0-9]*\)/"\1"/g; s/ /,/g')"; }
@@ -244,6 +248,9 @@ setting() {   # MODEM KEY VALUE (rudolfd has checked the value's characters)
 	apnuser|apnpass) printf '%s' "$3" | grep -qE "^[^,'\"\\\\]{0,64}$" || { echo "That name or password has a character the modem cannot take (a comma or a quote)."; return 1; }; cset "$F" "$2" "$3";;
 	roaming) case "$3" in 0|1) cset "$F" roaming "$3";; *) echo "roaming: 0 or 1"; return 1;; esac;;
 	autoconnect) case "$3" in 0|1) cset "$F" autoconnect "$3";; *) echo "autoconnect: 0 or 1"; return 1;; esac;;
+	limit) echo "$3" | grep -qE '^[0-9]{1,7}$' || { echo "limit: megabytes (0: none)"; return 1; }; cset "$F" limit "$(( $3 + 0 ))"; cset "$F" warned80 ""; cset "$F" warned100 "";;
+	startday) echo "$3" | grep -qE '^([1-9]|1[0-9]|2[0-8])$' || { echo "startday: 1 to 28"; return 1; }; cset "$F" startday "$3";;
+	dataoff) case "$3" in 0|1) cset "$F" dataoff "$3";; *) echo "dataoff: 0 or 1"; return 1;; esac;;
 	mode) case "$3" in auto|5g|4g|3g) ;; *) echo "mode: auto, 5g, 4g or 3g"; return 1;; esac; mode_apply "$1" "$3" || return 1; cset "$F" mode "$3";;
 	*) echo "no such setting: $2"; return 1;; esac
 	echo "saved"; }
@@ -260,6 +267,36 @@ airplane() {
 		while read -r k a b c; do case "$k" in rf) [ "$c" = 0 ] && [ -e "$RF/$a/soft" ] && echo 0 > "$RF/$a/soft" 2>/dev/null;; mm) [ "$b" = on ] && timeout 30 mmcli -m "$a" --enable >/dev/null 2>&1;; esac; done < $AS
 		rm -f $AS; echo "$(date) airplane mode off" >> $LOG; echo "Airplane mode is off";;
 	*) printf '{"on":%s}\n' "$([ -e $AS ] && echo true || echo false)";; esac; }
+# ---- 1.6.0 (Part 4): data and money ----
+# Mobile data is metered by itself (netplug: a modem's interface), so updates and other large downloads wait. What each
+# SIM sends and receives is counted from the interface's counters (netplug tick, every minute) into
+# /persist/var/lib/rudolf/netusage, by the day ("YYYY-MM-DD sim:HASH BYTES"), so the month the person chose (its start
+# day) adds up across restarts. A monthly limit (MB): a notice at 80 %, and at 100 % mobile data off if chosen (until
+# the next month, or Connect, which says it may cost).
+USE=${RUDOLF_NETUSE:-/persist/var/lib/rudolf/netusage}
+today() { echo "${RUDOLF_DAY:-$(date +%Y-%m-%d)}"; }
+# the first day of this SIM's month (its start day, 1 to 28) and of the next
+period() { echo "$(today) ${1:-1}" | awk '{split($1,a,"-");y=a[1]+0;m=a[2]+0;d=a[3]+0;s=$2+0;if(d<s){m--;if(m<1){m=12;y--}}
+	printf "%04d-%02d-%02d ",y,m,s;m++;if(m>12){m=1;y++};printf "%04d-%02d-%02d\n",y,m,s}'; }
+usage_of() { [ -f "$USE" ] && awk -v k="$1" -v a="$2" -v b="$3" 'length($1)==10&&$2==k&&$1>=a&&$1<b{t+=$3}END{printf "%.0f\n",t+0}' "$USE" || echo 0; }
+usage() {   # MODEM: JSON {used,start,next,limit,startday,dataoff,pct,off}
+	modem_ok "$1" || { echo '{"error":"no such modem"}'; return 1; }; F=$(simconf); K="sim:$(basename "$F" .conf)"
+	sd=$(cget "$F" startday); sd=${sd:-1}; set -- $(period "$sd"); a=$1; b=$2; u=$(usage_of "$K" "$a" "$b"); l=$(cget "$F" limit); l=${l:-0}
+	pct=0; [ "$l" -gt 0 ] && pct=$(awk -v u="$u" -v l="$l" 'BEGIN{printf "%d",u*100/(l*1000000)}')
+	printf '{"key":"%s","used":%s,"start":"%s","next":"%s","limit":%s,"startday":%s,"dataoff":%s,"pct":%s,"off":%s}\n' "$K" "$u" "$a" "$b" "$l" "$sd" \
+		"$([ "$(cget "$F" dataoff)" = 1 ] && echo true || echo false)" "$pct" "$([ "$(cget "$F" offfor)" = "$a" ] && echo true || echo false)"; }
+mb() { awk -v b="$1" 'BEGIN{if(b>=1e9)printf "%.2f GB",b/1e9;else if(b>=1e8)printf "%.0f MB",b/1e6;else printf "%.1f MB",b/1e6}'; }
+# (the watch, every half minute, for each connected modem with a limit)
+limits() {   # MODEM (MK and its settings read)
+	F=$(simconf); l=$(cget "$F" limit); [ "${l:-0}" -gt 0 ] || return 0; J=$(usage "$1")
+	a=$(echo "$J" | sed 's/.*"start":"\([^"]*\)".*/\1/');  nb=$(echo "$J" | sed 's/.*"next":"\([^"]*\)".*/\1/'); pct=$(echo "$J" | sed 's/.*"pct":\([0-9]*\).*/\1/'); u=$(echo "$J" | sed 's/.*"used":\([0-9]*\).*/\1/')
+	if [ "$pct" -ge 100 ]; then
+		[ "$(cget "$F" warned100)" = "$a" ] && return 0; cset "$F" warned100 "$a"
+		if [ "$(cget "$F" dataoff)" = 1 ]; then cset "$F" offfor "$a"; ifdown_cell "$1"; timeout 30 mmcli -m "$1" --simple-disconnect >/dev/null 2>&1
+			note "📶 Mobile data is off: this month's limit is reached" "$(mb "$u") of $l MB used. It comes back on $nb, or connect in Settings › Mobile network to go on (it may cost)."
+		else note "📶 This month's mobile data limit is reached" "$(mb "$u") of $l MB used, until $nb. Going on may cost: Settings › Mobile network can turn mobile data off at the limit."; fi
+	elif [ "$pct" -ge 80 ] && [ "$(cget "$F" warned80)" != "$a" ]; then cset "$F" warned80 "$a"
+		note "📶 $pct % of this month's mobile data used" "$(mb "$u") of $l MB, until $nb.$([ "$(cget "$F" dataoff)" = 1 ] && echo " Mobile data turns off at the limit.")"; fi; }
 # ---- 1.6.0 (Part 3): the connection ----
 # Cable, then Wi-Fi, then cellular: their default routes' metrics (100, 600, 700; udhcpc.sh gives the first two), and
 # routes on an interface whose link went down ignored at once (ignore_routes_with_linkdown), so cellular stays connected
@@ -306,7 +343,7 @@ clat_start() {   # IF V6ADDR: IPv4 through the operator's NAT64 (tayga as a CLAT
 ifup_cell() {   # MODEM: its bearer's interface set up as ModemManager says
 	MK=$(mmcli -m "$1" -K 2>/dev/null); B=$(bearer_of); [ -n "$B" ] || return 1; BK=$(mmcli -b "$B" -K 2>/dev/null)
 	[ "$(bkv status.connected)" = yes ] || return 1; IF=$(bkv status.interface); [ -n "$IF" ] || return 1
-	mkdir -p $R/cellular $R/dns; echo "$1" > $R/cellular/$IF; linkdown_ignored
+	mkdir -p $R/cellular $R/dns $R/cellkey; echo "$1" > $R/cellular/$IF; echo "sim:$(basename "$(simconf)" .conf)" > $R/cellkey/$IF; linkdown_ignored
 	ip link set "$IF" up; mtu=$(bkv ipv4-config.mtu); [ -n "$mtu" ] && ip link set "$IF" mtu "$mtu" 2>/dev/null
 	m4=$(bkv ipv4-config.method); a4=$(bkv ipv4-config.address); p4=$(bkv ipv4-config.prefix); g4=$(bkv ipv4-config.gateway)
 	m6=$(bkv ipv6-config.method); a6=$(bkv ipv6-config.address); p6=$(bkv ipv6-config.prefix); g6=$(bkv ipv6-config.gateway)
@@ -326,14 +363,15 @@ ifdown_cell() {   # MODEM
 	p=$(cat $R/udhcpc/$IF.pid 2>/dev/null); [ -n "$p" ] && kill "$p" 2>/dev/null; rm -f $R/udhcpc/$IF.pid
 	ip route del default dev "$IF" 2>/dev/null; ip -6 route del default dev "$IF" 2>/dev/null; ip addr flush dev "$IF" 2>/dev/null
 	$FW cellular del "$IF" >/dev/null 2>&1
-	rm -f $R/cellular/$IF $R/dns/$IF; resolv; }
+	rm -f $R/cellular/$IF $R/cellkey/$IF $R/dns/$IF; resolv; }
 offkey() { echo "$R/cell-off/$(basename "$(simconf)" .conf)"; }
 connect() {   # MODEM [user]: ModemManager connects with the SIM's APN and roaming setting, then the interface is set up
 	modem_ok "$1" || { echo "There is no such modem."; return 1; }
 	[ -e $R/airplane ] && { echo "Airplane mode is on: turn it off to use mobile data."; return 1; }
 	[ "$2" = user ] && rm -f "$(offkey)"
-	[ -e "$R/data-off/$(basename "$(simconf)" .conf)" ] && [ "$2" != user ] && return 1
-	F=$(simconf); A=$(apn_use); apn=$(echo "$A" | cut -d'|' -f1); u=$(echo "$A" | cut -d'|' -f2); pw=$(echo "$A" | cut -d'|' -f3)
+	F=$(simconf); sd=$(cget "$F" startday); set -- "$1" "$2" $(period "${sd:-1}")
+	if [ "$(cget "$F" offfor)" = "$3" ]; then [ "$2" = user ] || { echo "Mobile data is off: this month's limit is reached."; return 1; }; cset "$F" offfor ""; fi
+	A=$(apn_use); apn=$(echo "$A" | cut -d'|' -f1); u=$(echo "$A" | cut -d'|' -f2); pw=$(echo "$A" | cut -d'|' -f3)
 	roam=no; [ "$(cget "$F" roaming)" = 1 ] && roam=yes
 	reg=$(mkv "$MK" 'modem\.3gpp\.registration-state'); [ "$reg" = roaming ] && [ $roam = no ] && { echo "Roaming: mobile data is off while roaming (Settings › Mobile network)."; return 1; }
 	st=$(mkv "$MK" 'modem\.generic\.state'); case "$st" in connected) ifup_cell "$1"; echo "Connected"; return 0;; disabled) timeout 30 mmcli -m "$1" --enable >/dev/null 2>&1;; esac
@@ -362,6 +400,8 @@ watch() {
 			# a modem that is gone, or no longer connected: its interface undone
 			for f in $R/cellular/*; do [ -f "$f" ] || continue; n=$(cat $f); s=$(mmcli -m $n -K 2>/dev/null | sed -n 's/^modem\.generic\.state  *: //p'); [ "$s" = connected ] || ifdown_cell $n; done
 		fi
+		# (Part 4) the limits, every half minute
+		lk=$(( (${lk:-0} + 1) % 15 )); if [ $lk = 0 ]; then for f in $R/cellular/*; do [ -f "$f" ] || continue; n=$(cat $f); MK=$(mmcli -m $n -K 2>/dev/null) && limits $n; done; fi
 		k=$(( (k + 1) % 3 ))
 		now=$(best)
 		if [ "$now" != "$last" ]; then
@@ -397,5 +437,7 @@ airplane) airplane "$2" ;;
 connect) connect "$2" user ;;
 disconnect) disconnect "$2" user ;;
 watch) watch ;;
+usage) usage "$2" ;;
+limits) for f in $R/cellular/*; do [ -f "$f" ] || continue; n=$(cat $f); MK=$(mmcli -m $n -K 2>/dev/null) && limits $n; done ;;   # (what the watch does every half minute)
 *) echo "usage: modem hotplug|start|stop|status|fcc|pin|puk|settings|set|apn|airplane|connect|disconnect|watch"; exit 2 ;;
 esac

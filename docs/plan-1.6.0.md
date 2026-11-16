@@ -1013,6 +1013,21 @@ without this work (it waits only for the QEMU security checks of Part 15).
   on (the notices, the traffic moving), IPv4 sites on T-Mobile's IPv6-only network (the CLAT), the firewall's
   counters with the stick connected, sleep and wake, the stick unplugged and plugged in again.
 
+- **Item 4 (Part 4), done (PR "cell60-data"):** metered by itself (netplug: any interface ModemManager connected,
+  RUN/cellular, mhi_net modules too). Counted per SIM: netplug tick (every minute, from the interface's counters) writes
+  "YYYY-MM-DD sim:HASH BYTES" beside the monthly lines in /persist/var/lib/rudolf/netusage (a SIM's last 70 days kept);
+  /usr/lib/rudolf/modem usage: this SIM's month from its start day (1 to 28), the limit (MB) and how much of it; the
+  watch every half minute: a notice at 80 % (once a month), at 100 % mobile data off if chosen ("offfor": not connected
+  again by itself this month; Connect goes on, saying it may cost) or a notice; both desktops through mobile/notes.
+  Settings › Mobile network › Data this month (the count, a bar amber at 80 %, red at 100 %, the limit, the start
+  day, off at the limit). Updates on mobile data: never downloaded by themselves (1.5.8), offered with their size
+  ("Download over mobile data: up to 42 MB", sysupd25.js).
+  Tests: qt/host/data60_t.sh (13: real traffic counted from the counters, across a restart of the link, the start day,
+  80 %, 100 % with and without data off, the next month), qt/shell2/data60_t.js (10), and in QEMU (qt/sb/cell60_q.py
+  15-16: traffic over the stand-in cellular link counted for the SIM; the guest restarted, the count read back).
+  Stage B checks: the stick's month compared with the operator's own count (T-Mobile's app or text), a small limit
+  reached on purpose (the notice at 80 %, data off at 100 %), and an update offered on mobile data with its size.
+
 **Stage B: on hardware, with the owner (after stage A is merged and in a beta)**
 1. The USB cellular stick (borrowed from the HP desktop's user) and the MiFi 7730L on the Vivobook: the modem found
    (Settings › Network › Cellular modems, no "Invalid rule match" in /run/rudolf/modem.log, the self-test's modem
