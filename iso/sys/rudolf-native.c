@@ -501,7 +501,7 @@ static void ctx_msg(AppWin *a, JSCValue *v);   /* (an app's right-click menu, ov
    desktop's, Oracle's new windows at an address or private */
 static GPid OR_PID; static int OR_RUN; static char OR_CTL[300]; static const char *TOR_CTL_P;   /* (Part 16: the Tor windows' rudolf-launch FIFO, once it runs) */
 static void oracle_tell(const char *line);
-static void mirror_to_webkit(const char *id);
+static void mirror_to_webkit(const char *id); static void settings_changed(const char *id, AppWin *from);
 static void osd_show(const char *k, const char *lv, const char *label, const char *n);
 static char *open_extra(const char *url, const char *priv);
 static int id_ok(const char *s) { return strspn(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == strlen(s) && strlen(s) < 64; }
@@ -528,8 +528,11 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "note")) nt_note(v);   /* (a notification kept: in the centre at once, before the page's storage reaches rudolfd) */
 	else if (!strcmp(op, "open")) { jsstr(v, "app", x, sizeof x); jsstr(v, "file", f, sizeof f); char pg[48] = ""; jsstr(v, "page", pg, sizeof pg);
 		char u[1024] = "", pv[4] = ""; jsstr(v, "url", u, sizeof u); jsstr(v, "priv", pv, sizeof pv); char *ex = open_extra(u, pv);
-		if (!strcmp(x, "settings") && pg[0]) tb_settings(pg); else if (x[0]) app_open_ex(x, f[0] ? f : NULL, ex, 0); g_free(ex); }   /* (Settings at a page: its own window there; Oracle at an address) */
+		if (!strcmp(x, "settings") && pg[0]) tb_settings(pg);
+		else if (!strcmp(x, "help") && pg[0] && id_ok(pg)) { char hx[96]; snprintf(hx, sizeof hx, "&page=%s", pg); app_open_ex("help", NULL, hx, 0); }   /* (Help at a topic: What's new, 1.6.0) */
+		else if (x[0]) app_open_ex(x, f[0] ? f : NULL, ex, 0); g_free(ex); }   /* (Settings at a page: its own window there; Oracle at an address) */
 	else if (!strcmp(op, "mirror")) { jsstr(v, "id", x, sizeof x); if (id_ok(x)) { char l[100]; snprintf(l, sizeof l, "mirror %s\n", x); oracle_tell(l); } }   /* (the files an app's window saved: Oracle's pages take them) */
+	else if (!strcmp(op, "set")) { jsstr(v, "id", x, sizeof x); if (id_ok(x)) settings_changed(x, a); }   /* (a window saved its settings: the shell and the other windows at once) */
 	else if (!strcmp(op, "osd")) { char k[16] = "", lv[8] = "", n[8] = ""; jsstr(v, "k", k, sizeof k); jsstr(v, "lv", lv, sizeof lv); jsstr(v, "label", x, sizeof x); jsstr(v, "n", n, sizeof n); osd_show(k, lv, x, n); }
 	else if (!strcmp(op, "fs")) { jsstr(v, "on", x, sizeof x); appwin_fs(a, x[0] == '1'); }   /* (the page's own full screen: the window covers the screen, test finding N1) */
 	else if (!strcmp(op, "hfs")) hfs_msg(a, v);
@@ -899,6 +902,7 @@ static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 		if (!strcmp(op, "open") && app[0] && jp[0] && USER_ID[0] && !LOCKED) { tb_jump(app, jp); }   /* (the page knows its jumps; one it does not know closes its window) */
 		else if (!strcmp(op, "open") && app[0] && USER_ID[0] && !LOCKED) { char *ex = open_extra(u, pv); if (!strcmp(app, "settings") && pg[0]) tb_settings(pg); else app_open_ex(app, file[0] ? file : NULL, ex, 0); g_free(ex); }
 		else if (!strcmp(op, "mirror") && v) { char id[64] = ""; jstr(v, "id", id, sizeof id); if (id_ok(id)) mirror_to_webkit(id); }   /* (the files Oracle's page saved: the app windows take them) */
+		else if (!strcmp(op, "set") && v) { char id[64] = ""; jstr(v, "id", id, sizeof id); if (id_ok(id)) settings_changed(id, NULL); }   /* (Oracle's page saved its settings) */
 		else if (!strcmp(op, "osd") && v) { char k[16] = "", lv[8] = "", lb[256] = "", n[8] = ""; jstr(v, "k", k, sizeof k); jstr(v, "lv", lv, sizeof lv); jstr(v, "label", lb, sizeof lb); jstr(v, "n", n, sizeof n); osd_show(k, lv, lb, n); }
 		else if (!strcmp(op, "openwith") && v) { char key[48] = ""; jstr(v, "key", key, sizeof key); open_with(file, key); }   /* (Open with: the app's own window) */
 		else if ((!strcmp(op, "tor") || !strcmp(op, "untor")) && v && USER_ID[0] && !LOCKED) { static char us[13 * 2048]; jstr(v, "url", us, sizeof us); if (op[0] == 't') tor_open(us); else tor_back(us); }   /* (Part 16: a Tor window with these tabs; and back) */
@@ -927,6 +931,19 @@ static void mirror_to_webkit(const char *id)
 {
 	char js[160]; snprintf(js, sizeof js, "window.__oaMirrorIn&&__oaMirrorIn('%s')", id);
 	for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (a->view && !a->closing) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js, -1, NULL, NULL, NULL, NULL, NULL); }
+}
+/* (1.6.0, the owner's report 3) a window saved its settings (oneapp59.js op "set", once its storage is in rudolfd's copy): what the
+   shell draws read again now, not at its next look (every 3 s), and every other app window and Oracle's pages told (__oaSetIn),
+   as Standard's one page changes everything at once; WebKit's storage events need not cross between the windows' processes */
+static void settings_load(void);
+static void apps_load(void);
+static void settings_changed(const char *id, AppWin *from)
+{
+	if (!USER_ID[0] || strcmp(id, USER_ID)) return;
+	double g0 = S.gen; settings_load(); if (S.gen != g0) apps_load();
+	char js[160]; snprintf(js, sizeof js, "window.__oaSetIn&&__oaSetIn('%s')", id);
+	for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (a != from && a->view && !a->closing) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js, -1, NULL, NULL, NULL, NULL, NULL); }
+	char ln[100]; snprintf(ln, sizeof ln, "set %s\n", id); oracle_tell(ln);
 }
 /* (12.3c) Oracle's new window at an address, or a private one at an address: more of its address (#app=browser&url=...&priv=1) */
 static char *open_extra(const char *url, const char *priv)
@@ -2592,6 +2609,9 @@ static gboolean signin_area_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	}
 	return TRUE;
 }
+/* (1.6.0, the owner's report 5) what Standard's desktop page does once at each sign-in (the notice after an update), done by a page
+   unseen (#app=do-start, oneapp59.js), not by every app window that opens */
+static void start_page(void) { if (USER_ID[0] && strcmp(USER_R, "guest")) app_open_ex("do-start", NULL, NULL, 1); }
 typedef struct { char *body, *path; int code; char *reply; } Job;
 static gboolean signin_done(gpointer p)
 {
@@ -2602,6 +2622,7 @@ static gboolean signin_done(gpointer p)
 		if (SIGN_LOCK && LOCKED) UNLOCK_T = g_get_monotonic_time();   /* (UNLOCKED_AT: no saver or lock for a minute: item 6) */
 		LOCKED = 0; gtk_widget_hide(SIGN); explicit_bzero(SN_PASS, sizeof SN_PASS); SN_MSG[0] = 0; if (SCARET_T) { g_source_remove(SCARET_T); SCARET_T = 0; }
 		settings_load(); apps_load(); if (BAR) gtk_widget_show_all(BAR); wm_restack();
+		if (!SIGN_LOCK) start_page();
 		if (WM_OK) wm_hide_all(0); else for (GList *l = WINS; l; l = l->next) gtk_widget_show(((AppWin *)l->data)->win);
 	} else {
 		char m[300] = ""; jstr(v, "error", m, sizeof m);
@@ -3546,7 +3567,7 @@ static gboolean desk_key(GtkWidget *w, GdkEventKey *e, gpointer d)
    from Open-Meteo every 15 minutes (a failed look-up again in 20 s, 1, 2, then 5 minutes; a click opens Weather), the
    note typed in as in the page's textarea (its menu, keys, undo; saved half a second after the last change). Each is
    drawn into a picture of its own (with its shadow and what is behind it, blurred), laid over the desktop when shown. */
-static int wg_kind_n(const char *t);
+static int wg_kind_n(const char *t); static int wg_nwin(void);
 typedef struct { char t[12]; double x, y; char *txt; cairo_surface_t *sf; int ox, oy, dirty; double th; } Wg;   /* (th: the note's textarea's height) */
 #define MAXWG 32
 static Wg WG[MAXWG]; static int NWG;
@@ -3683,7 +3704,7 @@ static void wg_render(int i)
 				cairo_arc(cr, 0, 0, 1, 0, 2 * M_PI); cairo_restore(cr); srca(cr, ca(accent(), 1)); cairo_fill(cr); }   /* (td.tod: the accent, border-radius 50 %) */
 			css_text(cr, s, UIFAM, 400, 12, x + (col - css_width(cr, s, UIFAM, 400, 12)) / 2, yy + 4, l12, q == d ? cx("#ffffff", 1) : ink, 0); } }
 	else if (k == 2) note_draw(cr, w, i, cx0, cy0, cw, w->th);
-	else if (k == 3) { const char *L[3] = { "CPU: ", "Memory: ", "Windows: " }; char nw[16]; int c = 0; for (GList *l = WINS; l; l = l->next) if (!((AppWin *)l->data)->hidden) c++; snprintf(nw, sizeof nw, "%d", c);
+	else if (k == 3) { const char *L[3] = { "CPU: ", "Memory: ", "Windows: " }; char nw[16]; snprintf(nw, sizeof nw, "%d", wg_nwin());
 		const char *V[3] = { MON_CPU, MON_MEM, nw };
 		for (int r = 0; r < 3; r++) { double ww = css_text(cr, L[r], UIFAM, 400, 13, cx0, cy0 + r * l13, l13, ink, 0); css_text(cr, V[r], UIFAM, 700, 13, cx0 + ww, cy0 + r * l13, l13, ink, 0); } }
 	else if (WX_ST == 2) { double l34 = lh_of(UIFAM, 300, 34); css_text(cr, WX_T, UIFAM, 300, 34, cx0, cy0, l34, ink, 0); css_text(cr, WX_C, UIFAM, 400, 13, cx0, cy0 + l34, l13, ink, 0);
@@ -3731,6 +3752,15 @@ static gboolean wg_save_now(gpointer d)
 static void wg_save(void) { if (WG_SAVE_T) { g_source_remove(WG_SAVE_T); WG_SAVE_T = 0; } wg_save_now(NULL); }
 static void wg_save_soon(void) { if (WG_SAVE_T) g_source_remove(WG_SAVE_T); WG_SAVE_T = g_timeout_add(500, wg_save_now, NULL); }
 /* ---- the system monitor (rudolfd's stats, as the page reads them) */
+/* (the windows, as Standard's wins.length: each window the taskbar shows, Oracle's Chromium windows too, as Task Manager's list) */
+static int tb_win(Client *c);
+static int wg_nwin(void)
+{
+	int c = 0;
+	if (WM_OK) { for (GList *l = CLIENTS; l; l = l->next) { Client *x = l->data; if (tb_win(x) && x->ws && (x->app || x->ak[0])) c++; } return c; }
+	for (GList *l = WINS; l; l = l->next) if (!((AppWin *)l->data)->hidden) c++;
+	return c;
+}
 static gboolean wg_mon(gpointer d)
 {
 	(void)d; JV *v = jget("/api/stats"); snprintf(MON_CPU, sizeof MON_CPU, "—"); snprintf(MON_MEM, sizeof MON_MEM, "—");
@@ -3850,7 +3880,12 @@ static void wg_load(JV *v)
 		jstr(o, "t", w->t, sizeof w->t); w->x = jnum(o, "x", 0); w->y = jnum(o, "y", 0); JV *t = jprop(o, "txt"); w->txt = g_strdup(t && t->t == 3 ? t->s : ""); w->th = 120; }
 	/* (the same list: nothing to do) */
 	int same = nn == NWG; for (int i = 0; same && i < nn; i++) same = !strcmp(n[i].t, WG[i].t) && n[i].x == WG[i].x && n[i].y == WG[i].y && !strcmp(n[i].txt, WG[i].txt ? WG[i].txt : "");
-	if (same) { for (int i = 0; i < nn; i++) g_free(n[i].txt); if (wx && wg_kind_n("weather")) { WX_ST = 0; wx_go(); } return; }
+	/* (1.6.0, the owner's report 4: "CPU: –, Memory: –, Windows: 0" and the weather "Loading…" for good) a list taken while no one was
+	   signed in here yet (rudolfd's session already there: this program started again with a session going on, or the settings
+	   read every 3 s in the moment between rudolfd's sign-in and its answer) had no timers; the same list again never started them */
+	int stale = same && USER_ID[0] && ((wg_kind_n("mon") && !WG_MON_T) || (wg_kind_n("weather") && !WG_WX_T));
+	if (same && !stale) { for (int i = 0; i < nn; i++) g_free(n[i].txt); if (wx && wg_kind_n("weather")) { WX_ST = 0; wx_go(); } return; }
+	if (stale) { for (int i = 0; i < nn; i++) g_free(n[i].txt); wg_rebuild(); return; }
 	wg_clear(); memcpy(WG, n, sizeof n); NWG = nn; wg_rebuild();
 }
 /* ---- the picker (the page's widgetPicker: the menu "Add a widget", where the page puts it) */
@@ -5931,6 +5966,7 @@ static void state_write(void)
 	for (int i = 0; wg_shown() && i < NWG; i++) { double X, Y, W, H; wg_rect(&WG[i], &X, &Y, &W, &H); char *t = g_strescape(WG[i].txt ? WG[i].txt : "", NULL);
 		g_string_append_printf(s, "widget %d %s %d %d %d %d %g %g|%s\n", i, WG[i].t, (int)lround(X * Z), (int)lround(Y * Z), (int)lround(W * Z), (int)lround(H * Z), WG[i].x, WG[i].y, t); g_free(t); }
 	g_string_append_printf(s, "wgnote %d %d %d\nweather %d %s|%s|%s\n", NF, NCAR, NANC, WX_ST, WX_T, WX_C, WX_L);
+	g_string_append_printf(s, "mon %s|%s|%d|%d\n", MON_CPU, MON_MEM, wg_nwin(), WG_MON_T != 0);   /* (the system monitor's values, its timer) */
 	/* (the page's menu and dialogs as the shell shows them) */
 	if (CMWIN && gtk_widget_get_visible(CMWIN)) { g_string_append_printf(s, "cmenu %d %d %d %d %s\n", (int)lround(CMX * Z), (int)lround(CMY * Z), (int)lround(CMBW * Z), (int)lround(CMBH * Z), CMTITLE[0] ? CMTITLE : "-");
 		double ry = CMY + 5 + (CMTITLE[0] ? 22 : 0); for (int i = 0, k = 0; i < NCMI; i++) { if (!CMIT[i].sep && CMIT[i].icon[0]) g_string_append_printf(s, "cmicon %d %s\n", k, CMIT[i].icon); if (!CMIT[i].sep) k++; }
@@ -5959,13 +5995,18 @@ static void teval_got(GObject *src, GAsyncResult *res, gpointer d)
 }
 static gboolean teval_line(GIOChannel *ch, GIOCondition c, gpointer d)
 {
-	(void)c; (void)d; gchar *l = NULL; gsize n = 0; GIOStatus st = g_io_channel_read_line(ch, &l, &n, NULL, NULL);
+	(void)c; (void)d;
+	/* (every line read now: two lines that came at once left the second in the channel's buffer, with no new event for it, so each
+	   answer came one request late from then on: n160_t.py in QEMU) */
+	do { gchar *l = NULL; gsize n = 0; GIOStatus st = g_io_channel_read_line(ch, &l, &n, NULL, NULL);
 	if (st == G_IO_STATUS_EOF || st == G_IO_STATUS_ERROR) { g_free(l); return G_SOURCE_REMOVE; }
-	char *sp = l ? strchr(l, ' ') : NULL;
+	if (st == G_IO_STATUS_AGAIN || !l) { g_free(l); break; }
+	char *sp = strchr(l, ' ');
 	if (sp) { *sp = 0; g_strchomp(sp + 1); AppWin *a = NULL; for (GList *w = WINS; w; w = w->next) { AppWin *x = w->data; if (!strcmp(x->k, l) && !x->hidden && x->view) { a = x; break; } }
 		if (a) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), sp + 1, -1, NULL, NULL, NULL, teval_got, g_strdup(l));
 		else { FILE *f = fopen(TEVAL_OUT, "a"); if (f) { fprintf(f, "%s NO WINDOW\n", l); fclose(f); } } }
-	g_free(l); return G_SOURCE_CONTINUE;
+	g_free(l); } while (g_io_channel_get_buffer_condition(ch) & G_IO_IN);
+	return G_SOURCE_CONTINUE;
 }
 static void teval_init(void)
 {
@@ -6001,6 +6042,10 @@ int main(int argc, char **argv)
 	if (!TOKEN[0]) { fprintf(stderr, "rudolf-native: rudolfd did not answer on %s:%d\n", HOST, PORT); return 1; }
 	memset(&S, 0, sizeof S); S.lat = NAN; snprintf(S.tb, sizeof S.tb, "bottom");
 	LOGO = pix_get("/favicon.png");
+	/* signed in already (this program restarted): the session goes on. Known before the first settings (1.6.0, the owner's report
+	   4: the widgets taken then had no timers) */
+	JV *ses = jget("/api/desktop/session");
+	if (ses) { jstr(ses, "id", USER_ID, sizeof USER_ID); jstr(ses, "n", USER_N, sizeof USER_N); jstr(ses, "r", USER_R, sizeof USER_R); jfree(ses); }
 	css_apply(); settings_load(); apps_load(); tray_load();
 	/* the wallpaper, below everything */
 	DESK = gtk_window_new(GTK_WINDOW_TOPLEVEL); gtk_window_set_decorated(GTK_WINDOW(DESK), FALSE); gtk_window_set_type_hint(GTK_WINDOW(DESK), GDK_WINDOW_TYPE_HINT_DESKTOP);
@@ -6025,9 +6070,8 @@ int main(int argc, char **argv)
 	g_signal_connect(BARAREA, "leave-notify-event", G_CALLBACK(bar_leave), NULL); gtk_container_add(GTK_CONTAINER(BAR), BARAREA);
 	g_signal_connect(BAR, "delete-event", G_CALLBACK(gtk_true), NULL);
 	bar_place(); gtk_widget_realize(BAR);
-	/* signed in already (this program restarted): the session goes on; else the sign-in screen */
-	JV *ses = jget("/api/desktop/session");
-	if (ses) { jstr(ses, "id", USER_ID, sizeof USER_ID); jstr(ses, "n", USER_N, sizeof USER_N); jstr(ses, "r", USER_R, sizeof USER_R); jfree(ses); gtk_widget_show_all(BAR); }
+	/* signed in already: the session goes on (read above); else the sign-in screen */
+	if (USER_ID[0]) { gtk_widget_show_all(BAR); start_page(); }
 	else signin_show(0);
 	g_timeout_add_seconds(3, tick_settings, NULL); g_timeout_add_seconds(10, tick_tray, NULL); g_timeout_add_seconds(5, tick_mic, NULL); g_timeout_add_seconds(15, tick_idle, NULL); g_timeout_add_seconds(5, tick_clock, NULL);
 	tick_heart(NULL); g_timeout_add_seconds(10, tick_heart, NULL);

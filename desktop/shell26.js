@@ -125,7 +125,10 @@ function shellClipboard() {
 async function shellOffer() {
   /* 1.5.7: not in the Lite desktop (WebKit): the shell is Chromium's, and Lite starts again as Lite, so on the Vivobook
      the offer came back after every restart ("Real browser tabs are ready", every 8 s) */
-  if (!RD || SHELL || RD.engine == 'webkit') return;
+  /* 1.6.0 (the owner's report 5): nor on the native desktop, whose every app window is a page of its own and offered it again
+     ("Real browser tabs are ready", with the bell marked), though Oracle there is Rudolf's Chromium with its real tabs already;
+     and its "restart the desktop" restarted the native desktop as Standard's browser with the shell. Nor in a page of one app */
+  if (!RD || SHELL || RD.engine == 'webkit' || RD.engine == 'native' || (typeof ONEAPP != 'undefined' && ONEAPP)) return;
   let st; try { st = await rd('shell') } catch (e) { return }
   if (!st.id || !st.on || st.failed || st.active || !st.ready) return;
   if (!st.installed) { if ((shellOffer.n = (shellOffer.n || 0) + 1) < 20) setTimeout(shellOffer, 10000); return }   // still installing
