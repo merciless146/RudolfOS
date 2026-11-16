@@ -3881,8 +3881,9 @@ static gboolean tick_cell(gpointer d)
 {
 	(void)d; char q[64]; snprintf(q, sizeof q, "/api/mobile/notes?since=%ld", CELL_SEEN < 0 ? 0 : CELL_SEEN); JV *v = jget(q); if (!v) return G_SOURCE_CONTINUE;
 	long last = (long)jnum(v, "last", 0); JV *a = jprop(v, "notes");
-	if (CELL_SEEN >= 0 && USER_ID[0] && !LOCKED) for (int i = 0; a && a->t == 4 && i < a->len; i++) { JV *o = jat(a, i); char t[160] = "", b[300] = "", at[40];
+	if (CELL_SEEN >= 0 && USER_ID[0]) for (int i = 0; a && a->t == 4 && i < a->len; i++) { JV *o = jat(a, i); char t[160] = "", b[300] = "", at[40];
 		jstr(o, "t", t, sizeof t); jstr(o, "b", b, sizeof b); snprintf(at, sizeof at, "%.0f", g_get_real_time() / 1000.0);
+		if (LOCKED && strncmp(t, "💬", strlen("💬"))) continue;   /* (Part 6: a new message's notice also on the lock screen: its sender only, unless allowed) */
 		const char *f[4] = {t, b, "info", at}; nt_notef(fget_note4, (void *)f); toast_text(t, b, 8000); }
 	CELL_SEEN = last; jfree(v); return G_SOURCE_CONTINUE;
 }

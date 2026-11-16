@@ -30,9 +30,10 @@ async function airSet(on){try{await rd('mobile/airplane?on='+(on?1:0),{method:'P
 function mobUsable(s){return ((s&&s.modems)||[]).find(m=>m.sim&&(!m.locked||m.locked=='none')&&m.state!='failed')||null}
 async function mobConnect(id,on){try{const r=await rd('mobile/connect?id='+id+'&on='+(on?1:0),{method:'POST'});notify('📶 Mobile data',on?'Connected.':'Disconnected: it stays off until you connect again.',{app:'Network',quiet:true,toast:3000});return r}
  catch(e){notify('📶 Mobile data',e.message,{kind:'error',app:'Network'});throw e}}
-/* (Part 3) the cellular connection's notices, every 5 s (the first answer only says where they are up to) */
+/* (Part 3) the cellular connection's notices, every 5 s (the first answer only says where they are up to); (Part 6) a
+   new message's (💬) also on the lock screen: its sender only, unless an administrator allowed its text */
 let MOBN=-1;
-async function mobNotes(){if(!RD)return;try{const j=await rd('mobile/notes?since='+(MOBN<0?0:MOBN));if(MOBN>=0&&typeof USER!='undefined'&&USER&&!LOCKED)(j.notes||[]).forEach(n=>notify(n.t,n.b,{app:'Network',action:()=>settings('mob')}));MOBN=j.last||0}catch(e){}}
+async function mobNotes(){if(!RD)return;try{const j=await rd('mobile/notes?since='+(MOBN<0?0:MOBN));if(MOBN>=0&&typeof USER!='undefined'&&USER)(j.notes||[]).forEach(n=>{const sms=/^💬/.test(n.t);if(sms)dispatchEvent(new CustomEvent('rudolf-sms'));if(LOCKED&&!sms)return;notify(n.t,n.b,{app:sms?'Messages':'Network',action:()=>sms?(typeof messagesApp=='function'&&messagesApp()):settings('mob')})});MOBN=j.last||0}catch(e){}}
 if(RD){setTimeout(mobNotes,3000);setInterval(mobNotes,5000)}
 /* Settings › Mobile network */
 function mobPanelS(c,W){

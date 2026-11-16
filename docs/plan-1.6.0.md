@@ -1066,6 +1066,38 @@ without this work (it waits only for the QEMU security checks of Part 15).
   Stage B checks: the bars and type against the stick's own LED or the operator's app, moving the Vivobook toward a
   window while watching RSRP/SINR, the SIM taken out while running (System health), the self-test's modem line passing.
 
+- **Item 6 (Part 6), done (PR "cell60-sms"):** /usr/lib/rudolf/modem sms (mmcli's JSON in a UTF-8 locale: any
+  language), sms-send (the number and text in a root-only file; ModemManager splits long texts; a delivery report asked
+  for), sms-delete, sms-preview; the watch notes each new received message once ("💬 New message from NUMBER": the sender
+  only, unless an administrator allowed the text: /persist/etc/sms-preview, System health says who). rudolfd: mobile/sms,
+  mobile/sms/send, mobile/sms/delete, mobile/sms/preview. The Messages app (messages60.js, a page app: the same window on
+  both engines): conversations by number (unread counts, the newest first), bubbles with Sent and Delivered, a new
+  conversation by number, the characters and parts counted (GSM-7 160/153, Unicode 70/67); the modem's messages copied
+  into the account's folder (.rudolf/messages.json through rudolfd's home/write: in the encrypted folder with "Encrypt my
+  data"; the page's own storage for an account that is not on the drive), then deleted from the modem; synced every
+  10 s while open and at each new message's notice. The notices of new messages are shown on the lock screen too (both
+  engines), the others wait. MMS is left out.
+  Tests: qt/host/sms60_t.sh (11), qt/shell2/messages60_t.js (13).
+  Stage B checks: texts to and from a real phone through the stick or the MiFi (Unicode, a long one, the delivery
+  report), a sign-in code from a service, the notice with the desktop locked, the messages still there after a restart
+  (and in the encrypted folder with Encrypt my data on).
+
+- **Item 7 (Part 7, ARM64): not started (next).** What is there to build on: arm64-check.yml (the kernel, the base layer
+  from scratch by systools/arm64_base.sh, QEMU aarch64 to the sign-in screen, also started by the UEFI firmware and with
+  Standard). What it needs, in this order: (a) arm64_base.sh to take what items 1-6 added to the x86 base in
+  ci_release.sh (ModemManager with its plug-ins, libqmi/libmbim/libqrtr, qmi-proxy, mbim-proxy, the FCC scripts,
+  qmicli, mbimcli, bash, tayga, mobile-broadband-provider-info), and kconfig-arm64.sh's TUN and VETH (added in item 3);
+  (b) rudolf-update's official addresses on ARM64: beta/arm64/ and stable/arm64/ (compiled in by architecture), and the
+  release workflow's publishing step prepared for them but not run (make_release.py's channel files laid out under
+  arm64/ in a dry run); (c) a UEFI disc image for ARM64 (systools/mkdisc.sh's ESP with vmlinuz.efi, as boot-uefi starts
+  it); (d) QEMU aarch64 (AAVMF, qemu-efi-aarch64's QEMU_EFI.fd) checks in arm64-check.yml: start-up and the desktop
+  (as now), an update between two test releases signed with a throwaway key made in the test (make_release.py, served
+  by a local http.server, the key added as a developer key as qt/sb/t160_t.py does), and qt/mmstub.c built on the ARM64
+  runner and run in the guest with MMSTUB_TEST_MACHINE=1 (as qt/sb/cell60_q.py item 3 does) for Settings › Mobile
+  network and Network's Cellular modems (screenshots through cdp-eval). Not published: the owner tests it on an ARM64
+  computer first (stage B 4). Note: arm64-check's boot-uefi job timed out once (15 minutes to the Lite desktop) on
+  2026-11-16 while boot and boot-standard passed; it had failed the same way on another branch the day before.
+
 **Stage B: on hardware, with the owner (after stage A is merged and in a beta)**
 1. The USB cellular stick (borrowed from the HP desktop's user) and the MiFi 7730L on the Vivobook: the modem found
    (Settings › Network › Cellular modems, no "Invalid rule match" in /run/rudolf/modem.log, the self-test's modem
