@@ -17,6 +17,7 @@ needs in 1.5.8 and 1.5.9. It follows the mobile work in docs/plan-1.5.8.md (Part
 **Not in 1.6.0:** voice calls and emergency calls (a computer is not a phone, and emergency calling must be tested on
 each device before it is offered: 1.6.x, with the first phone), phones themselves (1.6.x, docs/plan-1.5.8.md 8.3), eSIM
 provisioning (downloading a carrier's eSIM profile), and 5G standalone features beyond what the modem does by itself.
+Everything moved past 1.6.0 is gathered in docs/plan-1.6.1.md (2026-11-15).
 
 ## Leanness
 - Cellular support adds about 6 to 10 MB to the base layer (ModemManager, libqmi, libmbim, libqrtr, the operators'
@@ -545,6 +546,14 @@ after N minutes and sleep are not in the behaviour test (they need a minute afte
 screen; rudolf-display gives Chromium one output), so "a taskbar and the wallpaper on each monitor" on Native would make Native
 differ from Standard, against "The rule". Either Standard gets it too (a change to Standard, which the rule forbids without
 the owner), or Native keeps one desktop as Standard and item 7 is dropped or moved to 2.0. Left undone until then.
+**Item 7 decided (owner, 2026-11-15):** "Rudolf OS has three workspaces that can be selected in the bottom right of the
+taskbar. These workspaces will be the basis for Rudolf being able to support up to three monitors/displays, as well as
+having three panels for the mobile build that can be selected by swiping left/right similar to how Android phones
+work." So several monitors are built on the three workspaces, on Standard and Native alike (the rule holds): up to
+three displays, each showing one of the workspaces with its own wallpaper and taskbar; a window moved to another
+workspace moves to that display. One display keeps today's behaviour (the three workspaces switched from the taskbar).
+The mobile build's three panels are the same three workspaces, swiped left and right.
+When (owner, 2026-11-15): after the 1.6.0 beta, in 1.6.x; it needs real monitors to test.
 **Item 8 (2026-11-15, unattended session): the Phone screen and Blitzen's panel.** Both are page windows (apk58.js
 phoneScreen, blitzen26.js blitzenApp; the page docks neither), so Native shows each in a one-app window opened from its pin.
 Checked against Standard with same_t.sh, new cases phone-nolinux, phone-noscrcpy, phone-ready, phone-dark, blitzen-setup,
@@ -853,6 +862,9 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
     first); GPU drawing for Lite measured; Oracle's WebKit tabs (YouTube, Google sign-in with FedCM, a download, full
     screen, memory with 5 tabs); the lock and sign-in screen settings and the shutting-down screen; the dynamic
     backgrounds' moving parts.
+    **Decided (owner, 2026-11-15): not in 1.6.0.** Native replaces Lite as the desktop; Lite stays as a compatibility
+    option in Settings › System health › Desktop engine, kept working as it is, and these are worked on and refined
+    in a later release.
   - **A lighter desktop page (1.5.9 10.3, 10.4):** the engines' limits measured; the ~200 MB that belongs to no
     process; WPE WebKit as a later Lite engine; the 10.4 targets measured on the Vivobook.
   - **The native session's logs kept across a restart** (found on 2026-11-15: rudolf-native's output, the page log,
@@ -867,13 +879,24 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
     qt/host/videolog60_t.sh 9, qt/host/startlogs58_t.sh 11. Still in /run: the page log and the Tor window's log.
   - **Kernel tuning** (proposed on 2026-11-12), if confirmed.
   - **rudolfd's root work split into helpers** (1.5.9 15.5, already planned here).
-- **QEMU checks (CI)**
-  - 1.5.9 15.1: a Flatpak app, a Wine program and a Debian terminal refused the desktop's page and token.
-  - 1.5.9 15.3, third step: two accounts (a Flatpak app, a Debian terminal and Wine refused the other's files; the
-    display refused to the other account's program; sign-out; the move on an existing data partition).
-  - 1.5.9 15.4: qt/sb/t140_t.py signs in as an administrator before it switches the devlink on.
-  - 1.5.9 8.7: Developer mode and Return to official with Secure Boot.
-  - From 1.5.8 (4.2): the devlink answering with the desktop disabled.
+- **QEMU checks (CI)** (qt/sb/t160_t.py, .github/workflows/qemu-checks.yml: GitHub's runner with KVM, the newest
+  beta release or a serial given; nothing published)
+  - **Done (2026-11-16), 20/20 on release 2026111506 (1.6.0.261115), Actions run 43783263846:** 1.5.9 15.1 (an account's programs, in a sandbox
+    as Flatpak starts one and in Debian, where Wine runs, refused the desktop's page and API); 15.3's third step (two
+    accounts, the move of their folders on an existing data partition to their own Linux users, each refused the
+    other's files and the display, signing out stops the account's programs); 15.4 (switching the development link on
+    needs it allowed and an administrator's password; its commands read-only, as nobody); 8.7 without Secure Boot
+    (Developer mode with a test key, a custom release from slot b, Return to official keeping the files); the official
+    recovery system checked and made again; 1.5.8 4.2 (the link on again by itself after a restart, Ask first on
+    again, a command answered "no desktop to ask" when the desktop sends no heartbeat, and run with Ask first off).
+  - What the failures were (all in the test, none in Rudolf OS): the first sign-in of a start was lost to the desktop's
+    page loading again a few seconds after it was ready (the test now waits for the same page for 20 s); QEMU's quit is
+    a power cut, so the tunnel's binary and the link's state written just before were lost (written to the disk
+    first now); the session is rudolf-init's own process and starts the browser again, so "the desktop not running"
+    is now a desktop that sends no heartbeat; busybox ash cuts a command line at 1024 characters.
+  - Left: 8.7 with Secure Boot (OVMF with TEST keys enrolled, as qt/sb/recovery_sb_t.sh): Developer mode and Return to
+    official there. qt/sb/t140_t.py (a 1.4.0 test disc) still switches the link on with the token alone (t160's 17 and
+    18 cover 15.4 in QEMU).
 - **On the Vivobook**
   - **Calls (1.5.9 7.4):** Meet in Oracle on Standard and on Lite; Zoom's test meeting, then the Zoom app; Teams; a
     call to a real phone; a headset's microphone during a call; memory during a 10-minute call. Results in
@@ -987,6 +1010,93 @@ without this work (it waits only for the QEMU security checks of Part 15).
   not try the PUK on a SIM you need), the APN filled in from a prepaid T-Mobile-network SIM (Mint or Tello) and the
   connection made with it, roaming's setting, the network type changed and kept by the modem, airplane mode with the
   Vivobook's Wi-Fi and Bluetooth and the stick, and back.
+
+- **Item 3 (Part 3), done (PR "cell60-connect"):** /usr/lib/rudolf/modem connect and disconnect (ModemManager's
+  Simple.Connect with the SIM's APN, user and password, roaming allowed or not; the refusals said: the APN in the wrong
+  capitals, roaming), the bearer's interface set up as the modem says (static addresses, or DHCP through udhcpc.sh,
+  IPv6, MTU, DNS in RUN/dns/IF), its default route at metric 700 behind Wi-Fi's 600 and a cable's 100, routes on a link
+  that went down ignored at once (ignore_routes_with_linkdown); modem watch (started with ModemManager): turns modems on,
+  connects automatically ("Connect automatically", on by default; not while roaming unless allowed; not after
+  Disconnect until Connect; not in airplane mode), undoes the interface of a modem gone, and notes when the connection
+  in use moves to cellular or back (RUN/cell-notes; rudolfd's mobile/notes; the page's notify and the native desktop's
+  toast and centre, every 5 s). The firewall: a cellular set (firewall cellular add|del IF): filtered as every other
+  interface, never counted as the local network for remote access. IPv6-only: a CLAT (tayga, in the base layer now;
+  the kernel's TUN and veth as modules), the NAT64 prefix from the operator's DNS (RFC 7050) or the well-known one.
+  netplug leaves a modem's own interface to ModemManager (no DHCP on it). Settings › Mobile network: Connection
+  (connected and in use, or in reserve; Connect, Disconnect), Connect automatically; quick settings: 📶 Mobile data
+  (with a modem whose SIM is unlocked) on both engines.
+  Tests: qt/host/conn60_t.sh (22 checks in network namespaces of its own, TUN links: connect, Wi-Fi in use, Wi-Fi
+  down and cellular within seconds, the notices, Disconnect, reconnected after a drop, roaming, the APN's capitals,
+  Connect automatically off, IPv6-only with the CLAT through a NAT64), qt/shell2/conn60_t.js (13), qt/native/qsbeh_t.js
+  (Mobile data on both engines), and in QEMU (qt/sb/cell60_q.py items 8-14: mac80211_hwsim's two radios, one an access
+  point in a far namespace, the stand-in cellular link on two QEMU network cards, the stand-in ModemManager on the
+  guest's bus: Wi-Fi carries the traffic, taken down: cellular within seconds, counted on the far end, the notice;
+  brought back; Disconnect). The CLAT runs in QEMU only from a release whose kernel has TUN (this PR adds it).
+  Stage B checks: the USB stick on a T-Mobile-network SIM: connected by itself, the Vivobook's Wi-Fi turned off and
+  on (the notices, the traffic moving), IPv4 sites on T-Mobile's IPv6-only network (the CLAT), the firewall's
+  counters with the stick connected, sleep and wake, the stick unplugged and plugged in again.
+
+- **Item 4 (Part 4), done (PR "cell60-data"):** metered by itself (netplug: any interface ModemManager connected,
+  RUN/cellular, mhi_net modules too). Counted per SIM: netplug tick (every minute, from the interface's counters) writes
+  "YYYY-MM-DD sim:HASH BYTES" beside the monthly lines in /persist/var/lib/rudolf/netusage (a SIM's last 70 days kept);
+  /usr/lib/rudolf/modem usage: this SIM's month from its start day (1 to 28), the limit (MB) and how much of it; the
+  watch every half minute: a notice at 80 % (once a month), at 100 % mobile data off if chosen ("offfor": not connected
+  again by itself this month; Connect goes on, saying it may cost) or a notice; both desktops through mobile/notes.
+  Settings › Mobile network › Data this month (the count, a bar amber at 80 %, red at 100 %, the limit, the start
+  day, off at the limit). Updates on mobile data: never downloaded by themselves (1.5.8), offered with their size
+  ("Download over mobile data: up to 42 MB", sysupd25.js).
+  Tests: qt/host/data60_t.sh (13: real traffic counted from the counters, across a restart of the link, the start day,
+  80 %, 100 % with and without data off, the next month), qt/shell2/data60_t.js (10), and in QEMU (qt/sb/cell60_q.py
+  15-16: traffic over the stand-in cellular link counted for the SIM; the guest restarted, the count read back).
+  Stage B checks: the stick's month compared with the operator's own count (T-Mobile's app or text), a small limit
+  reached on purpose (the notice at 80 %, data off at 100 %), and an update offered on mobile data with its size.
+
+- **Item 5 (Part 5), done (PR "cell60-signal"):** the watch writes RUN/cellinfo/IF ("operator|type|signal": 5G, LTE, 3G,
+  2G from the access technologies) every 6 s; rudolfd's net list marks a cellular interface with its carrier, type and
+  signal (also when it has no device, and an IPv6-only one whose default route is the CLAT's); the taskbar's network
+  icon draws four bars from the signal (net31.js; rudolf-native.c ic_net the same), "Mobile data — connected (T-Mobile
+  · LTE)", and the network pop-up's row (in use, or in reserve). /usr/lib/rudolf/modem signal and rudolfd's
+  mobile/signal: ModemManager's Signal interface (asked to measure every 5 s), Settings › Mobile network › Signal (LTE's
+  RSRP, RSRQ, SINR, RSSI with words; 5G's, 3G's; every 5 s). System health's "modem" kind (rudolfd --health modem; the
+  page names it Mobile network): the SIM taken out and put back, the PIN blocked (wherever it was given), no network for
+  a minute, the modem gone, and back within ten minutes (restarted). The self-test's modem line: the modem and its
+  driver, the SIM, the network and the data connection (a failure saying where to look for each).
+  Tests: qt/host/signal60_t.sh (14), qt/shell2/signal60_t.js (10), qt/host/selftest_t.sh, qt/native/same_t.sh's tray-cell
+  and fly-net-cell cases (Native = Standard).
+  Stage B checks: the bars and type against the stick's own LED or the operator's app, moving the Vivobook toward a
+  window while watching RSRP/SINR, the SIM taken out while running (System health), the self-test's modem line passing.
+
+- **Item 6 (Part 6), done (PR "cell60-sms"):** /usr/lib/rudolf/modem sms (mmcli's JSON in a UTF-8 locale: any
+  language), sms-send (the number and text in a root-only file; ModemManager splits long texts; a delivery report asked
+  for), sms-delete, sms-preview; the watch notes each new received message once ("💬 New message from NUMBER": the sender
+  only, unless an administrator allowed the text: /persist/etc/sms-preview, System health says who). rudolfd: mobile/sms,
+  mobile/sms/send, mobile/sms/delete, mobile/sms/preview. The Messages app (messages60.js, a page app: the same window on
+  both engines): conversations by number (unread counts, the newest first), bubbles with Sent and Delivered, a new
+  conversation by number, the characters and parts counted (GSM-7 160/153, Unicode 70/67); the modem's messages copied
+  into the account's folder (.rudolf/messages.json through rudolfd's home/write: in the encrypted folder with "Encrypt my
+  data"; the page's own storage for an account that is not on the drive), then deleted from the modem; synced every
+  10 s while open and at each new message's notice. The notices of new messages are shown on the lock screen too (both
+  engines), the others wait. MMS is left out.
+  Tests: qt/host/sms60_t.sh (11), qt/shell2/messages60_t.js (13).
+  Stage B checks: texts to and from a real phone through the stick or the MiFi (Unicode, a long one, the delivery
+  report), a sign-in code from a service, the notice with the desktop locked, the messages still there after a restart
+  (and in the encrypted folder with Encrypt my data on).
+
+- **Item 7 (Part 7, ARM64): not started (next).** What is there to build on: arm64-check.yml (the kernel, the base layer
+  from scratch by systools/arm64_base.sh, QEMU aarch64 to the sign-in screen, also started by the UEFI firmware and with
+  Standard). What it needs, in this order: (a) arm64_base.sh to take what items 1-6 added to the x86 base in
+  ci_release.sh (ModemManager with its plug-ins, libqmi/libmbim/libqrtr, qmi-proxy, mbim-proxy, the FCC scripts,
+  qmicli, mbimcli, bash, tayga, mobile-broadband-provider-info), and kconfig-arm64.sh's TUN and VETH (added in item 3);
+  (b) rudolf-update's official addresses on ARM64: beta/arm64/ and stable/arm64/ (compiled in by architecture), and the
+  release workflow's publishing step prepared for them but not run (make_release.py's channel files laid out under
+  arm64/ in a dry run); (c) a UEFI disc image for ARM64 (systools/mkdisc.sh's ESP with vmlinuz.efi, as boot-uefi starts
+  it); (d) QEMU aarch64 (AAVMF, qemu-efi-aarch64's QEMU_EFI.fd) checks in arm64-check.yml: start-up and the desktop
+  (as now), an update between two test releases signed with a throwaway key made in the test (make_release.py, served
+  by a local http.server, the key added as a developer key as qt/sb/t160_t.py does), and qt/mmstub.c built on the ARM64
+  runner and run in the guest with MMSTUB_TEST_MACHINE=1 (as qt/sb/cell60_q.py item 3 does) for Settings › Mobile
+  network and Network's Cellular modems (screenshots through cdp-eval). Not published: the owner tests it on an ARM64
+  computer first (stage B 4). Note: arm64-check's boot-uefi job timed out once (15 minutes to the Lite desktop) on
+  2026-11-16 while boot and boot-standard passed; it had failed the same way on another branch the day before.
 
 **Stage B: on hardware, with the owner (after stage A is merged and in a beta)**
 1. The USB cellular stick (borrowed from the HP desktop's user) and the MiFi 7730L on the Vivobook: the modem found

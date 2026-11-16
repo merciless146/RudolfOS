@@ -38,12 +38,15 @@ kind() {
 ssid() { eval "v=\${RUDOLF_SSID_$1:-}"; [ -n "$v" ] && { echo "$v"; return; }
 	wpa_cli -p /run/rudolf/wpa -i "$1" status 2>/dev/null | sed -n 's/^ssid=//p' | head -1; }
 key() {
+	# 1.6.0 (Part 4): a cellular modem's connection is counted per SIM ("sim:HASH", /usr/lib/rudolf/modem writes it)
+	[ -s "$RUN/cellkey/$1" ] && { head -1 "$RUN/cellkey/$1" | clean; return; }
 	if [ "$(kind "$1")" = wifi ]; then s=$(ssid "$1" | clean); [ -n "$s" ] && { echo "wifi:$s"; return; }; fi
 	echo "if:$(cat "$SYS/class/net/$1/address" 2>/dev/null | clean)"
 }
 manual() { k=$(key "$1"); [ -f "$CONF" ] && grep -F "$k=" "$CONF" 2>/dev/null | grep -F -x -e "$k=1" -e "$k=0" | tail -1 | sed 's/.*=//'; }
 # why it is metered automatically, if it is: modem, phone, dhcp (or nothing)
 auto() {
+	[ -e "$RUN/cellular/$1" ] && { echo modem; return; }   # (1.6.0: any modem's interface ModemManager connected: mhi_net too)
 	case "$(kind "$1")" in usbmodem) echo modem; return;; phone|iphone) echo phone; return;; esac
 	[ -e "$RUN/metered/$1" ] && echo dhcp
 }
@@ -51,6 +54,7 @@ is() { m=$(manual "$1"); [ -n "$m" ] && { echo "$m"; return; }; [ -n "$(auto "$1
 defif() { [ -n "$RUDOLF_DEFIF" ] && { echo "$RUDOLF_DEFIF"; return; }
 	ip route 2>/dev/null | awk '/^default/{for(i=1;i<NF;i++)if($i=="dev"){print $(i+1);exit}}'; }
 month() { echo "${RUDOLF_MONTH:-$(date +%Y-%m)}"; }
+day() { echo "${RUDOLF_DAY:-$(date +%Y-%m-%d)}"; }
 used() { [ -f "$USE" ] && awk -v m="$(month)" -v k="$1" '$1==m && $2==k {t+=$3} END {print t+0}' "$USE" || echo 0; }
 name() { # a USB adapter's maker and product, for "USB modem: MiFi 7730L"
 	u=$(readlink -f "$SYS/class/net/$1/device" 2>/dev/null); while [ -n "$u" ] && [ "$u" != / ]; do
@@ -67,11 +71,14 @@ dhcp_down() {
 	[ -n "$RUDOLF_NOUP" ] && echo "-$1" >> "$RUN/up.log"
 }
 wired() { [ "$1" != lo ] && [ ! -e "$SYS/class/net/$1/wireless" ] && [ -e "$SYS/class/net/$1/device" ]; }
+# 1.6.0 (Part 3): a cellular modem's own interface (qmi_wwan, cdc_mbim...) is ModemManager's: /usr/lib/rudolf/modem
+# sets it up when it connects, as the modem says (DHCP there gives nothing, or flushes the addresses it set)
+mmif() { [ "$(kind "$1")" = usbmodem ] && command -v ${RUDOLF_MM:-ModemManager} >/dev/null 2>&1; }
 plug() {
 	i=${INTERFACE:-$MDEV}; case "$i" in ""|*/*|lo) return;; esac
 	case "$ACTION" in
 	add) wired "$i" || return 0; k=$(kind "$i"); n=$(name "$i")
-		dhcp_up "$i"
+		mmif "$i" || dhcp_up "$i"
 		event "{\"a\":\"add\",\"t\":\"net\",\"if\":\"$i\",\"kind\":\"$k\",\"name\":\"$n\",\"metered\":$( [ "$(is "$i")" = 1 ] && echo true || echo false)}";;
 	remove) [ -e "$RUN/udhcpc/$i.pid" ] || [ -n "$RUDOLF_NOUP" ] || return 0
 		dhcp_down "$i"; event "{\"a\":\"remove\",\"t\":\"net\",\"if\":\"$i\"}";;
@@ -79,15 +86,17 @@ plug() {
 }
 tick() {
 	for d in "$SYS"/class/net/*; do i=${d##*/}; [ "$i" = lo ] && continue
-		[ "$(cat "$d/operstate" 2>/dev/null)" = up ] || [ "$(kind "$i")" = usbmodem ] || continue
+		[ "$(cat "$d/operstate" 2>/dev/null)" = up ] || [ "$(kind "$i")" = usbmodem ] || [ -e "$RUN/cellular/$i" ] || continue
 		b=$(( $(cat "$d/statistics/rx_bytes" 2>/dev/null || echo 0) + $(cat "$d/statistics/tx_bytes" 2>/dev/null || echo 0) ))
 		last=$(cat "$RUN/netcount/$i" 2>/dev/null); echo "$b" > "$RUN/netcount/$i"
 		[ -n "$last" ] || continue; [ "$(is "$i")" = 1 ] || continue
 		delta=$((b - last)); [ "$delta" -gt 0 ] || continue   # counters start again when an adapter comes back
-		mkdir -p "$VAR"; echo "$(month) $(key "$i") $delta" >> "$USE"
+		# (1.6.0 Part 4: a SIM's by the day too, for its own month that starts on the day the person chose)
+		k=$(key "$i"); mkdir -p "$VAR"; echo "$(month) $k $delta" >> "$USE"; case "$k" in sim:*) echo "$(day) $k $delta" >> "$USE";; esac
 	done
 	# this month's and last month's lines only, merged per network
-	[ -f "$USE" ] && [ "$(wc -l < "$USE")" -gt 200 ] && { awk '{t[$1" "$2]+=$3} END {for (k in t) print k, t[k]}' "$USE" > "$USE.new" && mv "$USE.new" "$USE"; }
+	# (a SIM's days: the last 70 kept, merged per day)
+	[ -f "$USE" ] && [ "$(wc -l < "$USE")" -gt 200 ] && { awk -v old="$(date -d "@$(( $(date +%s) - 70 * 86400 ))" +%Y-%m-%d 2>/dev/null)" '{if(length($1)==10&&old!=""&&$1<old)next;t[$1" "$2]+=$3} END {for (k in t) print k, t[k]}' "$USE" > "$USE.new" && mv "$USE.new" "$USE"; }
 	true
 }
 state() {
@@ -106,7 +115,7 @@ setm() {
 }
 case "$1" in
 "") plug;;
-boot) sleep 1; for d in "$SYS"/class/net/*; do i=${d##*/}; wired "$i" && dhcp_up "$i"; done
+boot) sleep 1; for d in "$SYS"/class/net/*; do i=${d##*/}; wired "$i" && ! mmif "$i" && dhcp_up "$i"; done
 	[ -n "$RUDOLF_NOUP" ] && exit 0
 	( while sleep 60; do tick; done ) &;;
 kind|key|is|auto|name) [ -n "$2" ] && "$1" "$2";;

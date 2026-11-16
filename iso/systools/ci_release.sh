@@ -241,6 +241,10 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		for l in $(ldd /bin/bash | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; MMB=$((MMB + $(stat -L -c %s "$l"))); }; done; fi
 	echo "  ModemManager and its parts: $((MMB / 1024)) KB in all ($(echo "$MMF" | grep -c 'fcc-unlock\.available\.d/') FCC unlock scripts, $(echo "$MMF" | grep -c '/ModemManager/[^/]*\.so$') plug-ins)"
 	echo "::notice title=ModemManager::$((MMB / 1024)) KB added to the base layer (QMI, MBIM, QRTR and AT; no budget in 1.6.0)"
+	# 1.6.0 (plan Part 3): tayga, the CLAT for IPv6-only cellular networks (464XLAT: /usr/lib/rudolf/modem starts it)
+	[ -x /usr/sbin/tayga ] || { echo "tayga is missing on the build machine (apt-get install tayga)"; exit 1; }
+	sudo install -m 0755 /usr/sbin/tayga "$W/broot/usr/sbin/tayga"; echo "  tayga (the CLAT): $(($(stat -c %s /usr/sbin/tayga) / 1024)) KB"
+	for l in $(ldd /usr/sbin/tayga | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; done
 	# (the hotspot's tools have their own budget, 6 MB: with ModemManager's, the two came to 13 MB in 2026111314's build)
 	HSB=0
 	# 1.5.9 (plan Part 4): Share this connection: hostapd and hostapd_cli (the access point) and dnsmasq (addresses)
