@@ -290,6 +290,15 @@ def build_iso(out, tree, mbr, boot_rel, kernel_rel, efi_rel, label, sums_rel=Non
     boot = nodes[boot_rel.upper()]
     kern = nodes[kernel_rel.upper()]
     efi = nodes[efi_rel.upper()]
+    # 1.6.0 (docs/plan-1.6.0.md Part 15): an El Torito entry names its image in 512-byte sectors in 16 bits, so at most
+    # 65535 sectors (32 MiB less 512 bytes). The EFI image holds two kernels (rudolf.efi and recovery.efi, 1.5.9 8.4):
+    # 27 MiB at 1.6.0 (kernel 6.18). A larger one would be cut short for a computer starting from a DVD, so the build
+    # stops; from 30 MiB it warns, so the kernel's growth is seen before that.
+    if efi.size > 0xFFFF * 512:
+        sys.exit('the EFI image is %.1f MiB: more than the 32 MiB an El Torito entry can name (65535 sectors); make the '
+                 'kernel or its initramfs smaller' % (efi.size / 1048576))
+    if efi.size > 30 << 20:
+        print('WARNING: the EFI image is %.1f MiB, near the 32 MiB an El Torito entry can name' % (efi.size / 1048576))
     if sums_rel:   # the boot loader's line in the checksum list: as the file will be on the disc
         sums = nodes[sums_rel.upper()].path
         bl = boot_rel.lower().strip('/')
@@ -356,7 +365,7 @@ def build_iso(out, tree, mbr, boot_rel, kernel_rel, efi_rel, label, sums_rel=Non
         struct.pack_into('<H', val, 28, (-s) & 0xFFFF)
         bios = struct.pack('<BBHBBHI', 0x88, 0, 0, 0, 0, 32, boot.lba).ljust(32, b'\0')
         sech = struct.pack('<BBH', 0x91, 0xEF, 1) + b'RUDOLF OS UEFI'.ljust(28, b'\0')
-        efie = struct.pack('<BBHBBHI', 0x88, 0, 0, 0, 0, min(efisec, 0xFFFF), efi.lba).ljust(32, b'\0')
+        efie = struct.pack('<BBHBBHI', 0x88, 0, 0, 0, 0, efisec, efi.lba).ljust(32, b'\0')
         f.seek(cat_lba * SEC); f.write(bytes(val) + bios + sech + efie)
         # ---- path tables
         f.seek(lpt * SEC); f.write(path_table(False))
@@ -386,8 +395,8 @@ def build_iso(out, tree, mbr, boot_rel, kernel_rel, efi_rel, label, sums_rel=Non
                         if not b:
                             break
                         f.write(b)
-    print('ISO %s: %.1f MiB, boot %d, kernel %d (%d bytes), EFI image %d (%d sectors)' %
-          (out, total * SEC / 1048576, boot.lba, kern.lba, kern.size, efi.lba, efisec))
+    print('ISO %s: %.1f MiB, boot %d, kernel %d (%d bytes), EFI image %d (%d sectors, %.1f of 32 MiB)' %
+          (out, total * SEC / 1048576, boot.lba, kern.lba, kern.size, efi.lba, efisec, efi.size / 1048576))
 
 
 if __name__ == '__main__':

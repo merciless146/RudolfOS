@@ -965,6 +965,36 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
     system/r and restores them from the official release); Return to official restoring the official rudolf.efi; on a
     computer that never ran the official build, system/r downloaded when Developer mode is turned on. The EFI image is
     near the 32 MB an El Torito entry can name: watch it as the kernel grows.
+    **Done (2026-11-16), tested in QEMU on the real release** ("Before stable" 7): qt/sb/t160o_t.py (workflow
+    `Official recovery QEMU check`, started by a push of .github/recovery160-run.txt) on beta 2026111611, a computer
+    installed as Install here leaves it (the release's boot image in front of RUDOLFDATA) starting through its own boot
+    menu, with QEMU's user network (the repairs download from GitHub, as on a computer). Part 1 (Secure Boot off, the
+    official boot files), 13/13 in runs 43910756094 and 43917182147: system/r made at the first start; both start-up
+    files official (sbverify with the Rudolf OS certificate); recovery.efi changed (one byte) and system/r's desktop layer
+    deleted: at the next start system/r made again and the release's boot.iso downloaded, checked (checksum, both files
+    signed by Rudolf OS) and staged, at the one after written before anything else, recovery.efi official again and the
+    computer starting through the menu; recovery.efi deleted: the same; Developer mode (a TEST key), a custom build in
+    slot b and a custom rudolf.efi (the official one unsigned): the custom build starts, its files left alone; Return to
+    official (keep): system/r into slot a, the official boot files staged and written, Official, Developer mode off, the
+    custom slot cleared. Part 2 (a computer that never ran the official build), 3/3 in run 43917182147: Developer mode
+    turned on downloads system/r from the official address (the stable channel, 1.5.9.261115, checked with the official
+    key; the browser layer it shares linked), and Recovery mode starts it. Part 3 (Secure Boot, below) 5/5.
+    - **Found and fixed:** Return to official never cleared the custom build's slot. rudolf-update marks the return
+      (ret=1 in os/system/state), but the start-up rewrote that file with its own five lines when it tried the official
+      system, dropping the mark, so boot-ok never ran return_done. initramfs/init's st_write keeps the lines it does not
+      own (startfall58_t.sh 8b; in QEMU the start after the return ran with this tree's start-up script and the slot was
+      cleared). It needs a kernel built from this tree (the next beta).
+    - **Made sturdier:** espcheck (the start-up files' repair) runs at the desktop's first heartbeat, often before
+      Wi-Fi is connected; a failed download then waited a day. It now waits for the network (10 tries a minute apart)
+      and counts only a downloaded image that was refused against the day (esprepair60_t.sh 23). In QEMU the network was
+      up in time, so this path is host-tested only.
+    - **The EFI image: 27.0 MiB** (55296 sectors) of the 32 MiB (65535 sectors) an El Torito entry can name, on
+      2026111611. mkimage.py cut a larger entry short without a word; it now stops above 32 MiB, warns from 30 MiB and
+      prints the size (efisize60_t.sh 3, and the size of the release's image in the QEMU workflow).
+    - **The owner's checks on the Vivobook** (with the owner present, on the next beta): Settings › About says Official;
+      the boot menu's Recovery mode starts (the official system, "checked" on the screen) and Restart goes back; with
+      the network on, a normal start leaves System health with no "start-up files" line. Changing recovery.efi on the
+      computer and Developer mode there only if the owner wants it; nothing else is needed on the hardware.
   - **Browse with Tor (1.5.9 16.2):** Ctrl+W, T, N and Q in a website in the Tor window on Standard are still
     Chromium's (rudolf-display remaps them only for RudolfDesktop), with a test of rudolf-display's keys.
   - **Lite (from 1.5.8, through 1.5.9):** the desktop's menus and windows behind Oracle's tab pages (the covered tab's
@@ -1004,9 +1034,16 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
     a power cut, so the tunnel's binary and the link's state written just before were lost (written to the disk
     first now); the session is rudolf-init's own process and starts the browser again, so "the desktop not running"
     is now a desktop that sends no heartbeat; busybox ash cuts a command line at 1024 characters.
-  - Left: 8.7 with Secure Boot (OVMF with TEST keys enrolled, as qt/sb/recovery_sb_t.sh): Developer mode and Return to
-    official there. qt/sb/t140_t.py (a 1.4.0 test disc) still switches the link on with the token alone (t160's 17 and
-    18 cover 15.4 in QEMU).
+  - **Done (2026-11-16), 8.7 with Secure Boot:** t160o_t.py part 3, 5/5 (runs 43917182147 and 43920580896): OVMF with
+    Microsoft's keys and a TEST certificate in db; the release's boot image with its menu, rudolf.efi and recovery.efi
+    made again from the release's kernel and signed with the TEST key (recovery.efi carrying the official release key);
+    the release starts locked down, every layer through dm-verity; Developer mode on; a custom build in slot b does not
+    start under Secure Boot ("the release list is not signed by a trusted key ... only a checked system starts") and the
+    computer goes back to the official system by itself; Return to official there (the official system from system/r,
+    checked, Developer mode off); Recovery mode (recovery.efi) checks system/r with the official key and starts it under
+    lockdown. A custom build under Secure Boot needs its own key enrolled (1.5.9 8.3, as decided); nothing was weakened.
+  - Left: qt/sb/t140_t.py (a 1.4.0 test disc) still switches the link on with the token alone (t160's 17 and 18 cover
+    15.4 in QEMU).
 - **On the Vivobook**
   - **Calls (1.5.9 7.4):** Meet in Oracle on Standard and on Lite; Zoom's test meeting, then the Zoom app; Teams; a
     call to a real phone; a headset's microphone during a call; memory during a 10-minute call. Results in
@@ -1290,7 +1327,11 @@ Part 15's lists and the Vivobook's beta 2026111611 (the owner's reports of 2026-
    fetching the extensions' builds for a new base before switching (an update leaves them out until then, safely).
 7. **The official recovery (Part 15, 1.5.9 8.4 and 8.5):** the repair at each start (recovery.efi and system/r checked
    and restored from the official release), Return to official restoring rudolf.efi; then recovery.efi on the Vivobook
-   with the owner present; 8.7 with Secure Boot in QEMU (OVMF with test keys).
+   with the owner present; 8.7 with Secure Boot in QEMU (OVMF with test keys). **Done in QEMU (2026-11-16):** t160o_t.py 21/21 on the
+   real release (Part 15's note): the repair, Return to official, Developer mode on a computer that never ran the
+   official build, and 8.7 with Secure Boot; one fix (Return to official now clears the custom slot; needs the next
+   beta's kernel), espcheck waits for the network, the EFI image's size checked (27.0 of 32 MiB). Left: the owner's
+   check of recovery.efi on the Vivobook (Part 15's list), on the next beta.
 8. **The Vivobook checks carried from 1.5.9 (Part 15):** calls (Meet, Zoom, Teams, a real phone, a headset, memory over
    10 minutes; the owner does these); Tor at check.torproject.org and its window; the microphone Test; Save and Open;
    WordPro's links; a USB stick in File Explorer; the Wi-Fi radios; 15.2's test; game mode and memory.
