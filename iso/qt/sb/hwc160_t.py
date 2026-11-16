@@ -199,6 +199,20 @@ try:
     time.sleep(20)
     hl = sh("tail -6 /persist/var/log/health.log", 30, False); out('health log:', hl)
     if FIX: ok('H1. Native: the health log\'s start-up line is the shell\'s (its sign-in screen), with what took the time', 'Native:' in hl and 'the desktop program started at' in hl, hl)
+    if os.environ.get('HWC_SND'):   # (diagnostic: when WebKit's sound starts, recorded inside the guest)
+        g.q.key('ctrl', 'alt', 'delete'); time.sleep(15)
+        REC = "su -s /bin/sh rudolf -c 'XDG_RUNTIME_DIR=/run/user/1000 PULSE_SERVER=unix:/run/user/1000/pulse/native parec -d @DEFAULT_MONITOR@ --format=s16le --rate=8000 --channels=1 --latency-msec=20 > /tmp/rec.raw' & echo $! > /tmp/rec.pid; date +%s%3N > /tmp/rec.t0"
+        AN = "kill $(cat /tmp/rec.pid); sleep 1; T0=$(cat /tmp/rec.t0); echo t0 $T0; ls -la /tmp/rec.raw; od -An -td2 -v -w2 /tmp/rec.raw | awk -v t0=$T0 '{v=$1<0?-$1:$1; if(v>m)m=v; n++; if(n%400==0){printf \"%d:%d \", t0+n/8, m; m=0}} END{print \"\"}'"
+        for name, expr in (('old tone (new context at once, 2 s, closed)', "(()=>{window.__T0=Date.now();const a=new AudioContext(),o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);g.gain.value=0.2;o.frequency.value=440;o.frequency.setValueAtTime(660,a.currentTime+1);o.start();o.stop(a.currentTime+2);o.onended=()=>a.close();return 1})()"),
+                           ('this tree\'s hwcTone', "(()=>{window.__T0=Date.now();hwcTone();return 1})()"),
+                           ('this tree\'s hwcTone again (Play again)', "(()=>{window.__T0=Date.now();hwcTone();return 1})()"),
+                           ('a 4 s oscillator', "(()=>{window.__T0=Date.now();const a=new AudioContext(),o=a.createOscillator();o.frequency.value=500;o.connect(a.destination);o.start();setTimeout(()=>{o.stop();a.close()},4000);return 1})()")):
+            sh(REC, 20, False); time.sleep(1); tev('taskmgr', expr)
+            pol = sh("for i in $(seq 1 16); do printf '%s:%s ' $(date +%s%3N) $(" + AS_RUDOLF % 'pactl list short sink-inputs' + " | wc -l); sleep 0.25; done", 60, False)
+            time.sleep(4); t0 = tev('taskmgr', "String(window.__T0)"); o = sh(AN, 120, False)
+            out(f'SOUND {name}: started at {t0}; streams: {pol.strip()}; recording (ms:loudest per 50 ms): {o.strip()[-1500:]}')
+        tev('taskmgr', "(()=>{hwcToneEnd();return 1})()")
+        raise RuntimeError('sound diagnostic done')
     g.q.key('ctrl', 'alt', 'delete'); tm = False
     for _ in range(40):
         time.sleep(1); st = state()

@@ -22,7 +22,6 @@ jobs:
           echo "Linux $KV"
           git clone -q --depth 1 -b "v$KV" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux
           openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/k.pem -out /tmp/c.pem -days 1 -subj /CN=kconfig-check 2>/dev/null
-          cat linux/drivers/platform/x86/amd/pmf/Kconfig | head -30; grep -n -A6 "^config AMDTEE\|^config TEE$" linux/drivers/tee/amdtee/Kconfig linux/drivers/tee/Kconfig
           cd iso && SB_CERT=/tmp/c.pem sh kconfig.sh ../linux "/tmp/none" || { cd ../linux; for o in AMD_PMF AMD_PMC AMDTEE TEE CRYPTO_DEV_CCP CRYPTO_DEV_CCP_DD CRYPTO_DEV_SP_PSP AMD_SFH_HID AMD_NODE AMD_NB ACPI_PLATFORM_PROFILE POWER_SUPPLY; do grep "^CONFIG_$o=\|^# CONFIG_$o " .config || echo "$o unset"; done; exit 1; }
           cd ../linux && for o in SUSPEND PM_SLEEP ACPI_SLEEP AMD_PMC AMD_PMF AMD_NB RTC_DRV_CMOS SUSPEND_FREEZER; do grep "^CONFIG_$o=\|^# CONFIG_$o " .config || echo "CONFIG_$o: not set"; done
           echo "::notice title=Kernel configuration check::Linux $KV: $(grep -E '^CONFIG_AMD_PM[CF]=' .config | tr '\n' ' ')"

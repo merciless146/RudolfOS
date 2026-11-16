@@ -42,7 +42,7 @@ jobs:
           cp iso/www/index.html fix/ && ls -la fix && echo "HWC_FIX=$PWD/fix" >> $GITHUB_ENV
       - name: hwc160
         run: |
-          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} HWC_FIX=${HWC_FIX:-} python3 ../iso/qt/sb/hwc160_t.py ../rel
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} HWC_FIX=${HWC_FIX:-} HWC_SND=$(sed -n 's/^snd=//p' ../.github/hwc160-run.txt) python3 ../iso/qt/sb/hwc160_t.py ../rel
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: hwc160, retention-days: 7, path: "run/hwc160.txt\nrun/hwc160*/qemu.log\nrun/hwc160*/*.png"}
