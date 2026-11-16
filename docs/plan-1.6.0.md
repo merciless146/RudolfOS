@@ -951,12 +951,14 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
     mode, a green accent; the title bar's words in each; and the same steps done on both, their outcomes compared: a new
     tab (+), Ctrl+W in Oracle's page, a tab's ✕, Ctrl+T, Ctrl+W and Ctrl+N in a website, a link, ◀ and ▶, Alt+Left, a
     website's full screen and Esc, Alt+F4. 28/28 here (Playwright's Chromium 153) and in CI with Playwright's and with
-    the beta's own Chromium 158 (oracle-same-check.yml; the pictures kept as its artifact).
+    the beta's own Chromium 158 (oracle-same-check.yml; the pictures kept as its artifact). same_t.sh's header points to it
+    (it needs root and the shell, as oracle_native_t.sh does).
     What was different, each fixed in Native or in what both engines share (Standard's own drawing unchanged):
     - Rudolf's Chromium 158 kept an Oracle window's own title at the shell's name ("Rudolf OS"), so on Native the frame and
       the taskbar said "Oracle" whatever the page (Standard: "Downloads - Oracle" and so on), and a Tor window's had no
-      "(Tor)". rudolf-launch now writes each desktop page's title with its window's place ("title X Y W H STRING", from
-      DevTools' target info) and rudolf-native gives it to that window before Chromium's own name.
+      "(Tor)". The page now tells the native desktop its title through rudolf-launch's binding, which writes it with its
+      window's place ("title X Y W H STRING"), and rudolf-native gives it to that window before Chromium's own name (with
+      item 10's PR, where the Tor window's test found it too; DevTools' target info never carries a page's title here).
     - In every website tab but an account's first, Ctrl+T, Ctrl+W and Oracle's other keys did nothing, and the tab kept
       the address as its name: the shell's content scripts (PAGE_JS) reached only the first tab of a partition. On both
       engines; the shell now gives PAGE_JS at each page's commit too (once a page), and a tab opened with its address
@@ -1317,9 +1319,9 @@ printers and ARM64 can be delayed until 1.6.1."
    **Done (2026-11-16):** qt/native/same_oracle_t.sh (with same_oracle.py) 28/28 here with Playwright's Chromium, and in
    CI (oracle-same-check.yml) with Playwright's and with the beta's own Chromium 158. What was different, fixed: with
    Rudolf's Chromium 158 Oracle's title bar and taskbar button on Native said "Oracle" for every page (and the Tor window's
-   had no "(Tor)"); in every website tab but an account's first, on both engines, Ctrl+T, Ctrl+W and Oracle's other keys
-   did nothing and the tab's title was not shown (the shell's content scripts). Left: the owner's checks on the Vivobook
-   (Part 15).
+   had no "(Tor)": fixed with item 10, whose Tor test found it too); in every website tab but an account's first, on both
+   engines, Ctrl+T, Ctrl+W and Oracle's other keys did nothing and the tab's title was not shown (the shell's content
+   scripts). Left: the owner's checks on the Vivobook (Part 15).
 10. **Browse with Tor:** Ctrl+W, T, N and Q in a website in the Tor window on Standard are Rudolf's, as in its other
     windows (rudolf-display's keys), with a test. **Done (2026-11-16):** the keys were already handed on (rudolf-display:
     RudolfTor as RudolfDesktop; rudolf-native: RudolfTor as RudolfOracle, Part 15); the tests are new: qt/host/torwin59_t.sh

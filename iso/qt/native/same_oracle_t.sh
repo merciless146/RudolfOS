@@ -27,7 +27,7 @@ ip link set lo up
 # Rudolf OS's Chromium policy (downloads into /run/rudolf/dl/.incoming; websites open no file dialog), in this mount namespace only
 mount --make-rprivate / 2>/dev/null; mount -t tmpfs none /run && mkdir -p /run/rudolf/dl/.incoming || { echo "FAIL /run"; exit 1; }
 for p in /etc/chromium/policies/managed /etc/opt/chrome_for_testing/policies/managed; do [ -d $p ] && mount -t tmpfs none $p && cp $REPO/iso/sys/root/etc/chromium/policies/managed/rudolf.json $p/; done
-trap 'kill $NP $RDP $XV $SP $CP 2>/dev/null; pkill -f "$T/" 2>/dev/null; timeout 1 tail -f /dev/null; pkill -9 -f "$T/" 2>/dev/null; rm -rf $T/d $T/prof* $T/run' EXIT
+trap 'kill $NP $RDP $XV $SP $CP 2>/dev/null; pkill -f "$T/" 2>/dev/null; timeout 1 tail -f /dev/null; pkill -9 -f "$T/" 2>/dev/null; for f in $T/*; do [ "$f" = "$OUT" ] || rm -rf "$f"; done; [ "$OUT" = "$T/out" ] || rm -rf $T' EXIT
 gcc -O2 -Wall -Wno-misleading-indentation -Wno-deprecated-declarations -o $T/rudolf-native $REPO/iso/sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
 gcc -O2 -Wall -o $T/rudolf-launch $REPO/iso/sys/rudolf-launch.c 2>>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
 L=/usr/lib/x86_64-linux-gnu; gcc -O2 -w -o $T/dispkeys $REPO/iso/qt/host/fixtures/dispkeys.c -I$REPO/iso/sys -lX11 $L/libXtst.so.6 $L/libXfixes.so.3 $L/libXrandr.so.2 -lm 2>>$T/cc || { cat $T/cc; echo "FAIL build dispkeys"; exit 1; }
@@ -87,11 +87,12 @@ start() {
 		# (signed in already when the stand-in's account has no password asked; otherwise its password typed)
 		w8 '[ "$(pg "typeof wins==\"object\"&&!!document.getElementById(\"lp\")")" = true ]' 240 || { echo "FAIL the desktop (Standard): $(targets)"; grep -v "^\[" $T/std.log | tail -5; exit 1; }
 		SIGNED='(()=>{const l=document.getElementById("login");return !l||getComputedStyle(l).display=="none"})()'
-		if [ "$(pg "$SIGNED")" != true ]; then
-			pg '(()=>{const p=document.getElementById("lp");p.focus();return 1})()' >/dev/null
+		xdotool mousemove 640 400; k=0
+		while [ "$(pg "$SIGNED")" != true ] && [ $k -lt 3 ]; do k=$((k + 1)); timeout 2 tail -f /dev/null
+			pg '(()=>{const p=document.getElementById("lp");p.value="";p.focus();return 1})()' >/dev/null
 			LC_ALL=C.UTF-8 xdotool type --delay 30 "$PW"; xdotool key Return
-			w8 '[ "$(pg "$SIGNED")" = true ]' 120 || { echo "FAIL signing in (Standard)"; exit 1; }
-		fi
+			w8 '[ "$(pg "$SIGNED")" = true ]' 80; done
+		[ "$(pg "$SIGNED")" = true ] || { echo "FAIL signing in (Standard)"; exit 1; }
 		timeout 3 tail -f /dev/null
 		pg 'browser(),1' >/dev/null
 		w8 '[ "$(ow "typeof rtOn==\"function\"&&rtOn()")" = true ]' 160 || { echo "FAIL Oracle (Standard): $(pg "[typeof rtOn,typeof rtOn==\"function\"&&rtOn(),typeof OA,typeof OA==\"object\"&&!!OA.main,USER.n,location.href]")"; exit 1; }
@@ -139,8 +140,10 @@ ntabs() { ow 'W.body.querySelectorAll(".otab").length'; }
 nwin() { if [ $E = nat ]; then grep -c "^client .* app=browser" $D/state; else pg 'wins.filter(w=>w.app=="browser"&&w.el.isConnected).length'; fi; }
 # what each engine did in the steps (the "works" checks), one line a step, compared at the end
 did() { echo "$1 $2" >> $OUT/$E-did.txt; }
-# (what the address box says, once it changes from A, within 6 s)
-adch() { a=$1; w8 'v=$(ow "W.body.querySelector(\".ad\").value"); [ "$v" != "$a" ] && [ "$v" != "\"\"" ]' 24; ow 'W.body.querySelector(".ad").value'; }
+# (what the address box says once it has WORDS in it, waited for up to 8 s)
+adis() { AW=$1; w8 'ow "W.body.querySelector(\".ad\").value" | grep -qF -- "$AW"' 32; ow 'W.body.querySelector(".ad").value'; }
+# (whether the address box has the keyboard, waited for up to 4 s)
+adkb() { w8 '[ "$(ow "document.activeElement==W.body.querySelector(\".ad\")")" = true ]' 16; ow 'document.activeElement==W.body.querySelector(".ad")'; }
 # (whether the site's colour covers the whole screen, polled for up to 5 s until it is WANT: yes or no)
 fscov() { i=0; while :; do import -window root $T/fs.png; c=$(python3 -c 'import sys;from PIL import Image;I=Image.open(sys.argv[1]).convert("RGB");print("yes" if I.getpixel((5,5))==I.getpixel((1270,790))==(253,246,227) else "no")' $T/fs.png); [ "$c" = $1 ] || [ $i -ge 10 ] && break; i=$((i+1)); timeout 0.5 tail -f /dev/null; done; echo $c; }
 
@@ -169,16 +172,17 @@ run() {
 	sitexy() { set -- "$1" $(mid tab 0.0001 0.0001); o=$(evp $PORT "$SW" "(()=>{const r=document.querySelector('$1').getBoundingClientRect();return Math.round(r.left+r.width/2)+' '+Math.round(r.top+r.height/2)})()" one | tr -d '"'); set -- $2 $3 $o; echo $(($1 + $3)) $(($2 + $4)); }
 	insite() { click $(sitexy h1); }
 	siteopen
-	n=$(ntabs); click $(mid plus); did "a new tab (+)" "$(($(ntabs) - n)) more tab, windows $(nwin), the address box has the keyboard: $(ow 'document.activeElement==W.body.querySelector(".ad")')"
+	n=$(ntabs); click $(mid plus); did "a new tab (+)" "$(($(ntabs) - n)) more tab, windows $(nwin), the address box has the keyboard: $(adkb)"
 	n=$(ntabs); key ctrl+w; timeout 1 tail -f /dev/null; did "Ctrl+W in Oracle's page (its new tab)" "$((n - $(ntabs))) fewer, windows $(nwin)"
 	n=$(ntabs); click $(mid tabx); timeout 1 tail -f /dev/null; did "a tab's ✕" "$((n - $(ntabs))) fewer, windows $(nwin)"
-	siteopen; insite; n=$(ntabs); key ctrl+t; timeout 1.5 tail -f /dev/null; did "Ctrl+T in a website" "$(($(ntabs) - n)) more tab, windows $(nwin), the address box has the keyboard: $(ow 'document.activeElement==W.body.querySelector(".ad")')"
+	siteopen; insite; n=$(ntabs); key ctrl+t; w8 '[ "$(ntabs)" != $n ]' 12; did "Ctrl+T in a website" "$(($(ntabs) - n)) more tab, windows $(nwin), the address box has the keyboard: $(adkb)"
 	key ctrl+w; timeout 1 tail -f /dev/null; did "...Ctrl+W there (the new tab's page)" "$((n - $(ntabs) + 1)) fewer, windows $(nwin)"
 	sitetab; insite; n=$(ntabs); key ctrl+w; timeout 1.5 tail -f /dev/null; did "Ctrl+W in a website" "$((n - $(ntabs))) fewer tab, windows $(nwin), the site's tab gone: $([ "$(evp $PORT "$SW" 1 one)" = "NO TARGET" ] && echo yes || echo no)"
-	siteopen; a=$(ow 'W.body.querySelector(".ad").value'); click $(sitexy '#next'); did "a link followed" "$(adch "$a")"
-	a=$(ow 'W.body.querySelector(".ad").value'); click $(mid back); did "back (◀)" "$(adch "$a")"
-	a=$(ow 'W.body.querySelector(".ad").value'); click $(mid fwd); did "forward (▶)" "$(adch "$a")"
-	a=$(ow 'W.body.querySelector(".ad").value'); click $(mid tab .5 .5); key alt+Left; did "Alt+Left in a website" "$(adch "$a")"
+	siteopen; click $(sitexy '#next'); w8 'targets | grep -q "^webview http://127.0.0.1:8333/two.html"' 32
+	did "a link followed (its page in the tab)" "$(targets | grep -c '^webview http://127.0.0.1:8333/two.html')"
+	click $(mid back); did "back (◀)" "$(adis "?w$K")"
+	click $(mid fwd); did "forward (▶)" "$(adis two.html)"
+	click $(mid tab .5 .5); key alt+Left; did "Alt+Left in a website" "$(adis "?w$K")"
 	click $(sitexy '#fs'); did "a website's full screen (its button): covers the screen" "$(fscov yes)"
 	key Escape; did "...Esc: covers the screen" "$(fscov no)"
 	n=$(nwin); insite; key ctrl+n; w8 '[ "$(nwin)" != $n ]' 24; timeout 1 tail -f /dev/null; did "Ctrl+N in a website" "windows $n -> $(nwin)"
