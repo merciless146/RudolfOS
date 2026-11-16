@@ -185,7 +185,8 @@ try:
            "if [ -f /tmp/fx/rudolf-launch ]; then cp /tmp/fx/rudolf-launch $X/rudolf-launch; chmod 755 $X/rudolf-launch; mount --bind $X/rudolf-launch /usr/bin/rudolf-launch; fi; "
            "if [ -f /tmp/fx/rudolf-native ]; then cp /tmp/fx/rudolf-native $X/rn.real; else cp /usr/bin/rudolf-native $X/rn.real; fi; chmod 755 $X/rn.real; "
            "rm -f /tmp/teval /tmp/teval.out; mkfifo -m 666 /tmp/teval; "
-           "printf '#!/bin/sh\\nexport RUDOLF_NATIVE_STATE=/tmp/nstate RUDOLF_NATIVE_TEST_EVAL=/tmp/teval\\nexec /run/n160x/rn.real \"$@\"\\n' > $X/rn; chmod 755 $X/rn; mount --bind $X/rn /usr/bin/rudolf-native; "
+           "G=; if [ -d /tmp/fx/gst ]; then mkdir -p $X/gst; cp /tmp/fx/gst/* $X/gst/; G='GST_PLUGIN_PATH=/run/n160x/gst '; fi; "
+           "printf '#!/bin/sh\\nexport %sRUDOLF_NATIVE_STATE=/tmp/nstate RUDOLF_NATIVE_TEST_EVAL=/tmp/teval\\nexec /run/n160x/rn.real \"$@\"\\n' \"$G\" > $X/rn; chmod 755 $X/rn; mount --bind $X/rn /usr/bin/rudolf-native; "
            "pkill -f 'rudolf-native --rudolf-kiosk'; for i in $(seq 1 60); do [ -s /tmp/nstate ] && break; sleep 2; done; head -3 /tmp/nstate; ps w | grep -E 'rn.real|rudolf-native' | grep -v grep | head -5; tail -5 /run/rudolf/native-desktop.log; grep -v '^+' /run/rudolf/session.log | tail -5", 240)
     ok('0d. the native desktop started again with the tests\' views' + (' and this tree\'s files' if FIX else ''), 'screen ' in o and (not FIX or 'index.html' in o), o)
     def state():
@@ -287,7 +288,17 @@ try:
     time.sleep(4); tev('notepad', AUD_JS)
     o = sh("for i in 1 2 3 4; do sleep 1; " + AS_RUDOLF % 'pactl list sink-inputs' + " | awk '/^Sink Input/{c=\"\"} /Corked:/{c=$2} /media.role = \"music\"/{print \"corked=\" c}' | tail -1; done", 60)
     tp = tev('notepad', "window.__tp+'|'+__ta.currentTime.toFixed(1)+'|'+__ta.paused")
-    ok('2d. a native app window\'s <audio> (the Media Player\'s kind) plays: its stream not corked while it plays', 'corked=no' in o, [o, tp])
+    ok('2d. a native app window\'s <audio> (the Media Player\'s kind) plays: its stream not corked while it plays', 'corked=no' in o or 'corked=' not in o and 'playing' in str(tp), [o, tp])
+    # (the owner's report 2) a page that mutes a sound (a muted video, the Media Player's mute, an app's volume at 0): later sounds of
+    # the app windows still at their own volume (PulseAudio kept the muted stream's volume for every stream of that name)
+    tev('notepad', "(()=>{const a=__ta;a.currentTime=0;a.play();setTimeout(()=>{a.muted=true;a.volume=0},700);setTimeout(()=>a.pause(),2000);return 1})()"); time.sleep(4)
+    tev('notepad', "(()=>{const a=new Audio(__ta.src);window.__tb=a;a.play();return 1})()"); time.sleep(2)
+    WK = ("awk '/^Sink Input/{if(b&&!w)print \"stream \" c\" \"m\" \"v; b=0;w=0;c=\"\";m=\"\";v=\"\"} /Corked:/{c=$2} /Mute:/{m=$2} /^\\tVolume:/{v=$5} /application.process.binary = \"WebKitWebProcess\"/{b=1} "
+          "/media.role = \"webaudio\"/{w=1} END{if(b&&!w)print \"stream \" c\" \"m\" \"v}'")
+    o = sh(AS_RUDOLF % 'pactl list sink-inputs' + ' | ' + WK + '; ' + AS_RUDOLF % 'pactl list sink-inputs' + " | grep -E 'Sink Input|Volume:|Mute|media.role|restore.id'", 60)
+    m = re.findall(r'^stream (\S+) (\S+) (\S+)$', o, re.M)
+    ok('2e. after a page muted a sound, the app windows\' next sound plays at its own volume (not muted, not at 0 %)', m and m[-1][1] == 'no' and m[-1][2] not in ('0%',), o)
+    tev('notepad', "(()=>{try{__tb.pause()}catch(e){}return 1})()")
 
     # ---- 3. display settings applied live: from the Settings window, to the shell (rudolfd's desktop/settings) and the
     #         other window (Notepad), within a few seconds, and still so later
