@@ -176,8 +176,8 @@ cat /tmp/c3; nsenter -t $FP -n ip link 2>&1 | grep -o '^[0-9]*: [^:]*'""", 60)
     ok(f'15. the cellular link metered by itself; what it carried counted from its counters for the SIM ({USED} bytes), kept on RUDOLFDATA', re.search(r'^1\s*$', o, re.M) and USED > 3000000 and re.search(r'^\d{4}-\d\d-\d\d sim:[0-9a-f]{16} \d+', o, re.M), o)
     o = sh("/usr/lib/rudolf/modem disconnect 0; ip route; nft list set inet rudolf cellular; kill $(cat /run/rudolf/modem-watch.pid) 2>/dev/null; pkill '^ModemManager$'", 60)
     ok('14. Disconnect: the cellular route and firewall entry gone', 'Disconnected' in o and f'dev {C}' not in o and f'"{C}"' not in o, o)
-    # (item 4) restarted: the month's count is still there
-    vm.stop(); time.sleep(3)
+    # (item 4) restarted: the month's count is still there (written out first, as a restart does)
+    sh("sync", 60); vm.stop(); time.sleep(3)
     vm, g, up = boot('b'); sh = lambda c, t=60: g.sh(c, t)
     o = sh("mkdir -p /mnt/cx; for d in /dev/nvme*n1; do mount -o ro $d /mnt/cx 2>/dev/null && [ -e /mnt/cx/setup.sh ] && break; umount /mnt/cx 2>/dev/null; done; sh /mnt/cx/setup.sh; /usr/lib/rudolf/modem start >/dev/null 2>&1; /usr/lib/rudolf/modem stop; "
            "printf 'add 0 iccid=8901260123456789012 enabled=1\\n' > /tmp/mminit; (DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket MMSTUB_TEST_MACHINE=1 setsid /mnt/cx/bin/ModemManager --init /tmp/mminit </dev/null >/tmp/mmstub.out 2>&1 &); sleep 3; /usr/lib/rudolf/modem usage 0", 240) if up else 'not up'

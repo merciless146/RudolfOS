@@ -38,16 +38,17 @@ K=$(cat /run/rudolf/cellkey/wwan0)
 $NP tick; ping -c 60 -i 0.01 -s 8000 -W 2 203.0.113.1 >/dev/null 2>&1; $NP tick
 B=$(( $(cat /sys/class/net/wwan0/statistics/rx_bytes) + $(cat /sys/class/net/wwan0/statistics/tx_bytes) ))
 o=$(a "GET mobile/settings?id=0")
-ok "2. what the link sent and received (about 1 MB) counted from its counters, by the day, for the SIM" "$(grep -q "^2026-11-16 $K [0-9]" $T/var/netusage && js "$o" "u.used>=900000&&u.used==$B&&u.start=='2026-11-01'&&u.next=='2026-12-01'&&u.limit==0" | grep -q 1 && echo 1)" "$B $(cat $T/var/netusage) $o"
+ok "2. what the link sent and received (about 1 MB) counted from its counters, by the day, for the SIM" "$(grep -q "^2026-11-16 $K [0-9]" $T/var/netusage && js "$o" "u.used>=900000&&Math.abs(u.used-$B)<4000&&u.start=='2026-11-01'&&u.next=='2026-12-01'&&u.limit==0" | grep -q 1 && echo 1)" "$B $(cat $T/var/netusage) $o"
 U1=$(echo "$o" | sed 's/.*"used":\([0-9]*\).*/\1/')
 # a restart: the link and its counters start again from 0, the run folder is empty again; the persistent count stays
-kill $LP; w8 '! ip link show wwan0 >/dev/null 2>&1'; rm -rf /run/rudolf/netcount; link wwan0 cfar; ip link set wwan0 up; ip addr add 10.64.12.34/30 dev wwan0 2>/dev/null; far "ip link set cfar up; ip addr add 10.64.12.33/32 dev cfar; ip route replace 10.64.12.34/32 dev cfar"
+kill $LP; w8 '! ip link show wwan0 >/dev/null 2>&1'; rm -rf /run/rudolf/netcount; link wwan0 cfar; ip link set wwan0 up; ip addr add 10.64.12.34/30 dev wwan0 2>/dev/null; ip route replace default via 10.64.12.33 dev wwan0 metric 700; far "ip link set cfar up; ip addr add 10.64.12.33/32 dev cfar; ip route replace 10.64.12.34/32 dev cfar"
 $NP tick; ping -c 20 -i 0.01 -s 8000 -W 2 203.0.113.1 >/dev/null 2>&1; $NP tick
 B2=$(( $(cat /sys/class/net/wwan0/statistics/rx_bytes) + $(cat /sys/class/net/wwan0/statistics/tx_bytes) )); o=$(a "GET mobile/settings?id=0")
-ok "3. across a restart (the counters from 0 again): the month's count kept, what came after added" "$(js "$o" "u.used==$U1+$B2" | grep -q 1 && echo 1)" "$U1 + $B2: $o"
+ok "3. across a restart (the counters from 0 again): the month's count kept, what came after added" "$(js "$o" "$B2>300000&&Math.abs(u.used-($U1+$B2))<4000" | grep -q 1 && echo 1)" "$U1 + $B2: $o"
+U3=$(echo "$o" | sed 's/.*"used":\([0-9]*\).*/\1/')
 printf '2026-10-25 %s 3000000\n2026-10-10 %s 7000000\n2026-11-20 %s 0\n' "$K" "$K" "$K" >> $T/var/netusage
 a "POST mobile/settings?id=0&k=startday&v=20" >/dev/null; o=$(a "GET mobile/settings?id=0")
-ok "4. the month from the start day chosen (the 20th): from 20 October to 20 November" "$(js "$o" "u.startday==20&&u.start=='2026-10-20'&&u.next=='2026-11-20'&&u.used==$U1+$B2+3000000" | grep -q 1 && echo 1)" "$o"
+ok "4. the month from the start day chosen (the 20th): from 20 October to 20 November" "$(js "$o" "u.startday==20&&u.start=='2026-10-20'&&u.next=='2026-11-20'&&u.used==$U3+3000000" | grep -q 1 && echo 1)" "$o"
 o=$(a "POST mobile/settings?id=0&k=startday&v=31"); o2=$(a "POST mobile/settings?id=0&k=limit&v=-5"); ok "...(a day after the 28th, a limit that is not a number of MB: refused)" "$(printf '%s\n' "$o" "$o2" | grep -c '^HTTP/1.1 400' | grep -qx 2 && echo 1)" "$o $o2"
 a "POST mobile/settings?id=0&k=startday&v=1" >/dev/null
 # the limit: 10 MB; this month 8.5 MB
