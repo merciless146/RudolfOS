@@ -199,8 +199,8 @@ try:
     def tev(key, expr, t=30):
         n0 = sh("wc -l < /tmp/teval.out 2>/dev/null || echo 0", 20, False).strip().split('\n')[-1]
         put_small(g, expr.replace('\n', ' '), '/tmp/j.js')
-        o = sh(f"timeout 5 sh -c '{{ printf \"%s \" {key}; cat /tmp/j.js; echo; }} > /tmp/teval'; for i in $(seq 1 {t}); do n=$(wc -l < /tmp/teval.out 2>/dev/null || echo 0); [ $n -gt {n0 or 0} ] && break; sleep 1; done; tail -n +$(({n0 or 0}+1)) /tmp/teval.out", t + 20, False)
-        o = o.strip(); return o[len(key) + 1:] if o.startswith(key + ' ') else o
+        o = sh(f"timeout 5 sh -c '{{ printf \"%s \" {key}; cat /tmp/j.js; echo; }} > /tmp/teval'; for i in $(seq 1 {t}); do tail -n +$(({n0 or 0}+1)) /tmp/teval.out 2>/dev/null | grep -q '^{key} ' && break; sleep 1; done; tail -n +$(({n0 or 0}+1)) /tmp/teval.out | grep -m1 '^{key} '", t + 20, False)
+        o = o.strip(); return o[len(key) + 1:] if o.startswith(key + ' ') else o   # (this window's answer only, not a late one of another's)
     # signing in at the native sign-in screen, as the owner does: the password typed
     if st_get(st, 'signin') == '1':
         time.sleep(3); g.q.type('b1'); time.sleep(0.5); g.q.key('ret')

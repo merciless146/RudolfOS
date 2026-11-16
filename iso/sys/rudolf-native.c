@@ -6070,13 +6070,18 @@ static void teval_got(GObject *src, GAsyncResult *res, gpointer d)
 }
 static gboolean teval_line(GIOChannel *ch, GIOCondition c, gpointer d)
 {
-	(void)c; (void)d; gchar *l = NULL; gsize n = 0; GIOStatus st = g_io_channel_read_line(ch, &l, &n, NULL, NULL);
+	(void)c; (void)d;
+	/* (every line read now: two lines that came at once left the second in the channel's buffer, with no new event for it, so each
+	   answer came one request late from then on: n160_t.py in QEMU) */
+	do { gchar *l = NULL; gsize n = 0; GIOStatus st = g_io_channel_read_line(ch, &l, &n, NULL, NULL);
 	if (st == G_IO_STATUS_EOF || st == G_IO_STATUS_ERROR) { g_free(l); return G_SOURCE_REMOVE; }
-	char *sp = l ? strchr(l, ' ') : NULL;
+	if (st == G_IO_STATUS_AGAIN || !l) { g_free(l); break; }
+	char *sp = strchr(l, ' ');
 	if (sp) { *sp = 0; g_strchomp(sp + 1); AppWin *a = NULL; for (GList *w = WINS; w; w = w->next) { AppWin *x = w->data; if (!strcmp(x->k, l) && !x->hidden && x->view) { a = x; break; } }
 		if (a) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), sp + 1, -1, NULL, NULL, NULL, teval_got, g_strdup(l));
 		else { FILE *f = fopen(TEVAL_OUT, "a"); if (f) { fprintf(f, "%s NO WINDOW\n", l); fclose(f); } } }
-	g_free(l); return G_SOURCE_CONTINUE;
+	g_free(l); } while (g_io_channel_get_buffer_condition(ch) & G_IO_IN);
+	return G_SOURCE_CONTINUE;
 }
 static void teval_init(void)
 {
