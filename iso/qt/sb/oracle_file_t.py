@@ -85,7 +85,7 @@ def signin(js, n, pw, secs=900):
 FRAME = ("JSON.stringify((()=>{const W=wins.filter(w=>w.body&&w.body.querySelector('.otabs')).pop();if(!W)return{err:'no Oracle window'};"
          "const fr=[...W.body.querySelectorAll('.fh iframe')].find(f=>f.style.display=='block');if(!fr)return{err:'no frame shown'};const r=fr.getBoundingClientRect();"
          "const e=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);"
-         "return{rect:[r.x,r.y,r.width,r.height],iw:innerWidth,ih:innerHeight,sb:fr.getAttribute('sandbox'),cd:fr.contentDocument===null,ad:W.body.querySelector('.ad').value,top:e===fr?'frame':e?e.tagName+'.'+String(e.className).slice(0,30):null}})())")
+         "return{t:W.el.innerText.split('\\n')[0].slice(0,40),rect:[r.x,r.y,r.width,r.height],iw:innerWidth,ih:innerHeight,sb:fr.getAttribute('sandbox'),cd:fr.contentDocument===null,ad:W.body.querySelector('.ad').value,top:e===fr?'frame':e?e.tagName+'.'+String(e.className).slice(0,30):null}})())")
 
 def sketch(png, cols=80, rows=25):
     """the screen in characters (darker: denser), for the log: the screenshots cannot always be looked at"""
@@ -118,13 +118,15 @@ def checks(js, sh, vm, g, DOCS, ph, ok):
                 o = js(FRAME, 30)
                 try: o = json.loads(o)
                 except Exception: o = {'err': str(o)}
-                if 'rect' not in o: blank.append([k, same, u, o]); continue
+                if 'rect' not in o:
+                    o['after'] = js("JSON.stringify({wins:wins.slice(-3).map(w=>w.el.innerText.split('\\n')[0].slice(0,50)),f:(v=>typeof v+' '+String(v).slice(0,40))(node(homePath('DOCUMENTS').concat('CALL-TEST.HTML'))),dl:typeof isDlRef=='function'&&isDlRef(node(homePath('DOCUMENTS').concat('CALL-TEST.HTML'))),modal:[...document.querySelectorAll('.rmodal')].map(x=>x.innerText.slice(0,80))})", 30)
+                    blank.append([k, same, u, o]); continue
                 png = vm.shot(f'{ph[0]}r{k}{"s" if same else "f"}_{PAGES.index(u)}'); d = drawn(png, o)
                 if k == 0 and not same and PAGES.index(u) < 2:
                     from PIL import Image; out('screen', Image.open(png).size, 'page', o['iw'], o['ih'], 'frame', [round(v) for v in o['rect']], 'on top:', o.get('top')); out(sketch(png))
                 if d < 0.005 or o.get('top') != 'frame': blank.append([k, same, u, d, o.get('top')])
                 if not (o.get('sb') == 'allow-scripts' and o.get('cd')): opened.append([u, o])
-                out(f'{k} {"same window" if same else "fresh window"} {u}: {d}')
+                out(f'{k} {"same window" if same else "fresh window"} {u}: {d} ({o.get("t")})')
     ok(f'{ph}a. Oracle\'s pages are drawn, never a blank white page ({n} pages: README.TXT, WELCOME.HTM, an .HTML file from File Explorer, about:oracle, about:files; fresh windows and one window)', not blank, blank[:6])
     ok(f'{ph}b. they stay in sandboxed frames (allow-scripts; the desktop page not reachable from them)', not opened, opened[:3])
     # the phone-number test: the page's tel: link, clicked with QEMU's pointer
