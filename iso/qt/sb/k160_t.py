@@ -216,7 +216,7 @@ try:
             a = dict(kv.split('=') for kv in (st_get(st, 'a11y') or '').split() if '=' in kv)
             key = ['dark', 'nl', 'dnd', 'sr', 'mag', 'hc', 'vk', 'touch', None][i]
             pid1 = sh("pgrep -f 'rudolf-native [-]-rudolf-kiosk'", 20, False).strip()
-            if pid1 != pid0: out('THE NATIVE DESKTOP RESTARTED', pid0, pid1, sh("tail -30 /run/rudolf/native-desktop.log", 30, False))
+            if pid1 != pid0: out('THE NATIVE DESKTOP RESTARTED', pid0, pid1, sh("grep -v '^+' /run/rudolf/session.log | tail -15; dmesg | grep -iE 'segfault|traps|killed process|oom' | tail -5; grep -v 'dbus\\|Warning\\|vkEnum\\|dawn' /run/rudolf/native-desktop.log | tail -25", 30, False))
             if key: ok(f'Q{i}. Native: {t} {"on" if on else "off"}: the shell', a.get(key) == str(on) and pid1 == pid0, a)
     def qs_btn(k):
         st = state(); h = hit(st, 'qs -')
