@@ -2,7 +2,8 @@
 #   page: this tree's desktop page (iso/www/index.html) in the beta's own Chromium (from its chromium.sfs), and the beta's
 #         page the same way for comparison (iso/qt/shell2/oraclefile60_t.js); shows the fix before a new beta exists.
 #   qemu: the newest beta (or a release by its serial) itself in QEMU (iso/qt/sb/oracle_file_t.py), set up as
-#         qemu-checks.yml; passes once a beta is built with the fix. Nothing is published.
+#         qemu-checks.yml, the desktop in the shell: first its own page (noted), then this tree's page bound in its place
+#         in the running system (what counts). Nothing is published.
 name: Oracle file check
 on:
   workflow_dispatch:
@@ -60,7 +61,7 @@ jobs:
           ls -la rel; echo "::notice title=Oracle file check::release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
       - name: Oracle's file:/// pages
         run: |
-          mkdir -p run && cd run && sudo -E env QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/oracle_file_t.py ../rel
+          mkdir -p run && cd run && sudo -E env TREE_PAGE=$PWD/../iso/www/index.html QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/oracle_file_t.py ../rel
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: oracle-file, retention-days: 7, path: "run/oracle_file.txt\nrun/of*/qemu.log\nrun/of*/*.png"}
