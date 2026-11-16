@@ -190,9 +190,9 @@ try:
     js("(async()=>{for(const w of wins.slice())try{w.close()}catch(e){}return 1})()", 30); time.sleep(3)
     cmd_file(sh, dd, h, ['keyring StuckS pw-s2']); n0 = started(app_log(sh, dd)); out('launch:', js(LAUNCH_S, 30))
     wait_log(sh, dd, r'keyring prompting', 120, 2); time.sleep(3)
-    r = js(f"(async()=>{{let l;try{{l=(await rd('apps/running')).apps||[]}}catch(e){{return 'apps/running: '+e.message}}const x=l.find(a=>a.id=='flatpak:{APP}');if(!x)return 'not listed: '+JSON.stringify(l).slice(0,400);return String(await forceQuit57(x,'PortalStand'))}})()", 60)
+    r = js(f"(async()=>{{const l=await apps57();if(!l)return 'Task Manager has no list of running apps (apps57: null)';const x=l.find(a=>a.id=='flatpak:{APP}');if(!x)return 'not listed: '+JSON.stringify(l).slice(0,400);return String(await forceQuit57(x,'PortalStand'))}})()", 60)
     time.sleep(8); left = js("document.querySelectorAll('.krp60').length", 30); reqs = sh("ls /run/rudolf/portal/req/ 2>/dev/null; pgrep -f 'portalstand app' || echo none", 30, False)
-    ok('S6. Standard: force-quit (Task Manager\'s) while its prompt waits: the app is ended and its prompt goes', r == 'true' and left == 0 and 'none' in reqs and not re.search(r'^k', reqs, re.M), [r, left, reqs])
+    ok('S6. Standard: Task Manager lists it and force-quits it while its prompt waits: the app is ended and its prompt goes', r == 'true' and left == 0 and 'none' in reqs and not re.search(r'^k', reqs, re.M), [r, left, reqs])
     cmd_file(sh, dd, h, ['keyring AgainS pw-s3']); out('launch:', js(LAUNCH_S, 30))
     s2, lg = wait_log(sh, dd, r'keyring prompting', 120, 3)
     ok('S7. Standard: started again, it opens and asks again', s2 and started(lg) > n0, lg[-500:])
@@ -287,7 +287,7 @@ try:
         time.sleep(1); st = state()
         if re.search(r'^client .* focus=1 app=taskmgr ', st, re.M): tm = True; break
     # (Task Manager's own Force quit, as its button does; an async answer is kept in the page and read after)
-    tev('taskmgr', f"(()=>{{window.__fq='…';(async()=>{{let l;try{{l=(await rd('apps/running')).apps||[]}}catch(e){{return 'apps/running: '+e.message}}const x=l.find(a=>a.id=='flatpak:{APP}');if(!x)return 'not listed: '+JSON.stringify(l).slice(0,300);return String(await forceQuit57(x,'PortalStand'))}})().then(v=>window.__fq=v,e=>window.__fq='ERR '+e.message);return 1}})()", 20)
+    tev('taskmgr', f"(()=>{{window.__fq='…';(async()=>{{const l=await apps57();if(!l)return 'Task Manager has no list of running apps (apps57: null)';const x=l.find(a=>a.id=='flatpak:{APP}');if(!x)return 'not listed: '+JSON.stringify(l).slice(0,300);return String(await forceQuit57(x,'PortalStand'))}})().then(v=>window.__fq=v,e=>window.__fq='ERR '+e.message);return 1}})()", 20)
     r = ''
     for _ in range(10):
         time.sleep(2); r = tev('taskmgr', "String(window.__fq)", 20)

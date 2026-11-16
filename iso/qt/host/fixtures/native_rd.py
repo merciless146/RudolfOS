@@ -200,6 +200,7 @@ class H(http.server.BaseHTTPRequestHandler):
         # listed (portal/poll), an answer written to DIR/portal/resp/ID.json and the request gone (portal/answer), each answer noted
         if w.startswith('portal/') and os.path.isdir(os.path.join(D, 'portal')):
             import re, urllib.parse; P = os.path.join(D, 'portal')
+            if m != 'POST': return self.err(400, 'use POST')   # (as rudolfd: its portal/* answer POST only)
             if w == 'portal/poll':
                 L = []
                 for n in sorted(os.listdir(os.path.join(P, 'req')))[:20]:

@@ -9,7 +9,10 @@
      memory now, what the memory guard closed in the last 7 days, and whether it may close apps with no window open. */
 function appName57(x){if(x.kind=='flatpak'){const a=APPS['lx:'+x.app];if(a&&a.name)return a.name}return String(x.name||'').replace(/\.exe$/i,'')}
 const APP57_KIND={flatpak:'Linux app',wine:'Windows program',debian:'Linux program'};
-async function apps57(){try{return (await rd('apps/running')).apps||[]}catch(e){return null}}
+/* (2026-11-16, the owner's Vivobook: Sober force-quit from Task Manager did not open again) asked with POST, as rudolfd answers apps/*:
+   a GET was refused ("use POST"), so Task Manager's list of running apps stayed empty and its Force quit, which ends an app and
+   every background process of it, was never offered: only the window could be closed, which may leave the app half-running */
+async function apps57(){try{return (await rdPost('apps/running')).apps||[]}catch(e){return null}}
 async function appEnd57(x){const n=appName57(x);try{const r=await rdPost('apps/end?id='+encodeURIComponent(x.id));notify(n+' was ended',r&&r.forced?'It did not quit when asked, so it was stopped.':'',{quiet:true});return true}
  catch(e){notify(n+' was not ended',e.message,{kind:'error'});return false}}
 /* the memory guard closed an app (rudolf-memguard writes "memory closed NAME MB" to rudolfd's events) */

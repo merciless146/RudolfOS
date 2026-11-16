@@ -5553,7 +5553,7 @@ static gpointer pt_thread(gpointer d)
 	(void)d;
 	for (;;) {
 		if (USER_ID[0] && !LOCKED) {
-			GByteArray *b = NULL; int c = http("GET", "/api/portal/poll", NULL, 0, &b);
+			GByteArray *b = NULL; int c = http("POST", "/api/portal/poll", NULL, 0, &b);   /* (rudolfd answers the portal's requests to POST only) */
 			if (c == 200 && b) { JV *v = jparse((char *)b->data), *r = jprop(v, "requests"); GString *ids = g_string_new(NULL);
 				for (int i = 0; r && r->t == 4 && i < r->len; i++) { char id[64] = ""; jstr(r->v[i], "id", id, sizeof id); if (pt_id_ok(id)) { if (ids->len) g_string_append_c(ids, ','); g_string_append(ids, id); } }
 				g_idle_add(pt_got, g_string_free(ids, FALSE)); jfree(v); }
