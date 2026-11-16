@@ -11,6 +11,7 @@
 #      release in QEMU), the screen's size, the native desktop
 #   5. "Save to a file" saves into the account's Documents with the full path said; "Open the folder" opens File Explorer's own
 #      window there, listing it
+#   6. the sleep step passes only on rudolfd's measure of real sleep (a sleep refused at once, or too short, is said)
 #   7. the health log's start-up line comes from the native shell when its sign-in screen shows (not from the first app's page,
 #      after signing in)
 # Needs Xvfb, xdotool, node, python3, gcc and WebKitGTK's headers (PulseAudio for 2).   sh hwcnative160_t.sh [RUDOLF-NATIVE]
@@ -115,4 +116,14 @@ o=$(ev explorer '(()=>{const t=document.body.innerText;return (/REPORT-\d{12}\.T
 ok "5b. ...Open the folder: File Explorer's own window at Documents lists it" "$(echo "$o" | grep -q '^listed|docs' && echo 1)" "$o $(grep '^app' $D/state)"
 n0=$(napps explorer); xdotool key super+e; w8 "[ \$(napps explorer) -gt $n0 ]" 60
 ok "1g. Meta+E opens File Explorer (an exact combination the shell keeps)" "$([ "$(napps explorer)" -gt "$n0" ] && echo 1)" "$(grep '^app' $D/state)"
+# ---- 6. sleep: what rudolfd measured
+SLEEP='(()=>{window.__S="?";(async()=>{const H=hwCheck();for(let k=0;k<90;k++){if(H.querySelector("h3").textContent=="Sleep")break;const bs=[...H.querySelectorAll(".hwcbt button")];const b=bs.find(x=>x.textContent=="Skip")||bs.find(x=>x.className=="pri");if(b)b.click();await new Promise(r=>setTimeout(r,400))}
+[...H.querySelectorAll(".hwcbt button")].find(b=>/Sleep for/.test(b.textContent)).click();for(let k=0;k<120&&!/Next/.test(H.querySelector(".hwcbt").textContent);k++)await new Promise(r=>setTimeout(r,500));__S=H.querySelector(".hwcb").innerText;[...H.querySelectorAll(".hwcbt button")].find(b=>b.textContent=="Next").click();await new Promise(r=>setTimeout(r,300));H.remove()})().catch(e=>__S="ERR "+e);return 1})()'
+SLEEP=$(printf '%s' "$SLEEP" | tr '\n' ' ')
+printf '' > $D/sleep-ms; ev taskmgr "$SLEEP" >/dev/null; w8 "ev taskmgr '__S' | grep -qv '^?$'" 160; o=$(ev taskmgr '__S'); s=$(ev taskmgr 'JSON.stringify(hwcLast().results.sleep)')
+ok "6a. a sleep the kernel refused at once fails the step, with why (not \"woke\" after the time waited)" "$(echo "$o" | grep -q 'The computer did not sleep (the kernel refused: Device or resource busy)' && echo "$s" | grep -q '"s":"fail"' && echo 1)" "$o | $s"
+echo 1200 > $D/sleep-ms; ev taskmgr "$SLEEP" >/dev/null; w8 "ev taskmgr '__S' | grep -qv '^?$'" 160; o=$(ev taskmgr '__S'); s=$(ev taskmgr 'JSON.stringify(hwcLast().results.sleep)')
+ok "6b. ...and one far shorter than asked" "$(echo "$o" | grep -q 'did not sleep (it was asleep 1.2 s of 10)' && echo "$s" | grep -q '"s":"fail"' && echo 1)" "$o | $s"
+echo 10240 > $D/sleep-ms; ev taskmgr "$SLEEP" >/dev/null; w8 "ev taskmgr '__S' | grep -qv '^?$'" 160; o=$(ev taskmgr '__S'); s=$(ev taskmgr 'JSON.stringify(hwcLast().results.sleep)')
+ok "6c. a real sleep passes, with the time asleep" "$(echo "$o" | grep -q '^Awake again after 10 seconds asleep' && echo "$s" | grep -q '"s":"pass","d":"woke after 10 s, s2idle"' && echo 1)" "$o | $s"
 echo "$F of $N failed"; [ $F = 0 ]

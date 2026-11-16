@@ -295,6 +295,41 @@ static void reply_err(int fd, int code, const char *m)
 	reply(fd, code, "application/json", s.b, s.n, NULL);
 	free(s.b);
 }
+/* 1.6.0 (the owner's Vivobook: the hardware check said "woke" after ten seconds that were never slept): what a sleep really did,
+   for the check (GET sleep): the time the computer was asleep (CLOCK_BOOTTIME goes on while it sleeps, CLOCK_MONOTONIC does
+   not), the kernel's count of sleeps that worked and failed (/sys/power/suspend_stats), how long the hardware itself was in its
+   low-power state where the platform says (last_hw_sleep: AMD's PMC and Intel's), the kind of sleep (mem_sleep: s2idle or deep)
+   and the error when the kernel refused. Kept in /run/rudolf/sleep.json; seq is the moment it started (boot time, ms). */
+static long long clk_ms(clockid_t c) { struct timespec t; clock_gettime(c, &t); return t.tv_sec * 1000LL + t.tv_nsec / 1000000; }
+static long long sus_stat(const char *k)
+{
+	char p[96]; snprintf(p, sizeof p, "/sys/power/suspend_stats/%s", k); char *v = slurp(p, NULL); long long n = v ? atoll(v) : -1; free(v); return n;
+}
+static void mem_sleep_now(char *o, size_t n)
+{
+	o[0] = 0; char *v = slurp("/sys/power/mem_sleep", NULL); if (!v) return;
+	char *a = strchr(v, '['), *b = a ? strchr(a, ']') : NULL; if (a && b) { *b = 0; snprintf(o, n, "%s", a + 1); } else { v[strcspn(v, " \n")] = 0; snprintf(o, n, "%s", v); }
+	free(v);
+}
+static void sleep_now(int asked)
+{
+	char mode[24]; mem_sleep_now(mode, sizeof mode);
+	long long seq = clk_ms(CLOCK_BOOTTIME), d0 = seq - clk_ms(CLOCK_MONOTONIC), ok0 = sus_stat("success"), f0 = sus_stat("fail");
+	errno = 0; int w = write_str("/sys/power/state", "mem"); int er = w ? errno : 0;
+	long long d1 = clk_ms(CLOCK_BOOTTIME) - clk_ms(CLOCK_MONOTONIC), ok1 = sus_stat("success"), f1 = sus_stat("fail"), hw = sus_stat("last_hw_sleep");
+	str j = {0};
+	sadd(&j, "{\"seq\":%lld,\"at\":%lld,\"asked\":%d,\"slept_ms\":%lld,\"ok\":%s,\"error\":", seq, (long long)time(NULL), asked, d1 - d0, w ? "false" : "true");
+	sjson(&j, er ? strerror(er) : ""); sadd(&j, ",\"success\":%lld,\"fail\":%lld,\"hw_us\":%lld,\"mode\":", ok0 >= 0 && ok1 >= 0 ? ok1 - ok0 : -1, f0 >= 0 && f1 >= 0 ? f1 - f0 : -1, hw);
+	sjson(&j, mode); sadd(&j, "}\n");
+	FILE *f = fopen(RUN "/sleep.json.new", "w"); if (f) { fwrite(j.b, 1, j.n, f); fclose(f); rename(RUN "/sleep.json.new", RUN "/sleep.json"); }
+	fprintf(stderr, "rudolfd: sleep (%s, %d s asked): %s", mode, asked, j.b); free(j.b);
+}
+static void api_sleep(struct req *r)
+{
+	char *v = slurp(RUN "/sleep.json", NULL); str j = {0}; char mode[24]; mem_sleep_now(mode, sizeof mode);
+	sadd(&j, "{\"ok\":true,\"last\":%s,\"mode\":", v && *v == '{' ? v : "null"); sjson(&j, mode);
+	sadd(&j, ",\"wakealarm\":%s}", access("/sys/class/rtc/rtc0/wakealarm", W_OK) ? "false" : "true"); free(v); reply_json(r->fd, &j);
+}
 static void reply_ok(int fd, const char *m)
 {
 	str s = {0};
@@ -4089,6 +4124,7 @@ static void api(struct req *r)
 	int post = !strcmp(r->method, "POST");
 	if (!strcmp(p, "ping")) { reply_ok(r->fd, "rudolfd"); return; }
 	if (!strcmp(p, "info")) { api_info(r); return; }
+	if (!strcmp(p, "sleep")) { api_sleep(r); return; }   /* (1.6.0: what the last sleep did, the hardware check) */
 	if (!strcmp(p, "stats")) { api_stats(r); return; }
 	if (!strcmp(p, "system")) { api_system(r); return; }
 	if (!strcmp(p, "processes")) { api_processes(r); return; }
@@ -4514,7 +4550,7 @@ static void api(struct req *r)
 			/* wake=N (1-60, 1.2.5's hardware check): the real-time clock wakes the computer after N seconds */
 			char *w = qparam(r->query, "wake"); int ws = w ? atoi(w) : 0;
 			if (ws > 0 && ws <= 60) { char b[24]; write_str("/sys/class/rtc/rtc0/wakealarm", "0"); snprintf(b, sizeof b, "+%d", ws); if (write_str("/sys/class/rtc/rtc0/wakealarm", b)) { reply_err(r->fd, 409, "this computer cannot wake itself (no wake alarm)"); return; } }
-			reply_ok(r->fd, "suspending"); sync(); write_str("/sys/power/state", "mem"); return;
+			reply_ok(r->fd, "suspending"); sync(); sleep_now(ws); return;
 		}
 		if (strcmp(a, "poweroff") && strcmp(a, "reboot")) { reply_err(r->fd, 400, "unknown action"); return; }
 		reply_ok(r->fd, a);

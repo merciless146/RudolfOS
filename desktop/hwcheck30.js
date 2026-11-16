@@ -50,6 +50,10 @@ async function hwcKeyLabels(){const L={};HWC_KROWS.flat().forEach(c=>L[c]=HWC_KN
 function hwcBatHealth(b){const wh=(e,c)=>e!=null?e/1e6:c!=null&&b.voltage_min_design>0?c*b.voltage_min_design/1e12:null;
  const full=wh(b.energy_full,b.charge_full),design=wh(b.energy_full_design,b.charge_full_design);
  return{full,design,pct:full!=null&&design>0?Math.round(full/design*100):null,cycles:b.cycle_count>0?b.cycle_count:null}}
+/* (1.6.0) a sleep that really slept (rudolfd's GET sleep after it): the kernel says it worked (one more in suspend_stats' success, no error)
+   and the computer was asleep (CLOCK_BOOTTIME ahead of CLOCK_MONOTONIC) for most of the 10 seconds asked */
+function hwcSlept(L){return !!(L&&L.ok&&L.success!==0&&L.slept_ms>=Math.max(3000,(L.asked||10)*1000*0.6))}
+function hwcSleepWhy(L,slept){if(slept)return'';if(!L)return'no answer after waking';if(!L.ok)return'the kernel refused: '+(L.error||'error');if(L.success===0)return'the kernel counted no sleep';return'it was asleep '+(L.slept_ms/1000).toFixed(1)+' s of '+(L.asked||10)}
 function hwCheck(){const o=document.createElement('div');o.className='natdlg hwc';const R={};let i=0;
  o.innerHTML=`<div class='natbox' role='dialog' aria-modal='true' aria-labelledby='hwct' style='max-width:520px;width:90vw'><div class='msg hwcn'></div><h3 id='hwct'></h3><div class='hwcb'></div><div class='stbtn hwcbt' style='justify-content:flex-end'></div></div>`;
  document.body.appendChild(o);const T=o.querySelector('h3'),B=o.querySelector('.hwcb'),BT=o.querySelector('.hwcbt'),N=o.querySelector('.hwcn');
@@ -133,12 +137,16 @@ function hwCheck(){const o=document.createElement('div');o.className='natdlg hwc
     try{f.requestFullscreen&&f.requestFullscreen().catch(()=>{})}catch(e){}},1)},
   async sleep(){let bat=false;try{bat=((await rd('stats')).battery||[]).length>0}catch(e){}
    B.innerHTML=`<p>${bat?'On a laptop, check that it wakes up properly:':'Optional:'} the computer sleeps for 10 seconds and wakes by itself. Save your work first.</p>`;
-   btn('Skip',()=>{set('sleep','skip');next()},!bat);btn('Sleep for 10 seconds',async()=>{BT.innerHTML='';B.innerHTML='<p>Going to sleep…</p>';const t0=Date.now();
+   btn('Skip',()=>{set('sleep','skip');next()},!bat);btn('Sleep for 10 seconds',async()=>{BT.innerHTML='';B.innerHTML='<p>Going to sleep…</p>';
+    /* (1.6.0) whether it really slept, from rudolfd (GET sleep: the time asleep by the kernel's clocks, its count of sleeps, the hardware's
+       low-power time): the time the page waited said "woke" on the Vivobook, whose sleep returned at once */
+    let s0=null;try{s0=await rd('sleep')}catch(e){}const seq0=s0&&s0.last?s0.last.seq:0,t0=Date.now();
     try{await rdPost('power?action=suspend&wake=10')}catch(e){B.innerHTML='<p></p>';B.firstChild.textContent='Sleep is not available: '+e.message;set('sleep','fail','not available');btn('Next',next,1);return}
-    await new Promise(r=>setTimeout(r,4000));for(let k=0;k<40&&Date.now()-t0<8000;k++)await new Promise(r=>setTimeout(r,500));
-    let s=null;try{s=await rd('system')}catch(e){}const sv=s&&s.services||{},slept=Date.now()-t0>=9000;
-    B.innerHTML=`<p>${slept?'Awake again.':'The computer did not seem to sleep.'} Sound: ${sv.sound?'working':'not running'}. Network: ${typeof netUp=='function'&&netUp()?'connected':'not connected'}.</p>`;
-    set('sleep',slept&&sv.sound!==false?'pass':'fail',slept?'woke':'did not sleep');btn('Next',next,1)},bat)},
+    let L=null;for(let k=0;k<60&&Date.now()-t0<45000;k++){await new Promise(r=>setTimeout(r,k?750:1500));try{const r=await rd('sleep');if(r&&r.last&&r.last.seq!=seq0){L=r.last;break}}catch(e){}}
+    let s=null;try{s=await rd('system')}catch(e){}const sv=s&&s.services||{};
+    const slept=hwcSlept(L,s0),why=hwcSleepWhy(L,slept);
+    B.innerHTML=`<p></p>`;B.firstChild.textContent=`${slept?'Awake again after '+(L.slept_ms/1000).toFixed(0)+' seconds asleep.':'The computer did not sleep'+(why?' ('+why+')':'')+'.'} Sound: ${sv.sound?'working':'not running'}. Network: ${typeof netUp=='function'&&netUp()?'connected':'not connected'}.`;
+    set('sleep',slept&&sv.sound!==false?'pass':'fail',slept?'woke after '+(L.slept_ms/1000).toFixed(0)+' s'+(L.mode?', '+L.mode:''):'did not sleep'+(why?': '+why:''));btn('Next',next,1)},bat)},
   done(){T.textContent='Results';N.textContent='';const rec={at:Date.now(),results:R};svj(HWC_K,rec);
    B.innerHTML=`<table class='tmt'><tbody>${HWC_STEPS.map(([k,n])=>R[k]?`<tr><td>${n}</td><td><b class='hwr ${R[k].s}'>${{pass:'✓ works',fail:'✗ problem',skip:'– skipped'}[R[k].s]}</b></td><td class='msg'>${lxEsc(R[k].d)}</td></tr>`:'').join('')}</tbody></table><p class='msg'>The result is added to the system report. Nothing personal is in it.</p>`;
    if(Object.values(R).some(x=>x.s=='fail')&&typeof sysReportDialog=='function')btn('Report a problem…',()=>{close();sysReportDialog()});btn('Done',close,1)}};

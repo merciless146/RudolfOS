@@ -1,0 +1,27 @@
+# The kernel's configuration only (iso/kconfig.sh on the stable release's Linux 6.18.y, x86_64): every option it asks for and checks
+# is there after olddefconfig. No kernel is built and nothing is published. Run by a push that changes iso/kconfig.sh or
+# .github/kconfig-run.txt (whose line kernel=VERSION picks another 6.18.y).
+name: Kernel configuration check
+on:
+  push:
+    paths: ['iso/kconfig.sh', '.github/kconfig-run.txt', '.github/workflows/kconfig-check.yml']
+permissions: {contents: read}
+jobs:
+  kconfig:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq bc flex bison libelf-dev libssl-dev >/dev/null
+      - name: kconfig.sh
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          KV=$(sed -n 's/^kernel=//p' .github/kconfig-run.txt 2>/dev/null | head -1)
+          [ -n "$KV" ] || { KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); KV=${KV%-rudolf}; }
+          echo "Linux $KV"
+          git clone -q --depth 1 -b "v$KV" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/k.pem -out /tmp/c.pem -days 1 -subj /CN=kconfig-check 2>/dev/null
+          cd iso && SB_CERT=/tmp/c.pem sh kconfig.sh ../linux "/tmp/none" || { cd ../linux; for o in AMD_PMF AMD_PMC AMDTEE TEE CRYPTO_DEV_CCP CRYPTO_DEV_CCP_DD CRYPTO_DEV_SP_PSP AMD_SFH_HID AMD_NODE AMD_NB ACPI_PLATFORM_PROFILE POWER_SUPPLY; do grep "^CONFIG_$o=\|^# CONFIG_$o " .config || echo "$o unset"; done; exit 1; }
+          cd ../linux && for o in SUSPEND PM_SLEEP ACPI_SLEEP AMD_PMC AMD_PMF AMD_NB RTC_DRV_CMOS SUSPEND_FREEZER; do grep "^CONFIG_$o=\|^# CONFIG_$o " .config || echo "CONFIG_$o: not set"; done
+          echo "::notice title=Kernel configuration check::Linux $KV: $(grep -E '^CONFIG_AMD_PM[CF]=' .config | tr '\n' ' ')"
