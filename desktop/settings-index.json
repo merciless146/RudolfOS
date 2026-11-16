@@ -130,7 +130,8 @@
 ["Share this connection","",1],
 ["Network name","Share this connection"],
 ["Password","Share this connection"],
-["Band","Share this connection"]],"bt":
+["Band","Share this connection"]],"mob":
+[["Mobile network","",1]],"bt":
 [["Bluetooth",""],
 ["On",""],
 ["My devices","",1],

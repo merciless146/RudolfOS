@@ -15,8 +15,15 @@
 #                     retries:{pin,puk},sim,simOp,simName,operator,opcode,reg,signal,tech,imei,power,port,usb,fcc,fccId}],
 #                     "notes":[{id,name,text}]}
 #   modem fcc on|off ID   ID: the module's USB or PCI id (vvvv:pppp, or vvvv: ModemManager's script names)
+# 1.6.0 (Part 2): the SIM and the network
+#   modem pin MODEM FILE        the SIM's PIN (FILE: "pin=NNNN", root's only); modem puk MODEM FILE ("puk=", "pin=": new)
+#   modem settings MODEM        JSON: the SIM's operator, the automatic APN, the one typed in, roaming, the network type
+#   modem set MODEM KEY VALUE   apn (empty: automatic), apnuser, apnpass, roaming (0, the default, or 1), mode
+#                               (auto, 5g, 4g, 3g: applied at once)
+#   modem apn MCCMNC [SIM-NAME [NETWORK-NAME]]   the operator's settings: "name|apn|user|password|source"
+#   modem airplane on|off|status   Wi-Fi, Bluetooth and the modems off together, and back as they were
 # The places can be moved for the host tests: RUDOLF_MODEM_SYS, RUDOLF_MODEM_DEV, RUDOLF_RUN, RUDOLF_MODEM_LOG,
-# RUDOLF_MODEM_PERSIST, RUDOLF_MM_FCC_AVAIL, RUDOLF_MM_FCC_DIR.
+# RUDOLF_MODEM_PERSIST, RUDOLF_MM_FCC_AVAIL, RUDOLF_MM_FCC_DIR, RUDOLF_MBPI, RUDOLF_APN_FIXES, RUDOLF_RFKILL.
 # GPL-2.0-or-later.
 export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
 BUS=/run/dbus/system_bus_socket; LOG=${RUDOLF_MODEM_LOG:-/run/rudolf/modem.log}; DEVS=${RUDOLF_MODEM_DEV:-/dev}
@@ -128,6 +135,122 @@ fcc() {
 		echo "The cellular module's radio is turned on (FCC unlock for $2)"
 	else rm -f "$FD/$2"; echo "$(date) FCC unlock turned off for $2" >> $LOG; echo "The FCC unlock is off for $2: the radio stays off from the next start"; fi
 }
+# ---- 1.6.0 (Part 2): the SIM and the network (Settings › Mobile network) ----
+MBPI=${RUDOLF_MBPI:-/usr/share/mobile-broadband-provider-info/serviceproviders.xml}; FIX=${RUDOLF_APN_FIXES:-/usr/share/rudolf/apn-fixes}
+RF=${RUDOLF_RFKILL:-/sys/class/rfkill}
+mkv() { printf '%s\n' "$1" | sed -n "s/^$2  *: //p" | head -1; }   # one value from mmcli's key-value lines
+sim_of() { mkv "$1" 'modem\.generic\.sim' | sed -n 's#^/org/freedesktop/ModemManager1/SIM/##p'; }
+modem_ok() { echo "$1" | grep -qE '^[0-9]{1,4}$' && MK=$(mmcli -m "$1" -K 2>/dev/null) && [ -n "$MK" ]; }
+# each SIM's own settings (the APN, roaming, the network type; later the data used): in a file named by a hash of its
+# ICCID, never the number itself; root's only (an APN's password may be in it)
+simconf() { S=$(sim_of "$MK"); IC=; [ -n "$S" ] && IC=$(mmcli -i "$S" -K 2>/dev/null | sed -n 's/^sim\.properties\.iccid  *: //p')
+	{ [ -n "$IC" ] && [ "$IC" != "--" ]; } || IC="modem-$(mkv "$MK" 'modem\.generic\.device-identifier')"
+	echo "$P/mobile/$(printf '%s' "$IC" | sha256sum | cut -c1-16).conf"; }
+cget() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1; }
+cset() { mkdir -p "${1%/*}"; chmod 700 "${1%/*}"; { grep -v "^$2=" "$1" 2>/dev/null; echo "$2=$3"; } > "$1.new"; chmod 600 "$1.new"; mv "$1.new" "$1"; }
+# the operator's settings (APN) for a SIM: Rudolf's corrections first (apn-fixes), then the operators' database, by the
+# SIM's operator code (MCCMNC), choosing among the operators that share it by the SIM's own name, then the network's,
+# then the one with the most networks (the network's owner rather than a reseller). "name|apn|user|password|source";
+# the APN exactly as written there, letters' case kept (docs/plan-1.6.1.md Part 7)
+APN_AWK='function attr(a,  r){r=$0;if(!match(r,a "=\"[^\"]*\""))return "";return substr(r,RSTART+length(a)+2,RLENGTH-length(a)-3)}
+function txt(  r){r=$0;sub(/^[^>]*>/,"",r);sub(/<.*$/,"",r);return r}
+function ent(s){gsub(/&lt;/,"<",s);gsub(/&gt;/,">",s);gsub(/&quot;/,"\"",s);gsub(/&apos;/,"\047",s);gsub(/&amp;/,"\\&",s);return s}
+function endapn(){if(inapn&&(use==""||use~/internet/)&&apns=="")apns=ent(av) "|" ent(au) "|" ent(ap);inapn=0}
+/<provider[ >]/{inp=1;nm="";ids=" ";nid=0;apns="";inapn=0}
+inp&&/<name[ >]/&&!inapn&&nm==""{nm=ent(txt())}
+/<network-id /{ids=ids attr("mcc") attr("mnc") " ";nid++}
+/<apn /{endapn();inapn=1;av=attr("value");au="";ap="";use="";if($0~/\/>/)endapn()}
+inapn&&/<usage /{use=use attr("type") ","}
+inapn&&/<username>/{au=txt()}
+inapn&&/<password>/{ap=txt()}
+/<\/apn>/{endapn()}
+/<\/provider>/{if(inp&&index(ids," " want " ")&&apns!=""){n++;N[n]=nm;A[n]=apns;C[n]=nid}inp=0}
+END{if(!n)exit 1;b=0;s=tolower(spn);o=tolower(op)
+	if(s!="")for(i=1;i<=n;i++)if(index(s,tolower(N[i]))||index(tolower(N[i]),s)){b=i;break}
+	if(!b&&o!="")for(i=1;i<=n;i++)if(index(o,tolower(N[i]))||index(tolower(N[i]),o)){b=i;break}
+	if(!b){b=1;for(i=2;i<=n;i++)if(C[i]>C[b])b=i}
+	print N[b] "|" A[b] "|database"}'
+apn_find() {
+	echo "$1" | grep -qE '^[0-9]{5,6}$' || return 1
+	if [ -n "$2" ] && [ -r "$FIX" ]; then lo=$(printf '%s' "$2" | tr 'A-Z' 'a-z')
+		l=$(grep -v '^#' "$FIX" | while IFS='|' read -r mm nm a u pw why; do [ "$mm" = "$1" ] && [ -n "$nm" ] || continue
+			case "$lo" in *"$(printf '%s' "$nm" | tr 'A-Z' 'a-z')"*) echo "$nm|$a|$u|$pw|rudolf"; break;; esac; done)
+		[ -n "$l" ] && { echo "$l"; return 0; }; fi
+	[ -r "$MBPI" ] && awk -v want="$1" -v spn="$2" -v op="$3" "$APN_AWK" "$MBPI"; }
+# the network types a modem offers, as Settings names them: auto (all it has), 5g (5G preferred), 4g, 3g (only those)
+modes_list() { printf '%s\n' "$MK" | sed -n 's/^modem\.generic\.supported-modes\.value\[[0-9]*\]  *: //p'; }
+mode_now() { c=$(mkv "$MK" 'modem\.generic\.current-modes'); case "$c" in *"preferred: 5g"*) echo 5g;; "allowed: 4g; preferred: none") echo 4g;; "allowed: 3g; preferred: none") echo 3g;; *) echo auto;; esac; }
+mode_choices() { L=$(modes_list); printf 'auto'; printf '%s\n' "$L" | grep -qE 'allowed: .*5g.*; preferred: 5g|^allowed: 5g; preferred: none' && printf ' 5g'
+	printf '%s\n' "$L" | grep -qx 'allowed: 4g; preferred: none' && printf ' 4g'; printf '%s\n' "$L" | grep -qx 'allowed: 3g; preferred: none' && printf ' 3g'; echo; }
+mode_apply() {   # MODEM MODE
+	L=$(modes_list); case "$2" in
+	auto) c=$(printf '%s\n' "$L" | grep '; preferred: none$' | awk -F'[:;]' '{n=split($2,a,",");if(n>m){m=n;b=$0}}END{print b}');;
+	5g) c=$(printf '%s\n' "$L" | grep '; preferred: 5g$' | head -1); [ -n "$c" ] || c=$(printf '%s\n' "$L" | grep -x 'allowed: 5g; preferred: none');;
+	4g|3g) c=$(printf '%s\n' "$L" | grep -x "allowed: $2; preferred: none");;
+	*) c=;; esac
+	[ -n "$c" ] || { echo "this modem cannot use only $2"; return 1; }
+	al=$(printf '%s' "$c" | sed 's/^allowed: \([^;]*\);.*/\1/; s/, /|/g'); pr=${c##*preferred: }
+	mmcli -m "$1" --set-allowed-modes="$al" --set-preferred-mode="$pr" >/dev/null 2>&1 || { echo "the modem refused the network type"; return 1; }; }
+retries() { mmcli -m "$1" -K 2>/dev/null | sed -n "s/^modem\.generic\.unlock-retries\.value\[[0-9]*\]  *: $2 (\([0-9]*\))$/\1/p" | head -1; }
+# the SIM's PIN, and its PUK with a new PIN (rudolfd: an administrator's name and password first; the codes come in a
+# root-only file, never on rudolfd's command line)
+pin() {   # MODEM CODES-FILE ("pin=1234")
+	modem_ok "$1" || { echo "There is no such modem."; return 1; }; S=$(sim_of "$MK"); [ -n "$S" ] || { echo "There is no SIM card in this modem."; return 1; }
+	PIN=$(sed -n 's/^pin=//p' "$2" 2>/dev/null | head -1); echo "$PIN" | grep -qE '^[0-9]{4,8}$' || { echo "A PIN is 4 to 8 digits."; return 1; }
+	o=$(mmcli -i "$S" --pin="$PIN" 2>&1)
+	case "$o" in *successfully*) timeout 30 mmcli -m "$1" --enable >/dev/null 2>&1; echo "PIN accepted: the SIM is unlocked."; return 0;;
+	*IncorrectPassword*) n=$(retries "$1" sim-pin); if [ "$n" = 0 ] || [ "$(mmcli -m "$1" -K 2>/dev/null | sed -n 's/^modem\.generic\.unlock-required  *: //p')" = sim-puk ]; then echo "Wrong PIN. The SIM is now blocked: its PUK is needed."; else echo "Wrong PIN. ${n:-?} tries left."; fi;;
+	*SimPuk*) echo "The SIM is blocked: its PUK is needed.";;
+	*) echo "The PIN could not be given to the SIM (${o##*: })";; esac; return 1; }
+puk() {   # MODEM CODES-FILE ("puk=12345678", "pin=1234": the new PIN)
+	modem_ok "$1" || { echo "There is no such modem."; return 1; }; S=$(sim_of "$MK"); [ -n "$S" ] || { echo "There is no SIM card in this modem."; return 1; }
+	PUK=$(sed -n 's/^puk=//p' "$2" 2>/dev/null | head -1); PIN=$(sed -n 's/^pin=//p' "$2" 2>/dev/null | head -1)
+	echo "$PUK" | grep -qE '^[0-9]{8}$' || { echo "A PUK is 8 digits."; return 1; }; echo "$PIN" | grep -qE '^[0-9]{4,8}$' || { echo "The new PIN must be 4 to 8 digits."; return 1; }
+	o=$(mmcli -i "$S" --puk="$PUK" --pin="$PIN" 2>&1)
+	case "$o" in *successfully*) timeout 30 mmcli -m "$1" --enable >/dev/null 2>&1; echo "PUK accepted: the SIM is unlocked, with the new PIN."; return 0;;
+	*SimFailure*|*SimWrong*) echo "Wrong PUK. The SIM is now blocked for good: only your operator can replace it.";;
+	*IncorrectPassword*) n=$(retries "$1" sim-puk); echo "Wrong PUK. ${n:-?} tries left before the SIM is blocked for good.";;
+	*) echo "The PUK could not be given to the SIM (${o##*: })";; esac; return 1; }
+js_s() { printf '"%s"' "$(esc "$1")"; }
+settings() {   # MODEM: the SIM's settings and what is automatic
+	modem_ok "$1" || { echo '{"error":"no such modem"}'; return 1; }; F=$(simconf); S=$(sim_of "$MK"); SK=; [ -n "$S" ] && SK=$(mmcli -i "$S" -K 2>/dev/null)
+	OPC=$(mkv "$SK" 'sim\.properties\.operator-code'); SPN=$(mkv "$SK" 'sim\.properties\.operator-name'); NOP=$(mkv "$MK" 'modem\.3gpp\.operator-name')
+	[ "$OPC" = "--" ] && OPC=; [ "$SPN" = "--" ] && SPN=; [ "$NOP" = "--" ] && NOP=
+	A=$(apn_find "$OPC" "$SPN" "$NOP")
+	printf '{"sim":%s,"simOp":%s,"simName":%s,' "$([ -n "$S" ] && echo true || echo false)" "$(js_s "$OPC")" "$(js_s "$SPN")"
+	if [ -n "$A" ]; then IFS='|' read -r an aa au ap asrc <<EOF
+$A
+EOF
+		printf '"auto":{"name":%s,"apn":%s,"user":%s,"source":%s},' "$(js_s "$an")" "$(js_s "$aa")" "$(js_s "$au")" "$(js_s "$asrc")"; else printf '"auto":null,'; fi
+	printf '"apn":%s,"apnuser":%s,"apnpass":%s,"roaming":%s,"mode":%s,"modes":[%s]}\n' "$(js_s "$(cget "$F" apn)")" "$(js_s "$(cget "$F" apnuser)")" "$([ -n "$(cget "$F" apnpass)" ] && echo true || echo false)" \
+		"$([ "$(cget "$F" roaming)" = 1 ] && echo true || echo false)" "$(js_s "$(mode_now)")" "$(mode_choices | sed 's/\([a-z0-9]*\)/"\1"/g; s/ /,/g')"; }
+# the APN in use for this SIM: the one typed in, else the automatic one ("apn|user|password")
+apn_use() { F=$(simconf); a=$(cget "$F" apn); if [ -n "$a" ]; then echo "$a|$(cget "$F" apnuser)|$(cget "$F" apnpass)"; return; fi
+	S=$(sim_of "$MK"); SK=; [ -n "$S" ] && SK=$(mmcli -i "$S" -K 2>/dev/null)
+	A=$(apn_find "$(mkv "$SK" 'sim\.properties\.operator-code')" "$(mkv "$SK" 'sim\.properties\.operator-name' | sed 's/^--$//')" "$(mkv "$MK" 'modem\.3gpp\.operator-name' | sed 's/^--$//')") && echo "$A" | cut -d'|' -f2-4; }
+setting() {   # MODEM KEY VALUE (rudolfd has checked the value's characters)
+	modem_ok "$1" || { echo "There is no such modem."; return 1; }; F=$(simconf)
+	case "$2" in
+	apn) echo "$3" | grep -qE '^([A-Za-z0-9][A-Za-z0-9._-]{0,99})?$' || { echo "An APN has letters, digits, dots and hyphens only."; return 1; }; cset "$F" apn "$3"
+		[ -z "$3" ] && { cset "$F" apnuser ""; cset "$F" apnpass ""; };;
+	apnuser|apnpass) printf '%s' "$3" | grep -qE "^[^,'\"\\\\]{0,64}$" || { echo "That name or password has a character the modem cannot take (a comma or a quote)."; return 1; }; cset "$F" "$2" "$3";;
+	roaming) case "$3" in 0|1) cset "$F" roaming "$3";; *) echo "roaming: 0 or 1"; return 1;; esac;;
+	mode) case "$3" in auto|5g|4g|3g) ;; *) echo "mode: auto, 5g, 4g or 3g"; return 1;; esac; mode_apply "$1" "$3" || return 1; cset "$F" mode "$3";;
+	*) echo "no such setting: $2"; return 1;; esac
+	echo "saved"; }
+# airplane mode: Wi-Fi, Bluetooth and the modems off together (rfkill, ModemManager), and back as they were
+airplane() {
+	AS=$R/airplane
+	case "$1" in
+	on) [ -e $AS ] && { echo "Airplane mode is on"; return 0; }; mkdir -p $R; : > $AS.new
+		for r in $RF/rfkill*; do [ -e "$r/type" ] || continue; t=$(cat $r/type); case "$t" in wlan|bluetooth|wwan) echo "rf ${r##*/} $t $(cat $r/soft 2>/dev/null)" >> $AS.new; echo 1 > $r/soft 2>/dev/null;; esac; done
+		if running; then for p in $(mmcli -K -L 2>/dev/null | grep -o '/org/freedesktop/ModemManager1/Modem/[0-9]*'); do n=${p##*/}
+			st=$(mmcli -m $n -K 2>/dev/null | sed -n 's/^modem\.generic\.state  *: //p'); case "$st" in enabled|searching|registered|connecting|connected|disconnecting) echo "mm $n on" >> $AS.new; timeout 20 mmcli -m $n --disable >/dev/null 2>&1;; *) echo "mm $n off" >> $AS.new;; esac; done; fi
+		mv $AS.new $AS; echo "$(date) airplane mode on" >> $LOG; echo "Airplane mode is on";;
+	off) [ -e $AS ] || { echo "Airplane mode is off"; return 0; }
+		while read -r k a b c; do case "$k" in rf) [ "$c" = 0 ] && [ -e "$RF/$a/soft" ] && echo 0 > "$RF/$a/soft" 2>/dev/null;; mm) [ "$b" = on ] && timeout 30 mmcli -m "$a" --enable >/dev/null 2>&1;; esac; done < $AS
+		rm -f $AS; echo "$(date) airplane mode off" >> $LOG; echo "Airplane mode is off";;
+	*) printf '{"on":%s}\n' "$([ -e $AS ] && echo true || echo false)";; esac; }
 case "$1" in
 hotplug)
 	# (one at a time: a modem's ports come together, and the first one starts ModemManager and reports them all)
@@ -138,5 +261,11 @@ start) start ;;
 stop) stop ;;
 status) status ;;
 fcc) case "$2" in on|off) fcc "$2" "$3";; *) echo "usage: modem fcc on|off ID"; exit 2;; esac ;;
-*) echo "usage: modem hotplug|start|stop|status|fcc"; exit 2 ;;
+pin) pin "$2" "$3" ;;
+puk) puk "$2" "$3" ;;
+settings) settings "$2" ;;
+set) setting "$2" "$3" "$4" ;;
+apn) apn_find "$2" "$3" "$4" ;;
+airplane) airplane "$2" ;;
+*) echo "usage: modem hotplug|start|stop|status|fcc|pin|puk|settings|set|apn|airplane"; exit 2 ;;
 esac

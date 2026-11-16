@@ -3848,10 +3848,18 @@ static int nt_why(const Note *n)
 	char t[480]; snprintf(t, sizeof t, "%s %s", n->t, n->b);
 	return g_regex_match_simple("could ?n[o']t|cannot|can't|failed|failure|error|not found|refused|denied|crash|stopped|timed out|timeout|no answer|did not|went wrong|not respond|white screen|restarted", t, G_REGEX_CASELESS, 0);
 }
-static const char *const QSI[8] = {"🌙", "🌅", "🔕", "🗣️", "🔍", "◐", "⌨️", "🖐️"},
-	*const QSL[8] = {"Dark mode", "Night light", "Do not disturb", "Screen reader", "Magnifier", "High contrast", "On-screen keyboard", "Touch mode"};
-static int qs_get(int i) { switch (i) { case 0: return !strcmp(S.dm, "dark"); case 1: return S.nl; case 2: return S.dnd; case 3: return S.sr; case 4: return S.mag; case 5: return S.hc; case 6: return S.vk; default: return S.touch; } }
-static void qs_set(int i, int v) { switch (i) { case 0: snprintf(S.dm, sizeof S.dm, "%s", v ? "dark" : "light"); break; case 1: S.nl = v; break; case 2: S.dnd = v; break; case 3: S.sr = v; break; case 4: S.mag = v; break; case 5: S.hc = v; break; case 6: S.vk = v; break; default: S.touch = v; } }
+/* (1.6.0 Part 2: the ninth, Airplane mode, is mobile60.js's: rudolfd's mobile/airplane, read when quick settings open, set
+   from here in a thread of its own: turning the modems off can take seconds) */
+static const char *const QSI[9] = {"🌙", "🌅", "🔕", "🗣️", "🔍", "◐", "⌨️", "🖐️", "✈️"},
+	*const QSL[9] = {"Dark mode", "Night light", "Do not disturb", "Screen reader", "Magnifier", "High contrast", "On-screen keyboard", "Touch mode", "Airplane mode"};
+static int AIR_ON;
+static void air_read(void) { JV *v = jget("/api/mobile/airplane"); if (v) AIR_ON = jbool(v, "on"); jfree(v); }
+static gboolean air_done(gpointer p) { AIR_ON = GPOINTER_TO_INT(p) - 1; if (FLK == FL_QS && FLAREA) gtk_widget_queue_draw(FLAREA); return G_SOURCE_REMOVE; }
+static gpointer air_thread(gpointer p) { char q[48]; snprintf(q, sizeof q, "/api/mobile/airplane?on=%d", GPOINTER_TO_INT(p)); http("POST", q, NULL, 0, NULL);
+	JV *v = jget("/api/mobile/airplane"); int on = v ? jbool(v, "on") : GPOINTER_TO_INT(p); jfree(v); g_idle_add(air_done, GINT_TO_POINTER(on + 1)); return NULL; }
+static void air_set(int on) { AIR_ON = on; if (FLAREA) gtk_widget_queue_draw(FLAREA); g_thread_unref(g_thread_new("airplane", air_thread, GINT_TO_POINTER(on))); }
+static int qs_get(int i) { switch (i) { case 0: return !strcmp(S.dm, "dark"); case 1: return S.nl; case 2: return S.dnd; case 3: return S.sr; case 4: return S.mag; case 5: return S.hc; case 6: return S.vk; case 8: return AIR_ON; default: return S.touch; } }
+static void qs_set(int i, int v) { switch (i) { case 0: snprintf(S.dm, sizeof S.dm, "%s", v ? "dark" : "light"); break; case 1: S.nl = v; break; case 2: S.dnd = v; break; case 3: S.sr = v; break; case 4: S.mag = v; break; case 5: S.hc = v; break; case 6: S.vk = v; break; case 8: AIR_ON = v; break; default: S.touch = v; } }
 /* the line box of writing with pictures in it (a fallback font's taller line, as Chromium's) */
 static double fl_line(cairo_t *cr, const char *t, int wt, double px)
 {
@@ -3862,15 +3870,15 @@ static void qs_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int
 {
 	RGBA fg = cx(dark ? "#e2e8f0" : "#111827", 1), mut = cx(dark ? "#94a3b8" : "#6b7280", 1); double W = 340, cw = (W - 12) / 3, l11 = fl_lh(cr, 400, 11), l20 = fl_lh(cr, 400, 20);
 	/* the tiles' heights: each row as tall as its tallest (a name on two lines) */
-	int nl8[8]; for (int i = 0; i < 8; i++) { PangoLayout *pl = css_layout(cr, QSL[i], UIFAM, 400, 11); pango_layout_set_width(pl, (int)((cw - 10) * PANGO_SCALE)); pango_layout_set_wrap(pl, PANGO_WRAP_WORD); nl8[i] = pango_layout_get_line_count(pl); g_object_unref(pl); }
-	double rh[3]; for (int r = 0; r < 3; r++) { int m = 1; for (int c = 0; c < 3; c++) { int i = r * 3 + c; if (i < 8 && nl8[i] > m) m = nl8[i]; } rh[r] = 2 + 20 + l20 + 4 + m * l11; }
+	int nl8[9]; for (int i = 0; i < 9; i++) { PangoLayout *pl = css_layout(cr, QSL[i], UIFAM, 400, 11); pango_layout_set_width(pl, (int)((cw - 10) * PANGO_SCALE)); pango_layout_set_wrap(pl, PANGO_WRAP_WORD); nl8[i] = pango_layout_get_line_count(pl); g_object_unref(pl); }
+	double rh[3]; for (int r = 0; r < 3; r++) { int m = 1; for (int c = 0; c < 3; c++) { int i = r * 3 + c; if (i < 9 && nl8[i] > m) m = nl8[i]; } rh[r] = 2 + 20 + l20 + 4 + m * l11; }
 	double l12 = fl_lh(cr, 400, 12), bh = 3 + 3 + 2 + fl_line(cr, "🔒 Lock", 400, 13);
 	double ch = rh[0] + rh[1] + rh[2] + 12 + 8 + l12 + 10 + bh;
 	FLW = W + 22; FLH = ch + 22; FLX = vw - 8 - FLW; FLY = top ? 52 + TOPRES / Z : vh - 52 - FLH;
 	if (!draw) return;
 	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 12; shd_add(&b, 0, 14, 36, cx("#000000", .35), 0); box_paint(cr, FLX, FLY, FLW, FLH, &b);
 	double x = FLX + 11, y = FLY + 11;
-	for (int i = 0; i < 8; i++) { int r = i / 3, c = i % 3, on = qs_get(i); double tx = x + c * (cw + 6), ty = y; for (int q = 0; q < r; q++) ty += rh[q] + 6;
+	for (int i = 0; i < 9; i++) { int r = i / 3, c = i % 3, on = qs_get(i); double tx = x + c * (cw + 6), ty = y; for (int q = 0; q < r; q++) ty += rh[q] + 6;
 		Box t; memset(&t, 0, sizeof t); t.rad = 10; t.bw = 1; if (on) { t.bg = ca(accent(), 1); t.bc = ca(accent(), 1); } else { t.bg = cx(dark ? "#1e293b" : "#f3f4f6", 1); t.bc = cx(dark ? "#334155" : "#d1d5db", 1); }
 		box_paint(cr, tx, ty, cw, rh[r], &t); RGBA ink = on ? cx("#ffffff", 1) : fg;
 		double iw = css_width(cr, QSI[i], UIFAM, 400, 20); css_text(cr, QSI[i], UIFAM, 400, 20, tx + (cw - iw) / 2, ty + 11, l20, ink, 0);
@@ -4122,6 +4130,7 @@ static void fl_act(const char *k, int dbl)
 	else if (!strcmp(k, "mute")) { char q[16]; snprintf(q, sizeof q, "muted=%d", !FLMUTE); fl_volume_set(q); }
 	else if (!strcmp(k, "sounds")) { fl_close(); tb_settings("vol"); return; }
 	else if (!strcmp(k, "npo")) { fl_close(); tb_settings("net"); return; }   /* (the network's Network Settings…) */
+	else if (!strcmp(k, "qs:8")) { air_set(!AIR_ON); }
 	else if (!strncmp(k, "qs:", 3)) { int i = atoi(k + 3); if (i < 0 || i > 7) return; qs_set(i, !qs_get(i)); char *e = qesc(QSL[i]), ex[160]; snprintf(ex, sizeof ex, "&item=%s", e); g_free(e); app_open_ex("do-qs", NULL, ex, 1);
 		if (i == 2) bar_redraw(); }
 	else if (!strcmp(k, "lock")) { fl_close(); power("lock"); return; }
@@ -4197,6 +4206,7 @@ static void fl_open(int kind)
 		g_signal_connect(FLWIN, "scroll-event", G_CALLBACK(fl_scroll), NULL);
 		g_signal_connect(FLAREA, "draw", G_CALLBACK(fl_draw), NULL); g_signal_connect(FLWIN, "button-press-event", G_CALLBACK(fl_press), NULL);
 		g_signal_connect(FLWIN, "button-release-event", G_CALLBACK(fl_release), NULL); g_signal_connect(FLWIN, "motion-notify-event", G_CALLBACK(fl_motion), NULL); }
+	if (kind == FL_QS) air_read();   /* (1.6.0 Part 2: Airplane mode, as it is now) */
 	FLK = kind; FLHOV = FLPRESS = -1; FLSCROLL = 0;
 	if (kind == FL_CAL) { GDateTime *n = fl_now(); FL_Y = g_date_time_get_year(n); FL_M = g_date_time_get_month(n); g_date_time_unref(n); }
 	else if (kind == FL_NET) net_read();
@@ -4889,7 +4899,7 @@ static void state_write(void)
 	g_string_append_printf(s, "dialog %s %s|%s\n", DGK == DLG_RENAME ? "rename" : DGK == DLG_OPENWITH ? "openwith" : "-", DGK ? DGNAME : "-", DGMSG);
 	for (int i = 0; DGK && i < NDGB; i++) g_string_append_printf(s, "dgbtn %d %d %d\n", i, (int)lround((DGB[i].x + DGB[i].w / 2) * Z), (int)lround((DGB[i].y + DGB[i].h / 2) * Z));
 	if (FLK) { g_string_append_printf(s, "fly %s %d %d %d %d %d-%02d %d %d\n", FLK == FL_CAL ? "cal" : FLK == FL_VOL ? "vol" : FLK == FL_NET ? "net" : FLK == FL_QS ? "qs" : "nc", (int)lround(FLX * Z), (int)lround(FLY * Z), (int)lround(FLW * Z), (int)lround(FLH * Z), FL_Y, FL_M, FLVOL, FLMUTE);
-		if (FLK == FL_QS) { g_string_append(s, "flyqs"); for (int i = 0; i < 8; i++) if (qs_get(i)) g_string_append_printf(s, " %s", QSL[i]); g_string_append_c(s, '\n'); }
+		if (FLK == FL_QS) { g_string_append(s, "flyqs"); for (int i = 0; i < 9; i++) if (qs_get(i)) g_string_append_printf(s, " %s", QSL[i]); g_string_append_c(s, '\n'); }
 		if (FLK == FL_NC) { g_string_append_printf(s, "flync %d %d", NNT, S.dnd); for (int i = 0; i < NNT; i++) g_string_append_printf(s, "|%s", NT[i].t); g_string_append_c(s, '\n'); }
 		for (int i = 0; i < NFLB; i++) g_string_append_printf(s, "flybtn %s %d %d\n", FLBK[i], (int)lround((FLB[i].x + FLB[i].w / 2) * Z), (int)lround((FLB[i].y + FLB[i].h / 2) * Z)); }
 	else g_string_append(s, "fly -\n");
