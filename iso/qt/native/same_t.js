@@ -79,6 +79,10 @@ CASES.push({n: 'fly-vol', set: {}, fly: 'vol', parts: ['fly']});
 const NOTES = {['bd95notif:' + ACCT]: [{id: 1, t: 'Download finished', b: 'report.pdf is in Downloads', k: 'info', app: '', at: Date.parse('2026-11-14T09:40:00Z')},
   {id: 2, t: 'Update failed', b: 'Could not reach the update server', k: 'error', app: '', at: Date.parse('2026-11-14T08:40:00Z')}]};
 CASES.push({n: 'fly-qs', set: {}, fly: 'qs', parts: ['fly']});
+/* (1.6.0 Part 5) mobile data in use: the network icon's bars (signal 74 %: three), and the network pop-up's rows (mobile data in reserve behind Wi-Fi) */
+const CELLNET = {ok: true, interfaces: [{name: 'wwan0', state: 'unknown', ip: '10.64.12.34/30', wireless: false, virtual: false, default: true, cellular: true, carrier: 'T-Mobile', tech: 'LTE', signal: 74}]};
+CASES.push({n: 'tray-cell', set: {}, rd: {net: CELLNET}, parts: ['tray']});
+CASES.push({n: 'fly-net-cell', set: {}, rd: {net: {ok: true, interfaces: [{name: 'wlan0', ip: '192.168.1.5/24', state: 'up', wireless: true, virtual: false, default: true, ssid: 'Home', rssi: -55}, Object.assign({}, CELLNET.interfaces[0], {default: false})]}}, fly: 'net', parts: ['fly']});
 CASES.push({n: 'fly-qs-on', set: {dnd: true, sr: true}, fly: 'qs', parts: ['fly']});   /* (switches the shell does not show otherwise: Night light's tint, Touch mode's sizes are later items') */
 CASES.push({n: 'fly-qs-dark', set: {dm: 'dark', darkui: true}, fly: 'qs', parts: ['fly']});
 CASES.push({n: 'fly-nc', set: {}, more: NOTES, fly: 'notes', parts: ['fly']});
@@ -169,7 +173,7 @@ const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
 const micSet = c => { fs.writeFileSync(path.join(D, 'mic'), JSON.stringify(c.mic || [])); if (c.mic) cp.execSync(`curl -s --noproxy '*' -X POST -H 'X-Rudolf-Token: tok160same' '${BASE}/api/mic?muted=${c.micmuted ? 1 : 0}'`) };
-const rdSet = c => { for (const k of ['deb', 'ai']) { const f = path.join(D, k); if (c.rd && c.rd[k]) fs.writeFileSync(f, JSON.stringify(c.rd[k])); else try { fs.unlinkSync(f) } catch (e) {} } };
+const rdSet = c => { for (const k of ['deb', 'ai', 'net']) { const f = path.join(D, k); if (c.rd && c.rd[k]) fs.writeFileSync(f, JSON.stringify(c.rd[k])); else try { fs.unlinkSync(f) } catch (e) {} } };
 async function stdCase(c) {
   state(c.set, c.more); micSet(c); rdSet(c);
   const ctx = await BR.newContext({viewport: {width: W, height: H}, deviceScaleFactor: 1, timezoneId: 'UTC'});

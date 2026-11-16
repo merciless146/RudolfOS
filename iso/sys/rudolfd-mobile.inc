@@ -8,9 +8,26 @@
      POST mobile/pin?id=N              the SIM's PIN: the body {"n":ADMIN,"p":PASSWORD,"pin":"1234"}
      POST mobile/puk?id=N              its PUK and a new PIN: {"n","p","puk":"12345678","pin":"1234"}
      GET  mobile/settings?id=N         the SIM's operator, the automatic APN, the one typed in, roaming, the network type
-     POST mobile/settings?id=N&k=apn|apnuser|apnpass|roaming|mode&v=VALUE
+     POST mobile/settings?id=N&k=apn|apnuser|apnpass|roaming|mode|autoconnect|limit|startday|dataoff&v=VALUE
+                                       (Part 4: the settings' answer has "usage": this month's data, the limit)
      GET  mobile/airplane, POST mobile/airplane?on=1|0   Wi-Fi, Bluetooth and the modems off together, and back
+   (Part 5)
+     GET  mobile/signal?id=N           the signal's details: LTE's RSRP, RSRQ, SINR, RSSI; 5G's; 3G's (null: not given)
+   (Part 6)
+     GET  mobile/sms?id=N              the messages the modem holds (until the Messages app has kept them in the account's
+                                       folder and deleted them here)
+     POST mobile/sms/send?id=N         {"number":"+15551234567","text":"..."}: sent, a delivery report asked for
+     POST mobile/sms/delete?id=N&sms=K
+     GET  mobile/sms/preview, POST mobile/sms/preview?on=1|0   a new message's text in its notice (and on the lock
+                                       screen), else only its sender; on: an administrator's name and password
+   (Part 3)
+     POST mobile/connect?id=N&on=1|0   connect (and connect automatically again) or disconnect (until Connect)
+     GET  mobile/notes?since=N         the cellular connection's notices (mobile data in use, back on Wi-Fi), for both
+                                       desktops: {"ok":true,"last":N,"notes":[{"n","t","b"}]}
    (MODEM_SH moves the script for the host tests: qt/host/fixtures/mobileapi.c.) */
+#ifndef MOBILE_RUN
+#define MOBILE_RUN RUN
+#endif
 #ifndef MODEM_SH
 #define MODEM_SH "/usr/lib/rudolf/modem"
 #endif
@@ -71,11 +88,71 @@ static int api_mobile2(struct req *r, const char *p, int post)
 			if (!o || o[0] != '{' || strstr(o, "\"error\"")) { free(o); reply_err(r->fd, 404, "there is no such modem"); return 1; }
 			str js = {0}; sadd(&js, "{\"ok\":true,"); sadd(&js, "%s", o + 1); free(o); reply_json(r->fd, &js); return 1; }
 		const char *k = qparam(r->query, "k"), *v = qparam(r->query, "v");
-		if (!k || (strcmp(k, "apn") && strcmp(k, "apnuser") && strcmp(k, "apnpass") && strcmp(k, "roaming") && strcmp(k, "mode")) || !mobile_value_ok(v)) { reply_err(r->fd, 400, "k=apn|apnuser|apnpass|roaming|mode&v=VALUE (no quotes, commas or backslashes)"); return 1; }
+		if (!k || (strcmp(k, "apn") && strcmp(k, "apnuser") && strcmp(k, "apnpass") && strcmp(k, "roaming") && strcmp(k, "mode") && strcmp(k, "autoconnect") && strcmp(k, "limit") && strcmp(k, "startday") && strcmp(k, "dataoff")) || !mobile_value_ok(v)) { reply_err(r->fd, 400, "k=apn|apnuser|apnpass|roaming|mode|autoconnect|limit|startday|dataoff&v=VALUE (no quotes, commas or backslashes)"); return 1; }
 		snprintf(cmd, sizeof cmd, MODEM_SH " set %s %s '%s' 2>&1", id, k, v); char *o = run_out(cmd); trim(o);
 		if (o && !strcmp(o, "saved")) { if (!strcmp(k, "roaming") && *v == '1') health_add("modem", "mobile data when roaming was turned on"); reply_ok(r->fd, o); }
 		else reply_err(r->fd, 400, o && *o ? o : "the setting was not saved");
 		free(o); return 1;
+	}
+	if (!strcmp(p, "mobile/connect")) {
+		if (!post) { reply_err(r->fd, 405, "POST"); return 1; }
+		const char *on = qparam(r->query, "on");
+		if (!mobile_digits(id, 1, 4) || !on || (strcmp(on, "1") && strcmp(on, "0"))) { reply_err(r->fd, 400, "id=MODEM&on=1|0"); return 1; }
+		char cmd[160]; snprintf(cmd, sizeof cmd, MODEM_SH " %s %s 2>&1", *on == '1' ? "connect" : "disconnect", id);
+		char *o = run_out(cmd); trim(o);
+		if (o && (!strcmp(o, "Connected") || !strcmp(o, "Disconnected"))) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "the modem service did not answer");
+		free(o); return 1;
+	}
+	if (!strcmp(p, "mobile/signal")) {   /* (Part 5) the signal's details */
+		if (!mobile_digits(id, 1, 4)) { reply_err(r->fd, 400, "id=MODEM"); return 1; }
+		char cmd[120]; snprintf(cmd, sizeof cmd, MODEM_SH " signal %s 2>/dev/null", id); char *o = run_out(cmd); trim(o);
+		if (!o || o[0] != '{' || strstr(o, "\"error\"")) { free(o); reply_err(r->fd, 404, "there is no such modem"); return 1; }
+		str js = {0}; sadd(&js, "{\"ok\":true,"); sadd(&js, "%s", o + 1); free(o); reply_json(r->fd, &js); return 1;
+	}
+	if (!strcmp(p, "mobile/sms")) {
+		if (!mobile_digits(id, 1, 4)) { reply_err(r->fd, 400, "id=MODEM"); return 1; }
+		char cmd[120]; snprintf(cmd, sizeof cmd, MODEM_SH " sms %s 2>/dev/null", id); char *o = run_out(cmd); trim(o);
+		if (!o || o[0] != '{' || strstr(o, "\"error\"")) { free(o); reply_err(r->fd, 404, "there is no such modem"); return 1; }
+		str js = {0}; sadd(&js, "{\"ok\":true,"); sadd(&js, "%s", o + 1); free(o); reply_json(r->fd, &js); return 1;
+	}
+	if (!strcmp(p, "mobile/sms/send")) {
+		if (!post) { reply_err(r->fd, 405, "POST"); return 1; }
+		if (!mobile_digits(id, 1, 4)) { reply_err(r->fd, 400, "id=MODEM"); return 1; }
+		char *num = r->body && r->blen && r->body[0] == '{' ? dbody_field(r, "number") : NULL, *txt = num ? dbody_field(r, "text") : NULL;
+		int nok = num && *num && strlen(num) <= 24; for (const char *c = num; nok && *c; c++) if (!isdigit((unsigned char)*c) && !strchr("+ ()-", *c)) nok = 0;
+		if (!nok || !txt || !*txt || strlen(txt) > 4000) { free(num); free(txt); reply_err(r->fd, 400, "{\"number\":\"+1...\",\"text\":\"...\"} (a phone number, and a text of up to 4000 bytes)"); return 1; }
+		const char *f = RUN "/sms-req"; unlink(f); int fd = open(f, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+		int w = fd >= 0 && dprintf(fd, "%s\n%s", num, txt) > 0; if (fd >= 0) close(fd); free(num); free(txt);
+		if (!w) { reply_err(r->fd, 500, "could not hand the message to the modem service"); return 1; }
+		char cmd[160]; snprintf(cmd, sizeof cmd, MODEM_SH " sms-send %s " RUN "/sms-req 2>&1", id); char *o = run_out(cmd); trim(o); unlink(f);
+		if (o && o[0] == '{') { str js = {0}; sadd(&js, "{\"ok\":true,"); sadd(&js, "%s", o + 1); reply_json(r->fd, &js); } else reply_err(r->fd, 400, o && *o ? o : "the message was not sent");
+		free(o); return 1;
+	}
+	if (!strcmp(p, "mobile/sms/delete")) {
+		if (!post) { reply_err(r->fd, 405, "POST"); return 1; }
+		const char *k = qparam(r->query, "sms");
+		if (!mobile_digits(id, 1, 4) || !mobile_digits(k, 1, 6)) { reply_err(r->fd, 400, "id=MODEM&sms=K"); return 1; }
+		char cmd[160]; snprintf(cmd, sizeof cmd, MODEM_SH " sms-delete %s %s 2>&1", id, k); char *o = run_out(cmd); trim(o);
+		if (o && !strcmp(o, "deleted")) reply_ok(r->fd, o); else reply_err(r->fd, 404, o && *o ? o : "no such message"); free(o); return 1;
+	}
+	if (!strcmp(p, "mobile/sms/preview")) {
+		if (!post) { char *o = run_out(MODEM_SH " sms-preview status 2>/dev/null"); trim(o); str js = {0}; sadd(&js, "{\"ok\":true,\"on\":%s}", o && !strcmp(o, "on") ? "true" : "false"); free(o); reply_json(r->fd, &js); return 1; }
+		const char *on = qparam(r->query, "on"); if (!on || (strcmp(on, "1") && strcmp(on, "0"))) { reply_err(r->fd, 400, "on=1|0"); return 1; }
+		char *an = NULL; if (*on == '1' && !(an = mobile_admin(r))) return 1;
+		char *o = run_out(*on == '1' ? MODEM_SH " sms-preview on 2>&1" : MODEM_SH " sms-preview off 2>&1"); free(o);
+		if (an) health_add("security", "the text of new messages is shown in notices, also on the lock screen (turned on by %.80s)", an);
+		free(an); reply_ok(r->fd, *on == '1' ? "on" : "off"); return 1;
+	}
+	if (!strcmp(p, "mobile/notes")) {
+		long since = 0; const char *sn = qparam(r->query, "since"); if (sn) since = atol(sn);
+		char *t = slurp(MOBILE_RUN "/cell-notes", NULL); str js = {0}; long last = 0; int first = 1;
+		sadd(&js, "{\"ok\":true,\"notes\":[");
+		for (char *l = t, *e; l && *l; l = e ? e + 1 : NULL) { e = strchr(l, '\n'); if (e) *e = 0;
+			char *b1 = strchr(l, '|'), *b2 = b1 ? strchr(b1 + 1, '|') : NULL; if (!b2) { if (!e) break; continue; }
+			*b1 = 0; *b2 = 0; long n = atol(l); if (n > last) last = n;
+			if (n > since) { sadd(&js, "%s{\"n\":%ld,\"t\":", first ? "" : ",", n); sjson(&js, b1 + 1); sadd(&js, ",\"b\":"); sjson(&js, b2 + 1); sadd(&js, "}"); first = 0; }
+			if (!e) break; }
+		sadd(&js, "],\"last\":%ld}", last); free(t); reply_json(r->fd, &js); return 1;
 	}
 	if (!strcmp(p, "mobile/airplane")) {
 		if (!post) { char *o = run_out(MODEM_SH " airplane status 2>/dev/null"); trim(o); str js = {0}; sadd(&js, "{\"ok\":true,\"on\":%s}", o && strstr(o, "true") ? "true" : "false"); free(o); reply_json(r->fd, &js); return 1; }
