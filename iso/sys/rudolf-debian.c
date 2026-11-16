@@ -77,6 +77,10 @@
 #define KEYF "/etc/rudolf/rpk-keys"
 #define DEFAULT_URL "https://github.com/merciless146/RudolfOS/releases/download/debian-13"
 #define SHIFT 200000
+#ifndef OPEN_BIN
+#define OPEN_BIN "/usr/lib/rudolf/rudolf-open"   /* 1.6.0: xdg-open and the browser commands, inside (rudolf-open.c) */
+#endif
+#define OPEN_SHARE "/run/rudolf-os/share"         /* (inside: its launcher for GIO, first in XDG_DATA_DIRS) */
 
 static void die(const char *f, ...) { va_list a; va_start(a, f); fputs("rudolf-debian: ", stderr); vfprintf(stderr, f, a); fputc('\n', stderr); va_end(a); exit(1); }
 static void say(const char *f, ...) { va_list a; va_start(a, f); vprintf(f, a); putchar('\n'); fflush(stdout); va_end(a); }
@@ -274,6 +278,23 @@ homed:
 		snprintf(f, sizeof f, "engine=%s\nchannel=%s\n", e, ch);
 		mkdirs(ROOT "/run/rudolf-os", 0755); write_str(ROOT "/run/rudolf-os/facts", f);
 	}
+	/* 1.6.0: links and files Debian's programs open go to Rudolf OS's desktop (rudolf-open, through the account's session
+	   bus to the Rudolf portal, as Flatpak apps' do): Electron's shell.openExternal and Qt run xdg-open (and xdg-email),
+	   other programs x-www-browser, sensible-browser or $BROWSER; GIO (GTK's gtk_show_uri, gio open) finds the launcher
+	   below as the default for web and mail links (XDG_DATA_DIRS, env_for). Read only, as rudolf-fetch; nothing else in
+	   Debian changes, and Debian's own xdg-open is used when the desktop cannot be reached. */
+	if (!access(OPEN_BIN, X_OK)) {
+		static const char *const NAMES[] = {"xdg-open", "xdg-email", "x-www-browser", "sensible-browser", "www-browser", "gnome-www-browser", NULL};
+		mkdirs(ROOT "/usr/local/bin", 0755);
+		for (int i = 0; NAMES[i]; i++) { snprintf(b, sizeof b, ROOT "/usr/local/bin/%s", NAMES[i]);
+			if (!bindmnt(OPEN_BIN, b, 0)) mount(NULL, b, NULL, MS_REMOUNT | MS_BIND | MS_RDONLY, NULL); }
+		mkdirs(ROOT OPEN_SHARE "/applications", 0755);
+		write_str(ROOT OPEN_SHARE "/applications/rudolf-open.desktop", "[Desktop Entry]\nType=Application\nName=Rudolf OS\n"
+			"Comment=Opens links in Oracle, mail in Mail and files in their app on Rudolf OS's desktop\nExec=/usr/local/bin/xdg-open %u\n"
+			"NoDisplay=true\nTerminal=false\nMimeType=x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/mailto;text/html;application/xhtml+xml;\n");
+		write_str(ROOT OPEN_SHARE "/applications/mimeapps.list", "[Default Applications]\nx-scheme-handler/http=rudolf-open.desktop\n"
+			"x-scheme-handler/https=rudolf-open.desktop\nx-scheme-handler/mailto=rudolf-open.desktop\ntext/html=rudolf-open.desktop\napplication/xhtml+xml=rudolf-open.desktop\n");
+	}
 	sethostname("rudolf", 6);
 	if (chdir(ROOT)) KFAIL(15);
 	mkdir(".oldroot", 0700);
@@ -344,6 +365,12 @@ static void env_for(int root, const char *home)
 	if (!access("/run/user/1000/pulse/native", F_OK)) setenv("PULSE_SERVER", "unix:/run/user/1000/pulse/native", 1);
 	if (!root && !access("/run/user/1000/bus", F_OK)) setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus", 1);
 	if (root) setenv("DEBIAN_FRONTEND", "noninteractive", 0);
+	/* 1.6.0: links to Rudolf OS's desktop (rudolf-open, bound by the keeper): the browser of programs that ask $BROWSER
+	   (Python's webbrowser, git, many command-line tools), and GIO's default for web and mail links */
+	if (!root && !access("/usr/local/bin/x-www-browser", X_OK) && !access(OPEN_SHARE "/applications/rudolf-open.desktop", R_OK)) {
+		setenv("BROWSER", "/usr/local/bin/x-www-browser", 1);
+		setenv("XDG_DATA_DIRS", OPEN_SHARE ":/usr/local/share:/usr/share", 1);
+	}
 }
 /* join the running sandbox; returns in a child process that is inside (PID namespace included) */
 static int nonet;   /* run: a network namespace of its own (no network) for what runs */
@@ -769,7 +796,8 @@ static int cmd_launch(const char *id, const char *file)
 			o[ol++] = *s++;
 		}
 		o[ol] = 0;
-		if (o[0] == '%' && o[1] && !o[2]) { if (strchr("fFuU", o[1]) && file && *file) { snprintf(o, 600, "%s", file); argv[n++] = o; } continue; }
+		/* (1.6.0: as it is, not copied: a link of the app's own scheme can be longer than a word here) */
+		if (o[0] == '%' && o[1] && !o[2]) { if (strchr("fFuU", o[1]) && file && *file) argv[n++] = (char *)file; continue; }
 		argv[n++] = o;
 	}
 	argv[n] = NULL; if (!n) die("the app has no command");

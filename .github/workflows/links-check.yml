@@ -1,0 +1,83 @@
+# 1.6.0 (the owner's Vivobook report of 2026-11-16: "Continue with Google" in Claude's Linux desktop app did nothing): links
+# between Linux apps and Oracle, both ways. Run by a push that changes .github/l160-run.txt (lines: serial=SERIAL, empty: the
+# newest beta; engines=standard,native), or by hand. Nothing is published.
+#   host: rudolf-open (Debian's xdg-open, xdg-email, x-www-browser) with this tree's rudolf-portal on a private session bus
+#         (iso/qt/host/openshim60_t.sh); the desktop's side (iso/qt/shell2/links60_t.js: an app's own scheme from an Oracle
+#         tab or another app, to that app after asking; Settings › Apps › Links), in the release's own Chromium.
+#   qemu: the whole sign-in on the real release with this tree's page, rudolfd, rudolf-debian and rudolf-open put in place
+#         (iso/qt/sb/l160_t.py): a stand-in app in Debian (iso/qt/teststand.c) opens its sign-in page with xdg-open, Oracle
+#         shows it, the page redirects to teststand://, Oracle asks, the app receives the code; on Standard and Native.
+name: App links check
+on:
+  push:
+    paths: ['.github/l160-run.txt']
+  workflow_dispatch:
+    inputs:
+      serial: {description: 'A release to test (its serial); empty: the newest beta', required: false, default: ''}
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libglib2.0-dev libglib2.0-bin libssl-dev dbus dbus-bin squashfs-tools >/dev/null
+          mkdir -p pw && cd pw && npm init -y >/dev/null && npm install -s playwright-core@1.56.1 >/dev/null && ln -s playwright-core node_modules/playwright
+          sudo npx playwright-core install-deps chromium >/dev/null 2>&1 || true
+      - name: rudolf-open (Debian's xdg-open) with the Rudolf portal
+        run: sudo sh iso/qt/host/openshim60_t.sh | tee shim.txt; grep -q ' passed$' shim.txt && ! grep -q '^FAIL' shim.txt
+      - name: The release's Chromium
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S='${{ inputs.serial }}'; [ -n "$S" ] || S=$(sed -n 's/^serial=//p' .github/l160-run.txt | head -1); [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel && gh release download "r$S" -D rel -p 'chromium.sfs'
+          unsquashfs -q -d chr rel/chromium.sfs opt/chromium >/dev/null; chr/opt/chromium/chrome --version || true
+      - name: The desktop's side (this tree's page)
+        run: cd iso/qt/shell2 && NODE_PATH=$GITHUB_WORKSPACE/pw/node_modules node links60_t.js $GITHUB_WORKSPACE/chr/opt/chromium/chrome | tee $GITHUB_WORKSPACE/page.txt; grep -q ' passed$' $GITHUB_WORKSPACE/page.txt && ! grep -q '^FAIL' $GITHUB_WORKSPACE/page.txt
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: links-host, retention-days: 7, path: "shim.txt\npage.txt"}
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: for k in serial engines; do echo "L_$k=$(sed -n "s/^$k=//p" .github/l160-run.txt | head -1)" >> $GITHUB_ENV; done
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography python3-pil bzip2 libssl-dev zlib1g-dev >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S='${{ inputs.serial }}'; [ -n "$S" ] || S="$L_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel; echo "::notice title=App links QEMU check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)), engines ${L_engines:-standard,native}"
+      - name: This tree's page, rudolfd, rudolf-debian, rudolf-open and the stand-in app
+        run: |
+          cd iso && . systools/hardflags.sh && cd .. && mkdir -p fix
+          gcc -O2 $HARD -o fix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          gcc -O2 $HARD -o fix/rudolf-debian iso/sys/rudolf-debian.c -lcrypto -ldl
+          gcc -O2 $HARD_STATIC -o fix/rudolf-open iso/sys/rudolf-open.c
+          gcc -O2 -static -o fix/teststand iso/qt/teststand.c
+          cp iso/www/index.html fix/ && ls -la fix && echo "L160_FIX=$PWD/fix" >> $GITHUB_ENV
+      - name: l160 (Standard, then Native)
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} L160_FIX=$L160_FIX L160_ENGINES=${L_engines:-standard,native} python3 ../iso/qt/sb/l160_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: l160, retention-days: 7, path: "run/l160.txt\nrun/l160*/qemu.log\nrun/l160*/*.png\nrun/*.png"}

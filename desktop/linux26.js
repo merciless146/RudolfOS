@@ -134,7 +134,9 @@ async function lxPortal(id,r){const name=lxAppName(r.app),back=LX.shown;
  if(r.kind=='url'){await lxAnswer(id,{response:0});const u=String(r.uri||'');
   if(/^mailto:/i.test(u)){await lxApi('apps/desktop');emailCompose({to:decodeURIComponent(u.slice(7).split('?')[0])})}
   else if(/^https?:/i.test(u)){if(webWants(u))webOpen(u);else{await lxApi('apps/desktop');browser(u)}}
-  else if(/^file:/i.test(u)){const p=lxDeskPath(decodeURIComponent(u.replace(/^file:\/\//,'')));if(p){await lxApi('apps/desktop');openPathDefault(p)}}return}
+  else if(/^file:/i.test(u)){const p=lxDeskPath(decodeURIComponent(u.replace(/^file:\/\//,'')));if(p){await lxApi('apps/desktop');openPathDefault(p)}}
+  /* 1.6.0: another app's own scheme (discord://, steam://...): to that app, after asking (links60.js); none: said so */
+  else if(typeof lkLinkOk=='function'&&lkLinkOk(u)){await lxApi('apps/desktop');if(!await lkOpen(u,{from:name}))notify(name,'It asked to open a '+lkScheme(u)+': link, which no app on this computer opens.')}return}
  if(r.kind=='openfile'||r.kind=='folder'){await lxAnswer(id,{response:0});const p=r.path&&lxDeskPath(r.path);if(p){await lxApi('apps/desktop');r.kind=='folder'?explorer(p):openPathDefault(p)}else notify(name,'It asked to open '+(r.path||'a file')+', which is outside your shared folders.');return}
  if(r.kind=='open'||r.kind=='save'){await lxApi('apps/desktop');await lxSync().catch(()=>{});const res=await lxFileDialog(r,name);await lxAnswer(id,res?{response:0,uris:res}:{response:1},back);setTimeout(lxWinPoll,300)}}
 function lxFileDialog(r,name){return new Promise(done=>{const save=r.kind=='save';let cur='/home/rudolf/'+(r.folder&&/\/home\/rudolf\/(Documents|Pictures|Downloads)/.test(r.folder)?r.folder.replace(/^\/home\/rudolf\//,''):'Documents');let all=false;const sel=new Set();

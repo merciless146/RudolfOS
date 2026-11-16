@@ -306,6 +306,7 @@
 ["Rudolf OS to put on it","Make a Rudolf OS USB stick"],
 ["Also copy my files and settings (Linux apps are not copied)","Make a Rudolf OS USB stick"]],"apps":
 [["Default apps","",1],
+["Links","",1],
 ["Installed apps","",1],
 ["Linux (Debian 13)","",1],
 ["Blitzen (assistant)","",1],
