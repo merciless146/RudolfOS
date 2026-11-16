@@ -26,6 +26,8 @@ jobs:
           for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
           bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
           echo "QEMU=$Q" >> $GITHUB_ENV
+          # (the firmware's variables sbvm.py starts each computer with; Secure Boot itself is not used here)
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
       - name: The release
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
@@ -40,7 +42,7 @@ jobs:
         run: gcc -O2 -o rudolf-update iso/sys/rudolf-update.c -lcrypto -ldl
       - name: t160 (15.1, 15.3, 8.7, the recovery repair)
         run: |
-          mkdir -p run && cd run && sudo -E env SB_PARTS=/nonexistent QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/t160_t.py ../rel ../rudolf-update
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/t160_t.py ../rel ../rudolf-update
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: t160, retention-days: 7, path: "run/t160.txt\nrun/t160*/qemu.log\nrun/t160*/*.png"}

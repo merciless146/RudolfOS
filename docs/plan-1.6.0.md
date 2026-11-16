@@ -17,6 +17,7 @@ needs in 1.5.8 and 1.5.9. It follows the mobile work in docs/plan-1.5.8.md (Part
 **Not in 1.6.0:** voice calls and emergency calls (a computer is not a phone, and emergency calling must be tested on
 each device before it is offered: 1.6.x, with the first phone), phones themselves (1.6.x, docs/plan-1.5.8.md 8.3), eSIM
 provisioning (downloading a carrier's eSIM profile), and 5G standalone features beyond what the modem does by itself.
+Everything moved past 1.6.0 is gathered in docs/plan-1.6.1.md (2026-11-15).
 
 ## Leanness
 - Cellular support adds about 6 to 10 MB to the base layer (ModemManager, libqmi, libmbim, libqrtr, the operators'
@@ -545,6 +546,14 @@ after N minutes and sleep are not in the behaviour test (they need a minute afte
 screen; rudolf-display gives Chromium one output), so "a taskbar and the wallpaper on each monitor" on Native would make Native
 differ from Standard, against "The rule". Either Standard gets it too (a change to Standard, which the rule forbids without
 the owner), or Native keeps one desktop as Standard and item 7 is dropped or moved to 2.0. Left undone until then.
+**Item 7 decided (owner, 2026-11-15):** "Rudolf OS has three workspaces that can be selected in the bottom right of the
+taskbar. These workspaces will be the basis for Rudolf being able to support up to three monitors/displays, as well as
+having three panels for the mobile build that can be selected by swiping left/right similar to how Android phones
+work." So several monitors are built on the three workspaces, on Standard and Native alike (the rule holds): up to
+three displays, each showing one of the workspaces with its own wallpaper and taskbar; a window moved to another
+workspace moves to that display. One display keeps today's behaviour (the three workspaces switched from the taskbar).
+The mobile build's three panels are the same three workspaces, swiped left and right.
+When (owner, 2026-11-15): after the 1.6.0 beta, in 1.6.x; it needs real monitors to test.
 **Item 8 (2026-11-15, unattended session): the Phone screen and Blitzen's panel.** Both are page windows (apk58.js
 phoneScreen, blitzen26.js blitzenApp; the page docks neither), so Native shows each in a one-app window opened from its pin.
 Checked against Standard with same_t.sh, new cases phone-nolinux, phone-noscrcpy, phone-ready, phone-dark, blitzen-setup,
@@ -853,6 +862,9 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
     first); GPU drawing for Lite measured; Oracle's WebKit tabs (YouTube, Google sign-in with FedCM, a download, full
     screen, memory with 5 tabs); the lock and sign-in screen settings and the shutting-down screen; the dynamic
     backgrounds' moving parts.
+    **Decided (owner, 2026-11-15): not in 1.6.0.** Native replaces Lite as the desktop; Lite stays as a compatibility
+    option in Settings › System health › Desktop engine, kept working as it is, and these are worked on and refined
+    in a later release.
   - **A lighter desktop page (1.5.9 10.3, 10.4):** the engines' limits measured; the ~200 MB that belongs to no
     process; WPE WebKit as a later Lite engine; the 10.4 targets measured on the Vivobook.
   - **The native session's logs kept across a restart** (found on 2026-11-15: rudolf-native's output, the page log,
@@ -867,13 +879,24 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
     qt/host/videolog60_t.sh 9, qt/host/startlogs58_t.sh 11. Still in /run: the page log and the Tor window's log.
   - **Kernel tuning** (proposed on 2026-11-12), if confirmed.
   - **rudolfd's root work split into helpers** (1.5.9 15.5, already planned here).
-- **QEMU checks (CI)**
-  - 1.5.9 15.1: a Flatpak app, a Wine program and a Debian terminal refused the desktop's page and token.
-  - 1.5.9 15.3, third step: two accounts (a Flatpak app, a Debian terminal and Wine refused the other's files; the
-    display refused to the other account's program; sign-out; the move on an existing data partition).
-  - 1.5.9 15.4: qt/sb/t140_t.py signs in as an administrator before it switches the devlink on.
-  - 1.5.9 8.7: Developer mode and Return to official with Secure Boot.
-  - From 1.5.8 (4.2): the devlink answering with the desktop disabled.
+- **QEMU checks (CI)** (qt/sb/t160_t.py, .github/workflows/qemu-checks.yml: GitHub's runner with KVM, the newest
+  beta release or a serial given; nothing published)
+  - **Done (2026-11-16), 20/20 on release 2026111506 (1.6.0.261115), Actions run 43783263846:** 1.5.9 15.1 (an account's programs, in a sandbox
+    as Flatpak starts one and in Debian, where Wine runs, refused the desktop's page and API); 15.3's third step (two
+    accounts, the move of their folders on an existing data partition to their own Linux users, each refused the
+    other's files and the display, signing out stops the account's programs); 15.4 (switching the development link on
+    needs it allowed and an administrator's password; its commands read-only, as nobody); 8.7 without Secure Boot
+    (Developer mode with a test key, a custom release from slot b, Return to official keeping the files); the official
+    recovery system checked and made again; 1.5.8 4.2 (the link on again by itself after a restart, Ask first on
+    again, a command answered "no desktop to ask" when the desktop sends no heartbeat, and run with Ask first off).
+  - What the failures were (all in the test, none in Rudolf OS): the first sign-in of a start was lost to the desktop's
+    page loading again a few seconds after it was ready (the test now waits for the same page for 20 s); QEMU's quit is
+    a power cut, so the tunnel's binary and the link's state written just before were lost (written to the disk
+    first now); the session is rudolf-init's own process and starts the browser again, so "the desktop not running"
+    is now a desktop that sends no heartbeat; busybox ash cuts a command line at 1024 characters.
+  - Left: 8.7 with Secure Boot (OVMF with TEST keys enrolled, as qt/sb/recovery_sb_t.sh): Developer mode and Return to
+    official there. qt/sb/t140_t.py (a 1.4.0 test disc) still switches the link on with the token alone (t160's 17 and
+    18 cover 15.4 in QEMU).
 - **On the Vivobook**
   - **Calls (1.5.9 7.4):** Meet in Oracle on Standard and on Lite; Zoom's test meeting, then the Zoom app; Teams; a
     call to a real phone; a headset's microphone during a call; memory during a 10-minute call. Results in

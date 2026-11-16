@@ -25,7 +25,7 @@ def main():
                     if d: send(b'D', d)
                     else: up.close(); up = None; send(b'C')
                 if t in r:
-                    d = t.recv(65536); log('from guest', len(d))
+                    d = t.recv(65536)
                     if not d: raise OSError('the guest went away')
                     buf += d
                     while True:
@@ -39,10 +39,12 @@ def main():
                         data, buf = buf[8:8 + n], buf[8 + n:]
                         if kind == b'O':
                             if up: up.close()
-                            try: up = socket.create_connection((HOST, PORT))
-                            except OSError: up = None; send(b'C')
+                            try: up = socket.create_connection((HOST, PORT)); log('open')
+                            except OSError as e: up = None; send(b'C'); log('open failed', e)
                         elif kind == b'D' and up: up.sendall(data)
+                        elif kind == b'D' and not up: log('data with no connection', n)
                         elif kind == b'C':
+                            log('close')
                             if up: up.close(); up = None; send(b'C')
         except OSError as e:
             log('error', e)
