@@ -143,7 +143,8 @@ async function nat() {
   /* ---- the keys as X sends them (QEMU's sendkey, xdotool): the shell takes Rudolf's own, whichever window is in front */
   nclick(nhit('pin notepad')); await wait(1000);
   for (const [key, want] of [['XF86AudioRaiseVolume', /POST volume\?step=up/], ['XF86AudioLowerVolume', /POST volume\?step=down/], ['XF86AudioMute', /POST volume\?step=mute/], ['XF86MonBrightnessUp', /POST brightness\/step\?d=up/], ['XF86MonBrightnessDown', /POST brightness\/step\?d=down/]]) {
-    const c0 = calls().length; xdo('key ' + key); await until(() => /^(volume|brightness) /.test(nst('osd') || ''), 1400);
+    await until(() => !nst('osd'), 4000);   /* (the last key's indicator gone first) */
+    const c0 = calls().length; xdo('key ' + key); await until(() => /^(volume|brightness) /.test(nst('osd') || '') && want.test(calls().slice(c0)), 1400);
     ok('Native, an app\'s window in front: ' + key + ' changes it through rudolfd, with Rudolf\'s indicator', want.test(calls().slice(c0)) && /^(volume|brightness) /.test(nst('osd') || '') , [calls().slice(c0).split('\n').filter(l => /volume|bright/.test(l)), nst('osd')]);
     if (key == 'XF86MonBrightnessUp') shot('key-brightness');
   }

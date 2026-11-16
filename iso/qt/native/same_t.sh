@@ -9,6 +9,8 @@
 # backgrounds' moving parts (the share of the screen moving), a window's own icon, and Native's log.
 # Needs Xvfb, xdotool, ImageMagick (import), python3 with PIL, node with Playwright's Chromium, gcc and WebKitGTK's
 # headers; faketime if there (the clock at the same minute in both).   sh same_t.sh [OUT] [CASE,...] [RUDOLF-NATIVE]
+# (2026-11-16) another screen size: SAME_W=1280 SAME_H=800 sh same_t.sh OUT ctl-volume,explorer,help (an app's window kept inside the
+# screen's desktop as on Standard, not inside its page's first size)
 HERE=$(cd "$(dirname "$0")" && pwd); T=$(mktemp -d /tmp/same_t.XXXXXX); PORT=${SAME_PORT:-8301}; DSP=${SAME_DSP:-:83}
 OUT=${1:-$T/out}; ONLY=$2; BIN=$3
 command -v Xvfb >/dev/null && command -v xdotool >/dev/null && command -v import >/dev/null || { echo "SKIP: needs Xvfb, xdotool and ImageMagick"; exit 0; }
@@ -21,7 +23,7 @@ D=$T/d; mkdir -p $D; node $HERE/../host/fixtures/deskls.js $D/ls.json $D/keys.js
 command -v ffmpeg >/dev/null && mkdir -p $D/tm && ffmpeg -loglevel error -f lavfi -i testsrc2=size=640x360:rate=30 -f lavfi -i sine=frequency=440 -t 6 -c:v libvpx-vp9 -b:v 600k -c:a libopus $D/tm/t.webm </dev/null 2>/dev/null
 FT=$(ls /usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1 /usr/lib/*/faketime/libfaketime.so.1 2>/dev/null | head -1)
 python3 $HERE/same_rd.py $PORT $D > $T/rd.log 2>&1 & RDP=$!
-Xvfb $DSP -screen 0 1920x1080x24 -nolisten tcp >/dev/null 2>&1 & XV=$!
+Xvfb $DSP -screen 0 ${SAME_W:-1920}x${SAME_H:-1080}x24 -nolisten tcp >/dev/null 2>&1 & XV=$!
 trap 'kill $RDP $XV 2>/dev/null; pkill -f "$T/" 2>/dev/null; rm -rf $T/d $T/rudolf-native $T/cc' EXIT
 i=0; while [ $i -lt 40 ] && ! DISPLAY=$DSP xdotool getmouselocation >/dev/null 2>&1; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 SAME_FAKETIME=$FT node $HERE/${SAME_SCRIPT:-same_t.js} $BIN $D $OUT $PORT $DSP $ONLY; r=$?

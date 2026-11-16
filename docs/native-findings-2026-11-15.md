@@ -182,7 +182,7 @@ above. With the first run's 19 that makes **32 findings: 5 break, 15 look wrong,
 An unattended session (2026-11-16) checked each finding against main (`d574670`, then `57babb5`), the open PRs and the
 four tasks started at 20:10-20:25 (owner's time), on this host (Xvfb 1920×1080, WebKitGTK 2.52.6, `--draw=soft`, faketime) with
 `same_t.sh`, its behaviour scripts and `native59_t.sh`, and on the newest beta (1.6.0.261116, serial 2026111602) in QEMU
-(`iso/qt/sb/t160n_t.py`, workflow `native-areas.yml`). "Fixed here" means in this session's PR (see the table's last column).
+(`iso/qt/sb/t160n_t.py`, workflow `native-areas.yml`). "Fixed here" means in this session's PR #412; the beta's QEMU findings below are fixed in the PR after it (branch native-qemu-areas).
 
 | # | Finding | Status | Where | Checked on 2026-11-16 |
 |---|---|---|---|---|
@@ -200,7 +200,7 @@ four tasks started at 20:10-20:25 (owner's time), on this host (Xvfb 1920×1080,
 | N12 | Spirit Falls without its statue | fixed | #394 (`36507ee`) | `dyn-oasis`, `dyn-oasis-dark` pass |
 | N13 | Colour box drawn by GTK | fixed | #394 (`6212d1f`) | `ctl-wordlite` passes |
 | N14 | Flash Player's own icon | fixed | #394 (`cb33ba5`) | `title-icon` passes |
-| N15 | No window opening animation | **fixed here** | this session's PR (rudolf-native: `wopen_start`) | new same_t case `wopen`: Standard `.win.wopen` 0.18 s; Native's animation 183-190 ms, faded and at 96 % at its start. Fails on main (no animation) |
+| N15 | No window opening animation | **fixed here** | #412 (rudolf-native: `wopen_start`) | new same_t case `wopen`: Standard `.win.wopen` 0.18 s; Native's animation 183-190 ms, faded and at 96 % at its start. Fails on main (no animation) |
 | N16 | Video statistics stop near the end | not reproduced | — | new same_t case `video-frames`: 180 frames at `ended` on both engines with main's page (Chromium 180), and 174-180 frame callbacks on each. The 153 of the first run is not seen with WebKitGTK 2.52.6 here; a Vivobook check |
 | N17 | Sandbox flag error (WebKit stand-in) | fixed | #394 (`cb33ba5`) | `sandbox-flags` passes |
 | N18 | Log video problems' noise | fixed in part | #394 (`d363693`) | downloadbuffer's line gone; "Got underflow" at each end stays (the owner's decision, plan Part 12) |
@@ -218,10 +218,42 @@ four tasks started at 20:10-20:25 (owner's time), on this host (Xvfb 1920×1080,
 | N30 | Start menu's search box and scrollbar | fixed | #405 (`510c0a3`) | `menu`, `menu-left`, `menu-right` pass |
 | N31 | Oracle's WebKit stand-in: focus, Ctrl+T | Vivobook check | — | real Native uses Chromium for Oracle; docs/native-vivobook-checklist.md |
 | N32 | Desktop sounds from app windows | being fixed | task 20:10 ("no sound in native app windows") | a Vivobook check after that task's PR |
-| — | The overview's pictures without a compositor (taken once when it opened) | **fixed here** | this session's PR (rudolf-native: `ov_grab`, `ov_live`) | new same_t case `overview-live` (a playing video under Super+Tab): 0.87-1.05 % of Standard's screen and 1.55 % of Native's change in 2 s; 0 % on main |
-| — | The toasts' pictures without a compositor (what was behind when they came) | **fixed here** | this session's PR (rudolf-native: `comp_behind`, `toast_live`) | new same_t case `toast-live` (Notepad moved under a toast): 1.40 % differs; 20.9 % on main. Also fixed: a toast window left 15 px off when two toasts became one |
+| — | The overview's pictures without a compositor (taken once when it opened) | **fixed here** | #412 (rudolf-native: `ov_grab`, `ov_live`) | new same_t case `overview-live` (a playing video under Super+Tab): 0.87-1.05 % of Standard's screen and 1.55 % of Native's change in 2 s; 0 % on main |
+| — | The toasts' pictures without a compositor (what was behind when they came) | **fixed here** | #412 (rudolf-native: `comp_behind`, `toast_live`) | new same_t case `toast-live` (Notepad moved under a toast): 1.40 % differs; 20.9 % on main. Also fixed: a toast window left 15 px off when two toasts became one |
 | — | Night light tints only the app windows | still open | plan Part 12, item 9 (its own PR series) | not changed here |
 | — | Touch mode's title bars | still open | plan Part 12, item 10 | not changed here |
+
+### The areas never compared: the beta in QEMU (2026-11-16)
+
+`iso/qt/sb/t160n_t.py` (workflow `native-areas.yml` on branch native-areas-qemu, runs 43799708532, 43800749546, 43801599755, 43803406064)
+starts the beta 1.6.0.261116 (serial 2026111602, which has every fix up to #405) at 1280×800. The machine has an Intel HD Audio
+card (hda-duplex), two virtio-vga outputs and S3 sleep. It runs Standard first: an account is made and signed in, Settings'
+pages are opened, the screen is locked and unlocked, and the machine sleeps and wakes. Then it starts Native on the same data
+partition and does the same steps as a person would (QMP keyboard and pointer, at Standard's coordinates).
+
+| Area | Standard | Native | Result |
+|---|---|---|---|
+| Engine switch, then sign-in (Ann, typed) | — | The shell's sign-in, then the desktop | same: 0.28 % of the screen differs |
+| Desktop after signing in | icons, taskbar, tray | the same | same: 0.28 % |
+| Lock (Super+L) and unlock with the password | lock screen, then desktop | the same | same: 0.16 % and 0.27 % |
+| Second screen (virtio-vga output 2) | "disconnected" (DRM), nothing shown | the same | same (item 7 waits for the owner) |
+| Sound card | `HDA-Intel` in ALSA; Volume Controls lists it (Built-in Audio Analog Stereo) | the same card | same (system view) |
+| Printers | no CUPS in the release (`lpstat` missing); printing is the page's PDF and the USB printer extension | the same | same; printing on paper is a Vivobook check (V20) |
+| Batteries | none in QEMU | none | same; V13-V17 |
+| Sleep (S3) and waking (`system_wakeup`) | the page answers after waking; the display stays "not active" in QEMU (virtio-vga), even after input | rudolf-native still running, not restarted; the display the same | same on both. The display not coming back may be QEMU's virtio-gpu; check on the Vivobook (V10, V11) |
+| Settings › Volume Controls in dark mode (run 4: the pages compared in their first 520 px) | the lists' chevrons light (#e2e8f0) | **no chevrons**: the N6 chevron was drawn dark (#111) on the dark list | **fixed** (the PR after #412, branch native-qemu-areas): `oneapp59.js`, a light chevron with `html.dark`; new same_t case `ctl-volume-dark` (the host's light-mode cases could not show it) |
+| Settings › Bluetooth with no adapter (run 4) | "This computer has no Bluetooth adapter Rudolf OS can use. A USB Bluetooth adapter works too." | the same | same: 0.94 % of the window differs |
+| Settings › Devices (run 4) | — | — | same: 3.9 % (the window's height, below) |
+| **App window size at 1280×800** | Settings 862×642 at (40, 20) | **Settings about 87 px shorter** (the page sized its window inside its own first, smaller window, not the screen's desktop) | **fixed** (the PR after #412, branch native-qemu-areas): `oneapp59.js` `oaScreenSize`; host test `SAME_W=1280 SAME_H=800 sh same_t.sh OUT ctl-volume,explorer,help`: 14.4 % and 3.6 % differed, now 0.77 %, 0.56 % and 1.34 % |
+
+Not compared in QEMU, so they are on the checklist: the camera and microphone, calls, Bluetooth pairing, printing on paper, the
+touchpad, Linux and Flatpak apps, Library games, the updater's download and restart, several accounts and switching user, touch
+mode with the on-screen keyboard, and long mixed use. The release has no camera loopback or Bluetooth stack that QEMU could
+feed, and no network in the test.
+
+Seen on Standard in the QEMU log, not changed (Standard is the reference): after the session restarts the browser, Chromium was
+given `--window-size=1794800598,800` (the watchdog's clock as the width). The session's comment on SCW says this was fixed for
+Native and Lite only. It has no visible effect in kiosk full screen.
 
 Not counted above, found on this host: the `menu`, `title-*`, `desk-menu` and `file-*` cases fail when `faketime` is missing
 (Native then takes the real hour, so automatic dark mode can differ from Standard's fixed 09:41); with faketime installed
