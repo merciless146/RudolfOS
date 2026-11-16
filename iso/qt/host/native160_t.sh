@@ -137,10 +137,13 @@ ok "3e. ...and Settings' window took that window's change too" "$([ "$(ev settin
 python3 -c 'import json,sys;p=sys.argv[1];f=json.load(open(p));k="bd95set:uAnnA1b2";v=json.loads(f["data"][k]);v["accent"]="#22c55e";f["data"][k]=json.dumps(v);json.dump(f,open(p,"w"))' $D/lsfile.json
 o=$(ev notepad '(window.__oaSetIn(),1)'); w8 '[ "$(ev notepad "S.accent")" = "#22c55e" ]' 5
 ok "3f. told by the shell before the shared storage reached it, a window takes rudolfd's copy (the newer settings)" "$([ "$(ev notepad 'S.accent')" = '#22c55e' ] && grep -q '^get bd95set:uAnnA1b2' $D/lsync.log && echo 1)" "$(ev notepad 'S.accent') $(tail -3 $D/lsync.log)"
-# dark mode from Settings' window (the release in QEMU: the windows and the shell stopped answering for 95 s or more after it)
+# dark mode from Settings' window (in QEMU it took 95 s to settle while the windows that took it sent it back, each telling the shell again)
+n3g=$(wc -l < $D/lsync.log)
 o=$(ev settings '(()=>{S.darkui=1;SC=cln(S);persistS();try{applySet()}catch(e){}try{themeApply()}catch(e){}return S.darkui})()')
 t0=$(date +%s%N); w8 '[ "$(ev notepad "S.darkui")" = 1 ]' 20; t1=$(date +%s%N)
+timeout 4 tail -f /dev/null
 ok "3g. dark mode from Settings' window: Notepad's window has it within 2 s, and both still answer" "$([ "$(ev notepad 'S.darkui')" = 1 ] && [ $(( (t1 - t0) / 1000000 )) -lt 2000 ] && [ "$(ev settings '1+1')" = 2 ] && echo 1)" "set: $o; Notepad: $(ev notepad 'S.darkui') after $(( (t1 - t0) / 1000000 )) ms"
+ok "3h. ...and only Settings' window sent the settings: the windows that took them do not send them back (no echo between the windows)" "$([ "$(tail -n +$((n3g+1)) $D/lsync.log | grep -c '^part .*bd95set:uAnnA1b2')" = 1 ] && echo 1)" "$(tail -n +$((n3g+1)) $D/lsync.log | tr '\n' ';')"
 # ---- 6. Ctrl+Alt+T in an app's window
 t0n=$(napps terminal); ev notepad 'OA.main.focus(),1' >/dev/null; W=$(grep '^app notepad ' $D/state | awk '{print $3}'); xdotool windowactivate --sync $((0x$W)) 2>/dev/null; timeout 0.5 tail -f /dev/null; xdotool key ctrl+alt+t
 w8 "[ \$(napps terminal) -gt $t0n ]" 60

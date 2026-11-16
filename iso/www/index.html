@@ -17066,7 +17066,10 @@ const oaOwn=()=>{const o=SC||S,r=new Set();if(OA_SB)for(const k in o)if(JSON.str
 function oaSetTake(us){if(!us||typeof us!='object')return false;const own=oaOwn();let ch=false;
  for(const k in us){if(own.has(k))continue;const v=JSON.stringify(us[k]);if(JSON.stringify((SC||S)[k])===v&&JSON.stringify(S[k])===v)continue;S[k]=cln(us[k]);if(SC)SC[k]=cln(us[k]);ch=true}
  oaSnap();for(const k of own)if(OA_SB)OA_SB[k]=JSON.stringify(us[k]);return ch}
-function oaSetApply(){try{applySet()}catch(x){}try{a11yApply()}catch(x){}try{themeApply()}catch(x){}try{ncBadge()}catch(x){}}
+/* (applying what another window saved: applySet saves too, which here would only send the same settings back to rudolfd and tell the
+   shell again, and the shell every window again: in QEMU dark mode took 95 s to settle with the windows echoing it) */
+let OA_IN=0;
+function oaSetApply(){OA_IN++;try{try{applySet()}catch(x){}try{a11yApply()}catch(x){}try{themeApply()}catch(x){}try{ncBadge()}catch(x){}}finally{OA_IN--}}
 const oaSetMine=()=>{try{return USER?JSON.parse(localStorage.getItem('bd95set:'+uid())||'null'):null}catch(e){return null}};
 if(ONEAPP){addEventListener('storage',e=>{try{if(!USER||e.key!='bd95set:'+uid()||!e.newValue)return;if(oaSetTake(JSON.parse(e.newValue)))oaSetApply()}catch(x){console.warn('one-app: the settings again',x)}});
  /* (told by the native shell that another window saved: from the storage this window shares, or, in Oracle's Chromium, from rudolfd's
@@ -17080,7 +17083,7 @@ if(ONEAPP){addEventListener('storage',e=>{try{if(!USER||e.key!='bd95set:'+uid()|
    if(!us&&oaNative())us=oaSetMine();
    if(us&&oaSetTake(us))oaSetApply()}catch(e){console.warn('one-app: the settings from the shell',e)}};
  {let t=0;const tell=()=>{clearTimeout(t);t=setTimeout(async()=>{try{if(window.__rudolfLsFlush)await window.__rudolfLsFlush()}catch(e){}if(USER&&oaOut())oaPost({op:'set',id:uid()})},120)};
-  const _ps=persistS;persistS=function(){try{if(USER&&OA_SB){const cur=oaSetMine();if(cur&&oaSetTake(cur))setTimeout(oaSetApply,0)}}catch(e){}
+  const _ps=persistS;persistS=function(){if(OA_IN){oaSnap();return}try{if(USER&&OA_SB){const cur=oaSetMine();if(cur&&oaSetTake(cur))setTimeout(oaSetApply,0)}}catch(e){}
    const r=_ps.apply(this,arguments);oaSnap();tell();return r}}
  {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);oaSnap();return r}}}
 /* (1.6.0 Part 12, item 3) a notification's pop-up is the native shell's: shown in the screen's corner as on Standard, not in this window
