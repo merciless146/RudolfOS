@@ -125,7 +125,10 @@ async function lxWinPoll(){try{const j=await lxApi('apps/windows');const was=LX.
    address box or buttons brought the desktop back (the Vivobook, 2026-11-14)) */
 addEventListener('pointerdown',e=>{if(RD&&!(typeof ONEAPP!='undefined'&&ONEAPP)&&LX.mode.startsWith('win')&&!e.target.closest('.lxtb')&&!(TRAYX.web&&TRAYX.web.contains(e.target))){LX.mode='desktop';lxApi('apps/desktop').then(lxWinPoll).catch(()=>{})}},true);
 /* ---------- the portal: file dialogs, links, notifications from apps ---------- */
-async function lxPortalPoll(){let j;try{j=await lxApi('portal/poll')}catch(e){return}
+/* (1.6.0, the owner's Vivobook: Sober's keyring prompt never came on Native) only the desktop's own page collects them (Standard's): a
+   page of one app (each app's window on Native, a Tor window on Standard) never does, as it may be behind an app, closing, or one of
+   several that would each draw the same dialog. On Native the shell collects them and hands each to its portal page (oneapp59.js) */
+async function lxPortalPoll(){if(typeof ONEAPP!='undefined'&&ONEAPP)return;let j;try{j=await lxApi('portal/poll')}catch(e){return}
  for(const q of j.requests||[]){if(LX.seen.has(q.id))continue;LX.seen.add(q.id);lxPortal(q.id,q.req).catch(e=>console.warn('portal',e))}}
 function lxAppName(id){const a=(LX.inst||[]).find(x=>x.id==id);return a?a.name:(id?id.split('.').pop():'A Linux app')}
 async function lxAnswer(id,obj,back){await lxApi('portal/answer?id='+encodeURIComponent(id)+(back?'&back='+back:''),JSON.stringify(obj)).catch(()=>{})}

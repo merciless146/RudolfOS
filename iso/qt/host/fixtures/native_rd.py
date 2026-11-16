@@ -20,6 +20,8 @@
 #   DIR/tor-on         (made by tor/start) rudolfd's Tor stood in: tor/status says on (1.5.9, plan 16.1)
 #   DIR/stats-on, DIR/shell.json, DIR/lsync.json   (1.6.0) stats answered; the shell's state; the pages' last lsync copy
 #   DIR/health-on, DIR/system.json, DIR/sleep-ms   (1.6.0, hwcnative160_t.sh) the health log, the system's answer, sleep as rudolfd's
+#   DIR/portal/        (when there, 1.6.0) the Rudolf portal's requests: req/ID.json listed by portal/poll; portal/answer writes
+#                      resp/ID.json, removes the request and adds "ID ANSWER" to portal/answers
 #   DIR/hotkey         (when there) the path of Rudolf OS's hotkey script: mic and volume answered through it as rudolfd does
 #                      (the sound server: pactl, PULSE_SERVER from the environment)
 # Ann's password is in keys.json; a wrong one gets the page's message.   python3 native_rd.py PORT DIR
@@ -194,6 +196,26 @@ class H(http.server.BaseHTTPRequestHandler):
             rec = {'seq': int(time.time() * 1000), 'at': int(time.time()), 'asked': 10, 'slept_ms': int(ms) if ms else 0, 'ok': bool(ms), 'error': '' if ms else 'Device or resource busy',
                    'success': 1 if ms else 0, 'fail': 0 if ms else 1, 'hw_us': -1, 'mode': 's2idle'}
             open(os.path.join(D, 'sleep.json'), 'w').write(json.dumps(rec)); return self.j({'ok': True, 'message': 'suspending'})
+        # (1.6.0, nportal160_t.sh, when DIR/portal is there) the Rudolf portal's requests as rudolfd's api_portal: DIR/portal/req/ID.json
+        # listed (portal/poll), an answer written to DIR/portal/resp/ID.json and the request gone (portal/answer), each answer noted
+        if w.startswith('portal/') and os.path.isdir(os.path.join(D, 'portal')):
+            import re, urllib.parse; P = os.path.join(D, 'portal')
+            if w == 'portal/poll':
+                L = []
+                for n in sorted(os.listdir(os.path.join(P, 'req')))[:20]:
+                    if not n.endswith('.json'): continue
+                    try: L.append({'id': n[:-5], 'req': json.loads(open(os.path.join(P, 'req', n)).read())})
+                    except Exception: pass
+                return self.j({'ok': True, 'requests': L})
+            if w == 'portal/answer':
+                i = urllib.parse.parse_qs(q).get('id', [''])[0]
+                if not re.fullmatch('[A-Za-z0-9_-]{1,40}', i): return self.err(400, 'bad request id')
+                with LOCK:
+                    open(os.path.join(P, 'resp', i + '.json'), 'wb').write(b)
+                    try: os.unlink(os.path.join(P, 'req', i + '.json'))
+                    except OSError: pass
+                    open(os.path.join(P, 'answers'), 'a').write('%s %s\n' % (i, b.decode('utf-8', 'replace')))
+                return self.j({'ok': True, 'message': 'ok'})
         if w == 'lsync' and m == 'POST':
             with LOCK:
                 open(os.path.join(D, 'lsync.json'), 'wb').write(b); n = int(rd('lsync-n', b'0') or 0) + 1; open(os.path.join(D, 'lsync-n'), 'w').write(str(n))

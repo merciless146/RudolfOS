@@ -391,7 +391,7 @@ static void wall_make(void)
 static gboolean desk_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (WALL) { cairo_set_source_surface(cr, WALL, 0, 0); cairo_paint(cr); } return TRUE; }
 
 /* ------------------------------------------------------------------ app windows (WebKit, one-app mode) */
-typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull; gint64 close_t; GdkPixbuf *pix; } AppWin;   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
+typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready; gint64 close_t; GdkPixbuf *pix; } AppWin;   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
 static void ev_flush(AppWin *a);   /* (1.6.0: rudolfd's events that waited for a page) */
 static GList *WINS;   /* AppWin*, oldest first */
 static AppWin *ACTIVE;
@@ -401,6 +401,7 @@ static void app_open(const char *k, const char *file);
 static void app_open_ex(const char *k, const char *file, const char *extra, int hidden);
 static void appwin_show(AppWin *a);
 static void srch_ready(AppWin *a);
+static void pt_msg(AppWin *a, JSCValue *v); static void pt_reset(void);   /* (1.6.0: the portal's requests, below) */
 static void snd_page(const char *k, double v, const char *pj); static void snd_click(void);
 static int fl_outside(void); static void seat_grab(GtkWidget *w, int owner); static void qs_keep(void);
 static int oracle_open(const char *file, const char *extra);   /* (1.5.9, 12.3c: Oracle in Rudolf's Chromium) */
@@ -582,6 +583,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "ctx")) ctx_msg(a, v);   /* (File Explorer's Folders on this device: the folder picker and its files, N7) */
 	else if (!strcmp(op, "sfx")) { char k[16] = "", vv[24] = ""; jsstr(v, "k", k, sizeof k); jsstr(v, "v", vv, sizeof vv); char *pj = NULL; JSCValue *pv = jsc_value_object_get_property(v, "p");
 		if (pv && jsc_value_is_string(pv)) pj = jsc_value_to_string(pv); if (pv) g_object_unref(pv); snd_page(k, g_ascii_strtod(vv, NULL), pj); g_free(pj); }   /* (2026-11-16: a page's sound, played here once) */
+	else if (!strcmp(op, "portal")) pt_msg(a, v);   /* (1.6.0, the owner's Vivobook: the portal's page is ready, or a request opens an app's window) */
 	else if (!strcmp(op, "srch")) srch_ready(a);   /* (2026-11-16: the start menu's search, Standard's: its page is ready) */
 	else if (!strcmp(op, "cat")) g_timeout_add(300, apps_reload, NULL);   /* (a page gave its catalogue again: the statue's picture, N12) */
 	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
@@ -2293,6 +2295,7 @@ static void power(const char *what)
 	if (!strcmp(what, "lock")) { if (http("POST", "/api/desktop/lock", NULL, 0, NULL) == 200) signin_show(1); return; }
 	if (!strcmp(what, "logout")) {
 		GList *c = g_list_copy(WINS); for (GList *l = c; l; l = l->next) appwin_close_now(l->data); g_list_free(c);
+		pt_reset();   /* (the portal's requests: the next account's page starts afresh) */
 		http("POST", "/api/desktop/logout", NULL, 0, NULL); USER_ID[0] = 0; signin_show(0); return;
 	}
 	/* (the shut-down chime first, as the page's: up to 3 s, report 2) */
@@ -5498,6 +5501,78 @@ static gpointer ev_thread(gpointer d)
 	return NULL;
 }
 
+/* ------------------------------------------------------------------ the portal's requests (1.6.0, the owner's Vivobook, 2026-11-16:
+   Sober's sign-in spun for ever on Native; links and file dialogs from Linux apps did nothing)
+   A Linux or Flatpak app's requests to the desktop go through the Rudolf portal (rudolf-portal: the keyring's prompts, file Open and
+   Save dialogs, links, notifications) and wait in rudolfd until the desktop collects them (portal/poll). On Standard the one desktop
+   page always does (linux26.js lxPortalPoll). Here there is no desktop page: each app's window was a page that polled for itself, so
+   with no app window open nothing collected them (the keyring's prompt never came: the sign-in's spinner), and with windows open
+   each drew them (inside its own window, maybe behind the app, or twice). Now the shell collects them itself, twice a second whether
+   or not any window is open, and hands each request once to one page of its own kept unseen for it (#app=do-portal, oneapp59.js,
+   opened at sign-in so it is ready at once): its dialogs are Standard's own (the keyring's password, Open and Save, "Open Claude?"),
+   shown above every window as the page's dialogs are here (the window covering the screen); its notifications are the shell's
+   toasts; links go to Oracle's window. What opens an app's window (a file or folder, a mail link) is done by a page of its own that
+   becomes that window (#app=do-portalapp), as Standard opens it. The app windows no longer collect anything (linux26.js). */
+static GHashTable *PT_GIVEN;   /* the requests handed out: id -> 1 (the portal's page) or 2 (a page of its own) */
+static char *PT_IDS;           /* the requests rudolfd listed last: id,id,... */
+static gint64 PT_OPEN_T;       /* when the portal's page was asked for */
+static int pt_id_ok(const char *s) { size_t n = strlen(s); return n && n <= 40 && strspn(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == n; }
+static AppWin *pt_page(void) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!strcmp(a->k, "do-portal") && !a->closing) return a; } return NULL; }
+static void pt_tick(void)
+{
+	if (!USER_ID[0] || LOCKED) return;
+	if (!PT_GIVEN) PT_GIVEN = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+	char **L = g_strsplit(PT_IDS ? PT_IDS : "", ",", -1);
+	/* (answered or withdrawn: forgotten) */
+	GHashTableIter it; gpointer k; g_hash_table_iter_init(&it, PT_GIVEN);
+	while (g_hash_table_iter_next(&it, &k, NULL)) if (!g_strv_contains((const char *const *)L, k)) g_hash_table_iter_remove(&it);
+	AppWin *p = pt_page(); gint64 now = g_get_monotonic_time();
+	if (!p) { if (!PT_OPEN_T || now - PT_OPEN_T > 20 * G_USEC_PER_SEC) { PT_OPEN_T = now; app_open_ex("do-portal", NULL, NULL, 2); } }
+	else if (!p->pready) { if (now - PT_OPEN_T > 90 * G_USEC_PER_SEC) { fprintf(stderr, "rudolf-native: the portal's page did not start: again\n"); appwin_close_now(p); PT_OPEN_T = 0; } }
+	else {
+		GString *give = g_string_new(NULL);
+		for (int i = 0; L[i]; i++) if (pt_id_ok(L[i]) && !g_hash_table_contains(PT_GIVEN, L[i])) {
+			g_hash_table_insert(PT_GIVEN, g_strdup(L[i]), GINT_TO_POINTER(1)); if (give->len) g_string_append_c(give, ','); g_string_append(give, L[i]); }
+		if (give->len) {
+			fprintf(stderr, "rudolf-native: the portal's requests %s to its page\n", give->str);
+			char *js = g_strdup_printf("window.__oaPortal&&__oaPortal('%s')", give->str);
+			webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(p->view), js, -1, NULL, NULL, NULL, NULL, NULL); g_free(js); state_write();
+		}
+		g_string_free(give, TRUE);
+	}
+	g_strfreev(L);
+}
+static void pt_reset(void) { if (PT_GIVEN) g_hash_table_remove_all(PT_GIVEN); PT_OPEN_T = 0; }
+static gboolean pt_got(gpointer d) { g_free(PT_IDS); PT_IDS = d; pt_tick(); return G_SOURCE_REMOVE; }
+static gpointer pt_thread(gpointer d)
+{
+	(void)d;
+	for (;;) {
+		if (USER_ID[0] && !LOCKED) {
+			GByteArray *b = NULL; int c = http("GET", "/api/portal/poll", NULL, 0, &b);
+			if (c == 200 && b) { JV *v = jparse((char *)b->data), *r = jprop(v, "requests"); GString *ids = g_string_new(NULL);
+				for (int i = 0; r && r->t == 4 && i < r->len; i++) { char id[64] = ""; jstr(r->v[i], "id", id, sizeof id); if (pt_id_ok(id)) { if (ids->len) g_string_append_c(ids, ','); g_string_append(ids, id); } }
+				g_idle_add(pt_got, g_string_free(ids, FALSE)); jfree(v); }
+			if (b) g_byte_array_free(b, TRUE);
+		}
+		g_usleep(500000);
+	}
+	return NULL;
+}
+static void pt_msg(AppWin *a, JSCValue *v)
+{
+	char rq[64] = "", rd[4] = ""; jsstr(v, "req", rq, sizeof rq); jsstr(v, "ready", rd, sizeof rd);
+	if (strcmp(a->k, "do-portal")) return;   /* (only the portal's own page) */
+	if (!PT_GIVEN) PT_GIVEN = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+	if (rd[0] == '1') {
+		/* (ready; or loaded again after its page stopped: what it had been handed, once more) */
+		a->pready = 1; GHashTableIter it; gpointer k, val; g_hash_table_iter_init(&it, PT_GIVEN);
+		while (g_hash_table_iter_next(&it, &k, &val)) if (GPOINTER_TO_INT(val) == 1) g_hash_table_iter_remove(&it);
+		fprintf(stderr, "rudolf-native: the portal's page is ready\n"); pt_tick(); state_write(); return;
+	}
+	if (pt_id_ok(rq)) { g_hash_table_replace(PT_GIVEN, g_strdup(rq), GINT_TO_POINTER(2)); char ex[80]; snprintf(ex, sizeof ex, "&req=%s", rq); app_open_ex("do-portalapp", NULL, ex, 2); }
+}
+
 /* ------------------------------------------------------------------ Task Manager from Ctrl+Alt+Del and Ctrl+Shift+Esc (tmtop57.js tmUrgent)
    above every window (Always on top, focused, restored if minimised, out of full screen), the desktop's processes first while it is
    open (the page's tmPriority, #app=taskmgr&urgent=1) */
@@ -6321,6 +6396,7 @@ static void state_write(void)
 	g_string_append_printf(s, "screen %d %d\nuser %s\nlocked %d\nsignin %d\nmenu %d\nbar %d %d %d %d %d\nclock %s|%s\n", SW, SH, USER_ID[0] ? USER_N : "-", LOCKED,
 		SIGN && gtk_widget_get_visible(SIGN), MENU && gtk_widget_get_visible(MENU), BAR && gtk_widget_get_visible(BAR), bx, by, bar_w(), bar_h(), CLOCK_T, CLOCK_D);
 	g_string_append_printf(s, "ws %d\n", WSC);   /* (item 4: the workspace shown) */
+	{ AppWin *pp = pt_page(); g_string_append_printf(s, "portal %s %u\n", pp ? (pp->pready ? "ready" : "starting") : "-", PT_GIVEN ? g_hash_table_size(PT_GIVEN) : 0); }   /* (1.6.0: the portal's page; the requests handed out) */
 	g_string_append_printf(s, "keys grabbed=%d superraw=%d kbcap=%s\n", KB_GRABBED, !SUPER_GRAB, KBCAP && g_list_find(WINS, KBCAP) ? KBCAP->k : "-");   /* (the computer check's keys, 1.6.0) */
 	if (MENU && gtk_widget_get_visible(MENU)) g_string_append_printf(s, "menuq %s\n", MQ[0] ? MQ : "-");
 	/* (2026-11-16) what the start menu's search found: srch GROUP X Y W H TEXT (the screen's pixels), the chosen one, the menu's box */
@@ -6529,6 +6605,7 @@ int main(int argc, char **argv)
 	   the brightness's button and the backlight watched (the firmware's own changes shown as the keys' are) */
 	bri_load(); bar_redraw(); BL_LAST = bl_read(); g_timeout_add(300, bl_tick, NULL);
 	g_thread_unref(g_thread_new("events", ev_thread, NULL));
+	g_thread_unref(g_thread_new("portal", pt_thread, NULL));   /* (1.6.0: the portal's requests, collected here) */
 	teval_init(); clip_init();
 	state_write();
 	gtk_main();
