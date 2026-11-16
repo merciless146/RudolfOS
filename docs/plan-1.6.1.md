@@ -163,6 +163,16 @@ stage B (items 1 to 3) and its release checks:
 - **The FCC-unlock path** on a laptop with a WWAN card (a used ThinkPad with a Fibocom L850-GL or Quectel EM05-G).
 - Each checked on Standard and Native (the owner's rule), results in docs/testing.md with the carrier and date.
 
+### 9. USB printers and the first ARM64 release (moved from 1.6.0 on 2026-11-16)
+Decided by the owner on 2026-11-16: "USB printers and ARM64 can be delayed until 1.6.1."
+- **USB printers (1.6.0 Part 8, as written there):** IPP over USB (ipp-usb) and plain USB printers reading PDF or
+  PostScript, as the first signed system extension (`usbprint`, Part 13 of 1.6.0); extensions.yml's first run to
+  publish it for the release's base ABI; Settings › Devices; then the HP desktop user's printer. 1.6.0 prints to network
+  printers (IPP Everywhere, AirPrint) and to PDF.
+- **ARM64 (1.6.0 Part 7 and its stage B item 4):** the first ARM64 release, after one ARM64 computer that starts with
+  UEFI (or the first phone, Part 4: the PinePhone Pro through Tow-Boot), its own update lists (beta/arm64/,
+  stable/arm64/), the update and recovery checks on it.
+
 ## Not moved here
 - **elogind and polkit** (1.6.0 Part 11): left out by decision on 2026-11-15, since Rudolf OS's own inhibit portal and
   prompts cover what apps ask. Taken up again only if an app or a later part needs them.
@@ -175,7 +185,8 @@ stage B (items 1 to 3) and its release checks:
 ## Steps
 1. Part 1, several monitors, after the 1.6.0 beta.
 2. Part 3, Lite's leftovers, one PR each.
-3. Part 8 (mobile data and the SIM on real hardware) with the MiFi, before the phone.
+3. Part 8 (mobile data and the SIM on real hardware) with the MiFi, before the phone; Part 9 (USB printers; ARM64 with
+   the phone or an ARM64 computer).
 4. The phone's stage 1: Part 4 on the first phone (after 1.6.0's ARM64 release and stage B), Part 7 with a
    T-Mobile-network SIM, Part 6's 1.6.1 items measured on it, Part 2's groundwork; Part 5 when the hardware is there.
 5. The phone's stage 2 (its interface, Wayland, the native apps for touch): docs/plan-2.0.md, "The phone build".
