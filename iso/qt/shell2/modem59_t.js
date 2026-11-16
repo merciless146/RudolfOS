@@ -22,7 +22,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q(`(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});ACCTS=[{n:'Ann',r:'admin',h:'x'}];USER=ACCTS[0];const d=document.createElement('div');d.id='nt';document.body.appendChild(d);netPanelS(d);return 1})()`); await wait(1500);
   const t = await q("document.querySelector('#nt .mdm59')?.textContent||''");
   ok('1. Settings › Network: the modem, its operator, network type, signal, firmware and drivers', /Cellular modems/.test(t) && /Quectel EG25/.test(t) && /On the network · T-Mobile · LTE · signal 74%/.test(t) && /firmware EG25GGBR07A08M2G/.test(t) && /qmi_wwan,option/.test(t), t);
-  ok('2. ...and that connecting with a SIM comes in 1.6.0', /comes in Rudolf OS 1\.6\.0/.test(t));
+  ok('2. (1.6.0: no longer said that connecting with a SIM comes in 1.6.0: it is here, modem60_t.js)', !/comes in Rudolf OS 1\.6\.0/.test(t));
   ok('3. no SIM, and a locked SIM, said so', await q("mdmLine({state:'failed',failed:'sim-missing',sim:false}).includes('no SIM card')&&mdmLine({state:'locked',sim:true,locked:'sim-pin'}).includes('needs its PIN (sim-pin)')"));
   modems = []; await q("(()=>{const d=document.getElementById('nt');d.innerHTML='';netPanelS(d);return 1})()"); await wait(1200);
   ok('4. no modem: nothing shown', !(await q("document.querySelector('#nt .mdm59')?.textContent||''")));

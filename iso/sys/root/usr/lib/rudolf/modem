@@ -1,21 +1,31 @@
 #!/bin/sh
-# Rudolf OS 1.5.9 (docs/plan-1.5.9.md Part 1): the modem service, read only. ModemManager (with libqmi, libmbim and
-# libqrtr) runs only while a cellular modem is plugged in or built in: mdev starts it when a modem's device appears
-# (wwan*, cdc-wdm*, a USB modem's serial ports) and it stops when the last one goes. It is on the system bus (the one
-# Bluetooth uses, /etc/rudolf/dbus-system.conf). Nothing connects yet: that is 1.6.0 (SIM, APN and metering together).
-# Rudolf OS has mdev, not udev, so ModemManager runs as on OpenWrt: without udev (--test-no-udev, or --no-auto-scan on
-# an older one), applying its own udev rules (/usr/lib/udev/rules.d/*-mm-*.rules: which ports are modem candidates)
-# itself, and told of each port with mmcli --report-kernel-event: the ports already there when it starts, then each one
-# mdev reports. (With udev built in and no udevd, it would find no port marked ID_MM_CANDIDATE and see no modem.)
-#   modem hotplug     (mdev, with ACTION and MDEV) a modem's device came or went
+# Rudolf OS 1.5.9 (docs/plan-1.5.9.md Part 1): the modem service. ModemManager (with libqmi, libmbim and libqrtr) runs
+# only while a cellular modem is plugged in or built in: udev (or mdev, the fallback) starts it when a modem's device
+# appears (wwan*, cdc-wdm*, a USB modem's serial ports) and it stops when the last one goes. It is on the system bus
+# (the one Bluetooth uses, /etc/rudolf/dbus-system.conf).
+# With mdev (no udev), ModemManager runs as on OpenWrt: without udev (--test-no-udev, or --no-auto-scan on an older
+# one), applying its own udev rules (/usr/lib/udev/rules.d/*-mm-*.rules) itself, and told of each port with mmcli
+# --report-kernel-event. With udev (1.6.0 Part 9) it finds its ports itself.
+# 1.6.0 (docs/plan-1.6.0.md Part 1): what Rudolf OS reads of each modem (ModemManager's D-Bus API, through mmcli's
+# key-value output) for rudolfd's mobile/*, the FCC unlock of laptop modules (ModemManager's scripts ship off; turned on
+# for one module by an administrator: /persist/etc/modem-fcc), and the modules Linux supports only partly, named.
+#   modem hotplug     (udev or mdev, with ACTION and MDEV) a modem's device came or went
 #   modem start|stop
-#   modem status      JSON: {"running":bool,"modems":[{maker,model,firmware,driver,state,sim,locked,operator,signal,tech,…}]}
+#   modem status      JSON: {"running":bool,"modems":[{id,maker,model,firmware,driver,plugin,state,failed,locked,
+#                     retries:{pin,puk},sim,simOp,simName,operator,opcode,reg,signal,tech,imei,power,port,usb,fcc,fccId}],
+#                     "notes":[{id,name,text}]}
+#   modem fcc on|off ID   ID: the module's USB or PCI id (vvvv:pppp, or vvvv: ModemManager's script names)
+# The places can be moved for the host tests: RUDOLF_MODEM_SYS, RUDOLF_MODEM_DEV, RUDOLF_RUN, RUDOLF_MODEM_LOG,
+# RUDOLF_MODEM_PERSIST, RUDOLF_MM_FCC_AVAIL, RUDOLF_MM_FCC_DIR.
 # GPL-2.0-or-later.
 export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
 BUS=/run/dbus/system_bus_socket; LOG=${RUDOLF_MODEM_LOG:-/run/rudolf/modem.log}; DEVS=${RUDOLF_MODEM_DEV:-/dev}
-SYS=${RUDOLF_MODEM_SYS:-/sys}; R=${RUDOLF_RUN:-/run/rudolf}
+SYS=${RUDOLF_MODEM_SYS:-/sys}; R=${RUDOLF_RUN:-/run/rudolf}; P=${RUDOLF_MODEM_PERSIST:-/persist/etc}
+FA=${RUDOLF_MM_FCC_AVAIL:-/usr/share/ModemManager/fcc-unlock.available.d}; FD=${RUDOLF_MM_FCC_DIR:-/etc/ModemManager/fcc-unlock.d}
 MM=$(command -v ModemManager)
-running() { pgrep -x ModemManager >/dev/null 2>&1; }
+# (1.6.0: by its name as a pattern: BusyBox's pgrep -x never matched it, so 1.5.9 started ModemManager again for each
+# port and never stopped it, found in QEMU, qt/sb/cell60_q.py)
+running() { pgrep '^ModemManager$' >/dev/null 2>&1; }
 # a port's subsystem as ModemManager names it (empty: not a port it is told of)
 subsys() { case "$1" in cdc-wdm*) echo usbmisc;; ttyUSB*|ttyACM*) echo tty;; wwan*) [ -e $SYS/class/net/$1 ] && echo net || echo wwan;;
 	*) case "$(readlink -f $SYS/class/net/$1/device/driver 2>/dev/null)" in */qmi_wwan|*/cdc_mbim|*/mhi_net|*/mhi_wwan_mbim) echo net;; esac;; esac; }
@@ -28,9 +38,15 @@ any_modem() { ls $DEVS/cdc-wdm* $DEVS/wwan* 2>/dev/null | grep -q . && return 0
 	for t in $DEVS/ttyUSB*; do [ -e "$t" ] || continue; case "$(readlink -f $SYS/class/tty/${t##*/}/device/driver 2>/dev/null)" in */option*|*/qcserial*|*/sierra*) return 0;; esac; done; return 1; }
 # 1.6.0: devices through udev (rudolf-init: /run/rudolf/devices says which)
 with_udev() { [ "$(cat ${RUDOLF_DEVICES:-/run/rudolf/devices} 2>/dev/null)" = udev ]; }
+# 1.6.0 (Part 1): the FCC unlock. ModemManager runs a module's script (from its own list, by USB or PCI id) only when
+# it is linked in its fcc-unlock.d; Rudolf OS links the ones an administrator turned on, kept in /persist/etc/modem-fcc
+fcc_ok() { echo "$1" | grep -qE '^[0-9a-f]{4}(:[0-9a-f]{4})?$' && [ -e "$FA/$1" ]; }
+fcc_apply() { [ -s $P/modem-fcc ] || return 0; mkdir -p $FD 2>/dev/null
+	while read -r id; do fcc_ok "$id" && ln -sfn "$FA/$id" "$FD/$id"; done < $P/modem-fcc; }
 start() {
 	[ -n "$MM" ] || { echo "ModemManager is not part of this build"; return 1; }
 	running && return 0
+	fcc_apply
 	mkdir -p /run/dbus
 	if [ ! -S $BUS ] || ! pgrep -f '[d]bus-daemon --config-file=/etc/rudolf/dbus-system.conf' >/dev/null; then
 		rm -f $BUS; dbus-daemon --config-file=/etc/rudolf/dbus-system.conf --fork --nopidfile
@@ -39,7 +55,8 @@ start() {
 	# (no polkit on Rudolf OS: only root talks to it, through rudolfd)
 	# 1.6.0 (plan Part 9): with udev running, ModemManager finds its ports itself (udev's database, its own rules'
 	# ID_MM_CANDIDATE); with mdev (the fallback), as in 1.5.9: without udev, told of each port
-	if with_udev; then NOU=; else NOU=--test-no-udev; $MM --help-all 2>/dev/null | grep -q test-no-udev || NOU=--no-auto-scan; fi
+	# (its test options are in --help: 1.5.9 asked --help-all, which it does not know, and always took --no-auto-scan)
+	if with_udev; then NOU=; else NOU=--test-no-udev; $MM --help 2>/dev/null | grep -q test-no-udev || NOU=--no-auto-scan; fi
 	setsid $MM --log-level=WARN $NOU >>$LOG 2>&1 </dev/null &
 	echo "$(date) ModemManager started (${NOU:-with udev})" >> $LOG
 	# on the bus, then (without udev) told of the ports already there
@@ -47,27 +64,69 @@ start() {
 	with_udev && return 0
 	for p in $(ports); do report add $p; done
 }
-stop() { running || return 0; pkill -x ModemManager; echo "$(date) ModemManager stopped (no modem left)" >> $LOG; }
-# one modem's mmcli -J output -> a small JSON object (python-free: sed on mmcli's JSON keys)
-jget() { printf '%s' "$1" | sed -n "s/.*\"$2\": *\"\\([^\"]*\\)\".*/\\1/p" | head -1; }
-jarr() { printf '%s' "$1" | sed -n "s/.*\"$2\": *\\[\\([^]]*\\)\\].*/\\1/p" | head -1 | tr -d '"' | sed 's/, */,/g'; }
+stop() { running || return 0; pkill '^ModemManager$'; echo "$(date) ModemManager stopped (no modem left)" >> $LOG; }
 esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+# a modem's USB or PCI id (vvvv:pppp) from its sysfs path (ModemManager's Device), the device itself or a parent
+devid() { d=$SYS${1#/sys}; for i in 1 2 3 4; do
+	if [ -r "$d/idVendor" ]; then echo "$(cat $d/idVendor):$(cat $d/idProduct)"; return; fi
+	if [ -r "$d/vendor" ] && [ -r "$d/device" ]; then v=$(cat $d/vendor); p=$(cat $d/device); echo "${v#0x}:${p#0x}"; return; fi
+	d=${d%/*}; done; }
+# the FCC unlock for a module: "none" (it needs none, or ModemManager has no script for it), "off" or "on"; and the
+# script's name
+fcc_of() { [ -n "$1" ] || { echo "none -"; return; }; for n in "$1" "${1%%:*}"; do [ -e "$FA/$n" ] || continue
+	[ -e "$FD/$n" ] && echo "on $n" || echo "off $n"; return; done; echo "none -"; }
+# 1.6.0 (Part 1): cellular modules that Linux supports only partly, named with what is known (shown in Settings even
+# when ModemManager sees nothing: they would otherwise fail silently). "id|name|what is known"
+PARTLY='8086:7360|Intel XMM7360 (Fibocom L850-GL)|Built into some ThinkPads and other laptops. Linux has no driver for it as it is set up there (PCIe): ModemManager cannot see it. Some can be switched to USB mode, where they work as an MBIM modem; Rudolf OS cannot do the switch.
+8086:7560|Intel XMM7560 (Fibocom L860-GL)|Linux drives it (the iosm driver) and ModemManager can connect with it, but texts, the signal details and some firmware versions may not work.
+14c3:4d75|MediaTek T700 (Fibocom FM350-GL)|Linux drives it (the t7xx driver). Its radio starts off: turn on the module (the FCC unlock) below. Some firmware versions do not connect.'
+notes() { first=1; printf '['
+	for d in $SYS/bus/pci/devices/* $SYS/bus/usb/devices/*; do [ -e "$d" ] || continue
+		if [ -r "$d/idVendor" ]; then id="$(cat $d/idVendor 2>/dev/null):$(cat $d/idProduct 2>/dev/null)"; else v=$(cat $d/vendor 2>/dev/null); p=$(cat $d/device 2>/dev/null); id="${v#0x}:${p#0x}"; fi
+		line=$(printf '%s\n' "$PARTLY" | grep "^$id|") || continue
+		n=${line#*|}; t=${n#*|}; n=${n%%|*}
+		[ $first = 1 ] || printf ','; first=0; printf '{"id":"%s","name":"%s","text":"%s"}' "$id" "$(esc "$n")" "$(esc "$t")"
+	done; printf ']'; }
+# one modem's (and its SIM's) mmcli -K lines -> a JSON object
+J_AWK='function e(s){gsub(/\\/,"\\\\",s);gsub(/"/,"\\\"",s);gsub(/\t/," ",s);return s}
+function v(k){x=V[k];return x=="--"?"":x}
+function list(k,  n,i,s){n=V[k".length"]+0;s="";for(i=1;i<=n;i++)s=s ((i>1)?",":"") v(k ".value[" i "]")
+	if(!n&&V[k]!="")s=v(k);gsub(/, /,",",s);return s}
+{i=index($0,":");if(!i)next;k=$0;sub(/ *:.*$/,"",k);val=substr($0,i+1);sub(/^ /,"",val);sub(/ +$/,"",val);V[k]=val}
+END{pin=puk="";n=V["modem.generic.unlock-retries.length"]+0
+	for(i=1;i<=n;i++){r=V["modem.generic.unlock-retries.value["i"]"];c=r;sub(/^.*\(/,"",c);sub(/\).*$/,"",c);if(r~/^sim-pin /)pin=c;if(r~/^sim-puk /)puk=c}
+	sim=V["sim.dbus-path"]!=""?"true":"false"
+	imei=v("modem.3gpp.imei");if(imei=="")imei=v("modem.generic.equipment-identifier");if(length(imei)>6)imei=substr(imei,1,6)"…"
+	printf "{\"id\":%s,\"maker\":\"%s\",\"model\":\"%s\",\"firmware\":\"%s\",\"driver\":\"%s\",\"plugin\":\"%s\",\"state\":\"%s\",\"failed\":\"%s\",\"locked\":\"%s\",\"retries\":{\"pin\":%s,\"puk\":%s},", id,e(v("modem.generic.manufacturer")),e(v("modem.generic.model")),e(v("modem.generic.revision")),e(list("modem.generic.drivers")),e(v("modem.generic.plugin")),v("modem.generic.state"),v("modem.generic.state-failed-reason"),v("modem.generic.unlock-required"),pin==""?"null":pin,puk==""?"null":puk
+	printf "\"sim\":%s,\"simOp\":\"%s\",\"simName\":\"%s\",\"operator\":\"%s\",\"opcode\":\"%s\",\"reg\":\"%s\",\"signal\":\"%s\",\"tech\":\"%s\",\"imei\":\"%s\",\"power\":\"%s\",\"port\":\"%s\",\"usb\":\"%s\",\"fcc\":\"%s\",\"fccId\":\"%s\"}", sim,e(v("sim.properties.operator-code")),e(v("sim.properties.operator-name")),e(v("modem.3gpp.operator-name")),e(v("modem.3gpp.operator-code")),v("modem.3gpp.registration-state"),v("modem.generic.signal-quality.value"),e(list("modem.generic.access-technologies")),e(imei),v("modem.generic.power-state"),e(v("modem.generic.primary-port")),usb,fcc,fccid}'
 status() {
-	R=false; running && R=true
+	L=$(mmcli -K -L 2>/dev/null); rc=$?; R=false; [ $rc = 0 ] && running && R=true
 	printf '{"running":%s,"modems":[' "$R"; first=1
 	if [ $R = true ]; then
-		for p in $(mmcli -J -L 2>/dev/null | grep -o '/org/freedesktop/ModemManager1/Modem/[0-9]*'); do
-			n=${p##*/}; J=$(mmcli -J -m $n 2>/dev/null | tr -d '\n') || continue
-			S=$(jget "$J" sim); SJ=""; [ -n "$S" ] && [ "$S" != "--" ] && SJ=$(mmcli -J -i "${S##*/}" 2>/dev/null | tr -d '\n')
+		for p in $(printf '%s\n' "$L" | grep -o '/org/freedesktop/ModemManager1/Modem/[0-9]*'); do
+			n=${p##*/}; K=$(mmcli -m $n -K 2>/dev/null) || continue
+			S=$(printf '%s\n' "$K" | sed -n 's/^modem\.generic\.sim  *: //p'); SK=""
+			case "$S" in /org/*) SK=$(mmcli -i "${S##*/}" -K 2>/dev/null);; esac
+			U=$(devid "$(printf '%s\n' "$K" | sed -n 's/^modem\.generic\.device  *: //p')"); set -- $(fcc_of "$U")
 			[ $first = 1 ] || printf ','; first=0
-			printf '{"id":%s,"maker":"%s","model":"%s","firmware":"%s","driver":"%s","state":"%s","failed":"%s","locked":"%s","sim":%s,"operator":"%s","signal":"%s","tech":"%s","imei":"%s"}' \
-				"$n" "$(esc "$(jget "$J" manufacturer)")" "$(esc "$(jget "$J" model)")" "$(esc "$(jget "$J" revision)")" "$(esc "$(jarr "$J" drivers)")" \
-				"$(jget "$J" state)" "$(jget "$J" state-failed-reason)" "$(jget "$J" unlock-required)" \
-				"$([ -n "$SJ" ] && echo true || echo false)" "$(esc "$(jget "$J" operator-name)")" "$(jget "$J" value)" "$(esc "$(jarr "$J" access-technologies)")" \
-				"$(jget "$J" equipment-identifier | sed 's/^\(.\{6\}\).*/\1…/')"
+			printf '%s\n%s\n' "$K" "$SK" | awk -v id="$n" -v usb="$U" -v fcc="$1" -v fccid="${2#-}" "$J_AWK"
 		done
 	fi
-	printf ']}\n'
+	printf '],"notes":%s}\n' "$(notes)"
+}
+# 1.6.0 (Part 1): the FCC unlock turned on or off for one module (rudolfd: an administrator's name and password first)
+fcc() {
+	fcc_ok "$2" || { echo "no FCC unlock is known for $2"; return 1; }
+	mkdir -p $P $FD 2>/dev/null; touch $P/modem-fcc
+	grep -vx "$2" $P/modem-fcc > $P/modem-fcc.new; mv $P/modem-fcc.new $P/modem-fcc
+	if [ "$1" = on ]; then echo "$2" >> $P/modem-fcc; ln -sfn "$FA/$2" "$FD/$2" || { echo "could not turn it on"; return 1; }
+		echo "$(date) FCC unlock turned on for $2" >> $LOG
+		# ModemManager unlocks it the next time it turns the modem on: now, for the modems with that id
+		if running; then for p in $(mmcli -K -L 2>/dev/null | grep -o '/org/freedesktop/ModemManager1/Modem/[0-9]*'); do n=${p##*/}
+			U=$(devid "$(mmcli -m $n -K 2>/dev/null | sed -n 's/^modem\.generic\.device  *: //p')")
+			case "$U" in "$2"|"$2":*) timeout 30 mmcli -m $n --enable >/dev/null 2>&1 || echo "$(date) modem $n: could not turn it on after the FCC unlock" >> $LOG;; esac; done; fi
+		echo "The cellular module's radio is turned on (FCC unlock for $2)"
+	else rm -f "$FD/$2"; echo "$(date) FCC unlock turned off for $2" >> $LOG; echo "The FCC unlock is off for $2: the radio stays off from the next start"; fi
 }
 case "$1" in
 hotplug)
@@ -78,5 +137,6 @@ hotplug)
 start) start ;;
 stop) stop ;;
 status) status ;;
-*) echo "usage: modem hotplug|start|stop|status"; exit 2 ;;
+fcc) case "$2" in on|off) fcc "$2" "$3";; *) echo "usage: modem fcc on|off ID"; exit 2;; esac ;;
+*) echo "usage: modem hotplug|start|stop|status|fcc"; exit 2 ;;
 esac

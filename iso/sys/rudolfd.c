@@ -3886,6 +3886,7 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-desktop.inc"   /* 1.5.9: the native desktop's API (plan Part 12) */
 #include "rudolfd-peer.inc"      /* 1.5.9: only the desktop gets the page and the API (plan Part 15.1) */
 #include "rudolfd-users.inc"     /* 1.5.9: each account is its own Linux user (plan Part 15.3) */
+#include "rudolfd-mobile.inc"    /* 1.6.0: cellular modems (plan Parts 1 to 6) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
 {
@@ -4106,12 +4107,8 @@ static void api(struct req *r)
 		if (o && (!strncmp(o, "Sharing ", 8) || !strncmp(o, "The hotspot is off", 18))) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "the hotspot did not start");
 		free(o); return;
 	}
-	/* 1.5.9 (plan Part 1): the cellular modems ModemManager sees (read only: maker, model, SIM, operator, signal) */
-	if (!strcmp(p, "mobile/status")) {
-		char *o = run_out("/usr/lib/rudolf/modem status 2>/dev/null"); trim(o);
-		if (!o || o[0] != '{') { free(o); str e = {0}; sadd(&e, "{\"ok\":true,\"running\":false,\"modems\":[]}"); reply_json(r->fd, &e); return; }
-		str js = {0}; sadd(&js, "{\"ok\":true,"); sadd(&js, "%s", o + 1); free(o); reply_json(r->fd, &js); return;
-	}
+	/* 1.5.9 (plan Part 1): the cellular modems ModemManager sees; 1.6.0 (Parts 1 to 6): rudolfd-mobile.inc */
+	if (!strncmp(p, "mobile/", 7) && api_mobile(r, p, post)) return;
 	if (!strcmp(p, "net/metered")) {
 		if (!post) { char *o = run_out("/usr/lib/rudolf/netplug state 2>/dev/null"); trim(o); str j = {0}; sadd(&j, "%s", *o == '{' ? o : "{\"ok\":true,\"connected\":false}"); free(o); reply_json(r->fd, &j); return; }
 		const char *i = qparam(r->query, "if"), *v = qparam(r->query, "v");
