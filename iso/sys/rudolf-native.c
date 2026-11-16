@@ -32,6 +32,8 @@
 #include <X11/Xutil.h>
 #include <X11/cursorfont.h>
 #include <X11/XKBlib.h>
+#include <X11/extensions/Xrandr.h>
+#include <X11/extensions/Xcomposite.h>
 #include <cairo-xlib.h>
 #include <arpa/inet.h>
 #include <dlfcn.h>
@@ -63,6 +65,9 @@ typedef struct {
 	char twstyle[12], twacm[12], accent[16], df[8], tz[64], acct[80], wpacct[80], icons[12], ff[48];
 	int tbac, tbbac, h24, wpimg, wallpaper, notes, npins, scale, darkui; double lat, doff, gen; char pins[24][40];
 	int nl, dnd, sr, mag, hc, vk, touch;   /* (quick settings' switches: item 3) */
+	int nlv, nlsched; double magz;   /* (1.6.0: Night light's strength and hours, the magnifier's zoom: the shell does them for the whole screen) */
+	int aur, rmotion; char aurm[12], lnm[12];   /* (the dynamic backgrounds' moving parts: test findings N11, N12) */
+	int fs; char tx[16], cb[12];   /* (the title bars: the Font size, the Window text colour, the colour vision filter) */
 } Settings;
 static Settings S;
 typedef struct { char k[40], name[80], icon[48], kw[200], ic[24]; } App;
@@ -88,8 +93,6 @@ static int bar_x(void) { return tb_side() == 2 ? SW - BARW : 0; }
 static int bar_y(void) { return tb_side() || !strcmp(S.tb, "top") ? TOPRES : SH - BARH; }
 static int bar_w(void) { return tb_side() ? BARW : SW; }
 static int bar_h(void) { return tb_side() ? SH - TOPRES : BARH; }
-static int work_left(void) { return tb_side() == 1 ? BARW : 0; }
-static int work_w(void) { return SW - (tb_side() ? BARW : 0); }
 static int desk_left(void) { return tb_side() == 1 ? BARW + (int)lround(4 * Z) : 0; }   /* (#desk's inset: var(--bw) beside a bar at the left or the right) */
 static int desk_w(void) { return SW - (tb_side() ? BARW + (int)lround(4 * Z) : 0); }
 static int work_top(void) { return TOPRES + (!strcmp(S.tb, "top") ? BARH : 0); }
@@ -297,11 +300,19 @@ static cairo_surface_t *DESKC; static int DESKD;   /* (the desktop as drawn, and
 static GtkWidget *DESK, *DESKAREA, *BAR, *BARAREA, *MENU, *SIGN, *DLBAN, *DLASK, *PWR;
 /* (the tray's pop-ups: item 3, below) */
 static void fl_open(int kind); static void cal_events_load(JV *v); static void nt_load(JV *v);
-enum { FL_NONE, FL_CAL, FL_VOL, FL_QS, FL_NC, FL_NET };   /* (the tray's pop-ups: the calendar, the volume, quick settings, the notifications' centre, the network) */
+enum { FL_NONE, FL_CAL, FL_VOL, FL_QS, FL_NC, FL_NET, FL_BRI };   /* (the tray's pop-ups: the calendar, the volume, quick settings, the notifications' centre, the network; 1.6.0: the brightness, osd31.js briPop) */
 static double NETB[4];   /* (as drawn: the network's button, for its pop-up's place) */
 static int nt_unread(void);
 static double VOLB[4], CLKD[2];   /* (as drawn, the page's units from the bar's corner: the volume's button; the clock's date, its <small>) */
+/* (1.6.0) the screen's brightness (0-100, -1: unknown) and whether it has a backlight (the taskbar's #bri, as drawn: BRIB); the on-screen
+   keyboard shown (#vkb; its ⌨ on the taskbar: VKTB); the magnifier as saved and its zoom; Ctrl+Alt+Del's Task Manager asked for (its
+   window above every window when it comes) */
+static int BRI = -1, BRI_HAS, VK_SHOWN, MAG_SAVED = -1, TM_TOP; static double MAGZ = 2, BRIB[4], VKTB[4];
+static void a11y_apply(void); static void vk_sync(void); static void vk_msg(JSCValue *v); static char *shell_script(void); static void bri_set(int v); static void hk_post(const char *q, int bri);
+static void power(const char *what); static void fl_close(void); static void gamma_apply(void); static void mag_set(int on); static int mag_can(void); static void sc_settings(void);
+static void mag_zoom(double dz); static void bri_load(void); static double fl_lh(cairo_t *cr, int wt, double px);
 static void desk_dirty(void) { DESKD = 1; if (DESKAREA) gtk_widget_queue_draw(DESKAREA); }
+typedef struct JV JV; static void fx_cat(JV *cat); static void fx_draw(cairo_t *cr); static void fx_update(void); static int FXD;   /* (the dynamic backgrounds' moving parts: below) */
 static void desk_shadows(void) { if (DESKAREA) gtk_widget_queue_draw(DESKAREA); }
 static cairo_surface_t *WALL;   /* drawn at the screen's size */
 static char WALL_KEY[300];
@@ -370,11 +381,13 @@ static void wall_make(void)
 	} else pattern_bg(cr, SW, SH);
 	cairo_destroy(cr);
 	if (DESKAREA) desk_dirty();
+	fx_update();
 }
 static gboolean desk_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (WALL) { cairo_set_source_surface(cr, WALL, 0, 0); cairo_paint(cr); } return TRUE; }
 
 /* ------------------------------------------------------------------ app windows (WebKit, one-app mode) */
-typedef struct AppWin { GtkWidget *win, *view; char k[40], title[256], icon[48]; int closing, id, sized, hidden, modal, pw, ph, wasontop, mfull; gint64 close_t; } AppWin;   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
+typedef struct AppWin { GtkWidget *win, *view; char k[40], title[256], icon[48]; int closing, id, sized, hidden, modal, pw, ph, wasontop, mfull; gint64 close_t; GdkPixbuf *pix; } AppWin;   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
+static void ev_flush(AppWin *a);   /* (1.6.0: rudolfd's events that waited for a page) */
 static GList *WINS;   /* AppWin*, oldest first */
 static AppWin *ACTIVE;
 static WebKitWebContext *CTX; static WebKitUserContentManager *UCM; static int NEXTID;
@@ -388,13 +401,21 @@ static const App *app_find(const char *k) { for (int i = 0; i < NAPPS; i++) if (
 static void appwin_size(AppWin *a, int w, int h);
 static void appwin_modal(AppWin *a, int on);
 static void appwin_fs(AppWin *a, int on);
+static gboolean apps_reload(gpointer d);
 static void wins_ask(AppWin *to); static void win_op(const char *id, const char *what);   /* (Task Manager's windows: test finding N3) */
 static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d);
+static char *gpu_script(void);
 static void ctx_make(void)
 {
 	if (CTX) return;
 	char *home = g_build_filename(g_get_home_dir(), ".rudolf-native", NULL), *data = g_build_filename(home, "data", NULL), *cache = g_build_filename(home, "cache", NULL);
-	WebKitWebsiteDataManager *m = webkit_website_data_manager_new("base-data-directory", data, "base-cache-directory", cache, NULL);
+	/* (N7, N8) an origin's share of the disk as Chromium's (60 %; WebKit's own is 1 GB), so navigator.storage.estimate()'s quota is the
+	   size Standard says */
+	WebKitWebsiteDataManager *m = webkit_website_data_manager_new("base-data-directory", data, "base-cache-directory", cache,
+#if WEBKIT_CHECK_VERSION(2, 42, 0)
+		"origin-storage-ratio", 0.6, "total-storage-ratio", 0.8,
+#endif
+		NULL);
 	WebKitMemoryPressureSettings *mps = webkit_memory_pressure_settings_new();   /* as rudolf-webkit (1.5.8) */
 	webkit_memory_pressure_settings_set_memory_limit(mps, 768); webkit_memory_pressure_settings_set_conservative_threshold(mps, 0.33);
 	webkit_memory_pressure_settings_set_strict_threshold(mps, 0.5); webkit_memory_pressure_settings_set_kill_threshold(mps, 0); webkit_memory_pressure_settings_set_poll_interval(mps, 15);
@@ -406,8 +427,32 @@ static void ctx_make(void)
 	UCM = webkit_user_content_manager_new();
 	webkit_user_content_manager_register_script_message_handler(UCM, "rudolfNative");
 	g_signal_connect(UCM, "script-message-received::rudolfNative", G_CALLBACK(on_msg), NULL);
+	{ char *g = gpu_script(); if (g) { webkit_user_content_manager_add_script(UCM, webkit_user_script_new(g, WEBKIT_USER_CONTENT_INJECT_TOP_FRAME, WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, NULL, NULL)); g_free(g); } }
+	{ char *g = shell_script(); webkit_user_content_manager_add_script(UCM, webkit_user_script_new(g, WEBKIT_USER_CONTENT_INJECT_TOP_FRAME, WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, NULL, NULL)); g_free(g); }   /* (1.6.0) */
 	if (SOFT) webkit_user_content_manager_add_style_sheet(UCM, webkit_user_style_sheet_new(
 		"*,*::before,*::after{box-shadow:none!important;text-shadow:none!important;backdrop-filter:none!important}", WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES, WEBKIT_USER_STYLE_LEVEL_USER, NULL, NULL));
+}
+static void json_esc(GString *s, const char *v);
+/* (test finding N8) the graphics chip's name, as Chromium gives it to the page (WEBGL_debug_renderer_info: "ANGLE (VENDOR, RENDERER,
+   OpenGL VERSION)", what Settings › About shows under Graphics); WebKit gives every page "Apple GPU". Read once from a GL context of
+   a window of its own (GTK's, through libepoxy, which GTK has loaded), given to the pages as window.__oaGpu (oneapp59.js) */
+static char *gpu_script(void)
+{
+	char ven[128] = "", ren[256] = "", ver[64] = "";
+	/* (a window of its own, never shown: GDK draws a window that has had a GL context with GL from then on, and the desktop's went blank) */
+	GtkWidget *tw = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_resize(GTK_WINDOW(tw), 1, 1); gtk_widget_realize(tw);
+	GdkWindow *w = gtk_widget_get_window(tw); GError *e = NULL; GdkGLContext *gl = w ? gdk_window_create_gl_context(w, &e) : NULL;
+	typedef const unsigned char *(*GetStr)(unsigned); GetStr *gs = (GetStr *)dlsym(RTLD_DEFAULT, "epoxy_glGetString");
+	if (gl && gdk_gl_context_realize(gl, NULL) && gs && *gs) { gdk_gl_context_make_current(gl);
+		const char *a = (const char *)(*gs)(0x1F00), *b = (const char *)(*gs)(0x1F01), *c = (const char *)(*gs)(0x1F02);
+		if (a) snprintf(ven, sizeof ven, "%s", a); if (b) snprintf(ren, sizeof ren, "%s", b); if (c) sscanf(c, "%63s", ver); gdk_gl_context_clear_current(); }
+	if (e) g_error_free(e); if (gl) g_object_unref(gl); gtk_widget_destroy(tw);
+	if (!ren[0]) return NULL;
+	/* (ANGLE's names for the vendors it knows) */
+	const char *v = strstr(ven, "Intel") ? "Intel" : (strstr(ven, "AMD") || strstr(ven, "ATI")) ? "AMD" : strstr(ven, "NVIDIA") ? "NVIDIA" : ven;
+	char *r = g_strdup_printf("ANGLE (%s, %s, OpenGL %s)", v, ren, ver), *vv = g_strdup_printf("Google Inc. (%s)", v);
+	GString *js = g_string_new("window.__oaGpu={r:"); json_esc(js, r); g_string_append(js, ",v:"); json_esc(js, vv); g_string_append(js, "};");
+	g_free(r); g_free(vv); return g_string_free(js, FALSE);
 }
 static int local_url(const char *u)
 {
@@ -450,6 +495,8 @@ static void toast_add(AppWin *from, JSCValue *v);
 static void tb_settings(const char *page);
 static void nt_note(JSCValue *v);
 static void open_with(const char *file, const char *key);
+static void hfs_msg(AppWin *a, JSCValue *v);   /* (folders on this device: test finding N7) */
+static void ctx_msg(AppWin *a, JSCValue *v);   /* (an app's right-click menu, over the screen: test finding N21) */
 /* (1.5.9, 12.3c) Oracle's Chromium and the WebKit windows: the files one (rudolfd's mirror), the indicator of the keys the native
    desktop's, Oracle's new windows at an address or private */
 static GPid OR_PID; static int OR_RUN; static char OR_CTL[300]; static const char *TOR_CTL_P;   /* (Part 16: the Tor windows' rudolf-launch FIFO, once it runs) */
@@ -461,13 +508,20 @@ static int id_ok(const char *s) { return strspn(s, "abcdefghijklmnopqrstuvwxyzAB
 static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d)
 {
 	(void)m; (void)d; JSCValue *v = webkit_javascript_result_get_js_value(r); if (!jsc_value_is_object(v)) return;
+	{ char o0[8] = ""; jsstr(v, "op", o0, sizeof o0); if (!strcmp(o0, "vk")) { vk_msg(v); return; } }   /* (1.6.0: the on-screen keyboard's page, a window of no app) */
 	char ws[16] = ""; jsstr(v, "w", ws, sizeof ws); int id = atoi(ws); AppWin *a = NULL;
 	for (GList *l = WINS; l; l = l->next) if (((AppWin *)l->data)->id == id) a = l->data;
 	if (!a) return;
 	char op[16] = "", x[256] = "", f[1024] = ""; jsstr(v, "op", op, sizeof op);
 	if (!strcmp(op, "close")) appwin_close_now(a);
 	else if (!strcmp(op, "done")) page_done(v);
-	else if (!strcmp(op, "title")) { jsstr(v, "icon", x, sizeof x); if (x[0]) snprintf(a->icon, sizeof a->icon, "%s", x); bar_redraw(); }
+	else if (!strcmp(op, "title")) { jsstr(v, "icon", x, sizeof x); if (x[0]) snprintf(a->icon, sizeof a->icon, "%s", x);
+		/* (test finding N14) the window's own picture when it is not its app's (the page's icSvg of W.icon): its title bar and taskbar button */
+		JSCValue *pv = jsc_value_object_get_property(v, "png"); if (pv && jsc_value_is_string(pv)) { char *u = jsc_value_to_string(pv); static const char PRE[] = "data:image/png;base64,";
+			if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
+			if (!strncmp(u, PRE, sizeof PRE - 1)) { gsize n = 0; guchar *raw = g_base64_decode(u + sizeof PRE - 1, &n); GByteArray *b = g_byte_array_new_take(raw, n); guint8 z = 0; g_byte_array_append(b, &z, 1); a->pix = pix_from_bytes(b); g_byte_array_free(b, TRUE); }
+			g_free(u); frame_redraw_app(a); } if (pv) g_object_unref(pv);
+		bar_redraw(); }
 	else if (!strcmp(op, "drop")) { jsstr(v, "in", x, sizeof x); jsstr(v, "file", f, sizeof f); drop_in(f, x); }
 	else if (!strcmp(op, "openwith")) { jsstr(v, "key", x, sizeof x); jsstr(v, "file", f, sizeof f); open_with(f, x); }   /* (Open with: the app's own window) */
 	else if (!strcmp(op, "toast")) toast_add(a, v);   /* (a notification's pop-up, drawn by the shell: item 3) */
@@ -478,10 +532,14 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "mirror")) { jsstr(v, "id", x, sizeof x); if (id_ok(x)) { char l[100]; snprintf(l, sizeof l, "mirror %s\n", x); oracle_tell(l); } }   /* (the files an app's window saved: Oracle's pages take them) */
 	else if (!strcmp(op, "osd")) { char k[16] = "", lv[8] = "", n[8] = ""; jsstr(v, "k", k, sizeof k); jsstr(v, "lv", lv, sizeof lv); jsstr(v, "label", x, sizeof x); jsstr(v, "n", n, sizeof n); osd_show(k, lv, x, n); }
 	else if (!strcmp(op, "fs")) { jsstr(v, "on", x, sizeof x); appwin_fs(a, x[0] == '1'); }   /* (the page's own full screen: the window covers the screen, test finding N1) */
+	else if (!strcmp(op, "hfs")) hfs_msg(a, v);
+	else if (!strcmp(op, "ctx")) ctx_msg(a, v);   /* (File Explorer's Folders on this device: the folder picker and its files, N7) */
+	else if (!strcmp(op, "cat")) g_timeout_add(300, apps_reload, NULL);   /* (a page gave its catalogue again: the statue's picture, N12) */
 	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
 	else if (!strcmp(op, "winop")) { jsstr(v, "id", x, sizeof x); jsstr(v, "do", f, sizeof f); win_op(x, f); }
 	else if (!strcmp(op, "modal")) { jsstr(v, "on", x, sizeof x); appwin_modal(a, x[0] == '1'); }   /* (a page's dialog: over the whole screen, as Standard's) */
-	else if (!strcmp(op, "size") && !a->sized) { a->sized = 1;
+	else if (!strcmp(op, "pwr")) { jsstr(v, "a", x, sizeof x); if (!strcmp(x, "reboot") || !strcmp(x, "poweroff")) power(x); }   /* (1.6.0: Restart into Windows, once the page has asked the firmware) */
+	else if (!strcmp(op, "size") && !a->sized) { a->sized = 1; ev_flush(a);
 		/* (a page doing something for the shell (#app=do-NAME) that made an app's window is that app's window now: the taskbar's
 		   button and what is dropped on it are the app's) */
 		jsstr(v, "app", x, sizeof x); if (!strncmp(a->k, "do-", 3) && x[0] && strlen(x) < sizeof a->k && strspn(x, "abcdefghijklmnopqrstuvwxyz0123456789_-") == strlen(x)) { snprintf(a->k, sizeof a->k, "%s", x); bar_redraw(); } jsstr(v, "ww", x, sizeof x); int ww = atoi(x); jsstr(v, "wh", x, sizeof x); int wh = atoi(x); appwin_size(a, ww, wh); }
@@ -494,7 +552,7 @@ static void on_crash(WebKitWebView *v, WebKitWebProcessTerminationReason r, gpoi
 static void clients_forget(AppWin *a);
 static void on_win_destroy(GtkWidget *w, gpointer d)
 {
-	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL;
+	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL; if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
 	clients_forget(a);   /* (its frame goes when X says so: not this window's any more) */
 	g_free(a); bar_redraw(); state_write();
 }
@@ -521,6 +579,14 @@ static AppWin *appwin_new(const char *k, WebKitWebView *rel, int id)
 		"enable-webgl", TRUE, "media-playback-requires-user-gesture", FALSE, "enable-page-cache", FALSE, "enable-write-console-messages-to-stdout", TRUE,
 		"javascript-can-open-windows-automatically", TRUE, NULL);
 	webkit_settings_set_hardware_acceleration_policy(st, HWPOL);
+#if WEBKIT_CHECK_VERSION(2, 42, 0)
+	/* (test findings N7, N8) navigator.storage.estimate(), which Chromium has: File Explorer's status line and Settings › About say
+	   how much of its storage the page uses (WebKitGTK leaves the Storage API off) */
+	{ WebKitFeatureList *fl = webkit_settings_get_all_features();
+	  for (gsize i = 0; i < webkit_feature_list_get_length(fl); i++) { WebKitFeature *ft = webkit_feature_list_get(fl, i); const char *id = webkit_feature_get_identifier(ft);
+		if (!strcmp(id, "StorageAPI") || !strcmp(id, "StorageAPIEstimate")) webkit_settings_set_feature_enabled(st, ft, TRUE); }
+	  webkit_feature_list_unref(fl); }
+#endif
 	g_signal_connect(a->view, "decide-policy", G_CALLBACK(on_decide), NULL);
 	g_signal_connect(a->view, "permission-request", G_CALLBACK(on_perm), NULL);
 	g_signal_connect(a->view, "notify::title", G_CALLBACK(on_title), a);
@@ -592,7 +658,8 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
    _NET_ACTIVE_WINDOW. Dialogs (WM_TRANSIENT_FOR) are centred over their window. Full screen (_NET_WM_STATE, games and
    videos) covers the whole screen, taskbar too, without the frame. Our own app windows are framed the same way (our
    own requests are not redirected to us, so they are framed as they are shown). The taskbar lists them all. */
-#define BW 1   /* (the page's windows' 1 px edge; the title bar's height, TH, follows the display scaling) */
+static double tw_tbh(void);   /* (the title bar's height in the page's pixels: tw_geom) */
+static int BW = 1;   /* (the page's windows' 1 px edge, 2 px with high contrast; the title bar's height, TH, follows the display scaling, the font size and the touch mode: tw_th) */
 typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
 	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
 static GList *CLIENTS;   /* oldest first */
@@ -754,10 +821,19 @@ static void wm_minimise(Client *c)
 	if (FOCUS == c) { FOCUS = NULL; wm_focus(top_client()); }
 	bar_redraw(); state_write();
 }
+/* (the owner's photo) a maximised window where the page puts it (base_v24.html .mx: left 0, top 0 of #desk, its width and height #desk's
+   less 6 px, its edge and round corners kept): #desk is the screen beside the taskbar (below a bar at the top, 2 px apart; over a bar at
+   the bottom by 4 px; beside one at the left or the right, 4 px apart) */
+static int desk_top(void) { return TOPRES + (!strcmp(S.tb, "top") ? BARH + (int)lround(2 * Z) : 0); }
+static void max_geom(Client *c)
+{
+	int top = !strcmp(S.tb, "top"), dt = desk_top(), dh = tb_side() ? SH - TOPRES : top ? SH - dt : SH - TOPRES - BARH + (int)lround(4 * Z);
+	c->x = desk_left(); c->y = dt; c->cw = (int)lround(desk_w() - 6 * Z); c->ch = (int)lround(dh - 6 * Z) - (TH - BW);
+}
 static void wm_maximise(Client *c, int on)
 {
 	if (c->full || on == c->max) return;
-	if (on) { c->sx = c->x; c->sy = c->y; c->scw = c->cw; c->sch = c->ch; c->x = work_left(); c->y = work_top(); c->cw = work_w() - 2 * BW; c->ch = work_h() - TH - BW; }
+	if (on) { c->sx = c->x; c->sy = c->y; c->scw = c->cw; c->sch = c->ch; max_geom(c); }
 	else { c->x = c->sx; c->y = c->sy; c->cw = c->scw; c->ch = c->sch; }
 	c->max = on; place(c); frame_draw(c); state_write();
 }
@@ -1050,6 +1126,7 @@ static void wm_manage(Window w, AppWin *own)
 	Atom type; int fmt; unsigned long n = 0, after; unsigned char *d = NULL;
 	if (XGetWindowProperty(DPY, w, A_NSTATE, 0, 32, False, XA_ATOM, &type, &fmt, &n, &after, &d) == Success && d) { for (unsigned long i = 0; i < n; i++) if (((Atom *)d)[i] == A_NFULL) { c->full = 0; wm_fullscreen(c, 1); } XFree(d); }
 	if (own && !strcmp(own->k, "do-saver")) { c->ontop = 1; wm_fullscreen(c, 1); }   /* (the screen saver: over everything, the taskbar too: item 6) */
+	if (own && TM_TOP && !strcmp(own->k, "taskmgr")) { c->ontop = 1; TM_TOP = 0; }   /* (1.6.0: Ctrl+Alt+Del's Task Manager, above every window) */
 	wm_focus(c);
 }
 static void wm_unmanage(Client *c, int gone)
@@ -1075,7 +1152,7 @@ static void wm_hide_all(int hide)
 static void wm_relayout(void)
 {
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data;
-		if (c->max) { c->x = work_left(); c->y = work_top(); c->cw = work_w() - 2 * BW; c->ch = work_h() - TH - BW; }
+		if (c->max) max_geom(c);
 		else if (!c->full && c->y < work_top()) c->y = work_top();
 		place(c); frame_draw(c); }
 	state_write();
@@ -1090,9 +1167,22 @@ static int edge_at(Client *c, int x, int y)
 }
 static int btn_at(Client *c, int x, int y) { int r[3][4]; btn_rects(c, r); for (int i = 0; i < 3; i++) if (x >= r[i][0] && x < r[i][0] + r[i][2] && y >= r[i][1] && y < r[i][1] + r[i][3]) return i + 1; return 0; }
 static Cursor cursor_for(int e) { int i = e == 1 ? 1 : e == 2 ? 2 : e == 4 ? 3 : e == 8 ? 4 : e == 5 ? 5 : e == 6 ? 6 : e == 9 ? 7 : e == 10 ? 8 : 0; return CUR[i]; }
+static void win_menu_at(Client *c, int x, int y);
+/* (base_v24.html, a middle-click on a title bar) the window behind every other, the one now in front in use */
+static void wm_lower(Client *c)
+{
+	XLowerWindow(DPY, c->frame); wm_restack();
+	Window r, p, *k = NULL; unsigned n = 0; Client *top = NULL;
+	if (XQueryTree(DPY, ROOT, &r, &p, &k, &n)) for (unsigned i = 0; i < n; i++) { Client *o = client_of(k[i]); if (o && o != c && !o->min && !o->hidden && !o->off && !o->trans && o->frame == k[i]) top = o; }
+	if (k) XFree(k);
+	if (top) wm_focus(top); else state_write();
+}
 static void frame_press(Client *c, XButtonEvent *e)
 {
-	if (c != FOCUS) wm_focus(c);
+	if (c != FOCUS && e->button != 2) wm_focus(c);
+	/* (the owner's photo) the title bar's other buttons, as the page's (base_v24.html): a right-click there opens the window's menu at
+	   the pointer (winMenu: the page's own rows, as the taskbar button's), a middle-click sends the window behind the others */
+	if ((e->button == 3 || e->button == 2) && e->y < TH && !btn_at(c, e->x, e->y) && !c->full) { if (e->button == 3) win_menu_at(c, e->x_root, e->y_root); else wm_lower(c); return; }
 	if (e->button != 1) return;
 	int b = btn_at(c, e->x, e->y);
 	if (b) { c->press = b; frame_draw(c); return; }
@@ -1106,12 +1196,14 @@ static void frame_press(Client *c, XButtonEvent *e)
 static void drag_motion(int rx, int ry)
 {
 	Client *c = DRAG.c; int dx = rx - DRAG.px, dy = ry - DRAG.py;
-	if (!DRAG.edge) { c->x = DRAG.x + dx; c->y = DRAG.y + dy; if (c->y < work_top()) c->y = work_top(); XMoveWindow(DPY, c->frame, c->x, c->y); return; }
-	int x = DRAG.x, y = DRAG.y, w = DRAG.w, h = DRAG.h;
-	if (DRAG.edge & 1) { w = DRAG.w - dx; if (w < 160) w = 160; x = DRAG.x + DRAG.w - w; }
-	if (DRAG.edge & 2) { w = DRAG.w + dx; if (w < 160) w = 160; }
-	if (DRAG.edge & 4) { h = DRAG.h - dy; if (h < 80) h = 80; y = DRAG.y + DRAG.h - h; }
-	if (DRAG.edge & 8) { h = DRAG.h + dy; if (h < 80) h = 80; }
+	if (!DRAG.edge) { c->x = DRAG.x + dx; c->y = DRAG.y + dy; if (c->y < desk_top()) c->y = desk_top(); XMoveWindow(DPY, c->frame, c->x, c->y); return; }
+	/* (the owner's photo: as the page's addResize, shell25.js: the window's new size from its size with its edges (offsetWidth,
+	   offsetHeight) and the pointer's way, at least 200 by 120, its top not above the desktop's) */
+	int x = DRAG.x, y = DRAG.y, w = DRAG.w, h = DRAG.h, ow = DRAG.w + 2 * BW, oh = DRAG.h + TH + BW, tbh = TH - BW, mw = (int)lround(200 * Z), mh = (int)lround(120 * Z);
+	if (DRAG.edge & 1) { int nw = MAX(mw, ow - dx); w = nw; x = DRAG.x + (ow - nw); }
+	if (DRAG.edge & 2) w = MAX(mw, ow + dx);
+	if (DRAG.edge & 4) { int nh = MAX(mh, oh - dy), nt = MAX(desk_top(), DRAG.y + (oh - nh)); h = oh + DRAG.y - nt - tbh; y = nt; }
+	if (DRAG.edge & 8) h = MAX(mh, oh + dy) - tbh;
 	c->x = x; c->y = y; c->cw = w; c->ch = h; place(c); frame_draw(c);
 }
 static void frame_release(Client *c, XButtonEvent *e)
@@ -1260,7 +1352,7 @@ static void appwin_size(AppWin *a, int w, int h)
 	int n = 0; for (GList *l = CLIENTS; l; l = l->next) { Client *o = l->data; if (o != c && !o->trans) n++; }
 	double dw = desk_w() / Z, avail = work_h() / Z; w = (int)fmin(w, dw - 8); h = (int)fmin(h, avail - 8);   /* (the page's #desk: beside a bar at the left or the right) */
 	double x = fmax(0, fmin(40 + n * 26, dw - w - 4)), y = fmax(0, fmin(20 + n * 26, avail - h - 4));
-	c->cw = (int)lround(w * Z); c->ch = (int)lround((h - 34) * Z); c->x = desk_left() + (int)lround(x * Z); c->y = work_top() + (int)lround(y * Z);
+	c->cw = (int)lround(w * Z); c->ch = (int)lround((h - tw_tbh()) * Z); c->x = desk_left() + (int)lround(x * Z); c->y = work_top() + (int)lround(y * Z);
 	place(c); frame_draw(c); state_write();
 }
 static void frame_redraw_app(AppWin *a) { Client *c = WM_OK ? client_of_app(a) : NULL; if (c) { wm_title(c); frame_draw(c); } }
@@ -1347,9 +1439,11 @@ typedef struct {
 	int ng; RGBA gc[3]; double gp[3];   /* a background gradient from top to bottom (ng stops: colour, place) */
 	double bw; RGBA bc; double rad; Shd sh[4]; int nsh; RGBA fg; int filt;   /* filt: 1 grayscale, 2 brightness(.22) */
 } Box;
+/* (1.6.0) High contrast: styles25.css html.hc .flyout, #menu, .ctx, .rmbox: a 2 px white edge */
+static void hc_edge(Box *b) { if (S.hc) { b->bw = 2; b->bc = cx("#ffffff", 1); } }
 static void shd_add(Box *b, double dx, double dy, double blur, RGBA c, int inset) { if (b->nsh < 4) { Shd s = { dx, dy, blur, c, inset }; b->sh[b->nsh++] = s; } }
 /* (Chromium snaps a box's edges to whole pixels) */
-static void snap(double *x, double *y, double *w, double *h) { double x1 = round(*x + *w), y1 = round(*y + *h); *x = round(*x); *y = round(*y); *w = x1 - *x; *h = y1 - *y; }
+static void snap(double *x, double *y, double *w, double *h) { double x1 = round((*x + *w) * Z) / Z, y1 = round((*y + *h) * Z) / Z; *x = round(*x * Z) / Z; *y = round(*y * Z) / Z; *w = x1 - *x; *h = y1 - *y; }   /* (the screen's pixels: with the display scaling too) */
 static void box_paint(cairo_t *cr, double x, double y, double w, double h, const Box *b)
 {
 	snap(&x, &y, &w, &h); if (w <= 0 || h <= 0) return;
@@ -1441,7 +1535,8 @@ static double css_text(cairo_t *cr, const char *t, const char *fam, int wt, doub
 	if (max > 0) { pango_layout_set_width(pl, (int)(max * PANGO_SCALE)); pango_layout_set_ellipsize(pl, PANGO_ELLIPSIZE_END); }
 	PangoRectangle lr; pango_layout_get_extents(pl, NULL, &lr);
 	double base = top + floor((lh - (a + d)) / 2) + a, b = pango_layout_get_baseline(pl) / (double)PANGO_SCALE;   /* (Blink: the half-leading floored) */
-	srca(cr, c); cairo_move_to(cr, x, round(base) - b); pango_cairo_show_layout(cr, pl); g_object_unref(pl); return lr.width / (double)PANGO_SCALE;   /* (the baseline on a whole pixel, as Chromium's) */
+	{ double bx = x, by = base; cairo_user_to_device(cr, &bx, &by); by = round(by); cairo_device_to_user(cr, &bx, &by); base = by; }   /* (the baseline on a whole pixel of the screen, as Chromium's: with the display scaling too) */
+	srca(cr, c); cairo_move_to(cr, x, base - b); pango_cairo_show_layout(cr, pl); g_object_unref(pl); return lr.width / (double)PANGO_SCALE;
 }
 /* the baseline CSS gives a line of this font in a box of height H (centred: a button's or a flex item's content) */
 static double css_ascent(cairo_t *cr, const char *fam, int wt, double px, double *desc)
@@ -1598,6 +1693,14 @@ static void ic_vol(cairo_t *cr, double x, double y, int filt)
 	else { cairo_move_to(cr, 16, 9); cairo_line_to(cr, 21, 15); cairo_move_to(cr, 21, 9); cairo_line_to(cr, 16, 15); filt_src(cr, cx("#9ca3af", 1), filt); cairo_stroke(cr); }
 	cairo_restore(cr);
 }
+/* (1.6.0, osd31.js osdSvg('brightness'): eight rays round the sun, as many lit as eighths of the level, at least one) */
+static void ic_bri(cairo_t *cr, double x, double y, int filt, int lvl)
+{
+	int on = (int)ceil((lvl < 0 ? 100 : lvl) / 12.5); if (on < 1) on = 1;
+	cairo_save(cr); cairo_translate(cr, x, y); cairo_scale(cr, 22 / 24.0, 22 / 24.0); cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND); cairo_set_line_width(cr, 2);
+	for (int i = 0; i < 8; i++) { double a = i * G_PI / 4; cairo_move_to(cr, 12 + cos(a) * 7.5, 12 + sin(a) * 7.5); cairo_line_to(cr, 12 + cos(a) * 10.5, 12 + sin(a) * 10.5); filt_src(cr, cx(i < on ? "#fbbf24" : "#6b7280", 1), filt); cairo_stroke(cr); }
+	cairo_arc(cr, 12, 12, 4.5, 0, 2 * G_PI); filt_src(cr, cx("#fbbf24", 1), filt); cairo_fill(cr); cairo_restore(cr);
+}
 static void ic_bat(cairo_t *cr, double x, double y, int filt)
 {
 	int lv = BAT < 0 ? 0 : BAT > 100 ? 100 : BAT; RGBA col = cx(lv <= 10 ? "#ef4444" : lv <= 20 ? "#f59e0b" : "#22c55e", 1); double w = round(lv / 100.0 * 15);
@@ -1690,9 +1793,10 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 		rx -= 4; ri++; }
 	static const char *const QK[2] = {"notes", "qs"}; const char *QT[2] = {S.dnd ? "🔕" : "🔔", "☰"};   /* (do not disturb: 🔕, shell25.js ncBadge) */
 	for (int q = 0; q < 2; q++, ri++) {
-		Box b = tb_box(TB_QSB, HV(QK[q], ""), PR(QK[q], "")); double tw = css_width(cr, QT[q], UIFAM, 400, 15), w = fmax(30, 12 + tw + 2 * b.bw), y = mid - 15;
-		rx -= w; box_paint(cr, rx, y, w, 30, &b); hit_add(rx, y, w, 30, QK[q], NULL);
-		css_text(cr, QT[q], UIFAM, 400, 15, rx + (w - tw) / 2, y + b.bw, 30 - 2 * b.bw, b.fg, 0);
+		double qh = S.touch ? 40 : 30;   /* (touch mode: at least 40 px) */
+		Box b = tb_box(TB_QSB, HV(QK[q], ""), PR(QK[q], "")); double tw = css_width(cr, QT[q], UIFAM, 400, 15), w = fmax(30, 12 + tw + 2 * b.bw), y = mid - qh / 2;
+		rx -= w; box_paint(cr, rx, y, w, qh, &b); hit_add(rx, y, w, qh, QK[q], NULL);
+		css_text(cr, QT[q], UIFAM, 400, 15, rx + (w - tw) / 2, y + b.bw, qh - 2 * b.bw, b.fg, 0);
 		if (q == 0 && nt_unread() > 0) {   /* (#ncb's count, the page's ncUnread: those come since signing in or since the centre was opened; a red badge at its top right) */
 			char n[16]; snprintf(n, sizeof n, "%d", nt_unread()); double nw = css_width(cr, n, UIFAM, 400, 9) + 8; Box bd; memset(&bd, 0, sizeof bd); bd.bg = cx("#ef4444", 1); bd.rad = 7;
 			box_paint(cr, rx + w - nw, y + 1, nw, 13, &bd); css_text(cr, n, UIFAM, 400, 9, rx + w - nw + 4, y + 1, 13, cx("#ffffff", 1), 0); }
@@ -1701,10 +1805,18 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 	/* (the apps' tray buttons before quick settings, .tapp: "In a call", 🎙️, or 🔇 with the microphone muted: call59.js) */
 	if (MIC_N > 0) { Box b = tb_box(TB_QSB, HV("call", ""), PR("call", "")); const char *ic = MIC_MUTED ? "🔇" : "🎙️"; double tw = css_width(cr, ic, UIFAM, 400, 15), w = fmax(30, 12 + tw + 2 * b.bw), y = mid - 15;
 		rx -= w; box_paint(cr, rx, y, w, 30, &b); hit_add(rx, y, w, 30, "call", NULL); css_text(cr, ic, UIFAM, 400, 15, rx + (w - tw) / 2, y + b.bw, 30 - 2 * b.bw, cx(MIC_MUTED ? "#b91c1c" : "#16a34a", 1), 0); rx -= 4; ri++; }
-	{ Box b = tb_box(TB_NET, HV("vol", ""), PR("vol", "")); double w = 36 + 2 * b.bw, y = mid - 13; rx -= w; box_paint(cr, rx, y, w, 26, &b); hit_add(rx, y, w, 26, "vol", NULL); VOLB[0] = rx; VOLB[1] = y; VOLB[2] = w; VOLB[3] = 26;
-		ic_vol(cr, rx + b.bw + 7, y + 2, b.filt); rx -= 4; ri++; }
-	{ Box b = tb_box(TB_NET, HV("net", ""), PR("net", "")); double w = 34 + 2 * b.bw, y = mid - 13; rx -= w; box_paint(cr, rx, y, w, 26, &b); hit_add(rx, y, w, 26, "net", NULL); NETB[0] = rx; NETB[1] = y; NETB[2] = w; NETB[3] = 26;
-		ic_net(cr, rx + b.bw + 6, y + 2, b.filt); rx -= 4; ri++; }
+	/* (1.6.0) the on-screen keyboard's ⌨ while its switch is on (#vkt: 14 px, 0 4px, no background), and the brightness (#bri: as the
+	   sound's button, with the brightness's picture) when the screen has a backlight (osd31.js) */
+	if (S.vk) { Box b = tb_box(TB_QSB, HV("vkt", ""), PR("vkt", "")); b.bg = CLEAR; b.bw = 0; b.nsh = 0; double tw = css_width(cr, "⌨", UIFAM, 400, 14), w = tw + 8, h = fl_lh(cr, 400, 14) + 2, y = mid - h / 2;
+		rx -= w; hit_add(rx, y, w, h, "vkt", NULL); VKTB[0] = rx; VKTB[1] = y; VKTB[2] = w; VKTB[3] = h; css_text(cr, "⌨", UIFAM, 400, 14, rx + 4, y + 1, h - 2, b.fg, 0); rx -= 4; ri++; }
+	/* (touch mode: styles25.css html.touch button{min-height:40px}, the tray's buttons at least 40 px tall) */
+	const double th26 = S.touch ? 40 : 26;
+	if (BRI_HAS) { Box b = tb_box(TB_NET, 0, PR("bri", "")); double w = 36 + 2 * b.bw, y = mid - th26 / 2; rx -= w; box_paint(cr, rx, y, w, th26, &b); hit_add(rx, y, w, th26, "bri", NULL); BRIB[0] = rx; BRIB[1] = y; BRIB[2] = w; BRIB[3] = th26;
+		ic_bri(cr, rx + b.bw + 7, y + (th26 - 22) / 2, b.filt, BRI); rx -= 4; ri++; }
+	{ Box b = tb_box(TB_NET, HV("vol", ""), PR("vol", "")); double w = 36 + 2 * b.bw, y = mid - th26 / 2; rx -= w; box_paint(cr, rx, y, w, th26, &b); hit_add(rx, y, w, th26, "vol", NULL); VOLB[0] = rx; VOLB[1] = y; VOLB[2] = w; VOLB[3] = th26;
+		ic_vol(cr, rx + b.bw + 7, y + (th26 - 22) / 2, b.filt); rx -= 4; ri++; }
+	{ Box b = tb_box(TB_NET, HV("net", ""), PR("net", "")); double w = 34 + 2 * b.bw, y = mid - th26 / 2; rx -= w; box_paint(cr, rx, y, w, th26, &b); hit_add(rx, y, w, th26, "net", NULL); NETB[0] = rx; NETB[1] = y; NETB[2] = w; NETB[3] = th26;
+		ic_net(cr, rx + b.bw + 6, y + (th26 - 22) / 2, b.filt); rx -= 4; ri++; }
 	/* the workspaces (as the page's: the first is the one shown; the native shell has one until item 4) */
 	rx -= 4 + 4 * 22 + 3 * 2;
 	{ static const char *const WT[4] = {"1", "2", "3", "▦"}; double wx = rx;
@@ -1726,7 +1838,7 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 		box_paint(cr, wx, y, tw, 34, &b); hit_add(wx, y, tw, 34, "win", wid);
 		/* the line: the picture (vertical-align -4px) and the title, centred in the button's content (34 less 1 px above and below) */
 		double d, A = css_ascent(cr, UIFAM, act ? 600 : 400, 13, &d), lt = fmin(-A, -14), lb = fmax(d, 4), base = y + b.bw + 1 + (32 - 2 * b.bw - (lb - lt)) / 2 - lt;
-		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = app_pix(ap); double tx = wx + b.bw + 6;
+		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap); double tx = wx + b.bw + 6;
 		cairo_save(cr); cairo_rectangle(cr, wx + b.bw + 6, y, tw - 2 * b.bw - 12, 34); cairo_clip(cr);
 		if (px) { pix_at(cr, px, tx, base + 4 - 18, 18, b.filt); tx += 18; }
 		const char *ti = a ? a->title : c->title, *ico = a ? a->icon : ap ? ap->icon : ""; char *tt = px ? g_strdup_printf(" %s", ti) : g_strdup_printf("%s%s%s", ico, ico[0] ? " " : "", ti);
@@ -1799,6 +1911,10 @@ static void bar_paint_v(cairo_t *cr, double W, double H)
 		by -= 4; }
 	if (MIC_N > 0) { Box b = tb_box(TB_QSB, HV("call", ""), PR("call", "")); const char *ic = MIC_MUTED ? "🔇" : "🎙️"; double tw = css_width(cr, ic, UIFAM, 400, 15); by -= 30;
 		box_paint(cr, x, by, cw, 30, &b); hit_add(x, by, cw, 30, "call", NULL); css_text(cr, ic, UIFAM, 400, 15, x + (cw - tw) / 2, by + b.bw, 30 - 2 * b.bw, cx(MIC_MUTED ? "#b91c1c" : "#16a34a", 1), 0); by -= 4; }
+	if (S.vk) { Box b = tb_box(TB_QSB, HV("vkt", ""), PR("vkt", "")); double tw = css_width(cr, "⌨", UIFAM, 400, 14), h = fl_lh(cr, 400, 14) + 2; by -= h;
+		hit_add(x, by, cw, h, "vkt", NULL); VKTB[0] = x; VKTB[1] = by; VKTB[2] = cw; VKTB[3] = h; css_text(cr, "⌨", UIFAM, 400, 14, x + (cw - tw) / 2, by + 1, h - 2, b.fg, 0); by -= 4; }
+	if (BRI_HAS) { Box b = tb_box(TB_NET, 0, PR("bri", "")); by -= 26; box_paint(cr, x, by, cw, 26, &b); hit_add(x, by, cw, 26, "bri", NULL); BRIB[0] = x; BRIB[1] = by; BRIB[2] = cw; BRIB[3] = 26;
+		ic_bri(cr, x + (cw - 22) / 2, by + 2, b.filt, BRI); by -= 4; }
 	{ Box b = tb_box(TB_NET, HV("vol", ""), PR("vol", "")); by -= 26; box_paint(cr, x, by, cw, 26, &b); hit_add(x, by, cw, 26, "vol", NULL); VOLB[0] = x; VOLB[1] = by; VOLB[2] = cw; VOLB[3] = 26;
 		ic_vol(cr, x + (cw - 22) / 2, by + 2, b.filt); by -= 4; }
 	{ Box b = tb_box(TB_NET, HV("net", ""), PR("net", "")); by -= 26; box_paint(cr, x, by, cw, 26, &b); hit_add(x, by, cw, 26, "net", NULL); NETB[0] = x; NETB[1] = by; NETB[2] = cw; NETB[3] = 26;
@@ -1820,7 +1936,7 @@ static void bar_paint_v(cairo_t *cr, double W, double H)
 		char wid[24]; snprintf(wid, sizeof wid, "%lx", c ? (unsigned long)c->w : (unsigned long)(uintptr_t)a);
 		Box b = tb_box(act ? TB_TASKON : TB_TASK, HV("win", wid), PR("win", wid)); box_paint(cr, x, ty, cw, 22, &b); hit_add(x, ty, cw, 22, "win", wid);
 		double d, A = css_ascent(cr, UIFAM, act ? 600 : 400, 13, &d), lt = fmin(-A, -14), lb = fmax(d, 4), base = ty + b.bw + 1 + (20 - 2 * b.bw - (lb - lt)) / 2 - lt;
-		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = app_pix(ap); double tx = x + b.bw + 6;
+		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap); double tx = x + b.bw + 6;
 		cairo_save(cr); cairo_rectangle(cr, x + b.bw + 6, ty, cw - 2 * b.bw - 12, 22); cairo_clip(cr);
 		if (px) { pix_at(cr, px, tx, base + 4 - 18, 18, b.filt); tx += 18; }
 		const char *ti = a ? a->title : c->title, *ico = a ? a->icon : ap ? ap->icon : ""; char *tt = px ? g_strdup_printf(" %s", ti) : g_strdup_printf("%s%s%s", ico, ico[0] ? " " : "", ti);
@@ -1873,6 +1989,8 @@ static void bar_click(int h)
 	else if (!strcmp(t->kind, "clock")) fl_open(1);   /* (the calendar under the clock, as the page's) */
 	else if (!strcmp(t->kind, "vol")) fl_open(2);   /* (the volume's pop-up) */
 	else if (!strcmp(t->kind, "net")) fl_open(FL_NET);   /* (the network's pop-up, net31.js net31Pop) */
+	else if (!strcmp(t->kind, "bri")) fl_open(FL_BRI);   /* (1.6.0: the brightness's pop-up, briPop) */
+	else if (!strcmp(t->kind, "vkt")) { VK_SHOWN = !VK_SHOWN; vk_sync(); state_write(); }   /* (1.6.0: the on-screen keyboard shown or hidden, vkt.onclick) */
 	else if (!strcmp(t->kind, "call")) { char p[40]; snprintf(p, sizeof p, "/api/mic?muted=%d", !MIC_MUTED); GByteArray *b = NULL; JV *v = NULL;   /* (call59Toggle: the microphone muted for everything, or not) */
 		if (http("POST", p, NULL, 0, &b) == 200 && b) v = jparse((char *)b->data); if (b) g_byte_array_free(b, TRUE);
 		if (v) { MIC_MUTED = jbool(v, "muted"); JV *u = jprop(v, "users"); if (u && u->t == 4) MIC_N = u->len; } jfree(v); bar_redraw(); }
@@ -1884,6 +2002,13 @@ static void bar_click(int h)
 }
 static void hk_set(int h, char *k, char *a) { if (h >= 0) { snprintf(k, 12, "%s", HITS[h].kind); snprintf(a, 80, "%s", HITS[h].arg); } else k[0] = a[0] = 0; }
 static void bar_menu(GdkEventButton *e, int h);
+/* (1.6.0) the wheel over the brightness's button: a step up or down, as osd31.js (rudolfd's brightness/step) */
+static gboolean bar_scroll(GtkWidget *w, GdkEventScroll *e, gpointer d)
+{
+	(void)w; (void)d; int h = hit_at(e->x, e->y); if (h < 0 || strcmp(HITS[h].kind, "bri")) return FALSE;
+	double dy = e->direction == GDK_SCROLL_UP ? -1 : e->direction == GDK_SCROLL_DOWN ? 1 : 0; if (e->direction == GDK_SCROLL_SMOOTH) dy = e->delta_y;
+	if (dy) hk_post(dy < 0 ? "/api/brightness/step?d=up" : "/api/brightness/step?d=down", 1); return TRUE;
+}
 static gboolean bar_press(GtkWidget *w, GdkEventButton *e, gpointer d) { (void)w; (void)d; if (e->type == GDK_BUTTON_PRESS && e->button == 3) { bar_menu(e, hit_at(e->x, e->y)); return TRUE; } if (e->type == GDK_BUTTON_PRESS && e->button == 1) { PRESS = hit_at(e->x, e->y); hk_set(PRESS, PRS_K, PRS_A); bar_redraw(); } return TRUE; }
 static gboolean bar_release(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
@@ -1916,59 +2041,117 @@ static TwVars tw_vars(void)
 	return v;
 }
 static double tw_rad(void) { return !strcmp(tw_vars().st, "retro") ? 0 : 8; }
+/* (the owner's photo of 2026-11-15: the title bar as the page lays it out for every setting, not only the defaults) the bar's
+   sizes in the page's pixels, as Chromium lays out .win>.tb (a flex row, 6px 8px inside, its items centred): the window's edge
+   (1 px; 2 px white with high contrast, html.hc), the title in the Font size setting (S.fs: the bar grows past 34 px for large
+   sizes), the touch mode's bigger bar and buttons (html.touch: at least 40 px inside, buttons 40 by 40), the picture's line
+   (a 16 px picture 3 px below the baseline, as .ico) */
+typedef struct { double b, tbh, C, a, d, lh, bw, bh, by, ty, iy; } TwGeom;
+static TwGeom tw_geom(void)
+{
+	static TwGeom K; static char kf[128]; char kn[128]; double fs = S.fs >= 6 && S.fs <= 72 ? S.fs : 13; int touch = S.touch;
+	snprintf(kn, sizeof kn, "%g %d %d %s", fs, touch, S.hc, UIFAM); if (!strcmp(kn, kf)) return K;   /* (measured once for the settings) */
+	TwGeom g; memset(&g, 0, sizeof g);
+	g.b = S.hc ? 2 : 1; g.bw = touch ? 40 : 24; g.bh = touch ? 40 : 22;
+	{ cairo_surface_t *t = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 4, 4); cairo_t *cr = cairo_create(t); g.a = css_ascent(cr, UIFAM, 600, fs, &g.d); cairo_destroy(cr); cairo_surface_destroy(t); }
+	g.lh = g.a + g.d; double ia = fmax(g.a, 13), id = fmax(g.d, 3), il = ia + id;   /* (the picture's line: its 16 px from 13 above the baseline to 3 below) */
+	g.C = fmax(fmax(g.bh, g.lh), il); if (touch) g.C = fmax(g.C, 40); g.tbh = g.C + 12;
+	g.by = 6 + (g.C - g.bh) / 2; g.ty = 6 + (g.C - g.lh) / 2; g.iy = 6 + (g.C - il) / 2 + (ia - 13);
+	K = g; snprintf(kf, sizeof kf, "%s", kn); return g;
+}
+/* the window's edge and title bar together, in the screen's pixels (the frame's top: TH) */
+static double tw_tbh(void) { return tw_geom().tbh; }
+static int tw_th(void) { TwGeom g = tw_geom(); return (int)lround((g.b + g.tbh) * Z); }
+static int tw_bw(void) { return S.hc ? (int)fmax(1, lround(2 * Z)) : 1; }
 static void btn_rects(Client *c, int r[3][4])
 {
-	int candy = !strcmp(tw_vars().st, "candy"); double fw = fw_of(c) / Z, x = fw - 1 - 8 - 24 - (candy ? 1 : 0);
-	for (int i = 2; i >= 0; i--) { r[i][0] = (int)lround(x * Z); r[i][1] = (int)lround(7 * Z); r[i][2] = (int)lround(24 * Z); r[i][3] = (int)lround(22 * Z); x -= 27 + (candy ? 2 : 0); }
+	TwGeom g = tw_geom(); int candy = !strcmp(tw_vars().st, "candy"); double eb = BW / Z, fw = fw_of(c) / Z, x = fw - eb - 8 - g.bw - (candy ? 1 : 0);
+	for (int i = 2; i >= 0; i--) { r[i][0] = (int)lround(x * Z); r[i][1] = (int)lround((eb + g.by) * Z); r[i][2] = (int)lround(g.bw * Z); r[i][3] = (int)lround(g.bh * Z); x -= g.bw + 3 + (candy ? 2 : 0); }
 }
 /* the frame's outline: round corners (X's shape: no compositor needed) */
 static void frame_shape(Client *c)
 {
 	GdkWindow *g = gdk_x11_window_foreign_new_for_display(gdk_display_get_default(), c->frame); if (!g) return;
-	int fw = fw_of(c), fh = fh_of(c); double r = c->max || c->full ? 0 : tw_rad() * Z;
+	int fw = fw_of(c), fh = fh_of(c); double r = c->full ? 0 : tw_rad() * Z;
 	cairo_region_t *rg = cairo_region_create();
 	for (int y = 0; y < fh; y++) { double dy = y < r ? r - y - .5 : y >= fh - r ? y - (fh - r) + .5 : 0, in = dy > 0 ? r - sqrt(fmax(0, r * r - dy * dy)) : 0;
 		int x0 = (int)floor(in + .5); cairo_rectangle_int_t rc = { x0, y, fw - 2 * x0, 1 }; cairo_region_union_rectangle(rg, &rc); }
 	gdk_window_shape_combine_region(g, rg, 0, 0); cairo_region_destroy(rg); g_object_unref(g);
 }
+/* (the owner's photo) Settings › Accessibility › Color vision, which the page puts on the whole screen (base_v24.html applyCB: html's
+   filter): grayscale(1), contrast(1.35) saturate(1.2) for High contrast, or the colour-blindness correction's matrix (cbValues), in
+   sRGB, on the frame as drawn (the app's page inside filters itself) */
+static void cb_filter(cairo_surface_t *sf)
+{
+	const char *m = S.cb; double M[3][3];
+	if (!m[0] || !strcmp(m, "none")) return;
+	if (!strcmp(m, "gray")) { static const double G[3][3] = {{.2126, .7152, .0722}, {.2126, .7152, .0722}, {.2126, .7152, .0722}}; memcpy(M, G, sizeof M); }
+	else if (!strcmp(m, "contrast")) { double t = 1.2; double A[3][3] = {{.213 + .787 * t, .715 - .715 * t, .072 - .072 * t}, {.213 - .213 * t, .715 + .285 * t, .072 - .072 * t}, {.213 - .213 * t, .715 - .715 * t, .072 + .928 * t}};
+		memcpy(M, A, sizeof M); }
+	else { static const char *const K[3] = {"protan", "deutan", "tritan"}; static const double S0[3][3][3] = {{{.567, .433, 0}, {.558, .442, 0}, {0, .242, .758}}, {{.625, .375, 0}, {.7, .3, 0}, {0, .3, .7}}, {{.95, .05, 0}, {0, .433, .567}, {0, .475, .525}}};
+		static const double CM[3][3][3] = {{{0, 0, 0}, {.7, 1, 0}, {.7, 0, 1}}, {{0, 0, 0}, {.7, 1, 0}, {.7, 0, 1}}, {{1, 0, .7}, {0, 1, .7}, {0, 0, 0}}};
+		int k = -1; for (int i = 0; i < 3; i++) if (!strcmp(m, K[i])) k = i; if (k < 0) return;
+		double E[3][3]; for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) E[i][j] = (i == j) - S0[k][i][j];
+		for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) { double v = (i == j); for (int q = 0; q < 3; q++) v += CM[k][i][q] * E[q][j]; M[i][j] = round(v * 10000) / 10000; } }
+	int con = !strcmp(m, "contrast");
+	cairo_surface_flush(sf); unsigned char *d = cairo_image_surface_get_data(sf); int st = cairo_image_surface_get_stride(sf), w = cairo_image_surface_get_width(sf), h = cairo_image_surface_get_height(sf);
+	for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) { unsigned char *p = d + y * st + x * 4; double al = p[3] / 255.0; if (al <= 0) continue;
+		double c[3] = { p[2] / 255.0 / al, p[1] / 255.0 / al, p[0] / 255.0 / al }, o[3];
+		if (con) for (int i = 0; i < 3; i++) c[i] = fmin(1, fmax(0, (c[i] - .5) * 1.35 + .5));   /* (contrast first, then saturate) */
+		for (int i = 0; i < 3; i++) o[i] = fmin(1, fmax(0, M[i][0] * c[0] + M[i][1] * c[1] + M[i][2] * c[2]));
+		p[2] = (unsigned char)lround(o[0] * al * 255); p[1] = (unsigned char)lround(o[1] * al * 255); p[0] = (unsigned char)lround(o[2] * al * 255); }
+	cairo_surface_mark_dirty(sf);
+}
+static int menu_dark(void);
 static void frame_draw(Client *c)
 {
 	if (!c->frame || c->full) return;
-	int fw = fw_of(c), fh = fh_of(c), act = c == FOCUS; TwVars V = tw_vars(); const char *st = V.st;
-	cairo_surface_t *sf = cairo_xlib_surface_create(DPY, c->frame, DefaultVisual(DPY, DefaultScreen(DPY)), fw, fh); cairo_t *cr = cairo_create(sf);
-	cairo_scale(cr, Z, Z); double W = fw / Z, H = fh / Z, R = c->max ? 0 : tw_rad();
+	int fw = fw_of(c), fh = fh_of(c), act = c == FOCUS; TwVars V = tw_vars(); const char *st = V.st; TwGeom G = tw_geom(); double eb = BW / Z, TB = (TH - BW) / Z;   /* (the edge and the bar on whole pixels of the screen, as Chromium snaps them under the display scaling) */
+	cairo_surface_t *sf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, fw, fh); cairo_t *cr = cairo_create(sf);   /* (drawn aside, then filtered as the page is: cb_filter) */
+	cairo_scale(cr, Z, Z); double W = fw / Z, H = fh / Z, R = tw_rad();   /* (maximised too: the page's .win.max keeps its corners) */
 	/* the window: its edge and its white */
-	srca(cr, cx("#ffffff", 1)); cairo_paint(cr);
-	Box win; memset(&win, 0, sizeof win); win.bg = cx("#ffffff", 1); win.bw = 1; win.bc = cx("#9ca3af", 1); win.rad = R; box_paint(cr, 0, 0, W, H, &win);
-	/* the title bar (inside the edge: 34 px, its top corners 7 px) */
+	/* (second run, N27) the page's html.dark .win: #0f172a with a #334155 edge, the other windows' bars #1e293b with #cbd5e1 writing;
+	   (the owner's photo) Oracle's window too, which is the page's window on Standard; high contrast: a 2 px white edge (html.hc .win) */
+	int dk = menu_dark();
+	srca(cr, cx(dk ? "#0f172a" : "#ffffff", 1)); cairo_paint(cr);
+	Box win; memset(&win, 0, sizeof win); win.bg = cx(dk ? "#0f172a" : "#ffffff", 1); win.bw = eb; win.bc = S.hc ? cx("#ffffff", 1) : cx(dk ? "#334155" : "#9ca3af", 1); win.rad = R; box_paint(cr, 0, 0, W, H, &win);
+	/* the title bar (inside the edge: 34 px or as tall as its writing, its top corners 7 px) */
 	Box tb; memset(&tb, 0, sizeof tb); RGBA fg; double tbo = 1;   /* (tbo: the bar's opacity: .72 for the other windows in Wireframe, Candy, Retro) */
-	if (!V.on) { tb.bg = act ? ca(accent(), 1) : cx("#e5e7eb", 1); fg = act ? cx("#ffffff", 1) : cx("#6b7280", 1); }
-	else if (!strcmp(st, "wire")) { tb.bg = cmix(V.bg, .14, CLEAR); fg = cx("#000000", 1); shd_add(&tb, 0, -2, 0, V.bg, 1); if (act) shd_add(&tb, 0, 0, 0, V.bg, 2); else tbo = .72; }
+	/* (the other windows' bar, html.dark's where no style rule of !important sets it; Wireframe's writing is the window's own: the
+	   Window text colour, or html.dark .win's) */
+	RGBA ibg = cx(dk ? "#1e293b" : "#e5e7eb", 1), ifg = cx(dk ? "#cbd5e1" : "#6b7280", 1), wtx = dk ? cx("#e2e8f0", 1) : cx(S.tx[0] == '#' ? S.tx : "#000000", 1);
+	if (!V.on) { tb.bg = act ? ca(accent(), 1) : ibg; fg = act ? cx("#ffffff", 1) : ifg; }
+	else if (!strcmp(st, "wire")) { tb.bg = cmix(V.bg, .14, CLEAR); fg = wtx; shd_add(&tb, 0, -2, 0, V.bg, 1); if (act) shd_add(&tb, 0, 0, 0, V.bg, 2); else tbo = .72; }
 	else if (!strcmp(st, "mono")) { tb.bg = act ? V.bg : cmix(V.bg, .35, cx("#9ca3af", 1)); fg = act ? V.fg : cx("#ffffff", 1); }
 	else if (!strcmp(st, "candy")) { if (act) { tb.ng = 3; tb.gc[0] = V.hi; tb.gc[1] = V.bg; tb.gc[2] = V.lo; tb.gp[0] = 0; tb.gp[1] = .48; tb.gp[2] = 1; shd_add(&tb, 0, 1, 0, cx("#ffffff", .5), 1); fg = V.fg; }
-		else { tb.bg = cx("#e5e7eb", 1); fg = cx("#6b7280", 1); tbo = .72; } }
-	else if (!strcmp(st, "retro")) { if (act) { tb.bg = V.bg; fg = V.fg; } else { tb.bg = cx("#e5e7eb", 1); fg = cx("#6b7280", 1); tbo = .72; } }
-	else { tb.bg = act ? V.bg : cx("#e5e7eb", 1); fg = act ? V.fg : cx("#6b7280", 1); }
+		else { tb.bg = ibg; fg = ifg; tbo = .72; } }
+	else if (!strcmp(st, "retro")) { if (act) { tb.bg = V.bg; fg = V.fg; } else { tb.bg = ibg; fg = ifg; tbo = .72; } }
+	else { tb.bg = act ? V.bg : ibg; fg = act ? V.fg : ifg; }
 	int grey = V.on && strcmp(st, "mono") && !act;   /* (twcol: the other windows' bars in grey) */
 	cairo_push_group(cr);
-	double tr = fmax(0, R - 1);
-	cairo_save(cr); rrect(cr, 1, 1, W - 2, 34, 0); cairo_clip(cr);
-	if (tr > 0) { cairo_new_path(cr); cairo_move_to(cr, 1, 35); cairo_line_to(cr, 1, 1 + tr); cairo_arc(cr, 1 + tr, 1 + tr, tr, M_PI, 1.5 * M_PI); cairo_arc(cr, W - 1 - tr, 1 + tr, tr, 1.5 * M_PI, 2 * M_PI); cairo_line_to(cr, W - 1, 35); cairo_close_path(cr); cairo_clip(cr); }
+	double tr = R > 0 ? 7 : 0;
+	cairo_save(cr); rrect(cr, eb, eb, W - 2 * eb, TB, 0); cairo_clip(cr);
+	if (tr > 0) { cairo_new_path(cr); cairo_move_to(cr, eb, eb + TB); cairo_line_to(cr, eb, eb + tr); cairo_arc(cr, eb + tr, eb + tr, tr, M_PI, 1.5 * M_PI); cairo_arc(cr, W - eb - tr, eb + tr, tr, 1.5 * M_PI, 2 * M_PI); cairo_line_to(cr, W - eb, eb + TB); cairo_close_path(cr); cairo_clip(cr); }
 	if (tb.nsh && tb.sh[tb.nsh - 1].inset == 2) {   /* (Wireframe's active bar: a 1 px line of its colour all round as well) */
-		tb.nsh--; box_paint(cr, 1, 1, W - 2, 34, &tb); srca(cr, V.bg); cairo_rectangle(cr, 1, 1, W - 2, 34); cairo_rectangle(cr, 2, 2, W - 4, 32); cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD); cairo_fill(cr); cairo_set_fill_rule(cr, CAIRO_FILL_RULE_WINDING); }
-	else if (!strcmp(st, "retro") && act && V.on) { cairo_pattern_t *g = cairo_pattern_create_linear(1, 0, W - 1, 0);
+		tb.nsh--; box_paint(cr, eb, eb, W - 2 * eb, TB, &tb); srca(cr, V.bg); cairo_rectangle(cr, eb, eb, W - 2 * eb, TB); cairo_rectangle(cr, eb + 1, eb + 1, W - 2 * eb - 2, TB - 2); cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD); cairo_fill(cr); cairo_set_fill_rule(cr, CAIRO_FILL_RULE_WINDING); }
+	else if (!strcmp(st, "retro") && act && V.on) { cairo_pattern_t *g = cairo_pattern_create_linear(eb, 0, W - eb, 0);
 		cairo_pattern_add_color_stop_rgb(g, 0, V.lo.r, V.lo.g, V.lo.b); cairo_pattern_add_color_stop_rgb(g, .45, V.bg.r, V.bg.g, V.bg.b); cairo_pattern_add_color_stop_rgb(g, 1, V.hi.r, V.hi.g, V.hi.b);
-		cairo_rectangle(cr, 1, 1, W - 2, 34); cairo_set_source(cr, g); cairo_fill(cr); cairo_pattern_destroy(g); }
-	else box_paint(cr, 1, 1, W - 2, 34, &tb);
+		cairo_rectangle(cr, eb, eb, W - 2 * eb, TB); cairo_set_source(cr, g); cairo_fill(cr); cairo_pattern_destroy(g); }
+	else box_paint(cr, eb, eb, W - 2 * eb, TB, &tb);
 	cairo_restore(cr);
 	/* the picture, the title, the buttons */
-	int wt = !strcmp(st, "retro") && V.on ? 700 : 600; AppWin *a = c->app; const App *ap = a ? app_find(a->k) : c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = app_pix(ap);
-	int filt = V.on && !strcmp(st, "mono") ? 1 : 0;
-	if (px) pix_at(cr, px, 9, 10, 16, filt); else if (a && a->icon[0]) css_text(cr, a->icon, UIFAM, wt, 13, 9, 10.5, 15, fg, 0); else if (!a && ap && ap->icon[0]) css_text(cr, ap->icon, UIFAM, wt, 13, 9, 10.5, 15, fg, 0);
-	int r[3][4]; btn_rects(c, r); double tx = 1 + 8 + 16 + 3, tmax = r[0][0] / Z - 3 - tx;
-	css_text(cr, a ? a->title : c->title, UIFAM, wt, 13, tx, 10.5, 15, fg, tmax);
-	static const char *const G[3] = {"_", "□", "✕"};
-	for (int i = 0; i < 3; i++) { double bx = r[i][0] / Z, by = 7, bw = 24, bh = 22; int hv = c->hover == i + 1, pr = c->press == i + 1, cl = i == 2;
+	int wt = !strcmp(st, "retro") && V.on ? 700 : 600; AppWin *a = c->app; const App *ap = a ? app_find(a->k) : c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap);
+	int filt = V.on && !strcmp(st, "mono") ? 1 : 0; double fs = S.fs >= 6 && S.fs <= 72 ? S.fs : 13, ix = eb + 8, ty = eb + G.ty;
+	if (px) pix_at(cr, px, ix, eb + G.iy, 16, filt); else if (a && a->icon[0]) css_text(cr, a->icon, UIFAM, wt, fs, ix, ty, G.lh, fg, 0); else if (!a && ap && ap->icon[0]) css_text(cr, ap->icon, UIFAM, wt, fs, ix, ty, G.lh, fg, 0);
+	int r[3][4]; btn_rects(c, r); double tx = ix + 16 + 3, tmax = r[0][0] / Z - (!strcmp(st, "candy") ? 1 : 0) - 3 - tx;
+	const char *tt = a ? a->title : c->title;
+	if (c->ontop) {   /* (Always on top: .win.ontop>.tb .t::after, " 📌" at 11 px on the title's line) */
+		double pa, pd; pa = css_ascent(cr, UIFAM, wt, 11, &pd); double tw = css_width(cr, tt, UIFAM, wt, fs), pw = css_width(cr, " 📌", UIFAM, wt, 11);
+		if (tw + pw <= tmax) { css_text(cr, tt, UIFAM, wt, fs, tx, ty, G.lh, fg, 0); css_text(cr, " 📌", UIFAM, wt, 11, tx + tw, ty + G.a - pa, pa + pd, fg, 0); }
+		else css_text(cr, tt, UIFAM, wt, fs, tx, ty, G.lh, fg, tmax);
+	} else css_text(cr, tt, UIFAM, wt, fs, tx, ty, G.lh, fg, tmax);
+	static const char *const GL[3] = {"_", "□", "✕"};
+	for (int i = 0; i < 3; i++) { double bx = r[i][0] / Z, by = r[i][1] / Z, bw = G.bw, bh = G.bh; int hv = c->hover == i + 1, pr = c->press == i + 1, cl = i == 2;
 		Box b; memset(&b, 0, sizeof b); b.rad = 4; RGBA bf = fg;
 		if (!V.on || !strcmp(st, "mono")) { if (hv) b.bg = cl ? cx("#e11d48", 1) : cx("#000000", .15); if (hv && cl) bf = cx("#ffffff", 1); }
 		else if (!strcmp(st, "wire")) { b.rad = 3; b.bw = 1; b.bc = cmix(fg, .55, CLEAR); if (hv) { b.bg = cl ? cx("#e11d48", 1) : cmix(V.bg, .22, CLEAR); if (cl) { bf = cx("#ffffff", 1); b.bc = cx("#e11d48", 1); } } }
@@ -1978,22 +2161,24 @@ static void frame_draw(Client *c)
 			else { shd_add(&b, -1, -1, 0, cx("#404040", 1), 1); shd_add(&b, 1, 1, 0, cx("#ffffff", 1), 1); shd_add(&b, -2, -2, 0, cx("#808080", 1), 1); shd_add(&b, 2, 2, 0, cx("#dfdfdf", 1), 1); } }
 		else { if (hv) b.bg = cl ? cx("#e11d48", 1) : cx("#000000", .15); if (hv && cl) bf = cx("#ffffff", 1); }
 		box_paint(cr, bx, by, bw, bh, &b);
-		const char *g = i == 1 && c->max ? "❐" : G[i]; double gw = css_width(cr, g, "Arial", 600, 12);
+		const char *g = GL[i];   /* (□ maximised too, as the page's) */ double gw = css_width(cr, g, "Arial", 600, 12);
 		css_text(cr, g, "Arial", 600, 12, bx + (bw - gw) / 2, by + b.bw, bh - 2 * b.bw, bf, 0); }
 	cairo_pop_group_to_source(cr);
 	if (grey) {   /* (filter: grayscale(1)) */
-		cairo_surface_t *g = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, fw, (int)ceil(36 * Z)); cairo_t *gc = cairo_create(g); cairo_set_source(gc, cairo_get_source(cr)); cairo_paint(gc); cairo_destroy(gc);
+		cairo_surface_t *g = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, fw, (int)ceil((eb + TB + 1) * Z)); cairo_t *gc = cairo_create(g); cairo_set_source(gc, cairo_get_source(cr)); cairo_paint(gc); cairo_destroy(gc);
 		cairo_surface_flush(g); unsigned char *d = cairo_image_surface_get_data(g); int stw = cairo_image_surface_get_stride(g);
 		for (int y = 0; y < cairo_image_surface_get_height(g); y++) for (int x = 0; x < fw; x++) { unsigned char *p = d + y * stw + x * 4; int l = (int)lround(.0722 * p[0] + .7152 * p[1] + .2126 * p[2]); p[0] = p[1] = p[2] = l > p[3] ? p[3] : l; }
 		cairo_surface_mark_dirty(g); cairo_save(cr); cairo_identity_matrix(cr); cairo_set_source_surface(cr, g, 0, 0); cairo_paint_with_alpha(cr, tbo); cairo_restore(cr); cairo_surface_destroy(g);
 	} else cairo_paint_with_alpha(cr, tbo);
-	cairo_destroy(cr); cairo_surface_destroy(sf);
+	cairo_destroy(cr); cb_filter(sf);
+	cairo_surface_t *xs = cairo_xlib_surface_create(DPY, c->frame, DefaultVisual(DPY, DefaultScreen(DPY)), fw, fh); cairo_t *xc = cairo_create(xs);
+	cairo_set_operator(xc, CAIRO_OPERATOR_SOURCE); cairo_set_source_surface(xc, sf, 0, 0); cairo_paint(xc); cairo_destroy(xc); cairo_surface_destroy(xs); cairo_surface_destroy(sf);
 }
 /* the windows' shadows, on the desktop beneath them (0 10px 28px rgba(0,0,0,.28)) */
 static void frames_shadow(cairo_t *cr)
 {
 	if (!WM_OK || LOCKED) return;
-	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->min || c->full || c->max || c->hidden || c->trans) continue;
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->min || c->full || c->hidden || c->trans) continue;   /* (a maximised window's too, as the page's .win.max) */
 		double x = c->x / Z, y = c->y / Z, w = fw_of(c) / Z, h = fh_of(c) / Z; int pad = 40;
 		cairo_surface_t *m = cairo_image_surface_create(CAIRO_FORMAT_A8, (int)ceil((w + 2 * pad) * Z), (int)ceil((h + 2 * pad) * Z)); cairo_t *mc = cairo_create(m);
 		cairo_scale(mc, Z, Z); rrect(mc, pad, pad, w, h, tw_rad()); cairo_set_source_rgba(mc, 0, 0, 0, 1); cairo_fill(mc); cairo_destroy(mc); a8_blur(m, 14 * Z);
@@ -2071,6 +2256,17 @@ static double menu_layout(cairo_t *cr)
 		r->h = r->pt + (lb - lt) + r->pb; y += r->h; }
 	return y;
 }
+/* (second run, N30; N22) the start menu scrolls: Chromium's classic scrollbar on #menu's right, inside its edge, its content 15 px
+   narrower (Rudolf's Chromium shows it; same_t.sh now does too) */
+static double menu_sb(void) { return MCONT + 14 > MBH + .5 ? 15 : 0; }
+static void menu_sb_draw(cairo_t *cr)
+{
+	if (!menu_sb()) return; double x = MBW - 1 - 15, y0 = 1, h = MBH - 2, track = h - 30, tot = MCONT + 14, th = fmax(17, track * MBH / tot), mx = fmax(1, tot - MBH), ty = y0 + 15 + (track - th) * fmin(1, MSCROLL / mx);
+	srca(cr, cx("#fcfcfc", 1)); cairo_rectangle(cr, x, y0, 15, h); cairo_fill(cr);
+	srca(cr, cx("#8b8b8b", 1)); rrect(cr, x + 3, ty, 9, th, 4.5); cairo_fill(cr);
+	cairo_move_to(cr, x + 3, y0 + 11); cairo_line_to(cr, x + 12, y0 + 11); cairo_line_to(cr, x + 7.5, y0 + 6); cairo_close_path(cr); cairo_fill(cr);
+	cairo_move_to(cr, x + 3, y0 + h - 11); cairo_line_to(cr, x + 12, y0 + h - 11); cairo_line_to(cr, x + 7.5, y0 + h - 6); cairo_close_path(cr); cairo_fill(cr);
+}
 static gboolean menu_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	(void)w; (void)d; int dark = menu_dark();
@@ -2081,10 +2277,10 @@ static gboolean menu_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	{ int pad = 48, sw = (int)ceil((MBW + 2 * pad) * Z), sh = (int)ceil((MBH + 2 * pad) * Z); cairo_surface_t *m = cairo_image_surface_create(CAIRO_FORMAT_A8, sw, sh); cairo_t *mc = cairo_create(m);
 		cairo_scale(mc, Z, Z); rrect(mc, pad, pad, MBW, MBH, 10); cairo_set_source_rgba(mc, 0, 0, 0, 1); cairo_fill(mc); cairo_destroy(mc); a8_blur(m, 16 * Z);
 		cairo_save(cr); cairo_scale(cr, 1 / Z, 1 / Z); cairo_set_source_rgba(cr, 0, 0, 0, .3); cairo_mask_surface(cr, m, -pad * Z, (12 - pad) * Z); cairo_restore(cr); cairo_surface_destroy(m); }
-	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 10; box_paint(cr, 0, 0, MBW, MBH, &b);
+	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 10; hc_edge(&b); box_paint(cr, 0, 0, MBW, MBH, &b);
 	RGBA ink = cx(dark ? "#e2e8f0" : "#000000", 1);
 	cairo_save(cr); rrect(cr, 1, 1, MBW - 2, MBH - 2, 9); cairo_clip(cr);
-	double cx0 = 7, y = 7 - MSCROLL, cw = MBW - 14;
+	double cx0 = 7, y = 7 - MSCROLL, cw = MBW - 14 - menu_sb();
 	/* the search box (.ssbox: 2px 4px 6px; the input 29 px, 6px 8px, 13.33 px, focused: a 2 px outline of the accent colour) */
 	{ double ix = cx0 + 4, iy = y + 2, iw = cw - 8, ih = 29; Box o; memset(&o, 0, sizeof o); o.bg = ca(accent(), 1); o.rad = 8; box_paint(cr, ix - 2, iy - 2, iw + 4, ih + 4, &o);
 		Box in; memset(&in, 0, sizeof in); in.bg = cx(dark ? "#0b1220" : "#ffffff", 1); in.bw = 1; in.bc = cx(dark ? "#334155" : "#d1d5db", 1); in.rad = 6; box_paint(cr, ix, iy, iw, ih, &in);
@@ -2114,12 +2310,13 @@ static gboolean menu_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 		srca(cr, c); cairo_move_to(cr, x, round(base) - pango_layout_get_baseline(pl) / (double)PANGO_SCALE); pango_cairo_show_layout(cr, pl); g_object_unref(pl);
 		cairo_pop_group_to_source(cr); cairo_paint_with_alpha(cr, r->op);
 	}
+	menu_sb_draw(cr);
 	cairo_restore(cr);
 	return TRUE;
 }
 static int menu_row_at(double ex, double ey)
 {
-	double x = ex / Z - (MBX - MX / Z), y = ey / Z - (MBY - MY / Z); if (x < 7 || x > MBW - 7 || y < 1 || y > MBH - 1) return -1;
+	double x = ex / Z - (MBX - MX / Z), y = ey / Z - (MBY - MY / Z); if (x < 7 || x > MBW - 7 - menu_sb() || y < 1 || y > MBH - 1) return -1;
 	double ly = 7 - MSCROLL + 75;
 	for (int i = 0; i < NMR; i++) { MRow *r = &MR[i]; if (r->shown && r->t == 'l' && y >= ly + r->y && y < ly + r->y + r->h) return strstr(r->cls, "offh") ? -1 : i; }
 	return -1;
@@ -2216,13 +2413,23 @@ static void menu_toggle(void)
    screen dimmed (rgba(15,23,42,.45)), a white box in the middle with its shadow, "Power", the question and four
    buttons (Shut down, Restart, Sleep, Cancel), the first one focused (a 2 px ring of the accent colour); Tab moves the
    focus, Enter or a click chooses. Shut down and Restart end the session first, Sleep locks the screen. */
-static GtkWidget *PWRA; static GdkPixbuf *PWRBG; static int PWRF, PWRH = -1; static double PWRB[4][4];
-static const char *const PWRT[4] = {"⏻ Shut down", "↻ Restart", "☾ Sleep", "Cancel"}, *const PWRK[4] = {"poweroff", "reboot", "suspend", "x"};
+/* (1.6.0) and, as boot30.js adds it, "⊞ Restart into Windows" after Restart when the firmware has a Windows entry (the Vivobook):
+   the page's own steps (#app=do-pwr: the administrator's password, the firmware asked to start Windows once), then the restart */
+static GtkWidget *PWRA; static GdkPixbuf *PWRBG; static int PWRF, PWRH = -1, NPWR = 4; static double PWRB[5][4]; static char PWRWN[16], PWRWT[128];
+static const char *PWRT[5] = {"⏻ Shut down", "↻ Restart", "☾ Sleep", "Cancel"}, *PWRK[5] = {"poweroff", "reboot", "suspend", "x"};
+static void pwr_rows(void)
+{
+	static const char *const T4[4] = {"⏻ Shut down", "↻ Restart", "☾ Sleep", "Cancel"}, *const K4[4] = {"poweroff", "reboot", "suspend", "x"};
+	PWRWN[0] = 0; JV *m = jget("/api/bootmenu"), *w = jbool(m, "uefi") ? jprop(m, "windows") : NULL, *w0 = w && w->t == 4 ? jat(w, 0) : NULL;
+	if (w0) { jstr(w0, "n", PWRWN, sizeof PWRWN); jstr(w0, "title", PWRWT, sizeof PWRWT); if (strspn(PWRWN, "0123456789ABCDEFabcdef") != strlen(PWRWN)) PWRWN[0] = 0; }
+	jfree(m); NPWR = 0;
+	for (int i = 0; i < 4; i++) { PWRT[NPWR] = T4[i]; PWRK[NPWR++] = K4[i]; if (i == 1 && PWRWN[0]) { PWRT[NPWR] = "⊞ Restart into Windows"; PWRK[NPWR++] = "windows"; } }
+}
 static void pwr_geom(cairo_t *cr, double *bx, double *by, double *bw, double *bh)
 {
-	double W = SW / Z, H = SH / Z, x = 0; for (int i = 0; i < 4; i++) { double w = css_width(cr, PWRT[i], UIFAM, 400, 13) + 22; PWRB[i][0] = x; PWRB[i][2] = w; PWRB[i][3] = 24; x += w + (i < 3 ? 8 : 0); }
+	double W = SW / Z, H = SH / Z, x = 0; for (int i = 0; i < NPWR; i++) { double w = css_width(cr, PWRT[i], UIFAM, 400, 13) + 22; PWRB[i][0] = x; PWRB[i][2] = w; PWRB[i][3] = 24; x += w + (i < NPWR - 1 ? 8 : 0); }
 	*bw = x + 40; *bh = 18 + 18 + 13 + 15 + 14 + 24 + 6 + 15.59 + 18; *bx = (W - *bw) / 2; *by = (H - *bh) / 2;
-	for (int i = 0; i < 4; i++) { PWRB[i][0] += *bx + 20; PWRB[i][1] = *by + 18 + 18 + 13 + 15 + 14; }
+	for (int i = 0; i < NPWR; i++) { PWRB[i][0] += *bx + 20; PWRB[i][1] = *by + 18 + 18 + 13 + 15 + 14; }
 }
 static gboolean pwr_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
@@ -2232,22 +2439,23 @@ static gboolean pwr_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	{ int pad = 70; cairo_surface_t *m = cairo_image_surface_create(CAIRO_FORMAT_A8, (int)ceil((bw + 2 * pad) * Z), (int)ceil((bh + 2 * pad) * Z)); cairo_t *mc = cairo_create(m);
 		cairo_scale(mc, Z, Z); rrect(mc, pad, pad, bw, bh, 12); cairo_set_source_rgba(mc, 0, 0, 0, 1); cairo_fill(mc); cairo_destroy(mc); a8_blur(m, 25 * Z);
 		cairo_save(cr); cairo_scale(cr, 1 / Z, 1 / Z); cairo_set_source_rgba(cr, 0, 0, 0, .4); cairo_mask_surface(cr, m, (bx - pad) * Z, (by - pad + 20) * Z); cairo_restore(cr); cairo_surface_destroy(m); }
-	Box b; memset(&b, 0, sizeof b); b.bg = cx("#ffffff", 1); b.rad = 12; box_paint(cr, bx, by, bw, bh, &b);
+	Box b; memset(&b, 0, sizeof b); b.bg = cx("#ffffff", 1); b.rad = 12; hc_edge(&b); box_paint(cr, bx, by, bw, bh, &b);
 	RGBA ink = cx("#111827", 1);
 	css_text(cr, "Power", UIFAM, 700, 15.21, bx + 20, by + 18, 18, ink, 0);
 	css_text(cr, "What do you want the computer to do?", UIFAM, 400, 13, bx + 20, by + 18 + 18 + 13, 15, ink, 0);
-	for (int i = 0; i < 4; i++) { double *r = PWRB[i];
+	for (int i = 0; i < NPWR; i++) { double *r = PWRB[i];
 		if (i == PWRF) { Box o; memset(&o, 0, sizeof o); o.bg = ca(accent(), 1); o.rad = 6; box_paint(cr, r[0] - 2, r[1] - 2, r[2] + 4, r[3] + 4, &o); }
 		Box k; memset(&k, 0, sizeof k); k.bg = cx(i == PWRH ? "#eaf0ff" : "#ffffff", 1); k.bw = 1; k.bc = cx(i == PWRH ? "#a9bff5" : "#d1d5db", 1); k.rad = 4; box_paint(cr, r[0], r[1], r[2], r[3], &k);
 		double tw = css_width(cr, PWRT[i], UIFAM, 400, 13); css_text(cr, PWRT[i], UIFAM, 400, 13, r[0] + (r[2] - tw) / 2, r[1] + 1, 22, cx("#000000", 1), 0); }
 	return TRUE;
 }
-static int pwr_at(double x, double y) { x /= Z; y /= Z; for (int i = 0; i < 4; i++) if (x >= PWRB[i][0] && x < PWRB[i][0] + PWRB[i][2] && y >= PWRB[i][1] && y < PWRB[i][1] + PWRB[i][3]) return i; return -1; }
+static int pwr_at(double x, double y) { x /= Z; y /= Z; for (int i = 0; i < NPWR; i++) if (x >= PWRB[i][0] && x < PWRB[i][0] + PWRB[i][2] && y >= PWRB[i][1] && y < PWRB[i][1] + PWRB[i][3]) return i; return -1; }
 static void pwr_close(void) { if (PWR) gtk_widget_hide(PWR); if (PWRBG) { g_object_unref(PWRBG); PWRBG = NULL; } state_write(); }
 static void pwr_do(int i)
 {
 	if (i < 0) return; pwr_close(); const char *a = PWRK[i];
 	if (!strcmp(a, "x")) return;
+	if (!strcmp(a, "windows")) { char *t = g_uri_escape_string(PWRWT, NULL, FALSE), ex[300]; snprintf(ex, sizeof ex, "&op=windows&n=%s&t=%s", PWRWN, t); g_free(t); app_open_ex("do-pwr", NULL, ex, 0); return; }
 	if (!strcmp(a, "suspend")) { power("lock"); char p[80]; snprintf(p, sizeof p, "/api/power?action=suspend"); http("POST", p, NULL, 0, NULL); return; }
 	power(a);
 }
@@ -2257,7 +2465,8 @@ static gboolean pwr_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 {
 	(void)w; (void)d;
 	if (e->keyval == GDK_KEY_Tab || e->keyval == GDK_KEY_ISO_Left_Tab || e->keyval == GDK_KEY_Right || e->keyval == GDK_KEY_Left) { int back = e->keyval == GDK_KEY_ISO_Left_Tab || e->keyval == GDK_KEY_Left || (e->state & GDK_SHIFT_MASK);
-		PWRF = (PWRF + (back ? 3 : 1)) % 4; gtk_widget_queue_draw(PWRA); return TRUE; }
+		PWRF = (PWRF + (back ? NPWR - 1 : 1)) % NPWR; gtk_widget_queue_draw(PWRA); return TRUE; }
+	if (e->keyval == GDK_KEY_Escape) { pwr_do(NPWR - 1); return TRUE; }   /* (Cancel) */
 	if (e->keyval == GDK_KEY_Return || e->keyval == GDK_KEY_KP_Enter || e->keyval == GDK_KEY_space) { pwr_do(PWRF); return TRUE; }
 	return TRUE;
 }
@@ -2270,6 +2479,7 @@ static void power_dialog(void)
 		g_signal_connect(PWRA, "draw", G_CALLBACK(pwr_draw), NULL); g_signal_connect(PWRA, "button-press-event", G_CALLBACK(pwr_click), NULL);
 		g_signal_connect(PWRA, "motion-notify-event", G_CALLBACK(pwr_motion), NULL); g_signal_connect(PWR, "key-press-event", G_CALLBACK(pwr_key), NULL);
 		g_signal_connect(PWR, "delete-event", G_CALLBACK(gtk_widget_hide_on_delete), NULL); }
+	pwr_rows(); menu_hide(); fl_close();
 	if (PWRBG) g_object_unref(PWRBG); PWRBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), 0, 0, SW, SH);
 	PWRF = 0; PWRH = -1; gtk_window_move(GTK_WINDOW(PWR), 0, 0); gtk_window_resize(GTK_WINDOW(PWR), SW, SH); gtk_widget_set_size_request(PWRA, SW, SH);
 	gtk_widget_show_all(PWR); gtk_window_present(GTK_WINDOW(PWR)); gtk_widget_grab_focus(PWRA); wm_restack();
@@ -2478,7 +2688,7 @@ static void accounts_load(void)
 static void signin_show(int lock)
 {
 	if (!SIGN) signin_make();
-	SIGN_LOCK = lock; LOCKED = lock; menu_hide(); if (PWR) gtk_widget_hide(PWR);
+	SIGN_LOCK = lock; LOCKED = lock; menu_hide(); if (PWR) gtk_widget_hide(PWR); vk_sync();   /* (1.6.0: not the on-screen keyboard over the lock screen) */
 	if (lock) { if (WM_OK) wm_hide_all(1); else for (GList *l = WINS; l; l = l->next) gtk_widget_hide(((AppWin *)l->data)->win); }
 	if (!lock) { USER_ID[0] = 0; settings_load(); }
 	accounts_load();
@@ -2506,9 +2716,12 @@ static void settings_load(void)
 	jstr(s, "accent", n.accent, sizeof n.accent); jstr(s, "df", n.df, sizeof n.df); jstr(s, "tz", n.tz, sizeof n.tz); jstr(s, "ff", n.ff, sizeof n.ff);
 	char wp[64] = ""; jstr(s, "wpimg", wp, sizeof wp); n.wpimg = wp[0] != 0;
 	jstr(s, "icons", n.icons, sizeof n.icons); n.scale = (int)jnum(s, "scale", 100); if (n.scale < 75 || n.scale > 250) n.scale = 100;
+	n.nlv = (int)jnum(s, "nlv", 40); n.nlsched = jbool(s, "nlsched"); n.magz = jnum(s, "magz", 2);
 	n.nl = jbool(s, "nl"); n.dnd = jbool(s, "dnd"); n.sr = jbool(s, "sr"); n.mag = jbool(s, "mag"); n.vk = jbool(s, "vk"); n.touch = jbool(s, "touch"); { char cb[16] = ""; jstr(s, "cb", cb, sizeof cb); n.hc = !strcmp(cb, "contrast"); }
 	{ JV *dk = jprop(s, "darkui"); n.darkui = !(dk && dk->t == 1 && !dk->n); }   /* (S.darkui!==false) */
+	{ JV *au = jprop(s, "aur"); n.aur = !(au && au->t == 1 && !au->n); } n.rmotion = jbool(s, "rmotion"); jstr(s, "aurm", n.aurm, sizeof n.aurm); jstr(s, "lnm", n.lnm, sizeof n.lnm);   /* (DEFS.disp aur:true) */
 	n.tbac = jbool(s, "tbac"); n.tbbac = jbool(s, "tbbac"); n.h24 = jbool(s, "h24"); n.doff = jnum(s, "doff", 0); n.lat = jnum(s, "lat", NAN);
+	n.fs = (int)jnum(s, "fs", 13); jstr(s, "tx", n.tx, sizeof n.tx); jstr(s, "cb", n.cb, sizeof n.cb);   /* (the title bars' writing: the page's body font size and colour) */
 	if (!n.bs[0]) snprintf(n.bs, sizeof n.bs, "solid"); if (!n.b1[0]) snprintf(n.b1, sizeof n.b1, "#008080"); if (!n.b2[0]) snprintf(n.b2, sizeof n.b2, "#000080");
 	if (!n.tb[0]) snprintf(n.tb, sizeof n.tb, "bottom"); if (!n.wpfit[0]) snprintf(n.wpfit, sizeof n.wpfit, "fill"); if (!n.dm[0]) snprintf(n.dm, sizeof n.dm, "auto");
 	jstr(v, "acct", n.acct, sizeof n.acct); jstr(v, "wpacct", n.wpacct, sizeof n.wpacct); n.gen = jnum(v, "gen", 0); n.notes = (int)jnum(v, "notes", 0); n.wallpaper = jbool(v, "wallpaper");
@@ -2521,9 +2734,11 @@ static void settings_load(void)
 	sys_load(v);   /* (the screen saver's and the lock's settings: item 6) */
 	  jfree(v);
 	/* the page's display scaling: the taskbar, the title bars and the start menu at the page's size (1.5.9 step 7) */
-	Z = S.scale / 100.0; BARH = (int)lround(46 * Z); TH = (int)lround(35 * Z);
+	Z = S.scale / 100.0; BARH = (int)lround(46 * Z);
+	{ int th = tw_th(), bw = tw_bw(); if (th != TH || bw != BW) moved = 1; TH = th; BW = bw; }   /* (the title bars' height and the windows' edge: tw_geom) */
 	{ int ow = BARW; bar_measure(); if (BARW != ow) moved = 1; }   /* (the taskbar at the left or the right: as wide as its widest part) */
 	css_apply(); wall_make(); if (moved) { bar_place(); if (WM_OK) wm_relayout(); di_layout(); if (DESKAREA) desk_dirty(); } bar_redraw(); if (SAREA) gtk_widget_queue_draw(SAREA); if (WM_OK) frames_redraw();
+	a11y_apply();   /* (1.6.0: quick settings' switches for the whole screen) */
 }
 static void apps_load(void)
 {
@@ -2545,9 +2760,11 @@ static void apps_load(void)
 	if (BG) g_hash_table_destroy(BG); BG = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	JV *bg = jprop(v, "bg");
 	if (bg && bg->t == 5) {
-		for (int i = 0; i < bg->len; i++) { JV *o = bg->v[i]; const char *kk = bg->k[i]; char d[200] = "", l[200] = ""; jstr(o, "d", d, sizeof d); jstr(o, "l", l, sizeof l);
-			if (d[0] && !strstr(d, "..") && !strstr(l, "..")) g_hash_table_insert(BG, g_strdup(kk), g_strdup_printf("%s\n%s", d, l[0] ? l : d));  }
+		for (int i = 0; i < bg->len; i++) { JV *o = bg->v[i]; const char *kk = bg->k[i]; char d[200] = "", l[200] = "", am[200] = ""; jstr(o, "d", d, sizeof d); jstr(o, "l", l, sizeof l); jstr(o, "am", am, sizeof am);
+			if (d[0] && !strstr(d, "..") && !strstr(l, "..")) g_hash_table_insert(BG, g_strdup(kk), g_strdup_printf("%s\n%s", d, l[0] ? l : d));
+			if (am[0] && !strstr(am, "..") && am[0] != '/' && !strchr(am, ':')) { char *k2 = g_strconcat("am:", kk, NULL); g_hash_table_insert(BG, k2, g_strdup(am)); } }
 		}
+	fx_cat(v);   /* (the statue's picture: N12) */
 	 jfree(v);
 	WALL_KEY[0] = 0; wall_make(); bar_redraw(); if (MAREA) gtk_widget_queue_draw(MAREA);
 }
@@ -2593,7 +2810,7 @@ static gboolean tick_tray(gpointer d) { (void)d; tray_load(); return G_SOURCE_CO
 /* (call59.js call59Poll: every 5 s, the apps using a microphone and whether it is muted) */
 static gboolean tick_mic(gpointer d) { (void)d; if (!USER_ID[0]) { if (MIC_N) { MIC_N = 0; bar_redraw(); } return G_SOURCE_CONTINUE; } JV *v = jget("/api/mic"); int n = 0, m = 0;
 	if (v) { JV *u = jprop(v, "users"); n = u && u->t == 4 ? u->len : 0; m = jbool(v, "muted"); } jfree(v); if (n != MIC_N || m != MIC_MUTED) { MIC_N = n; MIC_MUTED = m; bar_redraw(); } return G_SOURCE_CONTINUE; }
-static gboolean tick_clock(gpointer d) { (void)d; char o[32]; snprintf(o, sizeof o, "%s", CLOCK_T); clock_text(); if (strcmp(o, CLOCK_T)) { bar_redraw(); wg_dirty_kind("clock"); wg_dirty_kind("cal"); if (SAREA && SIGN && gtk_widget_get_visible(SIGN)) gtk_widget_queue_draw(SAREA); } if (S.dyn[0] && !S.wpimg) wall_make(); return G_SOURCE_CONTINUE; }
+static gboolean tick_clock(gpointer d) { (void)d; char o[32]; snprintf(o, sizeof o, "%s", CLOCK_T); clock_text(); if (strcmp(o, CLOCK_T)) { bar_redraw(); wg_dirty_kind("clock"); wg_dirty_kind("cal"); if (SAREA && SIGN && gtk_widget_get_visible(SIGN)) gtk_widget_queue_draw(SAREA); } if (S.dyn[0] && !S.wpimg) wall_make(); if (S.nl && S.nlsched) gamma_apply(); return G_SOURCE_CONTINUE; }
 /* the session's watchdog and trial need to hear from the desktop, as the page's heartbeat */
 static gboolean tick_heart(gpointer d) { (void)d; http("POST", "/api/heartbeat", NULL, 0, NULL); return G_SOURCE_CONTINUE; }
 
@@ -2777,6 +2994,65 @@ static void dg_ok(void)
 }
 /* (1.5.9, 12.3c) Open with chosen in an app's own page (oneapp59.js: its dialog, in Oracle's window or a WebKit window): the app's
    window of its own, as the shell's Open with dialog makes it */
+/* (1.6.0 Part 12, test finding N7) File Explorer's "Folders on this device" (Import a folder…, Export selection to a folder…): on
+   Standard the page has Chromium's folder picker (showDirectoryPicker: a folder of the computer chosen in a dialog, its files read
+   and written by the page); WebKit has none, so the section was missing. Here the page's stand-in (oneapp59.js) asks the shell: "pick"
+   shows a folder dialog (read, or read and write as asked) and answers a handle for the folder chosen; "ls", "read", "write", "mkdir",
+   "stat" work inside a folder so chosen only (a name with a / or that is "." or ".." is refused, and so is a path that leaves the
+   folder through a link), as the page's own handles do. The answer goes back to the page as __oaHfsIn(ID, JSON). */
+typedef struct { char *path; int rw; AppWin *a; } HfsRoot;
+static GPtrArray *HFS;
+static void hfs_reply(AppWin *a, const char *id, GString *j)
+{
+	if (g_list_find(WINS, a) && a->view) { GString *js = g_string_new("window.__oaHfsIn&&__oaHfsIn("); json_esc(js, id); g_string_append(js, ","); json_esc(js, j->str); g_string_append(js, ")");
+		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE); }
+	g_string_free(j, TRUE);
+}
+static void hfs_err(AppWin *a, const char *id, const char *name, const char *msg) { GString *j = g_string_new("{\"err\":"); json_esc(j, name); g_string_append(j, ",\"msg\":"); json_esc(j, msg); g_string_append(j, "}"); hfs_reply(a, id, j); }
+/* the path inside root T: its parts checked, then the real path kept under the root's real path */
+static char *hfs_path(AppWin *a, const char *t, const char *rel, int must)
+{
+	int i = atoi(t); if (!HFS || i < 1 || i > (int)HFS->len) return NULL; HfsRoot *r = g_ptr_array_index(HFS, i - 1); if (r->a != a) return NULL;
+	char **parts = g_strsplit(rel ? rel : "", "/", -1); GString *p = g_string_new(r->path); int bad = 0;
+	for (char **x = parts; *x; x++) { if (!**x) continue; if (!strcmp(*x, ".") || !strcmp(*x, "..")) { bad = 1; break; } g_string_append_c(p, '/'); g_string_append(p, *x); }
+	g_strfreev(parts); if (bad) { g_string_free(p, TRUE); return NULL; }
+	char *rp = realpath(must ? p->str : r->path, NULL), *rr = realpath(r->path, NULL); int ok = rp && rr && (!strncmp(rp, rr, strlen(rr)) && (rp[strlen(rr)] == 0 || rp[strlen(rr)] == '/'));
+	free(rp); free(rr); if (!ok) { g_string_free(p, TRUE); return NULL; }
+	return g_string_free(p, FALSE);
+}
+static int hfs_name_ok(const char *n) { return n && *n && !strchr(n, '/') && strcmp(n, ".") && strcmp(n, "..") && strlen(n) < 256; }
+static void hfs_msg(AppWin *a, JSCValue *v)
+{
+	char id[24] = "", what[16] = "", t[16] = "", p[1024] = "", n[260] = "", mode[16] = ""; jsstr(v, "id", id, sizeof id); jsstr(v, "do", what, sizeof what);
+	jsstr(v, "t", t, sizeof t); jsstr(v, "p", p, sizeof p); jsstr(v, "n", n, sizeof n); jsstr(v, "mode", mode, sizeof mode);
+	if (!strcmp(what, "pick")) {
+		GtkWidget *d = gtk_file_chooser_dialog_new("Select a folder", GTK_WINDOW(a->win), GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, "_Cancel", GTK_RESPONSE_CANCEL, "_Select", GTK_RESPONSE_ACCEPT, NULL);
+		gtk_window_set_modal(GTK_WINDOW(d), TRUE); gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(d), g_get_home_dir());
+		int r = gtk_dialog_run(GTK_DIALOG(d)); char *f = r == GTK_RESPONSE_ACCEPT ? gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(d)) : NULL; gtk_widget_destroy(d);
+		if (!f) { hfs_err(a, id, "AbortError", "The user aborted a request."); return; }
+		if (!HFS) HFS = g_ptr_array_new(); HfsRoot *ro = g_new0(HfsRoot, 1); ro->path = f; ro->rw = !strcmp(mode, "readwrite"); ro->a = a; g_ptr_array_add(HFS, ro);
+		char *bn = g_path_get_basename(f); GString *j = g_string_new(""); g_string_append_printf(j, "{\"t\":\"%u\",\"name\":", HFS->len); json_esc(j, bn); g_string_append(j, "}"); g_free(bn); hfs_reply(a, id, j); return; }
+	int ti = atoi(t); HfsRoot *ro = HFS && ti >= 1 && ti <= (int)HFS->len ? g_ptr_array_index(HFS, ti - 1) : NULL;
+	char *dir = hfs_path(a, t, p, 1); if (!dir || !ro) { g_free(dir); hfs_err(a, id, "NotFoundError", "A requested file or directory could not be found."); return; }
+	if (!strcmp(what, "ls")) { GDir *gd = g_dir_open(dir, 0, NULL); GString *j = g_string_new("{\"l\":["); int k = 0; const char *e;
+		while (gd && (e = g_dir_read_name(gd))) { char *f = g_build_filename(dir, e, NULL); g_string_append(j, k++ ? "," : ""); g_string_append(j, "["); json_esc(j, e); g_string_append_printf(j, ",%d]", g_file_test(f, G_FILE_TEST_IS_DIR)); g_free(f); }
+		if (gd) g_dir_close(gd); g_string_append(j, "]}"); hfs_reply(a, id, j); g_free(dir); return; }
+	if (!hfs_name_ok(n) && strcmp(what, "read")) { g_free(dir); hfs_err(a, id, "TypeError", "Name is not allowed."); return; }
+	char *f = !strcmp(what, "read") ? g_strdup(dir) : g_build_filename(dir, n, NULL); g_free(dir);
+	if (!strcmp(what, "read")) { gchar *b = NULL; gsize len = 0; struct stat sb;
+		if (stat(f, &sb) || !S_ISREG(sb.st_mode) || sb.st_size > 64 * 1048576 || !g_file_get_contents(f, &b, &len, NULL)) hfs_err(a, id, "NotReadableError", "The file could not be read.");
+		else { gchar *b64 = g_base64_encode((guchar *)b, len); GString *j = g_string_new("{\"b\":\""); g_string_append(j, b64); g_string_append_printf(j, "\",\"m\":%lld}", (long long)sb.st_mtime * 1000); g_free(b64); hfs_reply(a, id, j); }
+		g_free(b); g_free(f); return; }
+	if (!strcmp(what, "stat")) { int dirp = g_file_test(f, G_FILE_TEST_IS_DIR), there = g_file_test(f, G_FILE_TEST_EXISTS);
+		GString *j = g_string_new(""); g_string_append_printf(j, "{\"there\":%d,\"dir\":%d}", there, dirp); hfs_reply(a, id, j); g_free(f); return; }
+	if (!ro->rw) { g_free(f); hfs_err(a, id, "NotAllowedError", "The request is not allowed."); return; }
+	if (!strcmp(what, "mkdir")) { if (g_mkdir_with_parents(f, 0755)) hfs_err(a, id, "InvalidModificationError", "The folder could not be made."); else hfs_reply(a, id, g_string_new("{}")); g_free(f); return; }
+	if (!strcmp(what, "write")) { gsize len = 0; JSCValue *b = jsc_value_object_get_property(v, "b"); char *bs = b && jsc_value_is_string(b) ? jsc_value_to_string(b) : g_strdup(""); if (b) g_object_unref(b);
+		guchar *d = g_base64_decode(bs, &len); g_free(bs);
+		if (!g_file_set_contents(f, (char *)d, len, NULL)) hfs_err(a, id, "InvalidModificationError", "The file could not be written."); else hfs_reply(a, id, g_string_new("{}"));
+		g_free(d); g_free(f); return; }
+	g_free(f); hfs_err(a, id, "TypeError", "Unknown.");
+}
 static void open_with(const char *file, const char *key)
 {
 	if (!file || !file[0] || !key || !key[0] || strlen(key) > 39 || strspn(key, "abcdefghijklmnopqrstuvwxyz0123456789_-") != strlen(key) || !USER_ID[0] || LOCKED) return;
@@ -2981,8 +3257,159 @@ static void di_draw(cairo_t *cr)
 static gboolean desk_area_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	/* (the wallpaper and the icons kept as drawn: windows moved over the desktop only show it again, with their shadows) */
-	if (!DESKC || DESKD) { if (!DESKC) DESKC = cairo_image_surface_create(CAIRO_FORMAT_RGB24, SW, SH); cairo_t *c2 = cairo_create(DESKC); desk_draw(w, c2, d); bar_outside(c2); di_draw(c2); cairo_destroy(c2); DESKD = 0; NWG_ALL_DIRTY = 1; }
+	if (!DESKC || DESKD || FXD) { if (!DESKC) DESKC = cairo_image_surface_create(CAIRO_FORMAT_RGB24, SW, SH); cairo_t *c2 = cairo_create(DESKC); desk_draw(w, c2, d); fx_draw(c2); bar_outside(c2); di_draw(c2); cairo_destroy(c2);
+		if (DESKD) NWG_ALL_DIRTY = 1; DESKD = 0; FXD = 0; }   /* (a moving background's frame: the widgets keep what they show behind them) */
 	cairo_set_source_surface(cr, DESKC, 0, 0); cairo_paint(cr); wg_paint(cr); frames_shadow(cr); return TRUE;   /* (the widgets over the desktop: item 2) */
+}
+
+/* ------------------------------------------------------------------ the dynamic backgrounds' moving parts (test findings N11, N12)
+   On Standard, Glacier Lake at night has the northern lights over its sky and in its water (aurora58.js), and Spirit Falls its stone
+   statue on the right bank, its falling petals and, at night, its sky lanterns (statue58.js); the native desktop drew the picture
+   alone. Here they are drawn as the page draws them, over the picture and under the icons: the same curtains, colours (the accent
+   colour by Display Properties' rule), masks (the picture's own, DYN.KEY.am, given with the catalogue), sizes and places (the
+   picture's 1600×1067 laid as the background is: centre and cover), frames (the lights every 100 ms, the petals and lanterns every
+   66 ms, as in Chromium) and stops (not while a window covers most of the screen or one is full screen, while locked or the screen
+   saver runs; half the frames on battery; one still frame with Reduce motion). The statue is the page's own picture of it (its
+   animal, light or dark, glow), drawn by the page and given with the catalogue (oneapp59.js oaCatalog: fx.statue). */
+static GdkPixbuf *ST_PIX; static double ST_BOX[4]; static char ST_KEY[96];
+static void fx_cat(JV *cat)
+{
+	JV *fx = jprop(cat, "fx"), *st = jprop(fx, "statue"); char png[64] = ""; jstr(st, "key", png, sizeof png);
+	if (!st || !strcmp(png, ST_KEY)) { if (!st && ST_PIX) { g_object_unref(ST_PIX); ST_PIX = NULL; ST_KEY[0] = 0; } return; }
+	snprintf(ST_KEY, sizeof ST_KEY, "%s", png); if (ST_PIX) { g_object_unref(ST_PIX); ST_PIX = NULL; }
+	JV *b = jprop(st, "box"); for (int i = 0; i < 4; i++) { JV *x = jat(b, i); ST_BOX[i] = x && x->t == 2 ? x->n : 0; }
+	JV *u = jprop(st, "png"); static const char PRE[] = "data:image/png;base64,";
+	if (u && u->t == 3 && !strncmp(u->s, PRE, sizeof PRE - 1)) { gsize n = 0; guchar *raw = g_base64_decode(u->s + sizeof PRE - 1, &n); GByteArray *ba = g_byte_array_new_take(raw, n); guint8 z = 0; g_byte_array_append(ba, &z, 1); ST_PIX = pix_from_bytes(ba); g_byte_array_free(ba, TRUE); }
+}
+static GdkPixbuf *FX_MASK[2]; static char FX_MASKP[2][200];   /* (0: the lake's, 1: the falls') */
+static cairo_surface_t *AUR_SKY, *AUR_CV, *PET_CV, *LAN_CV, *FX_MS[2];
+static guint FX_T, PET_T; static gint64 FX_T0, PET_LAST; static int FX_SLOWT;
+static void cover(double *s, double *ox, double *oy) { *s = fmax(SW / 1600.0, SH / 1067.0); *ox = (SW - 1600 * *s) / 2; *oy = (SH - 1067 * *s) / 2; }
+static int fx_shown(void) { return S.dyn[0] && !S.wpimg && BG && g_hash_table_lookup(BG, S.dyn); }   /* (dynShown: not a picture of one's own) */
+static int fx_aur(void) { char k[64]; snprintf(k, sizeof k, "am:%s", "lake"); return S.aur && !strcmp(S.dyn, "lake") && g_hash_table_lookup(BG, k) && fx_shown() && is_dark(); }
+static int fx_oasis(void) { return !strcmp(S.dyn, "oasis") && fx_shown(); }
+/* (DYNOV: seen, not covered by a window over 60 % of the screen, nothing full screen; with the power: half the frames on battery) */
+static int fx_seen(void)
+{
+	if (LOCKED || !USER_ID[0]) return 0;
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->min || c->off || c->hidden || c->trans) continue;
+		if (c->full) return 0; if ((double)fw_of(c) * fh_of(c) >= .6 * SW * SH) return 0; if (c->app && !strcmp(c->app->k, "do-saver")) return 0; }
+	return 1;
+}
+static cairo_surface_t *fx_mask(int i)
+{
+	char k[64]; snprintf(k, sizeof k, "am:%s", i ? "oasis" : "lake"); const char *am = BG ? g_hash_table_lookup(BG, k) : NULL; if (!am) return NULL;
+	if (strcmp(FX_MASKP[i], am)) { snprintf(FX_MASKP[i], sizeof FX_MASKP[i], "%s", am); if (FX_MASK[i]) g_object_unref(FX_MASK[i]); char pth[220]; snprintf(pth, sizeof pth, "/%s", am); FX_MASK[i] = pix_get(pth);
+		if (FX_MS[i]) { cairo_surface_destroy(FX_MS[i]); FX_MS[i] = NULL; } }
+	if (!FX_MASK[i]) return NULL;
+	if (!FX_MS[i]) { int w = i ? 800 : 400, h = i ? 534 : 267; FX_MS[i] = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h); cairo_t *c = cairo_create(FX_MS[i]);
+		cairo_scale(c, (double)w / gdk_pixbuf_get_width(FX_MASK[i]), (double)h / gdk_pixbuf_get_height(FX_MASK[i])); gdk_cairo_set_source_pixbuf(c, FX_MASK[i], 0, 0); cairo_paint(c); cairo_destroy(c); }
+	return FX_MS[i];
+}
+/* ---- the northern lights (aurora58.js: aurColours, aurStrip, aurDraw) */
+static const struct { double y0, amp, k, sp, h, ph, a; } AUR_RIB[3] = {{250, 50, .0042, .11, 210, 0, .78}, {300, 34, .0061, -.08, 150, 2.1, .6}, {190, 30, .0029, .06, 130, 4.2, .45}};
+static void aur_draw(void)
+{
+	cairo_surface_t *m = fx_mask(0); if (!m) return;
+	RGB base = variant(accent(), S.aurm[0] ? S.aurm : "normal"); double h, sa, l; rgb2hsl(base, &h, &sa, &l); sa = fmax(sa, 38);
+	RGB lo = hsl2rgb(h, sa, fmax(52, fmin(68, l + 8))), hi = hsl2rgb(h + 38, fmax(30, sa - 8), fmax(40, fmin(58, l)));
+	int still = S.rmotion; double t = still ? 40 : (g_get_monotonic_time() - FX_T0) / 1e6;
+	if (!AUR_SKY) { AUR_SKY = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 400, 267); AUR_CV = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 400, 267); }
+	cairo_t *k = cairo_create(AUR_SKY); cairo_set_operator(k, CAIRO_OPERATOR_CLEAR); cairo_paint(k); cairo_set_operator(k, CAIRO_OPERATOR_OVER); cairo_scale(k, .25, .25);
+	for (int i = 0; i < 3; i++) for (int x = -24; x < 1624; x += 8) { const double *r = &AUR_RIB[i].y0;
+		double by = r[0] + r[1] * sin(r[2] * x + r[5] + t * r[3]) + 12 * sin(.013 * x - t * .4 + r[5]),
+			a = r[6] * (.5 + .5 * sin(.021 * x + t * 1.1 + r[5])) * (.55 + .45 * sin(.0057 * x - t * .45)) + .06, hh = r[4] * (.7 + .3 * sin(.009 * x + t * .5 + r[5]));
+		a = fmax(0, fmin(1, a)); if (a <= 0 || hh <= 0) continue;
+		cairo_pattern_t *g = cairo_pattern_create_linear(0, by, 0, by - hh);
+		cairo_pattern_add_color_stop_rgba(g, 0, lo.r, lo.g, lo.b, 0); cairo_pattern_add_color_stop_rgba(g, .04, lo.r, lo.g, lo.b, a); cairo_pattern_add_color_stop_rgba(g, .22, lo.r, lo.g, lo.b, .75 * a);
+		cairo_pattern_add_color_stop_rgba(g, .6, hi.r, hi.g, hi.b, .32 * a); cairo_pattern_add_color_stop_rgba(g, 1, hi.r, hi.g, hi.b, 0);
+		cairo_rectangle(k, x, by - hh, 9, hh); cairo_set_source(k, g); cairo_fill(k); cairo_pattern_destroy(g); }
+	cairo_destroy(k);
+	cairo_t *g = cairo_create(AUR_CV); cairo_set_operator(g, CAIRO_OPERATOR_SOURCE); cairo_set_source_surface(g, AUR_SKY, 0, 0); cairo_paint(g);
+	/* (the lake: the same light upside down about the water line, twice; the mask keeps it to the open water and dims it) */
+	cairo_set_operator(g, CAIRO_OPERATOR_ADD); cairo_save(g); cairo_matrix_t mx; cairo_matrix_init(&mx, 1, 0, 0, -1, 0, 2 * 550 * .25); cairo_transform(g, &mx);
+	cairo_set_source_surface(g, AUR_SKY, 0, 0); cairo_paint(g); cairo_paint(g); cairo_restore(g);
+	cairo_set_operator(g, CAIRO_OPERATOR_DEST_IN); cairo_set_source_surface(g, m, 0, 0); cairo_paint(g); cairo_destroy(g);
+}
+/* ---- Spirit Falls: the petals (both), the sky lanterns (at night), statue58.js petNew, petStep, petDraw, lanNew, lanStep, lanDraw */
+typedef struct { double x, y, s, ph, sp, vy, wy, life; int landed; RGB c; } Petal; typedef struct { double x, y, z, ph, vy, fl, life; } Lantern;
+static Petal PS[70]; static Lantern LS[28]; static int PET_MODE = -1;   /* (0 light, 1 dark) */
+static double rnd(void) { return g_random_double(); }
+static void pet_new(Petal *p, int any)
+{
+	static const char *L[] = {"#ffc2d6", "#ffe3ec", "#ff9fc0", "#ffd3e1"}, *D[] = {"#e79ac0", "#f6c4dc", "#c66d9e", "#f0b3d0"};
+	p->x = any ? rnd() * 1700 - 60 : rnd() * 640 - 80; p->y = any ? 60 + rnd() * 700 : 90 + rnd() * 380; p->s = 3 + rnd() * 3.5; p->ph = rnd() * 6.283; p->sp = .6 + rnd() * .8;
+	p->vy = 10 + rnd() * 22; p->wy = 648 + pow(rnd(), .7) * 410; p->c = hexc((PET_MODE == 0 ? L : D)[(int)(rnd() * 4) & 3], "#ffc2d6"); p->landed = 0; p->life = 1;
+}
+static void lan_new(Lantern *p, int any)
+{
+	double z = .35 + rnd() * .65, x = rnd() < .74 ? rnd() * 1180 : 1180 + rnd() * 440; p->x = x; p->y = any ? 10 + rnd() * 190 : 190 + rnd() * 40; p->z = z; p->ph = rnd() * 6.283; p->vy = (3 + rnd() * 5) * z; p->fl = rnd() * 6.283; p->life = any ? 1 : 0;
+}
+static void pet_step(double dt, double t)
+{
+	double wind = 34 + 20 * sin(t * .23) + 10 * sin(t * .71 + 1);
+	for (int i = 0; i < 70; i++) { Petal *p = &PS[i];
+		if (!p->landed) { p->x += (wind * p->sp + 14 * sin(t * 1.3 + p->ph)) * dt; p->y += (p->vy + 10 * sin(t * 1.7 + p->ph * 2)) * dt; if (p->y >= p->wy) { p->landed = 1; p->y = p->wy; } }
+		else { p->x += wind * .12 * dt; p->life -= dt / 9; }
+		if (p->x > 1680 || p->life <= 0) pet_new(p, 0); }
+	for (int i = 0; i < 28; i++) { Lantern *p = &LS[i]; p->y -= p->vy * dt; p->x += sin(t * .4 + p->ph) * 3 * dt * p->z; p->life = fmin(1, p->life + dt / 4); if (p->y < -30) lan_new(p, 0); }
+}
+static void pet_draw(double t)
+{
+	if (!PET_CV) { PET_CV = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 800, 534); LAN_CV = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 800, 534); }
+	cairo_t *g = cairo_create(LAN_CV); cairo_set_operator(g, CAIRO_OPERATOR_CLEAR); cairo_paint(g); cairo_set_operator(g, CAIRO_OPERATOR_OVER);
+	cairo_surface_t *m = fx_mask(1);
+	if (PET_MODE == 1 && m) {
+		RGB o = variant(accent(), S.lnm[0] ? S.lnm : "normal"); double h, sa, l; rgb2hsl(o, &h, &sa, &l); double s2 = fmax(sa, 60);
+		RGB body = hsl2rgb(h, s2, fmax(60, fmin(72, l + 14))), glow = hsl2rgb(h, s2, 62), core = hsl2rgb(h, fmin(100, s2 + 10), 88);
+		cairo_save(g); cairo_scale(g, .5, .5);
+		for (int i = 0; i < 28; i++) { Lantern *p = &LS[i]; double sz = 14 * p->z, fl = .85 + .15 * sin(t * 7 + p->fl) * sin(t * 3.1 + p->ph), a = fmax(0, fmin(1, p->life)); if (a <= 0) continue;
+			cairo_pattern_t *gr = cairo_pattern_create_radial(p->x, p->y, 0, p->x, p->y, sz * 3.2); cairo_pattern_add_color_stop_rgba(gr, 0, glow.r, glow.g, glow.b, .55 * fl * a); cairo_pattern_add_color_stop_rgba(gr, 1, glow.r, glow.g, glow.b, 0);
+			cairo_rectangle(g, p->x - sz * 3.2, p->y - sz * 3.2, sz * 6.4, sz * 6.4); cairo_set_source(g, gr); cairo_fill(g); cairo_pattern_destroy(gr);
+			cairo_move_to(g, p->x - sz * .55, p->y - sz * .75); cairo_line_to(g, p->x + sz * .55, p->y - sz * .75); cairo_line_to(g, p->x + sz * .42, p->y + sz * .6); cairo_line_to(g, p->x - sz * .42, p->y + sz * .6); cairo_close_path(g);
+			src(g, body, a); cairo_fill_preserve(g);
+			cairo_pattern_t *cg = cairo_pattern_create_linear(0, p->y - sz * .75, 0, p->y + sz * .6); cairo_pattern_add_color_stop_rgba(cg, 0, 1, 1, 1, 0); cairo_pattern_add_color_stop_rgba(cg, 1, core.r, core.g, core.b, .9 * fl * a);
+			cairo_set_source(g, cg); cairo_fill(g); cairo_pattern_destroy(cg);
+			cairo_set_source_rgba(g, 40 / 255.0, 20 / 255.0, 20 / 255.0, .35 * a); cairo_rectangle(g, p->x - sz * .55, p->y - sz * .78, sz * 1.1, sz * .12); cairo_fill(g);
+			cairo_set_source_rgba(g, 1, 240 / 255.0, 200 / 255.0, fl * a); cairo_arc(g, p->x, p->y + sz * .5, sz * .12, 0, 6.283); cairo_fill(g); }
+		cairo_restore(g); cairo_set_operator(g, CAIRO_OPERATOR_DEST_IN); cairo_set_source_surface(g, m, 0, 0); cairo_paint(g); }
+	cairo_destroy(g);
+	g = cairo_create(PET_CV); cairo_set_operator(g, CAIRO_OPERATOR_CLEAR); cairo_paint(g); cairo_set_operator(g, CAIRO_OPERATOR_OVER); cairo_scale(g, .5, .5);
+	for (int i = 0; i < 70; i++) { Petal *p = &PS[i]; cairo_save(g); cairo_translate(g, p->x, p->y); double al = fmax(0, fmin(1, p->life)) * (p->landed ? .85 : 1);
+		if (p->landed) { double tp = (p->y - 640) / 427; cairo_scale(g, 1, .4 + .2 * tp); } else { cairo_rotate(g, p->ph + t * p->sp * 1.6); cairo_scale(g, 1, .25 + .75 * fabs(cos(t * 2 * p->sp + p->ph))); }
+		cairo_scale(g, p->s, p->s * .62); cairo_arc(g, 0, 0, 1, 0, 6.283); cairo_restore(g); src(g, p->c, al); cairo_fill(g); }
+	cairo_destroy(g);
+}
+static gboolean aur_tick(gpointer d) { (void)d; if (!fx_seen()) return G_SOURCE_CONTINUE; if (!CHARGING && BAT >= 0 && (FX_SLOWT ^= 1)) return G_SOURCE_CONTINUE; aur_draw(); FXD = 1; if (DESKAREA) gtk_widget_queue_draw(DESKAREA); return G_SOURCE_CONTINUE; }
+static gboolean pet_tick(gpointer d)
+{
+	(void)d; if (!fx_seen()) { PET_LAST = 0; return G_SOURCE_CONTINUE; } if (!CHARGING && BAT >= 0 && (FX_SLOWT ^= 1)) return G_SOURCE_CONTINUE;
+	gint64 now = g_get_monotonic_time(); double dt = fmin(.2, PET_LAST ? (now - PET_LAST) / 1e6 : 0); PET_LAST = now; double t = (now - FX_T0) / 1e6;
+	pet_step(dt, t); pet_draw(t); FXD = 1; if (DESKAREA) gtk_widget_queue_draw(DESKAREA); return G_SOURCE_CONTINUE;
+}
+/* (aurUpdate, stUpdate: what is shown with these settings; the timers started or stopped) */
+static void fx_update(void)
+{
+	if (!FX_T0) FX_T0 = g_get_monotonic_time();
+	int a = BG && fx_aur(), o = BG && fx_oasis();
+	if (!a && FX_T) { g_source_remove(FX_T); FX_T = 0; }
+	if (a) { aur_draw(); if (!S.rmotion && !FX_T) FX_T = g_timeout_add(100, aur_tick, NULL); else if (S.rmotion && FX_T) { g_source_remove(FX_T); FX_T = 0; } }
+	if (!o && PET_T) { g_source_remove(PET_T); PET_T = 0; }
+	if (o) { int mode = is_dark(); if (mode != PET_MODE) { PET_MODE = mode; for (int i = 0; i < 70; i++) pet_new(&PS[i], 1); for (int i = 0; i < 28; i++) lan_new(&LS[i], 1); }
+		pet_draw(S.rmotion ? 0 : (g_get_monotonic_time() - FX_T0) / 1e6);
+		if (!S.rmotion && !PET_T) PET_T = g_timeout_add(66, pet_tick, NULL); else if (S.rmotion && PET_T) { g_source_remove(PET_T); PET_T = 0; } }
+	FXD = 1;
+}
+static void fx_draw(cairo_t *cr)
+{
+	if (!BG) return; double s, ox, oy; cover(&s, &ox, &oy);
+	if (fx_aur() && AUR_CV) { cairo_save(cr); cairo_translate(cr, ox, oy); cairo_scale(cr, 1600 * s / 400, 1067 * s / 267); cairo_set_source_surface(cr, AUR_CV, 0, 0);
+		cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR); cairo_paint(cr); cairo_restore(cr); }
+	if (fx_oasis()) {
+		if (LAN_CV && PET_MODE == 1) { cairo_save(cr); cairo_translate(cr, ox, oy); cairo_scale(cr, 1600 * s / 800, 1067 * s / 534); cairo_set_source_surface(cr, LAN_CV, 0, 0); cairo_paint(cr); cairo_restore(cr); }
+		if (ST_PIX && ST_BOX[2] > 0) { cairo_save(cr); cairo_translate(cr, ox + ST_BOX[0] * s, oy + ST_BOX[1] * s);
+			cairo_scale(cr, ST_BOX[2] * s / gdk_pixbuf_get_width(ST_PIX), ST_BOX[3] * s / gdk_pixbuf_get_height(ST_PIX)); gdk_cairo_set_source_pixbuf(cr, ST_PIX, 0, 0); cairo_paint(cr); cairo_restore(cr); }
+		if (PET_CV) { cairo_save(cr); cairo_translate(cr, ox, oy); cairo_scale(cr, 1600 * s / 800, 1067 * s / 534); cairo_set_source_surface(cr, PET_CV, 0, 0); cairo_paint(cr); cairo_restore(cr); } }
 }
 static int di_at(double x, double y)
 {
@@ -3718,6 +4145,33 @@ static void tb_menu_show(const char *title, CMI *m, int n, int ring, const char 
 }
 /* a window's menu, from its page */
 static int jump_of(const char *k, const char *label) { for (int i = 0; i < NJUMPS; i++) if (!strcmp(JUMPS[i].k, k) && !strcmp(JUMPS[i].label, label)) return i; return -1; }
+/* (1.6.0 Part 12, test finding N21) an app's own right-click menus (the page's shared cmenu: File Explorer's, a text box's, the apps'):
+   on Standard the menu is the page's, which is the screen, so it opens at the pointer and may go past the window's edge, kept on the
+   screen; in an app's own window it was kept inside the window and cut off (Explorer's last rows could not be reached). The page gives
+   its rows (oneapp59.js: label, icon or tick, key, greyed, separators, the title) and where (the window's own pixels); the shell shows
+   them as it shows the taskbar's menus (cm_open, as the page's cmenu: the same rows, look and placing), and the row chosen is done by
+   the page (__oaCtxDo, by its index) */
+static AppWin *CTX_A; static int CTX_GEN;
+static void ctx_chosen(const char *act)
+{
+	if (strncmp(act, "ctx:", 4) || !CTX_A || !g_list_find(WINS, CTX_A) || !CTX_A->view) return;
+	char js[96]; snprintf(js, sizeof js, "window.__oaCtxDo&&__oaCtxDo(%d,%d)", atoi(act + 4), CTX_GEN);
+	webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(CTX_A->view), js, -1, NULL, NULL, NULL, NULL, NULL);
+}
+static void ctx_msg(AppWin *a, JSCValue *v)
+{
+	Client *c = WM_OK ? client_of_app(a) : NULL; if (!c) return;
+	char xs[24] = "", ys[24] = "", gs[16] = "", title[160] = ""; jsstr(v, "x", xs, sizeof xs); jsstr(v, "y", ys, sizeof ys); jsstr(v, "gen", gs, sizeof gs); jsstr(v, "title", title, sizeof title);
+	JSCValue *iv = jsc_value_object_get_property(v, "items"); char *is = iv && jsc_value_is_string(iv) ? jsc_value_to_string(iv) : NULL; if (iv) g_object_unref(iv);
+	char *ws = is ? g_strdup_printf("{\"l\":%s}", is) : NULL; JV *top = ws ? jparse(ws) : NULL, *it = jprop(top, "l"); g_free(ws); g_free(is); if (!it || it->t != 4) { jfree(top); return; }
+	CMI m[24]; int n = 0, k = 0; memset(m, 0, sizeof m);
+	for (int i = 0; i < it->len && n < 24; i++) { JV *o = jat(it, i); CMI *x = &m[n++]; if (jbool(o, "sep")) { x->sep = 1; continue; }
+		jstr(o, "label", x->label, sizeof x->label); jstr(o, "icon", x->icon, sizeof x->icon); jstr(o, "key", x->key, sizeof x->key); x->dis = jbool(o, "dis"); snprintf(x->act, sizeof x->act, "ctx:%d", k++); }
+	jfree(top);
+	int cx = c->full ? 0 : c->x + BW, cy = c->full ? 0 : c->y + TH;
+	char rg[4] = ""; jsstr(v, "ring", rg, sizeof rg);   /* (the menu's focus ring as Chromium shows it after that click: the page says) */
+	CTX_A = a; CTX_GEN = atoi(gs); CM_RING = rg[0] == '1'; cm_open(cx + atof(xs), cy + atof(ys), title, m, n, ctx_chosen);
+}
 static void win_menu_build(Client *c, JV *pm)
 {
 	CMI m[24]; int n = 0; memset(m, 0, sizeof m); char title[256] = ""; jstr(pm, "title", title, sizeof title); if (!title[0]) snprintf(title, sizeof title, "%s", c->title);
@@ -3751,6 +4205,13 @@ static void win_menu_got(GObject *src, GAsyncResult *res, gpointer d)
 	Window w = (Window)GPOINTER_TO_SIZE(d); JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(src), res, NULL);
 	char *s = v && jsc_value_is_string(v) ? jsc_value_to_string(v) : NULL; JV *pm = s && *s ? jparse(s) : NULL; g_free(s); if (v) g_object_unref(v);
 	Client *c = client_of(w); if (c && w == TBM_W) win_menu_build(c, pm); jfree(pm);
+}
+/* a window's menu at the pointer: its title bar's right-click (as the taskbar button's, from the window's page when it has one) */
+static void win_menu_at(Client *c, int x, int y)
+{
+	if (!USER_ID[0] || LOCKED) return; TBM_X = x; TBM_Y = y; TBM_W = c->w;
+	if (c->app && c->app->view) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(c->app->view), "window.__oaWinMenu?__oaWinMenu():''", -1, NULL, NULL, NULL, win_menu_got, GSIZE_TO_POINTER(c->w));
+	else win_menu_build(c, NULL);
 }
 static void bar_menu(GdkEventButton *e, int h)
 {
@@ -3910,7 +4371,7 @@ static void qs_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int
 	double ch = rh[0] + rh[1] + rh[2] + rh[3] + (NR - 3) * 6 + 12 + 8 + l12 + 10 + bh;
 	FLW = W + 22; FLH = ch + 22; FLX = vw - 8 - FLW; FLY = top ? 52 + TOPRES / Z : vh - 52 - FLH;
 	if (!draw) return;
-	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 12; shd_add(&b, 0, 14, 36, cx("#000000", .35), 0); box_paint(cr, FLX, FLY, FLW, FLH, &b);
+	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 12; shd_add(&b, 0, 14, 36, cx("#000000", .35), 0); hc_edge(&b); box_paint(cr, FLX, FLY, FLW, FLH, &b);
 	double x = FLX + 11, y = FLY + 11;
 	for (int i = 0; i < QSN; i++) { int r = i / 3, c = i % 3, on = qs_get(i); double tx = x + c * (cw + 6), ty = y; for (int q = 0; q < r; q++) ty += rh[q] + 6;
 		Box t; memset(&t, 0, sizeof t); t.rad = 10; t.bw = 1; if (on) { t.bg = ca(accent(), 1); t.bc = ca(accent(), 1); } else { t.bg = cx(dark ? "#1e293b" : "#f3f4f6", 1); t.bc = cx(dark ? "#334155" : "#d1d5db", 1); }
@@ -3938,7 +4399,7 @@ static void nc_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int
 	double ch = bh + 8 + list; FLW = W + 22; FLH = fmin(ch + 22, vh * .7); FLX = vw - 8 - FLW; FLY = top ? 52 + TOPRES / Z : vh - 52 - FLH;
 	double maxs = fmax(0, ch + 22 - FLH); if (FLSCROLL > maxs) FLSCROLL = maxs; if (FLSCROLL < 0) FLSCROLL = 0;
 	if (!draw) return;
-	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = bd; b.rad = 12; shd_add(&b, 0, 14, 36, cx("#000000", .35), 0); box_paint(cr, FLX, FLY, FLW, FLH, &b);
+	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = bd; b.rad = 12; shd_add(&b, 0, 14, 36, cx("#000000", .35), 0); hc_edge(&b); box_paint(cr, FLX, FLY, FLW, FLH, &b);
 	cairo_save(cr); rrect(cr, FLX + 1, FLY + 1, FLW - 2, FLH - 2, 11); cairo_clip(cr);
 	double x = FLX + 11, y = FLY + 11 - FLSCROLL;
 	/* Notifications · Do not disturb · Clear all */
@@ -4085,7 +4546,7 @@ static void fl_layout(cairo_t *cr, int draw)
 		double ch = l30 + l13 + 8 + bh + 8 + (1 + rows) * rh + 8 + (nu ? nu : 1) * l12 + 8 + bh;
 		FLW = 300 + 20 + 2; FLH = ch + 20 + 2; FLX = vw - 8 - FLW; FLY = top ? 52 + TOPRES / Z : vh - 52 - FLH;
 		if (!draw) return;
-		Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 12; shd_add(&b, 0, 14, 36, cx("#000000", .35), 0); box_paint(cr, FLX, FLY, FLW, FLH, &b);
+		Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 12; shd_add(&b, 0, 14, 36, cx("#000000", .35), 0); hc_edge(&b); box_paint(cr, FLX, FLY, FLW, FLH, &b);
 		double x = FLX + 11, y = FLY + 11, W = 300;
 		css_text(cr, tim, UIFAM, 300, 30, x, y, l30, fg, 0); y += l30; css_text(cr, lng, UIFAM, 400, 13, x, y, l13, mut, 0); y += l13 + 8;
 		/* ◀ November 2026 ▶ */
@@ -4119,6 +4580,19 @@ static void fl_layout(cairo_t *cr, int draw)
 	if (FLK == FL_NET) { fl_net(cr, draw, dark, top); return; }
 	if (FLK == FL_QS) { qs_layout(cr, draw, dark, vw, vh, top); return; }
 	if (FLK == FL_NC) { nc_layout(cr, draw, dark, vw, vh, top); return; }
+	if (FLK == FL_BRI) {   /* (1.6.0) the brightness (.vp .bvp: Brightness, its range from 5 to 100 % and the level) */
+		double l12 = fl_lh(cr, 400, 12), lb = fl_lh(cr, 700, 12); FLW = 210 + 24 + 2; FLH = 10 + lb + 6 + 20 + 10 + 2; fl_place_over(BRIB, top);
+		if (!draw) return;
+		Box b; memset(&b, 0, sizeof b); b.bg = cx("#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 10; shd_add(&b, 0, 10, 26, cx("#000000", .3), 0); box_paint(cr, FLX, FLY, FLW, FLH, &b);
+		RGBA ink = cx("#111111", 1); double x = FLX + 13, y = FLY + 11;
+		css_text(cr, "Brightness", UIFAM, 700, 12, x, y, lb, ink, 0); y += lb + 6;
+		{ double rx = x + 2, ry = y + 2, rw = 154, v = BRI < 0 ? 1 : (CLAMP(BRI, 5, 100) - 5) / 95.0, tc = rx + 8 + (rw - 16) * v;
+			Box t; memset(&t, 0, sizeof t); t.bg = cx("#efefef", 1); t.bw = 1; t.bc = cx("#b2b2b2", 1); t.rad = 4; box_paint(cr, rx, ry + 4, rw, 8, &t);
+			cairo_save(cr); cairo_rectangle(cr, rx - 1, ry, tc - rx + 1, 16); cairo_clip(cr); Box f; memset(&f, 0, sizeof f); f.bg = cx("#0075ff", 1); f.bw = 1; f.bc = cx("#3b75ba", 1); f.rad = 4; box_paint(cr, rx, ry + 4, rw, 8, &f); cairo_restore(cr);
+			cairo_arc(cr, tc, ry + 8, 8, 0, 2 * M_PI); srca(cr, cx("#0075ff", 1)); cairo_fill(cr); fl_btn("range", rx, ry, rw, 16);
+			if (BRI >= 0) { char vt[16]; snprintf(vt, sizeof vt, "%d%%", BRI); double tw = css_width(cr, vt, UIFAM, 400, 12); css_text(cr, vt, UIFAM, 400, 12, x + 210 - tw, y + (20 - l12) / 2, l12, ink, 0); } }
+		return;
+	}
 	/* the volume (.vp .svp) */
 	double l12 = fl_lh(cr, 400, 12), l11 = fl_lh(cr, 400, 11), lb = fl_lh(cr, 700, 12);
 	FLW = 210 + 24 + 2; FLH = 10 + lb + 6 + 20 + 8 + 19 + 8 + l11 + 10 + 2;
@@ -4155,8 +4629,18 @@ static void fl_close(void)
 }
 static void fl_volume_set(const char *q) { char p[80]; snprintf(p, sizeof p, "/api/volume?%s", q); JV *v = NULL; GByteArray *b; if (http("POST", p, NULL, 0, &b) == 200 && b) { v = jparse((char *)b->data); }
 	if (b) g_byte_array_free(b, TRUE); if (v && jbool(v, "ok")) { VOL = FLVOL = (int)jnum(v, "volume", FLVOL); MUTED = FLMUTE = jbool(v, "muted"); bar_redraw(); } jfree(v); }
-static void fl_range(double px) { double x = (px + FLWX) / Z; int v = FLVOL; for (int i = 0; i < NFLB; i++) if (!strcmp(FLBK[i], "range")) v = (int)lround((x - FLB[i].x - 8) / (154 - 16) * 100);
+static void fl_range(double px) { double x = (px + FLWX) / Z; int v = FLVOL;
+	if (FLK == FL_BRI) { int b = BRI; for (int i = 0; i < NFLB; i++) if (!strcmp(FLBK[i], "range")) b = 5 + (int)lround((x - FLB[i].x - 8) / (154 - 16) * 95);
+		b = CLAMP(b, 5, 100); if (b != BRI) { bri_set(b); gtk_widget_queue_draw(FLAREA); } return; } for (int i = 0; i < NFLB; i++) if (!strcmp(FLBK[i], "range")) v = (int)lround((x - FLB[i].x - 8) / (154 - 16) * 100);
 	v = CLAMP(v, 0, 100); if (v == FLVOL && !FLMUTE) return; FLVOL = v; FLMUTE = 0; gtk_widget_queue_draw(FLAREA); char q[24]; snprintf(q, sizeof q, "set=%d", v); fl_volume_set(q); }
+/* a switch changed: here at once, the page's own (#app=do-qs: saved as the page saves it, which the windows' pages hear) */
+static void qs_toggle(int i)
+{
+	if (i < 0 || i > 7) return; int on = !qs_get(i); qs_set(i, on); char *e = qesc(QSL[i]), ex[160]; snprintf(ex, sizeof ex, "&item=%s&on=%d", e, on); g_free(e); app_open_ex("do-qs", NULL, ex, 1);
+	if (i == 2) bar_redraw();
+	if (i == 4) { MAG_SAVED = on; if (on && S.magz > 0) MAGZ = S.magz; mag_set(on); }   /* (the magnifier now; its keys only zoom) */
+	a11y_apply(); if (WM_OK && (i == 0 || i == 5)) frames_redraw(); state_write();   /* (1.6.0: at once, for the whole screen: its colour, the magnifier, the keyboard, touch mode's sizes) */
+}
 static void fl_act(const char *k, int dbl)
 {
 	if (!strcmp(k, "prev")) { if (--FL_M < 1) { FL_M = 12; FL_Y--; } }
@@ -4168,10 +4652,9 @@ static void fl_act(const char *k, int dbl)
 	else if (!strcmp(k, "npo")) { fl_close(); tb_settings("net"); return; }   /* (the network's Network Settings…) */
 	else if (!strcmp(k, "qs:8")) { air_set(!AIR_ON); }
 	else if (!strcmp(k, "qs:9")) { mob_set(!MOB_ON); }
-	else if (!strncmp(k, "qs:", 3)) { int i = atoi(k + 3); if (i < 0 || i > 7) return; qs_set(i, !qs_get(i)); char *e = qesc(QSL[i]), ex[160]; snprintf(ex, sizeof ex, "&item=%s", e); g_free(e); app_open_ex("do-qs", NULL, ex, 1);
-		if (i == 2) bar_redraw(); }
+	else if (!strncmp(k, "qs:", 3)) qs_toggle(atoi(k + 3));
 	else if (!strcmp(k, "lock")) { fl_close(); power("lock"); return; }
-	else if (!strcmp(k, "settings")) { fl_close(); app_open("settings", NULL); return; }
+	else if (!strcmp(k, "settings")) { fl_close(); sc_settings(); return; }   /* (Settings' window, the one open if there is one, as the page's settings()) */
 	else if (!strcmp(k, "power")) { fl_close(); power_dialog(); return; }
 	else if (!strcmp(k, "clear")) { NT_CLR = 0; for (int i = 0; i < NNT; i++) NT_CLR = fmax(NT_CLR, NT[i].at); NT_CLRT = g_get_monotonic_time(); NNT = 0; NNTP = 0; app_open_ex("do-nc", NULL, "&op=clear", 1); bar_redraw(); }
 	else if (!strcmp(k, "dnd")) { S.dnd = !S.dnd; char ex[40]; snprintf(ex, sizeof ex, "&op=dnd&on=%d", S.dnd); app_open_ex("do-nc", NULL, ex, 1); bar_redraw(); }
@@ -4198,7 +4681,7 @@ static gboolean fl_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 		double rx = e->x_root - bar_x(), ry = e->y_root - bar_y();
 		/* (the clock's date is not the clock's own element: there the page's calendar closes and opens again, at this month) */
 		if (BAR && rx >= 0 && rx < bar_w() && ry >= 0 && ry < bar_h() && e->button == 1) { int h = hit_at(rx, ry); int date = h >= 0 && !strcmp(HITS[h].kind, "clock") && rx / Z >= CLKD[0] && rx / Z < CLKD[1];
-			if (h >= 0 && (date || !((kind == FL_CAL && !strcmp(HITS[h].kind, "clock")) || (kind == FL_VOL && !strcmp(HITS[h].kind, "vol")) || (kind == FL_NET && !strcmp(HITS[h].kind, "net")) || (kind == FL_QS && !strcmp(HITS[h].kind, "qs")) || (kind == FL_NC && !strcmp(HITS[h].kind, "notes"))))) bar_click(h); }   /* (at once: the button's release does not come to the taskbar after the grab) */
+			if (h >= 0 && (date || !((kind == FL_CAL && !strcmp(HITS[h].kind, "clock")) || (kind == FL_VOL && !strcmp(HITS[h].kind, "vol")) || (kind == FL_NET && !strcmp(HITS[h].kind, "net")) || (kind == FL_QS && !strcmp(HITS[h].kind, "qs")) || (kind == FL_NC && !strcmp(HITS[h].kind, "notes")) || (kind == FL_BRI && !strcmp(HITS[h].kind, "bri"))))) bar_click(h); }   /* (at once: the button's release does not come to the taskbar after the grab) */
 		return TRUE; }
 	int i = fl_at(e->x, e->y); if (e->button != 1 || i < 0) return TRUE;
 	if (e->type == GDK_2BUTTON_PRESS) { fl_act(FLBK[i], 1); return TRUE; }
@@ -4247,6 +4730,7 @@ static void fl_open(int kind)
 	FLK = kind; FLHOV = FLPRESS = -1; FLSCROLL = 0;
 	if (kind == FL_CAL) { GDateTime *n = fl_now(); FL_Y = g_date_time_get_year(n); FL_M = g_date_time_get_month(n); g_date_time_unref(n); }
 	else if (kind == FL_NET) net_read();
+	else if (kind == FL_BRI) bri_load();
 	else { JV *v = jget("/api/volume"); if (v && jbool(v, "ok")) { FLVOL = VOL = (int)jnum(v, "volume", -1); FLMUTE = MUTED = jbool(v, "muted"); } else { FLVOL = VOL; FLMUTE = MUTED; } jfree(v); }
 	if (kind == FL_NC) { for (int i = 0; i < NNT; i++) NT_SEEN = fmax(NT_SEEN, NT[i].at); bar_redraw(); }   /* (ncToggle: what is in the centre is seen) */
 	if (FLBG) { g_object_unref(FLBG); FLBG = NULL; }
@@ -4408,6 +4892,330 @@ static void osd_show(const char *k, const char *lv, const char *label, const cha
 	gtk_widget_queue_draw(OAREA); if (OTIMER) g_source_remove(OTIMER); OTIMER = g_timeout_add(1500, osd_end, NULL); state_write();
 }
 
+/* ------------------------------------------------------------------ rudolfd's events (1.6.0)
+   On Standard the desktop page hears them (core25.js, events/wait): the power key, the volume, brightness and microphone keys'
+   indicator, Ctrl+Alt+Del's Task Manager, the charger, drives, Wi-Fi, the memory guard. On the native desktop the shell is the desktop:
+   it asks (events/wait?shell=1; rudolfd gives an app's or Oracle's page none, which was how the power key's event sat until Oracle's
+   page took it and drew the dialog in its own window minutes later), shows the power dialog, the indicator and Task Manager above
+   every window, at once and once, and gives the page of one app window (the one in front, else the first) the rest (__oaEv); with no
+   page open, they wait for the next one, at most a minute. */
+static GString *EVQ; static gint64 EVQ_T;
+static void tm_urgent(void);
+static void bri_seen(int lv);
+static int ev_page_ok(AppWin *a) { return a && a->view && !a->closing && !a->hidden && strncmp(a->k, "do-", 3); }
+static void ev_to(AppWin *a, const char *t)
+{
+	char *e = g_uri_escape_string(t, NULL, FALSE), *js = g_strdup_printf("window.__oaEv&&__oaEv(decodeURIComponent('%s'))", e);
+	webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js, -1, NULL, NULL, NULL, NULL, NULL); g_free(js); g_free(e);
+}
+static AppWin *ev_page(void)
+{
+	if (ev_page_ok(ACTIVE)) return ACTIVE;
+	for (GList *l = WINS; l; l = l->next) if (ev_page_ok(l->data)) return l->data;
+	return NULL;
+}
+static void ev_give(const char *t)
+{
+	AppWin *a = ev_page(); gint64 now = g_get_monotonic_time();
+	if (a) { ev_to(a, t); return; }
+	if (!EVQ) EVQ = g_string_new(NULL);
+	if (EVQ->len && now - EVQ_T > 60000000) g_string_truncate(EVQ, 0);
+	if (EVQ->len + strlen(t) < 16384) g_string_append(EVQ, t); EVQ_T = now;
+}
+/* (a page with its window now: what waited for one) */
+static void ev_flush(AppWin *a)
+{
+	if (!EVQ || !EVQ->len || !ev_page_ok(a)) return;
+	if (g_get_monotonic_time() - EVQ_T <= 60000000) ev_to(a, EVQ->str);
+	g_string_truncate(EVQ, 0);
+}
+/* (every page: "power shutdown", each writes its files first) */
+static void ev_all(const char *t) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (a->view && !a->closing) ev_to(a, t); } }
+/* the volume's indicator from what is known (osd31.js osdShow: its level, Muted, No sound output) */
+static void osd_volume(void)
+{
+	char lv[16] = "", lb[64], n[4]; int v = VOL;
+	if (v < 0) snprintf(lb, sizeof lb, "No sound output"); else if (MUTED) { snprintf(lb, sizeof lb, "Muted"); snprintf(lv, sizeof lv, "0"); } else { snprintf(lb, sizeof lb, "%d%%", v); snprintf(lv, sizeof lv, "%d", v); }
+	snprintf(n, sizeof n, "%d", MUTED || v <= 0 ? 0 : v <= 33 ? 1 : v <= 66 ? 2 : 3); osd_show("volume", lv, lb, n);
+}
+static void osd_bright(void)
+{
+	char lv[16] = "", lb[96], n[16];
+	if (BRI < 0) snprintf(lb, sizeof lb, "This screen\xe2\x80\x99s brightness cannot be changed here"); else { snprintf(lb, sizeof lb, "%d%%", BRI); snprintf(lv, sizeof lv, "%d", BRI); }
+	snprintf(n, sizeof n, "%d", BRI < 0 ? 100 : BRI); osd_show("brightness", lv, lb, n);
+}
+static gint64 BRI_EV_T;   /* (the last brightness the keys reported: the backlight's own change is not shown twice) */
+static int ev_shell(const char *l)
+{
+	if (!strncmp(l, "power ", 6) && g_ascii_isdigit(l[6])) { if (!(PWR && gtk_widget_get_visible(PWR))) power_dialog(); return 1; }
+	if (!strcmp(l, "power shutdown")) { ev_all("power shutdown\n"); return 1; }
+	if (!strncmp(l, "osd volume ", 11)) { const char *v = l + 11; if (!strcmp(v, "none")) VOL = -1; else if (!strcmp(v, "muted")) MUTED = 1; else { VOL = atoi(v); MUTED = 0; } bar_redraw(); osd_volume(); return 1; }
+	if (!strncmp(l, "osd brightness ", 15)) { const char *v = l + 15; BRI = !strcmp(v, "none") ? -1 : atoi(v); BRI_EV_T = g_get_monotonic_time(); bri_seen(BRI); bar_redraw(); osd_bright(); return 1; }
+	if (!strncmp(l, "osd mic ", 8)) { int m = !strcmp(l + 8, "muted"); osd_show("mic", "", m ? "Microphone off" : "Microphone on", m ? "1" : "0"); return 1; }
+	if (!strcmp(l, "taskmgr")) { tm_urgent(); return 1; }
+	if (!strncmp(l, "power ac", 8) || !strncmp(l, "power battery", 13) || !strncmp(l, "power saver", 11)) tray_load();   /* (the battery's button now; Settings' page hears it too) */
+	return 0;
+}
+static gboolean ev_got(gpointer d)
+{
+	char *t = d; GString *rest = g_string_new(NULL);
+	for (char *l = t, *e; l && *l; l = e) { e = strchr(l, '\n'); if (e) *e++ = 0; g_strchomp(l); if (!*l) continue;
+		if (!strncmp(l, "power", 5) || !strncmp(l, "osd ", 4) || !strcmp(l, "taskmgr")) fprintf(stderr, "rudolf-native: event %s\n", l);
+		if (!ev_shell(l)) { g_string_append(rest, l); g_string_append_c(rest, '\n'); } }
+	if (rest->len) ev_give(rest->str);
+	g_string_free(rest, TRUE); g_free(t); state_write(); return G_SOURCE_REMOVE;
+}
+static gpointer ev_thread(gpointer d)
+{
+	(void)d;
+	for (;;) {
+		GByteArray *b = NULL; int c = http("GET", "/api/events/wait?shell=1", NULL, 0, &b);
+		if (c == 200 && b) { JV *v = jparse((char *)b->data); JV *e = jprop(v, "events"); if (e && e->t == 3 && e->s && e->s[0]) g_idle_add(ev_got, g_strdup(e->s)); jfree(v); }
+		if (b) g_byte_array_free(b, TRUE);
+		if (c != 200) g_usleep(2500000);
+	}
+	return NULL;
+}
+
+/* ------------------------------------------------------------------ Task Manager from Ctrl+Alt+Del and Ctrl+Shift+Esc (tmtop57.js tmUrgent)
+   above every window (Always on top, focused, restored if minimised, out of full screen), the desktop's processes first while it is
+   open (the page's tmPriority, #app=taskmgr&urgent=1) */
+static void tm_urgent(void)
+{
+	if (!USER_ID[0] || LOCKED) return;
+	menu_hide(); if (FLK) fl_close();
+	if (FOCUS && FOCUS->full && FOCUS->app) appwin_fs(FOCUS->app, 0);
+	for (GList *l = WINS; l; l = l->next) { AppWin *w = l->data; if (w->hidden || w->closing || strcmp(w->k, "taskmgr")) continue;
+		Client *c = WM_OK ? client_of_app(w) : NULL; if (c) { c->ontop = 1; if (c->min) { c->min = 0; XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); } wm_focus(c); wm_restack(); }
+		else appwin_activate(w);
+		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(w->view), "window.__oaTmUrgent&&__oaTmUrgent()", -1, NULL, NULL, NULL, NULL, NULL); state_write(); return; }
+	TM_TOP = 1; app_open_ex("taskmgr", NULL, "&urgent=1", 0);
+}
+
+/* ------------------------------------------------------------------ the screen's brightness (osd31.js: #bri, briPop, the keys' indicator)
+   The taskbar's button when the screen has a backlight (rudolfd's info), its pop-up (the level, 5 to 100 %), the wheel over it; the
+   indicator when the brightness changes, from the keys (rudolfd's "osd brightness" events) or from the computer's own firmware (the
+   Vivobook's Fn keys change the backlight themselves): the backlight is watched, and a change the keys did not report is shown */
+static char BL_DIR[300]; static int BL_MAX = -1, BL_LAST = -1;
+static void bri_seen(int lv) { BL_LAST = lv; }
+static int bl_read(void)
+{
+	if (BL_MAX < 0) { BL_MAX = 0; GDir *d = g_dir_open("/sys/class/backlight", 0, NULL); const char *n;
+		while (d && (n = g_dir_read_name(d))) { char p[400], *t = NULL; snprintf(p, sizeof p, "/sys/class/backlight/%s/max_brightness", n);
+			if (g_file_get_contents(p, &t, NULL, NULL) && atoi(t) > 0) { BL_MAX = atoi(t); snprintf(BL_DIR, sizeof BL_DIR, "/sys/class/backlight/%s", n); g_free(t); break; } g_free(t); }
+		if (d) g_dir_close(d); }
+	if (BL_MAX <= 0) return -1;
+	char p[400], *t = NULL; snprintf(p, sizeof p, "%s/brightness", BL_DIR); if (!g_file_get_contents(p, &t, NULL, NULL)) return -1;
+	int c = atoi(t); g_free(t); return (c * 100 + BL_MAX / 2) / BL_MAX;
+}
+static gboolean bl_tick(gpointer d)
+{
+	(void)d; int lv = bl_read(); if (lv < 0) return G_SOURCE_CONTINUE;
+	if (BL_LAST >= 0 && lv != BL_LAST && g_get_monotonic_time() - BRI_EV_T > 1500000 && USER_ID[0] && !LOCKED) { BRI = lv; bar_redraw(); osd_bright(); }
+	BL_LAST = lv; return G_SOURCE_CONTINUE;
+}
+static void bri_load(void)
+{
+	JV *v = jget("/api/info"); BRI_HAS = v && jbool(v, "backlight"); jfree(v);
+	if (BRI_HAS) { v = jget("/api/brightness"); JV *b = jprop(v, "brightness"); BRI = b && b->t == 2 ? (int)b->n : -1; jfree(v); }
+}
+typedef struct { char q[64]; int bri; } HkReq;
+static gboolean hk_done(gpointer d) { (void)d; bar_redraw(); return G_SOURCE_REMOVE; }
+static gboolean hk_bri_done(gpointer d) { int v = GPOINTER_TO_INT(d) - 1; if (v >= 0) { BRI = v; BRI_EV_T = g_get_monotonic_time(); bri_seen(v); osd_bright(); } bar_redraw(); return G_SOURCE_REMOVE; }
+static gboolean hk_vol_done(gpointer d) { int r = GPOINTER_TO_INT(d); if (r) { VOL = (r >> 1) - 1; MUTED = r & 1; osd_volume(); } bar_redraw(); return G_SOURCE_REMOVE; }
+static gpointer hk_thread(gpointer p)
+{
+	HkReq *q = p; GByteArray *b = NULL; JV *v = NULL;
+	if (http("POST", q->q, NULL, 0, &b) == 200 && b) v = jparse((char *)b->data); if (b) g_byte_array_free(b, TRUE);
+	if (q->bri == 1) { JV *x = jprop(v, "brightness"); g_idle_add(hk_bri_done, GINT_TO_POINTER(x && x->t == 2 ? (int)x->n + 1 : 0)); }
+	else if (q->bri == 0 && v && jbool(v, "ok")) g_idle_add(hk_vol_done, GINT_TO_POINTER((((int)jnum(v, "volume", -1) + 1) << 1) | (jbool(v, "muted") ? 1 : 0)));
+	else g_idle_add(hk_done, NULL);
+	jfree(v); g_free(q); return NULL;
+}
+/* (POST in a thread of its own: the sound server or the backlight may take a moment) */
+static void hk_post(const char *q, int bri) { HkReq *r = g_new0(HkReq, 1); snprintf(r->q, sizeof r->q, "%s", q); r->bri = bri; g_thread_unref(g_thread_new("hotkey", hk_thread, r)); }
+static void bri_set(int v) { v = CLAMP(v, 5, 100); BRI = v; char q[48]; snprintf(q, sizeof q, "/api/brightness?value=%d", v); hk_post(q, 2); bar_redraw(); }
+
+/* ------------------------------------------------------------------ the screen's colour: Night light and High contrast (a11y25.js themeApply,
+   applyCB) for the whole screen. On Standard the page is the screen: #nightl, an orange (#ff8a00) layer multiplied over it at its strength
+   (S.nlv / 100 * .55, only from 8 PM to 7 AM if asked), and High contrast's filter, contrast(1.35) saturate(1.2), on everything, the
+   layer too. On the native desktop the windows are pages of their own and Linux's, so the shell gives the X screen that colour: its
+   gamma ramps (XRandR, as xrandr --gamma; with the software display rudolf-display applies them as it copies the picture), the orange
+   layer and the contrast as the page's. The pages then draw neither (oneapp59.js __oaShell.gamma), the saturation only. */
+static int GAMMA_OK = -1, GAMMA_ON; static double GAMMA_K[3] = {1, 1, 1}; static int GAMMA_C;
+static void *xrr_lib(void) { static void *h; static int tried; if (!tried) { tried = 1; h = dlopen("libXrandr.so.2", RTLD_NOW | RTLD_GLOBAL); } return h; }
+static int nl_on(void) { if (!S.nl) return 0; if (!S.nlsched) return 1; time_t t = time(NULL); struct tm lt; localtime_r(&t, &lt); return lt.tm_hour >= 20 || lt.tm_hour < 7; }
+static void gamma_apply(void)
+{
+	void *h = xrr_lib(); if (!h || !DPY) { GAMMA_OK = 0; return; }
+	XRRScreenResources *(*getres)(Display *, Window) = (XRRScreenResources *(*)(Display *, Window))dlsym(h, "XRRGetScreenResourcesCurrent");
+	int (*gsize)(Display *, RRCrtc) = (int (*)(Display *, RRCrtc))dlsym(h, "XRRGetCrtcGammaSize");
+	XRRCrtcGamma *(*galloc)(int) = (XRRCrtcGamma *(*)(int))dlsym(h, "XRRAllocGamma");
+	void (*gset)(Display *, RRCrtc, XRRCrtcGamma *) = (void (*)(Display *, RRCrtc, XRRCrtcGamma *))dlsym(h, "XRRSetCrtcGamma");
+	void (*gfree)(XRRCrtcGamma *) = (void (*)(XRRCrtcGamma *))dlsym(h, "XRRFreeGamma");
+	void (*rfree)(XRRScreenResources *) = (void (*)(XRRScreenResources *))dlsym(h, "XRRFreeScreenResources");
+	int ev, er; Bool (*qe)(Display *, int *, int *) = (Bool (*)(Display *, int *, int *))dlsym(h, "XRRQueryExtension");
+	if (!getres || !gsize || !galloc || !gset || !gfree || !rfree || !qe || !qe(DPY, &ev, &er)) { GAMMA_OK = 0; return; }
+	int nl = nl_on(), hc = S.hc; double a = nl ? (S.nlv > 0 ? S.nlv : 40) / 100.0 * .55 : 0, k[3] = { 1, 1 - a * (1 - 138 / 255.0), 1 - a };
+	if (GAMMA_OK == 1 && GAMMA_ON == (nl || hc) && GAMMA_C == hc && k[0] == GAMMA_K[0] && k[1] == GAMMA_K[1] && k[2] == GAMMA_K[2]) return;
+	XRRScreenResources *r = getres(DPY, ROOT); if (!r) { GAMMA_OK = 0; return; }
+	int done = 0;
+	for (int i = 0; i < r->ncrtc; i++) { int n = gsize(DPY, r->crtcs[i]); if (n < 2) continue; XRRCrtcGamma *g = galloc(n); if (!g) continue;
+		for (int j = 0; j < n; j++) { double x = j / (double)(n - 1);
+			for (int c = 0; c < 3; c++) { double y = x * k[c]; if (hc) y = (y - .5) * 1.35 + .5; y = CLAMP(y, 0, 1); unsigned short u = (unsigned short)lround(y * 65535); if (c == 0) g->red[j] = u; else if (c == 1) g->green[j] = u; else g->blue[j] = u; } }
+		gset(DPY, r->crtcs[i], g); gfree(g); done++; }
+	rfree(r); XFlush(DPY);
+	GAMMA_OK = done > 0; GAMMA_ON = nl || hc; GAMMA_C = hc; memcpy(GAMMA_K, k, sizeof k);
+}
+
+/* ------------------------------------------------------------------ the magnifier (a11y25.js magApply): the whole screen zoomed S.magz times
+   round the pointer, as Standard's page scales itself (transform-origin at the pointer, so what is under the pointer stays there and a
+   click goes where it went). Drawn by the shell over every window (the windows' own pictures, X's Composite extension, while it is
+   on), its window letting the pointer through; Meta+= and Meta+- zoom, Meta+Esc ends it. Without Composite the pages zoom themselves
+   as before. */
+static int MAG_OK = -1, MAG_ON; static GtkWidget *MAGW, *MAGA; static guint MAG_T; static int MAGPX, MAGPY;
+static void *xc_lib(void) { static void *h; static int tried; if (!tried) { tried = 1; h = dlopen("libXcomposite.so.1", RTLD_NOW | RTLD_GLOBAL); } return h; }
+static int mag_can(void)
+{
+	if (MAG_OK >= 0) return MAG_OK; void *h = xc_lib(); MAG_OK = 0; if (!h || !DPY) return 0;
+	Bool (*qe)(Display *, int *, int *) = (Bool (*)(Display *, int *, int *))dlsym(h, "XCompositeQueryExtension"); int ev, er;
+	MAG_OK = qe && qe(DPY, &ev, &er) && dlsym(h, "XCompositeNameWindowPixmap") && dlsym(h, "XCompositeRedirectSubwindows") ? 1 : 0; return MAG_OK;
+}
+static gboolean mag_draw(GtkWidget *w, cairo_t *cr, gpointer d)
+{
+	(void)w; (void)d; if (!MAG_ON) return TRUE; void *h = xc_lib();
+	Pixmap (*name)(Display *, Window) = (Pixmap (*)(Display *, Window))dlsym(h, "XCompositeNameWindowPixmap");
+	Window me = GDK_WINDOW_XID(gtk_widget_get_window(MAGW)), rr, pr, *ch = NULL; unsigned n = 0;
+	cairo_set_source_rgb(cr, 0, 0, 0); cairo_paint(cr);
+	cairo_translate(cr, MAGPX, MAGPY); cairo_scale(cr, MAGZ, MAGZ); cairo_translate(cr, -MAGPX, -MAGPY);
+	if (!XQueryTree(DPY, ROOT, &rr, &pr, &ch, &n)) return TRUE;
+	int (*old)(Display *, XErrorEvent *) = XSetErrorHandler(wm_errh);
+	for (unsigned i = 0; i < n; i++) { if (ch[i] == me) continue; XWindowAttributes at; if (!XGetWindowAttributes(DPY, ch[i], &at) || at.map_state != IsViewable || at.class != InputOutput) continue;
+		if (at.x >= SW || at.y >= SH || at.x + at.width <= 0 || at.y + at.height <= 0) continue;
+		Pixmap pm = name(DPY, ch[i]); if (!pm) continue; int bw = at.border_width;
+		cairo_surface_t *s = cairo_xlib_surface_create(DPY, pm, at.visual, at.width + 2 * bw, at.height + 2 * bw);
+		cairo_set_source_surface(cr, s, at.x, at.y); cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR); cairo_paint(cr);
+		cairo_surface_destroy(s); XFreePixmap(DPY, pm); }
+	XSync(DPY, False); XSetErrorHandler(old); if (ch) XFree(ch);
+	return TRUE;
+}
+static gboolean mag_tick(gpointer d)
+{
+	(void)d; if (!MAG_ON || !MAGW) { MAG_T = 0; return G_SOURCE_REMOVE; }
+	Window r, c; int rx, ry, wx, wy; unsigned m; if (XQueryPointer(DPY, ROOT, &r, &c, &rx, &ry, &wx, &wy, &m)) { MAGPX = rx; MAGPY = ry; }
+	XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(MAGW))); gtk_widget_queue_draw(MAGA); return G_SOURCE_CONTINUE;
+}
+static void mag_set(int on)
+{
+	if (on && !mag_can()) on = 0;
+	if (on == MAG_ON) { if (on && MAGA) gtk_widget_queue_draw(MAGA); return; }
+	void *h = xc_lib(); MAG_ON = on;
+	void (*redir)(Display *, Window, int) = h ? (void (*)(Display *, Window, int))dlsym(h, on ? "XCompositeRedirectSubwindows" : "XCompositeUnredirectSubwindows") : NULL;
+	if (on) {
+		if (redir) redir(DPY, ROOT, CompositeRedirectAutomatic);
+		if (!MAGW) { MAGW = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(MAGW), "Magnifier"); MAGA = gtk_drawing_area_new(); gtk_container_add(GTK_CONTAINER(MAGW), MAGA);
+			g_signal_connect(MAGA, "draw", G_CALLBACK(mag_draw), NULL); gtk_widget_set_app_paintable(MAGW, TRUE); }
+		gtk_window_move(GTK_WINDOW(MAGW), 0, 0); gtk_window_resize(GTK_WINDOW(MAGW), SW, SH); gtk_widget_set_size_request(MAGA, SW, SH); gtk_widget_show_all(MAGW);
+		{ cairo_region_t *rg = cairo_region_create(); gdk_window_input_shape_combine_region(gtk_widget_get_window(MAGW), rg, 0, 0); cairo_region_destroy(rg); }   /* (the pointer goes through) */
+		if (!MAG_T) MAG_T = g_timeout_add(50, mag_tick, NULL); mag_tick(NULL);
+	} else { if (MAGW) gtk_widget_hide(MAGW); if (redir) redir(DPY, ROOT, CompositeRedirectAutomatic); }
+}
+static void mag_zoom(double dz)
+{
+	/* (magin: on at 1.5, else half a step more, at most 8; magout: half a step less, off at 1) */
+	if (dz > 0) { if (!S.mag) { S.mag = 1; MAGZ = 1.5; } else MAGZ = fmin(8, MAGZ + .5); }
+	else { MAGZ = fmax(1, MAGZ - .5); if (MAGZ <= 1) { S.mag = 0; MAGZ = 2; } }
+	mag_set(S.mag); state_write();
+}
+
+/* ------------------------------------------------------------------ the on-screen keyboard (base_v24.html #vkb, vkSync, the taskbar's ⌨)
+   The page's own keyboard (its keys for the language chosen, Shift, Caps, ⌫, Enter, Tab, Space), drawn by a page of its own
+   (#app=do-vk) in a window that never takes the keyboard, at the bottom of the screen above the taskbar as on Standard, over every
+   window; a key goes to the page of the window in front, which types it as Standard's keyboard does (vkInsert, vkSpecial). Its ✕ hides
+   it, the taskbar's ⌨ shows it again; it is there while the switch is on. */
+static GtkWidget *VKW, *VKV; static int VK_H = 292, VK_LOADED, VKX, VKY; static char VKKEYS[2048];
+static void vk_place(void)
+{
+	if (!VKW) return; int top = !strcmp(S.tb, "top"), w = (int)lround(fmin(760, SW / Z * .98) * Z), h = (int)lround(VK_H * Z);
+	VKX = (SW - w) / 2; VKY = SH - h - (int)lround((top ? 10 : 54) * Z);
+	gtk_window_resize(GTK_WINDOW(VKW), w, h); gtk_widget_set_size_request(VKV, w, h); gtk_window_move(GTK_WINDOW(VKW), VKX, VKY);
+}
+static void vk_sync(void)
+{
+	int show = S.vk && VK_SHOWN && USER_ID[0] && !LOCKED;
+	if (show && !VKW) {
+		ctx_make(); VKW = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(VKW), "On-screen keyboard"); gtk_window_set_accept_focus(GTK_WINDOW(VKW), FALSE);
+		VKV = GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", CTX, "user-content-manager", UCM, NULL)); gtk_container_add(GTK_CONTAINER(VKW), VKV);
+		char *u = app_url("do-vk", NULL, 0, NULL); webkit_web_view_load_uri(WEBKIT_WEB_VIEW(VKV), u); g_free(u); }
+	if (!VKW) return;
+	if (show) { vk_place(); gtk_widget_show_all(VKW); XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(VKW))); } else gtk_widget_hide(VKW);
+	bar_redraw();   /* (no state written here: a11y_apply runs inside settings_load, in the middle of signing in) */
+}
+/* (a window that is not a page of the shell's, Oracle's in Chromium or a Linux app's: the key typed as the keyboard would, through
+   XTest; a character the keyboard map lacks is put on a spare key for the moment, as xdotool does) */
+static gboolean vk_unspare(gpointer d) { KeySym z[2] = { NoSymbol, NoSymbol }; XChangeKeyboardMapping(DPY, GPOINTER_TO_INT(d), 2, z, 1); XFlush(DPY); return G_SOURCE_REMOVE; }
+static void vk_xtest(const char *c, const char *sp)
+{
+	static void *h; static int tried; if (!tried) { tried = 1; h = dlopen("libXtst.so.6", RTLD_NOW); } if (!h || !DPY) return;
+	int (*fake)(Display *, unsigned, Bool, unsigned long) = (int (*)(Display *, unsigned, Bool, unsigned long))dlsym(h, "XTestFakeKeyEvent"); if (!fake) return;
+	KeySym ks = NoSymbol;
+	if (sp && sp[0]) ks = !strcmp(sp, "bs") ? XK_BackSpace : !strcmp(sp, "enter") ? XK_Return : !strcmp(sp, "tab") ? XK_Tab : !strcmp(sp, "space") ? XK_space : NoSymbol;
+	else if (c && c[0]) { gunichar u = g_utf8_get_char_validated(c, -1); if (u == (gunichar)-1 || u == (gunichar)-2) return; ks = u >= 0x20 && u < 0x7f ? (KeySym)u : u >= 0xa0 && u <= 0xff ? (KeySym)u : (KeySym)(0x01000000 | u); }
+	if (ks == NoSymbol) return;
+	KeyCode kc = XKeysymToKeycode(DPY, ks); int shift = 0, spare = 0;
+	if (kc) { shift = XkbKeycodeToKeysym(DPY, kc, 0, 0) != ks && XkbKeycodeToKeysym(DPY, kc, 0, 1) == ks; }
+	else { int lo, hi; XDisplayKeycodes(DPY, &lo, &hi); kc = (KeyCode)hi; KeySym m[2] = { ks, ks }; XChangeKeyboardMapping(DPY, kc, 2, m, 1); XSync(DPY, False); spare = 1; }
+	KeyCode sh = XKeysymToKeycode(DPY, XK_Shift_L);
+	if (shift && sh) fake(DPY, sh, True, CurrentTime);
+	fake(DPY, kc, True, CurrentTime); fake(DPY, kc, False, CurrentTime);
+	if (shift && sh) fake(DPY, sh, False, CurrentTime);
+	XSync(DPY, False);
+	if (spare) g_timeout_add(150, vk_unspare, GINT_TO_POINTER((int)kc));   /* (after the window has read the key) */
+}
+/* (a page's message: a key, a special key, its ✕, its height) */
+static void vk_msg(JSCValue *v)
+{
+	char c[64] = "", sp[16] = "", x[8] = "", h[8] = ""; jsstr(v, "c", c, sizeof c); jsstr(v, "sp", sp, sizeof sp); jsstr(v, "x", x, sizeof x); jsstr(v, "h", h, sizeof h); jsstr(v, "keys", VKKEYS, sizeof VKKEYS);
+	if (x[0] == '1') { VK_SHOWN = 0; vk_sync(); state_write(); return; }
+	if (atoi(h) > 50 && atoi(h) < 800) { VK_H = atoi(h); VK_LOADED = 1; if (VKW && gtk_widget_get_visible(VKW)) vk_place(); return; }
+	if (!c[0] && !sp[0]) return;
+	Client *f = FOCUS; AppWin *a = f && f->app ? f->app : NULL; if (!a && !WM_OK) a = ACTIVE;
+	if (!a || !a->view) { if (f) vk_xtest(c, sp); return; }   /* (Oracle's or a Linux app's window: typed as keys) */
+	GString *js = g_string_new("window.__oaVkIn&&__oaVkIn("); json_esc(js, c); g_string_append_c(js, ','); json_esc(js, sp); g_string_append_c(js, ')');
+	webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE);
+}
+
+/* ------------------------------------------------------------------ quick settings' switches done for the whole screen (shell25.js qsToggle's)
+   after a switch is changed here or in a page (Settings), and at sign-in: the screen's colour, the magnifier, the on-screen keyboard; the
+   taskbar, menus and title bars in touch mode's sizes and high contrast's edges. The pages do the rest (their dark, high contrast and touch
+   classes, the screen reader) as they hear of the change. */
+static int A11Y_VK;
+static void a11y_apply(void)
+{
+	gamma_apply();
+	if (S.mag != MAG_SAVED) { MAG_SAVED = S.mag; if (S.mag && S.magz > 0) MAGZ = S.magz; mag_set(S.mag); } else if (mag_can()) S.mag = MAG_ON;   /* (on or off as saved; as the keys left it until then) */
+	if (S.vk && !A11Y_VK) VK_SHOWN = 1; A11Y_VK = S.vk; vk_sync();   /* (a11yApply: switched on, it shows) */
+	/* (touch mode: title bars at least 40 px, styles25.css html.touch .win>.tb; off again: the title bars' own height when the settings come) */
+	static int TH0; int th = (int)lround(40 * Z);
+	if (S.touch && TH < th) { TH0 = TH; TH = th; if (WM_OK) { wm_relayout(); frames_redraw(); } }
+	else if (!S.touch && TH0) { if (TH == th) TH = TH0; TH0 = 0; if (WM_OK) { wm_relayout(); frames_redraw(); } }
+	bar_redraw();
+}
+/* (the user script every page of the shell gets: what the shell does for the whole screen, so the page does not do it again) */
+static char *shell_script(void)
+{
+	gamma_apply(); return g_strdup_printf("window.__oaShell={gamma:%d,mag:%d,vk:1};", GAMMA_OK == 1, mag_can());
+}
+/* (tests: is X's top window this one) */
+static int x_on_top(GtkWidget *w)
+{
+	if (!w || !gtk_widget_get_visible(w) || !DPY) return 0; Window me = GDK_WINDOW_XID(gtk_widget_get_window(w)), rr, pr, *ch = NULL; unsigned n = 0; int top = 0;
+	Client *c = client_of(me); if (c) me = c->frame;
+	if (!XQueryTree(DPY, ROOT, &rr, &pr, &ch, &n)) return 0;
+	for (int i = (int)n - 1; i >= 0; i--) { XWindowAttributes at; if (!XGetWindowAttributes(DPY, ch[i], &at) || at.map_state != IsViewable || at.override_redirect) continue; top = ch[i] == me; break; }
+	if (ch) XFree(ch); return top;
+}
+
 /* ------------------------------------------------------------------ the window keys (1.6.0 Part 12, item 5)
    shell25.js's keyboard shortcuts (SHORT: the registry with each account's own keys, bd95kb:ID from rudolfd's desktop/settings
    "kb", as Settings › Keyboard changes them), done by the shell; Super alone opens the start menu (metaAlone); Alt+Tab's switcher
@@ -4438,12 +5246,32 @@ static void sc_wsmr(void) { sc_wsm(1); }
 static void sc_notif(void) { fl_open(FL_NC); }
 static void sc_quick(void) { fl_open(FL_QS); }
 static void sc_help(void) { app_open("help", NULL); }
+/* (1.6.0) the rest of Standard's global keys (apps25a.js, a11y25.js, apps25b.js): Task Manager, the screen reader, the magnifier, and those
+   the page in front does (the next keyboard layout, clipboard history, the emoji panel, a screenshot of an area): on Native the keys
+   with Meta come to the shell, so it gives them to the page of the window in front (__oaShort), as Standard's one page has them */
+static void sc_taskmgr(void) { tm_urgent(); }
+static void sc_sr(void) { qs_toggle(3); }
+static void sc_magin(void) { mag_zoom(1); }
+static void sc_magout(void) { mag_zoom(-1); }
+static void sc_magoff(void) { S.mag = 0; mag_set(0); state_write(); }
+static void sc_page(const char *id)
+{
+	Client *f = FOCUS; AppWin *a = f && f->app ? f->app : NULL; if (!a && !WM_OK) a = ACTIVE; if (!a || !a->view || a->hidden) return;
+	char js[96]; snprintf(js, sizeof js, "window.__oaShort&&__oaShort('%s')", id); webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js, -1, NULL, NULL, NULL, NULL, NULL);
+}
+static void sc_kbl(void) { sc_page("kblnext"); }
+static void sc_clip(void) { sc_page("clip"); }
+static void sc_emoji(void) { sc_page("emoji"); }
+static void sc_shotsel(void) { sc_page("shotsel"); }
+static void sc_shot(void) { app_open_ex("do-short", NULL, "&id=shot", 1); }   /* (the whole screen, rudolfd's screenshot, kept as the page keeps it) */
 /* (shell25.js's order; F11, the page's own full screen, is not the shell's: on Native the window in front keeps it) */
 static const Sc SC[] = {
 	{"files", "Meta+E", sc_files}, {"desktop", "Meta+D", sc_desktop}, {"run", "Meta+R", sc_run}, {"lock", "Meta+L", sc_lock}, {"settings", "Meta+I", sc_settings},
 	{"start", "Ctrl+Escape", sc_start}, {"overview", "Meta+Tab", ov_toggle}, {"close", "Alt+F4", sc_close}, {"max", "Meta+ArrowUp", sc_max}, {"min", "Meta+ArrowDown", sc_min},
 	{"wsl", "Ctrl+Alt+ArrowLeft", sc_wsl}, {"wsr", "Ctrl+Alt+ArrowRight", sc_wsr}, {"wsml", "Ctrl+Alt+Shift+ArrowLeft", sc_wsml}, {"wsmr", "Ctrl+Alt+Shift+ArrowRight", sc_wsmr},
-	{"notif", "Meta+N", sc_notif}, {"quick", "Meta+A", sc_quick}, {"help", "F1", sc_help} };
+	{"notif", "Meta+N", sc_notif}, {"quick", "Meta+A", sc_quick}, {"help", "F1", sc_help},
+	{"taskmgr", "Ctrl+Shift+Escape", sc_taskmgr}, {"sr", "Ctrl+Alt+Z", sc_sr}, {"magin", "Meta+=", sc_magin}, {"magout", "Meta+-", sc_magout}, {"magoff", "Meta+Escape", sc_magoff},
+	{"kblnext", "Meta+Space", sc_kbl}, {"clip", "Meta+V", sc_clip}, {"shot", "PrintScreen", sc_shot}, {"shotsel", "Meta+Shift+S", sc_shotsel}, {"emoji", "Meta+.", sc_emoji} };
 #define NSC (int)G_N_ELEMENTS(SC)
 static char SCKB[NSC][48];   /* (the account's own keys: the combination; \1: the default; "": one the shell cannot take) */
 static unsigned SCMOD[NSC]; static KeyCode SCKC[NSC];
@@ -4465,6 +5293,22 @@ static int sc_parse(const char *s, unsigned *mod, KeySym *ks)
 	return *ks != NoSymbol;
 }
 static int SC_LOADED;
+static const char *const HWK[] = { "XF86AudioRaiseVolume", "XF86AudioLowerVolume", "XF86AudioMute", "XF86AudioMicMute", "XF86MonBrightnessUp", "XF86MonBrightnessDown", "XF86PowerOff", NULL };
+static int hw_key(KeySym ks, unsigned st)
+{
+	const char *n = XKeysymToString(ks); if (!n) return 0;
+	if (ks == XK_Delete && st == (ControlMask | Mod1Mask)) { tm_urgent(); return 1; }
+	int i = 0; for (; HWK[i] && strcmp(HWK[i], n); i++) ; if (!HWK[i]) return 0;
+	if (!strcmp(n, "XF86PowerOff")) { if (!(PWR && gtk_widget_get_visible(PWR))) power_dialog(); return 1; }
+	if (!USER_ID[0] || LOCKED) return 1;
+	if (!strcmp(n, "XF86AudioRaiseVolume")) hk_post("/api/volume?step=up", 0);
+	else if (!strcmp(n, "XF86AudioLowerVolume")) hk_post("/api/volume?step=down", 0);
+	else if (!strcmp(n, "XF86AudioMute")) hk_post("/api/volume?step=mute", 0);
+	else if (!strcmp(n, "XF86MonBrightnessUp")) hk_post("/api/brightness/step?d=up", 1);
+	else if (!strcmp(n, "XF86MonBrightnessDown")) hk_post("/api/brightness/step?d=down", 1);
+	else if (!strcmp(n, "XF86AudioMicMute")) { char q[40]; snprintf(q, sizeof q, "/api/mic?muted=%d", !MIC_MUTED); MIC_MUTED = !MIC_MUTED; hk_post(q, 3); osd_show("mic", "", MIC_MUTED ? "Microphone off" : "Microphone on", MIC_MUTED ? "1" : "0"); }
+	return 1;
+}
 static const char *sc_combo(int i) { return !SC_LOADED || SCKB[i][0] == 1 ? SC[i].def : SCKB[i]; }   /* (\1: the default) */
 static void sc_grab(void)
 {
@@ -4472,6 +5316,11 @@ static void sc_grab(void)
 	for (int i = 0; i < NSC; i++) { if (SCKC[i]) for (int m = 0; m < 4; m++) XUngrabKey(DPY, SCKC[i], SCMOD[i] | M[m], ROOT); SCKC[i] = 0; }
 	for (int i = 0; i < NSC; i++) { KeySym ks; unsigned mod; if (!sc_parse(sc_combo(i), &mod, &ks)) continue; KeyCode kc = XKeysymToKeycode(DPY, ks); if (!kc) continue;
 		SCKC[i] = kc; SCMOD[i] = mod; for (int m = 0; m < 4; m++) XGrabKey(DPY, kc, mod | M[m], ROOT, True, GrabModeAsync, GrabModeAsync); }
+	/* (1.6.0) the hardware keys and Ctrl+Alt+Del, whichever window is in front: on the computer rudolf-display takes them before X does
+	   (and rudolfd's events bring them here), but where X has them (QEMU, xdotool, a keyboard X reads itself) the shell does what
+	   Standard does: the volume and the brightness a step (rudolfd, as the keys' hotkey), the microphone muted, the power dialog, Task Manager */
+	for (int i = 0; HWK[i]; i++) { KeyCode kc = XKeysymToKeycode(DPY, XStringToKeysym(HWK[i])); if (kc) for (int m = 0; m < 4; m++) XGrabKey(DPY, kc, M[m], ROOT, True, GrabModeAsync, GrabModeAsync); }
+	{ KeyCode kc = XKeysymToKeycode(DPY, XK_Delete); if (kc) for (int m = 0; m < 4; m++) XGrabKey(DPY, kc, ControlMask | Mod1Mask | M[m], ROOT, True, GrabModeAsync, GrabModeAsync); }
 	/* (with the keys sent to the root window while held, not to the window in front: GTK's own windows take keys through XInput 2) */
 	/* (Super by itself: the start menu when it is let go with nothing pressed between; Alt+Tab, Alt+` and with Shift: the switcher) */
 	KeyCode sl = XKeysymToKeycode(DPY, XK_Super_L), sr = XKeysymToKeycode(DPY, XK_Super_R), tb = XKeysymToKeycode(DPY, XK_Tab), gr = XKeysymToKeycode(DPY, XK_grave);
@@ -4506,6 +5355,7 @@ static int sc_key(XKeyEvent *e)
 	if (OV_ON && ks == XK_Escape) { ov_end(NULL); return 1; }
 	if ((ks == XK_Tab || ks == XK_grave || ks == XK_ISO_Left_Tab) && (st & Mod1Mask) && !(st & ControlMask)) { if (USER_ID[0] && !LOCKED) at_key((st & ShiftMask) != 0); return 1; }
 	if (AT_ON) return 1;
+	if (hw_key(ks, st)) return 1;
 	for (int i = 0; i < NSC; i++) { if (!SCKC[i] || SCKC[i] != e->keycode || SCMOD[i] != st) continue;
 		/* (Alt+F4 on Oracle's window: Chromium's own, as on Standard: 12.3c) */
 		if (!strcmp(SC[i].id, "close") && FOCUS && FOCUS->ak[0] && !FOCUS->app && oracle_key(e)) return 1;
@@ -4798,6 +5648,9 @@ static void toast_addf(AppWin *from, const char *sid, FGet g, void *v)
 	g(v, "ms", x, sizeof x); t->ms = atoi(x) > 0 ? atoi(x) : 5000; g(v, "why", x, sizeof x); t->why = !strcmp(x, "true") || !strcmp(x, "1"); g(v, "act", x, sizeof x); t->act = !strcmp(x, "true") || !strcmp(x, "1");
 	if (sid) snprintf(t->sid, sizeof t->sid, "%s", sid);
 	if (!t->k[0]) snprintf(t->k, sizeof t->k, "info"); t->win = from ? from->id : 0; t->born = g_get_monotonic_time();
+	/* (1.6.0) Do not disturb: no pop-up, from any window or the shell, but an error's (shell25.js __notifCentre.add: !S.dnd||n.k=='error'), as on
+	   Standard where one page decides; a window whose page had not heard of the switch yet no longer shows one */
+	if (S.dnd && strcmp(t->k, "error")) { NTST--; return; }
 	toast_place(); if (!g_signal_handler_find(TWIN, G_SIGNAL_MATCH_FUNC, 0, 0, NULL, toast_press, NULL)) { g_signal_connect(TWIN, "button-press-event", G_CALLBACK(toast_press), NULL); g_signal_connect(TWIN, "motion-notify-event", G_CALLBACK(toast_motion), NULL); }
 	toast_anim();
 }
@@ -4906,13 +5759,21 @@ static void state_write(void)
 	g_string_append_printf(s, "saver %d %s|%s\nidlechecks %d\n", SAV_ON, SYS.ssstyle, SAV_WHY, IDLE_N);   /* (item 6) */
 	for (int i = 0; OV_ON && i < OVN; i++) g_string_append_printf(s, "ovwin %lx %d %d %d %d %d\n", (unsigned long)OVL[i].c->w, (int)lround(OVL[i].x), (int)lround(OVL[i].y), (int)lround(OVL[i].w), (int)lround(OVL[i].h), OVL[i].pic != NULL);
 	if (OK_[0]) g_string_append_printf(s, "osd %s %s|%s %d %d %d %d\n", OK_, OLV[0] ? OLV : "-", OLB, OX, OY, OW, OH);   /* (the keys' indicator) */
+	/* (1.6.0) quick settings' switches as the shell does them for the whole screen; the screen's colour (XRandR's gamma); the power dialog
+	   (its rows, above every window); the lock screen above every window; the windows kept on top */
+	g_string_append_printf(s, "a11y dark=%d nl=%d dnd=%d sr=%d mag=%d hc=%d vk=%d touch=%d magz=%g\ngamma %d %d\n", menu_dark(), nl_on(), S.dnd, S.sr, MAG_ON, S.hc, VKW && gtk_widget_get_visible(VKW), S.touch, MAGZ, GAMMA_OK == 1, GAMMA_ON);
+	{ int pv = PWR && gtk_widget_get_visible(PWR); g_string_append_printf(s, "power %d\npowertop %d\npowerrows ", pv, x_on_top(PWR)); for (int i = 0; pv && i < NPWR; i++) g_string_append_printf(s, "|%s", PWRT[i]); g_string_append_c(s, '\n');
+	  for (int i = 0; pv && i < NPWR; i++) g_string_append_printf(s, "pwrbtn %s %d %d\n", PWRK[i], (int)lround((PWRB[i][0] + PWRB[i][2] / 2) * Z), (int)lround((PWRB[i][1] + PWRB[i][3] / 2) * Z)); }
+	g_string_append_printf(s, "signtop %d\nbright %d %d\n", x_on_top(SIGN), BRI_HAS, BRI);
+	if (VKW && gtk_widget_get_visible(VKW)) { char *k = g_strdup(VKKEYS); for (char *t = strtok(k, "|"); t; t = strtok(NULL, "|")) { char ch[32]; int kx, ky; if (sscanf(t, "%31s %d %d", ch, &kx, &ky) == 3) { char *u = g_uri_unescape_string(ch, NULL); g_string_append_printf(s, "vkkey %s %d %d\n", u ? u : ch, VKX + kx, VKY + ky); g_free(u); } } g_free(k); }
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->ontop) g_string_append_printf(s, "ontop %s\n", c->app ? c->app->k : c->ak[0] ? c->ak : "-"); }
 	g_string_append_printf(s, "notes %d %d %d\nmic %d %d\n", S.dnd, nt_unread(), NNT, MIC_N, MIC_MUTED);   /* (the bell: do not disturb, its count, the list's length) */   /* (item 3: the call's 🎙️; the notifications' pop-ups) */
 	for (int i = 0; i < NTST; i++) g_string_append_printf(s, "toast %d %d %d %d %d|%s\n", TST[i].why, (int)lround(TSX[i] * Z), (int)lround(TSY[i] * Z), (int)lround(349 * Z), (int)lround(TST[i].h * Z), TST[i].t);
 	for (int i = 0; i < NHITS; i++) g_string_append_printf(s, "hit %s %s %d %d %d %d\n", HITS[i].kind, HITS[i].arg[0] ? HITS[i].arg : "-", HITS[i].x + bx, HITS[i].y + by, HITS[i].w, HITS[i].h);
 	/* the start menu's rows on the screen (mrow ACTION x y w h) */
 	for (int i = 0; MENU && gtk_widget_get_visible(MENU) && i < NMR; i++) { MRow *r = &MR[i]; if (!r->shown || r->t != 'l' || strstr(r->cls, "offh")) continue;
 		double y = MBY + 7 - MSCROLL + 75 + r->y; if (y < MBY || y + r->h > MBY + MBH) continue;
-		g_string_append_printf(s, "mrow %s %d %d %d %d\n", r->a[0] ? r->a : r->v[0] ? r->v : "-", (int)lround((MBX + 7) * Z), (int)lround(y * Z), (int)lround((MBW - 14) * Z), (int)lround(r->h * Z)); }
+		g_string_append_printf(s, "mrow %s %d %d %d %d\n", r->a[0] ? r->a : r->v[0] ? r->v : "-", (int)lround((MBX + 7) * Z), (int)lround(y * Z), (int)lround((MBW - 14 - menu_sb()) * Z), (int)lround(r->h * Z)); }
 	if (SIGN) g_string_append_printf(s, "signmsg %s\nsignfields %s|%ld|%d\n", SN_MSG, SN_NAME, g_utf8_strlen(SN_PASS, -1), SFOC);   /* (the password's length only) */
 	for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; GdkWindow *g = a->win ? gtk_widget_get_window(a->win) : NULL;
 		Client *c = WM_OK ? client_of_app(a) : NULL;
@@ -4921,6 +5782,7 @@ static void state_write(void)
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
 			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : c->ak[0] ? c->ak : "-", c->title);
 		g_string_append_printf(s, "clientws %lx %d %d\n", (unsigned long)c->w, c->ws, c->off);   /* (item 4: its workspace, shown or not) */
+		if (c->ontop) g_string_append_printf(s, "clienttop %lx\n", (unsigned long)c->w);   /* (Always on top: the title bars' test) */
 		if (c->app && c->app->win && c->app->view && GTK_IS_WIDGET(c->app->view)) { GtkAllocation al; gtk_widget_get_allocation(c->app->view, &al); g_string_append_printf(s, "view %lx %d %d\n", (unsigned long)c->w, al.width, al.height); } }   /* (the page's own size: its window's) */
 	g_string_append_printf(s, "wm %d\nicons %u %s\n", WM_OK, ICONS ? g_hash_table_size(ICONS) : 0, VER[0] ? VER : "-");
 	for (int i = 0; di_shown() && i < NDI; i++) { int x, y; di_xy(&DI[i], &x, &y); g_string_append_printf(s, "dicon %d %d %d %d %d %d %s|%s|%s\n", DI[i].c, DI[i].r, x, y, di_w(), DI[i].sel, DI[i].k, DI[i].kind, DI[i].n); }
@@ -4935,7 +5797,7 @@ static void state_write(void)
 		for (int i = 0; i < NCMI; i++) { if (!CMIT[i].sep) g_string_append_printf(s, "cmitem %d %d %d %s|%s\n", (int)lround((CMX + 5 + 50) * Z), (int)lround((ry + 12) * Z), CMIT[i].dis, CMIT[i].act, CMIT[i].label); ry += cm_row_h(&CMIT[i]); } }
 	g_string_append_printf(s, "dialog %s %s|%s\n", DGK == DLG_RENAME ? "rename" : DGK == DLG_OPENWITH ? "openwith" : "-", DGK ? DGNAME : "-", DGMSG);
 	for (int i = 0; DGK && i < NDGB; i++) g_string_append_printf(s, "dgbtn %d %d %d\n", i, (int)lround((DGB[i].x + DGB[i].w / 2) * Z), (int)lround((DGB[i].y + DGB[i].h / 2) * Z));
-	if (FLK) { g_string_append_printf(s, "fly %s %d %d %d %d %d-%02d %d %d\n", FLK == FL_CAL ? "cal" : FLK == FL_VOL ? "vol" : FLK == FL_NET ? "net" : FLK == FL_QS ? "qs" : "nc", (int)lround(FLX * Z), (int)lround(FLY * Z), (int)lround(FLW * Z), (int)lround(FLH * Z), FL_Y, FL_M, FLVOL, FLMUTE);
+	if (FLK) { g_string_append_printf(s, "fly %s %d %d %d %d %d-%02d %d %d\n", FLK == FL_CAL ? "cal" : FLK == FL_VOL ? "vol" : FLK == FL_NET ? "net" : FLK == FL_QS ? "qs" : FLK == FL_BRI ? "bri" : "nc", (int)lround(FLX * Z), (int)lround(FLY * Z), (int)lround(FLW * Z), (int)lround(FLH * Z), FL_Y, FL_M, FLVOL, FLMUTE);
 		if (FLK == FL_QS) { g_string_append(s, "flyqs"); for (int i = 0; i < QSN; i++) if (qs_get(i)) g_string_append_printf(s, " %s", QSL[i]); g_string_append_c(s, '\n'); }
 		if (FLK == FL_NC) { g_string_append_printf(s, "flync %d %d", NNT, S.dnd); for (int i = 0; i < NNT; i++) g_string_append_printf(s, "|%s", NT[i].t); g_string_append_c(s, '\n'); }
 		for (int i = 0; i < NFLB; i++) g_string_append_printf(s, "flybtn %s %d %d\n", FLBK[i], (int)lround((FLB[i].x + FLB[i].w / 2) * Z), (int)lround((FLB[i].y + FLB[i].h / 2) * Z)); }
@@ -4988,6 +5850,10 @@ int main(int argc, char **argv)
 	/* (1.6.0 Part 12, item 8) the apps' text as Chromium draws it: grey anti-aliasing, slight hinting (the shell's own Pango
 	   text is drawn so already); without XSETTINGS, GTK would give WebKit full hinting, its letters wider than Chromium's */
 	if (!getenv("RUDOLF_NATIVE_GTKHINT")) g_object_set(gtk_settings_get_default(), "gtk-xft-antialias", 1, "gtk-xft-hinting", 1, "gtk-xft-hintstyle", "hintslight", "gtk-xft-rgba", "none", NULL);
+	/* (test finding N9) the apps' dates and times in Chromium's locale when the system has none: Chromium then uses en-US (a time
+	   field "07:00 AM"), WebKit the C locale ("07:00", no AM or PM). Set for WebKit's own processes, after GTK has set this one's */
+	{ const char *l = getenv("LC_ALL"); if (!l || !*l) l = getenv("LC_TIME"); if (!l || !*l) l = getenv("LANG");
+	  if (!l || !*l || !strcmp(l, "C") || !strncmp(l, "C.", 2) || !strcmp(l, "POSIX")) { g_unsetenv("LC_ALL"); g_unsetenv("LC_TIME"); g_setenv("LANG", "en_US.UTF-8", TRUE); } }
 	wm_init();
 	if (SW <= 0 || SH <= 0) { GdkScreen *scr = gdk_screen_get_default(); SW = gdk_screen_get_width(scr); SH = gdk_screen_get_height(scr); }
 	/* rudolfd may still be starting */
@@ -5012,7 +5878,8 @@ int main(int argc, char **argv)
 	/* the taskbar, above everything */
 	BAR = gtk_window_new(GTK_WINDOW_TOPLEVEL); gtk_window_set_decorated(GTK_WINDOW(BAR), FALSE); gtk_window_set_type_hint(GTK_WINDOW(BAR), GDK_WINDOW_TYPE_HINT_DOCK);
 	gtk_window_set_title(GTK_WINDOW(BAR), "Taskbar"); gtk_window_set_keep_above(GTK_WINDOW(BAR), TRUE); gtk_window_set_default_size(GTK_WINDOW(BAR), SW, BARH);
-	BARAREA = gtk_drawing_area_new(); gtk_widget_add_events(BARAREA, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK | GDK_LEAVE_NOTIFY_MASK);
+	BARAREA = gtk_drawing_area_new(); gtk_widget_add_events(BARAREA, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK | GDK_LEAVE_NOTIFY_MASK | GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK);
+	g_signal_connect(BARAREA, "scroll-event", G_CALLBACK(bar_scroll), NULL);
 	g_signal_connect(BARAREA, "draw", G_CALLBACK(bar_draw), NULL); g_signal_connect(BARAREA, "button-press-event", G_CALLBACK(bar_press), NULL);
 	g_signal_connect(BARAREA, "button-release-event", G_CALLBACK(bar_release), NULL); g_signal_connect(BARAREA, "motion-notify-event", G_CALLBACK(bar_motion), NULL);
 	g_signal_connect(BARAREA, "leave-notify-event", G_CALLBACK(bar_leave), NULL); gtk_container_add(GTK_CONTAINER(BAR), BARAREA);
@@ -5026,6 +5893,10 @@ int main(int argc, char **argv)
 	tick_heart(NULL); g_timeout_add_seconds(10, tick_heart, NULL);
 	tick_devlink(NULL); g_timeout_add_seconds(4, tick_devlink, NULL);   /* (as the page: every 4 s) */
 	tick_cell(NULL); g_timeout_add_seconds(5, tick_cell, NULL);   /* (1.6.0 Part 3: the cellular notices, as the page: every 5 s) */
+	/* (1.6.0) rudolfd's events: the native desktop is the one that hears them (the power key, the keys' indicator, Ctrl+Alt+Del);
+	   the brightness's button and the backlight watched (the firmware's own changes shown as the keys' are) */
+	bri_load(); bar_redraw(); BL_LAST = bl_read(); g_timeout_add(300, bl_tick, NULL);
+	g_thread_unref(g_thread_new("events", ev_thread, NULL));
 	teval_init(); clip_init();
 	state_write();
 	gtk_main();

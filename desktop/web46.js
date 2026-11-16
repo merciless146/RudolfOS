@@ -3,7 +3,7 @@
    Oracle's own pages (about:, files) and websites shown in frames (outside the shell). Oracle › ☰ › Dark pages, kept
    for everyone on this computer. ===== */
 var WEB_DARK=false;try{WEB_DARK=localStorage.getItem('bd95webdark')=='1'}catch(e){}
-const WEB_DARK_CSS='html{filter:invert(.9) hue-rotate(180deg)!important;background:#fff!important}img,video,picture,canvas,iframe,embed,object,svg image,[style*="background-image"]{filter:invert(1) hue-rotate(180deg)!important}';
+const WEB_DARK_CSS='html{filter:invert(.9) hue-rotate(180deg)!important;background:#fff!important}img,video,picture,canvas,iframe,embed,object,svg image,[style*="background-image"]{filter:invert(1) hue-rotate(180deg)!important;backdrop-filter:none!important}:is(img,video,picture,canvas,iframe,embed,object,svg image,[style*="background-image"]) :is(img,video,picture,canvas,iframe,embed,object,svg image,[style*="background-image"]){filter:none!important}';
 function webDarkHtml(h){return WEB_DARK?`<style id='rudolf-dark'>${WEB_DARK_CSS}</style>`+h:h}
 /* a website in a frame (outside the shell) cannot be changed from here: the frame itself is turned dark */
 function webDarkFrame(fr,ext){if(fr)fr.style.filter=WEB_DARK&&ext?'invert(.9) hue-rotate(180deg)':''}

@@ -12,12 +12,15 @@ async function rd(path,opt){opt=opt||{};if(!RD)throw new Error('This needs the i
  if(!r.ok)throw new Error('HTTP '+r.status);return r}
 const rdPost=(p,body)=>rd(p,{method:'POST',body});
 /* events from rudolfd: the power button, drives, (1.4.4) the volume and brightness keys, the charger, Wi-Fi. events/wait
-   answers as soon as there is something (up to 25 s); without it (an older rudolfd), every 2.5 s as before */
+   answers as soon as there is something (up to 25 s); without it (an older rudolfd), every 2.5 s as before
+   (1.6.0) On the native desktop the shell hears them and gives a page what is the page's (oneapp59.js __oaEv): a page asking
+   is told so (native) and stops. */
 const EVH=[];function evOn(f){EVH.push(f)}
 function evDispatch(t){t=t||'';if(/^power \d/m.test(t))A.off&&A.off();if(typeof devEvents=='function')devEvents(t);for(const f of EVH){try{f(t)}catch(x){console.warn(x)}}}
 if(RD){const hb=()=>rdPost('heartbeat').catch(()=>{});hb();setInterval(hb,8000);
  (async()=>{let wait=true;const nap=ms=>new Promise(r=>setTimeout(r,ms));
-  for(;;){try{const t0=Date.now(),e=await rd(wait?'events/wait':'events');evDispatch(e.events);if(!wait||!e.events&&Date.now()-t0<500)await nap(wait?1000:2500)}catch(x){if(wait&&/unknown API|404/i.test(x.message||''))wait=false;await nap(2500)}}})()}
+  if(RD.engine=='native'&&/(^|[#&])app=/.test(String(location.hash||'')))return;   /* (an app's window on the native desktop: the shell hears them) */
+  for(;;){try{const t0=Date.now(),e=await rd(wait?'events/wait':'events');if(e.native)break;evDispatch(e.events);if(!wait||!e.events&&Date.now()-t0<500)await nap(wait?1000:2500)}catch(x){if(wait&&/unknown API|404/i.test(x.message||''))wait=false;await nap(2500)}}})()}
 /* ---------- notifications used by every V25 module (the shell adds a centre on top) ---------- */
 function notify(title,body,opt){opt=opt||{};try{if(window.__notifCentre)return __notifCentre.add(title,body,opt)}catch(e){}
  const d=document.createElement('div');d.className='rtoast';d.textContent=title+(body?' — '+body:'');document.body.appendChild(d);setTimeout(()=>d.remove(),4000)}
