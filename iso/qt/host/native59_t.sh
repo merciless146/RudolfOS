@@ -107,8 +107,13 @@ drag $(dc DRAG.TXT) $(dc Trash); w8 '[ -z "$(di DRAG.TXT)" ]' 80
 ok "69. ...onto the Trash: moved to the Trash" "$([ -z "$(di DRAG.TXT)" ] && echo 1)" "$(grep '^dicon' $D/state)"
 xdotool mousemove 1100 120 click 3; w8 '[ -n "$(cmi "Open File Explorer")" ]' 20; click $(cmi "Open File Explorer"); w8 'grep -q "^client .* app=explorer " $D/state' 80; timeout 2 tail -f /dev/null
 EID=$(grep '^client .* app=explorer' $D/state | head -1 | cut -d' ' -f2)
-# (Explorer at the account's home: its first row is the DESKTOP folder, at this test's font size)
-drag $(( $(cv $EID 4) + 250 )) $(( $(cv $EID 5) + 289 )) $(( $(cv $NID 4) + 300 )) $(( $(cv $NID 5) + 250 )); w8 'grep -q "^app explorer .* File Explorer - C:.USERS.ANN.DESKTOP$" $D/state' 80
+# (Explorer at the account's home: its first row is the DESKTOP folder, at this test's font size; 262 px down in Standard's size of the
+# window, 900x526 at 1280x800, since 2026-11-16: its toolbar no longer wraps to a third line)
+# (dropped on a part of Notepad's window that Explorer's does not cover: Explorer opens at Standard's size, which at 1280x800 reaches over
+# Notepad's middle since 2026-11-16)
+TX=$(( $(cv $NID 4) + 300 )); TY=$(( $(cv $NID 5) + 250 )); EX2=$(( $(cv $EID 4) + $(cv $EID 6) + 2 )); EY2=$(( $(cv $EID 5) + $(cv $EID 7) + 36 ))
+if [ $TX -lt $EX2 ] && [ $TY -lt $EY2 ]; then if [ $(( EX2 + 30 )) -lt $(( $(cv $NID 4) + $(cv $NID 6) )) ]; then TX=$(( EX2 + 30 )); else TY=$(( EY2 + 30 )); fi; fi
+drag $(( $(cv $EID 4) + 250 )) $(( $(cv $EID 5) + 262 )) $TX $TY; w8 'grep -q "^app explorer .* File Explorer - C:.USERS.ANN.DESKTOP$" $D/state' 80
 ok "70. an Explorer window's folder dragged onto another app's window (two pages): opened in File Explorer, as on Standard" "$(grep -q '^app explorer .* File Explorer - C:.USERS.ANN.DESKTOP$' $D/state && echo 1)" "$(grep '^app' $D/state | tr '\n' ' ')"
 xdotool key Escape; xdotool key Escape; for w in $(grep '^client .* app=\(notepad\|explorer\) ' $D/state | cut -d' ' -f2); do closew $w; done
 set_s '{"s":{"bs":"gradient","b1":"#ff0000","b2":"#0000ff","tb":"top","accent":"#16a34a","tbac":true,"tbacm":"negative","h24":false,"df":"dmy"},"pins":["calc"],"notes":0,"wallpaper":false}'

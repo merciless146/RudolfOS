@@ -131,7 +131,7 @@ try:
            "WWW=/usr/share/rudolf/www; [ -f /persist/os/current/index.html ] && WWW=/persist/os/current; [ -f /tmp/fx/index.html ] && cp /tmp/fx/index.html /tmp/page.html && chmod 644 /tmp/page.html && mount --bind /tmp/page.html $WWW/index.html; "
            "rm -f /tmp/teval /tmp/teval.out; mkfifo -m 666 /tmp/teval; mount | grep -E ' /tmp | /run '; "
            "mount --bind /tmp/fx/rn /usr/bin/rudolf-native; "
-           "pkill -x rudolf-native; sleep 3; pkill -9 -x rudolf-native; for i in $(seq 1 90); do [ -s /tmp/nstate ] && break; sleep 2; done; head -3 /tmp/nstate; pgrep -af rudolf-native; tail -8 /run/rudolf/native-desktop.log; tail -8 /run/rudolf/session.log 2>/dev/null", 300)
+           "P0=$(pgrep -f 'rudolf-native [-]-rudolf-kiosk'); echo before $P0; kill $P0; sleep 3; kill -9 $P0 2>/dev/null; sleep 1; echo after $(pgrep -f 'rudolf-native [-]-rudolf-kiosk'); ls -la /usr/bin/rudolf-native; for i in $(seq 1 90); do [ -s /tmp/nstate ] && break; sleep 2; done; head -3 /tmp/nstate; pgrep -af rudolf-native; tail -8 /run/rudolf/native-desktop.log; tail -8 /run/rudolf/session.log 2>/dev/null", 300)
     ok('0d. the native desktop started again with the tests\' views' + (' and this tree\'s files' if FIX else ''), 'screen ' in o, o)
     state = lambda: sh("cat /tmp/nstate", 30, False)
     def st_get(st, k):
@@ -174,17 +174,17 @@ try:
         g.q.cmd('system_powerdown'); t1 = time.time(); got = None
         for _ in range(12):
             time.sleep(0.5); st = state()
-            if st_get(st, 'power') == '1': got = round(time.time() - t1, 1); break
+            if st_get(st, 'power') == '1': got = round(time.time() - t1, 1); break   # (each reading over the serial line takes 2-3 s)
         left = sh("cat /run/rudolf/events 2>/dev/null | head -5; echo END", 20, False)
-        inpage = tev('notepad', "document.querySelectorAll('.rmodal').length")
-        ok(f'B1. Native, {fn} in front: the power button shows the shell\'s power dialog at once, above every window, in no page', got is not None and got <= 3 and st_get(st, 'powertop') == '1' and left.strip() == 'END' and inpage == '0', (got, st_get(st, 'powertop'), left, inpage))
+        inpage = tev('notepad', "document.querySelectorAll('.rmodal').length").split('\n')[-1].replace('notepad ', '')
+        ok(f'B1. Native, {fn} in front: the power button shows the shell\'s power dialog at once (at the first readings), above every window, in no page', got is not None and got <= 8 and st_get(st, 'powertop') == '1' and left.strip() == 'END' and inpage == '0', (got, st_get(st, 'powertop'), left, inpage))
         vm.shot(f'nat-power-{fn.split()[-1]}'); g.q.key('esc'); time.sleep(1.5)
-        api(sh, 'volume?set=50', True); v0 = api(sh, 'volume'); g.q.key('volumeup'); time.sleep(1.2); st = state(); v1 = api(sh, 'volume')
-        ok(f'B2. Native, {fn} in front: the volume-up key (Fn+F3) changes the volume with the shell\'s indicator', v1 != v0 and (st_get(st, 'osd') or '').startswith('volume'), (v0, v1, st_get(st, 'osd')))
-        time.sleep(2); g.q.key('volumedown'); time.sleep(1.2); st = state(); v2 = api(sh, 'volume')
-        ok(f'B3. Native, {fn} in front: the volume-down key (Fn+F2) too', v2 != v1 and (st_get(st, 'osd') or '').startswith('volume'), (v1, v2, st_get(st, 'osd')))
+        api(sh, 'volume?set=50', True); st0 = state(); v0 = api(sh, 'volume'); g.q.key('volumeup'); time.sleep(1.2); st = state(); v1 = api(sh, 'volume'); o1 = st_get(st, 'osdlast') or ''
+        ok(f'B2. Native, {fn} in front: the volume-up key (Fn+F3) changes the volume with the shell\'s indicator', v1 != v0 and 'volume 55|' in o1 and o1 != (st_get(st0, 'osdlast') or ''), (v0, v1, o1))
+        time.sleep(2); g.q.key('volumedown'); time.sleep(1.2); st = state(); v2 = api(sh, 'volume'); o2 = st_get(st, 'osdlast') or ''
+        ok(f'B3. Native, {fn} in front: the volume-down key (Fn+F2) too', v2 != v1 and o2 != o1 and 'volume 50|' in o2, (v1, v2, o2))
         time.sleep(2); sh("echo 'osd brightness 60' >> /run/rudolf/events", 20, False); time.sleep(1.5); st = state()
-        ok(f'B4. Native, {fn} in front: the brightness keys\' event shows the shell\'s indicator', (st_get(st, 'osd') or '').startswith('brightness 60'), st_get(st, 'osd'))
+        ok(f'B4. Native, {fn} in front: the brightness keys\' event shows the shell\'s indicator', 'brightness 60|' in (st_get(st, 'osdlast') or ''), st_get(st, 'osdlast'))
         time.sleep(2); g.q.key('ctrl', 'alt', 'delete'); tm = False
         for _ in range(30):
             time.sleep(1); st = state()
@@ -199,22 +199,35 @@ try:
     QSL = ['Dark mode', 'Night light', 'Do not disturb', 'Screen reader', 'Magnifier', 'High contrast', 'On-screen keyboard', 'Touch mode', 'Airplane mode']
     for i, t in enumerate(QSL):
         for on in (1, 0):
+            pid0 = sh("pgrep -f 'rudolf-native [-]-rudolf-kiosk'", 20, False).strip()
             st = state(); h = hit(st, 'qs -')
-            if h: at(*h); time.sleep(1.5)
-            st = state(); m = re.search(rf'^flybtn qs:{i} (\d+) (\d+)$', st, re.M)
+            if h: at(*h)
+            for _ in range(8):
+                time.sleep(1); st = state()
+                if (st_get(st, 'fly') or '').startswith('qs'): break
+            m = re.search(rf'^flybtn qs:{i} (\d+) (\d+)$', st, re.M)
             if m: at(int(m.group(1)), int(m.group(2)))
-            time.sleep(1); g.q.key('esc'); time.sleep(9); st = state()
+            else: out('quick settings did not open:', st_get(st, 'fly'))
+            time.sleep(1); at(SW * 3 // 4, SH - 140); time.sleep(9); st = state()   # (a click on the desktop closes quick settings, as on Standard)
             gm = sh("DISPLAY=:0 XAUTHORITY=/run/rudolf/xauth xrandr --verbose 2>/dev/null | grep -m1 Gamma", 20, False).strip()
             sigs = {k: tev(k, SIG) for k in ('notepad', 'calc')}
             out(f'{t} {"on" if on else "off"}:', st_get(st, 'a11y'), st_get(st, 'gamma'), gm, sigs)
             if on: vm.shot(f'nat-tile-{i}')
             a = dict(kv.split('=') for kv in (st_get(st, 'a11y') or '').split() if '=' in kv)
             key = ['dark', 'nl', 'dnd', 'sr', 'mag', 'hc', 'vk', 'touch', None][i]
-            if key: ok(f'Q{i}. Native: {t} {"on" if on else "off"}: the shell', a.get(key) == str(on), a)
-    st = state(); h = hit(st, 'qs -'); at(*h); time.sleep(1.5); st = state(); m = re.search(r'^flybtn power (\d+) (\d+)$', st, re.M); at(int(m.group(1)), int(m.group(2))); time.sleep(2); st = state()
+            pid1 = sh("pgrep -f 'rudolf-native [-]-rudolf-kiosk'", 20, False).strip()
+            if pid1 != pid0: out('THE NATIVE DESKTOP RESTARTED', pid0, pid1, sh("grep -v '^+' /run/rudolf/session.log | tail -15; dmesg | grep -iE 'segfault|traps|killed process|oom' | tail -5; grep -v 'dbus\\|Warning\\|vkEnum\\|dawn' /run/rudolf/native-desktop.log | tail -25", 30, False))
+            if key: ok(f'Q{i}. Native: {t} {"on" if on else "off"}: the shell', a.get(key) == str(on) and pid1 == pid0, a)
+    def qs_btn(k):
+        st = state(); h = hit(st, 'qs -')
+        if h: at(*h)
+        time.sleep(3); st = state(); m = re.search(rf'^flybtn {k} (\d+) (\d+)$', st, re.M)
+        if m: at(int(m.group(1)), int(m.group(2)))
+        time.sleep(3); return state()
+    st = qs_btn('power')
     ok('Q9. Native: quick settings › Power: the power dialog above every window, Standard\'s choices', st_get(st, 'power') == '1' and st_get(st, 'powertop') == '1', st_get(st, 'powerrows'))
     g.q.key('esc'); time.sleep(1.5)
-    st = state(); h = hit(st, 'qs -'); at(*h); time.sleep(1.5); st = state(); m = re.search(r'^flybtn lock (\d+) (\d+)$', st, re.M); at(int(m.group(1)), int(m.group(2))); time.sleep(4); st = state()
+    st = qs_btn('lock')
     ok('Q10. Native: quick settings › Lock: the lock screen above every window', st_get(st, 'locked') == '1' and st_get(st, 'signtop') == '1', (st_get(st, 'locked'), st_get(st, 'signtop')))
     vm.shot('nat-lock')
     out(sh("tail -40 /run/rudolf/native-desktop.log", 30, False))
