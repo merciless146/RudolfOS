@@ -20,7 +20,8 @@ provisioning (downloading a carrier's eSIM profile), and 5G standalone features 
 
 ## Leanness
 - Cellular support adds about 6 to 10 MB to the base layer (ModemManager, libqmi, libmbim, libqrtr, the operators'
-  database, the kernel drivers as modules): measured in the release check against a 15 MB budget.
+  database, the kernel drivers as modules): measured in the release check against a 15 MB budget. (2026-11-15: the
+  owner dropped the size budgets for 1.6.0: the build prints the sizes, systools/ci_release.sh.)
 - ModemManager starts only when a modem is present (mdev starts it on the first modem it sees), so a computer without
   one runs nothing more.
 - The Messages app is part of the desktop page (no new engine), and keeps messages in the account's folder.
@@ -989,6 +990,52 @@ without this work (it waits only for the QEMU security checks of Part 15).
    UEFI disc image, started and checked in QEMU aarch64 (AAVMF): start-up, the desktop, an update between two test
    releases, the stand-in modem's Settings pages. Not published until stage B's ARM64 computer.
 
+**Stage A's notes (what is done, its tests, what stage B checks)**
+- **Item 1 (Part 1), done (PR "cell60-modems"):** ModemManager in the base layer with QMI, MBIM, QRTR and AT (its
+  plug-ins, libqmi, libmbim, libqrtr-glib, qmi-proxy, mbim-proxy), its FCC unlock scripts and what they run (qmicli,
+  mbimcli; bash for MediaTek's): systools/ci_release.sh prints the sizes (largest parts and the total; no budget, as the
+  owner dropped them for 1.6.0). /usr/lib/rudolf/modem status reads each modem from ModemManager's D-Bus API (mmcli's
+  key-value output: maker, model, firmware, drivers, plug-in, state, the lock and its tries, the SIM and its operator
+  code, the operator, the registration, signal, network type, power, the module's USB or PCI id and its FCC unlock),
+  and names the modules Linux supports only partly (Intel XMM7360 and XMM7560, MediaTek T700) found on the PCI or USB
+  bus. rudolfd's mobile requests (rudolfd-mobile.inc): mobile/status, mobile/fcc (an administrator's name and password,
+  checked by rudolfd; kept in /persist/etc/modem-fcc, linked into ModemManager's fcc-unlock.d at its start; System
+  health says who). Settings › Network › Cellular modems: the offer, saying what it does, the unlock turned off again,
+  the partly supported modules (also with no modem). **The stand-in ModemManager** for every later item: qt/mmstub.c
+  (ModemManager's own generated D-Bus code from libmm-glib, on a private bus: modems with a SIM, PIN and PUK, the
+  registration, signal and its details, the network types, bearers with the APN checked letter for letter, messages
+  with delivery reports, an FCC-locked radio, a modem that disappears) with qt/host/mmstub.sh to run it.
+  Tests: qt/host/modem60_t.sh (23 checks: the real mmcli against the stand-in, rudolfd's requests compiled from
+  rudolfd.c), qt/host/modem59_t.sh (the 1.5.9 service, 10), qt/shell2/modem60_t.js (12) and modem59_t.js (5), and in
+  QEMU qt/sb/cell60_q.py on the newest beta (ModemManager with udev and no modem: not started by itself, started by hand
+  it finds no modem and logs nothing; its parts there; stopped), all in .github/workflows/cellular-check.yml. (The
+  beta then, 2026111506, was made before Part 9: the check starts udev from the test machine, Ubuntu 24.04's as the base
+  layer takes it, as rudolf-init does; with a newer beta it uses the release's own.) Found in QEMU and fixed: BusyBox's
+  pgrep -x never matched ModemManager, so 1.5.9 started it again for each port and never stopped it; and it asked
+  ModemManager's --help-all (unknown to it) for --test-no-udev, so it always ran with --no-auto-scan.
+  Stage B checks: the USB stick and the MiFi in Settings › Network › Cellular modems (maker, model, SIM, operator),
+  no "Invalid rule match" and no error in /run/rudolf/modem.log; on a laptop with an FCC-locked card (a ThinkPad with
+  a Fibocom L850-GL or Quectel EM05-G), the offer shown, turned on by an administrator, the radio on after a restart,
+  and turned off; a partly supported module named.
+
+- **Item 2 (Part 2), done (PR "cell60-sim"):** /usr/lib/rudolf/modem pin, puk (the codes in a root-only file, never on
+  a command line), settings, set, apn, airplane; rudolfd's mobile/pin and mobile/puk (an administrator's name and
+  password checked by rudolfd; System health: unlocked by whom, a wrong code, the PIN blocked, the SIM blocked for good),
+  mobile/settings (the APN: automatic or typed in, its user name and password, never given back; roaming, off by
+  default; the network type, given to the modem at once), mobile/airplane. Each SIM's settings in /persist/etc/mobile/,
+  a file named by a hash of its ICCID, root's only. The APN: Rudolf's corrections first (/usr/share/rudolf/apn-fixes:
+  US Mobile's "PWG", which the database has as "pwg", and Simple Mobile's "Simple", docs/plan-1.6.1.md Part 7), then
+  mobile-broadband-provider-info by the SIM's operator code, the operators sharing it told apart by the SIM's name,
+  then the network's, then the network's owner; the letters' case kept everywhere. Settings › Mobile network
+  (mobile60.js); quick settings' ninth switch, Airplane mode, on both engines (rudolf-native.c draws it and sets it
+  through rudolfd; qt/native/qsbeh_t.js turns it on and off on both). Wi-Fi and Bluetooth stay off under it.
+  Tests: qt/host/sim60_t.sh (33 checks, the stand-in ModemManager; the carriers' table), qt/shell2/mobile60_t.js
+  (24), qt/native/same_t.sh's quick settings cases and qsbeh_t.js.
+  Stage B checks: a real SIM with a PIN in the USB stick (unlocked from Settings; a wrong PIN shows the tries left; do
+  not try the PUK on a SIM you need), the APN filled in from a prepaid T-Mobile-network SIM (Mint or Tello) and the
+  connection made with it, roaming's setting, the network type changed and kept by the modem, airplane mode with the
+  Vivobook's Wi-Fi and Bluetooth and the stick, and back.
+
 **Stage B: on hardware, with the owner (after stage A is merged and in a beta)**
 1. The USB cellular stick (borrowed from the HP desktop's user) and the MiFi 7730L on the Vivobook: the modem found
    (Settings › Network › Cellular modems, no "Invalid rule match" in /run/rudolf/modem.log, the self-test's modem
@@ -1018,7 +1065,8 @@ without this work (it waits only for the QEMU security checks of Part 15).
   counted, the firewall on the cellular interface.
 - On real hardware over the devlink: each test device connects, survives sleep and wake, and reconnects after the
   modem is unplugged and plugged in again.
-- The leanness budgets (docs/plan-1.5.8.md Part 8) and the cellular budget (15 MB) in the release check.
+- The leanness budgets (docs/plan-1.5.8.md Part 8) and the cellular budget (15 MB) in the release check (dropped for
+  1.6.0 by the owner on 2026-11-15: the sizes are printed instead).
 
 ## Steps
 0. Part 9 (udev instead of mdev) first, so the modem work stands on it; then Part 10 (a Linux user for each account)

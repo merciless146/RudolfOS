@@ -98,7 +98,8 @@ start() {
 	if [ -d /persist ] && [ -w /persist ]; then mkdir -p /persist/bluetooth; chmod 700 /persist/bluetooth
 		mountpoint -q /var/lib/bluetooth || { mkdir -p /var/lib/bluetooth; mount --bind /persist/bluetooth /var/lib/bluetooth; }
 	else mkdir -p /var/lib/bluetooth; fi
-	for r in /sys/class/rfkill/*; do [ "$(cat $r/type 2>/dev/null)" = bluetooth ] && echo 0 > $r/soft 2>/dev/null; done
+	# (1.6.0 Part 2: not while airplane mode is on: /usr/lib/rudolf/modem airplane brings it back as it was)
+	[ -e /run/rudolf/airplane ] || for r in /sys/class/rfkill/*; do [ "$(cat $r/type 2>/dev/null)" = bluetooth ] && echo 0 > $r/soft 2>/dev/null; done
 	[ -e /run/rudolf/bluetoothd.loop ] && kill -0 "$(cat /run/rudolf/bluetoothd.loop)" 2>/dev/null || (setsid sh -c "echo \$\$ > /run/rudolf/bluetoothd.loop; while [ ! -e /run/rudolf/bluetooth-stop ]; do $BD -n -f /etc/bluetooth/main.conf >>/run/rudolf/bluetooth.log 2>&1; sleep 2; done" </dev/null >/dev/null 2>&1 &)
 	B=$(command -v bluealsa || command -v bluealsad)
 	# 1.5.9: headsets' microphones too (Hands-Free and Headset, bluealsa's own), when this bluealsa has them

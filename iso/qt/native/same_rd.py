@@ -161,6 +161,10 @@ class H(http.server.BaseHTTPRequestHandler):
         # (item 8) Linux's and Blitzen's state for the Phone screen's and Blitzen's windows (DIR/deb, DIR/ai: JSON, as the test sets them)
         if w == 'debian/status': return self.j(dict({'ok': True}, **json.loads(rd('deb', b'{}') or b'{}')))
         if w == 'ai/status': return self.j(dict({'ok': True}, **json.loads(rd('ai', b'{}') or b'{}')))
+        if w == 'mobile/airplane':   # (1.6.0 Part 2: quick settings' Airplane mode; DIR/airplane: 1 or 0)
+            if m == 'POST':
+                with open(os.path.join(D, 'airplane'), 'w') as f: f.write('1' if 'on=1' in q else '0')
+            return self.j({'ok': True, 'on': rd('airplane', b'0').strip() == b'1'})
         if w == 'power/status': return self.j({'ok': True, 'ac': False, 'battery': {'name': 'BAT0', 'capacity': 81, 'status': 'Discharging'}, 'now': {'saver': False}})
         # (the memory guard's "which page process is the desktop's": the stand-in has no processes; answered, the page would keep its
         # processor busy for 0.6 s by performance.now(), which the test's clock holds still, and never finish)

@@ -1,0 +1,6 @@
+# Rudolf OS 1.6.0 (docs/plan-1.6.0.md Part 2; docs/plan-1.6.1.md Part 7): Rudolf's own corrections to the operators'
+# database (mobile-broadband-provider-info), kept beside it and read first by /usr/lib/rudolf/modem apn. One line each:
+#   MCCMNC|the SIM's operator name (a part of it, any case)|APN, exactly (letters' case kept)|user|password|why
+# The APN is given to the modem exactly as written here: some operators' networks refuse it in the other case.
+310260|US Mobile|PWG|||US Mobile's APN in capitals: "pwg" (as in the database) failed in lowercase on a PinePhone Pro
+310260|Simple Mobile|Simple|||Simple Mobile's APN as the operator writes it
