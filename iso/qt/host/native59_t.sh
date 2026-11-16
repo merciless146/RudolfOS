@@ -214,7 +214,9 @@ xdotool type --delay 15 'nope'; xdotool key Return; w8 '[ -n "$(st signmsg)" ]' 
 ok "25. ...a wrong password: refused" "$([ "$(st locked)" = 1 ] && [ "$(st signmsg)" = 'The password is incorrect.' ] && echo 1)" "$(st signmsg)"
 LC_ALL=C.UTF-8 xdotool type --delay 40 "$PW"; xdotool key Return; w8 '[ "$(st locked)" = 0 ]' 40
 ok "26. ...the right one: back, the windows as they were" "$([ "$(st locked)" = 0 ] && [ "$(grep -c '^app ' $D/state)" = 1 ] && [ "$(flag $CID min)" = 0 ] && echo 1)" "$(grep '^app\|^client\|^locked' $D/state)"
-click $(hit start -); w8 '[ "$(st menu)" = 1 ]' 20; xdotool type --delay 40 'log off'; w8 'grep -q "^mrow logoff " $D/state' 20; L=$(grep '^mrow logoff ' $D/state | awk '{print $3+int($5/2), $4+int($6/2)}'); click $L
+# (2026-11-16: Log Off is the list's last row, scrolled to: the search is Standard's now, which finds apps, settings and files, not the list's rows)
+click $(hit start -); w8 '[ "$(st menu)" = 1 ]' 20; M=$(grep '^mrow ' $D/state | head -1 | awk '{print $3+60, $4+40}'); i=0; while [ $i -lt 30 ] && ! grep -q "^mrow logoff " $D/state; do xdotool mousemove $M click 5; timeout 0.15 tail -f /dev/null; i=$((i+1)); done
+L=$(grep '^mrow logoff ' $D/state | awk '{print $3+int($5/2), $4+int($6/2)}'); click $L
 w8 '[ "$(st signin)" = 1 ]' 20; ok "27. Sign out: the app windows close, rudolfd ends the session, the sign-in screen" "$([ "$(st user)" = - ] && [ "$(grep -c '^app ' $D/state)" = 0 ] && grep -q 'POST desktop/logout' $D/calls && echo 1)" "$(head -6 $D/state)"
 # ---- the development link (bugs 4 and 6: shown once by the shell, not in every app window)
 printf '%s' '{"ok":true,"available":true,"on":true,"repo":"someone/devlink","secondsLeft":3600,"ask":true,"status":{"state":"on"},"pending":{"id":"c7","kind":"run","what":"uname -a"}}' > $D/devlink.json

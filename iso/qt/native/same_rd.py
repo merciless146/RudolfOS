@@ -63,6 +63,8 @@ class H(http.server.BaseHTTPRequestHandler):
             inj = ('<script type="application/json" id="rudolf-ls">%s</script><script>window.RUDOLFD={token:"%s",base:"",boot:"uefi",media:"disk",live:0,recovery:0,engine:"%s"};%s</script>'
                    % (L, TOK, self.engine(), LSJS))
             return self.send(200, open(os.path.join(WWW, 'index.html'), encoding='utf-8').read().replace('<head>', '<head>' + inj, 1), 'text/html; charset=utf-8')
+        if u == '/pkg/rudolf-emberreach/www/index.html' and rd('progs') is not None:   # (DIR/progs: a Library web app's page, appsbeh_t.js)
+            note('PKG ' + u); return self.send(200, '<!doctype html><title>Ember Reach</title><body style="background:#331"><h1 id=er>Ember Reach</h1>', 'text/html; charset=utf-8')
         if u.startswith('/tm/'):   # (the test's media: DIR/tm/NAME, made by the test with ffmpeg; test finding N1)
             f = os.path.join(D, 'tm', os.path.basename(u))
             if os.path.isfile(f):
@@ -209,8 +211,22 @@ class H(http.server.BaseHTTPRequestHandler):
                 elif 'value=' in q: v = max(5, min(100, int(q.split('value=')[1].split('&')[0] or 0)))
                 with open(os.path.join(D, 'backlight'), 'w') as f: f.write(str(v))
             return self.j({'ok': True, 'brightness': v})
+        # (2026-11-16) DIR/progs: the programs rudolfd knows, as on the owner's Vivobook (appsbeh_t.js): a Library web app (Ember Reach), a
+        # Flatpak app (Discord), a Windows program in Debian's Wine (Starport GE); their icons are a plain square made here (no one's logo)
+        if rd('progs') is not None:
+            if w == 'pkg/status': return self.j({'ok': True, 'installed': [{'name': 'rudolf-emberreach', 'title': 'Ember Reach', 'kind': 'webapp', 'icon': '\U0001f525', 'entry': 'www/index.html', 'mounted': True, 'summary': 'A Library game', 'version': '1.0'}], 'available': [], 'sources': []})
+            if w == 'apps/installed': return self.j({'ok': True, 'apps': [{'id': 'com.discordapp.Discord', 'name': 'Discord', 'launchers': [{'desktop': 'com.discordapp.Discord.desktop', 'name': 'Discord', 'icon': 'com.discordapp.Discord', 'mime': '', 'wmclass': 'discord', 'cats': 'Network;'}]}]})
+            if w == 'debian/status': return self.j({'ok': True, 'installed': True, 'running': False})
+            if w == 'debian/apps': return self.j({'ok': True, 'apps': [{'id': 'starport-ge', 'name': 'Starport GE', 'icon': '/usr/share/pixmaps/starport-ge.png', 'mime': '', 'wmclass': 'starport.exe', 'categories': 'Game;', 'menu': True}]})
+            if w in ('apps/icon', 'debian/icon'): return self.send(200, square_png((200, 40, 160) if w == 'apps/icon' else (40, 160, 200)), 'image/png')
+            if w in ('apps/run', 'debian/launch', 'pkg/run'): return self.j({'ok': True})
         if w == 'bootmenu': return self.j(dict({'ok': True, 'uefi': True, 'loader': True, 'windows': []}, **json.loads(rd('bootmenu', b'{}') or b'{}')))
         return self.j({'ok': True})
+def square_png(c, n=48):   # (a plain square of one colour: a stand-in for a program's own icon)
+    import zlib, struct
+    raw = b''.join(b'\x00' + bytes(c) * n for _ in range(n))
+    ch = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+    return b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', n, n, 8, 2, 0, 0, 0)) + ch(b'IDAT', zlib.compress(raw)) + ch(b'IEND', b'')
 class S(http.server.ThreadingHTTPServer):
     daemon_threads = True
     def handle_error(self, *a): pass
