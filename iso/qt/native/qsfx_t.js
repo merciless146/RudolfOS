@@ -85,14 +85,20 @@ async function nat() {
   await openApps();
   O.before = await pageSigs();
   ok('Native: two app windows open, their pages read', O.before.notepad && O.before.calc && typeof O.before.notepad == 'object', O.before);
-  /* ---- A: each tile on and off, with the two windows open */
+  /* ---- A: each tile on and off, with the two windows open; quick settings closed as k160_t.py closes it in QEMU, by a click on the desktop
+     (as on Standard: no Escape first), and the shell's other switches as they were (2026-11-16: Dark mode put the keyboard on there) */
+  const KEY = {'Dark mode': 'dark', 'Night light': 'nl', 'Do not disturb': 'dnd', 'Screen reader': 'sr', 'Magnifier': 'mag', 'High contrast': 'hc', 'On-screen keyboard': 'vk', 'Touch mode': 'touch'}, EXP = {dark: '0', nl: '0', dnd: '0', sr: '0', mag: '0', hc: '0', vk: '0', touch: '0'};
   for (const t of TILES) {
     if (ONLY && !ONLY.split(',').includes(t)) continue;
     for (const on of [1, 0]) {
-      nclick(nhit('qs -')); await until(() => (nst('fly') || '').startsWith('qs'), 5000); await wait(500);
-      const c0 = calls().length; nclick(flybtn('qs:' + QSL.indexOf(t))); await wait(500); xdo('key Escape'); nclick([W / 2, 300]); await wait(9000);
-      const sigs = await pageSigs(), sh = shell(c0); O[t + (on ? ' on' : ' off')] = {sigs, sh};
+      nclick(nhit('qs -')); const op = await until(() => (nst('fly') || '').startsWith('qs'), 5000); await wait(500);
+      const c0 = calls().length; nclick(flybtn('qs:' + QSL.indexOf(t))); await wait(1000); nclick([W * 3 / 4, H - 140]);
+      const shut = await until(() => !(nst('fly') || '').startsWith('qs'), 3000); await wait(9000);
+      ok('Native: ' + t + (on ? ' on' : ' off') + ': quick settings opened, and a click on the desktop closed it, as on Standard', op && shut, {fly: nst('fly'), grab: nst('flgrab')});
+      const sigs = await pageSigs(), sh = shell(c0); O[t + (on ? ' on' : ' off')] = {sigs, sh}; if (KEY[t]) EXP[KEY[t]] = on ? '1' : '0';
       ok('Native: ' + t + (on ? ' on' : ' off') + ': the setting, the tile, every window and the shell', on ? effect(t, sigs, sh) : offEffect(t, sigs, sh), {sigs, sh: Object.assign({}, sh, {calls: undefined})});
+      const other = Object.keys(EXP).filter(k => k != KEY[t] && sh[k] != EXP[k]);
+      ok('Native: ' + t + (on ? ' on' : ' off') + ': no other switch changed in the shell', !other.length, {other, sh: Object.assign({}, sh, {calls: undefined, gamma: undefined})});
       if (on) shot('tile-' + t.replace(/ /g, '-'));
       if (on && t == 'On-screen keyboard') {   /* a key of the shell's keyboard typed into the window in front (Notepad's text) */
         nclick(nhit('pin notepad')); await wait(1500); await neval('notepad', `(()=>{const t=document.querySelector('textarea');t.value='';t.focus();return 1})()`); await wait(500);
