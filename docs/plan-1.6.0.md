@@ -713,6 +713,8 @@ Native there, Standard in use, never given up on this computer, an installed Rud
 offered=1, and any engine chosen in Settings, keep it as made in /persist/etc/rudolf-native-offered). Settings names it
 Native (no longer "Native (test)"). Tests: qt/host/nativedefault60_t.sh 12, qt/shell2/engine57_t.js 20 (new 4f-4i).
 Not done here: the release check's 900 MB measurement on the Vivobook.
+**Decided (owner, 2026-11-16): "Native is going to be the default for new installations."** The switch above (#384) is on
+main; "Before stable" item 5.
 
 ### 13. Signed system extensions (added on 2026-11-14)
 Asked for: a way to add system parts (a driver, firmware, a tool, a printer filter) to one computer without a new
@@ -961,6 +963,32 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
     41 on a host without a sound server; 4g, 4h and 9 fail there on main too), Oracle's own Alt+F4 still Chromium's.
     The comparison needs Standard's Oracle drawn the same way in Playwright, the shell built with a test key, as
     oracle_native_t.sh does for Native.)
+    **Done (2026-11-16, "Before stable" item 9):** `iso/qt/native/same_oracle_t.sh` draws Oracle's window with both engines
+    in network and mount namespaces of its own, one after the other, with one stand-in rudolfd (fixtures/native_rd.py):
+    Native as oracle_native_t.sh runs it (rudolf-native, Oracle in Rudolf's Chromium with the shell built with a test key);
+    Standard as the session starts it (the same shell full screen, --class=RudolfDesktop, the desktop page in it and Oracle
+    a window of the page; keys through rudolf-display's own code, fixtures/dispkeys.c). The same settings on both (the
+    page's, and Native's desktop/settings from them) and Standard's window put at Native's frame's place and size; each
+    part cut out of both screenshots and compared (same_oracle.py with pxdiff.py: over 2 % of a part's pixels differing by
+    more than 32 fails, a size more than 1 px apart fails): the title bar, the tabs, the toolbar, the address box, the
+    bookmarks bar, the Home page, a local test site in a real tab, the ☰ menu, a download in about:downloads, dark and light
+    mode, a green accent; the title bar's words in each; and the same steps done on both, their outcomes compared: a new
+    tab (+), Ctrl+W in Oracle's page, a tab's ✕, Ctrl+T, Ctrl+W and Ctrl+N in a website, a link, ◀ and ▶, Alt+Left, a
+    website's full screen and Esc, Alt+F4. 28/28 here (Playwright's Chromium 153) and in CI with Playwright's and with
+    the beta's own Chromium 158 (oracle-same-check.yml; the pictures kept as its artifact). same_t.sh's header points to it
+    (it needs root and the shell, as oracle_native_t.sh does).
+    What was different, each fixed in Native or in what both engines share (Standard's own drawing unchanged):
+    - Rudolf's Chromium 158 kept an Oracle window's own title at the shell's name ("Rudolf OS"), so on Native the frame and
+      the taskbar said "Oracle" whatever the page (Standard: "Downloads - Oracle" and so on), and a Tor window's had no
+      "(Tor)". The page now tells the native desktop its title through rudolf-launch's binding, which writes it with its
+      window's place ("title X Y W H STRING"), and rudolf-native gives it to that window before Chromium's own name (with
+      item 10's PR, where the Tor window's test found it too; DevTools' target info never carries a page's title here).
+    - In every website tab but an account's first, Ctrl+T, Ctrl+W and Oracle's other keys did nothing, and the tab kept
+      the address as its name: the shell's content scripts (PAGE_JS) reached only the first tab of a partition. On both
+      engines; the shell now gives PAGE_JS at each page's commit too (once a page), and a tab opened with its address
+      waits for the content scripts.
+    On the Vivobook (owner): Oracle on Native and on Standard side by side: its title bar and taskbar button with a site
+    open, a second tab's Ctrl+T and Ctrl+W, Ctrl+N, Alt+F4, a download, dark mode.
   - **The official recovery (1.5.9 8.4, 8.5):** the repair at each start (the official build checks recovery.efi and
     system/r and restores them from the official release); Return to official restoring the official rudolf.efi; on a
     computer that never ran the official build, system/r downloaded when Developer mode is turned on. The EFI image is
@@ -1334,6 +1362,9 @@ Part 15's lists and the Vivobook's beta 2026111611 (the owner's reports of 2026-
    check on main green.
 5. **Part 12's decision:** Native as the default for new installations after its week of betas (#384): the owner's
    call once 4 is clean; if not, new installations start on Standard for 1.6.0 and Native stays the choice in Settings.
+   **Decided (owner, 2026-11-16): "Native is going to be the default for new installations."** As #384 made it: a new
+   installation starts on Native (on trial, Standard if it does not come up); an update keeps the computer's engine and
+   offers Native once.
 6. **Part 13's QEMU checks (13.7):** an extension in use after a restart, a broken one left out, an update with and
    without its extension: the update path must be safe before stable. **Done (2026-11-16):** qt/sb/t160x_t.py 20/20 on
    the real release (Part 13's note); one fix (the extensions' lines in System health). Left for 1.6.1: rudolf-update
@@ -1352,6 +1383,12 @@ Part 15's lists and the Vivobook's beta 2026111611 (the owner's reports of 2026-
 **Decided by the owner on 2026-11-16:** "Oracle on Native and Tor window shortcuts can be in the 1.6.0 build. USB
 printers and ARM64 can be delayed until 1.6.1."
 9. **Part 12.3c:** same_t.sh's comparison of Oracle's window on Native against Standard's (toolbar, tabs, a site).
+   **Done (2026-11-16):** qt/native/same_oracle_t.sh (with same_oracle.py) 28/28 here with Playwright's Chromium, and in
+   CI (oracle-same-check.yml) with Playwright's and with the beta's own Chromium 158. What was different, fixed: with
+   Rudolf's Chromium 158 Oracle's title bar and taskbar button on Native said "Oracle" for every page (and the Tor window's
+   had no "(Tor)": fixed with item 10, whose Tor test found it too); in every website tab but an account's first, on both
+   engines, Ctrl+T, Ctrl+W and Oracle's other keys did nothing and the tab's title was not shown (the shell's content
+   scripts). Left: the owner's checks on the Vivobook (Part 15).
 10. **Browse with Tor:** Ctrl+W, T, N and Q in a website in the Tor window on Standard are Rudolf's, as in its other
     windows (rudolf-display's keys), with a test. **Done (2026-11-16):** the keys were already handed on (rudolf-display:
     RudolfTor as RudolfDesktop; rudolf-native: RudolfTor as RudolfOracle, Part 15); the tests are new: qt/host/torwin59_t.sh
