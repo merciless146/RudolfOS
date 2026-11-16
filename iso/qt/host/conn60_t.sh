@@ -94,6 +94,9 @@ else
 	o=$(a "POST mobile/connect?id=1&on=1"); w8 '[ "$(via)" = clat ]' 20
 	ok "13. an IPv6-only network: connected with its IPv6 address, and a CLAT (464XLAT) carries IPv4" "$(echo "$o" | grep -q Connected && ip -6 addr show dev wwan1 | grep -q '2001:db8:1::2/64' && [ "$(via)" = clat ] && grep -q '^map 192.0.0.1 2001:db8:1:0::c1a7' /run/rudolf/clat/tayga.conf && echo 1)" "$o $(ip route) $(ip -6 route) $(cat /run/rudolf/clat/tayga.conf 2>&1)"
 	echo "(the CLAT: $(cat /run/rudolf/clat/tayga.conf | tr '\n' ' ') $(pgrep -a tayga | tr '\n' ' '))"
+	w8 'ping -c1 -W2 9.9.9.9 >/dev/null 2>&1' 20 || { echo "--- (why) ping:"; ping -c1 -W2 9.9.9.9 2>&1; echo "--- ping6 through the NAT64 alone:"; ping -6 -c1 -W2 64:ff9b::909:909 2>&1 | tail -3
+		echo "--- here:"; ip route get 9.9.9.9; ip -6 route; ip -s link show clat; ip -s link show wwan1; cat /proc/sys/net/ipv6/conf/all/forwarding
+		echo "--- far:"; far "ip -s link show cfar1; ip -s link show nat64; ip route; ip -6 route; cat /proc/sys/net/ipv6/conf/all/forwarding"; }
 	ok "14. ...an IPv4 site reached through the operator's NAT64 (the well-known prefix, none found in its DNS)" "$(w8 'ping -c1 -W2 9.9.9.9 >/dev/null 2>&1' 20 && grep -q '^prefix 64:ff9b::/96' /run/rudolf/clat/tayga.conf && echo 1)" "$(ping -c1 -W2 9.9.9.9 2>&1 | tail -3) $(far 'ip route; ip -6 route' 2>&1)"
 	a "POST mobile/connect?id=1&on=0" >/dev/null
 	ok "...disconnected: the CLAT goes too" "$(! ip link show clat >/dev/null 2>&1 && [ ! -e /run/rudolf/clat ] && echo 1)" "$(ip link)"

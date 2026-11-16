@@ -158,10 +158,11 @@ cat /tmp/c3; nsenter -t $FP -n ip link 2>&1 | grep -o '^[0-9]*: [^:]*'""", 60)
            "mmcli -L; /usr/lib/rudolf/modem connect 0; ip route; cat /tmp/mmcalls", 120)
     ok('10. the stand-in ModemManager on the guest\'s bus; Connect: its link set up (10.64.12.34), its route kept behind Wi-Fi\'s (700)', 'Connected' in o and re.search(rf'default via 10\.64\.12\.33 dev {C} .*metric 700', o) and 'Connect apn=fast.t-mobile.com' in o, o)
     o = sh(f"ip route get 203.0.113.1; ping -c2 -W3 203.0.113.1 >/dev/null && echo REACH; nft list set inet rudolf cellular", 60)
-    ok('11. Wi-Fi works: the traffic on Wi-Fi, cellular unused; the cellular link in the firewall\'s set', re.search(rf'dev {W0}', o.split('\n', 2)[-1] if o else '') and 'REACH' in o and f'"{C}"' in o, o)
-    o = sh(f"(setsid sh /usr/lib/rudolf/modem watch </dev/null >/dev/null 2>&1 &); sleep 4; R0=$(" + far(f"cat /sys/class/net/{CF}/statistics/rx_packets") + f"); "
-           f"T0=$(date +%s%N); ip link set {W0} down; for i in $(seq 50); do ip route get 203.0.113.1 | grep -q 'dev {C}' && break; sleep 0.2; done; T1=$(date +%s%N); echo MS=$(( (T1 - T0) / 1000000 )); "
-           f"ping -c3 -W3 203.0.113.1 >/dev/null && echo REACH; R1=$(" + far(f"cat /sys/class/net/{CF}/statistics/rx_packets") + "); echo FARRX=$((R1 - R0)); sleep 4; cat /run/rudolf/cell-notes", 120)
+    ok('11. Wi-Fi works: the traffic on Wi-Fi, cellular unused; the cellular link in the firewall\'s set', re.search(rf'203\.0\.113\.1 via 192\.168\.50\.1 dev {W0}', o) and 'REACH' in o and f'"{C}"' in o, o)
+    rx = far(f"grep {CF}: /proc/net/dev | tr : \" \" | awk \"{{print \\$3}}\"")
+    o = sh(f"(setsid sh /usr/lib/rudolf/modem watch </dev/null >/dev/null 2>&1 &); sleep 4; R0=$({rx}); "
+           f"T0=$(cut -d' ' -f1 /proc/uptime); ip link set {W0} down; for i in $(seq 50); do ip route get 203.0.113.1 | grep -q 'dev {C}' && break; sleep 0.2; done; T1=$(cut -d' ' -f1 /proc/uptime); echo MS=$(awk \"BEGIN{{print int(($T1-$T0)*1000)}}\"); "
+           f"ping -c3 -W3 203.0.113.1 >/dev/null && echo REACH; R1=$({rx}); echo FARRX=$((R1 - R0)); sleep 4; cat /run/rudolf/cell-notes", 120)
     ms = re.search(r'MS=(\d+)', o); ms = int(ms.group(1)) if ms else 99999; frx = re.search(r'FARRX=(\d+)', o); frx = int(frx.group(1)) if frx else 0
     ok(f'12. Wi-Fi taken down: the traffic on cellular within seconds ({ms} ms), the internet reached through it (counted on the far end)', ms < 5000 and 'REACH' in o and frx >= 3, o)
     ok('...and the notice (both desktops: mobile/notes): mobile data carries the traffic now', 'Using mobile data|The Wi-Fi connection is gone' in o, o)
