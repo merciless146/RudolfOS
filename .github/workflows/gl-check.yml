@@ -13,11 +13,18 @@ on:
       stk: {description: 'Also SuperTuxKart from Flathub (1)', required: false, default: '1'}
   push:
     branches-ignore: [main, gh-pages]
-    paths: ['iso/qt/sb/t160g_t.py', 'iso/qt/sb/glxq/**', '.github/workflows/gl-check.yml']
+    paths: ['iso/qt/sb/t160g_t.py', 'iso/qt/sb/glxq/**', 'iso/qt/host/glx60_t.sh', 'iso/xshim.sh', 'iso/xbuild.sh', 'iso/sys/root/usr/lib/rudolf/selftest', '.github/workflows/gl-check.yml']
   pull_request:
-    paths: ['iso/qt/sb/t160g_t.py', 'iso/qt/sb/glxq/**', '.github/workflows/gl-check.yml']
+    paths: ['iso/qt/sb/t160g_t.py', 'iso/qt/sb/glxq/**', 'iso/qt/host/glx60_t.sh', 'iso/xshim.sh', 'iso/xbuild.sh', 'iso/sys/root/usr/lib/rudolf/selftest', '.github/workflows/gl-check.yml']
 permissions: {contents: read}
 jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: glx60 (xshim.sh's DRI driver folder, xbuild.sh's check, the self-test's linux-opengl)
+        run: sh iso/qt/host/glx60_t.sh
   gl:
     runs-on: ubuntu-24.04
     timeout-minutes: 150

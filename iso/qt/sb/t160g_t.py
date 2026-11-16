@@ -210,9 +210,9 @@ try:
         sh("rm -f /run/rudolf/apps/net.supertuxkart.SuperTuxKart.log")
         r = js("lxApi('apps/run?id=net.supertuxkart.SuperTuxKart&desktop=net.supertuxkart.SuperTuxKart').then(()=>'ok',e=>'ERR '+e.message)", 60); out('apps/run STK:', r)
         time.sleep(150)
-        o = sh(f"grep -iE 'error|fatal|opengl|glx|renderer|driver' /run/rudolf/apps/net.supertuxkart.SuperTuxKart.log | tail -20; tail -c 1500 /run/rudolf/apps/net.supertuxkart.SuperTuxKart.log; echo; pgrep -u acct{UB} -fl supertuxkart | head -3; echo PROCS=$(pgrep -u acct{UB} -f supertuxkart | wc -l)", 60)
+        o = sh(f"grep -iE 'error|fatal|opengl|glx|renderer|driver' /run/rudolf/apps/net.supertuxkart.SuperTuxKart.log | tail -20; tail -c 1500 /run/rudolf/apps/net.supertuxkart.SuperTuxKart.log; echo; n=0; for p in $(pgrep -x supertuxkart); do [ \"$(stat -c %u /proc/$p)\" = {UB} ] && n=$((n+1)); done; echo PROCS=$n", 60)
         vm.shot('stk')
-        ok('8. SuperTuxKart (Flathub) started by the desktop as the account\'s user is running after 150 s, with no OpenGL error', re.search(r'PROCS=[1-9]', o) and not re.search(r'(?i)opengl.*(fail|error|not supported)|no GLX|could not create', o), o)
+        ok('8. SuperTuxKart (Flathub) started by the desktop as the account\'s user is running after 150 s, with no OpenGL error', re.search(r'PROCS=[1-9]', o) and not re.search(r"(?i)opengl.*(fail|error|not supported)|no GLX|could not create|could not initiali[sz]e display|couldn't initiali[sz]e", o), o)
 finally:
     try: vm and vm.stop()
     except Exception: pass

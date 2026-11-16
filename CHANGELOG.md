@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- Fixed: 3D games and other Linux apps that draw with OpenGL work again (Unvanquished showed only "Couldn't load a renderer.", SuperTuxKart installed but did not start): since 1.5.9 the display server looked for the graphics drivers in a folder that does not exist, so it offered OpenGL to no program, whoever ran it (2D apps and the desktop itself were not affected). Settings › System health › Run the self-test now says when the display server offers no OpenGL to Linux apps.
 - Fixed: on the Native desktop an app's window no longer shows the sign-in screen for a moment before the app: the window signs in with the native session without drawing it (it still appears when a window really has to ask, such as the page opened by hand).
 - Fixed: on the Native desktop the display settings (title bars, the taskbar, colours and the accent, light or dark, the background, fonts and sizes, and the rest) change the native desktop and every open app window at once, as on Standard; a window that had missed a change, or Oracle's page, can no longer put the older settings back.
 - Fixed: on the Native desktop the System monitor and Weather widgets kept "CPU: –", "Memory: –", "Windows: 0" and "Loading…" for good after the native desktop started again or at an unlucky moment of signing in; they now always show live values (the monitor counts every open window, Oracle's too), or the weather's error.
