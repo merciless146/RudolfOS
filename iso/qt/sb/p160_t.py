@@ -190,7 +190,7 @@ try:
     js("(async()=>{for(const w of wins.slice())try{w.close()}catch(e){}return 1})()", 30); time.sleep(3)
     cmd_file(sh, dd, h, ['keyring StuckS pw-s2']); n0 = started(app_log(sh, dd)); out('launch:', js(LAUNCH_S, 30))
     wait_log(sh, dd, r'keyring prompting', 120, 2); time.sleep(3)
-    r = js(f"(async()=>{{const l=await apps57();const x=(l||[]).find(a=>a.id=='flatpak:{APP}');if(!x)return 'not listed: '+JSON.stringify(l);return String(await forceQuit57(x,'PortalStand'))}})()", 60)
+    r = js(f"(async()=>{{let l;try{{l=(await rd('apps/running')).apps||[]}}catch(e){{return 'apps/running: '+e.message}}const x=l.find(a=>a.id=='flatpak:{APP}');if(!x)return 'not listed: '+JSON.stringify(l).slice(0,400);return String(await forceQuit57(x,'PortalStand'))}})()", 60)
     time.sleep(8); left = js("document.querySelectorAll('.krp60').length", 30); reqs = sh("ls /run/rudolf/portal/req/ 2>/dev/null; pgrep -f 'portalstand app' || echo none", 30, False)
     ok('S6. Standard: force-quit (Task Manager\'s) while its prompt waits: the app is ended and its prompt goes', r == 'true' and left == 0 and 'none' in reqs and not re.search(r'^k', reqs, re.M), [r, left, reqs])
     cmd_file(sh, dd, h, ['keyring AgainS pw-s3']); out('launch:', js(LAUNCH_S, 30))
@@ -239,7 +239,9 @@ try:
         if (st_get(st, 'portal') or '').startswith('ready'): break
         time.sleep(4)
     out('portal:', st_get(st, 'portal'), [l for l in st.split('\n') if l.startswith(('page ', 'app '))])
-    ok('N1. the shell\'s portal page is ready after signing in, unseen', (st_get(st, 'portal') or '').startswith('ready') and not re.search(r'^app ', st, re.M), [st_get(st, 'portal'), [l for l in st.split('\n') if l.startswith(('page', 'app'))]])
+    good = (st_get(st, 'portal') or '').startswith('ready') and not re.search(r'^app ', st, re.M)
+    ok('N1. the shell\'s portal page is ready after signing in, unseen', good, [st_get(st, 'portal'), [l for l in st.split('\n') if l.startswith(('page', 'app'))]])
+    if not good: out(sh("grep -iE 'portal|page|stopped' /run/rudolf/native-desktop.log | tail -25; ls -la /run/rudolf/portal /run/rudolf/portal/req", 30, False))
     h, dd = data_dir(sh)
     def menu_launch(q, wait_log_pat=r' started \d+', n=1, secs=90):
         st = state(); hs = hit(st, 'start \\S+')
@@ -254,7 +256,7 @@ try:
     # ---- launched from the start menu, no app window open: the keyring's prompt
     cmd_file(sh, dd, h, ['keyring SoberN pw-n1', 'open', 'link https://example.org/signin-n'])
     st = state(); ok('N2a. no app window is open', not re.search(r'^app ', st, re.M), [l for l in st.split('\n') if l.startswith('app ')])
-    s1, lg = menu_launch('PortalStand')
+    n0 = started(app_log(sh, dd)); s1, lg = menu_launch('PortalStand', r' started \d+', n0 + 1)
     ok('N2b. Native: the app opens from the start menu', s1, lg[-400:])
     if not s1: out('started through rudolfd instead (to go on):', api(sh, f'apps/run?id={APP}&desktop={APP}', True))
     ms = prompt_ms(sh, dd, ONTOP, 1); vm.shot('p160n-keyring')
@@ -284,7 +286,12 @@ try:
     for _ in range(30):
         time.sleep(1); st = state()
         if re.search(r'^client .* focus=1 app=taskmgr ', st, re.M): tm = True; break
-    r = tev('taskmgr', f"(async()=>{{const l=await apps57();const x=(l||[]).find(a=>a.id=='flatpak:{APP}');if(!x)return 'not listed';return String(await forceQuit57(x,'PortalStand'))}})()", 60)
+    # (Task Manager's own Force quit, as its button does; an async answer is kept in the page and read after)
+    tev('taskmgr', f"(()=>{{window.__fq='…';(async()=>{{let l;try{{l=(await rd('apps/running')).apps||[]}}catch(e){{return 'apps/running: '+e.message}}const x=l.find(a=>a.id=='flatpak:{APP}');if(!x)return 'not listed: '+JSON.stringify(l).slice(0,300);return String(await forceQuit57(x,'PortalStand'))}})().then(v=>window.__fq=v,e=>window.__fq='ERR '+e.message);return 1}})()", 20)
+    r = ''
+    for _ in range(10):
+        time.sleep(2); r = tev('taskmgr', "String(window.__fq)", 20)
+        if r != '…': break
     time.sleep(8); st = state(); reqs = sh("ls /run/rudolf/portal/req/ 2>/dev/null; pgrep -f 'portalstand app' || echo none", 30, False)
     vm.shot('p160n-forcequit')
     ok('N7. Native: Task Manager (Ctrl+Alt+Del) force-quits it while its prompt waits: the app ends, its prompt goes', tm and r == 'true' and not re.search(r'^ontop do-portal$', st, re.M) and 'none' in reqs and not re.search(r'^k', reqs, re.M), [tm, r, reqs, [l for l in st.split('\n') if l.startswith('ontop')]])

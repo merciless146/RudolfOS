@@ -5527,7 +5527,11 @@ static void pt_tick(void)
 	GHashTableIter it; gpointer k; g_hash_table_iter_init(&it, PT_GIVEN);
 	while (g_hash_table_iter_next(&it, &k, NULL)) if (!g_strv_contains((const char *const *)L, k)) g_hash_table_iter_remove(&it);
 	AppWin *p = pt_page(); gint64 now = g_get_monotonic_time();
-	if (!p) { if (!PT_OPEN_T || now - PT_OPEN_T > 20 * G_USEC_PER_SEC) { PT_OPEN_T = now; app_open_ex("do-portal", NULL, NULL, 2); } }
+	/* (opened through a window whose page is ready: one still loading, as the start-up page just after signing in, may not open it;
+	   waited for up to 10 s) */
+	static int waited; int busy = 0; for (GList *l = WINS; l; l = l->next) { AppWin *w = l->data; if (w->view && !w->closing && webkit_web_view_is_loading(WEBKIT_WEB_VIEW(w->view))) busy = 1; }
+	if (!busy || p) waited = 0; else if (waited < 20) waited++;
+	if (!p) { if ((!PT_OPEN_T || now - PT_OPEN_T > 20 * G_USEC_PER_SEC) && (!busy || waited >= 20)) { waited = 0; PT_OPEN_T = now; fprintf(stderr, "rudolf-native: the portal's page is opened\n"); app_open_ex("do-portal", NULL, NULL, 2); } }
 	else if (!p->pready) { if (now - PT_OPEN_T > 90 * G_USEC_PER_SEC) { fprintf(stderr, "rudolf-native: the portal's page did not start: again\n"); appwin_close_now(p); PT_OPEN_T = 0; } }
 	else {
 		GString *give = g_string_new(NULL);
@@ -5554,6 +5558,7 @@ static gpointer pt_thread(gpointer d)
 				for (int i = 0; r && r->t == 4 && i < r->len; i++) { char id[64] = ""; jstr(r->v[i], "id", id, sizeof id); if (pt_id_ok(id)) { if (ids->len) g_string_append_c(ids, ','); g_string_append(ids, id); } }
 				g_idle_add(pt_got, g_string_free(ids, FALSE)); jfree(v); }
 			if (b) g_byte_array_free(b, TRUE);
+			static int said; if (c != 200 && !said++) fprintf(stderr, "rudolf-native: rudolfd's portal/poll answered %d\n", c);
 		}
 		g_usleep(500000);
 	}
