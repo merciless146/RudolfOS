@@ -156,7 +156,8 @@ try:
     while time.time() < end and js("typeof SHELL!='undefined'&&!!SHELL", 20) is not True: time.sleep(10)
     if js("!!USER&&USER.n=='john'", 20) is not True: out('sign-in again after the move:', signin(js, 'john', 'j1'))
     out('engine/shell:', js("JSON.stringify({engine:RD&&RD.engine,shell:typeof SHELL!='undefined'&&!!SHELL,ua:navigator.userAgent,user:USER&&USER.n})", 30))
-    r = js(f"(()=>{{let d=fs['C:'];for(const k of homePath('DOCUMENTS').slice(1))d=d[k]||(d[k]={{}});d['CALL-TEST.HTML']={json.dumps(CALL)};fsSave();try{{fsFlush()}}catch(e){{}};return homePath('DOCUMENTS').join('/')}})()", 60)
+    MK = f"(()=>{{let d=fs['C:'];for(const k of homePath('DOCUMENTS').slice(1))d=d[k]||(d[k]={{}});d['CALL-TEST.HTML']={json.dumps(CALL)};fsSave();try{{fsFlush()}}catch(e){{}};return homePath('DOCUMENTS').join('/')}})()"
+    r = js(MK, 60)
     # the sign-in screen came back over the desktop in QEMU (signed in all the same): hidden before each page (UNL)
     out('sign-in screen shown:', js("(()=>{const L=document.getElementById('login');const v=L&&getComputedStyle(L).display;window.UNL=()=>{const L=document.getElementById('login');if(L&&USER)L.style.display='none'};UNL();return v})()", 30))
     out('documents:', r); DOCS = r if isinstance(r, str) else 'C:/USERS/JOHN/DOCUMENTS'
@@ -175,6 +176,7 @@ try:
         while time.time() < end and js("typeof acctNew=='function'&&typeof browser=='function'&&typeof frameOwnerRefresh=='function'", 20) is not True: time.sleep(5)
         out('the page reloaded, with the fix:', js("typeof frameOwnerRefresh=='function'", 20))
         out('sign-in:', signin(js, 'john', 'j1'))
+        out('the test page again (the reload dropped it):', js(MK, 60))   # (written in the page's memory only before; gone with the reload)
         js("(()=>{window.UNL=()=>{const L=document.getElementById('login');if(L&&USER)L.style.display='none'};UNL();return 1})()", 30)
         checks(js, sh, vm, g, DOCS, "3 (this tree's page)", ok)
     out('page log:\n' + sh("tail -n 20 /run/rudolf/page.log 2>&1", 30))
