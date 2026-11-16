@@ -60,17 +60,21 @@ static int TOPRES;                            /* the development link's banner, 
 static WebKitHardwareAccelerationPolicy HWPOL = WEBKIT_HARDWARE_ACCELERATION_POLICY_ON_DEMAND;
 static int SOFT;                              /* --draw=soft: the lighter effects, as rudolf-webkit */
 static const char *STATEF;                    /* RUDOLF_NATIVE_STATE: what is where, for the tests */
+/* (2026-11-16, the owner's Vivobook: an app's key as the page has it: its own apps' (notepad), and the Library's, Linux's and Windows'
+   programs' (pkg:rudolf-emberreach, lx:com.discordapp.Discord.desktop, lx:deb-starport-ge): letters, digits and _ - : . +) */
+#define KN 128
+static int key_ok(const char *k) { size_t n = k ? strlen(k) : 0; return n && n < KN && strspn(k, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-:.+") == n; }
 typedef struct {
 	char bs[16], b1[16], b2[16], dyn[48], dm[8], wpfit[12], tb[8], tbstyle[12], tbacm[12], tbbstyle[12], tbbacm[12];
 	char twstyle[12], twacm[12], accent[16], df[8], tz[64], acct[80], wpacct[80], icons[12], ff[48];
-	int tbac, tbbac, h24, wpimg, wallpaper, notes, npins, scale, darkui; double lat, doff, gen; char pins[24][40];
+	int tbac, tbbac, h24, wpimg, wallpaper, notes, npins, scale, darkui; double lat, doff, gen; char pins[24][KN];
 	int nl, dnd, sr, mag, hc, vk, touch;   /* (quick settings' switches: item 3) */
 	int nlv, nlsched; double magz;   /* (1.6.0: Night light's strength and hours, the magnifier's zoom: the shell does them for the whole screen) */
 	int aur, rmotion; char aurm[12], lnm[12];   /* (the dynamic backgrounds' moving parts: test findings N11, N12) */
 	int fs; char tx[16], cb[12];   /* (the title bars: the Font size, the Window text colour, the colour vision filter) */
 } Settings;
 static Settings S;
-typedef struct { char k[40], name[80], icon[48], kw[200], ic[24]; } App;
+typedef struct { char k[KN], name[80], icon[48], kw[200], ic[24]; int x; } App;   /* (x: it opens no window of the page's: a Linux or Windows program, a Library app run by rudolfd) */
 static App *APPS; static int NAPPS; static GHashTable *BG;   /* key -> "dark\nlight" */
 static GHashTable *ICONS;                     /* an app's picture (App.ic) -> GdkPixbuf, as the page draws it (desktop/apps) */
 static GdkPixbuf *pix_from_bytes(GByteArray *b);
@@ -386,7 +390,7 @@ static void wall_make(void)
 static gboolean desk_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (WALL) { cairo_set_source_surface(cr, WALL, 0, 0); cairo_paint(cr); } return TRUE; }
 
 /* ------------------------------------------------------------------ app windows (WebKit, one-app mode) */
-typedef struct AppWin { GtkWidget *win, *view; char k[40], title[256], icon[48]; int closing, id, sized, hidden, modal, pw, ph, wasontop, mfull; gint64 close_t; GdkPixbuf *pix; } AppWin;   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
+typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull; gint64 close_t; GdkPixbuf *pix; } AppWin;   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
 static void ev_flush(AppWin *a);   /* (1.6.0: rudolfd's events that waited for a page) */
 static GList *WINS;   /* AppWin*, oldest first */
 static AppWin *ACTIVE;
@@ -394,6 +398,8 @@ static WebKitWebContext *CTX; static WebKitUserContentManager *UCM; static int N
 static void bar_redraw(void);
 static void app_open(const char *k, const char *file);
 static void app_open_ex(const char *k, const char *file, const char *extra, int hidden);
+static void appwin_show(AppWin *a);
+static void srch_ready(AppWin *a);
 static int oracle_open(const char *file, const char *extra);   /* (1.5.9, 12.3c: Oracle in Rudolf's Chromium) */
 static void page_done(JSCValue *v);
 static void frame_redraw_app(AppWin *a);
@@ -478,7 +484,7 @@ static void on_title(GObject *o, GParamSpec *p, gpointer d)
    __dropFileOnWindow does it for that app, in a page of its own (oneapp59.js oaFs op=drop): its window is the file's */
 static void drop_in(const char *file, const char *k)
 {
-	if (!file || !file[0] || !k || !k[0] || strspn(k, "abcdefghijklmnopqrstuvwxyz0123456789_-") != strlen(k)) return;
+	if (!file || !file[0] || !key_ok(k)) return;
 	char *ex = g_strdup_printf("&op=drop&in=%s", k); app_open_ex("do-fs", file, ex, !strcmp(k, "trash")); g_free(ex);
 }
 static guint VALLOC_T;
@@ -513,6 +519,8 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	for (GList *l = WINS; l; l = l->next) if (((AppWin *)l->data)->id == id) a = l->data;
 	if (!a) return;
 	char op[16] = "", x[256] = "", f[1024] = ""; jsstr(v, "op", op, sizeof op);
+	/* (a program's page, opened unseen (app_open_ex: reveal), that makes a window of the page's after all, or one of its dialogs: shown now) */
+	if (a->hidden && a->reveal && (!strcmp(op, "size") || !strcmp(op, "modal"))) { a->hidden = 0; a->reveal = 0; appwin_show(a); }
 	if (!strcmp(op, "close")) appwin_close_now(a);
 	else if (!strcmp(op, "done")) page_done(v);
 	else if (!strcmp(op, "title")) { jsstr(v, "icon", x, sizeof x); if (x[0]) snprintf(a->icon, sizeof a->icon, "%s", x);
@@ -537,6 +545,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "fs")) { jsstr(v, "on", x, sizeof x); appwin_fs(a, x[0] == '1'); }   /* (the page's own full screen: the window covers the screen, test finding N1) */
 	else if (!strcmp(op, "hfs")) hfs_msg(a, v);
 	else if (!strcmp(op, "ctx")) ctx_msg(a, v);   /* (File Explorer's Folders on this device: the folder picker and its files, N7) */
+	else if (!strcmp(op, "srch")) srch_ready(a);   /* (2026-11-16: the start menu's search, Standard's: its page is ready) */
 	else if (!strcmp(op, "cat")) g_timeout_add(300, apps_reload, NULL);   /* (a page gave its catalogue again: the statue's picture, N12) */
 	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
 	else if (!strcmp(op, "winop")) { jsstr(v, "id", x, sizeof x); jsstr(v, "do", f, sizeof f); win_op(x, f); }
@@ -545,17 +554,17 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "size") && !a->sized) { a->sized = 1; ev_flush(a);
 		/* (a page doing something for the shell (#app=do-NAME) that made an app's window is that app's window now: the taskbar's
 		   button and what is dropped on it are the app's) */
-		jsstr(v, "app", x, sizeof x); if (!strncmp(a->k, "do-", 3) && x[0] && strlen(x) < sizeof a->k && strspn(x, "abcdefghijklmnopqrstuvwxyz0123456789_-") == strlen(x)) { snprintf(a->k, sizeof a->k, "%s", x); bar_redraw(); } jsstr(v, "ww", x, sizeof x); int ww = atoi(x); jsstr(v, "wh", x, sizeof x); int wh = atoi(x); appwin_size(a, ww, wh); }
+		jsstr(v, "app", x, sizeof x); if (!strncmp(a->k, "do-", 3) && key_ok(x)) { snprintf(a->k, sizeof a->k, "%s", x); bar_redraw(); } jsstr(v, "ww", x, sizeof x); int ww = atoi(x); jsstr(v, "wh", x, sizeof x); int wh = atoi(x); appwin_size(a, ww, wh); }
 }
 static gboolean on_crash_reload(gpointer v) { webkit_web_view_reload(WEBKIT_WEB_VIEW(v)); return G_SOURCE_REMOVE; }
 static void on_crash(WebKitWebView *v, WebKitWebProcessTerminationReason r, gpointer d)
 {
 	(void)d; fprintf(stderr, "rudolf-native: an app's page stopped (%d): loading it again\n", (int)r); g_timeout_add_seconds(1, on_crash_reload, v);
 }
-static void clients_forget(AppWin *a);
+static void clients_forget(AppWin *a); static void srch_gone(AppWin *a);
 static void on_win_destroy(GtkWidget *w, gpointer d)
 {
-	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL; if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
+	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL; srch_gone(a); if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
 	clients_forget(a);   /* (its frame goes when X says so: not this window's any more) */
 	g_free(a); bar_redraw(); state_write();
 }
@@ -614,17 +623,18 @@ static void appwin_show(AppWin *a) { if (a->hidden) { gtk_widget_realize(a->view
 static void on_ready(WebKitWebView *v, gpointer d) { (void)v; appwin_show(d); }
 static char *app_url(const char *k, const char *file, int id, const char *extra)
 {
-	char *fe = file ? g_uri_escape_string(file, NULL, FALSE) : NULL;
-	char *u = g_strdup_printf("http://%s:%d/#app=%s&w=%d&sw=%d&sh=%d%s%s%s", HOST, PORT, k, id, SW, SH, fe ? "&file=" : "", fe ? fe : "", extra ? extra : ""); g_free(fe); return u;
+	char *fe = file ? g_uri_escape_string(file, NULL, FALSE) : NULL, *ke = g_uri_escape_string(k, NULL, FALSE);   /* (lx:...: escaped, as "+" would be a space) */
+	char *u = g_strdup_printf("http://%s:%d/#app=%s&w=%d&sw=%d&sh=%d%s%s%s", HOST, PORT, ke, id, SW, SH, fe ? "&file=" : "", fe ? fe : "", extra ? extra : ""); g_free(fe); g_free(ke); return u;
 }
 /* windows asked for and not made yet (made through an open window's window.open: see app_open) */
-typedef struct { char k[40]; int id, hidden; } Pending;
+typedef struct { char k[KN]; int id, hidden, reveal; } Pending;
 static GQueue PENDING = G_QUEUE_INIT;
 static GtkWidget *on_create(WebKitWebView *v, WebKitNavigationAction *na, gpointer d)
 {
 	(void)na; (void)d; Pending *p = g_queue_pop_head(&PENDING);
-	if (!p) return NULL;   /* (a page's own window.open: the desktop page sends websites to the browser itself) */
-	AppWin *a = appwin_new(p->k, v, p->id); a->hidden = p->hidden; g_free(p);
+	if (!p) return NULL;
+	if (!USER_ID[0]) { g_free(p); return NULL; }   /* (asked for before signing out, as the start menu's search page: not made after) */   /* (a page's own window.open: the desktop page sends websites to the browser itself) */
+	AppWin *a = appwin_new(p->k, v, p->id); a->hidden = p->hidden; a->reveal = p->reveal; g_free(p);
 	g_signal_connect(a->view, "ready-to-show", G_CALLBACK(on_ready), a);
 	return a->view;
 }
@@ -635,7 +645,11 @@ static void app_open(const char *k, const char *file) { app_open_ex(k, file, NUL
 /* (extra: more of the address, already escaped; hidden: a page the shell asks to do something, never shown) */
 static void app_open_ex(const char *k, const char *file, const char *extra, int hidden)
 {
-	if (!USER_ID[0] || LOCKED || strspn(k, "abcdefghijklmnopqrstuvwxyz0123456789_-") != strlen(k) || strlen(k) > 39) return;
+	if (!USER_ID[0] || LOCKED || !key_ok(k)) return;
+	/* (2026-11-16, the owner's Vivobook) a Linux or Windows program, or a Library app rudolfd runs (the catalogue's "x"): its page opens it unseen,
+	   as Standard's launch() starts it, and is shown only if it makes a window of the page's after all (a question, a download's dialog) */
+	int reveal = hidden == 2; if (reveal) hidden = 1;   /* (2: the same for a page of the shell's: a file opened from the start menu's search) */
+	{ const App *ap = app_find(k); if (!hidden && ap && ap->x) { hidden = 1; reveal = 1; } }
 	/* (1.5.9, docs/plan-1.5.9.md 12.3c) Oracle runs in Rudolf's own Chromium with the shell's real tabs, as on Standard; without
 	   Chromium or the shell, here as before, and the page says once that websites work better on Standard */
 	static int nochrome_said;
@@ -643,12 +657,12 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
 	ctx_make(); int id = ++NEXTID; char *u = app_url(k, file, id, extra);
 	AppWin *rel = NULL; for (GList *l = WINS; l; l = l->next) { AppWin *x = l->data; if (x->view && webkit_web_view_get_uri(WEBKIT_WEB_VIEW(x->view)) && !x->closing) { rel = x; break; } }
 	if (rel) {
-		Pending *p = g_new0(Pending, 1); snprintf(p->k, sizeof p->k, "%s", k); p->id = id; p->hidden = hidden; g_queue_push_tail(&PENDING, p);
+		Pending *p = g_new0(Pending, 1); snprintf(p->k, sizeof p->k, "%s", k); p->id = id; p->hidden = hidden; p->reveal = reveal; g_queue_push_tail(&PENDING, p);
 		char *js = g_strdup_printf("(typeof webNativeOpen=='function'?webNativeOpen:window.open)(%s,'_blank')", "decodeURIComponent('%s')"), *ue = g_uri_escape_string(u, NULL, FALSE), *js2 = g_strdup_printf(js, ue);
 		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(rel->view), js2, -1, NULL, NULL, NULL, NULL, NULL);
 		g_free(js); g_free(js2); g_free(ue); g_free(u); return;
 	}
-	AppWin *a = appwin_new(k, NULL, id); a->hidden = hidden; webkit_web_view_load_uri(WEBKIT_WEB_VIEW(a->view), u); g_free(u);
+	AppWin *a = appwin_new(k, NULL, id); a->hidden = hidden; a->reveal = reveal; webkit_web_view_load_uri(WEBKIT_WEB_VIEW(a->view), u); g_free(u);
 	appwin_show(a);
 }
 
@@ -896,7 +910,7 @@ static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 	   page has filed it and closes) */
 	if (l && sscanf(l, "hide %d %d %d %d", &hx, &hy, &hw, &hh) == 4) { oracle_hide(hx, hy, hw, hh); g_free(l); return G_SOURCE_CONTINUE; }
 	if (l && !strncmp(l, "msg ", 4)) { const char *b = strchr(l + 4, ' '); if (b && b - (l + 4) < (long)sizeof sid && l[4] != '{') { memcpy(sid, l + 4, b - (l + 4)); sid[b - (l + 4)] = 0; js = b + 1; } }
-	if (js && js[0] == '{' && strspn(sid, "0123456789ABCDEFabcdef") == strlen(sid)) { JV *v = jparse(js); char op[16] = "", app[48] = "", file[1024] = "", pg[48] = "", jp[64] = "", u[1024] = "", pv[4] = "";
+	if (js && js[0] == '{' && strspn(sid, "0123456789ABCDEFabcdef") == strlen(sid)) { JV *v = jparse(js); char op[16] = "", app[KN] = "", file[1024] = "", pg[48] = "", jp[64] = "", u[1024] = "", pv[4] = "";
 		if (v) { jstr(v, "op", op, sizeof op); jstr(v, "app", app, sizeof app); jstr(v, "file", file, sizeof file); jstr(v, "page", pg, sizeof pg); jstr(v, "jump", jp, sizeof jp); jstr(v, "url", u, sizeof u); jstr(v, "priv", pv, sizeof pv); }
 		/* (an app's jump, as its taskbar button's menu: Oracle's New private tab, a window of its own) */
 		if (!strcmp(op, "open") && app[0] && jp[0] && USER_ID[0] && !LOCKED) { tb_jump(app, jp); }   /* (the page knows its jumps; one it does not know closes its window) */
@@ -904,7 +918,7 @@ static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 		else if (!strcmp(op, "mirror") && v) { char id[64] = ""; jstr(v, "id", id, sizeof id); if (id_ok(id)) mirror_to_webkit(id); }   /* (the files Oracle's page saved: the app windows take them) */
 		else if (!strcmp(op, "set") && v) { char id[64] = ""; jstr(v, "id", id, sizeof id); if (id_ok(id)) settings_changed(id, NULL); }   /* (Oracle's page saved its settings) */
 		else if (!strcmp(op, "osd") && v) { char k[16] = "", lv[8] = "", lb[256] = "", n[8] = ""; jstr(v, "k", k, sizeof k); jstr(v, "lv", lv, sizeof lv); jstr(v, "label", lb, sizeof lb); jstr(v, "n", n, sizeof n); osd_show(k, lv, lb, n); }
-		else if (!strcmp(op, "openwith") && v) { char key[48] = ""; jstr(v, "key", key, sizeof key); open_with(file, key); }   /* (Open with: the app's own window) */
+		else if (!strcmp(op, "openwith") && v) { char key[KN] = ""; jstr(v, "key", key, sizeof key); open_with(file, key); }   /* (Open with: the app's own window) */
 		else if ((!strcmp(op, "tor") || !strcmp(op, "untor")) && v && USER_ID[0] && !LOCKED) { static char us[13 * 2048]; jstr(v, "url", us, sizeof us); if (op[0] == 't') tor_open(us); else tor_back(us); }   /* (Part 16: a Tor window with these tabs; and back) */
 		else if (!strcmp(op, "toast") && v) toast_addf(NULL, sid, fget_jv, v);   /* (the page's notification: the native shell's pop-up) */
 		else if (!strcmp(op, "note") && v) nt_notef(fget_jv, v);   /* (and in the centre, counted, at once) */
@@ -1998,7 +2012,7 @@ static void bar_click(int h)
 	if (h < 0) return; Hit *t = &HITS[h];
 	if (!strcmp(t->kind, "start")) menu_toggle();
 	else if (!strcmp(t->kind, "pin")) {
-		for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; Client *c = WM_OK ? client_of_app(a) : NULL; if (!strcmp(a->k, t->arg) && (!c || c->ws == WSC)) { appwin_activate(a); return; } }   /* already open in this workspace: to the front (else a new window, as the page's) */
+		for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; Client *c = WM_OK ? client_of_app(a) : NULL; if (!a->hidden && !strcmp(a->k, t->arg) && (!c || c->ws == WSC)) { appwin_activate(a); return; } }   /* already open in this workspace: to the front (else a new window, as the page's) */
 		for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->ak[0] && !strcmp(c->ak, t->arg) && !c->trans) { wm_focus(c); return; } }   /* (Oracle's Chromium: 12.3c) */
 		app_open(t->arg, NULL);
 	}
@@ -2246,7 +2260,7 @@ static void power(const char *what)
    the page gave it (desktop/apps "menu": its separators, headings, greyed and indented rows), scrolled with the wheel.
    A row under the pointer is the accent colour. Typing searches the list. The shadow falls on what is behind the
    menu: a copy of the screen taken as it opens. */
-typedef struct { char t, a[40], v[40], cls[48], txt[160], ic[24], emo[48]; double op, fs, fw, pl, pt, pb, ls; int up; RGBA col; double y, h; int shown; } MRow;
+typedef struct { char t, a[KN], v[KN], cls[48], txt[160], ic[24], emo[48]; double op, fs, fw, pl, pt, pb, ls; int up; RGBA col; double y, h; int shown; } MRow;
 static MRow *MR; static int NMR;
 static GdkPixbuf *MBG; static double MSCROLL, MCONT; static int MHOV = -1, MX, MY, MW, MH; static double MBX, MBY, MBW, MBH;   /* the window, and the menu in it */
 static char MQ[128]; static GtkWidget *MAREA; static GtkIMContext *MIM;
@@ -2257,7 +2271,8 @@ static void caret_restart(void) { MCARET = 1; if (MCARET_T) g_source_remove(MCAR
 static void im_realize(GtkWidget *w, gpointer im) { gtk_im_context_set_client_window(im, gtk_widget_get_window(w)); gtk_im_context_focus_in(im); }
 /* (the page's html.dark, themeApply: the dark theme for the shell's parts unless turned off, when it is dark: dynResolve's mode) */
 static int menu_dark(void) { return S.darkui && is_dark(); }
-static void menu_hide(void) { if (MENU) gtk_widget_hide(MENU); MHOV = -1; if (MCARET_T) { g_source_remove(MCARET_T); MCARET_T = 0; } state_write(); }
+static void srch_later(void);
+static void menu_hide(void) { if (MENU) gtk_widget_hide(MENU); MHOV = -1; if (MCARET_T) { g_source_remove(MCARET_T); MCARET_T = 0; } srch_later(); state_write(); }
 static void menu_rows_load(JV *cat)
 {
 	free(MR); MR = NULL; NMR = 0; JV *m = jprop(cat, "menu");
@@ -2281,7 +2296,7 @@ static double menu_layout(cairo_t *cr)
 }
 /* (second run, N30; N22) the start menu scrolls: Chromium's classic scrollbar on #menu's right, inside its edge, its content 15 px
    narrower (Rudolf's Chromium shows it; same_t.sh now does too) */
-static double menu_sb(void) { return MCONT + 14 > MBH + .5 ? 15 : 0; }
+static double menu_sb(void) { return !MQ[0] && MCONT + 14 > MBH + .5 ? 15 : 0; }
 static void menu_sb_draw(cairo_t *cr)
 {
 	if (!menu_sb()) return; double x = MBW - 1 - 15, y0 = 1, h = MBH - 2, track = h - 30, tot = MCONT + 14, th = fmax(17, track * MBH / tot), mx = fmax(1, tot - MBH), ty = y0 + 15 + (track - th) * fmin(1, MSCROLL / mx);
@@ -2289,6 +2304,122 @@ static void menu_sb_draw(cairo_t *cr)
 	srca(cr, cx("#8b8b8b", 1)); rrect(cr, x + 3, ty, 9, th, 4.5); cairo_fill(cr);
 	cairo_move_to(cr, x + 3, y0 + 11); cairo_line_to(cr, x + 12, y0 + 11); cairo_line_to(cr, x + 7.5, y0 + 6); cairo_close_path(cr); cairo_fill(cr);
 	cairo_move_to(cr, x + 3, y0 + h - 11); cairo_line_to(cr, x + 12, y0 + h - 11); cairo_line_to(cr, x + 7.5, y0 + h - 6); cairo_close_path(cr); cairo_fill(cr);
+}
+/* (2026-11-16, the owner's Vivobook: "Packages is not in the start menu") the start menu's search as Standard's (shell25.js: #ssearch,
+   #ssres, startSearch): typing hides the list and shows what is found, in groups (Calculator, Apps, Settings, Files) of at most 24
+   rows, the first one chosen; ↑ ↓ move, Enter or a click opens, Escape closes; nothing found: "No results". It searched the start
+   menu's own rows here, so Packages, which Standard finds among the apps (it has no row), was not found. The finding is the page's
+   own startSearch, in a page of the shell's kept unseen while the menu is used (#app=do-srch, oneapp59.js __oaSrch); until it is
+   there, the apps as startSearch finds them (by name and search words), from the catalogue. Drawn as styles25.css draws it: .ssg
+   11 px upper case in --mut, 6px 4px 2px; .ssi 6 px padding, 6 px corners, its picture 22 px wide, 8 px apart, the place in small
+   writing at most 100 px wide at the right; the chosen row (and the one under the pointer) in the accent colour, its writing --acfg.
+   The menu is as tall as what it shows (#ssres at most 55 % of the screen, scrolling), from the taskbar up, as the page's #menu. */
+typedef struct { char g[16], t[200], i[48], sub[200], a[8], arg[1024]; double y, h, tw, sw; int nl; } SItem;   /* (tw, sw: its words' and its place's widths; nl: its words' lines) */
+static SItem SRI[24]; static int NSRI, SRCUR, SRHOV = -1, SRPG_OK; static double SRSCROLL, SRRH, SRCH, MBH0, MBY0; static AppWin *SRPG; static gint64 SRPG_T; static guint SRCLOSE_T;
+static double srch_l11(void) { static double v; if (!v) { cairo_surface_t *t = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1); cairo_t *c = cairo_create(t); double d, a = css_ascent(c, UIFAM, 400, 11, &d); v = a + d; cairo_destroy(c); cairo_surface_destroy(t); } return v; }
+static double srch_l13(void) { static double v; if (!v) { cairo_surface_t *t = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1); cairo_t *c = cairo_create(t); double d, a = css_ascent(c, UIFAM, 400, 13, &d); v = a + d; cairo_destroy(c); cairo_surface_destroy(t); } return v; }
+static cairo_t *srch_cr(void) { static cairo_t *c; if (!c) { cairo_surface_t *t = cairo_image_surface_create(CAIRO_FORMAT_A8, 4, 4); c = cairo_create(t); cairo_surface_destroy(t); } return c; }
+static PangoLayout *srch_words(cairo_t *cr, const SItem *it) { PangoLayout *pl = css_layout(cr, it->t, UIFAM, 400, 13); pango_layout_set_width(pl, (int)(fmax(1, it->tw) * PANGO_SCALE)); pango_layout_set_wrap(pl, PANGO_WRAP_WORD); return pl; }
+/* a row as the page's flex box lays it out (.ssi: 6 px padding, the picture 22 px, 8 px gaps): its words (flex: 1, wrapped, never narrower
+   than their longest word) and its place (at most 100 px, made narrower first, an ellipsis) */
+static void srch_row(SItem *it, double w)
+{
+	cairo_t *cr = srch_cr(); double room = w - 12 - 22 - 8 - 8, sw = it->sub[0] ? fmin(100, css_width(cr, it->sub, UIFAM, 400, 13 * 5 / 6.0)) : 0, minw = 0;
+	{ gchar **w = g_strsplit(it->t, " ", -1); for (int i = 0; w[i]; i++) if (w[i][0]) minw = fmax(minw, css_width(cr, w[i], UIFAM, 400, 13)); g_strfreev(w); }   /* (its longest word: min-content) */
+	it->tw = fmax(room - sw, minw); it->sw = fmax(0, room - it->tw); if (it->sw > sw) it->sw = sw;
+	PangoLayout *pl = srch_words(cr, it); it->nl = MAX(1, pango_layout_get_line_count(pl)); g_object_unref(pl);
+	it->h = 12 + it->nl * srch_l13();
+}
+/* the rows' places (from #ssres's top) and the menu's size for them */
+static void menu_fit(void)
+{
+	if (!MBH0) return;
+	if (!MQ[0]) { MBH = MBH0; MBY = MBY0; return; }
+	double y = 0, w = MBW - 14 - 8; for (int pass = 0; pass < 2; pass++) { y = 0; for (int i = 0; i < NSRI; i++) { if (i == 0 || strcmp(SRI[i].g, SRI[i - 1].g)) y += 6 + srch_l11() + 2; SRI[i].y = y; srch_row(&SRI[i], w); y += SRI[i].h; }
+		if (pass || y <= .55 * SH / Z) break; w -= 15; }   /* (rows narrower by the scrollbar's 15 px when they scroll) */
+	if (!NSRI) y = 6 + srch_l11() + 2;   /* ("No results": a group's heading) */
+	SRCH = y; SRRH = fmin(y, .55 * SH / Z); SRSCROLL = fmin(SRSCROLL, fmax(0, SRCH - SRRH));
+	MBH = fmin(37 + SRRH + 38 + 14, MBH0); MBY = (!strcmp(S.tb, "top") || tb_side()) ? MBY0 : MBY0 + MBH0 - MBH;
+}
+static int srch_sb(void) { return SRCH > SRRH + .5; }
+static void srch_local(void)
+{
+	NSRI = 0; char *q = g_utf8_strdown(MQ, -1); g_strstrip(q); if (!q[0]) { g_free(q); return; }
+	for (int i = 0; i < NAPPS && NSRI < 24; i++) { char *n = g_utf8_strdown(APPS[i].name, -1); int m = strstr(n, q) || strstr(APPS[i].kw, q); g_free(n); if (!m) continue;
+		SItem *it = &SRI[NSRI++]; memset(it, 0, sizeof *it); snprintf(it->g, sizeof it->g, "Apps"); snprintf(it->t, sizeof it->t, "%s", APPS[i].name); snprintf(it->i, sizeof it->i, "%s", APPS[i].icon); snprintf(it->a, sizeof it->a, "app"); snprintf(it->arg, sizeof it->arg, "%s", APPS[i].k); }
+	g_free(q);
+}
+static void srch_got(GObject *src, GAsyncResult *res, gpointer d)
+{
+	char *q = d; JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(src), res, NULL); char *t = v && jsc_value_is_string(v) ? jsc_value_to_string(v) : NULL; if (v) g_object_unref(v);
+	if (t && t[0] == '{' && MENU && gtk_widget_get_visible(MENU) && !strcmp(q, MQ)) { JV *all = jparse(t), *l = jprop(all, "r"); NSRI = 0;
+		for (int i = 0; l && i < l->len && NSRI < 24; i++) { JV *o = l->v[i]; SItem *it = &SRI[NSRI]; memset(it, 0, sizeof *it); jstr(o, "g", it->g, sizeof it->g); jstr(o, "t", it->t, sizeof it->t); jstr(o, "i", it->i, sizeof it->i); jstr(o, "sub", it->sub, sizeof it->sub); jstr(o, "a", it->a, sizeof it->a);
+			jstr(o, !strcmp(it->a, "file") ? "p" : !strcmp(it->a, "copy") ? "v" : "k", it->arg, sizeof it->arg); if (it->t[0]) NSRI++; }
+		jfree(all); if (SRCUR >= NSRI) SRCUR = 0; menu_fit(); if (MAREA) gtk_widget_queue_draw(MAREA); state_write(); }
+	g_free(t); g_free(q);
+}
+static void srch_ask(void)
+{
+	if (!SRPG || !SRPG_OK || !g_list_find(WINS, SRPG) || !SRPG->view) return;
+	GString *js = g_string_new("window.__oaSrch?__oaSrch("); json_esc(js, MQ); g_string_append(js, "):''");
+	webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(SRPG->view), js->str, -1, NULL, NULL, NULL, srch_got, g_strdup(MQ)); g_string_free(js, TRUE);
+}
+/* (the page that searches: started when the menu opens, closed a while after it was last used) */
+static void srch_page(void)
+{
+	if (SRCLOSE_T) { g_source_remove(SRCLOSE_T); SRCLOSE_T = 0; }
+	if (SRPG && g_list_find(WINS, SRPG)) return; SRPG = NULL; SRPG_OK = 0;
+	if (SRPG_T && g_get_monotonic_time() - SRPG_T < 30 * G_USEC_PER_SEC) return;   /* (asked for already, coming) */
+	SRPG_T = g_get_monotonic_time(); app_open_ex("do-srch", NULL, NULL, 1);
+}
+static void srch_gone(AppWin *a) { if (a == SRPG) { SRPG = NULL; SRPG_OK = 0; } }
+static void srch_ready(AppWin *a) { SRPG = a; SRPG_OK = 1; SRPG_T = 0; if (MENU && gtk_widget_get_visible(MENU) && MQ[0]) srch_ask(); }
+static gboolean srch_close(gpointer d) { (void)d; SRCLOSE_T = 0; if (MENU && gtk_widget_get_visible(MENU)) return G_SOURCE_REMOVE; if (SRPG && g_list_find(WINS, SRPG)) appwin_close_now(SRPG); SRPG = NULL; SRPG_OK = 0; return G_SOURCE_REMOVE; }
+static void srch_later(void) { if (SRCLOSE_T) g_source_remove(SRCLOSE_T); SRCLOSE_T = SRPG || SRPG_T ? g_timeout_add_seconds(90, srch_close, NULL) : 0; }
+static void srch_update(void)
+{
+	SRSCROLL = 0; SRCUR = 0; SRHOV = -1;
+	if (!MQ[0]) NSRI = 0; else { if (!SRPG_OK) srch_local(); if (SRPG_OK) srch_ask(); else srch_page(); }
+	menu_fit();
+}
+static void srch_do(int i)
+{
+	if (i < 0 || i >= NSRI) return; SItem it = SRI[i]; menu_hide(); MQ[0] = 0; NSRI = 0;
+	if (!strcmp(it.a, "app")) { for (GList *l = WINS; l; l = l->next) { AppWin *w = l->data; if (!w->hidden && !strcmp(w->k, it.arg)) { appwin_activate(w); return; } } app_open(it.arg, NULL); }
+	else if (!strcmp(it.a, "set")) { if (it.arg[0] && id_ok(it.arg)) tb_settings(it.arg); else sc_settings(); }
+	else if (!strcmp(it.a, "file") && it.arg[0]) app_open_ex("do-fs", it.arg, "&op=open", 2);   /* (the file with its app, as the page's openPath) */
+	else if (!strcmp(it.a, "copy")) gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), it.arg, -1);   /* (the sum's value copied, as the page's) */
+}
+/* the found rows: which one is at this place of the menu's window (-1: none) */
+static int srch_at(double ex, double ey)
+{
+	if (!MQ[0]) return -1; double x = ex / Z - (MBX - MX / Z), y = ey / Z - (MBY - MY / Z) - 38 + SRSCROLL;
+	if (x < 11 || x > MBW - 11 - (srch_sb() ? 15 : 0) || y < SRSCROLL || y > SRSCROLL + SRRH) return -1;
+	for (int i = 0; i < NSRI; i++) if (y >= SRI[i].y && y < SRI[i].y + SRI[i].h) return i;
+	return -1;
+}
+static void srch_draw(cairo_t *cr, double y0, int dark, RGBA ink)
+{
+	double x0 = 11, w = MBW - 14 - 8 - (srch_sb() ? 15 : 0); RGBA mut = cx(dark ? "#94a3b8" : "#6b7280", 1);
+	cairo_save(cr); cairo_rectangle(cr, x0, y0, MBW - 22, SRRH); cairo_clip(cr); cairo_translate(cr, 0, y0 - SRSCROLL);
+	if (!NSRI) css_text(cr, "NO RESULTS", UIFAM, 400, 11, x0 + 4, 6, 0, mut, 0);
+	for (int i = 0; i < NSRI; i++) { SItem *it = &SRI[i];
+		if (i == 0 || strcmp(it->g, SRI[i - 1].g)) { char *u = g_utf8_strup(it->g, -1); PangoLayout *pl = css_layout(cr, u, UIFAM, 400, 11); PangoAttrList *al = pango_attr_list_new();
+			pango_attr_list_insert(al, pango_attr_letter_spacing_new((int)(.44 * PANGO_SCALE))); pango_layout_set_attributes(pl, al); pango_attr_list_unref(al);
+			double a, d; css_metrics(pl, &a, &d); srca(cr, mut); cairo_move_to(cr, x0 + 4, round(it->y - 2 - srch_l11() + a) - pango_layout_get_baseline(pl) / (double)PANGO_SCALE); pango_cairo_show_layout(cr, pl); g_object_unref(pl); g_free(u); }
+		int on = i == SRCUR || i == SRHOV; RGBA c = ink, cs = mut;
+		if (on) { Box h; memset(&h, 0, sizeof h); h.bg = ca(accent(), 1); h.rad = 6; box_paint(cr, x0, it->y, w, it->h, &h); c = cs = ink_black(accent()) ? cx("#000000", 1) : cx("#ffffff", 1); }
+		double ty = it->y + 6, mid = ty + (it->nl - 1) * srch_l13() / 2;   /* (align-items: center) */
+		double iw = css_width(cr, it->i, UIFAM, 400, 13); css_text(cr, it->i, UIFAM, 400, 13, x0 + 6 + fmax(0, (22 - iw) / 2), mid, srch_l13(), c, 0);
+		{ PangoLayout *pl = srch_words(cr, it); double a, d; css_metrics(pl, &a, &d); double base = round(ty + floor((srch_l13() - (a + d)) / 2) + a); srca(cr, c);
+		  for (int k = 0; k < pango_layout_get_line_count(pl); k++) { cairo_move_to(cr, x0 + 6 + 22 + 8, base + k * srch_l13()); pango_cairo_show_layout_line(cr, pango_layout_get_line_readonly(pl, k)); }   /* (each line "normal" tall, as Blink's) */
+		  g_object_unref(pl); }
+		if (it->sw > 0) css_text(cr, it->sub, UIFAM, 400, 13 * 5 / 6.0, x0 + w - 6 - it->sw, mid, srch_l13(), cs, it->sw); }
+	cairo_restore(cr);
+	if (srch_sb()) { double x = x0 + MBW - 22 - 15, h = SRRH, track = h - 30, th = fmax(17, track * SRRH / SRCH), ty = y0 + 15 + (track - th) * fmin(1, SRSCROLL / fmax(1, SRCH - SRRH));
+		srca(cr, cx("#fcfcfc", 1)); cairo_rectangle(cr, x, y0, 15, h); cairo_fill(cr); srca(cr, cx("#8b8b8b", 1)); rrect(cr, x + 3, ty, 9, th, 4.5); cairo_fill(cr);
+		cairo_move_to(cr, x + 3, y0 + 11); cairo_line_to(cr, x + 12, y0 + 11); cairo_line_to(cr, x + 7.5, y0 + 6); cairo_close_path(cr); cairo_fill(cr);
+		cairo_move_to(cr, x + 3, y0 + h - 11); cairo_line_to(cr, x + 12, y0 + h - 11); cairo_line_to(cr, x + 7.5, y0 + h - 6); cairo_close_path(cr); cairo_fill(cr); }
 }
 static gboolean menu_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
@@ -2307,14 +2438,20 @@ static gboolean menu_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	/* the search box (.ssbox: 2px 4px 6px; the input 29 px, 6px 8px, 13.33 px, focused: a 2 px outline of the accent colour) */
 	{ double ix = cx0 + 4, iy = y + 2, iw = cw - 8, ih = 29; Box o; memset(&o, 0, sizeof o); o.bg = ca(accent(), 1); o.rad = 8; box_paint(cr, ix - 2, iy - 2, iw + 4, ih + 4, &o);
 		Box in; memset(&in, 0, sizeof in); in.bg = cx(dark ? "#0b1220" : "#ffffff", 1); in.bw = 1; in.bc = cx(dark ? "#334155" : "#d1d5db", 1); in.rad = 6; box_paint(cr, ix, iy, iw, ih, &in);
-		cairo_save(cr); cairo_rectangle(cr, ix + 9, iy + 1, iw - 18, ih - 2); cairo_clip(cr);   /* (an input's text is cut at its padding, no ellipsis) */
+		/* (2026-11-16) a search field with words: Chromium's ✕ at its right (9 px, its blue shaded down), which takes room from the words */
+		if (MQ[0]) { double cxx = ix + iw - 17, cyy = iy + ih / 2 - .5; cairo_pattern_t *g = cairo_pattern_create_linear(0, cyy - 4.5, 0, cyy + 4.5);
+			cairo_pattern_add_color_stop_rgb(g, 0, .25, .46, .73); cairo_pattern_add_color_stop_rgb(g, 1, .16, .28, .47); cairo_set_source(cr, g); cairo_set_line_width(cr, 2); cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+			cairo_move_to(cr, cxx - 3, cyy - 3); cairo_line_to(cr, cxx + 3, cyy + 3); cairo_move_to(cr, cxx + 3, cyy - 3); cairo_line_to(cr, cxx - 3, cyy + 3); cairo_stroke(cr); cairo_pattern_destroy(g); }
+		cairo_save(cr); cairo_rectangle(cr, ix + 9, iy + 1, iw - 18 - (MQ[0] ? 13 : 0), ih - 2); cairo_clip(cr);   /* (an input's text is cut at its padding, no ellipsis) */
 		double tw = css_text(cr, MQ[0] ? MQ : "Search apps, settings and files", UIFAM, 400, 40 / 3.0, ix + 9, iy + 7, 0, MQ[0] ? ink : cx("#757575", 1), 0); cairo_restore(cr);
 		if (MCARET) { srca(cr, ink); cairo_rectangle(cr, round(ix + 9 + (MQ[0] ? tw : 0)), iy + 7, 1, 15); cairo_fill(cr); } }
+	if (MQ[0]) { srch_draw(cr, y + 31, dark, ink); y += SRRH; }   /* (what is found, under the box: the list is hidden) */
 	y += 37;
 	/* the account (.mh: 600 13px, 8px 10px 10px, a line below, 4 px apart) */
 	{ char h[200]; snprintf(h, sizeof h, "👤 %s%s", USER_N, !strcmp(USER_R, "admin") ? " ★" : "");
 		css_text(cr, h, UIFAM, 600, 13, cx0 + 10, y + 8, 0, ink, cw - 20); srca(cr, cx(dark ? "#334155" : "#d1d5db", 1)); cairo_rectangle(cr, cx0, y + 33, cw, 1); cairo_fill(cr); y += 38; }
 	/* the list */
+	if (MQ[0]) { cairo_restore(cr); return TRUE; }
 	double ly = y; MCONT = menu_layout(cr) + 75;
 	for (int i = 0; i < NMR; i++) { MRow *r = &MR[i]; if (!r->shown) continue; double ry = ly + r->y;
 		if (ry > MBH || ry + r->h < 0) continue;
@@ -2347,45 +2484,49 @@ static int menu_row_at(double ex, double ey)
 static void power_dialog(void);
 static void menu_do(int i)
 {
-	if (i < 0 || i >= NMR) return; MRow *r = &MR[i]; char a[40]; snprintf(a, sizeof a, "%s", r->a[0] ? r->a : r->v); menu_hide();
+	if (i < 0 || i >= NMR) return; MRow *r = &MR[i]; char a[KN]; snprintf(a, sizeof a, "%s", r->a[0] ? r->a : r->v); menu_hide();
 	if (!strcmp(a, "logoff")) { power("logout"); return; }
 	if (!strcmp(a, "off")) { power_dialog(); return; }
 	if (!strcmp(a, "docs")) { app_open("explorer", "C:\\PROGRAMS"); return; }
-	if (app_find(a)) { for (GList *l = WINS; l; l = l->next) { AppWin *w = l->data; if (!strcmp(w->k, a)) { appwin_activate(w); return; } } app_open(a, NULL); return; }
+	if (app_find(a)) { for (GList *l = WINS; l; l = l->next) { AppWin *w = l->data; if (!w->hidden && !strcmp(w->k, a)) { appwin_activate(w); return; } } app_open(a, NULL); return; }
 	/* (the page's other actions, in a one-app window: oneapp59.js "do-NAME") */
-	char k[48]; snprintf(k, sizeof k, "do-%s", a); app_open(k, NULL);
+	char k[KN + 4]; snprintf(k, sizeof k, "do-%s", a); app_open(k, NULL);
 }
-static gboolean menu_motion(GtkWidget *w, GdkEventMotion *e, gpointer d) { (void)w; (void)d; int h = menu_row_at(e->x, e->y); if (h != MHOV) { MHOV = h; gtk_widget_queue_draw(MAREA); } return TRUE; }
-static gboolean menu_leave(GtkWidget *w, GdkEventCrossing *e, gpointer d) { (void)w; (void)e; (void)d; if (MHOV != -1) { MHOV = -1; gtk_widget_queue_draw(MAREA); } return TRUE; }
+static gboolean menu_motion(GtkWidget *w, GdkEventMotion *e, gpointer d) { (void)w; (void)d; if (MQ[0]) { int s = srch_at(e->x, e->y); if (s != SRHOV) { SRHOV = s; gtk_widget_queue_draw(MAREA); } return TRUE; } int h = menu_row_at(e->x, e->y); if (h != MHOV) { MHOV = h; gtk_widget_queue_draw(MAREA); } return TRUE; }
+static gboolean menu_leave(GtkWidget *w, GdkEventCrossing *e, gpointer d) { (void)w; (void)e; (void)d; if (SRHOV != -1) { SRHOV = -1; gtk_widget_queue_draw(MAREA); } if (MHOV != -1) { MHOV = -1; gtk_widget_queue_draw(MAREA); } return TRUE; }
 static gboolean menu_click(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
 	(void)w; (void)d; if (e->type != GDK_BUTTON_PRESS || e->button != 1) return TRUE;
 	double x = e->x / Z - (MBX - MX / Z), y = e->y / Z - (MBY - MY / Z);
 	if (x < 0 || y < 0 || x > MBW || y > MBH) { menu_hide(); return TRUE; }   /* (outside: the shadow) */
+	if (MQ[0]) { srch_do(srch_at(e->x, e->y)); return TRUE; }
 	menu_do(menu_row_at(e->x, e->y)); return TRUE;
 }
 static gboolean menu_scroll(GtkWidget *w, GdkEventScroll *e, gpointer d)
 {
 	(void)w; (void)d; double dy = e->direction == GDK_SCROLL_UP ? -100 : e->direction == GDK_SCROLL_DOWN ? 100 : 0;
 	if (e->direction == GDK_SCROLL_SMOOTH) { double sx, sy; gdk_event_get_scroll_deltas((GdkEvent *)e, &sx, &sy); dy = sy * 100; }
+	if (MQ[0]) { SRSCROLL = fmin(fmax(0, SRCH - SRRH), fmax(0, SRSCROLL + dy)); SRHOV = srch_at(e->x, e->y); gtk_widget_queue_draw(MAREA); state_write(); return TRUE; }
 	double mx = fmax(0, MCONT + 14 - MBH); MSCROLL = fmin(mx, fmax(0, MSCROLL + dy)); MHOV = menu_row_at(e->x, e->y); gtk_widget_queue_draw(MAREA); state_write(); return TRUE;
 }
 static gboolean on_menu_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 {
 	(void)w; (void)d;
 	if (e->keyval == GDK_KEY_Escape) { menu_hide(); return TRUE; }
+	if (MQ[0] && (e->keyval == GDK_KEY_Return || e->keyval == GDK_KEY_KP_Enter)) { srch_do(SRCUR); return TRUE; }
+	if (MQ[0] && (e->keyval == GDK_KEY_Down || e->keyval == GDK_KEY_Up)) { SRCUR = e->keyval == GDK_KEY_Down ? MIN(NSRI - 1, SRCUR + 1) : MAX(0, SRCUR - 1); if (SRCUR < 0) SRCUR = 0; gtk_widget_queue_draw(MAREA); state_write(); return TRUE; }
 	if (e->keyval == GDK_KEY_Return || e->keyval == GDK_KEY_KP_Enter) { for (int i = 0; i < NMR; i++) if (MR[i].shown && MR[i].t == 'l' && !strstr(MR[i].cls, "offh")) { menu_do(MHOV >= 0 ? MHOV : i); break; } return TRUE; }
 	if (e->keyval == GDK_KEY_Down || e->keyval == GDK_KEY_Up) { int s = e->keyval == GDK_KEY_Down ? 1 : -1, i = MHOV;
 		for (int n = 0; n < NMR; n++) { i = (i + s + NMR) % NMR; if (MR[i].shown && MR[i].t == 'l' && !strstr(MR[i].cls, "offh")) break; } MHOV = i; gtk_widget_queue_draw(MAREA); return TRUE; }
 	if (e->keyval == GDK_KEY_BackSpace) { size_t n = strlen(MQ); if (n) { const char *p = g_utf8_find_prev_char(MQ, MQ + n); MQ[p ? p - MQ : 0] = 0; } }
 	else { if (e->state & (GDK_CONTROL_MASK | GDK_MOD1_MASK)) return FALSE; gtk_im_context_filter_keypress(MIM, e); return TRUE; }
-	MSCROLL = 0; MHOV = -1; caret_restart(); gtk_widget_queue_draw(MAREA); state_write(); return TRUE;
+	MSCROLL = 0; MHOV = -1; srch_update(); caret_restart(); gtk_widget_queue_draw(MAREA); state_write(); return TRUE;
 }
 static void menu_commit(GtkIMContext *im, const char *str, gpointer d)
 {
 	(void)im; (void)d; size_t l = strlen(MQ), n = strlen(str); for (const char *c = str; *c; c++) if ((unsigned char)*c < 32) return;
 	if (l + n < sizeof MQ) { memcpy(MQ + l, str, n); MQ[l + n] = 0; }
-	MSCROLL = 0; MHOV = -1; caret_restart(); gtk_widget_queue_draw(MAREA); state_write();
+	MSCROLL = 0; MHOV = -1; srch_update(); caret_restart(); gtk_widget_queue_draw(MAREA); state_write();
 }
 /* (a key's grab, the shell's own shortcuts: item 5, takes the keyboard for a moment without moving its focus: the menu stays then) */
 static gboolean menu_out_late(gpointer d)
@@ -2422,6 +2563,7 @@ static void menu_toggle(void)
 	double vh = (SH - TOPRES) / Z; MBW = 244; MBH = fmin(MCONT, vh - 70) + 14; MBX = 2; MBY = top ? TOPRES / Z + 50 : (SH / Z) - 48 - MBH;
 	/* (body.left #menu: left var(--bw), top 4px; body.right #menu: right var(--bw); --bw is the bar's width and 4 px) */
 	if (tb_side()) { MBY = TOPRES / Z + 4; MBX = tb_side() == 1 ? BARW / Z + 4 : SW / Z - (BARW / Z + 4) - MBW; }
+	MBH0 = MBH; MBY0 = MBY; NSRI = 0; srch_page();   /* (its full size, which the search's shorter menu stays inside; the page that searches) */
 	/* the window: the menu and its shadow's room (32 px around, 12 px lower), on the screen */
 	int x0 = (int)floor((MBX - 32) * Z), y0 = (int)floor((MBY - 20) * Z), x1 = (int)ceil((MBX + MBW + 32) * Z), y1 = (int)ceil((MBY + MBH + 44) * Z);
 	MX = MAX(0, x0); MY = MAX(TOPRES, y0); MW = MIN(SW, x1) - MX; MH = MIN(top || tb_side() ? SH : SH - BARH, y1) - MY;
@@ -2754,7 +2896,7 @@ static void settings_load(void)
 	if (!n.bs[0]) snprintf(n.bs, sizeof n.bs, "solid"); if (!n.b1[0]) snprintf(n.b1, sizeof n.b1, "#008080"); if (!n.b2[0]) snprintf(n.b2, sizeof n.b2, "#000080");
 	if (!n.tb[0]) snprintf(n.tb, sizeof n.tb, "bottom"); if (!n.wpfit[0]) snprintf(n.wpfit, sizeof n.wpfit, "fill"); if (!n.dm[0]) snprintf(n.dm, sizeof n.dm, "auto");
 	jstr(v, "acct", n.acct, sizeof n.acct); jstr(v, "wpacct", n.wpacct, sizeof n.wpacct); n.gen = jnum(v, "gen", 0); n.notes = (int)jnum(v, "notes", 0); n.wallpaper = jbool(v, "wallpaper");
-	JV *p = jprop(v, "pins"); for (int i = 0; i < 24; i++) { JV *o = jat(p, i); if (!o) break; if (o->t == 3) snprintf(n.pins[n.npins++], 40, "%s", o->s);  }
+	JV *p = jprop(v, "pins"); for (int i = 0; i < 24; i++) { JV *o = jat(p, i); if (!o) break; if (o->t == 3) snprintf(n.pins[n.npins++], KN, "%s", o->s);  }
 	int moved = strcmp(n.tb, S.tb) != 0 || n.scale != S.scale; S = n; ui_family(S.ff); snd_set(s);   /* (the desktop's sounds: report 2) */
 	wg_load(v);   /* (the widgets: item 2) */
 	cal_events_load(v);   /* (the calendar under the clock: item 3) */
@@ -2774,7 +2916,7 @@ static void apps_load(void)
 	JV *v = jget("/api/desktop/apps"); if (!v) return;
 	JV *a = jprop(v, "apps"); App *L = NULL; int n = 0;
 	for (int i = 0; i < 400; i++) { JV *o = jat(a, i); if (!o) break; L = realloc(L, sizeof *L * (n + 1)); App *x = &L[n++]; memset(x, 0, sizeof *x);
-		jstr(o, "k", x->k, sizeof x->k); jstr(o, "name", x->name, sizeof x->name); jstr(o, "icon", x->icon, sizeof x->icon); jstr(o, "kw", x->kw, sizeof x->kw); jstr(o, "ic", x->ic, sizeof x->ic); }
+		jstr(o, "k", x->k, sizeof x->k); jstr(o, "name", x->name, sizeof x->name); jstr(o, "icon", x->icon, sizeof x->icon); jstr(o, "kw", x->kw, sizeof x->kw); jstr(o, "ic", x->ic, sizeof x->ic); x->x = jbool(o, "x"); }
 	/* the apps' pictures (PNG, as data: addresses) and the version */
 	if (ICONS) g_hash_table_destroy(ICONS); ICONS = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_object_unref);
 	JV *ics = jprop(v, "icons");
@@ -2950,7 +3092,7 @@ enum { DLG_NONE, DLG_RENAME, DLG_OPENWITH };
 static GtkWidget *DGWIN, *DGAREA; static GdkPixbuf *DGBG; static GtkIMContext *DGIM;
 static int DGK, DGHOV = -1, DGFOC, DGSEL, DGCARET, DGALW, DGBUSY; static guint DGCARET_T;
 static char DGFILE[512], DGNAME[128], DGVAL[128], DGMSG[200], DGEXT[16];
-typedef struct { char k[40], name[80], icon[24]; } Opener;
+typedef struct { char k[KN], name[80], icon[24]; } Opener;
 static Opener DGAPPS[12]; static int NDGAPPS;
 typedef struct { double x, y, w, h; } DRect;
 static DRect DGB[16]; static int NDGB;   /* the buttons (Rename: Cancel, Rename; Open with: the apps, then Cancel), the box */
@@ -3085,7 +3227,7 @@ static void hfs_msg(AppWin *a, JSCValue *v)
 }
 static void open_with(const char *file, const char *key)
 {
-	if (!file || !file[0] || !key || !key[0] || strlen(key) > 39 || strspn(key, "abcdefghijklmnopqrstuvwxyz0123456789_-") != strlen(key) || !USER_ID[0] || LOCKED) return;
+	if (!file || !file[0] || !key_ok(key) || !USER_ID[0] || LOCKED) return;
 	char *ex = g_strdup_printf("&op=openwith&key=%s", key); app_open_ex("do-fs", file, ex, 0); g_free(ex);
 }
 static void dg_pick(int i)
@@ -3167,7 +3309,7 @@ static void page_done(JSCValue *v)
    the nearest free cell (kept by rudolfd for the shell: desktop/cells, the page's places used until then); the
    icon's menu (Open) and the desktop's (Arrange icons by name, Refresh, Display Properties, File Explorer, Task Manager,
    Settings). Files on the desktop and dropping files come with item 1's second part. */
-typedef struct { char n[80], k[40], kind[12], ic[24], icon[48], cell[96], fp[512]; int c, r, sel, full, own; } DIcon;   /* (own: a shortcut of the account's own, the page's .dapp) */
+typedef struct { char n[80], k[KN], kind[12], ic[24], icon[48], cell[96], fp[512]; int c, r, sel, full, own; } DIcon;   /* (own: a shortcut of the account's own, the page's .dapp) */
 static struct { int i, on, moved; double sx, sy, dx, dy; } DID = { -1, 0, 0, 0, 0, 0, 0 };   /* (an icon being dragged, DX DY from its place) */   /* (fp: a file's or folder's path, cell: the page's key for its place) */
 static DIcon DI[96]; static int NDI; static char DI_ACCT[80]; static int DI_IS = 100;
 static char DI_MENU[8] = "-";   /* (the menu last opened, for the tests) */
@@ -4149,9 +4291,9 @@ static int wg_kind_n(const char *t) { int c = 0; for (int i = 0; i < NWG; i++) i
    (Restore, Minimize, Maximize, Always on top, Center on screen, Close, Force quit, the taskbar's rows) it does, the
    rest the page does (a window's own rows in its page, __oaWinMenuDo; pinning, muting, Settings at a page and the jumps
    in a page of their own). */
-typedef struct { char k[40], label[96], icon[24], key[32]; } Jump;
+typedef struct { char k[KN], label[96], icon[24], key[32]; } Jump;
 static Jump JUMPS[16]; static int NJUMPS;
-static Window TBM_W; static char TBM_K[40]; static double TBM_X, TBM_Y;   /* (the window or app whose menu it is; where) */
+static Window TBM_W; static char TBM_K[KN]; static double TBM_X, TBM_Y;   /* (the window or app whose menu it is; where) */
 static void jumps_load(JV *v)
 {
 	NJUMPS = 0; JV *j = jprop(v, "jumps");
@@ -4234,7 +4376,7 @@ static void on_tb_act(const char *a)
 	else if (!strncmp(a, "pclose:", 7)) { GList *L = g_list_copy(WINS); for (GList *l = L; l; l = l->next) { AppWin *w = l->data; if (g_list_find(WINS, w) && !w->hidden && !strcmp(w->k, a + 7)) appwin_ask_close(w); } g_list_free(L); }
 	if (!strncmp(a, "pclose:", 7)) { GList *L = g_list_copy(CLIENTS); for (GList *l = L; l; l = l->next) { Client *c = l->data; if (g_list_find(CLIENTS, c) && c->ak[0] && !strcmp(c->ak, a + 7)) wm_close(c); } g_list_free(L); }
 	else if (!strncmp(a, "pin0:", 5) || !strncmp(a, "pin1:", 5)) { char *e = qesc(a + 5), ex[120]; snprintf(ex, sizeof ex, "&k=%s&on=%c", e, a[3]); g_free(e); tb_page("do-pin", ex, 1); }
-	else if (!strncmp(a, "jump:", 5)) { char k[40]; const char *bar = strchr(a + 5, '|'); if (!bar) return; snprintf(k, sizeof k, "%.*s", (int)(bar - a - 5), a + 5); tb_jump(k, bar + 1); }
+	else if (!strncmp(a, "jump:", 5)) { char k[KN]; const char *bar = strchr(a + 5, '|'); if (!bar) return; snprintf(k, sizeof k, "%.*s", (int)(bar - a - 5), a + 5); tb_jump(k, bar + 1); }
 	else if (!strncmp(a, "wn:", 3) || !strncmp(a, "wp:", 3)) {
 		Client *c = client_of(TBM_W); if (!c) return;
 		if (!strcmp(a, "wn:restore")) { if (c->min) wm_focus(c); else if (c->max) wm_maximise(c, 0); }
@@ -4244,7 +4386,7 @@ static void on_tb_act(const char *a)
 		else if (!strcmp(a, "wn:top")) { c->ontop = !c->ontop; wm_focus(c); }
 		else if (!strcmp(a, "wn:center")) { if (c->max) wm_maximise(c, 0); wm_focus(c); c->x = desk_left() + MAX(0, (desk_w() - fw_of(c)) / 2); c->y = work_top() + MAX(0, (work_h() - fh_of(c)) / 2); place(c); state_write(); }
 		else if (!strcmp(a, "wn:close")) { if (c->app) appwin_ask_close(c->app); else wm_close(c); }
-		else if (!strcmp(a, "wn:fq")) { if (c->app) { char k[40]; snprintf(k, sizeof k, "%s", c->app->k); GList *L = g_list_copy(WINS);   /* (the page's: every window of the app, without asking) */
+		else if (!strcmp(a, "wn:fq")) { if (c->app) { char k[KN]; snprintf(k, sizeof k, "%s", c->app->k); GList *L = g_list_copy(WINS);   /* (the page's: every window of the app, without asking) */
 				for (GList *l = L; l; l = l->next) { AppWin *w = l->data; if (g_list_find(WINS, w) && !w->hidden && !strcmp(w->k, k)) appwin_close_now(w); } g_list_free(L); } else XKillClient(DPY, c->w); }
 		else if (!strncmp(a, "wp:", 3) && c->app && c->app->view) { GString *js = g_string_new("window.__oaWinMenuDo&&__oaWinMenuDo("); json_esc(js, a + 3); g_string_append_c(js, ')');
 			webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(c->app->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE); }
@@ -6002,7 +6144,10 @@ static void state_write(void)
 	g_string_append_printf(s, "screen %d %d\nuser %s\nlocked %d\nsignin %d\nmenu %d\nbar %d %d %d %d %d\nclock %s|%s\n", SW, SH, USER_ID[0] ? USER_N : "-", LOCKED,
 		SIGN && gtk_widget_get_visible(SIGN), MENU && gtk_widget_get_visible(MENU), BAR && gtk_widget_get_visible(BAR), bx, by, bar_w(), bar_h(), CLOCK_T, CLOCK_D);
 	g_string_append_printf(s, "ws %d\n", WSC);   /* (item 4: the workspace shown) */
-	if (MENU && gtk_widget_get_visible(MENU)) g_string_append_printf(s, "menuq %s\n", MQ[0] ? MQ : "-");   /* (the start menu's search, for the tests) */
+	if (MENU && gtk_widget_get_visible(MENU)) g_string_append_printf(s, "menuq %s\n", MQ[0] ? MQ : "-");
+	/* (2026-11-16) what the start menu's search found: srch GROUP X Y W H TEXT (the screen's pixels), the chosen one, the menu's box */
+	if (MENU && gtk_widget_get_visible(MENU) && MQ[0]) { for (int i = 0; i < NSRI; i++) { double ry = MBY + 38 + SRI[i].y - SRSCROLL; g_string_append_printf(s, "srch %s %d %d %d %d %s\n", SRI[i].g, (int)lround((MBX + 11) * Z), (int)lround(ry * Z), (int)lround((MBW - 22) * Z), (int)lround(SRI[i].h * Z), SRI[i].t); }
+		g_string_append_printf(s, "srchcur %d %d\nmenubox %d %d %d %d\n", SRCUR, SRPG_OK, (int)lround(MBX * Z), (int)lround(MBY * Z), (int)lround(MBW * Z), (int)lround(MBH * Z)); }   /* (the start menu's search, for the tests) */
 	/* (item 5: Alt+Tab's switcher, the chosen one and the windows' titles; the overview's windows where they are drawn) */
 	if (AT_ON) { g_string_append_printf(s, "altab %d %d %d %d %d %d", AT_N, AT_I, AX, AY, AW, AH); for (int i = 0; i < AT_N; i++) g_string_append_printf(s, "|%s", AT_L[i]->title); g_string_append_c(s, '\n'); }
 	else g_string_append(s, "altab -\n");
@@ -6025,12 +6170,16 @@ static void state_write(void)
 	for (int i = 0; i < NTST; i++) g_string_append_printf(s, "toast %d %d %d %d %d|%s\n", TST[i].why, (int)lround(TSX[i] * Z), (int)lround(TSY[i] * Z), (int)lround(349 * Z), (int)lround(TST[i].h * Z), TST[i].t);
 	for (int i = 0; i < NHITS; i++) g_string_append_printf(s, "hit %s %s %d %d %d %d\n", HITS[i].kind, HITS[i].arg[0] ? HITS[i].arg : "-", HITS[i].x + bx, HITS[i].y + by, HITS[i].w, HITS[i].h);
 	/* the start menu's rows on the screen (mrow ACTION x y w h) */
-	for (int i = 0; MENU && gtk_widget_get_visible(MENU) && i < NMR; i++) { MRow *r = &MR[i]; if (!r->shown || r->t != 'l' || strstr(r->cls, "offh")) continue;
+	for (int i = 0; MENU && gtk_widget_get_visible(MENU) && !MQ[0] && i < NMR; i++) { MRow *r = &MR[i]; if (!r->shown || r->t != 'l' || strstr(r->cls, "offh")) continue;
 		double y = MBY + 7 - MSCROLL + 75 + r->y; if (y < MBY || y + r->h > MBY + MBH) continue;
 		g_string_append_printf(s, "mrow %s %d %d %d %d\n", r->a[0] ? r->a : r->v[0] ? r->v : "-", (int)lround((MBX + 7) * Z), (int)lround(y * Z), (int)lround((MBW - 14 - menu_sb()) * Z), (int)lround(r->h * Z)); }
+	/* (2026-11-16, tests) the catalogue's programs (a key with ":", or opened unseen) and their pictures: catapp KEY X PICTURE-OR-- HAS-PICTURE; a menu row's picture */
+	for (int i = 0; i < NAPPS; i++) if (APPS[i].x || strchr(APPS[i].k, ':')) g_string_append_printf(s, "catapp %s %d %s %d\n", APPS[i].k, APPS[i].x, APPS[i].ic[0] ? APPS[i].ic : "-", APPS[i].ic[0] && ICONS && g_hash_table_lookup(ICONS, APPS[i].ic) ? 1 : 0);
+	for (int i = 0; i < NMR; i++) if (strchr(MR[i].v, ':')) g_string_append_printf(s, "mric %s %s %d\n", MR[i].v, MR[i].ic[0] ? MR[i].ic : "-", MR[i].ic[0] && ICONS && g_hash_table_lookup(ICONS, MR[i].ic) ? 1 : 0);
 	if (SIGN) g_string_append_printf(s, "signmsg %s\nsignfields %s|%ld|%d\n", SN_MSG, SN_NAME, g_utf8_strlen(SN_PASS, -1), SFOC);   /* (the password's length only) */
 	for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; GdkWindow *g = a->win ? gtk_widget_get_window(a->win) : NULL;
 		Client *c = WM_OK ? client_of_app(a) : NULL;
+		if (a->hidden) { g_string_append_printf(s, "page %s\n", a->k); continue; }   /* (2026-11-16: a page doing something unseen is no window: page KEY) */
 		g_string_append_printf(s, "app %s %lx %d %s\n", a->k, g ? (unsigned long)GDK_WINDOW_XID(g) : 0UL, c ? c == FOCUS : a == ACTIVE, a->title); }
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (!c->ws) continue;   /* (no workspace: going, 12.3c) */
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
@@ -6039,7 +6188,7 @@ static void state_write(void)
 		if (c->ontop) g_string_append_printf(s, "clienttop %lx\n", (unsigned long)c->w);   /* (Always on top: the title bars' test) */
 		if (c->app && c->app->win && c->app->view && GTK_IS_WIDGET(c->app->view)) { GtkAllocation al; gtk_widget_get_allocation(c->app->view, &al); g_string_append_printf(s, "view %lx %d %d\n", (unsigned long)c->w, al.width, al.height); } }   /* (the page's own size: its window's) */
 	g_string_append_printf(s, "wm %d\nicons %u %s\n", WM_OK, ICONS ? g_hash_table_size(ICONS) : 0, VER[0] ? VER : "-");
-	for (int i = 0; di_shown() && i < NDI; i++) { int x, y; di_xy(&DI[i], &x, &y); g_string_append_printf(s, "dicon %d %d %d %d %d %d %s|%s|%s\n", DI[i].c, DI[i].r, x, y, di_w(), DI[i].sel, DI[i].k, DI[i].kind, DI[i].n); }
+	for (int i = 0; di_shown() && i < NDI; i++) { int x, y; di_xy(&DI[i], &x, &y); g_string_append_printf(s, "dicon %d %d %d %d %d %d %s|%s|%s\n", DI[i].c, DI[i].r, x, y, di_w(), DI[i].sel, DI[i].k, DI[i].kind, DI[i].n); if (strchr(DI[i].k, ':')) g_string_append_printf(s, "diconic %s %s %d\n", DI[i].k, DI[i].ic[0] ? DI[i].ic : "-", DI[i].ic[0] && ICONS && g_hash_table_lookup(ICONS, DI[i].ic) ? 1 : 0); }
 	g_string_append_printf(s, "dmenu %s\n", DI_MENU);
 	/* (item 2) the widgets on the screen: widget N TYPE X Y W H (the screen's pixels) PAGE-X PAGE-Y|TEXT; the note typed in; the weather */
 	for (int i = 0; wg_shown() && i < NWG; i++) { double X, Y, W, H; wg_rect(&WG[i], &X, &Y, &W, &H); char *t = g_strescape(WG[i].txt ? WG[i].txt : "", NULL);
