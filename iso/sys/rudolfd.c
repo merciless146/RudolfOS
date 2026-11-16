@@ -378,17 +378,29 @@ static void serve_file(struct req *r, const char *path) { serve_file_as(r, path,
  * sends a copy to rudolfd (POST /api/lsync), which writes it atomically to LSFILE; the copy
  * is handed back inside the page and restored when it is newer than what Chromium kept. */
 #define LSFILE "/home/rudolf/.rudolf-ls.json"
+static int lsync_part(const char *body); static void lsync_merge(struct req *r); static void api_lsync_get(struct req *r, const char *key);   /* rudolfd-desktop.inc (1.6.0) */
+/* 1.6.0 (the owner's reports 3 and 5): on the native desktop every app window, and Oracle's page in Chromium, is a page of its
+   own, and two engines' storage (WebKit's and Chromium's) went to this one copy: each page sent all of its storage, so the last
+   one to send put its older settings and notices back (and the next window opened took them). There each page sends only the
+   keys it changed (part), rudolfd puts them into the copy, and the copy's number (gen) is rudolfd's, so a page started later
+   takes the copy only when another page changed it since. Standard and Lite: one page, all of it, as before.
+   __rudolfLsQuiet: a value another page saved, taken into this page's storage without sending it back (oneapp59.js __oaSetIn). */
 static const char LSJS[] =
-	"(function(){var G='__rudolf_ls_gen',S=localStorage,P=Storage.prototype,si=P.setItem,ri=P.removeItem,cl=P.clear,t=0;"
+	"(function(){var G='__rudolf_ls_gen',S=localStorage,P=Storage.prototype,si=P.setItem,ri=P.removeItem,cl=P.clear,t=0,"
+	"NAT=window.RUDOLFD&&RUDOLFD.engine=='native',dk={},dall=0;"
 	"try{var e=document.getElementById('rudolf-ls'),L=e&&JSON.parse(e.textContent);"
 	"if(L&&L.data&&L.gen>(+S.getItem(G)||0)){var ks=[];for(var i=0;i<S.length;i++)ks.push(S.key(i));"
 	"ks.forEach(function(k){if(k!=G&&!(k in L.data))ri.call(S,k)});for(var k in L.data)si.call(S,k,L.data[k]);si.call(S,G,String(L.gen))}}catch(x){}"
-	"function push(){t=0;try{var d={};for(var i=0;i<S.length;i++){var k=S.key(i);if(k!=G)d[k]=S.getItem(k)}"
-	"var g=(+S.getItem(G)||0)+1;si.call(S,G,String(g));"
+	"function push(){t=0;try{var g=(+S.getItem(G)||0)+1;si.call(S,G,String(g));"
+	"if(NAT&&!dall){var st={},dl=[];for(var k in dk){var v=S.getItem(k);if(v===null)dl.push(k);else st[k]=v}dk={};"
+	"return fetch('/api/lsync',{method:'POST',headers:{'X-Rudolf-Token':RUDOLFD.token},body:JSON.stringify({gen:g,part:1,set:st,del:dl})}).then(function(r){return r.json()})"
+	".then(function(j){if(j&&j.gen>(+S.getItem(G)||0))si.call(S,G,String(j.gen))}).catch(function(){})}"
+	"var d={};for(var i=0;i<S.length;i++){var k=S.key(i);if(k!=G)d[k]=S.getItem(k)}dk={};dall=0;"
 	"return fetch('/api/lsync',{method:'POST',headers:{'X-Rudolf-Token':RUDOLFD.token},body:JSON.stringify({gen:g,data:d})}).catch(function(){})}catch(x){return Promise.resolve()}}"
 	"function sch(o){if(o===S&&!t)t=setTimeout(push,1500)}"
-	"P.setItem=function(k,v){si.call(this,k,v);if(k!=G)sch(this)};P.removeItem=function(k){ri.call(this,k);sch(this)};P.clear=function(){cl.call(this);sch(this)};"
+	"P.setItem=function(k,v){si.call(this,k,v);if(k!=G&&this===S){dk[k]=1;sch(this)}};P.removeItem=function(k){ri.call(this,k);if(this===S){dk[k]=1;sch(this)}};P.clear=function(){cl.call(this);if(this===S){dall=1;sch(this)}};"
 	"window.__rudolfLsFlush=function(){if(t)clearTimeout(t);return push()};"
+	"window.__rudolfLsQuiet=function(k,v){si.call(S,k,v)};"
 	"addEventListener('pagehide',function(){if(t){clearTimeout(t);push()}})})();";
 
 static void serve_index(struct req *r, const char *root)
@@ -4585,7 +4597,11 @@ static void api(struct req *r)
 	}
 	if (!strcmp(p, "accounts/users")) { api_account_users(r); return; }   /* 1.5.9 (15.3) */
 	if (!strcmp(p, "lsync")) {
+		/* 1.6.0 (the native desktop): one value of the copy (GET lsync?key=K: Oracle's page in Chromium taking a setting the WebKit
+		   windows saved), and the keys a page changed put into it (part: rudolfd-desktop.inc dls_merge) */
+		if (!strcmp(r->method, "GET")) { char *k = qparam(r->query, "key"); if (!k || !*k || strlen(k) > 200) { reply_err(r->fd, 400, "key"); return; } api_lsync_get(r, k); return; }
 		if (r->blen < 2 || r->blen > (16u << 20) || r->body[0] != '{' || r->body[r->blen - 1] != '}') { reply_err(r->fd, 400, "bad data"); return; }
+		if (lsync_part(r->body)) { lsync_merge(r); return; }
 		int f = open(LSFILE ".tmp", O_WRONLY | O_CREAT | O_TRUNC, 0600);
 		if (f < 0 || write(f, r->body, r->blen) != (ssize_t)r->blen || fsync(f)) { if (f >= 0) close(f); unlink(LSFILE ".tmp"); reply_err(r->fd, 500, "could not save"); return; }
 		close(f);

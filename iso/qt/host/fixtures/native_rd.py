@@ -18,6 +18,7 @@
 #   DIR/inject.js      (when there) a script given to the page before its own (a test's: no network status here)
 #   DIR/torwin-fix     (when there) the path of fixtures/torwinapi.c built: torwin/* answered by rudolfd's own code (16.2)
 #   DIR/tor-on         (made by tor/start) rudolfd's Tor stood in: tor/status says on (1.5.9, plan 16.1)
+#   DIR/stats-on, DIR/shell.json, DIR/lsync.json   (1.6.0) stats answered; the shell's state; the pages' last lsync copy
 #   DIR/hotkey         (when there) the path of Rudolf OS's hotkey script: mic and volume answered through it as rudolfd does
 #                      (the sound server: pactl, PULSE_SERVER from the environment)
 # Ann's password is in keys.json; a wrong one gets the page's message.   python3 native_rd.py PORT DIR
@@ -35,6 +36,14 @@ LS = json.loads(rd('ls.json', b'{"data":{}}'))['data']
 # the page's storage, put in before the page's own code runs (as rudolfd's lsync copy is)
 INJ = ('<script>window.RUDOLFD={token:"%s",base:"",boot:"uefi",media:"disk",live:0,recovery:0,engine:"native"};'
        '(function(){var L=%s;try{if(!localStorage.getItem("bd95user"))for(var k in L)localStorage.setItem(k,L[k])}catch(e){}})();</script>') % (TOK, json.dumps(LS).replace('</', '<\\/'))
+# (1.6.0, when DIR/lsjs is there) rudolfd's own copy-keeping script (rudolfd.c LSJS, read from its source), so the pages send their
+# storage here (lsync) as they do to rudolfd
+def lsjs():
+    import re
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../sys/rudolfd.c'), encoding='utf-8').read()
+    body = src[src.index('static const char LSJS[] ='):]; body = body[:body.index('";\n') + 2]
+    body = re.sub(r'/\*.*?\*/', '', body, flags=re.S)
+    return ''.join(json.loads('"' + m + '"') for m in re.findall(r'"((?:[^"\\]|\\.)*)"', body))
 class H(http.server.BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.0'
     def log_message(self, *a): pass
@@ -61,7 +70,7 @@ class H(http.server.BaseHTTPRequestHandler):
             # (DIR/page.html, when there: served instead of the desktop page, for the window manager's checks)
             alt = rd('page.html')
             if alt is not None: return self.send(200, alt, 'text/html; charset=utf-8')
-            return self.send(200, open(os.path.join(WWW, 'index.html'), encoding='utf-8').read().replace('<head>', '<head>' + INJ + ('<script>%s</script>' % rd('inject.js').decode() if rd('inject.js') else ''), 1), 'text/html; charset=utf-8')
+            return self.send(200, open(os.path.join(WWW, 'index.html'), encoding='utf-8').read().replace('<head>', '<head>' + INJ + (('<script type="application/json" id="rudolf-ls">%s</script><script>%s</script>' % ((rd('lsfile.json') or b'').decode().replace('<', '\\u003c'), lsjs())) if rd('lsjs') is not None else '') + ('<script>%s</script>' % rd('inject.js').decode() if rd('inject.js') else ''), 1), 'text/html; charset=utf-8')
         if u == '/iwa/id' and rd('iwa-id') is not None: return self.send(200, rd('iwa-id'), 'text/plain')
         f = os.path.normpath(os.path.join(WWW, u.lstrip('/')))
         if f.startswith(os.path.normpath(WWW)) and os.path.isfile(f):
@@ -160,6 +169,27 @@ class H(http.server.BaseHTTPRequestHandler):
         if w == 'volume': return self.j({'ok': True, 'volume': 70, 'muted': False})
         if w == 'power/status': return self.j({'ok': True, 'ac': False, 'battery': {'name': 'BAT0', 'capacity': 81, 'status': 'Discharging'}})
         if w == 'info': return self.j({'ok': True, 'battery': [{'name': 'BAT0', 'type': 'Battery', 'capacity': 81, 'status': 'Discharging'}]})
+        # (1.6.0, native160_t.sh) the system monitor's stats, when DIR/stats-on is there; the shell's state (shell26.js shellOffer)
+        # from DIR/shell.json; the pages' lsync copies kept in DIR/lsync.json (the last one), counted in DIR/lsync-n, each noted in
+        # DIR/lsync.log (part KEYS, or all N)
+        if w == 'stats' and rd('stats-on') is not None: return self.j({'ok': True, 'cpu': 12.5, 'load': 0.1, 'memTotal': 4 << 30, 'memFree': 1 << 30, 'memAvailable': 3 << 30, 'battery': None, 'brightness': None, 'tempC': None, 'processes': ''})
+        if w == 'shell' and rd('shell.json') is not None: return self.send(200, rd('shell.json'))
+        if w == 'lsync' and m == 'POST':
+            with LOCK:
+                open(os.path.join(D, 'lsync.json'), 'wb').write(b); n = int(rd('lsync-n', b'0') or 0) + 1; open(os.path.join(D, 'lsync-n'), 'w').write(str(n))
+                # (the copy itself, as rudolfd keeps it: a page's part put into it, or all of a page's storage; its gen rudolfd's)
+                o = json.loads(b or b'{}'); f = json.loads(rd('lsfile.json', b'{"gen":0,"data":{}}'))
+                if o.get('part'):
+                    for k in o.get('del') or []: f['data'].pop(k, None)
+                    f['data'].update(o.get('set') or {})
+                else: f['data'] = o.get('data') or {}
+                f['gen'] = max(f['gen'] + 1, o.get('gen') or 0); open(os.path.join(D, 'lsfile.json'), 'w').write(json.dumps(f))
+                open(os.path.join(D, 'lsync.log'), 'a').write(('part ' + ','.join(sorted(o.get('set') or {})) if o.get('part') else 'all %d' % len(o.get('data') or {})) + '\n')
+            return self.j({'ok': True, 'message': 'saved', 'gen': f['gen']})
+        if w == 'lsync' and q.startswith('key='):   # (one key of the copy, as rudolfd's api_lsync_get)
+            import urllib.parse; f = json.loads(rd('lsfile.json', b'{"gen":0,"data":{}}')); v = (f.get('data') or {}).get(urllib.parse.unquote(q[4:]))
+            open(os.path.join(D, 'lsync.log'), 'a').write('get %s\n' % urllib.parse.unquote(q[4:]))
+            return self.j({'ok': True, 'gen': f['gen'], 'v': v if isinstance(v, str) else None})
         return self.j({'ok': True})
     def dl(self, m, what, q):
         # (rudolfd.c api_dl, for the incoming folder only: what the desktop page needs to file a small download)

@@ -25,7 +25,8 @@
  * rudolfNative message handler does in WebKit, is written to standard output, one line each: "msg SESSION JSON" (SESSION:
  * the page's, for an answer). On CONTROL, "act SESSION ID" runs a notification's own action in that page (a toast's click).
  * The page's own full screen ({"op":"fs","on":1|0}, shell26.js's stand-in) is done here: its window in Chromium's full screen.
- * "mirror ACCOUNT" has every desktop page take the files an app's window saved from rudolfd's mirror (__oaMirrorIn); "close X Y W H"
+ * "mirror ACCOUNT" has every desktop page take the files an app's window saved from rudolfd's mirror (__oaMirrorIn); (1.6.0) "set
+ * ACCOUNT" its settings (__oaSetIn); "close X Y W H"
  * asks the page of the window at that place to close, as its own ✕ (the frame's ✕ on the native desktop). A page closing its window
  * says so ({"op":"closing"}): the last one while a download is arriving is taken off the screen ("hide X Y W H" on standard output)
  * and its page closes once Chromium's downloads have finished and it has filed them (Chromium never asks "Download is in progress").
@@ -243,6 +244,13 @@ static void o_line(char *l)
 	if (sscanf(l, "mirror %63s", mid) == 1) {
 		if (strspn(mid, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != strlen(mid)) return;
 		char p[200]; snprintf(p, sizeof p, "{\"expression\":\"window.__oaMirrorIn&&__oaMirrorIn('%s')\"}", mid);
+		for (int i = 0; i < o_npg; i++) if (o_pg[i].session[0]) { int k; send_session(o_pg[i].session, "Runtime.evaluate", p, &k); }
+		return;
+	}
+	/* (1.6.0, the owner's report 3: an app window saved its settings; every desktop page here takes them from rudolfd's copy) */
+	if (sscanf(l, "set %63s", mid) == 1) {
+		if (strspn(mid, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != strlen(mid)) return;
+		char p[200]; snprintf(p, sizeof p, "{\"expression\":\"window.__oaSetIn&&__oaSetIn('%s')\"}", mid);
 		for (int i = 0; i < o_npg; i++) if (o_pg[i].session[0]) { int k; send_session(o_pg[i].session, "Runtime.evaluate", p, &k); }
 		return;
 	}

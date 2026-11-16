@@ -717,3 +717,74 @@ static int api_desktop(struct req *r, const char *w, int post)
 	}
 	return 0;
 }
+
+/* ------------------------------------------------------------------ 1.6.0: the page's storage copy on the native desktop
+ * (the owner's reports 3 and 5) Each app window there is a page of its own and Oracle's page is in Chromium, with storage of its own:
+ * each sent all of its storage (lsync), so the last to send put its older settings and notices back in the copy, which the shell
+ * draws from and every window opened later takes. There a page sends only what it changed, {gen, part:1, set:{KEY:VALUE}, del:[KEY]}
+ * (rudolfd.c LSJS), put into the copy here, under a lock (each request is a process of its own); the copy's gen is the larger of its
+ * own plus one and the page's, and is given back, so pages compare with rudolfd's numbering. */
+static int au_sync(void);   /* rudolfd-users.inc */
+static int lsync_part(const char *body) { const char *p = dj_get(body, "part"); return p && (*dj_ws(p) == '1' || dj_true(p)); }
+/* the members of the object at o, as written, each given to f (the key's text with its quotes, and its value) */
+static void dj_members(const char *o, void (*f)(const char *k, size_t kl, const char *v, size_t vl, void *d), void *d)
+{
+	o = dj_ws(o); if (!o || *o != '{') return;
+	const char *p = dj_ws(o + 1);
+	while (p && *p == '"') {
+		const char *ke = dj_end(p, 0); if (!ke) return;
+		const char *v = dj_ws(ke); if (*v != ':') return; v = dj_ws(v + 1);
+		const char *ve = dj_end(v, 0); if (!ve) return;
+		f(p, ke - p, v, ve - v, d);
+		p = dj_ws(ve); if (*p != ',') return; p = dj_ws(p + 1);
+	}
+}
+typedef struct { str *o; int n; const char *set, *del; } dls_mg;
+static int dj_has_key(const char *o, const char *k, size_t kl)   /* (the key's text with its quotes, as written) */
+{
+	o = dj_ws(o); if (!o || *o != '{') return 0;
+	const char *p = dj_ws(o + 1);
+	while (p && *p == '"') { const char *ke = dj_end(p, 0); if (!ke) return 0; if ((size_t)(ke - p) == kl && !memcmp(p, k, kl)) return 1;
+		p = dj_ws(ke); if (*p != ':') return 0; p = dj_end(dj_ws(p + 1), 0); if (!p) return 0; p = dj_ws(p); if (*p != ',') return 0; p = dj_ws(p + 1); }
+	return 0;
+}
+static int dj_arr_has(const char *a, const char *k, size_t kl)
+{
+	for (int i = 0;; i++) { const char *e = dj_at(a, i); if (!e) return 0; const char *ee = dj_end(e, 0); if (ee && (size_t)(ee - e) == kl && !memcmp(e, k, kl)) return 1; }
+}
+static void dls_keep(const char *k, size_t kl, const char *v, size_t vl, void *d)
+{
+	dls_mg *m = d; if (dj_has_key(m->set, k, kl) || (m->del && dj_arr_has(m->del, k, kl))) return;
+	sadd(m->o, "%s%.*s:%.*s", m->n++ ? "," : "", (int)kl, k, (int)vl, v);
+}
+static void dls_put(const char *k, size_t kl, const char *v, size_t vl, void *d)
+{
+	dls_mg *m = d; if (*v != '"') return;   /* (the storage's values are strings) */
+	sadd(m->o, "%s%.*s:%.*s", m->n++ ? "," : "", (int)kl, k, (int)vl, v);
+}
+#include <sys/file.h>
+static void lsync_merge(struct req *r)
+{
+	const char *set = dj_get(r->body, "set"), *del = dj_get(r->body, "del");
+	if (!set || *dj_ws(set) != '{' || !dj_end(set, 0) || (del && (*dj_ws(del) != '[' || !dj_end(del, 0)))) { reply_err(r->fd, 400, "bad data"); return; }
+	char lk[300]; snprintf(lk, sizeof lk, "%s.lock", desk_ls); int lf = open(lk, O_RDWR | O_CREAT | O_CLOEXEC, 0600); if (lf >= 0) flock(lf, LOCK_EX);
+	char *old = slurp(desk_ls, NULL); const char *od = old ? dj_get(old, "data") : NULL;
+	double og = old ? dj_num(dj_get(old, "gen"), 0) : 0, pg = dj_num(dj_get(r->body, "gen"), 0), ng = og + 1 > pg ? og + 1 : pg;
+	str o = {0}; sadd(&o, "{\"gen\":%.0f,\"data\":{", ng); dls_mg m = { &o, 0, set, del };
+	if (od) dj_members(od, dls_keep, &m);
+	dj_members(set, dls_put, &m); sadd(&o, "}}");
+	free(old);
+	char tp[300]; snprintf(tp, sizeof tp, "%s.tmp", desk_ls); int f = open(tp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+	int bad = f < 0 || write(f, o.b, o.n) != (ssize_t)o.n || fsync(f); if (f >= 0) close(f);
+	if (bad || rename(tp, desk_ls)) { unlink(tp); free(o.b); if (lf >= 0) close(lf); reply_err(r->fd, 500, "could not save"); return; }
+	free(o.b); if (lf >= 0) close(lf);
+	au_sync();
+	str a = {0}; sadd(&a, "{\"ok\":true,\"message\":\"saved\",\"gen\":%.0f}", ng); reply_json(r->fd, &a);
+}
+static void api_lsync_get(struct req *r, const char *key)
+{
+	dls l; dls_open(&l); const char *v = l.data ? dj_get(l.data, key) : NULL;
+	str o = {0}; sadd(&o, "{\"ok\":true,\"gen\":%.0f,\"v\":", l.file ? dj_num(dj_get(l.file, "gen"), 0) : 0);
+	if (v && *dj_ws(v) == '"') dj_raw(&o, v, "null"); else sadd(&o, "null");
+	sadd(&o, "}"); dls_close(&l); reply_json(r->fd, &o);
+}
