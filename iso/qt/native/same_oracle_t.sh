@@ -125,6 +125,9 @@ PARTS="(()=>{const W=$OW,b=W.body.getBoundingClientRect(),q=s=>W.body.querySelec
  return JSON.stringify({title:tv?r(t):null,win:tv?r(W.el):null,tabs:r(q('.otabs')),toolbar:r(q('.ob')),address:r(q('.ad')),bookmarks:r(q('.obm')),page:r(q('.fh')),status:r(q('.stat')),menu:r(q('.odd')),plus:r(q('.otabs > button')),tabx:r(q('.otab.on u')),back:r(q('.ob .bk')),fwd:r(q('.ob .fw')),menubtn:r(q('.ob .mn')),tab:tab?r(tab.el):null})})()"
 snap() {   # snap CASE: the screen and the parts (in screen pixels)
 	timeout ${2:-1.5} tail -f /dev/null; import -window root $OUT/$E-$1.png
+	# (the title bar's words: Standard's window's; Native's frame's, with Chromium's own name for its window, for a failure's details)
+	if [ $E = nat ]; then set -- "$1" $(grep "^client .* app=browser" $D/state | head -1); t=$(echo "$*" | sed 's/.* app=browser //'); echo "$1 $t" >> $OUT/$E-titles.txt; echo "$1 (X: $(xdotool getwindowname 0x$3 2>&1))" >> $OUT/$E-xnames.txt
+	else echo "$1 $(ow 'W.el.querySelector(".tb .t").textContent' | sed 's/^"//; s/"$//')" >> $OUT/$E-titles.txt; fi
 	pg "$PARTS" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const [E,ox,oy,fx,fy,fw,fh,th]=process.argv.slice(1);const p=JSON.parse(JSON.parse(s));for(const k in p)if(p[k]){p[k][0]+=+ox;p[k][1]+=+oy}
 		if(E=="nat"){const bw=+ox-+fx;p.title=[+fx+bw,+fy+bw,+fw-2*bw,+th-bw];p.win=[+fx,+fy,+fw,+fh]}console.log(JSON.stringify(p))})' $E $OX $OY $FX $FY $FW $FH $((OY - FY)) > $OUT/$E-$1.json
 }
@@ -142,7 +145,7 @@ adch() { a=$1; w8 'v=$(ow "W.body.querySelector(\".ad\").value"); [ "$v" != "$a"
 fscov() { i=0; while :; do import -window root $T/fs.png; c=$(python3 -c 'import sys;from PIL import Image;I=Image.open(sys.argv[1]).convert("RGB");print("yes" if I.getpixel((5,5))==I.getpixel((1270,790))==(253,246,227) else "no")' $T/fs.png); [ "$c" = $1 ] || [ $i -ge 10 ] && break; i=$((i+1)); timeout 0.5 tail -f /dev/null; done; echo $c; }
 
 run() {
-	: > $OUT/$E-did.txt
+	: > $OUT/$E-did.txt; : > $OUT/$E-titles.txt
 	sets '{}'; geo
 	# ---- looks
 	snap home 3

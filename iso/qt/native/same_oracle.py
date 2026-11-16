@@ -36,6 +36,14 @@ for c, parts, what in CASES:
         except ValueError: res.append((p, False, o.stderr[-300:])); continue
         res.append((p, d['pct'] <= LIMIT, '%s %% differ (cmp-%s-%s.*.png)' % (d['pct'], c, p)))
     ok('%s: %s (%s)' % (c, what, ', '.join(p for p, _, _ in res)), all(g for _, g, _ in res), '; '.join('%s: %s' % (p, w) for p, g, w in res if not g))
+# the title bar's words, case by case (Native's frame says what Standard's window says)
+ta, tb = os.path.join(OUT, 'std-titles.txt'), os.path.join(OUT, 'nat-titles.txt')
+if os.path.exists(ta) and os.path.exists(tb):
+    A = dict(l.split(' ', 1) for l in open(ta).read().splitlines() if ' ' in l); B = dict(l.split(' ', 1) for l in open(tb).read().splitlines() if ' ' in l)
+    xn = open(os.path.join(OUT, 'nat-xnames.txt')).read() if os.path.exists(os.path.join(OUT, 'nat-xnames.txt')) else ''
+    for c, _, _ in CASES:
+        if (ONLY and c not in ONLY) or c not in A: continue
+        ok('%s: the title "%s"' % (c, A[c]), A.get(c) == B.get(c), 'Native: "%s" %s' % (B.get(c), ' '.join(l for l in xn.splitlines() if l.startswith(c + ' '))))
 da, db = os.path.join(OUT, 'std-did.txt'), os.path.join(OUT, 'nat-did.txt')
 if (not ONLY or 'works' in ONLY) and os.path.exists(da) and os.path.exists(db):
     la, lb = open(da).read().splitlines(), open(db).read().splitlines()
