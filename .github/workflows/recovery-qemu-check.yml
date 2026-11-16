@@ -1,5 +1,5 @@
 # docs/plan-1.6.0.md Part 15 ("Before stable" 7; docs/plan-1.5.9.md 8.4, 8.5, 8.7): the official recovery on the real
-# release in QEMU (iso/qt/sb/t160r_t.py): a computer installed from the release's boot image, its start-up files and
+# release in QEMU (iso/qt/sb/t160o_t.py): a computer installed from the release's boot image, its start-up files and
 # recovery system changed and deleted, then put back at the next starts (downloaded from GitHub through QEMU's user
 # network); Return to official from a custom build; Developer mode on a computer that never ran the official build;
 # with Secure Boot on (OVMF with Microsoft's keys and a TEST certificate): Developer mode, Return to official and
@@ -43,9 +43,9 @@ jobs:
           ls -la rel; echo "::notice title=Official recovery QEMU check::release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
       - name: The EFI image's size (efisize60_t.sh)
         run: BOOTISO=rel/boot.iso sh iso/qt/host/efisize60_t.sh
-      - name: t160r (8.4, 8.5, 8.7)
+      - name: t160o (8.4, 8.5, 8.7)
         run: |
-          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU PARTS_RUN=${N_parts:-123} QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/t160r_t.py ../rel
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU PARTS_RUN=${N_parts:-123} QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/t160o_t.py ../rel
       - if: always()
         uses: actions/upload-artifact@v4
-        with: {name: t160r, retention-days: 7, path: "run/t160r.txt\nrun/t160r*/qemu.log\nrun/t160r*/serial.txt"}
+        with: {name: t160o, retention-days: 7, path: "run/t160o.txt\nrun/t160o*/qemu.log\nrun/t160o*/serial.txt"}

@@ -25,7 +25,7 @@
 #           start under Secure Boot (its layers are not signed by the official key), the computer goes back to the
 #           official system by itself; Return to official from there; Recovery mode (recovery.efi) starts the official
 #           system/r, checked, under Secure Boot
-#   python3 t160r_t.py REL-DIR     (REL-DIR: the release's files, manifest.txt/.sig, boot.iso and boot.iso.sha256;
+#   python3 t160o_t.py REL-DIR     (REL-DIR: the release's files, manifest.txt/.sig, boot.iso and boot.iso.sha256;
 #   SB_PARTS: OVMF_CODE_4M.secboot.fd, OVMF_VARS_4M.fd, OVMF_VARS_4M.ms.fd; QEMU; STUB: linuxx64.efi.stub; root)
 import os, sys, time, re, subprocess, shutil, struct, json, base64, hashlib
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE); ISO = os.path.dirname(QT)
@@ -34,7 +34,7 @@ import sbvm
 from guest import Guest
 from ser import Ser
 REL = os.path.abspath(sys.argv[1]); PARTS = os.environ.get('SB_PARTS', '/nonexistent'); ONLY = os.environ.get('PARTS_RUN', '123')
-LOG = open('t160r.txt', 'w'); R = []
+LOG = open('t160o.txt', 'w'); R = []
 def out(*a):
     s = ' '.join(str(x) for x in a); print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
 def ok(n, c, d=''):
@@ -107,7 +107,7 @@ class TSer(Ser):   # the serial line, also written to a file (the start-up's mes
         o = super().read(t); s.lf.write(o); s.lf.flush(); return o
 N = [0]
 def boot(tag, drive, vars_keep, secure_code=True, kernel_cmd=None, wait=1200, net=True, initrd=None):
-    N[0] += 1; name = f't160r{N[0]}{tag}'
+    N[0] += 1; name = f't160o{N[0]}{tag}'
     extra = ['-drive', f'file={drive},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf160r' + (',bootindex=0' if kernel_cmd is None else '')]
     if net: extra += ['-netdev', 'user,id=n1', '-device', 'e1000,netdev=n1']
     if kernel_cmd is not None: extra += ['-kernel', f'{REL}/vmlinuz', '-append', kernel_cmd] + (['-initrd', initrd] if initrd else [])
@@ -252,7 +252,7 @@ def part3():
         #  Putting them back is part 1's; here espcheck finds no network and leaves them, saying so)
         global vm
         STUB = os.environ.get('STUB', '/usr/lib/systemd/boot/efi/linuxx64.efi.stub')
-        run_(['openssl', 'req', '-new', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '30', '-subj', '/CN=Rudolf OS TEST Secure Boot (t160r)/',
+        run_(['openssl', 'req', '-new', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '30', '-subj', '/CN=Rudolf OS TEST Secure Boot (t160o)/',
               '-keyout', f'{W}/sb.key', '-out', f'{W}/sb.crt', '-addext', 'keyUsage=critical,digitalSignature', '-addext', 'extendedKeyUsage=codeSigning'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         img3 = f'{W}/boot3.iso'; shutil.copy(BOOT, img3)
         env = dict(os.environ, RUDOLF_UKI_TEST_CMDLINE='rudolf.debug=1')
