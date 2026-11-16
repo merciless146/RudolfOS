@@ -566,7 +566,7 @@ half pixels of line boxes differently (Blitzen's suggestions' text 1 px higher i
 of the phone, framed by the shell as a Linux app's, as on Standard) needs a phone, so it is a Vivobook check, not a host
 test; selects given other padding by their own rules (games' and the media player's) have the chevron but not Chromium's
 20 px after the text.
-**Test findings (2026-11-15, unattended session):** Native compared with Standard across the desktop, the apps, video and sound, with Log video problems on: 19 findings (3 break: full-screen video black, the file dialog cut off inside the app's window, Task Manager lists only itself). See docs/native-findings-2026-11-15.md.
+**Test findings (2026-11-15, unattended session):** Native compared with Standard across the desktop, the apps, video and sound, with Log video problems on: 19 findings (3 break: full-screen video black, the file dialog cut off inside the app's window, Task Manager lists only itself). See docs/native-findings-2026-11-15.md. A second run added 13 more (2 break: Log video problems' file emptied by each new app window, right-click menus inside apps cut off at the window's edge), in the same report's "Second run" section.
 **Test findings fixed, first PR (2026-11-15, unattended session): the three that break, and the page's dialogs.**
 - N2, N4, N10: the page's dialogs (.rmodal: Open and Save, Print, Allow access?, Close anyway?, Report a problem; .natdlg: a game's
   download) are over the whole desktop on Standard, dimmed and centred on the screen. On Native the app's window now covers the
@@ -942,6 +942,64 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
   - **The first phone (1.5.9 Part 6):** chosen and bought by the owner (a PinePhone Pro or a OnePlus 6/6T), its device
     package from postmarketOS's; the MediaTek "S24Ultra" is not flashed or unlocked without the owner's decision.
 
+### 16. Beta versions opt-in (added on 2026-11-15)
+Asked for by the owner after a computer on 1.5.7 was updated to the in-progress 1.6.0 beta instead of 1.5.9 (its
+update address was the beta channel's): "Beta versions should be an opt-in checkbox on the update and recovery
+settings section. It should require an administrator's username and password to turn on. If it's turned off, the next
+time the computer is updated should bring it to the latest stable release instead."
+**Done (2026-11-15):** Settings › Update and recovery › Get beta versions. On: the desktop's administrator prompt, and
+rudolfd checks the name and password itself (sys/beta?on=1, as the development link does) before `rudolf-update set
+channel beta` sets the official beta address. Off: `set channel stable` sets the official stable address and marks
+"tostable": the next check and download take the latest stable release even though its number is lower than the
+beta's (the beta's list already seen is forgotten, the stable one is checked with the official key as always), then
+the mark is cleared. The official beta address can no longer be typed in as the update address; Developer mode keeps
+its own address (refused while it is on). A computer already on the beta address shows the box ticked. Test:
+qt/host/beta60_t.sh 12. Manual check: on the HP desktop, untick it and update: 1.5.9 comes next.
+
+## Cellular and ARM64: QEMU and host tests first, hardware after (owner, 2026-11-15)
+Asked for: "Set up the plan to cover whatever can be done in QEMU first. Everything that requires hardware testing can
+come afterwards in that plan." This replaces the order of Steps 1 to 6 below for Parts 1 to 7. Each stage is one or
+more PRs, each with its tests; none is published in a beta before the owner merges it. The first 1.6.0 beta is built
+without this work (it waits only for the QEMU security checks of Part 15).
+
+**Stage A: built and proven without hardware (host tests, browser tests and QEMU)**
+1. **Modems (Part 1):** ModemManager with QMI, MBIM, QRTR and AT in the system layer (the sizes printed in the build);
+   rudolfd's `mobile/*` reading its D-Bus API; the FCC-unlock offer and the partly supported modules' notes in
+   Settings. Tested against a stand-in ModemManager on the session's own D-Bus (a modem with a SIM, locked, unlocked,
+   one that disappears) and, in QEMU, ModemManager itself starting with udev and no modem (nothing runs, nothing
+   logged as an error).
+2. **SIM and network (Part 2):** Settings › Mobile network: the PIN and PUK (administrators, three tries, the PUK's
+   warning), the APN from mobile-broadband-provider-info by the SIM's operator code (letters' case kept: docs/plan-
+   1.6.1.md Part 7) or by hand, roaming off by default, the network type, airplane mode in quick settings. Host and
+   browser tests against the stand-in.
+3. **The connection (Part 3):** connect and disconnect, connect automatically, the priorities (cable, Wi-Fi, cellular)
+   and the failover within seconds, the firewall on the cellular interface, IPv6-only with clat. Tested in QEMU with a
+   stand-in cellular interface (a veth or usbnet-like link given the stand-in modem's addresses) beside a virtual
+   Wi-Fi link (mac80211_hwsim) that is taken down and brought back: traffic moves to cellular and back, the
+   notification, the firewall's rules on it.
+4. **Data and money (Part 4):** metered by default, the month's data from the interface counters across a restart (in
+   QEMU), the limit's warning at 80 % and data off at 100 %, no automatic update downloads on cellular. Host and
+   browser tests.
+5. **Signal and status (Part 5):** the taskbar's bars, type and operator, the signal's details in Settings, modem
+   events in System health, the self-test's modem line, all from the stand-in's changing values.
+6. **Messages (Part 6):** the Messages app (conversations, read and send, delivery reports, multi-part and Unicode,
+   notifications, the locked desktop showing only the sender), kept in the account's folder and the encrypted folder.
+   Tested with the stand-in's SMS interface (incoming and sent messages) and in the browser.
+7. **ARM64 (Part 7):** the ARM64 build with Parts 1 to 6, its own update lists (`beta/arm64/`, `stable/arm64/`) and a
+   UEFI disc image, started and checked in QEMU aarch64 (AAVMF): start-up, the desktop, an update between two test
+   releases, the stand-in modem's Settings pages. Not published until stage B's ARM64 computer.
+
+**Stage B: on hardware, with the owner (after stage A is merged and in a beta)**
+1. The USB cellular stick (borrowed from the HP desktop's user) and the MiFi 7730L on the Vivobook: the modem found
+   (Settings › Network › Cellular modems, no "Invalid rule match" in /run/rudolf/modem.log, the self-test's modem
+   line), the SIM's PIN, the APN filled in, connected, Wi-Fi failover and back, data counted, sleep and wake,
+   unplugged and plugged in again. With a prepaid T-Mobile-network SIM (Mint or Tello: docs/plan-1.6.1.md Part 7).
+2. Messages to and from a real phone through the stick or the MiFi.
+3. The FCC-unlock path on a laptop with a WWAN card (a used ThinkPad with a Fibocom L850-GL or Quectel EM05-G: the
+   Vivobook has no slot).
+4. One ARM64 computer that starts with UEFI, then the first ARM64 release published.
+5. The release checks below that need devices ("On real hardware over the devlink").
+
 ## Hardware to test with
 - **The MiFi 7730L** (USB tethering and Wi-Fi), with an active SIM (or a prepaid data SIM). Found on 2026-11-14: its
   USB network driver and Share this connection with it as the uplink are back in 1.5.9 (docs/plan-1.5.9.md); here it
@@ -965,7 +1023,7 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
 ## Steps
 0. Part 9 (udev instead of mdev) first, so the modem work stands on it; then Part 10 (a Linux user for each account)
    and Part 11 (elogind and polkit), which builds on Part 10's sessions; Part 14 (the keyring for Linux apps) with them.
-1. Parts 1 and 2 on the USB stick and the MiFi (1.5.9's ModemManager): modem found, SIM PIN, APN, connect. First
+1. (Order changed on 2026-11-15: see "Cellular and ARM64: QEMU and host tests first" above; steps 1 to 6 are now its stages A and B.) Parts 1 and 2 on the USB stick and the MiFi (1.5.9's ModemManager): modem found, SIM PIN, APN, connect. First
    (moved from 1.5.9, where neither was available): the stick shows in Settings › Network › Cellular modems with
    ModemManager run without udev (#280), and /run/rudolf/modem.log has no "Invalid rule match"; the self-test's
    modem line passes. (The stick belongs to the HP desktop's user: it is borrowed for these checks.)

@@ -77,6 +77,7 @@
 ["Output device","Output"],
 ["Sound card","Output"],
 ["Microphones","",1],
+["Microphone","Microphones"],
 ["Calls","",1],
 ["Cancel echo for Linux apps","Calls"]],"mm":
 [["Plugins","",1],
@@ -184,7 +185,7 @@
 ["Scroll speed","Buttons and clicks"],
 ["Opening items","Buttons and clicks"],
 ["Open files and folders with a single click","Buttons and clicks"]],"devs":
-[],"acc":
+[["Printers plugged in by USB","",1]],"acc":
 [["Pointer and cursor","",1],
 ["Cursor size","Pointer and cursor"],
 ["Cursor color","Pointer and cursor"],
@@ -229,6 +230,7 @@
 ["Touch mode: larger buttons and the keyboard opens when you tap a text box","Pointer assistance"]],"priv":
 [["Camera","",1],
 ["Camera on","Camera"],
+["Saved passwords for apps","",1],
 ["App permissions","",1],
 ["Recent activity","",1],
 ["Other data","",1]],"sec":
@@ -264,7 +266,7 @@
 ["Close apps with no window open (such as Discord in the tray)","Memory"],
 ["Closed to free memory","Memory"],
 ["Video problems","Memory"],
-["Log video problems (the Lite desktop)","Memory"],
+["Log video problems (the Lite and Native desktops)","Memory"],
 ["Game mode","Memory"],
 ["In game mode, free memory for the game","Memory"],
 ["Events","",1]],"usr":
@@ -316,7 +318,8 @@
 ["Sounds",""],
 ["Play a sound for new notifications",""],
 ["Show pop-ups for",""]],"upd":
-[["Install Rudolf OS on this computer","",1],
+[["System extensions","",1],
+["Install Rudolf OS on this computer","",1],
 ["Recovery","",1],
 ["Boot menu","",1]],"about":
 [["For developers","",1],
