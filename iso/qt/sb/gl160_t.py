@@ -191,6 +191,9 @@ try:
     # C. the account's user on Rudolf OS itself
     o = AS(AU, '/run/rudolf/acct-session.env', 'env | sort\n' + HOSTGL)
     ok('4. the account\'s user draws with OpenGL on Rudolf OS (GLX, and through SDL2 as the games)', o.count('drew ok') == 2, o)
+    # the display's authorization is unchanged: a program that is not the account's (nobody) is refused it, GLX or not
+    o = sh(f"su -s /bin/sh nobody -c 'DISPLAY=:0 {B}/lib64/ld-linux-x86-64.so.2 --library-path {B}{LIB} {B}/usr/bin/glxq; echo rc=$?' 2>&1", 60)
+    ok('4b. the display still refuses a program that is not the account\'s (nobody)', 'rc=2' in o and 'GLX 1.' not in o, o)
     # D. Debian (the stand-in), as the account's user
     o = sh(f"rudolf-debian rebind >/dev/null 2>&1; rudolf-debian run -- sh -c 'id; env | sort; export LD_LIBRARY_PATH={LIB} LIBGL_DEBUG=verbose; /usr/bin/glxinfo -B 2>&1 | head -25; /usr/bin/glxdraw; echo rc=$?; /usr/bin/sdlgl; echo rc=$?' 2>&1", 240)
     ok('5. a Debian program run as the account\'s user draws with OpenGL (GLX and SDL2)', o.count('drew ok') == 2, o)
