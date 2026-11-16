@@ -300,7 +300,7 @@ def part3():
             vm, g, up = boot('sbrecovery', D3, V3, net=False)
             o = run(g, "echo SLOT=$(cat /etc/rudolf/slot); cat /etc/rudolf/cmdline; cat /sys/kernel/security/lockdown; grep -h 'official recovery' /persist/var/log/boot-decisions.log | tail -3", 60) if up else 'not up'
             ok('20. Recovery mode under Secure Boot: recovery.efi checks the official system/r with the official key and starts it (slot r, locked down)',
-               up and re.search(r'^SLOT=r$', o, re.M) and 'rudolf.official=1' in o and '[integrity]' in o and 'handing over to slot r (official recovery)' in o, o)
+               up and re.search(r'^SLOT=r$', o, re.M) and 'rudolf.official=1' in o and '[integrity]' in o and 'starting the official recovery system (release' in o and 'system/r checked -> slot r' in o, o)
         stop(vm, g); vm = None
         os.remove(D3)
 
