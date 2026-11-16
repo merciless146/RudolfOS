@@ -471,7 +471,8 @@ int main(int argc, char **argv)
 {
 	for (int i = 1; i + 1 < argc; i++) { if (!strcmp(argv[i], "--ctl")) CTL = argv[++i]; else if (!strcmp(argv[i], "--log")) LOG = fopen(argv[++i], "a"); else if (!strcmp(argv[i], "--init")) INIT = argv[++i]; }
 	const char *a = getenv("DBUS_SYSTEM_BUS_ADDRESS");
-	if (!a || !*a || strstr(a, "/run/dbus/system_bus_socket") || strstr(a, "/var/run/dbus/")) { fprintf(stderr, "mmstub: give it a private bus (DBUS_SYSTEM_BUS_ADDRESS), never the computer's own\n"); return 2; }
+	/* (MMSTUB_TEST_MACHINE=1: inside a throwaway QEMU guest, qt/sb/cell60_q.py, the guest's own system bus is the one) */
+	if ((!a || !*a || strstr(a, "/run/dbus/system_bus_socket") || strstr(a, "/var/run/dbus/")) && !getenv("MMSTUB_TEST_MACHINE")) { fprintf(stderr, "mmstub: give it a private bus (DBUS_SYSTEM_BUS_ADDRESS), never the computer's own\n"); return 2; }
 	if (CTL) { struct stat st; if (stat(CTL, &st) || !S_ISFIFO(st.st_mode)) { fprintf(stderr, "mmstub: %s is not a FIFO\n", CTL); return 2; } }
 	GError *e = NULL; BUS = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &e); if (!BUS) { fprintf(stderr, "mmstub: %s\n", e->message); return 1; }
 	OM = g_dbus_object_manager_server_new(MM_DBUS_PATH);

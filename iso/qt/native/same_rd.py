@@ -149,6 +149,7 @@ class H(http.server.BaseHTTPRequestHandler):
         if w == 'mic':   # (DIR/mic: the apps using a microphone, a JSON list; muted=0|1 kept, as rudolfd's)
             if m == 'POST': ST['micmuted'] = q == 'muted=1'
             return self.j({'ok': True, 'users': json.loads(rd('mic', b'[]')), 'muted': ST.get('micmuted', False)})
+        if w == 'net' and rd('net'): return self.j(json.loads(rd('net')))   # (1.6.0 Part 5: DIR/net, a case's own network list: mobile data)
         if w == 'net': return self.j({'ok': True, 'interfaces': [{'name': 'wlan0', 'ip': '192.168.1.5/24', 'state': 'up', 'wireless': True, 'virtual': False, 'default': True, 'ssid': 'Home', 'rssi': -55}]})
         if w == 'volume':   # (kept: set=N, muted=0|1, step=up|down, as rudolfd's)
             if m == 'POST':
@@ -161,6 +162,14 @@ class H(http.server.BaseHTTPRequestHandler):
         # (item 8) Linux's and Blitzen's state for the Phone screen's and Blitzen's windows (DIR/deb, DIR/ai: JSON, as the test sets them)
         if w == 'debian/status': return self.j(dict({'ok': True}, **json.loads(rd('deb', b'{}') or b'{}')))
         if w == 'ai/status': return self.j(dict({'ok': True}, **json.loads(rd('ai', b'{}') or b'{}')))
+        if w in ('mobile/status', 'mobile/connect'):   # (1.6.0 Part 3: DIR/mobile, "connected" or "registered": a modem with its SIM unlocked)
+            st = (rd('mobile', b'') or b'').decode().strip()
+            if w == 'mobile/connect' and m == 'POST' and st:
+                st = 'connected' if 'on=1' in q else 'registered'
+                with open(os.path.join(D, 'mobile'), 'w') as f: f.write(st)
+                return self.j({'ok': True, 'message': 'Connected' if st == 'connected' else 'Disconnected'})
+            mods = [{'id': 0, 'maker': 'Quectel', 'model': 'EG25-G', 'state': st, 'failed': '', 'locked': '', 'sim': True, 'iface': 'wwan0' if st == 'connected' else ''}] if st else []
+            return self.j({'ok': True, 'running': bool(st), 'modems': mods, 'notes': [], 'route': 'eth0', 'cellular': False})
         if w == 'mobile/airplane':   # (1.6.0 Part 2: quick settings' Airplane mode; DIR/airplane: 1 or 0)
             if m == 'POST':
                 with open(os.path.join(D, 'airplane'), 'w') as f: f.write('1' if 'on=1' in q else '0')
