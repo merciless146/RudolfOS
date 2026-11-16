@@ -176,7 +176,8 @@ Decided by the owner on 2026-11-16: "USB printers and ARM64 can be delayed until
 ### 10. Oracle: find, closed tabs, reader mode and blocking (added on 2026-11-16)
 docs/plan-oracle.md, asked for by the owner on 2026-11-16. Suggested for 1.6.1: item 1 (find in page), item 2 (reopen a
 closed tab, restore the session) and item 7 (reader mode); item 5 (ad and tracker blocking) here or in 2.0. Item 4
-(website passwords) is suggested for 2.0 (docs/plan-2.0.md). The owner decides.
+(website passwords) and item 6 (extensions from the Library) are suggested for 2.0 (docs/plan-2.0.md); item 6's
+stage 1 could start here. The owner decides.
 
 ## Not moved here
 - **elogind and polkit** (1.6.0 Part 11): left out by decision on 2026-11-15, since Rudolf OS's own inhibit portal and

@@ -215,5 +215,6 @@ a day's mixed use; start to the lock screen; each against the same phone on Andr
 
 ## Oracle: website passwords, and perhaps blocking (added on 2026-11-16)
 docs/plan-oracle.md: item 4 (a password manager for websites, in the account's keyring, with its own security review) is
-suggested for 2.0, and item 5 (ad and tracker blocking) if it is not done in 1.6.1. Item 6 (extensions from a reviewed
-list in the Library) is not planned yet; its recommended source is in that plan. The owner decides.
+suggested for 2.0, and item 5 (ad and tracker blocking) if it is not done in 1.6.1. Item 6 (Oracle's
+extensions, from a reviewed list in the Library, signed with its key) is suggested for 2.0 too; its first stage could
+start in 1.6.1. The owner decides.

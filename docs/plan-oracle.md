@@ -1,4 +1,4 @@
-# Oracle: find, closed tabs, passwords, blocking and reader mode (asked for on 2026-11-16)
+# Oracle: find, closed tabs, passwords, blocking, reader mode and extensions (asked for on 2026-11-16)
 
 The owner compared Oracle with Chrome, Edge, Firefox, Safari and Brave on 2026-11-16 and asked for a plan for five of
 the improvements suggested then. "Create a plan for recommended items 1, 2, 4, 5, and 7":
@@ -8,10 +8,10 @@ the improvements suggested then. "Create a plan for recommended items 1, 2, 4, 5
 - Item 4: a password manager for websites, kept in the account's keyring.
 - Item 5: ad and tracker blocking.
 - Item 7: reader mode.
+- Item 6 (added the same day): extensions from a reviewed list in the Library.
 
-The parts below keep those numbers. The other items are not part of this plan: item 3 (no 12-tab limit), item 6
-(extensions: the recommended source is at the end), item 8 (pinned and muted tabs, tab search, the padlock, site
-permissions) and item 9 (export and import instead of sync).
+The parts below keep those numbers. The other items are not part of this plan: item 3 (no 12-tab limit), item 8
+(pinned and muted tabs, tab search, the padlock, site permissions) and item 9 (export and import instead of sync).
 
 ## Where Oracle's pages live (what each part must cover)
 
@@ -181,7 +181,7 @@ versions.
 - **Speed.** The interceptor answers in microseconds per request (a hash of domains, then a small set of patterns).
   Measure page loads with and without on the Vivobook. If the interceptor is too slow, the fallback is shipping
   uBlock Origin Lite (GPLv3, Manifest V3, declarativeNetRequest) as a built-in extension loaded as Ruffle's is
-  (`--load-extension`), with Oracle's shield driving it.
+  (`--load-extension`), with Oracle's shield driving it. Item 6 also offers it as an extension of the person's choice.
 
 **Tests.**
 - Host test of the compiler and matcher against EasyList's own syntax cases (exceptions, $third-party, $domain,
@@ -238,27 +238,149 @@ Suggested; the owner decides.
 | 7. Reader mode | medium | 1.6.1 | Readability and safeHtml exist; low risk |
 | 5. Ad and tracker blocking | medium–large | 1.6.1 or 2.0 | the interceptor exists; the list updates need the Library's signing |
 | 4. Passwords | large | 2.0 | security-sensitive: its own review |
+| 6. Extensions | large | 2.0 (stage 1 could start in 1.6.1) | needs the Library's new package type and the extensions' keys; its own review |
 
 Each part is its own PR from its own branch, title and body starting "❇️ Approval/merge only.", with a CHANGELOG line,
 the page rebuilt when desktop/ changes, and the owner's checks listed. Oracle's comparison on Native
-(same_oracle_t.sh, #435) gets each new piece of UI (the find bar, the shield, the reader button), so Native keeps
+(same_oracle_t.sh, #435) gets each new piece of UI (the find bar, the shield, the reader button, the 🧩 button), so Native keeps
 matching Standard.
 
-## Item 6. Extensions (not planned yet): the recommended source
+## Item 6. Extensions from a reviewed list in the Library (added on 2026-11-16)
 
-The owner asked what store or list Oracle should install extensions from. The recommendation:
+The owner asked which store or list Oracle should install extensions from. On the recommendation, the owner said: "Use
+the recommendation provided above to add item #6 from the list to the plan."
 
-- **Rudolf's own reviewed list, in the Library.** Each extension is an open-source Manifest V3 extension built from its
-  published source by rudolfos-library's workflow, signed with the Library's key, and listed in the App Store under
-  "Oracle extensions". Oracle loads only extensions signed by that key, as rpk does for packages. Each one has a
-  stated licence, a pinned version, a review of its permissions, and updates through the Library.
-- **First candidates:**
-  - uBlock Origin Lite (GPLv3), for those who want it instead of item 5;
-  - Bitwarden (GPLv3), for people who already keep their passwords there;
-  - Dark Reader (MIT);
-  - Privacy Badger (GPLv3);
-  - SponsorBlock (GPLv3).
-- **Later, perhaps:** the Chrome Web Store, behind Developer mode or an administrator's "Allow any extension"
-  setting, with a plain warning. Rudolf's Chromium can install from it as other Chromium browsers do, but its
-  extensions are reviewed by Google, not by Rudolf, and many are closed-source.
-- **Not Firefox's add-ons site:** its extensions are written for Firefox and do not run in Chromium unchanged.
+**The source: Rudolf's own reviewed list, in the Library.** Each extension is an open-source Manifest V3 extension. It
+is built from its published source by rudolfos-library's workflow, signed with the Library's key, and listed in the App
+Store under "Oracle extensions". Oracle installs only extensions from that list. Each one has a stated licence, a pinned
+version, a review of its permissions, and updates through the Library.
+
+**The first five:**
+
+| Extension | Licence | What it does | Note |
+|---|---|---|---|
+| uBlock Origin Lite | GPLv3 | blocks ads and trackers | for those who want it in place of, or with, item 5's shield |
+| Bitwarden | GPLv3 | password manager, synced through Bitwarden's servers | for people who already keep their passwords there (item 4 stays local) |
+| Dark Reader | MIT | dark mode for websites, adjustable per site | more settings than Oracle's Dark pages |
+| Privacy Badger | GPLv3 | learns and blocks trackers | |
+| SponsorBlock | GPLv3 | skips sponsored segments in videos | |
+
+**Not these sources:**
+- **The Chrome Web Store, not yet.** Its extensions are reviewed by Google, not by Rudolf, and many are closed-source.
+  It may come later, at stage 3 below.
+- **Firefox's add-ons site, never.** Its extensions are written for Firefox and do not run in Chromium unchanged.
+
+### What the person sees
+- **App Store › Oracle extensions** lists the extensions with their own descriptions, licences and sizes. Before
+  installing, each one shows what it can do in plain words, from its permissions: "Read and change all your data on
+  every website", "Read your browsing history", "Store data on this computer". Installing asks for an administrator's
+  name and password, as installing a program does.
+- **Oracle › ☰ › Extensions (about:extensions)** lists Ruffle (built in) and the installed ones. Each has a switch,
+  "Allow in private windows" (off by default; never in Tor windows), Options (the extension's own settings page),
+  Remove, its version, the Library's signature and its permissions.
+- **A puzzle button 🧩 at the right of Oracle's toolbar** lists the extensions with buttons. Pressing one opens its
+  pop-up (uBlock's per-site switch, Bitwarden's vault) under the button, as in Chrome. Each extension can be pinned
+  next to the address box.
+- **Where it works:**
+  - **Standard and Native:** both, alike (Oracle on Native is the same Chromium shell, compared by
+    same_oracle_t.sh).
+  - **Lite (WebKit):** WebKitGTK cannot run Chromium's extensions, so the page says "Extensions work with the Standard
+    and Native desktops" and the 🧩 button is not shown.
+  - **The frames fallback:** extensions are not available.
+
+### How
+
+**1. The Library builds them** (rudolfos-library):
+- Each extension is a package `apps/oext-<name>/` whose PKGINFO has `type oext`, the upstream repository and the
+  pinned tag and commit, its licence, and the permissions as reviewed.
+- The workflow fetches that exact commit, builds it with the project's own build steps (no prebuilt files from a
+  store), and checks that the manifest's permissions are those in PKGINFO. A new permission fails the build until
+  someone reviews it and PKGINFO says so.
+- It packs a CRX3, includes the licence files, signs the package with the Library's key as every Library package is,
+  and publishes it.
+
+**2. The extension's own signing key.**
+- Chromium identifies an extension by the key its CRX is signed with. Each Oracle extension needs its own key, so its
+  ID never changes between versions.
+- These keys are private keys. The owner makes them (one command per extension, a script in rudolfos-library's
+  tools) and keeps them only in rudolfos-library's secrets (`OEXT_KEY_<NAME>`) and the owner's offline backup, as the
+  Library's key is kept.
+- Claude never makes, sees or handles them. Only the extension IDs (public) go in the repositories.
+
+**3. Installing on the computer** (rudolfd, Chromium's managed policies):
+- The App Store installs the package with rpk, which checks the Library's signature as it does for every package.
+  An unsigned package, or one signed with another key, is refused.
+- rudolfd then writes the computer's extension policy (`/etc/chromium/policies/managed/rudolf-oext.json`, as the
+  shell's own policy is written today):
+  - `ExtensionSettings`: `"*"` blocked, so Chromium installs nothing else, from anywhere;
+  - each installed extension `force_installed`, with an `update_url` served by rudolfd on 127.0.0.1 (as the shell's
+    `iwa/update.json` is), listing that package's CRX;
+  - "Allow in private windows" from the account's choice.
+- Chromium installs and updates extensions from that local URL only, never from Google. Removing an extension takes it
+  out of the policy and the package is deleted.
+- The policy is per computer, as the browser is, so extensions are installed by an administrator for everyone. Each
+  account can turn an installed extension off for itself.
+- Ruffle stays as it is (`--load-extension`, built in).
+
+**4. In Oracle's tabs.**
+- Each extension's content scripts must run in Oracle's real tabs (the shell's `controlledframe`), as Ruffle's do
+  today. Check this for each one at its review: what runs, what does not, and what the extension needs from the
+  browser's UI.
+- The 🧩 pop-ups open the extension's `chrome-extension://ID/popup.html` in a small Oracle pop-up window of the shell.
+  If a controlledframe cannot load an extension's page, it opens in a Chromium app window instead, on Standard and on
+  Native.
+- An extension's own toolbar badge (uBlock's count) shows on its pinned button.
+
+**5. Updates.**
+- A new version is a new Library package. Its permissions are reviewed again, and a new permission needs the
+  administrator's approval at update time, as Chrome disables an extension until its new permissions are accepted.
+- rpk's update installs it and rudolfd's update_url offers the new CRX. Chromium picks it up at its next check, or at
+  once when rudolfd asks it to (if Chromium 158 has no way, at Oracle's next start).
+- Library's revocation list (`revoked.txt`) applies: a revoked extension is removed from the policy at the next
+  check, with a notification saying why.
+
+**6. Security.**
+- No extension can be installed by a website, a Linux app, a file or a non-administrator. The policy is written only by
+  rudolfd as root, and `"*"` stays blocked.
+- Extensions never run in Tor windows. In private windows they run only when allowed.
+- Extensions never get Rudolf's system API. They live in Chromium's profile like any extension, and rudolfd refuses
+  their requests as it refuses every program that is not the desktop (Part 10).
+- This item gets its own security review, as item 4 does: the build's reproducibility, the permission check, the
+  policy file, and the update path.
+
+### Stages
+1. **The mechanism, with Rudolf's own small test extension:** the Library package type, CRX building and signing, the
+   policy with everything else blocked, about:extensions, the 🧩 button and pop-ups, Standard and Native.
+2. **The five extensions above,** each reviewed (licence, permissions, what works in a controlledframe) and published.
+3. **Perhaps, later and only if the owner decides:** "Allow extensions from the Chrome Web Store", for an
+   administrator, in Developer mode only, with a plain warning that Rudolf has not reviewed them. Its extensions are
+   then still installed through the same policy, by their IDs.
+
+### Tests
+- **rudolfos-library:**
+  - A fixture extension built from a pinned commit reproduces byte for byte.
+  - A changed permission fails the build.
+  - The CRX3 verifies with its ID's key, and the package with the Library's key (test keys made in the test, never the
+    real ones).
+- **Host tests:**
+  - rudolfd writes the policy correctly: `"*"` blocked, each package force-installed, the local update_url.
+  - rpk refuses an unsigned or other-key oext package.
+  - A revoked one is removed.
+- **A real-Chromium test (CI):**
+  - With the policy, a test extension installs from 127.0.0.1 and its content script runs in an Oracle tab
+    (controlledframe).
+  - A second extension not in the policy is refused.
+  - Turning the extension off and removing it work.
+  - It never runs in a Tor window.
+- **shell2:** about:extensions, the 🧩 button, the permission words before installing, the administrator's prompt.
+- **QEMU on the real release:** install, restart, the extension still there; update with a new permission asking
+  again; remove.
+
+### The owner's checks
+- App Store › Oracle extensions: install uBlock Origin Lite. The permissions are shown and an administrator's password
+  is asked.
+- Its 🧩 pop-up on a news site turns blocking off for that site, on Standard and on Native.
+- Dark Reader's options open.
+- A private window has no extensions until allowed. A Tor window never has them.
+- Remove both.
+- Lite says extensions need Standard or Native.
