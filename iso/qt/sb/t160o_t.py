@@ -121,6 +121,7 @@ def boot(tag, drive, vars_keep, secure_code=True, kernel_cmd=None, wait=1200, ne
         except OSError: pass
         time.sleep(4)
     out(f'--- start {N[0]} ({tag}):', 'up' if up else 'NOT UP')
+    if not up: out('the serial line:', open(vm.serlog, errors='replace').read()[-4000:])
     return vm, g, up
 def stop(vm, g):
     try: g.sh('sync', 60)
@@ -227,8 +228,9 @@ def part2():
         D2 = os.path.abspath('d160r2.img')
         def ex2(T):
             open(f'{T}/os/update.conf', 'w').write('auto=0\n')
-        make_drive(D2, None, official=False, extra=ex2, dmb=3200)
-        CMD = 'quiet loglevel=3 consoleblank=0 rudolf.debug=1'
+        # (with a boot image in front, as every installed drive has: the start-up looks for its installed system there)
+        make_drive(D2, BOOT, official=False, extra=ex2, dmb=3200)
+        CMD = 'console=ttyS0 loglevel=3 consoleblank=0 rudolf.debug=1'
         V2 = f'{W}/vars2.fd'; shutil.copy(f'{PARTS}/OVMF_VARS_4M.fd', V2)
         vm, g, up = boot('neverofficial', D2, V2, kernel_cmd=CMD)
         o = run(g, STATUS, 120) if up else 'not up'
@@ -296,10 +298,9 @@ def part3():
             set_var(g, 'LoaderEntryOneShot', 'rudolf-recovery.conf')
             stop(vm, g)
             vm, g, up = boot('sbrecovery', D3, V3, net=False)
-            time.sleep(5); s = open(vm.serlog, errors='replace').read()
-            o = run(g, "echo SLOT=$(cat /etc/rudolf/slot); cat /etc/rudolf/cmdline; cat /sys/kernel/security/lockdown", 60) if up else 'not up'
-            ok('20. Recovery mode under Secure Boot: recovery.efi checks the official system/r with the official key and starts it (locked down)',
-               re.search(r'starting the official recovery system \(release \d+, checked\)', s) and (not up or re.search(r'^SLOT=r$', o, re.M)), o + s[-3000:])
+            o = run(g, "echo SLOT=$(cat /etc/rudolf/slot); cat /etc/rudolf/cmdline; cat /sys/kernel/security/lockdown; grep -h 'official recovery' /persist/var/log/boot-decisions.log | tail -3", 60) if up else 'not up'
+            ok('20. Recovery mode under Secure Boot: recovery.efi checks the official system/r with the official key and starts it (slot r, locked down)',
+               up and re.search(r'^SLOT=r$', o, re.M) and 'rudolf.official=1' in o and '[integrity]' in o and 'handing over to slot r (official recovery)' in o, o)
         stop(vm, g); vm = None
         os.remove(D3)
 
