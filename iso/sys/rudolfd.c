@@ -4211,6 +4211,13 @@ static void api(struct req *r)
 	/* 1.4.4: events/wait waits (up to 25 s) until there are events, so the desktop hears of a key press (the volume
 	   and brightness indicator), the charger or Wi-Fi at once instead of at its next check; each connection has its
 	   own process, so waiting here holds nothing up */
+	/* 1.6.0: on the native desktop the shell (rudolf-native, events?shell=1) is the desktop that hears them, once, and shows the
+	   power dialog and the keys' indicator above every window, handing a page the rest; an app's or Oracle's page asking gets none
+	   (or it took the power key's event and drew the dialog in its own window minutes later) and is told to stop asking */
+	if ((!strcmp(p, "events/wait") || !strcmp(p, "events")) && !access(RUN "/wm-native", F_OK) && !qparam(r->query, "shell")) {
+		if (!strcmp(p, "events/wait")) sleep(20);
+		str s = {0}; sadd(&s, "{\"ok\":true,\"events\":\"\",\"native\":true}"); reply_json(r->fd, &s); return;
+	}
 	if (!strcmp(p, "events/wait")) {
 		struct stat st;
 		for (int i = 0; i < 250; i++) { if (!stat(RUN "/events", &st) && st.st_size > 0) break; usleep(100000); }

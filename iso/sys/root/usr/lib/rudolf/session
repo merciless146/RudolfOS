@@ -265,6 +265,18 @@ oracle_chrome() {
 		--load-extension=$RUF --disable-gpu-watchdog --disk-cache-size=67108864 $PROXY $EXTRA; do echo "$a"; done; } > /run/rudolf/oracle-chrome.t &&
 		chmod 644 /run/rudolf/oracle-chrome.t && mv /run/rudolf/oracle-chrome.t /run/rudolf/oracle-chrome
 }
+# 1.6.0 (the owner's photo of 2026-11-15): Oracle's and its Tor windows' Chromium belong to the native desktop that started them
+# (rudolf-launch --oracle) and outlived it when it ended (given up, or started again): Oracle's then held Standard's profile, so
+# Standard's Chromium, started next with the same profile, only handed its address to it and ended. The desktop came up in
+# Oracle's plain Chromium windows with Chromium's own grey title bars (no window manager frames them), and the engine read
+# Standard. Ended here before a desktop starts (none at the first start).
+oracle_left() { pgrep -f '[-]-class=RudolfOracle' >/dev/null 2>&1 || pgrep -f '[-]-class=RudolfTor' >/dev/null 2>&1; }
+oracle_leftovers() {
+	oracle_left || return 0
+	echo "$(date) ending Oracle's Chromium left by the native desktop"; pkill -f '[-]-class=RudolfOracle'; pkill -f '[-]-class=RudolfTor'
+	for i in 1 2 3 4 5; do oracle_left || return 0; sleep 1; done
+	pkill -9 -f '[-]-class=RudolfOracle'; pkill -9 -f '[-]-class=RudolfTor'; return 0
+}
 # 1.5.9 (docs/plan-1.5.9.md 16.2): Oracle's Tor windows (Browse with Tor): Rudolf's Chromium of their own, through Tor's SOCKS5
 # proxy on 127.0.0.1:9050 (Chromium gives a SOCKS5 proxy the sites' names, so no name is looked up outside Tor, and no name
 # is looked up here at all but the desktop's own address), WebRTC only through the proxy, no extension but Ruffle, the shell
@@ -344,6 +356,7 @@ while :; do
 	EXTRA=""; [ -s /run/rudolf/browser-flags ] && EXTRA=$(cat /run/rudolf/browser-flags)
 	[ -s /run/rudolf/proxy ] && PROXY="--proxy-server=$(cat /run/rudolf/proxy)"
 	rm -f /run/rudolf/heartbeat
+	[ "$ENGINE" = native ] && oracle_leftovers   # (the native desktop's, after it: see oracle_leftovers)
 	START=http://127.0.0.1:8080/; SHELLON=0; LAUNCH=""
 	# Chromium opens the shell only when the browser itself asks: rudolf-launch does that over a private pipe
 	if shell_usable && [ -x /usr/bin/rudolf-launch ]; then START=""; SHELLON=1; LAUNCH="/usr/bin/rudolf-launch $SHELLID"; fi

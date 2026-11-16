@@ -291,7 +291,31 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
   if(da0=='pin'){try{pinSet(q.get('k')||'',q.get('on')=='1')}catch(e){}return oaFin({})}
   /* (1.6.0 Part 12, item 3) quick settings' switches and the notifications' centre as the native shell draws them: the page's own
      panels made unseen and the same button pressed (#app=do-qs&item=WORDS; #app=do-nc&op=clear|dnd&on=0|1|dismiss&i=N|why&i=N) */
-  if(da0=='qs'){try{qsToggle();const b=[...document.querySelectorAll('#qsp .qst')].find(x=>(x.querySelector('span')||{}).textContent==q.get('item'));if(b)b.click();qsClose()}catch(e){console.warn(e)}return oaFin({})}
+  /* (1.6.0) on=0|1: the switch as the shell shows it now, so a page that had not heard of a change yet does not undo it; the screen
+     reader's "Screen reader on" said before the page closes (srSpeak: the voices', or rudolfd's say) */
+  if(da0=='qs'){let sr=0;try{qsToggle();const it=q.get('item'),on=q.get('on'),b=[...document.querySelectorAll('#qsp .qst')].find(x=>(x.querySelector('span')||{}).textContent==it);
+    if(b&&(on==null||(b.classList.contains('on')?'1':'0')!=on)){b.click();sr=it=='Screen reader'&&!!S.sr}qsClose()
+    /* (High contrast and Touch mode are kept as S.cb and S.touch, which the tile's own copy to SC (its keys hc, tm) leaves out: on Standard
+       the one page shows them at once; here the other windows and the shell read what is saved) */
+    if(SC){SC.cb=S.cb;SC.touch=S.touch;persistS()}}catch(e){console.warn(e)}
+   if(!sr)return oaFin({});const t0=Date.now(),said=()=>{const a=window.__srAudio,ss=window.speechSynthesis;if(Date.now()-t0>8000||(Date.now()-t0>1500&&!(ss&&ss.speaking)&&!(a&&!a.ended&&!a.paused)))return oaFin({});setTimeout(said,250)};setTimeout(said,400);return}
+  /* (1.6.0) the native desktop's on-screen keyboard: the page's own (#vkb, its keys for the language chosen) filling a window of its own
+     that never takes the keyboard; a key goes to the shell, which gives it to the page of the window in front (__oaVkIn) */
+  if(da0=='vk'&&typeof vkDraw=='function'){OA.want=1;OA_VK=1;const H=document.documentElement;H.classList.add('oavk');
+   {const st=document.createElement('style');st.textContent=`html.oavk,html.oavk body{background:#e5e7eb!important;overflow:hidden!important;zoom:1!important}html.oavk body>*:not(#vkb){visibility:hidden!important}
+html.oavk #vkb{display:block!important;visibility:visible!important;position:fixed!important;left:0!important;top:0!important;right:0!important;bottom:auto!important;transform:none!important;width:100%!important;max-width:none!important;border:0!important;border-radius:0!important;box-shadow:none!important;zoom:var(--oavkz,1)}`;document.head.appendChild(st)}
+   vkInsert=c=>oaPost({op:'vk',c:String(c)});vkSpecial=k=>oaPost({op:'vk',sp:String(k)});
+   vkShown=true;S.vk=true;try{vkDraw();vkEl.style.display='block'}catch(e){console.warn(e)}document.title='On-screen keyboard';
+   const z=Math.max(75,Math.min(250,+S.scale||100))/100;H.style.setProperty('--oavkz',z);H.style.zoom='';
+   /* (its height for the window; its letters' places for the tests' state) */
+   const tell=()=>oaPost({op:'vk',h:String(Math.ceil(vkEl.getBoundingClientRect().height/z)),keys:[...vkEl.querySelectorAll('.vk-k')].slice(0,60).map(b=>{const r=b.getBoundingClientRect();return encodeURIComponent(b.dataset.c||'')+' '+Math.round(r.left+r.width/2)+' '+Math.round(r.top+r.height/2)}).join('|')});
+   setTimeout(tell,50);setTimeout(tell,800);return}
+  if(da0=='short'){const s=typeof SHORT=='object'?SHORT.find(x=>x.id==q.get('id')):null;try{s&&s.fn()}catch(e){console.warn(e)}setTimeout(()=>oaFin({}),6000);return}
+  /* (1.6.0) the power dialog's "Restart into Windows" (boot30.js): the administrator's password, the firmware asked to start Windows once,
+     then the shell restarts the computer */
+  if(da0=='pwr'&&q.get('op')=='windows'){OA.want=1;(async()=>{const n=q.get('n')||'',t=q.get('t')||'Windows';
+    try{if(await elevate('Restart into Windows: the computer starts '+t+' once.')){await rdPost('bootmenu/windows?n='+encodeURIComponent(n));try{fsFlush()}catch(e){}try{await oaDrained()}catch(e){}oaPost({op:'pwr',a:'reboot'})}}
+    catch(e){try{notify('Restart into Windows',e.message,{kind:'error'})}catch(x){}}oaFin({})})();return}
   if(da0=='nc'){const op=q.get('op')||'';try{NC=ld(NCK(),[]);ncToggle(true);const p=document.getElementById('ncp');
     if(op=='clear')p.querySelector('.clr').click();
     else if(op=='dnd'){const c=p.querySelector('.dnd');if(c.checked!=(q.get('on')=='1')){c.checked=q.get('on')=='1';c.dispatchEvent(new Event('change'))}}
@@ -307,7 +331,9 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
  OA.want=1;
  /* (1.5.9, 12.3c) Oracle without Rudolf's Chromium on the native desktop (none, or it would not start): said once */
  if(ONEAPP.k=='browser'&&ONEAPP.q.get('nochrome')=='1')setTimeout(()=>{try{notify('Oracle','Websites will work better on Standard: Oracle is running without Rudolf\u2019s Chromium here, so some sites cannot open in its tabs.')}catch(e){}},1500);
- try{if(act)act();else if(ONEAPP.file&&app.openFile)launchWith(ONEAPP.k,resolve(ONEAPP.file,['C:']));else launch(ONEAPP.k)}catch(e){console.warn(e)}
+ try{if(act)act();else if(ONEAPP.file&&app.openFile)launchWith(ONEAPP.k,resolve(ONEAPP.file,['C:']));
+  else if(ONEAPP.k=='taskmgr'&&ONEAPP.q.get('urgent')=='1'&&typeof tmUrgent=='function')tmUrgent();   /* (1.6.0: Ctrl+Alt+Del's, tmtop57.js) */
+  else launch(ONEAPP.k)}catch(e){console.warn(e)}
  /* an app that opens no window (or not yet: a large app loads its files first) */
  setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed(app.name+' did not open a window.');oaPost({op:'close'})}},15000)}
 /* (1.6.0 Part 12, item 1's second part) the native desktop's menus do what the page's do: #app=do-desk&on=ICON&item=WORDS
@@ -503,3 +529,24 @@ async function oaWallpaper(){if(typeof RD=='undefined'||!RD||!USER||USER.r=='gue
  try{const b=atob(WPURL.slice(WPURL.indexOf(',')+1)),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);
   await rdPost('desktop/wallpaper?acct='+encodeURIComponent(uid())+'&img='+encodeURIComponent(id),u)}catch(e){OA_WP='';console.warn('desktop/wallpaper',e)}}
 {const _wl=wpLoad;wpLoad=function(){const p=_wl.apply(this,arguments);Promise.resolve(p).then(()=>setTimeout(oaWallpaper,0)).catch(()=>{});return p}}
+
+/* (1.6.0) what the native desktop's shell does for the whole screen, so the page in its window does not do it again (rudolf-native's
+   window.__oaShell): the screen's colour (Night light's orange layer and High contrast's contrast: the X screen's gamma; the page keeps
+   the saturation), the magnifier (the whole screen zoomed round the pointer) and the on-screen keyboard (a window of its own, its keys
+   typed into the page of the window in front: __oaVkIn); and what it hands the page: rudolfd's events that are a page's (__oaEv: the
+   shell has the power key, the keys' indicator and Task Manager), the global keys the page in front does (__oaShort), Task Manager
+   brought up by Ctrl+Alt+Del again (__oaTmUrgent) */
+let OA_VK=0;
+/* (Oracle's page in Rudolf's Chromium on the native desktop has no user script of the shell's: the shell does these there too) */
+if(ONEAPP&&(window.__oaShell&&oaNative()||typeof RD!='undefined'&&RD&&RD.engine=='native'&&!oaNative())){const SH=window.__oaShell||{gamma:1,mag:1,vk:1},H=document.documentElement;
+ if(SH.gamma){H.classList.add('oagamma');const st=document.createElement('style');st.textContent='html.oagamma #nightl{display:none!important}';document.head.appendChild(st);
+  if(typeof applyCB=='function'){const _cb=applyCB;applyCB=function(){const r=_cb.apply(this,arguments);if(S.cb=='contrast')H.style.filter='saturate(1.2)';return r}}}
+ if(SH.mag&&typeof magApply=='function'){magApply=function(){const B=document.body;B.classList.toggle('magon',!!S.mag);B.style.transform=S.rot?`rotate(${S.rot}deg)`:'';B.style.transformOrigin=''};window.__magApply=magApply;try{magApply()}catch(e){}}
+ if(SH.vk&&typeof vkSync=='function'){const _vs=vkSync;vkSync=function(){if(OA_VK){if(!vkShown){vkShown=true;oaPost({op:'vk',x:'1'})}vkEl.style.display='block';return}
+  _vs.apply(this,arguments);try{vkEl.style.display='none';vkBtn.style.display='none'}catch(e){}}}
+ const ED='input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]),textarea,[contenteditable=true],[contenteditable=""]';
+ window.__oaVkIn=(c,sp)=>{try{const a=document.activeElement;if(a&&a.matches&&a.matches(ED))vkTarget=a;if(!vkTarget||!vkTarget.isConnected)return;if(sp)vkSpecial(sp);else if(c)vkInsert(c)}catch(e){console.warn(e)}}}
+if(ONEAPP){
+ window.__oaEv=t=>{try{evDispatch(String(t||'').split('\n').filter(l=>!/^power \d/.test(l)&&!/^osd /.test(l)&&l!='taskmgr').join('\n'))}catch(e){console.warn(e)}};
+ window.__oaShort=id=>{const s=typeof SHORT=='object'?SHORT.find(x=>x.id==id):null;if(s)try{s.fn()}catch(e){console.warn(e)}};
+ window.__oaTmUrgent=()=>{try{if(typeof tmUrgent=='function')tmUrgent()}catch(e){console.warn(e)}}}
