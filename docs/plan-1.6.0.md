@@ -978,8 +978,10 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
     new Tor window of the same Chromium (rudolfd's torwin/open; Native's op tor), Ctrl+Q nothing (the site sees Ctrl+F23
     let go: the key was handed on), Ctrl+W the tab closed with the window and Chromium kept. Note: Playwright's Chromium
     153 already gives a shell's page these keys unchanged, so there the website part passes with or without the remap; the
-    remap is checked by step 0 and by the site seeing F23. On the Vivobook (owner): in a Tor window on Standard and on
-    Native, Ctrl+T, Ctrl+W, Ctrl+N and Ctrl+Q in a website.
+    remap is checked by step 0 and by the site seeing F23. With the beta's own Chromium 158 (tor-keys-check.yml) Native's
+    Tor window kept "Rudolf OS" as its window's title, so its frame said "Oracle", not "... - Oracle (Tor)": fixed (the
+    page's title through rudolf-launch's binding to rudolf-native, by the window's place). On the Vivobook (owner): in a
+    Tor window on Standard and on Native, Ctrl+T, Ctrl+W, Ctrl+N and Ctrl+Q in a website; its title bar says "(Tor)".
   - **Lite (from 1.5.8, through 1.5.9):** the desktop's menus and windows behind Oracle's tab pages (the covered tab's
     still picture while a menu is open); stutter in Oracle's tabs; Google sign-in for GitHub (symptoms to be described
     first); GPU drawing for Lite measured; Oracle's WebKit tabs (YouTube, Google sign-in with FedCM, a download, full
@@ -1322,7 +1324,11 @@ printers and ARM64 can be delayed until 1.6.1."
     windows (rudolf-display's keys), with a test. **Done (2026-11-16):** the keys were already handed on (rudolf-display:
     RudolfTor as RudolfDesktop; rudolf-native: RudolfTor as RudolfOracle, Part 15); the tests are new: qt/host/torwin59_t.sh
     17/17 (0: rudolf-display's own key code by window class, fixtures/dispkeys.c; 10: the keys in a website in Standard's Tor
-    window) and qt/native/tor_native_t.sh 20/20 (8: the same on Native). Left: the owner's check on the Vivobook (Part 15).
+    window) and qt/native/tor_native_t.sh 20/20 (8: the same on Native), with Playwright's Chromium and with the beta's own
+    (tor-keys-check.yml). Found with the beta's Chromium 158 and fixed: on Native a Tor window's title (frame and taskbar)
+    had no "(Tor)", and Oracle's said "Oracle" whatever the page (Chromium 158 keeps the window's own title at the
+    shell's name): the page now tells the native desktop its title through rudolf-launch's binding ("title X Y W H ...",
+    the window found by its place). Left: the owner's check on the Vivobook (Part 15).
 - **Moved to 1.6.1:** Part 8 (USB printers: extensions.yml's first run to publish `usbprint`, then the HP desktop user's
   printer; docs/plan-1.6.1.md Part 9) and Part 7 (ARM64: its first release on one ARM64 computer that starts with UEFI;
   with the phone, docs/plan-1.6.1.md Part 4). 1.6.0 ships for x86 computers, and prints to network printers (IPP
