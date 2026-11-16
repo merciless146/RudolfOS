@@ -48,8 +48,12 @@ def make_drive(path):
     os.remove(D)
 FIXIMG = ''
 if FIX:
+    # (with a wrapper that starts the program with the tests' views: run from this disk, as /tmp may not allow programs)
+    FD = os.path.join(W, 'fix'); shutil.copytree(FIX, FD)
+    open(f'{FD}/rn', 'w').write('#!/bin/sh\nexport RUDOLF_NATIVE_STATE=/tmp/nstate RUDOLF_NATIVE_TEST_EVAL=/tmp/teval\nexec /tmp/fx/rudolf-native "$@"\n'); os.chmod(f'{FD}/rn', 0o755)
+    if os.path.exists(f'{FD}/rudolf-native'): os.chmod(f'{FD}/rudolf-native', 0o755)
     FIXIMG = os.path.abspath('k160fix.img'); subprocess.run(['truncate', '-s', '64M', FIXIMG], check=True)
-    subprocess.run(['mkfs.ext4', '-q', '-F', '-L', 'K160FIX', '-d', FIX, FIXIMG], check=True)
+    subprocess.run(['mkfs.ext4', '-q', '-F', '-L', 'K160FIX', '-d', FD, FIXIMG], check=True)
 INIT_JS = "(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};return 1})()"
 def boot(tag):
     extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf160',
@@ -95,7 +99,7 @@ try:
     # ------------------------------------------------------------------ 1. Standard (Chromium): the reference
     vm, g, up = boot('s'); js = jsfn(g); sh = lambda c, t=60, show=True: run(g, c, t, show)
     ok('0. the release starts (Standard)', up)
-    if not up: raise SystemExit
+    if not up: raise RuntimeError('did not start')
     end = time.time() + 600
     while time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'", 20) is not True: time.sleep(5)
     time.sleep(40); js(INIT_JS)
@@ -120,21 +124,20 @@ try:
     # ------------------------------------------------------------------ 2. Native
     vm, g, up = boot('n'); sh = lambda c, t=60, show=True: run(g, c, t, show)
     ok('0b. the release starts again (Native)', up)
-    if not up: raise SystemExit
+    if not up: raise RuntimeError('did not start')
     o = sh("for i in $(seq 1 60); do pgrep -x rudolf-native >/dev/null && break; sleep 3; done; cat /run/rudolf/desktop-engine; pgrep -x rudolf-native", 240)
     ok('0c. the Native desktop runs', 'native' in o, o)
     o = sh("FX=; for d in /dev/nvme*n1; do blkid $d 2>/dev/null | grep -q K160FIX && FX=$d; done; echo fix=$FX; mkdir -p /tmp/fx; [ -n \"$FX\" ] && mount -o ro $FX /tmp/fx; ls -la /tmp/fx; "
            "WWW=/usr/share/rudolf/www; [ -f /persist/os/current/index.html ] && WWW=/persist/os/current; [ -f /tmp/fx/index.html ] && cp /tmp/fx/index.html /tmp/page.html && chmod 644 /tmp/page.html && mount --bind /tmp/page.html $WWW/index.html; "
-           "if [ -f /tmp/fx/rudolf-native ]; then cp /tmp/fx/rudolf-native /tmp/rn.real; else cp /usr/bin/rudolf-native /tmp/rn.real; fi; chmod 755 /tmp/rn.real; "
-           "rm -f /tmp/teval /tmp/teval.out; mkfifo -m 666 /tmp/teval; "
-           "printf '#!/bin/sh\\nexport RUDOLF_NATIVE_STATE=/tmp/nstate RUDOLF_NATIVE_TEST_EVAL=/tmp/teval\\nexec /tmp/rn.real \"$@\"\\n' > /tmp/rn; chmod 755 /tmp/rn; mount --bind /tmp/rn /usr/bin/rudolf-native; "
-           "pkill -x rudolf-native; for i in $(seq 1 90); do [ -s /tmp/nstate ] && break; sleep 2; done; head -3 /tmp/nstate; pgrep -a rn.real; tail -5 /run/rudolf/native-desktop.log", 300)
+           "rm -f /tmp/teval /tmp/teval.out; mkfifo -m 666 /tmp/teval; mount | grep -E ' /tmp | /run '; "
+           "mount --bind /tmp/fx/rn /usr/bin/rudolf-native; "
+           "pkill -x rudolf-native; for i in $(seq 1 90); do [ -s /tmp/nstate ] && break; sleep 2; done; head -3 /tmp/nstate; pgrep -af rudolf-native; tail -8 /run/rudolf/native-desktop.log; tail -8 /run/rudolf/session.log 2>/dev/null", 300)
     ok('0d. the native desktop started again with the tests\' views' + (' and this tree\'s files' if FIX else ''), 'screen ' in o, o)
     state = lambda: sh("cat /tmp/nstate", 30, False)
     def st_get(st, k):
         m = re.search(rf'^{k} (.*)$', st, re.M); return m.group(1) if m else None
     st = state()
-    if not st_get(st, 'screen'): raise SystemExit
+    if not st_get(st, 'screen'): raise RuntimeError('no state from the native desktop')
     SW, SH = [int(x) for x in st_get(st, 'screen').split()]
     def at(x, y, btn='left'): g.q.at(x, y, btn, SW, SH)
     def tev(key, expr, t=30):
@@ -215,6 +218,8 @@ try:
     ok('Q10. Native: quick settings › Lock: the lock screen above every window', st_get(st, 'locked') == '1' and st_get(st, 'signtop') == '1', (st_get(st, 'locked'), st_get(st, 'signtop')))
     vm.shot('nat-lock')
     out(sh("tail -40 /run/rudolf/native-desktop.log", 30, False))
+except RuntimeError as e:
+    ok('the run went on: ' + str(e), False)
 finally:
     try:
         if vm: vm.stop()
