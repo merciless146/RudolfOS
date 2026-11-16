@@ -1,10 +1,10 @@
-# Rudolf OS 1.6.0: Oracle's file:/// pages on the real release (the Vivobook, 2026-11-15: every file:/// address showed a
-# blank white page in Oracle, while its about: pages showed). The newest beta (or REL-DIR's release) in QEMU, started as
-# t160 starts it (slot a, UEFI, rudolf.debug=1 for cdp-eval); an account signed in; then Oracle opens about:home,
-# about:files?p=C:, file:///C:/README.TXT, file:///C:/WELCOME.HTM and the account's own CALL-TEST.HTML (from File
-# Explorer's opener). For each: what the tab's frame holds (sandbox, srcdoc), whether its page ran and laid out (a probe
-# appended to the same srcdoc posts back its text and height), and the screen's pixels in the frame (the README page and
-# Oracle's own pages have a blue title bar; WELCOME.HTM and CALL-TEST.HTML have text). Then the phone-number link.
+# Rudolf OS 1.6.0 in QEMU: Oracle's file:/// pages on a real release (the Vivobook, 2026-11-15: Welcome, README and an
+# .HTML file from File Explorer showed a blank white page while about:home and about:files showed). The newest beta
+# (or the release in REL-DIR) starts from slot a as in t160, an account signs in, and Oracle opens about:home,
+# file:///C:/README.TXT, file:///C:/WELCOME.HTM and a page in the account's Documents with a tel: link; for each page
+# what the tab's frame holds (srcdoc, sandbox, what is on top of it), a copy of the page in a frame of the same kind
+# that says whether its text is there, the screen's pixels where the frame is, the page's errors, the shell's notes
+# and rudolfd's page log. Nothing is published.
 #   python3 oracle_file_t.py REL-DIR   (QEMU as for t160; root; QEMU_ACCEL=kvm where it can)
 import os, sys, time, re, subprocess, shutil, struct, json
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE)
@@ -13,14 +13,14 @@ import sbvm
 from guest import Guest
 from ser import Ser
 REL = os.path.abspath(sys.argv[1])
-PARTS = os.environ.get('SB_PARTS', '/nonexistent'); LOG = open('oracle_file.txt', 'w'); R = []
+LOG = open('oracle_file.txt', 'w'); R = []
 def out(*a):
     s = ' '.join(str(x) for x in a); print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
 def ok(n, c, d=''):
     R.append(bool(c)); out(('PASS ' if c else 'FAIL ') + n + (' - ' + str(d)[:1500] if d != '' and not c else ''))
 man = open(f'{REL}/manifest.txt').read(); mv = lambda k: re.search(rf'^{k} (.*)$', man, re.M).group(1)
+DMB = 2000; DRV = os.path.abspath('intof.img'); MEM = int(os.environ.get('MEM', '3072'))
 out('release', mv('serial'), mv('version'), 'chromium', mv('chromium'))
-DMB = 2000; DRV = os.path.abspath('of160.img'); MEM = int(os.environ.get('MEM', '3072'))
 
 def make_drive(path):
     start = 2048
@@ -41,9 +41,10 @@ def make_drive(path):
     os.remove(D)
 
 def boot(tag):
-    extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf160o',
+    extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolfof',
              '-kernel', f'{REL}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1']
-    vm = sbvm.VM('of160' + tag, PARTS, [], secure=False, mem=MEM, extra=extra)
+    os.makedirs('of' + tag, exist_ok=True); open(f'of{tag}/vars.fd', 'ab').close()   # (sbvm copies Secure Boot's variables otherwise; not used without it)
+    vm = sbvm.VM('of' + tag, '/nonexistent', [], secure=False, mem=MEM, extra=extra)
     g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3)
     time.sleep(30); end = time.time() + 900; up = False
     while time.time() < end:
@@ -58,47 +59,49 @@ def boot(tag):
             time.sleep(15)
         return r
     end = time.time() + 600
-    while up and time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'", 20) is not True: time.sleep(5)
+    while up and time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'&&typeof browser=='function'", 20) is not True: time.sleep(5)
     js("(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};return 1})()")
     return vm, g, up, js
 
-def pixels(png, rect, dpr):
-    """non-white and blue (#2563eb-ish) pixels in the frame's rectangle of a screenshot"""
+def signin(js, n, pw, secs=900):
+    r = js(f"(()=>{{if(window.__si=='wait')return 'already';const a=ACCTS.find(x=>x.n=={json.dumps(n)});if(!a)return 'no account';window.__si='wait';"
+           f"(async()=>{{try{{if(!(await pwCheck(a,{json.dumps(pw)}))){{__si='bad';return}}if(USER)userLogout();const L=document.getElementById('login');USER=a;"
+           f"await userLogin(a,{json.dumps(pw)});lastInput=Date.now();if(L)L.style.display='none';__si='in '+USER.n}}catch(e){{__si='error '+e.message}}}})();return 'started'}})()", 60)
+    if r not in ('started', 'already'): return r
+    end = time.time() + secs
+    while time.time() < end:
+        s = js("window.__si", 30)
+        if isinstance(s, str) and s != 'wait': return s
+        time.sleep(5)
+    return 'still signing in'
+
+# what the shown tab of the newest Oracle window holds; a copy of its page in a frame of the same kind (sandbox
+# allow-scripts, srcdoc) with a probe that posts back what it sees; what is on top of the frame
+PROBE = r"""(async()=>{const W=wins.filter(w=>w.body&&w.body.querySelector('.otabs')).pop();if(!W)return{err:'no Oracle window'};
+const frs=[...W.body.querySelectorAll('.fh iframe')],fr=frs.find(f=>f.style.display!='none');const st=(W.body.querySelector('.stat')||{}).textContent,ad=(W.body.querySelector('.ad')||{}).value;
+const o={title:W.el.innerText.split('\n')[0].slice(0,80),ad,st,frames:frs.map(f=>({d:f.style.display,sb:f.getAttribute('sandbox'),src:f.getAttribute('src'),sd:f.hasAttribute('srcdoc')?f.getAttribute('srcdoc').length:-1,head:(f.getAttribute('srcdoc')||'').slice(0,160)})),shell:typeof SHELL!='undefined'&&!!SHELL,shellVer:typeof SHELL_VER!='undefined'?SHELL_VER:'',rt:typeof RT!='undefined'?RT.size:-1,engine:RD&&RD.engine,dpr:devicePixelRatio,iw:innerWidth,ih:innerHeight,errs:(window.__ofErr||[]).slice(-10)};
+if(!fr)return o;const r=fr.getBoundingClientRect();o.rect=[r.x,r.y,r.width,r.height];const cs=getComputedStyle(fr);o.css={vis:cs.visibility,op:cs.opacity,z:cs.zIndex,filter:cs.filter,zoom:cs.zoom,bg:cs.backgroundColor};
+const top=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);o.top=top===fr?'the frame':top?(top.tagName+'.'+top.className+'#'+top.id):null;
+let cw=null;try{cw=fr.contentWindow;o.cwLen=cw?cw.length:-1}catch(e){o.cwErr=e.message}try{o.cdoc=fr.contentDocument?'reachable':'null'}catch(e){o.cdoc='err '+e.message}
+const html=fr.getAttribute('srcdoc');if(html==null)return o;
+o.probe=await new Promise(res=>{const p=document.createElement('iframe');p.setAttribute('sandbox','allow-scripts');p.style.cssText='position:fixed;left:0;top:0;width:300px;height:200px;opacity:0;pointer-events:none';
+ const k='of'+Math.random().toString(36).slice(2);const on=e=>{if(e.source===p.contentWindow&&e.data&&e.data[k]){removeEventListener('message',on);res(e.data[k]);p.remove()}};addEventListener('message',on);
+ setTimeout(()=>{removeEventListener('message',on);p.remove();res('no answer from the copy')},8000);
+ p.srcdoc=html+'<script>addEventListener("load",function(){var b=document.body;parent.postMessage({'+JSON.stringify(k)+':{text:b?b.innerText.length:-1,first:b?b.innerText.slice(0,80):"",h:document.documentElement.scrollHeight,url:location.href,bg:b?getComputedStyle(b).backgroundColor:""}},"*")})<'+'/script>';document.body.appendChild(p)});
+return o})()"""
+
+def pixels(png, rect, iw):
     try:
         from PIL import Image
-    except ImportError:
-        return {'err': 'no PIL'}
-    im = Image.open(png).convert('RGB'); W, H = im.size
-    x0, y0 = max(0, int(rect['x'] * dpr) + 2), max(0, int(rect['y'] * dpr) + 2)
-    x1, y1 = min(W, int((rect['x'] + rect['w']) * dpr) - 2), min(H, int((rect['y'] + rect['h']) * dpr) - 2)
-    if x1 <= x0 or y1 <= y0: return {'err': 'empty rect', 'size': [W, H]}
-    nw = bl = n = 0
-    for y in range(y0, y1, 2):
-        for x in range(x0, x1, 2):
-            r, g_, b = im.getpixel((x, y)); n += 1
-            if r < 235 or g_ < 235 or b < 235: nw += 1
-            if b > 180 and r < 90 and 70 < g_ < 140: bl += 1
-    return {'n': n, 'nonwhite': nw, 'blue': bl, 'size': [W, H]}
+    except Exception as e: return {'err': 'no PIL: ' + str(e)}
+    im = Image.open(png).convert('RGB'); sc = im.width / iw
+    x, y, w, h = [int(v * sc) for v in rect]; x0, y0 = max(0, x + 4), max(0, y + 4); x1, y1 = min(im.width, x + w - 4), min(im.height, y + h - 4)
+    if x1 <= x0 or y1 <= y0: return {'err': 'empty rect', 'size': im.size}
+    c = im.crop((x0, y0, x1, y1)); px = list(c.getdata()); n = len(px)
+    nw = sum(1 for p in px if min(p) < 235)   # not white
+    return {'size': im.size, 'notWhite': round(nw / n, 4), 'colors': len(set(px[::7]))}
 
-# what the tab's frame shows: its attributes, and a probe appended to the same srcdoc (posts back what the page laid out)
-PROBE = r"""(async()=>{const W=window.__ofW;if(!W)return JSON.stringify({err:'no window'});
- const frs=[...W.body.querySelectorAll('.fh iframe')],fr=frs.find(f=>f.style.display=='block')||frs[0];if(!fr)return JSON.stringify({err:'no frame'});
- const b=fr.getBoundingClientRect(),o={frames:frs.length,disp:frs.map(f=>f.style.display),sandbox:fr.getAttribute('sandbox'),allow:fr.getAttribute('allow'),
-  src:fr.getAttribute('src'),srcdocLen:(fr.getAttribute('srcdoc')||'').length,head:(fr.getAttribute('srcdoc')||'').slice(0,160),
-  rect:{x:b.x,y:b.y,w:b.width,h:b.height},vis:getComputedStyle(fr).visibility,op:getComputedStyle(fr).opacity,filter:getComputedStyle(fr).filter,
-  stat:(W.body.querySelector('.stat')||{}).textContent,addr:(W.body.querySelector('.ad')||{}).value,title:document.title,dpr:devicePixelRatio,
-  zWin:W.el.style.zIndex,fhBg:getComputedStyle(W.body.querySelector('.fh')).backgroundColor,cw:!!fr.contentWindow};
- /* elements that cover the frame's middle */
- try{const e=document.elementFromPoint(b.x+b.width/2,b.y+Math.min(60,b.height/2));o.atMid=e?(e.tagName+'.'+String(e.className||'').slice(0,40)+(e===fr?' (the frame)':'')):null}catch(x){o.atMid=String(x)}
- return JSON.stringify(o)})()"""
-RUNPROBE = r"""(async()=>{const W=window.__ofW;const frs=[...W.body.querySelectorAll('.fh iframe')],fr=frs.find(f=>f.style.display=='block')||frs[0];
- const h=fr.getAttribute('srcdoc')||'';let got=null,loads=0;const on=e=>{if(e.source===fr.contentWindow&&e.data&&e.data.__ofprobe)got=e.data};addEventListener('message',on);
- fr.addEventListener('load',()=>loads++);
- fr.srcdoc=h+"<scr"+"ipt>setTimeout(function(){var b=document.body;parent.postMessage({__ofprobe:1,url:location.href,origin:String(self.origin),txt:b?b.innerText.length:-1,h:document.documentElement.scrollHeight,kids:b?b.children.length:-1,ready:document.readyState,csp:document.querySelector('meta[http-equiv]')?1:0},'*')},300)</scr"+"ipt>";
- for(let i=0;i<40&&!got;i++)await new Promise(r=>setTimeout(r,150));removeEventListener('message',on);
- /* the page as Oracle made it, again */
- fr.srcdoc=h;return JSON.stringify({probe:got,loads})})()"""
-
+CALL = "<!doctype html><title>Call test</title><body><h1>Call test</h1><p><a id=c href=\"tel:5551234567\">Call this number</a></p></body>"
 make_drive(DRV)
 vm = None
 try:
@@ -106,51 +109,44 @@ try:
     ok('1. the release starts', up, 'not up')
     if not up: raise SystemExit
     r = js("(async()=>{ACCTS.length=0;const a=await acctNew('john','j1','admin');ACCTS.push(a);saveUser();return a.id})()", 120); out('account', r)
-    r = js("(()=>{window.__si='wait';(async()=>{try{const a=ACCTS.find(x=>x.n=='john');const L=document.getElementById('login');USER=a;await userLogin(a,'j1');lastInput=Date.now();if(L)L.style.display='none';__si='in'}catch(e){__si='error '+e.message}})();return 1})()", 60)
-    for _ in range(120):
-        s = js("window.__si", 30)
-        if s != 'wait': break
-        time.sleep(5)
-    out('sign-in', s)
-    time.sleep(20)
-    env = js("JSON.stringify({ua:navigator.userAgent,shell:typeof SHELL!='undefined'&&!!SHELL,rtOn:typeof rtOn=='function'&&rtOn(),engine:typeof RD!='undefined'&&RD&&RD.engine,href:location.href,dpr:devicePixelRatio,w:innerWidth,h:innerHeight,oext:typeof oextCfg=='function'?oextCfg():null,dark:typeof WEB_DARK!='undefined'?WEB_DARK:null,shellLog:typeof SHELL_LOG!='undefined'?SHELL_LOG.slice(-10):null})")
-    out('page:', env)
-    out(sh("cat /proc/cmdline; ls /run/rudolf | head -50; busybox wget -q -O- http://127.0.0.1:9222/json/version 2>&1 | head -c 600"))
-    # the account's own page, opened from File Explorer's opener (as a double-click does)
-    js("(async()=>{node(homePath('DOCUMENTS'))['CALL-TEST.HTML']='<!doctype html><title>Call test</title><body style=\"font:16px Arial;padding:20px\"><h1>Call test</h1><p><a id=\"tel\" href=\"tel:5551234567\">Call this number</a></p></body>';fsSave();try{fsFlush()}catch(e){}return 1})()", 60)
-    URLS = [('about:home', 'blue'), ('about:files?p=C:', 'blue'), ('file:///C:/README.TXT', 'blue'), ('file:///C:/WELCOME.HTM', 'text'), ('explorer:CALL-TEST.HTML', 'text')]
+    out('sign-in:', signin(js, 'john', 'j1'))
+    # the shell: the desktop moves into it by itself after the start (1.2's one-time move); wait for its hello
+    end = time.time() + 900
+    while time.time() < end and js("typeof SHELL!='undefined'&&!!SHELL", 20) is not True: time.sleep(10)
+    if js("typeof SHELL!='undefined'&&!!SHELL", 20) is not True and js("!!USER", 20) is not True:
+        out('sign-in again after the move:', signin(js, 'john', 'j1'))
+    out('engine/shell:', js("({engine:RD&&RD.engine,shell:typeof SHELL!='undefined'&&!!SHELL,ver:typeof SHELL_VER!='undefined'?SHELL_VER:'',ua:navigator.userAgent,user:USER&&USER.n})", 30))
+    ok('2. the desktop is in the shell (Controlled Frame), as on the Vivobook', js("typeof SHELL!='undefined'&&!!SHELL", 20) is True)
+    js("(()=>{window.__ofErr=[];addEventListener('error',e=>__ofErr.push('error '+e.message+' '+(e.filename||'')+':'+e.lineno));addEventListener('unhandledrejection',e=>__ofErr.push('rejection '+String(e.reason&&e.reason.message||e.reason)));"
+       "const w=console.warn,er=console.error;console.warn=function(){__ofErr.push('warn '+[].map.call(arguments,String).join(' ').slice(0,300));return w.apply(console,arguments)};console.error=function(){__ofErr.push('console.error '+[].map.call(arguments,String).join(' ').slice(0,300));return er.apply(console,arguments)};return 1})()")
+    r = js(f"(async()=>{{const d=node(homePath('DOCUMENTS'));d['CALL-TEST.HTML']={json.dumps(CALL)};fsSave();try{{fsFlush()}}catch(e){{}};return homePath('DOCUMENTS').join('/')}})()", 60); out('documents:', r)
+    DOCS = r if isinstance(r, str) else 'C:/USERS/JOHN/DOCUMENTS'
+    pages = [('about:home', 'Oracle'), ('about:files?p=C:', 'Index of C:'), ('file:///C:/README.TXT', 'README.TXT'), ('file:///C:/WELCOME.HTM', 'Welcome to Oracle'), (f'file:///{DOCS}/CALL-TEST.HTML', 'Call this number')]
     res = {}
-    for u, want in URLS:
-        if u.startswith('explorer:'):
-            o = js("(()=>{wins.slice().forEach(w=>{try{w.close()}catch(e){}});const n=wins.length;openPath(homePath('DOCUMENTS').concat('CALL-TEST.HTML'));const W=wins[wins.length-1];window.__ofW=W&&W.el.classList.contains('oracle')?W:null;return String(!!window.__ofW)+' '+(W&&W.el.className)})()", 60)
-        else:
-            o = js(f"(()=>{{wins.slice().forEach(w=>{{try{{w.close()}}catch(e){{}}}});browser({json.dumps(u)});const W=wins[wins.length-1];window.__ofW=W;return String(!!W)+' '+(W&&W.el.className)}})()", 60)
-        out(f'== {u}: opened', o); time.sleep(6)
-        p = js(PROBE, 60)
-        try: pj = json.loads(p)
-        except Exception: pj = {'raw': p}
-        out('frame:', json.dumps(pj)[:1500])
-        png = vm.shot(re.sub(r'[^a-z0-9]+', '_', u.lower())[:30])
-        px = pixels(png, pj['rect'], pj.get('dpr', 1)) if 'rect' in pj else {'err': 'no rect'}
-        out('pixels:', px)
-        pr = js(RUNPROBE, 60); out('probe:', pr); time.sleep(2)
-        try: prj = json.loads(pr).get('probe') or {}
-        except Exception: prj = {}
-        shows = 'n' in px and (px['blue'] > 200 if want == 'blue' else px['nonwhite'] > 100)
-        res[u] = (shows, prj)
-        ok(f'2. Oracle shows {u}', shows, json.dumps({'frame': pj, 'pixels': px, 'probe': prj})[:1500])
-    out(sh("tail -n 40 /run/rudolf/page.log 2>/dev/null; busybox wget -q -O- http://127.0.0.1:9222/json/list 2>&1 | grep -E '\"(type|url)\"' | head -60"))
-    out('shell log:', js("JSON.stringify(typeof SHELL_LOG!='undefined'?SHELL_LOG.slice(-20):null)"))
-    # the phone-number link: clicked inside the page, the desktop asks how to call it
-    o = js(r"""(async()=>{wins.slice().forEach(w=>{try{w.close()}catch(e){}});openPath(homePath('DOCUMENTS').concat('CALL-TEST.HTML'));const W=wins[wins.length-1];window.__ofW=W;
-     await new Promise(r=>setTimeout(r,4000));const frs=[...W.body.querySelectorAll('.fh iframe')],fr=frs.find(f=>f.style.display=='block')||frs[0];
-     const n0=document.querySelectorAll('.win').length,h=fr.getAttribute('srcdoc')||'';
-     fr.srcdoc=h+"<scr"+"ipt>setTimeout(function(){document.getElementById('tel').click()},400)</scr"+"ipt>";await new Promise(r=>setTimeout(r,4000));
-     const ws=[...document.querySelectorAll('.win,.rmodal,.ntf,.toast')].map(e=>(e.querySelector('.tt,.ti,h3')||e).textContent.slice(0,80));
-     return JSON.stringify({n0,n1:document.querySelectorAll('.win').length,ws:ws.slice(-6),body:document.body.innerText.match(/call[^\n]{0,80}/ig)})})()""", 90)
-    out('tel:', o)
-    ok('3. the phone-number link asks how to call it', isinstance(o, str) and re.search(r'5551234567|call', o.split('"ws"', 1)[-1], re.I), o)
+    for i, (u, want) in enumerate(pages):
+        js(f"(()=>{{wins.slice().forEach(w=>{{if(w.body&&w.body.querySelector('.otabs'))w.close()}});browser({json.dumps(u)});return 1}})()", 30)
+        time.sleep(6)
+        o = js(PROBE, 60); png = vm.shot(f'p{i}'); px = pixels(png, o['rect'], o['iw']) if isinstance(o, dict) and o.get('rect') else {}
+        out(f'--- {u}'); out(json.dumps(o)[:3000]); out('pixels', px)
+        res[u] = (o, px, want)
+    jl = sh("busybox wget -q -O- http://127.0.0.1:9222/json/list 2>&1 | grep -E '\"(type|url)\"' | head -40", 30); out('devtools targets:\n' + jl)
+    out('shell notes:', js("typeof SHELL_LOG!='undefined'?SHELL_LOG.slice(-20):null", 30))
+    out('page log:\n' + sh("tail -n 40 /run/rudolf/page.log 2>&1", 30))
+    for k, (u, (o, px, want)) in enumerate(res.items()):
+        pr = o.get('probe') if isinstance(o, dict) else None
+        seen = isinstance(px, dict) and px.get('notWhite', 0) > 0.01
+        ok(f'{3 + k}. {u}: the page is drawn in Oracle\'s frame (not a blank white page), its text there', seen and isinstance(pr, dict) and pr.get('text', 0) > 0 and want in (pr.get('first', '') + json.dumps(o)), [px, pr, o.get('top') if isinstance(o, dict) else o])
+    # the phone-number test: clicking the tel: link asks how to call it
+    js(f"(()=>{{wins.slice().forEach(w=>{{if(w.body&&w.body.querySelector('.otabs'))w.close()}});browser({json.dumps(pages[4][0])});return 1}})()", 30); time.sleep(6)
+    o = js(PROBE, 60)
+    if isinstance(o, dict) and o.get('rect'):
+        x, y, w, h = o['rect']; sc = 1
+        out('click the tel: link at', x + 60, y + 95)
+        g.q.cmd('input-send-event', events=[{'type': 'abs', 'data': {'axis': 'x', 'value': int((x + 60) / o['iw'] * 32767)}}, {'type': 'abs', 'data': {'axis': 'y', 'value': int((y + 95) / o['ih'] * 32767)}}]); time.sleep(0.5)
+        g.q.click(); time.sleep(4); vm.shot('tel')
+    o = js("[...document.querySelectorAll('.rmodal [role=dialog]')].map(d=>d.getAttribute('aria-label')+': '+d.innerText.slice(0,120)).concat(wins.slice(-3).map(w=>w.el.innerText.split('\\n')[0].slice(0,60)))", 30); out('windows after the tel: click:', o)
+    ok('8. the tel: link clicked: the desktop asks how to call it (Call a phone number, 5551234567)', isinstance(o, list) and any('Call a phone number' in str(t) and '5551234567' in str(t) for t in o), o)
 finally:
-    if vm: vm.stop()
-out('RESULT', f'{sum(R)}/{len(R)} passed')
-sys.exit(0 if R and all(R) else 1)
+    try: vm and vm.stop()
+    except Exception: pass
+out(f'{sum(R)}/{len(R)} passed'); sys.exit(0 if R and all(R) else 1)

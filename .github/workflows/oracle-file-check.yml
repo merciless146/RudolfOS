@@ -1,7 +1,7 @@
-# Rudolf OS 1.6.0: Oracle's file:/// pages on the real release in QEMU (iso/qt/sb/oracle_file_t.py): the Vivobook showed
-# a blank white page for every file:/// address (2026-11-15). The newest beta (or the serial given), as qemu-checks.yml
-# fetches it. Nothing is published.
-name: Oracle file pages (QEMU)
+# Oracle's file:/// pages on a real release in QEMU (iso/qt/sb/oracle_file_t.py): the newest beta (or a release by its
+# serial) from slot a, an account signed in, the desktop in the shell, Oracle's Welcome and README pages and a page in
+# Documents with a tel: link. The same set-up as qemu-checks.yml. Nothing is published.
+name: Oracle file check
 on:
   workflow_dispatch:
     inputs:
@@ -35,10 +35,10 @@ jobs:
           mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
           if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
           else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
-          ls -la rel; echo "::notice title=Oracle file pages::release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
-      - name: Oracle's file pages
+          ls -la rel; echo "::notice title=Oracle file check::release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
+      - name: Oracle's file:/// pages
         run: |
-          mkdir -p run && cd run && sudo -E env SB_PARTS=/nonexistent QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/oracle_file_t.py ../rel
+          mkdir -p run && cd run && sudo -E env QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/oracle_file_t.py ../rel
       - if: always()
         uses: actions/upload-artifact@v4
-        with: {name: oracle-file, retention-days: 7, path: "run/oracle_file.txt\nrun/of160*/qemu.log\nrun/of160*/*.png"}
+        with: {name: oracle-file, retention-days: 7, path: "run/oracle_file.txt\nrun/of*/qemu.log\nrun/of*/*.png"}
