@@ -2651,7 +2651,7 @@ static void settings_load(void)
 	sys_load(v);   /* (the screen saver's and the lock's settings: item 6) */
 	  jfree(v);
 	/* the page's display scaling: the taskbar, the title bars and the start menu at the page's size (1.5.9 step 7) */
-	{ int oth = TH; Z = S.scale / 100.0; BARH = (int)lround(46 * Z); TH = (int)lround((S.touch ? 40 : 35) * Z); if (oth && oth != TH) moved = 1; }   /* (touch mode: title bars at least 40 px, styles25.css html.touch .win>.tb) */
+	Z = S.scale / 100.0; BARH = (int)lround(46 * Z); TH = (int)lround(35 * Z);
 	{ int ow = BARW; bar_measure(); if (BARW != ow) moved = 1; }   /* (the taskbar at the left or the right: as wide as its widest part) */
 	css_apply(); wall_make(); if (moved) { bar_place(); if (WM_OK) wm_relayout(); di_layout(); if (DESKAREA) desk_dirty(); } bar_redraw(); if (SAREA) gtk_widget_queue_draw(SAREA); if (WM_OK) frames_redraw();
 	a11y_apply();   /* (1.6.0: quick settings' switches for the whole screen) */
@@ -5105,7 +5105,10 @@ static void a11y_apply(void)
 	gamma_apply();
 	if (S.mag != MAG_SAVED) { MAG_SAVED = S.mag; if (S.mag && S.magz > 0) MAGZ = S.magz; mag_set(S.mag); } else if (mag_can()) S.mag = MAG_ON;   /* (on or off as saved; as the keys left it until then) */
 	if (S.vk && !A11Y_VK) VK_SHOWN = 1; A11Y_VK = S.vk; vk_sync();   /* (a11yApply: switched on, it shows) */
-	int th = (int)lround((S.touch ? 40 : 35) * Z); if (th != TH) { TH = th; if (WM_OK) { wm_relayout(); frames_redraw(); } }
+	/* (touch mode: title bars at least 40 px, styles25.css html.touch .win>.tb; off again: the title bars' own height when the settings come) */
+	static int TH0; int th = (int)lround(40 * Z);
+	if (S.touch && TH < th) { TH0 = TH; TH = th; if (WM_OK) { wm_relayout(); frames_redraw(); } }
+	else if (!S.touch && TH0) { if (TH == th) TH = TH0; TH0 = 0; if (WM_OK) { wm_relayout(); frames_redraw(); } }
 	bar_redraw(); state_write();
 }
 /* (the user script every page of the shell gets: what the shell does for the whole screen, so the page does not do it again) */
