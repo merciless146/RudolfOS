@@ -4,7 +4,7 @@
 #   host: rudolf-open (Debian's xdg-open, xdg-email, x-www-browser) with this tree's rudolf-portal on a private session bus
 #         (iso/qt/host/openshim60_t.sh); the desktop's side (iso/qt/shell2/links60_t.js: an app's own scheme from an Oracle
 #         tab or another app, to that app after asking; Settings › Apps › Links), in the release's own Chromium.
-#   qemu: the whole sign-in on the real release with this tree's page, rudolfd, rudolf-debian and rudolf-open put in place
+#   qemu: the whole sign-in on the real release with this tree's page, rudolfd, rudolf-portal, rudolf-debian and rudolf-open put in place
 #         (iso/qt/sb/l160_t.py): a stand-in app in Debian (iso/qt/teststand.c) opens its sign-in page with xdg-open, Oracle
 #         shows it, the page redirects to teststand://, Oracle asks, the app receives the code; on Standard and Native.
 name: App links check
@@ -51,7 +51,7 @@ jobs:
       - name: Tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography python3-pil bzip2 libssl-dev zlib1g-dev >/dev/null
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography python3-pil bzip2 libssl-dev zlib1g-dev libglib2.0-dev >/dev/null
           [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
           Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
           for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
@@ -67,12 +67,13 @@ jobs:
           if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
           else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
           ls -la rel; echo "::notice title=App links QEMU check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)), engines ${L_engines:-standard,native}"
-      - name: This tree's page, rudolfd, rudolf-debian, rudolf-open and the stand-in app
+      - name: This tree's page, rudolfd, rudolf-portal, rudolf-debian, rudolf-open and the stand-in app
         run: |
           cd iso && . systools/hardflags.sh && cd .. && mkdir -p fix
           gcc -O2 $HARD -o fix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
           gcc -O2 $HARD -o fix/rudolf-debian iso/sys/rudolf-debian.c -lcrypto -ldl
           gcc -O2 $HARD_STATIC -o fix/rudolf-open iso/sys/rudolf-open.c
+          gcc -O2 $HARD -o fix/rudolf-portal iso/sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto
           gcc -O2 -static -o fix/teststand iso/qt/teststand.c
           cp iso/www/index.html fix/ && ls -la fix && echo "L160_FIX=$PWD/fix" >> $GITHUB_ENV
       - name: l160 (Standard, then Native)

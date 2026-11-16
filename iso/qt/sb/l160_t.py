@@ -100,13 +100,15 @@ def wait_for(js, expr, secs, every=5):
     return r
 
 # this tree's files in place of the release's, until the next start: the page (bound over the one rudolfd serves), rudolfd
-# (started again in place of the release's), rudolf-debian and rudolf-open (in a copy of /usr/lib/rudolf bound over it)
+# (started again in place of the release's), rudolf-portal (the account's, started at sign-in), rudolf-debian and
+# rudolf-open (in a copy of /usr/lib/rudolf bound over it)
 APPLY = ("FX=$(blkid | grep 'LABEL=\"L160FIX\"' | cut -d: -f1 | head -1); echo fix=$FX; mkdir -p /tmp/fx; [ -n \"$FX\" ] && mount -o ro $FX /tmp/fx; ls -la /tmp/fx; "
          "X=/run/l160x; mkdir -p $X; mountpoint -q $X || mount -t tmpfs -o exec,mode=755 none $X; "
          "WWW=/usr/share/rudolf/www; [ -f /persist/os/current/index.html ] && WWW=/persist/os/current; echo www=$WWW; "
          "if [ -f /tmp/fx/index.html ]; then cp /tmp/fx/index.html $X/page.html; chmod 644 $X/page.html; mount --bind $X/page.html $WWW/index.html; grep -c 'function lkOpen' $WWW/index.html; fi; "
          "if [ -f /tmp/fx/rudolf-debian ]; then rudolf-debian stop 2>/dev/null; cp /tmp/fx/rudolf-debian $X/rudolf-debian; chmod 755 $X/rudolf-debian; mount --bind $X/rudolf-debian /usr/bin/rudolf-debian; fi; "
          "if [ -f /tmp/fx/rudolf-open ]; then mkdir -p $X/lib; cp -a /usr/lib/rudolf/. $X/lib/; cp /tmp/fx/rudolf-open $X/lib/rudolf-open; chmod 755 $X/lib/rudolf-open; mount --bind $X/lib /usr/lib/rudolf; ls -l /usr/lib/rudolf/rudolf-open; fi; "
+         "if [ -f /tmp/fx/rudolf-portal ]; then cp /tmp/fx/rudolf-portal $X/rudolf-portal; chmod 755 $X/rudolf-portal; mount --bind $X/rudolf-portal /usr/bin/rudolf-portal; fi; "
          "if [ -f /tmp/fx/rudolfd ]; then cp /tmp/fx/rudolfd $X/rudolfd; chmod 755 $X/rudolfd; mount --bind $X/rudolfd /usr/bin/rudolfd; P=$(pidof rudolfd | tr ' ' '\\n' | sort -n | head -1); kill $P; sleep 2; (setsid /usr/bin/rudolfd >> /run/rudolf/rudolfd.log 2>&1 < /dev/null &); sleep 3; echo rudolfd $(pidof rudolfd); fi")
 # Debian: a stand-in with busybox (installed, as t160's), the test app and its launcher (the scheme it opens)
 DEBIAN = ("D=/persist/debian; mkdir -p $D/bin $D/lib $D/lib64 $D/etc $D/proc $D/sys $D/dev $D/tmp $D/run $D/home/rudolf $D/root $D/.oldroot $D/usr/local/bin $D/usr/share/applications; cp /bin/busybox $D/bin/; "
@@ -136,6 +138,8 @@ def flow(tag, vm, g, js, sh, launch):
         if 'redirect sent' in lg: break
         time.sleep(4)
     out('the app\'s log:', lg)
+    o = sh("ls -ld /run/rudolf/portal/req /run/rudolf/portal/resp; ls -l /run/rudolf/portal/req; tail -n 5 /run/rudolf/portal-*.log 2>/dev/null", 30)
+    ok(f'{tag}2b. the account\'s portal may leave its questions for the desktop (the folder: sticky, every user\'s)', 'drwx-wx-wt' in o, o)
     ok(f'{tag}2. the app\'s xdg-open (as Electron\'s shell.openExternal) succeeds', 'xdg-open exit 0' in lg, lg)
     ok(f'{tag}3. ...and the sign-in page opens in Oracle, which follows its redirect to the app\'s scheme', 'page asked' in lg and 'redirect sent' in lg, lg)
     d = None; end = time.time() + 90

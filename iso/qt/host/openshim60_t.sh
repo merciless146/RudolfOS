@@ -62,6 +62,10 @@ clear; DBUS_SESSION_BUS_ADDRESS=unix:path=$T/nobus XDG_RUNTIME_DIR=$T/nort RUDOL
 [ $r = 3 ] && grep -q 'session bus' "$T/e"; ok $? "no session bus: exit 3, said why" "$r $(cat $T/e)"
 rm -f "$T/real.out"; DBUS_SESSION_BUS_ADDRESS=unix:path=$T/nobus RUDOLF_OPEN_REAL=$T/real "$B/xdg-open" https://y.example/ 2>/dev/null
 grep -qx 'debian-own-xdg-open https://y.example/' "$T/real.out" 2>/dev/null; ok $? "...xdg-open then runs Debian's own, when it is installed" "$(cat $T/real.out 2>&1)"
+# the portal cannot leave the question for the desktop (its folder not writable: an account's portal before 1.6.0's fix)
+rm -rf $R; touch $R; "$B/xdg-open" https://lost.example/ 2>"$T/e"; r=$?; rm -f $R; mkdir -p $R
+[ $r = 4 ] && grep -q 'could not be asked' "$T/e"; ok $? "the portal cannot leave the request for the desktop: said (exit 4), not lost without a word" "$r $(cat $T/e)"
+clear; "$B/xdg-open" https://perm.example/; f=$(ls $R/*.json | head -1); [ "$(stat -c %a "$f")" = 600 ]; ok $? "a request is readable by its owner only (0600: the folder takes every account's portal's)" "$(stat -c %a "$f")"
 kill $PID; wait $PID 2>/dev/null
 clear; DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS RUDOLF_OPEN_REAL=$T/none timeout 30 "$B/xdg-open" https://z.example/ 2>"$T/e"; r=$?
 [ $r = 3 ] && grep -qi 'portal\|ServiceUnknown\|not provided\|activat' "$T/e"; ok $? "a bus without the portal: exit 3, at once" "$r $(cat $T/e)"

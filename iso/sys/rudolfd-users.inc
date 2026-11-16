@@ -273,6 +273,12 @@ static int au_session_start(const char *id)
 	int bus = strstr(e.b, "DBUS_SESSION_BUS_ADDRESS") != NULL; free(e.b);
 	au_xaccess(nm, 1);   /* (its programs may use the display: the Linux apps' windows) */
 	if (!home_nobind && bus && !access("/usr/bin/rudolf-portal", X_OK)) {
+		/* 1.6.0: its portal leaves its questions for the desktop beside the desktop user's: the folders take every user's
+		   files (sticky and not listable; each request is its owner's only, 0600; rudolfd answers each to the user whose
+		   portal asked). They were the desktop user's alone, so the account's requests were lost: Debian's xdg-open
+		   (Claude's "Continue with Google"), its Flatpak apps' links and file dialogs did nothing. */
+		mkdir(RUN "/portal", 0755); mkdir(RUN "/portal/req", 01733); mkdir(RUN "/portal/resp", 01733);
+		if (chmod(RUN "/portal/req", 01733) || chmod(RUN "/portal/resp", 01733)) health_add("account", "the portal's folders could not be opened to the account's programs (%s)", strerror(errno));
 		char c[600]; snprintf(c, sizeof c, "su -s /bin/sh %s -c 'set -a; . " AU_ENV "; set +a; exec setsid /usr/bin/rudolf-portal' </dev/null >>" RUN "/portal-%u.log 2>&1 &", nm, uid);
 		run(c);
 	}
