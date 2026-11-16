@@ -75,9 +75,13 @@ start() {
 	if [ $E = nat ]; then PORT=9335
 		printf '%s\n' $ID "$CHROME" --class=RudolfOracle $FL --remote-debugging-port=$PORT > $T/oracle-chrome
 		(cd $D && HOME=$D XDG_RUNTIME_DIR=$T/run RUDOLF_NATIVE_STATE=$D/state RUDOLF_ORACLE_CMD=$T/oracle-chrome RUDOLF_LAUNCH=$T/rudolf-launch exec env ${SO60_LDEBUG:+RUDOLF_LAUNCH_DEBUG=1} $T/rudolf-native --size=1280x800 --draw=soft --base=http://127.0.0.1:8080 > $T/native.log 2>&1) & NP=$!
-		w8 '[ "$(st signin)" = 1 ]' 120
-		LC_ALL=C.UTF-8 xdotool type --delay 30 "$PW"; xdotool key Return
-		w8 '[ "$(st user)" = Ann ] && grep -q "^hit pin browser" $D/state' 120 || { echo "FAIL signing in (Native)"; tail $T/native.log; exit 1; }
+		w8 '[ "$(st signin)" = 1 ]' 240; k=0
+		# (the password typed again when a slow start missed it)
+		while ! { [ "$(st user)" = Ann ] && grep -q "^hit pin browser" $D/state; } && [ $k -lt 3 ]; do k=$((k + 1)); timeout 2 tail -f /dev/null
+			[ $k -gt 1 ] && { xdotool key ctrl+a BackSpace; }
+			LC_ALL=C.UTF-8 xdotool type --delay 30 "$PW"; xdotool key Return
+			w8 '[ "$(st user)" = Ann ] && grep -q "^hit pin browser" $D/state' 120; done
+		[ "$(st user)" = Ann ] || { echo "FAIL signing in (Native): $(st signin) $(st user)"; tail $T/native.log; exit 1; }
 		xdotool mousemove $(hit pin browser) click 1
 		w8 '[ "$(pg "typeof rtOn==\"function\"&&rtOn()&&!!OA.main")" = true ]' 160 || { echo "FAIL Oracle (Native)"; tail $T/native.log; exit 1; }
 		w8 'grep -q "^client .* app=browser Oracle" $D/state' 60
