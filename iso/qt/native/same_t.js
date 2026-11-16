@@ -41,6 +41,10 @@ CASES.push({n: 'fly-qs-left', set: {tb: 'left'}, fly: 'qs', parts: ['fly']});
 CASES.push({n: 'clock-24', set: {h24: true, df: 'ymd'}, parts: ['clock']});
 CASES.push({n: 'wall-gradient', set: {bs: 'gradient', b1: '#0f766e', b2: '#1e1b4b'}, parts: ['wallpaper']});
 CASES.push({n: 'menu', set: {}, act: 'menu', parts: ['menu']});
+/* (2026-11-16, the owner's Vivobook: Packages not found) the start menu's search as Standard's: the list hidden, what is found in groups, the
+   menu as tall as that; light and dark */
+CASES.push({n: 'menu-search', set: {dm: 'light'}, act: 'menu', type: 'pa', parts: ['menu']});
+CASES.push({n: 'menu-search-dark', set: {dm: 'dark', darkui: true}, act: 'menu', type: 'pac', parts: ['menu']});
 CASES.push({n: 'hover-pin', set: {}, act: 'hover', parts: ['bar', 'pins']});
 CASES.push({n: 'hover-candy', set: {tbstyle: 'candy'}, act: 'hover', parts: ['bar']});
 for (const st of STY) CASES.push({n: 'title-' + st, set: {twstyle: st}, act: 'notepad', parts: st == 'standard' ? ['title', 'bar'] : ['title']});
@@ -243,7 +247,7 @@ async function stdCase(c) {
     await p.waitForFunction(() => typeof USER != 'undefined' && USER && getComputedStyle(document.getElementById('login')).display == 'none', null, {timeout: 60000});
     for (let i = 0; i < 12; i++) { await p.clock.runFor(500); await wait(150) }
     await p.mouse.move(W / 2, H / 3);
-    if (c.act == 'menu') { await p.click('#start'); await p.clock.runFor(600); await wait(300) }
+    if (c.act == 'menu') { await p.click('#start'); await p.clock.runFor(600); await wait(300); if (c.type) { await p.keyboard.type(c.type); await p.clock.runFor(300); await wait(300) } }
     if (c.act == 'hover') { const r = await rectOf('#pins .pin:nth-child(2)'); await p.mouse.move(r[0] + r[2] / 2, r[1] + r[3] / 2); await p.clock.runFor(400); await wait(200) }
     if (c.act == 'notepad' && c.wopen) { XTRA.std.wopen = await p.evaluate(() => { launch('notepad'); const w = [...document.querySelectorAll('.win')].pop(), cs = getComputedStyle(w); return [w.classList.contains('wopen'), cs.animationName, cs.animationDuration].join(' ') }) }
     if (c.act == 'notepad') { if (!c.wopen) await p.evaluate(() => launch('notepad')); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } await p.mouse.move(W / 2, H - 200) }
@@ -373,7 +377,8 @@ async function natCase(c, s) {
   } else await natSettle(c);
   // (what is open from before goes)
   xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(300);
-  if (c.act == 'menu') { const h = nhit('start'); if (h) xdo('mousemove ' + h.join(' ') + ' click 1'); await until(() => nst('menu') == '1', 5000); xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(800) }
+  if (c.act == 'menu') { const h = nhit('start'); if (h) xdo('mousemove ' + h.join(' ') + ' click 1'); await until(() => nst('menu') == '1', 5000); xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(800)
+    if (c.type) { xdo('type --delay 60 ' + c.type); await until(() => nlines0('srchcur').some(l => l.endsWith(' 1')) && nlines0('srch').length, 20000); await wait(1500) } }
   if (c.act == 'hover') { const h = nhit('pin notepad'); if (h) xdo('mousemove ' + h.map(Math.round).join(' ')); await wait(800) }
   let cl = null;
   if (c.act == 'notepad' && c.wopen) { const h = nhit('pin notepad'), st = () => nst('wopen') || '0'; if (h) xdo('mousemove ' + h.join(' ') + ' click 1');
