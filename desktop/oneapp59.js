@@ -462,8 +462,9 @@ if(ONEAPP&&oaNative()&&typeof cmenu=='function'){const _cm=cmenu;let gen=0,acts=
   for(const it of items||[]){if(!it)continue;if(it=='-'){if(!sep){rows.push({sep:1});sep=true}continue}
    const[lab,fn,en,o]=it,off=en===false;rows.push({label:String(lab),icon:o&&o.check!==undefined?(o.check?'✓':''):String(o&&o.icon||''),key:String(o&&o.key||''),dis:off?1:0});acts.push(off?null:fn);sep=false}
   if(rows.length&&rows[rows.length-1].sep)rows.pop();
-  const zf=parseFloat(document.documentElement.style.zoom)||1;gen++;
-  oaPost({op:'ctx',x:String(x*zf),y:String(y*zf),gen:String(gen),title:String(opt.title||''),items:JSON.stringify(rows)});
+  const zf=parseFloat(document.documentElement.style.zoom)||1,ae=document.activeElement;gen++;
+  /* (Chromium rings the menu it focuses only when nothing had the focus: not after a click in a list or a text box) */
+  oaPost({op:'ctx',x:String(x*zf),y:String(y*zf),gen:String(gen),title:String(opt.title||''),items:JSON.stringify(rows),ring:!ae||ae===document.body||ae===document.documentElement?'1':'0'});
   return document.createElement('div')}}
 /* (1.6.0 Part 12, test finding N3) Task Manager's Apps on the native desktop: every window, as Standard's one page has them in wins. The
    shell gives its list (rudolf-native wins_ask: each window the taskbar would show, in any workspace, oldest first, with its page's

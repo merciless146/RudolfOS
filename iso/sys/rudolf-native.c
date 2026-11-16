@@ -2123,6 +2123,17 @@ static double menu_layout(cairo_t *cr)
 		r->h = r->pt + (lb - lt) + r->pb; y += r->h; }
 	return y;
 }
+/* (second run, N30; N22) the start menu scrolls: Chromium's classic scrollbar on #menu's right, inside its edge, its content 15 px
+   narrower (Rudolf's Chromium shows it; same_t.sh now does too) */
+static double menu_sb(void) { return MCONT + 14 > MBH + .5 ? 15 : 0; }
+static void menu_sb_draw(cairo_t *cr)
+{
+	if (!menu_sb()) return; double x = MBW - 1 - 15, y0 = 1, h = MBH - 2, track = h - 30, tot = MCONT + 14, th = fmax(17, track * MBH / tot), mx = fmax(1, tot - MBH), ty = y0 + 15 + (track - th) * fmin(1, MSCROLL / mx);
+	srca(cr, cx("#fcfcfc", 1)); cairo_rectangle(cr, x, y0, 15, h); cairo_fill(cr);
+	srca(cr, cx("#8b8b8b", 1)); rrect(cr, x + 3, ty, 9, th, 4.5); cairo_fill(cr);
+	cairo_move_to(cr, x + 3, y0 + 11); cairo_line_to(cr, x + 12, y0 + 11); cairo_line_to(cr, x + 7.5, y0 + 6); cairo_close_path(cr); cairo_fill(cr);
+	cairo_move_to(cr, x + 3, y0 + h - 11); cairo_line_to(cr, x + 12, y0 + h - 11); cairo_line_to(cr, x + 7.5, y0 + h - 6); cairo_close_path(cr); cairo_fill(cr);
+}
 static gboolean menu_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	(void)w; (void)d; int dark = menu_dark();
@@ -2136,7 +2147,7 @@ static gboolean menu_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 10; box_paint(cr, 0, 0, MBW, MBH, &b);
 	RGBA ink = cx(dark ? "#e2e8f0" : "#000000", 1);
 	cairo_save(cr); rrect(cr, 1, 1, MBW - 2, MBH - 2, 9); cairo_clip(cr);
-	double cx0 = 7, y = 7 - MSCROLL, cw = MBW - 14;
+	double cx0 = 7, y = 7 - MSCROLL, cw = MBW - 14 - menu_sb();
 	/* the search box (.ssbox: 2px 4px 6px; the input 29 px, 6px 8px, 13.33 px, focused: a 2 px outline of the accent colour) */
 	{ double ix = cx0 + 4, iy = y + 2, iw = cw - 8, ih = 29; Box o; memset(&o, 0, sizeof o); o.bg = ca(accent(), 1); o.rad = 8; box_paint(cr, ix - 2, iy - 2, iw + 4, ih + 4, &o);
 		Box in; memset(&in, 0, sizeof in); in.bg = cx(dark ? "#0b1220" : "#ffffff", 1); in.bw = 1; in.bc = cx(dark ? "#334155" : "#d1d5db", 1); in.rad = 6; box_paint(cr, ix, iy, iw, ih, &in);
@@ -2166,12 +2177,13 @@ static gboolean menu_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 		srca(cr, c); cairo_move_to(cr, x, round(base) - pango_layout_get_baseline(pl) / (double)PANGO_SCALE); pango_cairo_show_layout(cr, pl); g_object_unref(pl);
 		cairo_pop_group_to_source(cr); cairo_paint_with_alpha(cr, r->op);
 	}
+	menu_sb_draw(cr);
 	cairo_restore(cr);
 	return TRUE;
 }
 static int menu_row_at(double ex, double ey)
 {
-	double x = ex / Z - (MBX - MX / Z), y = ey / Z - (MBY - MY / Z); if (x < 7 || x > MBW - 7 || y < 1 || y > MBH - 1) return -1;
+	double x = ex / Z - (MBX - MX / Z), y = ey / Z - (MBY - MY / Z); if (x < 7 || x > MBW - 7 - menu_sb() || y < 1 || y > MBH - 1) return -1;
 	double ly = 7 - MSCROLL + 75;
 	for (int i = 0; i < NMR; i++) { MRow *r = &MR[i]; if (r->shown && r->t == 'l' && y >= ly + r->y && y < ly + r->y + r->h) return strstr(r->cls, "offh") ? -1 : i; }
 	return -1;
@@ -4003,7 +4015,8 @@ static void ctx_msg(AppWin *a, JSCValue *v)
 		jstr(o, "label", x->label, sizeof x->label); jstr(o, "icon", x->icon, sizeof x->icon); jstr(o, "key", x->key, sizeof x->key); x->dis = jbool(o, "dis"); snprintf(x->act, sizeof x->act, "ctx:%d", k++); }
 	jfree(top);
 	int cx = c->full ? 0 : c->x + BW, cy = c->full ? 0 : c->y + TH;
-	CTX_A = a; CTX_GEN = atoi(gs); cm_open(cx + atof(xs), cy + atof(ys), title, m, n, ctx_chosen);
+	char rg[4] = ""; jsstr(v, "ring", rg, sizeof rg);   /* (the menu's focus ring as Chromium shows it after that click: the page says) */
+	CTX_A = a; CTX_GEN = atoi(gs); CM_RING = rg[0] == '1'; cm_open(cx + atof(xs), cy + atof(ys), title, m, n, ctx_chosen);
 }
 static void win_menu_build(Client *c, JV *pm)
 {
@@ -5160,7 +5173,7 @@ static void state_write(void)
 	/* the start menu's rows on the screen (mrow ACTION x y w h) */
 	for (int i = 0; MENU && gtk_widget_get_visible(MENU) && i < NMR; i++) { MRow *r = &MR[i]; if (!r->shown || r->t != 'l' || strstr(r->cls, "offh")) continue;
 		double y = MBY + 7 - MSCROLL + 75 + r->y; if (y < MBY || y + r->h > MBY + MBH) continue;
-		g_string_append_printf(s, "mrow %s %d %d %d %d\n", r->a[0] ? r->a : r->v[0] ? r->v : "-", (int)lround((MBX + 7) * Z), (int)lround(y * Z), (int)lround((MBW - 14) * Z), (int)lround(r->h * Z)); }
+		g_string_append_printf(s, "mrow %s %d %d %d %d\n", r->a[0] ? r->a : r->v[0] ? r->v : "-", (int)lround((MBX + 7) * Z), (int)lround(y * Z), (int)lround((MBW - 14 - menu_sb()) * Z), (int)lround(r->h * Z)); }
 	if (SIGN) g_string_append_printf(s, "signmsg %s\nsignfields %s|%ld|%d\n", SN_MSG, SN_NAME, g_utf8_strlen(SN_PASS, -1), SFOC);   /* (the password's length only) */
 	for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; GdkWindow *g = a->win ? gtk_widget_get_window(a->win) : NULL;
 		Client *c = WM_OK ? client_of_app(a) : NULL;
