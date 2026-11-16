@@ -106,8 +106,10 @@ def sleepwake(vm, g, tag):
     a = shot(vm, tag + '-before-sleep')
     g.s.s.send(b"(sleep 2; echo mem > /sys/power/state) >/dev/null 2>&1 &\n"); time.sleep(20)
     st = vm.q.cmd('query-status'); out('status while asleep:', st)
-    vm.q.cmd('system_wakeup'); time.sleep(45)
-    b = shot(vm, tag + '-after-wake')
+    vm.q.cmd('system_wakeup'); time.sleep(30)
+    a2 = shot(vm, tag + '-after-wake-untouched')
+    vm.q.move(400, 400); time.sleep(0.5); vm.q.move(420, 410); vm.q.key('shift'); time.sleep(15)   # (as a person: the pointer moved, a key)
+    b = shot(vm, tag + '-after-wake'); logpng(tag + '-after-wake-untouched', a2)
     o = sh_(g, "dmesg | grep -iE 'PM: suspend (entry|exit)|ACPI: PM' | tail -4; grep -iE 'woke|restart|not responding|did not' /run/rudolf/session.log | grep -v '^+' | tail -5", 60)
     return a, b, st, o
 
@@ -129,11 +131,11 @@ try:
     std_desk = shot(vm, 'std-desktop'); std_h1 = shot(vm, 'std-second-screen', 1)
     js("settings('bt')"); time.sleep(12)
     P['win'] = js("(()=>{const w=[...document.querySelectorAll('.win')].filter(e=>e.offsetParent).pop();if(!w)return null;const r=w.getBoundingClientRect();return [Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height)]})()")
-    P['nav'] = {k: js(f"(()=>{{const w=[...document.querySelectorAll('.win')].filter(e=>e.offsetParent).pop();const e=w&&[...w.querySelectorAll('*')].find(x=>!x.children.length&&x.textContent.trim()=={json.dumps(k)}&&x.getClientRects().length);if(!e)return null;const r=e.getBoundingClientRect();return [Math.round(r.left+r.width/2),Math.round(r.top+r.height/2)]}})()") for k in ('Bluetooth', 'Sound')}
+    P['nav'] = {k: js(f"(()=>{{const w=[...document.querySelectorAll('.win')].filter(e=>e.offsetParent).pop();const l=w?[...w.querySelectorAll('*')].filter(x=>x.textContent.trim().endsWith({json.dumps(k)})&&x.textContent.trim().length<{len(k)}+4&&x.getClientRects().length):[];if(!l.length)return null;const e=l.sort((a,b)=>a.getBoundingClientRect().left-b.getBoundingClientRect().left||b.getBoundingClientRect().width-a.getBoundingClientRect().width)[0];const r=e.getBoundingClientRect();return [Math.round(r.left+r.width/2),Math.round(r.top+r.height/2)]}})()") for k in ('Bluetooth', 'Volume Controls')}
     out('Settings window:', P['win'], 'nav:', P['nav'])
     P['bttext'] = js("(()=>{const w=[...document.querySelectorAll('.win')].filter(e=>e.offsetParent).pop();return w?w.innerText.replace(/\\s+/g,' ').slice(0,400):null})()"); out('Bluetooth page (Standard):', P['bttext'])
     std_bt = shot(vm, 'std-bluetooth')
-    if P['nav'].get('Sound'): vm.q.at(*P['nav']['Sound'], W=scr[0], H=scr[1]); time.sleep(6)
+    if P['nav'].get('Volume Controls'): vm.q.at(*P['nav']['Volume Controls'], W=scr[0], H=scr[1]); time.sleep(6)
     std_snd = shot(vm, 'std-sound')
     P['sndtext'] = js("(()=>{const w=[...document.querySelectorAll('.win')].filter(e=>e.offsetParent).pop();return w?w.innerText.replace(/\\s+/g,' ').slice(0,300):null})()"); out('Sound page (Standard):', P['sndtext'])
     js("(()=>{[...document.querySelectorAll('.win')].forEach(w=>{const b=w.querySelector('.tb .x, .tb button:last-child');if(b)b.click()});return 1})()"); time.sleep(4)
@@ -167,7 +169,7 @@ try:
         vm.q.move(scr[0] // 2, scr[1] - 120, W=scr[0], H=scr[1]); time.sleep(1)
         nat_bt = shot(vm, 'nat-bluetooth'); logpng('std-bluetooth', std_bt); logpng('nat-bluetooth', nat_bt)
         d = diff('bluetooth', std_bt, nat_bt, P['win']); ok(f'8. Settings › Bluetooth with no adapter: {d and d.get("pct")} % of the window differs from Standard (at most 5 %)', d and d.get('pct', 100) <= 5, d)
-        if P['nav'].get('Sound'): vm.q.at(*P['nav']['Sound'], W=scr[0], H=scr[1]); time.sleep(6)
+        if P['nav'].get('Volume Controls'): vm.q.at(*P['nav']['Volume Controls'], W=scr[0], H=scr[1]); time.sleep(6)
         vm.q.move(scr[0] // 2, scr[1] - 120, W=scr[0], H=scr[1]); time.sleep(1)
         nat_snd = shot(vm, 'nat-sound'); logpng('std-sound', std_snd); logpng('nat-sound', nat_snd)
         d = diff('sound', std_snd, nat_snd, P['win']); ok(f'9. Settings › Sound with the sound card: {d and d.get("pct")} % of the window differs from Standard (at most 5 %)', d and d.get('pct', 100) <= 5, d)
