@@ -4588,6 +4588,25 @@ static void api(struct req *r)
 			snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update %s", w); start_job("system-update", cmd); reply_ok(r->fd, "started"); return;
 		}
 		if (!strcmp(w, "rollback")) { char *o = run_out("/usr/bin/rudolf-update rollback 2>&1"); reply_ok(r->fd, o); free(o); return; }
+		/* 1.6.0 (the owner, 2026-11-16): Roll back to the last stable version. GET sys/stable: what it would do here (the last
+		   stable release from what the last check saw, whether this system is one, and whether that release reads this
+		   computer's data); POST sys/tostable: a job, only with an administrator's name and password, checked here (the
+		   body: {"n":ADMIN,"p":PASSWORD}), as Get beta versions */
+		if (!strcmp(w, "stable") && !post) {
+			char *o = run_out("/usr/bin/rudolf-update stable-info 2>/dev/null");
+			if (!o || o[0] != '{') { reply_err(r->fd, 404, "this Rudolf OS cannot go back to a stable release"); free(o); return; }
+			reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
+		}
+		if (!strcmp(w, "tostable") && post) {
+			char *an = NULL, *ap = NULL, why[200] = "";
+			if (r->body && r->blen && r->body[0] == '{') { an = dbody_field(r, "n"); ap = dbody_field(r, "p"); }
+			int adm = an && ap ? desk_admin_check(an, ap, why, sizeof why) : -1;
+			dfree_secret(ap);
+			if (adm) { free(an); reply_err(r->fd, adm == 429 ? 429 : 403, why[0] ? why : "an administrator's name and password are needed"); return; }
+			if (job_running()) { free(an); reply_err(r->fd, 409, "another task is still running"); return; }
+			health_add("update", "rolling back to the last stable version, asked by %.80s", an); free(an);
+			start_job("system-update", "/usr/bin/rudolf-update to-stable"); reply_ok(r->fd, "started"); return;
+		}
 		/* 1.5.9 (plan 8.5): Return to official Rudolf OS (keep or erase); a job (it may download the official release).
 		   The desktop asks an administrator's password first */
 		if (!strcmp(w, "return")) {
