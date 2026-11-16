@@ -7,6 +7,7 @@
 # (The test findings of 2026-11-15) also the page's dialogs over the desktop, Task Manager's rows read from both pages, a video
 # made full screen (the test's video made with ffmpeg when there), the apps' form controls, File Explorer and About, the dynamic
 # backgrounds' moving parts (the share of the screen moving), a window's own icon, and Native's log.
+# (Oracle's window, Chromium on both engines: same_oracle_t.sh, which needs root and the shell.)
 # Needs Xvfb, xdotool, ImageMagick (import), python3 with PIL, node with Playwright's Chromium, gcc and WebKitGTK's
 # headers; faketime if there (the clock at the same minute in both).   sh same_t.sh [OUT] [CASE,...] [RUDOLF-NATIVE]
 # (2026-11-16) another screen size: SAME_W=1280 SAME_H=800 sh same_t.sh OUT ctl-volume,explorer,help (an app's window kept inside the

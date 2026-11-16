@@ -145,4 +145,8 @@ rm -f /run/rudolf/job.name; o=$(api "POST sysext/remove?name=usbprint <$T/b" "PO
 ok "...remove, Try again and Start once without extensions" "$(grep -qx 'rpk remove --system usbprint' $T/api.log && grep -qx 'sysext retry usbprint' $T/api.log && grep -qx 'sysext skip-once' $T/api.log && echo 1)" "$o $(cat $T/api.log)"
 o=$(api "POST sysext/install?name=a%3Bb <$T/b" "POST sysext/install?name=../x <$T/b" "POST sysext/what <$T/b")
 ok "...a bad name or action is refused" "$(has "$o" 'bad extension name')$(has "$o" 'unknown extension action')$(grep -q 'a;b\|\.\./x\|what' $T/api.log && echo 0 || echo 1)" "$o $(cat $T/api.log)"
+# (1.6.0, found in QEMU, qt/sb/t160x_t.py) the start-up marks the data partition as in use before the assembly, so its
+# health-log lines (left out, a start script stopped) go to the data partition's health log (System health), not /run's
+RI=$I/sys/root/sbin/rudolf-init; lt=$(grep -n '^mountpoint -q /persist && touch /run/rudolf/persistent' $RI | head -1 | cut -d: -f1); la=$(grep -n 'sysext assemble' $RI | grep -v '^#' | grep -v ':#' | head -1 | cut -d: -f1)
+ok "17. rudolf-init: the data partition is marked in use before the extensions are laid over (their health-log lines kept)" "$([ -n "$lt" ] && [ -n "$la" ] && [ "$lt" -lt "$la" ] && echo 1)" "touch at ${lt:-none}, assemble at ${la:-none}"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

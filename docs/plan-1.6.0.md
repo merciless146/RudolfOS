@@ -713,6 +713,8 @@ Native there, Standard in use, never given up on this computer, an installed Rud
 offered=1, and any engine chosen in Settings, keep it as made in /persist/etc/rudolf-native-offered). Settings names it
 Native (no longer "Native (test)"). Tests: qt/host/nativedefault60_t.sh 12, qt/shell2/engine57_t.js 20 (new 4f-4i).
 Not done here: the release check's 900 MB measurement on the Vivobook.
+**Decided (owner, 2026-11-16): "Native is going to be the default for new installations."** The switch above (#384) is on
+main; "Before stable" item 5.
 
 ### 13. Signed system extensions (added on 2026-11-14)
 Asked for: a way to add system parts (a driver, firmware, a tool, a printer filter) to one computer without a new
@@ -825,11 +827,35 @@ extensions; removal leaving nothing behind.
   Settings and not in the App Store; removal; the self-test's line; rudolfd's requests with an administrator's password
   only), qt/shell2/sysext60_t.js 16, rpklib_t.sh 15, devcert59_t.sh 14, selftest_t.sh 25.
 
-**Next:** the QEMU checks of 13.7 (an extension in use after a restart, a broken one left out, an update with and without
-the extension's build, Recovery mode, removal); rudolf-update fetching each installed extension's build for the new base
-before switching slots (now an update to a new base leaves them out, said, until their build is installed); extensions
-with kernel modules built in the kernel's own run (signed with its module key); the release check for promised
-extensions; the first run of extensions.yml (the owner's, for the first release with a base ABI).
+**Done (2026-11-16), the QEMU checks of 13.7** ("Before stable" 6): qt/sb/t160x_t.py on the real release (beta
+2026111611) in QEMU, 20/20 (Actions run 43914057850, workflow `Extensions QEMU check`, started by a push of
+.github/ext160-run.txt). An extension must be signed by a key in the base's /etc/rudolf/rpk-keys, which only the
+release key is, so the test makes TEST keys and two custom builds of the release (Developer mode with a TEST developer
+key): the release's kernel, base, browser and drivers layers, and a desktop layer that adds the TEST system key to
+rpk-keys and names a base ABI (build 1 in slot a, build 2 in slot b, "the new base"); the drive laid out as Install here
+leaves it (the release's boot image in front). Small test extensions: hello 1.0 (ABI 1) and 2.0 (ABI 2), a program
+and a start script; hang (its start script never ends); corrupt (its file changed once installed); badsig (its file
+replaced by the same package signed by another key); breakdesk (its start script stops rudolfd, so the desktop never
+answers). Checked: installed and in use after a restart (its program and start script, /usr a read-only overlay, the
+base never written); one for another base and one signed by another key refused at install; the hanging start script
+stopped after 20 s and the system started; the changed and the re-signed file left out with their reasons (Settings'
+list, the self-test, the health log); the start that never reached the desktop left breakdesk out at the next start,
+the rest in use; removal leaving nothing; an update to build 2 without hello's build for it (left out, "built for
+another Rudolf OS base", the update kept, the desktop up), then with hello 2.0 installed (in use); Roll back system to
+build 1 (hello 2.0 left out, the computer starts); Recovery mode without extensions.
+- **Found and fixed:** what the assembly said (an extension left out, a start script stopped, the trial's leaving
+  out) never reached System health: rudolf-init laid the extensions over before marking the data partition as in use
+  (/run/rudolf/persistent), so `rudolfd --health` wrote those lines to /run/rudolf/health.log, which nothing reads.
+  rudolf-init now marks it first (the run with this tree's rudolf-init in the custom builds, fix=1; the run on the
+  release as it is had 16/20, the four the health log's). Host test: sysext60_t.sh 17.
+- **Not changed:** an update to a new base leaves an extension out (said, the computer starts, the update is kept)
+  until its build for that base is installed; rudolf-update does not fetch the builds before switching slots yet. Safe
+  as it is (the update never fails because of an extension); the fetching is for 1.6.1, with the first published
+  extension (`usbprint`, moved to 1.6.1).
+
+**Next (1.6.1):** rudolf-update fetching each installed extension's build for the new base before switching slots;
+extensions with kernel modules built in the kernel's own run (signed with its module key); the release check for
+promised extensions; the first run of extensions.yml (the owner's, with `usbprint`).
 
 ### 14. A keyring for Linux apps: the Secret Service (added on 2026-11-14)
 Found on the Vivobook (2026-11-14): signing in to the Claude app for Linux with an e-mail address showed a notice that
@@ -937,12 +963,81 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
     41 on a host without a sound server; 4g, 4h and 9 fail there on main too), Oracle's own Alt+F4 still Chromium's.
     The comparison needs Standard's Oracle drawn the same way in Playwright, the shell built with a test key, as
     oracle_native_t.sh does for Native.)
+    **Done (2026-11-16, "Before stable" item 9):** `iso/qt/native/same_oracle_t.sh` draws Oracle's window with both engines
+    in network and mount namespaces of its own, one after the other, with one stand-in rudolfd (fixtures/native_rd.py):
+    Native as oracle_native_t.sh runs it (rudolf-native, Oracle in Rudolf's Chromium with the shell built with a test key);
+    Standard as the session starts it (the same shell full screen, --class=RudolfDesktop, the desktop page in it and Oracle
+    a window of the page; keys through rudolf-display's own code, fixtures/dispkeys.c). The same settings on both (the
+    page's, and Native's desktop/settings from them) and Standard's window put at Native's frame's place and size; each
+    part cut out of both screenshots and compared (same_oracle.py with pxdiff.py: over 2 % of a part's pixels differing by
+    more than 32 fails, a size more than 1 px apart fails): the title bar, the tabs, the toolbar, the address box, the
+    bookmarks bar, the Home page, a local test site in a real tab, the ☰ menu, a download in about:downloads, dark and light
+    mode, a green accent; the title bar's words in each; and the same steps done on both, their outcomes compared: a new
+    tab (+), Ctrl+W in Oracle's page, a tab's ✕, Ctrl+T, Ctrl+W and Ctrl+N in a website, a link, ◀ and ▶, Alt+Left, a
+    website's full screen and Esc, Alt+F4. 28/28 here (Playwright's Chromium 153) and in CI with Playwright's and with
+    the beta's own Chromium 158 (oracle-same-check.yml; the pictures kept as its artifact). same_t.sh's header points to it
+    (it needs root and the shell, as oracle_native_t.sh does).
+    What was different, each fixed in Native or in what both engines share (Standard's own drawing unchanged):
+    - Rudolf's Chromium 158 kept an Oracle window's own title at the shell's name ("Rudolf OS"), so on Native the frame and
+      the taskbar said "Oracle" whatever the page (Standard: "Downloads - Oracle" and so on), and a Tor window's had no
+      "(Tor)". The page now tells the native desktop its title through rudolf-launch's binding, which writes it with its
+      window's place ("title X Y W H STRING"), and rudolf-native gives it to that window before Chromium's own name (with
+      item 10's PR, where the Tor window's test found it too; DevTools' target info never carries a page's title here).
+    - In every website tab but an account's first, Ctrl+T, Ctrl+W and Oracle's other keys did nothing, and the tab kept
+      the address as its name: the shell's content scripts (PAGE_JS) reached only the first tab of a partition. On both
+      engines; the shell now gives PAGE_JS at each page's commit too (once a page), and a tab opened with its address
+      waits for the content scripts.
+    On the Vivobook (owner): Oracle on Native and on Standard side by side: its title bar and taskbar button with a site
+    open, a second tab's Ctrl+T and Ctrl+W, Ctrl+N, Alt+F4, a download, dark mode.
   - **The official recovery (1.5.9 8.4, 8.5):** the repair at each start (the official build checks recovery.efi and
     system/r and restores them from the official release); Return to official restoring the official rudolf.efi; on a
     computer that never ran the official build, system/r downloaded when Developer mode is turned on. The EFI image is
     near the 32 MB an El Torito entry can name: watch it as the kernel grows.
+    **Done (2026-11-16), tested in QEMU on the real release** ("Before stable" 7): qt/sb/t160o_t.py (workflow
+    `Official recovery QEMU check`, started by a push of .github/recovery160-run.txt) on beta 2026111611, a computer
+    installed as Install here leaves it (the release's boot image in front of RUDOLFDATA) starting through its own boot
+    menu, with QEMU's user network (the repairs download from GitHub, as on a computer). Part 1 (Secure Boot off, the
+    official boot files), 13/13 in runs 43910756094 and 43917182147: system/r made at the first start; both start-up
+    files official (sbverify with the Rudolf OS certificate); recovery.efi changed (one byte) and system/r's desktop layer
+    deleted: at the next start system/r made again and the release's boot.iso downloaded, checked (checksum, both files
+    signed by Rudolf OS) and staged, at the one after written before anything else, recovery.efi official again and the
+    computer starting through the menu; recovery.efi deleted: the same; Developer mode (a TEST key), a custom build in
+    slot b and a custom rudolf.efi (the official one unsigned): the custom build starts, its files left alone; Return to
+    official (keep): system/r into slot a, the official boot files staged and written, Official, Developer mode off, the
+    custom slot cleared. Part 2 (a computer that never ran the official build), 3/3 in run 43917182147: Developer mode
+    turned on downloads system/r from the official address (the stable channel, 1.5.9.261115, checked with the official
+    key; the browser layer it shares linked), and Recovery mode starts it. Part 3 (Secure Boot, below) 5/5.
+    - **Found and fixed:** Return to official never cleared the custom build's slot. rudolf-update marks the return
+      (ret=1 in os/system/state), but the start-up rewrote that file with its own five lines when it tried the official
+      system, dropping the mark, so boot-ok never ran return_done. initramfs/init's st_write keeps the lines it does not
+      own (startfall58_t.sh 8b; in QEMU the start after the return ran with this tree's start-up script and the slot was
+      cleared). It needs a kernel built from this tree (the next beta).
+    - **Made sturdier:** espcheck (the start-up files' repair) runs at the desktop's first heartbeat, often before
+      Wi-Fi is connected; a failed download then waited a day. It now waits for the network (10 tries a minute apart)
+      and counts only a downloaded image that was refused against the day (esprepair60_t.sh 23). In QEMU the network was
+      up in time, so this path is host-tested only.
+    - **The EFI image: 27.0 MiB** (55296 sectors) of the 32 MiB (65535 sectors) an El Torito entry can name, on
+      2026111611. mkimage.py cut a larger entry short without a word; it now stops above 32 MiB, warns from 30 MiB and
+      prints the size (efisize60_t.sh 3, and the size of the release's image in the QEMU workflow).
+    - **The owner's checks on the Vivobook** (with the owner present, on the next beta): Settings › About says Official;
+      the boot menu's Recovery mode starts (the official system, "checked" on the screen) and Restart goes back; with
+      the network on, a normal start leaves System health with no "start-up files" line. Changing recovery.efi on the
+      computer and Developer mode there only if the owner wants it; nothing else is needed on the hardware.
   - **Browse with Tor (1.5.9 16.2):** Ctrl+W, T, N and Q in a website in the Tor window on Standard are still
     Chromium's (rudolf-display remaps them only for RudolfDesktop), with a test of rudolf-display's keys.
+    **Done (2026-11-16, "Before stable" item 10):** rudolf-display hands them to RudolfTor as to RudolfDesktop (since
+    2026-11-15) and rudolf-native grabs them on RudolfTor as on RudolfOracle; tested now with rudolf-display's own key code
+    (qt/host/fixtures/dispkeys.c: rudolf-display.c built with its main renamed; a keyboard's presses through its
+    handle_event, by window: RudolfDesktop, RudolfTor and a window inside one get Ctrl+F20..F23 and Alt+F20, Shift kept;
+    RudolfOracle and Linux apps' windows every key unchanged; Ctrl+A, Ctrl+Alt+W and plain letters unchanged everywhere) and
+    in a website in the Tor window on both engines: typed letters reach the site as they are, Ctrl+T a new tab, Ctrl+N a
+    new Tor window of the same Chromium (rudolfd's torwin/open; Native's op tor), Ctrl+Q nothing (the site sees Ctrl+F23
+    let go: the key was handed on), Ctrl+W the tab closed with the window and Chromium kept. Note: Playwright's Chromium
+    153 already gives a shell's page these keys unchanged, so there the website part passes with or without the remap; the
+    remap is checked by step 0 and by the site seeing F23. With the beta's own Chromium 158 (tor-keys-check.yml) Native's
+    Tor window kept "Rudolf OS" as its window's title, so its frame said "Oracle", not "... - Oracle (Tor)": fixed (the
+    page's title through rudolf-launch's binding to rudolf-native, by the window's place). On the Vivobook (owner): in a
+    Tor window on Standard and on Native, Ctrl+T, Ctrl+W, Ctrl+N and Ctrl+Q in a website; its title bar says "(Tor)".
   - **Lite (from 1.5.8, through 1.5.9):** the desktop's menus and windows behind Oracle's tab pages (the covered tab's
     still picture while a menu is open); stutter in Oracle's tabs; Google sign-in for GitHub (symptoms to be described
     first); GPU drawing for Lite measured; Oracle's WebKit tabs (YouTube, Google sign-in with FedCM, a download, full
@@ -980,9 +1075,16 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
     a power cut, so the tunnel's binary and the link's state written just before were lost (written to the disk
     first now); the session is rudolf-init's own process and starts the browser again, so "the desktop not running"
     is now a desktop that sends no heartbeat; busybox ash cuts a command line at 1024 characters.
-  - Left: 8.7 with Secure Boot (OVMF with TEST keys enrolled, as qt/sb/recovery_sb_t.sh): Developer mode and Return to
-    official there. qt/sb/t140_t.py (a 1.4.0 test disc) still switches the link on with the token alone (t160's 17 and
-    18 cover 15.4 in QEMU).
+  - **Done (2026-11-16), 8.7 with Secure Boot:** t160o_t.py part 3, 5/5 (runs 43917182147 and 43920580896): OVMF with
+    Microsoft's keys and a TEST certificate in db; the release's boot image with its menu, rudolf.efi and recovery.efi
+    made again from the release's kernel and signed with the TEST key (recovery.efi carrying the official release key);
+    the release starts locked down, every layer through dm-verity; Developer mode on; a custom build in slot b does not
+    start under Secure Boot ("the release list is not signed by a trusted key ... only a checked system starts") and the
+    computer goes back to the official system by itself; Return to official there (the official system from system/r,
+    checked, Developer mode off); Recovery mode (recovery.efi) checks system/r with the official key and starts it under
+    lockdown. A custom build under Secure Boot needs its own key enrolled (1.5.9 8.3, as decided); nothing was weakened.
+  - Left: qt/sb/t140_t.py (a 1.4.0 test disc) still switches the link on with the token alone (t160's 17 and 18 cover
+    15.4 in QEMU).
 - **On the Vivobook**
   - **Calls (1.5.9 7.4):** Meet in Oracle on Standard and on Lite; Zoom's test meeting, then the Zoom app; Teams; a
     call to a real phone; a headset's microphone during a call; memory during a 10-minute call. Results in
@@ -1260,11 +1362,20 @@ Part 15's lists and the Vivobook's beta 2026111611 (the owner's reports of 2026-
    check on main green.
 5. **Part 12's decision:** Native as the default for new installations after its week of betas (#384): the owner's
    call once 4 is clean; if not, new installations start on Standard for 1.6.0 and Native stays the choice in Settings.
+   **Decided (owner, 2026-11-16): "Native is going to be the default for new installations."** As #384 made it: a new
+   installation starts on Native (on trial, Standard if it does not come up); an update keeps the computer's engine and
+   offers Native once.
 6. **Part 13's QEMU checks (13.7):** an extension in use after a restart, a broken one left out, an update with and
-   without its extension: the update path must be safe before stable.
+   without its extension: the update path must be safe before stable. **Done (2026-11-16):** qt/sb/t160x_t.py 20/20 on
+   the real release (Part 13's note); one fix (the extensions' lines in System health). Left for 1.6.1: rudolf-update
+   fetching the extensions' builds for a new base before switching (an update leaves them out until then, safely).
 7. **The official recovery (Part 15, 1.5.9 8.4 and 8.5):** the repair at each start (recovery.efi and system/r checked
    and restored from the official release), Return to official restoring rudolf.efi; then recovery.efi on the Vivobook
-   with the owner present; 8.7 with Secure Boot in QEMU (OVMF with test keys).
+   with the owner present; 8.7 with Secure Boot in QEMU (OVMF with test keys). **Done in QEMU (2026-11-16):** t160o_t.py 21/21 on the
+   real release (Part 15's note): the repair, Return to official, Developer mode on a computer that never ran the
+   official build, and 8.7 with Secure Boot; one fix (Return to official now clears the custom slot; needs the next
+   beta's kernel), espcheck waits for the network, the EFI image's size checked (27.0 of 32 MiB). Left: the owner's
+   check of recovery.efi on the Vivobook (Part 15's list), on the next beta.
 8. **The Vivobook checks carried from 1.5.9 (Part 15):** calls (Meet, Zoom, Teams, a real phone, a headset, memory over
    10 minutes; the owner does these); Tor at check.torproject.org and its window; the microphone Test; Save and Open;
    WordPro's links; a USB stick in File Explorer; the Wi-Fi radios; 15.2's test; game mode and memory.
@@ -1272,8 +1383,52 @@ Part 15's lists and the Vivobook's beta 2026111611 (the owner's reports of 2026-
 **Decided by the owner on 2026-11-16:** "Oracle on Native and Tor window shortcuts can be in the 1.6.0 build. USB
 printers and ARM64 can be delayed until 1.6.1."
 9. **Part 12.3c:** same_t.sh's comparison of Oracle's window on Native against Standard's (toolbar, tabs, a site).
+   **Done (2026-11-16):** qt/native/same_oracle_t.sh (with same_oracle.py) 28/28 here with Playwright's Chromium, and in
+   CI (oracle-same-check.yml) with Playwright's and with the beta's own Chromium 158. What was different, fixed: with
+   Rudolf's Chromium 158 Oracle's title bar and taskbar button on Native said "Oracle" for every page (and the Tor window's
+   had no "(Tor)": fixed with item 10, whose Tor test found it too); in every website tab but an account's first, on both
+   engines, Ctrl+T, Ctrl+W and Oracle's other keys did nothing and the tab's title was not shown (the shell's content
+   scripts). Left: the owner's checks on the Vivobook (Part 15).
 10. **Browse with Tor:** Ctrl+W, T, N and Q in a website in the Tor window on Standard are Rudolf's, as in its other
-    windows (rudolf-display's keys), with a test.
+    windows (rudolf-display's keys), with a test. **Done (2026-11-16):** the keys were already handed on (rudolf-display:
+    RudolfTor as RudolfDesktop; rudolf-native: RudolfTor as RudolfOracle, Part 15); the tests are new: qt/host/torwin59_t.sh
+    17/17 (0: rudolf-display's own key code by window class, fixtures/dispkeys.c; 10: the keys in a website in Standard's Tor
+    window) and qt/native/tor_native_t.sh 20/20 (8: the same on Native), with Playwright's Chromium and with the beta's own
+    (tor-keys-check.yml). Found with the beta's Chromium 158 and fixed: on Native a Tor window's title (frame and taskbar)
+    had no "(Tor)", and Oracle's said "Oracle" whatever the page (Chromium 158 keeps the window's own title at the
+    shell's name): the page now tells the native desktop its title through rudolf-launch's binding ("title X Y W H ...",
+    the window found by its place). Left: the owner's check on the Vivobook (Part 15).
+
+**Asked for on 2026-11-16 (must be done before stable):** "Can a button be added to the update and recovery settings to
+"Roll Back to Last Stable Version" that only appears when get beta versions is opted in or when an experimental build the
+repository doesn't recognize as a stable/promoted version is detected to be running?" and, once the design was described:
+"That's exactly the purpose it's going to serve for 1.6 onwards, is exactly how you described it."
+11. **Roll back to the last stable version** (Settings › Update and recovery; the PR "Roll back to last stable version").
+    - **Shown** only when Get beta versions is on, or when the running system is not a release the update server lists
+      as published stable: official and its serial the stable channel's, or in `stable/history.txt` (every release ever
+      promoted, signed with the release key by the release workflow's promotion and at each run, seeded from the pages'
+      history: iso/systools/stable_history.py); both lists checked with the official key only, a history kept only when
+      it still names every release the kept one names. Hidden otherwise.
+    - **What it does:** checks for updates; says which version ("Rudolf OS 1.5.9.261115 (stable, released 2026-11-15)"),
+      whether it is still on the computer or downloaded first, and what the older release does not use; an
+      administrator's name and password (checked by rudolfd: `POST sys/tostable`); then that release from the other
+      system slot when it holds exactly it (signed, complete), else downloaded into the spare slot as updates are (only
+      the changes, every file checked against the signed list); Get beta versions off; Restart now. On a developer's
+      build it is Return to official Rudolf OS. `rudolf-update stable-info` and `to-stable`.
+    - **The data check:** each release list now says the layout of the data the release keeps and the layouts it reads
+      (`datafmt 2`, `readsfmt 1-2`, from iso/datafmt); the computer keeps the newest layout that started on it
+      (/persist/os/datafmt). Layout 1: every account's files the desktop's Linux user's (before 1.5.9); layout 2: each
+      account its own Linux user, its folder and files its own (1.5.9, docs/plan-1.5.9.md 15.3). A release that cannot
+      read this computer's data is refused with why, nothing changed. **1.6.0 -> 1.5.9: allowed.** 1.6.0 keeps the
+      accounts as 1.5.9 does (Part 10 shipped in 1.5.9); what 1.6.0 adds lies beside them and 1.5.9 leaves it alone (the
+      keyring's sign-ins: apps may ask again; system extensions: not used; Messages and the month's mobile data: kept,
+      not shown), said in the prompt. 1.5.9 was published without the record: known by its version to read layouts 1
+      and 2. No reverse step is needed for 1.5.9; 1.5.8 and older (layout 1 only) are refused.
+    - **Tests:** qt/host/tostable60_t.sh, qt/shell2/tostable60_t.js, and in QEMU on the real releases
+      qt/sb/t160r_t.py (workflow "Roll back to stable check", 12/12: run 43911026403): the beta rolled back to 1.5.9, the account made on the
+      beta opened by 1.5.9, back up to the beta, the refusal with 1.5.8's real signed list.
+    - **For the owner on the Vivobook:** the button on the beta; hidden with Get beta versions off on a stable release;
+      its prompt. A real roll back to 1.5.9 only if the owner chooses (it replaces the beta until it is installed again).
 - **Moved to 1.6.1:** Part 8 (USB printers: extensions.yml's first run to publish `usbprint`, then the HP desktop user's
   printer; docs/plan-1.6.1.md Part 9) and Part 7 (ARM64: its first release on one ARM64 computer that starts with UEFI;
   with the phone, docs/plan-1.6.1.md Part 4). 1.6.0 ships for x86 computers, and prints to network printers (IPP
