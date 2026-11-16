@@ -131,7 +131,7 @@ try:
            "WWW=/usr/share/rudolf/www; [ -f /persist/os/current/index.html ] && WWW=/persist/os/current; [ -f /tmp/fx/index.html ] && cp /tmp/fx/index.html /tmp/page.html && chmod 644 /tmp/page.html && mount --bind /tmp/page.html $WWW/index.html; "
            "rm -f /tmp/teval /tmp/teval.out; mkfifo -m 666 /tmp/teval; mount | grep -E ' /tmp | /run '; "
            "mount --bind /tmp/fx/rn /usr/bin/rudolf-native; "
-           "pkill -x rudolf-native; sleep 3; pkill -9 -x rudolf-native; for i in $(seq 1 90); do [ -s /tmp/nstate ] && break; sleep 2; done; head -3 /tmp/nstate; pgrep -af rudolf-native; tail -8 /run/rudolf/native-desktop.log; tail -8 /run/rudolf/session.log 2>/dev/null", 300)
+           "P0=$(pgrep -x rudolf-native); echo before $P0; kill $P0; sleep 3; kill -9 $P0 2>/dev/null; sleep 1; echo after $(pgrep -x rudolf-native); ls -la /usr/bin/rudolf-native; for i in $(seq 1 90); do [ -s /tmp/nstate ] && break; sleep 2; done; head -3 /tmp/nstate; pgrep -af rudolf-native; tail -8 /run/rudolf/native-desktop.log; tail -8 /run/rudolf/session.log 2>/dev/null", 300)
     ok('0d. the native desktop started again with the tests\' views' + (' and this tree\'s files' if FIX else ''), 'screen ' in o, o)
     state = lambda: sh("cat /tmp/nstate", 30, False)
     def st_get(st, k):
