@@ -649,8 +649,11 @@ run"; on the second PR's branch: its test steps).
 - N29: a video's frame callbacks (requestVideoFrameCallback) are called on Native (at the first animation frame after a new frame
   was shown): WebKitGTK never called them, so the hardware check's camera frame rate read 0.
 - N26 and N28 were done by the first and second PRs (the check box's blue; the graphics chip's name, from which GPU Lab says hardware or
-  software). N30: the start menu's search box has the page's focus ring on both engines in the test (Playwright's Chromium draws it as
-  Native does). N31 (Oracle's WebKit stand-in, host only) and N32 (a desktop sound from an app window, not confirmed) are Vivobook
+  software).
+- N30: the start menu, longer than the screen, has Chromium's scrollbar on its right as Standard's #menu (drawn by the shell; its rows
+  15 px narrower); its search box has the page's focus ring on both engines in the test (Playwright's Chromium draws it as Native does).
+- An app's menu has Chromium's focus ring only when nothing had the focus before it (not after a click in a list or a text box), as
+  Chromium shows it. N31 (Oracle's WebKit stand-in, host only) and N32 (a desktop sound from an app window, not confirmed) are Vivobook
   checks. Night light and touch mode are items 9 and 10.
 - same_t.sh: new app-menu (File Explorer's menu on a folder), title-dark, help (its scrollbar and search box); videolog60_t.sh checks
   the "+".
