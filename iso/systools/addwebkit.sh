@@ -28,12 +28,14 @@ $SUDO mkdir -p "$R$WK"; $SUDO cp -a "$WK/." "$R$WK/"; find "$WK" -type f >> "$LI
 # playback speed, fakevideosink (debugutilsbad) and the WebVTT encoder (subenc) for subtitles, which WebKit asked for.
 # And FFmpeg's decoders (libav: H.264, AAC, MP3, as Chromium has them) and deinterlace: on the Vivobook YouTube stopped
 # ("Something went wrong") when it played MP4 with AAC or H.264 (and MP3 sounds): "missing a plug-in" (2026-11-12).
+# 1.6.0: and "inter" (gst-plugins-bad), which WebKit's audio mixer needs: the Native desktop mixes each window's sounds in it, as
+# Chromium does, instead of a PulseAudio stream for each media element whose volume PulseAudio kept (the owner's report 2).
 GS=$ML/gstreamer-1.0; $SUDO mkdir -p "$R$GS" "$R$ML/gstreamer1.0/gstreamer-1.0"
 for s in $ML/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner; do [ -x "$s" ] && $SUDO cp -L "$s" "$R$s" && echo "$s" >> "$LIST"; done
 for p in coreelements app audioconvert audioresample audiotestsrc volume playback typefindfunctions videoconvertscale videoscale videoconvert \
 	ogg vorbis opus theora vpx matroska isomp4 wavparse audioparsers autodetect pulseaudio alsa id3demux gio rawparse videorate videofilter \
 	audiomixer compositor opengl gdkpixbuf jpeg png webrtcdsp \
-	opusparse videoparsersbad audiofx debugutilsbad subenc libav deinterlace; do
+	opusparse videoparsersbad audiofx debugutilsbad subenc libav deinterlace inter; do
 	f=$GS/libgst$p.so; [ -f "$f" ] || continue; $SUDO cp -L "$f" "$R$f"; echo "$f" >> "$LIST"; done
 # (1.5.9, plan 7.1: no WebRTC plug-ins: Ubuntu's WebKitGTK 2.52 has no WebRTC, so Lite opens call sites in Chromium's
 # window; the Lite engine check's call test says whether a newer WebKitGTK has it)

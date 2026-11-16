@@ -1231,6 +1231,7 @@ static void frame_release(Client *c, XButtonEvent *e)
 	int b = c->press; c->press = 0; frame_draw(c);
 	if (b && b == btn_at(c, e->x, e->y)) { if (b == 1) wm_minimise(c); else if (b == 2) wm_maximise(c, !c->max); else wm_close(c); }
 }
+static double snd_play(const char *k); static void snd_set(JV *s); static void snd_cat(JV *v);   /* (the desktop's sounds, below: report 2) */
 static void power(const char *what); static int sc_key(XKeyEvent *e); static void sc_grab(void);
 static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 {
@@ -2235,6 +2236,8 @@ static void power(const char *what)
 		GList *c = g_list_copy(WINS); for (GList *l = c; l; l = l->next) appwin_close_now(l->data); g_list_free(c);
 		http("POST", "/api/desktop/logout", NULL, 0, NULL); USER_ID[0] = 0; signin_show(0); return;
 	}
+	/* (the shut-down chime first, as the page's: up to 3 s, report 2) */
+	if (!strcmp(what, "shutdown") || !strcmp(what, "reboot") || !strcmp(what, "poweroff") || !strcmp(what, "restart")) { double l = snd_play("shutdown"); if (l > 0) g_usleep((gulong)(fmin(3, l + .15) * 1e6)); }
 	char p[80]; snprintf(p, sizeof p, "/api/power?action=%s", what); http("POST", p, NULL, 0, NULL);
 }
 /* (1.6.0 Part 12, "The rule") the start menu as the page draws it (base_v24.html #menu, styles25.css): a white panel
@@ -2618,6 +2621,7 @@ static gboolean signin_done(gpointer p)
 	Job *j = p; SIGN_BUSY = 0;
 	JV *v = jparse(j->reply);
 	if (j->code == 200) {
+		snd_play("login");   /* (as the page's sign-in and unlock: report 2) */
 		if (!SIGN_LOCK) { jstr(v, "id", USER_ID, sizeof USER_ID); jstr(v, "n", USER_N, sizeof USER_N); jstr(v, "r", USER_R, sizeof USER_R); }
 		if (SIGN_LOCK && LOCKED) UNLOCK_T = g_get_monotonic_time();   /* (UNLOCKED_AT: no saver or lock for a minute: item 6) */
 		LOCKED = 0; gtk_widget_hide(SIGN); explicit_bzero(SN_PASS, sizeof SN_PASS); SN_MSG[0] = 0; if (SCARET_T) { g_source_remove(SCARET_T); SCARET_T = 0; }
@@ -2628,6 +2632,7 @@ static gboolean signin_done(gpointer p)
 		char m[300] = ""; jstr(v, "error", m, sizeof m);
 		snprintf(SN_MSG, sizeof SN_MSG, "%s", m[0] ? m : j->code ? "The sign-in did not work." : "Rudolf OS's system service did not answer.");
 		explicit_bzero(SN_PASS, sizeof SN_PASS); SFOC = 1; sign_caret();
+		if (j->code) snd_play("error");   /* (a wrong password, as the page's) */
 	}
 	jfree(v);
 	if (SAREA) gtk_widget_queue_draw(SAREA); state_write();
@@ -2750,7 +2755,7 @@ static void settings_load(void)
 	if (!n.tb[0]) snprintf(n.tb, sizeof n.tb, "bottom"); if (!n.wpfit[0]) snprintf(n.wpfit, sizeof n.wpfit, "fill"); if (!n.dm[0]) snprintf(n.dm, sizeof n.dm, "auto");
 	jstr(v, "acct", n.acct, sizeof n.acct); jstr(v, "wpacct", n.wpacct, sizeof n.wpacct); n.gen = jnum(v, "gen", 0); n.notes = (int)jnum(v, "notes", 0); n.wallpaper = jbool(v, "wallpaper");
 	JV *p = jprop(v, "pins"); for (int i = 0; i < 24; i++) { JV *o = jat(p, i); if (!o) break; if (o->t == 3) snprintf(n.pins[n.npins++], 40, "%s", o->s);  }
-	int moved = strcmp(n.tb, S.tb) != 0 || n.scale != S.scale; S = n; ui_family(S.ff);
+	int moved = strcmp(n.tb, S.tb) != 0 || n.scale != S.scale; S = n; ui_family(S.ff); snd_set(s);   /* (the desktop's sounds: report 2) */
 	wg_load(v);   /* (the widgets: item 2) */
 	cal_events_load(v);   /* (the calendar under the clock: item 3) */
 	nt_load(v);   /* (the notifications' list: item 3) */
@@ -2789,6 +2794,7 @@ static void apps_load(void)
 			if (am[0] && !strstr(am, "..") && am[0] != '/' && !strchr(am, ':')) { char *k2 = g_strconcat("am:", kk, NULL); g_hash_table_insert(BG, k2, g_strdup(am)); } }
 		}
 	fx_cat(v);   /* (the statue's picture: N12) */
+	snd_cat(v);   /* (the sounds' styles: report 2) */
 	 jfree(v);
 	WALL_KEY[0] = 0; wall_make(); bar_redraw(); if (MAREA) gtk_widget_queue_draw(MAREA);
 }
@@ -3555,6 +3561,74 @@ static gboolean desk_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	return FALSE;
 }
 
+/* ------------------------------------------------------------------ the desktop's own sounds (1.6.0, the owner's report 2)
+   On Standard the page plays them (base_v24.html sfx: oscillators, each tone's gain up in 6 ms to .35 x the volume and down to
+   nothing over its length): the start-up chime at the sign-in screen, the sign-in sound, the error at a wrong password, the
+   shut-down chime. On Native the shell draws those screens, and played none. The same tones here, through PulseAudio's simple
+   API (libpulse-simple, which the system has: opened when first needed), with the account's choices: Settings › Volume
+   Controls' master and each sound's switch, volume and style (S.snd, given by rudolfd's desktop/settings), the styles' tones as
+   the page has them (sndp, given with the start menu's list: oneapp59.js oaCatalog) */
+typedef struct { double f, t, d, fe; int ty; } Tone;   /* (ty: 0 sine, 1 square, 2 triangle, 3 sawtooth) */
+static const char *const SNDK[] = { "startup", "login", "error", "click", "open", "close", "notify", "game", "shutdown" };
+#define SNDN 9
+static const int SNDV0[SNDN] = { 70, 70, 70, 40, 60, 60, 70, 50, 70 };
+static Tone SNDP[SNDN][8][16]; static int SNDPN[SNDN][8], SNDPC[SNDN];
+static int SND_MON = 1, SND_MV = 70, SND_ON[SNDN] = { 1, 1, 1, 1, 1, 1, 1, 1, 1 }, SND_V[SNDN] = { 70, 70, 70, 40, 60, 60, 70, 50, 70 }, SND_P[SNDN];
+static int snd_i(const char *k) { for (int i = 0; i < SNDN; i++) if (!strcmp(SNDK[i], k)) return i; return -1; }
+static void snd_cat(JV *v)
+{
+	JV *o = jprop(v, "sndp"); if (!o || o->t != 5) return;
+	for (int i = 0; i < o->len; i++) { int k = snd_i(o->k[i]); JV *ps = o->v[i]; if (k < 0 || !ps || ps->t != 4) continue; SNDPC[k] = 0;
+		for (int p = 0; p < ps->len && p < 8; p++) { JV *pat = ps->v[p]; int n = 0;
+			for (int j = 0; pat && pat->t == 4 && j < pat->len && n < 16; j++) { JV *x = pat->v[j]; if (!x || x->t != 4 || x->len < 3) continue; Tone *t = &SNDP[k][p][n++]; memset(t, 0, sizeof *t);
+				t->f = x->v[0]->t == 2 ? x->v[0]->n : 440; t->t = x->v[1]->t == 2 ? x->v[1]->n : 0; t->d = x->v[2]->t == 2 ? x->v[2]->n : .1;
+				if (x->len > 3 && x->v[3]->t == 3) t->ty = !strcmp(x->v[3]->s, "square") ? 1 : !strcmp(x->v[3]->s, "triangle") ? 2 : !strcmp(x->v[3]->s, "sawtooth") ? 3 : 0;
+				if (x->len > 4 && x->v[4]->t == 2) t->fe = x->v[4]->n; }
+			SNDPN[k][p] = n; SNDPC[k] = p + 1; } }
+}
+static void snd_set(JV *s)
+{
+	JV *o = jprop(s, "snd"); SND_MON = 1; SND_MV = 70; for (int i = 0; i < SNDN; i++) { SND_ON[i] = 1; SND_V[i] = SNDV0[i]; SND_P[i] = 0; }
+	if (!o || o->t != 5) return;
+	JV *m = jprop(o, "master"); if (m && m->t == 5) { JV *x = jprop(m, "on"); if (x) SND_MON = jbool(m, "on"); SND_MV = (int)jnum(m, "vol", 70); }
+	for (int i = 0; i < SNDN; i++) { JV *e = jprop(o, SNDK[i]); if (!e || e->t != 5) continue; JV *x = jprop(e, "on"); if (x) SND_ON[i] = jbool(e, "on"); SND_V[i] = (int)jnum(e, "vol", SNDV0[i]); SND_P[i] = (int)jnum(e, "p", 0); }
+}
+typedef struct { int16_t *b; size_t n; } SndBuf;
+static gpointer snd_thread(gpointer d)
+{
+	SndBuf *q = d; static void *lib; static int tried;
+	typedef struct { int format; uint32_t rate; uint8_t channels; } PaSpec;   /* (pa_sample_spec: PA_SAMPLE_S16LE is 3) */
+	typedef void *(*New)(const char *, const char *, int, const char *, const char *, const PaSpec *, const void *, const void *, int *);
+	typedef int (*Wr)(void *, const void *, size_t, int *); typedef int (*Dr)(void *, int *); typedef void (*Fr)(void *);
+	if (!tried) { tried = 1; lib = dlopen("libpulse-simple.so.0", RTLD_NOW | RTLD_LOCAL); if (!lib) fprintf(stderr, "rudolf-native: the desktop's sounds: no libpulse-simple (%s)\n", dlerror()); }
+	New pn = lib ? (New)dlsym(lib, "pa_simple_new") : NULL; Wr pw = lib ? (Wr)dlsym(lib, "pa_simple_write") : NULL; Dr pd = lib ? (Dr)dlsym(lib, "pa_simple_drain") : NULL; Fr pf = lib ? (Fr)dlsym(lib, "pa_simple_free") : NULL;
+	if (pn && pw && pd && pf) { PaSpec ss = { 3, 44100, 1 }; int er = 0; void *p = pn(NULL, "Rudolf OS", 1, NULL, "the desktop's sounds", &ss, NULL, NULL, &er);
+		if (p) { pw(p, q->b, q->n * 2, &er); pd(p, &er); pf(p); } else fprintf(stderr, "rudolf-native: the desktop's sounds: PulseAudio refused (%d)\n", er); }
+	g_free(q->b); g_free(q); return NULL;
+}
+static int SND_PLAYED[SNDN];   /* (for the tests: how many times each was played) */
+/* the sound called k, as the page's sfx(k): its length in seconds (0: not played) */
+static double snd_play(const char *k)
+{
+	int i = snd_i(k); if (i < 0 || !SND_MON || !SND_ON[i]) return 0;
+	double v = SND_MV / 100.0 * SND_V[i] / 100.0; if (v <= 0) return 0;
+	int p = SND_P[i] >= 0 && SND_P[i] < SNDPC[i] && SNDPN[i][SND_P[i]] ? SND_P[i] : 0; const Tone *T = SNDP[i][p]; int n = SNDPN[i][p];
+	static const Tone DEF[SNDN][4] = { { {523, 0, .14, 0, 0}, {659, .14, .14, 0, 0}, {784, .28, .14, 0, 0}, {1047, .42, .35, 0, 0} }, { {660, 0, .1, 0, 0}, {880, .1, .22, 0, 0} },
+		{ {220, 0, .16, 0, 1}, {165, .17, .24, 0, 1} }, { {1300, 0, .035, 0, 1} }, { {500, 0, .06, 0, 0}, {760, .06, .09, 0, 0} }, { {760, 0, .06, 0, 0}, {500, .06, .09, 0, 0} },
+		{ {880, 0, .1, 0, 0}, {1175, .1, .16, 0, 0} }, { {330, 0, .06, 0, 2}, {440, .05, .06, 0, 2} }, { {784, 0, .16, 0, 0}, {659, .16, .16, 0, 0}, {523, .32, .16, 0, 0}, {392, .48, .4, 0, 0} } };
+	static const int DEFN[SNDN] = { 4, 2, 2, 1, 2, 2, 2, 2, 4 };   /* (the page's PAT, until a page has given its styles) */
+	if (!n) { T = DEF[i]; n = DEFN[i]; }
+	double len = 0; for (int j = 0; j < n; j++) len = fmax(len, T[j].t + T[j].d + .03);
+	const int R = 44100; size_t N = (size_t)((len + .05) * R); float *a = g_new0(float, N);
+	for (int j = 0; j < n; j++) { const Tone *t = &T[j]; double ph = 0, g = 0, a1 = .35 * v, t1 = t->t + .006, t2 = t->t + t->d;
+		for (size_t s = (size_t)(t->t * R); s < N && s < (size_t)((t->t + t->d + .03) * R); s++) { double x = (double)s / R;
+			g = x < t1 ? .0001 + (a1 - .0001) * (x - t->t) / .006 : x < t2 ? a1 * pow(.0001 / a1, (x - t1) / fmax(1e-6, t2 - t1)) : .0001;
+			double f = t->fe > 0 && t->d > 0 ? t->f * pow(t->fe / t->f, fmin(1, (x - t->t) / t->d)) : t->f; ph += f / R; ph -= floor(ph);
+			double w = t->ty == 1 ? (ph < .5 ? 1 : -1) : t->ty == 2 ? 1 - 4 * fabs(ph - .5) : t->ty == 3 ? 2 * ph - 1 : sin(2 * M_PI * ph);
+			a[s] += (float)(w * g); } }
+	SndBuf *q = g_new0(SndBuf, 1); q->n = N; q->b = g_new(int16_t, N); for (size_t s = 0; s < N; s++) q->b[s] = (int16_t)lround(fmax(-1, fmin(1, a[s])) * 32767); g_free(a);
+	SND_PLAYED[i]++; g_thread_unref(g_thread_new("sound", snd_thread, q)); return len;
+}
 /* ------------------------------------------------------------------ the desktop's widgets (1.6.0 Part 12, item 2)
    The page's widgets (shell25.js WTYPES and wgDraw): the clock, the calendar, the sticky note, the system monitor and
    the weather, each a box on the desktop where the account left it (the page's bd95widgets:ID, given by rudolfd's
@@ -5967,6 +6041,7 @@ static void state_write(void)
 		g_string_append_printf(s, "widget %d %s %d %d %d %d %g %g|%s\n", i, WG[i].t, (int)lround(X * Z), (int)lround(Y * Z), (int)lround(W * Z), (int)lround(H * Z), WG[i].x, WG[i].y, t); g_free(t); }
 	g_string_append_printf(s, "wgnote %d %d %d\nweather %d %s|%s|%s\n", NF, NCAR, NANC, WX_ST, WX_T, WX_C, WX_L);
 	g_string_append_printf(s, "mon %s|%s|%d|%d\n", MON_CPU, MON_MEM, wg_nwin(), WG_MON_T != 0);   /* (the system monitor's values, its timer) */
+	g_string_append(s, "sounds"); for (int i = 0; i < SNDN; i++) g_string_append_printf(s, " %s:%d", SNDK[i], SND_PLAYED[i]); g_string_append_c(s, '\n');   /* (report 2) */
 	/* (the page's menu and dialogs as the shell shows them) */
 	if (CMWIN && gtk_widget_get_visible(CMWIN)) { g_string_append_printf(s, "cmenu %d %d %d %d %s\n", (int)lround(CMX * Z), (int)lround(CMY * Z), (int)lround(CMBW * Z), (int)lround(CMBH * Z), CMTITLE[0] ? CMTITLE : "-");
 		double ry = CMY + 5 + (CMTITLE[0] ? 22 : 0); for (int i = 0, k = 0; i < NCMI; i++) { if (!CMIT[i].sep && CMIT[i].icon[0]) g_string_append_printf(s, "cmicon %d %s\n", k, CMIT[i].icon); if (!CMIT[i].sep) k++; }
@@ -6026,6 +6101,15 @@ int main(int argc, char **argv)
 		else if (!strncmp(argv[i], "--base=http://", 14)) { char h[64]; int p = 0; if (sscanf(argv[i] + 14, "%63[^:/]:%d", h, &p) == 2 && p > 0) { snprintf(HOST, sizeof HOST, "%s", h); PORT = p; } }
 	}
 	STATEF = getenv("RUDOLF_NATIVE_STATE");
+	/* (1.6.0, the owner's report 2: no sound from the app windows on the Vivobook) WebKit gave each media element (<audio>, <video>:
+	   the Media Player, games, videos) a PulseAudio stream of its own, with the element's volume and mute set on the stream itself
+	   and the stream named by its role (media.role "music"). PulseAudio keeps a stream's volume by that name (module-stream-restore,
+	   kept across restarts), so once any page muted or turned down one (a muted video, the Media Player's mute, an app's volume at
+	   0), every later sound of every app window started muted or at 0 %. Chromium mixes its pages' sounds itself, in one stream with
+	   no role. WebKit's own mixer does the same: the elements' volumes in software, one stream for the window's sounds, named by the
+	   program (as Chromium's), so nothing a page does is kept for the others. (It needs GStreamer's "inter" plug-in, shipped with
+	   WebKit: addwebkit.sh) */
+	if (!getenv("WEBKIT_GST_ENABLE_AUDIO_MIXER")) g_setenv("WEBKIT_GST_ENABLE_AUDIO_MIXER", "1", TRUE);
 	g_set_prgname("RudolfNative"); gdk_set_program_class("RudolfNative");
 	gtk_init(&argc, &argv);
 	/* (1.6.0 Part 12, item 8) the apps' text as Chromium draws it: grey anti-aliasing, slight hinting (the shell's own Pango
@@ -6072,7 +6156,7 @@ int main(int argc, char **argv)
 	bar_place(); gtk_widget_realize(BAR);
 	/* signed in already: the session goes on (read above); else the sign-in screen */
 	if (USER_ID[0]) { gtk_widget_show_all(BAR); start_page(); }
-	else signin_show(0);
+	else { signin_show(0); snd_play("startup"); }   /* (the start-up chime at the sign-in screen, as the page's: report 2) */
 	g_timeout_add_seconds(3, tick_settings, NULL); g_timeout_add_seconds(10, tick_tray, NULL); g_timeout_add_seconds(5, tick_mic, NULL); g_timeout_add_seconds(15, tick_idle, NULL); g_timeout_add_seconds(5, tick_clock, NULL);
 	tick_heart(NULL); g_timeout_add_seconds(10, tick_heart, NULL);
 	tick_devlink(NULL); g_timeout_add_seconds(4, tick_devlink, NULL);   /* (as the page: every 4 s) */
