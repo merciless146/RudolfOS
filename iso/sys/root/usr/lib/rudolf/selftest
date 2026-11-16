@@ -209,6 +209,15 @@ if [ -x "${ST_WEBKIT:-/usr/bin/rudolf-webkit}" ]; then soft=""; for l in libGLX_
 	if [ -z "$soft" ]; then pass lite-gpu "Mesa's GLX is there: Lite can draw with the GPU"; else fail lite-gpu "missing:$soft (Lite draws in software, without the GPU)"; fi
 fi
 
+# ---- 1.6.0: OpenGL for Linux apps and games (GLX): the X server on the graphics card loads Mesa's driver for it. 1.5.9's
+# looked in "/usr/lib/$MA/dri" (a build mistake), found none and offered no OpenGL to any program: Unvanquished showed
+# "Couldn't load a renderer.", SuperTuxKart did not start (the desktop itself, drawn through EGL, was fine)
+XL=$RUN/Xorg.log
+if [ "$(rd1 "$RUN/display-mode")" != gpu ] || [ ! -f "$XL" ]; then skip linux-opengl "the X server is not on the graphics card (the software display)"
+elif grep -q 'GLX: Initialized .* GL provider' "$XL"; then pass linux-opengl "the X server offers OpenGL (GLX) to Linux apps and games ($(sed -n 's/.*GLX: Initialized \([A-Za-z0-9]*\) GL provider.*/\1/p' "$XL" | head -1))"
+elif grep -q 'GLX: no usable GL providers' "$XL"; then fail linux-opengl "the X server offers no OpenGL to Linux apps and games: $(grep -m1 -o 'AIGLX error: dlopen of [^ ]* failed' "$XL" || echo 'no GL provider') (games stop: \"Couldn't load a renderer\")"
+else skip linux-opengl "the X server's log says nothing about GLX yet"; fi
+
 # ---- 1.5.7 (plan stage 8): Linux apps and games
 bad=""; for n in fd stdin stdout stderr; do [ -e "$DEV/$n" ] || [ -L "$DEV/$n" ] || bad="$bad /dev/$n"; done
 if [ -z "$bad" ]; then pass dev-fd "/dev/fd, /dev/stdin, /dev/stdout and /dev/stderr are there (Steam's interface needs them)"
