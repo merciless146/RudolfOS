@@ -3,6 +3,7 @@
 Asked for on 2026-11-13: the whole of Rudolf OS as built so far converted to the native desktop. The shell first
 (docs/plan-1.6.0.md Part 12: everything the web desktop's shell has, Native the default), then every app rewritten as a
 native program, one at a time, in this plan. 2.0 is released when the apps in waves 1 to 3 are native.
+2.0 also brings the phone's own build, on the hardware 1.6.1 proves ("The phone build", below).
 
 Why (1.5.9's measurements, docs/plan-1.5.9.md 12.3a): with nothing open Native uses 854 MB against Standard's 1,110 MB,
 because no web page runs; each app opened today loads a WebKit page with the desktop's code (Settings: 195 MB). A native
@@ -153,3 +154,61 @@ the security model do not change. Standard, Lite and Native all run on it; X11 s
 ### Order with the rest of 2.0
 W0 can run at any time (it changes nothing). W1 to W3 come after wave 1 (librudolf-ui proved), so the native apps are
 written once for both sessions, and alongside wave 2. W4 and W5 with wave 3's end, before 2.0's closing measurements.
+
+## The phone build (added on 2026-11-15)
+Decided on 2026-11-15 (docs/plan-1.6.1.md, "The phone, split in two"): the phone comes in two stages. Stage 1, in
+1.6.1, makes one ARM64 phone's hardware work under today's native desktop (the modem's data, texts and calls,
+emergency calls checked, the call's sound, sleep with the modem waking it, the battery). Stage 2, here, is the phone
+people can carry: Rudolf OS's own phone interface, built once for Wayland and the native apps, so it is never written
+for X11 and the web pages first and then again. The owner's rule holds: the phone's apps look and work as their
+desktop versions do, laid out for a small touch screen.
+
+**Why it waits for 2.0:** Wayland handles what a phone needs (touch gestures, rotation, scaling for a small sharp
+screen, the input method for the on-screen keyboard, drawing only what changes, which saves power), and the native apps
+fit a phone's memory and battery (a web app today: Settings 195 MB; a native one 15 to 40 MB). The phone build is
+Wayland from its start (W1 to W3 below) and uses the native apps as each wave makes them.
+
+### What it has
+- **The phone's shell** (rudolf-native as the Wayland compositor, W1, in a phone layout chosen at start from the
+  screen's size): the status bar (time, signal and operator, Wi-Fi, battery, the notification icons), the
+  notification shade pulled down with quick settings (1.6.0's tiles), the home screen's **three panels** (the three
+  workspaces, swiped left and right as on Android: docs/plan-1.6.1.md Part 2's groundwork), the app grid, the lock
+  screen with the time, notifications and a call answered from it, the back and home gestures, rotation.
+- **The phone's own apps, native from the start** (built with librudolf-ui's touch layouts): **Phone** (the dialler,
+  calls, call history, voicemail, the in-call screen with the earpiece, speaker, headset and Bluetooth, the keypad,
+  hold and two calls, emergency calls as 1.6.1 checked them), **Messages** (1.6.0's texts and picture messages, now
+  native), **Contacts**. They come before wave 2's other apps on the phone.
+- **The desktop's native apps on the phone:** each wave's app gets a touch layout in librudolf-ui (bigger targets, one
+  column, its menus as a sheet), checked on the phone's screen size as each is checked against its web version:
+  Clock, Calculator, Notepad, Settings, File Explorer, Media Player, Camera, Weather, Calendar, Help first.
+- **The on-screen keyboard** as the Wayland input method (zwp_input_method_v2), in every app, Oracle and Linux apps
+  included, with the account's language.
+- **The camera and sensors used:** the Camera app with libcamera (photos and video, front and back), auto-rotation,
+  the screen off at the ear during a call (proximity), auto-brightness, GPS for maps and weather, vibration for calls
+  and notifications.
+- **Battery:** suspend whenever the screen is off and nothing holds it, the modem waking it for calls and texts,
+  apps in the background held back (as Android's Doze), measured against the same phone on Android (docs/plan-1.6.1.md
+  Part 6), with targets set from 1.6.1's measurements.
+- **Android apps through Waydroid,** integrated: their windows, notifications and the keyboard in Rudolf's own; the
+  list of apps that work and that refuse kept in the docs.
+- **Oracle** on the phone (WebKit or Chromium on Wayland, chosen by W0's measurements), with the phone's layout.
+
+### Order with the rest of 2.0
+1. 1.6.1's stage 1 done (the phone's hardware proven, its standby measured).
+2. W1 to W3 (the compositor, the system around it, the apps on Wayland) on the desktop, with the phone layout's shell
+   started alongside W1 on the phone itself.
+3. Wave 1's native apps, then the phone's Phone, Messages and Contacts, then wave 2 with touch layouts.
+4. The first phone beta: the shell, the phone's apps and wave 1 and 2's apps with touch layouts, Waydroid, the camera.
+5. Whether the phone build is released with desktop 2.0 or after it: the owner's decision after its betas.
+
+### Tests
+- **QEMU (aarch64)** with a phone-sized screen, a touch screen and the stand-in modem (1.6.0's): the shell's gestures,
+  the panels, the lock screen, a call and a text through the stand-in, rotation (a fake accelerometer).
+- **Each app's touch layout** screenshot-compared with its desktop version for the same content (the rule's spirit:
+  the same look, laid out for the screen).
+- **On the phone (the owner):** a day's use measured (standby, screen-on, calls), calls and an emergency-call check on
+  the carrier, the camera, the sensors, written in docs/testing.md.
+
+### Measurements that close the phone build
+On the first phone: memory at idle and with Phone, Messages, Oracle and two other apps open; standby drain overnight;
+a day's mixed use; start to the lock screen; each against the same phone on Android where it can be.
