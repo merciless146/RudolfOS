@@ -208,7 +208,11 @@ try:
             m = re.search(rf'^flybtn qs:{i} (\d+) (\d+)$', st, re.M)
             if m: at(int(m.group(1)), int(m.group(2)))
             else: out('quick settings did not open:', st_get(st, 'fly'))
-            time.sleep(1); at(SW * 3 // 4, SH - 140); time.sleep(9); st = state()   # (a click on the desktop closes quick settings, as on Standard)
+            # (a click on the desktop closes quick settings, as on Standard. 2026-11-16: on the desktop, above the panel: at 1280 x 800 the panel is
+            # 910-1272 x 456-748 and (SW * 3/4, SH - 140) was its On-screen keyboard tile, so the "desktop" click switched the keyboard and the panel
+            # stayed open, and the next press of its button closed it: "quick settings did not open", the keyboard on after Dark mode)
+            time.sleep(1); fl = (st_get(state(), 'fly') or '-').split(); at(SW * 3 // 4, SH // 4); time.sleep(9); st = state()
+            out('the panel', fl[:5], '(clicked at', SW * 3 // 4, SH // 4, ') then', st_get(st, 'fly'), 'grab', st_get(st, 'flgrab'))
             gm = sh("DISPLAY=:0 XAUTHORITY=/run/rudolf/xauth xrandr --verbose 2>/dev/null | grep -m1 Gamma", 20, False).strip()
             sigs = {k: tev(k, SIG) for k in ('notepad', 'calc')}
             out(f'{t} {"on" if on else "off"}:', st_get(st, 'a11y'), st_get(st, 'gamma'), gm, sigs)
