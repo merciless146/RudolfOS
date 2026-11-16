@@ -132,6 +132,11 @@ o=$(ev notepad '(()=>{const k="bd95set:"+uid(),v=JSON.parse(localStorage.getItem
 ok "3d. a window that missed another's change and then saves its own keeps the other's (no older value written back)" "$(echo "$o" | grep -q '^glass|true|glass|#e11d48$' && echo 1)" "$o"
 w8 '[ "$(ev settings "S.tbstyle")" = glass ]' 8
 ok "3e. ...and Settings' window took that window's change too" "$([ "$(ev settings 'S.tbstyle')" = glass ] && echo 1)" "$(ev settings 'S.tbstyle')"
+# a window whose shared storage has not caught up yet (WebKit's storage reached the other window's process seconds later in QEMU):
+# told by the shell, it takes rudolfd's copy, which the saving window sent first
+python3 -c 'import json,sys;p=sys.argv[1];f=json.load(open(p));k="bd95set:uAnnA1b2";v=json.loads(f["data"][k]);v["accent"]="#22c55e";f["data"][k]=json.dumps(v);json.dump(f,open(p,"w"))' $D/lsfile.json
+o=$(ev notepad '(window.__oaSetIn(),1)'); w8 '[ "$(ev notepad "S.accent")" = "#22c55e" ]' 5
+ok "3f. told by the shell before the shared storage reached it, a window takes rudolfd's copy (the newer settings)" "$([ "$(ev notepad 'S.accent')" = '#22c55e' ] && grep -q '^get bd95set:uAnnA1b2' $D/lsync.log && echo 1)" "$(ev notepad 'S.accent') $(tail -3 $D/lsync.log)"
 # ---- 6. Ctrl+Alt+T in an app's window
 t0n=$(napps terminal); ev notepad 'OA.main.focus(),1' >/dev/null; W=$(grep '^app notepad ' $D/state | awk '{print $3}'); xdotool windowactivate --sync $((0x$W)) 2>/dev/null; timeout 0.5 tail -f /dev/null; xdotool key ctrl+alt+t
 w8 "[ \$(napps terminal) -gt $t0n ]" 60

@@ -95,6 +95,9 @@ class H(http.server.BaseHTTPRequestHandler):
                 o['gen'] = g
                 p = os.path.join(D, 'ls.json'); open(p + '.t', 'w').write(json.dumps(o)); os.replace(p + '.t', p)
                 return self.j({'ok': True, 'message': 'saved', 'gen': g})
+            if q.startswith('key='):   # (one key of the copy, as rudolfd's api_lsync_get)
+                import urllib.parse; v = (L.get('data') or {}).get(urllib.parse.unquote(q[4:]))
+                return self.j({'ok': True, 'gen': L.get('gen') or 0, 'v': v if isinstance(v, str) else None})
             return self.j({'ok': True, 'message': 'saved'})
         if w == 'desktop/accounts':
             acc = (sget(data, 'bd95user') or {}).get('accts', [])

@@ -186,6 +186,10 @@ class H(http.server.BaseHTTPRequestHandler):
                 f['gen'] = max(f['gen'] + 1, o.get('gen') or 0); open(os.path.join(D, 'lsfile.json'), 'w').write(json.dumps(f))
                 open(os.path.join(D, 'lsync.log'), 'a').write(('part ' + ','.join(sorted(o.get('set') or {})) if o.get('part') else 'all %d' % len(o.get('data') or {})) + '\n')
             return self.j({'ok': True, 'message': 'saved', 'gen': f['gen']})
+        if w == 'lsync' and q.startswith('key='):   # (one key of the copy, as rudolfd's api_lsync_get)
+            import urllib.parse; f = json.loads(rd('lsfile.json', b'{"gen":0,"data":{}}')); v = (f.get('data') or {}).get(urllib.parse.unquote(q[4:]))
+            open(os.path.join(D, 'lsync.log'), 'a').write('get %s\n' % urllib.parse.unquote(q[4:]))
+            return self.j({'ok': True, 'gen': f['gen'], 'v': v if isinstance(v, str) else None})
         return self.j({'ok': True})
     def dl(self, m, what, q):
         # (rudolfd.c api_dl, for the incoming folder only: what the desktop page needs to file a small download)

@@ -17072,9 +17072,12 @@ if(ONEAPP){addEventListener('storage',e=>{try{if(!USER||e.key!='bd95set:'+uid()|
  /* (told by the native shell that another window saved: from the storage this window shares, or, in Oracle's Chromium, from rudolfd's
     copy of the WebKit windows' storage) */
  window.__oaSetIn=async id=>{try{if(!USER||(id&&id!=uid()))return;let us=null;
-   if(oaNative())us=oaSetMine();
-   else if(typeof RD!='undefined'&&RD){const r=await fetch('/api/lsync?key='+encodeURIComponent('bd95set:'+uid()),{headers:{'X-Rudolf-Token':RD.token},cache:'no-store'});const j=r.ok?await r.json():null;
-    if(j&&typeof j.v=='string'){us=JSON.parse(j.v);try{window.__rudolfLsQuiet?__rudolfLsQuiet('bd95set:'+uid(),j.v):localStorage.setItem('bd95set:'+uid(),j.v)}catch(e){}}}
+   /* (rudolfd's copy first, which the saving window sent before the shell was told: WebKit's storage, shared by the windows, may
+      reach this window's process seconds later (the release in QEMU: 3 to 6 s); taken in quietly, so a save here never writes
+      the older copy back) */
+   try{if(typeof RD!='undefined'&&RD){const r=await fetch('/api/lsync?key='+encodeURIComponent('bd95set:'+uid()),{headers:{'X-Rudolf-Token':RD.token},cache:'no-store'});const j=r.ok?await r.json():null;
+    if(j&&typeof j.v=='string'){us=JSON.parse(j.v);try{window.__rudolfLsQuiet?__rudolfLsQuiet('bd95set:'+uid(),j.v):localStorage.setItem('bd95set:'+uid(),j.v)}catch(e){}}}}catch(e){}
+   if(!us&&oaNative())us=oaSetMine();
    if(us&&oaSetTake(us))oaSetApply()}catch(e){console.warn('one-app: the settings from the shell',e)}};
  {let t=0;const tell=()=>{clearTimeout(t);t=setTimeout(async()=>{try{if(window.__rudolfLsFlush)await window.__rudolfLsFlush()}catch(e){}if(USER&&oaOut())oaPost({op:'set',id:uid()})},120)};
   const _ps=persistS;persistS=function(){try{if(USER&&OA_SB){const cur=oaSetMine();if(cur&&oaSetTake(cur))setTimeout(oaSetApply,0)}}catch(e){}

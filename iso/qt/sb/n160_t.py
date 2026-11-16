@@ -313,14 +313,14 @@ try:
     for k, v in CH:
         tev('settings', f"(()=>{{S[{json.dumps(k)}]={json.dumps(v)};SC=cln(S);persistS();try{{applySet()}}catch(e){{}}try{{themeApply()}}catch(e){{}}return JSON.stringify(S[{json.dumps(k)}])}})()")
         t1 = time.time(); seen_rd = seen_np = None
-        for _ in range(15):
-            time.sleep(1)
+        for _ in range(30):
+            time.sleep(.5)
+            if seen_np is None:   # (the window first: each look at rudolfd's answer takes a second or more on the serial line)
+                r = tev('notepad', f"JSON.stringify(S[{json.dumps(k)}])", 10)
+                if r == json.dumps(v): seen_np = round(time.time() - t1, 1)
             if seen_rd is None:
                 o = sh(f"busybox wget -q -O- --header \"X-Rudolf-Token: $(busybox wget -q -O- http://127.0.0.1:8080/ | grep -o 'token:\"[0-9a-f]*' | cut -d'\"' -f2)\" http://127.0.0.1:8080/api/desktop/settings | grep -o '\"{k}\":[^,}}]*'", 20, False)
                 if f'"{k}":{json.dumps(v)}' in o: seen_rd = round(time.time() - t1, 1)
-            if seen_np is None:
-                r = tev('notepad', f"JSON.stringify(S[{json.dumps(k)}])", 10)
-                if r == json.dumps(v): seen_np = round(time.time() - t1, 1)
             if seen_rd is not None and seen_np is not None: break
         res3[k] = (seen_rd, seen_np)
     out('display settings: seconds until the shell\'s source (rudolfd) and the Notepad window had each:', res3)
@@ -340,11 +340,11 @@ try:
         if k == 'browser': ORACLE = st; time.sleep(30); sh("pkill -f 'rudolf-launch --oracle' ; true", 20)
         idle(20)
         if st and k != 'browser': close_app(k)
-        if rnd == 2 and not TERM:
+        if rnd >= 2 and not TERM:   # (again in the next rounds when the start menu did not open it)
             st = open_app('terminal', 'terminal', 40); time.sleep(12)
-            TERM = (apps(st) if st else None, tev('terminal', "JSON.stringify({t:document.title,tabs:[...document.querySelectorAll('.dttab span')].map(e=>e.textContent),deb:typeof DEB=='object'?DEB.st:null,linux:!!document.querySelector('.xterm')})"))
-            out('Native Terminal:', TERM)
-            close_app('terminal')
+            t6 = (apps(st) if st else None, tev('terminal', "JSON.stringify({t:document.title,tabs:[...document.querySelectorAll('.dttab span')].map(e=>e.textContent),deb:typeof DEB=='object'?DEB.st:null,linux:!!document.querySelector('.xterm')})"))
+            out('Native Terminal:', t6)
+            if st: TERM = t6; close_app('terminal')
         if rnd == 4 and not restarted:
             # the native desktop started again (as the session's watchdog or a crash does): the session goes on
             restarted = True; sh("pkill -f /run/n160x/rn.real; sleep 8; pgrep -f /run/n160x/rn.real", 60); idle(30)
