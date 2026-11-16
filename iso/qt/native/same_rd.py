@@ -76,6 +76,8 @@ class H(http.server.BaseHTTPRequestHandler):
         L = ls(); data = L['data']; s = session()
         if w in ('events/wait', 'events') and rd('wm-native') is not None and 'shell=1' not in q:   # (1.6.0: rudolfd's on the native desktop: the shell's only)
             time.sleep(2); return self.j({'ok': True, 'events': '', 'native': True})
+        if w in ('events/wait', 'events') and 'shell=1' in q and rd('std-on') is not None:   # (Standard's case: the native shell, left running from the case before, is not this machine's desktop now and takes none of its events)
+            time.sleep(2); return self.j({'ok': True, 'events': ''})
         if w == 'events/wait':   # (DIR/event: one event for the page that asks first, as rudolfd's)
             for _ in range(30):
                 with LOCK:

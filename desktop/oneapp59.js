@@ -135,7 +135,7 @@ html.oneapp .win.oamain>.tb{display:none!important}html.oneapp .win.oamain>.body
     (Test findings N4, N10) a ticked box in Chromium's blue (#0075ff; WebKitGTK's own is GTK's accent); a number field's arrows only
     while the pointer is over it, as Chromium shows them (the Print dialog's Pages and Copies).
     (N6) a list's chevron also when the page gives it a background of its own (an inline style: WordLite's font and size, File
-    Explorer's sort and view, the Media Player's speed...). (N5, N13, N9) Chromium's own controls, measured from its drawing, as the
+    Explorer's sort and view, the Media Player's speed...). In dark mode the chevron is the list's light writing (#e2e8f0), as Chromium draws it (found on the beta in QEMU, 2026-11-16: dark on dark, so not seen). (N5, N13, N9) Chromium's own controls, measured from its drawing, as the
     browser's defaults (a cascade layer under the page's own rules, as Chromium's built-in styles are): a range is a 129×16 box with an
     8 px track (#0075ff up to the knob's centre, #efefef after, a 1 px edge) and a 16 px knob, grey when disabled (GTK draws a thin
     line and a large white knob); a colour box 50×27 in #efefef with a grey edge and the swatch inset (GTK draws a pill); a time
@@ -153,6 +153,7 @@ html.oawk .blzhello{line-height:20px}html.oawk .blzhello *{line-height:1.5}
 html.oawk input[type=number]::-webkit-inner-spin-button{opacity:0}html.oawk input[type=number]:hover::-webkit-inner-spin-button{opacity:1}
 html.oawk input[type=time]::-webkit-datetime-edit{margin-right:30px}html.oawk input:is([type=date],[type=datetime-local],[type=month],[type=week])::-webkit-datetime-edit{margin-right:34px}
 html.oawk select:not([multiple]):not([size]){background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7'%3E%3Cpath d='M1.5 1.5L5 5l3.5-3.5' fill='none' stroke='%23111' stroke-width='2'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:right 2px center!important}
+html.oawk.dark select:not([multiple]):not([size]){background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7'%3E%3Cpath d='M1.5 1.5L5 5l3.5-3.5' fill='none' stroke='%23e2e8f0' stroke-width='2'/%3E%3C/svg%3E")!important}
 @layer oaua{
 :where(html.oawk) input:where([type=range]){-webkit-appearance:none;appearance:none;background:transparent;width:129px;height:16px;margin:2px;padding:0;border:0;--oaf:.5}
 :where(html.oawk) input:where([type=range])::-webkit-slider-runnable-track{height:8px;box-sizing:border-box;border:1px solid transparent;border-radius:4px;
@@ -232,7 +233,7 @@ html.oamwait .rmodal,html.oamwait .natdlg,html.oamwait #oamodalbg{opacity:0!impo
  /* only Settings writes the accounts */
  if(ONEAPP.k!='settings'){const _su=saveUser;saveUser=function(){if(OA.opened)return;return _su.apply(this,arguments)}}
  /* the first window made for the app is its main window: it fills the page and gives the page its title */
- {const _w=win;win=function(...a){const W=_w.apply(this,a);if(OA.want&&!OA.main&&W&&W.el)oaMain(W);return W}}
+ {const _w=win;win=function(...a){const W=_w.apply(this,a);if(OA.want&&!OA.main&&W&&W.el){W.__oaReq=[a[2],a[3]];oaMain(W)}return W}}
  /* another app: a window of its own when the native shell is there */
  {const _l=launch;launch=function(k){if(OA.main&&k!=ONEAPP.k&&oaOut()&&APPS[k]){oaDrained().then(()=>oaPost({op:'open',app:k}));return}return _l.apply(this,arguments)}}
  /* (Settings at a page, asked by another app's window or a notification's action: Settings' own window, at that page) */
@@ -369,9 +370,18 @@ function oaFs(){const q=ONEAPP.q,op=q.get('op')||'',p=resolve(ONEAPP.file||'',['
  if(op=='drop'){const k=q.get('in')||'';let r=false;try{r=!!__dropFileOnWindow({app:k},p)}catch(e){console.warn(e)}
   setTimeout(()=>{if(!OA.main)oaFin(r?{}:{err:'nothing'})},1500);return}
  oaFin({err:'Unknown: '+op})}
+/* (2026-11-16, found on the beta in QEMU at 1280×800) the size Standard's win() gives the window: what the app asked for, kept inside the
+   screen's desktop (the screen less the taskbar), not inside this page's own window, which may be smaller when it is made (Settings
+   came out 87 px shorter than on Standard on a 1280×800 screen) */
+function oaScreenSize(W){const st=[Math.round(parseFloat(W.el.style.width)||0),Math.round(parseFloat(W.el.style.height)||0)];
+ try{const r=W.__oaReq||[],w=parseFloat(r[0]),h=parseFloat(r[1]),q=ONEAPP.q,zf=parseFloat(document.documentElement.style.zoom)||1,top=document.body.classList.contains('top'),
+  side=document.body.classList.contains('left')||document.body.classList.contains('right'),
+  sw=+q.get('sw')/(devicePixelRatio||1)||screen.width,sh=+q.get('sh')/(devicePixelRatio||1)||screen.height,dw=sw/zf,avail=sh/zf-(side?0:top?48:42);
+  if(w>0&&h>0&&dw>0&&avail>0)return{ww:String(Math.round(Math.min(w,dw-8))),wh:String(Math.round(Math.min(h,avail-8)))}}catch(e){}
+ return{ww:String(st[0]),wh:String(st[1])}}
 function oaMain(W){OA.main=W;OA.want=0;
  /* (1.6.0 Part 12) the size the page gives the app's window (its 1 px edge and title bar included), for the native frame */
- oaPost({op:'size',ww:String(Math.round(parseFloat(W.el.style.width)||0)),wh:String(Math.round(parseFloat(W.el.style.height)||0)),app:String(W.app||'')});W.el.classList.add('oamain');
+ oaPost({op:'size',...oaScreenSize(W),app:String(W.app||'')});W.el.classList.add('oamain');
  const t=W.el.querySelector('.tb .t'),sync=()=>{const s=(t&&t.textContent||'').trim()||(APPS[ONEAPP.k]&&APPS[ONEAPP.k].name)||'Rudolf OS';if(document.title!=s){document.title=s;oaPost({op:'title',t:s,icon:W.icon||''})}};
  sync();if(t)new MutationObserver(sync).observe(t,{childList:true,characterData:true,subtree:true});
  /* (1.6.0 Part 12, test finding N14) a window whose own icon is not its app's (Flash Player's "not installed" window): its picture as the
