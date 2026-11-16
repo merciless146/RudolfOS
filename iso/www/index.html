@@ -17136,6 +17136,17 @@ if(ONEAPP&&oaNative()&&typeof fsStandIn=='function')fsStandIn(on=>{oaPost({op:'f
 function oaPrivWin(){if(!(ONEAPP&&ONEAPP.k=='browser'&&OA.main&&oaChromium()))return false;oaPost({op:'open',app:'browser',jump:'New private tab'});return true}
 /* (the native desktop is there: WebKit's message handler, or Oracle's binding in Rudolf's Chromium) */
 const oaOut=()=>oaNative()||oaChromium();
+/* (2026-11-16, the owner's Vivobook: no sound when a window opened or closed, or a button was pressed, on Native) the desktop's sounds
+   (base_v24.html sfx: Volume Controls' volumes and styles) are played by the native shell, which draws the taskbar, the menus and the
+   frames and plays theirs: this page sends its own (a window opened and closed, a button in it, a notification, an error) with the
+   volume and tones it would play, once; its own Web Audio is not used (a window's page has no click yet, so WebKit kept it silent).
+   A page doing something for the shell unseen (#app=do-NAME) clicks the page's buttons for the shell, which played that click already */
+if(ONEAPP&&typeof sfx=='function'&&typeof PAT=='object'){let syn=false;addEventListener('click',e=>{syn=!e.isTrusted},true);const _sfx=sfx;
+ sfx=function(n,force){if(!oaOut())return _sfx.apply(this,arguments);
+  try{window.__a11y&&a11ySound(n)}catch(e){}const m=S.snd.master,s=S.snd[n];if(!s||!PAT[n])return;if(!force&&(!m.on||!s.on))return;const v=(m.vol/100)*(s.vol/100);if(v<=0)return;
+  if(/^do-/.test(ONEAPP.k)&&syn&&(n=='click'||n=='game'))return;
+  window.__sfx.push([n,+v.toFixed(3)]);let t=PAT[n];try{if(window.__a11y)t=sndPat(n)}catch(e){}
+  oaPost({op:'sfx',k:n,v:String(+v.toFixed(4)),p:JSON.stringify({t:(t||[]).map(x=>x.slice(0,5))})})}}
 /* (1.6.0 Part 12, item 12) the memory guard's "this is the desktop's page process" (mem47.js memIam: the processor kept busy for 0.6 s,
    15 s after loading and again until rudolfd knows it) is the Standard desktop's: on the native desktop no page is the desktop, and an
    app's window or Oracle's page claiming it would keep the guard from ending it. Not done there (every app window spent 0.6 s of

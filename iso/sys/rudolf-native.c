@@ -400,6 +400,7 @@ static void app_open(const char *k, const char *file);
 static void app_open_ex(const char *k, const char *file, const char *extra, int hidden);
 static void appwin_show(AppWin *a);
 static void srch_ready(AppWin *a);
+static void snd_page(const char *k, double v, const char *pj); static void snd_click(void);
 static int oracle_open(const char *file, const char *extra);   /* (1.5.9, 12.3c: Oracle in Rudolf's Chromium) */
 static void page_done(JSCValue *v);
 static void frame_redraw_app(AppWin *a);
@@ -545,6 +546,8 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "fs")) { jsstr(v, "on", x, sizeof x); appwin_fs(a, x[0] == '1'); }   /* (the page's own full screen: the window covers the screen, test finding N1) */
 	else if (!strcmp(op, "hfs")) hfs_msg(a, v);
 	else if (!strcmp(op, "ctx")) ctx_msg(a, v);   /* (File Explorer's Folders on this device: the folder picker and its files, N7) */
+	else if (!strcmp(op, "sfx")) { char k[16] = "", vv[24] = ""; jsstr(v, "k", k, sizeof k); jsstr(v, "v", vv, sizeof vv); char *pj = NULL; JSCValue *pv = jsc_value_object_get_property(v, "p");
+		if (pv && jsc_value_is_string(pv)) pj = jsc_value_to_string(pv); if (pv) g_object_unref(pv); snd_page(k, g_ascii_strtod(vv, NULL), pj); g_free(pj); }   /* (2026-11-16: a page's sound, played here once) */
 	else if (!strcmp(op, "srch")) srch_ready(a);   /* (2026-11-16: the start menu's search, Standard's: its page is ready) */
 	else if (!strcmp(op, "cat")) g_timeout_add(300, apps_reload, NULL);   /* (a page gave its catalogue again: the statue's picture, N12) */
 	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
@@ -915,6 +918,7 @@ static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 		/* (an app's jump, as its taskbar button's menu: Oracle's New private tab, a window of its own) */
 		if (!strcmp(op, "open") && app[0] && jp[0] && USER_ID[0] && !LOCKED) { tb_jump(app, jp); }   /* (the page knows its jumps; one it does not know closes its window) */
 		else if (!strcmp(op, "open") && app[0] && USER_ID[0] && !LOCKED) { char *ex = open_extra(u, pv); if (!strcmp(app, "settings") && pg[0]) tb_settings(pg); else app_open_ex(app, file[0] ? file : NULL, ex, 0); g_free(ex); }
+		else if (!strcmp(op, "sfx") && v) { char k[16] = "", vv[24] = "", pj[2048] = ""; jstr(v, "k", k, sizeof k); jstr(v, "v", vv, sizeof vv); jstr(v, "p", pj, sizeof pj); snd_page(k, g_ascii_strtod(vv, NULL), pj); }   /* (2026-11-16: Oracle's window's sounds) */
 		else if (!strcmp(op, "mirror") && v) { char id[64] = ""; jstr(v, "id", id, sizeof id); if (id_ok(id)) mirror_to_webkit(id); }   /* (the files Oracle's page saved: the app windows take them) */
 		else if (!strcmp(op, "set") && v) { char id[64] = ""; jstr(v, "id", id, sizeof id); if (id_ok(id)) settings_changed(id, NULL); }   /* (Oracle's page saved its settings) */
 		else if (!strcmp(op, "osd") && v) { char k[16] = "", lv[8] = "", lb[256] = "", n[8] = ""; jstr(v, "k", k, sizeof k); jstr(v, "lv", lv, sizeof lv); jstr(v, "label", lb, sizeof lb); jstr(v, "n", n, sizeof n); osd_show(k, lv, lb, n); }
@@ -2010,6 +2014,7 @@ static void menu_toggle(void);
 static void bar_click(int h)
 {
 	if (h < 0) return; Hit *t = &HITS[h];
+	if (strcmp(t->kind, "clock")) snd_click();   /* (2026-11-16: the start button, pins, windows' buttons and the tray's are buttons on Standard; the clock is not) */
 	if (!strcmp(t->kind, "start")) menu_toggle();
 	else if (!strcmp(t->kind, "pin")) {
 		for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; Client *c = WM_OK ? client_of_app(a) : NULL; if (!a->hidden && !strcmp(a->k, t->arg) && (!c || c->ws == WSC)) { appwin_activate(a); return; } }   /* already open in this workspace: to the front (else a new window, as the page's) */
@@ -2499,8 +2504,8 @@ static gboolean menu_click(GtkWidget *w, GdkEventButton *e, gpointer d)
 	(void)w; (void)d; if (e->type != GDK_BUTTON_PRESS || e->button != 1) return TRUE;
 	double x = e->x / Z - (MBX - MX / Z), y = e->y / Z - (MBY - MY / Z);
 	if (x < 0 || y < 0 || x > MBW || y > MBH) { menu_hide(); return TRUE; }   /* (outside: the shadow) */
-	if (MQ[0]) { srch_do(srch_at(e->x, e->y)); return TRUE; }
-	menu_do(menu_row_at(e->x, e->y)); return TRUE;
+	if (MQ[0]) { srch_do(srch_at(e->x, e->y)); return TRUE; }   /* (the search's rows are not the list's li: no sound, as Standard's .ssi) */
+	{ int r = menu_row_at(e->x, e->y); if (r >= 0) snd_click(); menu_do(r); } return TRUE;
 }
 static gboolean menu_scroll(GtkWidget *w, GdkEventScroll *e, gpointer d)
 {
@@ -2625,7 +2630,7 @@ static void pwr_do(int i)
 	power(a);
 }
 static gboolean pwr_motion(GtkWidget *w, GdkEventMotion *e, gpointer d) { (void)w; (void)d; int h = pwr_at(e->x, e->y); if (h != PWRH) { PWRH = h; gtk_widget_queue_draw(PWRA); } return TRUE; }
-static gboolean pwr_click(GtkWidget *w, GdkEventButton *e, gpointer d) { (void)w; (void)d; if (e->type == GDK_BUTTON_PRESS && e->button == 1) pwr_do(pwr_at(e->x, e->y)); return TRUE; }
+static gboolean pwr_click(GtkWidget *w, GdkEventButton *e, gpointer d) { (void)w; (void)d; if (e->type == GDK_BUTTON_PRESS && e->button == 1) { int i = pwr_at(e->x, e->y); if (i >= 0) snd_click(); pwr_do(i); } return TRUE; }
 static gboolean pwr_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 {
 	(void)w; (void)d;
@@ -2811,7 +2816,7 @@ static void sign_act(int i)
 static gboolean sign_click(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
 	(void)w; (void)d; if (e->type != GDK_BUTTON_PRESS || e->button != 1) return TRUE; int i = sign_at(e->x, e->y);
-	if (i == 0 || i == 1) { SFOC = i; sign_caret(); } else sign_act(i);
+	if (i == 0 || i == 1) { SFOC = i; sign_caret(); } else { if (SIGN_LOCK && (i == 2 || i == 3)) snd_click(); sign_act(i); }   /* (the lock screen's Unlock and Switch user are buttons; #login's none) */
 	return TRUE;
 }
 static gboolean sign_motion(GtkWidget *w, GdkEventMotion *e, gpointer d) { (void)w; (void)d; int h = sign_at(e->x, e->y); if (h != SHOV) { SHOV = h; gtk_widget_queue_draw(SAREA); } return TRUE; }
@@ -3055,7 +3060,7 @@ static gboolean cm_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 	(void)w; (void)d; if (e->type != GDK_BUTTON_PRESS) return TRUE;
 	double x = (e->x + CMWX) / Z, y = (e->y + CMWY) / Z;
 	if (x < CMX || x >= CMX + CMBW || y < CMY || y >= CMY + CMBH) { cm_close(); return TRUE; }   /* (a click elsewhere closes it, as the page's) */
-	if (e->button == 1) cm_choose(cm_at(e->x, e->y)); return TRUE;
+	if (e->button == 1) { int i = cm_at(e->x, e->y); if (i >= 0 && i < NCMI && !CMIT[i].sep) snd_click(); cm_choose(i); } return TRUE;   /* (.ctx div: a click sounds, as Standard's) */
 }
 static gboolean cm_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 {
@@ -3239,6 +3244,7 @@ static gboolean dg_motion(GtkWidget *w, GdkEventMotion *e, gpointer d) { (void)w
 static gboolean dg_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
 	(void)w; (void)d; if (e->type != GDK_BUTTON_PRESS || e->button != 1) return TRUE; int i = dg_at(e->x, e->y);
+	if (i >= 0 && !(DGK != DLG_RENAME && i == NDGAPPS)) snd_click();   /* (buttons and the list's rows (.odd div) sound; Always's box does not) */
 	if (DGK == DLG_RENAME) { if (i == 0) dg_close(); else if (i == 1) dg_ok(); }
 	else { if (i >= 0 && i < NDGAPPS) dg_pick(i); else if (i == NDGAPPS) { DGALW = !DGALW; gtk_widget_queue_draw(DGAREA); } else if (i == NDGAPPS + 1) dg_close(); }
 	return TRUE;
@@ -3749,12 +3755,30 @@ static gpointer snd_thread(gpointer d)
 	g_free(q->b); g_free(q); return NULL;
 }
 static int SND_PLAYED[SNDN];   /* (for the tests: how many times each was played) */
+static double snd_out(int i, double v, const Tone *T, int n);
 /* the sound called k, as the page's sfx(k): its length in seconds (0: not played) */
 static double snd_play(const char *k)
 {
 	int i = snd_i(k); if (i < 0 || !SND_MON || !SND_ON[i]) return 0;
 	double v = SND_MV / 100.0 * SND_V[i] / 100.0; if (v <= 0) return 0;
-	int p = SND_P[i] >= 0 && SND_P[i] < SNDPC[i] && SNDPN[i][SND_P[i]] ? SND_P[i] : 0; const Tone *T = SNDP[i][p]; int n = SNDPN[i][p];
+	int p = SND_P[i] >= 0 && SND_P[i] < SNDPC[i] && SNDPN[i][SND_P[i]] ? SND_P[i] : 0; return snd_out(i, v, SNDP[i][p], SNDPN[i][p]);
+}
+/* (2026-11-16, the owner's Vivobook: no window or button sounds on Native) a sound a page of the shell's plays, as the page's sfx() would on
+   Standard (oneapp59.js: its volume, from Volume Controls, and its tones, the account's style), played here: a page's own Web Audio did
+   not sound (a window's page has had no click yet, WebKit keeps its audio suspended), and the windows open and close through the shell */
+static void snd_page(const char *k, double v, const char *pj)
+{
+	int i = snd_i(k); if (i < 0 || !(v > 0) || v > 1) return; Tone T[16]; int n = 0; JV *o = pj && pj[0] == '{' ? jparse(pj) : NULL, *pat = jprop(o, "t");
+	for (int j = 0; pat && pat->t == 4 && j < pat->len && n < 16; j++) { JV *x = pat->v[j]; if (!x || x->t != 4 || x->len < 3) continue; Tone *t = &T[n++]; memset(t, 0, sizeof *t);
+		t->f = x->v[0]->t == 2 ? x->v[0]->n : 440; t->t = x->v[1]->t == 2 ? x->v[1]->n : 0; t->d = x->v[2]->t == 2 ? x->v[2]->n : .1;
+		if (x->len > 3 && x->v[3]->t == 3) t->ty = !strcmp(x->v[3]->s, "square") ? 1 : !strcmp(x->v[3]->s, "triangle") ? 2 : !strcmp(x->v[3]->s, "sawtooth") ? 3 : 0;
+		if (x->len > 4 && x->v[4]->t == 2) t->fe = x->v[4]->n; }
+	jfree(o); snd_out(i, v, T, n);
+}
+/* the shell's own buttons, as the page's (base_v24.html: a click on a button, a start menu row, a menu's row, a dialog's list: "click") */
+static void snd_click(void) { snd_play("click"); }
+static double snd_out(int i, double v, const Tone *T, int n)
+{
 	static const Tone DEF[SNDN][4] = { { {523, 0, .14, 0, 0}, {659, .14, .14, 0, 0}, {784, .28, .14, 0, 0}, {1047, .42, .35, 0, 0} }, { {660, 0, .1, 0, 0}, {880, .1, .22, 0, 0} },
 		{ {220, 0, .16, 0, 1}, {165, .17, .24, 0, 1} }, { {1300, 0, .035, 0, 1} }, { {500, 0, .06, 0, 0}, {760, .06, .09, 0, 0} }, { {760, 0, .06, 0, 0}, {500, .06, .09, 0, 0} },
 		{ {880, 0, .1, 0, 0}, {1175, .1, .16, 0, 0} }, { {330, 0, .06, 0, 2}, {440, .05, .06, 0, 2} }, { {784, 0, .16, 0, 0}, {659, .16, .16, 0, 0}, {523, .32, .16, 0, 0}, {392, .48, .4, 0, 0} } };
@@ -4945,8 +4969,14 @@ static gboolean fl_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 }
 static gboolean fl_release(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
-	(void)w; (void)d; if (FLDRAG) { FLDRAG = 0; return TRUE; } int i = fl_at(e->x, e->y), p = FLPRESS; FLPRESS = -1;
-	if (i >= 0 && i == p) { char k[16]; snprintf(k, sizeof k, "%s", FLBK[i]); fl_act(k, 0); if (FLK) fl_resize(); }
+	(void)w; (void)d; if (FLDRAG) { FLDRAG = 0; if (FLK == FL_VOL) snd_play("notify"); return TRUE; }   /* (the volume's range changed: osd31.js rg.onchange) */
+	int i = fl_at(e->x, e->y), p = FLPRESS; FLPRESS = -1;
+	if (i >= 0 && i == p) { char k[16]; snprintf(k, sizeof k, "%s", FLBK[i]);
+		/* (2026-11-16) the pop-ups' buttons sound, as Standard's: ◀ ▶, Open Calendar, the tiles, Lock, Settings, Power, Clear all, a ✕, Why,
+		   Network Settings; not a day, Mute's or Do not disturb's box, or the Desktop sounds link */
+		if (!strcmp(k, "prev") || !strcmp(k, "next") || !strcmp(k, "open") || !strncmp(k, "qs:", 3) || !strcmp(k, "lock") || !strcmp(k, "settings") || !strcmp(k, "power")
+			|| !strcmp(k, "clear") || !strncmp(k, "nx:", 3) || !strncmp(k, "why:", 4) || !strcmp(k, "npo")) snd_click();
+		fl_act(k, 0); if (FLK) fl_resize(); }
 	return TRUE;
 }
 static gboolean fl_motion(GtkWidget *w, GdkEventMotion *e, gpointer d)
