@@ -275,7 +275,10 @@ try:
         sh('sync', 60); vm.stop(); time.sleep(3)
         vm, g, up, js = boot('d', nxt); sh = lambda c, t=60: run(g, c, t)
         if up:
-            sh("pkill -f /usr/lib/rudolf/session; sleep 1; pkill -9 -f '[-]-rudolf-kiosk'; pkill -9 -f rudolf-native; sleep 2; rm -f /run/rudolf/heartbeat; pgrep -f 'rudolf-devlink run' >/dev/null && echo LINK-RUNS", 60)
+            # the desktop not answering, as at the grey screen of 1.5.8 4.2: the session (rudolf-init's own process, which
+            # pkill cannot end) starts the browser again, so its heartbeat is kept from being written instead (a folder in
+            # its place) and the browser ended (run 43780174587: the desktop came back, and command 2 waited for an Allow)
+            sh("pkill -9 -f '[-]-rudolf-kiosk'; pkill -9 -f rudolf-native; rm -f /run/rudolf/heartbeat; mkdir /run/rudolf/heartbeat; sleep 2; pgrep -f 'rudolf-devlink run' >/dev/null && echo LINK-RUNS", 60)
             out('tunnel', tunnel(g, sh))   # (after the desktop is stopped)
             def link_state():
                 sh("cat /run/rudolf/devlink/status 2>&1; ls /run/rudolf/devlink; tail -5 /persist/devlink/log 2>&1; grep -v token /persist/devlink/config; cat /persist/devlink/state; "
@@ -285,12 +288,12 @@ try:
             o = sh("grep '^ask=' /persist/devlink/config", 20)
             dlcmd(2, kind='sh', script='echo ran'); r = dlresult(2, 600)
             if not r: link_state()
-            ok('19. 4.2: after a restart the link is on by itself (Ask first on again, 15.4), and with no desktop to ask a command is answered at once ("no desktop to ask"), not run',
+            ok('19. 4.2: after a restart the link is on by itself (Ask first on again, 15.4), and with no desktop answering a command is answered at once ("no desktop to ask"), not run',
                'ask=1' in o and r and r.get('status') == -1 and r.get('approved') == 'no desktop to ask' and 'ran' not in str(r.get('stdout')), [o, r])
-            sh("sed -i 's/^ask=.*/ask=0/' /persist/devlink/config; grep '^ask=' /persist/devlink/config", 20)
+            sh("sed -i 's/^ask=.*/ask=0/' /persist/devlink/config; grep '^ask=' /persist/devlink/config; ls -ld /run/rudolf/heartbeat", 20)
             dlcmd(3, kind='sh', script='echo no-desktop'); r = dlresult(3, 600)
             if not r: link_state()
-            ok('20. ...with Ask first off, the link answers with the desktop not running', r and r.get('stdout') == 'no-desktop\n', r)
+            ok('20. ...with Ask first off, the link answers with the desktop not answering', r and r.get('stdout') == 'no-desktop\n', r)
         else: ok('19. 4.2: started again', False, 'not up')
 finally:
     try: stub.kill(); tun.kill()
