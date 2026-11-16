@@ -19,7 +19,7 @@
 #         the computer starts on the new base and keeps it; with the right build installed it is in use
 #   15-16 Roll back system (Update and recovery): back on the old base, the new base's build left out, the computer
 #         starts; Recovery mode starts without extensions
-#   python3 t160x_t.py REL-DIR      (SB_PARTS and QEMU as for t160; root; QEMU_ACCEL=kvm where it can; FIX=1)
+#   python3 t160x_t.py REL-DIR      (REL-DIR with the release's boot.iso: the drive is laid out as Install here does; SB_PARTS and QEMU as for t160; root; QEMU_ACCEL=kvm where it can; FIX=1)
 import os, sys, time, re, subprocess, shutil, struct, json, hashlib
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE); ISO = os.path.dirname(QT)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
@@ -88,8 +88,8 @@ ext('breakdesk', '1.0', ABI1, 'sys', {'usr/bin/rudolf-breakdesk': '#!/bin/sh\nec
     'usr/lib/rudolf/ext.d/breakdesk.start': '#!/bin/sh\nmount --bind /bin/false /usr/bin/rudolfd && echo "breakdesk: rudolfd replaced by false"\n'})
 
 def make_drive(path):
-    start = 2048
-    with open(path, 'wb') as f: f.truncate((start + DMB * 2048 + 2048) * 512); f.seek(510); f.write(b'\x55\xaa')
+    """Install here's layout: the release's boot image (boot.iso) at the start, RUDOLFDATA as partition 3 at 128 MiB"""
+    start = 262144
     T = os.path.abspath(path + '.tree'); shutil.rmtree(T, ignore_errors=True); os.makedirs(f'{T}/home/rudolf'); os.makedirs(f'{T}/etc/rudolf')
     for s, (L, ch, serial) in (('a', B1), ('b', B2)):
         d = f'{T}/os/system/{s}'; os.makedirs(d)
@@ -106,19 +106,28 @@ def make_drive(path):
     subprocess.run(['chown', '-R', '1000:1000', f'{T}/home/rudolf'], check=True)
     D = path + '.data'; subprocess.run(['truncate', '-s', f'{DMB}M', D], check=True)
     subprocess.run(['mkfs.ext4', '-q', '-F', '-O', 'encrypt', '-L', 'RUDOLFDATA', '-m', '1', '-d', T, D], check=True); shutil.rmtree(T)
-    with open(path, 'r+b') as f:
+    with open(path, 'wb') as f:
+        f.truncate((start + DMB * 2048 + 2048) * 512)
+        with open(f'{REL}/boot.iso', 'rb') as i: shutil.copyfileobj(i, f)
+        f.seek(446); f.write(bytes(16))
         f.seek(478); f.write(bytes([0, 0xfe, 0xff, 0xff, 0x83, 0xfe, 0xff, 0xff]) + struct.pack('<II', start, DMB * 2048))
-        f.seek(start * 512)
+        f.seek(510); f.write(b'\x55\xaa'); f.seek(start * 512)
         with open(D, 'rb') as d: shutil.copyfileobj(d, f)
     os.remove(D)
+
+class TSer(Ser):   # the serial line, also written to a file (the start-up's own messages there: console=ttyS0)
+    def __init__(s, path, logf): super().__init__(path); s.lf = open(logf, 'a')
+    def read(s, t=1.0):
+        o = super().read(t); s.lf.write(o); s.lf.flush(); return o
 
 N = [0]
 def boot(tag, extra_cmd=''):
     N[0] += 1
     extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf160x',
-             '-kernel', f'{REL}/vmlinuz', '-append', f'quiet loglevel=3 consoleblank=0 rudolf.debug=1 {extra_cmd}'.strip()]
+             '-kernel', f'{REL}/vmlinuz', '-append', f'console=ttyS0 loglevel=3 consoleblank=0 rudolf.debug=1 {extra_cmd}'.strip()]
     vm = sbvm.VM(f't160x{N[0]}{tag}', PARTS, [], secure=False, mem=MEM, extra=extra)
-    g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3)
+    vm.serlog = os.path.join(vm.dir, 'serial.txt')
+    g = Guest.__new__(Guest); g.N = vm.name; g.s = TSer(vm.ser_path, vm.serlog); g.q = vm.q; g.s.read(0.3)
     time.sleep(20); end = time.time() + 900; up = False
     while time.time() < end:
         try:
@@ -126,6 +135,7 @@ def boot(tag, extra_cmd=''):
         except OSError: pass
         time.sleep(4)
     out(f'--- start {N[0]} ({tag}):', 'up' if up else 'NOT UP')
+    if not up: out('the serial line:', open(vm.serlog, errors='replace').read()[-4000:])
     return vm, g, up
 def run(g, c, t=60):
     f = os.path.join(W, 'c160x.sh'); open(f, 'w').write(c + '\n'); g.put(f, '/tmp/c160x.sh', '644')
@@ -146,85 +156,87 @@ RPKI = 'rpk install-file --system'
 make_drive(DRV)
 vm = None
 try:
-    # ---- start 1: build 1 (slot a): the extensions installed
-    vm, g, up = boot('install')
-    ok('0. build 1 (the release with the TEST system key, Developer mode) starts from slot a', up and re.search(r'^SLOT=a$', state(g), re.M), 'not up')
-    if not up: raise SystemExit
-    o = run(g, f"cat /usr/share/rudolf/base-abi; for x in hello-1.0 hang-1.0 corrupt-1.0 badsig-1.0; do {RPKI} /persist/t/$x.rpk; echo rc=$?; done; "
-               f"rpk sysext-status; ls /usr/bin/rudolf-hello 2>&1", 120)
-    ok('1. extensions signed by the (TEST) system key install for this base, in use after a restart', o.count('rc=0') == 4 and o.count('in use after the next restart') == 4
-       and '"name":"hello","version":"1.0"' in o and '"state":"next"' in o and 'No such file' in o, o)
-    o = run(g, f"{RPKI} /persist/t/hello-2.0.rpk; echo rc=$?; {RPKI} /persist/t/badsig-other.rpk; echo rc=$?", 60)
-    ok('...one built for another base and one signed by another key are refused', o.count('rc=1') == 2 and 'another Rudolf OS base' in o and "release key" in o, o)
-    # the changed file and the other key's signature, as anything that writes to the data partition could do
-    run(g, "f=/persist/pkg/store/corrupt.rpk; s=$(stat -c %s $f); printf 'X' | dd of=$f bs=1 seek=$((s / 3)) conv=notrunc 2>/dev/null; "
-           "cp /persist/t/badsig-other.rpk /persist/pkg/store/badsig.rpk; sync; md5sum /persist/pkg/store/*.rpk", 60)
-    stop(vm, g)
-    # ---- start 2: in use; the hanging start script stopped; the two broken ones left out
-    vm, g, up = boot('inuse')
-    o = state(g) + run(g, "rudolf-hello; cat /run/rudolf/hello.mark; cat /run/rudolf/ext/hello.log; grep -c . /proc/mounts; grep sysext /proc/mounts | cut -d' ' -f1-3", 60)
-    ok('2. after the restart: hello in use, its program there and its start script run', up and 'hello from the test extension 1.0' in o and 'hello 1.0 started' in o
-       and re.search(r'^hello\t1.0\tin-use', o, re.M), o)
-    ok('3. ...laid over the base read-only (overlays on /usr), nothing written to the base layer', re.search(r'^sysext /usr overlay', o, re.M) and 'with extensions' in o, o)
-    o2 = run(g, "touch /usr/bin/x-test 2>&1; echo rc=$?; ls /run/rudolf/ext/", 30)
-    ok('4. /usr stays read-only with an extension in use', 'rc=1' in o2 or 'Read-only' in o2, o2)
-    ok('5. a start script that never ends is stopped after its time limit, the extension stays in use, said in System health',
-       re.search(r'^hang\t1.0\tin-use', o, re.M) and 'did not finish in 20 s' in health(g, 'hang'), o)
-    ok('6. a changed extension file is left out, with its reason', re.search(r'^corrupt\t1.0\tleft-out\t.*no longer the signed one', o, re.M), o)
-    ok('7. one signed by another key (its file replaced) is left out, with its reason', re.search(r'^badsig\t1.0\tleft-out\t.*(no longer the signed one|not signed by Rudolf OS)', o, re.M), o)
-    h = health(g, 'corrupt|badsig'); st = run(g, "/usr/lib/rudolf/selftest 2>&1 | grep -E ' extensions '; rpk sysext-status", 300)
-    ok('...each in the health log (System health) and the self-test, in plain words', 'left out the system extension corrupt 1.0' in h and 'left out the system extension badsig 1.0' in h
-       and re.search(r'FAIL extensions - left out: .*corrupt 1.0 \(', st) and '"problem":' in st, h + st)
-    up2, o = desktop_up(g)
-    ok('8. ...and the computer started: the desktop came up, and this start\'s extensions were marked good', up2 and 'MARKED-GOOD' in o and 'hello 1.0' in run(g, 'cat /persist/pkg/sysext/good', 20), o)
-    o = run(g, f"for x in hang corrupt badsig; do rpk remove --system $x; echo rc=$?; done; {RPKI} /persist/t/breakdesk-1.0.rpk; echo rc=$?; ls /persist/pkg/store /persist/pkg/db", 120)
-    ok('...removed (hang, corrupt, badsig): nothing of them left; breakdesk installed', o.count('rc=0') == 4 and not re.search(r'\b(hang|corrupt|badsig)\.(rpk|info)', o), o)
-    stop(vm, g)
-    # ---- start 3: breakdesk stops the desktop
-    vm, g, up = boot('breakdesk')
-    o = state(g) + run(g, "cat /run/rudolf/ext/breakdesk.log; sleep 150; ls /run/rudolf/heartbeat 2>&1; cat /persist/pkg/sysext/trying", 260)
-    ok('9. an extension that stops the desktop: in use, the desktop never answers, the start stays on trial', up and re.search(r'^breakdesk\t1.0\tin-use', o, re.M)
-       and 'No such file' in o and re.search(r'^breakdesk 1.0$', o, re.M) and not re.search(r'^hello 1.0$', o.split('cat /persist/pkg/sysext/trying')[-1], re.M), o)
-    stop(vm, g)   # (the person switches it off)
-    # ---- start 4: left out, the rest in use; removed; then the update to build 2 (without hello's build)
-    vm, g, up = boot('trial')
-    o = state(g); up2, o2 = desktop_up(g)
-    ok('10. the next start leaves it out ("the desktop did not come up"), keeps the others, and the desktop comes up', up and up2
-       and re.search(r'^breakdesk\t1.0\tleft-out\tthe desktop did not come up', o, re.M) and re.search(r'^hello\t1.0\tin-use', o, re.M)
-       and 'the desktop did not come up at the first start with it' in health(g, 'breakdesk'), o + o2)
-    o = run(g, "rpk remove --system breakdesk; echo rc=$?; ls /persist/pkg/store /persist/pkg/db /persist/pkg/sysext/off 2>&1", 60)
-    ok('11. ...removing it leaves nothing behind', 'rc=0' in o and 'breakdesk' not in o.split('rc=0')[-1], o)
-    # the update: build 2 is in slot b (as a download leaves it), made the one to start next, on trial
-    run(g, "printf 'good=a\\nprev=\\nnext=b\\ntries=2\\nfailed=\\n' > /persist/os/system/state; sync", 30)
-    stop(vm, g)
-    # ---- start 5: the new base, without hello's build for it
-    vm, g, up = boot('update')
-    o = state(g) + run(g, "cat /usr/share/rudolf/base-abi; rudolf-hello 2>&1; rpk sysext-status", 60); up2, o2 = desktop_up(g)
-    o3 = run(g, "sleep 20; cat /persist/os/system/state; /usr/lib/rudolf/selftest 2>&1 | grep -E ' extensions '", 300)
-    ok('12. an update of the base without the extension\'s build: the computer starts on the new base, the old build left out (built for another base)',
-       up and re.search(r'^SLOT=b$', o, re.M) and ABI2 in o and re.search(r'^hello\t1.0\tleft-out\t.*another Rudolf OS base', o, re.M) and 'not found' in o, o)
-    ok('13. ...the desktop comes up and the update is kept; System health and the self-test say why it is left out', up2 and re.search(r'^good=b$', o3, re.M)
-       and 'another Rudolf OS base' in health(g, 'hello') and 'FAIL extensions - left out: hello 1.0' in o3, o2 + o3)
-    o = run(g, f"{RPKI} /persist/t/hello-2.0.rpk; echo rc=$?", 60)
-    stop(vm, g)
-    # ---- start 6: with the right build
-    vm, g, up = boot('rightbuild')
-    o = state(g) + run(g, "rudolf-hello; cat /run/rudolf/hello.mark", 60); up2, o2 = desktop_up(g)
-    ok('14. ...with the build for the new base installed, it is in use after a restart', up and up2 and re.search(r'^hello\t2.0\tin-use', o, re.M)
-       and 'hello from the test extension 2.0' in o and re.search(r'^SLOT=b$', o, re.M), o + o2)
-    o = run(g, "rudolf-update rollback; cat /persist/os/system/state", 60)
-    stop(vm, g)
-    # ---- start 7: rolled back to the old base
-    vm, g, up = boot('rollback')
-    o = state(g) + run(g, "rudolf-hello 2>&1", 30); up2, o2 = desktop_up(g)
-    ok('15. Roll back system with an extension: the old base starts, the new base\'s build left out, the desktop comes up', up and up2 and re.search(r'^SLOT=a$', o, re.M)
-       and re.search(r'^hello\t2.0\tleft-out\t.*another Rudolf OS base', o, re.M) and 'not found' in o, o + o2)
-    stop(vm, g)
-    # ---- start 8: Recovery mode (with the right build back: none used all the same)
-    vm, g, up = boot('recovery', 'rudolf.recovery=1')
-    o = state(g) + run(g, "rudolf-hello 2>&1; grep -c ' /usr overlay' /proc/mounts", 30)
-    ok('16. Recovery mode starts without extensions, and says so', up and re.search(r'^start\tRecovery mode starts without system extensions', o, re.M) and 'not found' in o, o)
-    stop(vm, g); vm = None
+  try:
+        # ---- start 1: build 1 (slot a): the extensions installed
+        vm, g, up = boot('install')
+        ok('0. build 1 (the release with the TEST system key, Developer mode) starts from slot a', up and re.search(r'^SLOT=a$', state(g), re.M), 'not up')
+        if not up: raise SystemExit
+        o = run(g, f"cat /usr/share/rudolf/base-abi; for x in hello-1.0 hang-1.0 corrupt-1.0 badsig-1.0; do {RPKI} /persist/t/$x.rpk; echo rc=$?; done; "
+                   f"rpk sysext-status; ls /usr/bin/rudolf-hello 2>&1", 120)
+        ok('1. extensions signed by the (TEST) system key install for this base, in use after a restart', o.count('rc=0') == 4 and o.count('in use after the next restart') == 4
+           and '"name":"hello","version":"1.0"' in o and '"state":"next"' in o and 'No such file' in o, o)
+        o = run(g, f"{RPKI} /persist/t/hello-2.0.rpk; echo rc=$?; {RPKI} /persist/t/badsig-other.rpk; echo rc=$?", 60)
+        ok('...one built for another base and one signed by another key are refused', o.count('rc=1') == 2 and 'another Rudolf OS base' in o and "release key" in o, o)
+        # the changed file and the other key's signature, as anything that writes to the data partition could do
+        run(g, "f=/persist/pkg/store/corrupt.rpk; s=$(stat -c %s $f); printf 'X' | dd of=$f bs=1 seek=$((s / 3)) conv=notrunc 2>/dev/null; "
+               "cp /persist/t/badsig-other.rpk /persist/pkg/store/badsig.rpk; sync; md5sum /persist/pkg/store/*.rpk", 60)
+        stop(vm, g)
+        # ---- start 2: in use; the hanging start script stopped; the two broken ones left out
+        vm, g, up = boot('inuse')
+        o = state(g) + run(g, "rudolf-hello; cat /run/rudolf/hello.mark; cat /run/rudolf/ext/hello.log; grep -c . /proc/mounts; grep sysext /proc/mounts | cut -d' ' -f1-3", 60)
+        ok('2. after the restart: hello in use, its program there and its start script run', up and 'hello from the test extension 1.0' in o and 'hello 1.0 started' in o
+           and re.search(r'^hello\t1.0\tin-use', o, re.M), o)
+        ok('3. ...laid over the base read-only (overlays on /usr), nothing written to the base layer', re.search(r'^sysext /usr overlay', o, re.M) and 'with extensions' in o, o)
+        o2 = run(g, "touch /usr/bin/x-test 2>&1; echo rc=$?; ls /run/rudolf/ext/", 30)
+        ok('4. /usr stays read-only with an extension in use', 'rc=1' in o2 or 'Read-only' in o2, o2)
+        ok('5. a start script that never ends is stopped after its time limit, the extension stays in use, said in System health',
+           re.search(r'^hang\t1.0\tin-use', o, re.M) and 'did not finish in 20 s' in health(g, 'hang'), o)
+        ok('6. a changed extension file is left out, with its reason', re.search(r'^corrupt\t1.0\tleft-out\t.*no longer the signed one', o, re.M), o)
+        ok('7. one signed by another key (its file replaced) is left out, with its reason', re.search(r'^badsig\t1.0\tleft-out\t.*(no longer the signed one|not signed by Rudolf OS)', o, re.M), o)
+        h = health(g, 'corrupt|badsig'); st = run(g, "/usr/lib/rudolf/selftest 2>&1 | grep -E ' extensions '; rpk sysext-status", 300)
+        ok('...each in the health log (System health) and the self-test, in plain words', 'left out the system extension corrupt 1.0' in h and 'left out the system extension badsig 1.0' in h
+           and re.search(r'FAIL extensions - left out: .*corrupt 1.0 \(', st) and '"problem":' in st, h + st)
+        up2, o = desktop_up(g)
+        ok('8. ...and the computer started: the desktop came up, and this start\'s extensions were marked good', up2 and 'MARKED-GOOD' in o and 'hello 1.0' in run(g, 'cat /persist/pkg/sysext/good', 20), o)
+        o = run(g, f"for x in hang corrupt badsig; do rpk remove --system $x; echo rc=$?; done; {RPKI} /persist/t/breakdesk-1.0.rpk; echo rc=$?; ls /persist/pkg/store /persist/pkg/db", 120)
+        ok('...removed (hang, corrupt, badsig): nothing of them left; breakdesk installed', o.count('rc=0') == 4 and not re.search(r'\b(hang|corrupt|badsig)\.(rpk|info)', o), o)
+        stop(vm, g)
+        # ---- start 3: breakdesk stops the desktop
+        vm, g, up = boot('breakdesk')
+        o = state(g) + run(g, "cat /run/rudolf/ext/breakdesk.log; sleep 150; ls /run/rudolf/heartbeat 2>&1; cat /persist/pkg/sysext/trying", 260)
+        ok('9. an extension that stops the desktop: in use, the desktop never answers, the start stays on trial', up and re.search(r'^breakdesk\t1.0\tin-use', o, re.M)
+           and 'No such file' in o and re.search(r'^breakdesk 1.0$', o, re.M) and not re.search(r'^hello 1.0$', o.split('cat /persist/pkg/sysext/trying')[-1], re.M), o)
+        stop(vm, g)   # (the person switches it off)
+        # ---- start 4: left out, the rest in use; removed; then the update to build 2 (without hello's build)
+        vm, g, up = boot('trial')
+        o = state(g); up2, o2 = desktop_up(g)
+        ok('10. the next start leaves it out ("the desktop did not come up"), keeps the others, and the desktop comes up', up and up2
+           and re.search(r'^breakdesk\t1.0\tleft-out\tthe desktop did not come up', o, re.M) and re.search(r'^hello\t1.0\tin-use', o, re.M)
+           and 'the desktop did not come up at the first start with it' in health(g, 'breakdesk'), o + o2)
+        o = run(g, "rpk remove --system breakdesk; echo rc=$?; ls /persist/pkg/store /persist/pkg/db /persist/pkg/sysext/off 2>&1", 60)
+        ok('11. ...removing it leaves nothing behind', 'rc=0' in o and 'breakdesk' not in o.split('rc=0')[-1], o)
+        # the update: build 2 is in slot b (as a download leaves it), made the one to start next, on trial
+        run(g, "printf 'good=a\\nprev=\\nnext=b\\ntries=2\\nfailed=\\n' > /persist/os/system/state; sync", 30)
+        stop(vm, g)
+        # ---- start 5: the new base, without hello's build for it
+        vm, g, up = boot('update')
+        o = state(g) + run(g, "cat /usr/share/rudolf/base-abi; rudolf-hello 2>&1; rpk sysext-status", 60); up2, o2 = desktop_up(g)
+        o3 = run(g, "sleep 20; cat /persist/os/system/state; /usr/lib/rudolf/selftest 2>&1 | grep -E ' extensions '", 300)
+        ok('12. an update of the base without the extension\'s build: the computer starts on the new base, the old build left out (built for another base)',
+           up and re.search(r'^SLOT=b$', o, re.M) and ABI2 in o and re.search(r'^hello\t1.0\tleft-out\t.*another Rudolf OS base', o, re.M) and 'not found' in o, o)
+        ok('13. ...the desktop comes up and the update is kept; System health and the self-test say why it is left out', up2 and re.search(r'^good=b$', o3, re.M)
+           and 'another Rudolf OS base' in health(g, 'hello') and 'FAIL extensions - left out: hello 1.0' in o3, o2 + o3)
+        o = run(g, f"{RPKI} /persist/t/hello-2.0.rpk; echo rc=$?", 60)
+        stop(vm, g)
+        # ---- start 6: with the right build
+        vm, g, up = boot('rightbuild')
+        o = state(g) + run(g, "rudolf-hello; cat /run/rudolf/hello.mark", 60); up2, o2 = desktop_up(g)
+        ok('14. ...with the build for the new base installed, it is in use after a restart', up and up2 and re.search(r'^hello\t2.0\tin-use', o, re.M)
+           and 'hello from the test extension 2.0' in o and re.search(r'^SLOT=b$', o, re.M), o + o2)
+        o = run(g, "rudolf-update rollback; cat /persist/os/system/state", 60)
+        stop(vm, g)
+        # ---- start 7: rolled back to the old base
+        vm, g, up = boot('rollback')
+        o = state(g) + run(g, "rudolf-hello 2>&1", 30); up2, o2 = desktop_up(g)
+        ok('15. Roll back system with an extension: the old base starts, the new base\'s build left out, the desktop comes up', up and up2 and re.search(r'^SLOT=a$', o, re.M)
+           and re.search(r'^hello\t2.0\tleft-out\t.*another Rudolf OS base', o, re.M) and 'not found' in o, o + o2)
+        stop(vm, g)
+        # ---- start 8: Recovery mode (with the right build back: none used all the same)
+        vm, g, up = boot('recovery', 'rudolf.recovery=1')
+        o = state(g) + run(g, "rudolf-hello 2>&1; grep -c ' /usr overlay' /proc/mounts", 30)
+        ok('16. Recovery mode starts without extensions, and says so', up and re.search(r'^start\tRecovery mode starts without system extensions', o, re.M) and 'not found' in o, o)
+        stop(vm, g); vm = None
+  except SystemExit: out('stopped early')
 finally:
     try: vm and vm.stop()
     except Exception: pass

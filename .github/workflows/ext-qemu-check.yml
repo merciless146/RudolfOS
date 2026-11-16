@@ -33,7 +33,7 @@ jobs:
         run: |
           git fetch -q --depth 1 origin gh-pages
           S="$N_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
-          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs' -p boot.iso
           if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
           else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
           ls -la rel; echo "::notice title=Extensions QEMU check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)), fix=$N_fix"
@@ -43,4 +43,4 @@ jobs:
           mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU FIX=$N_fix QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/t160x_t.py ../rel
       - if: always()
         uses: actions/upload-artifact@v4
-        with: {name: t160x, retention-days: 7, path: "run/t160x.txt\nrun/t160x*/qemu.log"}
+        with: {name: t160x, retention-days: 7, path: "run/t160x.txt\nrun/t160x*/qemu.log\nrun/t160x*/serial.txt"}
