@@ -225,7 +225,7 @@ four tasks started at 20:10-20:25 (owner's time), on this host (Xvfb 1920×1080,
 
 ### The areas never compared: the beta in QEMU (2026-11-16)
 
-`iso/qt/sb/t160n_t.py` (workflow `native-areas.yml` on branch native-areas-qemu, runs 43799708532, 43800749546, 43801599755)
+`iso/qt/sb/t160n_t.py` (workflow `native-areas.yml` on branch native-areas-qemu, runs 43799708532, 43800749546, 43801599755, 43803406064)
 starts the beta 1.6.0.261116 (serial 2026111602, which has every fix up to #405) at 1280×800. The machine has an Intel HD Audio
 card (hda-duplex), two virtio-vga outputs and S3 sleep. It runs Standard first: an account is made and signed in, Settings'
 pages are opened, the screen is locked and unlocked, and the machine sleeps and wakes. Then it starts Native on the same data
@@ -238,10 +238,12 @@ partition and does the same steps as a person would (QMP keyboard and pointer, a
 | Lock (Super+L) and unlock with the password | lock screen, then desktop | the same | same: 0.16 % and 0.27 % |
 | Second screen (virtio-vga output 2) | "disconnected" (DRM), nothing shown | the same | same (item 7 waits for the owner) |
 | Sound card | `HDA-Intel` in ALSA; Volume Controls lists it (Built-in Audio Analog Stereo) | the same card | same (system view) |
-| Bluetooth with no adapter | Settings › Bluetooth: "This computer has no Bluetooth adapter Rudolf OS can use…" | — | see the last run's log |
 | Printers | no CUPS in the release (`lpstat` missing); printing is the page's PDF and the USB printer extension | the same | same; printing on paper is a Vivobook check (V20) |
 | Batteries | none in QEMU | none | same; V13-V17 |
 | Sleep (S3) and waking (`system_wakeup`) | the page answers after waking; the display stays "not active" in QEMU (virtio-vga), even after input | rudolf-native still running, not restarted; the display the same | same on both. The display not coming back may be QEMU's virtio-gpu; check on the Vivobook (V10, V11) |
+| Settings › Volume Controls in dark mode (run 4: the pages compared in their first 520 px) | the lists' chevrons light (#e2e8f0) | **no chevrons**: the N6 chevron was drawn dark (#111) on the dark list | **fixed here**: `oneapp59.js`, a light chevron with `html.dark`; new same_t case `ctl-volume-dark` (the host's light-mode cases could not show it) |
+| Settings › Bluetooth with no adapter (run 4) | "This computer has no Bluetooth adapter Rudolf OS can use. A USB Bluetooth adapter works too." | the same | same: 0.94 % of the window differs |
+| Settings › Devices (run 4) | — | — | same: 3.9 % (the window's height, below) |
 | **App window size at 1280×800** | Settings 862×642 at (40, 20) | **Settings about 87 px shorter** (the page sized its window inside its own first, smaller window, not the screen's desktop) | **fixed here**: `oneapp59.js` `oaScreenSize`; host test `SAME_W=1280 SAME_H=800 sh same_t.sh OUT ctl-volume,explorer,help`: 14.4 % and 3.6 % differed, now 0.77 %, 0.56 % and 1.34 % |
 
 Not compared in QEMU, so they are on the checklist: the camera and microphone, calls, Bluetooth pairing, printing on paper, the

@@ -170,6 +170,7 @@ CASES.push({n: 'toast-live', set: {}, act: 'notepad', ev: ['memory closed Paint 
    status line), and what Settings › About says (read from both pages; the storage's numbers and the graphics chip are each engine's own) */
 const PINSL = {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'settings', 'media', 'wordlite', 'clock']};
 CASES.push({n: 'ctl-volume', set: {}, more: PINSL, app: 'settings', js: "settings('vol')", parts: ['win']});
+CASES.push({n: 'ctl-volume-dark', set: {dm: 'dark', darkui: true}, more: PINSL, app: 'settings', js: "settings('vol')", parts: ['win']});   /* (the lists' chevrons in dark mode: the beta in QEMU, 2026-11-16) */
 CASES.push({n: 'ctl-mouse', set: {}, more: PINSL, app: 'settings', js: "settings('mouse')", parts: ['win']});
 CASES.push({n: 'ctl-media', set: {}, more: PINSL, app: 'media', parts: ['win']});
 CASES.push({n: 'ctl-wordlite', set: {}, more: PINSL, app: 'wordlite', parts: ['win']});

@@ -135,7 +135,7 @@ html.oneapp .win.oamain>.tb{display:none!important}html.oneapp .win.oamain>.body
     (Test findings N4, N10) a ticked box in Chromium's blue (#0075ff; WebKitGTK's own is GTK's accent); a number field's arrows only
     while the pointer is over it, as Chromium shows them (the Print dialog's Pages and Copies).
     (N6) a list's chevron also when the page gives it a background of its own (an inline style: WordLite's font and size, File
-    Explorer's sort and view, the Media Player's speed...). (N5, N13, N9) Chromium's own controls, measured from its drawing, as the
+    Explorer's sort and view, the Media Player's speed...). In dark mode the chevron is the list's light writing (#e2e8f0), as Chromium draws it (found on the beta in QEMU, 2026-11-16: dark on dark, so not seen). (N5, N13, N9) Chromium's own controls, measured from its drawing, as the
     browser's defaults (a cascade layer under the page's own rules, as Chromium's built-in styles are): a range is a 129×16 box with an
     8 px track (#0075ff up to the knob's centre, #efefef after, a 1 px edge) and a 16 px knob, grey when disabled (GTK draws a thin
     line and a large white knob); a colour box 50×27 in #efefef with a grey edge and the swatch inset (GTK draws a pill); a time
@@ -153,6 +153,7 @@ html.oawk .blzhello{line-height:20px}html.oawk .blzhello *{line-height:1.5}
 html.oawk input[type=number]::-webkit-inner-spin-button{opacity:0}html.oawk input[type=number]:hover::-webkit-inner-spin-button{opacity:1}
 html.oawk input[type=time]::-webkit-datetime-edit{margin-right:30px}html.oawk input:is([type=date],[type=datetime-local],[type=month],[type=week])::-webkit-datetime-edit{margin-right:34px}
 html.oawk select:not([multiple]):not([size]){background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7'%3E%3Cpath d='M1.5 1.5L5 5l3.5-3.5' fill='none' stroke='%23111' stroke-width='2'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:right 2px center!important}
+html.oawk.dark select:not([multiple]):not([size]){background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7'%3E%3Cpath d='M1.5 1.5L5 5l3.5-3.5' fill='none' stroke='%23e2e8f0' stroke-width='2'/%3E%3C/svg%3E")!important}
 @layer oaua{
 :where(html.oawk) input:where([type=range]){-webkit-appearance:none;appearance:none;background:transparent;width:129px;height:16px;margin:2px;padding:0;border:0;--oaf:.5}
 :where(html.oawk) input:where([type=range])::-webkit-slider-runnable-track{height:8px;box-sizing:border-box;border:1px solid transparent;border-radius:4px;
