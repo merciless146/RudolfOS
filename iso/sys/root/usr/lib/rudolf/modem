@@ -30,6 +30,10 @@
 #   (modem set: limit MB, startday 1-28, dataoff 0|1)
 # 1.6.0 (Part 5): signal and status
 #   modem signal MODEM          JSON: the signal's details (LTE's RSRP, RSRQ, SINR, RSSI; 5G's; 3G's)
+# 1.6.0 (Part 6): messages
+#   modem sms MODEM             JSON: the messages the modem holds (mmcli's, with their ids)
+#   modem sms-send MODEM FILE   FILE: the number, then the text (root's only); modem sms-delete MODEM ID
+#   modem sms-preview on|off|status   a new message's text in its notice (and on the lock screen), or only its sender
 # The places can be moved for the host tests: RUDOLF_MODEM_SYS, RUDOLF_MODEM_DEV, RUDOLF_RUN, RUDOLF_MODEM_LOG,
 # RUDOLF_MODEM_PERSIST, RUDOLF_MM_FCC_AVAIL, RUDOLF_MM_FCC_DIR, RUDOLF_MBPI, RUDOLF_APN_FIXES, RUDOLF_RFKILL,
 # RUDOLF_RESOLV, RUDOLF_PROCNET, RUDOLF_NAT64, RUDOLF_CELL_METRIC, RUDOLF_FIREWALL.
@@ -335,6 +339,37 @@ gone() {   # the modems no longer listed: their state kept a while, to tell a re
 	for f in $R/modemstate/[0-9]*; do [ -f "$f" ] || continue; n=${f##*/}; echo " $1 " | grep -q " $n " && continue
 		read -r a b c d dev < $f; [ "$dev" != - ] && echo "$dev $(date +%s)" > $R/modemstate/gone.$n; rm -f $f
 		$HEALTH modem "the cellular modem went away (unplugged, or the module restarting)" >/dev/null 2>&1; done; }
+# ---- 1.6.0 (Part 6): messages (SMS) ----
+# The modem keeps the texts it receives (and the ones being sent) until the Messages app has copied them into the
+# signed-in account's folder (.rudolf/messages.json: in its encrypted folder when "Encrypt my data" is on), which then
+# deletes them from the modem. Sending: the text in a root-only file (any characters: Unicode and long texts, which
+# ModemManager splits into parts), a delivery report asked for. A new message is noted (mobile/notes) with its sender
+# only, unless an administrator allowed the text in notices (/persist/etc/sms-preview): also on the lock screen.
+# mmcli's JSON in a UTF-8 locale (its text escaped properly, any language).
+smsj() { LC_ALL=C.UTF-8 mmcli -J -s "$1" 2>/dev/null; }
+sms_ids() { mmcli -m "$1" --messaging-list-sms -K 2>/dev/null | sed -n 's#.*/org/freedesktop/ModemManager1/SMS/\([0-9]*\).*#\1#p'; }
+sms_list() {   # MODEM: JSON {"messages":[mmcli's own, with "id"]}
+	modem_ok "$1" || { echo '{"error":"no such modem"}'; return 1; }; first=1; printf '{"messages":['
+	for i in $(sms_ids "$1"); do J=$(smsj $i | tr -d '\n'); case "$J" in '{"sms":'*) ;; *) continue;; esac
+		[ $first = 1 ] || printf ','; first=0; printf '{"id":%s,%s' "$i" "${J#\{}"; done; printf ']}\n'; }
+sms_send() {   # MODEM FILE (line 1: the number; the rest: the text)
+	modem_ok "$1" || { echo "There is no such modem."; return 1; }
+	num=$(head -1 "$2" | tr -d ' ()-'); echo "$num" | grep -qE '^\+?[0-9]{3,20}$' || { echo "That is not a phone number."; return 1; }
+	mkdir -p $R/sms; umask 077; tail -n +2 "$2" > $R/sms/out.txt; [ -s $R/sms/out.txt ] || { echo "The message is empty."; rm -f $R/sms/out.txt; return 1; }
+	o=$(LC_ALL=C.UTF-8 mmcli -m "$1" --messaging-create-sms="number='$num',delivery-report-request=yes" --messaging-create-sms-with-text=$R/sms/out.txt 2>&1); rm -f $R/sms/out.txt
+	id=$(echo "$o" | sed -n 's#.*/org/freedesktop/ModemManager1/SMS/\([0-9]*\).*#\1#p' | head -1); [ -n "$id" ] || { echo "The message could not be made: ${o##*: }"; return 1; }
+	o=$(timeout 60 mmcli -s $id --send 2>&1) || { echo "The message was not sent: ${o##*: }"; return 1; }
+	echo "{\"id\":$id}"; }
+sms_delete() { modem_ok "$1" || { echo "There is no such modem."; return 1; }; echo "$2" | grep -qE '^[0-9]{1,6}$' || { echo "no such message"; return 1; }
+	mmcli -m "$1" --messaging-delete-sms="$2" >/dev/null 2>&1 && echo deleted || { echo "no such message"; return 1; }; }
+# (the watch, every 6 s, per modem): new received messages noted once
+sms_new() {   # MODEM
+	mkdir -p $R/sms; touch $R/sms/seen
+	for i in $(sms_ids "$1"); do grep -qx "$1:$i" $R/sms/seen && continue; J=$(smsj $i | tr -d '\n')
+		case "$J" in *'"state":"received"'*) ;; *'"state":"receiving"'*) continue;; *) echo "$1:$i" >> $R/sms/seen; continue;; esac
+		echo "$1:$i" >> $R/sms/seen; num=$(printf '%s' "$J" | sed -n 's/.*"number":"\([^"]*\)".*/\1/p')
+		if [ -e $P/sms-preview ]; then t=$(printf '%s' "$J" | sed -n 's/.*"text":"\(\([^"\\]\|\\.\)*\)".*/\1/p' | sed 's/\\n/ /g; s/\\"/"/g; s/\\\\/\\/g' | cut -c1-160); note "💬 New message from $num" "$t"
+		else note "💬 New message from $num" "Open Messages to read it."; fi; done; }
 # ---- 1.6.0 (Part 3): the connection ----
 # Cable, then Wi-Fi, then cellular: their default routes' metrics (100, 600, 700; udhcpc.sh gives the first two), and
 # routes on an interface whose link went down ignored at once (ignore_routes_with_linkdown), so cellular stays connected
@@ -429,7 +464,7 @@ watch() {
 		if [ $k = 0 ] && [ ! -e $R/airplane ]; then
 			ids=""
 			for p in $(mmcli -K -L 2>/dev/null | grep -o '/org/freedesktop/ModemManager1/Modem/[0-9]*'); do n=${p##*/}; MK=$(mmcli -m $n -K 2>/dev/null) || continue
-				ids="$ids $n"; events $n
+				ids="$ids $n"; events $n; sms_new $n
 				st=$(mkv "$MK" 'modem\.generic\.state'); F=$(simconf)
 				case "$st" in
 				disabled) timeout 30 mmcli -m $n --enable >/dev/null 2>&1;;
@@ -480,6 +515,10 @@ disconnect) disconnect "$2" user ;;
 watch) watch ;;
 usage) usage "$2" ;;
 signal) signal "$2" ;;
+sms) sms_list "$2" ;;
+sms-send) sms_send "$2" "$3" ;;
+sms-delete) sms_delete "$2" "$3" ;;
+sms-preview) case "$2" in on) mkdir -p $P; : > $P/sms-preview;; off) rm -f $P/sms-preview;; *) [ -e $P/sms-preview ] && echo on || echo off; exit 0;; esac; echo saved ;;
 limits) for f in $R/cellular/*; do [ -f "$f" ] || continue; n=$(cat $f); MK=$(mmcli -m $n -K 2>/dev/null) && limits $n; done ;;   # (what the watch does every half minute)
 *) echo "usage: modem hotplug|start|stop|status|fcc|pin|puk|settings|set|apn|airplane|connect|disconnect|watch"; exit 2 ;;
 esac

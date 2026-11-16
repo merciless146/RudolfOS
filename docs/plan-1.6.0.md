@@ -1043,6 +1043,22 @@ without this work (it waits only for the QEMU security checks of Part 15).
   Stage B checks: the bars and type against the stick's own LED or the operator's app, moving the Vivobook toward a
   window while watching RSRP/SINR, the SIM taken out while running (System health), the self-test's modem line passing.
 
+- **Item 6 (Part 6), done (PR "cell60-sms"):** /usr/lib/rudolf/modem sms (mmcli's JSON in a UTF-8 locale: any
+  language), sms-send (the number and text in a root-only file; ModemManager splits long texts; a delivery report asked
+  for), sms-delete, sms-preview; the watch notes each new received message once ("💬 New message from NUMBER": the sender
+  only, unless an administrator allowed the text: /persist/etc/sms-preview, System health says who). rudolfd: mobile/sms,
+  mobile/sms/send, mobile/sms/delete, mobile/sms/preview. The Messages app (messages60.js, a page app: the same window on
+  both engines): conversations by number (unread counts, the newest first), bubbles with Sent and Delivered, a new
+  conversation by number, the characters and parts counted (GSM-7 160/153, Unicode 70/67); the modem's messages copied
+  into the account's folder (.rudolf/messages.json through rudolfd's home/write: in the encrypted folder with "Encrypt my
+  data"; the page's own storage for an account that is not on the drive), then deleted from the modem; synced every
+  10 s while open and at each new message's notice. The notices of new messages are shown on the lock screen too (both
+  engines), the others wait. MMS is left out.
+  Tests: qt/host/sms60_t.sh (11), qt/shell2/messages60_t.js (13).
+  Stage B checks: texts to and from a real phone through the stick or the MiFi (Unicode, a long one, the delivery
+  report), a sign-in code from a service, the notice with the desktop locked, the messages still there after a restart
+  (and in the encrypted folder with Encrypt my data on).
+
 **Stage B: on hardware, with the owner (after stage A is merged and in a beta)**
 1. The USB cellular stick (borrowed from the HP desktop's user) and the MiFi 7730L on the Vivobook: the modem found
    (Settings › Network › Cellular modems, no "Invalid rule match" in /run/rudolf/modem.log, the self-test's modem
