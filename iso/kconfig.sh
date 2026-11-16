@@ -76,6 +76,18 @@ m VIDEO_DEV USB_VIDEO_CLASS
 y USB_VIDEO_CLASS_INPUT_EVDEV
 # power, ACPI
 y ACPI ACPI_BATTERY ACPI_AC ACPI_BUTTON ACPI_VIDEO ACPI_FAN ACPI_THERMAL BACKLIGHT_CLASS_DEVICE SUSPEND CPU_FREQ X86_INTEL_PSTATE X86_AMD_PSTATE RTC_DRV_CMOS HWMON SENSORS_CORETEMP SENSORS_K10TEMP
+# 1.6.0 (the owner's Vivobook Go, Ryzen 3 7320U): sleep on AMD laptops is the firmware's modern standby (s2idle, mem_sleep's
+# only choice there), which needs AMD's power management controller driver to reach the low-power state; without it amdgpu warned
+# "Power consumption will be higher as the kernel has not been compiled with CONFIG_AMD_PMC" and treated sleep as the old S3, and
+# the hardware check's 10 seconds of sleep did not put the computer to sleep. AMD_PMC built in (it takes part in every suspend and
+# resume, and its wake-up timer is the RTC's), AMD_PMF (the platform's power and fan modes, a module) and ACPI's sleep states;
+# all checked below
+AMDPMY="SUSPEND PM_SLEEP ACPI_SLEEP X86_PLATFORM_DEVICES AMD_PMC RTC_CLASS RTC_DRV_CMOS"
+AMDPMM="AMD_PMF"
+y $AMDPMY AMD_NB AMD_NODE
+# (AMD_PMF needs the AMD secure processor's trusted apps, TEE and AMDTEE, and the sensor hub's driver)
+y CRYPTO_DEV_CCP CRYPTO_DEV_SP_PSP
+m CRYPTO_DEV_CCP_DD TEE AMDTEE AMD_SFH_HID $AMDPMM
 # Secure Boot (1.2.2): modules are signed at build time with a key made for that build only (and thrown away),
 # and unsigned ones are refused; kexec starts only kernels signed with the Rudolf OS Secure Boot key, which is
 # built in as a trusted key (SB_CERT: iso/boot/sb/rudolf-sb.crt, or a test certificate for local builds); with
@@ -223,5 +235,7 @@ grep -q "^CONFIG_RT2X00=m$" .config || { echo "kconfig.sh: RT2X00 is not a modul
 for o in $RT2800; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 for o in $MOBM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the mobile data driver $o is not a module after olddefconfig"; exit 1; }; done
 for o in ANDROID_BINDER_IPC ANDROID_BINDERFS; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
+for o in $AMDPMY; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the sleep option $o is not on after olddefconfig (a dependency is missing)"; exit 1; }; done
+for o in $AMDPMM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the power driver $o is not a module after olddefconfig (a dependency is missing)"; exit 1; }; done
 grep -q "^CONFIG_PSI_DEFAULT_DISABLED=y" .config && { echo "kconfig.sh: PSI is off by default"; exit 1; }
 true

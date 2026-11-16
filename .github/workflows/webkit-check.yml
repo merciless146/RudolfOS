@@ -7,7 +7,7 @@
 name: Lite engine check
 on:
   push:
-    paths: ['iso/sys/rudolf-webkit.c', 'iso/sys/rudolf-native.c', 'iso/qt/host/native59_t.sh', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/host/fixtures/xwmclient.c', 'desktop/oneapp59.js', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
+    paths: ['iso/sys/rudolf-webkit.c', 'iso/sys/rudolf-native.c', 'iso/qt/host/native59_t.sh', 'iso/qt/host/hwcnative160_t.sh', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/host/fixtures/xwmclient.c', 'desktop/oneapp59.js', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -73,6 +73,12 @@ jobs:
           sh iso/qt/host/native59_t.sh | tee native-result.txt; r=$?
           echo "::notice title=Native desktop engine::$(tail -1 native-result.txt) — $(grep -E '^FAIL' native-result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
           grep -q ' passed$' native-result.txt && ! grep -q '^FAIL' native-result.txt
+      - name: Task Manager's computer check on the native desktop (1.6.0, the owner's Vivobook report of 2026-11-16)
+        run: |
+          sudo apt-get install -y -qq pulseaudio pulseaudio-utils gstreamer1.0-pulseaudio >/dev/null || true
+          sh iso/qt/host/hwcnative160_t.sh | tee hwcn-result.txt
+          echo "::notice title=Computer check on Native::$(tail -1 hwcn-result.txt) — $(grep -E '^FAIL' hwcn-result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
+          grep -q '^0 of [0-9]* failed$' hwcn-result.txt
       - name: The desktop page in rudolf-webkit from the base layer itself (chroot)
         run: |
           B=$RUNNER_TEMP/base; [ -x $B/usr/bin/rudolf-webkit ] || { echo "::error title=Base layer::no rudolf-webkit in it"; exit 1; }

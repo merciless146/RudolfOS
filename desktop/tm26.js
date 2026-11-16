@@ -23,7 +23,11 @@ const tmGL = () => { if (TMGL != null) return TMGL; try { const g = document.cre
   TMGL = g ? String(x ? g.getParameter(x.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER)) : 'no WebGL'; } catch (e) { TMGL = 'unknown'; } return TMGL; };
 const tmSoftGL = r => /llvmpipe|swiftshader|software|softpipe/i.test(r || '');
 const tmDrawn = s => !s ? '—' : s.renderer ? 'the graphics card (' + s.renderer + ')' : /^gpu/.test(String(s.display || '')) ? 'the processor: Xorg runs without acceleration' : 'the processor (software display)';
-const tmPages = () => { const r = tmGL(); return r + (tmSoftGL(r) ? ' (the processor)' : ''); };
+/* (1.6.0) WebKit (the Native desktop's windows) masks the chip as "Apple GPU" when the native shell could not name it (oneapp59.js's
+   window.__oaGpu): then the graphics card X draws with, from rudolfd (sys.renderer), as Chromium would name it */
+const tmPages = sys => { let r = tmGL(); if (/^Apple GPU$/.test(r) && !window.__oaGpu && sys && sys.renderer) r = 'ANGLE (' + sys.renderer + ')'; return r + (tmSoftGL(r) ? ' (the processor)' : ''); };
+/* (1.6.0) the desktop's size: the screen's, not the size of the window asking (each app is a window of its own on Native) */
+const tmDesk = () => { const d = typeof oaDeskSize == 'function' ? oaDeskSize() : null; return d || [innerWidth, innerHeight]; };
 /* a wired link slower than its chip (1.2.4): these drivers are for gigabit (or faster) chips; 10 or 100 Mb/s
    usually means the cable (a 2-pair cable) or the router port */
 const TM_GIGE = /^(r8169|e1000e|igb|igc|tg3|alx|atl1c|bnx2|r8125|atlantic|ixgbe|bnxt_en|cdc_ncm|r8152|ax88179_178a)$/;
@@ -227,7 +231,7 @@ function taskmgr26() {
     const sv = s && s.services || {};
     B.appendChild(kv([['Runs in', !RD ? 'a web browser' : SHELL ? 'the shell (Oracle has real browser tabs)' : sv.shellFailed ? 'the plain page: the shell did not start (fallback)' : 'the plain page (real tabs are off or not ready)'],
       SHELL && ['Shell', 'version ' + SHELL_VER + ' · ' + (SHELL_CAPS.join(', ') || '—')], SHELL && ['Real tabs open', String(typeof RT != 'undefined' ? RT.size : 0)],
-      ['Display', s ? tmDisp(s.display) : '—'], RD && ['Drawn by', tmDrawn(s)], ['Pages drawn with', tmPages()], s && s.gsp && ['NVIDIA GSP', s.gsp], ['Desktop size', innerWidth + '×' + innerHeight + ' · scale ' + devicePixelRatio]]));
+      ['Display', s ? tmDisp(s.display) : '—'], RD && ['Drawn by', tmDrawn(s)], ['Pages drawn with', tmPages(s)], s && s.gsp && ['NVIDIA GSP', s.gsp], ['Desktop size', tmDesk().join('×') + ' · scale ' + devicePixelRatio]]));
     if (SHELL_LOG.length) B.appendChild(details('The shell\'s notes (' + SHELL_LOG.length + ')', SHELL_LOG));
     if (RD && s && s.services) {
       B.appendChild(h4('Services'));
@@ -324,12 +328,12 @@ async function sysReport(problem) {
     ['Data encryption', !RD ? '—' : await (typeof vStatus == 'function' ? vStatus() : Promise.resolve(null)).then(v => v ? v.state + (v.moved ? ' (' + Object.keys(v.moved).filter(k => v.moved[k]).join(', ') + ' encrypted)' : '') : 'not reported')],
     ['Firewall', !RD ? '—' : await fwStatus().then(f => f ? (f.on ? 'on, ' + f.blocked + ' incoming connections blocked' + (f.remote ? ', remote access open to the local network' : '') : 'off') : 'not reported')],
     ['Development link', !RD ? '—' : typeof devlSummary == 'function' ? devlSummary(await rd('devlink').catch(() => null)) : '—'],
-    ['Desktop', !RD ? 'browser version' : SHELL ? 'shell ' + SHELL_VER + ' (real tabs)' : sv.shellFailed ? 'plain page (shell failed)' : 'plain page'],
+    ['Desktop', !RD ? 'browser version' : RD.engine == 'native' ? 'native (rudolf-native, each app a window of its own)' : SHELL ? 'shell ' + SHELL_VER + ' (real tabs)' : sv.shellFailed ? 'plain page (shell failed)' : 'plain page'],
     ['Display', sys ? tmDisp(sys.display) : '—'],
     ['Drawn by', RD ? tmDrawn(sys) : 'browser'],
-    ['Pages drawn with', tmPages()],
+    ['Pages drawn with', tmPages(sys)],
     ...(sys && sys.gsp ? [['NVIDIA GSP', sys.gsp.replace(/\n/g, ' / ')]] : []),
-    ['Desktop size', innerWidth + 'x' + innerHeight + ' @' + devicePixelRatio],
+    ['Desktop size', tmDesk().join('x') + ' @' + devicePixelRatio],
     ['Uptime', k.uptime != null ? tmDur(k.uptime) : '—'],
     ['CPU', st ? st.cpu.toFixed(0) + '% now, load ' + (k.load || [st.load]).join(' ') : '—'],
     ['Memory', st ? `${fmtB(st.memTotal - st.memAvailable)} used of ${fmtB(st.memTotal)}` + (m.swapTotal ? ', swap ' + fmtB(m.swapTotal - m.swapFree) + ' used' : '') : performance.memory ? fmtB(performance.memory.usedJSHeapSize) + ' JS heap' : '—'],
@@ -397,6 +401,8 @@ function sysReportUrl(r, title, full) {
   return u.href;
 }
 const SR_MAX = 7000;
+/* (1.6.0) a folder in File Explorer: its own window on Native (oneapp59.js oaOpenFolder), else here */
+function srOpenFolder(dir) { if (typeof oaOpenFolder == 'function' && oaOpenFolder(dir)) return; explorer(dir); }
 function sysReportDialog(pre) {
   /* 1.5.7: pre {title, text, logs}: filled in by Blitzen's "Draft a report" (blitzdiag57.js) */
   pre = pre || {}; const logs = Array.isArray(pre.logs) ? pre.logs : [];
@@ -420,8 +426,19 @@ function sysReportDialog(pre) {
   q('.src').onclick = () => o.remove();
   q('.srv').onclick = async e => { e.preventDefault(); sysReportShow((await build()).text || '(not included)') };
   q('.srs').onclick = async () => {
+    /* (1.6.0, the owner's Vivobook) into the signed-in account's own Documents, as every app saves since 1.5.5 (it went to C:\\DOCUMENTS,
+       the old shared folder, which File Explorer no longer shows: the owner could not find it); the full path said, and the folder
+       offered. On Native the file system is the window's own page's: saved there and written out at once (fsFlush), so the other
+       windows (File Explorer) read it again (oneapp59.js) */
     const r = await build(), name = 'REPORT-' + new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '') + '.TXT';
-    try { const C = fs['C:']; if (!C.DOCUMENTS || typeof C.DOCUMENTS != 'object') C.DOCUMENTS = {}; C.DOCUMENTS[name] = (q('.srt').value ? 'Title: ' + q('.srt').value + '\n' : '') + r.text; fsSave(); q('.srm').textContent = 'Saved as C:\\DOCUMENTS\\' + name + '. You can send it later.' } catch (x) { q('.srm').textContent = x.message }
+    try {
+      const dir = USER && typeof homePath == 'function' ? homePath('DOCUMENTS') : ['C:', 'DOCUMENTS']; let d = node(dir);
+      if (!isDir(d)) { const up = node(dir.slice(0, -1)); if (!isDir(up)) throw new Error('There is no Documents folder to save in.'); d = up[dir[dir.length - 1]] = {}; }
+      let nm = name; for (let i = 2; d[nm] != null; i++) nm = name.replace(/\.TXT$/, '-' + i + '.TXT');
+      d[nm] = (q('.srt').value ? 'Title: ' + q('.srt').value + '\n' : '') + r.text; fsSave(); try { fsFlush() } catch (x) {}
+      const full = dir.concat(nm).join('\\'); q('.srm').textContent = 'Saved as ' + full + '. You can send it later.'; o.dataset.saved = full;
+      if (!q('.srf')) { const b = document.createElement('button'); b.className = 'srf'; b.textContent = 'Open the folder'; b.onclick = () => { o.remove(); srOpenFolder(dir) }; q('.srs').after(b); }
+    } catch (x) { q('.srm').textContent = x.message }
   };
   q('.srg').onclick = async () => {
     const r = await build(), title = q('.srt').value.trim();

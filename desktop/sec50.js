@@ -74,7 +74,9 @@ function hlUsersRow(c){const d=document.createElement('div');d.className='hl59u 
 /* lines for the system report (account names and addresses are scrubbed by srScrub like the rest) */
 async function hlReportLines(n){const h=await hlGet(n||50);if(!h||!h.events)return[];return h.events.map(e=>`${new Date(e.t*1000).toISOString().replace(/\.\d+Z$/,'Z')} ${(HL_KIND[e.k]||['',e.k])[1]}: ${e.m}`)}
 /* the desktop is up: how long the start took (uptime when the desktop page first came up after start-up) */
-(function(){if(!RD)return;setTimeout(async()=>{try{if(sessionStorage.getItem('hl50ready'))return;sessionStorage.setItem('hl50ready','1')}catch(e){}
+/* (1.6.0) not on Native: its pages load only once someone has signed in, so the time would include the sign-in screen's wait (197 s on the
+   owner's Vivobook); the native shell says it when its own sign-in screen shows (rudolf-native.c ready_note) */
+(function(){if(!RD||RD.engine=='native')return;setTimeout(async()=>{try{if(sessionStorage.getItem('hl50ready'))return;sessionStorage.setItem('hl50ready','1')}catch(e){}
  const h=await hlGet(5);if(!h||!Array.isArray(h.events))return;const last=h.events.find(e=>e.k=='start'),rdy=h.events.find(e=>e.k=='ready');
  if(last&&(!rdy||rdy.t<last.t)&&h.uptime<900)hlNote('ready',`the desktop was ready ${h.uptime} s after start-up`)},4000)})();
 /* 1.5.7 (plan stage 5): the self-test's result in a window: failures first, then what passed and what was skipped */
