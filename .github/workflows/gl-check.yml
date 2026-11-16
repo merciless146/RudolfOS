@@ -1,0 +1,50 @@
+# OpenGL for an account's Linux apps in QEMU (qt/sb/t160g_t.py, the owner's report of 2026-11-16: Unvanquished showed
+# "Couldn't load a renderer." on Standard): GLX outside a sandbox, a Flatpak app (Flathub's runtime and GL extension)
+# started by the desktop as the account's user, a Debian program run as the account, and the display still refused to
+# another account's user. On the newest beta release (or a serial given). Nothing is published.
+name: OpenGL for Linux apps
+on:
+  workflow_dispatch:
+    inputs:
+      serial: {description: 'A release to test (its serial); empty: the newest beta', required: false, default: ''}
+      stk: {description: 'Also SuperTuxKart from Flathub (1)', required: false, default: '1'}
+  push:
+    branches-ignore: [main, gh-pages]
+    paths: ['iso/qt/sb/t160g_t.py', 'iso/qt/sb/glxq/**', '.github/workflows/gl-check.yml']
+  pull_request:
+    paths: ['iso/qt/sb/t160g_t.py', 'iso/qt/sb/glxq/**', '.github/workflows/gl-check.yml']
+permissions: {contents: read}
+jobs:
+  gl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography bzip2 flatpak debootstrap libgl-dev libx11-dev >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+          # (room for the Flatpak runtime, Debian and the drive image)
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL; df -h /
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S='${{ inputs.serial }}'; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel; echo "::notice title=OpenGL check::release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
+      - name: t160g (OpenGL for an account's Flatpak and Debian apps)
+        run: |
+          STK='${{ inputs.stk }}'; [ -n "$STK" ] || STK=1
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} T160G_STK=$STK python3 ../iso/qt/sb/t160g_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: t160g, retention-days: 7, path: "run/t160g.txt\nrun/t160g*/qemu.log\nrun/t160g*/*.png"}
