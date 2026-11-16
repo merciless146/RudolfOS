@@ -165,6 +165,11 @@ CASES.push({n: 'sandbox-flags', set: {}, app: 'notepad', js: "const f = document
   nolog: /invalid sandbox flag/, parts: []});
 /* (N14) a window whose own icon is not its app's (Flash Player's "not installed" window): its title bar's picture, as the page draws it */
 CASES.push({n: 'title-icon', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'flash']}, app: 'flash', parts: ['title']});
+/* (the second run's findings) a right-click menu inside File Explorer, on a folder (N21: it goes past the window's edge with all its
+   rows), the title bar in dark mode (N27), Help (its scrollbar and its search box: N22, N25) */
+CASES.push({n: 'app-menu', set: {}, more: PINSL, app: 'explorer', appctx: 'DOCUMENTS', parts: ['ctx']});
+CASES.push({n: 'title-dark', set: {dm: 'dark', darkui: true}, more: PINSL, app: 'explorer', parts: ['title']});
+CASES.push({n: 'help', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'help']}, app: 'help', parts: ['win']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
@@ -193,6 +198,8 @@ async function stdCase(c) {
     for (const k of c.pre || []) { await p.evaluate(k => { launch(k) }, k); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } }   /* (apps open before c.app) */
     if (c.app && c.nowin) { await p.mouse.click(W / 2, H - 200); await p.evaluate(k => { launch(k) }, c.app); await p.clock.runFor(100); await wait(800); await p.mouse.move(W / 2, H - 200) }   /* (an app asking before its window: a dialog open, see c.js) */
     else if (c.app) { await p.evaluate(k => { launch(k) }, c.app); for (let i = 0; i < 8; i++) { await p.clock.runFor(400); await wait(150) } await p.mouse.move(W / 2, H - 200); await wait(300) }
+    if (c.appctx) { const r = await p.evaluate(n => { const w = [...document.querySelectorAll('.win')].filter(e => e.getClientRects().length).pop(); const e = [...w.querySelectorAll('tr,.fi,.row')].find(x => x.textContent.includes(n) && x.getClientRects().length); const b = e.getBoundingClientRect(); return [Math.round(b.left + 20), Math.round(b.top + b.height / 2)] }, c.appctx);
+      await p.mouse.click(r[0], r[1], {button: 'right'}); await p.clock.runFor(300); await wait(300); await p.mouse.move(W / 2, H - 100); await wait(200) }
     if (c.shellfs) await p.evaluate(() => { if (typeof fsStandIn == 'function') fsStandIn(() => true) });
     if (c.js) { const r = await p.evaluate(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.offsetParent).pop(); const q = w && w.querySelector('.tb .t'); if (!q) return null; const b = q.getBoundingClientRect(); return [b.left + 4, b.top + b.height / 2] });
       if (r) { await p.mouse.click(r[0], r[1]); await p.mouse.move(W / 2, H - 200) }   /* (the last input a click on the app's title bar, not the password's keys: Chromium rings a button a script focuses only after keys) */
@@ -311,6 +318,8 @@ async function natCase(c, s) {
   if (c.app) { const re = new RegExp('^client .* app=' + c.app + ' ', 'm'), h = nhit('pin ' + c.app); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1');
     await until(() => re.test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3500); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500);
     const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => re.test(x)); if (l) { const a = l.split(' '); cl = [+a[3], +a[4], +a[5], +a[6]] } }
+  if (c.appctx && cl) { const r = (await neval(c.app, "(() => { const w = OA.main.el; const e = [...w.querySelectorAll('tr,.fi,.row')].find(x => x.textContent.includes(" + JSON.stringify(c.appctx) + ") && x.getClientRects().length); const b = e.getBoundingClientRect(); return Math.round(b.left + 20) + ' ' + Math.round(b.top + b.height / 2) })()") || '0 0').split(' ').map(Number);
+    xdo('mousemove ' + (cl[0] + 1 + r[0]) + ' ' + (cl[1] + 35 + r[1]) + ' click 3'); await until(() => nlines0('cmenu').length, 6000); xdo('mousemove ' + W / 2 + ' ' + (H - 100)); await wait(700) }
   if (c.js) { await neval(c.app, 'void((() => { try { ' + c.js + ' } catch (e) { console.warn(e) } })())'); await wait(Math.max(2500, c.jswait || 0)) }
   if (c.act == 'two') { for (const k of ['notepad', 'calc']) { const h = nhit('pin ' + k); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1');
       await until(() => new RegExp('^client .* app=' + k + ' ', 'm').test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 30000); await wait(3000) } xdo('mousemove ' + W / 2 + ' ' + (H - 100)); await wait(500) }
@@ -350,7 +359,7 @@ async function natCase(c, s) {
     await until(() => !new RegExp('^client .* app=' + k + ' ', 'm').test(fs.readFileSync(path.join(D, 'state'), 'utf8')), 10000); await wait(800) }
   if (c.fly) { xdo('mousemove 300 300 click 1'); await until(() => (nst('fly') || '-') == '-', 5000); await wait(300) }
   // (back as it was for the next case: the menu closed, the app window closed, unlocked)
-  if (c.act == 'menu' || c.rc || /menu$|rename|openwith|wgpick/.test(c.act || '')) { xdo('key Escape'); await wait(400) }
+  if (c.act == 'menu' || c.rc || c.appctx || /menu$|rename|openwith|wgpick/.test(c.act || '')) { xdo('key Escape'); await wait(400) }
   if (c.ws) { const h = nhit('ws 1'); if (h) xdo('mousemove ' + h.map(Math.round).join(' ') + ' click 1'); await until(() => nst('ws') == '1', 5000); await wait(1800) }   /* (back to workspace 1, its pop-up gone) */
   if (c.app) { const re = new RegExp('^client .* app=' + c.app + ' ', 'm'); const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => re.test(x));
     if (l) { const a = l.split(' '); xdo('mousemove ' + (+a[3] + +a[5] + 2 - 9 - 12) + ' ' + (+a[4] + 7 + 11) + ' click 1') }
@@ -375,7 +384,8 @@ function cmp(name, a, b, ra, rb, shift) {
   catch (e) { return {pct: 100, err: String(e.message).slice(0, 300)} }
 }
 (async () => {
-  BR = await chromium.launch();
+  /* (second run, N23) with Chromium's scrollbars, as Rudolf's Chromium shows them (Playwright hides them unless told) */
+  BR = await chromium.launch({ignoreDefaultArgs: ['--hide-scrollbars']});
   const rows = [];
   for (const c of CASES) {
     if (only && !only.includes(c.n)) continue;

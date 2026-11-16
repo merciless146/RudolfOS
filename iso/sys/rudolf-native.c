@@ -484,6 +484,7 @@ static void tb_settings(const char *page);
 static void nt_note(JSCValue *v);
 static void open_with(const char *file, const char *key);
 static void hfs_msg(AppWin *a, JSCValue *v);   /* (folders on this device: test finding N7) */
+static void ctx_msg(AppWin *a, JSCValue *v);   /* (an app's right-click menu, over the screen: test finding N21) */
 /* (1.5.9, 12.3c) Oracle's Chromium and the WebKit windows: the files one (rudolfd's mirror), the indicator of the keys the native
    desktop's, Oracle's new windows at an address or private */
 static GPid OR_PID; static int OR_RUN; static char OR_CTL[300]; static const char *TOR_CTL_P;   /* (Part 16: the Tor windows' rudolf-launch FIFO, once it runs) */
@@ -518,7 +519,8 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "mirror")) { jsstr(v, "id", x, sizeof x); if (id_ok(x)) { char l[100]; snprintf(l, sizeof l, "mirror %s\n", x); oracle_tell(l); } }   /* (the files an app's window saved: Oracle's pages take them) */
 	else if (!strcmp(op, "osd")) { char k[16] = "", lv[8] = "", n[8] = ""; jsstr(v, "k", k, sizeof k); jsstr(v, "lv", lv, sizeof lv); jsstr(v, "label", x, sizeof x); jsstr(v, "n", n, sizeof n); osd_show(k, lv, x, n); }
 	else if (!strcmp(op, "fs")) { jsstr(v, "on", x, sizeof x); appwin_fs(a, x[0] == '1'); }   /* (the page's own full screen: the window covers the screen, test finding N1) */
-	else if (!strcmp(op, "hfs")) hfs_msg(a, v);   /* (File Explorer's Folders on this device: the folder picker and its files, N7) */
+	else if (!strcmp(op, "hfs")) hfs_msg(a, v);
+	else if (!strcmp(op, "ctx")) ctx_msg(a, v);   /* (File Explorer's Folders on this device: the folder picker and its files, N7) */
 	else if (!strcmp(op, "cat")) g_timeout_add(300, apps_reload, NULL);   /* (a page gave its catalogue again: the statue's picture, N12) */
 	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
 	else if (!strcmp(op, "winop")) { jsstr(v, "id", x, sizeof x); jsstr(v, "do", f, sizeof f); win_op(x, f); }
@@ -1978,6 +1980,7 @@ static void frame_shape(Client *c)
 		int x0 = (int)floor(in + .5); cairo_rectangle_int_t rc = { x0, y, fw - 2 * x0, 1 }; cairo_region_union_rectangle(rg, &rc); }
 	gdk_window_shape_combine_region(g, rg, 0, 0); cairo_region_destroy(rg); g_object_unref(g);
 }
+static int menu_dark(void);
 static void frame_draw(Client *c)
 {
 	if (!c->frame || c->full) return;
@@ -1985,11 +1988,13 @@ static void frame_draw(Client *c)
 	cairo_surface_t *sf = cairo_xlib_surface_create(DPY, c->frame, DefaultVisual(DPY, DefaultScreen(DPY)), fw, fh); cairo_t *cr = cairo_create(sf);
 	cairo_scale(cr, Z, Z); double W = fw / Z, H = fh / Z, R = c->max ? 0 : tw_rad();
 	/* the window: its edge and its white */
-	srca(cr, cx("#ffffff", 1)); cairo_paint(cr);
-	Box win; memset(&win, 0, sizeof win); win.bg = cx("#ffffff", 1); win.bw = 1; win.bc = cx("#9ca3af", 1); win.rad = R; box_paint(cr, 0, 0, W, H, &win);
+	/* (second run, N27) the page's html.dark .win: #0f172a with a #334155 edge, the other windows' bars #1e293b with #cbd5e1 writing */
+	int dk = menu_dark() && c->app;
+	srca(cr, cx(dk ? "#0f172a" : "#ffffff", 1)); cairo_paint(cr);
+	Box win; memset(&win, 0, sizeof win); win.bg = cx(dk ? "#0f172a" : "#ffffff", 1); win.bw = 1; win.bc = cx(dk ? "#334155" : "#9ca3af", 1); win.rad = R; box_paint(cr, 0, 0, W, H, &win);
 	/* the title bar (inside the edge: 34 px, its top corners 7 px) */
 	Box tb; memset(&tb, 0, sizeof tb); RGBA fg; double tbo = 1;   /* (tbo: the bar's opacity: .72 for the other windows in Wireframe, Candy, Retro) */
-	if (!V.on) { tb.bg = act ? ca(accent(), 1) : cx("#e5e7eb", 1); fg = act ? cx("#ffffff", 1) : cx("#6b7280", 1); }
+	if (!V.on) { tb.bg = act ? ca(accent(), 1) : cx(dk ? "#1e293b" : "#e5e7eb", 1); fg = act ? cx("#ffffff", 1) : cx(dk ? "#cbd5e1" : "#6b7280", 1); }
 	else if (!strcmp(st, "wire")) { tb.bg = cmix(V.bg, .14, CLEAR); fg = cx("#000000", 1); shd_add(&tb, 0, -2, 0, V.bg, 1); if (act) shd_add(&tb, 0, 0, 0, V.bg, 2); else tbo = .72; }
 	else if (!strcmp(st, "mono")) { tb.bg = act ? V.bg : cmix(V.bg, .35, cx("#9ca3af", 1)); fg = act ? V.fg : cx("#ffffff", 1); }
 	else if (!strcmp(st, "candy")) { if (act) { tb.ng = 3; tb.gc[0] = V.hi; tb.gc[1] = V.bg; tb.gc[2] = V.lo; tb.gp[0] = 0; tb.gp[1] = .48; tb.gp[2] = 1; shd_add(&tb, 0, 1, 0, cx("#ffffff", .5), 1); fg = V.fg; }
@@ -3974,6 +3979,32 @@ static void tb_menu_show(const char *title, CMI *m, int n, int ring, const char 
 }
 /* a window's menu, from its page */
 static int jump_of(const char *k, const char *label) { for (int i = 0; i < NJUMPS; i++) if (!strcmp(JUMPS[i].k, k) && !strcmp(JUMPS[i].label, label)) return i; return -1; }
+/* (1.6.0 Part 12, test finding N21) an app's own right-click menus (the page's shared cmenu: File Explorer's, a text box's, the apps'):
+   on Standard the menu is the page's, which is the screen, so it opens at the pointer and may go past the window's edge, kept on the
+   screen; in an app's own window it was kept inside the window and cut off (Explorer's last rows could not be reached). The page gives
+   its rows (oneapp59.js: label, icon or tick, key, greyed, separators, the title) and where (the window's own pixels); the shell shows
+   them as it shows the taskbar's menus (cm_open, as the page's cmenu: the same rows, look and placing), and the row chosen is done by
+   the page (__oaCtxDo, by its index) */
+static AppWin *CTX_A; static int CTX_GEN;
+static void ctx_chosen(const char *act)
+{
+	if (strncmp(act, "ctx:", 4) || !CTX_A || !g_list_find(WINS, CTX_A) || !CTX_A->view) return;
+	char js[96]; snprintf(js, sizeof js, "window.__oaCtxDo&&__oaCtxDo(%d,%d)", atoi(act + 4), CTX_GEN);
+	webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(CTX_A->view), js, -1, NULL, NULL, NULL, NULL, NULL);
+}
+static void ctx_msg(AppWin *a, JSCValue *v)
+{
+	Client *c = WM_OK ? client_of_app(a) : NULL; if (!c) return;
+	char xs[24] = "", ys[24] = "", gs[16] = "", title[160] = ""; jsstr(v, "x", xs, sizeof xs); jsstr(v, "y", ys, sizeof ys); jsstr(v, "gen", gs, sizeof gs); jsstr(v, "title", title, sizeof title);
+	JSCValue *iv = jsc_value_object_get_property(v, "items"); char *is = iv && jsc_value_is_string(iv) ? jsc_value_to_string(iv) : NULL; if (iv) g_object_unref(iv);
+	char *ws = is ? g_strdup_printf("{\"l\":%s}", is) : NULL; JV *top = ws ? jparse(ws) : NULL, *it = jprop(top, "l"); g_free(ws); g_free(is); if (!it || it->t != 4) { jfree(top); return; }
+	CMI m[24]; int n = 0, k = 0; memset(m, 0, sizeof m);
+	for (int i = 0; i < it->len && n < 24; i++) { JV *o = jat(it, i); CMI *x = &m[n++]; if (jbool(o, "sep")) { x->sep = 1; continue; }
+		jstr(o, "label", x->label, sizeof x->label); jstr(o, "icon", x->icon, sizeof x->icon); jstr(o, "key", x->key, sizeof x->key); x->dis = jbool(o, "dis"); snprintf(x->act, sizeof x->act, "ctx:%d", k++); }
+	jfree(top);
+	int cx = c->full ? 0 : c->x + BW, cy = c->full ? 0 : c->y + TH;
+	CTX_A = a; CTX_GEN = atoi(gs); cm_open(cx + atof(xs), cy + atof(ys), title, m, n, ctx_chosen);
+}
 static void win_menu_build(Client *c, JV *pm)
 {
 	CMI m[24]; int n = 0; memset(m, 0, sizeof m); char title[256] = ""; jstr(pm, "title", title, sizeof title); if (!title[0]) snprintf(title, sizeof title, "%s", c->title);
