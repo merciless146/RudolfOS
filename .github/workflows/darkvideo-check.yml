@@ -6,6 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       serial: {description: 'A release to test (its serial); empty: the newest beta', required: false, default: ''}
+  push:
+    branches: [oracle-dark-video]
+    paths: ['iso/shell/shell.js', 'desktop/web46.js', 'iso/qt/host/darkvideo60*', '.github/workflows/darkvideo-check.yml']
 permissions: {contents: read}
 jobs:
   darkvideo:
