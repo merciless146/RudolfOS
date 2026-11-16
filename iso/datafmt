@@ -1,0 +1,7 @@
+# Rudolf OS 1.6.0: the layout of the person's data this tree's releases keep, and the oldest and newest layouts they
+# read. Written into every release list (systools/make_release.py) as "datafmt N" and "readsfmt LO-HI": Settings' "Roll
+# back to the last stable version" goes back only to a release that reads this computer's data. The layouts are
+# described in sys/rudolf-update.c (DATAFMT, READS_MIN, READS_MAX say the same: qt/host/tostable60_t.sh checks it).
+# Raise datafmt when a release keeps the accounts' data in a way the one before cannot read.
+datafmt 2
+readsfmt 1-2
