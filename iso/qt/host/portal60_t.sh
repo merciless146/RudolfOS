@@ -33,7 +33,9 @@ sh $HERE/../../sys/root/usr/lib/rudolf/keyring start > $T/kr.log 2>&1 & PIDS="$P
 w8 'secret-tool search --all x x >/dev/null 2>&1' 100
 R=/run/rudolf/portal
 reqs() { ls $R/req 2>/dev/null | grep '\.json$' | sed 's/\.json$//'; }
-answer() { printf '%s' "$2" > $R/resp/$1.json.t && mv $R/resp/$1.json.t $R/resp/$1.json && rm -f $R/req/$1.json; }
+# (answered half a second after it is asked, as a person answers: an answer in the same instant as the question was once taken by
+# gnome-keyring-daemon as a "no" on GitHub's runner)
+answer() { timeout 0.5 tail -f /dev/null; printf '%s' "$2" > $R/resp/$1.json.t && mv $R/resp/$1.json.t $R/resp/$1.json && rm -f $R/req/$1.json; }
 log() { cat $T/home/portalstand.log 2>/dev/null; }
 # ---- 1. a new keyring
 $T/ps keyring Sober s3cret-1 > /dev/null 2>&1 & A=$!; PIDS="$PIDS $A"
