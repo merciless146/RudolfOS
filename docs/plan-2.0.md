@@ -212,3 +212,8 @@ Wayland from its start (W1 to W3 below) and uses the native apps as each wave ma
 ### Measurements that close the phone build
 On the first phone: memory at idle and with Phone, Messages, Oracle and two other apps open; standby drain overnight;
 a day's mixed use; start to the lock screen; each against the same phone on Android where it can be.
+
+## Oracle: website passwords, and perhaps blocking (added on 2026-11-16)
+docs/plan-oracle.md: item 4 (a password manager for websites, in the account's keyring, with its own security review) is
+suggested for 2.0, and item 5 (ad and tracker blocking) if it is not done in 1.6.1. Item 6 (extensions from a reviewed
+list in the Library) is not planned yet; its recommended source is in that plan. The owner decides.
