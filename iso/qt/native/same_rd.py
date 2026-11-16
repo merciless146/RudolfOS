@@ -162,6 +162,9 @@ class H(http.server.BaseHTTPRequestHandler):
         if w == 'debian/status': return self.j(dict({'ok': True}, **json.loads(rd('deb', b'{}') or b'{}')))
         if w == 'ai/status': return self.j(dict({'ok': True}, **json.loads(rd('ai', b'{}') or b'{}')))
         if w == 'power/status': return self.j({'ok': True, 'ac': False, 'battery': {'name': 'BAT0', 'capacity': 81, 'status': 'Discharging'}, 'now': {'saver': False}})
+        # (the memory guard's "which page process is the desktop's": the stand-in has no processes; answered, the page would keep its
+        # processor busy for 0.6 s by performance.now(), which the test's clock holds still, and never finish)
+        if w == 'memory/iam': return self.err(404, 'no processes here')
         if w == 'info': return self.j({'ok': True, 'battery': [{'name': 'BAT0', 'type': 'Battery', 'capacity': 81, 'status': 'Discharging'}]})
         return self.j({'ok': True})
 class S(http.server.ThreadingHTTPServer):

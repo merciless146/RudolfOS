@@ -111,6 +111,11 @@ if(ONEAPP&&oaNative()&&typeof fsStandIn=='function')fsStandIn(on=>{oaPost({op:'f
 function oaPrivWin(){if(!(ONEAPP&&ONEAPP.k=='browser'&&OA.main&&oaChromium()))return false;oaPost({op:'open',app:'browser',jump:'New private tab'});return true}
 /* (the native desktop is there: WebKit's message handler, or Oracle's binding in Rudolf's Chromium) */
 const oaOut=()=>oaNative()||oaChromium();
+/* (1.6.0 Part 12, item 12) the memory guard's "this is the desktop's page process" (mem47.js memIam: the processor kept busy for 0.6 s,
+   15 s after loading and again until rudolfd knows it) is the Standard desktop's: on the native desktop no page is the desktop, and an
+   app's window or Oracle's page claiming it would keep the guard from ending it. Not done there (every app window spent 0.6 s of
+   processor time on it) */
+if(ONEAPP&&oaOut())memIam=async()=>{};
 if(ONEAPP)addEventListener('rudolf-shell',()=>{if(OA_SHT)shellSend({rudolfShell:'oa',op:'title',t:OA_SHT})});
 const oaHex=h=>h&&/^([0-9a-f]{2})+$/i.test(h)?Uint8Array.from(h.match(/../g),x=>parseInt(x,16)):null;
 if(ONEAPP){
