@@ -225,6 +225,7 @@ let BR;
 const micSet = c => { fs.writeFileSync(path.join(D, 'mic'), JSON.stringify(c.mic || [])); if (c.mic) cp.execSync(`curl -s --noproxy '*' -X POST -H 'X-Rudolf-Token: tok160same' '${BASE}/api/mic?muted=${c.micmuted ? 1 : 0}'`) };
 const rdSet = c => { for (const k of ['deb', 'ai', 'net', 'engine']) { const f = path.join(D, k); if (c.rd && c.rd[k]) fs.writeFileSync(f, JSON.stringify(c.rd[k])); else try { fs.unlinkSync(f) } catch (e) {} } };
 async function stdCase(c) {
+  fs.writeFileSync(path.join(D, 'std-on'), '');   /* (rudolfd's events Standard's while its case runs: same_rd.py, the native shell's events thread since #410) */
   XTRA.std = {}; XTRA.nat = {};
   state(c.set, c.more); micSet(c); rdSet(c);
   const ctx = await BR.newContext({viewport: {width: W, height: H}, deviceScaleFactor: 1, timezoneId: 'UTC'});
@@ -314,6 +315,7 @@ async function stdCase(c) {
   const f = path.join(OUT, c.n + '.std.png'); await p.screenshot({path: f});
   if (c.moving) { for (let i = 0; i < c.moving / 250; i++) { await p.clock.runFor(250); await wait(60) } await p.screenshot({path: path.join(OUT, c.n + '.std2.png')}) } if (c.saver) fs.unlinkSync(path.join(D, 'idle'));
   if (c.key == 'altab') await p.keyboard.up('Alt');
+  try { fs.unlinkSync(path.join(D, 'std-on')) } catch (e) {}
   await ctx.close(); return {f, rects, errs, pt, read, hov};
 }
 // ---- Native: rudolf-native under Xvfb, the same storage
@@ -358,6 +360,7 @@ async function natFiles() {
   xdo('mousemove ' + W / 2 + ' ' + Math.round(H / 3)); await wait(300);
 }
 async function natCase(c, s) {
+  try { fs.unlinkSync(path.join(D, 'std-on')) } catch (e) {}
   state(c.set, c.more); micSet(c); rdSet(c);
   if (c.signin) {
     try { fs.unlinkSync(path.join(D, 'session')) } catch (e) {}
