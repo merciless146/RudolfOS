@@ -1,0 +1,44 @@
+# Rudolf OS 1.6.0: Oracle's file:/// pages on the real release in QEMU (iso/qt/sb/oracle_file_t.py): the Vivobook showed
+# a blank white page for every file:/// address (2026-11-15). The newest beta (or the serial given), as qemu-checks.yml
+# fetches it. Nothing is published.
+name: Oracle file pages (QEMU)
+on:
+  workflow_dispatch:
+    inputs:
+      serial: {description: 'A release to test (its serial); empty: the newest beta', required: false, default: ''}
+  push:
+    branches: [oracle-file-blank]
+    paths: ['iso/qt/sb/oracle_file_t.py', '.github/workflows/oracle-file-check.yml']
+  pull_request:
+    paths: ['iso/qt/sb/oracle_file_t.py', '.github/workflows/oracle-file-check.yml']
+permissions: {contents: read}
+jobs:
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-pil bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S='${{ inputs.serial }}'; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel; echo "::notice title=Oracle file pages::release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
+      - name: Oracle's file pages
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=/nonexistent QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/oracle_file_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: oracle-file, retention-days: 7, path: "run/oracle_file.txt\nrun/of160*/qemu.log\nrun/of160*/*.png"}
