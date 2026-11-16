@@ -188,9 +188,12 @@ try:
                 out('the shell, not moved into by itself:', st, '- as the notice\'s click does')
                 js("(()=>{try{fsFlush()}catch(e){}setTimeout(()=>rdPost('shell/switch').catch(()=>{}),600);return 1})()", 30); asked += 1; time.sleep(40)
             time.sleep(10)
+        # (signed in again only when the move's restart left the page signed out: signing out and in at once while the
+        # account's session was starting left it half made, its portal gone)
         for _ in range(3):
-            if js("!!(USER&&USER.n=='john'&&USER.disk&&hdOn())", 20) is True: break
-            out('sign-in again (after the move into the shell):', js(SI, 300)); wait_for(js, "!!(USER&&USER.disk&&hdOn())", 120)
+            if wait_for(js, "!!(USER&&USER.n=='john'&&USER.disk&&hdOn())", 180) is True: break
+            if js("!!(USER&&USER.n=='john')", 20) is True: continue
+            out('sign-in again (after the move into the shell):', js(SI, 300))
         ok('S0c. the desktop in the shell (Oracle\'s real tabs), the account signed in with its own folder', js("!!(SHELL&&USER&&USER.n=='john'&&hdOn())", 30) is True,
            js("JSON.stringify({shell:typeof SHELL!='undefined'&&!!SHELL,user:USER&&USER.n,hd:typeof hdOn=='function'&&hdOn()})", 30))
         out('engine/shell:', js("JSON.stringify({engine:RD&&RD.engine,shell:typeof SHELL!='undefined'&&!!SHELL,user:USER&&USER.n,hd:typeof hdOn=='function'&&hdOn(),lk:typeof lkOpen})", 30))
