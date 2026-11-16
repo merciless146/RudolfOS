@@ -22,6 +22,10 @@ hwclock -s -u 2>/dev/null
 # 1.6.0 (docs/plan-1.6.0.md Part 13): the signed system extensions installed on this computer, laid over the unchanged
 # base read-only (/usr/lib/rudolf/sysext), before the devices are set up, so their udev rules, firmware and kernel
 # modules are there for them; none in Recovery mode, with rudolf.noext=1, or once when asked in Settings
+# (the data partition is marked as in use first, so what the assembly says (an extension left out, a start script
+#  stopped) goes to the health log there, which System health shows, and not to one in /run that nothing reads: found
+#  in QEMU, qt/sb/t160x_t.py)
+mountpoint -q /persist && touch /run/rudolf/persistent
 [ -x /usr/lib/rudolf/sysext ] && mountpoint -q /persist && RPK_ROOT=/persist/pkg /usr/lib/rudolf/sysext assemble >>/run/rudolf/sysext.log 2>&1
 # 1.6.0 (docs/plan-1.6.0.md Part 9): devices through udev (systemd-udevd on its own): its rules (/usr/lib/udev/rules.d,
 # Rudolf OS's own in 90-rudolf.rules, which run the scripts mdev ran), its hardware database, and the device database

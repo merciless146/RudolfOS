@@ -11,7 +11,8 @@
 #                           checksum and both start-up files in it checked as official, then staged with bootfiles.sh:
 #                           written before anything else at the next start
 # Test overrides: ESP_IMG (the EFI image), SBVERIFY, SB_CERT, ESP_SYSD (the slots), ESP_DL (where the image is kept),
-# ESP_FETCH, ESP_STAGE (commands), ESP_HEALTH (a command: health KIND MESSAGE), ESP_PATH (stand-ins first in PATH).
+# ESP_FETCH, ESP_STAGE (commands), ESP_HEALTH (a command: health KIND MESSAGE), ESP_PATH (stand-ins first in PATH),
+# ESP_TRIES and ESP_WAIT (the download's attempts and the seconds between them, while the network comes up).
 export PATH=${ESP_PATH:+$ESP_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
 IMG=${ESP_IMG:-/live/media/efi/efiboot.img}; SBV=${SBVERIFY:-sbverify}; CERT=${SB_CERT:-/usr/share/rudolf/rudolf-sb.crt}
 SYSD=${ESP_SYSD:-/persist/os/system}; DL=${ESP_DL:-/persist/os/esp-repair}
@@ -34,10 +35,16 @@ boot|repair)
 	U=$(awk -F'\t' '$1=="L" && $2=="vmlinuz" {print $5}' "$M"); SER=$(sed -n 's/^serial //p' "$M")
 	case "$U" in https://*/vmlinuz) B=${U%/vmlinuz}/boot.iso;; *) health boot "the start-up files could not be put back: release $SER names no download address"; exit 1;; esac
 	mkdir -p "$DL"; rm -f "$DL/boot.iso" "$DL/boot.iso.sha256"
-	# (at each start only once a day, so a release without a boot image is not downloaded for at every start)
-	if [ "$1" = boot ] && [ -n "$(find "$DL/tried" -mmin -1440 2>/dev/null)" ]; then echo "tried less than a day ago"; exit 0; fi; : > "$DL/tried"
-	if ! $FETCH "$B" "$DL/boot.iso" >/dev/null 2>&1 || ! $FETCH "$B.sha256" "$DL/boot.iso.sha256" >/dev/null 2>&1; then
-		rm -f "$DL/boot.iso"; health boot "the start-up files could not be put back: release $SER's boot image could not be downloaded (tried again at the next start)"; exit 3; fi
+	# (at each start only once a day, once an image was downloaded and refused, so a bad one is not fetched at every start)
+	if [ "$1" = boot ] && [ -n "$(find "$DL/tried" -mmin -1440 2>/dev/null)" ]; then echo "tried less than a day ago"; exit 0; fi
+	# (this runs at the desktop's first heartbeat, often before Wi-Fi is connected: the network is waited for, up to
+	#  ESP_TRIES attempts ESP_WAIT seconds apart, about 10 minutes; without it, the next start tries again)
+	n=0; got=
+	while [ $n -lt ${ESP_TRIES:-10} ]; do n=$((n + 1))
+		if $FETCH "$B" "$DL/boot.iso" >/dev/null 2>&1 && $FETCH "$B.sha256" "$DL/boot.iso.sha256" >/dev/null 2>&1; then got=1; break; fi
+		rm -f "$DL/boot.iso" "$DL/boot.iso.sha256"; [ $n -lt ${ESP_TRIES:-10} ] && sleep ${ESP_WAIT:-60}; done
+	[ -n "$got" ] || { health boot "the start-up files could not be put back: release $SER's boot image could not be downloaded (tried again at the next start)"; exit 3; }
+	: > "$DL/tried"
 	H=$(cut -c1-64 "$DL/boot.iso.sha256"); [ "$(sha256sum "$DL/boot.iso" | cut -c1-64)" = "$H" ] || { rm -f "$DL/boot.iso"; health boot "the start-up files could not be put back: release $SER's boot image does not match its checksum"; exit 4; }
 	mkdir -p $T/i; mount -t iso9660 -o ro,loop "$DL/boot.iso" $T/i 2>/dev/null || { rm -f "$DL/boot.iso"; health boot "the start-up files could not be put back: release $SER's boot image cannot be read"; exit 4; }
 	s=$(look $T/i/efi/efiboot.img); umount $T/i

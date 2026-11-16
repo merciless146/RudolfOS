@@ -94,6 +94,8 @@ jobs:
           cd "$RUNNER_TEMP/pages"; S='${{ inputs.promote }}'
           grep -q "^serial $S$" beta/manifest.txt || { echo "beta is not release $S"; exit 1; }
           mkdir -p stable && cp beta/manifest.txt beta/manifest.sig stable/
+          # 1.6.0: the signed list of every stable release (Roll back to the last stable version: iso/systools/stable_history.py)
+          python3 "$GITHUB_WORKSPACE/iso/systools/stable_history.py" . "$RUNNER_TEMP/rpk.key" --seed-from-git
           git add -A && git -c user.name=rudolf-release -c user.email=release@localhost commit -qm "stable: release $S" && git push -q origin gh-pages
       - name: Previous release
         if: inputs.promote == '' && steps.seed.outputs.seeded != '1'
@@ -188,4 +190,6 @@ jobs:
           [ -d "$RUNNER_TEMP/pages" ] && [ -f "$KEYFILE" ] || { echo "nothing to re-sign: an earlier step did not finish"; exit 0; }
           cd "$RUNNER_TEMP/pages"; git pull -q --ff-only origin gh-pages 2>/dev/null || true
           for c in beta stable; do python3 "$GITHUB_WORKSPACE/iso/systools/refresh_manifest.py" "$c" "$KEYFILE"; done
+          # 1.6.0: the stable releases' signed list made once from the pages' history, and kept following stable/
+          python3 "$GITHUB_WORKSPACE/iso/systools/stable_history.py" . "$KEYFILE" --seed-from-git || echo "::warning::stable/history.txt was not updated"
           git add -A; git diff --cached --quiet || { git -c user.name=rudolf-release -c user.email=release@localhost commit -qm "re-sign release lists" && git push -q origin gh-pages; }
