@@ -1,7 +1,8 @@
 // 1.6.0 (plan Part 12, item 3, second part, "The rule": Native works as Standard): quick settings (☰) and the
 // notifications' centre (🔔) used the same way on both engines and each step's outcome compared: the switches (Do not
 // disturb, Dark mode on and off) and what the page keeps of them, a notification dismissed, Do not disturb in the
-// centre, Clear all, one panel giving way to the other, Settings from quick settings.
+// centre, Clear all, one panel giving way to the other, Settings from quick settings; (1.6.0 Part 2) Airplane mode on and
+// off (rudolfd's mobile/airplane, as same_rd.py keeps it).
 // Run by same_t.sh with SAME_SCRIPT=qsbeh_t.js.   node qsbeh_t.js RUDOLF-NATIVE DIR OUT PORT DISPLAY
 const {chromium} = require('playwright'); const fs = require('fs'), path = require('path'), cp = require('child_process');
 const [BIN, D, OUT, PORT, DSP] = process.argv.slice(2);
@@ -17,8 +18,9 @@ const MORE = {['bd95notif:' + ACCT]: [{id: 1, t: 'Download finished', b: 'report
 /* what the page keeps (rudolfd's copy of its storage): Do not disturb, the theme, how many notifications */
 /* (dm: the page's default, auto, until a page saved its settings) */
 const kept = async () => { const d = JSON.parse(fs.readFileSync(path.join(D, 'ls.json'), 'utf8')).data, st = JSON.parse(d['bd95set:' + ACCT] || '{}'), nt = JSON.parse(d['bd95notif:' + ACCT] || '[]');
-  return 'dnd=' + (st.dnd ? 1 : 0) + ' dm=' + (st.dm || 'auto') + ' notes=' + nt.length };
-const STEPS = [['qs', 'open', 'qs'], ['dnd', 'tile', 'Do not disturb'], ['dark', 'tile', 'Dark mode'], ['light', 'tile', 'Dark mode'], ['qs-again', 'open', 'qs'],
+  let air = '0'; try { air = fs.readFileSync(path.join(D, 'airplane'), 'utf8').trim() } catch (e) {}
+  return 'dnd=' + (st.dnd ? 1 : 0) + ' dm=' + (st.dm || 'auto') + ' notes=' + nt.length + ' airplane=' + air };
+const STEPS = [['qs', 'open', 'qs'], ['dnd', 'tile', 'Do not disturb'], ['dark', 'tile', 'Dark mode'], ['light', 'tile', 'Dark mode'], ['air', 'tile', 'Airplane mode'], ['air-off', 'tile', 'Airplane mode'], ['qs-again', 'open', 'qs'],
   ['nc', 'open', 'notes'], ['dismiss', 'nx', 0], ['nc-dnd', 'dnd'], ['clear', 'clear'], ['qs2', 'open', 'qs'], ['to-nc', 'open', 'notes'], ['outside', 'at', [700, 400]], ['qs3', 'open', 'qs'], ['settings', 'btn', 'settings']];
 async function run(e) {
   const O = {};
@@ -48,7 +50,7 @@ function nlines(k) { try { return fs.readFileSync(path.join(D, 'state'), 'utf8')
 const nst = k => { const l = nlines(k)[0]; return l ? l.slice(k.length + 1) : null };
 const nhit = k => { const l = nlines('hit').find(x => x.startsWith('hit ' + k + ' ')); if (!l) return null; const a = l.split(' ').slice(3).map(Number); return [a[0] + a[2] / 2, a[1] + a[3] / 2] };
 async function until(f, ms) { const t = Date.now(); while (Date.now() - t < (ms || 20000)) { if (await f()) return true; await wait(200) } return false }
-const QSL = ['Dark mode', 'Night light', 'Do not disturb', 'Screen reader', 'Magnifier', 'High contrast', 'On-screen keyboard', 'Touch mode'];
+const QSL = ['Dark mode', 'Night light', 'Do not disturb', 'Screen reader', 'Magnifier', 'High contrast', 'On-screen keyboard', 'Touch mode', 'Airplane mode'];
 function nat() {
   const btn = k => { const l = nlines('flybtn').find(x => x.split(' ')[1] == k); if (!l) return null; const a = l.split(' '); return [+a[2], +a[3]] };
   return {

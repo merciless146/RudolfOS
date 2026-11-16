@@ -12,7 +12,7 @@ on:
   push:
     branches: ['cell60-*']
   pull_request:
-    paths: ['iso/sys/root/usr/lib/rudolf/modem', 'iso/sys/rudolfd-mobile.inc', 'iso/qt/mmstub.c', 'iso/qt/host/mmstub.sh', 'iso/qt/host/modem*_t.sh',
+    paths: ['iso/sys/root/usr/lib/rudolf/modem', 'iso/sys/rudolfd-mobile.inc', 'iso/qt/mmstub.c', 'iso/qt/host/mmstub.sh', 'iso/qt/host/modem*_t.sh', 'iso/qt/host/sim60_t.sh', 'iso/sys/root/usr/share/rudolf/apn-fixes',
       'iso/qt/host/fixtures/mobileapi.c', 'iso/qt/sb/cell60_q.py', '.github/workflows/cellular-check.yml']
 permissions: {contents: read}
 jobs:
@@ -22,11 +22,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq modemmanager libmm-glib-dev dbus zlib1g-dev >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq modemmanager libmm-glib-dev mobile-broadband-provider-info dbus zlib1g-dev >/dev/null
       - name: modem59_t.sh (the modem service, 1.5.9)
         run: sh iso/qt/host/modem59_t.sh
       - name: modem60_t.sh (Part 1)
         run: sudo sh iso/qt/host/modem60_t.sh
+      - name: sim60_t.sh (Part 2)
+        run: sudo sh iso/qt/host/sim60_t.sh
   qemu:
     runs-on: ubuntu-24.04
     timeout-minutes: 90

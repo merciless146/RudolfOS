@@ -970,6 +970,24 @@ without this work (it waits only for the QEMU security checks of Part 15).
   a Fibocom L850-GL or Quectel EM05-G), the offer shown, turned on by an administrator, the radio on after a restart,
   and turned off; a partly supported module named.
 
+- **Item 2 (Part 2), done (PR "cell60-sim"):** /usr/lib/rudolf/modem pin, puk (the codes in a root-only file, never on
+  a command line), settings, set, apn, airplane; rudolfd's mobile/pin and mobile/puk (an administrator's name and
+  password checked by rudolfd; System health: unlocked by whom, a wrong code, the PIN blocked, the SIM blocked for good),
+  mobile/settings (the APN: automatic or typed in, its user name and password, never given back; roaming, off by
+  default; the network type, given to the modem at once), mobile/airplane. Each SIM's settings in /persist/etc/mobile/,
+  a file named by a hash of its ICCID, root's only. The APN: Rudolf's corrections first (/usr/share/rudolf/apn-fixes:
+  US Mobile's "PWG", which the database has as "pwg", and Simple Mobile's "Simple", docs/plan-1.6.1.md Part 7), then
+  mobile-broadband-provider-info by the SIM's operator code, the operators sharing it told apart by the SIM's name,
+  then the network's, then the network's owner; the letters' case kept everywhere. Settings › Mobile network
+  (mobile60.js); quick settings' ninth switch, Airplane mode, on both engines (rudolf-native.c draws it and sets it
+  through rudolfd; qt/native/qsbeh_t.js turns it on and off on both). Wi-Fi and Bluetooth stay off under it.
+  Tests: qt/host/sim60_t.sh (33 checks, the stand-in ModemManager; the carriers' table), qt/shell2/mobile60_t.js
+  (24), qt/native/same_t.sh's quick settings cases and qsbeh_t.js.
+  Stage B checks: a real SIM with a PIN in the USB stick (unlocked from Settings; a wrong PIN shows the tries left; do
+  not try the PUK on a SIM you need), the APN filled in from a prepaid T-Mobile-network SIM (Mint or Tello) and the
+  connection made with it, roaming's setting, the network type changed and kept by the modem, airplane mode with the
+  Vivobook's Wi-Fi and Bluetooth and the stick, and back.
+
 **Stage B: on hardware, with the owner (after stage A is merged and in a beta)**
 1. The USB cellular stick (borrowed from the HP desktop's user) and the MiFi 7730L on the Vivobook: the modem found
    (Settings › Network › Cellular modems, no "Invalid rule match" in /run/rudolf/modem.log, the self-test's modem
