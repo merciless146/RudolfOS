@@ -45,8 +45,12 @@ int main(int argc, char **argv)
 	/* the desktop page: a page of its own, or (Rudolf OS 1.2) a frame inside the shell; its address comes before its
 	   socket in each entry of the list */
 	char *p = strstr(buf, "\"url\": \"http://127.0.0.1:8080/");
+	/* (1.6.0, tests: CDP_TARGET=ID, that target instead, when more than one page is the desktop's, as in Standard's shell
+	   with a page of its own still open; the list's ids come from /json/list) */
+	const char *tid = getenv("CDP_TARGET"); char *w = NULL;
+	if (tid && *tid) { char k[200]; snprintf(k, sizeof k, "ws://127.0.0.1:%d/devtools/page/%s\"", port(), tid); if (!(w = strstr(buf, k))) { fprintf(stderr, "no target %s\n", tid); return 2; } }
 	if (!p) p = strstr(buf, "\"type\": \"page\"");
-	char *w = p ? strstr(p, "\"webSocketDebuggerUrl\": \"ws://") : NULL;
+	if (!w) w = p ? strstr(p, "\"webSocketDebuggerUrl\": \"ws://") : NULL;
 	if (!w) { char *any = strstr(buf, "ws://127.0.0.1:9222/devtools/page/"); if (!any) { fprintf(stderr, "no page\n"); return 2; } w = any - 30; }
 	char *path = strstr(w, "/devtools/page/"), *e = strchr(path, '"');
 	*e = 0;

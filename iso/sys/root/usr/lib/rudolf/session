@@ -164,6 +164,8 @@ chown rudolf:rudolf $DLS/.incoming $DLS/.quarantine; chmod 700 $DLS/.quarantine
 fi
 rm -f $DLS/.incoming/*.crdownload /run/rudolf/dlf/* 2>/dev/null
 mkdir -p /run/rudolf/portal/req /run/rudolf/portal/resp /run/rudolf/apps && chown -R rudolf:rudolf /run/rudolf/portal /run/rudolf/apps
+# (1.6.0: the signed-in account's portal, its own Linux user's, leaves its questions here too: sticky, not listable)
+chmod 1733 /run/rudolf/portal/req /run/rudolf/portal/resp
 [ -x /usr/bin/rudolf-portal ] && [ -n "$DBUS_SESSION_BUS_ADDRESS" ] && su -s /bin/sh rudolf -c "set -a; . /run/rudolf/session.env; set +a; exec setsid /usr/bin/rudolf-portal" </dev/null >>/run/rudolf/portal.log 2>&1 &
 PROFILE=/home/rudolf/.rudolf-browser
 # Chromium writes an index next to an unpacked extension, so it needs a copy the user owns

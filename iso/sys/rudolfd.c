@@ -193,6 +193,22 @@ static int safe_word(const char *s, size_t max)
 	return 1;
 }
 
+/* 1.6.0: a link of a Linux app's own scheme (claude://, discord://, steam://...) that Oracle or another app hands to
+   it: launched with it as its one argument (never through a shell). Printable ASCII without spaces, a scheme of two or
+   more characters, not one of the web's or the browser's own (those stay in Oracle) and not one that runs or reads
+   anything (file:, javascript:, data:...) */
+static int link_ok(const char *u, size_t n)
+{
+	if (!u || n < 4 || n > 8000) return 0;
+	for (size_t i = 0; i < n; i++) if ((unsigned char)u[i] <= 0x20 || (unsigned char)u[i] >= 0x7f) return 0;
+	size_t s = 0; while (s < n && (isalnum((unsigned char)u[s]) || strchr("+-.", u[s]))) s++;
+	if (s < 2 || s > 40 || s >= n || u[s] != ':' || !isalpha((unsigned char)u[0])) return 0;
+	static const char *const NO[] = {"http", "https", "file", "ftp", "ftps", "sftp", "javascript", "vbscript", "data", "blob", "about", "chrome", "chrome-extension",
+		"chrome-untrusted", "isolated-app", "devtools", "view-source", "filesystem", "ws", "wss", "mailto", "tel", "sms", "intent", "ssh", "smb", "nfs", "rudolf", NULL};
+	for (int i = 0; NO[i]; i++) if (strlen(NO[i]) == s && !strncasecmp(u, NO[i], s)) return 0;
+	return 1;
+}
+
 /* paths for the disk browser must stay inside /media */
 /* the folders Linux apps share with drive C: (kept in step by the desktop) */
 static int shared_path(const char *p)
@@ -1239,6 +1255,12 @@ static void api_apps(struct req *r, const char *what)
 			if (!safe_media_path(fq)) { reply_err(r->fd, 403, "only files in Documents, Pictures, Downloads or on drives can be opened"); return; }
 			static unsigned seq; snprintf(argf, sizeof argf, RUN "/apps/arg-%d-%u", (int)getpid(), ++seq);
 			write_str(argf, fq); if (chown(argf, 1000, 1000)) {}
+		} else if (qparam(r->query, "link")) {
+			/* 1.6.0: a link of the app's own scheme (the body), as its argument (a file of one line, as a file's) */
+			if (!r->body || !link_ok(r->body, r->blen)) { reply_err(r->fd, 400, "not a link an app can be given"); return; }
+			static unsigned lseq; snprintf(argf, sizeof argf, RUN "/apps/arg-%d-l%u", (int)getpid(), ++lseq);
+			char *lk = strndup(r->body, r->blen); if (!lk) { reply_err(r->fd, 500, "out of memory"); return; }
+			write_str(argf, lk); free(lk); if (chown(argf, 1000, 1000)) {}
 		}
 		/* 1.5.4: Steam installed before 1.5.4 gets its drive access (appextra --quick: no download) */
 		if (!strcmp(id, "com.valvesoftware.Steam")) {
@@ -2030,8 +2052,13 @@ static void api_debian(struct req *r, const char *what)
 		if (!*id || strlen(id) > 200 || strspn(id, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-+") != strlen(id)) { reply_err(r->fd, 400, "bad app"); return; }
 		if (file && *file && (strncmp(file, "/home/rudolf/", 13) || strstr(file, "/../"))) { reply_err(r->fd, 400, "bad file"); return; }
 		char a0[] = "rudolf-debian", a1[] = "launch"; char idb[220], fb[1100]; snprintf(idb, sizeof idb, "%s", id); snprintf(fb, sizeof fb, "%s", file ? file : "");
-		char *argv[] = {a0, a1, idb, *fb ? fb : NULL, NULL};
-		spawn_debian(argv); reply_ok(r->fd, "started"); return;
+		/* 1.6.0: or a link of the app's own scheme (the body): its argument, as a file's would be */
+		char *lk = NULL;
+		if (!*fb && qparam(r->query, "link")) {
+			if (!r->body || !link_ok(r->body, r->blen) || !(lk = strndup(r->body, r->blen))) { reply_err(r->fd, 400, "not a link an app can be given"); return; }
+		}
+		char *argv[] = {a0, a1, idb, lk ? lk : *fb ? fb : NULL, NULL};
+		spawn_debian(argv); free(lk); reply_ok(r->fd, "started"); return;
 	}
 	if (!strcmp(what, "icon")) {
 		const char *pth = qparam(r->query, "path");

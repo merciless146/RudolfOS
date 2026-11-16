@@ -248,8 +248,14 @@ static gboolean on_tab_load_failed(WebKitWebView *v, WebKitLoadEvent e, gchar *u
 {
 	(void)v; (void)e; tab *t = d;
 	if (g_error_matches(err, WEBKIT_NETWORK_ERROR, WEBKIT_NETWORK_ERROR_CANCELLED) || g_error_matches(err, WEBKIT_POLICY_ERROR, WEBKIT_POLICY_ERROR_FRAME_LOAD_INTERRUPTED_BY_POLICY_CHANGE)) return FALSE;
-	GString *x = g_string_new("\"loading\":false,\"error\":"); json_str(x, err ? err->message : ""); g_string_append(x, ",\"url\":"); json_str(x, u);
-	tabev(t, "load", x->str); g_string_free(x, TRUE); return FALSE;
+	/* 1.6.0: a page sent to a scheme no browser opens (claude://... after signing in on the site, appstream://...): said as
+	   Chromium says it, so the desktop gives it to the Linux app that opens it (links60.js) on Lite as on Standard */
+	char *sch = u ? g_uri_parse_scheme(u) : NULL;
+	int other = 0; static const char *const WEB[] = {"http", "https", "about", "data", "blob", "file", NULL};
+	if (sch) { other = 1; for (int i = 0; WEB[i]; i++) if (!g_ascii_strcasecmp(sch, WEB[i])) other = 0; }
+	g_free(sch);
+	GString *x = g_string_new("\"loading\":false,\"error\":"); json_str(x, other ? "net::ERR_UNKNOWN_URL_SCHEME" : err ? err->message : ""); g_string_append(x, ",\"url\":"); json_str(x, u);
+	tabev(t, "load", x->str); g_string_free(x, TRUE); return other;   /* (the page stays, as in Chromium: no error page) */
 }
 static void on_tab_load(WebKitWebView *v, WebKitLoadEvent e, gpointer d)
 {

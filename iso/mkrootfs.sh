@@ -135,6 +135,8 @@ gcc -O2 $HARD -o usr/bin/rudolf-ai "$SYS/rudolf-ai.c" -lcrypto -ldl
 # Blitzen's model engine (systools/mkllama.sh: llama.cpp's llama-server, static); the model is downloaded later
 mkdir -p usr/lib/rudolf; [ -x "$SRC/llama-build/bin/llama-server" ] && cp "$SRC/llama-build/bin/llama-server" usr/lib/rudolf/
 gcc -O2 $HARD -o usr/bin/rudolf-portal "$SYS/rudolf-portal.c" $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto
+# 1.6.0: xdg-open, xdg-email and the browser commands for Debian's programs (rudolf-debian binds it there; static)
+gcc -O2 $HARD_STATIC -o usr/lib/rudolf/rudolf-open "$SYS/rudolf-open.c"
 # speech: eSpeak NG 1.52.0 (built from src/espeak-ng, see BUILD.TXT) with the nine desktop languages only
 ES=$SRC/espeak-ng/inst/usr
 if [ -x $ES/bin/espeak-ng ]; then

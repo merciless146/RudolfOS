@@ -69,10 +69,18 @@ static char *caller_app(const char *sender)
 	}
 	return app ? app : g_strdup("");
 }
-static void write_request(const char *id, GString *json)
+/* 1.6.0: the question for the desktop, readable by its owner only (rudolfd reads it as root): since 1.5.9 an account's
+   programs have their own portal as the account's Linux user, which writes into the same folder (made writable for them,
+   sticky and not listable: rudolfd-users.inc, the session). Before, that portal could not write there and every request
+   of an account's programs was lost without a word (xdg-open's links, Flatpak apps' file dialogs); now a request that
+   cannot be left is said, in the log and to the caller. */
+static int write_request(const char *id, GString *json)
 {
 	char tmp[256], f[256]; snprintf(f, sizeof f, DIR_ "/req/%s.json", id); snprintf(tmp, sizeof tmp, "%s.tmp", f);
-	if (g_file_set_contents(tmp, json->str, json->len, NULL)) rename(tmp, f);
+	GError *e = NULL;
+	if (g_file_set_contents_full(tmp, json->str, (gssize)json->len, G_FILE_SET_CONTENTS_CONSISTENT, 0600, &e) && !rename(tmp, f)) return 0;
+	g_printerr("rudolf-portal: the desktop could not be asked (%s: %s)\n", f, e ? e->message : g_strerror(errno)); g_clear_error(&e); unlink(tmp);
+	return -1;
 }
 static const char *opt_s(GVariant *o, const char *k) { const char *v = NULL; if (o) g_variant_lookup(o, k, "&s", &v); return v; }
 static int opt_b(GVariant *o, const char *k) { gboolean v = FALSE; if (o) g_variant_lookup(o, k, "b", &v); return v; }
@@ -118,8 +126,11 @@ static void ask_desktop(GDBusMethodInvocation *inv, const char *sender, GVariant
 {
 	pending *q = g_new0(pending, 1);
 	q->id = g_strdup_printf("%ld-%u", (long)getpid(), ++SEQ); q->sender = g_strdup(sender); q->path = request_path(sender, opts);
+	if (write_request(q->id, json)) {
+		g_dbus_method_invocation_return_dbus_error(inv, "org.freedesktop.portal.Error.Failed", "the desktop could not be asked (no account signed in, or its folder for questions is not there)");
+		g_free(q->id); g_free(q->sender); g_free(q->path); g_free(q); return;
+	}
 	q->reg = g_dbus_connection_register_object(BUS, q->path, REQ_INFO->interfaces[0], &REQ_VT, NULL, NULL, NULL);
-	write_request(q->id, json);
 	PENDING = g_list_append(PENDING, q);
 	q->dialog = dialog; if (dialog) q->watch = g_bus_watch_name_on_connection(BUS, sender, G_BUS_NAME_WATCHER_FLAGS_NONE, NULL, req_vanished, q, NULL);
 	g_dbus_method_invocation_return_value(inv, g_variant_new("(o)", q->path));
