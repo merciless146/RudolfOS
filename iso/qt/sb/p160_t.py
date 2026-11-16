@@ -109,7 +109,11 @@ APPLY = ("FX=; for d in /dev/nvme*n1; do blkid $d 2>/dev/null | grep -q P160FIX 
          "X=/run/p160x; mkdir -p $X; mountpoint -q $X || mount -t tmpfs -o exec,mode=755 none $X; "
          "WWW=/usr/share/rudolf/www; [ -f /persist/os/current/index.html ] && WWW=/persist/os/current; "
          "if [ -f /tmp/fx/index.html ]; then cp /tmp/fx/index.html $X/page.html; chmod 644 $X/page.html; mountpoint -q $WWW/index.html || mount --bind $X/page.html $WWW/index.html; grep -c 'da0==.portal.' $WWW/index.html; fi; "
-         "if [ -f /tmp/fx/rudolf-portal ]; then mountpoint -q /usr/bin/rudolf-portal || mount --bind /tmp/fx/rudolf-portal /usr/bin/rudolf-portal; cmp /tmp/fx/rudolf-portal /usr/bin/rudolf-portal && echo portal-bound; fi")
+         "if [ -f /tmp/fx/rudolf-portal ]; then mountpoint -q /usr/bin/rudolf-portal || mount --bind /tmp/fx/rudolf-portal /usr/bin/rudolf-portal; cmp /tmp/fx/rudolf-portal /usr/bin/rudolf-portal && echo portal-bound; "
+         # (the other half, from the branch linux-app-links (not on main yet): the account's portal, its own Linux user's, may leave
+         # its questions in the desktop user's folders (sticky, 1733, as its session and rudolfd make them); without it every request
+         # of the account's apps is lost, on Standard and Native alike)
+         "chmod 1733 /run/rudolf/portal/req /run/rudolf/portal/resp; ls -ld /run/rudolf/portal/req; fi")
 # the stand-in Flatpak, installed from the extra disk's repository (no network)
 INSTALL = (f"flatpak remote-add --system --no-gpg-verify --if-not-exists pstand file:///tmp/fx/repo 2>&1; flatpak install --system -y --noninteractive pstand {APP} 2>&1 | tail -3; "
            f"flatpak list --system --app --columns=application | grep -x {APP}; ls /var/lib/flatpak/exports/share/applications/")

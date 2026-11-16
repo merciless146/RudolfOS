@@ -40,10 +40,11 @@ answers() { cat $D/portal/answers 2>/dev/null | grep -c "^$1 "; }
 polls() { cat $D/calls 2>/dev/null | grep -c 'portal/poll'; }
 # ---- sign in
 w8 '[ "$(st signin)" = 1 ]' 160 || { echo "FAIL no sign-in screen: $(tail -5 $T/native.log)"; exit 1; }
-timeout 1 tail -f /dev/null; LC_ALL=C.UTF-8 xdotool type --delay 40 "$PW"; xdotool key Return
-w8 '[ "$(st user)" = Ann ] && [ "$(st signin)" = 0 ]' 120
+# (the sign-in screen may take its keys a moment after it shows, on a slower computer: typed again until signed in)
+for a in 1 2 3 4; do timeout 3 tail -f /dev/null; xdotool key ctrl+a BackSpace; LC_ALL=C.UTF-8 xdotool type --delay 40 "$PW"; xdotool key Return
+	w8 '[ "$(st user)" = Ann ] && [ "$(st signin)" = 0 ]' 120 && break; echo "(not signed in yet: $(st signmsg))"; done
 w8 '[ "$(st portal | cut -d" " -f1)" = ready ]' 400
-ok "1. after signing in the shell's portal page is ready, unseen, with no request yet" "$([ "$(st portal | cut -d' ' -f1)" = ready ] && grep -q '^page do-portal$' $D/state && ! grep -q 'app=do-portal' $D/state && echo 1)" "$(st portal) $(grep -E '^(page|app|client) ' $D/state) $(tail -5 $T/native.log)"
+ok "1. after signing in the shell's portal page is ready, unseen, with no request yet" "$([ "$(st portal | cut -d' ' -f1)" = ready ] && grep -q '^page do-portal$' $D/state && ! grep -q 'app=do-portal' $D/state && echo 1)" "$(st portal) $(head -5 $D/state) $(st signmsg) $(grep -E '^(page|app|client) ' $D/state) $(tail -5 $T/native.log) $(tail -5 $D/calls)"
 # ---- 2. the keyring's prompt, no app window open
 ok "2a. no app window is open" "$(! grep -q '^app ' $D/state && echo 1)" "$(grep '^app ' $D/state)"
 t0=$(now); req k100-1 '{"app":"org.vinegarhq.Sober","proc":"sober","kind":"keyring","type":"password","title":"","message":"Choose password for new keyring","description":"An application wants to create a new keyring called “Sober”. Choose the password you want to use for it.","warning":"","choice":"","cont":"Continue","cancel":"Cancel","newpass":true,"chosen":false}'
