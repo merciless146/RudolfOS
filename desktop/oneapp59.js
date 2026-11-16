@@ -141,7 +141,10 @@ html.oneapp .win.oamain>.tb{display:none!important}html.oneapp .win.oamain>.body
     line and a large white knob); a colour box 50×27 in #efefef with a grey edge and the swatch inset (GTK draws a pill); a time
     field has Chromium's clock and a date field its calendar (the 12-hour clock itself: rudolf-native gives WebKit Chromium's
     locale, en-US, when the system has none); a radio button Chromium's ring and dot; a progress bar Chromium's 10em by 1em with
-    the range's 8 px track. */
+    the range's 8 px track.
+    (Second run, N22) Chromium's classic scrollbars (15 px: arrows, a #8b8b8b thumb inset 3 px, on #fcfcfc), which take their room
+    as Chromium's do; WebKitGTK's own are GTK's overlay ones, which take none, so lines wrapped differently. (N25) A text box the
+    page does not style has Chromium's 1 px grey edge, square corners and grey placeholder (WebKitGTK draws GTK's entry). */
  if(oaNative()){document.documentElement.classList.add('oawk');const st=document.createElement('style');st.textContent=`html.oawk select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7'%3E%3Cpath d='M1.5 1.5L5 5l3.5-3.5' fill='none' stroke='%23111' stroke-width='2'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 2px center}
 :where(html.oawk) select:where(:not([multiple]):not([size])){padding:4px 22px 4px 10px}
 :where(html.oawk) input:where([type=checkbox]){margin:3px 3px 3px 4px;width:13px;height:13px}:where(html.oawk) input:where([type=radio]){margin:3px 3px 0 5px;width:13px;height:13px}
@@ -166,6 +169,17 @@ html.oawk select:not([multiple]):not([size]){background-image:url("data:image/sv
 :where(html.oawk) input:where([type=radio]){-webkit-appearance:none;appearance:none;box-sizing:border-box;border:1px solid #767676;border-radius:50%;background:#fff}
 :where(html.oawk) input:where([type=radio]:checked){border-color:#0075ff;background:radial-gradient(circle,#0075ff 0 3.7px,#fff 4.3px)}
 :where(html.oawk) input:where([type=radio]:disabled){border-color:#c5c5c5}:where(html.oawk) input:where([type=radio]:checked:disabled){background:radial-gradient(circle,#c5c5c5 0 3.7px,#fff 4.3px)}
+::-webkit-scrollbar{width:15px;height:15px;background:#fcfcfc}
+::-webkit-scrollbar-thumb{background:#8b8b8b padding-box;border:3px solid transparent;border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:#636363 padding-box}::-webkit-scrollbar-thumb:active{background:#4a4a4a padding-box}
+::-webkit-scrollbar-corner{background:#fcfcfc}
+::-webkit-scrollbar-button:single-button{display:block;width:15px;height:15px;background:#fcfcfc no-repeat center}
+::-webkit-scrollbar-button:single-button:vertical:decrement{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15'%3E%3Cpath d='M3 11h9L7.5 6z' fill='%238b8b8b'/%3E%3C/svg%3E")}
+::-webkit-scrollbar-button:single-button:vertical:increment{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15'%3E%3Cpath d='M3 5h9L7.5 10z' fill='%238b8b8b'/%3E%3C/svg%3E")}
+::-webkit-scrollbar-button:single-button:horizontal:decrement{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15'%3E%3Cpath d='M11 3v9L6 7.5z' fill='%238b8b8b'/%3E%3C/svg%3E")}
+::-webkit-scrollbar-button:single-button:horizontal:increment{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15'%3E%3Cpath d='M5 3v9l5-4.5z' fill='%238b8b8b'/%3E%3C/svg%3E")}
+:where(html.oawk) input:where(:not([type]),[type=text],[type=search],[type=password],[type=email],[type=url],[type=tel]){-webkit-appearance:none;appearance:none;border:1px solid #767676;border-radius:0;padding:2px 3px;background-color:#fff}
+:where(html.oawk) input::placeholder,:where(html.oawk) textarea::placeholder{color:#757575}
 :where(html.oawk) progress:where([value]){-webkit-appearance:none;appearance:none;box-sizing:border-box;width:10em;height:1em;padding:calc(.5em - 4px) 0;border:0;background:transparent}
 :where(html.oawk) progress:where([value])::-webkit-progress-bar{border-radius:4px;background:#efefef;box-shadow:inset 0 0 0 1px #b2b2b2}
 :where(html.oawk) progress:where([value])::-webkit-progress-value{border-radius:4px;background:#0075ff;box-shadow:inset 0 0 0 1px #3b75ba}
@@ -174,6 +188,15 @@ html.oawk select:not([multiple]):not([size]){background-image:url("data:image/sv
      rather than logged as errors on every tab ("…is an invalid sandbox flag"); Chromium knows them all, so they are not missed there */
   {const sa=Element.prototype.setAttribute,ok=(()=>{try{const f=document.createElement('iframe');return t=>{try{return f.sandbox.supports(t)}catch(e){return true}}}catch(e){return()=>true}})();
    Element.prototype.setAttribute=function(n,v){if(this.tagName=='IFRAME'&&String(n).toLowerCase()=='sandbox')v=String(v).split(/\s+/).filter(t=>t&&ok(t)).join(' ');return sa.call(this,n,v)}}
+  /* (second run, N29) a video's frame callbacks (requestVideoFrameCallback: the hardware check counts a camera's frames with it): WebKitGTK
+     never calls them back; here at the first animation frame after a new frame was shown (its count of frames, else its time moving) */
+  if(window.HTMLVideoElement){const V=HTMLVideoElement.prototype,cbs=new Map();let id=0;const nf=v=>{try{return v.getVideoPlaybackQuality().totalVideoFrames}catch(e){return 0}};
+   V.requestVideoFrameCallback=function(cb){const v=this,i=++id,t0=v.currentTime,n0=nf(v);
+    const tick=now=>{if(!cbs.has(i))return;const t=v.currentTime,n=nf(v);
+     if(v.readyState>=2&&(n>n0||(!n&&t!==t0))){cbs.delete(i);try{cb(now,{presentationTime:now,expectedDisplayTime:now,width:v.videoWidth,height:v.videoHeight,mediaTime:t,presentedFrames:n,processingDuration:0})}catch(e){console.warn(e)}return}
+     cbs.set(i,requestAnimationFrame(tick))};
+    cbs.set(i,requestAnimationFrame(tick));return i};
+   V.cancelVideoFrameCallback=function(i){const r=cbs.get(i);if(r)cancelAnimationFrame(r);cbs.delete(i)}}
   /* (N8) the graphics chip's name, as Chromium gives it (WebKit gives every page "Apple GPU"): the native shell's (window.__oaGpu) */
   if(window.__oaGpu)for(const C of [window.WebGLRenderingContext,window.WebGL2RenderingContext])if(C){const g=C.prototype.getParameter;
    C.prototype.getParameter=function(p){if(p===0x9246)return String(__oaGpu.r);if(p===0x9245)return String(__oaGpu.v);return g.call(this,p)}}
@@ -405,8 +428,8 @@ function oaPng(src,n){return new Promise((res,rej)=>{const im=new Image();im.onl
    done by the page (__oaWinMenuDo: the row with those words clicked) */
 function oaMenuRead(){const m=document.querySelector('.ctx');if(!m)return null;return{title:(m.querySelector('.cmh')||{}).textContent||'',items:[...m.children].map(e=>e.tagName=='HR'?{sep:1}:e.classList.contains('cmi')?{label:e.querySelector('span').textContent,icon:e.querySelector('i').textContent,key:e.querySelector('kbd').textContent,dis:e.classList.contains('dis')?1:0}:null).filter(x=>x)}}
 function oaMenuShut(){document.querySelectorAll('.ctx').forEach(c=>c.remove());try{cmenuClose()}catch(e){}}
-if(ONEAPP){window.__oaWinMenu=()=>{try{if(!OA.main)return'';winMenu(OA.main,0,0);const r=oaMenuRead();oaMenuShut();return r?JSON.stringify(r):''}catch(e){oaMenuShut();return''}};
- window.__oaWinMenuDo=l=>{try{if(!OA.main)return;winMenu(OA.main,0,0);const it=[...document.querySelectorAll('.ctx .cmi')].find(e=>e.querySelector('span').textContent==l);if(it&&!it.classList.contains('dis'))it.click();else oaMenuShut()}catch(e){oaMenuShut()}}}
+if(ONEAPP){window.__oaWinMenu=()=>{OA.noCtx=1;try{if(!OA.main)return'';winMenu(OA.main,0,0);const r=oaMenuRead();oaMenuShut();return r?JSON.stringify(r):''}catch(e){oaMenuShut();return''}finally{OA.noCtx=0}};
+ window.__oaWinMenuDo=l=>{OA.noCtx=1;try{if(!OA.main)return;winMenu(OA.main,0,0);const it=[...document.querySelectorAll('.ctx .cmi')].find(e=>e.querySelector('span').textContent==l);if(it&&!it.classList.contains('dis'))it.click();else oaMenuShut()}catch(e){oaMenuShut()}finally{OA.noCtx=0}}}
 /* (1.6.0 Part 12, test finding N7) Chromium's folder picker (showDirectoryPicker), which File Explorer's "Folders on this device" uses
    (Import a folder…, Export selection to a folder…), on the native desktop's WebKit windows: the shell shows the folder dialog and reads
    and writes inside the folder chosen only (rudolf-native hfs_msg); the handles here have what the page uses of Chromium's (name,
@@ -428,6 +451,21 @@ if(ONEAPP&&oaNative()&&!window.showDirectoryPicker){let n=0;const W={};
    else if(st.dir)throw new DOMException('The path supplied exists, but was not an entry of requested type.','TypeMismatchError');return fileH(t,sub(p,x),x)}};
   h[Symbol.asyncIterator]=h.entries;return h};
  window.showDirectoryPicker=async o=>{const r=await ask('pick',{mode:o&&o.mode=='readwrite'?'readwrite':'read'});return dirH(r.t,'',r.name)}}
+/* (1.6.0 Part 12, test finding N21) the apps' right-click menus (the page's shared cmenu: File Explorer's, a text box's...) over the screen,
+   as Standard's page shows them, not cut off at the window's edge: the native shell shows the rows (op "ctx", rudolf-native ctx_msg)
+   and the row chosen is done here (__oaCtxDo: its index, and which menu it was) */
+if(ONEAPP&&oaNative()&&typeof cmenu=='function'){const _cm=cmenu;let gen=0,acts=[];
+ window.__oaCtxDo=(i,g)=>{if(g!==gen)return;const f=acts[i];acts=[];if(f)try{f()}catch(e){console.warn(e)}};
+ cmenu=function(x,y,items,opt){if(OA.noCtx||!OA.main||!OA.main.el||!OA.main.el.isConnected)return _cm.apply(this,arguments);opt=opt||{};
+  try{document.querySelectorAll('.ctx').forEach(c=>c.remove());cmenuClose()}catch(e){}
+  const rows=[];acts=[];let sep=true;
+  for(const it of items||[]){if(!it)continue;if(it=='-'){if(!sep){rows.push({sep:1});sep=true}continue}
+   const[lab,fn,en,o]=it,off=en===false;rows.push({label:String(lab),icon:o&&o.check!==undefined?(o.check?'✓':''):String(o&&o.icon||''),key:String(o&&o.key||''),dis:off?1:0});acts.push(off?null:fn);sep=false}
+  if(rows.length&&rows[rows.length-1].sep)rows.pop();
+  const zf=parseFloat(document.documentElement.style.zoom)||1,ae=document.activeElement;gen++;
+  /* (Chromium rings the menu it focuses only when nothing had the focus: not after a click in a list or a text box) */
+  oaPost({op:'ctx',x:String(x*zf),y:String(y*zf),gen:String(gen),title:String(opt.title||''),items:JSON.stringify(rows),ring:!ae||ae===document.body||ae===document.documentElement?'1':'0'});
+  return document.createElement('div')}}
 /* (1.6.0 Part 12, test finding N3) Task Manager's Apps on the native desktop: every window, as Standard's one page has them in wins. The
    shell gives its list (rudolf-native wins_ask: each window the taskbar would show, in any workspace, oldest first, with its page's
    own __oaMe: the weight Task Manager estimates from the window); this page's own window is its OA.main, the others stand-ins whose

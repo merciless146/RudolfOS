@@ -644,6 +644,30 @@ branch: it needs its test cases' js, read and nowin).
   and N18's underflow lines (first PR). On the Vivobook: About's Graphics row on both engines (Chromium's ANGLE may use Vulkan there,
   which names the chip differently), the folder picker with a USB drive, the moving backgrounds' smoothness with real drawing.
 
+**Test findings fixed, third PR (2026-11-16, unattended session): the second run's** (docs/native-findings-2026-11-15.md, "Second
+run"; on the second PR's branch: its test steps).
+- N20: Log video problems' file is opened to add to (GST_DEBUG_FILE=+…): each WebKit process (every app window's) opened it anew and
+  emptied it.
+- N21: an app's own right-click menus (the page's shared cmenu: File Explorer's, a text box's) are shown by the shell over the screen
+  at the pointer, as the page's own on Standard, with all their rows (they were cut off at the window's edge); the row chosen is done
+  by the page (oneapp59.js op "ctx", __oaCtxDo; rudolf-native ctx_msg with the taskbar menus' cm_open).
+- N22, N24: Chromium's classic scrollbars in the WebKit windows (15 px, arrows, the grey thumb; measured from Chromium): GTK's overlay
+  scrollbars took no room, so lines wrapped differently, and Display Properties' tiles were wider and so taller (N24).
+- N23: same_t.sh starts Chromium with its scrollbars (Playwright hides them unless told), as Rudolf's Chromium shows them.
+- N25: a text box the page does not style has Chromium's 1 px grey edge, square corners and grey placeholder.
+- N27: the frame in dark mode as the page's html.dark .win: its edge #334155 and its other windows' title bars #1e293b.
+- N29: a video's frame callbacks (requestVideoFrameCallback) are called on Native (at the first animation frame after a new frame
+  was shown): WebKitGTK never called them, so the hardware check's camera frame rate read 0.
+- N26 and N28 were done by the first and second PRs (the check box's blue; the graphics chip's name, from which GPU Lab says hardware or
+  software).
+- N30: the start menu, longer than the screen, has Chromium's scrollbar on its right as Standard's #menu (drawn by the shell; its rows
+  15 px narrower); its search box has the page's focus ring on both engines in the test (Playwright's Chromium draws it as Native does).
+- An app's menu has Chromium's focus ring only when nothing had the focus before it (not after a click in a list or a text box), as
+  Chromium shows it. N31 (Oracle's WebKit stand-in, host only) and N32 (a desktop sound from an app window, not confirmed) are Vivobook
+  checks. Night light and touch mode are items 9 and 10.
+- same_t.sh: new app-menu (File Explorer's menu on a folder), title-dark, help (its scrollbar and search box); videolog60_t.sh checks
+  the "+".
+
 Found while doing the findings, for items 11 and 12 (not changed yet): every one-app page runs the page's module-level timers as
 Standard's one page does, so with several app windows open some background work runs once per window: the Calendar's alarm check
 (apps25b.js, every minute: an alarm could be said once per open window), game mode (games58.js gameTick, gamesleep59.js), the home
