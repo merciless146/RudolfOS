@@ -42,7 +42,7 @@
 static GDBusConnection *BUS;
 static guint SEQ;
 
-typedef struct { char *id, *sender, *path; guint reg; } pending;
+typedef struct { char *id, *sender, *path; guint reg, watch; int dialog; } pending;
 static GList *PENDING;
 
 static void jstr(GString *s, const char *v)
@@ -87,10 +87,31 @@ static int opt_b(GVariant *o, const char *k) { gboolean v = FALSE; if (o) g_vari
 static char *opt_ay(GVariant *o, const char *k) { GVariant *v = o ? g_variant_lookup_value(o, k, G_VARIANT_TYPE_BYTESTRING) : NULL; char *s = v ? g_strdup(g_variant_get_bytestring(v)) : NULL; if (v) g_variant_unref(v); return s; }
 
 /* ---------------- Request objects: the app waits for their Response signal */
+/* 1.6.0 (the owner's Vivobook, Sober force-quit while it waited): a file dialog whose app is gone (it left the bus: ended,
+   force-quit, crashed) or that the app closed (Request.Close) is withdrawn: its file goes from the desktop's list, so no
+   dialog is shown for an app that is not there any more, and an open one closes (the page sees its request gone). (Not
+   a link or a file to open: xdg-open and other short-lived callers leave at once and their link still opens) */
+static void req_free(pending *q)
+{
+	char f[256]; snprintf(f, sizeof f, DIR_ "/req/%s.json", q->id); unlink(f); snprintf(f, sizeof f, DIR_ "/resp/%s.json", q->id); unlink(f);
+	if (q->watch) g_bus_unwatch_name(q->watch);
+	if (q->reg) g_dbus_connection_unregister_object(BUS, q->reg);
+	PENDING = g_list_remove(PENDING, q); g_free(q->id); g_free(q->sender); g_free(q->path); g_free(q);
+}
+static gboolean req_gone_idle(gpointer u) { pending *q = u; if (g_list_find(PENDING, q)) req_free(q); return G_SOURCE_REMOVE; }
+static void req_vanished(GDBusConnection *c, const char *name, gpointer u)
+{
+	(void)c; pending *q = u; if (!g_list_find(PENDING, q)) return;
+	fprintf(stderr, "rudolf-portal: %s left before its question %s was answered: withdrawn\n", name, q->id);
+	g_idle_add(req_gone_idle, q);   /* (not from inside the watcher's own callback) */
+}
 static void req_method(GDBusConnection *c, const char *sender, const char *path, const char *iface, const char *method, GVariant *p, GDBusMethodInvocation *inv, gpointer u)
 {
-	(void)c; (void)sender; (void)path; (void)iface; (void)method; (void)p; (void)u;
-	g_dbus_method_invocation_return_value(inv, NULL);   /* Close: the dialog simply stays until answered */
+	(void)c; (void)iface; (void)p; (void)u;
+	/* Close: the app no longer wants its answer (it closed its own dialog's parent, or it is quitting): withdrawn */
+	if (!strcmp(method, "Close")) for (GList *l = PENDING; l; l = l->next) { pending *q = l->data;
+		if (q->dialog && !strcmp(q->path, path) && !g_strcmp0(q->sender, sender)) { fprintf(stderr, "rudolf-portal: question %s closed by its app: withdrawn\n", q->id); g_idle_add(req_gone_idle, q); break; } }
+	g_dbus_method_invocation_return_value(inv, NULL);
 }
 static const GDBusInterfaceVTable REQ_VT = {req_method, NULL, NULL, {0}};
 static GDBusNodeInfo *REQ_INFO;
@@ -101,7 +122,7 @@ static char *request_path(const char *sender, GVariant *opts)
 	char *p = g_strdup_printf("/org/freedesktop/portal/desktop/request/%s/%s", s, tok); g_free(s); return p;
 }
 /* starts a request: registers the Request object, writes the question for the desktop */
-static void ask_desktop(GDBusMethodInvocation *inv, const char *sender, GVariant *opts, GString *json)
+static void ask_desktop(GDBusMethodInvocation *inv, const char *sender, GVariant *opts, GString *json, int dialog)
 {
 	pending *q = g_new0(pending, 1);
 	q->id = g_strdup_printf("%ld-%u", (long)getpid(), ++SEQ); q->sender = g_strdup(sender); q->path = request_path(sender, opts);
@@ -111,6 +132,7 @@ static void ask_desktop(GDBusMethodInvocation *inv, const char *sender, GVariant
 	}
 	q->reg = g_dbus_connection_register_object(BUS, q->path, REQ_INFO->interfaces[0], &REQ_VT, NULL, NULL, NULL);
 	PENDING = g_list_append(PENDING, q);
+	q->dialog = dialog; if (dialog) q->watch = g_bus_watch_name_on_connection(BUS, sender, G_BUS_NAME_WATCHER_FLAGS_NONE, NULL, req_vanished, q, NULL);
 	g_dbus_method_invocation_return_value(inv, g_variant_new("(o)", q->path));
 }
 /* reads {"response":N,"uris":["…",…]} written by the desktop (through rudolfd) */
@@ -145,9 +167,7 @@ static gboolean check_answers(gpointer u)
 			GVariantBuilder res; g_variant_builder_init(&res, G_VARIANT_TYPE("a{sv}"));
 			if (uris->len) { g_ptr_array_add(uris, NULL); g_variant_builder_add(&res, "{sv}", "uris", g_variant_new_strv((const char *const *)uris->pdata, -1)); }
 			g_dbus_connection_emit_signal(BUS, q->sender, q->path, "org.freedesktop.portal.Request", "Response", g_variant_new("(ua{sv})", code, &res), NULL);
-			g_dbus_connection_unregister_object(BUS, q->reg);
-			g_ptr_array_free(uris, TRUE); g_free(q->id); g_free(q->sender); g_free(q->path); g_free(q);
-			PENDING = g_list_delete_link(PENDING, l);
+			g_ptr_array_free(uris, TRUE); req_free(q);
 		}
 		l = next;
 	}
@@ -334,7 +354,7 @@ static void portal_method(GDBusConnection *c, const char *sender, const char *pa
 				g_variant_unref(pats); }
 			g_variant_unref(fl); }
 		g_string_append(j, "]}");
-		ask_desktop(inv, sender, o, j); g_variant_unref(o);
+		ask_desktop(inv, sender, o, j, 1); g_variant_unref(o);
 	} else if (!strcmp(iface, "org.freedesktop.portal.OpenURI")) {
 		GVariant *o = NULL;
 		if (!strcmp(method, "OpenURI")) {
@@ -348,7 +368,7 @@ static void portal_method(GDBusConnection *c, const char *sender, const char *pa
 			if (fd >= 0) { char l[64]; snprintf(l, sizeof l, "/proc/self/fd/%d", fd); pth = g_file_read_link(l, NULL); close(fd); }
 			g_string_append(j, ",\"kind\":"); jstr(j, !strcmp(method, "OpenDirectory") ? "folder" : "openfile"); g_string_append(j, ",\"path\":"); jstr(j, pth); g_free(pth);
 		}
-		g_string_append(j, "}"); ask_desktop(inv, sender, o, j); if (o) g_variant_unref(o);
+		g_string_append(j, "}"); ask_desktop(inv, sender, o, j, 0); if (o) g_variant_unref(o);
 	} else if (!strcmp(iface, "org.freedesktop.portal.Notification")) {
 		if (!strcmp(method, "AddNotification")) {
 			const char *id; GVariant *n; g_variant_get(p, "(&s@a{sv})", &id, &n);

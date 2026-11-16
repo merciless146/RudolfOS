@@ -1,0 +1,75 @@
+# 1.6.0 (the owner's Vivobook, 2026-11-16: Sober's sign-in spun for ever on the Native desktop, then Sober did not open again after a
+# force-quit): a Linux app's requests to the desktop (the keyring's prompts, file dialogs, links, notifications) on Native, against
+# Standard. Run by a push that changes .github/p160-run.txt (on a branch: a workflow only on a branch cannot be dispatched), whose
+# lines say: serial=SERIAL (empty: the newest beta), fix=1 (this branch's rudolf-native, page and rudolf-portal put in place of the
+# release's; 0: the release as it is, to see the bugs on it). Nothing is published.
+#   host: rudolf-portal with the real gnome-keyring-daemon and the stand-in app (iso/qt/host/portal60_t.sh); rudolf-native with the
+#         stand-in rudolfd on a virtual screen (iso/qt/host/nportal160_t.sh)
+#   qemu: the real release, a stand-in Flatpak (iso/qt/mkpstand.sh: no Roblox, no account) launched, force-quit and launched again,
+#         its keyring prompt, file dialog and link, with no app window and with two open (iso/qt/sb/p160_t.py)
+name: Native portal check
+on:
+  push:
+    paths: ['.github/p160-run.txt']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libglib2.0-dev libssl-dev dbus dbus-bin gnome-keyring libsecret-tools libwebkit2gtk-4.1-dev libgtk-3-dev libx11-dev xvfb xdotool imagemagick x11-utils >/dev/null
+      - name: The portal (rudolf-portal, gnome-keyring-daemon, the stand-in app)
+        run: sudo sh iso/qt/host/portal60_t.sh | tee portal.txt; grep -q ' passed$' portal.txt && ! grep -q '^FAIL' portal.txt
+      - name: Native's shell collects the requests (rudolf-native on a virtual screen)
+        run: sh iso/qt/host/nportal160_t.sh | tee nportal.txt; grep -q ' passed$' nportal.txt && ! grep -q '^FAIL' nportal.txt
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: portal-host, retention-days: 7, path: "portal.txt\nnportal.txt"}
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: for k in serial fix; do echo "P_$k=$(sed -n "s/^$k=//p" .github/p160-run.txt | head -1)" >> $GITHUB_ENV; done
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography bzip2 flatpak desktop-file-utils >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S="$P_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel; echo "::notice title=Native portal QEMU check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)), fix=${P_fix:-1}"
+      - name: The stand-in Flatpak
+        run: mkdir -p fix && sh iso/qt/mkpstand.sh fix && ls -la fix
+      - name: This tree's rudolf-native, page and rudolf-portal
+        if: env.P_fix != '0'
+        run: |
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev libssl-dev >/dev/null
+          gcc -O2 -Wno-deprecated-declarations -o fix/rudolf-native iso/sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
+          gcc -O2 -Wno-deprecated-declarations -o fix/rudolf-portal iso/sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto
+          cp iso/www/index.html fix/ && ls -la fix
+      - name: p160 (Standard, then Native)
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} P160_FIX=$PWD/../fix python3 ../iso/qt/sb/p160_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p160-fix${{ env.P_fix }}
+          retention-days: 7
+          path: "run/p160.txt\nrun/p160*/qemu.log\nrun/p160*/*.png\nrun/*.png"

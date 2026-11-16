@@ -355,6 +355,23 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
    /* (the release seen is kept: devices26.js sets S.seenRel, but persistS writes the saved settings, SC, which it left out, so every
       page signing in announced the release again; Standard's one page at a time is left as it is) */
    if(OA_UPD)OA_UPD().then(()=>{if(SC&&S.seenRel&&SC.seenRel!==S.seenRel){SC.seenRel=S.seenRel;persistS()}}).catch(e=>console.warn(e))}catch(e){console.warn(e)}setTimeout(()=>oaFin({}),14000);return}
+ /* (1.6.0, the owner's Vivobook, 2026-11-16: Sober's sign-in spun for ever on Native) the portal's requests (a Linux or Flatpak app's keyring
+    prompts, file dialogs, links, notifications: linux26.js lxPortal, keyring60.js krPrompt), which the native shell collects and hands
+    here one by one (#app=do-portal, a page of its own kept unseen while an account is signed in): each done as Standard's desktop does
+    it, its dialog above every window (the page's dialogs cover the screen here), its notification the shell's. One that opens an app's
+    window (a file, a folder, a mail link) is done by a page of its own that becomes that window (#app=do-portalapp&req=ID) */
+ if(da0=='portal'){document.title='Rudolf OS';const opens=r=>r.kind=='openfile'||r.kind=='folder'||(r.kind=='url'&&/^(mailto|file):/i.test(String(r.uri||'')));
+   const one=async id=>{let j;try{j=await lxApi('portal/poll')}catch(e){return}const it=(j.requests||[]).find(x=>x.id==id);if(!it||LX.seen.has(id))return;LX.seen.add(id);const r=it.req||{};
+    if(opens(r)){oaPost({op:'portal',req:id});return}
+    /* (a file dialog its app withdrew, ended or force-quit meanwhile: closed, as the keyring's prompt closes itself) */
+    let wd=0;if(r.kind=='open'||r.kind=='save'){const had=new Set(document.querySelectorAll('body>.rmodal'));setTimeout(()=>{const o=[...document.querySelectorAll('body>.rmodal')].find(x=>!had.has(x));if(!o)return;
+     wd=setInterval(async()=>{if(!o.isConnected)return clearInterval(wd);let k;try{k=await lxApi('portal/poll')}catch(e){return}if(!(k.requests||[]).some(q=>q.id==id)){clearInterval(wd);o.remove()}},1500)},300)}
+    try{await lxPortal(id,r)}catch(e){console.warn('portal',e)}finally{clearInterval(wd)}};
+   window.__oaPortal=ids=>{String(ids||'').split(',').filter(x=>/^[A-Za-z0-9_-]{1,40}$/.test(x)).forEach(id=>{one(id)})};
+   oaAppsReady().then(()=>oaPost({op:'portal',ready:'1'}));return}
+ if(da0=='portalapp'){OA.want=1;const id=ONEAPP.q.get('req')||'';(async()=>{await oaAppsReady();let j=null;try{j=await lxApi('portal/poll')}catch(e){}
+   const it=j&&(j.requests||[]).find(x=>x.id==id);if(it){LX.seen.add(id);try{await lxPortal(id,it.req||{})}catch(e){console.warn('portal',e)}}
+   setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},it?15000:0)})();return}
  /* (Help at a topic, as What's new asks from the page above: #app=help&page=TOPIC) */
  if(ONEAPP.k=='help'&&ONEAPP.q.get('page')&&typeof helpApp=='function'){OA.want=1;try{helpApp(ONEAPP.q.get('page'))}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}
  /* (1.6.0 Part 12, item 6) the native desktop's screen saver: the page's own (ssRun) in this window, which the shell shows full
