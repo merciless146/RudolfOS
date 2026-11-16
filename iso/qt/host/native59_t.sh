@@ -138,9 +138,9 @@ ok "49. the display scaling (150 %): the taskbar at the page's size (bug 3)" "$(
 set_s '{"s":{"bs":"solid","b1":"#112233","tb":"bottom","accent":"#2563eb","h24":true},"pins":["notepad","calc","settings"],"notes":2,"wallpaper":false}'
 timeout 4 tail -f /dev/null
 click $(hit start -); w8 '[ "$(st menu)" = 1 ]' 20; ok "18. the start button opens the start menu" "$([ "$(st menu)" = 1 ] && echo 1)"
-xdotool type --delay 20 'calcul'; xdotool key Return
+xdotool type --delay 20 'calcul'; timeout 0.3 tail -f /dev/null; MQS="menuq=$(st menuq) focus=$(xdotool getwindowfocus getwindowname 2>/dev/null) apps=$(grep -c '^app ' $D/state)"; xdotool key Return
 w8 'grep -q "^app calc .* Calculator$" $D/state' 80
-ok "19. ...searching and Enter: the app in a window of its own, signed in, its title from the page (one-app mode)" "$(grep -q '^app calc [0-9a-f]* 1 Calculator$' $D/state && [ "$(st menu)" = 0 ] && echo 1)" "$(grep '^app' $D/state; tail -3 $T/native.log)"
+ok "19. ...searching and Enter: the app in a window of its own, signed in, its title from the page (one-app mode)" "$(grep -q '^app calc [0-9a-f]* 1 Calculator$' $D/state && [ "$(st menu)" = 0 ] && echo 1)" "$MQS / $(grep '^app' $D/state; tail -3 $T/native.log)"
 click $(hit pin notepad); w8 'grep -q "^app notepad .* Notepad$" $D/state' 80
 ok "20. a pinned app opens its window" "$(grep -q '^app notepad [0-9a-f]* 1' $D/state && echo 1)" "$(grep '^app' $D/state)"
 # (test finding N19) this rudolf-native's own web processes only (the processes under it), not every WebKit page on the computer: a host
@@ -169,11 +169,13 @@ ok "33. dragging the title bar moves it" "$([ "$(cv $ID 4)" = $((X+200)) ] && [ 
 ok "34. ...and the window is told where it is (a ConfigureNotify with the screen's coordinates)" "$(grep -q "^geom $((X+200+1)) $((Y+100+35)) 400 300" $T/xc.log && echo 1)" "$(grep geom $T/xc.log | tail -2)"
 X=$(cv $ID 4); Y=$(cv $ID 5); FW=$((W+2)); FH=$(( $(cv $ID 7) + 36 ))
 xdotool mousemove $((X+FW-2)) $((Y+FH-2)) mousedown 1; for k in 1 2 3 4; do xdotool mousemove $((X+FW-2+k*20)) $((Y+FH-2+k*15)); timeout 0.1 tail -f /dev/null; done; xdotool mouseup 1; timeout 0.5 tail -f /dev/null
-ok "35. dragging the bottom-right corner resizes it" "$([ "$(cv $ID 6)" = 480 ] && [ "$(cv $ID 7)" = 360 ] && echo 1)" "$(cl $ID)"
+# (#409: as the page's addResize, shell25.js: the new size is the window's size with its 1 px edges (offsetWidth) and the pointer's way,
+# so 400 x 300 dragged by 80 x 60 is 482 x 362, as on Standard; maximised, the page's .mx: #desk's width less 6 px)
+ok "35. dragging the bottom-right corner resizes it" "$([ "$(cv $ID 6)" = 482 ] && [ "$(cv $ID 7)" = 362 ] && echo 1)" "$(cl $ID)"
 W=$(cv $ID 6); FW=$((W+2)); click $((X+FW-48)) $((Y+18)); timeout 0.5 tail -f /dev/null
-ok "36. maximise: the whole screen above the taskbar" "$([ "$(flag $ID max)" = 1 ] && [ "$(cv $ID 4) $(cv $ID 5) $(cv $ID 6) $(cv $ID 7)" = "0 0 1278 718" ] && echo 1)" "$(cl $ID)"
+ok "36. maximise: the whole screen above the taskbar" "$([ "$(flag $ID max)" = 1 ] && [ "$(cv $ID 4) $(cv $ID 5) $(cv $ID 6) $(cv $ID 7)" = "0 0 1274 718" ] && echo 1)" "$(cl $ID)"
 xdotool mousemove 300 15 click --repeat 2 --delay 80 1; timeout 0.5 tail -f /dev/null
-ok "37. a double-click on the title bar: back to its size and place" "$([ "$(flag $ID max)" = 0 ] && [ "$(cv $ID 4) $(cv $ID 6)" = "$X 480" ] && echo 1)" "$(cl $ID)"
+ok "37. a double-click on the title bar: back to its size and place" "$([ "$(flag $ID max)" = 0 ] && [ "$(cv $ID 4) $(cv $ID 6)" = "$X 482" ] && echo 1)" "$(cl $ID)"
 click $((X+FW-75)) $((Y+18)); timeout 0.5 tail -f /dev/null
 ok "38. minimise: out of sight (WM_STATE iconic), the next window gets the keyboard" "$([ "$(flag $ID min)" = 1 ] && [ "$($XC wmstate 0x$ID)" = 3 ] && [ "$(flag $ID focus)" = 0 ] && grep -q '^client .* focus=1 ' $D/state && echo 1)" "$(grep '^client' $D/state) $($XC wmstate 0x$ID)"
 click $(hit win $ID); timeout 0.5 tail -f /dev/null
@@ -183,7 +185,7 @@ ok "40. a click into another window gives it the keyboard (and the click)" "$([ 
 $XC full 0x$ID 1; timeout 0.5 tail -f /dev/null
 ok "41. a window asking for full screen covers the whole screen, taskbar too" "$([ "$(flag $ID full)" = 1 ] && grep -q '^geom 0 0 1280 800' $T/xc.log && [ "$($XC stack | tail -1)" = "0x$(cl $ID | cut -d' ' -f3)" ] && echo 1)" "$(cl $ID); $(tail -2 $T/xc.log); $($XC stack | tail -2)"
 $XC full 0x$ID 0; timeout 0.5 tail -f /dev/null
-ok "42. ...and back" "$([ "$(flag $ID full)" = 0 ] && [ "$(cv $ID 6)" = 480 ] && echo 1)" "$(cl $ID)"
+ok "42. ...and back" "$([ "$(flag $ID full)" = 0 ] && [ "$(cv $ID 6)" = 482 ] && echo 1)" "$(cl $ID)"
 $XC inno > $T/inno.log & IP=$!; w8 'grep -q "^dlg" $T/inno.log'; DLG=$(sed -n 's/^dlg 0x//p' $T/inno.log); OW=$(sed -n 's/^id 0x//p' $T/inno.log); w8 '[ -n "$(cl $DLG)" ]' 20
 ok "43. a dialog is centred over its window" "$(dx=$(( $(cv $DLG 4) + ($(cv $DLG 6) + 2) / 2 - $(cv $OW 4) - ($(cv $OW 6) + 2) / 2 )); [ ${dx#-} -le 2 ] && echo 1)" "$(cl $OW) / $(cl $DLG)"
 ok "44. ...and is not on the taskbar" "$( ! grep -q "^hit win $DLG " $D/state && echo 1)"
