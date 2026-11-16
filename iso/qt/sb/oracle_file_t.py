@@ -90,6 +90,12 @@ o.probe=await new Promise(res=>{const p=document.createElement('iframe');p.setAt
  p.srcdoc=html+'<script>addEventListener("load",function(){var b=document.body;parent.postMessage({'+JSON.stringify(k)+':{text:b?b.innerText.length:-1,first:b?b.innerText.slice(0,80):"",h:document.documentElement.scrollHeight,url:location.href,bg:b?getComputedStyle(b).backgroundColor:""}},"*")})<'+'/script>';document.body.appendChild(p)});
 return o})()"""
 
+def jsbig(js, e, t=90):
+    """a long expression in pieces: the serial line takes at most 4095 characters"""
+    js("window.__ofS='';1", 30)
+    for i in range(0, len(e), 1200): js(f"window.__ofS+={json.dumps(e[i:i + 1200])};1", 30)
+    return js("(0,eval)(window.__ofS)", t)
+
 def pixels(png, rect, iw):
     try:
         from PIL import Image
@@ -117,16 +123,16 @@ try:
         out('sign-in again after the move:', signin(js, 'john', 'j1'))
     out('engine/shell:', js("({engine:RD&&RD.engine,shell:typeof SHELL!='undefined'&&!!SHELL,ver:typeof SHELL_VER!='undefined'?SHELL_VER:'',ua:navigator.userAgent,user:USER&&USER.n})", 30))
     ok('2. the desktop is in the shell (Controlled Frame), as on the Vivobook', js("typeof SHELL!='undefined'&&!!SHELL", 20) is True)
-    js("(()=>{window.__ofErr=[];addEventListener('error',e=>__ofErr.push('error '+e.message+' '+(e.filename||'')+':'+e.lineno));addEventListener('unhandledrejection',e=>__ofErr.push('rejection '+String(e.reason&&e.reason.message||e.reason)));"
+    jsbig(js, "(()=>{window.__ofErr=[];addEventListener('error',e=>__ofErr.push('error '+e.message+' '+(e.filename||'')+':'+e.lineno));addEventListener('unhandledrejection',e=>__ofErr.push('rejection '+String(e.reason&&e.reason.message||e.reason)));"
        "const w=console.warn,er=console.error;console.warn=function(){__ofErr.push('warn '+[].map.call(arguments,String).join(' ').slice(0,300));return w.apply(console,arguments)};console.error=function(){__ofErr.push('console.error '+[].map.call(arguments,String).join(' ').slice(0,300));return er.apply(console,arguments)};return 1})()")
-    r = js(f"(async()=>{{const d=node(homePath('DOCUMENTS'));d['CALL-TEST.HTML']={json.dumps(CALL)};fsSave();try{{fsFlush()}}catch(e){{}};return homePath('DOCUMENTS').join('/')}})()", 60); out('documents:', r)
+    r = js(f"(async()=>{{let d=fs;for(const k of homePath('DOCUMENTS')){{if(!isDir(d[k]))d[k]={{}};d=d[k]}}d['CALL-TEST.HTML']={json.dumps(CALL)};fsSave();try{{fsFlush()}}catch(e){{}};return homePath('DOCUMENTS').join('/')}})()", 60); out('documents:', r)
     DOCS = r if isinstance(r, str) else 'C:/USERS/JOHN/DOCUMENTS'
     pages = [('about:home', 'Oracle'), ('about:files?p=C:', 'Index of C:'), ('file:///C:/README.TXT', 'README.TXT'), ('file:///C:/WELCOME.HTM', 'Welcome to Oracle'), (f'file:///{DOCS}/CALL-TEST.HTML', 'Call this number')]
     res = {}
     for i, (u, want) in enumerate(pages):
         js(f"(()=>{{wins.slice().forEach(w=>{{if(w.body&&w.body.querySelector('.otabs'))w.close()}});browser({json.dumps(u)});return 1}})()", 30)
         time.sleep(6)
-        o = js(PROBE, 60); png = vm.shot(f'p{i}'); px = pixels(png, o['rect'], o['iw']) if isinstance(o, dict) and o.get('rect') else {}
+        o = jsbig(js, PROBE, 60); png = vm.shot(f'p{i}'); px = pixels(png, o['rect'], o['iw']) if isinstance(o, dict) and o.get('rect') else {}
         out(f'--- {u}'); out(json.dumps(o)[:3000]); out('pixels', px)
         res[u] = (o, px, want)
     jl = sh("busybox wget -q -O- http://127.0.0.1:9222/json/list 2>&1 | grep -E '\"(type|url)\"' | head -40", 30); out('devtools targets:\n' + jl)
@@ -138,7 +144,7 @@ try:
         ok(f'{3 + k}. {u}: the page is drawn in Oracle\'s frame (not a blank white page), its text there', seen and isinstance(pr, dict) and pr.get('text', 0) > 0 and want in (pr.get('first', '') + json.dumps(o)), [px, pr, o.get('top') if isinstance(o, dict) else o])
     # the phone-number test: clicking the tel: link asks how to call it
     js(f"(()=>{{wins.slice().forEach(w=>{{if(w.body&&w.body.querySelector('.otabs'))w.close()}});browser({json.dumps(pages[4][0])});return 1}})()", 30); time.sleep(6)
-    o = js(PROBE, 60)
+    o = jsbig(js, PROBE, 60)
     if isinstance(o, dict) and o.get('rect'):
         x, y, w, h = o['rect']; sc = 1
         out('click the tel: link at', x + 60, y + 95)
