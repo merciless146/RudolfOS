@@ -890,12 +890,14 @@ static int running_stable(long long cur, const man_t *st, int have)
 	char *h = hist_load(); int in = h && hist_has(h, cur); free(h);
 	return in ? 1 : have ? 0 : -1;
 }
-/* the other system slot, when it holds exactly release SERIAL, complete and signed by the official key */
+/* the other system slot, when it holds exactly release SERIAL, complete and signed by the official key (and it is not
+   the one the start-up last gave up on) */
 static const char *slot_with(long long serial, const char *bs)
 {
 	static const char *S[2] = {"a", "b"};
+	char stp[300]; snprintf(stp, sizeof stp, "%s/state", SYSD); kv_t st; kv_read(stp, &st, '=');
 	for (int i = 0; i < 2; i++) {
-		if (!strcmp(S[i], bs)) continue;
+		if (!strcmp(S[i], bs) || !strcmp(kv(&st, "failed"), S[i])) continue;
 		char c[400], mp[400], gp[400]; snprintf(c, sizeof c, "%s/%s/complete", SYSD, S[i]);
 		snprintf(mp, sizeof mp, "%s/%s/manifest.txt", SYSD, S[i]); snprintf(gp, sizeof gp, "%s/%s/manifest.sig", SYSD, S[i]);
 		char *t = NULL; man_t m; if (access(c, F_OK) || !file_official(mp, gp, &t, NULL)) { free(t); continue; }

@@ -70,6 +70,9 @@ ok "7. 1.5.9 started again from slot a and is kept; it is a stable release (the 
 # and back up to the beta
 run $RU set channel beta >/dev/null; o=$(run $RU check)$(run $RU download); started
 ok "8. back up: beta versions on again bring 1.6.0 (from what is on this computer: slot b's files reused)" "$([ "$(st good)" = b ] && grep -q 'version 1.6.0' $T/sys/b/RELEASE && echo "$o" | grep -q 'base: unchanged' && echo 0)" "$o"
+# a stable release in the other slot that the start-up gave up on is not switched to: downloaded again
+sed -i 's/^failed=.*/failed=a/' $T/sys/state; i=$(run $RU stable-info | J "d['how']"); sed -i 's/^failed=.*/failed=/' $T/sys/state
+ok "8b. ...but not one the start-up gave up on (failed=a): it would be downloaded again" "$([ "$i" = download ] && echo 0)" "$i"
 # the other slot no longer holds the stable release: it is downloaded
 rm -rf $T/sys/a; o=$(run $RU to-stable); rc=$?
 ok "9. the other slot without it: 1.5.9 downloaded into it (checked as updates are), to start next; beta versions off" \
