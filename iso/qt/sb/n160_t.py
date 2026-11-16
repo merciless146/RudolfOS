@@ -237,11 +237,17 @@ try:
         end = time.time() + secs
         while time.time() < end: sample(); time.sleep(every)
     def menu_open(k, q):
-        st = sample(); h = re.search(r'^hit start \S+ (\d+) (\d+) (\d+) (\d+)$', st, re.M)
-        if not h: out('no start button in', st[:400]); return False
-        x, y, w, hh = map(int, h.groups()); at(x + w / 2, y + hh / 2); time.sleep(1.5)
-        g.q.type(q); time.sleep(1.5); st = sample()
-        rows = re.findall(r'^mrow (\S+) (\d+) (\d+) (\d+) (\d+)$', st, re.M); out('start menu rows for', repr(q), [r[0] for r in rows])
+        rows = []
+        for attempt in range(3):
+            # (a menu or pop-up left open, the screen saver: closed first)
+            g.q.key('esc'); time.sleep(.5); g.q.move(SW / 2 + attempt * 7, SH / 2, SW, SH); time.sleep(.8)
+            st = sample(); h = re.search(r'^hit start \S+ (\d+) (\d+) (\d+) (\d+)$', st, re.M)
+            if not h: out('no start button in', st[:400]); time.sleep(3); continue
+            x, y, w, hh = map(int, h.groups()); at(x + w / 2, y + hh / 2); time.sleep(1.5)
+            if st_get(sample(), 'menu') != '1': out('the start menu did not open; again'); continue
+            g.q.type(q); time.sleep(1.5); st = sample()
+            rows = re.findall(r'^mrow (\S+) (\d+) (\d+) (\d+) (\d+)$', st, re.M); out('start menu rows for', repr(q), [r[0] for r in rows])
+            if rows: break
         row = next((r for r in rows if r[0] == k), None)
         if row: at(int(row[1]) + 30, int(row[2]) + int(row[4]) / 2)
         else: g.q.key('ret')
@@ -302,7 +308,7 @@ try:
 
     # ---- 3. display settings applied live: from the Settings window, to the shell (rudolfd's desktop/settings) and the
     #         other window (Notepad), within a few seconds, and still so later
-    CH = [('darkui', 1), ('accent', '#e11d48'), ('tbstyle', 'glass'), ('scale', 110), ('ff', 'Georgia')]
+    CH = [('darkui', 1), ('accent', '#e11d48'), ('tbstyle', 'glass'), ('h24', True), ('ff', 'Georgia')]
     res3 = {}
     for k, v in CH:
         tev('settings', f"(()=>{{S[{json.dumps(k)}]={json.dumps(v)};SC=cln(S);persistS();try{{applySet()}}catch(e){{}}try{{themeApply()}}catch(e){{}}return JSON.stringify(S[{json.dumps(k)}])}})()")

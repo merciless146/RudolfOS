@@ -81,8 +81,15 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.j({'ok': True, 'events': ''})
         if w == 'lsync':
             if m == 'POST':
-                o = json.loads(b); o['gen'] = max(int(o.get('gen') or 0), int(L.get('gen') or 0) + 1)
+                o = json.loads(b); g = max(int(o.get('gen') or 0), int(L.get('gen') or 0) + 1)
+                # (1.6.0: a native page's part, its changed keys put into the copy, as rudolfd-desktop.inc lsync_merge does)
+                if o.get('part'):
+                    d = dict(L.get('data') or {})
+                    for k in o.get('del') or []: d.pop(k, None)
+                    d.update({k: v for k, v in (o.get('set') or {}).items() if isinstance(v, str)}); o = {'gen': g, 'data': d}
+                o['gen'] = g
                 p = os.path.join(D, 'ls.json'); open(p + '.t', 'w').write(json.dumps(o)); os.replace(p + '.t', p)
+                return self.j({'ok': True, 'message': 'saved', 'gen': g})
             return self.j({'ok': True, 'message': 'saved'})
         if w == 'desktop/accounts':
             acc = (sget(data, 'bd95user') or {}).get('accts', [])

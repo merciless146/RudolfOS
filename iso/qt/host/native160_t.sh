@@ -125,8 +125,8 @@ t0=$(date +%s%N); w8 '[ "$(ev notepad "S.accent")" = "#e11d48" ]' 8; t1=$(date +
 ok "3a. Settings' window saved the accent: Notepad's window has it within a second" "$([ "$(ev notepad 'S.accent')" = '#e11d48' ] && [ $(( (t1 - t0) / 1000000 )) -lt 1500 ] && echo 1)" "$(ev notepad 'S.accent') $(( (t1 - t0) / 1000000 )) ms"
 w8 'grep -q "^POST lsync" $D/calls && grep -A99 "^POST lsync" $D/calls | grep -q "^GET desktop/settings"' 8
 ok "3b. ...and the shell was told: the page's storage sent to rudolfd, then the settings read again at once" "$(grep -q '^POST lsync' $D/calls && grep -A99 '^POST lsync' $D/calls | grep -q '^GET desktop/settings' && echo 1)" "$(head -20 $D/calls)"
-o=$(node -e "const l=JSON.parse(require('fs').readFileSync('$D/lsync.json'));console.log(l.part?'part '+Object.keys(l.set).join(','):'all')" 2>&1)
-ok "3c. ...sending only what changed (Native: rudolfd puts it into its copy, so another engine's page cannot put older values back)" "$(echo "$o" | grep -q '^part .*bd95set:uAnnA1b2' && echo 1)" "$o"
+o=$(cat $D/lsync.log)
+ok "3c. ...sending only what changed (Native: rudolfd puts it into its copy, so another engine's page cannot put older values back)" "$(echo "$o" | grep -q '^part .*bd95set:uAnnA1b2' && ! echo "$o" | grep -q '^all' && echo 1)" "$(echo "$o" | tail -5)"
 # a window that missed a change (another window wrote the storage, no event reached it) saves its settings: the other's value is kept
 o=$(ev notepad '(()=>{const k="bd95set:"+uid(),v=JSON.parse(localStorage.getItem(k));v.tbstyle="glass";localStorage.setItem(k,JSON.stringify(v));S.h24=!S.h24;if(SC)SC.h24=S.h24;persistS();const w=JSON.parse(localStorage.getItem(k));return [w.tbstyle,w.h24===S.h24,S.tbstyle,w.accent].join("|")})()')
 ok "3d. a window that missed another's change and then saves its own keeps the other's (no older value written back)" "$(echo "$o" | grep -q '^glass|true|glass|#e11d48$' && echo 1)" "$o"

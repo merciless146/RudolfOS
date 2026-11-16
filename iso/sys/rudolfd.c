@@ -381,13 +381,14 @@ static void serve_file(struct req *r, const char *path) { serve_file_as(r, path,
  * is handed back inside the page and restored when it is newer than what Chromium kept. */
 #define LSFILE "/home/rudolf/.rudolf-ls.json"
 static int lsync_part(const char *body); static void lsync_merge(struct req *r); static void api_lsync_get(struct req *r, const char *key);   /* rudolfd-desktop.inc (1.6.0) */
+/* 1.6.0 (the owner's reports 3 and 5): on the native desktop every app window, and Oracle's page in Chromium, is a page of its
+   own, and two engines' storage (WebKit's and Chromium's) went to this one copy: each page sent all of its storage, so the last
+   one to send put its older settings and notices back (and the next window opened took them). There each page sends only the
+   keys it changed (part), rudolfd puts them into the copy, and the copy's number (gen) is rudolfd's, so a page started later
+   takes the copy only when another page changed it since. Standard and Lite: one page, all of it, as before.
+   __rudolfLsQuiet: a value another page saved, taken into this page's storage without sending it back (oneapp59.js __oaSetIn). */
 static const char LSJS[] =
 	"(function(){var G='__rudolf_ls_gen',S=localStorage,P=Storage.prototype,si=P.setItem,ri=P.removeItem,cl=P.clear,t=0,"
-	/* 1.6.0 (the owner's reports 3 and 5): on the native desktop every app window, and Oracle's page in Chromium, is a page of its
-	   own, and two engines' storage (WebKit's and Chromium's) went to this one copy: each page sent all of its storage, so the last
-	   one to send put its older settings and notices back (and the next window opened took them). There each page sends only the
-	   keys it changed (part), rudolfd puts them into the copy, and the copy's number (gen) is rudolfd's, so a page started later
-	   takes the copy only when another page changed it since. Standard and Lite: one page, all of it, as before */
 	"NAT=window.RUDOLFD&&RUDOLFD.engine=='native',dk={},dall=0;"
 	"try{var e=document.getElementById('rudolf-ls'),L=e&&JSON.parse(e.textContent);"
 	"if(L&&L.data&&L.gen>(+S.getItem(G)||0)){var ks=[];for(var i=0;i<S.length;i++)ks.push(S.key(i));"
@@ -401,7 +402,6 @@ static const char LSJS[] =
 	"function sch(o){if(o===S&&!t)t=setTimeout(push,1500)}"
 	"P.setItem=function(k,v){si.call(this,k,v);if(k!=G&&this===S){dk[k]=1;sch(this)}};P.removeItem=function(k){ri.call(this,k);if(this===S){dk[k]=1;sch(this)}};P.clear=function(){cl.call(this);if(this===S){dall=1;sch(this)}};"
 	"window.__rudolfLsFlush=function(){if(t)clearTimeout(t);return push()};"
-	/* (a value another page saved, taken into this page's storage without sending it back: oneapp59.js __oaSetIn) */
 	"window.__rudolfLsQuiet=function(k,v){si.call(S,k,v)};"
 	"addEventListener('pagehide',function(){if(t){clearTimeout(t);push()}})})();";
 

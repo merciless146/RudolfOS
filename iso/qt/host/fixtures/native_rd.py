@@ -170,7 +170,8 @@ class H(http.server.BaseHTTPRequestHandler):
         if w == 'power/status': return self.j({'ok': True, 'ac': False, 'battery': {'name': 'BAT0', 'capacity': 81, 'status': 'Discharging'}})
         if w == 'info': return self.j({'ok': True, 'battery': [{'name': 'BAT0', 'type': 'Battery', 'capacity': 81, 'status': 'Discharging'}]})
         # (1.6.0, native160_t.sh) the system monitor's stats, when DIR/stats-on is there; the shell's state (shell26.js shellOffer)
-        # from DIR/shell.json; the pages' lsync copies kept in DIR/lsync.json (the last one) and counted in DIR/lsync-n
+        # from DIR/shell.json; the pages' lsync copies kept in DIR/lsync.json (the last one), counted in DIR/lsync-n, each noted in
+        # DIR/lsync.log (part KEYS, or all N)
         if w == 'stats' and rd('stats-on') is not None: return self.j({'ok': True, 'cpu': 12.5, 'load': 0.1, 'memTotal': 4 << 30, 'memFree': 1 << 30, 'memAvailable': 3 << 30, 'battery': None, 'brightness': None, 'tempC': None, 'processes': ''})
         if w == 'shell' and rd('shell.json') is not None: return self.send(200, rd('shell.json'))
         if w == 'lsync' and m == 'POST':
@@ -183,6 +184,7 @@ class H(http.server.BaseHTTPRequestHandler):
                     f['data'].update(o.get('set') or {})
                 else: f['data'] = o.get('data') or {}
                 f['gen'] = max(f['gen'] + 1, o.get('gen') or 0); open(os.path.join(D, 'lsfile.json'), 'w').write(json.dumps(f))
+                open(os.path.join(D, 'lsync.log'), 'a').write(('part ' + ','.join(sorted(o.get('set') or {})) if o.get('part') else 'all %d' % len(o.get('data') or {})) + '\n')
             return self.j({'ok': True, 'message': 'saved', 'gen': f['gen']})
         return self.j({'ok': True})
     def dl(self, m, what, q):
