@@ -1,0 +1,60 @@
+# 1.6.0 (the owner, 2026-11-16): Roll back to the last stable version, in QEMU on the real releases (qt/sb/t160r_t.py): the
+# newest 1.6.0 beta rolled back to the current stable release (gh-pages stable/: 1.5.9) with the data check deciding,
+# the account's files opened by 1.5.9, back up to the beta again, and the refusal with the real signed list of 1.5.8 as
+# the stable channel. With this tree's rudolf-update in the guest. Nothing is published and no release is built: the
+# releases are the published ones, checked with the release key's public half; the only key made here is a throwaway
+# TEST key (a history it signs must not be believed), made and deleted inside the test.
+name: Roll back to stable check
+on:
+  workflow_dispatch:
+    inputs:
+      serial: {description: 'The beta release to start from (its serial); empty: the newest beta', required: false, default: ''}
+  push:
+    branches-ignore: [main, gh-pages]
+    paths: ['iso/qt/sb/t160r_t.py', '.github/workflows/rollback-check.yml', 'iso/sys/rudolf-update.c']
+  pull_request:
+    paths: ['iso/qt/sb/t160r_t.py', '.github/workflows/rollback-check.yml', 'iso/sys/rudolf-update.c']
+permissions: {contents: read}
+concurrency: {group: 'rollback-check-${{ github.ref }}', cancel-in-progress: true}
+jobs:
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography libssl-dev bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The releases (the beta, the stable one, and 1.5.8's signed list)
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q origin gh-pages
+          P=origin/gh-pages
+          # a channel's signed list for release S: the channel's own, or that version of it in the pages' history
+          lists() {   # CHANNEL SERIAL DIR
+            local c; for c in $(git log --format=%H $P -- $1/manifest.txt); do
+              if [ "$(git show $c:$1/manifest.txt | sed -n 's/^serial //p')" = "$2" ]; then git show $c:$1/manifest.txt > $3/manifest.txt; git show $c:$1/manifest.sig > $3/manifest.sig; return 0; fi; done; return 1; }
+          B='${{ inputs.serial }}'; [ -n "$B" ] || B=$(git show $P:beta/manifest.txt | sed -n 's/^serial //p')
+          S=$(git show $P:stable/manifest.txt | sed -n 's/^serial //p')
+          O=$(for c in $(git log --format=%H $P -- stable/manifest.txt); do git show $c:stable/manifest.txt | grep -q '^version 1\.5\.8\.' && { git show $c:stable/manifest.txt | sed -n 's/^serial //p'; break; }; done)
+          mkdir -p beta stable old
+          lists beta $B beta && lists stable $S stable && lists stable $O old || { echo "::error::a release list was not found"; exit 1; }
+          gh release download "r$B" -D beta -p vmlinuz -p '*.sfs'
+          gh release download "r$S" -D stable -p vmlinuz -p '*.sfs'
+          ls -la beta stable old
+          echo "::notice title=Roll back to stable::beta $B ($(sed -n 's/^version //p' beta/manifest.txt)) -> stable $S ($(sed -n 's/^version //p' stable/manifest.txt)); refusal with $O ($(sed -n 's/^version //p' old/manifest.txt))"
+      - name: This tree's rudolf-update
+        run: gcc -O2 -o rudolf-update iso/sys/rudolf-update.c -lcrypto -ldl
+      - name: t160r (Roll back to the last stable version)
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/t160r_t.py ../beta ../stable ../old ../rudolf-update
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: t160r, retention-days: 7, path: "run/t160r.txt\nrun/t160r*/qemu.log\nrun/sertun160r.log"}
