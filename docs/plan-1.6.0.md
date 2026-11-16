@@ -825,11 +825,35 @@ extensions; removal leaving nothing behind.
   Settings and not in the App Store; removal; the self-test's line; rudolfd's requests with an administrator's password
   only), qt/shell2/sysext60_t.js 16, rpklib_t.sh 15, devcert59_t.sh 14, selftest_t.sh 25.
 
-**Next:** the QEMU checks of 13.7 (an extension in use after a restart, a broken one left out, an update with and without
-the extension's build, Recovery mode, removal); rudolf-update fetching each installed extension's build for the new base
-before switching slots (now an update to a new base leaves them out, said, until their build is installed); extensions
-with kernel modules built in the kernel's own run (signed with its module key); the release check for promised
-extensions; the first run of extensions.yml (the owner's, for the first release with a base ABI).
+**Done (2026-11-16), the QEMU checks of 13.7** ("Before stable" 6): qt/sb/t160x_t.py on the real release (beta
+2026111611) in QEMU, 20/20 (Actions run 43914057850, workflow `Extensions QEMU check`, started by a push of
+.github/ext160-run.txt). An extension must be signed by a key in the base's /etc/rudolf/rpk-keys, which only the
+release key is, so the test makes TEST keys and two custom builds of the release (Developer mode with a TEST developer
+key): the release's kernel, base, browser and drivers layers, and a desktop layer that adds the TEST system key to
+rpk-keys and names a base ABI (build 1 in slot a, build 2 in slot b, "the new base"); the drive laid out as Install here
+leaves it (the release's boot image in front). Small test extensions: hello 1.0 (ABI 1) and 2.0 (ABI 2), a program
+and a start script; hang (its start script never ends); corrupt (its file changed once installed); badsig (its file
+replaced by the same package signed by another key); breakdesk (its start script stops rudolfd, so the desktop never
+answers). Checked: installed and in use after a restart (its program and start script, /usr a read-only overlay, the
+base never written); one for another base and one signed by another key refused at install; the hanging start script
+stopped after 20 s and the system started; the changed and the re-signed file left out with their reasons (Settings'
+list, the self-test, the health log); the start that never reached the desktop left breakdesk out at the next start,
+the rest in use; removal leaving nothing; an update to build 2 without hello's build for it (left out, "built for
+another Rudolf OS base", the update kept, the desktop up), then with hello 2.0 installed (in use); Roll back system to
+build 1 (hello 2.0 left out, the computer starts); Recovery mode without extensions.
+- **Found and fixed:** what the assembly said (an extension left out, a start script stopped, the trial's leaving
+  out) never reached System health: rudolf-init laid the extensions over before marking the data partition as in use
+  (/run/rudolf/persistent), so `rudolfd --health` wrote those lines to /run/rudolf/health.log, which nothing reads.
+  rudolf-init now marks it first (the run with this tree's rudolf-init in the custom builds, fix=1; the run on the
+  release as it is had 16/20, the four the health log's). Host test: sysext60_t.sh 17.
+- **Not changed:** an update to a new base leaves an extension out (said, the computer starts, the update is kept)
+  until its build for that base is installed; rudolf-update does not fetch the builds before switching slots yet. Safe
+  as it is (the update never fails because of an extension); the fetching is for 1.6.1, with the first published
+  extension (`usbprint`, moved to 1.6.1).
+
+**Next (1.6.1):** rudolf-update fetching each installed extension's build for the new base before switching slots;
+extensions with kernel modules built in the kernel's own run (signed with its module key); the release check for
+promised extensions; the first run of extensions.yml (the owner's, with `usbprint`).
 
 ### 14. A keyring for Linux apps: the Secret Service (added on 2026-11-14)
 Found on the Vivobook (2026-11-14): signing in to the Claude app for Linux with an e-mail address showed a notice that
@@ -1261,7 +1285,9 @@ Part 15's lists and the Vivobook's beta 2026111611 (the owner's reports of 2026-
 5. **Part 12's decision:** Native as the default for new installations after its week of betas (#384): the owner's
    call once 4 is clean; if not, new installations start on Standard for 1.6.0 and Native stays the choice in Settings.
 6. **Part 13's QEMU checks (13.7):** an extension in use after a restart, a broken one left out, an update with and
-   without its extension: the update path must be safe before stable.
+   without its extension: the update path must be safe before stable. **Done (2026-11-16):** qt/sb/t160x_t.py 20/20 on
+   the real release (Part 13's note); one fix (the extensions' lines in System health). Left for 1.6.1: rudolf-update
+   fetching the extensions' builds for a new base before switching (an update leaves them out until then, safely).
 7. **The official recovery (Part 15, 1.5.9 8.4 and 8.5):** the repair at each start (recovery.efi and system/r checked
    and restored from the official release), Return to official restoring rudolf.efi; then recovery.efi on the Vivobook
    with the owner present; 8.7 with Secure Boot in QEMU (OVMF with test keys).
