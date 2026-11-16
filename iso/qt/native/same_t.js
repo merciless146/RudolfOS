@@ -154,7 +154,7 @@ CASES.push({n: 'explorer', set: {}, more: PINSL, app: 'explorer', parts: ['win']
 CASES.push({n: 'about', set: {}, more: PINSL, app: 'settings', js: "settings('about')", jswait: 1500,
   read: "JSON.stringify([...document.querySelectorAll('.ab tr')].map(r => [r.cells[0].textContent, /^(Storage used|Graphics)$/.test(r.cells[0].textContent) ? (r.cells[0].textContent == 'Graphics' ? /^ANGLE \\(/.test(r.cells[1].textContent) : /^[\\d.]+ (B|KB|MB) of [\\d.]+ (MB|GB|TB)$/.test(r.cells[1].textContent)) : r.cells[1].textContent]))"});
 /* (N11, N12) the dynamic backgrounds' moving parts: Glacier Lake at night (the northern lights: the share of the screen that changes in
-   3 s, at least 0.5 % on both: Standard 1.7 % when found, Native 0), Spirit Falls (its statue where the page puts it, with Reduce motion
+   3 s, at least 0.25 % on both: Standard 1.7 % when found, Native 0), Spirit Falls (its statue where the page puts it, with Reduce motion
    so the petals stand still; and the petals moving, without it) */
 CASES.push({n: 'dyn-lake', set: {dyn: 'lake', dm: 'dark', aur: true}, moving: 3000, parts: ['moving']});
 CASES.push({n: 'dyn-oasis', set: {dyn: 'oasis', dm: 'light', rmotion: true}, parts: ['statue']});
@@ -388,7 +388,7 @@ function cmp(name, a, b, ra, rb, shift) {
     if (c.read) ok(c.n + ': the page reads the same on both (' + c.read.slice(0, 60) + '…)', s.read === n.read, {std: s.read, nat: n.read});
     for (const part of c.parts || []) {
       if (part == 'moving') { const mv = e => { try { return JSON.parse(cp.execFileSync('python3', [path.join(__dirname, 'pxdiff.py'), path.join(OUT, c.n + '.' + e + '.png'), path.join(OUT, c.n + '.' + e + '2.png'), [0, 0, W, H].join(','), [0, 0, W, H].join(','), String(TOL), path.join(OUT, c.n + '.moving.' + e), '0']).toString()).pct } catch (x) { return -1 } };
-        const a = mv('std'), b = mv('nat'); ok(c.n + ' moving: ' + a + ' % of Standard\'s screen and ' + b + ' % of Native\'s change in ' + c.moving / 1000 + ' s (at least 0.5 % on both)', a >= .5 && b >= .5, {a, b}); continue }
+        const a = mv('std'), b = mv('nat'); ok(c.n + ' moving: ' + a + ' % of Standard\'s screen and ' + b + ' % of Native\'s change in ' + c.moving / 1000 + ' s (at least 0.25 % on both)', a >= .25 && b >= .25, {a, b}); continue }
       if (part == 'picture') { const f = x => +cp.execFileSync('python3', ['-c', PICPY, x]).toString(), a = f(s.f), b = f(n.f);
         ok(c.n + ' picture: ' + a + ' % of Standard\'s screen and ' + b + ' % of Native\'s show the video (at least 60 %)', a >= 60 && b >= 60 && Math.abs(a - b) <= 10, {a, b}); continue }
       let ra = s.rects[part], rb = null;

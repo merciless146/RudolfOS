@@ -634,6 +634,17 @@ branch: it needs its test cases' js, read and nowin).
   and N18's underflow lines (first PR). On the Vivobook: About's Graphics row on both engines (Chromium's ANGLE may use Vulkan there,
   which names the chip differently), the folder picker with a USB drive, the moving backgrounds' smoothness with real drawing.
 
+Found while doing the findings, for items 11 and 12 (not changed yet): every one-app page runs the page's module-level timers as
+Standard's one page does, so with several app windows open some background work runs once per window: the Calendar's alarm check
+(apps25b.js, every minute: an alarm could be said once per open window), game mode (games58.js gameTick, gamesleep59.js), the home
+folder's refresh (home56.js, 15 s), Tor's keep-alive (tor59.js, 20 s), the session's save (shell25.js, 20 s) and the lag meter (500
+ms); with no app window open, none of them runs (and rudolfd's events wait for a page, as item 3 noted). The way the plan's item 12
+asks for: a first module (before core25.js) that, in one-app mode, holds back the timers the modules start while the page loads, and
+starts in an app's page only those its window needs (the theme's and the icons' minute ticks); one hidden page of the shell's
+(#app=do-svc), started at sign-in, runs the others once for the whole desktop (alarms, game mode, events/wait, Tor, the home folder),
+as Standard's one page does. Measured on this host (WebKitGTK 2.52.6, --draw=soft): opening the first app adds about 230 MB of
+WebKit web process, 60 MB of its network process and 90 MB in rudolf-native; the next app about 30 MB more.
+
 **Next:** items 9 to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md
 after them. Native is not
 the default yet. The security line's next steps (as of 2026-11-14): docs/plan-1.5.9.md 15.3's third step (the QEMU check
