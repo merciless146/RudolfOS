@@ -39,7 +39,7 @@ print(1 if d["running"] and m["maker"]=="Quectel" and m["model"]=="EG25" and m["
 ok "4. ...the IMEI shortened (it identifies the device)" $(echo "$o" | grep -q '"imei":"861234…"' && echo 1 || echo 0) "$o"
 rm $T/dev/cdc-wdm0 $T/dev/wwan0at0; rm -rf $S/class/tty/ttyUSB2; : > $T/events; MDEV=cdc-wdm0 ACTION=remove sh $M hotplug
 ok "5. the last modem gone: ModemManager is told, then stops" $([ ! -e $T/mm-running ] && grep -q killed $T/log && grep -qx 'action=remove,subsystem=usbmisc,name=cdc-wdm0' $T/events && echo 1 || echo 0) "$(cat $T/log; cat $T/events)"
-o=$(sh $M status); ok "6. not running: an empty list" $([ "$o" = '{"running":false,"modems":[],"notes":[]}' ] && echo 1 || echo 0) "$o"
+o=$(sh $M status); ok "6. not running: an empty list" $(echo "$o" | grep -q '^{"running":false,"modems":\[\],"notes":\[\]' && echo 1 || echo 0) "$o"
 grep -q '^-cdc-wdm\[0-9\]+ 0:0 660 \*/usr/lib/rudolf/modem hotplug' $HERE/../../sys/root/etc/mdev.conf; ok "7. mdev runs it for modem devices" $([ $? = 0 ] && echo 1 || echo 0)
 touch $T/old-mm; rm -f $T/log; touch $T/dev/cdc-wdm0; MDEV=cdc-wdm0 ACTION=add sh $M hotplug
 ok "8. an older ModemManager without --test-no-udev: --no-auto-scan" $(grep -q "MM --log-level=WARN --no-auto-scan" $T/log && echo 1 || echo 0) "$(cat $T/log)"

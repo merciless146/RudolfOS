@@ -601,6 +601,12 @@ static void api_net(struct req *r)
 		/* 1.5.9: a wired link held back because the internet does not answer through it (udhcpc.sh) */
 		snprintf(p, sizeof p, RUN "/nointernet/%s", e->d_name);
 		if (!access(p, F_OK)) sadd(&s, ",\"internet\":false");
+		/* 1.6.0 (plan Parts 3 and 5): a cellular modem's connection (/usr/lib/rudolf/modem): its operator, network type and
+		   signal, for the taskbar's network icon on both desktops */
+		snprintf(p, sizeof p, RUN "/cellular/%s", e->d_name);
+		if (!access(p, F_OK)) { snprintf(p, sizeof p, RUN "/cellinfo/%s", e->d_name); char *ci = slurp(p, NULL); sadd(&s, ",\"cellular\":true");
+			if (ci) { trim(ci); char *a = strchr(ci, '|'), *b = a ? strchr(a + 1, '|') : NULL; if (b) { *a = 0; *b = 0; sadd(&s, ",\"carrier\":"); sjson(&s, ci); sadd(&s, ",\"tech\":"); sjson(&s, a + 1);
+				int sg = atoi(b + 1); if (sg >= 0 && sg <= 100) sadd(&s, ",\"signal\":%d", sg); } free(ci); } }
 		snprintf(p, sizeof p, "/sys/class/net/%s/speed", e->d_name);
 		if (!wifi) sadd(&s, ",\"speed\":%lld", st && !strcmp(st, "up") ? read_ll(p, -1) : -1LL);
 		if (wifi && st && !strcmp(st, "up") && safe_word(e->d_name, 16)) {
@@ -3513,7 +3519,7 @@ static void api_devlink(struct req *r, const char *what, int post)
 static void health_path(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/health.log" : PERSIST "/var/log/health.log"); }
 static int health_kind_ok(const char *k)
 {
-	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", "tor", "extension", NULL };
+	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", "tor", "extension", "modem", NULL };
 	for (int i = 0; K[i]; i++) if (k && !strcmp(k, K[i])) return 1;
 	return 0;
 }

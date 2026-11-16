@@ -5,6 +5,9 @@
 #   firewall remote on|off  let the local network reach remote access (port 8443) or not (rudolf-remote)
 #   firewall hotspot IF|off  (1.5.9) let the devices on this computer's hotspot (IF) ask it for an address and names
 #   firewall status         "on N" (N incoming connections blocked since start-up) or "off"
+#   firewall cellular add|del IF  (1.6.0 Part 3) a cellular modem's interface: filtered as every other, and never
+#                           counted as the local network (remote access is not offered on it: an operator's
+#                           private addresses are other subscribers, not this home's devices)
 # Outgoing connections are all allowed. Incoming: the computer itself (loopback), replies to connections it made,
 # DHCP replies, the ICMP a network needs (ping, too big, unreachable, IPv6 neighbour discovery), and remote access
 # from private addresses while it is on. Everything else is counted and dropped.
@@ -19,6 +22,7 @@ table inet rudolf
 delete table inet rudolf
 table inet rudolf {
 	counter blocked { }
+	set cellular { type ifname; }
 	chain input {
 		type filter hook input priority filter; policy accept;
 		iif "lo" accept
@@ -41,11 +45,14 @@ EOF
 }
 remote_rules() {
 	echo "flush chain inet rudolf remote"
+	echo 'add rule inet rudolf remote iifname @cellular return'
 	[ "$1" = on ] && cat <<'EOF'
 add rule inet rudolf remote ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } tcp dport 8443 accept
 add rule inet rudolf remote ip6 saddr { fe80::/10, fc00::/7 } tcp dport 8443 accept
 EOF
 }
+CELL=/run/rudolf/firewall-cellular
+cell_rules() { [ -s "$CELL" ] && while read -r i; do printf 'add element inet rudolf cellular { "%s" }\n' "$i"; done < "$CELL"; true; }
 HS=/run/rudolf/firewall-hotspot
 hotspot_rules() {
 	echo "flush chain inet rudolf hotspot"
@@ -59,12 +66,12 @@ case "$1" in
 start)
 	[ -f "$OFF" ] && exit 0
 	rules | nftf || exit 1
-	[ -f "$REM" ] && remote_rules on | nftf
+	remote_rules "$([ -f "$REM" ] && echo on)" | nftf; cell_rules | nftf
 	[ -s "$HS" ] && hotspot_rules "$(cat $HS)" | nftf
 	exit 0;;
 on)
 	rm -f "$OFF"; rules | nftf || exit 1
-	[ -f "$REM" ] && remote_rules on | nftf
+	remote_rules "$([ -f "$REM" ] && echo on)" | nftf; cell_rules | nftf
 	[ -s "$HS" ] && hotspot_rules "$(cat $HS)" | nftf
 	exit 0;;
 hotspot)
@@ -76,7 +83,11 @@ off)
 remote)
 	if [ "$2" = on ]; then : > "$REM"; else rm -f "$REM"; fi
 	loaded && remote_rules "$2" | nftf; exit 0;;
+cellular)
+	case "$3" in ""|*[!A-Za-z0-9_.-]*) echo "an interface's name" >&2; exit 2;; esac
+	mkdir -p /run/rudolf; touch "$CELL"; grep -vx "$3" "$CELL" > "$CELL.new"; [ "$2" = add ] && echo "$3" >> "$CELL.new"; mv "$CELL.new" "$CELL"
+	if loaded; then if [ "$2" = add ]; then printf 'add element inet rudolf cellular { "%s" }\n' "$3" | nftf; else printf 'delete element inet rudolf cellular { "%s" }\n' "$3" | nftf 2>/dev/null; fi; fi; exit 0;;
 status)
 	if loaded; then echo "on $(nft list counter inet rudolf blocked 2>/dev/null | sed -n 's/.*packets \([0-9]*\).*/\1/p' | head -1)"; else echo off; fi;;
-*) echo "usage: firewall start|on|off|remote on|off|hotspot IF|off|status" >&2; exit 2;;
+*) echo "usage: firewall start|on|off|remote on|off|hotspot IF|off|cellular add|del IF|status" >&2; exit 2;;
 esac

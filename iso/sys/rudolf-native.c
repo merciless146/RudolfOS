@@ -77,6 +77,7 @@ static Acct ACC[32]; static int NACC, GUEST_OK, SETUP; static char LASTACC[80];
 static char USER_ID[80], USER_N[128], USER_R[12];   /* signed in ("" = not) */
 static int LOCKED;
 /* the tray */
+static int NET_CELL, NET_SIG = -1;   /* (1.6.0 Part 5: mobile data in use, its signal 0-100: net31.js's bars) */
 static int NET_RSSI = 1, NET_UP = -1, NET_WIFI, VOL = -1, MUTED, BAT = -1, CHARGING, MIC_N = 0, MIC_MUTED;   /* (MIC_N: apps using a microphone, call59.js) */ static char NET_DESC[200];   /* (net31.js net31Desc of the network used) */
 
 /* where windows go: below the development link's banner, beside the taskbar */
@@ -1622,7 +1623,10 @@ static void ic_net(cairo_t *cr, double x, double y, int filt)
 	int st = NET_UP > 0 ? 2 : 0;   /* on, else off */
 	RGBA col = st == 2 ? cx("#34d399", 1) : cx("#9ca3af", 1), dim = cx("#4b5563", 1);
 	cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND); cairo_set_line_join(cr, CAIRO_LINE_JOIN_MITER); cairo_set_line_width(cr, 2);
-	if (NET_WIFI) {
+	if (NET_CELL) {   /* (1.6.0 Part 5: net31.js's four bars from the modem's signal) */
+		int bars = st != 2 ? 0 : NET_SIG < 0 ? 4 : NET_SIG > 75 ? 4 : NET_SIG > 50 ? 3 : NET_SIG > 25 ? 2 : NET_SIG > 0 ? 1 : 0;
+		for (int k = 0; k < 4; k++) { rrect(cr, 2 + 5 * k, 17 - 4 * k, 4, 4 + 4 * k, 1); filt_src(cr, k < bars ? col : dim, filt); cairo_fill(cr); }
+	} else if (NET_WIFI) {
 		int bars = st != 2 || NET_RSSI > 0 ? 3 : NET_RSSI >= -60 ? 3 : NET_RSSI >= -70 ? 2 : 1;
 		static const double A[3][3] = {{8.5, 16, 5}, {5, 12.5, 10}, {2, 9, 15}}; static const double DX[3] = {7, 14, 20};
 		for (int k = 0; k < 3; k++) { svg_arc_lr(cr, A[k][0], A[k][1], A[k][2], DX[k], 1); filt_src(cr, k < bars ? col : dim, filt); cairo_stroke(cr); }
@@ -2624,17 +2628,21 @@ static void tray_load(void)
 	   address, else the first one up with an address; Wi-Fi's signal from its rssi */
 	JV *v = jget("/api/net"); int up = 0, wifi = 0, anywifi = 0, n = 0, pick = -1;
 	JV *ifs = jprop(v, "interfaces");
-	for (int pass = 0; pass < 2 && pick < 0; pass++) for (int i = 0; i < 16; i++) { JV *o = jat(ifs, i); if (!o) break; if (jbool(o, "virtual")) continue; char ip[64] = "", st[16] = "";
-		jstr(o, "ip", ip, sizeof ip); jstr(o, "state", st, sizeof st); if (!pass) { n++; if (jbool(o, "wireless")) anywifi = 1; }
+	/* (1.6.0 Parts 3 and 5: a cellular modem's connection counts as real, also IPv6-only, where the CLAT carries the default route) */
+	int clat = 0; for (int i = 0; i < 16; i++) { JV *o = jat(ifs, i); if (!o) break; char nm[32] = ""; jstr(o, "name", nm, sizeof nm); if (!strcmp(nm, "clat") && jbool(o, "default")) clat = 1; }
+	for (int pass = 0; pass < 2 && pick < 0; pass++) for (int i = 0; i < 16; i++) { JV *o = jat(ifs, i); if (!o) break; if (jbool(o, "virtual") && !jbool(o, "cellular")) continue; char ip[64] = "", st[16] = "";
+		jstr(o, "ip", ip, sizeof ip); jstr(o, "state", st, sizeof st); if (!pass) { n++; if (jbool(o, "wireless")) anywifi = 1; if (clat && jbool(o, "cellular")) { pick = i; break; } }
 		if (ip[0] && (pass ? !strcmp(st, "up") : jbool(o, "default"))) { pick = i; break; } }
-	NET_RSSI = 1;
+	NET_RSSI = 1; NET_CELL = 0; NET_SIG = -1;
 	if (pick >= 0) { JV *o = jat(ifs, pick); up = 1; wifi = jbool(o, "wireless"); JV *r = jprop(o, "rssi"); if (r && r->t == 2) NET_RSSI = (int)r->n;
 		/* (net31Desc: Wi-Fi with its name (wpa_cli's escapes undone: wfDecode), else Ethernet with its name and speed) */
 		char nm[64] = "", ss[160] = "", dec[160] = ""; jstr(o, "name", nm, sizeof nm); jstr(o, "ssid", ss, sizeof ss);
 		{ int j = 0; for (const char *c = ss; *c && j < (int)sizeof dec - 1; c++) { if (*c == '\\' && c[1]) { c++; if (*c == 'x' && g_ascii_isxdigit(c[1]) && g_ascii_isxdigit(c[2])) { dec[j++] = (char)(g_ascii_xdigit_value(c[1]) * 16 + g_ascii_xdigit_value(c[2])); c += 2; }
 				else dec[j++] = *c == 'n' ? '\n' : *c == 'r' ? '\r' : *c == 't' ? '\t' : *c == 'e' ? 27 : *c; } else dec[j++] = *c; } dec[j] = 0; }
 		double sp = jnum(o, "speed", 0); char spd[32] = ""; if (sp > 0) { if (sp >= 1000) { char g[24]; g_ascii_formatd(g, sizeof g, "%g", sp / 1000); snprintf(spd, sizeof spd, ", %s Gb/s", g); } else snprintf(spd, sizeof spd, ", %.0f Mb/s", sp); }
-		if (wifi) snprintf(NET_DESC, sizeof NET_DESC, "Wi-Fi — connected%s%s%s", dec[0] ? " (" : "", dec, dec[0] ? ")" : ""); else snprintf(NET_DESC, sizeof NET_DESC, "Ethernet — connected (%s%s)", nm, spd); }
+		if (jbool(o, "cellular")) { char ca[64] = "", te[16] = "", ct[96]; jstr(o, "carrier", ca, sizeof ca); jstr(o, "tech", te, sizeof te); NET_CELL = 1; JV *sg = jprop(o, "signal"); if (sg && sg->t == 2) NET_SIG = (int)sg->n;
+			snprintf(ct, sizeof ct, "%s%s%s", ca, ca[0] && te[0] ? " · " : "", te); snprintf(NET_DESC, sizeof NET_DESC, "Mobile data — connected%s%s%s", ct[0] ? " (" : "", ct, ct[0] ? ")" : ""); }
+		else if (wifi) snprintf(NET_DESC, sizeof NET_DESC, "Wi-Fi — connected%s%s%s", dec[0] ? " (" : "", dec, dec[0] ? ")" : ""); else snprintf(NET_DESC, sizeof NET_DESC, "Ethernet — connected (%s%s)", nm, spd); }
 	else { wifi = anywifi || !n; NET_DESC[0] = 0; }
 	NET_UP = v ? up : -1; NET_WIFI = wifi; jfree(v);
 	v = jget("/api/volume"); if (v && jbool(v, "ok")) { VOL = (int)jnum(v, "volume", -1); MUTED = jbool(v, "muted"); } else VOL = -1; jfree(v);
@@ -4158,16 +4166,42 @@ static int nt_why(const Note *n)
 }
 /* (1.6.0 Part 2: the ninth, Airplane mode, is mobile60.js's: rudolfd's mobile/airplane, read when quick settings open, set
    from here in a thread of its own: turning the modems off can take seconds) */
-static const char *const QSI[9] = {"🌙", "🌅", "🔕", "🗣️", "🔍", "◐", "⌨️", "🖐️", "✈️"},
-	*const QSL[9] = {"Dark mode", "Night light", "Do not disturb", "Screen reader", "Magnifier", "High contrast", "On-screen keyboard", "Touch mode", "Airplane mode"};
+static const char *const QSI[10] = {"🌙", "🌅", "🔕", "🗣️", "🔍", "◐", "⌨️", "🖐️", "✈️", "📶"},
+	*const QSL[10] = {"Dark mode", "Night light", "Do not disturb", "Screen reader", "Magnifier", "High contrast", "On-screen keyboard", "Touch mode", "Airplane mode", "Mobile data"};
 static int AIR_ON;
+/* (1.6.0 Part 3: the tenth, Mobile data, only with a modem whose SIM is unlocked: connected or not, mobile60.js's) */
+static int QSN = 9, MOB_ID = -1, MOB_ON;
+static void mob_read(void)
+{
+	JV *v = jget("/api/mobile/status"), *a = jprop(v, "modems"); MOB_ID = -1; MOB_ON = 0;
+	for (int i = 0; a && a->t == 4 && i < a->len; i++) { JV *o = jat(a, i); char lk[16] = "", st[24] = "", fl[24] = ""; jstr(o, "locked", lk, sizeof lk); jstr(o, "state", st, sizeof st); jstr(o, "failed", fl, sizeof fl);
+		if (!jbool(o, "sim") || (lk[0] && strcmp(lk, "none") && strcmp(lk, "--")) || !strcmp(st, "failed")) continue;
+		MOB_ID = (int)jnum(o, "id", 0); MOB_ON = !strcmp(st, "connected"); break; }
+	jfree(v); QSN = MOB_ID >= 0 ? 10 : 9;
+}
+static gboolean mob_done(gpointer p) { (void)p; mob_read(); if (FLK == FL_QS && FLAREA) gtk_widget_queue_draw(FLAREA); return G_SOURCE_REMOVE; }
+static gpointer mob_thread(gpointer p) { char q[64]; snprintf(q, sizeof q, "/api/mobile/connect?id=%d&on=%d", MOB_ID, GPOINTER_TO_INT(p)); http("POST", q, NULL, 0, NULL); g_idle_add(mob_done, NULL); return NULL; }
+static void mob_set(int on) { if (MOB_ID < 0) return; MOB_ON = on; if (FLAREA) gtk_widget_queue_draw(FLAREA); g_thread_unref(g_thread_new("mobile", mob_thread, GINT_TO_POINTER(on))); }
+/* (1.6.0 Part 3: the cellular connection's notices, rudolfd's mobile/notes, as the page's notify shows them: a toast and the centre) */
+static long CELL_SEEN = -1;
+static void fget_note4(void *v, const char *k, char *o, size_t n) { const char *const *f = v; snprintf(o, n, "%s", !strcmp(k, "t") ? f[0] : !strcmp(k, "b") ? f[1] : !strcmp(k, "k") ? f[2] : !strcmp(k, "at") ? f[3] : ""); }
+static gboolean tick_cell(gpointer d)
+{
+	(void)d; char q[64]; snprintf(q, sizeof q, "/api/mobile/notes?since=%ld", CELL_SEEN < 0 ? 0 : CELL_SEEN); JV *v = jget(q); if (!v) return G_SOURCE_CONTINUE;
+	long last = (long)jnum(v, "last", 0); JV *a = jprop(v, "notes");
+	if (CELL_SEEN >= 0 && USER_ID[0]) for (int i = 0; a && a->t == 4 && i < a->len; i++) { JV *o = jat(a, i); char t[160] = "", b[300] = "", at[40];
+		jstr(o, "t", t, sizeof t); jstr(o, "b", b, sizeof b); snprintf(at, sizeof at, "%.0f", g_get_real_time() / 1000.0);
+		if (LOCKED && strncmp(t, "💬", strlen("💬"))) continue;   /* (Part 6: a new message's notice also on the lock screen: its sender only, unless allowed) */
+		const char *f[4] = {t, b, "info", at}; nt_notef(fget_note4, (void *)f); toast_text(t, b, 8000); }
+	CELL_SEEN = last; jfree(v); return G_SOURCE_CONTINUE;
+}
 static void air_read(void) { JV *v = jget("/api/mobile/airplane"); if (v) AIR_ON = jbool(v, "on"); jfree(v); }
 static gboolean air_done(gpointer p) { AIR_ON = GPOINTER_TO_INT(p) - 1; if (FLK == FL_QS && FLAREA) gtk_widget_queue_draw(FLAREA); return G_SOURCE_REMOVE; }
 static gpointer air_thread(gpointer p) { char q[48]; snprintf(q, sizeof q, "/api/mobile/airplane?on=%d", GPOINTER_TO_INT(p)); http("POST", q, NULL, 0, NULL);
 	JV *v = jget("/api/mobile/airplane"); int on = v ? jbool(v, "on") : GPOINTER_TO_INT(p); jfree(v); g_idle_add(air_done, GINT_TO_POINTER(on + 1)); return NULL; }
 static void air_set(int on) { AIR_ON = on; if (FLAREA) gtk_widget_queue_draw(FLAREA); g_thread_unref(g_thread_new("airplane", air_thread, GINT_TO_POINTER(on))); }
-static int qs_get(int i) { switch (i) { case 0: return !strcmp(S.dm, "dark"); case 1: return S.nl; case 2: return S.dnd; case 3: return S.sr; case 4: return S.mag; case 5: return S.hc; case 6: return S.vk; case 8: return AIR_ON; default: return S.touch; } }
-static void qs_set(int i, int v) { switch (i) { case 0: snprintf(S.dm, sizeof S.dm, "%s", v ? "dark" : "light"); break; case 1: S.nl = v; break; case 2: S.dnd = v; break; case 3: S.sr = v; break; case 4: S.mag = v; break; case 5: S.hc = v; break; case 6: S.vk = v; break; case 8: AIR_ON = v; break; default: S.touch = v; } }
+static int qs_get(int i) { switch (i) { case 0: return !strcmp(S.dm, "dark"); case 1: return S.nl; case 2: return S.dnd; case 3: return S.sr; case 4: return S.mag; case 5: return S.hc; case 6: return S.vk; case 8: return AIR_ON; case 9: return MOB_ON; default: return S.touch; } }
+static void qs_set(int i, int v) { switch (i) { case 0: snprintf(S.dm, sizeof S.dm, "%s", v ? "dark" : "light"); break; case 1: S.nl = v; break; case 2: S.dnd = v; break; case 3: S.sr = v; break; case 4: S.mag = v; break; case 5: S.hc = v; break; case 6: S.vk = v; break; case 8: AIR_ON = v; break; case 9: MOB_ON = v; break; default: S.touch = v; } }
 /* the line box of writing with pictures in it (a fallback font's taller line, as Chromium's) */
 static double fl_line(cairo_t *cr, const char *t, int wt, double px)
 {
@@ -4178,15 +4212,15 @@ static void qs_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int
 {
 	RGBA fg = cx(dark ? "#e2e8f0" : "#111827", 1), mut = cx(dark ? "#94a3b8" : "#6b7280", 1); double W = 340, cw = (W - 12) / 3, l11 = fl_lh(cr, 400, 11), l20 = fl_lh(cr, 400, 20);
 	/* the tiles' heights: each row as tall as its tallest (a name on two lines) */
-	int nl8[9]; for (int i = 0; i < 9; i++) { PangoLayout *pl = css_layout(cr, QSL[i], UIFAM, 400, 11); pango_layout_set_width(pl, (int)((cw - 10) * PANGO_SCALE)); pango_layout_set_wrap(pl, PANGO_WRAP_WORD); nl8[i] = pango_layout_get_line_count(pl); g_object_unref(pl); }
-	double rh[3]; for (int r = 0; r < 3; r++) { int m = 1; for (int c = 0; c < 3; c++) { int i = r * 3 + c; if (i < 9 && nl8[i] > m) m = nl8[i]; } rh[r] = 2 + 20 + l20 + 4 + m * l11; }
+	int nl8[10]; for (int i = 0; i < QSN; i++) { PangoLayout *pl = css_layout(cr, QSL[i], UIFAM, 400, 11); pango_layout_set_width(pl, (int)((cw - 10) * PANGO_SCALE)); pango_layout_set_wrap(pl, PANGO_WRAP_WORD); nl8[i] = pango_layout_get_line_count(pl); g_object_unref(pl); }
+	int NR = (QSN + 2) / 3; double rh[4] = {0}; for (int r = 0; r < NR; r++) { int m = 1; for (int c = 0; c < 3; c++) { int i = r * 3 + c; if (i < QSN && nl8[i] > m) m = nl8[i]; } rh[r] = 2 + 20 + l20 + 4 + m * l11; }
 	double l12 = fl_lh(cr, 400, 12), bh = 3 + 3 + 2 + fl_line(cr, "🔒 Lock", 400, 13);
-	double ch = rh[0] + rh[1] + rh[2] + 12 + 8 + l12 + 10 + bh;
+	double ch = rh[0] + rh[1] + rh[2] + rh[3] + (NR - 3) * 6 + 12 + 8 + l12 + 10 + bh;
 	FLW = W + 22; FLH = ch + 22; FLX = vw - 8 - FLW; FLY = top ? 52 + TOPRES / Z : vh - 52 - FLH;
 	if (!draw) return;
 	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 12; shd_add(&b, 0, 14, 36, cx("#000000", .35), 0); box_paint(cr, FLX, FLY, FLW, FLH, &b);
 	double x = FLX + 11, y = FLY + 11;
-	for (int i = 0; i < 9; i++) { int r = i / 3, c = i % 3, on = qs_get(i); double tx = x + c * (cw + 6), ty = y; for (int q = 0; q < r; q++) ty += rh[q] + 6;
+	for (int i = 0; i < QSN; i++) { int r = i / 3, c = i % 3, on = qs_get(i); double tx = x + c * (cw + 6), ty = y; for (int q = 0; q < r; q++) ty += rh[q] + 6;
 		Box t; memset(&t, 0, sizeof t); t.rad = 10; t.bw = 1; if (on) { t.bg = ca(accent(), 1); t.bc = ca(accent(), 1); } else { t.bg = cx(dark ? "#1e293b" : "#f3f4f6", 1); t.bc = cx(dark ? "#334155" : "#d1d5db", 1); }
 		box_paint(cr, tx, ty, cw, rh[r], &t); RGBA ink = on ? cx("#ffffff", 1) : fg;
 		double iw = css_width(cr, QSI[i], UIFAM, 400, 20); css_text(cr, QSI[i], UIFAM, 400, 20, tx + (cw - iw) / 2, ty + 11, l20, ink, 0);
@@ -4195,7 +4229,7 @@ static void qs_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int
 		for (int k = 0; k < n; k++) { PangoLayoutLine *L = pango_layout_get_line_readonly(pl, k); PangoRectangle lr; pango_layout_line_get_extents(L, NULL, &lr);
 			double lw = lr.width / (double)PANGO_SCALE; cairo_move_to(cr, tx + 5 + (cw - 10 - lw) / 2 - lr.x / (double)PANGO_SCALE, round(ty + 11 + l20 + 4 + k * l11 + a)); pango_cairo_show_layout_line(cr, L); }
 		g_object_unref(pl); char k[16]; snprintf(k, sizeof k, "qs:%d", i); fl_btn(k, tx, ty, cw, rh[r]); }
-	y += rh[0] + rh[1] + rh[2] + 12 + 8;
+	y += rh[0] + rh[1] + rh[2] + rh[3] + (NR - 3) * 6 + 12 + 8;
 	{ char t[260]; snprintf(t, sizeof t, "🌐 %s", NET_UP > 0 && NET_DESC[0] ? NET_DESC : "Not connected"); css_text(cr, t, UIFAM, 400, 12, x, y, l12, mut, W); }
 	y += l12 + 10;
 	static const char *const QB[3] = {"🔒 Lock", "⚙️ Settings", "⏻ Power"}, *const QBK[3] = {"lock", "settings", "power"};
@@ -4258,7 +4292,7 @@ static void cal_cols(cairo_t *cr, int y, int mo, double total, double *cw)
 static int ev_cmp(const void *a, const void *b) { const CalEv *x = a, *y = b; char p[40], q[40]; snprintf(p, sizeof p, "%s%s", x->d, x->t); snprintf(q, sizeof q, "%s%s", y->d, y->t); return strcmp(p, q); }
 /* ---- (item 3's last part) the network's pop-up (net31.js net31Pop, .np: the adapters, the one in use in the accent colour, the
    others tinted when hovered, Network Settings…; placed as flyPlace places it before the Wi-Fi part is filled in) */
-typedef struct { char name[32], ssid[96], ip[64], state[16]; int wireless, speed; } NetIf;
+typedef struct { char name[32], ssid[96], ip[64], state[16], cell[96]; int wireless, speed, cellular; } NetIf;
 static NetIf NIF[8]; static int NNIF, NCUR = -1, NWTOOLS;
 /* (wfDecode: the SSID as wpa_supplicant writes it, \xNN for its bytes) */
 static void wf_decode(const char *s, char *o, size_t n)
@@ -4270,10 +4304,12 @@ static void wf_decode(const char *s, char *o, size_t n)
 static void net_read(void)
 {
 	JV *v = jget("/api/net"); NNIF = 0; NCUR = -1; NWTOOLS = v ? jbool(v, "wifiTools") : 0; JV *ifs = jprop(v, "interfaces"); int dflt[8] = {0};
-	for (int i = 0; ifs && i < 32 && NNIF < 8; i++) { JV *o = jat(ifs, i); if (!o) break; if (jbool(o, "virtual")) continue; NetIf *f = &NIF[NNIF]; memset(f, 0, sizeof *f);
+	int clat = 0; for (int i = 0; ifs && i < 32; i++) { JV *o = jat(ifs, i); if (!o) break; char nm[32] = ""; jstr(o, "name", nm, sizeof nm); if (!strcmp(nm, "clat") && jbool(o, "default")) clat = 1; }
+	for (int i = 0; ifs && i < 32 && NNIF < 8; i++) { JV *o = jat(ifs, i); if (!o) break; if (jbool(o, "virtual") && !jbool(o, "cellular")) continue; NetIf *f = &NIF[NNIF]; memset(f, 0, sizeof *f);
+		if ((f->cellular = jbool(o, "cellular"))) { char ca[64] = "", te[16] = ""; jstr(o, "carrier", ca, sizeof ca); jstr(o, "tech", te, sizeof te); snprintf(f->cell, sizeof f->cell, "%s%s%s", ca, ca[0] && te[0] ? " · " : "", te); if (clat) dflt[NNIF] = 2; }
 		jstr(o, "name", f->name, sizeof f->name); char ss[96] = ""; jstr(o, "ssid", ss, sizeof ss); wf_decode(ss, f->ssid, sizeof f->ssid); jstr(o, "ip", f->ip, sizeof f->ip); jstr(o, "state", f->state, sizeof f->state);
-		f->wireless = jbool(o, "wireless"); f->speed = (int)jnum(o, "speed", 0); dflt[NNIF] = jbool(o, "default"); NNIF++; }
-	for (int i = 0; i < NNIF && NCUR < 0; i++) if (dflt[i] && NIF[i].ip[0]) NCUR = i;
+		f->wireless = jbool(o, "wireless"); f->speed = (int)jnum(o, "speed", 0); if (!dflt[NNIF]) dflt[NNIF] = jbool(o, "default"); NNIF++; }
+	for (int i = 0; i < NNIF && NCUR < 0; i++) if (dflt[i] && (NIF[i].ip[0] || dflt[i] == 2)) NCUR = i;
 	for (int i = 0; i < NNIF && NCUR < 0; i++) if (NIF[i].ip[0] && !strcmp(NIF[i].state, "up")) NCUR = i;
 	jfree(v);
 }
@@ -4321,9 +4357,9 @@ static void fl_net(cairo_t *cr, int draw, int dark, int top)
 		RGBA bg = on ? ca(accent(), 1) : fl_hov(key) ? ca(accent(), .18) : (RGBA){0, 0, 0, 0};
 		if (bg.a > 0) { Box r; memset(&r, 0, sizeof r); r.bg = bg; r.rad = 6; box_paint(cr, x, y, 330, rh, &r); }
 		RGBA c1 = on ? cx("#ffffff", 1) : ink, c2 = on ? cx("#ffffff", 1) : cx("#15803d", 1);
-		char nm2[200]; if (f->wireless) { if (f->ssid[0] && f->ip[0]) snprintf(nm2, sizeof nm2, "Wi-Fi · %s", f->ssid); else snprintf(nm2, sizeof nm2, "Wi-Fi"); } else snprintf(nm2, sizeof nm2, "Ethernet (%s)", f->name);
-		const char *st = f->ip[0] ? "Connected" : !strcmp(f->state, "up") ? "No address" : f->wireless ? "Not connected" : "No cable";
-		const char *ic = f->wireless ? "📶" : "🔌"; double iw = css_width(cr, ic, UIFAM, 400, 12), sw = css_width(cr, st, UIFAM, 400, 11);
+		char nm2[200]; if (f->cellular) snprintf(nm2, sizeof nm2, "Mobile data%s%s", f->cell[0] ? " · " : "", f->cell); else if (f->wireless) { if (f->ssid[0] && f->ip[0]) snprintf(nm2, sizeof nm2, "Wi-Fi · %s", f->ssid); else snprintf(nm2, sizeof nm2, "Wi-Fi"); } else snprintf(nm2, sizeof nm2, "Ethernet (%s)", f->name);
+		const char *st = f->cellular && !on ? "In reserve" : f->cellular ? "Connected" : f->ip[0] ? "Connected" : !strcmp(f->state, "up") ? "No address" : f->wireless ? "Not connected" : "No cable";
+		const char *ic = f->wireless || f->cellular ? "📶" : "🔌"; double iw = css_width(cr, ic, UIFAM, 400, 12), sw = css_width(cr, st, UIFAM, 400, 11);
 		css_text(cr, ic, UIFAM, 400, 12, x + 6, y + 5, l12, c1, 0);
 		double bx = x + 6 + iw + 8, bw = 330 - 12 - iw - 8 - 8 - sw; css_text(cr, nm2, UIFAM, 600, 12, bx, y + 5, l12, c1, bw);
 		css_text(cr, st, UIFAM, 400, 11, x + 330 - 6 - sw, y + 5 + (l12 - l11) / 2, l11, c2, 0); fl_btn(key, x, y, 330, rh); y += rh; }
@@ -4439,6 +4475,7 @@ static void fl_act(const char *k, int dbl)
 	else if (!strcmp(k, "sounds")) { fl_close(); tb_settings("vol"); return; }
 	else if (!strcmp(k, "npo")) { fl_close(); tb_settings("net"); return; }   /* (the network's Network Settings…) */
 	else if (!strcmp(k, "qs:8")) { air_set(!AIR_ON); }
+	else if (!strcmp(k, "qs:9")) { mob_set(!MOB_ON); }
 	else if (!strncmp(k, "qs:", 3)) { int i = atoi(k + 3); if (i < 0 || i > 7) return; qs_set(i, !qs_get(i)); char *e = qesc(QSL[i]), ex[160]; snprintf(ex, sizeof ex, "&item=%s", e); g_free(e); app_open_ex("do-qs", NULL, ex, 1);
 		if (i == 2) bar_redraw(); }
 	else if (!strcmp(k, "lock")) { fl_close(); power("lock"); return; }
@@ -4514,7 +4551,7 @@ static void fl_open(int kind)
 		g_signal_connect(FLWIN, "scroll-event", G_CALLBACK(fl_scroll), NULL);
 		g_signal_connect(FLAREA, "draw", G_CALLBACK(fl_draw), NULL); g_signal_connect(FLWIN, "button-press-event", G_CALLBACK(fl_press), NULL);
 		g_signal_connect(FLWIN, "button-release-event", G_CALLBACK(fl_release), NULL); g_signal_connect(FLWIN, "motion-notify-event", G_CALLBACK(fl_motion), NULL); }
-	if (kind == FL_QS) air_read();   /* (1.6.0 Part 2: Airplane mode, as it is now) */
+	if (kind == FL_QS) { air_read(); mob_read(); }   /* (1.6.0 Parts 2 and 3: Airplane mode and Mobile data, as they are now) */
 	FLK = kind; FLHOV = FLPRESS = -1; FLSCROLL = 0;
 	if (kind == FL_CAL) { GDateTime *n = fl_now(); FL_Y = g_date_time_get_year(n); FL_M = g_date_time_get_month(n); g_date_time_unref(n); }
 	else if (kind == FL_NET) net_read();
@@ -5207,7 +5244,7 @@ static void state_write(void)
 	g_string_append_printf(s, "dialog %s %s|%s\n", DGK == DLG_RENAME ? "rename" : DGK == DLG_OPENWITH ? "openwith" : "-", DGK ? DGNAME : "-", DGMSG);
 	for (int i = 0; DGK && i < NDGB; i++) g_string_append_printf(s, "dgbtn %d %d %d\n", i, (int)lround((DGB[i].x + DGB[i].w / 2) * Z), (int)lround((DGB[i].y + DGB[i].h / 2) * Z));
 	if (FLK) { g_string_append_printf(s, "fly %s %d %d %d %d %d-%02d %d %d\n", FLK == FL_CAL ? "cal" : FLK == FL_VOL ? "vol" : FLK == FL_NET ? "net" : FLK == FL_QS ? "qs" : "nc", (int)lround(FLX * Z), (int)lround(FLY * Z), (int)lround(FLW * Z), (int)lround(FLH * Z), FL_Y, FL_M, FLVOL, FLMUTE);
-		if (FLK == FL_QS) { g_string_append(s, "flyqs"); for (int i = 0; i < 9; i++) if (qs_get(i)) g_string_append_printf(s, " %s", QSL[i]); g_string_append_c(s, '\n'); }
+		if (FLK == FL_QS) { g_string_append(s, "flyqs"); for (int i = 0; i < QSN; i++) if (qs_get(i)) g_string_append_printf(s, " %s", QSL[i]); g_string_append_c(s, '\n'); }
 		if (FLK == FL_NC) { g_string_append_printf(s, "flync %d %d", NNT, S.dnd); for (int i = 0; i < NNT; i++) g_string_append_printf(s, "|%s", NT[i].t); g_string_append_c(s, '\n'); }
 		for (int i = 0; i < NFLB; i++) g_string_append_printf(s, "flybtn %s %d %d\n", FLBK[i], (int)lround((FLB[i].x + FLB[i].w / 2) * Z), (int)lround((FLB[i].y + FLB[i].h / 2) * Z)); }
 	else g_string_append(s, "fly -\n");
@@ -5300,6 +5337,7 @@ int main(int argc, char **argv)
 	g_timeout_add_seconds(3, tick_settings, NULL); g_timeout_add_seconds(10, tick_tray, NULL); g_timeout_add_seconds(5, tick_mic, NULL); g_timeout_add_seconds(15, tick_idle, NULL); g_timeout_add_seconds(5, tick_clock, NULL);
 	tick_heart(NULL); g_timeout_add_seconds(10, tick_heart, NULL);
 	tick_devlink(NULL); g_timeout_add_seconds(4, tick_devlink, NULL);   /* (as the page: every 4 s) */
+	tick_cell(NULL); g_timeout_add_seconds(5, tick_cell, NULL);   /* (1.6.0 Part 3: the cellular notices, as the page: every 5 s) */
 	teval_init(); clip_init();
 	state_write();
 	gtk_main();

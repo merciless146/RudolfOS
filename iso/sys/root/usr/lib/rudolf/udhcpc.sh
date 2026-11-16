@@ -40,6 +40,8 @@ case "$1" in
 		{ for d in $dns; do echo "nameserver $d"; done; [ -n "$domain" ] && echo "search $domain"; } > "$RUN/dns/$interface"
 		if [ -n "$router" ]; then
 			if [ -e "/sys/class/net/$interface/wireless" ]; then route 600
+			# 1.6.0 (Part 3): a cellular modem's interface that takes DHCP (/usr/lib/rudolf/modem): behind Wi-Fi
+			elif [ -e "$RUN/cellular/$interface" ]; then route 700
 			# a renewal of a wired connection already in use (or still being tried) keeps its place
 			elif [ "$1" = renew ] && ip route 2>/dev/null | grep -q "^default .*dev $interface .*metric 100"; then :
 			elif [ "$1" = renew ] && [ -e "$RUN/nointernet/$interface" ]; then :
