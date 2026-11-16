@@ -1028,6 +1028,21 @@ without this work (it waits only for the QEMU security checks of Part 15).
   Stage B checks: the stick's month compared with the operator's own count (T-Mobile's app or text), a small limit
   reached on purpose (the notice at 80 %, data off at 100 %), and an update offered on mobile data with its size.
 
+- **Item 5 (Part 5), done (PR "cell60-signal"):** the watch writes RUN/cellinfo/IF ("operator|type|signal": 5G, LTE, 3G,
+  2G from the access technologies) every 6 s; rudolfd's net list marks a cellular interface with its carrier, type and
+  signal (also when it has no device, and an IPv6-only one whose default route is the CLAT's); the taskbar's network
+  icon draws four bars from the signal (net31.js; rudolf-native.c ic_net the same), "Mobile data — connected (T-Mobile
+  · LTE)", and the network pop-up's row (in use, or in reserve). /usr/lib/rudolf/modem signal and rudolfd's
+  mobile/signal: ModemManager's Signal interface (asked to measure every 5 s), Settings › Mobile network › Signal (LTE's
+  RSRP, RSRQ, SINR, RSSI with words; 5G's, 3G's; every 5 s). System health's "modem" kind (rudolfd --health modem; the
+  page names it Mobile network): the SIM taken out and put back, the PIN blocked (wherever it was given), no network for
+  a minute, the modem gone, and back within ten minutes (restarted). The self-test's modem line: the modem and its
+  driver, the SIM, the network and the data connection (a failure saying where to look for each).
+  Tests: qt/host/signal60_t.sh (14), qt/shell2/signal60_t.js (10), qt/host/selftest_t.sh, qt/native/same_t.sh's tray-cell
+  and fly-net-cell cases (Native = Standard).
+  Stage B checks: the bars and type against the stick's own LED or the operator's app, moving the Vivobook toward a
+  window while watching RSRP/SINR, the SIM taken out while running (System health), the self-test's modem line passing.
+
 **Stage B: on hardware, with the owner (after stage A is merged and in a beta)**
 1. The USB cellular stick (borrowed from the HP desktop's user) and the MiFi 7730L on the Vivobook: the modem found
    (Settings › Network › Cellular modems, no "Invalid rule match" in /run/rudolf/modem.log, the self-test's modem

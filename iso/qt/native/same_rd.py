@@ -147,6 +147,7 @@ class H(http.server.BaseHTTPRequestHandler):
         if w == 'mic':   # (DIR/mic: the apps using a microphone, a JSON list; muted=0|1 kept, as rudolfd's)
             if m == 'POST': ST['micmuted'] = q == 'muted=1'
             return self.j({'ok': True, 'users': json.loads(rd('mic', b'[]')), 'muted': ST.get('micmuted', False)})
+        if w == 'net' and rd('net'): return self.j(json.loads(rd('net')))   # (1.6.0 Part 5: DIR/net, a case's own network list: mobile data)
         if w == 'net': return self.j({'ok': True, 'interfaces': [{'name': 'wlan0', 'ip': '192.168.1.5/24', 'state': 'up', 'wireless': True, 'virtual': False, 'default': True, 'ssid': 'Home', 'rssi': -55}]})
         if w == 'volume':   # (kept: set=N, muted=0|1, step=up|down, as rudolfd's)
             if m == 'POST':
