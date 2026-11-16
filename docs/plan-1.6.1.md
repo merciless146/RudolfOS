@@ -143,6 +143,26 @@ so calls need VoLTE, and carriers decide which phones get it. T-Mobile's network
   right APN, case kept).
 - **Later:** AT&T's network (stricter about devices), then Verizon (approved phones only).
 
+### 8. Mobile data and the SIM on real hardware (moved from 1.6.0 on 2026-11-16)
+Decided by the owner on 2026-11-16: "For now, move the mobile/SIM testing to 1.6.1." 1.6.0 ships the cellular work
+proven without hardware (its stage A: ModemManager, Settings › Mobile network, the connection and failover, data and
+the monthly limit, the taskbar's signal, Messages, all with host, browser and QEMU tests against a stand-in modem);
+what needs a real modem and SIM is checked here, before 1.6.1's phone work relies on it. From docs/plan-1.6.0.md's
+stage B (items 1 to 3) and its release checks:
+- **The MiFi 7730L** with an active SIM (the owner's choice; the HP desktop user's USB stick only if it is lent again):
+  found in Settings › Network › Cellular modems (maker, model, SIM, operator), no "Invalid rule match" in
+  /run/rudolf/modem.log, the self-test's modem line; the SIM's PIN (never the PUK on a SIM someone needs); the APN filled
+  in (a prepaid T-Mobile-network SIM, Part 7); connected; Wi-Fi failover and back; IPv4 sites on an IPv6-only network
+  (the CLAT); data counted against the operator's own count; the 80 % notice and data off at 100 %; an update offered
+  on mobile data with its size; the bars and type against the device's own; the SIM taken out while running; unplugged
+  and plugged in again; sleep and wake (after 1.6.0's sleep fix for the Vivobook, CONFIG_AMD_PMC).
+- **Messages** to and from a real phone (Unicode, a long one, the delivery report), a sign-in code, the notice with
+  the desktop locked, kept across a restart and in the encrypted folder.
+- **Share this connection** with the MiFi's USB tethering as the uplink (1.5.9 Part 4, waiting since then for a data
+  plan).
+- **The FCC-unlock path** on a laptop with a WWAN card (a used ThinkPad with a Fibocom L850-GL or Quectel EM05-G).
+- Each checked on Standard and Native (the owner's rule), results in docs/testing.md with the carrier and date.
+
 ## Not moved here
 - **elogind and polkit** (1.6.0 Part 11): left out by decision on 2026-11-15, since Rudolf OS's own inhibit portal and
   prompts cover what apps ask. Taken up again only if an app or a later part needs them.
@@ -155,6 +175,7 @@ so calls need VoLTE, and carriers decide which phones get it. T-Mobile's network
 ## Steps
 1. Part 1, several monitors, after the 1.6.0 beta.
 2. Part 3, Lite's leftovers, one PR each.
-3. The phone's stage 1: Part 4 on the first phone (after 1.6.0's ARM64 release and stage B), Part 7 with a
+3. Part 8 (mobile data and the SIM on real hardware) with the MiFi, before the phone.
+4. The phone's stage 1: Part 4 on the first phone (after 1.6.0's ARM64 release and stage B), Part 7 with a
    T-Mobile-network SIM, Part 6's 1.6.1 items measured on it, Part 2's groundwork; Part 5 when the hardware is there.
-4. The phone's stage 2 (its interface, Wayland, the native apps for touch): docs/plan-2.0.md, "The phone build".
+5. The phone's stage 2 (its interface, Wayland, the native apps for touch): docs/plan-2.0.md, "The phone build".

@@ -1185,6 +1185,9 @@ without this work (it waits only for the QEMU security checks of Part 15).
   2026-11-16 while boot and boot-standard passed; it had failed the same way on another branch the day before.
 
 **Stage B: on hardware, with the owner (after stage A is merged and in a beta)**
+**Moved (owner, 2026-11-16): items 1 to 3 and the release checks' real-hardware modem line go to 1.6.1** ("For now,
+move the mobile/SIM testing to 1.6.1": docs/plan-1.6.1.md Part 8). 1.6.0 ships stage A's cellular work, proven in
+host, browser and QEMU tests; item 4 (ARM64) stays below, see "Before stable".
 1. The USB cellular stick (borrowed from the HP desktop's user) and the MiFi 7730L on the Vivobook: the modem found
    (Settings › Network › Cellular modems, no "Invalid rule match" in /run/rudolf/modem.log, the self-test's modem
    line), the SIM's PIN, the APN filled in, connected, Wi-Fi failover and back, data counted, sleep and wake,
@@ -1236,6 +1239,50 @@ without this work (it waits only for the QEMU security checks of Part 15).
 9. Part 15 (moved from 1.5.9): its Vivobook checks on the first 1.6.0 beta; its code items alongside the parts they
    belong to (12.3c's comparison with Part 12, the recovery with Part 13's signed layers, the QEMU checks first).
 10. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
+
+## Before stable (2026-11-16)
+Asked for on 2026-11-16: "determine what else is to be done in 1.6.0 before promoting to stable". From the parts above,
+Part 15's lists and the Vivobook's beta 2026111611 (the owner's reports of 2026-11-15 and 16).
+
+**Must be done (blocking):**
+1. **The Native desktop's open bugs from beta 2026111611** (Native is the default for new installations, Part 12):
+   apps from the Library, Wine and Linux not opening from the start menu, icons and pins, their icons missing, Packages
+   missing from the start menu, desktop icons slow or not changing, the window and taskbar sounds, quick settings
+   (closing on an outside click, the tiles' state; k160_t.py green); the computer check (keys taken by the global
+   shortcuts: arrows, F-keys, left Ctrl/Alt/Meta; sound and microphone in WebKit; the graphics step), the system
+   report's renderer and desktop size, reports saved to the account's own Documents. Scheduled tasks of 2026-11-16.
+2. **Sleep on the Vivobook:** the kernel without CONFIG_AMD_PMC does not really sleep (s2idle on AMD Ryzen 7020), and
+   the check's sleep step passed without sleeping. With item 1's second task.
+3. **3D Linux and Flatpak apps** (Unvanquished "Couldn't load a renderer.", SuperTuxKart not starting; worked in 1.5.x):
+   a 1.6.0 regression (the display's authorization or the per-account Linux users). Scheduled task of 2026-11-16.
+4. **A new beta with 1 to 3, then the owner's Vivobook pass on Native and Standard:** docs/native-vivobook-checklist.md
+   (#412), the computer check passing, every tonight's report re-checked; the Native QEMU checks (k160) and every CI
+   check on main green.
+5. **Part 12's decision:** Native as the default for new installations after its week of betas (#384): the owner's
+   call once 4 is clean; if not, new installations start on Standard for 1.6.0 and Native stays the choice in Settings.
+6. **Part 13's QEMU checks (13.7):** an extension in use after a restart, a broken one left out, an update with and
+   without its extension: the update path must be safe before stable.
+7. **The official recovery (Part 15, 1.5.9 8.4 and 8.5):** the repair at each start (recovery.efi and system/r checked
+   and restored from the official release), Return to official restoring rudolf.efi; then recovery.efi on the Vivobook
+   with the owner present; 8.7 with Secure Boot in QEMU (OVMF with test keys).
+8. **The Vivobook checks carried from 1.5.9 (Part 15):** calls (Meet, Zoom, Teams, a real phone, a headset, memory over
+   10 minutes; the owner does these); Tor at check.torproject.org and its window; the microphone Test; Save and Open;
+   WordPro's links; a USB stick in File Explorer; the Wi-Fi radios; 15.2's test; game mode and memory.
+
+**Decide (the owner): in 1.6.0 or moved to 1.6.1:**
+- **Part 8, USB printers:** extensions.yml's first run to publish `usbprint`, then the HP desktop user's printer.
+- **Part 7, ARM64:** its first release needs one ARM64 computer that starts with UEFI (stage B item 4); without one,
+  1.6.0 ships x86 only and ARM64 moves with the phone (1.6.1 Part 4).
+- **Part 12.3c:** same_t.sh's comparison of Oracle's window on Native against Standard's.
+- **Browse with Tor:** Ctrl+W, T, N and Q in the Tor window on Standard still Chromium's.
+
+**Moved or not in 1.6.0 (already decided):** Lite's leftovers (1.6.1 Part 3); mobile data and the SIM on hardware
+(1.6.1 Part 8); the hotspot over the MiFi (1.6.1 Part 8); Waydroid (1.6.1 Part 6); the first phone (1.6.1 Part 4);
+several monitors (1.6.1 Part 1).
+
+**Can wait (not blocking):** the lighter desktop page's measurements (1.5.9 10.3, 10.4); kernel tuning; rudolfd's root
+work split into helpers; the page log and the Tor window's log kept across a restart; t140_t.py's link switch; the
+keyring test's one-off failure (timing) watched.
 
 ## After 1.6.0: the native desktop decision (added on 2026-11-12)
 (2026-11-13: the prototype moved into 1.5.9 as a third desktop engine, Native (test): docs/plan-1.5.9.md Part 12.
