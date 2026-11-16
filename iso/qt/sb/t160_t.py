@@ -62,7 +62,9 @@ def make_drive(path):
         with open(D, 'rb') as d: shutil.copyfileobj(d, f)
     os.remove(D)
 
-INIT_JS = "(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};if(!window.__cww){window.__cww=1;window.__cw=[];const w=console.warn,er=console.error;console.warn=function(...a){__cw.push('W '+a.map(x=>x&&x.message?x.message:String(x)).join(' ').slice(0,300));return w.apply(this,a)};console.error=function(...a){__cw.push('E '+a.map(x=>x&&x.message?x.message:String(x)).join(' ').slice(0,300));return er.apply(this,a)};addEventListener('error',e=>__cw.push('X '+e.message));addEventListener('unhandledrejection',e=>__cw.push('R '+(e.reason&&e.reason.message||e.reason)));try{const n0=window.notify;if(typeof n0=='function')window.notify=function(t,b){__cw.push('N '+t+': '+String(b).slice(0,200));return n0.apply(this,arguments)}}catch(e){}try{const l0=window.logEvt;if(typeof l0=='function')window.logEvt=function(k,m){__cw.push('L '+k+': '+String(m).slice(0,200));return l0.apply(this,arguments)}}catch(e){}try{const u0=window.userLogout;if(typeof u0=='function')window.userLogout=function(){__cw.push('O sign-out '+String(new Error().stack).split('\\n').slice(2,5).join(' < ').slice(0,300));return u0.apply(this,arguments)}}catch(e){}}return 1})()"
+# (each under busybox ash's 1024-character line once in base64: a longer one was cut, and the shell left inside a quote)
+INIT_JS = "(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};if(!window.__cww){window.__cww=1;window.__cw=[];const w=console.warn,er=console.error;console.warn=function(...a){__cw.push('W '+a.map(x=>x&&x.message?x.message:String(x)).join(' ').slice(0,300));return w.apply(this,a)};console.error=function(...a){__cw.push('E '+a.map(x=>x&&x.message?x.message:String(x)).join(' ').slice(0,300));return er.apply(this,a)};addEventListener('error',e=>__cw.push('X '+e.message));addEventListener('unhandledrejection',e=>__cw.push('R '+(e.reason&&e.reason.message||e.reason)))}return 1})()"
+INIT2_JS = "(()=>{if(!window.__cw||window.__cw2)return 0;window.__cw2=1;try{const n0=window.notify;if(typeof n0=='function')window.notify=function(t,b){__cw.push('N '+t+': '+String(b).slice(0,200));return n0.apply(this,arguments)}}catch(e){}try{const l0=window.logEvt;if(typeof l0=='function')window.logEvt=function(k,m){__cw.push('L '+k+': '+String(m).slice(0,200));return l0.apply(this,arguments)}}catch(e){}try{const u0=window.userLogout;if(typeof u0=='function')window.userLogout=function(){__cw.push('O sign-out '+String(new Error().stack).split('\\n').slice(2,5).join(' < ').slice(0,300));return u0.apply(this,arguments)}}catch(e){};return 1})()"
 def boot(tag, slot):
     extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf160', '-serial', f'unix:{TUN},server,nowait',
              '-kernel', f'{(W + "/out/channel") if False else REL}/vmlinuz', '-append', f'quiet loglevel=3 consoleblank=0 rudolf.slot={slot} rudolf.debug=1']
@@ -76,6 +78,8 @@ def boot(tag, slot):
         except OSError: pass
         time.sleep(4)
     def js(e, t=90):
+        # (the command line is cut at 1024 characters by busybox ash's line editing)
+        if len(base64.b64encode(e.encode())) > 900: raise ValueError('a page expression too long for the serial shell: ' + e[:80])
         for _ in range(5):
             r = g.js(e, t)
             if not (isinstance(r, tuple) and (r[0] == 'ERR' or (r[0] == 'EXC' and 'ReferenceError' in str(r[1])))): return r
@@ -83,7 +87,7 @@ def boot(tag, slot):
         return r
     end = time.time() + 600
     while up and time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'", 20) is not True: time.sleep(5)
-    js(INIT_JS)
+    js(INIT_JS); js(INIT2_JS)
     # the desktop's page settled: the same page for 20 s (the first start loads it again once the desktop is ready:
     # run 43768310701 lost boss's first sign-in to it). Waited for in the guest, in one command: questions sent from
     # here while the page reloads pile up on the serial line (run 43772555039 lost its shell to that)
@@ -92,7 +96,7 @@ def boot(tag, slot):
                    "if [ -n \"$v\" ] && [ \"$v\" = \"$last\" ]; then same=$((same+5)); else same=0; last=$v; fi; [ $same -ge 20 ] && break; sleep 5; done; "
                    "echo \"SETTLED $same $last after $i\"; grep -iE 'restart|switch|not responding|did not' /run/rudolf/session.log | grep -v '^+' | tail -5", 1100)
         out('page settled', tag, 'SETTLED 2' in o or 'SETTLED 3' in o)
-        js(INIT_JS)
+        js(INIT_JS); js(INIT2_JS)
     return vm, g, up, js
 # a command run in the guest from a script file (a long command line echoed back over the serial line mixed with its
 # output), its output written to this test's log in full
