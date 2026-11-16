@@ -1,0 +1,46 @@
+# docs/plan-1.6.0.md Part 13.7 ("Before stable" 6): signed system extensions on the real release in QEMU
+# (iso/qt/sb/t160x_t.py): in use after a restart, broken ones left out, an update of the base with and without the
+# extension's build, Roll back system, Recovery mode. TEST keys only, made inside the test and deleted with it (the
+# extensions and the two custom builds of the release are signed with them). Run by a push that changes
+# .github/ext160-run.txt, whose lines say: serial=SERIAL (empty: the newest beta), fix=1 (this tree's rpk, sysext,
+# rudolf-init and session in the custom builds' desktop layer). Nothing is published.
+name: Extensions QEMU check
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/ext160-run.txt']
+permissions: {contents: read}
+jobs:
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: for k in serial fix; do echo "N_$k=$(sed -n "s/^$k=//p" .github/ext160-run.txt 2>/dev/null | head -1)" >> $GITHUB_ENV; done
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs squashfs-tools python3-cryptography libssl-dev bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S="$N_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel; echo "::notice title=Extensions QEMU check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)), fix=$N_fix"
+          unsquashfs -cat rel/base.sfs usr/share/rudolf/base-abi 2>/dev/null | sed 's/^/the release base ABI: /' || echo "the release has no base ABI file"
+      - name: t160x (13.7)
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU FIX=$N_fix QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/t160x_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: t160x, retention-days: 7, path: "run/t160x.txt\nrun/t160x*/qemu.log"}
