@@ -5402,6 +5402,15 @@ int main(int argc, char **argv)
 		else if (!strncmp(argv[i], "--base=http://", 14)) { char h[64]; int p = 0; if (sscanf(argv[i] + 14, "%63[^:/]:%d", h, &p) == 2 && p > 0) { snprintf(HOST, sizeof HOST, "%s", h); PORT = p; } }
 	}
 	STATEF = getenv("RUDOLF_NATIVE_STATE");
+	/* (1.6.0, the owner's report 2: no sound from the app windows on the Vivobook) WebKit gave each media element (<audio>, <video>:
+	   the Media Player, games, videos) a PulseAudio stream of its own, with the element's volume and mute set on the stream itself
+	   and the stream named by its role (media.role "music"). PulseAudio keeps a stream's volume by that name (module-stream-restore,
+	   kept across restarts), so once any page muted or turned down one (a muted video, the Media Player's mute, an app's volume at
+	   0), every later sound of every app window started muted or at 0 %. Chromium mixes its pages' sounds itself, in one stream with
+	   no role. WebKit's own mixer does the same: the elements' volumes in software, one stream for the window's sounds, named by the
+	   program (as Chromium's), so nothing a page does is kept for the others. (It needs GStreamer's "inter" plug-in, shipped with
+	   WebKit: addwebkit.sh) */
+	if (!getenv("WEBKIT_GST_ENABLE_AUDIO_MIXER")) g_setenv("WEBKIT_GST_ENABLE_AUDIO_MIXER", "1", TRUE);
 	g_set_prgname("RudolfNative"); gdk_set_program_class("RudolfNative");
 	gtk_init(&argc, &argv);
 	/* (1.6.0 Part 12, item 8) the apps' text as Chromium draws it: grey anti-aliasing, slight hinting (the shell's own Pango
