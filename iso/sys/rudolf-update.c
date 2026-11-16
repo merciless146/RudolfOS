@@ -20,6 +20,10 @@
  *   rudolf-update developer on KEY URL | off    (1.5.9, plan 8.3) Developer mode: one more trusted key (a developer's
  *                                   publisher key) and their update address; off: back to the official ones only
  *   rudolf-update return-official keep|erase    (1.5.9, plan 8.5) back to the official Rudolf OS at the next start
+ *   rudolf-update stable-info       (1.6.0) JSON: the last stable release, whether this system is one, and whether
+ *                                   going back to it is possible here (the data's layout); from what check saw
+ *   rudolf-update to-stable         (1.6.0) Roll back to the last stable version: that release at the next start (from the
+ *                                   other slot when it holds it, else downloaded), beta versions off
  *   rudolf-update set url URL | set auto 0|1
  *   rudolf-update rzs-make FILE OUT.rzs     (build side) write a delta control file
  *   rudolf-update fetch URL OUT             (1.5.7, Make a stick) a release's boot image from github.com */
@@ -256,7 +260,8 @@ static int delta_fetch(const char *url, const char *rzs_url, char seeds[][300], 
 
 /* ---------------- manifest */
 typedef struct { char name[16], sha[65], file[400]; long long size; } lay_t;
-typedef struct { long long serial; char version[64], released[16], expires[16], notes[300], chromium[64], kernel[64]; int urgent; lay_t L[NL]; int nl; } man_t;
+typedef struct { long long serial; char version[64], released[16], expires[16], notes[300], chromium[64], kernel[64]; int urgent; lay_t L[NL]; int nl;
+	int datafmt, rmin, rmax; } man_t;   /* (1.6.0: the data layout the release keeps, and the oldest and newest it reads; 0: no record) */
 static int parse_manifest(char *t, man_t *m)
 {
 	memset(m, 0, sizeof *m);
@@ -270,6 +275,8 @@ static int parse_manifest(char *t, man_t *m)
 		else if (!strncmp(l, "chromium ", 9)) snprintf(m->chromium, sizeof m->chromium, "%s", l + 9);
 		else if (!strncmp(l, "kernel ", 7)) snprintf(m->kernel, sizeof m->kernel, "%s", l + 7);
 		else if (!strncmp(l, "urgent ", 7)) m->urgent = atoi(l + 7);
+		else if (!strncmp(l, "datafmt ", 8)) m->datafmt = atoi(l + 8);
+		else if (!strncmp(l, "readsfmt ", 9)) { int a = 0, b = 0; if (sscanf(l + 9, "%d-%d", &a, &b) == 2 && a > 0 && b >= a) { m->rmin = a; m->rmax = b; } }
 		else if (!strncmp(l, "L\t", 2) && m->nl < NL) {
 			lay_t *y = &m->L[m->nl]; char *p = l + 2, *f[4]; int k = 0;
 			for (char *s = strtok_r(p, "\t", &p); s && k < 4; s = strtok_r(NULL, "\t", &p)) f[k++] = s;
@@ -354,7 +361,10 @@ static int may_change_system(int quiet)
 	return 1;
 }
 
-static int lockf_(void) { char p[300]; snprintf(p, sizeof p, "%s/.lock", SYSD); mkdirs(SYSD); int f = open(p, O_CREAT | O_RDWR | O_CLOEXEC, 0600); return f >= 0 && !flock(f, LOCK_EX | LOCK_NB) ? 0 : -1; }
+/* (1.6.0: taken once per run: Return to official and Roll back to the last stable version download with the lock
+   already held, and a second flock on a new descriptor of the same file is refused: "another update is running") */
+static int LOCKED_;
+static int lockf_(void) { if (LOCKED_) return 0; char p[300]; snprintf(p, sizeof p, "%s/.lock", SYSD); mkdirs(SYSD); int f = open(p, O_CREAT | O_RDWR | O_CLOEXEC, 0600); if (f >= 0 && !flock(f, LOCK_EX | LOCK_NB)) { LOCKED_ = 1; return 0; } return -1; }
 
 /* speedtest (1.2.5, Task Manager's hardware check): how fast the update server answers here. Downloads the newest
    release's kernel (about 10 MB) into nothing; prints bytes and ms */
@@ -408,6 +418,59 @@ static int wanted(long long serial, long long cur)
 	if (serial > cur) return 1;
 	kv_t cf; kv_read(CONFP, &cf, '='); return !strcmp(kv(&cf, "tostable"), "1") && serial != cur && !on_beta(&cf);
 }
+/* 1.6.0 (the owner, 2026-11-16): Roll back to the last stable version, and what a release keeps of the person's data.
+   Each release's list says the layout of the data it keeps ("datafmt N") and the layouts it can read ("readsfmt LO-HI");
+   this system's own are below. Going back to an older release is refused, with what would break, when it cannot read
+   the data on this computer. Releases published without the record are known by their versions (rel_fmt). Layouts:
+     1  every account's files belong to the desktop's Linux user (rudolf, uid 1000): Rudolf OS before 1.5.9
+     2  each account is its own Linux user (uid 1001 and up), its folder and files moved to it and its alone: 1.5.9
+        (docs/plan-1.5.9.md 15.3), and 1.6.0, which only adds beside them (the keyring's files in the account's folder,
+        signed system extensions in /persist/pkg, Messages, the month's mobile data): 1.5.9 leaves those alone.
+   iso/datafmt (the build's record in each release list) must say the same: qt/host/tostable60_t.sh checks it. */
+#define DATAFMT 2
+#define READS_MIN 1
+#define READS_MAX 2
+static int ver_cmp(const char *v, int a, int b, int c) { int x = 0, y = 0, z = 0; sscanf(v ? v : "", "%d.%d.%d", &x, &y, &z); return x != a ? x - a : y != b ? y - b : z - c; }
+static void rel_fmt(const man_t *m, int *f, int *lo, int *hi)
+{
+	if (m->datafmt > 0) { *f = m->datafmt; *lo = m->rmin > 0 ? m->rmin : m->datafmt; *hi = m->rmax > 0 ? m->rmax : m->datafmt; return; }
+	/* (no record: 1.5.9 reads both layouts (it moves the first to the second at its first start) and keeps the second,
+	   tested on the released 1.5.9 (qt/sb/t160r_t.py); anything older knows only the first) */
+	if (ver_cmp(m->version, 1, 5, 9) >= 0) { *f = 2; *lo = 1; *hi = 2; } else { *f = 1; *lo = 1; *hi = 1; }
+}
+/* the layout of the data on this computer: the newest any release that started here wrote down (boot-ok), and at least
+   this system's own (it is running on it now). /persist/os/datafmt, beside the system's slots */
+static void dfmt_path(char *o, size_t n) { snprintf(o, n, "%s", SYSD); char *sl = strrchr(o, '/'); if (sl && sl != o) *sl = 0; strncat(o, "/datafmt", n - strlen(o) - 1); }
+static int data_fmt(void) { char p[320]; dfmt_path(p, sizeof p); char *t = slurp(p, NULL); int f = t ? atoi(t) : 0; free(t); return f > DATAFMT ? f : DATAFMT; }
+static void data_fmt_mark(void) { char p[320], v[16]; dfmt_path(p, sizeof p); int f = data_fmt(); char *t = slurp(p, NULL); int was = t ? atoi(t) : 0; free(t); if (was != f) { snprintf(v, sizeof v, "%d\n", f); write_file(p, v); } }
+static const char *fmt_what(int f)
+{
+	return f == 1 ? "every account's files belong to one Linux user, the desktop's (as before Rudolf OS 1.5.9)"
+	     : f == 2 ? "each account is its own Linux user, its folder and files belonging to it alone (since Rudolf OS 1.5.9)"
+	     : "the accounts' files are kept in a newer way";
+}
+/* can release M read this computer's data? 1, or 0 with why (in plain words) */
+static int compat(const man_t *m, char *why, size_t n)
+{
+	int f, lo, hi; rel_fmt(m, &f, &lo, &hi); int d = data_fmt();
+	if (d >= lo && d <= hi) return 1;
+	if (d > hi) snprintf(why, n, "Rudolf OS %s cannot read the accounts and files on this computer: here %s, and Rudolf OS %s only knows the way where %s. "
+		"Going back to it would leave accounts whose folders and files it cannot open, so nothing was changed.", m->version, fmt_what(d), m->version, fmt_what(hi));
+	else snprintf(why, n, "Rudolf OS %s no longer reads the accounts and files kept the way this computer keeps them (%s), so nothing was changed.", m->version, fmt_what(d));
+	return 0;
+}
+/* what is new since an older release and not used by it while it runs (kept on the computer for when this one comes back) */
+static const struct { int a, b, c; const char *what; } NOTUSED[] = {
+	{1, 6, 0, "Linux apps' sign-ins saved in the keyring (new in 1.6.0) are not used: those apps may ask you to sign in again"},
+	{1, 6, 0, "system extensions (such as USB printers) are not used"},
+	{1, 6, 0, "Messages and the month's mobile data count are kept but not shown"},
+};
+static void notes_for(const man_t *m, void (*each)(const char *))
+{
+	for (size_t i = 0; i < sizeof NOTUSED / sizeof *NOTUSED; i++) if (ver_cmp(m->version, NOTUSED[i].a, NOTUSED[i].b, NOTUSED[i].c) < 0) each(NOTUSED[i].what);
+}
+static int COMPAT_GATE;   /* (to-stable: the release downloaded must read this computer's data) */
+static void stable_fetch(void);
 static int cmd_check(int quiet)
 {
 	kv_t cf; kv_read(CONFP, &cf, '='); const char *url = kv(&cf, "url");
@@ -416,6 +479,7 @@ static int cmd_check(int quiet)
 	char mu[400], su[400], mp[300], sp[300]; snprintf(mu, sizeof mu, "%s/manifest.txt", url); snprintf(su, sizeof su, "%s/manifest.sig", url);
 	snprintf(mp, sizeof mp, "%s/available.txt.dl", SYSD); snprintf(sp, sizeof sp, "%s/available.sig.dl", SYSD);
 	if (!quiet) say("Checking %s", url);
+	stable_fetch();   /* (1.6.0: the last stable release, for Roll back to the last stable version) */
 	if (http_to_file(mu, mp) || http_to_file(su, sp)) { say("Could not reach the update server."); return 3; }
 	size_t ml, sl; char *t = slurp(mp, &ml), *g = slurp(sp, &sl);
 	if (!t || !g || sl != 64 || !verify((unsigned char *)t, ml, (unsigned char *)g)) { say("Refused: the release list is not signed by a trusted key."); free(t); free(g); return 4; }
@@ -448,6 +512,7 @@ static int cmd_download(void)
 	{ size_t ml, sl; char *mt = slurp(ap, &ml), *sg = slurp(sig, &sl); int ok = mt && sg && sl == 64 && verify((unsigned char *)mt, ml, (unsigned char *)sg); free(mt); free(sg); if (!ok) die("the saved release list is not signed"); }
 	kv_t cr; cur_release(&cr);
 	if (!FORCE_DL && !wanted(m.serial, atoll(kv(&cr, "serial")))) { say("Already up to date."); return 0; }
+	{ char why[900]; if (COMPAT_GATE && !compat(&m, why, sizeof why)) { say("%s", why); return 8; } }
 	char bs[8]; booted(bs); kv_t st; char stp[300]; snprintf(stp, sizeof stp, "%s/state", SYSD); kv_read(stp, &st, '=');
 	/* the spare slot: never the one running, never the last good one */
 	const char *T = strcmp(bs, "a") && strcmp(kv(&st, "good"), "a") ? "a" : strcmp(bs, "b") && strcmp(kv(&st, "good"), "b") ? "b" : NULL;
@@ -487,7 +552,8 @@ static int cmd_download(void)
 		}
 		say("  downloaded %lld KB", (got + 1023) / 1024); total += got;
 	}
-	char rel[1200]; snprintf(rel, sizeof rel, "serial %lld\nversion %s\nreleased %s\nchromium %s\nkernel %s\nnotes %s\n", m.serial, m.version, m.released, m.chromium, m.kernel, m.notes);
+	char rel[1200]; int rl = snprintf(rel, sizeof rel, "serial %lld\nversion %s\nreleased %s\nchromium %s\nkernel %s\nnotes %s\n", m.serial, m.version, m.released, m.chromium, m.kernel, m.notes);
+	if (m.datafmt > 0 && rl > 0 && rl < (int)sizeof rel - 40) snprintf(rel + rl, sizeof rel - rl, "datafmt %d\nreadsfmt %d-%d\n", m.datafmt, m.rmin > 0 ? m.rmin : m.datafmt, m.rmax > 0 ? m.rmax : m.datafmt);
 	char rp[400]; snprintf(rp, sizeof rp, "%s/RELEASE", tn); write_file(rp, rel);
 	/* the signed release list goes with the slot: the start-up checks the layers against its hashes (1.2.2) */
 	{ char d1[420], d2[420]; snprintf(d1, sizeof d1, "%s/manifest.txt", tn); snprintf(d2, sizeof d2, "%s/manifest.sig", tn);
@@ -719,6 +785,7 @@ static void esp_check(const char *bs)
 static int cmd_bootok(void)
 {
 	char bs[8], stp[300]; booted(bs); snprintf(stp, sizeof stp, "%s/state", SYSD); kv_t st; kv_read(stp, &st, '=');
+	data_fmt_mark();   /* (1.6.0: the layout of the data this system keeps, for Roll back to the last stable version) */
 	if (!strcmp(bs, "disc")) return 0;
 	if (recovery_start()) return 0;   /* 1.5.7: a desktop in recovery mode does not prove the normal start works */
 	/* (1.5.9: the last good system, started again: the recovery system is made if it is missing or older) */
@@ -743,6 +810,161 @@ static int cmd_rollback(void)
 	if (*p && strcmp(p, "disc")) { char c[700]; snprintf(c, sizeof c, "%s/%s/complete", SYSD, p); if (access(c, F_OK)) snprintf(p, sizeof p, "disc"); }
 	kv_set(&st, "good", *p ? p : "disc"); kv_set(&st, "prev", g); kv_set(&st, "next", ""); kv_set(&st, "tries", "0");
 	kv_write(stp, &st, '='); sync(); say("The previous system starts the next time the computer restarts."); return 0;
+}
+/* ---------------- 1.6.0 (the owner, 2026-11-16): Roll back to the last stable version.
+   The official stable channel (OFFICIAL_URL, whatever this computer's update address is) says which release is the
+   latest stable one: its signed list (manifest.txt), and the stable releases published before it: history.txt, written
+   by the release workflow's promotion and signed with the release key ("rudolf-stable-history 1", then one line per
+   release: "S SERIAL VERSION RELEASED"). Both are checked with the official keys only (never a developer's) and kept in
+   SYSD (stable.txt/.sig, stable-history.txt/.sig) by check. A newer history replaces the kept one only when it still
+   names every release the kept one names, so an older list sent again cannot take a release off it. This system is a
+   stable release when it is official and its serial is the list's or in the history; Settings shows the button when it
+   is not (a beta, a test or a developer's build), or when Get beta versions is on. */
+static int file_official(const char *tp, const char *sp, char **text, size_t *len)
+{
+	size_t ml, sl; char *t = slurp(tp, &ml), *g = slurp(sp, &sl);
+	int ok = t && g && sl == 64 && official(verify((unsigned char *)t, ml, (unsigned char *)g)); free(g);
+	if (!ok) { free(t); return 0; }
+	if (text) *text = t; else free(t);
+	if (len) *len = ml;
+	return 1;
+}
+static int stable_load(man_t *m)
+{
+	char a[320], b[320]; snprintf(a, sizeof a, "%s/stable.txt", SYSD); snprintf(b, sizeof b, "%s/stable.sig", SYSD);
+	char *t = NULL; if (!file_official(a, b, &t, NULL)) return -1;
+	int r = parse_manifest(t, m); free(t); return r;
+}
+static int hist_ok(const char *t) { return t && !strncmp(t, "rudolf-stable-history 1\n", 24); }
+static int hist_has(const char *t, long long serial)
+{
+	if (!hist_ok(t)) return 0;
+	for (const char *l = t; l && *l; l = strchr(l, '\n') ? strchr(l, '\n') + 1 : NULL) { long long s; if (sscanf(l, "S %lld", &s) == 1 && s == serial) return 1; }
+	return 0;
+}
+static char *hist_load(void)
+{
+	char a[320], b[320]; snprintf(a, sizeof a, "%s/stable-history.txt", SYSD); snprintf(b, sizeof b, "%s/stable-history.sig", SYSD);
+	char *t = NULL; if (!file_official(a, b, &t, NULL) || !hist_ok(t)) { free(t); return NULL; }
+	return t;
+}
+static int STABLE_FETCHED;
+static void stable_fetch(void)
+{
+	if (STABLE_FETCHED++) return;
+	const char *u = off_url(0); char mu[400], su[400], mp[320], sp[320];
+	snprintf(mu, sizeof mu, "%s/manifest.txt", u); snprintf(su, sizeof su, "%s/manifest.sig", u);
+	snprintf(mp, sizeof mp, "%s/stable.txt.dl", SYSD); snprintf(sp, sizeof sp, "%s/stable.sig.dl", SYSD);
+	if (!http_to_file(mu, mp) && !http_to_file(su, sp)) {
+		char *t = NULL; man_t m, old; int good = file_official(mp, sp, &t, NULL) && !parse_manifest(t, &m); free(t);
+		if (good && !stable_load(&old) && m.serial < old.serial) good = 0;   /* (never an older stable list than one seen) */
+		if (good) { char a[320], b[320]; snprintf(a, sizeof a, "%s/stable.txt", SYSD); snprintf(b, sizeof b, "%s/stable.sig", SYSD); rename(mp, a); rename(sp, b); }
+	}
+	unlink(mp); unlink(sp);
+	snprintf(mu, sizeof mu, "%s/history.txt", u); snprintf(su, sizeof su, "%s/history.sig", u);
+	snprintf(mp, sizeof mp, "%s/stable-history.txt.dl", SYSD); snprintf(sp, sizeof sp, "%s/stable-history.sig.dl", SYSD);
+	if (!http_to_file(mu, mp) && !http_to_file(su, sp)) {
+		char *t = NULL; int good = file_official(mp, sp, &t, NULL) && hist_ok(t);
+		char *old = good ? hist_load() : NULL;
+		/* every release the kept list names must still be there */
+		for (const char *l = old; good && l && *l; l = strchr(l, '\n') ? strchr(l, '\n') + 1 : NULL) { long long s; if (sscanf(l, "S %lld", &s) == 1 && !hist_has(t, s)) good = 0; }
+		if (good) { char a[320], b[320]; snprintf(a, sizeof a, "%s/stable-history.txt", SYSD); snprintf(b, sizeof b, "%s/stable-history.sig", SYSD); rename(mp, a); rename(sp, b); }
+		free(t); free(old);
+	}
+	unlink(mp); unlink(sp);
+}
+/* the running system's signer (verify(): 0 none, 1..NOFF official, more: a developer's key) */
+static int run_signer(void)
+{
+	char bs[8], mp[400], gp[400]; booted(bs);
+	if (strcmp(bs, "disc")) { snprintf(mp, sizeof mp, "%s/%s/manifest.txt", SYSD, bs); snprintf(gp, sizeof gp, "%s/%s/manifest.sig", SYSD, bs); }
+	else { snprintf(mp, sizeof mp, "%s/rudolf/manifest.txt", MEDIA); snprintf(gp, sizeof gp, "%s/rudolf/manifest.sig", MEDIA); }
+	size_t l1, l2; char *t1 = slurp(mp, &l1), *t2 = slurp(gp, &l2); int v = t1 && t2 && l2 == 64 ? verify((unsigned char *)t1, l1, (unsigned char *)t2) : 0;
+	free(t1); free(t2); return v;
+}
+/* 1 a published stable release, 0 not (a beta, a test or a developer's build), -1 not known (no stable list seen yet) */
+static int running_stable(long long cur, const man_t *st, int have)
+{
+	if (!official(run_signer())) return 0;
+	if (have && st->serial == cur) return 1;
+	char *h = hist_load(); int in = h && hist_has(h, cur); free(h);
+	return in ? 1 : have ? 0 : -1;
+}
+/* the other system slot, when it holds exactly release SERIAL, complete and signed by the official key (and it is not
+   the one the start-up last gave up on) */
+static const char *slot_with(long long serial, const char *bs)
+{
+	static const char *S[2] = {"a", "b"};
+	char stp[300]; snprintf(stp, sizeof stp, "%s/state", SYSD); kv_t st; kv_read(stp, &st, '=');
+	for (int i = 0; i < 2; i++) {
+		if (!strcmp(S[i], bs) || !strcmp(kv(&st, "failed"), S[i])) continue;
+		char c[400], mp[400], gp[400]; snprintf(c, sizeof c, "%s/%s/complete", SYSD, S[i]);
+		snprintf(mp, sizeof mp, "%s/%s/manifest.txt", SYSD, S[i]); snprintf(gp, sizeof gp, "%s/%s/manifest.sig", SYSD, S[i]);
+		char *t = NULL; man_t m; if (access(c, F_OK) || !file_official(mp, gp, &t, NULL)) { free(t); continue; }
+		int ok = !parse_manifest(t, &m) && m.serial == serial; free(t);
+		/* every file there, at its listed size (the start-up checks their hashes) */
+		for (int k = 0; ok && k < NL; k++) { lay_t *y = mlayer(&m, LAYERS[k]); char f[420]; struct stat s2; if (!y) { ok = 0; break; }
+			snprintf(f, sizeof f, "%s/%s/%s%s", SYSD, S[i], y->name, strcmp(y->name, "vmlinuz") ? ".sfs" : "");
+			if (stat(f, &s2) || s2.st_size != y->size) { snprintf(f, sizeof f, "%s/rudolf/%s.sfs", MEDIA, y->name); if (!strcmp(y->name, "vmlinuz") || !media_permanent() || stat(f, &s2) || s2.st_size != y->size) ok = 0; } }
+		if (ok) return S[i];
+	}
+	return NULL;
+}
+static void set_stable_channel(void)
+{
+	kv_t cf; kv_read(CONFP, &cf, '='); kv_set(&cf, "url", off_url(0)); kv_set(&cf, "tostable", ""); kv_write(CONFP, &cf, '=');
+	char ap[320]; snprintf(ap, sizeof ap, "%s/available.txt", SYSD); unlink(ap); snprintf(ap, sizeof ap, "%s/available.sig", SYSD); unlink(ap);
+}
+static int NOTE_N;
+static void note_json(const char *w) { printf("%s", NOTE_N++ ? "," : ""); jstr(w); }
+static void note_say(const char *w) { say("Note: in that release %s.", w); }
+static int cmd_stable_info(void)
+{
+	man_t st; int have = !stable_load(&st); kv_t r; cur_release(&r); long long cur = atoll(kv(&r, "serial"));
+	kv_t cf; kv_read(CONFP, &cf, '='); char bs[8]; booted(bs); int v = run_signer(), rs = running_stable(cur, &st, have);
+	printf("{\"ok\":true,\"running\":{\"serial\":%lld,\"version\":", cur); jstr(kv(&r, "version")); printf("}");
+	printf(",\"signer\":\"%s\",\"developer\":%s,\"beta\":%s,\"canUpdate\":%s", official(v) ? "official" : v ? "custom" : "unknown", access(EXTRAF, F_OK) ? "false" : "true",
+	       on_beta(&cf) ? "true" : "false", may_change_system(1) ? "true" : "false");
+	printf(",\"runningStable\":%s,\"dataFmt\":%d,\"reads\":[%d,%d]", rs > 0 ? "true" : rs == 0 ? "false" : "null", data_fmt(), READS_MIN, READS_MAX);
+	if (!have) { printf(",\"stable\":null,\"how\":\"unknown\"}\n"); return 0; }
+	int f, lo, hi; rel_fmt(&st, &f, &lo, &hi); char why[900] = ""; int ok = compat(&st, why, sizeof why);
+	printf(",\"stable\":{\"serial\":%lld,\"version\":", st.serial); jstr(st.version); printf(",\"released\":"); jstr(st.released);
+	printf(",\"datafmt\":%d,\"reads\":[%d,%d],\"recorded\":%s}", f, lo, hi, st.datafmt > 0 ? "true" : "false");
+	const char *sl = slot_with(st.serial, bs);
+	const char *how = !official(v) ? "official" : cur == st.serial ? "running" : sl ? "slot" : "download";
+	printf(",\"how\":\"%s\",\"slot\":", how); jstr(sl ? sl : ""); printf(",\"compatible\":%s,\"why\":", ok ? "true" : "false"); jstr(why);
+	printf(",\"notes\":["); NOTE_N = 0; notes_for(&st, note_json); printf("]}\n");
+	return 0;
+}
+static int cmd_tostable(void)
+{
+	if (!may_change_system(0)) return 6;
+	if (!access(EXTRAF, F_OK) || !official(run_signer())) { say("This computer runs a custom build: use Return to official Rudolf OS (Settings > Security) to go back to the official system."); return 9; }
+	if (lockf_()) die("another update is running");
+	say("Checking the last stable release at %s", off_url(0));
+	stable_fetch();
+	man_t st; if (stable_load(&st)) { say("Could not get the list of stable releases: check the connection and try again. Nothing was changed."); return 3; }
+	kv_t r; cur_release(&r); long long cur = atoll(kv(&r, "serial")); char bs[8]; booted(bs);
+	say("The last stable version: Rudolf OS %s (released %s).", st.version, st.released);
+	char why[900]; if (!compat(&st, why, sizeof why)) { say("%s", why); return 8; }
+	notes_for(&st, note_say);
+	if (cur == st.serial) { set_stable_channel(); say("This computer already runs Rudolf OS %s, the latest stable release. Beta versions are off.", st.version); return 0; }
+	const char *sl = slot_with(st.serial, bs);
+	if (sl) {
+		char stp[300]; snprintf(stp, sizeof stp, "%s/state", SYSD); kv_t s2; kv_read(stp, &s2, '=');
+		if (!*kv(&s2, "good")) kv_set(&s2, "good", bs);
+		kv_set(&s2, "next", sl); kv_set(&s2, "tries", "2"); kv_set(&s2, "failed", ""); kv_write(stp, &s2, '='); set_stable_channel(); sync();
+		say("Rudolf OS %s is still on this computer (system slot %s): nothing to download. Beta versions are off.", st.version, sl);
+		say("Ready: Rudolf OS %s starts the next time the computer restarts.", st.version); return 0;
+	}
+	/* downloaded as an update (only the changes), from the official stable address: beta versions off ("tostable": the
+	   stable release even though its number is lower), and the list it downloads checked again for this computer's data */
+	{ kv_t cf; kv_read(CONFP, &cf, '='); kv_set(&cf, "url", off_url(0)); kv_set(&cf, "tostable", "1"); kv_write(CONFP, &cf, '=');
+	  char ap[320]; snprintf(ap, sizeof ap, "%s/available.txt", SYSD); unlink(ap); snprintf(ap, sizeof ap, "%s/available.sig", SYSD); unlink(ap); }
+	say("Beta versions are off. Downloading Rudolf OS %s into the spare system slot (only the changes).", st.version);
+	COMPAT_GATE = 1; int rc = cmd_download(); COMPAT_GATE = 0;
+	if (rc) say("The stable release could not be installed now; the next update brings it (beta versions stay off).");
+	return rc;
 }
 static void slot_json(const char *s)
 {
@@ -776,6 +998,9 @@ static int cmd_status(void)
 	  printf(",\"developer\":%s,\"recoveryOfficial\":%s", access(EXTRAF, F_OK) ? "false" : "true", access(rk, F_OK) ? "false" : "true"); }
 	printf(",\"url\":"); jstr(*kv(&cf, "url") ? kv(&cf, "url") : d ? d : ""); printf(",\"auto\":%s", strcmp(kv(&cf, "auto"), "0") ? "true" : "false");
 	printf(",\"beta\":%s,\"toStable\":%s", on_beta(&cf) ? "true" : "false", !strcmp(kv(&cf, "tostable"), "1") ? "true" : "false");
+	/* 1.6.0: Roll back to the last stable version: whether this system is a published stable release, and which is the last */
+	{ man_t sm; int have = !stable_load(&sm), rs = running_stable(atoll(kv(&r, "serial")), &sm, have);
+	  printf(",\"runningStable\":%s,\"stableVersion\":", rs > 0 ? "true" : rs == 0 ? "false" : "null"); jstr(have ? sm.version : ""); }
 	printf(",\"checked\":%lld,\"available\":", atoll(kv(&cf, "checked")));
 	char ap[300], sp[300]; snprintf(ap, sizeof ap, "%s/available.txt", SYSD); snprintf(sp, sizeof sp, "%s/available.sig", SYSD);
 	size_t ml, sl; char *mt = slurp(ap, &ml), *sg = slurp(sp, &sl); man_t m; int okm = 0;
@@ -833,6 +1058,8 @@ int main(int argc, char **argv)
 	if (!strcmp(c, "download")) return cmd_download();
 	if (!strcmp(c, "boot-ok")) return cmd_bootok();
 	if (!strcmp(c, "rollback")) return cmd_rollback();
+	if (!strcmp(c, "stable-info")) return cmd_stable_info();   /* 1.6.0 */
+	if (!strcmp(c, "to-stable")) return cmd_tostable();
 	if (!strcmp(c, "recovery")) { char bs[8]; booted(bs); if (recovery_start()) { say("Not while in recovery mode."); return 1; } return recovery_refresh(bs); }
 	/* 1.5.9 (plan 8.3): Developer mode (the desktop asks an administrator's password and a typed confirmation first) */
 	if (!strcmp(c, "developer") && argc >= 3) {

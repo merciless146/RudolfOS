@@ -1274,6 +1274,37 @@ printers and ARM64 can be delayed until 1.6.1."
 9. **Part 12.3c:** same_t.sh's comparison of Oracle's window on Native against Standard's (toolbar, tabs, a site).
 10. **Browse with Tor:** Ctrl+W, T, N and Q in a website in the Tor window on Standard are Rudolf's, as in its other
     windows (rudolf-display's keys), with a test.
+
+**Asked for on 2026-11-16 (must be done before stable):** "Can a button be added to the update and recovery settings to
+"Roll Back to Last Stable Version" that only appears when get beta versions is opted in or when an experimental build the
+repository doesn't recognize as a stable/promoted version is detected to be running?" and, once the design was described:
+"That's exactly the purpose it's going to serve for 1.6 onwards, is exactly how you described it."
+11. **Roll back to the last stable version** (Settings › Update and recovery; the PR "Roll back to last stable version").
+    - **Shown** only when Get beta versions is on, or when the running system is not a release the update server lists
+      as published stable: official and its serial the stable channel's, or in `stable/history.txt` (every release ever
+      promoted, signed with the release key by the release workflow's promotion and at each run, seeded from the pages'
+      history: iso/systools/stable_history.py); both lists checked with the official key only, a history kept only when
+      it still names every release the kept one names. Hidden otherwise.
+    - **What it does:** checks for updates; says which version ("Rudolf OS 1.5.9.261115 (stable, released 2026-11-15)"),
+      whether it is still on the computer or downloaded first, and what the older release does not use; an
+      administrator's name and password (checked by rudolfd: `POST sys/tostable`); then that release from the other
+      system slot when it holds exactly it (signed, complete), else downloaded into the spare slot as updates are (only
+      the changes, every file checked against the signed list); Get beta versions off; Restart now. On a developer's
+      build it is Return to official Rudolf OS. `rudolf-update stable-info` and `to-stable`.
+    - **The data check:** each release list now says the layout of the data the release keeps and the layouts it reads
+      (`datafmt 2`, `readsfmt 1-2`, from iso/datafmt); the computer keeps the newest layout that started on it
+      (/persist/os/datafmt). Layout 1: every account's files the desktop's Linux user's (before 1.5.9); layout 2: each
+      account its own Linux user, its folder and files its own (1.5.9, docs/plan-1.5.9.md 15.3). A release that cannot
+      read this computer's data is refused with why, nothing changed. **1.6.0 -> 1.5.9: allowed.** 1.6.0 keeps the
+      accounts as 1.5.9 does (Part 10 shipped in 1.5.9); what 1.6.0 adds lies beside them and 1.5.9 leaves it alone (the
+      keyring's sign-ins: apps may ask again; system extensions: not used; Messages and the month's mobile data: kept,
+      not shown), said in the prompt. 1.5.9 was published without the record: known by its version to read layouts 1
+      and 2. No reverse step is needed for 1.5.9; 1.5.8 and older (layout 1 only) are refused.
+    - **Tests:** qt/host/tostable60_t.sh, qt/shell2/tostable60_t.js, and in QEMU on the real releases
+      qt/sb/t160r_t.py (workflow "Roll back to stable check", 12/12: run 43911026403): the beta rolled back to 1.5.9, the account made on the
+      beta opened by 1.5.9, back up to the beta, the refusal with 1.5.8's real signed list.
+    - **For the owner on the Vivobook:** the button on the beta; hidden with Get beta versions off on a stable release;
+      its prompt. A real roll back to 1.5.9 only if the owner chooses (it replaces the beta until it is installed again).
 - **Moved to 1.6.1:** Part 8 (USB printers: extensions.yml's first run to publish `usbprint`, then the HP desktop user's
   printer; docs/plan-1.6.1.md Part 9) and Part 7 (ARM64: its first release on one ARM64 computer that starts with UEFI;
   with the phone, docs/plan-1.6.1.md Part 4). 1.6.0 ships for x86 computers, and prints to network printers (IPP
