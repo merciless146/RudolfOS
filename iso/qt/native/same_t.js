@@ -149,6 +149,8 @@ CASES.push({n: 'video-fs', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'n
 const MPLIVE = "(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.getClientRects().length).pop(); w.querySelector('.ou').click(); const d = w.querySelector('.dlg'); d.querySelector('input').value = location.origin + '/tm/t.webm'; [...d.querySelectorAll('button')].pop().click(); " +
   "const v = w.querySelector('video'); v.muted = true; v.loop = true; v.play() })()";
 CASES.push({n: 'overview-live', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'media', 'settings']}, app: 'media', media: 't.webm', js: MPLIVE, jswait: 2500, key: 'overview', moving: 2000, parts: ['moving']});
+/* (what this session's cases read besides their pictures: wopen, video-frames; each engine's, for the case being run) */
+const XTRA = {std: {}, nat: {}};
 /* (N15) a window opening: Standard's .win.wopen (.18 s, from opacity 0 and 96 %); on Native the shell's animation over it, as long, its
    picture part of the way through not yet the window's own */
 CASES.push({n: 'wopen', set: {}, act: 'notepad', wopen: 1, parts: ['wopen']});
@@ -193,8 +195,6 @@ CASES.push({n: 'title-icon', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 
 CASES.push({n: 'app-menu', set: {}, more: PINSL, app: 'explorer', appctx: 'DOCUMENTS', parts: ['ctx']});
 CASES.push({n: 'title-dark', set: {dm: 'dark', darkui: true}, more: PINSL, app: 'explorer', parts: ['title']});
 CASES.push({n: 'help', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'help']}, app: 'help', parts: ['win']});
-/* (what this session's cases read besides their pictures: wopen, video-frames; each engine's, for the case being run) */
-const XTRA = {std: {}, nat: {}};
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
