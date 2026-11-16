@@ -661,7 +661,8 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
 static double tw_tbh(void);   /* (the title bar's height in the page's pixels: tw_geom) */
 static int BW = 1;   /* (the page's windows' 1 px edge, 2 px with high contrast; the title bar's height, TH, follows the display scaling, the font size and the touch mode: tw_th) */
 typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
-	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
+	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; int opened; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
+static void wopen_start(Client *c);
 static GList *CLIENTS;   /* oldest first */
 static Client *FOCUS;
 static Display *DPY; static Window ROOT; static int WM_OK;
@@ -1128,6 +1129,7 @@ static void wm_manage(Window w, AppWin *own)
 	if (own && !strcmp(own->k, "do-saver")) { c->ontop = 1; wm_fullscreen(c, 1); }   /* (the screen saver: over everything, the taskbar too: item 6) */
 	if (own && TM_TOP && !strcmp(own->k, "taskmgr")) { c->ontop = 1; TM_TOP = 0; }   /* (1.6.0: Ctrl+Alt+Del's Task Manager, above every window) */
 	wm_focus(c);
+	if (!own) wopen_start(c);   /* (another program's window (Oracle's, a Linux app's) opens as the page's do; an app's own, at its page's size: appwin_size) */
 }
 static void wm_unmanage(Client *c, int gone)
 {
@@ -1354,6 +1356,7 @@ static void appwin_size(AppWin *a, int w, int h)
 	double x = fmax(0, fmin(40 + n * 26, dw - w - 4)), y = fmax(0, fmin(20 + n * 26, avail - h - 4));
 	c->cw = (int)lround(w * Z); c->ch = (int)lround((h - tw_tbh()) * Z); c->x = desk_left() + (int)lround(x * Z); c->y = work_top() + (int)lround(y * Z);
 	place(c); frame_draw(c); state_write();
+	if (!c->opened) wopen_start(c);   /* (its first place: it opens, N15) */
 }
 static void frame_redraw_app(AppWin *a) { Client *c = WM_OK ? client_of_app(a) : NULL; if (c) { wm_title(c); frame_draw(c); } }
 /* (1.6.0 Part 12, test findings N2, N4, N10) a page's dialog (oneapp59.js: .rmodal, .natdlg) is over the whole desktop on Standard,
@@ -4738,6 +4741,89 @@ static void fl_open(int kind)
 	gdk_seat_grab(gdk_display_get_default_seat(gdk_display_get_default()), gtk_widget_get_window(FLWIN), GDK_SEAT_CAPABILITY_ALL, FALSE, NULL, NULL, NULL, NULL); state_write();
 }
 
+/* ---- the X server's Composite extension (libXcomposite, loaded when there): the windows' own pictures, which the server keeps up to
+   date while a window is redirected (automatically: it is still drawn on the screen as before). The overview's pictures and what
+   is behind a toast come from them. A window is redirected while anything here needs it (counted). */
+typedef Window (*XcName)(Display *, Window); typedef void (*XcRedir)(Display *, Window, int);
+static XcName XC_NAME; static XcRedir XC_RED, XC_UNRED;
+static int xc_ok(void)
+{
+	static int tried; if (tried) return XC_NAME != NULL; tried = 1;
+	void *h = dlopen("libXcomposite.so.1", RTLD_NOW | RTLD_LOCAL); if (h) { XC_NAME = (XcName)dlsym(h, "XCompositeNameWindowPixmap"); XC_RED = (XcRedir)dlsym(h, "XCompositeRedirectWindow"); XC_UNRED = (XcRedir)dlsym(h, "XCompositeUnredirectWindow"); }
+	if (!XC_NAME || !XC_RED || !XC_UNRED) { XC_NAME = NULL; fprintf(stderr, "rudolf-native: no Composite (libXcomposite.so.1): the overview shows the windows' frames only\n"); }
+	return XC_NAME != NULL;
+}
+/* (a window and those inside it asked to draw themselves again: a window just redirected starts with a copy of what the screen showed
+   there, which may be another window over it) */
+static void comp_expose(Window w, int depth)
+{
+	XClearArea(DPY, w, 0, 0, 0, 0, True); if (depth > 6) return;
+	Window r0, p0, *kids = NULL; unsigned int n = 0; if (!XQueryTree(DPY, w, &r0, &p0, &kids, &n)) return;
+	for (unsigned int i = 0; i < n; i++) { XWindowAttributes wa; if (XGetWindowAttributes(DPY, kids[i], &wa) && wa.map_state == IsViewable && wa.class == InputOutput) comp_expose(kids[i], depth + 1); }
+	if (kids) XFree(kids);
+}
+static GHashTable *XC_REF;
+static void comp_ref(Window w)
+{
+	if (!xc_ok()) return; if (!XC_REF) XC_REF = g_hash_table_new(NULL, NULL);
+	int n = GPOINTER_TO_INT(g_hash_table_lookup(XC_REF, GSIZE_TO_POINTER(w))); if (!n) XC_RED(DPY, w, 0 /* CompositeRedirectAutomatic */);
+	g_hash_table_insert(XC_REF, GSIZE_TO_POINTER(w), GINT_TO_POINTER(n + 1));
+}
+static void comp_unref(Window w)
+{
+	if (!xc_ok() || !XC_REF) return; int n = GPOINTER_TO_INT(g_hash_table_lookup(XC_REF, GSIZE_TO_POINTER(w))); if (!n) return;
+	if (n == 1) { g_hash_table_remove(XC_REF, GSIZE_TO_POINTER(w)); XC_UNRED(DPY, w, 0); comp_expose(w, 0);   /* (back on the screen: drawn again there) */
+		for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->frame == w && c->app && c->app->win) gtk_widget_queue_draw(c->app->win); } }   /* (an app's page: WebKit's own drawing too) */ else g_hash_table_insert(XC_REF, GSIZE_TO_POINTER(w), GINT_TO_POINTER(n - 1));
+}
+static Client *client_of_frame(Window f) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->frame == f) return c; } return NULL; }
+/* what is on the screen behind window SELF in the rectangle (RX, RY, RW, RH), as the screen would show it without SELF: each window
+   under it (in the X server's stacking order) from its own picture, a frame within its round corners. The windows are redirected
+   the first time and added to HELD (unredirected by the caller when it no longer needs them). 0 without Composite. With no CR, the
+   windows there are only redirected (before SELF is shown over them). */
+static void comp_paint_one(cairo_t *cr, Window w, XWindowAttributes *wa, int rx, int ry)
+{
+	int x = wa->x + wa->border_width, y = wa->y + wa->border_width; Pixmap pm = XC_NAME(DPY, w); if (!pm) return;
+	cairo_surface_t *xs = cairo_xlib_surface_create(DPY, pm, wa->visual, wa->width, wa->height);
+	cairo_save(cr); Client *c = client_of_frame(w);
+	if (c && !c->max && !c->full) { rrect(cr, x - rx, y - ry, wa->width, wa->height, tw_rad() * Z); cairo_clip(cr); }
+	cairo_set_source_surface(cr, xs, x - rx, y - ry); cairo_paint(cr); cairo_restore(cr);
+	cairo_surface_destroy(xs); XFreePixmap(DPY, pm);
+}
+/* (N15) a window opening (shell25.js: .win.wopen, styles25.css: .18 s ease-out, from opacity 0 and scale(.96) about its centre): drawn
+   by the opening's own window over it, in its place among the others, at COMP_ANIM_E of the way */
+static Window COMP_ANIM_W; static double COMP_ANIM_E = 1;
+static void comp_paint_anim(cairo_t *cr, Window w, XWindowAttributes *wa, int rx, int ry)
+{
+	double e = CLAMP(COMP_ANIM_E, 0, 1), sc = .96 + .04 * e; if (e <= 0) return;
+	int x = wa->x + wa->border_width, y = wa->y + wa->border_width; Pixmap pm = XC_NAME(DPY, w); if (!pm) return;
+	cairo_surface_t *xs = cairo_xlib_surface_create(DPY, pm, wa->visual, wa->width, wa->height);
+	cairo_save(cr); cairo_translate(cr, x - rx + wa->width / 2.0, y - ry + wa->height / 2.0); cairo_scale(cr, sc, sc); cairo_translate(cr, -wa->width / 2.0, -wa->height / 2.0);
+	Client *c = client_of_frame(w); if (c && !c->max && !c->full) { rrect(cr, 0, 0, wa->width, wa->height, tw_rad() * Z); cairo_clip(cr); }
+	cairo_set_source_surface(cr, xs, 0, 0); cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD); cairo_paint_with_alpha(cr, e); cairo_restore(cr);
+	cairo_surface_destroy(xs); XFreePixmap(DPY, pm);
+}
+/* ABOVE: the windows over SELF instead: one this has redirected (it was under SELF, and has been raised over it since: the taskbar)
+   is given back to the X server, and draws itself again (a redirected window no longer hides what is under it, so SELF was drawn over
+   it on the screen) */
+static int comp_behind_or_above(cairo_t *cr, Window self, int rx, int ry, int rw, int rh, GPtrArray *held, int above)
+{
+	if (!xc_ok()) return 0; Window r0, p0, *kids = NULL; unsigned int n = 0; if (!XQueryTree(DPY, ROOT, &r0, &p0, &kids, &n)) return 0;
+	if (cr && !above) { cairo_save(cr); cairo_set_source_rgb(cr, 0, 0, 0); cairo_paint(cr); cairo_restore(cr); }
+	unsigned int i0 = 0; if (above) { while (i0 < n && kids[i0] != self) i0++; i0++; }
+	for (unsigned int i = i0; i < n && (above || kids[i] != self); i++) { XWindowAttributes wa;
+		if (above) { for (guint k = 0; k < held->len; k++) if ((Window)GPOINTER_TO_SIZE(g_ptr_array_index(held, k)) == kids[i]) {
+				g_ptr_array_remove_index(held, k); comp_unref(kids[i]); comp_expose(kids[i], 0); break; }
+			continue; }
+		if (!XGetWindowAttributes(DPY, kids[i], &wa) || wa.map_state != IsViewable || wa.class == InputOnly) continue;
+		int x = wa.x + wa.border_width, y = wa.y + wa.border_width; if (x >= rx + rw || y >= ry + rh || x + wa.width <= rx || y + wa.height <= ry) continue;
+		if (!above) { gboolean had = FALSE; for (guint k = 0; k < held->len; k++) if ((Window)GPOINTER_TO_SIZE(g_ptr_array_index(held, k)) == kids[i]) { had = TRUE; break; }
+			if (!had) { comp_ref(kids[i]); g_ptr_array_add(held, GSIZE_TO_POINTER(kids[i])); if (!cr || self) comp_expose(kids[i], 0); } }
+		if (cr && kids[i] == COMP_ANIM_W) comp_paint_anim(cr, kids[i], &wa, rx, ry); else if (cr) comp_paint_one(cr, kids[i], &wa, rx, ry); }
+	if (kids) XFree(kids); return 1;
+}
+static int comp_behind(cairo_t *cr, Window self, int rx, int ry, int rw, int rh, GPtrArray *held) { return comp_behind_or_above(cr, self, rx, ry, rw, rh, held, 0); }
+static void comp_release(GPtrArray *held) { for (guint k = 0; k < held->len; k++) comp_unref((Window)GPOINTER_TO_SIZE(g_ptr_array_index(held, k))); g_ptr_array_set_size(held, 0); }
+
 /* ------------------------------------------------------------------ the notifications' pop-ups (1.6.0 Part 12, item 3)
    A page's notification (shell25.js __notifCentre.add) shows as the page's toast (.ntoast, #ntoasts: 320 px of content,
    12 px from the screen's right edge and 56 px from its bottom, or its top with the taskbar there; one above the other,
@@ -4747,6 +4833,7 @@ static void fl_open(int kind)
    Blitzen (as the centre's ⚡ Why?). Drawn in a window of its own over a copy of what is behind, as the pop-ups. */
 typedef struct { char t[200], b[600], k[12], nid[40], sid[80]; int why, act, win; gint64 born, ms; double h; } Toast;   /* (sid: Oracle's page in Chromium that sent it, 12.3c) */
 static Toast TST[8]; static int NTST; static GtkWidget *TWIN, *TAREA; static GdkPixbuf *TBG; static int TWX, TWY, TWW, TWH; static guint TTICK;
+static GPtrArray *THELD; static guint TLIVE;   /* (the windows behind redirected for their pictures; the timer drawing them again) */
 static double TSX[8], TSY[8], TWHY[8][4];   /* (each one's place as drawn, the page's units on the screen; its ⚡ Why?) */
 /* (a CSS cubic-bezier timing function at T) */
 static double bezier(double x1, double y1, double x2, double y2, double t)
@@ -4795,9 +4882,17 @@ static void toast_paint(cairo_t *cr)
 }
 static gboolean toast_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 {
-	(void)wd; (void)d; if (TBG) { gdk_cairo_set_source_pixbuf(cr, TBG, 0, 0); cairo_paint(cr); }
-	cairo_translate(cr, -TWX, -TWY); cairo_scale(cr, Z, Z); toast_paint(cr); return TRUE;
+	(void)d;
+	/* (what is behind the toasts and their shadows as it is now, from the windows' own pictures (Composite): a video, a window moved
+	   under them; the copy taken when they came only without Composite) */
+	if (!THELD) THELD = g_ptr_array_new();
+	GdkWindow *gw = gtk_widget_get_window(gtk_widget_get_toplevel(wd)); int live = gw && comp_behind(cr, GDK_WINDOW_XID(gw), TWX, TWY, TWW, TWH, THELD);
+	if (!live && TBG) { gdk_cairo_set_source_pixbuf(cr, TBG, 0, 0); cairo_paint(cr); }
+	cairo_save(cr); cairo_translate(cr, -TWX, -TWY); cairo_scale(cr, Z, Z); toast_paint(cr); cairo_restore(cr);
+	if (live) comp_behind_or_above(NULL, GDK_WINDOW_XID(gw), TWX, TWY, TWW, TWH, THELD, 1);
+	return TRUE;
 }
+static gboolean toast_live(gpointer d) { (void)d; if (!NTST || !TWIN || !gtk_widget_get_visible(TWIN)) { TLIVE = 0; return G_SOURCE_REMOVE; } gtk_widget_queue_draw(TAREA); return G_SOURCE_CONTINUE; }
 static void toast_place(void);
 static gboolean toast_tick(gpointer d)
 {
@@ -4814,20 +4909,65 @@ static void toast_anim(void) { if (TTICK) g_source_remove(TTICK); TTICK = g_time
 /* its window: over the toasts and their shadows (what is behind copied without it) */
 static void toast_place(void)
 {
-	if (!NTST) { if (TWIN) gtk_widget_hide(TWIN); if (TBG) { g_object_unref(TBG); TBG = NULL; } state_write(); return; }
+	if (!NTST) { if (TWIN) gtk_widget_hide(TWIN); if (TBG) { g_object_unref(TBG); TBG = NULL; } if (THELD) comp_release(THELD); if (TLIVE) { g_source_remove(TLIVE); TLIVE = 0; } state_write(); return; }
 	if (!TWIN) { TWIN = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(TWIN), "Notifications"); TAREA = gtk_drawing_area_new(); gtk_container_add(GTK_CONTAINER(TWIN), TAREA);
 		gtk_widget_add_events(TWIN, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK); g_signal_connect(TAREA, "draw", G_CALLBACK(toast_draw), NULL); }
 	cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 4, 4); cairo_t *c = cairo_create(s); toast_paint(c); cairo_destroy(c); cairo_surface_destroy(s);   /* (the heights and places) */
 	double y0 = 1e9, y1 = -1e9, vw = SW / Z; for (int i = 0; i < NTST; i++) { y0 = fmin(y0, TSY[i]); y1 = fmax(y1, TSY[i] + TST[i].h); }
 	int x0 = (int)fmax(0, floor((vw - 12 - 349 - 30) * Z)), x1 = SW, ya = (int)fmax(0, floor((y0 - 20) * Z)), yb = (int)fmin(SH, ceil((y1 + 40) * Z));
-	int vis = gtk_widget_get_visible(TWIN); if (vis) { gtk_widget_hide(TWIN); gdk_display_sync(gdk_display_get_default()); }
-	if (TBG) g_object_unref(TBG); TWX = x0; TWY = ya; TWW = x1 - x0; TWH = yb - ya; TBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), x0, ya, TWW, TWH);
+	int vis = gtk_widget_get_visible(TWIN), xc = xc_ok(); if (vis && !xc) { gtk_widget_hide(TWIN); gdk_display_sync(gdk_display_get_default()); }
+	if (TBG) g_object_unref(TBG); TBG = NULL; TWX = x0; TWY = ya; TWW = x1 - x0; TWH = yb - ya; if (!xc || !vis) TBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), x0, ya, TWW, TWH);
+	if (xc && !vis) { if (!THELD) THELD = g_ptr_array_new(); comp_behind(NULL, 0, x0, ya, TWW, TWH, THELD); }   /* (redirected before the toasts cover them) */
 	gtk_widget_set_size_request(TAREA, TWW, TWH); gtk_window_resize(GTK_WINDOW(TWIN), TWW, TWH); gtk_window_move(GTK_WINDOW(TWIN), x0, ya);
 	gtk_widget_show_all(TWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(TWIN)));
+	/* (and there at once: shown already, GTK could leave it where it was while resizing it (from two toasts to one), and what is behind
+	   would be drawn 15 px off) */
+	gdk_window_move_resize(gtk_widget_get_window(TWIN), x0, ya, TWW, TWH);
 	/* (only the toasts take clicks, as #ntoasts's pointer-events: none: their shadows and what is between them let them through) */
 	{ cairo_region_t *rg = cairo_region_create(); for (int i = 0; i < NTST; i++) { cairo_rectangle_int_t r = { (int)floor((vw - 12 - 349) * Z) - x0, (int)floor(TSY[i] * Z) - ya, (int)ceil(349 * Z), (int)ceil(TST[i].h * Z) }; cairo_region_union_rectangle(rg, &r); }
 		gdk_window_input_shape_combine_region(gtk_widget_get_window(TWIN), rg, 0, 0); cairo_region_destroy(rg); }
+	if (xc && !TLIVE) TLIVE = g_timeout_add(50, toast_live, NULL);   /* (what is behind drawn again 20 times a second) */
 	gtk_widget_queue_draw(TAREA); state_write();
+}
+/* ------------------------------------------------------------------ a window opening (test finding N15)
+   Standard's new window fades in and grows from 96 % in .18 s (shell25.js: .win.wopen, not with Reduce motion). Here, without a
+   compositor, a window of the shell's own lies over the new one for those .18 s and draws what is there from the windows' own
+   pictures (Composite), the new one among them as it is at that moment of the animation; then it goes. */
+static GtkWidget *WOWIN, *WOAREA; static GPtrArray *WOHELD; static Client *WOC; static gint64 WOT0; static guint WOTICK; static int WOX, WOY, WOW, WOH;
+static void wopen_end(void)
+{
+	if (WOTICK) { g_source_remove(WOTICK); WOTICK = 0; } if (WOWIN) gtk_widget_hide(WOWIN);
+	if (WOHELD) comp_release(WOHELD); WOC = NULL; state_write();
+}
+static gboolean wopen_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
+{
+	(void)d; if (!WOC || !g_list_find(CLIENTS, WOC)) return TRUE;
+	GdkWindow *gw = gtk_widget_get_window(gtk_widget_get_toplevel(wd)); double t = (g_get_monotonic_time() - WOT0) / 180000.0;
+	COMP_ANIM_W = WOC->frame; COMP_ANIM_E = ease_out(fmin(1, fmax(0, t)));
+	if (gw) comp_behind(cr, GDK_WINDOW_XID(gw), WOX, WOY, WOW, WOH, WOHELD);
+	COMP_ANIM_W = 0; COMP_ANIM_E = 1; return TRUE;
+}
+static gboolean wopen_tick(gpointer d)
+{
+	(void)d; if (!WOC || !g_list_find(CLIENTS, WOC) || g_get_monotonic_time() - WOT0 >= 180000) { WOTICK = 0; wopen_end(); return G_SOURCE_REMOVE; }
+	if (WOAREA) gtk_widget_queue_draw(WOAREA); return G_SOURCE_CONTINUE;
+}
+static void wopen_start(Client *c)
+{
+	if (!c || c->opened) return; c->opened = 1;
+	if (!xc_ok() || S.rmotion || c->min || c->hidden || c->off || c->full || LOCKED || (c->app && !strncmp(c->app->k, "do-", 3))) return;
+	XWindowAttributes wa; if (!XGetWindowAttributes(DPY, c->frame, &wa) || wa.map_state != IsViewable) return;
+	if (WOC) wopen_end();
+	WOX = wa.x; WOY = wa.y; WOW = wa.width; WOH = wa.height;
+	if (!WOWIN) { WOWIN = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(WOWIN), "Opening"); WOAREA = gtk_drawing_area_new(); gtk_container_add(GTK_CONTAINER(WOWIN), WOAREA);
+		g_signal_connect(WOAREA, "draw", G_CALLBACK(wopen_draw), NULL); }
+	if (!WOHELD) WOHELD = g_ptr_array_new();
+	comp_behind(NULL, 0, WOX, WOY, WOW, WOH, WOHELD);   /* (the windows there redirected before it covers them, each drawn again) */
+	WOC = c; WOT0 = g_get_monotonic_time();
+	gtk_widget_set_size_request(WOAREA, WOW, WOH); gtk_window_resize(GTK_WINDOW(WOWIN), WOW, WOH); gtk_window_move(GTK_WINDOW(WOWIN), WOX, WOY); gtk_widget_show_all(WOWIN);
+	gdk_window_move_resize(gtk_widget_get_window(WOWIN), WOX, WOY, WOW, WOH); XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(WOWIN)));
+	{ cairo_region_t *rg = cairo_region_create(); gdk_window_input_shape_combine_region(gtk_widget_get_window(WOWIN), rg, 0, 0); cairo_region_destroy(rg); }   /* (clicks go to the window under it) */
+	gtk_widget_queue_draw(WOAREA); WOTICK = g_timeout_add(16, wopen_tick, NULL); state_write();
 }
 /* ------------------------------------------------------------------ the keys' indicator (1.5.9, 12.3c)
    osd31.js's: the volume, the microphone or the brightness, at the top of the screen for 1.5 s (#osd: 28 px down, centred,
@@ -5447,16 +5587,7 @@ static void at_end(int pick)
    3 px ring in the accent colour and the shadow 0 12px 30px rgba(0,0,0,.4); the desktop under them shaded rgba(15,23,42,.55); a click
    on a window brings it to the front, elsewhere (or Escape, or Super+Tab again) goes back. The windows' pictures come from the X
    server's Composite extension (each window kept off screen while the overview is shown), loaded when there. */
-typedef Window (*XcName)(Display *, Window); typedef void (*XcRedir)(Display *, Window, int);
-static XcName XC_NAME; static XcRedir XC_RED, XC_UNRED;
-static int xc_ok(void)
-{
-	static int tried; if (tried) return XC_NAME != NULL; tried = 1;
-	void *h = dlopen("libXcomposite.so.1", RTLD_NOW | RTLD_LOCAL); if (h) { XC_NAME = (XcName)dlsym(h, "XCompositeNameWindowPixmap"); XC_RED = (XcRedir)dlsym(h, "XCompositeRedirectWindow"); XC_UNRED = (XcRedir)dlsym(h, "XCompositeUnredirectWindow"); }
-	if (!XC_NAME || !XC_RED || !XC_UNRED) { XC_NAME = NULL; fprintf(stderr, "rudolf-native: no Composite (libXcomposite.so.1): the overview shows the windows' frames only\n"); }
-	return XC_NAME != NULL;
-}
-typedef struct { Client *c; double x, y, w, h, s; int wasmin; cairo_surface_t *pic; } OvW;
+typedef struct { Client *c; double x, y, w, h, s; int wasmin; cairo_surface_t *pic; Pixmap pm; int pw, ph; } OvW;
 static GtkWidget *OVWIN, *OVAREA; static OvW OVL[32]; static int OVN; static guint OVT;
 /* (#desk as the page has it: 42 px above a taskbar at the bottom, 48 px below one at the top, beside one at the left or right) */
 static void ov_desk(double *x, double *y, double *w, double *h)
@@ -5470,14 +5601,20 @@ static void ov_layout(void)
 	for (int i = 0; i < n; i++) { OvW *o = &OVL[i]; double w = fw_of(o->c), h = fh_of(o->c); double s = fmin(fmin((cw - 40 * Z) / w, (ch - 60 * Z) / h), 1);
 		double cxx = (i % cols) * cw + cw / 2, cyy = (i / cols) * ch + ch / 2; o->s = s; o->w = w * s; o->h = h * s; o->x = dx + cxx - o->w / 2; o->y = dy + cyy - o->h / 2; }
 }
+/* (each window's picture: its pixmap under Composite, which the X server keeps up to date as the window draws itself, so a
+   video or a clock in a window goes on moving in the overview as the page's own windows do on Standard (the test findings'
+   "overview's pictures without a compositor": they were copied once when it opened); named again each time, as the server may give
+   the window a new one) */
+static void ov_free(OvW *o)
+{
+	if (o->pic) { cairo_surface_destroy(o->pic); o->pic = NULL; } if (o->pm) { XFreePixmap(DPY, o->pm); o->pm = 0; } o->pw = o->ph = 0;
+}
 static void ov_grab(void)
 {
-	for (int i = 0; i < OVN; i++) { OvW *o = &OVL[i]; if (o->pic) { cairo_surface_destroy(o->pic); o->pic = NULL; }
-		XWindowAttributes wa; if (!xc_ok() || !XGetWindowAttributes(DPY, o->c->frame, &wa) || wa.map_state != IsViewable) continue;
-		Pixmap pm = XC_NAME(DPY, o->c->frame); if (!pm) continue;
-		cairo_surface_t *xs = cairo_xlib_surface_create(DPY, pm, wa.visual, wa.width, wa.height);
-		o->pic = cairo_image_surface_create(CAIRO_FORMAT_RGB24, wa.width, wa.height); cairo_t *c = cairo_create(o->pic); cairo_set_source_surface(c, xs, 0, 0); cairo_paint(c); cairo_destroy(c);
-		cairo_surface_destroy(xs); XFreePixmap(DPY, pm); }
+	for (int i = 0; i < OVN; i++) { OvW *o = &OVL[i];
+		XWindowAttributes wa; if (!xc_ok() || !g_list_find(CLIENTS, o->c) || !XGetWindowAttributes(DPY, o->c->frame, &wa) || wa.map_state != IsViewable) { ov_free(o); continue; }
+		ov_free(o); Pixmap pm = XC_NAME(DPY, o->c->frame); if (!pm) continue;
+		o->pm = pm; o->pw = wa.width; o->ph = wa.height; o->pic = cairo_xlib_surface_create(DPY, pm, wa.visual, wa.width, wa.height); }
 }
 static gboolean ov_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 {
@@ -5504,7 +5641,9 @@ static gboolean ov_click(GtkWidget *wd, GdkEventButton *e, gpointer d)
 	for (int i = OVN - 1; i >= 0 && !pick; i--) { OvW *o = &OVL[i]; if (x >= o->x && x < o->x + o->w && y >= o->y && y < o->y + o->h) pick = o->c; }
 	ov_end(pick); return TRUE;
 }
-static gboolean ov_shot(gpointer d) { (void)d; OVT = 0; if (!OV_ON) return G_SOURCE_REMOVE; ov_grab(); if (OVAREA) gtk_widget_queue_draw(OVAREA); state_write(); return G_SOURCE_REMOVE; }
+static gboolean ov_live(gpointer d) { (void)d; if (!OV_ON) { OVT = 0; return G_SOURCE_REMOVE; } ov_grab(); if (OVAREA) gtk_widget_queue_draw(OVAREA); return G_SOURCE_CONTINUE; }
+static gboolean ov_shot(gpointer d) { (void)d; OVT = 0; if (!OV_ON) return G_SOURCE_REMOVE; ov_grab(); if (OVAREA) gtk_widget_queue_draw(OVAREA); state_write();
+	OVT = g_timeout_add(40, ov_live, NULL); return G_SOURCE_REMOVE; }   /* (then drawn again 25 times a second, the windows' pictures as they are) */
 static void ov_start(void)
 {
 	OVN = 0; for (GList *l = CLIENTS; l && OVN < 32; l = l->next) { Client *c = l->data; if (tb_win(c) && c->ws && ws_of(c) == WSC) { memset(&OVL[OVN], 0, sizeof OVL[0]); OVL[OVN++].c = c; } }
@@ -5516,7 +5655,7 @@ static void ov_start(void)
 	{ double ox, oy, ow, oh; ov_desk(&ox, &oy, &ow, &oh); gtk_widget_set_size_request(OVAREA, (int)ow, (int)oh); gtk_window_resize(GTK_WINDOW(OVWIN), (int)ow, (int)oh); gtk_window_move(GTK_WINDOW(OVWIN), (int)ox, (int)oy); }
 	gtk_widget_show_all(OVWIN); XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(OVWIN)));
 	/* (under the overview: each window off screen, the minimised ones shown there too, as the page shows them) */
-	for (int i = 0; i < OVN; i++) { OvW *o = &OVL[i]; if (xc_ok()) XC_RED(DPY, o->c->frame, 0 /* CompositeRedirectAutomatic */); if (o->c->min) { o->wasmin = 1; XMapWindow(DPY, o->c->frame); } }
+	for (int i = 0; i < OVN; i++) { OvW *o = &OVL[i]; comp_ref(o->c->frame); if (o->c->min) { o->wasmin = 1; XMapWindow(DPY, o->c->frame); } }
 	XGrabKeyboard(DPY, ROOT, False, GrabModeAsync, GrabModeAsync, CurrentTime);
 	XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(OVWIN))); XSync(DPY, False);
 	if (OVT) g_source_remove(OVT); OVT = g_timeout_add(250, ov_shot, NULL); desk_shadows(); state_write();
@@ -5524,8 +5663,8 @@ static void ov_start(void)
 static void ov_end(Client *pick)
 {
 	if (!OV_ON) return; OV_ON = 0; if (OVT) { g_source_remove(OVT); OVT = 0; } XUngrabKeyboard(DPY, CurrentTime);
-	for (int i = 0; i < OVN; i++) { OvW *o = &OVL[i]; if (!g_list_find(CLIENTS, o->c)) continue; if (xc_ok()) XC_UNRED(DPY, o->c->frame, 0);
-		if (o->wasmin && o->c != pick && o->c->min) XUnmapWindow(DPY, o->c->frame); if (o->pic) { cairo_surface_destroy(o->pic); o->pic = NULL; } }
+	for (int i = 0; i < OVN; i++) { OvW *o = &OVL[i]; if (!g_list_find(CLIENTS, o->c)) { ov_free(o); continue; } comp_unref(o->c->frame);
+		if (o->wasmin && o->c != pick && o->c->min) XUnmapWindow(DPY, o->c->frame); ov_free(o); }
 	OVN = 0; if (OVWIN) gtk_widget_hide(OVWIN); desk_shadows();
 	if (pick && g_list_find(CLIENTS, pick)) wm_focus(pick); state_write();
 }
@@ -5756,8 +5895,9 @@ static void state_write(void)
 	if (AT_ON) { g_string_append_printf(s, "altab %d %d %d %d %d %d", AT_N, AT_I, AX, AY, AW, AH); for (int i = 0; i < AT_N; i++) g_string_append_printf(s, "|%s", AT_L[i]->title); g_string_append_c(s, '\n'); }
 	else g_string_append(s, "altab -\n");
 	g_string_append_printf(s, "overview %d\n", OV_ON ? OVN : 0);
+	g_string_append_printf(s, "wopen %lx\n", WOC && g_list_find(CLIENTS, WOC) ? (unsigned long)WOC->w : 0UL);   /* (N15: a window opening, its animation running) */
 	g_string_append_printf(s, "saver %d %s|%s\nidlechecks %d\n", SAV_ON, SYS.ssstyle, SAV_WHY, IDLE_N);   /* (item 6) */
-	for (int i = 0; OV_ON && i < OVN; i++) g_string_append_printf(s, "ovwin %lx %d %d %d %d %d\n", (unsigned long)OVL[i].c->w, (int)lround(OVL[i].x), (int)lround(OVL[i].y), (int)lround(OVL[i].w), (int)lround(OVL[i].h), OVL[i].pic != NULL);
+	for (int i = 0; OV_ON && i < OVN; i++) if (g_list_find(CLIENTS, OVL[i].c)) g_string_append_printf(s, "ovwin %lx %d %d %d %d %d\n", (unsigned long)OVL[i].c->w, (int)lround(OVL[i].x), (int)lround(OVL[i].y), (int)lround(OVL[i].w), (int)lround(OVL[i].h), OVL[i].pic != NULL);
 	if (OK_[0]) g_string_append_printf(s, "osd %s %s|%s %d %d %d %d\n", OK_, OLV[0] ? OLV : "-", OLB, OX, OY, OW, OH);   /* (the keys' indicator) */
 	/* (1.6.0) quick settings' switches as the shell does them for the whole screen; the screen's colour (XRandR's gamma); the power dialog
 	   (its rows, above every window); the lock screen above every window; the windows kept on top */
