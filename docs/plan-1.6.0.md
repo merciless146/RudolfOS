@@ -693,7 +693,7 @@ starts in an app's page only those its window needs (the theme's and the icons' 
 as Standard's one page does. Measured on this host (WebKitGTK 2.52.6, --draw=soft): opening the first app adds about 230 MB of
 WebKit web process, 60 MB of its network process and 90 MB in rudolf-native; the next app about 30 MB more.
 
-**Done (2026-11-17, unattended session; "Before stable" 12): item 12's background work, once.** Cause: every one-app page ran
+**Done (2026-11-17, unattended session; "Before stable" 13): item 12's background work, once.** Cause: every one-app page ran
 the page's module-level timers as Standard's one page does, so with no app window open none ran (an alarm, a Clock timer or a
 Calendar reminder never came; rudolfd's events waited up to a minute for a window, then were dropped) and with several open each
 ran its own (an alarm rang once per window; the cellular notices were shown by the shell and again by every window). The fix:
@@ -1472,13 +1472,6 @@ repository doesn't recognize as a stable/promoted version is detected to be runn
       beta opened by 1.5.9, back up to the beta, the refusal with 1.5.8's real signed list.
     - **For the owner on the Vivobook:** the button on the beta; hidden with Get beta versions off on a stable release;
       its prompt. A real roll back to 1.5.9 only if the owner chooses (it replaces the beta until it is installed again).
-
-**Asked for on 2026-11-16 ("Include items 1, 2, 3, and 4"; must be done before stable, Native being the default):**
-12. **The native desktop's background work once** (Part 12 item 12's note): with no app window open an alarm, a Clock timer, a
-    Calendar reminder or a call's notice did not come; with several open each came once per window. **Done (2026-11-17):** the
-    timers a native app window's page starts while it loads are held back but for what the window needs (desktop/svc60.js), and
-    one hidden page of the shell's (#app=do-svc) runs the rest once for the whole desktop (Part 12's note "Done (2026-11-17)").
-    Tests: qt/host/svc160_t.sh 22/22, qt/shell2/svc60_t.js 18/18. Left: the owner's checks V51-V56 on the Vivobook.
 - **Moved to 1.6.1:** Part 8 (USB printers: extensions.yml's first run to publish `usbprint`, then the HP desktop user's
   printer; docs/plan-1.6.1.md Part 9) and Part 7 (ARM64: its first release on one ARM64 computer that starts with UEFI;
   with the phone, docs/plan-1.6.1.md Part 4). 1.6.0 ships for x86 computers, and prints to network printers (IPP
@@ -1498,7 +1491,10 @@ root work split into helpers (Part 11), with files dropped from outside onto the
     (since 1.5.9 that needs an administrator signed in, in Developer mode): brought up to date or retired, its checks
     being t160's 17 and 18. Tests only; no change to the system.
 13. **The native desktop's background jobs run once** (Part 12 item 12): alarms, reminders, calls and the rest with no
-    app window open, and once with several. Its own task, 2026-11-16.
+    app window open, and once with several. Its own task, 2026-11-16. **Done (2026-11-17)** (asked for on 2026-11-16:
+    "Include items 1, 2, 3, and 4"): the timers a native app window's page starts while it loads are held back but for what the window needs (desktop/svc60.js), and
+    one hidden page of the shell's (#app=do-svc) runs the rest once for the whole desktop (Part 12's note "Done (2026-11-17)").
+    Tests: qt/host/svc160_t.sh 22/22, qt/shell2/svc60_t.js 18/18. Left: the owner's checks V51-V56 on the Vivobook.
 
 ## After 1.6.0: the native desktop decision (added on 2026-11-12)
 (2026-11-13: the prototype moved into 1.5.9 as a third desktop engine, Native (test): docs/plan-1.5.9.md Part 12.
