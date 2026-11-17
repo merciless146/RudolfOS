@@ -6,6 +6,10 @@
 # 140 to 180 MB that no counter shows on the Vivobook (docs/plan-memdebug.md).
 # The kernel part of ci_release.sh, kept apart so that a test option can never reach a release.
 # Environment: KERNEL_VERSION (6.18.y), EXTRA (kconfig options to turn on, by name), OUT. GPL-2.0-or-later.
+# 1.6.1 (plan Part 12, kernel tuning: .github/workflows/kernel-tuning.yml, which publishes nothing): OFF (options to turn
+# off, as HZ_1000 for HZ_250), MOD (options to build as modules instead of into the kernel), EXTRA may be empty (this tree's kconfig.sh as it is), and REPRO=1 (the build's date, user
+# and machine fixed, and $OUT/repro.txt: a checksum of each part of the kernel and of each module without its signature,
+# so two builds can be compared: the module-signing key is made new for each build, and only it may differ)
 set -e
 HERE=$(cd "$(dirname "$0")/.." && pwd); cd "$HERE"
 [ -n "$KERNEL_VERSION" ] && [ -n "$OUT" ] || { echo "KERNEL_VERSION and OUT are needed"; exit 1; }
@@ -36,7 +40,8 @@ for u in https://gitlab.com/kernel-firmware/linux-firmware.git https://git.kerne
 	awk '$1=="F"{print "/"$3}' firmware-extra.txt | { echo /WHENCE; cat; } | git -C "$FW" sparse-checkout set --no-cone --stdin && git -C "$FW" checkout -q && break
 done
 python3 systools/fwextra.py copy firmware-extra.txt "$FW" "$W/fw"
-SB=$W/sof-bin; git clone -q --filter=blob:none --no-checkout https://github.com/thesofproject/sof-bin.git "$SB"
+# (1.6.1: tried three times: GitHub refused one of several test kernels' clones at once with a 403, run 44017025900)
+SB=$W/sof-bin; for i in 1 2 3; do rm -rf "$SB"; git clone -q --filter=blob:none --no-checkout https://github.com/thesofproject/sof-bin.git "$SB" && break; sleep $((i * 30)); done
 awk '$1=="F"{print "/"$4}' firmware-sof.txt | git -C "$SB" sparse-checkout set --no-cone --stdin; git -C "$SB" checkout -q fcd5ae85ead7ecd67ff199335b61fac825843ca0
 python3 systools/fwextra.py copy firmware-sof.txt "$SB" "$W/fw"
 # the Rudolf OS certificate built in as trusted, as in a release (public: the certificate only, never the key)
@@ -44,8 +49,13 @@ export SB_CERT=$(realpath boot/sb/rudolf-sb.crt)
 UCODE_DIR="$W/fw" ./kconfig.sh "$W/linux" "$HERE/initramfs $HERE/initramfs.list"
 # the test options, on top of the release's configuration
 for o in $EXTRA; do "$W/linux/scripts/config" --file "$W/linux/.config" --enable "$o"; done
+for o in $OFF; do "$W/linux/scripts/config" --file "$W/linux/.config" --disable "$o"; done
+for o in $MOD; do "$W/linux/scripts/config" --file "$W/linux/.config" --module "$o"; done
 make -C "$W/linux" -s olddefconfig
+for o in $MOD; do grep -q "^CONFIG_$o=m$" "$W/linux/.config" || { echo "testkernel: $o is not a module after olddefconfig"; exit 1; }; done
 for o in $EXTRA; do grep -q "^CONFIG_$o=y$" "$W/linux/.config" || { echo "testkernel: $o is not on after olddefconfig"; exit 1; }; done
+for o in $OFF; do grep -q "^CONFIG_$o=[ym]$" "$W/linux/.config" && { echo "testkernel: $o is still on after olddefconfig"; exit 1; }; done
+if [ "$REPRO" = 1 ]; then export KBUILD_BUILD_TIMESTAMP="@$SOURCE_DATE_EPOCH" KBUILD_BUILD_USER=rudolf KBUILD_BUILD_HOST=rudolf-build; fi
 sed -i 's/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-rudolf-test"/' "$W/linux/.config"
 make -C "$W/linux" -s olddefconfig
 make -C "$W/linux" -s -j$(nproc) bzImage modules
@@ -56,6 +66,8 @@ mkdir -p "$W/ms/usr/lib"; cp -a "$W/mods/lib/modules" "$W/ms/usr/lib/"
 mkdir -p "$W/ms/usr/lib/firmware" && cp -a "$W/fw/." "$W/ms/usr/lib/firmware/"
 mksquashfs "$W/ms" "$OUT/modules.sfs" -comp xz -Xbcj x86 -b 1M -noappend -all-root -quiet -no-progress
 cp "$W/linux/arch/x86/boot/bzImage" "$OUT/vmlinuz"; cp initramfs/bin/rudolf-kexec "$OUT/rudolf-kexec"
-grep -E "^CONFIG_($(echo $EXTRA | tr ' ' '|'))=" "$W/linux/.config" > "$OUT/config-extra.txt"
+{ [ -n "$EXTRA$OFF$MOD" ] && grep -E "^CONFIG_($(echo $EXTRA $OFF $MOD | tr ' ' '|'))=|^# CONFIG_($(echo $EXTRA $OFF $MOD | tr ' ' '|')) " "$W/linux/.config"; grep -E "^CONFIG_(HZ|PREEMPT[A-Z_]*)=" "$W/linux/.config"; } > "$OUT/config-extra.txt"
+cp "$W/linux/.config" "$OUT/config.txt"
+if [ "$REPRO" = 1 ]; then python3 systools/kreprohash.py "$W/linux/vmlinux" "$W/mods/lib/modules/$KR" > "$OUT/repro.txt"; fi
 (cd "$OUT" && sha256sum vmlinuz modules.sfs rudolf-kexec > SHA256SUMS)
 echo "test kernel $KR: $(du -m "$OUT/vmlinuz" | cut -f1) MB, modules $(du -m "$OUT/modules.sfs" | cut -f1) MB"

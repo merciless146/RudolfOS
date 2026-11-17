@@ -1,0 +1,31 @@
+# What .github/workflows/kernel-tuning.yml runs (docs/plan-1.6.1.md Part 12), on a push to a ktune-* branch. Lines:
+#   serial SERIAL                       the release whose layers are used (default: the newest beta)
+#   kernel NAME [+OPTION] [-OPTION] [~OPTION] [repro]   a test kernel from this tree: the release's configuration
+#                                       (kconfig.sh) with options turned on (+), off (-) or made modules (~); repro: built
+#                                       with its date fixed, to compare two
+#   base NAME                           a test base layer: the release's with this tree's sys/root and rudolfd
+#   run PHASE VARIANT[,VARIANT...] [VAR=VALUE ...]   iso/qt/sb/kt161_t.py PHASE, the variants started in turn on the same
+#                                       machine; a variant is release (the release's kernel) or a test kernel's NAME,
+#                                       with +BASE for a test base layer; lists in a value are written with commas
+#   serial 2026111620
+#   kernel tree repro
+#   kernel tree2 repro
+#   kernel zonly +E1000 +E1000E +IGB +IGC +R8169 +ATL1C +ALX +TIGON3 +8139CP +8139TOO +NE2K_PCI +PCNET32
+#   kernel nonly +KERNEL_XZ -KERNEL_ZSTD +INITRAMFS_COMPRESSION_XZ -INITRAMFS_COMPRESSION_ZSTD
+#   kernel hz250 +HZ_250 -HZ_1000
+#   kernel lz4 +ZRAM_BACKEND_LZ4
+#   base new
+#   run startup release,release+new,tree+new,zonly+new,nonly+new STARTS=4 INITCALLS=0
+#   run startup release,tree+new ENGINE=native STARTS=4 INITCALLS=0
+#   run latency release PREEMPTS=voluntary,full,lazy REPS=3
+#   run latency release,hz250 PREEMPTS=voluntary REPS=3
+#   run memory lz4 MEMRUNS=180:100:zstd,100:100:zstd,60:100:zstd,200:100:zstd,180:150:zstd,180:100:lz4
+#   run memory lz4 MEMRUNS=180:100:lz4,180:150:zstd,200:100:zstd,60:100:zstd,100:100:zstd,180:100:zstd
+#   run power release+new
+# (the third round, 2026-11-17, whose numbers are in docs/plan-1.6.1.md Part 12; the hw phase and HZ 250 on the same
+#  machine ran in a fifth: run hw release,tree and run latency release,hz250 PREEMPTS=voluntary REPS=3)
+# (memory, a sixth round on the 2026111707 beta: kernel lz4 +ZRAM_BACKEND_LZ4; run memory release with MEMRUNS of
+#  swappiness 60/100/180/200 and zram 1 x / 1.5 x, TABS=500,500,500,300 GAME=1300, twice in two orders; run memory lz4
+#  MEMRUNS=180:100:zstd,180:100:lz4 three times in turn)
+# On this branch nothing runs (every line above is a comment): a measurement is made on a ktune-run* test branch with
+# its own list, so a push here costs nothing. The lines above are the third round, whose numbers are in the plan.

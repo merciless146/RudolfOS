@@ -1,0 +1,204 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 12): kernel tuning, measured. Test kernels are built from this tree (iso/systools/testkernel.sh:
+# the release's configuration with options changed, or this tree's kconfig.sh as it is) and kept only as this run's artifacts;
+# each is started in QEMU with KVM on the newest beta release's layers (iso/qt/sb/kt161_t.py) next to the release's own
+# kernel: start-up times, wake-up latency and the page's input-to-frame time under load, memory with tabs, a game and a call
+# at once on 3.3 GB, and the power settings' fallback. Two builds of this tree's kernel are compared (reproducible?).
+# Nothing is published and no release, channel or secret is used. What runs is listed in .github/ktune-run.txt.
+name: Kernel tuning
+on:
+  push:
+    branches: ['ktune-*']
+    paths: ['.github/ktune-run.txt', '.github/workflows/kernel-tuning.yml']
+permissions: {contents: read}
+jobs:
+  setup:
+    runs-on: ubuntu-24.04
+    outputs: {kernels: '${{ steps.m.outputs.kernels }}', rel: '${{ steps.m.outputs.rel }}', built: '${{ steps.m.outputs.built }}', serial: '${{ steps.m.outputs.serial }}', repro: '${{ steps.m.outputs.repro }}', bases: '${{ steps.m.outputs.bases }}'}
+    steps:
+      - uses: actions/checkout@v5
+      - id: m
+        run: |
+          python3 - <<'EOF' >> $GITHUB_OUTPUT
+          import json, re
+          L = [l.split('#')[0].strip() for l in open('.github/ktune-run.txt')]
+          k, r, b = [], [], []
+          for l in L:
+              if l.startswith('kernel '): n, *rest = l[7:].split(); k.append({'name': n, 'extra': ' '.join(x[1:] for x in rest if x[0] == '+'), 'off': ' '.join(x[1:] for x in rest if x[0] == '-'), 'mod': ' '.join(x[1:] for x in rest if x[0] == '~'), 'repro': '1' if 'repro' in rest else ''})
+              elif l.startswith('run '):
+                  p = l[4:].split(); env = dict(x.split('=', 1) for x in p[2:]); vs = p[1].split(',')
+                  var = ';'.join(f"{v.replace('+', '_')}:{'' if v.split('+')[0] == 'release' else 'K/kernel-' + v.split('+')[0]}:{'B/base-' + v.split('+')[1] + '/base.sfs' if '+' in v else ''}" for v in vs)
+                  built = any(v != 'release' for v in vs)
+                  r.append({'phase': p[0], 'kernel': 'built' if built else 'release', 'variants': var, 'id': f"{len(r):02d}-{p[0]}-{p[1].replace(',', '-').replace('+', '_')}", 'env': ' '.join(f'{a}={v}' for a, v in env.items())})
+              elif l.startswith('serial '): print('serial=' + l.split()[1])
+              elif l.startswith('base '): b.append(l.split()[1])
+          print('repro=' + ('1' if any(x['repro'] for x in k) else ''))
+          print('bases=' + json.dumps(b or ['none']))
+          print('kernels=' + json.dumps(k or [{'name': 'none', 'extra': '', 'off': '', 'mod': '', 'repro': ''}]))
+          print('rel=' + json.dumps([x for x in r if x['kernel'] == 'release'] or [{'phase': 'none', 'kernel': 'release', 'variants': '', 'id': 'none', 'env': ''}]))
+          print('built=' + json.dumps([x for x in r if x['kernel'] != 'release'] or [{'phase': 'none', 'kernel': 'none', 'variants': '', 'id': 'none', 'env': ''}]))
+          EOF
+          cat $GITHUB_OUTPUT
+  kernels:
+    needs: setup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy: {fail-fast: false, matrix: {k: '${{ fromJSON(needs.setup.outputs.kernels) }}'}}
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+        if: matrix.k.name != 'none'
+      - name: Tools
+        if: matrix.k.name != 'none'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools bc flex bison libelf-dev libssl-dev kmod >/dev/null
+      - name: Build ${{ matrix.k.name }}
+        if: matrix.k.name != 'none'
+        env: {EXTRA: '${{ matrix.k.extra }}', OFF: '${{ matrix.k.off }}', MOD: '${{ matrix.k.mod }}', REPRO: '${{ matrix.k.repro }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); export KERNEL_VERSION=${KV%-rudolf}
+          echo "Linux $KERNEL_VERSION; on: $EXTRA; off: $OFF; modules: $MOD; repro: $REPRO"
+          S=$(date +%s); OUT=$PWD/kout bash iso/systools/testkernel.sh; echo "built in $(( $(date +%s) - S )) s"
+          cat kout/config-extra.txt; ls -la kout
+          echo "::notice title=Kernel ${{ matrix.k.name }}::$(tr '\n' ' ' < kout/config-extra.txt) ($(du -m kout/vmlinuz | cut -f1) MB, modules $(du -m kout/modules.sfs | cut -f1) MB, built in $(( $(date +%s) - S )) s)"
+      - if: matrix.k.name != 'none'
+        uses: actions/upload-artifact@v4
+        with: {name: 'kernel-${{ matrix.k.name }}', retention-days: 3, path: "kout/vmlinuz\nkout/modules.sfs\nkout/config-extra.txt\nkout/config.txt\nkout/repro.txt"}
+  bases:
+    needs: setup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy: {fail-fast: false, matrix: {b: '${{ fromJSON(needs.setup.outputs.bases) }}'}}
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+        if: matrix.b != 'none'
+      - name: A test base layer ${{ matrix.b }}
+        if: matrix.b != 'none'
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          # the release's base layer with this tree's sys/root copied over it and rudolfd built from this tree, as a
+          # release's base is made (systools/ci_release.sh); for start-up changes only, never published
+          sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools zlib1g-dev >/dev/null
+          git fetch -q --depth 1 origin gh-pages
+          S='${{ needs.setup.outputs.serial }}'; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          gh release download "r$S" -p base.sfs -D rel
+          sudo unsquashfs -q -d broot rel/base.sfs >/dev/null
+          cd iso; . systools/hardflags.sh; gcc -O2 $HARD -o ../rudolfd sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic; cd ..
+          sudo cp -a iso/sys/root/. broot/; sudo install -m 0755 rudolfd broot/usr/bin/rudolfd
+          sudo mksquashfs broot base.sfs -comp xz -Xbcj x86 -b 1M -noappend -all-root -quiet -no-progress; ls -la base.sfs
+      - if: matrix.b != 'none'
+        uses: actions/upload-artifact@v4
+        with: {name: 'base-${{ matrix.b }}', retention-days: 3, path: base.sfs}
+  repro:
+    needs: [setup, kernels]
+    if: always() && needs.setup.outputs.repro == '1'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {pattern: 'kernel-*', path: k}
+      - name: Two builds of the same tree compared
+        run: |
+          ls k; set -- $(ls -d k/*/repro.txt 2>/dev/null); [ $# -ge 2 ] || { echo "::error::two builds with repro are needed"; exit 1; }
+          diff "$1" "$2" > d.txt && echo "identical" || true
+          D=$(grep '^[<>]' d.txt | awk '{print $2" "$3}' | sort -u)
+          echo "$D" | head -40
+          N=$(echo "$D" | grep -c . || true); BAD=$(echo "$D" | grep -v -E '^vmlinux (\.init\.data|\.notes)$' | grep -c . || true)
+          { echo "## Reproducible?"; echo; echo "Parts that differ between the two builds: $N (expected: .init.data, which holds the throwaway module-signing certificate, and .notes, the build id)"; echo; echo '```'; echo "$D"; echo '```'; } >> $GITHUB_STEP_SUMMARY
+          cmp -s "$(dirname $1)/config.txt" "$(dirname $2)/config.txt" && echo "the configurations are identical" || { echo "::error::the configurations differ"; exit 1; }
+          [ "$BAD" = 0 ] && echo "::notice title=Reproducible::the two builds differ only in the module-signing certificate and the build id ($N parts)" || { echo "::error title=Not reproducible::$BAD other parts differ"; exit 1; }
+  measure-release:
+    needs: [setup, bases]
+    if: always() && needs.setup.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy: {fail-fast: false, matrix: {r: '${{ fromJSON(needs.setup.outputs.rel) }}'}}
+    steps:
+      - uses: actions/checkout@v5
+        if: matrix.r.phase != 'none'
+      - name: Tools
+        if: matrix.r.phase != 'none'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "::warning::no KVM: QEMU's own (slow): the times are not comparable"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV; mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+          nproc; free -m
+      - name: The release
+        if: matrix.r.phase != 'none'
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S='${{ needs.setup.outputs.serial }}'; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          echo "release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
+      - if: matrix.r.phase != 'none' && matrix.r.kernel != 'release'
+        uses: actions/download-artifact@v4
+        with: {pattern: 'kernel-*', path: K}
+      - if: matrix.r.phase != 'none' && matrix.r.kernel != 'release'
+        uses: actions/download-artifact@v4
+        with: {pattern: 'base-*', path: B}
+      - name: ${{ matrix.r.id }}
+        if: matrix.r.phase != 'none'
+        run: |
+          mkdir -p run && cd run
+          KEXTRA="VARIANTS=$(echo '${{ matrix.r.variants }}' | sed "s#:K/#:$GITHUB_WORKSPACE/K/#g; s#:B/#:$GITHUB_WORKSPACE/B/#g")"; echo "$KEXTRA"
+          sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} TAG='${{ matrix.r.id }}' "$KEXTRA" ${{ matrix.r.env }} \
+            timeout 8400 python3 ../iso/qt/sb/kt161_t.py ../rel '${{ matrix.r.phase }}' 2>&1 | tee job.log; RC=${PIPESTATUS[0]}
+          { echo '```'; sed -n '/^==== SUMMARY/,$p' job.log; echo '```'; } >> $GITHUB_STEP_SUMMARY || true
+          exit $RC
+      - if: always() && matrix.r.phase != 'none'
+        uses: actions/upload-artifact@v4
+        with: {name: 'kt161-${{ matrix.r.id }}', retention-days: 14, path: "run/kt161-*.txt\nrun/kt161-*.json\nrun/kt161*/qemu.log\nrun/job.log"}
+  measure-built:
+    needs: [setup, kernels, bases]
+    if: always() && needs.setup.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy: {fail-fast: false, matrix: {r: '${{ fromJSON(needs.setup.outputs.built) }}'}}
+    steps:
+      - uses: actions/checkout@v5
+        if: matrix.r.phase != 'none'
+      - name: Tools
+        if: matrix.r.phase != 'none'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "::warning::no KVM: QEMU's own (slow): the times are not comparable"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV; mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+          nproc; free -m
+      - name: The release
+        if: matrix.r.phase != 'none'
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S='${{ needs.setup.outputs.serial }}'; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          echo "release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
+      - if: matrix.r.phase != 'none' && matrix.r.kernel != 'release'
+        uses: actions/download-artifact@v4
+        with: {pattern: 'kernel-*', path: K}
+      - if: matrix.r.phase != 'none' && matrix.r.kernel != 'release'
+        uses: actions/download-artifact@v4
+        with: {pattern: 'base-*', path: B}
+      - name: ${{ matrix.r.id }}
+        if: matrix.r.phase != 'none'
+        run: |
+          mkdir -p run && cd run
+          KEXTRA="VARIANTS=$(echo '${{ matrix.r.variants }}' | sed "s#:K/#:$GITHUB_WORKSPACE/K/#g; s#:B/#:$GITHUB_WORKSPACE/B/#g")"; echo "$KEXTRA"
+          sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} TAG='${{ matrix.r.id }}' "$KEXTRA" ${{ matrix.r.env }} \
+            timeout 8400 python3 ../iso/qt/sb/kt161_t.py ../rel '${{ matrix.r.phase }}' 2>&1 | tee job.log; RC=${PIPESTATUS[0]}
+          { echo '```'; sed -n '/^==== SUMMARY/,$p' job.log; echo '```'; } >> $GITHUB_STEP_SUMMARY || true
+          exit $RC
+      - if: always() && matrix.r.phase != 'none'
+        uses: actions/upload-artifact@v4
+        with: {name: 'kt161-${{ matrix.r.id }}', retention-days: 14, path: "run/kt161-*.txt\nrun/kt161-*.json\nrun/kt161*/qemu.log\nrun/job.log"}
