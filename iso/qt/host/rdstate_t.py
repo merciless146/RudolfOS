@@ -5,7 +5,7 @@ it again from the mounts at each request). Every variable that outlives a functi
 safe; a new one fails this test until it is reviewed and added.   python3 rdstate_t.py"""
 import os, re, sys
 SYS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../sys')
-SRC = {f: open(os.path.join(SYS, f)).read() for f in ('rudolfd.c', 'rudolfd-home.inc', 'rudolfd-desktop.inc')}
+SRC = {f: open(os.path.join(SYS, f)).read() for f in ('rudolfd.c', 'rudolfd-home.inc', 'rudolfd-desktop.inc', 'rudolfd-root.inc')}
 # file-scope variables: name -> (the functions that may set them, why that is safe)
 GLOBAL = {
     'token': ({'main'}, 'made once at start, before the first request'),
@@ -22,13 +22,14 @@ GLOBAL = {
     'home_nobind': (set(), 'a constant, changed only by the host tests'),
     'desk_ls': (set(), 'a constant (1.5.9, rudolfd-desktop.inc), changed only by the host tests'),
     'desk_dir': (set(), 'as desk_ls'), 'desk_run': (set(), 'as desk_ls'), 'desk_uid': (set(), 'as desk_ls'),
+    'root_fd': ({'root_init'}, '1.6.1 (rudolfd-root.inc): rudolf-rootd\'s descriptor, taken once at start (main calls root_init)'),
     'DSBOX': ({'daes_tables'}, 'the AES S-box, the same in every process, made the first time a process needs it'),
 }
 # variables kept inside a function (static): (function, name) -> why
 LOCAL = {
     ('boot_secure', 'cached'): 'a fact of the start-up medium, the same in every process',
     ('qparam', 'vals'): 'scratch buffers within one request', ('qparam', 'vi'): 'scratch, within one request',
-    ('img_sha_env', 'env'): 'scratch, within one request',
+    ('img_sha_env', 'env'): 'scratch, within one request', ('img_sha_arg', 'a'): 'scratch, within one request (1.6.1)',
     ('time_tick', 'last_try'): 'the main loop only (checked below)', ('time_tick', 'last_ok'): 'the main loop only', ('time_tick', 'last_check'): 'the main loop only',
     ('time_tick', 'had_route'): 'the main loop only', ('time_tick', 'ok_since_up'): 'the main loop only',
     ('health_tick', 'last'): 'the main loop only', ('health_tick', 'last_fw'): 'the main loop only', ('health_tick', 'last_disk'): 'the main loop only',

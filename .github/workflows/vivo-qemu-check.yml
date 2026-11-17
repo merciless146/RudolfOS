@@ -1,0 +1,52 @@
+# The owner's Vivobook report of 2026-11-16 (beta 2026111620, Native) on the real release in QEMU (iso/qt/sb/v160_t.py), against
+# Standard: an app's window from the moment it is made, a menu replaced by another, the desktop's icons (at sign-in and after the
+# Desktop folder changes), Display Properties' background previewed. Run by a push that changes .github/v160-run.txt (on a branch of
+# its own: a workflow only on a branch cannot be dispatched), whose lines say: serial=SERIAL (empty: the newest beta), fix=1 (this
+# branch's rudolf-native and page put in place of the release's) or fix=main (main's, for the timings before). Nothing is published.
+name: Native Vivobook QEMU check
+on:
+  push:
+    paths: ['.github/v160-run.txt']
+permissions: {contents: read}
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: for k in serial fix; do echo "N_$k=$(sed -n "s/^$k=//p" .github/v160-run.txt | head -1)" >> $GITHUB_ENV; done
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography python3-pil bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S="$N_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel; echo "::notice title=Native Vivobook QEMU check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)), fix=$N_fix"
+      - name: The rudolf-native and page put in place (this tree's, or main's), and the window watcher
+        run: |
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev libx11-dev libxcb1-dev libxau-dev libxdmcp-dev >/dev/null
+          mkdir -p fix src
+          if [ "$N_fix" = main ]; then git fetch -q --depth 1 origin main; git show origin/main:iso/sys/rudolf-native.c > src/rudolf-native.c; git show origin/main:iso/www/index.html > fix/index.html
+          else cp iso/sys/rudolf-native.c src/; cp iso/www/index.html fix/; fi
+          gcc -O2 -Wno-deprecated-declarations -o fix/rudolf-native src/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
+          gcc -O2 -static -o fix/wincap iso/qt/host/fixtures/wincap.c -lX11 -lxcb -lXau -lXdmcp 2>/dev/null
+          ls -la fix && echo "V160_FIX=$PWD/fix" >> $GITHUB_ENV
+      - name: v160
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} V160_FIX=$V160_FIX python3 ../iso/qt/sb/v160_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: 'v160-${{ env.N_fix }}', retention-days: 7, path: "run/v160.txt\nrun/v160-timings.json\nrun/v160*/qemu.log\nrun/v160*/*.png"}

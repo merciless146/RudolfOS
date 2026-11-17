@@ -76,6 +76,8 @@ Everything moved past 1.6.0 is gathered in docs/plan-1.6.1.md (2026-11-15).
   computers, and the same parts 1 to 6. Proven in QEMU aarch64 and on one ARM64 computer before it is published.
 
 ### 8. USB printers (moved from 1.5.9 on 2026-11-13)
+**In 1.6.0 after all (owner, 2026-11-17: "Skip the test and just add it"):** the base side below is in 1.6.0; the
+`usbprint` extension is published for the beta by extensions.yml, without a test on a real printer (refined in 1.6.1).
 Asked for: printing to printers plugged in by USB, as Rudolf OS prints to network printers now (rudolf-print: IPP
 Everywhere and AirPrint, no CUPS and no drivers). The same print dialog (WordPro, SpreadsheetPro, PresentPro, and the
 PDF Viewer since 1.5.9) lists them as "USB: name".
@@ -1542,6 +1544,68 @@ root work split into helpers (Part 11), with files dropped from outside onto the
     tree's rudolf-native and page (svc-check.yml run 44009629129). Left: the owner's checks V51-V56 on the Vivobook.
 14. **Files dropped from Linux apps onto the native desktop** (planned for 1.6.1 Part 13, merged early as #444): kept in
     1.6.0 by the owner on 2026-11-16 ("Keep it in 1.6.0"). Owner's check: docs/native-vivobook-checklist.md V57.
+15. **The start-up files' repair must never leave a computer that cannot start** (owner, 2026-11-16, must before stable;
+    numbered 15 after #448's item 14). The Vivobook (beta 2026111620, Native, Secure Boot on) opened its firmware's setup
+    screen at the restart after Settings' engine switch; Boot Override listed nothing. First step (PR #449): a start only
+    reports. **The cause, found on 2026-11-17 (the bootentry-160 task; QEMU on the real releases, qt/sb/t160b_t.py, and
+    rudolfd on the Vivobook's own entries, qt/host/bootentry60_t.sh):**
+    - The Vivobook's firmware (AMI) adds no entry for the drive; it starts it only through "Drive" (made in its setup on
+      2026-10-29) and rudolfd's "Rudolf OS", which took Drive's path in 1.4.2. Both name the drive's start-up files by
+      their place in the boot image's El Torito catalogue: NVMe(...)/CDROM(1,0x52EC,0x1E000)/\EFI\BOOT\BOOTX64.EFI, the
+      place of 1.4.1's EFI image (the boot image "Get new boot files" wrote on 2026-10-29). 1.6.0's boot image has it at
+      CDROM(1,0x5AC4,0x36000): each release's boot image has its EFI image elsewhere (2026111611's at 0x5ABC).
+    - 1.6.0 (2026111620) found the drive's start-up files not all official (1.4.1's have no recovery.efi), waited for the
+      network (new in 2026111620), downloaded the release's boot image and staged it; the restart's start-up (1.4.1's,
+      from the drive) wrote it over the whole area in front of RUDOLFDATA (and a new disk signature) and restarted. Every
+      entry for the drive then named a place with nothing there: no entry could start, hence the setup screen.
+    - System health said nothing of it: rudolfd refused health events of kind "boot" (`rudolfd --health boot` exited 2),
+      so espcheck's reports never reached the log. The 9:35 PM start was most likely the one that staged it; the
+      owner's log could not show it. The start-up's own record is on RUDOLFDATA: os/bootimg/result ("written ...") and
+      var/log/boot-decisions.log ("boot files written"), in a system report's "start-up decisions".
+    - A start from a USB stick put nothing right: rudolfd keeps an entry that begins with the drive's own path (1.4.2),
+      so the stale CDROM(...) stayed, and a restart without the stick fails the same way (t160b 4a, bootentry60 0a).
+    - Not the cause, checked: the engine switch and the session write no EFI variable (t160b 2e); no BootNext was set
+      (Restart into Windows needs its own button and the administrator's password); the firmware dropped no entry (the
+      dashboard still listed them; the dumps before and after each step). Also found: Linux leaves out the EUI-64 of
+      drives whose IDs it does not trust (QEMU's NVMe, NVME_QUIRK_BOGUS_NID), and rudolfd then named the drive with a zero
+      EUI-64; it now takes it from the firmware's own entry for the drive.
+    **The fix (bootentry-160):**
+    1. rudolfd's entry follows the start-up files: an entry that names their place (CDROM(...), HD(...)) gets their
+       place now at every start (a start from a stick puts the Vivobook right); the entry that started the system is
+       proven and kept; a new or corrected entry is written under its own number and read back before it is put first,
+       the old one kept behind it as "Rudolf OS (previous)" until a start proves the new one (a start through the
+       previous one instead removes the new one). EFI variables are written in place (no longer deleted first), read
+       back, and every change is in System health (kind "boot", now accepted, with the entry's path in words).
+       `rudolfd --boot-entry check|fix`.
+    2. Never automatic: espcheck boot only reports (#449); Settings › Update and recovery › Start-up of this drive:
+       "Put back the official start-up files…" (an administrator's password, a plain warning, mains power or above 50 %).
+    3. Files, never the layout: bootfiles.sh stage/write/files (Get new boot files, Replace the boot files only, Return to
+       official, the button) copy the signed files INTO the existing EFI system partition: each beside the old one
+       (NAME.new), read back, its signature checked, renamed; the old ones kept as NAME.old until the next start from
+       the drive (espcheck removes them then). The partition table, the disk signature and the area are never written;
+       a partition without room (1.4.1's 15 MiB one) is refused and said, nothing changed. The start-up's staged write
+       (initramfs/init) copies files the same way; rudolfd and espcheck remove a whole-area stage an older system left,
+       unwritten. The expert `bootfiles.sh area` keeps the disk signature and RUDOLFDATA's entry, keeps the old area on
+       RUDOLFDATA and puts it back unless the new one checks.
+    4. After any change: the EFI system partition read back, \EFI\BOOT\BOOTX64.EFI there, the files' signatures, and
+       the firmware's entry written and read back (`rudolfd --boot-entry fix`); otherwise the old files are put back and
+       it says so, and it says not to restart.
+    5. The rescue: "Check this drive's start-up…" (an administrator's password): the partition table, the EFI system
+       partition and its files, the El Torito entry, and the firmware's entry put right; it says what it found and did.
+       The owner's steps: docs/native-vivobook-checklist.md V58-V63.
+    6. The self-test's listeners: udev's control socket (/run/udev/control) named.
+    7. The 9:52 PM "memory group is missing or empty": the restart's shutdown stops the desktop first, and an account's
+       own programs still asking found the group empty, which turned the check off. Once the desktop was seen in its
+       group during a start, an empty group now stays enforced, and refusals are not logged while shutting down
+       (peer59_t.sh 12). The 9:48 PM refusal (Linux user 1000, not in the group) is the check working: the desktop's
+       user outside the desktop (the websites' Chromium window is, by design); not reproduced in QEMU.
+    Tests: qt/host/bootentry60_t.sh 14/14 (with the released 2026111620 rudolfd: 0a, 0b), bootfiles60_t.sh 8/8,
+    esprepair60_t.sh 24/24, peer59_t.sh 23/23, listeners59_t.sh 16/16, setsearch59_t.js 13/13; qt/sb/t160b_t.py in QEMU
+    (bootentry-check.yml): the release alone 12/12 (the failure: run 44032359372), with this tree's rudolfd, espcheck and
+    bootfiles.sh 16/16 (run 44030675207). (The QEMU guest had no network: the release's boot image was given to the
+    same espcheck repair from a disk.)
+    Left: the owner's V58-V63 on the Vivobook; t160o's parts 4-8 (the automatic repair) follow the new flow once a
+    beta has it.
 
 ## After 1.6.0: the native desktop decision (added on 2026-11-12)
 (2026-11-13: the prototype moved into 1.5.9 as a third desktop engine, Native (test): docs/plan-1.5.9.md Part 12.

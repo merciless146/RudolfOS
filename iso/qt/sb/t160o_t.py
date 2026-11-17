@@ -169,6 +169,9 @@ def part1():
         o = run(g, f"{ESPM} && f=/mnt/esp/EFI/rudolf/recovery.efi && s=$(stat -c %s $f) && printf 'X' | dd of=$f bs=1 seek=$((s / 2)) conv=notrunc 2>/dev/null; sync; umount /mnt/esp; "
                    "echo 3 > /proc/sys/vm/drop_caches; rm /persist/os/system/r/desktop.sfs; sync; /usr/lib/rudolf/espcheck status", 120)
         ok('...recovery.efi changed (one byte, as anything writing to the drive could) is seen: recovery=other', 'recovery=other' in o, o)
+        # (2026-11-16: a start only reports start-up files that are not official; the repair at each start is the old
+        #  behaviour, kept for this test of the download, the checks and the write by os/esp-autorepair)
+        run(g, 'touch /persist/os/esp-autorepair; sync', 30)
         stop(vm, g)
         # ---- the next start: system/r made again; the boot image downloaded, checked, staged
         vm, g, up = boot('repair1', D1, V1)
@@ -176,7 +179,7 @@ def part1():
         o = run(g, STATUS + "; cat /run/rudolf/espcheck.log; cat /persist/os/bootimg/pending; ls -1 /persist/os/system/r | cat; grep -h '\"k\":\"boot\"' /persist/var/log/health.log | tail -4; tail -5 /run/rudolf/update.log", 120)
         ok('4. at the next start: system/r made again from the official system (its deleted layer back)', up and 'made again from this official system' in o and re.search(r'^desktop\.sfs$', o, re.M), o)
         ok('5. ...the release\'s boot image downloaded from GitHub, its checksum and both start-up files checked, staged for the next start (said in System health)', okp
-           and f'serial={SER}' in o and 'are written at the next start' in o and 'not all the official ones' in o, o)
+           and f'serial={SER}' in o and 'were put back in the drive' in o and 'not all the official ones' in o, o)
         stop(vm, g)
         vm, g, up = boot('written1', D1, V1)
         o = run(g, STATUS + "; cat /persist/os/bootimg/result 2>&1; ls /persist/os/bootimg 2>&1; grep -i 'boot files' /persist/var/log/boot-decisions.log | tail -3", 120) if up else 'not up'
