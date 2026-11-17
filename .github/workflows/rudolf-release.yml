@@ -145,7 +145,10 @@ jobs:
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
           S=${{ steps.build.outputs.serial }}; VER=$(cat iso/VERSION)
-          D=$(gh release list -L 50 --json tagName -q '[.[]|select(.tagName|startswith("disc-"))][0].tagName'); DV=${D#disc-}
+          # (all the releases looked through: with a beta every few hours, the newest disc release was no longer among the
+          # newest 50 on 2026-11-17, so r2026111707 to r2026111712 had no boot.iso)
+          D=$(gh release list -L 1000 --json tagName -q '[.[]|select(.tagName|startswith("disc-"))][0].tagName'); DV=${D#disc-}
+          [ -n "$D" ] || { echo "::error::no disc release (disc-*) found: the boot image cannot be made"; exit 1; }
           mkdir -p brel bold && cp out/channel/manifest.txt out/channel/manifest.sig brel/ && cp out/files/$S/vmlinuz brel/
           gh release download "$D" -D bold -p "rudolf-os-$DV-boot.iso" -p "rudolf-os-$DV-boot.iso.sha256"
           [ "$(sha256sum < bold/rudolf-os-$DV-boot.iso | cut -d' ' -f1)" = "$(cut -d' ' -f1 bold/rudolf-os-$DV-boot.iso.sha256)" ] || { echo "::error::$D: the boot image does not match its checksum"; exit 1; }
