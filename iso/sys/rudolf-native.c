@@ -391,7 +391,7 @@ static void wall_make(void)
 static gboolean desk_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (WALL) { cairo_set_source_surface(cr, WALL, 0, 0); cairo_paint(cr); } return TRUE; }
 
 /* ------------------------------------------------------------------ app windows (WebKit, one-app mode) */
-typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready; gint64 close_t; GdkPixbuf *pix; } AppWin;   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
+typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready, sready; gint64 close_t; GdkPixbuf *pix; } AppWin;   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
 static void ev_flush(AppWin *a);   /* (1.6.0: rudolfd's events that waited for a page) */
 static GList *WINS;   /* AppWin*, oldest first */
 static AppWin *ACTIVE;
@@ -402,6 +402,7 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
 static void appwin_show(AppWin *a);
 static void srch_ready(AppWin *a);
 static void pt_msg(AppWin *a, JSCValue *v); static void pt_reset(void);   /* (1.6.0: the portal's requests, below) */
+static void svc_msg(AppWin *a, JSCValue *v); static void svc_reset(void); static AppWin *svc_page(void); static gint64 SVC_SIGNIN;   /* (1.6.0 Part 12, item 12: the desktop's service page, below; when the account signed in, ms) */
 static void snd_page(const char *k, double v, const char *pj); static void snd_click(void);
 static int fl_outside(void); static void seat_grab(GtkWidget *w, int owner); static void qs_keep(void);
 static int oracle_open(const char *file, const char *extra);   /* (1.5.9, 12.3c: Oracle in Rudolf's Chromium) */
@@ -583,7 +584,8 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "ctx")) ctx_msg(a, v);   /* (File Explorer's Folders on this device: the folder picker and its files, N7) */
 	else if (!strcmp(op, "sfx")) { char k[16] = "", vv[24] = ""; jsstr(v, "k", k, sizeof k); jsstr(v, "v", vv, sizeof vv); char *pj = NULL; JSCValue *pv = jsc_value_object_get_property(v, "p");
 		if (pv && jsc_value_is_string(pv)) pj = jsc_value_to_string(pv); if (pv) g_object_unref(pv); snd_page(k, g_ascii_strtod(vv, NULL), pj); g_free(pj); }   /* (2026-11-16: a page's sound, played here once) */
-	else if (!strcmp(op, "portal")) pt_msg(a, v);   /* (1.6.0, the owner's Vivobook: the portal's page is ready, or a request opens an app's window) */
+	else if (!strcmp(op, "portal")) pt_msg(a, v);
+	else if (!strcmp(op, "svc")) svc_msg(a, v);   /* (1.6.0 Part 12, item 12: the desktop's service page is signed in and runs the background work) */   /* (1.6.0, the owner's Vivobook: the portal's page is ready, or a request opens an app's window) */
 	else if (!strcmp(op, "srch")) srch_ready(a);   /* (2026-11-16: the start menu's search, Standard's: its page is ready) */
 	else if (!strcmp(op, "cat")) g_timeout_add(300, apps_reload, NULL);   /* (a page gave its catalogue again: the statue's picture, N12) */
 	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
@@ -598,7 +600,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 static gboolean on_crash_reload(gpointer v) { webkit_web_view_reload(WEBKIT_WEB_VIEW(v)); return G_SOURCE_REMOVE; }
 static void on_crash(WebKitWebView *v, WebKitWebProcessTerminationReason r, gpointer d)
 {
-	(void)d; fprintf(stderr, "rudolf-native: an app's page stopped (%d): loading it again\n", (int)r); g_timeout_add_seconds(1, on_crash_reload, v);
+	fprintf(stderr, "rudolf-native: an app's page stopped (%d): loading it again\n", (int)r); if (d) ((AppWin *)d)->sready = 0; g_timeout_add_seconds(1, on_crash_reload, v);
 }
 static void clients_forget(AppWin *a); static void kbcap_gone(AppWin *a); static void srch_gone(AppWin *a);
 static void on_win_destroy(GtkWidget *w, gpointer d)
@@ -822,6 +824,7 @@ static void send_proto(Window w, Atom p, Time t)
 #define NWS 3
 static int WSC = 1;   /* (the workspace shown: item 4) */
 static void toast_text(const char *t, const char *b, int ms); static void fget_tt(void *v, const char *k, char *o, size_t n);
+static char TLOG[32][200]; static int TLOG_N;   /* (the last toasts, for the tests' view) */
 static int ws_of(Client *c); static void ws_apply(void); static gboolean ws_said(gpointer d);
 static void wm_focus(Client *c)
 {
@@ -2333,6 +2336,7 @@ static void power(const char *what)
 	if (!strcmp(what, "logout")) {
 		GList *c = g_list_copy(WINS); for (GList *l = c; l; l = l->next) appwin_close_now(l->data); g_list_free(c);
 		pt_reset();   /* (the portal's requests: the next account's page starts afresh) */
+		svc_reset();   /* (the service page ended with the windows: the next account's starts at its sign-in) */
 		http("POST", "/api/desktop/logout", NULL, 0, NULL); USER_ID[0] = 0; signin_show(0); return;
 	}
 	/* (the shut-down chime first, as the page's: up to 3 s, report 2) */
@@ -2853,7 +2857,7 @@ static gboolean signin_done(gpointer p)
 		if (SIGN_LOCK && LOCKED) UNLOCK_T = g_get_monotonic_time();   /* (UNLOCKED_AT: no saver or lock for a minute: item 6) */
 		LOCKED = 0; gtk_widget_hide(SIGN); explicit_bzero(SN_PASS, sizeof SN_PASS); SN_MSG[0] = 0; if (SCARET_T) { g_source_remove(SCARET_T); SCARET_T = 0; }
 		settings_load(); apps_load(); if (BAR) gtk_widget_show_all(BAR); wm_restack();
-		if (!SIGN_LOCK) start_page();
+		if (!SIGN_LOCK) { start_page(); svc_reset(); SVC_SIGNIN = g_get_real_time() / 1000; }
 		if (WM_OK) wm_hide_all(0); else for (GList *l = WINS; l; l = l->next) gtk_widget_show(((AppWin *)l->data)->win);
 	} else {
 		char m[300] = ""; jstr(v, "error", m, sizeof m);
@@ -3376,16 +3380,86 @@ static void openwith_ask(const char *file, const char *ext, const char *apps_jso
 }
 static gboolean apps_reload(gpointer d) { (void)d; apps_load(); return G_SOURCE_REMOVE; }
 /* a page's answer to what the shell asked it to do (oneapp59.js oaFin) */
+static void xd_done(JSCValue *v);   /* (1.6.1 Part 13: a drop's page finished, below) */
 static void page_done(JSCValue *v)
 {
 	char err[300] = "", ask[24] = "", file[512] = "", name[128] = "", ext[16] = "", ok[8] = ""; char *apps = NULL;
 	jsstr(v, "err", err, sizeof err); jsstr(v, "ask", ask, sizeof ask); jsstr(v, "file", file, sizeof file); jsstr(v, "name", name, sizeof name); jsstr(v, "ext", ext, sizeof ext); jsstr(v, "ok", ok, sizeof ok);
 	JSCValue *ap = jsc_value_object_get_property(v, "apps"); if (ap && jsc_value_is_string(ap)) apps = jsc_value_to_string(ap); if (ap) g_object_unref(ap);
 	apps_load();   /* (the page gave its catalogue again: the desktop's files as they are now) */
+	{ char xd[4] = ""; jsstr(v, "xd", xd, sizeof xd); if (xd[0]) xd_done(v); }
 	if (DGK == DLG_RENAME && DGBUSY) { DGBUSY = 0; if (err[0]) { snprintf(DGMSG, sizeof DGMSG, "%s", err); gtk_widget_queue_draw(DGAREA); } else dg_close(); }
 	if (!strcmp(ask, "rename")) rename_ask(file, name);
 	else if (!strcmp(ask, "openwith")) openwith_ask(file, ext, apps);
 	g_free(apps); g_timeout_add(1500, apps_reload, NULL); state_write();
+}
+
+/* ------------------------------------------------------------------ files dropped from outside Rudolf OS (1.6.1, docs/plan-1.6.1.md Part 13)
+   On Standard a file dragged from a Linux app (the Debian file manager, a Flatpak app, an AppImage) onto the desktop is read by
+   Chromium and kept by the page in the Desktop folder (shell25.js, DESK's drop): anywhere on the desktop, also over a folder's icon
+   or the Trash (their own drop handlers take only the page's own drags, FC.drag; the drop then reaches the desktop's); the taskbar
+   takes none, and dropped text (no file) is refused. Here the desktop is an X drop target (XDND 5, GTK's): it says copy while a
+   drag offering files (text/uri-list) is over it and a person is signed in, takes the file:// paths, and a page of its own
+   (#app=do-fs&op=xdrop, oneapp59.js oaXdrop) does what Standard's page does with each file, reading it through rudolfd
+   (desktop/dropped, rudolfd-drop.inc: the account's own files and the drives only, read by its Linux user; links refused); the
+   drag is finished (XdndFinished, copy: the source keeps its file) once the page has kept them. Drops wait their turn (one page
+   at a time, so two never put the same name). The paths go as JSON in the page's address, in parts of at most XD_PART. */
+#define XD_PART 12000
+typedef struct { char *ex; GdkDragContext *ctx; guint32 t; } XdJob;   /* (ctx: on a drop's last part only) */
+static GQueue XD_Q = G_QUEUE_INIT; static XdJob *XD_CUR; static guint XD_TO; static int XD_N; static char XD_LAST[24] = "-";
+static int xd_can(void) { return USER_ID[0] && !LOCKED && strcmp(USER_R, "guest") && strcmp(USER_ID, "guest"); }
+static int xd_files(GdkDragContext *c) { for (GList *l = gdk_drag_context_list_targets(c); l; l = l->next) { char *n = gdk_atom_name(GDK_POINTER_TO_ATOM(l->data)); int y = n && !strcmp(n, "text/uri-list"); g_free(n); if (y) return 1; } return 0; }
+static void xd_next(void);
+static void xd_end(int ok)
+{
+	XdJob *j = XD_CUR; XD_CUR = NULL; if (XD_TO) { g_source_remove(XD_TO); XD_TO = 0; }
+	if (j) { if (j->ctx) { gtk_drag_finish(j->ctx, ok, FALSE, j->t); g_object_unref(j->ctx); XD_N++; } g_free(j->ex); g_free(j); }
+	snprintf(XD_LAST, sizeof XD_LAST, "%s", ok ? "done" : "failed"); state_write(); xd_next();
+}
+static gboolean xd_late(gpointer d) { (void)d; XD_TO = 0; fprintf(stderr, "rudolf-native: a drop's page did not answer\n"); xd_end(0); return G_SOURCE_REMOVE; }
+static void xd_next(void)
+{
+	if (XD_CUR) return; XD_CUR = g_queue_pop_head(&XD_Q); if (!XD_CUR) return;
+	if (!xd_can()) { xd_end(0); return; }
+	app_open_ex("do-fs", NULL, XD_CUR->ex, 1); XD_TO = g_timeout_add_seconds(120, xd_late, NULL);   /* (a part of 64 MB files takes a while) */
+}
+static void xd_done(JSCValue *v) { char err[64] = ""; jsstr(v, "err", err, sizeof err); if (XD_CUR) xd_end(!err[0]); }
+static gboolean xd_motion(GtkWidget *w, GdkDragContext *c, gint x, gint y, guint t, gpointer d)
+{
+	(void)w; (void)x; (void)y; (void)d; int ok = xd_can() && xd_files(c);
+	gdk_drag_status(c, ok ? GDK_ACTION_COPY : 0, t); return TRUE;   /* (XdndStatus: copy, or refused) */
+}
+static gboolean xd_drop(GtkWidget *w, GdkDragContext *c, gint x, gint y, guint t, gpointer d)
+{
+	(void)x; (void)y; (void)d;
+	if (!xd_can() || !xd_files(c)) { gtk_drag_finish(c, FALSE, FALSE, t); snprintf(XD_LAST, sizeof XD_LAST, "refused"); state_write(); return TRUE; }
+	gtk_drag_get_data(w, c, gdk_atom_intern_static_string("text/uri-list"), t); return TRUE;
+}
+static void xd_part(GString *b, int last, GdkDragContext *c, guint t)
+{
+	g_string_append_c(b, ']'); XdJob *j = g_new0(XdJob, 1); char *e = qesc(b->str); j->ex = g_strdup_printf("&op=xdrop&files=%s", e); g_free(e);
+	if (last) { j->ctx = g_object_ref(c); j->t = t; } g_queue_push_tail(&XD_Q, j); g_string_assign(b, "[");
+}
+static void xd_received(GtkWidget *w, GdkDragContext *c, gint x, gint y, GtkSelectionData *sd, guint info, guint t, gpointer d)
+{
+	(void)w; (void)x; (void)y; (void)info; (void)d;
+	char **u = sd ? gtk_selection_data_get_uris(sd) : NULL; GString *b = g_string_new("["); int n = 0, k = 0;
+	for (int i = 0; u && u[i] && n < 256; i++) { char *host = NULL, *f = g_filename_from_uri(u[i], &host, NULL);   /* (file:// only, on this computer) */
+		if (f && f[0] == '/' && (!host || !strcmp(host, "localhost"))) {
+			GString *one = g_string_new(NULL); json_esc(one, f);
+			if (k && b->len + one->len + 2 > XD_PART) { xd_part(b, 0, c, t); k = 0; }
+			if (k) g_string_append_c(b, ','); g_string_append(b, one->str); g_string_free(one, TRUE); k++; n++; }
+		g_free(f); g_free(host); }
+	g_strfreev(u);
+	if (!n) { g_string_free(b, TRUE); gtk_drag_finish(c, FALSE, FALSE, t); snprintf(XD_LAST, sizeof XD_LAST, "nofiles"); state_write(); return; }
+	xd_part(b, 1, c, t); g_string_free(b, TRUE); snprintf(XD_LAST, sizeof XD_LAST, "copying"); state_write(); xd_next();
+}
+static void xd_init(GtkWidget *area)
+{
+	static const GtkTargetEntry T[] = { { (gchar *)"text/uri-list", GTK_TARGET_OTHER_APP, 0 } };
+	gtk_drag_dest_set(area, 0, T, G_N_ELEMENTS(T), GDK_ACTION_COPY);
+	g_signal_connect(area, "drag-motion", G_CALLBACK(xd_motion), NULL); g_signal_connect(area, "drag-drop", G_CALLBACK(xd_drop), NULL);
+	g_signal_connect(area, "drag-data-received", G_CALLBACK(xd_received), NULL);
 }
 
 /* ------------------------------------------------------------------ the desktop's icons (1.6.0 Part 12, item 1)
@@ -5473,6 +5547,8 @@ static AppWin *ev_page(void)
 {
 	if (ev_page_ok(ACTIVE)) return ACTIVE;
 	for (GList *l = WINS; l; l = l->next) if (ev_page_ok(l->data)) return l->data;
+	/* (1.6.0 Part 12, item 12) with no app window open: the desktop's service page, as Standard's one page hears them whatever is open */
+	{ AppWin *sv = svc_page(); if (sv && sv->sready && sv->view) return sv; }
 	return NULL;
 }
 static void ev_give(const char *t)
@@ -5486,7 +5562,7 @@ static void ev_give(const char *t)
 /* (a page with its window now: what waited for one) */
 static void ev_flush(AppWin *a)
 {
-	if (!EVQ || !EVQ->len || !ev_page_ok(a)) return;
+	if (!EVQ || !EVQ->len || !(ev_page_ok(a) || (a && a == svc_page() && a->sready))) return;
 	if (g_get_monotonic_time() - EVQ_T <= 60000000) ev_to(a, EVQ->str);
 	g_string_truncate(EVQ, 0);
 }
@@ -5613,6 +5689,41 @@ static void pt_msg(AppWin *a, JSCValue *v)
 		fprintf(stderr, "rudolf-native: the portal's page is ready\n"); pt_tick(); state_write(); return;
 	}
 	if (pt_id_ok(rq)) { g_hash_table_replace(PT_GIVEN, g_strdup(rq), GINT_TO_POINTER(2)); char ex[80]; snprintf(ex, sizeof ex, "&req=%s", rq); app_open_ex("do-portalapp", NULL, ex, 2); }
+}
+
+/* ------------------------------------------------------------------ the desktop's service page (1.6.0 Part 12, item 12)
+   On Standard one page is the whole desktop, and the timers its modules start as it loads run once whatever is open: the Clock's
+   alarms and timers, the Calendar's reminders, the update check, the Debian and Linux apps' updates, Bluetooth's and Thunderbolt's
+   questions, the session's save, the lag meter... Here each app window is a page of its own, which ran them all: with no window open
+   none ran (an alarm did not ring), with three open each did (it rang three times). Now an app's window starts only what it needs
+   (svc60.js), and one page of the shell's, never shown (#app=do-svc: not on the taskbar, not in Task Manager's apps), runs the rest
+   once for the whole desktop: opened at sign-in, opened again if it ends or stops (WebKit reloads a page whose process stopped),
+   closed with the other windows at sign-out (so a switch of user starts the next account's). Its notifications are the shell's
+   toasts, its sounds the shell's, its dialogs over the screen as any page's (it is opened as a page of the shell's that is shown
+   only for a dialog); an app it opens (a reminder's click) is a window of its own. What the shell does itself for the whole desktop
+   (the heartbeat, the microphone's 🎙️, the cellular notices, the development link) it does not do again. rudolfd's events that are a
+   page's go to the app window in front, else the first one, else this page. */
+static gint64 SVC_OPEN_T; static int SVC_N;   /* (when it was asked for; how many times it was opened, for the tests) */
+static AppWin *svc_page(void) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!strcmp(a->k, "do-svc") && !a->closing) return a; } return NULL; }
+static void svc_reset(void) { SVC_OPEN_T = 0; }
+static gboolean svc_tick(gpointer d)
+{
+	(void)d; if (!USER_ID[0] || LOCKED) return G_SOURCE_CONTINUE;
+	AppWin *p = svc_page(); gint64 now = g_get_monotonic_time();
+	/* (opened through a window whose page is ready, as the portal's: one still loading may not open it; waited for up to 10 s) */
+	static int waited; int busy = 0; for (GList *l = WINS; l; l = l->next) { AppWin *w = l->data; if (w->view && !w->closing && webkit_web_view_is_loading(WEBKIT_WEB_VIEW(w->view))) busy = 1; }
+	if (!busy || p) waited = 0; else if (waited < 5) waited++;
+	if (!p) { if ((!SVC_OPEN_T || now - SVC_OPEN_T > 10 * G_USEC_PER_SEC) && (!busy || waited >= 5)) { waited = 0; SVC_OPEN_T = now; SVC_N++;
+			char ex[64]; snprintf(ex, sizeof ex, "&since=%lld", (long long)SVC_SIGNIN); fprintf(stderr, "rudolf-native: the desktop's service page is opened\n"); app_open_ex("do-svc", NULL, ex, 2); state_write(); } }
+	else if (!p->sready && now - SVC_OPEN_T > 90 * G_USEC_PER_SEC) { fprintf(stderr, "rudolf-native: the desktop's service page did not start: again\n"); appwin_close_now(p); SVC_OPEN_T = 0; }
+	return G_SOURCE_CONTINUE;
+}
+static void svc_msg(AppWin *a, JSCValue *v)
+{
+	char rd[4] = ""; jsstr(v, "ready", rd, sizeof rd); if (strcmp(a->k, "do-svc") || rd[0] != '1') return;
+	/* (ready; or loaded again after its page stopped) */
+	a->sready = 1; fprintf(stderr, "rudolf-native: the desktop's service page is ready\n"); if (!ev_page_ok(ACTIVE)) { int any = 0; for (GList *l = WINS; l; l = l->next) if (ev_page_ok(l->data)) any = 1; if (!any) ev_flush(a); }
+	state_write();
 }
 
 /* ------------------------------------------------------------------ Task Manager from Ctrl+Alt+Del and Ctrl+Shift+Esc (tmtop57.js tmUrgent)
@@ -6334,6 +6445,7 @@ static void toast_addf(AppWin *from, const char *sid, FGet g, void *v)
 	g(v, "ms", x, sizeof x); t->ms = atoi(x) > 0 ? atoi(x) : 5000; g(v, "why", x, sizeof x); t->why = !strcmp(x, "true") || !strcmp(x, "1"); g(v, "act", x, sizeof x); t->act = !strcmp(x, "true") || !strcmp(x, "1");
 	if (sid) snprintf(t->sid, sizeof t->sid, "%s", sid);
 	if (!t->k[0]) snprintf(t->k, sizeof t->k, "info"); t->win = from ? from->id : 0; t->born = g_get_monotonic_time();
+	if (STATEF) { TLOG_N++; snprintf(TLOG[TLOG_N % 32], sizeof TLOG[0], "%s|%s", from ? from->k : "-", t->t); }   /* (the tests count them, item 12: only with RUDOLF_NATIVE_STATE) */
 	/* (1.6.0) Do not disturb: no pop-up, from any window or the shell, but an error's (shell25.js __notifCentre.add: !S.dnd||n.k=='error'), as on
 	   Standard where one page decides; a window whose page had not heard of the switch yet no longer shows one */
 	if (S.dnd && strcmp(t->k, "error")) { NTST--; return; }
@@ -6437,8 +6549,11 @@ static void state_write(void)
 	GString *s = g_string_new(NULL); int by = bar_y(), bx = bar_x();
 	g_string_append_printf(s, "screen %d %d\nuser %s\nlocked %d\nsignin %d\nmenu %d\nbar %d %d %d %d %d\nclock %s|%s\n", SW, SH, USER_ID[0] ? USER_N : "-", LOCKED,
 		SIGN && gtk_widget_get_visible(SIGN), MENU && gtk_widget_get_visible(MENU), BAR && gtk_widget_get_visible(BAR), bx, by, bar_w(), bar_h(), CLOCK_T, CLOCK_D);
+	g_string_append_printf(s, "xdrop %d %s %u\n", XD_N, XD_LAST, g_queue_get_length(&XD_Q) + !!XD_CUR);   /* (1.6.1 Part 13: drops finished, the last one's end, waiting) */
 	g_string_append_printf(s, "ws %d\n", WSC);   /* (item 4: the workspace shown) */
-	{ AppWin *pp = pt_page(); g_string_append_printf(s, "portal %s %u\nportalshown %lld\n", pp ? (pp->pready ? "ready" : "starting") : "-", PT_GIVEN ? g_hash_table_size(PT_GIVEN) : 0, (long long)PT_SHOWN); }   /* (1.6.0: the portal's page; the requests handed out) */
+	{ AppWin *pp = pt_page(); g_string_append_printf(s, "portal %s %u\nportalshown %lld\n", pp ? (pp->pready ? "ready" : "starting") : "-", PT_GIVEN ? g_hash_table_size(PT_GIVEN) : 0, (long long)PT_SHOWN); }
+	for (int i = TLOG_N > 32 ? TLOG_N - 31 : 1; i <= TLOG_N; i++) g_string_append_printf(s, "toasted %d %s\n", i, TLOG[i % 32]);
+	{ AppWin *sv = svc_page(); g_string_append_printf(s, "svc %s %d\n", sv ? (sv->sready ? "ready" : "starting") : "-", SVC_N); }   /* (item 12: the desktop's service page; how many times it was opened) */   /* (1.6.0: the portal's page; the requests handed out) */
 	g_string_append_printf(s, "keys grabbed=%d superraw=%d kbcap=%s\n", KB_GRABBED, !SUPER_GRAB, KBCAP && g_list_find(WINS, KBCAP) ? KBCAP->k : "-");   /* (the computer check's keys, 1.6.0) */
 	if (MENU && gtk_widget_get_visible(MENU)) g_string_append_printf(s, "menuq %s\n", MQ[0] ? MQ : "-");
 	/* (2026-11-16) what the start menu's search found: srch GROUP X Y W H TEXT (the screen's pixels), the chosen one, the menu's box */
@@ -6528,7 +6643,7 @@ static gboolean teval_line(GIOChannel *ch, GIOCondition c, gpointer d)
 	if (st == G_IO_STATUS_EOF || st == G_IO_STATUS_ERROR) { g_free(l); return G_SOURCE_REMOVE; }
 	if (st == G_IO_STATUS_AGAIN || !l) { g_free(l); break; }
 	char *sp = strchr(l, ' ');
-	if (sp) { *sp = 0; g_strchomp(sp + 1); AppWin *a = NULL; for (GList *w = WINS; w; w = w->next) { AppWin *x = w->data; if (!strcmp(x->k, l) && !x->hidden && x->view) { a = x; break; } }
+	if (sp) { *sp = 0; g_strchomp(sp + 1); AppWin *a = NULL; for (GList *w = WINS; w; w = w->next) { AppWin *x = w->data; if (!strcmp(x->k, l) && (!x->hidden || !strcmp(l, "do-svc")) && x->view) { a = x; break; } }   /* (and the desktop's service page, never shown: item 12) */
 		if (a) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), sp + 1, -1, NULL, NULL, NULL, teval_got, g_strdup(l));
 		else { FILE *f = fopen(TEVAL_OUT, "a"); if (f) { fprintf(f, "%s NO WINDOW\n", l); fclose(f); } } }
 	g_free(l); } while (g_io_channel_get_buffer_condition(ch) & G_IO_IN);
@@ -6622,6 +6737,7 @@ int main(int argc, char **argv)
 	g_signal_connect(DESKAREA, "button-press-event", G_CALLBACK(desk_press), NULL); g_signal_connect(DESKAREA, "button-release-event", G_CALLBACK(desk_release), NULL);
 	g_signal_connect(DESKAREA, "motion-notify-event", G_CALLBACK(desk_motion), NULL); g_signal_connect(DESKAREA, "key-press-event", G_CALLBACK(desk_key), NULL);
 	g_signal_connect(DESK, "delete-event", G_CALLBACK(gtk_true), NULL);
+	xd_init(DESKAREA);   /* (files dropped from outside: 1.6.1 Part 13) */
 	/* (the widgets' note: typing, item 2) */
 	gtk_widget_add_events(DESKAREA, GDK_BUTTON_MOTION_MASK | GDK_FOCUS_CHANGE_MASK); NIM = gtk_im_context_simple_new(); g_signal_connect(NIM, "commit", G_CALLBACK(note_commit), NULL);
 	g_signal_connect(DESKAREA, "realize", G_CALLBACK(im_realize), NIM); g_signal_connect(DESK, "focus-out-event", G_CALLBACK(on_desk_out), NULL);
@@ -6649,6 +6765,7 @@ int main(int argc, char **argv)
 	bri_load(); bar_redraw(); BL_LAST = bl_read(); g_timeout_add(300, bl_tick, NULL);
 	g_thread_unref(g_thread_new("events", ev_thread, NULL));
 	g_thread_unref(g_thread_new("portal", pt_thread, NULL));   /* (1.6.0: the portal's requests, collected here) */
+	g_timeout_add_seconds(2, svc_tick, NULL);   /* (1.6.0 Part 12, item 12: the desktop's service page, kept open while an account is signed in) */
 	teval_init(); clip_init();
 	state_write();
 	gtk_main();
