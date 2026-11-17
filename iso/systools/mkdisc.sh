@@ -48,7 +48,7 @@ echo "== checksums"
 (cd "$T" && find . -type f ! -path ./RUDOLF/SHA256 | sed 's#^\./##' | sort | while read -r f; do l=$(echo "$f" | tr 'A-Z' 'a-z'); echo "$(sha256sum "$f" | cut -d' ' -f1)  $l"; done) > "$T/RUDOLF/SHA256"
 echo "== boot loader and ISO"
 B=$(mktemp -d); nasm -f bin -o "$B/mbr.bin" "$HERE/boot/mbr.asm"
-[ "$BOOT_ONLY" = 1 ] || python3 "$HERE/mkimage.py" iso "$OUT/rudolf-os-$VER.iso" "$T" --mbr "$B/mbr.bin" --boot BOOT/RBOOT.BIN --kernel BOOT/VMLINUZ --efi EFI/EFIBOOT.IMG --label "RUDOLF_OS_${VER//./_}" --sums RUDOLF/SHA256
+[ "$BOOT_ONLY" = 1 ] || python3 "$HERE/mkimage.py" iso "$OUT/rudolf-os-$VER.iso" "$T" --mbr "$B/mbr.bin" --boot BOOT/RBOOT.BIN --kernel BOOT/VMLINUZ --efi EFI/EFIBOOT.IMG --label "RUDOLF_OS_$(echo "${VER//./_}" | tr a-z A-Z)" --sums RUDOLF/SHA256
 # the boot image (1.2.8): the same boot files without the system layers, sources and licence texts (which stay in
 # the disc image and the source archive of the same release), small enough to fit in front of RUDOLFDATA on every
 # drive Install here has made. Settings > Security > Secure Boot > Get new boot files writes it there (bootfiles.sh);
@@ -63,7 +63,7 @@ bash "$HERE/systools/mkefi.sh" "$REL/vmlinuz" "$VER" "$SB_PARTS" "$BT/EFI/EFIBOO
 printf 'Rudolf OS %s boot files only: the system comes from the update installed on the drive (RUDOLFDATA).\r\n' "$VER" > "$BT/RUDOLF/BOOTONLY"
 printf 'Licences and source: rudolf-os-%s.iso and rudolf-os-%s-source.tar.xz in the same release.\r\n' "$VER" "$VER" > "$BT/LICENSES.TXT"
 (cd "$BT" && find . -type f ! -path ./RUDOLF/SHA256 | sed 's#^\./##' | sort | while read -r f; do l=$(echo "$f" | tr 'A-Z' 'a-z'); echo "$(sha256sum "$f" | cut -d' ' -f1)  $l"; done) > "$BT/RUDOLF/SHA256"
-python3 "$HERE/mkimage.py" iso "$OUT/rudolf-os-$VER-boot.iso" "$BT" --mbr "$B/mbr.bin" --boot BOOT/RBOOT.BIN --kernel BOOT/VMLINUZ --efi EFI/EFIBOOT.IMG --label "RUDOLF_BOOT_${VER//./_}" --sums RUDOLF/SHA256
+python3 "$HERE/mkimage.py" iso "$OUT/rudolf-os-$VER-boot.iso" "$BT" --mbr "$B/mbr.bin" --boot BOOT/RBOOT.BIN --kernel BOOT/VMLINUZ --efi EFI/EFIBOOT.IMG --label "RUDOLF_BOOT_$(echo "${VER//./_}" | tr a-z A-Z)" --sums RUDOLF/SHA256
 rm -rf "$BT"
 rm -rf "$B" "$T"
 if [ "$BOOT_ONLY" = 1 ]; then (cd "$OUT" && sha256sum "rudolf-os-$VER-boot.iso" > "rudolf-os-$VER-boot.iso.sha256")

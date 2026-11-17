@@ -7,6 +7,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 Summary: In progress.
 - Faster start-up: the kernel is packed with zstd instead of xz (0.6 s less before it starts, in QEMU; about twice that on an installed computer, which starts two kernels), and the wired network cards' drivers are modules loaded after the start.
 - New: Settings › System health › Last starts › Where the time went: each step of the start-up and how long it took. The health log's "the desktop was ready N s" and Last starts now give the moment the desktop first answered (they were up to 4 s and 10 s late).
+- Changed: the kernel's build stops when a feature Rudolf OS relies on is missing (75 options, each with who needs it: Flatpak's sandboxes, the Debian container and Wine, the desktop, security, reaching the system disk, power); FUSE, which the x86 kernel lacked, is added (Flatpak's document portal, AppImages).
 - Fixed: on the Lite desktop, a game's "Save to a file" (Ember Reach's, for one) or any file picker in a game or on a
   website no longer freezes the computer. WebKit asked with a file dialog that went through Rudolf OS's own portal,
   which draws its dialog in the desktop page, while the desktop's window was held for that dialog: nothing could be

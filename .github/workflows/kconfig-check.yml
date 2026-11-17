@@ -1,10 +1,10 @@
-# The kernel's configuration only (iso/kconfig.sh on the stable release's Linux 6.18.y, x86_64): every option it asks for and checks
+# The kernel's configuration only (iso/kconfig.sh on the stable release's Linux 6.18.y, x86_64; 1.6.1: and the required features, iso/kconfig-required.txt): every option it asks for and checks
 # is there after olddefconfig. No kernel is built and nothing is published. Run by a push that changes iso/kconfig.sh or
 # .github/kconfig-run.txt (whose line kernel=VERSION picks another 6.18.y).
 name: Kernel configuration check
 on:
   push:
-    paths: ['iso/kconfig.sh', '.github/kconfig-run.txt', '.github/workflows/kconfig-check.yml']
+    paths: ['iso/kconfig.sh', 'iso/kconfig-required.txt', 'iso/systools/kreq.sh', 'iso/qt/host/kreq161_t.sh', '.github/kconfig-run.txt', '.github/workflows/kconfig-check.yml']
 permissions: {contents: read}
 jobs:
   kconfig:
@@ -25,3 +25,6 @@ jobs:
           cd iso && SB_CERT=/tmp/c.pem sh kconfig.sh ../linux "/tmp/none" || { cd ../linux; for o in AMD_PMF AMD_PMC AMDTEE TEE CRYPTO_DEV_CCP CRYPTO_DEV_CCP_DD CRYPTO_DEV_SP_PSP AMD_SFH_HID AMD_NODE AMD_NB ACPI_PLATFORM_PROFILE POWER_SUPPLY; do grep "^CONFIG_$o=\|^# CONFIG_$o " .config || echo "$o unset"; done; exit 1; }
           cd ../linux && for o in SUSPEND PM_SLEEP ACPI_SLEEP AMD_PMC AMD_PMF AMD_NB RTC_DRV_CMOS SUSPEND_FREEZER; do grep "^CONFIG_$o=\|^# CONFIG_$o " .config || echo "CONFIG_$o: not set"; done
           echo "::notice title=Kernel configuration check::Linux $KV: $(grep -E '^CONFIG_AMD_PM[CF]=' .config | tr '\n' ' ')"
+          # 1.6.1 (plan-1.6.1.md Part 12): the required features (kconfig.sh checked them above); and with one option of each
+          # group taken out of this configuration, the check fails with its name and who needs it
+          cd ../iso && KCONFIG=../linux/.config sh qt/host/kreq161_t.sh
