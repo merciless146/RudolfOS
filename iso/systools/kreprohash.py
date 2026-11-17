@@ -2,7 +2,7 @@
 # 1.6.1 (docs/plan-1.6.1.md Part 12): is the kernel build reproducible? A checksum of each section of vmlinux and of each module
 # with its signature taken off, so two builds from the same tree can be compared line by line (testkernel.sh REPRO=1; the
 # workflow kernel-tuning.yml). Each build makes its own module-signing key and builds its certificate into the kernel (in
-# .init.rodata, with the build id in .notes), so those two sections are expected to differ and nothing else.
+# .init.data, with the build id in .notes; found by the first comparison, run 44007517463), so those two sections are expected to differ and nothing else.
 #   kreprohash.py VMLINUX MODULES-DIR     GPL-2.0-or-later.
 import hashlib, os, struct, sys
 MAGIC = b'~Module signature appended~\n'

@@ -11,8 +11,9 @@
 #   memory    MEMRUNS (swappiness:zram-percent:compressor ...): tabs, a game and a call at once on 3.3 GB, for each; the
 #             memory stalls (PSI), the game's slow frames, the call's late periods, the memory guard's steps
 #   power     /usr/lib/rudolf/power of this tree in the guest (QEMU has no CPU frequency driver): the fallback
-# Environment: KERNEL (a folder with vmlinuz and modules.sfs to start instead of the release's), BASE (a base.sfs to use
-# instead), APPEND (more start-up options), ENGINE (standard|native), MEM (MiB, 3400), STARTS (4), TAG (a name for the results).
+# Environment: VARIANTS (what is compared, in turn on this same machine, as runners differ by up to 20 %: "NAME:KERNEL-DIR:
+# BASE-FILE;..." with a folder holding vmlinuz and modules.sfs, and a base.sfs; empty fields: the release's), or KERNEL
+# and BASE for one; APPEND (more start-up options), ENGINE (standard|native), MEM (MiB, 3400), STARTS (4), TAG (a name for the results).
 import os, sys, time, re, subprocess, shutil, struct, json, base64, datetime
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE); ISO = os.path.dirname(QT)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
@@ -21,7 +22,12 @@ from guest import Guest
 from ser import Ser
 REL = os.path.abspath(sys.argv[1]); PHASE = sys.argv[2]
 PARTS = os.environ.get('SB_PARTS', '/nonexistent'); TAG = os.environ.get('TAG', PHASE)
-KERNEL = os.environ.get('KERNEL', ''); BASE = os.environ.get('BASE', ''); APPEND = os.environ.get('APPEND', '')
+APPEND = os.environ.get('APPEND', '')
+VARS = []
+for spec in (os.environ.get('VARIANTS') or f"{os.path.basename(os.environ.get('KERNEL', '')) or 'release'}:{os.environ.get('KERNEL', '')}:{os.environ.get('BASE', '')}").split(';'):
+    n, k, b = (spec.split(':') + ['', ''])[:3]
+    if n: VARS.append({'name': n, 'kernel': k, 'base': b})
+CUR = VARS[0]
 ENGINE = os.environ.get('ENGINE', 'standard'); MEM = int(os.environ.get('MEM', '3400'))
 LOG = open(f'kt161-{TAG}.txt', 'w'); JS = open(f'kt161-{TAG}.json', 'w'); T0 = time.time()
 # (the job's log shows the steps, the results and, at the end, all results again; the commands' output is in the .txt only)
@@ -32,12 +38,13 @@ RESULTS = []; MEDIANS = []
 def res(**kw):
     kw['tag'] = TAG; JS.write(json.dumps(kw) + '\n'); JS.flush(); RESULTS.append(kw); out('RESULT', json.dumps(kw), quiet=True)
 man = open(f'{REL}/manifest.txt').read(); mv = lambda k: re.search(rf'^{k} (.*)$', man, re.M).group(1)
-DMB = 6000; DRV = os.path.abspath(f'kt161-{TAG}.img'); W = os.path.abspath(f'wkt161-{TAG}')
+DMB = 6000; W = os.path.abspath(f'wkt161-{TAG}')
+for v in VARS: v['drv'] = os.path.abspath(f'kt161-{TAG}-{v["name"]}.img')
 shutil.rmtree(W, ignore_errors=True); os.makedirs(W)
 subprocess.run(['gcc', '-O2', '-static', '-o', f'{W}/kload', os.path.join(HERE, 'k161', 'kload.c')], check=True)
-VMLINUZ = f'{KERNEL}/vmlinuz' if KERNEL else f'{REL}/vmlinuz'
 
-def make_drive(path):
+def make_drive(v):
+    path, KERNEL, BASE = v['drv'], v['kernel'], v['base']
     start = 2048
     with open(path, 'wb') as f: f.truncate((start + DMB * 2048 + 2048) * 512); f.seek(510); f.write(b'\x55\xaa')
     T = os.path.abspath(path + '.tree'); shutil.rmtree(T, ignore_errors=True); os.makedirs(f'{T}/home/rudolf'); os.makedirs(f'{T}/etc')
@@ -65,8 +72,8 @@ def make_drive(path):
 
 INIT_JS = "(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};return 1})()"
 def boot(tag, append=''):
-    extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf161',
-             '-kernel', VMLINUZ, '-append', f'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1 {APPEND} {append}'.strip()]
+    extra = ['-drive', f'file={CUR["drv"]},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf161',
+             '-kernel', f'{CUR["kernel"]}/vmlinuz' if CUR['kernel'] else f'{REL}/vmlinuz', '-append', f'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1 {APPEND} {append}'.strip()]
     vm = sbvm.VM('kt161' + tag, PARTS, [], secure=False, mem=MEM, extra=extra); t = time.time()
     g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3)
     up = False; end = time.time() + 600
@@ -75,7 +82,7 @@ def boot(tag, append=''):
             if 'ready' in g.sh('echo ready', 8): up = True; break
         except OSError: pass
         time.sleep(2)
-    out(f'start {tag}: serial shell {"up" if up else "NOT up"} after {time.time() - t:.0f} s')
+    out(f'start {tag} ({CUR["name"]}): serial shell {"up" if up else "NOT up"} after {time.time() - t:.0f} s')
     return vm, g, up
 def run(g, c, t=60):
     f = os.path.join(W, 'c161.sh'); open(f, 'w').write(c + '\n'); g.put(f, '/tmp/c161.sh', '644')
@@ -133,25 +140,30 @@ def parse_times(o):
 
 KEYPROCS = ('systemd-udevd', 'rudolfd', 'Xorg', 'Xvfb', 'rudolf-display', 'dbus-daemon', 'pulseaudio', 'chrome', 'rudolf-native', 'rudolf-memguard', 'rudolf-launch', 'wpa_supplicant', 'udhcpc', 'rpk', 'WebKitWebProces')
 def phase_startup():
-    n = int(os.environ.get('STARTS', '4')); all_t = []
+    global CUR
+    n = int(os.environ.get('STARTS', '4')); allv = {v['name']: [] for v in VARS}
     for i in range(n + 1):
-        vm, g, up = boot(f's{i}')
-        if not up: stop(vm, g); continue
-        d = wait_desktop(g)
-        if i == 0:   # the first start: the first-time setup, then started again as an installed computer is
-            # (and 20 s more: Native's trial is over only once the session's watchdog has seen its heartbeat)
-            g.js(INIT_JS, 60); run(g, 'sleep 20; cat /run/rudolf/desktop-engine', 40); stop(vm, g); continue
-        run(g, 'sleep 20', 40); o = run(g, TIMES, 120); t = parse_times(o)
-        res(kind='startup', start=i, desktop=d, times=t); all_t.append(t); stop(vm, g)
-    if all_t:
+        for v in (VARS if i % 2 else VARS[::-1]):   # (in turn, the order swapped each round)
+            CUR = v; vm, g, up = boot(f's{i}{v["name"]}')
+            if not up: stop(vm, g); continue
+            d = wait_desktop(g)
+            if i == 0:   # the first start: the first-time setup, then started again as an installed computer is
+                # (and 20 s more: Native's trial is over only once the session's watchdog has seen its heartbeat)
+                g.js(INIT_JS, 60); run(g, 'sleep 20; cat /run/rudolf/desktop-engine', 40); stop(vm, g); continue
+            run(g, 'sleep 20', 40); o = run(g, TIMES, 120); t = parse_times(o)
+            res(kind='startup', start=i, variant=v['name'], desktop=d, times=t); allv[v['name']].append(t); stop(vm, g)
+    for name, all_t in allv.items():
+        if not all_t: continue
         num = lambda k: sorted(x[k] for x in all_t if isinstance(x.get(k), (int, float)))
         keys = sorted({k for t in all_t for k in t}, key=lambda k: num(k)[len(num(k)) // 2] if num(k) else 999)
-        out('engines:', sorted({str(t.get('engine')) for t in all_t})); MEDIANS.append('engines: ' + ' / '.join(sorted({str(t.get('engine')) for t in all_t})))
-        out('---- start-up, median of', len(all_t), 'starts (uptime, s)')
+        eng = ' / '.join(sorted({str(t.get('engine')) for t in all_t}))
+        out(f'---- {name}: start-up, median of {len(all_t)} starts (uptime, s); engines: {eng}'); MEDIANS.append(f'---- {name} ({len(all_t)} starts; {eng})')
         for k in keys:
-            v = sorted(x[k] for x in all_t if isinstance(x.get(k), (int, float)))
+            v = num(k)
             if v and k.startswith('process ') and k[8:] not in KEYPROCS: out(f'{v[len(v) // 2]:8.2f}  {k}   ({" ".join(str(x) for x in v)})'); continue
             if v: out(f'{v[len(v) // 2]:8.2f}  {k}   ({" ".join(str(x) for x in v)})'); MEDIANS.append(f'{v[len(v) // 2]:.2f} {k} ({" ".join(str(x) for x in v)})')
+    if os.environ.get('INITCALLS', '1') != '1': return
+    CUR = VARS[0]
     # the kernel's own steps (initcall_debug: each initcall's time; printk's own cost makes the total a little longer)
     vm, g, up = boot('si', 'initcall_debug log_buf_len=8M ignore_loglevel')
     if up:
@@ -186,9 +198,11 @@ def wl(o):
     return dict(zip(('n', 'p50_us', 'p99_us', 'p999_us', 'max_us'), map(int, m.groups()))) if m else {'error': o[-200:]}
 def phase_latency():
     modes = os.environ.get('PREEMPTS', 'voluntary full lazy none').replace(',', ' ').split(); reps = int(os.environ.get('REPS', '1'))
+    global CUR
     for rep in range(reps):
-        for mode in modes:
-            vm, g, up = boot(f'l{mode}{rep}', f'preempt={mode}')
+      for mode in (modes if rep % 2 == 0 else modes[::-1]):
+        for CUR in (VARS if rep % 2 == 0 else VARS[::-1]):
+            vm, g, up = boot(f'l{mode}{rep}{CUR["name"]}', f'preempt={mode}')
             if not up: stop(vm, g); continue
             if not wait_desktop(g): out('no desktop'); stop(vm, g); continue
             g.js(INIT_JS, 60); run(g, 'sleep 25; cat /sys/kernel/debug/sched/preempt 2>/dev/null; dmesg | grep -i "dynamic preempt" | tail -1; nproc', 60)
@@ -196,13 +210,16 @@ def phase_latency():
             r = {'idle': wl(run(g, f'{K} wlat 20', 60))}; r['idle'].update(page_input(g))
             run(g, f'for i in $(seq $(nproc)); do {K} burn & done; sleep 2', 30)
             r['cpu'] = wl(run(g, f'{K} wlat 30', 70)); r['cpu'].update(page_input(g))
+            # throughput while the processors are shared (what a fuller preemption may cost): two compressions of 400 MB beside the loops
+            o = run(g, 'S=$(cut -d" " -f1 /proc/uptime); for j in 1 2; do (head -c 400000000 /dev/zero | gzip -1 > /dev/null) & done; wait; echo "GZ $S $(cut -d" " -f1 /proc/uptime)"', 400)
+            m = re.search(r'GZ ([0-9.]+) ([0-9.]+)', o); r['cpu']['gzip_s'] = round(float(m.group(2)) - float(m.group(1)), 2) if m else None
             run(g, f'pkill -f "{K} burn"; sleep 2', 30)
             run(g, 'dd if=/dev/zero of=/persist/k161/big bs=1M count=1500 conv=fsync 2>&1 | tail -1; sync; echo 3 > /proc/sys/vm/drop_caches', 300)
             run(g, '(cp /persist/k161/big /persist/k161/big2; sync; echo COPY-DONE > /tmp/copydone) >/dev/null 2>&1 & sleep 1', 30)
             r['copy'] = wl(run(g, f'{K} wlat 30', 70)); r['copy'].update(page_input(g))
             r['copy']['copy_still_running'] = 'COPY-DONE' not in run(g, 'cat /tmp/copydone 2>/dev/null; true', 30)
             run(g, 'wait; while [ ! -e /tmp/copydone ]; do sleep 1; done; rm -f /persist/k161/big /persist/k161/big2; sync', 300)
-            res(kind='latency', preempt=mode, rep=rep, kernel=os.path.basename(KERNEL) or 'release', **r)
+            res(kind='latency', preempt=mode, rep=rep, variant=CUR['name'], **r)
             stop(vm, g)
 
 # ---- memory: tabs, a game and a call at once
@@ -215,7 +232,7 @@ T=$(awk '/^MemTotal:/{print $2}' /proc/meminfo); S=$((T * 1024 / 100 * ZP)); [ $
 echo $S > /sys/block/zram0/disksize && mkswap /dev/zram0 >/dev/null && swapon -p 100 /dev/zram0
 echo $SW > /proc/sys/vm/swappiness; sync; echo 3 > /proc/sys/vm/drop_caches; sleep 5
 echo "CONF swappiness=$(cat /proc/sys/vm/swappiness) zram=$(($(cat /sys/block/zram0/disksize) / 1048576))MiB comp=$(sed 's/.*\[\(.*\)\].*/\1/' /sys/block/zram0/comp_algorithm)"
-ML0=$(wc -l < /run/rudolf/memguard.log 2>/dev/null || echo 0); ME0=$(wc -l < /run/rudolf/memguard.events 2>/dev/null || echo 0)
+touch /run/rudolf/memguard.log /run/rudolf/memguard.events 2>/dev/null; ML0=$(wc -l < /run/rudolf/memguard.log); ME0=$(wc -l < /run/rudolf/memguard.events)
 OOM0=$(grep -c . /proc/vmstat >/dev/null; awk '/^oom_kill /{print $2}' /proc/vmstat)
 SI0=$(awk '/^pswpin /{print $2}' /proc/vmstat); SO0=$(awk '/^pswpout /{print $2}' /proc/vmstat)
 F0=$(sed -n 's/^full .*total=\([0-9]*\).*/\1/p' /proc/pressure/memory); S0=$(sed -n 's/^some .*total=\([0-9]*\).*/\1/p' /proc/pressure/memory)
@@ -234,7 +251,7 @@ F1=$(sed -n 's/^full .*total=\([0-9]*\).*/\1/p' /proc/pressure/memory); S1=$(sed
 echo "PSI some_ms=$(( (S1 - S0) / 1000 )) full_ms=$(( (F1 - F0) / 1000 )) max_full_avg10=$MAXF min_avail_mib=$MINA critical_s=$CRIT"
 echo "SWAP in=$(( $(awk '/^pswpin /{print $2}' /proc/vmstat) - SI0 )) out=$(( $(awk '/^pswpout /{print $2}' /proc/vmstat) - SO0 )) zram_mm=$(cat /sys/block/zram0/mm_stat)"
 echo "OOM $(( $(awk '/^oom_kill /{print $2}' /proc/vmstat) - OOM0 ))"
-echo "GUARD log=$(( $(wc -l < /run/rudolf/memguard.log 2>/dev/null || echo 0) - ML0 )) ended=$(( $(wc -l < /run/rudolf/memguard.events 2>/dev/null || echo 0) - ME0 ))"
+echo "GUARD log=$(( $(wc -l < /run/rudolf/memguard.log) - ML0 )) ended=$(( $(wc -l < /run/rudolf/memguard.events) - ME0 ))"
 tail -n +$((ML0 + 1)) /run/rudolf/memguard.log 2>/dev/null | tail -5 | sed 's/^/GL /'
 cat /tmp/game.out /tmp/call.out
 pkill -f "$K"; sleep 3; swapoff /dev/zram0; echo DONE
@@ -242,12 +259,24 @@ pkill -f "$K"; sleep 3; swapoff /dev/zram0; echo DONE
 def phase_memory():
     runs = os.environ.get('MEMRUNS', '180:100:zstd 100:100:zstd 60:100:zstd 200:100:zstd 180:150:zstd 180:100:lzo-rle').replace(',', ' ').split()
     tabs = os.environ.get('TABS', '350 350 350 200').replace(',', ' '); game = os.environ.get('GAME', '1100')
-    vm, g, up = boot('m')
-    if not up or not wait_desktop(g): out('no desktop'); stop(vm, g); return
-    g.js(INIT_JS, 60); run(g, 'sleep 30; free -m; cat /sys/block/zram0/comp_algorithm; cat /run/rudolf/memory', 60)
-    for spec in runs:
+    global CUR
+    for CUR in VARS:
+      vm, g, up = boot('m' + CUR['name'])
+      if not up or not wait_desktop(g): out('no desktop'); stop(vm, g); continue
+      # (the serial shell is kept out of the kernel's reach when memory runs out, and the run is detached from it: run
+      #  43 of the first round lost every result to a shell that stopped answering under memory pressure)
+      g.js(INIT_JS, 60); run(g, 'for p in $$ $PPID; do echo -1000 > /proc/$p/oom_score_adj; done; sleep 30; free -m; cat /sys/block/zram0/comp_algorithm; cat /run/rudolf/memory', 60)
+      for spec in runs:
         sw, zp, zc = spec.split(':')
-        o = run(g, MEMRUN % (sw, zp, zc, tabs, game), 600)
+        f = os.path.join(W, 'mem.sh'); open(f, 'w').write(MEMRUN % (sw, zp, zc, tabs, game)); g.put(f, '/tmp/mem.sh', '644')
+        g.sh('rm -f /tmp/mem.out; setsid sh /tmp/mem.sh > /tmp/mem.out 2>&1 < /dev/null &', 20)
+        end = time.time() + 900; o = ''
+        while time.time() < end:
+            time.sleep(15)
+            try: o = g.sh('grep -q "^DONE" /tmp/mem.out && cat /tmp/mem.out || echo RUNNING', 60)
+            except OSError: o = ''
+            if 'DONE' in o: break
+        out(o[-4000:], quiet=True)
         def num(k, d=None):
             m = re.search(k + r'=([0-9.]+)', o); return float(m.group(1)) if m else d
         gm = re.search(r'game frames=(\d+) slow33=(\d+) slow100=(\d+) p99=([0-9.]+) max=([0-9.]+)', o)
@@ -258,8 +287,8 @@ def phase_memory():
             guard_critical_s=num('critical_s'), guard_log_lines=num('GUARD log'), guard_ended=num('ended'), oom_kills=int(oom.group(1)) if oom else None,
             swap_in=num('SWAP in'), swap_out=num('out'),
             game=dict(zip(('frames', 'slow33', 'slow100', 'p99_ms', 'max_ms'), map(float, gm.groups()))) if gm else None,
-            call=dict(zip(('periods', 'late10', 'p99_ms', 'max_ms'), map(float, cl.groups()))) if cl else None)
-    stop(vm, g)
+            call=dict(zip(('periods', 'late10', 'p99_ms', 'max_ms'), map(float, cl.groups()))) if cl else None, variant=CUR['name'])
+      stop(vm, g)
 
 # ---- power: this tree's power script on QEMU's processors (no frequency driver), with Rudolf's own settings
 def phase_power():
@@ -271,7 +300,7 @@ def phase_power():
     res(kind='power', ok=('"ok":true' in o and '"cpu":' in o), out=o[-1500:])
     stop(vm, g)
 
-make_drive(DRV)
+for v in VARS: make_drive(v)
 try:
     {'startup': phase_startup, 'latency': phase_latency, 'memory': phase_memory, 'power': phase_power}[PHASE]()
 finally:
