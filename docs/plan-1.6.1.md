@@ -165,6 +165,10 @@ stage B (items 1 to 3) and its release checks:
 
 ### 9. USB printers and the first ARM64 release (moved from 1.6.0 on 2026-11-16)
 Decided by the owner on 2026-11-16: "USB printers and ARM64 can be delayed until 1.6.1."
+**USB printers back in 1.6.0 (owner, 2026-11-17):** "Skip the test and just add it. Users can still print if the USB
+printing has issues and we can refine it in 1.6.1 with the data that comes back if it does." The `usbprint` extension
+is published for 1.6.0's beta by extensions.yml, untested on a real printer; 1.6.1 refines it from reports (the
+self-test's usb-printer line, /run/rudolf/usbprint.log in a system report) and the HP desktop user's printer.
 - **USB printers (1.6.0 Part 8, as written there):** IPP over USB (ipp-usb) and plain USB printers reading PDF or
   PostScript, as the first signed system extension (`usbprint`, Part 13 of 1.6.0); extensions.yml's first run to
   publish it for the release's base ABI; Settings › Devices; then the HP desktop user's printer. 1.6.0 prints to network
