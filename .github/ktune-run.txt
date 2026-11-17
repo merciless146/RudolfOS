@@ -1,7 +1,10 @@
 # What .github/workflows/kernel-tuning.yml runs (docs/plan-1.6.1.md Part 12). Lines:
 #   serial SERIAL                       the release whose layers are used (default: the newest beta)
-#   kernel NAME [+OPTION] [-OPTION] [repro]   a test kernel from this tree: the release's configuration (kconfig.sh) with
-#                                       options turned on (+) and off (-); repro: built with its date fixed, to compare two
+#   kernel NAME [+OPTION] [-OPTION] [~OPTION] [repro]   a test kernel from this tree: the release's configuration
+#                                       (kconfig.sh) with options turned on (+), off (-) or made modules (~); repro: built
+#                                       with its date fixed, to compare two
+#   base NAME                           a test base layer: the release's with this tree's sys/root and rudolfd
+#   run ... BASE=NAME                   ...started with that base layer
 #   run PHASE KERNEL [VAR=VALUE ...]    iso/qt/sb/kt161_t.py PHASE with the release's kernel (release) or a test kernel;
 #                                       lists in a value are written with commas
 serial 2026111620

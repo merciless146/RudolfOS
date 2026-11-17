@@ -11,6 +11,9 @@
  *   kload game MB SECONDS            a game's stand-in: MB of memory (assets, half compressible), a frame loop at 60
  *                                    fps that touches a quarter of it each second; prints the frame times
  *                                    ("game frames=.. slow33=.. slow100=.. p99=.. max=.. ms")
+ *   kload tsc                        the processor's time stamp counter and the uptime, together: in a KVM guest the counter
+ *                                    starts with the machine, so with its rate (dmesg's "tsc:") it tells how long the
+ *                                    firmware, loading and unpacking the kernel took before the kernel's own clock began
  *   kload tabs MB                    browser tabs' stand-in: MB of memory that compresses about 3:1 (as web pages' heaps),
  *                                    touched lightly (2 % a second) until killed
  */
@@ -98,6 +101,11 @@ static void tabs(size_t mb)
 	printf("tabs %zu MB\n", mb); fflush(stdout);
 	for (;;) { for (size_t i = 0; i < per; i += 4096) p[(off + i) % len]++; off = (off + per) % len; sleep(1); }
 }
+static int tsc(void)
+{
+	unsigned lo, hi; __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi)); struct timespec t; clock_gettime(CLOCK_BOOTTIME, &t);
+	printf("TSC %llu %.6f\n", ((unsigned long long)hi << 32) | lo, t.tv_sec + t.tv_nsec / 1e9); return 0;
+}
 int main(int argc, char **argv)
 {
 	setvbuf(stdout, NULL, _IOLBF, 0);
@@ -105,6 +113,7 @@ int main(int argc, char **argv)
 	if (argc >= 2 && !strcmp(argv[1], "burn")) { volatile unsigned long x = 0; for (;;) x++; }
 	if (argc >= 3 && !strcmp(argv[1], "call")) return call(atof(argv[2]));
 	if (argc >= 4 && !strcmp(argv[1], "game")) return game(strtoul(argv[2], NULL, 10), atof(argv[3]));
+	if (argc >= 2 && !strcmp(argv[1], "tsc")) return tsc();
 	if (argc >= 3 && !strcmp(argv[1], "tabs")) tabs(strtoul(argv[2], NULL, 10));
 	fprintf(stderr, "usage: kload wlat S [US] | burn | call S | game MB S | tabs MB\n"); return 2;
 }

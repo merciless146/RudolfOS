@@ -90,6 +90,7 @@ def stop(vm, g):
 
 # ---- start-up: what happened when, as uptime seconds
 TIMES = r'''
+/persist/k161/kload tsc; dmesg | grep -m2 -E 'tsc: (Detected|Refined TSC).* MHz' | sed 's/^/TF /'
 touch /tmp/k161now; U=$(cut -d' ' -f1 /proc/uptime)
 echo "NOW $U $(stat -c '%y' /tmp/k161now)"
 for f in /etc/rudolf/initramfs.log /run/rudolf/persistent /run/rudolf/devices /run/rudolf/sysext.log /persist/var/log/starts/0/start.txt /run/rudolf/memory /run/rudolf/gpu /run/rudolf/session.env /tmp/.X11-unix/X0 /run/rudolf/display-mode /run/rudolf/glflags /run/user/1000/bus /run/user/1000/pulse/native /run/rudolf/rpk.log /run/rudolf/bootok /run/rudolf/desktop-engine /run/rudolf/startup-times; do
@@ -110,7 +111,7 @@ def ts(d, t):   # stat's %y: "2026-11-17 03:08:51.123456789"
     whole, _, frac = t.partition('.')
     return datetime.datetime.strptime(d + ' ' + whole, '%Y-%m-%d %H:%M:%S').replace(tzinfo=datetime.timezone.utc).timestamp() + float('0.' + (frac or '0'))
 def parse_times(o):
-    r = {}; up = wall = None; hz = 100; ps = {}
+    r = {}; up = wall = None; hz = 100; ps = {}; tscv = None; mhz = None
     for l in o.splitlines():
         p = l.split()
         if not p: continue
@@ -124,7 +125,10 @@ def parse_times(o):
         elif p[0] == 'SL': m = re.search(r'uptime=([0-9.]+)', l); r['rudolf-init: data partition (after udev)'] = float(m.group(1)) if m else None
         elif p[0] == 'UP': r['session: desktop-up mark'] = float(p[1])
         elif p[0] == 'EN' and '->' in l: r['engine'] = l[3:].strip()
+        elif p[0] == 'TSC' and len(p) >= 3: tscv = (int(p[1]), float(p[2]))
+        elif p[0] == 'TF': m = re.search(r'([0-9.]+) MHz', l); mhz = float(m.group(1)) if m else mhz
     for k in ps: r['process ' + k] = ps[k]
+    if tscv and mhz: r['before the kernel (firmware, loading, unpacking; TSC)'] = round(tscv[0] / (mhz * 1e6) - tscv[1], 2)
     return r
 
 KEYPROCS = ('systemd-udevd', 'rudolfd', 'Xorg', 'Xvfb', 'rudolf-display', 'dbus-daemon', 'pulseaudio', 'chrome', 'rudolf-native', 'rudolf-memguard', 'rudolf-launch', 'wpa_supplicant', 'udhcpc', 'rpk', 'WebKitWebProces')

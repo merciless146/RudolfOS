@@ -23,7 +23,7 @@ jobs:
           L = [l.split('#')[0].strip() for l in open('.github/ktune-run.txt')]
           k, r, b = [], [], []
           for l in L:
-              if l.startswith('kernel '): n, *rest = l[7:].split(); k.append({'name': n, 'extra': ' '.join(x[1:] for x in rest if x[0] == '+'), 'off': ' '.join(x[1:] for x in rest if x[0] == '-'), 'repro': '1' if 'repro' in rest else ''})
+              if l.startswith('kernel '): n, *rest = l[7:].split(); k.append({'name': n, 'extra': ' '.join(x[1:] for x in rest if x[0] == '+'), 'off': ' '.join(x[1:] for x in rest if x[0] == '-'), 'mod': ' '.join(x[1:] for x in rest if x[0] == '~'), 'repro': '1' if 'repro' in rest else ''})
               elif l.startswith('run '):
                   p = l[4:].split(); env = dict(x.split('=', 1) for x in p[2:]); base = env.pop('BASE', '')
                   r.append({'phase': p[0], 'kernel': p[1], 'base': base, 'id': f"{len(r):02d}-{p[0]}-{p[1]}{'-' + base if base else ''}", 'env': ' '.join(f'{a}={v}' for a, v in env.items())})
@@ -31,7 +31,7 @@ jobs:
               elif l.startswith('base '): b.append(l.split()[1])
           print('repro=' + ('1' if any(x['repro'] for x in k) else ''))
           print('bases=' + json.dumps(b or ['none']))
-          print('kernels=' + json.dumps(k or [{'name': 'none', 'extra': '', 'off': '', 'repro': ''}]))
+          print('kernels=' + json.dumps(k or [{'name': 'none', 'extra': '', 'off': '', 'mod': '', 'repro': ''}]))
           print('rel=' + json.dumps([x for x in r if x['kernel'] == 'release'] or [{'phase': 'none', 'kernel': 'release', 'base': '', 'id': 'none', 'env': ''}]))
           print('built=' + json.dumps([x for x in r if x['kernel'] != 'release'] or [{'phase': 'none', 'kernel': 'none', 'base': '', 'id': 'none', 'env': ''}]))
           EOF
@@ -50,11 +50,11 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools bc flex bison libelf-dev libssl-dev kmod >/dev/null
       - name: Build ${{ matrix.k.name }}
         if: matrix.k.name != 'none'
-        env: {EXTRA: '${{ matrix.k.extra }}', OFF: '${{ matrix.k.off }}', REPRO: '${{ matrix.k.repro }}'}
+        env: {EXTRA: '${{ matrix.k.extra }}', OFF: '${{ matrix.k.off }}', MOD: '${{ matrix.k.mod }}', REPRO: '${{ matrix.k.repro }}'}
         run: |
           git fetch -q --depth 1 origin gh-pages
           KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); export KERNEL_VERSION=${KV%-rudolf}
-          echo "Linux $KERNEL_VERSION; on: $EXTRA; off: $OFF; repro: $REPRO"
+          echo "Linux $KERNEL_VERSION; on: $EXTRA; off: $OFF; modules: $MOD; repro: $REPRO"
           S=$(date +%s); OUT=$PWD/kout bash iso/systools/testkernel.sh; echo "built in $(( $(date +%s) - S )) s"
           cat kout/config-extra.txt; ls -la kout
           echo "::notice title=Kernel ${{ matrix.k.name }}::$(tr '\n' ' ' < kout/config-extra.txt) ($(du -m kout/vmlinuz | cut -f1) MB, modules $(du -m kout/modules.sfs | cut -f1) MB, built in $(( $(date +%s) - S )) s)"
