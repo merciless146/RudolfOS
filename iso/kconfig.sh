@@ -21,7 +21,9 @@ y CMDLINE_BOOL
 # brightness keys, as rudolf-display does it; otherwise every press would count twice on some laptops)
 $C --set-str CMDLINE "quiet loglevel=3 consoleblank=0 vt.global_cursor_default=0 video.brightness_switch_enabled=0"
 $C --set-str INITRAMFS_SOURCE "$2"
-y INITRAMFS_COMPRESSION_XZ KERNEL_XZ
+# 1.6.1 (docs/plan-1.6.1.md Part 12): the kernel and its start-up image packed with zstd, not xz: unpacked about 0.5 s sooner at
+# each start (an installed computer unpacks two kernels, the boot files' and the system's, at the handover), for about 1 MB more
+y INITRAMFS_COMPRESSION_ZSTD KERNEL_ZSTD RD_ZSTD
 y SYSFB_SIMPLEFB DRM DRM_SIMPLEDRM DRM_FBDEV_EMULATION FB FRAMEBUFFER_CONSOLE FB_VESA FB_EFI DRM_PANEL_ORIENTATION_QUIRKS FIRMWARE_EDID
 n LOGO
 # Intel CPU idle states (battery life on Intel N100 and similar)
@@ -60,7 +62,12 @@ y HID_ALPS HID_ASUS HID_LENOVO HID_ELAN MOUSE_BCM5974 HID_MAGICMOUSE TOUCHSCREEN
 # sound
 y SND_HDA_CODEC_REALTEK SND_HDA_CODEC_HDMI SND_HDA_CODEC_CIRRUS PINCTRL_INTEL_PLATFORM SOUND SND SND_PCI SND_HDA_INTEL SND_HDA_GENERIC SND_HDA_CODEC_REALTEK_LIB SND_HDA_CODEC_ALC269 SND_HDA_CODEC_ALC662 SND_HDA_CODEC_ALC882 SND_HDA_CODEC_ALC680 SND_HDA_CODEC_ALC260 SND_HDA_CODEC_ALC262 SND_HDA_CODEC_ALC268 SND_HDA_CODEC_ALC861 SND_HDA_CODEC_ALC861VD SND_HDA_CODEC_ALC880 SND_HDA_CODEC_ANALOG SND_HDA_CODEC_SIGMATEL SND_HDA_CODEC_VIA SND_HDA_CODEC_CONEXANT SND_HDA_CODEC_CMEDIA SND_HDA_CODEC_CA0132 SND_HDA_CODEC_HDMI_GENERIC SND_HDA_CODEC_HDMI_INTEL SND_HDA_CODEC_HDMI_ATI SND_HDA_CODEC_HDMI_NVIDIA SND_USB SND_USB_AUDIO SND_INTEL8X0 SND_ENS1370 SND_HDA_CODEC_CS420X SND_HDA_CODEC_CS8409
 # network
-y PACKET UNIX INET IPV6 NETDEVICES ETHERNET E1000 E1000E IGB IGC R8169 ATL1C ALX TIGON3 8139CP 8139TOO NE2K_PCI PCNET32 USB_NET_DRIVERS USB_USBNET USB_NET_CDCETHER USB_RTL8152 USB_NET_AX88179_178A WIREGUARD
+y PACKET UNIX INET IPV6 NETDEVICES ETHERNET USB_NET_DRIVERS USB_USBNET USB_NET_CDCETHER USB_RTL8152 USB_NET_AX88179_178A WIREGUARD
+# 1.6.1 (plan Part 12): the wired network cards' drivers as modules, loaded by modalias with the others after the system is up
+# (rudolf-init), as the network starts then anyway (netplug): not needed to start, they were probed in the kernel's own start
+# (Intel's e1000 took 0.35-0.4 s of it in QEMU) and made the kernel larger; checked below
+ETHM="E1000 E1000E IGB IGC R8169 ATL1C ALX TIGON3 8139CP 8139TOO NE2K_PCI PCNET32"
+m $ETHM
 # 1.5.3: the Wi-Fi drivers are in WIFI and checked after olddefconfig, as a driver whose menu or dependency is
 # off is dropped without a word (RT2800USB was, until the RT2X00 menu was turned on: the Vivobook's RT5370 dongle)
 WIFI="CFG80211 MAC80211 IWLWIFI IWLMVM IWLDVM RTW88 RTW88_8822BE RTW88_8822CE RTW88_8821CE RTW89 RTW89_8852AE RTW89_8852BE RTW89_8852CE RTW89_8852BTE RTW89_8851BE RTW89_8922AE ATH9K ATH10K ATH10K_PCI ATH11K ATH11K_PCI MT7921E RTL8192CE RT2800USB RT2800PCI RTL8XXXU MAC80211_HWSIM RTW88_USB RTW88_8821CU RTW88_8822BU RTW88_8822CU RTW88_8821AU RTW88_8812AU RTW89_8852BU RTW89_8851BU MT7921U MT7925E MT7925U ATH9K_HTC MT7601U"
@@ -216,9 +223,10 @@ n DEBUG_INFO DEBUG_INFO_DWARF5 DEBUG_INFO_DWARF4 DEBUG_INFO_DWARF_TOOLCHAIN_DEFA
 $C --enable DEBUG_INFO_NONE
 make olddefconfig >/dev/null
 # 1.4.4: every hotkey driver is there, as a module (a dependency missing from x86_64_defconfig would drop it)
-for o in $WWANM USB_PRINTER TUN VETH; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig"; exit 1; }; done
+for o in $WWANM USB_PRINTER TUN VETH $ETHM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig"; exit 1; }; done
 for o in $HOTKEYS; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig (a dependency is missing)"; exit 1; }; done
 grep -q "^CONFIG_IPV6_SIT=y\|^CONFIG_IPV6_SIT=m" .config && { echo "kconfig.sh: IPV6_SIT is still on"; exit 1; }
+for o in KERNEL_ZSTD INITRAMFS_COMPRESSION_ZSTD RD_ZSTD; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 # 1.4.7: the memory options are on
 for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU_GEN_ENABLED CGROUPS MEMCG SECURITY_YAMA; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 for o in $SOFM $AMPS $SPIM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the sound driver $o is not a module after olddefconfig"; exit 1; }; done
