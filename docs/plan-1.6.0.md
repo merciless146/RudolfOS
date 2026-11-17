@@ -1542,6 +1542,17 @@ root work split into helpers (Part 11), with files dropped from outside onto the
     tree's rudolf-native and page (svc-check.yml run 44009629129). Left: the owner's checks V51-V56 on the Vivobook.
 14. **Files dropped from Linux apps onto the native desktop** (planned for 1.6.1 Part 13, merged early as #444): kept in
     1.6.0 by the owner on 2026-11-16 ("Keep it in 1.6.0"). Owner's check: docs/native-vivobook-checklist.md V57.
+15. **The Vivobook could not start after a restart on beta 2026111620** (owner, 2026-11-16; must before stable). After
+    switching from Native to Standard and restarting, the ASUS firmware opened its setup screen: Boot Priority still
+    named "Rudolf OS", Boot Override listed nothing. Started from a stick (r2026111620's boot.iso), the system's health
+    log shows no event from the automatic start-up files repair of #433 in that session, so that repair most likely did
+    not cause it; the leading suspect is the firmware's "Rudolf OS" boot entry, which rudolfd makes at every start (this
+    firmware adds none for the drive). First step (PR #449): a start never rewrites the start-up area by itself, only
+    reports. The fix, before stable (its own task): the cause proven in QEMU with a firmware that does not search the
+    drives, and fixed; every change to the firmware's variables logged in System health; the start-up files replaced
+    only inside the EFI partition (never the partition table or the disk signature), the boot entry written and read back
+    before any restart; a rescue action from the running system; the same for "Get new boot files", "Replace the boot
+    files only" and Return to official.
 
 ## After 1.6.0: the native desktop decision (added on 2026-11-12)
 (2026-11-13: the prototype moved into 1.5.9 as a third desktop engine, Native (test): docs/plan-1.5.9.md Part 12.

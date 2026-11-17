@@ -184,6 +184,10 @@ static char *run_out(const char *cmd)
 	pclose(p);
 	return s.b;
 }
+#include "rudolfd-root.inc"   /* 1.6.1 (plan Part 11): what needs root, through the root helpers */
+#ifndef RU_BIN
+#define RU_BIN "/usr/bin/rudolf-update"   /* (only looked for here: the updates helper runs it; host tests give another) */
+#endif
 
 /* only plain names: letters, digits and - _ . : */
 static int safe_word(const char *s, size_t max)
@@ -747,11 +751,10 @@ static void api_mount(struct req *r, int mount)
 {
 	char *dev = qparam(r->query, "dev");
 	if (!safe_word(dev, 32)) { reply_err(r->fd, 400, "bad device"); return; }
-	char cmd[512];
-	/* mounted without device files, set-user-ID or programs run from the drive (devplug: also SD cards, NTFS) */
-	if (mount) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/devplug mount %s", dev);
-	else snprintf(cmd, sizeof cmd, "sync; umount /media/%s && rmdir /media/%s; rm -f /run/rudolf/drives/%s", dev, dev, dev);
-	if (run(cmd)) reply_err(r->fd, 500, mount ? "could not mount this partition" : "could not unmount (files in use?)");
+	/* mounted without device files, set-user-ID or programs run from the drive (devplug: also SD cards, NTFS); 1.6.1:
+	   by the drives helper (rudolfd-root.inc), which checks the name again */
+	const char *av[] = { "drives", mount ? "mount" : "umount", dev, NULL };
+	if (root_run(av)) reply_err(r->fd, 500, mount ? "could not mount this partition" : "could not unmount (files in use?)");
 	else reply_ok(r->fd, mount ? "mounted" : "safe to remove");
 }
 
@@ -929,6 +932,12 @@ static const char *img_sha_env(struct req *r)
 	static char env[100]; env[0] = 0; char *h = qparam(r->query, "sha");
 	if (h && strlen(h) == 64) { int ok = 1; for (const char *c = h; *c; c++) if (!isxdigit((unsigned char)*c)) ok = 0; if (ok) { snprintf(env, sizeof env, "RUDOLF_IMG_SHA=%s ", h); for (char *c = env; *c; c++) *c = tolower((unsigned char)*c); memcpy(env, "RUDOLF_IMG_SHA", 14); } }
 	return env;
+}
+/* 1.6.1: the same, as the drives helper's argument (--sha=HEX), or NULL */
+static const char *img_sha_arg(struct req *r)
+{
+	static char a[80]; const char *e = img_sha_env(r); if (!*e) return NULL;
+	snprintf(a, sizeof a, "--sha=%.64s", e + 15); return a;
 }
 static void start_job(const char *name, const char *cmd)
 {
@@ -4215,12 +4224,12 @@ static void api(struct req *r)
 	if (!strcmp(p, "stick/info")) {
 		char *d = qparam(r->query, "disk");
 		if (!safe_word(d, 16) || strstr(d, "..")) { reply_err(r->fd, 400, "disk: a drive name such as sdb"); return; }
-		char cmd[200]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/mkstick.sh --info /dev/%s 2>/dev/null", d);
-		char *o = run_out(cmd); str s2 = {0}; sadd(&s2, "%s", o && *o == '{' ? o : "{\"rudolf\":false}\n"); free(o); reply_json(r->fd, &s2); return;
+		const char *av[] = { "drives", "info", d, NULL };
+		char *o = root_out(av, 0); str s2 = {0}; sadd(&s2, "%s", o && *o == '{' ? o : "{\"rudolf\":false}\n"); free(o); reply_json(r->fd, &s2); return;
 	}
 	/* the hardware check's download test (1.2.5): rudolf-update speedtest prints "bytes N" and "ms N" */
 	if (!strcmp(p, "speedtest")) {
-		char *o = run_out("/usr/bin/rudolf-update speedtest 2>&1"); long long by = 0, ms = 0; char *q;
+		const char *av[] = { "updates", "speedtest", NULL }; char *o = root_out(av, 1); long long by = 0, ms = 0; char *q;
 		if (o && (q = strstr(o, "bytes "))) by = atoll(q + 6);
 		if (o && (q = strstr(o, "ms "))) ms = atoll(q + 3);
 		if (by <= 0) { reply_err(r->fd, 502, o && *o ? strtok(o, "\n") : "the update server could not be reached"); free(o); return; }
@@ -4292,7 +4301,7 @@ static void api(struct req *r)
 	if (!strcmp(p, "heartbeat")) {
 		write_str(RUN "/heartbeat", "1");
 		/* the first heartbeat after a start: the desktop works, so an update being tried is kept */
-		if (access(RUN "/bootok", F_OK)) { write_str(RUN "/bootok", "1"); if (!access("/usr/bin/rudolf-update", X_OK)) run("/usr/bin/rudolf-update boot-ok >>" RUN "/update.log 2>&1"); }
+		if (access(RUN "/bootok", F_OK)) { write_str(RUN "/bootok", "1"); if (!access(RU_BIN, X_OK)) { const char *av[] = { "updates", "boot-ok", NULL }; int lg = open(RUN "/update.log", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644), nul = root_null(); root_call(av, nul >= 0 ? nul : 0, lg >= 0 ? lg : 2, lg >= 0 ? lg : 2); if (lg >= 0) close(lg); if (nul >= 0) close(nul); } }
 		reply_ok(r->fd, "ok"); return;
 	}
 	/* 1.4.4: events/wait waits (up to 25 s) until there are events, so the desktop hears of a key press (the volume
@@ -4373,7 +4382,7 @@ static void api(struct req *r)
 	if (!strcmp(p, "selftest")) { char *o = access("/usr/lib/rudolf/selftest", X_OK) ? NULL : run_out("/usr/lib/rudolf/selftest 2>&1");
 		if (!o) { reply_err(r->fd, 404, "this Rudolf OS has no self-test"); return; }
 		str s = {0}; sadd(&s, "{\"ok\":true,\"text\":"); sjson(&s, o); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return; }
-	if (!strcmp(p, "sys/status")) { char *o = access("/usr/bin/rudolf-update", X_OK) ? NULL : run_out("/usr/bin/rudolf-update status 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 404, "this Rudolf OS has no system updates"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
+	if (!strcmp(p, "sys/status")) { char *o = access(RU_BIN, X_OK) ? NULL : root_out((const char *const[]){ "updates", "status", NULL }, 0); if (!o || o[0] != '{') { reply_err(r->fd, 404, "this Rudolf OS has no system updates"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
 	if (!strcmp(p, "pkg/status")) { if (access("/usr/bin/rpk", X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no package manager"); return; } char *o = run_out("/usr/bin/rpk status 2>/dev/null"); if (!o || o[0] != '{') { reply_err(r->fd, 500, "rpk failed"); free(o); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
 	/* 1.5.7: only reading; a POST goes on to the writer below (this caught writes too, so page.log was never written) */
 	if (!strcmp(p, "clientlog") && !post) { char *c = slurp(RUN "/page.log", NULL); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, c ? c : ""); sadd(&s, "}"); free(c); reply_json(r->fd, &s); return; }
@@ -4610,19 +4619,19 @@ static void api(struct req *r)
 	if (!strncmp(p, "web/", 4)) { api_web(r, p + 4); return; }
 	if (!strncmp(p, "torwin/", 7)) { api_torwin(r, p + 7, !strcmp(r->method, "POST")); return; }   /* (1.5.9, 16.2: Oracle's Tor windows on Standard) */
 	if (!strncmp(p, "sys/", 4)) {
-		const char *w = p + 4; char cmd[700];
-		if (access("/usr/bin/rudolf-update", X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no system updates"); return; }
+		const char *w = p + 4;
+		if (access(RU_BIN, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no system updates"); return; }
 		if (!strcmp(w, "check") || !strcmp(w, "download")) {
 			if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
-			snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update %s", w); start_job("system-update", cmd); reply_ok(r->fd, "started"); return;
+			const char *av[] = { "updates", w, NULL }; root_job("system-update", av); reply_ok(r->fd, "started"); return;
 		}
-		if (!strcmp(w, "rollback")) { char *o = run_out("/usr/bin/rudolf-update rollback 2>&1"); reply_ok(r->fd, o); free(o); return; }
+		if (!strcmp(w, "rollback")) { const char *av[] = { "updates", "rollback", NULL }; char *o = root_out(av, 1); reply_ok(r->fd, o); free(o); return; }
 		/* 1.6.0 (the owner, 2026-11-16): Roll back to the last stable version. GET sys/stable: what it would do here (the last
 		   stable release from what the last check saw, whether this system is one, and whether that release reads this
 		   computer's data); POST sys/tostable: a job, only with an administrator's name and password, checked here (the
 		   body: {"n":ADMIN,"p":PASSWORD}), as Get beta versions */
 		if (!strcmp(w, "stable") && !post) {
-			char *o = run_out("/usr/bin/rudolf-update stable-info 2>/dev/null");
+			const char *av[] = { "updates", "stable-info", NULL }; char *o = root_out(av, 0);
 			if (!o || o[0] != '{') { reply_err(r->fd, 404, "this Rudolf OS cannot go back to a stable release"); free(o); return; }
 			reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
 		}
@@ -4634,15 +4643,15 @@ static void api(struct req *r)
 			if (adm) { free(an); reply_err(r->fd, adm == 429 ? 429 : 403, why[0] ? why : "an administrator's name and password are needed"); return; }
 			if (job_running()) { free(an); reply_err(r->fd, 409, "another task is still running"); return; }
 			health_add("update", "rolling back to the last stable version, asked by %.80s", an); free(an);
-			start_job("system-update", "/usr/bin/rudolf-update to-stable"); reply_ok(r->fd, "started"); return;
+			{ const char *av[] = { "updates", "to-stable", NULL }; root_job("system-update", av); } reply_ok(r->fd, "started"); return;
 		}
 		/* 1.5.9 (plan 8.5): Return to official Rudolf OS (keep or erase); a job (it may download the official release).
 		   The desktop asks an administrator's password first */
 		if (!strcmp(w, "return")) {
 			const char *e = qparam(r->query, "erase");
 			if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
-			snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update return-official %s", e && !strcmp(e, "1") ? "erase" : "keep");
-			start_job("system-update", cmd); reply_ok(r->fd, "started"); return;
+			const char *av[] = { "updates", "return-official", e && !strcmp(e, "1") ? "erase" : "keep", NULL };
+			root_job("system-update", av); reply_ok(r->fd, "started"); return;
 		}
 		if (!strcmp(w, "set")) {
 			const char *k = qparam(r->query, "k"); char kk[8]; snprintf(kk, sizeof kk, "%s", k ? k : "");
@@ -4651,8 +4660,8 @@ static void api(struct req *r)
 			for (const char *c = v; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("/:._-~%+", *c)) { reply_err(r->fd, 400, "bad character"); return; }
 			/* 1.6.0: the official beta address only through Get beta versions (an administrator's password, below) */
 			if (!strcmp(kk, "url") && strstr(v, "merciless146.github.io/RudolfOS/beta")) { reply_err(r->fd, 403, "turn on Get beta versions instead (it needs an administrator's name and password)"); return; }
-			snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update set %s '%s' 2>&1", kk, v);
-			char *o = run_out(cmd); if (o && *o) { reply_err(r->fd, 400, o); free(o); return; } free(o); reply_ok(r->fd, "saved"); return;
+			const char *av[] = { "updates", "set", kk, v, NULL };
+			char *o = root_out(av, 1); if (o && *o) { reply_err(r->fd, 400, o); free(o); return; } free(o); reply_ok(r->fd, "saved"); return;
 		}
 		/* 1.6.0 (owner, 2026-11-15): Get beta versions, opt-in. On: an administrator's name and password, checked here
 		   (the body: {"n":ADMIN,"p":PASSWORD}). Off: nothing is needed, and the next update brings the latest stable
@@ -4665,11 +4674,11 @@ static void api(struct req *r)
 				int adm = an && ap ? desk_admin_check(an, ap, why, sizeof why) : -1;
 				dfree_secret(ap);
 				if (adm) { free(an); reply_err(r->fd, adm == 429 ? 429 : 403, why[0] ? why : "an administrator's name and password are needed"); return; }
-				char *o = run_out("/usr/bin/rudolf-update set channel beta 2>&1");
+				const char *av[] = { "updates", "set", "channel", "beta", NULL }; char *o = root_out(av, 1);
 				health_add("security", "beta versions were turned on by %.80s", an); free(an);
 				reply_ok(r->fd, o && *o ? o : "beta versions are on"); free(o); return;
 			}
-			char *o = run_out("/usr/bin/rudolf-update set channel stable 2>&1");
+			const char *av[] = { "updates", "set", "channel", "stable", NULL }; char *o = root_out(av, 1);
 			health_add("security", "beta versions were turned off: the next update brings the latest stable release");
 			reply_ok(r->fd, o && *o ? o : "beta versions are off"); free(o); return;
 		}
@@ -4677,14 +4686,15 @@ static void api(struct req *r)
 		   typed confirmation first */
 		if (!strcmp(w, "developer")) {
 			const char *on = qparam(r->query, "on"), *k = qparam(r->query, "key"), *u = qparam(r->query, "url");
-			if (on && !strcmp(on, "0")) snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update developer off 2>&1");
+			const char *av[6] = { "updates", "developer", "off", NULL, NULL, NULL };
+			if (on && !strcmp(on, "0")) {}
 			else {
 				if (!k || strlen(k) != 44 || strspn(k, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=") != 44) { reply_err(r->fd, 400, "the key is 44 characters of base64"); return; }
 				if (!u || strlen(u) > 300) { reply_err(r->fd, 400, "an update address is needed"); return; }
 				for (const char *c = u; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("/:._-~%+", *c)) { reply_err(r->fd, 400, "bad character in the address"); return; }
-				snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-update developer on '%s' '%s' 2>&1", k, u);
+				av[2] = "on"; av[3] = k; av[4] = u;
 			}
-			char *o = run_out(cmd); trim(o);
+			char *o = root_out(av, 1); trim(o);
 			if (o && !strncmp(o, "Developer mode is ", 18)) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "could not change Developer mode");
 			free(o); return;
 		}
@@ -4811,15 +4821,16 @@ static void api(struct req *r)
 	if (!strcmp(p, "update")) {
 		if (live) { reply_err(r->fd, 400, "updates need an installed system or a data partition"); return; }
 		if (r->blen < 100000 || !memmem(r->body, r->blen > 4096 ? 4096 : r->blen, "<html", 5)) { reply_err(r->fd, 400, "this is not a Rudolf OS page"); return; }
-		run("mkdir -p " PERSIST "/os/new && rm -rf " PERSIST "/os/previous && [ -d " PERSIST "/os/current ] && mv " PERSIST "/os/current " PERSIST "/os/previous; true");
-		int f = open(PERSIST "/os/new/index.html", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-		if (f < 0 || write(f, r->body, r->blen) != (ssize_t)r->blen) { if (f >= 0) close(f); reply_err(r->fd, 500, "could not save the update"); return; }
-		fsync(f); close(f);
-		run("mv " PERSIST "/os/new " PERSIST "/os/current; rm -f " PERSIST "/os/disabled; sync");
+		/* 1.6.1: by the updates helper (rudolfd-root.inc), the page on its standard input (a file in memory) */
+		int mf = memfd_create("rudolf-page", MFD_CLOEXEC), nul = root_null();
+		int okw = mf >= 0 && write(mf, r->body, r->blen) == (ssize_t)r->blen && lseek(mf, 0, SEEK_SET) == 0;
+		const char *av[] = { "updates", "page-install", NULL };
+		int rc = okw ? root_call(av, mf, nul >= 0 ? nul : 1, 2) : -1; if (mf >= 0) close(mf); if (nul >= 0) close(nul);
+		if (rc) { reply_err(r->fd, 500, "could not save the update"); return; }
 		reply_ok(r->fd, "update installed; restart to use it"); return;
 	}
 	if (!strcmp(p, "rollback")) {
-		int rc = run("[ -d " PERSIST "/os/previous ] && rm -rf " PERSIST "/os/current && mv " PERSIST "/os/previous " PERSIST "/os/current || { rm -rf " PERSIST "/os/current; true; }; sync");
+		const char *av[] = { "updates", "page-rollback", NULL }; int rc = root_run(av);
 		reply_ok(r->fd, rc ? "rolled back" : "returned to the previous version"); return;
 	}
 	if (!strcmp(p, "say")) {
@@ -4860,11 +4871,11 @@ static void api(struct req *r)
 		/* 1.2.8: bootonly=1 replaces only the boot files in front of the disk's RUDOLFDATA, keeping it (bootfiles.sh) */
 		char *bo = qparam(r->query, "bootonly");
 		if (bo && !strcmp(bo, "1")) {
-			char cmd[600]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/bootfiles.sh write /dev/%s '%s'", img_sha_env(r), d, img && *img ? img : "");
-			start_job("bootfiles", cmd); reply_ok(r->fd, "writing the boot files"); return;
+			const char *av[] = { "drives", "bootfiles-write", d, img && *img ? img : "", img_sha_arg(r), NULL };
+			root_job("bootfiles", av); reply_ok(r->fd, "writing the boot files"); return;
 		}
-		char cmd[600]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/install.sh /dev/%s%s%s", img_sha_env(r), d, img && *img ? " " : "", img && *img ? img : "");
-		start_job("install", cmd); reply_ok(r->fd, "installing"); return;
+		const char *av[] = { "drives", "install", d, img && *img ? img : "", img_sha_arg(r), NULL };
+		root_job("install", av); reply_ok(r->fd, "installing"); return;
 	}
 	/* new boot files for the drive Rudolf OS runs from (1.2.8): checked and kept on RUDOLFDATA, written by the start-up
 	   at the next start (bootfiles.sh stage); image: a downloaded disc image or boot image in the home folder */
@@ -4875,8 +4886,8 @@ static void api(struct req *r)
 		int okp = img && !strncmp(img, "/home/rudolf/", 13) && !strstr(img, "..") && strlen(img) < 200;
 		for (const char *q = img; okp && *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/._-", *q)) okp = 0;
 		if (!okp) { reply_err(r->fd, 400, "the image must be a file in the home folder (letters, digits, . _ - only)"); return; }
-		char cmd[600]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/bootfiles.sh stage '%s'", img_sha_env(r), img);
-		start_job("bootfiles", cmd); reply_ok(r->fd, "checking the image"); return;
+		const char *av[] = { "drives", "bootfiles-stage", img, img_sha_arg(r), NULL };
+		root_job("bootfiles", av); reply_ok(r->fd, "checking the image"); return;
 	}
 	/* make a Rudolf OS USB stick (1.2.5, mkstick.sh): disk and confirm (the same name twice), image (empty for this
 	   Rudolf OS, or a downloaded image in the home folder), files=1 to copy this session's files and settings too */
@@ -4889,13 +4900,13 @@ static void api(struct req *r)
 			for (const char *q = img; okp && *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/._-", *q)) okp = 0;
 			if (!okp) { reply_err(r->fd, 400, "the image must be a file in the home folder (letters, digits, . _ - only)"); return; }
 		}
-		char cmd[700]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/mkstick.sh /dev/%s '%s' %d", img_sha_env(r), d, img ? img : "", fl && !strcmp(fl, "1"));
-		start_job("mkstick", cmd); reply_ok(r->fd, "making the stick"); return;
+		const char *av[] = { "drives", "mkstick", d, img ? img : "", fl && !strcmp(fl, "1") ? "1" : "0", img_sha_arg(r), NULL };
+		root_job("mkstick", av); reply_ok(r->fd, "making the stick"); return;
 	}
 	/* keep files on the drive Rudolf OS runs from (1.2.4): add RUDOLFDATA after the image (keepfiles.sh) */
 	if (!strcmp(p, "keepfiles")) {
 		if (job_running()) { reply_err(r->fd, 409, "another job is running"); return; }
-		start_job("keepfiles", "/usr/lib/rudolf/keepfiles.sh make"); reply_ok(r->fd, "adding the RUDOLFDATA partition"); return;
+		{ const char *av[] = { "drives", "keepfiles", NULL }; root_job("keepfiles", av); } reply_ok(r->fd, "adding the RUDOLFDATA partition"); return;
 	}
 	if (!strcmp(p, "mount")) { api_mount(r, 1); return; }
 	if (!strcmp(p, "umount")) { api_mount(r, 0); return; }
@@ -4904,8 +4915,9 @@ static void api(struct req *r)
 		if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 		char *dev = qparam(r->query, "dev");
 		if (!safe_word(dev, 32) || strchr(dev, '.') || strchr(dev, ':')) { reply_err(r->fd, 400, "bad device"); return; }
-		char cmd[160]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/devplug eject %s 2>" RUN "/eject.err", dev);
-		if (run(cmd)) { char *e = slurp(RUN "/eject.err", NULL); if (e) trim(e); reply_err(r->fd, 409, e && *e ? e : "could not eject it"); free(e); }
+		const char *av[] = { "drives", "eject", dev, NULL }; int ef = open(RUN "/eject.err", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+		int nul = root_null(), er = root_call(av, nul >= 0 ? nul : 0, 1, ef >= 0 ? ef : 2); if (ef >= 0) close(ef); if (nul >= 0) close(nul);
+		if (er) { char *e = slurp(RUN "/eject.err", NULL); if (e) trim(e); reply_err(r->fd, 409, e && *e ? e : "could not eject it"); free(e); }
 		else reply_ok(r->fd, "safe to remove");
 		return;
 	}
@@ -5059,6 +5071,7 @@ int main(int argc, char **argv)
 	if (!access("/sys/firmware/efi", F_OK)) snprintf(boot_mode, sizeof boot_mode, "uefi");
 	{ char *sb = slurp("/etc/rudolf/secureboot", NULL); secureboot = sb && sb[0] == '1'; free(sb); }
 	live = access(RUN "/persistent", F_OK) != 0;
+	root_init();   /* 1.6.1 (plan Part 11) */
 	dl_boot();
 	au_on = 1; au_start();   /* 1.5.9 (15.3): each account's Linux user, and the move of existing accounts' folders */
 	dl_home_boot();

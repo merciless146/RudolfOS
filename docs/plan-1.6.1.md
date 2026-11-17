@@ -199,6 +199,153 @@ request of the desktop's page and API: a parsing bug there is a bug with root.
   before and after on the real release in QEMU (iso/qt/sb/: the existing t160 checks pass unchanged); a test that
   rudolfd's process is uid 1000 after start, and that the helpers refuse callers other than rudolfd.
 
+
+#### 11.1 The sweep (2026-11-17): every place rudolfd needs root
+From iso/sys/rudolfd.c and its .inc files on main after #441: each `run()`, `run_out()`, `system()`, `popen()`, `exec*`
+and job (`start_job`), and the calls made directly (mount, ioctl, kill, chown, setuid, writes under /sys, /proc/sys,
+/etc and the EFI variables). Reads of /proc, /sys and /etc that any user may make are left out (battery, network
+counters, temperatures, the CPU and memory, /etc/rudolf/media). By area, in the order they move; the helper each will
+move to is a program in /usr/lib/rudolf/root (11.2). "Program" means one of Rudolf OS's own scripts or programs that
+rudolfd runs as root today (they keep running as root, from the helper).
+
+| Area | Call site (function, API) | What it does as root | Helper |
+|---|---|---|---|
+| Drives | `api_mount` (POST mount, umount) | devplug mount (mount(8) of a USB drive or SD card under /media); umount and rmdir of /media/DEV | **drives** (moved) |
+| Drives | eject (POST eject) | devplug eject: every partition unmounted, /sys/block/DEV/device/delete | **drives** (moved) |
+| Drives | stick/info | mkstick.sh --info: the stick's partitions mounted read-only for a moment | **drives** (moved) |
+| Drives | install, install bootonly=1, bootfiles, mkstick, keepfiles (jobs) | install.sh, bootfiles.sh write/stage, mkstick.sh, keepfiles.sh: whole disks partitioned and written, loop mounts, RUDOLFDATA made | **drives** (moved) |
+| Drives | `home_unlock`, `home_lock`, `home_key_*`, `home_policy_id` (sign-in's home/unlock, home/lock, desktop.inc) | fscrypt: FS_IOC_ADD/REMOVE_ENCRYPTION_KEY, SET_ENCRYPTION_POLICY on /persist/accounts/ID, the folder made and given to the account's user | drives (next) |
+| Drives | `home_bind`, `home_unbind`, `home_debian_rebind` | bind mounts of the account's folders over /home/rudolf/…; rudolf-debian rebind | drives (next) |
+| Drives | `dl_store_bind`, `dl_store_dirs`, `dl_acct_dir`, `dl_home_boot` | bind mount of the downloads' store; chown of its folders to 1000 | drives (next) |
+| Drives | the vault: `vault_add_key`, `vault_key_spec_remove`, `vault_feature` (POST vault/*), vault-move (job), the Flatpak bind at unlock | fscrypt on the encrypted folder (1.5.0), tune2fs -l, mount --bind of /var/lib/flatpak, vault-move | drives (next) |
+| Drives | `addpart` (rudolfd --addpart, run by the scripts) | BLKPG ioctl on a disk | stays (a separate run by root scripts, not a request) |
+| Drives | `api_disks`, `api_storage` (storage-measure) | blkid of every disk (needs read access to /dev), du of the whole system | drives (read-only actions) |
+| Updates | sys/check, sys/download, sys/tostable, sys/return (jobs) | rudolf-update: slots on RUDOLFDATA, the manifest's signature, the ESP | **updates** (moved) |
+| Updates | sys/rollback, sys/set, sys/beta, sys/developer, sys/stable, sys/status, speedtest, boot-ok (at the desktop's first heartbeat) | rudolf-update's state in /persist/os, its settings in /persist/etc | **updates** (moved) |
+| Updates | the desktop's page update (POST update, POST rollback: /persist/os/new, current, previous) | files of root's on RUDOLFDATA | **updates** (moved) |
+| Updates | bootmenu, secureboot (`efivar_write`, `unimmutable`, `boot_entry_ensure`), MokNew/MokAuth | EFI variables (/sys/firmware/efi/efivars: chattr -i, writes) | updates (the boot entries, next) |
+| Accounts | `au_start`, `au_install`, `au_sync`, `au_migrate`, `au_mv_one` | /etc/passwd, group, shadow written (the per-account Linux users of 1.5.9 15.3 / 1.6.0 Part 10), lchown of the moved folders | accounts |
+| Accounts | `au_session_start`, `au_session_stop`, `au_kill_user`, `au_xaccess` | /home/acctUID bind mount, /run/user/UID made and chowned, the session D-Bus and portal started as the account's user (setuid), its processes killed, X's localuser access | accounts |
+| Accounts | `api_keyring` (keyring/*) | /usr/lib/rudolf/keyring as root for the account's key files | accounts |
+| Accounts | home/* (the files API: tree, list, read, write, rename, copy, delete, recovered) | reads and writes inside /persist/accounts/ID, which is the account's user's, 0700 (root's DAC override) | accounts: a file service run as the account's own user (not root), 11.2 |
+| Accounts | desk_* (desktop.inc: the page's storage, dwp_ensure, dput) | chown of the desktop's folders to desk_uid | none needed after the drop (rudolfd is that user) |
+| Power | power (POST power: poweroff, reboot), `sleep_now`, `api_sleep` | reboot(2), /usr/lib/rudolf/shutdown, pkill of Chromium, umount -a -r, /sys/power/state, /sys/class/rtc/rtc0/wakealarm | power |
+| Power | power/set, `main`'s power apply, brightness (backlight writes through the power script) | /usr/lib/rudolf/power (CPU governor, backlight, USB autosuspend under /sys) | power |
+| Power | memory/dropcache, memory settings (zram) | /proc/sys/vm/drop_caches, /usr/lib/rudolf/memory | power |
+| Power | desktop/priority | /usr/lib/rudolf/desktop-priority (cgroup weights of the desktop) | power |
+| Network | `api_wifi` (wifi/*: scan, connect (job), forget, radios, power) | wifi.sh (wpa_supplicant, wpa_cli, iw, rfkill), the root-only request file | network |
+| Network | net/dhcp, net/static, dns, `api_net`'s wpa_cli status | ip link/addr/route, udhcpc, /etc/resolv.conf | network |
+| Network | firewall (GET/POST), remote access's firewall holes, health_tick's firewall status | /usr/lib/rudolf/firewall (nft) | network |
+| Network | hotspot, netplug, mobile/* (rudolfd-mobile.inc: modem, SMS, airplane mode) | hostapd, dnsmasq, ModemManager through /usr/lib/rudolf/hotspot, netplug, modem | network |
+| Network | tor (`tor_start`, `tor_kill`), torwin (`torwin_start`) | Tor started as its own user (setuid in the child), its folder made and chowned; Chromium for Tor windows as the desktop's user with a cgroup write | network |
+| Network | bt/* (bluetooth), tb/* (thunderbolt) | /usr/lib/rudolf/bluetooth, thunderbolt (sysfs authorize) | network (devices) |
+| Network | remote/* (`remote_start`, `remote_stop`) | rudolf-remote started (as root today), its certificate and settings in /persist/etc | network |
+| Network | time sync (`time_tick`, POST time, time/sync) | settimeofday, ntpd, hwclock -w | power (the clock) |
+| Packages | pkg/* (rpk refresh, update, install, remove, install-file: jobs), pkg/exec (`api_pkg_exec`: setuid to the account's user) | rpk on the system's package folders; a Library program run as the account's user | packages |
+| Packages | apps/* (`api_apps`: Flathub, install, update, remove, appextra), catalog | flatpak --system, /usr/lib/rudolf/appextra, RUN/apps chowned | packages |
+| Packages | sysext/* (`api_sysext`) | rpk sysext (signed system extensions mounted over /usr) | packages |
+| Packages | debian/* (`api_debian`, `spawn_debian`: setup, update, wine, deb, run --root), ai/* python and C++ | rudolf-debian (a container: namespaces, mounts) as root | packages (rudolf-debian is already a program: through the helper) |
+| Packages | games/* (games-import), ai/* (`api_ai`: rudolf-ai, the model's folder), print/* (`api_print`: rudolf-print, usbprint) | folders chowned to 1000; rudolf-ai and rudolf-print as root | packages (most need no root: they run as the desktop's user after the drop) |
+| Display | display (POST: /etc/rudolf-display), screen/* (screenctl), layout, pointer | /etc writes, xrandr through screenctl, setxkbmap through layout.sh | display |
+| Display | screenshot (`grab_x`, `grab_fb`), clipboard (`api_clipboard`: su rudolf) | /dev/fb0; su to the desktop's user | none after the drop (video group; rudolfd is that user) |
+| Display | native/*, web/*, shell (POST shell: /etc/rudolf-shell), restart-browser, desktop/engine | the native desktop, Chromium windows started as the desktop's user (su/setuid), pkill of the kiosk browser, /etc and /persist/etc writes | display |
+| Sound | audio (/etc/asound.conf), audio/mics, mic, volume, media, sound restart, echo | /usr/lib/rudolf/sound, hotkey (PulseAudio and ALSA as the desktop's user, through su) | display (devices) |
+| Other | processes, proc/end (`api_proc_end`, `proc_tree_end`) | kill(2) of other users' processes (the accounts' apps), /proc of every process | other: **procs** |
+| Other | service (restart sound, Wi-Fi, display), selftest, starts, system (`api_system`: dmesg, modules), log, crash_list, health_tick's dmesg | the self-test, dmesg (kernel.dmesg_restrict), /proc/modules | other: **logs** (dmesg read by a helper, or dmesg_restrict=0 chosen in Part 12) |
+| Other | devlink/* (`dl_start`, `dl_stop`) | rudolf-devlink started with its own user and environment | other |
+| Other | camera, portal, term (Debian's terminals) | /usr/lib/rudolf/camera, the portal's files chowned, rudolf-debian's terminals | other |
+| Other | fs/* (`api_fs`: the desktop's file browser outside the accounts' folders) | chown of new files to 1000 under the shared folders, and reading any path it allows | none after the drop (rudolfd is 1000), accounts for the accounts' folders |
+| Other | rudolfd's own files: RUN (/run/rudolf, root's 0755), the health log (root's 0600), /persist/etc/* | written by rudolfd as root | the drop: RUN/d of rudolf's, the health log rudolf's 0600 (helpers append as root) |
+
+#### 11.2 The design (2026-11-17)
+- **One broker, rudolf-rootd, which starts rudolfd** (iso/sys/rudolf-rootd.c). rudolf-init runs `rudolf-rootd
+  /usr/bin/rudolfd`: it makes a socket pair, starts rudolfd with one end (`RUDOLF_ROOTD_FD`; rudolfd makes it
+  close-on-exec at once) and keeps the other. It listens on nothing: no socket in the file system, no port. For a
+  request rudolfd makes a socket pair of its own and passes one end over that first one; rudolf-rootd then checks who
+  made it (SO_PEERCRED: root, or rudolf (1000) once rudolfd drops to it; and that process's /proc/PID/exe is the program
+  it started), reads one message on it (`RRQ1`, the helper's name, its arguments, each ending in a zero byte, and three
+  descriptors: the helper's standard input, output and error; iso/sys/rudolf-root.h) and runs /usr/lib/rudolf/root/NAME
+  with exactly those arguments (execve, never a shell), with an empty environment (only PATH), its working folder /,
+  umask 022, every other descriptor closed and every signal back to its default; it answers with four bytes, the exit
+  status (254 refused, 253 not started). An unknown name, a malformed message, a request from another user or another
+  program is refused and said in the health log (Security).
+- **Why not the socket in the file system checked by SO_PEERCRED and /proc/PID/exe** (the first idea): once rudolfd
+  runs as uid 1000, any program of that user can start its own copy of /usr/bin/rudolfd with LD_PRELOAD, or trace one
+  (not set-user-ID, so the user's own), and that copy's /proc/PID/exe is rudolfd too: the check would let it in. The
+  descriptor handed over at rudolfd's start cannot be had that way: rudolfd is not traceable by the user (it becomes
+  non-dumpable when it drops; PR_SET_DUMPABLE 0 is set explicitly in the drop's step), and nothing it starts inherits
+  the descriptor. The exe check is kept as a second line (a descriptor leaked by mistake still lets nothing else in).
+- **Why not set-user-ID helpers (root:rudolf 4750)**: every process of the group could run them (the desktop's browser
+  is uid 1000 too), with whatever environment, descriptors, limits and working folder it chooses (the classic
+  set-user-ID mistakes), and rudolfd could not set no_new_privs (it stops set-user-ID). One broker gives every area the
+  same check in one place, a clean start for each helper, and leaves no_new_privs possible. No area needs set-user-ID,
+  so every area uses the broker. The cost: one more small root process, which parses only fixed messages from rudolfd.
+- **Each helper** is a program of its own (root:root 0700 in a folder of root's, 0755; never set-user-ID), one area,
+  small enough to read in one sitting. It checks every argument again itself, whatever rudolfd checked: device names
+  letters and digits only and ones the kernel has (/sys/class/block, /sys/block for whole disks); paths made canonical
+  (realpath: no "..", every link followed) and kept inside their allowed root (a link out of it is refused), files
+  plain (not a link) and owned by the desktop's user or the signed-in account's user (another account's file, or a
+  hard link to one, is refused); account names from the account list (/persist/etc/rudolf/account-users), never from
+  rudolfd's word alone; keys and passwords on standard input, never as arguments (anyone can read a process's
+  arguments); the scripts it hands work to are run with argument lists, never a command line for a shell. A refusal is
+  said in the health log (Security), as is anything that erases or rewrites a disk; routine actions (mount, unmount)
+  are not, to keep the log readable. rr_health writes the health log's format ({"t","k","m"}).
+- **rudolfd's side** (iso/sys/rudolfd-root.inc): `root_call` (the helper's status, as run() gave a command's),
+  `root_run`, `root_out` (its output, as run_out(), read while it runs), `root_job` (as start_job: job.name, job.log,
+  job.status). Started without rudolf-rootd (an older rudolf-init, or the QEMU tests that start rudolfd again by hand)
+  and running as root, rudolfd runs the helper itself in the same clean way; so every step works whether or not the
+  drop is on, and the API is the same byte for byte either way (the host test compares them).
+- **The drop** (the last step, behind a switch until every area has moved, default off): rudolfd starts as root (from
+  rudolf-rootd), does what must be done before (opens 127.0.0.1:8080, which needs no root as a port above 1023; reads
+  the start-up facts; makes RUN/d, its own folder, rudolf's 0700, for the files it writes; the health log made rudolf's
+  0600: the helpers still append to it as root), then setgroups to rudolf's own groups (audio and video for the
+  screenshot of /dev/fb0), setresgid and setresuid to 1000, checks it cannot go back (setuid(0) fails), and sets
+  PR_SET_DUMPABLE 0. No capabilities are kept (none is needed: binding 8080 does not need one, reading /proc/net/tcp
+  and the desktop's own processes' descriptors for the peer check of 15.1 is allowed to the same user). The switch: a
+  build flag (RUDOLFD_DROP) and, for testing, `rudolf.rudolfd_drop=1` on the start-up options; the default turns on
+  only when every area of 11.1 has moved and the QEMU checks pass with it.
+- **no_new_privs:** rudolfd sets it after the drop if nothing it starts still needs set-user-ID. Today two would:
+  `su` (the clipboard: unneeded once rudolfd is the desktop's user) and Chromium's chrome_sandbox (4755) for the
+  windows rudolfd starts (websites on Lite, Tor windows); with no_new_privs Chromium cannot use it and needs its
+  namespace sandbox, which needs unprivileged user namespaces. So: no_new_privs is set on rudolfd itself only if the
+  QEMU checks show Chromium's windows still start with it; otherwise those windows are started through a helper and
+  no_new_privs is set in every other child rudolfd starts (prctl in the child before exec). rudolf-rootd's helpers are
+  unaffected either way (they are rudolf-rootd's children, not rudolfd's).
+- **The accounts' files after the drop:** rudolfd as uid 1000 cannot read /persist/accounts/ID (the account's user's,
+  0700), and giving it a capability to (CAP_DAC_OVERRIDE) would undo the point. So the accounts' area adds a file
+  service run as the account's own user (not root): started by rudolf-rootd at the unlock with the account's folder,
+  serving the home/* operations over a socket pair to rudolfd (the same openat(O_NOFOLLOW) walk as rudolfd-home.inc
+  today, moved). rudolfd's API stays as it is.
+- **Tests:** host tests for each helper's checks (iso/qt/host/roothelpers161_t.sh: bad names, "..", links out of the
+  home folder, another account's file, a hard link to root's, an unknown helper, a request from another user, from
+  another program holding the descriptor; rudolfd's API the same with and without rudolf-rootd); the build's owners and
+  modes (iso/qt/host/rootbuild161_t.py, and checks in ci_release.sh on the base layer itself); in QEMU on the newest beta
+  with this tree's programs put in place (iso/qt/sb/fix161.sh): iso/qt/sb/r161_t.py (each moved area, with a USB stick)
+  and t160_t.py's checks unchanged with R161_FIX (.github/workflows/roothelpers-check.yml, run by .github/r161-run.txt).
+
+#### 11.3 Status
+- **Drives, part 1 (2026-11-17, branch root-helpers-drives):** rudolf-rootd, rudolf-root.h, rudolfd-root.inc and the
+  drives helper (iso/sys/rudolf-drives.c, /usr/lib/rudolf/root/drives): mount, unmount, eject, a stick's information,
+  Install (and its boot files only), Replace the boot files, Make a stick, Keep files. rudolf-init starts rudolfd
+  through rudolf-rootd; mkrootfs.sh and ci_release.sh build and install them (root's 0700, checked); ci_release.sh runs
+  the two host tests. Found and kept as it was (the API unchanged): unmount answers "safe to remove" even when umount
+  failed (the old command's status was its last part's, rm -f); for the owner to decide, not changed here.
+- **Updates (2026-11-17, branch root-helpers-update, after root-helpers-drives):** the updates helper
+  (iso/sys/rudolf-updates.c, /usr/lib/rudolf/root/updates): every rudolf-update command rudolfd ran (check, download,
+  rollback, stable-info, to-stable, status, speedtest, boot-ok, return-official keep|erase, set url|auto|channel,
+  developer on|off), the arguments checked again as rudolfd checks them (the beta address only through set channel
+  beta; a developer's key 44 characters of base64; addresses without spaces or quotes), and the desktop's page
+  update (POST update, the page on standard input; POST rollback). Found and kept as they were: POST rollback always
+  answers "returned to the previous version" (the old command's status was sync's); the page update is not signed
+  (any holder of the token can replace the desktop's page until a restart) and Developer mode and Return to official
+  are asked an administrator's password by the page only, not by rudolfd: for the owner (the accounts step can move the
+  administrator's check into the helpers, the password on standard input).
+- Next: drives, part 2 with the accounts' sessions (the encrypted folders' unlock and lock, the binds,
+  the downloads' store, the vault: at sign-in home_unlock, home_bind, dl_store_bind and au_session_start are one chain,
+  so they move as one helper action, "drives home-unlock ACCT [session]", the account checked against the account list
+  and its key on standard input, never an argument; sign-out the same with home-lock); accounts; power; network;
+  packages; display; other; then the drop.
+
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
 The kernel already has zram (zstd), MGLRU, PSI, schedutil and the AMD and Intel P-state drivers (iso/kconfig.sh).
 What is left is measured, not guessed: each change kept only if the numbers say so.
