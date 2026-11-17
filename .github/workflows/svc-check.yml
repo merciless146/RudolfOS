@@ -1,0 +1,71 @@
+# 1.6.0 (docs/plan-1.6.0.md Part 12, item 12): the Native desktop's background work runs once, whatever is open (an alarm, a Clock
+# timer, a Calendar reminder, a call's notice; the desktop's service page, #app=do-svc). Run by a push that changes
+# .github/s160-run.txt (on a branch: a workflow only on a branch cannot be dispatched), whose lines say: serial=SERIAL (empty: the
+# newest beta), fix=1 (this branch's rudolf-native and page put in place of the release's; 0: the release as it is). Nothing is published.
+#   host: rudolf-native with the stand-in rudolfd on a virtual screen (iso/qt/host/svc160_t.sh, native59_t.sh), the timer gate in
+#         Chromium (iso/qt/shell2/svc60_t.js)
+#   qemu: the real release, Standard then Native, an alarm and a reminder with no window and three open, a Clock timer from a closed
+#         window (iso/qt/sb/s160_t.py)
+name: Native background work check
+on:
+  push:
+    paths: ['.github/s160-run.txt']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev libx11-dev xvfb xdotool imagemagick x11-utils >/dev/null
+          mkdir -p pw && cd pw && npm init -y >/dev/null && npm install -s playwright@1.56.1 >/dev/null && npx playwright install --with-deps chromium >/dev/null 2>&1
+      - name: The service page (rudolf-native on a virtual screen)
+        run: sh iso/qt/host/svc160_t.sh | tee svc160.txt; grep -q ' passed$' svc160.txt && ! grep -q '^FAIL' svc160.txt
+      - name: The timer gate (Chromium)
+        run: NODE_PATH=$PWD/pw/node_modules node iso/qt/shell2/svc60_t.js | tee svc60.txt; grep -q ' passed$' svc60.txt && ! grep -q '^FAIL' svc60.txt
+      - name: The native desktop's own tests
+        run: sh iso/qt/host/native59_t.sh | tee native59.txt; grep -q ' passed$' native59.txt && ! grep -q '^FAIL' native59.txt
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: svc-host, retention-days: 7, path: "svc160.txt\nsvc60.txt\nnative59.txt"}
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: for k in serial fix; do echo "S_$k=$(sed -n "s/^$k=//p" .github/s160-run.txt | head -1)" >> $GITHUB_ENV; done
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S="$S_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel; echo "::notice title=Native background work QEMU check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)), fix=$S_fix"
+      - name: This tree's rudolf-native and page
+        if: env.S_fix == '1'
+        run: |
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev >/dev/null
+          mkdir -p fix && gcc -O2 -Wno-deprecated-declarations -o fix/rudolf-native iso/sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
+          cp iso/www/index.html fix/ && ls -la fix && echo "S160_FIX=$PWD/fix" >> $GITHUB_ENV
+      - name: s160
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} S160_FIX=${S160_FIX:-} python3 ../iso/qt/sb/s160_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: s160, retention-days: 7, path: "run/s160.txt\nrun/s160*/qemu.log\nrun/s160*/*.png"}
