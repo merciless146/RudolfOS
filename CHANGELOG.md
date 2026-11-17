@@ -8,6 +8,8 @@ Summary: In progress.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- Fixed: on the Native desktop a new desktop icon (New folder, New text document, a file saved to the Desktop folder, a tick in Desktop icons…) could take minutes to appear: when several windows gave the desktop's list at the same moment, all but one were refused ("could not save"), and the account's own copy was not kept. Each is kept now; the log says when the icons came after signing in.
+- Fixed: on the Native desktop Ctrl+T, Ctrl+W and Ctrl+N in Oracle's website tabs did nothing when the desktop was busy for a moment (Ctrl was let go before the desktop passed the key on); they now work as on Standard.
 - Fixed: the built-in microphones of AMD laptops whose microphones are on the AMD audio processor (the ASUS Vivobook Go E1404FA and others) work again; since udev replaced mdev in 1.6.0, drivers for devices that appear after start-up (here the processor's microphone devices) were no longer loaded, so Settings › Sound listed only the headset jack's microphone and nothing was heard.
 - New: every release promoted to stable is also published as an install release (the .iso, the boot image, their checksums, README.TXT, the source, and a new INSTALL.TXT with the steps to install), marked Latest on the Releases page; betas no longer take the Latest mark.
 - Fixed: betas again come with their boot image (boot.iso: Make a stick, Put back the official start-up files, Rufus sticks); since 2026-11-17 the release workflow no longer found the disc release it is made from among the newest 50 releases, so 2026111707 to 2026111712 had none.
