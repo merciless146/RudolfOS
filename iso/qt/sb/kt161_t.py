@@ -24,10 +24,13 @@ PARTS = os.environ.get('SB_PARTS', '/nonexistent'); TAG = os.environ.get('TAG', 
 KERNEL = os.environ.get('KERNEL', ''); BASE = os.environ.get('BASE', ''); APPEND = os.environ.get('APPEND', '')
 ENGINE = os.environ.get('ENGINE', 'standard'); MEM = int(os.environ.get('MEM', '3400'))
 LOG = open(f'kt161-{TAG}.txt', 'w'); JS = open(f'kt161-{TAG}.json', 'w'); T0 = time.time()
-def out(*a):
-    s = ' '.join(str(x) for x in a); s = f'[{int(time.time() - T0):5d}s] ' + s; print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
+# (the job's log shows the steps, the results and, at the end, all results again; the commands' output is in the .txt only)
+def out(*a, quiet=False):
+    s = ' '.join(str(x) for x in a); s = f'[{int(time.time() - T0):5d}s] ' + s; LOG.write(s + '\n'); LOG.flush()
+    if not quiet: print(s[:600], flush=True)
+RESULTS = []; MEDIANS = []
 def res(**kw):
-    kw['tag'] = TAG; JS.write(json.dumps(kw) + '\n'); JS.flush(); out('RESULT', json.dumps(kw))
+    kw['tag'] = TAG; JS.write(json.dumps(kw) + '\n'); JS.flush(); RESULTS.append(kw); out('RESULT', json.dumps(kw), quiet=True)
 man = open(f'{REL}/manifest.txt').read(); mv = lambda k: re.search(rf'^{k} (.*)$', man, re.M).group(1)
 DMB = 6000; DRV = os.path.abspath(f'kt161-{TAG}.img'); W = os.path.abspath(f'wkt161-{TAG}')
 shutil.rmtree(W, ignore_errors=True); os.makedirs(W)
@@ -76,7 +79,7 @@ def boot(tag, append=''):
     return vm, g, up
 def run(g, c, t=60):
     f = os.path.join(W, 'c161.sh'); open(f, 'w').write(c + '\n'); g.put(f, '/tmp/c161.sh', '644')
-    o = g.sh('sh /tmp/c161.sh 2>&1', t); out('$', c[:160].replace('\n', ' ; ')); out(o.rstrip()[-2500:]); return o
+    o = g.sh('sh /tmp/c161.sh 2>&1', t); out('$', c[:160].replace('\n', ' ; '), quiet=True); out(o.rstrip()[-6000:], quiet=True); return o
 def wait_desktop(g, secs=420):
     o = run(g, f"i=0; while [ $i -lt {secs} ] && [ ! -e /run/rudolf/bootok ]; do sleep 1; i=$((i+1)); done; [ -e /run/rudolf/bootok ] && echo DESKTOP-UP || echo NO-DESKTOP", secs + 30)
     return 'DESKTOP-UP' in o
@@ -87,10 +90,12 @@ def stop(vm, g):
 
 # ---- start-up: what happened when, as uptime seconds
 TIMES = r'''
-U=$(cut -d' ' -f1 /proc/uptime); touch /tmp/k161now
-echo "NOW $U $(stat -c %Y /tmp/k161now) $(date +%s)"
-for f in /etc/rudolf/initramfs.log /run/rudolf/persistent /run/rudolf/devices /persist/var/log/starts/0/start.txt /run/rudolf/gpu /run/rudolf/session.env /tmp/.X11-unix/X0 /run/rudolf/bootok /run/rudolf/desktop-engine; do
-	[ -e $f ] && echo "MT $(stat -c %Y $f) $f"; done
+touch /tmp/k161now; U=$(cut -d' ' -f1 /proc/uptime)
+echo "NOW $U $(stat -c '%y' /tmp/k161now)"
+for f in /etc/rudolf/initramfs.log /run/rudolf/persistent /run/rudolf/devices /run/rudolf/sysext.log /persist/var/log/starts/0/start.txt /run/rudolf/memory /run/rudolf/gpu /run/rudolf/session.env /tmp/.X11-unix/X0 /run/rudolf/display-mode /run/rudolf/glflags /run/user/1000/bus /run/user/1000/pulse/native /run/rudolf/rpk.log /run/rudolf/bootok /run/rudolf/desktop-engine /run/rudolf/startup-times; do
+	[ -e $f ] && echo "MT $(stat -c '%y' $f) $f"; done
+cat /run/rudolf/startup-times 2>/dev/null | sed 's/^/ST /'
+grep -v '^+' /run/rudolf/session.log 2>/dev/null | head -40 | sed 's/^/SE /' 
 tail -1 /persist/var/log/shutdown.log | sed 's/^/SL /'
 H=$(getconf CLK_TCK 2>/dev/null || echo 100); echo "HZ $H"
 for p in /proc/[0-9]*; do [ -s $p/cmdline ] || continue; c=$(cat $p/comm 2>/dev/null); s=$(sed 's/.*) //' $p/stat 2>/dev/null | cut -d' ' -f20); [ -n "$s" ] && echo "PS $s $c"; done | sort -n -k2 | awk '!seen[$3]++'
@@ -100,21 +105,24 @@ grep -h 'was ready' /persist/var/log/health*.log 2>/dev/null | tail -2 | sed 's/
 cat /run/rudolf/udev.log 2>/dev/null | tail -3 | sed 's/^/UL /'
 cat /etc/rudolf/initramfs.log 2>/dev/null | tail -12 | sed 's/^/IL /'
 '''
+def ts(d, t):   # stat's %y: "2026-11-17 03:08:51.123456789"
+    whole, _, frac = t.partition('.')
+    return datetime.datetime.strptime(d + ' ' + whole, '%Y-%m-%d %H:%M:%S').replace(tzinfo=datetime.timezone.utc).timestamp() + float('0.' + (frac or '0'))
 def parse_times(o):
     r = {}; up = wall = None; hz = 100; ps = {}
     for l in o.splitlines():
         p = l.split()
         if not p: continue
-        if p[0] == 'NOW' and len(p) >= 3: up = float(p[1]); wall = float(p[2])
+        if p[0] == 'NOW' and len(p) >= 4: up = float(p[1]); wall = ts(p[2], p[3])
         elif p[0] == 'HZ' and len(p) > 1 and p[1].isdigit(): hz = int(p[1])
-        elif p[0] == 'MT' and len(p) >= 3 and up is not None: r['file ' + p[2]] = round(up - (wall - float(p[1])), 1)
+        elif p[0] == 'MT' and len(p) >= 5 and up is not None: r['file ' + p[4]] = round(up - (wall - ts(p[1], p[2])), 2)
+        elif p[0] == 'ST' and len(p) >= 3: r['step ' + ' '.join(p[2:])] = float(p[1])
         elif p[0] == 'PS' and len(p) >= 3 and p[1].isdigit(): ps.setdefault(p[2], round(int(p[1]) / hz, 2))
         elif p[0] == 'DM' and 'Run /init' in l:
             m = re.search(r'\[\s*([0-9.]+)\]', l); r['kernel: /init started'] = float(m.group(1)) if m else None
         elif p[0] == 'SL': m = re.search(r'uptime=([0-9.]+)', l); r['rudolf-init: data partition (after udev)'] = float(m.group(1)) if m else None
         elif p[0] == 'UP': r['session: desktop-up mark'] = float(p[1])
-    for k in ('systemd-udevd', 'rudolfd', 'Xorg', 'Xvfb', 'rudolf-display', 'chrome', 'rudolf-native', 'rudolf-memguard', 'pulseaudio', 'wpa_supplicant', 'dbus-daemon'):
-        if k in ps: r['process ' + k] = ps[k]
+    for k in ps: r['process ' + k] = ps[k]
     return r
 
 def phase_startup():
@@ -132,7 +140,7 @@ def phase_startup():
         out('---- start-up, median of', len(all_t), 'starts (uptime, s)')
         for k in keys:
             v = sorted(x[k] for x in all_t if x.get(k) is not None)
-            if v: out(f'{v[len(v) // 2]:8.1f}  {k}   ({" ".join(str(x) for x in v)})')
+            if v: out(f'{v[len(v) // 2]:8.2f}  {k}   ({" ".join(str(x) for x in v)})'); MEDIANS.append(f'{v[len(v) // 2]:.2f} {k} ({" ".join(str(x) for x in v)})')
     # the kernel's own steps (initcall_debug: each initcall's time; printk's own cost makes the total a little longer)
     vm, g, up = boot('si', 'initcall_debug log_buf_len=8M ignore_loglevel')
     if up:
@@ -257,3 +265,11 @@ try:
     {'startup': phase_startup, 'latency': phase_latency, 'memory': phase_memory, 'power': phase_power}[PHASE]()
 finally:
     JS.close(); out('done')
+    print('==== SUMMARY', TAG)
+    for k in MEDIANS: print('MEDIAN', k)
+    for r in RESULTS:
+        r = dict(r)
+        if r.get('kind') == 'initcalls': r['top'] = r['top'][:12]
+        if r.get('kind') == 'startup': r.pop('times', None)   # (the medians above)
+        if r.get('kind') == 'power' and r.get('ok'): r.pop('out', None)
+        print('R', json.dumps(r, separators=(',', ':')))
