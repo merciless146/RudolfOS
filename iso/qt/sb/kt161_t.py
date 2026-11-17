@@ -93,7 +93,7 @@ for f in /etc/rudolf/initramfs.log /run/rudolf/persistent /run/rudolf/devices /p
 	[ -e $f ] && echo "MT $(stat -c %Y $f) $f"; done
 tail -1 /persist/var/log/shutdown.log | sed 's/^/SL /'
 H=$(getconf CLK_TCK 2>/dev/null || echo 100); echo "HZ $H"
-for p in /proc/[0-9]*; do c=$(cat $p/comm 2>/dev/null); s=$(sed 's/.*) //' $p/stat 2>/dev/null | cut -d' ' -f20); [ -n "$s" ] && echo "PS $s $c"; done | sort -n -k2 | awk '!seen[$3]++' | head -80
+for p in /proc/[0-9]*; do [ -s $p/cmdline ] || continue; c=$(cat $p/comm 2>/dev/null); s=$(sed 's/.*) //' $p/stat 2>/dev/null | cut -d' ' -f20); [ -n "$s" ] && echo "PS $s $c"; done | sort -n -k2 | awk '!seen[$3]++'
 dmesg | grep -E 'Run /init|Freeing unused kernel image|rtc_cmos.*setting system clock|amdgpu|bochs|drm\]' | head -12 | sed 's/^/DM /'
 cat /persist/var/log/starts/0/desktop-up 2>/dev/null | sed 's/^/UP /'
 grep -h 'was ready' /persist/var/log/health*.log 2>/dev/null | tail -2 | sed 's/^/HL /'
