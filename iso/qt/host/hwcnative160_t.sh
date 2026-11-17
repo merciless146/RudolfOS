@@ -64,7 +64,9 @@ if [ -n "$PA" ]; then
 	ev taskmgr '(()=>{window.__H=hwCheck();return 1})()' >/dev/null; timeout 2 tail -f /dev/null
 	rec tone; ev taskmgr '(()=>{hwcTone();return 1})()' >/dev/null; timeout 2.6 tail -f /dev/null; L=$(recstop tone)
 	ok "2a. the sound step's tone is heard (the loudest sample $L)" "$([ "${L:-0}" -gt 1000 ] && echo 1)" "$L"
-	go Microphone >/dev/null; timeout 5 tail -f /dev/null
+	# (the step listens until it hears the microphone: on a busy runner WebKit's GStreamer source can take well over 5 s to start,
+	# so the test waits up to 25 s for the step's answer instead of reading it after a fixed 5 s, which failed now and then with "Listening…")
+	go Microphone >/dev/null; w8 "ev taskmgr '__H.querySelector(\".hwmm\").textContent' | grep -qv '^Listening'" 100
 	o=$(ev taskmgr '__H.querySelector(".hwmm").textContent')
 	ok "2b. the microphone step opens the microphone (no \"Invalid constraint\") and hears it" "$(echo "$o" | grep -q '^Heard you (loudest' && echo 1)" "$o"
 	ev taskmgr '(()=>{__H.remove();window.__H=null;return 1})()' >/dev/null
