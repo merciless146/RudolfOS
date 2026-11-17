@@ -733,6 +733,10 @@ ran its own (an alarm rang once per window; the cellular notices were shown by t
   a Clock timer from a closed Clock window rung once and shown Done; a new sign-in drops older timers). native59_t.sh 70/70,
   nportal160_t.sh 12/12, oneapp59_t.js 42/42 and the Standard tests of the modules touched (call59, calsun59, games58,
   gamesleep59, engine57) unchanged.
+- **QEMU, the real newest beta** with this tree's rudolf-native and page (qt/sb/s160_t.py, workflow svc-check.yml, run
+  44009629129): 16/16: Standard's alarm once (the reference); on Native the service page up and unseen, with no app window the alarm
+  and the reminder once, with three open once again (from the service page), Notepad's window running only its own timers, a Clock
+  timer from a closed Clock window rung once, the service page closed and opened again.
 - **For the owner on the Vivobook:** docs/native-vivobook-checklist.md V51-V56 (an alarm with no window open, a call or message
   with no window open, two windows open: rings once; a Clock timer after its window is closed; nothing extra in Task Manager).
 
@@ -1494,7 +1498,8 @@ root work split into helpers (Part 11), with files dropped from outside onto the
     app window open, and once with several. Its own task, 2026-11-16. **Done (2026-11-17)** (asked for on 2026-11-16:
     "Include items 1, 2, 3, and 4"): the timers a native app window's page starts while it loads are held back but for what the window needs (desktop/svc60.js), and
     one hidden page of the shell's (#app=do-svc) runs the rest once for the whole desktop (Part 12's note "Done (2026-11-17)").
-    Tests: qt/host/svc160_t.sh 22/22, qt/shell2/svc60_t.js 18/18. Left: the owner's checks V51-V56 on the Vivobook.
+    Tests: qt/host/svc160_t.sh 22/22, qt/shell2/svc60_t.js 18/18, qt/sb/s160_t.py 16/16 in QEMU on the newest beta with this
+    tree's rudolf-native and page (svc-check.yml run 44009629129). Left: the owner's checks V51-V56 on the Vivobook.
 
 ## After 1.6.0: the native desktop decision (added on 2026-11-12)
 (2026-11-13: the prototype moved into 1.5.9 as a third desktop engine, Native (test): docs/plan-1.5.9.md Part 12.
