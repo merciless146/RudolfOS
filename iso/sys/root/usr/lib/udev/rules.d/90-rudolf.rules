@@ -8,7 +8,10 @@
 # is busybox's (modules.dep.bb: no modules.alias.bin for libkmod). Found on the Vivobook Go, beta 2026111713: the AMD
 # audio processor's driver (snd_pci_acp6x, loaded at start-up) adds its digital microphones' devices (acp_yc_mach,
 # acp_yc_pdm_dma, dmic-codec) a moment later, they got no driver, and the built-in microphones' card was missing
-ACTION=="add", ENV{MODALIAS}=="?*", RUN+="/sbin/modprobe -b $env{MODALIAS}"
+# Never the graphics card's (PCI class 03): rudolf-init loads it first itself, and not at all in Recovery mode,
+# with nomodeset or rudolf.nogpu=1 (the safe start without the graphics driver), while udev's coldplug at start-up
+# announces every device, the graphics card too, before rudolf-init gets there.
+ACTION=="add", ENV{MODALIAS}=="?*", ENV{MODALIAS}!="pci:*bc03sc*", RUN+="/sbin/modprobe -b $env{MODALIAS}"
 # sound: the audio group; a sound card that comes or goes is opened in PulseAudio, or closed (sound hotplug, 1.5.4)
 SUBSYSTEM=="sound", GROUP="29", MODE="0660"
 SUBSYSTEM=="sound", KERNEL=="controlC[0-9]*", ACTION!="bind|unbind", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/sound hotplug"

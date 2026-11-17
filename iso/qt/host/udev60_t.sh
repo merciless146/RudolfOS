@@ -44,12 +44,15 @@ ok "...owners as numbers (no group name that might be missing), modes as mdev ga
 # its microphones' devices after start-up's pass, and udev's own "kmod load" cannot read busybox's module list): udev
 # loads by modalias as mdev's line did, with the same modprobe, on add only
 ML=$(grep 'ENV{MODALIAS}' $RULES)
-ok "4b. drivers by modalias: a udev rule runs mdev's modprobe -b for every device added with a MODALIAS" "$(grep -q '^\$MODALIAS=.* @modprobe -b "\$MODALIAS"' $SYS/etc/mdev.conf && echo "$ML" | grep -q 'ACTION=="add", ENV{MODALIAS}=="?\*", RUN+="/sbin/modprobe -b \$env{MODALIAS}"' && echo 1)" "$ML"
+ok "4b. drivers by modalias: a udev rule runs mdev's modprobe -b for every device added with a MODALIAS" "$(grep -q '^\$MODALIAS=.* @modprobe -b "\$MODALIAS"' $SYS/etc/mdev.conf && echo "$ML" | grep -q 'ACTION=="add", ENV{MODALIAS}=="?\*", ENV{MODALIAS}!="pci:\*bc03sc\*", RUN+="/sbin/modprobe -b \$env{MODALIAS}"' && echo 1)" "$ML"
 # ...the line as udev runs it, with modprobe a stand-in fed the Vivobook's three devices (their modaliases as read there)
 printf '#!/bin/sh\necho "modprobe $*" >> %s/calls\n' $T > $T/bin/modprobe; chmod 755 $T/bin/modprobe; rm -f $T/calls
 cmdl=$(echo "$ML" | sed 's/.*RUN+="\([^"]*\)".*/\1/; s#^/sbin/modprobe#'$T'/bin/modprobe#')
 for a in platform:acp_yc_mach platform:acp_yc_pdm_dma platform:dmic-codec; do MODALIAS=$a sh -c "$(echo "$cmdl" | sed 's/\$env{MODALIAS}/"$MODALIAS"/')"; done
 ok "...the Vivobook's microphone devices (acp_yc_mach, acp_yc_pdm_dma, dmic-codec) each get modprobe -b" "$([ "$(cat $T/calls)" = "$(printf 'modprobe -b platform:acp_yc_mach\nmodprobe -b platform:acp_yc_pdm_dma\nmodprobe -b platform:dmic-codec')" ] && echo 1)" "$(cat $T/calls)"
+# ...but never the graphics card's (Recovery mode and nomodeset start without it; rudolf-init loads it itself otherwise):
+# udev's coldplug announces it too, before rudolf-init's own pass, which leaves it out the same way (pci:*bc03sc*)
+ok "4c. the graphics card (PCI class 03) is left out, as rudolf-init's own pass leaves it (Recovery mode, nomodeset, rudolf.nogpu=1)" "$(echo "$ML" | grep -qF 'ENV{MODALIAS}!="pci:*bc03sc*"' && grep -qF 'pci:*bc03sc*) [ -n "$NOGPU" ] && continue' $SYS/sbin/rudolf-init && echo 1)" "$ML"
 ok ".../sbin/modprobe is busybox's in the base (it reads modules.dep.bb's aliases)" "$(grep -q 'modules.dep.bb\|busybox depmod' $HERE/../../mkrootfs.sh && echo 1)"
 # the modem service
 mkdir -p $T/mm; printf '#!/bin/sh\necho "MM $*" >> %s/mm/calls\nsleep 5\n' $T > $T/mm/ModemManager; printf '#!/bin/sh\nexit 0\n' > $T/mm/mmcli; chmod 755 $T/mm/*
