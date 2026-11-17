@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Security: what rudolfd does as root for drives (mounting, unmounting and ejecting a USB drive or SD card, a stick's
+  information, Install, Make a stick, Replace the boot files, Keep files on this drive) is now done by a small helper
+  that checks every name and file again itself (a disc image must really be in your home folder, yours or the signed-in
+  account's), run by rudolf-rootd, which only rudolfd can ask. Nothing changes in how the desktop works; it is the first
+  step towards rudolfd no longer running as root.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
