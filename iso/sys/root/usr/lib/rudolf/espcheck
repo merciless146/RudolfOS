@@ -8,8 +8,14 @@
 #   espcheck boot SLOT      (rudolf-update boot-ok, when SLOT is an official release) both official: nothing; else said in
 #                           the health log (and, only with ESP_AUTOREPAIR=1, repaired: off since 2026-11-16, see below)
 #   espcheck repair SLOT    the boot image of SLOT's release (boot.iso, beside its files on GitHub) downloaded, its
-#                           checksum and both start-up files in it checked as official, then staged with bootfiles.sh:
-#                           written before anything else at the next start
+#                           checksum and both start-up files in it checked as official, then put into the drive's EFI
+#                           system partition by bootfiles.sh (1.6.0, "Before stable" 15: file by file, each beside the
+#                           old one, checked, renamed; never the area, the partition table or the disk signature; the
+#                           firmware's entry checked after): Settings > Update and recovery > Put back the official
+#                           start-up files, Return to official. Never at a start by itself.
+# At each start (boot) also: start-up files kept as NAME.old by the last change are removed once the computer started
+# from this drive again, and new boot files left by an older system for the start-up to write over the whole area
+# (os/bootimg/pending) are removed unwritten.
 # Test overrides: ESP_IMG (the EFI image), SBVERIFY, SB_CERT, ESP_SYSD (the slots), ESP_DL (where the image is kept),
 # ESP_FETCH, ESP_STAGE (commands), ESP_HEALTH (a command: health KIND MESSAGE), ESP_PATH (stand-ins first in PATH),
 # ESP_TRIES and ESP_WAIT (the download's attempts and the seconds between them, while the network comes up).
@@ -25,11 +31,24 @@ look() { mkdir -p $T/e; umount $T/e 2>/dev/null
 	r=; for f in rudolf recovery; do p=$T/e/EFI/rudolf/$f.efi; [ "$f" = rudolf ] && k=start || k=recovery
 		if [ ! -s "$p" ]; then v=missing; elif $SBV --cert "$CERT" "$p" >/dev/null 2>&1; then v=official; else v=other; fi; r="$r $k=$v"; done
 	umount $T/e; echo "${r# }"; }
+# (at each start) the last change's NAME.old files, once the computer started from this drive again; and new boot files
+# an older system left for the start-up to write over the whole area (the way that left the Vivobook unable to start)
+housekeep() {
+	B=${ESP_BOOTIMG:-/persist/os/bootimg}
+	if [ -e "$B/pending" ]; then rm -f "$B/pending" "$B/boot.iso"
+		health boot "new boot files left by an older Rudolf OS for the start-up to write over the drive's whole start-up area were removed unwritten (they are put into its EFI system partition instead: Settings > Update and recovery)"; fi
+	PER=$(cat /etc/rudolf/persist 2>/dev/null); MED=$(cat /etc/rudolf/media 2>/dev/null)
+	case "$PER" in /dev/nvme*p3|/dev/mmcblk*p3) D=${PER%p3}; P=${D}p2;; /dev/[sv]d[a-z]3) D=${PER%3}; P=${D}2;; *) return 0;; esac
+	[ "$MED" = "$D" ] && [ -b "$P" ] || return 0
+	mkdir -p $T/o; mount -t vfat -o rw "$P" $T/o 2>/dev/null || return 0
+	o=$(cd $T/o && find . -name '*.old' | sed 's|^\./||'); [ -n "$o" ] && { (cd $T/o && find . -name '*.old' -exec rm -f {} +); sync
+		health boot "the computer started from its drive with the new start-up files: the old ones kept since the change were removed ($(echo $o | tr '\n' ' '))"; }
+	umount $T/o; }
 case "$1" in
 status) s=$(look "$IMG"); echo "$s"; [ "$s" = "start=official recovery=official" ];;
 boot|repair)
 	SL=$2; case "$SL" in a|b|r) ;; *) echo "usage: espcheck boot|repair SLOT"; exit 2;; esac
-	if [ "$1" = boot ]; then s=$(look "$IMG"); [ "$s" = "start=official recovery=official" ] && exit 0
+	if [ "$1" = boot ]; then housekeep; s=$(look "$IMG"); [ "$s" = "start=official recovery=official" ] && exit 0
 		# (2026-11-16, the owner's Vivobook: the automatic repair rewrote the area in front of RUDOLFDATA (the partition
 		#  table and the disk's signature with it) at a restart, and the firmware then found nothing to start. Until
 		#  the repair replaces only the files inside the drive's EFI partition and registers the boot entry before the
@@ -37,7 +56,7 @@ boot|repair)
 		#  ESP_AUTOREPAIR=1, or a file os/esp-autorepair on RUDOLFDATA (the QEMU test's), keeps the old behaviour for the tests
 		#  of the download and checks.)
 		if [ "${ESP_AUTOREPAIR:-0}" != 1 ] && [ ! -e "${ESP_SYSD:-/persist/os/system}/../esp-autorepair" ]; then
-			health boot "the start-up files on this drive are not all the official ones ($s); they are not changed automatically"; exit 0; fi
+			health boot "the start-up files on this drive are not all the official ones ($s); they are not changed automatically (Settings > Update and recovery > Put back the official start-up files)"; exit 0; fi
 		health boot "the start-up files on this drive are not all the official ones ($s): the official ones are put back from the release's boot image"; fi
 	M=$SYSD/$SL/manifest.txt; [ -s "$M" ] || { health boot "the start-up files could not be put back: slot $SL has no release list"; exit 1; }
 	U=$(awk -F'\t' '$1=="L" && $2=="vmlinuz" {print $5}' "$M"); SER=$(sed -n 's/^serial //p' "$M")
@@ -58,7 +77,7 @@ boot|repair)
 	s=$(look $T/i/efi/efiboot.img); umount $T/i
 	[ "$s" = "start=official recovery=official" ] || { rm -f "$DL/boot.iso"; health boot "the start-up files could not be put back: release $SER's boot image holds files not signed by Rudolf OS ($s)"; exit 4; }
 	if RUDOLF_IMG_SHA=$H $STAGE "$DL/boot.iso" > $T/stage.log 2>&1; then rm -f "$DL/boot.iso" "$DL/boot.iso.sha256" "$DL/tried"
-		health boot "the official start-up files of release $SER are written at the next start"; exit 0; fi
+		health boot "the official start-up files of release $SER were put back in the drive's EFI system partition, and its firmware entry checked"; tail -3 $T/stage.log; exit 0; fi
 	rm -f "$DL/boot.iso"; health boot "the start-up files could not be put back: $(tail -1 $T/stage.log)"; exit 5;;
 *) echo "usage: espcheck status|boot SLOT|repair SLOT"; exit 2;;
 esac

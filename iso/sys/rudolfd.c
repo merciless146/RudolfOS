@@ -4832,6 +4832,31 @@ static void api(struct req *r)
 			if (!o || o[0] != '{') { reply_err(r->fd, 404, "this Rudolf OS cannot go back to a stable release"); free(o); return; }
 			reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
 		}
+		/* 1.6.0 ("Before stable" 15): Settings › Update and recovery. POST sys/startup-check: the drive's start-up checked (its
+		   partition table, its EFI system partition and files, the firmware's entry for it, which is put right: the rescue
+		   for a computer whose entry names start-up files no longer there); what was found and changed, as text. POST
+		   sys/startup-files: the official start-up files of the running release put back, file by file into the existing
+		   EFI system partition (a job: espcheck repair, bootfiles.sh files; only on mains power or above 50 %). Both only
+		   with an administrator's name and password (the body: {"n":ADMIN,"p":PASSWORD}). Nothing else writes them. */
+		if ((!strcmp(w, "startup-check") || !strcmp(w, "startup-files")) && post) {
+			char *an = NULL, *ap = NULL, why[200] = "";
+			if (r->body && r->blen && r->body[0] == '{') { an = dbody_field(r, "n"); ap = dbody_field(r, "p"); }
+			int adm = an && ap ? desk_admin_check(an, ap, why, sizeof why) : -1;
+			dfree_secret(ap);
+			if (adm) { free(an); reply_err(r->fd, adm == 429 ? 429 : 403, why[0] ? why : "an administrator's name and password are needed"); return; }
+			if (live) { free(an); reply_err(r->fd, 409, "Rudolf OS is not installed on a drive here"); return; }
+			if (job_running()) { free(an); reply_err(r->fd, 409, "another task is still running"); return; }
+			if (!strcmp(w, "startup-check")) {
+				health_add("boot", "the start-up of this drive checked, asked by %.80s", an); free(an);
+				char *o = run_out("/usr/lib/rudolf/bootfiles.sh rescue 2>&1; echo \"exit=$?\"");
+				str s = {0}; sadd(&s, "{\"ok\":true,\"report\":"); sjson(&s, o ? o : ""); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
+			}
+			char *sl = slurp("/etc/rudolf/slot", NULL); if (sl) trim(sl);
+			if (!sl || (strcmp(sl, "a") && strcmp(sl, "b") && strcmp(sl, "r"))) { free(sl); free(an); reply_err(r->fd, 409, "this system is not an installed release (a slot): its start-up files come from its release"); return; }
+			health_add("boot", "the official start-up files put back, asked by %.80s", an); free(an);
+			char c2[200]; snprintf(c2, sizeof c2, "ESP_TRIES=2 ESP_WAIT=10 /usr/lib/rudolf/espcheck repair %s", sl); free(sl);
+			start_job("bootfiles", c2); reply_ok(r->fd, "started"); return;
+		}
 		if (!strcmp(w, "tostable") && post) {
 			char *an = NULL, *ap = NULL, why[200] = "";
 			if (r->body && r->blen && r->body[0] == '{') { an = dbody_field(r, "n"); ap = dbody_field(r, "p"); }
@@ -5274,6 +5299,18 @@ int main(int argc, char **argv)
 	dl_home_boot();
 	health_boot();
 	remote_boot();
+	/* 1.6.0 ("Before stable" 15): new boot files an older system staged for the start-up are never written: the start-up
+	   on the drive (its boot image is as old as the drive's last new boot files, as updates do not change it) would write
+	   them over the whole area in front of RUDOLFDATA at the next restart, the way that left the owner's Vivobook with no
+	   firmware entry that still named its start-up files. The start-up files are put into the EFI system partition instead,
+	   file by file, from Settings (bootfiles.sh) */
+	if (!live && !access(PERSIST "/os/bootimg/pending", F_OK)) {
+		char *pv = slurp(PERSIST "/os/bootimg/pending", NULL), *vv = pv ? strstr(pv, "version=") : NULL; char ver[64] = "";
+		if (vv) sscanf(vv + 8, "%63[^\n]", ver);
+		unlink(PERSIST "/os/bootimg/pending"); unlink(PERSIST "/os/bootimg/boot.iso"); free(pv);
+		write_str(PERSIST "/os/bootimg/result", "not written: whole-area writes at the start are no longer done (the start-up files are put in from Settings)\n");
+		health_add("boot", "new boot files (Rudolf OS %s) left for the start-up to write over the drive's whole start-up area were removed unwritten: Settings › Update and recovery › Put back the official start-up files puts them into its EFI system partition instead", *ver ? ver : "?");
+	}
 	boot_entry_ensure();
 	/* 1.4.4: the power settings (System Settings › Power and battery) hold from the start, signed in or not */
 	if (!access("/usr/lib/rudolf/power", X_OK) && system("/usr/lib/rudolf/power apply >/dev/null 2>&1 &") != 0) {}

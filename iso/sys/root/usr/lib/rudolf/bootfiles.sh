@@ -4,6 +4,24 @@
 #                                  start-up writes it before anything else at the next start (initramfs/init)
 #   bootfiles.sh write DISK [IMAGE] from another drive (a USB stick): writes IMAGE (empty: this Rudolf OS's own) to the
 #                                  start of DISK, in front of its RUDOLFDATA partition, which is left as it is
+# 1.6.0 (docs/plan-1.6.0.md "Before stable" 15): the files are replaced, never the drive's layout. On the owner's Vivobook
+# the start-up's staged write put a new boot image over the whole area (its EFI image in another place, a new disk
+# signature), and every firmware entry for the drive then named nothing: the computer opened its setup screen. Now
+# stage and write copy the image's start-up files INTO the drive's existing EFI system partition (partition 2): each
+# new file beside the old one (NAME.new), checked (its Secure Boot signature, read back), then renamed over it, the old
+# one kept as NAME.old until the next start from the drive; the partition table, the disk signature and the area are
+# never written. Then the firmware's entry for the drive is checked (rudolfd --boot-entry fix). Anything wrong: the
+# old files are put back, and it says so.
+#   bootfiles.sh files IMAGE [DISK]   the same, by name (stage and write are this now; IMAGE empty: this Rudolf OS's own)
+#   bootfiles.sh check | rescue        the drive Rudolf OS keeps its files on: its partition table, its EFI system
+#                                      partition and files, the El Torito entry the firmware finds them by, and the
+#                                      firmware's entry for it, said; rescue also puts that entry right (Settings >
+#                                      Update and recovery > Check this drive's start-up). Nothing else is written.
+#   bootfiles.sh area IMAGE [DISK]     (experts: "Rebuild the start-up area") the old way, for a drive whose EFI system
+#                                      partition is too small for the new files: the image over the area, keeping the
+#                                      disk signature and RUDOLFDATA's entry; the old area kept on RUDOLFDATA and put
+#                                      back unless the new one mounts, its files check and the firmware's entry is right
+# BF_FORCE_POWER=1 (tests): without the check that the computer is on mains power or its battery above 50 %.
 # A drive installed from a disc before 1.2.2 has boot files that cannot start with Secure Boot on, and updates never
 # replace them. Install here would, but it erases RUDOLFDATA. This writes only the area in front of it.
 # IMAGE: a Rudolf OS disc image, or its boot image (rudolf-os-X.Y.Z-boot.iso: the boot files without the system
@@ -116,46 +134,185 @@ write_area() {
 	die "The new boot files could not be written correctly: the drive may be failing. Your files are untouched; start from a Rudolf OS USB stick and use Install here > Replace the boot files only to try again." 9
 }
 
+# ---- 1.6.0 ("Before stable" 15): the start-up files replaced inside the existing EFI system partition
+esp_part() { case "$1" in *[0-9]) echo "${1}p2";; *) echo "${1}2";; esac; }
+SBCERT=${BF_SBCERT:-/usr/share/rudolf/rudolf-sb.crt}
+SBV=${SBVERIFY:-sbverify}
+health() { [ -n "$BF_NOHEALTH" ] || rudolfd --health boot "$1" 2>/dev/null; echo "$1"; }
+# the computer on mains power, or its battery above 50 % (or none: a desktop computer)
+power_ok() {
+	[ -n "$BF_FORCE_POWER" ] && return 0; bat=0
+	for p in /sys/class/power_supply/*; do [ -e "$p/type" ] || continue
+		case "$(cat "$p/type")" in Mains|USB|USB_C|USB_PD) [ "$(cat "$p/online" 2>/dev/null)" = 1 ] && return 0;;
+		Battery) bat=1; [ "$(cat "$p/capacity" 2>/dev/null || echo 0)" -gt 50 ] && return 0;; esac; done
+	[ $bat = 0 ]; }
+# a start-up file's signature: Rudolf OS's for its own (rudolf.efi, recovery.efi, the boot menu grubx64.efi); for shim
+# (BOOTX64.EFI) and MokManager (mmx64.efi), which Microsoft signs, a signature at all; other files: none
+sig_ok() {
+	case "$(basename "$1" | tr A-Z a-z)" in
+	bootx64.efi|mmx64.efi) $SBV --list "$1" 2>/dev/null | grep -qi 'signature\|subject';;
+	*.efi) $SBV --cert "$SBCERT" "$1" >/dev/null 2>&1;;
+	*) return 0;; esac; }
+# the drive's partition table as Install here leaves it (1 empty, 2 the EFI system partition, 3 RUDOLFDATA):
+# "P2START P2SIZE P3START" in sectors, or nothing
+inst_table() {
+	dd if="$1" bs=512 count=1 2>/dev/null | od -An -tu1 -v | tr -s ' \n' ' ' | awk '{n=split($0,b," ");
+		if (n>=512 && b[511]==85 && b[512]==170 && b[451]==0 && b[467]==239 && b[483]==131)
+			printf "%d %d %d\n", b[471]+b[472]*256+b[473]*65536+b[474]*16777216, b[475]+b[476]*256+b[477]*65536+b[478]*16777216, b[487]+b[488]*256+b[489]*65536+b[490]*16777216}'; }
+# the El Torito UEFI entry of the image at the start of a drive: "LBA COUNT" (2048-byte blocks; 512-byte sectors)
+elt_entry() {
+	c=$(dd if="$1" bs=2048 skip=17 count=1 2>/dev/null | dd bs=1 skip=71 count=4 2>/dev/null | od -An -tu4 | tr -d ' \n')
+	[ -n "$c" ] && [ "$c" -gt 0 ] || return 1
+	dd if="$1" bs=2048 skip="$c" count=1 2>/dev/null | od -An -tu1 -v | tr -s ' \n' ' ' | awk '{n=split($0,b," "); p=b[2];
+		for (i=1;i<64;i++) { o=32*i; if (b[o+1]==144||b[o+1]==145) { p=b[o+2]; continue }
+			if (b[o+1]==136 && p==239) { printf "%d %d\n", b[o+9]+b[o+10]*256+b[o+11]*65536+b[o+12]*16777216, b[o+7]+b[o+8]*256; exit } } }'; }
+BT=${BF_TMP:-/tmp/bootfiles.$$}
+# the files of the list $BT/todo: NAME.new removed (nothing replaced yet)
+drop_new() { while read -r g; do [ -n "$g" ] && rm -f "$BT/esp/$g.new"; done < "$BT/todo"; }
+# files_into DISK NEW: the files of NEW (the new image's EFI image, mounted) into DISK's EFI system partition
+files_into() {
+	D=$1; NEW=$2; P=$(esp_part "$D"); E=$BT/esp; mkdir -p "$E"; BAD=
+	[ -b "$P" ] || die "$D has no EFI system partition (partition 2): nothing was changed." 5
+	mount -t vfat -o rw,flush "$P" "$E" 2>/dev/null || die "The EFI system partition on $D cannot be opened: nothing was changed." 5
+	(cd "$NEW" && find . -type f | sed 's|^\./||' | sort) > "$BT/all"
+	: > "$BT/todo"; need=0
+	while read -r f; do
+		[ -f "$E/$f" ] && cmp -s "$NEW/$f" "$E/$f" && continue
+		case "$f" in *.efi|*.EFI) sig_ok "$NEW/$f" || { umount "$E"; die "$f in the new image is not signed as it should be: nothing was changed." 7; };; esac
+		echo "$f" >> "$BT/todo"; need=$((need + $(stat -c %s "$NEW/$f") + 8192))
+	done < "$BT/all"
+	if [ ! -s "$BT/todo" ]; then umount "$E"; echo "The start-up files on $D are already the image's: nothing to change."; return 0; fi
+	free=$(($(df -k "$E" | awk 'NR==2 {print $4}') * 1024)); size=$(($(df -k "$E" | awk 'NR==2 {print $2}') / 1024))
+	if [ $need -gt $free ]; then umount "$E"
+		health "the start-up files were not replaced: the EFI system partition on $D ($size MiB, made by an older Rudolf OS) has no room for the new ones beside the old ($((need / 1048576)) MiB needed, $((free / 1048576)) MiB free). Nothing was changed; the computer starts as before."
+		exit 10; fi
+	echo "Replacing $(wc -l < "$BT/todo") start-up files on $D (each written beside the old one, checked, then renamed) ..."
+	while read -r f; do mkdir -p "$E/$(dirname "$f")"
+		cp "$NEW/$f" "$E/$f.new" || { drop_new; umount "$E"; die "$f could not be written: nothing was changed (the drive may be full or failing)." 9; }
+	done < "$BT/todo"
+	sync; umount "$E"; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
+	mount -t vfat -o rw,flush "$P" "$E" 2>/dev/null || die "The EFI system partition on $D could not be opened again after writing: the old files are there as before (beside new ones, unused)." 9
+	# read back: each the same as the image's, and signed
+	while read -r f; do
+		cmp -s "$NEW/$f" "$E/$f.new" || BAD="$f did not read back as written"
+		case "$f" in *.efi|*.EFI) sig_ok "$E/$f.new" || BAD="$f is not signed as it should be, read back";; esac
+		[ -n "$BAD" ] && break
+	done < "$BT/todo"
+	if [ -n "$BAD" ]; then drop_new; sync; umount "$E"; health "the start-up files were not replaced: $BAD on $D. Nothing was changed."; exit 9; fi
+	# then renamed over the old ones, which are kept as NAME.old until the next start from the drive
+	while read -r f; do
+		[ -f "$E/$f" ] && { [ -f "$E/$f.old" ] && rm -f "$E/$f.old"; mv "$E/$f" "$E/$f.old"; }
+		mv "$E/$f.new" "$E/$f" || { BAD="$f could not be renamed"; break; }
+	done < "$BT/todo"
+	sync; umount "$E"; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
+	# checked once more as the firmware finds them: \EFI\BOOT\BOOTX64.EFI there, each file the image's
+	if [ -z "$BAD" ] && mount -t vfat -o ro "$P" "$E" 2>/dev/null; then
+		[ -s "$E/EFI/BOOT/BOOTX64.EFI" ] || BAD="\\EFI\\BOOT\\BOOTX64.EFI is missing"
+		while read -r f; do cmp -s "$NEW/$f" "$E/$f" || BAD="$f is not as written"; done < "$BT/todo"
+		umount "$E"
+	else BAD=${BAD:-"the EFI system partition could not be read back"}; fi
+	if [ -n "$BAD" ]; then
+		if mount -t vfat -o rw,flush "$P" "$E" 2>/dev/null; then
+			while read -r f; do [ -f "$E/$f.old" ] && mv -f "$E/$f.old" "$E/$f"; done < "$BT/todo"; drop_new; sync; umount "$E"; fi
+		health "the start-up files on $D were put back as they were: $BAD."; exit 9; fi
+	health "the start-up files on $D replaced in its EFI system partition ($(tr '\n' ' ' < "$BT/todo" | sed 's/ $//')); the old ones kept as .old until the next start; the partition table and the disk signature unchanged"
+}
+# the drive Rudolf OS keeps its files on, or nothing
+sys_disk() { PER=$(cat /etc/rudolf/persist 2>/dev/null); [ -n "$PER" ] && mountpoint -q /persist && disk_of "$PER"; }
+# files IMAGE [DISK]: the image's start-up files (IMAGE empty: this Rudolf OS's own) into DISK's EFI system partition
+cmd_files() {
+	power_ok || die "Connect the computer to power first (or charge it above 50 %): the start-up files must not be cut off half written." 11
+	check_image "$1"; D=$2; [ -n "$D" ] || D=$(sys_disk); [ -n "$D" ] || die "Rudolf OS is not installed on a drive here." 3
+	[ -n "$(inst_table "$D")" ] || die "$D does not have the installed layout (partition 2 the EFI system partition, 3 RUDOLFDATA): nothing was changed." 5
+	mkdir -p "$BT/i" "$BT/n"; trap 'umount "$BT/n" "$BT/i" "$BT/esp" 2>/dev/null; rm -rf "${BT:?}"; [ -n "$BUSY" ] && rm -f "$BUSY"' EXIT
+	if [ -z "$1" ]; then mount -t vfat -o ro,loop /live/media/efi/efiboot.img "$BT/n" || die "This Rudolf OS's own start-up files cannot be read." 7
+	else { mount -t iso9660 -o ro,loop "$SRC" "$BT/i" && mount -t vfat -o ro,loop "$BT/i/efi/efiboot.img" "$BT/n"; } || die "The image's start-up files cannot be read." 7; fi
+	files_into "$D" "$BT/n"
+	umount "$BT/n" "$BT/i" 2>/dev/null
+	# the firmware's entry for the drive: checked (and put right) before any restart
+	if [ "$D" = "$(sys_disk)" ] && [ -d /sys/firmware/efi/efivars ]; then
+		rudolfd --boot-entry fix || { echo "The firmware's entry for this drive is not right yet (above): do not restart before it is (Settings > Update and recovery > Check this drive's start-up)."; exit 12; }
+	fi
+	echo "Done: the start-up files are Rudolf OS $IVER's. Your files are as they were."
+}
+# check|rescue
+cmd_check() {
+	D=$(sys_disk); [ -n "$D" ] || die "Rudolf OS is not installed on a drive here (it keeps no files on a drive)." 3
+	echo "The drive: $D"; BAD=
+	t=$(inst_table "$D")
+	if [ -z "$t" ]; then echo "Its partition table is not as Install here makes it (1 empty, 2 the EFI system partition, 3 RUDOLFDATA)."; BAD=1
+	else set -- $t; echo "Its partition table: the EFI system partition at sector $1 ($(($2 / 2048)) MiB), RUDOLFDATA at sector $3; disk signature $(dd if="$D" bs=1 skip=440 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n')."
+		e=$(elt_entry "$D")
+		if [ -n "$e" ]; then set -- $e $t
+			if [ $(($1 * 4)) = "$3" ]; then echo "The firmware finds the EFI system partition there (El Torito: block $1, $2 sectors)."; else echo "The El Torito entry (block $1) does not point at partition 2 (sector $3)."; BAD=1; fi
+		else echo "The image in front of RUDOLFDATA has no El Torito entry for UEFI."; BAD=1; fi
+	fi
+	P=$(esp_part "$D"); mkdir -p "$BT/esp"; trap 'umount "$BT/esp" 2>/dev/null; rm -rf "${BT:?}"' EXIT
+	if mount -t vfat -o ro "$P" "$BT/esp" 2>/dev/null; then
+		for f in EFI/BOOT/BOOTX64.EFI EFI/BOOT/grubx64.efi EFI/BOOT/mmx64.efi EFI/rudolf/rudolf.efi EFI/rudolf/recovery.efi; do
+			if [ ! -s "$BT/esp/$f" ]; then v=missing; case "$f" in */BOOTX64.EFI|*/grubx64.efi|*/rudolf.efi) BAD=1;; esac
+			elif sig_ok "$BT/esp/$f"; then case "$f" in */BOOTX64.EFI|*/mmx64.efi) v=signed;; *) v="signed by Rudolf OS";; esac
+			else v="not signed as it should be"; fi
+			echo "  \\$(echo "$f" | tr / '\\\\'): $v"; done
+		o=$(cd "$BT/esp" && find . -name '*.old' | sed 's|^\./||' | tr '\n' ' '); [ -n "$o" ] && echo "  kept from the last change: $o"
+		umount "$BT/esp"
+	else echo "Its EFI system partition (partition 2) cannot be opened."; BAD=1; fi
+	if [ -d /sys/firmware/efi/efivars ]; then echo "The firmware's entry for it:"; rudolfd --boot-entry "$([ "$1" = rescue ] && echo fix || echo check)"; [ $? = 2 ] && BAD=1
+	else echo "This computer started without UEFI: there is no firmware entry."; fi
+	if [ -z "$BAD" ]; then echo "All is right: the computer can start from this drive."; else echo "Not all is right (above)."; fi
+	[ -z "$BAD" ]
+}
+# area IMAGE [DISK] (experts): the image over the area, keeping the disk signature and RUDOLFDATA's entry; the old area
+# put back unless the new one mounts, its start-up files check and the firmware's entry is right
+cmd_area() {
+	power_ok || die "Connect the computer to power first (or charge it above 50 %)." 11
+	check_image "$1"; D=$2; [ -n "$D" ] || D=$(sys_disk); [ -n "$D" ] || die "Rudolf OS is not installed on a drive here." 3
+	[ "$D" = "$(sys_disk)" ] || die "Only the drive Rudolf OS keeps its files on can have its start-up area rebuilt (its firmware entry is checked)." 3
+	check_fit "$D"
+	S=/persist/os/bootimg; mkdir -p $S; echo "Keeping the old start-up area on RUDOLFDATA ..."
+	dd if="$D" of=$S/area.old bs=512 count="$START" 2>/dev/null && sync || die "The old start-up area could not be kept: nothing was changed." 6
+	SIG=$(dd if="$D" bs=1 skip=440 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n'); P3=$(dd if="$D" bs=1 skip=478 count=16 2>/dev/null | od -An -tx1 | tr -d ' \n')
+	echo "Writing the new start-up area ($((BYTES / 1048576)) MiB) ..."
+	dd if="$SRC" of="$D" bs=2048 count="$BLOCKS" conv=fsync 2>/dev/null
+	{ hex2bin "$SIG" | dd of="$D" bs=1 seek=440 conv=notrunc,fsync; dd if=/dev/zero of="$D" bs=1 seek=446 count=16 conv=notrunc,fsync; hex2bin "$P3" | dd of="$D" bs=1 seek=478 conv=notrunc,fsync; } 2>/dev/null
+	sync; blockdev --flushbufs "$D" 2>/dev/null; echo 3 > /proc/sys/vm/drop_caches
+	if cmd_check rescue; then rm -f $S/area.old; health "the start-up area of $D was rebuilt from Rudolf OS $IVER's image (the disk signature and RUDOLFDATA's entry kept), checked, the firmware's entry right"; return 0; fi
+	echo "The new start-up area did not check: putting the old one back ..."
+	dd if=$S/area.old of="$D" bs=512 conv=fsync,notrunc 2>/dev/null; sync; blockdev --flushbufs "$D" 2>/dev/null; echo 3 > /proc/sys/vm/drop_caches
+	rudolfd --boot-entry fix >/dev/null 2>&1
+	health "the start-up area of $D did not check after it was rebuilt, so the old one was put back"; exit 9
+}
+
 # (tests: BF_LIB=1 . bootfiles.sh gives the functions only)
 [ -n "$BF_LIB" ] && return 0
 case "$1" in
 stage)
+	# (1.6.0: IMAGE's start-up files into this drive's EFI system partition, now, while the system runs; nothing is left
+	#  for the start-up to write any more. Before, the image was kept on RUDOLFDATA and written over the whole area at
+	#  the next start: the owner's Vivobook could not start after it.)
 	SLOT=$(cat /etc/rudolf/slot 2>/dev/null); PER=$(cat /etc/rudolf/persist 2>/dev/null); MED=$(cat /etc/rudolf/media 2>/dev/null)
 	[ -n "$PER" ] && mountpoint -q /persist || die "Rudolf OS is not keeping files on this drive (running live)." 3
 	DISK=$(disk_of "$PER")
 	[ "$(disk_of "$MED")" = "$DISK" ] && [ "$PER" = "$(part3 "$DISK")" ] || die "Rudolf OS did not start from the drive it is installed on (a USB stick?). To give that drive new boot files, use Install here > Replace the boot files only." 3
 	case "$SLOT" in a|b) ;; *) die "Rudolf OS is running the system on the drive's own image, not an installed update. Install the latest update (Settings > Update and recovery), restart, and try again." 3;; esac
 	[ "$(sed -n 's/^good=//p' /persist/os/system/state)" = "$SLOT" ] || die "The update that is running has not been kept yet: restart once more, then try again." 3
-	check_image "$2"; check_fit "$DISK"
-	complete_slots /persist/os/system /live/media
-	B=/persist/os/bootimg; mkdir -p $B; rm -f $B/pending $B/boot.iso $B/boot.iso.new
-	echo "Keeping a copy for the next start ..."
-	if [ "$SRC" = "$MED" ]; then dd if="$SRC" of=$B/boot.iso.new bs=2048 count=$BLOCKS 2>/dev/null; else cp "$SRC" $B/boot.iso.new; fi
-	H=$(sha256sum $B/boot.iso.new | cut -c1-64)
-	mv $B/boot.iso.new $B/boot.iso
-	printf 'sha=%s\nstart=%s\nblocks=%s\nversion=%s\nserial=%s\n' "$H" "$START" "$BLOCKS" "$IVER" "$ISERIAL" > $B/pending.new && sync && mv $B/pending.new $B/pending && sync
-	rm -f $B/result
-	echo "Ready: the new boot files (Rudolf OS $IVER) are written the next time the computer starts, before anything else (about a minute)."
-	echo "Keep the computer plugged in, and do not switch it off while it says \"Writing the new boot files\"."
+	B=/persist/os/bootimg; [ -e $B/pending ] && { rm -f $B/pending $B/boot.iso; echo "(new boot files kept from before for the start-up are no longer written: removed)"; }
+	cmd_files "$2" "$DISK"
 	;;
+files) cmd_files "$2" "$3";;
+check|rescue) cmd_check "$1";;
+area) cmd_area "$2" "$3";;
 write)
+	# (1.6.0: from a USB stick, into DISK's EFI system partition, never over its area; its RUDOLFDATA is not opened)
 	DEV=$2; [ -b "$DEV" ] || die "No such disk: $DEV" 2
 	N=${DEV##*/}
 	MED=$(cat /etc/rudolf/media 2>/dev/null)
 	[ "$(disk_of "$MED")" = "$DEV" ] && die "That is the drive Rudolf OS is running from: to give it new boot files, use Settings > Security > Secure Boot > Get new boot files." 3
-	check_image "$3"; check_fit "$DEV"
-	BUSY=/run/rudolf/busy/$N; mkdir -p /run/rudolf/busy; : > $BUSY
-	trap "umount /mnt/bftarget /mnt/bfold 2>/dev/null; rm -f $BUSY" EXIT
-	/usr/lib/rudolf/devplug release $N 2>/dev/null || die "$DEV is in use: a file on it is still open. Close File Explorer and any app using the drive, then try again." 4
-	mkdir -p /mnt/bftarget /mnt/bfold
-	mount -t ext4 "$(part3 "$DEV")" /mnt/bftarget || die "$DEV's RUDOLFDATA partition could not be opened (it is not changed)." 6
-	mount -t iso9660 -o ro "$(part1 "$DEV")" /mnt/bfold 2>/dev/null || mount -t iso9660 -o ro "$DEV" /mnt/bfold 2>/dev/null || true
-	[ -d /mnt/bftarget/os/system ] && complete_slots /mnt/bftarget/os/system /mnt/bfold
-	[ -d /mnt/bftarget/os/system ] || [ $BOOTONLY = 0 ] || die "This drive has no installed update to start from, so boot files only would leave it without a system: use a full disc image (if it fits) or Install here." 6
-	rm -f /mnt/bftarget/os/bootimg/pending
-	umount /mnt/bfold 2>/dev/null; umount /mnt/bftarget; sync
-	write_area "$DEV" "$SRC"
+	[ -n "$(inst_table "$DEV")" ] || die "$DEV does not have the installed layout (partition 2 the EFI system partition, 3 RUDOLFDATA): use Install here instead." 5
+	BUSY=/run/rudolf/busy/$N; mkdir -p /run/rudolf/busy; : > "$BUSY"
+	/usr/lib/rudolf/devplug release "$N" 2>/dev/null || { rm -f "$BUSY"; die "$DEV is in use: a file on it is still open. Close File Explorer and any app using the drive, then try again." 4; }
+	cmd_files "$3" "$DEV"; rm -f "$BUSY"
 	echo "Done: $DEV has the new boot files (Rudolf OS $IVER), and its files are as they were. Turn on Secure Boot in its firmware settings if you want it."
 	;;
-*) echo "usage: bootfiles.sh stage IMAGE | write DISK [IMAGE]"; exit 2;;
+*) echo "usage: bootfiles.sh stage IMAGE | write DISK [IMAGE] | files IMAGE [DISK] | check | rescue | area IMAGE [DISK]"; exit 2;;
 esac
