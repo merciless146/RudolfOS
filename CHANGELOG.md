@@ -10,6 +10,8 @@ Summary: In progress.
   that checks every name and file again itself (a disc image must really be in your home folder, yours or the signed-in
   account's), run by rudolf-rootd, which only rudolfd can ask. Nothing changes in how the desktop works; it is the first
   step towards rudolfd no longer running as root.
+- Fixed: on the Native desktop a file dragged from a Linux app (Debian's file manager, a Flatpak app, an AppImage) onto the desktop is copied into the Desktop folder, as on Standard (where a drop on a folder's icon or the Trash also goes to the Desktop folder, and text or the taskbar takes none); it did nothing. The file is read for the desktop by the account's own Linux user, only from the account's own files and the drives (Flatpak's document portal is mapped to the real file), never through a link; the original stays where it was.
+- Tests: the native desktop takes X drops from a stand-in Linux app (the desktop, a folder's icon, the Trash, a taskbar button, text, another account's file, a link out, a folder), compared with what Standard's page keeps for the same drops; rudolfd's reading of dropped files on the host (xdrop161_t.sh, drop161_t.sh).
 
 ## 1.6.0 (in progress)
 Summary: In progress.
