@@ -40,6 +40,17 @@ ok "4. every script /etc/mdev.conf runs has a udev rule running it" "$([ -z "$mi
 bad=; for s in $(grep -o 'udev-run [^ "]*' $RULES | sed 's/^udev-run //' | sort -u); do [ -x $SYS$s ] || [ "$s" = /usr/bin/rudolf-debian ] || bad="$bad $s"; done
 ok "...each of them there and runnable (rudolf-debian is built)" "$([ -z "$bad" ] && echo 1)" "$bad"
 ok "...owners as numbers (no group name that might be missing), modes as mdev gave them" "$(! grep -E 'GROUP="[a-z]' $RULES >/dev/null && grep -q 'SUBSYSTEM=="input", GROUP="0", MODE="0640"' $RULES && grep -q 'KERNEL=="hidraw\[0-9\]\*", GROUP="1000", MODE="0660"' $RULES && grep -q 'SUBSYSTEM=="drm", KERNEL=="card\[0-9\]\*|renderD\[0-9\]\*", GROUP="44", MODE="0666"' $RULES && echo 1)"
+# drivers for devices that come later (2026-11-17, the Vivobook Go on 2026111713: the AMD audio processor's driver adds
+# its microphones' devices after start-up's pass, and udev's own "kmod load" cannot read busybox's module list): udev
+# loads by modalias as mdev's line did, with the same modprobe, on add only
+ML=$(grep 'ENV{MODALIAS}' $RULES)
+ok "4b. drivers by modalias: a udev rule runs mdev's modprobe -b for every device added with a MODALIAS" "$(grep -q '^\$MODALIAS=.* @modprobe -b "\$MODALIAS"' $SYS/etc/mdev.conf && echo "$ML" | grep -q 'ACTION=="add", ENV{MODALIAS}=="?\*", RUN+="/sbin/modprobe -b \$env{MODALIAS}"' && echo 1)" "$ML"
+# ...the line as udev runs it, with modprobe a stand-in fed the Vivobook's three devices (their modaliases as read there)
+printf '#!/bin/sh\necho "modprobe $*" >> %s/calls\n' $T > $T/bin/modprobe; chmod 755 $T/bin/modprobe; rm -f $T/calls
+cmdl=$(echo "$ML" | sed 's/.*RUN+="\([^"]*\)".*/\1/; s#^/sbin/modprobe#'$T'/bin/modprobe#')
+for a in platform:acp_yc_mach platform:acp_yc_pdm_dma platform:dmic-codec; do MODALIAS=$a sh -c "$(echo "$cmdl" | sed 's/\$env{MODALIAS}/"$MODALIAS"/')"; done
+ok "...the Vivobook's microphone devices (acp_yc_mach, acp_yc_pdm_dma, dmic-codec) each get modprobe -b" "$([ "$(cat $T/calls)" = "$(printf 'modprobe -b platform:acp_yc_mach\nmodprobe -b platform:acp_yc_pdm_dma\nmodprobe -b platform:dmic-codec')" ] && echo 1)" "$(cat $T/calls)"
+ok ".../sbin/modprobe is busybox's in the base (it reads modules.dep.bb's aliases)" "$(grep -q 'modules.dep.bb\|busybox depmod' $HERE/../../mkrootfs.sh && echo 1)"
 # the modem service
 mkdir -p $T/mm; printf '#!/bin/sh\necho "MM $*" >> %s/mm/calls\nsleep 5\n' $T > $T/mm/ModemManager; printf '#!/bin/sh\nexit 0\n' > $T/mm/mmcli; chmod 755 $T/mm/*
 grep -q 'with_udev()' $SYS/usr/lib/rudolf/modem && grep -q 'if with_udev; then NOU=; else NOU=--test-no-udev' $SYS/usr/lib/rudolf/modem
@@ -57,5 +68,8 @@ if command -v udevadm >/dev/null; then
 	ev=$(ls -d /sys/class/input/event* 2>/dev/null | head -1)
 	if [ -n "$ev" ]; then o=$(udevadm test --action=add $ev 2>&1)
 		ok "...on an input device: root's, 0640, joyperm run" "$(echo "$o" | grep -q 'udev-run /usr/lib/rudolf/joyperm' && echo 1)" "$(echo "$o" | tail -20)"; fi
+	md=$(ls -d /sys/bus/platform/devices/* /sys/bus/pci/devices/* 2>/dev/null | while read -r d; do [ -s "$d/modalias" ] && { echo "$d"; break; }; done)
+	if [ -n "$md" ]; then o=$(udevadm test --action=add "$md" 2>&1)
+		ok "...on a device with a modalias: modprobe -b with it" "$(echo "$o" | grep -q "/sbin/modprobe -b $(cat $md/modalias)" && echo 1)" "$(echo "$o" | tail -20)"; fi
 else echo "SKIP 7: no udevadm here (the udev workflow runs it)"; fi
 echo "$((N-F))/$N passed"; [ $F = 0 ]
