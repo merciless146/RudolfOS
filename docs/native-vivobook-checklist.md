@@ -68,8 +68,8 @@ engine, then restart), and report any difference with a photo of both.
 | V36 | Switch user from the start menu | The sign-in screen with both accounts | The same; each account's windows kept apart |
 | V37 | Lock (Super+L) with each account | The lock screen with that account | The same |
 | V38 | Touch mode on: type into Notepad, Oracle and a Linux app with the on-screen keyboard | The keyboard over the bottom; typing reaches the app | Whether it reaches each, the keyboard's place |
-| V39 | Touch mode's title bars | Taller title bars | Native's (plan item 10: still open) |
-| V40 | Night light on | The whole screen tinted | Native tints only the windows (plan item 9: still open) |
+| V39 | Touch mode's title bars | Taller title bars | The same: title bars at least 40 px tall, their buttons 40 by 40 (done in #410: rudolf-native's touch mode sizes) |
+| V40 | Night light on | The whole screen tinted | The same: the whole screen tinted, Linux apps and the taskbar too, and only from 8 PM to 7 AM when scheduled (done in #410: the shell sets the screen's gamma) |
 | V41 | Use Native for 30 minutes of mixed use (Oracle, videos, Settings, File Explorer, notifications) | No restarts, no repeated start-up notifications | Any restart, blank widgets, repeated notifications (tasks 20:10-20:25) |
 | V42 | Memory at idle and with one app (Task Manager) | About 900 MB or less at idle | The numbers on both engines (N19) |
 | V43 | Oracle (Chromium on Native): focus on opening, Ctrl+T (N31) | The search box focused; Ctrl+T opens a tab | The same |

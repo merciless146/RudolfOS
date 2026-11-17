@@ -179,6 +179,52 @@ closed tab, restore the session) and item 7 (reader mode); item 5 (ad and tracke
 (website passwords) and item 6 (extensions from the Library) are suggested for 2.0 (docs/plan-2.0.md); item 6's
 stage 1 could start here. The owner decides.
 
+### 11. rudolfd's root work split into helpers (added on 2026-11-16; from docs/plan-1.5.9.md 15.5)
+Asked for on 2026-11-16: "Add items 5, 8, 9, and 10 to the plan and schedule the tasks accordingly." rudolfd
+(iso/sys/rudolfd.c and its .inc files, about 7,300 lines) runs as root for its whole life while it parses every HTTP
+request of the desktop's page and API: a parsing bug there is a bug with root.
+- **The aim:** every operation that needs root moves into a small helper program that rudolfd runs with checked
+  arguments; rudolfd drops to the `rudolf` user (uid 1000) once it has started and opened what it must.
+- **The areas** (one PR each, in this order, each keeping the API byte for byte): drives (mount, unmount, eject,
+  format, the encrypted home's unlock), updates (rudolf-update's slots, roll back, tostable: much is already a separate
+  program), accounts (the per-account Linux users of 1.6.0 Part 10: useradd, chown, the keyring), power (restart, shut
+  down, sleep, brightness), network (Wi-Fi, the firewall, the hostname), packages (rpk, Flatpak's system parts), and
+  whatever a sweep for root-only calls finds (`/sys` writes, `/dev` access, `mount`, `kill` of others' processes).
+- **Each helper:** one job, its arguments validated again inside it (never trusting rudolfd), callable only by rudolfd
+  (the `rudolf` user, checked by SO_PEERCRED on a root-owned socket, or a setuid helper owned root:rudolf mode 4750,
+  whichever the area suits), logged, and small enough to read in one sitting.
+- **Never:** a weaker check than today's (the token, the peer check of 1.5.9, administrator prompts), or a change
+  the page or the native desktop can see.
+- **Tests:** host tests for each helper's argument checks (bad paths, `..`, another account's files); the whole API
+  before and after on the real release in QEMU (iso/qt/sb/: the existing t160 checks pass unchanged); a test that
+  rudolfd's process is uid 1000 after start, and that the helpers refuse callers other than rudolfd.
+
+### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
+The kernel already has zram (zstd), MGLRU, PSI, schedutil and the AMD and Intel P-state drivers (iso/kconfig.sh).
+What is left is measured, not guessed: each change kept only if the numbers say so.
+- **Responsiveness:** PREEMPT_DYNAMIC with `preempt=full` against the current default; HZ 1000 against 250; measured
+  as the desktop's input lag (the page's lag meter, rudolf-native's frame times) while a build or a game loads the CPU.
+- **AMD power:** `amd_pstate=active` with an energy-performance preference (balance_performance on mains,
+  balance_power on battery), set by the power settings; measured as battery drain at idle and with a video.
+- **Start-up time:** what loads before "the desktop was ready" (built-in drivers that could be modules, the initramfs's
+  size, waits in rudolf-init); the health log's timings (1.6.0, #425) are the measure. The Vivobook takes 27 to 37 s.
+- **Memory:** vm.swappiness and zram's size with Oracle, a game and a call at once on 3.3 GB.
+- **How:** QEMU first for what QEMU can show (start-up, memory), a test kernel built with each choice; the Vivobook last,
+  by the owner (battery and real input lag), with a short checklist of numbers to note on each kernel.
+
+### 13. Files dropped from outside onto the native desktop (added on 2026-11-16; 1.6.0 Part 12's known differences)
+On Standard a file dragged from a Linux app (the Debian file manager, a Flatpak) onto the desktop is saved in the
+Desktop folder. rudolf-native does not speak X11's drag and drop (XDND), so such drops do nothing on Native.
+- rudolf-native becomes an XDND target on the desktop, on folder icons, on the Trash and on the taskbar's buttons (a
+  hover raises the window, as on Standard), taking `text/uri-list` (and plain text as a note, as Standard does).
+- The files are copied in through rudolfd as the page copies them (the same checks, the account's own Linux user of
+  Part 10), never moved; paths from Flatpak's document portal and from the Debian container are mapped to the files they
+  name; a file the account cannot read is refused with the page's message.
+- Optionally the other way: a desktop icon dragged into a Linux app (Rudolf as an XDND source, offering the file's
+  path inside the account's home).
+- **Tests:** a stand-in X client that drags a file (iso/qt/host/fixtures, as xwmclient.c), on the desktop, a folder,
+  the Trash; a drop of another account's file refused; same_t.sh compares the result with Standard's.
+
 ## Not moved here
 - **elogind and polkit** (1.6.0 Part 11): left out by decision on 2026-11-15, since Rudolf OS's own inhibit portal and
   prompts cover what apps ask. Taken up again only if an app or a later part needs them.

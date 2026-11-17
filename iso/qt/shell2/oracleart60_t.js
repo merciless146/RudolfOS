@@ -30,14 +30,16 @@ const prep = "(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=
   ok('Oracle\'s window, start menu row and desktop icon draw the new icon', where.tb && where.li && where.desk, where);
   const frameOf = async () => { await p.waitForTimeout(700); for (const f of p.frames()) { try { if (await f.evaluate(() => !!document.documentElement.dataset.oracleHome)) return f } catch (e) {} } return null };
   const look = async () => { const f = await frameOf(); if (!f) return null; return f.evaluate(() => ({mode: document.documentElement.dataset.oracleHome, bg: getComputedStyle(document.body).backgroundColor, logo: getComputedStyle(document.querySelector('svg')).color, inv: !!document.getElementById('rudolf-dark'), links: document.querySelectorAll('a[data-u]').length})) };
-  await p.evaluate(() => { document.documentElement.classList.remove('dark'); oracleHomeRefresh() });
+  // (Rudolf's theme set outright: with the dynamic theme, the time of day decides dark or light, so the test ran dark in the evening)
+  const theme = dark => p.evaluate(d => { S.darkui = d; S.dm = d ? 'dark' : 'light'; S.dyn = false; themeApply(); return document.documentElement.classList.contains('dark') }, dark);
+  await theme(false);
   const shot = async n => { if (!SHOT) return; const W = await p.evaluateHandle(() => wins.filter(w => w.el.classList.contains('oracle')).pop().el); await W.asElement().screenshot({path: path.join(SHOT, n)}) };
   let L = await look();
   ok('light mode: a white page with the logo in the navy', L && L.mode == 'light' && L.bg == 'rgb(255, 255, 255)' && L.logo == 'rgb(17, 28, 44)' && !L.inv && L.links == 9, L); await shot('oracle-home-light.png');
-  await p.evaluate(() => { document.documentElement.classList.add('dark'); oracleHomeRefresh() });
+  await theme(true);
   L = await look();
   ok('Rudolf\'s dark theme: the page in the softened navy with a white logo', L && L.mode == 'dark' && L.bg == 'rgb(17, 28, 44)' && L.logo == 'rgb(255, 255, 255)' && !L.inv, L); await shot('oracle-home-dark.png');
-  await p.evaluate(() => { document.documentElement.classList.remove('dark'); oracleHomeRefresh(); webDarkSet(true) });
+  await theme(false); await p.evaluate(() => webDarkSet(true));
   L = await look();
   ok('Oracle\'s Dark pages: the dark start page, not an inverted one', L && L.mode == 'dark' && !L.inv, L);
   const other = await p.evaluate(() => webDarkHtml('<p>x</p>').includes('rudolf-dark')); await p.evaluate(() => webDarkSet(false));

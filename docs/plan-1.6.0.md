@@ -1488,9 +1488,17 @@ repository doesn't recognize as a stable/promoted version is detected to be runn
 (1.6.1 Part 8); the hotspot over the MiFi (1.6.1 Part 8); Waydroid (1.6.1 Part 6); the first phone (1.6.1 Part 4);
 several monitors (1.6.1 Part 1).
 
-**Can wait (not blocking):** the lighter desktop page's measurements (1.5.9 10.3, 10.4); kernel tuning; rudolfd's root
-work split into helpers; the page log and the Tor window's log kept across a restart; t140_t.py's link switch; the
-keyring test's one-off failure (timing) watched.
+**Can wait (not blocking):** the lighter desktop page's measurements (1.5.9 10.3, 10.4); the page log and the Tor
+window's log kept across a restart. Moved to docs/plan-1.6.1.md on 2026-11-16: kernel tuning (Part 12) and rudolfd's
+root work split into helpers (Part 11), with files dropped from outside onto the native desktop (Part 13).
+
+**Asked for on 2026-11-16, before stable ("Add items 5, 8, 9, and 10 to the plan and schedule the tasks accordingly"):**
+12. **The test leftovers:** the keyring test's occasional failure (it waits a fixed time for the keyring service:
+    make it wait for its answer), and qt/sb/t140_t.py, which still turns the developer link on with the token alone
+    (since 1.5.9 that needs an administrator signed in, in Developer mode): brought up to date or retired, its checks
+    being t160's 17 and 18. Tests only; no change to the system.
+13. **The native desktop's background jobs run once** (Part 12 item 12): alarms, reminders, calls and the rest with no
+    app window open, and once with several. Its own task, 2026-11-16.
 
 ## After 1.6.0: the native desktop decision (added on 2026-11-12)
 (2026-11-13: the prototype moved into 1.5.9 as a third desktop engine, Native (test): docs/plan-1.5.9.md Part 12.
