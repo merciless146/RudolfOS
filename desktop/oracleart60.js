@@ -31,7 +31,7 @@ input{width:min(420px,78%);padding:9px 14px;border:1px solid var(--fbd);border-r
 button{padding:9px 16px;border:0;background:var(--btn);color:var(--btf);border-radius:20px;cursor:pointer;font-weight:600}
 a{color:var(--lk);text-decoration:none}a:hover{text-decoration:underline}
 </style><body><svg viewBox='0 0 1000 ${ORACLE_LOGO_H}' role='img' aria-label='Oracle'><path fill='currentColor' fill-rule='evenodd' d='${ORACLE_LOGO_D}'/></svg>
-<h1>Oracle</h1><div class='mut'>The Rudolf OS web browser</div>
+<h1>Oracle</h1><div class='mut'>A Chromium-based browser for Linux</div>
 <p style='margin-top:20px'><input id='s' placeholder='Search your files, or type a web address'> <button id='b'>Go</button></p>
 <p style='margin-top:22px'>${L('https://en.wikipedia.org/','Wikipedia')} · ${L('https://archive.org/','Internet Archive')} · ${L('https://www.openstreetmap.org/','OpenStreetMap')} · ${L('https://flathub.org/','Flathub')}</p>
 <p style='margin-top:14px'>${L('file:///C:/README.TXT','README')} · ${L('file:///C:/WELCOME.HTM','Welcome page')} · ${L('about:files?p=C:','Browse C:')} · ${L('about:bookmarks','Bookmarks')} · ${L('about:history','History')}</p>
