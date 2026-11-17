@@ -24,6 +24,7 @@ reset() { rm -rf /mnt/persist /mnt/media; mkdir -p $S /mnt/media/rudolf; touch /
 run() { (CMD="$1"; SLOT="$2"; PERSIST=/dev/sda3; MEDIA=/dev/sda1; SB=1; . $W/part.sh) 2>&1; }
 reset 'good=a\nprev=b\nnext=\ntries=0\nfailed=\n'; o=$(run "rudolf.boot=uefi" "")
 ok "1. a working installed system starts as before (not the rescue system)" $(echo "$o" | grep -q 'KEXEC .*rudolf.slot=a' && ! echo "$o" | grep -q 'rescue'; echo $?) "$o"
+ok "1b. 1.6.1 (plan Part 12): the hand-over tells the system how long this start-up took (rudolf.t0=)" $(echo "$o" | grep -Eq 'KEXEC .*rudolf.slot=a.* rudolf.t0=[0-9]+\.[0-9]+'; echo $?) "$o"
 reset 'good=a\nprev=b\nnext=\ntries=0\nfailed=\n'; rm $S/a/complete; o=$(run "rudolf.boot=uefi" "")
 ok "2. the good system incomplete (a damaged update on the stick): the rescue system, saying so" $(echo "$o" | grep -q 'KEXEC .*rudolf.slot=r' && echo "$o" | grep -q 'starting its rescue system' && ! echo "$o" | grep -q 'boot files only'; echo $?) "$o"
 reset 'good=\nprev=\nnext=\ntries=0\nfailed=\n'; o=$(run "rudolf.boot=uefi" "")

@@ -36,10 +36,12 @@ function pwrPanel(c,W){const d=document.createElement('div');d.className='pwr31'
   const sel=(k,opts,dis,why)=>`<select data-k='${k}'${D}${dis?' disabled title="'+lxEsc(why)+'"':''}>${opts.map(([v,t])=>optH(v,t,s[k])).join('')}</select>`;
   const pair=(k,opts,dis,why)=>`<div style='display:flex;gap:8px;flex-wrap:wrap'><label style='display:flex;flex-direction:column;font-size:11px'>On battery${sel(k+'_bat',opts,dis,why)}</label><label style='display:flex;flex-direction:column;font-size:11px'>Plugged in${sel(k+'_ac',opts,dis,why)}</label></div>`;
   const mins=(l,never)=>l.map(m=>[m,m?m+(m==1?' minute':' minutes'):never]);
+  const cc=cn.cpu||{},cpuT=!!cc.tunable,cpuWhy=cc.driver?`This processor's frequency driver is ${cc.driver}: only AMD's amd_pstate in active mode (amd-pstate-epp) takes these; the power mode applies as before.`:'This computer has no processor frequency driver (a virtual machine): the power mode applies as before.';
   const noProf=!cn.profile&&!cn.epp,why=noProf?'This computer offers no power modes to Rudolf OS (no platform profile, no processor energy preference).':'';
   let health='';if(b){const f=b.energy_full??b.charge_full,dz=b.energy_full_design??b.charge_full_design;if(f&&dz)health=` · health ${Math.round(f/dz*100)} %`;if(b.cycle_count>0)health+=`, ${b.cycle_count} charge cycles`}
   d.innerHTML=head+`<h4 class='sh4'>Battery</h4><div class='msg'>${b?`${b.capacity} %, ${lxEsc(batState(b))}${batTime(b)?' · '+batTime(b):''}${health}${p.now&&p.now.saver?' · <b>battery saver is on</b>':''}`:'This computer has no battery.'}</div>
   <div class='r2'><label>Power mode</label>${pair('mode',[['saver','Power saver'],['balanced','Balanced'],['performance','Performance']],noProf,why)}${noProf?`<div></div><div class='msg'>${why}</div>`:''}
+  <label>Processor energy preference</label><div>${sel('cpu',[['std','As in 1.6.0'],['tuned','Tuned: saves power on battery, full speed in game mode'],['passive',"The kernel's own (amd_pstate passive)"]],!cpuT,cpuWhy)}<div class='msg'>${cpuT?'On AMD processors (amd_pstate, active): with Balanced on battery the processor is asked for balance_power instead of balance_performance, and for performance while a game is full screen (not with battery saver). Being measured on laptops (docs/plan-1.6.1.md Part 12).':lxEsc(cpuWhy)}</div></div>
   <label>Battery saver</label><div>${b?`<label class='ck'><input type='checkbox' class='pwsn'${s.saver_now?' checked':''}${D}> On now (until the charger is plugged in)</label><div style='margin-top:4px'>On by itself at ${sel('saver_at',[[0,'never'],[10,'10 %'],[20,'20 %'],[30,'30 %']])}</div><div class='msg'>Power saver mode, the screen dimmer, fewer animations, the screen saver slower, no update checks${cn.wifiSave?', Wi-Fi power saving':''}.</div>`:'<div class="msg">Needs a battery.</div>'}</div>
   <label>Turn the screen off after</label>${pair('screen',mins(PWR_SCR,'Never'))}
   <label>Sleep after</label>${pair('sleep',mins(PWR_SLP,'Never'))}
@@ -60,3 +62,8 @@ async function pwrMigrate(){if(!RD||!SYSC.suspmin||SYSC.suspmig)return;const m=[
  try{await rdPost(`power/set?sleep_ac=${m}&sleep_bat=${m}`);SYSC.suspmig=1;sysSave()}catch(e){}}
 if(typeof evOn=='function')evOn(pwrEvents);
 setTimeout(()=>{pwrPoll();pwrMigrate()},1500);setInterval(()=>{if(!document.hidden)pwrPoll()},30000);
+/* 1.6.1 (plan Part 12): game mode tells the power settings (with "Tuned", the processor is asked for performance while it
+   lasts); on its changes only, and once at the start when a game mode left on (the page reloaded during a game) is over */
+let PWR_GAME=null;setInterval(()=>{if(!RD)return;let on=false;try{on=typeof gameMode=='function'&&!!gameMode()}catch(e){}
+ if(PWR_GAME===null&&!PWR)return;if(PWR_GAME===null&&!on&&!(PWR.now&&PWR.now.game)){PWR_GAME=false;return}if(on===PWR_GAME)return;PWR_GAME=on;
+ rdPost('power/set?game='+(on?1:0)).then(r=>{if(r&&r.now)PWR=r}).catch(()=>{})},2000);

@@ -10,21 +10,28 @@
 # level), saver_now (0|1), screen_ac, screen_bat (minutes to turn the screen off, 0 never), sleep_ac, sleep_bat
 # (minutes to sleep, 0 never), lid_ac, lid_bat (sleep|screen|nothing), button (ask|sleep|shutdown), care (70|80|90|100;
 # a 60 kept before 1.5.6 is read as 70, the nearest choice, rather than falling back to 100).
+# 1.6.1 (docs/plan-1.6.1.md Part 12): cpu (std|tuned|passive), the processor's energy preference on AMD processors run by
+# amd_pstate in active mode (amd-pstate-epp, the kernel's default mode): std as in 1.6.0 (Balanced asks balance_performance
+# on battery too); tuned: Balanced asks balance_power on battery, and game mode (game=1, set by the desktop while a game is
+# full screen, not kept) asks performance, unless battery saver is on; passive: amd_pstate in passive mode (the schedutil
+# governor picks the speed, no preference), to compare. Elsewhere (Intel, acpi-cpufreq, QEMU) tuned and passive do what std
+# does and the status says so (can.cpu). Kept as std until the owner's battery measurements decide (docs/plan-1.6.1.md).
 # Test overrides: POWER_SYS (a stand-in /sys), POWER_CONF, POWER_RUN, POWER_SUSPEND (a command), POWER_CARE_FW (the limit
 # the stand-in battery keeps). GPL-2.0-or-later.
 SYS=${POWER_SYS:-/sys}
 RUN=${POWER_RUN:-/run/rudolf}
 if [ -n "$POWER_CONF" ]; then CONF=$POWER_CONF; elif [ -d /persist/etc ]; then CONF=/persist/etc/power.conf; else CONF=$RUN/power.conf; fi
-KEYS="mode_ac mode_bat saver_at saver_now screen_ac screen_bat sleep_ac sleep_bat lid_ac lid_bat button care"
+KEYS="mode_ac mode_bat saver_at saver_now screen_ac screen_bat sleep_ac sleep_bat lid_ac lid_bat button cpu care"
 def() { case $1 in mode_ac|mode_bat) echo balanced;; saver_at) echo 20;; saver_now) echo 0;; screen_ac) echo 10;; screen_bat) echo 5;;
-	sleep_ac) echo 0;; sleep_bat) echo 15;; lid_ac|lid_bat) echo sleep;; button) echo ask;; care) echo 100;; esac; }
+	sleep_ac) echo 0;; sleep_bat) echo 15;; lid_ac|lid_bat) echo sleep;; button) echo ask;; care) echo 100;; cpu) echo std;; esac; }
 ok_val() { case "$1=$2" in mode_ac=saver|mode_ac=balanced|mode_ac=performance|mode_bat=saver|mode_bat=balanced|mode_bat=performance) return 0;;
 	saver_at=0|saver_at=10|saver_at=20|saver_at=30|saver_now=0|saver_now=1) return 0;;
 	screen_ac=0|screen_ac=1|screen_ac=2|screen_ac=5|screen_ac=10|screen_ac=15|screen_ac=30) return 0;;
 	screen_bat=0|screen_bat=1|screen_bat=2|screen_bat=5|screen_bat=10|screen_bat=15|screen_bat=30) return 0;;
 	sleep_ac=0|sleep_ac=5|sleep_ac=10|sleep_ac=15|sleep_ac=30|sleep_ac=60|sleep_bat=0|sleep_bat=5|sleep_bat=10|sleep_bat=15|sleep_bat=30|sleep_bat=60) return 0;;
 	lid_ac=sleep|lid_ac=screen|lid_ac=nothing|lid_bat=sleep|lid_bat=screen|lid_bat=nothing) return 0;;
-	button=ask|button=sleep|button=shutdown|care=70|care=80|care=90|care=100) return 0;; esac; return 1; }
+	button=ask|button=sleep|button=shutdown|care=70|care=80|care=90|care=100) return 0;;
+	cpu=std|cpu=tuned|cpu=passive|game=0|game=1) return 0;; esac; return 1; }
 get() { v=$(sed -n "s/^$1=//p" "$CONF" 2>/dev/null | tail -1); [ "$1" = care ] && [ "$v" = 60 ] && v=70; ok_val "$1" "$v" && echo "$v" || def "$1"; }
 ev() { echo "$*" >> "$RUN/events" 2>/dev/null; }
 now() { sed -n "s/^$1=//p" "$RUN/power-now" 2>/dev/null | tail -1; }
@@ -43,6 +50,16 @@ profile_for() { ch=" $(rd1 $SYS/firmware/acpi/platform_profile_choices) "; case 
 	performance) case "$ch" in *" performance "*) echo performance;; *" balanced-performance "*) echo balanced-performance;; esac;; esac; }
 epp_for() { case $1 in saver) echo power;; balanced) echo balance_performance;; performance) echo performance;; esac; }
 epp_files() { ls "$SYS"/devices/system/cpu/cpu*/cpufreq/energy_performance_preference 2>/dev/null; }
+# 1.6.1: the frequency driver (amd-pstate-epp, amd-pstate, intel_pstate, acpi-cpufreq, or none: QEMU) and amd_pstate's mode
+PST="$SYS/devices/system/cpu/amd_pstate/status"
+cpu_driver() { rd1 "$SYS/devices/system/cpu/cpu0/cpufreq/scaling_driver"; }
+# amd_pstate's mode for the cpu setting: passive asks passive (the mode it had is kept in $RUN/power-pstate0, and given back
+# when the setting is left); the others give back the mode it had. Only amd_pstate's own modes, only where it runs.
+pstate_mode() { [ -w "$PST" ] || return 0; cur=$(rd1 "$PST"); case "$cur" in active|passive|guided) ;; *) return 0;; esac
+	if [ "$1" = passive ]; then [ "$cur" = passive ] && return 0; [ -e "$RUN/power-pstate0" ] || echo "$cur" > "$RUN/power-pstate0"; echo passive > "$PST" 2>/dev/null
+	elif [ -e "$RUN/power-pstate0" ]; then w=$(rd1 "$RUN/power-pstate0"); case "$w" in active|guided) [ "$cur" = "$w" ] || echo "$w" > "$PST" 2>/dev/null;; esac; rm -f "$RUN/power-pstate0"; fi; }
+# what the cpu setting can do on this computer: tuned needs amd-pstate-epp (or amd_pstate in passive mode by this setting)
+cpu_tunable() { case "$(cpu_driver)" in amd-pstate-epp) return 0;; amd-pstate) [ -e "$RUN/power-pstate0" ] && return 0;; esac; return 1; }
 
 apply() {
 	ac=$(on_ac); src=bat; [ "$ac" = 1 ] && src=ac
@@ -52,7 +69,12 @@ apply() {
 	saver=0; [ "$sn" = 1 ] && saver=1; [ "$src" = bat ] && [ "$sa" -gt 0 ] && [ "$cap" -le "$sa" ] && saver=1
 	mode=$(get mode_$src); [ $saver = 1 ] && mode=saver
 	pp=$(profile_for $mode); [ -n "$pp" ] && [ -w "$SYS/firmware/acpi/platform_profile" ] && echo "$pp" > "$SYS/firmware/acpi/platform_profile" 2>/dev/null
-	e=$(epp_for $mode); for f in $(epp_files); do a=" $(rd1 ${f%/*}/energy_performance_available_preferences) "; case "$a" in *" $e "*) echo "$e" > "$f" 2>/dev/null;; esac; done
+	cpu=$(get cpu); cpu_tunable || cpu=std; pstate_mode $cpu
+	e=$(epp_for $mode)
+	# 1.6.1, cpu=tuned on amd-pstate-epp: balance_power for Balanced on battery; performance in game mode (not with battery saver)
+	if [ "$cpu" = tuned ]; then [ "$mode" = balanced ] && [ "$src" = bat ] && e=balance_power
+		[ -e "$RUN/power-game" ] && [ $saver = 0 ] && e=performance; fi
+	[ "$cpu" = passive ] || for f in $(epp_files); do a=" $(rd1 ${f%/*}/energy_performance_available_preferences) "; case "$a" in *" $e "*) [ "$(rd1 $f)" = "$e" ] || echo "$e" > "$f" 2>/dev/null;; esac; done
 	if [ -n "$b" ] && [ -w "$b/charge_control_end_threshold" ]; then want=$(get care); echo "$want" > "$b/charge_control_end_threshold" 2>/dev/null
 		[ -n "$POWER_CARE_FW" ] && echo "$POWER_CARE_FW" > "$b/charge_control_end_threshold"   # (the host test: firmware that keeps another limit)
 		care_note "$want" "$(rd1 "$b/charge_control_end_threshold")"; fi
@@ -63,7 +85,7 @@ apply() {
 	if [ -n "$bl" ] && [ "$saver" = 1 ] && [ "$osav" != 1 ] && [ ! -e "$RUN/power-bright" ]; then c=$(rd1 $bl/brightness); m=$(rd1 $bl/max_brightness)
 		if [ -n "$c" ] && [ -n "$m" ]; then echo "$c" > "$RUN/power-bright"; n=$((c * 7 / 10)); [ $n -lt $((m / 10)) ] && n=$((m / 10)); [ $n -gt $c ] && n=$c; echo $n > $bl/brightness 2>/dev/null; fi
 	elif [ -n "$bl" ] && [ "$saver" = 0 ] && [ -e "$RUN/power-bright" ]; then cat "$RUN/power-bright" > $bl/brightness 2>/dev/null; rm -f "$RUN/power-bright"; fi
-	{ echo "src=$src"; echo "saver=$saver"; echo "mode=$mode"; echo "screen=$(get screen_$src)"; echo "sleep=$(get sleep_$src)"; echo "lid=$(get lid_$src)"; echo "button=$(get button)"; } > "$RUN/power-now.tmp" && mv "$RUN/power-now.tmp" "$RUN/power-now"
+	{ echo "src=$src"; echo "saver=$saver"; echo "mode=$mode"; echo "cpu=$cpu"; echo "game=$([ -e "$RUN/power-game" ] && echo 1 || echo 0)"; echo "screen=$(get screen_$src)"; echo "sleep=$(get sleep_$src)"; echo "lid=$(get lid_$src)"; echo "button=$(get button)"; } > "$RUN/power-now.tmp" && mv "$RUN/power-now.tmp" "$RUN/power-now"
 	[ -n "$osrc" ] && [ "$osrc" != "$src" ] && ev "power $([ $src = ac ] && echo ac || echo battery)"
 	[ -n "$osav" ] && [ "$osav" != "$saver" ] && ev "power saver $([ $saver = 1 ] && echo on || echo off)"
 	return 0
@@ -86,12 +108,14 @@ status() {
 		for k in energy_now energy_full energy_full_design power_now charge_now charge_full charge_full_design current_now cycle_count voltage_now; do v=$(rd1 $b/$k); case "$v" in ''|*[!0-9-]*) ;; *) printf ',"%s":%s' $k "$v";; esac; done
 		printf '}'; else printf '"battery":null'; fi
 	pc=$(rd1 $SYS/firmware/acpi/platform_profile_choices); ef=$(epp_files | head -1)
-	printf ',"can":{"profile":%s,"profileChoices":%s,"epp":%s,"care":%s,"lid":%s,"backlight":%s,"wifiSave":%s}' \
+	printf ',"can":{"profile":%s,"profileChoices":%s,"epp":%s,"care":%s,"lid":%s,"backlight":%s,"wifiSave":%s,"cpu":{"driver":%s,"pstate":%s,"tunable":%s}}' \
 		"$( [ -n "$pc" ] && echo true || echo false)" "$(js "$pc")" "$( [ -n "$ef" ] && echo true || echo false)" \
 		"$( [ -n "$b" ] && [ -e "$b/charge_control_end_threshold" ] && echo true || echo false)" \
 		"$( { [ -e "$RUN/lid-switch" ] || ls "${POWER_PROC:-/proc}"/acpi/button/lid/*/state >/dev/null 2>&1; } && echo true || echo false)" \
-		"$( ls -d "$SYS"/class/backlight/* >/dev/null 2>&1 && echo true || echo false)" "$(command -v iw >/dev/null 2>&1 && echo true || echo false)"
-	printf ',"now":{"src":%s,"saver":%s,"mode":%s,"profile":%s,"epp":%s,"screen":%s,"sleep":%s,"care":%s}' "$(js "$(now src)")" "$( [ "$(now saver)" = 1 ] && echo true || echo false)" "$(js "$(now mode)")" \
+		"$( ls -d "$SYS"/class/backlight/* >/dev/null 2>&1 && echo true || echo false)" "$(command -v iw >/dev/null 2>&1 && echo true || echo false)" \
+		"$(js "$(cpu_driver)")" "$(js "$(rd1 "$PST")")" "$(cpu_tunable && echo true || echo false)"
+	printf ',"now":{"src":%s,"saver":%s,"mode":%s,"cpu":%s,"game":%s,"profile":%s,"epp":%s,"screen":%s,"sleep":%s,"care":%s}' "$(js "$(now src)")" "$( [ "$(now saver)" = 1 ] && echo true || echo false)" "$(js "$(now mode)")" \
+		"$(js "$(now cpu)")" "$( [ "$(now game)" = 1 ] && echo true || echo false)" \
 		"$(js "$(rd1 $SYS/firmware/acpi/platform_profile)")" "$(js "$( [ -n "$ef" ] && rd1 $ef)")" "$(num "$(now screen)")" "$(num "$(now sleep)")" \
 		"$(num "$( [ -n "$b" ] && rd1 $b/charge_control_end_threshold)")"
 	printf ',"careKept":{'; s=''; if [ -f "$REFUSED" ]; then while IFS== read -r a k; do case "$a$k" in *[!0-9]*|'') continue;; esac; printf '%s"%s":%s' "$s" "$a" "$k"; s=,; done < "$REFUSED"; fi; printf '}'
@@ -102,7 +126,7 @@ case "$1" in
 status) status ;;
 apply) apply ;;
 set) shift; for kv in "$@"; do k=${kv%%=*}; v=${kv#*=}; ok_val "$k" "$v" || { echo "{\"ok\":false,\"error\":\"not a setting: $(echo "$kv" | tr -dc 'a-z0-9_=')\"}"; exit 2; }; done
-	for kv in "$@"; do set_key "${kv%%=*}" "${kv#*=}"; done; status ;;
+	for kv in "$@"; do case "$kv" in game=1) : > "$RUN/power-game";; game=0) rm -f "$RUN/power-game";; *) set_key "${kv%%=*}" "${kv#*=}";; esac; done; status ;;
 lid) ev "lid $2"; [ "$2" = closed ] || exit 0; apply >/dev/null; case "$(now lid)" in sleep) suspend;; esac ;;   # "screen": rudolf-display turns it off
 button) apply >/dev/null; case "$(now button)" in sleep) suspend;; shutdown) ev "power shutdown"; sleep 2; /usr/lib/rudolf/shutdown poweroff;; *) ev "power $(date +%s)000";; esac ;;
 *) echo "usage: power status | set K=V ... | apply | lid closed|open | button"; exit 2 ;;

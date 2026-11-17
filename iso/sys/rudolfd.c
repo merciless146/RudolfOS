@@ -3631,7 +3631,11 @@ static void api_health(struct req *r, int post)
 	}
 	char *q = qparam(r->query, "n"); int want = q ? atoi(q) : 200; if (want <= 0 || want > 2000) want = 200;
 	char p[160]; health_path(p, sizeof p); size_t n = 0; char *all = slurp(p, &n);
-	str s = {0}; sadd(&s, "{\"ok\":true,\"now\":%lld,\"uptime\":%ld,\"events\":[", (long long)time(NULL), ({ struct sysinfo si; sysinfo(&si) ? 0L : si.uptime; }));
+	str s = {0}; sadd(&s, "{\"ok\":true,\"now\":%lld,\"uptime\":%ld,", (long long)time(NULL), ({ struct sysinfo si; sysinfo(&si) ? 0L : si.uptime; }));
+	/* 1.6.1 (plan Part 12): readyAt, the uptime of the desktop's first heartbeat this start (the start-up's end), for the health
+	   log's "the desktop was ready N s" (the page sends that line a few seconds later) */
+	{ char *b = slurp(RUN "/bootok", NULL); double ra = b && strchr(b, '.') ? atof(b) : 0; free(b); if (ra > 0) sadd(&s, "\"readyAt\":%.1f,", ra); }
+	sadd(&s, "\"events\":[");
 	int k = 0;
 	if (all) {
 		/* from the end backwards */
@@ -4291,7 +4295,13 @@ static void api(struct req *r)
 	if (!strcmp(p, "heartbeat")) {
 		write_str(RUN "/heartbeat", "1");
 		/* the first heartbeat after a start: the desktop works, so an update being tried is kept */
-		if (access(RUN "/bootok", F_OK)) { write_str(RUN "/bootok", "1"); if (!access("/usr/bin/rudolf-update", X_OK)) run("/usr/bin/rudolf-update boot-ok >>" RUN "/update.log 2>&1"); }
+		/* (1.6.1, plan Part 12: it holds the uptime of that first heartbeat, the start-up's end, which the session keeps with the start's
+		   logs and Last starts shows; a "1" there before 1.6.1) */
+		if (access(RUN "/bootok", F_OK)) {
+			double up = 0; FILE *uf = fopen("/proc/uptime", "r"); if (uf) { if (fscanf(uf, "%lf", &up) != 1) up = 0; fclose(uf); }
+			char ub[32]; snprintf(ub, sizeof ub, "%.2f", up); write_str(RUN "/bootok", up > 0 ? ub : "1");
+			if (!access("/usr/bin/rudolf-update", X_OK)) run("/usr/bin/rudolf-update boot-ok >>" RUN "/update.log 2>&1");
+		}
 		reply_ok(r->fd, "ok"); return;
 	}
 	/* 1.4.4: events/wait waits (up to 25 s) until there are events, so the desktop hears of a key press (the volume

@@ -74,11 +74,13 @@ start_gpu() {
 		-logfile /run/rudolf/Xorg.log -verbose 3 &
 	XPID=$!
 	for i in $(seq 150); do [ -e /tmp/.X11-unix/X0 ] && break; kill -0 $XPID 2>/dev/null || break; sleep 0.1; done
+	st "X server (Xorg)"
 	[ -e /tmp/.X11-unix/X0 ] && kill -0 $XPID 2>/dev/null && x_allow
 	if [ -e /tmp/.X11-unix/X0 ] && kill -0 $XPID 2>/dev/null && rudolf-display --xsize >/dev/null 2>&1; then
 		# the chosen resolution and refresh rate: the monitor's mode of that size; a size the monitor does not
 		# have is scaled by the software display instead (Xorg's own scaling does not work on every card)
-		rudolf-display --mode "$RES" "$FPS"; RC=$?
+		st "X server answers"
+		rudolf-display --mode "$RES" "$FPS"; RC=$?; st "screen mode"
 		if [ $RC = 3 ]; then
 			REASON="the monitor has no $RES mode, so the software display scales the desktop"
 			kill $XPID 2>/dev/null; for i in $(seq 20); do kill -0 $XPID 2>/dev/null || break; sleep 0.5; done; kill -9 $XPID 2>/dev/null
@@ -96,6 +98,7 @@ start_gpu() {
 	rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
 	return 1
 }
+st() { echo "$(cut -d' ' -f1 /proc/uptime) $*" >> /run/rudolf/startup-times; }   # (1.6.1, plan Part 12: the start-up's steps, see rudolf-init)
 display_up() {
 	SETTING=$(cat /etc/rudolf-display 2>/dev/null); SETTING=${SETTING:-games}
 	MODE=soft; REASON=""; XPID=""
@@ -132,6 +135,7 @@ display_restart() {
 }
 rm -f /run/rudolf/screen-restart
 display_up
+st "display ($MODE)"
 # per-user runtime directory and D-Bus session bus (used by Flatpak apps such as Sober)
 export XDG_RUNTIME_DIR=/run/user/1000
 mkdir -p $XDG_RUNTIME_DIR && chown 1000:1000 $XDG_RUNTIME_DIR && chmod 700 $XDG_RUNTIME_DIR
@@ -139,7 +143,9 @@ if [ -x /usr/bin/dbus-daemon ]; then
 	su -s /bin/sh rudolf -c "dbus-daemon --session --fork --nopidfile --address=unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
 fi
 # sound server (PulseAudio) for the desktop and Linux apps; Chromium falls back to ALSA without it
+st "session bus"
 /usr/lib/rudolf/sound start && export PULSE_SERVER=unix:$XDG_RUNTIME_DIR/pulse/native
+st "sound"
 # an update being tried must bring the desktop up within 4 minutes; if not, restart, and after two
 # failed starts the start-up script goes back to the previous system
 if grep -q 'rudolf.trying=1' $RCMD; then
@@ -147,6 +153,7 @@ if grep -q 'rudolf.trying=1' $RCMD; then
 fi
 # installed rpk packages are read-only images; mount them before the desktop starts
 [ -x /usr/bin/rpk ] && /usr/bin/rpk mount-all >>/run/rudolf/rpk.log 2>&1
+st "packages"
 echo "DISPLAY=$DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_CURRENT_DESKTOP=Rudolf" > /run/rudolf/session.env
 # Linux apps: the folders they share with drive C:, and the desktop portal (file dialogs, links,
 # notifications) on the session bus; its questions reach the desktop through /run/rudolf/portal
@@ -324,7 +331,12 @@ webkit_trial_mark() { [ $ENGINE = webkit ] && [ -e /run/rudolf/persistent ] && [
 # start's logs (rudolf-init: var/log/starts/0), for System health's "Last starts"
 # 1.6.0 (plan Part 13): the desktop answered: this start's system extensions are good (those on trial are kept)
 sysext_ok() { [ -e /run/rudolf/heartbeat ] && [ -e /run/rudolf/ext/state ] && [ ! -e /run/rudolf/ext/.good ] && { /usr/lib/rudolf/sysext good >>/run/rudolf/sysext.log 2>&1; : > /run/rudolf/ext/.good; }; return 0; }
-desk_up_mark() { [ -e /run/rudolf/heartbeat ] || return 0; D=$(cat /run/rudolf/start-logs 2>/dev/null); [ -n "$D" ] && [ -d "$D" ] && [ ! -e "$D/desktop-up" ] && echo "$(cut -d. -f1 /proc/uptime) $ENGINE" > "$D/desktop-up"; return 0; }
+# (1.6.1: the uptime of the desktop's first heartbeat, which rudolfd writes into /run/rudolf/bootok, rather than this loop's
+#  time, up to 10 s later; and the start-up's steps kept with the start's logs: plan-1.6.1.md Part 12)
+desk_up_mark() { [ -e /run/rudolf/heartbeat ] || return 0; D=$(cat /run/rudolf/start-logs 2>/dev/null); [ -n "$D" ] && [ -d "$D" ] && [ ! -e "$D/desktop-up" ] || return 0
+	U=$(sed -n '1s/^\([0-9][0-9]*\)\.[0-9]*$/\1/p' /run/rudolf/bootok 2>/dev/null); [ -n "$U" ] || U=$(cut -d. -f1 /proc/uptime)
+	if [ ! -e /run/rudolf/heartbeat-first ]; then B0=$(grep -xE '[0-9]+\.[0-9]+' /run/rudolf/bootok 2>/dev/null); echo "${B0:-$(cut -d' ' -f1 /proc/uptime)} the desktop answered" >> /run/rudolf/startup-times; : > /run/rudolf/heartbeat-first; fi
+	echo "$U $ENGINE" > "$D/desktop-up"; cp /run/rudolf/startup-times "$D/startup-times" 2>/dev/null; return 0; }
 webkit_trial_ok() { [ $ENGINE = webkit ] && [ -e /run/rudolf/heartbeat ] && [ -e /persist/etc/rudolf-desktop-engine.trying ] && rm -f /persist/etc/rudolf-desktop-engine.trying; return 0; }
 # 1.5.7: a desktop asking for the shell again and again (a USB stick's older desktop on this computer's newer files
 # did, every few seconds): after 3 times in 5 minutes the request is ignored and the shell given up until the next start
@@ -418,6 +430,7 @@ while :; do
 		$START" &
 	fi
 	B=$!
+	[ -e /run/rudolf/heartbeat-first ] || st "desktop started ($ENGINE)"
 	[ -e $DCG ] && echo $$ > /sys/fs/cgroup/cgroup.procs 2>/dev/null
 	START_T=$(cut -d. -f1 /proc/uptime)
 	# watchdog: the desktop sends a heartbeat every few seconds
