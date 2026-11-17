@@ -169,6 +169,9 @@ def part1():
         o = run(g, f"{ESPM} && f=/mnt/esp/EFI/rudolf/recovery.efi && s=$(stat -c %s $f) && printf 'X' | dd of=$f bs=1 seek=$((s / 2)) conv=notrunc 2>/dev/null; sync; umount /mnt/esp; "
                    "echo 3 > /proc/sys/vm/drop_caches; rm /persist/os/system/r/desktop.sfs; sync; /usr/lib/rudolf/espcheck status", 120)
         ok('...recovery.efi changed (one byte, as anything writing to the drive could) is seen: recovery=other', 'recovery=other' in o, o)
+        # (2026-11-16: a start only reports start-up files that are not official; the repair at each start is the old
+        #  behaviour, kept for this test of the download, the checks and the write by os/esp-autorepair)
+        run(g, 'touch /persist/os/esp-autorepair; sync', 30)
         stop(vm, g)
         # ---- the next start: system/r made again; the boot image downloaded, checked, staged
         vm, g, up = boot('repair1', D1, V1)
