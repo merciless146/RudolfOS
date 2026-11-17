@@ -93,6 +93,13 @@ async function nat() {
   await neval(ER, `(()=>{window.__oneAppClose();return 1})()`); await until(() => !clientOf(ER), 10000);
   /* the pin (Discord pinned) */
   { const c0 = calls().length; nclick(nhit('pin ' + DC)); ok('Native: Discord\'s pin runs it', !!nhit('pin ' + DC) && await until(() => ran(/POST apps\/run\?id=com\.discordapp\.Discord/, c0), 25000), nlines('hit').map(l => l.split(' ')[1] + ':' + l.split(' ')[2])) }
+  /* (2026-11-17, the owner's Vivobook: "Discord and Steam are either taking an extremely long time to load or simply won't work") one
+     suspect ruled out: with rudolfd's lists of the installed programs slow (15 s, a slow disk at a busy moment) the page opened unseen
+     for Discord still asks for it at once (from the list kept at the last sign-in), within 6 s */
+  { await until(() => !nlines('app').concat(nlines('page')).some(l => l.split(' ')[1] == DC), 15000); fs.writeFileSync(path.join(D, 'slowapps'), '15');
+    const c0 = calls().length, t0 = Date.now(); nclick(nhit('pin ' + DC)); const got = await until(() => ran(/POST apps\/run\?id=com\.discordapp\.Discord/, c0), 30000);
+    ok('Native: Discord\'s pin runs it within 6 s while rudolfd\'s lists of the installed programs take 15 s (' + ((Date.now() - t0) / 1000).toFixed(1) + ' s)', got && Date.now() - t0 <= 6000, calls().slice(c0).split('\n').filter(x => /apps|debian|pkg/.test(x)).slice(0, 8));
+    fs.writeFileSync(path.join(D, 'slowapps'), ''); await until(() => !nlines('app').concat(nlines('page')).some(l => l.split(' ')[1] == DC), 20000) }
   /* Desktop icons… (the desktop's menu): Ember Reach listed; its tick on the desktop at once, and off again */
   nclick([W / 2, H / 2], 3); await until(() => nlines('cmitem').some(l => l.includes('|Desktop icons…')), 5000);
   { const l = nlines('cmitem').find(l => l.includes('|Desktop icons…')); if (l) { const a = l.split(' '); nclick([+a[1], +a[2]]) } }

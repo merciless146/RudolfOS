@@ -309,9 +309,13 @@ list)
 	printf ']}\n'
 	exit 0;;
 mount)
+	# (a click in the File Explorer's Drives: the same rules as a drive plugged in, block_add: never Rudolf OS's own
+	# disk, never another Rudolf OS's start-up parts, its RUDOLFDATA only read)
 	p=$2; case "$p" in ""|*[!a-z0-9]*) echo "bad device" >&2; exit 2;; esac
-	mount_part $p || { echo "could not mount $p" >&2; exit 1; }
-	j=$(drive_json $p); echo "$j" > $RUN/drives/$p; exit 0;;
+	system_disk $(disk_of $p) && { echo "this is Rudolf OS's own disk" >&2; exit 1; }
+	k=$(rudolf_part $p); [ "$k" = boot ] && { echo "the start-up files of another Rudolf OS are not opened" >&2; exit 1; }
+	if [ "$k" = data ]; then mount_part $p ro || { echo "could not mount $p" >&2; exit 1; }; else mount_part $p || { echo "could not mount $p" >&2; exit 1; }; fi
+	j=$(drive_json $p); [ "$k" = data ] && j=$(echo "$j" | sed 's/"label":"[^"]*"/"label":"Rudolf OS data (another Rudolf OS, read-only)"/'); echo "$j" > $RUN/drives/$p; exit 0;;
 eject)
 	d=$2; case "$d" in ""|*[!a-z0-9]*) echo "bad device" >&2; exit 2;; esac
 	system_disk $d && { echo "this is Rudolf OS's own disk" >&2; exit 1; }

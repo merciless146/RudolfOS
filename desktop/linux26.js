@@ -161,6 +161,17 @@ ${save?`<label class='lxnm'>Name <input class='nm'></label>`:''}<div class='rmro
   const n=(nm.value||'').trim();if(!n||/[\/\\]/.test(n))return nm.focus();let exists=false;try{exists=(await lxApi('fs/list?path='+encodeURIComponent(cur))).items.some(i=>i.name==n)}catch(e){}
   if(exists&&!confirm(n+' already exists. Replace it?'))return;end([uri(cur+'/'+n)])};
  draw();(nm||q('.ok')).focus()})}
+/* 1.6.1 (the Vivobook, 2026-11-17): on the Lite desktop a page's file picker (<input type=file>: a game's "Load from a
+   file", a site's upload in Oracle) is this dialog, asked for by rudolf-webkit, which hands WebKit the files chosen.
+   WebKit's own went through the portal, whose dialog is drawn in this very page while GTK held the window for it: the
+   desktop froze and only the power button got out. (Its downloads, "Save to a file", now go to Downloads unasked.) */
+const FC_EXT={'application/json':['*.json'],'text/plain':['*.txt'],'text/csv':['*.csv'],'text/html':['*.html','*.htm'],'application/pdf':['*.pdf'],'application/zip':['*.zip'],
+ 'image/png':['*.png'],'image/jpeg':['*.jpg','*.jpeg'],'image/gif':['*.gif'],'image/webp':['*.webp'],'image/svg+xml':['*.svg'],'audio/mpeg':['*.mp3'],'video/mp4':['*.mp4']};
+const fcPatterns=accept=>[...new Set((accept||[]).flatMap(t=>FC_EXT[t]||(/^image\//.test(t)?['*.png','*.jpg','*.jpeg','*.gif','*.webp']:/^audio\//.test(t)?['*.mp3','*.ogg','*.wav','*.flac']:/^video\//.test(t)?['*.mp4','*.webm','*.mkv']:[])))];
+addEventListener('message',async e=>{const m=e.data;if(!m||m.rudolfShell!='filechooser'||typeof SHELL_ORIGIN=='undefined'||e.origin!==SHELL_ORIGIN)return;
+ let res=null;try{await lxSync().catch(()=>{});res=await lxFileDialog({kind:'open',multiple:!!m.multiple,patterns:fcPatterns(m.accept),title:'Open'},m.desk?'Rudolf OS':'Oracle')}catch(x){console.warn('file chooser',x)}
+ const paths=(res||[]).map(u=>{try{return decodeURIComponent(String(u).replace(/^file:\/\//,''))}catch(x){return''}}).filter(p=>p.startsWith('/home/rudolf/'));
+ shellSend({rudolfShell:'filechooser',fid:m.fid,paths})});
 /* ---------- App Store › Linux apps ---------- */
 const LX_CATS=[['','All'],['Office','Office'],['Graphics','Graphics'],['AudioVideo','Audio & video'],['Game','Games'],['Development','Programming'],['Education','Education'],['Network','Internet'],['Utility','Tools'],['Science','Science'],['System','System']];
 /* 1.3.0: the game genres Flathub uses (freedesktop categories); an app with any of them is a game, also when it does not

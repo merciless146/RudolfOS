@@ -19,7 +19,7 @@ const srv = http.createServer((q, s) => { s.writeHead(200, {'content-type': 'tex
   const src = fs.readFileSync(path.join(__dirname, '../../../desktop/stick30.js'), 'utf8');
   ok('6. Settings: each stick is a full rescue stick, with its rescue system; asks rudolfd what an older stick holds', /full rescue stick/.test(src) && /rescue system/.test(src) && /stick\/info\?disk=/.test(src));
   const h = await p.evaluate("(()=>{const x=HELP.find(h=>h[0]=='rescue');return x?x[2]():''})()");
-  ok('7. Help: the rescue system, and the boot-files-only menu title', /rescue system/.test(h) && /boot files: the system installed on this drive/.test(h), h.slice(0, 200));
+  ok('7. Help: the rescue system, and a boot image (boot files only) explained', /rescue system/.test(h) && /boot files only\) starts only when a system is installed/.test(h), h.slice(0, 200));
   const up = fs.readFileSync(path.join(__dirname, '../../../desktop/sysupd25.js'), 'utf8');
   ok('8. Settings › Update: says when the rescue system is running', /s\.booted=='r'/.test(up) && /Rescue system:/.test(up));
   ok('no page error', !errs.length, errs);

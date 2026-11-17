@@ -122,6 +122,35 @@ static char *request_path(const char *sender, GVariant *opts)
 	char *p = g_strdup_printf("/org/freedesktop/portal/desktop/request/%s/%s", s, tok); g_free(s); return p;
 }
 /* starts a request: registers the Request object, writes the question for the desktop */
+/* 1.6.1: the Lite desktop itself (rudolf-webkit) asking for a file dialog: it would be drawn in the desktop's own page,
+   which GTK holds while its dialog is open, so nothing could answer it and the computer seemed frozen (the Vivobook,
+   2026-11-17: only the power button got out). rudolf-webkit no longer asks (its pages' downloads and file pickers are
+   the desktop's own); should anything in it still ask, the answer is "cancelled" at once */
+static int from_lite_desktop(const char *sender)
+{
+	GVariant *r = g_dbus_connection_call_sync(BUS, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetConnectionUnixProcessID",
+		g_variant_new("(s)", sender), G_VARIANT_TYPE("(u)"), 0, 2000, NULL, NULL);
+	if (!r) return 0;
+	guint32 pid; g_variant_get(r, "(u)", &pid); g_variant_unref(r);
+	char path[64], exe[256]; snprintf(path, sizeof path, "/proc/%u/exe", pid);
+	ssize_t n = readlink(path, exe, sizeof exe - 1); if (n <= 0) return 0; exe[n] = 0;
+	return !strcmp(exe, "/usr/bin/rudolf-webkit");
+}
+static gboolean cancel_now(gpointer d)
+{
+	pending *q = d; GVariantBuilder res; g_variant_builder_init(&res, G_VARIANT_TYPE("a{sv}"));
+	g_dbus_connection_emit_signal(BUS, q->sender, q->path, "org.freedesktop.portal.Request", "Response", g_variant_new("(ua{sv})", 1, &res), NULL);
+	req_free(q); return G_SOURCE_REMOVE;
+}
+static void cancel_request(GDBusMethodInvocation *inv, const char *sender, GVariant *opts)
+{
+	pending *q = g_new0(pending, 1);
+	q->id = g_strdup_printf("%ld-%u", (long)getpid(), ++SEQ); q->sender = g_strdup(sender); q->path = request_path(sender, opts);
+	q->reg = g_dbus_connection_register_object(BUS, q->path, REQ_INFO->interfaces[0], &REQ_VT, NULL, NULL, NULL);
+	PENDING = g_list_append(PENDING, q);
+	g_dbus_method_invocation_return_value(inv, g_variant_new("(o)", q->path));
+	g_timeout_add(100, cancel_now, q);
+}
 static void ask_desktop(GDBusMethodInvocation *inv, const char *sender, GVariant *opts, GString *json, int dialog)
 {
 	pending *q = g_new0(pending, 1);
@@ -338,6 +367,7 @@ static void portal_method(GDBusConnection *c, const char *sender, const char *pa
 	GString *j = g_string_new("{\"app\":"); jstr(j, app);
 	if (!strcmp(iface, "org.freedesktop.portal.FileChooser")) {
 		const char *parent, *title; GVariant *o; g_variant_get(p, "(&s&s@a{sv})", &parent, &title, &o);
+		if (from_lite_desktop(sender)) { fprintf(stderr, "rudolf-portal: a file dialog asked by the Lite desktop itself: cancelled (it would freeze it)\n"); cancel_request(inv, sender, o); g_variant_unref(o); g_string_free(j, TRUE); g_free(app); return; }
 		g_string_append(j, ",\"kind\":"); jstr(j, !strcmp(method, "OpenFile") ? "open" : "save");
 		g_string_append(j, ",\"title\":"); jstr(j, title);
 		g_string_append_printf(j, ",\"multiple\":%s,\"directory\":%s", opt_b(o, "multiple") ? "true" : "false", opt_b(o, "directory") ? "true" : "false");
