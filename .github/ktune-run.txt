@@ -4,20 +4,21 @@
 #                                       (kconfig.sh) with options turned on (+), off (-) or made modules (~); repro: built
 #                                       with its date fixed, to compare two
 #   base NAME                           a test base layer: the release's with this tree's sys/root and rudolfd
-#   run ... BASE=NAME                   ...started with that base layer
-#   run PHASE KERNEL [VAR=VALUE ...]    iso/qt/sb/kt161_t.py PHASE with the release's kernel (release) or a test kernel;
-#                                       lists in a value are written with commas
+#   run PHASE VARIANT[,VARIANT...] [VAR=VALUE ...]   iso/qt/sb/kt161_t.py PHASE, the variants started in turn on the same
+#                                       machine; a variant is release (the release's kernel) or a test kernel's NAME,
+#                                       with +BASE for a test base layer; lists in a value are written with commas
 serial 2026111620
-kernel hz250 +HZ_250 -HZ_1000
 kernel tree repro
 kernel tree2 repro
-run startup release STARTS=4
-run startup release ENGINE=native STARTS=4
-run startup tree STARTS=4
-run startup hz250 STARTS=4
-run latency release PREEMPTS=voluntary,full REPS=2
-run latency release PREEMPTS=lazy,none REPS=2
-run latency tree PREEMPTS=voluntary,full REPS=2
-run latency hz250 PREEMPTS=voluntary,full REPS=2
-run memory release
-run memory release MEMRUNS=180:100:lzo-rle,180:150:zstd,200:100:zstd,60:100:zstd,100:100:zstd,180:100:zstd
+kernel zonly +E1000 +E1000E +IGB +IGC +R8169 +ATL1C +ALX +TIGON3 +8139CP +8139TOO +NE2K_PCI +PCNET32
+kernel nonly +KERNEL_XZ -KERNEL_ZSTD +INITRAMFS_COMPRESSION_XZ -INITRAMFS_COMPRESSION_ZSTD
+kernel hz250 +HZ_250 -HZ_1000
+kernel lz4 +ZRAM_BACKEND_LZ4
+base new
+run startup release,release+new,tree+new,zonly+new,nonly+new STARTS=4 INITCALLS=0
+run startup release,tree+new ENGINE=native STARTS=4 INITCALLS=0
+run latency release PREEMPTS=voluntary,full,lazy REPS=3
+run latency release,hz250 PREEMPTS=voluntary REPS=3
+run memory lz4 MEMRUNS=180:100:zstd,100:100:zstd,60:100:zstd,200:100:zstd,180:150:zstd,180:100:lz4
+run memory lz4 MEMRUNS=180:100:lz4,180:150:zstd,200:100:zstd,60:100:zstd,100:100:zstd,180:100:zstd
+run power release+new
