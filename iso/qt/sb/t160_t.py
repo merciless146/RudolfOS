@@ -190,7 +190,7 @@ def dl_more(js, sh, q):
        and re.search(r'^root .*rudolf-devlink run', o, re.M) and '600 root' in o, [s, o])
     # (the token in two parts: the command itself is a file in /tmp)
     a, b = DLTOKEN[:20], DLTOKEN[20:]
-    o = sh(f't={a}; t="$t{b}"; grep -rlF "$t" /run/rudolf /tmp /home 2>/dev/null | wc -l', 120)
+    o = sh(f't={a}; t="${{t}}{b}"; grep -rlF "$t" /run/rudolf /tmp /home 2>/dev/null | head -5; grep -rlF "$t" /run/rudolf /tmp /home 2>/dev/null | wc -l', 120)
     pg = js(f"(document.documentElement.outerHTML+JSON.stringify(localStorage)+JSON.stringify(typeof DEVLST!='undefined'&&DEVLST||{{}})).includes({json.dumps(a)}+{json.dumps(b)})")
     ok('23. ...and in no file under /run/rudolf, /tmp or /home, nor in the desktop\'s page', lastl(o) == '0' and pg is False, [o, pg])
     dlcmd(2, kind='screenshot'); r = dlresult(2); png = dlfiles().get('res/000002/screen.png', b'')
