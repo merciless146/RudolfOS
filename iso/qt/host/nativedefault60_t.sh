@@ -8,7 +8,7 @@ HERE=$(cd "$(dirname "$0")" && pwd); SYS=$HERE/../../sys
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 # (rudolfd with rudolf-native at a place of the test's: there or not)
 sed "s#/usr/bin/rudolf-native#$W/rudolf-native#g" $SYS/rudolfd.c > $W/rudolfd.c
-gcc -O1 -w -I$SYS -o $W/rd -x c - -lz <<EOF || { echo "FAIL build rudolfd"; exit 1; }
+gcc -O1 -w -DNATIVE_OFFER=1 -I$SYS -o $W/rd -x c - -lz <<EOF || { echo "FAIL build rudolfd"; exit 1; }
 #define main rudolfd_main
 #include "$W/rudolfd.c"
 #undef main
@@ -37,8 +37,11 @@ ok "8. not installed (the live disc): not offered" $(echo "$o" | grep -q '"offer
 L=$(grep -n 'rudolf-desktop-engine' $SYS/root/usr/lib/rudolf/install.sh | grep -v '^[0-9]*:#' | cut -d: -f2-)
 [ -n "$L" ] || { echo "FAIL install.sh has no default engine"; exit 1; }
 mkdir -p $W/new/etc $W/chrome; printf '#!/bin/sh\n' > $W/chrome/chrome; chmod 755 $W/chrome/chrome
-run() { echo "$L" | sed "s#/usr/bin/rudolf-native#$W/rudolf-native#g; s#/opt/chromium/chrome#$W/chrome/chrome#g; s#/mnt/newdata#$W/new#g" > $W/l.sh; sh $W/l.sh; }
-run; ok "9. a new installation starts with Native (the choice written, on trial at its first start; nothing offered)" $([ "$(cat $W/new/etc/rudolf-desktop-engine)" = native ] && [ -s $W/new/etc/rudolf-native-offered ]; echo $?)
+run() { echo "$L" | sed "s#/usr/bin/rudolf-native#$W/rudolf-native#g; s#/opt/chromium/chrome#$W/chrome/chrome#g; s#/mnt/newdata#$W/new#g" > $W/l.sh; NATIVE_DEFAULT=${ND:-1} sh $W/l.sh; }
+# (1.6.0: the default as shipped is Standard, NATIVE_DEFAULT=0 in install.sh; the mechanism, for 1.6.1, with 1)
+ok "0. 1.6.0 ships Standard as the default: install.sh's NATIVE_DEFAULT is 0, rudolfd's NATIVE_OFFER 0" $(grep -qx 'NATIVE_DEFAULT=0' $SYS/root/usr/lib/rudolf/install.sh && grep -q '^#define NATIVE_OFFER 0$' $SYS/rudolfd.c; echo $?)
+ND=0 run; ok "0b. ...a new installation: nothing written, Standard, nothing offered" $([ ! -e $W/new/etc/rudolf-desktop-engine ]; echo $?)
+rm -f $W/new/etc/*; run; ok "9. a new installation starts with Native (the choice written, on trial at its first start; nothing offered)" $([ "$(cat $W/new/etc/rudolf-desktop-engine)" = native ] && [ -s $W/new/etc/rudolf-native-offered ]; echo $?)
 rm -f $W/new/etc/*; rm $W/rudolf-native; run; ok "10. ...a Rudolf OS without rudolf-native: Standard (nothing written)" $([ ! -e $W/new/etc/rudolf-desktop-engine ]; echo $?)
 printf '#!/bin/sh\n' > $W/rudolf-native; chmod 755 $W/rudolf-native; rm -f $W/new/etc/*; rm $W/chrome/chrome; run
 ok "11. ...nor without Chromium (Lite is the only engine there, Standard the fallback is missing)" $([ ! -e $W/new/etc/rudolf-desktop-engine ]; echo $?)
