@@ -504,8 +504,8 @@ No setting ended a process (no OOM kills, the memory guard ended nothing) and ev
   move to a high value; 100, 180 and 200 differ by less than the runs among themselves (180's call figure ran 50 to 241):
   180 is kept.
 - **zram's size:** 1.5 × memory changed nothing measurable (zram never filled at 1 ×): kept as it is.
-- **lz4:** fewer stalls, fewer slow game frames and late call periods in all three pairs, and the guard critical less
-  than half as long: lz4 is faster to compress and read back. But it packs less (about 2:1 against zstd's 3:1), so
+- **lz4:** fewer late call periods in all three pairs, fewer slow game frames in two (the third even), fewer stalls in
+  two, and the guard critical less than half as long: lz4 is faster to compress and read back. But it packs less (about 2:1 against zstd's 3:1), so
   zram holds less before memory really runs out, which these 100-second runs did not reach and on 3.3 GB matters (the
   Vivobook's game was ended by the guard in 1.5.9). **Not changed yet:** a later PR would build ZRAM_BACKEND_LZ4 and let
   the memory setting choose it, once a run as long as a real game session shows it does not end processes sooner.
