@@ -188,6 +188,8 @@ static void nav_state(tab *t)
 	tabev(t, "nav", e->str); g_string_free(e, TRUE);
 }
 static void on_download(WebKitWebContext *c, WebKitDownload *dl, gpointer d);
+static gboolean on_file_chooser(WebKitWebView *v, WebKitFileChooserRequest *rq, gpointer d);
+static void fch_cancel_all(void);
 static WebKitWebContext *ctx_for(const char *part)
 {
 	WebKitWebContext *c = g_hash_table_lookup(CTX, part); if (c) return c;
@@ -390,6 +392,7 @@ static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 	g_signal_connect(t->view, "web-process-terminated", G_CALLBACK(on_tab_gone), t);
 	g_signal_connect(t->view, "focus-in-event", G_CALLBACK(on_tab_focus), t);
 	g_signal_connect(t->view, "script-dialog", G_CALLBACK(on_tab_dialog), t);
+	g_signal_connect(t->view, "run-file-chooser", G_CALLBACK(on_file_chooser), NULL);   /* (1.6.1) */
 	webrtc_on(webkit_web_view_get_settings(WEBKIT_WEB_VIEW(t->view)));
 	g_signal_connect(t->view, "permission-request", G_CALLBACK(on_tab_perm), t);
 	g_signal_connect(t->view, "enter-fullscreen", G_CALLBACK(on_tab_fs), t);
@@ -405,6 +408,7 @@ static void tabs_reset(void)
 	GHashTableIter i; gpointer k, v;
 	g_hash_table_iter_init(&i, DLG); while (g_hash_table_iter_next(&i, &k, &v)) { webkit_script_dialog_close(v); webkit_script_dialog_unref(v); } g_hash_table_remove_all(DLG);
 	g_hash_table_iter_init(&i, PERM); while (g_hash_table_iter_next(&i, &k, &v)) { webkit_permission_request_deny(v); g_object_unref(v); } g_hash_table_remove_all(PERM);
+	fch_cancel_all();
 }
 /* downloads: where Chromium's go, as NAME.crdownload until complete (the desktop files them, dl27.js) */
 static gboolean on_dl_dest(WebKitDownload *dl, gchar *sug, gpointer d)
@@ -429,9 +433,14 @@ static void on_dl_fail(WebKitDownload *dl, GError *e, gpointer d)
 	(void)e; (void)d; g_object_set_data(G_OBJECT(dl), "rudolf-failed", GINT_TO_POINTER(1));
 	const char *p = g_object_get_data(G_OBJECT(dl), "rudolf-part"); if (p) unlink(p);
 }
+/* 1.6.1: the desktop page's own downloads too (a game's "Save to a file", in its frame). Left to WebKit, it asked
+   where to save with GTK's file dialog, which went through Rudolf OS's portal: the portal's dialog is drawn in the
+   desktop page, and GTK held the desktop's window for its own dialog meanwhile, so nothing could be clicked or typed
+   and only the power button got out (the Vivobook, 2026-11-17). Now they go where every download goes, and the
+   desktop files them into Downloads (dl27.js), as on the Standard desktop */
 static void on_download(WebKitWebContext *c, WebKitDownload *dl, gpointer d)
 {
-	(void)c; (void)d; WebKitWebView *v = webkit_download_get_web_view(dl); if (!v || GTK_WIDGET(v) == desk) return;
+	(void)c; (void)d; WebKitWebView *v = webkit_download_get_web_view(dl);
 	g_signal_connect(dl, "decide-destination", G_CALLBACK(on_dl_dest), NULL);
 	g_signal_connect(dl, "finished", G_CALLBACK(on_dl_done), NULL);
 	g_signal_connect(dl, "failed", G_CALLBACK(on_dl_fail), NULL);
@@ -439,6 +448,41 @@ static void on_download(WebKitWebContext *c, WebKitDownload *dl, gpointer d)
 	while (g_hash_table_iter_next(&i, &k, &val)) if (((tab *)val)->view == GTK_WIDGET(v)) {
 		WebKitURIRequest *rq = webkit_download_get_request(dl); GString *x = g_string_new("\"url\":"); json_str(x, rq ? webkit_uri_request_get_uri(rq) : "");
 		g_string_append(x, ",\"started\":true"); tabev(val, "download", x->str); g_string_free(x, TRUE); break; }
+}
+/* 1.6.1: a page's file picker (<input type=file>: a game's "Load from a file", a site's upload), on the desktop and
+   in Oracle's tabs: the desktop's own file dialog (linux26.js), drawn in its page, answers it. WebKit's own was GTK's
+   through the portal, which held the window for a dialog drawn in that same window (the freeze above) */
+static GHashTable *FCH; static int fch_n;
+static gboolean on_file_chooser(WebKitWebView *v, WebKitFileChooserRequest *rq, gpointer d)
+{
+	(void)d; if (!desk_ready) { webkit_file_chooser_request_cancel(rq); return TRUE; }
+	int id = ++fch_n; g_hash_table_insert(FCH, GINT_TO_POINTER(id), g_object_ref(rq));
+	GString *m = g_string_new("{\"rudolfShell\":\"filechooser\",\"fid\":");
+	g_string_append_printf(m, "%d,\"multiple\":%s,\"desk\":%s,\"accept\":[", id, webkit_file_chooser_request_get_select_multiple(rq) ? "true" : "false", GTK_WIDGET(v) == desk ? "true" : "false");
+	const gchar * const *mt = webkit_file_chooser_request_get_mime_types(rq);
+	for (int i = 0; mt && mt[i] && i < 32; i++) { if (i) g_string_append_c(m, ','); json_str(m, mt[i]); }
+	g_string_append(m, "]}"); to_desk(m); return TRUE;
+}
+/* its answer: {fid, paths: [...]} (none: cancelled); only files in the home folder */
+static void on_fch_answer(JSCValue *m)
+{
+	int id = (int)jnum(m, "fid", 0); WebKitFileChooserRequest *rq = g_hash_table_lookup(FCH, GINT_TO_POINTER(id)); if (!rq) return;
+	JSCValue *a = jsc_value_object_get_property(m, "paths"); GPtrArray *p = g_ptr_array_new_with_free_func(g_free);
+	if (a && jsc_value_is_array(a)) for (guint i = 0; i < 256; i++) {
+		JSCValue *x = jsc_value_object_get_property_at_index(a, i); if (!x || !jsc_value_is_string(x)) { if (x) g_object_unref(x); break; }
+		char *s = jsc_value_to_string(x); g_object_unref(x);
+		if (g_str_has_prefix(s, "/home/rudolf/") && !strstr(s, "/../") && g_file_test(s, G_FILE_TEST_IS_REGULAR)) g_ptr_array_add(p, s); else g_free(s);
+	}
+	if (a) g_object_unref(a);
+	if (p->len) { g_ptr_array_add(p, NULL); webkit_file_chooser_request_select_files(rq, (const gchar * const *)p->pdata); }
+	else webkit_file_chooser_request_cancel(rq);
+	g_ptr_array_free(p, TRUE); g_hash_table_remove(FCH, GINT_TO_POINTER(id));
+}
+static void fch_cancel_all(void)
+{
+	GHashTableIter i; gpointer k, v; g_hash_table_iter_init(&i, FCH);
+	while (g_hash_table_iter_next(&i, &k, &v)) webkit_file_chooser_request_cancel(v);
+	g_hash_table_remove_all(FCH);
 }
 static void cleared(GObject *o, GAsyncResult *r, gpointer d)
 {
@@ -600,6 +644,7 @@ static void on_desk_msg(WebKitUserContentManager *u, WebKitJavascriptResult *r, 
 	if (!strcmp(k, "ready")) { if (hello_timer) g_source_remove(hello_timer); hello_timer = 0; desk_ready = 1; }
 	else if (!strcmp(k, "ping")) { GString *p = g_string_new(""); g_string_append_printf(p, "{\"rudolfShell\":\"pong\",\"id\":%d}", (int)jnum(m, "id", 0)); to_desk(p); }
 	else if (!strcmp(k, "tab")) on_tab_op(m);
+	else if (!strcmp(k, "filechooser")) on_fch_answer(m);
 	g_free(k);
 }
 
@@ -623,6 +668,7 @@ int main(int argc, char **argv)
 	TABS = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, tab_free);
 	CTX = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_object_unref);
 	DLG = g_hash_table_new(g_direct_hash, g_direct_equal); PERM = g_hash_table_new(g_direct_hash, g_direct_equal);
+	FCH = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_object_unref);
 	snprintf(FW.mode, sizeof FW.mode, "open");
 	char *home = g_build_filename(g_get_home_dir(), ".rudolf-webkit", NULL);
 	char *data = g_build_filename(home, "data", NULL), *cache = g_build_filename(home, "cache", NULL);
@@ -639,6 +685,7 @@ int main(int argc, char **argv)
 	WebKitWebContext *ctx = WEBKIT_WEB_CONTEXT(g_object_new(WEBKIT_TYPE_WEB_CONTEXT, "website-data-manager", mgr, "memory-pressure-settings", mps, NULL));
 	webkit_memory_pressure_settings_free(mps);
 	webkit_web_context_set_cache_model(ctx, WEBKIT_CACHE_MODEL_DOCUMENT_VIEWER);   /* the least for caches: the page is local */
+	g_signal_connect(ctx, "download-started", G_CALLBACK(on_download), NULL);   /* (1.6.1: the desktop page's own downloads: no dialog) */
 	WebKitUserContentManager *ucm = webkit_user_content_manager_new();
 	webkit_user_content_manager_register_script_message_handler(ucm, "rudolfShell");
 	g_signal_connect(ucm, "script-message-received::rudolfShell", G_CALLBACK(on_desk_msg), NULL);
@@ -654,6 +701,7 @@ int main(int argc, char **argv)
 	webkit_settings_set_hardware_acceleration_policy(s, HWPOL);
 	webrtc_on(s);
 	g_signal_connect(desk, "permission-request", G_CALLBACK(on_permission), NULL);
+	g_signal_connect(desk, "run-file-chooser", G_CALLBACK(on_file_chooser), NULL);   /* (1.6.1: the desktop's own file dialog) */
 	g_signal_connect(desk, "decide-policy", G_CALLBACK(on_decide), NULL);
 	g_signal_connect(desk, "web-process-terminated", G_CALLBACK(on_terminated), NULL);
 	g_signal_connect(desk, "create", G_CALLBACK(on_create), NULL);

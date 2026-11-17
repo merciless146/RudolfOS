@@ -1,8 +1,17 @@
 # Rudolf OS 1.6.0 (docs/plan-1.6.0.md Part 9): what /etc/mdev.conf did, as udev rules, after the packages' own (50-60
-# set names, links and the hardware database's properties; 80-drivers.rules loads drivers, as mdev's modprobe line did).
+# set names, links and the hardware database's properties; the drivers by modalias are loaded here, below, as mdev's modprobe line did).
 # Owners and modes as mdev gave them (they come later, so they win); the same scripts run, through udev-run, which gives
 # them mdev's environment (MDEV) and lets them run on without holding up udev.
 
+# drivers by modalias, as mdev's line "$MODALIAS=.* @modprobe -b" did, for devices that come after start-up's own pass
+# (rudolf-init's loop over /sys/bus/*/devices/*/modalias): 80-drivers.rules' "kmod load" cannot, since the modules list
+# is busybox's (modules.dep.bb: no modules.alias.bin for libkmod). Found on the Vivobook Go, beta 2026111713: the AMD
+# audio processor's driver (snd_pci_acp6x, loaded at start-up) adds its digital microphones' devices (acp_yc_mach,
+# acp_yc_pdm_dma, dmic-codec) a moment later, they got no driver, and the built-in microphones' card was missing
+# Never the graphics card's (PCI class 03): rudolf-init loads it first itself, and not at all in Recovery mode,
+# with nomodeset or rudolf.nogpu=1 (the safe start without the graphics driver), while udev's coldplug at start-up
+# announces every device, the graphics card too, before rudolf-init gets there.
+ACTION=="add", ENV{MODALIAS}=="?*", ENV{MODALIAS}!="pci:*bc03sc*", RUN+="/sbin/modprobe -b $env{MODALIAS}"
 # sound: the audio group; a sound card that comes or goes is opened in PulseAudio, or closed (sound hotplug, 1.5.4)
 SUBSYSTEM=="sound", GROUP="29", MODE="0660"
 SUBSYSTEM=="sound", KERNEL=="controlC[0-9]*", ACTION!="bind|unbind", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/sound hotplug"
