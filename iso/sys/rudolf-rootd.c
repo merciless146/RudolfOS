@@ -32,6 +32,7 @@
 #include <dirent.h>
 #include <sys/wait.h>
 #include <sys/syscall.h>
+#include <sys/time.h>
 
 /* the helpers there are (each its own program in RR_DIR; Part 11's areas as they move) */
 static const char *const HELPERS[] = { "drives", "updates", NULL };
@@ -66,9 +67,12 @@ static void answer(int ch, int st) { int32_t v = st; if (rr_send(ch, &v, sizeof 
 static void serve(int ch)
 {
 	char why[480] = "";
-	if (!peer_ok(ch, why, sizeof why)) { rr_health("security", "rudolf-rootd refused a request: %s", why); answer(ch, RR_REFUSED); return; }
+	/* (the request read first, whoever sent it: refused before it was read, its sender could lose the answer, as a
+	   socket closed with unread data resets the other end; at most 10 s to come) */
+	struct timeval tv = { 10, 0 }; setsockopt(ch, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
 	static char b[RR_MAXMSG + 1]; int fds[4], nfd = 0;
 	ssize_t n = rr_recv(ch, b, RR_MAXMSG, fds, &nfd, 3);
+	if (!peer_ok(ch, why, sizeof why)) { for (int i = 0; i < nfd; i++) close(fds[i]); rr_health("security", "rudolf-rootd refused a request: %s", why); answer(ch, RR_REFUSED); return; }
 	char *argv[RR_MAXARGS + 2]; int ac = 0;
 	if (n < 6 || nfd != 3 || memcmp(b, RR_MAGIC, 5) || b[n - 1]) { snprintf(why, sizeof why, "a malformed request (%zd bytes, %d descriptors)", n, nfd); goto refuse; }
 	for (char *s = b + 5; s < b + n && ac <= RR_MAXARGS; s += strlen(s) + 1) {

@@ -45,10 +45,14 @@ for _g,(_fs,_fn,_nm) in LAZY.items():
 changes=open(os.path.join(here,'../CHANGELOG.md')).read()   # "What's new" and the notice after an update
 # 1.5.9: Search in Settings: the pages' sections and settings (made by iso/qt/shell2/setsearch59_t.js --write)
 _six=os.path.join(here,'settings-index.json');setidx=open(_six).read() if os.path.exists(_six) else '{}'
-code='const SETIDX='+json.dumps(json.loads(setidx),ensure_ascii=False).replace('</','<\\/')+';\nconst PINYIN_JSON='+json.dumps(pinyin)+';\nconst RCHANGES='+json.dumps(changes).replace('</','<\\/')+';\n'+'\n'.join(L(m) for m in mods)
-code=code+'\n'+_lz
+code='const SETIDX='+json.dumps(json.loads(setidx),ensure_ascii=False).replace('</','<\\/')+';\nconst PINYIN_JSON='+json.dumps(pinyin)+';\nconst RCHANGES='+json.dumps(changes).replace('</','<\\/')+';\n'+'\n'.join('__svcMod('+json.dumps(m)+');\n'+L(m) for m in mods)
+code=code+'\n'+_lz+"\n__svcMod('base');"
 anchor="(function(){const d=document.createElement('div');d.className='ic tr';"
 rep(anchor,code+'\n'+anchor)
+# 1.6.0 (plan Part 12, item 12): svc60.js before the page's own code (it holds back the timers a native app window's page starts while it
+# loads; nothing on Standard), and the page's code's end marked
+rep('<script>\nconst $=s=>document.querySelector(s);','<script>\n'+L('svc60.js')+'\nconst $=s=>document.querySelector(s);')
+rep("(async()=>{await loadUser();showLogin()})();\n</script></body>","(async()=>{await loadUser();showLogin()})();\n__svcEnd();\n</script></body>")
 css=L('styles25.css')+"\n@font-face{font-family:'OpenDyslexic';src:url(data:font/woff2;base64,"+od+") format('woff2');font-weight:400}@font-face{font-family:'OpenDyslexic';src:url(data:font/woff2;base64,"+odb+") format('woff2');font-weight:700}\n"
 # 1.4.7: the desktop's own fonts for Display Properties (fonts47.js): Gelasio, Fira Sans, Comic Neue (SIL OFL 1.1)
 for fam,fn in (('Gelasio','Gelasio'),('Fira Sans','FiraSans'),('Comic Neue','ComicNeue')):
