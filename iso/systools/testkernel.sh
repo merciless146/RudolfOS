@@ -40,7 +40,8 @@ for u in https://gitlab.com/kernel-firmware/linux-firmware.git https://git.kerne
 	awk '$1=="F"{print "/"$3}' firmware-extra.txt | { echo /WHENCE; cat; } | git -C "$FW" sparse-checkout set --no-cone --stdin && git -C "$FW" checkout -q && break
 done
 python3 systools/fwextra.py copy firmware-extra.txt "$FW" "$W/fw"
-SB=$W/sof-bin; git clone -q --filter=blob:none --no-checkout https://github.com/thesofproject/sof-bin.git "$SB"
+# (1.6.1: tried three times: GitHub refused one of several test kernels' clones at once with a 403, run 44017025900)
+SB=$W/sof-bin; for i in 1 2 3; do rm -rf "$SB"; git clone -q --filter=blob:none --no-checkout https://github.com/thesofproject/sof-bin.git "$SB" && break; sleep $((i * 30)); done
 awk '$1=="F"{print "/"$4}' firmware-sof.txt | git -C "$SB" sparse-checkout set --no-cone --stdin; git -C "$SB" checkout -q fcd5ae85ead7ecd67ff199335b61fac825843ca0
 python3 systools/fwextra.py copy firmware-sof.txt "$SB" "$W/fw"
 # the Rudolf OS certificate built in as trusted, as in a release (public: the certificate only, never the key)
