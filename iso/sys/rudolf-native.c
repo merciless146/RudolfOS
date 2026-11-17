@@ -426,7 +426,7 @@ static void wall_make(void)
 static gboolean desk_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (WALL) { cairo_set_source_surface(cr, WALL, 0, 0); cairo_paint(cr); } return TRUE; }
 
 /* ------------------------------------------------------------------ app windows (WebKit, one-app mode) */
-typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready, sready; gint64 close_t, made_t; GdkPixbuf *pix; guint wait_t; } AppWin;   /* (wait_t: its window's upper bound before it is shown anyway, the owner's Vivobook report 1 of 2026-11-16) */   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
+typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready, sready; gint64 close_t; GdkPixbuf *pix; guint wait_t; } AppWin;   /* (wait_t: its window's upper bound before it is shown anyway, the owner's Vivobook report 1 of 2026-11-16) */   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
 static void ev_flush(AppWin *a);   /* (1.6.0: rudolfd's events that waited for a page) */
 static GList *WINS;   /* AppWin*, oldest first */
 static AppWin *ACTIVE;
@@ -629,7 +629,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "ready")) appwin_reveal(a);   /* (its page has drawn the app at its window's size: shown) */
 	else if (!strcmp(op, "login")) appwin_reveal(a);   /* (no native session: the page's own sign-in screen, which this window does need) */
 	else if (!strcmp(op, "srch")) srch_ready(a);   /* (2026-11-16: the start menu's search, Standard's: its page is ready) */
-	else if (!strcmp(op, "cat")) g_idle_add(apps_reload, NULL);   /* (at once: the page has given it before it says so; the owner's Vivobook, 2026-11-16) */   /* (a page gave its catalogue again: the statue's picture, N12) */
+	else if (!strcmp(op, "cat")) g_idle_add(apps_reload, NULL);   /* (a page gave its catalogue again: the statue's picture, N12; read at once, as the page gave it before it said so: the owner's Vivobook, 2026-11-16) */
 	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
 	else if (!strcmp(op, "winop")) { jsstr(v, "id", x, sizeof x); jsstr(v, "do", f, sizeof f); win_op(x, f); }
 	else if (!strcmp(op, "modal")) { jsstr(v, "on", x, sizeof x); appwin_modal(a, x[0] == '1'); }   /* (a page's dialog: over the whole screen, as Standard's) */
@@ -648,7 +648,8 @@ static void clients_forget(AppWin *a); static void kbcap_gone(AppWin *a); static
 static void on_win_destroy(GtkWidget *w, gpointer d)
 {
 	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL; if (a->wait_t) { g_source_remove(a->wait_t); a->wait_t = 0; }
-	if (PREV_S && PREV_W == a->id) prev_end();   /* (Settings closed with its choices not applied: the saved ones again) */ kbcap_gone(a); srch_gone(a); if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
+	if (PREV_S && PREV_W == a->id) prev_end();   /* (Settings closed with its choices not applied: the saved ones again) */
+	kbcap_gone(a); srch_gone(a); if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
 	clients_forget(a);   /* (its frame goes when X says so: not this window's any more) */
 	g_free(a); bar_redraw(); state_write();
 }
