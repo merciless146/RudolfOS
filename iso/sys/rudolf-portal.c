@@ -564,7 +564,7 @@ static int keyring_forget(const char *id)
    exchange, and the desktop draws the question (a request file, as the file dialogs; the answer through rudolfd). */
 
 /* gcr's secret exchange "sx-aes-1" (gcr-secret-exchange.c): Diffie-Hellman in IKE's 1536-bit group (RFC 3526, base 2),
-   the shared value (unsigned, big-endian, no leading zeros) through HKDF-SHA256 (no salt: 32 zero bytes; no info) to a
+   the shared value (unsigned, big-endian, kept at the prime's 192 bytes, leading zero bytes and all, as gnome-keyring-daemon keeps it) through HKDF-SHA256 (no salt: 32 zero bytes; no info) to a
    16-byte key, the secret in AES-128-CBC with PKCS#7 padding and a random 16-byte IV; each side's message a key file
    "[sx-aes-1]" with public= (and secret=, iv=) in base64. */
 #define SX_P "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA237327FFFFFFFFFFFFFFFF"
@@ -590,7 +590,7 @@ static int sx_derive(sx *x, const unsigned char *peer, size_t n)
 	unsigned char ikm[192], zero[32] = {0}; int ni = 0; size_t kl = sizeof x->key; EVP_PKEY_CTX *h = NULL;
 	if (!q || !k || !lim || !c || !x->priv || !BN_sub_word(lim, 1)) goto out;
 	if (BN_cmp(q, BN_value_one()) <= 0 || BN_cmp(q, lim) >= 0) goto out;          /* 1 < peer < p-1 */
-	if (!BN_mod_exp(k, q, x->priv, p, c) || (ni = BN_bn2bin(k, ikm)) <= 0) goto out;
+	if (!BN_mod_exp(k, q, x->priv, p, c) || (ni = BN_bn2binpad(k, ikm, (BN_num_bits(p) + 7) / 8)) <= 0) goto out;
 	h = EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, NULL);
 	ok = h && EVP_PKEY_derive_init(h) > 0 && EVP_PKEY_CTX_set_hkdf_md(h, EVP_sha256()) > 0 && EVP_PKEY_CTX_set1_hkdf_salt(h, zero, sizeof zero) > 0 &&
 		EVP_PKEY_CTX_set1_hkdf_key(h, ikm, ni) > 0 && EVP_PKEY_derive(h, x->key, &kl) > 0 && kl == sizeof x->key;

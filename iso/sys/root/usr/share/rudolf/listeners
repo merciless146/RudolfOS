@@ -30,3 +30,4 @@ unix	/tmp/.org.chromium.Chromium.*/SingletonSocket	chromium	while Chromium runs	
 unix	/tmp/org.chromium.Chromium.*/SingletonSocket	chromium	while Chromium runs (its newer folder name, seen on 2026-11-14)	the desktop user	Chromium's own: the folder is the user's (0700)
 unix	/tmp/.wine-*/server-*/socket	wineserver	while a Windows program runs	the program's own user	Wine's: the folder is the user's (0700)
 unix	/run/user/*/wayland-*	waydroid	while Android apps run (Debian)	the desktop user's programs	the runtime folder is the user's (0700)
+unix	/run/udev/control	systemd-udevd	always (1.6.0 Part 9: devices through udev)	root (udevadm: rudolf-init, the device scripts)	the socket is root's (0600 in a root folder); udevd takes control messages from root only (it checks the peer's credentials)

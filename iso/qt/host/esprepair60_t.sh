@@ -78,7 +78,7 @@ printf '#!/bin/sh\neval "f=\\${$#}"; grep -q SIGNED-BY-RUDOLF "$f"\n' > $T/bin/s
 chmod 755 $T/bin/*
 efi() { rm -rf $T/e; mkdir -p $T/e/EFI/rudolf; printf "start %s" "$1" > $T/e/EFI/rudolf/rudolf.efi; printf "recovery %s" "$2" > $T/e/EFI/rudolf/recovery.efi; (cd $T/e && tar -cf "$3" EFI); }
 efi SIGNED-BY-RUDOLF SIGNED-BY-RUDOLF $T/esp.img
-E() { rm -f $T/dl/tried; ESP_TRIES=${ESP_TRIES:-1} ESP_WAIT=0 ESP_PATH=$T/bin ESP_IMG=$T/esp.img SB_CERT=/dev/null ESP_SYSD=$T/sys ESP_DL=$T/dl ESP_HEALTH="echo HEALTH" ESP_FETCH="$T/bin/fetch" ESP_STAGE="$T/bin/stage" sh $I/sys/root/usr/lib/rudolf/espcheck "$@" 2>&1; }
+E() { rm -f $T/dl/tried; ESP_AUTOREPAIR=1 ESP_TRIES=${ESP_TRIES:-1} ESP_WAIT=0 ESP_PATH=$T/bin ESP_IMG=$T/esp.img SB_CERT=/dev/null ESP_SYSD=$T/sys ESP_DL=$T/dl ESP_HEALTH="echo HEALTH" ESP_FETCH="$T/bin/fetch" ESP_STAGE="$T/bin/stage" sh $I/sys/root/usr/lib/rudolf/espcheck "$@" 2>&1; }
 o=$(E status); ok "9. espcheck status: both start-up files signed by Rudolf OS" "$([ "$o" = "start=official recovery=official" ] && echo 0)" "$o"
 efi custom SIGNED-BY-RUDOLF $T/esp.img; o=$(E status); r=$?
 ok "...a custom build's rudolf.efi: said (and not 0)" "$([ "$o" = "start=other recovery=official" ] && [ $r != 0 ] && echo 0)" "$o"
@@ -90,9 +90,11 @@ cat > $T/bin/fetch <<S
 echo "\$1" >> $T/fetched; case "\$1" in */boot.iso) cp $T/web/boot.iso "\$2";; */boot.iso.sha256) cp $T/web/boot.iso.sha256 "\$2";; *) exit 3;; esac
 S
 printf '#!/bin/sh\necho "staged $1 sha=$RUDOLF_IMG_SHA" >> %s/staged\n' $T > $T/bin/stage; chmod 755 $T/bin/*
+o=$(rm -f $T/dl/tried $T/fetched $T/staged; ESP_TRIES=1 ESP_WAIT=0 ESP_PATH=$T/bin ESP_IMG=$T/esp.img SB_CERT=/dev/null ESP_SYSD=$T/sys ESP_DL=$T/dl ESP_HEALTH="echo HEALTH" ESP_FETCH="$T/bin/fetch" ESP_STAGE="$T/bin/stage" sh $I/sys/root/usr/lib/rudolf/espcheck boot a 2>&1)
+ok "10a. (2026-11-16) espcheck boot without ESP_AUTOREPAIR: a start-up file not official is only said in the health log; nothing downloaded, nothing staged" "$(echo "$o" | grep -q '^HEALTH boot the start-up files on this drive are not all the official ones (start=other recovery=official); they are not changed automatically' && [ ! -e $T/fetched ] && [ ! -e $T/staged ] && echo 0)" "$o"
 o=$(E boot a)
 ok "10. espcheck boot (an official system): a start-up file not official: said in the health log, the release's boot image fetched from beside its files" "$(echo "$o" | grep -q '^HEALTH boot the start-up files on this drive are not all the official ones (start=other recovery=official)' && grep -qx "${U%/vmlinuz}/boot.iso" $T/fetched && echo 0)" "$o $(cat $T/fetched 2>&1)"
-ok "...checked (checksum, both files official) and staged for the next start, said" "$(grep -q "staged $T/dl/boot.iso sha=$(cut -c1-64 $T/web/boot.iso.sha256)" $T/staged && echo "$o" | grep -q 'official start-up files of release 2026111501 are written at the next start' && echo 0)" "$o $(cat $T/staged 2>&1)"
+ok "...checked (checksum, both files official) and put into the drive's EFI system partition (bootfiles.sh), said" "$(grep -q "staged $T/dl/boot.iso sha=$(cut -c1-64 $T/web/boot.iso.sha256)" $T/staged && echo "$o" | grep -q 'official start-up files of release 2026111501 were put back in the drive.s EFI system partition' && echo 0)" "$o $(cat $T/staged 2>&1)"
 efi SIGNED-BY-RUDOLF SIGNED-BY-RUDOLF $T/esp.img; rm -f $T/staged; o=$(E boot a)
 ok "...both official: nothing" "$([ -z "$o" ] && [ ! -e $T/staged ] && echo 0)" "$o"
 efi SIGNED-BY-RUDOLF other $T/esp.img; efi SIGNED-BY-RUDOLF changed $T/bi-efi.img; cp $T/bi-efi.img $T/bi/efi/efiboot.img; (cd $T/bi && tar -cf $T/web/boot.iso efi rudolf); (cd $T/web && sha256sum boot.iso > boot.iso.sha256)
@@ -100,7 +102,7 @@ o=$(E boot a)
 ok "11. a boot image whose recovery.efi is not signed by Rudolf OS: refused, nothing staged" "$(echo "$o" | grep -q 'holds files not signed by Rudolf OS (start=official recovery=other)' && [ ! -e $T/staged ] && [ ! -e $T/dl/boot.iso ] && echo 0)" "$o"
 echo 0000 > $T/web/boot.iso.sha256; o=$(E repair a)
 ok "...one that does not match its checksum: refused" "$(echo "$o" | grep -q 'does not match its checksum' && [ ! -e $T/staged ] && echo 0)" "$o"
-E2() { ESP_TRIES=1 ESP_WAIT=0 ESP_PATH=$T/bin ESP_IMG=$T/esp.img SB_CERT=/dev/null ESP_SYSD=$T/sys ESP_DL=$T/dl ESP_HEALTH="echo HEALTH" ESP_FETCH="$T/bin/fetch" ESP_STAGE="$T/bin/stage" sh $I/sys/root/usr/lib/rudolf/espcheck "$@" 2>&1; }
+E2() { ESP_AUTOREPAIR=1 ESP_TRIES=1 ESP_WAIT=0 ESP_PATH=$T/bin ESP_IMG=$T/esp.img SB_CERT=/dev/null ESP_SYSD=$T/sys ESP_DL=$T/dl ESP_HEALTH="echo HEALTH" ESP_FETCH="$T/bin/fetch" ESP_STAGE="$T/bin/stage" sh $I/sys/root/usr/lib/rudolf/espcheck "$@" 2>&1; }
 efi SIGNED-BY-RUDOLF other $T/esp.img; o=$(E boot a >/dev/null; E2 boot a)
 ok "...a refused image: at each start at most once a day" "$(echo "$o" | grep -q 'tried less than a day ago' && echo 0)" "$o"
 mv $T/bin/fetch $T/bin/fetch.ok; printf '#!/bin/sh\nexit 3\n' > $T/bin/fetch; chmod 755 $T/bin/fetch; o=$(E boot a)

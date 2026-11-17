@@ -153,8 +153,15 @@ class H(http.server.BaseHTTPRequestHandler):
                 sid = s['id'] if s else ''; open(os.path.join(D, 'widgets.json'), 'w').write(json.dumps({'list': json.loads(b), 'was': data.get('bd95widgets:' + sid) or ''})); return self.j({'ok': True})
             x = rd('widgets.json'); return self.send(200, x) if x else self.err(404, 'none')
         if w == 'desktop/apps':
-            if m == 'POST': open(os.path.join(D, 'apps.json'), 'wb').write(b); return self.j({'ok': True})
-            given = rd('apps.json')
+            # (1.6.0: each account's last one too, apps.ACCT.json, given for desktop/apps?acct=ACCT)
+            import urllib.parse, re as _re; qa = urllib.parse.parse_qs(q or '').get('acct', [''])[0]
+            if m == 'POST':
+                open(os.path.join(D, 'apps.json'), 'wb').write(b)
+                try: pa = json.loads(b).get('acct') or ''
+                except ValueError: pa = ''
+                if _re.fullmatch(r'[A-Za-z0-9-]{1,64}', pa): open(os.path.join(D, 'apps.' + pa + '.json'), 'wb').write(b)
+                return self.j({'ok': True})
+            given = (rd('apps.' + qa + '.json') if _re.fullmatch(r'[A-Za-z0-9-]{1,64}', qa) else None) or rd('apps.json')
             return self.send(200, given) if given else self.err(404, 'no list yet')
         if w == 'desktop/cells':
             if m == 'POST': open(os.path.join(D, 'cells.json'), 'wb').write(b); return self.j({'ok': True})
