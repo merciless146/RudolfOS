@@ -6,6 +6,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 ## 1.6.1 (in progress)
 Summary: In progress.
 - Tests: the kernel tuning measured in QEMU (kernel-tuning.yml, nothing published): test kernels and base layers started in turn on one machine; the start-up's steps, wake-up latency and the page's input-to-frame time under load, memory with tabs, a game and a call at once on 3.3 GB, the power settings' fallback, the start on each kind of virtual hardware, and two builds of the kernel compared.
+- New: Settings › System health › Power and battery › Processor energy preference, for AMD processors (amd_pstate): Tuned saves power on battery (balance_power) and gives a full-screen game full speed (performance); the kernel's own (passive) for comparison. As in 1.6.0 stays the default until it is measured on a laptop.
 - Changed: the kernel's build stops when a feature Rudolf OS relies on is missing (75 options, each with who needs it: Flatpak's sandboxes, the Debian container and Wine, the desktop, security, reaching the system disk, power); FUSE, which the x86 kernel lacked, is added (Flatpak's document portal, AppImages).
 - Fixed: on the Lite desktop, a game's "Save to a file" (Ember Reach's, for one) or any file picker in a game or on a
   website no longer freezes the computer. WebKit asked with a file dialog that went through Rudolf OS's own portal,
