@@ -103,6 +103,7 @@ dmesg | grep -E 'Run /init|Freeing unused kernel image|rtc_cmos.*setting system 
 cat /persist/var/log/starts/0/desktop-up 2>/dev/null | sed 's/^/UP /'
 grep -h 'was ready' /persist/var/log/health*.log 2>/dev/null | tail -2 | sed 's/^/HL /'
 cat /run/rudolf/udev.log 2>/dev/null | tail -3 | sed 's/^/UL /'
+echo "EN $(cat /run/rudolf/engine-choice 2>/dev/null) -> $(cat /run/rudolf/desktop-engine 2>/dev/null)"; ls /persist/etc/rudolf-desktop-engine* 2>/dev/null | sed 's/^/EN /'
 cat /etc/rudolf/initramfs.log 2>/dev/null | tail -12 | sed 's/^/IL /'
 '''
 def ts(d, t):   # stat's %y: "2026-11-17 03:08:51.123456789"
@@ -122,6 +123,7 @@ def parse_times(o):
             m = re.search(r'\[\s*([0-9.]+)\]', l); r['kernel: /init started'] = float(m.group(1)) if m else None
         elif p[0] == 'SL': m = re.search(r'uptime=([0-9.]+)', l); r['rudolf-init: data partition (after udev)'] = float(m.group(1)) if m else None
         elif p[0] == 'UP': r['session: desktop-up mark'] = float(p[1])
+        elif p[0] == 'EN' and '->' in l: r['engine'] = l[3:].strip()
     for k in ps: r['process ' + k] = ps[k]
     return r
 
@@ -132,14 +134,17 @@ def phase_startup():
         if not up: stop(vm, g); continue
         d = wait_desktop(g)
         if i == 0:   # the first start: the first-time setup, then started again as an installed computer is
-            g.js(INIT_JS, 60); stop(vm, g); continue
+            # (and 20 s more: Native's trial is over only once the session's watchdog has seen its heartbeat)
+            g.js(INIT_JS, 60); run(g, 'sleep 20; cat /run/rudolf/desktop-engine', 40); stop(vm, g); continue
         run(g, 'sleep 20', 40); o = run(g, TIMES, 120); t = parse_times(o)
         res(kind='startup', start=i, desktop=d, times=t); all_t.append(t); stop(vm, g)
     if all_t:
-        keys = sorted({k for t in all_t for k in t}, key=lambda k: sorted(x[k] for x in all_t if x.get(k) is not None)[0] if any(x.get(k) is not None for x in all_t) else 999)
+        num = lambda k: sorted(x[k] for x in all_t if isinstance(x.get(k), (int, float)))
+        keys = sorted({k for t in all_t for k in t}, key=lambda k: num(k)[len(num(k)) // 2] if num(k) else 999)
+        out('engines:', sorted({str(t.get('engine')) for t in all_t})); MEDIANS.append('engines: ' + ' / '.join(sorted({str(t.get('engine')) for t in all_t})))
         out('---- start-up, median of', len(all_t), 'starts (uptime, s)')
         for k in keys:
-            v = sorted(x[k] for x in all_t if x.get(k) is not None)
+            v = sorted(x[k] for x in all_t if isinstance(x.get(k), (int, float)))
             if v: out(f'{v[len(v) // 2]:8.2f}  {k}   ({" ".join(str(x) for x in v)})'); MEDIANS.append(f'{v[len(v) // 2]:.2f} {k} ({" ".join(str(x) for x in v)})')
     # the kernel's own steps (initcall_debug: each initcall's time; printk's own cost makes the total a little longer)
     vm, g, up = boot('si', 'initcall_debug log_buf_len=8M ignore_loglevel')

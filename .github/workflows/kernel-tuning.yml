@@ -13,7 +13,7 @@ permissions: {contents: read}
 jobs:
   setup:
     runs-on: ubuntu-24.04
-    outputs: {kernels: '${{ steps.m.outputs.kernels }}', rel: '${{ steps.m.outputs.rel }}', built: '${{ steps.m.outputs.built }}', serial: '${{ steps.m.outputs.serial }}', repro: '${{ steps.m.outputs.repro }}'}
+    outputs: {kernels: '${{ steps.m.outputs.kernels }}', rel: '${{ steps.m.outputs.rel }}', built: '${{ steps.m.outputs.built }}', serial: '${{ steps.m.outputs.serial }}', repro: '${{ steps.m.outputs.repro }}', bases: '${{ steps.m.outputs.bases }}'}
     steps:
       - uses: actions/checkout@v5
       - id: m
@@ -21,16 +21,19 @@ jobs:
           python3 - <<'EOF' >> $GITHUB_OUTPUT
           import json, re
           L = [l.split('#')[0].strip() for l in open('.github/ktune-run.txt')]
-          k, r = [], []
+          k, r, b = [], [], []
           for l in L:
               if l.startswith('kernel '): n, *rest = l[7:].split(); k.append({'name': n, 'extra': ' '.join(x[1:] for x in rest if x[0] == '+'), 'off': ' '.join(x[1:] for x in rest if x[0] == '-'), 'repro': '1' if 'repro' in rest else ''})
               elif l.startswith('run '):
-                  p = l[4:].split(); env = dict(x.split('=', 1) for x in p[2:]); r.append({'phase': p[0], 'kernel': p[1], 'id': f"{len(r):02d}-{p[0]}-{p[1]}", 'env': ' '.join(f'{a}={b}' for a, b in env.items())})
+                  p = l[4:].split(); env = dict(x.split('=', 1) for x in p[2:]); base = env.pop('BASE', '')
+                  r.append({'phase': p[0], 'kernel': p[1], 'base': base, 'id': f"{len(r):02d}-{p[0]}-{p[1]}{'-' + base if base else ''}", 'env': ' '.join(f'{a}={v}' for a, v in env.items())})
               elif l.startswith('serial '): print('serial=' + l.split()[1])
+              elif l.startswith('base '): b.append(l.split()[1])
           print('repro=' + ('1' if any(x['repro'] for x in k) else ''))
+          print('bases=' + json.dumps(b or ['none']))
           print('kernels=' + json.dumps(k or [{'name': 'none', 'extra': '', 'off': '', 'repro': ''}]))
-          print('rel=' + json.dumps([x for x in r if x['kernel'] == 'release'] or [{'phase': 'none', 'kernel': 'release', 'id': 'none', 'env': ''}]))
-          print('built=' + json.dumps([x for x in r if x['kernel'] != 'release'] or [{'phase': 'none', 'kernel': 'none', 'id': 'none', 'env': ''}]))
+          print('rel=' + json.dumps([x for x in r if x['kernel'] == 'release'] or [{'phase': 'none', 'kernel': 'release', 'base': '', 'id': 'none', 'env': ''}]))
+          print('built=' + json.dumps([x for x in r if x['kernel'] != 'release'] or [{'phase': 'none', 'kernel': 'none', 'base': '', 'id': 'none', 'env': ''}]))
           EOF
           cat $GITHUB_OUTPUT
   kernels:
@@ -58,6 +61,32 @@ jobs:
       - if: matrix.k.name != 'none'
         uses: actions/upload-artifact@v4
         with: {name: 'kernel-${{ matrix.k.name }}', retention-days: 3, path: "kout/vmlinuz\nkout/modules.sfs\nkout/config-extra.txt\nkout/config.txt\nkout/repro.txt"}
+  bases:
+    needs: setup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy: {fail-fast: false, matrix: {b: '${{ fromJSON(needs.setup.outputs.bases) }}'}}
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+        if: matrix.b != 'none'
+      - name: A test base layer ${{ matrix.b }}
+        if: matrix.b != 'none'
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          # the release's base layer with this tree's sys/root copied over it and rudolfd built from this tree, as a
+          # release's base is made (systools/ci_release.sh); for start-up changes only, never published
+          sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools zlib1g-dev >/dev/null
+          git fetch -q --depth 1 origin gh-pages
+          S='${{ needs.setup.outputs.serial }}'; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          gh release download "r$S" -p base.sfs -D rel
+          sudo unsquashfs -q -d broot rel/base.sfs >/dev/null
+          cd iso; . systools/hardflags.sh; gcc -O2 $HARD -o ../rudolfd sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic; cd ..
+          sudo cp -a iso/sys/root/. broot/; sudo install -m 0755 rudolfd broot/usr/bin/rudolfd
+          sudo mksquashfs broot base.sfs -comp xz -Xbcj x86 -b 1M -noappend -all-root -quiet -no-progress; ls -la base.sfs
+      - if: matrix.b != 'none'
+        uses: actions/upload-artifact@v4
+        with: {name: 'base-${{ matrix.b }}', retention-days: 3, path: base.sfs}
   repro:
     needs: [setup, kernels]
     if: always() && needs.setup.outputs.repro == '1'
@@ -76,7 +105,8 @@ jobs:
           cmp -s "$(dirname $1)/config.txt" "$(dirname $2)/config.txt" && echo "the configurations are identical" || { echo "::error::the configurations differ"; exit 1; }
           [ "$BAD" = 0 ] && echo "::notice title=Reproducible::the two builds differ only in the module-signing certificate and the build id ($N parts)" || { echo "::error title=Not reproducible::$BAD other parts differ"; exit 1; }
   measure-release:
-    needs: setup
+    needs: [setup, bases]
+    if: always() && needs.setup.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     strategy: {fail-fast: false, matrix: {r: '${{ fromJSON(needs.setup.outputs.rel) }}'}}
@@ -107,19 +137,24 @@ jobs:
       - if: matrix.r.phase != 'none' && matrix.r.kernel != 'release'
         uses: actions/download-artifact@v4
         with: {name: 'kernel-${{ matrix.r.kernel }}', path: kern}
+      - if: matrix.r.phase != 'none' && matrix.r.base != ''
+        uses: actions/download-artifact@v4
+        with: {name: 'base-${{ matrix.r.base }}', path: tbase}
       - name: ${{ matrix.r.id }}
         if: matrix.r.phase != 'none'
         run: |
           mkdir -p run && cd run
           KEXTRA=; [ '${{ matrix.r.kernel }}' != release ] && KEXTRA="KERNEL=$GITHUB_WORKSPACE/kern"
+          [ -n '${{ matrix.r.base }}' ] && KEXTRA="$KEXTRA BASE=$GITHUB_WORKSPACE/tbase/base.sfs"
           sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} TAG='${{ matrix.r.id }}' $KEXTRA ${{ matrix.r.env }} \
-            timeout 8400 python3 ../iso/qt/sb/kt161_t.py ../rel '${{ matrix.r.phase }}'
-          grep RESULT kt161-*.txt | sed 's/.*RESULT //' | head -50 >> $GITHUB_STEP_SUMMARY || true
+            timeout 8400 python3 ../iso/qt/sb/kt161_t.py ../rel '${{ matrix.r.phase }}' 2>&1 | tee job.log; RC=${PIPESTATUS[0]}
+          { echo '```'; sed -n '/^==== SUMMARY/,$p' job.log; echo '```'; } >> $GITHUB_STEP_SUMMARY || true
+          exit $RC
       - if: always() && matrix.r.phase != 'none'
         uses: actions/upload-artifact@v4
         with: {name: 'kt161-${{ matrix.r.id }}', retention-days: 14, path: "run/kt161-*.txt\nrun/kt161-*.json\nrun/kt161*/qemu.log"}
   measure-built:
-    needs: [setup, kernels]
+    needs: [setup, kernels, bases]
     if: always() && needs.setup.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
@@ -151,14 +186,19 @@ jobs:
       - if: matrix.r.phase != 'none' && matrix.r.kernel != 'release'
         uses: actions/download-artifact@v4
         with: {name: 'kernel-${{ matrix.r.kernel }}', path: kern}
+      - if: matrix.r.phase != 'none' && matrix.r.base != ''
+        uses: actions/download-artifact@v4
+        with: {name: 'base-${{ matrix.r.base }}', path: tbase}
       - name: ${{ matrix.r.id }}
         if: matrix.r.phase != 'none'
         run: |
           mkdir -p run && cd run
           KEXTRA=; [ '${{ matrix.r.kernel }}' != release ] && KEXTRA="KERNEL=$GITHUB_WORKSPACE/kern"
+          [ -n '${{ matrix.r.base }}' ] && KEXTRA="$KEXTRA BASE=$GITHUB_WORKSPACE/tbase/base.sfs"
           sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} TAG='${{ matrix.r.id }}' $KEXTRA ${{ matrix.r.env }} \
-            timeout 8400 python3 ../iso/qt/sb/kt161_t.py ../rel '${{ matrix.r.phase }}'
-          grep RESULT kt161-*.txt | sed 's/.*RESULT //' | head -50 >> $GITHUB_STEP_SUMMARY || true
+            timeout 8400 python3 ../iso/qt/sb/kt161_t.py ../rel '${{ matrix.r.phase }}' 2>&1 | tee job.log; RC=${PIPESTATUS[0]}
+          { echo '```'; sed -n '/^==== SUMMARY/,$p' job.log; echo '```'; } >> $GITHUB_STEP_SUMMARY || true
+          exit $RC
       - if: always() && matrix.r.phase != 'none'
         uses: actions/upload-artifact@v4
         with: {name: 'kt161-${{ matrix.r.id }}', retention-days: 14, path: "run/kt161-*.txt\nrun/kt161-*.json\nrun/kt161*/qemu.log"}
