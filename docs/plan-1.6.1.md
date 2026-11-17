@@ -260,7 +260,7 @@ loop on each processor, and during a 1.5 GB copy:
 | full | 327 µs | 1.91 ms | 3.2 / 3.3 / 3.3 ms | 15.1 ms (one run 20.3) | 2.1 ms | 4 (during the copy) | 5.04 s |
 | lazy | 96 µs | 0.93 ms | 2.8 / 1.8 / 3.6 ms | 16.1 ms | 3.2 ms | 0 | 4.99 s |
 | none (round 1, another machine) | 503-534 µs | 1.9-2.1 ms | 18-21 ms | 15.1-15.6 ms | 1.9-2.2 ms | 0 | |
-| HZ 250, voluntary (round 1, another machine) | 175 µs | 3.5-3.8 ms | 7.9-21.6 ms | 14.2-16.0 ms | | 0 | |
+| HZ 250, voluntary (beside HZ 1000 on one machine) | 119 µs (HZ 1000: 187) | 3.52 ms (HZ 1000: 1.84) | 7.8 / 7.8 / 8.6 ms (HZ 1000: 5.0 / 6.6 / 17.8) | 15.1 ms (15.0) | 0.9 ms (2.0) | 0 | 4.98 s (4.96) |
 
 Idle and during the copy every model gave the same numbers (p99 122-158 µs, input-to-frame p99 14.5-15.7 ms).
 - *full*: removes voluntary's occasional 14-17 ms stall under a CPU load, but showed 4 slow frames during the copy where
@@ -268,8 +268,10 @@ Idle and during the copy every model gave the same numbers (p99 122-158 µs, inp
   new kernel needed): the checklist.
 - *lazy*: the best wake-up tail by far, but the page's input waited longer in the browser (input queue 2.6-4.1 ms against
   2.1) while the processors were busy: what a person feels got worse, so not kept.
-- *none*: the worst stalls (18-21 ms). *HZ 250*: twice the p99.9 under load (a 4 ms tick): not kept. (The same-machine
-  HZ 250 run: see below when it is in.)
+- *none*: the worst stalls (18-21 ms).
+- *HZ 250*: a better p99 and a shorter input queue in the browser, but twice the p99.9 under load (3.5 ms against 1.8: a
+  4 ms tick) and every worst case near 8 ms: mixed, not kept. (Trying it on the Vivobook needs a kernel built with it;
+  left for later, only if the owner feels lag under load with HZ 1000.)
 - Throughput (gzip beside the loops) did not change with the model.
 
 **Start-up: kept: the kernel packed with zstd, the wired network cards' drivers as modules.** Where the time goes (the new
@@ -282,8 +284,8 @@ start-up steps, `/run/rudolf/startup-times`), Standard, uptime in s:
 | the start-up image (finding the drive, checking the layers) | to 4.5 | to 4.45 |
 | system extensions, devices (udev), data partition, memory, graphics driver | 4.5 → 5.9 | 4.5 → 5.8 |
 | X server started | 6.6 | 6.6 |
-| X server answers (`rudolf-display --xsize`: Xorg's own initialisation) | (9.2) | 9.2 |
-| session bus, sound, packages | → 9.8 | → 9.85 |
+| X server answers (`rudolf-display --xsize`: Xorg's own initialisation, 2.6 s) | (not timed) | 9.2 |
+| session bus, sound, packages | → 10.0 | → 9.85 |
 | desktop started → the desktop answered (its first heartbeat) | 10.2 → 18.5 | 10.0 → 18.3 |
 | **from power-on (TSC + uptime)** | **20.0** | **19.2** |
 
@@ -303,8 +305,10 @@ start-up steps, `/run/rudolf/startup-times`), Standard, uptime in s:
   smaller; the wired link still comes up (the e1000 module loaded by modalias, the link there). On a laptop without such a
   card it only makes the kernel smaller. WireGuard stays built in (its tunnels are made through netlink, which would need
   the module loaded on demand).
-- **Native answers 5.5 s sooner than Standard** (13 s against 18.5 s): Chromium's start and the desktop page are most of
-  Standard's last 8 s. (Native is the default for new installations since 1.6.0.)
+- **Native answers about 5 s sooner than Standard** (13 s against 18.5 s, two machines): Chromium's start and the desktop
+  page are most of Standard's last 8 s. (Native is the default for new installations since 1.6.0.)
+- **Xorg's own start takes 2.6 s** between its socket appearing and its first answer (QEMU's bochs driver); the
+  Vivobook's steps will show amdgpu's.
 - **The health log's own numbers were late:** "the desktop was ready N s" was written 4 s after the page came up (its
   timer), and the starts log's mark up to 10 s after (the session's loop: 26 s for a desktop that answered at 18.5).
   Both now use the first heartbeat's own time (rudolfd writes it into /run/rudolf/bootok; `readyAt` in /api/health).
@@ -315,8 +319,9 @@ start-up steps, `/run/rudolf/startup-times`), Standard, uptime in s:
   costs a second kernel start and start-up image on every installed computer. Skipping it when both are the same kernel
   would touch Secure Boot's lockdown path, so it is left to the owner's decision; the Vivobook's numbers will show its
   cost (rudolf.t0, the first start-up's time, is now passed on and is the first line of the steps).
-- Kept the same on every kind of virtual hardware: see below (q35 and i440fx, UEFI and BIOS, NVMe, AHCI, IDE, virtio-blk,
-  virtio-scsi, USB storage).
+- **Starts on every kind of virtual hardware**, as 1.6.0's kernel does (`kt161_t.py hw`, the data partition mounted each
+  time): q35 with UEFI on NVMe, AHCI, virtio-blk, virtio-scsi and USB storage; i440fx with BIOS on IDE, virtio-blk and
+  NVMe: 8 of 8 for both kernels.
 - **Reproducible:** two builds of this tree's kernel (same configuration, `testkernel.sh REPRO=1`) are identical except the
   module-signing certificate each build makes (.init.data) and the build id (.notes): every module (signature taken off)
   and every other section the same (`systools/kreprohash.py`).
