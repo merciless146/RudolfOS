@@ -1,3 +1,2 @@
 # Root helpers check (.github/workflows/roothelpers-check.yml): serial=SERIAL (empty: the newest beta)
-# (again)
 serial=
