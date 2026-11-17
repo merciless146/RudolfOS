@@ -1,0 +1,69 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 11): rudolfd's root work in helpers. The host tests (rudolf-rootd and the helpers'
+# checks, the build's owners and modes, rudolfd's API before and after) and, on the newest beta in QEMU with this
+# tree's rudolfd, rudolf-rootd and helpers put in place (iso/qt/sb/fix161.sh): the drives (r161_t.py) and t160's checks
+# unchanged (t160_t.py with R161_FIX). Run by a push that changes .github/r161-run.txt (on a branch of its own: a
+# workflow only on a branch cannot be dispatched), whose line serial=SERIAL picks a release (empty: the newest beta).
+# Nothing is published.
+name: Root helpers check
+on:
+  push:
+    paths: ['.github/r161-run.txt']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Host tests
+        run: |
+          sudo apt-get update -qq; sudo apt-get install -y -qq zlib1g-dev curl >/dev/null
+          python3 iso/qt/host/rootbuild161_t.py
+          sudo sh iso/qt/host/roothelpers161_t.sh
+          for t in peer59_t.sh deskapi59_t.sh homeapi_t.sh listeners59_t.sh; do echo "== $t"; sudo sh iso/qt/host/$t || exit 1; done
+          FUZZ_SECONDS=60 sh iso/qt/host/fuzz59_t.sh
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix: {test: [r161, t160]}
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: echo "N_serial=$(sed -n 's/^serial=//p' .github/r161-run.txt | head -1)" >> $GITHUB_ENV
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography libssl-dev zlib1g-dev bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S="$N_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel; echo "::notice title=Root helpers check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)), ${{ matrix.test }}"
+      - name: This tree's rudolfd, rudolf-rootd and helpers (as the release builds them)
+        run: |
+          . iso/systools/hardflags.sh; mkdir -p fix/root
+          gcc -O2 $HARD -o fix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          gcc -O2 $HARD -o fix/rudolf-rootd iso/sys/rudolf-rootd.c
+          for h in $(sed -n 's/.*HELPERS\[\] = { \(.*\), NULL };/\1/p' iso/sys/rudolf-rootd.c | tr -d '",'); do gcc -O2 $HARD -o fix/root/$h iso/sys/rudolf-$h.c; done
+          python3 iso/systools/hardcheck.py fix/rudolfd fix/rudolf-rootd fix/root/*; ls -laR fix
+          gcc -O2 -o rudolf-update iso/sys/rudolf-update.c -lcrypto -ldl
+      - name: ${{ matrix.test }}
+        run: |
+          mkdir -p run && cd run
+          if [ "${{ matrix.test }}" = r161 ]; then sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} R161_FIX=$PWD/../fix python3 ../iso/qt/sb/r161_t.py ../rel
+          else sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} R161_FIX=$PWD/../fix python3 ../iso/qt/sb/t160_t.py ../rel ../rudolf-update; fi
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: '${{ matrix.test }}', retention-days: 7, path: "run/${{ matrix.test }}.txt\nrun/${{ matrix.test }}*/qemu.log\nrun/${{ matrix.test }}*/*.png"}

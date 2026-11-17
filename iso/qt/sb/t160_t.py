@@ -11,6 +11,8 @@
 #        the official recovery system made from the official one, checked and made again when changed (the rudolf-update
 #        of this tree, put into the guest: the release's own may be older).
 #   python3 t160_t.py REL-DIR [RUDOLF-UPDATE]   (SB_PARTS and QEMU as for t150; root; QEMU_ACCEL=kvm where it can)
+#   R161_FIX=DIR (1.6.1, docs/plan-1.6.1.md Part 11): this tree's rudolfd, rudolf-rootd and root helpers (DIR/rudolfd,
+#   DIR/rudolf-rootd, DIR/root/NAME) put in place at each start (fix161.sh, on an extra disk), the checks unchanged
 import os, sys, time, re, subprocess, shutil, struct, json, base64, urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE); ISO = os.path.dirname(QT)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
@@ -42,6 +44,10 @@ DSER = int(mv('serial')) + 1
 subprocess.run([sys.executable, f'{ISO}/systools/make_release.py', '--layers', f'{W}/l', '--kernel', f'{W}/l/vmlinuz', '--out', f'{W}/out',
                 '--key', f'{W}/dev.key', '--serial', str(DSER), '--version', mv('version') + '-dev', '--chromium', mv('chromium'), '--kernel-version', mv('kernel')], check=True, stdout=subprocess.DEVNULL)
 DEVPUB = open(f'{W}/dev.pub').read().strip()
+FIX = os.environ.get('R161_FIX', ''); FIXIMG = ''
+if FIX:
+    shutil.copytree(FIX, f'{W}/fix'); FIXIMG = os.path.abspath('t160fix.img'); subprocess.run(['truncate', '-s', '64M', FIXIMG], check=True)
+    subprocess.run(['mkfs.ext4', '-q', '-F', '-L', 'R161FIX', '-d', f'{W}/fix', FIXIMG], check=True)
 
 def make_drive(path):
     start = 2048
@@ -69,6 +75,7 @@ def boot(tag, slot):
     extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf160', '-serial', f'unix:{TUN},server,nowait',
              '-kernel', f'{(W + "/out/channel") if False else REL}/vmlinuz', '-append', f'quiet loglevel=3 consoleblank=0 rudolf.slot={slot} rudolf.debug=1']
     global g_last
+    if FIXIMG: extra += ['-drive', f'file={FIXIMG},format=raw,if=none,id=fx,readonly=on', '-device', 'nvme,drive=fx,serial=r161fix']
     vm = sbvm.VM('t160' + tag, PARTS, [], secure=False, mem=MEM, extra=extra)
     g = Guest.__new__(Guest); g_last = g; g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3)
     time.sleep(30); end = time.time() + 900; up = False
@@ -77,6 +84,9 @@ def boot(tag, slot):
             if 'ready' in g.sh('echo ready', 8): up = True; break
         except OSError: pass
         time.sleep(4)
+    if up and FIX:
+        g.put(os.path.join(HERE, 'fix161.sh'), '/tmp/fix161.sh', '644'); o = g.sh('sh /tmp/fix161.sh reload 2>&1', 240)
+        out('R161_FIX:', o.strip()[-600:])
     def js(e, t=90):
         # (the command line is cut at 1024 characters by busybox ash's line editing)
         if len(base64.b64encode(e.encode())) > 900: raise ValueError('a page expression too long for the serial shell: ' + e[:80])

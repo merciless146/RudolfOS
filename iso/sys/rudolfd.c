@@ -184,6 +184,7 @@ static char *run_out(const char *cmd)
 	pclose(p);
 	return s.b;
 }
+#include "rudolfd-root.inc"   /* 1.6.1 (plan Part 11): what needs root, through the root helpers */
 
 /* only plain names: letters, digits and - _ . : */
 static int safe_word(const char *s, size_t max)
@@ -747,11 +748,10 @@ static void api_mount(struct req *r, int mount)
 {
 	char *dev = qparam(r->query, "dev");
 	if (!safe_word(dev, 32)) { reply_err(r->fd, 400, "bad device"); return; }
-	char cmd[512];
-	/* mounted without device files, set-user-ID or programs run from the drive (devplug: also SD cards, NTFS) */
-	if (mount) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/devplug mount %s", dev);
-	else snprintf(cmd, sizeof cmd, "sync; umount /media/%s && rmdir /media/%s; rm -f /run/rudolf/drives/%s", dev, dev, dev);
-	if (run(cmd)) reply_err(r->fd, 500, mount ? "could not mount this partition" : "could not unmount (files in use?)");
+	/* mounted without device files, set-user-ID or programs run from the drive (devplug: also SD cards, NTFS); 1.6.1:
+	   by the drives helper (rudolfd-root.inc), which checks the name again */
+	const char *av[] = { "drives", mount ? "mount" : "umount", dev, NULL };
+	if (root_run(av)) reply_err(r->fd, 500, mount ? "could not mount this partition" : "could not unmount (files in use?)");
 	else reply_ok(r->fd, mount ? "mounted" : "safe to remove");
 }
 
@@ -929,6 +929,12 @@ static const char *img_sha_env(struct req *r)
 	static char env[100]; env[0] = 0; char *h = qparam(r->query, "sha");
 	if (h && strlen(h) == 64) { int ok = 1; for (const char *c = h; *c; c++) if (!isxdigit((unsigned char)*c)) ok = 0; if (ok) { snprintf(env, sizeof env, "RUDOLF_IMG_SHA=%s ", h); for (char *c = env; *c; c++) *c = tolower((unsigned char)*c); memcpy(env, "RUDOLF_IMG_SHA", 14); } }
 	return env;
+}
+/* 1.6.1: the same, as the drives helper's argument (--sha=HEX), or NULL */
+static const char *img_sha_arg(struct req *r)
+{
+	static char a[80]; const char *e = img_sha_env(r); if (!*e) return NULL;
+	snprintf(a, sizeof a, "--sha=%.64s", e + 15); return a;
 }
 static void start_job(const char *name, const char *cmd)
 {
@@ -4214,8 +4220,8 @@ static void api(struct req *r)
 	if (!strcmp(p, "stick/info")) {
 		char *d = qparam(r->query, "disk");
 		if (!safe_word(d, 16) || strstr(d, "..")) { reply_err(r->fd, 400, "disk: a drive name such as sdb"); return; }
-		char cmd[200]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/mkstick.sh --info /dev/%s 2>/dev/null", d);
-		char *o = run_out(cmd); str s2 = {0}; sadd(&s2, "%s", o && *o == '{' ? o : "{\"rudolf\":false}\n"); free(o); reply_json(r->fd, &s2); return;
+		const char *av[] = { "drives", "info", d, NULL };
+		char *o = root_out(av, 0); str s2 = {0}; sadd(&s2, "%s", o && *o == '{' ? o : "{\"rudolf\":false}\n"); free(o); reply_json(r->fd, &s2); return;
 	}
 	/* the hardware check's download test (1.2.5): rudolf-update speedtest prints "bytes N" and "ms N" */
 	if (!strcmp(p, "speedtest")) {
@@ -4858,11 +4864,11 @@ static void api(struct req *r)
 		/* 1.2.8: bootonly=1 replaces only the boot files in front of the disk's RUDOLFDATA, keeping it (bootfiles.sh) */
 		char *bo = qparam(r->query, "bootonly");
 		if (bo && !strcmp(bo, "1")) {
-			char cmd[600]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/bootfiles.sh write /dev/%s '%s'", img_sha_env(r), d, img && *img ? img : "");
-			start_job("bootfiles", cmd); reply_ok(r->fd, "writing the boot files"); return;
+			const char *av[] = { "drives", "bootfiles-write", d, img && *img ? img : "", img_sha_arg(r), NULL };
+			root_job("bootfiles", av); reply_ok(r->fd, "writing the boot files"); return;
 		}
-		char cmd[600]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/install.sh /dev/%s%s%s", img_sha_env(r), d, img && *img ? " " : "", img && *img ? img : "");
-		start_job("install", cmd); reply_ok(r->fd, "installing"); return;
+		const char *av[] = { "drives", "install", d, img && *img ? img : "", img_sha_arg(r), NULL };
+		root_job("install", av); reply_ok(r->fd, "installing"); return;
 	}
 	/* new boot files for the drive Rudolf OS runs from (1.2.8): checked and kept on RUDOLFDATA, written by the start-up
 	   at the next start (bootfiles.sh stage); image: a downloaded disc image or boot image in the home folder */
@@ -4873,8 +4879,8 @@ static void api(struct req *r)
 		int okp = img && !strncmp(img, "/home/rudolf/", 13) && !strstr(img, "..") && strlen(img) < 200;
 		for (const char *q = img; okp && *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/._-", *q)) okp = 0;
 		if (!okp) { reply_err(r->fd, 400, "the image must be a file in the home folder (letters, digits, . _ - only)"); return; }
-		char cmd[600]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/bootfiles.sh stage '%s'", img_sha_env(r), img);
-		start_job("bootfiles", cmd); reply_ok(r->fd, "checking the image"); return;
+		const char *av[] = { "drives", "bootfiles-stage", img, img_sha_arg(r), NULL };
+		root_job("bootfiles", av); reply_ok(r->fd, "checking the image"); return;
 	}
 	/* make a Rudolf OS USB stick (1.2.5, mkstick.sh): disk and confirm (the same name twice), image (empty for this
 	   Rudolf OS, or a downloaded image in the home folder), files=1 to copy this session's files and settings too */
@@ -4887,13 +4893,13 @@ static void api(struct req *r)
 			for (const char *q = img; okp && *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/._-", *q)) okp = 0;
 			if (!okp) { reply_err(r->fd, 400, "the image must be a file in the home folder (letters, digits, . _ - only)"); return; }
 		}
-		char cmd[700]; snprintf(cmd, sizeof cmd, "%s/usr/lib/rudolf/mkstick.sh /dev/%s '%s' %d", img_sha_env(r), d, img ? img : "", fl && !strcmp(fl, "1"));
-		start_job("mkstick", cmd); reply_ok(r->fd, "making the stick"); return;
+		const char *av[] = { "drives", "mkstick", d, img ? img : "", fl && !strcmp(fl, "1") ? "1" : "0", img_sha_arg(r), NULL };
+		root_job("mkstick", av); reply_ok(r->fd, "making the stick"); return;
 	}
 	/* keep files on the drive Rudolf OS runs from (1.2.4): add RUDOLFDATA after the image (keepfiles.sh) */
 	if (!strcmp(p, "keepfiles")) {
 		if (job_running()) { reply_err(r->fd, 409, "another job is running"); return; }
-		start_job("keepfiles", "/usr/lib/rudolf/keepfiles.sh make"); reply_ok(r->fd, "adding the RUDOLFDATA partition"); return;
+		{ const char *av[] = { "drives", "keepfiles", NULL }; root_job("keepfiles", av); } reply_ok(r->fd, "adding the RUDOLFDATA partition"); return;
 	}
 	if (!strcmp(p, "mount")) { api_mount(r, 1); return; }
 	if (!strcmp(p, "umount")) { api_mount(r, 0); return; }
@@ -4902,8 +4908,9 @@ static void api(struct req *r)
 		if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 		char *dev = qparam(r->query, "dev");
 		if (!safe_word(dev, 32) || strchr(dev, '.') || strchr(dev, ':')) { reply_err(r->fd, 400, "bad device"); return; }
-		char cmd[160]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/devplug eject %s 2>" RUN "/eject.err", dev);
-		if (run(cmd)) { char *e = slurp(RUN "/eject.err", NULL); if (e) trim(e); reply_err(r->fd, 409, e && *e ? e : "could not eject it"); free(e); }
+		const char *av[] = { "drives", "eject", dev, NULL }; int ef = open(RUN "/eject.err", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+		int nul = root_null(), er = root_call(av, nul >= 0 ? nul : 0, 1, ef >= 0 ? ef : 2); if (ef >= 0) close(ef); if (nul >= 0) close(nul);
+		if (er) { char *e = slurp(RUN "/eject.err", NULL); if (e) trim(e); reply_err(r->fd, 409, e && *e ? e : "could not eject it"); free(e); }
 		else reply_ok(r->fd, "safe to remove");
 		return;
 	}
@@ -5057,6 +5064,7 @@ int main(int argc, char **argv)
 	if (!access("/sys/firmware/efi", F_OK)) snprintf(boot_mode, sizeof boot_mode, "uefi");
 	{ char *sb = slurp("/etc/rudolf/secureboot", NULL); secureboot = sb && sb[0] == '1'; free(sb); }
 	live = access(RUN "/persistent", F_OK) != 0;
+	root_init();   /* 1.6.1 (plan Part 11) */
 	dl_boot();
 	au_on = 1; au_start();   /* 1.5.9 (15.3): each account's Linux user, and the move of existing accounts' folders */
 	dl_home_boot();
