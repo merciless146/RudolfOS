@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- New: Settings › System health › Power and battery › Processor energy preference, for AMD processors (amd_pstate): Tuned saves power on battery (balance_power) and gives a full-screen game full speed (performance); the kernel's own (passive) for comparison. As in 1.6.0 stays the default until it is measured on a laptop.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
