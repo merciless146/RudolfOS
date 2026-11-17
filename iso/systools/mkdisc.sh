@@ -55,9 +55,11 @@ B=$(mktemp -d); nasm -f bin -o "$B/mbr.bin" "$HERE/boot/mbr.asm"
 # the system then comes from the installed update. RUDOLF/BOOTONLY marks it for the start-up.
 echo "== boot image"
 BT=$(realpath -m "$OUT/btree"); rm -rf "$BT"; cp -a "$T" "$BT"; rm -f "$BT"/RUDOLF/*.SFS; rm -rf "$BT/SOURCE" "$BT/LICENSES"
-# 1.5.8: its menu says what it is: it starts the system installed on the drive (a stick written from it with nothing
-# installed says so at once in the menu, not only when its start-up fails)
-START_TITLE="Start Rudolf OS (boot files: the system installed on this drive)" bash "$HERE/systools/mkefi.sh" "$REL/vmlinuz" "$VER" "$SB_PARTS" "$BT/EFI/EFIBOOT.IMG"
+# 1.6.0 (the owner, 2026-11-17): its menu says "Start Rudolf OS", as the disc's, since the same image is an installed
+# drive's start-up files (Get new boot files, Replace the boot files only), where 1.5.8's "(boot files: the system
+# installed on this drive)" only puzzled. A stick written from it with nothing installed still says so as it starts
+# (initramfs/init: "this USB stick has boot files only: no Rudolf OS system is on it").
+bash "$HERE/systools/mkefi.sh" "$REL/vmlinuz" "$VER" "$SB_PARTS" "$BT/EFI/EFIBOOT.IMG"
 printf 'Rudolf OS %s boot files only: the system comes from the update installed on the drive (RUDOLFDATA).\r\n' "$VER" > "$BT/RUDOLF/BOOTONLY"
 printf 'Licences and source: rudolf-os-%s.iso and rudolf-os-%s-source.tar.xz in the same release.\r\n' "$VER" "$VER" > "$BT/LICENSES.TXT"
 (cd "$BT" && find . -type f ! -path ./RUDOLF/SHA256 | sed 's#^\./##' | sort | while read -r f; do l=$(echo "$f" | tr 'A-Z' 'a-z'); echo "$(sha256sum "$f" | cut -d' ' -f1)  $l"; done) > "$BT/RUDOLF/SHA256"

@@ -8,6 +8,7 @@ Summary: In progress.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- Changed: the boot image's menu (an installed drive's start-up files after Get new boot files or a repair, and a stick made from boot.iso) says "Start Rudolf OS" again, not "Start Rudolf OS (boot files: the system installed on this drive)"; a stick with nothing installed still says so as it starts. The firmware's boot list is unchanged ("Rudolf OS").
 - Fixed: on computers whose firmware does not start a drive named only by itself (the ASUS Vivobook's AMI firmware), Rudolf OS's boot entry now names the drive, its start-up files and \EFI\BOOT\BOOTX64.EFI, as the firmware's own setup does; before, beta 2026111711 could write the drive alone, and the computer opened its setup screen at the next start.
 - Security: what rudolfd does as root for drives (mounting, unmounting and ejecting a USB drive or SD card, a stick's
   information, Install, Make a stick, Replace the boot files, Keep files on this drive) is now done by a small helper
