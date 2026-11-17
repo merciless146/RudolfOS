@@ -164,7 +164,7 @@ PG=http://127.0.0.1:8080/
 # front website tab, in the tab's own pixels; the front Oracle window's address box, in the page)
 corg() { set -- $(grep "^client .* app=browser" $D/state | head -1); set -- $($T/xabs 0x$2); echo $(($1 + 4)) $(($2 + 28)); }
 tabxy() { a=$1; b=$2; set -- $(corg); o=$(ev $PG '(()=>{let b=null;for(const[,t]of RT)if(t.shown()&&(!b||t.z()>=b.z()))b=t;if(!b)return"";const r=b.el.getBoundingClientRect();return Math.round(r.left)+" "+Math.round(r.top)})()' one | tr -d '"'); set -- $1 $2 $o; echo $(($1 + $3 + a)) $(($2 + $4 + b)); }
-adxy() { set -- $(corg); o=$(ev $PG '(()=>{const W=wins.filter(W=>W.app=="browser"&&W.el.isConnected).sort((a,b)=>(+a.el.style.zIndex||0)-(+b.el.style.zIndex||0)).pop();const r=W.el.querySelector("input.ad").getBoundingClientRect();return Math.round(r.left+r.width/2)+" "+Math.round(r.top+r.height/2)})()' one | tr -d '"'); set -- $1 $2 $o; echo $(($1 + $3)) $(($2 + $4)); }
+adxy() { set -- $(corg); o=$(ev $PG '(()=>{const W=wins.filter(W=>W.app=="browser"&&W.el.isConnected).sort((a,b)=>(+a.el.style.zIndex||0)-(+b.el.style.zIndex||0)).pop();const r=W.el.querySelector("input.ad").getBoundingClientRect();return Math.round(r.left+20)+" "+Math.round(r.top+r.height/2)})()' one | tr -d '"'); set -- $1 $2 $o; echo $(($1 + $3)) $(($2 + $4)); }
 ntabs() { ev $PG 'document.querySelectorAll(".otab").length' one; }
 nora() { grep -c "^client .* app=browser" $D/state; }
 xclose() { set -- $(grep "^client .* app=$1" $D/state | head -1); [ -n "$1" ] || return 0; xdotool mousemove $(($4 + $6 + 2 - 21)) $(($5 + 18)) click 1; w8 "! grep -q '^client .* app=$1' $D/state" 40; }
@@ -217,6 +217,22 @@ ok "...Ctrl+Shift+N in Oracle: a private window of its own (as on Standard), of 
 P2=$(grep "^client .* app=browser .*(Private)" $D/state | head -1); if [ -n "$P2" ]; then set -- $P2; xdotool mousemove $(($4 + $6 - 10)) $(($5 + 17)) click 1; w8 '[ "$(nora)" = 1 ]' 40; fi
 xdotool mousemove $(adxy) click 1; timeout 0.5 tail -f /dev/null; xdotool key ctrl+q; timeout 1.5 tail -f /dev/null
 ok "...Ctrl+Q: Chromium does not quit (every Oracle window went with it)" "$([ "$(nora)" = 1 ] && [ "$(chromes)" = 1 ] && echo 1)" "$(nora) $(chromes)"
+# (1.6.0, the owner's Vivobook, 2026-11-17: "Oracle does not use the browser shortcuts (Ctrl+T/W/N)" on Native, passing here) the
+# laptop's desktop is busy now and then (a catalogue read, a page's work): Ctrl+T pressed and let go before the window manager reads
+# the T it took. Stood in for by stopping rudolf-native while the keys are pressed and let go, then letting it go on.
+RNP=$(pgrep -f "^$T/rudolf-native" | head -1)
+ev $PG 'OA.main.oNewTab("http://127.0.0.1:8333/"),1' one >/dev/null
+w8 'targets | grep -q "^webview http://127.0.0.1:8333/$"' 60; w8 '[ "$(ev $PG "[...document.querySelectorAll(\".otab\")].some(t=>t.textContent.startsWith(\"Test site\"))" one)" = true ]' 20; timeout 1 tail -f /dev/null
+xdotool mousemove $(tabxy 500 150) click 1; timeout 1 tail -f /dev/null
+n0=$(ntabs); kill -STOP $RNP; xdotool keydown ctrl keydown t; timeout 0.15 tail -f /dev/null; xdotool keyup t keyup ctrl; timeout 0.4 tail -f /dev/null; kill -CONT $RNP
+w8 '[ "$(ntabs)" = $((n0 + 1)) ]' 20
+ok "4f2. Ctrl+T in a website in Oracle while the desktop is busy (the keys let go before it reads them): still a new tab" "$([ "$(ntabs)" = $((n0 + 1)) ] && [ "$(nora)" = 1 ] && [ "$(chromes)" = 1 ] && echo 1)" "$n0 $(ntabs) $(nora) $(chromes) keys $(ev $PG '__tk.join()' one) $(grep -a 'Oracle.s key' $T/native.log | tail -1)"
+# (back to the website's tab: its tab, then the page)
+set -- $(corg); o=$(ev $PG '(()=>{const W=wins.filter(W=>W.app=="browser"&&W.el.isConnected).sort((a,b)=>(+a.el.style.zIndex||0)-(+b.el.style.zIndex||0)).pop();const r=[...W.el.querySelectorAll(".otab")].find(t=>t.textContent.startsWith("Test site")).getBoundingClientRect();return Math.round(r.left+20)+" "+Math.round(r.top+r.height/2)})()' one | tr -d '"'); set -- $1 $2 $o
+xdotool mousemove $(($1 + $3)) $(($2 + $4)) click 1; timeout 1 tail -f /dev/null; xdotool mousemove $(tabxy 500 150) click 1; timeout 0.5 tail -f /dev/null
+n1=$(ntabs); kill -STOP $RNP; xdotool keydown ctrl keydown w; timeout 0.15 tail -f /dev/null; xdotool keyup w keyup ctrl; timeout 0.4 tail -f /dev/null; kill -CONT $RNP
+w8 '[ "$(ntabs)" = $((n1 - 1)) ]' 20; timeout 1 tail -f /dev/null
+ok "...and Ctrl+W: the website's tab closes, Oracle's window and Chromium stay" "$([ "$(ntabs)" = $((n1 - 1)) ] && [ "$(nora)" = 1 ] && [ "$(chromes)" = 1 ] && ! targets | grep -q '^webview http://127.0.0.1:8333/$' && echo 1)" "$n1 $(ntabs) $(nora) $(chromes) keys $(ev $PG '__tk.join()' one)"
 # ---- the clipboard: copied in Oracle, pasted in a WebKit window (Notepad), copied there, pasted back in Oracle
 ev $PG 'OA.main.oNewTab("http://127.0.0.1:8333/up.html"),1' one >/dev/null
 w8 'targets | grep -q "^webview http://127.0.0.1:8333/up.html"' 60; timeout 1.5 tail -f /dev/null

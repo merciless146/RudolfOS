@@ -427,6 +427,17 @@ the owner's decision of 2026-11-16 ("Keep it in 1.6.0"): it ships with 1.6.0, no
   pipes, 64 MB, the portal's mapping, nobody signed in, a path too long to be whole). Not run on the release in QEMU (the
   beta's rudolfd has no desktop/dropped yet; no KVM here): the owner's checks on the Vivobook.
 
+### 14. Native, the default for new installations (moved from 1.6.0 on 2026-11-17)
+The owner, 2026-11-17: "Make Standard the default in 1.6.0 with the transition to Native default in 1.6.1."
+- **First: Discord and Steam on Native on the Vivobook** (slow to load or not starting, beta 2026111713; #470's open
+  item 3: its leads, the refused system-API request at 13:10:17, the new log lines "oa: KEY asked of rudolfd N ms after
+  its page began"). A devlink read while each loads on Native; the cause proven and fixed; the owner's check.
+- **Then the switch:** install.sh's `NATIVE_DEFAULT=1` (a new installation starts on Native, after the setup wizard on
+  Standard, #467) and rudolfd's `NATIVE_OFFER 1` (Settings offers Native once to a computer updated on Standard); the
+  engine page's "A new installation starts with it." back; nativedefault60_t.sh 0 and 0b changed to match.
+- **The owner's checks:** a new stick (Make a USB stick) and Install here: the setup wizard, then Native; an updated
+  computer on Standard: the offer once; Discord, Steam, the icons and Oracle's keys on Native.
+
 ## Not moved here
 - **elogind and polkit** (1.6.0 Part 11): left out by decision on 2026-11-15, since Rudolf OS's own inhibit portal and
   prompts cover what apps ask. Taken up again only if an app or a later part needs them.

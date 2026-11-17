@@ -273,7 +273,8 @@ static void text_atz(cairo_t *cr, const char *t, double x, double y, double w, d
 typedef struct { int x, y, w, h; char kind[12], arg[80]; } Hit;
 static Hit HITS[96]; static int NHITS;
 static void state_write(void); static void kb_sync(void);
-typedef struct JV JV; static void di_layout(void); static void di_load(JV *cat);   /* (the desktop's icons, below) */
+typedef struct JV JV; static void di_layout(void); static void di_load(JV *cat); static int di_shown(void); static int di_n(void);
+static gint64 ICONS_SINCE;   /* (when the account signed in, until its desktop's icons are there: the log's line) */   /* (the desktop's icons, below) */
 static gint64 UNLOCK_T; static void sys_load(JV *v); static void sc_load(JV *v); static void wg_paint(cairo_t *cr); static void wg_load(JV *v); static void jumps_load(JV *v); static void wg_dirty_kind(const char *t); static void wg_picker(void);   /* (the widgets, below) */
 static int wg_shown(void); static int NWG_ALL_DIRTY;
 static gboolean wg_press(GdkEventButton *e); static gboolean wg_motion(GdkEventMotion *e); static gboolean wg_release(GdkEventButton *e); static gboolean note_key(GdkEventKey *e); static int NF;
@@ -1194,7 +1195,21 @@ static int oracle_key(XKeyEvent *e)
 {
 	int sub = oracle_key_sub(e->keycode, e->state); XtFake f = xt_fake(); if (!sub || !f) return 0;
 	/* (the grab ends here, so the key codes reach Oracle's window, which has the keyboard; the key's own release goes there too) */
-	XUngrabKeyboard(DPY, e->time); f(DPY, (unsigned)sub, True, CurrentTime); f(DPY, (unsigned)sub, False, CurrentTime); XFlush(DPY);
+	XUngrabKeyboard(DPY, e->time);
+	/* (1.6.0, the owner's Vivobook, 2026-11-17: Ctrl+T, W and N did nothing in Oracle's website tabs on Native, while passing here) the
+	   key comes when this program reads it: on the laptop the desktop is busy now and then (a catalogue read, a page's work), and Ctrl
+	   was already let go by then, so Oracle got a bare F21, which nothing reads. The modifiers the key was pressed with and that are
+	   up now are held again around it, as rudolf-display's substitution has them on Standard */
+	static const KeySym MK[3][2] = { { XK_Control_L, XK_Control_R }, { XK_Shift_L, XK_Shift_R }, { XK_Alt_L, XK_Alt_R } };
+	static const unsigned MM[3] = { ControlMask, ShiftMask, Mod1Mask };
+	char km[32] = {0}; XQueryKeymap(DPY, km); KeyCode again[3] = {0}; int n = 0;
+	for (int i = 0; i < 3; i++) { if (!(e->state & MM[i])) continue; int down = 0;
+		for (int j = 0; j < 2; j++) { KeyCode kc = XKeysymToKeycode(DPY, MK[i][j]); if (kc && (km[kc / 8] & (1 << (kc % 8)))) down = 1; }
+		if (!down && (again[n] = XKeysymToKeycode(DPY, MK[i][0]))) f(DPY, again[n++], True, CurrentTime); }
+	f(DPY, (unsigned)sub, True, CurrentTime); f(DPY, (unsigned)sub, False, CurrentTime);
+	for (int i = n - 1; i >= 0; i--) f(DPY, again[i], False, CurrentTime);
+	XFlush(DPY);
+	if (n) fprintf(stderr, "rudolf-native: Oracle's key handed over after its modifiers were let go (the desktop was busy): held again around it\n");
 	return 1;
 }
 static void oracle_client(Client *c, XWindowAttributes *wa)
@@ -2974,6 +2989,7 @@ static gboolean signin_done(gpointer p)
 		if (!SIGN_LOCK) { jstr(v, "id", USER_ID, sizeof USER_ID); jstr(v, "n", USER_N, sizeof USER_N); jstr(v, "r", USER_R, sizeof USER_R); }
 		if (SIGN_LOCK && LOCKED) UNLOCK_T = g_get_monotonic_time();   /* (UNLOCKED_AT: no saver or lock for a minute: item 6) */
 		LOCKED = 0; gtk_widget_hide(SIGN); explicit_bzero(SN_PASS, sizeof SN_PASS); SN_MSG[0] = 0; if (SCARET_T) { g_source_remove(SCARET_T); SCARET_T = 0; }
+		if (!SIGN_LOCK) ICONS_SINCE = g_get_monotonic_time();
 		settings_load(); apps_load(); if (BAR) gtk_widget_show_all(BAR); wm_restack();
 		if (!SIGN_LOCK) { start_page(); svc_reset(); SVC_SIGNIN = g_get_real_time() / 1000; }
 		if (WM_OK) wm_hide_all(0); else for (GList *l = WINS; l; l = l->next) gtk_widget_show(((AppWin *)l->data)->win);
@@ -3159,6 +3175,9 @@ static void apps_load(void)
 	}
 	VER[0] = 0; jstr(v, "ver", VER, sizeof VER);
 	di_load(v); menu_rows_load(v); jumps_load(v); if (DESKAREA) desk_dirty();
+	/* (2026-11-17, the owner's Vivobook: "the desktop still takes several minutes to add icons") the log says when they came, for the
+	   owner's checks: the first catalogue with the account's icons after each sign-in */
+	if (ICONS_SINCE && di_shown()) { fprintf(stderr, "rudolf-native: the desktop's icons shown %.1f s after the sign-in (%d icons)\n", (g_get_monotonic_time() - ICONS_SINCE) / 1e6, di_n()); ICONS_SINCE = 0; }
 	free(APPS); APPS = L; NAPPS = n;
 	if (BG) g_hash_table_destroy(BG); BG = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	JV *bg = jprop(v, "bg");
@@ -3623,6 +3642,7 @@ static GHashTable *DI_CELLS;   /* name -> "c,r" (the shell's own, else the page'
 static int di_w(void) { return (int)lround(84 * DI_IS / 100.0 * Z); }
 static int di_h(void) { return (int)lround(86 * DI_IS / 100.0 * Z); }
 static int di_shown(void) { return USER_ID[0] && !LOCKED && NDI && !strcmp(DI_ACCT, USER_ID); }
+static int di_n(void) { return NDI; }
 static void di_grid(int *nc, int *nr) { *nc = (desk_w() - 8) / di_w(); *nr = (work_h() - 8) / di_h(); if (*nc < 1) *nc = 1; if (*nr < 1) *nr = 1; }
 static void di_xy(const DIcon *d, int *x, int *y) { *x = desk_left() + (int)lround(8 * Z) + d->c * di_w(); *y = work_top() + (int)lround(((!strcmp(S.tb, "top") ? 2 : 0) + 8) * Z) + d->r * di_h(); }   /* (the page's #desk: 2 px below a taskbar at the top) */
 static int di_used(int c, int r, int skip) { for (int i = 0; i < NDI; i++) if (i != skip && DI[i].c == c && DI[i].r == r) return 1; return 0; }

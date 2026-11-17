@@ -217,10 +217,16 @@ webkit_usable() {
 # prototype, with Lite's safeguards: taken at start-up as Lite's choice, never in recovery mode, not after it failed this
 # start; on trial until it answers once (its heartbeat, sent once its sign-in screen is up); given up for good, back to
 # Standard, after a start that never answered, no answer in 90 s, or closing three times in a row as it starts.
+# 1.6.0 (the owner, 2026-11-17: a stick from Make a USB stick, with Native chosen by install.sh, stopped at Native's
+# sign-in screen with no account and no way on): Native has no setup wizard of its own, so a Rudolf OS not set up yet
+# (no accounts and no "bd95setup" in the desktop's data that rudolfd keeps, /home/rudolf/.rudolf-ls.json) starts on
+# Standard, whose first-run wizard makes the first account; the choice stays Native, taken at the next start.
+native_setup_done() { grep -qs '"bd95\(setup\|user\)"' "${RUDOLF_LS:-/home/rudolf/.rudolf-ls.json}"; }
 native_usable() {
 	[ "$(cat /run/rudolf/engine-choice 2>/dev/null)" = native ] || return 1
 	grep -q 'rudolf.recovery=1' $RCMD && return 1
 	[ -e /run/rudolf/native-failed ] && return 1
+	native_setup_done || return 1
 	[ -x /usr/bin/rudolf-native ]
 }
 native_give_up() {

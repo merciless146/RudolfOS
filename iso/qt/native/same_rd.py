@@ -221,6 +221,9 @@ class H(http.server.BaseHTTPRequestHandler):
         # (2026-11-16) DIR/progs: the programs rudolfd knows, as on the owner's Vivobook (appsbeh_t.js): a Library web app (Ember Reach), a
         # Flatpak app (Discord), a Windows program in Debian's Wine (Starport GE); their icons are a plain square made here (no one's logo)
         if rd('progs') is not None:
+            # (2026-11-17, the owner's Vivobook: Discord and Steam slow to open on Native, or never) DIR/slowapps: rudolfd's lists of the
+            # installed programs answered after that many seconds, as a slow disk and a busy start may make them
+            if w in ('pkg/status', 'apps/installed', 'debian/apps', 'debian/status') and (rd('slowapps') or '').strip(): time.sleep(float(rd('slowapps')))
             if w == 'pkg/status': return self.j({'ok': True, 'installed': [{'name': 'rudolf-emberreach', 'title': 'Ember Reach', 'kind': 'webapp', 'icon': '\U0001f525', 'entry': 'www/index.html', 'mounted': True, 'summary': 'A Library game', 'version': '1.0'}], 'available': [], 'sources': []})
             if w == 'apps/installed': return self.j({'ok': True, 'apps': [{'id': 'com.discordapp.Discord', 'name': 'Discord', 'launchers': [{'desktop': 'com.discordapp.Discord.desktop', 'name': 'Discord', 'icon': 'com.discordapp.Discord', 'mime': '', 'wmclass': 'discord', 'cats': 'Network;'}]}]})
             if w == 'debian/status': return self.j({'ok': True, 'installed': True, 'running': False})

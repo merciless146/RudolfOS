@@ -492,7 +492,8 @@ html.oavk #vkb{display:block!important;visibility:visible!important;position:fix
   else{const r=launch(ONEAPP.k);
    /* (2026-11-16) a program rudolfd runs (a Linux app, a Windows program, a Library app in full screen) opens no window of this page's: as on
       Standard, once rudolfd has it (its "Starting…" said), this page closes unseen; if it made a window after all, that window stays */
-   if(oaExt(ONEAPP.k)){Promise.resolve(r).catch(e=>console.warn(e)).then(()=>setTimeout(()=>{if(!OA.main&&!OA.done)oaDone()},2500));return}}}catch(e){console.warn(e)}
+   if(oaExt(ONEAPP.k)){const ms=Math.round(performance.now());if(ms>3000)console.warn('oa: '+ONEAPP.k+' asked of rudolfd '+ms+' ms after its page began');   /* (2026-11-17: the native log says how long the unseen page took on this computer before the program was asked for) */
+    Promise.resolve(r).catch(e=>console.warn(e)).then(()=>setTimeout(()=>{if(!OA.main&&!OA.done)oaDone()},2500));return}}}catch(e){console.warn(e)}
  /* an app that opens no window (or not yet: a large app loads its files first) */
  setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed(app.name+' did not open a window.');oaPost({op:'close'})}},15000)}
 /* (1.6.0 Part 12, item 1's second part) the native desktop's menus do what the page's do: #app=do-desk&on=ICON&item=WORDS
@@ -593,7 +594,7 @@ function oaClosed(why){if(document.getElementById('oaclosed'))return;const d=doc
    - desktop/wallpaper: a picture of your own, which lives in this page's storage (IndexedDB), as the JPEG the page
      already made of it, whenever it is loaded or changed (once per picture). ===== */
 async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
- const sig=oaCatSig();
+ const sig=oaCatSig(),t0=performance.now();
  try{const apps=Object.values(APPS).filter(a=>a&&a.k&&a.name&&typeof a.open=='function').map(a=>Object.assign({k:a.k,name:String(a.name),icon:String(a.icon||''),kw:String(a.kw||'')},oaExt(a.k)?{x:1}:{}));
   const bg={};if(typeof DYN=='object')for(const k in DYN){const d=DYN[k];bg[k]={n:d.n||k,d:d.d||'',l:d.l||'',am:d.am||''}}
   /* (1.6.0 Part 12, test finding N12) Spirit Falls' statue as this page draws it (statue58.js: its animal, light or dark, its glow), a
@@ -643,7 +644,9 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
   /* (1.6.0, the owner's report 2) the desktop's own sounds' styles (Settings › Volume Controls: each sound's tones, base_v24.html SPRE and PAT),
      which the native shell plays itself at its sign-in and shut-down screens */
   const sndp={};try{if(typeof SNDS=='object'&&typeof PAT=='object')for(const [k] of SNDS)sndp[k]=(typeof SPRE=='object'&&SPRE[k]?SPRE[k].map(x=>x[1]||PAT[k]):[PAT[k]]).map(p=>(p||[]).map(t=>t.slice(0,5)))}catch(e){}
-  await rdPost('desktop/apps',JSON.stringify({apps,bg,fx,hide,icons,desk,cells,menu,jumps,sndp,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}));OA_CSIG=sig}catch(e){console.warn('desktop/apps',e)}}
+  await rdPost('desktop/apps',JSON.stringify({apps,bg,fx,hide,icons,desk,cells,menu,jumps,sndp,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}));OA_CSIG=sig
+  /* (2026-11-17, the owner's Vivobook: icons minutes late on Native) the native log says when giving the catalogue took long on this computer */
+  {const ms=Math.round(performance.now()-t0);if(ms>3000)console.warn('desktop/apps given after '+ms+' ms')}}catch(e){console.warn('desktop/apps',e)}}
 /* (N12) the statue changes with the accent colour, its glow's rule and light or dark: given again, and the native shell told */
 let OA_ST='';if(typeof stUpdate=='function'){const _su=stUpdate;let t=0;stUpdate=function(){const r=_su.apply(this,arguments);
  try{if(ONEAPP&&oaNative()&&USER&&S.dyn=='oasis'){let mode='light';try{mode=dynResolve().mode}catch(e){}const k=stAnimal()+'|'+mode+'|'+stGlow();

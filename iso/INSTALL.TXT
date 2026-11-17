@@ -1,0 +1,96 @@
+HOW TO INSTALL RUDOLF OS
+========================
+
+This release: Rudolf OS VERSION. These steps take about 20 minutes.
+README.TXT, in the same release, has the details (boot menus, Secure Boot,
+problems).
+
+
+WHAT YOU NEED
+-------------
+* A 64-bit PC (Intel or AMD), made roughly 2010 or later, with 2 GB of
+  memory or more (4 GB recommended).
+* A USB stick of 2 GB or more. EVERYTHING ON IT IS ERASED.
+* The drive you install on is ERASED TOO, all of it, including any Windows
+  on it. Copy anything you want to keep somewhere else first.
+
+
+1. DOWNLOAD AND CHECK
+---------------------
+Download these two files from this release:
+    rudolf-os-VERSION.iso           the system (the one you need)
+    rudolf-os-VERSION.iso.sha256    its checksum
+Check that the download is whole. In Windows PowerShell:
+    Get-FileHash rudolf-os-VERSION.iso -Algorithm SHA256
+and compare the result with the text in the .sha256 file. On macOS or
+Linux:
+    sha256sum -c rudolf-os-VERSION.iso.sha256
+
+
+2. MAKE A USB STICK
+-------------------
+Windows: Rufus (rufus.ie). Choose the stick, SELECT the .iso, press START,
+  and when Rufus asks, choose "Write in DD Image mode" (the default "ISO
+  Image mode" does not work). balenaEtcher works too.
+macOS or Linux: balenaEtcher, or
+    sudo dd if=rudolf-os-VERSION.iso of=/dev/sdX bs=4M conv=fsync
+  (/dev/sdX is the stick, NOT your hard disk).
+Afterwards Windows may say the stick "is not accessible" or offer to format
+it: click Cancel, never Format. That is normal.
+
+
+3. START FROM THE STICK
+-----------------------
+Plug the stick in, switch the computer on and open its boot menu with the
+key shown briefly on screen (F8 on ASUS, F12 on many others, or F11, F10,
+Esc). Choose the USB stick. Then "Start Rudolf OS".
+
+Secure Boot can stay on. The FIRST time, the screen says "Verification
+failed": press Enter, then choose "Enroll key from disk", the Rudolf OS
+drive, the folders EFI and rudolf, and the file rudolf.cer; then
+"Continue", "Yes", "Reboot". Once per computer. (README.TXT, SECURE BOOT,
+if your computer shows something else.)
+
+Rudolf OS now runs from the stick ("live"): try it first. Nothing on the
+computer's drive is changed yet.
+
+
+4. INSTALL
+----------
+Settings > Update and recovery > Install here...
+Choose the computer's drive (more than 4 GB; or another stick), check its
+name and size, and confirm. THE WHOLE DRIVE IS ERASED. Rudolf OS is copied
+onto it and checked, with a data partition (RUDOLFDATA) for your files,
+settings and apps.
+
+When it says it is done: shut down, take the stick out, and switch the
+computer on. It starts Rudolf OS from its own drive. If it does not, open
+the boot menu (step 3) and choose "Rudolf OS" or the drive.
+
+
+5. FIRST START
+--------------
+Make your account and connect to Wi-Fi, and Rudolf OS is ready. Keep the
+stick: it is also a rescue stick (README.TXT, MAKING MORE STICKS).
+
+
+ALREADY RUNNING RUDOLF OS?
+--------------------------
+You do not need anything here: Settings > Update and recovery installs
+this version as an update, and keeps the previous one to roll back to.
+
+Only the start-up files (boot files) need replacing, and nothing else
+erased? Download rudolf-os-VERSION-boot.iso (and its .sha256) in Rudolf
+OS, then Settings > Security > Secure Boot > Get new boot files....
+
+
+THE FILES IN THIS RELEASE
+-------------------------
+rudolf-os-VERSION.iso            the whole system: a USB stick or DVD,
+                                 install, try it live
+rudolf-os-VERSION-boot.iso       start-up files only, for a computer where
+                                 Rudolf OS is installed already
+*.sha256                         their checksums
+README.TXT                       everything in detail
+INSTALL.TXT                      these steps
+rudolf-os-VERSION-source.tar.xz  the source code
