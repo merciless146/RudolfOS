@@ -3409,6 +3409,17 @@ static int boot_entry_run(int mode, str *rep)
 	}
 	if (!wl && mp && whole) { wl = dp_fix(mp, mpl, dp, pre, hascd ? cd : NULL, hd, want, sizeof want); if (wl) from = "the entry as it was, put right for the start-up files on the drive now"; }
 	if (!wl && mp && !whole && (md[0] & 1) && memmem(mp, mpl, hd, 42) && memmem(mp, mpl, fp, fl)) { memcpy(want, mp, mpl); wl = mpl; from = "the entry as it was"; }
+	/* 1.6.0 (the owner's Vivobook, 2026-11-17, beta 2026111711): with no entry to learn from (its "Rudolf OS" had become
+	   an AMI vendor path, Path(1,4), which names no drive), the drive alone, NVMe(...), was written, and AMI's firmware
+	   does not start a drive named that way: it opened its setup screen. The entry its setup makes, which started the
+	   next start, names the drive, the start-up files' El Torito entry and the file: that is the default now, when the
+	   drive has them (cd_node). A firmware that starts the drive alone (OVMF) still does: its own entry starts the
+	   system, and BootCurrent's path is taken above. */
+	if (!wl && whole && hascd && pre + 24 + 4 + fl + 4 <= sizeof want) {
+		memcpy(want, dp, pre); wl = pre; memcpy(want + wl, cd, 24); wl += 24;
+		want[wl] = 4; want[wl + 1] = 4; want[wl + 2] = (unsigned char)(4 + fl); want[wl + 3] = 0; memcpy(want + wl + 4, fp, fl); wl += 4 + fl;
+		want[wl] = 0x7f; want[wl + 1] = 0xff; want[wl + 2] = 4; want[wl + 3] = 0; wl += 4; from = "the drive and its start-up files, as the firmware's own setup names them";
+	}
 	if (!wl) { memcpy(want, dp, dl); wl = dl; }
 	{ char t[600]; dp_text(want, wl, t, sizeof t); REP("The entry it needs: \"Rudolf OS\" %s (%s).\n", t, from); }
 	int right = md && mp && (md[0] & 1) && mpl == wl && !memcmp(mp, want, wl);

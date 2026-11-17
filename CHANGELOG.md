@@ -8,6 +8,7 @@ Summary: In progress.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- Fixed: on computers whose firmware does not start a drive named only by itself (the ASUS Vivobook's AMI firmware), Rudolf OS's boot entry now names the drive, its start-up files and \EFI\BOOT\BOOTX64.EFI, as the firmware's own setup does; before, beta 2026111711 could write the drive alone, and the computer opened its setup screen at the next start.
 - Security: what rudolfd does as root for drives (mounting, unmounting and ejecting a USB drive or SD card, a stick's
   information, Install, Make a stick, Replace the boot files, Keep files on this drive) is now done by a small helper
   that checks every name and file again itself (a disc image must really be in your home folder, yours or the signed-in
