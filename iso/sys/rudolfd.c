@@ -46,6 +46,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
+#include <sys/vfs.h>
 #include <sys/mman.h>
 #include <sys/statvfs.h>
 #include <sys/sysinfo.h>
@@ -3056,16 +3057,7 @@ static void unimmutable(const char *path)
 	int fl = 0; if (!ioctl(f, FS_IOC_GETFLAGS, &fl)) { fl &= ~FS_IMMUTABLE_FL; ioctl(f, FS_IOC_SETFLAGS, &fl); }
 	close(f);
 }
-static int efivar_write(const char *name, const unsigned char *d, size_t n)
-{
-	char f[200]; snprintf(f, sizeof f, EFIV "/%s", name);
-	if (!access(f, F_OK)) { unimmutable(f); unlink(f); }
-	unsigned char *b = malloc(n + 4); if (!b) return -1;
-	uint32_t at = 7; memcpy(b, &at, 4); memcpy(b + 4, d, n);   /* non-volatile, boot and run time */
-	int o = open(f, O_WRONLY | O_CREAT | O_TRUNC, 0644); int ok = o >= 0 && write(o, b, n + 4) == (ssize_t)(n + 4);
-	if (o >= 0) close(o);
-	free(b); return ok ? 0 : -1;
-}
+static int efivar_write(const char *name, const unsigned char *d, size_t n);
 /* ------------------------------------------------------------- boot menu (1.2.5)
  * The UEFI boot menu (systemd-boot) keeps its choices in EFI variables, so nothing on the disc or stick changes:
  * LoaderEntryDefault (which entry starts when nobody chooses) and LoaderConfigTimeout (how long the menu waits).
@@ -3085,6 +3077,61 @@ static size_t su16(const char *s, unsigned char *o)
 {
 	size_t k = 0; for (; *s; s++) { o[k++] = (unsigned char)*s; o[k++] = 0; } o[k++] = 0; o[k++] = 0; return k;
 }
+/* 1.6.0 (docs/plan-1.6.0.md "Before stable" 15): every change to an EFI variable is written in place (the variable is
+   never deleted first: 1.4.1 to 1.6.0 removed it and wrote it again, so a write the firmware refused left no BootOrder,
+   or no entry, at all), read back and compared, and said in System health (kind "boot"), so the log says what changed.
+   WHAT names the change in plain words; the variable's new value is added to it (a boot entry's title and path, the
+   boot order, the entry for the next start, a menu choice). Returns 0 when the firmware holds exactly D. */
+static void dp_text(const unsigned char *p, size_t n, char *o, size_t on);
+static void efivar_value(const char *name, const unsigned char *d, size_t n, char *o, size_t on)
+{
+	o[0] = 0;
+	if (!strncmp(name, "Boot", 4) && strlen(name) > 9 && name[8] == '-' && n >= 8) {
+		char t[100]; u16s(d + 6, n - 6, t, sizeof t); size_t i = 6; while (i + 1 < n && (d[i] || d[i + 1])) i += 2; i += 2;
+		uint16_t pl; memcpy(&pl, d + 4, 2); char ps[600] = "";
+		if (i <= n) dp_text(d + i, pl <= n - i ? pl : n - i, ps, sizeof ps);
+		snprintf(o, on, "\"%s\" %s%s", t, ps, d[0] & 1 ? "" : " (not active)");
+	} else if ((!strncmp(name, "BootOrder-", 10) || !strncmp(name, "BootNext-", 9))) {
+		size_t k = 0; for (size_t i = 0; i + 1 < n && k + 8 < on; i += 2) k += snprintf(o + k, on - k, "%sBoot%04X", i ? "," : "", d[i] | d[i + 1] << 8);
+	} else if (!strncmp(name, "Loader", 6)) u16s(d, n, o, on);
+	else snprintf(o, on, "%zu bytes", n);
+}
+static int efivar_set(const char *name, const unsigned char *d, size_t n, const char *what)
+{
+	char f[200], val[700]; snprintf(f, sizeof f, EFIV "/%s", name); efivar_value(name, d, n, val, sizeof val);
+	int ex = !access(f, F_OK); if (ex) unimmutable(f);
+	unsigned char *b = malloc(n + 4); if (!b) return -1;
+	uint32_t at = 7; memcpy(b, &at, 4); memcpy(b + 4, d, n);   /* non-volatile, boot and run time */
+	int o = open(f, ex ? O_WRONLY | O_CLOEXEC : O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
+	struct statfs sf; if (o >= 0 && !fstatfs(o, &sf) && sf.f_type != 0xde5e81e4 && ftruncate(o, 0)) {}   /* (efivarfs replaces the variable; a plain file, as in the host tests, is cut) */
+	int ok = o >= 0 && write(o, b, n + 4) == (ssize_t)(n + 4);
+	if (o >= 0) close(o);
+	free(b);
+	size_t l = 0; unsigned char *rb = ok ? efivar(name, &l) : NULL; ok = rb && l == n && !memcmp(rb, d, n); free(rb);
+	char nm[40]; snprintf(nm, sizeof nm, "%.*s", (int)strcspn(name, "-"), name);
+	if (ok) health_add("boot", "%s: %s = %s", what, nm, val);
+	else health_add("boot", "%s: the firmware did not keep %s = %s (it was left as it was)", what, nm, val);
+	fprintf(stderr, "rudolfd: %s %s: %s\n", ok ? "set" : "could not set", nm, val);
+	return ok ? 0 : -1;
+}
+static int efivar_del(const char *name, const char *what)
+{
+	char f[200]; snprintf(f, sizeof f, EFIV "/%s", name); if (access(f, F_OK)) return 0;
+	size_t l = 0; unsigned char *d = efivar(name, &l); char val[700] = ""; if (d) efivar_value(name, d, l, val, sizeof val); free(d);
+	unimmutable(f); int ok = !unlink(f);
+	char nm[40]; snprintf(nm, sizeof nm, "%.*s", (int)strcspn(name, "-"), name);
+	health_add("boot", "%s: %s %s%s%s", what, nm, ok ? "removed" : "could not be removed", *val ? ", it was " : "", val);
+	fprintf(stderr, "rudolfd: %s %s (%s)\n", ok ? "removed" : "could not remove", nm, val);
+	return ok ? 0 : -1;
+}
+static int efivar_write(const char *name, const unsigned char *d, size_t n)
+{
+	const char *w = !strncmp(name, "BootNext-", 9) ? "the computer is to start this entry once, at the next start (Restart into Windows)"
+		: !strncmp(name, "LoaderEntryDefault-", 19) ? "the boot menu's default entry was chosen in Settings"
+		: !strncmp(name, "LoaderConfigTimeout-", 20) ? "the boot menu's wait was chosen in Settings"
+		: !strncmp(name, "Mok", 3) ? "Prepare Secure Boot: a request to MokManager to enroll the Rudolf OS key at the next start" : "a firmware setting was changed";
+	return efivar_set(name, d, n, w);
+}
 static int boot_entry_ok(const char *e)
 {
 	if (!e || !*e || strlen(e) > 80) return 0;
@@ -3101,6 +3148,34 @@ static int boot_option(unsigned n, char *title, size_t tl)
 	for (size_t i = 6; i + 1 < l && k + 1 < sizeof low; i += 2) if (!d[i + 1] && d[i]) low[k++] = tolower(d[i]);
 	low[k] = 0; free(d);
 	return strstr(low, "bootmgfw.efi") || strstr(title, "Windows Boot Manager") ? 1 : 0;
+}
+/* a device path as text, the way the firmware's setup and efibootmgr show it (the nodes Rudolf OS writes or meets) */
+static void dp_text(const unsigned char *p, size_t n, char *o, size_t on)
+{
+	size_t k = 0, i = 0; o[0] = 0;
+#define DPT(...) do { if (k < on) k += snprintf(o + k, on - k, __VA_ARGS__); } while (0)
+	while (i + 4 <= n) {
+		unsigned t = p[i], s = p[i + 1], L = p[i + 2] | p[i + 3] << 8; const unsigned char *q = p + i + 4;
+		if (L < 4 || i + L > n) { DPT("%s?", k ? "/" : ""); break; }
+		if (t == 0x7f && s == 0xff) break;
+		if (k) DPT("/");
+		uint32_t a32, b32; uint64_t a64, b64;
+		if (t == 2 && s == 1 && L == 12) { memcpy(&a32, q, 4); memcpy(&b32, q + 4, 4);
+			if (a32 == 0x0a0341d0) DPT("PciRoot(0x%X)", b32); else if (a32 == 0x0a0841d0) DPT("PcieRoot(0x%X)", b32); else DPT("Acpi(0x%08X,0x%X)", a32, b32); }
+		else if (t == 1 && s == 1 && L == 6) DPT("Pci(0x%X,0x%X)", q[1], q[0]);
+		else if (t == 3 && s == 0x17 && L == 16) { memcpy(&a32, q, 4); DPT("NVMe(0x%X,%02X-%02X-%02X-%02X-%02X-%02X-%02X-%02X)", a32, q[4], q[5], q[6], q[7], q[8], q[9], q[10], q[11]); }
+		else if (t == 3 && s == 0x12 && L == 10) DPT("Sata(0x%X,0x%X,0x%X)", q[0] | q[1] << 8, q[2] | q[3] << 8, q[4] | q[5] << 8);
+		else if (t == 3 && s == 5 && L == 6) DPT("USB(0x%X,0x%X)", q[0], q[1]);
+		else if (t == 4 && s == 1 && L == 42) { memcpy(&a32, q, 4); memcpy(&a64, q + 4, 8); memcpy(&b64, q + 12, 8);
+			if (q[36] == 1) DPT("HD(%u,MBR,0x%02X%02X%02X%02X,0x%llX,0x%llX)", a32, q[23], q[22], q[21], q[20], (unsigned long long)a64, (unsigned long long)b64);
+			else DPT("HD(%u,GPT,%02X%02X%02X%02X-...,0x%llX,0x%llX)", a32, q[23], q[22], q[21], q[20], (unsigned long long)a64, (unsigned long long)b64); }
+		else if (t == 4 && s == 2 && L == 24) { memcpy(&a32, q, 4); memcpy(&a64, q + 4, 8); memcpy(&b64, q + 12, 8); DPT("CDROM(0x%X,0x%llX,0x%llX)", a32, (unsigned long long)a64, (unsigned long long)b64); }
+		else if (t == 4 && s == 4) { char f[260]; u16s(q, L - 4, f, sizeof f); DPT("%s", f); }
+		else DPT("Path(%u,%u)", t, s);
+		i += L;
+	}
+#undef DPT
+	if (k >= on && on > 4) memcpy(o + on - 4, "...", 4);
 }
 /* 1.4.1: the installed drive's own firmware boot entry. Firmware does not add one for a drive Rudolf OS is installed
  * on (the ASUS Vivobook Go listed only its old Windows and Ubuntu entries and the USB stick), so at every start on a
@@ -3154,87 +3229,220 @@ static size_t disk_devpath(const char *rp, const char *dev, unsigned char *o, si
 	o[k++] = 0x7f; o[k++] = 0xff; o[k++] = 4; o[k++] = 0;
 	return k;
 }
-static void boot_entry_ensure(void)
+/* 1.6.0 ("Before stable" 15, the owner's Vivobook on 2026-11-16): the drive's start-up image as the firmware names it.
+ * The firmware finds the EFI system partition through the image's El Torito catalogue, and an entry made in its setup
+ * (or learned from it by 1.4.2, below) names that: NVMe(...)/CDROM(1,0x52EC,0x1E000)/\EFI\BOOT\BOOTX64.EFI, the UEFI
+ * entry's place and size in the drive's blocks (EDK2's ElTorito.c, which AMI's firmware follows: the catalogue's LBA
+ * and sector count, each times 2048 / the block size). Each release's boot image has its EFI image in another place
+ * (1.4.1: CDROM(1,0x52EC,0x1E000); 1.6.0's 2026111620: CDROM(1,0x5AC4,0x36000)), so once new boot files were written
+ * over the area (the start-up's staged write, "Get new boot files", the automatic repair of #433) an entry naming the
+ * old place named nothing: on the Vivobook every entry for the drive failed and the firmware opened its setup screen.
+ * O: the node of the image on DISK now (24 bytes). Returns 0 when there is none (no El Torito UEFI entry, 4K blocks). */
+static int cd_node(const char *disk, unsigned char *o)
 {
-	if (access("/sys/firmware/efi/efivars", F_OK) || access(RUN "/persistent", F_OK)) return;
-	char *p = slurp("/etc/rudolf/persist", NULL); if (!p) return; trim(p);
+	char f[160]; snprintf(f, sizeof f, "/sys/block/%s/queue/logical_block_size", disk + 5); long long bs = read_ll(f, 512);
+	if (bs < 512 || bs > 2048 || 2048 % bs) return 0;
+	unsigned m = (unsigned)(2048 / bs); unsigned char bv[2048], c[2048];
+	int fd = open(disk, O_RDONLY | O_CLOEXEC); if (fd < 0) return 0;
+	int ok = pread(fd, bv, 2048, 17 * 2048) == 2048 && !bv[0] && !memcmp(bv + 1, "CD001", 5) && !memcmp(bv + 7, "EL TORITO", 9);
+	uint32_t cl = 0; if (ok) memcpy(&cl, bv + 0x47, 4);
+	ok = ok && cl && pread(fd, c, 2048, (off_t)cl * 2048) == 2048 && c[0] == 1 && c[0x1e] == 0x55 && c[0x1f] == 0xaa;
+	close(fd); if (!ok) return 0;
+	unsigned plat = c[1], be = 1;
+	for (unsigned i = 1; i < 64; i++) {
+		const unsigned char *e = c + 32 * i;
+		if (e[0] == 0x90 || e[0] == 0x91) { plat = e[1]; continue; }   /* (a section header: the platform of the entries after it) */
+		uint32_t lba; memcpy(&lba, e + 8, 4); uint16_t cnt = e[6] | e[7] << 8;
+		if (e[0] != 0x88 || !lba) continue;
+		unsigned me = i == 1 ? 0 : be; be = me + 1;   /* (EDK2 numbers the default entry 0, then 1, 2, ... in order) */
+		if (plat != 0xef || (e[1] & 0x0f) != 0 || cnt < 2) continue;
+		uint32_t en = me; uint64_t st = (uint64_t)lba * m, sz = (uint64_t)cnt * m;
+		o[0] = 4; o[1] = 2; o[2] = 24; o[3] = 0; memcpy(o + 4, &en, 4); memcpy(o + 8, &st, 8); memcpy(o + 16, &sz, 8);
+		return 1;
+	}
+	return 0;
+}
+/* PATH (LEN bytes, a device path that starts with the drive's own PRE bytes of DP) with the node after the drive put
+ * right for the start-up files on the drive now: a CDROM node is the image's El Torito entry (CD, when known), an HD
+ * node partition 2 (HD); the rest (the file, the end) as it was. Returns the new length, 0 when PATH is not this drive's. */
+static size_t dp_fix(const unsigned char *path, size_t len, const unsigned char *dp, size_t pre, const unsigned char *cd, const unsigned char *hd, unsigned char *o, size_t on)
+{
+	if (!pre || len < pre + 4 || len > on || memcmp(path, dp, pre)) return 0;
+	memcpy(o, path, pre); size_t k = pre, i = pre;
+	unsigned t = path[i], s = path[i + 1], L = path[i + 2] | path[i + 3] << 8;
+	if (L < 4 || i + L > len) return 0;
+	if (t == 4 && s == 2 && L == 24 && cd) memcpy(o + k, cd, 24);
+	else if (t == 4 && s == 1 && L == 42 && hd) memcpy(o + k, hd, 42);
+	else memcpy(o + k, path + i, L);
+	k += L; i += L; memcpy(o + k, path + i, len - i); return k + len - i;
+}
+/* a load option: attributes (active), the path's length, TITLE, the path */
+static size_t load_option(const char *title, const unsigned char *p, size_t pl, unsigned char *o, size_t on)
+{
+	if (pl > 0xffff || 6 + 2 * strlen(title) + 2 + pl > on) return 0;
+	uint32_t att = 1; memcpy(o, &att, 4); uint16_t l16 = (uint16_t)pl; memcpy(o + 4, &l16, 2);
+	size_t k = 6 + su16(title, o + 6); memcpy(o + k, p, pl); return k + pl;
+}
+/* a boot entry's path (P, its length), from the option D of L bytes; NULL when it has none */
+static const unsigned char *opt_path(const unsigned char *d, size_t l, size_t *pl)
+{
+	if (l < 8) return NULL; size_t i = 6; while (i + 1 < l && (d[i] || d[i + 1])) i += 2; i += 2;
+	uint16_t n; memcpy(&n, d + 4, 2); if (i > l || n > l - i) return NULL; *pl = n; return d + i;
+}
+/* 1.6.0 ("Before stable" 15): the entry is kept right, and never left worse than it was:
+ *  - an entry is checked against the start-up files on the drive now: one that names the drive's image by its place
+ *    (CDROM(...) or HD(...)) gets the place it has now (above: once new boot files were written, nothing corrected
+ *    the entry before, and a start from a USB stick kept the wrong one, as it named the same drive);
+ *  - the entry that started this system (BootCurrent) is proven: it is kept as it is;
+ *  - a new or corrected entry is written under a number of its own and read back; only then is it put first, and the
+ *    entry it replaces is kept behind it as "Rudolf OS (previous)" until a start through the new one proves it (then
+ *    the previous one goes; a start through the previous one instead means the new one does not work: it goes);
+ *  - every change is said in System health (efivar_set, efivar_del), and in REP when asked (--boot-entry, Settings).
+ * MODE 0 at each start, 1 when asked to put it right (Settings, after new start-up files), 2 to check only.
+ * Returns 0 when the entry is right (or was put right), 1 when this is not an installed drive, 2 on a problem. */
+static int boot_entry_run(int mode, str *rep)
+{
+#define REP(...) do { if (rep) sadd(rep, __VA_ARGS__); } while (0)
+	if (access(EFIV, F_OK)) { REP("This computer started without UEFI (or its firmware's variables cannot be read): there is no firmware entry to check.\n"); return 1; }
+	if (access(RUN "/persistent", F_OK)) { REP("Rudolf OS is not installed on a drive here (no RUDOLFDATA in use).\n"); return 1; }
+	char *p = slurp("/etc/rudolf/persist", NULL); if (!p) { REP("The drive with your files is not known.\n"); return 1; } trim(p);
 	char disk[64] = ""; size_t pl = strlen(p);
 	if (!strncmp(p, "/dev/nvme", 9) || !strncmp(p, "/dev/mmcblk", 11)) { if (pl > 2 && !strcmp(p + pl - 2, "p3")) snprintf(disk, sizeof disk, "%.*s", (int)(pl - 2), p); }
 	else if (pl > 1 && p[pl - 1] == '3') snprintf(disk, sizeof disk, "%.*s", (int)(pl - 1), p);
-	free(p); if (!*disk) return;
+	free(p); if (!*disk) { REP("RUDOLFDATA is not partition 3 of a drive, as Install here makes it.\n"); return 1; }
 	char sp[128], rp[4096]; snprintf(sp, sizeof sp, "/sys/block/%s", disk + 5);
-	if (!realpath(sp, rp) || strstr(rp, "/usb") || strstr(rp, "/mmc")) return;
-	snprintf(sp, sizeof sp, "/sys/block/%s/removable", disk + 5); if (read_ll(sp, 0) == 1) return;
-	unsigned char m[512]; int f = open(disk, O_RDONLY | O_CLOEXEC); if (f < 0) return;
-	ssize_t got = pread(f, m, 512, 0); close(f); if (got != 512 || m[510] != 0x55 || m[511] != 0xaa) return;
+	if (!realpath(sp, rp) || strstr(rp, "/usb") || strstr(rp, "/mmc")) { REP("%s is a USB stick or an SD card: the firmware starts it by itself.\n", disk); return 1; }
+	snprintf(sp, sizeof sp, "/sys/block/%s/removable", disk + 5); if (read_ll(sp, 0) == 1) { REP("%s is a removable drive.\n", disk); return 1; }
+	unsigned char m[512]; int f = open(disk, O_RDONLY | O_CLOEXEC); if (f < 0) { REP("%s cannot be read.\n", disk); return 2; }
+	ssize_t got = pread(f, m, 512, 0); close(f); if (got != 512 || m[510] != 0x55 || m[511] != 0xaa) { REP("%s has no partition table.\n", disk); return 2; }
 	static const unsigned char zero[16];
-	if (memcmp(m + 446, zero, 16) || m[446 + 16 + 4] != 0xef || m[446 + 32 + 4] != 0x83 || !memcmp(m + 440, zero, 4)) return;
+	if (memcmp(m + 446, zero, 16) || m[446 + 16 + 4] != 0xef || m[446 + 32 + 4] != 0x83 || !memcmp(m + 440, zero, 4)) { REP("%s does not have the installed layout (partition 2 the EFI system partition, 3 RUDOLFDATA, a disk signature).\n", disk); return 1; }
 	uint32_t st, sz; memcpy(&st, m + 446 + 16 + 8, 4); memcpy(&sz, m + 446 + 16 + 12, 4);
-	/* the load option: attributes (active), the device path's length, the title, the device path */
-	unsigned char opt[600]; size_t k = 0; uint32_t att = 1; memcpy(opt, &att, 4); k = 6;
-	k += su16("Rudolf OS", opt + k);
-	unsigned char *dp = opt + k;
 	unsigned char hd[42] = {4, 1, 42, 0, 2, 0, 0, 0}; uint64_t st64 = st, sz64 = sz;
 	memcpy(hd + 8, &st64, 8); memcpy(hd + 16, &sz64, 8); memcpy(hd + 24, m + 440, 4); hd[40] = 1; hd[41] = 1;
 	unsigned char fp[64]; size_t fl = su16("\\EFI\\BOOT\\BOOTX64.EFI", fp);
-	size_t dl = disk_devpath(rp, disk, dp, sizeof opt - k), whole = dl > 0;
-	if (!dl) {   /* a controller not named above: the partition and the file */
+	unsigned char cd[24]; int hascd = cd_node(disk, cd);
+	/* the default path: the drive itself, or for a controller not named in disk_devpath the partition and the file */
+	unsigned char dp[400]; size_t dl = disk_devpath(rp, disk, dp, sizeof dp), whole = dl > 0;
+	if (!dl) {
 		memcpy(dp, hd, 42); dl = 42;
 		dp[dl] = 4; dp[dl + 1] = 4; dp[dl + 2] = (unsigned char)(4 + fl); dp[dl + 3] = 0; memcpy(dp + dl + 4, fp, fl); dl += 4 + fl;
 		dp[dl] = 0x7f; dp[dl + 1] = 0xff; dp[dl + 2] = 4; dp[dl + 3] = 0; dl += 4;
 	}
-	/* 1.4.2: firmware may not start the drive's path as written. The Vivobook's (AMI) skipped it at every start and
-	   changed it, and started the entry made by hand in its setup, which names the drive the same way and goes on
-	   to the image's El Torito catalogue (CDROM(...)) and \EFI\BOOT\BOOTX64.EFI. So when this system was started by
-	   another entry (BootCurrent) whose path begins with the drive's own, that is the path that works: ours takes it. */
-	size_t pre = whole ? dl - 4 : 0, ll = 0; unsigned char learned[400]; int cur = -1;
+	size_t pre = whole ? dl - 4 : 0;
+	{ char t[600]; dp_text(dp, dl, t, sizeof t); REP("The drive: %s, %s.\n", disk, t); }
+	if (hascd) { char t[100]; dp_text(cd, 24, t, sizeof t); REP("Its start-up files, as the firmware finds them: %s.\n", t); }
+	int cur = -1;
 	{ size_t l = 0; unsigned char *c = efivar("BootCurrent-" GLOBALG, &l); if (c && l >= 2) cur = c[0] | c[1] << 8; free(c); }
-	if (pre && cur >= 0) {
-		char v[80]; snprintf(v, sizeof v, "Boot%04X-" GLOBALG, cur); size_t l = 0; unsigned char *d = efivar(v, &l);
-		size_t i = 6; while (d && i + 1 < l && (d[i] || d[i + 1])) i += 2;
-		if (d && i + 1 < l) {
-			char t[100]; u16s(d + 6, l - 6, t, sizeof t); uint16_t pl; memcpy(&pl, d + 4, 2); i += 2;
-			if (strncmp(t, "Rudolf OS", 9) && i + pl <= l && pl > pre && pl <= sizeof learned && k + pl <= sizeof opt && !memcmp(d + i, dp, pre)) { memcpy(learned, d + i, pl); ll = pl; }
-		}
+	/* the entries: ours ("Rudolf OS"), the one it replaced ("Rudolf OS (previous)"), other "Rudolf OS ..." ones */
+	int mine = -1, prev = -1, rm[32], nrm = 0; unsigned char used[0x10000 / 8] = {0};
+	unsigned char *md = NULL, *pd = NULL; size_t ml = 0, pdl = 0;
+	DIR *dd = opendir(EFIV); struct dirent *de;
+	while (dd && (de = readdir(dd))) {
+		unsigned n; char t[100];
+		if (strlen(de->d_name) != 9 + 36 || sscanf(de->d_name, "Boot%4X-", &n) != 1 || strcmp(de->d_name + 9, GLOBALG) || !isxdigit((unsigned char)de->d_name[7])) continue;
+		used[n / 8] |= 1 << (n % 8);
+		size_t l = 0; unsigned char *d = efivar(de->d_name, &l); if (!d) continue;
+		t[0] = 0; if (l > 6) u16s(d + 6, l - 6, t, sizeof t);
+		if (!strcmp(t, "Rudolf OS") && (mine < 0 || (int)n < mine)) { if (mine >= 0 && nrm < 32) rm[nrm++] = mine; free(md); mine = n; md = d; ml = l; continue; }
+		if (!strcmp(t, "Rudolf OS (previous)") && (prev < 0 || (int)n < prev)) { if (prev >= 0 && nrm < 32) rm[nrm++] = prev; free(pd); prev = n; pd = d; pdl = l; continue; }
+		if (!strcmp(t, "Rudolf OS") || !strcmp(t, "Rudolf OS (previous)") || !strncmp(t, "Rudolf OS", 9)) { if (nrm < 32) rm[nrm++] = n; }
 		free(d);
 	}
-	if (ll) { memcpy(dp, learned, ll); dl = ll; }
-	uint16_t dl16 = (uint16_t)dl; memcpy(opt + 4, &dl16, 2); k += dl;
-	/* ours, and the other "Rudolf OS ..." entries */
-	int mine = -1, same = 0, rm[32], nrm = 0, used[256] = {0};
-	for (unsigned n = 0; n < 256; n++) {
-		char v[80], t[100]; snprintf(v, sizeof v, "Boot%04X-" GLOBALG, n); size_t l = 0; unsigned char *d = efivar(v, &l);
-		if (!d) continue;
-		used[n] = 1; t[0] = 0; if (l > 6) u16s(d + 6, l - 6, t, sizeof t);
-		if (!strncmp(t, "Rudolf OS", 9)) {
-			/* ours when it still names this drive's partition 2 and the start file: firmware may store the path in
-			   its own, longer form (the whole device path in front of HD(...)) */
-			if (mine < 0 && !strcmp(t, "Rudolf OS")) {
-				mine = n; same = (l == k && !memcmp(d, opt, k)) || (!whole && l >= 6 && (d[0] & 1) && memmem(d, l, hd, 42) && memmem(d, l, fp, fl));
-				/* 1.4.2: one that names this drive is kept as it is unless another entry started this system (then
-				   ours takes that one's path, above): it may be the path learned at an earlier start */
-				size_t i = 6; while (i + 1 < l && (d[i] || d[i + 1])) i += 2; i += 2;
-				if (!same && whole && !ll && (d[0] & 1) && i + pre <= l && !memcmp(d + i, dp, pre)) same = 1;
+	if (dd) closedir(dd);
+	char v[80], why[300]; int bad = 0, changed = 0;
+	/* what this start proves */
+	if (cur >= 0 && cur == prev && mine >= 0) {   /* the new entry did not start this system, the previous one did */
+		snprintf(v, sizeof v, "Boot%04X-" GLOBALG, mine);
+		if (mode != 2) {
+			REP("Boot%04X (\"Rudolf OS\") did not start this system, the previous entry did: Boot%04X is taken back.\n", mine, prev);
+			size_t l2 = 0; const unsigned char *pp = opt_path(pd, pdl, &l2); unsigned char o2[700]; size_t k2 = pp ? load_option("Rudolf OS", pp, l2, o2, sizeof o2) : 0;
+			char w[80]; snprintf(w, sizeof w, "Boot%04X-" GLOBALG, prev);
+			if (k2 && !efivar_set(w, o2, k2, "the previous firmware entry for this drive started it, the new one did not: it is the Rudolf OS entry again")) {
+				efivar_del(v, "the firmware entry that did not start this system"); if (nrm < 32) rm[nrm++] = mine; free(md); md = NULL; mine = prev; md = pd; pd = NULL; ml = pdl; prev = -1; changed = 1;
+				{ size_t l3 = 0; unsigned char *d3 = efivar(w, &l3); if (d3) { free(md); md = d3; ml = l3; } }
+			} else bad = 1;
+		} else REP("Boot%04X (\"Rudolf OS\") did not start this system; the previous entry Boot%04X did.\n", mine, prev);
+	} else if (cur >= 0 && cur == mine && prev >= 0) {
+		if (mode != 2) { snprintf(v, sizeof v, "Boot%04X-" GLOBALG, prev); if (!efivar_del(v, "the firmware's new entry for this drive started this system, so the previous one is no longer needed")) { if (nrm < 32) rm[nrm++] = prev; prev = -1; changed = 1; } }
+		else REP("Boot%04X started this system; the previous entry Boot%04X is no longer needed.\n", mine, prev);
+	}
+	/* the path the entry should have */
+	unsigned char want[700]; size_t wl = 0; const char *from = "the drive itself";
+	size_t mpl = 0; const unsigned char *mp = md ? opt_path(md, ml, &mpl) : NULL;
+	if (cur >= 0 && cur == mine && mp) {   /* (proven; after new start-up files (MODE 1) put right for them, if it names their place) */
+		wl = mode && whole ? dp_fix(mp, mpl, dp, pre, hascd ? cd : NULL, hd, want, sizeof want) : 0;
+		if (!wl) { memcpy(want, mp, mpl); wl = mpl; } from = "the entry that started this system"; }
+	if (!wl && cur >= 0 && cur != mine && cur != prev && whole) {
+		/* 1.4.2: firmware may not start the drive's path as written. The Vivobook's (AMI) skipped it at every start and
+		   changed it, and started the entry made by hand in its setup, which names the drive the same way and goes on
+		   to the image's El Torito catalogue (CDROM(...)) and \EFI\BOOT\BOOTX64.EFI. So when this system was started by
+		   another entry (BootCurrent) whose path begins with the drive's own, that is the path that works: ours takes it. */
+		snprintf(v, sizeof v, "Boot%04X-" GLOBALG, cur); size_t l = 0; unsigned char *d = efivar(v, &l); char t[100] = "";
+		if (d && l > 6) u16s(d + 6, l - 6, t, sizeof t);
+		size_t cpl = 0; const unsigned char *cp = d ? opt_path(d, l, &cpl) : NULL;
+		if (cp && strncmp(t, "Rudolf OS", 9) && cpl > pre && (wl = dp_fix(cp, cpl, dp, pre, hascd ? cd : NULL, hd, want, sizeof want))) from = "the entry that started this system";
+		free(d);
+	}
+	if (!wl && mp && whole) { wl = dp_fix(mp, mpl, dp, pre, hascd ? cd : NULL, hd, want, sizeof want); if (wl) from = "the entry as it was, put right for the start-up files on the drive now"; }
+	if (!wl && mp && !whole && (md[0] & 1) && memmem(mp, mpl, hd, 42) && memmem(mp, mpl, fp, fl)) { memcpy(want, mp, mpl); wl = mpl; from = "the entry as it was"; }
+	if (!wl) { memcpy(want, dp, dl); wl = dl; }
+	{ char t[600]; dp_text(want, wl, t, sizeof t); REP("The entry it needs: \"Rudolf OS\" %s (%s).\n", t, from); }
+	int right = md && mp && (md[0] & 1) && mpl == wl && !memcmp(mp, want, wl);
+	if (md && !right) { char t[600]; dp_text(mp, mpl, t, sizeof t); REP("Boot%04X \"Rudolf OS\" names %s%s.\n", mine, t, (md[0] & 1) ? "" : " and is not active"); }
+	if (right) REP("Boot%04X \"Rudolf OS\" is right.\n", mine);
+	else if (mode == 2) { REP(md ? "It would be written again.\n" : "There is no \"Rudolf OS\" entry: it would be made.\n"); bad = 2; }
+	else {
+		/* a number of its own, read back, before anything else changes */
+		int nn = -1; for (unsigned n = 0; n < 0x100; n++) if (!(used[n / 8] & (1 << (n % 8)))) { nn = n; break; }
+		unsigned char o[800]; size_t k = load_option("Rudolf OS", want, wl, o, sizeof o);
+		if (nn < 0 || !k) { REP("No free number for a firmware entry: nothing was changed.\n"); bad = 2; }
+		else {
+			snprintf(v, sizeof v, "Boot%04X-" GLOBALG, nn);
+			snprintf(why, sizeof why, md ? "the firmware entry for this drive, put right (%s); the one it replaces is kept behind it until a start proves the new one" : "the firmware entry for this drive, made (%s)", from);
+			if (efivar_set(v, o, k, why)) { REP("Boot%04X could not be written: the firmware did not keep it. Nothing else was changed.\n", nn); bad = 2; }
+			else {
+				REP("Boot%04X \"Rudolf OS\" written and read back.\n", nn); used[nn / 8] |= 1 << (nn % 8); changed = 1;
+				if (md) {   /* the old one kept behind it, as "Rudolf OS (previous)"; an older previous one goes */
+					if (prev >= 0) { char w[80]; snprintf(w, sizeof w, "Boot%04X-" GLOBALG, prev); efivar_del(w, "an older previous firmware entry for this drive"); if (nrm < 32) rm[nrm++] = prev; prev = -1; }
+					unsigned char o2[800]; size_t k2 = mp ? load_option("Rudolf OS (previous)", mp, mpl, o2, sizeof o2) : 0; char w[80]; snprintf(w, sizeof w, "Boot%04X-" GLOBALG, mine);
+					if (k2) { memcpy(o2, md, 4); if (!efivar_set(w, o2, k2, "the firmware entry for this drive it replaces, kept behind it until a start proves the new one")) prev = mine; }
+					if (prev != mine) { efivar_del(w, "the firmware entry for this drive it replaces (it could not be kept as the previous one)"); if (nrm < 32) rm[nrm++] = mine; }
+				}
+				mine = nn;
 			}
-			else if (nrm < 32) rm[nrm++] = n;
 		}
-		free(d);
 	}
-	if (mine < 0) { for (unsigned n = 0; n < 256; n++) if (!used[n]) { mine = n; break; } if (mine < 0) return; }
-	char v[80]; snprintf(v, sizeof v, "Boot%04X-" GLOBALG, mine);
-	if (!same) { int had = used[mine]; if (efivar_write(v, opt, k)) { fprintf(stderr, "rudolfd: the boot entry %s could not be written\n", v); return; } fprintf(stderr, "rudolfd: boot entry Boot%04X \"Rudolf OS\" for %s (%s%s)\n", mine, disk, had ? "it named another path" : "new", ll ? ", the path of the entry this system started from" : ""); }
-	for (int i = 0; i < nrm; i++) { char f2[200]; snprintf(f2, sizeof f2, EFIV "/Boot%04X-" GLOBALG, rm[i]); unimmutable(f2); unlink(f2); fprintf(stderr, "rudolfd: removed the old boot entry Boot%04X\n", rm[i]); }
-	/* BootOrder: ours first, the removed ones out, the rest as they were */
-	size_t ol = 0; unsigned char *o = efivar("BootOrder-" GLOBALG, &ol);
-	uint16_t nw[300]; size_t nn = 0; nw[nn++] = (uint16_t)mine;
-	for (size_t i = 0; o && i + 1 < ol && nn < 300; i += 2) {
-		uint16_t e; memcpy(&e, o + i, 2); int skip = e == mine;
-		for (int j = 0; j < nrm; j++) if (e == rm[j]) skip = 1;
-		if (!skip) nw[nn++] = e;
+	/* BootOrder: ours first, the previous one second, the removed ones out, the rest as they were */
+	if (mine >= 0 && !bad) {
+		for (int i = 0; i < nrm; i++) { if (rm[i] == mine || rm[i] == prev) continue; snprintf(v, sizeof v, "Boot%04X-" GLOBALG, rm[i]);
+			if (mode == 2) REP("Boot%04X is another \"Rudolf OS ...\" entry: it would be removed.\n", rm[i]); else { efivar_del(v, "a left-over firmware entry named \"Rudolf OS ...\""); changed = 1; } }
+		size_t ol = 0; unsigned char *ob = efivar("BootOrder-" GLOBALG, &ol);
+		uint16_t nw[300]; size_t nn = 0; nw[nn++] = (uint16_t)mine; if (prev >= 0) nw[nn++] = (uint16_t)prev;
+		for (size_t i = 0; ob && i + 1 < ol && nn < 300; i += 2) {
+			uint16_t e; memcpy(&e, ob + i, 2); int skip = e == mine || e == prev;
+			for (int j = 0; j < nrm; j++) if (e == rm[j]) skip = 1;
+			if (!skip) nw[nn++] = e;
+		}
+		if (!ob || ol != nn * 2 || memcmp(ob, nw, ol)) {
+			if (mode == 2) { REP("It is not first in the boot order: it would be put first.\n"); bad = 2; }
+			else if (efivar_set("BootOrder-" GLOBALG, (unsigned char *)nw, nn * 2, "the firmware entry for this drive put first in the boot order")) { REP("The boot order could not be written.\n"); bad = 2; }
+			else { REP("Boot%04X is first in the boot order.\n", mine); changed = 1; }
+		} else REP("Boot%04X is first in the boot order.\n", mine);
+		free(ob);
 	}
-	if (!o || ol != nn * 2 || memcmp(o, nw, ol)) { if (!efivar_write("BootOrder-" GLOBALG, (unsigned char *)nw, nn * 2)) fprintf(stderr, "rudolfd: Boot%04X first in the boot order\n", mine); }
-	free(o);
+	if (mode == 1 && !bad) {   /* (read everything back once more, as a start would find it) */
+		snprintf(v, sizeof v, "Boot%04X-" GLOBALG, mine); size_t l = 0; unsigned char *d = efivar(v, &l); size_t ql = 0; const unsigned char *q = d ? opt_path(d, l, &ql) : NULL;
+		size_t ol = 0; unsigned char *ob = efivar("BootOrder-" GLOBALG, &ol);
+		if (!q || ql != wl || memcmp(q, want, wl) || !(d[0] & 1) || !ob || ol < 2 || (ob[0] | ob[1] << 8) != mine) { REP("Read back, the entry or the boot order is not as written.\n"); bad = 2; }
+		free(d); free(ob);
+	}
+	if (!changed && !bad && mode == 1) REP("Nothing needed changing.\n");
+	free(md); free(pd);
+	return bad ? 2 : 0;
+#undef REP
 }
+static void boot_entry_ensure(void) { boot_entry_run(0, NULL); }
 static void api_bootmenu(struct req *r, const char *what, int post)
 {
 	int efi = !access("/sys/firmware/efi", F_OK);
@@ -3271,7 +3479,7 @@ static void api_bootmenu(struct req *r, const char *what, int post)
 		char *def = qparam(r->query, "default"), *to = qparam(r->query, "timeout");
 		unsigned char b[200];
 		if (def) {
-			if (!*def) { char f[200]; snprintf(f, sizeof f, EFIV "/LoaderEntryDefault-" LOADERG); unimmutable(f); unlink(f); }
+			if (!*def) efivar_del("LoaderEntryDefault-" LOADERG, "the boot menu's default entry set back to the disc's own in Settings");
 			else {
 				size_t l = 0; unsigned char *d = efivar("LoaderEntries-" LOADERG, &l); int found = 0; char e[100];
 				for (size_t i = 0; d && i + 1 < l;) { u16s(d + i, l - i, e, sizeof e); if (!strcmp(e, def)) found = 1; i += (strlen(e) + 1) * 2; if (!*e) break; }
@@ -3281,7 +3489,7 @@ static void api_bootmenu(struct req *r, const char *what, int post)
 			}
 		}
 		if (to) {
-			if (!*to) { char f[200]; snprintf(f, sizeof f, EFIV "/LoaderConfigTimeout-" LOADERG); unimmutable(f); unlink(f); }
+			if (!*to) efivar_del("LoaderConfigTimeout-" LOADERG, "the boot menu's wait set back to the disc's own in Settings");
 			else {
 				char *end; long t = strtol(to, &end, 10);
 				if (*end || t < 0 || t > 10) { reply_err(r->fd, 400, "the wait is 0 to 10 seconds"); return; }
@@ -3316,9 +3524,7 @@ static void api_secureboot(struct req *r, const char *what, int post)
 	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 	if (!efi) { reply_err(r->fd, 400, "this computer started without UEFI; Secure Boot is a UEFI feature"); return; }
 	if (!strcmp(what, "cancel")) {
-		char a[200]; snprintf(a, sizeof a, EFIV "/MokAuth-" SHIMG);
-		if (!access(f, F_OK)) { unimmutable(f); unlink(f); }
-		if (!access(a, F_OK)) { unimmutable(a); unlink(a); }
+		efivar_del("MokNew-" SHIMG, "Prepare Secure Boot cancelled"); efivar_del("MokAuth-" SHIMG, "Prepare Secure Boot cancelled");
 		reply_ok(r->fd, "cancelled"); return;
 	}
 	if (!strcmp(what, "prepare")) {
@@ -3595,7 +3801,7 @@ static void api_devlink(struct req *r, const char *what, int post)
 static void health_path(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/health.log" : PERSIST "/var/log/health.log"); }
 static int health_kind_ok(const char *k)
 {
-	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", "tor", "extension", "modem", NULL };
+	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", "tor", "extension", "modem", "boot", NULL };   /* (1.6.0: "boot", the start-up files and the firmware's entries: espcheck's and bootfiles.sh's reports were refused here, so nothing of theirs ever reached System health) */
 	for (int i = 0; K[i]; i++) if (k && !strcmp(k, K[i])) return 1;
 	return 0;
 }
@@ -5032,6 +5238,10 @@ int main(int argc, char **argv)
 {
 	if (argc > 1 && !strcmp(argv[1], "--addpart")) return addpart(argc, argv);
 	/* 1.5.0: rudolfd --health KIND TEXT: an event for the health log from another program */
+	/* 1.6.0 ("Before stable" 15): the firmware's entry for this drive checked (check) or put right (fix), what was found and
+	   done on standard output; exit 0 right, 1 not an installed drive here, 2 a problem (bootfiles.sh, Settings' check) */
+	if (argc == 3 && !strcmp(argv[1], "--boot-entry") && (!strcmp(argv[2], "check") || !strcmp(argv[2], "fix") || !strcmp(argv[2], "start"))) {   /* (start: as at each start, for tests) */
+		str rep = {0}; int rc = boot_entry_run(!strcmp(argv[2], "fix") ? 1 : !strcmp(argv[2], "start") ? 0 : 2, &rep); if (rep.b) fputs(rep.b, stdout); free(rep.b); return rc; }
 	if (argc == 4 && !strcmp(argv[1], "--health")) { if (!health_kind_ok(argv[2])) return 2; health_add(argv[2], "%s", argv[3]); return 0; }
 	signal(SIGPIPE, SIG_IGN);
 	mkdir(RUN, 0755);
