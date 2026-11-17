@@ -80,3 +80,17 @@ engine, then restart), and report any difference with a photo of both.
 | V48 | Drag a file from File Explorer to Notepad and to Trash; copy text between Notepad, Oracle and a Linux app | Dropped and pasted | The same |
 | V49 | Screen saver: wait for it, move the mouse | The saver, then the lock if set | The same |
 | V50 | Accessibility: magnifier, screen reader, high contrast | Each works over the whole screen | Native's (plan item 10) |
+
+## Background work: alarms, reminders and notices with no window or several open (Part 12, item 12)
+
+Fixed on 2026-11-17: on Native each app window ran the desktop's background work itself, so with no window open an alarm
+did not ring and with several open it rang once per window. One unseen page of the desktop's now runs it once.
+
+| # | Do (on Native) | Standard shows | Report |
+|---|---|---|---|
+| V51 | Clock › Alarms: an alarm two minutes ahead; close every window; wait | The alarm rings once (its notification and sound) | Whether it rings with no window open; how many notifications and how long the sound |
+| V52 | Calendar: an event three minutes ahead, Remind me "At the start"; close every window | The reminder once; its click opens Calendar | Whether it shows, how many times, what its click opens |
+| V53 | With no Rudolf window open: a call in a Linux app (Zoom's app), or a text message or call to the computer's SIM | The 🎙️ in the taskbar; a message's notice once | Whether 🎙️ and the notice show with no window open, and how many times |
+| V54 | Open two windows (Notepad and Settings), then an alarm a minute ahead | It rings once | How many notifications and sounds (it was one per window) |
+| V55 | Clock › Timers: start a 1 minute timer, close the Clock's window | The timer rings once | Whether it rings after the window is closed; open Clock again: the timer says Done |
+| V56 | Task Manager with only it open | No extra window or app listed | Whether anything named Rudolf OS or do-svc shows on the taskbar or in Task Manager's Apps |
