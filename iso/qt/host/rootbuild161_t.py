@@ -23,8 +23,8 @@ os.makedirs(f'{T}/usr/bin')
 r = subprocess.run(['bash', '-c', 'set -e; cd "$1"; SYS="$2"; . "$3"; ' + '\n'.join(lines), '-', T, SYS, f'{ISO}/systools/hardflags.sh'], capture_output=True, text=True)
 st = lambda p: os.stat(f'{T}/{p}')
 try:
-    ok('6. built by mkrootfs.sh\'s lines: each helper root\'s 0700 in usr/lib/rudolf/root (0755), rudolf-rootd 0755, nothing set-user-ID',
-       r.returncode == 0 and all(st(f'usr/lib/rudolf/root/{h}').st_mode & 0o7777 == 0o700 and st(f'usr/lib/rudolf/root/{h}').st_uid == 0 for h in H)
+    ok('6. built by mkrootfs.sh\'s lines: each helper 0700 in usr/lib/rudolf/root (0755), rudolf-rootd 0755, nothing set-user-ID (the layer makes them root\'s: -all-root)',
+       r.returncode == 0 and all(st(f'usr/lib/rudolf/root/{h}').st_mode & 0o7777 == 0o700 for h in H)
        and st('usr/lib/rudolf/root').st_mode & 0o7777 == 0o755 and st('usr/bin/rudolf-rootd').st_mode & 0o7777 == 0o755, r.stderr + str(lines))
     hk = subprocess.run([sys.executable, f'{ISO}/systools/hardcheck.py', f'{T}/usr/bin/rudolf-rootd'] + [f'{T}/usr/lib/rudolf/root/{h}' for h in H], capture_output=True, text=True)
     ok('7. ...with the hardening flags (hardcheck.py)', hk.returncode == 0, hk.stdout + hk.stderr)
