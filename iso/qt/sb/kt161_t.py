@@ -111,6 +111,7 @@ dmesg | grep -E 'Run /init|Freeing unused kernel image|rtc_cmos.*setting system 
 cat /persist/var/log/starts/0/desktop-up 2>/dev/null | sed 's/^/UP /'
 grep -h 'was ready' /persist/var/log/health*.log 2>/dev/null | tail -2 | sed 's/^/HL /'
 cat /run/rudolf/udev.log 2>/dev/null | tail -3 | sed 's/^/UL /'
+echo "NET $(ip -o link 2>/dev/null | grep -c 'eth\|enp\|ens') $(grep -c '^e1000 ' /proc/modules) $(ip -o -4 addr 2>/dev/null | grep -vc ' lo ')"
 echo "EN $(cat /run/rudolf/engine-choice 2>/dev/null) -> $(cat /run/rudolf/desktop-engine 2>/dev/null)"; ls /persist/etc/rudolf-desktop-engine* 2>/dev/null | sed 's/^/EN /'
 cat /etc/rudolf/initramfs.log 2>/dev/null | tail -12 | sed 's/^/IL /'
 '''
@@ -132,6 +133,7 @@ def parse_times(o):
         elif p[0] == 'SL': m = re.search(r'uptime=([0-9.]+)', l); r['rudolf-init: data partition (after udev)'] = float(m.group(1)) if m else None
         elif p[0] == 'UP': r['session: desktop-up mark'] = float(p[1])
         elif p[0] == 'EN' and '->' in l: r['engine'] = l[3:].strip()
+        elif p[0] == 'NET' and len(p) >= 4: r['network: wired links, e1000 as a module, IPv4 addresses'] = f'{p[1]} {p[2]} {p[3]}'
         elif p[0] == 'TSC' and len(p) >= 3: tscv = (int(p[1]), float(p[2]))
         elif p[0] == 'TF': m = re.search(r'([0-9.]+) MHz', l); mhz = float(m.group(1)) if m else mhz
     for k in ps: r['process ' + k] = ps[k]
@@ -156,7 +158,7 @@ def phase_startup():
         if not all_t: continue
         num = lambda k: sorted(x[k] for x in all_t if isinstance(x.get(k), (int, float)))
         keys = sorted({k for t in all_t for k in t}, key=lambda k: num(k)[len(num(k)) // 2] if num(k) else 999)
-        eng = ' / '.join(sorted({str(t.get('engine')) for t in all_t}))
+        eng = ' / '.join(sorted({str(t.get('engine')) for t in all_t})) + '; net ' + ' / '.join(sorted({str(t.get('network: wired links, e1000 as a module, IPv4 addresses')) for t in all_t}))
         out(f'---- {name}: start-up, median of {len(all_t)} starts (uptime, s); engines: {eng}'); MEDIANS.append(f'---- {name} ({len(all_t)} starts; {eng})')
         for k in keys:
             v = num(k)
