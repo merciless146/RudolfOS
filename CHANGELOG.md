@@ -6,6 +6,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 ## 1.6.1 (in progress)
 Summary: In progress.
 - Tests: the kernel tuning measured in QEMU (kernel-tuning.yml, nothing published): test kernels and base layers started in turn on one machine; the start-up's steps, wake-up latency and the page's input-to-frame time under load, memory with tabs, a game and a call at once on 3.3 GB, the power settings' fallback, the start on each kind of virtual hardware, and two builds of the kernel compared.
+- Changed: the kernel's build stops when a feature Rudolf OS relies on is missing (75 options, each with who needs it: Flatpak's sandboxes, the Debian container and Wine, the desktop, security, reaching the system disk, power); FUSE, which the x86 kernel lacked, is added (Flatpak's document portal, AppImages).
 - Fixed: on the Lite desktop, a game's "Save to a file" (Ember Reach's, for one) or any file picker in a game or on a
   website no longer freezes the computer. WebKit asked with a file dialog that went through Rudolf OS's own portal,
   which draws its dialog in the desktop page, while the desktop's window was held for that dialog: nothing could be

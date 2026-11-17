@@ -26,7 +26,7 @@ stage tests and the regression suites) or promote the tested one.
 1.6.0: promoting also publishes the promoted release's install release, `disc-X.Y.Z` (`disc-X.Y.Z.NNNNNN` when
 `disc-X.Y.Z` exists already), made from the newest disc release's packages, licences and sources: the .iso, the
 boot image (`-boot.iso`), their `.sha256`, README.TXT, INSTALL.TXT (iso/INSTALL.TXT, the steps to install, VERSION
-filled in) and the source, marked Latest on the Releases page (betas are created with `--latest=false`). It needs
+filled in) and the source, marked Latest on the Releases page (the `disc` input given with `promote` names it instead, e.g. `1.6.0b`; a name ending in `b` is titled "(public beta)") (betas are created with `--latest=false`). It needs
 the Secure Boot key (RUDOLF_SB_KEY), as a build does.
 1.6.0: promoting also adds the release to `gh-pages/stable/history.txt` (every release ever promoted, signed with the
 release key: systools/stable_history.py; every run of the workflow keeps it following `stable/`). Computers use it
