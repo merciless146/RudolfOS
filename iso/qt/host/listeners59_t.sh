@@ -44,6 +44,10 @@ o=$(st)
 ok "8. a port and a socket the list does not name (a program listening on 0.0.0.0:4444, a socket in a home folder): fails, naming both" "$(echo "$o" | grep -q '^FAIL listeners - .*tcp 0.0.0.0:4444' && echo "$o" | grep -q '/home/rudolf/.evil/sock' && echo 1)" "$o"
 printf '   4: 0100007F:2406 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 1006 1 0 100 0 0 10 0\n' > $P/net/tcp.x; head -1 $P/net/tcp > $P/net/tcp.y; cat $P/net/tcp.y $P/net/tcp.x > $P/net/tcp; : > $P/net/tcp6; head -1 $P/net/unix > $P/net/unix.y; mv $P/net/unix.y $P/net/unix
 o=$(st); ok "9. Chromium's test port (9222, test discs only) is named too" "$(echo "$o" | grep -q '^PASS listeners - 1 listening' && echo 1)" "$o"
+# (1.6.0 "Before stable" 15, the owner's Vivobook: "something listens that the list of listeners does not name: unix
+#  /run/udev/control", udev's control socket since Part 9)
+cp $P/net/unix $P/net/unix.k; printf '0000000000000000: 00000002 00000000 00010000 0001 01 2008 /run/udev/control\n' >> $P/net/unix
+o=$(st); ok "9a. udev's control socket (/run/udev/control, 1.6.0 Part 9) is named" "$(echo "$o" | grep -q '^PASS listeners - 2 listening' && echo 1)" "$o"; mv $P/net/unix.k $P/net/unix
 # 2026-11-14 (found on the Vivobook): a Linux app's own sockets inside Debian's container (the Claude app's, an Electron
 # app's SingletonSocket) are the app's; Chromium's newer folder name is named; a socket in /tmp held by a program
 # outside the container still fails
