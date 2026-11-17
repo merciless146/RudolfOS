@@ -74,11 +74,13 @@ start_gpu() {
 		-logfile /run/rudolf/Xorg.log -verbose 3 &
 	XPID=$!
 	for i in $(seq 150); do [ -e /tmp/.X11-unix/X0 ] && break; kill -0 $XPID 2>/dev/null || break; sleep 0.1; done
+	st "X server (Xorg)"
 	[ -e /tmp/.X11-unix/X0 ] && kill -0 $XPID 2>/dev/null && x_allow
 	if [ -e /tmp/.X11-unix/X0 ] && kill -0 $XPID 2>/dev/null && rudolf-display --xsize >/dev/null 2>&1; then
 		# the chosen resolution and refresh rate: the monitor's mode of that size; a size the monitor does not
 		# have is scaled by the software display instead (Xorg's own scaling does not work on every card)
-		rudolf-display --mode "$RES" "$FPS"; RC=$?
+		st "X server answers"
+		rudolf-display --mode "$RES" "$FPS"; RC=$?; st "screen mode"
 		if [ $RC = 3 ]; then
 			REASON="the monitor has no $RES mode, so the software display scales the desktop"
 			kill $XPID 2>/dev/null; for i in $(seq 20); do kill -0 $XPID 2>/dev/null || break; sleep 0.5; done; kill -9 $XPID 2>/dev/null
@@ -96,6 +98,7 @@ start_gpu() {
 	rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
 	return 1
 }
+st() { echo "$(cut -d' ' -f1 /proc/uptime) $*" >> /run/rudolf/startup-times; }   # (1.6.1, plan Part 12: the start-up's steps, see rudolf-init)
 display_up() {
 	SETTING=$(cat /etc/rudolf-display 2>/dev/null); SETTING=${SETTING:-games}
 	MODE=soft; REASON=""; XPID=""
@@ -132,7 +135,6 @@ display_restart() {
 }
 rm -f /run/rudolf/screen-restart
 display_up
-st() { echo "$(cut -d' ' -f1 /proc/uptime) $*" >> /run/rudolf/startup-times; }   # (1.6.1: see rudolf-init)
 st "display ($MODE)"
 # per-user runtime directory and D-Bus session bus (used by Flatpak apps such as Sober)
 export XDG_RUNTIME_DIR=/run/user/1000
@@ -161,7 +163,7 @@ for d in Documents Pictures Downloads; do [ -d /home/rudolf/$d ] || [ -L /home/r
 # (1.5.1: while Downloads is in the locked encrypted folder, rudolfd makes these when it is unlocked)
 # (1.5.6: through /run/rudolf/dl, the downloads store's own bind made by rudolfd at its start, since while an account
 # is signed in /home/rudolf/Downloads is that account's own; Chromium's policy points there)
-for i in $(seq 50); do [ -e /run/rudolf/dl ] && break; sleep 0.1; done   # (1.6.1: every 0.1 s, not every second: plan Part 12)
+for i in 1 2 3 4 5; do [ -e /run/rudolf/dl ] && break; sleep 1; done
 DLS=/run/rudolf/dl; [ -e $DLS ] || DLS=/home/rudolf/Downloads
 if [ -d $DLS/ ]; then
 mkdir -p $DLS/.incoming $DLS/.quarantine
