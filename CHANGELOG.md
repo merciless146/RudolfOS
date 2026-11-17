@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Faster start-up: the kernel is packed with zstd instead of xz (0.6 s less before it starts, in QEMU; about twice that on an installed computer, which starts two kernels), and the wired network cards' drivers are modules loaded after the start.
+- New: Settings › System health › Last starts › Where the time went: each step of the start-up and how long it took. The health log's "the desktop was ready N s" and Last starts now give the moment the desktop first answered (they were up to 4 s and 10 s late).
 
 ## 1.6.0 (in progress)
 Summary: In progress.
