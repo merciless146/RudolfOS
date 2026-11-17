@@ -127,6 +127,7 @@ def parse_times(o):
     for k in ps: r['process ' + k] = ps[k]
     return r
 
+KEYPROCS = ('systemd-udevd', 'rudolfd', 'Xorg', 'Xvfb', 'rudolf-display', 'dbus-daemon', 'pulseaudio', 'chrome', 'rudolf-native', 'rudolf-memguard', 'rudolf-launch', 'wpa_supplicant', 'udhcpc', 'rpk', 'WebKitWebProces')
 def phase_startup():
     n = int(os.environ.get('STARTS', '4')); all_t = []
     for i in range(n + 1):
@@ -145,6 +146,7 @@ def phase_startup():
         out('---- start-up, median of', len(all_t), 'starts (uptime, s)')
         for k in keys:
             v = sorted(x[k] for x in all_t if isinstance(x.get(k), (int, float)))
+            if v and k.startswith('process ') and k[8:] not in KEYPROCS: out(f'{v[len(v) // 2]:8.2f}  {k}   ({" ".join(str(x) for x in v)})'); continue
             if v: out(f'{v[len(v) // 2]:8.2f}  {k}   ({" ".join(str(x) for x in v)})'); MEDIANS.append(f'{v[len(v) // 2]:.2f} {k} ({" ".join(str(x) for x in v)})')
     # the kernel's own steps (initcall_debug: each initcall's time; printk's own cost makes the total a little longer)
     vm, g, up = boot('si', 'initcall_debug log_buf_len=8M ignore_loglevel')
