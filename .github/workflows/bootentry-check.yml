@@ -20,7 +20,7 @@ jobs:
       - name: Tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs mtools squashfs-tools zlib1g-dev bzip2 >/dev/null
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs mtools squashfs-tools sbsigntool zlib1g-dev bzip2 >/dev/null
           [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
           Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
           for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
@@ -43,6 +43,8 @@ jobs:
         run: |
           unsquashfs -q -d sq rel/base.sfs usr/bin/rudolfd && ls -la sq/usr/bin/rudolfd
           sudo env BOOTISO=$PWD/rel/boot.iso RELEASED=$PWD/sq/usr/bin/rudolfd sh iso/qt/host/bootentry60_t.sh
+      - name: bootfiles.sh on drives made from the boot images (bootfiles60_t.sh)
+        run: sudo env BOOTISO=$PWD/rel/boot.iso OLDBOOT=$PWD/rudolf-os-1.4.1-boot.iso sh iso/qt/host/bootfiles60_t.sh
       - name: This tree's rudolfd, espcheck and bootfiles.sh
         if: env.N_fix == '1'
         run: |
