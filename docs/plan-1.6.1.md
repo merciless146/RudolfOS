@@ -340,7 +340,10 @@ rudolfd runs as root today (they keep running as root, from the helper).
   (any holder of the token can replace the desktop's page until a restart) and Developer mode and Return to official
   are asked an administrator's password by the page only, not by rudolfd: for the owner (the accounts step can move the
   administrator's check into the helpers, the password on standard input).
-- Next: drives, part 2 (the encrypted folders' unlock and lock, the binds, the vault); accounts; power; network;
+- Next: drives, part 2 with the accounts' sessions (the encrypted folders' unlock and lock, the binds,
+  the downloads' store, the vault: at sign-in home_unlock, home_bind, dl_store_bind and au_session_start are one chain,
+  so they move as one helper action, "drives home-unlock ACCT [session]", the account checked against the account list
+  and its key on standard input, never an argument; sign-out the same with home-lock); accounts; power; network;
   packages; display; other; then the drop.
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
