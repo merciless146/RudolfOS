@@ -330,8 +330,11 @@ rudolfd runs as root today (they keep running as root, from the helper).
   through rudolf-rootd; mkrootfs.sh and ci_release.sh build and install them (root's 0700, checked); ci_release.sh runs
   the two host tests. Found and kept as it was (the API unchanged): unmount answers "safe to remove" even when umount
   failed (the old command's status was its last part's, rm -f); for the owner to decide, not changed here.
-- Next: drives, part 2 (the encrypted folders' unlock and lock, the binds, the vault); updates; accounts; power;
-  network; packages; display; other; then the drop.
+- Next: updates; then drives, part 2 with the accounts' sessions (the encrypted folders' unlock and lock, the binds,
+  the downloads' store, the vault: at sign-in home_unlock, home_bind, dl_store_bind and au_session_start are one chain,
+  so they move as one helper action, "drives home-unlock ACCT [session]", the account checked against the account list
+  and its key on standard input, never an argument; sign-out the same with home-lock); accounts; power; network;
+  packages; display; other; then the drop.
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
 The kernel already has zram (zstd), MGLRU, PSI, schedutil and the AMD and Intel P-state drivers (iso/kconfig.sh).
