@@ -1,0 +1,127 @@
+/*
+ * drives - the root helper for drives (Rudolf OS 1.6.1, docs/plan-1.6.1.md Part 11): /usr/lib/rudolf/root/drives,
+ * run by rudolf-rootd for rudolfd (or by rudolfd itself while it is root and was not started by rudolf-rootd).
+ *
+ *   drives mount DEV               a USB drive's or SD card's partition under /media/DEV (devplug mount)
+ *   drives umount DEV              unmounts /media/DEV, as rudolfd did before ("sync; umount; rmdir; rm -f")
+ *   drives eject DEV               every partition of the drive unmounted, the drive let go (devplug eject)
+ *   drives info DISK               what Rudolf OS a stick has (mkstick.sh --info)
+ *   drives install DISK [IMAGE] [--sha=HEX]           install.sh: Rudolf OS onto DISK (erased)
+ *   drives bootfiles-write DISK [IMAGE] [--sha=HEX]   bootfiles.sh write: only the boot files in front of RUDOLFDATA
+ *   drives bootfiles-stage IMAGE [--sha=HEX]          bootfiles.sh stage: new boot files for this drive, next start
+ *   drives mkstick DISK [IMAGE] [0|1] [--sha=HEX]     mkstick.sh: a Rudolf OS USB stick (erased)
+ *   drives keepfiles                                  keepfiles.sh make: RUDOLFDATA on the drive Rudolf OS runs from
+ *
+ * Everything is checked again here, whatever rudolfd checked: DEV a block device's kernel name (letters and digits,
+ * one that the kernel has: /sys/class/block/DEV), DISK a whole disk (/sys/block/DISK); IMAGE a file in the home folder
+ * (/home/rudolf/...), made canonical (a link out of the home folder is refused), a plain file of the desktop's user
+ * or of the account signed in (another account's file, a hard link to one, is refused); --sha= 64 hex digits. The
+ * scripts are run with their arguments as they are (never a command line for a shell). A refusal, and what erases or
+ * rewrites a drive, are said in the health log.
+ *
+ * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
+ */
+#define _GNU_SOURCE
+#include "rudolf-root.h"
+#include <ctype.h>
+#include <sys/mount.h>
+
+#define SYSFS  rr_env("RR_TEST_SYS", "/sys")
+#define LIB    rr_env("RR_TEST_LIB", "/usr/lib/rudolf")
+#define HOME   rr_env("RR_TEST_HOME", "/home/rudolf")
+#define MEDIA  rr_env("RR_TEST_MEDIA", "/media")
+#define RUNDIR rr_env("RR_TEST_RUN", "/run/rudolf")
+#define AUMAP  rr_env("RR_TEST_AUMAP", "/persist/etc/rudolf/account-users")
+
+static int refuse(const char *what, const char *arg)
+{
+	char a[80]; size_t k = 0; for (const char *c = arg ? arg : ""; *c && k < sizeof a - 1; c++) a[k++] = isprint((unsigned char)*c) ? *c : '?';
+	a[k] = 0;
+	rr_health("security", "the drives helper refused %s (%s)", what, a);
+	fprintf(stderr, "refused: %s\n", what); return 2;
+}
+/* (a name of the right form that the kernel does not have, or no longer: a drive pulled out a moment ago; not said in
+   the health log) */
+static int gone(const char *what) { fprintf(stderr, "refused: %s\n", what); return 2; }
+static int is_block(const char *dev) { char p[PATH_MAX]; struct stat st; snprintf(p, sizeof p, "%s/class/block/%s", SYSFS, dev); return !lstat(p, &st); }
+static int is_disk(const char *dev) { char p[PATH_MAX]; struct stat st; snprintf(p, sizeof p, "%s/block/%s", SYSFS, dev); return !lstat(p, &st); }
+/* the uid of the account signed in with its folder on the disk (RUN/home-session's account, its line in the map) */
+static unsigned session_uid(void)
+{
+	char p[PATH_MAX], id[80] = ""; snprintf(p, sizeof p, "%s/home-session", RUNDIR);
+	FILE *f = fopen(p, "r"); if (!f) return 0;
+	if (!fgets(id, sizeof id, f)) id[0] = 0;
+	fclose(f); id[strcspn(id, "\r\n")] = 0;
+	if (!*id) return 0;
+	f = fopen(AUMAP, "r"); if (!f) return 0;
+	char l[200]; unsigned u = 0;
+	while (fgets(l, sizeof l, f)) { char a[80]; unsigned v; if (l[0] != '-' && sscanf(l, "%79s %u", a, &v) == 2 && !strcmp(a, id) && v >= 1001 && v <= 59999) u = v; }
+	fclose(f); return u;
+}
+static int image_ok(const char *img, char *out, size_t on)
+{
+	unsigned own[3] = { RR_DESK_UID, session_uid(), 0 };
+	return rr_home_file_ok(img, HOME, own, out, on);
+}
+static int run_script(const char *script, char *const args[], const char *sha)
+{
+	char path[PATH_MAX]; snprintf(path, sizeof path, "%s/%s", LIB, script);
+	char e1[100] = "", *env[4] = { RR_PATH, NULL, NULL, NULL }; int k = 1;
+	if (sha) { snprintf(e1, sizeof e1, "RUDOLF_IMG_SHA=%s", sha); for (char *c = e1 + 15; *c; c++) *c = (char)tolower((unsigned char)*c); env[k++] = e1; }
+#ifdef RR_TEST
+	char e2[PATH_MAX]; if (getenv("RR_TEST_LIB")) { snprintf(e2, sizeof e2, "RUDOLF_LIB=%s", LIB); env[k++] = e2; }
+#endif
+	char *argv[12]; int a = 0; argv[a++] = path; for (int i = 0; args[i] && a < 11; i++) argv[a++] = args[i]; argv[a] = NULL;
+	execve(path, argv, env); fprintf(stderr, "%s could not be started: %s\n", script, strerror(errno)); return 127;
+}
+
+int main(int argc, char **argv)
+{
+	if (argc < 2) { fprintf(stderr, "usage: drives mount|umount|eject|info|install|bootfiles-write|bootfiles-stage|mkstick|keepfiles ...\n"); return 2; }
+	const char *op = argv[1];
+	/* --sha=HEX, wherever it is; the other arguments in order */
+	const char *sha = NULL; char *a[8]; int n = 0;
+	for (int i = 2; i < argc; i++) {
+		if (!strncmp(argv[i], "--sha=", 6)) { if (sha || !rr_hex_ok(argv[i] + 6, 64)) return refuse("a checksum that is not 64 hex digits", argv[i]); sha = argv[i] + 6; continue; }
+		if (n >= 7) return refuse("too many arguments", op);
+		a[n++] = argv[i];
+	}
+	a[n] = NULL;
+	if (!strcmp(op, "mount") || !strcmp(op, "umount") || !strcmp(op, "eject")) {
+		if (n != 1 || !rr_dev_ok(a[0], 32)) return refuse("a device name that is not one", n ? a[0] : "");
+		if (!is_block(a[0])) return gone("a device the kernel does not have");
+		if (!strcmp(op, "umount")) {
+			/* as rudolfd's "sync; umount /media/DEV && rmdir /media/DEV; rm -f /run/rudolf/drives/DEV" (whose status was rm's) */
+			char m[PATH_MAX], j[PATH_MAX]; snprintf(m, sizeof m, "%s/%s", MEDIA, a[0]); snprintf(j, sizeof j, "%s/drives/%s", RUNDIR, a[0]);
+			sync();
+			if (!umount2(m, UMOUNT_NOFOLLOW)) { if (rmdir(m)) {} }
+			else fprintf(stderr, "umount: %s: %s\n", m, strerror(errno));
+			unlink(j); return 0;
+		}
+		char *s[] = { (char *)op, a[0], NULL }; return run_script("devplug", s, NULL);
+	}
+	if (!strcmp(op, "info")) {
+		if (n != 1 || !rr_dev_ok(a[0], 16)) return refuse("a disk name that is not one", n ? a[0] : "");
+		if (!is_disk(a[0])) return gone("a disk the kernel does not have");
+		char d[64]; snprintf(d, sizeof d, "/dev/%s", a[0]); char *s[] = { "--info", d, NULL }; return run_script("mkstick.sh", s, NULL);
+	}
+	if (!strcmp(op, "keepfiles")) { if (n) return refuse("arguments for keepfiles", a[0]); rr_health("disk", "RUDOLFDATA is being added to the drive Rudolf OS runs from"); char *s[] = { "make", NULL }; return run_script("keepfiles.sh", s, NULL); }
+	if (!strcmp(op, "bootfiles-stage")) {
+		char img[PATH_MAX]; if (n != 1 || !image_ok(a[0], img, sizeof img)) return refuse("an image that is not a file in the home folder", n ? a[0] : "");
+		rr_health("disk", "new boot files are being checked for the next start (%.200s)", img);
+		char *s[] = { "stage", img, NULL }; return run_script("bootfiles.sh", s, sha);
+	}
+	if (!strcmp(op, "install") || !strcmp(op, "bootfiles-write") || !strcmp(op, "mkstick")) {
+		int stick = !strcmp(op, "mkstick");
+		if (n < 1 || n > (stick ? 3 : 2) || !rr_dev_ok(a[0], 16)) return refuse("a disk name that is not one", n ? a[0] : "");
+		if (!is_disk(a[0])) return gone("a disk the kernel does not have");
+		char img[PATH_MAX] = ""; if (n > 1 && *a[1] && !image_ok(a[1], img, sizeof img)) return refuse("an image that is not a file in the home folder", a[1]);
+		const char *files = n > 2 ? a[2] : "0"; if (strcmp(files, "0") && strcmp(files, "1")) return refuse("a files choice that is not 0 or 1", files);
+		char d[64]; snprintf(d, sizeof d, "/dev/%s", a[0]);
+		rr_health("disk", "%s: %s is being written%s%.200s", stick ? "Make a stick" : !strcmp(op, "install") ? "Install" : "Replace the boot files", d, *img ? " from " : "", img);
+		if (stick) { char *s[] = { d, img, (char *)files, NULL }; return run_script("mkstick.sh", s, sha); }
+		if (!strcmp(op, "install")) { char *s[] = { d, *img ? img : NULL, NULL }; return run_script("install.sh", s, sha); }
+		char *s[] = { "write", d, img, NULL }; return run_script("bootfiles.sh", s, sha);
+	}
+	return refuse("an unknown action", op);
+}

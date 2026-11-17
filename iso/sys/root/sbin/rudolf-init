@@ -176,7 +176,11 @@ if mountpoint -q /persist; then
 	[ -f $L/rudolfd.log ] && mv -f $L/rudolfd.log $L/rudolfd.log.1
 	: > $L/rudolfd.log && chmod 600 $L/rudolfd.log && ln -sf $L/rudolfd.log $RDLOG && RDLOG=$L/rudolfd.log
 fi
-rudolfd > $RDLOG 2>&1 &
+# 1.6.1 (docs/plan-1.6.1.md Part 11): through rudolf-rootd, which starts rudolfd and runs its root helpers for it (and
+# for nothing else: rudolfd's descriptor to it is the only way in)
+if [ -x /usr/bin/rudolf-rootd ]; then rudolf-rootd /usr/bin/rudolfd > $RDLOG 2>&1 &
+else rudolfd > $RDLOG 2>&1 &
+fi
 # 1.4.7: when memory runs out, the largest web page is ended instead of the whole desktop freezing
 ( while :; do rudolf-memguard >/dev/null 2>&1; sleep 2; done ) &
 exec /usr/lib/rudolf/session

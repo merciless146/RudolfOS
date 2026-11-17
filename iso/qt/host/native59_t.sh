@@ -20,6 +20,7 @@ fi
 D=$T/d; mkdir -p $D; node $HERE/fixtures/deskls.js $D/ls.json $D/keys.json || { echo "FAIL node"; exit 1; }
 PW=$(node -e "console.log(require('$D/keys.json').Ann.pw)")
 set_s() { printf '%s\n' "$1" > $D/settings.json.t; mv $D/settings.json.t $D/settings.json; }
+touch $D/apps-fixed   # (the stand-in's small catalogue for the checks of the pins and the icons' places, 48 to 60: the pages give theirs at once since 2026-11-17)
 set_s '{"s":{"bs":"solid","b1":"#112233","b2":"#000080","tb":"bottom","accent":"#2563eb","h24":true,"df":"ymd"},"pins":["notepad","calc","settings"],"notes":2,"wallpaper":false}'
 python3 $HERE/fixtures/native_rd.py $PORT $D > $T/rd.log 2>&1 & RDP=$!
 Xvfb $DSP -screen 0 1280x800x24 -nolisten tcp >/dev/null 2>&1 & XV=$!
@@ -75,6 +76,7 @@ ok "59. the desktop's menu: Arrange icons by name" "$([ "$(di Calculator | cut -
 xdotool mousemove 50 40 click 3; w8 '[ "$(st dmenu)" = icon ]' 20; xdotool key Escape
 ok "60. an icon's own menu" "$([ "$(st dmenu)" = icon ] && echo 1)"
 # 1.6.0 (Part 12, item 1, second part): the Desktop folder's files, the page's menus and dialogs drawn by the shell
+rm -f $D/apps-fixed
 xdotool mousemove 900 500 click 3; w8 '[ -n "$(cmi "New text document")" ]' 20; click $(cmi "New text document"); w8 '[ "$(st dialog | cut -d" " -f1)" = rename ]' 80
 ok "61. the desktop's menu: New text document, then the page's Rename dialog, its name chosen" "$([ "$(st dialog)" = "rename NEW TEXT DOCUMENT.TXT|" ] && echo 1)" "$(st dialog)"
 xdotool type --delay 30 'notes.txt'; xdotool key Return; w8 '[ -n "$(di NOTES.TXT)" ]' 80

@@ -211,63 +211,50 @@ if ! has rudolf.nopersist=1; then
 	fi
 fi
 
-# ---- new boot files (1.2.8, Settings > Security > Secure Boot > Get new boot files): an image staged on RUDOLFDATA
-# (bootfiles.sh stage) is written over the area in front of it, on the same disk, before anything uses that area.
-# The RUDOLFDATA entry of the partition table is kept; the copy is read back and compared; then a restart.
+# ---- new boot files staged on RUDOLFDATA (1.2.8 to 1.6.0's 2026111620: Get new boot files, the automatic repair of #433)
+# 1.6.0 ("Before stable" 15): they are no longer written over the area in front of RUDOLFDATA. That write gave the drive
+# a new start-up image whose EFI image sits elsewhere (and a new disk signature), so every firmware entry for the drive
+# named nothing: the owner's Vivobook opened its setup screen at the next start. A staged image is now opened, and only
+# its start-up files are copied INTO the drive's existing EFI system partition (partition 2): each one beside the old
+# (NAME.new), read back and compared, then renamed over it, the old one kept as NAME.old (the running system removes it
+# after the next start from the drive). The partition table, the disk signature and the area stay as they are; when
+# the files do not fit beside the old ones, nothing is changed and it says so. (The running system no longer stages:
+# bootfiles.sh puts the files in while it runs, and checks their signatures and the firmware's entry.)
 BI=/mnt/persist/os/bootimg
 if [ -n "$PERSIST" ] && [ -s $BI/pending ] && [ -s $BI/boot.iso ] && ! has rudolf.recovery=1; then
 	bgv() { sed -n "s/^$1=//p" $BI/pending; }
-	case "$PERSIST" in /dev/nvme*p3|/dev/mmcblk*p3) BD=${PERSIST%p3};; /dev/[sv]d[a-z]3) BD=${PERSIST%3};; *) BD="";; esac
-	BS=$(bgv start); BB=$(bgv blocks); BH=$(bgv sha); WHY=""
-	[ -n "$BD" ] && [ -b "$BD" ] || WHY="the drive could not be found"
+	case "$PERSIST" in /dev/nvme*p3|/dev/mmcblk*p3) BD=${PERSIST%p3}; BP=${BD}p2;; /dev/[sv]d[a-z]3) BD=${PERSIST%3}; BP=${BD}2;; *) BD=""; BP="";; esac
+	WHY=""; [ -n "$BD" ] && [ -b "$BP" ] || WHY="the drive's EFI system partition could not be found"
+	[ -z "$WHY" ] && [ "$(sha256sum $BI/boot.iso | cut -c1-64)" != "$(bgv sha)" ] && WHY="the kept copy is damaged"
+	NI=/tmp/bfi; NE=/tmp/bfn; OE=/tmp/bfo; mkdir -p $NI $NE $OE
+	[ -z "$WHY" ] && { mount -t iso9660 -o ro,loop $BI/boot.iso $NI 2>/dev/null && mount -t vfat -o ro,loop $NI/efi/efiboot.img $NE 2>/dev/null; } || WHY=${WHY:-"the kept copy cannot be read"}
+	[ -z "$WHY" ] && { mount -t vfat -o rw,flush $BP $OE 2>/dev/null || WHY="the drive's EFI system partition cannot be opened"; }
 	if [ -z "$WHY" ]; then
-		E=$(dd if=$BD bs=1 skip=478 count=16 2>/dev/null | od -An -tx1 | tr -d ' \n')
-		CS=$(dd if=$BD bs=1 skip=486 count=4 2>/dev/null | od -An -tu4 | tr -d ' \n')
-		[ "$CS" != "$BS" ] && WHY="the partition table changed"
-	fi
-	[ -z "$WHY" ] && [ $((BB * 4)) -gt "${BS:-0}" ] && WHY="it does not fit"
-	[ -z "$WHY" ] && [ "$(sha256sum $BI/boot.iso | cut -c1-64)" != "$BH" ] && WHY="the kept copy is damaged"
-	if [ -n "$WHY" ]; then
-		say "Rudolf OS: the new boot files were not written ($WHY)."; echo "not written: $WHY" > $BI/result; rm -f $BI/pending $BI/boot.iso; sync; sleep 4
-	else
-		clear > /dev/console
-		say "Rudolf OS: writing the new boot files (Rudolf OS $(bgv version))."
-		say "Do not switch the computer off. This takes about a minute."
-		umount_media
-		h2b() { for h in $(echo "$1" | sed 's/../& /g'); do printf "\\$(printf %03o 0x$h)"; done; }
-		WANT=$({ dd if=$BI/boot.iso bs=478 count=1 2>/dev/null; h2b "$E"; dd if=$BI/boot.iso bs=2048 count=$BB 2>/dev/null | tail -c +495; } | sha256sum | cut -c1-64)
-		OKW=""
-		for t in 1 2 3; do
-			dd if=$BI/boot.iso of=$BD bs=2048 count=$BB conv=fsync 2>/dev/null
-			h2b "$E" | dd of=$BD bs=1 seek=478 conv=notrunc,fsync 2>/dev/null
-			sync; blockdev --flushbufs $BD 2>/dev/null; echo 3 > /proc/sys/vm/drop_caches
-			[ "$(dd if=$BD bs=2048 count=$BB 2>/dev/null | sha256sum | cut -c1-64)" = "$WANT" ] && { OKW=1; break; }
-			say "Rudolf OS: the copy does not match; writing it again ($t)."
-		done
-		if [ -n "$OKW" ]; then
-			# 1.4.1: an internal drive gets the installed layout (no partition 1 over the image: the firmware can start it)
-			# and a disk signature of its own (the image's is the same on every drive made from it); rudolfd adds the
-			# boot entry for it at the next start. A USB stick keeps the image's table: firmware starts it as a CD.
-			# (the same rule as /usr/lib/rudolf/layout.sh)
-			case "$(readlink -f /sys/block/${BD##*/})" in */usb*|*/mmc*) RMV=1;; *) RMV=$(cat /sys/block/${BD##*/}/removable 2>/dev/null);; esac
-			if [ "$RMV" != 1 ]; then
-				dd if=/dev/zero of=$BD bs=1 seek=446 count=16 conv=notrunc,fsync 2>/dev/null
-				SG=00000000; while [ "$SG" = 00000000 ]; do SG=$(dd if=/dev/urandom bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n'); done
-				h2b "$SG" | dd of=$BD bs=1 seek=440 conv=notrunc,fsync 2>/dev/null; sync
-			elif [ "$(dd if=$BD bs=1 skip=446 count=16 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 00000000000000000000000000000000 ]; then
-				# a stick written from an installed drive's image: partition 1 back (start 0, the image's size)
-				N1=$((BB * 4)); h2b "80feffff17feffff00000000$(printf %02x%02x%02x%02x $((N1 & 255)) $(((N1 >> 8) & 255)) $(((N1 >> 16) & 255)) $(((N1 >> 24) & 255)))" | dd of=$BD bs=1 seek=446 conv=notrunc,fsync 2>/dev/null; sync
-			fi
-			echo "written $(date -u +%Y-%m-%dT%H:%MZ): Rudolf OS $(bgv version) (serial $(bgv serial))" > $BI/result; rm -f $BI/pending $BI/boot.iso
-			say "Rudolf OS: the new boot files are written. Restarting."
-		else
-			echo "failed $(date -u +%Y-%m-%dT%H:%MZ): the copy did not match three times" > $BI/result; rm -f $BI/pending
-			say "Rudolf OS: the new boot files could not be written correctly; the drive may be failing."
-			say "Your files are safe. If the computer does not start, start it from a Rudolf OS USB stick and use"
-			say "Install here > Replace the boot files only. Press Enter to restart."; read x < /dev/console
+		say "Rudolf OS: putting in the new start-up files (Rudolf OS $(bgv version)). Do not switch the computer off."
+		( cd $NE && find . -type f ) | sed 's|^\./||' > /tmp/bf.all; : > /tmp/bf.todo; NEED=0
+		while read -r f; do cmp -s "$NE/$f" "$OE/$f" 2>/dev/null && continue; echo "$f" >> /tmp/bf.todo; NEED=$((NEED + $(stat -c %s "$NE/$f") + 8192)); done < /tmp/bf.all
+		FREE=$(($(df -k $OE | awk 'NR==2 {print $4}') * 1024))
+		[ $NEED -gt $FREE ] && WHY="the drive's EFI system partition has no room for them beside the old ones ($((NEED / 1048576)) MiB needed, $((FREE / 1048576)) MiB free)"
+		if [ -z "$WHY" ]; then
+			while read -r f; do mkdir -p "$OE/${f%/*}"; cp "$NE/$f" "$OE/$f.new" || { WHY="$f could not be written"; break; }; done < /tmp/bf.todo
+			sync; umount $OE; echo 3 > /proc/sys/vm/drop_caches; mount -t vfat -o rw,flush $BP $OE 2>/dev/null || WHY=${WHY:-"the EFI system partition could not be opened again"}
+			[ -z "$WHY" ] && while read -r f; do cmp -s "$NE/$f" "$OE/$f.new" || { WHY="$f did not read back as written"; break; }; done < /tmp/bf.todo
+			if [ -z "$WHY" ]; then
+				while read -r f; do [ -f "$OE/$f" ] && mv -f "$OE/$f" "$OE/$f.old"; mv -f "$OE/$f.new" "$OE/$f"; done < /tmp/bf.todo; sync
+				[ -s "$OE/EFI/BOOT/BOOTX64.EFI" ] || { WHY="\\EFI\\BOOT\\BOOTX64.EFI would be missing"; while read -r f; do [ -f "$OE/$f.old" ] && mv -f "$OE/$f.old" "$OE/$f"; done < /tmp/bf.todo; sync; }
+			else while read -r f; do [ -f "$OE/$f.new" ] && rm -f "$OE/$f.new"; done < /tmp/bf.todo; sync; fi
 		fi
-		keeplog "boot files written"; cd /; umount /mnt/persist; sync; sleep 2; reboot -f
+		umount $OE 2>/dev/null
 	fi
+	umount $NE 2>/dev/null; umount $NI 2>/dev/null
+	if [ -z "$WHY" ]; then
+		echo "written $(date -u +%Y-%m-%dT%H:%MZ): Rudolf OS $(bgv version) (serial $(bgv serial)), its start-up files into the EFI system partition ($(wc -l < /tmp/bf.todo) changed); the partition table and disk signature kept" > $BI/result
+		say "Rudolf OS: the new start-up files are in. Starting."
+	else
+		echo "not written $(date -u +%Y-%m-%dT%H:%MZ): $WHY; nothing was changed" > $BI/result
+		say "Rudolf OS: the new start-up files were not put in ($WHY); nothing was changed."; sleep 4
+	fi
+	rm -f $BI/pending $BI/boot.iso; sync; note "boot files: $(cat $BI/result)"; keeplog "boot files"
 fi
 
 # ---- which system to start
@@ -426,6 +413,9 @@ elif has rudolf.check=1; then
 	say "Checking the Rudolf OS files on $MEDIA (this takes a few minutes)..."
 	cd /mnt/media
 	grep -v "  boot/rboot.bin$" rudolf/sha256 > /tmp/sums 2>/dev/null
+	# (1.6.0: on an installed drive the EFI image is the drive's EFI system partition, whose start-up files may have been
+	#  replaced since (bootfiles.sh, file by file); they are checked by their signatures instead (espcheck, Settings)
+	if whole "$MEDIA"; then grep -v "  efi/efiboot.img$" /tmp/sums > /tmp/sums2; mv /tmp/sums2 /tmp/sums; fi
 	sha256sum -c /tmp/sums > /tmp/check.txt 2>&1
 	# the boot loader is patched with the kernel's place on the disc (RBTB + 8 bytes) when the image is written: 1.2.6
 	# discs list it patched, older ones as it was built (those 8 bytes zero), so both are accepted (1.2.6)

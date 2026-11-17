@@ -3,7 +3,7 @@
 <script>/* (1.6.0, the owner's Vivobook report 1) an app's own window (#app=NAME: oneapp59.js, the native desktop's windows): from its first paint
    without the desktop around the app and without the sign-in screen, which oneapp59.js shows only when the window really needs a
    sign-in (no native session); never left hidden (20 s at most). The desktop's own page (no #app=) is as before */
-(()=>{try{const q=new URLSearchParams(String(location.hash||'').replace(/^#/,'')),k=q.get('app');if(!k||!/^[a-z0-9_-]{1,40}$/i.test(k))return;
+(()=>{try{const q=new URLSearchParams(String(location.hash||'').replace(/^#/,'')),k=q.get('app');if(!k||!/^[a-z0-9_:.+-]{1,127}$/i.test(k))return;   /* (as oneapp59.js's ONEAPP: the Library's, Linux's and Windows' programs too) */
  const d=document.documentElement;d.classList.add('oapre','oalg');setTimeout(()=>{try{if(!(typeof OA=='object'&&OA&&OA.opened))d.classList.remove('oalg')}catch(e){d.classList.remove('oalg')}},20000)}catch(e){}})()</script>
 <style>html.oapre,html.oapre body{background:#e5e7eb!important}html.oalg #login,html.oapre #bar,html.oapre #menu,html.oapre #desk>.ic,html.oapre .wdg,html.oapre #widgets{display:none!important}</style>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
