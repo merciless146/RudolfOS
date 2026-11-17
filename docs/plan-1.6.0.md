@@ -76,6 +76,8 @@ Everything moved past 1.6.0 is gathered in docs/plan-1.6.1.md (2026-11-15).
   computers, and the same parts 1 to 6. Proven in QEMU aarch64 and on one ARM64 computer before it is published.
 
 ### 8. USB printers (moved from 1.5.9 on 2026-11-13)
+**In 1.6.0 after all (owner, 2026-11-17: "Skip the test and just add it"):** the base side below is in 1.6.0; the
+`usbprint` extension is published for the beta by extensions.yml, without a test on a real printer (refined in 1.6.1).
 Asked for: printing to printers plugged in by USB, as Rudolf OS prints to network printers now (rudolf-print: IPP
 Everywhere and AirPrint, no CUPS and no drivers). The same print dialog (WordPro, SpreadsheetPro, PresentPro, and the
 PDF Viewer since 1.5.9) lists them as "USB: name".
