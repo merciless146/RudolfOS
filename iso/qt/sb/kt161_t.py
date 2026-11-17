@@ -11,6 +11,8 @@
 #   memory    MEMRUNS (swappiness:zram-percent:compressor ...): tabs, a game and a call at once on 3.3 GB, for each; the
 #             memory stalls (PSI), the game's slow frames, the call's late periods, the memory guard's steps
 #   power     /usr/lib/rudolf/power of this tree in the guest (QEMU has no CPU frequency driver): the fallback
+#   hw        the start on several kinds of virtual hardware (plan Part 12: what reaches the system disk stays built in):
+#             q35 and i440fx, UEFI and BIOS, the drive on NVMe, AHCI, IDE, virtio-blk, virtio-scsi and USB storage
 # Environment: VARIANTS (what is compared, in turn on this same machine, as runners differ by up to 20 %: "NAME:KERNEL-DIR:
 # BASE-FILE;..." with a folder holding vmlinuz and modules.sfs, and a base.sfs; empty fields: the release's), or KERNEL
 # and BASE for one; APPEND (more start-up options), ENGINE (standard|native), MEM (MiB, 3400), STARTS (4), TAG (a name for the results).
@@ -292,6 +294,50 @@ def phase_memory():
             call=dict(zip(('periods', 'late10', 'p99_ms', 'max_ms'), map(float, cl.groups()))) if cl else None, variant=CUR['name'])
       stop(vm, g)
 
+# ---- hw: the drive on each kind of controller, q35 and i440fx, UEFI (OVMF) and BIOS (SeaBIOS starting the kernel itself)
+HW = {'nvme-q35-uefi': ('q35', 1, ['-device', 'nvme,drive=nv,serial=k161']),
+      'ahci-q35-uefi': ('q35', 1, ['-device', 'ahci,id=ah', '-device', 'ide-hd,drive=nv,bus=ah.0']),
+      'virtio-blk-q35-uefi': ('q35', 1, ['-device', 'virtio-blk-pci,drive=nv']),
+      'virtio-scsi-q35-uefi': ('q35', 1, ['-device', 'virtio-scsi-pci,id=vs', '-device', 'scsi-hd,drive=nv,bus=vs.0']),
+      'usb-q35-uefi': ('q35', 1, ['-device', 'qemu-xhci,id=xh', '-device', 'usb-storage,drive=nv,bus=xh.0']),
+      'ide-pc-bios': ('pc', 0, ['-device', 'ide-hd,drive=nv,bus=ide.0']),
+      'virtio-blk-pc-bios': ('pc', 0, ['-device', 'virtio-blk-pci,drive=nv']),
+      'nvme-pc-bios': ('pc', 0, ['-device', 'nvme,drive=nv,serial=k161'])}
+def phase_hw():
+    import qmp as Q
+    q = os.environ.get('QEMU'); qbin = os.path.join(q, 'build', 'qemu-system-x86_64'); pcb = os.path.join(q, 'pc-bios')
+    ovmf = os.path.join(W, 'ovmf.fd'); subprocess.run(f'bzcat {pcb}/edk2-x86_64-code.fd.bz2 > {ovmf}', shell=True, check=True)
+    for v in VARS:
+        for name, (mach, uefi, dev) in HW.items():
+            if os.environ.get('HWONLY') and name not in os.environ['HWONLY'].split(','): continue
+            tag = f'hw-{v["name"]}-{name}'; qs, ss = f'/tmp/qmp-{tag}.sock', f'/tmp/ser-{tag}.sock'
+            for f in (qs, ss):
+                try: os.unlink(f)
+                except OSError: pass
+            a = [qbin, '-L', pcb, '-machine', mach, '-m', str(MEM), '-smp', '2', '-accel', os.environ.get('QEMU_ACCEL', 'tcg'), '-vga', 'std', '-display', 'none',
+                 '-qmp', f'unix:{qs},server,nowait', '-serial', f'unix:{ss},server,nowait', '-drive', f'file={v["drv"]},format=raw,if=none,id=nv', *dev,
+                 '-kernel', f'{v["kernel"]}/vmlinuz' if v['kernel'] else f'{REL}/vmlinuz', '-append', f'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1 {APPEND}']
+            if uefi: a += ['-drive', f'if=pflash,format=raw,readonly=on,file={ovmf}']
+            lg = open(os.path.join(W, tag + '.log'), 'w'); p = subprocess.Popen(a, stdout=lg, stderr=subprocess.STDOUT, start_new_session=True)
+            for _ in range(50):
+                if os.path.exists(qs): break
+                time.sleep(0.2)
+            g = Guest.__new__(Guest); g.N = tag; g.s = Ser(ss); g.q = Q.QMP(qs); g.s.read(0.3); up = False; t0 = time.time()
+            while time.time() < t0 + 300:
+                try:
+                    if 'ready' in g.sh('echo ready', 8): up = True; break
+                except OSError: pass
+                time.sleep(2)
+            # (the answers spelled so that the command's own echo on the serial line cannot be taken for them)
+            o = g.sh('mountpoint -q /persist && echo "PERSIST-$((40+2))"; ls /sys/firmware/efi >/dev/null 2>&1 && echo "FW-U$((1))" || echo "FW-B$((1))"', 30) if up else ''
+            ok = up and 'PERSIST-42' in o
+            res(kind='hw', variant=v['name'], hw=name, started=up, persist='PERSIST-42' in o, firmware='UEFI' if 'FW-U1' in o else 'BIOS' if 'FW-B1' in o else None, ok=ok, secs=round(time.time() - t0))
+            out(f'{tag}: {"OK" if ok else "FAILED"} ({" ".join(re.findall(r"PERSIST-42|FW-[UB]1", o))})')
+            try: g.q.cmd('quit')
+            except Exception: pass
+            try: p.wait(15)
+            except Exception: p.kill()
+
 # ---- power: this tree's power script on QEMU's processors (no frequency driver), with Rudolf's own settings
 def phase_power():
     vm, g, up = boot('p')
@@ -304,7 +350,7 @@ def phase_power():
 
 for v in VARS: make_drive(v)
 try:
-    {'startup': phase_startup, 'latency': phase_latency, 'memory': phase_memory, 'power': phase_power}[PHASE]()
+    {'startup': phase_startup, 'latency': phase_latency, 'memory': phase_memory, 'power': phase_power, 'hw': phase_hw}[PHASE]()
 finally:
     JS.close(); out('done')
     print('==== SUMMARY', TAG)
@@ -314,4 +360,5 @@ finally:
         if r.get('kind') == 'initcalls': r['top'] = r['top'][:12]
         if r.get('kind') == 'startup': r.pop('times', None)   # (the medians above)
         if r.get('kind') == 'power' and r.get('ok'): r.pop('out', None)
+        if r.get('kind') == 'hw': print('HW', r['variant'], r['hw'], 'OK' if r['ok'] else 'FAILED', r['firmware'], f"{r['secs']} s"); continue
         print('R', json.dumps(r, separators=(',', ':')))
