@@ -102,8 +102,9 @@ try:
     out('sign-in (Standard):', r); wait_for(js, "!!(USER&&USER.disk&&hdOn())", 300); time.sleep(10)
     out('the input devices rudolf-display reads:', sh("cat /run/rudolf/inputs 2>/dev/null | head -20", 30, False))
     # an alarm this minute's next: rung once by the page (its centre's list, as Standard keeps it)
-    hm = sh("date -d '+70 sec' +%H:%M", 20, False).strip().split('\n')[-1]; out('alarm (Standard) at', hm)
-    js(f"(()=>{{svj(ALK(),[{{t:'{hm}',label:'Wake',days:[],on:true}}]);return 1}})()")
+    # (the time a minute ahead in the page's own clock, as the alarms are checked)
+    hm = js("(()=>{const d=new Date(Date.now()+70000),p=x=>String(x).padStart(2,'0');const hm=p(d.getHours())+':'+p(d.getMinutes());svj(ALK(),[{t:hm,label:'Wake',days:[],on:true}]);return hm})()")
+    out('alarm (Standard) at', hm)
     r = wait_for(js, "NC.filter(n=>n.t=='⏰ Wake').length>=1", 180, 3); time.sleep(8)
     n = js("NC.filter(n=>n.t=='⏰ Wake').length")
     ok('S1. Standard: an alarm set a minute ahead rings once (one notification)', n == 1, (r, n))
@@ -160,9 +161,9 @@ try:
     st = state()
     ok('N1. Native: the desktop\'s service page is up after sign-in, unseen (no window, no taskbar button)', svc().startswith('ready') and 'app=do-svc' not in st and not re.search(r'^hit win ', st, re.M), (svc(), [l for l in st.split('\n') if l.startswith(('client', 'hit win'))]))
     def ahead(label, cal):
-        hm = sh("date -d '+70 sec' +%H:%M; date -d '+70 sec' +%Y-%m-%d", 20, False).strip().split('\n')[-2:]
-        r = tev('do-svc', f"(()=>{{svj(ALK(),[{{t:'{hm[0]}',label:'{label}',days:[],on:true}}]);svj(CALK(),[{{id:Date.now(),title:'{cal}',d:'{hm[1]}',t:'{hm[0]}',rem:0}}]);return 1}})()")
-        out('alarm and reminder at', hm, r); return hm[0]
+        r = tev('do-svc', "(()=>{const d=new Date(Date.now()+70000),p=x=>String(x).padStart(2,'0');const hm=p(d.getHours())+':'+p(d.getMinutes()),dd=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());"
+                f"svj(ALK(),[{{t:hm,label:'{label}',days:[],on:true}}]);svj(CALK(),[{{id:Date.now(),title:'{cal}',d:dd,t:hm,rem:0}}]);return hm}})()")
+        out('alarm and reminder at', r); return r
     def rings(t, secs=200):
         end = time.time() + secs
         while time.time() < end and toasts(t) < 1: time.sleep(4)
@@ -179,8 +180,8 @@ try:
     l = tev('notepad', "JSON.stringify(SVC.held.filter(h=>!h.gone).map(h=>[h.mod,h.real!=null?1:0]))")
     try: L = json.loads(l)
     except Exception: L = []
-    run = lambda m: sum(1 for x in L if x[0] == m and x[1])
-    ok('N7. Native: Notepad\'s window runs only what it needs (the theme\'s ticks; not the alarms\', the updates\', the session\'s save)', L and run('a11y25.js') >= 2 and run('apps25b.js') == 0 and run('term26.js') == 0 and run('shell25.js') == 0, l[:600])
+    nrun = lambda m: sum(1 for x in L if x[0] == m and x[1])
+    ok('N7. Native: Notepad\'s window runs only what it needs (the theme\'s ticks; not the alarms\', the updates\', the session\'s save)', L and nrun('a11y25.js') >= 2 and nrun('apps25b.js') == 0 and nrun('term26.js') == 0 and nrun('shell25.js') == 0, l[:600])
     out('the pages\' process:', sh("for p in $(pgrep -f WebKitWebProcess); do grep -E 'VmRSS' /proc/$p/status | tr '\\n' ' '; echo $p; done", 30, False))
     # a Clock timer started in its window, the window closed
     if open_app('clock', 'clock'):
