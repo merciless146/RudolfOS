@@ -179,7 +179,7 @@ def part1():
         o = run(g, STATUS + "; cat /run/rudolf/espcheck.log; cat /persist/os/bootimg/pending; ls -1 /persist/os/system/r | cat; grep -h '\"k\":\"boot\"' /persist/var/log/health.log | tail -4; tail -5 /run/rudolf/update.log", 120)
         ok('4. at the next start: system/r made again from the official system (its deleted layer back)', up and 'made again from this official system' in o and re.search(r'^desktop\.sfs$', o, re.M), o)
         ok('5. ...the release\'s boot image downloaded from GitHub, its checksum and both start-up files checked, staged for the next start (said in System health)', okp
-           and f'serial={SER}' in o and 'are written at the next start' in o and 'not all the official ones' in o, o)
+           and f'serial={SER}' in o and 'were put back in the drive' in o and 'not all the official ones' in o, o)
         stop(vm, g)
         vm, g, up = boot('written1', D1, V1)
         o = run(g, STATUS + "; cat /persist/os/bootimg/result 2>&1; ls /persist/os/bootimg 2>&1; grep -i 'boot files' /persist/var/log/boot-decisions.log | tail -3", 120) if up else 'not up'

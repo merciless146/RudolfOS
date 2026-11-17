@@ -78,8 +78,20 @@ run y2 / no >/dev/null
 ok "...said once in the health log" "$(grep -c 'memory group is missing' /run/rudolf/health.log 2>/dev/null | grep -qx 1 && echo 1)" "$(cat /run/rudolf/health.log 2>/dev/null)"
 kill $RDP; wait $RDP 2>/dev/null
 # an empty desktop group (the session could not put the browser in it): not enforced either, so the desktop is never shut out
-mkdir -p $T/cg0; : > $T/cg0/cgroup.procs; rm -f /run/rudolf/peer-unchecked; start "RUDOLFD_DESKTOP_CG=$T/cg0"
+mkdir -p $T/cg0; : > $T/cg0/cgroup.procs; rm -f /run/rudolf/peer-unchecked /run/rudolf/peer-enforced; start "RUDOLFD_DESKTOP_CG=$T/cg0"
 o=$(run z1 / no)
 ok "11. an empty desktop group: not enforced (the desktop is never shut out of its own page)" "$([ "$(code "$o")" = 200 ] && echo 1)" "$(echo "$o" | head -c 200)"
+kill $RDP; wait $RDP 2>/dev/null
+# 1.6.0 ("Before stable" 15, the owner's health log of 2026-11-16): once the desktop was seen in its group during this
+# start, the group going empty (the restart's shutdown stops the desktop first; the watchdog starting it again) keeps it
+# enforced, and says nothing of a missing group; while shutting down, refusals are not logged
+rm -f /run/rudolf/peer-unchecked /run/rudolf/peer-enforced /run/rudolf/peer-refused /run/rudolf/health.log; : > $T/cg/cgroup.procs; start "RUDOLFD_DESKTOP_CG=$T/cg RUDOLFD_DESKTOP_UID=65534"
+rm -f $T/tok; o=$(run e1 / desk)
+ok "12. the desktop seen in its group: the page" "$([ "$(code "$o")" = 200 ] && [ -e /run/rudolf/peer-enforced ] && echo 1)" "$(echo "$o" | head -c 200)"
+: > $T/cg/cgroup.procs; echo reboot > /run/rudolf/power; o=$(run e2 / no)
+ok "...then the group empty (the desktop stopped for a restart): still refused, no \"missing or empty\" and no refusal in the health log while shutting down" \
+	"$([ "$(code "$o")" = 403 ] && ! grep -q 'missing or empty\|not the desktop' /run/rudolf/health.log 2>/dev/null && echo 1)" "$o $(cat /run/rudolf/health.log 2>/dev/null)"
+rm -f /run/rudolf/power; o=$(run e3 / desk)
+ok "...and the desktop started again in its group: allowed" "$([ "$(code "$o")" = 200 ] && echo 1)" "$(echo "$o" | head -c 200)"
 kill $RDP; wait $RDP 2>/dev/null
 echo "$((N-F))/$N passed"; [ $F = 0 ]

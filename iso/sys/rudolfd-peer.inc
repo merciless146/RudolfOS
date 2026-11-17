@@ -22,6 +22,9 @@
 #ifndef PEER_HINT
 #define PEER_HINT RUN "/peer-hint"
 #endif
+#ifndef PEER_SEEN
+#define PEER_SEEN RUN "/peer-enforced"   /* (1.6.0: the desktop's group was seen holding the desktop during this start) */
+#endif
 static int peer_cached = -2;   /* per connection (each is its own process): -2 not looked at yet */
 static unsigned peer_uid_seen = (unsigned)-1;
 
@@ -77,8 +80,14 @@ static int peer_desktop(int fd)
 	while (n < 4096 && fscanf(f, "%d", &pid) == 1) pids[n++] = pid;
 	fclose(f);
 	/* an empty group: the desktop did not get into it (the session could not write it): checking would shut the desktop
-	   itself out, so not enforced (said in the health log) */
-	if (!n) return peer_cached = -1;
+	   itself out, so not enforced (said in the health log). 1.6.0 ("Before stable" 15, the owner's health log of
+	   2026-11-16: "the desktop's memory group is missing or empty", right as the computer restarted after the engine
+	   switch): once the desktop has been seen in its group during this start, an empty group only means it is not
+	   running at the moment (the restart's shutdown stops it first, while an account's own programs, its portal, still
+	   ask; a desktop being started again by the session's watchdog), and the session puts the next one in the group
+	   before it starts it: so it stays enforced */
+	if (!n) return peer_cached = access(PEER_SEEN, F_OK) ? -1 : 0;
+	if (access(PEER_SEEN, F_OK)) { int w = open(PEER_SEEN, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600); if (w >= 0) close(w); }
 	/* 1.5.9 (15.3): the second check, which costs nothing: since each account's programs run as the account's own
 	   Linux user, a socket of any user but the desktop's is not the desktop's, whatever group its process is in */
 	if (uid != peer_desk_uid()) return peer_cached = 0;
@@ -99,7 +108,8 @@ static void peer_refused(int fd, const char *path)
 {
 	static const char T[] = RUN "/peer-refused";
 	struct stat st; time_t now = time(NULL);
-	if (stat(T, &st) || now - st.st_mtime >= 60) {
+	/* (not while the computer is shutting down: the desktop is stopped first, and what is left asks once more) */
+	if (access(RUN "/power", F_OK) && (stat(T, &st) || now - st.st_mtime >= 60)) {
 		int w = open(T, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600); if (w >= 0) close(w);
 		health_add("security", "a program that is not the desktop (Linux user %u) asked for %s: refused", peer_uid_seen, strncmp(path, "/api/", 5) ? "the desktop's page" : "the system API");
 	}
