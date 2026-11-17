@@ -10,13 +10,20 @@
 # started (never by user: on GitHub's runner uid 1001 is the runner itself).   sh keyprompt60_t.sh
 HERE=$(cd "$(dirname "$0")" && pwd); SYS=$HERE/../../sys; KR=$SYS/root/usr/lib/rudolf/keyring; T=$(mktemp -d /tmp/kp60.XXXXXX)
 trap 'kill $(cat $T/pids 2>/dev/null) 2>/dev/null; rm -rf $T' EXIT
-N=0; F=0; ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $(echo "$3" | head -c 700)"; F=$((F+1)); fi; }
+N=0; F=0; ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $(echo "$3" | head -c 700)$(why)"; F=$((F+1)); fi; }
+# 2026-11-17 ("Before stable" 12): every wait is for the answer itself, up to a generous bound (as hwcnative160_t.sh's
+# w8), never a fixed time. The occasional failure of 5, 6 or 7 (about 1 run in 25, here and on GitHub's runner, with or
+# without a busy CPU) was not timing: gnome-keyring-daemon could not read the password rudolf-portal sent it, when their
+# shared value began with a zero byte (1 in 256 exchanges; 1's sxpeer.py 12 sends one every time), and said so in its log
+# ("Cannot import an invalid key"); a failing step now says it (why).
+w8() { i=0; while [ $i -lt ${2:-120} ]; do eval "$1" && return 0; timeout 0.25 tail -f /dev/null; i=$((i+1)); done; return 1; }
+why() { [ -f "$T/kr.log" ] && grep -q "Cannot import an invalid key" $T/kr.log && echo " / gnome-keyring-daemon: \"$(grep -m1 "Cannot import an invalid key" $T/kr.log | sed 's/.*WARNING \*\*: [0-9:.]*: //')\": it could not read the password sent (the secret exchange's shared value with a leading zero byte: sxpeer.py 12)"; }
 PY=python3; [ -x /usr/bin/python3 ] && PY=/usr/bin/python3
 gcc -O2 -w -o $T/rp $SYS/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
 # gcr's secret exchange
 if $PY -c 'import cryptography' 2>/dev/null; then
 	o=$($PY $HERE/fixtures/sxpeer.py $T/rp 2>&1); echo "$o" | sed 's/^/  sx: /'
-	ok "1. gcr's secret exchange [sx-aes-1] as gcr does it (DH 1536, HKDF-SHA256, AES-128-CBC): $(echo "$o" | tail -1)" "$(echo "$o" | tail -1 | grep -q '^\([0-9]*\)/\1 passed$' && echo 1)" "$o"
+	ok "1. gcr's secret exchange [sx-aes-1] as gcr and gnome-keyring-daemon do it (DH 1536, HKDF-SHA256, AES-128-CBC): $(echo "$o" | tail -1)" "$(echo "$o" | tail -1 | grep -q '^\([0-9]*\)/\1 passed$' && echo 1)" "$(echo "$o" | grep -v '^PASS')"
 else echo "SKIP 1: no python3-cryptography"; fi
 grep -q '"rudolf-portal".*-lcrypto\|rudolf-portal.c.*-lcrypto' $HERE/../../mkrootfs.sh && grep -q 'rudolf-portal.c.*-lcrypto' $HERE/../../systools/ci_release.sh
 ok "2. built with OpenSSL's libcrypto, which the base layer already has (no new library)" "$([ $? = 0 ] && echo 1)"
@@ -34,12 +41,12 @@ EOC
 dbus-daemon --config-file=$T/bus.conf --fork --nopidfile --print-pid > $T/dpid; cat $T/dpid >> $T/pids
 S="env -i PATH=$PATH HOME=$H XDG_RUNTIME_DIR=$RT DBUS_SESSION_BUS_ADDRESS=unix:path=$RT/bus"
 $S sh $KR start > $T/kr.log 2>&1 & echo $! >> $T/pids
-i=0; until $S $PY -c 'import secretstorage; secretstorage.get_default_collection(secretstorage.dbus_init())' >/dev/null 2>&1 || [ $i -ge 50 ]; do i=$((i+1)); timeout 0.2 tail -f /dev/null; done
+w8 "$S $PY -c 'import secretstorage; secretstorage.get_default_collection(secretstorage.dbus_init())' >/dev/null 2>&1" 240
 app() { $S timeout 30 $PY $HERE/fixtures/krapp.py "$@" 2>&1; }
 o=$(app create Nobody)
 ok "4. no prompter on the bus: creating a keyring fails (gcr's own is never started)" "$(echo "$o" | grep -q '^error\|^dismissed' && ! pgrep -f gcr-prompter >/dev/null && echo 1)" "$o"
 $S $T/rp > $T/rp.log 2>&1 & echo $! >> $T/pids
-i=0; until $S gdbus call --session -d org.freedesktop.DBus -o /org/freedesktop/DBus -m org.freedesktop.DBus.NameHasOwner org.gnome.keyring.SystemPrompter 2>/dev/null | grep -q true || [ $i -ge 50 ]; do i=$((i+1)); timeout 0.1 tail -f /dev/null; done
+w8 "$S gdbus call --session -d org.freedesktop.DBus -o /org/freedesktop/DBus -m org.freedesktop.DBus.NameHasOwner org.gnome.keyring.SystemPrompter 2>/dev/null | grep -q true" 240
 : > $T/ans; : > $T/log; $PY $HERE/fixtures/krdesk.py $T/ans $T/log & echo $! >> $T/pids
 q() { sed -n "${1}p" $T/log; }
 printf 'password:work-pw-1\n' > $T/ans; o=$(app create Work)
@@ -51,8 +58,8 @@ ok "7. Cancel: the app is told it was dismissed, the keyring stays locked" "$([ 
 n=$(wc -l < $T/log); printf 'password:\nyes\n' > $T/ans; o=$(app create Open)
 ok "8. a keyring with no password: the daemon's confirmation (kept unencrypted?) asked as a confirm, Continue: made" "$([ "$o" = created ] && sed -n "$((n+2))p" $T/log | grep -q '"type": "confirm"' && echo 1)" "$o / $(tail -2 $T/log)"
 printf 'wait\n' > $T/ans; $S timeout 30 $PY $HERE/fixtures/krapp.py create Gone > /dev/null 2>&1 & AP=$!; echo $AP >> $T/pids
-i=0; until ls /run/rudolf/portal/req/k*.json >/dev/null 2>&1 || [ $i -ge 50 ]; do i=$((i+1)); timeout 0.1 tail -f /dev/null; done; had=$(ls /run/rudolf/portal/req/k*.json 2>/dev/null)
-kill $AP; i=0; while ls /run/rudolf/portal/req/k*.json >/dev/null 2>&1 && [ $i -lt 100 ]; do i=$((i+1)); timeout 0.1 tail -f /dev/null; done
+w8 'ls /run/rudolf/portal/req/k*.json >/dev/null 2>&1' 240; had=$(ls /run/rudolf/portal/req/k*.json 2>/dev/null)
+kill $AP; w8 '! ls /run/rudolf/portal/req/k*.json >/dev/null 2>&1' 240
 printf 'password:after\n' > $T/ans; o=$(app create After)
 ok "9. the app goes away while asked: the question is withdrawn (the desktop closes it), and the next prompt still works" "$([ -n "$had" ] && ! ls /run/rudolf/portal/req/k*.json >/dev/null 2>&1 && [ "$o" = created ] && echo 1)" "$had / $o / $(cat $T/rp.log)"
 rm -f /run/rudolf/portal/req/k*.json /run/rudolf/portal/resp/k*.json

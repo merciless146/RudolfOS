@@ -17,6 +17,8 @@
 const ONEAPP=(()=>{try{const h=String(location.hash||'').replace(/^#/,'');if(!h)return null;const q=new URLSearchParams(h),k=q.get('app');
  return k&&/^[a-z0-9_:.+-]{1,127}$/i.test(k)?{k,file:q.get('file')||'',w:+q.get('w')||0,q}:null}catch(e){return null}})();   /* (2026-11-16: also the Library's, Linux's and Windows' programs: pkg:NAME, lx:ID.desktop, lx:deb-ID) */
 const OA={main:null,want:0,opened:0,done:0,login:0};
+/* (1.6.0 Part 12, item 12) the native desktop's service page (#app=do-svc, svc60.js): the background work of the whole desktop, never shown */
+const OA_SVC=!!(ONEAPP&&ONEAPP.k=='do-svc');
 /* (the sign-in screen hidden from the first paint in an app's window: shown again, base_v24.html's head) */
 function oaLoginUnhide(){try{document.documentElement.classList.remove('oalg')}catch(e){}}
 if(!ONEAPP)oaLoginUnhide();
@@ -306,10 +308,10 @@ html.oamwait .rmodal,html.oamwait .natdlg,html.oamwait #oamodalbg{opacity:0!impo
  /* the first window made for the app is its main window: it fills the page and gives the page its title */
  {const _w=win;win=function(...a){const W=_w.apply(this,a);if(OA.want&&!OA.main&&W&&W.el){W.__oaReq=[a[2],a[3]];oaMain(W)}return W}}
  /* another app: a window of its own when the native shell is there */
- {const _l=launch;launch=function(k){if(OA.main&&k!=ONEAPP.k&&oaOut()&&APPS[k]){oaDrained().then(()=>oaPost({op:'open',app:k}));return}return _l.apply(this,arguments)}}
+ {const _l=launch;launch=function(k){if((OA.main||OA_SVC)&&k!=ONEAPP.k&&oaOut()&&APPS[k]){oaDrained().then(()=>oaPost({op:'open',app:k}));return}return _l.apply(this,arguments)}}
  /* (Settings at a page, asked by another app's window or a notification's action: Settings' own window, at that page) */
- {const _st=settings;settings=function(sec){if(OA.main&&ONEAPP.k!='settings'&&oaOut()){oaPost({op:'open',app:'settings',page:typeof sec=='string'?sec:''});return}return _st.apply(this,arguments)}}
- {const _lw=launchWith;launchWith=function(k,p){if(OA.main&&k!=ONEAPP.k&&oaOut()&&APPS[k]){const f=Array.isArray(p)?p.join('\\'):String(p||'');oaDrained().then(()=>oaPost({op:'open',app:k,file:f}));return}return _lw.apply(this,arguments)}}
+ {const _st=settings;settings=function(sec){if((OA.main||OA_SVC)&&ONEAPP.k!='settings'&&oaOut()){oaPost({op:'open',app:'settings',page:typeof sec=='string'?sec:''});return}return _st.apply(this,arguments)}}
+ {const _lw=launchWith;launchWith=function(k,p){if((OA.main||OA_SVC)&&k!=ONEAPP.k&&oaOut()&&APPS[k]){const f=Array.isArray(p)?p.join('\\'):String(p||'');oaDrained().then(()=>oaPost({op:'open',app:k,file:f}));return}return _lw.apply(this,arguments)}}
  /* (1.5.9, 12.3c) Oracle's new window (Ctrl+N, a link or a website's new window from inside Oracle, a web page's file from another app:
     browser()) is a window of its own, as on Standard, not a second window inside this page: Oracle's, in Rudolf's Chromium. (Not a
     website's pop-up, whose tab this window's shell already holds with its opener (a sign-in's): adopt, kept here) */
@@ -317,7 +319,7 @@ html.oamwait .rmodal,html.oamwait .natdlg,html.oamwait #oamodalbg{opacity:0!impo
   oaPost({op:'open',app:'browser',url:typeof u=='string'&&/^(https?:|about:|file:\/\/\/)/i.test(u)?u:'',priv:bo&&bo.priv?'1':''});return null}return _br.apply(this,arguments)}}
  /* (1.5.9, 12.3c step 5) Open with: the chosen app in a window of its own, as on Standard (not one inside this page): made by the
     native desktop's do-fs page, as its own Open with dialog does (oaFs op=openwith) */
- if(typeof OPENERS!='undefined')OPENERS.forEach(x=>{const f=x[4];if(!f||x[0]==ONEAPP.k)return;x[4]=p=>{if(OA.main&&oaOut()&&Array.isArray(p)){const fp=p.join('\\');oaDrained().then(()=>oaPost({op:'openwith',key:x[0],file:fp}));return}return f(p)}});
+ if(typeof OPENERS!='undefined')OPENERS.forEach(x=>{const f=x[4];if(!f||x[0]==ONEAPP.k)return;x[4]=p=>{if((OA.main||OA_SVC)&&oaOut()&&Array.isArray(p)){const fp=p.join('\\');oaDrained().then(()=>oaPost({op:'openwith',key:x[0],file:fp}));return}return f(p)}});
  /* the first sign-in screen: the native session's account instead, when there is one. (The owner's report 1) Until then the sign-in
     screen stays hidden from the window's first paint (base_v24.html's head: html.oalg), and shows only when this window really needs
     a sign-in (no native session, its keys refused: a page opened by hand) */
@@ -355,6 +357,22 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
    /* (the release seen is kept: devices26.js sets S.seenRel, but persistS writes the saved settings, SC, which it left out, so every
       page signing in announced the release again; Standard's one page at a time is left as it is) */
    if(OA_UPD)OA_UPD().then(()=>{if(SC&&S.seenRel&&SC.seenRel!==S.seenRel){SC.seenRel=S.seenRel;persistS()}}).catch(e=>console.warn(e))}catch(e){console.warn(e)}setTimeout(()=>oaFin({}),14000);return}
+ /* (1.6.0 Part 12, item 12) the desktop's background work, once for the whole native desktop (#app=do-svc, opened by rudolf-native at
+    sign-in and kept open, never shown): the timers every page's modules start as it loads, held back in the app windows (svc60.js),
+    run here, signed in, as Standard's one page runs them (the Clock's alarms and timers, the Calendar's reminders, the updates...). Its
+    notifications and sounds are the shell's, its dialogs over the screen; an app it opens (a reminder's click) is a window of its own,
+    and a window it would make in itself (it has none of its own) is that app's own window instead */
+ if(da0=='svc'){document.title='Rudolf OS';
+   {const _w=win;win=function(...a){const W=_w.apply(this,a);try{if(W&&W.el&&oaOut()){const k=W.app&&APPS[W.app]?W.app:'';W.el.remove();if(W.tb)W.tb.remove();wins=wins.filter(x=>x!==W);if(k)oaPost({op:'open',app:k})}}catch(e){console.warn(e)}return W}}
+   /* (the Clock's timers made before this sign-in are gone, as they go with Standard's page; the service page loaded again keeps them) */
+   try{const since=+ONEAPP.q.get('since')||0,o=oaTmrRead();if(o&&since){const l=o.l.filter(t=>(+t.c||0)>=since);if(l.length!=o.l.length)oaTmrWrite(l)}}catch(e){}
+   /* (the session's save, every 20 s as Standard's: the apps of the windows open on the whole desktop, asked of the shell as Task Manager
+      asks, written only when they changed (each write goes to rudolfd's copy); kept as it was when the shell did not answer) */
+   window.__sessionSave=async()=>{if(!USER||typeof oaWinsAsk!='function')return;const t=Date.now();try{await oaWinsAsk()}catch(e){}if(!(OA.winsAt>=t))return;
+    const list=[...new Set(oaWins().filter(o=>o.app&&!/^do-/.test(o.app)&&!['settings','trash'].includes(o.app)).map(o=>o.app))].slice(0,8);
+    if(JSON.stringify(ld(sessK(),[]))!==JSON.stringify(list))svj(sessK(),list)};
+   try{__svcRun(1)}catch(e){console.warn('svc',e)}
+   oaPost({op:'svc',ready:'1'});return}
  /* (1.6.0, the owner's Vivobook, 2026-11-16: Sober's sign-in spun for ever on Native) the portal's requests (a Linux or Flatpak app's keyring
     prompts, file dialogs, links, notifications: linux26.js lxPortal, keyring60.js krPrompt), which the native shell collects and hands
     here one by one (#app=do-portal, a page of its own kept unseen while an account is signed in): each done as Standard's desktop does
@@ -498,7 +516,29 @@ function oaFs(){const q=ONEAPP.q,op=q.get('op')||'',p=resolve(ONEAPP.file||'',['
     page's window, if it makes one, is the file's window) */
  if(op=='drop'){const k=q.get('in')||'';let r=false;try{r=!!__dropFileOnWindow({app:k},p)}catch(e){console.warn(e)}
   setTimeout(()=>{if(!OA.main)oaFin(r?{}:{err:'nothing'})},1500);return}
+ /* (1.6.1 Part 13) files dropped from a Linux app onto the native desktop (the shell took the X drop): what shell25.js's DESK drop does with
+    Chromium's files on Standard, each file read through rudolfd (desktop/dropped: the account's own files and the drives, read by its
+    Linux user) instead of by the browser */
+ if(op=='xdrop'){oaXdrop(q).then(r=>oaFin(Object.assign({xd:'1'},r)),e=>{console.warn(e);oaFin({xd:'1',err:String(e&&e.message||e)})});return}
  oaFin({err:'Unknown: '+op})}
+/* the type Chromium gives a dropped file (its own list of names: net/base/mime_util.cc), which decides, as on Standard, whether the page
+   keeps it as text or as a data: URL */
+const OA_XTYPE={html:'text/html',htm:'text/html',shtml:'text/html',shtm:'text/html',ehtml:'text/html',css:'text/css',xml:'text/xml',xsl:'text/xml',xbl:'text/xml',xslt:'text/xml',
+ js:'text/javascript',mjs:'text/javascript',json:'application/json',txt:'text/plain',text:'text/plain',csv:'text/csv',ics:'text/calendar',vtt:'text/vtt',md:'text/markdown',
+ svg:'image/svg+xml',svgz:'image/svg+xml',xhtml:'application/xhtml+xml',xht:'application/xhtml+xml',rss:'application/rss+xml',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',
+ gif:'image/gif',webp:'image/webp',pdf:'application/pdf',zip:'application/zip',mp3:'audio/mpeg',mp4:'video/mp4',webm:'video/webm',wasm:'application/wasm'};
+const OA_XWHY={'too-large':'','unreadable':'your account may not open it.','link':'it is a link to somewhere else.','outside':'it is not in your files or on a drive.',
+ 'gone':'it is not there any more.','folder':'folders and devices cannot be dropped.','path':'its name is too long.','nobody':'nobody is signed in.'};
+async function oaXdrop(q){let fl=[];try{fl=JSON.parse(q.get('files')||'[]')}catch(e){}if(!Array.isArray(fl))fl=[];
+ const d=deskFiles();if(!d)return{err:'no desktop'};let n=0;
+ for(const p of fl.slice(0,256)){const fn=String(p).split('/').pop()||String(p);let f=null;
+  try{if(!RD)throw new Error('nobody');const r=await fetch('/api/desktop/dropped?path='+encodeURIComponent(String(p)),{headers:{'X-Rudolf-Token':RD.token}});
+   if(!r.ok){let w='';try{w=(await r.json()).error}catch(x){}throw new Error(w||'HTTP '+r.status)}const b=await r.blob();f=new File([b],fn,{type:OA_XTYPE[(fn.match(/\.([^.]+)$/)||[])[1]?.toLowerCase()]||''})}
+  catch(e){const w=String(e&&e.message||e);if(w=='too-large')notify('Too large',fn+' is over 64 MB.',{kind:'error'});else notify('Blocked',fn+' was not copied: '+(OA_XWHY[w]||w),{kind:'error'});continue}
+  /* (from here as shell25.js's drop, line by line) */
+  if(f.size>64*1048576){notify('Too large',f.name+' is over 64 MB.',{kind:'error'});continue}const nm=f.name.toUpperCase().replace(/[\\\/:*?"<>|]/g,'_').slice(0,60);const bin=!/^text\/|json|xml|javascript/.test(f.type)&&!/\.(txt|lua|md|csv|json|html?|css|js|bat|cfg)$/i.test(f.name);
+  const val=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);bin?fr.readAsDataURL(f):fr.readAsText(f)});const g=window.__sys&&secIngress(nm,val,'upload');if(g&&!g.ok){notify('Blocked',g.msg,{kind:'error'});continue}d[uniq(d,nm)]=val;n++}
+ fsSave();EXPL.forEach(f=>f());return{ok:1,n:String(n)}}
 /* (2026-11-16, found on the beta in QEMU at 1280×800) the size Standard's win() gives the window: what the app asked for, kept inside the
    screen's desktop (the screen less the taskbar), not inside this page's own window, which may be smaller when it is made (Settings
    came out 87 px shorter than on Standard on a 1280×800 screen) */
@@ -678,7 +718,7 @@ if(ONEAPP&&oaNative()&&typeof cmenu=='function'){const _cm=cmenu;let gen=0,acts=
    Switch to and End task the shell does (op "winop"; End task closes the window as Standard's does, without asking: __oaEnd) */
 if(ONEAPP&&oaNative()){let OW=null,waitL=[];
  window.__oaMe=()=>{const m=OA.main;if(!m||!m.el||!m.el.isConnected)return null;let mb=null;try{mb=domWeight(m.el).mb}catch(e){}return{mb}};
- window.__oaWinsIn=j=>{try{const l=JSON.parse(j);OW=Array.isArray(l)?l:null}catch(e){OW=null}const f=waitL;waitL=[];f.forEach(r=>r())};
+ window.__oaWinsIn=j=>{try{const l=JSON.parse(j);OW=Array.isArray(l)?l:null;OA.winsAt=Date.now()}catch(e){OW=null}const f=waitL;waitL=[];f.forEach(r=>r())};
  window.__oaEnd=()=>{const m=OA.main;if(m&&m.el&&m.el.isConnected){try{m.onclose=null}catch(e){}try{m.close()}catch(e){oaDone()}}else oaDone()};
  window.oaWinsAsk=()=>new Promise(r=>{waitL.push(r);oaPost({op:'wins'});setTimeout(r,1000)});
  window.oaWins=()=>!OW?wins:OW.map(o=>{if(o.w&&o.w==ONEAPP.w&&OA.main)return OA.main;
@@ -725,3 +765,19 @@ if(ONEAPP){
    Standard's move to the browser shell ("Real browser tabs are ready"): its shell/switch restarted the whole native desktop, at every
    switch pressed in the QEMU check on the real release (the same guard as shell26.js's in the Vivobook reports' fix; either is enough) */
 if(ONEAPP&&typeof shellOffer=='function'&&typeof RD!='undefined'&&RD&&RD.engine=='native')shellOffer=async()=>{};
+/* (1.6.0 Part 12, item 12) remote access's question ("Let … see this screen?") is asked once, by the desktop's service page, above every
+   window; each window still shows the red bar while someone is connected (svc60.js) */
+if(ONEAPP&&!OA_SVC&&typeof RD!='undefined'&&RD&&RD.engine=='native'&&typeof rmAsk=='function')rmAsk=()=>{};
+/* (1.6.0 Part 12, item 12) the Clock's timers (apps25b.js TIMERS) are the desktop's: on Standard they live in its one page; here the
+   Clock's window makes them and the service page (do-svc) rings them, also once the Clock's window is closed. They are kept in the
+   page's storage (bd95timers:ID, with when each was made) and told at once to the other windows (WebKit's storage may reach them
+   seconds later): __tmrOut after a change, __tmrIn before each look (the newest wins). Standard's page has neither. */
+const OA_TMR={v:0,bc:null};
+const oaTmrKey=()=>'bd95timers:'+uid();
+function oaTmrRead(){try{const o=JSON.parse(localStorage.getItem(oaTmrKey())||'null');return o&&Array.isArray(o.l)?o:null}catch(e){return null}}
+function oaTmrWrite(l){const o={v:Date.now()*1000+Math.floor(Math.random()*1000),l};OA_TMR.v=o.v;try{localStorage.setItem(oaTmrKey(),JSON.stringify(o))}catch(e){}try{OA_TMR.bc&&OA_TMR.bc.postMessage({id:uid(),o})}catch(e){}}
+function oaTmrTake(o){if(!o||!(o.v>OA_TMR.v)||!Array.isArray(o.l))return;OA_TMR.v=o.v;TIMERS.splice(0,TIMERS.length,...o.l.filter(t=>t&&+t.end>0).map(t=>({end:+t.end,label:String(t.label||'Timer'),total:+t.total||0,c:+t.c||0,done:t.done?1:0})))}
+if(ONEAPP&&oaOut()&&typeof TIMERS=='object'){
+ try{if(typeof BroadcastChannel=='function'){OA_TMR.bc=new BroadcastChannel('rudolf-timers');OA_TMR.bc.onmessage=e=>{const m=e.data||{};if(USER&&m.id==uid())oaTmrTake(m.o)}}}catch(e){}
+ window.__tmrIn=()=>{if(USER)oaTmrTake(oaTmrRead())};
+ window.__tmrOut=()=>{if(USER)oaTmrWrite(TIMERS.map(t=>({end:t.end,label:t.label,total:t.total,c:t.c||0,done:t.done?1:0})))}}
