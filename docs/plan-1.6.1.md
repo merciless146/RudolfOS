@@ -240,6 +240,118 @@ What is left is measured, not guessed: each change kept only if the numbers say 
   configuration (one option removed from each group) must fail the build with that option's name and who needs it.
   This check is its own PR, merged before any of Part 12's tuning PRs.
 
+#### Results, 2026-11-17 (measured in QEMU with KVM; the Vivobook's part is the owner's checklist below)
+How: `.github/workflows/kernel-tuning.yml` (on pushes to `ktune-*` branches; nothing published) builds test kernels from
+this tree (`iso/systools/testkernel.sh`, the release's configuration with options changed) and test base layers (the
+release's with this tree's sys/root and rudolfd), and starts them in QEMU/KVM (`iso/qt/sb/kt161_t.py`) on the 1.6.0 beta's
+layers (r2026111620), as installed (slot a on NVMe, RUDOLFDATA), UEFI, 2 processors, 3.3 GB. **GitHub's runners differ
+from each other by up to 20 %**, so every comparison below was made on one machine, the variants started in turn (the
+first two rounds, which compared across machines, were thrown away for that). Medians of 4 starts or 3 runs.
+
+**Responsiveness: no change kept.** The kernel already has PREEMPT_DYNAMIC (the voluntary model by default, `preempt=` at
+start-up) and HZ 1000 (x86_64_defconfig's), so the plan's "HZ 1000 against the current" is "HZ 250 against the current".
+Wake-up latency of an ordinary thread sleeping 1 ms (`kload wlat`), the desktop page's input-to-frame time (a key from
+QEMU's keyboard to the next frame drawn after its keydown), frames over 33 ms, and two gzip runs' time, idle, with a busy
+loop on each processor, and during a 1.5 GB copy:
+
+| Busy loop on each processor | wake-up p99 | p99.9 | worst | page input-to-frame p99 | input queue p50 | frames > 33 ms (all loads) | gzip |
+|---|---|---|---|---|---|---|---|
+| voluntary (today) | 337 µs | 1.97 ms | 2.8 / 17.4 / 13.8 ms | 16.0 ms | 2.1 ms | 0 | 4.99 s |
+| full | 327 µs | 1.91 ms | 3.2 / 3.3 / 3.3 ms | 15.1 ms (one run 20.3) | 2.1 ms | 4 (during the copy) | 5.04 s |
+| lazy | 96 µs | 0.93 ms | 2.8 / 1.8 / 3.6 ms | 16.1 ms | 3.2 ms | 0 | 4.99 s |
+| none (round 1, another machine) | 503-534 µs | 1.9-2.1 ms | 18-21 ms | 15.1-15.6 ms | 1.9-2.2 ms | 0 | |
+| HZ 250, voluntary (beside HZ 1000 on one machine) | 119 µs (HZ 1000: 187) | 3.52 ms (HZ 1000: 1.84) | 7.8 / 7.8 / 8.6 ms (HZ 1000: 5.0 / 6.6 / 17.8) | 15.1 ms (15.0) | 0.9 ms (2.0) | 0 | 4.98 s (4.96) |
+
+Idle and during the copy every model gave the same numbers (p99 122-158 µs, input-to-frame p99 14.5-15.7 ms).
+- *full*: removes voluntary's occasional 14-17 ms stall under a CPU load, but showed 4 slow frames during the copy where
+  voluntary showed none: mixed, so not kept. It can be tried on the Vivobook with the start-up option `preempt=full` (no
+  new kernel needed): the checklist.
+- *lazy*: the best wake-up tail by far, but the page's input waited longer in the browser (input queue 2.6-4.1 ms against
+  2.1) while the processors were busy: what a person feels got worse, so not kept.
+- *none*: the worst stalls (18-21 ms).
+- *HZ 250*: a better p99 and a shorter input queue in the browser, but twice the p99.9 under load (3.5 ms against 1.8: a
+  4 ms tick) and every worst case near 8 ms: mixed, not kept. (Trying it on the Vivobook needs a kernel built with it;
+  left for later, only if the owner feels lag under load with HZ 1000.)
+- Throughput (gzip beside the loops) did not change with the model.
+
+**Start-up: kept: the kernel packed with zstd, the wired network cards' drivers as modules.** Where the time goes (the new
+start-up steps, `/run/rudolf/startup-times`), Standard, uptime in s:
+
+| Step | release (1.6.0) | this tree |
+|---|---|---|
+| before the kernel's clock (firmware, loading and unpacking the kernel; QEMU's TSC) | **1.56** | **0.94** |
+| the kernel, to /init | 0.77 | 0.71 |
+| the start-up image (finding the drive, checking the layers) | to 4.5 | to 4.45 |
+| system extensions, devices (udev), data partition, memory, graphics driver | 4.5 → 5.9 | 4.5 → 5.8 |
+| X server started | 6.6 | 6.6 |
+| X server answers (`rudolf-display --xsize`: Xorg's own initialisation, 2.6 s) | (not timed) | 9.2 |
+| session bus, sound, packages | → 10.0 | → 9.85 |
+| desktop started → the desktop answered (its first heartbeat) | 10.2 → 18.5 | 10.0 → 18.3 |
+| **from power-on (TSC + uptime)** | **20.0** | **19.2** |
+
+| Same machine, 4 starts each | before the kernel | to /init | desktop answered | from power-on |
+|---|---|---|---|---|
+| release | 1.56 | 0.77 | 18.48 | 20.04 |
+| zstd only | 0.94 | 0.77 | 18.24 | 19.18 |
+| network drivers as modules only | 1.51 | 0.71 | 18.27 | 19.78 |
+| both (this tree) | 0.94 | 0.71 | 18.28 | 19.22 |
+| Native: release / this tree | 1.59 / 0.94 | 0.87 / 0.81 | 13.37 / 12.95 | 14.96 / 13.89 |
+
+- **zstd** (KERNEL_ZSTD, INITRAMFS_COMPRESSION_ZSTD): 0.6 s less before the kernel starts, for a kernel 1 MB larger
+  (13 MB; the EFI image's two kernels stay well under its 30 MiB warning). An installed computer unpacks two kernels
+  (the boot files' and, after the handover, the system's), so about 1.2 s there.
+- **Network cards as modules** (E1000, E1000E, IGB, IGC, R8169, ATL1C, ALX, TIGON3, 8139CP, 8139TOO, NE2K_PCI, PCNET32):
+  0.06 s less in the kernel in QEMU (whose network card is an e1000: its probe took 0.35-0.4 s under initcall_debug), 1 MB
+  smaller; the wired link still comes up (the e1000 module loaded by modalias, the link there). On a laptop without such a
+  card it only makes the kernel smaller. WireGuard stays built in (its tunnels are made through netlink, which would need
+  the module loaded on demand).
+- **Native answers about 5 s sooner than Standard** (13 s against 18.5 s, two machines): Chromium's start and the desktop
+  page are most of Standard's last 8 s. (Native is the default for new installations since 1.6.0.)
+- **Xorg's own start takes 2.6 s** between its socket appearing and its first answer (QEMU's bochs driver); the
+  Vivobook's steps will show amdgpu's.
+- **The health log's own numbers were late:** "the desktop was ready N s" was written 4 s after the page came up (its
+  timer), and the starts log's mark up to 10 s after (the session's loop: 26 s for a desktop that answered at 18.5).
+  Both now use the first heartbeat's own time (rudolfd writes it into /run/rudolf/bootok; `readyAt` in /api/health).
+- **Tried and not kept:** the session's 1-s wait for rudolfd's downloads store, made 0.1 s: rudolfd has made it by then
+  on every start measured (no gain). The initramfs's 3 s "still looking for the disc" in these runs is QEMU's (a slot
+  started with no disc attached); an installed computer passes the drive on at the handover.
+- **Not done, an idea for the owner:** the handover itself (the boot files' kernel starting the system's kernel by kexec)
+  costs a second kernel start and start-up image on every installed computer. Skipping it when both are the same kernel
+  would touch Secure Boot's lockdown path, so it is left to the owner's decision; the Vivobook's numbers will show its
+  cost (rudolf.t0, the first start-up's time, is now passed on and is the first line of the steps).
+- **Starts on every kind of virtual hardware**, as 1.6.0's kernel does (`kt161_t.py hw`, the data partition mounted each
+  time): q35 with UEFI on NVMe, AHCI, virtio-blk, virtio-scsi and USB storage; i440fx with BIOS on IDE, virtio-blk and
+  NVMe: 8 of 8 for both kernels.
+- **Reproducible:** two builds of this tree's kernel (same configuration, `testkernel.sh REPRO=1`) are identical except the
+  module-signing certificate each build makes (.init.data) and the build id (.notes): every module (signature taken off)
+  and every other section the same (`systools/kreprohash.py`).
+
+**AMD power: switchable, kept at 1.6.0's until the owner's battery numbers.** Settings › System health › Power and
+battery › Processor energy preference: *As in 1.6.0* (default), *Tuned* (Balanced on battery asks balance_power; game mode
+asks performance), *The kernel's own* (amd_pstate passive). amd_pstate's active mode is already the kernel's default
+(CONFIG_X86_AMD_PSTATE_DEFAULT_MODE=3, Mendocino has CPPC), so `amd_pstate=active` adds nothing. QEMU has no frequency
+driver: the choice is greyed out there and on Intel, and the power settings work as before (host test power_t.sh 50/50,
+the power phase in QEMU).
+
+**Memory:** MEMORY-RESULTS
+
+**Required features:** the check (its own PR, first) found FUSE missing from the x86 kernel (Flatpak's document portal,
+AppImages); it is added there. Not on the list, noted: `lsm=` names landlock but SECURITY_LANDLOCK is not built; the
+encrypted folders use fscrypt, not dm-crypt (the list checks fscrypt and its ciphers).
+
+#### The owner's checklist (the Vivobook; the Asus desktop where it says)
+1. **Start-up** (each kernel: 1.6.0's, then this one): restart 3 times; after each, Settings › System health › Last starts
+   › Where the time went: write down "the desktop answered" and the first line (t0, the boot files' part before the
+   handover), and the time from the power button to the sign-in screen with a stopwatch. Expected: about 1 s less.
+   The Asus desktop from the USB stick: the same, 3 starts each.
+2. **Responsiveness** (no new kernel: a start-up option): start once normally and once with `preempt=full` (the boot menu's
+   options), and on each: a game or a large copy (a 2 GB file to a USB stick) while typing in Oracle and moving windows for
+   2 minutes; write down any stall you notice (when, how long) and the desktop's frame meter if shown. Keep *full* only if
+   it feels better and nothing stutters more.
+3. **Power** (Settings › System health › Power and battery › Processor energy preference): see the power PR's checklist
+   (15 minutes idle and 15 minutes of a video on each of the three choices, battery % and watts).
+4. **Memory:** MEMORY-CHECKLIST
+
 ### 13. Files dropped from outside onto the native desktop (added on 2026-11-16; 1.6.0 Part 12's known differences)
 On Standard a file dragged from a Linux app (the Debian file manager, a Flatpak) onto the desktop is saved in the
 Desktop folder. rudolf-native did not speak X11's drag and drop (XDND), so such drops did nothing on Native.

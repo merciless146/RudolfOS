@@ -40,7 +40,7 @@ RESULTS = []; MEDIANS = []
 def res(**kw):
     kw['tag'] = TAG; JS.write(json.dumps(kw) + '\n'); JS.flush(); RESULTS.append(kw); out('RESULT', json.dumps(kw), quiet=True)
 man = open(f'{REL}/manifest.txt').read(); mv = lambda k: re.search(rf'^{k} (.*)$', man, re.M).group(1)
-DMB = 6000; W = os.path.abspath(f'wkt161-{TAG}')
+DMB = int(os.environ.get('DMB', '6000')); W = os.path.abspath(f'wkt161-{TAG}')
 for v in VARS: v['drv'] = os.path.abspath(f'kt161-{TAG}-{v["name"]}.img')
 shutil.rmtree(W, ignore_errors=True); os.makedirs(W)
 subprocess.run(['gcc', '-O2', '-static', '-o', f'{W}/kload', os.path.join(HERE, 'k161', 'kload.c')], check=True)
@@ -63,6 +63,10 @@ def make_drive(v):
     if ENGINE == 'native': os.makedirs(f'{T}/etc', exist_ok=True); open(f'{T}/etc/rudolf-desktop-engine', 'w').write('native\n')
     K = f'{T}/k161'; os.makedirs(K); shutil.copy(f'{W}/kload', f'{K}/kload')
     shutil.copy(os.path.join(ISO, 'sys', 'root', 'usr', 'lib', 'rudolf', 'power'), f'{K}/power')
+    # (the memory runs' scripts go on the drive: sent over the serial line while the guest was short of memory, run
+    #  44017025900's stalled, the guest no longer reading it)
+    for i, spec in enumerate(memruns()):
+        sw, zp, zc = spec.split(':'); open(f'{K}/mem{i}.sh', 'w').write(MEMRUN % (sw, zp, zc, mtabs(), os.environ.get('GAME', '1100'), os.environ.get('GSECS', '100')))
     subprocess.run(['chown', '-R', '1000:1000', f'{T}/home/rudolf'], check=True)
     D = path + '.data'; subprocess.run(['truncate', '-s', f'{DMB}M', D], check=True)
     subprocess.run(['mkfs.ext4', '-q', '-F', '-O', 'encrypt', '-L', 'RUDOLFDATA', '-m', '1', '-d', T, D], check=True); shutil.rmtree(T)
@@ -228,7 +232,7 @@ def phase_latency():
 
 # ---- memory: tabs, a game and a call at once
 MEMRUN = r'''
-K=/persist/k161/kload; SW=%s; ZP=%s; ZC=%s; TABS="%s"; GAME=%s
+K=/persist/k161/kload; SW=%s; ZP=%s; ZC=%s; TABS="%s"; GAME=%s; GSECS=%s
 pkill -f "$K" 2>/dev/null; sleep 2
 swapoff /dev/zram0 2>/dev/null; echo 1 > /sys/block/zram0/reset
 echo $ZC > /sys/block/zram0/comp_algorithm || echo "COMP-REFUSED $ZC"
@@ -241,16 +245,16 @@ OOM0=$(grep -c . /proc/vmstat >/dev/null; awk '/^oom_kill /{print $2}' /proc/vms
 SI0=$(awk '/^pswpin /{print $2}' /proc/vmstat); SO0=$(awk '/^pswpout /{print $2}' /proc/vmstat)
 F0=$(sed -n 's/^full .*total=\([0-9]*\).*/\1/p' /proc/pressure/memory); S0=$(sed -n 's/^some .*total=\([0-9]*\).*/\1/p' /proc/pressure/memory)
 for m in $TABS; do $K tabs $m >/dev/null 2>&1 & sleep 3; done
-$K game $GAME 100 > /tmp/game.out 2>&1 & sleep 15
-$K call 80 > /tmp/call.out 2>&1 &
+$K game $GAME ${GSECS:-100} > /tmp/game.out 2>&1 & GP=$!; sleep 15
+$K call $(( ${GSECS:-100} - 20 )) > /tmp/call.out 2>&1 &
 i=0; MINA=999999; CRIT=0; MAXF=0
-while [ $i -lt 95 ]; do i=$((i+1)); sleep 1
+while [ $i -lt $((GSECS - 5)) ]; do i=$((i+1)); sleep 1
 	A=$(awk '/^MemAvailable:/{print int($2/1024)}' /proc/meminfo); [ $A -lt $MINA ] && MINA=$A
 	f=$(sed -n 's/^full avg10=\([0-9.]*\).*/\1/p' /proc/pressure/memory); MAXF=$(echo "$f $MAXF" | awk '{print ($1>$2)?$1:$2}')
 	[ -e /run/rudolf/memguard.critical ] && [ $(( $(date +%%s) - $(stat -c %%Y /run/rudolf/memguard.critical) )) -le 1 ] && CRIT=$((CRIT+1))
 	pgrep -f "$K game" >/dev/null || break
 done
-wait $(pgrep -f "$K game") 2>/dev/null; sleep 2
+wait $GP 2>/dev/null; sleep 2   # (only the game: a bare wait waited for the tabs, which never end, run 44017025900)
 F1=$(sed -n 's/^full .*total=\([0-9]*\).*/\1/p' /proc/pressure/memory); S1=$(sed -n 's/^some .*total=\([0-9]*\).*/\1/p' /proc/pressure/memory)
 echo "PSI some_ms=$(( (S1 - S0) / 1000 )) full_ms=$(( (F1 - F0) / 1000 )) max_full_avg10=$MAXF min_avail_mib=$MINA critical_s=$CRIT"
 echo "SWAP in=$(( $(awk '/^pswpin /{print $2}' /proc/vmstat) - SI0 )) out=$(( $(awk '/^pswpout /{print $2}' /proc/vmstat) - SO0 )) zram_mm=$(cat /sys/block/zram0/mm_stat)"
@@ -258,11 +262,12 @@ echo "OOM $(( $(awk '/^oom_kill /{print $2}' /proc/vmstat) - OOM0 ))"
 echo "GUARD log=$(( $(wc -l < /run/rudolf/memguard.log) - ML0 )) ended=$(( $(wc -l < /run/rudolf/memguard.events) - ME0 ))"
 tail -n +$((ML0 + 1)) /run/rudolf/memguard.log 2>/dev/null | tail -5 | sed 's/^/GL /'
 cat /tmp/game.out /tmp/call.out
-pkill -f "$K"; sleep 3; swapoff /dev/zram0; echo DONE
+pkill -f "$K"; sleep 3; swapoff /dev/zram0; echo MEMRUN-FINISHED
 '''
+def memruns(): return os.environ.get('MEMRUNS', '180:100:zstd 100:100:zstd 60:100:zstd 200:100:zstd 180:150:zstd').replace(',', ' ').split()
+def mtabs(): return os.environ.get('TABS', '350 350 350 200').replace(',', ' ')
 def phase_memory():
-    runs = os.environ.get('MEMRUNS', '180:100:zstd 100:100:zstd 60:100:zstd 200:100:zstd 180:150:zstd 180:100:lzo-rle').replace(',', ' ').split()
-    tabs = os.environ.get('TABS', '350 350 350 200').replace(',', ' '); game = os.environ.get('GAME', '1100')
+    runs = memruns()
     global CUR
     for CUR in VARS:
       vm, g, up = boot('m' + CUR['name'])
@@ -272,14 +277,15 @@ def phase_memory():
       g.js(INIT_JS, 60); run(g, 'for p in $$ $PPID; do echo -1000 > /proc/$p/oom_score_adj; done; sleep 30; free -m; cat /sys/block/zram0/comp_algorithm; cat /run/rudolf/memory', 60)
       for spec in runs:
         sw, zp, zc = spec.split(':')
-        f = os.path.join(W, 'mem.sh'); open(f, 'w').write(MEMRUN % (sw, zp, zc, tabs, game)); g.put(f, '/tmp/mem.sh', '644')
-        g.sh('rm -f /tmp/mem.out; setsid sh /tmp/mem.sh > /tmp/mem.out 2>&1 < /dev/null &', 20)
+        g.sh(f'rm -f /tmp/mem.out; setsid sh /persist/k161/mem{runs.index(spec)}.sh > /tmp/mem.out 2>&1 < /dev/null & true', 20)   # (g.sh adds "; echo ...": "&;" would not parse)
         end = time.time() + 900; o = ''
         while time.time() < end:
             time.sleep(15)
-            try: o = g.sh('grep -q "^DONE" /tmp/mem.out && cat /tmp/mem.out || echo RUNNING', 60)
+            # (the command's own echo on the serial line holds "N-FINISHED", never the whole word: run 44017025900 took it for the end)
+            try: o = g.sh('grep -q "N-FINISHED" /tmp/mem.out && cat /tmp/mem.out || { echo RUNNING; tail -2 /tmp/mem.out; }', 60)
             except OSError: o = ''
-            if 'DONE' in o: break
+            if 'MEMRUN-FINISHED' not in o: out('poll:', o.strip()[-300:].replace('\n', ' | '), quiet=True)
+            if 'MEMRUN-FINISHED' in o: break
         out(o[-4000:], quiet=True)
         def num(k, d=None):
             m = re.search(k + r'=([0-9.]+)', o); return float(m.group(1)) if m else d

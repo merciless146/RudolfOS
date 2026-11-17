@@ -1,6 +1,6 @@
 # What .github/workflows/kernel-tuning.yml runs (docs/plan-1.6.1.md Part 12). Lines:
+<<<<<<< HEAD
 #   serial 2026111620
-kernel tree
-kernel hz250 +HZ_250 -HZ_1000
-run hw release,tree
-run latency release,hz250 PREEMPTS=voluntary REPS=3
+kernel lz4 +ZRAM_BACKEND_LZ4
+run memory lz4 MEMRUNS=180:100:zstd,100:100:zstd,60:100:zstd,200:100:zstd,180:150:zstd,180:100:lz4 TABS=300,300,300,200 GAME=1000
+run memory lz4 MEMRUNS=180:100:lz4,180:150:zstd,200:100:zstd,60:100:zstd,100:100:zstd,180:100:zstd TABS=300,300,300,200 GAME=1000
