@@ -1,0 +1,85 @@
+# The kernel features Rudolf OS's programs and security rely on (docs/plan-1.6.1.md Part 12, "First, before any tuning is
+# merged"): iso/systools/kreq.sh stops the kernel's build when one is missing after kconfig.sh, with its name and who needs
+# it, so a tuning change that drops one never reaches a computer. A line: OPTION  y|m|ym  GROUP: WHO NEEDS IT
+# (ym: built in or a module). Checked against Linux 6.18 as configured by kconfig.sh (x86-64).
+# -- Flatpak and bubblewrap (Linux apps' sandboxes; Debian's and the desktop's own sandboxes use them too)
+NAMESPACES      y   flatpak: bubblewrap's namespaces
+USER_NS         y   flatpak: bubblewrap's user namespace (unprivileged sandboxes)
+PID_NS          y   flatpak: bubblewrap's PID namespace (--unshare-pid)
+NET_NS          y   flatpak: bubblewrap's network namespace (--unshare-net, apps without network)
+IPC_NS          y   flatpak: bubblewrap's IPC namespace (--unshare-ipc)
+UTS_NS          y   flatpak: bubblewrap's UTS namespace (--unshare-uts)
+SECCOMP         y   flatpak: Flatpak's system-call filter
+SECCOMP_FILTER  y   flatpak: Flatpak's system-call filter (BPF)
+OVERLAY_FS      y   flatpak: the system's own layers (overlayfs), and Flatpak's runtime extensions
+FUSE_FS         ym  flatpak: the document portal (xdg-document-portal) and AppImages
+FHANDLE         y   flatpak: name_to_handle_at (the document portal, udev)
+# -- The Debian container, Wine and Steam
+CGROUPS         y   debian: cgroups v2 (the container, the desktop's memory group)
+MEMCG           y   debian: the memory controller (the desktop's memory.low, the memory guard)
+CGROUP_SCHED    y   debian: the cpu controller
+BLK_CGROUP      y   debian: the io controller
+CGROUP_PIDS     y   debian: the pids controller
+BINFMT_MISC     ym  wine: Windows programs started by name (binfmt_misc)
+IA32_EMULATION  y   wine: 32-bit programs (Wine, Steam's 32-bit parts, Proton)
+NTSYNC          y   wine: NT synchronization (/dev/ntsync, recent Proton)
+# -- The desktop and its sandboxes
+INOTIFY_USER    y   desktop: inotify (rudolfd, the file manager, Chromium)
+EPOLL           y   desktop: epoll (Chromium, WebKit, PulseAudio)
+EVENTFD         y   desktop: eventfd (GLib, Chromium)
+SIGNALFD        y   desktop: signalfd (udev, GLib)
+TIMERFD         y   desktop: timerfd (Chromium, udev)
+MEMFD_CREATE    y   desktop: memfd (Chromium's shared memory, Wayland and X clients)
+SHMEM           y   desktop: shared memory (/dev/shm)
+TMPFS           y   desktop: /run, /tmp and /dev/shm
+UNIX            y   desktop: Unix sockets (X, D-Bus, rudolfd's peer check)
+DRM             y   desktop: the X server's graphics (DRM/KMS)
+SYNC_FILE       y   desktop: DRI3's fences (the X server and Mesa)
+INPUT_EVDEV     y   desktop: input devices (rudolf-display, Xorg's evdev)
+INPUT_UINPUT    y   desktop: virtual input devices (the on-screen keyboard, Steam Input, remote access)
+# -- Security
+SECURITY_LOCKDOWN_LSM y security: Secure Boot's kernel lockdown
+MODULE_SIG      y   security: module signatures
+MODULE_SIG_FORCE y  security: unsigned modules refused
+KEXEC_SIG       y   security: only signed kernels started by an update's handover
+SECURITY_YAMA   y   security: Yama (ptrace limited to a process's parent: the desktop's token)
+KEYS            y   security: the kernel's keyrings (fscrypt, trusted keys)
+SYSTEM_TRUSTED_KEYRING y security: Rudolf OS's Secure Boot certificate built in
+DM_VERITY       y   security: the system layers checked as they are read (dm-verity)
+FS_ENCRYPTION   y   security: the accounts' encrypted folders (fscrypt on ext4)
+CRYPTO_XTS      y   security: fscrypt's file contents (AES-256-XTS)
+CRYPTO_CTS      y   security: fscrypt's file names (AES-256-CTS)
+NF_TABLES       y   security: the firewall (nftables)
+NF_TABLES_INET  y   security: the firewall's IPv4 and IPv6 table
+# -- Storage and start-up: reaching the system disk
+BLK_DEV_INITRD  y   start-up: the built-in start-up image
+DEVTMPFS        y   start-up: /dev
+BLK_DEV_LOOP    y   start-up: the system layers and the disc image through loop devices
+SQUASHFS        y   start-up: the system layers
+SQUASHFS_XZ     y   start-up: the system layers' compression
+ISO9660_FS      y   start-up: the disc and USB stick image
+EXT4_FS         y   start-up: RUDOLFDATA
+VFAT_FS         y   start-up: the EFI system partition
+EFI_PARTITION   y   start-up: GPT drives
+MSDOS_PARTITION y   start-up: MBR drives (installed drives, USB sticks)
+EFIVAR_FS       y   start-up: the boot menu's choice and the Secure Boot state
+SATA_AHCI       y   start-up: SATA drives
+ATA_PIIX        y   start-up: older SATA and IDE controllers (QEMU's i440fx)
+BLK_DEV_NVME    y   start-up: NVMe drives
+VIRTIO_PCI      y   start-up: virtual machines' disks
+VIRTIO_BLK      y   start-up: virtio-blk disks
+SCSI_VIRTIO     y   start-up: virtio-scsi disks
+USB_XHCI_HCD    y   start-up: USB 3 controllers (a start from a USB stick)
+USB_EHCI_HCD    y   start-up: USB 2 controllers
+USB_STORAGE     y   start-up: USB sticks
+USB_UAS         y   start-up: USB attached SCSI drives
+MMC_BLOCK       y   start-up: eMMC and SD cards
+# -- Power and devices
+SUSPEND         y   power: sleep (s2idle)
+AMD_PMC         y   power: sleep on AMD laptops (the owner's Vivobook)
+CPU_FREQ        y   power: processor speed scaling
+X86_AMD_PSTATE  y   power: AMD's P-state driver (the energy preference)
+X86_INTEL_PSTATE y  power: Intel's P-state driver
+THERMAL         y   power: temperatures and throttling
+ACPI_BATTERY    y   power: the battery
+ACPI_AC         y   power: the charger
