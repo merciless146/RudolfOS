@@ -124,6 +124,70 @@ sed -i 's/availability group: Legacy 1, availability unknown/availability group:
 ok "...a headset plugged in (the jack available): its microphone" "$([ "$(cat $ST/dsrc)" = alsa_input.card1.analog-stereo ] && echo 1)" "$(cat $ST/dsrc)"
 : > $ST/srclist; sh $SND default 1 >/dev/null 2>&1
 ok "...without the port list: the card's own, as before" "$([ "$(cat $ST/dsrc)" = alsa_input.card1.analog-stereo ] && echo 1)" "$(cat $ST/dsrc)"
+# 2026-11-17 (the Vivobook Go on beta 2026111713, the headset plugged in): the speakers' card's microphone as PulseAudio
+# listed it there (pactl list sources, read over the development link): the jack's port "availability unknown" even with
+# the headset in (the codec's headset microphone pin, 0x19, is left unset by the firmware: the driver cannot hear it).
+# With only that card (the built-in microphones' card missing, the regression) it stays the default; with the built-in
+# microphones' card back (udev loads acp_yc_mach), that one is the default, as on 1.5.9
+cat > $ST/vivo <<'V'
+Source #1
+	State: SUSPENDED
+	Name: alsa_input.card1.analog-stereo
+	Description: Family 17h/19h HD Audio Controller Analog Stereo
+	Driver: module-alsa-card.c
+	Sample Specification: s16le 2ch 44100Hz
+	Channel Map: front-left,front-right
+	Owner Module: 5
+	Mute: no
+	Volume: front-left: 52428 /  80% / -5.81 dB,   front-right: 52428 /  80% / -5.81 dB
+	        balance 0.00
+	Base Volume: 6554 /  10% / -60.00 dB
+	Monitor of Sink: n/a
+	Latency: 0 usec, configured 0 usec
+	Flags: HARDWARE HW_MUTE_CTRL HW_VOLUME_CTRL DECIBEL_VOLUME LATENCY 
+	Properties:
+		alsa.resolution_bits = "16"
+		device.api = "alsa"
+		device.class = "sound"
+		alsa.class = "generic"
+		alsa.subclass = "generic-mix"
+		alsa.name = "ALC897 Analog"
+		alsa.id = "ALC897 Analog"
+		alsa.subdevice = "0"
+		alsa.subdevice_name = "subdevice #0"
+		alsa.device = "0"
+		alsa.card = "1"
+		alsa.card_name = "HD-Audio Generic"
+		alsa.long_card_name = "HD-Audio Generic at 0xd05c0000 irq 77"
+		alsa.driver_name = "snd_hda_intel"
+		device.bus_path = "pci-0000:03:00.6"
+		sysfs.path = "/devices/pci0000:00/0000:00:08.1/0000:03:00.6/sound/card1"
+		device.bus = "pci"
+		device.vendor.id = "1022"
+		device.vendor.name = "Advanced Micro Devices, Inc. [AMD]"
+		device.product.id = "15e3"
+		device.product.name = "Family 17h/19h HD Audio Controller"
+		device.string = "front:1"
+		device.buffering.buffer_size = "352768"
+		device.buffering.fragment_size = "176384"
+		device.access_mode = "mmap+timer"
+		device.profile.name = "analog-stereo"
+		device.profile.description = "Analog Stereo"
+		device.description = "Family 17h/19h HD Audio Controller Analog Stereo"
+		device.icon_name = "audio-card-pci"
+	Ports:
+		analog-input-headphone-mic: Microphone (type: Mic, priority: 8700, availability group: Legacy 1, availability unknown)
+	Active Port: analog-input-headphone-mic
+	Formats:
+		pcm
+V
+reset; printf '1\tmodule-alsa-card\tdevice_id=1 name=card1 tsched=1\n' > $ST/mods; echo 2 > $ST/next; cp $ST/vivo $ST/srclist
+sh $SND default 1 >/dev/null 2>&1
+ok "22. the Vivobook's real listing, no built-in microphones' card: the jack's microphone (nothing else to take)" "$([ "$(cat $ST/dsrc)" = alsa_input.card1.analog-stereo ] && echo 1)" "$(cat $ST/dsrc)"
+printf '2\tmodule-alsa-card\tdevice_id=2 name=card2 tsched=1\n' >> $ST/mods; echo 3 > $ST/next
+printf 'Source #3\n\tState: SUSPENDED\n\tName: alsa_input.card2.analog-stereo\n\tDescription: acp6x Stereo\n\tPorts:\n\t\tanalog-input: Analog Input (type: Analog, priority: 10000, availability unknown)\n\tActive Port: analog-input\n' >> $ST/srclist
+sh $SND default 1 >/dev/null 2>&1
+ok "...with the built-in microphones' card (acp6x) back: the built-in microphone is the default, the output stays the speakers' card" "$([ "$(cat $ST/dsrc)" = alsa_input.card2.analog-stereo ] && [ "$(cat $ST/dsink)" = alsa_output.card1.analog-stereo ] && echo 1)" "$(cat $ST/dsrc) $(cat $ST/dsink)"
 # 2026-11-14: Settings' list of microphones (sound mics) and the choice (sound mic NAME)
 reset; printf '1\tmodule-alsa-card\tdevice_id=1 name=card1 tsched=1\n2\tmodule-alsa-card\tdevice_id=2 name=card2 tsched=1\n' > $ST/mods; echo 3 > $ST/next; echo alsa_input.card1.analog-stereo > $ST/dsrc
 printf 'Source #0\n\tName: alsa_output.card1.analog-stereo.monitor\n\tDescription: Monitor of HD-Audio\nSource #2\n\tName: alsa_input.card1.analog-stereo\n\tDescription: HD-Audio Generic Analog Stereo\nSource #1\n\tName: alsa_input.card2.analog-stereo\n\tDescription: acp6x Stereo\n' > $ST/srclist

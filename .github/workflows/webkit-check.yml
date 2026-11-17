@@ -7,7 +7,7 @@
 name: Lite engine check
 on:
   push:
-    paths: ['iso/sys/rudolf-webkit.c', 'iso/qt/webkit/links60_ci.py', 'iso/sys/rudolf-native.c', 'iso/qt/host/native59_t.sh', 'iso/qt/host/hwcnative160_t.sh', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/host/fixtures/xwmclient.c', 'desktop/oneapp59.js', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
+    paths: ['iso/sys/rudolf-webkit.c', 'iso/qt/webkit/links60_ci.py', 'iso/qt/webkit/files61_ci.py', 'iso/sys/rudolf-portal.c', 'desktop/linux26.js', 'iso/sys/rudolf-native.c', 'iso/qt/host/native59_t.sh', 'iso/qt/host/hwcnative160_t.sh', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/host/fixtures/xwmclient.c', 'desktop/oneapp59.js', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -67,6 +67,13 @@ jobs:
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 HOME=$RUNNER_TEMP/home3; mkdir -p $HOME
           python3 iso/qt/webkit/links60_ci.py ./rudolf-webkit | tee links-result.txt; r=${PIPESTATUS[0]}
           echo "::notice title=App links in WebKit::$(tail -1 links-result.txt) — $(grep -E '^FAIL' links-result.txt | tr '\n' '|' | sed 's/::/: /g')"; exit $r
+      - name: File dialogs in rudolf-webkit (1.6.1, the owner's Vivobook freeze of 2026-11-17)
+        run: |
+          sudo apt-get install -y -qq xdotool x11-utils >/dev/null
+          sudo mkdir -p /home/rudolf/Documents /run/rudolf/dl/.incoming && sudo chmod -R 777 /home/rudolf /run/rudolf
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 HOME=$RUNNER_TEMP/home4; mkdir -p $HOME
+          python3 iso/qt/webkit/files61_ci.py ./rudolf-webkit | tee files-result.txt; r=${PIPESTATUS[0]}
+          echo "::notice title=File dialogs in WebKit::$(tail -1 files-result.txt) — $(grep -E '^FAIL' files-result.txt | tr '\n' '|' | sed 's/::/: /g')"; exit $r
       - name: The page's one-app mode in WebKit (1.5.9, plan Part 12)
         run: |
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1

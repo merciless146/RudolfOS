@@ -23,6 +23,11 @@ Promote the serial that was tested, not "the beta": scheduled builds publish a n
 kernel changes (1.2.5: 2026102102 was tested, 2026102311 had replaced it). Before promoting, check
 `git show origin/gh-pages:beta/manifest.txt | grep ^serial`; if it changed since the tests, test that serial (the
 stage tests and the regression suites) or promote the tested one.
+1.6.0: promoting also publishes the promoted release's install release, `disc-X.Y.Z` (`disc-X.Y.Z.NNNNNN` when
+`disc-X.Y.Z` exists already), made from the newest disc release's packages, licences and sources: the .iso, the
+boot image (`-boot.iso`), their `.sha256`, README.TXT, INSTALL.TXT (iso/INSTALL.TXT, the steps to install, VERSION
+filled in) and the source, marked Latest on the Releases page (betas are created with `--latest=false`). It needs
+the Secure Boot key (RUDOLF_SB_KEY), as a build does.
 1.6.0: promoting also adds the release to `gh-pages/stable/history.txt` (every release ever promoted, signed with the
 release key: systools/stable_history.py; every run of the workflow keeps it following `stable/`). Computers use it
 for Settings' "Roll back to last stable version": the button shows only on a build that is not on it (or with Get

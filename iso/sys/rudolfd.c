@@ -703,9 +703,15 @@ static void api_net(struct req *r)
 }
 
 /* ------------------------------------------------------------- disks */
+/* 1.6.0: Settings' one-time offer of the native desktop (plan Part 12); 1.6.1 turns it on with Native the default */
+#ifndef NATIVE_OFFER
+#define NATIVE_OFFER 0
+#endif
 static void api_disks(struct req *r)
 {
-	char *out = run_out("for d in /sys/block/*; do n=${d##*/}; case $n in loop*|ram*|zram*) continue;; esac; "
+	/* (1.6.0: not the system's own device-mapper devices either, dm-N: its checked layers and encrypted folder, which the
+	   File Explorer listed as drives on the Vivobook, 2026-11-17) */
+	char *out = run_out("for d in /sys/block/*; do n=${d##*/}; case $n in loop*|ram*|zram*|dm-*) continue;; esac; "
 		"s=$(cat $d/size); rm=$(cat $d/removable); m=$(cat $d/device/model 2>/dev/null | tr -s ' '); "
 		/* USB drives and SD cards count as removable (many USB sticks say they are not) */
 		"case $(readlink -f $d/device) in */usb*) rm=1;; */mmc*) [ \"$(cat $d/device/type 2>/dev/null)\" = SD ] && rm=1;; esac; "
@@ -3409,6 +3415,17 @@ static int boot_entry_run(int mode, str *rep)
 	}
 	if (!wl && mp && whole) { wl = dp_fix(mp, mpl, dp, pre, hascd ? cd : NULL, hd, want, sizeof want); if (wl) from = "the entry as it was, put right for the start-up files on the drive now"; }
 	if (!wl && mp && !whole && (md[0] & 1) && memmem(mp, mpl, hd, 42) && memmem(mp, mpl, fp, fl)) { memcpy(want, mp, mpl); wl = mpl; from = "the entry as it was"; }
+	/* 1.6.0 (the owner's Vivobook, 2026-11-17, beta 2026111711): with no entry to learn from (its "Rudolf OS" had become
+	   an AMI vendor path, Path(1,4), which names no drive), the drive alone, NVMe(...), was written, and AMI's firmware
+	   does not start a drive named that way: it opened its setup screen. The entry its setup makes, which started the
+	   next start, names the drive, the start-up files' El Torito entry and the file: that is the default now, when the
+	   drive has them (cd_node). A firmware that starts the drive alone (OVMF) still does: its own entry starts the
+	   system, and BootCurrent's path is taken above. */
+	if (!wl && whole && hascd && pre + 24 + 4 + fl + 4 <= sizeof want) {
+		memcpy(want, dp, pre); wl = pre; memcpy(want + wl, cd, 24); wl += 24;
+		want[wl] = 4; want[wl + 1] = 4; want[wl + 2] = (unsigned char)(4 + fl); want[wl + 3] = 0; memcpy(want + wl + 4, fp, fl); wl += 4 + fl;
+		want[wl] = 0x7f; want[wl + 1] = 0xff; want[wl + 2] = 4; want[wl + 3] = 0; wl += 4; from = "the drive and its start-up files, as the firmware's own setup names them";
+	}
 	if (!wl) { memcpy(want, dp, dl); wl = dl; }
 	{ char t[600]; dp_text(want, wl, t, sizeof t); REP("The entry it needs: \"Rudolf OS\" %s (%s).\n", t, from); }
 	int right = md && mp && (md[0] & 1) && mpl == wl && !memcmp(mp, want, wl);
@@ -4581,8 +4598,9 @@ static void api(struct req *r)
 			failed ? "true" : "false", access(RUN "/persistent", F_OK) ? "false" : "true");
 		/* 1.5.7: Lite given up for good by the session ("<time> <why>"), until it is chosen again */
 		sjson(&s, fw ? fw : "");
-		/* 1.6.0: offer the native desktop once to a computer updated on Standard (a new installation starts with it: install.sh) */
-		sadd(&s, ",\"offer\":%s}", native && !strcmp(ch, "chromium") && !fw && !access(RUN "/persistent", F_OK) && access(PERSIST "/etc/rudolf-native-offered", F_OK) ? "true" : "false");
+		/* 1.6.0: offer the native desktop once to a computer updated on Standard (a new installation starts with it: install.sh).
+		   NATIVE_OFFER 0 in 1.6.0 (the owner, 2026-11-17: Standard the default in 1.6.0, Native in 1.6.1): never offered */
+		sadd(&s, ",\"offer\":%s}", NATIVE_OFFER && native && !strcmp(ch, "chromium") && !fw && !access(RUN "/persistent", F_OK) && access(PERSIST "/etc/rudolf-native-offered", F_OK) ? "true" : "false");
 		free(c); free(n); free(fw); reply_json(r->fd, &s); return;
 	}
 	/* 1.5.7: Task Manager opened by Ctrl+Alt+Del or Ctrl+Shift+Esc puts the desktop's processes first (rudolf-display
