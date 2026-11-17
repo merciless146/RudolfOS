@@ -5,6 +5,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Tests: the kernel tuning measured in QEMU (kernel-tuning.yml, nothing published): test kernels and base layers started in turn on one machine; the start-up's steps, wake-up latency and the page's input-to-frame time under load, memory with tabs, a game and a call at once on 3.3 GB, the power settings' fallback, the start on each kind of virtual hardware, and two builds of the kernel compared.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
