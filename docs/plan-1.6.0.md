@@ -1540,6 +1540,8 @@ root work split into helpers (Part 11), with files dropped from outside onto the
     one hidden page of the shell's (#app=do-svc) runs the rest once for the whole desktop (Part 12's note "Done (2026-11-17)").
     Tests: qt/host/svc160_t.sh 22/22, qt/shell2/svc60_t.js 18/18, qt/sb/s160_t.py 16/16 in QEMU on the newest beta with this
     tree's rudolf-native and page (svc-check.yml run 44009629129). Left: the owner's checks V51-V56 on the Vivobook.
+14. **Files dropped from Linux apps onto the native desktop** (planned for 1.6.1 Part 13, merged early as #444): kept in
+    1.6.0 by the owner on 2026-11-16 ("Keep it in 1.6.0"). Owner's check: docs/native-vivobook-checklist.md V57.
 
 ## After 1.6.0: the native desktop decision (added on 2026-11-12)
 (2026-11-13: the prototype moved into 1.5.9 as a third desktop engine, Native (test): docs/plan-1.5.9.md Part 12.
