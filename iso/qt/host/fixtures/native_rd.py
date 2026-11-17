@@ -5,7 +5,7 @@
 #   DIR/ls.json, DIR/keys.json   the page's storage and Ann's keys (fixtures/deskls.js)
 #   DIR/calls          every request, one per line (the test reads it)
 #   DIR/wall.jpg       a picture of your own
-#   DIR/apps.json      the start menu's list as the page gave it (POST desktop/apps), else a small one
+#   DIR/apps.json      the start menu's list as the page gave it (POST desktop/apps), else a small one (always, while DIR/apps-fixed is there)
 #   DIR/devlink.json   the development link's state (devlink: off when missing)
 #   DIR/page.html      (when there) served as the page instead of the desktop page: a plain page for the window
 #                      manager's checks (a drop-down)
@@ -143,6 +143,7 @@ class H(http.server.BaseHTTPRequestHandler):
                 if _re.fullmatch(r'[A-Za-z0-9-]{1,64}', pa): open(os.path.join(D, 'apps.' + pa + '.json'), 'wb').write(b)
                 return self.j({'ok': True})
             given = (rd('apps.' + qa + '.json') if _re.fullmatch(r'[A-Za-z0-9-]{1,64}', qa) else None) or rd('apps.json')
+            if rd('apps-fixed') is not None: given = None   # (DIR/apps-fixed: this list, whatever the pages gave: a test's places)
             if given: return self.send(200, given)
             apps = [{'k': 'notepad', 'name': 'Notepad', 'icon': '🗒️', 'kw': 'text', 'ic': 'notepad'}, {'k': 'calc', 'name': 'Calculator', 'icon': '🧮', 'kw': 'sums'},
                     {'k': 'settings', 'name': 'Settings', 'icon': '⚙️', 'kw': ''}, {'k': 'clock', 'name': 'Clock', 'icon': '⏰', 'kw': 'alarm'}]

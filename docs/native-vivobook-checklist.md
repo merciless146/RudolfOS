@@ -94,3 +94,20 @@ did not ring and with several open it rang once per window. One unseen page of t
 | V54 | Open two windows (Notepad and Settings), then an alarm a minute ahead | It rings once | How many notifications and sounds (it was one per window) |
 | V55 | Clock › Timers: start a 1 minute timer, close the Clock's window | The timer rings once | Whether it rings after the window is closed; open Clock again: the timer says Done |
 | V56 | Task Manager with only it open | No extra window or app listed | Whether anything named Rudolf OS or do-svc shows on the taskbar or in Task Manager's Apps |
+
+## The owner's report of 2026-11-16 (beta 2026111620): windows, menus, icons, the background's preview
+
+The host tests (iso/qt/native/vivo160_t.js) and the release in QEMU (iso/qt/sb/v160_t.py) check these with timings; these are
+the same steps on the Vivobook's own screen and speed.
+
+| # | Do (on Native) | Standard shows | Report |
+|---|---|---|---|
+| V57 | Open Notepad, Calculator, Settings, File Explorer and Oracle, each from the start menu, a pin and a desktop icon | Each window appears once, at its own size, with the app in it, fading in (0.18 s) | Whether any window first shows the sign-in screen, the desktop, a large empty window or a wrong size before the app; how long each takes to appear |
+| V58 | Open an app right after signing in, while the desktop is still busy | As V57 | Whether the window appears as a plain window of the app's colour first (a slow page: after 2.5 s) and then the app, never the sign-in screen |
+| V59 | Right-click the desktop, then right-click somewhere else (also: an icon, then the desktop; the desktop, then the taskbar; the start menu, then the taskbar) | The first menu is gone completely as the second appears | Any strip or part of the first menu left on the screen (a photo) |
+| V60 | The tray's pop-ups replacing each other (the clock's calendar, then quick settings, then the volume) | Each replaces the other cleanly | Any part of the previous pop-up left |
+| V61 | Sign in (also after a restart, and as a second account) | The desktop's icons with their pictures at once | How long until the icons appear; any icon without its picture |
+| V62 | Right-click the desktop › New folder, then New text document | The icon at once, then its Rename | How long until the icon appears; whether Rename comes; File Explorer's Desktop folder at the same moment |
+| V63 | Save a file to the Desktop in Notepad; delete one from the Desktop in File Explorer | The desktop at once | How long until the desktop shows the change |
+| V64 | Settings › Display Properties: choose backgrounds one after another (a drawn one, a static one, a picture of your own, a colour), then Revert; again, then close Settings and Discard | The whole desktop shows each choice at once, before Apply; back on Revert or Discard | Whether each shows at once, full size; whether it goes back |
+| V65 | Display Properties: the accent colour, dark mode, the title bars' style; the screen saver's Preview | The taskbar, menus and title bars change at once; the saver full screen | The same at once, before Apply; the saver over the whole screen, ending on a key without locking |

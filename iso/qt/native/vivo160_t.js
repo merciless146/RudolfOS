@@ -94,9 +94,11 @@ const WC = path.join(D, 'wincap');
 async function watch(k, open) {
   const dir = path.join(OUT, 'win-' + k); fs.rmSync(dir, {recursive: true, force: true}); fs.mkdirSync(dir, {recursive: true});
   const pr = cp.spawn(WC, [path.join(D, 'state'), k, '40', '30', dir], {env: env0, stdio: 'ignore'});
-  const done = new Promise(r => pr.on('exit', r)); await wait(50); open(); await Promise.race([done, wait(40000)]); try { pr.kill() } catch (e) {}
+  /* (meanwhile the shell's state: its opening (N15, "wopen W") and the window's size then) */
+  let fin = false; const op = []; (async () => { while (!fin) { const w = nst('wopen'); if (w && w != '0') { const c = clientOf(k); if (c) op.push(c.split(' ').slice(5, 7).join('x')) } await wait(10) } })();
+  const done = new Promise(r => pr.on('exit', r)); await wait(50); open(); await Promise.race([done, wait(40000)]); fin = true; try { pr.kill() } catch (e) {}
   let log = []; try { log = fs.readFileSync(path.join(dir, 'log'), 'utf8').trim().split('\n').map(l => { const a = l.split(' ').map(Number); return {i: a[0], t: a[1], v: a[2], w: a[3], h: a[4], file: path.join(dir, a[0] + '.ppm')} }) } catch (e) {}
-  return log;
+  log.opened = [...new Set(op)]; return log;
 }
 function ppm(f) { const b = fs.readFileSync(f); let o = 0, tok = []; while (tok.length < 4) { while (/\s/.test(String.fromCharCode(b[o]))) o++; let s = ''; while (!/\s/.test(String.fromCharCode(b[o]))) s += String.fromCharCode(b[o++]); tok.push(s) } o++; return {w: +tok[1], h: +tok[2], d: b.subarray(o)} }
 /* the page's part of a picture (inside the frame's edge, below the title bar): plain (one colour), or as the last picture */
@@ -131,6 +133,7 @@ async function nat() {
     const j = judge(log, bw, th); T['win_' + k] = j.first;
     ok('Native: ' + k + '\'s window first shown ' + j.first + ' ms after it was made, at its own size (' + j.size + '), never larger', !j.err && j.bad.length == 0 && !j.bad.some(b => b.size), j);
     ok('Native: ...its page never anything but the app as it ends up, or a plain colour (no sign-in screen, no desktop page)', !j.err && !j.bad.some(b => b.differs), j.bad);
+    ok('Native: ...watched from when it was made (not shown then), and it opens (N15, 0.18 s) at its own size', log.length && !log[0].v && log.opened.length == 1 && log.opened[0] == cw + 'x' + ch, {first: log[0], opened: log.opened, size: cw + 'x' + ch});
     await neval(k, `(()=>{window.__oneAppClose();return 1})()`); await until(() => !clientOf(k), 10000); await wait(600);
   }
   /* ---- 2: menus replaced by others */
@@ -185,6 +188,15 @@ async function nat() {
     await neval('settings', `(()=>{window.__oneAppClose();setTimeout(()=>{const b=[...document.querySelectorAll('.sdlg button')].find(x=>x.textContent.trim()=='Discard');b&&b.click()},200);return 1})()`);
     const g = await until(() => nst('wallpaper') == w0, 5000, 10); await wait(150); const p3 = px(shot('wall-closed'), P[0], P[1]);
     ok('Native: ...and back when Settings closes without applying', g && !far(p0, p3, 8), {w0, w: nst('wallpaper'), p0, p3}) }
+  /* the accent colour, previewed the same way (the taskbar's, the menus', the active title bar's) */
+  nclick(nhit('pin settings')); await until(() => clientOf('settings'), 20000); await wait(2500);
+  { const l0 = nst('look'), a0 = (l0 || '').split('|')[0]; const t0 = Date.now();
+    const c = await neval('settings', `(()=>{const b=[...document.querySelectorAll('.acsw .swb')].find(b=>b.dataset.c.toLowerCase()!=String(S.accent).toLowerCase());b.click();return b.dataset.c})()`);
+    const g = await until(() => (nst('look') || '').toLowerCase().startsWith(String(c).toLowerCase() + '|') && / prev=1$/.test(nst('look')), 3000, 10); T.natAccent = Date.now() - t0;
+    ok('Native: an accent colour chosen in Display Properties on the taskbar and menus within 300 ms, before Apply (' + T.natAccent + ' ms)', g && T.natAccent <= 300, {l0, c, l: nst('look')});
+    await neval('settings', `(()=>{secRevert('disp');return 1})()`);
+    ok('Native: ...back on Revert', await until(() => (nst('look') || '').split('|')[0] == a0 && / prev=0$/.test(nst('look')), 3000, 10), {l0, l: nst('look')}) }
+  await neval('settings', `(()=>{window.__oneAppClose();return 1})()`); await until(() => !clientOf('settings'), 10000);
 }
 (async () => {
   cp.execSync('gcc -O2 -o ' + WC + ' ' + path.join(__dirname, '../host/fixtures/wincap.c') + ' -lX11');

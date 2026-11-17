@@ -1,7 +1,7 @@
 /* 1.6.0 (the owner's Vivobook report of 2026-11-16: an app's window showed Rudolf's sign-in screen, or the desktop page at a large
  * size, before it shrank to the app): the native shell's window of an app, watched from the moment the shell makes it.
  *   wincap STATE APP MS N OUTDIR
- * STATE is rudolf-native's RUDOLF_NATIVE_STATE file; the window is the first "client ... app=APP" line in it (the test opens one
+ * STATE is rudolf-native's RUDOLF_NATIVE_STATE file; the window is the first "client" or "clientwait ... app=APP" line in it (the test opens one
  * window of APP at a time). Every MS ms: whether its frame is on the screen (viewable) and its size, written to OUTDIR/log as
  * "I T V W H" (T: ms since the window was made); while it is on the screen, its picture as ImageMagick's import takes it (the frame,
  * then each of its windows on the screen with its own pixels: a page's window has 32-bit pixels, which the screen's own picture
@@ -18,8 +18,8 @@ static int quiet(Display *d, XErrorEvent *e) { (void)d; (void)e; return 0; }
 static double now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
 static unsigned long frame_of(const char *state, const char *app)
 {
-	FILE *f = fopen(state, "r"); if (!f) return 0; char l[2048], want[160]; unsigned long fr = 0; snprintf(want, sizeof want, " app=%s ", app);
-	while (fgets(l, sizeof l, f)) { if (strncmp(l, "client ", 7) || !strstr(l, want)) continue; unsigned long w, x; if (sscanf(l + 7, "%lx %lx", &w, &x) == 2) { fr = x; break; } }
+	FILE *f = fopen(state, "r"); if (!f) return 0; char l[2048], want[160]; unsigned long fr = 0; snprintf(want, sizeof want, " app=%s", app);
+	while (fgets(l, sizeof l, f)) { int k = !strncmp(l, "client ", 7) ? 7 : !strncmp(l, "clientwait ", 11) ? 11 : 0; const char *m = strstr(l, want); if (!k || !m || (m[strlen(want)] != ' ' && m[strlen(want)] != '\n')) continue; unsigned long w, x; if (sscanf(l + k, "%lx %lx", &w, &x) == 2) { fr = x; break; } }
 	fclose(f); return fr;
 }
 static void paste(Display *d, Window w, int ox, int oy, int W, int H, unsigned char *rgb)

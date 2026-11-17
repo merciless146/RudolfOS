@@ -447,6 +447,7 @@ static const App *app_find(const char *k) { for (int i = 0; i < NAPPS; i++) if (
 static void appwin_size(AppWin *a, int w, int h);
 static void appwin_modal(AppWin *a, int on);
 static void appwin_reveal(AppWin *a);
+static void on_load_ready(WebKitWebView *v, WebKitLoadEvent ev, gpointer d);
 static void prev_msg(AppWin *a, JSCValue *v); static void prev_end(void); static void sav_preview(const char *style);
 static void appwin_fs(AppWin *a, int on);
 static gboolean apps_reload(gpointer d);
@@ -689,6 +690,7 @@ static AppWin *appwin_new(const char *k, WebKitWebView *rel, int id)
 	g_signal_connect(a->view, "web-process-terminated", G_CALLBACK(on_crash), a);
 	g_signal_connect(a->view, "create", G_CALLBACK(on_create), a);
 	g_signal_connect(a->view, "size-allocate", G_CALLBACK(on_view_alloc), a);
+	g_signal_connect(a->view, "load-changed", G_CALLBACK(on_load_ready), a);
 	a->win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title(GTK_WINDOW(a->win), a->title); gtk_window_set_decorated(GTK_WINDOW(a->win), FALSE);
 	int n = g_list_length(WINS), w = SW * 7 / 10, h = work_h() * 8 / 10; if (w < 640) w = SW; if (h < 400) h = work_h();
@@ -1553,6 +1555,7 @@ static void appwin_reveal(AppWin *a)
 	bar_redraw(); state_write();
 	if (!c->opened && !c->hidden) wopen_start(c);
 }
+static gboolean appwin_wait_last(gpointer d);
 static gboolean appwin_wait_late(gpointer d)
 {
 	AppWin *a = d; if (!g_list_find(WINS, a)) return G_SOURCE_REMOVE; a->wait_t = 0;
@@ -1564,9 +1567,23 @@ static gboolean appwin_wait_late(gpointer d)
 		c->cover = XCreateWindow(DPY, c->frame, BW, TH, c->cw, c->ch, 0, CopyFromParent, InputOutput, CopyFromParent, CWBackPixel, &at); XMapRaised(DPY, c->cover);
 		c->hidden = 0; if (!c->off && !c->min) XMapWindow(DPY, c->frame); wm_focus(c); bar_redraw();
 		if (!c->opened) wopen_start(c); }
+	a->wait_t = g_timeout_add(10000, appwin_wait_last, a);   /* (and the cover gone after 10 s more, whatever the page says) */
 	state_write(); return G_SOURCE_REMOVE;
 }
+static gboolean appwin_wait_last(gpointer d)
+{
+	AppWin *a = d; if (!g_list_find(WINS, a)) return G_SOURCE_REMOVE; a->wait_t = 0;
+	Client *c = WM_OK ? client_of_app(a) : NULL; if (c && c->wait == 2) { fprintf(stderr, "rudolf-native: %s's page never said it was ready: shown as it is\n", a->k); appwin_reveal(a); }
+	return G_SOURCE_REMOVE;
+}
 static void appwin_wait_arm(AppWin *a) { if (!a) return; if (a->wait_t) g_source_remove(a->wait_t); a->wait_t = g_timeout_add(WAIT_MS, appwin_wait_late, a); }
+/* (a page that is not Rudolf's own one-app page never says it is ready: shown once it has loaded) */
+static void on_load_ready(WebKitWebView *v, WebKitLoadEvent ev, gpointer d)
+{
+	AppWin *a = d; if (ev != WEBKIT_LOAD_FINISHED || !g_list_find(WINS, a)) return;
+	char js[200]; snprintf(js, sizeof js, "(typeof ONEAPP=='undefined'||!ONEAPP)&&window.webkit&&webkit.messageHandlers.rudolfNative.postMessage({w:%d,op:'ready'})", a->id);
+	webkit_web_view_evaluate_javascript(v, js, -1, NULL, NULL, NULL, NULL, NULL);
+}
 static void frame_redraw_app(AppWin *a) { Client *c = WM_OK ? client_of_app(a) : NULL; if (c) { wm_title(c); frame_draw(c); } }
 /* (1.6.0 Part 12, test findings N2, N4, N10) a page's dialog (oneapp59.js: .rmodal, .natdlg) is over the whole desktop on Standard,
    dimmed and centred on the screen, with the windows and the taskbar under it. Here the app's window covers the screen while one
@@ -6694,6 +6711,7 @@ static void state_write(void)
 {
 	if (!STATEF) return;
 	GString *s = g_string_new(NULL); int by = bar_y(), bx = bar_x();
+	g_string_append_printf(s, "look %s|%s|%d prev=%d\n", S.accent[0] ? S.accent : "-", S.twstyle[0] ? S.twstyle : "-", is_dark(), PREV_S ? 1 : 0);   /* (the accent colour, the title bars' style, dark: as drawn) */
 	g_string_append_printf(s, "wallpaper %s|%s|%s|%s|%d|%s prev=%d\n", S.dyn[0] ? S.dyn : "-", S.bs, S.b1, S.b2, S.wpimg, S.wpfit, PREV_S ? 1 : 0);   /* (what the desktop is drawn with; prev: Settings' choices previewed, not applied) */
 	g_string_append_printf(s, "screen %d %d\nuser %s\nlocked %d\nsignin %d\nmenu %d\nbar %d %d %d %d %d\nclock %s|%s\n", SW, SH, USER_ID[0] ? USER_N : "-", LOCKED,
 		SIGN && gtk_widget_get_visible(SIGN), MENU && gtk_widget_get_visible(MENU), BAR && gtk_widget_get_visible(BAR), bx, by, bar_w(), bar_h(), CLOCK_T, CLOCK_D);
@@ -6739,8 +6757,10 @@ static void state_write(void)
 	for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; GdkWindow *g = a->win ? gtk_widget_get_window(a->win) : NULL;
 		Client *c = WM_OK ? client_of_app(a) : NULL;
 		if (a->hidden) { g_string_append_printf(s, "page %s\n", a->k); continue; }   /* (2026-11-16: a page doing something unseen is no window: page KEY) */
+		if (c && c->wait == 1) { g_string_append_printf(s, "appwait %s\n", a->k); continue; }   /* (2026-11-17: a window not shown yet, its page still drawing: not a window yet) */
 		g_string_append_printf(s, "app %s %lx %d %s\n", a->k, g ? (unsigned long)GDK_WINDOW_XID(g) : 0UL, c ? c == FOCUS : a == ACTIVE, a->title); }
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (!c->ws) continue;   /* (no workspace: going, 12.3c) */
+		if (c->wait == 1) { g_string_append_printf(s, "clientwait %lx %lx app=%s\n", (unsigned long)c->w, (unsigned long)c->frame, c->app ? c->app->k : "-"); continue; }
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
 			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : c->ak[0] ? c->ak : "-", c->title);
 		g_string_append_printf(s, "clientws %lx %d %d\n", (unsigned long)c->w, c->ws, c->off);   /* (item 4: its workspace, shown or not) */

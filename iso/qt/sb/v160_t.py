@@ -159,6 +159,11 @@ try:
         open(f'{W}/j.js', 'w').write(expr.replace('\n', ' ')); g.put(f'{W}/j.js', '/tmp/j.js', '644')
         o = sh(f"timeout 5 sh -c '{{ printf \"%s \" {key}; cat /tmp/j.js; echo; }} > /tmp/teval'; for i in $(seq 1 {t}); do n=$(wc -l < /tmp/teval.out 2>/dev/null || echo 0); [ $n -gt {n0 or 0} ] && break; sleep 1; done; grep '^{key} ' /tmp/teval.out | tail -1", t + 10, False)
         o = o.strip(); return o[len(key) + 1:] if o.startswith(key + ' ') else o
+    def tev_at(key, expr):
+        """the page asked (as tev), the moment written in the computer itself (seconds since its start): the serial line's own delay left out"""
+        open(f'{W}/j.js', 'w').write(expr.replace('\n', ' ')); g.put(f'{W}/j.js', '/tmp/j.js', '644')
+        o = sh(f"t=$(cut -d' ' -f1 /proc/uptime); timeout 5 sh -c '{{ printf \"%s \" {key}; cat /tmp/j.js; echo; }} > /tmp/teval'; echo AT $t", 30, False)
+        m = re.search(r'AT ([0-9.]+)', o); return float(m.group(1)) if m else None
     def vwlog():
         """the watcher's log: [(seconds, {line kind: rest})]"""
         L = []; cur = None
@@ -237,18 +242,18 @@ try:
     time.sleep(12)
     for what, js1, pred in (('saved by an app', "(()=>{const d=deskFiles();d['SAVED.TXT']='hello';fsSave();EXPL.forEach(f=>f());return 1})()", lambda d: 'SAVED.TXT,' in (d.get('dicons') or '')),
                             ('deleted', "(()=>{const d=deskFiles();delete d['SAVED.TXT'];fsSave();EXPL.forEach(f=>f());return 1})()", lambda d: 'SAVED.TXT,' not in (d.get('dicons') or ''))):
-        t0 = float(sh("cut -d' ' -f1 /proc/uptime", 20, False).strip().split('\n')[-1]); tev('notepad', js1); time.sleep(5); L = vwlog()
-        t1 = first(L, pred, t0); TM['nat_file_' + what.split()[0]] = None if t1 is None else round(t1 - t0, 2)
-        ok(f'N3c. Native: a file {what} on the desktop within 1 s of asking the page ({TM["nat_file_" + what.split()[0]]} s, the serial line\'s own delay included)', t1 is not None and t1 - t0 <= 1.0, (t0, t1))
+        t0 = tev_at('notepad', js1); time.sleep(5); L = vwlog()
+        t1 = first(L, pred, t0 or 0) if t0 else None; TM['nat_file_' + what.split()[0]] = None if t1 is None else round(t1 - t0, 2)
+        ok(f'N3c. Native: a file {what} on the desktop within 500 ms of the page being asked ({TM["nat_file_" + what.split()[0]]} s)', t1 is not None and t1 - t0 <= 0.5, (t0, t1))
     tev('notepad', "(()=>{window.__oneAppClose();return 1})()", 10); time.sleep(4)
     # ---- 4: Display Properties' background, previewed
     st = state(); h = hit(st, 'start \\S+')
     if h: at(*h); time.sleep(1.5); g.q.type('settings'); time.sleep(1.5); g.q.key('ret')
     time.sleep(15); w0 = st_get(state(), 'wallpaper'); vm.shot('wall-0')
-    t0 = float(sh("cut -d' ' -f1 /proc/uptime", 20, False).strip().split('\n')[-1]); tev('settings', "(()=>{document.querySelector('#dyns .dynb[data-dyn=teal]').click();return S.dyn})()"); time.sleep(3)
-    L = vwlog(); t1 = first(L, lambda d: (d.get('wallpaper') or '').startswith('teal|') and (d.get('wallpaper') or '').endswith('prev=1'), t0); vm.shot('wall-teal')
+    t0 = tev_at('settings', "(()=>{document.querySelector('#dyns .dynb[data-dyn=teal]').click();return S.dyn})()"); time.sleep(3)
+    L = vwlog(); t1 = first(L, lambda d: (d.get('wallpaper') or '').startswith('teal|') and (d.get('wallpaper') or '').endswith('prev=1'), t0 or 0) if t0 else None; vm.shot('wall-teal')
     TM['nat_preview_s'] = None if t1 is None else round(t1 - t0, 2)
-    ok(f'N4a. Native: a background chosen in Display Properties on the desktop within 1 s of asking the page ({TM["nat_preview_s"]} s, the serial line\'s delay included; Standard {TM.get("std_preview")})', t1 is not None and t1 - t0 <= 1.0, (w0, t0, t1))
+    ok(f'N4a. Native: a background chosen in Display Properties on the desktop within 300 ms of the page being asked ({TM["nat_preview_s"]} s; Standard {TM.get("std_preview")} ms)', t1 is not None and t1 - t0 <= 0.3, (w0, t0, t1))
     tev('settings', "(()=>{secRevert('disp');return S.dyn})()"); time.sleep(3); w2 = st_get(state(), 'wallpaper'); vm.shot('wall-revert')
     ok('N4b. Native: ...back on Revert', w2 == w0, (w0, w2))
     out('timings', json.dumps(TM))
