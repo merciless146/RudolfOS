@@ -483,7 +483,32 @@ asks performance), *The kernel's own* (amd_pstate passive). amd_pstate's active 
 driver: the choice is greyed out there and on Intel, and the power settings work as before (host test power_t.sh 50/50,
 the power phase in QEMU).
 
-**Memory:** MEMORY-RESULTS
+**Memory:** no change kept; zram's lz4 proposed for a Vivobook check. Stand-ins started together on the 1.6.0
+beta (2026111707), 3.3 GB: tabs (500+500+500+300 MB, compressing about 3:1 as web pages' heaps do), a game (1.3 GB, half
+compressible, a 60 fps loop touching a quarter of it each second) and a call (a 20 ms audio period), for 100 s; the
+memory stalls (PSI "full"), the game's frames over 33 ms, the call's periods more than 10 ms late, and how long the memory
+guard saw memory critical. (A first load of 2.1 GB left 400 MB free and measured nothing: no swap at all.) Medians, each
+setting 2-3 times, on one machine per column:
+
+| Setting | memory stalled (PSI full) | game frames > 33 ms | call periods > 10 ms late | guard: memory critical |
+|---|---|---|---|---|
+| swappiness 180, zram = memory, zstd (today) | 7.98 s | 111 | 218 | 23 s |
+| swappiness 200 | 6.22 s | 88 | 128 | 17 s |
+| swappiness 100 | 8.74 s | 77 | 131 | 12 s |
+| swappiness 60 | **15.34 s** | 73 | 137 | **32 s** |
+| zram 1.5 × memory | 7.66 s | 86 | 85 | 18 s |
+| **lz4 instead of zstd** (beside zstd in turn, 3 pairs) | **5.62 s** (zstd 11.18) | **72** (110) | **85** (166) | **12 s** (28) |
+
+No setting ended a process (no OOM kills, the memory guard ended nothing) and every one ran memory down to 0-6 MB free.
+- **Swappiness:** 60 is clearly worse (twice the stalls, and the guard in critical twice as long), which confirms 1.5.9's
+  move to a high value; 100, 180 and 200 differ by less than the runs among themselves (180's call figure ran 50 to 241):
+  180 is kept.
+- **zram's size:** 1.5 × memory changed nothing measurable (zram never filled at 1 ×): kept as it is.
+- **lz4:** fewer stalls, fewer slow game frames and late call periods in all three pairs, and the guard critical less
+  than half as long: lz4 is faster to compress and read back. But it packs less (about 2:1 against zstd's 3:1), so
+  zram holds less before memory really runs out, which these 100-second runs did not reach and on 3.3 GB matters (the
+  Vivobook's game was ended by the guard in 1.5.9). **Not changed yet:** a later PR would build ZRAM_BACKEND_LZ4 and let
+  the memory setting choose it, once a run as long as a real game session shows it does not end processes sooner.
 
 **Required features:** the check (its own PR, first) found FUSE missing from the x86 kernel (Flatpak's document portal,
 AppImages); it is added there. Not on the list, noted: `lsm=` names landlock but SECURITY_LANDLOCK is not built; the
@@ -500,7 +525,9 @@ encrypted folders use fscrypt, not dm-crypt (the list checks fscrypt and its cip
    it feels better and nothing stutters more.
 3. **Power** (Settings › System health › Power and battery › Processor energy preference): see the power PR's checklist
    (15 minutes idle and 15 minutes of a video on each of the three choices, battery % and watts).
-4. **Memory:** MEMORY-CHECKLIST
+4. **Memory:** (a kernel with lz4, if that later PR comes) a game, Oracle with 4 tabs and a Discord or Meet call together
+   for 15 minutes on each compressor: write down whether the game stuttered, whether the call broke up, and the
+   health log's memory lines (the guard's warnings and what it ended).
 
 ### 13. Files dropped from outside onto the native desktop (added on 2026-11-16; 1.6.0 Part 12's known differences)
 On Standard a file dragged from a Linux app (the Debian file manager, a Flatpak) onto the desktop is saved in the
