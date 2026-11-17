@@ -96,6 +96,23 @@ did not ring and with several open it rang once per window. One unseen page of t
 | V55 | Clock › Timers: start a 1 minute timer, close the Clock's window | The timer rings once | Whether it rings after the window is closed; open Clock again: the timer says Done |
 | V56 | Task Manager with only it open | No extra window or app listed | Whether anything named Rudolf OS or do-svc shows on the taskbar or in Task Manager's Apps |
 
+## The start-up after 2026-11-16's restart ("Before stable" 15; docs/plan-1.6.0.md)
+
+The Vivobook opened its firmware's setup screen at the restart after the engine switch. The cause: 1.6.0's automatic
+repair wrote a new boot image over the drive's start-up area at that restart, and the firmware's two entries for the
+drive ("Rudolf OS" and "Drive") still name where 1.4.1's start-up files were, CDROM(1,0x52EC,0x1E000); they are now at
+CDROM(1,0x5AC4,0x36000). Your files and the installed system are not touched (the stick starts them). Do not use the
+firmware's Key Management, F9 or anything that clears keys: none of it is needed.
+
+| # | Do | Expected | Report |
+|---|---|---|---|
+| V58 | First, a restart without the stick (nothing to lose) | Most likely the setup screen again: 2026111620 started from the stick does not correct the entry (found in QEMU) | Whether it starts or opens the setup screen |
+| V59 | If it opens the setup screen: Boot › Add New Boot Option, as on 2026-10-29: a name ("Drive 2"), the KINGSTON drive, the file `EFI\BOOT\BOOTX64.EFI`; Save & Exit | Rudolf OS starts from the drive (without the stick); at that start rudolfd takes the new entry's path for "Rudolf OS", so the next starts work too | Whether it starts; Boot Override's list now |
+| V60 | Started (from the drive or the stick): Settings › Security › Secure Boot › Get new boot files… (just open it, then Cancel), or a system report's "start-up decisions" | "Last time: written 2026-11-16T…: Rudolf OS 1.6.0.261116 (serial 2026111620)", or "boot files written" on 2026-11-16 | A photo: this confirms the cause on the Vivobook |
+| V61 | After the beta with the fix (bootentry-160): start once (from the drive, or the stick if the drive does not start yet) | System health shows "Start-up files and firmware" lines: the "Rudolf OS" entry written for CDROM(0x1,0x5AC4,0x36000), the old one kept as "Rudolf OS (previous)"; the next start without the stick works, and the previous one is removed | Photos of those lines |
+| V62 | Settings › Update and recovery › Start-up of this drive › Check this drive's start-up… (your password) | "All is right: the computer can start from this drive", the files signed, the entry first in the boot order | A photo of the report |
+| V63 | Same place › Put back the official start-up files… (on power) | "already the image's: nothing to change" (the drive has 1.6.0's files now); on a drive with 1.4's files it says there is no room and changes nothing | What it says; then restart without the stick |
+
 ## The owner's report of 2026-11-16 (beta 2026111620): windows, menus, icons, the background's preview
 
 The host tests (iso/qt/native/vivo160_t.js) and the release in QEMU (iso/qt/sb/v160_t.py) check these with timings; these are
@@ -103,12 +120,12 @@ the same steps on the Vivobook's own screen and speed.
 
 | # | Do (on Native) | Standard shows | Report |
 |---|---|---|---|
-| V57 | Open Notepad, Calculator, Settings, File Explorer and Oracle, each from the start menu, a pin and a desktop icon | Each window appears once, at its own size, with the app in it, fading in (0.18 s) | Whether any window first shows the sign-in screen, the desktop, a large empty window or a wrong size before the app; how long each takes to appear |
-| V58 | Open an app right after signing in, while the desktop is still busy | As V57 | Whether the window appears as a plain window of the app's colour first (a slow page: after 2.5 s) and then the app, never the sign-in screen |
-| V59 | Right-click the desktop, then right-click somewhere else (also: an icon, then the desktop; the desktop, then the taskbar; the start menu, then the taskbar) | The first menu is gone completely as the second appears | Any strip or part of the first menu left on the screen (a photo) |
-| V60 | The tray's pop-ups replacing each other (the clock's calendar, then quick settings, then the volume) | Each replaces the other cleanly | Any part of the previous pop-up left |
-| V61 | Sign in (also after a restart, and as a second account) | The desktop's icons with their pictures at once | How long until the icons appear; any icon without its picture |
-| V62 | Right-click the desktop › New folder, then New text document | The icon at once, then its Rename | How long until the icon appears; whether Rename comes; File Explorer's Desktop folder at the same moment |
-| V63 | Save a file to the Desktop in Notepad; delete one from the Desktop in File Explorer | The desktop at once | How long until the desktop shows the change |
-| V64 | Settings › Display Properties: choose backgrounds one after another (a drawn one, a static one, a picture of your own, a colour), then Revert; again, then close Settings and Discard | The whole desktop shows each choice at once, before Apply; back on Revert or Discard | Whether each shows at once, full size; whether it goes back |
-| V65 | Display Properties: the accent colour, dark mode, the title bars' style; the screen saver's Preview | The taskbar, menus and title bars change at once; the saver full screen | The same at once, before Apply; the saver over the whole screen, ending on a key without locking |
+| V66 | Open Notepad, Calculator, Settings, File Explorer and Oracle, each from the start menu, a pin and a desktop icon | Each window appears once, at its own size, with the app in it, fading in (0.18 s) | Whether any window first shows the sign-in screen, the desktop, a large empty window or a wrong size before the app; how long each takes to appear |
+| V67 | Open an app right after signing in, while the desktop is still busy | As V66 | Whether the window appears as a plain window of the app's colour first (a slow page: after 2.5 s) and then the app, never the sign-in screen |
+| V68 | Right-click the desktop, then right-click somewhere else (also: an icon, then the desktop; the desktop, then the taskbar; the start menu, then the taskbar) | The first menu is gone completely as the second appears | Any strip or part of the first menu left on the screen (a photo) |
+| V69 | The tray's pop-ups replacing each other (the clock's calendar, then quick settings, then the volume) | Each replaces the other cleanly | Any part of the previous pop-up left |
+| V70 | Sign in (also after a restart, and as a second account) | The desktop's icons with their pictures at once | How long until the icons appear; any icon without its picture |
+| V71 | Right-click the desktop › New folder, then New text document | The icon at once, then its Rename | How long until the icon appears; whether Rename comes; File Explorer's Desktop folder at the same moment |
+| V72 | Save a file to the Desktop in Notepad; delete one from the Desktop in File Explorer | The desktop at once | How long until the desktop shows the change |
+| V73 | Settings › Display Properties: choose backgrounds one after another (a drawn one, a static one, a picture of your own, a colour), then Revert; again, then close Settings and Discard | The whole desktop shows each choice at once, before Apply; back on Revert or Discard | Whether each shows at once, full size; whether it goes back |
+| V74 | Display Properties: the accent colour, dark mode, the title bars' style; the screen saver's Preview | The taskbar, menus and title bars change at once; the saver full screen | The same at once, before Apply; the saver over the whole screen, ending on a key without locking |
