@@ -211,6 +211,34 @@ What is left is measured, not guessed: each change kept only if the numbers say 
 - **Memory:** vm.swappiness and zram's size with Oracle, a game and a call at once on 3.3 GB.
 - **How:** QEMU first for what QEMU can show (start-up, memory), a test kernel built with each choice; the Vivobook last,
   by the owner (battery and real input lag), with a short checklist of numbers to note on each kernel.
+- **One kernel for every computer, so a second machine (owner, 2026-11-16):** Rudolf OS ships one x86-64 kernel, so a
+  change tuned on the Vivobook must not make another PC slower or stop it starting. Every change is also checked on the
+  owner's **Asus desktop** (RuckXTrauma), running Rudolf OS live from a USB stick (never installed there, nothing on its
+  disk changed): kept only if it helps on at least one machine and hurts on neither. Its specifications go here from
+  its System report: CPU and cores ___, memory ___, graphics ___, storage ___. On it, power is measured as
+  responsiveness and temperatures or fan noise (no battery). Start-up is also checked in QEMU on several kinds of
+  virtual hardware (q35 and i440fx; AHCI, NVMe, virtio-blk, USB storage; BIOS and UEFI): anything a computer needs to
+  reach its root file system stays built in.
+- **First, before any tuning is merged: the kernel's required features checked at build time (owner, 2026-11-16).**
+  Tuning must never remove a feature programs depend on. iso/kconfig.sh already stops the build when some groups are
+  missing (the memory options, sound, games, Thunderbolt); it is widened to every feature Rudolf OS's programs and
+  security rely on, each listed with who needs it, so a tuning change that drops one fails the build instead of
+  reaching a computer:
+  - **Flatpak and bubblewrap:** user, PID, network, mount and IPC namespaces; seccomp and its filters; overlayfs;
+    FUSE (the document portal).
+  - **The Debian container and Wine:** namespaces, cgroups v2 and its controllers (cpu, memory, io, pids), binfmt_misc,
+    32-bit programs (IA32_EMULATION) for Wine and Steam.
+  - **The desktop and its sandboxes:** cgroups for the desktop's memory group (rudolfd's peer check), inotify, epoll,
+    eventfd, signalfd, timerfd, memfd, the X server's needs (DRM, KMS, DRI3's file passing), uinput, evdev.
+  - **Security:** Secure Boot's kernel lockdown, module signature checking, YAMA, the keyring (KEYS), the encrypted
+    home's dm-crypt and its ciphers, the firewall (nftables), audit if used.
+  - **Storage and start-up:** every disk controller and file system needed to reach the system disk (AHCI, NVMe,
+    virtio, USB storage, SquashFS, ext4, vfat for the EFI partition), the initramfs's needs.
+  - **Power and devices:** suspend (s2idle), AMD_PMC, the P-state drivers, CPU frequency, thermal, the battery.
+  The list is made by reading what each program needs (bubblewrap's and Flatpak's documented requirements, rudolfd's,
+  the X server's), and checked against today's kernel so it starts green. Its test: a deliberately broken
+  configuration (one option removed from each group) must fail the build with that option's name and who needs it.
+  This check is its own PR, merged before any of Part 12's tuning PRs.
 
 ### 13. Files dropped from outside onto the native desktop (added on 2026-11-16; 1.6.0 Part 12's known differences)
 On Standard a file dragged from a Linux app (the Debian file manager, a Flatpak) onto the desktop is saved in the
