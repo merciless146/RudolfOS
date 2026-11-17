@@ -28,6 +28,7 @@ node gamesleep59_t.js [CHROME]                     # 1.5.9: game mode: backgroun
 node slim59_t.js [CHROME]                          # 1.5.9: pictures, fonts, the SNES core and SpreadsheetPro/PresentPro load when used (14 checks)
 node membreak59_t.js [CHROME]                      # 1.5.9: Task Manager › Performance: where the memory goes, Clear cache (9 checks)
 node wifiradios59_t.js [CHROME]                    # 1.5.9: the Wi-Fi's radios and their switches; Blitzen's Wi-Fi diagnosis (12 checks)
+node svc60_t.js [CHROME]                           # 1.6.0: the Native desktop's timer gate and service page: an app window runs only its own timers, alarms and Clock timers ring once (18 checks)
 node statue58_t.js [CHROME] [SHOTS]               # 1.5.8: Spirit Falls' statue, its glow, the petals and the lanterns (no shell needed; 20 checks)
 node dl_t.js                                     # 1.2.1 downloads of any size (35 checks; MEDIA=folder with clip.webm and big.pdf,
                                                  # PDFLIB=a disc's www/lib for PDF Viewer, both set before host.sh)
