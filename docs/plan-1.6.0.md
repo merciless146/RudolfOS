@@ -682,7 +682,7 @@ run"; on the second PR's branch: its test steps).
 - The areas never compared: iso/qt/sb/t160n_t.py on the newest beta in QEMU (workflow native-areas.yml), and the owner's checks in
   docs/native-vivobook-checklist.md.
 
-Found while doing the findings, for items 11 and 12 (not changed yet): every one-app page runs the page's module-level timers as
+Found while doing the findings, for items 11 and 12 (item 12's part done on 2026-11-17: below): every one-app page runs the page's module-level timers as
 Standard's one page does, so with several app windows open some background work runs once per window: the Calendar's alarm check
 (apps25b.js, every minute: an alarm could be said once per open window), game mode (games58.js gameTick, gamesleep59.js), the home
 folder's refresh (home56.js, 15 s), Tor's keep-alive (tor59.js, 20 s), the session's save (shell25.js, 20 s) and the lag meter (500
@@ -692,6 +692,53 @@ starts in an app's page only those its window needs (the theme's and the icons' 
 (#app=do-svc), started at sign-in, runs the others once for the whole desktop (alarms, game mode, events/wait, Tor, the home folder),
 as Standard's one page does. Measured on this host (WebKitGTK 2.52.6, --draw=soft): opening the first app adds about 230 MB of
 WebKit web process, 60 MB of its network process and 90 MB in rudolf-native; the next app about 30 MB more.
+
+**Done (2026-11-17, unattended session; "Before stable" 13): item 12's background work, once.** Cause: every one-app page ran
+the page's module-level timers as Standard's one page does, so with no app window open none ran (an alarm, a Clock timer or a
+Calendar reminder never came; rudolfd's events waited up to a minute for a window, then were dropped) and with several open each
+ran its own (an alarm rang once per window; the cellular notices were shown by the shell and again by every window). The fix:
+- **desktop/svc60.js**, first in the page (build19.py puts it before the page's own code and core25.js, marks where each module
+  starts, __svcMod, and where the code ends, __svcEnd): in a page of the native desktop (#app=NAME in rudolf-native's WebKit or
+  Oracle's Chromium) the timers the modules start while the page loads are held back (the page keeps their numbers, so
+  clearInterval works). An app's window starts only what it needs: the short ones finishing its own start (under a second), the
+  theme's and the icons' minute ticks and the drawn backgrounds' light or dark (a11y25.js, the page's own dynResolve tick), what is
+  the window's own (the battery saver's look, power31.js; its own games' frames and full screen, games58.js and gamesleep59.js; its
+  copy of the home folder read again from the disk, home56.js; the one-app glue's full-screen stand-in) and its app's own (Oracle:
+  its real tabs, dark pages, bookmarks bar, Tor's keep-alive, the network's state; Settings: the network's and the volume's state).
+  Measured with Notepad: 19 of the page's 75 load-time timers run in its window, 9 of its 39 repeating ones (all of them before). On Standard and Lite (no #app=)
+  nothing changes: setTimeout and setInterval stay the browser's own (svc60_t.js 1-3), as in Standard's Tor windows (a page of one
+  app in Chromium) and in a page opened by hand in a browser: only a page on the native desktop is held back.
+- **The desktop's service page** (#app=do-svc, oneapp59.js "svc"; rudolf-native svc_tick): opened by rudolf-native at sign-in
+  (every account, the guest too), opened again within 10 s if it ends, loaded again if its process stops (WebKit's reload), closed
+  with the windows at sign-out (so a user switch starts the next account's), kept while locked (alarms ring as on Standard). It is a
+  page of the shell's never shown: not on the taskbar, not in Task Manager's apps, not a window of the screen. Once signed in it
+  starts every held timer (__svcRun), as Standard's page, except what the shell does itself for the whole desktop: the heartbeat,
+  the microphone's 🎙️, the cellular notices and the development link (tick_heart, tick_mic, tick_cell, tick_devlink). The modules
+  see it as visible (document.hidden false). Its notifications are the shell's toasts (once, above every window), its sounds the
+  shell's (an alarm's ring), its dialogs over the screen as any page's (opened as a page of the shell's that is shown only for a
+  dialog, as the portal's); an app it opens (a reminder's click: launch, settings, Open with) is a window of its own, and a window it
+  would make in itself is that app's own window instead. rudolfd's events that are a page's go, as before, to the app window in
+  front (else the first), and now to the service page when no app window is open instead of waiting for one.
+- **The Clock's timers** are the desktop's: made in the Clock's window and rung by the service page, also once the Clock's
+  window is closed. They are kept in the page's storage (bd95timers:ID, with when each was made) and told at once to the other
+  windows (BroadcastChannel; WebKit's storage may reach them seconds later); a new sign-in's service page drops those made before
+  it, as Standard's page loses them at sign-out. apps25b.js calls __tmrIn and __tmrOut where they exist (Standard: never).
+- **Tests:** qt/host/svc160_t.sh 22/22 (rudolf-native under Xvfb with the stand-in rudolfd and a script in each page,
+  fixtures/svc160_inject.js: with no app window open an alarm set a minute ahead rings once, a Calendar reminder shows once, an
+  incoming call's notice once, the 🎙️ from the shell, an event reaches the service page; with three app windows open each still
+  once and from the service page; a Clock timer started, its window closed, rings once and not again after the service page is
+  opened again; the service page closed: opened again; its process killed: loaded again; kept while locked; ended at sign-out,
+  back at the next sign-in); qt/shell2/svc60_t.js 18/18 in Chromium (Standard untouched, the heartbeat as before; an app window's
+  and Oracle's timers; Standard's one-app pages untouched; the service page's; an alarm's toast and sound once; a reminder's click a window of its own;
+  a Clock timer from a closed Clock window rung once and shown Done; a new sign-in drops older timers). native59_t.sh 70/70,
+  nportal160_t.sh 12/12, oneapp59_t.js 42/42 and the Standard tests of the modules touched (call59, calsun59, games58,
+  gamesleep59, engine57) unchanged.
+- **QEMU, the real newest beta** with this tree's rudolf-native and page (qt/sb/s160_t.py, workflow svc-check.yml, run
+  44009629129): 16/16: Standard's alarm once (the reference); on Native the service page up and unseen, with no app window the alarm
+  and the reminder once, with three open once again (from the service page), Notepad's window running only its own timers, a Clock
+  timer from a closed Clock window rung once, the service page closed and opened again.
+- **For the owner on the Vivobook:** docs/native-vivobook-checklist.md V51-V56 (an alarm with no window open, a call or message
+  with no window open, two windows open: rings once; a Clock timer after its window is closed; nothing extra in Task Manager).
 
 **Next:** items 9 to 12 in order, one PR each, based on main, each passing same_t.sh for its part, and docs/plan-2.0.md
 after them. Native is not
@@ -1083,8 +1130,9 @@ keyring there (the prompt drawn by the desktop on Standard and on Native).
     computer goes back to the official system by itself; Return to official there (the official system from system/r,
     checked, Developer mode off); Recovery mode (recovery.efi) checks system/r with the official key and starts it under
     lockdown. A custom build under Secure Boot needs its own key enrolled (1.5.9 8.3, as decided); nothing was weakened.
-  - Left: qt/sb/t140_t.py (a 1.4.0 test disc) still switches the link on with the token alone (t160's 17 and 18 cover
-    15.4 in QEMU).
+  - ~~Left: qt/sb/t140_t.py (a 1.4.0 test disc) still switches the link on with the token alone (t160's 17 and 18 cover
+    15.4 in QEMU).~~ **Done (2026-11-17, "Before stable" 12):** t140 retired, its checks in t160 (21 to 31) on the real
+    release with an administrator switching the link on (which test covers each: "Before stable" 12).
 - **On the Vivobook**
   - **Calls (1.5.9 7.4):** Meet in Oracle on Standard and on Lite; Zoom's test meeting, then the Zoom app; Teams; a
     call to a real phone; a headset's microphone during a call; memory during a 10-minute call. Results in
@@ -1447,8 +1495,53 @@ root work split into helpers (Part 11), with files dropped from outside onto the
     make it wait for its answer), and qt/sb/t140_t.py, which still turns the developer link on with the token alone
     (since 1.5.9 that needs an administrator signed in, in Developer mode): brought up to date or retired, its checks
     being t160's 17 and 18. Tests only; no change to the system.
+    **Done (2026-11-17), tests only:**
+    - **The keyring's failure was not timing.** The one of 2026-11-16 (Keyring check on 7242e36, run 43800358795) was
+      qt/host/keyprompt60_t.sh 5 to 7: the app told "dismissed" after the desktop had answered. Here 1 run in 20 to 30
+      failed so, with and without a busy CPU, and each time gnome-keyring-daemon logged "couldn't create new collection:
+      Cannot import an invalid key". The cause, in rudolf-portal's secret exchange with the daemon: gnome-keyring 46
+      (Ubuntu 24.04's, the one Rudolf OS ships) keeps the Diffie-Hellman shared value at the prime's 192 bytes, leading
+      zero bytes and all (egg/egg-dh.c egg_dh_gen_secret, used by its own GcrSecretExchange through its PKCS#11 module);
+      rudolf-portal strips them (BN_bn2bin in sx_derive), as libgcr 3.41 does. One value in 256 starts with a zero byte:
+      the two keys differ and the daemon cannot read the password, so about 1 keyring creation or unlock in 256 on a
+      real computer fails the same way. Measured with the real daemon: 4 of 600 creations failed; with the value padded
+      (`BN_bn2binpad(k, ikm, 192)` in sx_derive, not made: this item is tests only) 600 of 600, and keyprompt60_t.sh 20 of
+      20 and 20 of 20 under load. **For the owner: the one-line fix in rudolf-portal.c, before stable.** The test now:
+      fixtures/sxpeer.py 12 sends such a value as the daemon does, every time (it fails until the fix: keyprompt60's 1);
+      sxpeer 11 (libgcr, gcr-prompter's rule, not the daemon's) passes when one of three exchanges agrees;
+      keyprompt60's waits are polls with a generous bound (w8), and a failing step says when the daemon could not read
+      the password.
+    - **qt/host/keyring60_t.sh's real timing fault** (found by running it 20 times: 1 failed): its session bus had the
+      system's service files, so an app's request between the daemon's stop and its start in 7 had the bus start
+      another gnome-keyring-daemon itself (root's home, not stopped by the test), which took the name: 7 and 9 failed
+      ("another secret service is running"), 4 runs in 40 here. Now a bus with no service files, the stop waited for
+      until the name is free, the start until it answers: 40 of 40, 20 of 20 under load. qt/shell2/keyring60_t.js
+      (not in a workflow) waits for each step's result instead of fixed times: 30 of 30, 20 of 20 under load.
+    - **Other checks on main in the last week** (runs of 2026-11-08 to 17): none failed and then passed on a rerun of
+      the same commit. The Lite engine check's failures were the computer check on Native (hwcnative160_t.sh: its 2b
+      read the microphone step after a fixed 5 s: timing, already waiting for the answer since #440; before that, its
+      sign-in, and native59's window tests 35 to 42, the same on every run of their commits and gone with later ones)
+      and the Native keys QEMU check's (k160: quick settings, item 1's bugs, and its fix path; also gone with later
+      commits): none of them shown to be timing.
+    - **t140 retired** (qt/sb/t140_t.py removed; it ran in no workflow and needed a 1.4.0 test disc): its checks, on the
+      real release with an administrator switching the link on, are now t160's 21 to 31 (QEMU checks workflow) or were
+      already elsewhere. The link there and off: t160 17, qt/host/devlink59_t.sh 1. A wrong token refused with GitHub's
+      reason, nothing kept: t160 21. On with the right token for an hour, rudolf-devlink as root, the token root-only on
+      RUDOLFDATA: t160 18, 22. The token in no file under /run, /tmp or /home nor in the page: t160 23. The banner:
+      qt/shell2/dl140_t.js (the page), qt/host/native59_t.sh (Native). sh from the repository: t160 18 (read-only, as
+      nobody) and 26 (as root once an administrator allows changes). screenshot: t160 24; get: 25; put: 26. Ask first
+      with the kept token, the command waiting with its text, Allow running it: t160 27 (the prompt as drawn: dl140_t.js,
+      native59_t.sh). restart: the result first, then the restart: qt/host/devlink_t.py; on again by itself after a
+      restart and the next command: t160 19, 20. The system report: t160 28; the log: 29; End now: 30 (and dl140_t.js);
+      on without "Keep on after restarting", off after the restart: devlink59_t.sh 7; Forget the token: t160 31.
 13. **The native desktop's background jobs run once** (Part 12 item 12): alarms, reminders, calls and the rest with no
-    app window open, and once with several. Its own task, 2026-11-16.
+    app window open, and once with several. Its own task, 2026-11-16. **Done (2026-11-17)** (asked for on 2026-11-16:
+    "Include items 1, 2, 3, and 4"): the timers a native app window's page starts while it loads are held back but for what the window needs (desktop/svc60.js), and
+    one hidden page of the shell's (#app=do-svc) runs the rest once for the whole desktop (Part 12's note "Done (2026-11-17)").
+    Tests: qt/host/svc160_t.sh 22/22, qt/shell2/svc60_t.js 18/18, qt/sb/s160_t.py 16/16 in QEMU on the newest beta with this
+    tree's rudolf-native and page (svc-check.yml run 44009629129). Left: the owner's checks V51-V56 on the Vivobook.
+14. **Files dropped from Linux apps onto the native desktop** (planned for 1.6.1 Part 13, merged early as #444): kept in
+    1.6.0 by the owner on 2026-11-16 ("Keep it in 1.6.0"). Owner's check: docs/native-vivobook-checklist.md V57.
 
 ## After 1.6.0: the native desktop decision (added on 2026-11-12)
 (2026-11-13: the prototype moved into 1.5.9 as a third desktop engine, Native (test): docs/plan-1.5.9.md Part 12.

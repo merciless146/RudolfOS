@@ -18,26 +18,27 @@ const srv = http.createServer((q, s) => { const [u0, qs] = q.url.split('?'); con
     if (u.startsWith('/api/')) return J({ok: true});
     const f = path.join(WWW, path.normalize(u)); if (!f.startsWith(WWW) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { s.writeHead(404); return s.end() }
     s.writeHead(200); fs.createReadStream(f).pipe(s) }) }).listen(8345, '127.0.0.1');
-const wait = ms => new Promise(r => setTimeout(r, ms));
+// 2026-11-17 ("Before stable" 12): each step waits for what it changes (up to 15 s), not a fixed time
+let p; const until = (f, t) => p.waitForFunction(f, null, {timeout: t || 15000}).catch(() => {});
 (async () => {
   const b = await chromium.launch({executablePath: process.argv[2] || undefined});
-  const p = await b.newPage({viewport: {width: 1280, height: 900}}); const errs = []; p.on('pageerror', e => errs.push(String(e.stack || e).slice(0, 300)));
+  p = await b.newPage({viewport: {width: 1280, height: 900}}); const errs = []; p.on('pageerror', e => errs.push(String(e.stack || e).slice(0, 300)));
   await p.goto('http://127.0.0.1:8345/'); await p.waitForFunction(() => typeof krSection == 'function' && typeof settings == 'function', null, {timeout: 30000});
   const q = s => p.evaluate(s);
-  const open = async () => { await q("(()=>{wins.slice().forEach(w=>w.close());settings('priv');return 1})()"); await wait(900) };
+  const open = async () => { await q("(()=>{wins.slice().forEach(w=>w.close());settings('priv');return 1})()"); await until("(()=>{const t=document.querySelector('.pkr60 tbody');return !!t&&t.rows.length>0})()") };
   await q("(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});USER=USER||ACCTS[0];return 1})()");
   await open();
   const rows = await q("[...document.querySelectorAll('.pkr60 tbody tr')].map(r=>[...r.cells].map(c=>c.textContent))");
   ok('1. Privacy › Saved passwords for apps: each item, who saved it and what', rows.length == 3 && rows[0][0] == 'Claude' && rows[0][1] == 'Claude Safe Storage' && rows[1][0] == 'Chromium-based app (its saved logins)' && rows[2][0] == 'org.example.Chat (Flatpak app)', rows);
   ok('...after the camera, before App permissions', await q("(()=>{const k=document.querySelector('.pkr60');return !!k&&k.previousElementSibling&&k.previousElementSibling.classList.contains('pcam')})()"));
   ok('...an app\'s label shown as text, never run as HTML', !(await q('window.__pwn')) && /<img/.test(rows[1][1]), rows[1]);
-  await q("document.querySelectorAll('.pkr60 .pkr')[0].click()"); await wait(300);
+  await q("document.querySelectorAll('.pkr60 .pkr')[0].click()"); await until("!!document.querySelector('.dqa')");
   ok('2. Remove asks first, naming it', /Remove "Claude Safe Storage"\? Claude will be signed out/.test(await q("(document.querySelector('.dqa')||{}).textContent||''")));
-  await q("[...document.querySelectorAll('.rmodal button')].find(b=>b.textContent=='Cancel').click()"); await wait(200);
+  await q("[...document.querySelectorAll('.rmodal button')].find(b=>b.textContent=='Cancel').click()"); await until("!document.querySelector('.rmodal')");
   ok('...Cancel: nothing removed', M.forgot.length == 0);
-  await q("document.querySelectorAll('.pkr60 .pkr')[0].click()"); await wait(300); await q("[...document.querySelectorAll('.rmodal button')].find(b=>b.textContent=='Remove').click()"); await wait(700);
+  await q("document.querySelectorAll('.pkr60 .pkr')[0].click()"); await until("!!document.querySelector('.dqa')"); await q("[...document.querySelectorAll('.rmodal button')].find(b=>b.textContent=='Remove').click()"); await until("/Removed/.test((document.querySelector('.pkr60 .pkm')||{}).textContent||'')&&document.querySelector('.pkr60 tbody').rows.length>0");
   ok('...Remove: that one forgotten (keyring/forget with its id), the list read again', M.forgot[0] == '/org/freedesktop/secrets/collection/login/1' && (await q("document.querySelectorAll('.pkr60 tbody tr').length")) == 2 && /Removed/.test(await q("document.querySelector('.pkr60 .pkm').textContent")), [M.forgot, await q("document.querySelector('.pkr60 .pkm').textContent")]);
-  await q("document.querySelector('.pkr60 .pka').click()"); await wait(300); await q("[...document.querySelectorAll('.rmodal button')].find(b=>b.textContent=='Remove all').click()"); await wait(900);
+  await q("document.querySelector('.pkr60 .pka').click()"); await until("!!document.querySelector('.dqa')"); await q("[...document.querySelectorAll('.rmodal button')].find(b=>b.textContent=='Remove all').click()"); await until("/could not be removed|All removed/.test((document.querySelector('.pkr60 .pkm')||{}).textContent||'')&&document.querySelector('.pkr60 tbody').rows.length>0");
   ok('3. Remove all: each asked for; one the keyring would not remove is said, the others gone', M.forgot.includes('app:org.example.Chat') && M.forgot.some(x => x.endsWith('/2')) && /1 could not be removed/.test(await q("document.querySelector('.pkr60 .pkm').textContent")) && (await q("document.querySelectorAll('.pkr60 tbody tr').length")) == 1, [M.forgot, await q("document.querySelector('.pkr60 .pkm').textContent")]);
   M.items = []; await open();
   ok('4. nothing saved: said, Remove all off', /No app has saved a password yet/.test(await q("document.querySelector('.pkr60 tbody').textContent")) && await q("document.querySelector('.pkr60 .pka').disabled"));

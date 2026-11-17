@@ -20,8 +20,13 @@
 #   DIR/tor-on         (made by tor/start) rudolfd's Tor stood in: tor/status says on (1.5.9, plan 16.1)
 #   DIR/stats-on, DIR/shell.json, DIR/lsync.json   (1.6.0) stats answered; the shell's state; the pages' last lsync copy
 #   DIR/health-on, DIR/system.json, DIR/sleep-ms   (1.6.0, hwcnative160_t.sh) the health log, the system's answer, sleep as rudolfd's
+#   DIR/drop-fix       (when there, 1.6.1) fixtures/dropapi.c's command line: desktop/dropped answered by rudolfd's own code
 #   DIR/portal/        (when there, 1.6.0) the Rudolf portal's requests: req/ID.json listed by portal/poll; portal/answer writes
 #                      resp/ID.json, removes the request and adds "ID ANSWER" to portal/answers
+#   DIR/plan.json      (when there, 1.6.0 Part 12 item 12: svc160_t.sh) given as test/plan to the test's script in the pages
+#                      (fixtures/svc160_inject.js); DIR/next-events: rudolfd's next events (given once by
+#                      events/wait); DIR/mobnotes.json:
+#                      the cellular notices (mobile/notes, those after since); DIR/mic.json: the apps using a microphone (mic)
 #   DIR/hotkey         (when there) the path of Rudolf OS's hotkey script: mic and volume answered through it as rudolfd does
 #                      (the sound server: pactl, PULSE_SERVER from the environment)
 # Ann's password is in keys.json; a wrong one gets the page's message.   python3 native_rd.py PORT DIR
@@ -83,7 +88,24 @@ class H(http.server.BaseHTTPRequestHandler):
     def api(self, m, w, q, b):
         s = ST
         if w == 'events/wait':
-            import time; time.sleep(3); return self.j({'ok': True, 'events': []})
+            import time
+            for _ in range(6):
+                e = rd('next-events') if os.path.isfile(os.path.join(D, 'next-events')) else None
+                if e is not None:
+                    try: os.unlink(os.path.join(D, 'next-events'))
+                    except OSError: pass
+                    return self.j({'ok': True, 'events': e.decode()})
+                time.sleep(0.5)
+            return self.j({'ok': True, 'events': ''})
+        if w == 'test/plan': return self.send(200, rd('plan.json', b'{}'))
+        if w == 'test/list' and m == 'POST':
+            import re, urllib.parse; k = urllib.parse.parse_qs(q).get('k', [''])[0]
+            if re.fullmatch('[a-z0-9-]{1,40}', k): open(os.path.join(D, 'list-%s.json' % k), 'wb').write(b)
+            return self.j({'ok': True})
+        if w == 'mobile/notes' and rd('mobnotes.json') is not None:
+            import urllib.parse; since = int(urllib.parse.parse_qs(q).get('since', ['0'])[0] or 0); L = json.loads(rd('mobnotes.json'))
+            return self.j({'ok': True, 'notes': [x for x in L if x['n'] > since] if since else [], 'last': max([x['n'] for x in L] or [0])})
+        if w == 'mic' and rd('mic.json') is not None and rd('hotkey') is None: return self.send(200, rd('mic.json'))
         if w == 'desktop/accounts':
             return self.j({'ok': True, 'setup': True, 'guest': True, 'last': 'uAnnA1b2', 'accounts': [{'id': 'uAnnA1b2', 'n': 'Ann', 'r': 'admin', 'key': False, 'old': False}, {'id': 'uBobC3d4', 'n': 'Bob', 'r': 'user', 'key': False, 'old': False}]})
         if w == 'desktop/login':
@@ -151,6 +173,16 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.j({'ok': True})
         if w == 'devlink/answer':
             o = json.loads(rd('devlink.json', b'{}')); o.pop('pending', None); open(os.path.join(D, 'devlink.json'), 'w').write(json.dumps(o)); return self.j({'ok': True})
+        # (1.6.1 Part 13) a file dropped from outside, read for the page: rudolfd's own desktop/dropped (fixtures/dropapi.c; DIR/drop-fix:
+        # its command line, tab-separated, without the request)
+        if w == 'desktop/dropped' and rd('drop-fix'):
+            import subprocess
+            raw = os.path.join(D, 'drop-raw.%d' % threading.get_ident())
+            o = subprocess.run(rd('drop-fix').decode().strip().split('\t') + ['-serve', 'GET %s?%s' % (w, q)], env=dict(os.environ, DROPAPI_RAW=raw), capture_output=True, timeout=60).stdout.decode('latin-1')
+            st = o.split('|')[0].split(); code = int(st[1]) if len(st) > 1 and st[1].isdigit() else 500
+            try: body = open(raw, 'rb').read(); os.unlink(raw)
+            except OSError: body = b''
+            return self.send(code, body, 'application/octet-stream' if code == 200 else 'application/json')
         # (1.5.9, plan 16.2) Standard's Tor windows: rudolfd's own torwin/* (fixtures/torwinapi.c, its path in DIR/torwin-fix)
         if w.startswith('torwin/') and rd('torwin-fix'):
             import subprocess
