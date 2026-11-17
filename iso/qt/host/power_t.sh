@@ -60,7 +60,36 @@ ok "lid closed with Do nothing: no sleep" $([ ! -e $T/suspended ] && echo 1 || e
 ok "power button with Ask: the desktop's Shut down dialog (event power <ms>)" $(grep -Eq '^power [0-9]+$' $T/run/events && echo 1 || echo 0) "$(cat $T/run/events)"
 $SH $P set button=sleep >/dev/null; rm -f $T/suspended; $SH $P button
 ok "power button with Sleep: it sleeps" $([ -e $T/suspended ] && echo 1 || echo 0)
+# 1.6.1 (plan Part 12): the processor's energy preference on amd_pstate's active mode (cpu=std|tuned|passive, game mode)
+epp() { cat $T/sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference | sort -u | tr '\n' ' ' | sed 's/ $//'; }
+$SH $P set mode_ac=balanced mode_bat=balanced saver_at=0 >/dev/null; echo 0 > $A/online; echo Discharging > $B/status; echo 60 > $B/capacity
+s=$($SH $P status); ok "1.6.1: no frequency driver named (an older stand-in): cpu std, not tunable; Balanced on battery as in 1.6.0" $([ "$(has "$s" '"cpu":{"driver":"","pstate":"","tunable":false}')" = 1 ] && [ "$(epp)" = balance_performance ] && echo 1 || echo 0) "$s $(epp)"
+for c in 0 1 2 3; do echo amd-pstate-epp > $T/sys/devices/system/cpu/cpu$c/cpufreq/scaling_driver; done
+mkdir -p $T/sys/devices/system/cpu/amd_pstate; echo active > $T/sys/devices/system/cpu/amd_pstate/status
+s=$($SH $P status); ok "1.6.1: amd-pstate-epp, active: tunable; the default is std (1.6.0's preference) until the owner's measurements" $([ "$(has "$s" '"cpu":{"driver":"amd-pstate-epp","pstate":"active","tunable":true}')" = 1 ] && [ "$(has "$s" '"cpu":"std"')" = 1 ] && [ "$(epp)" = balance_performance ] && echo 1 || echo 0) "$s $(epp)"
+$SH $P set cpu=tuned >/dev/null; ok "1.6.1: tuned, Balanced on battery: balance_power" $([ "$(epp)" = balance_power ] && grep -q '^cpu=tuned$' $POWER_CONF && echo 1 || echo 0) "$(epp) $(cat $POWER_CONF)"
+echo 1 > $A/online; echo Charging > $B/status; $SH $P apply; ok "1.6.1: ...plugged in: balance_performance" $([ "$(epp)" = balance_performance ] && echo 1 || echo 0) "$(epp)"
+s=$($SH $P set game=1); ok "1.6.1: ...game mode: performance, said in the status, not kept in power.conf" $([ "$(epp)" = performance ] && [ "$(has "$s" '"game":true')" = 1 ] && ! grep -q game $POWER_CONF && echo 1 || echo 0) "$(epp) $s"
+echo 0 > $A/online; echo Discharging > $B/status; $SH $P apply; ok "1.6.1: ...game mode on battery: performance" $([ "$(epp)" = performance ] && echo 1 || echo 0) "$(epp)"
+$SH $P set saver_now=1 >/dev/null; ok "1.6.1: ...but battery saver wins over game mode: power" $([ "$(epp)" = power ] && echo 1 || echo 0) "$(epp)"
+$SH $P set saver_now=0 game=0 >/dev/null; ok "1.6.1: ...game mode over: balance_power again" $([ "$(epp)" = balance_power ] && [ ! -e $T/run/power-game ] && echo 1 || echo 0) "$(epp)"
+$SH $P set cpu=std >/dev/null; ok "1.6.1: back to std: balance_performance on battery (1.6.0)" $([ "$(epp)" = balance_performance ] && echo 1 || echo 0) "$(epp)"
+$SH $P set game=1 >/dev/null; ok "1.6.1: std ignores game mode (as 1.6.0)" $([ "$(epp)" = balance_performance ] && echo 1 || echo 0) "$(epp)"; $SH $P set game=0 >/dev/null
+$SH $P set cpu=passive >/dev/null; ok "1.6.1: passive: amd_pstate's mode passive, the mode it had kept" $([ "$(cat $T/sys/devices/system/cpu/amd_pstate/status)" = passive ] && [ "$(cat $T/run/power-pstate0)" = active ] && echo 1 || echo 0) "$(cat $T/sys/devices/system/cpu/amd_pstate/status)"
+for c in 0 1 2 3; do echo amd-pstate > $T/sys/devices/system/cpu/cpu$c/cpufreq/scaling_driver; done
+s=$($SH $P status); ok "1.6.1: ...running as amd-pstate (passive): still tunable, cpu passive in force" $([ "$(has "$s" '"tunable":true')" = 1 ] && [ "$(has "$s" '"cpu":"passive"')" = 1 ] && echo 1 || echo 0) "$s"
+$SH $P set cpu=tuned >/dev/null; ok "1.6.1: ...tuned again: amd_pstate back to active, the note gone" $([ "$(cat $T/sys/devices/system/cpu/amd_pstate/status)" = active ] && [ ! -e $T/run/power-pstate0 ] && echo 1 || echo 0) "$(cat $T/sys/devices/system/cpu/amd_pstate/status)"
+for c in 0 1 2 3; do echo amd-pstate-epp > $T/sys/devices/system/cpu/cpu$c/cpufreq/scaling_driver; done; $SH $P apply
+echo passive > $T/sys/devices/system/cpu/amd_pstate/status; for c in 0 1 2 3; do echo amd-pstate > $T/sys/devices/system/cpu/cpu$c/cpufreq/scaling_driver; done; $SH $P apply
+ok "1.6.1: amd_pstate passive by the start-up options (not by this setting): left as it is, tuned not applied" $([ "$(cat $T/sys/devices/system/cpu/amd_pstate/status)" = passive ] && grep -q '^cpu=std$' $T/run/power-now && echo 1 || echo 0) "$(cat $T/run/power-now)"
+# Intel (intel_pstate has the same preference names): tuned and passive do what std does, amd_pstate is not touched
+rm -rf $T/sys/devices/system/cpu/amd_pstate; for c in 0 1 2 3; do echo intel_pstate > $T/sys/devices/system/cpu/cpu$c/cpufreq/scaling_driver; done
+$SH $P set cpu=tuned game=1 >/dev/null; s=$($SH $P status)
+ok "1.6.1: Intel: not tunable, std in force: balance_performance on battery, game mode ignored" $([ "$(epp)" = balance_performance ] && [ "$(has "$s" '"tunable":false')" = 1 ] && grep -q '^cpu=std$' $T/run/power-now && [ ! -e $T/sys/devices/system/cpu/amd_pstate ] && echo 1 || echo 0) "$(epp) $s"
+$SH $P set cpu=passive game=0 >/dev/null; ok "1.6.1: Intel: passive asks nothing of amd_pstate" $([ ! -e $T/sys/devices/system/cpu/amd_pstate ] && [ ! -e $T/run/power-pstate0 ] && [ "$(epp)" = balance_performance ] && echo 1 || echo 0)
+s=$($SH $P set cpu=fast 2>&1); ok "1.6.1: a cpu value that is not a choice is refused" $(has "$s" '"ok":false') "$s"
+$SH $P set cpu=std >/dev/null; echo 1 > $A/online; echo Charging > $B/status
 # a computer without any of it (a desktop PC, QEMU)
 rm -rf $T/sys/firmware/acpi/* $T/sys/devices $B $A $T/proc/acpi $T/sys/class/backlight; s=$($SH $P status)
-ok "without battery, profile or energy preference: reported, not failed" $([ "$(has "$s" '"battery":null')" = 1 ] && [ "$(has "$s" '"profile":false')" = 1 ] && [ "$(has "$s" '"epp":false')" = 1 ] && [ "$(has "$s" '"care":false')" = 1 ] && [ "$(has "$s" '"ac":true')" = 1 ] && echo 1 || echo 0) "$s"
+ok "without battery, profile or energy preference: reported, not failed (1.6.1: no frequency driver, not tunable)" $([ "$(has "$s" '"battery":null')" = 1 ] && [ "$(has "$s" '"cpu":{"driver":"","pstate":"","tunable":false}')" = 1 ] && [ "$(has "$s" '"profile":false')" = 1 ] && [ "$(has "$s" '"epp":false')" = 1 ] && [ "$(has "$s" '"care":false')" = 1 ] && [ "$(has "$s" '"ac":true')" = 1 ] && echo 1 || echo 0) "$s"
 echo "$((N-F))/$N passed"; [ $F = 0 ]
