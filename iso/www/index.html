@@ -17343,6 +17343,7 @@ __svcMod("oneapp59.js");
 const ONEAPP=(()=>{try{const h=String(location.hash||'').replace(/^#/,'');if(!h)return null;const q=new URLSearchParams(h),k=q.get('app');
  return k&&/^[a-z0-9_:.+-]{1,127}$/i.test(k)?{k,file:q.get('file')||'',w:+q.get('w')||0,q}:null}catch(e){return null}})();   /* (2026-11-16: also the Library's, Linux's and Windows' programs: pkg:NAME, lx:ID.desktop, lx:deb-ID) */
 const OA={main:null,want:0,opened:0,done:0,login:0};
+let OA_FSIN=0;   /* (the files being read again because another page saved them: oaFsReload) */
 /* (1.6.0 Part 12, item 12) the native desktop's service page (#app=do-svc, svc60.js): the background work of the whole desktop, never shown */
 const OA_SVC=!!(ONEAPP&&ONEAPP.k=='do-svc');
 /* (the sign-in screen hidden from the first paint in an app's window: shown again, base_v24.html's head) */
@@ -17380,7 +17381,7 @@ if(ONEAPP&&typeof BroadcastChannel=='function'){const FSB=new BroadcastChannel('
   if(USER.r!='guest'&&HOME&&!HOMELOCKED){const rec=await kvGet('home:'+uid());let o=null;
    if(rec&&rec.ct&&KEY)o=JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:rec.iv},rec.k=='f'?KEY:(PKEY||KEY),rec.ct)));else if(rec&&rec.plain)o=JSON.parse(rec.plain);
    if(o&&isDir(o)){for(const k of Object.keys(HOME))delete HOME[k];Object.assign(HOME,o)}}
-  EXPL.forEach(f=>{try{f()}catch(x){}})}catch(e){console.warn('one-app: the files again',e)}}
+  OA_FSIN=1;try{EXPL.forEach(f=>{try{f()}catch(x){}})}finally{OA_FSIN=0}}catch(e){console.warn('one-app: the files again',e)}}
  /* (1.5.9, 12.3c) the files another engine's window saved: the system's and this account's records from rudolfd's mirror into this
     engine's storage (not sent back to the mirror), then read again as above */
  window.__oaMirrorIn=id=>{if(!USER||!IDB||!IDB.db||!FSLOADED||(id&&id!=uid())||typeof RD=='undefined'||!RD)return;busy=(busy||Promise.resolve()).then(async()=>{
@@ -17666,11 +17667,11 @@ async function oaStart(showLogin0){
  if(!(s&&s.id)&&typeof RD!='undefined'&&RD&&ONEAPP&&ONEAPP.q.get('tor')=='1'){try{s=await rd('torwin/session')}catch(e){s=null}}
  let a=null;
  if(s&&s.id){a=s.r=='guest'?{n:'Guest',r:'guest',id:'guest',h:''}:ACCTS.find(x=>x.id==s.id)||null}
- if(!a){OA.login=1;return showLogin0()}
+ if(!a){OA.login=1;oaPost({op:'login'});return showLogin0()}   /* (the native shell shows this window now: it does need its sign-in screen) */
  try{LG.style.display='none'}catch(e){}
  USER=a;
  try{const ks={pk:oaHex(s.pk),fk:oaHex(s.fk)};if(a.r!='guest'&&!ks.pk&&!ks.fk)throw new Error('no keys');await userLogin(a,null,a.r=='guest'?null:ks)}
- catch(e){console.warn('one-app sign-in',e);OA.login=1;USER=ACCTS[0]||null;return showLogin0()}
+ catch(e){console.warn('one-app sign-in',e);OA.login=1;oaPost({op:'login'});USER=ACCTS[0]||null;return showLogin0()}
  try{userUI()}catch(e){}}
 function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
  try{LG.style.display='none'}catch(e){}oaLoginUnhide();
@@ -17698,6 +17699,18 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
     const list=[...new Set(oaWins().filter(o=>o.app&&!/^do-/.test(o.app)&&!['settings','trash'].includes(o.app)).map(o=>o.app))].slice(0,8);
     if(JSON.stringify(ld(sessK(),[]))!==JSON.stringify(list))svj(sessK(),list)};
    try{__svcRun(1)}catch(e){console.warn('svc',e)}
+   /* (the owner's Vivobook, 2026-11-16) the desktop's New folder and New text document, done here at once: this page is signed in already,
+      where a page opened for it (#app=do-desk) had to load and sign in first, seconds on the Vivobook. As Standard's deskNew: the file, the
+      icon, then its Rename, which the shell draws (op "done" with ask "rename", as oaDesk reports it) */
+   window.__oaDeskNew=dir=>{let asked=null;const _rd=renameDlg;renameDlg=p=>{asked=p};
+    try{deskNew(dir?1:0)}catch(e){console.warn('svc: new',e)}
+    setTimeout(async()=>{renameDlg=_rd;try{fsFlush()}catch(e){}try{await oaCatalog()}catch(e){}
+     oaPost(Object.assign({op:'done'},asked&&asked.length?{ask:'rename',file:asked.join('\\'),name:String(asked[asked.length-1])}:{}))},80);return 1};
+   /* (and the shell's Rename dialog's answer, as oaFs's rename: renameDlg's checks and messages) */
+   window.__oaRename=(f,to)=>{let r={ok:1};try{const p=resolve(String(f||''),['C:']),nv=String(to||'').trim().toUpperCase(),d=dirOf(p);
+     if(!d||!(p.at(-1) in d))r={err:'The file is not there any more.'};else if(!validName(nv))r={err:'That name is not allowed.'};else if(nv!=p.at(-1)&&nv in d)r={err:'That name is already used.'};
+     else{const v=d[p.at(-1)];delete d[p.at(-1)];d[nv]=v;fsSave();EXPL.forEach(f=>f())}}catch(e){r={err:String(e&&e.message||e)}}
+    (async()=>{try{fsFlush()}catch(e){}try{await oaCatalog()}catch(e){}oaPost(Object.assign({op:'done'},r))})();return 1};
    oaPost({op:'svc',ready:'1'});return}
  /* (1.6.0, the owner's Vivobook, 2026-11-16: Sober's sign-in spun for ever on Native) the portal's requests (a Linux or Flatpak app's keyring
     prompts, file dialogs, links, notifications: linux26.js lxPortal, keyring60.js krPrompt), which the native shell collects and hands
@@ -17987,14 +18000,20 @@ const oaImgKey=k=>{let h=5381;for(const c of k)h=(h*33+c.codePointAt(0))>>>0;ret
    signed in, so an icon came when the next window opened) */
 let OA_CSIG=null,OA_CT=0;
 function oaCatSig(){try{const a=Object.keys(APPS).filter(k=>APPS[k]&&APPS[k].name&&typeof APPS[k].open=='function').sort();
- return JSON.stringify([a,USER?ld(DESKADD(),[]):0,USER?ld(DESKHIDE(),[]):0,USER?ld(HIDEK(),[]):0,Object.keys(OA_IMG).length])}catch(e){return ''}}
+ let df=null;try{const d=USER?deskFiles():null;df=d?Object.keys(d).sort().map(k=>(isDir(d[k])?'d:':'f:')+k):null}catch(e){}
+ return JSON.stringify([a,USER?ld(DESKADD(),[]):0,USER?ld(DESKHIDE(),[]):0,USER?ld(HIDEK(),[]):0,Object.keys(OA_IMG).length,df])}catch(e){return ''}}
 function oaCatPush(){if(!ONEAPP||!oaNative()||!USER||OA.done)return;clearTimeout(OA_CT);OA_CT=setTimeout(()=>{if((OA_CSIG===null&&!OA.main)||oaCatSig()===OA_CSIG)return;   /* (before the first one, at sign-in, that one has it; unless this page's window changed it) */oaCatalog().then(()=>oaPost({op:'cat'}))},150)}
 if(ONEAPP){for(const f of ['pkgRegister','lxRegister','nativeRegister','deskApply'])if(typeof window[f]=='function'){const o=window[f];window[f]=function(){const r=o.apply(this,arguments);try{oaCatPush()}catch(e){}return r}}
  /* (Desktop icons…: the apps rudolfd knows are in its list once this page has them, as on Standard: Ember Reach was missing until Restore) */
  if(typeof deskIconsDlg=='function'){const _di=deskIconsDlg;deskIconsDlg=function(){const W=_di.apply(this,arguments);try{oaAppsReady().then(()=>{const q=W&&W.body&&W.body.querySelector('.dsq');if(q&&W.el&&W.el.isConnected)q.dispatchEvent(new Event('input'))})}catch(e){}return W}}}
 const OA_PNG=new Map();
 function oaPng(src,n){const ck=n+'|'+src;if(src.length<200000&&OA_PNG.has(ck))return Promise.resolve(OA_PNG.get(ck));return new Promise((res,rej)=>{const im=new Image();im.onload=()=>{try{const c=document.createElement('canvas');c.width=c.height=n;c.getContext('2d').drawImage(im,0,0,n,n);const u=c.toDataURL('image/png');if(src.length<200000)OA_PNG.set(ck,u);res(u)}catch(e){rej(e)}};im.onerror=()=>rej(new Error('icon'));im.src=src})}
-{const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);setTimeout(oaCatalog,2500);if(ONEAPP&&oaNative())oaAppsReady().then(()=>setTimeout(oaCatPush,3000));return r}}
+/* (the owner's Vivobook report of 2026-11-16, "desktop icons take extremely long to load, if they load at all") the native desktop drew
+   its icons from the catalogue a page gave 2.5 s after signing in, without telling the shell, which read it again only when the
+   settings' "gen" changed: the shell's own pages that sign in at once (#app=do-start, opened first at sign-in, and the service page)
+   give it as soon as they are signed in and tell the shell (op "cat"), as Standard's page shows its icons once signed in */
+{const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);
+ if(ONEAPP&&oaNative()&&/^do-(start|svc)$/.test(ONEAPP.k))setTimeout(()=>oaCatalog().then(()=>{if(!OA.done)oaPost({op:'cat'})}),0);else setTimeout(oaCatalog,2500);if(ONEAPP&&oaNative())oaAppsReady().then(()=>setTimeout(oaCatPush,3000));return r}}
 /* (1.6.0 Part 12, item 3) a window's taskbar button's menu is the page's own (winMenu: its rows, the app's jumps, Print, Force
    quit): the shell reads it from the window's page (__oaWinMenu: the rows as JSON) and has a row the shell does not do itself
    done by the page (__oaWinMenuDo: the row with those words clicked) */
@@ -18058,8 +18077,12 @@ if(ONEAPP){wgDraw=function(){wgTimers.forEach(clearInterval);wgTimers=[];DESK.qu
  const _u2=userLogin;userLogin=async function(){const r=await _u2.apply(this,arguments);try{if(typeof RD!='undefined'&&RD&&USER&&oaNative()){const s=await rd('desktop/settings');
   if(s&&s.wgown&&Array.isArray(s.widgets)&&s.acct==uid()&&JSON.stringify(s.widgets)!==localStorage.getItem(WGK())){WG=s.widgets;svj(WGK(),s.widgets)}}}catch(e){}return r}}
 /* (1.6.0 Part 12, item 1's second part) given again when the Desktop folder's files change */
-{let t=0,last=null;EXPL.add(()=>{try{const k=Object.keys(deskFiles()||{}).sort().join('|');
- if(last!==null&&k!=last&&typeof USER!='undefined'&&USER&&!(ONEAPP&&OA.done)){clearTimeout(t);t=setTimeout(oaCatalog,1200)}last=k}catch(e){}})}
+/* (the owner's Vivobook, 2026-11-16: a folder made from the desktop's menu was in File Explorer's Desktop folder long before it was on
+   the desktop) on the native desktop at once (a change seen within half a second), the shell told (op "cat"), by the page that changed
+   the files and by the service page (the other windows read them again too, and say nothing) */
+{let t=0,last=null;EXPL.add(()=>{try{const k=Object.keys(deskFiles()||{}).sort().map(n=>(isDir(deskFiles()[n])?'d:':'f:')+n).join('|');
+ if(last!==null&&k!=last&&typeof USER!='undefined'&&USER&&!(ONEAPP&&OA.done)){clearTimeout(t);
+  if(ONEAPP&&oaNative()){if(!OA_FSIN||OA_SVC)t=setTimeout(()=>oaCatalog().then(()=>{if(!OA.done)oaPost({op:'cat'})}),20)}else t=setTimeout(oaCatalog,1200)}last=k}catch(e){}})}
 let OA_WP='';
 async function oaWallpaper(){if(typeof RD=='undefined'||!RD||!USER||USER.r=='guest')return;const id=S.wpimg||'';
  if(!id||id!=WPID||!/^data:image\/jpeg;base64,/.test(WPURL||''))return;const key=uid()+':'+id;if(OA_WP==key)return;OA_WP=key;
@@ -18107,6 +18130,25 @@ if(ONEAPP&&oaOut()&&typeof TIMERS=='object'){
  try{if(typeof BroadcastChannel=='function'){OA_TMR.bc=new BroadcastChannel('rudolf-timers');OA_TMR.bc.onmessage=e=>{const m=e.data||{};if(USER&&m.id==uid())oaTmrTake(m.o)}}}catch(e){}
  window.__tmrIn=()=>{if(USER)oaTmrTake(oaTmrRead())};
  window.__tmrOut=()=>{if(USER)oaTmrWrite(TIMERS.map(t=>({end:t.end,label:t.label,total:t.total,c:t.c||0,done:t.done?1:0})))}}
+/* (the owner's Vivobook, 2026-11-16: "selecting a new background still doesn't apply immediately as a full-size preview on Native in the same
+   way that the Chromium desktop does") Display Properties' choices are previewed on Standard on the whole desktop at once, before Apply
+   (the page's live S, applySet), and go back on Revert, Discard or closing without applying. Here the desktop is the native shell's:
+   Settings' window gives it each choice at once (op "prev": its S, and a picture of your own that only this page has until applied),
+   and that it is over (an empty "prev": applied, reverted or discarded); the shell goes back by itself when this window closes. The
+   screen saver's Preview is full screen on Standard: here the shell's (op "saver"), as its own screen saver is */
+if(ONEAPP&&ONEAPP.k=='settings'&&oaNative()){let t=0,was=null,base=null,how='';
+ /* (previewed: what differs from the settings as they were when the window opened or were last applied; the shell draws the saved ones) */
+ const cur=()=>{try{return JSON.stringify(S)}catch(e){return null}};
+ const send=(applied)=>{if(applied||!OA.main){base=cur();how=applied||'';if(!OA.main)return}if(base===null)return;clearTimeout(t);t=setTimeout(async()=>{if(!USER||OA.done)return;const s=cur();if(s===null)return;
+  if(s===base){if(was===null)return;was=null;oaPost({op:'prev',s:'',keep:how=='secCommit'?'1':''});return}   /* (applied: the shell keeps drawing these until the saved settings reach it, op "set") */
+  const own=S.wpimg&&typeof SC=='object'&&SC&&S.wpimg!==SC.wpimg,wp=own&&typeof WPID!='undefined'&&WPID==S.wpimg&&/^data:image\//.test(WPURL||'')?WPURL:'';
+  if(own&&!wp)return;   /* (its picture still loading: given once it is there, wpLoad's applySet) */
+  const k=s+'|'+(wp?S.wpimg:'');if(k===was)return;was=k;oaPost({op:'prev',s,wp:wp&&wp.length<24e6?wp:''})},0)};
+ {const _as=applySet;applySet=function(){const r=_as.apply(this,arguments);send(0);return r}}
+ {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);if(!OA.main)base=cur();return r}}
+ /* (applied, or back to the saved settings: Apply, Revert, Discard, Reset to defaults) */
+ for(const f of ['secCommit','secRevert'])if(typeof window[f]=='function'){const o=window[f];window[f]=function(){const r=o.apply(this,arguments);send(f);return r}}
+ if(typeof ssRun=='function'){const _sr=ssRun;ssRun=function(o){if(o&&o.preview){oaPost({op:'saver',style:String(o.style||'')});return null}return _sr.apply(this,arguments)}}}
 
 __svcMod("tor59.js");
 /* ===== Rudolf OS 1.5.9 (docs/plan-1.5.9.md Part 16): Browse with Tor in Oracle

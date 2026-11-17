@@ -134,8 +134,15 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.j(o)
         if w == 'desktop/apps':
             # (what the page gives, after a page signed in, is kept and given back, as rudolfd does)
-            if m == 'POST': open(os.path.join(D, 'apps.json'), 'wb').write(b); return self.j({'ok': True})
-            given = rd('apps.json')
+            # (1.6.0: each account's last one too, apps.ACCT.json, given for desktop/apps?acct=ACCT)
+            import urllib.parse, re as _re; qa = urllib.parse.parse_qs(q or '').get('acct', [''])[0]
+            if m == 'POST':
+                open(os.path.join(D, 'apps.json'), 'wb').write(b)
+                try: pa = json.loads(b).get('acct') or ''
+                except ValueError: pa = ''
+                if _re.fullmatch(r'[A-Za-z0-9-]{1,64}', pa): open(os.path.join(D, 'apps.' + pa + '.json'), 'wb').write(b)
+                return self.j({'ok': True})
+            given = (rd('apps.' + qa + '.json') if _re.fullmatch(r'[A-Za-z0-9-]{1,64}', qa) else None) or rd('apps.json')
             if given: return self.send(200, given)
             apps = [{'k': 'notepad', 'name': 'Notepad', 'icon': '🗒️', 'kw': 'text', 'ic': 'notepad'}, {'k': 'calc', 'name': 'Calculator', 'icon': '🧮', 'kw': 'sums'},
                     {'k': 'settings', 'name': 'Settings', 'icon': '⚙️', 'kw': ''}, {'k': 'clock', 'name': 'Clock', 'icon': '⏰', 'kw': 'alarm'}]

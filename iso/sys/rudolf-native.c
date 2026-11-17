@@ -299,6 +299,34 @@ static GdkPixbuf *pix_from_bytes(GByteArray *b)
 }
 static GdkPixbuf *pix_get(const char *path) { GByteArray *b; int c = http("GET", path, NULL, 0, &b); GdkPixbuf *p = c == 200 ? pix_from_bytes(b) : NULL; if (b) g_byte_array_free(b, TRUE); return p; }
 static GdkPixbuf *LOGO;
+/* (the owner's Vivobook, 2026-11-16: a menu "tearing" when one replaced another) There is no compositor: each pop-up of the shell (a
+   menu, the start menu, the tray's pop-ups, the indicator, a dialog) draws over a copy of what is behind it. A pop-up that replaces
+   another was copying the screen at once, before the windows uncovered by the old one had drawn themselves again (X leaves an
+   uncovered window's old pixels there until its owner draws): a strip of the old menu in the new one's copy, there for as long as the
+   new menu was. So each pop-up taken away gives back what was behind it, and a copy of the screen taken within STALE_US after has
+   those parts from there, as they were under it (screen_copy). */
+typedef struct { int x, y; GdkPixbuf *bg; gint64 t; } Stale;
+static Stale STALE[6];
+#define STALE_US 800000
+static void pop_gone(GdkPixbuf *bg, int x, int y)
+{
+	if (!bg) return; int k = 0;
+	for (int i = 0; i < 6; i++) { if (!STALE[i].bg) { k = i; break; } if (STALE[i].t < STALE[k].t) k = i; }
+	if (STALE[k].bg) g_object_unref(STALE[k].bg);
+	STALE[k].x = x; STALE[k].y = y; STALE[k].bg = g_object_ref(bg); STALE[k].t = g_get_monotonic_time();
+}
+static GdkPixbuf *screen_copy(int x, int y, int w, int h)
+{
+	GdkPixbuf *pb = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), x, y, w, h); if (!pb) return NULL;
+	gint64 now = g_get_monotonic_time(); int ord[6], n = 0;
+	for (int i = 0; i < 6; i++) { if (!STALE[i].bg) continue; if (now - STALE[i].t > STALE_US) { g_object_unref(STALE[i].bg); STALE[i].bg = NULL; continue; } ord[n++] = i; }
+	for (int i = 1; i < n; i++) for (int j = i; j > 0 && STALE[ord[j]].t < STALE[ord[j - 1]].t; j--) { int t = ord[j]; ord[j] = ord[j - 1]; ord[j - 1] = t; }   /* (the oldest first: a newer one's copy is the truer) */
+	int pw = gdk_pixbuf_get_width(pb), ph = gdk_pixbuf_get_height(pb);
+	for (int k = 0; k < n; k++) { Stale *st = &STALE[ord[k]]; int sw = gdk_pixbuf_get_width(st->bg), sh = gdk_pixbuf_get_height(st->bg);
+		int x0 = MAX(x, st->x), y0 = MAX(y, st->y), x1 = MIN(x + pw, st->x + sw), y1 = MIN(y + ph, st->y + sh);
+		if (x1 > x0 && y1 > y0) gdk_pixbuf_copy_area(st->bg, x0 - st->x, y0 - st->y, x1 - x0, y1 - y0, pb, x0 - x, y0 - y); }
+	return pb;
+}
 
 /* ------------------------------------------------------------------ the wallpaper */
 static cairo_surface_t *DESKC; static int DESKD;   /* (the desktop as drawn, and whether to draw it again) */
@@ -321,6 +349,11 @@ typedef struct JV JV; static void fx_cat(JV *cat); static void fx_draw(cairo_t *
 static void desk_shadows(void) { if (DESKAREA) gtk_widget_queue_draw(DESKAREA); }
 static cairo_surface_t *WALL;   /* drawn at the screen's size */
 static char WALL_KEY[300];
+/* (the owner's Vivobook, 2026-11-16) Display Properties' choices not applied yet, previewed on the whole screen as Standard's page shows
+   them at once (its live S, applySet): Settings' window gives them (op "prev": its S, and the picture of your own chosen, which only its
+   page has until it is applied), the shell draws with them instead of the saved settings until they are applied or discarded (an
+   empty "prev"), or that window closes */
+static char *PREV_S; static GdkPixbuf *PREV_WP; static int PREV_W; static unsigned PREV_N; static guint PREV_KEEP;   /* (applied: kept until the saved settings come, op "set", 3 s at most) */
 static int WALL_MISS;           /* a picture of your own chosen and not there yet: drawn as soon as rudolfd has it (tick_settings) */
 /* light or dark (the drawn backgrounds): the setting, else daylight at the latitude (the sun's height at noon and
    the day's length, as the page's sunCalc roughly), else 7 to 19 o'clock */
@@ -372,13 +405,15 @@ static void wall_make(void)
 	char path[300] = "", key[300]; int dark = is_dark();
 	/* (wpacct: the signed-in account, or before sign-in the last one; rudolfd makes the copy from the page's database
 	   mirror when no page has given it yet: 1.5.9 step 7) */
-	if (S.wpimg && S.wallpaper && S.wpacct[0]) snprintf(path, sizeof path, "/api/desktop/wallpaper?acct=%s", S.wpacct);
+	int pv = S.wpimg && PREV_S && PREV_WP;   /* (a picture of your own chosen in Settings, not applied yet: its page's copy) */
+	if (pv) snprintf(path, sizeof path, "prev:%u", PREV_N);
+	else if (S.wpimg && S.wallpaper && S.wpacct[0]) snprintf(path, sizeof path, "/api/desktop/wallpaper?acct=%s", S.wpacct);
 	else if (S.dyn[0] && BG) { const char *v = g_hash_table_lookup(BG, S.dyn); if (v) { const char *nl = strchr(v, '\n'); if (dark || !nl) snprintf(path, sizeof path, "/%.*s", nl ? (int)(nl - v) : (int)strlen(v), v); else snprintf(path, sizeof path, "/%s", nl + 1); } }
 	snprintf(key, sizeof key, "%s|%s|%s|%s|%s|%s|%d|%d", path, S.bs, S.b1, S.b2, S.wpfit, S.wpacct, SW, (int)S.gen);
 	if (WALL && !strcmp(key, WALL_KEY)) return;
 	snprintf(WALL_KEY, sizeof WALL_KEY, "%s", key);
 	if (!WALL) WALL = cairo_image_surface_create(CAIRO_FORMAT_RGB24, SW, SH);
-	cairo_t *cr = cairo_create(WALL); GdkPixbuf *p = path[0] ? pix_get(path) : NULL;
+	cairo_t *cr = cairo_create(WALL); GdkPixbuf *p = pv ? g_object_ref(PREV_WP) : path[0] ? pix_get(path) : NULL;
 	WALL_MISS = S.wpimg && !p;
 	if (p) {   /* behind a picture: the first colour (a picture of your own), black or light grey (a drawn one) */
 		RGB bg = S.wpimg ? hexc(S.b1, "#000000") : dark ? (RGB){0, 0, 0} : hexc("#e5e7eb", NULL); src(cr, bg, 1); cairo_paint(cr);
@@ -391,7 +426,7 @@ static void wall_make(void)
 static gboolean desk_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (WALL) { cairo_set_source_surface(cr, WALL, 0, 0); cairo_paint(cr); } return TRUE; }
 
 /* ------------------------------------------------------------------ app windows (WebKit, one-app mode) */
-typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready, sready; gint64 close_t; GdkPixbuf *pix; } AppWin;   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
+typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready, sready; gint64 close_t, made_t; GdkPixbuf *pix; guint wait_t; } AppWin;   /* (wait_t: its window's upper bound before it is shown anyway, the owner's Vivobook report 1 of 2026-11-16) */   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
 static void ev_flush(AppWin *a);   /* (1.6.0: rudolfd's events that waited for a page) */
 static GList *WINS;   /* AppWin*, oldest first */
 static AppWin *ACTIVE;
@@ -411,6 +446,8 @@ static void frame_redraw_app(AppWin *a);
 static const App *app_find(const char *k) { for (int i = 0; i < NAPPS; i++) if (!strcmp(APPS[i].k, k)) return &APPS[i]; return NULL; }
 static void appwin_size(AppWin *a, int w, int h);
 static void appwin_modal(AppWin *a, int on);
+static void appwin_reveal(AppWin *a);
+static void prev_msg(AppWin *a, JSCValue *v); static void prev_end(void); static void sav_preview(const char *style);
 static void appwin_fs(AppWin *a, int on);
 static gboolean apps_reload(gpointer d);
 static void wins_ask(AppWin *to); static void win_op(const char *id, const char *what);   /* (Task Manager's windows: test finding N3) */
@@ -586,8 +623,12 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 		if (pv && jsc_value_is_string(pv)) pj = jsc_value_to_string(pv); if (pv) g_object_unref(pv); snd_page(k, g_ascii_strtod(vv, NULL), pj); g_free(pj); }   /* (2026-11-16: a page's sound, played here once) */
 	else if (!strcmp(op, "portal")) pt_msg(a, v);
 	else if (!strcmp(op, "svc")) svc_msg(a, v);   /* (1.6.0 Part 12, item 12: the desktop's service page is signed in and runs the background work) */   /* (1.6.0, the owner's Vivobook: the portal's page is ready, or a request opens an app's window) */
+	else if (!strcmp(op, "prev")) prev_msg(a, v);   /* (Display Properties' choices, previewed on the whole screen: the owner's Vivobook, 2026-11-16) */
+	else if (!strcmp(op, "saver")) { jsstr(v, "style", x, sizeof x); sav_preview(x); }   /* (Display Properties' screen saver Preview: full screen, as Standard's) */
+	else if (!strcmp(op, "ready")) appwin_reveal(a);   /* (its page has drawn the app at its window's size: shown) */
+	else if (!strcmp(op, "login")) appwin_reveal(a);   /* (no native session: the page's own sign-in screen, which this window does need) */
 	else if (!strcmp(op, "srch")) srch_ready(a);   /* (2026-11-16: the start menu's search, Standard's: its page is ready) */
-	else if (!strcmp(op, "cat")) g_timeout_add(300, apps_reload, NULL);   /* (a page gave its catalogue again: the statue's picture, N12) */
+	else if (!strcmp(op, "cat")) g_idle_add(apps_reload, NULL);   /* (at once: the page has given it before it says so; the owner's Vivobook, 2026-11-16) */   /* (a page gave its catalogue again: the statue's picture, N12) */
 	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
 	else if (!strcmp(op, "winop")) { jsstr(v, "id", x, sizeof x); jsstr(v, "do", f, sizeof f); win_op(x, f); }
 	else if (!strcmp(op, "modal")) { jsstr(v, "on", x, sizeof x); appwin_modal(a, x[0] == '1'); }   /* (a page's dialog: over the whole screen, as Standard's) */
@@ -605,7 +646,8 @@ static void on_crash(WebKitWebView *v, WebKitWebProcessTerminationReason r, gpoi
 static void clients_forget(AppWin *a); static void kbcap_gone(AppWin *a); static void srch_gone(AppWin *a);
 static void on_win_destroy(GtkWidget *w, gpointer d)
 {
-	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL; kbcap_gone(a); srch_gone(a); if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
+	(void)w; AppWin *a = d; WINS = g_list_remove(WINS, a); if (ACTIVE == a) ACTIVE = NULL; if (a->wait_t) { g_source_remove(a->wait_t); a->wait_t = 0; }
+	if (PREV_S && PREV_W == a->id) prev_end();   /* (Settings closed with its choices not applied: the saved ones again) */ kbcap_gone(a); srch_gone(a); if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
 	clients_forget(a);   /* (its frame goes when X says so: not this window's any more) */
 	g_free(a); bar_redraw(); state_write();
 }
@@ -719,7 +761,7 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
 static double tw_tbh(void);   /* (the title bar's height in the page's pixels: tw_geom) */
 static int BW = 1;   /* (the page's windows' 1 px edge, 2 px with high contrast; the title bar's height, TH, follows the display scaling, the font size and the touch mode: tw_th) */
 typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
-	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; int opened; char ptitle[256]; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
+	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; int opened; char ptitle[256]; int wait; Window cover; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
 static void wopen_start(Client *c);
 static GList *CLIENTS;   /* oldest first */
 static Client *FOCUS;
@@ -1003,6 +1045,7 @@ static void apps_load(void);
 static void settings_changed(const char *id, AppWin *from)
 {
 	if (!USER_ID[0] || strcmp(id, USER_ID)) return;
+	if (PREV_KEEP) prev_end();   /* (Settings' choices applied: the saved ones now, the same) */
 	double g0 = S.gen; settings_load(); if (S.gen != g0) apps_load();
 	char js[160]; snprintf(js, sizeof js, "window.__oaSetIn&&__oaSetIn('%s')", id);
 	for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (a != from && a->view && !a->closing) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js, -1, NULL, NULL, NULL, NULL, NULL); }
@@ -1199,6 +1242,7 @@ static void oracle_hide(int x, int y, int w, int h)
 		if (abs(ax - x) > 2 || abs(ay - y) > 2 || abs(wa.width - w) > 2 || abs(wa.height - h) > 2) continue;
 		c->ws = 0; ws_apply(); if (FOCUS == c || !FOCUS) wm_focus(top_client()); bar_redraw(); state_write(); return; }
 }
+static void appwin_wait_arm(AppWin *a);
 static void wm_manage(Window w, AppWin *own)
 {
 	if (client_of(w)) return;
@@ -1228,8 +1272,13 @@ static void wm_manage(Window w, AppWin *own)
 		c->clip = XCreateWindow(DPY, c->frame, BW, TH, c->cw, c->ch, 0, CopyFromParent, InputOutput, CopyFromParent, CWEventMask | CWBackPixel, &ca); XMapWindow(DPY, c->clip);
 		XReparentWindow(DPY, w, c->clip, -c->il, -c->it); XResizeWindow(DPY, w, c->cw + c->il + c->ir, c->ch + c->it + c->ib); }
 	else { XReparentWindow(DPY, w, c->frame, BW, TH); XResizeWindow(DPY, w, c->cw, c->ch); }
+	/* (the owner's Vivobook report 1, 2026-11-16) an app's own window is shown once its page has drawn the app at the app's size
+	   (appwin_size, then the page's "ready": appwin_reveal), not while the page is still starting at the shell's first size (the
+	   whole page, its sign-in screen, at 70 % of the screen); a slow page's window comes after WAIT_MS anyway, its page covered by
+	   a plain background of the app's colour until it is ready (appwin_wait_late) */
+	if (own && !own->sized && !own->modal && !own->hidden && strcmp(own->k, "do-saver")) { c->wait = 1; c->hidden = 1; }
 	CLIENTS = g_list_append(CLIENTS, c);
-	XMapWindow(DPY, w); frame_shape(c); rz_place(c); XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); desk_shadows();
+	XMapWindow(DPY, w); frame_shape(c); rz_place(c); if (!c->hidden) XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); desk_shadows();
 	grab_clicks(c, 1); tell_geom(c);
 	/* asked for full screen before it was shown */
 	Atom type; int fmt; unsigned long n = 0, after; unsigned char *d = NULL;
@@ -1237,6 +1286,7 @@ static void wm_manage(Window w, AppWin *own)
 	if (own && !strcmp(own->k, "do-saver")) { c->ontop = 1; wm_fullscreen(c, 1); }   /* (the screen saver: over everything, the taskbar too: item 6) */
 	if (own && TM_TOP && !strcmp(own->k, "taskmgr")) { c->ontop = 1; TM_TOP = 0; }   /* (1.6.0: Ctrl+Alt+Del's Task Manager, above every window) */
 	if (c->ak[0]) { XSync(DPY, False); oracle_title_take(c); }   /* (1.6.0: Oracle's page's title, when it came first) */
+	if (c->wait) { appwin_wait_arm(own); client_list(); bar_redraw(); state_write(); return; }
 	wm_focus(c);
 	if (!own) wopen_start(c);   /* (another program's window (Oracle's, a Linux app's) opens as the page's do; an app's own, at its page's size: appwin_size) */
 }
@@ -1256,7 +1306,7 @@ static void wm_hide_all(int hide)
 {
 	desk_shadows();
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->min) continue;
-		if (hide && !c->hidden) { c->hidden = 1; if (!c->off) XUnmapWindow(DPY, c->frame); } else if (!hide && c->hidden) { c->hidden = 0; if (!c->off) XMapWindow(DPY, c->frame); } }
+		if (hide && !c->hidden) { c->hidden = 1; if (!c->off) XUnmapWindow(DPY, c->frame); } else if (!hide && c->hidden && c->wait != 1) { c->hidden = 0; if (!c->off) XMapWindow(DPY, c->frame); } }
 	if (!hide) wm_focus(FOCUS ? FOCUS : top_client());
 }
 /* the title bars' height or the work area changed (the display scaling, the development link's banner) */
@@ -1461,18 +1511,62 @@ static void wm_manage_app(AppWin *a)
 /* (1.6.0 Part 12) the app's window at the size and place the page gives it (base_v24.html win(): W by H inside its 1 px
    edge, the title bar included; 40 + 26 n from the left and 20 + 26 n from the desktop's top for the n-th window, kept on
    the desktop) */
+static void appwin_probe(AppWin *a);
 static void appwin_size(AppWin *a, int w, int h)
 {
 	Client *c = WM_OK ? client_of_app(a) : NULL; if (c && a->modal && w >= 80 && h >= 60) { a->pw = w; a->ph = h; return; }   /* (after the dialog: N4) */
-	if (c && c->hidden && !a->hidden && !LOCKED) { c->hidden = 0; if (!c->off && !c->min) XMapWindow(DPY, c->frame); wm_focus(c); }   /* (its window, after it asked: N4) */
-	if (!c || c->max || c->full || w < 80 || h < 60) return;
+	if (c && c->hidden && !c->wait && !a->hidden && !LOCKED) { c->hidden = 0; if (!c->off && !c->min) XMapWindow(DPY, c->frame); wm_focus(c); }   /* (its window, after it asked: N4) */
+	if (!c || c->max || c->full || w < 80 || h < 60) { if (c && c->wait) appwin_probe(a); return; }
 	int n = 0; for (GList *l = CLIENTS; l; l = l->next) { Client *o = l->data; if (o != c && !o->trans) n++; }
 	double dw = desk_w() / Z, avail = work_h() / Z; w = (int)fmin(w, dw - 8); h = (int)fmin(h, avail - 8);   /* (the page's #desk: beside a bar at the left or the right) */
 	double x = fmax(0, fmin(40 + n * 26, dw - w - 4)), y = fmax(0, fmin(20 + n * 26, avail - h - 4));
 	c->cw = (int)lround(w * Z); c->ch = (int)lround((h - tw_tbh()) * Z); c->x = desk_left() + (int)lround(x * Z); c->y = work_top() + (int)lround(y * Z);
-	place(c); frame_draw(c); state_write();
+	place(c); frame_draw(c);
+	if (c->cover) XMoveResizeWindow(DPY, c->cover, BW, TH, c->cw, c->ch);
+	state_write();
+	if (c->wait) { appwin_probe(a); return; }   /* (shown once its page has drawn at this size) */
 	if (!c->opened) wopen_start(c);   /* (its first place: it opens, N15) */
 }
+/* (the owner's Vivobook report 1) an app's window waiting for its page: the page is asked to say when it has drawn at the window's
+   size (two frames after its size is the window's: "ready"); then it is shown, at its own size, and opens (N15) */
+#define WAIT_MS 2500
+static void appwin_probe(AppWin *a)
+{
+	Client *c = WM_OK ? client_of_app(a) : NULL; if (!c || !c->wait || !a->view) return;
+	char js[900]; snprintf(js, sizeof js, "(()=>{const W=%d,H=%d,t0=Date.now();let sent=0;const go=()=>{if(sent)return;sent=1;try{webkit.messageHandlers.rudolfNative.postMessage({w:%d,op:'ready'})}catch(e){}};"
+		"const fit=()=>{const d=devicePixelRatio||1;return Math.abs(innerWidth*d-W)<=2&&Math.abs(innerHeight*d-H)<=2};"
+		"const f=()=>{if(sent)return;if(fit()||Date.now()-t0>1500){requestAnimationFrame(()=>requestAnimationFrame(go));setTimeout(go,300);return}setTimeout(f,16)};f()})()",
+		c->cw, c->ch, a->id);
+	webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), js, -1, NULL, NULL, NULL, NULL, NULL);
+}
+/* (an app's window's own colour: html.dark .win's background, else the page's white) */
+static unsigned long app_bg_pixel(void) { RGB bg = hexc(is_dark() ? "#0f172a" : "#ffffff", NULL); return ((unsigned long)lround(bg.r * 255) << 16) | ((unsigned long)lround(bg.g * 255) << 8) | (unsigned long)lround(bg.b * 255); }
+static void cover_gone(Client *c) { if (c && c->cover) { XDestroyWindow(DPY, c->cover); c->cover = 0; } }
+static void appwin_reveal(AppWin *a)
+{
+	Client *c = WM_OK ? client_of_app(a) : NULL; if (a->wait_t) { g_source_remove(a->wait_t); a->wait_t = 0; }
+	if (!c || !c->wait) return; int was = c->wait; c->wait = 0;
+	if (was == 2) { cover_gone(c); state_write(); return; }   /* (shown already, covered: its page now) */
+	/* (the page's picture is drawn into its window as X shows it: until then the app's colour there, not what was on the screen before) */
+	if (c->hidden && !a->hidden && !LOCKED && a->modal != 2) { XSetWindowBackground(DPY, c->w, app_bg_pixel()); c->hidden = 0; if (!c->off && !c->min) { XMapWindow(DPY, c->frame); XSync(DPY, False); frame_draw(c); } wm_focus(c); }
+	if (a->view) gtk_widget_queue_draw(a->view);
+	bar_redraw(); state_write();
+	if (!c->opened && !c->hidden) wopen_start(c);
+}
+static gboolean appwin_wait_late(gpointer d)
+{
+	AppWin *a = d; if (!g_list_find(WINS, a)) return G_SOURCE_REMOVE; a->wait_t = 0;
+	Client *c = WM_OK ? client_of_app(a) : NULL; if (!c || c->wait != 1) return G_SOURCE_REMOVE;
+	fprintf(stderr, "rudolf-native: %s's page is not ready after %d ms: its window shown, covered until it is\n", a->k, WAIT_MS);
+	c->wait = 2;
+	if (c->hidden && !a->hidden && !LOCKED && a->modal != 2) {
+		XSetWindowAttributes at = {0}; at.background_pixel = app_bg_pixel();
+		c->cover = XCreateWindow(DPY, c->frame, BW, TH, c->cw, c->ch, 0, CopyFromParent, InputOutput, CopyFromParent, CWBackPixel, &at); XMapRaised(DPY, c->cover);
+		c->hidden = 0; if (!c->off && !c->min) XMapWindow(DPY, c->frame); wm_focus(c); bar_redraw();
+		if (!c->opened) wopen_start(c); }
+	state_write(); return G_SOURCE_REMOVE;
+}
+static void appwin_wait_arm(AppWin *a) { if (!a) return; if (a->wait_t) g_source_remove(a->wait_t); a->wait_t = g_timeout_add(WAIT_MS, appwin_wait_late, a); }
 static void frame_redraw_app(AppWin *a) { Client *c = WM_OK ? client_of_app(a) : NULL; if (c) { wm_title(c); frame_draw(c); } }
 /* (1.6.0 Part 12, test findings N2, N4, N10) a page's dialog (oneapp59.js: .rmodal, .natdlg) is over the whole desktop on Standard,
    dimmed and centred on the screen, with the windows and the taskbar under it. Here the app's window covers the screen while one
@@ -1493,7 +1587,7 @@ static void modal_cover(AppWin *a)
 {
 	Client *c = WM_OK ? client_of_app(a) : NULL; if (!c || !a->modal) return;
 	if (!strcmp(a->k, "do-portal")) PT_SHOWN = g_get_real_time() / 1000;
-	GdkPixbuf *pb = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), 0, 0, SW, SH);
+	GdkPixbuf *pb = screen_copy(0, 0, SW, SH);
 	if (!c->full) a->wasontop = c->ontop; c->ontop = 1;
 	if (c->hidden) { c->hidden = 0; if (!c->off && !c->min) XMapWindow(DPY, c->frame); }
 	a->mfull = !c->full; if (!c->full) wm_fullscreen(c, 1); else wm_focus(c);
@@ -1515,6 +1609,7 @@ static void appwin_modal(AppWin *a, int on)
 {
 	Client *c = WM_OK ? client_of_app(a) : NULL;
 	if (on) { if (a->modal || a->hidden) return; a->modal = a->sized ? 1 : 2;
+		if (c && c->wait) { if (a->wait_t) { g_source_remove(a->wait_t); a->wait_t = 0; } c->wait = 0; cover_gone(c); }   /* (its dialog now, over the screen) */
 		if (!c) { modal_send(a, NULL); return; }
 		/* (not the window itself in the picture: one with nothing of its own yet is taken away first, and what was under it drawn again) */
 		if (a->modal == 2 && !c->hidden && !c->full) { c->hidden = 1; XUnmapWindow(DPY, c->frame); XSync(DPY, False); g_timeout_add(250, modal_cover_late, a); return; }
@@ -2131,7 +2226,12 @@ static gboolean bar_scroll(GtkWidget *w, GdkEventScroll *e, gpointer d)
 	if (dy) hk_post(dy < 0 ? "/api/brightness/step?d=up" : "/api/brightness/step?d=down", 1); return TRUE;
 }
 static int fl_bar_press(GdkEventButton *e, int h);
-static gboolean bar_press(GtkWidget *w, GdkEventButton *e, gpointer d) { (void)w; (void)d; if (fl_bar_press(e, hit_at(e->x, e->y))) return TRUE; if (e->type == GDK_BUTTON_PRESS && e->button == 3) { bar_menu(e, hit_at(e->x, e->y)); return TRUE; } if (e->type == GDK_BUTTON_PRESS && e->button == 1) { PRESS = hit_at(e->x, e->y); hk_set(PRESS, PRS_K, PRS_A); bar_redraw(); } return TRUE; }
+static void menu_hide(void);
+static gboolean bar_press(GtkWidget *w, GdkEventButton *e, gpointer d) { (void)w; (void)d;
+	/* (the page's start menu closes on any press outside it but its button (base_v24.html: document's pointerdown); a right-click on the
+	   taskbar left the shell's open, under the taskbar's menu) */
+	{ int h = hit_at(e->x, e->y); if (e->type == GDK_BUTTON_PRESS && MENU && gtk_widget_get_visible(MENU) && !(h >= 0 && !strcmp(HITS[h].kind, "start"))) menu_hide(); }
+	if (fl_bar_press(e, hit_at(e->x, e->y))) return TRUE; if (e->type == GDK_BUTTON_PRESS && e->button == 3) { bar_menu(e, hit_at(e->x, e->y)); return TRUE; } if (e->type == GDK_BUTTON_PRESS && e->button == 1) { PRESS = hit_at(e->x, e->y); hk_set(PRESS, PRS_K, PRS_A); bar_redraw(); } return TRUE; }
 static gboolean bar_release(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
 	(void)w; (void)d; if (e->button != 1) return TRUE; int h = hit_at(e->x, e->y); int was = PRESS; PRESS = -1; PRS_K[0] = PRS_A[0] = 0; bar_redraw();
@@ -2361,7 +2461,7 @@ static void im_realize(GtkWidget *w, gpointer im) { gtk_im_context_set_client_wi
 /* (the page's html.dark, themeApply: the dark theme for the shell's parts unless turned off, when it is dark: dynResolve's mode) */
 static int menu_dark(void) { return S.darkui && is_dark(); }
 static void srch_later(void);
-static void menu_hide(void) { if (MENU) gtk_widget_hide(MENU); MHOV = -1; if (MCARET_T) { g_source_remove(MCARET_T); MCARET_T = 0; } srch_later(); state_write(); }
+static void menu_hide(void) { if (MENU && gtk_widget_get_visible(MENU)) { gtk_widget_hide(MENU); pop_gone(MBG, MX, MY); } MHOV = -1; if (MCARET_T) { g_source_remove(MCARET_T); MCARET_T = 0; } srch_later(); state_write(); }
 static void menu_rows_load(JV *cat)
 {
 	free(MR); MR = NULL; NMR = 0; JV *m = jprop(cat, "menu");
@@ -2656,7 +2756,7 @@ static void menu_toggle(void)
 	/* the window: the menu and its shadow's room (32 px around, 12 px lower), on the screen */
 	int x0 = (int)floor((MBX - 32) * Z), y0 = (int)floor((MBY - 20) * Z), x1 = (int)ceil((MBX + MBW + 32) * Z), y1 = (int)ceil((MBY + MBH + 44) * Z);
 	MX = MAX(0, x0); MY = MAX(TOPRES, y0); MW = MIN(SW, x1) - MX; MH = MIN(top || tb_side() ? SH : SH - BARH, y1) - MY;
-	if (MBG) g_object_unref(MBG); MBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), MX, MY, MW, MH);
+	if (MBG) g_object_unref(MBG); MBG = screen_copy(MX, MY, MW, MH);
 	gtk_window_resize(GTK_WINDOW(MENU), MW, MH); gtk_widget_set_size_request(MAREA, MW, MH); gtk_window_move(GTK_WINDOW(MENU), MX, MY);
 	caret_restart(); gtk_widget_show_all(MENU); gtk_window_present(GTK_WINDOW(MENU)); gtk_widget_grab_focus(MAREA); wm_restack();
 	GdkWindow *gw = gtk_widget_get_window(MENU); if (gw) gdk_window_focus(gw, GDK_CURRENT_TIME);
@@ -2734,7 +2834,7 @@ static void power_dialog(void)
 		g_signal_connect(PWRA, "motion-notify-event", G_CALLBACK(pwr_motion), NULL); g_signal_connect(PWR, "key-press-event", G_CALLBACK(pwr_key), NULL);
 		g_signal_connect(PWR, "delete-event", G_CALLBACK(gtk_widget_hide_on_delete), NULL); }
 	pwr_rows(); menu_hide(); fl_close();
-	if (PWRBG) g_object_unref(PWRBG); PWRBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), 0, 0, SW, SH);
+	if (PWRBG) g_object_unref(PWRBG); PWRBG = screen_copy(0, 0, SW, SH);
 	PWRF = 0; PWRH = -1; gtk_window_move(GTK_WINDOW(PWR), 0, 0); gtk_window_resize(GTK_WINDOW(PWR), SW, SH); gtk_widget_set_size_request(PWRA, SW, SH);
 	gtk_widget_show_all(PWR); gtk_window_present(GTK_WINDOW(PWR)); gtk_widget_grab_focus(PWRA); wm_restack();
 	GdkWindow *gw = gtk_widget_get_window(PWR); if (gw) gdk_window_focus(gw, GDK_CURRENT_TIME);
@@ -2969,7 +3069,7 @@ static void settings_load(void)
 {
 	JV *v = jget("/api/desktop/settings"); if (!v) return;
 	Settings n; memset(&n, 0, sizeof n); n.lat = NAN;
-	JV *s = jprop(v, "s");
+	JV *s = jprop(v, "s"), *ps = PREV_S ? jparse(PREV_S) : NULL; if (ps) s = ps;   /* (Settings' choices previewed, not applied yet) */
 	jstr(s, "bs", n.bs, sizeof n.bs); jstr(s, "b1", n.b1, sizeof n.b1); jstr(s, "b2", n.b2, sizeof n.b2); jstr(s, "dyn", n.dyn, sizeof n.dyn); jstr(s, "dm", n.dm, sizeof n.dm);
 	jstr(s, "wpfit", n.wpfit, sizeof n.wpfit); jstr(s, "tb", n.tb, sizeof n.tb); jstr(s, "tbstyle", n.tbstyle, sizeof n.tbstyle); jstr(s, "tbacm", n.tbacm, sizeof n.tbacm);
 	jstr(s, "tbbstyle", n.tbbstyle, sizeof n.tbbstyle); jstr(s, "tbbacm", n.tbbacm, sizeof n.tbbacm); jstr(s, "twstyle", n.twstyle, sizeof n.twstyle); jstr(s, "twacm", n.twacm, sizeof n.twacm);
@@ -2992,7 +3092,7 @@ static void settings_load(void)
 	nt_load(v);   /* (the notifications' list: item 3) */
 	sc_load(v);   /* (the account's own keys: item 5) */
 	sys_load(v);   /* (the screen saver's and the lock's settings: item 6) */
-	  jfree(v);
+	  jfree(v); jfree(ps);
 	/* the page's display scaling: the taskbar, the title bars and the start menu at the page's size (1.5.9 step 7) */
 	Z = S.scale / 100.0; BARH = (int)lround(46 * Z);
 	{ int th = tw_th(), bw = tw_bw(); if (th != TH || bw != BW) moved = 1; TH = th; BW = bw; }   /* (the title bars' height and the windows' edge: tw_geom) */
@@ -3000,9 +3100,34 @@ static void settings_load(void)
 	css_apply(); wall_make(); if (moved) { bar_place(); if (WM_OK) wm_relayout(); di_layout(); if (DESKAREA) desk_dirty(); } bar_redraw(); if (SAREA) gtk_widget_queue_draw(SAREA); if (WM_OK) frames_redraw();
 	a11y_apply();   /* (1.6.0: quick settings' switches for the whole screen) */
 }
+static gboolean prev_keep_end(gpointer d) { (void)d; PREV_KEEP = 0; prev_end(); return G_SOURCE_REMOVE; }
+static void prev_end(void)
+{
+	if (PREV_KEEP) { g_source_remove(PREV_KEEP); PREV_KEEP = 0; }
+	if (!PREV_S) return; g_free(PREV_S); PREV_S = NULL; if (PREV_WP) { g_object_unref(PREV_WP); PREV_WP = NULL; } PREV_W = 0; PREV_N++;
+	settings_load(); state_write();
+}
+static void prev_msg(AppWin *a, JSCValue *v)
+{
+	if (!USER_ID[0] || strcmp(a->k, "settings")) return;
+	JSCValue *sv = jsc_value_object_get_property(v, "s"); char *sj = sv && jsc_value_is_string(sv) ? jsc_value_to_string(sv) : NULL; if (sv) g_object_unref(sv);
+	JV *chk = sj && *sj ? jparse(sj) : NULL;
+	if (!chk) { g_free(sj); if (PREV_S && PREV_W == a->id) { char kp[4] = ""; jsstr(v, "keep", kp, sizeof kp); if (kp[0] == '1') { if (!PREV_KEEP) PREV_KEEP = g_timeout_add(3000, prev_keep_end, NULL); } else prev_end(); } return; }
+	jfree(chk); if (PREV_KEEP) { g_source_remove(PREV_KEEP); PREV_KEEP = 0; } g_free(PREV_S); PREV_S = sj; PREV_W = a->id; PREV_N++;
+	JSCValue *wv = jsc_value_object_get_property(v, "wp");
+	if (wv && jsc_value_is_string(wv)) { char *u = jsc_value_to_string(wv); const char *b64 = u ? strstr(u, ";base64,") : NULL;
+		if (u && !strncmp(u, "data:image/", 11) && b64) { gsize n = 0; guchar *raw = g_base64_decode(b64 + 8, &n); GByteArray *b = g_byte_array_new_take(raw, n); guint8 z = 0; g_byte_array_append(b, &z, 1);
+			GdkPixbuf *px = pix_from_bytes(b); g_byte_array_free(b, TRUE); if (px) { if (PREV_WP) g_object_unref(PREV_WP); PREV_WP = px; } }
+		else if (u && !*u && PREV_WP) { g_object_unref(PREV_WP); PREV_WP = NULL; }
+		g_free(u); }
+	if (wv) g_object_unref(wv);
+	settings_load(); state_write();
+}
 static void apps_load(void)
 {
-	JV *v = jget("/api/desktop/apps"); if (!v) return;
+	/* (the signed-in account's own last catalogue: its icons at once at sign-in, as Standard's page has them, before this sign-in's pages give it) */
+	JV *v = NULL; if (USER_ID[0]) { char *e = g_uri_escape_string(USER_ID, NULL, FALSE), p[200]; snprintf(p, sizeof p, "/api/desktop/apps?acct=%s", e); g_free(e); v = jget(p); }
+	if (!v) v = jget("/api/desktop/apps"); if (!v) return;
 	JV *a = jprop(v, "apps"); App *L = NULL; int n = 0;
 	for (int i = 0; i < 400; i++) { JV *o = jat(a, i); if (!o) break; L = realloc(L, sizeof *L * (n + 1)); App *x = &L[n++]; memset(x, 0, sizeof *x);
 		jstr(o, "k", x->k, sizeof x->k); jstr(o, "name", x->name, sizeof x->name); jstr(o, "icon", x->icon, sizeof x->icon); jstr(o, "kw", x->kw, sizeof x->kw); jstr(o, "ic", x->ic, sizeof x->ic); x->x = jbool(o, "x"); }
@@ -3136,7 +3261,7 @@ static int cm_at(double px, double py)
 	for (int i = 0; i < NCMI; i++) { double h = cm_row_h(&CMIT[i]); if (!CMIT[i].sep && y >= ry && y < ry + h) return i; ry += h; }
 	return -1;
 }
-static void cm_close(void) { if (CMWIN && gtk_widget_get_visible(CMWIN)) { gdk_seat_ungrab(gdk_display_get_default_seat(gdk_display_get_default())); gtk_widget_hide(CMWIN); } if (CMBG) { g_object_unref(CMBG); CMBG = NULL; } CMHOV = -1; state_write(); }
+static void cm_close(void) { if (CMWIN && gtk_widget_get_visible(CMWIN)) { gdk_seat_ungrab(gdk_display_get_default_seat(gdk_display_get_default())); gtk_widget_hide(CMWIN); pop_gone(CMBG, CMWX, CMWY); } if (CMBG) { g_object_unref(CMBG); CMBG = NULL; } CMHOV = -1; state_write(); }
 static void cm_choose(int i) { if (i < 0 || i >= NCMI || CMIT[i].sep || CMIT[i].dis) return; char a[96]; snprintf(a, sizeof a, "%s", CMIT[i].act); void (*cb)(const char *) = CM_CB; cm_close(); if (cb) cb(a); }
 static gboolean cm_motion(GtkWidget *w, GdkEventMotion *e, gpointer d) { (void)w; (void)d; int h = cm_at(e->x, e->y); if (h != CMHOV) { CMHOV = h; gtk_widget_queue_draw(CMAREA); } return TRUE; }
 static gboolean cm_press(GtkWidget *w, GdkEventButton *e, gpointer d)
@@ -3169,7 +3294,7 @@ static void cm_open(double px, double py, const char *title, const CMI *items, i
 		g_signal_connect(CMAREA, "button-press-event", G_CALLBACK(cm_press), NULL); g_signal_connect(CMAREA, "key-press-event", G_CALLBACK(cm_key), NULL); }
 	/* (the window: the box, its ring and its shadow; what is behind copied, there being no compositor) */
 	int x0 = (int)fmax(0, floor((CMX - 30) * Z)), y0 = (int)fmax(0, floor((CMY - 30) * Z)), x1 = (int)fmin(SW, ceil((CMX + CMBW + 30) * Z)), y1 = (int)fmin(SH, ceil((CMY + CMBH + 50) * Z));
-	CMWX = x0; CMWY = y0; CMBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), x0, y0, x1 - x0, y1 - y0);
+	CMWX = x0; CMWY = y0; CMBG = screen_copy(x0, y0, x1 - x0, y1 - y0);
 	gtk_widget_set_size_request(CMAREA, x1 - x0, y1 - y0); gtk_window_resize(GTK_WINDOW(CMWIN), x1 - x0, y1 - y0); gtk_window_move(GTK_WINDOW(CMWIN), x0, y0);
 	CMHOV = -1; gtk_widget_show_all(CMWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(CMWIN)));
 	seat_grab(CMWIN, TRUE);   /* (as the pop-ups': once the menu is on the screen) */
@@ -3251,6 +3376,9 @@ static char *qesc(const char *v) { return g_uri_escape_string(v, NULL, FALSE); }
 static void dg_ok(void)
 {
 	if (DGK != DLG_RENAME || DGBUSY) return; DGBUSY = 1; DGMSG[0] = 0;
+	/* (the owner's Vivobook, 2026-11-16) by the desktop's service page, signed in already, at once (else a page opened for it) */
+	{ AppWin *sv = svc_page(); if (sv && sv->sready && sv->view && !sv->closing) { GString *js = g_string_new("window.__oaRename&&__oaRename("); json_esc(js, DGFILE); g_string_append_c(js, ','); json_esc(js, DGVAL); g_string_append(js, ")");
+		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(sv->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE); gtk_widget_queue_draw(DGAREA); return; } }
 	char *t = qesc(DGVAL), *ex = g_strdup_printf("&op=rename&to=%s", t); app_open_ex("do-fs", DGFILE, ex, 1); g_free(t); g_free(ex); gtk_widget_queue_draw(DGAREA);
 }
 /* (1.5.9, 12.3c) Open with chosen in an app's own page (oneapp59.js: its dialog, in Oracle's window or a WebKit window): the app's
@@ -3362,7 +3490,7 @@ static void dg_open(int kind)
 		g_signal_connect(DGAREA, "draw", G_CALLBACK(dg_draw), NULL); g_signal_connect(DGAREA, "motion-notify-event", G_CALLBACK(dg_motion), NULL);
 		g_signal_connect(DGAREA, "button-press-event", G_CALLBACK(dg_press), NULL); g_signal_connect(DGAREA, "key-press-event", G_CALLBACK(dg_key), NULL);
 		DGIM = gtk_im_multicontext_new(); g_signal_connect(DGIM, "commit", G_CALLBACK(dg_commit), NULL); g_signal_connect(DGAREA, "realize", G_CALLBACK(im_realize), DGIM); }
-	cm_close(); if (DGBG) g_object_unref(DGBG); DGBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), 0, 0, SW, SH);
+	cm_close(); if (DGBG) g_object_unref(DGBG); DGBG = screen_copy(0, 0, SW, SH);
 	DGK = kind; DGHOV = -1; DGFOC = 0; DGALW = 0; DGBUSY = 0; DGMSG[0] = 0; DGCARET = 1;
 	gtk_widget_set_size_request(DGAREA, SW, SH); gtk_window_resize(GTK_WINDOW(DGWIN), SW, SH); gtk_window_move(GTK_WINDOW(DGWIN), 0, 0);
 	gtk_widget_show_all(DGWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(DGWIN)));
@@ -3773,6 +3901,15 @@ static void di_page(const char *on, const char *item, int hidden)
 	app_open_ex("do-desk", NULL, ex, hidden); g_free(o); g_free(t); g_free(ex);
 }
 static void di_arrange(void);
+/* (the owner's Vivobook, 2026-11-16: a new folder or text document showed in File Explorer long before it was on the desktop) done by the
+   desktop's service page, signed in already (oneapp59.js __oaDeskNew), not by a page opened for it that had to load and sign in first */
+static AppWin *svc_page(void);
+static int svc_desk_new(int dir)
+{
+	AppWin *sv = svc_page(); if (!sv || !sv->sready || !sv->view || sv->closing) return 0;
+	webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(sv->view), dir ? "window.__oaDeskNew&&__oaDeskNew(1)" : "window.__oaDeskNew&&__oaDeskNew(0)", -1, NULL, NULL, NULL, NULL, NULL);
+	return 1;
+}
 static void on_di_act(const char *a)
 {
 	int i = di_sel(); DIcon *d = i >= 0 ? &DI[i] : NULL;
@@ -3783,6 +3920,7 @@ static void on_di_act(const char *a)
 	else if (!strcmp(a, "open") && d) di_open(i);
 	else if (!strcmp(a, "rename") && d && d->fp[0]) rename_ask(d->fp, d->n);
 	else if (!strncmp(a, "page:", 5)) di_page(NULL, a + 5, 0);
+	else if (!strncmp(a, "pageh:", 6) && (!strcmp(a + 6, "New folder") || !strcmp(a + 6, "New text document")) && svc_desk_new(!strcmp(a + 6, "New folder"))) {}
 	else if (!strncmp(a, "pageh:", 6)) di_page(NULL, a + 6, 1);
 	else if (!strncmp(a, "icon:", 5) && d) di_page(d->n, a + 5, 0);
 	else if (!strncmp(a, "iconh:", 6) && d) di_page(d->n, a + 6, 1);
@@ -5081,7 +5219,7 @@ static int fl_bar_press(GdkEventButton *e, int h)
 }
 static void fl_close(void)
 {
-	if (FLWIN && gtk_widget_get_visible(FLWIN)) { gdk_seat_ungrab(gdk_display_get_default_seat(gdk_display_get_default())); gtk_widget_hide(FLWIN); }
+	if (FLWIN && gtk_widget_get_visible(FLWIN)) { gdk_seat_ungrab(gdk_display_get_default_seat(gdk_display_get_default())); gtk_widget_hide(FLWIN); pop_gone(FLBG, FLWX, FLWY); }
 	FL_GRAB = 0; if (FLBG) { g_object_unref(FLBG); FLBG = NULL; } FLK = FL_NONE; FLHOV = FLPRESS = -1; FLDRAG = 0; state_write();
 }
 static void fl_volume_set(const char *q) { char p[80]; snprintf(p, sizeof p, "/api/volume?%s", q); JV *v = NULL; GByteArray *b; if (http("POST", p, NULL, 0, &b) == 200 && b) { v = jparse((char *)b->data); }
@@ -5208,9 +5346,9 @@ static void fl_resize(void)
 	cairo_surface_t *t = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 4, 4); cairo_t *c = cairo_create(t); fl_layout(c, 1); cairo_destroy(c); cairo_surface_destroy(t);   /* (its size, and its buttons' places) */
 	int x0 = (int)fmax(0, floor((FLX - 40) * Z)), y0 = (int)fmax(0, floor((FLY - 40) * Z)), x1 = (int)fmin(SW, ceil((FLX + FLW + 40) * Z)), y1 = (int)fmin(SH, ceil((FLY + FLH + 60) * Z));
 	int same = FLBG && FLWX == x0 && FLWY == y0 && gdk_pixbuf_get_width(FLBG) == x1 - x0 && gdk_pixbuf_get_height(FLBG) == y1 - y0;
-	if (!same) { int vis = FLWIN && gtk_widget_get_visible(FLWIN); if (vis) gtk_widget_hide(FLWIN);   /* (the copy of what is behind without the box itself) */
+	if (!same) { int vis = FLWIN && gtk_widget_get_visible(FLWIN); if (vis) { gtk_widget_hide(FLWIN); pop_gone(FLBG, FLWX, FLWY); }   /* (the copy of what is behind without the box itself) */
 		if (vis) { GdkDisplay *dp = gdk_display_get_default(); gdk_display_sync(dp); }
-		if (FLBG) g_object_unref(FLBG); FLWX = x0; FLWY = y0; FLBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), x0, y0, x1 - x0, y1 - y0);
+		if (FLBG) g_object_unref(FLBG); FLWX = x0; FLWY = y0; FLBG = screen_copy(x0, y0, x1 - x0, y1 - y0);
 		gtk_widget_set_size_request(FLAREA, x1 - x0, y1 - y0); gtk_window_resize(GTK_WINDOW(FLWIN), x1 - x0, y1 - y0); gtk_window_move(GTK_WINDOW(FLWIN), x0, y0);
 		if (vis) { gtk_widget_show_all(FLWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(FLWIN))); seat_grab(FLWIN, FALSE); } }
 	gtk_widget_queue_draw(FLAREA); state_write();
@@ -5411,7 +5549,7 @@ static void toast_place(void)
 	double y0 = 1e9, y1 = -1e9, vw = SW / Z; for (int i = 0; i < NTST; i++) { y0 = fmin(y0, TSY[i]); y1 = fmax(y1, TSY[i] + TST[i].h); }
 	int x0 = (int)fmax(0, floor((vw - 12 - 349 - 30) * Z)), x1 = SW, ya = (int)fmax(0, floor((y0 - 20) * Z)), yb = (int)fmin(SH, ceil((y1 + 40) * Z));
 	int vis = gtk_widget_get_visible(TWIN), xc = xc_ok(); if (vis && !xc) { gtk_widget_hide(TWIN); gdk_display_sync(gdk_display_get_default()); }
-	if (TBG) g_object_unref(TBG); TBG = NULL; TWX = x0; TWY = ya; TWW = x1 - x0; TWH = yb - ya; if (!xc || !vis) TBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), x0, ya, TWW, TWH);
+	if (TBG) g_object_unref(TBG); TBG = NULL; TWX = x0; TWY = ya; TWW = x1 - x0; TWH = yb - ya; if (!xc || !vis) TBG = screen_copy(x0, ya, TWW, TWH);
 	if (xc && !vis) { if (!THELD) THELD = g_ptr_array_new(); comp_behind(NULL, 0, x0, ya, TWW, TWH, THELD); }   /* (redirected before the toasts cover them) */
 	gtk_widget_set_size_request(TAREA, TWW, TWH); gtk_window_resize(GTK_WINDOW(TWIN), TWW, TWH); gtk_window_move(GTK_WINDOW(TWIN), x0, ya);
 	gtk_widget_show_all(TWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(TWIN)));
@@ -5506,7 +5644,7 @@ static gboolean osd_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 	(void)wd; (void)d; if (OBG) { gdk_cairo_set_source_pixbuf(cr, OBG, 0, 0); cairo_paint(cr); }
 	cairo_scale(cr, Z, Z); osd_paint(cr); return TRUE;
 }
-static gboolean osd_end(gpointer d) { (void)d; OTIMER = 0; if (OWIN) gtk_widget_hide(OWIN); OK_[0] = 0; state_write(); return G_SOURCE_REMOVE; }
+static gboolean osd_end(gpointer d) { (void)d; OTIMER = 0; if (OWIN && gtk_widget_get_visible(OWIN)) { gtk_widget_hide(OWIN); pop_gone(OBG, OX, OY); } OK_[0] = 0; state_write(); return G_SOURCE_REMOVE; }
 static void osd_show(const char *k, const char *lv, const char *label, const char *n)
 {
 	if (!k || (strcmp(k, "volume") && strcmp(k, "mic") && strcmp(k, "brightness")) || !USER_ID[0] || LOCKED) return;
@@ -5518,9 +5656,9 @@ static void osd_show(const char *k, const char *lv, const char *label, const cha
 	/* (shown already at this size: what is behind is the copy it has; hidden and copied again, the window behind may not have
 	   drawn itself yet) */
 	if (!(gtk_widget_get_visible(OWIN) && OBG && nw == OW && nh == OH)) {
-		if (gtk_widget_get_visible(OWIN)) { gtk_widget_hide(OWIN); gdk_display_sync(gdk_display_get_default()); }
+		if (gtk_widget_get_visible(OWIN)) { gtk_widget_hide(OWIN); gdk_display_sync(gdk_display_get_default()); pop_gone(OBG, OX, OY); }
 		OW = nw; OH = nh; OX = (SW - OW) / 2; OY = (int)lround(28 * Z);
-		if (OBG) g_object_unref(OBG); OBG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), OX, OY, OW, OH); }
+		if (OBG) g_object_unref(OBG); OBG = screen_copy(OX, OY, OW, OH); }
 	gtk_widget_set_size_request(OAREA, OW, OH); gtk_window_resize(GTK_WINDOW(OWIN), OW, OH); gtk_window_move(GTK_WINDOW(OWIN), OX, OY);
 	gtk_widget_show_all(OWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(OWIN)));
 	{ cairo_region_t *rg = cairo_region_create(); gdk_window_input_shape_combine_region(gtk_widget_get_window(OWIN), rg, 0, 0); cairo_region_destroy(rg); }   /* (pointer-events: none) */
@@ -6217,7 +6355,7 @@ static void at_show(void)
 	if (!(gtk_widget_get_visible(AWIN) && ABG && nw == AW && nh == AH)) {
 		if (gtk_widget_get_visible(AWIN)) { gtk_widget_hide(AWIN); gdk_display_sync(gdk_display_get_default()); }
 		AW = nw; AH = nh; AX = (int)floor(fx); AY = (int)floor(fy);
-		if (ABG) g_object_unref(ABG); ABG = gdk_pixbuf_get_from_window(gdk_get_default_root_window(), AX, AY, AW, AH); }
+		if (ABG) g_object_unref(ABG); ABG = screen_copy(AX, AY, AW, AH); }
 	AFX = fx - AX; AFY = fy - AY; gtk_widget_set_size_request(AAREA, AW, AH); gtk_window_resize(GTK_WINDOW(AWIN), AW, AH); gtk_window_move(GTK_WINDOW(AWIN), AX, AY);
 	gtk_widget_show_all(AWIN); XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(AWIN))); gtk_widget_queue_draw(AAREA); state_write();
 }
@@ -6347,6 +6485,7 @@ static void sys_load(JV *v)
 	x = jprop(o, "sstime"); SYS.sstime = x ? jbool(o, "sstime") : 1;
 	char st[24] = ""; jstr(o, "ssstyle", st, sizeof st); snprintf(SYS.ssstyle, sizeof SYS.ssstyle, "%s", st[0] && strspn(st, "abcdefghijklmnopqrstuvwxyz") == strlen(st) ? st : "stars");
 }
+static int SAV_PREV;   /* (Display Properties' Preview: ends on input as the saver does, never locking) */
 static int SAV_ON, IDLE_N; static gint64 SAV_T; static guint SAV_POLL; static char SAV_WHY[96];
 static AppWin *sav_win(void) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!strcmp(a->k, "do-saver") && !a->closing) return a; } return NULL; }
 static long long idle_ms(void) { JV *v = jget("/api/idle"); long long m = v ? (long long)jnum(v, "idle", -1) : -1; jfree(v); return m; }
@@ -6354,7 +6493,7 @@ static void sav_stop(int may_lock)
 {
 	if (!SAV_ON) return; SAV_ON = 0; if (SAV_POLL) { g_source_remove(SAV_POLL); SAV_POLL = 0; }
 	AppWin *a = sav_win(); if (a) appwin_close_now(a);
-	int lock = may_lock && SYS.lockss && g_get_monotonic_time() - SAV_T > 3000000;
+	int lock = may_lock && !SAV_PREV && SYS.lockss && g_get_monotonic_time() - SAV_T > 3000000; SAV_PREV = 0;
 	if (lock && !LOCKED) power("lock");
 	state_write();
 }
@@ -6370,6 +6509,14 @@ static void sav_start(void)
 	if (SAV_ON || !USER_ID[0] || LOCKED) return; SAV_ON = 1; SAV_T = g_get_monotonic_time();
 	if (AT_ON) at_end(0); if (OV_ON) ov_end(NULL); if (MENU && gtk_widget_get_visible(MENU)) menu_hide(); if (FLK) fl_close();
 	char ex[80]; snprintf(ex, sizeof ex, "&style=%s&time=%d", SYS.ssstyle, SYS.sstime); app_open_ex("do-saver", NULL, ex, 0);
+	if (!SAV_POLL) SAV_POLL = g_timeout_add(1000, sav_poll, NULL); state_write();
+}
+static void sav_preview(const char *style)
+{
+	if (SAV_ON || !USER_ID[0] || LOCKED) return; int ok = style[0] && strlen(style) <= 24; for (const char *c = style; *c; c++) if (!g_ascii_isalnum(*c) && *c != '-' && *c != '_') ok = 0;
+	SAV_ON = 1; SAV_PREV = 1; SAV_T = g_get_monotonic_time();
+	if (MENU && gtk_widget_get_visible(MENU)) menu_hide(); if (FLK) fl_close();
+	char ex[80]; snprintf(ex, sizeof ex, "&style=%s&time=%d", ok ? style : SYS.ssstyle, SYS.sstime); app_open_ex("do-saver", NULL, ex, 0);
 	if (!SAV_POLL) SAV_POLL = g_timeout_add(1000, sav_poll, NULL); state_write();
 }
 static int full_shown(void) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->full && !c->min && !c->off && !(c->app && (!strcmp(c->app->k, "do-saver") || c->app->modal))) return 1; } return 0; }
@@ -6547,6 +6694,7 @@ static void state_write(void)
 {
 	if (!STATEF) return;
 	GString *s = g_string_new(NULL); int by = bar_y(), bx = bar_x();
+	g_string_append_printf(s, "wallpaper %s|%s|%s|%s|%d|%s prev=%d\n", S.dyn[0] ? S.dyn : "-", S.bs, S.b1, S.b2, S.wpimg, S.wpfit, PREV_S ? 1 : 0);   /* (what the desktop is drawn with; prev: Settings' choices previewed, not applied) */
 	g_string_append_printf(s, "screen %d %d\nuser %s\nlocked %d\nsignin %d\nmenu %d\nbar %d %d %d %d %d\nclock %s|%s\n", SW, SH, USER_ID[0] ? USER_N : "-", LOCKED,
 		SIGN && gtk_widget_get_visible(SIGN), MENU && gtk_widget_get_visible(MENU), BAR && gtk_widget_get_visible(BAR), bx, by, bar_w(), bar_h(), CLOCK_T, CLOCK_D);
 	g_string_append_printf(s, "xdrop %d %s %u\n", XD_N, XD_LAST, g_queue_get_length(&XD_Q) + !!XD_CUR);   /* (1.6.1 Part 13: drops finished, the last one's end, waiting) */
@@ -6600,7 +6748,7 @@ static void state_write(void)
 		if (c->hidden) g_string_append_printf(s, "clienthidden %lx\n", (unsigned long)c->w);   /* (1.6.0: out of sight, as the portal's page between its dialogs) */
 		if (c->app && c->app->win && c->app->view && GTK_IS_WIDGET(c->app->view)) { GtkAllocation al; gtk_widget_get_allocation(c->app->view, &al); g_string_append_printf(s, "view %lx %d %d\n", (unsigned long)c->w, al.width, al.height); } }   /* (the page's own size: its window's) */
 	g_string_append_printf(s, "wm %d\nicons %u %s\n", WM_OK, ICONS ? g_hash_table_size(ICONS) : 0, VER[0] ? VER : "-");
-	for (int i = 0; di_shown() && i < NDI; i++) { int x, y; di_xy(&DI[i], &x, &y); g_string_append_printf(s, "dicon %d %d %d %d %d %d %s|%s|%s\n", DI[i].c, DI[i].r, x, y, di_w(), DI[i].sel, DI[i].k, DI[i].kind, DI[i].n); if (strchr(DI[i].k, ':')) g_string_append_printf(s, "diconic %s %s %d\n", DI[i].k, DI[i].ic[0] ? DI[i].ic : "-", DI[i].ic[0] && ICONS && g_hash_table_lookup(ICONS, DI[i].ic) ? 1 : 0); }
+	for (int i = 0; di_shown() && i < NDI; i++) { int x, y; di_xy(&DI[i], &x, &y); g_string_append_printf(s, "dicon %d %d %d %d %d %d %s|%s|%s\n", DI[i].c, DI[i].r, x, y, di_w(), DI[i].sel, DI[i].k, DI[i].kind, DI[i].n); g_string_append_printf(s, "dicpic %d %s\n", DI[i].ic[0] && ICONS && g_hash_table_lookup(ICONS, DI[i].ic) ? 1 : DI[i].icon[0] ? 2 : 0, DI[i].n);   /* (its picture: 1 the page's, 2 its emoji, 0 none: blank) */ if (strchr(DI[i].k, ':')) g_string_append_printf(s, "diconic %s %s %d\n", DI[i].k, DI[i].ic[0] ? DI[i].ic : "-", DI[i].ic[0] && ICONS && g_hash_table_lookup(ICONS, DI[i].ic) ? 1 : 0); }
 	g_string_append_printf(s, "dmenu %s\n", DI_MENU);
 	/* (item 2) the widgets on the screen: widget N TYPE X Y W H (the screen's pixels) PAGE-X PAGE-Y|TEXT; the note typed in; the weather */
 	for (int i = 0; wg_shown() && i < NWG; i++) { double X, Y, W, H; wg_rect(&WG[i], &X, &Y, &W, &H); char *t = g_strescape(WG[i].txt ? WG[i].txt : "", NULL);
@@ -6614,6 +6762,7 @@ static void state_write(void)
 		for (int i = 0; i < NCMI; i++) { if (!CMIT[i].sep) g_string_append_printf(s, "cmitem %d %d %d %s|%s\n", (int)lround((CMX + 5 + 50) * Z), (int)lround((ry + 12) * Z), CMIT[i].dis, CMIT[i].act, CMIT[i].label); ry += cm_row_h(&CMIT[i]); } }
 	g_string_append_printf(s, "dialog %s %s|%s\n", DGK == DLG_RENAME ? "rename" : DGK == DLG_OPENWITH ? "openwith" : "-", DGK ? DGNAME : "-", DGMSG);
 	for (int i = 0; DGK && i < NDGB; i++) g_string_append_printf(s, "dgbtn %d %d %d\n", i, (int)lround((DGB[i].x + DGB[i].w / 2) * Z), (int)lround((DGB[i].y + DGB[i].h / 2) * Z));
+	if (MENU && gtk_widget_get_visible(MENU)) g_string_append_printf(s, "mbox %d %d %d %d\n", (int)lround(MBX * Z), (int)lround(MBY * Z), (int)lround(MBW * Z), (int)lround(MBH * Z));   /* (the start menu's box, for the tests) */
 	if (FLK) { g_string_append_printf(s, "fly %s %d %d %d %d %d-%02d %d %d\n", FLK == FL_CAL ? "cal" : FLK == FL_VOL ? "vol" : FLK == FL_NET ? "net" : FLK == FL_QS ? "qs" : FLK == FL_BRI ? "bri" : "nc", (int)lround(FLX * Z), (int)lround(FLY * Z), (int)lround(FLW * Z), (int)lround(FLH * Z), FL_Y, FL_M, FLVOL, FLMUTE);
 		if (FLK == FL_QS) { g_string_append(s, "flyqs"); for (int i = 0; i < QSN; i++) if (qs_get(i)) g_string_append_printf(s, " %s", QSL[i]); g_string_append_c(s, '\n'); }
 		if (FLK == FL_NC) { g_string_append_printf(s, "flync %d %d", NNT, S.dnd); for (int i = 0; i < NNT; i++) g_string_append_printf(s, "|%s", NT[i].t); g_string_append_c(s, '\n'); }
