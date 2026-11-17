@@ -9,8 +9,9 @@
 # signature), and every firmware entry for the drive then named nothing: the computer opened its setup screen. Now
 # stage and write copy the image's start-up files INTO the drive's existing EFI system partition (partition 2): each
 # new file beside the old one (NAME.new), checked (its Secure Boot signature, read back), then renamed over it, the old
-# one kept as NAME.old until the next start from the drive; the partition table, the disk signature and the area are
-# never written. Then the firmware's entry for the drive is checked (rudolfd --boot-entry fix). Anything wrong: the
+# one kept on RUDOLFDATA (os/esp-old) until the next start from the drive (a release's EFI system partition has a few
+# MiB free: Recovery mode's file is taken out for room while another is written, then written last); the partition
+# table, the disk signature and the area are never written. Then the firmware's entry for the drive is checked (rudolfd --boot-entry fix). Anything wrong: the
 # old files are put back, and it says so.
 #   bootfiles.sh files IMAGE [DISK]   the same, by name (stage and write are this now; IMAGE empty: this Rudolf OS's own)
 #   bootfiles.sh check | rescue        the drive Rudolf OS keeps its files on: its partition table, its EFI system
@@ -167,44 +168,64 @@ elt_entry() {
 		for (i=1;i<64;i++) { o=32*i; if (b[o+1]==144||b[o+1]==145) { p=b[o+2]; continue }
 			if (b[o+1]==136 && p==239) { printf "%d %d\n", b[o+9]+b[o+10]*256+b[o+11]*65536+b[o+12]*16777216, b[o+7]+b[o+8]*256; exit } } }'; }
 BT=${BF_TMP:-/tmp/bootfiles.$$}
-# the files of the list $BT/todo: NAME.new removed (nothing replaced yet)
-drop_new() { while read -r g; do [ -n "$g" ] && rm -f "$BT/esp/$g.new"; done < "$BT/todo"; }
-# files_into DISK NEW: the files of NEW (the new image's EFI image, mounted) into DISK's EFI system partition
+# (the old start-up files are kept on RUDOLFDATA, os/esp-old, until the next start from the drive: the EFI system
+#  partition of a release's boot image has a few MiB free, not room for a second copy of a 12 MiB start-up file)
+KEEP=${BF_KEEP:-/persist/os/esp-old}
+# put_back: every file of the list as it was (from KEEP), NAME.new removed; then BAD is said
+put_back() {
+	while read -r f; do [ -n "$f" ] || continue; [ -f "$E/$f.new" ] && rm -f "$E/$f.new"
+		if [ -f "$KEEP/$f" ]; then cmp -s "$KEEP/$f" "$E/$f" 2>/dev/null || { cp "$KEEP/$f" "$E/$f.new" && mv -f "$E/$f.new" "$E/$f"; }
+		elif [ -f "$KEEP/$f.none" ]; then rm -f "$E/$f"; fi
+	done < "$BT/todo"; sync; }
+# files_into DISK NEW: the files of NEW (the new image's EFI image, mounted) into DISK's EFI system partition.
+# One file at a time: written beside the old one (NAME.new), flushed, read back and its signature checked, then renamed
+# over the old one, which is kept in KEEP. When the partition has no room for a new file beside the old one, the
+# Recovery mode file (EFI/rudolf/recovery.efi: not needed for a normal start) is taken out first, kept, and written last.
+# The files the firmware needs to start (\EFI\BOOT\BOOTX64.EFI, the boot menu, rudolf.efi) are always there, whole.
 files_into() {
 	D=$1; NEW=$2; P=$(esp_part "$D"); E=$BT/esp; mkdir -p "$E"; BAD=
 	[ -b "$P" ] || die "$D has no EFI system partition (partition 2): nothing was changed." 5
 	mount -t vfat -o rw,flush "$P" "$E" 2>/dev/null || die "The EFI system partition on $D cannot be opened: nothing was changed." 5
 	(cd "$NEW" && find . -type f | sed 's|^\./||' | sort) > "$BT/all"
-	: > "$BT/todo"; need=0
+	: > "$BT/todo"; RC=EFI/rudolf/recovery.efi
 	while read -r f; do
 		[ -f "$E/$f" ] && cmp -s "$NEW/$f" "$E/$f" && continue
 		case "$f" in *.efi|*.EFI) sig_ok "$NEW/$f" || { umount "$E"; die "$f in the new image is not signed as it should be: nothing was changed." 7; };; esac
-		echo "$f" >> "$BT/todo"; need=$((need + $(stat -c %s "$NEW/$f") + 8192))
+		echo "$f" >> "$BT/todo"
 	done < "$BT/all"
 	if [ ! -s "$BT/todo" ]; then umount "$E"; echo "The start-up files on $D are already the image's: nothing to change."; return 0; fi
+	# recovery.efi last (its room may be needed for the others)
+	grep -vx "$RC" "$BT/todo" > "$BT/t2"; grep -qx "$RC" "$BT/todo" && echo "$RC" >> "$BT/t2"; mv "$BT/t2" "$BT/todo"
 	free=$(($(df -k "$E" | awk 'NR==2 {print $4}') * 1024)); size=$(($(df -k "$E" | awk 'NR==2 {print $2}') / 1024))
-	if [ $need -gt $free ]; then umount "$E"
-		health "the start-up files were not replaced: the EFI system partition on $D ($size MiB, made by an older Rudolf OS) has no room for the new ones beside the old ($((need / 1048576)) MiB needed, $((free / 1048576)) MiB free). Nothing was changed; the computer starts as before."
+	spare=0; [ -f "$E/$RC" ] && [ -f "$NEW/$RC" ] && spare=$(stat -c %s "$E/$RC")
+	# room: each new file in turn beside the old one (the largest), with recovery.efi's room if need be; and at the end
+	# every new file in place of the old
+	big=0; tot=0; while read -r f; do s=$(stat -c %s "$NEW/$f"); o=0; [ -f "$E/$f" ] && o=$(stat -c %s "$E/$f"); [ $s -gt $big ] && big=$s; tot=$((tot + s - o)); done < "$BT/todo"
+	if [ $((big + 65536)) -gt $((free + spare)) ] || [ $((tot + 65536)) -gt $free ]; then umount "$E"
+		health "the start-up files were not replaced: the EFI system partition on $D ($size MiB, made by an older Rudolf OS) has no room for them ($(( (big > tot ? big : tot) / 1048576)) MiB needed, $((free / 1048576)) MiB free). Nothing was changed; the computer starts as before."
 		exit 10; fi
-	echo "Replacing $(wc -l < "$BT/todo") start-up files on $D (each written beside the old one, checked, then renamed) ..."
-	while read -r f; do mkdir -p "$E/$(dirname "$f")"
-		cp "$NEW/$f" "$E/$f.new" || { drop_new; umount "$E"; die "$f could not be written: nothing was changed (the drive may be full or failing)." 9; }
-	done < "$BT/todo"
-	sync; umount "$E"; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
-	mount -t vfat -o rw,flush "$P" "$E" 2>/dev/null || die "The EFI system partition on $D could not be opened again after writing: the old files are there as before (beside new ones, unused)." 9
-	# read back: each the same as the image's, and signed
+	# (recovery.efi taken out for room is always written again, last, even when it was the image's already)
+	if [ $((big + 65536)) -gt $free ] && [ $spare -gt 0 ] && ! grep -qx "$RC" "$BT/todo"; then echo "$RC" >> "$BT/todo"; fi
+	# the old ones kept first
+	mkdir -p "$KEEP" || { umount "$E"; die "The old start-up files could not be kept: nothing was changed." 6; }
+	while read -r f; do mkdir -p "$KEEP/$(dirname "$f")"; rm -f "$KEEP/$f" "$KEEP/$f.none"
+		if [ -f "$E/$f" ]; then cp "$E/$f" "$KEEP/$f" && cmp -s "$E/$f" "$KEEP/$f" || { umount "$E"; die "The old start-up files could not be kept ($f): nothing was changed." 6; }
+		else : > "$KEEP/$f.none"; fi
+	done < "$BT/todo"; sync
+	echo "Replacing $(wc -l < "$BT/todo") start-up files on $D, one at a time (each written beside the old one, checked, then renamed; the old ones kept in $KEEP) ..."
 	while read -r f; do
-		cmp -s "$NEW/$f" "$E/$f.new" || BAD="$f did not read back as written"
-		case "$f" in *.efi|*.EFI) sig_ok "$E/$f.new" || BAD="$f is not signed as it should be, read back";; esac
-		[ -n "$BAD" ] && break
+		mkdir -p "$E/$(dirname "$f")"
+		s=$(stat -c %s "$NEW/$f"); fr=$(($(df -k "$E" | awk 'NR==2 {print $4}') * 1024))
+		if [ $((s + 65536)) -gt $fr ] && [ "$f" != "$RC" ] && [ -f "$E/$RC" ] && [ -f "$KEEP/$RC" ]; then echo "  (Recovery mode's start-up file taken out for room; kept, and written last)"; rm -f "$E/$RC"; fi
+		cp "$NEW/$f" "$E/$f.new" || { BAD="$f could not be written (the drive may be full or failing)"; break; }
+		sync; umount "$E"; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
+		mount -t vfat -o rw,flush "$P" "$E" 2>/dev/null || { BAD="the EFI system partition could not be opened again"; break; }
+		cmp -s "$NEW/$f" "$E/$f.new" || { BAD="$f did not read back as written"; break; }
+		case "$f" in *.efi|*.EFI) sig_ok "$E/$f.new" || { BAD="$f is not signed as it should be, read back"; break; };; esac
+		mv -f "$E/$f.new" "$E/$f" || { BAD="$f could not be renamed"; break; }
+		sync; echo "  $f"
 	done < "$BT/todo"
-	if [ -n "$BAD" ]; then drop_new; sync; umount "$E"; health "the start-up files were not replaced: $BAD on $D. Nothing was changed."; exit 9; fi
-	# then renamed over the old ones, which are kept as NAME.old until the next start from the drive
-	while read -r f; do
-		[ -f "$E/$f" ] && { [ -f "$E/$f.old" ] && rm -f "$E/$f.old"; mv "$E/$f" "$E/$f.old"; }
-		mv "$E/$f.new" "$E/$f" || { BAD="$f could not be renamed"; break; }
-	done < "$BT/todo"
-	sync; umount "$E"; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
+	sync; umount "$E" 2>/dev/null; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
 	# checked once more as the firmware finds them: \EFI\BOOT\BOOTX64.EFI there, each file the image's
 	if [ -z "$BAD" ] && mount -t vfat -o ro "$P" "$E" 2>/dev/null; then
 		[ -s "$E/EFI/BOOT/BOOTX64.EFI" ] || BAD="\\EFI\\BOOT\\BOOTX64.EFI is missing"
@@ -212,10 +233,9 @@ files_into() {
 		umount "$E"
 	else BAD=${BAD:-"the EFI system partition could not be read back"}; fi
 	if [ -n "$BAD" ]; then
-		if mount -t vfat -o rw,flush "$P" "$E" 2>/dev/null; then
-			while read -r f; do [ -f "$E/$f.old" ] && mv -f "$E/$f.old" "$E/$f"; done < "$BT/todo"; drop_new; sync; umount "$E"; fi
+		if mount -t vfat -o rw,flush "$P" "$E" 2>/dev/null; then put_back; umount "$E"; fi
 		health "the start-up files on $D were put back as they were: $BAD."; exit 9; fi
-	health "the start-up files on $D replaced in its EFI system partition ($(tr '\n' ' ' < "$BT/todo" | sed 's/ $//')); the old ones kept as .old until the next start; the partition table and the disk signature unchanged"
+	health "the start-up files on $D replaced in its EFI system partition, one at a time ($(tr '\n' ' ' < "$BT/todo" | sed 's/ $//')); the old ones kept until the next start from the drive; the partition table and the disk signature unchanged"
 }
 # the drive Rudolf OS keeps its files on, or nothing
 sys_disk() { PER=$(cat /etc/rudolf/persist 2>/dev/null); [ -n "$PER" ] && mountpoint -q /persist && disk_of "$PER"; }

@@ -41,9 +41,10 @@ housekeep() {
 	case "$PER" in /dev/nvme*p3|/dev/mmcblk*p3) D=${PER%p3}; P=${D}p2;; /dev/[sv]d[a-z]3) D=${PER%3}; P=${D}2;; *) return 0;; esac
 	[ "$MED" = "$D" ] && [ -b "$P" ] || return 0
 	mkdir -p $T/o; mount -t vfat -o rw "$P" $T/o 2>/dev/null || return 0
-	o=$(cd $T/o && find . -name '*.old' | sed 's|^\./||'); [ -n "$o" ] && { (cd $T/o && find . -name '*.old' -exec rm -f {} +); sync
-		health boot "the computer started from its drive with the new start-up files: the old ones kept since the change were removed ($(echo $o | tr '\n' ' '))"; }
-	umount $T/o; }
+	o=$(cd $T/o && find . -name '*.old' | sed 's|^\./||'); [ -n "$o" ] && { (cd $T/o && find . -name '*.old' -exec rm -f {} +); sync; }
+	umount $T/o
+	K=${ESP_KEEP:-/persist/os/esp-old}; [ -d "$K" ] && o="$o $(cd "$K" && find . -type f | sed 's|^\./||' | tr '\n' ' ')" && rm -rf "${K:?}"
+	[ -n "$(echo $o)" ] && health boot "the computer started from its drive with the new start-up files: the old ones kept since the change were removed ($(echo $o))"; }
 case "$1" in
 status) s=$(look "$IMG"); echo "$s"; [ "$s" = "start=official recovery=official" ];;
 boot|repair)
