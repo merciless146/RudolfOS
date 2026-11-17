@@ -6,6 +6,13 @@ export HOME=/root
 mount -t tmpfs -o mode=0755,nosuid tmpfs /run
 mount -t tmpfs -o mode=1777,nosuid tmpfs /tmp
 mkdir -p /run/rudolf /run/xvfb /tmp/.X11-unix /dev/shm /media
+# 1.6.1 (docs/plan-1.6.1.md Part 12): where the start-up's time goes, step by step: the uptime when each step ended, in
+# /run/rudolf/startup-times (kept with the start's logs, and in Settings › System health › Last starts). After an update's
+# handover (kexec) this kernel's uptime starts again at 0: what the boot files' kernel and start-up image took before it
+# comes in as rudolf.t0= (initramfs/init)
+st() { echo "$(cut -d' ' -f1 /proc/uptime) $*" >> /run/rudolf/startup-times; }
+T0=$(tr ' ' '\n' < $RCMD | sed -n 's/^rudolf\.t0=\([0-9.]*\)$/\1/p' | head -1); [ -n "$T0" ] && echo "t0 $T0 before the handover (the boot files' kernel and start-up image)" > /run/rudolf/startup-times
+st "kernel and start-up image"
 # 1.6.0 (plan Part 11): apps' requests to keep the screen on or the computer awake (rudolf-portal writes them; anyone may
 # add one, only its owner removes it, only root lists them)
 mkdir -p /run/rudolf/inhibit && chmod 1733 /run/rudolf/inhibit
@@ -27,6 +34,7 @@ hwclock -s -u 2>/dev/null
 #  in QEMU, qt/sb/t160x_t.py)
 mountpoint -q /persist && touch /run/rudolf/persistent
 [ -x /usr/lib/rudolf/sysext ] && mountpoint -q /persist && RPK_ROOT=/persist/pkg /usr/lib/rudolf/sysext assemble >>/run/rudolf/sysext.log 2>&1
+st "system extensions"
 # 1.6.0 (docs/plan-1.6.0.md Part 9): devices through udev (systemd-udevd on its own): its rules (/usr/lib/udev/rules.d,
 # Rudolf OS's own in 90-rudolf.rules, which run the scripts mdev ran), its hardware database, and the device database
 # Linux software reads (libudev: ModemManager, SDL and Steam's controllers, PipeWire, Flatpak apps). The devices already
@@ -44,6 +52,7 @@ elif $UDEVD --daemon --resolve-names=early 2>>/run/rudolf/udev.log && udevadm co
 else
 	pkill -x systemd-udevd 2>/dev/null; dev_mdev "(udevd did not start: see /run/rudolf/udev.log)"
 fi
+st "devices ($(cut -d' ' -f1 /run/rudolf/devices))"
 # (1.5.9: on ARM64 the serial port is ttyAMA0, QEMU's virt machine and most ARM boards; x86 has none)
 DBGTTY=/dev/ttyS0; [ -c /dev/ttyAMA0 ] && DBGTTY=/dev/ttyAMA0
 grep -q rudolf.debug=1 $RCMD && ( while :; do setsid sh -c "exec sh -l <$DBGTTY >$DBGTTY 2>&1"; sleep 1; done ) &
@@ -81,9 +90,11 @@ if mountpoint -q /persist; then
 else
 	mount -t tmpfs -o mode=0700,uid=1000,gid=1000 tmpfs /home/rudolf
 fi
+st "data partition"
 # 1.5.9 (plan Part 3): a system without Chromium (the first ARM64 builds) has one desktop engine: Lite
 { [ -x /opt/chromium/chrome ] && ! grep -q 'rudolf.lite=1' $RCMD; } || { mkdir -p /run/rudolf; echo webkit > /run/rudolf/engine-choice; }   # (rudolf.lite=1: Lite for this start, as the ARM64 boot check uses)
 /usr/lib/rudolf/memory 2>/dev/null   # 1.4.7: compressed swap in memory, no thrashing (1.5.7: after /persist, for its setting)
+st "memory"
 # (1.5.1: not while Downloads is a link into the encrypted folder, which is locked until someone signs in: mkdir
 # failed there with "No such file or directory" on the start-up screen; rudolfd makes its folders at the unlock)
 [ -L /home/rudolf/Downloads ] || { mkdir -p /home/rudolf/Downloads && chown 1000:1000 /home/rudolf/Downloads; }
@@ -108,6 +119,7 @@ if [ -z "$NOGPU" ]; then
 		cat /sys/class/graphics/fb0/name > /run/rudolf/gpu 2>/dev/null
 	fi
 fi
+st "graphics driver ($(cat /run/rudolf/gpu 2>/dev/null || echo none))"
 
 # load drivers for hardware that was found (Wi-Fi and others built as modules)
 for m in $(cat /sys/bus/*/devices/*/modalias 2>/dev/null | sort -u); do
@@ -155,6 +167,7 @@ starts_keep() {
 if mountpoint -q /persist; then starts_keep
 	( for t in 30 60 120 300; do sleep $t; dmesg > $SK_S/0/kernel.log 2>/dev/null; done; while :; do sleep 600; dmesg > $SK_S/0/kernel.log 2>/dev/null; done ) &
 fi
+st "services started"
 # 1.5.7: rudolfd's log is kept on the disk for this start and the 3 before it (/run/rudolf/rudolfd.log points to it)
 RDLOG=/run/rudolf/rudolfd.log
 if mountpoint -q /persist; then
