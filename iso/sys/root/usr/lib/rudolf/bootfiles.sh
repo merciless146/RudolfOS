@@ -185,7 +185,8 @@ put_back() {
 files_into() {
 	D=$1; NEW=$2; P=$(esp_part "$D"); E=$BT/esp; mkdir -p "$E"; BAD=
 	[ -b "$P" ] || die "$D has no EFI system partition (partition 2): nothing was changed." 5
-	mount -t vfat -o rw,flush "$P" "$E" 2>/dev/null || die "The EFI system partition on $D cannot be opened: nothing was changed." 5
+	# (looked at read-only first: a refusal writes nothing, not even the file system's "in use" mark)
+	mount -t vfat -o ro "$P" "$E" 2>/dev/null || die "The EFI system partition on $D cannot be opened: nothing was changed." 5
 	(cd "$NEW" && find . -type f | sed 's|^\./||' | sort) > "$BT/all"
 	: > "$BT/todo"; RC=EFI/rudolf/recovery.efi
 	while read -r f; do
@@ -208,6 +209,7 @@ files_into() {
 	if [ $((big + 65536)) -gt $free ] && [ $spare -gt 0 ] && ! grep -qx "$RC" "$BT/todo"; then echo "$RC" >> "$BT/todo"; fi
 	# the old ones kept first
 	mkdir -p "$KEEP" || { umount "$E"; die "The old start-up files could not be kept: nothing was changed." 6; }
+	umount "$E"; mount -t vfat -o rw,flush "$P" "$E" 2>/dev/null || die "The EFI system partition on $D cannot be opened for writing: nothing was changed." 5
 	while read -r f; do mkdir -p "$KEEP/$(dirname "$f")"; rm -f "$KEEP/$f" "$KEEP/$f.none"
 		if [ -f "$E/$f" ]; then cp "$E/$f" "$KEEP/$f" && cmp -s "$E/$f" "$KEEP/$f" || { umount "$E"; die "The old start-up files could not be kept ($f): nothing was changed." 6; }
 		else : > "$KEEP/$f.none"; fi
@@ -216,7 +218,9 @@ files_into() {
 	while read -r f; do
 		mkdir -p "$E/$(dirname "$f")"
 		s=$(stat -c %s "$NEW/$f"); fr=$(($(df -k "$E" | awk 'NR==2 {print $4}') * 1024))
-		if [ $((s + 65536)) -gt $fr ] && [ "$f" != "$RC" ] && [ -f "$E/$RC" ] && [ -f "$KEEP/$RC" ]; then echo "  (Recovery mode's start-up file taken out for room; kept, and written last)"; rm -f "$E/$RC"; fi
+		if [ $((s + 65536)) -gt $fr ] && [ -f "$E/$RC" ] && [ -f "$KEEP/$RC" ]; then
+			[ "$f" = "$RC" ] && echo "  (no room for Recovery mode's new start-up file beside the old one: the old one taken out first; kept)" || echo "  (Recovery mode's start-up file taken out for room; kept, and written last)"
+			rm -f "$E/$RC"; fi
 		cp "$NEW/$f" "$E/$f.new" || { BAD="$f could not be written (the drive may be full or failing)"; break; }
 		sync; umount "$E"; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
 		mount -t vfat -o rw,flush "$P" "$E" 2>/dev/null || { BAD="the EFI system partition could not be opened again"; break; }

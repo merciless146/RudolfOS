@@ -28,7 +28,7 @@ mkdir -p $W/new $W/m; mcopy -s -n -i "$BOOTISO@@$(efi_off "$BOOTISO")" ::/EFI ::
 ok "0. 1.6.0's start-up files read from its boot image" "$([ -s $W/new/EFI/rudolf/recovery.efi ] && [ -s $W/new/EFI/BOOT/BOOTX64.EFI ] && echo 1)" "$(find $W/new | head)"
 area() { dd if=$L bs=1M count=127 2>/dev/null | sha256sum | cut -c1-64; }
 fs_hash() { dd if=${L}p2 bs=1M 2>/dev/null | sha256sum | cut -c1-64; }
-run() { (export BF_LIB=1 BF_NOHEALTH=1 BF_SBCERT=$CERT BF_TMP=$W/t BF_KEEP=$W/keep; . $BF; mkdir -p $W/t; files_into $L $W/new); }
+run() { (export BF_LIB=1 BF_NOHEALTH=1 BF_SBCERT=$CERT BF_TMP=$W/t BF_KEEP=$W/keep SBVERIFY=${SBV_T:-sbverify}; . $BF; mkdir -p $W/t; files_into $L $W/new); }
 # ---- 1. 1.6.0's drive, its recovery.efi changed (one byte)
 drive "$BOOTISO"
 mount -t vfat ${L}p2 $W/m && f=$W/m/EFI/rudolf/recovery.efi && s=$(stat -c %s $f) && printf 'X' | dd of=$f bs=1 seek=$((s / 2)) conv=notrunc 2>/dev/null; sync; umount $W/m
@@ -44,7 +44,7 @@ ok "2. again: nothing to change" "$(echo "$o" | grep -q 'already the image' && e
 #      for room, kept, and written last; first with a stand-in sbverify that refuses the written copies: all put back
 rm -rf $W/keep; mount -t vfat ${L}p2 $W/m && printf 'Y' | dd of=$W/m/EFI/rudolf/rudolf.efi bs=1 seek=4096 conv=notrunc 2>/dev/null && cp $W/m/EFI/rudolf/rudolf.efi $W/r0; sync; umount $W/m
 printf '#!/bin/sh\nfor a; do case "$a" in *.new) exit 1;; esac; done\nexec sbverify "$@"\n' > $W/sbv; chmod 755 $W/sbv
-o=$(SBVERIFY=$W/sbv run 2>&1; echo "rc=$?")
+SBV_T=$W/sbv; o=$(run 2>&1; echo "rc=$?"); SBV_T=
 mount -t vfat -o ro ${L}p2 $W/m; N=$(find $W/m -name '*.new'); R=$(cmp $W/r0 $W/m/EFI/rudolf/rudolf.efi && cmp $W/new/EFI/rudolf/recovery.efi $W/m/EFI/rudolf/recovery.efi && echo same); umount $W/m
 ok "3. a new file that does not check after it is written: the files as they were (recovery.efi, taken out for room, back), no NAME.new left, said" "$(echo "$o" | grep -q 'were put back as they were' && echo "$o" | grep -q 'rc=9' && [ -z "$N" ] && [ "$R" = same ] && echo 1)" "$o"
 rm -rf $W/keep; o=$(run 2>&1; echo "rc=$?")

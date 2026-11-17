@@ -40,10 +40,14 @@ jobs:
           gh release download disc-1.4.1 -p rudolf-os-1.4.1-boot.iso -p rudolf-os-1.4.1-boot.iso.sha256 && sha256sum -c rudolf-os-1.4.1-boot.iso.sha256
           ls -la rel old; echo "::notice title=Boot entry QEMU check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)) after $O ($(sed -n 's/^version //p' old/manifest.txt)), fix=$N_fix"
       - name: The released rudolfd and the host test (bootentry60_t.sh)
+        id: h1
+        continue-on-error: true
         run: |
           unsquashfs -q -d sq rel/base.sfs usr/bin/rudolfd && ls -la sq/usr/bin/rudolfd
           sudo env BOOTISO=$PWD/rel/boot.iso RELEASED=$PWD/sq/usr/bin/rudolfd sh iso/qt/host/bootentry60_t.sh
       - name: bootfiles.sh on drives made from the boot images (bootfiles60_t.sh)
+        id: h2
+        continue-on-error: true
         run: sudo env BOOTISO=$PWD/rel/boot.iso OLDBOOT=$PWD/rudolf-os-1.4.1-boot.iso sh iso/qt/host/bootfiles60_t.sh
       - name: This tree's rudolfd, espcheck and bootfiles.sh
         if: env.N_fix == '1'
@@ -53,6 +57,8 @@ jobs:
       - name: t160b
         run: |
           mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} B160_FIX=${B160_FIX:-} python3 ../iso/qt/sb/t160b_t.py ../rel ../old ../rudolf-os-1.4.1-boot.iso
+      - name: The host tests' results
+        run: echo "bootentry60 ${{ steps.h1.outcome }}, bootfiles60 ${{ steps.h2.outcome }}"; [ "${{ steps.h1.outcome }}" = success ] && [ "${{ steps.h2.outcome }}" = success ]
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: t160b, retention-days: 7, path: "run/t160b.txt\nrun/t160b*/qemu.log\nrun/t160b*/serial.txt"}
