@@ -38,9 +38,14 @@ a{color:var(--lk);text-decoration:none}a:hover{text-decoration:underline}
 <script>function go(u){parent.postMessage({go:u},'*')}var i=document.getElementById('s');function f(){go(i.value)}document.getElementById('b').onclick=f;i.onkeydown=function(e){if(e.key=='Enter')f()};i.focus()`+'</'+'script></body></html>'}}
 /* Oracle's Dark pages: the start page picks its own colours instead of being inverted */
 {const o=webDarkHtml;webDarkHtml=function(h){if(typeof h=='string'&&h.includes(ORACLE_HOME_MARK))return h.replace(ORACLE_HOME_MARK+"auto'",ORACLE_HOME_MARK+(oracleDark()?'dark':'light')+"'");return o.apply(this,arguments)}}
-/* Rudolf's dark theme turned on or off: open start pages follow */
-let ORACLE_HOME_MODE=null;
-function oracleHomeRefresh(){const m=oracleDark();if(m===ORACLE_HOME_MODE)return;ORACLE_HOME_MODE=m;
- document.querySelectorAll('.win.oracle .fh iframe').forEach(fr=>{if(typeof fr._html=='string'&&fr._html.includes(ORACLE_HOME_MARK))fr.srcdoc=webDarkHtml(fr._html)})}
+/* Rudolf's dark theme turned on or off (Settings, or the dynamic theme at dusk and dawn: themeApply): each open start page is
+   drawn again when the mode it was drawn in is not the mode now (each page's own, not one remembered mode: a page opened after
+   the last change was drawn in the new mode already) */
+function oracleHomeRefresh(){const want=ORACLE_HOME_MARK+(oracleDark()?'dark':'light')+"'";
+ document.querySelectorAll('.win.oracle .fh iframe').forEach(fr=>{if(typeof fr._html=='string'&&fr._html.includes(ORACLE_HOME_MARK)&&!String(fr.srcdoc).includes(want))fr.srcdoc=webDarkHtml(fr._html)})}
 {const o=applySet;applySet=function(){const r=o.apply(this,arguments);try{setTimeout(oracleHomeRefresh,0)}catch(e){}return r}}
-setTimeout(()=>{ORACLE_HOME_MODE=oracleDark()},0);
+{const o=themeApply;themeApply=function(){const r=o.apply(this,arguments);try{setTimeout(oracleHomeRefresh,0)}catch(e){}return r}}
+/* Oracle's window in Rudolf's dark theme: the window's body showed white (its inline #fff) in the 8 px between the page and the
+   status bar and under it, a white strip under the dark start page. It takes the dark window's colour instead, as the bars around
+   it; the page's own area (.fh, under each page) is unchanged. Light theme: as before. */
+{const st=document.createElement('style');st.textContent='html.dark .win.oracle>.body{background:#0f172a!important}';document.head.appendChild(st)}
