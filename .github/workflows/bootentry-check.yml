@@ -1,0 +1,56 @@
+# docs/plan-1.6.0.md "Before stable" 15: the owner's Vivobook of 2026-11-16 on the real releases in QEMU (iso/qt/sb/t160b_t.py):
+# 1.4.1's boot image on the drive, 1.5.9 stable, the update to 1.6.0, its automatic repair of the start-up files, the engine
+# switch and the restart; the firmware's entries before and after each step; a start from a USB stick and one without. Also
+# the host test of rudolfd's firmware entry (iso/qt/host/bootentry60_t.sh) with the release's own rudolfd beside this tree's.
+# Run by a push that changes .github/b160-run.txt: serial=SERIAL (empty: the newest beta), fix=1 (this tree's rudolfd,
+# espcheck and bootfiles.sh put in place where the test says). Nothing is published.
+name: Boot entry QEMU check
+on:
+  push:
+    paths: ['.github/b160-run.txt']
+permissions: {contents: read}
+jobs:
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: for k in serial fix old; do echo "N_$k=$(sed -n "s/^$k=//p" .github/b160-run.txt | head -1)" >> $GITHUB_ENV; done
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs mtools squashfs-tools zlib1g-dev bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The releases (1.6.0, 1.5.9 stable) and 1.4.1's boot image
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          rel() { mkdir -p $1; gh release download "r$2" -D $1 -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs' $3
+            for c in files/$2 beta stable; do git show origin/gh-pages:$c/manifest.txt > $1/manifest.txt 2>/dev/null && grep -q "^serial $2$" $1/manifest.txt && { git show origin/gh-pages:$c/manifest.sig > $1/manifest.sig; break; }; done
+            grep -q "^serial $2$" $1/manifest.txt || { echo "no release list for $2"; exit 1; }; }
+          S="$N_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          O="$N_old"; [ -n "$O" ] || O=2026111503
+          rel rel $S "-p boot.iso -p boot.iso.sha256"; (cd rel && sha256sum -c boot.iso.sha256)
+          rel old $O
+          gh release download disc-1.4.1 -p rudolf-os-1.4.1-boot.iso -p rudolf-os-1.4.1-boot.iso.sha256 && sha256sum -c rudolf-os-1.4.1-boot.iso.sha256
+          ls -la rel old; echo "::notice title=Boot entry QEMU check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)) after $O ($(sed -n 's/^version //p' old/manifest.txt)), fix=$N_fix"
+      - name: The released rudolfd and the host test (bootentry60_t.sh)
+        run: |
+          unsquashfs -q -d sq rel/base.sfs usr/bin/rudolfd && ls -la sq/usr/bin/rudolfd
+          sudo env BOOTISO=$PWD/rel/boot.iso RELEASED=$PWD/sq/usr/bin/rudolfd sh iso/qt/host/bootentry60_t.sh
+      - name: This tree's rudolfd, espcheck and bootfiles.sh
+        if: env.N_fix == '1'
+        run: |
+          mkdir -p fix && gcc -O2 -o fix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          cp iso/sys/root/usr/lib/rudolf/espcheck iso/sys/root/usr/lib/rudolf/bootfiles.sh fix/ && ls -la fix && echo "B160_FIX=$PWD/fix" >> $GITHUB_ENV
+      - name: t160b
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} B160_FIX=${B160_FIX:-} python3 ../iso/qt/sb/t160b_t.py ../rel ../old ../rudolf-os-1.4.1-boot.iso
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: t160b, retention-days: 7, path: "run/t160b.txt\nrun/t160b*/qemu.log\nrun/t160b*/serial.txt"}
