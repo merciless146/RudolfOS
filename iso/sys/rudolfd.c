@@ -703,6 +703,10 @@ static void api_net(struct req *r)
 }
 
 /* ------------------------------------------------------------- disks */
+/* 1.6.0: Settings' one-time offer of the native desktop (plan Part 12); 1.6.1 turns it on with Native the default */
+#ifndef NATIVE_OFFER
+#define NATIVE_OFFER 0
+#endif
 static void api_disks(struct req *r)
 {
 	/* (1.6.0: not the system's own device-mapper devices either, dm-N: its checked layers and encrypted folder, which the
@@ -4594,8 +4598,9 @@ static void api(struct req *r)
 			failed ? "true" : "false", access(RUN "/persistent", F_OK) ? "false" : "true");
 		/* 1.5.7: Lite given up for good by the session ("<time> <why>"), until it is chosen again */
 		sjson(&s, fw ? fw : "");
-		/* 1.6.0: offer the native desktop once to a computer updated on Standard (a new installation starts with it: install.sh) */
-		sadd(&s, ",\"offer\":%s}", native && !strcmp(ch, "chromium") && !fw && !access(RUN "/persistent", F_OK) && access(PERSIST "/etc/rudolf-native-offered", F_OK) ? "true" : "false");
+		/* 1.6.0: offer the native desktop once to a computer updated on Standard (a new installation starts with it: install.sh).
+		   NATIVE_OFFER 0 in 1.6.0 (the owner, 2026-11-17: Standard the default in 1.6.0, Native in 1.6.1): never offered */
+		sadd(&s, ",\"offer\":%s}", NATIVE_OFFER && native && !strcmp(ch, "chromium") && !fw && !access(RUN "/persistent", F_OK) && access(PERSIST "/etc/rudolf-native-offered", F_OK) ? "true" : "false");
 		free(c); free(n); free(fw); reply_json(r->fd, &s); return;
 	}
 	/* 1.5.7: Task Manager opened by Ctrl+Alt+Del or Ctrl+Shift+Esc puts the desktop's processes first (rudolf-display

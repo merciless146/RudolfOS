@@ -762,6 +762,10 @@ Native there, Standard in use, never given up on this computer, an installed Rud
 offered=1, and any engine chosen in Settings, keep it as made in /persist/etc/rudolf-native-offered). Settings names it
 Native (no longer "Native (test)"). Tests: qt/host/nativedefault60_t.sh 12, qt/shell2/engine57_t.js 20 (new 4f-4i).
 Not done here: the release check's 900 MB measurement on the Vivobook.
+**Changed (owner, 2026-11-17): "Make Standard the default in 1.6.0 with the transition to Native default in 1.6.1."**
+Beta 2026111713 on the Vivobook: the icons and Oracle's keys fixed (#470), Discord and Steam slow or not starting on
+Native not yet (cause unknown). 1.6.0 ships Standard as the default (install.sh's NATIVE_DEFAULT=0) and does not offer
+Native after an update (rudolfd's NATIVE_OFFER 0); Native stays in Settings. docs/plan-1.6.1.md Part 14 turns both on.
 **Decided (owner, 2026-11-16): "Native is going to be the default for new installations."** The switch above (#384) is on
 main; "Before stable" item 5.
 

@@ -73,9 +73,12 @@ echo "Step 5/5: finishing ..."
 mkdir -p /mnt/newdata && mount "$P" /mnt/newdata
 mkdir -p /mnt/newdata/home/rudolf /mnt/newdata/os /mnt/newdata/etc
 chown 1000:1000 /mnt/newdata/home/rudolf
-# 1.6.0 (plan Part 12, "Becoming the default"): a new installation starts with the native desktop (on trial: the session
-# goes back to Standard if it does not start); an update keeps the engine the computer had, and Settings offers Native once
-[ -x /usr/bin/rudolf-native ] && [ -x /opt/chromium/chrome ] && { echo native > /mnt/newdata/etc/rudolf-desktop-engine; echo 1 > /mnt/newdata/etc/rudolf-native-offered; }
+# 1.6.0 (plan Part 12, "Becoming the default"): with NATIVE_DEFAULT=1 a new installation starts with the native desktop
+# (on trial: the session goes back to Standard if it does not start); an update keeps the engine the computer had.
+# The owner, 2026-11-17: "Make Standard the default in 1.6.0 with the transition to Native default in 1.6.1" (Discord and
+# Steam on Native on the Vivobook not fixed yet): 0 in 1.6.0, so a new installation starts on Standard; 1.6.1 sets 1.
+NATIVE_DEFAULT=0
+[ "$NATIVE_DEFAULT" = 1 ] && [ -x /usr/bin/rudolf-native ] && [ -x /opt/chromium/chrome ] && { echo native > /mnt/newdata/etc/rudolf-desktop-engine; echo 1 > /mnt/newdata/etc/rudolf-native-offered; }
 # 1.5.3: Install here from a Rudolf OS whose drive has boot files only (an installed Rudolf OS, or a stick made from
 # one): the image just written has no system, so the running system is copied into the new RUDOLFDATA and checked
 # (oscopy.sh). Before, the HP's drive got boot files and an empty os folder, and stopped at "boot files only".
