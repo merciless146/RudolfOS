@@ -80,6 +80,7 @@ engine, then restart), and report any difference with a photo of both.
 | V48 | Drag a file from File Explorer to Notepad and to Trash; copy text between Notepad, Oracle and a Linux app | Dropped and pasted | The same |
 | V49 | Screen saver: wait for it, move the mouse | The saver, then the lock if set | The same |
 | V50 | Accessibility: magnifier, screen reader, high contrast | Each works over the whole screen | Native's (plan item 10) |
+| V57 | Drag a file from a Linux app's file manager (Debian's, or a Flatpak's) onto the desktop, onto a desktop folder, onto the Trash, and onto Notepad's taskbar button and into Notepad (#444, kept in 1.6.0 on 2026-11-16) | Copied to the Desktop folder / the folder; the Trash; Notepad opens it | The same, the icon on the desktop at once |
 
 ## Background work: alarms, reminders and notices with no window or several open (Part 12, item 12)
 
