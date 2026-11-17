@@ -20,7 +20,8 @@ jobs:
           sudo apt-get update -qq; sudo apt-get install -y -qq zlib1g-dev curl >/dev/null
           python3 iso/qt/host/rootbuild161_t.py
           sudo sh iso/qt/host/roothelpers161_t.sh
-          for t in peer59_t.sh deskapi59_t.sh homeapi_t.sh listeners59_t.sh; do echo "== $t"; sudo sh iso/qt/host/$t || exit 1; done
+          for t in peer59_t.sh deskapi59_t.sh homeapi_t.sh; do echo "== $t"; sudo sh iso/qt/host/$t || exit 1; done
+          echo "== listeners59_t.sh"; sh iso/qt/host/listeners59_t.sh   # (as ci_release.sh runs it: not as root)
           FUZZ_SECONDS=60 sh iso/qt/host/fuzz59_t.sh
   qemu:
     runs-on: ubuntu-24.04
