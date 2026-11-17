@@ -10,6 +10,8 @@ Summary: In progress.
   that checks every name and file again itself (a disc image must really be in your home folder, yours or the signed-in
   account's), run by rudolf-rootd, which only rudolfd can ask. Nothing changes in how the desktop works; it is the first
   step towards rudolfd no longer running as root.
+- Security: system updates (checking, downloading, rolling back, going back to stable, Return to official, Developer
+  mode, the update settings) go through a helper of their own the same way, which checks again what rudolfd is asked.
 
 ## 1.6.0 (in progress)
 Summary: In progress.

@@ -18,6 +18,8 @@ for s in devplug install.sh bootfiles.sh mkstick.sh keepfiles.sh; do
 	printf '#!/bin/sh\necho "%s $*|sha=$RUDOLF_IMG_SHA|path=$PATH|leak=$LEAKME|uid=$(id -u)" >> %s/calls\n[ "$1" = --info ] || echo "ran %s $*"\n[ "$1" = --info ] && echo "{\\"rudolf\\":true,\\"info\\":{\\"disk\\":\\"$2\\"}}"\n[ "$1" = eject ] && [ "$2" = sdb ] && { echo "a file on the drive is still open" >&2; exit 1; }\nexit 0\n' "$s" $T "$s" > $T/lib/$s
 	chmod 755 $T/lib/$s
 done
+printf '#!/bin/sh\necho "ru $*|path=$PATH|leak=$LEAKME" >> %s/calls\ncase "$1" in status) echo "{\\"ok\\":true,\\"slot\\":\\"a\\"}";; stable-info) echo "{\\"stable\\":\\"1.6.0\\"}";; speedtest) echo "bytes 1000"; echo "ms 20";; rollback) echo "rolled back to slot b";; developer) echo "Developer mode is $2";; set) [ "$3" = bad ] && echo "no such value";; esac\nexit 0\n' $T > $T/ru; chmod 755 $T/ru
+mkdir -p $T/persist/os/current; echo old > $T/persist/os/current/index.html
 echo iso > $T/home/rudolf/Downloads/good.iso; chown 1000:1000 $T/home/rudolf/Downloads/good.iso
 ln -s /etc/passwd $T/home/rudolf/Downloads/link.iso; ln -s /etc $T/home/rudolf/Downloads/out
 echo other > $T/home/rudolf/Documents/other.iso; chown 1005:1005 $T/home/rudolf/Documents/other.iso
@@ -33,10 +35,12 @@ RR_TEST_RUN=$T/run
 RR_TEST_AUMAP=$T/aumap
 RR_TEST_HEALTH=$T/health.log
 RR_TEST_DIR=$T/root
+RR_TEST_UPDATE=$T/ru
+RR_TEST_PERSIST=$T/persist
 EOF
-CF="-O2 -Wall -DRR_TEST -DRR_TEST_CONF=\"$T/rr.conf\""
-gcc $CF -o $T/root/drives $SYS/rudolf-drives.c && gcc $CF -o $T/rudolf-rootd $SYS/rudolf-rootd.c || { echo "FAIL build"; exit 1; }
-chmod 700 $T/root/drives
+CF="-O2 -Wall -Wno-format-truncation -DRR_TEST -DRR_TEST_CONF=\"$T/rr.conf\""
+gcc $CF -o $T/root/drives $SYS/rudolf-drives.c && gcc $CF -o $T/root/updates $SYS/rudolf-updates.c && gcc $CF -o $T/rudolf-rootd $SYS/rudolf-rootd.c || { echo "FAIL build"; exit 1; }
+chmod 700 $T/root/drives $T/root/updates
 D=$T/root/drives
 calls() { cat $T/calls 2>/dev/null; : > $T/calls; }
 logged() { c=$(grep -c "$1" $T/health.log 2>/dev/null); echo ${c:-0}; }
@@ -78,6 +82,21 @@ ok "11. unmount: /media/NAME unmounted, its folder and its record gone" "$([ $r 
 mkdir -p $T/media/sdb1; ln -s / $T/media/sdb1/x 2>/dev/null; $D umount sdb1 >/dev/null 2>&1; r=$?
 ok "...nothing mounted there: as before (its status 0, the shell's rm -f's), nothing else touched" "$([ $r = 0 ] && [ -d $T/media/sdb1 ] && echo 1)" "$r"
 rm -rf $T/media/sdb1
+
+# ---- the updates helper's checks
+U=$T/root/updates
+for c in check download rollback stable-info to-stable status speedtest boot-ok; do env -i $U $c >/dev/null 2>&1 || echo "rc $c"; done > $T/u.rc; c=$(calls)
+ok "12a. updates: rudolf-update's own commands, each as it is, with nothing of the caller's environment" "$([ ! -s $T/u.rc ] && [ "$(echo "$c" | grep -c '^ru [a-z-]*|path=/usr/sbin:/usr/bin:/sbin:/bin|leak=$')" = 8 ] && echo 1)" "$(cat $T/u.rc) $c"
+b=0; OIFS=$IFS; for a in "check|now" "status|--x" "return-official" "return-official|maybe" "set" "set|url" "set|url|a;b" "set|url|a b" 'set|url|$(id)' "set|auto|'x'" "set|channel|nightly" "set|other|x" "set|url|https://merciless146.github.io/RudolfOS/beta/" "developer|on" "developer|on|short|https://x" "developer|on|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=|" "developer|on|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=|https://x/a?b" "developer|maybe" "page-install|now" "frobnicate"; do
+	IFS='|'; set -- $a; IFS=$OIFS; $U "$@" >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $a)"; }; done; c=$(calls)
+ok "12b. updates: arguments where none belong, an unknown setting or channel, odd characters, the beta address as an update address, a key that is not 44 base64 characters: refused, nothing run" "$([ $b = 0 ] && [ -z "$c" ] && echo 1)" "$b $c"
+ok "...said in the health log" "$([ "$(logged 'updates helper refused')" -ge 20 ] && echo 1)" "$(logged 'updates helper refused')"
+$U return-official erase >/dev/null; $U set channel beta >/dev/null; $U set url https://example.org/x/ >/dev/null; $U developer on AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= https://dev.example/r >/dev/null; $U developer off >/dev/null; c=$(calls)
+ok "12c. updates: Return to official, the channel, an address, Developer mode on and off: handed on as they are, logged" "$(echo "$c" | grep -q '^ru return-official erase|' && echo "$c" | grep -q '^ru set channel beta|' && echo "$c" | grep -q '^ru set url https://example.org/x/|' && echo "$c" | grep -q '^ru developer on AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= https://dev.example/r|' && echo "$c" | grep -q '^ru developer off|' && grep -q 'Developer mode was turned on' $T/health.log && echo 1)" "$c"
+head -c 50000 /dev/zero | tr '\0' x | $U page-install >/dev/null 2>&1; r=$?; { printf '<html>'; head -c 150000 /dev/zero | tr '\0' x; } | $U page-install >/dev/null 2>&1; r2=$?
+ok "12d. the desktop's page: one that is not a page (or too small) refused; one that is: the old page kept as the previous one" "$([ $r = 2 ] && [ $r2 = 0 ] && [ "$(cat $T/persist/os/previous/index.html)" = old ] && [ "$(head -c 6 $T/persist/os/current/index.html)" = '<html>' ] && [ ! -e $T/persist/os/new ] && echo 1)" "$r $r2 $(ls -R $T/persist/os)"
+$U page-rollback; r=$?; $U page-rollback; r2=$?
+ok "...rolled back: the previous page is the current one again; with none, the current one goes (status 0 both times, as before)" "$([ $r = 0 ] && [ $r2 = 0 ] && [ ! -e $T/persist/os/current ] && echo 1)" "$r $r2 $(ls -R $T/persist/os)"
 
 # ---- rudolf-rootd: only the program it started may ask, only known helpers, never a shell
 cat > $T/cl.c <<'EOF'
@@ -137,18 +156,24 @@ ok "18. nothing to connect to: without the descriptor a program has no way in (r
 # ---- rudolfd's API for drives: the helper run by rudolfd itself (root, no rudolf-rootd), and through rudolf-rootd
 mount -t tmpfs none /run; mkdir -p /run/rudolf /usr/share/rudolf/www /home/rudolf /persist
 mount --bind $HERE/../../www /usr/share/rudolf/www; mount -t tmpfs none /home/rudolf; mount -t tmpfs none /persist
-gcc -O2 -w -DRD_ROOT_DIR="\"$T/root\"" -o $T/rudolfd $SYS/rudolfd.c -lz || { echo "FAIL build rudolfd"; exit 1; }
+gcc -O2 -w -DRD_ROOT_DIR="\"$T/root\"" -DRU_BIN="\"$T/ru\"" -o $T/rudolfd $SYS/rudolfd.c -lz || { echo "FAIL build rudolfd"; exit 1; }
 # (the stand-in home for the helper is the real /home/rudolf here, a tmpfs, as rudolfd's API checks the image's place)
-sed -i "s|^RR_TEST_HOME=.*|RR_TEST_HOME=/home/rudolf|" $T/rr.conf; mkdir -p /home/rudolf/Downloads; echo iso > /home/rudolf/Downloads/r.iso; chown -R 1000:1000 /home/rudolf
+sed -i "s|^RR_TEST_HOME=.*|RR_TEST_HOME=/home/rudolf|; s|^RR_TEST_PERSIST=.*|RR_TEST_PERSIST=/persist|" $T/rr.conf; : > /run/rudolf/persistent; mkdir -p /home/rudolf/Downloads; echo iso > /home/rudolf/Downloads/r.iso; chown -R 1000:1000 /home/rudolf
 api() { m=$1; p=$2; curl -s -X $m -H "X-Rudolf-Token: $TOK" "http://127.0.0.1:8080/api/$p"; echo; }
 jobwait() { w8 'curl -s -H "X-Rudolf-Token: $TOK" http://127.0.0.1:8080/api/job | grep -q "\"running\":false"' 40; api GET job | sed 's/"log":"[^"]*"/"log":LOG/'; }
 probe() {
+	api POST heartbeat >/dev/null; w8 '[ -e /run/rudolf/bootok ]' 20; timeout 1 tail -f /dev/null; rm -f /run/rudolf/bootok /run/rudolf/update.log
 	api POST 'mount?dev=sdb1'; api POST 'mount?dev=..%2Fsdb1'; api POST 'umount?dev=sdb1'; api POST 'eject?dev=sdb1'; api POST 'eject?dev=sdb'
 	api GET 'stick/info?disk=sdb'; api GET 'stick/info?disk=sdq'
 	api POST 'install?disk=sdb&confirm=sdb&image=%2Fhome%2Frudolf%2FDownloads%2Fr.iso&sha='$SHA; jobwait
 	api POST 'install?disk=sdb&confirm=sdb&bootonly=1'; jobwait
 	api POST 'mkstick?disk=sdb&confirm=sdb&files=1'; jobwait
 	api POST 'keepfiles'; jobwait
+	api GET sys/status; api GET sys/stable; api POST sys/check; jobwait; api POST sys/rollback; api POST 'sys/set?k=url&v=https%3A%2F%2Fexample.org%2Fr'
+	api POST 'sys/set?k=auto&v=bad'; api POST 'sys/developer?on=1&key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA%3D&url=https%3A%2F%2Fdev.example'; api POST 'sys/developer?on=0'
+	api POST 'sys/return?erase=0'; jobwait; api GET speedtest; api POST sys/beta?on=0
+	{ printf '<html>'; head -c 120000 /dev/zero | tr '\0' x; } > $T/page.html; curl -s -X POST -H "X-Rudolf-Token: $TOK" --data-binary @$T/page.html http://127.0.0.1:8080/api/update; echo
+	api POST rollback; ls /persist/os 2>&1 | tr '\n' ' '; echo
 }
 start() { : > $T/rd.log; $1 > $T/rd.log 2>&1 & RDP=$!; w8 'curl -s http://127.0.0.1:8080/favicon.png -o /dev/null' 60
 	TOK=$(curl -s http://127.0.0.1:8080/ | sed -n 's/.*RUDOLFD={token:"\([0-9a-f]*\)".*/\1/p' | head -1); }
@@ -161,6 +186,7 @@ grep -q 'through rudolf-rootd' $T/rd.log; d2=$?; stop
 ok "19. rudolfd says how it runs the helpers (by itself as root; through rudolf-rootd)" "$([ $d1 = 0 ] && [ $d2 = 0 ] && echo 1)" "$(cat $T/rd.log | head -5)"
 ok "20. the API for drives answers the same, byte for byte, either way (mount, unmount, eject, a stick's information, install, Replace the boot files, Make a stick, Keep files, a refusal)" "$([ -n "$A" ] && [ "$A" = "$B" ] && echo 1)" "$(printf '%s\n---\n%s' "$A" "$B" | head -40)"
 ok "...and the helper ran the same scripts the same way" "$([ -n "$CA" ] && [ "$CA" = "$CB" ] && echo "$CA" | grep -q "^install.sh /dev/sdb /home/rudolf/Downloads/r.iso|sha=$(echo $SHA | tr A-F a-f)|" && echo "$CA" | grep -q '^bootfiles.sh write /dev/sdb |' && echo "$CA" | grep -q '^mkstick.sh /dev/sdb  1|' && echo 1)" "$(printf '%s\n---\n%s' "$CA" "$CB")"
-ok "...the answers as before 1.6.1: mounted, a bad device refused by rudolfd, safe to remove, eject's own error, the stick's information, the jobs ended 0" "$(echo "$A" | sed -n 1p | grep -q '"mounted"' && echo "$A" | sed -n 2p | grep -q 'bad device' && echo "$A" | sed -n 3p | grep -q 'safe to remove' && echo "$A" | sed -n 5p | grep -q 'still open' && echo "$A" | sed -n 6p | grep -q '"disk":"/dev/sdb"' && echo "$A" | sed -n 8p | grep -q '"rudolf":false' && [ "$(echo "$A" | grep -c '"status":0')" = 4 ] && echo 1)" "$A"
+ok "...the answers as before 1.6.1: mounted, a bad device refused by rudolfd, safe to remove, eject's own error, the stick's information, the jobs ended 0" "$(echo "$A" | sed -n 1p | grep -q '"mounted"' && echo "$A" | sed -n 2p | grep -q 'bad device' && echo "$A" | sed -n 3p | grep -q 'safe to remove' && echo "$A" | sed -n 5p | grep -q 'still open' && echo "$A" | sed -n 6p | grep -q '"disk":"/dev/sdb"' && echo "$A" | sed -n 8p | grep -q '"rudolf":false' && [ "$(echo "$A" | grep -c '"status":0')" = 6 ] && echo 1)" "$A"
+ok "20b. ...and for updates: status, a check (a job), roll back, the settings, Developer mode, Return to official, the speed test, beta off, the desktop's page and its roll back" "$(echo "$A" | grep -q '"slot":"a"' && echo "$A" | grep -q 'rolled back to slot b' && echo "$A" | grep -q 'no such value' && echo "$A" | grep -q 'Developer mode is on' && echo "$A" | grep -q 'update installed; restart to use it' && echo "$A" | grep -q 'returned to the previous version' && echo "$CA" | grep -q '^ru check|' && echo "$CA" | grep -q '^ru return-official keep|' && echo "$CA" | grep -q '^ru set channel stable|' && echo "$CA" | grep -q '^ru boot-ok|' && echo 1)" "$A $CA"
 ok "21. rudolfd keeps rudolf-rootd's descriptor close-on-exec (nothing it starts has it)" "$(echo "$FDS" | python3 -c 'import sys,re; t=sys.stdin.read(); m=re.search(r"flags:\s*([0-7]+)", t); print(1 if m and int(m.group(1), 8) & 0o2000000 and "socket:" in t else 0)')" "$FDS"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

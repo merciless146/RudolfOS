@@ -220,10 +220,10 @@ rudolfd runs as root today (they keep running as root, from the helper).
 | Drives | the vault: `vault_add_key`, `vault_key_spec_remove`, `vault_feature` (POST vault/*), vault-move (job), the Flatpak bind at unlock | fscrypt on the encrypted folder (1.5.0), tune2fs -l, mount --bind of /var/lib/flatpak, vault-move | drives (next) |
 | Drives | `addpart` (rudolfd --addpart, run by the scripts) | BLKPG ioctl on a disk | stays (a separate run by root scripts, not a request) |
 | Drives | `api_disks`, `api_storage` (storage-measure) | blkid of every disk (needs read access to /dev), du of the whole system | drives (read-only actions) |
-| Updates | sys/check, sys/download, sys/tostable, sys/return (jobs) | rudolf-update: slots on RUDOLFDATA, the manifest's signature, the ESP | **update** |
-| Updates | sys/rollback, sys/set, sys/beta, sys/developer, sys/stable, sys/status, speedtest, boot-ok (at the desktop's first ping) | rudolf-update's state in /persist/os, its settings in /persist/etc | **update** |
-| Updates | the old slot routine (POST os/…: mkdir, mv, rm -rf of /persist/os/new, current, previous) | files of root's on RUDOLFDATA | update |
-| Updates | bootmenu, secureboot (`efivar_write`, `unimmutable`, `boot_entry_ensure`), MokNew/MokAuth | EFI variables (/sys/firmware/efi/efivars: chattr -i, writes) | update (the boot entries) |
+| Updates | sys/check, sys/download, sys/tostable, sys/return (jobs) | rudolf-update: slots on RUDOLFDATA, the manifest's signature, the ESP | **updates** (moved) |
+| Updates | sys/rollback, sys/set, sys/beta, sys/developer, sys/stable, sys/status, speedtest, boot-ok (at the desktop's first heartbeat) | rudolf-update's state in /persist/os, its settings in /persist/etc | **updates** (moved) |
+| Updates | the desktop's page update (POST update, POST rollback: /persist/os/new, current, previous) | files of root's on RUDOLFDATA | **updates** (moved) |
+| Updates | bootmenu, secureboot (`efivar_write`, `unimmutable`, `boot_entry_ensure`), MokNew/MokAuth | EFI variables (/sys/firmware/efi/efivars: chattr -i, writes) | updates (the boot entries, next) |
 | Accounts | `au_start`, `au_install`, `au_sync`, `au_migrate`, `au_mv_one` | /etc/passwd, group, shadow written (the per-account Linux users of 1.5.9 15.3 / 1.6.0 Part 10), lchown of the moved folders | accounts |
 | Accounts | `au_session_start`, `au_session_stop`, `au_kill_user`, `au_xaccess` | /home/acctUID bind mount, /run/user/UID made and chowned, the session D-Bus and portal started as the account's user (setuid), its processes killed, X's localuser access | accounts |
 | Accounts | `api_keyring` (keyring/*) | /usr/lib/rudolf/keyring as root for the account's key files | accounts |
@@ -330,7 +330,17 @@ rudolfd runs as root today (they keep running as root, from the helper).
   through rudolf-rootd; mkrootfs.sh and ci_release.sh build and install them (root's 0700, checked); ci_release.sh runs
   the two host tests. Found and kept as it was (the API unchanged): unmount answers "safe to remove" even when umount
   failed (the old command's status was its last part's, rm -f); for the owner to decide, not changed here.
-- Next: updates; then drives, part 2 with the accounts' sessions (the encrypted folders' unlock and lock, the binds,
+- **Updates (2026-11-17, branch root-helpers-update, after root-helpers-drives):** the updates helper
+  (iso/sys/rudolf-updates.c, /usr/lib/rudolf/root/updates): every rudolf-update command rudolfd ran (check, download,
+  rollback, stable-info, to-stable, status, speedtest, boot-ok, return-official keep|erase, set url|auto|channel,
+  developer on|off), the arguments checked again as rudolfd checks them (the beta address only through set channel
+  beta; a developer's key 44 characters of base64; addresses without spaces or quotes), and the desktop's page
+  update (POST update, the page on standard input; POST rollback). Found and kept as they were: POST rollback always
+  answers "returned to the previous version" (the old command's status was sync's); the page update is not signed
+  (any holder of the token can replace the desktop's page until a restart) and Developer mode and Return to official
+  are asked an administrator's password by the page only, not by rudolfd: for the owner (the accounts step can move the
+  administrator's check into the helpers, the password on standard input).
+- Next: drives, part 2 with the accounts' sessions (the encrypted folders' unlock and lock, the binds,
   the downloads' store, the vault: at sign-in home_unlock, home_bind, dl_store_bind and au_session_start are one chain,
   so they move as one helper action, "drives home-unlock ACCT [session]", the account checked against the account list
   and its key on standard input, never an argument; sign-out the same with home-lock); accounts; power; network;
