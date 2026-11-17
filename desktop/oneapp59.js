@@ -516,7 +516,29 @@ function oaFs(){const q=ONEAPP.q,op=q.get('op')||'',p=resolve(ONEAPP.file||'',['
     page's window, if it makes one, is the file's window) */
  if(op=='drop'){const k=q.get('in')||'';let r=false;try{r=!!__dropFileOnWindow({app:k},p)}catch(e){console.warn(e)}
   setTimeout(()=>{if(!OA.main)oaFin(r?{}:{err:'nothing'})},1500);return}
+ /* (1.6.1 Part 13) files dropped from a Linux app onto the native desktop (the shell took the X drop): what shell25.js's DESK drop does with
+    Chromium's files on Standard, each file read through rudolfd (desktop/dropped: the account's own files and the drives, read by its
+    Linux user) instead of by the browser */
+ if(op=='xdrop'){oaXdrop(q).then(r=>oaFin(Object.assign({xd:'1'},r)),e=>{console.warn(e);oaFin({xd:'1',err:String(e&&e.message||e)})});return}
  oaFin({err:'Unknown: '+op})}
+/* the type Chromium gives a dropped file (its own list of names: net/base/mime_util.cc), which decides, as on Standard, whether the page
+   keeps it as text or as a data: URL */
+const OA_XTYPE={html:'text/html',htm:'text/html',shtml:'text/html',shtm:'text/html',ehtml:'text/html',css:'text/css',xml:'text/xml',xsl:'text/xml',xbl:'text/xml',xslt:'text/xml',
+ js:'text/javascript',mjs:'text/javascript',json:'application/json',txt:'text/plain',text:'text/plain',csv:'text/csv',ics:'text/calendar',vtt:'text/vtt',md:'text/markdown',
+ svg:'image/svg+xml',svgz:'image/svg+xml',xhtml:'application/xhtml+xml',xht:'application/xhtml+xml',rss:'application/rss+xml',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',
+ gif:'image/gif',webp:'image/webp',pdf:'application/pdf',zip:'application/zip',mp3:'audio/mpeg',mp4:'video/mp4',webm:'video/webm',wasm:'application/wasm'};
+const OA_XWHY={'too-large':'','unreadable':'your account may not open it.','link':'it is a link to somewhere else.','outside':'it is not in your files or on a drive.',
+ 'gone':'it is not there any more.','folder':'folders and devices cannot be dropped.','path':'its name is too long.','nobody':'nobody is signed in.'};
+async function oaXdrop(q){let fl=[];try{fl=JSON.parse(q.get('files')||'[]')}catch(e){}if(!Array.isArray(fl))fl=[];
+ const d=deskFiles();if(!d)return{err:'no desktop'};let n=0;
+ for(const p of fl.slice(0,256)){const fn=String(p).split('/').pop()||String(p);let f=null;
+  try{if(!RD)throw new Error('nobody');const r=await fetch('/api/desktop/dropped?path='+encodeURIComponent(String(p)),{headers:{'X-Rudolf-Token':RD.token}});
+   if(!r.ok){let w='';try{w=(await r.json()).error}catch(x){}throw new Error(w||'HTTP '+r.status)}const b=await r.blob();f=new File([b],fn,{type:OA_XTYPE[(fn.match(/\.([^.]+)$/)||[])[1]?.toLowerCase()]||''})}
+  catch(e){const w=String(e&&e.message||e);if(w=='too-large')notify('Too large',fn+' is over 64 MB.',{kind:'error'});else notify('Blocked',fn+' was not copied: '+(OA_XWHY[w]||w),{kind:'error'});continue}
+  /* (from here as shell25.js's drop, line by line) */
+  if(f.size>64*1048576){notify('Too large',f.name+' is over 64 MB.',{kind:'error'});continue}const nm=f.name.toUpperCase().replace(/[\\\/:*?"<>|]/g,'_').slice(0,60);const bin=!/^text\/|json|xml|javascript/.test(f.type)&&!/\.(txt|lua|md|csv|json|html?|css|js|bat|cfg)$/i.test(f.name);
+  const val=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);bin?fr.readAsDataURL(f):fr.readAsText(f)});const g=window.__sys&&secIngress(nm,val,'upload');if(g&&!g.ok){notify('Blocked',g.msg,{kind:'error'});continue}d[uniq(d,nm)]=val;n++}
+ fsSave();EXPL.forEach(f=>f());return{ok:1,n:String(n)}}
 /* (2026-11-16, found on the beta in QEMU at 1280×800) the size Standard's win() gives the window: what the app asked for, kept inside the
    screen's desktop (the screen less the taskbar), not inside this page's own window, which may be smaller when it is made (Settings
    came out 87 px shorter than on Standard on a 1280×800 screen) */

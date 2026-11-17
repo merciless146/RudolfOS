@@ -20,6 +20,7 @@
 #   DIR/tor-on         (made by tor/start) rudolfd's Tor stood in: tor/status says on (1.5.9, plan 16.1)
 #   DIR/stats-on, DIR/shell.json, DIR/lsync.json   (1.6.0) stats answered; the shell's state; the pages' last lsync copy
 #   DIR/health-on, DIR/system.json, DIR/sleep-ms   (1.6.0, hwcnative160_t.sh) the health log, the system's answer, sleep as rudolfd's
+#   DIR/drop-fix       (when there, 1.6.1) fixtures/dropapi.c's command line: desktop/dropped answered by rudolfd's own code
 #   DIR/portal/        (when there, 1.6.0) the Rudolf portal's requests: req/ID.json listed by portal/poll; portal/answer writes
 #                      resp/ID.json, removes the request and adds "ID ANSWER" to portal/answers
 #   DIR/plan.json      (when there, 1.6.0 Part 12 item 12: svc160_t.sh) given as test/plan to the test's script in the pages
@@ -172,6 +173,16 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.j({'ok': True})
         if w == 'devlink/answer':
             o = json.loads(rd('devlink.json', b'{}')); o.pop('pending', None); open(os.path.join(D, 'devlink.json'), 'w').write(json.dumps(o)); return self.j({'ok': True})
+        # (1.6.1 Part 13) a file dropped from outside, read for the page: rudolfd's own desktop/dropped (fixtures/dropapi.c; DIR/drop-fix:
+        # its command line, tab-separated, without the request)
+        if w == 'desktop/dropped' and rd('drop-fix'):
+            import subprocess
+            raw = os.path.join(D, 'drop-raw.%d' % threading.get_ident())
+            o = subprocess.run(rd('drop-fix').decode().strip().split('\t') + ['-serve', 'GET %s?%s' % (w, q)], env=dict(os.environ, DROPAPI_RAW=raw), capture_output=True, timeout=60).stdout.decode('latin-1')
+            st = o.split('|')[0].split(); code = int(st[1]) if len(st) > 1 and st[1].isdigit() else 500
+            try: body = open(raw, 'rb').read(); os.unlink(raw)
+            except OSError: body = b''
+            return self.send(code, body, 'application/octet-stream' if code == 200 else 'application/json')
         # (1.5.9, plan 16.2) Standard's Tor windows: rudolfd's own torwin/* (fixtures/torwinapi.c, its path in DIR/torwin-fix)
         if w.startswith('torwin/') and rd('torwin-fix'):
             import subprocess
