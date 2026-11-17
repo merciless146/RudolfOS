@@ -1489,6 +1489,8 @@ root work split into helpers (Part 11), with files dropped from outside onto the
       on without "Keep on after restarting", off after the restart: devlink59_t.sh 7; Forget the token: t160 31.
 13. **The native desktop's background jobs run once** (Part 12 item 12): alarms, reminders, calls and the rest with no
     app window open, and once with several. Its own task, 2026-11-16.
+14. **Files dropped from Linux apps onto the native desktop** (planned for 1.6.1 Part 13, merged early as #444): kept in
+    1.6.0 by the owner on 2026-11-16 ("Keep it in 1.6.0"). Owner's check: docs/native-vivobook-checklist.md V57.
 
 ## After 1.6.0: the native desktop decision (added on 2026-11-12)
 (2026-11-13: the prototype moved into 1.5.9 as a third desktop engine, Native (test): docs/plan-1.5.9.md Part 12.
