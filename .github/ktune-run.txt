@@ -24,3 +24,6 @@ run memory lz4 MEMRUNS=180:100:lz4,180:150:zstd,200:100:zstd,60:100:zstd,100:100
 run power release+new
 # (the third round, 2026-11-17, whose numbers are in docs/plan-1.6.1.md Part 12; the hw phase and HZ 250 on the same
 #  machine ran in a fifth: run hw release,tree and run latency release,hz250 PREEMPTS=voluntary REPS=3)
+# (memory, a sixth round on the 2026111707 beta: kernel lz4 +ZRAM_BACKEND_LZ4; run memory release with MEMRUNS of
+#  swappiness 60/100/180/200 and zram 1 x / 1.5 x, TABS=500,500,500,300 GAME=1300, twice in two orders; run memory lz4
+#  MEMRUNS=180:100:zstd,180:100:lz4 three times in turn)
