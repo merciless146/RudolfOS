@@ -180,6 +180,9 @@ closed tab, restore the session) and item 7 (reader mode); item 5 (ad and tracke
 stage 1 could start here. The owner decides.
 
 ### 11. rudolfd's root work split into helpers (added on 2026-11-16; from docs/plan-1.5.9.md 15.5)
+
+**Shipped in 1.6.0 (owner, 2026-11-17: "I do want to keep 446 and 447 in 1.6.0"):** rudolf-rootd with the drives' and
+the updates' helpers (#446, #447). The other areas and rudolfd's drop to uid 1000 stay here for 1.6.1.
 Asked for on 2026-11-16: "Add items 5, 8, 9, and 10 to the plan and schedule the tasks accordingly." rudolfd
 (iso/sys/rudolfd.c and its .inc files, about 7,300 lines) runs as root for its whole life while it parses every HTTP
 request of the desktop's page and API: a parsing bug there is a bug with root.
