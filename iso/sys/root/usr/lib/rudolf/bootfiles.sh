@@ -150,7 +150,7 @@ power_ok() {
 # a start-up file's signature: Rudolf OS's for its own (rudolf.efi, recovery.efi, the boot menu grubx64.efi); for shim
 # (BOOTX64.EFI) and MokManager (mmx64.efi), which Microsoft signs, a signature at all; other files: none
 sig_ok() {
-	case "$(basename "$1" | tr A-Z a-z)" in
+	case "$(basename "$1" .new | tr A-Z a-z)" in   # (NAME.new, a file just written, is checked as NAME)
 	bootx64.efi|mmx64.efi) $SBV --list "$1" 2>/dev/null | grep -qi 'signature\|subject';;
 	*.efi) $SBV --cert "$SBCERT" "$1" >/dev/null 2>&1;;
 	*) return 0;; esac; }
@@ -261,7 +261,7 @@ cmd_files() {
 }
 # check|rescue
 cmd_check() {
-	D=$(sys_disk); [ -n "$D" ] || die "Rudolf OS is not installed on a drive here (it keeps no files on a drive)." 3
+	MODE=$1; D=$(sys_disk); [ -n "$D" ] || die "Rudolf OS is not installed on a drive here (it keeps no files on a drive)." 3
 	echo "The drive: $D"; BAD=
 	t=$(inst_table "$D")
 	if [ -z "$t" ]; then echo "Its partition table is not as Install here makes it (1 empty, 2 the EFI system partition, 3 RUDOLFDATA)."; BAD=1
@@ -281,7 +281,7 @@ cmd_check() {
 		o=$(cd "$BT/esp" && find . -name '*.old' | sed 's|^\./||' | tr '\n' ' '); [ -n "$o" ] && echo "  kept from the last change: $o"
 		umount "$BT/esp"
 	else echo "Its EFI system partition (partition 2) cannot be opened."; BAD=1; fi
-	if [ -d /sys/firmware/efi/efivars ]; then echo "The firmware's entry for it:"; rudolfd --boot-entry "$([ "$1" = rescue ] && echo fix || echo check)"; [ $? = 2 ] && BAD=1
+	if [ -d /sys/firmware/efi/efivars ]; then echo "The firmware's entry for it:"; rudolfd --boot-entry "$([ "$MODE" = rescue ] && echo fix || echo check)"; [ $? = 2 ] && BAD=1
 	else echo "This computer started without UEFI: there is no firmware entry."; fi
 	if [ -z "$BAD" ]; then echo "All is right: the computer can start from this drive."; else echo "Not all is right (above)."; fi
 	[ -z "$BAD" ]
