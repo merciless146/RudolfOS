@@ -401,6 +401,9 @@ if [ -z "$SLOT" ] && [ -n "$PERSIST" ] && [ -f $SYSD/state ] && [ -z "$REC" ]; t
 	if [ -n "$T" ] && slot_ok "$T"; then
 		cp $SYSD/$T/vmlinuz /tmp/vmlinuz
 		NC="$CMD rudolf.slot=$T"; [ -n "$TRY" ] && NC="$NC rudolf.trying=1"; [ $SB = 1 ] && NC="$NC rudolf.sb=1 lockdown=integrity"
+		# 1.6.1 (plan-1.6.1.md Part 12): how long this kernel and start-up image took, which the slot's kernel cannot count (its
+		# uptime starts at 0): rudolf-init writes it at the top of the start-up's steps
+		NC="$NC rudolf.t0=$(cut -d' ' -f1 /proc/uptime)"
 		note "start: good=$GOOD prev=$PREV next=$NEXT tries=$TRIES failed=$FAILED -> slot $T${TRY:+ (trying an update)}"
 		# 1.3.0: the same drive and data partition for the slot's kernel
 		if whole "$MEDIA"; then NC="$NC rudolf.mediadisk=$MEDIA"; elif [ -n "$MEDIA" ]; then NC="$NC rudolf.mediadev=$MEDIA"; fi; PU=$(blkid "$PERSIST" 2>/dev/null | sed -n 's/.* UUID="\([^"]*\)".*/\1/p'); [ -n "$PU" ] && NC="$NC rudolf.persist=$PU"
