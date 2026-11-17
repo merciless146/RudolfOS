@@ -1597,8 +1597,11 @@ root work split into helpers (Part 11), with files dropped from outside onto the
        group during a start, an empty group now stays enforced, and refusals are not logged while shutting down
        (peer59_t.sh 12). The 9:48 PM refusal (Linux user 1000, not in the group) is the check working: the desktop's
        user outside the desktop (the websites' Chromium window is, by design); not reproduced in QEMU.
-    Tests: qt/host/bootentry60_t.sh 14/14 (with the released 2026111620 rudolfd: 0a, 0b), bootfiles60_t.sh,
-    esprepair60_t.sh 24/24, peer59_t.sh 23/23, listeners59_t.sh 16/16, qt/sb/t160b_t.py in QEMU (bootentry-check.yml).
+    Tests: qt/host/bootentry60_t.sh 14/14 (with the released 2026111620 rudolfd: 0a, 0b), bootfiles60_t.sh 8/8,
+    esprepair60_t.sh 24/24, peer59_t.sh 23/23, listeners59_t.sh 16/16, setsearch59_t.js 13/13; qt/sb/t160b_t.py in QEMU
+    (bootentry-check.yml): the release alone 12/12 (the failure: run 44032359372), with this tree's rudolfd, espcheck and
+    bootfiles.sh 16/16 (run 44030675207). (The QEMU guest had no network: the release's boot image was given to the
+    same espcheck repair from a disk.)
     Left: the owner's V58-V63 on the Vivobook; t160o's parts 4-8 (the automatic repair) follow the new flow once a
     beta has it.
 
