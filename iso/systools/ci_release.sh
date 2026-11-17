@@ -20,6 +20,10 @@ python3 systools/deadcheck.py
 # 120 by default), and nothing listening that the list of listeners does not name
 FUZZ_SECONDS=${FUZZ_SECONDS:-120} sh qt/host/fuzz59_t.sh || { echo "the fuzz test of rudolfd found a crash (see above)"; exit 1; }
 sh qt/host/listeners59_t.sh || { echo "something listens that sys/root/usr/share/rudolf/listeners does not name"; exit 1; }
+# 1.6.1 (docs/plan-1.6.1.md Part 11): rudolf-rootd and the root helpers: who may ask, their checks, the API through them
+# the same; and that this build installs them root's, 0700
+python3 qt/host/rootbuild161_t.py || { echo "the root helpers are not built and installed as they must be (see above)"; exit 1; }
+sudo sh qt/host/roothelpers161_t.sh || { echo "the root helpers' test failed (see above)"; exit 1; }
 W=$(realpath -m work); rm -rf "$W"; mkdir -p "$W/new"
 export SOURCE_DATE_EPOCH=1760000000
 pv() { sed -n "s/^$1 //p" "$PREV/manifest.txt"; }
@@ -159,7 +163,7 @@ mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/ru
 XREV=f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2
 XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | cut -c1-16)
 # (1.5.9: and this script itself: a program it adds to the base layer, such as iw, rebuilds the layer)
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-root.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -168,6 +172,12 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -o "$B/rudolf-display" sys/rudolf-display.c -lX11 /usr/lib/$MA/libXtst.so.6 /usr/lib/$MA/libXfixes.so.3 /usr/lib/$MA/libXrandr.so.2 -lm
 	gcc -O2 $HARD -o "$B/rudolfd" sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
 	gcc -O2 $HARD -o "$B/rudolf-update" sys/rudolf-update.c -lcrypto -ldl
+	# 1.6.1 (docs/plan-1.6.1.md Part 11): rudolf-rootd and the root helpers (installed below: root's only, 0700)
+	RHELP="drives updates"
+	gcc -O2 $HARD -o "$B/rudolf-rootd" sys/rudolf-rootd.c
+	# (each named: the check below wants every sys/*.c in a gcc line of its own)
+	gcc -O2 $HARD -o "$B/root-drives" sys/rudolf-drives.c
+	gcc -O2 $HARD -o "$B/root-updates" sys/rudolf-updates.c
 	gcc -O2 $HARD -o "$B/rudolf-launch" sys/rudolf-launch.c
 	gcc -O2 $HARD -o "$B/rudolf-memguard" sys/rudolf-memguard.c   # 1.4.7: the memory guard
 	gcc -O2 $HARD -o "$B/rudolf-shellfix" sys/rudolf-shellfix.c   # 1.5.8: the shell put into the profile when it changed
@@ -187,12 +197,21 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -o "$B/rudolf-print" sys/rudolf-print.c -ldl
 	# 1.4.0: the development link
 	gcc -O2 $HARD -o "$B/rudolf-devlink" sys/rudolf-devlink.c -lcrypto -ldl
-	python3 systools/hardcheck.py "$B/rudolf-display" "$B/rudolfd" "$B/rudolf-update" "$B/rudolf-launch" "$B/rudolf-memguard" "$B/rudolf-shellfix" "$B/rudolf-remote" "$B/cdp-eval" "$B/rudolf-debian" "$B/rudolf-fscheck" "$B/rudolf-portal" "$B/rudolf-open" "$B/rudolf-apps" "$B/rpk" "$B/rudolf-ai" "$B/rudolf-print" "$B/rudolf-devlink" || { echo "a system program was built without the hardening flags (plan 15.5)"; exit 1; }
-	for b in rudolf-display rudolfd rudolf-update rudolf-launch rudolf-memguard rudolf-shellfix rudolf-remote cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-apps rpk rudolf-ai rudolf-print rudolf-devlink; do
+	python3 systools/hardcheck.py "$B/rudolf-display" "$B/rudolfd" "$B/rudolf-update" "$B/rudolf-launch" "$B/rudolf-memguard" "$B/rudolf-shellfix" "$B/rudolf-remote" "$B/cdp-eval" "$B/rudolf-debian" "$B/rudolf-fscheck" "$B/rudolf-portal" "$B/rudolf-open" "$B/rudolf-apps" "$B/rpk" "$B/rudolf-ai" "$B/rudolf-print" "$B/rudolf-devlink" "$B/rudolf-rootd" $(for h in $RHELP; do echo "$B/root-$h"; done) || { echo "a system program was built without the hardening flags (plan 15.5)"; exit 1; }
+	for b in rudolf-display rudolfd rudolf-update rudolf-launch rudolf-memguard rudolf-shellfix rudolf-remote cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-apps rpk rudolf-ai rudolf-print rudolf-devlink rudolf-rootd; do
 		for l in $(ldd "$B/$b" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$b needs $l, which the base layer does not have"; exit 1; }; done
 		sudo install -m 0755 "$B/$b" "$W/broot/usr/bin/$b"
 	done
 	sudo mkdir -p "$W/broot/usr/lib/rudolf"; sudo install -m 0755 "$B/rudolf-open" "$W/broot/usr/lib/rudolf/rudolf-open"
+	# (1.6.1: the root helpers, root:root 0700 in a folder of root's; checked, as the base layer keeps owners and modes:
+	# mksquashfs -all-root makes every file root's, and keeps the modes)
+	sudo install -d -o root -g root -m 0755 "$W/broot/usr/lib/rudolf/root"
+	for h in $RHELP; do
+		for l in $(ldd "$B/root-$h" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "root-$h needs $l, which the base layer does not have"; exit 1; }; done
+		sudo install -o root -g root -m 0700 "$B/root-$h" "$W/broot/usr/lib/rudolf/root/$h"
+		[ "$(sudo stat -c '%u:%g %a' "$W/broot/usr/lib/rudolf/root/$h")" = "0:0 700" ] || { echo "the root helper $h is not root's 0700 in the base layer"; exit 1; }
+	done
+	[ "$(sudo stat -c '%u:%g %a' "$W/broot/usr/bin/rudolf-rootd")" = "0:0 755" ] && [ ! -u "$W/broot/usr/bin/rudolf-rootd" ] || { echo "rudolf-rootd is not root's 0755 (and never set-user-ID) in the base layer"; exit 1; }
 	# the X server (1.4.3: with GLX), when its build changed
 	if [ "$(cat "$W/broot/usr/lib/xorg/rudolf-xsrc" 2>/dev/null)" != "$XSRC" ]; then
 		systools/xfetch.sh "$XREV"
@@ -341,6 +360,8 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	echo "https://github.com/${GITHUB_REPOSITORY:-merciless146/rudolfos}/releases/download/ext-$(echo "$ABI" | cut -c1-16)" | sudo tee "$W/broot/usr/share/rudolf/sysext-source" >/dev/null
 	echo "::notice title=Base ABI::$ABI (system extensions for this base: release ext-$(echo "$ABI" | cut -c1-16))"
 	sudo $MK "$W/broot" "$W/new/base.sfs" $SQ; sudo chown "$(id -u)" "$W/new/base.sfs"; sudo rm -rf "$W/broot"
+	# (1.6.1: and in the layer itself, as the computer will see them)
+	for h in $RHELP; do unsquashfs -lls "$W/new/base.sfs" "usr/lib/rudolf/root/$h" 2>/dev/null | grep -qE '^-rwx------ root/root .* squashfs-root/usr/lib/rudolf/root/'"$h"'$' || { echo "the root helper $h is not root's 0700 in base.sfs"; unsquashfs -lls "$W/new/base.sfs" "usr/lib/rudolf/root/$h"; exit 1; }; done
 	NOTES+=("system programs")
 fi
 

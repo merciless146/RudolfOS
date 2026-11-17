@@ -124,6 +124,10 @@ gcc -O2 $HARD -o usr/bin/rudolf-launch "$SYS/rudolf-launch.c"
 gcc -O2 $HARD -o usr/bin/rudolf-memguard "$SYS/rudolf-memguard.c"
 gcc -O2 $HARD -o usr/bin/rudolf-remote "$SYS/rudolf-remote.c" -lssl -lcrypto -lX11 -lXext /usr/lib/$MA/libXtst.so.6 -lz   # 1.5.0: remote access
 gcc -O2 $HARD -o usr/bin/rudolfd "$SYS/rudolfd.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
+# 1.6.1 (docs/plan-1.6.1.md Part 11): rudolf-rootd and the root helpers it runs for rudolfd (root's only: 0700)
+gcc -O2 $HARD -o usr/bin/rudolf-rootd "$SYS/rudolf-rootd.c"
+mkdir -p usr/lib/rudolf/root && chmod 755 usr/lib/rudolf/root
+for h in drives updates; do gcc -O2 $HARD -o usr/lib/rudolf/root/$h "$SYS/rudolf-$h.c" && chmod 700 usr/lib/rudolf/root/$h; done   # (root's: mklayers.sh makes the layer with -all-root)
 gcc -O2 $HARD -o usr/bin/rpk "$SYS/rpk.c" -lcrypto
 gcc -O2 $HARD -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl
 gcc -O2 $HARD -o usr/bin/rudolf-print "$SYS/rudolf-print.c" -ldl
