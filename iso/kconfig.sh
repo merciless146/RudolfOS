@@ -1,6 +1,7 @@
 #!/bin/sh
 # Rudolf OS kernel configuration on top of x86_64_defconfig
 set -e
+KDIR=$(cd "$(dirname "$0")" && pwd)   # (1.6.1: for the required features' list, iso/kconfig-required.txt)
 cd "$1"
 make x86_64_defconfig >/dev/null
 C=scripts/config
@@ -43,6 +44,9 @@ m $HOTKEYS
 n IPV6_SIT
 y DRM_AMDGPU_SI DRM_AMDGPU_CIK DRM_AMD_DC DRM_NOUVEAU_SVM
 # filesystems
+# 1.6.1 (plan-1.6.1.md Part 12, the required features): FUSE, for Flatpak's document portal and AppImages (on in the ARM64
+# kernel since 1.5.9, missing here until the list below found it)
+y FUSE_FS
 y SQUASHFS SQUASHFS_XZ SQUASHFS_ZLIB SQUASHFS_FILE_DIRECT ISO9660_FS JOLIET ZISOFS OVERLAY_FS EXT4_FS VFAT_FS MSDOS_FS EXFAT_FS NTFS3_FS TMPFS DEVTMPFS DEVTMPFS_MOUNT NLS_CODEPAGE_437 NLS_ISO8859_1 NLS_UTF8 FAT_DEFAULT_UTF8 UDF_FS
 # storage
 y BLK_DEV_LOOP BLK_DEV_SR CDROM ATA SATA_AHCI ATA_PIIX ATA_GENERIC PATA_AMD PATA_OLDPIIX BLK_DEV_NVME SCSI BLK_DEV_SD USB_STORAGE USB_UAS MMC MMC_BLOCK MMC_SDHCI MMC_SDHCI_PCI MMC_SDHCI_ACPI MMC_REALTEK_PCI MISC_RTSX_PCI VIRTIO VIRTIO_PCI VIRTIO_BLK SCSI_VIRTIO VIRTIO_NET VIRTIO_INPUT
@@ -246,4 +250,7 @@ for o in ANDROID_BINDER_IPC ANDROID_BINDERFS; do grep -q "^CONFIG_$o=y$" .config
 for o in $AMDPMY; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the sleep option $o is not on after olddefconfig (a dependency is missing)"; exit 1; }; done
 for o in $AMDPMM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the power driver $o is not a module after olddefconfig (a dependency is missing)"; exit 1; }; done
 grep -q "^CONFIG_PSI_DEFAULT_DISABLED=y" .config && { echo "kconfig.sh: PSI is off by default"; exit 1; }
+# 1.6.1 (plan-1.6.1.md Part 12): every kernel feature Rudolf OS's programs and security rely on, each with who needs it
+# (iso/kconfig-required.txt): a tuning change that drops one stops here, by name
+sh "$KDIR/systools/kreq.sh" "$KDIR/kconfig-required.txt" .config
 true
