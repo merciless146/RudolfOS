@@ -15,6 +15,7 @@ Summary: In progress.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- Fixed: File Explorer's Drives list shows another Rudolf OS stick (its data, read-only, as "Rudolf OS data (another Rudolf OS, read-only)"), and no longer lists the system's own internal devices (dm-0, dm-1, ...) as drives.
 - Fixed: a new USB stick (Make a USB stick) or a new installation (Install here) no longer stops at the Native desktop's sign-in screen with no account: until Rudolf OS is set up, it starts on Standard, whose setup wizard makes the first account, and Native from the next start.
 - Fixed: Recovery mode, nomodeset and rudolf.nogpu=1 start without the graphics card's driver again: udev's drivers-by-modalias rule (#465) no longer loads it at start-up.
 - Fixed: the built-in microphones of AMD laptops whose microphones are on the AMD audio processor (the ASUS Vivobook Go E1404FA and others) work again; since udev replaced mdev in 1.6.0, drivers for devices that appear after start-up (here the processor's microphone devices) were no longer loaded, so Settings › Sound listed only the headset jack's microphone and nothing was heard.

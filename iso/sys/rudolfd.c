@@ -705,7 +705,9 @@ static void api_net(struct req *r)
 /* ------------------------------------------------------------- disks */
 static void api_disks(struct req *r)
 {
-	char *out = run_out("for d in /sys/block/*; do n=${d##*/}; case $n in loop*|ram*|zram*) continue;; esac; "
+	/* (1.6.0: not the system's own device-mapper devices either, dm-N: its checked layers and encrypted folder, which the
+	   File Explorer listed as drives on the Vivobook, 2026-11-17) */
+	char *out = run_out("for d in /sys/block/*; do n=${d##*/}; case $n in loop*|ram*|zram*|dm-*) continue;; esac; "
 		"s=$(cat $d/size); rm=$(cat $d/removable); m=$(cat $d/device/model 2>/dev/null | tr -s ' '); "
 		/* USB drives and SD cards count as removable (many USB sticks say they are not) */
 		"case $(readlink -f $d/device) in */usb*) rm=1;; */mmc*) [ \"$(cat $d/device/type 2>/dev/null)\" = SD ] && rm=1;; esac; "
