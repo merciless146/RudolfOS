@@ -3987,6 +3987,7 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-peer.inc"      /* 1.5.9: only the desktop gets the page and the API (plan Part 15.1) */
 #include "rudolfd-users.inc"     /* 1.5.9: each account is its own Linux user (plan Part 15.3) */
 #include "rudolfd-mobile.inc"    /* 1.6.0: cellular modems (plan Parts 1 to 6) */
+#include "rudolfd-drop.inc"      /* 1.6.1: files dropped from outside onto the native desktop (plan-1.6.1 Part 13) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
 {
@@ -4330,6 +4331,7 @@ static void api(struct req *r)
 	/* 1.5.7 (plan Part 4): System Settings › Desktop engine. GET: the choice, the engine in use, and whether this Rudolf
 	   OS has the Lite engine (rudolf-webkit, in the system layer). POST engine=webkit|chromium keeps the choice
 	   (/persist/etc), which rudolf-init takes at the next start-up */
+	if (!strcmp(p, "desktop/dropped")) { if (post) reply_err(r->fd, 405, "GET"); else api_desktop_dropped(r); return; }   /* 1.6.1: rudolfd-drop.inc */
 	if (!strncmp(p, "desktop/", 8) && api_desktop(r, p + 8, post)) return;   /* 1.5.9: rudolfd-desktop.inc */
 	if (!strcmp(p, "desktop/engine")) {
 		int have = !access("/usr/bin/rudolf-webkit", X_OK), native = !access("/usr/bin/rudolf-native", X_OK);   /* 1.5.9: Native (test), plan Part 12 */

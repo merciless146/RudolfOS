@@ -27,15 +27,27 @@ ok "5. its socket is in the list of listeners (the self-test)" "$([ $? = 0 ] && 
 # the real one
 if command -v gnome-keyring-daemon >/dev/null && command -v secret-tool >/dev/null && command -v dbus-daemon >/dev/null; then
 	H=$T/real; mkdir -p $H; RT=$T/rt; mkdir -m 700 $RT
-	dbus-daemon --session --fork --nopidfile --print-pid --address=unix:path=$RT/bus > $T/dpid; cat $T/dpid >> $T/pids
+	# 2026-11-17 ("Before stable" 12): a session bus with no service files. With the system's session.conf, an app's
+	# request while no keyring answered (here between the stop and the start of 7) had the bus start another
+	# gnome-keyring-daemon itself (org.freedesktop.secrets.service: --start, root's home, not stopped by this test),
+	# which then took the name: 7 and 9 failed about 1 run in 10 here ("another secret service is running").
+	# Every wait is for the answer itself, up to a generous bound (as hwcnative160_t.sh's w8), never a fixed time.
+	w8() { i=0; while [ $i -lt ${2:-120} ]; do eval "$1" && return 0; timeout 0.25 tail -f /dev/null; i=$((i+1)); done; return 1; }
+	cat > $T/bus.conf <<EOC
+<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig><type>session</type><keep_umask/><listen>unix:path=$RT/bus</listen><auth>EXTERNAL</auth>
+<policy context="default"><allow send_destination="*" eavesdrop="true"/><allow eavesdrop="true"/><allow own="*"/></policy></busconfig>
+EOC
+	dbus-daemon --config-file=$T/bus.conf --fork --nopidfile --print-pid > $T/dpid; cat $T/dpid >> $T/pids
 	S="env -i PATH=$PATH HOME=$H XDG_RUNTIME_DIR=$RT DBUS_SESSION_BUS_ADDRESS=unix:path=$RT/bus"
+	owned() { $S gdbus call --session -d org.freedesktop.DBus -o /org/freedesktop/DBus -m org.freedesktop.DBus.NameHasOwner org.freedesktop.secrets 2>/dev/null | grep -q true; }
 	$S sh $KR start > $T/kr.log 2>&1 & echo $! > $T/krpid; cat $T/krpid >> $T/pids
-	i=0; until $S secret-tool search --all x x >/dev/null 2>&1 || [ $i -ge 50 ]; do i=$((i+1)); timeout 0.2 tail -f /dev/null; done
+	w8 'owned && $S secret-tool search --all x x >/dev/null 2>&1' 240
 	echo -n "token-123" | $S timeout 10 secret-tool store --label="Claude sign-in" app claude account ann 2>$T/st.err; r=$?
 	ok "6. (gnome-keyring-daemon) an app keeps a secret through the Secret Service (libsecret), with no prompt" "$([ $r = 0 ] && [ "$($S timeout 10 secret-tool lookup app claude account ann)" = token-123 ] && echo 1)" "$r $(cat $T/st.err $T/kr.log)"
-	kill $(cat $T/krpid); i=0; while kill -0 $(cat $T/krpid) 2>/dev/null && [ $i -lt 50 ]; do i=$((i+1)); timeout 0.1 tail -f /dev/null; done; timeout 0.5 tail -f /dev/null
+	kill $(cat $T/krpid); w8 '! kill -0 $(cat $T/krpid) 2>/dev/null && ! owned' 240
 	$S sh $KR start >> $T/kr.log 2>&1 & echo $! >> $T/pids
-	i=0; until $S secret-tool search --all x x >/dev/null 2>&1 || [ $i -ge 50 ]; do i=$((i+1)); timeout 0.2 tail -f /dev/null; done
+	w8 'owned && $S secret-tool search --all x x >/dev/null 2>&1' 240
 	ok "7. started again (as after a restart): the secret is still there, with no prompt" "$([ "$($S timeout 10 secret-tool lookup app claude account ann)" = token-123 ] && echo 1)" "$(cat $T/kr.log)"
 	ok "...kept in the account's folder, its user's only" "$([ "$(stat -c %a $H/.local/share/keyrings)" = 700 ] && [ "$(stat -c %a $H/.local/share/keyrings/login.keyring)" = 600 ] && grep -q 'Claude sign-in' $H/.local/share/keyrings/login.keyring && echo 1)" "$(ls -la $H/.local/share/keyrings)"
 	# Settings › Privacy › Saved passwords for apps: rudolf-portal --keyring-list and --keyring-forget on the real keyring

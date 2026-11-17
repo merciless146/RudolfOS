@@ -10,6 +10,9 @@
 #        system says "custom"), Return to official (keep) back to the official release with the custom slot cleared;
 #        the official recovery system made from the official one, checked and made again when changed (the rudolf-update
 #        of this tree, put into the guest: the release's own may be older).
+#   15.4 and 1.4.0's development link (17 to 31; 21 to 31 were qt/sb/t140_t.py's, retired 2026-11-17): only allowed by
+#        an administrator, switched on by one; then what it does on the computer (screenshot, get, put, Ask first, the
+#        system report, the log, End now, Forget the token); 19 and 20 after a restart.
 #   python3 t160_t.py REL-DIR [RUDOLF-UPDATE]   (SB_PARTS and QEMU as for t150; root; QEMU_ACCEL=kvm where it can)
 #   R161_FIX=DIR (1.6.1, docs/plan-1.6.1.md Part 11): this tree's rudolfd, rudolf-rootd and root helpers (DIR/rudolfd,
 #   DIR/rudolf-rootd, DIR/root/NAME) put in place at each start (fix161.sh, on an extra disk), the checks unchanged
@@ -182,6 +185,59 @@ def tunnel(g, sh):
     return 'TUNNEL-UP' in o
 def dlpost(js, what, body):
     return js(f"rd({json.dumps(what)},{{method:'POST',body:{json.dumps(json.dumps(body))}}}).then(r=>r.message||'ok',e=>'ERR '+e.message)", 120)
+def lastl(t): return t.strip().split('\n')[-1].strip() if isinstance(t, str) and t.strip() else ''
+def JS(v):
+    try: return json.loads(v) if isinstance(v, str) else {}
+    except ValueError: return {}
+# qt/sb/t140_t.py's checks (a 1.4.0 test disc, switched on with the token alone before 1.5.9), here on the real release
+# with the link switched on by an administrator (18): what rudolfd and the link do on the computer. The banner and the
+# Allow prompt as drawn: qt/shell2/dl140_t.js (the page) and qt/host/native59_t.sh (Native); here the page's requests.
+# Left as 18 left it (on, Ask first off, kept on after restarting, read-only) for 19 and 20.
+def dl_more(js, sh, q):
+    st = lambda: JS(js("rd('devlink').then(r=>JSON.stringify(r))"))
+    s = st(); o = sh('ps -o user,args | grep "[r]udolf-devlink run"; stat -c "%a %U" /persist/devlink/token', 20)
+    ok('22. ...on for an hour; rudolf-devlink runs as root; the token kept root-only (600) on RUDOLFDATA', s.get('on') is True and 3000 < s.get('secondsLeft', 0) <= 3600
+       and re.search(r'^root .*rudolf-devlink run', o, re.M) and '600 root' in o, [s, o])
+    # (the token in two parts: the command itself is a file in /tmp)
+    a, b = DLTOKEN[:20], DLTOKEN[20:]
+    o = sh(f't={a}; t="${{t}}{b}"; grep -rlF "$t" /run/rudolf /tmp /home 2>/dev/null | head -5; grep -rlF "$t" /run/rudolf /tmp /home 2>/dev/null | wc -l', 120)
+    pg = js(f"(document.documentElement.outerHTML+JSON.stringify(localStorage)+JSON.stringify(typeof DEVLST!='undefined'&&DEVLST||{{}})).includes({json.dumps(a)}+{json.dumps(b)})")
+    ok('23. ...and in no file under /run/rudolf, /tmp or /home, nor in the desktop\'s page', lastl(o) == '0' and pg is False, [o, pg])
+    dlcmd(2, kind='screenshot'); r = dlresult(2); png = dlfiles().get('res/000002/screen.png', b'')
+    w, h = struct.unpack('>II', png[16:24]) if len(png) > 24 else (0, 0)
+    ok('24. screenshot: the real screen, through rudolfd (read-only too)', r and r.get('status') == 0 and png.startswith(b'\x89PNG') and w >= 640 and h >= 360, [r, w, h, len(png)])
+    dlcmd(3, kind='get', path='/etc/rudolf/cmdline'); r = dlresult(3)
+    ok('25. get: a file from the computer', r and r.get('status') == 0 and b'rudolf.debug=1' in dlfiles().get('res/000003/cmdline', b''), r)
+    rc = dlpost(js, 'devlink/change?on=1', {'n': 'boss', 'p': 'b1'})
+    dlcmd(4, kind='sh', script='id -u'); r4 = dlresult(4)
+    blob = os.urandom(300000); ctl('/_put?path=tools/blob.bin', blob)
+    dlcmd(5, kind='put', src='tools/blob.bin', name='blob.bin'); r5 = dlresult(5)
+    md = lastl(sh('md5sum /persist/devlink/files/blob.bin | cut -c1-32', 20)); rr = dlpost(js, 'devlink/change?on=0', {})
+    import hashlib
+    ok('26. "Allow changes" by the administrator: a command runs as root, put brings a file byte for byte; read-only again with no password',
+       rc == 'can change this computer' and r4 and r4.get('stdout') == '0\n' and r5 and r5.get('status') == 0 and md == hashlib.md5(blob).hexdigest() and rr == 'read-only', [rc, r4, r5, md, rr])
+    # Ask first: switched on again with the kept token (none pasted)
+    ra = dlpost(js, q.replace('ask=0', 'ask=1'), {'n': 'boss', 'p': 'b1', 'token': ''})
+    dlcmd(6, kind='sh', script='echo asked-and-allowed'); p = {}
+    for _ in range(40):
+        p = st().get('pending') or {}
+        if p.get('id') == '000006': break
+        time.sleep(3)
+    waited = 'res/000006.json' not in dlfiles()
+    an = js("rdPost('devlink/answer?id=000006&a=allow').then(r=>r.message,e=>'ERR '+e.message)"); r = dlresult(6)
+    ok('27. Ask first (on again with the kept token): the command waits for the desktop with its text, Allow (the desktop\'s answer) runs it',
+       ra == 'on' and st().get('ask') is True and 'echo asked-and-allowed' in str(p.get('what')) and waited and r and r.get('stdout') == 'asked-and-allowed\n' and r.get('approved') == 'allowed on the computer', [ra, p, waited, an, r])
+    rep = js("typeof sysReport=='function'?sysReport('').then(r=>r.text):'no sysReport'", 240)
+    ok('28. the system report says it is on, from where, without the token', isinstance(rep, str) and re.search(r'Development link: on until .*owner/rudolfos-devlink', rep) and DLTOKEN not in rep,
+       (re.search(r'Development link.*', rep) or [rep[:200]])[0] if isinstance(rep, str) else rep)
+    lg = js("rd('devlink/log').then(r=>r.log)")
+    ok('29. the log has every command and who allowed it', isinstance(lg, str) and all(f'"id":"{i:06d}"' in lg for i in range(1, 7)) and 'allowed on the computer' in lg and DLTOKEN not in lg, (lg or '')[-300:] if isinstance(lg, str) else lg)
+    js("rdPost('devlink/off').then(()=>1)"); time.sleep(3)   # (End now's request: devlOff)
+    o = sh('pgrep -f "rudolf-devlink run" | wc -l; grep -c "^on=0" /persist/devlink/config', 20)
+    ok('30. End now: the link stops and is off', st().get('on') is False and o.split()[-2:] == ['0', '1'], [st(), o])
+    rf = js("rdPost('devlink/forget').then(r=>r.message,e=>'ERR '+e.message)")
+    ok('31. Forget the token deletes it', rf == 'the token is deleted' and lastl(sh('ls /persist/devlink/token 2>/dev/null | wc -l', 20)) == '0' and st().get('hasToken') is False, rf)
+    r = dlpost(js, q, {'n': 'boss', 'p': 'b1', 'token': DLTOKEN}); out('on again for 19 and 20:', r, st())
 make_drive(DRV)
 vm = None
 try:
@@ -277,9 +333,13 @@ try:
         ok('17. 15.4: the link is refused until allowed, allowing it and switching it on need an administrator (a user\'s password and none refused)',
            str(r0).startswith('ERR') and 'not allowed' in str(r0) and str(r1).startswith('ERR') and 'administrator' in str(r1) and not str(r2).startswith('ERR')
            and str(r3).startswith('ERR') and 'administrator' in str(r3) and str(r4).startswith('ERR'), [r0, r1, r2, r3, r4])
+        # (21 to 31: qt/sb/t140_t.py's checks on the real system, with 15.4's administrator; t140 retired on 2026-11-17)
+        rw = dlpost(js, q, {'n': 'boss', 'p': 'b1', 'token': 'github_pat_WRONGWRONGWRONG'}); o = sh('ls /persist/devlink/token /persist/devlink/token.new 2>/dev/null | wc -l', 20)
+        ok('21. a wrong token is refused with GitHub\'s reason (an administrator asking), and nothing is kept', str(rw).startswith('ERR') and 'refused the token' in str(rw) and lastl(o) == '0', [rw, o])
         r5 = dlpost(js, q, {'n': 'boss', 'p': 'b1', 'token': DLTOKEN})
         dlcmd(1, kind='sh', script='id -u; echo linked'); r = dlresult(1)
         ok('18. ...with the administrator\'s password it is on, and a command from the repository runs (read-only, as nobody: "Allow changes" is off)', r5 == 'on' and r and r.get('stdout') == '65534\nlinked\n', [r5, r])
+        dl_more(js, sh, q)
         # 1.5.8 4.2: on again by itself after a restart, and answering with the desktop not running. (1.5.9 15.4: Ask first
         # is on again after every start, so with no desktop a command is answered at once; with Ask first turned off it runs)
         sh('sync', 60); vm.stop(); time.sleep(3)
@@ -296,12 +356,12 @@ try:
                 try: out(open(TUNLOG).read()[-1500:])
                 except OSError: pass
             o = sh("grep '^ask=' /persist/devlink/config", 20)
-            dlcmd(2, kind='sh', script='echo ran'); r = dlresult(2, 600)
+            dlcmd(10, kind='sh', script='echo ran'); r = dlresult(10, 600)
             if not r: link_state()
             ok('19. 4.2: after a restart the link is on by itself (Ask first on again, 15.4), and with no desktop answering a command is answered at once ("no desktop to ask"), not run',
                'ask=1' in o and r and r.get('status') == -1 and r.get('approved') == 'no desktop to ask' and 'ran' not in str(r.get('stdout')), [o, r])
             sh("sed -i 's/^ask=.*/ask=0/' /persist/devlink/config; grep '^ask=' /persist/devlink/config; ls -ld /run/rudolf/heartbeat", 20)
-            dlcmd(3, kind='sh', script='echo no-desktop'); r = dlresult(3, 600)
+            dlcmd(11, kind='sh', script='echo no-desktop'); r = dlresult(11, 600)
             if not r: link_state()
             ok('20. ...with Ask first off, the link answers with the desktop not answering', r and r.get('stdout') == 'no-desktop\n', r)
         else: ok('19. 4.2: started again', False, 'not up')
