@@ -13,7 +13,7 @@
  *                              (1.6.0) the desktop's widgets ("widgets", "wgown") and the weather's place and unit ("wloc", "wunit");
  *                              the Calendar's events ("cal", bd95cal:ID) for the calendar under the clock
  *                              and the account's own keyboard shortcuts ("kb", bd95kb:ID); the screen saver's settings ("sys", bd95sys)
- *   GET  desktop/apps          the start menu's list and the drawn backgrounds' pictures, as the page wrote them
+ *   GET  desktop/apps[?acct=ID]  the start menu's list and the drawn backgrounds' pictures, as the page wrote them (1.6.0: that account's last)
  *   POST desktop/apps          (the page, after each sign-in)
  *   GET  desktop/cells?acct=ID       (1.6.0) where the shell put the desktop's icons: {"NAME":[COLUMN,ROW]}
  *   POST desktop/cells?acct=ID       (the shell, when an icon is moved)
@@ -690,10 +690,17 @@ static int api_desktop(struct req *r, const char *w, int post)
 		dfail_note(1); explicit_bzero(&s, sizeof s); unlink(lp); reply_ok(r->fd, "unlocked"); return 1;
 	}
 	if (!strcmp(w, "apps")) {
-		char p[300]; snprintf(p, sizeof p, "%s/.rudolf-apps.json", desk_dir);
-		if (!post) { size_t n; char *b = slurp(p, &n); if (!b) { static const char E[] = "{\"ok\":true,\"apps\":[],\"bg\":{}}"; reply(r->fd, 200, "application/json", E, sizeof E - 1, NULL); return 1; } reply(r->fd, 200, "application/json", b, n, NULL); free(b); return 1; }
+		/* (1.6.0, the owner's Vivobook: the desktop's icons at once at each sign-in, as Standard's page has them) each account's last
+		   catalogue kept too (.rudolf-apps/ID.json, the page's "acct"): desktop/apps?acct=ID gives that account's, else the last one */
+		char p[300], d[300], pa[400] = ""; snprintf(p, sizeof p, "%s/.rudolf-apps.json", desk_dir); snprintf(d, sizeof d, "%s/.rudolf-apps", desk_dir);
+		if (!post) { const char *a = qparam(r->query, "acct"); size_t n; char *b = NULL;
+			if (a && home_acct_ok(a)) { snprintf(pa, sizeof pa, "%s/%s.json", d, a); b = slurp(pa, &n); }
+			if (!b) b = slurp(p, &n);
+			if (!b) { static const char E[] = "{\"ok\":true,\"apps\":[],\"bg\":{}}"; reply(r->fd, 200, "application/json", E, sizeof E - 1, NULL); return 1; } reply(r->fd, 200, "application/json", b, n, NULL); free(b); return 1; }
 		if (!r->body || r->blen > (1u << 20) || *dj_ws(r->body) != '{' || !dj_end(r->body, 0) || *dj_ws(dj_end(r->body, 0))) { reply_err(r->fd, 400, "a JSON object, at most 1 MB"); return 1; }
-		if (dput(p, r->body, r->blen)) reply_err(r->fd, 500, "could not save"); else reply_ok(r->fd, "saved");
+		char *a = dj_str(dj_get(r->body, "acct")); int bad = dput(p, r->body, r->blen);
+		if (!bad && a && home_acct_ok(a)) { if (mkdir(d, 0755) == 0 && chown(d, desk_uid, desk_uid)) {} snprintf(pa, sizeof pa, "%s/%s.json", d, a); bad = dput(pa, r->body, r->blen); }
+		free(a); if (bad) reply_err(r->fd, 500, "could not save"); else reply_ok(r->fd, "saved");
 		return 1;
 	}
 	/* 1.6.0 (Part 12, item 1): where the shell put the desktop's icons, per account (the page's own places are in its
