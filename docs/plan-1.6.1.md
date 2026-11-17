@@ -390,7 +390,8 @@ What is left is measured, not guessed: each change kept only if the numbers say 
 ### 13. Files dropped from outside onto the native desktop (added on 2026-11-16; 1.6.0 Part 12's known differences)
 On Standard a file dragged from a Linux app (the Debian file manager, a Flatpak) onto the desktop is saved in the
 Desktop folder. rudolf-native did not speak X11's drag and drop (XDND), so such drops did nothing on Native.
-**Built on 2026-11-17 (PR "files dropped from outside onto the native desktop"), for 1.6.1.**
+**Built on 2026-11-17 (PR #444, "files dropped from outside onto the native desktop"). Merged early, and kept in 1.6.0 by
+the owner's decision of 2026-11-16 ("Keep it in 1.6.0"): it ships with 1.6.0, not 1.6.1.**
 - **What Standard does, checked in its page and in Chromium (xdrop161_std.js):** a file dropped anywhere on the desktop goes
   into the Desktop folder, also over a folder's icon or the Trash (their own drop handlers take only the page's own drags;
   the drop then reaches the desktop's: shell25.js), named as the page names files (upper case, `NAME - COPY.EXT` on a clash),
