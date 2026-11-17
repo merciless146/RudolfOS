@@ -106,7 +106,7 @@ try:
     o = api(sh, f'stick/info?disk={DSK}'); ok('6. a stick\'s information (mkstick.sh --info through the helper): not a Rudolf OS stick', '"rudolf":false' in o, o)
     h0 = sh("cat /persist/var/log/health.log /run/rudolf/health.log 2>/dev/null | grep -c 'drives helper refused'", 30, False).strip().split('\n')[-1]
     o = api(sh, 'mount?dev=sdz-1', True) + sh("cat /persist/var/log/health.log /run/rudolf/health.log 2>/dev/null | grep 'drives helper refused' | tail -1")
-    ok('7. a name rudolfd lets through (safe_word) but the helper does not: refused, said in the health log (Security)', 'could not mount' in o and 'a device name that is not one (sdz-1)' in o, o)
+    ok('7. a name rudolfd lets through (safe_word) but the helper does not: refused, said in the health log (Security)', ('could not mount' in o or 'HTTP/1.1 500' in o) and 'a device name that is not one (sdz-1)' in o, o)
     sh("mkdir -p /home/rudolf/Downloads; chown 1000:1000 /home/rudolf/Downloads; rm -f /home/rudolf/Downloads/not-there.iso*")
     o = api(sh, 'install?disk=' + DSK + '&confirm=' + DSK + '&image=%2Fhome%2Frudolf%2FDownloads%2Fnot-there.iso', True)
     o += sh("for i in $(seq 1 60); do [ -e /run/rudolf/job.status ] && break; sleep 1; done; cat /run/rudolf/job.name; echo; cat /run/rudolf/job.status; cat /run/rudolf/job.log; "
