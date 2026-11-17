@@ -3219,6 +3219,20 @@ static size_t disk_devpath(const char *rp, const char *dev, unsigned char *o, si
 		snprintf(f, sizeof f, "/sys/block/%s/nsid", nm); uint32_t ns = (uint32_t)read_ll(f, 0); if (!ns) return 0;
 		unsigned char eui[8] = {0}; snprintf(f, sizeof f, "/sys/block/%s/eui", nm);
 		if ((h = slurp(f, NULL))) { unsigned b[8]; if (sscanf(h, "%x %x %x %x %x %x %x %x", b, b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7) == 8) for (int i = 0; i < 8; i++) eui[i] = (unsigned char)b[i]; free(h); }
+		/* 1.6.0 ("Before stable" 15): Linux leaves out a drive's EUI-64 when it does not trust its IDs (NVME_QUIRK_BOGUS_NID:
+		   some drives, and QEMU's), while the firmware names the drive with the EUI-64 it reports: an entry with none would
+		   name no drive. Then the firmware's own entry for the same controller and namespace says it (not one of ours) */
+		static const unsigned char z8[8];
+		if (!memcmp(eui, z8, 8)) for (unsigned n = 0; n < 256; n++) {
+			char v[80], t[100]; snprintf(v, sizeof v, "Boot%04X-" GLOBALG, n); size_t l = 0; unsigned char *d = efivar(v, &l);
+			if (!d) continue;
+			t[0] = 0; if (l > 6) u16s(d + 6, l - 6, t, sizeof t);
+			size_t i = 6; while (i + 1 < l && (d[i] || d[i + 1])) i += 2; i += 2;
+			uint32_t ns2;
+			if (strncmp(t, "Rudolf OS", 9) && i + k + 16 <= l && !memcmp(d + i, o, k) && d[i + k] == 3 && d[i + k + 1] == 0x17 && d[i + k + 2] == 16 && !d[i + k + 3]) {
+				memcpy(&ns2, d + i + k + 4, 4); if (ns2 == ns && memcmp(d + i + k + 8, z8, 8)) { memcpy(eui, d + i + k + 8, 8); free(d); break; } }
+			free(d);
+		}
 		o[k++] = 3; o[k++] = 0x17; o[k++] = 16; o[k++] = 0; memcpy(o + k, &ns, 4); memcpy(o + k + 4, eui, 8); k += 12;
 	} else if (strstr(rp, "/ata")) {
 		const char *a = strstr(rp, "/ata"); unsigned an; if (sscanf(a, "/ata%u/", &an) != 1) return 0;

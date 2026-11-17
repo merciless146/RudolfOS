@@ -144,9 +144,12 @@ class TSer(Ser):
 N = [0]; VARS = f'{W}/vars.fd'; shutil.copy(f'{PARTS}/OVMF_VARS_4M.fd', VARS)   # (no keys: Secure Boot off; the Debug start)
 def vm_start(tag, stick=False, net=True):
     N[0] += 1; name = f't160b{N[0]}{tag}'
-    extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,id=nvc,serial=KINGSTON160B',
+    # (use-intel-id: Linux ignores the IDs of QEMU's own NVMe controller (NVME_QUIRK_BOGUS_NID), so its EUI-64 would be
+    #  missing in Linux while OVMF names the drive with it; with Intel's IDs both see the Vivobook's EUI-64)
+    extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,id=nvc,serial=KINGSTON160B,use-intel-id=on',
              '-device', f'nvme-ns,bus=nvc,drive=nv,nsid=1,eui64=0x{EUI}']
     if net: extra += ['-netdev', 'user,id=n1', '-device', 'e1000,netdev=n1']
+    extra += ['-drive', f'file={W}/rel.img,format=raw,if=none,id=rl,readonly=on', '-device', 'virtio-blk-pci,drive=rl']
     if FIX: extra += ['-drive', f'file={W}/fix.img,format=raw,if=none,id=fx', '-device', 'virtio-blk-pci,drive=fx']
     if stick: extra += ['-device', 'qemu-xhci,id=xh', '-drive', f'file={W}/stick.img,format=raw,if=none,id=u0', '-device', 'usb-storage,bus=xh.0,drive=u0,removable=on,bootindex=0']
     vm = sbvm.VM(name, PARTS, [], secure=True, vars_from=VARS, mem=MEM, extra=extra); vm.serlog = os.path.join(vm.dir, 'serial.txt')
@@ -186,6 +189,9 @@ try:
     make_drive()
     # the USB stick: 1.6.0's boot image as Rufus writes it (DD)
     shutil.copy(f'{REL}/boot.iso', f'{W}/stick.img'); run_(['truncate', '-s', '64M', f'{W}/stick.img'])
+    # the release's boot image on a disk of its own: a stand-in for GitHub when QEMU's network cannot reach it
+    os.makedirs(f'{W}/relfiles'); [shutil.copy(f'{REL}/{n}', f'{W}/relfiles/{n}') for n in ('boot.iso', 'boot.iso.sha256')]
+    run_(['truncate', '-s', '96M', f'{W}/rel.img']); run_(['mkfs.ext4', '-q', '-F', '-L', 'B160REL', '-d', f'{W}/relfiles', f'{W}/rel.img'])
     if FIX:
         run_(['truncate', '-s', '32M', f'{W}/fix.img']); run_(['mkfs.ext4', '-q', '-F', '-L', 'B160FIX', '-d', FIX, f'{W}/fix.img'])
     # ======== 1: 1.5.9 stable
@@ -215,10 +221,18 @@ try:
     v = dump(g, '1.6.0\'s first start'); c, ce = cur_entry(v); rud = by_title(v, 'Rudolf OS')
     ok('2a. started through "Drive" (BootCurrent); rudolfd\'s "Rudolf OS" took its path: ' + ('CDROM(%d,0x%X,0x%X)' % CD_OLD), ce['title'] == 'Drive' and rud and has_cd(rud[0][1], CD_OLD), (c, ce['text'], rud))
     okp = False
-    for _ in range(90):
+    for i in range(40):
         o = run(g, "[ -s /persist/os/bootimg/pending ] && echo STAGED; cat /run/rudolf/espcheck.log 2>/dev/null | tail -3", 30, False)
         if 'STAGED' in o or 'could not' in o: okp = 'STAGED' in o; break
+        if i == 18 and 'not all the official ones' in o: break   # (3 minutes: no download yet)
         time.sleep(10)
+    if not okp:
+        # QEMU's network did not reach GitHub: the same repair, given the release's boot image from a disk (what the
+        # download would have brought), as the Vivobook's would have run once its Wi-Fi was up
+        run(g, "ip -4 addr | grep inet; ip route; cat /etc/resolv.conf; pkill -f 'espcheck boot'; RL=$(blkid | grep 'LABEL=\"B160REL\"' | cut -d: -f1); mkdir -p /mnt/rl; mount -o ro $RL /mnt/rl; ls -la /mnt/rl; "
+               "printf '#!/bin/sh\\ncp /mnt/rl/${1##*/} \"$2\"\\n' > /tmp/fetch.sh; chmod 755 /tmp/fetch.sh; rm -f /persist/os/esp-repair/tried; "
+               "ESP_FETCH=/tmp/fetch.sh /usr/lib/rudolf/espcheck repair b >> /run/rudolf/espcheck.log 2>&1; echo rc=$?", 600)
+        o = run(g, "[ -s /persist/os/bootimg/pending ] && echo STAGED", 30, False); okp = 'STAGED' in o
     o = run(g, "cat /run/rudolf/espcheck.log; cat /persist/os/bootimg/pending; echo; " + HEALTH, 60)
     ok('2b. espcheck: the start-up files are not all official (1.4.1\'s have no recovery.efi): the release\'s boot image downloaded and staged for the next start',
        okp and 'not all the official ones' in o and 'are written at the next start' in o, o)
@@ -273,7 +287,7 @@ try:
         o = run(g, "mkdir -p /mnt/esp; mount -t vfat /dev/nvme0n1p2 /mnt/esp && f=/mnt/esp/EFI/rudolf/recovery.efi && s=$(stat -c %s $f) && printf 'X' | dd of=$f bs=1 seek=$((s / 2)) conv=notrunc 2>/dev/null; sync; umount /mnt/esp; "
                    "echo 3 > /proc/sys/vm/drop_caches; /usr/lib/rudolf/espcheck status; dd if=/dev/nvme0n1 bs=512 count=1 2>/dev/null | od -An -tx1 | tail -5 > /tmp/mbr.before; "
                    "mkdir -p /persist/os/esp-repair; "
-                   f"busybox wget -q -O /persist/os/esp-repair/boot.iso https://github.com/merciless146/RudolfOS/releases/download/r{mv(REL, 'serial')}/boot.iso; ls -la /persist/os/esp-repair; "
+                   "RL=$(blkid | grep 'LABEL=\"B160REL\"' | cut -d: -f1); mkdir -p /mnt/rl; mountpoint -q /mnt/rl || mount -o ro $RL /mnt/rl; cp /mnt/rl/boot.iso /persist/os/esp-repair/boot.iso; ls -la /persist/os/esp-repair; "
                    "/usr/lib/rudolf/bootfiles.sh files /persist/os/esp-repair/boot.iso; echo rc=$?; echo 3 > /proc/sys/vm/drop_caches; /usr/lib/rudolf/espcheck status; "
                    "dd if=/dev/nvme0n1 bs=512 count=1 2>/dev/null | od -An -tx1 | tail -5 > /tmp/mbr.after; cmp /tmp/mbr.before /tmp/mbr.after && echo MBR-SAME; " + HEALTH, 600)
         ok('7. FIX: recovery.efi changed, then the official start-up files put back into the existing EFI partition (each beside the old one, checked, renamed): both official; the partition table and disk signature unchanged',

@@ -135,6 +135,15 @@ open(f'{d}/BootOrder-{G}','wb').write(struct.pack('<IH',7,5)); open(f'{d}/BootCu
 X
 inns $W/v7 $W/rudolfd --boot-entry start >/dev/null; d=$(dump $W/v7)
 ok "7. a firmware's own entry for the drive started it: \"Rudolf OS\" takes its path (no CDROM), first" "$(echo "$d" | grep -q "^Boot0000 \"Rudolf OS\" active  ${PRE}7fff0400$" && echo "$d" | grep -q '^BootOrder=0000,0005$' && echo 1)" "$d"
+# ---- 7b. a drive whose EUI-64 Linux leaves out (NVME_QUIRK_BOGUS_NID: no /sys/block/X/eui), the firmware naming it
+#      with one: the firmware's own entry for the controller says it (the entry would name no drive otherwise)
+mv $N/eui $W/eui.k; rm -rf $W/v7b; cp -a $W/v7 $W/v7b; for f in $W/v7b/Boot0000-*; do rm -f "$f"; done
+python3 - $W/v7b <<'X'
+import sys,struct
+d=sys.argv[1]; G='8be4df61-93ca-11d2-aa0d-00e098032b8c'; open(f'{d}/BootOrder-{G}','wb').write(struct.pack('<IH',7,5))
+X
+inns $W/v7b $W/rudolfd --boot-entry start >/dev/null; d=$(dump $W/v7b); mv $W/eui.k $N/eui
+ok "7b. no EUI-64 from Linux: taken from the firmware's own entry for the drive (NVMe(0x1,00-26-B7-...))" "$(echo "$d" | grep -q "^Boot0000 \"Rudolf OS\" active  ${PRE}7fff0400$" && echo 1)" "$d"
 # ---- 8. System health takes kind "boot" now
 r=$(inns $W/v7 sh -c "$W/rudolfd --health boot 'the start-up files test'; echo rc=\$?")
 ok "8. rudolfd --health boot ...: kept in System health (espcheck's reports)" "$(echo "$r" | grep -q rc=0 && health | grep -q 'the start-up files test' && echo 1)" "$r"
