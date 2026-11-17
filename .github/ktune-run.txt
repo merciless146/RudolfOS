@@ -1,23 +1,6 @@
 # What .github/workflows/kernel-tuning.yml runs (docs/plan-1.6.1.md Part 12). Lines:
-#   serial SERIAL                       the release whose layers are used (default: the newest beta)
-#   kernel NAME [+OPTION] [-OPTION] [~OPTION] [repro]   a test kernel from this tree: the release's configuration
-#                                       (kconfig.sh) with options turned on (+), off (-) or made modules (~); repro: built
-#                                       with its date fixed, to compare two
-#   base NAME                           a test base layer: the release's with this tree's sys/root and rudolfd
-#   run ... BASE=NAME                   ...started with that base layer
-#   run PHASE KERNEL [VAR=VALUE ...]    iso/qt/sb/kt161_t.py PHASE with the release's kernel (release) or a test kernel;
-#                                       lists in a value are written with commas
-serial 2026111620
+#   serial 2026111620
+kernel tree
 kernel hz250 +HZ_250 -HZ_1000
-kernel tree repro
-kernel tree2 repro
-run startup release STARTS=4
-run startup release ENGINE=native STARTS=4
-run startup tree STARTS=4
-run startup hz250 STARTS=4
-run latency release PREEMPTS=voluntary,full REPS=2
-run latency release PREEMPTS=lazy,none REPS=2
-run latency tree PREEMPTS=voluntary,full REPS=2
-run latency hz250 PREEMPTS=voluntary,full REPS=2
-run memory release
-run memory release MEMRUNS=180:100:lzo-rle,180:150:zstd,200:100:zstd,60:100:zstd,100:100:zstd,180:100:zstd
+run hw release,tree
+run latency release,hz250 PREEMPTS=voluntary REPS=3
