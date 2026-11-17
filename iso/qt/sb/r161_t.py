@@ -5,7 +5,8 @@
 # a file) for the drives: mount, unmount, eject through the API as the desktop calls it, a stick's information, an
 # install job that the helper hands to install.sh (an image that is not there: refused by install.sh, nothing
 # written), a name rudolfd lets through but the helper refuses (said in the health log), the helpers out of reach of
-# the desktop's user (uid 1000: not readable or runnable, no socket to reach rudolf-rootd).
+# the desktop's user (uid 1000: not readable or runnable, no socket to reach rudolf-rootd). Updates: sys/status and
+# sys/stable as rudolf-update says them by hand, a setting changed and back, the first heartbeat's boot-ok.
 #   python3 r161_t.py REL-DIR   (SB_PARTS and QEMU as for t160; root; QEMU_ACCEL=kvm where it can)
 import os, sys, time, re, subprocess, shutil, struct
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE)
@@ -115,6 +116,17 @@ try:
     ok('9. eject: the stick unmounted and let go ("safe to remove", the kernel no longer has it)', '"mounted"' in o and 'safe to remove' in o and o.rstrip().split('\n')[-1].strip() == '0', o)
     o = sh("su -s /bin/sh rudolf -c 'id -u; /usr/lib/rudolf/root/drives mount sda1; echo rc=$?; ls /usr/lib/rudolf/root/ 2>&1; cat /usr/lib/rudolf/root/drives > /dev/null; echo rc2=$?' 2>&1")
     ok('10. the desktop\'s user (1000) can neither run nor read the helpers', re.search(r'^1000$', o, re.M) and 'rc=126' in o and 'rc2=1' in o, o)
+    # updates (the updates helper, rudolf-update): what the API answers is what rudolf-update says when run by hand
+    o1 = api(sh, 'sys/status'); o2 = sh("rudolf-update status 2>/dev/null; echo")
+    j1 = re.search(r'\{.*\}', o1); j2 = re.search(r'\{.*\}', o2)
+    ok('12. updates: GET sys/status through the helper is rudolf-update status', j1 and j2 and j1.group(0) == j2.group(0), [o1[-600:], o2[-600:]])
+    o1 = api(sh, 'sys/stable'); o2 = sh("rudolf-update stable-info 2>/dev/null; echo")
+    ok('13. ...and GET sys/stable is rudolf-update stable-info (or both have none)', (re.search(r'\{.*\}', o1) and re.search(r'\{.*\}', o2) and re.search(r'\{.*\}', o1).group(0) == re.search(r'\{.*\}', o2).group(0)) or ('cannot go back' in o1 and '{' not in o2), [o1[-400:], o2[-400:]])
+    a0 = sh("grep '^auto=' /persist/etc/rudolf/update.conf 2>/dev/null; rudolf-update status 2>/dev/null | grep -o '\"auto\":[a-z]*'", 30, False)
+    o = api(sh, 'sys/set?k=auto&v=0', True) + sh("rudolf-update status 2>/dev/null | grep -o '\"auto\":[a-z]*'") + api(sh, 'sys/set?k=auto&v=1', True) + sh("rudolf-update status 2>/dev/null | grep -o '\"auto\":[a-z]*'")
+    ok('14. ...a setting (automatic updates off, then on) through the helper', o.count('"saved"') == 2 and '"auto":false' in o and '"auto":true' in o, [a0, o])
+    o = sh("rm -f /run/rudolf/bootok; : > /run/rudolf/update.log", 20, False) + api(sh, 'heartbeat', True) + sh("sleep 3; cat /run/rudolf/update.log; ls -l /run/rudolf/bootok", 30)
+    ok('15. ...the first heartbeat: rudolf-update boot-ok through the helper, its words in update.log', 'bootok' in o and len(o.strip()) > 0, o)
     o = sh("tail -20 /run/rudolf/rudolfd.log | grep -i 'rootd\\|refused' ; cat /persist/var/log/health.log 2>/dev/null | grep 'rootd refused' | tail -3; echo done")
     ok('11. nothing was refused by rudolf-rootd itself (every request came from rudolfd)', 'rudolf-rootd refused' not in o, o)
 finally:

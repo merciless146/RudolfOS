@@ -127,7 +127,7 @@ gcc -O2 $HARD -o usr/bin/rudolfd "$SYS/rudolfd.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
 # 1.6.1 (docs/plan-1.6.1.md Part 11): rudolf-rootd and the root helpers it runs for rudolfd (root's only: 0700)
 gcc -O2 $HARD -o usr/bin/rudolf-rootd "$SYS/rudolf-rootd.c"
 mkdir -p usr/lib/rudolf/root && chmod 755 usr/lib/rudolf/root
-for h in drives; do gcc -O2 $HARD -o usr/lib/rudolf/root/$h "$SYS/rudolf-$h.c" && chown 0:0 usr/lib/rudolf/root/$h && chmod 700 usr/lib/rudolf/root/$h; done
+for h in drives updates; do gcc -O2 $HARD -o usr/lib/rudolf/root/$h "$SYS/rudolf-$h.c" && chown 0:0 usr/lib/rudolf/root/$h && chmod 700 usr/lib/rudolf/root/$h; done
 gcc -O2 $HARD -o usr/bin/rpk "$SYS/rpk.c" -lcrypto
 gcc -O2 $HARD -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl
 gcc -O2 $HARD -o usr/bin/rudolf-print "$SYS/rudolf-print.c" -ldl
