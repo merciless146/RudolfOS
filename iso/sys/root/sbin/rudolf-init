@@ -167,6 +167,7 @@ starts_keep() {
 if mountpoint -q /persist; then starts_keep
 	( for t in 30 60 120 300; do sleep $t; dmesg > $SK_S/0/kernel.log 2>/dev/null; done; while :; do sleep 600; dmesg > $SK_S/0/kernel.log 2>/dev/null; done ) &
 fi
+st "services started"
 # 1.5.7: rudolfd's log is kept on the disk for this start and the 3 before it (/run/rudolf/rudolfd.log points to it)
 RDLOG=/run/rudolf/rudolfd.log
 if mountpoint -q /persist; then
@@ -175,7 +176,6 @@ if mountpoint -q /persist; then
 	[ -f $L/rudolfd.log ] && mv -f $L/rudolfd.log $L/rudolfd.log.1
 	: > $L/rudolfd.log && chmod 600 $L/rudolfd.log && ln -sf $L/rudolfd.log $RDLOG && RDLOG=$L/rudolfd.log
 fi
-st "services started"
 rudolfd > $RDLOG 2>&1 &
 # 1.4.7: when memory runs out, the largest web page is ended instead of the whole desktop freezing
 ( while :; do rudolf-memguard >/dev/null 2>&1; sleep 2; done ) &
