@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+
+## 1.6.0 (in progress)
+Summary: In progress.
 - Security: what rudolfd does as root for drives (mounting, unmounting and ejecting a USB drive or SD card, a stick's
   information, Install, Make a stick, Replace the boot files, Keep files on this drive) is now done by a small helper
   that checks every name and file again itself (a disc image must really be in your home folder, yours or the signed-in
@@ -12,9 +15,6 @@ Summary: In progress.
   step towards rudolfd no longer running as root.
 - Security: system updates (checking, downloading, rolling back, going back to stable, Return to official, Developer
   mode, the update settings) go through a helper of their own the same way, which checks again what rudolfd is asked.
-
-## 1.6.0 (in progress)
-Summary: In progress.
 - Fixed: on the Native desktop an app's window appears once, at its own size, with its app in it (opening as on Standard), instead of first showing Rudolf's sign-in screen or the desktop page in a large window before shrinking to the app; an app that is slow to start appears after 2.5 s as a plain window of its colour until it is ready.
 - Fixed: on the Native desktop a right-click menu replaced by another (a second right-click elsewhere, on the desktop, an icon or the taskbar), or the start menu, a tray pop-up or the indicator replaced by another, no longer leaves a strip of the first one on the screen; a right-click on the taskbar closes the start menu, as on Standard.
 - Fixed: on the Native desktop the desktop's icons appear at once at sign-in (each account's own from its last session, then as they are now), and a new folder or text document made from the desktop's menu, a file saved to the Desktop folder or deleted from it shows on the desktop within half a second, as in File Explorer (it took seconds, or until another window opened).
