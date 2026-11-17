@@ -5,6 +5,13 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Security: what rudolfd does as root for drives (mounting, unmounting and ejecting a USB drive or SD card, a stick's
+  information, Install, Make a stick, Replace the boot files, Keep files on this drive) is now done by a small helper
+  that checks every name and file again itself (a disc image must really be in your home folder, yours or the signed-in
+  account's), run by rudolf-rootd, which only rudolfd can ask. Nothing changes in how the desktop works; it is the first
+  step towards rudolfd no longer running as root.
+- Security: system updates (checking, downloading, rolling back, going back to stable, Return to official, Developer
+  mode, the update settings) go through a helper of their own the same way, which checks again what rudolfd is asked.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
@@ -16,6 +23,8 @@ Summary: In progress.
 - New: Settings › Update and recovery › Start-up of this drive: "Check this drive's start-up…" (its partitions, its start-up files and their signatures, the firmware's entry for it, put right when needed; it says what it found and changed) and "Put back the official start-up files…" (only on mains power or above 50 % battery). Both need an administrator's password; Rudolf OS no longer changes the start-up files by itself.
 - Fixed: the self-test's "listeners" check failed on 1.6.0 with "something listens that the list of listeners does not name: unix /run/udev/control" (udev's control socket, since 1.6.0 uses udev).
 - Fixed: System health no longer says "the desktop's memory group is missing or empty" when the computer restarts, and the desktop's page and API stay closed to other programs while the desktop is stopped for a restart or started again (an empty group turned the check off).
+- Fixed: on the Native desktop a file dragged from a Linux app (Debian's file manager, a Flatpak app, an AppImage) onto the desktop is copied into the Desktop folder, as on Standard (where a drop on a folder's icon or the Trash also goes to the Desktop folder, and text or the taskbar takes none); it did nothing. The file is read for the desktop by the account's own Linux user, only from the account's own files and the drives (Flatpak's document portal is mapped to the real file), never through a link; the original stays where it was.
+- Tests: the native desktop takes X drops from a stand-in Linux app (the desktop, a folder's icon, the Trash, a taskbar button, text, another account's file, a link out, a folder), compared with what Standard's page keeps for the same drops; rudolfd's reading of dropped files on the host (xdrop161_t.sh, drop161_t.sh).
 - Fixed: on the Native desktop the desktop's background work runs once, whether or not any app window is open, as on Standard: an alarm or a Clock timer rings once (it did not ring with no window open, and rang once per open window), also after the Clock's window is closed; a Calendar reminder, a call's or a message's notice and Bluetooth's and Thunderbolt's questions show once; update checks, the Debian and Linux apps' updates and the session's save run once. App windows no longer each run the other apps' background work.
 - Changed: Oracle's start page now reads "A Chromium-based browser for Linux" under its name.
 - Fixed: Oracle in Rudolf's dark theme: no white strip under the page (between the page and the status bar); an open start page now follows the dark theme turning on or off by itself at dusk and dawn, not only from Settings.
