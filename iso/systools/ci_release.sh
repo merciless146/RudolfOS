@@ -175,7 +175,9 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	# 1.6.1 (docs/plan-1.6.1.md Part 11): rudolf-rootd and the root helpers (installed below: root's only, 0700)
 	RHELP="drives updates"
 	gcc -O2 $HARD -o "$B/rudolf-rootd" sys/rudolf-rootd.c
-	for h in $RHELP; do gcc -O2 $HARD -o "$B/root-$h" sys/rudolf-$h.c; done
+	# (each named: the check below wants every sys/*.c in a gcc line of its own)
+	gcc -O2 $HARD -o "$B/root-drives" sys/rudolf-drives.c
+	gcc -O2 $HARD -o "$B/root-updates" sys/rudolf-updates.c
 	gcc -O2 $HARD -o "$B/rudolf-launch" sys/rudolf-launch.c
 	gcc -O2 $HARD -o "$B/rudolf-memguard" sys/rudolf-memguard.c   # 1.4.7: the memory guard
 	gcc -O2 $HARD -o "$B/rudolf-shellfix" sys/rudolf-shellfix.c   # 1.5.8: the shell put into the profile when it changed
