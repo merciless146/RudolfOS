@@ -6,7 +6,7 @@
 # finds; here a start through any entry but those two counts as the Vivobook's setup screen (BootCurrent says which
 # entry started), and no entry of OVMF's starts the computer while the result is judged.
 #   the drive: Install here's layout with 1.4.1's boot image in front (the Vivobook's, "Get new boot files" of
-#   2026-10-29), an NVMe drive with the Vivobook's EUI-64; RUDOLFDATA with 1.5.9 stable in slot a, and 1.6.0 (the beta
+#   2026-10-29), an NVMe drive; RUDOLFDATA with 1.5.9 stable in slot a, and 1.6.0 (the beta
 #   the owner updated to) in slot b
 #   1  1.5.9 stable starts (the Debug start, for the serial shell); "Drive" and a Windows Boot Manager entry made as on
 #      the Vivobook, "Drive" to start next (BootNext), the Native desktop chosen, the update to 1.6.0 staged
@@ -144,14 +144,18 @@ class TSer(Ser):
 N = [0]; VARS = f'{W}/vars.fd'; shutil.copy(f'{PARTS}/OVMF_VARS_4M.fd', VARS)   # (no keys: Secure Boot off; the Debug start)
 def vm_start(tag, stick=False, net=True):
     N[0] += 1; name = f't160b{N[0]}{tag}'
-    # (use-intel-id: Linux ignores the IDs of QEMU's own NVMe controller (NVME_QUIRK_BOGUS_NID), so its EUI-64 would be
-    #  missing in Linux while OVMF names the drive with it; with Intel's IDs both see the Vivobook's EUI-64)
-    extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,id=nvc,serial=KINGSTON160B,use-intel-id=on',
-             '-device', f'nvme-ns,bus=nvc,drive=nv,nsid=1,eui64=0x{EUI}']
+    # (no EUI-64: Linux ignores the IDs of QEMU's NVMe controllers, its own and the Intel-numbered one alike
+    #  (NVME_QUIRK_BOGUS_NID), so the released rudolfd would name the drive with none while OVMF names it with one, and
+    #  no entry of rudolfd's would start: a QEMU difference, not the Vivobook's (rudolfd now takes the EUI-64 from the
+    #  firmware's own entry then: qt/host/bootentry60_t.sh 7b))
+    extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,id=nvc,serial=KINGSTON160B',
+             '-device', 'nvme-ns,bus=nvc,drive=nv,nsid=1']
     if net: extra += ['-netdev', 'user,id=n1', '-device', 'e1000,netdev=n1']
     extra += ['-drive', f'file={W}/rel.img,format=raw,if=none,id=rl,readonly=on', '-device', 'virtio-blk-pci,drive=rl']
     if FIX: extra += ['-drive', f'file={W}/fix.img,format=raw,if=none,id=fx', '-device', 'virtio-blk-pci,drive=fx']
-    if stick: extra += ['-device', 'qemu-xhci,id=xh', '-drive', f'file={W}/stick.img,format=raw,if=none,id=u0', '-device', 'usb-storage,bus=xh.0,drive=u0,removable=on,bootindex=0']
+    # (the stick started through an entry of its own with BootNext, as the Vivobook's boot menu does: QEMU's bootindex
+    #  makes OVMF rewrite BootOrder and drop the entries it does not match, "Drive" with them)
+    if stick: extra += ['-device', 'qemu-xhci,id=xh,addr=0x10', '-drive', f'file={W}/stick.img,format=raw,if=none,id=u0', '-device', 'usb-storage,bus=xh.0,drive=u0,removable=on']
     vm = sbvm.VM(name, PARTS, [], secure=True, vars_from=VARS, mem=MEM, extra=extra); vm.serlog = os.path.join(vm.dir, 'serial.txt')
     g = Guest.__new__(Guest); g.N = vm.name; g.s = TSer(vm.ser_path, vm.serlog); g.q = vm.q; g.s.read(0.3)
     return vm, g
@@ -201,7 +205,7 @@ try:
     o = run(g, "echo SLOT=$(cat /etc/rudolf/slot); cat /usr/share/rudolf/VERSION; cat /etc/rudolf/persist; ls /sys/block; cat /sys/block/nvme0n1/eui")
     v = dump(g, 'after 1.5.9\'s first start')
     rud = by_title(v, 'Rudolf OS')
-    ok('1a. 1.5.9\'s rudolfd made "Rudolf OS" for the drive (NVMe with the Vivobook\'s EUI-64), first in BootOrder', rud and 'NVMe(0x1,00-26-B7-38-22-72-47-D5)' in rud[0][1]['text']
+    ok('1a. 1.5.9\'s rudolfd made "Rudolf OS" for the drive (NVMe), first in BootOrder', rud and 'NVMe(0x1,' in rud[0][1]['text']
        and struct.unpack('<H', v['BootOrder'][:2])[0] == int(rud[0][0][4:], 16), rud)
     if not rud: raise SystemExit
     pre = rud[0][1]['path'][:-4]
@@ -257,7 +261,11 @@ try:
     vm_stop(vm); vm = None; cdn = drive_cd()
     ok('3. at the restart the start-up wrote 1.6.0\'s boot image over the area in front of RUDOLFDATA: its EFI image is now at CDROM(%d,0x%X,0x%X), the entries name CDROM(%d,0x%X,0x%X)' % (cdn + CD_OLD),
        cdn == CD_NEW and cdn != CD_OLD, cdn)
-    # ======== 4: a start from the USB stick
+    # ======== 4: a start from the USB stick: an entry for it and BootNext, put in the firmware's variables from outside
+    usb = node(2, 1, struct.pack('<II', 0x0a0341d0, 0)) + node(1, 1, bytes([0, 0x10])) + node(3, 5, bytes([0, 0])) + END
+    open(f'{W}/usb.json', 'w').write('{"version": 2, "variables": [{"name": "Boot0050", "guid": "%s", "attr": 7, "data": "%s"}, {"name": "BootNext", "guid": "%s", "attr": 7, "data": "5000"}]}'
+                                      % (G, loadopt('UEFI: USB DISK 3.0 PMAP', usb).hex(), G))
+    run_(['virt-fw-vars', '-i', VARS, '-o', VARS + '.n', '--set-json', f'{W}/usb.json'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); shutil.move(VARS + '.n', VARS)
     vm, g = vm_start('stick', stick=True)
     b4 = up(g, 900); ok('4. started from the USB stick: the installed system starts', b4)
     if not b4: raise SystemExit
