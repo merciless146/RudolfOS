@@ -144,6 +144,23 @@ d=sys.argv[1]; G='8be4df61-93ca-11d2-aa0d-00e098032b8c'; open(f'{d}/BootOrder-{G
 X
 inns $W/v7b $W/rudolfd --boot-entry start >/dev/null; d=$(dump $W/v7b); mv $W/eui.k $N/eui
 ok "7b. no EUI-64 from Linux: taken from the firmware's own entry for the drive (NVMe(0x1,00-26-B7-...))" "$(echo "$d" | grep -q "^Boot0000 \"Rudolf OS\" active  ${PRE}7fff0400$" && echo 1)" "$d"
+# ---- 7c. the Vivobook on 2026-11-17 (beta 2026111711): its "Rudolf OS" an AMI vendor path (Path(1,4), no drive in it),
+#      started from the USB stick: the new entry names the drive, its start-up files and the file (as its setup's own
+#      entry, which started the computer), never the drive alone (which AMI's firmware does not start: its setup screen)
+rm -rf $W/v7c; mkdir $W/v7c
+python3 - $W/v7c <<'X'
+import sys,struct
+d=sys.argv[1]; G='8be4df61-93ca-11d2-aa0d-00e098032b8c'
+def node(t,s,b): return bytes([t,s])+struct.pack('<H',len(b)+4)+b
+def var(n,b): open(f'{d}/{n}-{G}','wb').write(struct.pack('<I',7)+b)
+def opt(t,p): return struct.pack('<IH',1,len(p))+(t+'\0').encode('utf-16-le')+p
+ven=node(1,4,bytes.fromhex('5ce8128b2cec4ca8b2e2d2cee03c9d2a')+bytes([0,0]))+bytes([0x7f,0xff,4,0])
+var('Boot0003',opt('Rudolf OS',ven)); var('Boot0004',opt('UEFI: USB DISK 3.0 PMAP',node(2,1,struct.pack('<II',0x0a0341d0,0))+node(1,1,bytes([3,8]))+node(1,1,bytes([3,0]))+node(3,5,bytes([2,0]))+bytes([0x7f,0xff,4,0])))
+var('BootOrder',struct.pack('<HH',3,4)); var('BootCurrent',struct.pack('<H',4))
+X
+o=$(inns $W/v7c $W/rudolfd --boot-entry start; echo rc=$?); d=$(dump $W/v7c); PRE=$(cat $W/pre.hex)
+ok "7c. its \"Rudolf OS\" an AMI vendor path, started from the stick: the new entry names the drive, $CDNEW and the file (not the drive alone), first; the vendor one kept second" \
+	"$(echo "$d" | grep -q "^Boot0000 \"Rudolf OS\" active $CDNEW ${PRE}040218000[0-9a-f]*04043000[0-9a-f]*7fff0400$" && echo "$d" | grep -q '^Boot0003 "Rudolf OS (previous)"' && echo "$d" | grep -q '^BootOrder=0000,0003,0004$' && echo 1)" "$o $d"
 # ---- 8. System health takes kind "boot" now
 r=$(inns $W/v7 sh -c "$W/rudolfd --health boot 'the start-up files test'; echo rc=\$?")
 ok "8. rudolfd --health boot ...: kept in System health (espcheck's reports)" "$(echo "$r" | grep -q rc=0 && health | grep -q 'the start-up files test' && echo 1)" "$r"
