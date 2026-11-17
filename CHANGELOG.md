@@ -5,6 +5,13 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Fixed: on the Lite desktop, a game's "Save to a file" (Ember Reach's, for one) or any file picker in a game or on a
+  website no longer freezes the computer. WebKit asked with a file dialog that went through Rudolf OS's own portal,
+  which draws its dialog in the desktop page, while the desktop's window was held for that dialog: nothing could be
+  clicked or typed, Task Manager opened behind it, and only the power button got out (the Vivobook, 2026-11-17). A
+  save from the desktop page now goes to Downloads, as a website's download does, and a file picker (Load from a file,
+  a site's upload in Oracle) is the desktop's own Open dialog. Should the Lite desktop itself ever ask the portal for a
+  file dialog again, the portal answers "cancelled" at once instead.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
