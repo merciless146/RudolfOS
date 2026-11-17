@@ -17,19 +17,27 @@ ok "2. /run's logs are written straight into this start's folder" $([ "$(readlin
 ok "3. what started: slot, release, menu entry, options, and the start-up's own lines" $(grep -qx 'slot=b' $S/0/start.txt && grep -qx 'release=2026111100' $S/0/start.txt && grep -q 'entry=rudolf-start.conf' $S/0/start.txt && grep -q 'hello from the start-up' $S/0/initramfs.log && grep -q 'old decision' $S/0/boot-decisions.log; echo $?)
 ok "4. only root reads them" $([ "$(stat -c %a $S)" = 700 ]; echo $?)
 # the session's mark
-sed -n '/^desk_up_mark() {/,/}$/p' $SY/usr/lib/rudolf/session | head -1 > $W/mark.sh; grep -q 'desk_up_mark' $W/mark.sh || echo "no desk_up_mark"
-o=$(sed "s#/run/rudolf/#$W/run/#g; s#/proc/uptime#$W/uptime#" $W/mark.sh); echo "$o" > $W/mark.sh; echo '42.5 1.0' > $W/uptime
+sed -n '/^desk_up_mark() {/,/}$/p' $SY/usr/lib/rudolf/session > $W/mark.sh; grep -q 'desk_up_mark' $W/mark.sh || echo "no desk_up_mark"
+o=$(sed "s#/run/rudolf/#$W/run/#g; s#/proc/uptime#$W/uptime#" $W/mark.sh); printf "%s\n" "$o" > $W/mark.sh; echo '42.5 1.0' > $W/uptime
 (. $W/mark.sh; ENGINE=webkit; desk_up_mark); ok "5. no answer yet: nothing marked" $([ ! -e $S/0/desktop-up ]; echo $?)
 touch $W/run/heartbeat; (. $W/mark.sh; ENGINE=webkit; desk_up_mark); echo '99 1' > $W/uptime; (. $W/mark.sh; ENGINE=chromium; desk_up_mark)
 ok "6. the desktop's first answer is marked once: when, and with which engine" $([ "$(cat $S/0/desktop-up)" = "42 webkit" ]; echo $?) "$(cat $S/0/desktop-up)"
+# 1.6.1 (plan Part 12): the first heartbeat's own time (rudolfd writes its uptime into bootok) rather than the loop's, and the
+# start-up's steps kept with the start's logs
+ok "6b. 1.6.1: without bootok's time, the steps get the loop's time as the desktop's answer, and are kept with the start" $(grep -qx '42.5 the desktop answered' $S/0/startup-times; echo $?) "$(cat $S/0/startup-times 2>&1)"
+rm -f $S/0/desktop-up $W/run/heartbeat-first; printf '0.9 kernel and start-up image\n5.6 devices (udev)\n' > $W/run/startup-times; echo 38.71 > $W/run/bootok; echo '61.0 1' > $W/uptime
+(. $W/mark.sh; ENGINE=native; desk_up_mark)
+ok "6c. 1.6.1: with bootok's time (38.71): marked at 38 s, not at the loop's 61, and the steps end with it" $([ "$(cat $S/0/desktop-up)" = "38 native" ] && [ "$(tail -1 $S/0/startup-times)" = "38.71 the desktop answered" ] && grep -qx '5.6 devices (udev)' $S/0/startup-times; echo $?) "$(cat $S/0/desktop-up; cat $S/0/startup-times)"
+cp $S/0/desktop-up $W/du; echo '42 webkit' > $S/0/desktop-up
 # the reader
 printf 'Tue Nov 10 22:00:00 UTC 2026 browser exited\nTue Nov 10 22:00:08 UTC 2026 browser exited\nTue Nov 10 22:00:09 UTC 2026 the WebKit desktop did not start (it closed 3 times in a row as it started) - using Chromium\n' > $S/1/session.log
 printf '23:00:01 Rudolf OS: say "hi" \\ there\n' > $S/1/initramfs.log
 J=$(STARTS_DIR=$S sh $SY/usr/lib/rudolf/starts)
 echo "$J" | python3 -c '
-import json,sys;j=json.load(sys.stdin);s=j["starts"];a=s[0];b=s[1]
+import json,sys;j=json.loads(sys.stdin.read(),strict=False);s=j["starts"];a=s[0];b=s[1]   # (strict=False: the echo of the test shell turns \n back into a line break)
 assert len(s)==4,len(s); assert a["n"]==0 and a["desktopUp"]==42 and a["engine"]=="webkit" and a["slot"]=="b" and a["release"]=="2026111100",a
 assert b["desktopUp"] is None and b["exits"]==2 and "closed 3 times" in b["gaveUp"] and "\"hi\" \\ there" in b["startup"],b
+assert "5.6 devices (udev)\n38.71 the desktop answered" in a["steps"] and b["steps"]=="",(a["steps"],b["steps"])
 ' 2>$W/err; ok "7. the reader: valid JSON, a start that came up and one that did not (with why, and the start-up's quoted lines)" $? "$(cat $W/err) $J"
 # the start-up keeps its decisions on RUDOLFDATA before it hands over, restarts or stops
 { sed -n '/^say() {/,/^}/p' $I | sed '/^efv()/,$d'; } > $W/i.sh
