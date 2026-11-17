@@ -1540,6 +1540,18 @@ root work split into helpers (Part 11), with files dropped from outside onto the
     one hidden page of the shell's (#app=do-svc) runs the rest once for the whole desktop (Part 12's note "Done (2026-11-17)").
     Tests: qt/host/svc160_t.sh 22/22, qt/shell2/svc60_t.js 18/18, qt/sb/s160_t.py 16/16 in QEMU on the newest beta with this
     tree's rudolf-native and page (svc-check.yml run 44009629129). Left: the owner's checks V51-V56 on the Vivobook.
+15. **The start-up files' repair must never leave a computer that cannot start** (owner, 2026-11-16, must before stable;
+    numbered 15 after #448's item 14). On the Vivobook (beta 2026111620), the automatic repair of #433 (espcheck boot:
+    the start-up files not the official ones, so the release's boot image was downloaded and staged) was written at the
+    next restart by the start-up (initramfs/init: the boot image dd'd over the area in front of RUDOLFDATA, partition 1
+    cleared, a new disk signature), and the ASUS firmware then found nothing to start (its setup screen; Boot Override
+    empty). The image itself was checked afterwards: complete, signed, a valid EFI partition. First step (PR #449): a
+    start only reports. The fix, before stable: (1) never automatic: a button with a warning; (2) the files replaced
+    inside the existing EFI partition, each written beside the old one, checked and renamed, never the partition table
+    or the disk signature; (3) the firmware's boot entry written and read back before the restart, \EFI\BOOT\BOOTX64.EFI
+    always kept; (4) no restart unless the partition, the files' signatures and the entry are checked, the old files
+    kept otherwise; (5) a QEMU test with the firmware's saved entries cleared and its own search of the drives off. The
+    same for "Get new boot files", "Replace the boot files only" and Return to official, which write the same way.
 
 ## After 1.6.0: the native desktop decision (added on 2026-11-12)
 (2026-11-13: the prototype moved into 1.5.9 as a third desktop engine, Native (test): docs/plan-1.5.9.md Part 12.
