@@ -113,5 +113,14 @@ printf '%s' '[{"t":"note","x":5,"y":6,"txt":"a b"}]' > $T/wg; o=$(t "POST widget
 ok "39. ...the shell's own list wins while the page's is unchanged; only a JSON array, a real account" "$(echo "$o" | sed -n 2p | grep -q '"widgets":\[{"t":"note","x":5,"y":6,"txt":"a b"}\],"wgown":true' && echo "$o" | sed -n 3p | grep -q 400 && echo "$o" | sed -n 4p | grep -q 400 && echo 1)" "$o"
 wgls '[{"t":"cal","x":1,"y":2,"txt":""}]'; o=$(t "GET settings" | sed 's/^[^|]*|//')
 ok "40. ...and the page's again once the page's own list changes (another engine's desktop)" "$(echo "$o" | grep -q '"widgets":\[{"t":"cal","x":1,"y":2,"txt":""}\],"wgown":false' && echo 1)" "$o"
+# 1.6.0 (the owner's Vivobook, 2026-11-17: "the desktop still takes several minutes to add icons" on Native) at sign-in several pages
+# give the catalogue at once (do-start, the service page, the portal's page, a window opened): each request is a process of its
+# own, and all wrote the same NAME.tmp, so all but one were refused ("desktop/apps Error: could not save" in the laptop's log)
+# and the file kept could be two catalogues run together (not JSON: the shell then had no icons until a later one). 8 at once:
+for i in 1 2 3 4 5 6 7 8; do node -e "const a=[];for(let j=0;j<3000;j++)a.push({k:'app$i'+'_'+j,name:'App $i '+j,icon:'x'.repeat(30)});process.stdout.write(JSON.stringify({apps:a,desk:[{n:'D$i'}],acct:'uAnnA1b2'}))" > $T/cat$i; done
+for r in 1 2 3; do for i in 1 2 3 4 5 6 7 8; do t "POST apps <$T/cat$i" > $T/o$i & done; wait
+	for f in $D/.rudolf-apps.json $D/.rudolf-apps/uAnnA1b2.json; do node -e "JSON.parse(require('fs').readFileSync('$f'))" 2>/dev/null || echo "bad $f" >> $T/race; done
+	for i in 1 2 3 4 5 6 7 8; do grep -q '"saved"' $T/o$i || echo "refused $i: $(head -c 120 $T/o$i)" >> $T/race; done; done
+ok "41. the catalogue given by 8 pages at once (three times): every one saved, the file always one whole catalogue, the account's too" "$([ ! -s $T/race ] && [ -z "$(ls -a $D $D/.rudolf-apps | grep "\.tmp$")" ] && echo 1)" "$(sort $T/race 2>/dev/null | uniq -c | sort -rn | head -12)"
 umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]

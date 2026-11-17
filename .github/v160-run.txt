@@ -1,2 +1,2 @@
-serial=2026111620
+serial=
 fix=1

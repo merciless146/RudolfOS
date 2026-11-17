@@ -641,7 +641,10 @@ static void api_desktop_accounts(struct req *r)
 /* a file the page gives the shell, written whole and owned by the desktop user */
 static int dput(const char *path, const char *b, size_t n)
 {
-	char tp[420]; snprintf(tp, sizeof tp, "%s.tmp", path);
+	/* (1.6.0, the owner's Vivobook, 2026-11-17: each request is a process of its own and several pages give the catalogue at once at
+	   sign-in on Native: with one NAME.tmp for all, all but one were refused ("could not save") and the account's own copy was not
+	   kept. Each writer its own temporary file now; the last whole one replaces the file) */
+	char tp[440]; snprintf(tp, sizeof tp, "%s.%ld.tmp", path, (long)getpid());
 	int f = open(tp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0644); if (f < 0) return -1;
 	int ok = write(f, b, n) == (ssize_t)n && !fsync(f); close(f);
 	if (!ok || rename(tp, path)) { unlink(tp); return -1; }

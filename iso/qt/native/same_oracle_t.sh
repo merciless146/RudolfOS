@@ -191,6 +191,16 @@ run() {
 	key Escape; did "...Esc: covers the screen" "$(fscov no)"
 	n=$(nwin); insite; key ctrl+n; w8 '[ "$(nwin)" != $n ]' 24; timeout 1 tail -f /dev/null; did "Ctrl+N in a website" "windows $n -> $(nwin)"
 	n=$(nwin); key alt+F4; w8 '[ "$(nwin)" != $n ]' 16; did "Alt+F4 (the new window in front)" "windows $(nwin)"
+	# (2026-11-17, the owner's Vivobook: Ctrl+T, W and N did nothing in Oracle's website tabs on Native) the keys pressed and let go
+	# before Native's window manager reads them, its desktop busy a moment (stood in for by stopping rudolf-native meanwhile); on
+	# Standard rudolf-display hands them over as they come, so the same keys there
+	busy() { if [ $E = nat ]; then RNP=$(pgrep -f "^$T/rudolf-native" | head -1); kill -STOP $RNP; xdotool keydown ctrl keydown $1; timeout 0.15 tail -f /dev/null
+		xdotool keyup $1 keyup ctrl; timeout 0.4 tail -f /dev/null; kill -CONT $RNP; else key ctrl+$1; fi; }
+	siteopen; insite; n=$(ntabs); busy t; w8 '[ "$(ntabs)" != $n ]' 12; did "Ctrl+T in a website, the desktop busy a moment" "$(($(ntabs) - n)) more tab, windows $(nwin)"
+	key ctrl+w; timeout 1 tail -f /dev/null
+	sitetab; insite; n=$(ntabs); busy w; timeout 1.5 tail -f /dev/null; did "Ctrl+W in a website, the desktop busy a moment" "$((n - $(ntabs))) fewer tab, windows $(nwin)"
+	n=$(nwin); siteopen; insite; busy n; w8 '[ "$(nwin)" != $n ]' 24; timeout 1 tail -f /dev/null; did "Ctrl+N in a website, the desktop busy a moment" "windows $n -> $(nwin)"
+	n=$(nwin); key alt+F4; w8 '[ "$(nwin)" != $n ]' 16
 }
 
 [ -n "$SO60_ONLY" ] || SO60_ONLY="nat std"
