@@ -211,6 +211,14 @@ What is left is measured, not guessed: each change kept only if the numbers say 
 - **Memory:** vm.swappiness and zram's size with Oracle, a game and a call at once on 3.3 GB.
 - **How:** QEMU first for what QEMU can show (start-up, memory), a test kernel built with each choice; the Vivobook last,
   by the owner (battery and real input lag), with a short checklist of numbers to note on each kernel.
+- **One kernel for every computer, so a second machine (owner, 2026-11-16):** Rudolf OS ships one x86-64 kernel, so a
+  change tuned on the Vivobook must not make another PC slower or stop it starting. Every change is also checked on the
+  owner's **Asus desktop** (RuckXTrauma), running Rudolf OS live from a USB stick (never installed there, nothing on its
+  disk changed): kept only if it helps on at least one machine and hurts on neither. Its specifications go here from
+  its System report: CPU and cores ___, memory ___, graphics ___, storage ___. On it, power is measured as
+  responsiveness and temperatures or fan noise (no battery). Start-up is also checked in QEMU on several kinds of
+  virtual hardware (q35 and i440fx; AHCI, NVMe, virtio-blk, USB storage; BIOS and UEFI): anything a computer needs to
+  reach its root file system stays built in.
 
 ### 13. Files dropped from outside onto the native desktop (added on 2026-11-16; 1.6.0 Part 12's known differences)
 On Standard a file dragged from a Linux app (the Debian file manager, a Flatpak) onto the desktop is saved in the
