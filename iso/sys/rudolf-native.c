@@ -3376,16 +3376,86 @@ static void openwith_ask(const char *file, const char *ext, const char *apps_jso
 }
 static gboolean apps_reload(gpointer d) { (void)d; apps_load(); return G_SOURCE_REMOVE; }
 /* a page's answer to what the shell asked it to do (oneapp59.js oaFin) */
+static void xd_done(JSCValue *v);   /* (1.6.1 Part 13: a drop's page finished, below) */
 static void page_done(JSCValue *v)
 {
 	char err[300] = "", ask[24] = "", file[512] = "", name[128] = "", ext[16] = "", ok[8] = ""; char *apps = NULL;
 	jsstr(v, "err", err, sizeof err); jsstr(v, "ask", ask, sizeof ask); jsstr(v, "file", file, sizeof file); jsstr(v, "name", name, sizeof name); jsstr(v, "ext", ext, sizeof ext); jsstr(v, "ok", ok, sizeof ok);
 	JSCValue *ap = jsc_value_object_get_property(v, "apps"); if (ap && jsc_value_is_string(ap)) apps = jsc_value_to_string(ap); if (ap) g_object_unref(ap);
 	apps_load();   /* (the page gave its catalogue again: the desktop's files as they are now) */
+	{ char xd[4] = ""; jsstr(v, "xd", xd, sizeof xd); if (xd[0]) xd_done(v); }
 	if (DGK == DLG_RENAME && DGBUSY) { DGBUSY = 0; if (err[0]) { snprintf(DGMSG, sizeof DGMSG, "%s", err); gtk_widget_queue_draw(DGAREA); } else dg_close(); }
 	if (!strcmp(ask, "rename")) rename_ask(file, name);
 	else if (!strcmp(ask, "openwith")) openwith_ask(file, ext, apps);
 	g_free(apps); g_timeout_add(1500, apps_reload, NULL); state_write();
+}
+
+/* ------------------------------------------------------------------ files dropped from outside Rudolf OS (1.6.1, docs/plan-1.6.1.md Part 13)
+   On Standard a file dragged from a Linux app (the Debian file manager, a Flatpak app, an AppImage) onto the desktop is read by
+   Chromium and kept by the page in the Desktop folder (shell25.js, DESK's drop): anywhere on the desktop, also over a folder's icon
+   or the Trash (their own drop handlers take only the page's own drags, FC.drag; the drop then reaches the desktop's); the taskbar
+   takes none, and dropped text (no file) is refused. Here the desktop is an X drop target (XDND 5, GTK's): it says copy while a
+   drag offering files (text/uri-list) is over it and a person is signed in, takes the file:// paths, and a page of its own
+   (#app=do-fs&op=xdrop, oneapp59.js oaXdrop) does what Standard's page does with each file, reading it through rudolfd
+   (desktop/dropped, rudolfd-drop.inc: the account's own files and the drives only, read by its Linux user; links refused); the
+   drag is finished (XdndFinished, copy: the source keeps its file) once the page has kept them. Drops wait their turn (one page
+   at a time, so two never put the same name). The paths go as JSON in the page's address, in parts of at most XD_PART. */
+#define XD_PART 12000
+typedef struct { char *ex; GdkDragContext *ctx; guint32 t; } XdJob;   /* (ctx: on a drop's last part only) */
+static GQueue XD_Q = G_QUEUE_INIT; static XdJob *XD_CUR; static guint XD_TO; static int XD_N; static char XD_LAST[24] = "-";
+static int xd_can(void) { return USER_ID[0] && !LOCKED && strcmp(USER_R, "guest") && strcmp(USER_ID, "guest"); }
+static int xd_files(GdkDragContext *c) { for (GList *l = gdk_drag_context_list_targets(c); l; l = l->next) { char *n = gdk_atom_name(GDK_POINTER_TO_ATOM(l->data)); int y = n && !strcmp(n, "text/uri-list"); g_free(n); if (y) return 1; } return 0; }
+static void xd_next(void);
+static void xd_end(int ok)
+{
+	XdJob *j = XD_CUR; XD_CUR = NULL; if (XD_TO) { g_source_remove(XD_TO); XD_TO = 0; }
+	if (j) { if (j->ctx) { gtk_drag_finish(j->ctx, ok, FALSE, j->t); g_object_unref(j->ctx); XD_N++; } g_free(j->ex); g_free(j); }
+	snprintf(XD_LAST, sizeof XD_LAST, "%s", ok ? "done" : "failed"); state_write(); xd_next();
+}
+static gboolean xd_late(gpointer d) { (void)d; XD_TO = 0; fprintf(stderr, "rudolf-native: a drop's page did not answer\n"); xd_end(0); return G_SOURCE_REMOVE; }
+static void xd_next(void)
+{
+	if (XD_CUR) return; XD_CUR = g_queue_pop_head(&XD_Q); if (!XD_CUR) return;
+	if (!xd_can()) { xd_end(0); return; }
+	app_open_ex("do-fs", NULL, XD_CUR->ex, 1); XD_TO = g_timeout_add_seconds(120, xd_late, NULL);   /* (a part of 64 MB files takes a while) */
+}
+static void xd_done(JSCValue *v) { char err[64] = ""; jsstr(v, "err", err, sizeof err); if (XD_CUR) xd_end(!err[0]); }
+static gboolean xd_motion(GtkWidget *w, GdkDragContext *c, gint x, gint y, guint t, gpointer d)
+{
+	(void)w; (void)x; (void)y; (void)d; int ok = xd_can() && xd_files(c);
+	gdk_drag_status(c, ok ? GDK_ACTION_COPY : 0, t); return TRUE;   /* (XdndStatus: copy, or refused) */
+}
+static gboolean xd_drop(GtkWidget *w, GdkDragContext *c, gint x, gint y, guint t, gpointer d)
+{
+	(void)x; (void)y; (void)d;
+	if (!xd_can() || !xd_files(c)) { gtk_drag_finish(c, FALSE, FALSE, t); snprintf(XD_LAST, sizeof XD_LAST, "refused"); state_write(); return TRUE; }
+	gtk_drag_get_data(w, c, gdk_atom_intern_static_string("text/uri-list"), t); return TRUE;
+}
+static void xd_part(GString *b, int last, GdkDragContext *c, guint t)
+{
+	g_string_append_c(b, ']'); XdJob *j = g_new0(XdJob, 1); char *e = qesc(b->str); j->ex = g_strdup_printf("&op=xdrop&files=%s", e); g_free(e);
+	if (last) { j->ctx = g_object_ref(c); j->t = t; } g_queue_push_tail(&XD_Q, j); g_string_assign(b, "[");
+}
+static void xd_received(GtkWidget *w, GdkDragContext *c, gint x, gint y, GtkSelectionData *sd, guint info, guint t, gpointer d)
+{
+	(void)w; (void)x; (void)y; (void)info; (void)d;
+	char **u = sd ? gtk_selection_data_get_uris(sd) : NULL; GString *b = g_string_new("["); int n = 0, k = 0;
+	for (int i = 0; u && u[i] && n < 256; i++) { char *host = NULL, *f = g_filename_from_uri(u[i], &host, NULL);   /* (file:// only, on this computer) */
+		if (f && f[0] == '/' && (!host || !strcmp(host, "localhost"))) {
+			GString *one = g_string_new(NULL); json_esc(one, f);
+			if (k && b->len + one->len + 2 > XD_PART) { xd_part(b, 0, c, t); k = 0; }
+			if (k) g_string_append_c(b, ','); g_string_append(b, one->str); g_string_free(one, TRUE); k++; n++; }
+		g_free(f); g_free(host); }
+	g_strfreev(u);
+	if (!n) { g_string_free(b, TRUE); gtk_drag_finish(c, FALSE, FALSE, t); snprintf(XD_LAST, sizeof XD_LAST, "nofiles"); state_write(); return; }
+	xd_part(b, 1, c, t); g_string_free(b, TRUE); snprintf(XD_LAST, sizeof XD_LAST, "copying"); state_write(); xd_next();
+}
+static void xd_init(GtkWidget *area)
+{
+	static const GtkTargetEntry T[] = { { (gchar *)"text/uri-list", GTK_TARGET_OTHER_APP, 0 } };
+	gtk_drag_dest_set(area, 0, T, G_N_ELEMENTS(T), GDK_ACTION_COPY);
+	g_signal_connect(area, "drag-motion", G_CALLBACK(xd_motion), NULL); g_signal_connect(area, "drag-drop", G_CALLBACK(xd_drop), NULL);
+	g_signal_connect(area, "drag-data-received", G_CALLBACK(xd_received), NULL);
 }
 
 /* ------------------------------------------------------------------ the desktop's icons (1.6.0 Part 12, item 1)
@@ -6437,6 +6507,7 @@ static void state_write(void)
 	GString *s = g_string_new(NULL); int by = bar_y(), bx = bar_x();
 	g_string_append_printf(s, "screen %d %d\nuser %s\nlocked %d\nsignin %d\nmenu %d\nbar %d %d %d %d %d\nclock %s|%s\n", SW, SH, USER_ID[0] ? USER_N : "-", LOCKED,
 		SIGN && gtk_widget_get_visible(SIGN), MENU && gtk_widget_get_visible(MENU), BAR && gtk_widget_get_visible(BAR), bx, by, bar_w(), bar_h(), CLOCK_T, CLOCK_D);
+	g_string_append_printf(s, "xdrop %d %s %u\n", XD_N, XD_LAST, g_queue_get_length(&XD_Q) + !!XD_CUR);   /* (1.6.1 Part 13: drops finished, the last one's end, waiting) */
 	g_string_append_printf(s, "ws %d\n", WSC);   /* (item 4: the workspace shown) */
 	{ AppWin *pp = pt_page(); g_string_append_printf(s, "portal %s %u\nportalshown %lld\n", pp ? (pp->pready ? "ready" : "starting") : "-", PT_GIVEN ? g_hash_table_size(PT_GIVEN) : 0, (long long)PT_SHOWN); }   /* (1.6.0: the portal's page; the requests handed out) */
 	g_string_append_printf(s, "keys grabbed=%d superraw=%d kbcap=%s\n", KB_GRABBED, !SUPER_GRAB, KBCAP && g_list_find(WINS, KBCAP) ? KBCAP->k : "-");   /* (the computer check's keys, 1.6.0) */
@@ -6622,6 +6693,7 @@ int main(int argc, char **argv)
 	g_signal_connect(DESKAREA, "button-press-event", G_CALLBACK(desk_press), NULL); g_signal_connect(DESKAREA, "button-release-event", G_CALLBACK(desk_release), NULL);
 	g_signal_connect(DESKAREA, "motion-notify-event", G_CALLBACK(desk_motion), NULL); g_signal_connect(DESKAREA, "key-press-event", G_CALLBACK(desk_key), NULL);
 	g_signal_connect(DESK, "delete-event", G_CALLBACK(gtk_true), NULL);
+	xd_init(DESKAREA);   /* (files dropped from outside: 1.6.1 Part 13) */
 	/* (the widgets' note: typing, item 2) */
 	gtk_widget_add_events(DESKAREA, GDK_BUTTON_MOTION_MASK | GDK_FOCUS_CHANGE_MASK); NIM = gtk_im_context_simple_new(); g_signal_connect(NIM, "commit", G_CALLBACK(note_commit), NULL);
 	g_signal_connect(DESKAREA, "realize", G_CALLBACK(im_realize), NIM); g_signal_connect(DESK, "focus-out-event", G_CALLBACK(on_desk_out), NULL);

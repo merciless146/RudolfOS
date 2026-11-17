@@ -214,16 +214,35 @@ What is left is measured, not guessed: each change kept only if the numbers say 
 
 ### 13. Files dropped from outside onto the native desktop (added on 2026-11-16; 1.6.0 Part 12's known differences)
 On Standard a file dragged from a Linux app (the Debian file manager, a Flatpak) onto the desktop is saved in the
-Desktop folder. rudolf-native does not speak X11's drag and drop (XDND), so such drops do nothing on Native.
-- rudolf-native becomes an XDND target on the desktop, on folder icons, on the Trash and on the taskbar's buttons (a
-  hover raises the window, as on Standard), taking `text/uri-list` (and plain text as a note, as Standard does).
-- The files are copied in through rudolfd as the page copies them (the same checks, the account's own Linux user of
-  Part 10), never moved; paths from Flatpak's document portal and from the Debian container are mapped to the files they
-  name; a file the account cannot read is refused with the page's message.
-- Optionally the other way: a desktop icon dragged into a Linux app (Rudolf as an XDND source, offering the file's
-  path inside the account's home).
-- **Tests:** a stand-in X client that drags a file (iso/qt/host/fixtures, as xwmclient.c), on the desktop, a folder,
-  the Trash; a drop of another account's file refused; same_t.sh compares the result with Standard's.
+Desktop folder. rudolf-native did not speak X11's drag and drop (XDND), so such drops did nothing on Native.
+**Built on 2026-11-17 (PR "files dropped from outside onto the native desktop"), for 1.6.1.**
+- **What Standard does, checked in its page and in Chromium (xdrop161_std.js):** a file dropped anywhere on the desktop goes
+  into the Desktop folder, also over a folder's icon or the Trash (their own drop handlers take only the page's own drags;
+  the drop then reaches the desktop's: shell25.js), named as the page names files (upper case, `NAME - COPY.EXT` on a clash),
+  kept as text or as a data: URL by its type, over 64 MB refused ("Too large"); dropped text (no file) is refused; the
+  taskbar takes no drop and raises no window. Native now does exactly that. The plan's "plain text as a note" and "a hover
+  raises the window" were not Standard's, so Native does neither (the rule); a raise on hover would be new on both engines,
+  for the owner to decide.
+- **Native:** the desktop is an X drop target (XDND 5, GTK's): copy while a drag offering `text/uri-list` is over it and an
+  account is signed in (not locked, not the guest), refused for text; the `file://` paths go to a page of the shell's
+  (`#app=do-fs&op=xdrop`, oneapp59.js `oaXdrop`), which does shell25.js's drop line by line (the same names, checks and
+  `secIngress`), reading each file through rudolfd; XdndFinished (copy) once the page has kept them. Drops take their turn
+  (one page at a time). The paths travel in parts of at most 12 000 characters.
+- **rudolfd (`GET desktop/dropped`, rudolfd-drop.inc):** reads only the signed-in account's own folder (as /home/acctUID,
+  /persist/accounts/ID or Debian's /home/rudolf) and the drives (/media, as the page's fs/read), by the account's own Linux
+  user (a child process that becomes it), every step opened without following a link; Flatpak's document portal is mapped
+  to the real file through the portal's `user.document-portal.host-path`, which must itself be one of those. Refusals come
+  back to the page as words the page shows ("Blocked: … was not copied: your account may not open it."). No shell.
+- **Not done:** Rudolf as a drag source (a desktop icon dragged into a Linux app), optional; the guest's drops (rudolfd has
+  no Linux user for the guest); a folder dropped (skipped; on Standard Chromium's reader fails on it); a link inside the
+  home is refused (Chromium follows it). Files dropped on an app's window are WebKit's own (as Chromium's on Standard).
+  When rudolfd drops root (Part 11), desktop/dropped's change of user moves into a root helper.
+- **Tests:** xdrop161_t.sh (host, 16 checks): a stand-in Linux app (fixtures/xdndsrc.c) drags onto the desktop, a folder's
+  icon, the Trash, two files at once, a taskbar button for 1.5 s, text, a web address, another account's file, a link out,
+  a folder; what Native's page keeps is compared with Standard's page given the same drops. drop161_t.sh (host, 20 checks):
+  rudolfd's reading as the account's user (another account's file, a file the user may not read, links, `..`, folders,
+  pipes, 64 MB, the portal's mapping, nobody signed in, a path too long to be whole). Not run on the release in QEMU (the
+  beta's rudolfd has no desktop/dropped yet; no KVM here): the owner's checks on the Vivobook.
 
 ## Not moved here
 - **elogind and polkit** (1.6.0 Part 11): left out by decision on 2026-11-15, since Rudolf OS's own inhibit portal and
