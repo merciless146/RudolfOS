@@ -10,6 +10,7 @@ Summary: In progress.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- Fixed: a start no longer rewrites the drive's start-up files by itself when they are not the official ones (it rewrote the whole area in front of your files, and on one ASUS laptop the computer then found nothing to start); it is said in System health instead.
 - Fixed: on the Native desktop the desktop's background work runs once, whether or not any app window is open, as on Standard: an alarm or a Clock timer rings once (it did not ring with no window open, and rang once per open window), also after the Clock's window is closed; a Calendar reminder, a call's or a message's notice and Bluetooth's and Thunderbolt's questions show once; update checks, the Debian and Linux apps' updates and the session's save run once. App windows no longer each run the other apps' background work.
 - Changed: Oracle's start page now reads "A Chromium-based browser for Linux" under its name.
 - Fixed: Oracle in Rudolf's dark theme: no white strip under the page (between the page and the status bar); an open start page now follows the dark theme turning on or off by itself at dusk and dawn, not only from Settings.
