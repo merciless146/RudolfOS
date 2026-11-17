@@ -222,6 +222,7 @@ make olddefconfig >/dev/null
 for o in $WWANM USB_PRINTER TUN VETH $ETHM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig"; exit 1; }; done
 for o in $HOTKEYS; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: $o is not a module after olddefconfig (a dependency is missing)"; exit 1; }; done
 grep -q "^CONFIG_IPV6_SIT=y\|^CONFIG_IPV6_SIT=m" .config && { echo "kconfig.sh: IPV6_SIT is still on"; exit 1; }
+for o in KERNEL_ZSTD INITRAMFS_COMPRESSION_ZSTD RD_ZSTD; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 # 1.4.7: the memory options are on
 for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU_GEN_ENABLED CGROUPS MEMCG SECURITY_YAMA; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 for o in $SOFM $AMPS $SPIM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the sound driver $o is not a module after olddefconfig"; exit 1; }; done
@@ -245,5 +246,4 @@ for o in ANDROID_BINDER_IPC ANDROID_BINDERFS; do grep -q "^CONFIG_$o=y$" .config
 for o in $AMDPMY; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the sleep option $o is not on after olddefconfig (a dependency is missing)"; exit 1; }; done
 for o in $AMDPMM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the power driver $o is not a module after olddefconfig (a dependency is missing)"; exit 1; }; done
 grep -q "^CONFIG_PSI_DEFAULT_DISABLED=y" .config && { echo "kconfig.sh: PSI is off by default"; exit 1; }
-for o in KERNEL_ZSTD INITRAMFS_COMPRESSION_ZSTD RD_ZSTD; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 true
