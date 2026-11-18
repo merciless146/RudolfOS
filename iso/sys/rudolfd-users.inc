@@ -265,7 +265,14 @@ static int au_session_start(const char *id)
 	sadd(&e, "DISPLAY=:0\nHOME=%s\nUSER=%s\nLOGNAME=%s\nXDG_RUNTIME_DIR=%s\nXDG_CURRENT_DESKTOP=%s\nPULSE_SERVER=unix:" RUN "/pulse/native\n", h, nm, nm, rd, kr ? "Rudolf:GNOME" : "Rudolf");
 	/* its own session D-Bus, and the desktop portal on it (file dialogs, links, notifications) */
 	if (!home_nobind && !access("/usr/bin/dbus-daemon", X_OK)) {
-		char c[900]; snprintf(c, sizeof c, "su -s /bin/sh %s -c 'dbus-daemon --session --fork --nopidfile --address=unix:path=%s/bus' >/dev/null 2>&1", nm, rd);
+		/* (2026-11-17, the owner's Vivobook: Discord showed no window) with the session's settings: what the bus starts on demand
+		   gets the bus's own environment, and su gave it none, so Flatpak's portal ran with no XDG_RUNTIME_DIR, looked for the
+		   running apps in the wrong folder and refused every app's request to start its own processes ("Could not find
+		   requesting pid": Discord's, Electron's through zypak), which then waited for ever */
+		char ex[700]; size_t k = 0; ex[0] = 0;
+		for (const char *p = e.b; p && *p && k + 2 < sizeof ex; p++) ex[k++] = *p == '\n' ? ' ' : *p;
+		ex[k] = 0;
+		char c[1400]; snprintf(c, sizeof c, "su -s /bin/sh %s -c 'export %s; exec dbus-daemon --session --fork --nopidfile --address=unix:path=%s/bus' >/dev/null 2>&1", nm, ex, rd);
 		if (!run(c)) sadd(&e, "DBUS_SESSION_BUS_ADDRESS=unix:path=%s/bus\n", rd);
 	}
 	char t[300]; snprintf(t, sizeof t, "%s.tmp", AU_ENV); int f = open(t, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);

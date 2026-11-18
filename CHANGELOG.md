@@ -20,6 +20,7 @@ Summary: In progress.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- Fixed (2026-11-17, the owner's Vivobook): Discord (and other Flatpak apps that start their own processes through Flatpak's portal, as Electron apps do) showed no window when run as the account's own Linux user: the account's session bus was started with no environment, so Flatpak's portal, which the bus starts on demand, had no XDG_RUNTIME_DIR and could not find the running app ("Could not find requesting pid"). The bus now starts with the session's settings (rudolfd-users.inc; keyring60_t.sh 4b).
 - Planned: window transitions "Splitting–Merging LitePoint" (the owner's design): points of light draw a window's frame as it opens and take it back as it minimizes or closes, about 200 ms each; colour, shade and brightness in Display Properties (docs/plan-1.6.0.md Part 17). 1.6.0b is the public beta; the finished release drops the b.
 - Fixed: on the Native desktop a new desktop icon (New folder, New text document, a file saved to the Desktop folder, a tick in Desktop icons…) could take minutes to appear: when several windows gave the desktop's list at the same moment, all but one were refused ("could not save"), and the account's own copy was not kept. Each is kept now; the log says when the icons came after signing in.
 - Fixed: on the Native desktop Ctrl+T, Ctrl+W and Ctrl+N in Oracle's website tabs did nothing when the desktop was busy for a moment (Ctrl was let go before the desktop passed the key on); they now work as on Standard.
