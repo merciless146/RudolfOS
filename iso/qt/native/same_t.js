@@ -155,8 +155,8 @@ const MPLIVE = "(() => { const w = [...document.querySelectorAll('.win')].filter
 CASES.push({n: 'overview-live', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'media', 'settings']}, app: 'media', media: 't.webm', js: MPLIVE, jswait: 2500, key: 'overview', moving: 2000, parts: ['moving']});
 /* (what this session's cases read besides their pictures: wopen, video-frames; each engine's, for the case being run) */
 const XTRA = {std: {}, nat: {}};
-/* (N15) a window opening: Standard's .win.wopen (.18 s, from opacity 0 and 96 %); on Native the shell's animation over it, as long, its
-   picture part of the way through not yet the window's own */
+/* (N15; 1.6.0 Part 17) a window opening: the LitePoint transition, corner to corner (200 ms), on both: Standard's (litepoint60.js) and
+   Native's (the same scene, litepoint.h), its picture part of the way through not yet the window's own */
 CASES.push({n: 'wopen', set: {}, act: 'notepad', wopen: 1, parts: ['wopen']});
 /* (N16, N29) a video played to its end in the Media Player: its frame callbacks called (requestVideoFrameCallback) and its count of frames
    at the end (getVideoPlaybackQuality) as Chromium's, within 10 */
@@ -249,7 +249,7 @@ async function stdCase(c) {
     await p.mouse.move(W / 2, H / 3);
     if (c.act == 'menu') { await p.click('#start'); await p.clock.runFor(600); await wait(300); if (c.type) { await p.keyboard.type(c.type); await p.clock.runFor(300); await wait(300) } }
     if (c.act == 'hover') { const r = await rectOf('#pins .pin:nth-child(2)'); await p.mouse.move(r[0] + r[2] / 2, r[1] + r[3] / 2); await p.clock.runFor(400); await wait(200) }
-    if (c.act == 'notepad' && c.wopen) { XTRA.std.wopen = await p.evaluate(() => { launch('notepad'); const w = [...document.querySelectorAll('.win')].pop(), cs = getComputedStyle(w); return [w.classList.contains('wopen'), cs.animationName, cs.animationDuration].join(' ') }) }
+    if (c.act == 'notepad' && c.wopen) { XTRA.std.wopen = await p.evaluate(() => { launch('notepad'); const w = [...document.querySelectorAll('.win')].pop(); return [/inset/.test(w.style.clipPath), 'litepoint', (typeof LP_MS == 'object' ? LP_MS.c2c : 0) + 'ms'].join(' ') }) }
     if (c.act == 'notepad') { if (!c.wopen) await p.evaluate(() => launch('notepad')); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } await p.mouse.move(W / 2, H - 200) }
     for (const k of c.pre || []) { await p.evaluate(k => { launch(k) }, k); for (let i = 0; i < 4; i++) { await p.clock.runFor(400); await wait(150) } }   /* (apps open before c.app) */
     if (c.app && c.nowin) { await p.mouse.click(W / 2, H - 200); await p.evaluate(k => { launch(k) }, c.app); await p.clock.runFor(100); await wait(800); await p.mouse.move(W / 2, H - 200) }   /* (an app asking before its window: a dialog open, see c.js) */
@@ -488,7 +488,7 @@ function cmp(name, a, b, ra, rb, shift) {
       if (part == 'frames') { let a = {}, b = {}; try { a = JSON.parse(XTRA.std.readx) } catch (e) {} try { b = JSON.parse(XTRA.nat.readx) } catch (e) {}
         ok(c.n + ': frame callbacks ' + a.cb + ' on Standard and ' + b.cb + ' on Native (at least 60 each); frames counted at the end ' + a.end + ' and ' + b.end + ' (within 10)', a.cb >= 60 && b.cb >= 60 && a.end > 0 && Math.abs(a.end - b.end) <= 10, XTRA); continue }
       if (part == 'wopen') { const w = XTRA.nat.wopen || {}; const d = w.r ? cmp(c.n + '.wopen', path.join(OUT, 'wopen.mid.png'), path.join(OUT, 'wopen.end.png'), w.r, w.r, 0) : {pct: 0};
-        ok(c.n + ': Standard animates its window (' + XTRA.std.wopen + '); Native\'s animation ran ' + w.ms + ' ms (100-600) with ' + d.pct + ' % of the window not yet itself at its start (at least 3 %)', /^true wopen 0\.18s$/.test(XTRA.std.wopen || '') && w.ms >= 100 && w.ms <= 600 && d.pct >= 3, {std: XTRA.std.wopen, nat: w, d}); continue }
+        ok(c.n + ': Standard animates its window (' + XTRA.std.wopen + '); Native\'s animation ran ' + w.ms + ' ms (100-600) with ' + d.pct + ' % of the window not yet itself at its start (at least 3 %)', /^true litepoint 200ms$/.test(XTRA.std.wopen || '') && w.ms >= 100 && w.ms <= 600 && d.pct >= 3, {std: XTRA.std.wopen, nat: w, d}); continue }
       let ra = s.rects[part], rb = null;
       if ((part == 'title' || part == 'win') && n.client && ra) rb = [n.client[0], n.client[1], ra[2], ra[3]];
       if (part == 'titlei' && n.clienti && ra) rb = [n.clienti[0], n.clienti[1], ra[2], ra[3]];   /* (each engine's own window; the frame's border and title bar above the app) */
