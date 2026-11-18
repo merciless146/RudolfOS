@@ -70,4 +70,15 @@ ok "4. a file dialog whose app is force-quit: withdrawn at once" "$([ -n "$id" ]
 $T/ps link https://example.org/signin > /dev/null 2>&1 & A=$!; PIDS="$PIDS $A"
 w8 '[ -n "$(reqs)" ]' 50; id=$(reqs | head -1); kill -9 $A; timeout 1.5 tail -f /dev/null; q=$(cat $R/req/$id.json 2>/dev/null)
 ok "5. a link from a caller that left at once (xdg-open): kept for the desktop to open" "$(echo "$q" | grep -q '"kind":"url","uri":"https://example.org/signin"' && echo 1)" "$id $q $(reqs)"
+# ---- 6. (2026-11-18, the owner's Vivobook, Standard: saving a Gmail attachment from Oracle froze the desktop) the desktop's own browser
+# (here the stand-in, as RUDOLF_PORTAL_DESKTOP_EXE) never gets a dialog drawn in the desktop's own page
+for p in $PIDS; do [ "$(cat /proc/$p/comm 2>/dev/null)" = rp ] && kill $p; done; timeout 0.3 tail -f /dev/null
+RUDOLF_PORTAL_DESKTOP_EXE=$(readlink -f $T/ps) $T/rp > $T/rp6.log 2>&1 & PIDS="$PIDS $!"; timeout 1 tail -f /dev/null
+rm -f $R/req/*.json; : > $T/home/portalstand.log
+$T/ps save "RV map.png" > /dev/null 2>&1; s1=$(log); q1=$(cat $R/req/*.json 2>/dev/null)
+ok "6a. a Save asked by the desktop's own browser: to Downloads at once, under its name; no dialog asked of the desktop, only a notice" "$(echo "$s1" | grep -q "save response 0, .*file://$T/home/Downloads/RV%20map.png" && ! echo "$q1" | grep -q '"kind":"save"' && echo "$q1" | grep -q '"kind":"notify","title":"Saved to Downloads","body":"RV map.png"' && echo 1)" "$s1 / $q1 / $(cat $T/rp6.log)"
+: > "$T/home/Downloads/RV map.png"; : > $T/home/portalstand.log; $T/ps save "RV map.png" > /dev/null 2>&1
+ok "6b. ...that name taken: another (RV map (2).png), the first file kept" "$(log | grep -q "save response 0, .*Downloads/RV%20map%20(2).png" && echo 1)" "$(log)"
+: > $T/home/portalstand.log; $T/ps open > /dev/null 2>&1
+ok "6c. an Open asked by it: cancelled at once (its own pickers are the desktop's), never drawn over itself" "$(log | grep -q 'open response 1' && grep -q "asked by the desktop itself (Standard's browser): cancelled" $T/rp6.log && echo 1)" "$(log) / $(cat $T/rp6.log)"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

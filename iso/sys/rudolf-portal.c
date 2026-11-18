@@ -126,7 +126,13 @@ static char *request_path(const char *sender, GVariant *opts)
    which GTK holds while its dialog is open, so nothing could answer it and the computer seemed frozen (the Vivobook,
    2026-11-17: only the power button got out). rudolf-webkit no longer asks (its pages' downloads and file pickers are
    the desktop's own); should anything in it still ask, the answer is "cancelled" at once */
-static int from_lite_desktop(const char *sender)
+/* 1.6.0 (the owner's Vivobook, 2026-11-18, Standard: saving a Gmail attachment from Oracle froze the desktop; Task Manager came
+   up behind the dialog and nothing answered; "This is a serious issue and can't ship in 1.6's finished build") the same with
+   Standard's desktop browser: Oracle's real tabs are its tabs, so a Save dialog it asks for was drawn in the desktop's own page
+   while Chromium held that window for its dialog. Its own: 2 the Standard desktop's Chromium (the browser started with
+   --rudolf-kiosk, and its processes), 1 the Lite desktop (rudolf-webkit), 0 another program. (RUDOLF_PORTAL_DESKTOP_EXE:
+   the tests' stand-in counts as the desktop's browser) */
+static int from_own_desktop(const char *sender)
 {
 	GVariant *r = g_dbus_connection_call_sync(BUS, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetConnectionUnixProcessID",
 		g_variant_new("(s)", sender), G_VARIANT_TYPE("(u)"), 0, 2000, NULL, NULL);
@@ -134,7 +140,43 @@ static int from_lite_desktop(const char *sender)
 	guint32 pid; g_variant_get(r, "(u)", &pid); g_variant_unref(r);
 	char path[64], exe[256]; snprintf(path, sizeof path, "/proc/%u/exe", pid);
 	ssize_t n = readlink(path, exe, sizeof exe - 1); if (n <= 0) return 0; exe[n] = 0;
-	return !strcmp(exe, "/usr/bin/rudolf-webkit");
+	if (!strcmp(exe, "/usr/bin/rudolf-webkit")) return 1;
+	const char *te = getenv("RUDOLF_PORTAL_DESKTOP_EXE"); if (te && *te && !strcmp(exe, te)) return 2;
+	if (strcmp(exe, "/opt/chromium/chrome")) return 0;
+	/* (the browser process, or one of its own: their command lines carry the desktop's flag or its profile) */
+	snprintf(path, sizeof path, "/proc/%u/cmdline", pid); char *cl = NULL; gsize ln = 0; int own = 0;
+	if (g_file_get_contents(path, &cl, &ln, NULL)) { for (gsize i = 0; i + 1 < ln; i++) if (!cl[i]) cl[i] = ' ';
+		own = strstr(cl, "--rudolf-kiosk") || strstr(cl, "/.rudolf-browser"); g_free(cl); }
+	return own ? 2 : 0;
+}
+/* the Standard desktop's browser saving (an attachment, a download it asked where to put): to Downloads, at once, under the
+   name it suggested (another if that is taken), and the desktop told where it went; nothing drawn that would freeze it */
+typedef struct { pending *q; char *uri; } saved;
+static gboolean saved_now(gpointer d)
+{
+	saved *sv = d; GVariantBuilder res; g_variant_builder_init(&res, G_VARIANT_TYPE("a{sv}")); const char *uris[] = { sv->uri, NULL };
+	g_variant_builder_add(&res, "{sv}", "uris", g_variant_new_strv(uris, -1));
+	if (g_list_find(PENDING, sv->q)) { g_dbus_connection_emit_signal(BUS, sv->q->sender, sv->q->path, "org.freedesktop.portal.Request", "Response", g_variant_new("(ua{sv})", 0, &res), NULL); req_free(sv->q); }
+	else g_variant_builder_clear(&res);
+	g_free(sv->uri); g_free(sv); return G_SOURCE_REMOVE;
+}
+static void save_to_downloads(GDBusMethodInvocation *inv, const char *sender, GVariant *opts)
+{
+	const char *nm = opt_s(opts, "current_name"); char base[200]; snprintf(base, sizeof base, "%s", nm && *nm && !strchr(nm, '/') && strcmp(nm, ".") && strcmp(nm, "..") ? nm : "download");
+	char *dir = g_build_filename(g_get_home_dir(), "Downloads", NULL), *f = g_build_filename(dir, base, NULL); g_mkdir_with_parents(dir, 0755);
+	const char *dot = strrchr(base, '.'); int stem = dot && dot != base ? (int)(dot - base) : (int)strlen(base);
+	for (int i = 2; g_file_test(f, G_FILE_TEST_EXISTS) && i < 1000; i++) { g_free(f); char b2[240]; snprintf(b2, sizeof b2, "%.*s (%d)%s", stem, base, i, base + stem); f = g_build_filename(dir, b2, NULL); }
+	char *uri = g_filename_to_uri(f, NULL, NULL);
+	pending *q = g_new0(pending, 1);
+	q->id = g_strdup_printf("%ld-%u", (long)getpid(), ++SEQ); q->sender = g_strdup(sender); q->path = request_path(sender, opts);
+	q->reg = g_dbus_connection_register_object(BUS, q->path, REQ_INFO->interfaces[0], &REQ_VT, NULL, NULL, NULL);
+	PENDING = g_list_append(PENDING, q);
+	g_dbus_method_invocation_return_value(inv, g_variant_new("(o)", q->path));
+	saved *sv = g_new0(saved, 1); sv->q = q; sv->uri = g_strdup(uri); g_timeout_add(100, saved_now, sv);   /* (as cancel_request: after the reply) */
+	fprintf(stderr, "rudolf-portal: a Save asked by the Standard desktop's browser: to %s (no dialog: it would freeze the desktop)\n", f);
+	GString *j = g_string_new("{\"app\":\"\",\"kind\":\"notify\",\"title\":\"Saved to Downloads\",\"body\":"); char *bn = g_path_get_basename(f); jstr(j, bn); g_free(bn); g_string_append(j, "}");
+	char rid[48]; snprintf(rid, sizeof rid, "n%ld-%u", (long)getpid(), ++SEQ); write_request(rid, j); g_string_free(j, TRUE);
+	g_free(uri); g_free(f); g_free(dir);
 }
 static gboolean cancel_now(gpointer d)
 {
@@ -367,7 +409,9 @@ static void portal_method(GDBusConnection *c, const char *sender, const char *pa
 	GString *j = g_string_new("{\"app\":"); jstr(j, app);
 	if (!strcmp(iface, "org.freedesktop.portal.FileChooser")) {
 		const char *parent, *title; GVariant *o; g_variant_get(p, "(&s&s@a{sv})", &parent, &title, &o);
-		if (from_lite_desktop(sender)) { fprintf(stderr, "rudolf-portal: a file dialog asked by the Lite desktop itself: cancelled (it would freeze it)\n"); cancel_request(inv, sender, o); g_variant_unref(o); g_string_free(j, TRUE); g_free(app); return; }
+		int own = from_own_desktop(sender);
+		if (own == 2 && !strcmp(method, "SaveFile")) { save_to_downloads(inv, sender, o); g_variant_unref(o); g_string_free(j, TRUE); g_free(app); return; }
+		if (own) { fprintf(stderr, "rudolf-portal: a file dialog asked by the desktop itself (%s): cancelled (it would freeze it)\n", own == 1 ? "Lite" : "Standard's browser"); cancel_request(inv, sender, o); g_variant_unref(o); g_string_free(j, TRUE); g_free(app); return; }
 		g_string_append(j, ",\"kind\":"); jstr(j, !strcmp(method, "OpenFile") ? "open" : "save");
 		g_string_append(j, ",\"title\":"); jstr(j, title);
 		g_string_append_printf(j, ",\"multiple\":%s,\"directory\":%s", opt_b(o, "multiple") ? "true" : "false", opt_b(o, "directory") ? "true" : "false");
