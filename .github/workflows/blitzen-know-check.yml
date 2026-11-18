@@ -1,0 +1,45 @@
+# 1.6.0 (docs/plan-1.6.0.md Part 18): Blitzen looks things up before it answers. Run by a push that changes its parts. Nothing is
+# published.
+#   host: rudolf-know on test logs, a test release's signed list with its source archive, test activity and a stand-in web
+#         search (iso/qt/host/aiindex60_t.sh)
+#   page: the desktop's side with a stand-in rudolfd and model (iso/qt/shell2/blitzknow60_t.js), and Blitzen's earlier page
+#         tests (blz_t.js, blitzdiag57_t.js, bzwhy57_t.js), in the newest beta's own Chromium
+name: Blitzen knows check
+on:
+  push:
+    paths: ['iso/sys/rudolf-know.c', 'iso/sys/rudolfd-know.inc', 'desktop/blitzknow60.js', 'desktop/blitzen26.js', 'iso/qt/host/aiindex60_t.sh',
+      'iso/qt/shell2/blitzknow60_t.js', 'iso/systools/make_release.py', '.github/workflows/blitzen-know-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libssl-dev libcurl4 python3-cryptography squashfs-tools zlib1g-dev >/dev/null
+          mkdir -p pw && cd pw && npm init -y >/dev/null && npm install -s playwright-core@1.56.1 >/dev/null && ln -s playwright-core node_modules/playwright
+          sudo npx playwright-core install-deps chromium >/dev/null 2>&1 || true
+      - name: rudolf-know (the index, the activity, the source, the web)
+        run: sh iso/qt/host/aiindex60_t.sh | tee host.txt; grep -q ' passed$' host.txt && ! grep -q '^FAIL' host.txt
+      - name: rudolfd builds with ai/know
+        run: cd iso && gcc -O2 -Wall -Werror=implicit-function-declaration -o /tmp/rudolfd sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+      - name: The newest beta's Chromium
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel && gh release download "r$S" -D rel -p 'chromium.sfs'
+          unsquashfs -q -d chr rel/chromium.sfs opt/chromium >/dev/null; chr/opt/chromium/chrome --version || true
+      - name: The desktop's side (this tree's page)
+        run: |
+          cd iso/qt/shell2; : > $GITHUB_WORKSPACE/page.txt
+          for t in blitzknow60_t.js blz_t.js blitzdiag57_t.js bzwhy57_t.js; do echo "== $t" | tee -a $GITHUB_WORKSPACE/page.txt
+            NODE_PATH=$GITHUB_WORKSPACE/pw/node_modules node $t $GITHUB_WORKSPACE/chr/opt/chromium/chrome 2>&1 | tee -a $GITHUB_WORKSPACE/page.txt; done
+          [ "$(grep -c ' passed$' $GITHUB_WORKSPACE/page.txt)" = 4 ] && ! grep -q '^FAIL' $GITHUB_WORKSPACE/page.txt
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: blitzen-know, retention-days: 7, path: "host.txt\npage.txt"}

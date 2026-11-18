@@ -41,6 +41,8 @@ def main():
     a.add_argument('--chromium', default=''); a.add_argument('--kernel-version', default=''); a.add_argument('--notes', default='')
     a.add_argument('--urgent', action='store_true'); a.add_argument('--expires-days', type=int, default=14); a.add_argument('--file-base', default='')
     a.add_argument('--datafmt', default=os.path.join(ISO, 'datafmt'))
+    # 1.6.0 (plan Part 18): the release's own source (a .tar.xz), what Blitzen looks things up in; the row S in the list
+    a.add_argument('--source', default='')
     o = a.parse_args()
     fmt = {}
     for l in open(o.datafmt).read().splitlines():
@@ -68,6 +70,11 @@ def main():
             rows.append('\t'.join(['V', n, str(d), root.hex(), verity.salt_for(n).hex()]))
         except SystemExit as e:
             print(f'{n}: no hash tree ({e}); the start-up cannot check it')
+    if o.source:
+        fn = f'rudolf-os-{o.serial}-source.tar.xz'; dst = os.path.join(fd, fn); shutil.copyfile(o.source, dst)
+        ref = (o.file_base.rstrip('/') + '/' + fn) if o.file_base else f'../files/{o.serial}/{fn}'
+        rows.append('\t'.join(['S', 'source', str(os.path.getsize(dst)), sha(dst), ref]))
+        print(f'source: {os.path.getsize(dst)//1024} KB')
     today = datetime.date.today()
     for v in (o.version, o.chromium, o.kernel_version, o.notes):
         if '\n' in v or '\t' in v: sys.exit('no tabs or new lines in the release text')

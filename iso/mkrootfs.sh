@@ -136,6 +136,8 @@ gcc -O2 $HARD -o usr/bin/rudolf-apps "$SYS/rudolf-apps.c" -lz
 gcc -O2 $HARD -o usr/bin/rudolf-debian "$SYS/rudolf-debian.c" -lcrypto -ldl
 gcc -O2 $HARD -o usr/bin/rudolf-fscheck "$SYS/rudolf-fscheck.c"
 gcc -O2 $HARD -o usr/bin/rudolf-ai "$SYS/rudolf-ai.c" -lcrypto -ldl
+# 1.6.0: what Blitzen looks up before it answers (the source, the logs, the activity kept, the web: plan Part 18)
+gcc -O2 $HARD -o usr/bin/rudolf-know "$SYS/rudolf-know.c" -lcrypto -ldl -lm
 # Blitzen's model engine (systools/mkllama.sh: llama.cpp's llama-server, static); the model is downloaded later
 mkdir -p usr/lib/rudolf; [ -x "$SRC/llama-build/bin/llama-server" ] && cp "$SRC/llama-build/bin/llama-server" usr/lib/rudolf/
 gcc -O2 $HARD -o usr/bin/rudolf-portal "$SYS/rudolf-portal.c" $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto
