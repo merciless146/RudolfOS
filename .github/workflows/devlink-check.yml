@@ -1,0 +1,25 @@
+# The development link (docs/DEVLINK.md): rudolf-devlink against a stand-in for GitHub (iso/qt/host/devlink_t.py) and, from 1.6.0
+# (docs/plan-1.6.0.md Part 19), the reference client against the same stand-in and the real rudolf-devlink
+# (iso/qt/host/devlinkclient60_t.py). Run by a push that changes them. Nothing is published.
+name: Development link check
+on:
+  push:
+    paths: ['iso/sys/rudolf-devlink.c', 'iso/systools/devlink.py', 'iso/qt/ghstub.py', 'iso/qt/host/devlink_t.py', 'iso/qt/host/devlinkclient60_t.py',
+      'docs/DEVLINK.md', '.github/workflows/devlink-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libssl-dev libcurl4 >/dev/null
+      - name: rudolf-devlink
+        run: python3 iso/qt/host/devlink_t.py | tee link.txt; grep -q ' passed$' link.txt && ! grep -q '^FAIL' link.txt
+      - name: The reference client (devlink.py)
+        run: python3 iso/qt/host/devlinkclient60_t.py | tee client.txt; grep -q ' passed$' client.txt && ! grep -q '^FAIL' client.txt
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: devlink, retention-days: 7, path: "link.txt\nclient.txt"}
