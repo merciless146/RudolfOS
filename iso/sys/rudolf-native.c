@@ -77,6 +77,7 @@ typedef struct {
 	int lpac, lpbr; char lpacm[12];   /* (1.6.0 Part 17: the window transitions' colour, its shade, their light 0 to 100) */
 } Settings;
 static Settings S;
+static gint64 LP_S2S_T;   /* (1.6.0 Part 17: when an app window's page last asked for another window: it opens side to side) */
 typedef struct { char k[KN], name[80], icon[48], kw[200], ic[24]; int x; } App;   /* (x: it opens no window of the page's: a Linux or Windows program, a Library app run by rudolfd) */
 static App *APPS; static int NAPPS; static GHashTable *BG;   /* key -> "dark\nlight" */
 static GHashTable *ICONS;                     /* an app's picture (App.ic) -> GdkPixbuf, as the page draws it (desktop/apps) */
@@ -670,8 +671,7 @@ static gboolean on_delete(GtkWidget *w, GdkEvent *e, gpointer d) { (void)w; (voi
 /* an app window, its view related to rel's (then WebKit loads it, as a window the page opened) or loading its own */
 static GtkWidget *on_create(WebKitWebView *v, WebKitNavigationAction *na, gpointer d);
 /* (1.6.0 Part 17) a window another window opened (a dialog, Settings at a page) opens side to side: an app window's page asked for it
-   within the last 3 s (File Explorer opening a file: corner to corner, as from the desktop) */
-static gint64 LP_S2S_T;
+   within the last 3 s (File Explorer opening a file: corner to corner, as from the desktop): LP_S2S_T */
 static AppWin *appwin_new(const char *k, WebKitWebView *rel, int id)
 {
 	AppWin *a = g_new0(AppWin, 1); snprintf(a->k, sizeof a->k, "%s", k); a->id = id;
