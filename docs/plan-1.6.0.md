@@ -1253,7 +1253,19 @@ Native open (4–12 MB of window pictures and a repaint of the whole window each
 3. Reduce motion on: no transitions.
 4. Oracle, a game and a Linux app opened, maximized and restored: no flicker, no app redrawing during the transition.
 
-**Status:** planned (2026-11-17). The demo is the reference for the look until the tests above stand in for it.
+**Status:** built (2026-11-17), awaiting the owner's checks above. As built:
+- Standard: `desktop/litepoint60.js` (the scenes, the layer over the windows, each window's hooks, Display Properties' row), called from
+  shell25.js in place of the fade; `.win.wopen` is gone.
+- Native: the scenes in `iso/sys/litepoint.h`, the same as the page's (litepoint60_t.js builds `iso/qt/host/litepoint_dump.c` and
+  compares 1,044 moments of the six); in rudolf-native.c the lines are strips and the points small discs in windows of the shell's own
+  (override-redirect, no clicks), the part of a window shown is its frame's X shape (`frame_shape`, `lpclip`), maximizing and restoring
+  resize the window once (`wm_maximise_now` at the scene's switch), a minimizing window is unmapped once its point has dropped (it is
+  minimized for everything else at once). Closing on Native draws the frame where the window was (the window itself has gone by then:
+  no contents shutting into the line). Without a compositor the light cannot be see-through: the brightness dims the lines and makes the
+  points smaller (at 0 no light, the windows still on time). The state file says "lp KIND WIN T" while one runs, "lpdone N", and
+  "wopen WIN" as N15 did. N15's window over the opening one (Composite pictures) is gone.
+- Opening side to side: on Standard, a window opened by a click or key in another window (not File Explorer opening a file); on
+  Native, a dialog (transient) or a window an app window's page asked for within 3 s (the same exception).
 
 ## Cellular and ARM64: QEMU and host tests first, hardware after (owner, 2026-11-15)
 Asked for: "Set up the plan to cover whatever can be done in QEMU first. Everything that requires hardware testing can

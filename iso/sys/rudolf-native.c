@@ -52,6 +52,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
+#include "litepoint.h"   /* (1.6.0 Part 17: the window transitions' scenes, the page's litepoint60.js in C) */
 
 /* ------------------------------------------------------------------ state */
 static char HOST[64] = "127.0.0.1", TOKEN[64];
@@ -73,6 +74,7 @@ typedef struct {
 	int nlv, nlsched; double magz;   /* (1.6.0: Night light's strength and hours, the magnifier's zoom: the shell does them for the whole screen) */
 	int aur, rmotion; char aurm[12], lnm[12];   /* (the dynamic backgrounds' moving parts: test findings N11, N12) */
 	int fs; char tx[16], cb[12];   /* (the title bars: the Font size, the Window text colour, the colour vision filter) */
+	int lpac, lpbr; char lpacm[12];   /* (1.6.0 Part 17: the window transitions' colour, its shade, their light 0 to 100) */
 } Settings;
 static Settings S;
 typedef struct { char k[KN], name[80], icon[48], kw[200], ic[24]; int x; } App;   /* (x: it opens no window of the page's: a Linux or Windows program, a Library app run by rudolfd) */
@@ -427,7 +429,7 @@ static void wall_make(void)
 static gboolean desk_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (WALL) { cairo_set_source_surface(cr, WALL, 0, 0); cairo_paint(cr); } return TRUE; }
 
 /* ------------------------------------------------------------------ app windows (WebKit, one-app mode) */
-typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready, sready; gint64 close_t; GdkPixbuf *pix; guint wait_t; } AppWin;   /* (wait_t: its window's upper bound before it is shown anyway, the owner's Vivobook report 1 of 2026-11-16) */   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
+typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready, sready, s2s; gint64 close_t; GdkPixbuf *pix; guint wait_t; } AppWin;   /* (wait_t: its window's upper bound before it is shown anyway, the owner's Vivobook report 1 of 2026-11-16) */   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
 static void ev_flush(AppWin *a);   /* (1.6.0: rudolfd's events that waited for a page) */
 static GList *WINS;   /* AppWin*, oldest first */
 static AppWin *ACTIVE;
@@ -610,6 +612,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "toast")) toast_add(a, v);   /* (a notification's pop-up, drawn by the shell: item 3) */
 	else if (!strcmp(op, "note")) nt_note(v);   /* (a notification kept: in the centre at once, before the page's storage reaches rudolfd) */
 	else if (!strcmp(op, "open")) { jsstr(v, "app", x, sizeof x); jsstr(v, "file", f, sizeof f); char pg[48] = ""; jsstr(v, "page", pg, sizeof pg);
+		if (!(f[0] && !strcmp(a->k, "explorer"))) LP_S2S_T = g_get_monotonic_time();   /* (Part 17: opened by another window) */
 		char u[1024] = "", pv[4] = ""; jsstr(v, "url", u, sizeof u); jsstr(v, "priv", pv, sizeof pv); char *ex = open_extra(u, pv);
 		if (!strcmp(x, "settings") && pg[0]) tb_settings(pg);
 		else if (!strcmp(x, "help") && pg[0] && id_ok(pg)) { char hx[96]; snprintf(hx, sizeof hx, "&page=%s", pg); app_open_ex("help", NULL, hx, 0); }   /* (Help at a topic: What's new, 1.6.0) */
@@ -666,9 +669,13 @@ static void appwin_ask_close(AppWin *a)
 static gboolean on_delete(GtkWidget *w, GdkEvent *e, gpointer d) { (void)w; (void)e; appwin_ask_close(d); return TRUE; }
 /* an app window, its view related to rel's (then WebKit loads it, as a window the page opened) or loading its own */
 static GtkWidget *on_create(WebKitWebView *v, WebKitNavigationAction *na, gpointer d);
+/* (1.6.0 Part 17) a window another window opened (a dialog, Settings at a page) opens side to side: an app window's page asked for it
+   within the last 3 s (File Explorer opening a file: corner to corner, as from the desktop) */
+static gint64 LP_S2S_T;
 static AppWin *appwin_new(const char *k, WebKitWebView *rel, int id)
 {
 	AppWin *a = g_new0(AppWin, 1); snprintf(a->k, sizeof a->k, "%s", k); a->id = id;
+	if (LP_S2S_T && g_get_monotonic_time() - LP_S2S_T < 3000000) { a->s2s = 1; LP_S2S_T = 0; }
 	const App *ap = app_find(k); snprintf(a->title, sizeof a->title, "%s", ap ? ap->name : k); snprintf(a->icon, sizeof a->icon, "%s", ap ? ap->icon : "");
 	a->view = rel ? GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW, "related-view", rel, "user-content-manager", UCM, NULL))
 		: GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", CTX, "user-content-manager", UCM, NULL));
@@ -765,8 +772,10 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
 static double tw_tbh(void);   /* (the title bar's height in the page's pixels: tw_geom) */
 static int BW = 1;   /* (the page's windows' 1 px edge, 2 px with high contrast; the title bar's height, TH, follows the display scaling, the font size and the touch mode: tw_th) */
 typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
-	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; int opened; char ptitle[256]; int wait; Window cover; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
+	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; int opened; char ptitle[256]; int wait; Window cover; int lpclip; LPRect lpcr; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
 static void wopen_start(Client *c);
+static int lp_min(Client *c); static void lp_unmin(Client *c); static int lp_maxi(Client *c, int on); static void lp_gone(Client *c);   /* (1.6.0 Part 17) */
+static Window LP_LITW; static double LP_LITA; static RGB LP_CORE;   /* (the taskbar button a point drops into, lit) */
 static GList *CLIENTS;   /* oldest first */
 static Client *FOCUS;
 static Display *DPY; static Window ROOT; static int WM_OK;
@@ -879,7 +888,7 @@ static void wm_focus(Client *c)
 	Client *old = FOCUS; FOCUS = c;
 	if (c) {
 		c->used = g_get_monotonic_time();   /* (the page's MRU: item 5) */
-		if (c->min) { c->min = 0; if (!c->off) XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); }
+		if (c->min) { c->min = 0; if (!c->off) XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); lp_unmin(c); }   /* (Part 17: the drop backward) */
 		XRaiseWindow(DPY, c->frame);
 		/* its dialogs stay above it */
 		for (GList *l = CLIENTS; l; l = l->next) { Client *d = l->data; if (d->trans == c->w && !d->min) XRaiseWindow(DPY, d->frame); }
@@ -926,7 +935,7 @@ static void ws_move(Client *c, int n) { if (!c) return; if (n < 1) n = 1; if (n 
 static void wm_minimise(Client *c)
 {
 	desk_shadows();
-	if (c->min) return; c->min = 1; XUnmapWindow(DPY, c->frame); set_wm_state(c, IconicState);
+	if (c->min) return; c->min = 1; if (!lp_min(c)) XUnmapWindow(DPY, c->frame); set_wm_state(c, IconicState);   /* (Part 17: unmapped once it has dropped into its button) */
 	if (FOCUS == c) { FOCUS = NULL; wm_focus(top_client()); }
 	bar_redraw(); state_write();
 }
@@ -939,7 +948,14 @@ static void max_geom(Client *c)
 	int top = !strcmp(S.tb, "top"), dt = desk_top(), dh = tb_side() ? SH - TOPRES : top ? SH - dt : SH - TOPRES - BARH + (int)lround(4 * Z);
 	c->x = desk_left(); c->y = dt; c->cw = (int)lround(desk_w() - 6 * Z); c->ch = (int)lround(dh - 6 * Z) - (TH - BW);
 }
+static void wm_maximise_now(Client *c, int on);
 static void wm_maximise(Client *c, int on)
+{
+	if (c->full || on == c->max) return;
+	if (lp_maxi(c, on)) return;   /* (Part 17: the frame grows or gathers first; the size changes once, from there) */
+	wm_maximise_now(c, on);
+}
+static void wm_maximise_now(Client *c, int on)
 {
 	if (c->full || on == c->max) return;
 	if (on) { c->sx = c->x; c->sy = c->y; c->scw = c->cw; c->sch = c->ch; max_geom(c); }
@@ -1310,6 +1326,7 @@ static void wm_manage(Window w, AppWin *own)
 }
 static void wm_unmanage(Client *c, int gone)
 {
+	lp_gone(c);   /* (Part 17: its frame folding away where it was) */
 	desk_shadows();
 	CLIENTS = g_list_remove(CLIENTS, c);
 	if (!gone) { XReparentWindow(DPY, c->w, ROOT, c->x + BW, c->y + TH); XRemoveFromSaveSet(DPY, c->w); set_wm_state(c, WithdrawnState); grab_clicks(c, 0); }
@@ -2084,6 +2101,7 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 		char wid[24]; snprintf(wid, sizeof wid, "%lx", c ? (unsigned long)c->w : (unsigned long)(uintptr_t)a);
 		double wx = tasks_x + j * (tw + 3), y = mid - 17; Box b = tb_box(act ? TB_TASKON : TB_TASK, HV("win", wid), PR("win", wid));
 		box_paint(cr, wx, y, tw, 34, &b); hit_add(wx, y, tw, 34, "win", wid);
+		if (c && c->w == LP_LITW && LP_LITA > 0) { cairo_save(cr); cairo_set_source_rgba(cr, LP_CORE.r, LP_CORE.g, LP_CORE.b, .55 * LP_LITA); cairo_rectangle(cr, wx, y, tw, 34); cairo_fill(cr); cairo_restore(cr); }   /* (Part 17: lit as the point lands) */
 		/* the line: the picture (vertical-align -4px) and the title, centred in the button's content (34 less 1 px above and below) */
 		double d, A = css_ascent(cr, UIFAM, act ? 600 : 400, 13, &d), lt = fmin(-A, -14), lb = fmax(d, 4), base = y + b.bw + 1 + (32 - 2 * b.bw - (lb - lt)) / 2 - lt;
 		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap); double tx = wx + b.bw + 6;
@@ -2183,6 +2201,7 @@ static void bar_paint_v(cairo_t *cr, double W, double H)
 		Client *c = WM_OK ? l->data : NULL; AppWin *a = c ? c->app : l->data; int act = c ? c == FOCUS && !c->min : a == ACTIVE;
 		char wid[24]; snprintf(wid, sizeof wid, "%lx", c ? (unsigned long)c->w : (unsigned long)(uintptr_t)a);
 		Box b = tb_box(act ? TB_TASKON : TB_TASK, HV("win", wid), PR("win", wid)); box_paint(cr, x, ty, cw, 22, &b); hit_add(x, ty, cw, 22, "win", wid);
+		if (c && c->w == LP_LITW && LP_LITA > 0) { cairo_save(cr); cairo_set_source_rgba(cr, LP_CORE.r, LP_CORE.g, LP_CORE.b, .55 * LP_LITA); cairo_rectangle(cr, x, ty, cw, 22); cairo_fill(cr); cairo_restore(cr); }
 		double d, A = css_ascent(cr, UIFAM, act ? 600 : 400, 13, &d), lt = fmin(-A, -14), lb = fmax(d, 4), base = ty + b.bw + 1 + (20 - 2 * b.bw - (lb - lt)) / 2 - lt;
 		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap); double tx = x + b.bw + 6;
 		cairo_save(cr); cairo_rectangle(cr, x + b.bw + 6, ty, cw - 2 * b.bw - 12, 22); cairo_clip(cr);
@@ -2331,6 +2350,9 @@ static void frame_shape(Client *c)
 	cairo_region_t *rg = cairo_region_create();
 	for (int y = 0; y < fh; y++) { double dy = y < r ? r - y - .5 : y >= fh - r ? y - (fh - r) + .5 : 0, in = dy > 0 ? r - sqrt(fmax(0, r * r - dy * dy)) : 0;
 		int x0 = (int)floor(in + .5); cairo_rectangle_int_t rc = { x0, y, fw - 2 * x0, 1 }; cairo_region_union_rectangle(rg, &rc); }
+	/* (1.6.0 Part 17: during a window transition only the part of it the scene shows: X's shape again, no compositor) */
+	if (c->lpclip) { int x0 = (int)floor(c->lpcr.x - c->x), y0 = (int)floor(c->lpcr.y - c->y), x1 = (int)ceil(c->lpcr.x + c->lpcr.w - c->x), y1 = (int)ceil(c->lpcr.y + c->lpcr.h - c->y), none = c->lpcr.w < .5 || c->lpcr.h < .5;
+		cairo_rectangle_int_t rc = { x0, y0, none ? 0 : x1 - x0, none ? 0 : y1 - y0 }; cairo_region_intersect_rectangle(rg, &rc); }
 	gdk_window_shape_combine_region(g, rg, 0, 0); cairo_region_destroy(rg); g_object_unref(g);
 }
 /* (the owner's photo) Settings › Accessibility › Color vision, which the page puts on the whole screen (base_v24.html applyCB: html's
@@ -3110,6 +3132,7 @@ static void settings_load(void)
 	jstr(s, "accent", n.accent, sizeof n.accent); jstr(s, "df", n.df, sizeof n.df); jstr(s, "tz", n.tz, sizeof n.tz); jstr(s, "ff", n.ff, sizeof n.ff);
 	char wp[64] = ""; jstr(s, "wpimg", wp, sizeof wp); n.wpimg = wp[0] != 0;
 	jstr(s, "icons", n.icons, sizeof n.icons); n.scale = (int)jnum(s, "scale", 100); if (n.scale < 75 || n.scale > 250) n.scale = 100;
+	n.lpac = jbool(s, "lpac"); jstr(s, "lpacm", n.lpacm, sizeof n.lpacm); n.lpbr = (int)jnum(s, "lpbr", 100);   /* (DEFS.disp lpac false, lpacm normal, lpbr 100) */
 	n.nlv = (int)jnum(s, "nlv", 40); n.nlsched = jbool(s, "nlsched"); n.magz = jnum(s, "magz", 2);
 	n.nl = jbool(s, "nl"); n.dnd = jbool(s, "dnd"); n.sr = jbool(s, "sr"); n.mag = jbool(s, "mag"); n.vk = jbool(s, "vk"); n.touch = jbool(s, "touch"); { char cb[16] = ""; jstr(s, "cb", cb, sizeof cb); n.hc = !strcmp(cb, "contrast"); }
 	{ JV *dk = jprop(s, "darkui"); n.darkui = !(dk && dk->t == 1 && !dk->n); }   /* (S.darkui!==false) */
@@ -5460,19 +5483,6 @@ static void comp_paint_one(cairo_t *cr, Window w, XWindowAttributes *wa, int rx,
 	cairo_set_source_surface(cr, xs, x - rx, y - ry); cairo_paint(cr); cairo_restore(cr);
 	cairo_surface_destroy(xs); XFreePixmap(DPY, pm);
 }
-/* (N15) a window opening (shell25.js: .win.wopen, styles25.css: .18 s ease-out, from opacity 0 and scale(.96) about its centre): drawn
-   by the opening's own window over it, in its place among the others, at COMP_ANIM_E of the way */
-static Window COMP_ANIM_W; static double COMP_ANIM_E = 1;
-static void comp_paint_anim(cairo_t *cr, Window w, XWindowAttributes *wa, int rx, int ry)
-{
-	double e = CLAMP(COMP_ANIM_E, 0, 1), sc = .96 + .04 * e; if (e <= 0) return;
-	int x = wa->x + wa->border_width, y = wa->y + wa->border_width; Pixmap pm = XC_NAME(DPY, w); if (!pm) return;
-	cairo_surface_t *xs = cairo_xlib_surface_create(DPY, pm, wa->visual, wa->width, wa->height);
-	cairo_save(cr); cairo_translate(cr, x - rx + wa->width / 2.0, y - ry + wa->height / 2.0); cairo_scale(cr, sc, sc); cairo_translate(cr, -wa->width / 2.0, -wa->height / 2.0);
-	Client *c = client_of_frame(w); if (c && !c->max && !c->full) { rrect(cr, 0, 0, wa->width, wa->height, tw_rad() * Z); cairo_clip(cr); }
-	cairo_set_source_surface(cr, xs, 0, 0); cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD); cairo_paint_with_alpha(cr, e); cairo_restore(cr);
-	cairo_surface_destroy(xs); XFreePixmap(DPY, pm);
-}
 /* ABOVE: the windows over SELF instead: one this has redirected (it was under SELF, and has been raised over it since: the taskbar)
    is given back to the X server, and draws itself again (a redirected window no longer hides what is under it, so SELF was drawn over
    it on the screen) */
@@ -5489,7 +5499,7 @@ static int comp_behind_or_above(cairo_t *cr, Window self, int rx, int ry, int rw
 		int x = wa.x + wa.border_width, y = wa.y + wa.border_width; if (x >= rx + rw || y >= ry + rh || x + wa.width <= rx || y + wa.height <= ry) continue;
 		if (!above) { gboolean had = FALSE; for (guint k = 0; k < held->len; k++) if ((Window)GPOINTER_TO_SIZE(g_ptr_array_index(held, k)) == kids[i]) { had = TRUE; break; }
 			if (!had) { comp_ref(kids[i]); g_ptr_array_add(held, GSIZE_TO_POINTER(kids[i])); if (!cr || self) comp_expose(kids[i], 0); } }
-		if (cr && kids[i] == COMP_ANIM_W) comp_paint_anim(cr, kids[i], &wa, rx, ry); else if (cr) comp_paint_one(cr, kids[i], &wa, rx, ry); }
+		if (cr) comp_paint_one(cr, kids[i], &wa, rx, ry); }
 	if (kids) XFree(kids); return 1;
 }
 static int comp_behind(cairo_t *cr, Window self, int rx, int ry, int rw, int rh, GPtrArray *held) { return comp_behind_or_above(cr, self, rx, ry, rw, rh, held, 0); }
@@ -5600,45 +5610,179 @@ static void toast_place(void)
 	if (xc && !TLIVE) TLIVE = g_timeout_add(50, toast_live, NULL);   /* (what is behind drawn again 20 times a second) */
 	gtk_widget_queue_draw(TAREA); state_write();
 }
-/* ------------------------------------------------------------------ a window opening (test finding N15)
-   Standard's new window fades in and grows from 96 % in .18 s (shell25.js: .win.wopen, not with Reduce motion). Here, without a
-   compositor, a window of the shell's own lies over the new one for those .18 s and draws what is there from the windows' own
-   pictures (Composite), the new one among them as it is at that moment of the animation; then it goes. */
-static GtkWidget *WOWIN, *WOAREA; static GPtrArray *WOHELD; static Client *WOC; static gint64 WOT0; static guint WOTICK; static int WOX, WOY, WOW, WOH;
-static void wopen_end(void)
+/* ------------------------------------------------------------------ the window transitions (1.6.0, docs/plan-1.6.0.md Part 17)
+   "Splitting-Merging LitePoint", the owner's design, as the page draws it (desktop/litepoint60.js): the same scenes (litepoint.h) at
+   the same times (open 200 ms corner to corner, 220 ms side to side; maximize 180, minimize 200, restore 180, close 200). Without a
+   compositor: the lines and the points of light are small windows of the shell's own (override-redirect, taking no clicks), a line
+   a strip of one colour, a point a small disc drawn in it; the part of a window shown is its frame's X shape (frame_shape: lpclip);
+   maximizing and restoring resize the window once (the frame drawn around where it will be first). Closing draws the frame where
+   the window was (the window has gone by then). The light's brightness (Display Properties) dims the lines and makes the points
+   smaller (no see-through without a compositor); at 0 there is no light, and the windows still fill, clear and drop on time.
+   None with Reduce motion, on the lock screen, for a full-screen window and the shell's own unseen pages (do-*). This replaces
+   test finding N15's fade (a window of the shell's over the new one, drawn from the windows' pictures). */
+typedef struct { int on, kind, back, sw, max_on; Client *c; gint64 t0; LPGeo g; } LPRun;   /* (sw: its new size given; max_on: maximized after) */
+#define LP_RUNS 8
+#define LP_PL (LP_NL * 2)
+#define LP_PP (LP_NP * 2)
+static LPRun LPR[LP_RUNS]; static guint LP_TICK; static int LP_DONE;
+static Window LPLW[LP_PL], LPPW[LP_PP]; static GdkWindow *LPLG[LP_PL], *LPPG[LP_PP]; static int LPLM[LP_PL], LPPM[LP_PP];
+static void wm_maximise_now(Client *c, int on);
+static int lp_off(Client *c) { return S.rmotion || LOCKED || (c && (c->full || c->hidden || c->off || (c->app && !strncmp(c->app->k, "do-", 3)))); }
+static RGB lp_mix(RGB a, RGB b, double t) { RGB o = { a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t }; return o; }
+/* white, or the accent colour (Normal, Negative, Complementary) lifted to glow on a dark desktop; the line's core toward white */
+static void lp_cols(RGB *glow, RGB *core)
 {
-	if (WOTICK) { g_source_remove(WOTICK); WOTICK = 0; } if (WOWIN) gtk_widget_hide(WOWIN);
-	if (WOHELD) comp_release(WOHELD); WOC = NULL; state_write();
+	if (S.lpac) { RGB v = variant(accent(), S.lpacm[0] ? S.lpacm : "normal"); double h, sa, l; rgb2hsl(v, &h, &sa, &l); *glow = hsl2rgb(h, sa, fmax(l, 58));
+		RGB w = { 1, 1, 1 }; *core = lp_mix(*glow, w, .45); }
+	else { *glow = hexc("#cde4ff", "#cde4ff"); *core = hexc("#f2f7ff", "#f2f7ff"); }
 }
-static gboolean wopen_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
+static double lp_br(void) { return fmax(0, fmin(1, S.lpbr / 100.0)); }
+static unsigned long lp_px(RGB c) { return ((unsigned long)lround(fmin(1, fmax(0, c.r)) * 255) << 16) | ((unsigned long)lround(fmin(1, fmax(0, c.g)) * 255) << 8) | (unsigned long)lround(fmin(1, fmax(0, c.b)) * 255); }
+static Window lp_win(GdkWindow **gw)
 {
-	(void)d; if (!WOC || !g_list_find(CLIENTS, WOC)) return TRUE;
-	GdkWindow *gw = gtk_widget_get_window(gtk_widget_get_toplevel(wd)); double t = (g_get_monotonic_time() - WOT0) / 180000.0;
-	COMP_ANIM_W = WOC->frame; COMP_ANIM_E = ease_out(fmin(1, fmax(0, t)));
-	if (gw) comp_behind(cr, GDK_WINDOW_XID(gw), WOX, WOY, WOW, WOH, WOHELD);
-	COMP_ANIM_W = 0; COMP_ANIM_E = 1; return TRUE;
+	XSetWindowAttributes at; memset(&at, 0, sizeof at); at.override_redirect = True; at.background_pixel = 0xffffff; at.save_under = True;
+	Window w = XCreateWindow(DPY, ROOT, -10, -10, 1, 1, 0, CopyFromParent, InputOutput, CopyFromParent, CWOverrideRedirect | CWBackPixel | CWSaveUnder, &at);
+	GdkWindow *g = gdk_x11_window_foreign_new_for_display(gdk_display_get_default(), w);
+	if (g) { cairo_region_t *e = cairo_region_create(); gdk_window_input_shape_combine_region(g, e, 0, 0); cairo_region_destroy(e); }   /* (clicks go through) */
+	*gw = g; return w;
 }
-static gboolean wopen_tick(gpointer d)
+static void lp_unmap(Window *w, int *m, int n) { for (int i = 0; i < n; i++) if (m[i]) { XUnmapWindow(DPY, w[i]); m[i] = 0; } }
+static void lp_line_put(int i, const double *L, RGB col, double br)
 {
-	(void)d; if (!WOC || !g_list_find(CLIENTS, WOC) || g_get_monotonic_time() - WOT0 >= 180000) { WOTICK = 0; wopen_end(); return G_SOURCE_REMOVE; }
-	if (WOAREA) gtk_widget_queue_draw(WOAREA); return G_SOURCE_CONTINUE;
+	double a = L[4] * br, dx = L[2] - L[0], dy = L[3] - L[1]; if (a <= .02 || hypot(dx, dy) < .5) { if (LPLM[i]) { XUnmapWindow(DPY, LPLW[i]); LPLM[i] = 0; } return; }
+	if (!LPLW[i]) LPLW[i] = lp_win(&LPLG[i]);
+	RGB dark = hexc("#101826", "#101826"); RGB c = lp_mix(dark, col, fmin(1, .25 + .75 * a)); double lw = fmax(2, round(1.6 * Z));
+	int x0 = (int)floor(fmin(L[0], L[2]) - lw / 2), y0 = (int)floor(fmin(L[1], L[3]) - lw / 2), x1 = (int)ceil(fmax(L[0], L[2]) + lw / 2), y1 = (int)ceil(fmax(L[1], L[3]) + lw / 2);
+	int w = MAX(1, x1 - x0), h = MAX(1, y1 - y0);
+	XSetWindowBackground(DPY, LPLW[i], lp_px(c)); XMoveResizeWindow(DPY, LPLW[i], x0, y0, w, h);
+	if (LPLG[i]) { if (fabs(dx) >= 1 && fabs(dy) >= 1) {   /* (a slanting line: the drop into the taskbar) */
+			cairo_region_t *rg = cairo_region_create();
+			if (fabs(dy) >= fabs(dx)) for (int y = 0; y < h; y++) { double yy = y0 + y + .5, x = L[0] + (yy - L[1]) * dx / dy - x0; cairo_rectangle_int_t r = { (int)floor(x - lw / 2), y, (int)ceil(lw), 1 }; cairo_region_union_rectangle(rg, &r); }
+			else for (int x = 0; x < w; x++) { double xx = x0 + x + .5, y = L[1] + (xx - L[0]) * dy / dx - y0; cairo_rectangle_int_t r = { x, (int)floor(y - lw / 2), 1, (int)ceil(lw) }; cairo_region_union_rectangle(rg, &r); }
+			gdk_window_shape_combine_region(LPLG[i], rg, 0, 0); cairo_region_destroy(rg); }
+		else gdk_window_shape_combine_region(LPLG[i], NULL, 0, 0); }
+	XMapRaised(DPY, LPLW[i]); XClearWindow(DPY, LPLW[i]); LPLM[i] = 1;
 }
+static void lp_point_put(int i, const double *P, RGB glow, double br)
+{
+	double k = P[2], red = P[3]; if (k <= 0 || br <= 0) { if (LPPM[i]) { XUnmapWindow(DPY, LPPW[i]); LPPM[i] = 0; } return; }
+	if (!LPPW[i]) LPPW[i] = lp_win(&LPPG[i]);
+	double R = fmax(2.5, 13 * k * .42 * Z * (.35 + .65 * br)); int d = (int)ceil(2 * R) + 1, x = (int)lround(P[0] - d / 2.0), y = (int)lround(P[1] - d / 2.0);
+	RGB g = glow; if (red > 0) { g.r = g.r + (1 - g.r) * red; g.g = g.g + (70 / 255.0 - g.g) * red; g.b = g.b + (80 / 255.0 - g.b) * red; }
+	RGB dark = hexc("#101826", "#101826"); g = lp_mix(dark, g, .4 + .6 * br);
+	XSetWindowBackground(DPY, LPPW[i], lp_px(g)); XMoveResizeWindow(DPY, LPPW[i], x, y, d, d);
+	if (LPPG[i]) { cairo_region_t *rg = cairo_region_create(); double r = d / 2.0;
+		for (int yy = 0; yy < d; yy++) { double dy = yy + .5 - r, in = r - sqrt(fmax(0, r * r - dy * dy)); int a = (int)floor(in + .5); cairo_rectangle_int_t rc = { a, yy, d - 2 * a, 1 }; if (rc.width > 0) cairo_region_union_rectangle(rg, &rc); }
+		gdk_window_shape_combine_region(LPPG[i], rg, 0, 0); cairo_region_destroy(rg); }
+	XMapRaised(DPY, LPPW[i]); LPPM[i] = 1;
+	cairo_surface_t *sf = cairo_xlib_surface_create(DPY, LPPW[i], DefaultVisual(DPY, DefaultScreen(DPY)), d, d); cairo_t *cr = cairo_create(sf);
+	cairo_pattern_t *pt = cairo_pattern_create_radial(d / 2.0, d / 2.0, 0, d / 2.0, d / 2.0, d / 2.0);
+	cairo_pattern_add_color_stop_rgb(pt, 0, 1, 1, 1); cairo_pattern_add_color_stop_rgb(pt, .3, 1, 1, 1); cairo_pattern_add_color_stop_rgb(pt, .55, g.r, g.g, g.b);
+	{ RGB e = lp_mix(dark, g, .7); cairo_pattern_add_color_stop_rgb(pt, 1, e.r, e.g, e.b); }
+	cairo_set_source(cr, pt); cairo_paint(cr); cairo_pattern_destroy(pt); cairo_destroy(cr); cairo_surface_destroy(sf);
+}
+/* (its new size, once: maximizing, as the frame starts to grow; restoring, at the end) */
+static void lp_switch(LPRun *R)
+{
+	Client *c = R->c; if (!c || R->sw) return; R->sw = 1;
+	if (R->kind == LP_MAX) { c->lpclip = 1; c->lpcr = R->g.f; }   /* (shown as it was until the scene says otherwise: no flash at its new size) */
+	if (R->kind == LP_MAX || R->kind == LP_RES) { if (c->max != R->max_on) wm_maximise_now(c, R->max_on); }
+}
+static void lp_finish(LPRun *R)
+{
+	if (!R->on) return; R->on = 0; LP_DONE++; Client *c = R->c; if (!c || !g_list_find(CLIENTS, c)) return;
+	lp_switch(R); c->lpclip = 0;
+	if (R->kind == LP_MIN && !R->back && c->min) XUnmapWindow(DPY, c->frame);   /* (minimized: gone once it has dropped into its button) */
+	frame_shape(c); state_write();
+}
+static void lp_state(GString *s)
+{
+	Window wo = 0; for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on && LPR[r].c && (LPR[r].kind == LP_C2C || LPR[r].kind == LP_S2S)) wo = LPR[r].c->w;
+	g_string_append_printf(s, "wopen %lx\n", (unsigned long)wo);
+	gint64 now = g_get_monotonic_time();
+	for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on) { double t = fmin(1, (now - LPR[r].t0) / (LP_MS[LPR[r].kind] * 1000.0));
+		g_string_append_printf(s, "lp %s%s %lx %.2f\n", LP_NAME[LPR[r].kind], LPR[r].back ? "<" : "", LPR[r].c ? (unsigned long)LPR[r].c->w : 0UL, LPR[r].back ? 1 - t : t); }
+	g_string_append_printf(s, "lpdone %d\nlplit %lx %.2f\n", LP_DONE, (unsigned long)LP_LITW, LP_LITA);
+}
+static gboolean lp_tick(gpointer d)
+{
+	(void)d; gint64 now = g_get_monotonic_time(); RGB glow, core; lp_cols(&glow, &core); LP_CORE = core; double br = lp_br();
+	static double L[LP_PL][5], P[LP_PP][4]; int nl = 0, np = 0, any = 0; Window litw = 0; double lita = 0;
+	for (int r = 0; r < LP_RUNS; r++) { LPRun *R = &LPR[r]; if (!R->on) continue;
+		if (R->c && !g_list_find(CLIENTS, R->c)) { R->on = 0; continue; }
+		double t = (now - R->t0) / (LP_MS[R->kind] * 1000.0); t = t < 0 ? 0 : t > 1 ? 1 : t; if (R->back) t = 1 - t;
+		LPScene sc; lp_scene(R->kind, t, &R->g, &sc);
+		if (R->c && sc.geo_to && !R->sw) lp_switch(R);
+		if (R->back ? t <= 0 : t >= 1) { lp_finish(R); continue; }
+		any = 1;
+		if (R->c) { Client *c = R->c; int was = c->lpclip; c->lpclip = sc.clip; if (sc.clip) c->lpcr = sc.cr; if (sc.clip || was) frame_shape(c); }
+		for (int i = 0; i < sc.nl && nl < LP_PL; i++) memcpy(L[nl++], sc.L[i], sizeof L[0]);
+		for (int i = 0; i < sc.np && np < LP_PP; i++) memcpy(P[np++], sc.P[i], sizeof P[0]);
+		if (R->c && sc.lit > lita) { lita = sc.lit; litw = R->c->w; } }
+	for (int i = 0; i < LP_PL; i++) { if (i < nl) lp_line_put(i, L[i], core, br); else if (LPLM[i]) { XUnmapWindow(DPY, LPLW[i]); LPLM[i] = 0; } }
+	for (int i = 0; i < LP_PP; i++) { if (i < np) lp_point_put(i, P[i], glow, br); else if (LPPM[i]) { XUnmapWindow(DPY, LPPW[i]); LPPM[i] = 0; } }
+	lita *= br; if (litw != LP_LITW || fabs(lita - LP_LITA) > .01) { LP_LITW = litw; LP_LITA = lita; bar_redraw(); }
+	XFlush(DPY);
+	if (!any) { LP_TICK = 0; lp_unmap(LPLW, LPLM, LP_PL); lp_unmap(LPPW, LPPM, LP_PP); if (LP_LITW) { LP_LITW = 0; LP_LITA = 0; bar_redraw(); } state_write(); return G_SOURCE_REMOVE; }
+	return G_SOURCE_CONTINUE;
+}
+/* (a window's own transition still running when another starts: the old one ends at once, as it would have) */
+static void lp_stop(Client *c) { for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on && LPR[r].c == c) lp_finish(&LPR[r]); }
+static int lp_start(Client *c, int kind, int back, const LPGeo *g, int max_on)
+{
+	if (c) lp_stop(c);
+	LPRun *R = NULL; for (int r = 0; r < LP_RUNS; r++) if (!LPR[r].on) { R = &LPR[r]; break; } if (!R) return 0;
+	memset(R, 0, sizeof *R); R->on = 1; R->kind = kind; R->back = back; R->c = c; R->g = *g; R->max_on = max_on; R->t0 = g_get_monotonic_time();
+	if (c) { LPScene sc; lp_scene(kind, back ? 1 : 0, g, &sc); c->lpclip = sc.clip; c->lpcr = sc.cr; frame_shape(c); }   /* (its first moment at once) */
+	if (!LP_TICK) LP_TICK = g_timeout_add(16, lp_tick, NULL);
+	state_write(); return 1;
+}
+static int lp_viewable(Client *c, LPRect *r)
+{
+	XWindowAttributes wa; if (!XGetWindowAttributes(DPY, c->frame, &wa) || wa.map_state != IsViewable) return 0;
+	r->x = wa.x; r->y = wa.y; r->w = wa.width; r->h = wa.height; return 1;
+}
+/* the middle of a window's taskbar button, on the screen (a point drops into it) */
+static void lp_button(Client *c, const LPRect *f, double *x, double *y)
+{
+	char wid[24]; snprintf(wid, sizeof wid, "%lx", (unsigned long)c->w);
+	for (int i = 0; i < NHITS; i++) if (!strcmp(HITS[i].kind, "win") && !strcmp(HITS[i].arg, wid)) { *x = bar_x() + HITS[i].x + HITS[i].w / 2.0; *y = bar_y() + HITS[i].y + HITS[i].h / 2.0; return; }
+	*x = f->x + f->w / 2; *y = bar_y() + BARH / 2.0;
+}
+/* a window opening: corner to corner, or side to side when another window opened it (a dialog: transient; an app window's page asked) */
 static void wopen_start(Client *c)
 {
 	if (!c || c->opened) return; c->opened = 1;
-	if (!xc_ok() || S.rmotion || c->min || c->hidden || c->off || c->full || LOCKED || (c->app && !strncmp(c->app->k, "do-", 3))) return;
-	XWindowAttributes wa; if (!XGetWindowAttributes(DPY, c->frame, &wa) || wa.map_state != IsViewable) return;
-	if (WOC) wopen_end();
-	WOX = wa.x; WOY = wa.y; WOW = wa.width; WOH = wa.height;
-	if (!WOWIN) { WOWIN = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(WOWIN), "Opening"); WOAREA = gtk_drawing_area_new(); gtk_container_add(GTK_CONTAINER(WOWIN), WOAREA);
-		g_signal_connect(WOAREA, "draw", G_CALLBACK(wopen_draw), NULL); }
-	if (!WOHELD) WOHELD = g_ptr_array_new();
-	comp_behind(NULL, 0, WOX, WOY, WOW, WOH, WOHELD);   /* (the windows there redirected before it covers them, each drawn again) */
-	WOC = c; WOT0 = g_get_monotonic_time();
-	gtk_widget_set_size_request(WOAREA, WOW, WOH); gtk_window_resize(GTK_WINDOW(WOWIN), WOW, WOH); gtk_window_move(GTK_WINDOW(WOWIN), WOX, WOY); gtk_widget_show_all(WOWIN);
-	gdk_window_move_resize(gtk_widget_get_window(WOWIN), WOX, WOY, WOW, WOH); XRaiseWindow(DPY, GDK_WINDOW_XID(gtk_widget_get_window(WOWIN)));
-	{ cairo_region_t *rg = cairo_region_create(); gdk_window_input_shape_combine_region(gtk_widget_get_window(WOWIN), rg, 0, 0); cairo_region_destroy(rg); }   /* (clicks go to the window under it) */
-	gtk_widget_queue_draw(WOAREA); WOTICK = g_timeout_add(16, wopen_tick, NULL); state_write();
+	LPGeo g; memset(&g, 0, sizeof g); if (lp_off(c) || c->min || !lp_viewable(c, &g.f)) return;
+	lp_start(c, c->trans || (c->app && c->app->s2s) ? LP_S2S : LP_C2C, 0, &g, 0);
+}
+/* minimizing: the window stays mapped (minimized for everything else at once) until the point has dropped into its button */
+static int lp_min(Client *c)
+{
+	LPGeo g; memset(&g, 0, sizeof g); if (lp_off(c) || !lp_viewable(c, &g.f)) return 0;
+	lp_button(c, &g.f, &g.bx, &g.by); return lp_start(c, LP_MIN, 0, &g, 0);
+}
+static void lp_unmin(Client *c)
+{
+	LPGeo g; memset(&g, 0, sizeof g); if (lp_off(c)) return;
+	g.f.x = c->x; g.f.y = c->y; g.f.w = fw_of(c); g.f.h = fh_of(c); lp_button(c, &g.f, &g.bx, &g.by); lp_start(c, LP_MIN, 1, &g, 0);
+}
+/* maximizing or restoring: the frame grows (or gathers) first; the window's size changes once */
+static int lp_maxi(Client *c, int on)
+{
+	LPGeo g; memset(&g, 0, sizeof g); LPRect now; if (lp_off(c) || c->min || !lp_viewable(c, &now)) return 0;
+	lp_stop(c); if (on == c->max) return 1;
+	Client t = *c; if (on) max_geom(&t); else { t.x = c->sx; t.y = c->sy; t.cw = c->scw; t.ch = c->sch; }
+	LPRect nw = { t.x, t.y, fw_of(&t), fh_of(&t) };
+	if (on) { g.f = now; g.s = nw; } else { g.f = nw; g.s = now; }
+	return lp_start(c, on ? LP_MAX : LP_RES, 0, &g, on);
+}
+/* closing (the window going for good): its frame drawn where it was, folding away; the window itself has gone */
+static void lp_gone(Client *c)
+{
+	for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on && LPR[r].c == c) { LPR[r].on = 0; LP_DONE++; }   /* (no more of it: it is going) */
+	LPGeo g; memset(&g, 0, sizeof g); if (lp_off(c) || c->min || !c->opened || !lp_viewable(c, &g.f)) return;
+	lp_start(NULL, LP_CLS, 0, &g, 0);
 }
 /* ------------------------------------------------------------------ the keys' indicator (1.5.9, 12.3c)
    osd31.js's: the volume, the microphone or the brightness, at the top of the screen for 1.5 s (#osd: 28 px down, centred,
@@ -6750,7 +6894,7 @@ static void state_write(void)
 	if (AT_ON) { g_string_append_printf(s, "altab %d %d %d %d %d %d", AT_N, AT_I, AX, AY, AW, AH); for (int i = 0; i < AT_N; i++) g_string_append_printf(s, "|%s", AT_L[i]->title); g_string_append_c(s, '\n'); }
 	else g_string_append(s, "altab -\n");
 	g_string_append_printf(s, "overview %d\n", OV_ON ? OVN : 0);
-	g_string_append_printf(s, "wopen %lx\n", WOC && g_list_find(CLIENTS, WOC) ? (unsigned long)WOC->w : 0UL);   /* (N15: a window opening, its animation running) */
+	lp_state(s);   /* (1.6.0 Part 17: the window transitions running: "wopen W" while one opens (N15's line), "lp KIND W T", the button lit) */
 	g_string_append_printf(s, "saver %d %s|%s\nidlechecks %d\n", SAV_ON, SYS.ssstyle, SAV_WHY, IDLE_N);   /* (item 6) */
 	for (int i = 0; OV_ON && i < OVN; i++) if (g_list_find(CLIENTS, OVL[i].c)) g_string_append_printf(s, "ovwin %lx %d %d %d %d %d\n", (unsigned long)OVL[i].c->w, (int)lround(OVL[i].x), (int)lround(OVL[i].y), (int)lround(OVL[i].w), (int)lround(OVL[i].h), OVL[i].pic != NULL);
 	if (OK_[0]) g_string_append_printf(s, "osd %s %s|%s %d %d %d %d\n", OK_, OLV[0] ? OLV : "-", OLB, OX, OY, OW, OH);   /* (the keys' indicator) */

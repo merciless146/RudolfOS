@@ -9,9 +9,9 @@ on:
       serial: {description: 'A release whose Chromium to use (its serial); empty: the newest beta', required: false, default: ''}
   push:
     branches: [oracle-same-native]
-    paths: ['iso/qt/native/same_oracle_t.sh', 'iso/qt/native/same_oracle.py', 'iso/qt/native/pxdiff.py', 'iso/qt/host/fixtures/dispkeys.c', 'iso/sys/rudolf-native.c', 'iso/sys/rudolf-launch.c', 'iso/shell/**', 'iso/www/index.html', '.github/workflows/oracle-same-check.yml']
+    paths: ['iso/qt/native/same_oracle_t.sh', 'iso/qt/native/same_oracle.py', 'iso/qt/native/pxdiff.py', 'iso/qt/host/fixtures/dispkeys.c', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rudolf-launch.c', 'iso/shell/**', 'iso/www/index.html', '.github/workflows/oracle-same-check.yml']
   pull_request:
-    paths: ['iso/qt/native/same_oracle_t.sh', 'iso/qt/native/same_oracle.py', 'iso/qt/native/pxdiff.py', 'iso/sys/rudolf-native.c', 'iso/shell/**', '.github/workflows/oracle-same-check.yml']
+    paths: ['iso/qt/native/same_oracle_t.sh', 'iso/qt/native/same_oracle.py', 'iso/qt/native/pxdiff.py', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/shell/**', '.github/workflows/oracle-same-check.yml']
 permissions: {contents: read}
 jobs:
   same:

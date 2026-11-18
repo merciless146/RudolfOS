@@ -157,10 +157,15 @@ XC=$T/xc; gcc -O2 -o $XC $HERE/fixtures/xwmclient.c -lX11 || { echo "FAIL build 
 cl() { grep "^client $1 " $D/state | head -1; }          # client ID FRAME X Y W H min= max= full= focus= app= TITLE
 cv() { cl $1 | awk -v f=$2 '{print $f}'; }               # one field: 4 x, 5 y, 6 w, 7 h
 flag() { cl $1 | grep -o "$2=[0-9]" | cut -d= -f2; }
+# (1.6.0 Part 17) the window transitions, watched in the state every 10 ms for 1.2 s: lpw ID (in the background, before the action)
+lpw() { : > $T/lpw; i=0; while [ $i -lt 120 ]; do { grep "^lp \|^wopen " $D/state; grep "^client $1 " $D/state; echo ---; } >> $T/lpw 2>/dev/null; timeout 0.01 tail -f /dev/null; i=$((i+1)); done; }
+LPD0=$(st lpdone)
 ok "28. rudolf-native is the window manager; the app windows are framed" "$([ "$(st wm)" = 1 ] && [ "$(grep -c '^client .* app=calc' $D/state)" = 1 ] && [ "$(grep -c '^client .* app=notepad' $D/state)" = 1 ] && echo 1)" "$(grep '^client\|^wm' $D/state)"
+lpw x & LW=$!
 $XC app > $T/xc.log & XP=$!
 w8 'grep -q "^id" $T/xc.log'; ID=$(sed -n 's/^id 0x//p' $T/xc.log | head -1)
-w8 '[ -n "$(cl $ID)" ]' 40
+w8 '[ -n "$(cl $ID)" ]' 40; wait $LW
+ok "28b. (Part 17) a window opening: corner to corner (lp c2c), its opening said as before (wopen)" "$(grep -q "^lp c2c $ID " $T/lpw && grep -q "^wopen $ID" $T/lpw && echo 1)" "$(grep '^lp\|^wopen' $T/lpw | sort | uniq -c | head)"
 ok "29. a Linux app's window gets a frame, the keyboard and WM_STATE" "$([ "$(flag $ID focus)" = 1 ] && [ "$($XC getfocus)" = "0x$ID" ] && [ "$($XC wmstate 0x$ID)" = 1 ] && echo 1)" "$(cl $ID) $($XC getfocus)"
 w8 'grep -q "^take_focus [1-9]" $T/xc.log' 20; ok "30. ...WM_TAKE_FOCUS with a server time (as Wine needs)" "$(grep -q '^take_focus [1-9]' $T/xc.log && echo 1)" "$(cat $T/xc.log)"
 ok "31. ...its title on the taskbar" "$(grep -q "^hit win $ID " $D/state && grep -q "^client $ID .* Starport stand-in$" $D/state && echo 1)" "$(grep '^hit win' $D/state)"
@@ -174,13 +179,17 @@ xdotool mousemove $((X+FW-2)) $((Y+FH-2)) mousedown 1; for k in 1 2 3 4; do xdot
 # (#409: as the page's addResize, shell25.js: the new size is the window's size with its 1 px edges (offsetWidth) and the pointer's way,
 # so 400 x 300 dragged by 80 x 60 is 482 x 362, as on Standard; maximised, the page's .mx: #desk's width less 6 px)
 ok "35. dragging the bottom-right corner resizes it" "$([ "$(cv $ID 6)" = 482 ] && [ "$(cv $ID 7)" = 362 ] && echo 1)" "$(cl $ID)"
-W=$(cv $ID 6); FW=$((W+2)); click $((X+FW-48)) $((Y+18)); timeout 0.5 tail -f /dev/null
+W=$(cv $ID 6); FW=$((W+2)); lpw $ID & LW=$!; click $((X+FW-48)) $((Y+18)); wait $LW
+ok "36b. (Part 17) maximise: the frame drawn first at its old size (lp max), then resized once" "$(awk -v id=$ID '/^lp max /{m=1} /^client /{if(m&&$6==482)o=1} /^---/{m=0} END{print o+0}' $T/lpw | grep -q 1 && [ "$(grep -c "^lp " $D/state)" = 0 ] && echo 1)" "$(grep '^lp\|^client' $T/lpw | sort | uniq -c | head)"
 ok "36. maximise: the whole screen above the taskbar" "$([ "$(flag $ID max)" = 1 ] && [ "$(cv $ID 4) $(cv $ID 5) $(cv $ID 6) $(cv $ID 7)" = "0 0 1274 718" ] && echo 1)" "$(cl $ID)"
-xdotool mousemove 300 15 click --repeat 2 --delay 80 1; timeout 0.5 tail -f /dev/null
+lpw $ID & LW=$!; xdotool mousemove 300 15 click --repeat 2 --delay 80 1; wait $LW
+ok "36c. (Part 17) restore: maximized while the frame gathers (lp res), its own size after" "$(awk '/^lp res /{m=1} /^client /{if(m&&$6==1274)o=1} /^---/{m=0} END{print o+0}' $T/lpw | grep -q 1 && echo 1)" "$(grep '^lp\|^client' $T/lpw | sort | uniq -c | head)"
 ok "37. a double-click on the title bar: back to its size and place" "$([ "$(flag $ID max)" = 0 ] && [ "$(cv $ID 4) $(cv $ID 6)" = "$X 482" ] && echo 1)" "$(cl $ID)"
-click $((X+FW-75)) $((Y+18)); timeout 0.5 tail -f /dev/null
+lpw $ID & LW=$!; click $((X+FW-75)) $((Y+18)); wait $LW
+ok "38b. (Part 17) minimise: minimized at once (min=1) while the point drops into its button (lp min)" "$(awk '/^lp min /{m=1} /^client /{if(m&&/ min=1 /)o=1} /^---/{m=0} END{print o+0}' $T/lpw | grep -q 1 && echo 1)" "$(grep '^lp\|^client' $T/lpw | sort | uniq -c | head)"
 ok "38. minimise: out of sight (WM_STATE iconic), the next window gets the keyboard" "$([ "$(flag $ID min)" = 1 ] && [ "$($XC wmstate 0x$ID)" = 3 ] && [ "$(flag $ID focus)" = 0 ] && grep -q '^client .* focus=1 ' $D/state && echo 1)" "$(grep '^client' $D/state) $($XC wmstate 0x$ID)"
-click $(hit win $ID); timeout 0.5 tail -f /dev/null
+lpw $ID & LW=$!; click $(hit win $ID); wait $LW
+ok "39b. (Part 17) restoring it: the drop backward (lp min<)" "$(grep -q "^lp min< $ID " $T/lpw && echo 1)" "$(grep '^lp' $T/lpw | sort | uniq -c | head)"
 ok "39. its taskbar button brings it back, in front" "$([ "$(flag $ID min)" = 0 ] && [ "$(flag $ID focus)" = 1 ] && [ "$($XC getfocus)" = "0x$ID" ] && echo 1)" "$(cl $ID)"
 CID=$(grep '^client .* app=calc' $D/state | cut -d' ' -f2); click $(( $(cv $CID 4) + 40 )) $(( $(cv $CID 5) + 36 + $(cv $CID 7) / 2 )); timeout 0.5 tail -f /dev/null
 ok "40. a click into another window gives it the keyboard (and the click)" "$([ "$(flag $CID focus)" = 1 ] && [ "$(flag $ID focus)" = 0 ] && echo 1)" "$(grep '^client' $D/state)"
@@ -188,12 +197,14 @@ $XC full 0x$ID 1; timeout 0.5 tail -f /dev/null
 ok "41. a window asking for full screen covers the whole screen, taskbar too" "$([ "$(flag $ID full)" = 1 ] && grep -q '^geom 0 0 1280 800' $T/xc.log && [ "$($XC stack | tail -1)" = "0x$(cl $ID | cut -d' ' -f3)" ] && echo 1)" "$(cl $ID); $(tail -2 $T/xc.log); $($XC stack | tail -2)"
 $XC full 0x$ID 0; timeout 0.5 tail -f /dev/null
 ok "42. ...and back" "$([ "$(flag $ID full)" = 0 ] && [ "$(cv $ID 6)" = 482 ] && echo 1)" "$(cl $ID)"
-$XC inno > $T/inno.log & IP=$!; w8 'grep -q "^dlg" $T/inno.log'; DLG=$(sed -n 's/^dlg 0x//p' $T/inno.log); OW=$(sed -n 's/^id 0x//p' $T/inno.log); w8 '[ -n "$(cl $DLG)" ]' 20
+lpw x & LW=$!; $XC inno > $T/inno.log & IP=$!; w8 'grep -q "^dlg" $T/inno.log'; DLG=$(sed -n 's/^dlg 0x//p' $T/inno.log); OW=$(sed -n 's/^id 0x//p' $T/inno.log); w8 '[ -n "$(cl $DLG)" ]' 20; wait $LW
+ok "42b. (Part 17) a dialog (another window's) opens side to side (lp s2s)" "$(grep -q "^lp s2s $DLG " $T/lpw && echo 1)" "$(grep '^lp' $T/lpw | sort | uniq -c | head)"
 ok "43. a dialog is centred over its window" "$(dx=$(( $(cv $DLG 4) + ($(cv $DLG 6) + 2) / 2 - $(cv $OW 4) - ($(cv $OW 6) + 2) / 2 )); [ ${dx#-} -le 2 ] && echo 1)" "$(cl $OW) / $(cl $DLG)"
 ok "44. ...and is not on the taskbar" "$( ! grep -q "^hit win $DLG " $D/state && echo 1)"
 kill $IP 2>/dev/null; w8 '[ -z "$(cl $DLG)" ]' 20
-X=$(cv $ID 4); Y=$(cv $ID 5); FW=$(( $(cv $ID 6) + 2 )); click $((X+FW-21)) $((Y+18))
-w8 'grep -q "^delete" $T/xc.log' 20; w8 '[ -z "$(cl $ID)" ]' 20
+X=$(cv $ID 4); Y=$(cv $ID 5); FW=$(( $(cv $ID 6) + 2 )); lpw $ID & LW=$!; click $((X+FW-21)) $((Y+18))
+w8 'grep -q "^delete" $T/xc.log' 20; w8 '[ -z "$(cl $ID)" ]' 20; wait $LW
+ok "45b. (Part 17) close: the frame folding away where the window was (lp cls), all of them ended (lpdone)" "$(grep -q "^lp cls 0 " $T/lpw && [ "$(grep -c "^lp " $D/state)" = 0 ] && [ "$(st lpdone)" -gt "${LPD0:-0}" ] && echo 1)" "$(grep '^lp' $T/lpw | sort | uniq -c | head) $(st lpdone)"
 ok "45. close: WM_DELETE_WINDOW, the program closes its window, the frame and the taskbar button go" "$(grep -q '^delete' $T/xc.log && [ -z "$(cl $ID)" ] && ! grep -q "^hit win $ID " $D/state && echo 1)" "$(cat $T/xc.log | tail -2)"
 NID=$(grep '^client .* app=notepad' $D/state | cut -d' ' -f2); X=$(cv $NID 4); Y=$(cv $NID 5); FW=$(( $(cv $NID 6) + 2 )); click $((X+FW-21)) $((Y+18))
 w8 '[ -z "$(cl $NID)" ]' 40

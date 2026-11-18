@@ -27,7 +27,8 @@ const geoK=()=>'bd95geo:'+uid();
  const c=W.close;W.close=()=>{const el=W.el;if(W.app&&!el.classList.contains('max')&&el.offsetWidth>0){const g=ld(geoK(),{});g[W.app]={x:el.offsetLeft,y:el.offsetTop,w:el.offsetWidth,h:el.offsetHeight};svj(geoK(),g)}
   const before=wins.length;c();if(wins.length<before){MRU=MRU.filter(x=>x!==W);tbRefresh()}};
  MRU=[W,...MRU.filter(x=>x!==W)];
- if(!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)&&!S.rmotion){W.el.classList.add('wopen');setTimeout(()=>W.el.classList.remove('wopen'),220)}
+ /* 1.6.0 (plan Part 17): its LitePoint transitions (litepoint60.js), in place of the fade of before */
+ if(typeof lpHook=='function'){lpHook(W);lpOpen(W)}
  setTimeout(tbRefresh,0);return W}})();
 function wsGo(n){n=Math.max(1,Math.min(NWS,n));if(n==WS){tbRefresh();return}WS=n;wins.forEach(o=>{o.el.style.display=o.ws==WS&&!o.min?'flex':'none'});tbRefresh();
  const top=MRU.find(o=>o.ws==WS&&!o.min);top&&top.focus();notify('Workspace '+WS,'',{quiet:true,toast:1200})}
