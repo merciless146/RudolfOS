@@ -577,6 +577,59 @@ The owner, 2026-11-17: "Make Standard the default in 1.6.0 with the transition t
 - **The owner's checks:** a new stick (Make a USB stick) and Install here: the setup wizard, then Native; an updated
   computer on Standard: the offer once; Discord, Steam, the icons and Oracle's keys on Native.
 
+### 15. One title bar for apps that draw their own (added on 2026-11-18)
+The owner, 2026-11-18, on Native with Steam, Discord and Claude open: "Steam, Discord, Claude, and other apps installed from
+Debian, Flatpak, and some source sites seem to use their own windows inside of the OS-based windows. Is there a way to have
+non-Rudolf apps like these use only Rudolf's own windows and title bars?" Of the three ways offered, the owner chose the
+suggested mix ("We will go with your suggestion"):
+
+**Why there are two.** Electron and Chromium apps (Discord, Claude, Steam's new interface, VS Code, Chromium-based
+browsers) draw their own title bar and ask the window manager for none (`_MOTIF_WM_HINTS`, decorations 0). rudolf-native
+frames every window the same, so it adds Rudolf's above theirs. Their bar is more than a title: Steam's menus (Steam, View,
+Friends, Games, Help) and its account button, Discord's inbox and help buttons and the "Direct Messages" heading. Moving
+the window by dragging their bar, and their own minimize, maximize and close buttons, need from the window manager what
+rudolf-native does not do yet: `_NET_WM_MOVERESIZE` (it moves and resizes for the app), `_NET_WM_STATE_MAXIMIZED_VERT`
+and `_HORZ`, `_NET_FRAME_EXTENTS`. Standard frames no Linux app's window (rudolf-display shows them without a title bar
+of Rudolf's), so this part is Native's.
+
+**1. The app's own setting first: Rudolf's title bar, nothing lost.** Where an app can use the system's title bar,
+Rudolf asks it to, once, the first time it starts it, and only when the person has not chosen otherwise in the app:
+- Chromium-based browsers (Flathub's Chromium, Brave, Edge, Vivaldi; Debian's Chromium): their "Use system title bar and
+  borders" (`browser.custom_chrome_frame: false` in the profile's Preferences, when the key is not there yet);
+- VS Code and VSCodium: `window.titleBarStyle: native` (when not set);
+- a list in `iso/sys/root/usr/share/rudolf/titlebars` (app ID, how, where), so more can be added without a new
+  program; each entry checked against the app's documentation before it goes in.
+Those windows then ask for decorations, and get Rudolf's title bar as any other.
+
+**2. Otherwise, the app's own bar alone (the default).** A window asking for no decorations gets no title bar of
+Rudolf's: its frame keeps the edge (1 px, or 2 px with high contrast), the round corners and the resize edges; the
+taskbar button, Alt+Tab, the overview, the workspaces, snapping and the LitePoint transitions (1.6.0 Part 17) all as
+before. For its own bar to work, rudolf-native does what such apps ask:
+- `_NET_WM_MOVERESIZE`: moving (dragging their bar), resizing (their edges), and the keyboard move and size, done as a
+  drag of Rudolf's own title bar is (the same snapping, the same limits), until the button is let go;
+- `_NET_WM_STATE_MAXIMIZED_VERT` and `_HORZ` (their maximize button and a double-click on their bar): Rudolf's maximize
+  and restore (wm_maximise, with its transition); `_NET_WM_STATE_HIDDEN` and `WM_CHANGE_STATE` (minimize) as now;
+- `_NET_FRAME_EXTENTS` set on every window (the edges' and the title bar's sizes), and all of these in
+  `_NET_SUPPORTED`. GTK's own windows (the app windows of Rudolf's pages) keep moving themselves as now: they ask for
+  decorations, so they are framed as before.
+Games and Wine's borderless windows (the same hint, a window the size of the screen) stay as they are: full screen.
+
+**3. Rudolf's title bar instead, by choice, per app.** The title bar's menu (right-click) on such a window has "Title
+bar: the app's own / Rudolf's". With Rudolf's, the app's own bar is cut away as Oracle's Chromium bar is (the clip
+window and its insets, 1.5.9 12.3c), at a height known for that app (the list above, `cut` entries: the bar's height in
+the app's pixels at 100 %, scaled as the app is). Offered only for apps on the list, whose bar holds only what Rudolf's
+has (the title and the three buttons); for one whose bar has more (Steam's menus, Discord's buttons), the menu says what
+would be lost instead of offering it. Kept per account and app (`bd95titlebar:` in its settings, read by the shell).
+
+**Tests.** `iso/qt/host/csd161_t.sh` (Xvfb and rudolf-native, a stand-in app made with `xwmclient.c`): a window with
+decorations 0 has no title bar (its frame's height is the window's plus its edges), `_NET_FRAME_EXTENTS` says so; a
+`_NET_WM_MOVERESIZE` move follows the pointer and ends on release, a resize from each edge; `_NET_WM_STATE_MAXIMIZED_*`
+maximizes and restores (the transition runs); minimize from the app; a full-screen-sized one is full screen as before;
+`native59_t.sh`'s framed windows unchanged. The settings step: the Preferences and settings files changed only when the
+key is missing (an existing choice kept), once. Part 3: the cut window's insets, the menu's two entries and its notice.
+**The owner's checks on the Vivobook (Native):** Discord, Steam and Claude with one title bar each; moving them by their
+bar, their maximize, minimize and close; a Chromium-based browser from Flathub with Rudolf's title bar.
+
 ## Not moved here
 - **elogind and polkit** (1.6.0 Part 11): left out by decision on 2026-11-15, since Rudolf OS's own inhibit portal and
   prompts cover what apps ask. Taken up again only if an app or a later part needs them.
@@ -594,3 +647,5 @@ The owner, 2026-11-17: "Make Standard the default in 1.6.0 with the transition t
 4. The phone's stage 1: Part 4 on the first phone (after 1.6.0's ARM64 release and stage B), Part 7 with a
    T-Mobile-network SIM, Part 6's 1.6.1 items measured on it, Part 2's groundwork; Part 5 when the hardware is there.
 5. The phone's stage 2 (its interface, Wayland, the native apps for touch): docs/plan-2.0.md, "The phone build".
+6. Part 15 (one title bar for apps that draw their own) with Part 14, before Native becomes the default: 2 first (the
+   window manager's part), then 1 (the apps' own settings), then 3 (the per-app choice).
