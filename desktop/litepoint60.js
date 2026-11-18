@@ -15,9 +15,12 @@
    native desktop has the same, in C (iso/sys/litepoint.h), and iso/qt/shell2/litepoint60_t.js compares the two. */
 Object.assign(DEFS.disp,{lpac:false,lpacm:'normal',lpbr:100});
 ['lpac','lpacm','lpbr'].forEach(k=>{if(!DKEYS.includes(k))DKEYS.push(k);if(S[k]===undefined)S[k]=DEFS.disp[k];if(SC&&SC[k]===undefined)SC[k]=cln(S[k])});
-const LP_MS={c2c:200,s2s:220,max:180,min:200,res:180,cls:200};
+/* (Part 17b, 2026-11-18) the start menu opening (smo) and closing (smc), the taskbar's pop-ups (pop), right-click menus (ctx), a
+   window's taskbar button (tbb): moving away from the taskbar's side, the menus where they are */
+const LP_MS={c2c:200,s2s:220,max:180,min:200,res:180,cls:200,smo:160,smc:140,pop:140,ctx:120,tbb:100};
 /* each transition's steps, as shares of its time */
-const LP_W={c2c:[.07,.29,.29,.35],s2s:[.06,.2,.22,.2,.32],max:[.07,.3,.3,.33],min:[.3,.22,.18,.3],res:[.3,.36,.34],cls:[.32,.3,.38]};
+const LP_W={c2c:[.07,.29,.29,.35],s2s:[.06,.2,.22,.2,.32],max:[.07,.3,.3,.33],min:[.3,.22,.18,.3],res:[.3,.36,.34],cls:[.32,.3,.38],
+ smo:[.15,.22,.24,.14,.25],smc:[.3,.22,.18,.3],pop:[.26,.28,.16,.3],ctx:[.07,.29,.29,.35],tbb:[.3,.3,.4]};
 const lpE=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;   /* in-out cubic */
 const lpL=(a,b,t)=>a+(b-a)*t,lpC=(v,a=0,b=1)=>Math.max(a,Math.min(b,v)),lpP=(A,B,t)=>[lpL(A[0],B[0],t),lpL(A[1],B[1],t)];
 const lpR=(A,B,t)=>({x:lpL(A.x,B.x,t),y:lpL(A.y,B.y,t),w:lpL(A.w,B.w,t),h:lpL(A.h,B.h,t)});
@@ -28,14 +31,20 @@ const LP_FR={
  c2c:{o:[[0,0]],m:[[1,1]],from:[1,1],segs:[null,[[[0,0],[1,0]],[[0,0],[0,1]]],[[[1,0],[1,1]],[[0,1],[1,1]]],null]},
  s2s:{o:[[0,.5]],m:[[1,.5]],from:[1,.5],segs:[null,[[[0,.5],[0,0]],[[0,.5],[0,1]]],[[[0,0],[1,0]],[[0,1],[1,1]]],[[[1,0],[1,.5]],[[1,1],[1,.5]]],null]},
  max:{o:[[.5,0],[.5,1]],m:[[0,.5],[1,.5]],segs:[null,[[[.5,0],[0,0]],[[.5,0],[1,0]],[[.5,1],[0,1]],[[.5,1],[1,1]]],[[[0,0],[0,.5]],[[0,1],[0,.5]],[[1,0],[1,.5]],[[1,1],[1,.5]]],null]}};
-/* KIND at T (0..1), G: f the window's rectangle (for max: as it was; for res: as it will be), s the maximized one, b the
-   taskbar button's middle. L: lines [x1,y1,x2,y2,alpha]; P: points [x,y,size,red]; geo: the window's geometry, 'from'
+/* (Part 17b) a place in a menu or window as the taskbar sees it: a along the taskbar's side, b away from it (0 at the side facing
+   the taskbar); dir: the taskbar's side, 0 bottom, 1 top, 2 left, 3 right */
+function lpNP(R,dir,a,b){return dir==1?[R.x+a*R.w,R.y+b*R.h]:dir==2?[R.x+b*R.w,R.y+a*R.h]:dir==3?[R.x+(1-b)*R.w,R.y+a*R.h]:[R.x+a*R.w,R.y+(1-b)*R.h]}
+function lpNR(R,dir,a0,a1,b0,b1){const[x0,y0]=lpNP(R,dir,a0,b0),[x1,y1]=lpNP(R,dir,a1,b1);return{x:Math.min(x0,x1),y:Math.min(y0,y1),w:Math.abs(x1-x0),h:Math.abs(y1-y0)}}
+/* KIND at T (0..1), G: f the window's (or menu's) rectangle (for max: as it was; for res: as it will be), s the maximized one,
+   b the button's middle it comes from or goes to, dir the taskbar's side, corner a right-click menu's corner at the pointer (0
+   top-left, 1 top-right, 2 bottom-right, 3 bottom-left). L: lines [x1,y1,x2,y2,alpha]; P: points [x,y,size,red]; geo: the window's geometry, 'from'
    (as it was) or 'to' (as it is after); clip: the part of it shown (null: all of it); lit: the taskbar button lit (0..1) */
 function lpScene(kind,t,G){
  const o={L:[],P:[],geo:'to',clip:null,lit:0},line=(A,B,a=1)=>{if(a>0)o.L.push([A[0],A[1],B[0],B[1],Math.min(1,a)])},light=(A,k=1,r=0)=>o.P.push([A[0],A[1],k,lpC(r)]);
  const rect=(R,a=1)=>{const A=[R.x,R.y],B=[R.x+R.w,R.y],C=[R.x+R.w,R.y+R.h],D=[R.x,R.y+R.h];line(A,B,a);line(B,C,a);line(C,D,a);line(D,A,a)};
  const Z=R=>({x:R.x,y:R.y,w:0,h:0});
- if(LP_FR[kind]){const F=kind=='max'?G.s:G.f,d=LP_FR[kind],pt=([a,b])=>[F.x+a*F.w,F.y+b*F.h],n=LP_W[kind].length,{i,p}=lpAt(kind,t),last=i==n-1;
+ if(LP_FR[kind]||kind=='ctx'){const F=kind=='max'?G.s:G.f,d=LP_FR[kind=='ctx'?'c2c':kind],cn=kind=='ctx'?G.corner|0:0,fx=cn==1||cn==2,fy=cn==2||cn==3,
+   pt=([a,b])=>[F.x+(fx?1-a:a)*F.w,F.y+(fy?1-b:b)*F.h],n=LP_W[kind].length,{i,p}=lpAt(kind,t),last=i==n-1;
   if(kind=='max'){o.geo=last?'to':'from';if(last&&t<1)o.clip=lpR(G.f,G.s,lpE(p))}
   else if(t<1){if(last){const[ox,oy]=pt(d.from),e=lpE(p),x0=lpL(ox,F.x,e),y0=lpL(oy,F.y,e),x1=lpL(ox,F.x+F.w,e),y1=lpL(oy,F.y+F.h,e);
    o.clip={x:Math.min(x0,x1),y:Math.min(y0,y1),w:Math.abs(x1-x0),h:Math.abs(y1-y0)}}else o.clip=Z(F)}
@@ -47,14 +56,31 @@ function lpScene(kind,t,G){
   else{const k=1-lpC(p/.5);if(k>0)d.m.forEach(m=>light(pt(m),lpL(.4,1.9,k),k))}
   return o}
  const q=k=>lpStep(kind,t,k);
- if(kind=='min'){const f=G.f,BM=[f.x+f.w/2,f.y+f.h],TL=[f.x,f.y],TR=[f.x+f.w,f.y],BL=[f.x,f.y+f.h],BR=[f.x+f.w,f.y+f.h],p1=lpE(q(0)),p2=lpE(q(1)),p3=lpE(q(2)),p4=lpE(q(3));
+ if(kind=='min'||kind=='smc'){const f=G.f,dr=G.dir|0,N=(a,b)=>lpNP(f,dr,a,b),BM=N(.5,0),p1=lpE(q(0)),p2=lpE(q(1)),p3=lpE(q(2)),p4=lpE(q(3));
   if(t<=0)return o;if(t>=1){o.clip=Z(f);return o}
-  o.clip=t<.3?{x:lpL(f.x,BM[0],p1),y:lpL(f.y,BM[1],p1),w:lpL(f.w,0,p1),h:lpL(f.h,0,p1)}:Z(f);
+  o.clip=t<.3?lpNR(f,dr,.5*p1,1-.5*p1,0,1-p1):Z(f);
   if(t>=.7)o.lit=lpC((q(3)-.75)/.25)*(1-lpC((t-.985)/.015));
   if(t<.3)rect(f,lpC(t/.08));
-  else if(t<.52){const A=lpP(TL,BL,p2),B=lpP(TR,BR,p2);line(A,BL);line(B,BR);line(BL,BR);light(A);light(B)}
-  else if(t<.7){const A=lpP(BL,BM,p3),B=lpP(BR,BM,p3);line(A,B);light(A);light(B);if(q(2)>.8)light(BM,1+(q(2)-.8)*4,(q(2)-.8)/.2)}
+  else if(t<.52){const b=lpL(1,0,p2),A=N(0,b),B=N(1,b);line(A,N(0,0));line(B,N(1,0));line(N(0,0),N(1,0));light(A);light(B)}
+  else if(t<.7){const A=N(lpL(0,.5,p3),0),B=N(lpL(1,.5,p3),0);line(A,B);light(A);light(B);if(q(2)>.8)light(BM,1+(q(2)-.8)*4,(q(2)-.8)/.2)}
   else{const P=lpP(BM,G.b,p4);line(BM,P,1-p4);light(P,lpL(1.4,.8,p4),1-lpC(p4/.4))}
+  return o}
+ /* (Part 17b) the start menu and the taskbar's pop-ups opening, a taskbar button's outline: from the side toward the taskbar out to
+    the corners, along both sides away from it, meeting in the middle of the far side; then filled from the taskbar's side */
+ if(kind=='smo'||kind=='pop'||kind=='tbb'){const R=G.f,dr=G.dir|0,k0=kind=='smo'?1:0,tb=kind=='tbb',N=(a,b)=>lpNP(R,dr,a,b),w=LP_W[kind],st=[0];w.forEach((x,j)=>st.push(st[j]+x));
+  const aA=kind=='pop'?lpC(dr<2?(R.w>0?(G.b[0]-R.x)/R.w:.5):(R.h>0?(G.b[1]-R.y)/R.h:.5)):.5,A=N(aA,0),kk=tb?.5:1;
+  if(!tb)o.clip=Z(R);if(t<=0)return o;if(t>=1){o.clip=null;return o}
+  if(k0&&t<st[1]){const p=lpE(q(0)),P=lpP(G.b,A,p);line(G.b,P,1-p*.4);light(P,lpL(1.4,1,p));return o}
+  const s1=lpE(q(k0)),s2=lpE(q(k0+1)),s3=lpE(q(k0+2)),sf=tb?0:q(k0+3),fade=tb?1-lpC((q(2)-.7)/.3):1-lpC((sf-.55)/.45);
+  if(!tb&&t>=st[k0+3])o.clip=lpNR(R,dr,0,1,0,lpE(sf));
+  line(A,N(lpL(aA,0,s1),0),fade);line(A,N(lpL(aA,1,s1),0),fade);
+  if(t>=st[k0+1]){line(N(0,0),N(0,s2),fade);line(N(1,0),N(1,s2),fade)}
+  if(t>=st[k0+2]){line(N(0,1),N(lpL(0,.5,s3),1),fade);line(N(1,1),N(lpL(1,.5,s3),1),fade)}
+  if(t<st[k0+1]){light(N(lpL(aA,0,s1),0),kk);light(N(lpL(aA,1,s1),0),kk)}
+  else if(t<st[k0+2]){light(N(0,s2),kk);light(N(1,s2),kk)}
+  else if(tb){const m=q(2);if(m<.6){light(N(lpL(0,.5,s3),1),kk);light(N(lpL(1,.5,s3),1),kk)}else{const z=(m-.6)/.4;light(N(.5,1),kk*lpL(1.4,.3,z),1-z*.3)}}
+  else if(t<st[k0+3]){light(N(lpL(0,.5,s3),1));light(N(lpL(1,.5,s3),1));if(q(k0+2)>.8)light(N(.5,1),1+(q(k0+2)-.8)*4,(q(k0+2)-.8)/.2)}
+  else{const z=1-lpC(sf/.5);if(z>0)light(N(.5,1),lpL(.4,1.6,z),z)}
   return o}
  if(kind=='res'){const S=G.s,N=G.f,p1=lpE(q(0)),p2=lpE(q(1)),p3=lpE(q(2));o.geo=t<1?'from':'to';
   if(t<=0||t>=1)return o;
@@ -101,13 +127,16 @@ function lpClip(el,R){if(!R){el.style.clipPath='';return}const x=el.offsetLeft,y
  const t=lpC(R.y-y,0,h),l=lpC(R.x-x,0,w),b=lpC(y+h-(R.y+R.h),0,h),r=lpC(x+w-(R.x+R.w),0,w);
  el.style.clipPath=R.w<=.5||R.h<=.5?'inset(50% 50% 50% 50%)':`inset(${t}px ${r}px ${b}px ${l}px)`}
 function lpFrame(now){LPT.raf=0;const c=lpCanvas(),col=lpCols(),br=lpBr();c.clearRect(0,0,LPT.cv.width,LPT.cv.height);
- for(const R of[...LPT.runs]){let t=lpC((now-R.t0)/LP_MS[R.kind]);if(R.back)t=1-t;const sc=lpScene(R.kind,t,R.G),end=R.back?t<=0:t>=1;
+ const mc=[...LPT.runs].some(R=>R.page)?lpPageCanvas():null;if(mc)mc.clearRect(0,0,LPT.pv.width,LPT.pv.height);
+ for(const R of[...LPT.runs]){if(R.page){let t=lpC((now-R.t0)/LP_MS[R.kind]);const sc=lpScene(R.kind,t,R.G);if(t>=1){lpEnd(R);continue}
+   if(R.el)lpClipBox(R.el,R.G.f,sc.clip);lpPaint(mc,sc,col,br);continue}let t=lpC((now-R.t0)/LP_MS[R.kind]);if(R.back)t=1-t;const sc=lpScene(R.kind,t,R.G),end=R.back?t<=0:t>=1;
   if(R.css&&sc.geo!=R.geo){R.geo=sc.geo;R.el.style.cssText=R.css[sc.geo]+';clip-path:inset(50% 50% 50% 50%)'}
   if(end){lpEnd(R);continue}
   if(R.el)lpClip(R.el,sc.clip);lpPaint(c,sc,col,br);
   if(R.tb){R.tb.classList.toggle('lplit',sc.lit>0);if(sc.lit>0)R.tb.style.setProperty('--lplit',(sc.lit*br).toFixed(2))}}
- if(LPT.runs.size)LPT.raf=requestAnimationFrame(lpFrame);else{c.clearRect(0,0,LPT.cv.width,LPT.cv.height);LPT.cv.remove()}}
-function lpEnd(R){if(!LPT.runs.delete(R))return;const el=R.el;if(!el){LPT.n++;try{R.done&&R.done()}catch(e){}return}if(R.css&&R.geo!='to')el.style.cssText=R.css.to;el.style.clipPath='';if(R.pe!==undefined)el.style.pointerEvents=R.pe;
+ if(LPT.runs.size)LPT.raf=requestAnimationFrame(lpFrame);else{c.clearRect(0,0,LPT.cv.width,LPT.cv.height);LPT.cv.remove()}
+ if(LPT.pv&&![...LPT.runs].some(R=>R.page))LPT.pv.remove()}
+function lpEnd(R){if(!LPT.runs.delete(R))return;const el=R.el;if(R.page){if(el)el.style.clipPath='';LPT.n++;try{R.done&&R.done()}catch(e){}return}if(!el){LPT.n++;try{R.done&&R.done()}catch(e){}return}if(R.css&&R.geo!='to')el.style.cssText=R.css.to;el.style.clipPath='';if(R.pe!==undefined)el.style.pointerEvents=R.pe;
  if(R.tb){R.tb.classList.remove('lplit');R.tb.style.removeProperty('--lplit')}LPT.n++;try{R.done&&R.done()}catch(e){console.warn(e)}}
 /* (a window's transition still running when another starts: the old one ends at once) */
 function lpStop(el){if(el)for(const R of[...LPT.runs])if(R.el===el)lpEnd(R)}
@@ -131,10 +160,11 @@ function lpHook(W){const el=W.el,tb=W.el.querySelector('.tb');if(!tb||el.__lp)re
  const mn=tb.querySelector('.mn'),mx=tb.querySelector('.mx');
  /* minimize: shown until it has dropped into its taskbar button; then hidden as before */
  const omn=mn.onclick;mn.onclick=function(e){const was=el.style.display!='none',f=lpBox(el);const r=omn&&omn.call(this,e);
-  if(was&&W.min&&!lpOff()){el.style.display='flex';lpRun('min',el,{f,b:lpButton(W,f)},{tb:W.tb,still:1,done:()=>{if(W.min)el.style.display='none'}})}return r};
+  if(was&&W.min&&!lpOff()){el.style.display='flex';lpRun('min',el,{f,b:lpButton(W,f),dir:lpDir()},{tb:W.tb,still:1,done:()=>{if(W.min)el.style.display='none'}})}return r};
  /* restoring a minimized window: the drop played backward */
- const of=W.focus;W.focus=function(){const was=W.min;const r=of.apply(this,arguments);
-  if(was&&!W.min&&el.style.display!='none'){const f=lpBox(el);lpRun('min',el,{f,b:lpButton(W,f)},{tb:W.tb,back:1})}return r};
+ const of=W.focus;W.focus=function(){const was=W.min,ev=window.event,fromBar=ev&&ev.type=='click'&&ev.target&&ev.target.closest&&ev.target.closest('#bar button');const r=of.apply(this,arguments);
+  if(!was&&fromBar&&!W.min)lpTbb(fromBar);
+  if(was&&!W.min&&el.style.display!='none'){const f=lpBox(el);lpRun('min',el,{f,b:lpButton(W,f),dir:lpDir()},{tb:W.tb,back:1})}return r};
  /* maximize and restore: the frame grows (or gathers), the window changes its size once */
  const omx=mx.onclick;mx.onclick=function(e){const before=el.style.cssText.replace(/;?\s*clip-path:[^;]*/,''),f=lpBox(el),wasMax=el.classList.contains('max');lpStop(el);
   const r=omx&&omx.call(this,e);const after=el.style.cssText,isMax=el.classList.contains('max');
@@ -158,3 +188,41 @@ function lpHook(W){const el=W.el,tb=W.el.querySelector('.tb');if(!tb||el.__lp)re
  q('#dlpac').onchange=e=>{liveSet(c,'lpac',e.target.checked);sync()};q('#dlpacm').onchange=e=>liveSet(c,'lpacm',e.target.value);
  q('#dlpbr').oninput=e=>{liveSet(c,'lpbr',+e.target.value);out()};sync();out();
  if(m)m.textContent+=' The window transitions are white unless ticked; their light from Off to full (Reduce motion turns them off).'}})();
+/* ---------- (Part 17b, the owner, 2026-11-18) the start menu, the taskbar's pop-ups, right-click menus and its buttons ----------
+   "Keep the positions/alignment for the start menu and other taskbar menus the way they currently are, but implement the
+   transitions in an upward-moving direction if the taskbar is on the bottom, downward-moving if the taskbar is on the top,
+   etc." Drawn on a layer over the whole page (menus and the taskbar are outside the windows' #desk), in its own pixels. */
+function lpPageCanvas(){if(!LPT.pv){LPT.pv=document.createElement('canvas');LPT.pv.id='lppv';LPT.pv.setAttribute('aria-hidden','true');
+  LPT.pv.style.cssText='position:fixed;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:2147483001'}
+ if(!LPT.pv.isConnected)document.body.appendChild(LPT.pv);const d=Math.min(2,devicePixelRatio||1),w=LPT.pv.clientWidth||innerWidth,h=LPT.pv.clientHeight||innerHeight;
+ if(LPT.pv.width!=Math.round(w*d)||LPT.pv.height!=Math.round(h*d)){LPT.pv.width=Math.round(w*d);LPT.pv.height=Math.round(h*d)}
+ const c=LPT.pv.getContext('2d');c.setTransform(d,0,0,d,0,0);return c}
+/* an element's box on that layer */
+function lpPageBox(el){const r=el.getBoundingClientRect();if(!LPT.pv||!LPT.pv.isConnected)lpPageCanvas();const c=LPT.pv.getBoundingClientRect(),k=(LPT.pv.clientWidth||innerWidth)/(c.width||1);
+ return{x:(r.left-c.left)*k,y:(r.top-c.top)*k,w:r.width*k,h:r.height*k}}
+function lpPagePt(x,y){if(!LPT.pv||!LPT.pv.isConnected)lpPageCanvas();const c=LPT.pv.getBoundingClientRect(),k=(LPT.pv.clientWidth||innerWidth)/(c.width||1);return[(x-c.left)*k,(y-c.top)*k]}
+/* the part of a menu shown: its clip-path in shares of its own box */
+function lpClipBox(el,B,R){if(!R){el.style.clipPath='';return}if(R.w<=.5||R.h<=.5){el.style.clipPath='inset(50% 50% 50% 50%)';return}
+ const p=v=>lpC(v,0,1)*100+'%';el.style.clipPath=`inset(${p((R.y-B.y)/B.h)} ${p((B.x+B.w-R.x-R.w)/B.w)} ${p((B.y+B.h-R.y-R.h)/B.h)} ${p((R.x-B.x)/B.w)})`}
+/* the taskbar's side: 0 bottom, 1 top, 2 left, 3 right */
+const lpDir=()=>{const b=document.body.classList;return b.contains('top')?1:b.contains('left')?2:b.contains('right')?3:0};
+function lpPageRun(kind,el,G,o={}){if(lpOff())return null;const R=Object.assign({kind,el,G,t0:performance.now(),page:1},o);
+ for(const x of[...LPT.runs])if(x.page&&(el?x.el===el:x.kind==kind))lpEnd(x);
+ if(el){const sc=lpScene(kind,0,G);lpClipBox(el,G.f,sc.clip)}LPT.runs.add(R);if(!LPT.raf)LPT.raf=requestAnimationFrame(lpFrame);return R}
+const lpMid=el=>{const b=lpPageBox(el);return[b.x+b.w/2,b.y+b.h/2]};
+/* where the pointer last went down (a pop-up comes from above the button clicked; a right-click menu from its corner there) */
+const LPPTR={x:-1,y:-1,t:0,bar:0};
+addEventListener('pointerdown',e=>{LPPTR.x=e.clientX;LPPTR.y=e.clientY;LPPTR.t=performance.now();LPPTR.bar=!!(e.target&&e.target.closest&&e.target.closest('#bar'))},true);
+addEventListener('contextmenu',e=>{LPPTR.x=e.clientX;LPPTR.y=e.clientY;LPPTR.t=performance.now()},true);
+/* the start menu: opening from the start button; closing (it is gone at once) its frame folds back into the button */
+{const M=$('#menu');if(M){let was=getComputedStyle(M).display!='none',box=null;
+ new MutationObserver(()=>{const on=M.style.display!='none'&&getComputedStyle(M).display!='none';if(on==was)return;was=on;const st=$('#start');
+  if(on){box=lpPageBox(M);if(box.w<2)return;lpPageRun('smo',M,{f:box,b:st?lpMid(st):[box.x,box.y+box.h],dir:lpDir()})}
+  else{for(const x of[...LPT.runs])if(x.page&&x.el===M)lpEnd(x);if(box&&box.w>2)lpPageRun('smc',null,{f:box,b:st?lpMid(st):[box.x,box.y+box.h],dir:lpDir()})}}).observe(M,{attributes:true,attributeFilter:['style','class']})}}
+/* the taskbar's pop-ups (.flyout: quick settings, the calendar, notifications) and right-click menus (.cmenu) as they come */
+new MutationObserver(ms=>{for(const m of ms)for(const n of m.addedNodes){if(n.nodeType!=1)continue;
+ if(n.classList.contains('flyout')){const f=lpPageBox(n);if(f.w<2)continue;const fresh=performance.now()-LPPTR.t<1500&&LPPTR.bar,b=fresh?lpPagePt(LPPTR.x,LPPTR.y):[f.x+f.w/2,f.y+f.h/2];lpPageRun('pop',n,{f,b,dir:lpDir()})}
+ else if(n.classList.contains('cmenu')){const f=lpPageBox(n);if(f.w<2)continue;const[px,py]=performance.now()-LPPTR.t<1500?lpPagePt(LPPTR.x,LPPTR.y):[f.x,f.y];
+  const right=px>f.x+f.w/2,below=py>f.y+f.h/2;lpPageRun('ctx',n,{f,corner:below?(right?2:3):(right?1:0)})}}}).observe(document.body,{childList:true});
+/* a window's taskbar button, clicked to switch to it: its outline traced once */
+function lpTbb(b){if(!b||!b.isConnected)return;const f=lpPageBox(b);if(f.w<2)return;lpPageRun('tbb',null,{f,dir:lpDir()})}

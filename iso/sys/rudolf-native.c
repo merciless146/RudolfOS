@@ -775,6 +775,8 @@ typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full
 	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; int opened; char ptitle[256]; int wait; Window cover; int lpclip; LPRect lpcr; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
 static void wopen_start(Client *c);
 static int lp_min(Client *c); static void lp_unmin(Client *c); static int lp_maxi(Client *c, int on); static void lp_gone(Client *c);   /* (1.6.0 Part 17) */
+static void lp_menu_open(GtkWidget *pw, int wx, int wy, int kind, double x, double y, double w, double h, double bx, double by, int corner);
+static void lp_menu_closed(GtkWidget *pw, double x, double y, double w, double h); static void lp_tbb(Client *c); static int lp_dir(void); static void lp_draw_clip(cairo_t *cr, GtkWidget *pw, int wx, int wy); static int lp_hit_mid(const char *kind, const char *arg, double *x, double *y, LPRect *r);   /* (Part 17b) */
 static Window LP_LITW; static double LP_LITA; static RGB LP_CORE;   /* (the taskbar button a point drops into, lit) */
 static GList *CLIENTS;   /* oldest first */
 static Client *FOCUS;
@@ -1675,7 +1677,7 @@ static void appwin_modal(AppWin *a, int on)
 static void appwin_activate(AppWin *a)
 {
 	Client *c = WM_OK ? client_of_app(a) : NULL;
-	if (c) { if (c == FOCUS && !c->min) wm_minimise(c); else wm_focus(c); return; }
+	if (c) { if (c == FOCUS && !c->min) wm_minimise(c); else { int was = c->min; wm_focus(c); if (!was) lp_tbb(c); } return; }
 	if (gtk_widget_get_visible(a->win) && ACTIVE == a) { gtk_widget_hide(a->win); ACTIVE = NULL; }   /* (step 4: minimise) */
 	else { gtk_widget_show(a->win); gtk_window_present(GTK_WINDOW(a->win)); ACTIVE = a; }
 	bar_redraw(); state_write();
@@ -2251,7 +2253,7 @@ static void bar_click(int h)
 	}
 	else if (!strcmp(t->kind, "win")) {
 		unsigned long id = strtoul(t->arg, NULL, 16);
-		if (WM_OK) { Client *c = client_of((Window)id); if (c) { if (c == FOCUS && !c->min) wm_minimise(c); else wm_focus(c); } return; }
+		if (WM_OK) { Client *c = client_of((Window)id); if (c) { if (c == FOCUS && !c->min) wm_minimise(c); else { int was = c->min; wm_focus(c); if (!was) lp_tbb(c); } } return; }   /* (Part 17b: its outline traced) */
 		for (GList *l = WINS; l; l = l->next) if ((unsigned long)(uintptr_t)l->data == id) { appwin_activate(l->data); return; }
 	}
 	else if (!strcmp(t->kind, "clock")) fl_open(1);   /* (the calendar under the clock, as the page's) */
@@ -2516,7 +2518,7 @@ static void im_realize(GtkWidget *w, gpointer im) { gtk_im_context_set_client_wi
 /* (the page's html.dark, themeApply: the dark theme for the shell's parts unless turned off, when it is dark: dynResolve's mode) */
 static int menu_dark(void) { return S.darkui && is_dark(); }
 static void srch_later(void);
-static void menu_hide(void) { if (MENU && gtk_widget_get_visible(MENU)) { gtk_widget_hide(MENU); pop_gone(MBG, MX, MY); } MHOV = -1; if (MCARET_T) { g_source_remove(MCARET_T); MCARET_T = 0; } srch_later(); state_write(); }
+static void menu_hide(void) { if (MENU && gtk_widget_get_visible(MENU)) { gtk_widget_hide(MENU); pop_gone(MBG, MX, MY); lp_menu_closed(MENU, MBX * Z, MBY * Z, MBW * Z, MBH * Z); } MHOV = -1; if (MCARET_T) { g_source_remove(MCARET_T); MCARET_T = 0; } srch_later(); state_write(); }
 static void menu_rows_load(JV *cat)
 {
 	free(MR); MR = NULL; NMR = 0; JV *m = jprop(cat, "menu");
@@ -2669,6 +2671,7 @@ static gboolean menu_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	(void)w; (void)d; int dark = menu_dark();
 	if (MBG) { gdk_cairo_set_source_pixbuf(cr, MBG, 0, 0); cairo_paint(cr); }
+	lp_draw_clip(cr, MENU, MX, MY);   /* (Part 17b: opening) */
 	cairo_scale(cr, Z, Z); double ox = (MBX - MX / Z), oy = (MBY - MY / Z);   /* the menu's place in the window, in the page's units */
 	cairo_translate(cr, ox, oy);
 	/* its shadow: 0 12px 32px rgba(0,0,0,.3) */
@@ -2814,6 +2817,7 @@ static void menu_toggle(void)
 	if (MBG) g_object_unref(MBG); MBG = screen_copy(MX, MY, MW, MH);
 	gtk_window_resize(GTK_WINDOW(MENU), MW, MH); gtk_widget_set_size_request(MAREA, MW, MH); gtk_window_move(GTK_WINDOW(MENU), MX, MY);
 	caret_restart(); gtk_widget_show_all(MENU); gtk_window_present(GTK_WINDOW(MENU)); gtk_widget_grab_focus(MAREA); wm_restack();
+	{ double sx = MBX * Z, sy = MBY * Z + MBH * Z; lp_hit_mid("start", NULL, &sx, &sy, NULL); lp_menu_open(MENU, MX, MY, LP_SMO, MBX * Z, MBY * Z, MBW * Z, MBH * Z, sx, sy, 0); }   /* (Part 17b) */
 	GdkWindow *gw = gtk_widget_get_window(MENU); if (gw) gdk_window_focus(gw, GDK_CURRENT_TIME);
 	state_write();
 }
@@ -3288,6 +3292,7 @@ static int CM_LATE;      /* (rows the page adds after placing its menu) */
 static gboolean cm_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 {
 	(void)wd; (void)d; if (CMBG) { gdk_cairo_set_source_pixbuf(cr, CMBG, 0, 0); cairo_paint(cr); }
+	lp_draw_clip(cr, CMWIN, CMWX, CMWY);   /* (Part 17b: opening) */
 	cairo_translate(cr, -CMWX, -CMWY); cairo_scale(cr, Z, Z); int dark = menu_dark();
 	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(bdcol(), 1); b.rad = 8; shd_add(&b, 0, 10, 26, cx("#000000", .3), 0);
 	box_paint(cr, CMX, CMY, CMBW, CMBH, &b);
@@ -3358,6 +3363,8 @@ static void cm_open(double px, double py, const char *title, const CMI *items, i
 	gtk_widget_set_size_request(CMAREA, x1 - x0, y1 - y0); gtk_window_resize(GTK_WINDOW(CMWIN), x1 - x0, y1 - y0); gtk_window_move(GTK_WINDOW(CMWIN), x0, y0);
 	CMHOV = -1; gtk_widget_show_all(CMWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(CMWIN)));
 	seat_grab(CMWIN, TRUE);   /* (as the pop-ups': once the menu is on the screen) */
+	{ double bx = CMX * Z, by = CMY * Z, bw = CMBW * Z, bh = CMBH * Z; int right = px > bx + bw / 2, below = py > by + bh / 2;
+	  lp_menu_open(CMWIN, CMWX, CMWY, LP_CTX, bx, by, bw, bh, px, py, below ? (right ? 2 : 3) : (right ? 1 : 0)); }   /* (Part 17b: from its corner at the pointer) */
 	gtk_widget_grab_focus(CMAREA); state_write();
 }
 
@@ -5251,6 +5258,7 @@ static void fl_layout(cairo_t *cr, int draw)
 static gboolean fl_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 {
 	(void)wd; (void)d; if (FLBG) { gdk_cairo_set_source_pixbuf(cr, FLBG, 0, 0); cairo_paint(cr); }
+	lp_draw_clip(cr, FLWIN, FLWX, FLWY);   /* (Part 17b: opening) */
 	cairo_translate(cr, -FLWX, -FLWY); cairo_scale(cr, Z, Z); fl_layout(cr, 1); return TRUE;
 }
 /* (2026-11-16, k160_t.py in QEMU: a click on the desktop did not close quick settings) a pop-up takes the pointer so that a click anywhere
@@ -5432,6 +5440,8 @@ static void fl_open(int kind)
 	if (kind == FL_NC) { for (int i = 0; i < NNT; i++) NT_SEEN = fmax(NT_SEEN, NT[i].at); bar_redraw(); }   /* (ncToggle: what is in the centre is seen) */
 	if (FLBG) { g_object_unref(FLBG); FLBG = NULL; }
 	fl_resize(); gtk_widget_show_all(FLWIN); XRaiseWindow(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()), GDK_WINDOW_XID(gtk_widget_get_window(FLWIN)));
+	{ int px = 0, py = 0, rx, ry; unsigned int mk; Window r0, c0; if (!DPY || !XQueryPointer(DPY, ROOT, &r0, &c0, &px, &py, &rx, &ry, &mk)) { px = (int)((FLX + FLW / 2) * Z); py = (int)((FLY + FLH / 2) * Z); }
+	  lp_menu_open(FLWIN, FLWX, FLWY, LP_POP, FLX * Z, FLY * Z, FLW * Z, FLH * Z, px, py, 0); }   /* (Part 17b: from above the button clicked) */
 	seat_grab(FLWIN, FALSE); state_write();
 }
 
@@ -5620,14 +5630,14 @@ static void toast_place(void)
    smaller (no see-through without a compositor); at 0 there is no light, and the windows still fill, clear and drop on time.
    None with Reduce motion, on the lock screen, for a full-screen window and the shell's own unseen pages (do-*). This replaces
    test finding N15's fade (a window of the shell's over the new one, drawn from the windows' pictures). */
-typedef struct { int on, kind, back, sw, max_on; Client *c; gint64 t0; LPGeo g; } LPRun;   /* (sw: its new size given; max_on: maximized after) */
+typedef struct { int on, kind, back, sw, max_on; Client *c; gint64 t0; LPGeo g; GtkWidget *pw; int wx, wy, pclip; LPRect pcr; } LPRun;   /* (sw: its new size given; max_on: maximized after; pw: a menu of the shell's own, its window at wx wy: Part 17b) */
 #define LP_RUNS 8
 #define LP_PL (LP_NL * 2)
 #define LP_PP (LP_NP * 2)
-static LPRun LPR[LP_RUNS]; static guint LP_TICK; static int LP_DONE;
+static LPRun LPR[LP_RUNS]; static guint LP_TICK; static int LP_DONE; static LPRun *LP_LAST;
 static Window LPLW[LP_PL], LPPW[LP_PP]; static GdkWindow *LPLG[LP_PL], *LPPG[LP_PP]; static int LPLM[LP_PL], LPPM[LP_PP];
 static void wm_maximise_now(Client *c, int on);
-static int lp_off(Client *c) { return S.rmotion || LOCKED || (c && (c->full || c->hidden || c->off || (c->app && !strncmp(c->app->k, "do-", 3)))); }
+static int lp_off(Client *c) { return !DPY || S.rmotion || LOCKED || (c && (c->full || c->hidden || c->off || (c->app && !strncmp(c->app->k, "do-", 3)))); }
 static RGB lp_mix(RGB a, RGB b, double t) { RGB o = { a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t }; return o; }
 /* white, or the accent colour (Normal, Negative, Complementary) lifted to glow on a dark desktop; the line's core toward white */
 static void lp_cols(RGB *glow, RGB *core)
@@ -5688,9 +5698,21 @@ static void lp_switch(LPRun *R)
 	if (R->kind == LP_MAX) { c->lpclip = 1; c->lpcr = R->g.f; }   /* (shown as it was until the scene says otherwise: no flash at its new size) */
 	if (R->kind == LP_MAX || R->kind == LP_RES) { if (c->max != R->max_on) wm_maximise_now(c, R->max_on); }
 }
+/* (Part 17b) a menu of the shell's own (the start menu, a pop-up, a right-click menu): only the scene's part of its box drawn (its window
+   draws what was behind it everywhere else, as it does around its shadow; not X's shape, which would let clicks through it) */
+static void lp_pw_shape(LPRun *R, const LPScene *sc)
+{
+	if (!R->pw) return; int was = R->pclip; R->pclip = sc && sc->clip; if (R->pclip) R->pcr = sc->cr;
+	if (R->pclip || was) gtk_widget_queue_draw(R->pw);
+}
+static void lp_draw_clip(cairo_t *cr, GtkWidget *pw, int wx, int wy)
+{
+	for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on && LPR[r].pw == pw && LPR[r].pclip) { const LPRect *c = &LPR[r].pcr;
+		cairo_rectangle(cr, c->x - wx, c->y - wy, c->w < .5 || c->h < .5 ? 0 : c->w, c->w < .5 || c->h < .5 ? 0 : c->h); cairo_clip(cr); return; }
+}
 static void lp_finish(LPRun *R)
 {
-	if (!R->on) return; R->on = 0; LP_DONE++; Client *c = R->c; if (!c || !g_list_find(CLIENTS, c)) return;
+	if (!R->on) return; if (R->pw) { lp_pw_shape(R, NULL); R->pw = NULL; } R->on = 0; LP_DONE++; Client *c = R->c; if (!c || !g_list_find(CLIENTS, c)) return;
 	lp_switch(R); c->lpclip = 0;
 	if (R->kind == LP_MIN && !R->back && c->min) XUnmapWindow(DPY, c->frame);   /* (minimized: gone once it has dropped into its button) */
 	frame_shape(c); state_write();
@@ -5710,12 +5732,14 @@ static gboolean lp_tick(gpointer d)
 	static double L[LP_PL][5], P[LP_PP][4]; int nl = 0, np = 0, any = 0; Window litw = 0; double lita = 0;
 	for (int r = 0; r < LP_RUNS; r++) { LPRun *R = &LPR[r]; if (!R->on) continue;
 		if (R->c && !g_list_find(CLIENTS, R->c)) { R->on = 0; continue; }
+		if (R->pw && !gtk_widget_get_visible(R->pw)) { lp_finish(R); continue; }   /* (its menu closed meanwhile) */
 		double t = (now - R->t0) / (LP_MS[R->kind] * 1000.0); t = t < 0 ? 0 : t > 1 ? 1 : t; if (R->back) t = 1 - t;
 		LPScene sc; lp_scene(R->kind, t, &R->g, &sc);
 		if (R->c && sc.geo_to && !R->sw) lp_switch(R);
 		if (R->back ? t <= 0 : t >= 1) { lp_finish(R); continue; }
 		any = 1;
 		if (R->c) { Client *c = R->c; int was = c->lpclip; c->lpclip = sc.clip; if (sc.clip) c->lpcr = sc.cr; if (sc.clip || was) frame_shape(c); }
+		if (R->pw) lp_pw_shape(R, &sc);
 		for (int i = 0; i < sc.nl && nl < LP_PL; i++) memcpy(L[nl++], sc.L[i], sizeof L[0]);
 		for (int i = 0; i < sc.np && np < LP_PP; i++) memcpy(P[np++], sc.P[i], sizeof P[0]);
 		if (R->c && sc.lit > lita) { lita = sc.lit; litw = R->c->w; } }
@@ -5732,7 +5756,7 @@ static int lp_start(Client *c, int kind, int back, const LPGeo *g, int max_on)
 {
 	if (c) lp_stop(c);
 	LPRun *R = NULL; for (int r = 0; r < LP_RUNS; r++) if (!LPR[r].on) { R = &LPR[r]; break; } if (!R) return 0;
-	memset(R, 0, sizeof *R); R->on = 1; R->kind = kind; R->back = back; R->c = c; R->g = *g; R->max_on = max_on; R->t0 = g_get_monotonic_time();
+	memset(R, 0, sizeof *R); R->on = 1; R->kind = kind; R->back = back; R->c = c; R->g = *g; R->max_on = max_on; R->t0 = g_get_monotonic_time(); LP_LAST = R;
 	if (c) { LPScene sc; lp_scene(kind, back ? 1 : 0, g, &sc); c->lpclip = sc.clip; c->lpcr = sc.cr; frame_shape(c); }   /* (its first moment at once) */
 	if (!LP_TICK) LP_TICK = g_timeout_add(16, lp_tick, NULL);
 	state_write(); return 1;
@@ -5760,12 +5784,12 @@ static void wopen_start(Client *c)
 static int lp_min(Client *c)
 {
 	LPGeo g; memset(&g, 0, sizeof g); if (lp_off(c) || !lp_viewable(c, &g.f)) return 0;
-	lp_button(c, &g.f, &g.bx, &g.by); return lp_start(c, LP_MIN, 0, &g, 0);
+	lp_button(c, &g.f, &g.bx, &g.by); g.dir = lp_dir(); return lp_start(c, LP_MIN, 0, &g, 0);
 }
 static void lp_unmin(Client *c)
 {
 	LPGeo g; memset(&g, 0, sizeof g); if (lp_off(c)) return;
-	g.f.x = c->x; g.f.y = c->y; g.f.w = fw_of(c); g.f.h = fh_of(c); lp_button(c, &g.f, &g.bx, &g.by); lp_start(c, LP_MIN, 1, &g, 0);
+	g.f.x = c->x; g.f.y = c->y; g.f.w = fw_of(c); g.f.h = fh_of(c); lp_button(c, &g.f, &g.bx, &g.by); g.dir = lp_dir(); lp_start(c, LP_MIN, 1, &g, 0);
 }
 /* maximizing or restoring: the frame grows (or gathers) first; the window's size changes once */
 static int lp_maxi(Client *c, int on)
@@ -5783,6 +5807,42 @@ static void lp_gone(Client *c)
 	for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on && LPR[r].c == c) { LPR[r].on = 0; LP_DONE++; }   /* (no more of it: it is going) */
 	LPGeo g; memset(&g, 0, sizeof g); if (lp_off(c) || c->min || !c->opened || !lp_viewable(c, &g.f)) return;
 	lp_start(NULL, LP_CLS, 0, &g, 0);
+}
+/* ---- (Part 17b, the owner, 2026-11-18) the start menu, the taskbar's pop-ups, right-click menus and its buttons, where they are,
+   the light moving away from the taskbar's side: "upward-moving direction if the taskbar is on the bottom, downward-moving if the
+   taskbar is on the top, etc." */
+static int lp_dir(void) { return tb_side() == 1 ? 2 : tb_side() == 2 ? 3 : !strcmp(S.tb, "top") ? 1 : 0; }
+/* the middle of a taskbar button (a hit: start, win ID), on the screen */
+static int lp_hit_mid(const char *kind, const char *arg, double *x, double *y, LPRect *r)
+{
+	for (int i = 0; i < NHITS; i++) if (!strcmp(HITS[i].kind, kind) && (!arg || !strcmp(HITS[i].arg, arg))) {
+		double hx = bar_x() + HITS[i].x, hy = bar_y() + HITS[i].y; if (x) *x = hx + HITS[i].w / 2.0; if (y) *y = hy + HITS[i].h / 2.0;
+		if (r) { r->x = hx; r->y = hy; r->w = HITS[i].w; r->h = HITS[i].h; } return 1; }
+	return 0;
+}
+/* a menu of the shell's opening (KIND smo, pop or ctx): its box X Y W H on the screen, its window PW at WX WY, the button or the pointer */
+static void lp_menu_open(GtkWidget *pw, int wx, int wy, int kind, double x, double y, double w, double h, double bx, double by, int corner)
+{
+	if (lp_off(NULL) || !pw || w < 2 || h < 2) return;
+	for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on && LPR[r].pw == pw) lp_finish(&LPR[r]);
+	LPGeo g; memset(&g, 0, sizeof g); g.f.x = x; g.f.y = y; g.f.w = w; g.f.h = h; g.bx = bx; g.by = by; g.dir = lp_dir(); g.corner = corner;
+	if (!lp_start(NULL, kind, 0, &g, 0) || !LP_LAST) return;
+	LP_LAST->pw = pw; LP_LAST->wx = wx; LP_LAST->wy = wy; { LPScene sc; lp_scene(kind, 0, &g, &sc); lp_pw_shape(LP_LAST, &sc); }
+}
+/* the start menu closing (gone at once): its frame folds back into the start button */
+static void lp_menu_closed(GtkWidget *pw, double x, double y, double w, double h)
+{
+	for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on && LPR[r].pw == pw) lp_finish(&LPR[r]);
+	if (lp_off(NULL) || w < 2 || h < 2) return;
+	LPGeo g; memset(&g, 0, sizeof g); g.f.x = x; g.f.y = y; g.f.w = w; g.f.h = h; g.dir = lp_dir();
+	if (!lp_hit_mid("start", NULL, &g.bx, &g.by, NULL)) { g.bx = x; g.by = y + h; }
+	lp_start(NULL, LP_SMC, 0, &g, 0);
+}
+/* a window's taskbar button, clicked to switch to it: its outline traced once */
+static void lp_tbb(Client *c)
+{
+	if (lp_off(NULL) || !c) return; char wid[24]; snprintf(wid, sizeof wid, "%lx", (unsigned long)c->w);
+	LPGeo g; memset(&g, 0, sizeof g); if (!lp_hit_mid("win", wid, NULL, NULL, &g.f)) return; g.dir = lp_dir(); lp_start(NULL, LP_TBB, 0, &g, 0);
 }
 /* ------------------------------------------------------------------ the keys' indicator (1.5.9, 12.3c)
    osd31.js's: the volume, the microphone or the brightness, at the top of the screen for 1.5 s (#osd: 28 px down, centred,

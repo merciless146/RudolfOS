@@ -15,10 +15,12 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lp-')), bin = path.join(tmp, 'lpd');
   cp.execFileSync('gcc', ['-O2', '-Wall', '-Wno-misleading-indentation', '-o', bin, path.join(ROOT, 'iso/qt/host/litepoint_dump.c'), '-lm']);
   const GEO = [{f: {x: 100, y: 80, w: 420, h: 300}, s: {x: 0, y: 0, w: 1274, h: 748}, b: [262, 777]}, {f: {x: 640, y: 300, w: 180, h: 120}, s: {x: 0, y: 48, w: 1274, h: 700}, b: [40, 20]}];
-  const KINDS = ['c2c', 's2s', 'max', 'min', 'res', 'cls'], TS = []; for (let i = 0; i <= 80; i++) TS.push(i / 80); TS.push(.3, .52, .66, .7, .985, .999);
-  const lines = [], keys = []; for (const k of KINDS) for (const g of GEO) for (const t of TS) { const G = k == 'max' ? g : k == 'res' ? {f: g.f, s: g.s, b: g.b} : g;
-    lines.push([k, t, G.f.x, G.f.y, G.f.w, G.f.h, G.s.x, G.s.y, G.s.w, G.s.h, G.b[0], G.b[1]].join(' ')); keys.push({k, t, G}) }
-  const nat = cp.execFileSync(bin, {input: lines.join('\n') + '\n'}).toString().trim().split('\n').map(l => JSON.parse(l));
+  const KINDS = ['c2c', 's2s', 'max', 'min', 'res', 'cls', 'smo', 'smc', 'pop', 'ctx', 'tbb'], TS = []; for (let i = 0; i <= 80; i++) TS.push(i / 80); TS.push(.3, .52, .66, .7, .985, .999);
+  /* (Part 17b: the taskbar on each side, a right-click menu from each corner; the first of each the bottom and top-left) */
+  const lines = [], keys = []; for (const k of KINDS) for (const dir of ['min', 'smc', 'smo', 'pop', 'tbb'].includes(k) ? [0, 1, 2, 3] : [0]) for (const corner of k == 'ctx' ? [0, 1, 2, 3] : [0])
+    for (const g of GEO) for (const t of TS) { const G = {f: g.f, s: g.s, b: g.b, dir, corner};
+    lines.push([k, t, G.f.x, G.f.y, G.f.w, G.f.h, G.s.x, G.s.y, G.s.w, G.s.h, G.b[0], G.b[1], dir, corner].join(' ')); keys.push({k, t, G}) }
+  const nat = cp.execFileSync(bin, {input: lines.join('\n') + '\n', maxBuffer: 1 << 28}).toString().trim().split('\n').map(l => JSON.parse(l));
   fs.rmSync(tmp, {recursive: true, force: true});
 
   const b = await chromium.launch({executablePath: process.argv[2] || undefined}); const p = await b.newPage({viewport: {width: 1280, height: 800}});
@@ -31,12 +33,22 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
   /* 1. the same scenes on both desktops */
   const pg = await p.evaluate(K => K.map(({k, t, G}) => { const o = lpScene(k, t, G); return {ms: LP_MS[k], ...o} }), keys);
-  const near = (a, b) => Math.abs(a - b) < .02;
+  const near = (a, b) => Math.abs(a - b) < .02, LP_TIMES_OK = true;
   const same = (a, b) => a.ms == b.ms && a.geo == b.geo && near(a.lit, b.lit) && (!a.clip == !b.clip) && (!a.clip || ['x', 'y', 'w', 'h'].every(k => near(a.clip[k], b.clip[k]))) &&
     a.L.length == b.L.length && a.L.every((l, i) => l.every((v, j) => near(v, b.L[i][j]))) && a.P.length == b.P.length && a.P.every((l, i) => l.every((v, j) => near(v, b.P[i][j])));
   const bad = []; pg.forEach((a, i) => { if (!same(a, nat[i])) bad.push({k: keys[i].k, t: keys[i].t, page: a, native: nat[i]}) });
-  ok('1. the page and the native desktop draw the same: ' + pg.length + ' moments of the six transitions, two windows', !bad.length, bad.slice(0, 2));
-  ok('2. the times the owner chose: open 200 ms corner to corner, 220 ms side to side; maximize 180, minimize 200, restore 180, close 200', JSON.stringify(await q('LP_MS')) == JSON.stringify({c2c: 200, s2s: 220, max: 180, min: 200, res: 180, cls: 200}) && nat.find((x, i) => keys[i].k == 's2s').ms == 220);
+  ok('1. the page and the native desktop draw the same: ' + pg.length + ' moments of the eleven transitions, two windows, the taskbar on each side, the menus\' corners', !bad.length, bad.slice(0, 2));
+  const scd = (k, t, dir, corner = 0) => pg[keys.findIndex(x => x.k == k && x.t == t && x.G.dir == dir && x.G.corner == corner && x.G.f.x == GEO[0].f.x)];
+  { const f = GEO[0].f, e = (a, b) => Math.abs(a - b) < .5, fl = d => scd('smo', .9, d).clip;
+    ok('1b. (Part 17b) the start menu fills from the taskbar\'s side: up from a bar at the bottom, down from one at the top, right from one at the left, left from one at the right',
+      e(fl(0).y + fl(0).h, f.y + f.h) && fl(0).h < f.h && e(fl(1).y, f.y) && fl(1).h < f.h && e(fl(2).x, f.x) && fl(2).w < f.w && e(fl(3).x + fl(3).w, f.x + f.w) && fl(3).w < f.w, [0, 1, 2, 3].map(fl));
+    ok('1c. ...it rises from the start button first; its points meet at the side away from the taskbar (red spark)', scd('smo', .05, 0).L.length == 1 && near(scd('smo', .05, 0).L[0][0], GEO[0].b[0]) &&
+      scd('smo', .7375, 0).P.some(x => near(x[1], f.y) && x[3] > .5) && scd('smo', .7375, 1).P.some(x => near(x[1], f.y + f.h) && x[3] > .5), [scd('smo', .7375, 0).P, scd('smo', .7375, 1).P]);
+    ok('1d. ...closing, it clears toward the taskbar and one point drops into the start button', near(scd('smc', .2, 1).clip.y, f.y) && scd('smc', .95, 1).P.length == 1 && near(scd('smc', .95, 1).L[0][0], f.x + f.w / 2) && near(scd('smc', .95, 1).L[0][1], f.y), [scd('smc', .2, 1).clip, scd('smc', .95, 1)]);
+    ok('1e. a right-click menu opens from its corner at the pointer (the spark there first)', [0, 1, 2, 3].every(c => { const P = scd('ctx', .025, 0, c).P[0], X = c == 1 || c == 2 ? f.x + f.w : f.x, Y = c >= 2 ? f.y + f.h : f.y; return near(P[0], X) && near(P[1], Y) }));
+    ok('1f. a taskbar button: only its outline (never hidden), smaller lights', [0, 1, 2, 3].every(d => scd('tbb', .5, d).clip == null && scd('tbb', .5, d).P.every(x => x[2] <= .5 + 1e-9)) && LP_TIMES_OK);
+    ok('1g. a window minimizing clears toward the taskbar too, wherever it is', near(scd('min', .2, 1).clip.y, f.y) && near(scd('min', .2, 2).clip.x, f.x) && near(scd('min', .2, 3).clip.x + scd('min', .2, 3).clip.w, f.x + f.w)) }
+  ok('2. the times the owner chose: open 200 ms corner to corner, 220 ms side to side; maximize 180, minimize 200, restore 180, close 200', JSON.stringify(await q('LP_MS')) == JSON.stringify({c2c: 200, s2s: 220, max: 180, min: 200, res: 180, cls: 200, smo: 160, smc: 140, pop: 140, ctx: 120, tbb: 100}) && nat.find((x, i) => keys[i].k == 's2s').ms == 220);
   const sc = (k, t, g = 0) => pg[keys.findIndex(x => x.k == k && x.t == t && x.G.f.x == GEO[g].f.x)];
   ok('3. opening: the window hidden while its frame is drawn, then filled out from the corner where the points met (red spark there)', sc('c2c', .5).clip.w == 0 && sc('c2c', .85).clip.w > 0 && sc('c2c', .85).clip.x > GEO[0].f.x && sc('c2c', 1).clip == null && sc('c2c', .7).P.some(x => x[3] > .5 && near(x[0], 520) && near(x[1], 380)), [sc('c2c', .5).clip, sc('c2c', .85).clip]);
   ok('4. side to side: the points from the middle of the left side, meeting in the middle of the right', sc('s2s', .025).P.some(x => near(x[0], 100) && near(x[1], 230)) && sc('s2s', .7).P.some(x => near(x[0], 520) && near(x[1], 230)));
@@ -74,6 +86,26 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("wins.at(-1).close();1"); const rm2 = await q("[...document.querySelectorAll('#desk > .win')].length");
   ok('16. Reduce motion: no transitions (opened and closed at once)', rm1.r == 0 && rm1.c == '' && rm2 == c2 - 0, [rm1, rm2, c2]);
   await q("S.rmotion=false;applySet();1");
+  /* (Part 17b) the start menu, the taskbar's pop-ups, right-click menus, the taskbar's buttons */
+  const pr = () => q('[...LPT.runs].filter(r=>r.page).map(r=>r.kind+":"+(r.G.dir|0))');
+  await q("document.body.classList.remove('top','left','right');$('#start').click();1"); await wait(30); const sm1 = await pr(), smc1 = await q("$('#menu').style.clipPath");
+  await wait(250); const sm2 = await q("({c:$('#menu').style.clipPath,d:getComputedStyle($('#menu')).display,pv:!!document.getElementById('lppv')})");
+  ok('23. the start menu opens from the start button, upward with the taskbar at the bottom (hidden at first, all of it after; the layer goes)', sm1.includes('smo:0') && /inset/.test(smc1) && sm2.c == '' && sm2.d != 'none' && !sm2.pv, [sm1, smc1, sm2]);
+  await q("$('#start').click();1"); await wait(30); const sm3 = await q("({d:getComputedStyle($('#menu')).display,r:[...LPT.runs].filter(r=>r.page).map(r=>r.kind)})");
+  ok('24. ...closing: gone at once, its frame folding back into the start button', sm3.d == 'none' && sm3.r.includes('smc'), sm3); await wait(250);
+  await q("document.body.classList.add('top');$('#start').click();1"); await wait(30); const sm4 = await pr(); await wait(250); await q("$('#start').click();document.body.classList.remove('top');1"); await wait(250);
+  ok('25. with the taskbar at the top: downward (the same menu, where it was)', sm4.includes('smo:1'), sm4);
+  await q("(()=>{const r=$('#tray').getBoundingClientRect();$('#tray').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,clientX:r.left+5,clientY:r.top+5}));$('#tray').click();return 1})()"); await wait(30);
+  const fl = await q("({r:[...LPT.runs].filter(r=>r.page).map(r=>r.kind),c:($('#calp')||{style:{}}).style.clipPath})"); await wait(250);
+  ok('26. a taskbar pop-up (the calendar) from above the button clicked, hidden at first', fl.r.includes('pop') && /inset/.test(fl.c), fl);
+  await q("($('#calp')||{remove(){}}).remove();cmenu(300,200,[['One',()=>0],['Two',()=>0]]);1"); await wait(30);
+  const cm = await q("({r:[...LPT.runs].filter(r=>r.page).map(r=>r.kind+':'+r.G.corner)})"); await wait(250); await q("cmenuClose();1");
+  ok('27. a right-click menu opens from its corner at the pointer', cm.r.some(x => /^ctx:/.test(x)), cm);
+  await q("launch('notepad');1"); await wait(300); await q("launch('calc');1"); await wait(300);
+  await q("(()=>{const W=wins.find(w=>w.app=='notepad');W.tb.click();return 1})()"); await wait(20); const tbb = await q("[...LPT.runs].filter(r=>r.page).map(r=>r.kind)"); await wait(250);
+  ok('28. a window\'s taskbar button, clicked to switch to it: its outline traced', tbb.includes('tbb'), tbb);
+  await q("S.rmotion=true;applySet();$('#start').click();1"); await wait(20); const rmm = await q("({r:LPT.runs.size,c:$('#menu').style.clipPath})"); await q("$('#start').click();S.rmotion=false;applySet();1");
+  ok('29. Reduce motion: none for menus either', rmm.r == 0 && rmm.c == '', rmm);
   /* Display Properties */
   await q("(()=>{settings('disp');return 1})()"); await wait(800);
   const dp = await q("(()=>{const t=document.querySelector('#dlpac'),m=document.querySelector('#dlpacm'),r=document.querySelector('#dlpbr');return t&&m&&r?{on:t.checked,dis:m.disabled,opts:[...m.options].map(o=>o.textContent).join(),min:r.min,max:r.max,v:r.value,lab:t.parentElement.textContent.trim(),out:document.querySelector('#dlpbrv').textContent}:null})()");

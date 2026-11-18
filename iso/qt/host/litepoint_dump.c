@@ -1,12 +1,12 @@
 /* litepoint_dump: the native desktop's LitePoint scenes (iso/sys/litepoint.h), for iso/qt/shell2/litepoint60_t.js to compare with
-   the page's (desktop/litepoint60.js). Reads "KIND T FX FY FW FH SX SY SW SH BX BY" lines; writes one JSON line each.
+   the page's (desktop/litepoint60.js). Reads "KIND T FX FY FW FH SX SY SW SH BX BY DIR CORNER" lines; writes one JSON line each.
    gcc -O2 -o litepoint_dump litepoint_dump.c -lm.  GPL-2.0-or-later. */
 #include <stdio.h>
 #include "../../sys/litepoint.h"
 int main(void)
 {
 	char k[8]; double t; LPGeo g;
-	while (scanf("%7s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", k, &t, &g.f.x, &g.f.y, &g.f.w, &g.f.h, &g.s.x, &g.s.y, &g.s.w, &g.s.h, &g.bx, &g.by) == 12) {
+	while (scanf("%7s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %d %d", k, &t, &g.f.x, &g.f.y, &g.f.w, &g.f.h, &g.s.x, &g.s.y, &g.s.w, &g.s.h, &g.bx, &g.by, &g.dir, &g.corner) == 14) {
 		int kind = -1; for (int i = 0; i < LP_KINDS; i++) if (!strcmp(k, LP_NAME[i])) kind = i; if (kind < 0) return 1;
 		LPScene o; lp_scene(kind, t, &g, &o);
 		printf("{\"ms\":%d,\"geo\":\"%s\",\"lit\":%.4f,\"clip\":", LP_MS[kind], o.geo_to ? "to" : "from", o.lit);

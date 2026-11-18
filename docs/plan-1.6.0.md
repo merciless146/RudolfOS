@@ -1268,6 +1268,32 @@ Native open (4–12 MB of window pictures and a repaint of the whole window each
 - Opening side to side: on Standard, a window opened by a click or key in another window (not File Explorer opening a file); on
   Native, a dialog (transient) or a window an app window's page asked for within 3 s (the same exception).
 
+### 17b. LitePoint for the start menu, the taskbar's menus and its buttons (added on 2026-11-18)
+The owner, 2026-11-18: "Can LitePoint transitions be added for the start menu and taskbar buttons/menus as well?" and "Put
+it in 1.6.0"; then, after the demo: "Keep the positions/alignment for the start menu and other taskbar menus the way they
+currently are, but implement the transitions in an upward-moving direction if the taskbar is on the bottom,
+downward-moving if the taskbar is on the top, etc."
+
+| What | Time | Steps |
+|---|---|---|
+| The start menu opens | 160 ms | a point **rises** from the start button to the middle of the menu's side toward the taskbar (15%) · **splits** to that side's corners (22%) · **climbs** both sides away from the taskbar (24%) · **merges** in the middle of the far side, red spark (14%) · **fills** from the taskbar's side (25%) |
+| The start menu closes | 140 ms | it goes at once (as a closing window: nothing of it left for the page to find); its frame is **taken back** toward the taskbar, **merges** and one point **drops** into the start button (a window minimizing's steps and shares) |
+| A taskbar pop-up (quick settings, the calendar, notifications) | 140 ms | as the start menu without the rise, the points starting from above (beside) the button clicked: **split** 26%, **climb** 28%, **merge** 16%, **fill** 30% |
+| A right-click menu | 120 ms | corner to corner (the window opening's steps), from its corner at the pointer |
+| A window's taskbar button, clicked to switch to it | 100 ms | its outline traced once: **split** 30%, **climb** 30%, **merge** 40% (smaller points; minimizing and restoring keep their drop) |
+
+"Away from the taskbar": up from a taskbar at the bottom, down from one at the top, right from one at the left, left from
+one at the right; the menus where they are. A window minimizing clears toward the taskbar's side too (the same rule). The
+same colour, shade, light and Reduce motion as the windows'. Pop-ups and right-click menus still close at once.
+
+**As built:** the scenes in litepoint.h and litepoint60.js (smo, smc, pop, ctx, tbb; the taskbar's side `dir` and a menu's
+`corner` in their geometry), compared by litepoint60_t.js on each side of the screen and from each corner. Standard: a layer
+over the whole page (the menus are outside #desk), the menus' clip-path; the start menu (#menu's display), .flyout and
+.cmenu as they come, the taskbar's buttons from W.focus. Native: the menus' own windows shaped (MENU, the pop-ups' FLWIN,
+CMWIN), the start button from the taskbar's hits, the window's button on a switch. Tests: litepoint60_t.js 1b-1g and 23-29,
+native59_t.sh 40b and 45c. **The owner's checks:** the start menu, quick settings, the calendar, a right-click menu and a
+switch from the taskbar, with the taskbar at the bottom and then at the top (Settings › Taskbar), on Standard and Native.
+
 ## Cellular and ARM64: QEMU and host tests first, hardware after (owner, 2026-11-15)
 Asked for: "Set up the plan to cover whatever can be done in QEMU first. Everything that requires hardware testing can
 come afterwards in that plan." This replaces the order of Steps 1 to 6 below for Parts 1 to 7. Each stage is one or

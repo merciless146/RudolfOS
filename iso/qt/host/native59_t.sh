@@ -193,6 +193,8 @@ ok "39b. (Part 17) restoring it: the drop backward (lp min<)" "$(grep -q "^lp mi
 ok "39. its taskbar button brings it back, in front" "$([ "$(flag $ID min)" = 0 ] && [ "$(flag $ID focus)" = 1 ] && [ "$($XC getfocus)" = "0x$ID" ] && echo 1)" "$(cl $ID)"
 CID=$(grep '^client .* app=calc' $D/state | cut -d' ' -f2); click $(( $(cv $CID 4) + 40 )) $(( $(cv $CID 5) + 36 + $(cv $CID 7) / 2 )); timeout 0.5 tail -f /dev/null
 ok "40. a click into another window gives it the keyboard (and the click)" "$([ "$(flag $CID focus)" = 1 ] && [ "$(flag $ID focus)" = 0 ] && echo 1)" "$(grep '^client' $D/state)"
+lpw $ID & LW=$!; click $(hit win $ID); wait $LW
+ok "40b. (Part 17b) a window's taskbar button, clicked to switch to it: its outline traced (lp tbb), the window in front" "$(grep -q '^lp tbb 0 ' $T/lpw && [ "$(flag $ID focus)" = 1 ] && echo 1)" "$(grep '^lp' $T/lpw | sort | uniq -c | head)"
 $XC full 0x$ID 1; timeout 0.5 tail -f /dev/null
 ok "41. a window asking for full screen covers the whole screen, taskbar too" "$([ "$(flag $ID full)" = 1 ] && grep -q '^geom 0 0 1280 800' $T/xc.log && [ "$($XC stack | tail -1)" = "0x$(cl $ID | cut -d' ' -f3)" ] && echo 1)" "$(cl $ID); $(tail -2 $T/xc.log); $($XC stack | tail -2)"
 $XC full 0x$ID 0; timeout 0.5 tail -f /dev/null
@@ -205,6 +207,8 @@ kill $IP 2>/dev/null; w8 '[ -z "$(cl $DLG)" ]' 20
 X=$(cv $ID 4); Y=$(cv $ID 5); FW=$(( $(cv $ID 6) + 2 )); lpw $ID & LW=$!; click $((X+FW-21)) $((Y+18))
 w8 'grep -q "^delete" $T/xc.log' 20; w8 '[ -z "$(cl $ID)" ]' 20; wait $LW
 ok "45b. (Part 17) close: the frame folding away where the window was (lp cls), all of them ended (lpdone)" "$(grep -q "^lp cls 0 " $T/lpw && [ "$(grep -c "^lp " $D/state)" = 0 ] && [ "$(st lpdone)" -gt "${LPD0:-0}" ] && echo 1)" "$(grep '^lp' $T/lpw | sort | uniq -c | head) $(st lpdone)"
+lpw x & LW=$!; click $(hit start -); w8 '[ "$(st menu)" = 1 ]' 20; timeout 0.4 tail -f /dev/null; click $(hit start -); w8 '[ "$(st menu)" = 0 ]' 20; wait $LW
+ok "45c. (Part 17b) the start menu opens from the start button (lp smo) and folds back into it when it closes (lp smc)" "$(grep -q '^lp smo 0 ' $T/lpw && grep -q '^lp smc 0 ' $T/lpw && echo 1)" "$(grep '^lp' $T/lpw | sort | uniq -c | head)"
 ok "45. close: WM_DELETE_WINDOW, the program closes its window, the frame and the taskbar button go" "$(grep -q '^delete' $T/xc.log && [ -z "$(cl $ID)" ] && ! grep -q "^hit win $ID " $D/state && echo 1)" "$(cat $T/xc.log | tail -2)"
 NID=$(grep '^client .* app=notepad' $D/state | cut -d' ' -f2); X=$(cv $NID 4); Y=$(cv $NID 5); FW=$(( $(cv $NID 6) + 2 )); click $((X+FW-21)) $((Y+18))
 w8 '[ -z "$(cl $NID)" ]' 40
