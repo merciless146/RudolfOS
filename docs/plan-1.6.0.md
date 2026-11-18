@@ -1431,10 +1431,13 @@ custombuild_t.sh (custom-builds.md 7's commands run). **The owner's checks:** a 
 built by its own workflow, its devlink driven by devlink.py from another computer; Blitzen opening a pull request on the
 fork after Allow.
 
-**Owner's decisions (asked in the pull request; the defaults if not answered):** whether Blitzen may start workflows
-(default: yes, after Allow); whether Blitzen's developer part is offered on the official build or only once Developer
-mode is on (default: only with Developer mode on); whether `devlink.py` goes into the system as a command too (default:
-yes, `/usr/bin/devlink`, so one Rudolf OS computer can drive another's devlink).
+**The owner's decisions (2026-11-18):** Blitzen may start workflows, after Allow; Blitzen's developer part only once
+Developer mode is on; `devlink` as a system command too, so one Rudolf OS computer can drive another's devlink (the
+base layer has no Python: it comes with Blitzen's developer part, in C or through Debian's Python).
+
+**Status:** items 1 and 3 built (2026-11-18): `docs/DEVLINK.md`, `iso/systools/devlink.py`, custom-builds.md 7,
+`iso/qt/host/devlinkclient60_t.py` (20 checks, the client against the stand-in GitHub and the real rudolf-devlink).
+Next: item 2 (`/etc/rudolf/origin`), then item 4 (Blitzen) with the `devlink` command.
 
 ## Cellular and ARM64: QEMU and host tests first, hardware after (owner, 2026-11-15)
 Asked for: "Set up the plan to cover whatever can be done in QEMU first. Everything that requires hardware testing can

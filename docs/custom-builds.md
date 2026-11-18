@@ -101,7 +101,30 @@ A custom build must not call itself the official Rudolf OS:
 - The official recovery system, the official update addresses (`merciless146.github.io/RudolfOS`) and the official
   Library belong to the project.
 
-## 7. Publishing games for the official Library
+## 7. A development link for your own build
+
+Your build has the development link too (docs/DEVLINK.md): you, or any agent you choose, can run commands on a test
+computer through a private repository of your own.
+
+1. Make a **private** repository for it (for example `YOU/rudolfos-devlink`), with a branch named `link`.
+   - Not your fork: the fork is public.
+   - Not the official one: `merciless146/rudolfos-devlink` belongs to the project.
+2. Make a **fine-grained token** for that repository alone, with Contents: Read and write and nothing else.
+3. On the test computer: Settings › Security › Development link. Tick *Allow the development link on this computer*,
+   give the repository and the token, and Turn on. Leave **Ask first** on unless you are at another computer and the
+   test computer is your own.
+4. From your computer, or the agent's:
+   ```sh
+   export DEVLINK_REPO=YOU/rudolfos-devlink DEVLINK_TOKEN=...
+   python3 iso/systools/devlink.py run sh 'cat /usr/share/rudolf/VERSION'
+   ```
+   Give an agent docs/DEVLINK.md and the client; it needs nothing else. Each result says which build answered
+   (`system`: the version, and "Custom build (signed by key …)").
+
+Keep the link's token apart from your release keys: neither ever goes into the fork, the devlink repository or a
+chat.
+
+## 8. Publishing games for the official Library
 
 Until developer certificates exist (docs/plan-1.5.9.md 8.2), a game is published through a pull request to
 `merciless146/rudolfos-library`, reviewed before it is listed. The Library's own workflow signs it.
