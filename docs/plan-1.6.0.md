@@ -1294,6 +1294,60 @@ CMWIN), the start button from the taskbar's hits, the window's button on a switc
 native59_t.sh 40b and 45c. **The owner's checks:** the start menu, quick settings, the calendar, a right-click menu and a
 switch from the taskbar, with the taskbar at the bottom and then at the top (Settings › Taskbar), on Standard and Native.
 
+### 18. Blitzen knows the system: its source, its logs, your activity, and the web through Oracle (added on 2026-11-18)
+The owner, 2026-11-18: "Can Blitzen be given the ability to train itself based on the system's source code, system logs and
+user activity, and research sources thru Oracle for the user's questions or requests?" Answered: not by training its model
+(about 0.7 GB, on the processor, in 3.3 GB of memory: hours to days a round, competing with the apps, as likely to make it
+worse as better, and what it learnt from the logs and the activity could never be seen or taken out again), but by looking
+up before it answers; then "It will go into 1.6.0" and, for what it may collect of the person's activity, the suggestion
+(off unless switched on; kept on this computer, seen and deleted by its owner).
+
+**1. A local index.** rudolfd (a new `ai/index` part of the engine's API) keeps a searchable index on the data partition,
+built and brought up to date when the computer is idle and on mains power (never during a game, a call or on battery
+below 50 %), a few minutes at a time:
+- **Rudolf OS itself:** the source archive each release already has (`rudolf-os-VERSION-source.tar.xz`, downloaded once
+  per version with the update, checked against its .sha256) and its docs (README, CHANGELOG, the plans, INSTALL.TXT);
+  shared by all accounts.
+- **The system's logs:** the health log, the crash records, the start-ups' logs, the desktop's errors, the last system
+  report (blitzdiag57.js's facts, kept); passwords, tokens and keys taken out before anything is indexed (the same
+  scrubbing as the system report).
+- **The person's activity, only when switched on** (Blitzen › Settings › "Learn from what I do on this computer", off by
+  default, per account): the apps opened and for how long, the files opened (names and folders, not their contents),
+  the settings changed, the errors met. Kept in that account's part of the data partition; "See what Blitzen knows"
+  lists it; "Forget" by item, by day or all.
+Text in chunks of about 300 words with where each came from (a file and line, a log and time); found by words (SQLite's
+FTS5 with BM25) and, when the model's own embeddings are available, by meaning too. About 20-60 MB in all.
+
+**2. Answers that look first.** Before each answer Blitzen asks the index for what fits the question and the app it is
+asked from, and puts the best few pieces (within its context, about 2,000 words) into the prompt; the answer names them
+("from rudolf-native.c, line 1661"; "the health log, 05:09 today"), each a link that opens the file or the log there.
+Off for a question with "Without looking it up". The context packs (blitzpacks26.js) stay as they are.
+
+**3. Memory the person keeps.** "Remember that ..." (or Blitzen offering to, when it learns something the person says
+about themselves or how they like things) becomes a note, sent with every question; Blitzen › Settings › Memory lists
+them to edit or delete. Per account; never sent anywhere.
+
+**4. The web through Oracle, when asked.** A "Search the web" switch on the question (off by default: Blitzen is promised
+to work offline). On: Blitzen writes a search from the question alone (never the logs, the activity, the files or the
+memory), runs it through Oracle's engine (over Tor when Oracle's "Use Tor" is on), reads the first few results' pages
+(at most 5, text only, as Oracle's reader view takes them), and answers from them with numbered sources, links that open
+in Oracle. What was read is kept for that chat only. The search engine: Oracle's own choice.
+
+**5. Limits, said in Blitzen's own help.** A small model: good at "where in the system is ..." and "what does this log
+line mean", less so at weighing several pages against each other; slow on this processor (an answer that reads the
+web: about a minute on the Vivobook). A larger model offered on computers with 8 GB or more.
+
+**Not in 1.6.0:** training a Rudolf OS model of its own (on GitHub, from the source and the docs only, never personal
+data; shipped with releases) is plan 2.0's.
+
+**Tests.** `iso/qt/host/aiindex60_t.sh` (rudolfd's index with a stand-in model): the source, the logs (a token and a
+password in them not indexed), the activity only when on; a search finds the right chunk with where it came from;
+Forget removes it from the index and the disk; indexing waits for idle and mains power and stops for a game.
+`iso/qt/shell2/blitzknow60_t.js`: the prompt carries the pieces found and the memory; the answer's sources are links;
+"Search the web" sends only the question (the stand-in search server sees nothing else) and the sources are numbered;
+off, nothing leaves the computer. **The owner's checks:** "Why did my Trash freeze?" and "Where is the taskbar's
+drawing for Native?" answered with sources; a web question with its links; Forget.
+
 ## Cellular and ARM64: QEMU and host tests first, hardware after (owner, 2026-11-15)
 Asked for: "Set up the plan to cover whatever can be done in QEMU first. Everything that requires hardware testing can
 come afterwards in that plan." This replaces the order of Steps 1 to 6 below for Parts 1 to 7. Each stage is one or
