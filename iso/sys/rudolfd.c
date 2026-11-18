@@ -2193,10 +2193,12 @@ static void api_ai_facts(struct req *r)
 }
 
 static void api_ai_know(struct req *r, const char *what);   /* rudolfd-know.inc (1.6.0, plan Part 18) */
+static void api_ai_dev(struct req *r, const char *what);    /* rudolfd-dev.inc (1.6.0, plan Part 19) */
 static void api_ai(struct req *r, const char *what)
 {
 	if (!strcmp(what, "facts")) { api_ai_facts(r); return; }   /* 1.5.7: also without Blitzen installed */
-	if (!strncmp(what, "know/", 5)) { api_ai_know(r, what + 5); return; }   /* 1.6.0: what Blitzen looks up (its pieces need no model) */
+	if (!strncmp(what, "know/", 5)) { api_ai_know(r, what + 5); return; }
+	if (!strncmp(what, "dev/", 4)) { api_ai_dev(r, what + 4); return; }   /* 1.6.0: Blitzen as a developer's agent (rudolfd-dev.inc) */   /* 1.6.0: what Blitzen looks up (its pieces need no model) */
 	if (access(AI_BIN, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no Blitzen"); return; }
 	if (!strcmp(what, "status")) {
 		char *o = run_out(AI_BIN " status 2>/dev/null");
@@ -4234,6 +4236,7 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-mobile.inc"    /* 1.6.0: cellular modems (plan Parts 1 to 6) */
 #include "rudolfd-drop.inc"      /* 1.6.1: files dropped from outside onto the native desktop (plan-1.6.1 Part 13) */
 #include "rudolfd-know.inc"      /* 1.6.0: Blitzen knows the system (plan Part 18) */
+#include "rudolfd-dev.inc"       /* 1.6.0: Blitzen as a developer's agent (plan Part 19) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
 {

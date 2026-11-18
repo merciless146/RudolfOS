@@ -2,12 +2,13 @@
 # published.
 #   host: rudolf-know on test logs, a test release's signed list with its source archive, test activity and a stand-in web
 #         search (iso/qt/host/aiindex60_t.sh)
-#   page: the desktop's side with a stand-in rudolfd and model (iso/qt/shell2/blitzknow60_t.js), and Blitzen's earlier page
+#   page: the desktop's side with a stand-in rudolfd and model (iso/qt/shell2/blitzknow60_t.js; 1.6.0 Part 19: blzdev60_t.js,
+#         Blitzen as a developer's agent), and Blitzen's earlier page
 #         tests (blz_t.js, blitzdiag57_t.js, bzwhy57_t.js), in the newest beta's own Chromium
 name: Blitzen knows check
 on:
   push:
-    paths: ['iso/sys/rudolf-know.c', 'iso/sys/rudolfd-know.inc', 'desktop/blitzknow60.js', 'desktop/blitzen26.js', 'iso/qt/host/aiindex60_t.sh',
+    paths: ['iso/sys/rudolf-know.c', 'iso/sys/rudolfd-know.inc', 'desktop/blitzknow60.js', 'desktop/blzdev60.js', 'iso/sys/rudolfd-dev.inc', 'iso/qt/shell2/blzdev60_t.js', 'desktop/blitzen26.js', 'iso/qt/host/aiindex60_t.sh',
       'iso/qt/shell2/blitzknow60_t.js', 'iso/systools/make_release.py', '.github/workflows/blitzen-know-check.yml']
   workflow_dispatch:
 permissions: {contents: read}
@@ -37,9 +38,9 @@ jobs:
       - name: The desktop's side (this tree's page)
         run: |
           cd iso/qt/shell2; : > $GITHUB_WORKSPACE/page.txt
-          for t in blitzknow60_t.js blz_t.js blitzdiag57_t.js bzwhy57_t.js; do echo "== $t" | tee -a $GITHUB_WORKSPACE/page.txt
+          for t in blitzknow60_t.js blzdev60_t.js blz_t.js blitzdiag57_t.js bzwhy57_t.js; do echo "== $t" | tee -a $GITHUB_WORKSPACE/page.txt
             NODE_PATH=$GITHUB_WORKSPACE/pw/node_modules node $t $GITHUB_WORKSPACE/chr/opt/chromium/chrome 2>&1 | tee -a $GITHUB_WORKSPACE/page.txt; done
-          [ "$(grep -c ' passed$' $GITHUB_WORKSPACE/page.txt)" = 4 ] && ! grep -q '^FAIL' $GITHUB_WORKSPACE/page.txt
+          [ "$(grep -c ' passed$' $GITHUB_WORKSPACE/page.txt)" = 5 ] && ! grep -q '^FAIL' $GITHUB_WORKSPACE/page.txt
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: blitzen-know, retention-days: 7, path: "host.txt\npage.txt"}

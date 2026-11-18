@@ -134,6 +134,17 @@ computer through a private repository of your own.
 Keep the link's token apart from your release keys: neither ever goes into the fork, the devlink repository or a
 chat.
 
+**Blitzen as your agent** (Developer mode on): Settings › Apps › Blitzen › Developer takes your fork's name with a
+fine-grained token for it (Contents, Pull requests and Actions: read and write), and your devlink's. Its tokens are
+kept in the account's keyring. Then Blitzen Developer (the chat's *Developer…*):
+- **Runs**: your workflows' runs, a failed job's log, and "Ask Blitzen why it failed";
+- **Change**: a file, what to change, and Blitzen's new version as a diff. *Push to a new branch and open a pull
+  request* asks first, showing the branch, the file and the diff. It never pushes to your default branch or your
+  workflows' files, and never merges;
+- **Test computer**: a command, a file or a screenshot through your devlink, after Allow.
+
+A shell block in a chat answer gets *On the test computer…*. Starting a workflow asks first too.
+
 ## 8. Publishing games for the official Library
 
 Until developer certificates exist (docs/plan-1.5.9.md 8.2), a game is published through a pull request to

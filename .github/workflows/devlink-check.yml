@@ -4,7 +4,7 @@
 name: Development link check
 on:
   push:
-    paths: ['iso/sys/rudolf-devlink.c', 'iso/systools/devlink.py', 'iso/qt/ghstub.py', 'iso/qt/host/devlink_t.py', 'iso/qt/host/devlinkclient60_t.py',
+    paths: ['iso/sys/rudolf-devlink.c', 'iso/systools/devlink.py', 'iso/qt/ghstub.py', 'iso/qt/host/devlink_t.py', 'iso/qt/host/devlinkclient60_t.py', 'iso/sys/rudolf-dev.c', 'iso/qt/host/devagent60_t.py',
       'docs/DEVLINK.md', '.github/workflows/devlink-check.yml']
   workflow_dispatch:
 permissions: {contents: read}
@@ -20,6 +20,8 @@ jobs:
         run: python3 iso/qt/host/devlink_t.py | tee link.txt; grep -q ' passed$' link.txt && ! grep -q '^FAIL' link.txt
       - name: The reference client (devlink.py)
         run: python3 iso/qt/host/devlinkclient60_t.py | tee client.txt; grep -q ' passed$' client.txt && ! grep -q '^FAIL' client.txt
+      - name: rudolf-dev (GitHub for Blitzen) and the devlink command
+        run: python3 iso/qt/host/devagent60_t.py | tee agent.txt; grep -q ' passed$' agent.txt && ! grep -q '^FAIL' agent.txt
       - if: always()
         uses: actions/upload-artifact@v4
-        with: {name: devlink, retention-days: 7, path: "link.txt\nclient.txt"}
+        with: {name: devlink, retention-days: 7, path: "link.txt\nclient.txt\nagent.txt"}

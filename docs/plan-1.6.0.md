@@ -1441,8 +1441,15 @@ Item 2 built (2026-11-18): `iso/systools/origin.sh` writes `/etc/rudolf/origin` 
 base-src), `iso/sys/origin.h` reads it (rudolf-update's channels, rudolf-ai's model, rudolf-debian's base, rudolf-devlink's
 put, rudolfd and the updates helper's beta refusal), rudolfd's `origin` and `desktop/origin60.js` give it to the page (the
 release downloads, Make a stick, system reports, the Library when rpk-sources names another, About). The recovery fetch
-keeps OFFICIAL_URL. Test: `iso/qt/host/origin60_t.sh` (18), in custom-builds.yml. Next: item 4 (Blitzen) with the
-`devlink` command.
+keeps OFFICIAL_URL. Test: `iso/qt/host/origin60_t.sh` (18), in custom-builds.yml. Item 4 built (2026-11-18): `iso/sys/rudolf-dev.c` (GitHub for Blitzen, run by rudolfd as nobody with the token on its
+standard input: repo, runs, jobs, joblog, workflows, file, dispatch, push to a NEW branch only (never the default branch,
+never `.github/workflows/`), pr, and the devlink's dl-send/dl-wait/dl-file; `/usr/bin/devlink` is a link to it with
+devlink.py's command line), rudolfd's `ai/dev/...` (`iso/sys/rudolfd-dev.inc`: only with Developer mode on; tokens in the
+account's keyring through `rudolf-portal --keyring-store/lookup/clear`, or for root alone without an account keyring;
+each change noted in System health), `desktop/blzdev60.js` (Settings › Apps › Blitzen › Developer; the Blitzen Developer
+window: Runs, Change, Test computer; Allow before each push, pull request, workflow and command; a chat's shell block
+"On the test computer…"). Tests: `iso/qt/host/devagent60_t.py` (34), `iso/qt/shell2/blzdev60_t.js` (26), keyring60_t.sh
+10 (the real keyring, CI). Part 19 is built.
 
 ## Cellular and ARM64: QEMU and host tests first, hardware after (owner, 2026-11-15)
 Asked for: "Set up the plan to cover whatever can be done in QEMU first. Everything that requires hardware testing can
