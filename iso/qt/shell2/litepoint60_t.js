@@ -68,7 +68,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const n0 = await q('wins.length'); await q(W0 + ".close();1"); await wait(40);
   const c1 = await q(`({n:wins.length,on:[...document.querySelectorAll('#desk > .win')].length,r:[...LPT.runs].map(r=>r.kind)})`); await wait(300);
   const c2 = await q("[...document.querySelectorAll('#desk > .win')].length");
-  ok('15. close: gone from the windows (and the taskbar) at once, on the screen until its frame has gone, then removed', c1.n == n0 - 1 && c1.r.includes('cls') && c2 == c1.on - 1, [n0, c1, c2]);
+  ok('15. close: gone at once (from the windows, the taskbar and the page), its frame folding away where it was', c1.n == n0 - 1 && c1.r.includes('cls') && c2 == c1.on, [n0, c1, c2]);
   /* Reduce motion */
   await q("S.rmotion=true;applySet();launch('notepad');1"); await wait(30); const rm1 = await q("({r:LPT.runs.size,c:wins.at(-1).el.style.clipPath})");
   await q("wins.at(-1).close();1"); const rm2 = await q("[...document.querySelectorAll('#desk > .win')].length");

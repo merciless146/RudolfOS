@@ -104,17 +104,17 @@ function lpFrame(now){LPT.raf=0;const c=lpCanvas(),col=lpCols(),br=lpBr();c.clea
  for(const R of[...LPT.runs]){let t=lpC((now-R.t0)/LP_MS[R.kind]);if(R.back)t=1-t;const sc=lpScene(R.kind,t,R.G),end=R.back?t<=0:t>=1;
   if(R.css&&sc.geo!=R.geo){R.geo=sc.geo;R.el.style.cssText=R.css[sc.geo]+';clip-path:inset(50% 50% 50% 50%)'}
   if(end){lpEnd(R);continue}
-  lpClip(R.el,sc.clip);lpPaint(c,sc,col,br);
+  if(R.el)lpClip(R.el,sc.clip);lpPaint(c,sc,col,br);
   if(R.tb){R.tb.classList.toggle('lplit',sc.lit>0);if(sc.lit>0)R.tb.style.setProperty('--lplit',(sc.lit*br).toFixed(2))}}
  if(LPT.runs.size)LPT.raf=requestAnimationFrame(lpFrame);else{c.clearRect(0,0,LPT.cv.width,LPT.cv.height);LPT.cv.remove()}}
-function lpEnd(R){if(!LPT.runs.delete(R))return;const el=R.el;if(R.css&&R.geo!='to')el.style.cssText=R.css.to;el.style.clipPath='';if(R.pe!==undefined)el.style.pointerEvents=R.pe;
+function lpEnd(R){if(!LPT.runs.delete(R))return;const el=R.el;if(!el){LPT.n++;try{R.done&&R.done()}catch(e){}return}if(R.css&&R.geo!='to')el.style.cssText=R.css.to;el.style.clipPath='';if(R.pe!==undefined)el.style.pointerEvents=R.pe;
  if(R.tb){R.tb.classList.remove('lplit');R.tb.style.removeProperty('--lplit')}LPT.n++;try{R.done&&R.done()}catch(e){console.warn(e)}}
 /* (a window's transition still running when another starts: the old one ends at once) */
-function lpStop(el){for(const R of[...LPT.runs])if(R.el===el)lpEnd(R)}
+function lpStop(el){if(el)for(const R of[...LPT.runs])if(R.el===el)lpEnd(R)}
 function lpRun(kind,el,G,o={}){lpStop(el);if(lpOff()){o.done&&o.done();return null}
  const R=Object.assign({kind,el,G,t0:performance.now(),geo:'to'},o);if(R.css){R.geo='from';el.style.cssText=R.css.from}
  if(R.still){R.pe=el.style.pointerEvents;el.style.pointerEvents='none'}
- const sc=lpScene(kind,R.back?1:0,G);lpClip(el,sc.clip);LPT.runs.add(R);if(!LPT.raf)LPT.raf=requestAnimationFrame(lpFrame);return R}
+ const sc=lpScene(kind,R.back?1:0,G);if(el)lpClip(el,sc.clip);LPT.runs.add(R);if(!LPT.raf)LPT.raf=requestAnimationFrame(lpFrame);return R}
 /* where things are, in #desk's pixels */
 const lpBox=el=>({x:el.offsetLeft,y:el.offsetTop,w:el.offsetWidth,h:el.offsetHeight});
 function lpButton(W,f){const D=$('#desk'),b=W.tb&&W.tb.offsetParent?W.tb:document.querySelector('#bar #pins .pin[data-k="'+W.app+'"]');
@@ -141,9 +141,9 @@ function lpHook(W){const el=W.el,tb=W.el.querySelector('.tb');if(!tb||el.__lp)re
   if(isMax&&!wasMax)lpRun('max',el,{f,s:lpBox(el)},{css:{from:before,to:after}});
   else if(wasMax&&!isMax){const n=lpBox(el);lpRun('res',el,{f:n,s:f},{css:{from:before,to:after}})}
   return r};
- /* close: the window stays on the screen (not in the list of windows) until its frame has gone */
- el.remove=function(){if(lpOff()||!el.isConnected||el.style.display=='none'){lpStop(el);return Element.prototype.remove.call(el)}
-  lpRun('cls',el,{f:lpBox(el)},{still:1,done:()=>Element.prototype.remove.call(el)})}}
+ /* close: the window goes at once (nothing of it is left for the page to find); its frame folds away where it was, as on the
+    native desktop (where the window has gone by then too) */
+ el.remove=function(){const f=el.isConnected&&el.style.display!='none'?lpBox(el):null;lpStop(el);Element.prototype.remove.call(el);if(f&&f.w>0)lpRun('cls',null,{f})}}
 /* the taskbar button lit as the point lands in it */
 {const st=document.createElement('style');st.textContent=`#bar button.lplit{box-shadow:inset 0 0 0 999px rgba(242,247,255,calc(var(--lplit,1)*.55)),0 2px 0 0 rgba(205,228,255,var(--lplit,1))!important}`;document.head.appendChild(st)}
 /* ---------- Display Properties › Colours and theme: the transitions among the accent colour's places; their brightness ---------- */

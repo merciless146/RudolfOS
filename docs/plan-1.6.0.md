@@ -1260,8 +1260,9 @@ Native open (4–12 MB of window pictures and a repaint of the whole window each
   compares 1,044 moments of the six); in rudolf-native.c the lines are strips and the points small discs in windows of the shell's own
   (override-redirect, no clicks), the part of a window shown is its frame's X shape (`frame_shape`, `lpclip`), maximizing and restoring
   resize the window once (`wm_maximise_now` at the scene's switch), a minimizing window is unmapped once its point has dropped (it is
-  minimized for everything else at once). Closing on Native draws the frame where the window was (the window itself has gone by then:
-  no contents shutting into the line). Without a compositor the light cannot be see-through: the brightness dims the lines and makes the
+  minimized for everything else at once). Closing, on both engines, draws the frame where the window was, folding away; the window itself
+  goes at once (on Native it has gone by then; on Standard keeping it 200 ms longer let the page find a closed window's parts,
+  as keyring60_t.js and membreak59_t.js showed), so the contents do not shut into the line. Without a compositor the light cannot be see-through: the brightness dims the lines and makes the
   points smaller (at 0 no light, the windows still on time). The state file says "lp KIND WIN T" while one runs, "lpdone N", and
   "wopen WIN" as N15 did. N15's window over the opening one (Composite pictures) is gone.
 - Opening side to side: on Standard, a window opened by a click or key in another window (not File Explorer opening a file); on
