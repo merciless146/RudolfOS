@@ -45,6 +45,7 @@
 #include <sys/un.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/syscall.h>
 #include <sys/ioctl.h>
 #include <sys/vfs.h>
 #include <sys/mman.h>
@@ -2190,9 +2191,11 @@ static void api_ai_facts(struct req *r)
 	sadd(&s, "}"); reply_json(r->fd, &s);
 }
 
+static void api_ai_know(struct req *r, const char *what);   /* rudolfd-know.inc (1.6.0, plan Part 18) */
 static void api_ai(struct req *r, const char *what)
 {
 	if (!strcmp(what, "facts")) { api_ai_facts(r); return; }   /* 1.5.7: also without Blitzen installed */
+	if (!strncmp(what, "know/", 5)) { api_ai_know(r, what + 5); return; }   /* 1.6.0: what Blitzen looks up (its pieces need no model) */
 	if (access(AI_BIN, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no Blitzen"); return; }
 	if (!strcmp(what, "status")) {
 		char *o = run_out(AI_BIN " status 2>/dev/null");
@@ -4229,6 +4232,7 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-users.inc"     /* 1.5.9: each account is its own Linux user (plan Part 15.3) */
 #include "rudolfd-mobile.inc"    /* 1.6.0: cellular modems (plan Parts 1 to 6) */
 #include "rudolfd-drop.inc"      /* 1.6.1: files dropped from outside onto the native desktop (plan-1.6.1 Part 13) */
+#include "rudolfd-know.inc"      /* 1.6.0: Blitzen knows the system (plan Part 18) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
 {
@@ -5380,6 +5384,7 @@ int main(int argc, char **argv)
 		time_tick();
 		health_tick();
 		tor_tick();
+		know_tick();
 		if (poll(&pf, 1, 1000) <= 0) continue;
 		int c = accept4(s, NULL, NULL, SOCK_CLOEXEC);
 		if (c < 0) continue;

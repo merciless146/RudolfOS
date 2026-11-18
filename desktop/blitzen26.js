@@ -141,7 +141,7 @@ function blzChatUI(W){
  async function answer(label,o={}){
   const lang=langSel.value||null,last=chat.msgs.filter(m=>m.role=='user').at(-1);
   const pack=o.pack||blzPickPack(lang,(last&&last.content)||'');
-  const sys=BLZ_SYSTEM+(pack?'\n\n'+BLZ_PACKS[pack]:'')+(o.blocks?'\n\nAnswer with Lua only, one block-shaped statement per line, no explanation and no code fence.':'');
+  const sys=BLZ_SYSTEM+(pack?'\n\n'+BLZ_PACKS[pack]:'')+(o.know&&o.know.prompt?'\n\n'+o.know.prompt:'')+(o.blocks?'\n\nAnswer with Lua only, one block-shaped statement per line, no explanation and no code fence.':'');   /* (1.6.0: what was looked up, blitzknow60.js) */
   const req=[{role:'system',content:sys},...chat.msgs.slice(-12)];
   const el=bubble('assistant',label);el.querySelector('.blzbody').innerHTML="<span class='blzdots'>…</span>";
   W.abort=new AbortController();setBusy(true);stEl.textContent='Thinking…';let res;
@@ -149,7 +149,7 @@ function blzChatUI(W){
   catch(e){setBusy(false);if(e.name=='AbortError'){stEl.textContent='Stopped.';const t=el.querySelector('.blzbody').textContent;if(t&&t!='…')chat.msgs.push({role:'assistant',content:el.dataset.text||t});else el.remove();return null}
    el.querySelector('.blzbody').innerHTML=`<div class='msg blzerr'>${lxEsc(e.message)}</div>`;stEl.textContent='';return null}
   setBusy(false);const text=o.blocks?'```lua\n'+res.text.trim()+'\n```':res.text;
-  chat.msgs.push({role:'assistant',content:text});drawAnswer(el,text);blzSaveChat(chat);
+  chat.msgs.push({role:'assistant',content:text});drawAnswer(el,text);if(o.know&&typeof blzKnowDraw=='function')blzKnowDraw(el,o.know);blzSaveChat(chat);
   stEl.textContent=res.tokens?`${res.tokens} tokens in ${(res.ms/1000).toFixed(1)} s · ${res.tps?res.tps.toFixed(1):'–'} tokens per second · first word after ${(res.first/1000).toFixed(1)} s`:'';
   BLZ.lastSpeed=res.tps;svj('bd95blzspeed',{tps:res.tps,at:Date.now()});return el}
  /* check the answer's first runnable block; on failure ask for a fix, at most BLZ.retries times */
@@ -166,7 +166,10 @@ function blzChatUI(W){
   if(o.lang!==undefined){langSel.value=o.lang;warm()}
   if(!chat.msgs.length)log.innerHTML='';chat.msgs.push({role:'user',content:text+(o.context?'\n\n'+o.context:'')});
   const u=bubble('user');u.querySelector('.blzbody').innerHTML=blzMd(text)+(o.context?`<details class='blzctx'><summary>with ${lxEsc(o.contextName||'context')}</summary><pre></pre></details>`:'');if(o.context)u.querySelector('.blzctx pre').textContent=o.context;
-  ta.value='';const el=await answer(null,{blocks:o.blocks,pack:o.blocks?'blocklua':o.pack});
+  ta.value='';
+  /* 1.6.0 (plan Part 18): what fits the question looked up first (the source, the logs, the notes; the web when asked) */
+  let know=null;if(!o.blocks&&typeof blzKnowFor=='function'){setBusy(true);try{know=await blzKnowFor(W,text,stEl)}catch(e){console.warn(e)}setBusy(false);if(W.blzk)W.blzk.done()}
+  const el=await answer(null,{blocks:o.blocks,pack:o.blocks?'blocklua':o.pack,know});
   if(el&&o.blocks&&o.onBlocks){const t=chat.msgs.at(-1).content.replace(/^```lua\n|\n```$/g,'');o.onBlocks(t)}
   if(el&&!o.blocks&&!o.norun)await check(el,0)
   if(el&&o.onAnswer)try{o.onAnswer(el,chat.msgs.at(-1).content)}catch(e){console.warn(e)}}   /* 1.5.7: diagnostics run no code, and add their buttons */

@@ -1337,6 +1337,28 @@ in Oracle. What was read is kept for that chat only. The search engine: Oracle's
 line mean", less so at weighing several pages against each other; slow on this processor (an answer that reads the
 web: about a minute on the Vivobook). A larger model offered on computers with 8 GB or more.
 
+**As built (2026-11-18):** `iso/sys/rudolf-know.c` (run by rudolfd as root; reads the web as nobody) and rudolfd's
+`ai/know/...` (`iso/sys/rudolfd-know.inc`: status, search, show, learn, activity, list, forget, web); the page's side is
+`desktop/blitzknow60.js` (blitzen26.js's ask calls it). Differences from the plan above:
+- The index is plain files in `/persist/os/know` (chunks of about 300 words with their file and line, or log and line) searched
+  by words with BM25 (with the parts of names split at `_` and English endings taken off), not SQLite: no new library in the
+  base layer. No search by meaning yet (the model's embeddings): later, if the words miss too often.
+- The source comes with each **system release** (`rudolf-os-SERIAL-source.tar.xz`, the repository's desktop, iso, libs and docs),
+  named in the release's signed list as a row `S source SIZE SHA-256 ADDRESS` (`make_release.py --source`; older rudolf-update
+  reads past it), checked against that list, not a separate .sha256. Fetched once per release, idle 10 minutes (so never during
+  a game), on mains power or a battery at 50 % or more, not on a metered connection, at the idle priority. A computer started
+  from the disc (no slot) has the logs only.
+- The logs are read again before a search when older than a minute (what failed a moment ago is in them), with rudolfd's
+  ai/facts rules (a line with a password, token or key left out; long key-like runs hidden).
+- The activity is kept only while the account's switch is on (rudolfd checks it; the account is the one signed in, never one
+  the page names), at most 2 MB an account (the oldest dropped). Turning it off asks whether to forget what was kept.
+- The memory notes are kept in the page's storage per account (never sent to rudolfd or anywhere but the model).
+- The web: DuckDuckGo's plain page (Oracle's search), its first 5 results read as text (at most about 1,200 words each), the
+  first 3 given to the model (400 words each); through Tor (Tor's SOCKS port, while a Tor window is open) when asked. Oracle's
+  proxy setting is used otherwise.
+- Tests: `iso/qt/host/aiindex60_t.sh` (39 checks), `iso/qt/shell2/blitzknow60_t.js` (31), run by `.github/workflows/blitzen-know-check.yml`
+  with Blitzen's earlier page tests.
+
 **Not in 1.6.0:** training a Rudolf OS model of its own (on GitHub, from the source and the docs only, never personal
 data; shipped with releases) is plan 2.0's.
 

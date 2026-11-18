@@ -163,7 +163,7 @@ mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/ru
 XREV=f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2
 XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | cut -c1-16)
 # (1.5.9: and this script itself: a program it adds to the base layer, such as iw, rebuilds the layer)
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-root.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-know.inc sys/rudolfd-mobile.inc sys/rudolfd-drop.inc sys/rudolfd-root.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-know.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -194,11 +194,12 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	# 1.3.0: the package tool, the assistant and printing too (the same commands as mkrootfs.sh)
 	gcc -O2 $HARD -o "$B/rpk" sys/rpk.c -lcrypto
 	gcc -O2 $HARD -o "$B/rudolf-ai" sys/rudolf-ai.c -lcrypto -ldl
+	gcc -O2 $HARD -o "$B/rudolf-know" sys/rudolf-know.c -lcrypto -ldl -lm
 	gcc -O2 $HARD -o "$B/rudolf-print" sys/rudolf-print.c -ldl
 	# 1.4.0: the development link
 	gcc -O2 $HARD -o "$B/rudolf-devlink" sys/rudolf-devlink.c -lcrypto -ldl
-	python3 systools/hardcheck.py "$B/rudolf-display" "$B/rudolfd" "$B/rudolf-update" "$B/rudolf-launch" "$B/rudolf-memguard" "$B/rudolf-shellfix" "$B/rudolf-remote" "$B/cdp-eval" "$B/rudolf-debian" "$B/rudolf-fscheck" "$B/rudolf-portal" "$B/rudolf-open" "$B/rudolf-apps" "$B/rpk" "$B/rudolf-ai" "$B/rudolf-print" "$B/rudolf-devlink" "$B/rudolf-rootd" $(for h in $RHELP; do echo "$B/root-$h"; done) || { echo "a system program was built without the hardening flags (plan 15.5)"; exit 1; }
-	for b in rudolf-display rudolfd rudolf-update rudolf-launch rudolf-memguard rudolf-shellfix rudolf-remote cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-apps rpk rudolf-ai rudolf-print rudolf-devlink rudolf-rootd; do
+	python3 systools/hardcheck.py "$B/rudolf-display" "$B/rudolfd" "$B/rudolf-update" "$B/rudolf-launch" "$B/rudolf-memguard" "$B/rudolf-shellfix" "$B/rudolf-remote" "$B/cdp-eval" "$B/rudolf-debian" "$B/rudolf-fscheck" "$B/rudolf-portal" "$B/rudolf-open" "$B/rudolf-apps" "$B/rpk" "$B/rudolf-ai" "$B/rudolf-know" "$B/rudolf-print" "$B/rudolf-devlink" "$B/rudolf-rootd" $(for h in $RHELP; do echo "$B/root-$h"; done) || { echo "a system program was built without the hardening flags (plan 15.5)"; exit 1; }
+	for b in rudolf-display rudolfd rudolf-update rudolf-launch rudolf-memguard rudolf-shellfix rudolf-remote cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-apps rpk rudolf-ai rudolf-know rudolf-print rudolf-devlink rudolf-rootd; do
 		for l in $(ldd "$B/$b" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$b needs $l, which the base layer does not have"; exit 1; }; done
 		sudo install -m 0755 "$B/$b" "$W/broot/usr/bin/$b"
 	done
@@ -411,6 +412,8 @@ if { [ "$(pv version | cut -d. -f1-3)" != "$(cat VERSION)" ] && [ "$(pv version)
 	[ -n "$SUM" ] && NOTE="$(cat VERSION): $SUM"
 fi
 NOTE=$(printf '%s' "$NOTE" | tr -d '\n\r' | cut -c1-290)
+# 1.6.0 (plan Part 18): this release's source and documents, which Blitzen looks things up in (rudolf-know build --source)
+git -C .. archive --format=tar --prefix="rudolf-os-$SERIAL/" HEAD desktop iso libs docs LICENSE README.md CHANGELOG.md | xz -9 -T0 > "$W/source.tar.xz"
 python3 systools/make_release.py --layers "$W/new" --kernel "$W/new/vmlinuz" --out "$OUT" --key "$KEYFILE" --serial "$SERIAL" \
-	--version "$(cat VERSION).$(date -u +%y%m%d)" --chromium "$CH" --kernel-version "$KV" --notes "$NOTE" --file-base "$FILE_BASE" ${URGENT:+--urgent}
+	--version "$(cat VERSION).$(date -u +%y%m%d)" --chromium "$CH" --kernel-version "$KV" --notes "$NOTE" --file-base "$FILE_BASE" ${URGENT:+--urgent} --source "$W/source.tar.xz"
 echo "released=1" >> "${GITHUB_OUTPUT:-/dev/null}"; echo "notes=$NOTE" >> "${GITHUB_OUTPUT:-/dev/null}"
