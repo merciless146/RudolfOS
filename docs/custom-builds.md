@@ -16,6 +16,16 @@ the tools it uses (`iso/qt/host/custombuild_t.sh`), so they stay correct.
    to `stable/`. It also runs by itself every 6 hours (only when something changed).
 5. The disc image comes from the workflow **Disc image (whole)**.
 
+Your build knows where it comes from: the workflow writes your repository into `/etc/rudolf/origin`
+(`iso/systools/origin.sh`, from GitHub's own `GITHUB_REPOSITORY`). From it, your computers take:
+- *Get beta versions* and stable from your own `beta/` and `stable/`;
+- Blitzen's model (release `blitzen-1`) and Debian's base (release `debian-13`) from your releases (run the
+  workflows **Blitzen model** and **Rudolf OS release** once, so they exist);
+- Make a stick's boot files and the release downloads from your releases;
+- system reports filed as issues on your repository.
+
+Settings › About says where the build comes from. The recovery system and *Return to official Rudolf OS* stay official.
+
 ## 2. Keys
 
 A Rudolf OS build needs two keys of its own. **Only their public halves ever go into the repository.**

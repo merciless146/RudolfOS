@@ -396,10 +396,11 @@ static int cmd_speedtest(void)
 #ifndef OFFICIAL_URL
 #define OFFICIAL_URL "https://merciless146.github.io/RudolfOS/stable"
 #endif
+#include "origin.h"   /* 1.6.0 (plan Part 19): a fork's build switches between the fork's own channels */
 static const char *off_url(int beta)
 {
-	static char b[2][300];
-	const char *st = getenv("RU_OFFICIAL_URL") ? getenv("RU_OFFICIAL_URL") : OFFICIAL_URL;
+	static char b[2][300], o[300]; snprintf(o, sizeof o, "%s/stable", origin_get("pages"));
+	const char *st = getenv("RU_OFFICIAL_URL") ? getenv("RU_OFFICIAL_URL") : o;
 	if (!beta) { snprintf(b[0], sizeof b[0], "%s", st); return b[0]; }
 	if (getenv("RU_OFFICIAL_BETA")) { snprintf(b[1], sizeof b[1], "%s", getenv("RU_OFFICIAL_BETA")); return b[1]; }
 	size_t n = strlen(st); if (n > 7 && !strcmp(st + n - 7, "/stable")) snprintf(b[1], sizeof b[1], "%.*s/beta", (int)(n - 7), st); else snprintf(b[1], sizeof b[1], "%s", st);

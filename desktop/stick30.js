@@ -127,7 +127,7 @@ async function bootFilesDlg(done){
  else im.forEach(x=>{const op=document.createElement('option');op.value=x.path;op.textContent=imgLabel(x)+' ('+fmtB(x.bytes)+')';sel.appendChild(op)});
  const note=()=>{const v=sel.value,x=im.find(y=>y.path==v);M.textContent=!x?'':(x.boot?'A boot image: the system keeps coming from the installed update.':'A whole disc image: it is used only if it fits in front of your files (the boot image always does).')+(imgSha(v)?' Its .sha256 is in Downloads and is checked.':' No .sha256 was found in Downloads: its signature is still checked.')};sel.onchange=note;note();
  if(inf.bootFiles&&inf.bootFiles.result){const p=document.createElement('p');p.className='msg';p.textContent='Last time: '+inf.bootFiles.result;B.appendChild(p)}
- btn('Cancel',close);btn('Open the releases in Oracle',()=>{close();try{browser(BF_RELEASES)}catch(e){}});
+ btn('Cancel',close);btn('Open the releases in Oracle',()=>{close();try{browser(typeof ORIGIN=='object'?'https://github.com/'+ORIGIN.repo+'/releases':BF_RELEASES)}catch(e){}});
  const go=btn('Prepare the new boot files',async()=>{if(!sel.value)return;if(!await elevate('Replace this drive\'s boot files at the next start (your files are kept)'))return;
   R.innerHTML='';try{await rdPost('bootfiles?image='+encodeURIComponent(sel.value)+(imgSha(sel.value)?'&sha='+imgSha(sel.value):''))}catch(e){M.textContent=e.message;btn('Close',close);return}
   const st=await bfJob(L);if(st==0)ready();else{M.textContent='Nothing was changed: see the messages above.';btn('Close',close,1)}},1);go.disabled=!im.length}

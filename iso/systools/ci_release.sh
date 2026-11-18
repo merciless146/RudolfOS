@@ -163,7 +163,7 @@ mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/ru
 XREV=f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2
 XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | cut -c1-16)
 # (1.5.9: and this script itself: a program it adds to the base layer, such as iw, rebuilds the layer)
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-know.inc sys/rudolfd-mobile.inc sys/rudolfd-drop.inc sys/rudolfd-root.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/rudolf-know.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-know.inc sys/rudolfd-mobile.inc sys/rudolfd-drop.inc sys/rudolfd-root.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/origin.h systools/origin.sh sys/rudolf-know.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; echo "${GITHUB_REPOSITORY:-}"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -351,6 +351,8 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	[ $KRB -lt 3145728 ] || { echo "the keyring adds $((KRB / 1024)) KB to the base layer: over its 3 MB budget (docs/plan-1.6.0.md Part 14)"; exit 1; }
 	echo "::notice title=The keyring::$((KRB / 1024)) KB added to the base layer"
 	sudo mkdir -p "$W/broot/etc/rudolf"; sudo cp trusted-keys.txt "$W/broot/etc/rudolf/rpk-keys"
+	# 1.6.0 (plan Part 19): where this build comes from (sys/origin.h): a fork's build names the fork
+	sh systools/origin.sh | sudo tee "$W/broot/etc/rudolf/origin" >/dev/null
 	sudo cp VERSION "$W/broot/usr/share/rudolf/VERSION"
 	# 1.4.4: the build date; rudolf-init never lets the clock read earlier than this (a reset hardware clock)
 	date -u +%F | sudo tee "$W/broot/usr/share/rudolf/released" >/dev/null

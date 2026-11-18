@@ -67,6 +67,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <openssl/evp.h>
+#include "origin.h"   /* 1.6.0: where this build comes from (plan Part 19) */
 
 #define ROOT "/persist/debian"
 #define DL "/persist/debian.download"
@@ -464,7 +465,7 @@ static const char *field(char *t, const char *k, char *out, size_t n)
 }
 static void base_url(char *u, size_t n)
 {
-	snprintf(u, n, "%s", DEFAULT_URL);
+	origin_release(u, n, "debian-13");   /* (1.6.0: this build's own releases, origin.h; DEFAULT_URL is the official one) */
 	char *t = slurp(CONF, NULL); if (!t) return;
 	char *l = strstr(t, "url="); if (l && (l == t || l[-1] == '\n')) { l += 4; char *e = strchr(l, '\n'); if (e) *e = 0; if (!strncmp(l, "http", 4)) snprintf(u, n, "%s", l); }
 	free(t);

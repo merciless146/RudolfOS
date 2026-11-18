@@ -1,11 +1,13 @@
 # docs/custom-builds.md (docs/plan-1.5.9.md 8.6): its commands are run as written (iso/qt/host/custombuild_t.sh), so
-# the page cannot go stale. Throw-away keys, nothing published.
+# the page cannot go stale. Throw-away keys, nothing published. 1.6.0 (plan Part 19): and a fork's build points at the fork
+# (/etc/rudolf/origin: iso/qt/host/origin60_t.sh).
 name: Custom builds page
 on:
   workflow_dispatch:
   pull_request:
     paths: ['docs/custom-builds.md', 'iso/qt/host/custombuild_t.sh', 'iso/pkgtools/**', 'iso/systools/keycheck.py', 'iso/systools/mksbkey.sh',
-      'iso/systools/make_release.py', 'iso/sys/rudolf-update.c', '.github/workflows/custom-builds.yml']
+      'iso/systools/make_release.py', 'iso/sys/rudolf-update.c', 'iso/sys/origin.h', 'iso/systools/origin.sh', 'iso/qt/host/origin60_t.sh', 'desktop/origin60.js',
+      '.github/workflows/custom-builds.yml']
 permissions: {contents: read}
 jobs:
   check:
@@ -16,3 +18,5 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-cryptography squashfs-tools libssl-dev openssl >/dev/null
       - name: The page's commands
         run: bash iso/qt/host/custombuild_t.sh
+      - name: A fork's build points at the fork (/etc/rudolf/origin)
+        run: bash iso/qt/host/origin60_t.sh

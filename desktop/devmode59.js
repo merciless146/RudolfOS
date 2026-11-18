@@ -10,7 +10,7 @@
 const DEVM_CONFIRM='I TRUST THIS DEVELOPER';
 const devmFp=k=>k?String(k).slice(0,8)+'…'+String(k).slice(-6,-1):'';
 /* the build in words: "Official Rudolf OS", "Custom build (signed by key ABCD…)", or '' (unknown, or no system updates) */
-function devmBuild(s){if(!s||!s.signer)return '';return s.signer=='official'?'Official Rudolf OS':s.signer=='custom'?`Custom build (signed by key ${devmFp(s.signerKey)})`:''}
+function devmBuild(s){if(!s||!s.signer)return '';return s.signer=='official'?'Official Rudolf OS':s.signer=='custom'?`Custom build (signed by key ${devmFp(s.signerKey)})${typeof ORIGIN=='object'&&!ORIGIN.official?', from github.com/'+ORIGIN.repo:''}`:''}
 async function devmOn(after){if(!isAdmin())return notify('Developer mode','Only an administrator can turn on Developer mode.',{kind:'error'});
  const o=document.createElement('div');o.className='rmodal';
  o.innerHTML=`<div class='rmbox' role='alertdialog' aria-label='Developer mode' style='max-width:540px'><h3>⚠️ Turn on Developer mode</h3>

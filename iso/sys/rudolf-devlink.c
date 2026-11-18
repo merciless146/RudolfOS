@@ -46,6 +46,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <openssl/evp.h>
+#include "origin.h"   /* 1.6.0: where this build comes from (plan Part 19) */
 
 #define OUTMAX   (1u << 20)      /* stdout and stderr each, per command */
 #define GETMAX   (25u << 20)     /* a file sent with "get" */
@@ -426,6 +427,14 @@ static void run_get(cmd *c, result *r)
 	else { add_file(r, name); r->status = 0; bfmt(&r->out, "%s: %zu bytes\n", rp, n); }
 	free(d); free(p);
 }
+/* 1.6.0 (plan Part 19): a file of a release of the official Rudolf OS or of this build's own repository (origin.h) */
+static int release_url_ok(const char *url)
+{
+	if (strstr(url, "..")) return 0;
+	char a[300]; snprintf(a, sizeof a, "https://github.com/%s/releases/download/", OFFICIAL_REPO);
+	char b[300]; snprintf(b, sizeof b, "https://github.com/%s/releases/download/", origin_get("repo"));
+	return !strncmp(url, a, strlen(a)) || !strncmp(url, b, strlen(b));
+}
 static void run_put(cmd *c, result *r)
 {
 	char *src = jget(c->json, "src"), *url = jget(c->json, "url"), *name = jget(c->json, "name");
@@ -434,8 +443,8 @@ static void run_put(cmd *c, result *r)
 	snprintf(fp, sizeof fp, "%s/%s", fd, name);
 	char u[800]; int auth;
 	if (src && *src && !strstr(src, "..")) { snprintf(u, sizeof u, "%s/repos/%s/contents/%s?ref=link", API, REPO, src); auth = 1; }
-	else if (url && !strncmp(url, "https://github.com/merciless146/RudolfOS/releases/download/", 58) && !strstr(url, "..")) { snprintf(u, sizeof u, "%s", url); auth = 0; }
-	else { snprintf(r->error, sizeof r->error, "src (a file in this repository) or url (a file of a Rudolf OS release on GitHub)"); r->status = -1; goto out; }
+	else if (url && release_url_ok(url)) { snprintf(u, sizeof u, "%s", url); auth = 0; }
+	else { snprintf(r->error, sizeof r->error, "src (a file in this repository) or url (a file of a release of %s or %s on GitHub)", OFFICIAL_REPO, origin_get("repo")); r->status = -1; goto out; }
 	char tmp[520]; snprintf(tmp, sizeof tmp, "%s.part", fp); FILE *f = fopen(tmp, "wb");
 	if (!f) { snprintf(r->error, sizeof r->error, "%s: %s", tmp, strerror(errno)); r->status = -1; goto out; }
 	long code = http("GET", u, auth, auth ? "application/vnd.github.raw" : "*/*", NULL, 0, NULL, NULL, NULL, f, PUTMAX, 3600);

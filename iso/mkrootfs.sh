@@ -152,6 +152,8 @@ if [ -x $ES/bin/espeak-ng ]; then
 fi
 # where this build looks for system updates (set UPDATE_URL when building releases)
 mkdir -p etc/rudolf; printf "%s\n" "${UPDATE_URL:-}" > etc/rudolf/update-url
+# 1.6.0 (plan Part 19): where this build comes from (sys/origin.h; GITHUB_REPOSITORY in a fork's workflow)
+sh "$HERE/systools/origin.sh" > etc/rudolf/origin
 gcc -O2 $HARD_STATIC -o usr/bin/cdp-eval "$SYS/cdp-eval.c"
 cp -L /usr/lib/$MA/libXtst.so.6 usr/lib/$MA/
 copy_deps usr/bin/rudolf-display usr/bin/rudolf-remote usr/bin/rudolfd usr/bin/rpk usr/bin/rudolf-update usr/bin/rudolf-apps usr/bin/rudolf-portal usr/bin/rudolf-debian usr/bin/rudolf-ai
