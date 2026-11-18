@@ -20,6 +20,7 @@
  */
 #define _GNU_SOURCE
 #include "rudolf-root.h"
+#include "origin.h"   /* 1.6.0: where this build comes from (plan Part 19) */
 #include <ctype.h>
 #include <dirent.h>
 #include <sys/wait.h>
@@ -116,7 +117,8 @@ int main(int argc, char **argv)
 		} else if (!strcmp(a[0], "url") || !strcmp(a[0], "auto")) {
 			if (!value_ok(a[1], 600)) return refuse("a setting's value with a character not allowed", a[1]);
 			/* (the official beta address only through Get beta versions, which needs an administrator: set channel beta) */
-			if (!strcmp(a[0], "url") && strstr(a[1], "merciless146.github.io/RudolfOS/beta")) return refuse("the beta address as an update address", a[1]);
+			{ char ob[260]; snprintf(ob, sizeof ob, "%s/beta", origin_get("pages") + 8);   /* (and a fork's own beta: origin.h) */
+			  if (!strcmp(a[0], "url") && (strstr(a[1], "merciless146.github.io/RudolfOS/beta") || strstr(a[1], ob))) return refuse("the beta address as an update address", a[1]); }
 		} else return refuse("an unknown setting", a[0]);
 		char *s[] = { "set", a[0], a[1], NULL }; return ru(s);
 	}

@@ -186,6 +186,7 @@ static char *run_out(const char *cmd)
 	pclose(p);
 	return s.b;
 }
+#include "origin.h"           /* 1.6.0 (plan Part 19): where this build comes from */
 #include "rudolfd-root.inc"   /* 1.6.1 (plan Part 11): what needs root, through the root helpers */
 #ifndef RU_BIN
 #define RU_BIN "/usr/bin/rudolf-update"   /* (only looked for here: the updates helper runs it; host tests give another) */
@@ -4788,6 +4789,15 @@ static void api(struct req *r)
 		if (!strcmp(o, "none") || !*o) { free(o); reply_err(r->fd, 404, "this screen has no adjustable backlight"); return; }
 		str js = {0}; sadd(&js, "{\"ok\":true,\"brightness\":%d}", lv); free(o); reply_json(r->fd, &js); return;
 	}
+	/* 1.6.0 (plan Part 19): where this build comes from (origin.h), and the Library it uses (rpk-sources' first) */
+	if (!strcmp(p, "origin")) {
+		str js = {0}; sadd(&js, "{\"ok\":true,\"repo\":"); sjson(&js, origin_get("repo")); sadd(&js, ",\"repo_id\":"); sjson(&js, origin_get("repo_id"));
+		sadd(&js, ",\"pages\":"); sjson(&js, origin_get("pages")); sadd(&js, ",\"official\":%s,\"library\":", strcmp(origin_get("repo"), OFFICIAL_REPO) ? "false" : "true");
+		char *ls = slurp("/etc/rudolf/rpk-sources", NULL), lib[300] = "";
+		for (char *sv = NULL, *l = ls ? strtok_r(ls, "\n", &sv) : NULL; l; l = strtok_r(NULL, "\n", &sv)) { while (*l == ' ') l++; if (!strncmp(l, "https://", 8)) { snprintf(lib, sizeof lib, "%s", l); break; } }
+		free(ls); { size_t n = strlen(lib); while (n && (lib[n - 1] == '/' || lib[n - 1] == ' ')) lib[--n] = 0; }
+		sjson(&js, lib); sadd(&js, "}"); reply_json(r->fd, &js); return;
+	}
 	/* 1.4.4: idle: milliseconds since the last input of any kind, from any device (rudolf-display), so the screen saver
 	   and the screen-off time count input in games and Linux apps too */
 	if (!strcmp(p, "idle")) {
@@ -4936,7 +4946,8 @@ static void api(struct req *r)
 			if (strcmp(kk, "url") && strcmp(kk, "auto")) { reply_err(r->fd, 400, "k is url or auto"); return; }
 			for (const char *c = v; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("/:._-~%+", *c)) { reply_err(r->fd, 400, "bad character"); return; }
 			/* 1.6.0: the official beta address only through Get beta versions (an administrator's password, below) */
-			if (!strcmp(kk, "url") && strstr(v, "merciless146.github.io/RudolfOS/beta")) { reply_err(r->fd, 403, "turn on Get beta versions instead (it needs an administrator's name and password)"); return; }
+			char ob[260]; snprintf(ob, sizeof ob, "%s/beta", origin_get("pages") + 8);   /* (and a fork's own beta: origin.h) */
+			if (!strcmp(kk, "url") && (strstr(v, "merciless146.github.io/RudolfOS/beta") || strstr(v, ob))) { reply_err(r->fd, 403, "turn on Get beta versions instead (it needs an administrator's name and password)"); return; }
 			const char *av[] = { "updates", "set", kk, v, NULL };
 			char *o = root_out(av, 1); if (o && *o) { reply_err(r->fd, 400, o); free(o); return; } free(o); reply_ok(r->fd, "saved"); return;
 		}

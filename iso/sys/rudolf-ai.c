@@ -38,6 +38,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <openssl/evp.h>
+#include "origin.h"   /* 1.6.0: where this build comes from (plan Part 19) */
 
 #define AIDIR "/persist/ai"
 #define MODELS AIDIR "/models"
@@ -155,7 +156,7 @@ static int cmd_download(void)
 	if (getuid()) die("run as root");
 	if (!persistent()) die("Blitzen needs an installed Rudolf OS (a data partition); the model cannot be kept on a live disc");
 	char url[400], u2[600], hex[65], want[80], file[160], name[80], sz[40];
-	conf("url", url, sizeof url, DEFAULT_URL);
+	{ char d[300]; origin_release(d, sizeof d, "blitzen-1"); conf("url", url, sizeof url, d); }   /* (1.6.0: this build's own releases, origin.h) */
 	mkdirs(DLD, 0755);
 	say("step Checking the download");
 	snprintf(u2, sizeof u2, "%s/blitzen.txt", url); if (download(u2, DLD "/blitzen.txt", 0, 0)) die("could not download the model list from %s", url);

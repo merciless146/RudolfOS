@@ -390,7 +390,7 @@ function sysReportShow(text) {
    refuses very long addresses, so the full report goes on the clipboard when it does not fit; the form says where
    to paste it. */
 function sysReportUrl(r, title, full) {
-  const u = new URL('https://github.com/' + SR_REPO + '/issues/new');
+  const u = new URL('https://github.com/' + (typeof ORIGIN == 'object' ? ORIGIN.repo : SR_REPO) + '/issues/new');   // (1.6.0: this build's own repository)
   u.searchParams.set('template', 'system-report.yml');
   u.searchParams.set('title', '[Report] ' + (title || r.problem.slice(0, 70) || 'Problem with Rudolf OS'));
   u.searchParams.set('labels', 'system-report');

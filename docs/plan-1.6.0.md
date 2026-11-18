@@ -1437,7 +1437,12 @@ base layer has no Python: it comes with Blitzen's developer part, in C or throug
 
 **Status:** items 1 and 3 built (2026-11-18): `docs/DEVLINK.md`, `iso/systools/devlink.py`, custom-builds.md 7,
 `iso/qt/host/devlinkclient60_t.py` (20 checks, the client against the stand-in GitHub and the real rudolf-devlink).
-Next: item 2 (`/etc/rudolf/origin`), then item 4 (Blitzen) with the `devlink` command.
+Item 2 built (2026-11-18): `iso/systools/origin.sh` writes `/etc/rudolf/origin` (ci_release.sh, mkrootfs.sh; in
+base-src), `iso/sys/origin.h` reads it (rudolf-update's channels, rudolf-ai's model, rudolf-debian's base, rudolf-devlink's
+put, rudolfd and the updates helper's beta refusal), rudolfd's `origin` and `desktop/origin60.js` give it to the page (the
+release downloads, Make a stick, system reports, the Library when rpk-sources names another, About). The recovery fetch
+keeps OFFICIAL_URL. Test: `iso/qt/host/origin60_t.sh` (18), in custom-builds.yml. Next: item 4 (Blitzen) with the
+`devlink` command.
 
 ## Cellular and ARM64: QEMU and host tests first, hardware after (owner, 2026-11-15)
 Asked for: "Set up the plan to cover whatever can be done in QEMU first. Everything that requires hardware testing can

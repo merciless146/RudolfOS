@@ -67,7 +67,7 @@ A command is a JSON object with a `kind` and that kind's fields:
 | `sh` | `script` (text); `timeout` (seconds, 1-3600, 600 by default) | runs the script with `/bin/sh` | runs as `nobody`, which can read everything but change nothing (every mount read-only, its own `/tmp`, no system API) |
 | `screenshot` | (none) | sends `res/NNNNNN/screen.png`, the whole screen | the same |
 | `get` | `path` (a full path) | sends the file as `res/NNNNNN/NAME` (at most 25 MB) | the same |
-| `put` | `name` (letters, digits, `-` `_` `.` `+`); `src` (a file on the branch `link`) **or** `url` (a file of a release of Rudolf OS on GitHub: `https://github.com/merciless146/RudolfOS/releases/download/...`) | brings the file to `/persist/devlink/files/NAME` (at most 512 MB) | refused |
+| `put` | `name` (letters, digits, `-` `_` `.` `+`); `src` (a file on the branch `link`) **or** `url` (a file of a release of the official Rudolf OS, `https://github.com/merciless146/RudolfOS/releases/download/...`, or of the repository the computer's own build comes from) | brings the file to `/persist/devlink/files/NAME` (at most 512 MB) | refused |
 | `restart` | (none) | restarts the computer; the link comes back only with **Keep on after restarting** | refused |
 | `end` | (none) | ends the link (the owner must turn it on again) | the same |
 
@@ -157,6 +157,4 @@ The client retries when GitHub fails for a moment, never prints the token, and t
 
 ## 8. Your own builds
 
-A fork of Rudolf OS (docs/custom-builds.md, section 7) has the same link, with your own devlink repository. Still to come in 1.6.0 (plan Part 19):
-- `put --url` taking your own build's releases (today, only the official ones);
-- Blitzen as a developer's agent through this protocol (Settings › Apps › Blitzen › Developer, once Developer mode is on), with a `devlink` command on Rudolf OS itself.
+A fork of Rudolf OS (docs/custom-builds.md, section 7) has the same link, with your own devlink repository; `put --url` takes your build's own releases too. Still to come in 1.6.0 (plan Part 19): Blitzen as a developer's agent through this protocol (Settings › Apps › Blitzen › Developer, once Developer mode is on), with a `devlink` command on Rudolf OS itself.

@@ -8,7 +8,7 @@
      data, Emu's DS player).
    - Computers that played DS games before 1.5.2 get Emu's player back by themselves, once, in the background. */
 window.__lib52=1;
-const LIB_URL='https://merciless146.github.io/rudolfos-library';
+let LIB_URL='https://merciless146.github.io/rudolfos-library';   /* (1.6.0: this build's Library when it has its own: origin60.js) */
 const LIB_APPS={
  'rudolf-quake':{app:'quake',title:'Quake',size:21e6,why:'Quake’s free game data (LibreQuake)'},
  'rudolf-emu':{app:'gameboy',title:'Emu',size:0.4e6,why:'Emu’s Nintendo DS player'}};

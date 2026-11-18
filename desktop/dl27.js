@@ -88,7 +88,8 @@ const DL_REPO_ID='1414456577',DL_REPO='/merciless146/RudolfOS/releases/download/
 function dlRelFile(name,u){if(!/^rudolf-os-\d+\.\d+\.\d+(-boot)?\.iso(\.part\d{2}|\.sha256)?$/i.test(String(name||'')))return false;
  let x;try{x=new URL(String(u||''))}catch(e){return false}if(x.protocol!='https:')return false;
  const h=x.hostname.toLowerCase(),p=decodeURIComponent(x.pathname);
- return ((h=='release-assets.githubusercontent.com'||h=='objects.githubusercontent.com')&&p.split('/').includes(DL_REPO_ID))||(h=='github.com'&&p.startsWith(DL_REPO))}
+ const ids=[DL_REPO_ID,ORIGIN.repo_id],reps=[DL_REPO,'/'+ORIGIN.repo+'/releases/download/'];   /* (1.6.0: and this build's own repository, origin60.js) */
+ return ((h=='release-assets.githubusercontent.com'||h=='objects.githubusercontent.com')&&p.split('/').some(x=>ids.includes(x)))||(h=='github.com'&&reps.some(r=>p.startsWith(r)))}
 /* the antivirus part of the small-file check, for a release file (its type is allowed above) */
 function dlAvOnly(nm,val){if(!SECC.av.on)return{ok:true};const th=avScan(nm,val,true);if(!th.length)return{ok:true};
  logEvt('av',`Blocked ${nm} (download): ${th.join(', ')}`);return{ok:false,msg:`Antivirus blocked ${nm}: ${th.join(', ')}.`}}
