@@ -776,7 +776,7 @@ typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full
 static void wopen_start(Client *c);
 static int lp_min(Client *c); static void lp_unmin(Client *c); static int lp_maxi(Client *c, int on); static void lp_gone(Client *c);   /* (1.6.0 Part 17) */
 static void lp_menu_open(GtkWidget *pw, int wx, int wy, int kind, double x, double y, double w, double h, double bx, double by, int corner);
-static void lp_menu_closed(GtkWidget *pw, double x, double y, double w, double h); static void lp_tbb(Client *c); static int lp_dir(void); static int lp_hit_mid(const char *kind, const char *arg, double *x, double *y, LPRect *r);   /* (Part 17b) */
+static void lp_menu_closed(GtkWidget *pw, double x, double y, double w, double h); static void lp_tbb(Client *c); static int lp_dir(void); static void lp_draw_clip(cairo_t *cr, GtkWidget *pw, int wx, int wy); static int lp_hit_mid(const char *kind, const char *arg, double *x, double *y, LPRect *r);   /* (Part 17b) */
 static Window LP_LITW; static double LP_LITA; static RGB LP_CORE;   /* (the taskbar button a point drops into, lit) */
 static GList *CLIENTS;   /* oldest first */
 static Client *FOCUS;
@@ -2671,6 +2671,7 @@ static gboolean menu_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	(void)w; (void)d; int dark = menu_dark();
 	if (MBG) { gdk_cairo_set_source_pixbuf(cr, MBG, 0, 0); cairo_paint(cr); }
+	lp_draw_clip(cr, MENU, MX, MY);   /* (Part 17b: opening) */
 	cairo_scale(cr, Z, Z); double ox = (MBX - MX / Z), oy = (MBY - MY / Z);   /* the menu's place in the window, in the page's units */
 	cairo_translate(cr, ox, oy);
 	/* its shadow: 0 12px 32px rgba(0,0,0,.3) */
@@ -3291,6 +3292,7 @@ static int CM_LATE;      /* (rows the page adds after placing its menu) */
 static gboolean cm_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 {
 	(void)wd; (void)d; if (CMBG) { gdk_cairo_set_source_pixbuf(cr, CMBG, 0, 0); cairo_paint(cr); }
+	lp_draw_clip(cr, CMWIN, CMWX, CMWY);   /* (Part 17b: opening) */
 	cairo_translate(cr, -CMWX, -CMWY); cairo_scale(cr, Z, Z); int dark = menu_dark();
 	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(bdcol(), 1); b.rad = 8; shd_add(&b, 0, 10, 26, cx("#000000", .3), 0);
 	box_paint(cr, CMX, CMY, CMBW, CMBH, &b);
@@ -5256,6 +5258,7 @@ static void fl_layout(cairo_t *cr, int draw)
 static gboolean fl_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 {
 	(void)wd; (void)d; if (FLBG) { gdk_cairo_set_source_pixbuf(cr, FLBG, 0, 0); cairo_paint(cr); }
+	lp_draw_clip(cr, FLWIN, FLWX, FLWY);   /* (Part 17b: opening) */
 	cairo_translate(cr, -FLWX, -FLWY); cairo_scale(cr, Z, Z); fl_layout(cr, 1); return TRUE;
 }
 /* (2026-11-16, k160_t.py in QEMU: a click on the desktop did not close quick settings) a pop-up takes the pointer so that a click anywhere
@@ -5627,7 +5630,7 @@ static void toast_place(void)
    smaller (no see-through without a compositor); at 0 there is no light, and the windows still fill, clear and drop on time.
    None with Reduce motion, on the lock screen, for a full-screen window and the shell's own unseen pages (do-*). This replaces
    test finding N15's fade (a window of the shell's over the new one, drawn from the windows' pictures). */
-typedef struct { int on, kind, back, sw, max_on; Client *c; gint64 t0; LPGeo g; GtkWidget *pw; int wx, wy; } LPRun;   /* (sw: its new size given; max_on: maximized after; pw: a menu of the shell's own, its window at wx wy: Part 17b) */
+typedef struct { int on, kind, back, sw, max_on; Client *c; gint64 t0; LPGeo g; GtkWidget *pw; int wx, wy, pclip; LPRect pcr; } LPRun;   /* (sw: its new size given; max_on: maximized after; pw: a menu of the shell's own, its window at wx wy: Part 17b) */
 #define LP_RUNS 8
 #define LP_PL (LP_NL * 2)
 #define LP_PP (LP_NP * 2)
@@ -5695,15 +5698,17 @@ static void lp_switch(LPRun *R)
 	if (R->kind == LP_MAX) { c->lpclip = 1; c->lpcr = R->g.f; }   /* (shown as it was until the scene says otherwise: no flash at its new size) */
 	if (R->kind == LP_MAX || R->kind == LP_RES) { if (c->max != R->max_on) wm_maximise_now(c, R->max_on); }
 }
-/* (Part 17b) a menu of the shell's own (the start menu, a pop-up, a right-click menu): only the scene's part of its box shown, by its
-   window's shape; all of it again (NULL) at the end */
+/* (Part 17b) a menu of the shell's own (the start menu, a pop-up, a right-click menu): only the scene's part of its box drawn (its window
+   draws what was behind it everywhere else, as it does around its shadow; not X's shape, which would let clicks through it) */
 static void lp_pw_shape(LPRun *R, const LPScene *sc)
 {
-	GdkWindow *gw = R->pw ? gtk_widget_get_window(R->pw) : NULL; if (!gw) return;
-	if (!sc || !sc->clip) { gdk_window_shape_combine_region(gw, NULL, 0, 0); return; }
-	int none = sc->cr.w < .5 || sc->cr.h < .5, x0 = (int)floor(sc->cr.x - R->wx), y0 = (int)floor(sc->cr.y - R->wy), x1 = (int)ceil(sc->cr.x + sc->cr.w - R->wx), y1 = (int)ceil(sc->cr.y + sc->cr.h - R->wy);
-	cairo_rectangle_int_t rc = { x0, y0, none ? 0 : x1 - x0, none ? 0 : y1 - y0 }; cairo_region_t *rg = cairo_region_create_rectangle(&rc);
-	gdk_window_shape_combine_region(gw, rg, 0, 0); cairo_region_destroy(rg);
+	if (!R->pw) return; int was = R->pclip; R->pclip = sc && sc->clip; if (R->pclip) R->pcr = sc->cr;
+	if (R->pclip || was) gtk_widget_queue_draw(R->pw);
+}
+static void lp_draw_clip(cairo_t *cr, GtkWidget *pw, int wx, int wy)
+{
+	for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on && LPR[r].pw == pw && LPR[r].pclip) { const LPRect *c = &LPR[r].pcr;
+		cairo_rectangle(cr, c->x - wx, c->y - wy, c->w < .5 || c->h < .5 ? 0 : c->w, c->w < .5 || c->h < .5 ? 0 : c->h); cairo_clip(cr); return; }
 }
 static void lp_finish(LPRun *R)
 {
