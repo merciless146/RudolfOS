@@ -21,7 +21,7 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq zip unzip busybox >/dev/null
           npm install --no-save playwright@1 >/dev/null && npx playwright install --with-deps chromium >/dev/null
       - name: Add games (gamesimport_t.sh)
-        run: sh iso/qt/host/gamesimport_t.sh
+        run: sudo sh iso/qt/host/gamesimport_t.sh   # (as root, as rudolfd runs it: it gives each game to the desktop user)
       - name: Game Boy games in the library (emugb_t.js)
         run: node iso/qt/shell2/emugb_t.js
       - name: Nintendo 64 and Dreamcast (emunative61_t.js)
