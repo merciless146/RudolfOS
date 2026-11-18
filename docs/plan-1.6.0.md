@@ -1370,6 +1370,72 @@ Forget removes it from the index and the disk; indexing waits for idle and mains
 off, nothing leaves the computer. **The owner's checks:** "Why did my Trash freeze?" and "Where is the taskbar's
 drawing for Native?" answered with sources; a web question with its links; Forget.
 
+### 19. Developers' own devlinks, builds and agents (added on 2026-11-18)
+The owner, 2026-11-18: "Can Blitzen be granted access to a developer's own devlink repository, so as to allow them to
+build, diagnose, and improve their own versions of Rudolf the same way that the official repository is able to? The idea
+is that the user can use any agent they'd like, including their own, to continue making open-source materials in and for
+RudolfOS." Then "1.6.0".
+
+**What already exists.** docs/custom-builds.md: a fork builds its own releases with its own keys and update addresses
+(Rudolf OS release, Disc image), installs on an official computer through Developer mode (its key and address; About says
+"Custom build"), and goes back with Return to official Rudolf OS. rudolf-devlink works with any private repository its
+owner names. What is missing is below.
+
+**1. The devlink, written down for any agent.** `docs/DEVLINK.md`: the mailbox (branch `link`, `cmd/NNNNNN.json`,
+`res/NNNNNN.json`, `res/NNNNNN/NAME`), every command kind and its fields, the numbering (the next is one more than the
+highest of either folder; a push that is refused: fetch, rebase, push again), what read-only means, Ask first, the limits
+(sizes, times, 4 hours idle), and how a computer's owner sees and ends it. With a reference client,
+`iso/systools/devlink.py` (Python, standard library only, the GitHub REST API; also a command line:
+`devlink.py send sh 'uname -a'`, `devlink.py wait 000532`, `devlink.py screenshot`), so an agent (Claude, Codex, a
+person's own) can drive a computer without learning git plumbing. Tested against the stand-in GitHub (`iso/qt/ghstub.py`)
+and the real rudolf-devlink (`devlink_t.py` gains a client half).
+
+**2. A fork's build points at the fork.** Today the desktop and system programs name the official repository in about a
+dozen places (the release downloads, Make a stick's boot files, the system reports' repository, Debian's base, Blitzen's
+model, the devlink's `put` from releases, the Library's address). One file decides: `/etc/rudolf/origin`
+(`repo=OWNER/NAME`, `pages=https://OWNER.github.io/NAME`, `library=...`), written by ci_release.sh from
+`GITHUB_REPOSITORY`; every place reads it (the page through rudolfd's `origin`). The official build's file names the
+official repository, so nothing changes there. A fork's About shows its repository. `iso/qt/host/origin60_t.sh` builds
+with a stand-in GITHUB_REPOSITORY and finds no official address left outside the recovery system and the "Return to
+official" path.
+
+**3. Setting up a devlink for your own build.** custom-builds.md gains "7. A development link": make a private repository
+with a `link` branch, a fine-grained token for that repository alone (Contents: read and write), Settings › Security ›
+Development link on the test computer, and the agent's side (the token, `devlink.py`). Settings › Security ›
+Development link gets "How do I let an agent use this?" pointing there, and shows the repository and who last wrote to it.
+
+**4. Blitzen as a developer's agent (on a computer the developer chooses).** Settings › Apps › Blitzen › Developer:
+- **"Work on my Rudolf OS repository"**: a repository (a fork) and a fine-grained GitHub token for it, kept in the
+  account's keyring (Settings › Privacy › Saved passwords for apps lists it), never in the page, never in a log.
+- What Blitzen can then do, each shown before it is done: read the repository and its CI runs and logs (rudolf-know
+  indexes the fork's own source: a fork's releases carry their source, Part 18); suggest a change as a diff the person
+  reads; **push it to a new branch and open a pull request only after Allow for that push** (never to the default
+  branch, never merging, never creating releases or changing secrets: the token's own limits are said again on the
+  screen); start a workflow the repository has; read its result.
+- **Driving a devlink:** with a devlink repository and its token, Blitzen sends commands to a test computer through
+  `devlink.py`'s rules (each command shown and allowed here before it is sent; the test computer's own Ask first and
+  read-only stay as they are), reads results and screenshots, and explains them.
+- Limits said plainly: the model is small and slow; for real work on Rudolf OS a larger agent (Claude, or the person's
+  own) through the same devlink and the same repository is the expected way, and docs/DEVLINK.md is written for it.
+
+**5. Rules that keep the official project safe.** No private key ever leaves its owner (the fork's keys are made on the
+developer's computer, custom-builds.md 2); Blitzen's token is per account and per repository; the official devlink
+repository and the official update addresses are never offered as a fork's; a fork's build cannot call itself official
+(About, the recovery system, custom-builds.md 6).
+
+**Tests.** `iso/qt/host/devlinkclient60_t.sh` (the client against the stand-in GitHub and rudolf-devlink: numbering,
+a refused push and its rebase, a result with files, a timeout), `origin60_t.sh` (above), `iso/qt/shell2/blzdev60_t.js`
+(Blitzen's developer settings: the token kept only in the keyring; a suggested change shown as a diff; Allow before each
+push, Refuse sends nothing; a push never to the default branch; a devlink command shown before it goes),
+custombuild_t.sh (custom-builds.md 7's commands run). **The owner's checks:** a fork of RudolfOS with its own keys,
+built by its own workflow, its devlink driven by devlink.py from another computer; Blitzen opening a pull request on the
+fork after Allow.
+
+**Owner's decisions (asked in the pull request; the defaults if not answered):** whether Blitzen may start workflows
+(default: yes, after Allow); whether Blitzen's developer part is offered on the official build or only once Developer
+mode is on (default: only with Developer mode on); whether `devlink.py` goes into the system as a command too (default:
+yes, `/usr/bin/devlink`, so one Rudolf OS computer can drive another's devlink).
+
 ## Cellular and ARM64: QEMU and host tests first, hardware after (owner, 2026-11-15)
 Asked for: "Set up the plan to cover whatever can be done in QEMU first. Everything that requires hardware testing can
 come afterwards in that plan." This replaces the order of Steps 1 to 6 below for Parts 1 to 7. Each stage is one or
