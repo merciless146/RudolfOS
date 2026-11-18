@@ -1,5 +1,5 @@
 # 1.6.0 (the owner, 2026-11-16): Roll back to the last stable version, in QEMU on the real releases (qt/sb/t160r_t.py): the
-# newest 1.6.0 beta rolled back to the current stable release (gh-pages stable/: 1.5.9) with the data check deciding,
+# newest 1.6.0 beta rolled back to the stable 1.5.9 (the newest 1.5.9 in gh-pages stable/'s history) with the data check deciding,
 # the account's files opened by 1.5.9, back up to the beta again, and the refusal with the real signed list of 1.5.8 as
 # the stable channel. With this tree's rudolf-update in the guest. Nothing is published and no release is built: the
 # releases are the published ones, checked with the release key's public half; the only key made here is a throwaway
@@ -42,7 +42,9 @@ jobs:
             local c; for c in $(git log --format=%H $P -- $1/manifest.txt); do
               if [ "$(git show $c:$1/manifest.txt | sed -n 's/^serial //p')" = "$2" ]; then git show $c:$1/manifest.txt > $3/manifest.txt; git show $c:$1/manifest.sig > $3/manifest.sig; return 0; fi; done; return 1; }
           B='${{ inputs.serial }}'; [ -n "$B" ] || B=$(git show $P:beta/manifest.txt | sed -n 's/^serial //p')
-          S=$(git show $P:stable/manifest.txt | sed -n 's/^serial //p')
+          # (the stable 1.5.9 this test was written for: stable is 1.6.0 since 2026-11-17, and 1.6.0 -> 1.5.9 is the case
+          # that needs the data check; the newest 1.5.9 in the stable channel's history)
+          S=$(for c in $(git log --format=%H $P -- stable/manifest.txt); do git show $c:stable/manifest.txt | grep -q '^version 1\.5\.9\.' && { git show $c:stable/manifest.txt | sed -n 's/^serial //p'; break; }; done)
           O=$(for c in $(git log --format=%H $P -- stable/manifest.txt); do git show $c:stable/manifest.txt | grep -q '^version 1\.5\.8\.' && { git show $c:stable/manifest.txt | sed -n 's/^serial //p'; break; }; done)
           mkdir -p beta stable old
           lists beta $B beta && lists stable $S stable && lists stable $O old || { echo "::error::a release list was not found"; exit 1; }

@@ -366,6 +366,9 @@ desk_exited() {
 	elif [ $FAST = 3 ]; then rudolfd --health browser "the desktop browser closed 3 times in a row as it started"; fi
 	return 0
 }
+# 1.6.0: the desktop's processor time (its cgroup, microseconds; 0 without one): a desktop still busy starting on a slow
+# computer (an emulated one: QEMU's ARM64 check, where Lite's heartbeat came at 82-95 s) is given until 300 s
+desk_cpu() { sed -n 's/^usage_usec //p' /sys/fs/cgroup/desktop/cpu.stat 2>/dev/null || echo 0; }
 desk_faults() { t=0; for p in $(cat /run/rudolf/desktop-renderer 2>/dev/null) $(pgrep -o -f '[-]-rudolf-kiosk'); do
 	f=$(sed 's/.*) //' /proc/$p/stat 2>/dev/null | cut -d' ' -f10); t=$((t + ${f:-0})); done; echo $t; }
 # 1.5.7: starts that ended within a minute without the desktop answering, in a row; quick shell restarts
@@ -443,7 +446,7 @@ while :; do
 	# 1.5.6: after sleep the heartbeat is as old as the sleep (on the Vivobook 5722 s), and the browser was restarted
 	# on waking, closing every window: a gap in this loop's own clock means the computer slept, and the desktop gets
 	# 90 s to send its heartbeat again
-	LASTW=$(date +%s); GRACE=0; MF0=0; BUSY_T=0; FRONT_T=0; WM0=desktop
+	LASTW=$(date +%s); GRACE=0; MF0=0; BUSY_T=0; FRONT_T=0; WM0=desktop; DC0=$(desk_cpu); DBUSY=0
 	while kill -0 $B 2>/dev/null; do
 		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] || [ -e /run/rudolf/shell-switch ] && break; done
 		W=$(date +%s); if [ $((W - LASTW)) -gt 40 ]; then echo "$(date) woke after $((W - LASTW)) s - the desktop has 90 s to answer"; GRACE=$((W + 90)); fi; LASTW=$W
@@ -453,6 +456,8 @@ while :; do
 		if [ -e /run/rudolf/shell-switch ]; then rm -f /run/rudolf/shell-switch; echo "$(date) starting the browser again (shell)"
 			pkill -f '[-]-rudolf-kiosk'; for i in 1 2 3 4 5 6; do kill -0 $B 2>/dev/null || break; sleep 1; done; pkill -9 -f '[-]-rudolf-kiosk'; break; fi
 		NOW=$(cut -d. -f1 /proc/uptime)
+		# (busy starting: more than a fifth of a processor in the last 10 s)
+		DC=$(desk_cpu); DBUSY=0; [ $((${DC:-0} - ${DC0:-0})) -gt 2000000 ] && DBUSY=1; DC0=${DC:-0}
 		# 1.5.6: is the desktop working its way back? Its pages being read back from the compressed swap (major faults
 		# of the desktop page and the browser) or the whole computer waiting for memory (PSI) count as busy
 		MF=$(desk_faults); [ $MF -gt $MF0 ] && [ $MF0 -gt 0 ] && BUSY_T=$W; MF0=$MF
@@ -460,13 +465,13 @@ while :; do
 		WMN=$(cut -d' ' -f1 /run/rudolf/wm 2>/dev/null); [ "$WMN" = desktop ] && [ "$WM0" != desktop ] && FRONT_T=$W; WM0=${WMN:-desktop}
 		[ "$(sed -n 's/^full avg10=\([0-9]*\).*/\1/p' /proc/pressure/memory 2>/dev/null)" -ge 10 ] 2>/dev/null && BUSY_T=$W
 		# 1.5.7: the WebKit desktop did not come up (no heartbeat in 90 s): Chromium from now on (until restart)
-		if [ $ENGINE = webkit ] && [ $((NOW - START_T)) -gt 90 ] && [ ! -e /run/rudolf/heartbeat ]; then
-			webkit_give_up "no answer from it in 90 s"
+		if [ $ENGINE = webkit ] && [ $((NOW - START_T)) -gt 90 ] && [ ! -e /run/rudolf/heartbeat ] && { [ $DBUSY = 0 ] || [ $((NOW - START_T)) -gt 300 ]; }; then
+			webkit_give_up "no answer from it in $([ $DBUSY = 1 ] && echo '300 s, still busy starting' || echo '90 s')"
 			kill $B 2>/dev/null; pkill -f '[-]-rudolf-kiosk'; sleep 3; pkill -9 -f '[-]-rudolf-kiosk'; break
 		fi
 		# 1.5.9: the Native desktop, likewise
-		if [ $ENGINE = native ] && [ $((NOW - START_T)) -gt 90 ] && [ ! -e /run/rudolf/heartbeat ]; then
-			native_give_up "no answer from it in 90 s"
+		if [ $ENGINE = native ] && [ $((NOW - START_T)) -gt 90 ] && [ ! -e /run/rudolf/heartbeat ] && { [ $DBUSY = 0 ] || [ $((NOW - START_T)) -gt 300 ]; }; then
+			native_give_up "no answer from it in $([ $DBUSY = 1 ] && echo '300 s, still busy starting' || echo '90 s')"
 			kill $B 2>/dev/null; pkill -f '[-]-rudolf-kiosk'; sleep 3; pkill -9 -f '[-]-rudolf-kiosk'; break
 		fi
 		# the shell did not bring the desktop up: use the desktop page by itself from now on (until restart)
