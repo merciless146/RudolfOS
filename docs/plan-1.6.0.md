@@ -1174,6 +1174,87 @@ the mark is cleared. The official beta address can no longer be typed in as the 
 its own address (refused while it is on). A computer already on the beta address shows the box ticked. Test:
 qt/host/beta60_t.sh 12. Manual check: on the HP desktop, untick it and update: 1.5.9 comes next.
 
+### 17. Window transitions: Splitting–Merging LitePoint (added on 2026-11-17)
+The owner's own design, from a sketch (2026-11-17): "small focused dots/points of light would split from one area of
+the window's frame and meet at the opposite corner/side, expanding the window with the drawn frame from the point of
+convergence." Tuned in an animated demo (an artifact of 2026-11-17), the owner chose its "real speed": "that's the
+exact right speed it needs to run at". Asked for in 1.6.0 (owner, 2026-11-17: "Write the plan for 1.6.0").
+
+**About the version (owner, 2026-11-17):** "1.6.0b is just the beta. Once 1.6.0 is completely refined and finished, the
+b will be dropped to make it true 1.6." The release promoted on 2026-11-17 (2026111715, install release disc-1.6.0b)
+is the public beta; this part, and what else is refined after it, goes into the finished 1.6.0 (install release
+disc-1.6.0, its own promotion; the promotion's `disc` input names it, #472).
+
+**The look.** Every move is along an edge of the frame or a straight diagonal; points of light (a white core and a
+soft halo) draw or take back thin lines; where points meet, a short spark in Rudolf's red (#d8202a). Opening draws the
+frame and fills it; minimizing and closing take the frame back and empty it. Times are the whole transition; the
+shares are of that time (the demo's values, which the owner approved).
+
+| Action | Time | Steps (share of the time) |
+|---|---|---|
+| Open, corner to corner (C2C) | 200 ms | spark at the top-left (7%) · **split** along the top and the left (29%) · **merge**: down the right and along the bottom, meeting at the bottom-right, red spark (29%) · **fill**: the window shown from the bottom-right out to the top-left, the lines fading into its border (35%) |
+| Open, side to side (S2S) | 220 ms | spark mid-left (6%) · **split** up and down (20%) · **draw** along the top and the bottom (22%) · **merge**: down and up the right side, meeting mid-right (20%) · **fill** leftward from mid-right (32%) |
+| Maximize | 180 ms | sparks at the top and bottom centre of the work area (7%) · **split** out to its four corners (30%) · **merge**: along the sides, meeting mid-left and mid-right (30%) · **fill**: the window grows to the frame (33%) |
+| Minimize | 200 ms | **clear**: the contents shrink into the middle of the bottom edge, the frame lit (30%) · **retract**: points from the top corners run down the sides taking them back (22%) · **merge** along the bottom to its middle, red spark (18%) · **drop**: one point falls into the window's taskbar button, which lights up (30%) |
+| Restore from maximized | 180 ms | **split**: from mid-left and mid-right of the work area out to its corners (30%) · **gather**: each corner travels diagonally in to the window's normal corner, the frame drawn through them, red sparks on arrival (36%) · **settle**: the window settles into the frame (34%) |
+| Close | 200 ms | **clear**: the contents shut into the horizontal middle line, the frame lit (32%) · **fold**: the corners slide along the sides to their middle (30%) · **merge**: the line's two ends meet in the centre, red spark, out (38%) |
+
+Which opening: **C2C for a window opened from the start menu, the desktop or a file; S2S for a window opened by
+another window (dialogs, Settings at a page)** (a choice made here; the owner may change it). Restoring from
+minimized plays Minimize backward (the point rises from the taskbar button). Easing: in-out cubic per step, as the
+demo.
+
+**Settings › Display Properties › Colours and theme** (beside the taskbar's and the desktop icons' rows, accent56.js):
+- **Window transitions (LitePoint)**: a tick box, off by default: off, the points and lines are white.
+- **Colour**: the selected theme's accent colour (the 16 of ACCENTS), with **Normal / Negative / Complementary**
+  (acVariant, as the taskbar and icons); colours too dark to glow on a dark desktop lifted to at least 58% lightness
+  for the halo, the line's core mixed 45% toward white (the demo's rule).
+- **Brightness**: a slider from 0 (off: no points, lines or spark; the window still fills, clears and drops on the same
+  timing) to 100% (the demo's level, the default).
+- The red spark stays red in every colour.
+- Keys: `lpac` (bool), `lpacm` ('normal'|'negative'|'comp'), `lpbr` (0–100), in DEFS.disp and DKEYS as tbac/tbacm, kept
+  per account; Settings' search finds "transitions", "animation", "LitePoint".
+- **Reduce motion** (the system's and Settings' `S.rmotion`): no transition at all; windows appear, minimize, restore
+  and close at once (today's rule for the open fade).
+
+**Standard (the page, shell25.js).** One full-screen layer above the windows (pointer-events: none) draws the points
+and lines with a canvas; the fill and the clearing are a `clip-path: inset(...)` on the window animated by the same
+clock; maximize and restore animate the window's box (as today) under the drawn frame. Replaces `.win.wopen` (the
+0.18 s fade and 96% scale). No transition for a window the user is dragging or resizing.
+
+**Native (rudolf-native.c), without a compositor.** The points and lines are small override-redirect windows of the
+shell (a 1–2 px strip per line; a 26×26 px square per point, drawn over a copy of what is behind it, as the toasts
+are); the fill and the clearing set the real window's visible region with the X shape extension (no Composite
+pictures, no overlay); maximize and restore grow an outline and resize the window **once**, at the end (resizing
+every frame makes apps lay out again: Oracle, Linux apps). Replaces the window-opening overlay of test finding N15
+(WOWIN/comp_release), which drew from Composite pictures. The same clock and shares as Standard, from one table both
+read (a small JSON in the page and the shell, generated from this part).
+
+**Cost (estimated; measure on the Vivobook).** Points and lines: about 0.1 MB and a few small strips per frame; the fill
+and the clearing: a shape change per frame on Native, a clip on Standard; about 12 frames at 60 fps. Less than today's
+Native open (4–12 MB of window pictures and a repaint of the whole window each frame).
+
+**Tests.**
+- Host: `iso/qt/shell2/litepoint60_t.js`: each transition's steps and shares at sampled times (the frame's lines, the
+  points, the clip), Reduce motion (none), brightness 0 (no lines or points, the fill still timed), the three shades of
+  each accent colour; Settings' row and its keys kept across a reload.
+- Native: `iso/qt/native/litepoint_native_t.sh` (Xvfb): the override windows and the shape of the real window at
+  sampled times; no Composite redirect during a transition; one resize per maximize and restore; the timings within
+  ±20 ms; `same_t.sh` gains frames of each transition at 25%, 50% and 75% compared with Standard's.
+- QEMU (`v160_t.py`): open, minimize, restore, maximize and close a window on the real release, with Reduce motion on
+  and off.
+
+**The owner's checks on the Vivobook (Standard and Native).**
+1. Open File Explorer from the start menu (corner to corner) and Settings at a page from another window (side to side);
+   maximize, restore, minimize (the point drops into its taskbar button) and restore it, close it. Smooth, about a
+   blink each, the same on both engines.
+2. Display Properties: tick Window transitions, choose a colour, each of Normal, Negative and Complementary; the points
+   and lines take it. Brightness at 0: the windows still open and close on time, with no light; at 100: as the demo.
+3. Reduce motion on: no transitions.
+4. Oracle, a game and a Linux app opened, maximized and restored: no flicker, no app redrawing during the transition.
+
+**Status:** planned (2026-11-17). The demo is the reference for the look until the tests above stand in for it.
+
 ## Cellular and ARM64: QEMU and host tests first, hardware after (owner, 2026-11-15)
 Asked for: "Set up the plan to cover whatever can be done in QEMU first. Everything that requires hardware testing can
 come afterwards in that plan." This replaces the order of Steps 1 to 6 below for Parts 1 to 7. Each stage is one or

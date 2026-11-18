@@ -20,6 +20,7 @@ Summary: In progress.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- Planned: window transitions "Splitting–Merging LitePoint" (the owner's design): points of light draw a window's frame as it opens and take it back as it minimizes or closes, about 200 ms each; colour, shade and brightness in Display Properties (docs/plan-1.6.0.md Part 17). 1.6.0b is the public beta; the finished release drops the b.
 - Fixed: on the Native desktop a new desktop icon (New folder, New text document, a file saved to the Desktop folder, a tick in Desktop icons…) could take minutes to appear: when several windows gave the desktop's list at the same moment, all but one were refused ("could not save"), and the account's own copy was not kept. Each is kept now; the log says when the icons came after signing in.
 - Fixed: on the Native desktop Ctrl+T, Ctrl+W and Ctrl+N in Oracle's website tabs did nothing when the desktop was busy for a moment (Ctrl was let go before the desktop passed the key on); they now work as on Standard.
 - Fixed: File Explorer's Drives list shows another Rudolf OS stick (its data, read-only, as "Rudolf OS data (another Rudolf OS, read-only)"), and no longer lists the system's own internal devices (dm-0, dm-1, ...) as drives.
