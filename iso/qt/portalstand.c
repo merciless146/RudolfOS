@@ -263,6 +263,7 @@ static int do_keyring(const char *label, const char *secret)
 	say("keyring created %s item %s", coll, item);
 	return 0;
 }
+static const char *SAVENAME;   /* (save NAME: FileChooser.SaveFile with current_name NAME) */
 static int portal_req(const char *what, const char *iface, const char *member, const char *arg)
 {
 	char t[4000], req[300], tok[40];
@@ -272,7 +273,7 @@ static int portal_req(const char *what, const char *iface, const char *member, c
 	snprintf(req, sizeof req, "/org/freedesktop/portal/desktop/request/%s/%s", u, tok);
 	char rule[500]; snprintf(rule, sizeof rule, "type='signal',interface='org.freedesktop.portal.Request',member='Response',path='%s'", req);
 	if (add_match(rule)) { say("%s error match", what); return 1; }
-	buf b = {0}; bstr(&b, ""); bstr(&b, arg); size_t a = abeg(&b, 8); dict_s(&b, "handle_token", tok); aend(&b, a, 8);
+	buf b = {0}; bstr(&b, ""); bstr(&b, arg); size_t a = abeg(&b, 8); dict_s(&b, "handle_token", tok); if (SAVENAME) dict_s(&b, "current_name", SAVENAME); aend(&b, a, 8);
 	int r = call("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", iface, member, "ssa{sv}", &b, t, sizeof t, 30000); free(b.b);
 	if (r) { say("%s error %s %s", what, member, t); return 1; }
 	char got[300]; nth_str(t, 0, got, sizeof got);
@@ -285,6 +286,7 @@ static int do_one(int argc, char **argv)
 {
 	if (argc >= 3 && !strcmp(argv[0], "keyring")) return do_keyring(argv[1], argv[2]);
 	if (argc >= 1 && !strcmp(argv[0], "open")) return portal_req("open", "org.freedesktop.portal.FileChooser", "OpenFile", "PortalStand: open a file");
+	if (argc >= 2 && !strcmp(argv[0], "save")) { SAVENAME = argv[1]; return portal_req("save", "org.freedesktop.portal.FileChooser", "SaveFile", "PortalStand: save a file"); }
 	if (argc >= 2 && !strcmp(argv[0], "link")) return portal_req("link", "org.freedesktop.portal.OpenURI", "OpenURI", argv[1]);
 	say("error what? %s", argc ? argv[0] : "");
 	return 1;
@@ -294,7 +296,7 @@ int main(int argc, char **argv)
 {
 	const char *d = getenv("PORTALSTAND_DIR"); if (!d || !*d) d = getenv("XDG_DATA_HOME"); if (!d || !*d) d = getenv("HOME"); if (!d || !*d) d = "/tmp";
 	snprintf(LOGF, sizeof LOGF, "%s/portalstand.log", d);
-	if (argc < 2) { fprintf(stderr, "usage: portalstand keyring LABEL SECRET | open | link URL | app\n"); return 1; }
+	if (argc < 2) { fprintf(stderr, "usage: portalstand keyring LABEL SECRET | open | save NAME | link URL | app\n"); return 1; }
 	setvbuf(stderr, NULL, _IONBF, 0);
 	int app = !strcmp(argv[1], "app");
 	if (app) say("started %ld", (long)getpid());
