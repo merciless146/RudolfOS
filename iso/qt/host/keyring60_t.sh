@@ -22,6 +22,8 @@ rm -f $T/args; o=$(env -i HOME=$T/home KEYRING_DAEMON=$T/daemon sh $KR start 2>&
 ok "3. no session (no bus, or no home): it does not start" "$([ $r1 = 1 ] && [ $r2 = 1 ] && [ ! -e $T/args ] && echo 1)" "$r1 $r2 $o $o2"
 grep -q 'AU_KEYRING " start' $HERE/../../sys/rudolfd-users.inc && grep -q 'XDG_CURRENT_DESKTOP=%s' $HERE/../../sys/rudolfd-users.inc
 ok "4. rudolfd starts it at sign-in as the account's user (qt/host/users59_t.sh 6c and 7 check who, its session and its stop)" "$([ $? = 0 ] && echo 1)"
+grep -qF -e "-c 'export %s; exec dbus-daemon --session" $HERE/../../sys/rudolfd-users.inc && grep -qF 'for (const char *p = e.b;' $HERE/../../sys/rudolfd-users.inc
+ok "4b. (2026-11-17, Discord showed no window) the account's bus starts with its session's settings (XDG_RUNTIME_DIR...), which what it starts on demand gets: Flatpak's portal finds the running apps" "$([ $? = 0 ] && echo 1)"
 grep -q "^unix	/run/user/\*/keyring/\*	gnome-keyring-daemon	" $HERE/../../sys/root/usr/share/rudolf/listeners
 ok "5. its socket is in the list of listeners (the self-test)" "$([ $? = 0 ] && echo 1)"
 # the real one
