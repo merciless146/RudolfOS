@@ -1294,6 +1294,17 @@ CMWIN), the start button from the taskbar's hits, the window's button on a switc
 native59_t.sh 40b and 45c. **The owner's checks:** the start menu, quick settings, the calendar, a right-click menu and a
 switch from the taskbar, with the taskbar at the bottom and then at the top (Settings › Taskbar), on Standard and Native.
 
+### 17c. Oracle's loading line (added and built on 2026-11-18)
+The owner: "Can Oracle have the LitePoint line/dot animation moving from left to right at the bottom of its bookmarks bar
+as a loading progress visual?" and "It will go into 1.6 in the same beta build". `desktop/oload60.js`: along the bottom
+edge of the bookmarks bar (the address bar's row when it is hidden), for the tab in front, LitePoint's point moves left to
+right as the page loads, lighting the line behind it. Its progress is the page's own where the browser gives it (the
+shell's new `progress` event, from the Controlled Frame's `loadprogress`), otherwise an estimate that slows toward 90 %.
+Loaded: the point runs to the end and the line fades; a failed load fades where it stopped. LitePoint's colour and
+brightness (the accent colour on a light bookmarks bar, where white would not show); Reduce motion: a plain line that
+only fills. Started and ended by Oracle's status line, so frames and real tabs are the same, on Standard and Native
+alike. Test: `iso/qt/shell2/oload60_t.js` (13), in oracle-file-check.yml.
+
 ### 18. Blitzen knows the system: its source, its logs, your activity, and the web through Oracle (added on 2026-11-18)
 The owner, 2026-11-18: "Can Blitzen be given the ability to train itself based on the system's source code, system logs and
 user activity, and research sources thru Oracle for the user's questions or requests?" Answered: not by training its model
