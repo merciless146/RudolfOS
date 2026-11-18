@@ -10,15 +10,21 @@
 #include <math.h>
 #include <string.h>
 
-enum { LP_C2C, LP_S2S, LP_MAX, LP_MIN, LP_RES, LP_CLS, LP_KINDS };
-static const char *const LP_NAME[LP_KINDS] = { "c2c", "s2s", "max", "min", "res", "cls" };
-static const int LP_MS[LP_KINDS] = { 200, 220, 180, 200, 180, 200 };
+/* the windows' six (Part 17); the start menu's opening and closing, the taskbar's pop-ups, right-click menus and a window's
+   taskbar button (Part 17b, 2026-11-18: moving away from the taskbar's side, the menus where they are) */
+enum { LP_C2C, LP_S2S, LP_MAX, LP_MIN, LP_RES, LP_CLS, LP_SMO, LP_SMC, LP_POP, LP_CTX, LP_TBB, LP_KINDS };
+static const char *const LP_NAME[LP_KINDS] = { "c2c", "s2s", "max", "min", "res", "cls", "smo", "smc", "pop", "ctx", "tbb" };
+static const int LP_MS[LP_KINDS] = { 200, 220, 180, 200, 180, 200, 160, 140, 140, 120, 100 };
 /* each one's steps, as shares of its time (the demo's, which the owner chose) */
-static const double LP_W[LP_KINDS][5] = { { .07, .29, .29, .35 }, { .06, .2, .22, .2, .32 }, { .07, .3, .3, .33 }, { .3, .22, .18, .3 }, { .3, .36, .34 }, { .32, .3, .38 } };
-static const int LP_NW[LP_KINDS] = { 4, 5, 4, 4, 3, 3 };
+static const double LP_W[LP_KINDS][5] = { { .07, .29, .29, .35 }, { .06, .2, .22, .2, .32 }, { .07, .3, .3, .33 }, { .3, .22, .18, .3 }, { .3, .36, .34 }, { .32, .3, .38 },
+	{ .15, .22, .24, .14, .25 }, { .3, .22, .18, .3 }, { .26, .28, .16, .3 }, { .07, .29, .29, .35 }, { .3, .3, .4 } };
+static const int LP_NW[LP_KINDS] = { 4, 5, 4, 4, 3, 3, 5, 4, 4, 4, 3 };
 
 typedef struct { double x, y, w, h; } LPRect;
-typedef struct { LPRect f, s; double bx, by; } LPGeo;   /* the window (as it was for max, as it will be for res), maximized, the taskbar button */
+/* the window or menu (for max: as it was; for res: as it will be), maximized, the button it comes from or goes to; the taskbar's
+   side (0 bottom, 1 top, 2 left, 3 right: the light moves away from it); a right-click menu's corner at the pointer (0 top-left,
+   1 top-right, 2 bottom-right, 3 bottom-left) */
+typedef struct { LPRect f, s; double bx, by; int dir, corner; } LPGeo;
 #define LP_NL 24
 #define LP_NP 12
 typedef struct {
@@ -56,13 +62,34 @@ static const LPFr LP_FR[3] = {
 	{ 2, { { .5, 0 }, { .5, 1 } }, { { 0, .5 }, { 1, .5 } }, { 0, 0 }, { 0, 4, 4, 0 },
 		{ {{0}}, { { .5, 0, 0, 0 }, { .5, 0, 1, 0 }, { .5, 1, 0, 1 }, { .5, 1, 1, 1 } }, { { 0, 0, 0, .5 }, { 0, 1, 0, .5 }, { 1, 0, 1, .5 }, { 1, 1, 1, .5 } } } } };
 
+/* (Part 17b) a place in a menu (or window) as the taskbar sees it: A along the taskbar's side, B away from it (0 at the side
+   facing the taskbar, 1 at the far side) */
+static void lp_np(const LPRect *R, int dir, double a, double b, double *x, double *y)
+{
+	if (dir == 1) { *x = R->x + a * R->w; *y = R->y + b * R->h; }
+	else if (dir == 2) { *x = R->x + b * R->w; *y = R->y + a * R->h; }
+	else if (dir == 3) { *x = R->x + (1 - b) * R->w; *y = R->y + a * R->h; }
+	else { *x = R->x + a * R->w; *y = R->y + (1 - b) * R->h; }
+}
+static LPRect lp_nrect(const LPRect *R, int dir, double a0, double a1, double b0, double b1)
+{
+	double x0, y0, x1, y1; lp_np(R, dir, a0, b0, &x0, &y0); lp_np(R, dir, a1, b1, &x1, &y1);
+	LPRect r = { fmin(x0, x1), fmin(y0, y1), fabs(x1 - x0), fabs(y1 - y0) }; return r;
+}
+static void lp_nline(LPScene *o, const LPRect *R, int dir, double a0, double b0, double a1, double b1, double al)
+{
+	double x0, y0, x1, y1; lp_np(R, dir, a0, b0, &x0, &y0); lp_np(R, dir, a1, b1, &x1, &y1); lp_line(o, x0, y0, x1, y1, al);
+}
+static void lp_nlight(LPScene *o, const LPRect *R, int dir, double a, double b, double k, double r) { double x, y; lp_np(R, dir, a, b, &x, &y); lp_light(o, x, y, k, r); }
+
 static void lp_scene(int kind, double t, const LPGeo *G, LPScene *o)
 {
 	memset(o, 0, sizeof *o); o->geo_to = 1;
-	if (kind <= LP_MAX) {
-		const LPFr *d = &LP_FR[kind]; LPRect F = kind == LP_MAX ? G->s : G->f; int n = LP_NW[kind], i = 0; double p = 0; lp_at(kind, t, &i, &p); int last = i == n - 1;
-#define PX(a) (F.x + (a) * F.w)
-#define PY(b) (F.y + (b) * F.h)
+	if (kind <= LP_MAX || kind == LP_CTX) {
+		const LPFr *d = &LP_FR[kind == LP_CTX ? LP_C2C : kind]; LPRect F = kind == LP_MAX ? G->s : G->f; int n = LP_NW[kind], i = 0; double p = 0; lp_at(kind, t, &i, &p); int last = i == n - 1;
+		int fx = kind == LP_CTX && (G->corner == 1 || G->corner == 2), fy = kind == LP_CTX && (G->corner == 2 || G->corner == 3);   /* (from the corner at the pointer) */
+#define PX(a) (F.x + (fx ? 1 - (a) : (a)) * F.w)
+#define PY(b) (F.y + (fy ? 1 - (b) : (b)) * F.h)
 		if (kind == LP_MAX) { o->geo_to = last; if (last && t < 1) { o->clip = 1; o->cr = lp_r(G->f, G->s, lp_e(p)); } }
 		else if (t < 1) { o->clip = 1;
 			if (last) { double ox = PX(d->from[0]), oy = PY(d->from[1]), e = lp_e(p), x0 = lp_l(ox, F.x, e), y0 = lp_l(oy, F.y, e), x1 = lp_l(ox, F.x + F.w, e), y1 = lp_l(oy, F.y + F.h, e);
@@ -82,16 +109,40 @@ static void lp_scene(int kind, double t, const LPGeo *G, LPScene *o)
 		return;
 	}
 #define Q(i) lp_step(kind, t, i)
-	if (kind == LP_MIN) { LPRect f = G->f; double BMx = f.x + f.w / 2, BMy = f.y + f.h, p1 = lp_e(Q(0)), p2 = lp_e(Q(1)), p3 = lp_e(Q(2)), p4 = lp_e(Q(3));
+	if (kind == LP_MIN || kind == LP_SMC) { LPRect f = G->f; int dr = G->dir; double p1 = lp_e(Q(0)), p2 = lp_e(Q(1)), p3 = lp_e(Q(2)), p4 = lp_e(Q(3)), BMx, BMy; lp_np(&f, dr, .5, 0, &BMx, &BMy);
 		if (t <= 0) return; o->clip = 1; o->cr = lp_z(f); if (t >= 1) return;
-		if (t < .3) { o->cr.x = lp_l(f.x, BMx, p1); o->cr.y = lp_l(f.y, BMy, p1); o->cr.w = lp_l(f.w, 0, p1); o->cr.h = lp_l(f.h, 0, p1); }
+		if (t < .3) o->cr = lp_nrect(&f, dr, .5 * p1, 1 - .5 * p1, 0, 1 - p1);   /* (cleared into the middle of the side toward the taskbar) */
 		if (t >= .7) o->lit = lp_c((Q(3) - .75) / .25) * (1 - lp_c((t - .985) / .015));
-		double BLx = f.x, BRx = f.x + f.w, Ty = f.y;
 		if (t < .3) lp_rect(o, f, lp_c(t / .08));
-		else if (t < .52) { double ay = lp_l(Ty, BMy, p2); lp_line(o, BLx, ay, BLx, BMy, 1); lp_line(o, BRx, ay, BRx, BMy, 1); lp_line(o, BLx, BMy, BRx, BMy, 1); lp_light(o, BLx, ay, 1, 0); lp_light(o, BRx, ay, 1, 0); }
-		else if (t < .7) { double ax = lp_l(BLx, BMx, p3), bx = lp_l(BRx, BMx, p3); lp_line(o, ax, BMy, bx, BMy, 1); lp_light(o, ax, BMy, 1, 0); lp_light(o, bx, BMy, 1, 0);
+		else if (t < .52) { double b = lp_l(1, 0, p2); lp_nline(o, &f, dr, 0, b, 0, 0, 1); lp_nline(o, &f, dr, 1, b, 1, 0, 1); lp_nline(o, &f, dr, 0, 0, 1, 0, 1); lp_nlight(o, &f, dr, 0, b, 1, 0); lp_nlight(o, &f, dr, 1, b, 1, 0); }
+		else if (t < .7) { double a0 = lp_l(0, .5, p3), a1 = lp_l(1, .5, p3); lp_nline(o, &f, dr, a0, 0, a1, 0, 1); lp_nlight(o, &f, dr, a0, 0, 1, 0); lp_nlight(o, &f, dr, a1, 0, 1, 0);
 			if (Q(2) > .8) lp_light(o, BMx, BMy, 1 + (Q(2) - .8) * 4, (Q(2) - .8) / .2); }
 		else { double px = lp_l(BMx, G->bx, p4), py = lp_l(BMy, G->by, p4); lp_line(o, BMx, BMy, px, py, 1 - p4); lp_light(o, px, py, lp_l(1.4, .8, p4), 1 - lp_c(p4 / .4)); }
+		return;
+	}
+	/* (Part 17b) the start menu and the taskbar's pop-ups opening, and a taskbar button's outline: from the side toward the taskbar
+	   (the start menu: a point rising from the start button to its middle first; a pop-up: from above the button clicked), out to
+	   its corners, along both sides away from the taskbar, meeting in the middle of the far side; then filled from the taskbar's
+	   side (a button is there already: only the outline) */
+	if (kind == LP_SMO || kind == LP_POP || kind == LP_TBB) { LPRect R = G->f; int dr = G->dir, k0 = kind == LP_SMO, tb = kind == LP_TBB;
+		double st[6] = { 0 }; for (int j = 0; j < LP_NW[kind]; j++) st[j + 1] = st[j] + LP_W[kind][j];
+		double aA = kind == LP_POP ? lp_c(dr < 2 ? (R.w > 0 ? (G->bx - R.x) / R.w : .5) : (R.h > 0 ? (G->by - R.y) / R.h : .5)) : .5, Ax, Ay; lp_np(&R, dr, aA, 0, &Ax, &Ay);
+		double kk = tb ? .5 : 1;
+		if (!tb) { o->clip = 1; o->cr = lp_z(R); }
+		if (t <= 0) return; if (t >= 1) { o->clip = 0; return; }
+		if (k0 && t < st[1]) { double p = lp_e(Q(0)), px = lp_l(G->bx, Ax, p), py = lp_l(G->by, Ay, p); lp_line(o, G->bx, G->by, px, py, 1 - p * .4); lp_light(o, px, py, lp_l(1.4, 1, p), 0); return; }
+		double s1 = lp_e(Q(k0)), s2 = lp_e(Q(k0 + 1)), s3 = lp_e(Q(k0 + 2)), sf = tb ? 0 : Q(k0 + 3), fade = tb ? 1 - lp_c((Q(2) - .7) / .3) : 1 - lp_c((sf - .55) / .45);
+		if (!tb && t >= st[k0 + 3]) o->cr = lp_nrect(&R, dr, 0, 1, 0, lp_e(sf));
+		lp_nline(o, &R, dr, aA, 0, lp_l(aA, 0, s1), 0, fade); lp_nline(o, &R, dr, aA, 0, lp_l(aA, 1, s1), 0, fade);
+		if (t >= st[k0 + 1]) { lp_nline(o, &R, dr, 0, 0, 0, s2, fade); lp_nline(o, &R, dr, 1, 0, 1, s2, fade); }
+		if (t >= st[k0 + 2]) { lp_nline(o, &R, dr, 0, 1, lp_l(0, .5, s3), 1, fade); lp_nline(o, &R, dr, 1, 1, lp_l(1, .5, s3), 1, fade); }
+		if (t < st[k0 + 1]) { lp_nlight(o, &R, dr, lp_l(aA, 0, s1), 0, kk, 0); lp_nlight(o, &R, dr, lp_l(aA, 1, s1), 0, kk, 0); }
+		else if (t < st[k0 + 2]) { lp_nlight(o, &R, dr, 0, s2, kk, 0); lp_nlight(o, &R, dr, 1, s2, kk, 0); }
+		else if (tb) { double m = Q(2); if (m < .6) { lp_nlight(o, &R, dr, lp_l(0, .5, s3), 1, kk, 0); lp_nlight(o, &R, dr, lp_l(1, .5, s3), 1, kk, 0); }
+			else { double q = (m - .6) / .4; lp_nlight(o, &R, dr, .5, 1, kk * lp_l(1.4, .3, q), 1 - q * .3); } }
+		else if (t < st[k0 + 3]) { lp_nlight(o, &R, dr, lp_l(0, .5, s3), 1, 1, 0); lp_nlight(o, &R, dr, lp_l(1, .5, s3), 1, 1, 0);
+			if (Q(k0 + 2) > .8) lp_nlight(o, &R, dr, .5, 1, 1 + (Q(k0 + 2) - .8) * 4, (Q(k0 + 2) - .8) / .2); }
+		else { double q = 1 - lp_c(sf / .5); if (q > 0) lp_nlight(o, &R, dr, .5, 1, lp_l(.4, 1.6, q), q); }
 		return;
 	}
 	if (kind == LP_RES) { LPRect S = G->s, N = G->f; double p1 = lp_e(Q(0)), p2 = lp_e(Q(1)), p3 = lp_e(Q(2)); o->geo_to = t >= 1;
