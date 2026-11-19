@@ -1,4 +1,5 @@
 // 1.5.8: orchestral sound cues. Settings › Sound lists the new versions under the old names, in the old places, and the
+// (1.6.0: the Rudolf style comes after the legacy ones, so that an account's chosen place in the list stays its sound)
 // old ones last as "… (legacy)"; each new one is longer than its old one, sounds (rendered offline), stays under full
 // scale, and has a bass, a tenor and an alto voice under the melody. node sound58_t.js [CHROME]
 const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
@@ -16,7 +17,7 @@ const CUES = [['startup', 'Classic chime'], ['startup', 'Soft bells'], ['login',
     const r = await q(`(()=>{const L=SPRE.${k},i=L.findIndex(x=>x[0]==${JSON.stringify(n)}),j=L.findIndex(x=>x[0]==${JSON.stringify(n + ' (legacy)')});if(i<0||j<0)return{i,j};
       const len=pat=>Math.max(...pat.map(x=>x[1]+x[2])),nw=L[i][1],old=L[j][1];
       const low=nw.filter(x=>x[5]&&x[5].w=='str').map(x=>x[0]).sort((a,b)=>a-b);
-      return{i,j,last:j==L.length-1||L.slice(j).every(x=>/legacy/.test(x[0])),nl:len(nw),ol:len(old),voices:new Set(low.map(f=>Math.round(f))).size,bass:low[0]}})()`);
+      return{i,j,last:j==L.length-1||L.slice(j).every(x=>/legacy/.test(x[0])||x[0]=='Rudolf'),nl:len(nw),ol:len(old),voices:new Set(low.map(f=>Math.round(f))).size,bass:low[0]}})()`);
     ok(`${k} › ${n}: new version in its old place, "${n} (legacy)" at the end`, r.i >= 0 && r.j > r.i && r.last, r);
     ok(`...longer (${r.nl && r.nl.toFixed(2)} s, was ${r.ol && r.ol.toFixed(2)} s), not much longer (at most 2.5 s)`, r.nl > r.ol && r.nl <= 2.5, r);
     ok(`...bass, tenor and alto under the melody (string voices: ${r.voices}, the lowest ${r.bass && r.bass.toFixed(0)} Hz)`, r.voices >= 3 && r.bass < 200, r);

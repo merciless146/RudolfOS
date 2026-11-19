@@ -1293,7 +1293,7 @@ function trash(){const W=win('Trash','🗑️',580,380);let sel=new Set();
   st.textContent=TR.length?TR.length+' item(s)'+(sel.size?' · '+sel.size+' selected':'')+'  ·  Items stay here until you delete them forever.':'Nothing here.'}
  function dlg(html,ok){const o=document.createElement('div');o.className='dlg';o.innerHTML='<div>'+html+'<div style="text-align:right;margin-top:12px"></div></div>';const r=o.lastChild.lastChild;[['Cancel'],['Delete',ok,1]].forEach(([t,f,p])=>{const b=document.createElement('button');b.textContent=t;b.style.marginLeft='6px';if(p){b.style.background='var(--ac)';b.style.color='#fff'}b.onclick=()=>{o.remove();f&&f()};r.appendChild(b)});W.body.appendChild(o)}
  function rest(){if(!sel.size){st.textContent='Select something to restore first.';return}[...sel].sort((a,b)=>b-a).forEach(i=>trRestore(i));sel=new Set();sfx('notify');draw()}
- function purge(idx){[...idx].sort((a,b)=>b-a).forEach(i=>TR.splice(i,1));sel=new Set();trSave();sfx('notify')}
+ function purge(idx){[...idx].sort((a,b)=>b-a).forEach(i=>TR.splice(i,1));sel=new Set();trSave();sfx(typeof SPRE=='object'&&SPRE.trash?'trash':'notify')}
  q('.rs').onclick=rest;
  q('.df').onclick=()=>{if(!sel.size){st.textContent='Select something first.';return}dlg(`Permanently delete ${sel.size==1?'this item':sel.size+' items'}?<br><small>This cannot be undone.</small>`,()=>purge(sel))};
  q('.em').onclick=()=>{if(!TR.length){st.textContent='The Trash is already empty.';return}dlg(`Empty the Trash?<br><small>${TR.length} item(s) will be deleted permanently.</small>`,()=>purge(TR.map((_,i)=>i)))};

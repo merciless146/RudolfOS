@@ -1305,6 +1305,27 @@ brightness (the accent colour on a light bookmarks bar, where white would not sh
 only fills. Started and ended by Oracle's status line, so frames and real tabs are the same, on Standard and Native
 alike. Test: `iso/qt/shell2/oload60_t.js` (13), in oracle-file-check.yml.
 
+### 17d. The Rudolf sounds (added and built on 2026-11-19)
+The owner: "Make a branded start-up chime for Rudolf OS that matches its origins as a Linux system and its desktop theme.
+Make a matching shutdown chime as well as sound effects for other parts of the desktop", tried and tuned in the "Rudolf OS
+Sounds" artifact, then "Add these sounds to Rudolf's sound settings as options. If the sound would go into a new category
+that doesn't currently exist on the list, add that category along with the existing/classic sound option, as well as a few
+other suitable ones that might work with the desktop's other selectable visual themes."
+- `desktop/sndrs60.js`: the artifact's synth (FM bells, a warm pad, ticks, sparkle sweeps, noise, plain tones, a small room)
+  rendered to samples, with the owner's tuning (`RS_TUNE`, as exported from the artifact). A "Rudolf" style in all 18
+  categories, after the existing ones (an account's choice is its place in the list, so no saved choice changes).
+- Nine new categories: logout (sign out and lock), update, warning (`.dlg`), battery (10 %, once until charged past 15 %),
+  usbin, usbout, menu (the start menu opening), trash, shot. Each: Classic (short sine tones, as the desktop's own), Retro
+  (square waves, for the Retro theme), Candy (sliding triangle tones), Minimal (one soft tone, for Monochrome and
+  Wireframe), Rudolf. A notification can carry its own sound (`opt.snd`).
+- "Use one style everywhere" in Volume Controls: Classic, Rudolf, Retro, Candy, Minimal (the older categories take their
+  nearest style, `RS_SCHEME`). Defaults unchanged: the first style everywhere.
+- Native: `iso/sys/rsynth.h`, the same renderer in C, sample for sample; rudolf-native.c reads the Rudolf style's events from
+  the page's catalogue (`{w:'rs', G, E}`) and from a window's sfx, has the 18 categories, and plays the start menu's and
+  sign-out's sounds itself.
+- Tests: `iso/qt/host/rsynth60_t.sh` (18 sounds, identical), `iso/qt/host/sndnative60_t.sh` (7), `iso/qt/shell2/sounds60_t.js`
+  (18), `sound58_t.js` (35), in sounds-check.yml.
+
 ### 18. Blitzen knows the system: its source, its logs, your activity, and the web through Oracle (added on 2026-11-18)
 The owner, 2026-11-18: "Can Blitzen be given the ability to train itself based on the system's source code, system logs and
 user activity, and research sources thru Oracle for the user's questions or requests?" Answered: not by training its model

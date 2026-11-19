@@ -174,7 +174,8 @@ async function userLogin(a,pw,keys){await FSREADY;   /* (1.5.9, plan Part 12: ke
  parentalStart();
  setTimeout(()=>{try{window.__sessionRestore&&__sessionRestore()}catch(e){}},400);
  setTimeout(()=>{try{window.__afterLogin&&__afterLogin()}catch(e){}},600)}
-function userLogout(){if(!USER)return;try{window.__sessionSave&&__sessionSave()}catch(e){}
+function userLogout(){if(!USER)return;try{sfx('logout')}catch(e){}   /* (1.6.0: Sign out & lock's sound) */
+ try{window.__sessionSave&&__sessionSave()}catch(e){}
  fsFlush();homeUnload();parentalStop();
  if(USER.r=='guest'){try{localStorage.removeItem('bd95set:guest');localStorage.removeItem('bd95cells:guest')}catch(e){}TR=[];
   for(const k in fs['C:'].USERS)if(k=='GUEST')delete fs['C:'].USERS[k];fsSave()}
@@ -241,7 +242,8 @@ try{Object.defineProperty(window,'LOCKED',{get:()=>LOCKED,configurable:true})}ca
 /* (1.5.8: a pointermove that did not move is not input: Chromium sends them when what is under a resting pointer
    changes (the clock, a widget, a page), which kept the screen saver from ever starting on the Vivobook) */
 ['pointermove','pointerdown','keydown','wheel','touchstart'].forEach(ev=>addEventListener(ev,e=>{if(e.type=='pointermove'&&!e.movementX&&!e.movementY)return;lastInput=Date.now();if(SAVER&&Date.now()-SAVER.t>600)saverStop()},{capture:true,passive:true}));
-function lockScreen(reason,adminOnly){if(!USER||LOCKED)return;
+function lockScreen(reason,adminOnly){if(!USER||LOCKED)return;try{sfx('logout')}catch(e){}   /* (1.6.0) */
+
  /* 1.5.7: never a second lock screen over the first (the HP desktop showed two after its screen had locked) */
  if(document.getElementById('lockov')){LOCKED=true;return}
  LOCKED=true;$('#menu').style.display='none';

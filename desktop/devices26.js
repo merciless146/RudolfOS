@@ -27,14 +27,14 @@ function devOpenDrive(v) {
 function devEvent(v) {
   if (v.t == 'drive') {
     const name = devDriveName(v), sd = /^mmcblk/.test(v.dev);
-    if (v.a == 'add') notify((sd ? '💾 ' : '🔌 ') + name + ' is connected', (v.bytes ? fmtB(v.bytes) + ' · ' : '') + (v.readonly ? 'read only · ' : '') + 'click to open it in File Explorer', {app: 'Devices', action: () => devOpenDrive(v)});
+    if (v.a == 'add') notify((sd ? '💾 ' : '🔌 ') + name + ' is connected', (v.bytes ? fmtB(v.bytes) + ' · ' : '') + (v.readonly ? 'read only · ' : '') + 'click to open it in File Explorer', {app: 'Devices', snd: 'usbin', action: () => devOpenDrive(v)});
     else if (v.a == 'eject') notify('⏏ ' + name + ' can be removed', 'It is safe to unplug it now.', {app: 'Devices', toast: 4000});
-    else notify(name + ' was removed', 'Next time, use ⏏ Eject in File Explorer first so no file is left half-written.', {app: 'Devices', quiet: true, toast: 6000});
+    else notify(name + ' was removed', 'Next time, use ⏏ Eject in File Explorer first so no file is left half-written.', {app: 'Devices', quiet: true, toast: 6000, snd: 'usbout'});
     dispatchEvent(new CustomEvent('rudolf-drive', {detail: v}));
   } else if (v.t == 'usb') {
     const ic = DEV_ICON[v.kind] || '🔌';
-    if (v.a == 'add') notify(ic + ' ' + v.kind + ' connected', v.name + (v.driver ? '' : ' — Rudolf OS has no driver for this device yet, so it may not work.'), {app: 'Devices', kind: v.driver ? 'info' : 'warn'});
-    else notify(ic + ' ' + v.kind + ' disconnected', v.name, {app: 'Devices', quiet: true, toast: 3000});
+    if (v.a == 'add') notify(ic + ' ' + v.kind + ' connected', v.name + (v.driver ? '' : ' — Rudolf OS has no driver for this device yet, so it may not work.'), {app: 'Devices', kind: v.driver ? 'info' : 'warn', snd: 'usbin'});
+    else notify(ic + ' ' + v.kind + ' disconnected', v.name, {app: 'Devices', quiet: true, toast: 3000, snd: 'usbout'});
     dispatchEvent(new CustomEvent('rudolf-usb', {detail: v}));
   }
 }

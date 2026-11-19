@@ -179,12 +179,15 @@ const oaOut=()=>oaNative()||oaChromium();
    frames and plays theirs: this page sends its own (a window opened and closed, a button in it, a notification, an error) with the
    volume and tones it would play, once; its own Web Audio is not used (a window's page has no click yet, so WebKit kept it silent).
    A page doing something for the shell unseen (#app=do-NAME) clicks the page's buttons for the shell, which played that click already */
+/* a tone as the native shell takes it: [Hz, start, length, wave, slide-to]; a Rudolf style's marker keeps its events (sndrs60.js:
+   rudolf-native.c renders them with rsynth.h, the page's own arithmetic) */
+const oaTone=x=>x[5]&&x[5].w=='rs'?[x[0],x[1],x[2],x[3],x[4],{w:'rs',G:x[5].G,E:x[5].E}]:x.slice(0,5);
 if(ONEAPP&&typeof sfx=='function'&&typeof PAT=='object'){let syn=false;addEventListener('click',e=>{syn=!e.isTrusted},true);const _sfx=sfx;
  sfx=function(n,force){if(!oaOut())return _sfx.apply(this,arguments);
   try{window.__a11y&&a11ySound(n)}catch(e){}const m=S.snd.master,s=S.snd[n];if(!s||!PAT[n])return;if(!force&&(!m.on||!s.on))return;const v=(m.vol/100)*(s.vol/100);if(v<=0)return;
   if(/^do-/.test(ONEAPP.k)&&syn&&(n=='click'||n=='game'))return;
   window.__sfx.push([n,+v.toFixed(3)]);let t=PAT[n];try{if(window.__a11y)t=sndPat(n)}catch(e){}
-  oaPost({op:'sfx',k:n,v:String(+v.toFixed(4)),p:JSON.stringify({t:(t||[]).map(x=>x.slice(0,5))})})}}
+  oaPost({op:'sfx',k:n,v:String(+v.toFixed(4)),p:JSON.stringify({t:(t||[]).map(oaTone)})})}}
 /* (1.6.0 Part 12, item 12) the memory guard's "this is the desktop's page process" (mem47.js memIam: the processor kept busy for 0.6 s,
    15 s after loading and again until rudolfd knows it) is the Standard desktop's: on the native desktop no page is the desktop, and an
    app's window or Oracle's page claiming it would keep the guard from ending it. Not done there (every app window spent 0.6 s of
@@ -643,7 +646,7 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
   const jumps={};try{if(typeof APP_JUMPS=='object')for(const k in APP_JUMPS)jumps[k]=APP_JUMPS[k]().map(j=>[j[0],(j[3]&&j[3].icon)||'',(j[3]&&j[3].key)||''])}catch(e){}
   /* (1.6.0, the owner's report 2) the desktop's own sounds' styles (Settings › Volume Controls: each sound's tones, base_v24.html SPRE and PAT),
      which the native shell plays itself at its sign-in and shut-down screens */
-  const sndp={};try{if(typeof SNDS=='object'&&typeof PAT=='object')for(const [k] of SNDS)sndp[k]=(typeof SPRE=='object'&&SPRE[k]?SPRE[k].map(x=>x[1]||PAT[k]):[PAT[k]]).map(p=>(p||[]).map(t=>t.slice(0,5)))}catch(e){}
+  const sndp={};try{if(typeof SNDS=='object'&&typeof PAT=='object')for(const [k] of SNDS)sndp[k]=(typeof SPRE=='object'&&SPRE[k]?SPRE[k].map(x=>x[1]||PAT[k]):[PAT[k]]).map(p=>(p||[]).map(oaTone))}catch(e){}
   await rdPost('desktop/apps',JSON.stringify({apps,bg,fx,hide,icons,desk,cells,menu,jumps,sndp,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}));OA_CSIG=sig
   /* (2026-11-17, the owner's Vivobook: icons minutes late on Native) the native log says when giving the catalogue took long on this computer */
   {const ms=Math.round(performance.now()-t0);if(ms>3000)console.warn('desktop/apps given after '+ms+' ms')}}catch(e){console.warn('desktop/apps',e)}}
