@@ -1761,7 +1761,24 @@ static void api_print(struct req *r, const char *what)
  * Only apps on this list can be installed or started through rudolfd. They come from Flathub
  * and are installed system-wide into /var/lib/flatpak (the RUDOLFDATA partition), never shipped
  * on the disc. Sober is a closed-source runtime for Roblox by the Vinegar project. */
-static const char *const NATIVE_APPS[] = { "org.vinegarhq.Sober", NULL };
+/* (1.6.1) Emu's native emulators, from Flathub: Flycast (Dreamcast, GPL-2.0) and Rosalie's Mupen GUI (Nintendo 64,
+   GPL-3.0, Mupen64Plus); run with the game's file (native/run?file=), full screen on the graphics card */
+static const char *const NATIVE_APPS[] = { "org.vinegarhq.Sober", "org.flycast.Flycast", "com.github.Rosalie241.RMG", NULL };
+/* the command line an emulator takes a game with (after "flatpak run"): the library read-only, then the game */
+static const char *native_game_args(const char *id)
+{
+	if (!strcmp(id, "org.flycast.Flycast")) return "--filesystem=/home/rudolf/Games:ro org.flycast.Flycast";
+	if (!strcmp(id, "com.github.Rosalie241.RMG")) return "--filesystem=/home/rudolf/Games:ro com.github.Rosalie241.RMG --fullscreen --nogui";
+	return NULL;
+}
+/* a game for it: a file in Emu's library (/home/rudolf/Games), by a plain path (no shell characters), really there */
+static int native_game_ok(const char *f)
+{
+	if (!f || strncmp(f, "/home/rudolf/Games/", 19) || strstr(f, "/../") || strstr(f, "/./") || strlen(f) > 600) return 0;
+	for (const char *c = f; *c; c++) if ((unsigned char)*c < 32 || strchr("\"'$`\\", *c)) return 0;
+	char *rp = realpath(f, NULL); int ok = rp && !strncmp(rp, "/home/rudolf/Games/", 19); free(rp);
+	struct stat st; return ok && !stat(f, &st) && S_ISREG(st.st_mode);
+}
 #ifndef FLATHUB_REPO
 #define FLATHUB_REPO "https://dl.flathub.org/repo/flathub.flatpakrepo"
 #endif
@@ -1807,7 +1824,7 @@ static void api_native(struct req *r, const char *what)
 	char *id = qparam(r->query, "id");
 	if (!native_ok(id)) { reply_err(r->fd, 400, "this app is not available"); return; }
 	if (access("/usr/bin/flatpak", X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no Flatpak support"); return; }
-	char cmd[1024];
+	char cmd[2048];
 	if (!strcmp(what, "install") || !strcmp(what, "update") || !strcmp(what, "uninstall")) {
 		if (access(RUN "/persistent", F_OK)) { reply_err(r->fd, 409, "install Rudolf OS (or add a RUDOLFDATA partition) first: apps need somewhere to be kept"); return; }
 		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
@@ -1824,9 +1841,17 @@ static void api_native(struct req *r, const char *what)
 	}
 	if (!strcmp(what, "run")) {
 		/* started as the desktop user with the session's display and buses; rudolf-display shows it full screen */
+		/* (1.6.1) an emulator with a game from Emu's library: file=PATH */
+		char *game = qparam(r->query, "file"); char what2[800];
+		if (game && *game) {
+			const char *ga = native_game_args(id);
+			if (!ga || !native_game_ok(game)) { free(game); reply_err(r->fd, 400, "that game cannot be opened (it must be in the game library)"); return; }
+			snprintf(what2, sizeof what2, "%s \"%s\"", ga, game);
+		} else snprintf(what2, sizeof what2, "%s", id);
+		free(game);
 		{ char au[32], ae[160]; au_app_user(au, sizeof au, ae, sizeof ae);   /* 1.5.9 (15.3) */
 		  snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh %s -c 'set -a; . %s; set +a; exec flatpak run %s' "
-			"</dev/null >>" RUN "/native.log 2>&1 & echo $! > " RUN "/native.pid", au, ae, id); }
+			"</dev/null >>" RUN "/native.log 2>&1 & echo $! > " RUN "/native.pid", au, ae, what2); }
 		if (native_pid()) { write_str(RUN "/wm", "game"); reply_ok(r->fd, "already running"); return; }
 		{ char chk[160]; snprintf(chk, sizeof chk, "flatpak info --system %s >/dev/null 2>&1", id);
 		  if (run(chk)) { reply_err(r->fd, 404, "this app is not installed"); return; } }
@@ -1867,7 +1892,7 @@ static void b64(str *s, const unsigned char *d, size_t n)
 static void api_games(struct req *r, const char *what)
 {
 	if (!strcmp(what, "info")) {
-		run("mkdir -p /home/rudolf/Games/GB /home/rudolf/Games/SNES/Saves /home/rudolf/Games/SNES/States /home/rudolf/Games/DS/Saves /home/rudolf/Games/DS/States && chown -R 1000:1000 /home/rudolf/Games");
+		run("mkdir -p /home/rudolf/Games/GB /home/rudolf/Games/SNES/Saves /home/rudolf/Games/SNES/States /home/rudolf/Games/DS/Saves /home/rudolf/Games/DS/States /home/rudolf/Games/DC /home/rudolf/Games/N64 && chown -R 1000:1000 /home/rudolf/Games");   /* (1.6.1: Dreamcast, N64) */
 		char *u = run_out("du -sk /home/rudolf/Games 2>/dev/null | cut -f1"); trim(u);
 		struct statvfs v; long long fr = statvfs("/home/rudolf/Games", &v) ? 0 : (long long)v.f_bavail * v.f_frsize;
 		str s = {0}; sadd(&s, "{\"ok\":true,\"used\":%lld,\"free\":%lld,\"persistent\":%s}", atoll(u) * 1024, fr, access(RUN "/persistent", F_OK) ? "false" : "true");
