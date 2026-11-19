@@ -4678,6 +4678,25 @@ static void api(struct req *r)
 		if (strchr(n, '/') || n[0] == '.') { reply_err(r->fd, 400, "bad name"); return; }
 		char fp[600]; snprintf(fp, sizeof fp, "/home/rudolf/Downloads/%s", n); serve_file(r, fp); return;
 	}
+	/* 1.6.0 (2026-11-19, a grandfather's old HP): Copy to another drive, from File Explorer's drive view: the files and
+	   folders chosen on one drive copied into a folder on another, as a job (drivecopy.sh; its log is the progress).
+	   The body: "personal=0|1 continue=0|1", the folder to copy into, then the sources, a line each; all under /media,
+	   the destination not inside a source. */
+	if (!strcmp(p, "fs/xcopy")) {
+		if (!post || !r->body || r->blen > 65536) { reply_err(r->fd, 400, "use POST, with what to copy"); return; }
+		if (job_running()) { reply_err(r->fd, 409, "busy: another job is running, try again when it ends"); return; }
+		char *b = strndup(r->body, r->blen), *sv = NULL; int n = 0, bad = 0; char dest[1100] = "", opt[64] = "", *src[200];
+		for (char *l = strtok_r(b, "\n", &sv); l; l = strtok_r(NULL, "\n", &sv)) {
+			size_t ll = strlen(l); if (ll && l[ll - 1] == '\r') l[--ll] = 0;
+			if (!opt[0]) { if (strspn(l, "personalcontiue=01 ") != ll) bad = 1; snprintf(opt, sizeof opt, "%s", ll ? l : "personal=0"); continue; }
+			if (!strncmp(l, "/media/", 7) && safe_media_path(l) && !strchr(l, '\t')) { if (!dest[0]) snprintf(dest, sizeof dest, "%s", l); else if (n < 200) src[n++] = l; else bad = 1; } else bad = 1; }
+		for (int i = 0; !bad && i < n; i++) { size_t sl = strlen(src[i]); if (!strncmp(dest, src[i], sl) && (dest[sl] == '/' || !dest[sl])) bad = 2; }
+		if (bad || !dest[0] || !n) { free(b); reply_err(r->fd, 400, bad == 2 ? "the folder to copy into cannot be inside what is copied" : "only drives' files (/media/...)"); return; }
+		FILE *f = fopen(RUN "/drivecopy.list", "w"); if (!f) { free(b); reply_err(r->fd, 500, "could not start"); return; }
+		fprintf(f, "%s\n%s\n", opt, dest); for (int i = 0; i < n; i++) fprintf(f, "%s\n", src[i]); fclose(f); free(b);
+		health_add("files", "Copy to another drive: %d item(s) into %.200s", n, dest);
+		start_job("drive-copy", "/usr/lib/rudolf/drivecopy.sh " RUN "/drivecopy.list"); reply_ok(r->fd, "started"); return;
+	}
 	if (!strncmp(p, "fs/", 3)) {
 		if (strcmp(p + 3, "list") && strcmp(p + 3, "read") && strcmp(p + 3, "search") && !post) { reply_err(r->fd, 400, "use POST"); return; }
 		api_fs(r, p + 3); return;

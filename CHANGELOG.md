@@ -27,6 +27,11 @@ Summary: In progress.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- New: File Explorer › a drive › Copy to another drive… copies files and folders from one drive straight onto
+  another (a USB stick, say), folders and all, with no limit on size or number, and nothing on the first drive
+  changed. "Only personal files" leaves out Windows, programs, AppData and system files, for rescuing an old
+  computer's documents, pictures and videos. When the drive fills up, plug in the next one and copy again: it carries
+  on with the rest.
 - New for developers (docs/plan-1.6.0.md Part 19): docs/DEVLINK.md, the development link's whole protocol, so any agent (Claude, another, or your own) can run commands on a Rudolf OS computer through its private repository; its reference client iso/systools/devlink.py (Python's standard library only: run, send, wait, screenshot, get, put a local file); docs/custom-builds.md 7: a development link for your own build.
 - Oracle's loading line (docs/plan-1.6.0.md 17c): LitePoint's point of light moves left to right along the bottom of the bookmarks bar as a page loads, lighting the line behind it; it runs to the end and fades when the page is loaded, and fades where it stopped when a load fails. LitePoint's colour and brightness; Reduce motion: a plain line that fills.
 - New: the Rudolf sounds (docs/plan-1.6.0.md 17d): a start-up chime and a shut-down chime of Rudolf OS's own, and a
