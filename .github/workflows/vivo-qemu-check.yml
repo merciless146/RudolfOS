@@ -39,8 +39,8 @@ jobs:
         run: |
           sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev libx11-dev libxcb1-dev libxau-dev libxdmcp-dev >/dev/null
           mkdir -p fix src
-          if [ "$N_fix" = main ]; then git fetch -q --depth 1 origin main; git show origin/main:iso/sys/rudolf-native.c > src/rudolf-native.c; git show origin/main:iso/sys/litepoint.h > src/litepoint.h 2>/dev/null || true; git show origin/main:iso/www/index.html > fix/index.html
-          else cp iso/sys/rudolf-native.c iso/sys/litepoint.h src/; cp iso/www/index.html fix/; fi
+          if [ "$N_fix" = main ]; then git fetch -q --depth 1 origin main; git show origin/main:iso/sys/rudolf-native.c > src/rudolf-native.c; git show origin/main:iso/sys/litepoint.h > src/litepoint.h 2>/dev/null || true; git show origin/main:iso/sys/rsynth.h > src/rsynth.h 2>/dev/null || true; git show origin/main:iso/www/index.html > fix/index.html
+          else cp iso/sys/rudolf-native.c iso/sys/litepoint.h iso/sys/rsynth.h src/; cp iso/www/index.html fix/; fi
           gcc -O2 -Wno-deprecated-declarations -o fix/rudolf-native src/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
           gcc -O2 -static -o fix/wincap iso/qt/host/fixtures/wincap.c -lX11 -lxcb -lXau -lXdmcp 2>/dev/null
           ls -la fix && echo "V160_FIX=$PWD/fix" >> $GITHUB_ENV

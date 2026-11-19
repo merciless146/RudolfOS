@@ -9,9 +9,9 @@ on:
       serial: {description: 'A release whose Chromium to use (its serial); empty: the newest beta', required: false, default: ''}
   push:
     branches: [tor-window-keys, oracle-same-native]
-    paths: ['iso/qt/host/torwin59_t.sh', 'iso/qt/native/tor_native_t.sh', 'iso/qt/host/fixtures/dispkeys.c', 'iso/sys/rudolf-display.c', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rudolf-launch.c', 'iso/shell/**', '.github/workflows/tor-keys-check.yml']
+    paths: ['iso/qt/host/torwin59_t.sh', 'iso/qt/native/tor_native_t.sh', 'iso/qt/host/fixtures/dispkeys.c', 'iso/sys/rudolf-display.c', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rsynth.h', 'iso/sys/rudolf-launch.c', 'iso/shell/**', '.github/workflows/tor-keys-check.yml']
   pull_request:
-    paths: ['iso/qt/host/torwin59_t.sh', 'iso/qt/native/tor_native_t.sh', 'iso/qt/host/fixtures/dispkeys.c', 'iso/sys/rudolf-display.c', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rudolf-launch.c', 'iso/shell/**', '.github/workflows/tor-keys-check.yml']
+    paths: ['iso/qt/host/torwin59_t.sh', 'iso/qt/native/tor_native_t.sh', 'iso/qt/host/fixtures/dispkeys.c', 'iso/sys/rudolf-display.c', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rsynth.h', 'iso/sys/rudolf-launch.c', 'iso/shell/**', '.github/workflows/tor-keys-check.yml']
 permissions: {contents: read}
 jobs:
   keys:

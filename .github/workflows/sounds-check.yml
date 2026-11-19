@@ -1,0 +1,43 @@
+# The Rudolf sounds (1.6.0, the owner's start-up chime and desktop sounds, 2026-11-19).
+#   page:   this tree's desktop page in the beta's own Chromium: Volume Controls' 18 categories and styles, "Use one style
+#           everywhere", the Rudolf sounds rendered, where the new ones play (iso/qt/shell2/sounds60_t.js), and the older
+#           orchestral cues as before (sound58_t.js).
+#   native: the page's renderer and the native desktop's (rsynth.h) make the same samples (rsynth60_t.sh), and the native
+#           desktop's sound section reads the page's catalogue and plays the account's style (sndnative60_t.sh).
+name: Sounds check
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['desktop/sndrs60.js', 'desktop/sound58.js', 'desktop/oneapp59.js', 'iso/sys/rsynth.h', 'iso/sys/rudolf-native.c', 'iso/www/index.html',
+      'iso/qt/shell2/sounds60_t.js', 'iso/qt/shell2/sound58_t.js', 'iso/qt/host/rsynth60_t.sh', 'iso/qt/host/sndnative60_t.sh', '.github/workflows/sounds-check.yml']
+permissions: {contents: read}
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libglib2.0-dev >/dev/null
+      - name: The two renderers, sample by sample
+        run: sh iso/qt/host/rsynth60_t.sh
+      - name: The native desktop's sounds
+        run: sh iso/qt/host/sndnative60_t.sh
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: The beta's Chromium
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools >/dev/null
+          git fetch -q --depth 1 origin gh-pages
+          S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel && gh release download "r$S" -D rel -p chromium.sfs
+          sudo unsquashfs -q -n -d rel/c rel/chromium.sfs opt/chromium && sudo chown -R $USER rel; rel/c/opt/chromium/chrome --version
+          npm i -s --no-save playwright@1.63.0 >/dev/null
+      - name: The Rudolf sounds in Volume Controls
+        run: node iso/qt/shell2/sounds60_t.js $PWD/rel/c/opt/chromium/chrome
+      - name: The orchestral cues, as before
+        run: node iso/qt/shell2/sound58_t.js $PWD/rel/c/opt/chromium/chrome

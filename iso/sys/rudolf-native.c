@@ -53,6 +53,7 @@
 #include <time.h>
 #include <unistd.h>
 #include "litepoint.h"   /* (1.6.0 Part 17: the window transitions' scenes, the page's litepoint60.js in C) */
+#include "rsynth.h"     /* (1.6.0: the Rudolf sounds' renderer, the page's sndrs60.js rsRender in C) */
 
 /* ------------------------------------------------------------------ state */
 static char HOST[64] = "127.0.0.1", TOKEN[64];
@@ -1027,7 +1028,7 @@ static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 		/* (an app's jump, as its taskbar button's menu: Oracle's New private tab, a window of its own) */
 		if (!strcmp(op, "open") && app[0] && jp[0] && USER_ID[0] && !LOCKED) { tb_jump(app, jp); }   /* (the page knows its jumps; one it does not know closes its window) */
 		else if (!strcmp(op, "open") && app[0] && USER_ID[0] && !LOCKED) { char *ex = open_extra(u, pv); if (!strcmp(app, "settings") && pg[0]) tb_settings(pg); else app_open_ex(app, file[0] ? file : NULL, ex, 0); g_free(ex); }
-		else if (!strcmp(op, "sfx") && v) { char k[16] = "", vv[24] = "", pj[2048] = ""; jstr(v, "k", k, sizeof k); jstr(v, "v", vv, sizeof vv); jstr(v, "p", pj, sizeof pj); snd_page(k, g_ascii_strtod(vv, NULL), pj); }   /* (2026-11-16: Oracle's window's sounds) */
+		else if (!strcmp(op, "sfx") && v) { char k[16] = "", vv[24] = "", pj[4096] = ""; jstr(v, "k", k, sizeof k); jstr(v, "v", vv, sizeof vv); jstr(v, "p", pj, sizeof pj); snd_page(k, g_ascii_strtod(vv, NULL), pj); }   /* (2026-11-16: Oracle's window's sounds) */
 		else if (!strcmp(op, "mirror") && v) { char id[64] = ""; jstr(v, "id", id, sizeof id); if (id_ok(id)) mirror_to_webkit(id); }   /* (the files Oracle's page saved: the app windows take them) */
 		else if (!strcmp(op, "set") && v) { char id[64] = ""; jstr(v, "id", id, sizeof id); if (id_ok(id)) settings_changed(id, NULL); }   /* (Oracle's page saved its settings) */
 		else if (!strcmp(op, "osd") && v) { char k[16] = "", lv[8] = "", lb[256] = "", n[8] = ""; jstr(v, "k", k, sizeof k); jstr(v, "lv", lv, sizeof lv); jstr(v, "label", lb, sizeof lb); jstr(v, "n", n, sizeof n); osd_show(k, lv, lb, n); }
@@ -2489,6 +2490,8 @@ static void signin_show(int lock);
 static void power(const char *what)
 {
 	menu_hide();
+	/* (1.6.0, the Rudolf sounds) signing out and locking: the page's sfx('logout'), core25.js userLogout and lockScreen */
+	if (!strcmp(what, "lock") || !strcmp(what, "logout")) snd_play("logout");
 	if (!strcmp(what, "lock")) { if (http("POST", "/api/desktop/lock", NULL, 0, NULL) == 200) signin_show(1); return; }
 	if (!strcmp(what, "logout")) {
 		GList *c = g_list_copy(WINS); for (GList *l = c; l; l = l->next) appwin_close_now(l->data); g_list_free(c);
@@ -2818,6 +2821,7 @@ static void menu_toggle(void)
 	gtk_window_resize(GTK_WINDOW(MENU), MW, MH); gtk_widget_set_size_request(MAREA, MW, MH); gtk_window_move(GTK_WINDOW(MENU), MX, MY);
 	caret_restart(); gtk_widget_show_all(MENU); gtk_window_present(GTK_WINDOW(MENU)); gtk_widget_grab_focus(MAREA); wm_restack();
 	{ double sx = MBX * Z, sy = MBY * Z + MBH * Z; lp_hit_mid("start", NULL, &sx, &sy, NULL); lp_menu_open(MENU, MX, MY, LP_SMO, MBX * Z, MBY * Z, MBW * Z, MBH * Z, sx, sy, 0); }   /* (Part 17b) */
+	snd_play("menu");   /* (1.6.0, the Rudolf sounds: the start menu opening, as the page's #menu shown: sndrs60.js) */
 	GdkWindow *gw = gtk_widget_get_window(MENU); if (gw) gdk_window_focus(gw, GDK_CURRENT_TIME);
 	state_write();
 }
@@ -4077,22 +4081,45 @@ static gboolean desk_key(GtkWidget *w, GdkEventKey *e, gpointer d)
    Controls' master and each sound's switch, volume and style (S.snd, given by rudolfd's desktop/settings), the styles' tones as
    the page has them (sndp, given with the start menu's list: oneapp59.js oaCatalog) */
 typedef struct { double f, t, d, fe; int ty; } Tone;   /* (ty: 0 sine, 1 square, 2 triangle, 3 sawtooth) */
-static const char *const SNDK[] = { "startup", "login", "error", "click", "open", "close", "notify", "game", "shutdown" };
-#define SNDN 9
-static const int SNDV0[SNDN] = { 70, 70, 70, 40, 60, 60, 70, 50, 70 };
-static Tone SNDP[SNDN][8][16]; static int SNDPN[SNDN][8], SNDPC[SNDN];
-static int SND_MON = 1, SND_MV = 70, SND_ON[SNDN] = { 1, 1, 1, 1, 1, 1, 1, 1, 1 }, SND_V[SNDN] = { 70, 70, 70, 40, 60, 60, 70, 50, 70 }, SND_P[SNDN];
+/* (1.6.0, the owner's Rudolf sounds, 2026-11-19) nine more categories (desktop/sndrs60.js RS_NEW), and the Rudolf style in every
+   one: a style whose tone carries {w:'rs', G, E}, the synth's settings and events, rendered here by rsynth.h as the page renders
+   them (rsRender), sample for sample */
+static const char *const SNDK[] = { "startup", "login", "error", "click", "open", "close", "notify", "game", "shutdown",
+	"logout", "update", "warning", "battery", "usbin", "usbout", "menu", "trash", "shot" };
+#define SNDN 18
+#define SNDS 12   /* (styles a category can have) */
+#define SNDE_MAX 48   /* (a Rudolf style's events) */
+static const int SNDV0[SNDN] = { 70, 70, 70, 40, 60, 60, 70, 50, 70, 60, 70, 60, 70, 60, 60, 40, 60, 60 };
+typedef struct { RsEv *e; int n; double g[5]; } SndRs;   /* (a Rudolf style: its events, NULL for tones) */
+static Tone SNDP[SNDN][SNDS][16]; static int SNDPN[SNDN][SNDS], SNDPC[SNDN]; static SndRs SNDR[SNDN][SNDS];
+static int SND_MON = 1, SND_MV = 70, SND_ON[SNDN] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
+	SND_V[SNDN] = { 70, 70, 70, 40, 60, 60, 70, 50, 70, 60, 70, 60, 70, 60, 60, 40, 60, 60 }, SND_P[SNDN];
 static int snd_i(const char *k) { for (int i = 0; i < SNDN; i++) if (!strcmp(SNDK[i], k)) return i; return -1; }
+/* one style's tones from the page's pattern (its [Hz, start, length, wave, slide to, {w:'rs', G, E}]); the Rudolf style's events into *r */
+static int snd_tones(JV *pat, Tone *T, SndRs *r)
+{
+	int n = 0; free(r->e); memset(r, 0, sizeof *r);
+	for (int j = 0; pat && pat->t == 4 && j < pat->len && n < 16; j++) { JV *x = pat->v[j]; if (!x || x->t != 4 || x->len < 3) continue; Tone *t = &T[n++]; memset(t, 0, sizeof *t);
+		t->f = x->v[0]->t == 2 ? x->v[0]->n : 440; t->t = x->v[1]->t == 2 ? x->v[1]->n : 0; t->d = x->v[2]->t == 2 ? x->v[2]->n : .1;
+		if (x->len > 3 && x->v[3]->t == 3) t->ty = !strcmp(x->v[3]->s, "square") ? 1 : !strcmp(x->v[3]->s, "triangle") ? 2 : !strcmp(x->v[3]->s, "sawtooth") ? 3 : 0;
+		if (x->len > 4 && x->v[4]->t == 2) t->fe = x->v[4]->n;
+		JV *m = x->len > 5 ? x->v[5] : NULL, *w = jprop(m, "w"), *G = jprop(m, "G"), *E = jprop(m, "E");
+		if (!r->e && w && w->t == 3 && !strcmp(w->s, "rs") && G && G->t == 4 && G->len == 5 && E && E->t == 4 && E->len > 0) {
+			for (int g = 0; g < 5; g++) r->g[g] = G->v[g] && G->v[g]->t == 2 ? fmax(0, fmin(100, G->v[g]->n)) : 0;
+			r->e = calloc(SNDE_MAX, sizeof *r->e);
+			for (int e = 0; r->e && e < E->len && r->n < SNDE_MAX; e++) { JV *ev = E->v[e]; if (!ev || ev->t != 4 || ev->len < 2 || !ev->v[0] || ev->v[0]->t != 3 || !strchr("BPKSNT", ev->v[0]->s[0]) || !ev->v[0]->s[0]) continue;
+				RsEv *q = &r->e[r->n]; memset(q, 0, sizeof *q); q->k = ev->v[0]->s[0];
+				for (int a = 1; a < ev->len && q->nv < RS_MAXV; a++) q->v[q->nv++] = ev->v[a] && ev->v[a]->t == 2 && isfinite(ev->v[a]->n) ? fmax(-20000, fmin(20000, ev->v[a]->n)) : 0;
+				if (q->v[0] < 0 || q->v[0] > 6) continue;   /* (when it starts: within the sound) */
+				r->n++; }
+			if (!r->n) { free(r->e); r->e = NULL; } } }
+	return n;
+}
 static void snd_cat(JV *v)
 {
 	JV *o = jprop(v, "sndp"); if (!o || o->t != 5) return;
 	for (int i = 0; i < o->len; i++) { int k = snd_i(o->k[i]); JV *ps = o->v[i]; if (k < 0 || !ps || ps->t != 4) continue; SNDPC[k] = 0;
-		for (int p = 0; p < ps->len && p < 8; p++) { JV *pat = ps->v[p]; int n = 0;
-			for (int j = 0; pat && pat->t == 4 && j < pat->len && n < 16; j++) { JV *x = pat->v[j]; if (!x || x->t != 4 || x->len < 3) continue; Tone *t = &SNDP[k][p][n++]; memset(t, 0, sizeof *t);
-				t->f = x->v[0]->t == 2 ? x->v[0]->n : 440; t->t = x->v[1]->t == 2 ? x->v[1]->n : 0; t->d = x->v[2]->t == 2 ? x->v[2]->n : .1;
-				if (x->len > 3 && x->v[3]->t == 3) t->ty = !strcmp(x->v[3]->s, "square") ? 1 : !strcmp(x->v[3]->s, "triangle") ? 2 : !strcmp(x->v[3]->s, "sawtooth") ? 3 : 0;
-				if (x->len > 4 && x->v[4]->t == 2) t->fe = x->v[4]->n; }
-			SNDPN[k][p] = n; SNDPC[k] = p + 1; } }
+		for (int p = 0; p < ps->len && p < SNDS; p++) { SNDPN[k][p] = snd_tones(ps->v[p], SNDP[k][p], &SNDR[k][p]); SNDPC[k] = p + 1; } }
 }
 static void snd_set(JV *s)
 {
@@ -4115,34 +4142,38 @@ static gpointer snd_thread(gpointer d)
 	g_free(q->b); g_free(q); return NULL;
 }
 static int SND_PLAYED[SNDN];   /* (for the tests: how many times each was played) */
-static double snd_out(int i, double v, const Tone *T, int n);
+static double snd_out(int i, double v, const Tone *T, int n, const SndRs *r);
 /* the sound called k, as the page's sfx(k): its length in seconds (0: not played) */
 static double snd_play(const char *k)
 {
 	int i = snd_i(k); if (i < 0 || !SND_MON || !SND_ON[i]) return 0;
 	double v = SND_MV / 100.0 * SND_V[i] / 100.0; if (v <= 0) return 0;
-	int p = SND_P[i] >= 0 && SND_P[i] < SNDPC[i] && SNDPN[i][SND_P[i]] ? SND_P[i] : 0; return snd_out(i, v, SNDP[i][p], SNDPN[i][p]);
+	int p = SND_P[i] >= 0 && SND_P[i] < SNDPC[i] && SNDPN[i][SND_P[i]] ? SND_P[i] : 0; return snd_out(i, v, SNDP[i][p], SNDPN[i][p], &SNDR[i][p]);
 }
 /* (2026-11-16, the owner's Vivobook: no window or button sounds on Native) a sound a page of the shell's plays, as the page's sfx() would on
    Standard (oneapp59.js: its volume, from Volume Controls, and its tones, the account's style), played here: a page's own Web Audio did
    not sound (a window's page has had no click yet, WebKit keeps its audio suspended), and the windows open and close through the shell */
 static void snd_page(const char *k, double v, const char *pj)
 {
-	int i = snd_i(k); if (i < 0 || !(v > 0) || v > 1) return; Tone T[16]; int n = 0; JV *o = pj && pj[0] == '{' ? jparse(pj) : NULL, *pat = jprop(o, "t");
-	for (int j = 0; pat && pat->t == 4 && j < pat->len && n < 16; j++) { JV *x = pat->v[j]; if (!x || x->t != 4 || x->len < 3) continue; Tone *t = &T[n++]; memset(t, 0, sizeof *t);
-		t->f = x->v[0]->t == 2 ? x->v[0]->n : 440; t->t = x->v[1]->t == 2 ? x->v[1]->n : 0; t->d = x->v[2]->t == 2 ? x->v[2]->n : .1;
-		if (x->len > 3 && x->v[3]->t == 3) t->ty = !strcmp(x->v[3]->s, "square") ? 1 : !strcmp(x->v[3]->s, "triangle") ? 2 : !strcmp(x->v[3]->s, "sawtooth") ? 3 : 0;
-		if (x->len > 4 && x->v[4]->t == 2) t->fe = x->v[4]->n; }
-	jfree(o); snd_out(i, v, T, n);
+	int i = snd_i(k); if (i < 0 || !(v > 0) || v > 1) return; Tone T[16]; SndRs r = {0}; JV *o = pj && pj[0] == '{' ? jparse(pj) : NULL;
+	int n = snd_tones(jprop(o, "t"), T, &r); jfree(o); snd_out(i, v, T, n, &r); free(r.e);
 }
 /* the shell's own buttons, as the page's (base_v24.html: a click on a button, a start menu row, a menu's row, a dialog's list: "click") */
 static void snd_click(void) { snd_play("click"); }
-static double snd_out(int i, double v, const Tone *T, int n)
+static double snd_out(int i, double v, const Tone *T, int n, const SndRs *r)
 {
+	if (r && r->e && r->n) {   /* (a Rudolf style: the page's samples, at the category's volume) */
+		size_t N = 0; float *f = rs_render(r->e, r->n, r->g, &N); if (!f || !N) { free(f); return 0; }
+		SndBuf *q = g_new0(SndBuf, 1); q->n = N; q->b = g_new(int16_t, N); for (size_t s = 0; s < N; s++) q->b[s] = (int16_t)lround(fmax(-1, fmin(1, f[s] * v)) * 32767); free(f);
+		SND_PLAYED[i]++; g_thread_unref(g_thread_new("sound", snd_thread, q)); return (double)N / RS_SR; }
 	static const Tone DEF[SNDN][4] = { { {523, 0, .14, 0, 0}, {659, .14, .14, 0, 0}, {784, .28, .14, 0, 0}, {1047, .42, .35, 0, 0} }, { {660, 0, .1, 0, 0}, {880, .1, .22, 0, 0} },
 		{ {220, 0, .16, 0, 1}, {165, .17, .24, 0, 1} }, { {1300, 0, .035, 0, 1} }, { {500, 0, .06, 0, 0}, {760, .06, .09, 0, 0} }, { {760, 0, .06, 0, 0}, {500, .06, .09, 0, 0} },
-		{ {880, 0, .1, 0, 0}, {1175, .1, .16, 0, 0} }, { {330, 0, .06, 0, 2}, {440, .05, .06, 0, 2} }, { {784, 0, .16, 0, 0}, {659, .16, .16, 0, 0}, {523, .32, .16, 0, 0}, {392, .48, .4, 0, 0} } };
-	static const int DEFN[SNDN] = { 4, 2, 2, 1, 2, 2, 2, 2, 4 };   /* (the page's PAT, until a page has given its styles) */
+		{ {880, 0, .1, 0, 0}, {1175, .1, .16, 0, 0} }, { {330, 0, .06, 0, 2}, {440, .05, .06, 0, 2} }, { {784, 0, .16, 0, 0}, {659, .16, .16, 0, 0}, {523, .32, .16, 0, 0}, {392, .48, .4, 0, 0} },
+		/* (the new categories' Classic: sndrs60.js RS_STY) */
+		{ {880, 0, .1, 0, 0}, {660, .1, .22, 0, 0} }, { {660, 0, .1, 0, 0}, {880, .1, .1, 0, 0}, {1175, .2, .24, 0, 0} }, { {660, 0, .12, 0, 2}, {660, .16, .18, 0, 2} },
+		{ {880, 0, .1, 0, 0}, {740, .14, .1, 0, 0}, {587, .28, .2, 0, 0} }, { {700, 0, .07, 0, 0}, {1050, .08, .12, 0, 0} }, { {1050, 0, .07, 0, 0}, {700, .08, .12, 0, 0} },
+		{ {900, 0, .04, 0, 0}, {1200, .04, .06, 0, 0} }, { {400, 0, .18, 120, 3} }, { {1800, 0, .03, 0, 1}, {1200, .06, .04, 0, 1} } };
+	static const int DEFN[SNDN] = { 4, 2, 2, 1, 2, 2, 2, 2, 4, 2, 3, 2, 3, 2, 2, 2, 1, 2 };   /* (the page's PAT, until a page has given its styles) */
 	if (!n) { T = DEF[i]; n = DEFN[i]; }
 	double len = 0; for (int j = 0; j < n; j++) len = fmax(len, T[j].t + T[j].d + .03);
 	const int R = 44100; size_t N = (size_t)((len + .05) * R); float *a = g_new0(float, N);
