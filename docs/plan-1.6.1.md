@@ -630,6 +630,92 @@ key is missing (an existing choice kept), once. Part 3: the cut window's insets,
 **The owner's checks on the Vivobook (Native):** Discord, Steam and Claude with one title bar each; moving them by their
 bar, their maximize, minimize and close; a Chromium-based browser from Flathub with Rudolf's title bar.
 
+### 16. Each other's builds: the update address decides the updates and the sticks (added on 2026-11-19)
+The owner, 2026-11-19: "The version made on the stick and the repository that updates are checked for should come from
+whatever the set update address is written as by the computer's admin-level user. The system should be able to check that
+the set update repository is set-up/working correctly and that it is able to match the user's key to it. The intent is for
+people to be able to roll out their own updates but only to computers that are running the key specific to their own
+version/build of Rudolf OS. USB sticks pull directly from whatever the set update address is, and still checks to ensure it
+is set up properly before it attempts to make a copy of that repository's version of Rudolf OS. This is intended for people
+to be able to download and use each-other's builds." Decided the same day: sticks offer both (the address first, "This
+Rudolf OS" kept for use without internet); another key's build is allowed on a stick after a warning; Get beta versions
+keeps the repository that is set.
+
+**How it is today.** Check for updates uses the Update address box (`update.conf` `url`), else the build's own default
+(`/etc/rudolf/update-url`). An update installs only when its release list is signed by a key the running system trusts
+(the build's `rpk-keys`, plus Developer mode's `extra-keys`): that part of the intent is already true and stays as it is.
+But Get beta versions overwrites the box with the build's own `…/beta` (and `…/stable` when turned off); nothing says
+whether an address works before an update fails; and Make a USB stick never downloads: it copies the running system (or an
+image already in Downloads), its boot files from the running release's own `boot.iso`.
+
+**1. Check this address.** A button by the Update address box (and the same check when Save is pressed, and in
+`rudolf-update check-url URL`, for rudolfd's `sys/urlcheck`). Each line passes, warns or fails, in plain words:
+- the address answers, with `manifest.txt` and `manifest.sig` (https only, as today);
+- it is a Rudolf OS release list this computer can read (its format, `datafmt`/`readsfmt`), not expired;
+- **whose key signed it:** this computer's (the official key, or Developer mode's key) → "Updates from this address
+  install here"; another key → "This is another build of Rudolf OS, signed with key `xxxx…` (its fingerprint): updates from
+  it do not install on this computer. You can make a USB stick from it.";
+- that other key is the build's own: the list's signature verifies with a key in that release's own base layer
+  (`/etc/rudolf/rpk-keys`, read from `base.sfs` after its checksum matches the list), so a list that its own system would
+  refuse is reported as broken, not as "another build";
+- every file the list names, and the release's `boot.iso` beside its `vmlinuz`, can be downloaded (sizes checked by a
+  request for the first byte, nothing big downloaded);
+- its other channel: `…/beta` beside `…/stable` (a warning only when missing: the beta switch then has nowhere to go).
+Saving an address signed with another key asks first: "Updates will stop on this computer until the address is changed
+back." The status line under Update and recovery says which key the set address uses.
+
+**2. Get beta versions keeps the repository.** On: the set address's `…/beta`; off: its `…/stable` (and the
+"leaving the betas" rule, `tostable`, as today). An address that does not end in `/stable` or `/beta` is used as it is,
+and the switch says so. Developer mode's own address is unchanged.
+
+**3. Make a USB stick from the update address.** "Rudolf OS to put on it" lists first "The latest from the update address
+(Rudolf OS *version*, *serial*)", then "This Rudolf OS" and the images in Downloads as today.
+- Before anything is erased: the check of item 1 for that address (all must pass; a warning about the other channel is
+  fine) and room on RUDOLFDATA for the download.
+- Downloaded to `/persist/os/stickdl/SERIAL/`: the release list and its signature, `boot.iso`, every layer; each layer's
+  SHA-256 must match the list (layers this computer already has with the same checksum are linked, not downloaded); the
+  boot image's kernel must be the list's `vmlinuz`; the list's signature must verify with the release's own key (item 1).
+- Another key's build: before the drive is erased, a warning names it ("another build of Rudolf OS, signed with key
+  `xxxx…`, from ADDRESS"), says that it gets its updates from its own maker, not from this computer's, that with Secure
+  Boot on it starts only where its maker's Secure Boot key is trusted, and that its Recovery mode is the official Rudolf OS
+  (item 4); the administrator confirms.
+- mkstick.sh writes `boot.iso` as the image (as with an image from Downloads) and puts the release in the stick's
+  RUDOLFDATA system slot, with that release's own update address (the one it came from), so the stick updates from its
+  maker. "Also copy my files and settings" stays available.
+- The downloads are kept until the next stick is made from another release (one release only), so a second stick needs no
+  second download.
+- The stick check (`mkstick.sh --check`) and Storage's line about a plugged-in stick name the build's key when it is not
+  this computer's.
+
+**4. Recovery mode is always the official build's newest stable release.** The owner, 2026-11-19: "Recovery Mode boot is
+always locked to the official build's most recent stable version. This is so that if someone encounters a catastrophic
+failure of their normal boot that they have a reliable and guaranteed way to recover their machine." Today the start-up
+side already holds: the boot menu's Recovery mode (`recovery.efi`, its own small initramfs with the official key alone)
+starts only a system/r whose list the official key signed, whatever the update address or Developer mode. What is missing:
+- **Kept newest.** rudolf-update fetches the official recovery system once (`recovery-fetch`) and never again. Each update
+  check (whatever the address) also reads the official stable list (`OFFICIAL_URL`, the official key alone); when its
+  serial is newer than system/r's, the new one is downloaded beside it (`r.new`, the layers system/r already has linked),
+  checked, and swapped in at once, with `recovery.efi` from that release's `boot.iso`; the old one stays until the new one
+  is complete. Not while in recovery mode, and never from the update address, a beta, or Developer mode's key.
+- **On every stick.** Today a stick's rescue slot is a copy of the stick's own system (`os_rescue`). Instead, whatever the
+  stick's system (this Rudolf OS, an image, the update address, another person's build): its system/r is the official newest
+  stable (this computer's own when it is that, else downloaded and checked as above) and its `recovery.efi` is the official
+  one. A stick is not made without it ("Connect to the internet: a stick always gets the official recovery system").
+- **Another person's build cannot replace it.** Its boot files may bring their own `rudolf.efi`, but `recovery.efi` is
+  always the official one (bootfiles.sh and install.sh keep the official file; the start-up file check of 1.6.0 Part 15
+  reports any other); and its updates never write system/r.
+- Settings › Update and recovery says which official release Recovery mode starts, and when it was last renewed.
+
+**What does not change.** Updates never install across keys. "Return to official" keeps using the official address. "New
+boot files" (Secure Boot) keeps its own image choice, with the official `recovery.efi` beside it.
+
+**Tests.** A host test with two local channels, each signed with its own test key (RUDOLF_TEST_KEYS), over a local https
+server: the check's lines for the trusted channel, the other key's channel, a broken signature, a list whose own base layer
+does not have its key, a missing layer, a missing `/beta`; Save and the beta switch keeping the repository; a stick made in
+QEMU from each channel (the other key's after the warning), started, and its update address the channel it came from; on
+each, Recovery mode starts the official channel's newest release; system/r renewed when the official channel advances,
+and left alone when only the update address or a beta advances.
+
 ## Not moved here
 - **elogind and polkit** (1.6.0 Part 11): left out by decision on 2026-11-15, since Rudolf OS's own inhibit portal and
   prompts cover what apps ask. Taken up again only if an app or a later part needs them.
@@ -649,3 +735,5 @@ bar, their maximize, minimize and close; a Chromium-based browser from Flathub w
 5. The phone's stage 2 (its interface, Wayland, the native apps for touch): docs/plan-2.0.md, "The phone build".
 6. Part 15 (one title bar for apps that draw their own) with Part 14, before Native becomes the default: 2 first (the
    window manager's part), then 1 (the apps' own settings), then 3 (the per-app choice).
+7. Part 16 (each other's builds): 1 and 2 first (the check and the beta switch), then 4's "kept newest", then 3 with 4's
+   sticks (the stick from the address, always with the official recovery system).
