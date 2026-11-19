@@ -4,7 +4,7 @@ The development link lets a developer run things on a Rudolf OS computer from an
 - the developer writes a command;
 - the computer runs it and writes back the result.
 
-This page is the whole protocol, so any agent can use it. The reference client, `iso/systools/devlink.py`, uses only Python's standard library, so it runs anywhere Python 3.8 or later does, including Rudolf OS's Linux terminal (Debian).
+This page is the whole protocol, so any agent can use it. The reference client, `iso/systools/devlink.py`, uses only Python's standard library, so it runs anywhere Python 3.8 or later does. On Rudolf OS the same command line is the `devlink` command (`iso/sys/rudolf-dev.c`).
 
 The program on the computer is `iso/sys/rudolf-devlink.c`. Its first plan is docs/plan-1.4.0.md; the limits came in 1.5.9 (plan 15.4 and 15.7), and the client and this page in 1.6.0 (plan Part 19). It works the same on an official Rudolf OS and on your own build (docs/custom-builds.md).
 
@@ -157,4 +157,6 @@ The client retries when GitHub fails for a moment, never prints the token, and t
 
 ## 8. Your own builds
 
-A fork of Rudolf OS (docs/custom-builds.md, section 7) has the same link, with your own devlink repository; `put --url` takes your build's own releases too. Still to come in 1.6.0 (plan Part 19): Blitzen as a developer's agent through this protocol (Settings › Apps › Blitzen › Developer, once Developer mode is on), with a `devlink` command on Rudolf OS itself.
+A fork of Rudolf OS (docs/custom-builds.md, section 7) has the same link, with your own devlink repository; `put --url` takes your build's own releases too.
+
+Blitzen is a developer's agent through this protocol too, once Developer mode is on (Settings › Apps › Blitzen › Developer; Blitzen Developer's *Test computer*). It sends a command only after you Allow that one command, shown word for word, and the test computer's own Ask first still applies. Its tokens are kept in the account's keyring.

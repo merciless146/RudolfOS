@@ -149,7 +149,7 @@ function blzChatUI(W){
   catch(e){setBusy(false);if(e.name=='AbortError'){stEl.textContent='Stopped.';const t=el.querySelector('.blzbody').textContent;if(t&&t!='…')chat.msgs.push({role:'assistant',content:el.dataset.text||t});else el.remove();return null}
    el.querySelector('.blzbody').innerHTML=`<div class='msg blzerr'>${lxEsc(e.message)}</div>`;stEl.textContent='';return null}
   setBusy(false);const text=o.blocks?'```lua\n'+res.text.trim()+'\n```':res.text;
-  chat.msgs.push({role:'assistant',content:text});drawAnswer(el,text);if(o.know&&typeof blzKnowDraw=='function')blzKnowDraw(el,o.know);blzSaveChat(chat);
+  chat.msgs.push({role:'assistant',content:text});drawAnswer(el,text);if(o.know&&typeof blzKnowDraw=='function')blzKnowDraw(el,o.know);if(typeof blzDevDraw=='function')blzDevDraw(el);blzSaveChat(chat);
   stEl.textContent=res.tokens?`${res.tokens} tokens in ${(res.ms/1000).toFixed(1)} s · ${res.tps?res.tps.toFixed(1):'–'} tokens per second · first word after ${(res.first/1000).toFixed(1)} s`:'';
   BLZ.lastSpeed=res.tps;svj('bd95blzspeed',{tps:res.tps,at:Date.now()});return el}
  /* check the answer's first runnable block; on failure ask for a fix, at most BLZ.retries times */

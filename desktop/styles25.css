@@ -347,6 +347,9 @@ body.emu-borderless #bar{display:none!important}
 .blzst{padding:0 10px 6px;font-size:11px;min-height:14px}
 .blzhl{max-height:180px;overflow:auto;border-bottom:1px solid rgba(127,127,127,.25);padding:6px 8px;display:flex;flex-wrap:wrap;gap:4px}
 .blzctx summary{font-size:11px;opacity:.75;cursor:pointer}.blzctx pre{max-height:140px;overflow:auto;font-size:11px;white-space:pre-wrap}
+/* 1.6.0 (plan Part 19): Blitzen Developer */
+.blzdw{display:flex;flex-direction:column;height:100%;box-sizing:border-box;padding:8px;gap:6px}.blzdtabs{display:flex;gap:4px;align-items:center}.blzdtabs button.on{font-weight:bold}.blzdpane{flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.blzdpre{margin:0;max-height:260px;overflow:auto;white-space:pre;font-size:12px;padding:6px}.blzdallow{max-width:640px}.blzdallow .blzdpre{max-height:300px}.bdimg{max-width:100%;border:1px solid #8888}.bdwhat,.bdcmd,.bdnew{width:100%;box-sizing:border-box;font-family:monospace}
 /* 1.6.0 (plan Part 18): what Blitzen looked up, under its answer; What Blitzen knows */
 .blzk{display:inline-flex;gap:8px;flex-wrap:wrap}.blzsrc{margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:11px}.blzsrch{opacity:.75;margin-right:2px}.blzsrcb{font-size:11px;padding:1px 6px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .blzview{margin:0;height:100%;overflow:auto;white-space:pre;font-size:12px;padding:6px;box-sizing:border-box}.blzsee{padding:8px;overflow:auto;height:100%;box-sizing:border-box}.blzseel{max-height:260px;overflow:auto;margin-top:6px}.blzsee1{display:flex;gap:8px;align-items:center;padding:2px 0;font-size:12px}.blzsee1 span:first-child{opacity:.7;white-space:nowrap}.blzsee1 span:nth-child(2){flex:1}

@@ -58,6 +58,17 @@ EOC
 		ok "9. Saved passwords for apps: the keyring's item named (its label, never the secret)" "$(echo "$o" | grep -q '^{"ok":true,"keyring":true,"items":\[' && [ -n "$id" ] && ! echo "$o" | grep -q token-123 && echo 1)" "$o"
 		o=$($S $T/rp --keyring-forget "$id" 2>&1); l=$($S timeout 10 secret-tool lookup app claude account ann 2>&1)
 		ok "...Remove: gone from the keyring (the app is signed out of it), with no prompt" "$(echo "$o" | grep -q '"ok":true' && [ -z "$l" ] && ! $S $T/rp --keyring-list | grep -q 'Claude sign-in' && echo 1)" "$o / $l"
+		# 1.6.0 (plan Part 19 item 4): Blitzen's developer tokens
+		o=$(echo "github_pat_TESTblitzen0123" | $S timeout 10 $T/rp --keyring-store github "Blitzen: GitHub token for dev/fork" 2>&1); l=$($S timeout 10 $T/rp --keyring-lookup github 2>&1)
+		ok "10. Blitzen's GitHub token kept in the keyring and read back" "$(echo "$o" | grep -q '"ok":true' && [ "$l" = github_pat_TESTblitzen0123 ] && echo 1)" "$o / $l"
+		o=$(echo "github_pat_SECOND" | $S timeout 10 $T/rp --keyring-store github "Blitzen: GitHub token for dev/fork" 2>&1); l=$($S timeout 10 $T/rp --keyring-lookup github 2>&1)
+		n=$($S $T/rp --keyring-list | grep -o '"app":"rudolf-blitzen"' | wc -l)
+		ok "...kept again: replaced (one item), listed as Blitzen's by name, never the secret" "$([ "$l" = github_pat_SECOND ] && [ "$n" = 1 ] && ! $S $T/rp --keyring-list | grep -q 'github_pat' && echo 1)" "$l $n"
+		o=$($S timeout 10 $T/rp --keyring-lookup devlink 2>&1); r=$?
+		ok "...another key: none kept (exit 1)" "$([ $r = 1 ] && echo "$o" | grep -q 'none kept' && echo 1)" "$r $o"
+		o=$($S timeout 10 $T/rp --keyring-clear github 2>&1); l=$($S timeout 10 $T/rp --keyring-lookup github 2>&1); r=$?
+		ok "...cleared" "$(echo "$o" | grep -q '"ok":true' && [ $r = 1 ] && echo 1)" "$o / $l"
+		o=$($S $T/rp --keyring-lookup ../x 2>&1); ok "...only the keys github and devlink" "$([ $? = 2 ] && echo 1)" "$o"
 	else echo "SKIP 9: no GLib headers to build rudolf-portal"; fi
 	if [ "$(id -u)" = 0 ] && command -v setpriv >/dev/null; then chmod 755 $T; o=$(setpriv --reuid=65534 --regid=65534 --clear-groups cat $H/.local/share/keyrings/login.keyring 2>&1); r=$?
 		ok "8. another user cannot read it" "$([ $r != 0 ] && echo 1)" "$o"; fi

@@ -21,6 +21,7 @@
  * 1.6.0 (docs/plan-1.6.0.md Part 14): also, run by rudolfd as the signed-in account's user for Settings › Privacy ›
  * Saved passwords for apps:  rudolf-portal --keyring-list  (JSON: what the account's keyring and its Flatpak apps'
  * secrets hold, names only, never a secret) and  rudolf-portal --keyring-forget ID  (one of them removed).
+ * Blitzen's developer tokens (1.6.0, Part 19):  --keyring-store KEY LABEL (stdin), --keyring-lookup KEY, --keyring-clear KEY.
  * Copyright (C) 2026 the Rudolf OS authors. SPDX-License-Identifier: GPL-2.0-or-later */
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
@@ -631,6 +632,79 @@ static int keyring_forget(const char *id)
 	puts("{\"ok\":true}"); return 0;
 }
 
+/* ---------------- 1.6.0 (docs/plan-1.6.0.md Part 19 item 4): Blitzen's developer tokens in the account's keyring.
+   rudolf-portal --keyring-store KEY LABEL   (the secret on standard input, one line)   keeps it, replacing one there
+   rudolf-portal --keyring-lookup KEY        prints it (exit 1: none)
+   rudolf-portal --keyring-clear KEY         removes it
+   KEY: github or devlink. Attributes application=rudolf-blitzen, key=KEY (Settings › Privacy › Saved passwords for apps
+   lists them as Blitzen's). The Secret Service's plain session: the secret goes over the account's own session bus only. */
+static int blz_key_ok(const char *k) { return k && (!strcmp(k, "github") || !strcmp(k, "devlink")); }
+static GVariant *blz_attrs(const char *k)
+{
+	GVariantBuilder a; g_variant_builder_init(&a, G_VARIANT_TYPE("a{ss}"));
+	g_variant_builder_add(&a, "{ss}", "application", "rudolf-blitzen"); g_variant_builder_add(&a, "{ss}", "key", k); return g_variant_builder_end(&a);
+}
+static const char *blz_session(GDBusConnection *b, char *out, size_t n)
+{
+	GVariant *r = g_dbus_connection_call_sync(b, SS, "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "OpenSession",
+		g_variant_new("(sv)", "plain", g_variant_new_string("")), G_VARIANT_TYPE("(vo)"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, NULL);
+	if (!r) return NULL;
+	GVariant *v; const char *o; g_variant_get(r, "(v&o)", &v, &o); snprintf(out, n, "%s", o); g_variant_unref(v); g_variant_unref(r); return out;
+}
+static int keyring_blz(const char *op, const char *k, const char *label)
+{
+	if (!blz_key_ok(k)) { fprintf(stderr, "KEY: github or devlink\n"); return 2; }
+	GDBusConnection *b = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL); if (!b) { fprintf(stderr, "no session bus\n"); return 1; }
+	GError *e = NULL;
+	/* what is there now */
+	GVariant *sr = g_dbus_connection_call_sync(b, SS, "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "SearchItems",
+		g_variant_new("(@a{ss})", blz_attrs(k)), G_VARIANT_TYPE("(aoao)"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, &e);
+	if (!sr) { fprintf(stderr, "the keyring: %s\n", e ? e->message : "no answer"); return 1; }
+	GVariant *un, *lk; g_variant_get(sr, "(@ao@ao)", &un, &lk); g_variant_unref(sr);
+	int rc = 1;
+	if (!strcmp(op, "lookup")) {
+		char ses[300]; gsize nu = g_variant_n_children(un);
+		if (!nu) { fprintf(stderr, g_variant_n_children(lk) ? "the keyring is locked\n" : "none kept\n"); goto out; }
+		if (!blz_session(b, ses, sizeof ses)) { fprintf(stderr, "no session with the keyring\n"); goto out; }
+		GVariant *gs = g_dbus_connection_call_sync(b, SS, "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "GetSecrets",
+			g_variant_new("(@aoo)", un, ses), G_VARIANT_TYPE("(a{o(oayays)})"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, &e); un = NULL;
+		if (!gs) { fprintf(stderr, "%s\n", e ? e->message : "no secret"); goto out; }
+		GVariant *m; g_variant_get(gs, "(@a{o(oayays)})", &m); GVariantIter it; const char *ip; GVariant *sec;
+		g_variant_iter_init(&it, m);
+		if (g_variant_iter_next(&it, "{&o@(oayays)}", &ip, &sec)) {
+			GVariant *val = g_variant_get_child_value(sec, 2); gsize n; const char *d = g_variant_get_fixed_array(val, &n, 1);
+			fwrite(d, 1, n, stdout); fputc('\n', stdout); rc = 0; g_variant_unref(val); g_variant_unref(sec); }
+		g_variant_unref(m); g_variant_unref(gs); goto out;
+	}
+	if (!strcmp(op, "clear")) {
+		GVariantIter it; const char *ip; rc = 0; g_variant_iter_init(&it, un);
+		while (g_variant_iter_next(&it, "&o", &ip)) { GVariant *r = g_dbus_connection_call_sync(b, SS, ip, "org.freedesktop.Secret.Item", "Delete", NULL, G_VARIANT_TYPE("(o)"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, NULL); if (r) g_variant_unref(r); else rc = 1; }
+		if (!rc) puts("{\"ok\":true}");
+		goto out;
+	}
+	/* store: the default keyring (the login keyring, unlocked at sign-in) */
+	char line[4096]; if (!fgets(line, sizeof line, stdin)) { fprintf(stderr, "give the secret on standard input\n"); rc = 2; goto out; }
+	line[strcspn(line, "\r\n")] = 0; if (!*line) { fprintf(stderr, "an empty secret\n"); rc = 2; goto out; }
+	char ses[300]; if (!blz_session(b, ses, sizeof ses)) { fprintf(stderr, "no session with the keyring\n"); goto out; }
+	GVariant *al = g_dbus_connection_call_sync(b, SS, "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "ReadAlias", g_variant_new("(s)", "default"), G_VARIANT_TYPE("(o)"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, &e);
+	if (!al) { fprintf(stderr, "%s\n", e ? e->message : "no default keyring"); goto out; }
+	const char *col; g_variant_get(al, "(&o)", &col); if (!strcmp(col, "/")) { fprintf(stderr, "no default keyring\n"); g_variant_unref(al); goto out; }
+	GVariantBuilder pr; g_variant_builder_init(&pr, G_VARIANT_TYPE("a{sv}"));
+	g_variant_builder_add(&pr, "{sv}", "org.freedesktop.Secret.Item.Label", g_variant_new_string(label && *label ? label : "Blitzen"));
+	g_variant_builder_add(&pr, "{sv}", "org.freedesktop.Secret.Item.Attributes", blz_attrs(k));
+	GVariant *secret = g_variant_new("(o@ay@ays)", ses, g_variant_new_fixed_array(G_VARIANT_TYPE_BYTE, "", 0, 1),
+		g_variant_new_fixed_array(G_VARIANT_TYPE_BYTE, line, strlen(line), 1), "text/plain");
+	GVariant *cr = g_dbus_connection_call_sync(b, SS, col, "org.freedesktop.Secret.Collection", "CreateItem", g_variant_new("(a{sv}@(oayays)b)", &pr, secret, TRUE),
+		G_VARIANT_TYPE("(oo)"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, &e);
+	explicit_bzero(line, sizeof line); g_variant_unref(al);
+	if (!cr) { fprintf(stderr, "%s\n", e ? e->message : "not kept"); goto out; }
+	const char *it2, *prm; g_variant_get(cr, "(&o&o)", &it2, &prm);
+	if (strcmp(prm, "/")) fprintf(stderr, "the keyring asks for a prompt to keep it\n"); else { puts("{\"ok\":true}"); rc = 0; }
+	g_variant_unref(cr);
+out:
+	if (un) g_variant_unref(un);
+	g_variant_unref(lk); if (e) g_error_free(e); return rc;
+}
 /* ---------------- 1.6.0 (docs/plan-1.6.0.md Part 14, third step): the keyring's prompts. gnome-keyring-daemon asks
    gcr's prompter (org.gnome.keyring.SystemPrompter on the session bus) when an app creates a keyring or needs one
    unlocked; Rudolf OS has no gcr-prompter (a GNOME window), so this portal answers in its place, with gcr's protocol
@@ -934,6 +1008,9 @@ int main(int argc, char **argv)
 {
 	if (argc > 1 && !strcmp(argv[1], "--keyring-list")) return keyring_list();
 	if (argc > 2 && !strcmp(argv[1], "--keyring-forget")) return keyring_forget(argv[2]);
+	if (argc > 2 && !strcmp(argv[1], "--keyring-lookup")) return keyring_blz("lookup", argv[2], NULL);
+	if (argc > 2 && !strcmp(argv[1], "--keyring-clear")) return keyring_blz("clear", argv[2], NULL);
+	if (argc > 3 && !strcmp(argv[1], "--keyring-store")) return keyring_blz("store", argv[2], argv[3]);
 	if (argc > 1 && !strcmp(argv[1], "--sx-test")) return sx_test();
 	GError *e = NULL;
 	g_mkdir_with_parents(DIR_ "/req", 0755); g_mkdir_with_parents(DIR_ "/resp", 0755);
