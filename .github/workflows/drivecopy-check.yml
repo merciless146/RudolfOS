@@ -1,5 +1,5 @@
 # Copy to another drive (1.6.0, 2026-11-19): drivecopy.sh on small test drives, with GNU tools and with BusyBox's (as
-# Rudolf OS has them), and File Explorer's dialog with a stand-in rudolfd in the beta's Chromium.
+# Rudolf OS has them), and File Explorer's dialog with a stand-in rudolfd in Playwright's Chromium.
 name: Drive copy check
 on:
   workflow_dispatch:
@@ -25,14 +25,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
-      - name: The beta's Chromium
-        env: {GH_TOKEN: '${{ github.token }}'}
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools >/dev/null
-          git fetch -q --depth 1 origin gh-pages
-          S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
-          mkdir -p rel && gh release download "r$S" -D rel -p chromium.sfs
-          sudo unsquashfs -q -n -d rel/c rel/chromium.sfs opt/chromium && sudo chown -R $USER rel
-          npm i -s --no-save playwright@1.63.0 >/dev/null
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
       - name: Copy to another drive in File Explorer
-        run: node iso/qt/shell2/drivecopy60_t.js $PWD/rel/c/opt/chromium/chrome
+        run: node iso/qt/shell2/drivecopy60_t.js

@@ -1,5 +1,5 @@
 # The Rudolf sounds (1.6.0, the owner's start-up chime and desktop sounds, 2026-11-19).
-#   page:   this tree's desktop page in the beta's own Chromium: Volume Controls' 18 categories and styles, "Use one style
+#   page:   this tree's desktop page in Playwright's Chromium: Volume Controls' 18 categories and styles, "Use one style
 #           everywhere", the Rudolf sounds rendered, where the new ones play (iso/qt/shell2/sounds60_t.js), and the older
 #           orchestral cues as before (sound58_t.js).
 #   native: the page's renderer and the native desktop's (rsynth.h) make the same samples (rsynth60_t.sh), and the native
@@ -28,16 +28,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - name: The beta's Chromium
-        env: {GH_TOKEN: '${{ github.token }}'}
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools >/dev/null
-          git fetch -q --depth 1 origin gh-pages
-          S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
-          mkdir -p rel && gh release download "r$S" -D rel -p chromium.sfs
-          sudo unsquashfs -q -n -d rel/c rel/chromium.sfs opt/chromium && sudo chown -R $USER rel; rel/c/opt/chromium/chrome --version
-          npm i -s --no-save playwright@1.63.0 >/dev/null
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
       - name: The Rudolf sounds in Volume Controls
-        run: node iso/qt/shell2/sounds60_t.js $PWD/rel/c/opt/chromium/chrome
+        run: node iso/qt/shell2/sounds60_t.js
       - name: The orchestral cues, as before
-        run: node iso/qt/shell2/sound58_t.js $PWD/rel/c/opt/chromium/chrome
+        run: node iso/qt/shell2/sound58_t.js
