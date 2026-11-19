@@ -23,7 +23,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
       if (q.pathname == '/api/mount') return J({});
       if (q.pathname == '/api/umount') return J({});
       if (q.pathname == '/api/fs/xcopy') { T.bodies.push(o.body); T.job = {n: 0}; return J({message: 'started'}) }
-      if (q.pathname == '/api/fs/list') return J({items: [{name: 'Users', dir: true, size: 0, mtime: 0}, {name: 'Windows', dir: true, size: 0, mtime: 0}]});
+      if (q.pathname == '/api/fs/list') return J({items: [{name: 'Users', dir: true, size: 0, mtime: 0}, {name: 'Windows', dir: true, size: 0, mtime: 0}, {name: 'IMG_2041.JPG', dir: false, size: 0, mtime: 0, bad: 'unreadable'}, {name: 'My Music', dir: true, size: 0, mtime: 0, bad: 'link'}]});
       if (q.pathname == '/api/job') { const j = T.job; if (!j) return J({name: '', running: false, status: 0, log: ''}); j.n++;
         const head = 'Counting what to copy…\n1200 files, 30.0 GB, to copy into /media/sdc1/x (64.0 GB free there).\n';
         if (j.n < 3) return J({name: 'drive-copy', running: true, status: -1, log: head + 'PROGRESS 300 1200 7500000000 30000000000\n  Users/Grandpa/Pictures/IMG_1.JPG\n'});
@@ -59,6 +59,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("explorer(homePath());const W=wins.at(-1);W.openRemote({dev:'sda2',root:'/media/sda2',path:'/media/sda2',label:'sda2 (464.3 GB)'})"); await wait(800);
   const has = await q("(()=>{const b=[...document.querySelectorAll('.xrb button')].find(x=>/Copy to another drive/.test(x.textContent));if(b)b.click();return !!b})()"); await wait(500);
   d = await D(); ok('a drive\'s toolbar: Copy to another drive…, the folder open when nothing is selected', has && d && /^sda2 \(copied/.test(d.name), {has, d});
+  const rows = await q("[...document.querySelectorAll('.xrb ~ table tr[data-k]')].map(r=>r.textContent)");
+  ok('what cannot be read is listed, said so (OneDrive online-only), a link marked', rows.some(r => /IMG_2041\.JPG — can’t be read here \(online-only OneDrive/.test(r)) && rows.some(r => /My Music — a link \(not followed\)/.test(r)), rows);
   ok('no page error', !errs.length, errs);
   await b.close(); srv.close(); const n = R.filter(Boolean).length; console.log(`${n}/${R.length} passed`); process.exit(n == R.length ? 0 : 1);
 })().catch(e => { console.error(e); process.exit(1) });
