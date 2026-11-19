@@ -8,7 +8,12 @@ async function sysuStatus(){if(!RD)return null;try{SYSU=await rd('sys/status')}c
 async function sysuJob(what,onLine,body){await(body?rd('sys/'+what,{method:'POST',body}):rdPost('sys/'+what));let seen=0;
  for(;;){await new Promise(r=>setTimeout(r,700));const j=await rd('job');const ls=(j.log||'').split('\n');
   if(onLine)for(;seen<ls.length-1;seen++)onLine(ls[seen]);if(!j.running){if(onLine&&ls[seen])onLine(ls[seen]);await sysuStatus();return j.status}}}
-const sysuWhen=t=>{if(!t)return'never';const d=new Date(t*1000),n=new Date();return(d.toDateString()==n.toDateString()?'today':d.toLocaleDateString())+' at '+d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})};
+/* (2026-11-19, the Vivobook: "checked today at 7:33 PM" at 1:33 PM in Chicago) in the desktop's time zone (Display Properties,
+   S.tz), as the taskbar's clock: the page itself runs in the system's, UTC */
+const sysuWhen=t=>{if(!t)return'never';const d=new Date(t*1000),z=typeof S=='object'&&S.tz?{timeZone:S.tz}:{};let same,day,tm;
+ try{const f=x=>x.toLocaleDateString('en-CA',z);same=f(d)==f(new Date());day=d.toLocaleDateString([],z);tm=d.toLocaleTimeString([],Object.assign({hour:'numeric',minute:'2-digit'},z))}
+ catch(e){same=d.toDateString()==new Date().toDateString();day=d.toLocaleDateString();tm=d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}
+ return(same?'today':day)+' at '+tm};
 function sysuRestart(){if(!(SW&&wins.includes(SW))){settings('upd');return setTimeout(sysuRestart,400)}sdlg(SW,'Restart to finish the update','Rudolf OS restarts now and starts the updated system. Save your work first.',[['Later'],['Restart now',()=>rdPost('power?action=reboot').catch(e=>notify('Restart',e.message,{kind:'error'})),1]])}
 /* ---------- Settings > Update and recovery ---------- */
 {const _up=updPanel;updPanel=function(c){_up(c);if(!RD)return;const x=c.querySelector('.updx');if(!x)return;
