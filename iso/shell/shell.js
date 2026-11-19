@@ -114,6 +114,7 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
    shell -> desktop {rudolfShell: 'tabev', tid, ev, ...}
      nav {url, back, fwd}       the page's address changed (also inside the page); back/fwd: its own history
      load {loading}             title {title}       focus       close (the page closed itself)
+     progress {p}               how far the page has loaded, 0..1 (1.6.0: Oracle's loading line)
      keys {k}                   a shortcut pressed inside the page: ct cw cn cl cr f5 back fwd z+ z- z0 ntab ptab af4 cpn (Ctrl+Shift+N)
                                 (Ctrl+W, T, N, Q arrive as Ctrl+F20..F23, Alt+F4 as Alt+F20: see rudolf-display's desk_key; af4 closes the window)
      newwin {url, ntid, popup}  the page opened a window: a new tab ntid already holds it (opener kept)
@@ -186,6 +187,8 @@ function tabEvents(t) {
     toTab(t.tid, 'load', {loading: true});
   });
   f.addEventListener('loadstop', () => { toTab(t.tid, 'load', {loading: false}); navState() });
+  /* 1.6.0: how far the page has loaded (0..1), for Oracle's loading line (oload60.js) */
+  f.addEventListener('loadprogress', e => { if (e.isTopLevel !== false) toTab(t.tid, 'progress', {p: Math.max(0, Math.min(1, +e.progress || 0))}) });
   f.addEventListener('loadabort', e => {
     if (e.isTopLevel === false || /ERR_ABORTED|ERR_BLOCKED_BY_CLIENT/.test(String(e.reason))) return;   // stopped by the person, or by the firewall (reported already)
     toTab(t.tid, 'load', {loading: false, error: String(e.reason || ''), url: e.url});
