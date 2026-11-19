@@ -786,7 +786,12 @@ static void api_fs(struct req *r, const char *op)
 			char fp[2200];
 			struct stat st;
 			snprintf(fp, sizeof fp, "%s/%s", path, e->d_name);
-			if (stat(fp, &st)) continue;
+			/* (2026-11-19, a grandfather's old HP: his OneDrive folder showed only desktop.ini) what cannot be read is listed
+			   too, not left out: a Windows link that leads off the drive ("link"), or an entry the drive's file system cannot
+			   open, such as a OneDrive file kept online only ("unreadable") */
+			if (stat(fp, &st)) { int ln = !lstat(fp, &st) && S_ISLNK(st.st_mode);
+				sadd(&s, "%s{\"name\":", first ? "" : ","); sjson(&s, e->d_name);
+				sadd(&s, ",\"dir\":%s,\"size\":0,\"mtime\":0,\"bad\":\"%s\"}", e->d_type == DT_DIR ? "true" : "false", ln ? "link" : "unreadable"); first = 0; continue; }
 			sadd(&s, "%s{\"name\":", first ? "" : ","); sjson(&s, e->d_name);
 			sadd(&s, ",\"dir\":%s,\"size\":%lld,\"mtime\":%lld}", S_ISDIR(st.st_mode) ? "true" : "false", (long long)st.st_size, (long long)st.st_mtime * 1000);
 			first = 0;
