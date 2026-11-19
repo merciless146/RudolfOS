@@ -35,8 +35,10 @@ sed -n '3,$p' "$LIST" | while IFS= read -r S; do
 	[ -d "$S" ] || { echo "Not found: $S"; continue; }
 	set --
 	if [ "$PERS" = 1 ]; then for d in $PF; do set -- "$@" -o -iname "$d"; done; shift; set -- \( -type d \( "$@" \) -prune \) -o; fi
-	( cd "$P" && find "./$N" "$@" -type f -print ) | sed 's#^\./##' | while IFS= read -r F; do printf '%s\t%s\n' "$P" "$F"; done >> "$W/list"
+	( cd "$P" && find "./$N" "$@" -type f -print 2>>"$W/unread" ) | sed 's#^\./##' | while IFS= read -r F; do printf '%s\t%s\n' "$P" "$F"; done >> "$W/list"
 done
+# what find could not open (a OneDrive file kept online only, a damaged entry): said, not copied
+UNR=$(grep -c . "$W/unread" 2>/dev/null || echo 0)
 if [ "$PERS" = 1 ]; then
 	RX=$(for x in $PX; do printf '|%s' "$x"; done); RX="\\.(${RX#|})\$"
 	grep -viE "$RX" "$W/list" | grep -viE '(^|/)(hiberfil|pagefile|swapfile|thumbs|desktop\.ini|ntuser)[^/]*$' > "$W/l2"; mv "$W/l2" "$W/list"
@@ -76,6 +78,7 @@ echo "PROGRESS $DN $TN $DB $TB"
 sync
 if [ -s "$W/big" ]; then echo "Left out, over 4 GB (the drive is FAT32, which cannot hold them; an exFAT or NTFS drive can):"; sed 's/^/  /' "$W/big"; fi
 if [ -s "$W/failed" ]; then echo "$NF files could not be read (left out):"; head -50 "$W/failed" | sed 's/^/  /'; fi
+if [ "${UNR:-0}" -gt 0 ]; then echo "$UNR entries could not be opened on the drive and were left out: OneDrive files kept online only (their contents are in the Microsoft account, onedrive.live.com), or damaged ones:"; head -20 "$W/unread" | sed 's/^find: /  /'; fi
 if [ "$FULL" = 1 ]; then
 	echo "The drive is full: $DN of $TN files ($(hb $DB) of $(hb $TB)) are on it."
 	echo "Safely remove it, plug in another drive, and choose Copy to another drive again with the same selection and \"Continue from the last drive\": it copies the rest."
