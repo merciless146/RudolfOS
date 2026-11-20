@@ -41,7 +41,7 @@ ${st.failed?`<div class='msg warn'>The update in slot ${pkgEsc(st.failed.toUpper
 <label class='ck'><input type='checkbox' class='uauto'${s.auto?' checked':''}${adm?'':' disabled'}> Download security updates automatically</label>
 <label class='ck'><input type='checkbox' class='ubeta'${s.beta?' checked':''}${adm&&!s.developer?'':' disabled'}> Get beta versions</label>
 <p class='msg ubetamsg'>${s.beta?'This computer gets beta versions: early releases for testing, which can have problems. Turn this off to go back to the latest stable release at the next update.':s.toStable?'Beta versions are off: the next update brings the latest stable release.':'Beta versions are early releases for testing. Turning them on needs an administrator\'s name and password.'}</p>
-<details class='uadv'><summary>Update address</summary><div class='rmrow' style='justify-content:flex-start'><input class='uurl' value='${pkgEsc(s.url)}' placeholder='https://…/stable' style='flex:1'${adm?'':' disabled'}><button class='usave'${adm?'':' disabled'}>Save</button></div><p class='msg'>Releases must be signed by a key this computer trusts; others are refused.</p></details>
+${s.recoveryVersion?`<p class='msg'>Recovery mode (in the start-up menu) starts the official Rudolf OS ${pkgEsc(s.recoveryVersion)}, the newest official stable release when it was last renewed${s.recoveryAt?' ('+new Date(s.recoveryAt*1000).toLocaleDateString()+')':''}. It is kept up to date from the official address, whatever the update address.</p>`:''}<details class='uadv'><summary>Update address</summary><div class='rmrow' style='justify-content:flex-start'><input class='uurl' value='${pkgEsc(s.url)}' placeholder='https://…/stable' style='flex:1'${adm?'':' disabled'}><button class='uchk'>Check this address</button><button class='usave'${adm?'':' disabled'}>Save</button></div><div class='uck'></div><p class='msg'>Releases must be signed by a key this computer trusts; others are refused.</p></details>
 <pre class='jl ulog' hidden></pre>`;
   const q=s=>box.querySelector(s),log=q('.ulog');
   box.querySelectorAll('button').forEach(b=>b.disabled=busy||b.disabled);
@@ -59,7 +59,23 @@ ${st.failed?`<div class='msg warn'>The update in slot ${pkgEsc(st.failed.toUpper
     try{await rd('sys/beta?on=1',{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p})});notify('Updates','Beta versions are on. Checking for updates…');job('check')}catch(er){e.target.checked=false;notify('Updates',er.message,{kind:'error'});draw()}return}
    if(!await elevate('Stop getting beta versions of Rudolf OS')){e.target.checked=true;return}
    try{await rdPost('sys/beta?on=0');notify('Updates','Beta versions are off: the next update brings the latest stable release. Checking for updates…');job('check')}catch(er){e.target.checked=true;notify('Updates',er.message,{kind:'error'});draw()}};
-  q('.usave').onclick=async()=>{const v=q('.uurl').value.trim();if(v&&!/^https?:\/\//.test(v))return notify('Updates','The address starts with https://',{kind:'error'});if(!await elevate('Change where Rudolf OS gets updates'))return;try{await rdPost('sys/set?k=url&v='+encodeURIComponent(v));notify('Updates','Saved. Checking for updates…');job('check')}catch(e){notify('Updates',e.message,{kind:'error'})}}};
+  /* 1.6.0 (plan-1.6.1 Part 16, moved to 1.6.0): Check this address (rudolf-update check-url): whether it answers, its
+     release list, whose key signed it (this computer's: updates install; another build's: only a USB stick), its files,
+     its other channel. Save checks it first, and asks before an address whose updates would not install here; the
+     address is an administrator's (rudolfd checks the name and password) */
+  const uAsk=t=>new Promise(res=>{const o=document.createElement('div');o.className='rmodal';o.innerHTML="<div class='rmbox' role='dialog' aria-modal='true' style='max-width:520px'><p class='msg'></p><div class='rmrow'><button class='n'>Cancel</button><button class='pri y'>Save it</button></div></div>";
+   o.querySelector('p').textContent=t;const done=v=>{o.remove();res(v)};o.querySelector('.n').onclick=()=>done(false);o.querySelector('.y').onclick=()=>done(true);document.body.appendChild(o);o.querySelector('.n').focus()});
+  const uck=async v=>{const box=q('.uck');box.textContent='Checking '+v+' …';try{const r=await rd('sys/urlcheck?url='+encodeURIComponent(v));
+    box.textContent='';for(const [lv,t] of r.lines||[]){const d=document.createElement('div');d.className='msg';d.textContent=(lv=='ok'?'✅ ':lv=='warn'?'⚠️ ':'❌ ')+t;box.appendChild(d)}
+    if(r.fpr){const d=document.createElement('div');d.className='msg';d.textContent='Key: '+r.fpr+(r.key=='official'?' (the official Rudolf OS key)':r.key=='developer'?' (Developer mode)':' (another build)');box.appendChild(d)}return r}
+   catch(e){box.textContent='❌ '+e.message;return null}};
+  q('.uchk').onclick=()=>{const v=q('.uurl').value.trim();if(!/^https:\/\//.test(v))return notify('Updates','The address starts with https://',{kind:'error'});uck(v)};
+  q('.usave').onclick=async()=>{const v=q('.uurl').value.trim();if(v&&!/^https:\/\//.test(v))return notify('Updates','The address starts with https://',{kind:'error'});
+   if(v){const r=await uck(v);if(!r)return;
+    if(r.key=='other'&&!await uAsk('This address is another build of Rudolf OS (key '+r.fpr+'). Its updates do not install on this computer, so updates will stop here until the address is changed back. You can still make a USB stick from it. Save it anyway?'))return;
+    if(r.key=='none'&&!await uAsk('This address is not set up for this computer (see the lines above). Save it anyway?'))return}
+   const cr=await elevate('Change where Rudolf OS gets updates',{cred:true});if(!cr)return;
+   try{await rd('sys/set?k=url&v='+encodeURIComponent(v),{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p})});notify('Updates','Saved. Checking for updates…');job('check')}catch(e){notify('Updates',e.message,{kind:'error'})}}};
  draw()}}
 /* ---------- 1.6.0 (the owner, 2026-11-16): Roll back to last stable version ----------
    Shown only when Get beta versions is on, or when this system is not a release the update server lists as published

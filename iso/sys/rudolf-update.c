@@ -54,7 +54,8 @@ static char SYSD[256] = "/persist/os/system", MEDIA[256] = "/live/media", CONFP[
 static char KEYF[256] = "/etc/rudolf/rpk-keys", SLOTF[256] = "/etc/rudolf/slot";
 
 static void die(const char *f, ...) { va_list a; va_start(a, f); fputs("rudolf-update: ", stderr); vfprintf(stderr, f, a); fputc('\n', stderr); va_end(a); exit(1); }
-static void say(const char *f, ...) { va_list a; va_start(a, f); vprintf(f, a); putchar('\n'); fflush(stdout); va_end(a); }
+static int NOSAY;   /* (1.6.0: check-url prints JSON only) */
+static void say(const char *f, ...) { if (NOSAY) return; va_list a; va_start(a, f); vprintf(f, a); putchar('\n'); fflush(stdout); va_end(a); }
 static char *slurp(const char *path, size_t *len)
 {
 	int f = open(path, O_RDONLY | O_CLOEXEC); if (f < 0) return NULL;
@@ -412,7 +413,18 @@ static void eff_url(kv_t *cf, char *o, size_t n)
 	if (!*o) { char *d = slurp("/etc/rudolf/update-url", NULL); if (d) { snprintf(o, n, "%s", d); char *nl = strchr(o, '\n'); if (nl) *nl = 0; free(d); } }
 	size_t l = strlen(o); while (l && o[l - 1] == '/') o[--l] = 0;
 }
-static int on_beta(kv_t *cf) { char u[300]; eff_url(cf, u, sizeof u); return !strcmp(u, off_url(1)); }
+/* 1.6.0 (plan-1.6.1 Part 16, moved to 1.6.0): the channel is the end of the address that is set, whatever repository:
+   …/beta is the betas, …/stable the stable releases; Get beta versions switches between the two of the same repository */
+static int ends_with(const char *s, const char *e) { size_t a = strlen(s), b = strlen(e); return a >= b && !strcmp(s + a - b, e); }
+static int on_beta(kv_t *cf) { char u[300]; eff_url(cf, u, sizeof u); return ends_with(u, "/beta") || !strcmp(u, off_url(1)); }
+/* the set address's other channel into o (1), or the address as it is (0: it ends in neither) */
+static int chan_url(const char *u, int beta, char *o, size_t n)
+{
+	size_t l = strlen(u);
+	if (ends_with(u, "/beta")) { snprintf(o, n, "%.*s/%s", (int)(l - 5), u, beta ? "beta" : "stable"); return 1; }
+	if (ends_with(u, "/stable")) { snprintf(o, n, "%.*s/%s", (int)(l - 7), u, beta ? "beta" : "stable"); return 1; }
+	snprintf(o, n, "%s", u); return 0;
+}
 /* whether a release (its serial) is the one to install: newer, or (leaving the betas) the stable one, whatever its number */
 static int wanted(long long serial, long long cur)
 {
@@ -471,6 +483,7 @@ static void notes_for(const man_t *m, void (*each)(const char *))
 	for (size_t i = 0; i < sizeof NOTUSED / sizeof *NOTUSED; i++) if (ver_cmp(m->version, NOTUSED[i].a, NOTUSED[i].b, NOTUSED[i].c) < 0) each(NOTUSED[i].what);
 }
 static int COMPAT_GATE;   /* (to-stable: the release downloaded must read this computer's data) */
+static void detach(char *const argv[], const char *log);
 static void stable_fetch(void);
 static int cmd_check(int quiet)
 {
@@ -481,6 +494,12 @@ static int cmd_check(int quiet)
 	snprintf(mp, sizeof mp, "%s/available.txt.dl", SYSD); snprintf(sp, sizeof sp, "%s/available.sig.dl", SYSD);
 	if (!quiet) say("Checking %s", url);
 	stable_fetch();   /* (1.6.0: the last stable release, for Roll back to the last stable version) */
+	/* 1.6.0 (Part 16): Recovery mode always the official newest stable: at most once a day, on its own (detached), the
+	   official stable address looked at and a newer release downloaded for it; never in recovery mode, never on a disc */
+	if (!recovery_start() && !getenv("RU_NOAUTOFETCH") && media_permanent()) {
+		char ts[320]; snprintf(ts, sizeof ts, "%s/r.looked", SYSD); char *lt = slurp(ts, NULL); long long last = lt ? atoll(lt) : 0; free(lt); time_t nw = time(NULL);
+		if (nw - last > 20 * 3600) { char nb[32]; snprintf(nb, sizeof nb, "%lld\n", (long long)nw); write_file(ts, nb);
+			char self[300]; ssize_t n = readlink("/proc/self/exe", self, sizeof self - 1); if (n > 0) { self[n] = 0; char *a2[] = {self, "recovery-fetch", NULL}; detach(a2, "/run/rudolf/recovery-fetch.log"); } } }
 	if (http_to_file(mu, mp) || http_to_file(su, sp)) { say("Could not reach the update server."); return 3; }
 	size_t ml, sl; char *t = slurp(mp, &ml), *g = slurp(sp, &sl);
 	if (!t || !g || sl != 64 || !verify((unsigned char *)t, ml, (unsigned char *)g)) { say("Refused: the release list is not signed by a trusted key."); free(t); free(g); return 4; }
@@ -667,7 +686,10 @@ static void recovery_check(const char *bs)
 static int cmd_recovery_fetch(void)
 {
 	if (recovery_start()) { say("Not while in recovery mode."); return 1; }
-	if (recovery_ok(0)) { say("The official recovery system is already on this computer."); return 0; }
+	/* 1.6.0 (plan-1.6.1 Part 16, moved to 1.6.0, the owner: "Recovery Mode boot is always locked to the official build's
+	   most recent stable version"): one already here is replaced when the official stable address has a newer release */
+	int have = recovery_ok(0); long long rser = 0;
+	if (have) { char rr[400]; snprintf(rr, sizeof rr, "%s/r/RELEASE", SYSD); kv_t r0; kv_read(rr, &r0, ' '); rser = atoll(kv(&r0, "serial")); }
 	if (lockf_()) die("another update is running");
 	const char *url = getenv("RU_OFFICIAL_URL") ? getenv("RU_OFFICIAL_URL") : OFFICIAL_URL;
 	char rp[300], tn[310], mu[400], su[400], mp[420], sp[420]; snprintf(rp, sizeof rp, "%s/r", SYSD); snprintf(tn, sizeof tn, "%s.new", rp);
@@ -680,13 +702,18 @@ static int cmd_recovery_fetch(void)
 	int ok = mt && sg && sl == 64 && official(verify((unsigned char *)mt, ml, (unsigned char *)sg)); free(sg);
 	man_t m; char *cp = mt ? strdup(mt) : NULL; if (ok && parse_manifest(cp, &m)) ok = 0;
 	if (!ok) { free(mt); free(cp); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } say("Refused: the release list there is not signed by the official Rudolf OS key."); return 4; }
+	if (have && m.serial <= rser) { free(mt); free(cp); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } say("The official recovery system is the newest official stable release (%lld).", rser); return 0; }
+	if (have) say("A newer official stable release (%lld) than the recovery system's (%lld): it is downloaded beside it, and replaces it when complete.", m.serial, rser);
 	long long need = 0; for (int i = 0; i < m.nl; i++) need += m.L[i].size;
 	struct statvfs v; if (!statvfs(SYSD, &v) && (long long)v.f_bavail * v.f_frsize < need) { free(mt); free(cp); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } die("not enough free space on RUDOLFDATA (about %lld MB needed)", need / 1048576); }
 	for (int i = 0; i < NL; i++) {
-		lay_t *y = mlayer(&m, LAYERS[i]); char out[420], hex[65], fu[500], c3[3][300]; int done = 0;
+		lay_t *y = mlayer(&m, LAYERS[i]); char out[420], hex[65], fu[500], c3[5][300]; int done = 0;
 		snprintf(out, sizeof out, "%s/%s%s", tn, y->name, strcmp(y->name, "vmlinuz") ? ".sfs" : "");
 		layer_path("a", y->name, c3[0], 300); layer_path("b", y->name, c3[1], 300); layer_path("disc", y->name, c3[2], 300);
-		for (int c = 0; c < 3 && !done; c++) { struct stat s; if (stat(c3[c], &s) || s.st_size != y->size || sha256_file(c3[c], hex) || strcmp(hex, y->sha)) continue;
+		/* (1.6.0: the recovery system there now, and RU_RECOVERY_SEED's, this computer's, when it is made for a stick) */
+		snprintf(c3[3], 300, "%s/r/%s%s", SYSD, y->name, strcmp(y->name, "vmlinuz") ? ".sfs" : "");
+		snprintf(c3[4], 300, "%s/%s%s", getenv("RU_RECOVERY_SEED") ? getenv("RU_RECOVERY_SEED") : "/nonexistent", y->name, strcmp(y->name, "vmlinuz") ? ".sfs" : "");
+		for (int c = 0; c < 5 && !done; c++) { struct stat s; if (stat(c3[c], &s) || s.st_size != y->size || sha256_file(c3[c], hex) || strcmp(hex, y->sha)) continue;
 			if (!link(c3[c], out)) done = 1; else { char *a[] = {"cp", c3[c], out, NULL}; done = !spawn(a); } }
 		if (done) { say("%s: already on this computer", y->name); continue; }
 		url_join(url, y->file, fu, sizeof fu); say("%s: downloading (%lld MB)", y->name, (y->size + 1048575) / 1048576);
@@ -996,7 +1023,10 @@ static int cmd_status(void)
 	  if (v) { unsigned char b64[64]; EVP_EncodeBlock(b64, KEYS[v - 1], 32); jstr((char *)b64); } else printf("null");
 	  free(t1); free(t2);
 	  char rk[400]; snprintf(rk, sizeof rk, "%s/r/official", SYSD);
-	  printf(",\"developer\":%s,\"recoveryOfficial\":%s", access(EXTRAF, F_OK) ? "false" : "true", access(rk, F_OK) ? "false" : "true"); }
+	  printf(",\"developer\":%s,\"recoveryOfficial\":%s", access(EXTRAF, F_OK) ? "false" : "true", access(rk, F_OK) ? "false" : "true");
+	  /* (1.6.0, Part 16: which official release Recovery mode starts, and when it was last made) */
+	  { char rr[400]; snprintf(rr, sizeof rr, "%s/r/RELEASE", SYSD); kv_t r0; kv_read(rr, &r0, ' '); struct stat rs2;
+	    printf(",\"recoveryVersion\":"); jstr(access(rk, F_OK) ? "" : kv(&r0, "version")); printf(",\"recoverySerial\":%lld,\"recoveryAt\":%lld", atoll(kv(&r0, "serial")), !stat(rk, &rs2) ? (long long)rs2.st_mtime : 0LL); } }
 	printf(",\"url\":"); jstr(*kv(&cf, "url") ? kv(&cf, "url") : d ? d : ""); printf(",\"auto\":%s", strcmp(kv(&cf, "auto"), "0") ? "true" : "false");
 	printf(",\"beta\":%s,\"toStable\":%s", on_beta(&cf) ? "true" : "false", !strcmp(kv(&cf, "tostable"), "1") ? "true" : "false");
 	/* 1.6.0: Roll back to the last stable version: whether this system is a published stable release, and which is the last */
@@ -1012,6 +1042,137 @@ static int cmd_status(void)
 		printf(",\"chromium\":"); jstr(m.chromium); printf(",\"kernel\":"); jstr(m.kernel); printf(",\"urgent\":%s,\"size\":%lld}", m.urgent ? "true" : "false", sz);
 	} else printf("null");
 	printf("}\n"); free(mt); free(sg); free(d);
+	return 0;
+}
+
+/* ---------------- 1.6.0 (plan-1.6.1 Part 16, moved to 1.6.0): each other's builds */
+/* a key's fingerprint, as Settings shows it: the first 16 bytes of its SHA-256, in groups of four hex digits */
+static void key_fpr(const unsigned char k[32], char *o, size_t n)
+{
+	unsigned char h[32]; unsigned int hl = 0; EVP_Digest(k, 32, h, &hl, EVP_sha256(), NULL);
+	size_t w = 0; for (int i = 0; i < 16 && w + 6 < n; i++) w += snprintf(o + w, n - w, "%s%02x", i && !(i % 2) ? " " : "", h[i]);
+}
+/* which of KS (n keys) verifies the list: its index, or -1 */
+static int verify_with(const unsigned char (*ks)[32], int n, const unsigned char *msg, size_t len, const unsigned char *sig)
+{
+	for (int i = 0; i < n; i++) {
+		EVP_PKEY *k = EVP_PKEY_new_raw_public_key(EVP_PKEY_ED25519, NULL, ks[i], 32); if (!k) continue;
+		EVP_MD_CTX *c = EVP_MD_CTX_new(); int ok = EVP_DigestVerifyInit(c, NULL, NULL, NULL, k) == 1 && EVP_DigestVerify(c, sig, 64, msg, len) == 1;
+		EVP_MD_CTX_free(c); EVP_PKEY_free(k); if (ok) return i;
+	}
+	return -1;
+}
+static int url_ok(const char *u) { if (strncmp(u, "https://", 8) && !getenv("RU_OFFICIAL_URL")) return 0; for (const char *q = u; *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/:._-~%+", *q)) return 0; return 1; }
+static int CU_N;
+static void cu_line(const char *lv, const char *f, ...) { va_list a; va_start(a, f); char b[700]; vsnprintf(b, sizeof b, f, a); va_end(a); printf("%s[\"%s\",", CU_N++ ? "," : "", lv); jstr(b); printf("]"); }
+/* does URL answer (the first byte of it) */
+static int url_there(const char *u)
+{
+	if (curl_up()) {   /* (a HEAD request: nothing big downloaded) */
+		C.setopt(CH, 10002, u); C.setopt(CH, 44, 1L); C.setopt(CH, 52, 1L); C.setopt(CH, 45, 1L); C.setopt(CH, 78, 30L); C.setopt(CH, 10018, "rudolf-update/1"); C.setopt(CH, 10007, (char *)NULL);
+		if (!access("/etc/ssl/certs/ca-certificates.crt", R_OK)) C.setopt(CH, 10065, "/etc/ssl/certs/ca-certificates.crt");
+		int r = C.perform(CH); long code = 0; C.getinfo(CH, 0x200002, &code); C.setopt(CH, 44, 0L); C.setopt(CH, 80, 1L);   /* (back to GET: CURLOPT_HTTPGET) */
+		return !r && code >= 200 && code < 300;
+	}
+	char *a[] = {"wget", "-q", "--spider", "-T", "30", (char *)u, NULL}; return !spawn(a);
+}
+/* check-url URL: whether an update address is set up, and whose key signs it (JSON for Settings) */
+static int cmd_check_url(const char *url0)
+{
+	char url[300]; snprintf(url, sizeof url, "%s", url0); size_t l = strlen(url); while (l && url[l - 1] == '/') url[--l] = 0;
+	printf("{\"ok\":true,\"url\":"); jstr(url); printf(",\"lines\":["); CU_N = 0;
+	const char *key = "none"; char fpr[64] = "", ver[64] = ""; long long ser = 0; int fail = 0;
+	if (!url_ok(url)) { cu_line("fail", "The address must start with https:// and have no unusual characters."); fail = 1; goto out; }
+	char T[] = "/tmp/rudolf-cu-XXXXXX"; if (!mkdtemp(T)) { cu_line("fail", "No room to check it."); fail = 1; goto out; }
+	char mu[400], su[400], mp[400], sp[400], ku[400], kp[400]; snprintf(mu, sizeof mu, "%s/manifest.txt", url); snprintf(su, sizeof su, "%s/manifest.sig", url); snprintf(ku, sizeof ku, "%s/key.txt", url);
+	snprintf(mp, sizeof mp, "%s/m", T); snprintf(sp, sizeof sp, "%s/s", T); snprintf(kp, sizeof kp, "%s/k", T);
+	if (http_to_file(mu, mp) || http_to_file(su, sp)) { cu_line("fail", "The address does not answer, or has no release list there (manifest.txt and manifest.sig)."); fail = 1; goto clean; }
+	cu_line("ok", "The address answers, with a release list.");
+	size_t ml = 0, sl = 0; char *mt = slurp(mp, &ml), *sg = slurp(sp, &sl); man_t m; char *cp = mt ? strdup(mt) : NULL;
+	if (!cp || parse_manifest(cp, &m)) { cu_line("fail", "What is there is not a Rudolf OS release list."); fail = 1; free(mt); free(sg); free(cp); goto clean; }
+	ser = m.serial; snprintf(ver, sizeof ver, "%s", m.version);
+	{ char why[600]; if (!compat(&m, why, sizeof why)) { cu_line("fail", "%s", why); fail = 1; } else cu_line("ok", "Rudolf OS %s (release %lld): it can read this computer's accounts and files.", m.version, m.serial); }
+	if (*m.expires) { time_t now = time(NULL); char td[16]; strftime(td, sizeof td, "%Y-%m-%d", gmtime(&now)); if (strcmp(m.expires, td) < 0) { cu_line("fail", "Its release list expired on %s: whoever publishes it must sign it again.", m.expires); fail = 1; } }
+	/* whose key */
+	int v = sl == 64 ? verify((unsigned char *)mt, ml, (unsigned char *)sg) : 0;
+	if (v > 0) { key = official(v) ? "official" : "developer"; key_fpr(KEYS[v - 1], fpr, sizeof fpr);
+		cu_line("ok", official(v) ? "Signed with the official Rudolf OS key: updates from this address install on this computer." : "Signed with Developer mode's key: updates from this address install on this computer."); }
+	else {
+		size_t kl = 0; char *kt = !http_to_file(ku, kp) ? slurp(kp, &kl) : NULL; unsigned char k1[1][32]; int have = 0;
+		if (kt) { char *nl = strchr(kt, '\n'); if (nl) *nl = 0; have = key_line(kt, k1[0]); }
+		if (have && sl == 64 && verify_with((const unsigned char (*)[32])k1, 1, (unsigned char *)mt, ml, (unsigned char *)sg) == 0) {
+			key = "other"; key_fpr(k1[0], fpr, sizeof fpr);
+			cu_line("warn", "This is another build of Rudolf OS, signed with key %s: updates from it do not install on this computer. You can make a USB stick from it.", fpr); }
+		else { cu_line("fail", "Its release list is not signed by a key this computer knows, and the address does not publish its own key (key.txt) that signs it."); fail = 1; }
+		free(kt);
+	}
+	/* the files */
+	{ int miss = 0; char bu[500] = "";
+	  for (int i = 0; i < m.nl; i++) { char fu[500]; url_join(url, m.L[i].file, fu, sizeof fu); if (!url_there(fu)) { cu_line("fail", "%s cannot be downloaded (%s).", m.L[i].name, fu); miss++; }
+		if (!strcmp(m.L[i].name, "vmlinuz") && ends_with(fu, "/vmlinuz")) snprintf(bu, sizeof bu, "%.*sboot.iso", (int)(strlen(fu) - 7), fu); }
+	  if (!miss) cu_line("ok", "All %d of its files can be downloaded.", m.nl); else fail = 1;
+	  if (*bu && !url_there(bu)) cu_line("warn", "It has no boot image (boot.iso) beside its kernel: a USB stick cannot be made from it."); else if (*bu) cu_line("ok", "Its boot image is there (for USB sticks)."); }
+	/* the other channel */
+	{ char ou[300]; int isb = ends_with(url, "/beta");
+	  if (chan_url(url, !isb, ou, sizeof ou)) { char om[400]; snprintf(om, sizeof om, "%s/manifest.txt", ou); if (url_there(om)) cu_line("ok", "Its %s channel is there too.", isb ? "stable" : "beta"); else cu_line("warn", "It has no %s channel (%s), so Get beta versions has nowhere to go.", isb ? "stable" : "beta", ou); }
+	  else cu_line("warn", "The address ends in neither /stable nor /beta, so Get beta versions cannot switch channels."); }
+	free(mt); free(sg); free(cp);
+clean: { char *a[] = {"rm", "-rf", T, NULL}; spawn(a); }
+out:
+	printf("],\"key\":\"%s\",\"fpr\":", key); jstr(fpr); printf(",\"serial\":%lld,\"version\":", ser); jstr(ver); printf(",\"good\":%s}\n", fail ? "false" : "true");
+	return fail ? 1 : 0;
+}
+/* stick-fetch URL DIR: the release at URL, for a USB stick (Make a USB stick › the update address): DIR/boot.iso and
+   DIR/os/system/a (its layers, list, RELEASE), checked: each file's SHA-256 against the list; the list's signature
+   against the release's own key (the keys in its base layer, /etc/rudolf/rpk-keys), so a list its own system would
+   refuse is refused here too. Layers this computer has with the same SHA-256 are linked, not downloaded. Prints JSON:
+   {"ok","serial","version","key":"official|developer|other","fpr"}. 4: not signed by its own key; 3: a download failed. */
+static int cmd_stick_fetch(const char *url0, const char *dir)
+{
+	char url[300]; snprintf(url, sizeof url, "%s", url0); size_t ul = strlen(url); while (ul && url[ul - 1] == '/') url[--ul] = 0;
+	if (!url_ok(url)) die("the address must start with https://");
+	char sd[400], mp[500], sp[500], mu[400], su[400]; snprintf(sd, sizeof sd, "%s/os/system/a", dir); mkdirs(sd);
+	snprintf(mu, sizeof mu, "%s/manifest.txt", url); snprintf(su, sizeof su, "%s/manifest.sig", url);
+	snprintf(mp, sizeof mp, "%s/manifest.txt", sd); snprintf(sp, sizeof sp, "%s/manifest.sig", sd);
+	say("Downloading the release list from %s", url);
+	if (http_to_file(mu, mp) || http_to_file(su, sp)) { say("The address does not answer."); return 3; }
+	size_t ml, sl; char *mt = slurp(mp, &ml), *sg = slurp(sp, &sl); man_t m; char *cp = mt ? strdup(mt) : NULL;
+	if (!cp || sl != 64 || parse_manifest(cp, &m)) { say("That is not a Rudolf OS release list."); return 4; }
+	long long need = 0; for (int i = 0; i < m.nl; i++) need += m.L[i].size;
+	struct statvfs vf; if (!statvfs(dir, &vf) && (long long)vf.f_bavail * vf.f_frsize < need + 64LL * 1048576) { say("Not enough room on RUDOLFDATA to download it (about %lld MB).", need / 1048576 + 64); return 5; }
+	char bu[500] = "";
+	for (int i = 0; i < NL; i++) {
+		lay_t *y = mlayer(&m, LAYERS[i]); char out[600], hex[65], fu[500], c3[4][300]; int done = 0;
+		snprintf(out, sizeof out, "%s/%s%s", sd, y->name, strcmp(y->name, "vmlinuz") ? ".sfs" : ""); url_join(url, y->file, fu, sizeof fu);
+		if (!strcmp(y->name, "vmlinuz") && ends_with(fu, "/vmlinuz")) snprintf(bu, sizeof bu, "%.*sboot.iso", (int)(strlen(fu) - 7), fu);
+		layer_path("a", y->name, c3[0], 300); layer_path("b", y->name, c3[1], 300); layer_path("disc", y->name, c3[2], 300); snprintf(c3[3], 300, "%s", out);
+		for (int c = 0; c < 4 && !done; c++) { struct stat st; if (stat(c3[c], &st) || st.st_size != y->size || sha256_file(c3[c], hex) || strcmp(hex, y->sha)) continue;
+			if (c == 3) done = 1; else if (!link(c3[c], out)) done = 1; else { char *a[] = {"cp", c3[c], out, NULL}; done = !spawn(a); } }
+		if (done) { say("%s: already here", y->name); continue; }
+		say("%s: downloading (%lld MB)", y->name, (y->size + 1048575) / 1048576);
+		if (http_to_file(fu, out) || sha256_file(out, hex) || strcmp(hex, y->sha)) { unlink(out); say("%s: the download failed or does not match the release list.", y->name); return 3; }
+	}
+	if (!*bu) { say("The release list does not say where its boot image is."); return 3; }
+	{ char bp[500]; snprintf(bp, sizeof bp, "%s/boot.iso", dir); struct stat st; if (stat(bp, &st) || st.st_size < 1048576) { say("boot image: downloading"); if (http_to_file(bu, bp)) { say("Its boot image (boot.iso) could not be downloaded."); return 3; } } }
+	/* the release's own key: the base layer's list (its checksum is the signed list's, so read only after it matched) */
+	unsigned char ks[8][32]; int nk = 0;
+	{ char bp[600], mnt[400]; snprintf(bp, sizeof bp, "%s/base.sfs", sd); snprintf(mnt, sizeof mnt, "%s/.base", dir); mkdirs(mnt);
+	  char *mo[] = {"mount", "-t", "squashfs", "-o", "ro,loop", bp, mnt, NULL}; char kf[500]; snprintf(kf, sizeof kf, "%s/etc/rudolf/rpk-keys", mnt);
+	  const char *tk = getenv("RU_STICK_BASEKEYS");   /* (the host test: a key list in place of mounting the layer) */
+	  if (tk || !spawn(mo)) { char *t = slurp(tk ? tk : kf, NULL); if (t) { char kp2[500]; snprintf(kp2, sizeof kp2, "%s/keys", dir); write_file(kp2, t); }   /* (install.sh checks the boot image with them) */
+		for (char *l = t ? strtok(t, "\n") : NULL; l && nk < 8; l = strtok(NULL, "\n")) if (key_line(l, ks[nk])) nk++; free(t);
+		if (!tk) { char *um[] = {"umount", mnt, NULL}; spawn(um); } }
+	  rmdir(mnt); }
+	int own = nk ? verify_with((const unsigned char (*)[32])ks, nk, (unsigned char *)mt, ml, (unsigned char *)sg) : -1;
+	if (own < 0) { say("Refused: its release list is not signed by the key its own system trusts."); return 4; }
+	int v = verify((unsigned char *)mt, ml, (unsigned char *)sg); char fpr[64]; key_fpr(ks[own], fpr, sizeof fpr);
+	char rel[1200], f[600]; snprintf(rel, sizeof rel, "serial %lld\nversion %s\nreleased %s\nchromium %s\nkernel %s\nnotes %s\n", m.serial, m.version, m.released, m.chromium, m.kernel, m.notes);
+	snprintf(f, sizeof f, "%s/RELEASE", sd); write_file(f, rel); snprintf(f, sizeof f, "%s/complete", sd); write_file(f, "1\n");
+	snprintf(f, sizeof f, "%s/os/system/state", dir); write_file(f, "good=a\n");
+	snprintf(f, sizeof f, "%s/os/update.conf", dir); { char uc[400]; snprintf(uc, sizeof uc, "url=%s\n", url); write_file(f, uc); }
+	snprintf(f, sizeof f, "%s/source", dir); write_file(f, url);
+	sync(); free(mt); free(sg); free(cp);
+	printf("{\"ok\":true,\"serial\":%lld,\"version\":", m.serial); jstr(m.version); printf(",\"key\":\"%s\",\"fpr\":", v > 0 ? (official(v) ? "official" : "developer") : "other"); jstr(fpr); printf("}\n");
 	return 0;
 }
 
@@ -1087,6 +1248,8 @@ int main(int argc, char **argv)
 		return 0;
 	}
 	if (!strcmp(c, "recovery-fetch")) return cmd_recovery_fetch();   /* 1.6.0 */
+	if (!strcmp(c, "check-url") && argc == 3) { load_keys(); NOSAY = 1; return cmd_check_url(argv[2]); }   /* 1.6.0 (Part 16) */
+	if (!strcmp(c, "stick-fetch") && argc == 4) { load_keys(); return cmd_stick_fetch(argv[2], argv[3]); }   /* 1.6.0 (Part 16) */
 	if (!strcmp(c, "recovery-check")) { char bs[8]; booted(bs); if (recovery_start()) return 1; recovery_check(bs); return recovery_ok(0) ? 0 : 1; }
 	if (!strcmp(c, "fetch") && argc == 4) { if (strncmp(argv[2], "https://", 8) && !getenv("RU_OFFICIAL_URL")) die("https only"); return http_to_file(argv[2], argv[3]) ? 3 : 0; }   /* (espcheck's download) */
 	if (!strcmp(c, "return-official") && argc == 3 && (!strcmp(argv[2], "keep") || !strcmp(argv[2], "erase"))) return cmd_return(!strcmp(argv[2], "erase"));
@@ -1097,11 +1260,14 @@ int main(int argc, char **argv)
 		else if (!strcmp(argv[2], "channel") && (!strcmp(argv[3], "beta") || !strcmp(argv[3], "stable"))) {
 			if (!access(EXTRAF, F_OK)) die("Developer mode is on: its own address is used (turn Developer mode off first)");
 			int beta = !strcmp(argv[3], "beta"), was = on_beta(&cf);
-			kv_set(&cf, "url", off_url(beta)); kv_set(&cf, "tostable", !beta && was ? "1" : "");
+			/* (1.6.0, Part 16: the repository that is set is kept; only its channel changes) */
+			char cu[300], nu[300]; eff_url(&cf, cu, sizeof cu); if (!*cu) snprintf(cu, sizeof cu, "%s", off_url(0));
+			if (!chan_url(cu, beta, nu, sizeof nu)) { say("The update address (%s) ends in neither /stable nor /beta, so it is used as it is: set an address that ends in /stable or /beta to choose betas.", cu); return 0; }
+			kv_set(&cf, "url", nu); kv_set(&cf, "tostable", !beta && was ? "1" : "");
 			/* the list already seen is the other channel's: forget it (the next one is checked with the official key as always) */
 			if (beta != was) { char ap[300]; snprintf(ap, sizeof ap, "%s/available.txt", SYSD); unlink(ap); snprintf(ap, sizeof ap, "%s/available.sig", SYSD); unlink(ap); }
 			if (kv_write(CONFP, &cf, '=')) return 1;
-			say(beta ? "Beta versions are on: updates now come from %s." : was ? "Beta versions are off: the next update brings the latest stable release (%s)." : "Updates come from %s.", off_url(beta));
+			say(beta ? "Beta versions are on: updates now come from %s." : was ? "Beta versions are off: the next update brings the latest stable release (%s)." : "Updates come from %s.", nu);
 			return 0;
 		}
 		else die("set url|auto|channel");

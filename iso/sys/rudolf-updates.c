@@ -109,6 +109,11 @@ int main(int argc, char **argv)
 		rr_health("update", "Return to official Rudolf OS (%s) was asked for", a[0]);
 		char *s[] = { "return-official", a[0], NULL }; return ru(s);
 	}
+	/* 1.6.0 (plan-1.6.1 Part 16, moved to 1.6.0): Settings' "Check this address" */
+	if (!strcmp(op, "check-url")) {
+		if (n != 1 || !value_ok(a[0], 600) || strncmp(a[0], "https://", 8)) return refuse("an address to check that is not https://", n ? a[0] : "");
+		char *s[] = { "check-url", a[0], NULL }; return ru(s);
+	}
 	if (!strcmp(op, "set")) {
 		if (n != 2) return refuse("a setting without its value", op);
 		if (!strcmp(a[0], "channel")) {

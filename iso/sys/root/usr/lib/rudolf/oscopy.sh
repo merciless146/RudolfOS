@@ -17,7 +17,9 @@ os_copy() {
 	[ "$_need" -lt $((_free - 262144)) ] || { echo "Not enough room for Rudolf OS ($((_need / 1024)) MiB). Use a bigger drive."; return 11; }
 	echo "Copying the installed system ($((_need / 1024)) MiB) ..."
 	mkdir -p "$_d/os"
-	cp -a "$_s/." "$_d/os/" || { echo "The installed system could not be copied: the drive may be failing or was unplugged."; return 13; }
+	# (1.6.0: not the update address's release kept for sticks, stickdl, nor a boot image kept for them, bootimg)
+	for _e in "$_s"/* "$_s"/.[!.]*; do [ -e "$_e" ] || continue; case "${_e##*/}" in stickdl|bootimg) continue;; esac
+		cp -a "$_e" "$_d/os/" || { echo "The installed system could not be copied: the drive may be failing or was unplugged."; return 13; }; done
 	return 0
 }
 
@@ -29,6 +31,16 @@ os_copy() {
 os_rescue() {
 	_d=$1; _g=$(sed -n 's/^good=//p' "$_d/os/system/state" 2>/dev/null || true)
 	case "$_g" in a|b) ;; *) return 0;; esac
+	# 1.6.0 (plan-1.6.1 Part 16, moved to 1.6.0: Recovery mode is always the official newest stable release): the official
+	# recovery system copied with the system is kept, brought up to the newest official stable release when online
+	# (rudolf-update recovery-fetch, linking what it already has); only without one is a rescue copy of the system made
+	if [ -e "$_d/os/system/r/official" ] || { [ -e "${RUDOLF_SYSD:-/persist/os/system}/r/official" ] && [ ! -e "$_d/os/system/r" ]; }; then
+		RU_SYSD="$_d/os/system" RU_RECOVERY_SEED="${RUDOLF_SYSD:-/persist/os/system}/r" RU_NOAUTOFETCH=1 ${RUDOLF_UPDATE:-rudolf-update} recovery-fetch >/dev/null 2>&1 || true
+		[ -e "$_d/os/system/r/official" ] && { echo "The stick's Recovery mode is the official Rudolf OS ($(sed -n 's/^version //p' "$_d/os/system/r/RELEASE" 2>/dev/null))."; return 0; }
+	fi
+	RU_SYSD="$_d/os/system" RU_RECOVERY_SEED="${RUDOLF_SYSD:-/persist/os/system}/r" RU_NOAUTOFETCH=1 ${RUDOLF_UPDATE:-rudolf-update} recovery-fetch >/dev/null 2>&1 && [ -e "$_d/os/system/r/official" ] && {
+		echo "The stick's Recovery mode is the official Rudolf OS ($(sed -n 's/^version //p' "$_d/os/system/r/RELEASE" 2>/dev/null)), downloaded."; return 0; }
+	echo "Warning: the official recovery system could not be had (no internet?): the stick keeps a rescue copy of its own system instead."
 	rm -rf "$_d/os/system/r.new" "$_d/os/system/r"
 	cp -al "$_d/os/system/$_g" "$_d/os/system/r.new" 2>/dev/null || { rm -rf "$_d/os/system/r.new"; cp -a "$_d/os/system/$_g" "$_d/os/system/r.new"; } || { echo "The rescue system could not be kept on the new drive."; return 13; }
 	_v=$(sed -n 's/^version //p' "$_d/os/system/r.new/RELEASE" 2>/dev/null)
