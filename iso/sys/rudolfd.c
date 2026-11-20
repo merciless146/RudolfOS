@@ -4998,10 +4998,27 @@ static void api(struct req *r)
 			const char *av[] = { "updates", "return-official", e && !strcmp(e, "1") ? "erase" : "keep", NULL };
 			root_job("system-update", av); reply_ok(r->fd, "started"); return;
 		}
+		/* 1.6.0 (plan-1.6.1 Part 16, moved to 1.6.0): Settings' "Check this address": whether it is set up, and whose key */
+		if (!strcmp(w, "urlcheck")) {
+			const char *v = qparam(r->query, "url"); if (!v || strncmp(v, "https://", 8) || strlen(v) > 500) { reply_err(r->fd, 400, "url=https://…"); return; }
+			for (const char *c = v; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("/:._-~%+", *c)) { reply_err(r->fd, 400, "bad character"); return; }
+			const char *av[] = { "updates", "check-url", v, NULL }; char *o = root_out(av, 0);
+			if (!o || *o != '{') { reply_err(r->fd, 502, o && *o ? o : "the address could not be checked"); free(o); return; }
+			str s2 = {0}; sadd(&s2, "%s", o); free(o); reply_json(r->fd, &s2); return;
+		}
 		if (!strcmp(w, "set")) {
 			const char *k = qparam(r->query, "k"); char kk[8]; snprintf(kk, sizeof kk, "%s", k ? k : "");
 			const char *v = qparam(r->query, "v"); if (!v) v = "";
 			if (strcmp(kk, "url") && strcmp(kk, "auto")) { reply_err(r->fd, 400, "k is url or auto"); return; }
+			/* (1.6.0, Part 16, the owner: "whatever the set update address is written as by the computer's admin-level user":
+			   the address only with an administrator's name and password, checked here) */
+			if (!strcmp(kk, "url")) {
+				char *an = NULL, *ap = NULL, why[200] = "";
+				if (r->body && r->blen && r->body[0] == '{') { an = dbody_field(r, "n"); ap = dbody_field(r, "p"); }
+				int adm = an && ap ? desk_admin_check(an, ap, why, sizeof why) : -1; dfree_secret(ap);
+				if (adm) { free(an); reply_err(r->fd, adm == 429 ? 429 : 403, why[0] ? why : "an administrator's name and password are needed"); return; }
+				health_add("update", "the update address was set to %.300s by %.80s", *v ? v : "(this build's own)", an); free(an);
+			}
 			for (const char *c = v; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("/:._-~%+", *c)) { reply_err(r->fd, 400, "bad character"); return; }
 			/* 1.6.0: the official beta address only through Get beta versions (an administrator's password, below) */
 			char ob[260]; snprintf(ob, sizeof ob, "%s/beta", origin_get("pages") + 8);   /* (and a fork's own beta: origin.h) */
@@ -5241,7 +5258,7 @@ static void api(struct req *r)
 		char *d = qparam(r->query, "disk"), *c = qparam(r->query, "confirm"), *img = qparam(r->query, "image"), *fl = qparam(r->query, "files");
 		if (!safe_word(d, 16) || !c || strcmp(c, d)) { reply_err(r->fd, 400, "confirm by sending the drive name twice"); return; }
 		if (job_running()) { reply_err(r->fd, 409, "another job is running"); return; }
-		if (img && *img) {
+		if (img && *img && strcmp(img, "@address")) {   /* (1.6.0, Part 16: "@address", the update address's latest release) */
 			int okp = !strncmp(img, "/home/rudolf/", 13) && !strstr(img, "..") && strlen(img) < 200;
 			for (const char *q = img; okp && *q; q++) if (!isalnum((unsigned char)*q) && !strchr("/._-", *q)) okp = 0;
 			if (!okp) { reply_err(r->fd, 400, "the image must be a file in the home folder (letters, digits, . _ - only)"); return; }
