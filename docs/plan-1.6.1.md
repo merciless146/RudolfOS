@@ -809,7 +809,24 @@ protect your files and use Native and Lite" until the key is added again under i
 copy of the disk is unreadable without a key. Codes: someone who knows the password cannot sign in at the screen. Not:
 someone with the computer while it is signed in and unlocked; that is the lock screen's job.
 
-**Tests.** A virtual FIDO2 key (a CTAP2 HID device made with uhid, in QEMU) with `hmac-secret` and a PIN: adding two
+**Built in 1.6.0 (2026-11-19): items 3, 4 (in part) and 5; items 1, 2 and 6 later** (the owner: "Codes now, keys after":
+security keys that unlock the files come in their own beta, tested first with a simulated key in QEMU and then the
+owner's real key, because a mistake there would lock people out of their own files).
+- `desktop/otp60.js`: User Settings › Sign-in options › Authenticator app (Set up… with the setup key, base32, and the
+  `otpauth://` link; no QR code yet; a code and the password to confirm; Turn off, unless it is required); the code asked
+  after the password at the sign-in screen (build19's sign-in patch, after the old page-checked security key) and at the
+  lock screen; Security Settings › Two-step sign-in (Not required / administrators / every account; "every account"
+  turns Guest off); an account that must and has none is asked to set it up after signing in, with Sign out and no
+  "Later".
+- rudolfd (`rudolfd-desktop.inc`): the native sign-in and unlock ask for the code (`{"need":"code"}`, HTTP 401) after a
+  right password and before anything is opened; `desktop/second` for the page; per account (`second-ID`): the last step
+  used (a code is not taken twice) and wrong codes counted (5: 30 s, then doubling to 15 minutes). Wrong *passwords* on
+  Standard are still counted by the page's own sign-in screen as before; on Native rudolfd's as before.
+- rudolf-native: the second step in the same field ("Code from your authenticator app"), the password kept for it.
+- Tests: `iso/qt/host/totp60_t.sh` (RFC 6238's values, rudolfd's and the page's), `iso/qt/shell2/otp60_t.js` (12), in
+  otp-check.yml.
+
+**Tests (planned, for the keys).** A virtual FIDO2 key (a CTAP2 HID device made with uhid, in QEMU) with `hmac-secret` and a PIN: adding two
 keys, signing in with either, the password-only copy gone (the disk image opened offline with the password fails, with
 a key's output it opens), wrong PIN and no key, the recovery code once, an administrator opening and resetting, the
 setting turned off; TOTP with the RFC 6238 test vectors, reuse refused, the waits; "required for every account" asking
