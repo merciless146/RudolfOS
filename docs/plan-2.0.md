@@ -178,6 +178,9 @@ be done on 1.6's 6.18 LTS with X11 and also on a 7.3 build with Wayland: "Keep t
   support (the PinePhone Pro, the Snapdragon 845 phones).
 - **NVIDIA's own driver (docs/plan-1.6.1.md Part 19), on "next":** its module must build against each new kernel; the
   channel takes a new kernel only once it does (as Bazzite does), and says so in the build's notes.
+- **Its logo** (the owner, 2026-11-20): Rudolf's logo in carbon-fibre off-black instead of white, the glowing nose green
+  instead of red: iso/systools/kryptonite/ (kryptonite_logo.py draws it from the logo's own paths). Used wherever
+  Kryptonite shows its own logo (its boot splash, About, the "next" channel's page); 1.6.x keeps the white logo.
 - **The cost:** two release builds and two versions to test; the owner's rule for every session (same_t.sh's screenshots
   and the behaviour scripts) runs on both tracks.
 - **Order:** the channel and the kernel switch first (nothing else changes for stable and beta); W0 measured on it; then
