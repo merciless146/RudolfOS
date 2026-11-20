@@ -177,7 +177,9 @@ async function userLogin(a,pw,keys){await FSREADY;   /* (1.5.9, plan Part 12: ke
 function userLogout(){if(!USER)return;try{sfx('logout')}catch(e){}   /* (1.6.0: Sign out & lock's sound) */
  try{window.__sessionSave&&__sessionSave()}catch(e){}
  fsFlush();homeUnload();parentalStop();
- if(USER.r=='guest'){try{localStorage.removeItem('bd95set:guest');localStorage.removeItem('bd95cells:guest')}catch(e){}TR=[];
+ try{window.__oraSave&&__oraSave()}catch(e){}   /* (1.6.0 Part 21: Oracle's tabs, for "the tabs from last time") */
+ if(USER.r=='guest'){if(window.__rtGuest){try{rtClear('priv-g'+window.__rtGuest)}catch(e){}window.__rtGuest=null}   /* (1.6.0 Part 21: Guest's websites gone at sign-out) */
+  try{localStorage.removeItem('bd95set:guest');localStorage.removeItem('bd95cells:guest')}catch(e){}TR=[];
   for(const k in fs['C:'].USERS)if(k=='GUEST')delete fs['C:'].USERS[k];fsSave()}
  logEvt('sys',`${USER.n} signed out`);SESSION=null}
 (function(){const lo=A.logoff,of=A.off;A.logoff=()=>{userLogout();lo()};A.off=()=>{if(RD){shutdownDlg();return}userLogout();of()}})();

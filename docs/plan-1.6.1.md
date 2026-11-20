@@ -631,6 +631,8 @@ key is missing (an existing choice kept), once. Part 3: the cut window's insets,
 bar, their maximize, minimize and close; a Chromium-based browser from Flathub with Rudolf's title bar.
 
 ### 16. Each other's builds: the update address decides the updates and the sticks (added on 2026-11-19)
+**Moved to 1.6.0 (the owner, 2026-11-19: "All four into 1.6.0"; one beta when all are built).** Built there; this text stays
+the plan.
 The owner, 2026-11-19: "The version made on the stick and the repository that updates are checked for should come from
 whatever the set update address is written as by the computer's admin-level user. The system should be able to check that
 the set update repository is set-up/working correctly and that it is able to match the user's key to it. The intent is for
@@ -717,6 +719,8 @@ each, Recovery mode starts the official channel's newest release; system/r renew
 and left alone when only the update address or a beta advances.
 
 ### 17. Two-step sign-in, done properly (added on 2026-11-19)
+**Moved to 1.6.0 (the owner, 2026-11-19: "All four into 1.6.0"; one beta when all are built).** Built there; this text stays
+the plan.
 The owner, 2026-11-19, after "Can two-factor authenticated menu sign-in be enabled from the security settings?":
 "Plan the proper version." Decided the same day: hardware security keys and authenticator-app codes (not phone
 passkeys); an administrator's copy of an account's key stays, and the person may turn it off; an administrator may
