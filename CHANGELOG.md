@@ -49,6 +49,11 @@ Summary: In progress.
   QEMU's USB CCID reader: the reader plugged in, Settings › Smart cards, Oracle signing in to a test site with Chromium's
   certificate picker and PIN box, a Tor window without the card, the screen locked when the card is taken out
   (smartcard-qemu-check.yml; nothing is published).
+- New: security keys that protect your files (User Settings › Sign-in options › Security keys). Rudolf OS reads FIDO2
+  keys itself on Standard, Native and Lite: after your password, touch one of your keys. Add two (one as a spare) and
+  "Require a security key": then a copy of your disk opens nothing without your password and one of your keys together.
+  Old security keys checked by the sign-in screen only are moved over when you add your keys again. What to do if keys
+  are lost: docs/security-keys.md.
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.

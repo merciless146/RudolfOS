@@ -1,0 +1,87 @@
+# Security keys that unlock the files (1.6.1, docs/plan-1.6.1.md Part 18). Nothing is published.
+#   host:  rudolfd's checks (iso/qt/host/fido161_t.sh): rudolfd-fido.inc built from rudolfd.c with its test I/O, the real
+#          libfido2 talking to software FIDO2 keys (iso/qt/host/vfido.py): adding, requiring, the sign-in, a wrong key,
+#          another account's key, a replayed answer, a key not touched, Native's sign-in and lock screen, a copy of the disk
+#   native: Native's sign-in and lock screen asking for the key (iso/qt/host/nativekey161_t.sh, a stand-in rudolfd)
+#   page:  the page's side (iso/qt/shell2/fido61_t.js): Settings › Security keys, the sign-in and lock screens, a new
+#          password, the old page-only key moved over, an administrator's reset (a stand-in rudolfd)
+#   qemu:  the newest beta (or a release by its serial) in QEMU, Standard, with this tree's page, rudolfd and libfido2, and
+#          simulated keys as real HID devices in the guest (iso/qt/vfido_uhid.c, uhid; the keys on the host over a serial
+#          port): the real Settings and sign-in screen, then the drive image read on the host (iso/qt/sb/fido161_t.py)
+name: Security keys check
+on:
+  pull_request:
+    paths: ['iso/sys/rudolfd-fido.inc', 'iso/sys/rudolfd-desktop.inc', 'iso/sys/rudolfd.c', 'iso/sys/rudolf-native.c', 'desktop/fido61.js',
+      'desktop/core25.js', 'desktop/build19.py', 'iso/qt/host/vfido.py', 'iso/qt/host/fido161_t.sh', 'iso/qt/host/fixtures/fidoapi.c',
+      'iso/qt/host/fixtures/fidols.js', 'iso/qt/host/nativekey161_t.sh', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/shell2/fido61_t.js', 'iso/qt/vfido_uhid.c', 'iso/qt/sb/fido161_t.py', 'iso/systools/ci_release.sh',
+      '.github/workflows/fido-check.yml']
+  workflow_dispatch:
+    inputs:
+      serial: {description: 'A release to test (its serial); empty: the newest beta', required: false, default: ''}
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libfido2-1 libfido2-dev python3-cryptography >/dev/null
+      - name: rudolfd's security keys, with software keys through libfido2
+        run: sh iso/qt/host/fido161_t.sh | tee fido161.txt; grep -q ' passed$' fido161.txt && ! grep -q '^FAIL' fido161.txt
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev xvfb xdotool >/dev/null
+      - name: Native's sign-in and lock screen with a key (a stand-in rudolfd)
+        run: sh iso/qt/host/nativekey161_t.sh
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page's side
+        run: node iso/qt/shell2/fido61_t.js
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography bzip2 libfido2-1 zlib1g-dev >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S='${{ inputs.serial }}'; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel; echo "::notice title=Security keys QEMU check::release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
+      - name: This tree's page, rudolfd, the relay, and libfido2 with what it links
+        run: |
+          mkdir -p fix && cp iso/www/index.html fix/
+          (cd iso && gcc -O2 -o ../fix/rudolfd sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic)
+          gcc -O2 -static -o fix/vfido_uhid iso/qt/vfido_uhid.c
+          L=$(dpkg -L libfido2-1 | grep -E '/libfido2\.so\.1$' | head -1); cp -L $L fix/
+          for l in $(ldd $L | awk '/=>/{print $3}'); do case $l in */libc.so*) ;; *) cp -L $l fix/;; esac; done
+          ls -la fix && echo "FIDO161_FIX=$PWD/fix" >> $GITHUB_ENV
+      - name: fido161
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} FIDO161_FIX=$FIDO161_FIX python3 ../iso/qt/sb/fido161_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: fido161, retention-days: 7, path: "run/fido161.txt\nrun/fido161*/qemu.log\nrun/fido161*/*.png"}

@@ -854,6 +854,29 @@ authenticator codes were built there (desktop/otp60.js, rudolfd's `desktop/secon
   beside the setup key (an encoder of Rudolf's own in desktop/, as the commercial's: byte mode, levels M and Q, versions
   1 to 10; checked by decoding it in the test), so a phone's app adds it with its camera.
 - **Tests:** a simulated FIDO2 key in QEMU (as Part 17 planned) for the unlocking; the QR code decoded back to the link.
+- **Status, the security keys: built (2026-11-20, branch fido-keys; fido-check.yml).** rudolfd reads the keys itself
+  (`iso/sys/rudolfd-fido.inc`, libfido2 opened with dlopen; `ci_release.sh` adds libfido2 and libcbor to the base layer) and
+  decides: `desktop/keys*` for the page (Standard and Lite: `desktop/fido61.js`), and `desktop/login`/`desktop/unlock` ask
+  for the key for Native (`rudolf-native.c`: "need":"key", the password kept, the touch). **Changed from Part 17's item 2,
+  so a new password needs no key:** the file key (and an administrator's private key) is sealed under HKDF(the
+  password's secret ‖ the account's key secret); the password's secret is a box in the account sealed with the
+  password's key (acRekey seals it again), and each key keeps its own copy of the key secret, sealed under HKDF(its
+  hmac-secret output) (asked without a PIN, so a PIN set later changes nothing; the PIN is asked only when adding).
+  Two keys before "Require a security key"; requiring deletes the password's copies (the page's fk and priv, rudolfd's
+  copy of the key secret). The old page-only WebAuthn keys move over when the person adds keys here (the add dialog
+  says the old one is then removed). An administrator's password reset removes the keys first. The recovery path:
+  docs/security-keys.md (no recovery code yet). **Tests:** `iso/qt/host/fido161_t.sh` (47: rudolfd from rudolfd.c with
+  its test I/O and the real libfido2 talking to `iso/qt/host/vfido.py`, a software CTAP2 key with hmac-secret and PIN
+  protocol 1: a wrong key, another account's key, a replayed answer, a key not touched, one key only, a PIN, Native's
+  sign-in and lock screen, a new password, the page's box lost, a damaged record, and a copy of the files opened
+  offline: nothing with the password, the file key with a key's hmac-secret); `iso/qt/shell2/fido61_t.js` (18: the page
+  with a stand-in rudolfd); `iso/qt/host/nativekey161_t.sh` (4: rudolf-native's sign-in and lock screen on Xvfb with a
+  stand-in rudolfd: the key asked at once after the password, a wrong key, Enter asking again); `iso/qt/sb/fido161_t.py` (QEMU, the newest beta with this tree's page, rudolfd and libfido2:
+  the keys as real HID devices in the guest through uhid, `iso/qt/vfido_uhid.c`, their reports over a serial port to
+  vfido.py on the host; the real Settings and sign-in screen, the lock screen, rudolfd's native sign-in, and the drive
+  image read on the host afterwards). **Not covered yet:** Native's and Lite's own screens with a key in QEMU (Native's
+  shows the request's message under the password field, not the page's dialog: a difference to fix in Native), a recovery
+  code, the elevation prompts (an administrator's password only), "Encrypt my data"'s copy of its key (password only).
 
 ### 19. Gaming on stronger computers (added on 2026-11-20)
 Asked on 2026-11-20 how Rudolf OS games on high-end hardware. Found then: AMD and Intel graphics use Mesa (close to

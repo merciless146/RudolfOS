@@ -32,6 +32,9 @@
  * of the file key ("rudolf-os home folder", the account's id). Each connection is a process of its own, so the session
  * is a root-only file (/run/rudolf/native-session). */
 #define DESK_ROUNDS 210000
+static int dfido_native(struct req *r, const char *a, const char *id, const uint8_t pk[32], uint8_t *fk, int *fl);   /* 1.6.1: rudolfd-fido.inc */
+static int dfido_unlock(struct req *r, const char *a, const char *id, const char *pw);
+static int dfido_count(const char *id);
 static char desk_ls[256] = LSFILE, desk_dir[256] = "/home/rudolf", desk_run[256] = RUN;
 static int desk_uid = 1000;
 
@@ -564,15 +567,20 @@ static void api_desktop_login(struct req *r)
 		char *ks = dj_str(dj_get(a, "ks")); uint8_t salt[96], pk[32], fk[64]; int sl = ks ? db64d(ks, salt, sizeof salt) : -1, fl = -1; free(ks);
 		if (sl <= 0) { dfree_secret(pw); free(list); dls_close(&l); reply_err(r->fd, 409, "This account has no key yet: sign in once with the Standard desktop engine."); return; }
 		dpbkdf2_256(pw, salt, sl, DESK_ROUNDS, pk, 32);
+		/* (1.6.1: a security key, the second step, before anything is opened; its copy of the file key is the one used, so an
+		   account that requires keys never opens with the password alone: rudolfd-fido.inc) */
+		int fkey = dfido_native(r, a, s.id, pk, fk, &fl);
+		if (fkey < 0) { explicit_bzero(pk, sizeof pk); dfree_secret(pw); free(list); dls_close(&l); return; }
 		/* (1.6.0: authenticator codes: asked after the password, before the encrypted folder or the files are opened) */
-		{ const char *oq = dj_get(a, "otp");
+		if (!fkey) { const char *oq = dj_get(a, "otp");
 		  if (oq && *dj_ws(oq) == '{') { char *cd = dbody_field(r, "c"), why2[200] = ""; int oc = dotp_check(a, pk, s.id, cd, why2, sizeof why2); free(cd);
 			if (oc) { if (oc == 403) health_add("signin", "wrong authenticator code for the account %.100s (native sign-in)", s.n);
 				explicit_bzero(pk, sizeof pk); dfree_secret(pw); free(list); dls_close(&l);
 				str e = {0}; sadd(&e, "{\"ok\":false,\"need\":\"code\",\"error\":"); sjson(&e, why2); sadd(&e, "}"); reply(r->fd, oc, "application/json", e.b, e.n, NULL); free(e.b); return; } } }
 		dvault_signin(s.id, pw); dfree_secret(pw); dhex(pk, 32, s.pk);
 		const char *box = dj_get(a, "fk");
-		if (box && *dj_ws(box) == '{') {
+		if (fkey) dhex(fk, fl, s.fk);
+		else if (box && *dj_ws(box) == '{') {
 			char *iv = dj_str(dj_get(box, "iv")), *ct = dj_str(dj_get(box, "ct")); uint8_t ivb[16], ctb[128];
 			int il = iv ? db64d(iv, ivb, sizeof ivb) : -1, cl = ct ? db64d(ct, ctb, sizeof ctb) : -1; free(iv); free(ct);
 			if (il == 12 && cl > 16 && cl - 16 <= (int)sizeof fk && !daes_gcm_open(pk, ivb, ctb, cl, fk)) { fl = cl - 16; dhex(fk, fl, s.fk); }
@@ -709,8 +717,8 @@ static void api_desktop_accounts(struct req *r)
 		const char *a = dj_at(list, i); if (!a) break;
 		char id[80], *n = dj_str(dj_get(a, "n")), *role = dj_str(dj_get(a, "r")), *h = dj_str(dj_get(a, "h")); dacct_id(a, id, sizeof id);
 		const char *pk = dj_get(a, "pk"); double t = dj_num(dj_get(a, "last"), 0); if (t > best) { best = t; snprintf(last, sizeof last, "%s", id); }
-		sadd(&o, "%s{\"id\":", i ? "," : ""); sjson(&o, id); sadd(&o, ",\"n\":"); sjson(&o, n ? n : ""); sadd(&o, ",\"r\":\"%s\",\"key\":%s,\"old\":%s}",
-			role && !strcmp(role, "admin") ? "admin" : "user", pk && *dj_ws(pk) != 'n' ? "true" : "false", h && !strncmp(h, "p2$", 3) ? "false" : "true");
+		sadd(&o, "%s{\"id\":", i ? "," : ""); sjson(&o, id); sadd(&o, ",\"n\":"); sjson(&o, n ? n : ""); sadd(&o, ",\"r\":\"%s\",\"key\":%s,\"old\":%s,\"keys\":%d}",
+			role && !strcmp(role, "admin") ? "admin" : "user", pk && *dj_ws(pk) != 'n' ? "true" : "false", h && !strncmp(h, "p2$", 3) ? "false" : "true", dfido_count(id));
 		free(n); free(role); dfree_secret(h);
 	}
 	sadd(&o, "],\"last\":"); sjson(&o, last); sadd(&o, "}");
@@ -779,9 +787,12 @@ static int api_desktop(struct req *r, const char *w, int post)
 			dls l; dls_open(&l); char *list = dls_accounts(&l), *pw = dbody_field(r, "p");
 			for (int i = 0; list && pw; i++) { const char *a = dj_at(list, i); if (!a) break; char id[80]; dacct_id(a, id, sizeof id);
 				if (!strcmp(id, s.id)) { char *h = dj_str(dj_get(a, "h")); okk = dpw_check(h, pw) == 0; free(h);
+					/* (1.6.1: the security key again: rudolfd-fido.inc) */
+					int fu = okk ? dfido_unlock(r, a, id, pw) : 0;
+					if (fu < 0) { dfree_secret(pw); free(list); dls_close(&l); explicit_bzero(&s, sizeof s); return 1; }
 					/* (1.6.0: the authenticator code again, as the page's lock screen) */
 					const char *oq = dj_get(a, "otp");
-					if (okk && oq && *dj_ws(oq) == '{') { char *ks = dj_str(dj_get(a, "ks")); uint8_t salt[96], pk[32]; int sl = ks ? db64d(ks, salt, sizeof salt) : -1; free(ks);
+					if (okk && !fu && oq && *dj_ws(oq) == '{') { char *ks = dj_str(dj_get(a, "ks")); uint8_t salt[96], pk[32]; int sl = ks ? db64d(ks, salt, sizeof salt) : -1; free(ks);
 						char *cd = dbody_field(r, "c"), why2[200] = ""; int oc = sl > 0 ? (dpbkdf2_256(pw, salt, sl, DESK_ROUNDS, pk, 32), dotp_check(a, pk, id, cd, why2, sizeof why2)) : 403; explicit_bzero(pk, sizeof pk); free(cd);
 						if (oc) { dfree_secret(pw); free(list); dls_close(&l); explicit_bzero(&s, sizeof s);
 							str e = {0}; sadd(&e, "{\"ok\":false,\"need\":\"code\",\"error\":"); sjson(&e, why2); sadd(&e, "}"); reply(r->fd, oc, "application/json", e.b, e.n, NULL); free(e.b); return 1; } }

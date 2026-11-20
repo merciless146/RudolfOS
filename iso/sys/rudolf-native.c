@@ -2988,7 +2988,8 @@ static char SN_NAME[128], SN_PASS[256], SN_MSG[300];
 /* (1.6.0, plan-1.6.1 Part 17: authenticator codes) rudolfd asked for the code after a right password: the password kept
    here for the second request, the field taking the code, as the page's code box after the password */
 static int SN_CODE; static char SN_PW1[256];
-static void sn_code_off(void) { SN_CODE = 0; explicit_bzero(SN_PW1, sizeof SN_PW1); }
+static int SN_KEY;   /* 1.6.1 (plan-1.6.1 Part 18): a security key asked for after the password (rudolfd-fido.inc) */
+static void sn_code_off(void) { SN_CODE = 0; SN_KEY = 0; explicit_bzero(SN_PW1, sizeof SN_PW1); }
 static double SRECT[5][4];   /* each focusable part's place (the page's units) */
 static void settings_load(void);
 static void apps_load(void);
@@ -3086,6 +3087,16 @@ static gboolean signin_area_draw(GtkWidget *w, cairo_t *cr, gpointer d)
    unseen (#app=do-start, oneapp59.js), not by every app window that opens */
 static void start_page(void) { if (USER_ID[0] && strcmp(USER_R, "guest")) app_open_ex("do-start", NULL, NULL, 1); }
 typedef struct { char *body, *path; int code; char *reply; } Job;
+/* 1.6.1 (plan-1.6.1 Part 18): the password was right and the account has security keys: the password kept for the next
+   request, the screen says to touch the key (in the page's words, fido61.js) and that request (with "k") waits for the
+   touch; after a wrong key or no touch, Sign in (or Enter) asks again */
+static void signin_go(int guest);
+static gboolean sn_key_again(gpointer p) { (void)p; signin_go(0); return G_SOURCE_REMOVE; }
+static void sn_key_step(int first)
+{
+	if (!SN_KEY) { SN_KEY = 1; SN_CODE = 0; snprintf(SN_PW1, sizeof SN_PW1, "%s", SN_PASS); }
+	if (first) { snprintf(SN_MSG, sizeof SN_MSG, "%s: touch your security key (any of yours). If it is not plugged in, plug it in first.", SIGN_LOCK ? USER_N : SN_NAME); g_idle_add(sn_key_again, NULL); }
+}
 static gboolean signin_done(gpointer p)
 {
 	Job *j = p; SIGN_BUSY = 0;
@@ -3103,10 +3114,11 @@ static gboolean signin_done(gpointer p)
 		char m[300] = "", nd[16] = ""; jstr(v, "error", m, sizeof m); jstr(v, "need", nd, sizeof nd);
 		snprintf(SN_MSG, sizeof SN_MSG, "%s", m[0] ? m : j->code ? "The sign-in did not work." : "Rudolf OS's system service did not answer.");
 		/* (1.6.0: the code is asked for: the password kept for the second request, the field cleared for the code) */
-		if (!strcmp(nd, "code") && j->code != 429) { if (!SN_CODE) { SN_CODE = 1; snprintf(SN_PW1, sizeof SN_PW1, "%s", SN_PASS); } }
+		if (!strcmp(nd, "key") && j->code != 429) sn_key_step(j->code == 401);
+		else if (!strcmp(nd, "code") && j->code != 429) { if (!SN_CODE) { SN_CODE = 1; snprintf(SN_PW1, sizeof SN_PW1, "%s", SN_PASS); } }
 		else sn_code_off();
 		explicit_bzero(SN_PASS, sizeof SN_PASS); SFOC = 1; sign_caret();
-		if (j->code) snd_play("error");   /* (a wrong password, as the page's) */
+		if (j->code && !(SN_KEY && j->code == 401)) snd_play("error");   /* (a wrong password, as the page's; not the key's first prompt) */
 	}
 	jfree(v);
 	if (SAREA) gtk_widget_queue_draw(SAREA); state_write();
@@ -3129,7 +3141,8 @@ static void signin_go(int guest)
 	Job *j = g_new0(Job, 1); GString *b = g_string_new("{");
 	if (guest) g_string_append(b, "\"guest\":true");
 	else { if (!SIGN_LOCK) { g_string_append(b, "\"n\":"); json_esc(b, SN_NAME); g_string_append_c(b, ','); }
-		if (SN_CODE) { g_string_append(b, "\"p\":"); json_esc(b, SN_PW1); g_string_append(b, ",\"c\":"); json_esc(b, SN_PASS); }
+		if (SN_KEY) { g_string_append(b, "\"p\":"); json_esc(b, SN_PW1); g_string_append(b, ",\"k\":true"); }   /* (1.6.1: waits for the touch) */
+		else if (SN_CODE) { g_string_append(b, "\"p\":"); json_esc(b, SN_PW1); g_string_append(b, ",\"c\":"); json_esc(b, SN_PASS); }
 		else { g_string_append(b, "\"p\":"); json_esc(b, SN_PASS); } }
 	g_string_append_c(b, '}'); j->body = g_string_free(b, FALSE); j->path = g_strdup(SIGN_LOCK ? "/api/desktop/unlock" : "/api/desktop/login");
 	g_thread_unref(g_thread_new("signin", signin_thread, j));
