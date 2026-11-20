@@ -242,7 +242,8 @@ try:
        CN in SEEN[n0:] and card.counts['sign'] >= 1 and card.counts['verify_ok'] >= 1, (SEEN[n0:], card.counts))
     PS = ("croot() { p=$1; while [ \"${p:-0}\" -gt 1 ]; do c=$(tr '\\0' ' ' < /proc/$p/cmdline 2>/dev/null); case \"$c\" in *--class=*) echo \"$c\" | grep -o 'class=[A-Za-z]*' | head -1; return;; esac; "
           "p=$(cut -d' ' -f4 /proc/$p/stat 2>/dev/null); done; echo class=none; }; "
-          "for p in $(pgrep -f /opt/chromium/chrome); do echo \"P $p $(croot $p) M=$(grep -c opensc-pkcs11 /proc/$p/maps 2>/dev/null) H=$(tr '\\0' '\\n' < /proc/$p/environ 2>/dev/null | sed -n 's/^HOME=//p')\"; done")
+          "for d in /proc/[0-9]*; do q=${d#/proc/}; case \"$(tr '\\0' ' ' < $d/cmdline 2>/dev/null)\" in *chrom*) "
+          "echo \"P $q $(croot $q) M=$(grep -c opensc-pkcs11 $d/maps 2>/dev/null) H=$(tr '\\0' '\\n' < $d/environ 2>/dev/null | sed -n 's/^HOME=//p') $(tr '\\0' ' ' < $d/cmdline | grep -o 'type=[a-z-]*' | head -1)\";; esac; done")
     procs = lambda o: re.findall(r'^P (\d+) class=(\S+) M=(\d+) H=(\S*)', o, re.M)
     o = sh(PS, 60)
     ok('...the card\'s module is loaded in the desktop\'s Chromium (so 6 below means something)', any(c == 'RudolfDesktop' and m != '0' for _, c, m, h in procs(o)), o)
@@ -259,8 +260,10 @@ try:
        card.counts['verify_ok'] + card.counts['verify_bad'] == v0 and card.counts['sign'] == s0 and CN not in SEEN[n1:], (card.counts, SEEN[n1:]))
     sh("pkill -f 'class=RudolfTor'; echo closed", 30)
     # 7. Lock the screen when my card is taken out
-    js("(()=>{S.sclock=true;try{persistS()}catch(e){};scLockWatch();return 1})()"); time.sleep(8)
-    vs.remove(); r = wait_for(js, "!!LOCKED", 30, 1); vm.shot('locked')
+    js("(()=>{S.sclock=true;try{persistS()}catch(e){};scLockWatch();return 1})()")
+    r0 = wait_for(js, "SC_HAD===true", 90, 2); out('the watch has seen the card:', r0, js("JSON.stringify({u:USER&&USER.n,lw:!!SC_LW,had:SC_HAD,locked:LOCKED,sclock:S.sclock})"))
+    vs.remove(); r = wait_for(js, "!!LOCKED", 60, 1); vm.shot('locked')
+    if r is not True: out('the page:', js("JSON.stringify({u:USER&&USER.n,lw:!!SC_LW,had:SC_HAD,locked:LOCKED,sclock:S.sclock,err:(window.__cw||[]).slice(-5)})"))
     s = wait_status(sh, lambda s: s.get('readers') and not card_in(s), 60)
     ok('7. "Lock the screen when my card is taken out": the card taken out, the screen locks', r is True, r)
     ok('...sc/status: the reader with no card', s.get('readers') and not card_in(s), s)
