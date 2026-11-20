@@ -22,8 +22,8 @@ function oweRow(c) {
       m.textContent = USER.disk ? 'Your files are not open on this computer\'s disk right now, so this cannot be changed.' : 'Only for accounts whose files are kept on this computer\'s disk.'; return }
     ck.disabled = false; ck.checked = on;
     m.textContent = on ? 'On: Oracle\'s websites (your sign-ins, site data, cache and saved site passwords) are encrypted with your account\'s key and locked when you sign out.'
-      : eng == 'std' ? 'Off: Oracle\'s websites are kept in this computer\'s shared browser profile, not encrypted with your account.'
-      : 'Off: Oracle\'s websites are kept in this computer\'s shared browser data, not encrypted with your account.';
+      : eng == 'std' ? 'Off: Oracle\'s websites are kept in this computer\'s shared browser profile, and they are not encrypted: someone with this computer\'s drive could read them.'
+      : 'Off: Oracle\'s websites are kept in this computer\'s shared browser data, and they are not encrypted: someone with this computer\'s drive could read them.';
     n.textContent = (!OWE_BUILT[eng] ? 'On this desktop, Oracle keeps its websites the shared way until a later update; your choice is kept for then. ' : '')
       + 'A change applies the next time Oracle opens, and websites ask you to sign in again. It protects your websites while you are signed out; anyone using your account while it is signed in can still use them.';
   };
