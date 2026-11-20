@@ -303,6 +303,9 @@ body.emu-borderless #bar{display:none!important}
 .edp b{border-radius:8px}.edp b:nth-child(1){grid-area:1/2}.edp b:nth-child(2){grid-area:2/1}.edp b:nth-child(3){grid-area:2/3}.edp b:nth-child(4){grid-area:3/2}
 .eab{display:grid;grid-template-columns:56px 56px 56px;grid-template-rows:56px 56px 56px}
 .eab b{border-radius:50%}.eab b:nth-child(1){grid-area:1/2}.eab b:nth-child(2){grid-area:2/1}.eab b:nth-child(3){grid-area:2/3}.eab b:nth-child(4){grid-area:3/2}
+/* 1.6.1: the Genesis's six buttons, the PlayStation's shoulder pairs and its symbols */
+.eab6{display:grid;grid-template-columns:52px 52px 52px;grid-template-rows:52px 52px;gap:6px}.eab6 b{border-radius:50%}
+.eshd{display:flex;gap:8px}.eshd b{width:58px;height:30px;border-radius:10px;font-size:12px}.eps b{font-size:20px}
 .epm{display:flex;gap:10px;margin-bottom:6px}.epm b{width:74px;height:28px;border-radius:14px;font-size:11px}
 .emumenu{position:absolute;inset:0;z-index:4;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center}
 .emumenu[hidden]{display:none}

@@ -10,6 +10,17 @@ Summary: In progress.
   game of theirs is played. Add games takes .z64, .n64 and .v64 games, and Dreamcast discs as .cdi or .chd files or as
   a .gdi with its track files (each such disc gets a folder of its own); the library has Nintendo 64 and Dreamcast
   tabs. A plugged-in controller works in both (they set it up themselves); Super+Esc comes back to the desktop.
+- New: Emu plays Sega Genesis / Mega Drive and PlayStation games, in Emu itself: ClownMDEmu and PCSX-ReARMed as
+  WebAssembly (in Emu's player package, 1.1.0, from the Rudolf OS Library). Add games takes Genesis games (.md, .gen,
+  .smd, and a .bin that says SEGA in its header) and PlayStation discs as a .cue with its track files (a folder of its
+  own, as a Dreamcast .gdi), a .chd (a GD-ROM .chd stays a Dreamcast disc) or a .pbp; a PlayStation BIOS file
+  (scph*.bin) goes in PS1/BIOS and is used when it is there (without one, the PlayStation's own built-in replacement
+  starts most games). A disc is read from the library as the game asks for it, not loaded whole. The library has
+  Genesis and PlayStation tabs. Battery memory and the PlayStation's memory card 1 save by themselves; save states
+  as for the other consoles.
+- New: each console in Emu has its own buttons on the keyboard, a controller and the touchscreen: the Genesis's A B C,
+  X Y Z and Mode; the PlayStation's ✕ ○ □ △, L1 L2 R1 R2, L3 R3 and the DualShock's two analog sticks (a controller's
+  sticks, or J I K L for the left one). Controls lists each console's own.
 - New: two-step sign-in with an authenticator app (docs/plan-1.6.1.md Part 17, the codes; security keys that also protect your files come later). User Settings › Sign-in options › Authenticator app: set it up with the setup key in an app such as Google or Microsoft Authenticator, Aegis or 2FAS; then signing in and unlocking ask for the app's 6-digit code after the password, on Standard and on the native desktop. A code works once; after 5 wrong attempts there is a wait (30 seconds, doubling up to 15 minutes). Security Settings › Two-step sign-in: an administrator can require it for administrators or for every account.
 - New: each other's builds (docs/plan-1.6.1.md Part 16). Settings › Update and recovery › Update address: Check this address says whether it answers, whether its releases are complete, and whose key signs them: updates install only from this computer's key; another person's build can still go on a USB stick. Only an administrator can change the address. Get beta versions switches the address that is set between its /stable and /beta. Make a USB stick can put the update address's latest release on a stick, checked first (another person's build only after a warning). Recovery mode is always the official Rudolf OS: it is kept at the newest official stable release, and every stick gets it.
 - Planned (docs/plan-1.6.1.md Part 15): one title bar for apps that draw their own (Discord, Steam, Claude, Chromium-based browsers) on Native: the app's own setting for the system title bar where it has one; otherwise its own bar alone, with moving, resizing and maximizing from it; Rudolf's instead by choice for apps whose bar loses nothing when cut.

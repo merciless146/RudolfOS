@@ -1901,7 +1901,7 @@ static void b64(str *s, const unsigned char *d, size_t n)
 static void api_games(struct req *r, const char *what)
 {
 	if (!strcmp(what, "info")) {
-		run("mkdir -p /home/rudolf/Games/GB /home/rudolf/Games/SNES/Saves /home/rudolf/Games/SNES/States /home/rudolf/Games/DS/Saves /home/rudolf/Games/DS/States /home/rudolf/Games/DC /home/rudolf/Games/N64 && chown -R 1000:1000 /home/rudolf/Games");   /* (1.6.1: Dreamcast, N64) */
+		run("mkdir -p /home/rudolf/Games/GB /home/rudolf/Games/SNES/Saves /home/rudolf/Games/SNES/States /home/rudolf/Games/DS/Saves /home/rudolf/Games/DS/States /home/rudolf/Games/DC /home/rudolf/Games/N64 /home/rudolf/Games/MD/Saves /home/rudolf/Games/MD/States /home/rudolf/Games/PS1/Saves /home/rudolf/Games/PS1/States /home/rudolf/Games/PS1/BIOS && chown -R 1000:1000 /home/rudolf/Games");   /* (1.6.1: Dreamcast, N64, Genesis, PlayStation) */
 		char *u = run_out("du -sk /home/rudolf/Games 2>/dev/null | cut -f1"); trim(u);
 		struct statvfs v; long long fr = statvfs("/home/rudolf/Games", &v) ? 0 : (long long)v.f_bavail * v.f_frsize;
 		str s = {0}; sadd(&s, "{\"ok\":true,\"used\":%lld,\"free\":%lld,\"persistent\":%s}", atoll(u) * 1024, fr, access(RUN "/persistent", F_OK) ? "false" : "true");
