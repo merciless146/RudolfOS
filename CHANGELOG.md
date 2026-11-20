@@ -28,6 +28,7 @@ Summary: In progress.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- Changed: the window transitions (LitePoint) are quicker: opening (from the start menu, the desktop, a pin or a file), maximizing, minimizing, restoring and closing take 160 ms (were 180 to 200); the start menu and the taskbar's pop-ups 120 ms (were 140 to 160); right-click menus and a window's taskbar button 80 ms (were 100 and 120). A window opened by another (a dialog) keeps 220 ms.
 - Planned (docs/plan-1.6.0.md Part 21): Oracle keeps each account's websites (sign-ins, saved passwords, site data) separately, in that account's encrypted folder; until now one set was shared by every account. Everyone signs in to websites again once (the shared sign-ins and saved passwords are removed, not given to anyone). Oracle can reopen the tabs from last time.
 - Planned (docs/plan-1.6.0.md Part 20): smart cards and the DoD Common Access Card. Card readers work; Oracle can sign in to sites with a card (a CAC or PIV card), with the card's own PIN; Settings › Security › Smart cards shows the card and its expiry, and installs the DoD's certificates for an account when asked, checked against the DoD's root certificates; Linux programs and Firefox can use the card too.
 - New: File Explorer › a drive › Copy to another drive… copies files and folders from one drive straight onto
