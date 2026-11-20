@@ -854,6 +854,18 @@ authenticator codes were built there (desktop/otp60.js, rudolfd's `desktop/secon
   beside the setup key (an encoder of Rudolf's own in desktop/, as the commercial's: byte mode, levels M and Q, versions
   1 to 10; checked by decoding it in the test), so a phone's app adds it with its camera.
 - **Tests:** a simulated FIDO2 key in QEMU (as Part 17 planned) for the unlocking; the QR code decoded back to the link.
+- **Status, the QR code: done (2026-11-20, branch otp-qr; qr-check.yml).** `desktop/qr61.js`, written from ISO/IEC
+  18004: byte mode, levels M and Q, versions 1 to 10, the mask the four penalty rules choose; drawn as an SVG, black on
+  white with the 4-module quiet zone in every theme (5 px a module for the setup link, version 6-M). The dialog shows
+  it to the left of the setup key (level M); a link too long for version 10 shows the key and link only. Tests:
+  `iso/qt/shell2/qr61_t.py` (66 codes, both levels, every version and mask, each version's largest text, decoded with
+  OpenCV's `cv2.QRCodeDetector` and zbarimg, which must agree; the chosen mask the lowest penalty; the dialog in
+  Chromium in the light, dark and high-contrast themes read back from a screenshot to the exact link, its quiet zone
+  and 21:1 contrast measured) and `iso/qt/webkit/qr61_ci.py` (the same dialog in rudolf-webkit: Lite's whole page and
+  Native's one-app Settings, light and dark, read from the X screen). OpenCV's classic detector misses a few codes at
+  some sizes (finder patterns not found: zbarimg reads them, and so does OpenCV at another size or with its ArUco
+  detector), so the test tries those before failing; it never accepts a different text. **For the owner:** scan it
+  with the phone's authenticator app (Settings › User Settings › Sign-in options › Authenticator app › Set up…).
 
 ### 19. Gaming on stronger computers (added on 2026-11-20)
 Asked on 2026-11-20 how Rudolf OS games on high-end hardware. Found then: AMD and Intel graphics use Mesa (close to
