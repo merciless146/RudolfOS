@@ -224,7 +224,7 @@ static void handle(const char *msg)
 /* ---- Oracle's windows (--oracle) */
 static int oracle, o_had, o_n; static char o_id[64];
 static struct { char target[64]; } o_win[64];
-static struct { char params[1400]; int id, tries; long long at; } o_q[32]; static int o_nq;
+static struct { char params[1400]; int id, tries; long long at; } o_q[32]; static int o_nq; static long long o_close_at;   /* (1.6.0 Part 21: when Chromium closes after "logout") */
 /* the desktop pages attached for their messages (12.3c step 5) */
 static struct { char target[64], parent[64], session[80]; int attach_id; char title[600]; } o_pg[64]; static int o_npg;
 /* (1.6.0) the titles waiting for their window's place */
@@ -265,6 +265,15 @@ static void o_line(char *l)
 		if (strspn(mid, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != strlen(mid)) return;
 		char p[200]; snprintf(p, sizeof p, "{\"expression\":\"window.__oaMirrorIn&&__oaMirrorIn('%s')\"}", mid);
 		for (int i = 0; i < o_npg; i++) if (o_pg[i].session[0]) { int k; send_session(o_pg[i].session, "Runtime.evaluate", p, &k); }
+		return;
+	}
+	/* (1.6.0 Part 21) "webclear": an account deleted on the native desktop: every desktop page clears the websites listed in rudolfd's
+	   copy (__oaWebClearIn, tabs26.js); "logout": the account signed out: each page saves its tabs and clears Guest's websites
+	   (__oaLogout), then Chromium closes, as every window does when signing out on Standard */
+	if (!strcmp(l, "webclear") || !strcmp(l, "logout")) {
+		const char *p = !strcmp(l, "logout") ? "{\"expression\":\"window.__oaLogout&&__oaLogout()\"}" : "{\"expression\":\"window.__oaWebClearIn&&__oaWebClearIn()\"}";
+		for (int i = 0; i < o_npg; i++) if (o_pg[i].session[0]) { int k; send_session(o_pg[i].session, "Runtime.evaluate", p, &k); }
+		if (!strcmp(l, "logout")) o_close_at = now_ms() + 2500;
 		return;
 	}
 	/* (1.6.0, the owner's report 3: an app window saved its settings; every desktop page here takes them from rudolfd's copy) */
@@ -489,6 +498,7 @@ int main(int argc, char **argv)
 			memmove(buf, buf + start, blen - start); blen -= start;
 			if (blen >= sizeof buf - 1) blen = 0;        /* a message too large to matter (none expected) */
 		}
+		if (oracle && o_close_at && now_ms() >= o_close_at) { o_close_at = 0; o_nq = 0; send_cmd("Browser.close", NULL); }   /* (signed out: "logout") */
 		if (oracle) { for (int i = 0; i < o_nq; i++) if (!o_q[i].id || (o_q[i].at && now_ms() >= o_q[i].at)) { o_q[i].at = 0; o_send(i); } }
 		else {
 		if (retry_at && now_ms() >= retry_at) { retry_at = 0; open_shell(); }

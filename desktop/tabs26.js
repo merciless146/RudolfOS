@@ -22,7 +22,39 @@ function rtPart() {
   return rtPartOld(u && u.n);
 }
 /* an account's websites forgotten (deleted account), and the pre-1.6.0 ones of every account (once: everyone starts fresh) */
-const rtClear = part => { try { if (part && typeof rtOn == 'function' && rtOn()) shellSend({rudolfShell: 'tab', op: 'clear', part, id: 0}) } catch (e) {} };
+const rtClear = part => { try { if (!part) return; if (typeof rtOn == 'function' && rtOn()) shellSend({rudolfShell: 'tab', op: 'clear', part, id: 0});
+  else if (typeof oaNative == 'function' && oaNative()) rtWebClearAdd(part) } catch (e) {} };
+/* 1.6.0 (plan-1.6.0 Part 21; the owner: "Rudolf OS on the native desktop should appear and function exactly as it does in Chromium
+   mode"): on the native desktop an account is deleted in a window of its own (WebKit), while Oracle's tabs and their websites are
+   Oracle's Chromium's. The partitions to clear are listed in the storage the pages share (rudolfd's copy, RT_WCK) and Oracle told
+   (op "webclear"); Oracle's page clears them when told, and when it starts (Oracle closed at the time). */
+const RT_WCK = 'bd95webclear';
+function rtWebClearAdd(part) {
+  try { let l = JSON.parse(localStorage.getItem(RT_WCK) || '[]'); if (!Array.isArray(l)) l = []; if (!l.includes(part)) l.push(part);
+    localStorage.setItem(RT_WCK, JSON.stringify(l.slice(-60)));
+    Promise.resolve(window.__rudolfLsFlush && window.__rudolfLsFlush()).catch(() => {}).then(() => { try { oaPost({op: 'webclear'}) } catch (e) {} }) } catch (e) {}
+}
+window.__oaWebClearIn = async () => {
+  if (typeof rtOn != 'function' || !rtOn()) return 0; let l = null;
+  try { if (typeof RD != 'undefined' && RD) { const r = await fetch('/api/lsync?key=' + RT_WCK, {headers: {'X-Rudolf-Token': RD.token}, cache: 'no-store'}); const j = r.ok ? await r.json() : null;
+    if (j && typeof j.v == 'string') l = JSON.parse(j.v) } } catch (e) {}
+  if (!l) try { l = JSON.parse(localStorage.getItem(RT_WCK) || 'null') } catch (e) {}
+  if (!Array.isArray(l) || !l.length) return 0;
+  l.filter(p => typeof p == 'string').forEach(p => shellSend({rudolfShell: 'tab', op: 'clear', part: p, id: 0}));
+  try { localStorage.removeItem(RT_WCK); window.__rudolfLsFlush && window.__rudolfLsFlush() } catch (e) {}
+  return l.length;
+};
+/* (Oracle's page starting: what was listed while it was closed, once its tabs can start) */
+{ let n = 0; const t = setInterval(() => { try { if (typeof rtOn == 'function' && rtOn()) { clearInterval(t); window.__oaWebClearIn() } else if (++n > 90) clearInterval(t) } catch (e) { clearInterval(t) } }, 2000); }
+/* the account signing out on the native desktop (rudolf-launch "logout", before Oracle's Chromium closes): as Standard's sign-out
+   (core25.js userLogout) for Oracle: its tabs saved for "the tabs from last time", Guest's websites cleared */
+window.__oaLogout = () => {
+  try { window.__oraSave && window.__oraSave() } catch (e) {}
+  try { if (typeof USER != 'undefined' && USER && USER.r == 'guest' && window.__rtGuest) { rtClear('priv-g' + window.__rtGuest); window.__rtGuest = null } } catch (e) {}
+  try { typeof fsFlush == 'function' && fsFlush() } catch (e) {}
+  try { window.__rudolfLsFlush && window.__rudolfLsFlush() } catch (e) {}
+  return 1;
+};
 function rtForget(a) { if (!a) return; if (a.id) rtClear('a' + String(a.id).replace(/[^a-z0-9]/gi, '').slice(0, 32)); rtClear(rtPartOld(a.n)) }
 const rtSend = (op, tid, o) => shellSend(Object.assign({rudolfShell: 'tab', op, tid}, o || {}));
 /* a new real tab. h: {nav(url, back, fwd), load(on, error), title(t), focus(), close(), keys(k), newwin(url, ntid, popup),

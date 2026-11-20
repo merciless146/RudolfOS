@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths: ['desktop/tabs26.js', 'desktop/core25.js', 'desktop/oracle58.js', 'desktop/private59.js', 'iso/www/index.html',
-      'iso/qt/shell2/oraacct60_t.js', '.github/workflows/oracle-account-check.yml']
+      'iso/qt/shell2/oraacct60_t.js', 'desktop/oneapp59.js', 'iso/sys/rudolf-native.c', 'iso/sys/rudolf-launch.c', '.github/workflows/oracle-account-check.yml']
 permissions: {contents: read}
 jobs:
   page:
