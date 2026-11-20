@@ -7183,13 +7183,15 @@ static gboolean ready_note(gpointer what)
 	GByteArray *b = NULL; if (http("GET", "/api/health?n=20", NULL, 0, &b) != 200 || !b) { if (b) g_byte_array_free(b, TRUE); return G_SOURCE_REMOVE; }
 	g_byte_array_append(b, (const guint8 *)"", 1); JV *v = jparse((const char *)b->data); g_byte_array_free(b, TRUE);
 	double up = jnum(v, "uptime", up0); if (up < 0 || up > 900) { jfree(v); return G_SOURCE_REMOVE; }   /* (rudolfd's uptime, as the page's) */
+	double bk = jnum(v, "beforeKernel", -1);   /* (1.6.1: power-on to this kernel's clock: firmware, boot loader, a handover's first stage) */
 	if (up0 >= 0 && st >= 0) st -= up0 - up;   /* (the shell's start on the same clock) */
 	JV *ev = jprop(v, "events"); double ts = -1, tr = -1;   /* (newest first) */
 	for (int i = 0; ev && i < ev->len; i++) { JV *e = jat(ev, i); char k[16] = ""; jstr(e, "k", k, sizeof k); double t = jnum(e, "t", -1);
 		if (!strcmp(k, "start") && ts < 0) ts = t; if (!strcmp(k, "ready") && tr < 0) tr = t; }
 	jfree(v);
 	if (ts < 0 || (tr >= 0 && tr >= ts)) return G_SOURCE_REMOVE;
-	char m[300]; snprintf(m, sizeof m, "the desktop was ready %.0f s after start-up (Native: %s shown; the desktop program started at %.0f s, its screen %.0f s later)", up, (const char *)what, st, st >= 0 ? up - st : -1);
+	char pw[48] = ""; if (bk > 0) snprintf(pw, sizeof pw, "; %.0f s from power-on", up + bk);
+	char m[340]; snprintf(m, sizeof m, "the desktop was ready %.0f s after start-up (Native: %s shown; the desktop program started at %.0f s, its screen %.0f s later%s)", up, (const char *)what, st, st >= 0 ? up - st : -1, pw);
 	GString *j = g_string_new("{\"k\":\"ready\",\"m\":"); json_esc(j, m); g_string_append(j, "}");
 	http("POST", "/api/health", j->str, j->len, NULL); g_string_free(j, TRUE); fprintf(stderr, "rudolf-native: %s\n", m);
 	return G_SOURCE_REMOVE;
