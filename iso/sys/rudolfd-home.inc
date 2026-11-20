@@ -194,6 +194,30 @@ static int oweb_ready(const char *acct, char *p, size_t pn)
 	return ok;
 }
 
+/* 1.6.0 (docs/plan-1.6.0.md Part 22 item 5): "Keep my websites encrypted with my account", each account's own choice, kept
+   inside its encrypted home folder (.rudolf/oracle-websites, "on" or "off": with the drive alone it can be neither read nor
+   changed), so it cannot be turned off behind the person's back. Unset: each desktop's own default (Standard off, Native and
+   Lite on), except that an Oracle folder already holding a profile counts as on (a choice file removed from the drive does
+   not turn it off). 1 on, 0 off, -1 unset (or the folder locked). */
+static int owenc_get(const char *acct)
+{
+	int d = home_acct_ok(acct) ? home_root_fd(acct) : -1; if (d < 0) return -1;
+	int v = -1, rd2 = openat(d, ".rudolf", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+	if (rd2 >= 0) { int f = openat(rd2, "oracle-websites", O_RDONLY | O_NOFOLLOW | O_CLOEXEC); if (f >= 0) { char b[8] = ""; ssize_t n = read(f, b, sizeof b - 1); close(f); if (n > 0) v = !strncmp(b, "on", 2) ? 1 : !strncmp(b, "off", 3) ? 0 : -1; } close(rd2); }
+	close(d);
+	if (v < 0) { char wp[400], pf[460]; struct stat st; if (oweb_ready(acct, wp, sizeof wp)) { snprintf(pf, sizeof pf, "%s/chromium/Default", wp); if (!stat(pf, &st)) v = 1; } }
+	return v;
+}
+static int owenc_set(const char *acct, int on)
+{
+	int d = home_acct_ok(acct) ? home_root_fd(acct) : -1; if (d < 0) return -1;
+	mkdirat(d, ".rudolf", 0755); int rd2 = openat(d, ".rudolf", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); close(d); if (rd2 < 0) return -1;
+	unlinkat(rd2, "oracle-websites.t", 0);
+	int f = openat(rd2, "oracle-websites.t", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0644); if (f < 0) { close(rd2); return -1; }
+	const char *v = on ? "on\n" : "off\n"; int ok = write(f, v, strlen(v)) == (ssize_t)strlen(v) && !fsync(f); close(f);
+	ok = ok && !renameat(rd2, "oracle-websites.t", rd2, "oracle-websites"); close(rd2); return ok ? 0 : -1;
+}
+
 /* 0 ok; otherwise an HTTP status and err */
 static int home_unlock(const char *acct, const unsigned char *key, int session, char *err, size_t en, int *made)
 {

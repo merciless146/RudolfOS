@@ -58,8 +58,15 @@ ok "15e. locked with a file still open (Oracle's Chromium closing): said, the op
 exec 7<&-; sleep 5
 ok "15f. ...once it is closed, the key is wiped by itself (asked again in the background): names unreadable" "$([ ! -e $T/m/oracle/u-boss/chromium ] && echo 1)" "$(ls $T/m/oracle/u-boss | head -3)"
 o=$(t "POST home/unlock?acct=u-boss <$T/k1")
+# the choice "Keep my websites encrypted" (Part 22 item 5), kept in the encrypted home folder
+o=$(t "OWG u-kid"); ok "15g. unset, and no Oracle profile yet: -1 (each desktop's own default)" "$(has "$o" 'OWG -1')" "$o"
+o=$(t "OWG u-boss"); ok "15h. unset, but the Oracle folder holds a profile: on (a choice file removed from the drive does not turn it off)" "$(has "$o" 'OWG 1')" "$o"
+o=$(t "OWS u-boss?off" "OWG u-boss"); ok "15i. turned off: kept in the home folder's .rudolf, read back" "$([ "$(has "$o" 'OWG 0')" = 1 ] && [ "$(cat $R/u-boss/.rudolf/oracle-websites)" = off ] && echo 1)" "$o"
+ln -s $T/planted $R/u-boss/.rudolf/oracle-websites.t; o=$(t "OWS u-boss?on" "OWG u-boss")
+ok "15j. a link the account planted is not followed (written in its place), turned on again" "$([ ! -e $T/planted ] && [ "$(has "$o" 'OWG 1')" = 1 ] && [ ! -L $R/u-boss/.rudolf/oracle-websites ] && echo 1)" "$o"
 o=$(t "POST home/lock?acct=u-boss" "GET home/read?acct=u-boss&path=Documents/Work/2026/diary.txt" "GET home")
 ok "16. after lock, the folder is refused (423)" "$(echo "$o" | sed -n 2p | grep -q ' 423 ' && echo 1)" "$o"
+ok "17a. ...the websites choice too: unreadable while locked (-1)" "$(has "$(t "OWG u-boss")" 'OWG -1')"
 ok "17. ...and its names and contents are unreadable on the disk, also to root" "$([ ! -e $R/u-boss/Documents ] && ! grep -rqa 'Dear diary\|v2' $R/u-boss 2>/dev/null && echo 1)" "$(ls $R/u-boss | head -3)"
 ok "18. GET home lists the accounts, open or locked" "$(echo "$o" | sed -n 3p | grep -q '"id":"u-boss","unlocked":false' && echo "$o" | sed -n 3p | grep -q '"id":"u-kid","unlocked":true' && echo 1)" "$o"
 o=$(t "POST home/unlock?acct=u-boss <$T/k1" "GET home/read?acct=u-boss&path=Documents/Work/2026/diary.txt")

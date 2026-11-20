@@ -1099,10 +1099,39 @@ static void oracle_hash(GString *h, const char *s) { for (const char *c = s; *c;
    L: oracle-chrome's lines (the shell's ID, then Chromium and its arguments). Its copy of the shell, when it has one and it is
    not the system's (a release changed it), is replaced first as the session does for Standard's profile (rudolf-shellfix: the
    shell's storage goes with it, so websites ask to sign in again, as there). */
+/* (1.6.0 Part 22) the account's websites as they were before, in Standard's shared profile, not encrypted: removed once, when its
+   encrypted profile is first made (the account signs in to websites again, as Settings says). Chromium keeps a partition in
+   Default/Storage/ext/<domain>/<the first 6 bytes of SHA-256 of its name, in hex> (content/browser/storage_partition_impl_map.cc);
+   the shell names this account's "web-a<ID>" (tabs26.js rtPart, the shell's partName), before 1.6.0 "web-u<hash of the name>". */
+static void oracle_part_dir(const char *name, char *hex)
+{
+	gchar *h = g_compute_checksum_for_string(G_CHECKSUM_SHA256, name, -1); for (int i = 0; i < 12; i++) hex[i] = g_ascii_toupper(h[i]); hex[12] = 0; g_free(h);
+}
+static void oracle_old_parts_rm(gchar **L, int n)
+{
+	const char *shared = NULL; for (int i = 1; i < n; i++) if (!strncmp(L[i], "--user-data-dir=", 16)) shared = L[i] + 16;
+	if (!shared || !USER_ID[0]) return;
+	char p1[120] = "web-a", p2[120] = "web-u"; int k = 5;
+	for (const char *c = USER_ID; *c && k < 5 + 32; c++) if (g_ascii_isalnum(*c)) p1[k++] = *c;
+	p1[k] = 0;
+	{ guint32 h = 0x811c9dc5; for (const char *c = USER_N; *c; c++) { h ^= (guchar)g_ascii_tolower(*c); h *= 0x01000193; }
+	  char b36[16]; int j = 0; do { int d = h % 36; b36[j++] = d < 10 ? '0' + d : 'a' + d - 10; h /= 36; } while (h && j < 15);
+	  for (int i = 0; i < j; i++) p2[5 + i] = b36[j - 1 - i]; p2[5 + j] = 0; }
+	const char *names[2] = { p1, p2 };
+	char *ext = g_build_filename(shared, "Default", "Storage", "ext", NULL); GDir *d = g_dir_open(ext, 0, NULL); const char *dom;
+	while (d && (dom = g_dir_read_name(d))) for (int i = 0; i < 2; i++) {
+		char hex[13], low[13]; oracle_part_dir(names[i], hex); for (int j = 0; j < 13; j++) low[j] = g_ascii_tolower(hex[j]);
+		for (int c = 0; c < 2; c++) { char *pd = g_build_filename(ext, dom, c ? low : hex, NULL);
+			if (g_file_test(pd, G_FILE_TEST_IS_DIR)) { char *argv[] = { "rm", "-rf", "--", pd, NULL }; g_spawn_sync(NULL, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, NULL, NULL, NULL);
+				fprintf(stderr, "rudolf-native: Oracle: %s's websites from before (not encrypted) removed from the shared profile\n", USER_ID); }
+			g_free(pd); } }
+	if (d) g_dir_close(d); g_free(ext);
+}
 static char *oracle_web_profile(gchar **L, int n)
 {
 	if (n < 2 || access(WEB_DIR, W_OK | X_OK)) { if (WEB_DIR[0]) fprintf(stderr, "rudolf-native: Oracle: %s is not open: Standard's profile\n", WEB_DIR); return NULL; }
-	char *prof = g_build_filename(WEB_DIR, "chromium", NULL); g_mkdir_with_parents(prof, 0700);
+	char *prof = g_build_filename(WEB_DIR, "chromium", NULL); int fresh = access(prof, F_OK) != 0; g_mkdir_with_parents(prof, 0700);
+	if (fresh) oracle_old_parts_rm(L, n);
 	const char *bundle = getenv("RUDOLF_SHELL_BUNDLE"); if (!bundle) bundle = "/usr/share/rudolf/www/iwa/shell.swbn";
 	const char *fix = getenv("RUDOLF_SHELLFIX"); if (!fix) fix = "/usr/bin/rudolf-shellfix";
 	int have = 0, same = 0; char *iwa = g_build_filename(prof, "Default", "iwa", NULL); GDir *dd = g_dir_open(iwa, 0, NULL); gchar *sys = NULL; gsize sl = 0;

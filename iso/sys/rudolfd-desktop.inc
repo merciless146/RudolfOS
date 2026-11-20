@@ -8,6 +8,7 @@
  *   POST desktop/logout        locks the home folder, ends the session
  *   POST desktop/lock          the lock screen is up: desktop/session answers 423 until desktop/unlock
  *   POST desktop/unlock        body {"p":PASSWORD}, the session's account's
+ *   GET/POST desktop/owenc     (1.6.0 Part 22) the account's "Keep my websites encrypted" choice, in its encrypted home folder
  *   GET  desktop/session       {"id","n","r","pk","fk"} for the one-app pages (oneapp59.js); 404 without a session; (1.6.0 Part 22) "web":
  *                              the account's encrypted folder for Oracle's websites (/persist/oracle/ID), when open; also in login's answer
  *   GET  desktop/settings      the page's settings the shell draws, the pinned apps, the notifications' count, "gen",
@@ -591,7 +592,7 @@ static void api_desktop_login(struct req *r)
 	if (dsess_write(&s)) { explicit_bzero(&s, sizeof s); reply_err(r->fd, 500, "the session could not be kept"); return; }
 	dfail_note(1);
 	str o = {0}; sadd(&o, "{\"ok\":true,\"id\":"); sjson(&o, s.id); sadd(&o, ",\"n\":"); sjson(&o, s.n); sadd(&o, ",\"r\":"); sjson(&o, s.r);
-	{ char wp[400]; if (strcmp(s.id, "guest") && oweb_ready(s.id, wp, sizeof wp)) { sadd(&o, ",\"web\":"); sjson(&o, wp); } }   /* (1.6.0 Part 22: Oracle's encrypted folder) */
+	{ char wp[400]; if (strcmp(s.id, "guest") && oweb_ready(s.id, wp, sizeof wp) && owenc_get(s.id) != 0) { sadd(&o, ",\"web\":"); sjson(&o, wp); } }   /* (1.6.0 Part 22: Oracle's encrypted folder, unless the account turned it off; Native's default is on) */
 	sadd(&o, "}");
 	explicit_bzero(&s, sizeof s); reply_json(r->fd, &o);
 }
@@ -742,7 +743,7 @@ static int api_desktop(struct req *r, const char *w, int post)
 		if (!access(lp, F_OK)) { explicit_bzero(&s, sizeof s); reply_err(r->fd, 423, "the screen is locked"); return 1; }
 		str o = {0}; sadd(&o, "{\"ok\":true,\"id\":"); sjson(&o, s.id); sadd(&o, ",\"n\":"); sjson(&o, s.n); sadd(&o, ",\"r\":"); sjson(&o, s.r);
 		sadd(&o, ",\"pk\":"); sjson(&o, s.pk); sadd(&o, ",\"fk\":"); sjson(&o, s.fk);
-		{ char wp[400]; if (strcmp(s.id, "guest") && oweb_ready(s.id, wp, sizeof wp)) { sadd(&o, ",\"web\":"); sjson(&o, wp); } }   /* (1.6.0 Part 22) */
+		{ char wp[400]; if (strcmp(s.id, "guest") && oweb_ready(s.id, wp, sizeof wp) && owenc_get(s.id) != 0) { sadd(&o, ",\"web\":"); sjson(&o, wp); } }   /* (1.6.0 Part 22) */
 		sadd(&o, "}");
 		explicit_bzero(&s, sizeof s); reply_json(r->fd, &o); return 1;
 	}
@@ -789,6 +790,32 @@ static int api_desktop(struct req *r, const char *w, int post)
 		}
 		if (!okk) { dfail_note(0); health_add("signin", "wrong password at the lock screen for the account %.100s (native)", s.n); explicit_bzero(&s, sizeof s); reply_err(r->fd, 403, "The password is incorrect."); return 1; }
 		dfail_note(1); explicit_bzero(&s, sizeof s); unlink(lp); reply_ok(r->fd, "unlocked"); return 1;
+	}
+	/* (1.6.0 Part 22 item 5) GET desktop/owenc?acct=ID: {"on": true|false|null (unset), "open": the folders open now, "web"};
+	   POST {"acct","on":true} | {"acct","on":false,"p":PASSWORD}: turning it off asks for the account's own password, and is
+	   noted in System health */
+	if (!strcmp(w, "owenc")) {
+		char acct[80] = ""; if (!post) { const char *a = qparam(r->query, "acct"); snprintf(acct, sizeof acct, "%s", a ? a : ""); }
+		else { char *a = dbody_field(r, "acct"); snprintf(acct, sizeof acct, "%s", a ? a : ""); free(a); }
+		if (!home_acct_ok(acct) || !strcmp(acct, "guest")) { reply_err(r->fd, 400, "acct?"); return 1; }
+		char wp[400] = ""; int open = home_unlocked(acct) && oweb_ready(acct, wp, sizeof wp);
+		if (!post) { int v = open ? owenc_get(acct) : -1; str o = {0}; sadd(&o, "{\"ok\":true,\"on\":%s,\"open\":%s", v < 0 ? "null" : v ? "true" : "false", open ? "true" : "false");
+			if (open) { sadd(&o, ",\"web\":"); sjson(&o, wp); } sadd(&o, "}"); reply_json(r->fd, &o); return 1; }
+		if (!open) { reply_err(r->fd, 409, "This account's files are not on this computer's disk, so its websites cannot be kept encrypted with it."); return 1; }
+		const char *oq = dj_get(r->body, "on"); int on = oq && !strncmp(dj_ws(oq), "true", 4);
+		if (!on) {
+			int wt = dfail_wait(); if (wt) { char m[120]; snprintf(m, sizeof m, "Too many failed attempts. Please wait %d seconds and try again.", wt); reply_err(r->fd, 429, m); return 1; }
+			dls l; dls_open(&l); char *list = dls_accounts(&l), *pw = dbody_field(r, "p"); int okk = 0; char nm[128] = "";
+			for (int i = 0; list && pw; i++) { const char *a = dj_at(list, i); if (!a) break; char id[80]; dacct_id(a, id, sizeof id);
+				if (!strcmp(id, acct)) { char *h = dj_str(dj_get(a, "h")), *n = dj_str(dj_get(a, "n")); okk = dpw_check(h, pw) == 0; snprintf(nm, sizeof nm, "%s", n ? n : acct); free(h); free(n); break; } }
+			dfree_secret(pw); free(list); dls_close(&l);
+			if (!okk) { dfail_note(0); health_add("signin", "wrong password turning off encrypted websites for %.100s", nm[0] ? nm : acct); reply_err(r->fd, 403, "The password is incorrect."); return 1; }
+			dfail_note(1);
+			if (owenc_set(acct, 0)) { reply_err(r->fd, 500, "the choice could not be saved"); return 1; }
+			health_add("security", "%.100s turned off keeping websites encrypted with the account", nm); reply_ok(r->fd, "off"); return 1;
+		}
+		if (owenc_set(acct, 1)) { reply_err(r->fd, 500, "the choice could not be saved"); return 1; }
+		reply_ok(r->fd, "on"); return 1;
 	}
 	if (!strcmp(w, "apps")) {
 		/* (1.6.0, the owner's Vivobook: the desktop's icons at once at each sign-in, as Standard's page has them) each account's last
