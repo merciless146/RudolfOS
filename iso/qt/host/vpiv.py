@@ -63,7 +63,7 @@ def pki(d, days=20, server_ips=('10.0.2.100', '127.0.0.1')):
     w('ca.pem', ca.public_bytes(pem)); w('ca.der', ca.public_bytes(der))
     w('card.key', ck.private_bytes(pem, S.PrivateFormat.PKCS8, S.NoEncryption())); w('card.der', card.public_bytes(der)); w('card.pem', card.public_bytes(pem))
     w('server.key', sk.private_bytes(pem, S.PrivateFormat.PKCS8, S.NoEncryption())); w('server.pem', srv.public_bytes(pem) + ca.public_bytes(pem))
-    return {'ca': 'Rudolf Test Smart Card CA', 'card': 'TEST.CARDHOLDER.1234567890', 'expires': card.not_valid_after_utc.strftime('%Y-%m-%d')}
+    return {'ca': 'Rudolf Test Smart Card CA', 'card': 'TEST.CARDHOLDER.1234567890', 'expires': (getattr(card, 'not_valid_after_utc', None) or card.not_valid_after).strftime('%Y-%m-%d')}   # (cryptography 41, Ubuntu 24.04's: not_valid_after)
 
 class PIVCard:
     """the card: process(apdu) -> response. log: what it was asked (the PIN never written down)"""

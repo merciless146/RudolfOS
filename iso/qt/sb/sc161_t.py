@@ -60,7 +60,7 @@ def make_drive(path):
 # the extra disk: this tree's files, the test CA's certificate (public) and the test site's address
 FD = os.path.join(W, 'fix'); os.makedirs(FD)
 if FIX:
-    for n in ('index.html', 'smartcard', 'devplug'):
+    for n in ('index.html', 'smartcard', 'devplug', 'libpcsclite.so.1'):
         if os.path.exists(f'{FIX}/{n}'): shutil.copy(f'{FIX}/{n}', f'{FD}/{n}')
 shutil.copy(f'{K}/ca.der', f'{FD}/ca.der')
 FIXIMG = os.path.abspath('sc161fix.img'); subprocess.run(['truncate', '-s', '64M', FIXIMG], check=True)
@@ -166,17 +166,30 @@ try:
     if not up: raise RuntimeError('did not start')
     end = time.time() + 600
     while time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'", 20) is not True: time.sleep(5)
-    # this tree's files in place (FIX), the test CA trusted by Oracle's Chromium (as the DoD's roots are, "C,,": the
-    # desktop's database), then the desktop's Chromium started again so that it reads both
+    # the release as built: OpenSC's module starts (C_Initialize: it needs pcsc-lite's client library, libpcsclite.so.1)
+    o = sh("pkcs11-tool --module $(cat /etc/rudolf-pkcs11) -L; echo rc=$?; ls -la /usr/lib/x86_64-linux-gnu/libpcsclite.so.1", 60)
+    N0A = '0a. OpenSC\'s module starts in the release (libpcsclite.so.1, which it opens, in the base layer)'
+    if FIX: out(('PASS' if 'rc=0' in o else 'NOTE (put in place below, as 1.6.1\'s ci_release.sh adds it)') + ' ' + N0A + ' [as released, not counted with SC161_FIX]')
+    else: ok(N0A, 'rc=0' in o, o)
+    # this tree's files in place (FIX): the page, smartcard and devplug bound over the release's; libpcsclite.so.1 (1.6.1's
+    # ci_release.sh adds it to the base layer) copied into the system's writable layer, and the card's module added to the
+    # desktop's database as the session does at start-up (/usr/lib/rudolf/smartcard nss). QEMU's USB CCID reader says it
+    # has a PIN pad (bPINSupport), which it does not have, so OpenSC is told not to use one (opensc.conf, the test's own; a
+    # real reader without a PIN pad needs nothing). The test CA trusted by Oracle's Chromium (as the DoD's roots are, "C,,":
+    # the desktop's database). Then the desktop's Chromium started again so that it reads them.
     o = sh("FX=; for d in /dev/nvme*n1; do blkid $d 2>/dev/null | grep -q SC161FIX && FX=$d; done; echo fix=$FX; mkdir -p /tmp/fx; mount -o ro $FX /tmp/fx; ls -la /tmp/fx; "
            "WWW=/usr/share/rudolf/www; [ -f /persist/os/current/index.html ] && WWW=/persist/os/current; "
            "[ -f /tmp/fx/index.html ] && cp /tmp/fx/index.html /tmp/page.html && chmod 644 /tmp/page.html && mount --bind /tmp/page.html $WWW/index.html && echo page; "
            "for n in smartcard devplug; do [ -f /tmp/fx/$n ] && cp /tmp/fx/$n /tmp/$n.fix && chmod 755 /tmp/$n.fix && mount --bind /tmp/$n.fix /usr/lib/rudolf/$n && echo $n; done; "
+           "L=/usr/lib/x86_64-linux-gnu/libpcsclite.so.1; [ -e $L ] || { [ -f /tmp/fx/libpcsclite.so.1 ] && cp /tmp/fx/libpcsclite.so.1 $L && chmod 644 $L && echo libpcsclite; }; "
+           "/usr/lib/rudolf/smartcard nss; echo nss=$?; "
+           "printf 'app default {\\n\\treader_driver pcsc {\\n\\t\\tenable_pinpad = false;\\n\\t}\\n}\\n' > /etc/opensc/opensc.conf; "
            "cp /tmp/fx/ca.der /tmp/sc161ca.der; chmod 644 /tmp/sc161ca.der; "
            "su -s /bin/sh rudolf -c \"certutil -d sql:/home/rudolf/.pki/nssdb -A -n 'Rudolf test CA' -t 'C,,' -i /tmp/sc161ca.der\"; echo ca=$?; "
            "su -s /bin/sh rudolf -c 'modutil -dbdir sql:/home/rudolf/.pki/nssdb -list' | grep -E '^ *[0-9]\\.|library name'; "
            "ip -4 addr | grep -E 'inet |^[0-9]'; ip route; pkill -f '[-]-rudolf-kiosk'; echo reloaded", 120)
-    ok('0b. the test CA in the desktop\'s certificate database' + (', this tree\'s page and smart card scripts in place' if FIX else ''), 'ca=0' in o, o)
+    ok('0b. the test CA in the desktop\'s certificate database' + (', this tree\'s page, smart card scripts and libpcsclite in place, the card\'s module added (nss)' if FIX else ''),
+       'ca=0' in o and (not FIX or 'nss=0' in o), o)
     time.sleep(20); end = time.time() + 600
     while time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'&&typeof scSection=='function'", 20) is not True: time.sleep(5)
     time.sleep(30); js(INIT_JS)
@@ -212,13 +225,14 @@ try:
        'Smart cards' in o and f'{CN}:Certificate for PIV Authentication' in o, o)
     # 5. Oracle signs in to the test site with the card
     n0 = len(SEEN); js("(()=>{browser('https://10.0.2.100/');return 1})()")
-    end = time.time() + 30
-    while time.time() < end and not card.counts['cert_read'] and len(SEEN) <= n0: time.sleep(1)
-    time.sleep(8); vm.shot('picker'); v0 = card.counts['verify_ok'] + card.counts['verify_bad']
-    vm.keys('ret'); time.sleep(8); vm.shot('pin-box')
+    end = time.time() + 60
+    while time.time() < end and len(SEEN) <= n0: time.sleep(1)
+    time.sleep(10); vm.shot('picker'); v0 = card.counts['verify_ok'] + card.counts['verify_bad']
+    vm.keys('ret'); time.sleep(10); vm.shot('pin-box')
     asked = card.counts['verify_ok'] + card.counts['verify_bad'] - v0; signed0 = card.counts['sign']
     out('after the picker: the card', card.log[-6:], 'the site', SEEN[n0:])
-    vm.q.type('123456'); vm.keys('ret')
+    # (the PIN box opens without the keyboard on Standard: clicked into its field first, where it is drawn, at the top)
+    vm.q.at(660, 65); time.sleep(2); vm.q.type('123456'); time.sleep(1); vm.shot('pin-typed'); vm.keys('ret')
     end = time.time() + 60
     while time.time() < end and CN not in SEEN[n0:]: time.sleep(1)
     time.sleep(5); vm.shot('signed-in')
@@ -226,20 +240,21 @@ try:
     ok('5. Oracle: the test site asks for a certificate; Chromium\'s picker, then its PIN box: nothing signed before the PIN', signed0 == 0 and asked == 0, (card.counts, card.log[-8:]))
     ok('...the PIN typed in Chromium\'s box: the card checked it and signed, the site sees the card\'s holder (TLS client authentication)',
        CN in SEEN[n0:] and card.counts['sign'] >= 1 and card.counts['verify_ok'] >= 1, (SEEN[n0:], card.counts))
-    PS = ("for p in $(pgrep -f /opt/chromium/chrome); do h=$(tr '\\0' '\\n' < /proc/$p/environ 2>/dev/null | sed -n 's/^HOME=//p'); "
-          "m=$(grep -c opensc-pkcs11 /proc/$p/maps 2>/dev/null); c=$(tr '\\0' ' ' < /proc/$p/cmdline | grep -o 'class=[A-Za-z]*\\|type=[a-z-]*' | head -2 | tr '\\n' ' '); echo \"P $p H=$h M=$m $c\"; done")
-    procs = lambda o: re.findall(r'^P (\d+) H=(\S*) M=(\d+)', o, re.M)
+    PS = ("croot() { p=$1; while [ \"${p:-0}\" -gt 1 ]; do c=$(tr '\\0' ' ' < /proc/$p/cmdline 2>/dev/null); case \"$c\" in *--class=*) echo \"$c\" | grep -o 'class=[A-Za-z]*' | head -1; return;; esac; "
+          "p=$(cut -d' ' -f4 /proc/$p/stat 2>/dev/null); done; echo class=none; }; "
+          "for p in $(pgrep -f /opt/chromium/chrome); do echo \"P $p $(croot $p) M=$(grep -c opensc-pkcs11 /proc/$p/maps 2>/dev/null) H=$(tr '\\0' '\\n' < /proc/$p/environ 2>/dev/null | sed -n 's/^HOME=//p')\"; done")
+    procs = lambda o: re.findall(r'^P (\d+) class=(\S+) M=(\d+) H=(\S*)', o, re.M)
     o = sh(PS, 60)
-    ok('...the card\'s module is loaded in the desktop\'s Chromium (HOME /home/rudolf; so 6 below means something)', any(h == '/home/rudolf' and m != '0' for _, h, m in procs(o)), o)
+    ok('...the card\'s module is loaded in the desktop\'s Chromium (so 6 below means something)', any(c == 'RudolfDesktop' and m != '0' for _, c, m, h in procs(o)), o)
     # 6. a Tor window: no card there
     v0 = card.counts['verify_ok'] + card.counts['verify_bad']; s0 = card.counts['sign']; n1 = len(SEEN)
     o = api(sh, 'torwin/open?url=https%3A%2F%2F10.0.2.100%2F', True); out('torwin/open:', o)
     time.sleep(25); vm.shot('tor-window')
     o = sh(PS + "; H=$(for p in $(pgrep -f 'class=RudolfTor' | head -1); do tr '\\0' '\\n' < /proc/$p/environ | sed -n 's/^HOME=//p'; done); echo home=$H; "
            "[ -n \"$H\" ] && ls -la $H/.pki/nssdb 2>&1 | head -5; [ -d \"$H/.pki/nssdb\" ] && echo cards=$(modutil -dbdir sql:$H/.pki/nssdb -list 2>&1 | grep -c 'Smart cards')", 60)
-    tor = [x for x in procs(o) if x[1] != '/home/rudolf']
+    tor = [x for x in procs(o) if x[1] == 'RudolfTor']; th = re.search(r'^home=(\S*)', o, re.M)
     ok('6. a Tor window: its Chromium runs with a HOME of its own (not /home/rudolf), the card\'s module in none of its processes',
-       tor and all(h and m == '0' for _, h, m in tor) and not re.search(r'cards=[1-9]', o), o)
+       tor and th and th.group(1) and not th.group(1).startswith('/home/rudolf') and all(m == '0' for _, c, m, h in tor) and not re.search(r'cards=[1-9]', o), o)
     ok('...and the card was asked for no PIN and signed nothing more; the test site got no card certificate from it',
        card.counts['verify_ok'] + card.counts['verify_bad'] == v0 and card.counts['sign'] == s0 and CN not in SEEN[n1:], (card.counts, SEEN[n1:]))
     sh("pkill -f 'class=RudolfTor'; echo closed", 30)

@@ -244,9 +244,12 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	# 1.6.0 (plan Part 20): smart cards and the DoD Common Access Card: pcscd (the PC/SC service, started by
 	# /usr/lib/rudolf/smartcard when a reader is plugged in), the CCID readers' driver (libccid's bundle), OpenSC's PKCS#11
 	# module and pkcs11-tool (Settings' card details, no PIN), and NSS's certutil and modutil (the desktop's certificate
-	# database: the card's module for Oracle, the DoD's certificates when an administrator asks)
-	SCF=$(for p in pcscd libccid opensc opensc-pkcs11 libnss3-tools; do dpkg -L $p; done 2>/dev/null | grep -E '/(pcscd|pkcs11-tool|certutil|modutil)$|/opensc-pkcs11\.so$|/libopensc\.so[.0-9]*$|/pcsc/drivers/|/opensc\.conf$')
-	echo "$SCF" | grep -q '/pcscd$' && echo "$SCF" | grep -q '/opensc-pkcs11\.so$' && echo "$SCF" | grep -q '/modutil$' && echo "$SCF" | grep -q 'ifd-ccid' || { echo "pcscd, libccid, opensc or libnss3-tools is missing on the build machine (apt-get install pcscd libccid opensc opensc-pkcs11 libnss3-tools)"; exit 1; }
+	# database: the card's module for Oracle, the DoD's certificates when an administrator asks). 1.6.1 (plan Part 21, found by
+	# the virtual card in QEMU, qt/sb/sc161_t.py): pcsc-lite's client library too, libpcsclite.so.1, which OpenSC opens itself
+	# (dlopen, so ldd below does not see it): without it OpenSC's module failed to start (CKR_GENERAL_ERROR), so no reader
+	# or card was ever seen and the module was never added to the desktop's database
+	SCF=$(for p in pcscd libccid libpcsclite1 opensc opensc-pkcs11 libnss3-tools; do dpkg -L $p; done 2>/dev/null | grep -E '/(pcscd|pkcs11-tool|certutil|modutil)$|/opensc-pkcs11\.so$|/libopensc\.so[.0-9]*$|/libpcsclite\.so\.1$|/pcsc/drivers/|/opensc\.conf$')
+	echo "$SCF" | grep -q '/pcscd$' && echo "$SCF" | grep -q '/opensc-pkcs11\.so$' && echo "$SCF" | grep -q '/modutil$' && echo "$SCF" | grep -q 'ifd-ccid' && echo "$SCF" | grep -q '/libpcsclite\.so\.1$' || { echo "pcscd, libccid, libpcsclite1, opensc or libnss3-tools is missing on the build machine (apt-get install pcscd libccid libpcsclite1 opensc opensc-pkcs11 libnss3-tools)"; exit 1; }
 	SCB=0
 	for x in $SCF; do [ -f "$x" ] || continue; sudo mkdir -p "$W/broot$(dirname "$x")"; sudo cp -L "$x" "$W/broot$x"; SCB=$((SCB + $(stat -c %s "$x")))
 		case "$x" in *.conf|*.plist|*Info.plist) continue;; esac
