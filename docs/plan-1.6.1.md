@@ -711,7 +711,32 @@ starts only a system/r whose list the official key signed, whatever the update a
 **What does not change.** Updates never install across keys. "Return to official" keeps using the official address. "New
 boot files" (Secure Boot) keeps its own image choice, with the official `recovery.efi` beside it.
 
-**Tests.** A host test with two local channels, each signed with its own test key (RUDOLF_TEST_KEYS), over a local https
+**Built in 1.6.0 (2026-11-19), and where it differs from the text above.**
+- `rudolf-update check-url URL` (JSON), through rudolf-updates and rudolfd `sys/urlcheck`; Settings › Update and recovery ›
+  Update address: **Check this address**, and Save checks first, asks before an address whose updates would not install
+  here, and sends an administrator's name and password (rudolfd now refuses the address without them: "written by the
+  computer's admin-level user"). Files are checked with HEAD requests.
+- **Whose key, for another build:** an Ed25519 signature does not name its key, so each channel now publishes its build's
+  public key beside its list (`key.txt`, rudolf-release.yml); the check names that key when it signs the list, and says
+  the address is set up wrong when no key there does. Reading the key out of the release's base layer is done when a
+  stick is made (it needs the layer downloaded), as item 3 says.
+- Get beta versions: `chan_url` (the set address's `/beta` or `/stable`; neither: kept, and said).
+- `rudolf-update stick-fetch URL DIR`; Make a USB stick's "The latest from the update address" (`@address`: rudolfd,
+  rudolf-drives, mkstick.sh): `/persist/os/stickdl`, checked with the release's own key (its base layer's `rpk-keys`,
+  kept as `keys` for install.sh's check of its boot image), the official recovery system beside it, and the stick's
+  update address the one it came from. Settings checks the address first and names another build before the erase
+  question.
+- Recovery mode: `recovery-fetch` replaces an older official recovery system with the newest official stable release
+  (looked at, detached, at most once a day from each update check); `os_rescue` gives every stick the official recovery
+  system (this computer's, brought up to date, or downloaded), and only without one (offline, none here) a rescue copy of
+  its own system, with a warning, rather than no stick (the owner chose to keep sticks that need no internet).
+  `status` says which release Recovery mode starts, shown in Settings.
+- **Not done: the official `recovery.efi` on a stick made from another build.** Its boot image brings its maker's
+  `recovery.efi`, which checks the recovery system with its maker's key, so on such a stick Recovery mode will not start
+  the official recovery system. Putting the official file into the stick's image (inside its EFI image) is still to do.
+- Tests: `iso/qt/host/ownbuilds60_t.sh` (19), `iso/qt/shell2/ownbuilds60_t.js` (7), in ownbuilds-check.yml.
+
+**Tests (planned).** A host test with two local channels, each signed with its own test key (RUDOLF_TEST_KEYS), over a local https
 server: the check's lines for the trusted channel, the other key's channel, a broken signature, a list whose own base layer
 does not have its key, a missing layer, a missing `/beta`; Save and the beta switch keeping the repository; a stick made in
 QEMU from each channel (the other key's after the warning), started, and its update address the channel it came from; on

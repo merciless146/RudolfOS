@@ -115,7 +115,8 @@ int main(int argc, char **argv)
 		int stick = !strcmp(op, "mkstick");
 		if (n < 1 || n > (stick ? 3 : 2) || !rr_dev_ok(a[0], 16)) return refuse("a disk name that is not one", n ? a[0] : "");
 		if (!is_disk(a[0])) return gone("a disk the kernel does not have");
-		char img[PATH_MAX] = ""; if (n > 1 && *a[1] && !image_ok(a[1], img, sizeof img)) return refuse("an image that is not a file in the home folder", a[1]);
+		char img[PATH_MAX] = ""; if (stick && n > 1 && !strcmp(a[1], "@address")) snprintf(img, sizeof img, "@address");   /* (1.6.0, Part 16: mkstick.sh downloads and checks it) */
+		else if (n > 1 && *a[1] && !image_ok(a[1], img, sizeof img)) return refuse("an image that is not a file in the home folder", a[1]);
 		const char *files = n > 2 ? a[2] : "0"; if (strcmp(files, "0") && strcmp(files, "1")) return refuse("a files choice that is not 0 or 1", files);
 		char d[64]; snprintf(d, sizeof d, "/dev/%s", a[0]);
 		rr_health("disk", "%s: %s is being written%s%.200s", stick ? "Make a stick" : !strcmp(op, "install") ? "Install" : "Replace the boot files", d, *img ? " from " : "", img);

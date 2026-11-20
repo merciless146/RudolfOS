@@ -23,6 +23,26 @@ if [ "$1" = --info ]; then
 	umount $I/d 2>/dev/null; umount $I/i 2>/dev/null; rmdir $I/i $I/d $I 2>/dev/null; exit 0
 fi
 DEV=$1; IMG=$2; FILES=$3
+# 1.6.0 (plan-1.6.1 Part 16, moved to 1.6.0): IMAGE "@address": the latest release at the update address that is set (an
+# administrator's), downloaded into RUDOLFDATA (/persist/os/stickdl, kept for the next stick of the same release) and
+# checked by rudolf-update stick-fetch (each file's SHA-256, the list's signature with its own system's key), with the
+# official recovery system beside it (Recovery mode is always the official newest stable release)
+SRCOS=/persist/os; ADDR=0
+if [ "$IMG" = @address ]; then
+	ADDR=1; SDL=/persist/os/stickdl
+	mountpoint -q /persist || { echo "Making a stick from the update address needs RUDOLFDATA (an installed Rudolf OS, or a stick with it)."; exit 20; }
+	URL=$(sed -n 's/^url=//p' /persist/os/update.conf 2>/dev/null); [ -n "$URL" ] || URL=$(cat /etc/rudolf/update-url 2>/dev/null)
+	[ -n "$URL" ] || { echo "No update address is set."; exit 20; }
+	[ "$(cat $SDL/source 2>/dev/null)" = "$URL" ] || rm -rf $SDL
+	echo "Getting the latest Rudolf OS from $URL ..."
+	mkdir -p $SDL; RC=0; rudolf-update stick-fetch "$URL" $SDL > /run/rudolf/stick-fetch.out 2>&1 || RC=$?
+	grep -v '^{' /run/rudolf/stick-fetch.out || true; J=$(tail -1 /run/rudolf/stick-fetch.out)
+	[ $RC = 0 ] || { echo "It could not be downloaded or was refused (see above). Nothing on the stick was changed."; exit 21; }
+	case "$J" in *'"key":"other"'*) echo "This is another build of Rudolf OS: it gets its updates from $URL, not from this computer's.";; esac
+	echo "The official recovery system for the stick ..."
+	RU_SYSD=$SDL/os/system RU_RECOVERY_SEED=/persist/os/system/r RU_NOAUTOFETCH=1 rudolf-update recovery-fetch || echo "Warning: the official recovery system could not be had (no internet?): the stick's Recovery mode will have none until it is online."
+	IMG=$SDL/boot.iso; SRCOS=$SDL/os
+fi
 N=${DEV##*/}
 [ -b "$DEV" ] && [ -r /sys/block/$N/size ] || { echo "No such drive: $DEV"; exit 2; }
 MEDIA=$(cat /etc/rudolf/media 2>/dev/null)
@@ -44,8 +64,9 @@ fi
 # a stick too small for the system was erased and given the boot files, then refused: a boot-files-only stick)
 if [ -n "$IMG" ]; then IB=$(stat -c %s "$IMG" 2>/dev/null || echo 0); else IB=$(( $(dd if="$MEDIA" bs=2048 skip=16 count=1 2>/dev/null | dd bs=1 skip=80 count=4 2>/dev/null | od -An -tu4 | tr -d ' ') * 2048 )); fi
 NEEDK=$((IB / 1024 + 65536))
-SYSNEED=0; case "$IMG" in /persist/os/bootimg/*) SYSNEED=1;; "") [ "$(os_running_bootonly)" = 1 ] && SYSNEED=1;; esac
-[ $SYSNEED = 1 ] && mountpoint -q /persist && [ -d /persist/os/system ] && NEEDK=$((NEEDK + $(du -sk /persist/os | cut -f1) + 262144))
+SYSNEED=0; case "$IMG" in /persist/os/bootimg/*|/persist/os/stickdl/*) SYSNEED=1;; "") [ "$(os_running_bootonly)" = 1 ] && SYSNEED=1;; esac
+kb() { if [ -e "$1" ]; then du -sk "$1" | cut -f1; else echo 0; fi; }
+[ $SYSNEED = 1 ] && mountpoint -q /persist && [ -d $SRCOS/system ] && NEEDK=$((NEEDK + $(kb $SRCOS) - $(kb $SRCOS/stickdl) - $(kb $SRCOS/bootimg) + 262144))
 [ $((SECTORS / 2)) -ge $NEEDK ] || { echo "The stick is too small for this Rudolf OS: it needs $((NEEDK / 1024 + 1)) MiB. Nothing on it was changed. Use a bigger stick."; exit 5; }
 # from here on the stick is being written: anything that stops the script clears its start area again
 DONE=0; H0=$(dd if="$DEV" bs=65536 count=1 2>/dev/null | sha256sum | cut -c1-64)
@@ -68,11 +89,11 @@ if mount -t iso9660 -o ro "$P1" /mnt/stickimg 2>/dev/null; then [ -e /mnt/sticki
 mkdir -p /mnt/newstick && mount -t ext4 "$P" /mnt/newstick || { echo "The new stick's RUDOLFDATA partition could not be opened."; exit 6; }
 FREE=$(df -k /mnt/newstick | awk 'NR==2 {print $4}')
 # the updates installed on this Rudolf OS, so the new stick starts the same version (not with a downloaded image)
-case "$IMG" in /persist/os/bootimg/*) OWNSYS=1;; "") OWNSYS=1;; *) OWNSYS=0;; esac
-if [ $OWNSYS = 1 ] && [ -d /persist/os/system ] && mountpoint -q /persist; then
-	NEED=$(du -sk /persist/os | cut -f1)
+case "$IMG" in /persist/os/bootimg/*|/persist/os/stickdl/*) OWNSYS=1;; "") OWNSYS=1;; *) OWNSYS=0;; esac
+if [ $OWNSYS = 1 ] && [ -d $SRCOS/system ] && mountpoint -q /persist; then
+	NEED=$(( $(kb $SRCOS) - $(kb $SRCOS/stickdl) - $(kb $SRCOS/bootimg) ))
 	if [ "$NEED" -lt $((FREE - 262144)) ]; then
-		os_copy /mnt/newstick /persist/os
+		os_copy /mnt/newstick $SRCOS
 		os_rescue /mnt/newstick
 		FREE=$(df -k /mnt/newstick | awk 'NR==2 {print $4}')
 	elif [ $BOOTONLY = 1 ]; then echo "Not enough room on the stick for Rudolf OS ($((NEED / 1024)) MiB). Use a bigger stick."; exit 11
@@ -80,7 +101,7 @@ if [ $OWNSYS = 1 ] && [ -d /persist/os/system ] && mountpoint -q /persist; then
 fi
 # 1.5.3: the stick must be able to start: with a boot image, its copied system complete and the same as this one's
 echo "Checking the new stick ..."
-os_check /mnt/newstick $BOOTONLY /persist/os
+os_check /mnt/newstick $BOOTONLY $SRCOS
 if [ "$FILES" = 1 ]; then
 	NEED=$(du -sk /home/rudolf | cut -f1)
 	[ "$NEED" -lt $((FREE - 65536)) ] || { echo "Your files ($((NEED / 1024)) MiB) do not fit on the new stick. It is ready without them."; sync; umount /mnt/newstick; DONE=1; exit 10; }

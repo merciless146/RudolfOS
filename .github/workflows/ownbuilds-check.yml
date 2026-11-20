@@ -1,0 +1,27 @@
+# Each other's builds (1.6.0; plan-1.6.1 Part 16): rudolf-update's address check, the beta switch, a stick's release and
+# the official recovery system over a local server (iso/qt/host/ownbuilds60_t.sh), and Settings' side
+# (iso/qt/shell2/ownbuilds60_t.js).
+name: Own builds check
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['iso/sys/rudolf-update.c', 'iso/sys/rudolf-updates.c', 'iso/sys/rudolf-drives.c', 'iso/sys/root/usr/lib/rudolf/mkstick.sh',
+      'iso/sys/root/usr/lib/rudolf/oscopy.sh', 'iso/sys/root/usr/lib/rudolf/install.sh', 'desktop/sysupd25.js', 'desktop/stick30.js',
+      'iso/www/index.html', 'iso/qt/host/ownbuilds60_t.sh', 'iso/qt/shell2/ownbuilds60_t.js', '.github/workflows/ownbuilds-check.yml']
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libssl-dev libcurl4 python3-cryptography >/dev/null
+      - name: rudolf-update
+        run: bash iso/qt/host/ownbuilds60_t.sh
+      - name: The stick script's own tests
+        run: sh iso/qt/host/mkstick_t.sh
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: Settings
+        run: node iso/qt/shell2/ownbuilds60_t.js
