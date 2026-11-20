@@ -3,6 +3,9 @@
 Asked for on 2026-11-13: the whole of Rudolf OS as built so far converted to the native desktop. The shell first
 (docs/plan-1.6.0.md Part 12: everything the web desktop's shell has, Native the default), then every app rewritten as a
 native program, one at a time, in this plan. 2.0 is released when the apps in waves 1 to 3 are native.
+**Its name: Rudolf Kryptonite** (the owner, 2026-11-20: "Rudolf's 2.0 version with the 7.3 kernel and Wayland will be
+called Rudolf Kryptonite"): 2.0 on the newest kernel (7.3 and later) with Wayland. 1.6.x on the 6.18 LTS with X11 keeps
+the name Rudolf OS.
 2.0 also brings the phone's own build, on the hardware 1.6.1 proves ("The phone build", below).
 
 Why (1.5.9's measurements, docs/plan-1.5.9.md 12.3a): with nothing open Native uses 854 MB against Standard's 1,110 MB,
@@ -165,7 +168,7 @@ be done on 1.6's 6.18 LTS with X11 and also on a 7.3 build with Wayland: "Keep t
   (7.3.x on 2026-11-20, then 7.4 once it has settled): newer graphics drivers (7.2: AMD HDMI 2.1 FRL, Intel Arc; 7.3: NVK
   video decode, Valve's AMD reset and memory work), new hardware earlier, the 2026 Steam Controller and MSI Claw drivers,
   and the Wayland compositors' HDR and variable-refresh needs.
-- **The "next" channel.** A third release channel beside stable and beta (gh-pages `next/`, its own manifest, signed with
+- **The "next" channel (Rudolf Kryptonite's).** A third release channel beside stable and beta (gh-pages `next/`, its own manifest, signed with
   the same keys, joined the way beta is joined in Settings › Update and recovery). Built by the same workflow with two
   switches: the kernel track (LTS or newest stable) and the session started by default (X11 or Wayland). Recovery mode
   stays the official stable release (the owner's rule), so a computer on "next" always has its way back.
@@ -181,7 +184,7 @@ be done on 1.6's 6.18 LTS with X11 and also on a 7.3 build with Wayland: "Keep t
 - **The cost:** two release builds and two versions to test; the owner's rule for every session (same_t.sh's screenshots
   and the behaviour scripts) runs on both tracks.
 - **Order:** the channel and the kernel switch first (nothing else changes for stable and beta); W0 measured on it; then
-  the Wayland stages as above. When 2.0 is released, "next" becomes stable and 1.6.x keeps the LTS for older computers
+  the Wayland stages as above. When 2.0 (Rudolf Kryptonite) is released, "next" becomes stable and 1.6.x keeps the LTS for older computers
   for at least two releases.
 
 ## The phone build (added on 2026-11-15)
