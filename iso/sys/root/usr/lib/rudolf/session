@@ -175,6 +175,11 @@ mkdir -p /run/rudolf/portal/req /run/rudolf/portal/resp /run/rudolf/apps && chow
 chmod 1733 /run/rudolf/portal/req /run/rudolf/portal/resp
 [ -x /usr/bin/rudolf-portal ] && [ -n "$DBUS_SESSION_BUS_ADDRESS" ] && su -s /bin/sh rudolf -c "set -a; . /run/rudolf/session.env; set +a; exec setsid /usr/bin/rudolf-portal" </dev/null >>/run/rudolf/portal.log 2>&1 &
 PROFILE=/home/rudolf/.rudolf-browser
+# 1.6.0 (plan Part 20): smart cards: the card's module in the desktop's certificate database (Oracle's Chromium reads it;
+# the Tor windows have a HOME of their own, so never there), and pcscd when a reader is already plugged in
+mkdir -p /run/pcscd; chmod 755 /run/pcscd   # (its socket's folder, for the Debian container's bind as well)
+if [ -x /usr/lib/rudolf/smartcard ]; then /usr/lib/rudolf/smartcard nss >/dev/null 2>&1
+	grep -qs '^Smart card reader|' /run/rudolf/usb/* && /usr/lib/rudolf/smartcard start >/dev/null 2>&1; fi
 # Chromium writes an index next to an unpacked extension, so it needs a copy the user owns
 EXT=/run/rudolf/frames
 rm -rf $EXT; cp -a /usr/lib/rudolf/frames $EXT; chown -R rudolf:rudolf $EXT

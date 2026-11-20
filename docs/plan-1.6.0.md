@@ -1540,7 +1540,30 @@ them in Firefox's database when Firefox is installed (its own button: "…and in
 **5. Not in this part.** Signing in to Rudolf OS with the card (a PIV certificate as Part 17's second step, plan-1.6.1)
 is noted there as a later choice; digital signatures in PDFs (the PDF viewer) and e-mail signing are later too.
 
-**Tests.** A virtual card (vsmartcard's `vpcd` reader with a PIV card emulator, made with a test CA) in QEMU: the
+**Built (2026-11-19), and where it differs from the text above.**
+- `iso/systools/ci_release.sh` copies pcscd, libccid's driver bundle, OpenSC's module and `pkcs11-tool`, and NSS's `certutil`
+  and `modutil` into the base layer (with their libraries); `/etc/rudolf-pkcs11` says where the module is.
+- `/usr/lib/rudolf/smartcard` (start, nss, status, dod-fetch, dod-install, dod-list, dod-remove); the session registers the
+  module in the desktop's certificate database (`/home/rudolf/.pki/nssdb`, "Smart cards") at start-up and makes
+  `/run/pcscd`; devplug starts pcscd and tells it to look again (`pcscd --hotplug`: no udev daemon here) when a reader is
+  plugged in or out; rudolf-debian binds `/run/pcscd` into Debian.
+- rudolfd `sc/*` (`rudolfd-smartcard.inc`); the desktop's `sc60.js` (Settings › Security Settings › Smart cards).
+- **The DoD's certificates are the computer's, not each account's:** Oracle's Chromium has one certificate database for
+  every account (the desktop's Linux user's), so an administrator installs or removes them, for everyone.
+- **The roots are pinned by SHA-1 thumbprint,** as DISA publishes them in its STIGs (DoD Root CA 3 `D73CA911…`, 4
+  `B8269F25…`, 5 `4ECB5CC3…`, 6 `D37ECF61…`; Windows 11 WN11-PK-000005, Windows Server 2019 V-205648), not SHA-256: DISA
+  publishes no SHA-256 list. The bundle's address is read from the DoD PKI's document library page (a link ending
+  `certificates_pkcs7…dod.zip`), only from `dl.dod.cyber.mil`, `dl.cyber.mil` or `public.cyber.mil`; the desktop checks
+  every certificate's signature, link by link, up to a pinned root (RSA and ECDSA), and leaves out the rest.
+- **Lite:** Oracle's pages there are WebKit's, which do not use the card; the section says to open the site in Chromium
+  (Oracle's ☰ › Open in Chromium, as for other sites that need Chromium).
+- **Tor windows:** rudolfd (Standard) and rudolf-native (Native) start the Tor Chromium with a HOME in its throwaway profile,
+  so its certificate database is new and empty.
+- The card's details are read with `pkcs11-tool` (no PIN); the page reads each certificate's name and expiry itself.
+- Tests: `iso/qt/host/smartcard60_t.sh` (7, NSS's own tools), `iso/qt/shell2/sc60_t.js` (12, a test PKI from
+  `iso/qt/host/mkscpki.py`), in smartcard-check.yml. The virtual card in QEMU and a real CAC are still to do.
+
+**Tests (planned).** A virtual card (vsmartcard's `vpcd` reader with a PIV card emulator, made with a test CA) in QEMU: the
 reader seen, Settings' card details without a PIN, Oracle's picker and PIN box on a test site that asks for a client
 certificate (a local TLS server, the test CA's), the card taken out, the screen locking when that is on; the same test site opened in a Tor window (through a local
 SOCKS stand-in) offering no certificate and never asking for the PIN; the DoD bundle
@@ -1803,8 +1826,8 @@ host, browser and QEMU tests; item 4 (ARM64) stays below, see "Before stable".
    parts the system's. Native becomes the default only after its week of betas.
 9. Part 15 (moved from 1.5.9): its Vivobook checks on the first 1.6.0 beta; its code items alongside the parts they
    belong to (12.3c's comparison with Part 12, the recovery with Part 13's signed layers, the QEMU checks first).
-10. Part 20 (smart cards and the CAC): 1 and 2 first (the pieces and Oracle), then 3 (Settings, the DoD certificates),
-   then 4 (Linux programs and Firefox); QEMU with a virtual card before any real card.
+10. Part 20 (smart cards and the CAC): built 2026-11-19 (items 1-4); QEMU with a virtual card, then a real CAC when the
+   owner asks.
 11. Part 21 (Oracle per account): built 2026-11-19 (items 1-6).
 12. plan-1.6.1 Part 16 (each other's builds; Recovery mode always the official newest stable) and Part 17 (two-step
     sign-in), moved here by the owner on 2026-11-19 ("All four into 1.6.0", with Parts 20 and 21; "One beta at the end"):

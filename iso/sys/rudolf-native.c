@@ -1156,12 +1156,15 @@ static int tor_open(const char *urls)
 		{ char *dd = g_build_filename(TOR_PROF, "Default", NULL), *pf = g_build_filename(dd, "Preferences", NULL); mkdir(dd, 0700);
 		  g_file_set_contents(pf, "{\"webrtc\":{\"ip_handling_policy\":\"disable_non_proxied_udp\",\"multiple_routes_enabled\":false,\"nonproxied_udp_enabled\":false}}", -1, NULL); g_free(dd); g_free(pf); }
 		char *pa = g_strdup_printf("--user-data-dir=%s", TOR_PROF);
+		/* (1.6.0, plan Part 20: a HOME of its own in the throwaway profile, so Chromium's certificate database (~/.pki/nssdb) is
+		   new and empty there: no smart card module, so a website reached through Tor is never offered the card) */
+		char *th = g_build_filename(TOR_PROF, "home", NULL); mkdir(th, 0700); char **tenv = g_environ_setenv(g_get_environ(), "HOME", th, TRUE);
 		GPtrArray *a = g_ptr_array_new(); g_ptr_array_add(a, (gpointer)ln); g_ptr_array_add(a, "--oracle"); g_ptr_array_add(a, TOR_CTL); g_ptr_array_add(a, L[0]);
 		for (int i = 1; i < n; i++) if (L[i][0]) g_ptr_array_add(a, L[i]);
 		g_ptr_array_add(a, pa); g_ptr_array_add(a, NULL); GError *er = NULL;
-		int out = -1, ok = g_spawn_async_with_pipes(NULL, (gchar **)a->pdata, NULL, G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL, &TOR_PID, NULL, &out, NULL, &er);
+		int out = -1, ok = g_spawn_async_with_pipes(NULL, (gchar **)a->pdata, tenv, G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL, &TOR_PID, NULL, &out, NULL, &er);
 		if (ok && out >= 0) { GIOChannel *ch = g_io_channel_unix_new(out); g_io_channel_set_close_on_unref(ch, TRUE); g_io_add_watch(ch, G_IO_IN | G_IO_HUP | G_IO_ERR, oracle_msgs, NULL); g_io_channel_unref(ch); }
-		g_ptr_array_free(a, TRUE); g_strfreev(L); g_free(pa);
+		g_ptr_array_free(a, TRUE); g_strfreev(L); g_free(pa); g_strfreev(tenv); g_free(th);
 		if (!ok) { fprintf(stderr, "rudolf-native: Tor window: %s\n", er ? er->message : "?"); if (er) g_error_free(er); unlink(TOR_CTL); tor_rmprof(); return 0; }
 		TOR_RUN = 1; TOR_CTL_P = TOR_CTL; g_child_watch_add(TOR_PID, tor_exited, NULL);
 	}

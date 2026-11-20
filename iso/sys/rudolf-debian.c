@@ -228,6 +228,9 @@ static void keeper_main(void)   /* pid 1 inside: set up the file system, then re
 	mount("tmpfs", ROOT "/run", "tmpfs", MS_NOSUID | MS_NODEV, "mode=755");
 	mkdirs(ROOT "/run/lock", 01777); chmod(ROOT "/run/lock", 01777);
 	if (!access("/tmp/.X11-unix", F_OK)) bindmnt("/tmp/.X11-unix", ROOT "/tmp/.X11-unix", 1);
+	/* 1.6.0 (plan Part 20): the smart card service's socket folder (made by the session, so a reader plugged in later is
+	   seen too): Debian's own OpenSC, Firefox or a VPN client can use the card */
+	if (!access("/run/pcscd", F_OK)) { mkdirs(ROOT "/run/pcscd", 0755); bindmnt("/run/pcscd", ROOT "/run/pcscd", 1); }
 	/* 1.6.0 (plan Part 9): udev's device database, read only, for libudev in Debian's programs (Steam and SDL find
 	   controllers by it, as on any other Linux; with mdev there is none) */
 	if (!access("/run/udev/data", F_OK) && !bindmnt("/run/udev", ROOT "/run/udev", 1))
