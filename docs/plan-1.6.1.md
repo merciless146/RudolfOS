@@ -902,7 +902,9 @@ From the comparison with other distributions on 2026-11-19: the weak points name
   ever seen, and the module was never added to the desktop's database. `ci_release.sh` now copies it. The QEMU test
   puts it in place (fix=1) until a release has it. **Not covered:** a real reader and CAC (the owner's, below);
   Native and Lite; the Debian container's `pcsc_scan`; Chromium's retry after a wrong PIN (the host's half covers the
-  wrong PIN through NSS). The test tells OpenSC not to use a PIN pad, because QEMU's reader claims one it doesn't have.
+  wrong PIN through NSS); a website reached through the Tor window. The test checks that the Tor window's Chromium has
+  its own HOME with no card module and never asks the card for anything, but its page stops at the first-start wizard,
+  because the test skips the real wizard. A SOCKS stand-in for Tor is already in the test for when that is solved. The test tells OpenSC not to use a PIN pad, because QEMU's reader claims one it doesn't have.
   **For the owner, with a real reader:** on Standard, Chromium's PIN box opened without the keyboard (the test clicks
   into it first) and filled the whole screen. Check both on the Vivobook with a reader, then fix them in their own PR
   if real hardware shows the same.
