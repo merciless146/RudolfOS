@@ -49,6 +49,60 @@ os_rescue() {
 	echo "Kept a rescue system on it (Rudolf OS ${_v:-?}): it starts if an update on the stick ever cannot."
 }
 
+# 1.6.0 (the owner, 2026-11-19: "Recovery Mode boot is always locked to the official build's most recent stable
+# version"): os_recefi DISK DEST: the new drive's Recovery mode start-up file (EFI/rudolf/recovery.efi in DISK's EFI
+# system partition) made the official one. A stick made from another build (its update address, or a computer running
+# it) has that build's boot files, and its recovery.efi would not start the official recovery system DEST has (slot r,
+# os_rescue). The official file of slot r's own release (its kernel and r's modules belong together): from the boot
+# image beside that release (boot.iso; its address from r's signed release list), its checksum checked, the file's
+# Secure Boot signature checked as Rudolf OS's; kept in RUDOLF_RECEFI_CACHE for the next stick. Only recovery.efi (and
+# the boot menu's Recovery mode entry when the build has none) is changed; the build's own start is left as it is.
+# Never fatal: the stick works without it, and says so.
+# Tests: RUDOLF_TEST_ESP (a folder as the EFI system partition), RUDOLF_TEST_OPENISO (CMD ISO DIR: the image's EFI
+# files into DIR), SBVERIFY, SB_CERT, RUDOLF_UPDATE, RUDOLF_RECEFI_CACHE.
+os_recefi() {
+	_k=$1; _d=$2; _r=$_d/os/system/r; _sbv=${SBVERIFY:-sbverify}; _crt=${SB_CERT:-/usr/share/rudolf/rudolf-sb.crt}
+	[ -e "$_r/official" ] && [ -s "$_r/manifest.txt" ] || return 0
+	_sig() { $_sbv --cert "$_crt" "$1" >/dev/null 2>&1; }
+	_w=$(mktemp -d); _e=$_w/esp
+	if [ -n "$RUDOLF_TEST_ESP" ]; then _e=$RUDOLF_TEST_ESP
+	else case "$_k" in *[0-9]) _p=${_k}p2;; *) _p=${_k}2;; esac; mkdir -p "$_e"
+		mount -t vfat -o rw,flush "$_p" "$_e" 2>/dev/null || { rm -rf "$_w"; echo "Warning: the stick's EFI system partition could not be opened: its Recovery mode start-up file is the build's own."; return 0; }; fi
+	_fin() { sync; [ -n "$RUDOLF_TEST_ESP" ] || umount "$_e" 2>/dev/null; rm -rf "$_w"; }
+	_rf=$_e/EFI/rudolf/recovery.efi; _en=$_e/loader/entries/rudolf-recovery.conf
+	if [ -s "$_rf" ] && _sig "$_rf" && grep -q '^efi /EFI/rudolf/recovery.efi' "$_en" 2>/dev/null; then _fin; return 0; fi
+	_ser=$(sed -n 's/^serial //p' "$_r/manifest.txt"); _u=$(awk -F'\t' '$1=="L" && $2=="vmlinuz" {print $5}' "$_r/manifest.txt")
+	echo "This stick's Recovery mode start-up file is not the official one: the official recovery system's (release $_ser) is put in its place ..."
+	case "$_u" in https://*/vmlinuz) ;; http://127.0.0.1*/vmlinuz) [ -n "$RUDOLF_TEST_ESP" ] || _u=;; *) _u=;; esac
+	[ -n "$_u" ] || { _fin; echo "Warning: the official release $_ser names no download address: the stick's Recovery mode start-up file is the build's own."; return 0; }
+	_c=${RUDOLF_RECEFI_CACHE:-}; [ -n "$_c" ] || { mountpoint -q /persist 2>/dev/null && _c=/persist/os/recefi; }
+	_n=$_w/new; mkdir -p "$_n"
+	if [ -n "$_c" ] && [ -s "$_c/$_ser/recovery.efi" ] && _sig "$_c/$_ser/recovery.efi"; then cp "$_c/$_ser/recovery.efi" "$_c/$_ser/rudolf-recovery.conf" "$_n/" 2>/dev/null
+	else
+		_b=${_u%/vmlinuz}/boot.iso; _up=${RUDOLF_UPDATE:-rudolf-update}
+		if ! { $_up fetch "$_b" "$_w/boot.iso" >/dev/null 2>&1 && $_up fetch "$_b.sha256" "$_w/boot.sha256" >/dev/null 2>&1; }; then
+			_fin; echo "Warning: the official boot image could not be downloaded (no internet?): the stick's Recovery mode start-up file is the build's own. Make the stick again when online."; return 0; fi
+		[ "$(sha256sum "$_w/boot.iso" | cut -c1-64)" = "$(cut -c1-64 "$_w/boot.sha256")" ] || { _fin; echo "Warning: the official boot image did not match its checksum: nothing was changed on the stick's start-up files."; return 0; }
+		_x=$_w/x; mkdir -p "$_x"
+		if [ -n "$RUDOLF_TEST_OPENISO" ]; then $RUDOLF_TEST_OPENISO "$_w/boot.iso" "$_x"
+		else mkdir -p "$_w/i" && mount -t iso9660 -o ro,loop "$_w/boot.iso" "$_w/i" 2>/dev/null && mount -t vfat -o ro,loop "$_w/i/efi/efiboot.img" "$_x" 2>/dev/null; fi
+		cp "$_x/EFI/rudolf/recovery.efi" "$_n/" 2>/dev/null; cp "$_x/loader/entries/rudolf-recovery.conf" "$_n/" 2>/dev/null
+		[ -n "$RUDOLF_TEST_OPENISO" ] || { umount "$_x" 2>/dev/null; umount "$_w/i" 2>/dev/null; }
+		[ -s "$_n/recovery.efi" ] && _sig "$_n/recovery.efi" || { _fin; echo "Warning: the official boot image's Recovery mode file is not signed by Rudolf OS: nothing was changed on the stick's start-up files."; return 0; }
+		[ -n "$_c" ] && mkdir -p "$_c/$_ser" && cp "$_n"/* "$_c/$_ser/" 2>/dev/null && for _o in "$_c"/*; do [ "$_o" = "$_c/$_ser" ] || rm -rf "$_o"; done
+	fi
+	# room: the build's own recovery.efi is taken out first (it is not needed to start the build)
+	_s=$(stat -c %s "$_n/recovery.efi"); _o=0; [ -f "$_rf" ] && _o=$(stat -c %s "$_rf")
+	_fr=$(($(df -k "$_e" | awk 'NR==2 {print $4}') * 1024))
+	[ $((_fr + _o)) -gt $((_s + 65536)) ] || { _fin; echo "Warning: the stick's EFI system partition has no room for the official Recovery mode file ($((_s / 1048576)) MiB): it keeps the build's own."; return 0; }
+	mkdir -p "$_e/EFI/rudolf"; [ -f "$_rf" ] && mv -f "$_rf" "$_w/old.efi"
+	cp "$_n/recovery.efi" "$_rf.new" && sync && cmp -s "$_n/recovery.efi" "$_rf.new" && _sig "$_rf.new" && mv -f "$_rf.new" "$_rf" || {
+		rm -f "$_rf.new"; [ -f "$_w/old.efi" ] && cp "$_w/old.efi" "$_rf"; _fin; echo "Warning: the official Recovery mode file could not be written to the stick: it keeps the build's own. Make the stick again, or use another stick."; return 0; }
+	if ! grep -q '^efi /EFI/rudolf/recovery.efi' "$_en" 2>/dev/null && [ -s "$_n/rudolf-recovery.conf" ]; then mkdir -p "$_e/loader/entries"; cp "$_n/rudolf-recovery.conf" "$_en"; fi
+	_fin; echo "The stick's Recovery mode starts the official Rudolf OS (release $_ser): its start-up file is the official one, signed by Rudolf OS."
+	return 0
+}
+
 # os_check DEST BOOTONLY [SRCOS]: whether the RUDOLFDATA at DEST can start. With a boot image (BOOTONLY=1) its system
 # slot in use must be complete, with all five layers, read back and (with SRCOS) the same as this computer's.
 os_check() {

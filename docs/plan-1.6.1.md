@@ -731,9 +731,14 @@ boot files" (Secure Boot) keeps its own image choice, with the official `recover
   system (this computer's, brought up to date, or downloaded), and only without one (offline, none here) a rescue copy of
   its own system, with a warning, rather than no stick (the owner chose to keep sticks that need no internet).
   `status` says which release Recovery mode starts, shown in Settings.
-- **Not done: the official `recovery.efi` on a stick made from another build.** Its boot image brings its maker's
-  `recovery.efi`, which checks the recovery system with its maker's key, so on such a stick Recovery mode will not start
-  the official recovery system. Putting the official file into the stick's image (inside its EFI image) is still to do.
+- **The official `recovery.efi` on a stick made from another build** (done 2026-11-19, the owner: "Add items 1 and 2 to
+  the next scheduled beta build"). Its boot image brings its maker's `recovery.efi`, which checks the recovery system
+  with its maker's key. `os_recefi` (oscopy.sh, run by mkstick.sh once the stick has the official recovery system) puts
+  the official `recovery.efi` of slot r's own release in its place, in the stick's EFI system partition: from the boot
+  image beside that release (its address from r's signed list), its checksum and Rudolf OS's Secure Boot signature
+  checked; kept in os/recefi for the next stick; the boot menu's Recovery mode entry added when the build has none. The
+  build's own start is left. Never fatal: offline with none kept, a warning. With Secure Boot on, the official file
+  starts where the computer trusts Rudolf OS's key (another build's own shim may not). Test: `iso/qt/host/recefi60_t.sh` (12).
 - Tests: `iso/qt/host/ownbuilds60_t.sh` (19), `iso/qt/shell2/ownbuilds60_t.js` (7), in ownbuilds-check.yml.
 
 **Tests (planned).** A host test with two local channels, each signed with its own test key (RUDOLF_TEST_KEYS), over a local https

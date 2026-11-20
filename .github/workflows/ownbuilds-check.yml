@@ -7,7 +7,7 @@ on:
   pull_request:
     paths: ['iso/sys/rudolf-update.c', 'iso/sys/rudolf-updates.c', 'iso/sys/rudolf-drives.c', 'iso/sys/root/usr/lib/rudolf/mkstick.sh',
       'iso/sys/root/usr/lib/rudolf/oscopy.sh', 'iso/sys/root/usr/lib/rudolf/install.sh', 'desktop/sysupd25.js', 'desktop/stick30.js',
-      'iso/www/index.html', 'iso/qt/host/ownbuilds60_t.sh', 'iso/qt/shell2/ownbuilds60_t.js', '.github/workflows/ownbuilds-check.yml']
+      'iso/www/index.html', 'iso/qt/host/ownbuilds60_t.sh', 'iso/qt/host/recefi60_t.sh', 'iso/qt/shell2/ownbuilds60_t.js', '.github/workflows/ownbuilds-check.yml']
 permissions: {contents: read}
 jobs:
   check:
@@ -19,6 +19,8 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq libssl-dev libcurl4 python3-cryptography >/dev/null
       - name: rudolf-update
         run: bash iso/qt/host/ownbuilds60_t.sh
+      - name: The official Recovery mode file on another build's stick
+        run: bash iso/qt/host/recefi60_t.sh
       - name: The stick script's own tests
         run: sh iso/qt/host/mkstick_t.sh
       - name: Chromium (Playwright's)
