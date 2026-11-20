@@ -188,6 +188,7 @@ static char *run_out(const char *cmd)
 }
 #include "origin.h"           /* 1.6.0 (plan Part 19): where this build comes from */
 #include "rudolfd-root.inc"   /* 1.6.1 (plan Part 11): what needs root, through the root helpers */
+#include "rudolfd-boottime.inc"  /* 1.6.1: the time before the kernel (firmware, boot loader) (plan-1.6.1 Part 12) */
 #ifndef RU_BIN
 #define RU_BIN "/usr/bin/rudolf-update"   /* (only looked for here: the updates helper runs it; host tests give another) */
 #endif
@@ -3922,6 +3923,7 @@ static void api_health(struct req *r, int post)
 	/* 1.6.1 (plan Part 12): readyAt, the uptime of the desktop's first heartbeat this start (the start-up's end), for the health
 	   log's "the desktop was ready N s" (the page sends that line a few seconds later) */
 	{ char *b = slurp(RUN "/bootok", NULL); double ra = b && strchr(b, '.') ? atof(b) : 0; free(b); if (ra > 0) sadd(&s, "\"readyAt\":%.1f,", ra); }
+	if (bt_before_kernel >= 0) sadd(&s, "\"beforeKernel\":%.1f,", bt_before_kernel + ({ char *b = slurp(RUN "/startup-times", NULL); char *t = b ? (!strncmp(b, "t0 ", 3) ? b : strstr(b, "\nt0 ")) : NULL; double v = t ? atof(t + (*t == '\n' ? 4 : 3)) : 0; free(b); v; }));   /* (1.6.1: firmware, boot loader and the handover's first stage: power-on to this kernel's clock) */
 	sadd(&s, "\"events\":[");
 	int k = 0;
 	if (all) {
@@ -5416,6 +5418,7 @@ int main(int argc, char **argv)
 	if (argc == 4 && !strcmp(argv[1], "--health")) { if (!health_kind_ok(argv[2])) return 2; health_add(argv[2], "%s", argv[3]); return 0; }
 	signal(SIGPIPE, SIG_IGN);
 	mkdir(RUN, 0755);
+	boottime_note();   /* 1.6.1: the firmware's and boot loader's time, read while root (rudolfd-boottime.inc) */
 	int rf = open("/dev/urandom", O_RDONLY);
 	unsigned char rb[16];
 	if (rf < 0 || read(rf, rb, 16) != 16) { for (int i = 0; i < 16; i++) rb[i] = rand(); }

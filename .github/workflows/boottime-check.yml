@@ -1,0 +1,22 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 12): the time before the kernel's clock (firmware, boot loader) in the start-up's steps:
+# rudolfd-boottime.inc's sources and limits, Last starts' display, and rudolfd and rudolf-native still build. Nothing published.
+name: Start-up time before the kernel (check)
+on:
+  push:
+    paths: ['iso/sys/rudolfd-boottime.inc', 'iso/sys/rudolfd.c', 'desktop/sec50.js', 'iso/qt/host/boottime61_t.sh', 'iso/kconfig.sh', '.github/workflows/boottime-check.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: The host tests
+        run: |
+          set -e
+          sh iso/qt/host/boottime61_t.sh
+      - name: rudolfd builds with it
+        run: |
+          sudo apt-get install -y zlib1g-dev >/dev/null
+          gcc -O2 -Wall -o /tmp/rudolfd iso/sys/rudolfd.c -lz

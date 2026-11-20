@@ -78,13 +78,17 @@ async function hlReportLines(n){const h=await hlGet(n||50);if(!h||!h.events)retu
    owner's Vivobook); the native shell says it when its own sign-in screen shows (rudolf-native.c ready_note) */
 (function(){if(!RD||RD.engine=='native')return;setTimeout(async()=>{try{if(sessionStorage.getItem('hl50ready'))return;sessionStorage.setItem('hl50ready','1')}catch(e){}
  const h=await hlGet(5);if(!h||!Array.isArray(h.events))return;const last=h.events.find(e=>e.k=='start'),rdy=h.events.find(e=>e.k=='ready');
- if(last&&(!rdy||rdy.t<last.t)&&h.uptime<900)hlNote('ready',`the desktop was ready ${h.readyAt>0?Math.round(h.readyAt):h.uptime} s after start-up`)},4000)})();   /* (1.6.1: the first heartbeat's uptime, readyAt, not this moment's, 4 s or more later) */
+ if(last&&(!rdy||rdy.t<last.t)&&h.uptime<900)hlNote('ready',`the desktop was ready ${h.readyAt>0?Math.round(h.readyAt):h.uptime} s after start-up${h.beforeKernel>0?` (${Math.round((h.readyAt>0?h.readyAt:h.uptime)+h.beforeKernel)} s from power-on)`:''}`)},4000)})();   /* (1.6.1: the first heartbeat's uptime, readyAt, not this moment's, 4 s or more later) */
 /* 1.5.7 (plan stage 5): the self-test's result in a window: failures first, then what passed and what was skipped */
 /* 1.5.8: System health › Last starts: when, which system, whether the desktop came up (and how soon), with which engine,
    how often the browser was started again, what was given up, and what the start-up said */
 /* 1.6.1 (plan Part 12): the start-up's steps ("UPTIME STEP" lines) as how long each took: "  4.2 s  devices (udev)   (at 5.6 s)" */
-function startSteps(t){let prev=0,o=[];for(const l of String(t).split('\n')){const m=/^(t0 )?([0-9.]+) (.*)$/.exec(l);if(!m)continue;const u=+m[2];
- if(m[1]){o.push(`${u.toFixed(1).padStart(5)} s  ${m[3]}`);continue}o.push(`${(u-prev).toFixed(1).padStart(5)} s  ${m[3]}   (at ${u.toFixed(1)} s)`);prev=u}return o.join('\n')}
+/* (1.6.1: "fw S ..." first, the time before the kernel's clock (rudolfd-boottime.inc), then "t0" (a handover's first stage), the
+   steps, and with fw the whole from power-on) */
+function startSteps(t){let prev=0,fw=null,t0=null,o=[],last='';for(const l of String(t).split('\n')){const m=/^(t0 |fw )?([0-9.]+) (.*)$/.exec(l);if(!m)continue;const u=+m[2];
+ if(m[1]=='fw '){fw=[u,m[3]];continue}if(m[1]){t0=[u,m[3]];continue}o.push(`${(u-prev).toFixed(1).padStart(5)} s  ${m[3]}   (at ${u.toFixed(1)} s)`);prev=u;last=m[3]}
+ const h=[];if(fw)h.push(`${fw[0].toFixed(1).padStart(5)} s  ${fw[1]}`);if(t0)h.push(`${t0[0].toFixed(1).padStart(5)} s  ${t0[1]}`);
+ if(fw&&o.length)o.push(`${(fw[0]+(t0?t0[0]:0)+prev).toFixed(1).padStart(5)} s  from power-on to ${last=='the desktop answered'?"the desktop's answer":'the last step'}`);return h.concat(o).join('\n')}
 async function startsShow(){const W=appWin('starts','Last starts','🕓',640,460);W.body.style.cssText='overflow:auto;padding:10px;background:var(--wbg,#fff)';
  W.body.innerHTML="<p class='msg'>Loading…</p>";let j;try{j=await rd('system/starts')}catch(e){W.body.innerHTML=`<p class='msg warn'>${esc2(e.message)}</p>`;return W}
  const L=j.starts||[];if(!L.length){W.body.innerHTML="<p class='msg'>No start has been recorded yet: they are kept from this version on.</p>";return W}

@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- New: the start-up's time from power-on. System health › Last starts › "Where the time went" now begins with the time
+  before Linux starts: the computer's firmware, the boot loader and the kernel's unpacking (from the firmware's own
+  record, ACPI's FPDT, and the processor's counter), and ends with the whole from power-on to the desktop's answer. The
+  health log's "the desktop was ready" line adds the time from power-on, and counts an installed computer's handover.
 - New: Emu plays Nintendo 64 and Sega Dreamcast games, in native emulators that run on the graphics card, full
   screen: Rosalie's Mupen GUI (Mupen64Plus) and Flycast, free emulators downloaded once from Flathub the first time a
   game of theirs is played. Add games takes .z64, .n64 and .v64 games, and Dreamcast discs as .cdi or .chd files or as
