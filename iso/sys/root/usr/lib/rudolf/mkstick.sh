@@ -47,12 +47,12 @@ N=${DEV##*/}
 [ -b "$DEV" ] && [ -r /sys/block/$N/size ] || { echo "No such drive: $DEV"; exit 2; }
 MEDIA=$(cat /etc/rudolf/media 2>/dev/null)
 case "$MEDIA" in "$DEV"|"$DEV"[0-9]*|"$DEV"p[0-9]*) echo "That is the drive Rudolf OS is running from. Choose another USB stick."; exit 3;; esac
-# a USB stick or a memory card, of 2 GB or more (internal disks: Settings > Update and recovery > Install here)
+# a USB stick or a memory card, of 1.8 GB or more (internal disks: Settings > Update and recovery > Install here)
 RM=$(cat /sys/block/$N/removable)
 case $(readlink -f /sys/block/$N/device) in */usb*) RM=1;; */mmc*) RM=1;; esac
 [ "$RM" = 1 ] || { echo "$N is not a USB stick or memory card. To put Rudolf OS on an internal disk, use Install here."; exit 8; }
 SECTORS=$(cat /sys/block/$N/size)
-[ "$SECTORS" -ge 3900000 ] || { echo "The stick is too small: Rudolf OS needs at least 2 GB."; exit 5; }
+[ "$SECTORS" -ge 3515625 ] || { echo "The stick is too small: Rudolf OS needs at least 1.8 GB."; exit 5; }   # (1.6.0, the owner: 1.8 GB, so a "2 GB" stick a little short of it is taken; the room it needs is checked below)
 # nothing on the stick is mounted by itself until it is finished (install.sh unmounts what was; 1.2.6)
 BUSY=/run/rudolf/busy/$N; mkdir -p /run/rudolf/busy; : > $BUSY; trap "rm -f $BUSY" EXIT
 # 1.5.7: the boot files of the installed system in use (its Recovery mode and safeguards), not the drive's older ones
