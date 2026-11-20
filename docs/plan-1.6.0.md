@@ -1548,6 +1548,48 @@ check with the real bundle's structure (a test bundle signed by a test "root" re
 from a recorded bundle), removal; the Debian container's `pcsc_scan`. On hardware: a CAC reader (USB) and the owner's or
 a family member's CAC, with iPERMS or IPPS-A, only when the owner asks.
 
+### 21. Oracle: each account's own websites, and reopening tabs (added on 2026-11-19)
+The owner, 2026-11-19, after "Does the Oracle browser remember the session when it closes?" and the finding below:
+"2." (plan it). Decided the same day: the shared profile's sign-ins and saved passwords go to nobody: everyone starts
+fresh.
+
+**How it is today.** Every account's Oracle uses one Chromium profile, `/home/rudolf/.rudolf-browser` (session
+`PROFILE`; the desktop's own Chromium on Standard, and Native's Oracle Chromium, 12.3c, both use it). History and
+bookmarks are the desktop's, per account (`bd95hist`, 200 entries), but websites' cookies, storage and saved passwords
+(`--password-store=basic`) are one set for the whole computer: one account's sign-in to a website is there for the next
+account to sign in, and none of it is encrypted with the account's key. Closing Oracle closes its tabs for good (no
+"continue where you left off"). Private and Tor windows keep nothing, as intended.
+
+**1. A profile per account, in its encrypted folder.** Oracle's websites live in `/persist/accounts/<id>/.oracle/`
+(fscrypt, the account's file key: unreadable while it is signed out; Part 17 of plan-1.6.1 protects it further).
+- Oracle runs in its own Chromium on all three engines (as Native's does since 12.3c: `rudolf-launch --oracle`,
+  `--class=RudolfOracle`), started at the account's first Oracle window with `--user-data-dir` there, stopped at sign-out
+  before the folder is locked. On Standard, Oracle's tabs leave the desktop's Chromium for it; the desktop's Chromium
+  keeps only the desktop page (its profile then has no website in it, checked).
+- Guest: a profile under `/run` (memory), deleted at sign-out. A Rudolf OS stick without RUDOLFDATA: the same.
+- What goes with the profile: Ruffle and the frames extension (loaded into each), Sign-in with FedCM (per account now),
+  Downloads (already the account's own), Blitzen's web reading through Oracle (Part 18: the signed-in account's Oracle).
+
+**2. Everyone starts fresh.** At the first start of this version, the shared profile's websites are deleted: cookies,
+saved passwords (`Login Data`), websites' storage (Local Storage, IndexedDB, service workers, cache) for every origin but
+the desktop's own (`http://127.0.0.1:8080`, kept: it is the desktop). Nothing of it is copied to any account. Each
+account's first Oracle window says once: "Websites are now kept separately for each account. Sign in to websites
+again." The release notes say before the update that passwords saved in Oracle are removed, so anyone who needs them
+can look them up first.
+
+**3. Reopening tabs (Oracle's ☰ › Settings, per account).** "When Oracle opens: the start page / the tabs from last time"
+(start page by default). The tabs (addresses and titles, at most 50) are kept in the account's profile folder when its
+last Oracle window closes and at sign-out; never for private or Tor windows.
+
+**4. History.** Oracle's own list stays at 200 entries (about 30 KB of the desktop's storage; 120 would save about 12 KB,
+nothing noticeable). Chromium's own history database in the profile (its 90 days) is per account now, and "Clear
+history" in Oracle clears both.
+
+**Tests.** Two accounts in QEMU: a test site's cookie set by one is absent for the other, on Standard, Native and Lite;
+the profile folder unreadable while its account is signed out; Guest's gone after sign-out; the first start of this
+version removing the shared profile's websites and keeping the desktop's storage; tabs reopened when that is on, not for
+private or Tor windows.
+
 ## Cellular and ARM64: QEMU and host tests first, hardware after (owner, 2026-11-15)
 Asked for: "Set up the plan to cover whatever can be done in QEMU first. Everything that requires hardware testing can
 come afterwards in that plan." This replaces the order of Steps 1 to 6 below for Parts 1 to 7. Each stage is one or
@@ -1770,7 +1812,9 @@ host, browser and QEMU tests; item 4 (ARM64) stays below, see "Before stable".
    belong to (12.3c's comparison with Part 12, the recovery with Part 13's signed layers, the QEMU checks first).
 10. Part 20 (smart cards and the CAC): 1 and 2 first (the pieces and Oracle), then 3 (Settings, the DoD certificates),
    then 4 (Linux programs and Firefox); QEMU with a virtual card before any real card.
-11. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
+11. Part 21 (Oracle per account): 1 and 2 together (the separate profiles and the fresh start), then 3 (reopening tabs)
+   and 4.
+12. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
 
 ## Before stable (2026-11-16)
 Asked for on 2026-11-16: "determine what else is to be done in 1.6.0 before promoting to stable". From the parts above,
