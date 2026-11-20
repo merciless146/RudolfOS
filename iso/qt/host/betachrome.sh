@@ -10,6 +10,7 @@
 set -e
 SFS=$1; D=$(realpath -m "$2"); [ -f "$SFS" ] && [ -n "$2" ] || { echo "usage: betachrome.sh CHROMIUM.SFS DIR" >&2; exit 2; }
 SU=; [ "$(id -u)" = 0 ] || SU=sudo
+mkdir -p "$D"
 [ -x "$D/c/opt/chromium/chrome" ] || { $SU unsquashfs -q -n -d "$D/c" "$SFS" opt/chromium >/dev/null; $SU chown -R "$(id -u):$(id -g)" "$D/c"; }
 INTERP=$(readelf -l "$D/c/opt/chromium/chrome" | sed -n 's/.*program interpreter: \(.*\)]/\1/p')
 echo "the beta's chrome: interpreter $INTERP; $(readelf -d "$D/c/opt/chromium/chrome" | sed -n 's/.*Library rpath: \[\(.*\)\]/rpath \1/p')" >&2
