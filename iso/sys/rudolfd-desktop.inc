@@ -946,3 +946,122 @@ static void api_lsync_get(struct req *r, const char *key)
 	if (v && *dj_ws(v) == '"') dj_raw(&o, v, "null"); else sadd(&o, "null");
 	sadd(&o, "}"); dls_close(&l); reply_json(r->fd, &o);
 }
+
+/* ------------------------------------------------------------------ 1.6.0 (docs/plan-1.6.0.md Part 22 item 5): Standard's Oracle encrypted
+ * The owner (2026-11-20): Standard "off by default, with the option to be turned on by the user". On, an account's Oracle on Standard
+ * is Rudolf's Chromium of its own, as Standard's Tor windows are (torwin_*, rudolfd.c): a window over the desktop, its profile in the
+ * account's encrypted folder (/persist/oracle/ID/chromium, the home folder's key), so its websites are locked at sign-out. Started
+ * only for an account that turned it on (owenc "on", not the unset default) and whose folder is open.
+ *   POST orawin/session   {"id","n","r","fk"}: the desktop page's account (as torwin/session), kept root-only while it runs
+ *   GET  orawin/session   the same, for that Chromium's page (oneapp59.js oaStart, #...&enc=1)
+ *   POST orawin/open[?url=U&...][&priv=1]   a window (Chromium started the first time)
+ *   POST orawin/close     the account signs out: its page saves its tabs ("logout"), then Chromium closes; answers once it has
+ *                         (up to 8 s; then it is stopped), before the desktop locks the folder
+ *   GET  orawin/state     {"open":true|false,"acct"}  */
+#ifndef ORAWIN_LAUNCH
+#define ORAWIN_LAUNCH TORWIN_LAUNCH
+#endif
+#define ORAWIN_CTL RUN "/orawin.ctl"
+#define ORAWIN_PID RUN "/orawin.pid"
+#define ORAWIN_SESS RUN "/orawin-session"
+static int orawin_running(void)
+{
+	char *s = slurp(ORAWIN_PID, NULL); pid_t p = s ? atoi(s) : 0; free(s);
+	if (p <= 1 || kill(p, 0)) return 0;
+	char f[64]; snprintf(f, sizeof f, "/proc/%d/stat", (int)p); char *k = slurp(f, NULL); int z = k && strstr(k, ") Z "); free(k);
+	return !z;
+}
+/* the session given: its account id in id (n bytes), 0 when there is one */
+static int orawin_sess(char *id, size_t n)
+{
+	char *b = slurp(ORAWIN_SESS, NULL); if (!b) return -1; char *e = strchr(b, '\n'); if (e) *e = 0;
+	int ok = home_acct_ok(b) && strcmp(b, "guest"); if (ok) snprintf(id, n, "%s", b); explicit_bzero(b, strlen(b)); free(b); return ok ? 0 : -1;
+}
+static int orawin_start(const char *acct)
+{
+	char wp[400]; if (!oweb_ready(acct, wp, sizeof wp) || owenc_get(acct) != 1) return -2;
+	char *t = slurp(RUN "/oracle-chrome", NULL); if (!t) return -1;
+	char *L[200]; int n = 0; for (char *l = strtok(t, "\n"); l && n < 199; l = strtok(NULL, "\n")) if (*l) L[n++] = l; L[n] = NULL;
+	struct passwd *pw = getpwnam(TORWIN_USER);
+	if (n < 2 || strlen(L[0]) != 56 || access(L[1], X_OK) || access(ORAWIN_LAUNCH, X_OK) || !pw) { free(t); return -1; }
+	char prof[460]; snprintf(prof, sizeof prof, "%s/chromium", wp);
+	unlink(ORAWIN_CTL);
+	if (mkfifo(ORAWIN_CTL, 0600) || chown(ORAWIN_CTL, pw->pw_uid, pw->pw_gid)) { free(t); return -1; }
+	char *env = slurp(RUN "/session.env", NULL);
+	pid_t c = fork();
+	if (c < 0) { free(t); free(env); return -1; }
+	if (c == 0) {   /* (the watcher: waits for Chromium's launcher, then tidies up) */
+		setsid(); int nul = open("/dev/null", O_RDWR); if (nul >= 0) { dup2(nul, 0); dup2(nul, 1); }
+		int lg = open(RUN "/orawin.log", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600); if (lg >= 0) { dup2(lg, 2); dup2(lg, 1); }
+		pid_t g = fork();
+		if (g == 0) {
+			FILE *cg = fopen("/sys/fs/cgroup/desktop/cgroup.procs", "w"); if (cg) { fprintf(cg, "%d\n", (int)getpid()); fclose(cg); }
+			if (initgroups(pw->pw_name, pw->pw_gid) || setgid(pw->pw_gid) || setuid(pw->pw_uid)) _exit(126);
+			clearenv(); setenv("HOME", pw->pw_dir, 1); setenv("USER", pw->pw_name, 1); setenv("PATH", "/usr/bin:/bin", 1); setenv("FONTCONFIG_FILE", "/etc/fonts/fonts.conf", 1);
+			setenv("GOOGLE_API_KEY", "no", 1); setenv("GOOGLE_DEFAULT_CLIENT_ID", "no", 1); setenv("GOOGLE_DEFAULT_CLIENT_SECRET", "no", 1);
+			for (char *e = env ? strtok(env, " \n") : NULL; e; e = strtok(NULL, " \n")) { char *q = strchr(e, '='); if (q && q > e) { *q = 0; setenv(e, q + 1, 1); } }
+			mkdir(prof, 0700);
+			/* (its copy of the shell replaced when a release changed it, as the session does for the shared profile: rudolf-shellfix) */
+			{ char cmd[1400]; snprintf(cmd, sizeof cmd, "S=/usr/share/rudolf/www/iwa/shell.swbn; H=0; M=0; for f in '%s'/Default/iwa/*/main.swbn; do [ -f \"$f\" ] || continue; H=1; cmp -s \"$f\" $S && M=1; done; "
+				"[ $H = 1 ] && [ $M = 0 ] && [ -x /usr/bin/rudolf-shellfix ] && /usr/bin/rudolf-shellfix '%s' '%s' $S '%s'; exit 0", prof, L[1], prof, L[0]);
+			  if (!strchr(prof, '\'')) { if (system(cmd)) {} } }
+			char *a[210]; int k = 0; a[k++] = ORAWIN_LAUNCH; a[k++] = "--oracle"; a[k++] = ORAWIN_CTL; a[k++] = L[0];
+			for (int i = 1; i < n && k < 206; i++) if (strncmp(L[i], "--user-data-dir=", 16) && strncmp(L[i], "--class=", 8)) a[k++] = L[i];
+			static char ud[480]; snprintf(ud, sizeof ud, "--user-data-dir=%s", prof); a[k++] = ud; a[k++] = "--class=RudolfOracle"; a[k] = NULL;
+			for (int i = 3; i < 1024; i++) close(i);
+			execv(ORAWIN_LAUNCH, a); _exit(127);
+		}
+		if (g > 0) { while (waitpid(g, NULL, 0) < 0 && errno == EINTR) {} }
+		unlink(ORAWIN_CTL); unlink(ORAWIN_PID); unlink(ORAWIN_SESS); _exit(0);
+	}
+	char b[32]; snprintf(b, sizeof b, "%d\n", (int)c); write_str(ORAWIN_PID, b);
+	free(t); free(env); return 0;
+}
+static int orawin_tell(const char *line)
+{
+	int ok = 0; for (int i = 0; i < 80 && !ok; i++) { int f = open(ORAWIN_CTL, O_WRONLY | O_NONBLOCK | O_CLOEXEC); if (f >= 0) { ok = write(f, line, strlen(line)) == (ssize_t)strlen(line); close(f); } if (!ok) usleep(100000); }
+	return ok;
+}
+static void api_orawin(struct req *r, const char *what, int post)
+{
+	if (!strcmp(what, "session")) {
+		if (!post) {
+			if (!orawin_running()) { reply_err(r->fd, 404, "no encrypted Oracle"); return; }
+			char *b = slurp(ORAWIN_SESS, NULL); if (!b) { reply_err(r->fd, 404, "no session given"); return; }
+			char *L[4] = {0}; int k = 0; for (char *p = b, *e; k < 4 && p; p = e ? e + 1 : NULL) { e = strchr(p, '\n'); if (e) *e = 0; L[k++] = p; }
+			if (k < 4 || !torwin_sess_ok(L[0], L[1], L[2], L[3]) || !strcmp(L[2], "guest")) { explicit_bzero(b, strlen(b)); free(b); reply_err(r->fd, 404, "no session given"); return; }
+			str o = {0}; sadd(&o, "{\"ok\":true,\"id\":"); sjson(&o, L[0]); sadd(&o, ",\"n\":"); sjson(&o, L[1]); sadd(&o, ",\"r\":"); sjson(&o, L[2]); sadd(&o, ",\"fk\":"); sjson(&o, L[3]); sadd(&o, "}");
+			explicit_bzero(b, strlen(b)); free(b); reply_json(r->fd, &o); return;
+		}
+		char *id = dbody_field(r, "id"), *n = dbody_field(r, "n"), *rl = dbody_field(r, "r"), *fk = dbody_field(r, "fk");
+		if (!fk) fk = strdup("");
+		if (!torwin_sess_ok(id, n, rl, fk) || !strcmp(rl, "guest")) { free(id); free(n); free(rl); dfree_secret(fk); reply_err(r->fd, 400, "an account: id, n, r, fk"); return; }
+		/* (another account's Chromium still running: not given; it closes at that account's sign-out) */
+		char cur[80]; if (orawin_running() && !orawin_sess(cur, sizeof cur) && strcmp(cur, id)) { free(id); free(n); free(rl); dfree_secret(fk); reply_err(r->fd, 409, "another account's Oracle is still closing"); return; }
+		char tp[] = RUN "/orawin-session.XXXXXX"; int f = mkstemp(tp); int ok = 0;
+		if (f >= 0) { if (fchmod(f, 0600) == 0) { str w = {0}; sadd(&w, "%s\n%s\n%s\n%s\n", id, n, rl, fk); ok = write(f, w.b, w.n) == (ssize_t)w.n; explicit_bzero(w.b, w.n); free(w.b); }
+			if (close(f)) ok = 0; if (ok) ok = !rename(tp, ORAWIN_SESS); if (!ok) unlink(tp); }
+		free(id); free(n); free(rl); dfree_secret(fk);
+		if (!ok) { reply_err(r->fd, 500, "could not keep it"); return; } reply_ok(r->fd, "given"); return;
+	}
+	if (!strcmp(what, "state")) { char cur[80] = ""; int on = orawin_running(); if (on) orawin_sess(cur, sizeof cur); str o = {0}; sadd(&o, "{\"ok\":true,\"open\":%s,\"acct\":", on ? "true" : "false"); sjson(&o, cur); sadd(&o, "}"); reply_json(r->fd, &o); return; }
+	if (!post) { reply_err(r->fd, 405, "use POST"); return; }
+	if (!strcmp(what, "close")) {
+		if (!orawin_running()) { unlink(ORAWIN_SESS); reply_ok(r->fd, "not open"); return; }
+		orawin_tell("logout\n");
+		char *s = slurp(ORAWIN_PID, NULL); pid_t p = s ? atoi(s) : 0; free(s);
+		for (int i = 0; i < 80 && orawin_running(); i++) usleep(100000);
+		if (orawin_running() && p > 1) { kill(-p, SIGTERM); for (int i = 0; i < 20 && orawin_running(); i++) usleep(100000); }
+		unlink(ORAWIN_SESS); reply_ok(r->fd, orawin_running() ? "still closing" : "closed"); return;
+	}
+	if (strcmp(what, "open")) { reply_err(r->fd, 404, "unknown encrypted Oracle action"); return; }
+	char acct[80]; if (orawin_sess(acct, sizeof acct)) { reply_err(r->fd, 400, "no account given (orawin/session)"); return; }
+	if (!orawin_running()) { int st = orawin_start(acct);
+		if (st == -2) { reply_err(r->fd, 409, "This account does not keep its websites encrypted, or its files are not open."); return; }
+		if (st) { reply_err(r->fd, 500, "Oracle needs Rudolf's Chromium with its shell, which this computer does not have"); return; } }
+	str h = {0}; sadd(&h, "open 0 0 0 0 "); torwin_hash(r->query, "app=browser&enc=1", &h);
+	{ const char *pv = qparam(r->query, "priv"); if (pv && !strcmp(pv, "1")) sadd(&h, "&priv=1"); }
+	sadd(&h, "\n"); int ok = orawin_tell(h.b); free(h.b);
+	if (!ok) { reply_err(r->fd, 500, "Oracle's Chromium did not start"); return; }
+	reply_ok(r->fd, "opened");
+}

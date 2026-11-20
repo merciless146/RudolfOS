@@ -1,0 +1,23 @@
+# 1.6.0 (docs/plan-1.6.0.md Part 22): Oracle's websites encrypted with the account. rudolfd's home folders and the Oracle
+# folder beside them on a real ext4 drive with the encrypt feature (homeapi_t.sh, as root: a loop device), rudolfd's desktop
+# API (deskapi59_t.sh), and the page's side (oraacct60_t.js, Settings › Oracle, Lite and Standard).
+name: Oracle encrypted check
+on:
+  push:
+    paths: ['iso/sys/rudolfd-home.inc', 'iso/sys/rudolfd-desktop.inc', 'iso/sys/rudolfd-users.inc', 'iso/sys/rudolfd.c', 'desktop/oneapp59.js', 'iso/qt/host/homeapi_t.sh', 'iso/qt/host/fixtures/homeapi.c', 'desktop/oraenc60.js', 'iso/qt/shell2/oraacct60_t.js', '.github/workflows/oracle-encrypted-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: rudolfd's folders on an encrypted drive, and its desktop API
+        run: |
+          sudo apt-get update -qq; sudo apt-get install -y -qq zlib1g-dev >/dev/null
+          for t in homeapi_t.sh deskapi59_t.sh; do echo "== $t"; sudo sh iso/qt/host/$t || exit 1; done
+      - name: The page's side
+        run: |
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          node iso/qt/shell2/oraacct60_t.js
