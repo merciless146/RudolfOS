@@ -47,7 +47,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('drive picking', await q("JSON.stringify([stkDisk('/dev/sda1'),stkDisk('/dev/nvme0n1p1'),stkDisk('/dev/mmcblk0p1'),stkDisk('/dev/sr0')])") == '["sda","nvme0n1","mmcblk0","sr0"]');
   await q("settings('stor')"); await p.waitForFunction(() => !!document.querySelector('.stk30 .stkl'), null, {timeout: 15000}).catch(() => 0);
   const rows = await q("[...document.querySelectorAll('.stk30 .stkl .acr')].map(r=>r.firstChild.textContent)");
-  ok('Make a stick lists only USB drives of 2 GB or more, not the running one', JSON.stringify(rows) == JSON.stringify(['🔌 sdb — SanDisk Ultra — 32.0 GB']), rows);
+  ok('...the minimum is 1.8 GB (the owner, 2026-11-19): a "2 GB" stick of 1,992,294,400 bytes (the Vivobook\'s) is offered, one of 1.5 GB is not',
+    JSON.stringify(await q("stkTargets([{name:'sde',bytes:1992294400,removable:true},{name:'sdf',bytes:1.5e9,removable:true},{name:'sdg',bytes:1.8e9,removable:true}],{mediaDev:'/dev/sda1'}).map(k=>k.name)")) == '["sde","sdg"]');
+  ok('Make a stick lists only USB drives of 1.8 GB or more, not the running one', JSON.stringify(rows) == JSON.stringify(['🔌 sdb — SanDisk Ultra — 32.0 GB']), rows);
   ok('...and offers this Rudolf OS (with its updates) or a downloaded image', await q("[...document.querySelectorAll('.stk30 .stks option')].map(o=>o.textContent).join('|')") == `This Rudolf OS ${await q('RVER')} (with its updates)|rudolf-os-1.2.6.iso (Downloads)`, await q("[...document.querySelectorAll('.stk30 .stks option')].map(o=>o.textContent).join('|')"));
   await q("document.querySelector('.stk30 .stkf').checked=true;document.querySelector('.stk30 .stkl button').click()"); await wait(500);
   ok('the administrator must type the size', await q("!!document.querySelector('.natdlg .stki')&&document.querySelector('.natdlg .g').disabled"));

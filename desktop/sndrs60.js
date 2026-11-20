@@ -151,6 +151,18 @@ if (typeof sfx=='function') { const _sfx=sfx; sfx=function(n,force){
  try{ window.__a11y&&a11ySound(n) }catch(e){} const m=S.snd.master,s=S.snd[n]; if (!s) return; if (!force&&(!m.on||!s.on)) return;
  const v=(m.vol/100)*(s.vol/100); if (v<=0) return; window.__sfx.push([n,+v.toFixed(3)]);
  const c=ac(); if (!c) return; try{ const src=c.createBufferSource(), g=c.createGain(); src.buffer=rsBuffer(n,c,p); g.gain.value=v; src.connect(g); g.connect(c.destination); src.start(c.currentTime+.01) }catch(e){ console.warn('sound',e) } } }
+/* (2026-11-19, the owner's Vivobook: Settings › Volume Controls was empty) an account's saved settings from before 1.6.0 have only the
+   first ten sound categories, and signing in puts them in place of the whole list (core25.js userLogin), so the page stopped at the
+   first new one (S.snd[k] undefined). Every category the desktop has, and the master volume, are filled in with their defaults:
+   after signing in, whenever settings are applied (another window's taken in), and before the page is drawn. */
+function sndFill(){ try{ if (typeof S!='object'||!S) return; if (!S.snd||typeof S.snd!='object') S.snd={};
+ S.snd.master=Object.assign({on:true,vol:70},S.snd.master);
+ for (const [k,,v] of SNDS) { S.snd[k]=Object.assign({on:true,vol:v},S.snd[k]); if (S.snd[k].p==null||!SPRE[k]||!SPRE[k][S.snd[k].p]) S.snd[k].p=0 }
+ if (typeof SC=='object'&&SC&&SC.snd&&typeof SC.snd=='object') for (const [k] of SNDS) if (!SC.snd[k]) SC.snd[k]=cln(S.snd[k]) }catch(e){ console.warn('sounds',e) } }
+sndFill();
+if (typeof userLogin=='function') { const _ul=userLogin; userLogin=async function(){ const r=await _ul.apply(this,arguments); sndFill(); return r } }
+if (typeof applySet=='function') { const _as=applySet; applySet=function(){ sndFill(); return _as.apply(this,arguments) } }
+if (typeof volPanelS=='function') { const _vf=volPanelS; volPanelS=function(){ sndFill(); return _vf.apply(this,arguments) } }
 /* the Volume Controls page: the count of categories said right, and "Use one style everywhere" */
 if (typeof volPanelS=='function') { const _v=volPanelS; volPanelS=function(c,W){ const r=_v.apply(this,arguments);
  try{ const msg=[...c.querySelectorAll('.msg')].find(x=>/sound categories/.test(x.textContent)); if (msg) msg.textContent=msg.textContent.replace(/the \d+ sound categories/,`the ${SNDS.length} sound categories`);

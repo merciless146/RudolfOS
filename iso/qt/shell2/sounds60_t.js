@@ -51,6 +51,17 @@ const NEW = ['logout', 'update', 'warning', 'battery', 'usbin', 'usbout', 'menu'
   h = await hear(`(()=>{const d=document.createElement('div');d.className='dlg';document.body.appendChild(d);setTimeout(()=>d.remove(),50)})()`, 'warning'); ok('a question before something that cannot be undone: the warning', h.ok, h);
   h = await hear(`(()=>{RS_BATLOW=false;PWR=Object.assign(window.PWR||{},{ac:false,battery:{capacity:8,status:'Discharging'}});batDraw()})()`, 'battery'); ok('the battery at 8 % on battery: Battery low', h.ok, h);
   h = await hear(`batDraw()`, 'battery'); ok('...once, not again at the next look', !h.ok, h);
+  // the owner's Vivobook (2026-11-19): an account's settings saved before 1.6.0 have only the first ten categories; signing in put them
+  // in place of the whole list, and Volume Controls was empty (S.snd[k] undefined)
+  const e0 = errs.length;
+  await q(`(async()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});
+    ACCTS.length=0;const a={n:'old',id:'oldacct1',h:await pwMake('o1'),r:'admin'};ACCTS.push(a);saveUser();USER=a;const old=cln(S);old.snd={master:{on:true,vol:70}};
+    ['startup','login','error','click','open','close','notify','game','shutdown'].forEach(k=>old.snd[k]={on:true,vol:60,p:0});
+    localStorage.setItem('bd95set:'+uid(),JSON.stringify(old));USER=null;await userLogin(a,'o1');settings('vol');return 1})()`);
+  await new Promise(r => setTimeout(r, 1500));
+  const vp = await q("({rows:document.querySelectorAll('.vr2').length,n:SNDS.length,miss:SNDS.filter(([k])=>!S.snd[k]).map(x=>x[0])})");
+  ok('an account saved before 1.6.0 (ten categories): every category filled in, and Volume Controls shows all of them', !vp.miss.length && vp.rows >= vp.n && errs.length == e0, {vp, errs: errs.slice(e0)});
+  ok('...its own choices kept (startup at 60)', await q('S.snd.startup.vol') == 60, await q("({s:S.snd.startup,u:uid(),keys:Object.keys(localStorage).filter(k=>k.startsWith('bd95set'))})"));
   ok('no page error', !errs.length, errs);
   await b.close(); srv.close(); const n = R.filter(Boolean).length; console.log(`${n}/${R.length} passed`); process.exit(n == R.length ? 0 : 1);
 })().catch(e => { console.error(e); process.exit(1) });
