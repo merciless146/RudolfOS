@@ -1,5 +1,6 @@
 # Oracle's pages drawn (the Vivobook, 2026-11-15: file:/// pages blank in Rudolf's Chromium 158).
-#   page: this tree's desktop page (iso/www/index.html) in the beta's own Chromium (from its chromium.sfs), and the beta's
+#   page: this tree's desktop page (iso/www/index.html) in the beta's own Chromium (from its chromium.sfs, linked at
+#         /opt/chromium by iso/qt/host/betachrome.sh, 1.6.1), and the beta's
 #         page the same way for comparison (iso/qt/shell2/oraclefile60_t.js); shows the fix before a new beta exists. And
 #         Oracle's loading line (1.6.0: iso/qt/shell2/oload60_t.js).
 #   qemu: the newest beta (or a release by its serial) itself in QEMU (iso/qt/sb/oracle_file_t.py), set up as
@@ -12,9 +13,9 @@ on:
       serial: {description: 'A release to test (its serial); empty: the newest beta', required: false, default: ''}
   push:
     branches: [oracle-file-blank]
-    paths: ['iso/qt/sb/oracle_file_t.py', 'iso/qt/shell2/oraclefile60_t.js', 'iso/qt/shell2/oload60_t.js', 'iso/www/index.html', '.github/workflows/oracle-file-check.yml']
+    paths: ['iso/qt/host/betachrome.sh', 'iso/qt/sb/oracle_file_t.py', 'iso/qt/shell2/oraclefile60_t.js', 'iso/qt/shell2/oload60_t.js', 'iso/www/index.html', '.github/workflows/oracle-file-check.yml']
   pull_request:
-    paths: ['iso/qt/sb/oracle_file_t.py', 'iso/qt/shell2/oraclefile60_t.js', 'iso/qt/shell2/oload60_t.js', 'iso/www/index.html', '.github/workflows/oracle-file-check.yml']
+    paths: ['iso/qt/host/betachrome.sh', 'iso/qt/sb/oracle_file_t.py', 'iso/qt/shell2/oraclefile60_t.js', 'iso/qt/shell2/oload60_t.js', 'iso/www/index.html', '.github/workflows/oracle-file-check.yml']
 permissions: {contents: read}
 jobs:
   page:
@@ -29,16 +30,17 @@ jobs:
           git fetch -q --depth 1 origin gh-pages
           S='${{ inputs.serial }}'; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
           mkdir -p rel && gh release download "r$S" -D rel -p chromium.sfs -p desktop.sfs
-          sudo unsquashfs -q -n -d rel/c rel/chromium.sfs opt/chromium && sudo unsquashfs -q -n -d rel/d rel/desktop.sfs usr/share/rudolf/www/index.html
-          sudo chown -R $USER rel; rel/c/opt/chromium/chrome --version; echo "::notice title=Oracle page check::release $S"
+          sudo unsquashfs -q -n -d rel/d rel/desktop.sfs usr/share/rudolf/www/index.html && sudo chown -R $USER rel
+          # (its own glibc's loader by absolute path, /opt/chromium/glibc: linked there; iso/qt/host/betachrome.sh)
+          echo "BETA_CHROME=$(sh iso/qt/host/betachrome.sh rel/chromium.sfs rel)" >> $GITHUB_ENV; echo "::notice title=Oracle page check::release $S"
           npm i -s --no-save playwright@1.63.0 >/dev/null
       - name: This tree's page (must pass)
-        run: ROUNDS=6 node iso/qt/shell2/oraclefile60_t.js $PWD/rel/c/opt/chromium/chrome
+        run: ROUNDS=6 node iso/qt/shell2/oraclefile60_t.js $BETA_CHROME
       - name: Oracle's loading line (1.6.0, this tree's page)
-        run: node iso/qt/shell2/oload60_t.js $PWD/rel/c/opt/chromium/chrome
+        run: node iso/qt/shell2/oload60_t.js $BETA_CHROME
       - name: The beta's page (for comparison; expected to fail before the fix)
         continue-on-error: true
-        run: PAGE=$PWD/rel/d/usr/share/rudolf/www/index.html node iso/qt/shell2/oraclefile60_t.js $PWD/rel/c/opt/chromium/chrome
+        run: PAGE=$PWD/rel/d/usr/share/rudolf/www/index.html node iso/qt/shell2/oraclefile60_t.js $BETA_CHROME
   qemu:
     runs-on: ubuntu-24.04
     timeout-minutes: 90

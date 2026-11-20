@@ -35,9 +35,9 @@ jobs:
           git fetch -q --depth 1 origin gh-pages
           S='${{ inputs.serial }}'; [ -n "$S" ] || S=$(sed -n 's/^serial=//p' .github/l160-run.txt | head -1); [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
           mkdir -p rel && gh release download "r$S" -D rel -p 'chromium.sfs'
-          unsquashfs -q -d chr rel/chromium.sfs opt/chromium >/dev/null; chr/opt/chromium/chrome --version || true
+          sh iso/qt/host/betachrome.sh rel/chromium.sfs chr   # (its own glibc's loader by absolute path: linked at /opt/chromium)
       - name: The desktop's side (this tree's page)
-        run: cd iso/qt/shell2 && NODE_PATH=$GITHUB_WORKSPACE/pw/node_modules node links60_t.js $GITHUB_WORKSPACE/chr/opt/chromium/chrome | tee $GITHUB_WORKSPACE/page.txt; grep -q ' passed$' $GITHUB_WORKSPACE/page.txt && ! grep -q '^FAIL' $GITHUB_WORKSPACE/page.txt
+        run: cd iso/qt/shell2 && NODE_PATH=$GITHUB_WORKSPACE/pw/node_modules node links60_t.js /opt/chromium/chrome | tee $GITHUB_WORKSPACE/page.txt; grep -q ' passed$' $GITHUB_WORKSPACE/page.txt && ! grep -q '^FAIL' $GITHUB_WORKSPACE/page.txt
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: links-host, retention-days: 7, path: "shim.txt\npage.txt"}

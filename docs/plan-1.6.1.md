@@ -886,6 +886,14 @@ From the comparison with other distributions on 2026-11-19: the weak points name
 - **CI:** the Oracle file check, the Tor window keys check and "same (beta)" fail on GitHub's runners because the beta's
   Chromium (chromium.sfs) does not start there ("required file not found", exit 127). Each moved to Playwright's
   Chromium as the newer checks were, or given the libraries the beta's Chromium needs, so every check runs again.
+  **Done (2026-11-20, branch ci-beta-chromium).** Nothing was missing but the loader: since 1.6.0 the beta's Chromium
+  carries its own glibc and names it by absolute path (program interpreter `/opt/chromium/glibc/ld-linux-x86-64.so.2`,
+  RPATH `/opt/chromium/glibc:$ORIGIN`, where Rudolf OS mounts chromium.sfs), so unpacked under `rel/c/` on a runner the
+  kernel found no interpreter. `iso/qt/host/betachrome.sh` links the unpacked tree at `/opt/chromium`, checks the loader
+  and `ldd` (the other libraries are the runner's, as base.sfs's are in Rudolf OS) and gives `/opt/chromium/chrome`. The
+  three checks keep testing the beta's own Chromium 158 (not moved to Playwright's): the Oracle file check's page job,
+  the Tor window keys' two beta steps and "same (beta)". The same fix in three more that start it the same way and
+  would have stopped the same way: Blitzen knows, App links (host) and Dark pages video. Left for the owner: nothing.
 - **A virtual smart card** in QEMU (vsmartcard's reader with a PIV emulator and a test CA: 1.6.0 Part 20's planned test).
 - **On the Vivobook, with the owner:** Oracle's websites encrypted (1.6.0 Part 22) on Native, Lite and Standard turned
   on; Recovery mode from a stick made from this release and from another build's; two-step sign-in on Standard and

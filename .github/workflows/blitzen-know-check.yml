@@ -34,12 +34,12 @@ jobs:
           git fetch -q --depth 1 origin gh-pages
           S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
           mkdir -p rel && gh release download "r$S" -D rel -p 'chromium.sfs'
-          unsquashfs -q -d chr rel/chromium.sfs opt/chromium >/dev/null; chr/opt/chromium/chrome --version || true
+          sh iso/qt/host/betachrome.sh rel/chromium.sfs chr   # (its own glibc's loader by absolute path: linked at /opt/chromium)
       - name: The desktop's side (this tree's page)
         run: |
           cd iso/qt/shell2; : > $GITHUB_WORKSPACE/page.txt
           for t in blitzknow60_t.js blzdev60_t.js blz_t.js blitzdiag57_t.js bzwhy57_t.js; do echo "== $t" | tee -a $GITHUB_WORKSPACE/page.txt
-            NODE_PATH=$GITHUB_WORKSPACE/pw/node_modules node $t $GITHUB_WORKSPACE/chr/opt/chromium/chrome 2>&1 | tee -a $GITHUB_WORKSPACE/page.txt; done
+            NODE_PATH=$GITHUB_WORKSPACE/pw/node_modules node $t /opt/chromium/chrome 2>&1 | tee -a $GITHUB_WORKSPACE/page.txt; done
           [ "$(grep -c ' passed$' $GITHUB_WORKSPACE/page.txt)" = 5 ] && ! grep -q '^FAIL' $GITHUB_WORKSPACE/page.txt
       - if: always()
         uses: actions/upload-artifact@v4

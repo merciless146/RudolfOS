@@ -29,16 +29,15 @@ jobs:
           git fetch -q --depth 1 origin gh-pages
           S='${{ inputs.serial }}'; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
           mkdir -p rel && gh release download "r$S" -D rel -p 'chromium.sfs'
-          unsquashfs -q -d chr rel/chromium.sfs opt/chromium >/dev/null
-          ls chr/opt/chromium/chrome && chr/opt/chromium/chrome --version || true
-          echo "::notice title=Dark pages video check::release $S, $(chr/opt/chromium/chrome --version 2>/dev/null)"
+          sh iso/qt/host/betachrome.sh rel/chromium.sfs chr   # (its own glibc's loader by absolute path: linked at /opt/chromium)
+          echo "::notice title=Dark pages video check::release $S, $(/opt/chromium/chrome --version 2>/dev/null)"
       - name: Before (main's shell.js)
         continue-on-error: true
         run: |
           git show origin/main:iso/shell/shell.js > main-shell.js
-          NODE_PATH=$PWD/pw/node_modules CHROME=$PWD/chr/opt/chromium/chrome SHELLJS=$PWD/main-shell.js sh iso/qt/host/darkvideo60_t.sh | tee before.txt
+          NODE_PATH=$PWD/pw/node_modules CHROME=/opt/chromium/chrome SHELLJS=$PWD/main-shell.js sh iso/qt/host/darkvideo60_t.sh | tee before.txt
       - name: After (this tree's shell.js)
-        run: NODE_PATH=$PWD/pw/node_modules CHROME=$PWD/chr/opt/chromium/chrome sh iso/qt/host/darkvideo60_t.sh | tee after.txt; grep -q '^all passed' after.txt
+        run: NODE_PATH=$PWD/pw/node_modules CHROME=/opt/chromium/chrome sh iso/qt/host/darkvideo60_t.sh | tee after.txt; grep -q '^all passed' after.txt
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: darkvideo, retention-days: 7, path: "before.txt\nafter.txt"}
