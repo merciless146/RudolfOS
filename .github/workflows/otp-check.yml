@@ -1,0 +1,21 @@
+# Two-step sign-in with authenticator codes (1.6.0; plan-1.6.1 Part 17): rudolfd's and the page's codes against RFC 6238
+# (iso/qt/host/totp60_t.sh), and the desktop's side with a stand-in rudolfd (iso/qt/shell2/otp60_t.js).
+name: OTP check
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['desktop/otp60.js', 'desktop/core25.js', 'iso/sys/rudolfd-desktop.inc', 'iso/sys/rudolf-native.c', 'iso/www/index.html',
+      'iso/qt/host/totp60_t.sh', 'iso/qt/shell2/otp60_t.js', '.github/workflows/otp-check.yml']
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: The codes, against RFC 6238
+        run: sh iso/qt/host/totp60_t.sh
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The desktop's side
+        run: node iso/qt/shell2/otp60_t.js

@@ -404,6 +404,74 @@ static void dfail_note(int ok)
 	n++; if (n >= 5) { n = 0; until = time(NULL) + 15; }
 	char b[64]; snprintf(b, sizeof b, "%lld %lld\n", n, until); write_str(p, b);
 }
+/* ---- 1.6.0 (plan-1.6.1 Part 17, moved to 1.6.0, the owner: "Codes now, keys after"): authenticator-app codes ----
+   RFC 6238 (HMAC-SHA-1, 30 s, 6 digits); the secret is the account's "otp" box (AES-256-GCM with the password's key, as
+   "fk"). Per account (DESK_DIR/second-ID): wrong codes and passwords counted (5: 30 s of waiting, then doubling up to 15
+   minutes), and the last step used, so a code is not taken twice. desktop/second is the page's (Standard's) way in. */
+typedef struct { uint32_t h[5]; uint8_t b[64]; uint64_t n; } dsha1;
+static uint32_t drol(uint32_t x, int k) { return x << k | x >> (32 - k); }
+static void dsha1_blk(dsha1 *c, const uint8_t *p)
+{
+	uint32_t w[80], a = c->h[0], b = c->h[1], cc = c->h[2], d = c->h[3], e = c->h[4];
+	for (int i = 0; i < 16; i++) w[i] = (uint32_t)p[4 * i] << 24 | p[4 * i + 1] << 16 | p[4 * i + 2] << 8 | p[4 * i + 3];
+	for (int i = 16; i < 80; i++) w[i] = drol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+	for (int i = 0; i < 80; i++) { uint32_t f, k; if (i < 20) { f = (b & cc) | (~b & d); k = 0x5a827999; } else if (i < 40) { f = b ^ cc ^ d; k = 0x6ed9eba1; } else if (i < 60) { f = (b & cc) | (b & d) | (cc & d); k = 0x8f1bbcdc; } else { f = b ^ cc ^ d; k = 0xca62c1d6; }
+		uint32_t t = drol(a, 5) + f + e + k + w[i]; e = d; d = cc; cc = drol(b, 30); b = a; a = t; }
+	c->h[0] += a; c->h[1] += b; c->h[2] += cc; c->h[3] += d; c->h[4] += e;
+}
+static void dsha1_go(const uint8_t *m, size_t n, const uint8_t *m2, size_t n2, uint8_t out[20])
+{
+	dsha1 c = {{0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0}, {0}, 0}; size_t f = 0;
+	for (int part = 0; part < 2; part++) { const uint8_t *p = part ? m2 : m; size_t l = part ? n2 : n;
+		for (size_t i = 0; i < l; i++) { c.b[f++] = p[i]; c.n++; if (f == 64) { dsha1_blk(&c, c.b); f = 0; } } }
+	uint64_t bits = c.n * 8; c.b[f++] = 0x80; if (f > 56) { while (f < 64) c.b[f++] = 0; dsha1_blk(&c, c.b); f = 0; }
+	while (f < 56) c.b[f++] = 0; for (int i = 7; i >= 0; i--) c.b[f++] = bits >> (8 * i); dsha1_blk(&c, c.b);
+	for (int i = 0; i < 5; i++) { out[4 * i] = c.h[i] >> 24; out[4 * i + 1] = c.h[i] >> 16; out[4 * i + 2] = c.h[i] >> 8; out[4 * i + 3] = c.h[i]; }
+}
+static int dtotp(const uint8_t *k, size_t kl, long long step)
+{
+	uint8_t key[64] = {0}, ip[64], op[64], m[8], ih[20], h[20]; if (kl > 64) { dsha1_go(k, kl, NULL, 0, key); kl = 20; } else memcpy(key, k, kl);
+	for (int i = 0; i < 64; i++) { ip[i] = key[i] ^ 0x36; op[i] = key[i] ^ 0x5c; }
+	for (int i = 7; i >= 0; i--) { m[i] = step & 255; step >>= 8; }
+	dsha1_go(ip, 64, m, 8, ih); dsha1_go(op, 64, ih, 20, h); explicit_bzero(key, sizeof key);
+	int o = h[19] & 15; return (int)((((uint32_t)h[o] & 127) << 24 | (uint32_t)h[o + 1] << 16 | (uint32_t)h[o + 2] << 8 | h[o + 3]) % 1000000);
+}
+static int dsec_id_ok(const char *id) { size_t n = id ? strlen(id) : 0; return n > 0 && n < 80 && strspn(id, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == n; }
+/* the account's record: wrong attempts in a row, waiting until, last step used */
+static void dsec_read(const char *id, long long *n, long long *until, long long *last)
+{
+	char p[300], f[120]; snprintf(f, sizeof f, "second-%s", id); dpath(p, sizeof p, f); char *t = slurp(p, NULL); *n = *until = *last = 0;
+	if (t) { sscanf(t, "%lld %lld %lld", n, until, last); free(t); }
+}
+static void dsec_write(const char *id, long long n, long long until, long long last)
+{
+	char p[300], f[120], b[96]; snprintf(f, sizeof f, "second-%s", id); dpath(p, sizeof p, f); snprintf(b, sizeof b, "%lld %lld %lld\n", n, until, last); write_str(p, b); chmod(p, 0600);
+}
+static int dsec_wait(const char *id) { long long n, u, l; dsec_read(id, &n, &u, &l); long long now = time(NULL); return u > now ? (int)(u - now) : 0; }
+static void dsec_fail(const char *id)
+{
+	long long n, u, l; dsec_read(id, &n, &u, &l); n++;
+	if (n >= 5 && n % 5 == 0) { long long w = 30; for (long long k = n / 5 - 1; k > 0 && w < 900; k--) w *= 2; if (w > 900) w = 900; u = time(NULL) + w; }
+	dsec_write(id, n, u, l);
+}
+/* 0: the step is new (kept as the last used, the count cleared); 409: used already */
+static int dsec_use(const char *id, long long step) { long long n, u, l; dsec_read(id, &n, &u, &l); if (step <= l) return 409; dsec_write(id, 0, 0, step); return 0; }
+/* the code C for account A (its "otp" box, opened with the password's key PK): 0 right; 401 none given; 403 wrong; 409 used; 429 wait */
+static int dotp_check(const char *a, const uint8_t pk[32], const char *id, const char *c, char *why, size_t wn)
+{
+	int wt = dsec_wait(id); if (wt) { snprintf(why, wn, "Too many wrong attempts. Please wait %d seconds and try again.", wt); return 429; }
+	if (!c || !*c) { snprintf(why, wn, "Enter the 6-digit code from your authenticator app."); return 401; }
+	const char *box = dj_get(a, "otp"); char *iv = box ? dj_str(dj_get(box, "iv")) : NULL, *ct = box ? dj_str(dj_get(box, "ct")) : NULL;
+	uint8_t ivb[16], ctb[128], sec[112]; int il = iv ? db64d(iv, ivb, sizeof ivb) : -1, cl = ct ? db64d(ct, ctb, sizeof ctb) : -1; free(iv); free(ct);
+	if (il != 12 || cl <= 16 || cl - 16 > (int)sizeof sec || daes_gcm_open(pk, ivb, ctb, cl, sec)) { snprintf(why, wn, "This account's authenticator setup could not be read: sign in with the Standard desktop engine."); return 403; }
+	char d[8]; int k = 0; for (const char *q = c; *q && k < 7; q++) if (*q >= '0' && *q <= '9') d[k++] = *q; d[k] = 0;
+	long long t = time(NULL) / 30, hit = -1;
+	if (k == 6) for (int dd = 0; dd < 3 && hit < 0; dd++) { long long st = t + (dd == 0 ? 0 : dd == 1 ? -1 : 1); if (dtotp(sec, cl - 16, st) == atoi(d)) hit = st; }
+	explicit_bzero(sec, sizeof sec);
+	if (hit < 0) { dsec_fail(id); snprintf(why, wn, "That code is not right. Check the time on your phone, and try the newest code."); return 403; }
+	if (dsec_use(id, hit)) { snprintf(why, wn, "That code was used already: wait for the next one."); return 409; }
+	return 0;
+}
 /* the password against "p2$SALT$HASH" (constant time); -2: a hash from before 1.4 (SHA-256 only), -1 wrong */
 static int dpw_check(const char *h, const char *pw)
 {
@@ -493,7 +561,14 @@ static void api_desktop_login(struct req *r)
 		/* the password's key (the account's salt), and the file key it seals */
 		char *ks = dj_str(dj_get(a, "ks")); uint8_t salt[96], pk[32], fk[64]; int sl = ks ? db64d(ks, salt, sizeof salt) : -1, fl = -1; free(ks);
 		if (sl <= 0) { dfree_secret(pw); free(list); dls_close(&l); reply_err(r->fd, 409, "This account has no key yet: sign in once with the Standard desktop engine."); return; }
-		dpbkdf2_256(pw, salt, sl, DESK_ROUNDS, pk, 32); dvault_signin(s.id, pw); dfree_secret(pw); dhex(pk, 32, s.pk);
+		dpbkdf2_256(pw, salt, sl, DESK_ROUNDS, pk, 32);
+		/* (1.6.0: authenticator codes: asked after the password, before the encrypted folder or the files are opened) */
+		{ const char *oq = dj_get(a, "otp");
+		  if (oq && *dj_ws(oq) == '{') { char *cd = dbody_field(r, "c"), why2[200] = ""; int oc = dotp_check(a, pk, s.id, cd, why2, sizeof why2); free(cd);
+			if (oc) { if (oc == 403) health_add("signin", "wrong authenticator code for the account %.100s (native sign-in)", s.n);
+				explicit_bzero(pk, sizeof pk); dfree_secret(pw); free(list); dls_close(&l);
+				str e = {0}; sadd(&e, "{\"ok\":false,\"need\":\"code\",\"error\":"); sjson(&e, why2); sadd(&e, "}"); reply(r->fd, oc, "application/json", e.b, e.n, NULL); free(e.b); return; } } }
+		dvault_signin(s.id, pw); dfree_secret(pw); dhex(pk, 32, s.pk);
 		const char *box = dj_get(a, "fk");
 		if (box && *dj_ws(box) == '{') {
 			char *iv = dj_str(dj_get(box, "iv")), *ct = dj_str(dj_get(box, "ct")); uint8_t ivb[16], ctb[128];
@@ -678,6 +753,17 @@ static int api_desktop(struct req *r, const char *w, int post)
 		if (!dsess_read(&s)) { reply_err(r->fd, 404, "no native session"); return 1; }
 		explicit_bzero(&s, sizeof s); write_str(lp, "1"); reply_ok(r->fd, "locked"); return 1;
 	}
+	/* 1.6.0: the page's second step (Standard): {"id","step"} a right code's step (kept; refused when used already) or -1
+	   (a wrong one, counted); either way refused while the account must wait */
+	if (!strcmp(w, "second")) {
+		if (!post) { reply_err(r->fd, 405, "POST"); return 1; }
+		char *id = dbody_field(r, "id"); const char *sq = r->body ? dj_get(r->body, "step") : NULL; long long st = sq ? atoll(dj_ws(sq)) : -1;
+		if (!dsec_id_ok(id)) { free(id); reply_err(r->fd, 400, "id?"); return 1; }
+		int wt = dsec_wait(id); if (wt) { char m[120]; snprintf(m, sizeof m, "Too many wrong attempts. Please wait %d seconds and try again.", wt); free(id); reply_err(r->fd, 429, m); return 1; }
+		if (st < 0) { dsec_fail(id); health_add("signin", "a wrong authenticator code (Standard)"); free(id); reply_err(r->fd, 403, "wrong code"); return 1; }
+		int u = dsec_use(id, st); free(id); if (u) { reply_err(r->fd, 409, "That code was used already: wait for the next one."); return 1; }
+		reply_ok(r->fd, "ok"); return 1;
+	}
 	if (!strcmp(w, "unlock")) {
 		if (!post) { reply_err(r->fd, 405, "POST"); return 1; }
 		int wt = dfail_wait(); if (wt) { char m[120]; snprintf(m, sizeof m, "Too many failed attempts. Please wait %d seconds and try again.", wt); reply_err(r->fd, 429, m); return 1; }
@@ -686,7 +772,14 @@ static int api_desktop(struct req *r, const char *w, int post)
 		if (!okk) {
 			dls l; dls_open(&l); char *list = dls_accounts(&l), *pw = dbody_field(r, "p");
 			for (int i = 0; list && pw; i++) { const char *a = dj_at(list, i); if (!a) break; char id[80]; dacct_id(a, id, sizeof id);
-				if (!strcmp(id, s.id)) { char *h = dj_str(dj_get(a, "h")); okk = dpw_check(h, pw) == 0; free(h); break; } }
+				if (!strcmp(id, s.id)) { char *h = dj_str(dj_get(a, "h")); okk = dpw_check(h, pw) == 0; free(h);
+					/* (1.6.0: the authenticator code again, as the page's lock screen) */
+					const char *oq = dj_get(a, "otp");
+					if (okk && oq && *dj_ws(oq) == '{') { char *ks = dj_str(dj_get(a, "ks")); uint8_t salt[96], pk[32]; int sl = ks ? db64d(ks, salt, sizeof salt) : -1; free(ks);
+						char *cd = dbody_field(r, "c"), why2[200] = ""; int oc = sl > 0 ? (dpbkdf2_256(pw, salt, sl, DESK_ROUNDS, pk, 32), dotp_check(a, pk, id, cd, why2, sizeof why2)) : 403; explicit_bzero(pk, sizeof pk); free(cd);
+						if (oc) { dfree_secret(pw); free(list); dls_close(&l); explicit_bzero(&s, sizeof s);
+							str e = {0}; sadd(&e, "{\"ok\":false,\"need\":\"code\",\"error\":"); sjson(&e, why2); sadd(&e, "}"); reply(r->fd, oc, "application/json", e.b, e.n, NULL); free(e.b); return 1; } }
+					break; } }
 			dfree_secret(pw); free(list); dls_close(&l);
 		}
 		if (!okk) { dfail_note(0); health_add("signin", "wrong password at the lock screen for the account %.100s (native)", s.n); explicit_bzero(&s, sizeof s); reply_err(r->fd, 403, "The password is incorrect."); return 1; }

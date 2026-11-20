@@ -2916,6 +2916,10 @@ static void power_dialog(void)
 static GtkWidget *SAREA; static GtkIMContext *SIM;
 static int SIGN_LOCK, SIGN_BUSY, SFOC, SHOV = -1, SCARET; static guint SCARET_T;   /* SFOC: 0 the user name, 1 the password, 2 Log in/Unlock, 3 Guest/Switch user, 4 the power button */
 static char SN_NAME[128], SN_PASS[256], SN_MSG[300];
+/* (1.6.0, plan-1.6.1 Part 17: authenticator codes) rudolfd asked for the code after a right password: the password kept
+   here for the second request, the field taking the code, as the page's code box after the password */
+static int SN_CODE; static char SN_PW1[256];
+static void sn_code_off(void) { SN_CODE = 0; explicit_bzero(SN_PW1, sizeof SN_PW1); }
 static double SRECT[5][4];   /* each focusable part's place (the page's units) */
 static void settings_load(void);
 static void apps_load(void);
@@ -2967,7 +2971,7 @@ static gboolean signin_area_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	(void)d; desk_draw(w, cr, NULL); cairo_set_source_rgba(cr, 0, 0, 0, .3); cairo_paint(cr);
 	cairo_scale(cr, Z, Z); double W = SW / Z, H = (SH - TOPRES) / Z; cairo_translate(cr, 0, TOPRES / Z);
-	char ct[32], cd[64]; sign_clock_texts(ct, sizeof ct, cd, sizeof cd); char st[256]; stars(st, sizeof st, SN_PASS);
+	char ct[32], cd[64]; sign_clock_texts(ct, sizeof ct, cd, sizeof cd); char st[256]; if (SN_CODE) snprintf(st, sizeof st, "%s", SN_PASS); else stars(st, sizeof st, SN_PASS);   /* (the code is shown as typed) */
 	if (!SIGN_LOCK) {
 		/* the time and the date (.lkck: 6 % from the top; 72px weight 200 and 18px, a shadow 0 2px 8px #0008) */
 		double t0 = H * .06; RGBA sh = cx("#000000", .533);
@@ -2981,7 +2985,7 @@ static gboolean signin_area_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 		tw = css_width(cr, "Runtime Driver Open Linux Framework", LOGINF, 400, 11); css_text(cr, "Runtime Driver Open Linux Framework", LOGINF, 400, 11, ix + (iw - tw) / 2, y0 + 149, 12, cx("#6b7280", 1), 0);
 		css_text(cr, "User name", LOGINF, 400, 12, ix, y0 + 179, 14, cx("#ffffff", .85), 0);
 		SRECT[0][0] = ix; SRECT[0][1] = y0 + 201; SRECT[0][2] = iw; SRECT[0][3] = 35; sign_input(cr, ix, y0 + 201, iw, 35, 6, 0, CLEAR, LOGINF, 15, 10, SN_NAME, NULL, SFOC == 0, cx("#60a5fa", 1));
-		css_text(cr, "Password", LOGINF, 400, 12, ix, y0 + 244, 14, cx("#ffffff", .85), 0);
+		css_text(cr, SN_CODE ? "Code from your authenticator app" : "Password", LOGINF, 400, 12, ix, y0 + 244, 14, cx("#ffffff", .85), 0);
 		SRECT[1][0] = ix; SRECT[1][1] = y0 + 266; SRECT[1][2] = iw; SRECT[1][3] = 35; sign_input(cr, ix, y0 + 266, iw, 35, 6, 0, CLEAR, LOGINF, 15, 10, st, NULL, SFOC == 1, cx("#60a5fa", 1));
 		if (SN_MSG[0]) css_text(cr, SN_MSG, LOGINF, 400, 13, ix, y0 + 309, 18, cx("#fecaca", 1), iw);
 		double *r = SRECT[2]; r[0] = ix; r[1] = y0 + 341; r[2] = iw; r[3] = 37; sign_button(cr, r, "Log in", LOGINF, 15, ca(accent(), 1), cx("#ffffff", 1), 0, CLEAR, 6, SFOC == 2, SHOV == 2);
@@ -3000,7 +3004,7 @@ static gboolean signin_area_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 		double tw = css_width(cr, "👤", F, 400, 54); css_text(cr, "👤", F, 400, 54, ix + (iw - tw) / 2, by + 22, 63, ink, 0);
 		tw = css_width(cr, USER_N, F, 400, 20); css_text(cr, USER_N, F, 400, 20, ix + (iw - tw) / 2, by + 91, 24, ink, iw);
 		SRECT[1][0] = ix; SRECT[1][1] = by + 123; SRECT[1][2] = iw; SRECT[1][3] = 23; SRECT[0][2] = 0;
-		sign_input(cr, ix, by + 123, iw, 23, 4, 1, cx("#d1d5db", 1), F, 40 / 3.0, 6, st, "Password", SFOC == 1, ca(accent(), 1));
+		sign_input(cr, ix, by + 123, iw, 23, 4, 1, cx("#d1d5db", 1), F, 40 / 3.0, 6, st, SN_CODE ? "Code from your authenticator app" : "Password", SFOC == 1, ca(accent(), 1));
 		if (SN_MSG[0]) css_text(cr, SN_MSG, F, 400, 13, ix, by + 152, 15.59, cx("#fca5a5", 1), iw);
 		double uw = css_width(cr, "Unlock", F, 400, 13) + 22, sw = css_width(cr, "Switch user", F, 400, 13) + 22;
 		double *r = SRECT[2]; r[0] = ix + iw - uw; r[1] = by + 181.6; r[2] = uw; r[3] = 23; sign_button(cr, r, "Unlock", F, 13, cx("#2563eb", 1), cx("#ffffff", 1), 1, cx("#2563eb", 1), 4, SFOC == 2, SHOV == 2);
@@ -3021,14 +3025,17 @@ static gboolean signin_done(gpointer p)
 		snd_play("login");   /* (as the page's sign-in and unlock: report 2) */
 		if (!SIGN_LOCK) { jstr(v, "id", USER_ID, sizeof USER_ID); jstr(v, "n", USER_N, sizeof USER_N); jstr(v, "r", USER_R, sizeof USER_R); }
 		if (SIGN_LOCK && LOCKED) UNLOCK_T = g_get_monotonic_time();   /* (UNLOCKED_AT: no saver or lock for a minute: item 6) */
-		LOCKED = 0; gtk_widget_hide(SIGN); explicit_bzero(SN_PASS, sizeof SN_PASS); SN_MSG[0] = 0; if (SCARET_T) { g_source_remove(SCARET_T); SCARET_T = 0; }
+		LOCKED = 0; gtk_widget_hide(SIGN); explicit_bzero(SN_PASS, sizeof SN_PASS); sn_code_off(); SN_MSG[0] = 0; if (SCARET_T) { g_source_remove(SCARET_T); SCARET_T = 0; }
 		if (!SIGN_LOCK) ICONS_SINCE = g_get_monotonic_time();
 		settings_load(); apps_load(); if (BAR) gtk_widget_show_all(BAR); wm_restack();
 		if (!SIGN_LOCK) { start_page(); svc_reset(); SVC_SIGNIN = g_get_real_time() / 1000; }
 		if (WM_OK) wm_hide_all(0); else for (GList *l = WINS; l; l = l->next) gtk_widget_show(((AppWin *)l->data)->win);
 	} else {
-		char m[300] = ""; jstr(v, "error", m, sizeof m);
+		char m[300] = "", nd[16] = ""; jstr(v, "error", m, sizeof m); jstr(v, "need", nd, sizeof nd);
 		snprintf(SN_MSG, sizeof SN_MSG, "%s", m[0] ? m : j->code ? "The sign-in did not work." : "Rudolf OS's system service did not answer.");
+		/* (1.6.0: the code is asked for: the password kept for the second request, the field cleared for the code) */
+		if (!strcmp(nd, "code") && j->code != 429) { if (!SN_CODE) { SN_CODE = 1; snprintf(SN_PW1, sizeof SN_PW1, "%s", SN_PASS); } }
+		else sn_code_off();
 		explicit_bzero(SN_PASS, sizeof SN_PASS); SFOC = 1; sign_caret();
 		if (j->code) snd_play("error");   /* (a wrong password, as the page's) */
 	}
@@ -3053,7 +3060,8 @@ static void signin_go(int guest)
 	Job *j = g_new0(Job, 1); GString *b = g_string_new("{");
 	if (guest) g_string_append(b, "\"guest\":true");
 	else { if (!SIGN_LOCK) { g_string_append(b, "\"n\":"); json_esc(b, SN_NAME); g_string_append_c(b, ','); }
-		g_string_append(b, "\"p\":"); json_esc(b, SN_PASS); }
+		if (SN_CODE) { g_string_append(b, "\"p\":"); json_esc(b, SN_PW1); g_string_append(b, ",\"c\":"); json_esc(b, SN_PASS); }
+		else { g_string_append(b, "\"p\":"); json_esc(b, SN_PASS); } }
 	g_string_append_c(b, '}'); j->body = g_string_free(b, FALSE); j->path = g_strdup(SIGN_LOCK ? "/api/desktop/unlock" : "/api/desktop/login");
 	g_thread_unref(g_thread_new("signin", signin_thread, j));
 }
@@ -3115,6 +3123,7 @@ static void accounts_load(void)
 static void signin_show(int lock)
 {
 	if (!SIGN) signin_make();
+	sn_code_off();   /* (1.6.0: a new sign-in starts at the password) */
 	SIGN_LOCK = lock; LOCKED = lock; menu_hide(); if (PWR) gtk_widget_hide(PWR); vk_sync();   /* (1.6.0: not the on-screen keyboard over the lock screen) */
 	if (lock) { if (WM_OK) wm_hide_all(1); else for (GList *l = WINS; l; l = l->next) gtk_widget_hide(((AppWin *)l->data)->win); }
 	if (!lock) { USER_ID[0] = 0; settings_load(); }
