@@ -1510,6 +1510,14 @@ while a reader is plugged in or a program asks.
   (only the card's issuer can unlock it, at an ID card office).
 - Taking the card out ends the card's use at once (the module's sessions close); a site's own session may last until it
   times out, as on Windows.
+- **Never in Oracle's Tor windows** (the owner, 2026-11-19: "Would using Tor possibly cause issues with either
+  CACs/smart-cards or hardware keys?", then "Yes please" to keeping the card out of them). A card names its holder (a
+  CAC: name and DoD ID number), so it undoes what Tor is for, and the DoD's sites refuse Tor's exits anyway. The Tor
+  Chromium (`session` `tor_chrome`, `--class=RudolfTor`) keeps its own certificate database with no card module (its own
+  `HOME` for NSS, made fresh for each Tor session; p11-kit's proxy never loaded), so a site reached through Tor that
+  asks for a certificate gets none, and the card is never asked for its PIN there. Settings › Smart cards says so ("Not
+  used in Tor windows"). Hardware keys at Rudolf OS's own sign-in (Part 17 of plan-1.6.1) never use the network, so Tor
+  does not touch them.
 
 **3. Settings › Security › Smart cards (new).**
 - The readers, and the card in each: its kind (CAC, PIV, …), the name on its certificates and their expiry dates, read
@@ -1534,7 +1542,8 @@ is noted there as a later choice; digital signatures in PDFs (the PDF viewer) an
 
 **Tests.** A virtual card (vsmartcard's `vpcd` reader with a PIV card emulator, made with a test CA) in QEMU: the
 reader seen, Settings' card details without a PIN, Oracle's picker and PIN box on a test site that asks for a client
-certificate (a local TLS server, the test CA's), the card taken out, the screen locking when that is on; the DoD bundle
+certificate (a local TLS server, the test CA's), the card taken out, the screen locking when that is on; the same test site opened in a Tor window (through a local
+SOCKS stand-in) offering no certificate and never asking for the PIN; the DoD bundle
 check with the real bundle's structure (a test bundle signed by a test "root" refused, the real fingerprints accepted
 from a recorded bundle), removal; the Debian container's `pcsc_scan`. On hardware: a CAC reader (USB) and the owner's or
 a family member's CAC, with iPERMS or IPPS-A, only when the owner asks.
