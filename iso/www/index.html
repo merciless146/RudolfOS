@@ -17557,7 +17557,7 @@ function oweHasRD() { return typeof RD != 'undefined' && !!RD }
 function OWE_ENG() { return oweHasRD() ? (RD.engine == 'native' ? 'native' : RD.engine == 'webkit' ? 'lite' : 'std') : 'std' }
 const OWE_DEF = {std: false, native: true, lite: true};
 /* the desktops where "on" is built (the rest show the choice, kept for when they have it) */
-const OWE_BUILT = {native: true};
+const OWE_BUILT = {native: true, lite: true};
 async function oweGet() { try { return await rd('desktop/owenc?acct=' + encodeURIComponent(USER.id)) } catch (e) { return {ok: false, error: e.message} } }
 function oweOn(st) { const eng = OWE_ENG(); return st && st.on != null ? !!st.on : OWE_DEF[eng] }
 function oweRow(c) {
@@ -17585,10 +17585,22 @@ function oweRow(c) {
       try { logEvt('sys', `${USER.n} ${want ? 'turned on' : 'turned off'} keeping websites encrypted`) } catch (e) {}
       notify('Oracle', want ? 'Your websites will be kept encrypted with your account from the next time Oracle opens.' : 'Your websites will be kept the shared way from the next time Oracle opens.', {app: 'Settings'});
     } catch (e) { notify('Oracle', e.message || 'That did not work.', {kind: 'error'}) }
-    const st = await oweGet(); say(oweOn(st), st);
+    const st = await oweGet(); say(oweOn(st), st); oweLite(st);
   };
 }
 if (typeof signinPanel == 'function') { const _sp = signinPanel; signinPanel = function (c) { const r = _sp.apply(this, arguments); try { if (oweHasRD()) oweRow(c) } catch (e) {} return r } }
+/* Lite: rudolf-webkit keeps each account's websites in a WebKit context of its own; it is told where this account's go (its encrypted
+   folder, or "" for the shared way) after signing in and whenever the choice changes (from its next tab), and to let the context go
+   at sign-out, before the home folder (and with it the Oracle folder) is locked */
+async function oweLite(st) {
+  try { if (OWE_ENG() != 'lite' || typeof rtOn != 'function' || !rtOn() || !USER || USER.r == 'guest' || !USER.id) return;
+    st = st || await oweGet(); const on = oweOn(st) && st && st.ok && st.open && st.web;
+    shellSend({rudolfShell: 'tab', op: 'webdir', part: rtPart(), dir: on ? st.web : '', id: 0}) } catch (e) {}
+}
+(function () { const o = window.__afterLogin; window.__afterLogin = () => { o && o(); oweLite() } })();
+if (typeof homeUnload == 'function') { const _hu = homeUnload; homeUnload = function () {
+  try { if (OWE_ENG() == 'lite' && typeof rtOn == 'function' && rtOn() && USER && USER.r != 'guest' && USER.id) shellSend({rudolfShell: 'tab', op: 'drop', part: rtPart(), id: 0}) } catch (e) {}
+  return _hu.apply(this, arguments) } }
 
 __svcMod("call59.js");
 /* ===== Rudolf OS 1.5.9 (docs/plan-1.5.9.md 7.2): "In a call" =====

@@ -183,6 +183,15 @@ static int oweb_open(const char *acct, const unsigned char *id, char *p, size_t 
 	if (p && pn) snprintf(p, pn, "%s/%s", root, acct);
 	return 0;
 }
+static int home_rm_at(int dfd, const char *name);
+/* (1.6.0 Part 22) an account that is gone: its Oracle folder removed with it (its encrypted names can be removed without the key) */
+static void oweb_remove(const char *acct)
+{
+	char root[300]; oweb_root(root, sizeof root); if (!home_acct_ok(acct)) return;
+	int rfd = open(root, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); if (rfd < 0) return;
+	if (!home_rm_at(rfd, acct)) health_add("account", "the websites of the removed account %.80s were deleted", acct);
+	close(rfd);
+}
 /* ACCT's Oracle folder, when it is there and open now (its key added): its path in P */
 static int oweb_ready(const char *acct, char *p, size_t pn)
 {

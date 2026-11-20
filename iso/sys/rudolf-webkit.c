@@ -135,6 +135,7 @@ typedef struct tab {
 } tab;
 static GHashTable *TABS;           /* tid -> tab */
 static GHashTable *CTX;            /* part -> WebKitWebContext */
+static GHashTable *WEBDIR;         /* (1.6.0 Part 22) part -> the account's encrypted folder for its websites (/persist/oracle/ID) */
 static GHashTable *DLG, *PERM;     /* id -> WebKitScriptDialog / WebKitPermissionRequest */
 static int NEWN, DLGN, PERMN, DARK;
 static char RUFFLE_JS[16384];
@@ -200,7 +201,10 @@ static WebKitWebContext *ctx_for(const char *part)
 		g_signal_connect(c, "download-started", G_CALLBACK(on_download), NULL);
 		g_hash_table_insert(CTX, g_strdup(part), c); return c;
 	}
-	char *base = g_build_filename(g_get_home_dir(), ".rudolf-webkit", "web", part, NULL), *data = g_build_filename(base, "data", NULL), *cache = g_build_filename(base, "cache", NULL);
+	/* (1.6.0 Part 22; the owner: "option 1 for ... lite") an account that keeps its websites encrypted: in its own folder, locked with
+	   its home folder at sign-out (the desktop page says which: op "webdir") */
+	const char *wd = WEBDIR ? g_hash_table_lookup(WEBDIR, part) : NULL;
+	char *base = wd ? g_build_filename(wd, "webkit", NULL) : g_build_filename(g_get_home_dir(), ".rudolf-webkit", "web", part, NULL), *data = g_build_filename(base, "data", NULL), *cache = g_build_filename(base, "cache", NULL);
 	WebKitWebsiteDataManager *m = webkit_website_data_manager_new("base-data-directory", data, "base-cache-directory", cache, NULL);
 	c = webkit_web_context_new_with_website_data_manager(m);
 	webkit_web_context_set_cache_model(c, WEBKIT_CACHE_MODEL_WEB_BROWSER);
@@ -531,6 +535,23 @@ static void on_tab_op(JSCValue *m)
 			g_string_free(j, TRUE); g_strfreev(u); g_free(cfj); if (cf) g_object_unref(cf);
 		}
 		if (c) g_object_unref(c);
+	} else if (!strcmp(op, "webdir") || !strcmp(op, "drop")) {
+		/* (1.6.0 Part 22) "webdir" {part, dir}: where that account's websites are kept from its next tab ("" the shared way); only a
+		   folder under /persist/oracle/. "drop" {part}: the account signed out: its tabs closed and its context let go, so its files
+		   are closed before its folder is locked */
+		char *part = jstr(m, "part"), *dir = jstr(m, "dir"); char safe[48]; int n = 0;
+		for (char *c = part ? part : ""; *c && n < 40; c++) if (g_ascii_isalnum(*c) || *c == '_' || *c == '-') safe[n++] = *c; safe[n] = 0;
+		const char *root = getenv("RUDOLF_WEBDIR_ROOT"); if (!root) root = "/persist/oracle/";
+		if (*safe && strncmp(safe, "priv-", 5)) {
+			int dropping = !strcmp(op, "drop"), ok = dropping || !dir || !*dir || (!strncmp(dir, root, strlen(root)) && !strstr(dir, "..") && g_file_test(dir, G_FILE_TEST_IS_DIR));
+			if (ok) {
+				if (dropping) { GHashTableIter i; gpointer k, v; g_hash_table_iter_init(&i, TABS); while (g_hash_table_iter_next(&i, &k, &v)) if (!strcmp(((tab *)v)->part, safe)) g_hash_table_iter_remove(&i); }
+				int used = 0; { GHashTableIter i; gpointer k, v; g_hash_table_iter_init(&i, TABS); while (g_hash_table_iter_next(&i, &k, &v)) if (!strcmp(((tab *)v)->part, safe)) used = 1; }
+				if (!used) g_hash_table_remove(CTX, safe);
+				if (dropping || !dir || !*dir) g_hash_table_remove(WEBDIR, safe); else g_hash_table_insert(WEBDIR, g_strdup(safe), g_strdup(dir));
+			} else fprintf(stderr, "rudolf-webkit: %s is not an account's website folder\n", dir);
+		}
+		g_free(part); g_free(dir);
 	} else if (!strcmp(op, "clear")) {
 		char *part = jstr(m, "part"); int id = (int)jnum(m, "id", 0);
 		if (part) { char safe[48]; int n = 0; for (char *c = part; *c && n < 40; c++) if (g_ascii_isalnum(*c) || *c == '_' || *c == '-') safe[n++] = *c; safe[n] = 0;
@@ -667,6 +688,7 @@ int main(int argc, char **argv)
 	gtk_init(&argc, &argv);
 	TABS = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, tab_free);
 	CTX = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_object_unref);
+	WEBDIR = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	DLG = g_hash_table_new(g_direct_hash, g_direct_equal); PERM = g_hash_table_new(g_direct_hash, g_direct_equal);
 	FCH = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_object_unref);
 	snprintf(FW.mode, sizeof FW.mode, "open");
