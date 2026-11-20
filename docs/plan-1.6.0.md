@@ -1828,7 +1828,10 @@ host, browser and QEMU tests; item 4 (ARM64) stays below, see "Before stable".
    belong to (12.3c's comparison with Part 12, the recovery with Part 13's signed layers, the QEMU checks first).
 10. Part 20 (smart cards and the CAC): built 2026-11-19 (items 1-4); QEMU with a virtual card, then a real CAC when the
    owner asks.
-11. Part 21 (Oracle per account): built 2026-11-19 (items 1-6).
+11. Part 21 (Oracle per account): built 2026-11-19 (items 1-6). The native desktop (2026-11-19, the owner: "Add items 1 and 2 to the next scheduled beta build"): an account deleted in
+    a window of its own lists its partitions in the storage the pages share (bd95webclear) and tells Oracle ("webclear"), whose page
+    clears them then or when it starts; signing out tells Oracle "logout" (its tabs saved, Guest's websites cleared) and its Chromium
+    closes, as every window does on Standard (oraacct60_t.js 12-17).
 12. plan-1.6.1 Part 16 (each other's builds; Recovery mode always the official newest stable) and Part 17 (two-step
     sign-in), moved here by the owner on 2026-11-19 ("All four into 1.6.0", with Parts 20 and 21; "One beta at the end"):
     their own plans' steps, in plan-1.6.1.

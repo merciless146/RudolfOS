@@ -585,7 +585,7 @@ static void ctx_msg(AppWin *a, JSCValue *v);   /* (an app's right-click menu, ov
 /* (1.5.9, 12.3c) Oracle's Chromium and the WebKit windows: the files one (rudolfd's mirror), the indicator of the keys the native
    desktop's, Oracle's new windows at an address or private */
 static GPid OR_PID; static int OR_RUN; static char OR_CTL[300]; static const char *TOR_CTL_P;   /* (Part 16: the Tor windows' rudolf-launch FIFO, once it runs) */
-static void oracle_tell(const char *line);
+static void oracle_tell(const char *line); static void oracle_only(const char *line);
 static void mirror_to_webkit(const char *id); static void settings_changed(const char *id, AppWin *from);
 static void osd_show(const char *k, const char *lv, const char *label, const char *n);
 static char *open_extra(const char *url, const char *priv);
@@ -621,6 +621,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 		else if (x[0]) app_open_ex(x, f[0] ? f : NULL, ex, 0); g_free(ex); }   /* (Settings at a page: its own window there; Oracle at an address) */
 	else if (!strcmp(op, "mirror")) { jsstr(v, "id", x, sizeof x); if (id_ok(x)) { char l[100]; snprintf(l, sizeof l, "mirror %s\n", x); oracle_tell(l); } }   /* (the files an app's window saved: Oracle's pages take them) */
 	else if (!strcmp(op, "set")) { jsstr(v, "id", x, sizeof x); if (id_ok(x)) settings_changed(x, a); }   /* (a window saved its settings: the shell and the other windows at once) */
+	else if (!strcmp(op, "webclear")) oracle_only("webclear\n");   /* (1.6.0 Part 21: an account deleted here: Oracle's page clears its websites, tabs26.js) */
 	else if (!strcmp(op, "osd")) { char k[16] = "", lv[8] = "", n[8] = ""; jsstr(v, "k", k, sizeof k); jsstr(v, "lv", lv, sizeof lv); jsstr(v, "label", x, sizeof x); jsstr(v, "n", n, sizeof n); osd_show(k, lv, x, n); }
 	else if (!strcmp(op, "fs")) { jsstr(v, "on", x, sizeof x); appwin_fs(a, x[0] == '1'); }   /* (the page's own full screen: the window covers the screen, test finding N1) */
 	else if (!strcmp(op, "kbcap")) { jsstr(v, "on", x, sizeof x); kbcap_msg(a, x[0] == '1'); }   /* (a page that has every key for a moment: the computer check's keyboard, Settings' Press keys…) */
@@ -1046,6 +1047,11 @@ static void oracle_act(const char *sid, const char *nid)
 	char line[160]; snprintf(line, sizeof line, "act %s %s\n", sid, nid);
 	int f = open(OR_CTL, O_WRONLY | O_NONBLOCK | O_CLOEXEC); if (f >= 0) { if (write(f, line, strlen(line)) < 0) {} close(f); }
 	if (TOR_CTL_P && TOR_CTL_P[0]) { f = open(TOR_CTL_P, O_WRONLY | O_NONBLOCK | O_CLOEXEC); if (f >= 0) { if (write(f, line, strlen(line)) < 0) {} close(f); } }   /* (a Tor window's page: Part 16) */
+}
+/* (1.6.0 Part 21) a line for Oracle's rudolf-launch only (not the Tor windows') */
+static void oracle_only(const char *line)
+{
+	int f = OR_RUN ? open(OR_CTL, O_WRONLY | O_NONBLOCK | O_CLOEXEC) : -1; if (f >= 0) { if (write(f, line, strlen(line)) < 0) {} close(f); }
 }
 /* a line for rudolf-launch (its FIFO): what Oracle's pages are to do */
 static void oracle_tell(const char *line)
@@ -2498,6 +2504,9 @@ static void power(const char *what)
 	if (!strcmp(what, "lock")) { if (http("POST", "/api/desktop/lock", NULL, 0, NULL) == 200) signin_show(1); return; }
 	if (!strcmp(what, "logout")) {
 		GList *c = g_list_copy(WINS); for (GList *l = c; l; l = l->next) appwin_close_now(l->data); g_list_free(c);
+		/* (1.6.0 Part 21, the owner's native rule: as on Standard, signing out closes Oracle too: its page saves its tabs for "the tabs
+		   from last time" and clears Guest's websites, then its Chromium closes; rudolf-launch, "logout") */
+		oracle_only("logout\n");
 		pt_reset();   /* (the portal's requests: the next account's page starts afresh) */
 		svc_reset();   /* (the service page ended with the windows: the next account's starts at its sign-in) */
 		http("POST", "/api/desktop/logout", NULL, 0, NULL); USER_ID[0] = 0; signin_show(0); return;

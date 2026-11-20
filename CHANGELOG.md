@@ -28,6 +28,7 @@ Summary: In progress.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- The native desktop clears Oracle's websites as Chromium mode does: an account deleted in Settings has its websites cleared by Oracle (at once when Oracle is open, otherwise when it next starts), and signing out closes Oracle as it closes every other window, after saving its tabs for "Reopen my tabs next time" and clearing Guest's websites. Before, these happened only when done from Oracle's own page, and Oracle stayed open after signing out. Test: iso/qt/shell2/oraacct60_t.js 12–17.
 - Changed: the window transitions (LitePoint) are longer: opening 240 ms (corner to corner, was 200; side to side, was 220), minimizing and closing 240 ms (were 200), maximizing and restoring 200 ms (were 180); the start menu 200 ms opening (was 160) and 160 ms folding back (was 140); the taskbar's pop-ups and right-click menus 160 ms (were 140 and 120); a window's taskbar button 120 ms (was 100).
 - Changed: Oracle's websites (sign-ins and site data) belong to an account's ID, not its name, so a deleted account made again with the same name starts with none; Guest's are kept in memory only and forgotten when Guest signs out; a deleted account's are forgotten. Everyone signs in to websites again once (docs/plan-1.6.0.md Part 21), and is told so.
 - New: Oracle › ☰ › Reopen my tabs next time: Oracle opens the tabs you had open when you last closed it.
