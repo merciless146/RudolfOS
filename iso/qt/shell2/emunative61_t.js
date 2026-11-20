@@ -66,7 +66,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const rec = await tab('recent'); ok('9. both are in Recently played', rec.length == 2, rec);
   await p.evaluate(() => emuAddGames()); await wait(1200);
   const add = await p.evaluate(() => [...wins.at(-1).body.querySelectorAll('.earow')].map(r => r.innerText.trim()));
-  ok('10. "Add games" lists Nintendo 64 (.z64, .n64) and Dreamcast (.gdi, .cdi, .chd) files, not loose tracks', add.length == 5 && ['a.z64', 'b.gdi', 'c.chd', 'd.cdi', 'e.n64'].every(n => add.some(r => r.includes(n))) && !add.some(r => /track01/.test(r)), add);
+  // (1.6.1: a .bin is listed too, as it may be a Genesis game: adding a disc's loose track skips it, saying to add its .cue)
+  ok('10. "Add games" lists Nintendo 64 (.z64, .n64) and Dreamcast (.gdi, .cdi, .chd) files', add.length == 6 && ['a.z64', 'b.gdi', 'c.chd', 'd.cdi', 'e.n64', 'track01.bin'].every(n => add.some(r => r.includes(n))), add);
   ok('11. no page errors', !errs.length, errs);
   await b.close(); srv.close(); console.log(R.filter(Boolean).length + '/' + R.length + ' passed'); process.exit(R.every(Boolean) ? 0 : 1)
 })().catch(e => { console.log('FAIL ' + e.stack); process.exit(1) });

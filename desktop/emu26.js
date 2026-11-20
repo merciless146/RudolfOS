@@ -1,5 +1,6 @@
 /* ===== Emu: Super Nintendo (LakeSnes, MIT) and Nintendo DS (DeSmuME, GPL-2.0+); 1.6.1: Nintendo 64 and Dreamcast
-   (native Linux apps: Rosalie's Mupen GUI, Flycast) =====
+   (native Linux apps: Rosalie's Mupen GUI, Flycast); 1.6.1: Genesis / Mega Drive (ClownMDEmu, AGPL-3.0+) and PlayStation
+   (PCSX-ReARMed, GPL-2.0+), libretro cores as WebAssembly with Emu's frontend (sys/emu/lr_api.c) =====
    The cores are WebAssembly (built by systools/mkemu.sh). 1.5.2: on Rudolf OS they come from the rudolf-emu package
    of the Rudolf OS Library (/pkg/rudolf-emu/www, lib52.js), downloaded when a DS game is first played; the SNES core is
    also inlined, so SNES games play without it. Games live in the game library /home/rudolf/Games/<GB|SNES|DS> (rudolfd fs/*, games/*;
@@ -14,7 +15,13 @@ const EMU_SYS={
  n64:{name:'Nintendo 64',short:'N64',dir:'N64',re:/\.(z64|n64|v64)$/i,native:'com.github.Rosalie241.RMG',app:'Rosalie’s Mupen GUI',ic:'🕹️',
   how:'Esc ends the game; F4 opens its settings, where a controller is set up (Auto-configure does it for most).'},
  dc:{name:'Sega Dreamcast',short:'Dreamcast',dir:'DC',re:/\.(gdi|cdi|chd)$/i,native:'org.flycast.Flycast',app:'Flycast',ic:'🌀',
-  how:'Tab opens Flycast’s menu (controllers, saves, Exit). Most games start without the Dreamcast’s BIOS files; Flycast’s settings say where they go, for the rest.'}};
+  how:'Tab opens Flycast’s menu (controllers, saves, Exit). Most games start without the Dreamcast’s BIOS files; Flycast’s settings say where they go, for the rest.'},
+ /* 1.6.1: libretro cores (lr: the frontend's pixel formats, core options, the controller). The Genesis takes the game
+    from memory; a PlayStation disc is read from the library as the core asks for it (emuDiscFs). Saves: the Genesis
+    cartridge's battery memory, the PlayStation's memory card 1 */
+ md:{name:'Sega Genesis / Mega Drive',short:'Genesis',dir:'MD',re:/\.(md|gen|smd|bin)$/i,core:'clownmd',ic:'🔷',lr:{fmt:1}},
+ ps1:{name:'PlayStation',short:'PlayStation',dir:'PS1',re:/\.(cue|chd|pbp)$/i,core:'pcsx',ic:'💿',
+  lr:{fmt:7,disc:true,dev:0x205,opts:['pcsx_rearmed_memcard2=none','pcsx_rearmed_show_bios_bootlogo=disabled']}}};
 const emuNat=sys=>!!(EMU_SYS[sys]&&EMU_SYS[sys].native);
 const EMU_BTN=['Up','Down','Left','Right','A','B','X','Y','L','R','Start','Select'];
 const EMU_KEYS={Up:'ArrowUp',Down:'ArrowDown',Left:'ArrowLeft',Right:'ArrowRight',A:'KeyX',B:'KeyZ',X:'KeyS',Y:'KeyA',L:'KeyQ',R:'KeyW',Start:'Enter',Select:'ShiftRight'};
@@ -22,10 +29,27 @@ const EMU_PAD={A:1,B:0,X:3,Y:2,L:4,R:5,Start:9,Select:8,Up:12,Down:13,Left:14,Ri
 const EMU_SNESIDX={B:0,Y:1,Select:2,Start:3,Up:4,Down:5,Left:6,Right:7,A:8,X:9,L:10,R:11};
 const EMU_DSBIT={R:0,L:1,Down:2,Up:3,Left:4,Right:5,B:6,A:7,Y:8,X:9,Start:10,Select:11};
 const EMU_GAMES='/home/rudolf/Games';
+/* 1.6.1: each console's buttons: their keys and gamepad buttons (standard layout: 0 bottom, 1 right, 2 left, 3 top,
+   4/5 shoulders, 6/7 triggers, 8 Select, 9 Start, 10/11 stick clicks, 12-15 the d-pad), and for the libretro cores the
+   RetroPad bit each one is (B 0, Y 1, Select 2, Start 3, Up-Right 4-7, A 8, X 9, L 10, R 11, L2 12, R2 13, L3 14, R3 15) */
+const EMU_DIR={Up:'ArrowUp',Down:'ArrowDown',Left:'ArrowLeft',Right:'ArrowRight'},EMU_DIRP={Up:12,Down:13,Left:14,Right:15},EMU_DIRB={Up:4,Down:5,Left:6,Right:7};
+const EMU_LAY={
+ md:{btn:['Up','Down','Left','Right','A','B','C','X','Y','Z','Start','Mode'],
+  keys:Object.assign({A:'KeyA',B:'KeyS',C:'KeyD',X:'KeyQ',Y:'KeyW',Z:'KeyE',Start:'Enter',Mode:'ShiftRight'},EMU_DIR),
+  pad:Object.assign({A:2,B:0,C:1,X:4,Y:3,Z:5,Start:9,Mode:8},EMU_DIRP),
+  bit:Object.assign({A:1,B:0,C:8,X:10,Y:9,Z:11,Start:3,Mode:2},EMU_DIRB)},
+ ps1:{btn:['Up','Down','Left','Right','Cross','Circle','Square','Triangle','L1','R1','L2','R2','L3','R3','Start','Select'],
+  keys:Object.assign({Cross:'KeyZ',Circle:'KeyX',Square:'KeyA',Triangle:'KeyS',L1:'KeyQ',R1:'KeyW',L2:'Digit1',R2:'Digit2',L3:'KeyC',R3:'KeyV',Start:'Enter',Select:'ShiftRight'},EMU_DIR),
+  pad:Object.assign({Cross:0,Circle:1,Square:2,Triangle:3,L1:4,R1:5,L2:6,R2:7,L3:10,R3:11,Start:9,Select:8},EMU_DIRP),
+  bit:Object.assign({Cross:0,Circle:8,Square:1,Triangle:9,L1:10,R1:11,L2:12,R2:13,L3:14,R3:15,Start:3,Select:2},EMU_DIRB),
+  /* the left stick from the keyboard (full tilt), for games that need it */
+  stick:{SUp:'KeyI',SDown:'KeyK',SLeft:'KeyJ',SRight:'KeyL'},sticks:true}};
+const emuLay=s=>EMU_LAY[s]||{btn:EMU_BTN,keys:EMU_KEYS,pad:EMU_PAD};
+const EMU_BNAME={Cross:'✕ Cross',Circle:'○ Circle',Square:'□ Square',Triangle:'△ Triangle',SUp:'Left stick up',SDown:'Left stick down',SLeft:'Left stick left',SRight:'Left stick right'};
 const emuCtlK=s=>'bd95emuctl:'+s;
-function emuCtl(s){const c=ld(emuCtlK(s),null)||{};return {keys:Object.assign({},EMU_KEYS,c.keys||{}),pad:Object.assign({},EMU_PAD,c.pad||{})}}
+function emuCtl(s){const c=ld(emuCtlK(s),null)||{},L=emuLay(s);return {btn:L.btn,keys:Object.assign({},L.keys,L.stick||{},c.keys||{}),pad:Object.assign({},L.pad,c.pad||{})}}
 /* ---------- WASI: the few system calls the cores make ---------- */
-function emuWasi(getMem){let out='';const u8=()=>new Uint8Array(getMem().buffer),dv=()=>new DataView(getMem().buffer);
+function emuWasi(getMem,vfs){let out='';const u8=()=>new Uint8Array(getMem().buffer),dv=()=>new DataView(getMem().buffer);
  const W={fd_write(fd,iov,n,nw){let t=0;const d=dv();for(let i=0;i<n;i++){const p=d.getUint32(iov+8*i,true),l=d.getUint32(iov+8*i+4,true);out+=new TextDecoder().decode(u8().subarray(p,p+l));t+=l}d.setUint32(nw,t,true);let k;while((k=out.indexOf('\n'))>=0){if(window.__emuLog)console.log('[emu]',out.slice(0,k));out=out.slice(k+1)}return 0},
   fd_close:()=>0,fd_seek:()=>70,fd_fdstat_get(fd,p){const d=dv();d.setUint8(p,fd<3?2:0);d.setUint16(p+2,0,true);d.setBigUint64(p+8,0n,true);d.setBigUint64(p+16,0n,true);return fd<3?0:8},
   environ_sizes_get(c,s){const d=dv();d.setUint32(c,0,true);d.setUint32(s,0,true);return 0},environ_get:()=>0,args_sizes_get(c,s){const d=dv();d.setUint32(c,0,true);d.setUint32(s,0,true);return 0},args_get:()=>0,
@@ -33,7 +57,41 @@ function emuWasi(getMem){let out='';const u8=()=>new Uint8Array(getMem().buffer)
   random_get(p,l){crypto.getRandomValues(u8().subarray(p,p+l));return 0},proc_exit(c){throw new Error('the emulator stopped ('+c+')')},sched_yield:()=>0,
   /* no files: the C library must hear "bad descriptor" / "no such file", not "not supported" */
   fd_prestat_get:()=>8,fd_prestat_dir_name:()=>8,fd_read:()=>8,fd_filestat_get:()=>8,fd_readdir:()=>8,path_open:()=>44,path_filestat_get:()=>44,path_unlink_file:()=>44,path_create_directory:()=>44,poll_oneoff:()=>52};
+ /* 1.6.1: read-only files for a core that opens its game by name (vfs: {size(name), read(name, offset, length)}): "/" is
+    descriptor 3, and the files it names are opened from 10 on */
+ if(vfs){const fds={};let nfd=10;const str=(p,l)=>'/'+new TextDecoder().decode(u8().subarray(p,p+l)).replace(/^\/+/,'');
+  const stat=(b,size,dir)=>{const d=dv();for(let i=0;i<64;i+=8)d.setBigUint64(b+i,0n,true);d.setUint8(b+16,dir?3:4);d.setBigUint64(b+32,BigInt(size),true)};
+  Object.assign(W,{fd_prestat_get(fd,p){if(fd!=3)return 8;const d=dv();d.setUint8(p,0);d.setUint32(p+4,1,true);return 0},fd_prestat_dir_name(fd,p){if(fd!=3)return 8;u8()[p]=47;return 0},
+   path_open(dirfd,df,p,l,of,rb,ri,ff,fdp){const n=str(p,l);if(of&(1|4|8))return 76;const z=vfs.size(n);if(z==null)return 44;if(of&2)return 54;fds[nfd]={n,pos:0,size:z};dv().setUint32(fdp,nfd++,true);return 0},
+   fd_read(fd,iov,n,nr){const f=fds[fd];if(!f)return 8;let t=0;const d=dv();
+    for(let i=0;i<n;i++){const p=d.getUint32(iov+8*i,true),l=Math.min(d.getUint32(iov+8*i+4,true),Math.max(0,f.size-f.pos));if(l<=0)break;const b=vfs.read(f.n,f.pos,l);u8().set(b,p);f.pos+=b.length;t+=b.length;if(b.length<l)break}
+    d.setUint32(nr,t,true);return 0},
+   fd_seek(fd,off,wh,np){const f=fds[fd];if(!f)return fd<3?70:8;const o=Number(off),v=wh==0?o:wh==1?f.pos+o:f.size+o;if(v<0)return 28;f.pos=v;dv().setBigUint64(np,BigInt(v),true);return 0},
+   fd_tell(fd,np){const f=fds[fd];if(!f)return 8;dv().setBigUint64(np,BigInt(f.pos),true);return 0},
+   fd_close(fd){delete fds[fd];return 0},fd_filestat_get(fd,b){const f=fds[fd];if(!f)return 8;stat(b,f.size,0);return 0},
+   path_filestat_get(dirfd,fl,p,l,b){const n=str(p,l),z=vfs.size(n);if(z==null)return 44;stat(b,z,z<0);return 0},
+   fd_fdstat_get(fd,p){const d=dv(),ok=fd<4||fds[fd];d.setUint8(p,fd<3?2:fd==3?3:4);d.setUint16(p+2,0,true);d.setBigUint64(p+8,0xffffffffn,true);d.setBigUint64(p+16,0xffffffffn,true);return ok?0:8}})}
  return {wasi_snapshot_preview1:new Proxy(W,{get:(o,k)=>o[k]||(()=>52)})}}
+/* 1.6.1: a PlayStation disc in the game library, read while it plays: /game/<name> are the files beside the game (its
+   .cue's tracks), /bios/<name> those in PS1/BIOS. The core reads synchronously, so a missing piece is fetched with a
+   synchronous range request (256 KB at a time, kept in a cache of 64), and the piece after it is fetched ahead */
+async function emuDiscFs(path,biosDir){const dir=path.replace(/\/[^/]+$/,''),F={};
+ const list=async(d,pre,lower)=>{try{for(const it of (await rd('fs/list?path='+encodeURIComponent(d))).items)if(!it.dir)F[pre+(lower?it.name.toLowerCase():it.name)]={real:d+'/'+it.name,size:it.size}}catch(e){}};
+ await list(dir,'/game/');if(biosDir)await list(biosDir,'/bios/',true);
+ const BS=262144,cache=new Map(),ahead=new Set();let fetched=0;
+ const url=r=>'/api/fs/read?path='+encodeURIComponent(r);
+ const keep=(k,u)=>{cache.set(k,u);if(cache.size>64)cache.delete(cache.keys().next().value)};
+ const sync=(f,a,b)=>{const x=new XMLHttpRequest();x.open('GET',url(f.real),false);x.setRequestHeader('X-Rudolf-Token',RD.token);x.setRequestHeader('Range','bytes='+a+'-'+b);
+  x.overrideMimeType('text/plain; charset=x-user-defined');x.send();if(x.status!=206&&x.status!=200)throw new Error('the disc could not be read (HTTP '+x.status+')');
+  const t=x.responseText,o=x.status==200?a:0,n=Math.min(b-a+1,t.length-o),u=new Uint8Array(Math.max(0,n));for(let i=0;i<u.length;i++)u[i]=t.charCodeAt(o+i)&255;fetched+=u.length;return u};
+ const pre=(f,k,bi)=>{const a=bi*BS;if(a>=f.size||cache.has(k)||ahead.has(k))return;ahead.add(k);
+  fetch(url(f.real),{headers:{'X-Rudolf-Token':RD.token,Range:'bytes='+a+'-'+(Math.min(f.size,a+BS)-1)}}).then(r=>r.ok?r.arrayBuffer():null).then(b=>{ahead.delete(k);if(b&&!cache.has(k)){keep(k,new Uint8Array(b));fetched+=b.byteLength}}).catch(()=>ahead.delete(k))};
+ const block=(n,f,bi)=>{const k=n+'#'+bi;let u=cache.get(k);if(!u){u=sync(f,bi*BS,Math.min(f.size,(bi+1)*BS)-1);keep(k,u)}else{cache.delete(k);cache.set(k,u)}pre(f,n+'#'+(bi+1),bi+1);return u};
+ const look=n=>F[n]||(n.startsWith('/bios/')?F[n.toLowerCase()]:null);
+ return {files:F,fetched:()=>fetched,
+  size(n){if(n=='/'||n=='/game'||n=='/bios')return -1;const f=look(n);return f?f.size:null},
+  read(n,pos,len){const f=look(n);if(!f)return new Uint8Array(0);len=Math.min(len,f.size-pos);const out=new Uint8Array(Math.max(0,len));let d=0;
+   while(d<len){const bi=Math.floor((pos+d)/BS),u=block(n,f,bi),o=pos+d-bi*BS,c=Math.min(len-d,u.length-o);if(c<=0)break;out.set(u.subarray(o,o+c),d);d+=c}return d<len?out.subarray(0,d):out}}}
 const EMU_MOD={};
 async function emuModule(sys){const c=EMU_SYS[sys].core;if(EMU_MOD[c])return EMU_MOD[c];
  let bytes=null;
@@ -45,12 +103,14 @@ async function emuModule(sys){const c=EMU_SYS[sys].core;if(EMU_MOD[c])return EMU
  /* (1.5.9: the SNES core is a file beside the page, fetched when a SNES game is first played: plan 10.1) */
  if(!bytes&&c=='lakesnes'&&typeof EMU_SNES_URL=='string')bytes=await get(EMU_SNES_URL);
  if(!bytes&&c=='lakesnes'&&typeof EMU_SNES_WASM=='string'){const b=atob(EMU_SNES_WASM);bytes=new Uint8Array(b.length);for(let i=0;i<b.length;i++)bytes[i]=b.charCodeAt(i)}
+ /* (1.6.1: the Genesis and PlayStation cores came with the package's 1.1.0) */
+ if(!bytes&&RD&&c!='lakesnes'&&typeof libHas=='function'&&await libHas('rudolf-emu').catch(()=>false))throw new Error(EMU_SYS[sys].name+' games need a newer Emu player: update “Emu” in the App Store (Rudolf OS Library).');
  if(!bytes)throw new Error(RD?EMU_SYS[sys].name+' games need Emu’s player from the Rudolf OS Library (App Store › Rudolf OS Library).':EMU_SYS[sys].name+' games need Rudolf OS itself (the bootable disc or USB stick).');
  return EMU_MOD[c]=await WebAssembly.compile(bytes)}
-async function emuInstance(sys){const m=await emuModule(sys);let inst;inst=await WebAssembly.instantiate(m,emuWasi(()=>inst.exports.memory));if(inst.exports._initialize)inst.exports._initialize();return inst.exports}
+async function emuInstance(sys,vfs){const m=await emuModule(sys);let inst;inst=await WebAssembly.instantiate(m,emuWasi(()=>inst.exports.memory,vfs));if(inst.exports._initialize)inst.exports._initialize();return inst.exports}
 /* ---------- where a game's saves and states are kept ---------- */
 function emuStore(g){
- if(g.real){const dir=g.real.replace(/\/[^/]+$/,''),base=g.real.split('/').pop().replace(/\.[^.]+$/,''),lib=dir.startsWith(EMU_GAMES+'/'),sd=lib?dir+'/Saves':dir,td=lib?dir+'/States':dir;
+ if(g.real){const dir=g.real.replace(/\/[^/]+$/,''),base=g.real.split('/').pop().replace(/\.[^.]+$/,''),lib=dir.startsWith(EMU_GAMES+'/'),top=lib?EMU_GAMES+'/'+dir.slice(EMU_GAMES.length+1).split('/')[0]:dir,sd=lib?top+'/Saves':dir,td=lib?top+'/States':dir;   /* (1.6.1: a disc in a folder of its own, PS1/<name>/, saves in PS1/Saves) */
   const p=(k)=>k=='sav'?sd+'/'+base+'.sav':td+'/'+base+'.'+k;
   return {where:lib?'the game library':'next to the game',
    async get(k){try{const r=await fetch('/api/fs/read?path='+encodeURIComponent(p(k)),{headers:{'X-Rudolf-Token':RD.token}});if(!r.ok)return null;const ct=r.headers.get('content-type')||'';if(ct.includes('json'))return null;return new Uint8Array(await r.arrayBuffer())}catch(e){return null}},
@@ -66,22 +126,30 @@ function emuStore(g){
   async put(k,b){const u=new Uint8Array(b instanceof Blob?await b.arrayBuffer():b);let s='';for(let i=0;i<u.length;i+=32768)s+=String.fromCharCode.apply(null,u.subarray(i,i+32768));try{svj(K+':'+k,btoa(s))}catch(e){throw new Error('Not enough browser storage for this save.')}},async has(k){return !!ld(K+':'+k,null)}}}
 /* ---------- the player ---------- */
 const EMU={players:new Set()};
-async function emuPlay(g){   /* g: {sys, name, bytes, real?, drive?} */
- const sy=EMU_SYS[g.sys];let x;try{x=await emuInstance(g.sys)}catch(e){notify('Emu',e.message,{kind:'error'});return}
+async function emuPlay(g){   /* g: {sys, name, bytes, real?, drive?} (1.6.1: a disc has no bytes: it is read from g.real as it plays) */
+ const sy=EMU_SYS[g.sys],lr=sy.lr;let x,disc=null;
+ try{if(lr&&lr.disc){if(!RD||!g.real)throw new Error(sy.name+' games play from the game library of Rudolf OS: add it there first (Game library › Add games…).');disc=await emuDiscFs(g.real,EMU_GAMES+'/'+sy.dir+'/BIOS')}
+  x=await emuInstance(g.sys,disc)}catch(e){notify('Emu',e.message,{kind:'error'});return}
  const st=emuStore(g),title=g.title||g.name.replace(/\.[^.]+$/,'');
- const W=win('Emu — '+title,'🦤',g.sys=='ds'?520:640,g.sys=='ds'?720:560);W.body.classList.add('emuw');W.emu=true;EMU.players.add(W);
+ const W=win('Emu — '+title,'🦤',g.sys=='ds'?520:lr?680:640,g.sys=='ds'?720:lr?580:560);W.body.classList.add('emuw');W.emu=true;EMU.players.add(W);
  W.body.innerHTML=`<div class='emutb'><button class='elib' title='Game library'>🎮 Library</button><button class='epp' title='Pause (P)'>⏸</button><button class='ers' title='Reset'>↺</button>
   <button class='ess' title='Save state'>💾 Save</button><button class='els' title='Load state'>📂 Load</button><select class='eslot' title='State slot'>${[1,2,3,4,5,6,7,8,9].map(i=>`<option>${i}</option>`).join('')}</select>
   ${g.sys=='ds'?"<select class='elay' title='Screen layout'><option value='stack'>Stacked</option><option value='side'>Side by side</option><option value='large'>Large + small</option></select><button class='eswap' title='Swap screens (large + small)'>⇅</button>":''}
   <button class='ectl' title='Controls'>🎮 Controls</button><button class='ebl' title='Borderless (Alt+Enter)'>⛶</button><button class='emt' title='Mute'>🔊</button><span class='emsg'></span></div>
   <div class='emust'><canvas class='emucv' tabindex='0'></canvas><div class='emupad' hidden></div><div class='emumenu' hidden></div><div class='emucorner' title='Menu'></div></div>`;
  const q=s=>W.body.querySelector(s),cv=q('.emucv'),ctx=cv.getContext('2d'),stage=q('.emust'),msg=t=>{q('.emsg').textContent=t};
- let ctl=emuCtl(g.sys),held=new Set(),pads=new Set(),touch=null,paused=false,muted=false,ff=false,alive=true,acc=0,last=0,raf=0,frames=0;
+ let ctl=emuCtl(g.sys),held=new Set(),pads=new Set(),axes=[0,0,0,0],touch=null,paused=false,muted=false,ff=false,alive=true,acc=0,last=0,raf=0,frames=0;
  let layout=g.sys=='ds'?(ld('bd95emulayout','stack')):'', swap=false;
  /* load the game (and its battery save) */
- const rom=g.bytes instanceof Uint8Array?g.bytes:new Uint8Array(g.bytes);
+ const rom=disc?null:g.bytes instanceof Uint8Array?g.bytes:new Uint8Array(g.bytes);
  const sav=await st.get('sav');let ok;
- if(g.sys=='snes'){const p=x.ls_alloc(rom.length);new Uint8Array(x.memory.buffer,p,rom.length).set(rom);ok=x.ls_load(rom.length);
+ const put=(b,p)=>new Uint8Array(x.memory.buffer,p,b.length).set(b);
+ if(lr){x.lr_formats(lr.fmt);for(const o of lr.opts||[]){const b=new TextEncoder().encode(o);put(b,x.lr_alloc(b.length));x.lr_option(b.length)}x.lr_init();
+  if(disc){const b=new TextEncoder().encode('/game/'+g.real.split('/').pop());put(b,x.lr_alloc(b.length));try{ok=x.lr_load(b.length,1)}catch(e){ok=0;g.err='This disc could not be started: '+e.message}}
+  else{const r=g.sys=='md'?emuMdRom(rom):rom;put(r,x.lr_alloc(r.length));ok=x.lr_load(r.length,0)}
+  if(ok){if(lr.dev)x.lr_device(0,lr.dev);const n=x.lr_save_size();if(n&&sav&&sav.length)put(sav.subarray(0,n),x.lr_save_ptr())}
+  else if(!g.err)g.err=disc?'This does not look like a '+sy.name+' disc (or a file it names is missing beside it).':'This does not look like a '+sy.name+' game.'}
+ else if(g.sys=='snes'){const p=x.ls_alloc(rom.length);new Uint8Array(x.memory.buffer,p,rom.length).set(rom);ok=x.ls_load(rom.length);
   if(ok&&sav&&sav.length){const b=x.ls_alloc(sav.length);new Uint8Array(x.memory.buffer,b,sav.length).set(sav);x.ls_battery_load(sav.length)}}
  else{x.ds_init(48000);if(sav&&sav.length){const p=x.ds_sav_ptr(sav.length);new Uint8Array(x.memory.buffer,p,sav.length).set(sav)}
   const p=x.ds_rom_buffer(rom.length);new Uint8Array(x.memory.buffer,p,rom.length).set(rom);const r=x.ds_load();ok=r==0;
@@ -90,13 +158,16 @@ async function emuPlay(g){   /* g: {sys, name, bytes, real?, drive?} */
  emuRecent(g);msg(sav&&sav.length?'Save loaded':'');
  /* picture */
  const SW=256,SH=g.sys=='ds'?384:224;let img=null;
- const size=()=>{let cw,ch;if(g.sys=='snes'){cw=512;ch=448}else if(layout=='side'){cw=512;ch=192}else if(layout=='large'){cw=341;ch=192}else{cw=256;ch=384}
+ const size=()=>{let cw,ch;if(lr){cw=x.lr_w()||320;ch=x.lr_h()||240}else if(g.sys=='snes'){cw=512;ch=448}else if(layout=='side'){cw=512;ch=192}else if(layout=='large'){cw=341;ch=192}else{cw=256;ch=384}
   if(cv.width!=cw||cv.height!=ch){cv.width=cw;cv.height=ch}
-  const r=stage.getBoundingClientRect(),ar=g.sys=='snes'?(ld('bd95emusnesar','4:3')=='8:7'?8/7:4/3):cw/ch;let w=r.width,h=w/ar;if(h>r.height){h=r.height;w=h*ar}
+  const r=stage.getBoundingClientRect(),ar=lr?x.lr_aspect():g.sys=='snes'?(ld('bd95emusnesar','4:3')=='8:7'?8/7:4/3):cw/ch;let w=r.width,h=w/ar;if(h>r.height){h=r.height;w=h*ar}
   if(ld('bd95emuint',false)&&g.sys=='ds'){const k=Math.max(1,Math.floor(Math.min(r.width/cw,r.height/ch)));w=cw*k;h=ch*k}
   cv.style.width=Math.floor(w)+'px';cv.style.height=Math.floor(h)+'px'};
  const off=document.createElement('canvas');off.width=256;off.height=384;const octx=off.getContext('2d');
+ let lrKey='';
  const draw=()=>{
+  if(lr){const w=x.lr_w(),h=x.lr_h(),pp=x.lr_pixels();if(!pp||!w||!h)return;const k=pp+'x'+w+'x'+h;if(cv.width!=w||cv.height!=h)size();
+   if(k!=lrKey||!img||img.data.buffer!==x.memory.buffer){lrKey=k;img=new ImageData(new Uint8ClampedArray(x.memory.buffer,pp,w*h*4),w,h)}ctx.putImageData(img,0,0);return}
   if(g.sys=='snes'){const px=new Uint8ClampedArray(x.memory.buffer,x.ls_pixels(),512*448*4);for(let i=3;i<px.length;i+=4)px[i]=255;if(!img||img.data.buffer!==x.memory.buffer)img=new ImageData(px,512,448);ctx.putImageData(img,0,0);return}
   const px=new Uint8ClampedArray(x.memory.buffer,x.ds_frame_ptr(),256*384*4);if(!img||img.data.buffer!==x.memory.buffer)img=new ImageData(px,256,384);
   if(layout=='stack')ctx.putImageData(img,0,0);
@@ -106,32 +177,44 @@ async function emuPlay(g){   /* g: {sys, name, bytes, real?, drive?} */
  const lowerRect=()=>layout=='side'?[256,0,256,192]:layout=='large'?(swap?[0,0,85,64]:[85,0,256,192]):[0,192,256,192];
  /* sound */
  let ac=null,gain=null,nextT=0;const ensureAudio=()=>{if(ac)return;try{ac=new (window.AudioContext||window.webkitAudioContext)({sampleRate:48000});gain=ac.createGain();gain.connect(ac.destination);gain.gain.value=muted?0:1}catch(e){ac=null}};
+ const rate=lr?x.lr_rate():48000;
  const play=(s16,n)=>{if(!ac||muted||n<=0)return;if(ac.state=='suspended')ac.resume().catch(()=>{});const t=ac.currentTime;if(nextT<t)nextT=t+0.04;if(nextT>t+0.25)return;
-  const b=ac.createBuffer(2,n,48000),l=b.getChannelData(0),r=b.getChannelData(1);for(let i=0;i<n;i++){l[i]=s16[2*i]/32768;r[i]=s16[2*i+1]/32768}const s=ac.createBufferSource();s.buffer=b;s.connect(gain);s.start(nextT);nextT+=n/48000};
+  const b=ac.createBuffer(2,n,rate),l=b.getChannelData(0),r=b.getChannelData(1);for(let i=0;i<n;i++){l[i]=s16[2*i]/32768;r[i]=s16[2*i+1]/32768}const s=ac.createBufferSource();s.buffer=b;s.connect(gain);s.start(nextT);nextT+=n/rate};
  /* input */
  const down=b=>held.has(b)||pads.has(b);
- const pollPads=()=>{pads=new Set();for(const p of (navigator.getGamepads?navigator.getGamepads():[])){if(!p)continue;EMU_BTN.forEach(b=>{const i=ctl.pad[b];if(p.buttons[i]&&p.buttons[i].pressed)pads.add(b)});
-   const ax=p.axes||[];if(ax[0]<-.5)pads.add('Left');if(ax[0]>.5)pads.add('Right');if(ax[1]<-.5)pads.add('Up');if(ax[1]>.5)pads.add('Down');
-   if(p.buttons[10]&&p.buttons[10].pressed)ff=true;if(p.buttons[16]&&p.buttons[16].pressed&&!W._gm){W._gm=1;menu()}else if(!(p.buttons[16]&&p.buttons[16].pressed))W._gm=0}
+ /* 1.6.1: a console with sticks (the PlayStation's DualShock) gets them as they are; for the others the left stick is the d-pad.
+    Button 10 (the left stick's click) fast-forwards when the console does not use it */
+ const LAY=emuLay(g.sys),dz=v=>Math.abs(v)<.15?0:Math.max(-32767,Math.min(32767,Math.round(v*32767)));
+ const pollPads=()=>{pads=new Set();axes=[0,0,0,0];const used=new Set(ctl.btn.map(b=>ctl.pad[b]));
+  for(const p of (navigator.getGamepads?navigator.getGamepads():[])){if(!p)continue;ctl.btn.forEach(b=>{const i=ctl.pad[b];if(p.buttons[i]&&p.buttons[i].pressed)pads.add(b)});
+   const ax=p.axes||[];if(LAY.sticks){for(let i=0;i<4;i++)if(dz(ax[i]||0))axes[i]=dz(ax[i])}else{if(ax[0]<-.5)pads.add('Left');if(ax[0]>.5)pads.add('Right');if(ax[1]<-.5)pads.add('Up');if(ax[1]>.5)pads.add('Down')}
+   if(!used.has(10)&&p.buttons[10]&&p.buttons[10].pressed)ff=true;if(p.buttons[16]&&p.buttons[16].pressed&&!W._gm){W._gm=1;menu()}else if(!(p.buttons[16]&&p.buttons[16].pressed))W._gm=0}
   if(pads.size)q('.emupad').hidden=true};
+ let lastBits=0;
+ const stickKeys=()=>{if(!LAY.stick)return;if(held.has('SLeft'))axes[0]=-32767;if(held.has('SRight'))axes[0]=32767;if(held.has('SUp'))axes[1]=-32767;if(held.has('SDown'))axes[1]=32767};
  const step=draw1=>{
-  if(g.sys=='snes'){EMU_BTN.forEach(b=>x.ls_button(1,EMU_SNESIDX[b],down(b)?1:0));x.ls_frame(800);if(draw1)draw();if(!ff)play(new Int16Array(x.memory.buffer,x.ls_sound(),1600),800)}
+  if(lr){let k=0;ctl.btn.forEach(b=>{if(down(b))k|=1<<LAY.bit[b]});lastBits=k;stickKeys();x.lr_input(0,k,axes[0],axes[1],axes[2],axes[3]);x.lr_frame();if(draw1)draw();if(!ff)play(new Int16Array(x.memory.buffer,x.lr_sound(),x.lr_samples()*2),x.lr_samples())}
+  else if(g.sys=='snes'){EMU_BTN.forEach(b=>x.ls_button(1,EMU_SNESIDX[b],down(b)?1:0));x.ls_frame(800);if(draw1)draw();if(!ff)play(new Int16Array(x.memory.buffer,x.ls_sound(),1600),800)}
   else{let k=0;EMU_BTN.forEach(b=>{if(down(b))k|=1<<EMU_DSBIT[b]});x.ds_frame(draw1?1:0,k,touch?1:0,touch?touch[0]:0,touch?touch[1]:0);const n=x.ds_audio(802);if(draw1)draw();if(!ff)play(new Int16Array(x.memory.buffer,x.ds_audio_ptr(),n*2),n)}
   frames++};
+ const fps=lr?x.lr_fps()||60:sy.fps;
  const loop=t=>{if(!alive)return;raf=requestAnimationFrame(loop);if(paused||!W.el.isConnected){last=t;return}pollPads();
-  if(!last)last=t;acc+=Math.min(100,t-last)*(ff?4:1);last=t;const fd=1000/sy.fps,mx=ff?8:3;let n=0;while(acc>=fd&&n<mx){acc-=fd;n++;step(acc<fd||n==mx)}if(n==mx)acc=Math.min(acc,fd);if(n==0)return;   /* too slow: draw the last frame and drop the backlog */
+  if(!last)last=t;acc+=Math.min(100,t-last)*(ff?4:1);last=t;const fd=1000/fps,mx=ff?8:3;let n=0;while(acc>=fd&&n<mx){acc-=fd;n++;step(acc<fd||n==mx)}if(n==mx)acc=Math.min(acc,fd);if(n==0)return;   /* too slow: draw the last frame and drop the backlog */
   if(frames%60==0)lastInput=Date.now()};   /* no screensaver while playing */
  /* battery saves: written when they change (checked every 3 s) */
- let lastSav=sav?sav.join(','):'';
- const saveBattery=async()=>{try{let b=null;if(g.sys=='snes'){const n=x.ls_battery_save();if(n>0)b=new Uint8Array(x.memory.buffer,x.ls_buf(),n).slice()}else if(x.ds_sav_changed()){const n=x.ds_sav_size();if(n>0)b=new Uint8Array(x.memory.buffer,x.ds_sav_ptr(0),n).slice()}
-  if(!b)return;const s=b.join(',');if(s==lastSav)return;lastSav=s;await st.put('sav',b);msg('Saved')}catch(e){msg('Save failed: '+e.message)}};
+ /* (1.6.1: compared by a checksum: a memory card is 128 KB) */
+ const sum=b=>{let h=2166136261;for(let i=0;i<b.length;i++)h=Math.imul(h^b[i],16777619);return b.length+':'+(h>>>0)};
+ let lastSav=sav?sum(sav):'';
+ if(lr&&!lastSav){const n=x.lr_save_size();if(n)lastSav=sum(new Uint8Array(x.memory.buffer,x.lr_save_ptr(),n))}   /* an empty card or memory is not saved */
+ const saveBattery=async()=>{try{let b=null;if(lr){const n=x.lr_save_size(),p=x.lr_save_ptr();if(n>0&&p)b=new Uint8Array(x.memory.buffer,p,n).slice()}else if(g.sys=='snes'){const n=x.ls_battery_save();if(n>0)b=new Uint8Array(x.memory.buffer,x.ls_buf(),n).slice()}else if(x.ds_sav_changed()){const n=x.ds_sav_size();if(n>0)b=new Uint8Array(x.memory.buffer,x.ds_sav_ptr(0),n).slice()}
+  if(!b)return;const s=sum(b);if(s==lastSav)return;lastSav=s;await st.put('sav',b);msg('Saved')}catch(e){msg('Save failed: '+e.message)}};
  const savIv=setInterval(saveBattery,3000);
  /* save states */
  const slot=()=>q('.eslot').value;
- const saveState=async()=>{try{const n=g.sys=='snes'?x.ls_state_save():x.ds_state_save();if(!n)throw new Error('the emulator could not save');const b=new Uint8Array(x.memory.buffer,g.sys=='snes'?x.ls_buf():x.ds_state_buf(0),n).slice();
+ const saveState=async()=>{try{const n=lr?x.lr_state_save():g.sys=='snes'?x.ls_state_save():x.ds_state_save();if(!n)throw new Error('the emulator could not save');const b=new Uint8Array(x.memory.buffer,lr?x.lr_buf():g.sys=='snes'?x.ls_buf():x.ds_state_buf(0),n).slice();
   await st.put('st'+slot(),b);const th=await new Promise(r=>cv.toBlob(r,'image/png'));if(th)await st.put('st'+slot()+'png',th);msg('State '+slot()+' saved')}catch(e){msg('Could not save the state: '+e.message)}};
  const loadState=async()=>{const b=await st.get('st'+slot());if(!b){msg('Slot '+slot()+' is empty');return}let r;
-  if(g.sys=='snes'){const p=x.ls_alloc(b.length);new Uint8Array(x.memory.buffer,p,b.length).set(b);r=x.ls_state_load(b.length)}else{const p=x.ds_state_buf(b.length);new Uint8Array(x.memory.buffer,p,b.length).set(b);r=x.ds_state_load()}
+  if(lr){put(b,x.lr_alloc(b.length));r=x.lr_state_load(b.length)}else if(g.sys=='snes'){const p=x.ls_alloc(b.length);new Uint8Array(x.memory.buffer,p,b.length).set(b);r=x.ls_state_load(b.length)}else{const p=x.ds_state_buf(b.length);new Uint8Array(x.memory.buffer,p,b.length).set(b);r=x.ds_state_load()}
   msg(r?'State '+slot()+' loaded':'That state could not be loaded');draw()};
  /* borderless mode and its menu */
  const setBl=on=>{W.el.classList.toggle('emubl',on);document.body.classList.toggle('emu-borderless',on);W.bl=on;setTimeout(size,30);if(on)cv.focus();else q('.emumenu').hidden=true};
@@ -141,8 +224,7 @@ async function emuPlay(g){   /* g: {sys, name, bytes, real?, drive?} */
   m.onclick=e=>{const a=e.target.dataset&&e.target.dataset.a;if(!a)return;m.hidden=true;paused=false;if(a=='ss')saveState();if(a=='ls')loadState();if(a=='bl')setBl(!W.bl);if(a=='ctl')emuControls(g.sys,()=>{ctl=emuCtl(g.sys)});if(a=='quit')W.close()}};
  q('.emucorner').onclick=menu;
  /* on-screen buttons for the touchscreen */
- const padEl=q('.emupad');padEl.innerHTML=`<div class='epl'><b data-b='L'>L</b><div class='edp'><b data-b='Up'>▲</b><b data-b='Left'>◀</b><b data-b='Right'>▶</b><b data-b='Down'>▼</b></div></div>
-  <div class='epm'><b data-b='Select'>SELECT</b><b data-b='Start'>START</b></div><div class='epr'><b data-b='R'>R</b><div class='eab'><b data-b='X'>X</b><b data-b='Y'>Y</b><b data-b='A'>A</b><b data-b='B'>B</b></div></div>`;
+ const padEl=q('.emupad');padEl.innerHTML=emuPadHtml(g.sys);
  const pdown=new Map();padEl.querySelectorAll('[data-b]').forEach(el=>{const b=el.dataset.b;
   el.onpointerdown=e=>{e.preventDefault();e.stopPropagation();el.setPointerCapture(e.pointerId);pdown.set(e.pointerId,b);held.add(b);el.classList.add('on')};
   const up=e=>{if(pdown.get(e.pointerId)==b){pdown.delete(e.pointerId);if(![...pdown.values()].includes(b))held.delete(b);el.classList.remove('on')}};el.onpointerup=up;el.onpointercancel=up;el.onlostpointercapture=up});
@@ -156,7 +238,7 @@ async function emuPlay(g){   /* g: {sys, name, bytes, real?, drive?} */
  const tup=e=>{if(e.pointerId===tid){tid=null;touch=null}};cv.onpointerup=tup;cv.onpointercancel=tup;
  stage.addEventListener('touchstart',showPad,{passive:true});
  /* keyboard */
- const keyOf=c=>EMU_BTN.find(b=>ctl.keys[b]==c);
+ const keyOf=c=>ctl.btn.concat(Object.keys(LAY.stick||{})).find(b=>ctl.keys[b]==c);
  W.body.addEventListener('keydown',e=>{if(e.target.tagName=='SELECT')return;ensureAudio();
   if(e.code=='Escape'){e.preventDefault();e.stopPropagation();if(W.bl&&!q('.emumenu').hidden){q('.emumenu').hidden=true;paused=false;setBl(false);return}if(W.bl){menu();return}return}
   if(e.code=='F11'||(e.altKey&&e.code=='Enter')){e.preventDefault();setBl(!W.bl);return}
@@ -167,7 +249,7 @@ async function emuPlay(g){   /* g: {sys, name, bytes, real?, drive?} */
  /* toolbar */
  q('.elib').onclick=()=>emuLibrary();
  q('.epp').onclick=()=>{paused=!paused;q('.epp').textContent=paused?'▶':'⏸';cv.focus()};
- q('.ers').onclick=()=>{g.sys=='snes'?x.ls_reset(0):x.ds_reset();cv.focus()};
+ q('.ers').onclick=()=>{lr?x.lr_reset():g.sys=='snes'?x.ls_reset(0):x.ds_reset();cv.focus()};
  q('.ess').onclick=()=>{saveState();cv.focus()};q('.els').onclick=()=>{loadState();cv.focus()};
  q('.ectl').onclick=()=>emuControls(g.sys,()=>{ctl=emuCtl(g.sys)});
  q('.ebl').onclick=()=>setBl(true);
@@ -175,11 +257,23 @@ async function emuPlay(g){   /* g: {sys, name, bytes, real?, drive?} */
  if(g.sys=='ds'){const sl=q('.elay');sl.value=layout;sl.onchange=()=>{layout=sl.value;svj('bd95emulayout',layout);img=null;size();draw();cv.focus()};q('.eswap').onclick=()=>{swap=!swap;if(layout!='large'){layout='large';sl.value='large';svj('bd95emulayout',layout)}size();draw();cv.focus()}}
  const ro=new ResizeObserver(()=>size());ro.observe(stage);
  W.onclose=()=>{alive=false;cancelAnimationFrame(raf);clearInterval(savIv);saveBattery();ro.disconnect();if(W.bl)setBl(false);if(ac)ac.close().catch(()=>{});EMU.players.delete(W)};
- W.emuApi={x,step,draw,setBl,menu,saveState,loadState,slot:v=>{q('.eslot').value=v},touch:v=>{touch=v},hold:(b,v)=>{v?held.add(b):held.delete(b)},layout:v=>{q('.elay').value=v;q('.elay').onchange()},paused:()=>paused,frames:()=>frames,store:st,lowerRect,canvas:cv};
+ W.emuApi={x,disc,axes:()=>axes,bits:()=>lastBits,step,draw,setBl,menu,saveState,loadState,slot:v=>{q('.eslot').value=v},touch:v=>{touch=v},hold:(b,v)=>{v?held.add(b):held.delete(b)},layout:v=>{q('.elay').value=v;q('.elay').onchange()},paused:()=>paused,frames:()=>frames,store:st,lowerRect,canvas:cv};
  if(ld('bd95emubl',false))setBl(true);
  size();draw();cv.focus();raf=requestAnimationFrame(loop);
  if('ontouchstart' in window&&!(navigator.getGamepads&&[...navigator.getGamepads()].some(Boolean)))showPad();
  return W}
+/* 1.6.1: the on-screen buttons of each console */
+function emuPadHtml(sys){const dp=`<div class='edp'><b data-b='Up'>▲</b><b data-b='Left'>◀</b><b data-b='Right'>▶</b><b data-b='Down'>▼</b></div>`;
+ if(sys=='md')return `<div class='epl'>${dp}</div><div class='epm'><b data-b='Mode'>MODE</b><b data-b='Start'>START</b></div>
+  <div class='epr'><div class='eab6'><b data-b='X'>X</b><b data-b='Y'>Y</b><b data-b='Z'>Z</b><b data-b='A'>A</b><b data-b='B'>B</b><b data-b='C'>C</b></div></div>`;
+ if(sys=='ps1')return `<div class='epl'><div class='eshd'><b data-b='L2'>L2</b><b data-b='L1'>L1</b></div>${dp}</div><div class='epm'><b data-b='Select'>SELECT</b><b data-b='Start'>START</b></div>
+  <div class='epr'><div class='eshd'><b data-b='R2'>R2</b><b data-b='R1'>R1</b></div><div class='eab eps'><b data-b='Triangle'>△</b><b data-b='Square'>□</b><b data-b='Circle'>○</b><b data-b='Cross'>✕</b></div></div>`;
+ return `<div class='epl'><b data-b='L'>L</b>${dp}</div>
+  <div class='epm'><b data-b='Select'>SELECT</b><b data-b='Start'>START</b></div><div class='epr'><b data-b='R'>R</b><div class='eab'><b data-b='X'>X</b><b data-b='Y'>Y</b><b data-b='A'>A</b><b data-b='B'>B</b></div></div>`}
+/* 1.6.1: a Genesis game as the core takes it: an .smd (a 512-byte header, then 16 KB blocks with the odd bytes first)
+   is put back in order */
+function emuMdRom(r){if(r.length%16384!=512||r.length<16896)return r;const at=(o,t)=>String.fromCharCode(...r.subarray(o,o+t.length))==t;if(at(0x100,'SEGA')||at(0x300,'SEGA'))return r;
+ const n=r.length-512,o=new Uint8Array(n);for(let b=0;b<n;b+=16384)for(let i=0;i<8192;i++){o[b+2*i]=r[512+b+8192+i];o[b+2*i+1]=r[512+b+i]}return o}
 /* ---------- recently played, favourites ---------- */
 const emuRecK=()=>'bd95emurecent:'+uid(),emuFavK=()=>'bd95emufav:'+uid();
 function emuKey(g){return g.real||(g.drive?g.drive.join('/'):g.sys+':'+g.name)}
@@ -197,7 +291,12 @@ function emuDsInfo(h,ban){const title=String.fromCharCode(...h.subarray(0,12)).r
   x.putImageData(im,0,0);icon=c.toDataURL()}
  return {title:name||title,icon}}
 async function emuRange(path,a,b){const r=await fetch('/api/fs/read?path='+encodeURIComponent(path),{headers:{'X-Rudolf-Token':RD.token,Range:`bytes=${a}-${b}`}});if(!r.ok)throw new Error('HTTP '+r.status);return new Uint8Array(await r.arrayBuffer())}
-async function emuInfo(sys,path,size){if(sys=='snes'){const b=await emuRange(path,0,Math.min(size,0x10200)-1);return {title:emuSnesTitle(b,size)}}
+/* 1.6.1: a Genesis game's name, from its header (0x150 the overseas name, 0x120 the Japanese one) */
+function emuMdTitle(b){const at=(o,t)=>String.fromCharCode(...b.subarray(o,o+t.length))==t;if(!at(0x100,'SEGA')&&!at(0x101,'SEGA'))return '';
+ const nm=o=>String.fromCharCode(...b.subarray(o,o+48)).replace(/[^\x20-\x7e]/g,' ').replace(/\s+/g,' ').trim();const t=nm(0x150)||nm(0x120);
+ return t&&t==t.toUpperCase()?t.toLowerCase().replace(/\b[a-z]/g,c=>c.toUpperCase()):t}
+async function emuInfo(sys,path,size){if(sys=='md'){const b=await emuRange(path,0,Math.min(size,0x200)-1);return {title:emuMdTitle(b)}}
+ if(sys=='snes'){const b=await emuRange(path,0,Math.min(size,0x10200)-1);return {title:emuSnesTitle(b,size)}}
  const h=await emuRange(path,0,0x1FF);const bo=h[0x68]|h[0x69]<<8|h[0x6A]<<16|h[0x6B]<<24;let ban=null;if(bo&&bo+0x840<=size)try{ban=await emuRange(path,bo,bo+0x83F)}catch(e){}return emuDsInfo(h,ban)}
 /* ---------- the library ---------- */
 const emuLibK='bd95emulib';
@@ -205,12 +304,13 @@ async function emuScan(){const cache=ld(emuLibK,{}),out=[];
  /* 1.6.1: Nintendo 64 games (DC/ and N64/ hold no saves: the native emulators keep their own); a Dreamcast disc is a
     .cdi or .chd in DC/, or a folder there with its .gdi and tracks */
  const nice=n=>n.replace(/\.[^.]+$/,'').replace(/_/g,' ').replace(/ {2,}/g,' ').trim();
- for(const sys of ['n64','dc']){const dir=EMU_GAMES+'/'+EMU_SYS[sys].dir;let items=[];try{items=(await rd('fs/list?path='+encodeURIComponent(dir))).items}catch(e){}
+ /* (1.6.1: PlayStation discs the same way: a .chd or .pbp in PS1/, or a folder there with its .cue and tracks) */
+ for(const sys of ['n64','dc','ps1']){const dir=EMU_GAMES+'/'+EMU_SYS[sys].dir,set=sys=='ps1'?/\.cue$/i:/\.gdi$/i;let items=[];try{items=(await rd('fs/list?path='+encodeURIComponent(dir))).items}catch(e){}
   for(const it of items){
-   if(!it.dir&&EMU_SYS[sys].re.test(it.name)&&!/\.gdi$/i.test(it.name)){const path=dir+'/'+it.name;out.push({sys,path,real:path,name:it.name,size:it.size,title:nice(it.name),icon:''});continue}
-   if(it.dir&&sys=='dc'){let sub=[];try{sub=(await rd('fs/list?path='+encodeURIComponent(dir+'/'+it.name))).items}catch(e){}
-    const gdi=sub.find(x=>!x.dir&&/\.gdi$/i.test(x.name));if(gdi){const path=dir+'/'+it.name+'/'+gdi.name;out.push({sys,path,real:path,name:gdi.name,size:sub.reduce((t,x)=>t+(x.dir?0:x.size||0),0),title:nice(it.name),icon:''})}}}}
- for(const sys of ['snes','ds']){const dir=EMU_GAMES+'/'+EMU_SYS[sys].dir;let items=[];try{items=(await rd('fs/list?path='+encodeURIComponent(dir))).items}catch(e){}
+   if(!it.dir&&EMU_SYS[sys].re.test(it.name)&&!set.test(it.name)){const path=dir+'/'+it.name;out.push({sys,path,real:path,name:it.name,size:it.size,title:nice(it.name),icon:''});continue}
+   if(it.dir&&sys!='n64'&&!/^(Saves|States|BIOS)$/.test(it.name)){let sub=[];try{sub=(await rd('fs/list?path='+encodeURIComponent(dir+'/'+it.name))).items}catch(e){}
+    const gdi=sub.find(x=>!x.dir&&set.test(x.name));if(gdi){const path=dir+'/'+it.name+'/'+gdi.name;out.push({sys,path,real:path,name:gdi.name,size:sub.reduce((t,x)=>t+(x.dir?0:x.size||0),0),title:nice(it.name),icon:''})}}}}
+ for(const sys of ['snes','ds','md']){const dir=EMU_GAMES+'/'+EMU_SYS[sys].dir;let items=[];try{items=(await rd('fs/list?path='+encodeURIComponent(dir))).items}catch(e){}
   for(const it of items){if(it.dir||!EMU_SYS[sys].re.test(it.name))continue;const path=dir+'/'+it.name;let c=cache[path];
    if(!c||c.size!=it.size||c.mtime!=it.mtime){c={size:it.size,mtime:it.mtime,title:'',icon:''};try{Object.assign(c,await emuInfo(sys,path,it.size))}catch(e){}cache[path]=c}
    out.push({sys,path,name:it.name,size:it.size,title:c.title||it.name.replace(/\.[^.]+$/,''),icon:c.icon||''})}}
@@ -220,21 +320,27 @@ async function emuScan(){const cache=ld(emuLibK,{}),out=[];
  for(const k of Object.keys(cache))if(!out.some(o=>o.path==k))delete cache[k];try{svj(emuLibK,cache)}catch(e){}return out}
 const EMU_GB_RE=/\.(gb|gbc|gba)$/i;
 async function emuReadReal(path){const r=await fetch('/api/fs/read?path='+encodeURIComponent(path),{headers:{'X-Rudolf-Token':RD.token}});if(!r.ok)throw new Error('could not read the game (HTTP '+r.status+')');return new Uint8Array(await r.arrayBuffer())}
-async function emuOpenReal(path){const sys=/\.nds$/i.test(path)?'ds':'snes';
- {const n=Object.keys(EMU_SYS).find(k=>emuNat(k)&&EMU_SYS[k].re.test(path));if(n)return emuNative({sys:n,path,real:path,name:path.split('/').pop(),title:path.split('/').pop().replace(/\.[^.]+$/,'')})}
+/* 1.6.1: which console a game is for, by its name (and, for a .chd or a .bin, where it is in the library) */
+function emuSysOf(p){const l=p.toLowerCase(),top=p.startsWith(EMU_GAMES+'/')?p.slice(EMU_GAMES.length+1).split('/')[0]:'';
+ if(/\.nds$/.test(l))return 'ds';if(/\.(z64|n64|v64)$/.test(l))return 'n64';if(/\.(gdi|cdi)$/.test(l))return 'dc';if(/\.(md|gen|smd)$/.test(l))return 'md';if(/\.(cue|pbp)$/.test(l))return 'ps1';
+ if(/\.chd$/.test(l))return top=='PS1'?'ps1':'dc';if(/\.bin$/.test(l))return top=='PS1'?'ps1':'md';return 'snes'}
+async function emuOpenReal(path){const sys=emuSysOf(path),name=path.split('/').pop();
+ if(emuNat(sys))return emuNative({sys,path,real:path,name,title:name.replace(/\.[^.]+$/,'')});
+ if(EMU_SYS[sys].lr&&EMU_SYS[sys].lr.disc)return emuPlay({sys,name,real:path,title:path.startsWith(EMU_GAMES+'/PS1/')&&path.split('/').length>6?path.split('/').at(-2):name.replace(/\.[^.]+$/,'')});
  try{const r=await fetch('/api/fs/read?path='+encodeURIComponent(path),{headers:{'X-Rudolf-Token':RD.token}});if(!r.ok)throw new Error('could not read the game (HTTP '+r.status+')');
   const c=(ld(emuLibK,{})[path]||{});return emuPlay({sys,name:path.split('/').pop(),title:c.title,bytes:new Uint8Array(await r.arrayBuffer()),real:path})}catch(e){notify('Emu',e.message,{kind:'error'})}}
-async function emuOpenDrive(p){const v=node(p);if(typeof v!='string')return;const sys=/\.nds$/i.test(p.at(-1))?'ds':'snes';
+async function emuOpenDrive(p){const v=node(p);if(typeof v!='string')return;const sys=emuSysOf(p.at(-1));
  const u=v.startsWith('data:')?new Uint8Array(await (await fetch(v)).arrayBuffer()):Uint8Array.from(v,c=>c.charCodeAt(0)&255);
  return emuPlay({sys,name:p.at(-1),bytes:u,drive:p})}
-function emuPickFile(){const i=document.createElement('input');i.type='file';i.accept='.sfc,.smc,.nds,.gb,.gbc,.gba';i.onchange=async()=>{const f=i.files[0];if(!f)return;
+function emuPickFile(){const i=document.createElement('input');i.type='file';i.accept='.sfc,.smc,.nds,.gb,.gbc,.gba,.md,.gen,.smd,.bin';i.onchange=async()=>{const f=i.files[0];if(!f)return;
  if(EMU_GB_RE.test(f.name)){const P=typeof gbPlayer=='function'&&gbPlayer();if(P&&P.loadAny)P.loadAny(new Uint8Array(await f.arrayBuffer()),f.name);return}
- emuPlay({sys:/\.nds$/i.test(f.name)?'ds':'snes',name:f.name,bytes:new Uint8Array(await f.arrayBuffer())})};i.click()}
+ const sys=emuSysOf(f.name);if(emuNat(sys)||EMU_SYS[sys].lr&&EMU_SYS[sys].lr.disc){notify('Emu',EMU_SYS[sys].name+' games play from the game library: add them with “Add games…”.',{kind:'error'});return}
+ emuPlay({sys,name:f.name,bytes:new Uint8Array(await f.arrayBuffer())})};i.click()}
 let EMU_LIBW=null;
 async function emuLibrary(){if(EMU_LIBW&&wins.includes(EMU_LIBW)){EMU_LIBW.focus();EMU_LIBW.refresh();return EMU_LIBW}
  const W=win('Emu — Game library','🦤',760,560);EMU_LIBW=W;W.body.classList.add('emulib');
  const guest=!USER||USER.r=='guest';
- W.body.innerHTML=`<div class='elhead'><div class='eltabs' role='tablist'>${[['all','All'],['recent','Recently played'],['fav','★ Favourites'],['gb','Game Boy / GBA'],['snes','Super Nintendo'],['ds','Nintendo DS'],['n64','Nintendo 64'],['dc','Dreamcast']].map(([k,t])=>`<button data-t='${k}' role='tab'>${t}</button>`).join('')}</div>
+ W.body.innerHTML=`<div class='elhead'><div class='eltabs' role='tablist'>${[['all','All'],['recent','Recently played'],['fav','★ Favourites'],['gb','Game Boy / GBA'],['snes','Super Nintendo'],['ds','Nintendo DS'],['n64','Nintendo 64'],['md','Genesis'],['ps1','PlayStation'],['dc','Dreamcast']].map(([k,t])=>`<button data-t='${k}' role='tab'>${t}</button>`).join('')}</div>
   <div class='elbar'><input class='elq' placeholder='Search games' aria-label='Search games'><span style='flex:1'></span>${RD&&!guest?"<button class='eladd'>＋ Add games…</button>":''}<button class='elopen'>📂 Open a file…</button></div></div>
   <div class='elgrid'></div><div class='msg elfoot'></div>`;
  const q=s=>W.body.querySelector(s),grid=q('.elgrid');let tab=ld('bd95emutab','all'),games=[];
@@ -245,13 +351,13 @@ async function emuLibrary(){if(EMU_LIBW&&wins.includes(EMU_LIBW)){EMU_LIBW.focus
   if(tab=='recent')l=rec.map(r=>l.find(g=>emuKey(g)==r.k||g.path==r.k)).filter(Boolean);else if(tab=='fav')l=l.filter(g=>fav.includes(g.path));else if(tab!='all')l=l.filter(g=>g.sys==tab);
   if(f)l=l.filter(g=>(g.title+' '+g.name).toLowerCase().includes(f));
   grid.innerHTML='';
-  if(!l.length){grid.innerHTML=`<div class='msg elempty'>${tab=='recent'?'Games you play show up here.':tab=='fav'?'Press and hold a game (or right-click) to make it a favourite.':(RD?'No games here yet. '+(guest?'':'Use “Add games…” to copy your Game Boy, SNES, DS, Nintendo 64 and Dreamcast games from a USB stick or Downloads.'):'In this browser, open a SNES game with “Open a file…”. DS games need Rudolf OS itself.')}</div>`;return}
+  if(!l.length){grid.innerHTML=`<div class='msg elempty'>${tab=='recent'?'Games you play show up here.':tab=='fav'?'Press and hold a game (or right-click) to make it a favourite.':(RD?'No games here yet. '+(guest?'':'Use “Add games…” to copy your Game Boy, SNES, DS, Nintendo 64, Genesis, PlayStation and Dreamcast games from a USB stick or Downloads.'):'In this browser, open a SNES or Genesis game with “Open a file…”. The other consoles need Rudolf OS itself.')}</div>`;return}
   l.forEach(g=>{const t=document.createElement('button');t.className='eltile';const last=rec.find(r=>r.k==emuKey(g)||r.k==g.path);
    t.innerHTML=`<span class='elic'>${g.icon?`<img src='${g.icon}' alt=''>`:g.sys=='gb'?'🟩':EMU_SYS[g.sys].ic}</span><b></b><small></small>`;t.querySelector('b').textContent=g.title;
    t.querySelector('small').textContent=(g.sys=='gb'?'Game Boy':EMU_SYS[g.sys].short)+(g.size?' · '+fmtB(g.size):'')+(last?' · '+new Date(last.t).toLocaleDateString():'')+(fav.includes(g.path)?' · ★':'');t.title=g.name;
    t.onclick=()=>open(g);let lt;t.onpointerdown=e=>{lt=setTimeout(()=>{lt='done';ctxm(g,e.clientX,e.clientY)},600)};t.onpointerup=t.onpointerleave=()=>{if(lt!='done')clearTimeout(lt)};
    t.addEventListener('click',e=>{if(lt=='done'){e.stopImmediatePropagation();lt=null}},true);t.oncontextmenu=e=>{e.preventDefault();ctxm(g,e.clientX,e.clientY)};grid.appendChild(t)})};
- const open=g=>{if(g.sys=='gb'){const P=typeof gbPlayer=='function'&&gbPlayer();if(P&&P.loadAny){(g.real?emuReadReal(g.real):mmBytes(node(g.drive))).then(u=>P.loadAny(u,g.name)).catch(e=>notify('Emu',e.message||String(e),{kind:'error'}));emuRecent(g)}return}if(emuNat(g.sys))return emuNative(g);emuOpenReal(g.path)};
+ const open=g=>{if(g.sys=='gb'){const P=typeof gbPlayer=='function'&&gbPlayer();if(P&&P.loadAny){(g.real?emuReadReal(g.real):mmBytes(node(g.drive))).then(u=>P.loadAny(u,g.name)).catch(e=>notify('Emu',e.message||String(e),{kind:'error'}));emuRecent(g)}return}if(emuNat(g.sys))return emuNative(g);if(EMU_SYS[g.sys].lr&&EMU_SYS[g.sys].lr.disc)return emuPlay({sys:g.sys,name:g.name,real:g.path,title:g.title});emuOpenReal(g.path)};
  const ctxm=(g,X,Y)=>{const fav=ld(emuFavK(),[]),isF=fav.includes(g.path);const it=[['Play',()=>open(g),true,{icon:'▶'}],[isF?'Remove from favourites':'Add to favourites',()=>{svj(emuFavK(),isF?fav.filter(x=>x!=g.path):fav.concat(g.path));draw()}]];
   if((g.sys!='gb'||g.real)&&RD){it.push(['Show in Files',()=>{launch('explorer');setTimeout(()=>{const W=wins.filter(w=>w.el.querySelector('.xside')).pop();const it=W&&[...W.el.querySelectorAll('.xside *')].find(e=>e.children.length<3&&/Games \(Emu library\)/.test(e.textContent));it&&it.click()},500)}]);
    if(!guest)it.push('-',['Delete from the library…',async()=>{if(!await elevate('Delete '+g.title+' from the game library (its saves stay)'))return;try{await rdPost('fs/delete?path='+encodeURIComponent(g.path));notify('Emu',g.title+' was deleted.');refresh()}catch(e){notify('Emu',e.message,{kind:'error'})}}])}
@@ -274,7 +380,7 @@ async function emuAddGames(done){const W=win('Add games to the library','🦤',6
  const show=async p=>{cur=p;sel=new Set();q('.eapath').textContent=p;const L=q('.ealist');L.innerHTML="<div class='msg'>Reading…</div>";let it=[];try{it=(await rd('fs/list?path='+encodeURIComponent(p))).items}catch(e){L.innerHTML=`<div class='msg'>${lxEsc(e.message)}</div>`;return}
   it.sort((a,b)=>(b.dir-a.dir)||a.name.localeCompare(b.name));L.innerHTML='';
   if(p!='/home/rudolf/Downloads'&&p!='/home/rudolf/Documents'&&p.split('/').length>3){const up=document.createElement('div');up.className='earow';up.textContent='⬆️ ..';up.onclick=()=>show(p.replace(/\/[^/]+$/,''));L.appendChild(up)}
-  const ok=it.filter(i=>i.dir||/\.(gb|gbc|gba|sfc|smc|nds|z64|n64|v64|gdi|cdi|chd|zip)$/i.test(i.name));if(!ok.length)L.innerHTML+="<div class='msg'>No Game Boy (.gb, .gbc, .gba), SNES (.sfc, .smc), DS (.nds), Nintendo 64 (.z64, .n64, .v64), Dreamcast (.gdi with its tracks, .cdi, .chd) or ZIP files here.</div>";
+  const ok=it.filter(i=>i.dir||/\.(gb|gbc|gba|sfc|smc|nds|z64|n64|v64|gdi|cdi|chd|md|gen|smd|bin|cue|pbp|zip)$/i.test(i.name));if(!ok.length)L.innerHTML+="<div class='msg'>No Game Boy (.gb, .gbc, .gba), SNES (.sfc, .smc), DS (.nds), Nintendo 64 (.z64, .n64, .v64), Genesis (.md, .gen, .smd, .bin), PlayStation (.cue with its tracks, .chd, .pbp; BIOS files scph*.bin), Dreamcast (.gdi with its tracks, .cdi, .chd) or ZIP files here.</div>";
   ok.forEach(i=>{const r=document.createElement('label');r.className='earow';if(i.dir){r.textContent='📁 '+i.name;r.onclick=()=>show(p+'/'+i.name)}else{r.innerHTML="<input type='checkbox'> <span></span><small></small>";r.querySelector('span').textContent=i.name;r.querySelector('small').textContent=fmtB(i.size);
    r.querySelector('input').onchange=e=>{e.target.checked?sel.add(p+'/'+i.name):sel.delete(p+'/'+i.name);q('.eago').disabled=!sel.size}}L.appendChild(r)});q('.eago').disabled=true};
  q('.eaall').onclick=()=>{W.body.querySelectorAll('.ealist input').forEach(c=>{if(!c.checked){c.checked=true;c.onchange({target:c})}})};
@@ -314,24 +420,26 @@ async function emuNative(g){const sy=EMU_SYS[g.sys],title=g.title||g.name.replac
  notify('Starting '+title+'…',sy.app+' opens it full screen in a moment. '+sy.how+' Super+Esc comes back to the desktop.')}
 /* ---------- controls ---------- */
 function emuControls(sys,changed){const W=win('Emu controls — '+EMU_SYS[sys].name,'🎮',520,560);W.body.classList.add('emuctlw');
- let c=emuCtl(sys),wait=null;
+ let c=emuCtl(sys),wait=null;const L=emuLay(sys),KD=Object.assign({},L.keys,L.stick||{}),all=c.btn.concat(Object.keys(L.stick||{}));
  const kn=k=>({ArrowUp:'↑',ArrowDown:'↓',ArrowLeft:'←',ArrowRight:'→',ShiftRight:'Right Shift',ShiftLeft:'Left Shift',Enter:'Enter',Space:'Space'})[k]||k.replace(/^Key|^Digit/,'');
- const draw=()=>{W.body.innerHTML=`<p class='msg'>Click a key or pad button, then press the one you want. Gamepads use the standard layout (Nintendo positions); the left stick also moves. Tab fast-forwards, Alt+Enter switches borderless mode, Esc opens the menu in borderless mode.</p>
-  <table class='tmt ectab'><thead><tr><th>Button</th><th>Keyboard</th><th>Gamepad</th></tr></thead><tbody>${EMU_BTN.map(b=>`<tr><td>${b}</td><td><button data-k='${b}'>${lxEsc(kn(c.keys[b]))}</button></td><td><button data-p='${b}'>Button ${c.pad[b]}</button></td></tr>`).join('')}</tbody></table>
+ const draw=()=>{W.body.innerHTML=`<p class='msg'>Click a key or pad button, then press the one you want. Gamepads use the standard layout${sys=='snes'||sys=='ds'?' (Nintendo positions)':''}${L.sticks?'':'; the left stick also moves'}. Tab fast-forwards, Alt+Enter switches borderless mode, Esc opens the menu in borderless mode.</p>
+  ${L.sticks?"<p class='msg'>The gamepad’s sticks are the DualShock’s sticks (games that use them switch it to analog by themselves).</p>":''}
+  <table class='tmt ectab'><thead><tr><th>Button</th><th>Keyboard</th><th>Gamepad</th></tr></thead><tbody>${c.btn.map(b=>`<tr><td>${lxEsc(EMU_BNAME[b]||b)}</td><td><button data-k='${b}'>${lxEsc(kn(c.keys[b]))}</button></td><td><button data-p='${b}'>Button ${c.pad[b]}</button></td></tr>`).join('')}
+  ${Object.keys(L.stick||{}).map(b=>`<tr><td>${lxEsc(EMU_BNAME[b])}</td><td><button data-k='${b}'>${lxEsc(kn(c.keys[b]))}</button></td><td class='msg'>the left stick</td></tr>`).join('')}</tbody></table>
   <label class='chk'><input type='checkbox' class='ecpad'${ld('bd95emupad',true)?' checked':''}> Show on-screen buttons when the touchscreen is used</label>
-  ${sys=='ds'?`<label class='chk'><input type='checkbox' class='ecint'${ld('bd95emuint',false)?' checked':''}> Whole-pixel scaling (sharper, with black edges)</label>`:`<div class='r2'><label>Picture shape</label><select class='ecar'><option value='4:3'>4:3 (as on a TV)</option><option value='8:7'>8:7 (square pixels)</option></select></div>`}
+  ${sys=='ds'?`<label class='chk'><input type='checkbox' class='ecint'${ld('bd95emuint',false)?' checked':''}> Whole-pixel scaling (sharper, with black edges)</label>`:sys!='snes'?'':`<div class='r2'><label>Picture shape</label><select class='ecar'><option value='4:3'>4:3 (as on a TV)</option><option value='8:7'>8:7 (square pixels)</option></select></div>`}
   <label class='chk'><input type='checkbox' class='ecbl'${ld('bd95emubl',false)?' checked':''}> Always start games borderless</label>
   <div class='rmrow' style='justify-content:flex-start'><button class='ecdef'>Default controls</button></div><div class='msg ecmsg'></div>`;
   W.body.querySelectorAll('[data-k],[data-p]').forEach(b=>b.onclick=()=>{wait={k:b.dataset.k,p:b.dataset.p,el:b};b.textContent='Press…';W.body.querySelector('.ecmsg').textContent='Waiting for '+(b.dataset.k?'a key':'a gamepad button')+'… (Esc cancels)';if(b.dataset.p)padWait()});
   W.body.querySelector('.ecpad').onchange=e=>svj('bd95emupad',e.target.checked);W.body.querySelector('.ecbl').onchange=e=>svj('bd95emubl',e.target.checked);
-  if(sys=='ds')W.body.querySelector('.ecint').onchange=e=>svj('bd95emuint',e.target.checked);else{const a=W.body.querySelector('.ecar');a.value=ld('bd95emusnesar','4:3');a.onchange=()=>svj('bd95emusnesar',a.value)}
+  if(sys=='ds')W.body.querySelector('.ecint').onchange=e=>svj('bd95emuint',e.target.checked);else if(sys=='snes'){const a=W.body.querySelector('.ecar');a.value=ld('bd95emusnesar','4:3');a.onchange=()=>svj('bd95emusnesar',a.value)}
   W.body.querySelector('.ecdef').onclick=()=>{svj(emuCtlK(sys),{});c=emuCtl(sys);draw();changed&&changed()}};
- const store=()=>{const d={keys:{},pad:{}};EMU_BTN.forEach(b=>{if(c.keys[b]!=EMU_KEYS[b])d.keys[b]=c.keys[b];if(c.pad[b]!=EMU_PAD[b])d.pad[b]=c.pad[b]});svj(emuCtlK(sys),d);changed&&changed()};
+ const store=()=>{const d={keys:{},pad:{}};all.forEach(b=>{if(c.keys[b]!=KD[b])d.keys[b]=c.keys[b];if(b in L.pad&&c.pad[b]!=L.pad[b])d.pad[b]=c.pad[b]});svj(emuCtlK(sys),d);changed&&changed()};
  const padWait=()=>{const t0=Date.now();const iv=setInterval(()=>{if(!wait||!wait.p||!W.el.isConnected||Date.now()-t0>10000){clearInterval(iv);if(wait&&wait.p){wait=null;draw()}return}
   for(const p of navigator.getGamepads?navigator.getGamepads():[]){if(!p)continue;const i=p.buttons.findIndex(b=>b.pressed);if(i>=0){c.pad[wait.p]=i;wait=null;clearInterval(iv);store();draw();return}}},50)};
- W.body.addEventListener('keydown',e=>{e.stopPropagation();if(!wait||!wait.k)return;e.preventDefault();if(e.code!='Escape'){EMU_BTN.forEach(b=>{if(c.keys[b]==e.code)c.keys[b]=c.keys[wait.k]});c.keys[wait.k]=e.code;store()}wait=null;draw()});
+ W.body.addEventListener('keydown',e=>{e.stopPropagation();if(!wait||!wait.k)return;e.preventDefault();if(e.code!='Escape'){all.forEach(b=>{if(c.keys[b]==e.code)c.keys[b]=c.keys[wait.k]});c.keys[wait.k]=e.code;store()}wait=null;draw()});
  draw();return W}
 /* ---------- Emu's launchers open the library; .sfc/.smc/.nds files open here ---------- */
 if(typeof MMLN!='undefined'&&MMLN.gb)MMLN.gb.fn=()=>emuLibrary();
-if(APPS.gameboy){APPS.gameboy.open=()=>emuLibrary();APPS.gameboy.kw=(APPS.gameboy.kw||'')+' snes super nintendo ds nintendo ds emulator games library'}
+if(APPS.gameboy){APPS.gameboy.open=()=>emuLibrary();APPS.gameboy.kw=(APPS.gameboy.kw||'')+' snes super nintendo ds nintendo ds emulator games library genesis mega drive sega playstation ps1 psx'}
 window.emuOpenReal=emuOpenReal;window.emuOpenDrive=emuOpenDrive;

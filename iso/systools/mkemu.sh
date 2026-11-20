@@ -1,10 +1,12 @@
 #!/bin/bash
-# Build Emu's SNES and DS cores as WebAssembly into src/emu-out (clang 18 + the WASI system libraries).
+# Build Emu's SNES, DS, Genesis and PlayStation cores as WebAssembly into src/emu-out (clang 18 + the WASI system libraries).
 # 1.5.2: they are published in the Rudolf OS Library: copy them to rudolfos-library/apps/rudolf-emu/www (and
 # emu-src.tar.xz to apps/rudolf-emu/source), raise its version, and merge there. The SNES core is also inlined in the
 # desktop (EMU_SNES_WASM), so SNES games play without the package.
 #   LakeSnes (MIT):          src/lakesnes      github.com/angelo-wf/LakeSnes
 #   DeSmuME (GPL-2.0+):      src/desmume-wasm  github.com/44670/desmume-wasm (DeSmuME with a wasm port)
+#   ClownMDEmu (AGPL-3.0+):  src/clownmdemu-libretro  github.com/Clownacy/clownmdemu-libretro (1.6.1, 004044c, with --recursive)
+#   PCSX-ReARMed (GPL-2.0+): src/pcsx_rearmed          github.com/libretro/pcsx_rearmed (1.6.1, 7b0e8f8, with --recursive)
 #   zlib:                    src/zlib          github.com/madler/zlib (v1.3.1)
 #   WASI libraries:          src/wasi          github.com/WebAssembly/wasi-sdk (wasi-sysroot-22.0 + builtins)
 # GPL-2.0-or-later (this script).
@@ -46,9 +48,28 @@ done
 wait
 for f in adler32 compress crc32 deflate inflate inftrees inffast trees uncompr zutil; do o=$B/z_$f.o; [ -f $o ] || clang $T -O2 -c $S/zlib/$f.c -o $o; OBJ="$OBJ $o"; done
 clang++ $T -O2 $LINK -Wl,--initial-memory=134217728 -Wl,--max-memory=1610612736 -Wl,-z,stack-size=1048576 -lwasi-emulated-signal -lwasi-emulated-mman -lwasi-emulated-process-clocks -o $OUT/desmume.wasm $OBJ
+# 1.6.1: libretro cores, each linked with Emu's libretro frontend (sys/emu/lr_api.c). setjmp/longjmp are WebAssembly
+# exceptions (-wasm-enable-sjlj); sjlj_shim.c gives the helper names clang 18 calls to the sysroot's newer ones
+LR="-mllvm -wasm-enable-sjlj"
+clang $T -O2 $LR -c $I/sys/emu/sjlj_shim.c -o $B/sjlj_shim.o
+echo "== Genesis / Mega Drive (ClownMDEmu)"
+C=$S/clownmdemu-libretro
+clang $T -O2 $LR -I$C/libretro-common/include -c $I/sys/emu/lr_api.c -o $B/lr_api.o
+clang $T -O2 $LR -Wno-everything -I$C/libretro-common/include -c $C/unity.c -o $B/clownmd_unity.o
+clang $T -O2 $LINK -Wl,--initial-memory=33554432 -Wl,--max-memory=536870912 -Wl,-z,stack-size=1048576 -o $OUT/clownmd.wasm $B/clownmd_unity.o $B/lr_api.o $B/sjlj_shim.o -lsetjmp
+echo "== PlayStation (PCSX-ReARMed: the interpreter, the Unai software renderer, CHD discs)"
+P=$S/pcsx_rearmed; PF="$T -msimd128 -DNO_DYLIB -DNO_SOCKET -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_PROCESS_CLOCKS -Wno-everything $LR"
+PM="-f Makefile.libretro platform=unix ARCH=wasm32 DYNAREC= NO_MMAP=1 USE_MINIZ=1 HAVE_CHD=1 BUILTIN_GPU=unai USE_RTHREADS=0 USE_ASYNC_CDROM=0 USE_ASYNC_GPU=0 USE_ASYNC_SPU=0 LIBPTHREAD= HAVE_PHYSICAL_CDROM=0"
+# make builds the objects; its last step (a Linux .so) fails here and is replaced by the link below
+make -C $P -k -j$(nproc) $PM CC="clang $PF" CXX="clang++ $PF -fno-exceptions" AR=llvm-ar >/dev/null 2>&1 || true
+PO=$(make -C $P $PM CC=clang CXX=clang++ -n 2>/dev/null | grep -E -- '-o pcsx_rearmed_libretro' | head -1 | tr ' ' '\n' | grep '\.o$' | sed "s|^|$P/|")
+[ -n "$PO" ] || { echo "PCSX-ReARMed: no objects"; exit 1; }
+clang $T -O2 $LR -I$P/deps/libretro-common/include -c $I/sys/emu/lr_api.c -o $B/lr_api_ps.o
+clang++ $T -O2 $LINK -Wl,--gc-sections -Wl,--initial-memory=67108864 -Wl,--max-memory=1073741824 -Wl,-z,stack-size=1048576 -o $OUT/pcsx.wasm $PO $B/lr_api_ps.o $B/sjlj_shim.o \
+	-lsetjmp -lwasi-emulated-signal -lwasi-emulated-mman -lwasi-emulated-process-clocks
 # the SNES core is also part of the desktop page, so SNES games play in the browser version too
 printf "/* LakeSnes (MIT, github.com/angelo-wf/LakeSnes) as WebAssembly, built by iso/systools/mkemu.sh */\nconst EMU_SNES_WASM='%s';\n" "$(base64 -w0 $OUT/lakesnes.wasm)" > $I/../v10/emusnes26.js
 # the corresponding source for the disc (build_iso.sh puts it in SOURCE/EMU.TXZ): both cores as built, with the changes above
 tar -C $S -cJf $S/emu-src.tar.xz --owner=0 --group=0 --exclude=.git --exclude='desmume/src/frontend/windows' --exclude='desmume/src/frontend/cocoa' \
-	--exclude='*.o' lakesnes desmume-wasm zlib
+	--exclude='*.o' --exclude='*.so' lakesnes desmume-wasm zlib clownmdemu-libretro pcsx_rearmed
 ls -la $OUT $S/emu-src.tar.xz

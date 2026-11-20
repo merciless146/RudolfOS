@@ -14,7 +14,7 @@ const OPENERS=[ /* key, label, icon, test(ext,value), open(path) */
  ['browser','Oracle Browser','\u{1F310}\uFE0F',e=>e=='HTM'||e=='HTML'||e=='SVG',p=>browser('file:///'+p.join('/'))],
  ['prompt','Rudolf Prompt (run)','⬛',e=>e=='LUA'||e=='BAT'||e=='WASM',null],
  ['fonts','Font Viewer','🔤',e=>/^(TTF|OTF|WOFF2?)$/.test(e),p=>launchWith('fonts',p)],
- ['emu','Emu','🦤',e=>/^(SFC|SMC|NDS)$/.test(e),p=>window.emuOpenDrive&&emuOpenDrive(p)]];
+ ['emu','Emu','🦤',e=>/^(SFC|SMC|NDS|MD|GEN|SMD)$/.test(e),p=>window.emuOpenDrive&&emuOpenDrive(p)]];
 function launchWith(k,p){LAUNCHING=k;try{return APPS[k]&&APPS[k].openFile?APPS[k].openFile(p):launch(k)}finally{LAUNCHING=null}}
 const defK=()=>'bd95defapps:'+uid();
 function openersFor(path){const v=node(path),e=ext(path.at(-1));return OPENERS.filter(o=>{try{return o[3](e,v)}catch(x){return false}})}
@@ -264,7 +264,7 @@ function wire(pn,el,r){const k=pkey(r.p);
    const t=document.createElement('table');t.innerHTML='<thead><tr><th>Name</th><th>Modified</th><th style="text-align:right">Size</th></tr></thead><tbody></tbody>';const tb=t.querySelector('tbody');
    items.forEach(it=>{const tr=document.createElement('tr');tr.dataset.k='R:'+it.name;tr.innerHTML=`<td></td><td>${it.bad?'':new Date(it.mtime).toLocaleDateString()}</td><td style='text-align:right'>${it.dir||it.bad?'':fmtB(it.size)}</td>`;tr.firstChild.textContent=(it.dir?'📁 ':fIcon(it.name,'')+' ')+it.name+(it.bad=='link'?' — a link (not followed)':it.bad?' — can’t be read here (online-only OneDrive file, or damaged)':'');if(it.bad){tr.style.opacity='.6';tr.title=it.bad=='link'?'A Windows link to another place: it is not opened or copied.':'Linux cannot read this one. A OneDrive file kept online only is like this: its contents are in the Microsoft account (onedrive.live.com), not on this drive.'}
     tr.onclick=e=>{e.stopPropagation();if(!(e.ctrlKey||e.metaKey))pn.sel=new Set();pn.sel.has(tr.dataset.k)?pn.sel.delete(tr.dataset.k):pn.sel.add(tr.dataset.k);box.querySelectorAll('tr[data-k]').forEach(x=>x.classList.toggle('s',pn.sel.has(x.dataset.k)))};
-    tr.ondblclick=async()=>{if(it.bad){say(tr.title,true);return}if(it.dir){pn.remote=Object.assign({},pn.remote,{path:pn.remote.path+'/'+it.name});pn.sel=new Set();draw()}else{if(window.emuOpenReal&&/\.(sfc|smc|nds|z64|n64|v64|gdi|cdi|chd)$/i.test(it.name)){emuOpenReal(pn.remote.path+'/'+it.name);return}const p=await remoteImport(pn,[it]);p[0]&&openPath(p[0])}};tb.appendChild(tr)});box.appendChild(t);
+    tr.ondblclick=async()=>{if(it.bad){say(tr.title,true);return}if(it.dir){pn.remote=Object.assign({},pn.remote,{path:pn.remote.path+'/'+it.name});pn.sel=new Set();draw()}else{if(window.emuOpenReal&&/\.(sfc|smc|nds|z64|n64|v64|gdi|cdi|chd|md|gen|smd|cue|pbp)$/i.test(it.name)){emuOpenReal(pn.remote.path+'/'+it.name);return}const p=await remoteImport(pn,[it]);p[0]&&openPath(p[0])}};tb.appendChild(tr)});box.appendChild(t);
    const cur=()=>items.filter(i=>pn.sel.has('R:'+i.name)&&!i.bad);
    bar.querySelector('.rup').onclick=()=>{if(pn.remote.path==pn.remote.root)return;pn.remote.path=pn.remote.path.replace(/\/[^/]+$/,'');draw()};
    if(pn.remote.ro)['.rpu','.rmk','.rdl','.rxc','.rej'].forEach(c=>{const x=bar.querySelector(c);if(x)x.style.display='none'});   /* an app's folder: to look at only */

@@ -11,7 +11,7 @@ window.__lib52=1;
 let LIB_URL='https://merciless146.github.io/rudolfos-library';   /* (1.6.0: this build's Library when it has its own: origin60.js) */
 const LIB_APPS={
  'rudolf-quake':{app:'quake',title:'Quake',size:21e6,why:'Quake’s free game data (LibreQuake)'},
- 'rudolf-emu':{app:'gameboy',title:'Emu',size:0.4e6,why:'Emu’s Nintendo DS player'}};
+ 'rudolf-emu':{app:'gameboy',title:'Emu',size:0.8e6,why:'Emu’s Nintendo DS, Genesis and PlayStation player'}};   /* (1.6.1: 1.1.0 adds Genesis and PlayStation; the download, xz-packed) */
 const libBase=n=>'/pkg/'+n+'/www/';
 const libSize=b=>b>=1e6?(b/1e6).toFixed(b<1e7?1:0)+' MB':Math.max(1,Math.round(b/1e3))+' KB';
 async function libHas(n){if(!RD)return false;try{const s=await pkgStatus(true);const p=s&&(s.installed||[]).find(x=>x.name==n);return !!(p&&p.mounted)}catch(e){return false}}
