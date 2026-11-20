@@ -174,6 +174,8 @@ try:
     time.sleep(20); end = time.time() + 600
     while time.time() < end and js("typeof acctNew=='function'&&typeof fidoSignin=='function'", 20) is not True: time.sleep(5)
     time.sleep(20); js(INIT_JS)
+    # (what the key's dialog says, kept as it changes: the touch is quick)
+    js("(()=>{const _d=fidoDlg;fidoDlg=function(t){const D=_d(t),m=D.msg;D.msg=(x,e)=>{(window.__fm=window.__fm||[]).push(x);return m(x,e)};return D};return 1})()")
     # 1. the account
     r = js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);saveUser();return b.id})()", 120); out('account', r); ID = r
     r = js("(async()=>{try{const a=ACCTS.find(x=>x.n=='boss');if(USER)userLogout();USER=a;await userLogin(a,'b1');lastInput=Date.now();"
@@ -205,12 +207,12 @@ try:
     # 4. the real sign-in screen with the key
     js("(()=>{userLogout();showLogin();return 1})()"); time.sleep(5)
     r = js(SIGNIN + "('b1')"); out('typed:', r)
-    seen = wait_for(js, "!!document.querySelector('.fidodlg')", 30); msg = js("(document.querySelector('.fidodlg .fidom')||{}).textContent||''")
+    seen = wait_for(js, "(window.__fm||[]).some(x=>/touch your security key/.test(x))", 60); msg = js("JSON.stringify(window.__fm||[])")
     r = wait_for(js, "!!(USER&&USER.n=='boss'&&getComputedStyle(document.getElementById('login')).display=='none'&&FKRAW)", 120); time.sleep(5); vm.shot('signed-in')
     after = js("JSON.stringify({fk:" + FKHEX + ",doc:HOME&&HOME.DOCUMENTS&&HOME.DOCUMENTS['KEEP161.TXT'],disk:!!(USER.disk&&hdOn())})")
     a4 = json.loads(after) if isinstance(after, str) else {}
     ok('4. the real sign-in screen: "Touch your security key", the touch: signed in, the same file key, the file there',
-       seen is True and 'touch your security key' in str(msg) and r is True and a4.get('fk') == FK0 and a4.get('doc') == 'mine, before the keys', (seen, msg, r, after))
+       seen is True and r is True and a4.get('fk') == FK0 and a4.get('doc') == 'mine, before the keys', (seen, msg, r, after))
     # 5. no key
     MUX.plug(0, False); MUX.plug(1, False); time.sleep(3)
     js("(()=>{userLogout();showLogin();return 1})()"); time.sleep(5); js(SIGNIN + "('b1')")
