@@ -1637,12 +1637,14 @@ has been made with `-O encrypt` since 1.5.0 (install.sh), so ext4's per-folder e
    to websites once more (told once, in Oracle's words, as with Part 21's fresh start). (Later, if the owner wants
    Standard to match: Oracle's own Chromium on Standard, as Native's, about 100–250 MB more while Oracle is open, and 1
    for it.)
-5. **Settings › Oracle › "Keep my websites encrypted with my account" (Standard; added 2026-11-20, the owner: "Default will
-   be off").** On Standard, off (the default) is 3: Oracle in the desktop's Chromium with the keyring's key. On is 1 as on
+5. **Settings › Oracle › "Keep my websites encrypted with my account" (every desktop; added 2026-11-20, the owner: "Default
+   will be off" for Standard).** On Standard, off (the default) is 3: Oracle in the desktop's Chromium with the keyring's key. On is 1 as on
    Native: Oracle opens in a Chromium of its own with the account's encrypted folder (/persist/oracle/ID, the home folder's
    key), everything per account, about 100–250 MB more while Oracle is open. Each account's own choice; only for accounts
    whose files are on the disk (otherwise greyed, with why); applies the next time Oracle opens; switching asks to sign in
-   to websites once more (said before it is switched). Native and Lite always use 1 and show the setting as on, not changeable.
+   to websites once more (said before it is switched). (The owner, 2026-11-20: "For standard, it will be off by default. For
+   Lite and Native it will be on by default.") Native and Lite have the same setting, on by default: off there, Oracle uses
+   the shared profile (Native: Standard's Chromium profile, with 3's keyring key; Lite: today's ~/.rudolf-webkit/web).
    Found while building 1: rudolfd makes /persist/oracle/ID beside the home folder (the home folder is the account's own
    Linux user's since 1.5.9, Oracle's Chromium the desktop user's), the same fscrypt key, so one sign-out locks both.
 4. **Settings › Privacy › Website data:** says how this desktop keeps it (encrypted with the account's key; or, on
