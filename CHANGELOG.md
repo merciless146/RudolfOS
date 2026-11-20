@@ -25,6 +25,15 @@ Summary: In progress.
   save from the desktop page now goes to Downloads, as a website's download does, and a file picker (Load from a file,
   a site's upload in Oracle) is the desktop's own Open dialog. Should the Lite desktop itself ever ask the portal for a
   file dialog again, the portal answers "cancelled" at once instead.
+- Fixed: smart cards were never seen (1.6.0). OpenSC's card module could not start, because pcsc-lite's client library
+  (libpcsclite.so.1, which OpenSC loads itself) was missing from the system. So Settings › Smart cards always said no
+  reader was plugged in, and Oracle never offered a card's certificates. It is in the system now. Found by the new
+  virtual smart card test (docs/plan-1.6.1.md Part 21).
+- Tests: a virtual PIV smart card with a test CA made by the test (iso/qt/host/vpiv.py). On the host it uses vsmartcard's
+  virtual reader, OpenSC, the smartcard script and NSS. In QEMU it uses the newest beta's own reader stack, through
+  QEMU's USB CCID reader: the reader plugged in, Settings › Smart cards, Oracle signing in to a test site with Chromium's
+  certificate picker and PIN box, a Tor window without the card, the screen locked when the card is taken out
+  (smartcard-qemu-check.yml; nothing is published).
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.

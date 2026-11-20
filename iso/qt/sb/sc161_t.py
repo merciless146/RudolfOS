@@ -14,8 +14,9 @@
 #      that asks for a certificate from the test CA) opened in Oracle; Chromium's certificate picker (Enter: the card's) and
 #      its PIN box (the PIN typed as keys); the site sees the card's holder, the card checked the PIN and signed; nothing
 #      signed before the PIN. (A wrong PIN is vpiv_t.py's, through NSS on the host: Chromium's retry is not driven here)
-#   6. a Tor window (rudolfd's torwin/open, with the test site): its Chromium has a HOME of its own with no card module, the
-#      card's module is in none of its processes (it is in the desktop's Chromium's), and the card was asked nothing more
+#   6. a Tor window (rudolfd's torwin/open, with the test site; its proxy pointed at a SOCKS stand-in for Tor here): its
+#      Chromium has a HOME of its own with no card module; it reaches the site, which gets no card certificate, and the
+#      card is asked nothing
 #   7. "Lock the screen when my card is taken out" on, the card taken out: the screen locks; sc/status shows no card
 #   8. the reader unplugged (device_del): sc/status lists none again
 # Not covered here: a real CAC and reader (the owner's checklist), Native and Lite, the Debian container's pcsc_scan, the DoD
@@ -86,9 +87,44 @@ def site():
             except Exception as e: SEEN.append('handshake: ' + str(e)[:100]); c.close()
         threading.Thread(target=one, args=(c,), daemon=True).start()
 threading.Thread(target=site, daemon=True).start()
+# a SOCKS5 stand-in for Tor (the Tor window's proxy, pointed here): CONNECT to anything goes to the test site
+SOCKS = []
+SL = socket.socket(); SL.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); SL.bind(('127.0.0.1', SITE_PORT + 1)); SL.listen(20)
+def socks():
+    def rx(c, n):
+        b = b''
+        while len(b) < n:
+            d = c.recv(n - len(b))
+            if not d: raise ConnectionError('closed')
+            b += d
+        return b
+    def pipe(a, b):
+        try:
+            while True:
+                d = a.recv(65536)
+                if not d: break
+                b.sendall(d)
+        except OSError: pass
+        for x in (a, b):
+            try: x.shutdown(socket.SHUT_RDWR)
+            except OSError: pass
+    def one(c):
+        try:
+            v, n = rx(c, 2); rx(c, n); c.sendall(b'\x05\x00')
+            v, cmd, _, at = rx(c, 4)
+            host = socket.inet_ntoa(rx(c, 4)) if at == 1 else rx(c, rx(c, 1)[0]).decode() if at == 3 else rx(c, 16).hex()
+            port = struct.unpack('!H', rx(c, 2))[0]; SOCKS.append(f'{host}:{port}')
+            t = socket.create_connection(('127.0.0.1', SITE_PORT)); c.sendall(b'\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00')
+            threading.Thread(target=pipe, args=(c, t), daemon=True).start(); pipe(t, c)
+        except Exception as e: SOCKS.append('error: ' + str(e)[:80]); c.close()
+    while True:
+        try: c, _ = SL.accept()
+        except OSError: return
+        threading.Thread(target=one, args=(c,), daemon=True).start()
+threading.Thread(target=socks, daemon=True).start()
 RELAY = os.path.join(W, 'relay.py')
 open(RELAY, 'w').write(f'''import socket,sys,os,threading
-s=socket.create_connection(("127.0.0.1",{SITE_PORT}))
+s=socket.create_connection(("127.0.0.1",int(sys.argv[1])))
 def up():
     while True:
         d=os.read(0,65536)
@@ -111,7 +147,8 @@ def boot(tag):
              '-kernel', f'{REL}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1',
              '-drive', f'file={FIXIMG},format=raw,if=none,id=fx,readonly=on', '-device', 'nvme,drive=fx,serial=sc161fix',
              # (the guest's network: QEMU's own, nothing outside but the test site)
-             '-netdev', f'user,id=u0,restrict=on,guestfwd=tcp:10.0.2.100:443-cmd:{sys.executable} {RELAY}', '-netdev', 'hubport,id=n1,hubid=0,netdev=u0',
+             '-netdev', f'user,id=u0,restrict=on,guestfwd=tcp:10.0.2.100:443-cmd:{sys.executable} {RELAY} {SITE_PORT},guestfwd=tcp:10.0.2.100:9050-cmd:{sys.executable} {RELAY} {SITE_PORT + 1}',
+             '-netdev', 'hubport,id=n1,hubid=0,netdev=u0',
              '-chardev', f'socket,id=vsc,path={VSC},server=on,wait=off']
     vm = sbvm.VM('sc161' + tag, PARTS, [], secure=False, mem=MEM, extra=extra)
     g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3)
@@ -240,24 +277,25 @@ try:
     ok('5. Oracle: the test site asks for a certificate; Chromium\'s picker, then its PIN box: nothing signed before the PIN', signed0 == 0 and asked == 0, (card.counts, card.log[-8:]))
     ok('...the PIN typed in Chromium\'s box: the card checked it and signed, the site sees the card\'s holder (TLS client authentication)',
        CN in SEEN[n0:] and card.counts['sign'] >= 1 and card.counts['verify_ok'] >= 1, (SEEN[n0:], card.counts))
-    PS = ("croot() { p=$1; while [ \"${p:-0}\" -gt 1 ]; do c=$(tr '\\0' ' ' < /proc/$p/cmdline 2>/dev/null); case \"$c\" in *--class=*) echo \"$c\" | grep -o 'class=[A-Za-z]*' | head -1; return;; esac; "
-          "p=$(cut -d' ' -f4 /proc/$p/stat 2>/dev/null); done; echo class=none; }; "
-          "for d in /proc/[0-9]*; do q=${d#/proc/}; case \"$(tr '\\0' ' ' < $d/cmdline 2>/dev/null)\" in *chrom*) "
-          "echo \"P $q $(croot $q) M=$(grep -c opensc-pkcs11 $d/maps 2>/dev/null) H=$(tr '\\0' '\\n' < $d/environ 2>/dev/null | sed -n 's/^HOME=//p') $(tr '\\0' ' ' < $d/cmdline | grep -o 'type=[a-z-]*' | head -1)\";; esac; done")
-    procs = lambda o: re.findall(r'^P (\d+) class=(\S+) M=(\d+) H=(\S*)', o, re.M)
-    o = sh(PS, 60)
-    ok('...the card\'s module is loaded in the desktop\'s Chromium (so 6 below means something)', any(c == 'RudolfDesktop' and m != '0' for _, c, m, h in procs(o)), o)
     # 6. a Tor window: no card there
     v0 = card.counts['verify_ok'] + card.counts['verify_bad']; s0 = card.counts['sign']; n1 = len(SEEN)
-    o = api(sh, 'torwin/open?url=https%3A%2F%2F10.0.2.100%2F', True); out('torwin/open:', o)
-    time.sleep(25); vm.shot('tor-window')
-    o = sh(PS + "; H=$(for p in $(pgrep -f 'class=RudolfTor' | head -1); do tr '\\0' '\\n' < /proc/$p/environ | sed -n 's/^HOME=//p'; done); echo home=$H; "
+    # (its proxy, Tor's 127.0.0.1:9050 in the session's flags for the Tor Chromium, pointed at the SOCKS stand-in above; nothing
+    # else of the flags changed)
+    o = sh("sed -i 's#socks5://127.0.0.1:9050#socks5://10.0.2.100:9050#' /run/rudolf/tor-chrome; grep -c 'socks5://10.0.2.100:9050' /run/rudolf/tor-chrome", 30)
+    o = api(sh, 'torwin/open?url=https%3A%2F%2F10.0.2.100%2F%3Ftor', True); out('torwin/open:', o)
+    end = time.time() + 90
+    while time.time() < end and not SOCKS: time.sleep(1)
+    time.sleep(15); vm.shot('tor-window')
+    o = sh("for p in $(pgrep -f 'class=RudolfTor'); do echo \"pid $p $(tr '\\0' '\\n' < /proc/$p/environ 2>/dev/null | grep '^HOME=')\"; done; "
+           "H=$(for p in $(pgrep -f 'class=RudolfTor'); do tr '\\0' '\\n' < /proc/$p/environ 2>/dev/null | sed -n 's/^HOME=//p'; done | head -1); echo home=$H; "
            "[ -n \"$H\" ] && ls -la $H/.pki/nssdb 2>&1 | head -5; [ -d \"$H/.pki/nssdb\" ] && echo cards=$(modutil -dbdir sql:$H/.pki/nssdb -list 2>&1 | grep -c 'Smart cards')", 60)
-    tor = [x for x in procs(o) if x[1] == 'RudolfTor']; th = re.search(r'^home=(\S*)', o, re.M)
-    ok('6. a Tor window: its Chromium runs with a HOME of its own (not /home/rudolf), the card\'s module in none of its processes',
-       tor and th and th.group(1) and not th.group(1).startswith('/home/rudolf') and all(m == '0' for _, c, m, h in tor) and not re.search(r'cards=[1-9]', o), o)
-    ok('...and the card was asked for no PIN and signed nothing more; the test site got no card certificate from it',
-       card.counts['verify_ok'] + card.counts['verify_bad'] == v0 and card.counts['sign'] == s0 and CN not in SEEN[n1:], (card.counts, SEEN[n1:]))
+    th = re.search(r'^home=(\S*)', o, re.M)
+    ok('6. a Tor window (the test site, through a SOCKS stand-in for Tor): its Chromium has a HOME of its own, with no card module',
+       th and th.group(1) and not th.group(1).startswith('/home/rudolf') and not re.search(r'cards=[1-9]', o), o)
+    out('the SOCKS stand-in:', SOCKS, 'the site:', SEEN[n1:])
+    ok('...it reached the test site, which got no certificate from the card; the card was asked for no PIN and signed nothing',
+       any('10.0.2.100:443' in x for x in SOCKS) and len(SEEN) > n1 and CN not in SEEN[n1:] and card.counts['verify_ok'] + card.counts['verify_bad'] == v0 and card.counts['sign'] == s0,
+       (SOCKS, SEEN[n1:], card.counts))
     sh("pkill -f 'class=RudolfTor'; echo closed", 30)
     # 7. Lock the screen when my card is taken out
     js("(()=>{S.sclock=true;try{persistS()}catch(e){};scLockWatch();return 1})()")
@@ -278,8 +316,9 @@ finally:
     try: vs and vs.close()
     except Exception: pass
     if vm: vm.stop()
-    try: LS.close()
-    except Exception: pass
+    for x in (LS, SL):
+        try: x.close()
+        except Exception: pass
     shutil.rmtree(K, ignore_errors=True)
 out('the card asked:', card.log[-40:])
 out(f'{sum(R)}/{len(R)} passed'); sys.exit(0 if R and all(R) else 1)

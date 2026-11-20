@@ -887,6 +887,25 @@ From the comparison with other distributions on 2026-11-19: the weak points name
   Chromium (chromium.sfs) does not start there ("required file not found", exit 127). Each moved to Playwright's
   Chromium as the newer checks were, or given the libraries the beta's Chromium needs, so every check runs again.
 - **A virtual smart card** in QEMU (vsmartcard's reader with a PIV emulator and a test CA: 1.6.0 Part 20's planned test).
+  **Done (2026-11-20, branch smartcard-qemu; smartcard-qemu-check.yml).** vsmartcard has no PIV card of its own (vicc's
+  types are ISO 7816, Cryptoflex, ePass, nPA), so `iso/qt/host/vpiv.py` is one: SP 800-73's PIV application (SELECT,
+  GET DATA, VERIFY with 3 tries, GENERAL AUTHENTICATE with an ECC P-256 key in 9A), its keys from a test CA made in the
+  test (never kept). On the host (`vpiv_t.py`) it sits in vsmartcard's `vpcd` reader: OpenSC, this tree's `smartcard
+  status`/`nss`, NSS's `tstclnt` signing in to a test site with the PIN, a wrong PIN, the card taken out. In QEMU
+  (`iso/qt/sb/sc161_t.py`, the newest beta, Standard) it sits in QEMU's own USB CCID reader (`usb-ccid` with
+  `ccid-card-passthru`, QEMU's VSCard protocol), so the release's own devplug, pcscd, libccid, OpenSC, NSS, `smartcard`,
+  rudolfd's `sc/*` and Oracle's Chromium are what is tested: the reader plugged in, Settings › Smart cards (holder,
+  expiry, "Expires in N days"), Oracle on a test site that asks for a certificate (Chromium's picker, its PIN box, the
+  site sees the holder), a Tor window with no card module, the lock when the card is taken out, the reader unplugged.
+  **Found and fixed:** in 1.6.0 OpenSC's module never started (`C_Initialize`: CKR_GENERAL_ERROR), because pcsc-lite's
+  client library `libpcsclite.so.1`, which OpenSC opens itself, was not in the base layer. So no reader or card was
+  ever seen, and the module was never added to the desktop's database. `ci_release.sh` now copies it. The QEMU test
+  puts it in place (fix=1) until a release has it. **Not covered:** a real reader and CAC (the owner's, below);
+  Native and Lite; the Debian container's `pcsc_scan`; Chromium's retry after a wrong PIN (the host's half covers the
+  wrong PIN through NSS). The test tells OpenSC not to use a PIN pad, because QEMU's reader claims one it doesn't have.
+  **For the owner, with a real reader:** on Standard, Chromium's PIN box opened without the keyboard (the test clicks
+  into it first) and filled the whole screen. Check both on the Vivobook with a reader, then fix them in their own PR
+  if real hardware shows the same.
 - **On the Vivobook, with the owner:** Oracle's websites encrypted (1.6.0 Part 22) on Native, Lite and Standard turned
   on; Recovery mode from a stick made from this release and from another build's; two-step sign-in on Standard and
   Native; calls; a real CAC only when the owner asks.
