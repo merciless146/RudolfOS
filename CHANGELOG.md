@@ -28,6 +28,7 @@ Summary: In progress.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- Changed: the window transitions (LitePoint) are quicker: opening (from the start menu, the desktop, a pin or a file), maximizing, minimizing, restoring and closing take 160 ms (were 180 to 200); the start menu and the taskbar's pop-ups 120 ms (were 140 to 160); right-click menus and a window's taskbar button 80 ms (were 100 and 120). A window opened by another (a dialog) keeps 220 ms.
 - Changed: Oracle's websites (sign-ins and site data) belong to an account's ID, not its name, so a deleted account made again with the same name starts with none; Guest's are kept in memory only and forgotten when Guest signs out; a deleted account's are forgotten. Everyone signs in to websites again once (docs/plan-1.6.0.md Part 21), and is told so.
 - New: Oracle › ☰ › Reopen my tabs next time: Oracle opens the tabs you had open when you last closed it.
 - Planned (docs/plan-1.6.0.md Part 20): smart cards and the DoD Common Access Card. Card readers work; Oracle can sign in to sites with a card (a CAC or PIV card), with the card's own PIN; Settings › Security › Smart cards shows the card and its expiry, and installs the DoD's certificates for an account when asked, checked against the DoD's root certificates; Linux programs and Firefox can use the card too.
