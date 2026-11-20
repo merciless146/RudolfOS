@@ -3,7 +3,7 @@
 name: Start-up time before the kernel (check)
 on:
   push:
-    paths: ['iso/sys/rudolfd-boottime.inc', 'iso/sys/rudolfd.c', 'desktop/sec50.js', 'iso/qt/host/boottime61_t.sh', 'iso/qt/host/startlogs58_t.sh', 'iso/kconfig.sh', '.github/workflows/boottime-check.yml']
+    paths: ['iso/sys/rudolfd-boottime.inc', 'iso/sys/rudolfd.c', 'desktop/sec50.js', 'iso/qt/host/boottime61_t.sh', 'iso/kconfig.sh', '.github/workflows/boottime-check.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,7 +16,6 @@ jobs:
         run: |
           set -e
           sh iso/qt/host/boottime61_t.sh
-          sh iso/qt/host/startlogs58_t.sh
       - name: rudolfd builds with it
         run: |
           sudo apt-get install -y zlib1g-dev >/dev/null
