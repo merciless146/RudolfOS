@@ -28,7 +28,8 @@ Summary: In progress.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
-- Planned (docs/plan-1.6.0.md Part 21): Oracle keeps each account's websites (sign-ins, saved passwords, site data) separately, in that account's encrypted folder; until now one set was shared by every account. Everyone signs in to websites again once (the shared sign-ins and saved passwords are removed, not given to anyone). Oracle can reopen the tabs from last time.
+- Changed: Oracle's websites (sign-ins and site data) belong to an account's ID, not its name, so a deleted account made again with the same name starts with none; Guest's are kept in memory only and forgotten when Guest signs out; a deleted account's are forgotten. Everyone signs in to websites again once (docs/plan-1.6.0.md Part 21), and is told so.
+- New: Oracle › ☰ › Reopen my tabs next time: Oracle opens the tabs you had open when you last closed it.
 - Planned (docs/plan-1.6.0.md Part 20): smart cards and the DoD Common Access Card. Card readers work; Oracle can sign in to sites with a card (a CAC or PIV card), with the card's own PIN; Settings › Security › Smart cards shows the card and its expiry, and installs the DoD's certificates for an account when asked, checked against the DoD's root certificates; Linux programs and Firefox can use the card too.
 - New: File Explorer › a drive › Copy to another drive… copies files and folders from one drive straight onto
   another (a USB stick, say), folders and all, with no limit on size or number, and nothing on the first drive

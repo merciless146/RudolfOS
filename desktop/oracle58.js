@@ -39,7 +39,9 @@ async function fedcmSet(on){if(!RD)return;if(USER&&USER.r=='guest'){notify('Orac
  notify('Oracle',msg,FEDCM&&FEDCM.running?{action:async()=>{try{await rdPost('web/close')}catch(e){}WEB_ON=WEB_SHOWN=false;webTray()}}:{})}
 if(RD)setTimeout(fedcmGet,8000);
 /* Oracle's ☰ menu: Open in Chromium (with Lite), Sign-in with FedCM */
-window.__oracleMenu=o=>{if(!RD)return[];const out=[],u=o&&o.url||'';
+window.__oracleMenu=o=>{const out=[],u=o&&o.url||'';
+ if(typeof USER!='undefined'&&USER&&USER.r!='guest')out.push([(S.oreopen?'✓ ':'')+'Reopen my tabs next time',()=>{S.oreopen=!S.oreopen;if(!S.oreopen)delete S.otabs;persistS();notify('Oracle',S.oreopen?'Oracle will open the tabs you had open when you last closed it.':'Oracle will open its start page.',{app:'Oracle'})}]);   /* (1.6.0 Part 21) */
+ if(!RD)return out;
  if(RD.engine=='webkit'&&/^https?:/i.test(u))out.push(['Open in Chromium',()=>webOpenChromium(u)]);
  out.push([(FEDCM&&FEDCM.on?'✓ ':'')+'Sign-in with FedCM',async()=>{await fedcmGet();fedcmSet(!(FEDCM&&FEDCM.on))}]);
  return out};

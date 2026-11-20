@@ -1,0 +1,19 @@
+# Oracle's websites per account (1.6.0, plan-1.6.0 Part 21): the account's ID, Guest's in memory, a deleted account's
+# forgotten, everyone's pre-1.6.0 websites forgotten once, reopening tabs (iso/qt/shell2/oraacct60_t.js).
+name: Oracle account check
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['desktop/tabs26.js', 'desktop/core25.js', 'desktop/oracle58.js', 'desktop/private59.js', 'iso/www/index.html',
+      'iso/qt/shell2/oraacct60_t.js', '.github/workflows/oracle-account-check.yml']
+permissions: {contents: read}
+jobs:
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: Oracle per account
+        run: node iso/qt/shell2/oraacct60_t.js

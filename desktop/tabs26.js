@@ -7,12 +7,23 @@
 const RT = new Map();          // tid -> {el (the tab's area), shown() -> bool, z() -> number, h (Oracle's handlers)}
 let RT_N = 0, RT_RAF = 0, RT_FW = '';
 const rtOn = () => !!(SHELL && SHELL_CAPS.includes('tabs'));
-/* whose tab: each account gets its own partition (cookies, site storage) */
-function rtPart() {
-  const n = String(typeof USER != 'undefined' && USER && USER.n || 'guest').toLowerCase();
+/* whose tab: each account gets its own partition (cookies, site storage).
+   1.6.0 (plan-1.6.0 Part 21): by the account's ID, not its name (a deleted account made again with the same name does not
+   get its websites); Guest's in memory only ("priv-…"), new for each Guest session and cleared at its sign-out. */
+function rtPartOld(name) {   /* (before 1.6.0: a hash of the account's name) */
+  const n = String(name || 'guest').toLowerCase();
   let h = 0x811c9dc5; for (let i = 0; i < n.length; i++) { h ^= n.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
   return 'u' + h.toString(36);
 }
+function rtPart() {
+  const u = typeof USER != 'undefined' ? USER : null;
+  if (u && u.r == 'guest') { if (!window.__rtGuest) window.__rtGuest = Math.random().toString(36).slice(2, 10); return 'priv-g' + window.__rtGuest }
+  if (u && u.id) return 'a' + String(u.id).replace(/[^a-z0-9]/gi, '').slice(0, 32);
+  return rtPartOld(u && u.n);
+}
+/* an account's websites forgotten (deleted account), and the pre-1.6.0 ones of every account (once: everyone starts fresh) */
+const rtClear = part => { try { if (part && typeof rtOn == 'function' && rtOn()) shellSend({rudolfShell: 'tab', op: 'clear', part, id: 0}) } catch (e) {} };
+function rtForget(a) { if (!a) return; if (a.id) rtClear('a' + String(a.id).replace(/[^a-z0-9]/gi, '').slice(0, 32)); rtClear(rtPartOld(a.n)) }
 const rtSend = (op, tid, o) => shellSend(Object.assign({rudolfShell: 'tab', op, tid}, o || {}));
 /* a new real tab. h: {nav(url, back, fwd), load(on, error), title(t), focus(), close(), keys(k), newwin(url, ntid, popup),
    gone(why), dialog(kind, text, def) -> Promise<{ok, text}>, perm(perm, url) -> Promise<bool>, blocked(url, why), fs(on), flash(),
@@ -168,3 +179,15 @@ addEventListener('message', e => {
 });
 /* keyboard focus back to the desktop (Ctrl+L in a real tab goes to Oracle's address bar) */
 function rtBlur() { if (SHELL) shellSend({rudolfShell: 'tab', op: 'blur'}) }
+/* 1.6.0 (plan-1.6.0 Part 21, the owner: everyone starts fresh): once on this computer, the websites every account had
+   before (their name-keyed partitions) are forgotten; each account that had them is told once, in Oracle's words */
+function rtFresh160() {
+  if (typeof rtOn != 'function' || !rtOn() || typeof SYSC != 'object' || typeof ACCTS == 'undefined') return;
+  if (!SYSC.web160) { const had = ACCTS.filter(a => a.r != 'guest').map(a => a.id || a.n); ACCTS.forEach(a => rtClear(rtPartOld(a.n))); rtClear(rtPartOld('guest'));
+    SYSC.web160 = 1; SYSC.web160had = had; try { sysSave() } catch (e) {} }
+  const u = typeof USER != 'undefined' ? USER : null;
+  if (u && u.r != 'guest' && Array.isArray(SYSC.web160had) && SYSC.web160had.includes(u.id || u.n) && !S.web160) {
+    S.web160 = 1; try { persistS() } catch (e) {}
+    notify('Oracle', 'Websites are now kept separately for each account. Sign in to websites again.', {app: 'Oracle'}) }
+}
+(function () { const o = window.__afterLogin; window.__afterLogin = () => { o && o(); setTimeout(() => { try { rtFresh160() } catch (e) {} }, 3000) } })();
