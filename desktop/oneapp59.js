@@ -342,6 +342,8 @@ async function oaStart(showLogin0){
  /* (1.5.9, plan 16.2) a Tor window on Standard: no native session there; the desktop page gave rudolfd its account and file key
     when it asked for the window (torwin/session), so the window is signed in as the desktop is, not at a sign-in screen */
  if(!(s&&s.id)&&typeof RD!='undefined'&&RD&&ONEAPP&&ONEAPP.q.get('tor')=='1'){try{s=await rd('torwin/session')}catch(e){s=null}}
+ /* (1.6.0 Part 22) Standard's Oracle kept encrypted: a Chromium of its own (orawin), signed in as the desktop page that asked for it */
+ if(!(s&&s.id)&&typeof RD!='undefined'&&RD&&ONEAPP&&ONEAPP.q.get('enc')=='1'){try{s=await rd('orawin/session')}catch(e){s=null}}
  let a=null;
  if(s&&s.id){a=s.r=='guest'?{n:'Guest',r:'guest',id:'guest',h:''}:ACCTS.find(x=>x.id==s.id)||null}
  if(!a){OA.login=1;oaPost({op:'login'});return showLogin0()}   /* (the native shell shows this window now: it does need its sign-in screen) */
