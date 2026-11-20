@@ -3,10 +3,11 @@
    the opposite corner or side in a red spark; the window then fills out from there. Minimizing and closing take the
    frame back; maximizing and restoring grow or gather it. At the speeds the owner chose in the demo ("that's the exact
    right speed it needs to run at"):
-     open, corner to corner (from the start menu, the desktop, a pinned app, a file) 160 ms;
-     open, side to side (a window another window opened: a dialog, Settings at a page)  220 ms;
-     maximize 160 ms; minimize 160 ms (the point drops into the window's taskbar button; restoring plays it backward);
-     restore from maximized 160 ms; close 160 ms (2026-11-19; were 200, 180, 200, 180 and 200).
+     open, corner to corner (from the start menu, the desktop, a pinned app, a file) 240 ms;
+     open, side to side (a window another window opened: a dialog, Settings at a page)  240 ms;
+     maximize 200 ms; minimize 240 ms (the point drops into the window's taskbar button; restoring plays it backward);
+     restore from maximized 200 ms; close 240 ms (2026-11-19, the owner: the first times were too short; 200 and 220
+     went to 240, 160 and 180 to 200, 120 and 140 to 160, 80 and 100 to 120).
    Display Properties › Colours and theme: "The window transitions (LitePoint)" among the places the accent colour goes
    (white when not ticked), Normal / Negative / Complementary as the others, and the light's brightness (0: no light, the
    window still fills, clears and drops on the same timing; 100: the demo's). The red spark stays red. Reduce motion
@@ -17,9 +18,10 @@ Object.assign(DEFS.disp,{lpac:false,lpacm:'normal',lpbr:100});
 ['lpac','lpacm','lpbr'].forEach(k=>{if(!DKEYS.includes(k))DKEYS.push(k);if(S[k]===undefined)S[k]=DEFS.disp[k];if(SC&&SC[k]===undefined)SC[k]=cln(S[k])});
 /* (Part 17b, 2026-11-18) the start menu opening (smo) and closing (smc), the taskbar's pop-ups (pop), right-click menus (ctx), a
    window's taskbar button (tbb): moving away from the taskbar's side, the menus where they are */
-/* (2026-11-19, the owner: "Anything currently at 200 or 180 ms, bring it down to 160 ms. Anything currently at 160 or 140 down to 120,
-   and anything at 120 or 100 down to 80." The side-to-side open, 220, was not in the list and stays) */
-const LP_MS={c2c:160,s2s:220,max:160,min:160,res:160,cls:160,smo:120,smc:120,pop:120,ctx:80,tbb:80};
+/* (2026-11-19, the owner, after a shortening that went the wrong way: "the transitions actually needed to be longer because
+   they were already too short"; "80 and 100 ms go to 120 ms, 120 and 140 go to 160, 160 & 180 go to 200, and 200 & 220 go
+   to 240", from the first times {c2c:200,s2s:220,max:180,min:200,res:180,cls:200,smo:160,smc:140,pop:140,ctx:120,tbb:100}) */
+const LP_MS={c2c:240,s2s:240,max:200,min:240,res:200,cls:240,smo:200,smc:160,pop:160,ctx:160,tbb:120};
 /* each transition's steps, as shares of its time */
 const LP_W={c2c:[.07,.29,.29,.35],s2s:[.06,.2,.22,.2,.32],max:[.07,.3,.3,.33],min:[.3,.22,.18,.3],res:[.3,.36,.34],cls:[.32,.3,.38],
  smo:[.15,.22,.24,.14,.25],smc:[.3,.22,.18,.3],pop:[.26,.28,.16,.3],ctx:[.07,.29,.29,.35],tbb:[.3,.3,.4]};

@@ -14,7 +14,7 @@
    taskbar button (Part 17b, 2026-11-18: moving away from the taskbar's side, the menus where they are) */
 enum { LP_C2C, LP_S2S, LP_MAX, LP_MIN, LP_RES, LP_CLS, LP_SMO, LP_SMC, LP_POP, LP_CTX, LP_TBB, LP_KINDS };
 static const char *const LP_NAME[LP_KINDS] = { "c2c", "s2s", "max", "min", "res", "cls", "smo", "smc", "pop", "ctx", "tbb" };
-static const int LP_MS[LP_KINDS] = { 160, 220, 160, 160, 160, 160, 120, 120, 120, 80, 80 };   /* (2026-11-19, the owner: as litepoint60.js LP_MS) */
+static const int LP_MS[LP_KINDS] = { 240, 240, 200, 240, 200, 240, 200, 160, 160, 160, 120 };   /* (2026-11-19, the owner: as litepoint60.js LP_MS) */
 /* each one's steps, as shares of its time (the demo's, which the owner chose) */
 static const double LP_W[LP_KINDS][5] = { { .07, .29, .29, .35 }, { .06, .2, .22, .2, .32 }, { .07, .3, .3, .33 }, { .3, .22, .18, .3 }, { .3, .36, .34 }, { .32, .3, .38 },
 	{ .15, .22, .24, .14, .25 }, { .3, .22, .18, .3 }, { .26, .28, .16, .3 }, { .07, .29, .29, .35 }, { .3, .3, .4 } };
