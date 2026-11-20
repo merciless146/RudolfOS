@@ -838,6 +838,8 @@ setting turned off; TOTP with the RFC 6238 test vectors, reuse refused, the wait
 at the next sign-in; Standard, Native and Lite each signing in the same accounts.
 
 ## Not moved here
+- **Oracle's website data encrypted:** written here on 2026-11-19, moved to 1.6.0 the same day (the owner: "Put it in
+  1.6.0 instead"): docs/plan-1.6.0.md Part 22.
 - **elogind and polkit** (1.6.0 Part 11): left out by decision on 2026-11-15, since Rudolf OS's own inhibit portal and
   prompts cover what apps ask. Taken up again only if an app or a later part needs them.
 - **Native as the default for new installations** (#384): still 1.6.0's, for the owner's decision after the week of
