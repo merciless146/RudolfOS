@@ -99,6 +99,9 @@ if [ $OWNSYS = 1 ] && [ -d $SRCOS/system ] && mountpoint -q /persist; then
 	elif [ $BOOTONLY = 1 ]; then echo "Not enough room on the stick for Rudolf OS ($((NEED / 1024)) MiB). Use a bigger stick."; exit 11
 	else echo "Not enough room for the installed updates: the new stick starts the version on this drive's disc image and updates itself."; fi
 fi
+# 1.6.0 (the owner: Recovery mode is always the official newest stable release): the stick's Recovery mode start-up
+# file the official one, when it has the official recovery system (another build's boot files have their own)
+os_recefi "$DEV" /mnt/newstick || true
 # 1.5.3: the stick must be able to start: with a boot image, its copied system complete and the same as this one's
 echo "Checking the new stick ..."
 os_check /mnt/newstick $BOOTONLY $SRCOS
