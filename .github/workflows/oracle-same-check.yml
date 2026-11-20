@@ -9,9 +9,9 @@ on:
       serial: {description: 'A release whose Chromium to use (its serial); empty: the newest beta', required: false, default: ''}
   push:
     branches: [oracle-same-native]
-    paths: ['iso/qt/native/same_oracle_t.sh', 'iso/qt/native/same_oracle.py', 'iso/qt/native/pxdiff.py', 'iso/qt/host/fixtures/dispkeys.c', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rsynth.h', 'iso/sys/rudolf-launch.c', 'iso/shell/**', 'iso/www/index.html', '.github/workflows/oracle-same-check.yml']
+    paths: ['iso/qt/host/betachrome.sh', 'iso/qt/native/same_oracle_t.sh', 'iso/qt/native/same_oracle.py', 'iso/qt/native/pxdiff.py', 'iso/qt/host/fixtures/dispkeys.c', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rsynth.h', 'iso/sys/rudolf-launch.c', 'iso/shell/**', 'iso/www/index.html', '.github/workflows/oracle-same-check.yml']
   pull_request:
-    paths: ['iso/qt/native/same_oracle_t.sh', 'iso/qt/native/same_oracle.py', 'iso/qt/native/pxdiff.py', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rsynth.h', 'iso/shell/**', '.github/workflows/oracle-same-check.yml']
+    paths: ['iso/qt/host/betachrome.sh', 'iso/qt/native/same_oracle_t.sh', 'iso/qt/native/same_oracle.py', 'iso/qt/native/pxdiff.py', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rsynth.h', 'iso/shell/**', '.github/workflows/oracle-same-check.yml']
 permissions: {contents: read}
 jobs:
   same:
@@ -33,8 +33,9 @@ jobs:
           else
             git fetch -q --depth 1 origin gh-pages
             S='${{ inputs.serial }}'; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
-            mkdir -p rel && gh release download "r$S" -D rel -p chromium.sfs && sudo unsquashfs -q -n -d rel/c rel/chromium.sfs opt/chromium
-            echo "CHROME_BIN=$PWD/rel/c/opt/chromium/chrome" >> $GITHUB_ENV; echo "::notice title=Oracle same::the beta's Chromium from release $S"
+            mkdir -p rel && gh release download "r$S" -D rel -p chromium.sfs
+            # (its own glibc's loader by absolute path, /opt/chromium/glibc: linked there; iso/qt/host/betachrome.sh)
+            echo "CHROME_BIN=$(sh iso/qt/host/betachrome.sh rel/chromium.sfs rel)" >> $GITHUB_ENV; echo "::notice title=Oracle same::the beta's Chromium from release $S"
           fi
       - name: Oracle on Native and on Standard
         run: |
