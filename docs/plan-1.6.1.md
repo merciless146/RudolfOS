@@ -1,7 +1,8 @@
 # Rudolf OS 1.6.1: what was moved out of 1.6.0
 
 Asked for on 2026-11-15: "What items have been pushed beyond 1.6.0? Can they all be added to a plan for 1.6.1?" This
-plan gathers every item that docs/plan-1.6.0.md moved past 1.6.0, with where it came from. Nothing here is built yet.
+plan gathers every item that docs/plan-1.6.0.md moved past 1.6.0, with where it came from, and (Parts 18 to 21, 2026-11-20)
+what was found since and not yet in a plan. Nothing here is built yet.
 The owner's rule for the native desktop holds for every part: "Rudolf OS on the native desktop should appear and
 function exactly as it does in Chromium mode."
 
@@ -80,6 +81,12 @@ The phone's hardware made to work, on today's native desktop; its interface is 2
 - **Done when:** the phone starts Rudolf OS from its storage, makes and takes a call on a T-Mobile-network SIM, sends
   and receives texts, sleeps and wakes for a call, and its standby battery drain is measured (Part 6), all written in
   docs/testing.md.
+- **On 1.6's kernel and X11 (2026-11-20):** stage 1 is built on 1.6.x (the 6.18 LTS, X11, ARM64); the phone's own build
+  and interface move to 2.0's "next" channel (the newest kernel, Wayland). A phone with 8 GB for the full desktop and
+  Wayland testing: the OnePlus 6T (8 GB), Snapdragon 845 as the OnePlus 6, started through U-Boot's UEFI from its boot
+  partition; its VoLTE (needed for calls on T-Mobile) does not work yet, so the PinePhone Pro stays the phone for calls.
+  The Fairphone 5 (8 GB) to watch as its mainline support matures. Phones running on Android's drivers (Furi Labs FLX1s+,
+  Volla Phone Quintus) do not fit "never a vendor kernel".
 - Nothing on a phone is flashed or unlocked without the owner's decision.
 
 ### 5. eSIM and 5G (from 1.6.0 "Not in 1.6.0")
@@ -837,6 +844,53 @@ a key's output it opens), wrong PIN and no key, the recovery code once, an admin
 setting turned off; TOTP with the RFC 6238 test vectors, reuse refused, the waits; "required for every account" asking
 at the next sign-in; Standard, Native and Lite each signing in the same accounts.
 
+### 18. Security keys and the setup QR code: what Part 17 left (added on 2026-11-20)
+The owner, 2026-11-20: "Add everything else to 1.6.1." Part 17 was moved to 1.6.0 with "Codes now, keys after": the
+authenticator codes were built there (desktop/otp60.js, rudolfd's `desktop/second`); these were not.
+- **Security keys that unlock the files** (Part 17 items 1, 2 and 6): a FIDO2 key's hmac-secret wraps the account's file
+  key, so a copy of the disk needs the key as well as the password; two keys at least (a spare), rudolfd deciding
+  (Part 17 item 4), Native and Lite accepting such accounts, the old page-only WebAuthn keys moved over.
+- **The setup QR code:** User Settings › Sign-in options › Authenticator app shows the `otpauth://` link as a QR code
+  beside the setup key (an encoder of Rudolf's own in desktop/, as the commercial's: byte mode, levels M and Q, versions
+  1 to 10; checked by decoding it in the test), so a phone's app adds it with its camera.
+- **Tests:** a simulated FIDO2 key in QEMU (as Part 17 planned) for the unlocking; the QR code decoded back to the link.
+
+### 19. Gaming on stronger computers (added on 2026-11-20)
+Asked on 2026-11-20 how Rudolf OS games on high-end hardware. Found then: AMD and Intel graphics use Mesa (close to
+Windows through Steam and Proton); NVIDIA cards have only NVK (iso/systools/addnvk.sh), well behind NVIDIA's own driver
+on recent GeForce cards (no DLSS frame generation, weaker ray tracing); no game mode; Standard's whole desktop stays
+behind a full-screen game. (The newest-kernel track and Wayland, for HDR and variable refresh, are docs/plan-2.0.md's.)
+- **NVIDIA's own driver, by choice:** Settings › Display › Graphics driver: "Open (NVK)" (the default) or "NVIDIA's
+  driver", for GeForce 16 and newer (the open kernel modules NVIDIA publishes), downloaded and signed for Secure Boot as a
+  package from the Library with Rudolf's key, built in CI for the release's own kernel; switched back by itself (and
+  said) when it fails to load, the recovery system always on the open driver.
+- **A game mode:** while a game is full screen, the CPU's energy preference raised (amd_pstate/intel_pstate), the
+  desktop's own work paused (Standard's page throttled, the background jobs and Oracle's tabs held), notifications held;
+  everything back as it was when the game leaves full screen. GameMode's requests from games honoured. gamescope comes
+  with Wayland (2.0).
+- **Measured:** the same games' frame rates and frame times on the open and NVIDIA drivers and with game mode on and
+  off, on the owner's Asus desktop (live from a stick, as Part 12) and the Vivobook.
+
+### 20. Security hardening (added on 2026-11-20)
+From the comparison with other distributions on 2026-11-19: the weak points named then.
+- **rudolfd confined:** an AppArmor profile (or, where AppArmor is not in the kernel, systemd-free equivalents: its
+  capabilities limited, a seccomp filter) allowing only the paths and actions it uses; Part 11's helpers each with a
+  narrower one; the page's API checked against a list of what each window may call.
+- **An outside security review:** before 2.0, a review by people outside the project of rudolfd's API, the sign-in and
+  encryption, the update and recovery chain and the development link; findings fixed, published with the release.
+- **Standard's website data, "off":** a key sealed in the computer's TPM (bound to Secure Boot's measurements) in place
+  of Chromium's built-in key, so a drive taken out cannot read the shared profile's cookies; written up with what it
+  does not cover (the computer itself taken, signed-in use). From 1.6.0 Part 22's "could come later".
+
+### 21. The checks that cannot run, and the checks with the owner (added on 2026-11-20)
+- **CI:** the Oracle file check, the Tor window keys check and "same (beta)" fail on GitHub's runners because the beta's
+  Chromium (chromium.sfs) does not start there ("required file not found", exit 127). Each moved to Playwright's
+  Chromium as the newer checks were, or given the libraries the beta's Chromium needs, so every check runs again.
+- **A virtual smart card** in QEMU (vsmartcard's reader with a PIV emulator and a test CA: 1.6.0 Part 20's planned test).
+- **On the Vivobook, with the owner:** Oracle's websites encrypted (1.6.0 Part 22) on Native, Lite and Standard turned
+  on; Recovery mode from a stick made from this release and from another build's; two-step sign-in on Standard and
+  Native; calls; a real CAC only when the owner asks.
+
 ## Not moved here
 - **Oracle's website data encrypted:** written here on 2026-11-19, moved to 1.6.0 the same day (the owner: "Put it in
   1.6.0 instead"): docs/plan-1.6.0.md Part 22.
@@ -862,3 +916,6 @@ at the next sign-in; Standard, Native and Lite each signing in the same accounts
    sticks (the stick from the address, always with the official recovery system).
 8. Part 17 (two-step sign-in): 1 and 2 together (keys that unlock the files) with 4 (rudolfd decides), then 3 (codes),
    5 (requiring it) and 6 (the old keys).
+9. Part 21's CI checks first (so every later part is checked), then Part 18 (security keys with the QR code), Part 20
+   (rudolfd confined; the review booked before 2.0), Part 19 (the NVIDIA driver choice, then game mode, measured), and
+   Part 21's checks with the owner after each beta.

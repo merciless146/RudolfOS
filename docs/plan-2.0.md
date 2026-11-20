@@ -155,6 +155,35 @@ the security model do not change. Standard, Lite and Native all run on it; X11 s
 W0 can run at any time (it changes nothing). W1 to W3 come after wave 1 (librudolf-ui proved), so the native apps are
 written once for both sessions, and alongside wave 2. W4 and W5 with wave 3's end, before 2.0's closing measurements.
 
+## The newest kernel and the "next" channel (added on 2026-11-20)
+The owner, 2026-11-20, after asking which kernel suits a high-end machine with Wayland, and whether mobile development can
+be done on 1.6's 6.18 LTS with X11 and also on a 7.3 build with Wayland: "Keep the 7.3 kernel development and Wayland as
+2.0 items. Add everything else to 1.6.1."
+
+- **Two kernel tracks.** 1.6.x stays on the 6.18 longterm kernel (the newest LTS, `grep '^6\.18\.'` in
+  rudolf-release.yml): everyday and older computers, the recovery system. 2.0's work runs on the newest stable kernel
+  (7.3.x on 2026-11-20, then 7.4 once it has settled): newer graphics drivers (7.2: AMD HDMI 2.1 FRL, Intel Arc; 7.3: NVK
+  video decode, Valve's AMD reset and memory work), new hardware earlier, the 2026 Steam Controller and MSI Claw drivers,
+  and the Wayland compositors' HDR and variable-refresh needs.
+- **The "next" channel.** A third release channel beside stable and beta (gh-pages `next/`, its own manifest, signed with
+  the same keys, joined the way beta is joined in Settings › Update and recovery). Built by the same workflow with two
+  switches: the kernel track (LTS or newest stable) and the session started by default (X11 or Wayland). Recovery mode
+  stays the official stable release (the owner's rule), so a computer on "next" always has its way back.
+- **What "next" carries, in order:** first the newest kernel with X11 and the Wayland test session (W1, "Display:
+  Wayland (test)"); then W2 and W3 as they land; Wayland by default there once W3 passes (before W4's betas on beta and
+  stable). The kernel options for it: full preemption (`preempt=full`), 1000 Hz, sched_ext (a gaming scheduler such as
+  `scx_lavd` loadable), NTSYNC for Proton, the newest firmware; measured as docs/plan-1.6.1.md Part 12 measures.
+- **The phone:** stage 1 (its hardware, docs/plan-1.6.1.md Part 4) is done on 1.6's ARM64 build; the phone's own build
+  and its interface (stage 2, below) are built on "next", Wayland from the start. The newer kernel helps the phones' own
+  support (the PinePhone Pro, the Snapdragon 845 phones).
+- **NVIDIA's own driver (docs/plan-1.6.1.md Part 19), on "next":** its module must build against each new kernel; the
+  channel takes a new kernel only once it does (as Bazzite does), and says so in the build's notes.
+- **The cost:** two release builds and two versions to test; the owner's rule for every session (same_t.sh's screenshots
+  and the behaviour scripts) runs on both tracks.
+- **Order:** the channel and the kernel switch first (nothing else changes for stable and beta); W0 measured on it; then
+  the Wayland stages as above. When 2.0 is released, "next" becomes stable and 1.6.x keeps the LTS for older computers
+  for at least two releases.
+
 ## The phone build (added on 2026-11-15)
 Decided on 2026-11-15 (docs/plan-1.6.1.md, "The phone, split in two"): the phone comes in two stages. Stage 1, in
 1.6.1, makes one ARM64 phone's hardware work under today's native desktop (the modem's data, texts and calls,
