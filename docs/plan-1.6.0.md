@@ -1549,46 +1549,39 @@ from a recorded bundle), removal; the Debian container's `pcsc_scan`. On hardwar
 a family member's CAC, with iPERMS or IPPS-A, only when the owner asks.
 
 ### 21. Oracle: each account's own websites, and reopening tabs (added on 2026-11-19)
-The owner, 2026-11-19, after "Does the Oracle browser remember the session when it closes?" and the finding below:
-"2." (plan it). Decided the same day: the shared profile's sign-ins and saved passwords go to nobody: everyone starts
-fresh.
+The owner, 2026-11-19, after "Does the Oracle browser remember the session when it closes?": "2." (plan it); then, told
+that the finding behind it was wrong (below): "Fix the gaps and start fresh".
 
-**How it is today.** Every account's Oracle uses one Chromium profile, `/home/rudolf/.rudolf-browser` (session
-`PROFILE`; the desktop's own Chromium on Standard, and Native's Oracle Chromium, 12.3c, both use it). History and
-bookmarks are the desktop's, per account (`bd95hist`, 200 entries), but websites' cookies, storage and saved passwords
-(`--password-store=basic`) are one set for the whole computer: one account's sign-in to a website is there for the next
-account to sign in, and none of it is encrypted with the account's key. Closing Oracle closes its tabs for good (no
-"continue where you left off"). Private and Tor windows keep nothing, as intended.
+**How it is (corrected on 2026-11-19, before building).** The first version of this part said every account shared one
+set of websites. It does not, and has not since 1.2: each account's Oracle tabs have their own partition (cookies, site
+storage), in the shell's Controlled Frames on Standard and in Native's Oracle Chromium (`persist:web-…`), and in its
+own WebKit context with Lite (`~/.rudolf-webkit/web/<part>`). The real gaps were:
+- the partition was named after a hash of the account's **name**: a deleted account made again with the same name got
+  the old one's websites, and renaming lost them;
+- **Guest's** partition was kept on the disk, so one Guest session's sign-ins were there for the next;
+- a **deleted** account's websites stayed on the disk;
+- Oracle never reopened its tabs.
+Website data is not encrypted with the account's key (it is in the browser profile, as the 1.5.0 plan says); that needs
+Oracle in a Chromium of its own per account on Standard (the shell's Controlled Frames keep a partition's files open for
+as long as the desktop's Chromium runs, so it cannot be locked at sign-out) and stays for a later part.
 
-**1. A profile per account, in its encrypted folder.** Oracle's websites live in `/persist/accounts/<id>/.oracle/`
-(fscrypt, the account's file key: unreadable while it is signed out; Part 17 of plan-1.6.1 protects it further).
-- Oracle runs in its own Chromium on all three engines (as Native's does since 12.3c: `rudolf-launch --oracle`,
-  `--class=RudolfOracle`), started at the account's first Oracle window with `--user-data-dir` there, stopped at sign-out
-  before the folder is locked. On Standard, Oracle's tabs leave the desktop's Chromium for it; the desktop's Chromium
-  keeps only the desktop page (its profile then has no website in it, checked).
-- Guest: a profile under `/run` (memory), deleted at sign-out. A Rudolf OS stick without RUDOLFDATA: the same.
-- What goes with the profile: Ruffle and the frames extension (loaded into each), Sign-in with FedCM (per account now),
-  Downloads (already the account's own), Blitzen's web reading through Oracle (Part 18: the signed-in account's Oracle).
+**1. By the account's ID** (`tabs26.js` `rtPart`: `a<id>`): a new account, whatever its name, starts with no websites.
+**2. Guest's in memory** (`priv-g<random>`, as a private window's), new for each Guest session, cleared at its sign-out.
+**3. A deleted account's websites forgotten** (`rtForget`, at Settings' delete: its partition cleared).
+**4. Everyone starts fresh** (the owner's choice): the move to ID-named partitions starts every account fresh, and once on
+each computer the pre-1.6.0 name-named partitions of every account and Guest are cleared (`rtFresh160`, at the first
+sign-in with Oracle's shell, `SYSC.web160`). Each account that had them is told once: "Websites are now kept separately
+for each account. Sign in to websites again." Accounts made later are not.
+**5. Reopening tabs** (Oracle's ☰ › "Reopen my tabs next time", per account, off by default): the tabs of an Oracle window
+(at most 50 addresses) are kept when it closes and at sign-out; the first Oracle window opened without an address opens
+them (at most 12). Never Guest, private or Tor windows.
+**6. History** stays at 200 entries (about 30 KB; 120 would save about 12 KB).
 
-**2. Everyone starts fresh.** At the first start of this version, the shared profile's websites are deleted: cookies,
-saved passwords (`Login Data`), websites' storage (Local Storage, IndexedDB, service workers, cache) for every origin but
-the desktop's own (`http://127.0.0.1:8080`, kept: it is the desktop). Nothing of it is copied to any account. Each
-account's first Oracle window says once: "Websites are now kept separately for each account. Sign in to websites
-again." The release notes say before the update that passwords saved in Oracle are removed, so anyone who needs them
-can look them up first.
-
-**3. Reopening tabs (Oracle's ☰ › Settings, per account).** "When Oracle opens: the start page / the tabs from last time"
-(start page by default). The tabs (addresses and titles, at most 50) are kept in the account's profile folder when its
-last Oracle window closes and at sign-out; never for private or Tor windows.
-
-**4. History.** Oracle's own list stays at 200 entries (about 30 KB of the desktop's storage; 120 would save about 12 KB,
-nothing noticeable). Chromium's own history database in the profile (its 90 days) is per account now, and "Clear
-history" in Oracle clears both.
-
-**Tests.** Two accounts in QEMU: a test site's cookie set by one is absent for the other, on Standard, Native and Lite;
-the profile folder unreadable while its account is signed out; Guest's gone after sign-out; the first start of this
-version removing the shared profile's websites and keeping the desktop's storage; tabs reopened when that is on, not for
-private or Tor windows.
+**Built (2026-11-19):** `tabs26.js` (rtPart, rtPartOld, rtClear, rtForget, rtFresh160), `core25.js` (Guest's cleared,
+Oracle's tabs kept at sign-out), `base_v24.html` (Oracle's tabs kept and reopened), `oracle58.js` (the menu item),
+`build19.py` (the delete hook). Test: `iso/qt/shell2/oraacct60_t.js` (12). On Native the delete and Guest clears reach
+Oracle's Chromium only from Oracle's own page (the main page has no shell there); the ID naming already keeps a deleted
+account's data from anyone, and Guest's is in memory.
 
 ## Cellular and ARM64: QEMU and host tests first, hardware after (owner, 2026-11-15)
 Asked for: "Set up the plan to cover whatever can be done in QEMU first. Everything that requires hardware testing can
@@ -1812,9 +1805,11 @@ host, browser and QEMU tests; item 4 (ARM64) stays below, see "Before stable".
    belong to (12.3c's comparison with Part 12, the recovery with Part 13's signed layers, the QEMU checks first).
 10. Part 20 (smart cards and the CAC): 1 and 2 first (the pieces and Oracle), then 3 (Settings, the DoD certificates),
    then 4 (Linux programs and Firefox); QEMU with a virtual card before any real card.
-11. Part 21 (Oracle per account): 1 and 2 together (the separate profiles and the fresh start), then 3 (reopening tabs)
-   and 4.
-12. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
+11. Part 21 (Oracle per account): built 2026-11-19 (items 1-6).
+12. plan-1.6.1 Part 16 (each other's builds; Recovery mode always the official newest stable) and Part 17 (two-step
+    sign-in), moved here by the owner on 2026-11-19 ("All four into 1.6.0", with Parts 20 and 21; "One beta at the end"):
+    their own plans' steps, in plan-1.6.1.
+13. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
 
 ## Before stable (2026-11-16)
 Asked for on 2026-11-16: "determine what else is to be done in 1.6.0 before promoting to stable". From the parts above,

@@ -69,7 +69,7 @@ rep("if(a){USER=a;loginFails=0;","if(a){USER=a;try{await userLogin(a,p)}catch(er
 rep("else{loginFails++;","else{loginFails++;try{hlNote('signin','wrong password for '+(ACCTS.some(x=>x.n.toLowerCase()==n.toLowerCase())?'the account '+n:'an account that does not exist'))}catch(e){}")
 rep("if(await hsh(OP.get())!=USER.h)","if(!(await pwCheck(USER,OP.get())))",2)
 rep("USER.h=await hsh(p1)","USER.h=await pwMake(p1);await homeRekey(p1)",2)
-rep("if(pdel.size){ACCTS=ACCTS.filter(a=>!pdel.has(a));","if(pdel.size){pdel.forEach(a=>{a.id&&kvDel('home:'+a.id)});ACCTS=ACCTS.filter(a=>!pdel.has(a));")
+rep("if(pdel.size){ACCTS=ACCTS.filter(a=>!pdel.has(a));","if(pdel.size){pdel.forEach(a=>{a.id&&kvDel('home:'+a.id);try{rtForget(a)}catch(e){}});ACCTS=ACCTS.filter(a=>!pdel.has(a));")
 rep("ACCTS.push({n:cn,h:await hsh(cp1),r:cr})","ACCTS.push(await acctNew(cn,cp1,cr))")   # 1.5.0: with its file key and the administrators' copies (acct50.js)
 rep("if(await hsh(SP.get())!=USER.h)","if(!(await pwCheck(USER,SP.get())))",2)
 rep(".map(a=>({n:String(a.n),h:a.h,r:a.r==='admin'?'admin':'user'}))",".map(a=>({...a,n:String(a.n),h:a.h,r:a.r==='admin'?'admin':'user'}))")
