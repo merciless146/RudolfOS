@@ -163,7 +163,7 @@ mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/ru
 XREV=f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2
 XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | cut -c1-16)
 # (1.5.9: and this script itself: a program it adds to the base layer, such as iw, rebuilds the layer)
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-know.inc sys/rudolfd-dev.inc sys/rudolfd-mobile.inc sys/rudolfd-drop.inc sys/rudolfd-root.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/origin.h systools/origin.sh sys/rudolf-know.c sys/rudolf-dev.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h sys/rsynth.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; echo "${GITHUB_REPOSITORY:-}"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-know.inc sys/rudolfd-dev.inc sys/rudolfd-mobile.inc sys/rudolfd-smartcard.inc sys/rudolfd-drop.inc sys/rudolfd-root.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/origin.h systools/origin.sh sys/rudolf-know.c sys/rudolf-dev.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h sys/rsynth.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; echo "${GITHUB_REPOSITORY:-}"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -241,6 +241,19 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		case "$x" in *.conf) continue;; esac
 		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; done
 	done
+	# 1.6.0 (plan Part 20): smart cards and the DoD Common Access Card: pcscd (the PC/SC service, started by
+	# /usr/lib/rudolf/smartcard when a reader is plugged in), the CCID readers' driver (libccid's bundle), OpenSC's PKCS#11
+	# module and pkcs11-tool (Settings' card details, no PIN), and NSS's certutil and modutil (the desktop's certificate
+	# database: the card's module for Oracle, the DoD's certificates when an administrator asks)
+	SCF=$(for p in pcscd libccid opensc opensc-pkcs11 libnss3-tools; do dpkg -L $p; done 2>/dev/null | grep -E '/(pcscd|pkcs11-tool|certutil|modutil)$|/opensc-pkcs11\.so$|/libopensc\.so[.0-9]*$|/pcsc/drivers/|/opensc\.conf$')
+	echo "$SCF" | grep -q '/pcscd$' && echo "$SCF" | grep -q '/opensc-pkcs11\.so$' && echo "$SCF" | grep -q '/modutil$' && echo "$SCF" | grep -q 'ifd-ccid' || { echo "pcscd, libccid, opensc or libnss3-tools is missing on the build machine (apt-get install pcscd libccid opensc opensc-pkcs11 libnss3-tools)"; exit 1; }
+	SCB=0
+	for x in $SCF; do [ -f "$x" ] || continue; sudo mkdir -p "$W/broot$(dirname "$x")"; sudo cp -L "$x" "$W/broot$x"; SCB=$((SCB + $(stat -c %s "$x")))
+		case "$x" in *.conf|*.plist|*Info.plist) continue;; esac
+		for l in $(ldd "$x" 2>/dev/null | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; SCB=$((SCB + $(stat -L -c %s "$l"))); }; done
+	done
+	SCP=$(echo "$SCF" | grep '/opensc-pkcs11\.so$' | head -1); echo "$SCP" | sudo tee "$W/broot/etc/rudolf-pkcs11" >/dev/null   # (where the card's module is: /usr/lib/rudolf/smartcard)
+	echo "  Smart cards (pcscd, CCID, OpenSC, NSS tools): $((SCB / 1024)) KB"; echo "::notice title=Smart cards::$((SCB / 1024)) KB added to the base layer"
 	# 1.5.9 (plan Part 1): ModemManager (read only in 1.5.9: /usr/lib/rudolf/modem) with libqmi, libmbim and libqrtr,
 	# its plug-ins and the operators' database (mobile-broadband-provider-info, for 1.6.0's APNs). Its udev rules too:
 	# with no udev, ModemManager applies them itself (/usr/lib/rudolf/modem runs it with --test-no-udev).

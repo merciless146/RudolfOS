@@ -1,0 +1,89 @@
+#!/bin/sh
+# Smart cards and the DoD Common Access Card (1.6.0, docs/plan-1.6.0.md Part 20). GPL-2.0-or-later. Run by root
+# (rudolfd, devplug, the session).
+#   smartcard start              pcscd running (when a reader is plugged in, and at start-up when one is)
+#   smartcard nss                the card's module (OpenSC) in the desktop's certificate database (Oracle's Chromium,
+#                                /home/rudolf/.pki/nssdb), made if missing; never in the Tor windows' (their own HOME)
+#   smartcard status             JSON: the readers, the card in each, its certificates (DER, base64), read without a PIN
+#   smartcard dod-fetch FILE     the DoD's PKCS#7 bundle (DER) from the DoD PKI's library, into FILE
+#   smartcard dod-install DIR    DIR's root-*.der (trusted for websites, "C,,") and ca-*.der (",,") into the database
+#   smartcard dod-remove         the DoD certificates this added, removed
+#   smartcard dod-list           their nicknames, a line each
+# The PIN is never asked or seen here: Chromium's own box asks for it, through the card's module.
+export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
+LIB=${RUDOLF_PKCS11:-$(cat /etc/rudolf-pkcs11 2>/dev/null)}
+U=${RUDOLF_SC_USER:-rudolf}; H=${RUDOLF_SC_HOME:-/home/rudolf}; DB=sql:$H/.pki/nssdb
+NICK="Rudolf DoD"
+asuser() { if [ "$(id -u)" = 0 ] && [ "$U" != root ]; then su -s /bin/sh "$U" -c "$1"; else sh -c "$1"; fi; }
+js() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\000-\037'; }
+case "$1" in
+start)
+	pidof pcscd >/dev/null 2>&1 && exit 0
+	command -v pcscd >/dev/null || { echo "no pcscd"; exit 1; }
+	pcscd --disable-polkit 2>/dev/null || pcscd
+	exit 0;;
+nss)
+	[ -n "$LIB" ] && [ -r "$LIB" ] || { echo "no card module"; exit 1; }
+	command -v modutil >/dev/null && command -v certutil >/dev/null || { echo "no NSS tools"; exit 1; }
+	asuser "mkdir -p '$H/.pki/nssdb' && chmod 700 '$H/.pki' '$H/.pki/nssdb'; [ -f '$H/.pki/nssdb/cert9.db' ] || certutil -d '$DB' -N --empty-password" || exit 1
+	asuser "modutil -dbdir '$DB' -list 2>/dev/null | grep -q 'Smart cards'" && exit 0
+	asuser "modutil -dbdir '$DB' -add 'Smart cards' -libfile '$LIB' -force >/dev/null 2>&1" || { echo "the card's module could not be added"; exit 1; }
+	exit 0;;
+status)
+	W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
+	printf '{"ok":true,"pcscd":%s,"module":%s,"readers":[' "$(pidof pcscd >/dev/null 2>&1 && echo true || echo false)" "$([ -n "$LIB" ] && [ -r "$LIB" ] && echo true || echo false)"
+	if [ -n "$LIB" ] && [ -r "$LIB" ] && command -v pkcs11-tool >/dev/null && pidof pcscd >/dev/null 2>&1; then
+		pkcs11-tool --module "$LIB" -L 2>/dev/null > "$W/slots"
+		i=0; first=1
+		grep -n '^Slot [0-9]' "$W/slots" | while IFS= read -r line; do
+			n=${line%%:*}; name=$(echo "$line" | sed 's/^[0-9]*:Slot [0-9]* ([^)]*): *//')
+			nxt=$(sed -n "$((n + 1)),\$p" "$W/slots" | grep -n '^Slot [0-9]' | head -1 | cut -d: -f1)
+			if [ -n "$nxt" ]; then blk=$(sed -n "$((n + 1)),$((n + nxt - 1))p" "$W/slots"); else blk=$(sed -n "$((n + 1)),\$p" "$W/slots"); fi
+			lab=$(echo "$blk" | sed -n 's/^ *token label *: *//p' | head -1); mod=$(echo "$blk" | sed -n 's/^ *token manufacturer *: *//p' | head -1)
+			[ $first = 1 ] || printf ','; first=0
+			printf '{"name":"%s","card":%s,"label":"%s","maker":"%s","certs":[' "$(js "$name")" "$([ -n "$lab" ] && echo true || echo false)" "$(js "$lab")" "$(js "$mod")"
+			if [ -n "$lab" ]; then
+				pkcs11-tool --module "$LIB" --slot-index $i --list-objects --type cert 2>/dev/null > "$W/objs"
+				cf=1
+				grep -n 'Certificate Object' "$W/objs" | cut -d: -f1 | while read -r o; do
+					ob=$(sed -n "$o,\$p" "$W/objs" | sed -n '2,8p'); cl=$(echo "$ob" | sed -n 's/^ *label: *//p' | head -1); cid=$(echo "$ob" | sed -n 's/^ *ID: *//p' | head -1)
+					[ -n "$cid" ] || continue
+					pkcs11-tool --module "$LIB" --slot-index $i --read-object --type cert --id "$cid" -o "$W/c.der" >/dev/null 2>&1 || continue
+					[ $cf = 1 ] || printf ','; cf=0
+					printf '{"label":"%s","id":"%s","der":"%s"}' "$(js "$cl")" "$(js "$cid")" "$(base64 "$W/c.der" | tr -d '\n')"
+				done
+			fi
+			printf ']}'; i=$((i + 1))
+		done
+	fi
+	printf ']}\n'; exit 0;;
+dod-fetch)
+	OUT=$2; [ -n "$OUT" ] || exit 2
+	W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
+	LIBP=${RUDOLF_DOD_LIBRARY:-https://public.cyber.mil/pki-pke/pkipke-document-library/}
+	GET() { if [ -n "$RUDOLF_TEST_FETCH" ]; then $RUDOLF_TEST_FETCH "$1" "$2"; else rudolf-update fetch "$1" "$2" >/dev/null 2>&1; fi; }
+	URL=${RUDOLF_DOD_ZIP:-}
+	if [ -z "$URL" ] && GET "$LIBP" "$W/lib.html"; then
+		URL=$(grep -oiE 'https://[^"'"'"' <>]*certificates_pkcs7[^"'"'"' <>]*dod\.zip' "$W/lib.html" | head -1); fi
+	[ -n "$URL" ] || URL=https://dl.dod.cyber.mil/wp-content/uploads/pki-pke/zip/unclass-certificates_pkcs7_DoD.zip
+	case "$URL" in https://dl.dod.cyber.mil/*|https://dl.cyber.mil/*|https://public.cyber.mil/*|file:///*) ;; *) echo "not the DoD's address: $URL"; exit 1;; esac
+	GET "$URL" "$W/b.zip" || { echo "the DoD's bundle could not be downloaded ($URL)"; exit 1; }
+	mkdir "$W/z" && (cd "$W/z" && unzip -q ../b.zip) || { echo "the DoD's bundle is not a zip file"; exit 1; }
+	P=$(find "$W/z" -iname '*der*.p7b' | head -1); [ -n "$P" ] || P=$(find "$W/z" -iname '*.p7b' ! -iname '*pem*' | head -1)
+	[ -n "$P" ] || { echo "no PKCS#7 bundle (DER) in the DoD's zip"; exit 1; }
+	cp "$P" "$OUT"; echo "$URL"; exit 0;;
+dod-install)
+	D=$2; [ -d "$D" ] || exit 2
+	sh "$0" nss >/dev/null 2>&1 || asuser "mkdir -p '$H/.pki/nssdb'; [ -f '$H/.pki/nssdb/cert9.db' ] || certutil -d '$DB' -N --empty-password"
+	n=0
+	for f in "$D"/root-*.der "$D"/ca-*.der; do [ -f "$f" ] || continue
+		b=$(basename "$f" .der); t=",,"; case "$b" in root-*) t="C,,";; esac
+		chmod 644 "$f"; asuser "certutil -d '$DB' -A -n '$NICK $b' -t '$t' -i '$f'" >/dev/null 2>&1 && n=$((n + 1))
+	done
+	echo "$n"; exit 0;;
+dod-list)
+	asuser "certutil -d '$DB' -L 2>/dev/null" | sed -n "s/^\\($NICK [^ ]*\\) .*/\\1/p"; exit 0;;
+dod-remove)
+	sh "$0" dod-list | while IFS= read -r k; do asuser "certutil -d '$DB' -D -n '$k'" >/dev/null 2>&1; done; exit 0;;
+*) echo "smartcard start|nss|status|dod-fetch FILE|dod-install DIR|dod-list|dod-remove"; exit 2;;
+esac

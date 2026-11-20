@@ -1632,6 +1632,9 @@ static int torwin_start(void)
 	unlink(TORWIN_CTL); run("rm -rf " TORWIN_PROF);
 	if (mkfifo(TORWIN_CTL, 0600) || chown(TORWIN_CTL, pw->pw_uid, pw->pw_gid) || mkdir(TORWIN_PROF, 0700) || chown(TORWIN_PROF, pw->pw_uid, pw->pw_gid)) { free(t); return -1; }
 	mkdir(TORWIN_PROF "/Default", 0700); if (chown(TORWIN_PROF "/Default", pw->pw_uid, pw->pw_gid)) {}
+	/* (1.6.0, plan Part 20: a HOME of its own, so Chromium's certificate database there (~/.pki/nssdb) is new and empty:
+	   no smart card module, so a website reached through Tor is never offered the card) */
+	mkdir(TORWIN_PROF "/home", 0700); if (chown(TORWIN_PROF "/home", pw->pw_uid, pw->pw_gid)) {}
 	write_str(TORWIN_PROF "/Default/Preferences", "{\"webrtc\":{\"ip_handling_policy\":\"disable_non_proxied_udp\",\"multiple_routes_enabled\":false,\"nonproxied_udp_enabled\":false}}\n");
 	if (chown(TORWIN_PROF "/Default/Preferences", pw->pw_uid, pw->pw_gid)) {}
 	char *env = slurp(RUN "/session.env", NULL);
@@ -1647,6 +1650,7 @@ static int torwin_start(void)
 			clearenv(); setenv("HOME", pw->pw_dir, 1); setenv("USER", pw->pw_name, 1); setenv("PATH", "/usr/bin:/bin", 1); setenv("FONTCONFIG_FILE", "/etc/fonts/fonts.conf", 1);
 			setenv("GOOGLE_API_KEY", "no", 1); setenv("GOOGLE_DEFAULT_CLIENT_ID", "no", 1); setenv("GOOGLE_DEFAULT_CLIENT_SECRET", "no", 1);
 			for (char *e = env ? strtok(env, " \n") : NULL; e; e = strtok(NULL, " \n")) { char *q = strchr(e, '='); if (q && q > e) { *q = 0; setenv(e, q + 1, 1); } }
+			setenv("HOME", TORWIN_PROF "/home", 1);   /* (plan Part 20: no smart card in Tor windows) */
 			char *a[210]; int k = 0; a[k++] = TORWIN_LAUNCH; a[k++] = "--oracle"; a[k++] = TORWIN_CTL; a[k++] = L[0];
 			for (int i = 1; i < n && k < 206; i++) a[k++] = L[i];
 			a[k++] = "--user-data-dir=" TORWIN_PROF; a[k] = NULL;
@@ -4264,6 +4268,7 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-peer.inc"      /* 1.5.9: only the desktop gets the page and the API (plan Part 15.1) */
 #include "rudolfd-users.inc"     /* 1.5.9: each account is its own Linux user (plan Part 15.3) */
 #include "rudolfd-mobile.inc"    /* 1.6.0: cellular modems (plan Parts 1 to 6) */
+#include "rudolfd-smartcard.inc"   /* 1.6.0: smart cards and the DoD Common Access Card (plan Part 20) */
 #include "rudolfd-drop.inc"      /* 1.6.1: files dropped from outside onto the native desktop (plan-1.6.1 Part 13) */
 #include "rudolfd-know.inc"      /* 1.6.0: Blitzen knows the system (plan Part 18) */
 #include "rudolfd-dev.inc"       /* 1.6.0: Blitzen as a developer's agent (plan Part 19) */
@@ -4490,6 +4495,7 @@ static void api(struct req *r)
 	}
 	/* 1.5.9 (plan Part 1): the cellular modems ModemManager sees; 1.6.0 (Parts 1 to 6): rudolfd-mobile.inc */
 	if (!strncmp(p, "mobile/", 7) && api_mobile(r, p, post)) return;
+	if (!strncmp(p, "sc/", 3) && api_sc(r, p, post)) return;   /* 1.6.0 (plan Part 20) */
 	if (!strcmp(p, "net/metered")) {
 		if (!post) { char *o = run_out("/usr/lib/rudolf/netplug state 2>/dev/null"); trim(o); str j = {0}; sadd(&j, "%s", *o == '{' ? o : "{\"ok\":true,\"connected\":false}"); free(o); reply_json(r->fd, &j); return; }
 		const char *i = qparam(r->query, "if"), *v = qparam(r->query, "v");

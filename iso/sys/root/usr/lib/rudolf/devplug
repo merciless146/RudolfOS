@@ -263,6 +263,8 @@ usb_add() {
 	info=$(usb_identify $s) || return 0
 	echo "$info" > $RUN/usb/$key
 	case "$info" in "USB drive|"*) return 0;; esac   # the drive's own events say more
+	# 1.6.0 (plan Part 20): a smart card reader: pcscd started, and told to look again (no udev daemon here)
+	case "$info" in "Smart card reader|"*) [ -x /usr/lib/rudolf/smartcard ] && { /usr/lib/rudolf/smartcard start; pcscd --hotplug 2>/dev/null; } >/dev/null 2>&1;; esac
 	j=$(echo "$info" | usb_json); event "{\"a\":\"add\",${j#\{}"
 }
 
@@ -272,6 +274,7 @@ usb_remove() {
 	[ -f $RUN/usb/$key ] || return 0
 	info=$(cat $RUN/usb/$key); rm -f $RUN/usb/$key
 	case "$info" in "USB drive|"*) return 0;; esac
+	case "$info" in "Smart card reader|"*) pcscd --hotplug >/dev/null 2>&1;; esac   # (1.6.0, plan Part 20)
 	j=$(echo "$info" | usb_json); event "{\"a\":\"remove\",${j#\{}"
 }
 
