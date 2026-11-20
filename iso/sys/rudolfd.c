@@ -2438,6 +2438,7 @@ static void api_pkg(struct req *r, const char *what)
 #define SX_SH "/usr/lib/rudolf/sysext"
 #endif
 static int desk_admin_check(const char *n, const char *pw, char *why, size_t wn);   /* rudolfd-desktop.inc */
+static void api_orawin(struct req *r, const char *what, int post);   /* rudolfd-desktop.inc (1.6.0 Part 22) */
 static void dfree_secret(char *p);
 static void health_add(const char *kind, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 static void api_sysext(struct req *r, const char *what, int post)
@@ -4937,7 +4938,8 @@ static void api(struct req *r)
 	if (!strncmp(p, "term/", 5)) { api_term(r, p + 5); return; }
 	if (!strncmp(p, "portal/", 7)) { api_portal(r, p + 7); return; }
 	if (!strncmp(p, "web/", 4)) { api_web(r, p + 4); return; }
-	if (!strncmp(p, "torwin/", 7)) { api_torwin(r, p + 7, !strcmp(r->method, "POST")); return; }   /* (1.5.9, 16.2: Oracle's Tor windows on Standard) */
+	if (!strncmp(p, "torwin/", 7)) { api_torwin(r, p + 7, !strcmp(r->method, "POST")); return; }
+	if (!strncmp(p, "orawin/", 7)) { api_orawin(r, p + 7, !strcmp(r->method, "POST")); return; }   /* (1.6.0 Part 22: Standard's Oracle encrypted) */   /* (1.5.9, 16.2: Oracle's Tor windows on Standard) */
 	if (!strncmp(p, "sys/", 4)) {
 		const char *w = p + 4;
 		if (access(RU_BIN, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no system updates"); return; }

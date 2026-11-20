@@ -8,7 +8,7 @@ function oweHasRD() { return typeof RD != 'undefined' && !!RD }
 function OWE_ENG() { return oweHasRD() ? (RD.engine == 'native' ? 'native' : RD.engine == 'webkit' ? 'lite' : 'std') : 'std' }
 const OWE_DEF = {std: false, native: true, lite: true};
 /* the desktops where "on" is built (the rest show the choice, kept for when they have it) */
-const OWE_BUILT = {native: true, lite: true};
+const OWE_BUILT = {native: true, lite: true, std: true};
 async function oweGet() { try { return await rd('desktop/owenc?acct=' + encodeURIComponent(USER.id)) } catch (e) { return {ok: false, error: e.message} } }
 function oweOn(st) { const eng = OWE_ENG(); return st && st.on != null ? !!st.on : OWE_DEF[eng] }
 function oweRow(c) {
@@ -21,7 +21,7 @@ function oweRow(c) {
     if (!st || !st.ok || !st.open) { ck.disabled = true; ck.checked = false;
       m.textContent = USER.disk ? 'Your files are not open on this computer\'s disk right now, so this cannot be changed.' : 'Only for accounts whose files are kept on this computer\'s disk.'; return }
     ck.disabled = false; ck.checked = on;
-    m.textContent = on ? 'On: Oracle\'s websites (your sign-ins, site data, cache and saved site passwords) are encrypted with your account\'s key and locked when you sign out.'
+    m.textContent = on ? 'On: Oracle\'s websites (your sign-ins, site data, cache and saved site passwords) are encrypted with your account\'s key and locked when you sign out.' + (eng == 'std' ? ' On this desktop Oracle then opens in a window of its own, over the desktop, and uses a little more memory while it is open.' : '')
       : eng == 'std' ? 'Off: Oracle\'s websites are kept in this computer\'s shared browser profile, and they are not encrypted: someone with this computer\'s drive could read them.'
       : 'Off: Oracle\'s websites are kept in this computer\'s shared browser data, and they are not encrypted: someone with this computer\'s drive could read them.';
     n.textContent = (!OWE_BUILT[eng] ? 'On this desktop, Oracle keeps its websites the shared way until a later update; your choice is kept for then. ' : '')
@@ -36,7 +36,7 @@ function oweRow(c) {
       try { logEvt('sys', `${USER.n} ${want ? 'turned on' : 'turned off'} keeping websites encrypted`) } catch (e) {}
       notify('Oracle', want ? 'Your websites will be kept encrypted with your account from the next time Oracle opens.' : 'Your websites will be kept the shared way from the next time Oracle opens.', {app: 'Settings'});
     } catch (e) { notify('Oracle', e.message || 'That did not work.', {kind: 'error'}) }
-    const st = await oweGet(); say(oweOn(st), st); oweLite(st);
+    const st = await oweGet(); say(oweOn(st), st); oweLite(st); OWE_ST = st;
   };
 }
 if (typeof signinPanel == 'function') { const _sp = signinPanel; signinPanel = function (c) { const r = _sp.apply(this, arguments); try { if (oweHasRD()) oweRow(c) } catch (e) {} return r } }
@@ -52,3 +52,23 @@ async function oweLite(st) {
 if (typeof homeUnload == 'function') { const _hu = homeUnload; homeUnload = function () {
   try { if (OWE_ENG() == 'lite' && typeof rtOn == 'function' && rtOn() && USER && USER.r != 'guest' && USER.id) shellSend({rudolfShell: 'tab', op: 'drop', part: rtPart(), id: 0}) } catch (e) {}
   return _hu.apply(this, arguments) } }
+/* Standard, turned on: Oracle in a Chromium of its own (rudolfd's orawin), its profile in the account's encrypted folder, as
+   Standard's Tor windows are. Every Oracle window the desktop would open goes there; at sign-out it is closed (its tabs saved)
+   before the folders are locked. Only when the account turned it on (Standard's default is off). */
+let OWE_ST = null;
+const oweStdOn = () => { try { return OWE_ENG() == 'std' && !(typeof ONEAPP == 'object' && ONEAPP) && USER && USER.r != 'guest' && USER.id && OWE_ST && OWE_ST.ok && OWE_ST.open && OWE_ST.on === true } catch (e) { return false } };
+async function oweStdOpen(urls, priv) {
+  const hx = u => [...new Uint8Array(u)].map(x => x.toString(16).padStart(2, '0')).join('');
+  if (typeof FKRAW == 'undefined' || !FKRAW) throw new Error('your account\'s key is not open');
+  await rdPost('orawin/session', JSON.stringify({id: USER.id, n: USER.n, r: USER.r == 'admin' ? 'admin' : 'user', fk: hx(FKRAW)}));
+  const q = (urls || []).filter(u => typeof u == 'string' && /^(https?:\/\/|about:|file:\/\/\/)/i.test(u) && u.length < 2000).slice(0, 12).map(u => 'url=' + encodeURIComponent(u));
+  if (priv) q.push('priv=1');
+  await rdPost('orawin/open' + (q.length ? '?' + q.join('&') : ''));
+}
+if (typeof browser == 'function') { const _br = browser; browser = function (u, bo) {
+  if (oweStdOn() && !(bo && bo.adopt)) { oweStdOpen(u ? [u] : [], !!(bo && bo.priv)).catch(e => notify('Oracle', 'Oracle could not open: ' + (e.message || e), {kind: 'error'})); return null }
+  return _br.apply(this, arguments) } }
+(function () { const o = window.__afterLogin; window.__afterLogin = () => { o && o(); if (OWE_ENG() == 'std' && !(typeof ONEAPP == 'object' && ONEAPP)) oweGet().then(st => { OWE_ST = st }).catch(() => {}) } })();
+if (typeof homeUnload == 'function') { const _hu2 = homeUnload; homeUnload = function () {
+  try { if (OWE_ENG() == 'std' && !(typeof ONEAPP == 'object' && ONEAPP) && typeof HD == 'object' && HD && OWE_ST && OWE_ST.on === true) { HD.chain = HD.chain.then(() => rdPost('orawin/close').catch(() => {})) } } catch (e) {}
+  OWE_ST = null; return _hu2.apply(this, arguments) } }
