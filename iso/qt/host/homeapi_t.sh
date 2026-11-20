@@ -44,6 +44,20 @@ o=$(t "POST home/unlock?acct=u-kid <$T/k2" "POST home/write?acct=u-kid&path=Docu
 ok "13. a second account has its own folder; it cannot reach the first" "$([ -f $R/u-kid/Documents/kid.txt ] && echo "$o" | sed -n 3p | grep -q ' 400 ' && echo 1)" "$o"
 o=$(t "POST home/unlock?acct=u-kid <$T/k1"); ok "14. another account's key does not open it" "$(has "$o" "403")" "$o"
 o=$(t "GET home/read?acct=u-boss&path=Documents/Work/2026/diary.txt"); ok "15. ...and the right account stays open (its key was not taken out)" "$(has "$o" "|v2")" "$o"
+# 1.6.0 (plan Part 22): Oracle's websites in a folder of their own beside the home folder, the desktop user's, under the same key
+ok "15a. the first unlock also makes the account's Oracle folder ($T/m/oracle/u-boss): the desktop user's (1000), 0700" "$([ -d $T/m/oracle/u-boss ] && [ "$(stat -c %u:%a $T/m/oracle/u-boss)" = 1000:700 ] && [ "$(stat -c %a $T/m/oracle)" = 711 ] && echo 1)" "$(ls -la $T/m/oracle 2>&1)"
+mkdir -p $T/m/oracle/u-boss/chromium/Default; echo 'session=sess-secret-77' > $T/m/oracle/u-boss/chromium/Default/Cookies
+ok "15b. ...a second account's Oracle folder is its own" "$([ -d $T/m/oracle/u-kid ] && [ ! -e $T/m/oracle/u-kid/chromium ] && echo 1)"
+o=$(t "POST home/lock?acct=u-boss" "GET home/read?acct=u-boss&path=Documents/Work/2026/diary.txt" "GET home")
+ok "15c. after lock, the Oracle folder's names and contents are unreadable too, also to root (the same key)" "$([ ! -e $T/m/oracle/u-boss/chromium ] && ! grep -rqa 'sess-secret' $T/m/oracle/u-boss 2>/dev/null && echo 1)" "$(ls $T/m/oracle/u-boss | head -3)"
+o=$(t "POST home/unlock?acct=u-boss <$T/k1")
+ok "15d. unlocked again: the websites' data is back, nothing made again" "$(grep -q sess-secret-77 $T/m/oracle/u-boss/chromium/Default/Cookies && echo 1)" "$o"
+exec 7< $T/m/oracle/u-boss/chromium/Default/Cookies
+o=$(t "POST home/lock?acct=u-boss")
+ok "15e. locked with a file still open (Oracle's Chromium closing): said, the open file still readable" "$([ "$(has "$o" 'still open')" = 1 ] && head -c 40 <&7 | grep -q sess-secret && echo 1)" "$o"
+exec 7<&-; sleep 5
+ok "15f. ...once it is closed, the key is wiped by itself (asked again in the background): names unreadable" "$([ ! -e $T/m/oracle/u-boss/chromium ] && echo 1)" "$(ls $T/m/oracle/u-boss | head -3)"
+o=$(t "POST home/unlock?acct=u-boss <$T/k1")
 o=$(t "POST home/lock?acct=u-boss" "GET home/read?acct=u-boss&path=Documents/Work/2026/diary.txt" "GET home")
 ok "16. after lock, the folder is refused (423)" "$(echo "$o" | sed -n 2p | grep -q ' 423 ' && echo 1)" "$o"
 ok "17. ...and its names and contents are unreadable on the disk, also to root" "$([ ! -e $R/u-boss/Documents ] && ! grep -rqa 'Dear diary\|v2' $R/u-boss 2>/dev/null && echo 1)" "$(ls $R/u-boss | head -3)"

@@ -88,6 +88,7 @@ static char VER[32];                          /* Rudolf OS's version, for the st
 typedef struct { char id[80], n[128], r[12]; int key, old; } Acct;
 static Acct ACC[32]; static int NACC, GUEST_OK, SETUP; static char LASTACC[80];
 static char USER_ID[80], USER_N[128], USER_R[12];   /* signed in ("" = not) */
+static char WEB_DIR[400];   /* (1.6.0 Part 22) the account's encrypted folder for Oracle's websites (rudolfd's "web"), "" = Standard's profile */
 static int LOCKED;
 /* the tray */
 static int NET_CELL, NET_SIG = -1;   /* (1.6.0 Part 5: mobile data in use, its signal 0-100: net31.js's bars) */
@@ -1094,6 +1095,28 @@ static void clip_keep_restore(void);
 static void oracle_exited(GPid p, gint st, gpointer d) { (void)d; (void)st; g_spawn_close_pid(p); if (p == OR_PID) { OR_RUN = 0; OR_PID = 0; clip_keep_restore(); state_write(); } }
 /* the shell's #...: letters, digits and the address's own punctuation (the rest escaped) */
 static void oracle_hash(GString *h, const char *s) { for (const char *c = s; *c; c++) { if (g_ascii_isalnum(*c) || strchr("&=._-~%+", *c)) g_string_append_c(h, *c); else g_string_append_printf(h, "%%%02X", (unsigned char)*c); } }
+/* (1.6.0 Part 22) "--user-data-dir=" for Oracle in the account's encrypted folder, or NULL (then Standard's profile, as before).
+   L: oracle-chrome's lines (the shell's ID, then Chromium and its arguments). Its copy of the shell, when it has one and it is
+   not the system's (a release changed it), is replaced first as the session does for Standard's profile (rudolf-shellfix: the
+   shell's storage goes with it, so websites ask to sign in again, as there). */
+static char *oracle_web_profile(gchar **L, int n)
+{
+	if (n < 2 || access(WEB_DIR, W_OK | X_OK)) { if (WEB_DIR[0]) fprintf(stderr, "rudolf-native: Oracle: %s is not open: Standard's profile\n", WEB_DIR); return NULL; }
+	char *prof = g_build_filename(WEB_DIR, "chromium", NULL); g_mkdir_with_parents(prof, 0700);
+	const char *bundle = getenv("RUDOLF_SHELL_BUNDLE"); if (!bundle) bundle = "/usr/share/rudolf/www/iwa/shell.swbn";
+	const char *fix = getenv("RUDOLF_SHELLFIX"); if (!fix) fix = "/usr/bin/rudolf-shellfix";
+	int have = 0, same = 0; char *iwa = g_build_filename(prof, "Default", "iwa", NULL); GDir *dd = g_dir_open(iwa, 0, NULL); gchar *sys = NULL; gsize sl = 0;
+	if (dd && g_file_get_contents(bundle, &sys, &sl, NULL)) { const char *e; while ((e = g_dir_read_name(dd))) { char *f = g_build_filename(iwa, e, "main.swbn", NULL); gchar *b = NULL; gsize bl = 0;
+		if (g_file_get_contents(f, &b, &bl, NULL)) { have = 1; if (bl == sl && !memcmp(b, sys, sl)) same = 1; } g_free(b); g_free(f); } }
+	if (dd) g_dir_close(dd); g_free(sys); g_free(iwa);
+	if (have && !same && !access(fix, X_OK)) {
+		char *argv[] = { (char *)fix, L[1], prof, (char *)bundle, L[0], NULL }; gint st = 0; GError *e = NULL;
+		fprintf(stderr, "rudolf-native: Oracle: the shell in %s is not the system's: replacing it\n", prof);
+		if (!g_spawn_sync(NULL, argv, NULL, G_SPAWN_DEFAULT, NULL, NULL, NULL, NULL, &st, &e) || st) { fprintf(stderr, "rudolf-native: Oracle: the shell was not replaced (%s)\n", e ? e->message : "rudolf-shellfix"); }
+		if (e) g_error_free(e);
+	}
+	char *r = g_strdup_printf("--user-data-dir=%s", prof); g_free(prof); return r;
+}
 static int oracle_open(const char *file, const char *extra)
 {
 	const char *cf = getenv("RUDOLF_ORACLE_CMD"); if (!cf) cf = "/run/rudolf/oracle-chrome";
@@ -1105,11 +1128,15 @@ static int oracle_open(const char *file, const char *extra)
 		snprintf(OR_CTL, sizeof OR_CTL, "%s/rudolf-oracle.ctl", g_get_user_runtime_dir()); unlink(OR_CTL);
 		if (mkfifo(OR_CTL, 0600)) { g_strfreev(L); fprintf(stderr, "rudolf-native: Oracle: %s: %s\n", OR_CTL, strerror(errno)); return 0; }
 		GPtrArray *a = g_ptr_array_new(); g_ptr_array_add(a, (gpointer)ln); g_ptr_array_add(a, "--oracle"); g_ptr_array_add(a, OR_CTL); g_ptr_array_add(a, L[0]);
-		for (int i = 1; i < n; i++) if (L[i][0]) g_ptr_array_add(a, L[i]);
+		/* (1.6.0 Part 22; the owner: "option 1 for native") an account whose files are on the disk: Oracle's profile in its encrypted
+		   folder (rudolfd's "web", /persist/oracle/ID: locked with the home folder at sign-out), in place of Standard's shared one */
+		char *wprof = WEB_DIR[0] && USER_ID[0] && strcmp(USER_R, "guest") ? oracle_web_profile(L, n) : NULL;
+		for (int i = 1; i < n; i++) if (L[i][0] && !(wprof && !strncmp(L[i], "--user-data-dir=", 16))) g_ptr_array_add(a, L[i]);
+		if (wprof) g_ptr_array_add(a, wprof);
 		g_ptr_array_add(a, NULL); GError *er = NULL;
 		int out = -1, ok = g_spawn_async_with_pipes(NULL, (gchar **)a->pdata, NULL, G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL, &OR_PID, NULL, &out, NULL, &er);
 		if (ok && out >= 0) { GIOChannel *ch = g_io_channel_unix_new(out); g_io_channel_set_close_on_unref(ch, TRUE); g_io_add_watch(ch, G_IO_IN | G_IO_HUP | G_IO_ERR, oracle_msgs, NULL); g_io_channel_unref(ch); }
-		g_ptr_array_free(a, TRUE); g_strfreev(L);
+		g_ptr_array_free(a, TRUE); g_strfreev(L); g_free(wprof);
 		if (!ok) { fprintf(stderr, "rudolf-native: Oracle: %s\n", er ? er->message : "?"); if (er) g_error_free(er); unlink(OR_CTL); return 0; }
 		OR_RUN = 1; g_child_watch_add(OR_PID, oracle_exited, NULL);
 	}
@@ -2507,6 +2534,10 @@ static void power(const char *what)
 		/* (1.6.0 Part 21, the owner's native rule: as on Standard, signing out closes Oracle too: its page saves its tabs for "the tabs
 		   from last time" and clears Guest's websites, then its Chromium closes; rudolf-launch, "logout") */
 		oracle_only("logout\n");
+		/* (1.6.0 Part 22) its websites are in the account's encrypted folder: Chromium closed before rudolfd locks it (up to 6 s;
+		   then rudolfd's lock finishes once Chromium's files are closed) */
+		if (WEB_DIR[0]) { gint64 until = g_get_monotonic_time() + 6 * G_USEC_PER_SEC; while (OR_RUN && g_get_monotonic_time() < until) { if (!g_main_context_iteration(NULL, FALSE)) g_usleep(50000); } }
+		WEB_DIR[0] = 0;
 		pt_reset();   /* (the portal's requests: the next account's page starts afresh) */
 		svc_reset();   /* (the service page ended with the windows: the next account's starts at its sign-in) */
 		http("POST", "/api/desktop/logout", NULL, 0, NULL); USER_ID[0] = 0; signin_show(0); return;
@@ -3032,7 +3063,7 @@ static gboolean signin_done(gpointer p)
 	JV *v = jparse(j->reply);
 	if (j->code == 200) {
 		snd_play("login");   /* (as the page's sign-in and unlock: report 2) */
-		if (!SIGN_LOCK) { jstr(v, "id", USER_ID, sizeof USER_ID); jstr(v, "n", USER_N, sizeof USER_N); jstr(v, "r", USER_R, sizeof USER_R); }
+		if (!SIGN_LOCK) { jstr(v, "id", USER_ID, sizeof USER_ID); jstr(v, "n", USER_N, sizeof USER_N); jstr(v, "r", USER_R, sizeof USER_R); WEB_DIR[0] = 0; jstr(v, "web", WEB_DIR, sizeof WEB_DIR); }
 		if (SIGN_LOCK && LOCKED) UNLOCK_T = g_get_monotonic_time();   /* (UNLOCKED_AT: no saver or lock for a minute: item 6) */
 		LOCKED = 0; gtk_widget_hide(SIGN); explicit_bzero(SN_PASS, sizeof SN_PASS); sn_code_off(); SN_MSG[0] = 0; if (SCARET_T) { g_source_remove(SCARET_T); SCARET_T = 0; }
 		if (!SIGN_LOCK) ICONS_SINCE = g_get_monotonic_time();
@@ -7172,7 +7203,7 @@ int main(int argc, char **argv)
 	/* signed in already (this program restarted): the session goes on. Known before the first settings (1.6.0, the owner's report
 	   4: the widgets taken then had no timers) */
 	JV *ses = jget("/api/desktop/session");
-	if (ses) { jstr(ses, "id", USER_ID, sizeof USER_ID); jstr(ses, "n", USER_N, sizeof USER_N); jstr(ses, "r", USER_R, sizeof USER_R); jfree(ses); }
+	if (ses) { jstr(ses, "id", USER_ID, sizeof USER_ID); jstr(ses, "n", USER_N, sizeof USER_N); jstr(ses, "r", USER_R, sizeof USER_R); jstr(ses, "web", WEB_DIR, sizeof WEB_DIR); jfree(ses); }
 	css_apply(); settings_load(); apps_load(); tray_load();
 	/* the wallpaper, below everything */
 	DESK = gtk_window_new(GTK_WINDOW_TOPLEVEL); gtk_window_set_decorated(GTK_WINDOW(DESK), FALSE); gtk_window_set_type_hint(GTK_WINDOW(DESK), GDK_WINDOW_TYPE_HINT_DESKTOP);

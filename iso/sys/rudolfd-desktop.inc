@@ -8,7 +8,8 @@
  *   POST desktop/logout        locks the home folder, ends the session
  *   POST desktop/lock          the lock screen is up: desktop/session answers 423 until desktop/unlock
  *   POST desktop/unlock        body {"p":PASSWORD}, the session's account's
- *   GET  desktop/session       {"id","n","r","pk","fk"} for the one-app pages (oneapp59.js); 404 without a session
+ *   GET  desktop/session       {"id","n","r","pk","fk"} for the one-app pages (oneapp59.js); 404 without a session; (1.6.0 Part 22) "web":
+ *                              the account's encrypted folder for Oracle's websites (/persist/oracle/ID), when open; also in login's answer
  *   GET  desktop/settings      the page's settings the shell draws, the pinned apps, the notifications' count, "gen",
  *                              (1.6.0) the desktop's widgets ("widgets", "wgown") and the weather's place and unit ("wloc", "wunit");
  *                              the Calendar's events ("cal", bd95cal:ID) for the calendar under the clock
@@ -589,7 +590,9 @@ static void api_desktop_login(struct req *r)
 	char lp[300]; dpath(lp, sizeof lp, "native-locked"); unlink(lp);
 	if (dsess_write(&s)) { explicit_bzero(&s, sizeof s); reply_err(r->fd, 500, "the session could not be kept"); return; }
 	dfail_note(1);
-	str o = {0}; sadd(&o, "{\"ok\":true,\"id\":"); sjson(&o, s.id); sadd(&o, ",\"n\":"); sjson(&o, s.n); sadd(&o, ",\"r\":"); sjson(&o, s.r); sadd(&o, "}");
+	str o = {0}; sadd(&o, "{\"ok\":true,\"id\":"); sjson(&o, s.id); sadd(&o, ",\"n\":"); sjson(&o, s.n); sadd(&o, ",\"r\":"); sjson(&o, s.r);
+	{ char wp[400]; if (strcmp(s.id, "guest") && oweb_ready(s.id, wp, sizeof wp)) { sadd(&o, ",\"web\":"); sjson(&o, wp); } }   /* (1.6.0 Part 22: Oracle's encrypted folder) */
+	sadd(&o, "}");
 	explicit_bzero(&s, sizeof s); reply_json(r->fd, &o);
 }
 
@@ -738,7 +741,9 @@ static int api_desktop(struct req *r, const char *w, int post)
 		if (!dsess_read(&s)) { reply_err(r->fd, 404, "no native session"); return 1; }
 		if (!access(lp, F_OK)) { explicit_bzero(&s, sizeof s); reply_err(r->fd, 423, "the screen is locked"); return 1; }
 		str o = {0}; sadd(&o, "{\"ok\":true,\"id\":"); sjson(&o, s.id); sadd(&o, ",\"n\":"); sjson(&o, s.n); sadd(&o, ",\"r\":"); sjson(&o, s.r);
-		sadd(&o, ",\"pk\":"); sjson(&o, s.pk); sadd(&o, ",\"fk\":"); sjson(&o, s.fk); sadd(&o, "}");
+		sadd(&o, ",\"pk\":"); sjson(&o, s.pk); sadd(&o, ",\"fk\":"); sjson(&o, s.fk);
+		{ char wp[400]; if (strcmp(s.id, "guest") && oweb_ready(s.id, wp, sizeof wp)) { sadd(&o, ",\"web\":"); sjson(&o, wp); } }   /* (1.6.0 Part 22) */
+		sadd(&o, "}");
 		explicit_bzero(&s, sizeof s); reply_json(r->fd, &o); return 1;
 	}
 	if (!strcmp(w, "logout")) {
