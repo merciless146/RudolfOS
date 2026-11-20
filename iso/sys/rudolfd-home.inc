@@ -155,6 +155,78 @@ static int home_bind(const char *acct, char *err, size_t en)
 	au_keep = 0;
 	return 0;
 }
+/* 1.6.0 (docs/plan-1.6.0.md Part 22; the owner: "option 1 for native and lite"): Oracle's website data of an account whose
+   files are on the disk, in a folder beside its home folder (home_root's sibling "oracle": /persist/oracle/<account id>)
+   encrypted under the same key (the same fscrypt v2 policy's key identifier). The home folder belongs to the account's own
+   Linux user (1.5.9, 15.3) and Oracle's Chromium is the desktop user's ("rudolf"), so it is a folder of its own, that
+   user's, 0700; the key the sign-in adds opens both, and the sign-out's removal locks both. */
+static int oweb_uid(void) { struct passwd *pw = getpwnam("rudolf"); return pw ? (int)pw->pw_uid : 1000; }
+static void oweb_root(char *o, size_t n) { snprintf(o, n, "%s", home_root); char *sl = strrchr(o, '/'); if (sl && sl != o) snprintf(sl + 1, n - (size_t)(sl + 1 - o), "oracle"); else snprintf(o, n, PERSIST "/oracle"); }
+/* 0: ACCT's folder there and open (its path in P), made the first time with key ID's policy */
+static int oweb_open(const char *acct, const unsigned char *id, char *p, size_t pn)
+{
+	char root[300]; oweb_root(root, sizeof root); if (p && pn) p[0] = 0;
+	if (!home_acct_ok(acct) || !strcmp(acct, "guest") || !strcmp(acct, "shared")) return -1;
+	mkdir(root, 0711); int rfd = open(root, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); if (rfd < 0) return -1;
+	int d = openat(rfd, acct, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+	if (d < 0 && errno == ENOENT) {
+		int u = oweb_uid();
+		if (mkdirat(rfd, acct, 0700)) { close(rfd); return -1; }
+		d = openat(rfd, acct, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+		struct fscrypt_policy_v2 pol; memset(&pol, 0, sizeof pol);
+		pol.version = FSCRYPT_POLICY_V2; pol.contents_encryption_mode = FSCRYPT_MODE_AES_256_XTS; pol.filenames_encryption_mode = FSCRYPT_MODE_AES_256_CTS; pol.flags = FSCRYPT_POLICY_FLAGS_PAD_32;
+		memcpy(pol.master_key_identifier, id, FSCRYPT_KEY_IDENTIFIER_SIZE);
+		if (d < 0 || ioctl(d, FS_IOC_SET_ENCRYPTION_POLICY, &pol) || fchown(d, u, u)) { if (d >= 0) close(d); unlinkat(rfd, acct, AT_REMOVEDIR); close(rfd); return -1; }
+	} else if (d < 0) { close(rfd); return -1; }
+	else { unsigned char have[FSCRYPT_KEY_IDENTIFIER_SIZE]; if (home_policy_id(d, have) != 1 || memcmp(have, id, sizeof have)) { close(d); close(rfd); return -1; } }
+	close(d); close(rfd);
+	if (p && pn) snprintf(p, pn, "%s/%s", root, acct);
+	return 0;
+}
+static int home_rm_at(int dfd, const char *name);
+/* (1.6.0 Part 22) an account that is gone: its Oracle folder removed with it (its encrypted names can be removed without the key) */
+static void oweb_remove(const char *acct)
+{
+	char root[300]; oweb_root(root, sizeof root); if (!home_acct_ok(acct)) return;
+	int rfd = open(root, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); if (rfd < 0) return;
+	if (!home_rm_at(rfd, acct)) health_add("account", "the websites of the removed account %.80s were deleted", acct);
+	close(rfd);
+}
+/* ACCT's Oracle folder, when it is there and open now (its key added): its path in P */
+static int oweb_ready(const char *acct, char *p, size_t pn)
+{
+	char root[300]; oweb_root(root, sizeof root); if (p && pn) p[0] = 0; if (!home_acct_ok(acct)) return 0;
+	int rfd = open(root, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); if (rfd < 0) return 0;
+	int d = openat(rfd, acct, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); close(rfd); if (d < 0) return 0;
+	unsigned char id[FSCRYPT_KEY_IDENTIFIER_SIZE]; int ok = home_policy_id(d, id) == 1 && home_key_present(id); close(d);
+	if (ok && p && pn) snprintf(p, pn, "%s/%s", root, acct);
+	return ok;
+}
+
+/* 1.6.0 (docs/plan-1.6.0.md Part 22 item 5): "Keep my websites encrypted with my account", each account's own choice, kept
+   inside its encrypted home folder (.rudolf/oracle-websites, "on" or "off": with the drive alone it can be neither read nor
+   changed), so it cannot be turned off behind the person's back. Unset: each desktop's own default (Standard off, Native and
+   Lite on), except that an Oracle folder already holding a profile counts as on (a choice file removed from the drive does
+   not turn it off). 1 on, 0 off, -1 unset (or the folder locked). */
+static int owenc_get(const char *acct)
+{
+	int d = home_acct_ok(acct) ? home_root_fd(acct) : -1; if (d < 0) return -1;
+	int v = -1, rd2 = openat(d, ".rudolf", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+	if (rd2 >= 0) { int f = openat(rd2, "oracle-websites", O_RDONLY | O_NOFOLLOW | O_CLOEXEC); if (f >= 0) { char b[8] = ""; ssize_t n = read(f, b, sizeof b - 1); close(f); if (n > 0) v = !strncmp(b, "on", 2) ? 1 : !strncmp(b, "off", 3) ? 0 : -1; } close(rd2); }
+	close(d);
+	if (v < 0) { char wp[400], pf[460]; struct stat st; if (oweb_ready(acct, wp, sizeof wp)) { snprintf(pf, sizeof pf, "%s/chromium/Default", wp); if (!stat(pf, &st)) v = 1; } }
+	return v;
+}
+static int owenc_set(const char *acct, int on)
+{
+	int d = home_acct_ok(acct) ? home_root_fd(acct) : -1; if (d < 0) return -1;
+	mkdirat(d, ".rudolf", 0755); int rd2 = openat(d, ".rudolf", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); close(d); if (rd2 < 0) return -1;
+	unlinkat(rd2, "oracle-websites.t", 0);
+	int f = openat(rd2, "oracle-websites.t", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0644); if (f < 0) { close(rd2); return -1; }
+	const char *v = on ? "on\n" : "off\n"; int ok = write(f, v, strlen(v)) == (ssize_t)strlen(v) && !fsync(f); close(f);
+	ok = ok && !renameat(rd2, "oracle-websites.t", rd2, "oracle-websites"); close(rd2); return ok ? 0 : -1;
+}
+
 /* 0 ok; otherwise an HTTP status and err */
 static int home_unlock(const char *acct, const unsigned char *key, int session, char *err, size_t en, int *made)
 {
@@ -198,6 +270,7 @@ static int home_unlock(const char *acct, const unsigned char *key, int session, 
 		}
 	}
 	close(d); close(rfd);
+	{ char op[400]; if (oweb_open(acct, id, op, sizeof op)) fprintf(stderr, "rudolfd: %s's Oracle folder could not be made: its websites stay where they were\n", acct); }   /* (1.6.0 Part 22) */
 	mkdir(HOME_KEYS, 0700);
 	char f[300], hx[2 * FSCRYPT_KEY_IDENTIFIER_SIZE + 2]; for (size_t i = 0; i < sizeof id; i++) sprintf(hx + 2 * i, "%02x", id[i]); strcat(hx, "\n");
 	snprintf(f, sizeof f, HOME_KEYS "/%s", acct); write_str(f, hx);
@@ -212,7 +285,10 @@ static int home_lock(const char *acct, int *busy)
 	unsigned char id[FSCRYPT_KEY_IDENTIFIER_SIZE]; int p = home_policy_id(d, id); close(d);
 	if (p != 1) return 404;
 	sync();
-	int r = home_key_remove(id, busy);
+	int b = 0, r = home_key_remove(id, &b); if (busy) *busy = b;
+	/* (1.6.0 Part 22) files still open (Oracle's Chromium closing): they stay readable until closed, and the key is wiped once a
+	   second removal finds none open; so it is asked again, every 2 s for a minute, out of the way */
+	if (!r && b) { pid_t c = fork(); if (c == 0) { if (fork() == 0) { for (int i = 0; i < 30; i++) { sleep(2); int b2 = 0; if (home_key_remove(id, &b2) || !b2) break; } _exit(0); } _exit(0); } if (c > 0) waitpid(c, NULL, 0); }
 	char f[300]; snprintf(f, sizeof f, HOME_KEYS "/%s", acct); unlink(f);
 	return r && errno != ENOKEY ? 500 : 0;
 }

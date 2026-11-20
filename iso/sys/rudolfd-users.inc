@@ -188,6 +188,7 @@ static int au_sync(void)
 		int still = 0; for (int k = 0; k < ni; k++) if (!strcmp(ids[k], e[i].id)) still = 1;
 		if (still) continue;
 		au_kill_user(e[i].uid); au_uninstall(e[i].uid); e[i].retired = 1; changed = 1;
+		oweb_remove(e[i].id);   /* (1.6.0 Part 22) its encrypted Oracle folder too */
 		health_add("account", "the account %.80s was removed, and its Linux user (acct%u) with it", e[i].id, e[i].uid);
 	}
 	if (changed && au_write(e, n)) health_add("account", "the list of the accounts' Linux users could not be kept");

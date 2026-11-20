@@ -1628,15 +1628,12 @@ has been made with `-O encrypt` since 1.5.0 (install.sh), so ext4's per-folder e
    already: each `a<ID>` folder gets its own fscrypt policy and key as in 1, added at sign-in, removed at sign-out once
    rudolf-webkit has dropped that account's context (its tabs closed). WebKit has no cookie encryption of its own, so
    option 2 does not apply to Lite.
-3. **Standard: Chromium's own encryption, with a real key (option 2).** `--password-store=basic` replaced by the
-   keyring (gnome-libsecret: "Chromium Safe Storage" in a keyring unlocked when the desktop starts, gnome-keyring from
-   1.6.0 Part 14). Cookies and saved passwords are then encrypted with a key of this computer's, not Chromium's built-in
-   one. Limits, said in Settings: on Standard one Chromium runs the desktop and every account's Oracle tabs, so the key
-   is one for all accounts and held in memory while the desktop runs; site storage and cache are not covered. It
-   protects a drive taken while the computer is off. Switching makes the old cookies unreadable: every account signs in
-   to websites once more (told once, in Oracle's words, as with Part 21's fresh start). (Later, if the owner wants
-   Standard to match: Oracle's own Chromium on Standard, as Native's, about 100–250 MB more while Oracle is open, and 1
-   for it.)
+3. **Standard: option 2 dropped (2026-11-20).** Found while building: Standard's one Chromium draws the whole desktop, the
+   sign-in screen included, so it starts before anyone signs in and reads its cookie key then. That key would have to lie on
+   the drive readable without a password, so a keyring key would protect nothing against someone with the drive; the
+   accounts' keyrings are their own Linux users' and open only at sign-in. The owner chose (2026-11-20): "Off as today, on
+   = option 1". Off: website data stays as it is (`--password-store=basic`), and Settings says plainly that it is not
+   encrypted. On: item 5. (A key sealed in the TPM for "off" could come later; not 1.6.0.)
 4. **Settings › Privacy › Website data:** says how this desktop keeps it (encrypted with the account's key; or, on
    Standard, encrypted with this computer's key, not per account), and that it does not protect against something
    running inside the signed-in account.
@@ -1877,7 +1874,7 @@ host, browser and QEMU tests; item 4 (ARM64) stays below, see "Before stable".
     sign-in), moved here by the owner on 2026-11-19 ("All four into 1.6.0", with Parts 20 and 21; "One beta at the end"):
     their own plans' steps, in plan-1.6.1.
 13. Part 22 (Oracle's website data encrypted; moved here from plan-1.6.1 on 2026-11-19): 1 (Native) first, then 2 (Lite),
-    then 3 (Standard's keyring), then 4.
+    then 5 (the choice; on Standard "on" as Native's), then 4.
 14. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
 
 ## Before stable (2026-11-16)
