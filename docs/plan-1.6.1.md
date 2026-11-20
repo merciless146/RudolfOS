@@ -837,6 +837,46 @@ a key's output it opens), wrong PIN and no key, the recovery code once, an admin
 setting turned off; TOTP with the RFC 6238 test vectors, reuse refused, the waits; "required for every account" asking
 at the next sign-in; Standard, Native and Lite each signing in the same accounts.
 
+### 18. Oracle's website data encrypted (added on 2026-11-19)
+The owner (2026-11-19): "Keep it as option 1 for native and lite, and option 2 for standard." An account's files are
+encrypted with its password key; Oracle's website data (cookies that keep it signed in to sites, site storage, cache,
+saved site passwords) is kept per account since 1.6.0 Part 21 but lies on RUDOLFDATA unencrypted. Anyone who reads the
+drive (pulled, or started from another stick) could use those sessions without the Rudolf OS password; two-step sign-in
+does not change that. Today Chromium runs with `--password-store=basic` (session, rudolfd's torwin and shell Chromium,
+rudolf-shellfix): its cookie and password "encryption" uses a key built into Chromium, the same everywhere. RUDOLFDATA
+has been made with `-O encrypt` since 1.5.0 (install.sh), so ext4's per-folder encryption (fscrypt) needs no reformat.
+
+1. **Native: each account's Oracle profile in an encrypted folder (fscrypt).** Oracle's Chromium on Native starts after
+   sign-in and closes at sign-out (1.6.0 Part 21's "logout"). Its profile (`--user-data-dir`) moves to a folder of the
+   account's own on RUDOLFDATA with an fscrypt v2 policy; its key, derived from the account's password key (HKDF, its
+   own label, never the key itself), is added to the kernel's keyring by rudolfd at sign-in (desktop/login, unlock) and
+   removed at sign-out (`FS_IOC_REMOVE_ENCRYPTION_KEY`), after Chromium has closed. The folder is then names and contents
+   unreadable. Guest stays in memory (its partition is never written). Everything is covered: cookies, site storage,
+   cache, saved site passwords. The website data from before is moved in once (the move said; not kept unencrypted).
+   A drive whose file system lacks `encrypt` (made before 1.5.0) keeps today's way and Settings says why.
+2. **Lite: the same for rudolf-webkit's folders.** Lite keeps each account's websites in `~/.rudolf-webkit/web/<part>`
+   already: each `a<ID>` folder gets its own fscrypt policy and key as in 1, added at sign-in, removed at sign-out once
+   rudolf-webkit has dropped that account's context (its tabs closed). WebKit has no cookie encryption of its own, so
+   option 2 does not apply to Lite.
+3. **Standard: Chromium's own encryption, with a real key (option 2).** `--password-store=basic` replaced by the
+   keyring (gnome-libsecret: "Chromium Safe Storage" in a keyring unlocked when the desktop starts, gnome-keyring from
+   1.6.0 Part 14). Cookies and saved passwords are then encrypted with a key of this computer's, not Chromium's built-in
+   one. Limits, said in Settings: on Standard one Chromium runs the desktop and every account's Oracle tabs, so the key
+   is one for all accounts and held in memory while the desktop runs; site storage and cache are not covered. It
+   protects a drive taken while the computer is off. Switching makes the old cookies unreadable: every account signs in
+   to websites once more (told once, in Oracle's words, as with Part 21's fresh start). (Later, if the owner wants
+   Standard to match: Oracle's own Chromium on Standard, as Native's, about 100–250 MB more while Oracle is open, and 1
+   for it.)
+4. **Settings › Privacy › Website data:** says how this desktop keeps it (encrypted with the account's key; or, on
+   Standard, encrypted with this computer's key, not per account), and that it does not protect against something
+   running inside the signed-in account.
+
+**Tests.** A host test with an fscrypt-capable ext4 image in QEMU: the folder's policy, the key added at sign-in and gone
+at sign-out, the names and contents unreadable after, the wrong password giving no key, a pre-1.5.0 file system kept as
+it was; Native and Lite signing in and out with Oracle's sites remembered between sessions and unreadable between;
+Standard's Chromium with the keyring (its Cookies database's values `v11`, not `v10`), the one-time notice. Each desktop
+signing in the same accounts.
+
 ## Not moved here
 - **elogind and polkit** (1.6.0 Part 11): left out by decision on 2026-11-15, since Rudolf OS's own inhibit portal and
   prompts cover what apps ask. Taken up again only if an app or a later part needs them.
@@ -860,3 +900,4 @@ at the next sign-in; Standard, Native and Lite each signing in the same accounts
    sticks (the stick from the address, always with the official recovery system).
 8. Part 17 (two-step sign-in): 1 and 2 together (keys that unlock the files) with 4 (rudolfd decides), then 3 (codes),
    5 (requiring it) and 6 (the old keys).
+9. Part 18 (Oracle's website data encrypted): 1 (Native) first, then 2 (Lite), then 3 (Standard's keyring), then 4.
