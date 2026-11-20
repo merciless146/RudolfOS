@@ -1483,6 +1483,62 @@ window: Runs, Change, Test computer; Allow before each push, pull request, workf
 "On the test computer…"). Tests: `iso/qt/host/devagent60_t.py` (34), `iso/qt/shell2/blzdev60_t.js` (26), keyring60_t.sh
 10 (the real keyring, CI). Part 19 is built.
 
+### 20. Smart cards and the DoD Common Access Card (added on 2026-11-19)
+The owner, 2026-11-19, after "Would Rudolf be compatible with U.S. Dept of Defense common access card login for military
+webportals such as iPerms, IPPS-A, Army AKO, DSlogon, etc?": "Plan CAC and smart-card support as part of 1.6.0."
+
+**How it is today.** A reader is recognized (devplug: "Smart card reader", Settings › Devices) and nothing uses it: no
+reader driver, no PC/SC service, no card software, nothing in Oracle's Chromium that asks a card for a certificate, and
+none of the DoD's root certificates (the DoD's own PKI, not in Chromium's or Mozilla's list), so the portals stop at a
+certificate error before the card is asked. Of the owner's list: DS Logon ended on 2025-09-30 for VA.gov (Login.gov or
+ID.me now, no card); AKO was retired; iPERMS and IPPS-A still sign in with the CAC; TRICARE moves to myAuth by the end of
+2026. On other Linux systems the same portals work with the pieces below (the DoD does not support Linux: a portal may
+still have its own quirks, and this part says so in Settings).
+
+**1. The pieces, in the base layer (about 4 MB).** Debian's `pcscd` (the PC/SC service, started on demand by its socket)
+and `libccid` (USB CCID readers: nearly every CAC reader, and laptops' built-in ones); OpenSC's PKCS#11 module
+(`opensc-pkcs11`: the CAC's PIV and CAC applets, PIV cards, and most national ID and company cards), registered with
+p11-kit (`/usr/share/p11-kit/modules/opensc.module`). Nothing is added to the system's own trust; the service runs only
+while a reader is plugged in or a program asks.
+
+**2. Oracle signs in with the card (Standard, Native and Lite: Oracle is Rudolf's Chromium in all three, 12.3c).**
+- The card's module is in each account's Oracle certificate database (NSS, the profile's own: added at the first start
+  after a reader is seen, with `modutil`'s equivalent through NSS's own `SECMOD_AddNewModule`, by rudolf-launch before
+  Chromium starts); so a site that asks for a certificate gets Chromium's own picker with the card's certificates, then
+  Chromium's PIN box.
+- The PIN: Chromium's box, never kept or seen by Rudolf OS. Settings warns that the card locks itself after 3 wrong PINs
+  (only the card's issuer can unlock it, at an ID card office).
+- Taking the card out ends the card's use at once (the module's sessions close); a site's own session may last until it
+  times out, as on Windows.
+
+**3. Settings › Security › Smart cards (new).**
+- The readers, and the card in each: its kind (CAC, PIV, …), the name on its certificates and their expiry dates, read
+  from the card without its PIN ("Expires in 21 days" in amber when within 30 days).
+- **DoD certificates:** "Install the DoD's certificates for this account" (each account chooses; not system-wide). They are
+  downloaded from the DoD's PKI site (the DoD PKE's "InstallRoot" bundle, PKCS#7), and installed only when the bundle's
+  root certificates are the DoD Root CAs whose SHA-256 fingerprints Rudolf OS carries (DoD Root CA 3, 4, 5 and 6, from
+  the DoD's published list) and every other certificate in it chains to them; trusted for websites only (not for
+  e-mail or programs' signatures). "Remove the DoD's certificates" takes them out. A newer bundle is offered when the DoD
+  publishes one (checked at most weekly, only while installed).
+- "Lock the screen when my card is taken out" (off by default; as Windows' smart card removal policy), for shared desks.
+- A line: "Works with sites that sign in with a smart card, such as iPERMS and IPPS-A. The DoD does not support Linux, so
+  a site may still refuse or behave differently."
+
+**4. Linux programs and Firefox.** Debian programs (Linux (Debian)) see the same service (the PC/SC socket in their
+container), so Debian's Firefox or a VPN client can use the card with OpenSC; the Flatpak Firefox gets the PC/SC socket
+(`--socket=pcsc`, Flathub's own permission) and loads OpenSC through p11-kit. The DoD certificates button can also put
+them in Firefox's database when Firefox is installed (its own button: "…and in Firefox").
+
+**5. Not in this part.** Signing in to Rudolf OS with the card (a PIV certificate as Part 17's second step, plan-1.6.1)
+is noted there as a later choice; digital signatures in PDFs (the PDF viewer) and e-mail signing are later too.
+
+**Tests.** A virtual card (vsmartcard's `vpcd` reader with a PIV card emulator, made with a test CA) in QEMU: the
+reader seen, Settings' card details without a PIN, Oracle's picker and PIN box on a test site that asks for a client
+certificate (a local TLS server, the test CA's), the card taken out, the screen locking when that is on; the DoD bundle
+check with the real bundle's structure (a test bundle signed by a test "root" refused, the real fingerprints accepted
+from a recorded bundle), removal; the Debian container's `pcsc_scan`. On hardware: a CAC reader (USB) and the owner's or
+a family member's CAC, with iPERMS or IPPS-A, only when the owner asks.
+
 ## Cellular and ARM64: QEMU and host tests first, hardware after (owner, 2026-11-15)
 Asked for: "Set up the plan to cover whatever can be done in QEMU first. Everything that requires hardware testing can
 come afterwards in that plan." This replaces the order of Steps 1 to 6 below for Parts 1 to 7. Each stage is one or
@@ -1703,7 +1759,9 @@ host, browser and QEMU tests; item 4 (ARM64) stays below, see "Before stable".
    parts the system's. Native becomes the default only after its week of betas.
 9. Part 15 (moved from 1.5.9): its Vivobook checks on the first 1.6.0 beta; its code items alongside the parts they
    belong to (12.3c's comparison with Part 12, the recovery with Part 13's signed layers, the QEMU checks first).
-10. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
+10. Part 20 (smart cards and the CAC): 1 and 2 first (the pieces and Oracle), then 3 (Settings, the DoD certificates),
+   then 4 (Linux programs and Firefox); QEMU with a virtual card before any real card.
+11. Betas on the Vivobook (with the USB stick and the MiFi) and the test laptop; promoted when the release checks pass.
 
 ## Before stable (2026-11-16)
 Asked for on 2026-11-16: "determine what else is to be done in 1.6.0 before promoting to stable". From the parts above,

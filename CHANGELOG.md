@@ -28,6 +28,7 @@ Summary: In progress.
 
 ## 1.6.0 (in progress)
 Summary: In progress.
+- Planned (docs/plan-1.6.0.md Part 20): smart cards and the DoD Common Access Card. Card readers work; Oracle can sign in to sites with a card (a CAC or PIV card), with the card's own PIN; Settings › Security › Smart cards shows the card and its expiry, and installs the DoD's certificates for an account when asked, checked against the DoD's root certificates; Linux programs and Firefox can use the card too.
 - New: File Explorer › a drive › Copy to another drive… copies files and folders from one drive straight onto
   another (a USB stick, say), folders and all, with no limit on size or number, and nothing on the first drive
   changed. "Only personal files" leaves out Windows, programs, AppData and system files, for rescuing an old
