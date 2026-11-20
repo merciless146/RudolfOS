@@ -287,8 +287,9 @@ static int home_lock(const char *acct, int *busy)
 	sync();
 	int b = 0, r = home_key_remove(id, &b); if (busy) *busy = b;
 	/* (1.6.0 Part 22) files still open (Oracle's Chromium closing): they stay readable until closed, and the key is wiped once a
-	   second removal finds none open; so it is asked again, every 2 s for a minute, out of the way */
-	if (!r && b) { pid_t c = fork(); if (c == 0) { if (fork() == 0) { for (int i = 0; i < 30; i++) { sleep(2); int b2 = 0; if (home_key_remove(id, &b2) || !b2) break; } _exit(0); } _exit(0); } if (c > 0) waitpid(c, NULL, 0); }
+	   second removal finds none open; so it is asked again, every 2 s for a minute, out of the way (holding none of the files it
+   was started with open: CI found it kept its own caller's file busy) */
+	if (!r && b) { pid_t c = fork(); if (c == 0) { if (fork() == 0) { for (int i = 3; i < 1024; i++) close(i); for (int i = 0; i < 30; i++) { sleep(2); int b2 = 0; if (home_key_remove(id, &b2) || !b2) break; } _exit(0); } _exit(0); } if (c > 0) waitpid(c, NULL, 0); }
 	char f[300]; snprintf(f, sizeof f, HOME_KEYS "/%s", acct); unlink(f);
 	return r && errno != ENOKEY ? 500 : 0;
 }
