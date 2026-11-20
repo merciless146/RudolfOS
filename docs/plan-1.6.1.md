@@ -716,6 +716,76 @@ QEMU from each channel (the other key's after the warning), started, and its upd
 each, Recovery mode starts the official channel's newest release; system/r renewed when the official channel advances,
 and left alone when only the update address or a beta advances.
 
+### 17. Two-step sign-in, done properly (added on 2026-11-19)
+The owner, 2026-11-19, after "Can two-factor authenticated menu sign-in be enabled from the security settings?":
+"Plan the proper version." Decided the same day: hardware security keys and authenticator-app codes (not phone
+passkeys); an administrator's copy of an account's key stays, and the person may turn it off; an administrator may
+require a second step for administrators or for every account.
+
+**How it is today.** User Settings › Sign-in options › "Add a security key or passkey…" (settings25.js, WebAuthn): the
+desktop page checks the key's signature after the password. It guards the sign-in screen only: the account's file key
+(`fk`) is opened by the password alone (PBKDF2, `ks`), so a copy of the disk needs only the password; the check is the
+page's, not the system's; Native and Lite refuse such an account (`desktop/accounts` `key`); there is one key and no
+backup; no authenticator codes.
+
+**1. Hardware security keys, read by the system (all three engines).**
+- rudolfd talks to FIDO2 keys itself (USB and NFC readers; `libfido2` loaded with dlopen, as OpenSSL is, from the base
+  layer; `/dev/hidraw*` for rudolfd only), so Standard, Native and Lite, the lock screen and remote access (rudolf-remote)
+  use the same check. Not the browser's WebAuthn: WebKit and the native shell have none that can do item 2.
+- Adding one (User Settings › Sign-in options › Security keys › Add): password first, then touch the key (and its PIN, if
+  it has one: asked on screen, never kept). Each account may have up to 5, with names ("Blue YubiKey"); the screen asks
+  for a second one as a spare ("If you lose your only key, only a recovery code or an administrator can let you in").
+- Signing in: password, then "Touch your security key" (any of the account's). A key with a PIN asks for it (the key
+  counts wrong PINs itself and locks after 8).
+
+**2. The key unlocks the files, not only the screen.** For an account with a security key, its file key is no longer
+wrapped by the password alone: each security key gets its own copy of `fk`, wrapped with
+`HKDF-SHA-256(password key ‖ the key's hmac-secret output for this account's salt)` (FIDO2 `hmac-secret`: the key
+computes it inside, from a secret that never leaves it). The password-only copy is deleted (and overwritten) when the
+first key is added. So a copy of the disk, with the password, opens nothing without one of the keys. The same goes for
+"Encrypt my data"'s data key (the account's copy of it) and an administrator's private key (`priv`), which opens other
+accounts' copies.
+- Keys that cannot do `hmac-secret` (very old U2F-only ones) are refused when added, with that reason.
+- A **recovery code** (24 letters and digits in 6 groups, shown once, "write it down or print it") is one more copy of
+  `fk`, wrapped with the code (PBKDF2, 600 000 rounds). It signs in without a key once, then asks to add a key or make a
+  new code.
+- **Administrators' copies** (`a.ak`, 1.5.0) stay, on by default: an administrator can still open the account's files and
+  reset its password (the person's keys are then removed: they add them again). The person can turn them off (User
+  Settings › Sign-in options: "Administrators can open my files", as now), after a warning: "If you lose your keys and
+  your recovery code, nobody can open your files."
+
+**3. Authenticator-app codes (TOTP).** Six-digit codes every 30 seconds from an app (Google or Microsoft Authenticator,
+Aegis, 2FAS, …). Adding: a QR code and the text secret, then a code to confirm. Signing in: password, then the code
+(one step either side of now accepted; a code used once is not taken again). Codes guard the sign-in only: the secret
+is kept wrapped by the account's password key, so it cannot add anything to the encryption, and Settings says so ("A
+security key also protects your files if the disk is copied; a code does not."). An account may have a security key,
+codes, or both (either one is enough at sign-in).
+
+**4. The system decides, not the page.** Every sign-in goes through rudolfd (`desktop/login`, as Native's does now): the
+password, then the second step, then the file key opened and handed to the signed-in page (as Native's). The page no
+longer opens `fk` itself for such an account. rudolfd counts failures: after 5 wrong passwords or codes for an account,
+a wait (30 s, doubling to 15 min), recorded in System health; a security key needs no count (it is touched). The lock
+screen asks again (password and the second step; administrators may set "the key alone unlocks the lock screen while
+signed in").
+
+**5. Requiring it.** Security Settings › Sign-in: "Two-step sign-in: Not required / Required for administrators /
+Required for every account" (administrator, with its own password and second step to change it). An account that has
+none is signed in once more, then asked to add one before the desktop opens (a security key or codes; "Later" is not
+offered). The Guest account cannot have one and is turned off while "every account" is set.
+
+**6. The old page-checked keys.** Accounts with one keep signing in on Standard as now; Settings shows "Set up again to
+protect your files and use Native and Lite" until the key is added again under item 1 (then the old one is removed).
+
+**What it protects, said in Settings.** A security key: someone who knows or guesses the password cannot sign in, and a
+copy of the disk is unreadable without a key. Codes: someone who knows the password cannot sign in at the screen. Not:
+someone with the computer while it is signed in and unlocked; that is the lock screen's job.
+
+**Tests.** A virtual FIDO2 key (a CTAP2 HID device made with uhid, in QEMU) with `hmac-secret` and a PIN: adding two
+keys, signing in with either, the password-only copy gone (the disk image opened offline with the password fails, with
+a key's output it opens), wrong PIN and no key, the recovery code once, an administrator opening and resetting, the
+setting turned off; TOTP with the RFC 6238 test vectors, reuse refused, the waits; "required for every account" asking
+at the next sign-in; Standard, Native and Lite each signing in the same accounts.
+
 ## Not moved here
 - **elogind and polkit** (1.6.0 Part 11): left out by decision on 2026-11-15, since Rudolf OS's own inhibit portal and
   prompts cover what apps ask. Taken up again only if an app or a later part needs them.
@@ -737,3 +807,5 @@ and left alone when only the update address or a beta advances.
    window manager's part), then 1 (the apps' own settings), then 3 (the per-app choice).
 7. Part 16 (each other's builds): 1 and 2 first (the check and the beta switch), then 4's "kept newest", then 3 with 4's
    sticks (the stick from the address, always with the official recovery system).
+8. Part 17 (two-step sign-in): 1 and 2 together (keys that unlock the files) with 4 (rudolfd decides), then 3 (codes),
+   5 (requiring it) and 6 (the old keys).
