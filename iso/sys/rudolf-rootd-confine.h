@@ -10,6 +10,10 @@ static const struct { const char *name; uint64_t keep; } HELPER_CAPS[] = {
 	/* the updates: a release's files on RUDOLFDATA and the ESP, its layer mounted to read its keys */
 	{ "updates", CB(CAP_CHOWN) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH) | CB(CAP_FOWNER) | CB(CAP_FSETID) | CB(CAP_SYS_ADMIN)
 	  | CB(CAP_SYS_RESOURCE) },
+	/* the accounts' Linux users (1.6.1 Part 11): /etc's users written, the accounts' folders given to their users
+	   (lchown), a removed account's programs stopped, the keyring asked as the account's user (su) */
+	{ "accounts", CB(CAP_CHOWN) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH) | CB(CAP_FOWNER) | CB(CAP_KILL) | CB(CAP_SETUID)
+	  | CB(CAP_SETGID) },
 	{ NULL, 0 }
 };
 static const int CF_HELPER_DENY[] = {

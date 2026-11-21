@@ -13,7 +13,10 @@ mount -t tmpfs none /run; mkdir -p /run/rudolf
 printf '#!/bin/sh\necho "$(id -u) $HOME $XDG_CURRENT_DESKTOP ${DBUS_SESSION_BUS_ADDRESS:+bus} $*" >> %s/krlog\nexec sleep 300\n' $T > $T/kr; chmod 755 $T/kr; : > $T/krlog; chmod 666 $T/krlog
 # (and rudolf-portal's: --keyring-list and --keyring-forget, saying who ran it)
 printf '#!/bin/sh\nif [ "$1" = --keyring-list ]; then echo "{\\"ok\\":true,\\"keyring\\":true,\\"items\\":[{\\"id\\":\\"app:org.x\\",\\"label\\":\\"$(id -u) $HOME\\"}]}"; else echo "$(id -u) forget $2" >> %s/krlog; echo "{\\"ok\\":true}"; fi\n' $T > $T/rp; chmod 755 $T/rp
-gcc -O1 -w -DAU_KEYRING="\"$T/kr\"" -DAU_KEYRING_DAEMON="\"$T/kr\"" -DAU_PORTAL="\"$T/rp\"" -o $T/t $HERE/fixtures/usersapi.c -lz 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
+# 1.6.1 (docs/plan-1.6.1.md Part 11, accounts): US_VIA=helper: the users made, removed and moved, and the keyring, by the
+# accounts helper (built with -DRR_TEST, its places in its configuration), as rudolfd does on the system: every check the same
+RDIR=; [ "$US_VIA" = helper ] && { RDIR="-DRD_ROOT_DIR=\"$T/root\""; mkdir -p $T/root; echo "(through the accounts helper)"; }
+gcc -O1 -w $RDIR -DAU_KEYRING="\"$T/kr\"" -DAU_KEYRING_DAEMON="\"$T/kr\"" -DAU_PORTAL="\"$T/rp\"" -o $T/t $HERE/fixtures/usersapi.c -lz 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
 node $HERE/fixtures/deskls.js $T/ls.json $T/keys.json || { echo "FAIL node"; exit 1; }
 truncate -s 64M $T/img; mkfs.ext4 -q -F $T/img; mkdir $T/m; mount -o loop $T/img $T/m || { echo "SKIP: no loop device"; exit 0; }
 # (the users must be real for setpriv: this namespace's /etc is a copy, which rudolfd writes as it writes the system's)
@@ -25,6 +28,11 @@ grep -q '^input:' $E/group || echo 'input:x:101:' >> $E/group; grep -q '^rudolf:
 N=0; F=0; ok() { N=$((N+1)); case "$2" in *[!1]*|'') r=0;; *) r=1;; esac; if [ $r = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $(echo "$3" | head -c 700)"; F=$((F+1)); fi; }
 printf '#!/bin/sh\necho "$*" >> %s/xlog\n' $T > $T/rdisp; chmod 755 $T/rdisp; export USERS_DISPLAY=$T/rdisp   # (rudolf-display's stand-in)
 t() { $T/t $T/ls.json $R $E $MAP $HM $RU "$@"; }
+if [ "$US_VIA" = helper ]; then
+	printf 'RR_TEST_DIR=%s\nRR_TEST_HOMEROOT=%s\nRR_TEST_AUMAP=%s\nRR_TEST_ETC=%s\nRR_TEST_AUHOMES=%s\nRR_TEST_RUNUSER=%s\nRR_TEST_DISPLAY=%s\nRR_TEST_NOBIND=0\n' $T/root $R $MAP $E $HM $RU $USERS_DISPLAY > $T/rr.conf
+	gcc -O1 -w -DRR_TEST -DRR_TEST_CONF="\"$T/rr.conf\"" -DAU_KEYRING="\"$T/kr\"" -DAU_KEYRING_DAEMON="\"$T/kr\"" -DAU_PORTAL="\"$T/rp\"" -o $T/root/accounts $HERE/../../sys/rudolf-accounts.c -lz || { echo "FAIL build the helper"; exit 1; }
+	chmod 700 $T/root/accounts
+fi
 as() { u=$1; shift; setpriv --reuid=$u --regid=$u --init-groups "$@" 2>&1; }
 H=/run/rudolf/health.log; [ -e /run/rudolf/persistent ] || H=/run/rudolf/health.log
 # an existing computer: two accounts' folders on the disk, owned by the desktop's user as before 1.5.9
@@ -75,5 +83,17 @@ setpriv --reuid=1003 --regid=1003 --init-groups sleep 300 & P4=$!; timeout 0.5 t
 o=$(t sync)
 ok "9. an account removed: its user stops and is removed, and its uid is never given again (the new account gets 1005)" "$(! grep -q '^acct1003:' $E/passwd && ! kill -0 $P4 2>/dev/null && grep -q '^-uOld00000 1003$' $MAP && grep -q '^uNew00000 1005' $MAP && grep -q '^acct1005:' $E/passwd && ! grep '^audio:' $E/group | grep -q acct1003 && echo 1)" "$(cat $MAP) $(grep acct $E/passwd)"
 ok "...said in the health log" "$(grep -q 'uOld00000 was removed, and its Linux user (acct1003) with it' $H && grep -q 'uNew00000 has its own Linux user (acct1005)' $H && echo 1)" "$(tail -3 $H)"
+if [ "$US_VIA" = helper ]; then
+	# (the checks above went through the helper: a stand-in for it says it was asked, and with what; with nothing to
+	# change it is not asked at all)
+	mv $T/root/accounts $T/accounts.real; printf '#!/bin/sh\necho "$1 $(cat | tr "\\n" " ")" >> %s/acalls\nexit 0\n' $T > $T/root/accounts; chmod 700 $T/root/accounts
+	t sync >/dev/null; n0=$(cat $T/acalls 2>/dev/null | wc -l); cp $MAP $T/map.bak; sed -i '$d' $MAP; t sync >/dev/null; t start >/dev/null; cp $T/map.bak $MAP
+	ok "10. (through the helper) asked only when an account came or went, with the page's accounts' ids; and at the start" "$([ "$n0" = 0 ] && grep -q '^sync uAnnA1b2 ' $T/acalls && grep -q '^start uAnnA1b2 ' $T/acalls && echo 1)" "$n0 $(cat $T/acalls 2>&1)"
+	mv $T/accounts.real $T/root/accounts
+	b=0; for x in '../x' 'guest' 'shared' 'a b' "$(printf 'u%.0s' $(seq 81))" ''; do printf '%s\n' "$x" | $T/root/accounts sync >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $x)"; }; done
+	printf 'uAnnA1b2' | $T/root/accounts sync >/dev/null 2>&1; [ $? = 2 ] || b=1
+	$T/root/accounts keyring-forget '../../etc' </dev/null >/dev/null 2>&1; [ $? = 2 ] || b=1; $T/root/accounts frob </dev/null >/dev/null 2>&1; [ $? = 2 ] || b=1
+	ok "11. (the helper) a list with an id that is not one (.., the guest, shared, a space, too long, empty, no last newline), a saved password's id that is not one, an unknown action: refused, nothing changed" "$([ $b = 0 ] && cmp -s $MAP $T/map.bak && echo 1)" "$b"
+fi
 umount /etc; umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]

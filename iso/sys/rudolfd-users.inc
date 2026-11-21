@@ -159,19 +159,27 @@ static int au_move_folder(const char *id, unsigned uid, int *moved)
 }
 
 /* ---- the users as the accounts are: after each lsync, and at start */
-static int au_sync(void)
+/* the page's accounts (not the guest), in its order: their ids into ids; how many (-1: the page's list was not read) */
+static int au_page_ids(char (*ids)[80], int max)
 {
-	if (!au_on) return 0;
-	dls l; if (!dls_open(&l)) return 0;
-	char *list = dls_accounts(&l); dls_close(&l); if (!list) return 0;
-	au_ent e[AU_MAX]; int n = au_read(e, AU_MAX), changed = 0; unsigned next = AU_FIRST;
-	for (int i = 0; i < n; i++) if (e[i].uid >= next) next = e[i].uid + 1;
-	char ids[AU_MAX][80]; int ni = 0;
-	for (int i = 0; ni < AU_MAX; i++) {
+	dls l; if (!dls_open(&l)) return -1;
+	char *list = dls_accounts(&l); dls_close(&l); if (!list) return -1;
+	int ni = 0;
+	for (int i = 0; ni < max; i++) {
 		const char *a = dj_at(list, i); if (!a) break;
 		char *role = dj_str(dj_get(a, "r")); int guest = role && !strcmp(role, "guest"); free(role); if (guest) continue;
 		char id[80]; dacct_id(a, id, sizeof id); if (!home_acct_ok(id) || !strcmp(id, "guest") || !strcmp(id, "shared")) continue;
 		snprintf(ids[ni++], 80, "%s", id);
+	}
+	free(list); return ni;
+}
+/* the users as those accounts are (1.6.1: in the accounts helper, rudolf-accounts.c; by rudolfd itself without it) */
+static int au_sync_ids(char (*ids)[80], int ni)
+{
+	au_ent e[AU_MAX]; int n = au_read(e, AU_MAX), changed = 0; unsigned next = AU_FIRST;
+	for (int i = 0; i < n; i++) if (e[i].uid >= next) next = e[i].uid + 1;
+	for (int k = 0; k < ni; k++) {
+		const char *id = ids[k];
 		if (!au_find(e, n, id) && n < AU_MAX && next <= AU_LAST) {
 			memset(&e[n], 0, sizeof e[n]); snprintf(e[n].id, sizeof e[n].id, "%s", id); e[n].uid = next++;
 			/* a new account: nothing to move (its folder is made by its user) */
@@ -181,7 +189,6 @@ static int au_sync(void)
 			n++; changed = 1;
 		}
 	}
-	free(list);
 	/* accounts that are gone: their user stops, and is removed (its uid not given again) */
 	for (int i = 0; i < n; i++) {
 		if (e[i].retired) continue;
@@ -194,11 +201,34 @@ static int au_sync(void)
 	if (changed && au_write(e, n)) health_add("account", "the list of the accounts' Linux users could not be kept");
 	return changed;
 }
+/* (1.6.1) whether au_sync_ids would change anything: the account list read here (anyone may), so that the helper is
+   asked only when an account came or went, not at every save of the page's storage */
+static int au_sync_needed(char (*ids)[80], int ni)
+{
+	au_ent e[AU_MAX]; int n = au_read(e, AU_MAX); unsigned next = AU_FIRST;
+	for (int i = 0; i < n; i++) if (e[i].uid >= next) next = e[i].uid + 1;
+	for (int k = 0; k < ni; k++) if (!au_find(e, n, ids[k]) && n < AU_MAX && next <= AU_LAST) return 1;
+	for (int i = 0; i < n; i++) { if (e[i].retired) continue; int still = 0; for (int k = 0; k < ni; k++) if (!strcmp(ids[k], e[i].id)) still = 1; if (!still) return 1; }
+	return 0;
+}
+static int au_sync(void)
+{
+	if (!au_on) return 0;
+	char ids[AU_MAX][80]; int ni = au_page_ids(ids, AU_MAX); if (ni < 0) return 0;
+	if (root_have("accounts")) { int r = au_sync_needed(ids, ni) ? root_accounts("sync", ids, ni) : 0; if (r != -2) return r; }   /* (1.6.1 Part 11: rudolfd-roothome.inc) */
+	return au_sync_ids(ids, ni);
+}
 /* at start: the users into /etc, then the move of existing accounts' folders (once each) */
+static void au_start_users(void);
 static void au_start(void)
 {
 	if (!au_on) return;
+	if (root_have("accounts")) { char ids[AU_MAX][80]; int ni = au_page_ids(ids, AU_MAX); if (root_accounts("start", ids, ni) != -2) return; }   /* (1.6.1 Part 11) */
 	au_sync();
+	au_start_users();
+}
+static void au_start_users(void)
+{
 	au_ent e[AU_MAX]; int n = au_read(e, AU_MAX), changed = 0;
 	for (int i = 0; i < n; i++) {
 		if (e[i].retired) continue;
@@ -326,7 +356,8 @@ static void api_keyring(struct req *r, const char *what, int post)
 	char c[700];
 	if (!post && !strcmp(what, "list")) {
 		snprintf(c, sizeof c, "su -s /bin/sh %s -c 'set -a; . %s; set +a; exec " AU_PORTAL " --keyring-list' 2>/dev/null", au, ae);
-		char *o = run_out(c); trim(o);
+		const char *ka[] = { "accounts", "keyring-list", NULL };
+		char *o = root_have("accounts") ? root_out(ka, 0) : run_out(c); trim(o);   /* (1.6.1 Part 11: the accounts helper, as the account's user) */
 		static const char OK[] = "{\"ok\":true,";
 		if (strncmp(o, OK, sizeof OK - 1) || o[strlen(o) - 1] != '}') { free(o); reply_err(r->fd, 500, "the keyring could not be read"); return; }
 		str s = {0}; sadd(&s, "{\"ok\":true,\"signedIn\":true,%s", o + sizeof OK - 1); free(o); reply_json(r->fd, &s); return;
@@ -335,7 +366,8 @@ static void api_keyring(struct req *r, const char *what, int post)
 		const char *id = qparam(r->query, "id");
 		if (!au_keyring_id_ok(id)) { reply_err(r->fd, 400, "id: one of the list's"); return; }
 		snprintf(c, sizeof c, "su -s /bin/sh %s -c 'set -a; . %s; set +a; exec " AU_PORTAL " --keyring-forget \"$0\"' '%s' 2>&1", au, ae, id);
-		char *o = run_out(c); trim(o); int ok = !strncmp(o, "{\"ok\":true", 10);
+		const char *ka[] = { "accounts", "keyring-forget", id, NULL };
+		char *o = root_have("accounts") ? root_out(ka, 0) : run_out(c); trim(o); int ok = !strncmp(o, "{\"ok\":true", 10);   /* (1.6.1 Part 11) */
 		if (!ok) { reply_err(r->fd, 500, *o ? o : "it could not be removed"); free(o); return; }
 		free(o); health_add("account", "a saved password for apps was removed (Settings › Privacy)"); reply_ok(r->fd, "removed"); return;
 	}
