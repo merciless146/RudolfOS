@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Fixed: Find printers finds network printers with the firewall on (found on a Vivobook: it listed none). It now asks
+  the network as other computers do (multicast DNS from its own port, 5353), and the firewall lets in only those
+  answers, from the local network and never on a cellular connection; nothing else is opened. Printers that answer
+  only to the computer that asked are found too.
 - Changed: Settings' pages are built from one list of additions each, in the same order as before, instead of a
   function wrapped up to 15 times. They look and work as they did; a section that fails no longer stops the sections
   after it from being shown (the failure is written to the console).
