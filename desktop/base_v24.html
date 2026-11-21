@@ -1021,6 +1021,7 @@ function browser(url,bo){bo=bo||{};const PV=!!bo.priv,W=win('Oracle','\u{1F310}\
  const OF=typeof oraFind=='function'?oraFind({W,T:()=>T(),tabs:()=>tabs}):null;   /* 1.6.1 (docs/plan-1.6.1.md Part 10): find in page (orafind61.js) */
  const lk=(u,t)=>`<a href='#' data-u='${esc(u)}' style='color:#2563eb;text-decoration:none' onclick='go(this.dataset.u);return false'>${esc(t)}</a>`;
  const doc=(t,b,x)=>({title:t,html:`<!doctype html><meta charset='utf-8'><title>${esc(t)}</title><body style='font:14px Tahoma,Arial,sans-serif;margin:0;color:#111'><div style='background:#2563eb;color:#fff;padding:9px 16px;font-weight:600'>${esc(t)}</div><div style='padding:16px'>${b}</div><script>function go(u){parent.postMessage({go:u},'*')}function act(a,v){parent.postMessage({act:a,v:v},'*')}${x||''}`+'</'+'script></body>'});
+ const OR=typeof oraReader=='function'?oraReader({W,T:()=>T(),tabs:()=>tabs,say:x=>{st.textContent=x},sync:()=>sync(),reload:t=>loadTab(t)}):null;   /* 1.6.1 (docs/plan-1.6.1.md Part 10): reader mode (orareader61.js) */
  const walk=(n,p,cb)=>{for(const k in n){const w=[...p,k];cb(w,n[k]);if(isDir(n[k]))walk(n[k],w,cb)}};
  const norm=v=>{v=v.trim();if(!v)return'about:blank';if(/^(about:|file:|https?:|data:)/i.test(v))return v;if(/^[A-Za-z]:[\\\/]/.test(v)||/^[A-Za-z]:$/.test(v))return'file:///'+v.split(BS).join('/');if(/^[^\s]+\.[a-z]{2,}([\/?#:]|$)/i.test(v))return'https://'+v;return'about:search?q='+encodeURIComponent(v)};
  const MX={video:/\.(mp4|m4v|webm|ogv|mov)$/i,audio:/\.(mp3|wav|ogg|oga|m4a|aac|flac|opus)$/i,image:/\.(png|jpe?g|gif|webp|avif|bmp|svg|ico)$/i};
@@ -1199,7 +1200,7 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
  function mkTab(u){const fr=document.createElement('iframe');fr.referrerPolicy='strict-origin-when-cross-origin';fr.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;display:none';fh.appendChild(fr);const t={id:++nid,h:[u||'about:home'],i:0,fr,title:'New tab',zoom:1,real:false,rt:null,rb:false,rf:false};t.fr.onload=()=>{if(t.pend&&t.i>=0&&cur()==t.h[t.i]&&t===T())st.textContent='Loaded '+t.h[t.i]+' (if the page is blank, the site blocks embedding: use ↗)'};tabs.push(t);return t}
  /* Rudolf OS 1.2: inside the shell a website is a real browser tab (tabs26.js) */
  const rtHost=u=>{try{return new URL(u).hostname}catch(e){return''}};
- const rtWhere=t=>({el:fh,priv:PV,shown:()=>t===T()&&t.real&&!W.min&&W.el.isConnected&&W.el.style.display!='none',z:()=>+W.el.style.zIndex||0,
+ const rtWhere=t=>({el:fh,priv:PV,shown:()=>t===T()&&t.real&&!t.rdr&&!W.min&&W.el.isConnected&&W.el.style.display!='none',z:()=>+W.el.style.zIndex||0,
   /* for Task Manager */W,title:()=>t.title,url:()=>t.h[t.i],show:()=>{W.focus();const k=tabs.indexOf(t);if(k>=0){ci=k;sync()}},end:()=>{const k=tabs.indexOf(t);if(k>=0)closeTab(k)},
   /* 1.5.9 game mode (plan 9.2): a tab other than its window's current one sleeps: its page is closed, its address and
      title kept (💤 on the tab); selecting it loads it again */
@@ -1215,6 +1216,7 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
   keys:k=>key(k),
   newwin:(u,nt,popup)=>{if(popup||tabs.length>=12)browser(u,{adopt:nt,priv:PV});else{adoptTab(u,nt);sync()}},
   gone:why=>{if(t===T())st.textContent='This page stopped working'+(why=='unresponsive'?' (not responding)':'')+'. Reload (F5) to start it again.'},
+  readable:on=>{if(OR)OR.readable(t,on)},readhtml:o=>{if(OR)OR.readhtml(t,o)},   /* (1.6.1: reader mode: the page has an article; its HTML) */
   dialog:(k,x,d)=>{if(!W.el.classList.contains('act'))W.focus();return rtDialog(W,k,x,d)},
   perm:(p,u)=>rtPerm(W,p,u),
   adblock:n=>{if(OB)OB.count(t,n)},   /* (1.6.1: how many ads and trackers the page's tab blocked) */
@@ -1273,6 +1275,7 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
  if(OF){const s0=sync,k0=key;sync=function(){s0.apply(this,arguments);OF.sync()};key=function(a){if(!OF.key(a))k0(a)}}   /* (1.6.1: find in page: the bar follows its tab; Ctrl+F, F3 and Ctrl+G from a tab's page) */
  function siNote(t,u){const fr=t.fr;t.pend=false;fr.removeAttribute('src');fr.setAttribute('sandbox','allow-scripts');t.src='';fr.srcdoc=webNote(u);if(t===T())sync()}
  const tabOfWin=w=>{for(let i=0;i<6&&w;i++){const t=tabs.find(x=>x.fr.contentWindow===w);if(t)return t;let p=null;try{p=w.parent}catch(x){}if(!p||p===w)break;w=p}return null};
+ if(OR){const s0=sync,k0=key,l0=loadTab;sync=function(){s0.apply(this,arguments);OR.sync()};key=function(a){if(!OR.key(a))k0(a)};loadTab=function(t){if(t&&t.rdr)OR.drop(t,false);return l0.apply(this,arguments)};const p0=page;page=function(u){return OR.page(u,p0.apply(this,arguments))}}   /* (1.6.1: reader mode; Readability credited in About Oracle follows its tab; F9 from a page; a new page leaves it) */
  const SIO={cur:t=>t.h[t.i],note:siNote,T:()=>T(),bar:(t,b)=>{fh.appendChild(b);b.style.display=t===T()?'flex':'none'},
   setUrl:(t,u,title)=>{if(t.h[t.i]==u)return;t.h[t.i]=u;let h='';try{h=new URL(u).hostname}catch(x){}t.title=title||h||u;if(t===T()&&document.activeElement!==ad)sync()}};
  const onm=e=>{if(e.data&&typeof e.data.__rudolfSignin=='string'){const t=tabOfWin(e.source);if(t&&typeof siMessage=='function')siMessage(e.data,t,e.source,e.origin,SIO);return}

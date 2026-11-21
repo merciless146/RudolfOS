@@ -108,6 +108,7 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
      perm {pid, allow}          the answer to a page asking for the camera, the microphone or the location
      fw {rules}                 the firewall (all tabs): {on, mode: open|trusted|lock, block: [], trust: []}
      clear {part}               forget a partition's cookies, storage and cache
+     readhtml {id}              (1.6.1) the page's HTML for reader mode: tabev readhtml {id, html, url, title}; tabev readable {on} after each load
      blur                       keyboard focus back to the desktop
      block {cfg}                (1.6.1) ad and tracker blocking (all tabs): {on, b, tp, ex, off}; tabev adblock {n} the page's count
      unfs                       (1.5.8) leave full screen, whichever tab has it (Task Manager and the power dialog come first)
@@ -162,6 +163,8 @@ addEventListener('keydown',e=>{if(!e.isTrusted)return;const c=e.ctrlKey||e.metaK
  if(a){e.preventDefault();e.stopImmediatePropagation();say({k:a})}},true);
 addEventListener('click',e=>{if(!e.isTrusted)return;const a=e.target&&e.target.closest&&e.target.closest('a[href^="tel:" i]');if(!a)return;e.preventDefault();e.stopImmediatePropagation();say({tel:String(a.getAttribute('href')).slice(4,80)})},true);
 let t=null;const tt=()=>{if(document.title!==t){t=document.title;say({title:t})}};
+/* 1.6.1 (Part 10): F9 shows the page's article in Oracle's reader mode (and back), before the page sees it */
+addEventListener('keydown',e=>{if(e.isTrusted&&e.key=='F9'&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey){e.preventDefault();e.stopImmediatePropagation();say({k:'f9'})}},true);
 addEventListener('DOMContentLoaded',tt);addEventListener('load',tt);setInterval(tt,1500)})()`;
 /* 1.6.1 (the owner, 2026-11-20): in every frame of a page, where a link (or a form's submit button) goes, while the mouse is
    over it or it has the keyboard's focus: Oracle's status line says "Goes To: <address>" (tabs26.js hover). Only the
@@ -185,6 +188,16 @@ const C=${JSON.stringify(Object.assign({unmuteOverlay: 'visible', warnOnUnsuppor
 const cfg=document.createElement('script');cfg.textContent='window.RufflePlayer=window.RufflePlayer||{};window.RufflePlayer.config=Object.assign('+JSON.stringify(C)+',window.RufflePlayer.config||{});';(document.head||document.documentElement).appendChild(cfg);cfg.remove();
 let i=0;const next=()=>{if(i>=U.length)return;const s=document.createElement('script');s.src=U[i++];s.onerror=()=>{s.remove();next()};(document.head||document.documentElement).appendChild(s)};next()})()`;
 
+/* 1.6.1 (docs/plan-1.6.1.md Part 10): reader mode (desktop/orareader61.js). When a page has loaded, whether it holds an article (the
+   same check as the desktop's oraReadable, after Readability's isProbablyReaderable: the visible paragraphs' text) -> tabev readable
+   {on}; op readhtml {id}: the page's HTML as it is now (at most 4 MB), its address and title -> tabev readhtml, which the desktop reads
+   with Readability in an inert copy (nothing of the page runs there). Only read when the person asks for reader mode. */
+const READABLE_JS = `(()=>{try{const U=/-ad-|ai2html|banner|breadcrumbs|combx|comment|community|cover-wrap|disqus|extra|footer|gdpr|header|legends|menu|related|remark|replies|rss|shoutbox|sidebar|skyscraper|social|sponsor|supplemental|ad-break|agegate|pagination|pager|popup|yom-remote/i,C=/and|article|body|column|content|main|shadow/i;
+const L=new Set(document.querySelectorAll('p,pre,article'));document.querySelectorAll('div > br').forEach(b=>L.add(b.parentNode));let sc=0;
+for(const n of L){if(n.checkVisibility&&!n.checkVisibility({visibilityProperty:true}))continue;const m=(n.getAttribute('class')||'')+' '+(n.id||'');if(U.test(m)&&!C.test(m))continue;if(n.matches('li p'))continue;
+ const l=(n.textContent||'').trim().length;if(l<140)continue;sc+=Math.sqrt(l-140);if(sc>20)return true}}catch(e){}return false})()`;
+const READHTML_JS = `JSON.stringify({u:location.href,t:document.title,h:(document.documentElement?document.documentElement.outerHTML:'').slice(0,4000000)})`;
+function tabReadable(t) { if (/^https?:/i.test(t.url || '')) t.f.executeScript({code: READABLE_JS}).then(r => toTab(t.tid, 'readable', {on: !!(r && r[0])})).catch(() => {}) }
 function tabEvents(t) {
   const f = t.f;
   const navState = async () => {
@@ -206,6 +219,7 @@ function tabEvents(t) {
   /* 1.6.0: how far the page has loaded (0..1), for Oracle's loading line (oload60.js) */
   f.addEventListener('loadcommit', e => { if (e.isTopLevel) { t.bn = 0; clearTimeout(t.bnT); t.bnT = 0; toTab(t.tid, 'adblock', {n: 0}) } });   // (1.6.1: a new page's count of blocked requests)
   f.addEventListener('loadprogress', e => { if (e.isTopLevel !== false) toTab(t.tid, 'progress', {p: Math.max(0, Math.min(1, +e.progress || 0))}) });
+  f.addEventListener('loadstop', () => setTimeout(() => tabReadable(t), 300));   // (1.6.1: reader mode: whether the page has an article)
   f.addEventListener('loadabort', e => {
     if (e.isTopLevel === false || /ERR_ABORTED|ERR_BLOCKED_BY_CLIENT/.test(String(e.reason))) return;   // stopped by the person, or by the firewall (reported already)
     toTab(t.tid, 'load', {loading: false, error: String(e.reason || ''), url: e.url});
@@ -452,6 +466,7 @@ const TAB_OPS = {
     try { const x = await t.f.executeScript({code: BUSY_JS}); r = JSON.parse((x && x[0]) || '{}') } catch (e) { r = {f: true} }
     toTab(t.tid, 'busy', {id: m.id, m: a || !!r.m, f: !!r.f});
   },
+  readhtml: (m, t) => { t.f.executeScript({code: READHTML_JS}).then(r => { let o = {}; try { o = JSON.parse((r && r[0]) || '{}') } catch (e) {} toTab(t.tid, 'readhtml', {id: m.id | 0, html: String(o.h || ''), url: String(o.u || ''), title: String(o.t || '').slice(0, 300)}) }).catch(() => toTab(t.tid, 'readhtml', {id: m.id | 0, html: ''})) },   // (1.6.1: reader mode)
   find: (m, t) => tabFind(t, m),   // (1.6.1: find in page)
   findstop: (m, t) => tabFindStop(t),
   findsel: (m, t) => { t.f.executeScript({code: '(' + FIND_FN.toString() + ')({sel:1})'}).then(r => { const x = r && r[0]; if (x && typeof x.sel == 'string') toTab(t.tid, 'find', {id: m.id | 0, sel: x.sel.slice(0, 200)}) }).catch(() => {}) },
