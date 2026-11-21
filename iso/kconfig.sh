@@ -117,8 +117,20 @@ y SECURITY SECURITYFS SECURITY_LOCKDOWN_LSM SECURITY_LOCKDOWN_LSM_EARLY LOCK_DOW
 # 1.5.9 (plan 15.1): Yama, so a program cannot read another's memory (the desktop's API token in the browser) by
 # ptrace just because it runs as the same user: only a process's parent may (ptrace_scope 1, its default)
 y SECURITY_YAMA
+# 1.6.1 (docs/plan-1.6.1.md Part 20): Landlock itself. "landlock" was in the LSM list since 1.5.9, but the option was never
+# on, so the kernel had none. rudolfd's narrow confinement (rudolfd-confine.inc) uses it for the folders a request may
+# write: a program puts it on itself, so it needs no policy loaded at the start (AppArmor would need its profiles
+# compiled and loaded by the start-up, and its own LSM); about 30 KB of kernel
+y SECURITY_LANDLOCK
 $C --set-str LSM "lockdown,landlock,yama"
 y MD BLK_DEV_DM DM_VERITY CRYPTO_SHA256 EFIVAR_FS
+# 1.6.1 (docs/plan-1.6.1.md Part 20): the TPM 2.0 (the computer's security chip: AMD's and Intel's firmware TPMs through
+# CRB, discrete chips through TIS; QEMU's swtpm both), for the key the shared browser profile's website data is kept
+# under (rudolf-webkey, sealed to Secure Boot's measurements). Built in, so /dev/tpmrm0 is there before the desktop
+# starts. TCG_TPM2_HMAC off: the kernel's own use of the TPM here is its random numbers only, and the encrypted session
+# it would put on each of its own commands costs time at every start; rudolf-webkey's commands are its own
+y TCG_TPM TCG_TIS TCG_CRB
+n TCG_TPM2_HMAC
 # processor microcode (1.2.4): AMD's updates built into the kernel, so the start applies them before anything
 # else runs (fixes such as SRSO's "IBPB-extending microcode not applied"). UCODE_DIR: a folder holding
 # amd-ucode/ (the pinned files of firmware-extra.txt); without it the kernel has none, as before.

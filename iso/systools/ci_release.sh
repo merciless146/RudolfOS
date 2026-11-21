@@ -24,6 +24,9 @@ sh qt/host/listeners59_t.sh || { echo "something listens that sys/root/usr/share
 # the same; and that this build installs them root's, 0700
 python3 qt/host/rootbuild161_t.py || { echo "the root helpers are not built and installed as they must be (see above)"; exit 1; }
 sudo sh qt/host/roothelpers161_t.sh || { echo "the root helpers' test failed (see above)"; exit 1; }
+sudo env RH_CONFINE=on sh qt/host/roothelpers161_t.sh || { echo "the root helpers' test with their confinement on failed (see above)"; exit 1; }
+sudo env HAT_VIA=helper sh qt/host/homeapi_t.sh || { echo "the accounts' folders through the drives helper failed (see above)"; exit 1; }
+sudo env VN_VIA=helper sh qt/host/vaultnative60_t.sh || { echo "the encrypted folder through the drives helper failed (see above)"; exit 1; }
 W=$(realpath -m work); rm -rf "$W"; mkdir -p "$W/new"
 export SOURCE_DATE_EPOCH=1760000000
 pv() { sed -n "s/^$1 //p" "$PREV/manifest.txt"; }
@@ -165,8 +168,10 @@ mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/ru
 XREV=f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2
 XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | cut -c1-16)
 # (1.5.9: and this script itself: a program it adds to the base layer, such as iw, rebuilds the layer)
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-know.inc sys/rudolfd-dev.inc sys/rudolfd-mobile.inc sys/rudolfd-smartcard.inc sys/rudolfd-drop.inc sys/rudolfd-dlzip.inc sys/rudolfd-root.inc sys/rudolfd-boottime.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/origin.h systools/origin.sh sys/rudolf-know.c sys/rudolf-dev.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h sys/rsynth.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; echo "${GITHUB_REPOSITORY:-}"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-know.inc sys/rudolfd-dev.inc sys/rudolfd-mobile.inc sys/rudolfd-smartcard.inc sys/rudolfd-drop.inc sys/rudolfd-dlzip.inc sys/rudolfd-root.inc sys/rudolfd-roothome.inc sys/rudolfd-rootpower.inc sys/rudolfd-boottime.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-drives-home.c sys/rudolf-accounts.c sys/rudolf-power.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/origin.h systools/origin.sh sys/rudolf-know.c sys/rudolf-dev.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h sys/rsynth.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; echo "${GITHUB_REPOSITORY:-}"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
+BSRC=$( (echo "$BSRC"; cat sys/rudolf-webkey.c sys/rudolfd-webkey.inc) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the website data's key)
+BSRC=$( (echo "$BSRC"; cat sys/rudolfd-confine.inc sys/rudolf-confine.h sys/rudolfd-confine-tables.h sys/rudolfd-confine-narrow.h sys/rudolfd-confine-pure.h sys/rudolfd-winapi.h sys/rudolf-rootd-confine.h) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the confinement)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
 	B=$W/bbin; mkdir -p "$B"
@@ -175,11 +180,15 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -o "$B/rudolfd" sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
 	gcc -O2 $HARD -o "$B/rudolf-update" sys/rudolf-update.c -lcrypto -ldl
 	# 1.6.1 (docs/plan-1.6.1.md Part 11): rudolf-rootd and the root helpers (installed below: root's only, 0700)
-	RHELP="drives updates"
+	RHELP="drives updates accounts power"
+	RINNER="drives-home"   # (run by a helper only, not by rudolf-rootd: the drives helper's drives-home, drives part 2)
 	gcc -O2 $HARD -o "$B/rudolf-rootd" sys/rudolf-rootd.c
 	# (each named: the check below wants every sys/*.c in a gcc line of its own)
 	gcc -O2 $HARD -o "$B/root-drives" sys/rudolf-drives.c
 	gcc -O2 $HARD -o "$B/root-updates" sys/rudolf-updates.c
+	gcc -O2 $HARD -o "$B/root-drives-home" sys/rudolf-drives-home.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+	gcc -O2 $HARD -o "$B/root-accounts" sys/rudolf-accounts.c -Wl,-Bstatic -lz -Wl,-Bdynamic   # (1.6.1 Part 11: the accounts' Linux users)
+	gcc -O2 $HARD -o "$B/root-power" sys/rudolf-power.c   # (1.6.1 Part 11: power and the clock)
 	gcc -O2 $HARD -o "$B/rudolf-launch" sys/rudolf-launch.c
 	gcc -O2 $HARD -o "$B/rudolf-memguard" sys/rudolf-memguard.c   # 1.4.7: the memory guard
 	gcc -O2 $HARD -o "$B/rudolf-shellfix" sys/rudolf-shellfix.c   # 1.5.8: the shell put into the profile when it changed
@@ -190,6 +199,8 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -o "$B/rudolf-fscheck" sys/rudolf-fscheck.c
 	# 1.2.9: the desktop portal and the app catalogue reader for Linux apps (never rebuilt here before either)
 	gcc -O2 $HARD -o "$B/rudolf-portal" sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto
+	# 1.6.1 (docs/plan-1.6.1.md Part 20): the website data's key in the TPM, and Chromium's key store
+	gcc -O2 $HARD -o "$B/rudolf-webkey" sys/rudolf-webkey.c $(pkg-config --cflags --libs gio-2.0) -lcrypto -ldl
 	gcc -O2 $HARD -o "$B/rudolf-apps" sys/rudolf-apps.c -lz
 	# 1.6.0: xdg-open and the browser commands inside Debian (static: Debian's C library is its own), in usr/lib/rudolf
 	gcc -O2 $HARD_STATIC -o "$B/rudolf-open" sys/rudolf-open.c
@@ -201,17 +212,19 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -o "$B/rudolf-print" sys/rudolf-print.c -ldl
 	# 1.4.0: the development link
 	gcc -O2 $HARD -o "$B/rudolf-devlink" sys/rudolf-devlink.c -lcrypto -ldl
-	python3 systools/hardcheck.py "$B/rudolf-display" "$B/rudolfd" "$B/rudolf-update" "$B/rudolf-launch" "$B/rudolf-memguard" "$B/rudolf-shellfix" "$B/rudolf-remote" "$B/cdp-eval" "$B/rudolf-debian" "$B/rudolf-fscheck" "$B/rudolf-portal" "$B/rudolf-open" "$B/rudolf-apps" "$B/rpk" "$B/rudolf-ai" "$B/rudolf-know" "$B/rudolf-dev" "$B/rudolf-print" "$B/rudolf-devlink" "$B/rudolf-rootd" $(for h in $RHELP; do echo "$B/root-$h"; done) || { echo "a system program was built without the hardening flags (plan 15.5)"; exit 1; }
-	for b in rudolf-display rudolfd rudolf-update rudolf-launch rudolf-memguard rudolf-shellfix rudolf-remote cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-apps rpk rudolf-ai rudolf-know rudolf-dev rudolf-print rudolf-devlink rudolf-rootd; do
+	python3 systools/hardcheck.py "$B/rudolf-display" "$B/rudolfd" "$B/rudolf-update" "$B/rudolf-launch" "$B/rudolf-memguard" "$B/rudolf-shellfix" "$B/rudolf-remote" "$B/cdp-eval" "$B/rudolf-debian" "$B/rudolf-fscheck" "$B/rudolf-portal" "$B/rudolf-webkey" "$B/rudolf-open" "$B/rudolf-apps" "$B/rpk" "$B/rudolf-ai" "$B/rudolf-know" "$B/rudolf-dev" "$B/rudolf-print" "$B/rudolf-devlink" "$B/rudolf-rootd" $(for h in $RHELP $RINNER; do echo "$B/root-$h"; done) || { echo "a system program was built without the hardening flags (plan 15.5)"; exit 1; }
+	for b in rudolf-display rudolfd rudolf-update rudolf-launch rudolf-memguard rudolf-shellfix rudolf-remote cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-webkey rudolf-apps rpk rudolf-ai rudolf-know rudolf-dev rudolf-print rudolf-devlink rudolf-rootd; do
 		for l in $(ldd "$B/$b" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$b needs $l, which the base layer does not have"; exit 1; }; done
 		sudo install -m 0755 "$B/$b" "$W/broot/usr/bin/$b"
 	done
+	# (1.6.1: rudolf-webkey opens SQLite itself when it moves a profile's values over, so ldd does not see it)
+	[ -e "$W/broot/usr/lib/$MA/libsqlite3.so.0" ] || { echo "rudolf-webkey opens libsqlite3.so.0, which the base layer does not have"; exit 1; }
 	sudo ln -sf rudolf-dev "$W/broot/usr/bin/devlink"   # (1.6.0, plan Part 19: one Rudolf OS computer drives another's development link)
 	sudo mkdir -p "$W/broot/usr/lib/rudolf"; sudo install -m 0755 "$B/rudolf-open" "$W/broot/usr/lib/rudolf/rudolf-open"
 	# (1.6.1: the root helpers, root:root 0700 in a folder of root's; checked, as the base layer keeps owners and modes:
 	# mksquashfs -all-root makes every file root's, and keeps the modes)
 	sudo install -d -o root -g root -m 0755 "$W/broot/usr/lib/rudolf/root"
-	for h in $RHELP; do
+	for h in $RHELP $RINNER; do
 		for l in $(ldd "$B/root-$h" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "root-$h needs $l, which the base layer does not have"; exit 1; }; done
 		sudo install -o root -g root -m 0700 "$B/root-$h" "$W/broot/usr/lib/rudolf/root/$h"
 		[ "$(sudo stat -c '%u:%g %a' "$W/broot/usr/lib/rudolf/root/$h")" = "0:0 700" ] || { echo "the root helper $h is not root's 0700 in the base layer"; exit 1; }
@@ -390,7 +403,7 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	echo "::notice title=Base ABI::$ABI (system extensions for this base: release ext-$(echo "$ABI" | cut -c1-16))"
 	sudo $MK "$W/broot" "$W/new/base.sfs" $SQ; sudo chown "$(id -u)" "$W/new/base.sfs"; sudo rm -rf "$W/broot"
 	# (1.6.1: and in the layer itself, as the computer will see them)
-	for h in $RHELP; do unsquashfs -lls "$W/new/base.sfs" "usr/lib/rudolf/root/$h" 2>/dev/null | grep -qE '^-rwx------ root/root .* squashfs-root/usr/lib/rudolf/root/'"$h"'$' || { echo "the root helper $h is not root's 0700 in base.sfs"; unsquashfs -lls "$W/new/base.sfs" "usr/lib/rudolf/root/$h"; exit 1; }; done
+	for h in $RHELP $RINNER; do unsquashfs -lls "$W/new/base.sfs" "usr/lib/rudolf/root/$h" 2>/dev/null | grep -qE '^-rwx------ root/root .* squashfs-root/usr/lib/rudolf/root/'"$h"'$' || { echo "the root helper $h is not root's 0700 in base.sfs"; unsquashfs -lls "$W/new/base.sfs" "usr/lib/rudolf/root/$h"; exit 1; }; done
 	NOTES+=("system programs")
 fi
 

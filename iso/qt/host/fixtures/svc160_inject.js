@@ -11,7 +11,7 @@
 	var k = ''; try { k = new URLSearchParams(String(location.hash).slice(1)).get('app') || '' } catch (e) {}
 	var plan = function () { try { return JSON.parse(api('test/plan') || '{}') } catch (e) { return {} } };
 	var closed = {};
-	if (k == 'do-svc') SI.call(window, function () { var P = plan();
+	if (k == 'do-svc' || k == 'do-bg') SI.call(window, function () { var P = plan();
 		if (P.seed && P.id && localStorage.getItem('svct-seed') != P.id) { for (var n in P.seed) localStorage.setItem(n, P.seed[n]); localStorage.setItem('svct-seed', P.id) }
 		if (P.close && !closed[P.close] && localStorage.getItem('svct-close') != P.close) { closed[P.close] = 1; localStorage.setItem('svct-close', P.close); try { oaPost({op: 'close'}) } catch (e) {} }
 	}, 1000);

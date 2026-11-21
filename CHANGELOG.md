@@ -5,6 +5,40 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Apps that can use the system's title bar are asked to, once: the first time Rudolf OS starts Chromium, Brave, Edge, Vivaldi,
+  Chrome or ungoogled Chromium from Flathub, Debian's Chromium, VS Code or VSCodium, it turns on their "use the system title
+  bar" setting, so they get Rudolf's title bar with nothing lost. Only when you have not chosen otherwise in the app; your
+  other settings are kept.
+- Native: idle windows give their memory back. Notepad or File Explorer minimized, or hidden behind another window, for a
+  while (Settings › System › Idle windows: on by default on computers with under 6 GB of memory, after 10 minutes) is closed
+  behind the scenes and comes back where it was when you show it: its files, tabs, folder, the scroll and the window's size
+  and place. Never with unsaved changes, a dialog, sound or video playing, a call, a download or a transfer; Oracle and Linux,
+  Debian, Flatpak and Wine apps are never touched. Task Manager shows such a window as "Resting (no memory used)".
+- The desktop page is 870 KB smaller: the Quake engine and the Galaxy Map's universe are files of their own, read only when
+  Quake or the Galaxy Map opens (every window of the native desktop, and Standard's page, parsed them before). Each window
+  of the native desktop uses about 5 MB less memory.
+- Native: the shell's hidden pages are one. The desktop's service page, the portal's page (a Linux or Flatpak app's
+  questions, file dialogs and links) and the start-up page (the notice after an update) were three pages each loading the
+  whole desktop; now one page does what each did. The quick settings' switches, Do not disturb and Clear all, pinning,
+  muting from the taskbar, the desktop's menus, renaming, dropping onto the Trash, files dropped from Linux apps and the
+  start menu's search are done by that page at once, instead of a page of the whole desktop loaded for each. Less memory
+  (on the test computer 110 MB instead of 170 MB with no window open, and no 100 MB peak for each switch).
+- Security: signing in and out with your files on the disk (the encrypted folder opened with your key, your Oracle
+  folder, Linux apps' folders, your account's own Linux user's session) and opening the encrypted folder of
+  Settings › Security (and preparing the drive for it) are done by the drives helper as root, no longer
+  by rudolfd, which reads every request of the desktop: the key goes to it on a pipe, never as an argument, and the
+  account is checked again there (a removed account is refused). Nothing changes on screen.
+- Security: the accounts' own Linux users (made and removed with the accounts, written into the system's user list,
+  their folders given to them) and Settings › Privacy › Saved passwords for apps are handled by a helper of their
+  own, no longer by rudolfd; it is asked only when an account comes or goes. Nothing changes on screen.
+- Security: restart, shut down, sleep, the power settings, brightness, Task Manager's "Clear cache" and the desktop's
+  priority, and setting the clock are done by a power helper of its own, no longer by rudolfd. Nothing changes on screen.
+- Security: rudolfd can be confined (off by default until a beta has run with it: /persist/etc/rudolf-confine, or
+  rudolf.confine= at the start-up, off, log or on). All of rudolfd loses the system calls and capabilities nothing it
+  starts needs; each request that starts no program is put in a narrow confinement of its own (only rudolfd's own
+  system calls, writing only in rudolfd's folders through Landlock, which the kernel now has, fewer capabilities);
+  each of rudolf-rootd's helpers gets only its own capabilities; and the API answers each window only what its code
+  asks for (the native shell, the page). Refusals are said in System health.
 - New: a ZIP larger than 1.5 MB in Downloads (kept on the disk) opens in Archive Manager, which lists what is inside it
   (names, sizes, folders; the first 3,000 shown) without loading it, with Extract here; File Explorer's Open with offers
   Archive Manager for it too. Extract here (there, or in File Explorer) unpacks it next to the ZIP with a progress window
@@ -110,6 +144,11 @@ Summary: In progress.
   "Require a security key": then a copy of your disk opens nothing without your password and one of your keys together.
   Old security keys checked by the sign-in screen only are moved over when you add your keys again. What to do if keys
   are lost: docs/security-keys.md.
+- Security: Standard's websites (and Native's Oracle) in the shared browser profile, with "Keep my websites encrypted
+  with my account" off, are now encrypted with a key kept in the computer's security chip (TPM 2.0) and tied to its
+  Secure Boot, in place of the browser's built-in key: the drive taken out of the computer, or another system started on
+  it, cannot read the sign-ins, saved site passwords and cards. Without a TPM, as before. Turning Secure Boot off or on
+  makes a new key once: websites ask you to sign in again. Settings › Oracle › Website data says which way it is kept.
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.

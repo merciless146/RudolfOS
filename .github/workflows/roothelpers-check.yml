@@ -1,6 +1,7 @@
 # 1.6.1 (docs/plan-1.6.1.md Part 11): rudolfd's root work in helpers. The host tests (rudolf-rootd and the helpers'
 # checks, the build's owners and modes, rudolfd's API before and after) and, on the newest beta in QEMU with this
 # tree's rudolfd, rudolf-rootd and helpers put in place (iso/qt/sb/fix161.sh): the drives (r161_t.py) and t160's checks
+# (since drives part 2 also the accounts' encrypted folders and sessions: t160's sign-ins, the account's user, sign-out)
 # unchanged (t160_t.py with R161_FIX). Run by a push that changes .github/r161-run.txt (on a branch of its own: a
 # workflow only on a branch cannot be dispatched), whose line serial=SERIAL picks a release (empty: the newest beta).
 # Nothing is published.
@@ -20,7 +21,10 @@ jobs:
           sudo apt-get update -qq; sudo apt-get install -y -qq zlib1g-dev curl >/dev/null
           python3 iso/qt/host/rootbuild161_t.py
           sudo sh iso/qt/host/roothelpers161_t.sh
-          for t in peer59_t.sh deskapi59_t.sh homeapi_t.sh; do echo "== $t"; sudo sh iso/qt/host/$t || exit 1; done
+          sudo env RH_CONFINE=on sh iso/qt/host/roothelpers161_t.sh   # (Part 20: each helper confined by rudolf-rootd)
+          for t in peer59_t.sh deskapi59_t.sh homeapi_t.sh debhome_t.sh drop161_t.sh debacct59_t.sh; do echo "== $t"; sudo sh iso/qt/host/$t || exit 1; done
+          echo "== homeapi_t.sh through the drives helper (1.6.1 drives part 2)"; sudo env HAT_VIA=helper sh iso/qt/host/homeapi_t.sh
+          echo "== vaultnative60_t.sh, and through the drives helper"; sudo sh iso/qt/host/vaultnative60_t.sh && sudo env VN_VIA=helper sh iso/qt/host/vaultnative60_t.sh
           echo "== listeners59_t.sh"; sh iso/qt/host/listeners59_t.sh   # (as ci_release.sh runs it: not as root)
           FUZZ_SECONDS=60 sh iso/qt/host/fuzz59_t.sh
   qemu:
@@ -28,7 +32,7 @@ jobs:
     timeout-minutes: 150
     strategy:
       fail-fast: false
-      matrix: {test: [r161, t160]}
+      matrix: {test: [r161, t160, t150, t150base]}   # (t150: the encrypted folder of 1.5.0, set up, moved, locked, opened: drives part 2; t150base: the release as it is, for comparison)
     steps:
       - uses: actions/checkout@v5
       - name: The run's settings
@@ -57,13 +61,16 @@ jobs:
           . iso/systools/hardflags.sh; mkdir -p fix/root
           gcc -O2 $HARD -o fix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
           gcc -O2 $HARD -o fix/rudolf-rootd iso/sys/rudolf-rootd.c
-          for h in $(sed -n 's/.*HELPERS\[\] = { \(.*\), NULL };/\1/p' iso/sys/rudolf-rootd.c | tr -d '",'); do gcc -O2 $HARD -o fix/root/$h iso/sys/rudolf-$h.c; done
+          for h in $(sed -n 's/.*HELPERS\[\] = { \(.*\), NULL };/\1/p' iso/sys/rudolf-rootd.c | tr -d '",'); do gcc -O2 $HARD -o fix/root/$h iso/sys/rudolf-$h.c -Wl,-Bstatic -lz -Wl,-Bdynamic; done
+          gcc -O2 $HARD -o fix/root/drives-home iso/sys/rudolf-drives-home.c -Wl,-Bstatic -lz -Wl,-Bdynamic   # (drives part 2: run by the drives helper only)
           python3 iso/systools/hardcheck.py fix/rudolfd fix/rudolf-rootd fix/root/*; ls -laR fix
           gcc -O2 -o rudolf-update iso/sys/rudolf-update.c -lcrypto -ldl
       - name: ${{ matrix.test }}
         run: |
           mkdir -p run && cd run
           if [ "${{ matrix.test }}" = r161 ]; then sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} R161_FIX=$PWD/../fix python3 ../iso/qt/sb/r161_t.py ../rel
+          elif [ "${{ matrix.test }}" = t150base ]; then sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/t150_t.py ../rel; cp t150.txt t150base.txt
+          elif [ "${{ matrix.test }}" = t150 ]; then sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} R161_FIX=$PWD/../fix python3 ../iso/qt/sb/t150_t.py ../rel
           else sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} R161_FIX=$PWD/../fix python3 ../iso/qt/sb/t160_t.py ../rel ../rudolf-update; fi
       - if: always()
         uses: actions/upload-artifact@v4

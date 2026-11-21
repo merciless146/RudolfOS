@@ -26,6 +26,7 @@
  */
 #define _GNU_SOURCE
 #include "rudolf-root.h"
+#include "rudolf-confine.h"
 #include <errno.h>
 #include <poll.h>
 #include <signal.h>
@@ -35,10 +36,43 @@
 #include <sys/time.h>
 
 /* the helpers there are (each its own program in RR_DIR; Part 11's areas as they move) */
-static const char *const HELPERS[] = { "drives", "updates", NULL };
+static const char *const HELPERS[] = { "drives", "updates", "accounts", "power", NULL };
 static char prog_exe[PATH_MAX];
 static pid_t prog_pid;
 
+/* 1.6.1 (docs/plan-1.6.1.md Part 20): each helper narrower than rudolfd, behind the same switch as rudolfd's
+   confinement (rudolfd-confine.inc: the build's RUDOLFD_CONFINE, /persist/etc/rudolf-confine, rudolf.confine=; read
+   once at rudolf-rootd's start). Put on in the helper's own process just before it starts, so it holds for the helper
+   and every script it runs, and for nothing else:
+     - the capabilities it needs and no others (bounding, effective, permitted, inheritable: the scripts it runs as
+       root get no more);
+     - a deny list of system calls, rudolfd's own (CF_HELPER_DENY: kexec, BPF, performance counters, file handles by
+       number, raw I/O ports, process accounting, quotas, another process's memory) and, for every helper, what no
+       helper does: tracing another process, loading or removing kernel modules, restarting, setting the clock,
+       swap.
+   No Landlock: both helpers mount (the drives; rudolf-update a release's layer, to read its keys), which a Landlock
+   domain refuses. In "log" mode the calls are logged, not refused, and the capabilities are kept. */
+#ifndef RUDOLFD_CONFINE
+#define RUDOLFD_CONFINE "off"
+#endif
+#include "rudolf-rootd-confine.h"   /* HELPER_CAPS, CF_HELPER_DENY */
+static int confine_m = CF_OFF;
+/* in the helper's process, before its exec: 0, or -1 when "on" could not be put on (the helper is then not started) */
+static int helper_confine(const char *name)
+{
+	if (confine_m == CF_OFF) return 0;
+	uint64_t keep = 0; int known = 0;
+	for (int i = 0; HELPER_CAPS[i].name; i++) if (!strcmp(HELPER_CAPS[i].name, name)) { keep = HELPER_CAPS[i].keep; known = 1; }
+	if (!known) return confine_m == CF_ON ? -1 : 0;   /* (a helper without its line here is never run unconfined with "on") */
+	if (confine_m == CF_ON && cf_caps(keep)) return -1;
+	/* (1.6.1 Part 11: a helper that keeps no CAP_SYS_ADMIN may put a filter on only with no_new_privs, which it then
+	   gets: it gains nothing by running a set-user-ID program either, as root; su to an account's user still works) */
+	if (!(keep & CB(CAP_SYS_ADMIN)) && prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) && confine_m == CF_ON) return -1;
+	/* (1.6.1 Part 11: what HELPER_ALLOW lets this helper make taken out of the list) */
+	int deny[sizeof CF_HELPER_DENY / sizeof CF_HELPER_DENY[0]], n = 0;
+	for (int i = 0; CF_HELPER_DENY[i] >= 0; i++) { int ok = 0; for (int k = 0; HELPER_ALLOW[k].name; k++) if (HELPER_ALLOW[k].nr == CF_HELPER_DENY[i] && !strcmp(HELPER_ALLOW[k].name, name)) ok = 1; if (!ok) deny[n++] = CF_HELPER_DENY[i]; }
+	return cf_seccomp(deny, n, NULL, 0, 0, confine_m) && confine_m == CF_ON ? -1 : 0;
+}
 static int helper_known(const char *n) { for (int i = 0; HELPERS[i]; i++) if (!strcmp(n, HELPERS[i])) return 1; return 0; }
 static void close_from(int lo)
 {
@@ -91,6 +125,7 @@ static void serve(int ch)
 		for (int s = 1; s < 32; s++) if (s != SIGKILL && s != SIGSTOP) signal(s, SIG_DFL);
 		umask(022); if (chdir("/")) _exit(RR_NOSTART);
 		char *env[] = { RR_PATH, "RUDOLF_ROOT_HELPER=1", NULL };
+		if (helper_confine(argv[0])) _exit(RR_NOSTART);   /* (1.6.1 Part 20) */
 		execve(path, argv, env); _exit(RR_NOSTART);
 	}
 	for (int i = 0; i < 3; i++) close(fds[i]);
@@ -109,6 +144,7 @@ int main(int argc, char **argv)
 	if (argc < 2 || argv[1][0] != '/') { fprintf(stderr, "usage: rudolf-rootd /PATH/TO/PROGRAM [ARG...]\n"); return 2; }
 	if (!realpath(argv[1], prog_exe)) { fprintf(stderr, "rudolf-rootd: %s: %s\n", argv[1], strerror(errno)); return 127; }
 	signal(SIGPIPE, SIG_IGN);
+	confine_m = cf_mode_read(RUDOLFD_CONFINE, rr_env("RR_TEST_CONFINE_FILE", "/persist/etc/rudolf-confine"));   /* (1.6.1 Part 20) */
 	int sv[2]; if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sv)) { perror("rudolf-rootd: socketpair"); return 1; }
 	prog_pid = fork();
 	if (prog_pid < 0) { perror("rudolf-rootd: fork"); return 1; }

@@ -2,7 +2,7 @@
 
 Asked for on 2026-11-15: "What items have been pushed beyond 1.6.0? Can they all be added to a plan for 1.6.1?" This
 plan gathers every item that docs/plan-1.6.0.md moved past 1.6.0, with where it came from, and (Parts 18 to 21, 2026-11-20)
-what was found since and not yet in a plan. Nothing here is built yet.
+what was found since and not yet in a plan. What waits on the owner's own hardware moved to docs/plan-1.6.2.md on 2026-11-21.
 The owner's rule for the native desktop holds for every part: "Rudolf OS on the native desktop should appear and
 function exactly as it does in Chromium mode."
 
@@ -56,119 +56,19 @@ Desktop engine as a compatibility option, "to be worked on and refined later". L
 - the dynamic backgrounds' moving parts.
 
 ### 4. The first phone, stage 1: the hardware (from 1.6.0 "Not in 1.6.0", and docs/plan-1.5.8.md 8.3)
-The phone's hardware made to work, on today's native desktop; its interface is 2.0's (stage 2).
-- **One well-supported phone first:** a used PinePhone Pro (discontinued in August 2025, but its hardware is the best
-  supported by mainline Linux and its modem, the Quectel EG25-G, has working VoLTE: Part 7), with the OnePlus 6/6T
-  after it (its VoLTE does not work yet in postmarketOS). Bought and chosen by the owner.
-- **Starting:** the ARM64 release from 1.6.0's cellular and ARM64 plan (stage A in QEMU, stage B's first ARM64
-  computer), on the phone through its UEFI-capable boot firmware (Tow-Boot or U-Boot with UEFI on the PinePhone Pro),
-  so it starts as Rudolf OS starts on a computer: the boot menu, Secure Boot where the firmware allows, recovery. The
-  kernel: Rudolf's own build with the phone's drivers (the device tree and options postmarketOS and mainline Linux use
-  for it, written into kconfig-arm64.sh), never a vendor kernel.
-- **The modem:** mobile data, texts and picture messages (1.6.0's Messages), **voice calls** (a call each way, hold,
-  two calls, DTMF tones for menus), and **emergency calls**, which must be checked on each device and carrier before
-  they are offered (Part 7 says how). A minimal call screen in today's desktop (answer, end, mute, speaker, keypad),
-  enough to prove calls; the phone's real dialler is stage 2's.
-- **The call's sound:** the earpiece, the speaker and a headset, with the modem's audio routed (ALSA UCM for the
-  phone's sound card), the microphone, no echo.
-- **Power:** sleep with the modem waking the phone for a call or a text (and the alarm clock), the battery's level,
-  charging and the charger's limit, the screen's brightness, the power key.
-- **The rest of the hardware, at driver level:** the touch screen, Wi-Fi, Bluetooth, the cameras detected by
-  libcamera, the sensors (accelerometer, proximity, light) and GPS readable, vibration. Their apps and behaviour
-  (auto-rotation, the screen off at the ear, a Camera app) are stage 2's.
-- **Today's desktop on a phone screen:** Native on X11, scaled for the screen, the on-screen keyboard (1.6.0's), touch
-  mode: usable for testing, not meant to be a phone's interface.
-- **Done when:** the phone starts Rudolf OS from its storage, makes and takes a call on a T-Mobile-network SIM, sends
-  and receives texts, sleeps and wakes for a call, and its standby battery drain is measured (Part 6), all written in
-  docs/testing.md.
-- **On 1.6's kernel and X11 (2026-11-20):** stage 1 is built on 1.6.x (the 6.18 LTS, X11, ARM64); the phone's own build
-  and interface move to 2.0's "next" channel (the newest kernel, Wayland). A phone with 8 GB for the full desktop and
-  Wayland testing: the OnePlus 6T (8 GB), Snapdragon 845 as the OnePlus 6, started through U-Boot's UEFI from its boot
-  partition; its VoLTE (needed for calls on T-Mobile) does not work yet, so the PinePhone Pro stays the phone for calls.
-  The Fairphone 5 (8 GB) to watch as its mainline support matures. Phones running on Android's drivers (Furi Labs FLX1s+,
-  Volla Phone Quintus) do not fit "never a vendor kernel".
-- Nothing on a phone is flashed or unlocked without the owner's decision.
+**Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
 ### 5. eSIM and 5G (from 1.6.0 "Not in 1.6.0")
-- eSIM provisioning (downloading a carrier's eSIM profile);
-- 5G standalone features beyond what the modem does by itself.
-
-1.6.0 left these without a release; they are here so they are not lost. They need hardware with an eSIM and a 5G
-modem.
+**Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
 ### 6. Closing the gap with Android (added on 2026-11-15)
-Asked for on 2026-11-15, after comparing 1.6.1 with Android: the items that decide whether someone could carry a
-Rudolf phone every day. Each is measured on the first phone (Part 4) and compared with the same phone on Android
-where it can be. **Split (owner, 2026-11-15):** 1.6.1 does what the hardware decides (marked *1.6.1* below: the
-measurements, calls with the carrier, the modem's sleep); the parts people use every day are 2.0's phone build
-(marked *2.0*), since they are built on Wayland and the native apps.
-- *2.0, measured in 1.6.1.* **Android apps through Waydroid, made dependable:** set up from Settings, apps from F-Droid and an app store the
-  owner chooses, their windows and notifications in Rudolf's own; a list of apps that work and that refuse (banking
-  apps that check the device), kept in the docs. Measured on the Vivobook first (docs/plan-1.6.0.md: "Waydroid
-  measured on the Vivobook with Lite before it is offered").
-- *1.6.1 measured and the modem's sleep; the rest 2.0.* **Battery life:** the phone's idle and screen-on drain measured, then: the modem, Wi-Fi and the screen put to sleep
-  when not needed, suspend with the modem waking it for a call or a text, apps in the background held back as
-  Android's Doze does; targets set from the measurements, shown in Settings › Battery.
-- *1.6.1.* **Calls with the carrier:** voice calls over 4G (VoLTE) where the modem and carrier allow, Wi-Fi calling if the
-  carrier offers it, a call to a real phone and an emergency-call check on each device (Part 4), the call's sound
-  through the earpiece, speaker and a headset.
-- *2.0 (the cameras detected in 1.6.1).* **The camera:** photos and video with the phone's cameras (libcamera), in a Camera app; quality compared with
-  Android's on the same phone.
-- *2.0 (readable in 1.6.1).* **The phone's sensors and hardware:** auto-rotation, proximity (the screen off at the ear), brightness, GPS for maps
-  and weather, the fingerprint reader where the phone has one, vibration.
-- *2.0.* **Messaging apps people need:** what works through Waydroid or the web (Signal, WhatsApp Web), and what does not,
-  said plainly in the docs.
-- **Tests:** each measured and written in docs/testing.md; the battery and call results on the owner's phone and
-  carrier.
+**Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
 ### 7. T-Mobile and the prepaid services on its network (added on 2026-11-15)
-Asked for on 2026-11-15: "Plan for T-Mobile and adjacent prepaid service coverage in 1.6.1." The US has no 3G left,
-so calls need VoLTE, and carriers decide which phones get it. T-Mobile's network is the friendliest to Linux phones
-(reports in the Pine64 wiki's carrier list and forum, 2020 to 2024); AT&T and Verizon are later.
-- **The carriers covered:** T-Mobile (postpaid and prepaid), Mint Mobile, Tello, US Mobile on its T-Mobile network,
-  Simple Mobile, Metro by T-Mobile, Ultra Mobile and Google Fi (data and calls; Fi's first activation needs an
-  Android phone and its picture messages do not work: said in Settings). The list is checked again before work
-  starts, since prepaid brands change networks.
-- **The first phone: the PinePhone Pro** (Part 4). Its modem (Quectel EG25-G) has working VoLTE; the OnePlus 6's VoLTE
-  does not work yet in postmarketOS (pmaports issue 1878), so it waits.
-- **Set up by itself:** Settings › Mobile network recognises the carrier from the SIM (its MCC/MNC and its name) and
-  fills in the APN exactly, letters' case included (US Mobile's "PWG" failed in lowercase on a PinePhone Pro; Simple
-  Mobile's is "Simple"), with the picture messages' settings (MMSC, proxy). The APNs come from the operators'
-  database 1.6.0 already ships, with Rudolf's own corrections for these carriers kept beside it.
-- **VoLTE turned on:** the modem's IMS/VoLTE set up for T-Mobile (its carrier profile on the EG25-G), checked after
-  every start and after a SIM change; Settings says whether calls go over 4G.
-- **Wi-Fi calling** where T-Mobile offers it on the phone (VoWiFi through the modem's IMS), else said plainly.
-- **Texts and picture messages:** SMS (1.6.0 Part 6) and MMS through the APN's MMSC, in the Messages app.
-- **Activation help:** what each carrier needs (activate online, the phone's IMEI given to the carrier, support asked
-  to turn VoLTE on for the line), written in the docs and linked from Settings when the SIM has no service.
-- **5G:** not on the PinePhone Pro (an LTE modem). T-Mobile's 5G is tested later with a 5G modem card in a laptop
-  (Part 5).
-- **Tests:** a prepaid Mint or Tello SIM first (cheap, no contract), then T-Mobile itself: data, a call each way, a
-  call to and from a landline, an emergency-call check as Part 4 says, texts and picture messages each way,
-  Wi-Fi calling, roaming off, the APN filled in from a fresh SIM, and a call during a weak signal. Results in
-  docs/testing.md, with the carrier and date. A host test of the APN table (each carrier's MCC/MNC and name gives the
-  right APN, case kept).
-- **Later:** AT&T's network (stricter about devices), then Verizon (approved phones only).
+**Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
 ### 8. Mobile data and the SIM on real hardware (moved from 1.6.0 on 2026-11-16)
-Decided by the owner on 2026-11-16: "For now, move the mobile/SIM testing to 1.6.1." 1.6.0 ships the cellular work
-proven without hardware (its stage A: ModemManager, Settings › Mobile network, the connection and failover, data and
-the monthly limit, the taskbar's signal, Messages, all with host, browser and QEMU tests against a stand-in modem);
-what needs a real modem and SIM is checked here, before 1.6.1's phone work relies on it. From docs/plan-1.6.0.md's
-stage B (items 1 to 3) and its release checks:
-- **The MiFi 7730L** with an active SIM (the owner's choice; the HP desktop user's USB stick only if it is lent again):
-  found in Settings › Network › Cellular modems (maker, model, SIM, operator), no "Invalid rule match" in
-  /run/rudolf/modem.log, the self-test's modem line; the SIM's PIN (never the PUK on a SIM someone needs); the APN filled
-  in (a prepaid T-Mobile-network SIM, Part 7); connected; Wi-Fi failover and back; IPv4 sites on an IPv6-only network
-  (the CLAT); data counted against the operator's own count; the 80 % notice and data off at 100 %; an update offered
-  on mobile data with its size; the bars and type against the device's own; the SIM taken out while running; unplugged
-  and plugged in again; sleep and wake (after 1.6.0's sleep fix for the Vivobook, CONFIG_AMD_PMC).
-- **Messages** to and from a real phone (Unicode, a long one, the delivery report), a sign-in code, the notice with
-  the desktop locked, kept across a restart and in the encrypted folder.
-- **Share this connection** with the MiFi's USB tethering as the uplink (1.5.9 Part 4, waiting since then for a data
-  plan).
-- **The FCC-unlock path** on a laptop with a WWAN card (a used ThinkPad with a Fibocom L850-GL or Quectel EM05-G).
-- Each checked on Standard and Native (the owner's rule), results in docs/testing.md with the carrier and date.
+**Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
 ### 9. USB printers and the first ARM64 release (moved from 1.6.0 on 2026-11-16)
 Decided by the owner on 2026-11-16: "USB printers and ARM64 can be delayed until 1.6.1."
@@ -180,10 +80,7 @@ self-test's usb-printer line, /run/rudolf/usbprint.log in a system report) and t
   PostScript, as the first signed system extension (`usbprint`, Part 13 of 1.6.0); extensions.yml's first run to
   publish it for the release's base ABI; Settings › Devices; then the HP desktop user's printer. 1.6.0 prints to network
   printers (IPP Everywhere, AirPrint) and to PDF.
-- **ARM64 (1.6.0 Part 7 and its stage B item 4):** the first ARM64 release, after one ARM64 computer that starts with
-  UEFI (or the first phone, Part 4: the PinePhone Pro through Tow-Boot), its own update lists (beta/arm64/,
-  stable/arm64/), the update and recovery checks on it.
-
+- **ARM64:** Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").
 ### 10. Oracle: find, closed tabs, reader mode and blocking (added on 2026-11-16)
 docs/plan-oracle.md, asked for by the owner on 2026-11-16. Suggested for 1.6.1: item 1 (find in page), item 2 (reopen a
 closed tab, restore the session) and item 7 (reader mode); item 5 (ad and tracker blocking) here or in 2.0. Item 4
@@ -257,19 +154,19 @@ rudolfd runs as root today (they keep running as root, from the helper).
 | Drives | eject (POST eject) | devplug eject: every partition unmounted, /sys/block/DEV/device/delete | **drives** (moved) |
 | Drives | stick/info | mkstick.sh --info: the stick's partitions mounted read-only for a moment | **drives** (moved) |
 | Drives | install, install bootonly=1, bootfiles, mkstick, keepfiles (jobs) | install.sh, bootfiles.sh write/stage, mkstick.sh, keepfiles.sh: whole disks partitioned and written, loop mounts, RUDOLFDATA made | **drives** (moved) |
-| Drives | `home_unlock`, `home_lock`, `home_key_*`, `home_policy_id` (sign-in's home/unlock, home/lock, desktop.inc) | fscrypt: FS_IOC_ADD/REMOVE_ENCRYPTION_KEY, SET_ENCRYPTION_POLICY on /persist/accounts/ID, the folder made and given to the account's user | drives (next) |
-| Drives | `home_bind`, `home_unbind`, `home_debian_rebind` | bind mounts of the account's folders over /home/rudolf/…; rudolf-debian rebind | drives (next) |
-| Drives | `dl_store_bind`, `dl_store_dirs`, `dl_acct_dir`, `dl_home_boot` | bind mount of the downloads' store; chown of its folders to 1000 | drives (next) |
-| Drives | the vault: `vault_add_key`, `vault_key_spec_remove`, `vault_feature` (POST vault/*), vault-move (job), the Flatpak bind at unlock | fscrypt on the encrypted folder (1.5.0), tune2fs -l, mount --bind of /var/lib/flatpak, vault-move | drives (next) |
+| Drives | `home_unlock`, `home_lock`, `home_key_*`, `home_policy_id` (sign-in's home/unlock, home/lock, desktop.inc) | fscrypt: FS_IOC_ADD/REMOVE_ENCRYPTION_KEY, SET_ENCRYPTION_POLICY on /persist/accounts/ID, the folder made and given to the account's user | **drives** (moved, part 2: with Oracle's /persist/oracle/ID) |
+| Drives | `home_bind`, `home_unbind`, `home_debian_rebind` | bind mounts of the account's folders over /home/rudolf/…; rudolf-debian rebind | **drives** (moved, part 2) |
+| Drives | `dl_store_bind`, `dl_store_dirs`, `dl_acct_dir`, `dl_home_boot` | bind mount of the downloads' store; chown of its folders to 1000 | **drives** (moved, part 2: dl_store_bind, dl_store_dirs, dl_store_tidy, dl_home_boot's binds); dl_acct_dir next |
+| Drives | the vault: `vault_add_key`, `vault_key_spec_remove`, `vault_feature` (POST vault/*), vault-move (job), the Flatpak bind at unlock | fscrypt on the encrypted folder (1.5.0), tune2fs -l, mount --bind of /var/lib/flatpak, vault-move | **drives** (moved, part 2; vault.json: the drop) |
 | Drives | `addpart` (rudolfd --addpart, run by the scripts) | BLKPG ioctl on a disk | stays (a separate run by root scripts, not a request) |
 | Drives | `api_disks`, `api_storage` (storage-measure) | blkid of every disk (needs read access to /dev), du of the whole system | drives (read-only actions) |
 | Updates | sys/check, sys/download, sys/tostable, sys/return (jobs) | rudolf-update: slots on RUDOLFDATA, the manifest's signature, the ESP | **updates** (moved) |
 | Updates | sys/rollback, sys/set, sys/beta, sys/developer, sys/stable, sys/status, speedtest, boot-ok (at the desktop's first heartbeat) | rudolf-update's state in /persist/os, its settings in /persist/etc | **updates** (moved) |
 | Updates | the desktop's page update (POST update, POST rollback: /persist/os/new, current, previous) | files of root's on RUDOLFDATA | **updates** (moved) |
 | Updates | bootmenu, secureboot (`efivar_write`, `unimmutable`, `boot_entry_ensure`), MokNew/MokAuth | EFI variables (/sys/firmware/efi/efivars: chattr -i, writes) | updates (the boot entries, next) |
-| Accounts | `au_start`, `au_install`, `au_sync`, `au_migrate`, `au_mv_one` | /etc/passwd, group, shadow written (the per-account Linux users of 1.5.9 15.3 / 1.6.0 Part 10), lchown of the moved folders | accounts |
-| Accounts | `au_session_start`, `au_session_stop`, `au_kill_user`, `au_xaccess` | /home/acctUID bind mount, /run/user/UID made and chowned, the session D-Bus and portal started as the account's user (setuid), its processes killed, X's localuser access | accounts |
-| Accounts | `api_keyring` (keyring/*) | /usr/lib/rudolf/keyring as root for the account's key files | accounts |
+| Accounts | `au_start`, `au_install`, `au_sync`, `au_migrate`, `au_mv_one` | /etc/passwd, group, shadow written (the per-account Linux users of 1.5.9 15.3 / 1.6.0 Part 10), lchown of the moved folders | **accounts** (moved) |
+| Accounts | `au_session_start`, `au_session_stop`, `au_kill_user`, `au_xaccess` | /home/acctUID bind mount, /run/user/UID made and chowned, the session D-Bus and portal started as the account's user (setuid), its processes killed, X's localuser access | **drives** (moved with the sign-in's chain, part 2); au_kill_user for a removed account (au_sync): **accounts** (moved) |
+| Accounts | `api_keyring` (keyring/*) | /usr/lib/rudolf/keyring as root for the account's key files | **accounts** (moved: keyring/list and keyring/forget's su) |
 | Accounts | home/* (the files API: tree, list, read, write, rename, copy, delete, recovered) | reads and writes inside /persist/accounts/ID, which is the account's user's, 0700 (root's DAC override) | accounts: a file service run as the account's own user (not root), 11.2 |
 | Accounts | desk_* (desktop.inc: the page's storage, dwp_ensure, dput) | chown of the desktop's folders to desk_uid | none needed after the drop (rudolfd is that user) |
 | Power | power (POST power: poweroff, reboot), `sleep_now`, `api_sleep` | reboot(2), /usr/lib/rudolf/shutdown, pkill of Chromium, umount -a -r, /sys/power/state, /sys/class/rtc/rtc0/wakealarm | power |
@@ -383,203 +280,96 @@ rudolfd runs as root today (they keep running as root, from the helper).
   (any holder of the token can replace the desktop's page until a restart) and Developer mode and Return to official
   are asked an administrator's password by the page only, not by rudolfd: for the owner (the accounts step can move the
   administrator's check into the helpers, the password on standard input).
-- Next: drives, part 2 with the accounts' sessions (the encrypted folders' unlock and lock, the binds,
-  the downloads' store, the vault: at sign-in home_unlock, home_bind, dl_store_bind and au_session_start are one chain,
-  so they move as one helper action, "drives home-unlock ACCT [session]", the account checked against the account list
-  and its key on standard input, never an argument; sign-out the same with home-lock); accounts; power; network;
-  packages; display; other; then the drop.
+- **Drives, part 2: the accounts' folders and sessions (2026-11-21, branch root-helpers-home):** the sign-in's chain as
+  drives helper actions: `drives home-unlock ACCT 0|1 UID` (the key on standard input, 128 hex digits, never an
+  argument; 1: with the session), `home-lock ACCT`, `home-bind ACCT UID` (rudolfd started again in a session),
+  `home-store` (the downloads' store at start). The drives helper checks the account (letters, digits and "-", at most
+  64; the guest and the shared folder 400 "bad account" as before; an account the account list says was removed
+  refused) and UID (1000 or that account's own uid from the list: the owner of what the sign-in makes outside the new
+  folder, which 1.6.0 took from the request: the account's user for the page's home/unlock, the desktop's for the
+  native sign-in), then runs /usr/lib/rudolf/root/drives-home (root's 0700; not one of rudolf-rootd's helpers, so it
+  refuses the name): rudolfd's own functions for this (home_unlock, home_lock, home_bind, dl_store_bind and what they
+  call: the key and policy, Oracle's /persist/oracle/ID of 1.6.0 Part 22 under the same key, the binds, the downloads'
+  store and its tidying, au_session_start and au_session_stop with the D-Bus, the portal, the keyring and the
+  display's access) built from rudolfd.c as a program of their own (iso/sys/rudolf-drives-home.c, main renamed as the
+  host tests do), so they do line for line what rudolfd did as root; nothing in it reads a request of the page. rudolfd
+  asks it from home_unlock, home_lock, home_bind and dl_store_bind (rudolfd-roothome.inc, one line in each), so the
+  page's home/unlock and home/lock, the native sign-in and sign-out and rudolfd's start go through it; without
+  drives-home (rudolfd built for the host tests) and as root, rudolfd does it itself as before. Part 20 (rudolfd
+  confined, branch rudolfd-confine): drives-home runs inside the drives helper's process (exec), so it gets the drives
+  helper's capabilities and system-call list; what it needs (CAP_SYS_ADMIN for the mounts and the key, CAP_CHOWN,
+  CAP_SETUID/SETGID for su, CAP_KILL for sign-out, CAP_DAC_OVERRIDE) is in that list already.
+  Found and kept as they were: the folders made at sign-in outside the account's folder (the binds' mount points in
+  /home/rudolf, the downloads moved into its Downloads) are the account's user's after the page's home/unlock and the
+  desktop's user's after the native sign-in (home_uid differs between the two requests); an account that is not in
+  the account list at all (no Linux user yet) is still opened, its folder the desktop's user's; for the owner.
+  Changed (the one difference): an account the list says was removed is refused at the drives helper, where rudolfd
+  alone made it a new folder. Tests: roothelpers161_t.sh H1-H7, 14b, 22, 23 (49 checks: the arguments, the key on
+  standard input only, removed accounts, drives-home refused by name by rudolf-rootd, and the whole chain on an
+  encrypted ext4 with the accounts' users in a copy of /etc: the same answers and the same state through the helper,
+  with and without rudolf-rootd, as rudolfd doing it itself); homeapi_t.sh with HAT_VIA=helper (its 69 checks through
+  the helper, and 2 more); in QEMU t160_t.py with R161_FIX (roothelpers-check.yml).
+  The vault (1.5.0's encrypted folder) with it: `drives vault-unlock` (its key on standard input: vault_add_key, from
+  POST vault/unlock and the native sign-in; with the Flatpak bind and the downloads' store again), `vault-feature`
+  (tune2fs -l of the drive: GET vault, GET home), `vault-prepare` (tune2fs -O encrypt at setup, its output in
+  RUN/vault.err as before; now said in the health log, Disk), `vault-move` (the job); vaultnative60_t.sh with
+  VN_VIA=helper. Not moved yet: vault/setup's and vault/store's vault.json in /persist/etc (rudolfd's own files: the
+  drop's step), dl_acct_dir's chown of the downloads' folders.
+- **Accounts (2026-11-21, branch root-helpers-accounts, after root-helpers-home):** the accounts helper
+  (iso/sys/rudolf-accounts.c, /usr/lib/rudolf/root/accounts, in rudolf-rootd's list): `accounts sync` (after each save
+  of the page's storage: a Linux user made for a new account, the user of one that is gone stopped and removed, its
+  uid never given again, its Oracle folder deleted), `accounts start` (rudolfd's start: that, every user into /etc, the
+  move of existing accounts' folders), `accounts keyring-list`, `keyring-forget ID` (Settings › Privacy › Saved
+  passwords for apps, as the signed-in account's user). Like drives-home, rudolfd's own functions built as a program
+  of their own (au_sync's work split out as au_sync_ids, au_start's as au_start_users: the same lines). rudolfd reads
+  the page's accounts from the page's storage, as before (the helper never parses it) and hands their ids on standard
+  input, one a line; the helper checks each again (as au_sync did: letters, digits and "-", not the guest, not
+  "shared"; at most 256, no line over 80) and takes the uids and who is removed from the account list. rudolfd asks it
+  only when an account came or went (au_sync_needed reads the account list, which anyone may: the same test au_sync
+  made), not at every save. The keyring's account is the one signed in (RUN/home-session and the list), never one the
+  caller names; ID checked as rudolfd checks it. Part 20 (merged, #534): the accounts helper's line in
+  rudolf-rootd-confine.h's HELPER_CAPS: CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH, CAP_FOWNER, CAP_KILL,
+  CAP_SETUID, CAP_SETGID, and the helpers' deny list; rudolf-rootd sets no_new_privs on a helper that keeps no
+  CAP_SYS_ADMIN, which a seccomp filter needs without it (found by roothelpers161_t.sh with RH_CONFINE=on, now run by
+  ci_release.sh and the check: the accounts helper did not start, 253). Should it ever not start, rudolfd does the work
+  itself as before (said in its log), so nothing breaks. Found and kept as they were: which accounts exist
+  is still rudolfd's word (the page's storage is the only list of them), so a rudolfd that is not what it should be
+  could have an account's user removed and its Oracle folder deleted (its home folder stays, encrypted): for the
+  owner, with the drop (a signed list from the page, or the removal asked with the account's key). Tests:
+  users59_t.sh with US_VIA=helper (its 29 checks through the helper, and 2 more); roothelpers161_t.sh A1, 14c and its
+  API check 22 (the users written at start, the keyring's answer, the same through the helper as without).
+  Not moved: the administrator's check (left as it is: the page asks the password for Developer mode and Return to
+  official; moving it into the helpers would change who asks, for the owner to decide); the home/* files API (the file
+  service run as the account's user: needed only for the drop).
+- **Power (2026-11-21, branch root-helpers-power, after root-helpers-accounts):** the power helper (iso/sys/rudolf-power.c,
+  /usr/lib/rudolf/root/power, a small program of its own): restart and shut down (`power off|reboot [T]`: the shutdown
+  script with the desktop's times, its output in shutdown.out, then as before 1.4.5: Chromium stopped, sync, umount -a
+  -r, reboot(2)), `wakealarm N` (1-60), `sleep` (/sys/power/state; the kernel's refusal said back for sleep.json),
+  `status`, `set KEY=VALUE...` (lower-case letters, digits, "_" and "=", at most 30), `apply` (at start),
+  `brightness-step up|down` (hotkey), `backlight VALUE` (0 to max_brightness of the backlight rudolfd also finds: an
+  intel or amdgpu one first), `dropcache`, `priority on|off`, `clock-set MS`, `clock-sync` (BusyBox ntpd, pool.ntp.org
+  then time.google.com, the hardware clock, RUN/time-sync as before). The commands it runs are looked for in the
+  system's folders only, with no environment but PATH. rudolfd keeps each old line beside the call for when the helper
+  does not start (rudolfd-rootpower.inc, -2): restart and shut down always work. Part 20 (merged, #534): the power
+  helper's line in HELPER_CAPS (CAP_SYS_BOOT, CAP_SYS_TIME, CAP_SYS_ADMIN for umount -a -r and /sys, CAP_DAC_OVERRIDE,
+  CAP_KILL, CAP_WAKE_ALARM) and HELPER_ALLOW, the calls of the helpers' deny list it may still make (reboot,
+  settimeofday, clock_settime, clock_adjtime, adjtimex); rudolf-rootd now sets no_new_privs on a helper that keeps no
+  CAP_SYS_ADMIN (the accounts helper), which a seccomp filter needs without it (found by roothelpers161_t.sh with
+  RH_CONFINE=on: the accounts helper did not start, 253); ci_release.sh and the check run that test with the
+  confinement on too. memory/dropcache is narrow only with rudolf-rootd now (confinepure.py). Found and kept as they were:
+  POST time takes any epoch rudolfd's atoll reads (garbage set the clock to 1970); through the helper only digits are
+  taken, so a malformed epoch is now 500 "could not set the clock" (the page sends Date.now()); POST power/set with
+  more than 30 settings, or a setting with an empty part between two "&", now answers 500 instead of the script's 400
+  (the page sends a few). Tests: roothelpers161_t.sh P1-P5 (the arguments, stand-ins for every script and command, so
+  a host test never restarts the computer or sets its clock) and check 24 (the API through the helper, with and without
+  rudolf-rootd; rudolfd built there so that it could not restart or set the clock even if it did the work itself).
+  In QEMU (roothelpers-check.yml, run 44874168648): r161_t.py 22/22 with its new 16-21 (the settings, the desktop's
+  priority, the cache, the clock set and back, the helper never skipped, a restart through the API that comes back),
+  t160_t.py 31/31, t150_t.py 18/18. Sleep, brightness and shut down: for the owner on the Vivobook.
+- Next: network; packages; display; other; then the drop (with the accounts' file service of 11.2).
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
-The kernel already has zram (zstd), MGLRU, PSI, schedutil and the AMD and Intel P-state drivers (iso/kconfig.sh).
-What is left is measured, not guessed: each change kept only if the numbers say so.
-- **Responsiveness:** PREEMPT_DYNAMIC with `preempt=full` against the current default; HZ 1000 against 250; measured
-  as the desktop's input lag (the page's lag meter, rudolf-native's frame times) while a build or a game loads the CPU.
-- **AMD power:** `amd_pstate=active` with an energy-performance preference (balance_performance on mains,
-  balance_power on battery), set by the power settings; measured as battery drain at idle and with a video.
-- **Start-up time:** what loads before "the desktop was ready" (built-in drivers that could be modules, the initramfs's
-  size, waits in rudolf-init); the health log's timings (1.6.0, #425) are the measure. The Vivobook takes 27 to 37 s.
-- **Memory:** vm.swappiness and zram's size with Oracle, a game and a call at once on 3.3 GB.
-- **How:** QEMU first for what QEMU can show (start-up, memory), a test kernel built with each choice; the Vivobook last,
-  by the owner (battery and real input lag), with a short checklist of numbers to note on each kernel.
-- **One kernel for every computer, so a second machine (owner, 2026-11-16):** Rudolf OS ships one x86-64 kernel, so a
-  change tuned on the Vivobook must not make another PC slower or stop it starting. Every change is also checked on the
-  owner's **Asus desktop** (RuckXTrauma), running Rudolf OS live from a USB stick (never installed there, nothing on its
-  disk changed): kept only if it helps on at least one machine and hurts on neither. Its specifications go here from
-  its System report: CPU and cores ___, memory ___, graphics ___, storage ___. On it, power is measured as
-  responsiveness and temperatures or fan noise (no battery). Start-up is also checked in QEMU on several kinds of
-  virtual hardware (q35 and i440fx; AHCI, NVMe, virtio-blk, USB storage; BIOS and UEFI): anything a computer needs to
-  reach its root file system stays built in.
-- **First, before any tuning is merged: the kernel's required features checked at build time (owner, 2026-11-16).**
-  Tuning must never remove a feature programs depend on. iso/kconfig.sh already stops the build when some groups are
-  missing (the memory options, sound, games, Thunderbolt); it is widened to every feature Rudolf OS's programs and
-  security rely on, each listed with who needs it, so a tuning change that drops one fails the build instead of
-  reaching a computer:
-  - **Flatpak and bubblewrap:** user, PID, network, mount and IPC namespaces; seccomp and its filters; overlayfs;
-    FUSE (the document portal).
-  - **The Debian container and Wine:** namespaces, cgroups v2 and its controllers (cpu, memory, io, pids), binfmt_misc,
-    32-bit programs (IA32_EMULATION) for Wine and Steam.
-  - **The desktop and its sandboxes:** cgroups for the desktop's memory group (rudolfd's peer check), inotify, epoll,
-    eventfd, signalfd, timerfd, memfd, the X server's needs (DRM, KMS, DRI3's file passing), uinput, evdev.
-  - **Security:** Secure Boot's kernel lockdown, module signature checking, YAMA, the keyring (KEYS), the encrypted
-    home's dm-crypt and its ciphers, the firewall (nftables), audit if used.
-  - **Storage and start-up:** every disk controller and file system needed to reach the system disk (AHCI, NVMe,
-    virtio, USB storage, SquashFS, ext4, vfat for the EFI partition), the initramfs's needs.
-  - **Power and devices:** suspend (s2idle), AMD_PMC, the P-state drivers, CPU frequency, thermal, the battery.
-  The list is made by reading what each program needs (bubblewrap's and Flatpak's documented requirements, rudolfd's,
-  the X server's), and checked against today's kernel so it starts green. Its test: a deliberately broken
-  configuration (one option removed from each group) must fail the build with that option's name and who needs it.
-  This check is its own PR, merged before any of Part 12's tuning PRs.
-
-#### Results, 2026-11-17 (measured in QEMU with KVM; the Vivobook's part is the owner's checklist below)
-How: `.github/workflows/kernel-tuning.yml` (on pushes to `ktune-*` branches; nothing published) builds test kernels from
-this tree (`iso/systools/testkernel.sh`, the release's configuration with options changed) and test base layers (the
-release's with this tree's sys/root and rudolfd), and starts them in QEMU/KVM (`iso/qt/sb/kt161_t.py`) on the 1.6.0 beta's
-layers (r2026111620), as installed (slot a on NVMe, RUDOLFDATA), UEFI, 2 processors, 3.3 GB. **GitHub's runners differ
-from each other by up to 20 %**, so every comparison below was made on one machine, the variants started in turn (the
-first two rounds, which compared across machines, were thrown away for that). Medians of 4 starts or 3 runs.
-
-**Responsiveness: no change kept.** The kernel already has PREEMPT_DYNAMIC (the voluntary model by default, `preempt=` at
-start-up) and HZ 1000 (x86_64_defconfig's), so the plan's "HZ 1000 against the current" is "HZ 250 against the current".
-Wake-up latency of an ordinary thread sleeping 1 ms (`kload wlat`), the desktop page's input-to-frame time (a key from
-QEMU's keyboard to the next frame drawn after its keydown), frames over 33 ms, and two gzip runs' time, idle, with a busy
-loop on each processor, and during a 1.5 GB copy:
-
-| Busy loop on each processor | wake-up p99 | p99.9 | worst | page input-to-frame p99 | input queue p50 | frames > 33 ms (all loads) | gzip |
-|---|---|---|---|---|---|---|---|
-| voluntary (today) | 337 µs | 1.97 ms | 2.8 / 17.4 / 13.8 ms | 16.0 ms | 2.1 ms | 0 | 4.99 s |
-| full | 327 µs | 1.91 ms | 3.2 / 3.3 / 3.3 ms | 15.1 ms (one run 20.3) | 2.1 ms | 4 (during the copy) | 5.04 s |
-| lazy | 96 µs | 0.93 ms | 2.8 / 1.8 / 3.6 ms | 16.1 ms | 3.2 ms | 0 | 4.99 s |
-| none (round 1, another machine) | 503-534 µs | 1.9-2.1 ms | 18-21 ms | 15.1-15.6 ms | 1.9-2.2 ms | 0 | |
-| HZ 250, voluntary (beside HZ 1000 on one machine) | 119 µs (HZ 1000: 187) | 3.52 ms (HZ 1000: 1.84) | 7.8 / 7.8 / 8.6 ms (HZ 1000: 5.0 / 6.6 / 17.8) | 15.1 ms (15.0) | 0.9 ms (2.0) | 0 | 4.98 s (4.96) |
-
-Idle and during the copy every model gave the same numbers (p99 122-158 µs, input-to-frame p99 14.5-15.7 ms).
-- *full*: removes voluntary's occasional 14-17 ms stall under a CPU load, but showed 4 slow frames during the copy where
-  voluntary showed none: mixed, so not kept. It can be tried on the Vivobook with the start-up option `preempt=full` (no
-  new kernel needed): the checklist.
-- *lazy*: the best wake-up tail by far, but the page's input waited longer in the browser (input queue 2.6-4.1 ms against
-  2.1) while the processors were busy: what a person feels got worse, so not kept.
-- *none*: the worst stalls (18-21 ms).
-- *HZ 250*: a better p99 and a shorter input queue in the browser, but twice the p99.9 under load (3.5 ms against 1.8: a
-  4 ms tick) and every worst case near 8 ms: mixed, not kept. (Trying it on the Vivobook needs a kernel built with it;
-  left for later, only if the owner feels lag under load with HZ 1000.)
-- Throughput (gzip beside the loops) did not change with the model.
-
-**Start-up: kept: the kernel packed with zstd, the wired network cards' drivers as modules.** Where the time goes (the new
-start-up steps, `/run/rudolf/startup-times`), Standard, uptime in s:
-
-| Step | release (1.6.0) | this tree |
-|---|---|---|
-| before the kernel's clock (firmware, loading and unpacking the kernel; QEMU's TSC) | **1.56** | **0.94** |
-| the kernel, to /init | 0.77 | 0.71 |
-| the start-up image (finding the drive, checking the layers) | to 4.5 | to 4.45 |
-| system extensions, devices (udev), data partition, memory, graphics driver | 4.5 → 5.9 | 4.5 → 5.8 |
-| X server started | 6.6 | 6.6 |
-| X server answers (`rudolf-display --xsize`: Xorg's own initialisation, 2.6 s) | (not timed) | 9.2 |
-| session bus, sound, packages | → 10.0 | → 9.85 |
-| desktop started → the desktop answered (its first heartbeat) | 10.2 → 18.5 | 10.0 → 18.3 |
-| **from power-on (TSC + uptime)** | **20.0** | **19.2** |
-
-| Same machine, 4 starts each | before the kernel | to /init | desktop answered | from power-on |
-|---|---|---|---|---|
-| release | 1.56 | 0.77 | 18.48 | 20.04 |
-| zstd only | 0.94 | 0.77 | 18.24 | 19.18 |
-| network drivers as modules only | 1.51 | 0.71 | 18.27 | 19.78 |
-| both (this tree) | 0.94 | 0.71 | 18.28 | 19.22 |
-| Native: release / this tree | 1.59 / 0.94 | 0.87 / 0.81 | 13.37 / 12.95 | 14.96 / 13.89 |
-
-- **zstd** (KERNEL_ZSTD, INITRAMFS_COMPRESSION_ZSTD): 0.6 s less before the kernel starts, for a kernel 1 MB larger
-  (13 MB; the EFI image's two kernels stay well under its 30 MiB warning). An installed computer unpacks two kernels
-  (the boot files' and, after the handover, the system's), so about 1.2 s there.
-- **Network cards as modules** (E1000, E1000E, IGB, IGC, R8169, ATL1C, ALX, TIGON3, 8139CP, 8139TOO, NE2K_PCI, PCNET32):
-  0.06 s less in the kernel in QEMU (whose network card is an e1000: its probe took 0.35-0.4 s under initcall_debug), 1 MB
-  smaller; the wired link still comes up (the e1000 module loaded by modalias, the link there). On a laptop without such a
-  card it only makes the kernel smaller. WireGuard stays built in (its tunnels are made through netlink, which would need
-  the module loaded on demand).
-- **Native answers about 5 s sooner than Standard** (13 s against 18.5 s, two machines): Chromium's start and the desktop
-  page are most of Standard's last 8 s. (Native is the default for new installations since 1.6.0.)
-- **Xorg's own start takes 2.6 s** between its socket appearing and its first answer (QEMU's bochs driver); the
-  Vivobook's steps will show amdgpu's.
-- **The health log's own numbers were late:** "the desktop was ready N s" was written 4 s after the page came up (its
-  timer), and the starts log's mark up to 10 s after (the session's loop: 26 s for a desktop that answered at 18.5).
-  Both now use the first heartbeat's own time (rudolfd writes it into /run/rudolf/bootok; `readyAt` in /api/health).
-- **Tried and not kept:** the session's 1-s wait for rudolfd's downloads store, made 0.1 s: rudolfd has made it by then
-  on every start measured (no gain). The initramfs's 3 s "still looking for the disc" in these runs is QEMU's (a slot
-  started with no disc attached); an installed computer passes the drive on at the handover.
-- **Not done, an idea for the owner:** the handover itself (the boot files' kernel starting the system's kernel by kexec)
-  costs a second kernel start and start-up image on every installed computer. Skipping it when both are the same kernel
-  would touch Secure Boot's lockdown path, so it is left to the owner's decision; the Vivobook's numbers will show its
-  cost (rudolf.t0, the first start-up's time, is now passed on and is the first line of the steps).
-- **Starts on every kind of virtual hardware**, as 1.6.0's kernel does (`kt161_t.py hw`, the data partition mounted each
-  time): q35 with UEFI on NVMe, AHCI, virtio-blk, virtio-scsi and USB storage; i440fx with BIOS on IDE, virtio-blk and
-  NVMe: 8 of 8 for both kernels.
-- **Reproducible:** two builds of this tree's kernel (same configuration, `testkernel.sh REPRO=1`) are identical except the
-  module-signing certificate each build makes (.init.data) and the build id (.notes): every module (signature taken off)
-  and every other section the same (`systools/kreprohash.py`).
-
-**AMD power: switchable, kept at 1.6.0's until the owner's battery numbers.** Settings › System health › Power and
-battery › Processor energy preference: *As in 1.6.0* (default), *Tuned* (Balanced on battery asks balance_power; game mode
-asks performance), *The kernel's own* (amd_pstate passive). amd_pstate's active mode is already the kernel's default
-(CONFIG_X86_AMD_PSTATE_DEFAULT_MODE=3, Mendocino has CPPC), so `amd_pstate=active` adds nothing. QEMU has no frequency
-driver: the choice is greyed out there and on Intel, and the power settings work as before (host test power_t.sh 50/50,
-the power phase in QEMU).
-
-**Memory:** no change kept; zram's lz4 proposed for a Vivobook check. Stand-ins started together on the 1.6.0
-beta (2026111707), 3.3 GB: tabs (500+500+500+300 MB, compressing about 3:1 as web pages' heaps do), a game (1.3 GB, half
-compressible, a 60 fps loop touching a quarter of it each second) and a call (a 20 ms audio period), for 100 s; the
-memory stalls (PSI "full"), the game's frames over 33 ms, the call's periods more than 10 ms late, and how long the memory
-guard saw memory critical. (A first load of 2.1 GB left 400 MB free and measured nothing: no swap at all.) Medians, each
-setting 2-3 times, on one machine per column:
-
-| Setting | memory stalled (PSI full) | game frames > 33 ms | call periods > 10 ms late | guard: memory critical |
-|---|---|---|---|---|
-| swappiness 180, zram = memory, zstd (today) | 7.98 s | 111 | 218 | 23 s |
-| swappiness 200 | 6.22 s | 88 | 128 | 17 s |
-| swappiness 100 | 8.74 s | 77 | 131 | 12 s |
-| swappiness 60 | **15.34 s** | 73 | 137 | **32 s** |
-| zram 1.5 × memory | 7.66 s | 86 | 85 | 18 s |
-| **lz4 instead of zstd** (beside zstd in turn, 3 pairs) | **5.62 s** (zstd 11.18) | **72** (110) | **85** (166) | **12 s** (28) |
-
-No setting ended a process (no OOM kills, the memory guard ended nothing) and every one ran memory down to 0-6 MB free.
-- **Swappiness:** 60 is clearly worse (twice the stalls, and the guard in critical twice as long), which confirms 1.5.9's
-  move to a high value; 100, 180 and 200 differ by less than the runs among themselves (180's call figure ran 50 to 241):
-  180 is kept.
-- **zram's size:** 1.5 × memory changed nothing measurable (zram never filled at 1 ×): kept as it is.
-- **lz4:** fewer late call periods in all three pairs, fewer slow game frames in two (the third even), fewer stalls in
-  two, and the guard critical less than half as long: lz4 is faster to compress and read back. But it packs less (about 2:1 against zstd's 3:1), so
-  zram holds less before memory really runs out, which these 100-second runs did not reach and on 3.3 GB matters (the
-  Vivobook's game was ended by the guard in 1.5.9). **Not changed yet:** a later PR would build ZRAM_BACKEND_LZ4 and let
-  the memory setting choose it, once a run as long as a real game session shows it does not end processes sooner.
-
-**Required features:** the check (its own PR, first) found FUSE missing from the x86 kernel (Flatpak's document portal,
-AppImages); it is added there. Not on the list, noted: `lsm=` names landlock but SECURITY_LANDLOCK is not built; the
-encrypted folders use fscrypt, not dm-crypt (the list checks fscrypt and its ciphers).
-
-- **The time before the kernel, on real computers (2026-11-20, the owner: "add a firmware/kernel/system breakdown ... if it
-  will help to optimize the start-up time").** The steps above start at the kernel's clock; QEMU's "before the kernel"
-  came from the test's own counter. Now rudolfd (rudolfd-boottime.inc), at its start, as root, adds one line to the
-  steps: the time from power-on to the kernel's clock, from the processor's time-stamp counter (a constant, non-stop TSC,
-  its rate from the kernel's log), split into the firmware's part and the boot loader's from ACPI's FPDT (the kernel's
-  `ACPI_FPDT`, now on), with a handover's first stage (rudolf.t0) taken off. Last starts shows it first and ends with
-  the whole from power-on; the health log's "ready" line adds "N s from power-on" (Standard and Native). Nothing is
-  shown when neither source gives a believable number (0 to 300 s). Host test boottime61_t.sh (14/14); the check
-  workflow boottime-check.yml. What it tells: whether the Vivobook's 27-37 s is mostly firmware (only the firmware's
-  own settings can help: Fast Boot, fewer boot entries), the handover (the "skip the handover" idea below), Xorg and
-  amdgpu, or the desktop.
-
-#### The owner's checklist (the Vivobook; the Asus desktop where it says)
-1. **Start-up** (each kernel: 1.6.0's, then this one): restart 3 times; after each, Settings › System health › Last starts
-   › Where the time went: write down "the desktop answered" and the first line (t0, the boot files' part before the
-   handover), and the time from the power button to the sign-in screen with a stopwatch. Expected: about 1 s less.
-   The Asus desktop from the USB stick: the same, 3 starts each.
-2. **Responsiveness** (no new kernel: a start-up option): start once normally and once with `preempt=full` (the boot menu's
-   options), and on each: a game or a large copy (a 2 GB file to a USB stick) while typing in Oracle and moving windows for
-   2 minutes; write down any stall you notice (when, how long) and the desktop's frame meter if shown. Keep *full* only if
-   it feels better and nothing stutters more.
-3. **Power** (Settings › System health › Power and battery › Processor energy preference): see the power PR's checklist
-   (15 minutes idle and 15 minutes of a video on each of the three choices, battery % and watts).
-4. **Memory:** (a kernel with lz4, if that later PR comes) a game, Oracle with 4 tabs and a Discord or Meet call together
-   for 15 minutes on each compressor: write down whether the game stuttered, whether the call broke up, and the
-   health log's memory lines (the guard's warnings and what it ended).
+**Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
 ### 13. Files dropped from outside onto the native desktop (added on 2026-11-16; 1.6.0 Part 12's known differences)
 On Standard a file dragged from a Linux app (the Debian file manager, a Flatpak) onto the desktop is saved in the
@@ -615,15 +405,7 @@ the owner's decision of 2026-11-16 ("Keep it in 1.6.0"): it ships with 1.6.0, no
   beta's rudolfd has no desktop/dropped yet; no KVM here): the owner's checks on the Vivobook.
 
 ### 14. Native, the default for new installations (moved from 1.6.0 on 2026-11-17)
-The owner, 2026-11-17: "Make Standard the default in 1.6.0 with the transition to Native default in 1.6.1."
-- **First: Discord and Steam on Native on the Vivobook** (slow to load or not starting, beta 2026111713; #470's open
-  item 3: its leads, the refused system-API request at 13:10:17, the new log lines "oa: KEY asked of rudolfd N ms after
-  its page began"). A devlink read while each loads on Native; the cause proven and fixed; the owner's check.
-- **Then the switch:** install.sh's `NATIVE_DEFAULT=1` (a new installation starts on Native, after the setup wizard on
-  Standard, #467) and rudolfd's `NATIVE_OFFER 1` (Settings offers Native once to a computer updated on Standard); the
-  engine page's "A new installation starts with it." back; nativedefault60_t.sh 0 and 0b changed to match.
-- **The owner's checks:** a new stick (Make a USB stick) and Install here: the setup wizard, then Native; an updated
-  computer on Standard: the offer once; Discord, Steam, the icons and Oracle's keys on Native.
+**Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
 ### 15. One title bar for apps that draw their own (added on 2026-11-18)
 The owner, 2026-11-18, on Native with Steam, Discord and Claude open: "Steam, Discord, Claude, and other apps installed from
@@ -648,6 +430,25 @@ Rudolf asks it to, once, the first time it starts it, and only when the person h
 - a list in `iso/sys/root/usr/share/rudolf/titlebars` (app ID, how, where), so more can be added without a new
   program; each entry checked against the app's documentation before it goes in.
 Those windows then ask for decorations, and get Rudolf's title bar as any other.
+**Item 1 built on 2026-11-21 (unattended; PR "the apps' own setting first").** `rudolf-apps titlebar ID HOME` reads
+`iso/sys/root/usr/share/rudolf/titlebars` (ID, how, where: `chromium` or `vscode`, the file under the app's settings
+folder, Flatpak's `~/.var/app/ID/config` or Debian's `~/.config` for `deb:LAUNCHER`) and adds the key only where it is
+missing (Chromium's Preferences: the top-level `browser` object's `custom_chrome_frame: false`; VS Code's settings.json,
+comments kept: `window.titleBarStyle: native`), the file written beside and renamed, links not followed; then it marks the
+app done for the account (`~/.local/state/rudolf-titlebars/ID`): once. Flatpak's apps: in `rudolf-apps launch` (as the
+account's own user, before the launcher's command; not while the app runs, as Chromium writes its Preferences back as it
+closes). Debian's: `rudolf-debian launch` runs it as the person's own Linux user in the person's folder as Rudolf OS sees
+it. The list: Flathub's Chromium, ungoogled Chromium, Chrome, Brave, Edge, Vivaldi, Debian's Chromium, VS Code, VSCodium
+(the pref name from Chromium's `pref_names.h`, `kUseCustomChromeFrame`; VS Code's documented setting; the folders those
+Flathub apps keep their settings in). Not on it: Discord and Steam (no such setting on Linux; their bar has more than the
+title and buttons: item 2 keeps their own). **Note:** Chromium already leaves its own frame off under rudolf-native (a window
+manager it does not know), so for the browsers this only keeps that if a later Chromium changes its default.
+**Tests:** `iso/qt/host/titlebars161_t.sh` (16 checks, its own workflow, titlebars-check.yml): made when missing, added
+to an existing file with every other setting kept and still valid JSON (VS Code's with its comments), the person's own
+choice kept, once, Debian's folder, a link not followed, an app not on the list untouched, through `rudolf-apps launch`.
+Not run: rudolf-debian's step (it needs Debian installed: the owner's check). **The owner's checks on the Vivobook:** a
+Chromium-based browser and VS Code from Flathub, never opened before: Rudolf's title bar; one whose own bar was chosen in
+its settings: kept.
 
 **2. Otherwise, the app's own bar alone (the default).** A window asking for no decorations gets no title bar of
 Rudolf's: its frame keeps the edge (1 px, or 2 px with high contrast), the round corners and the resize edges; the
@@ -945,90 +746,7 @@ behind a full-screen game. (The newest-kernel track and Wayland, for HDR and var
   desktop's own work paused (Standard's page throttled, the background jobs and Oracle's tabs held), notifications held;
   everything back as it was when the game leaves full screen. GameMode's requests from games honoured. gamescope comes
   with Wayland (2.0).
-- **Measured:** the same games' frame rates and frame times on the open and NVIDIA drivers and with game mode on and
-  off, on the owner's Asus desktop (live from a stick, as Part 12) and the Vivobook.
-  **The checklist is written (2026-11-21, branch game-checklist): below; the numbers are the owner's.** It follows the
-  NVIDIA driver PR (#544, branch nvidia-driver) and the game mode PR (#546, branch game-mode): run it once both are in a beta.
-
-#### The owner's checklist: games measured (the Asus desktop live from a stick, as Part 12, and the Vivobook)
-What is measured: the same games' frame rates and frame times on the open driver (NVK) and on NVIDIA's driver, each with
-game mode on and off, on the owner's **Asus desktop** (RuckXTrauma: its NVIDIA card must be GeForce 16 or newer for NVIDIA's
-driver to be offered), Rudolf OS running live from a USB stick (nothing on its disk changed), and with game mode on and off
-on the **Vivobook** (AMD graphics: no NVIDIA rows). Nothing here was measured by a session: no NVIDIA card or real game is
-reachable from CI.
-
-**Before (once).**
-1. The stick: made with Settings › Update and recovery › Make a stick, with its RUDOLFDATA partition (system extensions and
-   Steam's games are kept there; a stick without one cannot keep NVIDIA's driver). Start the Asus from it; Secure Boot as
-   it is on that computer (with Secure Boot on, the first start asks to enroll the Rudolf OS key: that is the firmware's
-   own list, the disk is not touched; or start with Secure Boot off for these tests).
-2. NVIDIA's driver: after the owner ran **Actions › System extensions › Run workflow** (release = the release's serial,
-   names = `nvidia-driver`), Settings › Update and recovery › System extensions › Install… › NVIDIA's graphics driver
-   (an administrator's password), then restart. Settings › Display › Graphics driver shows the card's name.
-3. The games, the same on both computers where they run (fill in): A ______ (a native Linux game in Steam),
-   B ______ (a Windows game through Proton, DirectX 11/12), C ______ (a Vulkan game or a built-in benchmark), D ______
-   (a browser game in Oracle, WebGL). Each with the same settings every time (resolution ____, quality ____, V-Sync **off**),
-   the same 2-minute scene or the game's own benchmark.
-4. Frame times: Steam (Flatpak) with MangoHud (`flatpak install flathub org.freedesktop.Platform.VulkanLayer.MangoHud`,
-   the game's launch options `MANGOHUD=1 MANGOHUD_CONFIG=autostart_log=1,log_duration=120 %command%`): each run leaves a
-   CSV in ~/.var/app/com.valvesoftware.Steam/ (its summary: average FPS, 1 % low, 0.1 % low). The browser game: Oracle's
-   own frame meter (F12 › Rendering › Frame rendering stats) or the game's counter, average only.
-5. Each line below: 3 runs, the median written; the computer on mains power; nothing else open (Oracle closed for A-C).
-
-**Each run, also look at (write "ok" or what happened):**
-- Game mode on: Settings › System health › Memory › Game mode says "On now" during the game (open it with the game
-  in the background, then go back); on the Vivobook, System health › Power and battery shows the energy preference
-  "performance" during the game and the usual one after; a notification sent during the game (a message, a reminder)
-  is held, and "While you were playing" comes once the game leaves full screen.
-- Game mode off (the same switch): none of that.
-- After each game is closed: Task Manager › System (the desktop's processor time is back), no slow desktop.
-- NVIDIA's driver: Task Manager › System › Graphics names NVIDIA's driver; once, start Recovery mode: it starts on the
-  open driver (the firmware's screen), and the next normal start is back on NVIDIA's.
-- Once, to see the switch back: with NVIDIA's driver chosen, remove the extension (System extensions › Remove) and
-  restart: that start is on the open driver, and a notification says it went back by itself and why.
-
-**The Asus desktop (RuckXTrauma), live from the stick.** CPU ______, memory ______, NVIDIA card ______ (its PCI ID from
-Settings › Display › Graphics driver ______), screen ______ Hz.
-
-| Game | Driver | Game mode | Average FPS | 1 % low FPS | 0.1 % low FPS | Frame time p99 (ms) | Notes (stutter, errors) |
-|---|---|---|---|---|---|---|---|
-| A | Open (NVK) | off | | | | | |
-| A | Open (NVK) | on | | | | | |
-| A | NVIDIA's | off | | | | | |
-| A | NVIDIA's | on | | | | | |
-| B | Open (NVK) | off | | | | | |
-| B | Open (NVK) | on | | | | | |
-| B | NVIDIA's | off | | | | | |
-| B | NVIDIA's | on | | | | | |
-| C | Open (NVK) | off | | | | | |
-| C | Open (NVK) | on | | | | | |
-| C | NVIDIA's | off | | | | | |
-| C | NVIDIA's | on | | | | | |
-| D | Open (NVK) | off | | | | | |
-| D | Open (NVK) | on | | | | | |
-| D | NVIDIA's | off | | | | | |
-| D | NVIDIA's | on | | | | | |
-
-Also on NVIDIA's driver, once: does DLSS (or its frame generation, GeForce 40 and newer) appear in B's or C's settings
-(Proton gives games NVIDIA's DLSS files: the extension carries them), and does ray tracing switch on? ______
-
-**The Vivobook (AMD graphics, amd_pstate).** The games that run on it (A, D, and B or C if they start):
-
-| Game | Game mode | Average FPS | 1 % low FPS | 0.1 % low FPS | Frame time p99 (ms) | Energy preference during the game | Notes |
-|---|---|---|---|---|---|---|---|
-| A | off | | | | | | |
-| A | on | | | | | | |
-| D | off | | | | | | |
-| D | on | | | | | | |
-| B or C | off | | | | | | |
-| B or C | on | | | | | | |
-
-**What decides.** NVIDIA's driver stays an option (never the default) if it starts and runs the games on the Asus; it is
-worth recommending in Settings only where it is clearly faster (more than 10 % average or 1 % low). Game mode stays on by
-default if "on" is never slower than "off" on either computer (within the runs' own spread); if the desktop's
-slowing behind a game ever makes the game itself stutter (a launcher or overlay in the desktop's group), say so: the
-weight (20) is one line in /usr/lib/rudolf/gamemode.
-
+- **Measured:** Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").
 ### 20. Security hardening (added on 2026-11-20)
 From the comparison with other distributions on 2026-11-19: the weak points named then.
 - **rudolfd confined:** an AppArmor profile (or, where AppArmor is not in the kernel, systemd-free equivalents: its
@@ -1036,9 +754,107 @@ From the comparison with other distributions on 2026-11-19: the weak points name
   narrower one; the page's API checked against a list of what each window may call.
 - **An outside security review:** before 2.0, a review by people outside the project of rudolfd's API, the sign-in and
   encryption, the update and recovery chain and the development link; findings fixed, published with the release.
+- **Status: Standard's website data, "off" (2026-11-21, branch tpm-webdata; webkey-check.yml; docs/website-data-key.md).**
+  The release's kernel had no TPM driver: TCG_TPM, TCG_CRB (firmware TPMs: the Vivobook's) and TCG_TIS added, built in,
+  with their lines in iso/kconfig-required.txt (Part 12's check); TCG_TPM2_HMAC off (only the kernel's own random
+  numbers use it here, and its session costs time at each start). rudolf-webkey (iso/sys/rudolf-webkey.c, the TPM's
+  commands written out, through /dev/tpmrm0, root only; no tpm2-tss) seals a 32-byte secret under the owner hierarchy's
+  ECC storage key to **PCR 7** (Secure Boot's state, its keys, the certificate each start-up file was checked with) and
+  **PCR 14** (shim's MOK list), not 0-6 (firmware and boot-loader updates, settings) nor 11-12 (nothing measured there):
+  updates of Rudolf OS change neither. Chromium's password is HKDF of it, given by rudolf-webkey's KWallet stand-in on the
+  desktop's session bus (`--password-store=kwallet6`: Chromium 157 asks KWallet's openAsync, then readPassword); before
+  Chromium starts, every "v10" value of the profile (cookies, saved site passwords, payment cards) is encrypted again as
+  "v11". The session's webkey_start (once per start) sets PWSTORE for every Chromium of the shared profile: Standard's
+  desktop, Native's Oracle, rudolf-shellfix (found: Chromium drops what it cannot read, so all three must agree).
+  Falls back to Chromium's built-in key, said in System health and Settings › Oracle › Website data (rudolfd's GET
+  webkey): no TPM; the TPM refusing (an owner's password, locked out: nothing changed); Secure Boot's measurements changed
+  or the TPM cleared (a new key at once: websites sign in again, said once). **Tests:** webkey161_t.sh 25/25 (swtpm;
+  tpm2-tools' own policy session opens the same object to the same key; Rudolf's Chromium: v11 written and read, a v10
+  profile moved over, nothing readable with the built-in key), webkey161_t.js 10/10, wk161_t.py in QEMU (swtpm as a CRB
+  TPM, a kernel with the driver; the session's own webkey_start; a restart; Microsoft's keys enrolled in the firmware with
+  Secure Boot still off, which changes PCR 7). **Not covered:** the computer itself taken (it starts Rudolf OS, which
+  opens the key; the sign-in is then what protects them), signed-in use (anything running as the desktop's user can ask
+  the key store), a discrete TPM's bus while it starts (no parameter encryption; firmware TPMs have no bus), Lite and the
+  RudolfWeb windows' profile, and what Chromium does not encrypt itself (history, cache, site storage). **For the owner
+  (Vivobook):** after a beta with this, Settings › Oracle › Website data says "encrypted with a key kept in this
+  computer's security chip"; turn Secure Boot off and on again in the firmware: one start each says "a new key" in
+  System health and websites ask to sign in again; a firmware update leaves the key as it was.
 - **Standard's website data, "off":** a key sealed in the computer's TPM (bound to Secure Boot's measurements) in place
   of Chromium's built-in key, so a drive taken out cannot read the shared profile's cookies; written up with what it
   does not cover (the computer itself taken, signed-in use). From 1.6.0 Part 22's "could come later".
+
+#### 20.1 Status: rudolfd confined (2026-11-21, branch rudolfd-confine; confine-check.yml)
+- **What the release kernel has** (read from release 2026112014's own vmlinuz and modules layer): seccomp and its BPF
+  filters (on for Flatpak), Yama, lockdown, the audit log; **no Landlock** ("landlock" was in the LSM list since 1.5.9,
+  but SECURITY_LANDLOCK itself was never on, so the kernel had none), no AppArmor, no TPM driver. Added:
+  SECURITY_LANDLOCK, with its line in iso/kconfig-required.txt (Part 12's check), x86-64 and ARM64. Why Landlock and not
+  AppArmor: a program puts Landlock on itself, so the rules live beside the code Part 11 keeps changing, nothing is
+  loaded at the start (AppArmor needs its profiles compiled and loaded by the start-up, a parser or a compiled policy in
+  the image, and a new LSM with a profile per program to keep in step with every script), and it works the same for
+  rudolfd as root today and as uid 1000 after Part 11's drop. About 30 KB of kernel.
+- **The switch:** off by default (the build's RUDOLFD_CONFINE); /persist/etc/rudolf-confine (one word: off, log, on);
+  rudolf.confine= at the start-up; RUDOLFD_CONFINE in the environment (host tests). Read by rudolfd and rudolf-rootd at
+  their start. "log": the system calls are only logged, Landlock and the capabilities' cut left out, the windows' refusals
+  answered and noted: for a beta's first run. Each call refused or logged reaches the health log once per start
+  (Security: "the confinement refused system call N of PROGRAM"), read from the kernel's audit lines.
+- **Why two layers:** everything seccomp, Landlock and the capabilities do is inherited by every program the process
+  starts, and rudolfd still starts many (shell commands, the accounts' apps, Chromium's windows, the Debian container,
+  Wine). A filter of only rudolfd's own calls on all of rudolfd would confine every app it starts. So:
+  1. **All of rudolfd, from its start** (before it starts anything): a deny list of what nothing it starts needs (kexec,
+     BPF, performance counters, file handles by number, I/O ports, process accounting, quotas, writing another
+     process's memory, uselib, nfsservctl; the same in the 32-bit table for Wine's programs; x32 refused), and the
+     capabilities no Rudolf OS program uses dropped from the bounding set (audit, MAC, process accounting, BPF,
+     performance counters, checkpoint/restore). Modules, swap, mounts, the clock, ptrace, keyctl stay: the camera's
+     driver, zram, the binds and the Debian container, time sync, debuggers in Debian need them.
+  2. **Each request that starts nothing:** each connection is its own process, so once its path is read (before its
+     body or JSON), a request that runs no program, mounts nothing and signals no other process is narrowly confined for
+     the rest of its life: seccomp allowing only rudolfd's own calls (143: those traced in every host test that builds
+     rudolfd or a fixture of it with strace -f, plus the C library's on paths the tests do not reach, each with why:
+     iso/sys/rudolfd-confine-narrow.h; never exec, mount, kill, ptrace, setns, unshare, chroot, reboot, keyctl, io_uring,
+     userfaultfd, 32-bit calls); Landlock: read anywhere (as root reads today), write, make and remove only in
+     rudolfd's folders (/run/rudolf, /run/user/1000, /persist/etc, /persist/var/log, /persist/accounts, /home, /media,
+     /tmp, /proc/sys/vm/drop_caches, /dev/null), run nothing, no TCP of its own, no signals or abstract sockets outside;
+     capabilities cut to owners and modes, reading the accounts' folders, the peer check's /proc, the dropped file's
+     child becoming the account's user; no_new_privs. Which requests: iso/systools/confinepure.py reads every function
+     of rudolfd and its .inc files and what each reaches (iso/sys/rudolfd-confine-pure.h): today 28 requests and the
+     page with all its files, and 9 more that reach root only through rudolf-rootd's helpers (while rudolf-rootd is
+     there); the other 97 still start programs. As Part 11 moves an area, its requests join (the host test says which,
+     so the list never lags the code). Five that start nothing are kept out by hand, as they write where the narrow
+     folders do not reach: display (/etc), bootmenu (the firmware's variables), brightness (the backlight under
+     /sys/devices), factory-reset (/persist itself), desktop/keys (the security keys' /dev/hidraw).
+     Found in QEMU (r161, on): a job through rudolf-rootd (install, sticks, boot files) also runs a shell command
+     (root_job), so the narrow confinement refused its exec: those are no longer narrow, and the reader follows
+     root_job's body. Found on the way: the peer check reads the desktop's /proc/PID/fd and exe, which a Landlock domain may not (as
+     ptrace): it is made before the narrow confinement and kept for the connection.
+- **Part 11's helpers, each narrower** (rudolf-rootd.c, rudolf-rootd-confine.h): in the helper's own process just
+  before it starts: its capabilities only (drives: mount, files' owners and modes, the firmware's boot entries' flag,
+  loop devices, su; updates: mount, files' owners and modes) in every set, the bounding set included, and a deny list:
+  rudolfd's, plus ptrace, modules, reboot, the clock, swap, and every 32-bit call. No Landlock: both helpers mount.
+  A helper without its line is never run with "on".
+- **The windows' lists:** the process holding the connection (found by the peer check, never from the request) is the
+  native shell (rudolf-native) or the page (Standard's Chromium; WebKit's network process for the native desktop's app
+  windows and Lite). iso/systools/winapi.py reads what each asks for (iso/sys/rudolfd-winapi.h: 352 paths for the page,
+  every literal given to its API helpers and each string that is one of rudolfd's request names; 35 for the shell);
+  anything else is refused (403 "this window does not use that part of the API") and said in the health log. The
+  shell, for instance, is refused the files API; the page is refused desktop/login, desktop/accounts and the shell's
+  other requests. Root is not checked.
+- **Tests:** iso/qt/host/confine161_t.sh (21): the lists current; every call number 0-511 of each table (x86-64,
+  32-bit, x32) through each filter by a BPF interpreter (fixtures/confineprobe.c); each layer for real with every
+  allowed and refused folder and call; the real rudolfd and rudolf-rootd off, log and on (the filters on the right
+  processes, the answers as before, a window's request refused or noted, a helper's capabilities). Every rudolfd host
+  test passes the same with the switch off and on. .github/workflows/confine-check.yml: the same on GitHub's runner,
+  a kernel built from this tree's kconfig.sh (with Landlock; not published), and in QEMU on the newest beta with this
+  tree's programs (fix161.sh): t160's checks unchanged off, on (the release's kernel), on and log (the kernel built
+  here), r161's on; the health log's confinement lines read from the test drive afterwards.
+- **Not covered:** the requests that still start programs (most of the API until Part 11 moves them) are only in layer
+  1; a narrow request may still ask rudolf-rootd's helpers for what they do (their own checks hold); reading is not
+  narrowed (rudolfd as root reads the accounts' folders and every process's information); a missed system call in a
+  narrow request on a path the tests did not reach fails that request with "on" (hence log first); Lite's WebKit
+  windows and the native desktop's share WebKit's network process, so the page's list is the same for both.
+- **For the owner (Vivobook):** a beta with this, then `echo log > /persist/etc/rudolf-confine` (from a root shell) and a
+  day's use; System health › Security then lists each call "on" would refuse (none expected). Then `on` for a day:
+  sign-in, files, Settings, Oracle, apps, the Debian container, a USB stick, an update check, sleep. Default on only
+  after that.
 
 ### 21. The checks that cannot run, and the checks with the owner (added on 2026-11-20)
 - **CI:** the Oracle file check, the Tor window keys check and "same (beta)" fail on GitHub's runners because the beta's
@@ -1074,10 +890,7 @@ From the comparison with other distributions on 2026-11-19: the weak points name
   **For the owner, with a real reader:** on Standard, Chromium's PIN box opened without the keyboard (the test clicks
   into it first) and filled the whole screen. Check both on the Vivobook with a reader, then fix them in their own PR
   if real hardware shows the same.
-- **On the Vivobook, with the owner:** Oracle's websites encrypted (1.6.0 Part 22) on Native, Lite and Standard turned
-  on; Recovery mode from a stick made from this release and from another build's; two-step sign-in on Standard and
-  Native; calls; a real CAC only when the owner asks.
-
+- **On the Vivobook, with the owner:** Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").
 ### 22. File Explorer: dragging between windows, the selection box, the progress window (added on 2026-11-20)
 The owner, 2026-11-20, with a photo of two File Explorer windows side by side (Downloads; the Games (Emu library) folder):
 "Users should be able to move files by click-dragging items from one file explorer window to a different window showing a
@@ -1116,6 +929,78 @@ appear that shows file transfer progress." On Standard, Native and Lite alike.
   Vivobook:** drag a file from Downloads into the Games (Emu library) window and back; box-select several files and drag
   them; right-click Cut and Paste across windows; watch the progress window; Ctrl+drag copies.
 
+### 23. The native desktop's memory (added on 2026-11-21)
+The owner, 2026-11-20, from the Vivobook (Rudolf OS 1.6.0, Native, 3.3 GB, MemAvailable 1.48 GB): six WebKitWebProcess processes,
+one per window (the desktop, the taskbar's pages, Task Manager, the shell's hidden pages do-svc, do-portal, do-start, ...), each
+250-380 MB settled and 400-470 MB at its start, about 1 GB together. Every window loads the whole desktop page (iso/www/index.html,
+about 4 MB, built from base_v24.html and the ~150 modules of build19.py's list) and then shows one app. #530 (WebKit's memory
+pressure limit following MemTotal, the start-up pages one after another) is in; RAM compression (zram, rudolf-memguard.c) exists.
+Three parts, one PR each, in this order:
+- **A. Fewer hidden pages** (the owner: "Add item 2"). **Done (2026-11-21, PR "Native: one hidden page").** The service page
+  (do-svc), the portal's page (do-portal) and the start-up page (do-start) are one page, #app=do-bg (oneapp59.js: oaSvcRun,
+  oaPortalRun, oaStartRun with &start=1 for a signed-in account that is not Guest, oaSrchRun), opened at the sign-in as the
+  start-up page was, or by bg_tick once no other page is starting (page_starting, up to 10 s), again when it ends or does not say
+  both "svc ready" and "portal ready" within 90 s; svc's since= kept. The shell's single actions that had a page of the whole
+  desktop loaded unseen for each (do-qs, do-nc, do-pin, do-mute, do-desk, do-fs's drop onto the Trash, rename and xdrop,
+  do-short) and the start menu's search (do-srch) go to it (rudolf-native.c bg_route: oneapp59.js __oaDo with the same op and
+  address; a page of its own only while it is not ready, or if it does not take the action). Unchanged: do-portalapp (a real
+  window), do-saver, do-run, do-pwr, Open with and a file opened from the search (they show a window), modal pages, PT_SHOWN.
+  Measured on the host (Xvfb, WebKitGTK 2.52.6, --draw=soft, the stand-in rudolfd, 30 s after signing in, no app window):
+  170 MB PSS for the hidden pages before, 110 MB after; the peak while Night light was switched on and off 208 MB before (a
+  page loaded for each switch), 111 MB after. On this host WebKitGTK already puts every page of rudolf-native in one web
+  process (native59_t.sh test 21), so the Vivobook's count of six is checked there (the owner's checks). Tests:
+  iso/qt/host/bgpage161_t.sh (one hidden page, the web processes counted, each action done there, its process killed, signing
+  out and in), svc160_t.sh and nportal160_t.sh with the new name, native59_t.sh, native160_t.sh, xdrop161_t.sh.
+- **B. Each window loads only what it needs** (the owner: "Yes"): the shared core plus the window's app, not every app.
+  **Measured first (2026-11-21, the host: Xvfb, WebKitGTK 2.52.6, --draw=soft, the stand-in rudolfd; each window in a web process
+  of its own, as on the Vivobook, PSS / RSS 25 s after it opened):** the hidden page 90 / 213 MB, Task Manager 87 / 214 MB
+  (shown after 873 ms), Settings 109 / 241 MB (1139 ms), File Explorer 85 / 219 MB (882 ms), Notepad 80 / 213 MB (1123 ms),
+  Oracle's page in WebKit 81 / 216 MB (1133 ms); 506 MB PSS for the six. What a window's process is made of (rudolf-webkit, one
+  process): a plain page 34 / 139 MB (WebKit itself), the desktop page's HTML and styles without its code 39 MB, its code parsed
+  but not run 51 MB, the page's own code before the modules run 67 MB, all of it 91 MB. The page's ~150 modules' code is not the
+  big part: a page built without 45 of them (the emulators, Blitzen, the office and phone apps, Oracle's extras, Task Manager,
+  about 600 KB) gave Notepad 78 MB instead of 80 and Settings 75 instead of 109 (noise of ±10 MB between runs); the JavaScript
+  heap is 6-8 MB in every window (JSC's GC log; Chromium's: 4.4 MB). Most of a window is WebKit's own process (34 MB PSS) and
+  what running the page builds (about 40 MB), so a window costs about 80 MB PSS however little of the page it loads.
+  **Stage 1, done (2026-11-21, PR "Native: the page's big payloads as files"):** the page's last big inline payloads are files
+  beside it (www/a/, named by their contents, read only by their app): the Quake engine (632 KB of WebAssembly as base64:
+  aBytes, synchronous as its checks are) and the Galaxy Map's universe (261 KB: aFetch). The page is 3.39 MB instead of 4.26 MB
+  (Standard's too: the same page). Every window 4-6 MB less (483 MB PSS for the six instead of 506). The files are in iso/www,
+  so in desktop.sfs with its dm-verity tree (systools/verity.py), whose root hash is in the signed release list (make_release.py),
+  as 1.5.9's a/ files are; a page installed by hand from Settings › Update (an .HTML file, not a release) reads them from the
+  release's own www/a/ (rudolfd's fallback), so such a page whose payloads differ says "could not be loaded" for that app.
+  Test: iso/qt/host/chunks161_t.sh (neither payload in the page; Notepad's window never reads them; the Galaxy Map and Quake in
+  native windows read and use theirs; a missing file is said; no error).
+  **Left (each its own PR, for the owner's decision with the numbers above):** stage 2, the modules each app needs found by
+  exercising every app (a page per app built from the core and its modules, loaded by oneapp59.js; Standard keeps the whole page):
+  measured potential 2-5 MB per window, because the modules mostly patch each other (win, termUI, appsPanel, startMenuApps...) and
+  the core is most of the code; stage 3, what the page builds at its start in an app's window (the desktop's icons, the start
+  menu, the widgets: about 16 MB before the modules and 24 MB with them at Lite's sign-in screen) left out where the window does
+  not show it. The bigger saving on the Vivobook is the number of processes (one shared on this host; six there) and Part C.
+- **C. Idle windows give their memory back** (the owner: "if it won't cause any issues with Oracle or other Rudolf/Debian/
+  Flatpak/Wine apps, then add it"). **Done (2026-11-21, PR "Native: idle windows give their memory back").** rudolf-native.c
+  rest_tick (every 2 s): a Rudolf app's window minimized, or covered by one other window (or a full-screen one), for the time
+  set (Settings › System › Idle windows: on by default under 6 GB of memory, after 10 minutes; 5 to 60) asks its page
+  (rest61.js __oaRest) for where it is; when the page says it can rest, its view is closed (its page goes, and its web process
+  if it has one of its own: WebKit keeps no process without a page) and a view never loaded (no process) stands in it, the
+  app's colour over it. Shown again (focused, its taskbar button, no longer covered, its workspace), its page comes back as every
+  window's does (window.open from another window's page, into the same window: on_create's into), its address with &rest=
+  (its state) instead of &file=; the window's size and place never change. The apps that can (REST_APPS, the opt-in list):
+  Notepad (its tabs' files, the current one, the caret and the scroll; only with every tab saved) and File Explorer (its folder
+  on C:, one tab, one pane; nothing cut or copied); every scrolled box of the window comes back too. Never: an app not on the
+  list (Settings, the Terminal, the office apps, the games and emulators: they cannot say yet whether something would be lost),
+  Oracle ("browser", its WebKit window too), a program rudolfd runs (Linux, Debian, Flatpak, Wine, the Library's: X windows of
+  their own, their pages unseen, keys with ":"), the shell's hidden page and every do- page, the desktop and the taskbar (no
+  page); and never while the window is full screen, always on top or in a dialog over the screen (the shell), WebKit says it is
+  playing sound or using the camera, microphone or screen, or its page has unsaved changes, a dialog, a media element playing, an
+  AudioContext running, a live camera or microphone track, a call (RTCPeerConnection), a request still going (a download, an
+  upload), a transfer (xfer61.js xfRun), a job polled in the last 20 s (rudolfd's job: installs, the Debian apps, a stick, a
+  drive's copy; an update being installed). Task Manager shows the window as "Resting (no memory used)"; closing it closes at
+  once. Measured on the host: each window in a process of its own (as on the Vivobook) Notepad and File Explorer 90 + 90 MB PSS
+  (about 210 MB RSS each), their processes ended when resting (260 MB PSS for the three processes before, 98 MB for the one left);
+  with the processes shared (this host's) 258 MB before, 229 MB with two resting. Not on Lite (its windows are tabs of one
+  window: kept as they are). Test: iso/qt/host/rest161_t.sh.
+
 ## Not moved here
 - **Oracle's website data encrypted:** written here on 2026-11-19, moved to 1.6.0 the same day (the owner: "Put it in
   1.6.0 instead"): docs/plan-1.6.0.md Part 22.
@@ -1130,19 +1015,20 @@ appear that shows file transfer progress." On Standard, Native and Lite alike.
 ## Steps
 1. Part 1, several monitors, after the 1.6.0 beta.
 2. Part 3, Lite's leftovers, one PR each.
-3. Part 8 (mobile data and the SIM on real hardware) with the MiFi, before the phone; Part 9 (USB printers; ARM64 with
-   the phone or an ARM64 computer).
-4. The phone's stage 1: Part 4 on the first phone (after 1.6.0's ARM64 release and stage B), Part 7 with a
-   T-Mobile-network SIM, Part 6's 1.6.1 items measured on it, Part 2's groundwork; Part 5 when the hardware is there.
-5. The phone's stage 2 (its interface, Wayland, the native apps for touch): docs/plan-2.0.md, "The phone build".
-6. Part 15 (one title bar for apps that draw their own) with Part 14, before Native becomes the default: 2 first (the
+3. Parts 4 to 8, Part 9's ARM64 release, Part 12, Part 14, Part 19's measurements and Part 21's checks with the owner:
+   docs/plan-1.6.2.md.
+4. Part 15 (one title bar for apps that draw their own), before Native becomes the default (Part 14, docs/plan-1.6.2.md): 2 first (the
    window manager's part), then 1 (the apps' own settings), then 3 (the per-app choice).
-7. Part 16 (each other's builds): 1 and 2 first (the check and the beta switch), then 4's "kept newest", then 3 with 4's
+5. Part 16 (each other's builds): 1 and 2 first (the check and the beta switch), then 4's "kept newest", then 3 with 4's
    sticks (the stick from the address, always with the official recovery system).
-8. Part 17 (two-step sign-in): 1 and 2 together (keys that unlock the files) with 4 (rudolfd decides), then 3 (codes),
+6. Part 17 (two-step sign-in): 1 and 2 together (keys that unlock the files) with 4 (rudolfd decides), then 3 (codes),
    5 (requiring it) and 6 (the old keys).
-9. Part 21's CI checks first (so every later part is checked), then Part 18 (security keys with the QR code), Part 20
+7. Part 21's CI checks first (so every later part is checked), then Part 18 (security keys with the QR code), Part 20
    (rudolfd confined; the review booked before 2.0), Part 19 (the NVIDIA driver choice, then game mode, measured), and
    Part 21's checks with the owner after each beta.
-10. Part 22 (File Explorer: dragging between windows, the selection box, the progress window): one PR, then the owner's
+8. Part 22 (File Explorer: dragging between windows, the selection box, the progress window): one PR, then the owner's
    checks on the Vivobook.
+9. Part 23 (the native desktop's memory): A (one hidden page), then B (each window only what it needs, in stages), then C
+   (idle windows give their memory back), one PR each, each checked on the Vivobook; B's stages 2 and 3 (the owner, 2026-11-21:
+   scheduled with the rest of 1.6.1).
+10. Part 11's remaining groups (after drives, updates, the accounts' folders, accounts and power), one PR per group.

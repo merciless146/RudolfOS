@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     ACCTS.length=0;ACCTS.push({n:'boss',h:await pwMake('b1'),r:'admin'});saveUser();return 1})()`);
   await q("IN('boss','b1')"); await q("(async()=>{ACCTS.push(await acctNew('kid','k1','user'));saveUser()})()");
   const ids = await q("ACCTS.map(a=>a.id)");
-  ok('1. the partition is the account\'s ID, not its name', await q("rtPart()") == 'a' + ids[0].replace(/[^a-z0-9]/gi, '') && !/u[0-9a-z]+$/.test(await q("rtPart()")), await q("rtPart()"));
+  ok('1. the partition is the account\'s ID, not its name', await q("rtPart()") == 'a' + ids[0].replace(/[^a-z0-9]/gi, '') && !/u(boss|kid)$/.test(await q("rtPart()")), await q("rtPart()"));
   await wait(3600);
   const cl = await q("M.filter(m=>m.op=='clear').map(m=>m.part)");
   const olds = await q("['boss','kid','guest'].map(rtPartOld)");
