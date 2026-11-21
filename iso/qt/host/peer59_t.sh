@@ -39,6 +39,15 @@ echo "$o" | sed -n 's/.*RUDOLFD={token:"\([0-9a-f]*\)".*/\1/p' | head -1 > $T/to
 ok "...a token of 32 hex digits" "$([ ${#TOK} = 32 ] && echo 1)" "$TOK"
 o=$(run d2 /api/ping desk)
 ok "2. ...and the API with it" "$([ "$(code "$o")" = 200 ] && echo 1)" "$o"
+# (1.6.1 Part 23 B, stage 2) the native desktop's apps' page (/?oa=ID: a/ID.html), served as the page: to the desktop, with the token
+OA=$(grep -o "a/[0-9a-f]\{16\}\.html" $HERE/../../www/index.html | head -1 | cut -c3-18)
+o=$(run d4 "/?oa=$OA" desk)
+ok "2b. the desktop gets the native desktop's apps' page for /?oa=ID, with the token and the storage" "$([ -n "$OA" ] && [ "$(code "$o")" = 200 ] && echo "$o" | grep -q 'RUDOLFD={token:"' && echo "$o" | grep -q '<script>window.__OAPAGE=1;' && echo 1)" "$OA $(echo "$o" | head -c 200)"
+o=$(run d5 "/?oa=0000000000000000" desk); o2=$(run d6 "/?oa=../index" desk)
+ok "...an ID that is not one: the page itself" "$([ "$(code "$o")" = 200 ] && ! echo "$o" | grep -q '__OAPAGE=1;' && echo "$o" | grep -q 'RUDOLFD={token:"' && [ "$(code "$o2")" = 200 ] && ! echo "$o2" | grep -q '__OAPAGE=1;' && echo 1)" "$(echo "$o" | head -c 200)"
+rm -f $T/tok; o=$(run x7 "/?oa=$OA" no)
+ok "...and another program is refused it, as the page" "$([ "$(code "$o")" = 403 ] && ! echo "$o" | grep -q "RUDOLFD" && echo 1)" "$(echo "$o" | head -c 200)"
+echo "$TOK" > $T/tok; chmod 644 $T/tok
 rm -f $T/tok; o=$(run x1 / no)
 ok "3. another program (not the desktop's, an ordinary user) is refused the page" "$([ "$(code "$o")" = 403 ] && echo 1)" "$(echo "$o" | head -c 300)"
 ok "...and the answer carries neither the token nor the page's storage" "$(echo "$o" | grep -q "$TOK\|rudolf-ls\|RUDOLFD" && echo 0 || echo 1)" "$o"
