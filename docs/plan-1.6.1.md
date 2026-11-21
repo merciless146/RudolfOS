@@ -430,6 +430,25 @@ Rudolf asks it to, once, the first time it starts it, and only when the person h
 - a list in `iso/sys/root/usr/share/rudolf/titlebars` (app ID, how, where), so more can be added without a new
   program; each entry checked against the app's documentation before it goes in.
 Those windows then ask for decorations, and get Rudolf's title bar as any other.
+**Item 1 built on 2026-11-21 (unattended; PR "the apps' own setting first").** `rudolf-apps titlebar ID HOME` reads
+`iso/sys/root/usr/share/rudolf/titlebars` (ID, how, where: `chromium` or `vscode`, the file under the app's settings
+folder, Flatpak's `~/.var/app/ID/config` or Debian's `~/.config` for `deb:LAUNCHER`) and adds the key only where it is
+missing (Chromium's Preferences: the top-level `browser` object's `custom_chrome_frame: false`; VS Code's settings.json,
+comments kept: `window.titleBarStyle: native`), the file written beside and renamed, links not followed; then it marks the
+app done for the account (`~/.local/state/rudolf-titlebars/ID`): once. Flatpak's apps: in `rudolf-apps launch` (as the
+account's own user, before the launcher's command; not while the app runs, as Chromium writes its Preferences back as it
+closes). Debian's: `rudolf-debian launch` runs it as the person's own Linux user in the person's folder as Rudolf OS sees
+it. The list: Flathub's Chromium, ungoogled Chromium, Chrome, Brave, Edge, Vivaldi, Debian's Chromium, VS Code, VSCodium
+(the pref name from Chromium's `pref_names.h`, `kUseCustomChromeFrame`; VS Code's documented setting; the folders those
+Flathub apps keep their settings in). Not on it: Discord and Steam (no such setting on Linux; their bar has more than the
+title and buttons: item 2 keeps their own). **Note:** Chromium already leaves its own frame off under rudolf-native (a window
+manager it does not know), so for the browsers this only keeps that if a later Chromium changes its default.
+**Tests:** `iso/qt/host/titlebars161_t.sh` (16 checks, its own workflow, titlebars-check.yml): made when missing, added
+to an existing file with every other setting kept and still valid JSON (VS Code's with its comments), the person's own
+choice kept, once, Debian's folder, a link not followed, an app not on the list untouched, through `rudolf-apps launch`.
+Not run: rudolf-debian's step (it needs Debian installed: the owner's check). **The owner's checks on the Vivobook:** a
+Chromium-based browser and VS Code from Flathub, never opened before: Rudolf's title bar; one whose own bar was chosen in
+its settings: kept.
 
 **2. Otherwise, the app's own bar alone (the default).** A window asking for no decorations gets no title bar of
 Rudolf's: its frame keeps the edge (1 px, or 2 px with high contrast), the round corners and the resize edges; the
