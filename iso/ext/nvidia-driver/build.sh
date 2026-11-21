@@ -117,10 +117,13 @@ for c in j.get('chips', []):
     if 'kernelopen' not in c.get('features', []): continue
     n = c.get('name', ''); i = c.get('devid', '').lower().replace('0x', '')
     if not i or not any(w in n for w in ('GeForce', 'TITAN')): continue
+    # (Turing and newer, the GTX 16 and RTX 20 series on: device IDs from 0x1e00; 595's list also marks older chips, which
+    #  the open modules cannot start: they have no GSP)
+    if int(i, 16) < 0x1e00: continue
     seen.setdefault(i, n)
 import os; os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
 with open(sys.argv[2], 'w') as f:
-    f.write(f'# GeForce 16 and newer, by PCI ID: the cards NVIDIA {sys.argv[3]}\'s open kernel modules support ("kernelopen" in its\n# supported-gpus.json), GeForce and TITAN names only. Made by iso/ext/nvidia-driver/build.sh. ID<TAB>name\n')
+    f.write(f'# GeForce 16 and newer, by PCI ID: NVIDIA {sys.argv[3]}\'s supported-gpus.json ("kernelopen"), GeForce and TITAN\n# names, Turing and newer (from 10de:1e00). Made by iso/ext/nvidia-driver/build.sh. ID<TAB>name\n')
     for i in sorted(seen): f.write(f'10de:{i}\t{seen[i]}\n')
 print(f'nvidia: {len(seen)} cards offered'); print(open(sys.argv[2]).read(), end='')
 EOF

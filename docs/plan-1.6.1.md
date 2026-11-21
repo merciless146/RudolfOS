@@ -854,6 +854,13 @@ behind a full-screen game. (The newest-kernel track and Wayland, for HDR and var
     kernel modules support ("kernelopen": Turing and newer), GeForce and TITAN names (iso/sys/root/usr/share/rudolf/
     nvidia-gpus.txt, made by build.sh; the extension carries its own list for a newer driver's cards), and only when the
     NVIDIA card is the one the computer starts on (two graphics chips, PRIME laptops: not yet).
+    **The list itself came in a follow-up (2026-11-21, branch nvidia-gpulist):** the check build of 595.112.07 for the
+    stable release's kernel (6.18.64-rudolf) passed: the licence's 1.d found, the four modules built with the release's
+    vermagic, 569 MB of files, 205 MB to download. Its supported-gpus.json marks Maxwell and Pascal chips "kernelopen"
+    too (246 GeForce and TITAN entries), which the open modules cannot start (no GSP), so build.sh now also keeps only
+    device IDs from 10de:1e00 (Turing on): 155 cards, from the TITAN RTX and GTX 1650 to the RTX 50 series, in the base's
+    list. That build also found glibc's librt.so.1, which NVIDIA's libraries ask for, missing from the base: the extension
+    carries Ubuntu's own stub (the base's C library).
   - Settings › Display › Graphics driver (desktop/gpudrv61.js; rudolfd's gpu/driver, rudolfd-gpu.inc): shown only with an
     NVIDIA card; NVIDIA's driver greyed out with the reason when it is not offered; the change needs an administrator's
     password and takes effect at the next start. Standard and Native alike.
