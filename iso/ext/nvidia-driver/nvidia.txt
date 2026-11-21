@@ -3,4 +3,4 @@
 # checked before anything is taken from it. A new version: change both, run the NVIDIA driver check
 # (.github/workflows/nvidia-check.yml) and read its licence step.
 V 595.112.07
-S 
+S 1a38ecd538a2da6232a7330184063af59e9fc946c908cca555bd07909848b9f0

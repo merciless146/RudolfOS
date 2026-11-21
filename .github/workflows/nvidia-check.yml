@@ -53,8 +53,8 @@ jobs:
           echo "KV=$KV" >> $GITHUB_ENV; echo "::notice title=Release::r$S, Linux $KV"
       - name: Build the extension (unsigned modules, a throw-away package key)
         run: |
-          mkdir -p k out; python3 iso/pkgtools/rpk-tool.py keygen k >/dev/null
-          S=$(date +%s); KVER=$KV MODULES_SFS=$PWD/rel/modules.sfs NV_UNPINNED=1 sh iso/systools/mkext.sh nvidia-driver base k/rpk-signing.key out 2>&1 | tee build.log
+          set -o pipefail; mkdir -p k out; python3 iso/pkgtools/rpk-tool.py keygen k >/dev/null
+          S=$(date +%s); KVER=$KV MODULES_SFS=$PWD/rel/modules.sfs sh iso/systools/mkext.sh nvidia-driver base k/rpk-signing.key out 2>&1 | tee build.log
           echo "built in $(( $(date +%s) - S )) s"; ls -l out
           # the files, for the QEMU test (packed again there with its own TEST key), and the cards' list
           mkdir -p tree && unsquashfs -q -f -d tree out/nvidia-driver.rpk >/dev/null 2>&1 || python3 - <<'EOF'
