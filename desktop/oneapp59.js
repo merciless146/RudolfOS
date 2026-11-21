@@ -862,7 +862,7 @@ if(ONEAPP&&ONEAPP.k=='settings'&&oaNative()){let t=0,was=null,base=null,how='';
   const own=S.wpimg&&typeof SC=='object'&&SC&&S.wpimg!==SC.wpimg,wp=own&&typeof WPID!='undefined'&&WPID==S.wpimg&&/^data:image\//.test(WPURL||'')?WPURL:'';
   if(own&&!wp)return;   /* (its picture still loading: given once it is there, wpLoad's applySet) */
   const k=s+'|'+(wp?S.wpimg:'');if(k===was)return;was=k;oaPost({op:'prev',s,wp:wp&&wp.length<24e6?wp:''})},0)};
- {const _as=applySet;applySet=function(){const r=_as.apply(this,arguments);send(0);return r}}
+ {applySet=__after(applySet,function(){send(0);},"oneapp59.js");}
  {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);if(!OA.main)base=cur();return r}}
  /* (applied, or back to the saved settings: Apply, Revert, Discard, Reset to defaults) */
  for(const f of ['secCommit','secRevert'])if(typeof window[f]=='function'){const o=window[f];window[f]=function(){const r=o.apply(this,arguments);send(f);return r}}

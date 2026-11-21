@@ -64,4 +64,4 @@ function lkPanel(c){const da=c.querySelector('.da');if(!da||c.querySelector('.lk
    const no=document.createElement('option');no.value='none';no.textContent='Don’t open them';no.selected=cur=='none';sl.appendChild(no);
    sl.onchange=()=>{const v=ld(LKK(),{});v[s]=sl.value;svj(LKK(),v)};r.insertCell().appendChild(sl)});sec.appendChild(tb)}
  da.after(sec)}
-{const _ap=appsPanel;appsPanel=function(c){const r=_ap.apply(this,arguments);try{lkPanel(c)}catch(e){console.warn('links',e)}return r}}
+{appsPanel=__after(appsPanel,function(c){try{lkPanel(c)}catch(e){console.warn('links',e)}},"links60.js");}

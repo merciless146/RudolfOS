@@ -85,9 +85,9 @@ html.hc .tbpf{background:color-mix(in srgb,var(--tbpc,#16a34a) 65%,transparent)}
 .tbpf.tbpnum{transition:width .35s linear}
 html.rmotion .tbpf{transition:none!important}
 .tbprow{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}.tbprow input[type=color]{width:42px;height:26px;padding:0 2px}`;document.head.appendChild(st)}
-(function(){const o=themeApply;themeApply=function(){const r=o.apply(this,arguments);tbpApply();return r}})();
-/* Display Properties › Taskbar: Progress colour */
-(function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);const tg=c.querySelector('.tbgrp');if(!tg||c.querySelector('#dtbpc'))return;
+themeApply=__after(themeApply,function(){tbpApply()},'tbprog61.js');
+/* Display Properties › Taskbar: Progress colour (a step of Display Properties' list: hooks61.js, Part 24) */
+(function(){dispPanelS=__after(dispPanelS,function(c,W){const tg=c.querySelector('.tbgrp');if(!tg||c.querySelector('#dtbpc'))return;
  const cur=String(S.tbpcol||'green'),custom=!TBP_COLS.some(x=>x[0]==cur)&&cur!='accent';
  const l=document.createElement('label');l.htmlFor='dtbpc';l.textContent='Progress colour';
  const d=document.createElement('div');d.innerHTML=`<div class='tbprow'><select id='dtbpc'>${TBP_COLS.map(([k,n])=>optH(k,k=='green'?n+' (as it comes)':n,custom?'':cur)).join('')}${optH('accent','The accent colour',cur)}${optH('custom','Any colour…',custom?'custom':'')}</select> <input type='color' id='dtbpcc' aria-label='The colour'></div>
@@ -95,7 +95,7 @@ html.rmotion .tbpf{transition:none!important}
  tg.append(l,d);const s=d.querySelector('#dtbpc'),cc=d.querySelector('#dtbpcc');cc.value=custom?cur.toLowerCase():tbpColour();
  const sync=()=>{cc.hidden=s.value!='custom'};
  s.onchange=()=>{if(s.value=='custom'){cc.hidden=false;liveSet(c,'tbpcol',cc.value)}else{liveSet(c,'tbpcol',s.value);cc.value=tbpColour()}sync();tbpApply()};
- cc.oninput=()=>{if(s.value!='custom')s.value='custom';liveSet(c,'tbpcol',cc.value);sync();tbpApply()};sync()}})();
+ cc.oninput=()=>{if(s.value!='custom')s.value='custom';liveSet(c,'tbpcol',cc.value);sync();tbpApply()};sync()},'tbprog61.js')})();
 /* ---- the sources: the work each module does, on the window it belongs to (the rest find their own <progress>: tbpScan) */
 /* the File Explorer copies and moves (xfer61.js xfJob): on the window they were asked in; the progress window is found by its bar */
 if(typeof xfJob=='function'){const o=xfJob;xfJob=function(kind,n,opt){const j=o.apply(this,arguments),W=tbpOwner(),src='xfer'+Math.random().toString(36).slice(2,7);if(!W)return j;

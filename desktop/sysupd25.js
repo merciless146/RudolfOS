@@ -16,7 +16,7 @@ const sysuWhen=t=>{if(!t)return'never';const d=new Date(t*1000),z=typeof S=='obj
  return(same?'today':day)+' at '+tm};
 function sysuRestart(){if(!(SW&&wins.includes(SW))){settings('upd');return setTimeout(sysuRestart,400)}sdlg(SW,'Restart to finish the update','Rudolf OS restarts now and starts the updated system. Save your work first.',[['Later'],['Restart now',()=>rdPost('power?action=reboot').catch(e=>notify('Restart',e.message,{kind:'error'})),1]])}
 /* ---------- Settings > Update and recovery ---------- */
-{const _up=updPanel;updPanel=function(c){_up(c);if(!RD)return;const x=c.querySelector('.updx');if(!x)return;
+{updPanel=__after(updPanel,function(c){if(!RD)return;const x=c.querySelector('.updx');if(!x)return;
  const box=document.createElement('div');box.className='sysu';x.insertBefore(box,x.firstChild);
  let busy=false;const adm=isAdmin();
  async function draw(){const s=await sysuStatus();if(!box.isConnected)return;
@@ -76,7 +76,7 @@ ${s.recoveryVersion?`<p class='msg'>Recovery mode (in the start-up menu) starts 
     if(r.key=='none'&&!await uAsk('This address is not set up for this computer (see the lines above). Save it anyway?'))return}
    const cr=await elevate('Change where Rudolf OS gets updates',{cred:true});if(!cr)return;
    try{await rd('sys/set?k=url&v='+encodeURIComponent(v),{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p})});notify('Updates','Saved. Checking for updates…');job('check')}catch(e){notify('Updates',e.message,{kind:'error'})}}};
- draw()}}
+ draw()},"sysupd25.js");}
 /* ---------- 1.6.0 (the owner, 2026-11-16): Roll back to last stable version ----------
    Shown only when Get beta versions is on, or when this system is not a release the update server lists as published
    stable (a beta, a test build, a developer's build: rudolf-update checks the running release against the stable

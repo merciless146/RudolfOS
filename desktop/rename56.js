@@ -78,4 +78,4 @@ async function dupWindow(root){const W=win('Duplicate files','🧬',700,520);W.b
  q('.dpt').disabled=!sel.size;
  q('.dpt').onclick=()=>{const ps=[...sel].map(k=>k.split('/')).filter(p=>node(p)!=null);const n=trashPut(ps);if(n<0){q('.dps').textContent='The Trash is full. Empty it first.';return}
   EXPL.forEach(f=>f());notify('Duplicates moved to the Trash',`${n} file${n==1?'':'s'}. They can be restored from the Trash.`);W.close()};return W}
-{const _s=storPanel;storPanel=function(c){_s.apply(this,arguments);if(!USER)return;const ex=c.querySelector('.ex');if(!ex)return;const b=document.createElement('button');b.textContent='Find duplicates…';b.className='dup56';b.onclick=()=>dupWindow(homePath());ex.after(b)}}
+{storPanel=__after(storPanel,function(c){if(!USER)return;const ex=c.querySelector('.ex');if(!ex)return;const b=document.createElement('button');b.textContent='Find duplicates…';b.className='dup56';b.onclick=()=>dupWindow(homePath());ex.after(b)},"rename56.js");}

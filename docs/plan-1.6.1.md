@@ -1215,6 +1215,13 @@ behind a full-screen game. (The newest-kernel track and Wayland, for HDR and var
     kernel modules support ("kernelopen": Turing and newer), GeForce and TITAN names (iso/sys/root/usr/share/rudolf/
     nvidia-gpus.txt, made by build.sh; the extension carries its own list for a newer driver's cards), and only when the
     NVIDIA card is the one the computer starts on (two graphics chips, PRIME laptops: not yet).
+    **The list itself came in a follow-up (2026-11-21, branch nvidia-gpulist):** the check build of 595.112.07 for the
+    stable release's kernel (6.18.64-rudolf) passed: the licence's 1.d found, the four modules built with the release's
+    vermagic, 569 MB of files, 205 MB to download. Its supported-gpus.json marks Maxwell and Pascal chips "kernelopen"
+    too (246 GeForce and TITAN entries), which the open modules cannot start (no GSP), so build.sh now also keeps only
+    device IDs from 10de:1e00 (Turing on): 155 cards, from the TITAN RTX and GTX 1650 to the RTX 50 series, in the base's
+    list. That build also found glibc's librt.so.1, which NVIDIA's libraries ask for, missing from the base: the extension
+    carries Ubuntu's own stub (the base's C library).
   - Settings › Display › Graphics driver (desktop/gpudrv61.js; rudolfd's gpu/driver, rudolfd-gpu.inc): shown only with an
     NVIDIA card; NVIDIA's driver greyed out with the reason when it is not offered; the change needs an administrator's
     password and takes effect at the next start. Standard and Native alike.
@@ -1558,6 +1565,31 @@ Three parts, one PR each, in this order:
   with the processes shared (this host's) 258 MB before, 229 MB with two resting. Not on Lite (its windows are tabs of one
   window: kept as they are). Test: iso/qt/host/rest161_t.sh.
 
+### 24. Settings' pages built from one list of additions (added on 2026-11-21)
+The owner asked on 2026-11-21 whether Rudolf OS has bloat, dead code or redundancies; the answer named this first ("can
+item 1 be done safely in 1.6.1?" ... "Do it automatically once the other tasks that are currently running are
+finished"). Newer modules added their section to a Settings page by wrapping the function before them
+(`const o=dispPanelS;dispPanelS=function(c,W){o(c,W);...}`): Display Properties went through 15 nested functions,
+applySet through 11, themeApply through 7, and one section that failed stopped every section after it.
+- **The change:** `NAME=__after(NAME,function(...){...},'module')` (desktop/hooks61.js, the first module): the additions to
+  one function are one list, run in the order the modules load, which is the order the wrappers ran in; a step that
+  fails is reported in the console and the next still runs. Nothing else changes: the same code, in the same modules.
+  71 wrappers of the Settings pages (Display, Sound, Network, System, Accessibility, Users, Security, Apps, Storage,
+  Update and recovery, System health) and of applySet and themeApply became steps. 10 stay wrappers, because they run
+  before the earlier one or use what it returns (Users' first one, native25's and sndrs60's applySet, Sound's in
+  sndrs60, Storage's in dl27, System health's in gamemode61, Security's in devmode59, Users' in otp60, fido61 and
+  devkey59); a step added after one of them goes in a new list around it, so the order is still exactly the old one.
+  Every base function returns nothing and ignores `this` (checked), so a list returning what the first one returns is
+  the same.
+- **Merged only if** every Settings page, on Standard and in Native's app window, is the same as the build before the
+  change, and applying the settings with several choices (dark and light, the accent colour, tablet mode, the taskbar's
+  buttons, the aurora, high contrast, the text size) leaves the page the same (its attributes, styles, CSS variables and
+  saved settings): iso/qt/shell2/sethooks61_t.js `--compare` with the build before.
+- **Status (2026-11-21, branch settings-hooks):** done. sethooks61_t.js --compare against main's build at a01c81b: all 12
+  checks passed (22 pages on Standard and on Native, 13 choices applied); the check fails as it should when one heading
+  is changed. Speed: unchanged (the extra calls cost microseconds); the gain is code that is easier to follow and a
+  failing section that no longer hides the rest.
+
 ### 25. Progress on a minimized window's taskbar button (added on 2026-11-21)
 The owner, 2026-11-21: "When a window is minimized but has a task ongoing (downloads, page-loading, request sending, etc) can it's
 taskbar button show an inset loading feature that fills the button as if it were a loading bar from the left edge to the right edge?
@@ -1632,5 +1664,6 @@ This loading feature is green by default but can be set to other colors." For wo
    (idle windows give their memory back), one PR each, each checked on the Vivobook; B's stages 2 and 3 (the owner, 2026-11-21:
    scheduled with the rest of 1.6.1).
 10. Part 11's remaining groups (after drives, updates, the accounts' folders, accounts and power), one PR per group.
-11. Part 25 (progress on a minimized window's taskbar button): one PR (taskbar-progress), then the owner's checks on the Vivobook;
+11. Part 24 (Settings' pages built from one list), after every other 1.6.1 task's PR, before the final beta.
+12. Part 25 (progress on a minimized window's taskbar button): one PR (taskbar-progress), then the owner's checks on the Vivobook;
     Linux apps' progress (item 5) in docs/plan-1.6.2.md (25b).

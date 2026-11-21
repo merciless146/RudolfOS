@@ -11,6 +11,9 @@ Summary: In progress.
   bar in the window). Work with no percentage creeps towards the end and completes when it is done; the fill fades away then, and
   restoring the window hides it. Green as it comes: Display Properties › Taskbar › Progress colour has Blue, Orange, Purple, Red,
   the accent colour and any colour. The same on Standard, Native and Lite.
+- Changed: Settings' pages are built from one list of additions each, in the same order as before, instead of a
+  function wrapped up to 15 times. They look and work as they did; a section that fails no longer stops the sections
+  after it from being shown (the failure is written to the console).
 - For the phone build to come (2.0): the groundwork of its home screen's three panels: on a build marked as the mobile
   build, the three workspaces are panels shown full screen, switched with a swipe to the left or right on the desktop or
   a title bar, on Standard and Native alike. Nothing changes on computers.
@@ -250,6 +253,13 @@ Summary: In progress.
   fills its own monitor. A workspace's button on a monitor's taskbar shows it there. A monitor unplugged: its windows stay
   in their workspace and none is left off the screen. Settings › Display › Displays lists the displays and which
   workspace each shows, and makes another the main one. The sign-in and lock screens cover every monitor.
+
+- Fixed (Part 19's follow-up): Settings › Display › Graphics driver offers NVIDIA's driver before its extension is
+  installed (the list of GeForce 16 and newer cards was not in the base yet), and only for Turing and newer cards; NVIDIA's
+  extension builds (glibc's librt.so.1 was missing).
+
+- Fixed (Part 19's follow-up): game mode puts everything back by itself after a game crashes, also when nothing asks
+  again (its watcher is a process of its own).
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.

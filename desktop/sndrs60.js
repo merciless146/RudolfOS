@@ -164,14 +164,13 @@ if (typeof userLogin=='function') { const _ul=userLogin; userLogin=async functio
 if (typeof applySet=='function') { const _as=applySet; applySet=function(){ sndFill(); return _as.apply(this,arguments) } }
 if (typeof volPanelS=='function') { const _vf=volPanelS; volPanelS=function(){ sndFill(); return _vf.apply(this,arguments) } }
 /* the Volume Controls page: the count of categories said right, and "Use one style everywhere" */
-if (typeof volPanelS=='function') { const _v=volPanelS; volPanelS=function(c,W){ const r=_v.apply(this,arguments);
- try{ const msg=[...c.querySelectorAll('.msg')].find(x=>/sound categories/.test(x.textContent)); if (msg) msg.textContent=msg.textContent.replace(/the \d+ sound categories/,`the ${SNDS.length} sound categories`);
+if (typeof volPanelS=='function') { volPanelS=__after(volPanelS,function(c,W){try{ const msg=[...c.querySelectorAll('.msg')].find(x=>/sound categories/.test(x.textContent)); if (msg) msg.textContent=msg.textContent.replace(/the \d+ sound categories/,`the ${SNDS.length} sound categories`);
   const d=document.createElement('div'); d.className='r2 rsall'; d.innerHTML=`<label for='rsall'>Use one style everywhere</label><div><select id='rsall'><option value=''>Choose…</option>${Object.keys(RS_SCHEME).map(x=>`<option>${x}</option>`).join('')}</select> <span class='msg rsallm'></span></div>`;
   const first=c.querySelector('.vr2'); (first?first.parentNode:c).insertBefore(d, first ? first : null);
   d.querySelector('select').onchange=e=>{ const sch=e.target.value; if (!sch) return; let n=0;
    for (const [k] of SNDS) { const want=sch=='Classic'?0:SPRE[k].findIndex(x=>x[0]==(RS_SCHEME[sch][k]||sch)); if (want<0) continue; S.snd[k].p=want; n++;
     const sel=c.querySelector(`select[data-k='${k}'][data-t='p']`); if (sel) sel.value=String(want) }
-   applySet(); d.querySelector('.rsallm').textContent=`${sch} for ${n} of ${SNDS.length} categories. Press Apply to keep it.`; e.target.value=''; sfx('startup',true) } }catch(e){ console.warn(e) } return r } }
+   applySet(); d.querySelector('.rsallm').textContent=`${sch} for ${n} of ${SNDS.length} categories. Press Apply to keep it.`; e.target.value=''; sfx('startup',true) } }catch(e){ console.warn(e) }},"sndrs60.js"); }
 /* ---------- where the new sounds play ---------- */
 /* the start menu opening (#menu shown) */
 (function(){ const m=typeof document=='object'&&document.getElementById('menu'); if (!m) return; let was=getComputedStyle(m).display!='none';

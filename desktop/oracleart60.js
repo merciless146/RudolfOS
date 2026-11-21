@@ -43,8 +43,8 @@ a{color:var(--lk);text-decoration:none}a:hover{text-decoration:underline}
    the last change was drawn in the new mode already) */
 function oracleHomeRefresh(){const want=ORACLE_HOME_MARK+(oracleDark()?'dark':'light')+"'";
  document.querySelectorAll('.win.oracle .fh iframe').forEach(fr=>{if(typeof fr._html=='string'&&fr._html.includes(ORACLE_HOME_MARK)&&!String(fr.srcdoc).includes(want))fr.srcdoc=webDarkHtml(fr._html)})}
-{const o=applySet;applySet=function(){const r=o.apply(this,arguments);try{setTimeout(oracleHomeRefresh,0)}catch(e){}return r}}
-{const o=themeApply;themeApply=function(){const r=o.apply(this,arguments);try{setTimeout(oracleHomeRefresh,0)}catch(e){}return r}}
+{applySet=__after(applySet,function(){try{setTimeout(oracleHomeRefresh,0)}catch(e){}},"oracleart60.js");}
+{themeApply=__after(themeApply,function(){try{setTimeout(oracleHomeRefresh,0)}catch(e){}},"oracleart60.js");}
 /* Oracle's window in Rudolf's dark theme: the window's body showed white (its inline #fff) in the 8 px between the page and the
    status bar and under it, a white strip under the dark start page. It takes the dark window's colour instead, as the bars around
    it; the page's own area (.fh, under each page) is unchanged. Light theme: as before. */

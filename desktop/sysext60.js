@@ -45,5 +45,5 @@ async function sxSection(box,said){
   av.forEach(a=>{const d=document.createElement('div');d.className='acr wfrow sxone';d.innerHTML=`<span style='flex:1'><b></b><div class='msg'></div></span><button class='pri'>Install</button>`;d.querySelector('b').textContent=(a.title||a.name)+' '+a.version;
    d.querySelector('.msg').textContent=[a.summary,a.size?sxSize(a.size):'',a.license].filter(Boolean).join(' · ');d.querySelector('button').onclick=()=>{o.remove();job('install',a.name,'Install the system extension '+(a.title||a.name))};L.appendChild(d)});
   o.querySelector('.sxn').onclick=()=>o.remove();document.body.appendChild(o)}}
-(function(){if(typeof updPanel!='function')return;const U0=updPanel;updPanel=function(c){U0(c);if(typeof RD=='undefined'||!RD)return;const x=c.querySelector('.updx');if(!x)return;
- const box=document.createElement('div');box.className='sx60';const su=x.querySelector('.sysu');su?su.after(box):x.insertBefore(box,x.firstChild);sxSection(box)}})();
+(function(){if(typeof updPanel!='function')return;updPanel=__after(updPanel,function(c){if(typeof RD=='undefined'||!RD)return;const x=c.querySelector('.updx');if(!x)return;
+ const box=document.createElement('div');box.className='sx60';const su=x.querySelector('.sysu');su?su.after(box):x.insertBefore(box,x.firstChild);sxSection(box)},"sysext60.js");})();

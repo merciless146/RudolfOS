@@ -181,7 +181,7 @@ function lpHook(W){const el=W.el,tb=W.el.querySelector('.tb');if(!tb||el.__lp)re
 /* the taskbar button lit as the point lands in it */
 {const st=document.createElement('style');st.textContent=`#bar button.lplit{box-shadow:inset 0 0 0 999px rgba(242,247,255,calc(var(--lplit,1)*.55)),0 2px 0 0 rgba(205,228,255,var(--lplit,1))!important}`;document.head.appendChild(st)}
 /* ---------- Display Properties › Colours and theme: the transitions among the accent colour's places; their brightness ---------- */
-(function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);const d=c.querySelector('.acplaces');if(!d)return;const m=d.querySelector('.acmsg');
+(function(){dispPanelS=__after(dispPanelS,function(c,W){const d=c.querySelector('.acplaces');if(!d)return;const m=d.querySelector('.acmsg');
  const row=document.createElement('div');row.className='acrow lprow';
  row.innerHTML=`${ckH('dlpac','The window transitions (LitePoint)',!!S.lpac)} <select id='dlpacm' aria-label='Which colour for the window transitions'>${ACMODES.map(([k,n])=>optH(k,n,S.lpacm||'normal')).join('')}</select>`;
  const br=document.createElement('div');br.className='acrow lpbrrow';
@@ -191,7 +191,7 @@ function lpHook(W){const el=W.el,tb=W.el.querySelector('.tb');if(!tb||el.__lp)re
  const sync=()=>{q('#dlpacm').disabled=!q('#dlpac').checked};
  q('#dlpac').onchange=e=>{liveSet(c,'lpac',e.target.checked);sync()};q('#dlpacm').onchange=e=>liveSet(c,'lpacm',e.target.value);
  q('#dlpbr').oninput=e=>{liveSet(c,'lpbr',+e.target.value);out()};sync();out();
- if(m)m.textContent+=' The window transitions are white unless ticked; their light from Off to full (Reduce motion turns them off).'}})();
+ if(m)m.textContent+=' The window transitions are white unless ticked; their light from Off to full (Reduce motion turns them off).'},"litepoint60.js");})();
 /* ---------- (Part 17b, the owner, 2026-11-18) the start menu, the taskbar's pop-ups, right-click menus and its buttons ----------
    "Keep the positions/alignment for the start menu and other taskbar menus the way they currently are, but implement the
    transitions in an upward-moving direction if the taskbar is on the bottom, downward-moving if the taskbar is on the top,

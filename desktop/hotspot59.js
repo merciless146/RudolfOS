@@ -4,7 +4,7 @@
    When the Wi-Fi chip cannot share the Wi-Fi it is connected to, it says so: a cable, a phone's USB tethering or a modem
    is shared instead. rudolfd net/hotspot runs /usr/lib/rudolf/hotspot. */
 function hsRandPw(){const a='abcdefghjkmnpqrstuvwxyz23456789';const r=crypto.getRandomValues(new Uint32Array(12));return [...r].map(x=>a[x%a.length]).join('')}
-(function(){if(typeof netPanelS!='function')return;const o=netPanelS;netPanelS=function(c,W){o.apply(this,arguments);if(!RD)return;
+(function(){if(typeof netPanelS!='function')return;netPanelS=__after(netPanelS,function(c,W){if(!RD)return;
  const box=document.createElement('div');box.className='hs59';c.appendChild(box);let last='';
  const draw=async(force)=>{let s=null;try{s=await rd('net/hotspot')}catch(e){}if(!box.isConnected)return;if(!s){box.innerHTML='';return}
   const k=JSON.stringify(s);if(k==last&&!force)return;last=k;const adm=isAdmin();
@@ -27,4 +27,4 @@ function hsRandPw(){const a='abcdefghjkmnpqrstuvwxyz23456789';const r=crypto.get
    if(!p&&!s.saved)return notify('Share this connection','Choose a password (8 to 63 characters).',{kind:'error'});
    if(!await elevate('Share this computer’s connection as the Wi-Fi network '+n))return;t.disabled=true;t.textContent='Starting…';
    try{const m=await rdPost('net/hotspot',n+'\n'+p+'\n'+b);notify('Share this connection',m.message)}catch(e){notify('Share this connection',e.message,{kind:'error'})}draw(true)}};
- draw(true);const iv=setInterval(()=>{if(!box.isConnected)return clearInterval(iv);draw()},5000)}})();
+ draw(true);const iv=setInterval(()=>{if(!box.isConnected)return clearInterval(iv);draw()},5000)},"hotspot59.js");})();

@@ -75,13 +75,13 @@ html.tbs-retro #bar #wsw button.on{background:var(--tbbt)!important}
 .acsw{display:flex;align-items:center;flex-wrap:nowrap;gap:4px;min-width:0}.acsw #dac{flex:0 0 auto;margin-right:2px}
 .acsw .swb{flex:0 1 22px;width:auto!important;min-width:14px;height:auto!important;aspect-ratio:1;margin:0!important}
 .acrow{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}.acrow select:disabled{opacity:.55}`;document.head.appendChild(st)}
-(function(){const o=themeApply;themeApply=function(){const r=o.apply(this,arguments);try{acApply()}catch(e){}return r}})();
+(function(){themeApply=__after(themeApply,function(){try{acApply()}catch(e){}},"accent56.js");})();
 (function(){const o=icRedraw;icRedraw=function(){const r=o.apply(this,arguments);try{acIcons()}catch(e){}return r}})();
 (function(){const o=iconsApply;iconsApply=function(){const r=o.apply(this,arguments);try{acIcons()}catch(e){}return r}})();
 /* icons added to the desktop later (an app put on the desktop, a file) */
 {const D=document.getElementById('desk');if(D){let t=0;new MutationObserver(()=>{clearTimeout(t);t=setTimeout(()=>{if(S.icac)try{acIcons()}catch(e){}},60)}).observe(D,{childList:true,subtree:true})}}
 /* Display Properties: 16 swatches instead of 8, and the two places */
-(function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);const sw=c.querySelector('#dac');if(!sw)return;const box=sw.parentElement;
+(function(){dispPanelS=__after(dispPanelS,function(c,W){const sw=c.querySelector('#dac');if(!sw)return;const box=sw.parentElement;
  box.querySelectorAll('.swb').forEach(b=>b.remove());
  ACCENTS.forEach(([c2,n])=>{const b=document.createElement('button');b.className='swb';b.dataset.c=c2;b.style.background=c2;b.title=n;b.setAttribute('aria-label','Accent '+n);
   b.onclick=()=>{sw.value=c2;liveSet(c,'accent',c2)};box.appendChild(b)});
@@ -100,5 +100,5 @@ html.tbs-retro #bar #wsw button.on{background:var(--tbbt)!important}
  sync();
  /* the taskbar's style, in the Taskbar group (settings31) */
  const tg=c.querySelector('.tbgrp');if(tg){const l2=document.createElement('label');l2.htmlFor='dtbs';l2.textContent='Style';const s2=document.createElement('select');s2.id='dtbs';
-  s2.innerHTML=TB_STYLES.map(([k,n])=>optH(k,n,S.tbstyle||'standard')).join('');s2.onchange=e=>liveSet(c,'tbstyle',e.target.value);tg.append(l2,s2)}}})();
+  s2.innerHTML=TB_STYLES.map(([k,n])=>optH(k,n,S.tbstyle||'standard')).join('');s2.onchange=e=>liveSet(c,'tbstyle',e.target.value);tg.append(l2,s2)}},"accent56.js");})();
 acApply();

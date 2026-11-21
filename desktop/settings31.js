@@ -17,8 +17,7 @@ function ptrKeep(){if(typeof SC=='object'&&SC){if(S.ptr)SC.ptr=cln(S.ptr);SC.mse
 (function(){try{if(S.ptrmig)return;const p=S.ptr||{};if(+S.msens&&+S.msens!=5&&Math.abs((+p.speed||1)-1)<0.01){S.ptr=Object.assign({},PTR_DEF,p,{speed:Math.max(0.3,Math.min(3,+ptrF().toFixed(1)))});setTimeout(()=>{try{pointerApply()}catch(e){}},2000)}
  S.ptrmig=1;if(typeof SC=='object'&&SC)SC.ptrmig=1;ptrKeep()}catch(e){}})();
 /* ---------- Accessibility ---------- */
-(function(){const o=accPanelS;accPanelS=function(c,W){o(c,W);
- const lg=setGroup(c,'Language and region');if(lg){const n=lg.nextElementSibling;n&&n.classList.contains('r2')&&n.remove();lg.remove()}
+(function(){accPanelS=__after(accPanelS,function(c,W){const lg=setGroup(c,'Language and region');if(lg){const n=lg.nextElementSibling;n&&n.classList.contains('r2')&&n.remove();lg.remove()}
  const vis=setGroup(c,'Vision'),vr=vis&&vis.nextElementSibling;
  if(vr){const cb=setRow(c,'acb');if(cb){const box=document.createElement('div');const sw=c.querySelector('.cbsw');cb[1].replaceWith(box);box.appendChild(cb[1]);if(sw)box.appendChild(sw);cb[0].textContent='Colour vision';vr.prepend(cb[0],box)}
   const tt=setRow(c,'att'),sr=setRow(c,'asr');if(tt&&sr)sr[1].after(tt[0],tt[1])}
@@ -29,7 +28,7 @@ function ptrKeep(){if(typeof SC=='object'&&SC){if(S.ptr)SC.ptr=cln(S.ptr);SC.mse
   ['mhand','msens','mscroll','mdbl','msingle'].forEach(id=>{const r=setRow(c,id);if(r){r[0]&&(r[0].hidden=true);r[1].hidden=true}});
   const m=[...ms.children].find(x=>x.classList.contains('msg')&&/Left-handed/.test(x.textContent));if(m)m.hidden=true;
   ms.insertAdjacentHTML('beforeend',`<div class='msg mvmoved' style='color:#6b7280'>Pointer speed, the primary button, double-click speed, scroll speed and single-click opening are in <a href='#' class='mvgo'>Mouse and touchpad</a>.</div>`);
-  ms.querySelector('.mvgo').onclick=e=>{e.preventDefault();W.show('mouse')}}}})();
+  ms.querySelector('.mvgo').onclick=e=>{e.preventDefault();W.show('mouse')}}},"settings31.js");})();
 /* ---------- Mouse and touchpad ---------- */
 (function(){const o=mousePanel;mousePanel=function(c,W){o(c,W);const q=s=>c.querySelector(s);
  const sync=()=>{const p=ptrGet();S.msens=msensOf(p.speed);ptrKeep()};
@@ -49,7 +48,7 @@ function ptrKeep(){if(typeof SC=='object'&&SC){if(S.ptr)SC.ptr=cln(S.ptr);SC.mse
  const dt=d.querySelector('.dbltest');dt.ondblclick=()=>{const op=dt.classList.toggle('open');dt.firstChild.textContent=op?'📂 ':'📁 ';dt.querySelector('span').textContent=op?'Opened! Double-click again to close':'Double-click this folder to test'};dt.onkeydown=e=>{if(e.key=='Enter')dt.ondblclick()};
  if(df)df.addEventListener('click',()=>{['mhand','mdbl','mscroll','msingle'].forEach(k=>{S[k]=cln(DEFS.acc[k]);if(typeof SC=='object'&&SC)SC[k]=cln(S[k])});persistS();mouseApply();q('#mpb').value=S.mhand;q('#mpd').value=S.mdbl;q('#mps').value=S.mscroll;q('#mpo').checked=S.msingle;lab()})}})();
 /* ---------- System Settings › Date, time and language ---------- */
-(function(){const o=sysPanelS;sysPanelS=function(c,W){o(c,W);const h=c.querySelector('h3');
+(function(){sysPanelS=__after(sysPanelS,function(c,W){const h=c.querySelector('h3');
  const g=document.createElement('h4');g.className='sh4 sgrp';g.textContent='Date, time and language';g.style.cssText='font-size:15px;color:var(--fg,inherit);margin-top:4px';
  const first=h&&h.nextElementSibling;if(first)first.before(g);
  const d=document.createElement('div');d.className='syslang';
@@ -61,16 +60,16 @@ function ptrKeep(){if(typeof SC=='object'&&SC){if(S.ptr)SC.ptr=cln(S.ptr);SC.mse
  const tsay=async()=>{const m=d.querySelector('.ntsm');if(!m)return;try{const j=await rd('time/status');const w=j.at?clockParts(new Date(j.at*1000)):null,today=clockParts();
   m.textContent=j.result=='ok'?`Set from the internet at ${w.time}${w.iso!=today.iso?' on '+w.date:''}. Rudolf OS does this by itself at every start, when the network comes up and every 12 hours.`:j.result=='fail'?`The time servers did not answer at ${w.time} (offline?). Rudolf OS tries again when the network comes up.`:'Rudolf OS sets the clock from the internet by itself once the network is up.';
   if(j.floored)m.textContent+=' At start the clock read an earlier date than this release, so it was set to the release date until then.'}catch(e){}};
- const b=d.querySelector('.nts');if(b){tsay();b.onclick=()=>rdPost('time/sync').then(r=>{notify('Clock',r.message);tsay();typeof clk=='function'&&clk()}).catch(e=>{notify('Clock',e.message,{kind:'error'});tsay()})}}})();
+ const b=d.querySelector('.nts');if(b){tsay();b.onclick=()=>rdPost('time/sync').then(r=>{notify('Clock',r.message);tsay();typeof clk=='function'&&clk()}).catch(e=>{notify('Clock',e.message,{kind:'error'});tsay()})}},"settings31.js");})();
 /* ---------- Network Settings: Web search and Downloads move to the Oracle page ---------- */
 function netSearchNodes(c){const a=setGroup(c,'Web search (Oracle)'),out=[];if(!a)return out;let e=a;
  while(e&&!(e.classList&&(e.classList.contains('sfoot')))){if(e.id=='nsm'||(e.classList&&e.classList.contains('msg')&&/profiles that control/.test(e.textContent)))break;out.push(e);e=e.nextElementSibling;if(e&&e.tagName=='H4'&&!/^(Downloads)$/.test(e.textContent.trim()))break}
  return out}
-(function(){const o=netPanelS;netPanelS=function(c,W){o(c,W);if(c.dataset.oracle)return;
+(function(){netPanelS=__after(netPanelS,function(c,W){if(c.dataset.oracle)return;
  netSearchNodes(c).forEach(e=>e.hidden=true);
  if(RD){const f=c.querySelector(':scope > .sfoot');if(f)f.hidden=true}
  const n=document.createElement('div');n.className='msg nsmoved';n.style.color='#6b7280';n.innerHTML=`Web search and the download limits are on the <a href='#'>Oracle</a> page.`;n.querySelector('a').onclick=e=>{e.preventDefault();W.show('web')};
- const foot=c.querySelector(':scope > .sfoot');if(foot)foot.before(n);else c.appendChild(n)}})();
+ const foot=c.querySelector(':scope > .sfoot');if(foot)foot.before(n);else c.appendChild(n)},"settings31.js");})();
 (function(){const o=signinPanel;signinPanel=function(c,W){const a=document.createElement('div'),b=document.createElement('div');a.className='orsi';b.className='orsearch';c.append(a,b);o(a,W);
  const fixT=()=>{const h=a.querySelector('h3');if(h&&h.textContent!='Oracle')h.textContent='Oracle'};fixT();new MutationObserver(fixT).observe(a,{childList:true});
  if(!W)return;b.dataset.oracle=1;if(typeof CUST=='object')delete CUST.net;netPanelS(b,W);b.querySelectorAll(':scope > .sp25').forEach(e=>e.remove());   /* the real network's sections (Wi-Fi scans) are not needed here */
@@ -78,6 +77,6 @@ function netSearchNodes(c){const a=setGroup(c,'Web search (Oracle)'),out=[];if(!
  [...b.children].forEach(e=>{if(!keep.has(e)&&e!==ns&&e!==f)e.hidden=true});
  if(typeof CUST=='object'&&CUST.net)CUST.web=CUST.net}})();
 /* ---------- Display Properties: one Taskbar group ---------- */
-(function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);const tb=setRow(c,'tb'),tg=setRow(c,'dtg');if(!tb||!tg)return;
+(function(){dispPanelS=__after(dispPanelS,function(c,W){const tb=setRow(c,'tb'),tg=setRow(c,'dtg');if(!tb||!tg)return;
  const d=document.createElement('div');d.innerHTML=`<h4 class='sh4'>Taskbar</h4><div class='r2 tbgrp'></div>`;const r=d.querySelector('.r2');tb[0].textContent='Position';tg[0].textContent='Windows';r.append(tb[0],tb[1],tg[0],tg[1]);
- const at=setGroup(c,'Colours and theme')||c.querySelector(':scope > .sfoot');if(at)at.before(...d.children);else c.append(...d.children)}})();
+ const at=setGroup(c,'Colours and theme')||c.querySelector(':scope > .sfoot');if(at)at.before(...d.children);else c.append(...d.children)},"settings31.js");})();
