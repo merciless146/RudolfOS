@@ -5,6 +5,13 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Native: one title bar for apps that draw their own. Discord, Steam, Claude, VS Code and other Electron and Chromium apps,
+  and GTK 3 and 4 apps with a header bar, no longer get Rudolf's title bar above their own: their window keeps Rudolf's edge,
+  round corners and resize edges, and their own bar does the rest, as on Standard. Moving them by their bar, resizing them
+  from any edge or corner, their maximize, restore and minimize buttons, a double-click on their bar, the keyboard's Move
+  and Size from their window menu, and a right-click on a GTK header bar (the window's menu) all work, with the same limits
+  and transitions as Rudolf's own title bar. GTK's invisible shadow margins are cut away. Every other window keeps Rudolf's
+  title bar as before.
 - Native: idle windows give their memory back. Notepad or File Explorer minimized, or hidden behind another window, for a
   while (Settings › System › Idle windows: on by default on computers with under 6 GB of memory, after 10 minutes) is closed
   behind the scenes and comes back where it was when you show it: its files, tabs, folder, the scroll and the window's size
