@@ -1,0 +1,37 @@
+# The authenticator app's setup QR code (1.6.1, docs/plan-1.6.1.md Part 18; desktop/qr61.js): the encoder's codes and the
+# dialog's code decoded back to the exact link with OpenCV (and zbarimg), in Chromium (Standard: iso/qt/shell2/qr61_t.py)
+# and in WebKitGTK as Lite and Native show it (iso/qt/webkit/qr61_ci.py). Publishes nothing.
+name: QR check
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['desktop/qr61.js', 'desktop/otp60.js', 'iso/www/index.html', 'iso/qt/shell2/qr61_t.py', 'iso/qt/webkit/qr61_ci.py',
+      'iso/sys/rudolf-webkit.c', '.github/workflows/qr-check.yml']
+permissions: {contents: read}
+jobs:
+  chromium:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Packages
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq zbar-tools >/dev/null
+          pip install -q opencv-python-headless numpy playwright==1.63.0 && python3 -m playwright install --with-deps chromium >/dev/null
+      - name: The encoder and the dialog, decoded back (Chromium)
+        run: python3 iso/qt/shell2/qr61_t.py
+  webkit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Packages
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 xvfb imagemagick zbar-tools >/dev/null
+          pip install -q opencv-python-headless numpy
+      - name: Build rudolf-webkit
+        run: gcc -O2 -Wall -Wno-deprecated-declarations -Wno-misleading-indentation -o rudolf-webkit iso/sys/rudolf-webkit.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0)
+      - name: The dialog in WebKit (Lite, and Native's one-app Settings), decoded back
+        run: |
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 1
+          DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 python3 iso/qt/webkit/qr61_ci.py ./rudolf-webkit
