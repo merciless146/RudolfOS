@@ -49,3 +49,20 @@ rudolf-native never reads that copy itself, and never sees a password hash or a 
 | Request | What it does |
 |---|---|
 | `GET webkey` | What keeps the shared browser profile's website data at this start (written by the session's webkey_start): `{"state","why","t"}`, state `tpm` (a key sealed in this computer's TPM; `why`: why it is a new one, if it is), `none` (no TPM 2.0: Chromium's built-in key), `failed` (the TPM would not give it at this start; `why`), `off` (not started: an older session, or Lite). Never the key. docs/website-data-key.md. |
+
+## ZIP files kept on the disk (1.6.1; rudolfd-dlzip.inc, dlzip.sh)
+A download larger than 1.5 MB stays in the account's folder (/home/rudolf/Downloads/.accounts/ACCT/NAME) and Downloads holds
+a reference to it (dl27.js). For such a ZIP (dlzip61.js): `name` is its name on the disk (no `/`, not hidden, no control
+characters), `acct` the account's folder (`dl_acct_ok`); the file must be a plain file there, its real path the account's
+folder's (no link on the way).
+
+| Request | What it does |
+|---|---|
+| `GET dl/zip?name=&acct=` | What is inside, read with `unzip -l` as the desktop user (never as root): `{"ok","items":[{"name","size","dir"}],"more","total","bytes"}`, at most 20,000 items (`more`: there are others; `total` and `bytes` count them all). Not a ZIP: 422. |
+| `POST dl/unzip?name=&acct=` | Extract here: the job `dl-unzip` (`GET job`), dlzip.sh with the paths in a root-only file. It checks the free space for the unpacked size, unpacks as the desktop user into a hidden folder in the account's folder, refuses entries with `..` or an absolute path, removes links, then moves each file flat into the account's folder under a free name ("name (2).ext"). Its log: `total N BYTES`, `progress I N PATH`, `dir PATH`, `file PATH<tab>NAME<tab>SIZE`, then `done N BYTES`, `stopped N BYTES` or `error MESSAGE`. 409 while another job runs. |
+| `POST dl/unzip?stop=1` | Cancel: the job stops before the next file (what was moved stays, and is in its result). |
+| `GET dl/unzipped` | The last extraction's whole result (the job's log is only its end): `{"ok","running","acct","dirs":[PATH],"files":[{"path","disk","size"}],"end"}`. |
+| `POST dl/unzipped` | The page has saved its references: the result is forgotten. |
+
+While an extraction runs, or its result has not been taken (at most 15 minutes), `GET dl/home?acct=` for that account says
+`"unzip":true`, and the page takes no file of that folder in as a download of its own (dl27.js `dlAdopt`, in every page).
