@@ -109,9 +109,9 @@ if(ONEAPP){addEventListener('storage',e=>{try{if(!USER||e.key!='bd95set:'+uid()|
    (its click: the notification's own action, run here, __oaToastAct) */
 if(ONEAPP&&window.__notifCentre){const NA=window.__notifCentre.add,ACTS={};window.__oaToastAct=id=>{const f=ACTS[id];delete ACTS[id];if(f)try{f()}catch(e){console.warn(e)}};
  window.__notifCentre.add=function(title,body,opt){const H=document.getElementById('ntoasts'),k=H?H.children.length:0,n=NA.apply(this,arguments);
-  try{if(oaOut()&&!(opt&&opt.quiet))oaPost({op:'note',t:n.t,b:n.b,k:n.k,at:String(n.at)})}catch(e){}   /* (in the centre at once, and counted on its button) */
+  try{if(oaOut()&&!(opt&&opt.quiet))oaPost({op:'note',t:n.t,b:n.b,k:n.k,at:String(n.at),wl:n.wl||''})}catch(e){}   /* (in the centre at once, and counted on its button) */
   try{const h=document.getElementById('ntoasts');if(oaOut()&&h&&h.children.length>k){const d=h.lastElementChild;d.remove();const id=String(n.id);if(n.act)ACTS[id]=n.act;
-   oaPost({op:'toast',t:n.t,b:n.b,k:n.k,id,ms:String((opt&&opt.toast)||5000),why:d.querySelector('.bzwhy')?'1':'0',act:n.act?'1':'0'})}}catch(e){console.warn(e)}return n}}
+   oaPost({op:'toast',t:n.t,b:n.b,k:n.k,id,ms:String((opt&&opt.toast)||5000),why:d.querySelector('.bzwhy')?'1':'0',act:n.act?'1':'0',wl:n.wl||''})}}catch(e){console.warn(e)}return n}}
 /* (an app's own window is not the desktop: its icons' grid is the screen's, not the window's, or every window opened, or a page never
    shown, as do-desk's, would squeeze the desktop's places into its own size and keep them) */
 if(ONEAPP&&typeof gridInfo=='function'){const _gi=gridInfo;gridInfo=function(){const g=_gi();try{const q=ONEAPP.q,zf=parseFloat(document.documentElement.style.zoom)||1,top=document.body.classList.contains('top'),
