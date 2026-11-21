@@ -195,6 +195,7 @@ addEventListener('message', e => {
     else if (ev == 'title') h.title(String(m.title || ''));
     else if (ev == 'hover') { if (h.hover) h.hover(String(m.url || '').slice(0, 2000)) }   /* (1.6.1: where a link goes: "Goes To: …") */
     else if (ev == 'focus') h.focus();
+    else if (ev == 'find') { if (h.find) h.find({id: +m.id || 0, n: +m.n || 0, i: +m.i || 0, sel: typeof m.sel == 'string' ? m.sel.slice(0, 200) : undefined}) }   /* (1.6.1: find in page, orafind61.js) */
     else if (ev == 'close') h.close();
     else if (ev == 'keys') h.keys(String(m.k || ''));
     else if (ev == 'newwin' && typeof m.ntid == 'string') h.newwin(String(m.url || ''), m.ntid, !!m.popup);

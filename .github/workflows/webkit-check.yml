@@ -7,7 +7,7 @@
 name: Lite engine check
 on:
   push:
-    paths: ['iso/sys/rudolf-webkit.c', 'iso/qt/webkit/links60_ci.py', 'iso/qt/webkit/files61_ci.py', 'iso/sys/rudolf-portal.c', 'desktop/linux26.js', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rsynth.h', 'iso/qt/host/native59_t.sh', 'iso/qt/host/bgpage161_t.sh', 'iso/qt/host/chunks161_t.sh', 'iso/qt/host/rest161_t.sh', 'desktop/rest61.js', 'desktop/build19.py', 'desktop/svc60.js', 'iso/qt/host/hwcnative160_t.sh', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/host/fixtures/xwmclient.c', 'desktop/oneapp59.js', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
+    paths: ['iso/sys/rudolf-webkit.c', 'iso/qt/webkit/links60_ci.py', 'iso/qt/webkit/files61_ci.py', 'iso/sys/rudolf-portal.c', 'desktop/linux26.js', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rsynth.h', 'iso/qt/host/native59_t.sh', 'iso/qt/host/bgpage161_t.sh', 'iso/qt/host/chunks161_t.sh', 'iso/qt/host/rest161_t.sh', 'desktop/rest61.js', 'desktop/build19.py', 'desktop/svc60.js', 'iso/qt/host/hwcnative160_t.sh', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/host/fixtures/xwmclient.c', 'iso/qt/host/csd161_t.sh', 'iso/sys/rudolf-display.c', 'desktop/oneapp59.js', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -85,6 +85,12 @@ jobs:
           sh iso/qt/host/native59_t.sh | tee native-result.txt; r=$?
           echo "::notice title=Native desktop engine::$(tail -1 native-result.txt) — $(grep -E '^FAIL' native-result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
           grep -q ' passed$' native-result.txt && ! grep -q '^FAIL' native-result.txt
+      - name: One title bar for apps that draw their own (1.6.1, docs/plan-1.6.1.md Part 15)
+        run: |
+          sudo apt-get install -y -qq gtk-3-examples gtk-4-examples >/dev/null || true
+          sudo env "PATH=$PATH" CSD_CHROME="$(command -v google-chrome || command -v chromium || true)" sh iso/qt/host/csd161_t.sh | tee csd-result.txt
+          echo "::notice title=Apps' own title bars::$(tail -1 csd-result.txt) — $(grep -E '^FAIL|^SKIP' csd-result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
+          grep -q ' passed$' csd-result.txt && ! grep -q '^FAIL' csd-result.txt
       - name: The native desktop's one hidden page (1.6.1, docs/plan-1.6.1.md Part 23 A)
         run: |
           sh iso/qt/host/bgpage161_t.sh | tee bgpage-result.txt

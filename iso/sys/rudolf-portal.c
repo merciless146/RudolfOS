@@ -14,7 +14,8 @@
  * outside a sandbox ask (Chromium and Electron apps, SDL games, Steam, video players), 1.6.0.
  * and as org.gnome.keyring.SystemPrompter (gcr's prompter, 1.6.0): gnome-keyring-daemon's questions (a new keyring's
  * password, unlocking one) drawn by the desktop, the password handed back through gcr's secret exchange,
- * and as org.freedesktop.Notifications for apps that notify directly (libnotify).
+ * and as org.freedesktop.Notifications for apps that notify directly (libnotify),
+ * and as com.feralinteractive.GameMode and the portal's GameMode for games (1.6.1: the processor's preference raised).
  * Questions go to the desktop through rudolfd: a JSON file per request in /run/rudolf/portal/req,
  * the answer comes back in /run/rudolf/portal/resp. Files are handed over by path, so an app can use
  * a chosen file only where its sandbox lets it read and write (most desktop apps may use the home folder).
@@ -344,6 +345,122 @@ static void inh_start(void)
 	g_dbus_connection_register_object(BUS, "/org/freedesktop/PowerManagement", si->interfaces[1], &SS_VT, NULL, NULL, NULL);
 	g_bus_own_name_on_connection(BUS, "org.freedesktop.ScreenSaver", G_BUS_NAME_OWNER_FLAGS_REPLACE, NULL, NULL, NULL, NULL);
 	g_bus_own_name_on_connection(BUS, "org.freedesktop.PowerManagement", G_BUS_NAME_OWNER_FLAGS_REPLACE, NULL, NULL, NULL, NULL);
+}
+
+/* ---------------- 1.6.1 (docs/plan-1.6.1.md Part 19): GameMode's D-Bus API, the part games use. A game (libgamemode,
+   gamemoderun, Steam's launch option, Lutris) asks com.feralinteractive.GameMode (/com/feralinteractive/GameMode:
+   RegisterGame, UnregisterGame, QueryStatus and their ByPID forms, the ClientCount property), or from a Flatpak sandbox the
+   portal's org.freedesktop.portal.GameMode (the same, with pids in the sandbox or as pidfds). Each registered game is a file
+   in /run/rudolf/game-req (1733, as inhibit's: UID-PORTALPID-GAMEPID); /usr/lib/rudolf/gamemode (root) counts it while that
+   game runs and is this user's, and raises the processor's energy preference while any is counted. That is all a request
+   can do: no other process's priority, no governor of its own, no GPU clocks, no scripts (Feral's gamemoded runs the
+   game's custom scripts and renices; none of that here). A game of another user, a pid that does not run, more than 16
+   games, or a game already registered are refused (-1, as gamemoded answers). Released when the game asks, when it ends
+   (gamemode sees that), or when its caller leaves the bus. */
+#define GM_MAX 16
+typedef struct { long pid; char *sender; guint watch; } gmreg;
+static GList *GMR;
+static const char *gm_dir(void) { const char *d = getenv("RUDOLF_GAMEREQ_DIR"); return d && *d ? d : "/run/rudolf/game-req"; }
+static void gm_file(long pid, char *f, size_t n) { snprintf(f, n, "%s/%u-%ld-%ld", gm_dir(), (unsigned)getuid(), (long)getpid(), pid); }
+static long gm_sender_pid(const char *sender)
+{
+	GVariant *r = g_dbus_connection_call_sync(BUS, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetConnectionUnixProcessID",
+		g_variant_new("(s)", sender), G_VARIANT_TYPE("(u)"), 0, 2000, NULL, NULL);
+	if (!r) return 0;
+	guint32 p; g_variant_get(r, "(u)", &p); g_variant_unref(r); return p;
+}
+/* a running process of this user (not a zombie) */
+static int gm_mine(long pid)
+{
+	if (pid <= 1) return 0;
+	char f[64]; snprintf(f, sizeof f, "/proc/%ld/status", pid); char *t = NULL; if (!g_file_get_contents(f, &t, NULL, NULL)) return 0;
+	const char *u = strstr(t, "\nUid:"), *s = strstr(t, "\nState:"); int ok = u && (unsigned)strtoul(u + 5, NULL, 10) == (unsigned)getuid() && !(s && strchr(s + 7, 'Z') && strchr(s + 7, 'Z') < strchr(s + 7, '\n'));
+	g_free(t); return ok;
+}
+/* a pid as the caller sees it (inside a Flatpak sandbox's own pid namespace) made the system's: only the caller's own */
+static long gm_outer(const char *sender, long pid)
+{
+	long sp = gm_sender_pid(sender); if (!sp) return 0;
+	char f[64]; snprintf(f, sizeof f, "/proc/%ld/status", sp); char *t = NULL; long out = pid;
+	if (g_file_get_contents(f, &t, NULL, NULL)) { const char *n = strstr(t, "\nNSpid:"); if (n) { long a[8]; int k = 0; char *e; const char *p = n + 7;
+		while (k < 8) { long v = strtol(p, &e, 10); if (e == p) break; a[k++] = v; p = e; }
+		if (k > 1) out = pid == a[k - 1] ? a[0] : 0; } g_free(t); }
+	return out;
+}
+static gmreg *gm_find(long pid) { for (GList *l = GMR; l; l = l->next) if (((gmreg *)l->data)->pid == pid) return l->data; return NULL; }
+static void gm_drop(gmreg *g) { char f[300]; gm_file(g->pid, f, sizeof f); unlink(f); if (g->watch) g_bus_unwatch_name(g->watch); GMR = g_list_remove(GMR, g); g_free(g->sender); g_free(g); }
+static void gm_vanished(GDBusConnection *c, const char *name, gpointer u)
+{
+	(void)c; (void)u; for (GList *l = GMR; l;) { GList *n = l->next; gmreg *g = l->data; if (!strcmp(g->sender, name)) gm_drop(g); l = n; }
+}
+static int gm_register(const char *sender, long pid)
+{
+	if (!gm_mine(pid) || gm_find(pid) || g_list_length(GMR) >= GM_MAX) return -1;
+	gmreg *g = g_new0(gmreg, 1); g->pid = pid; g->sender = g_strdup(sender);
+	g->watch = g_bus_watch_name_on_connection(BUS, sender, G_BUS_NAME_WATCHER_FLAGS_NONE, NULL, gm_vanished, NULL, NULL); GMR = g_list_append(GMR, g);
+	char f[300], t[310]; gm_file(pid, f, sizeof f); snprintf(t, sizeof t, "%s.t", f);
+	if (g_file_set_contents(t, "gamemode\n", -1, NULL)) { chmod(t, 0644); rename(t, f); }
+	return 0;
+}
+static int gm_unregister(long pid) { gmreg *g = gm_find(pid); if (!g) return -1; gm_drop(g); return 0; }
+static int gm_query(long pid) { for (GList *l = GMR; l;) { GList *n = l->next; gmreg *g = l->data; if (!gm_mine(g->pid)) gm_drop(g); l = n; }
+	return gm_find(pid) ? 2 : GMR ? 1 : 0; }
+/* a pidfd's process (the portal's PIDFd forms): its "Pid:" line */
+static long gm_pidfd(GDBusMethodInvocation *inv, gint32 idx)
+{
+	GUnixFDList *fl = g_dbus_message_get_unix_fd_list(g_dbus_method_invocation_get_message(inv)); if (!fl) return 0;
+	int fd = g_unix_fd_list_get(fl, idx, NULL); if (fd < 0) return 0;
+	char f[64], *t = NULL; long p = 0; snprintf(f, sizeof f, "/proc/self/fdinfo/%d", fd);
+	if (g_file_get_contents(f, &t, NULL, NULL)) { const char *x = strstr(t, "Pid:"); if (x) p = strtol(x + 4, NULL, 10); g_free(t); }
+	close(fd); return p > 0 ? p : 0;
+}
+/* one method of either interface: games use RegisterGame, UnregisterGame and QueryStatus (the ByPID forms: a launcher for
+   its game); the portal's pids are the caller's sandbox's */
+static void gm_method(GDBusConnection *c, const char *sender, const char *path, const char *iface, const char *method, GVariant *p, GDBusMethodInvocation *inv, gpointer u)
+{
+	(void)c; (void)path; (void)u; int portal = !strcmp(iface, "org.freedesktop.portal.GameMode"); long pid = 0; gint32 a = 0, b = 0;
+	if (g_str_has_suffix(method, "PIDFd")) { g_variant_get(p, "(hh)", &a, &b); pid = gm_pidfd(inv, a); }
+	else if (g_str_has_suffix(method, "ByPID") || g_str_has_suffix(method, "ByPid")) { g_variant_get(p, "(ii)", &a, &b); pid = portal ? gm_outer(sender, a) : a; }
+	else { g_variant_get(p, "(i)", &a); pid = portal ? gm_outer(sender, a) : a; }
+	int r = -1;
+	if (g_str_has_prefix(method, "RegisterGame")) r = gm_register(sender, pid);
+	else if (g_str_has_prefix(method, "UnregisterGame")) r = gm_unregister(pid);
+	else if (g_str_has_prefix(method, "QueryStatus")) r = pid > 0 ? gm_query(pid) : -1;
+	else { g_dbus_method_invocation_return_dbus_error(inv, "org.freedesktop.DBus.Error.UnknownMethod", "not in Rudolf OS's game mode"); return; }
+	g_dbus_method_invocation_return_value(inv, g_variant_new("(i)", r));
+}
+static GVariant *gm_prop(GDBusConnection *c, const char *sender, const char *path, const char *iface, const char *prop, GError **e, gpointer u)
+{
+	(void)c; (void)sender; (void)path; (void)iface; (void)e; (void)u; gm_query(0);
+	if (!strcmp(prop, "ClientCount")) return g_variant_new_int32((gint32)g_list_length(GMR));
+	if (!strcmp(prop, "active")) return g_variant_new_boolean(GMR != NULL);
+	if (!strcmp(prop, "version")) return g_variant_new_uint32(4);
+	return NULL;
+}
+static const GDBusInterfaceVTable GM_VT = {gm_method, gm_prop, NULL, {0}};
+#define GM_M(n, in) "<method name='" n "'>" in "<arg type='i' direction='out'/></method>"
+#define GM_I "<arg type='i' direction='in'/>"
+#define GM_H "<arg type='h' direction='in'/>"
+static const char GM_XML[] = "<node><interface name='com.feralinteractive.GameMode'>"
+	GM_M("RegisterGame", GM_I) GM_M("UnregisterGame", GM_I) GM_M("QueryStatus", GM_I)
+	GM_M("RegisterGameByPID", GM_I GM_I) GM_M("UnregisterGameByPID", GM_I GM_I) GM_M("QueryStatusByPID", GM_I GM_I)
+	"<property name='ClientCount' type='i' access='read'/></interface>"
+	"<interface name='org.freedesktop.portal.GameMode'>"
+	GM_M("QueryStatus", GM_I) GM_M("RegisterGame", GM_I) GM_M("UnregisterGame", GM_I)
+	GM_M("QueryStatusByPid", GM_I GM_I) GM_M("RegisterGameByPid", GM_I GM_I) GM_M("UnregisterGameByPid", GM_I GM_I)
+	GM_M("QueryStatusByPIDFd", GM_H GM_H) GM_M("RegisterGameByPIDFd", GM_H GM_H) GM_M("UnregisterGameByPIDFd", GM_H GM_H)
+	"<property name='active' type='b' access='read'/><property name='version' type='u' access='read'/></interface></node>";
+static void gm_start(void)
+{
+	/* (this user's files left by an earlier portal: gone with it) */
+	GDir *d = g_dir_open(gm_dir(), 0, NULL); const char *nm; char pre[32]; snprintf(pre, sizeof pre, "%u-", (unsigned)getuid());
+	while (d && (nm = g_dir_read_name(d))) if (g_str_has_prefix(nm, pre)) { char *f = g_build_filename(gm_dir(), nm, NULL); unlink(f); g_free(f); }
+	if (d) g_dir_close(d);
+	GDBusNodeInfo *gi = g_dbus_node_info_new_for_xml(GM_XML, NULL);
+	if (!gi) return;
+	g_dbus_connection_register_object(BUS, "/com/feralinteractive/GameMode", gi->interfaces[0], &GM_VT, NULL, NULL, NULL);
+	g_dbus_connection_register_object(BUS, "/org/freedesktop/portal/desktop", gi->interfaces[1], &GM_VT, NULL, NULL, NULL);
+	g_bus_own_name_on_connection(BUS, "com.feralinteractive.GameMode", G_BUS_NAME_OWNER_FLAGS_REPLACE, NULL, NULL, NULL, NULL);
 }
 
 /* ---------------- 1.6.0: the Secret portal. libsecret inside a Flatpak sandbox keeps the app's secrets in a file of its
@@ -1029,6 +1146,7 @@ int main(int argc, char **argv)
 	g_bus_own_name_on_connection(BUS, "org.gnome.keyring.SystemPrompter", G_BUS_NAME_OWNER_FLAGS_REPLACE, NULL, NULL, NULL, NULL);
 	mon_start();
 	inh_start();
+	gm_start();   /* 1.6.1 (plan-1.6.1 Part 19): GameMode */
 	g_timeout_add(200, check_answers, NULL);
 	fprintf(stderr, "rudolf-portal: ready\n");
 	g_main_loop_run(g_main_loop_new(NULL, FALSE));

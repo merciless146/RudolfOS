@@ -134,6 +134,7 @@ typedef struct tab {
 	cairo_region_t *vis;             /* NULL: nothing covers it */
 } tab;
 static GHashTable *HOVER;   /* 1.6.1: a tab's last link address sent (tab* -> char*), so only changes are sent */
+static GHashTable *FINDS;   /* 1.6.1 (Part 10): a tab's find in page (tab* -> tfind*) */
 static GHashTable *TABS;           /* tid -> tab */
 static GHashTable *CTX;            /* part -> WebKitWebContext */
 static GHashTable *WEBDIR;         /* (1.6.0 Part 22) part -> the account's encrypted folder for its websites (/persist/oracle/ID) */
@@ -149,6 +150,9 @@ static const char *PAGE_JS =
 	" else if(c&&!e.altKey&&(k=='+'||k=='='||k=='-'||k=='0'))a='z'+(k=='='?'+':k);else if(c&&k=='Tab')a=e.shiftKey?'ptab':'ntab';"
 	" if(a){e.preventDefault();e.stopImmediatePropagation();if(a!='none')say({k:a})}},true);"
 	"const S='embed[src*=\".swf\" i],embed[type*=\"shockwave\" i],object[data*=\".swf\" i],object[type*=\"shockwave\" i],object[classid*=\"d27cdb6e\" i],param[name=\"movie\" i][value*=\".swf\" i]';"
+	/* 1.6.1 (Part 10): find in page: Ctrl+F, F3, Shift+F3, Ctrl+G and Ctrl+Shift+G open Oracle's find bar, before the page sees them */
+	"addEventListener('keydown',e=>{if(!e.isTrusted)return;const c=e.ctrlKey||e.metaKey;let a='';if(c&&!e.shiftKey&&!e.altKey&&e.code=='KeyF')a='cf';else if(!c&&!e.altKey&&e.code=='F3')a=e.shiftKey?'sf3':'f3';else if(c&&!e.altKey&&e.code=='KeyG')a=e.shiftKey?'sf3':'f3';"
+	" if(a){e.preventDefault();e.stopImmediatePropagation();say({k:a})}},true);"
 	"addEventListener('click',e=>{if(!e.isTrusted)return;const a=e.target&&e.target.closest&&e.target.closest('a[href^=\"tel:\" i]');if(!a)return;e.preventDefault();e.stopImmediatePropagation();say({tel:String(a.getAttribute('href')).slice(4,80)})},true);"
 	/* 1.6.1 (Part 10): F9 shows the page's article in Oracle's reader mode (and back), before the page sees it */
 	"addEventListener('keydown',e=>{if(e.isTrusted&&e.key=='F9'&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey){e.preventDefault();e.stopImmediatePropagation();say({k:'f9'})}},true);"
@@ -220,6 +224,7 @@ static void tab_free(gpointer p)
 {
 	tab *t = p; if (t->vis) cairo_region_destroy(t->vis);
 	if (HOVER) g_hash_table_remove(HOVER, t);   /* (1.6.1) */
+	if (FINDS) g_hash_table_remove(FINDS, t);   /* (1.6.1: find in page) */
 	if (t->box) gtk_widget_destroy(t->box); g_free(t);
 }
 static void tabs_order(void)
@@ -559,6 +564,58 @@ static int rect_of(JSCValue *a, int *x)
 	for (int i = 0; i < 4; i++) { JSCValue *v = jsc_value_object_get_property_at_index(a, i); if (!v || !jsc_value_is_number(v)) { if (v) g_object_unref(v); return 0; } x[i] = (int)jsc_value_to_double(v); g_object_unref(v); }
 	return 1;
 }
+/* ------------------------------------------------------------------ 1.6.1 (docs/plan-1.6.1.md Part 10): find in page
+   Oracle's find bar (desktop/orafind61.js) asks "find" {text, mc, back, again, id}, "findstop", "findsel" {id}, as of the Chromium
+   shell; WebKit's own find controller searches (every match highlighted) and counts. It does not say which match is the current
+   one, so that is counted here: the first (or the last, searching back), then one on or back with each "again", round at the ends.
+   Answered with tabev find {id, n, i} ({id, sel} for findsel: the page's selected text, for the bar's box). */
+typedef struct { char *q; int mc, n, i, id, step; } tfind;
+static void tfind_free(gpointer p) { tfind *f = p; g_free(f->q); g_free(f); }
+static void tfind_say(tab *t, tfind *f) { char x[96]; snprintf(x, sizeof x, "\"id\":%d,\"n\":%d,\"i\":%d", f->id, f->n, f->n ? f->i : 0); tabev(t, "find", x); }
+static void on_find_found(WebKitFindController *fc, guint n, gpointer d)
+{
+	(void)fc; tab *t = d; tfind *f = FINDS ? g_hash_table_lookup(FINDS, t) : NULL; if (!f) return;
+	/* (on to the next or back: WebKit then says 1, the one it went to; the count is the search's) */
+	if (!f->step) f->n = (int)n; f->step = 0; if (f->i < 1 || f->i > f->n) f->i = f->i < 1 && f->i != -1 ? 1 : f->n; tfind_say(t, f);
+}
+static void on_find_failed(WebKitFindController *fc, gpointer d)
+{
+	(void)fc; tab *t = d; tfind *f = FINDS ? g_hash_table_lookup(FINDS, t) : NULL; if (!f) return; f->n = 0; f->i = 0; tfind_say(t, f);
+}
+typedef struct { char tid[64]; int id; } tfsel;
+static void find_sel_done(GObject *o, GAsyncResult *res, gpointer p)
+{
+	tfsel *q = p; GError *e = NULL; JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(o), res, &e);
+	tab *t = TABS ? g_hash_table_lookup(TABS, q->tid) : NULL;
+	if (v && t && jsc_value_is_string(v)) { char *s = jsc_value_to_string(v); if (strlen(s) <= 200 && !strchr(s, '\n')) { GString *x = g_string_new(""); g_string_append_printf(x, "\"id\":%d,\"sel\":", q->id); json_str(x, s); tabev(t, "find", x->str); g_string_free(x, TRUE); } g_free(s); }
+	if (v) g_object_unref(v); if (e) g_error_free(e); g_free(q);
+}
+static int tab_find_op(tab *t, const char *op, JSCValue *m)
+{
+	if (strcmp(op, "find") && strcmp(op, "findstop") && strcmp(op, "findsel")) return 0;
+	WebKitWebView *v = WEBKIT_WEB_VIEW(t->view); WebKitFindController *fc = webkit_web_view_get_find_controller(v);
+	if (!FINDS) FINDS = g_hash_table_new_full(NULL, NULL, NULL, tfind_free);
+	tfind *f = g_hash_table_lookup(FINDS, t);
+	if (!strcmp(op, "findsel")) {
+		tfsel *q = g_new0(tfsel, 1); snprintf(q->tid, sizeof q->tid, "%s", t->tid); q->id = (int)jnum(m, "id", 0);
+		webkit_web_view_evaluate_javascript(v, "String(getSelection()||'').trim()", -1, "rudolf", NULL, NULL, find_sel_done, q); return 1;
+	}
+	char *q = !strcmp(op, "find") ? jstr(m, "text") : NULL;
+	if (!q || !*q) { g_free(q); if (f) { webkit_find_controller_search_finish(fc); g_hash_table_remove(FINDS, t); } return 1; }
+	if (strlen(q) > 500) q[500] = 0;
+	if (!f) { f = g_new0(tfind, 1); g_hash_table_insert(FINDS, t, f);
+		g_signal_connect(fc, "found-text", G_CALLBACK(on_find_found), t); g_signal_connect(fc, "failed-to-find-text", G_CALLBACK(on_find_failed), t); }
+	int mc = jbool(m, "mc"), back = jbool(m, "back"), again = jbool(m, "again"); f->id = (int)jnum(m, "id", 0);
+	if (again && f->q && !strcmp(f->q, q) && f->mc == mc && f->n > 0) {
+		f->i = back ? (f->i <= 1 ? f->n : f->i - 1) : (f->i >= f->n ? 1 : f->i + 1); f->step = 1;
+		if (back) webkit_find_controller_search_previous(fc); else webkit_find_controller_search_next(fc);
+		g_free(q); return 1;
+	}
+	g_free(f->q); f->q = q; f->mc = mc; f->n = 0; f->i = back ? -1 : 0; f->step = 0;
+	guint32 o = WEBKIT_FIND_OPTIONS_WRAP_AROUND | (mc ? 0 : WEBKIT_FIND_OPTIONS_CASE_INSENSITIVE) | (back ? WEBKIT_FIND_OPTIONS_BACKWARDS : 0);
+	webkit_find_controller_search(fc, q, o, 1000);
+	return 1;
+}
 static void on_tab_op(JSCValue *m)
 {
 	char *op = jstr(m, "op"), *tid = jstr(m, "tid"); if (!op) { g_free(tid); return; }
@@ -628,6 +685,7 @@ static void on_tab_op(JSCValue *m)
 			if (http_url(u)) webkit_web_view_load_uri(WEBKIT_WEB_VIEW(nt->view), u);
 		}
 		g_free(adopt); g_free(u); g_free(part);
+	} else if (t && tab_find_op(t, op, m)) {   /* (1.6.1: find in page) */
 	} else if (t) {
 		WebKitWebView *v = WEBKIT_WEB_VIEW(t->view);
 		if (!strcmp(op, "go")) { char *u = jstr(m, "url"); if (http_url(u)) webkit_web_view_load_uri(v, u); g_free(u); }
