@@ -435,8 +435,70 @@ weight (20) is one line in /usr/lib/rudolf/gamemode.
 - **Blitzen's guards (1.6.1 Part 26), with the owner:** asked for the GitHub token and a key file in several ways, a throwaway
   test key pasted, a program listing ~/.ssh, on Standard and Native (docs/plan-1.6.1.md Part 26, the owner's checks).
 
+### 27. Bring your files: personal files kept from the old system when installing (added on 2026-11-21)
+The owner asked on 2026-11-21: "Would it be possible for someone downloading and installing Rudolf to be able to
+save/transfer their personal files (documents, pictures, videos, music, etc.) from their old operating system?", then
+"Go ahead" (for 1.6.2, after 1.6.1 is promoted). Unlike the rest of this plan it does not wait on the owner's hardware;
+it is here so it does not delay 1.6.1's final beta.
+
+**Today (1.6.0):** possible by hand. Started live from the stick, File Explorer › the old drive › Copy to another drive…
+with "Only personal files" (drivecopy60.js, drivecopy.sh) copies them to a USB drive; Settings › Update and recovery ›
+Install Rudolf OS on this computer erases the whole disk; the files are copied back by hand. The installer says the
+disk is erased but does not offer to keep anything, so someone who does not know of the copy loses their files.
+
+**What to build:**
+1. **A "Bring your files" step in the installer**, before anything is erased, shown when the chosen disk holds an
+   operating system or user folders: what was found (Windows: Users\NAME\Documents, Pictures, Music, Videos, Desktop,
+   Downloads; macOS: /Users/NAME/...; Linux: /home/NAME/... and the XDG folders), per person on that computer, with the
+   size of each folder. Choices: keep them (the default when any are found), choose which, or erase without keeping
+   (said plainly, with the size that will be lost).
+2. **Where they go while the disk is erased:** a USB drive or external disk the person plugs in (its free space checked
+   against the size first; "Only personal files" as drivecopy60 defines it: no Windows, programs, AppData, caches or
+   system files; several drives in turn as drivecopy does). Every file copied is checked (size and SHA-256, as xfer61's
+   checked moves) before the installer may erase anything; a failed or cancelled copy stops the installation with
+   nothing erased.
+3. **After installing:** at the first sign-in (or when the person's account is made in the first-run setup) Rudolf
+   offers to bring them in: the old Documents into Documents, Pictures into Pictures, and so on (the rest under
+   "From the old computer"), into the account's own encrypted home (the fscrypt homes, the per-account Linux user's
+   ownership), with names that clash kept side by side. The external copy is left as it is until the person deletes it.
+4. **Disks that cannot be read as they are:** Windows with BitLocker (many Windows 11 laptops encrypt without the owner
+   knowing): ask for the recovery key, say where it usually is (the person's Microsoft account, account.microsoft.com/
+   devices/recoverykey, or a printout), unlock read-only (cryptsetup's BitLocker support, or dislocker if needed: check
+   what the base has and the size it adds); macOS (APFS, usually encrypted): say that Rudolf cannot read it and how to
+   copy the files on the Mac first; a Windows that was hibernated or "fast started" (NTFS left dirty): mount read-only,
+   or say to shut Windows down fully. The old disk is only ever mounted read-only until the person agreed to erase it.
+5. **Later, only if it is safe enough (decide after 1-4):** keeping the files on the same disk without an external drive
+   (copying them into free space, then shrinking or replacing the old partition). Risky (a power cut mid-way); not
+   without a checked backup path and the owner's decision.
+
+**Security:** reading another system's disk runs through rudolfd's root helpers (drives, Part 11) with paths checked;
+nothing from the old disk is run; the copied files go through the same checks as any file brought in (the antivirus
+where Rudolf uses it); a BitLocker key is used only to unlock and never stored.
+
+**Tests:** disk images made in CI (NTFS with a Windows-like Users tree, a dirty NTFS, ext4 with /home, a BitLocker image
+if cryptsetup can make one; APFS: the message only), in QEMU with the real release (iso/qt/sb/) and a second virtual
+disk as the "USB drive": the files found and sized, copied and checked, the install going ahead only after the copy,
+a cancelled copy erasing nothing, the files in the right folders after the first sign-in, Standard and Native the same
+(the owner's rule). **The owner's checks:** a real old Windows laptop or disk, if one is at hand, with a USB drive.
+
+### 25b. Linux apps' progress on their taskbar buttons (from 1.6.1 Part 25, item 5)
+Firefox, Chromium-based apps (Discord, VS Code, Steam's web parts) and others say their downloads' progress with the Unity
+LauncherEntry D-Bus signal (com.canonical.Unity.LauncherEntry, Update: the app's application://NAME.desktop, "progress" 0-1 and
+"progress-visible"). Not done in 1.6.1 Part 25: the apps run as each account's own Linux user on that account's own session bus
+(/run/user/UID/bus, its folder 0700), and the shell, the desktop user, cannot listen there without opening the account's bus to it.
+The way that weakens nothing:
+- the account's own rudolf-portal (already that user's process on that bus) listens for the signal and leaves a progress note in its
+  request folder as it leaves its questions (rudolfd's /run/rudolf/portal/req: each request its sender's, 0600);
+- rudolfd passes on only a desktop file id (letters, digits and . - _) and a number, checking the note is from that account's portal
+  (its peer check and owner), and the confinement lists (confinepure, winapi) are updated for the new kind;
+- rudolf-native (and Standard's page, through linux26.js's lxtb buttons) maps the desktop file id to the account's window
+  (_GTK_APPLICATION_ID, WM_CLASS, the lx: key) and calls the same fill (tbp_set; winProgress on Standard).
+A host test with a D-Bus sender on a stand-in account bus; the owner's check: a Firefox download with Firefox minimized.
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist and 19b's measurements with the owner, after the 1.6.1 beta.
 3. Part 8 with the MiFi, then Part 7; then the phone: Part 4, Part 6's items measured, 9b, Part 5 when the hardware is there.
 4. 21b after each beta.
+5. 25b (Linux apps' progress on their taskbar buttons), then a Firefox download checked on the Vivobook.
+6. Part 27 (Bring your files) after 1.6.1 is promoted: 1-4 in one or two PRs, 5 only by the owner's decision.

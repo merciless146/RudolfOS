@@ -223,6 +223,17 @@ CASES.push({n: 'tbs-ontop', set: {dm: 'light'}, more: PINST, app: 'notepad', tbm
 CASES.push({n: 'tbs-max', set: {dm: 'light'}, more: PINST, app: 'notepad', tbmenu: 'Maximize', parts: ['title']});
 CASES.push({n: 'tbs-max-top', set: {dm: 'dark', darkui: true, tb: 'top', twstyle: 'candy'}, more: PINST, app: 'notepad', tbmenu: 'Maximize', parts: ['title']});
 for (const [i, st] of [[0, 'standard'], [1, 'standard'], [2, 'standard'], [2, 'retro'], [1, 'candy'], [2, 'wire']]) CASES.push({n: 'tbh-' + st + '-' + i, set: {dm: 'light', twstyle: st}, more: PINST, app: 'notepad', hoverbtn: i, parts: ['title']});
+/* (1.6.1, docs/plan-1.6.1.md Part 25) a minimized window's work in progress on its taskbar button (tbprog61.js; rudolf-native.c tbp_*): at 40 %
+   and busy (the creeping fill, 30 s on: about 89 %), in the button styles, the dark theme, at the left, the colours (not high contrast: Standard's is a filter over
+   the page, Native's the screen's gamma (oneapp59.js oagamma), which Xvfb's screenshots do not show, the same without the fill) */
+const PJS = v => "const W = typeof OA == 'object' && OA.main ? OA.main : wins.filter(o => o.app == 'notepad').pop(); winProgress(W, " + JSON.stringify(v) + ")";
+CASES.push({n: 'prog-40', set: {dm: 'light'}, more: PINST, app: 'notepad', js: PJS(40), tbmenu: 'Minimize', after: 1000, parts: ['bar', 'tbw']});
+CASES.push({n: 'prog-busy', set: {dm: 'light'}, more: PINST, app: 'notepad', js: PJS('busy'), tbmenu: 'Minimize', after: 30000, parts: ['bar', 'tbw']});
+for (const st of ['wire', 'mono', 'candy', 'retro']) CASES.push({n: 'prog-40-' + st, set: {dm: 'light', tbbstyle: st}, more: PINST, app: 'notepad', js: PJS(40), tbmenu: 'Minimize', after: 1000, parts: ['tbw']});
+CASES.push({n: 'prog-40-dark-blue', set: {dm: 'dark', darkui: true, tbpcol: 'blue'}, more: PINST, app: 'notepad', js: PJS(40), tbmenu: 'Minimize', after: 1000, parts: ['tbw']});
+CASES.push({n: 'prog-40-accent', set: {dm: 'light', tbpcol: 'accent', accent: '#9333ea'}, more: PINST, app: 'notepad', js: PJS(40), tbmenu: 'Minimize', after: 1000, parts: ['tbw']});
+CASES.push({n: 'prog-ended', set: {dm: 'light'}, more: PINST, app: 'notepad', js: PJS(40) + '; setTimeout(() => winProgress(W, null), 3000)', tbmenu: 'Minimize', after: 4000, parts: ['bar']});   /* (done: gone) */
+CASES.push({n: 'prog-40-left-custom', set: {dm: 'light', tb: 'left', tbpcol: '#c026d3'}, more: PINST, app: 'notepad', js: PJS(40), tbmenu: 'Minimize', after: 1000, parts: ['bar', 'tbw']});
 const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
@@ -266,6 +277,7 @@ async function stdCase(c) {
     if (c.tbmenu) { const q = await tbAt(200, 17); await p.mouse.click(q[0], q[1], {button: 'right'}); await p.clock.runFor(300); await wait(300);
       const it = await p.evaluate(l => { const e = [...document.querySelectorAll('.ctx .cmi')].find(x => x.querySelector('span').textContent == l); if (!e) return null; const r = e.getBoundingClientRect(); return [r.left + 40, r.top + r.height / 2] }, c.tbmenu);
       if (it) await p.mouse.click(it[0], it[1]); else await p.keyboard.press('Escape'); await p.clock.runFor(300); await wait(300); await p.mouse.move(W / 2, H - 200); await wait(200) }
+    if (c.after) for (let i = 0; i < c.after / 500; i++) { await p.clock.runFor(500); await wait(40) }   /* (1.6.1 Part 25: the time the case's work has run) */
     if (c.hoverbtn !== undefined) { const q = await p.evaluate(i => { const w = [...document.querySelectorAll('.win.act')].find(e => e.offsetParent); const b = w.querySelectorAll('.tb button')[i].getBoundingClientRect(), r = w.getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2, Math.round(b.left + b.width / 2 - r.left), Math.round(b.top + b.height / 2 - r.top)] }, c.hoverbtn); hov = q.slice(2); await p.mouse.move(q[0], q[1]); await p.clock.runFor(200); await wait(300) }
     if (c.key == 'altab') { await p.keyboard.down('Alt'); await p.keyboard.press('Tab'); await p.clock.runFor(200); await wait(200) }
     if (c.key == 'overview') { await p.keyboard.press('Meta+Tab'); for (let i = 0; i < 4; i++) { await p.clock.runFor(200); await wait(150) } }
@@ -311,7 +323,7 @@ async function stdCase(c) {
   { const r = await rectOf('#ntoasts'); rects.toast = r ? [r[0] - 30, r[1] - 16, r[2] + 42, r[3] + 52] : null }   /* (with their shadows) */
   { const r = await rectOf('#calp') || await rectOf('.svp') || await rectOf('#qsp') || await rectOf('#ncp') || await rectOf('.np'); rects.fly = r }
   rects.win = await p.evaluate(() => { const w = [...document.querySelectorAll('.win')].filter(e => e.offsetParent).pop(); if (!w) return null; const r = w.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] });
-  rects.altab = await rectOf('#altab'); rects.desk = await rectOf('#desk');
+  rects.altab = await rectOf('#altab'); rects.desk = await rectOf('#desk'); rects.tbw = await rectOf('#tasks button.tbpon');   /* (1.6.1 Part 25: the button with the fill) */
   rects.desc = await p.evaluate(() => ({bar: document.getElementById('bar').className, body: document.body.className}));
   const read = c.read ? await p.evaluate(js => { try { return String((0, eval)(js)) } catch (e) { return 'ERROR ' + e.message } }, c.read) : null;
   if (c.readx) XTRA.std.readx = await p.evaluate(js => { try { return String((0, eval)(js)) } catch (e) { return 'ERROR ' + e.message } }, c.readx);
@@ -401,6 +413,7 @@ async function natCase(c, s) {
   if (c.tbmenu && cl) { xdo('mousemove ' + (cl[0] + 200) + ' ' + (cl[1] + 17) + ' click 3'); await until(() => nlines0('cmitem').length, 8000); await wait(300);
     const l = nlines0('cmitem').find(x => x.endsWith('|' + c.tbmenu)); if (l) { const a = l.split(' '); xdo('mousemove ' + a[1] + ' ' + a[2] + ' click 1') } else xdo('key Escape'); await wait(1200); xdo('mousemove ' + W / 2 + ' ' + (H - 200)); await wait(500);
     const l2 = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => new RegExp('^client .* app=' + c.app + ' ').test(x)); if (l2) { const a = l2.split(' '); cl = [+a[3], +a[4], +a[5], +a[6]] } }   /* (its place after: Maximize) */
+  if (c.after) await wait(c.after);   /* (1.6.1 Part 25) */
   if (c.hoverbtn !== undefined && cl && s.hov) { xdo('mousemove ' + (cl[0] + s.hov[0]) + ' ' + (cl[1] + s.hov[1])); await wait(700) }
   let cli = null; if (c.pre && c.pre.length) { const l = fs.readFileSync(path.join(D, 'state'), 'utf8').split('\n').find(x => new RegExp('^client .* app=' + c.pre[0] + ' ').test(x)); if (l) { const a = l.split(' '); cli = [+a[3], +a[4]] } }
   if (c.key == 'altab') { xdo('keydown alt key Tab'); await until(() => (nst('altab') || '-') != '-', 5000); await wait(500) }

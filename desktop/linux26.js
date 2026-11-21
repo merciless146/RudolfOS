@@ -19,7 +19,7 @@ function lxImg(el,id,icon){const go=n=>lxIcon(id,icon).then(u=>{if(!el.isConnect
  if(n<LX_ICON_RETRY.length)setTimeout(()=>{if(el.isConnected)go(n+1)},LX_ICON_RETRY[n])});go(0)}
 /* 1.3.0: a job that crashed says so (rudolfd job.crashed), instead of a guess about the cause */
 function jobCrashText(j){if(!j||!j.crashed)return'';const c=(j.crashes||[])[0];return`${c&&c.program?c.program:'A part of Rudolf OS'} stopped unexpectedly${c&&c.where?' (in '+c.where+')':''}. That is a bug in Rudolf OS, not a problem with this computer or its connection. Task Manager › System › Report a problem… sends the details.`}
-const lxJobWait=onLine=>new Promise(res=>{let seen=0;const iv=setInterval(async()=>{let j;try{j=await rd('job')}catch(e){return}const ls=(j.log||'').split('\n');if(onLine)for(;seen<ls.length-1;seen++)onLine(ls[seen]);if(!j.running&&j.status>=0){clearInterval(iv);res(j)}},900)});
+let lxJobWait=onLine=>new Promise(res=>{let seen=0;const iv=setInterval(async()=>{let j;try{j=await rd('job')}catch(e){return}const ls=(j.log||'').split('\n');if(onLine)for(;seen<ls.length-1;seen++)onLine(ls[seen]);if(!j.running&&j.status>=0){clearInterval(iv);res(j)}},900)});
 /* ---------- installed apps: Start menu, search, launching ---------- */
 const LXK='bd95lx';
 async function lxInstalled(force){if(!RD)return[];if(!force&&LX.inst&&Date.now()-LX.instAt<20000)return LX.inst;

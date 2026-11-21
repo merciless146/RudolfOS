@@ -40,12 +40,13 @@ async function driveCopyDlg(remote,items){
    const cont=!q('.dccl').hidden&&q('.dcc').checked;
    await rd('fs/xcopy',{method:'POST',body:`personal=${q('.dcp').checked?1:0} continue=${cont?1:0}\n${t.mount}/${nm}\n${src.join('\n')}\n`})}
   catch(e){busy=false;q('.dcm').textContent=e.message;q('.dcgo').disabled=false;q('.dcx').disabled=false;sel.disabled=false;q('.dcn').disabled=false;q('.dcp').disabled=false;q('.dcc').disabled=false;return}
+  const tbw=typeof tbpOwner=='function'?tbpOwner():null,tbp=v=>{if(tbw&&typeof winProgress=='function')winProgress(tbw,v,'drivecopy')};tbp('busy');   /* (1.6.1 Part 25: the File Explorer window it was asked in) */
   q('.dcpg').hidden=false;q('.dcl').hidden=false;q('.dcm').textContent='Copying… You can keep using the computer; leave both drives plugged in.';
   for(;;){await new Promise(r=>setTimeout(r,1000));let j;try{j=await rd('job')}catch(e){continue}if(j.name&&j.name!='drive-copy')continue;
    const ls=(j.log||'').split('\n'),pg=ls.filter(l=>/^PROGRESS /.test(l)).pop();
-   if(pg){const [,dn,tn,db,tb]=pg.split(' ').map(Number);q('.dcbar').value=tb?Math.round(db/tb*1000):dn/Math.max(1,tn)*1000;q('.dcpt').textContent=`${dn.toLocaleString()} of ${tn.toLocaleString()} files · ${dcB(db)} of ${dcB(tb)}`}
+   if(pg){const [,dn,tn,db,tb]=pg.split(' ').map(Number);q('.dcbar').value=tb?Math.round(db/tb*1000):dn/Math.max(1,tn)*1000;tbp(tb?db/tb*100:dn/Math.max(1,tn)*100);q('.dcpt').textContent=`${dn.toLocaleString()} of ${tn.toLocaleString()} files · ${dcB(db)} of ${dcB(tb)}`}
    const pre=q('.dcl');pre.textContent=ls.filter(l=>!/^PROGRESS /.test(l)).join('\n');pre.scrollTop=pre.scrollHeight;
-   if(!j.running&&j.status>=0){busy=false;q('.dcx').disabled=false;q('.dcx').textContent='Close';
+   if(!j.running&&j.status>=0){busy=false;tbp(null);q('.dcx').disabled=false;q('.dcx').textContent='Close';
     if(j.status==0){DC_LAST.key='';q('.dcm').textContent='Done. Safely remove the drive before unplugging it.';try{sfx('notify')}catch(e){}}
     else if(j.status==28){DC_LAST.key=key;DC_LAST.full=true;q('.dcm').textContent='The drive is full. Safely remove it, plug in the next one, and choose Copy to another drive again with the same selection: it continues with the rest.';try{sfx('warning')}catch(e){}}
     else q('.dcm').textContent='The copy stopped: see the lines above.';

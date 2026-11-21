@@ -33,7 +33,9 @@ const SVC_EVERY=['a11y25.js','oneapp59.js',
  'power31.js','games58.js','gamesleep59.js','home56.js',
  /* (remote access's red bar "… sees this screen", over each window as before (the shell draws none); its question is the service
     page's only: oneapp59.js) */
- 'remote50.js'];
+ 'remote50.js',
+ /* (1.6.1 Part 25: the window's own work in progress found and told to the shell, for its minimized taskbar button: tbprog61.js) */
+ 'tbprog61.js'];
 const SVC_EVERYF=[/dynResolve\(\)\.mode/];
 /* (what the native shell does itself for the whole desktop, so its service page does not do it again: the heartbeat (tick_heart), the
    microphone's 🎙️ (tick_mic), the cellular notices (tick_cell: they were shown once by the shell and again by every window), the

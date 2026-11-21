@@ -29,6 +29,7 @@
 ["Buttons","Taskbar"],
 ["Button colours","Taskbar"],
 ["Match the theme colours","Taskbar"],
+["Progress colour","Taskbar"],
 ["Title bars","",1],
 ["Style","Title bars"],
 ["Colour","Title bars"],
@@ -201,7 +202,8 @@
 ["Scroll speed","Buttons and clicks"],
 ["Opening items","Buttons and clicks"],
 ["Open files and folders with a single click","Buttons and clicks"]],"devs":
-[["Printers plugged in by USB","",1]],"acc":
+[["Printers plugged in by USB","",1],
+["Print queue","",1]],"acc":
 [["Pointer and cursor","",1],
 ["Cursor size","Pointer and cursor"],
 ["Cursor color","Pointer and cursor"],

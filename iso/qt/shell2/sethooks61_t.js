@@ -76,7 +76,7 @@ const diff = (a, b) => { const r = []; for (const k of new Set([...Object.keys(a
     const now = await snap(cur, native);
     const keys = Object.keys(now.pages);
     ok(`${nm} 1. every Settings page shows something (${keys.length} pages)`, keys.length >= 20 && keys.every(k => now.pages[k].length > 50), keys.filter(k => now.pages[k].length <= 50));
-    ok(`${nm} 2. Display Properties' additions are one list, in the order the modules load`, JSON.stringify(now.hooks.dispPanelS.flat()) == JSON.stringify(['settings25.js', 'native25.js', 'settings31.js', 'saver31.js', 'wallpaper31.js', 'accent56.js', 'tablet58.js', 'gpudrv61.js', 'lock58.js', 'aurora58.js', 'statue58.js', 'titlebar59.js', 'tbbtn59.js', 'mon61.js', 'litepoint60.js'].filter(m => !native || now.hooks.dispPanelS.flat().includes(m))) && now.hooks.dispPanelS.length == 1, now.hooks.dispPanelS);
+    ok(`${nm} 2. Display Properties' additions are one list, in the order the modules load`, JSON.stringify(now.hooks.dispPanelS.flat()) == JSON.stringify(['settings25.js', 'native25.js', 'settings31.js', 'saver31.js', 'wallpaper31.js', 'accent56.js', 'tablet58.js', 'gpudrv61.js', 'lock58.js', 'aurora58.js', 'statue58.js', 'titlebar59.js', 'tbbtn59.js', 'mon61.js', 'litepoint60.js', 'tbprog61.js'].filter(m => !native || now.hooks.dispPanelS.flat().includes(m))) && now.hooks.dispPanelS.length == 1, now.hooks.dispPanelS);
     ok(`${nm} 3. no addition failed (no warnings from the lists) and no page error from Settings`, !now.warns.length && !now.errs.filter(e => /Panel|settings|__after|hooks61/.test(e)).length, {warns: now.warns, errs: now.errs.slice(0, 8)});
     if (OLD) { const old = await snap({html: OLD, a: OLD.replace(/\.html$/, '-a')}, native);
       const dp = diff(old.pages, now.pages);
