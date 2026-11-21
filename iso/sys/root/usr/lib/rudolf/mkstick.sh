@@ -16,11 +16,17 @@ if [ "$1" = --check ]; then os_check "$2" "$3" "$SRCOS"; exit $?; fi
 # --info DISK: the stick's image (partition 1) and RUDOLFDATA (partition 3), mounted read-only for a moment
 if [ "$1" = --info ]; then
 	D=$2; N=${D##*/}; case "$N" in *[0-9]) P1=${D}p1; P3=${D}p3;; *) P1=${D}1; P3=${D}3;; esac
-	I=/run/rudolf/stkinfo-$N; mkdir -p $I/i $I/d
+	RB=${RUDOLF_RUN:-/run/rudolf}; I=$RB/stkinfo-$N
+	# 1.6.1: never while the stick is being made or written (its busy mark: install.sh), and one look at a time per drive
+	[ -e $RB/busy/$N ] && { echo '{"rudolf":false,"busy":true}'; exit 0; }
+	mkdir -p $I; exec 9>$I.lock; flock -n 9 2>/dev/null || { echo '{"rudolf":false,"busy":true}'; exit 0; }
+	set +e   # (1.6.1: with set -e, "umount $I/d" failing when partition 3 was not mounted ended the script before the image
+	         #  was unmounted: the owner's Make the stick… then said "/dev/sdb is in use (mounted at /run/rudolf/stkinfo-sdb/i)")
+	mkdir -p $I/i $I/d
 	mount -t iso9660 -o ro "$P1" $I/i 2>/dev/null || mount -t iso9660 -o ro "$D" $I/i 2>/dev/null || { rmdir $I/i $I/d $I 2>/dev/null; echo '{"rudolf":false}'; exit 0; }
-	if [ -e $I/i/rudolf/id ]; then mount -t ext4 -o ro,noload "$P3" $I/d 2>/dev/null || true; printf '{"rudolf":true,"info":'; os_info $I/i $I/d | tr -d '\n'; echo '}'
+	if [ -e $I/i/rudolf/id ]; then mount -t ext4 -o ro,noload "$P3" $I/d 2>/dev/null; printf '{"rudolf":true,"info":'; os_info $I/i $I/d | tr -d '\n'; echo '}'
 	else echo '{"rudolf":false}'; fi
-	umount $I/d 2>/dev/null; umount $I/i 2>/dev/null; rmdir $I/i $I/d $I 2>/dev/null; exit 0
+	mountpoint -q $I/d && umount $I/d; mountpoint -q $I/i && umount $I/i; rmdir $I/i $I/d $I 2>/dev/null; exit 0
 fi
 DEV=$1; IMG=$2; FILES=$3
 # 1.6.0 (plan-1.6.1 Part 16, moved to 1.6.0): IMAGE "@address": the latest release at the update address that is set (an
