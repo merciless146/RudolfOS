@@ -1,0 +1,53 @@
+# ZIP files kept on the disk (1.6.1, 2026-11-21): dlzip.sh with Info-ZIP's unzip and GNU tools and with BusyBox's (as Rudolf OS
+# has them), rudolfd built as the release builds it and its dl/zip, dl/unzip and dl/unzipped with the script, and Archive Manager's
+# list, Extract here, its progress window and the references it makes (dlScope included) with a stand-in rudolfd in Chromium.
+name: ZIP on the disk check
+on:
+  workflow_dispatch:
+  push:
+    paths: ['iso/sys/root/usr/lib/rudolf/dlzip.sh', 'iso/sys/rudolfd-dlzip.inc', 'iso/sys/rudolfd.c', 'desktop/dlzip61.js', 'desktop/dl27.js',
+      'desktop/files25.js', 'iso/www/index.html', 'iso/qt/host/dlzip161_t.sh', 'iso/qt/host/dlzip161api_t.sh', 'iso/qt/host/fixtures/dlzipapi.c',
+      'iso/qt/shell2/dlzip61_t.js', '.github/workflows/dlzip-check.yml']
+permissions: {contents: read}
+jobs:
+  script:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Info-ZIP's and BusyBox's unzip
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq unzip busybox >/dev/null
+      - name: dlzip.sh (as root, unpacking as another user; GNU tools, then BusyBox's)
+        run: sudo sh iso/qt/host/dlzip161_t.sh
+      - name: dlzip.sh with BusyBox's shell too
+        run: sudo env SH="busybox sh" sh iso/qt/host/dlzip161_t.sh
+  rudolfd:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq unzip zlib1g-dev >/dev/null
+      - name: Build rudolfd (the release's flags)
+        run: |
+          . iso/systools/hardflags.sh
+          gcc -O2 $HARD -o /tmp/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          python3 iso/systools/hardcheck.py /tmp/rudolfd
+      - name: rudolfd's dl/zip, dl/unzip, dl/unzipped (with dlzip.sh)
+        run: sudo env CI=1 sh iso/qt/host/dlzip161api_t.sh
+      - name: rudolfd's Downloads paths (as before)
+        run: sh iso/qt/host/dlpath_t.sh
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: Archive Manager and Extract here for a ZIP kept on the disk
+        run: node iso/qt/shell2/dlzip61_t.js
+      - name: Downloads as before (accounts, the downloads page)
+        run: |
+          node iso/qt/shell2/dl155_t.js
+          node iso/qt/shell2/dl140_t.js
+          node iso/qt/shell2/dlpage61_t.js

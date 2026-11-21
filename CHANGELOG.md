@@ -10,6 +10,15 @@ Summary: In progress.
   Settings › Security (and preparing the drive for it) are done by the drives helper as root, no longer
   by rudolfd, which reads every request of the desktop: the key goes to it on a pipe, never as an argument, and the
   account is checked again there (a removed account is refused). Nothing changes on screen.
+- New: a ZIP larger than 1.5 MB in Downloads (kept on the disk) opens in Archive Manager, which lists what is inside it
+  (names, sizes, folders; the first 3,000 shown) without loading it, with Extract here; File Explorer's Open with offers
+  Archive Manager for it too. Extract here (there, or in File Explorer) unpacks it next to the ZIP with a progress window
+  (the file, n of N, the bytes, Cancel): a folder named after the ZIP, its sub-folders as in the ZIP, each file kept on the
+  disk and checked by the antivirus (one quarantined or blocked is said so). The ZIP is unpacked as the desktop user, never
+  as root; one with entries that point outside it ("..", an absolute path) is refused, and links in it are left out.
+- Changed: files kept on the disk can now be in sub-folders of Downloads, where they stay (before, they were moved back to
+  the top of Downloads); only those at the top are renamed on the disk when renamed. Deleting them, the Trash and
+  Downloads' own files work as before.
 - Fixed: the release build no longer stops when linux-firmware updates a file: it takes linux-firmware at the commit the firmware list was made from (the list's new "R" line), and a check runs that fetch on every change to the list.
 - Changed: Native uses less memory: each window's page frees its caches and collects garbage sooner (a limit that
   follows the computer's memory, checked every 5 s instead of 15), and the pages the desktop opens by itself at
