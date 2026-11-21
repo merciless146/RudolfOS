@@ -190,6 +190,13 @@ closed tab, restore the session) and item 7 (reader mode); item 5 (ad and tracke
 (website passwords) and item 6 (extensions from the Library) are suggested for 2.0 (docs/plan-2.0.md); item 6's
 stage 1 could start here. The owner decides.
 
+**Built (the owner, 2026-11-20): the Downloads page's progress bar and Remove** (desktop/dlrm61.js). A file arriving: how
+much so far and how fast, and with a size known the percentage and time left (Chromium's own downloads do not tell their
+size: the bar then moves without a percentage); being checked: a bar. Remove beside Open: in Downloads → the Trash;
+otherwise "File removed from list" with "⚡ Ask Blitzen" (the notification's own Blitzen button, kept in the centre; drawn
+by rudolf-native too). Test dlpage61_t.js; workflow downloads-page-check.yml. Left: the size of Chromium's downloads
+(rudolf-webkit's WebKitDownload knows it: Lite could send it).
+
 ### 11. rudolfd's root work split into helpers (added on 2026-11-16; from docs/plan-1.5.9.md 15.5)
 
 **Shipped in 1.6.0 (owner, 2026-11-17: "I do want to keep 446 and 447 in 1.6.0"):** rudolf-rootd with the drives' and

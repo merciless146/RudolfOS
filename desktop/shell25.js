@@ -163,7 +163,7 @@ const NCB=document.createElement('button');NCB.id='ncb';NCB.title='Notifications
 const QSB=document.createElement('button');QSB.id='qsb';QSB.title='Quick settings (Super+A)';QSB.setAttribute('aria-label','Quick settings');QSB.textContent='☰';
 $('#tray').before(QSB);$('#tray').before(NCB);
 function ncBadge(){NCB.dataset.n=ncUnread||'';NCB.classList.toggle('dnd',!!S.dnd);NCB.textContent=S.dnd?'🔕':'🔔'}
-window.__notifCentre={add(title,body,opt){opt=opt||{};const n={id:Date.now()+Math.random(),t:String(title),b:String(body||''),k:opt.kind||'info',app:opt.app||'',at:Date.now(),act:opt.action||null};
+window.__notifCentre={add(title,body,opt){opt=opt||{};const n={id:Date.now()+Math.random(),t:String(title),b:String(body||''),k:opt.kind||'info',app:opt.app||'',at:Date.now(),act:opt.action||null};if(opt.blitz){n.bz=opt.blitz;n.wl='Ask Blitzen'}   /* (1.6.1: its own Blitzen button, blitzdiag57.js bzWhyBtn; kept with it) */
  if(!opt.quiet){NC.unshift(n);NC=NC.slice(0,60);ncUnread++;ncBadge();try{USER&&svj(NCK(),NC.map(x=>({...x,act:null})))}catch(e){}}
  if(!S.dnd||n.k=='error'){const d=document.createElement('div');d.className='ntoast '+n.k;d.setAttribute('role',n.k=='error'?'alert':'status');d.innerHTML=`<b></b><div></div>`;d.querySelector('b').textContent=n.t;d.querySelector('div').textContent=n.b;
   d.onclick=()=>{d.remove();n.act?n.act():ncToggle(true)};typeof bzWhyBtn=='function'&&bzWhyBtn(d,n);let host=$('#ntoasts');if(!host){host=document.createElement('div');host.id='ntoasts';document.body.appendChild(host)}host.appendChild(d);setTimeout(()=>d.classList.add('out'),opt.toast||5000);setTimeout(()=>d.remove(),(opt.toast||5000)+400);
