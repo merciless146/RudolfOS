@@ -12,7 +12,7 @@ function gdNow(s){return s.inUse=='nvidia'?`NVIDIA's driver${s.version?' '+s.ver
  gdStatus().then(s=>{if(!s||!s.card||!c.isConnected)return;   /* (no NVIDIA card: nothing to choose) */
   const d=sp(c,`<h4 class='sh4'>Graphics driver</h4><div class='r2'><label for='gdsel'>NVIDIA card</label><div><select id='gdsel'>
    <option value='open'>Open (NVK): nouveau and Mesa (recommended)</option><option value='nvidia'>NVIDIA's driver</option></select>
-   <div class='msg gdn'></div><div class='msg gdw'></div><div class='msg'>Changes take effect when Rudolf OS restarts. If NVIDIA's driver cannot be used, Rudolf OS goes back to the open driver by itself and says so. Recovery mode always uses the open driver.</div></div></div>`);
+   <div class='msg gdn'></div><div class='msg gdw'></div><details class='gdl' hidden><summary>NVIDIA's licence</summary><div class='msg'>NVIDIA's driver comes with NVIDIA's own licence: Rudolf OS passes its files on unmodified, as its section 1.d allows, and it may be used only on GeForce and Titan cards (its 2.8).</div><pre class='jl' style='max-height:240px;overflow:auto;white-space:pre-wrap'></pre></details><div class='msg'>Changes take effect when Rudolf OS restarts. If NVIDIA's driver cannot be used, Rudolf OS goes back to the open driver by itself and says so. Recovery mode always uses the open driver.</div></div></div>`);
   const sel=d.querySelector('#gdsel'),n=d.querySelector('.gdn'),w=d.querySelector('.gdw'),nv=sel.querySelector('option[value=nvidia]');
   const show=s=>{sel.value=s.choice=='nvidia'?'nvidia':'open';
    n.textContent=`${s.name||s.card}: now using ${gdNow(s)}.`+(s.choice!=s.inUse?` At the next start: ${s.choice=='nvidia'?"NVIDIA's driver":'the open driver'}.`:'');
@@ -20,6 +20,7 @@ function gdNow(s){return s.inUse=='nvidia'?`NVIDIA's driver${s.version?' '+s.ver
    w.textContent=!s.offered?`NVIDIA's driver is not offered here: ${s.why}.`:!s.extension.installed?"NVIDIA's driver is a system extension: install “NVIDIA's graphics driver” in Settings › Update and recovery › System extensions first.":s.extension.state&&s.extension.state!='in-use'&&s.extension.state!='next'?`The NVIDIA driver extension is not in use (${s.extension.state}).`:'';
    if(s.fellBack)w.textContent=`Switched back to the open driver on ${new Date(s.fellBack.at).toLocaleString()}: ${s.fellBack.why}.`};
   show(s);
+  if(s.extension&&s.extension.installed)rd('gpu/driver/licence').then(r=>r.text()).then(t=>{if(typeof t!='string'||!t)return;const l=d.querySelector('.gdl');l.hidden=false;l.querySelector('pre').textContent=t}).catch(()=>{});
   sel.onchange=async()=>{const to=sel.value;const cr=await elevate(to=='nvidia'?"Use NVIDIA's graphics driver from the next start":'Use the open graphics driver from the next start',{cred:1});
    if(!cr){show(s);return}
    try{s=await rd('gpu/driver/set?to='+to,{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p})});show(s);

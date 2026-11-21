@@ -14,6 +14,7 @@ const srv = http.createServer((q, s) => { const [u0, qs] = q.url.split('?'); con
     if (u == '/' || u == '/index.html') { s.writeHead(200, {'content-type': 'text/html'}); return s.end(fs.readFileSync(path.join(WWW, 'index.html'), 'utf8').replace('<head>', '<head><script>window.RUDOLFD={token:"t",base:"",boot:"uefi",media:"disk",live:0,recovery:0};</script>')) }
     if (u == '/api/events/wait') { await new Promise(r => setTimeout(r, 800)); s.writeHead(200); return s.end('{"ok":true,"events":""}') }
     if (u == '/api/gpu/driver') return J(M.st);
+    if (u == '/api/gpu/driver/licence') { if (!M.st.extension.installed) return J({ok: false, error: 'not in use'}, 404); s.writeHead(200, {'content-type': 'text/plain'}); return s.end('License for Customer Use of NVIDIA Software <b>x</b>\n1. d. Distribute the SOFTWARE ...') }
     if (u == '/api/gpu/driver/ack') { M.acks++; delete M.st.fellBack; return J(M.st) }
     if (u == '/api/gpu/driver/set') { const to = new URLSearchParams(qs).get('to'); M.posts.push([to, body]); M.st.choice = to; return J(M.st) }
     if (u == '/api/display') return J({ok: true, setting: 'games', active: 'gpu', xorg: true, gpu: 'nouveaudrmfb'});
@@ -38,6 +39,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const sec = () => q("(()=>{const s=document.querySelector('#gdsel');if(!s)return null;const d=s.closest('.sp25');return {txt:d.textContent,val:s.value,nvOff:s.querySelector('option[value=nvidia]').disabled}})()");
   await open(); let x = await sec();
   ok('4. GeForce RTX 4090: Graphics driver shown, Open (NVK) chosen, NVIDIA\'s driver offered', x && x.val == 'open' && !x.nvOff && /NVIDIA GeForce RTX 4090: now using the open driver \(NVK\)/.test(x.txt), x);
+  const lic = await q("(()=>{const l=document.querySelector('.gdl');return l&&!l.hidden?l.querySelector('pre').textContent:null})()");
+  ok('...NVIDIA\'s licence shown with it (the extension installed: its 1.d asks that each recipient get it), as text', lic && /License for Customer Use of NVIDIA Software <b>x<\/b>/.test(lic), lic);
   await q("(()=>{const s=document.querySelector('#gdsel');s.value='nvidia';s.onchange();return 1})()"); await wait(600); x = await sec();
   ok('5. choosing NVIDIA\'s driver: an administrator\'s password asked, sent to rudolfd with to=nvidia', M.posts.length == 1 && M.posts[0][0] == 'nvidia' && JSON.parse(M.posts[0][1]).n == 'Ann' && (await q('__asked'))[0][1] === true, M.posts);
   ok('6. ..."at the next start" said', /At the next start: NVIDIA's driver/.test(x.txt), x.txt);

@@ -12,6 +12,8 @@
 #   gpudriver status        JSON for Settings: the card, whether it is offered, the extension, the choice, what is in use,
 #                           and the last time it was switched back by itself (and why)
 #   gpudriver set open|nvidia     the choice, for the next start;   gpudriver ack   the switch-back's note was shown
+#   gpudriver licence       NVIDIA's licence, from the installed extension (shown in Settings: its section 1.d asks that each
+#                           recipient be given it)
 # Switched back to the open driver by itself, with a note the desktop shows once (a notification) and a health-log line,
 # when: the card is not eligible, the extension is missing or left out, a module does not load (one not signed by a key
 # the kernel trusts is refused: Secure Boot's module signing is never relaxed), Xorg does not start with it, or the
@@ -143,8 +145,9 @@ set) case "$2" in open|nvidia) ;; *) echo '{"ok":false,"error":"open or nvidia"}
 	if [ "$2" = nvidia ]; then ne=$(not_eligible); [ -n "$ne" ] && { printf '{"ok":false,"error":%s}\n' "$(js "$ne")"; exit 1; }; fi
 	mkdir -p "$P" && echo "$2" > "$CHOICE" && rm -f "$TRY" && sync; status ;;
 ack) rm -f "$NOTE"; status ;;
+licence) f=$EXT/nvidia-driver/licenses/NVIDIA-LICENSE; [ -r "$f" ] && head -c 200000 "$f" || exit 1 ;;   # (NVIDIA's licence, given to each recipient: its 1.d)
 xorg) if [ -e "$INUSE" ] && [ -s "$XCONF" ]; then echo "$XCONF"; else echo /usr/lib/rudolf/xorg.conf; fi ;;
 failed) [ -e "$INUSE" ] || exit 0; fall_back "${2:-Xorg did not start with it}"; rm -f "$RUN/gpu" ;;
 good) [ -e "$INUSE" ] && rm -f "$TRY"; exit 0 ;;
-*) echo "usage: gpudriver boot | status | set open|nvidia | ack | xorg | failed WHY | good"; exit 2 ;;
+*) echo "usage: gpudriver boot | status | set open|nvidia | ack | licence | xorg | failed WHY | good"; exit 2 ;;
 esac

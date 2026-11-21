@@ -4,7 +4,8 @@
  *                                      ID), its extension, the choice, what is in use, the last switch back and why
  *   POST gpu/driver/set?to=open|nvidia the choice for the next start: only for an administrator whose password rudolfd
  *                                      checks itself (the body {"n":ADMIN,"p":PASSWORD}), as the system extensions
- *   POST gpu/driver/ack                the switch-back's note was shown (the desktop's notification): not shown again */
+ *   POST gpu/driver/ack                the switch-back's note was shown (the desktop's notification): not shown again
+ *   GET  gpu/driver/licence            NVIDIA's licence (text), from the installed extension: Settings shows it */
 #ifndef GPU_SH
 #define GPU_SH "/usr/lib/rudolf/gpudriver"
 #endif
@@ -12,6 +13,8 @@ static void api_gpudriver(struct req *r, const char *what, int post)
 {
 	if (access(GPU_SH, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no graphics driver choice"); return; }
 	char *o = NULL;
+	if (!strcmp(what, "licence")) { o = run_out(GPU_SH " licence 2>/dev/null"); if (!o || !*o) { free(o); reply_err(r->fd, 404, "the NVIDIA driver extension is not in use"); return; }
+		reply(r->fd, 200, "text/plain; charset=utf-8", o, strlen(o), NULL); free(o); return; }
 	if (!*what) o = run_out(GPU_SH " status 2>/dev/null");
 	else if (!post) { reply_err(r->fd, 405, "use POST"); return; }
 	else if (!strcmp(what, "ack")) o = run_out(GPU_SH " ack 2>/dev/null");

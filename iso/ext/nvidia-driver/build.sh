@@ -4,8 +4,8 @@
 #     (its version and Rudolf OS's configuration, iso/kconfig.sh) and, when MODSIGN_KEY and MODSIGN_CERT are given, signed
 #     with them (the kernel's own sign-file); unsigned otherwise, which every Rudolf OS kernel refuses to load;
 #   - NVIDIA's user-space driver (OpenGL/GLX, EGL, Vulkan, the Xorg driver, the GSP firmware, the libraries games use), copied
-#     from the .run byte for byte: its licence allows redistribution only of unmodified binary files (its section 2.1.2,
-#     checked below in the .run's own licence; the build stops if that clause is gone);
+#     from the .run byte for byte: its licence allows redistribution only of unmodified binary files, with the licence
+#     given to each recipient (its section 1.d, checked below in the .run's own licence: the build stops if it is gone);
 #   - usr/share/nvidia/rudolf-gpus.txt: the cards offered (the base's usr/share/rudolf/nvidia-gpus.txt is a copy of it) (GeForce 16 and newer: the driver's supported-gpus.json, those the
 #     open kernel modules support), PCI ID and name, tab-separated.
 #   sh build.sh OUTDIR      environment: KVER (the release kernel, 6.18.y-rudolf), LINUX_SRC (an unpacked tree of that
@@ -23,13 +23,22 @@ GOT=$(sha256sum "$RUNF" | cut -c1-64)
 if [ "$S" != "$GOT" ]; then echo "nvidia: NVIDIA-Linux-x86_64-$V.run has SHA-256 $GOT; nvidia.txt pins ${S:-nothing}"; [ -n "$NV_UNPINNED" ] || exit 1; echo "::warning title=nvidia.txt::not pinned yet: S $GOT"; fi
 rm -rf "$W/x"; sh "$RUNF" --extract-only --target "$W/x" >/dev/null
 X=$W/x
-# ---- the licence: section 2.1.2 (the Linux/FreeBSD exception) must still allow redistribution of unmodified files
+# ---- the licence: it must still allow redistribution of the unmodified files. Since the 590s, NVIDIA's own licence (the
+# .run's LICENSE, "License for Customer Use of NVIDIA Software") says, in section 1, "you may ... d. Distribute the SOFTWARE
+# provided for use with operating system kernels distributed under the terms of an OSI-approved open source license as
+# listed by the Open Source Initiative at http://opensource.org, provided that (i) the binary files thereof are not modified
+# in any way (except for uncompressing of compressed files) and (ii) this Agreement is provided to each SOFTWARE recipient."
+# (Linux is GPL-2.0.) Older drivers had it as 2.1.2, the "Linux/FreeBSD Exception". The build stops if neither is there.
 L=$X/LICENSE; [ -f "$L" ] || { echo "nvidia: the .run has no LICENSE"; exit 1; }
 tr -s ' \n\t' '   ' < "$L" > "$W/lic1"
-grep -q 'Linux/FreeBSD Exception' "$W/lic1" && grep -q 'may be copied and redistributed, provided that the binary files thereof are not modified in any way' "$W/lic1" ||
-	{ echo "nvidia: the licence of $V no longer has the Linux/FreeBSD redistribution clause (2.1.2) in those words: stop, and read it again"
-	  ls "$X" | grep -i 'licen\|copying\|eula' ; wc -c "$L"; grep -n -i -B3 -A8 'distribut\|FreeBSD\|Linux' "$L" | head -150; exit 1; }
-echo "nvidia: $V's licence: 2.1.2 (Linux/FreeBSD Exception) allows redistribution of the unmodified files"
+if grep -q 'Distribute the SOFTWARE provided for use with operating system kernels distributed under the terms of an OSI-approved open source license' "$W/lic1" &&
+   grep -q 'provided that (i) the binary files thereof are not modified in any way (except for uncompressing of compressed files) and (ii) this Agreement is provided to each SOFTWARE recipient' "$W/lic1"; then
+	echo "nvidia: $V's licence, section 1.d: redistribution of the unmodified files with an OSI-licensed kernel, the licence given to each recipient"
+elif grep -q 'Linux/FreeBSD Exception' "$W/lic1" && grep -q 'may be copied and redistributed, provided that the binary files thereof are not modified in any way' "$W/lic1"; then
+	echo "nvidia: $V's licence, 2.1.2 (Linux/FreeBSD Exception): redistribution of the unmodified files"
+else echo "nvidia: the licence of $V no longer allows redistribution in the words checked here: stop, and read it again"
+	ls "$X" | grep -i 'licen\|copying\|eula'; grep -n -i -B3 -A8 'distribut\|FreeBSD\|Linux' "$L" | head -150; exit 1; fi
+grep -q 'licensed for use only on GeForce or Titan hardware products' "$W/lic1" && echo "nvidia: (its 2.8: GeForce and Titan software for GeForce and Titan cards only: Rudolf OS offers it only for those)"
 # ---- the kernel tree (the release's version and configuration), prepared for external modules
 if [ -n "$LINUX_SRC" ]; then K=$LINUX_SRC; else
 	KV0=${KVER%-rudolf}; K=$W/linux; rm -rf "$K"
@@ -91,7 +100,7 @@ c nvidia-smi '' "$OUT/usr/bin"
 # (not shipped: nvidia-modprobe and nvidia-persistenced, setuid or daemons; nvidia-settings; the 32-bit libraries: 32-bit
 #  games run in Steam's Flatpak, which installs NVIDIA's matching libraries itself; Wayland's EGL platform: Rudolf OS is X11)
 cp -p "$L" "$OUT/licenses/NVIDIA-LICENSE"; cp -p "$X/kernel-open/COPYING" "$OUT/licenses/NVIDIA-open-kernel-modules-COPYING" 2>/dev/null || true
-printf 'The kernel modules (nvidia, nvidia-modeset, nvidia-drm, nvidia-uvm) are built from NVIDIA open GPU kernel modules %s\n(MIT/GPL-2.0, dual-licensed): https://github.com/NVIDIA/open-gpu-kernel-modules/tree/%s\n(the same source is in kernel-open/ of NVIDIA-Linux-x86_64-%s.run). The other files are NVIDIA'"'"'s, unmodified\n(NVIDIA-LICENSE, section 2.1.2).\n' "$V" "$V" "$V" > "$OUT/licenses/SOURCE"
+printf 'The kernel modules (nvidia, nvidia-modeset, nvidia-drm, nvidia-uvm) are built from NVIDIA open GPU kernel modules %s\n(MIT/GPL-2.0, dual-licensed): https://github.com/NVIDIA/open-gpu-kernel-modules/tree/%s\n(the same source is in kernel-open/ of NVIDIA-Linux-x86_64-%s.run). The other files are NVIDIA'"'"'s, unmodified\n(NVIDIA-LICENSE, section 1.d).\n' "$V" "$V" "$V" > "$OUT/licenses/SOURCE"
 # ---- the cards offered: GeForce (and TITAN) cards the open kernel modules support ("kernelopen"): GeForce 16 and newer
 python3 - "$X/supported-gpus/supported-gpus.json" "$OUT/usr/share/nvidia/rudolf-gpus.txt" "$V" <<'EOF'
 import json, sys
