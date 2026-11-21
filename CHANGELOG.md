@@ -161,6 +161,13 @@ Summary: In progress.
   it, cannot read the sign-ins, saved site passwords and cards. Without a TPM, as before. Turning Secure Boot off or on
   makes a new key once: websites ask you to sign in again. Settings › Oracle › Website data says which way it is kept.
 
+- New (docs/plan-1.6.1.md Part 19): NVIDIA's own graphics driver, by choice, for GeForce 16 and newer: Settings › Display ›
+  Graphics driver, "Open (NVK)" (the default) or "NVIDIA's driver" (NVIDIA's open kernel modules and its OpenGL and Vulkan
+  libraries, a signed system extension from Settings › Update and recovery › System extensions; its modules signed for
+  Secure Boot like the kernel's own, checked by the kernel). If it cannot be used (a module refused, Xorg not starting, the
+  desktop not coming up), the computer goes back to the open driver by itself and says so. Recovery mode always uses the
+  open driver.
+
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.
 - Oracle's website data can be kept encrypted with your account: Settings › Oracle › "Keep my websites encrypted with my account". On, Oracle's sign-ins, site data, cache and saved site passwords go in a folder of the account's own, encrypted with the same key as its home folder and locked when it signs out. On by default on Native and Lite; off by default on Standard (Settings says plainly that off means not encrypted), where turning it on opens Oracle in a Chromium window of its own over the desktop, as Browse with Tor's windows are, using a little more memory while it is open. The choice is kept inside the account's encrypted folder, so it cannot be changed with the drive alone, and turning it off asks for the account's password. Only for accounts whose files are on the disk. The first time, the account's websites ask to sign in again, and their old unencrypted copy is removed. Tests: oraacct60_t.js 18-34, homeapi_t.sh 15a-15j.

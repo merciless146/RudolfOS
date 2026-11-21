@@ -2,7 +2,7 @@
 
 Asked for on 2026-11-15: "What items have been pushed beyond 1.6.0? Can they all be added to a plan for 1.6.1?" This
 plan gathers every item that docs/plan-1.6.0.md moved past 1.6.0, with where it came from, and (Parts 18 to 21, 2026-11-20)
-what was found since and not yet in a plan. Nothing here is built yet.
+what was found since and not yet in a plan. What waits on the owner's own hardware moved to docs/plan-1.6.2.md on 2026-11-21.
 The owner's rule for the native desktop holds for every part: "Rudolf OS on the native desktop should appear and
 function exactly as it does in Chromium mode."
 
@@ -56,119 +56,19 @@ Desktop engine as a compatibility option, "to be worked on and refined later". L
 - the dynamic backgrounds' moving parts.
 
 ### 4. The first phone, stage 1: the hardware (from 1.6.0 "Not in 1.6.0", and docs/plan-1.5.8.md 8.3)
-The phone's hardware made to work, on today's native desktop; its interface is 2.0's (stage 2).
-- **One well-supported phone first:** a used PinePhone Pro (discontinued in August 2025, but its hardware is the best
-  supported by mainline Linux and its modem, the Quectel EG25-G, has working VoLTE: Part 7), with the OnePlus 6/6T
-  after it (its VoLTE does not work yet in postmarketOS). Bought and chosen by the owner.
-- **Starting:** the ARM64 release from 1.6.0's cellular and ARM64 plan (stage A in QEMU, stage B's first ARM64
-  computer), on the phone through its UEFI-capable boot firmware (Tow-Boot or U-Boot with UEFI on the PinePhone Pro),
-  so it starts as Rudolf OS starts on a computer: the boot menu, Secure Boot where the firmware allows, recovery. The
-  kernel: Rudolf's own build with the phone's drivers (the device tree and options postmarketOS and mainline Linux use
-  for it, written into kconfig-arm64.sh), never a vendor kernel.
-- **The modem:** mobile data, texts and picture messages (1.6.0's Messages), **voice calls** (a call each way, hold,
-  two calls, DTMF tones for menus), and **emergency calls**, which must be checked on each device and carrier before
-  they are offered (Part 7 says how). A minimal call screen in today's desktop (answer, end, mute, speaker, keypad),
-  enough to prove calls; the phone's real dialler is stage 2's.
-- **The call's sound:** the earpiece, the speaker and a headset, with the modem's audio routed (ALSA UCM for the
-  phone's sound card), the microphone, no echo.
-- **Power:** sleep with the modem waking the phone for a call or a text (and the alarm clock), the battery's level,
-  charging and the charger's limit, the screen's brightness, the power key.
-- **The rest of the hardware, at driver level:** the touch screen, Wi-Fi, Bluetooth, the cameras detected by
-  libcamera, the sensors (accelerometer, proximity, light) and GPS readable, vibration. Their apps and behaviour
-  (auto-rotation, the screen off at the ear, a Camera app) are stage 2's.
-- **Today's desktop on a phone screen:** Native on X11, scaled for the screen, the on-screen keyboard (1.6.0's), touch
-  mode: usable for testing, not meant to be a phone's interface.
-- **Done when:** the phone starts Rudolf OS from its storage, makes and takes a call on a T-Mobile-network SIM, sends
-  and receives texts, sleeps and wakes for a call, and its standby battery drain is measured (Part 6), all written in
-  docs/testing.md.
-- **On 1.6's kernel and X11 (2026-11-20):** stage 1 is built on 1.6.x (the 6.18 LTS, X11, ARM64); the phone's own build
-  and interface move to 2.0's "next" channel (the newest kernel, Wayland). A phone with 8 GB for the full desktop and
-  Wayland testing: the OnePlus 6T (8 GB), Snapdragon 845 as the OnePlus 6, started through U-Boot's UEFI from its boot
-  partition; its VoLTE (needed for calls on T-Mobile) does not work yet, so the PinePhone Pro stays the phone for calls.
-  The Fairphone 5 (8 GB) to watch as its mainline support matures. Phones running on Android's drivers (Furi Labs FLX1s+,
-  Volla Phone Quintus) do not fit "never a vendor kernel".
-- Nothing on a phone is flashed or unlocked without the owner's decision.
+**Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
 ### 5. eSIM and 5G (from 1.6.0 "Not in 1.6.0")
-- eSIM provisioning (downloading a carrier's eSIM profile);
-- 5G standalone features beyond what the modem does by itself.
-
-1.6.0 left these without a release; they are here so they are not lost. They need hardware with an eSIM and a 5G
-modem.
+**Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
 ### 6. Closing the gap with Android (added on 2026-11-15)
-Asked for on 2026-11-15, after comparing 1.6.1 with Android: the items that decide whether someone could carry a
-Rudolf phone every day. Each is measured on the first phone (Part 4) and compared with the same phone on Android
-where it can be. **Split (owner, 2026-11-15):** 1.6.1 does what the hardware decides (marked *1.6.1* below: the
-measurements, calls with the carrier, the modem's sleep); the parts people use every day are 2.0's phone build
-(marked *2.0*), since they are built on Wayland and the native apps.
-- *2.0, measured in 1.6.1.* **Android apps through Waydroid, made dependable:** set up from Settings, apps from F-Droid and an app store the
-  owner chooses, their windows and notifications in Rudolf's own; a list of apps that work and that refuse (banking
-  apps that check the device), kept in the docs. Measured on the Vivobook first (docs/plan-1.6.0.md: "Waydroid
-  measured on the Vivobook with Lite before it is offered").
-- *1.6.1 measured and the modem's sleep; the rest 2.0.* **Battery life:** the phone's idle and screen-on drain measured, then: the modem, Wi-Fi and the screen put to sleep
-  when not needed, suspend with the modem waking it for a call or a text, apps in the background held back as
-  Android's Doze does; targets set from the measurements, shown in Settings › Battery.
-- *1.6.1.* **Calls with the carrier:** voice calls over 4G (VoLTE) where the modem and carrier allow, Wi-Fi calling if the
-  carrier offers it, a call to a real phone and an emergency-call check on each device (Part 4), the call's sound
-  through the earpiece, speaker and a headset.
-- *2.0 (the cameras detected in 1.6.1).* **The camera:** photos and video with the phone's cameras (libcamera), in a Camera app; quality compared with
-  Android's on the same phone.
-- *2.0 (readable in 1.6.1).* **The phone's sensors and hardware:** auto-rotation, proximity (the screen off at the ear), brightness, GPS for maps
-  and weather, the fingerprint reader where the phone has one, vibration.
-- *2.0.* **Messaging apps people need:** what works through Waydroid or the web (Signal, WhatsApp Web), and what does not,
-  said plainly in the docs.
-- **Tests:** each measured and written in docs/testing.md; the battery and call results on the owner's phone and
-  carrier.
+**Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
 ### 7. T-Mobile and the prepaid services on its network (added on 2026-11-15)
-Asked for on 2026-11-15: "Plan for T-Mobile and adjacent prepaid service coverage in 1.6.1." The US has no 3G left,
-so calls need VoLTE, and carriers decide which phones get it. T-Mobile's network is the friendliest to Linux phones
-(reports in the Pine64 wiki's carrier list and forum, 2020 to 2024); AT&T and Verizon are later.
-- **The carriers covered:** T-Mobile (postpaid and prepaid), Mint Mobile, Tello, US Mobile on its T-Mobile network,
-  Simple Mobile, Metro by T-Mobile, Ultra Mobile and Google Fi (data and calls; Fi's first activation needs an
-  Android phone and its picture messages do not work: said in Settings). The list is checked again before work
-  starts, since prepaid brands change networks.
-- **The first phone: the PinePhone Pro** (Part 4). Its modem (Quectel EG25-G) has working VoLTE; the OnePlus 6's VoLTE
-  does not work yet in postmarketOS (pmaports issue 1878), so it waits.
-- **Set up by itself:** Settings › Mobile network recognises the carrier from the SIM (its MCC/MNC and its name) and
-  fills in the APN exactly, letters' case included (US Mobile's "PWG" failed in lowercase on a PinePhone Pro; Simple
-  Mobile's is "Simple"), with the picture messages' settings (MMSC, proxy). The APNs come from the operators'
-  database 1.6.0 already ships, with Rudolf's own corrections for these carriers kept beside it.
-- **VoLTE turned on:** the modem's IMS/VoLTE set up for T-Mobile (its carrier profile on the EG25-G), checked after
-  every start and after a SIM change; Settings says whether calls go over 4G.
-- **Wi-Fi calling** where T-Mobile offers it on the phone (VoWiFi through the modem's IMS), else said plainly.
-- **Texts and picture messages:** SMS (1.6.0 Part 6) and MMS through the APN's MMSC, in the Messages app.
-- **Activation help:** what each carrier needs (activate online, the phone's IMEI given to the carrier, support asked
-  to turn VoLTE on for the line), written in the docs and linked from Settings when the SIM has no service.
-- **5G:** not on the PinePhone Pro (an LTE modem). T-Mobile's 5G is tested later with a 5G modem card in a laptop
-  (Part 5).
-- **Tests:** a prepaid Mint or Tello SIM first (cheap, no contract), then T-Mobile itself: data, a call each way, a
-  call to and from a landline, an emergency-call check as Part 4 says, texts and picture messages each way,
-  Wi-Fi calling, roaming off, the APN filled in from a fresh SIM, and a call during a weak signal. Results in
-  docs/testing.md, with the carrier and date. A host test of the APN table (each carrier's MCC/MNC and name gives the
-  right APN, case kept).
-- **Later:** AT&T's network (stricter about devices), then Verizon (approved phones only).
+**Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
 ### 8. Mobile data and the SIM on real hardware (moved from 1.6.0 on 2026-11-16)
-Decided by the owner on 2026-11-16: "For now, move the mobile/SIM testing to 1.6.1." 1.6.0 ships the cellular work
-proven without hardware (its stage A: ModemManager, Settings › Mobile network, the connection and failover, data and
-the monthly limit, the taskbar's signal, Messages, all with host, browser and QEMU tests against a stand-in modem);
-what needs a real modem and SIM is checked here, before 1.6.1's phone work relies on it. From docs/plan-1.6.0.md's
-stage B (items 1 to 3) and its release checks:
-- **The MiFi 7730L** with an active SIM (the owner's choice; the HP desktop user's USB stick only if it is lent again):
-  found in Settings › Network › Cellular modems (maker, model, SIM, operator), no "Invalid rule match" in
-  /run/rudolf/modem.log, the self-test's modem line; the SIM's PIN (never the PUK on a SIM someone needs); the APN filled
-  in (a prepaid T-Mobile-network SIM, Part 7); connected; Wi-Fi failover and back; IPv4 sites on an IPv6-only network
-  (the CLAT); data counted against the operator's own count; the 80 % notice and data off at 100 %; an update offered
-  on mobile data with its size; the bars and type against the device's own; the SIM taken out while running; unplugged
-  and plugged in again; sleep and wake (after 1.6.0's sleep fix for the Vivobook, CONFIG_AMD_PMC).
-- **Messages** to and from a real phone (Unicode, a long one, the delivery report), a sign-in code, the notice with
-  the desktop locked, kept across a restart and in the encrypted folder.
-- **Share this connection** with the MiFi's USB tethering as the uplink (1.5.9 Part 4, waiting since then for a data
-  plan).
-- **The FCC-unlock path** on a laptop with a WWAN card (a used ThinkPad with a Fibocom L850-GL or Quectel EM05-G).
-- Each checked on Standard and Native (the owner's rule), results in docs/testing.md with the carrier and date.
+**Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
 ### 9. USB printers and the first ARM64 release (moved from 1.6.0 on 2026-11-16)
 Decided by the owner on 2026-11-16: "USB printers and ARM64 can be delayed until 1.6.1."
@@ -180,10 +80,7 @@ self-test's usb-printer line, /run/rudolf/usbprint.log in a system report) and t
   PostScript, as the first signed system extension (`usbprint`, Part 13 of 1.6.0); extensions.yml's first run to
   publish it for the release's base ABI; Settings › Devices; then the HP desktop user's printer. 1.6.0 prints to network
   printers (IPP Everywhere, AirPrint) and to PDF.
-- **ARM64 (1.6.0 Part 7 and its stage B item 4):** the first ARM64 release, after one ARM64 computer that starts with
-  UEFI (or the first phone, Part 4: the PinePhone Pro through Tow-Boot), its own update lists (beta/arm64/,
-  stable/arm64/), the update and recovery checks on it.
-
+- **ARM64:** Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").
 ### 10. Oracle: find, closed tabs, reader mode and blocking (added on 2026-11-16)
 docs/plan-oracle.md, asked for by the owner on 2026-11-16. Suggested for 1.6.1: item 1 (find in page), item 2 (reopen a
 closed tab, restore the session) and item 7 (reader mode); item 5 (ad and tracker blocking) here or in 2.0. Item 4
@@ -472,196 +369,7 @@ rudolfd runs as root today (they keep running as root, from the helper).
 - Next: network; packages; display; other; then the drop (with the accounts' file service of 11.2).
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
-The kernel already has zram (zstd), MGLRU, PSI, schedutil and the AMD and Intel P-state drivers (iso/kconfig.sh).
-What is left is measured, not guessed: each change kept only if the numbers say so.
-- **Responsiveness:** PREEMPT_DYNAMIC with `preempt=full` against the current default; HZ 1000 against 250; measured
-  as the desktop's input lag (the page's lag meter, rudolf-native's frame times) while a build or a game loads the CPU.
-- **AMD power:** `amd_pstate=active` with an energy-performance preference (balance_performance on mains,
-  balance_power on battery), set by the power settings; measured as battery drain at idle and with a video.
-- **Start-up time:** what loads before "the desktop was ready" (built-in drivers that could be modules, the initramfs's
-  size, waits in rudolf-init); the health log's timings (1.6.0, #425) are the measure. The Vivobook takes 27 to 37 s.
-- **Memory:** vm.swappiness and zram's size with Oracle, a game and a call at once on 3.3 GB.
-- **How:** QEMU first for what QEMU can show (start-up, memory), a test kernel built with each choice; the Vivobook last,
-  by the owner (battery and real input lag), with a short checklist of numbers to note on each kernel.
-- **One kernel for every computer, so a second machine (owner, 2026-11-16):** Rudolf OS ships one x86-64 kernel, so a
-  change tuned on the Vivobook must not make another PC slower or stop it starting. Every change is also checked on the
-  owner's **Asus desktop** (RuckXTrauma), running Rudolf OS live from a USB stick (never installed there, nothing on its
-  disk changed): kept only if it helps on at least one machine and hurts on neither. Its specifications go here from
-  its System report: CPU and cores ___, memory ___, graphics ___, storage ___. On it, power is measured as
-  responsiveness and temperatures or fan noise (no battery). Start-up is also checked in QEMU on several kinds of
-  virtual hardware (q35 and i440fx; AHCI, NVMe, virtio-blk, USB storage; BIOS and UEFI): anything a computer needs to
-  reach its root file system stays built in.
-- **First, before any tuning is merged: the kernel's required features checked at build time (owner, 2026-11-16).**
-  Tuning must never remove a feature programs depend on. iso/kconfig.sh already stops the build when some groups are
-  missing (the memory options, sound, games, Thunderbolt); it is widened to every feature Rudolf OS's programs and
-  security rely on, each listed with who needs it, so a tuning change that drops one fails the build instead of
-  reaching a computer:
-  - **Flatpak and bubblewrap:** user, PID, network, mount and IPC namespaces; seccomp and its filters; overlayfs;
-    FUSE (the document portal).
-  - **The Debian container and Wine:** namespaces, cgroups v2 and its controllers (cpu, memory, io, pids), binfmt_misc,
-    32-bit programs (IA32_EMULATION) for Wine and Steam.
-  - **The desktop and its sandboxes:** cgroups for the desktop's memory group (rudolfd's peer check), inotify, epoll,
-    eventfd, signalfd, timerfd, memfd, the X server's needs (DRM, KMS, DRI3's file passing), uinput, evdev.
-  - **Security:** Secure Boot's kernel lockdown, module signature checking, YAMA, the keyring (KEYS), the encrypted
-    home's dm-crypt and its ciphers, the firewall (nftables), audit if used.
-  - **Storage and start-up:** every disk controller and file system needed to reach the system disk (AHCI, NVMe,
-    virtio, USB storage, SquashFS, ext4, vfat for the EFI partition), the initramfs's needs.
-  - **Power and devices:** suspend (s2idle), AMD_PMC, the P-state drivers, CPU frequency, thermal, the battery.
-  The list is made by reading what each program needs (bubblewrap's and Flatpak's documented requirements, rudolfd's,
-  the X server's), and checked against today's kernel so it starts green. Its test: a deliberately broken
-  configuration (one option removed from each group) must fail the build with that option's name and who needs it.
-  This check is its own PR, merged before any of Part 12's tuning PRs.
-
-#### Results, 2026-11-17 (measured in QEMU with KVM; the Vivobook's part is the owner's checklist below)
-How: `.github/workflows/kernel-tuning.yml` (on pushes to `ktune-*` branches; nothing published) builds test kernels from
-this tree (`iso/systools/testkernel.sh`, the release's configuration with options changed) and test base layers (the
-release's with this tree's sys/root and rudolfd), and starts them in QEMU/KVM (`iso/qt/sb/kt161_t.py`) on the 1.6.0 beta's
-layers (r2026111620), as installed (slot a on NVMe, RUDOLFDATA), UEFI, 2 processors, 3.3 GB. **GitHub's runners differ
-from each other by up to 20 %**, so every comparison below was made on one machine, the variants started in turn (the
-first two rounds, which compared across machines, were thrown away for that). Medians of 4 starts or 3 runs.
-
-**Responsiveness: no change kept.** The kernel already has PREEMPT_DYNAMIC (the voluntary model by default, `preempt=` at
-start-up) and HZ 1000 (x86_64_defconfig's), so the plan's "HZ 1000 against the current" is "HZ 250 against the current".
-Wake-up latency of an ordinary thread sleeping 1 ms (`kload wlat`), the desktop page's input-to-frame time (a key from
-QEMU's keyboard to the next frame drawn after its keydown), frames over 33 ms, and two gzip runs' time, idle, with a busy
-loop on each processor, and during a 1.5 GB copy:
-
-| Busy loop on each processor | wake-up p99 | p99.9 | worst | page input-to-frame p99 | input queue p50 | frames > 33 ms (all loads) | gzip |
-|---|---|---|---|---|---|---|---|
-| voluntary (today) | 337 µs | 1.97 ms | 2.8 / 17.4 / 13.8 ms | 16.0 ms | 2.1 ms | 0 | 4.99 s |
-| full | 327 µs | 1.91 ms | 3.2 / 3.3 / 3.3 ms | 15.1 ms (one run 20.3) | 2.1 ms | 4 (during the copy) | 5.04 s |
-| lazy | 96 µs | 0.93 ms | 2.8 / 1.8 / 3.6 ms | 16.1 ms | 3.2 ms | 0 | 4.99 s |
-| none (round 1, another machine) | 503-534 µs | 1.9-2.1 ms | 18-21 ms | 15.1-15.6 ms | 1.9-2.2 ms | 0 | |
-| HZ 250, voluntary (beside HZ 1000 on one machine) | 119 µs (HZ 1000: 187) | 3.52 ms (HZ 1000: 1.84) | 7.8 / 7.8 / 8.6 ms (HZ 1000: 5.0 / 6.6 / 17.8) | 15.1 ms (15.0) | 0.9 ms (2.0) | 0 | 4.98 s (4.96) |
-
-Idle and during the copy every model gave the same numbers (p99 122-158 µs, input-to-frame p99 14.5-15.7 ms).
-- *full*: removes voluntary's occasional 14-17 ms stall under a CPU load, but showed 4 slow frames during the copy where
-  voluntary showed none: mixed, so not kept. It can be tried on the Vivobook with the start-up option `preempt=full` (no
-  new kernel needed): the checklist.
-- *lazy*: the best wake-up tail by far, but the page's input waited longer in the browser (input queue 2.6-4.1 ms against
-  2.1) while the processors were busy: what a person feels got worse, so not kept.
-- *none*: the worst stalls (18-21 ms).
-- *HZ 250*: a better p99 and a shorter input queue in the browser, but twice the p99.9 under load (3.5 ms against 1.8: a
-  4 ms tick) and every worst case near 8 ms: mixed, not kept. (Trying it on the Vivobook needs a kernel built with it;
-  left for later, only if the owner feels lag under load with HZ 1000.)
-- Throughput (gzip beside the loops) did not change with the model.
-
-**Start-up: kept: the kernel packed with zstd, the wired network cards' drivers as modules.** Where the time goes (the new
-start-up steps, `/run/rudolf/startup-times`), Standard, uptime in s:
-
-| Step | release (1.6.0) | this tree |
-|---|---|---|
-| before the kernel's clock (firmware, loading and unpacking the kernel; QEMU's TSC) | **1.56** | **0.94** |
-| the kernel, to /init | 0.77 | 0.71 |
-| the start-up image (finding the drive, checking the layers) | to 4.5 | to 4.45 |
-| system extensions, devices (udev), data partition, memory, graphics driver | 4.5 → 5.9 | 4.5 → 5.8 |
-| X server started | 6.6 | 6.6 |
-| X server answers (`rudolf-display --xsize`: Xorg's own initialisation, 2.6 s) | (not timed) | 9.2 |
-| session bus, sound, packages | → 10.0 | → 9.85 |
-| desktop started → the desktop answered (its first heartbeat) | 10.2 → 18.5 | 10.0 → 18.3 |
-| **from power-on (TSC + uptime)** | **20.0** | **19.2** |
-
-| Same machine, 4 starts each | before the kernel | to /init | desktop answered | from power-on |
-|---|---|---|---|---|
-| release | 1.56 | 0.77 | 18.48 | 20.04 |
-| zstd only | 0.94 | 0.77 | 18.24 | 19.18 |
-| network drivers as modules only | 1.51 | 0.71 | 18.27 | 19.78 |
-| both (this tree) | 0.94 | 0.71 | 18.28 | 19.22 |
-| Native: release / this tree | 1.59 / 0.94 | 0.87 / 0.81 | 13.37 / 12.95 | 14.96 / 13.89 |
-
-- **zstd** (KERNEL_ZSTD, INITRAMFS_COMPRESSION_ZSTD): 0.6 s less before the kernel starts, for a kernel 1 MB larger
-  (13 MB; the EFI image's two kernels stay well under its 30 MiB warning). An installed computer unpacks two kernels
-  (the boot files' and, after the handover, the system's), so about 1.2 s there.
-- **Network cards as modules** (E1000, E1000E, IGB, IGC, R8169, ATL1C, ALX, TIGON3, 8139CP, 8139TOO, NE2K_PCI, PCNET32):
-  0.06 s less in the kernel in QEMU (whose network card is an e1000: its probe took 0.35-0.4 s under initcall_debug), 1 MB
-  smaller; the wired link still comes up (the e1000 module loaded by modalias, the link there). On a laptop without such a
-  card it only makes the kernel smaller. WireGuard stays built in (its tunnels are made through netlink, which would need
-  the module loaded on demand).
-- **Native answers about 5 s sooner than Standard** (13 s against 18.5 s, two machines): Chromium's start and the desktop
-  page are most of Standard's last 8 s. (Native is the default for new installations since 1.6.0.)
-- **Xorg's own start takes 2.6 s** between its socket appearing and its first answer (QEMU's bochs driver); the
-  Vivobook's steps will show amdgpu's.
-- **The health log's own numbers were late:** "the desktop was ready N s" was written 4 s after the page came up (its
-  timer), and the starts log's mark up to 10 s after (the session's loop: 26 s for a desktop that answered at 18.5).
-  Both now use the first heartbeat's own time (rudolfd writes it into /run/rudolf/bootok; `readyAt` in /api/health).
-- **Tried and not kept:** the session's 1-s wait for rudolfd's downloads store, made 0.1 s: rudolfd has made it by then
-  on every start measured (no gain). The initramfs's 3 s "still looking for the disc" in these runs is QEMU's (a slot
-  started with no disc attached); an installed computer passes the drive on at the handover.
-- **Not done, an idea for the owner:** the handover itself (the boot files' kernel starting the system's kernel by kexec)
-  costs a second kernel start and start-up image on every installed computer. Skipping it when both are the same kernel
-  would touch Secure Boot's lockdown path, so it is left to the owner's decision; the Vivobook's numbers will show its
-  cost (rudolf.t0, the first start-up's time, is now passed on and is the first line of the steps).
-- **Starts on every kind of virtual hardware**, as 1.6.0's kernel does (`kt161_t.py hw`, the data partition mounted each
-  time): q35 with UEFI on NVMe, AHCI, virtio-blk, virtio-scsi and USB storage; i440fx with BIOS on IDE, virtio-blk and
-  NVMe: 8 of 8 for both kernels.
-- **Reproducible:** two builds of this tree's kernel (same configuration, `testkernel.sh REPRO=1`) are identical except the
-  module-signing certificate each build makes (.init.data) and the build id (.notes): every module (signature taken off)
-  and every other section the same (`systools/kreprohash.py`).
-
-**AMD power: switchable, kept at 1.6.0's until the owner's battery numbers.** Settings › System health › Power and
-battery › Processor energy preference: *As in 1.6.0* (default), *Tuned* (Balanced on battery asks balance_power; game mode
-asks performance), *The kernel's own* (amd_pstate passive). amd_pstate's active mode is already the kernel's default
-(CONFIG_X86_AMD_PSTATE_DEFAULT_MODE=3, Mendocino has CPPC), so `amd_pstate=active` adds nothing. QEMU has no frequency
-driver: the choice is greyed out there and on Intel, and the power settings work as before (host test power_t.sh 50/50,
-the power phase in QEMU).
-
-**Memory:** no change kept; zram's lz4 proposed for a Vivobook check. Stand-ins started together on the 1.6.0
-beta (2026111707), 3.3 GB: tabs (500+500+500+300 MB, compressing about 3:1 as web pages' heaps do), a game (1.3 GB, half
-compressible, a 60 fps loop touching a quarter of it each second) and a call (a 20 ms audio period), for 100 s; the
-memory stalls (PSI "full"), the game's frames over 33 ms, the call's periods more than 10 ms late, and how long the memory
-guard saw memory critical. (A first load of 2.1 GB left 400 MB free and measured nothing: no swap at all.) Medians, each
-setting 2-3 times, on one machine per column:
-
-| Setting | memory stalled (PSI full) | game frames > 33 ms | call periods > 10 ms late | guard: memory critical |
-|---|---|---|---|---|
-| swappiness 180, zram = memory, zstd (today) | 7.98 s | 111 | 218 | 23 s |
-| swappiness 200 | 6.22 s | 88 | 128 | 17 s |
-| swappiness 100 | 8.74 s | 77 | 131 | 12 s |
-| swappiness 60 | **15.34 s** | 73 | 137 | **32 s** |
-| zram 1.5 × memory | 7.66 s | 86 | 85 | 18 s |
-| **lz4 instead of zstd** (beside zstd in turn, 3 pairs) | **5.62 s** (zstd 11.18) | **72** (110) | **85** (166) | **12 s** (28) |
-
-No setting ended a process (no OOM kills, the memory guard ended nothing) and every one ran memory down to 0-6 MB free.
-- **Swappiness:** 60 is clearly worse (twice the stalls, and the guard in critical twice as long), which confirms 1.5.9's
-  move to a high value; 100, 180 and 200 differ by less than the runs among themselves (180's call figure ran 50 to 241):
-  180 is kept.
-- **zram's size:** 1.5 × memory changed nothing measurable (zram never filled at 1 ×): kept as it is.
-- **lz4:** fewer late call periods in all three pairs, fewer slow game frames in two (the third even), fewer stalls in
-  two, and the guard critical less than half as long: lz4 is faster to compress and read back. But it packs less (about 2:1 against zstd's 3:1), so
-  zram holds less before memory really runs out, which these 100-second runs did not reach and on 3.3 GB matters (the
-  Vivobook's game was ended by the guard in 1.5.9). **Not changed yet:** a later PR would build ZRAM_BACKEND_LZ4 and let
-  the memory setting choose it, once a run as long as a real game session shows it does not end processes sooner.
-
-**Required features:** the check (its own PR, first) found FUSE missing from the x86 kernel (Flatpak's document portal,
-AppImages); it is added there. Not on the list, noted: `lsm=` names landlock but SECURITY_LANDLOCK is not built; the
-encrypted folders use fscrypt, not dm-crypt (the list checks fscrypt and its ciphers).
-
-- **The time before the kernel, on real computers (2026-11-20, the owner: "add a firmware/kernel/system breakdown ... if it
-  will help to optimize the start-up time").** The steps above start at the kernel's clock; QEMU's "before the kernel"
-  came from the test's own counter. Now rudolfd (rudolfd-boottime.inc), at its start, as root, adds one line to the
-  steps: the time from power-on to the kernel's clock, from the processor's time-stamp counter (a constant, non-stop TSC,
-  its rate from the kernel's log), split into the firmware's part and the boot loader's from ACPI's FPDT (the kernel's
-  `ACPI_FPDT`, now on), with a handover's first stage (rudolf.t0) taken off. Last starts shows it first and ends with
-  the whole from power-on; the health log's "ready" line adds "N s from power-on" (Standard and Native). Nothing is
-  shown when neither source gives a believable number (0 to 300 s). Host test boottime61_t.sh (14/14); the check
-  workflow boottime-check.yml. What it tells: whether the Vivobook's 27-37 s is mostly firmware (only the firmware's
-  own settings can help: Fast Boot, fewer boot entries), the handover (the "skip the handover" idea below), Xorg and
-  amdgpu, or the desktop.
-
-#### The owner's checklist (the Vivobook; the Asus desktop where it says)
-1. **Start-up** (each kernel: 1.6.0's, then this one): restart 3 times; after each, Settings › System health › Last starts
-   › Where the time went: write down "the desktop answered" and the first line (t0, the boot files' part before the
-   handover), and the time from the power button to the sign-in screen with a stopwatch. Expected: about 1 s less.
-   The Asus desktop from the USB stick: the same, 3 starts each.
-2. **Responsiveness** (no new kernel: a start-up option): start once normally and once with `preempt=full` (the boot menu's
-   options), and on each: a game or a large copy (a 2 GB file to a USB stick) while typing in Oracle and moving windows for
-   2 minutes; write down any stall you notice (when, how long) and the desktop's frame meter if shown. Keep *full* only if
-   it feels better and nothing stutters more.
-3. **Power** (Settings › System health › Power and battery › Processor energy preference): see the power PR's checklist
-   (15 minutes idle and 15 minutes of a video on each of the three choices, battery % and watts).
-4. **Memory:** (a kernel with lz4, if that later PR comes) a game, Oracle with 4 tabs and a Discord or Meet call together
-   for 15 minutes on each compressor: write down whether the game stuttered, whether the call broke up, and the
-   health log's memory lines (the guard's warnings and what it ended).
+**Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
 ### 13. Files dropped from outside onto the native desktop (added on 2026-11-16; 1.6.0 Part 12's known differences)
 On Standard a file dragged from a Linux app (the Debian file manager, a Flatpak) onto the desktop is saved in the
@@ -699,15 +407,7 @@ the owner's decision of 2026-11-16 ("Keep it in 1.6.0"): it ships with 1.6.0, no
   beta's rudolfd has no desktop/dropped yet; no KVM here): the owner's checks on the Vivobook.
 
 ### 14. Native, the default for new installations (moved from 1.6.0 on 2026-11-17)
-The owner, 2026-11-17: "Make Standard the default in 1.6.0 with the transition to Native default in 1.6.1."
-- **First: Discord and Steam on Native on the Vivobook** (slow to load or not starting, beta 2026111713; #470's open
-  item 3: its leads, the refused system-API request at 13:10:17, the new log lines "oa: KEY asked of rudolfd N ms after
-  its page began"). A devlink read while each loads on Native; the cause proven and fixed; the owner's check.
-- **Then the switch:** install.sh's `NATIVE_DEFAULT=1` (a new installation starts on Native, after the setup wizard on
-  Standard, #467) and rudolfd's `NATIVE_OFFER 1` (Settings offers Native once to a computer updated on Standard); the
-  engine page's "A new installation starts with it." back; nativedefault60_t.sh 0 and 0b changed to match.
-- **The owner's checks:** a new stick (Make a USB stick) and Install here: the setup wizard, then Native; an updated
-  computer on Standard: the offer once; Discord, Steam, the icons and Oracle's keys on Native.
+**Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
 ### 15. One title bar for apps that draw their own (added on 2026-11-18)
 The owner, 2026-11-18, on Native with Steam, Discord and Claude open: "Steam, Discord, Claude, and other apps installed from
@@ -1086,13 +786,72 @@ behind a full-screen game. (The newest-kernel track and Wayland, for HDR and var
   driver", for GeForce 16 and newer (the open kernel modules NVIDIA publishes), downloaded and signed for Secure Boot as a
   package from the Library with Rudolf's key, built in CI for the release's own kernel; switched back by itself (and
   said) when it fails to load, the recovery system always on the open driver.
+  **Done (2026-11-21, branch nvidia-driver; nvidia-check.yml). NVIDIA's driver is a signed system extension, not a Library
+  app:** 1.6.0's rule (iso/sys/rpk.c) is that a package signed only by the Library's key may hold files for the desktop,
+  never programs, and that only the release key may sign a system extension (files for the system: kernel modules,
+  libraries, firmware), so that a stolen Library key cannot change the operating system. NVIDIA's driver is all of those, so
+  it is the extension `nvidia-driver` (iso/ext/nvidia-driver: recipe.json, build.sh, nvidia.txt), built and signed by the
+  existing **System extensions** workflow (extensions.yml, the release key, as 1.6.0's extensions are; extended here, never
+  run by a session), installed from Settings › Update and recovery › System extensions (an administrator's password), laid
+  over the base read-only at each start, and left out when it is not for that base and kernel. Signing it with the
+  Library's key instead would have weakened that check, so it is not.
+  - **The licence.** The pinned driver, 595.112.07 (its .run's SHA-256 in nvidia.txt), has NVIDIA's newer licence; its
+    section 1 says "you may ... d. Distribute the SOFTWARE provided for use with operating system kernels distributed under
+    the terms of an OSI-approved open source license as listed by the Open Source Initiative at http://opensource.org,
+    provided that (i) the binary files thereof are not modified in any way (except for uncompressing of compressed files)
+    and (ii) this Agreement is provided to each SOFTWARE recipient." Linux is GPL-2.0, so Rudolf OS may pass the files on:
+    every NVIDIA file is copied byte for byte (nothing stripped), and the licence goes with them (licenses/NVIDIA-LICENSE in
+    the extension; Settings › Display › Graphics driver shows it). Its 2.8, GeForce and Titan software for GeForce and Titan
+    cards only, is one more reason only those are offered. (Older drivers said the same as 2.1.2, the "Linux/FreeBSD
+    Exception".) build.sh checks both wordings in the .run's own LICENSE and stops if neither is there.
+  - **The kernel modules** are NVIDIA's open kernel modules (MIT/GPL-2.0, kernel-open/ in the same .run; source:
+    github.com/NVIDIA/open-gpu-kernel-modules at the same tag), built for the release's own kernel: its version from the
+    release, Rudolf OS's configuration (iso/kconfig.sh with the Secure Boot certificate), the kernel built for its Module.symvers, and their
+    vermagic compared with the release's own nouveau.ko (the build stops if they differ). **Secure Boot:** lockdown and
+    MODULE_SIG_FORCE are unchanged. The modules are signed (the kernel's own scripts/sign-file, SHA-256) with the Rudolf OS
+    Secure Boot key, whose certificate every Rudolf OS kernel has built in as trusted (SYSTEM_TRUSTED_KEYS): the same
+    built-in keyring the kernel's own modules are checked against (those are signed with a key made for each kernel build
+    and thrown away, which cannot sign anything later). The kernel checks each module as it loads it; one signed with any
+    other key, or not at all, is refused ("Key was rejected by service", "Required key not available"), and the switch back
+    follows. extensions.yml reads RUDOLF_SB_KEY only for an extension whose recipe says "modsign", and deletes it after.
+  - **The switch** (`/usr/lib/rudolf/gpudriver`, run by rudolf-init before the graphics drivers): with "NVIDIA's driver"
+    chosen, an eligible card, the extension in use and its trial passed, nouveau's file is covered (as the camera's switch
+    does: busybox's modprobe takes no blacklist) and nvidia, nvidia-modeset, nvidia-drm (modeset=1 fbdev=1) and nvidia-uvm
+    are loaded, their device files made (nvidia-modprobe, setuid root, is not shipped) and Xorg started with `Driver
+    "nvidia"`; with the open driver, NVIDIA's files are covered so that they never load by themselves. **Back to the open
+    driver by itself**, with a note the desktop shows once as a notification and a health-log line, when the card is not
+    eligible or gone, the extension is missing or left out, a module does not load, Xorg does not start with it (that start
+    goes on in software), or the desktop never answered at the last start with it (its trial, as the system extensions').
+    Recovery mode, safe graphics and nomodeset run nothing of it, and the recovery system has no extensions: always the
+    open driver.
+  - **Offered for GeForce 16 and newer only**, by PCI ID: the cards in the driver's own supported-gpus.json that its open
+    kernel modules support ("kernelopen": Turing and newer), GeForce and TITAN names (iso/sys/root/usr/share/rudolf/
+    nvidia-gpus.txt, made by build.sh; the extension carries its own list for a newer driver's cards), and only when the
+    NVIDIA card is the one the computer starts on (two graphics chips, PRIME laptops: not yet).
+  - Settings › Display › Graphics driver (desktop/gpudrv61.js; rudolfd's gpu/driver, rudolfd-gpu.inc): shown only with an
+    NVIDIA card; NVIDIA's driver greyed out with the reason when it is not offered; the change needs an administrator's
+    password and takes effect at the next start. Standard and Native alike.
+  - Not shipped: the 32-bit libraries (Steam's Flatpak installs NVIDIA's matching libraries itself,
+    org.freedesktop.Platform.GL.nvidia-*), nvidia-settings, nvidia-persistenced, Wayland's EGL platform; the Debian container
+    gets no NVIDIA libraries yet. Xorg's ABI: Rudolf OS builds its own X server (xbuild.sh); if NVIDIA's Xorg driver refuses
+    it, Xorg does not start with it and the computer goes back to the open driver (the checklist will show it).
+  - Tests: host gpudriver161_t.sh 26 (stand-in /sys, modules and insmod: the offer, a module refused, every switch back,
+    Recovery mode and safe graphics untouched); the page gpudrv61_t.js 13; nvidia-check.yml builds the extension for the
+    stable release's kernel (unsigned modules, a throw-away package key: no Rudolf OS trusts either) and starts the release in
+    QEMU with it (iso/qt/sb/t161n_t.py: no NVIDIA card, nothing offered and the modules kept from loading; a stand-in card,
+    `rudolf.gputest=10de:2684`, honoured only with rudolf.debug=1, with NVIDIA's driver chosen: the kernel refuses the
+    unsigned module and the computer goes back to the open driver by itself, the desktop comes up; Recovery mode untouched).
+    **Not covered:** a real NVIDIA card (the checklist below), the signed build (the owner's run).
+  - **For the owner, once this is merged and in a beta (rSERIAL):** Actions › System extensions › Run workflow, release =
+    SERIAL, names = `nvidia-driver` (or `gh workflow run extensions.yml -f release=SERIAL -f names=nvidia-driver`); it uses
+    the secrets RPK_SIGNING_KEY and RUDOLF_SB_KEY, which the release workflow already has. Again after each release whose
+    kernel changed: an extension built for another kernel is left out, and the computer goes back to the open driver by
+    itself until the new build is installed.
 - **A game mode:** while a game is full screen, the CPU's energy preference raised (amd_pstate/intel_pstate), the
   desktop's own work paused (Standard's page throttled, the background jobs and Oracle's tabs held), notifications held;
   everything back as it was when the game leaves full screen. GameMode's requests from games honoured. gamescope comes
   with Wayland (2.0).
-- **Measured:** the same games' frame rates and frame times on the open and NVIDIA drivers and with game mode on and
-  off, on the owner's Asus desktop (live from a stick, as Part 12) and the Vivobook.
-
+- **Measured:** Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").
 ### 20. Security hardening (added on 2026-11-20)
 From the comparison with other distributions on 2026-11-19: the weak points named then.
 - **rudolfd confined:** an AppArmor profile (or, where AppArmor is not in the kernel, systemd-free equivalents: its
@@ -1236,10 +995,7 @@ From the comparison with other distributions on 2026-11-19: the weak points name
   **For the owner, with a real reader:** on Standard, Chromium's PIN box opened without the keyboard (the test clicks
   into it first) and filled the whole screen. Check both on the Vivobook with a reader, then fix them in their own PR
   if real hardware shows the same.
-- **On the Vivobook, with the owner:** Oracle's websites encrypted (1.6.0 Part 22) on Native, Lite and Standard turned
-  on; Recovery mode from a stick made from this release and from another build's; two-step sign-in on Standard and
-  Native; calls; a real CAC only when the owner asks.
-
+- **On the Vivobook, with the owner:** Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").
 ### 22. File Explorer: dragging between windows, the selection box, the progress window (added on 2026-11-20)
 The owner, 2026-11-20, with a photo of two File Explorer windows side by side (Downloads; the Games (Emu library) folder):
 "Users should be able to move files by click-dragging items from one file explorer window to a different window showing a
@@ -1364,22 +1120,20 @@ Three parts, one PR each, in this order:
 ## Steps
 1. Part 1, several monitors, after the 1.6.0 beta.
 2. Part 3, Lite's leftovers, one PR each.
-3. Part 8 (mobile data and the SIM on real hardware) with the MiFi, before the phone; Part 9 (USB printers; ARM64 with
-   the phone or an ARM64 computer).
-4. The phone's stage 1: Part 4 on the first phone (after 1.6.0's ARM64 release and stage B), Part 7 with a
-   T-Mobile-network SIM, Part 6's 1.6.1 items measured on it, Part 2's groundwork; Part 5 when the hardware is there.
-5. The phone's stage 2 (its interface, Wayland, the native apps for touch): docs/plan-2.0.md, "The phone build".
-6. Part 15 (one title bar for apps that draw their own) with Part 14, before Native becomes the default: 2 first (the
+3. Parts 4 to 8, Part 9's ARM64 release, Part 12, Part 14, Part 19's measurements and Part 21's checks with the owner:
+   docs/plan-1.6.2.md.
+4. Part 15 (one title bar for apps that draw their own), before Native becomes the default (Part 14, docs/plan-1.6.2.md): 2 first (the
    window manager's part), then 1 (the apps' own settings), then 3 (the per-app choice).
-7. Part 16 (each other's builds): 1 and 2 first (the check and the beta switch), then 4's "kept newest", then 3 with 4's
+5. Part 16 (each other's builds): 1 and 2 first (the check and the beta switch), then 4's "kept newest", then 3 with 4's
    sticks (the stick from the address, always with the official recovery system).
-8. Part 17 (two-step sign-in): 1 and 2 together (keys that unlock the files) with 4 (rudolfd decides), then 3 (codes),
+6. Part 17 (two-step sign-in): 1 and 2 together (keys that unlock the files) with 4 (rudolfd decides), then 3 (codes),
    5 (requiring it) and 6 (the old keys).
-9. Part 21's CI checks first (so every later part is checked), then Part 18 (security keys with the QR code), Part 20
+7. Part 21's CI checks first (so every later part is checked), then Part 18 (security keys with the QR code), Part 20
    (rudolfd confined; the review booked before 2.0), Part 19 (the NVIDIA driver choice, then game mode, measured), and
    Part 21's checks with the owner after each beta.
-10. Part 22 (File Explorer: dragging between windows, the selection box, the progress window): one PR, then the owner's
+8. Part 22 (File Explorer: dragging between windows, the selection box, the progress window): one PR, then the owner's
    checks on the Vivobook.
-11. Part 23 (the native desktop's memory): A (one hidden page), then B (each window only what it needs, in stages), then C
-   (idle windows give their memory back), one PR each, each checked on the Vivobook; B's stages 2 and 3 after the owner has
-   seen B's measurements.
+9. Part 23 (the native desktop's memory): A (one hidden page), then B (each window only what it needs, in stages), then C
+   (idle windows give their memory back), one PR each, each checked on the Vivobook; B's stages 2 and 3 (the owner, 2026-11-21:
+   scheduled with the rest of 1.6.1).
+10. Part 11's remaining groups (after drives, updates, the accounts' folders, accounts and power), one PR per group.
