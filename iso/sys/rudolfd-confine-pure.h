@@ -32,6 +32,7 @@ static const char *const CONFINE_PURE[] = {
 	"processes",
 	"sleep",
 	"time/status",
+	"webkey",
 	NULL
 };
 static const char *const CONFINE_ROOTD[] = {
