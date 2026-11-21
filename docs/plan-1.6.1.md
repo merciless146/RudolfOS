@@ -941,6 +941,67 @@ behind a full-screen game. (The newest-kernel track and Wayland, for HDR and var
   driver", for GeForce 16 and newer (the open kernel modules NVIDIA publishes), downloaded and signed for Secure Boot as a
   package from the Library with Rudolf's key, built in CI for the release's own kernel; switched back by itself (and
   said) when it fails to load, the recovery system always on the open driver.
+  **Done (2026-11-21, branch nvidia-driver; nvidia-check.yml). NVIDIA's driver is a signed system extension, not a Library
+  app:** 1.6.0's rule (iso/sys/rpk.c) is that a package signed only by the Library's key may hold files for the desktop,
+  never programs, and that only the release key may sign a system extension (files for the system: kernel modules,
+  libraries, firmware), so that a stolen Library key cannot change the operating system. NVIDIA's driver is all of those, so
+  it is the extension `nvidia-driver` (iso/ext/nvidia-driver: recipe.json, build.sh, nvidia.txt), built and signed by the
+  existing **System extensions** workflow (extensions.yml, the release key, as 1.6.0's extensions are; extended here, never
+  run by a session), installed from Settings › Update and recovery › System extensions (an administrator's password), laid
+  over the base read-only at each start, and left out when it is not for that base and kernel. Signing it with the
+  Library's key instead would have weakened that check, so it is not.
+  - **The licence.** The pinned driver, 595.112.07 (its .run's SHA-256 in nvidia.txt), has NVIDIA's newer licence; its
+    section 1 says "you may ... d. Distribute the SOFTWARE provided for use with operating system kernels distributed under
+    the terms of an OSI-approved open source license as listed by the Open Source Initiative at http://opensource.org,
+    provided that (i) the binary files thereof are not modified in any way (except for uncompressing of compressed files)
+    and (ii) this Agreement is provided to each SOFTWARE recipient." Linux is GPL-2.0, so Rudolf OS may pass the files on:
+    every NVIDIA file is copied byte for byte (nothing stripped), and the licence goes with them (licenses/NVIDIA-LICENSE in
+    the extension; Settings › Display › Graphics driver shows it). Its 2.8, GeForce and Titan software for GeForce and Titan
+    cards only, is one more reason only those are offered. (Older drivers said the same as 2.1.2, the "Linux/FreeBSD
+    Exception".) build.sh checks both wordings in the .run's own LICENSE and stops if neither is there.
+  - **The kernel modules** are NVIDIA's open kernel modules (MIT/GPL-2.0, kernel-open/ in the same .run; source:
+    github.com/NVIDIA/open-gpu-kernel-modules at the same tag), built for the release's own kernel: its version from the
+    release, Rudolf OS's configuration (iso/kconfig.sh with the Secure Boot certificate), `make modules_prepare`, and their
+    vermagic compared with the release's own nouveau.ko (the build stops if they differ). **Secure Boot:** lockdown and
+    MODULE_SIG_FORCE are unchanged. The modules are signed (the kernel's own scripts/sign-file, SHA-256) with the Rudolf OS
+    Secure Boot key, whose certificate every Rudolf OS kernel has built in as trusted (SYSTEM_TRUSTED_KEYS): the same
+    built-in keyring the kernel's own modules are checked against (those are signed with a key made for each kernel build
+    and thrown away, which cannot sign anything later). The kernel checks each module as it loads it; one signed with any
+    other key, or not at all, is refused ("Key was rejected by service", "Required key not available"), and the switch back
+    follows. extensions.yml reads RUDOLF_SB_KEY only for an extension whose recipe says "modsign", and deletes it after.
+  - **The switch** (`/usr/lib/rudolf/gpudriver`, run by rudolf-init before the graphics drivers): with "NVIDIA's driver"
+    chosen, an eligible card, the extension in use and its trial passed, nouveau's file is covered (as the camera's switch
+    does: busybox's modprobe takes no blacklist) and nvidia, nvidia-modeset, nvidia-drm (modeset=1 fbdev=1) and nvidia-uvm
+    are loaded, their device files made (nvidia-modprobe, setuid root, is not shipped) and Xorg started with `Driver
+    "nvidia"`; with the open driver, NVIDIA's files are covered so that they never load by themselves. **Back to the open
+    driver by itself**, with a note the desktop shows once as a notification and a health-log line, when the card is not
+    eligible or gone, the extension is missing or left out, a module does not load, Xorg does not start with it (that start
+    goes on in software), or the desktop never answered at the last start with it (its trial, as the system extensions').
+    Recovery mode, safe graphics and nomodeset run nothing of it, and the recovery system has no extensions: always the
+    open driver.
+  - **Offered for GeForce 16 and newer only**, by PCI ID: the cards in the driver's own supported-gpus.json that its open
+    kernel modules support ("kernelopen": Turing and newer), GeForce and TITAN names (iso/sys/root/usr/share/rudolf/
+    nvidia-gpus.txt, made by build.sh; the extension carries its own list for a newer driver's cards), and only when the
+    NVIDIA card is the one the computer starts on (two graphics chips, PRIME laptops: not yet).
+  - Settings › Display › Graphics driver (desktop/gpudrv61.js; rudolfd's gpu/driver, rudolfd-gpu.inc): shown only with an
+    NVIDIA card; NVIDIA's driver greyed out with the reason when it is not offered; the change needs an administrator's
+    password and takes effect at the next start. Standard and Native alike.
+  - Not shipped: the 32-bit libraries (Steam's Flatpak installs NVIDIA's matching libraries itself,
+    org.freedesktop.Platform.GL.nvidia-*), nvidia-settings, nvidia-persistenced, Wayland's EGL platform; the Debian container
+    gets no NVIDIA libraries yet. Xorg's ABI: Rudolf OS builds its own X server (xbuild.sh); if NVIDIA's Xorg driver refuses
+    it, Xorg does not start with it and the computer goes back to the open driver (the checklist will show it).
+  - Tests: host gpudriver161_t.sh 26 (stand-in /sys, modules and insmod: the offer, a module refused, every switch back,
+    Recovery mode and safe graphics untouched); the page gpudrv61_t.js 13; nvidia-check.yml builds the extension for the
+    stable release's kernel (unsigned modules, a throw-away package key: no Rudolf OS trusts either) and starts the release in
+    QEMU with it (iso/qt/sb/t161n_t.py: no NVIDIA card, nothing offered and the modules kept from loading; a stand-in card,
+    `rudolf.gputest=10de:2684`, honoured only with rudolf.debug=1, with NVIDIA's driver chosen: the kernel refuses the
+    unsigned module and the computer goes back to the open driver by itself, the desktop comes up; Recovery mode untouched).
+    **Not covered:** a real NVIDIA card (the checklist below), the signed build (the owner's run).
+  - **For the owner, once this is merged and in a beta (rSERIAL):** Actions › System extensions › Run workflow, release =
+    SERIAL, names = `nvidia-driver` (or `gh workflow run extensions.yml -f release=SERIAL -f names=nvidia-driver`); it uses
+    the secrets RPK_SIGNING_KEY and RUDOLF_SB_KEY, which the release workflow already has. Again after each release whose
+    kernel changed: an extension built for another kernel is left out, and the computer goes back to the open driver by
+    itself until the new build is installed.
 - **A game mode:** while a game is full screen, the CPU's energy preference raised (amd_pstate/intel_pstate), the
   desktop's own work paused (Standard's page throttled, the background jobs and Oracle's tabs held), notifications held;
   everything back as it was when the game leaves full screen. GameMode's requests from games honoured. gamescope comes
