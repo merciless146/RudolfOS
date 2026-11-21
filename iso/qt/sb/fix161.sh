@@ -24,4 +24,7 @@ for i in $(seq 1 20); do busybox wget -q -O /dev/null http://127.0.0.1:8080/favi
 for i in $(seq 1 60); do busybox wget -q -O /dev/null http://127.0.0.1:8080/favicon.png 2>/dev/null && break; sleep 1; done
 echo rudolfd $(pidof rudolfd) rootd $(pidof rudolf-rootd); grep 'root helpers' /run/rudolf/rudolfd.log | tail -1
 [ "$1" = reload ] && { pkill -f '[-]-rudolf-kiosk'; pkill -f 'rudolf-native --rudolf-kiosk'; pkill -f 'rudolf-webkit.*--rudolf-kiosk'; echo reloaded; }
+# (1.6.1 Part 20: what the confinement refused or logged since this drive was made, last in this script's output, which
+# the QEMU tests keep the end of)
+[ -f /persist/var/log/confine.log ] && echo "confine.log: $(grep -c ' confinement ' /persist/var/log/confine.log) starts, $(grep -cE 'Z (refused|logged) ' /persist/var/log/confine.log) calls, $(grep -c ' asked for ' /persist/var/log/confine.log) requests; $(grep -E 'Z (refused|logged) | asked for ' /persist/var/log/confine.log | sed 's/ (.*//' | sort -u | tail -4 | cut -c22- | tr '\n' ';')"
 exit 0

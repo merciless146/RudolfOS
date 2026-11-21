@@ -124,6 +124,7 @@ jobs:
             sudo debugfs -R 'cat /var/log/health.log' "$L" 2>/dev/null | grep -iE 'confinement|never asks for|could not confine' | tee -a confine-health.txt
             echo "-- confine.log ($img)"; sudo debugfs -R 'cat /var/log/confine.log' "$L" 2>/dev/null | tee -a confine-log.txt
             sudo losetup -d "$L"; done
+          echo "::notice title=${{ matrix.r.id }} (fix161.sh, last start)::$(grep -h 'confine.log:' ${{ matrix.r.test }}.txt 2>/dev/null | tail -1 | cut -c1-400)"
           echo "::notice title=${{ matrix.r.id }}::$(grep -c . confine-health.txt 2>/dev/null || echo 0) confinement lines in the health log; confine.log: $(grep -c 'refused\|logged' confine-log.txt 2>/dev/null || echo 0) calls or requests refused or logged, $(grep -c 'confinement ' confine-log.txt 2>/dev/null || echo 0) starts"
       - if: always()
         uses: actions/upload-artifact@v4
