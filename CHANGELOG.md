@@ -50,6 +50,14 @@ Summary: In progress.
   own, no longer by rudolfd; it is asked only when an account comes or goes. Nothing changes on screen.
 - Security: restart, shut down, sleep, the power settings, brightness, Task Manager's "Clear cache" and the desktop's
   priority, and setting the clock are done by a power helper of its own, no longer by rudolfd. Nothing changes on screen.
+- Security: Wi-Fi (scan, join, forget, the radios and bands, the country, the adapter), an address by DHCP or a fixed
+  one and the name server, the firewall, the hotspot and metered connections are handled by a network helper of its
+  own, no longer by rudolfd; a network's password reaches it on its standard input only. Nothing changes on screen.
+- Security: Bluetooth (turning it on and off, searching, pairing, connecting, forgetting, the pairing question) and
+  Thunderbolt and USB4 devices (approving, not approving, forgetting) are handled by a devices helper of its own, no
+  longer by rudolfd. Nothing changes on screen.
+- Security: Task Manager's End process and End process tree, and reading the kernel's messages (System health, the
+  crashes list), are handled by two small helpers of their own, no longer by rudolfd. Nothing changes on screen.
 - Security: rudolfd can be confined (off by default until a beta has run with it: /persist/etc/rudolf-confine, or
   rudolf.confine= at the start-up, off, log or on). All of rudolfd loses the system calls and capabilities nothing it
   starts needs; each request that starts no program is put in a narrow confinement of its own (only rudolfd's own
@@ -200,6 +208,13 @@ Summary: In progress.
   at the left, as Settings › Display › Displays arranged them for that set of monitors (kept per set); plugged in or out,
   they are arranged again within a second. Linux apps and games open on the main monitor. (rudolf-display --arrange and
   --monitors, screenctl arrange, rudolfd's screen/arrange; the software display still shows one monitor.)
+- Several monitors on the desktop (plan Part 1), Standard and Native alike: each monitor shows one of the three workspaces,
+  with the wallpaper and a taskbar of its own (the start button, the pinned apps, that workspace's windows, the workspaces
+  and the clock); the main monitor keeps the tray, the desktop's icons and the Start menu. A window moved to another
+  workspace moves to the monitor showing it, one dragged onto another monitor joins its workspace, and a maximised window
+  fills its own monitor. A workspace's button on a monitor's taskbar shows it there. A monitor unplugged: its windows stay
+  in their workspace and none is left off the screen. Settings › Display › Displays lists the displays and which
+  workspace each shows, and makes another the main one. The sign-in and lock screens cover every monitor.
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.

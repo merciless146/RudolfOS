@@ -54,6 +54,48 @@ mkdir -p $T/sys/class/backlight/acpi_video0 $T/sys/class/backlight/intel_backlig
 echo 1000 > $T/sys/class/backlight/intel_backlight/max_brightness; echo 300 > $T/sys/class/backlight/intel_backlight/brightness; echo 15 > $T/sys/class/backlight/acpi_video0/max_brightness
 : > $T/sys/class/rtc/rtc0/wakealarm; : > $T/sys/power/state; : > $T/proc/sys/vm/drop_caches
 printf 'RR_TEST_PROC=%s/proc\nRR_TEST_BIN=%s/bin\n' $T $T >> $T/rr.conf
+# (1.6.1 network: the network helper; stand-ins for wifi.sh, the firewall, the hotspot and netplug, and for ip, udhcpc
+# and wpa_cli in $T/bin: none of them touches this computer's network, each only says how it was called)
+gcc $CF -o $T/root/network $SYS/rudolf-network.c || { echo "FAIL build network"; exit 1; }; chmod 700 $T/root/network
+gcc $CF -o $T/root/devices $SYS/rudolf-devices.c || { echo "FAIL build devices"; exit 1; }; chmod 700 $T/root/devices   # (1.6.1 devices: Bluetooth, Thunderbolt)
+# (1.6.1 other: Task Manager's End process, and the kernel's messages from a stand-in dmesg in $T/bin)
+gcc $CF -o $T/root/procs $SYS/rudolf-procs.c && gcc $CF -o $T/root/logs $SYS/rudolf-logs.c || { echo "FAIL build procs, logs"; exit 1; }; chmod 700 $T/root/procs $T/root/logs
+cat > $T/bin/dmesg <<'DM'
+#!/bin/sh
+if [ "$1" = -r ]; then printf '<6>[    1.0] usb 1-1: new device\n<3>[    2.0] i915: a GPU hang\n<4>[    3.0] wlan0: deauthenticated\n'
+else printf '[    1.0] usb 1-1: new device\n[    2.5] rudolf-apps[99]: segfault at 0 ip 1 sp 2 error 4 in libc.so.6[18badd,1000+2000]\n[    3.0] wlan0: deauthenticated\n[    4.0] nouveau 0000:01:00.0: gsp: firmware loaded\n'; fi
+DM
+chmod 755 $T/bin/dmesg
+cat > $T/netstand <<'NS'
+#!/bin/sh
+T=@T@; n=${0##*/}; rq=; [ "$n $1" = "wifi.sh connect" ] || [ "$n $1" = "wifi.sh forget" ] && rq="|req=$(md5sum < "$3" | cut -c1-8) $(stat -c %a:%u "$3") ${3##*/}" && rm -f "$3"
+[ "$n $1" = "hotspot start" ] && rq="|req=$(md5sum < "$2" | cut -c1-8) $(stat -c %a:%u "$2") ${2##*/}"
+echo "$n $*$rq|path=$PATH|leak=$LEAKME" >> $T/calls
+case "$n $1" in
+"wifi.sh status") printf 'adapter=rtest0\nwpa_state=COMPLETED\nssid=Home Net\nnoise=1\nfreq=5180\n';;
+"wifi.sh scan") printf 'aa:bb\t5180\t-50\t[WPA2]\tHome Net\n';; "wifi.sh radios") echo "radio aa:bb:cc:dd:ee:ff 5180 on";;
+"wifi.sh bands") echo "2.4 on"; echo "5 on";; "wifi.sh disconnect") echo Disconnected;; "wifi.sh reconnect") echo Reconnecting;;
+"wifi.sh radio") echo "Radio $3 turned $4";; "wifi.sh band") echo "This computer's $3 GHz radio turned $4";;
+"wifi.sh adapter") [ "$2" = rtest0 ] && echo "Using $2" || { echo "No such adapter: $2"; exit 1; };; "wifi.sh country") echo "Country: $3";;
+"wifi.sh connect") echo "Joining..."; echo "Connected";; "wifi.sh forget") echo "Forgotten";;
+"firewall on"|"firewall off") [ -e $T/fw-fail ] && { echo "nft: no such table" >&2; exit 1; }; echo "turned $1";;
+"firewall status") echo "on 7";; "firewall remote") ;;
+"hotspot status") echo '{"on":false,"can":true}';; "hotspot stop") echo "The hotspot is off";; "hotspot start") echo "Sharing Phone Net (2.4 GHz)";;
+"netplug state") echo '{"ok":true,"connected":true,"metered":false}';; "netplug set") [ "$2" = rtest0 ] || echo "no such adapter";;
+"ip "*) [ -e $T/ip-fail ] && [ "$2" = add ] && { echo "RTNETLINK answers: File exists" >&2; exit 2; };;
+"udhcpc "*) [ -e $T/nodhcp ] && exit 1;;
+"bluetooth status") echo '{"ok":true,"adapter":"hci0","powered":true,"devices":[{"mac":"AA:BB:CC:DD:EE:01","name":"Pad","paired":true,"connected":false}]}';;
+"bluetooth answer") [ -e $T/bt-noq ] && exit 1;; "bluetooth pair") echo "Pairing successful";; "bluetooth disconnect") echo "Successful disconnected";;
+"bluetooth remove") echo "Device has been removed";; "bluetooth "*) ;;
+"thunderbolt json") echo '{"ok":true,"present":true,"dma":false,"devices":[]}';; "thunderbolt allow") [ "$2" = 0-1 ] && echo approved || { echo "no such device"; exit 2; };;
+"thunderbolt deny") echo "not approved";; "thunderbolt forget") echo forgotten;;
+"wpa_cli "*) case "$5" in status) printf 'bssid=aa:bb:cc:dd:ee:ff\nssid=Home Net  \nwpa_state=COMPLETED\n';; signal_poll) printf 'RSSI=-55\nLINKSPEED=433\n';; esac;;
+esac
+exit 0
+NS
+sed -i "s|@T@|$T|" $T/netstand; chmod 755 $T/netstand
+for s in wifi.sh firewall hotspot netplug udhcpc.sh bluetooth thunderbolt; do cp $T/netstand $T/lib/$s; done; for c in ip udhcpc wpa_cli; do cp $T/netstand $T/bin/$c; done
+mkdir -p $T/sys/class/net/rtest0 $T/etc; printf 'RR_TEST_ETC=%s/etc\n' $T >> $T/rr.conf
 # (first a stand-in for drives-home, which says how the drives helper called it: its arguments, what came on its
 # standard input, its environment)
 printf '#!/bin/sh\nk=$(cat | md5sum | cut -c1-8)\necho "dh $*|in=$k|path=$PATH|leak=$LEAKME|uid=$(id -u)" >> %s/calls\necho made\nexit 0\n' $T > $T/root/drives-home; chmod 700 $T/root/drives-home
@@ -159,6 +201,63 @@ $P off </dev/null; r=$?; c=$(calls)
 ok "...shut down without the desktop's times: poweroff" "$([ $r = 0 ] && echo "$c" | grep -q '^shutdown poweroff |' && [ "$(cat $T/run/rebooted)" = poweroff ] && echo 1)" "$r $c"
 rm -f $T/run/rebooted $T/run/power $T/run/shutdown.out $T/run/clock $T/run/time-sync
 
+# ---- 1.6.1 network: the network helper's checks
+NW=$T/root/network; PE='path=/usr/sbin:/usr/bin:/sbin:/bin|leak='
+o=$(env -i LEAKME=1 $NW wifi status rtest0 </dev/null 2>&1); r=$?; $NW wifi scan "" </dev/null >/dev/null; r2=$?; $NW wifi country "" 00 </dev/null >/dev/null; $NW wifi country rtest0 DE </dev/null >/dev/null
+$NW wifi radio "" aa:BB:cc:dd:ee:ff off </dev/null >/dev/null; $NW wifi band rtest0 2.4 on </dev/null >/dev/null; $NW wifi adapter rtest0 </dev/null >/dev/null; o2=$($NW wifi adapter wlan9 </dev/null); r3=$?; c=$(calls)
+ok "N1. network: Wi-Fi's actions are wifi.sh's with their arguments as they are (an empty adapter kept: wifi.sh picks one), its output and status, nothing of the caller's environment" "$([ $r$r2$r3 = 001 ] && [ "$(echo "$o" | head -1)" = adapter=rtest0 ] && [ "$o2" = 'No such adapter: wlan9' ] && [ "$(echo "$c" | tr '\n' '#')" = "wifi.sh status rtest0|$PE#wifi.sh scan |$PE#wifi.sh country  00|$PE#wifi.sh country rtest0 DE|$PE#wifi.sh radio  aa:BB:cc:dd:ee:ff off|$PE#wifi.sh band rtest0 2.4 on|$PE#wifi.sh adapter rtest0|$PE#wifi.sh adapter wlan9|$PE#" ] && echo 1)" "$r$r2$r3 $o2 $c"
+b=0; for a in "wifi" "wifi|frob" "wifi|status|a;b" "wifi|status|a b" 'wifi|status|$(id)' "wifi|status|../x" "wifi|status|aaaaaaaaaaaaaaaaa" "wifi|status|rtest0|x" "wifi|frob|rtest0" "wifi|country|rtest0|de" "wifi|country|rtest0|DEU" "wifi|country|rtest0" "wifi|adapter|" "wifi|radio|rtest0|aa:bb:cc:dd:ee|off" "wifi|radio|rtest0|aa:bb:cc:dd:ee:fg|off" "wifi|radio|rtest0|aa:bb:cc:dd:ee:ff|maybe" "wifi|radio|rtest0|aa:bb:cc:dd:ee:ff" "wifi|band|rtest0|3|on" "wifi|band|rtest0|5" "wifi|connect|rtest0|x" \
+	"wifi-link" "wifi-link|" "wifi-link|a/b" "dhcp|nosuch0" "dhcp|-rtest0" "dhcp|rtest0|x" "dhcp|" "dhcp|.." "static|rtest0|10.0.0.5/24|10.0.0.1" "static|rtest0||10.0.0.1|" "static|rtest0|10.0.0.5 24||" "static|rtest0|10.0.0.5/24|10.0.0.1/8|" "static|rtest0|10.0.0.5/24||1.1.1.1;x" "static|nosuch0|10.0.0.5/24||" \
+	"firewall" "firewall|maybe" "firewall|on|now" "firewall|remote" "firewall|remote|maybe" "hotspot" "hotspot|frob" "hotspot|status|x" "metered-state|x" "metered|rtest0|maybe" "metered|a b|on" "metered|aaaaaaaaaaaaaaaa|on" "metered|rtest0" "frobnicate"; do
+	IFS='|'; set -- $a; IFS=$OIFS; $NW "$@" </dev/null >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $a)"; }; done
+$NW static rtest0 "$(printf '1%.0s' $(seq 64))" "" "" </dev/null >/dev/null 2>&1; [ $? = 2 ] || b=1; c=$(calls)
+ok "N2. network: an adapter's name that is not one (odd characters, too long, one the kernel does not have for ip and udhcpc, an option), a country, radio, band or address that is not one, extra or missing arguments, unknown actions: refused, nothing run" "$([ $b = 0 ] && [ -z "$c" ] && echo 1)" "$b $c"
+ok "...said in the health log (Security)" "$([ "$(logged 'network helper refused')" -ge 45 ] && echo 1)" "$(logged 'network helper refused')"
+o=$(printf 'Home Net\nsecret pw\npsk\n' | $NW wifi connect rtest0 2>&1); r=$?; c=$(calls); k=$(printf 'Home Net\nsecret pw\npsk\n' | md5sum | cut -c1-8)
+printf 'Home Net\n' | $NW wifi forget "" >/dev/null 2>&1; r2=$?; c2=$(calls); k2=$(printf 'Home Net\n' | md5sum | cut -c1-8)
+$NW wifi connect rtest0 </dev/null >/dev/null 2>&1; r3=$?; head -c 601 /dev/zero | tr '\0' x | $NW wifi connect rtest0 >/dev/null 2>&1; r4=$?; c3=$(calls)
+ok "N3. Wi-Fi's join and forget: the request read from standard input only, into a file of root's (0600) that wifi.sh reads and removes; an empty one or one over 600 bytes refused" "$([ $r$r2$r3$r4 = 0022 ] && [ "$c" = "wifi.sh connect rtest0 $T/run/wifi.req|req=$k 600:0 wifi.req|$PE" ] && [ "$c2" = "wifi.sh forget  $T/run/wifi-forget.req|req=$k2 600:0 wifi-forget.req|$PE" ] && [ -z "$c3" ] && [ ! -e $T/run/wifi.req ] && echo "$o" | grep -q Connected && echo 1)" "$r$r2$r3$r4 $c / $c2 / $c3"
+o=$($NW wifi-link rtest0 </dev/null); c=$(calls)
+ok "N4. the connected network's name and signal: wpa_cli's status and signal_poll on wpa_supplicant's sockets, two lines" "$([ "$o" = "$(printf 'Home Net  \n-55')" ] && [ "$(echo "$c" | tr '\n' '#')" = "wpa_cli -p /run/rudolf/wpa -i rtest0 status|$PE#wpa_cli -p /run/rudolf/wpa -i rtest0 signal_poll|$PE#" ] && echo 1)" "$o $c"
+$NW dhcp rtest0 </dev/null; r=$?; c=$(calls); touch $T/nodhcp; $NW dhcp rtest0 </dev/null; r2=$?; rm -f $T/nodhcp; calls >/dev/null
+ok "N5. an address by DHCP: the adapter up, then udhcpc with the script, its status (no answer: 1)" "$([ $r$r2 = 01 ] && [ "$(echo "$c" | tr '\n' '#')" = "ip link set rtest0 up|$PE#udhcpc -i rtest0 -n -q -t 5 -O 43 -s $T/lib/udhcpc.sh|$PE#" ] && echo 1)" "$r$r2 $c"
+$NW static rtest0 10.0.0.5/24 10.0.0.1 9.9.9.9 </dev/null; r=$?; c=$(calls); d=$(cat $T/etc/resolv.conf); rm -f $T/etc/resolv.conf
+$NW static rtest0 10.0.0.6/24 "" "" </dev/null; r2=$?; c2=$(calls); touch $T/ip-fail; $NW static rtest0 10.0.0.7/24 10.0.0.1 8.8.8.8 </dev/null 2>/dev/null; r3=$?; c3=$(calls); rm -f $T/ip-fail
+ok "...a fixed address: flush, add, up, the default route, the name server into resolv.conf; without a gateway or name server neither; an address refused by ip: 1, no route, the name server still written (as before)" "$([ $r$r2$r3 = 001 ] && [ "$(echo "$c" | tr '\n' '#')" = "ip addr flush dev rtest0|$PE#ip addr add 10.0.0.5/24 dev rtest0|$PE#ip link set rtest0 up|$PE#ip route replace default via 10.0.0.1|$PE#" ] && [ "$d" = 'nameserver 9.9.9.9' ] && [ "$(echo "$c2" | wc -l)" = 3 ] && [ "$(echo "$c3" | wc -l)" = 2 ] && [ "$(cat $T/etc/resolv.conf)" = 'nameserver 8.8.8.8' ] && echo 1)" "$r$r2$r3 $c / $c2 / $c3"
+rm -f $T/etc/resolv.conf
+o=$($NW firewall status </dev/null); $NW firewall remote on </dev/null; touch $T/fw-fail; o2=$($NW firewall on </dev/null 2>&1); r=$?; rm -f $T/fw-fail; o3=$($NW hotspot status </dev/null); o4=$(printf 'Phone Net\npassword1\n2.4\n' | $NW hotspot start 2>&1); o5=$($NW metered-state </dev/null); o6=$($NW metered wlan9 on </dev/null); c=$(calls)
+ok "N6. the firewall (its count, remote access's port, a refusal's words and status), the hotspot (the request on standard input into a file of root's), metered connections: the scripts' own answers" "$([ "$o" = 'on 7' ] && [ $r = 1 ] && [ "$o2" = 'nft: no such table' ] && [ "$o3" = '{"on":false,"can":true}' ] && [ "$o4" = 'Sharing Phone Net (2.4 GHz)' ] && echo "$o5" | grep -q '"metered":false' && [ "$o6" = 'no such adapter' ] && echo "$c" | grep -q "^firewall remote on|$PE" && echo "$c" | grep -q "^hotspot start $T/run/hotspot.req|req=$(printf 'Phone Net\npassword1\n2.4\n' | md5sum | cut -c1-8) 600:0 hotspot.req|" && echo "$c" | grep -q "^netplug set wlan9 on|" && echo 1)" "$o $o2 $o3 $o4 $o5 $o6 $c"
+rm -f $T/run/hotspot.req
+
+# ---- 1.6.1 devices: the devices helper's checks (Bluetooth, Thunderbolt)
+DV=$T/root/devices
+o=$(env -i LEAKME=1 $DV bt status </dev/null); $DV bt on </dev/null; $DV bt scan 15 </dev/null; o2=$($DV bt pair AA:BB:CC:DD:EE:01 </dev/null); touch $T/bt-noq; $DV bt answer yes </dev/null; r=$?; rm -f $T/bt-noq
+o3=$($DV tb json </dev/null); o4=$($DV tb allow 0-1 </dev/null); o5=$($DV tb allow 9-9 </dev/null); r2=$?; $DV tb forget 00ab-cd12 </dev/null >/dev/null; c=$(calls)
+ok "D1. devices: Bluetooth's and Thunderbolt's actions are the scripts' with their arguments as they are, their answers and status, nothing of the caller's environment" "$([ $r$r2 = 12 ] && echo "$o" | grep -q '"mac":"AA:BB:CC:DD:EE:01"' && [ "$o2" = 'Pairing successful' ] && echo "$o3" | grep -q '"present":true' && [ "$o4" = approved ] && [ "$o5" = 'no such device' ] && [ "$(echo "$c" | tr '\n' '#')" = "bluetooth status|$PE#bluetooth on|$PE#bluetooth scan 15|$PE#bluetooth pair AA:BB:CC:DD:EE:01|$PE#bluetooth answer yes|$PE#thunderbolt json|$PE#thunderbolt allow 0-1|$PE#thunderbolt allow 9-9|$PE#thunderbolt forget 00ab-cd12|$PE#" ] && echo 1)" "$r$r2 $o2 $o4 $o5 $c"
+b=0; for a in "bt" "bt|status|x" "bt|on|now" "bt|scan" "bt|scan|2" "bt|scan|61" "bt|scan|1e1" "bt|scan|-5" "bt|answer|maybe" "bt|answer" "bt|pair|aa:bb:cc:dd:ee:01" "bt|pair|AA:BB:CC:DD:EE" "bt|pair|AA:BB:CC:DD:EE:0G" "bt|connect|AA-BB-CC-DD-EE-01" 'bt|remove|$(id)' "bt|pair" "bt|pair|AA:BB:CC:DD:EE:01|x" "bt|frob" "bt|start" "bt|agent-run" \
+	"tb" "tb|json|x" "tb|allow|01" "tb|allow|0/1" "tb|allow|../1" "tb|deny|0-1;x" "tb|forget|zz" "tb|forget|$(printf 'a%.0s' $(seq 65))" "tb|forget" "tb|plug" "tb|boot" "frob|status"; do
+	IFS='|'; set -- $a; IFS=$OIFS; $DV "$@" </dev/null >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $a)"; }; done; c=$(calls)
+ok "D2. devices: a device's address or ID that is not one, a search that is not 3 to 60 seconds, an answer that is not yes or no, the scripts' own start-up actions, extra arguments, unknown actions: refused, nothing run" "$([ $b = 0 ] && [ -z "$c" ] && echo 1)" "$b $c"
+ok "...said in the health log (Security)" "$([ "$(logged 'devices helper refused')" -ge 30 ] && echo 1)" "$(logged 'devices helper refused')"
+
+# ---- 1.6.1 other: the procs and logs helpers' checks (the processes ended are this test's own)
+PR=$T/root/procs; mkdir -p $T/fake; cp "$(command -v tail)" $T/fake/rudolfd
+tail -f /dev/null & P1=$!; sh -c 'tail -f /dev/null & tail -f /dev/null & wait' & P2=$!; timeout 1 tail -f /dev/null; BKP="$BKP $P1 $P2"
+K1=$(pgrep -P $P2 | head -1); K2=$(pgrep -P $P2 | tail -1); $T/fake/rudolfd -f /dev/null & PF=$!; BKP="$BKP $K1 $K2 $PF"
+live() { for p in "$@"; do s=$(sed 's/.*) //' /proc/$p/stat 2>/dev/null | cut -c1); [ -n "$s" ] && [ "$s" != Z ] && echo alive; done | wc -l; }
+o=$(echo $P1 | env -i $PR end term); r=$?; timeout 1 tail -f /dev/null; wait $P1 2>/dev/null; a1=$([ "$(live $P1)" = 0 ] && echo gone || echo alive)
+o2=$(printf '%s\n%s\n%s\n' $P2 $K1 $K2 | $PR tree kill); r2=$?; timeout 1 tail -f /dev/null; wait $P2 2>/dev/null; a2=$(live $P2 $K1 $K2)
+o3=$(echo 999999999 | $PR end term); r3=$?
+ok "O1. procs: End process (SIGTERM) and End process tree (stopped, then SIGKILL from the last), each one's result on a line; a process that is gone: its error (ESRCH)" "$([ $r$r2$r3 = 000 ] && [ "$o" = 0 ] && [ "$a1" = gone ] && [ "$(echo "$o2" | tr '\n' ' ')" = '0 0 0 ' ] && [ "$a2" = 0 ] && [ "$o3" = 3 ] && echo 1)" "$r$r2$r3 $o $a1 $o2 $a2 $o3"
+b=0; for i in "1" "2" "$PF" "$$" "0" "-5" "abc" "12 13" "1234567890" ""; do printf '%s\n' "$i" | $PR end term >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $i)"; }; done
+printf '%s\n1\n' $PF | $PR tree term >/dev/null 2>&1; [ $? = 2 ] || b=1; printf '5\n6\n' | $PR end term >/dev/null 2>&1; [ $? = 2 ] || b=1; printf '5' | $PR end term >/dev/null 2>&1; [ $? = 2 ] || b=1
+$PR end stop </dev/null >/dev/null 2>&1; [ $? = 2 ] || b=1; $PR frob term </dev/null >/dev/null 2>&1; [ $? = 2 ] || b=1; $PR end </dev/null >/dev/null 2>&1; [ $? = 2 ] || b=1
+ok "O2. procs: pid 1, the kernel's, a process named rudolfd, the helper's own caller, a number that is not one, two for End process, no last newline, a signal or action that is not one: refused, nothing ended" "$([ $b = 0 ] && kill -0 $PF 2>/dev/null && echo 1)" "$b"
+ok "...said in the health log (Security)" "$([ "$(logged 'procs helper refused')" -ge 16 ] && echo 1)" "$(logged 'procs helper refused')"
+kill $PF 2>/dev/null; wait $PF 2>/dev/null
+o=$(env -i $T/root/logs dmesg </dev/null); o2=$($T/root/logs dmesg-raw </dev/null); $T/root/logs dmesg -r </dev/null >/dev/null 2>&1; r=$?; $T/root/logs cat </dev/null >/dev/null 2>&1; r2=$?
+ok "O3. logs: dmesg and dmesg -r, as they are; nothing else (an argument, another action: refused)" "$([ $r$r2 = 22 ] && echo "$o" | grep -q 'segfault at 0' && echo "$o2" | grep -q '^<3>' && [ "$(logged 'logs helper refused')" -ge 2 ] && echo 1)" "$r$r2 $o $o2"
+
 # ---- the updates helper's checks
 U=$T/root/updates
 for c in check download rollback stable-info to-stable status speedtest boot-ok; do env -i $U $c >/dev/null 2>&1 || echo "rc $c"; done > $T/u.rc; c=$(calls)
@@ -252,10 +351,12 @@ mkdir -p $T/none; gcc -O2 -w -include $T/noreboot.h -DRD_ROOT_DIR="\"$T/none\"" 
 # (rudolfd looks for the power settings, the desktop's priority and the shutdown script in /usr/lib/rudolf before it
 # asks: stand-ins there, in this namespace; the folder made only if this computer has none, and removed again)
 ULR_MADE=; [ -d /usr/lib/rudolf ] || { mkdir -p /usr/lib/rudolf && ULR_MADE=1; }
-mkdir -p $T/ulr; for s in power desktop-priority shutdown; do cp $T/lib/$s $T/ulr/$s; done; mount --bind $T/ulr /usr/lib/rudolf
+mkdir -p $T/ulr; for s in power desktop-priority shutdown wifi.sh firewall hotspot netplug udhcpc.sh bluetooth thunderbolt; do cp $T/lib/$s $T/ulr/$s; done; mount --bind $T/ulr /usr/lib/rudolf
 cp $T/drives-home.real $T/root/drives-home; chmod 700 $T/root/drives-home
 # (the stand-in home for the helper is the real /home/rudolf here, a tmpfs, as rudolfd's API checks the image's place)
-sed -i "s|^RR_TEST_HOME=.*|RR_TEST_HOME=/home/rudolf|; s|^RR_TEST_PERSIST=.*|RR_TEST_PERSIST=/persist|; s|^RR_TEST_AUMAP=.*|RR_TEST_AUMAP=/persist/etc/rudolf/account-users|" $T/rr.conf
+sed -i "s|^RR_TEST_HOME=.*|RR_TEST_HOME=/home/rudolf|; s|^RR_TEST_PERSIST=.*|RR_TEST_PERSIST=/persist|; s|^RR_TEST_AUMAP=.*|RR_TEST_AUMAP=/persist/etc/rudolf/account-users|; s|^RR_TEST_ETC=.*|RR_TEST_ETC=/etc|" $T/rr.conf
+# (1.6.1 network: the name server's file this namespace's own, a plain file, whatever this computer's /etc/resolv.conf is)
+rm -f /etc/resolv.conf; echo 'nameserver 192.0.2.53' > /etc/resolv.conf
 printf 'RR_TEST_HOMEROOT=/persist/accounts\nRR_TEST_NOBIND=0\nRR_TEST_AUON=1\nRR_TEST_AUHOMES=/home\nRR_TEST_RUNUSER=/run/user\nRR_TEST_DISPLAY=%s/nodisplay\n' $T >> $T/rr.conf
 mkdir -p /persist/etc/rudolf; printf 'uABCdef12 47103 moved\nuOTHER999 47105 moved\n-uGONE1234 47107\n' > /persist/etc/rudolf/account-users
 : > /run/rudolf/persistent; mkdir -p /home/rudolf/Downloads /home/rudolf/Documents; echo iso > /home/rudolf/Downloads/r.iso; echo before > /home/rudolf/Documents/before.txt; chown -R 1000:1000 /home/rudolf
@@ -279,6 +380,28 @@ probe() {
 	api POST 'time?epoch=1700000000123'; cat $T/run/clock 2>&1; echo; api POST time/sync; cat $T/run/time-sync 2>&1 | sed 's/[0-9][0-9]*/N/'; api POST 'brightness/step?d=up'
 	api POST 'power?action=reboot&t=a=1,b=2'; w8 '[ -e $T/run/rebooted ]' 40; cat $T/run/rebooted 2>&1; echo; cat $T/run/shutdown.out 2>&1; rm -f $T/run/rebooted $T/run/clock $T/run/time-sync $T/run/shutdown.out
 }
+# (1.6.1 network) every network request through the network helper, and as rudolfd did it itself; what the stand-ins
+# were asked compared with the helper's own places (its $T/lib and $T/run) and PATH taken out
+nprobe() {
+	api GET 'wifi/status?if=rtest0'; api GET wifi/scan; api POST 'wifi/country?cc=DE&if=rtest0'; api POST 'wifi/country?cc=00'; api POST 'wifi/radio?bssid=aa:bb:cc:dd:ee:ff&on=off'
+	api POST 'wifi/band?band=5&on=off'; api POST 'wifi/adapter?if=rtest0'; api POST 'wifi/adapter?if=wlan9'; api POST wifi/reconnect; api POST wifi/bands
+	hpost 'wifi/connect?if=rtest0' "$(printf 'Home Net\nsecret pw\npsk')"; jobwait; ls /run/rudolf/wifi.req $T/run/wifi.req 2>&1 | grep -c 'No such'; hpost wifi/forget 'Home Net'
+	api POST 'service/restart?name=wifi'; api POST 'net/dhcp?if=rtest0'; touch $T/nodhcp; api POST 'net/dhcp?if=rtest0'; rm -f $T/nodhcp
+	api POST 'net/static?if=rtest0&addr=10.0.0.5%2F24&gw=10.0.0.1&dns=9.9.9.9'; cat /etc/resolv.conf; touch $T/ip-fail; api POST 'net/static?if=rtest0&addr=10.0.0.6%2F24&dns=8.8.4.4'; rm -f $T/ip-fail; cat /etc/resolv.conf
+	api GET firewall; api POST 'firewall?on=0'; touch $T/fw-fail; api POST 'firewall?on=1'; rm -f $T/fw-fail
+	api GET net/hotspot; hpost net/hotspot "$(printf 'Phone Net\npassword1\n2.4')"; api POST 'net/hotspot?on=0'; rm -f $T/run/hotspot.req /run/rudolf/hotspot.req
+	api GET net/metered; api POST 'net/metered?if=rtest0&v=on'; api POST 'net/metered?if=wlan9&v=off'
+	# (1.6.1 devices: Bluetooth, Thunderbolt)
+	api GET bt; api POST 'bt/power?on=0'; api POST bt/visible; api POST 'bt/scan?s=5'; api POST 'bt/answer?ok=1'; touch $T/bt-noq; api POST 'bt/answer?ok=0'; rm -f $T/bt-noq
+	api POST 'bt/pair?mac=AA:BB:CC:DD:EE:01'; api POST 'bt/disconnect?mac=AA:BB:CC:DD:EE:01'; api POST 'bt/remove?mac=AA:BB:CC:DD:EE:01'; api POST 'bt/pair?mac=aa:bb:cc:dd:ee:01'
+	api GET tb; api POST 'tb/allow?id=0-1'; api POST 'tb/deny?id=0-1'; api POST 'tb/forget?uid=00ab-cd12'; api POST 'tb/allow?id=9-9'
+	# (1.6.1 other: Task Manager's End process and End process tree on this test's own processes; the kernel's messages)
+	timeout 300 tail -f /dev/null & Q1=$!; sh -c 'timeout 300 tail -f /dev/null & timeout 300 tail -f /dev/null & wait' & Q2=$!; timeout 1 tail -f /dev/null
+	api POST "proc/end?pid=$Q1"; api POST "proc/end?pid=$Q2&tree=1&force=1"; timeout 1 tail -f /dev/null; for p in $Q1 $Q2; do kill -0 $p 2>/dev/null && echo alive; done; wait $Q1 $Q2 2>/dev/null
+	api POST "proc/end?pid=$(pgrep -f "^$T/rudolfd" | head -1)"; api POST 'proc/end?pid=999999999'
+	api GET log; api GET crashes | sed 's/"at":[0-9]*/"at":N/g'; cat /run/rudolf/job.kmark
+}
+nnorm() { grep -v '^ntpd \|^hwclock \|^firewall status|' | sed "s|$T/run/|/run/rudolf/|g; s|$T/lib/|/usr/lib/rudolf/|g; s/|path=[^|]*//"; }
 # the accounts' folders: sign-in with the session, the state it leaves (owners, the binds, the session's files), a
 # second account, another's key, a link planted in place of a folder, sign-out; each run from a fresh start
 K1=$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n'); K2=$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n')
@@ -301,11 +424,11 @@ start() { : > $T/rd.log; PATH=$T/bin:$PATH $1 > $T/rd.log 2>&1 & RDP=$!; w8 'cur
 	TOK=$(curl -s http://127.0.0.1:8080/ | sed -n 's/.*RUDOLFD={token:"\([0-9a-f]*\)".*/\1/p' | head -1); }
 stop() { kill $RDP 2>/dev/null; wait $RDP 2>/dev/null; RDP=; w8 '! curl -s -o /dev/null http://127.0.0.1:8080/favicon.png' 40; }
 # (the clock's sync at start runs when this computer has a network: when is not the same each time, so it is left out)
-nosync() { grep -v '^ntpd \|^hwclock '; }
-hreset; start $T/rudolfd; A=$(probe); CA=$(calls | nosync); HA=$(hprobe); stop
+nosync() { grep -v '^ntpd \|^hwclock \|^firewall status|'; }
+hreset; start $T/rudolfd; A=$(probe); CA=$(calls | nosync); HA=$(hprobe); calls >/dev/null; NA=$(nprobe); NCA=$(calls | nnorm); stop
 grep -q 'run by rudolfd itself' $T/rd.log; d1=$?
-hreset; start $T/rudolfd-inproc; HC=$(hprobe); stop; timeout 1 tail -f /dev/null; calls >/dev/null   # (what it ran itself is not the helpers')
-hreset; start "$T/rudolf-rootd $T/rudolfd"; B=$(probe); CB=$(calls | nosync); HB=$(hprobe)
+hreset; start $T/rudolfd-inproc; HC=$(hprobe); calls >/dev/null; NC=$(nprobe); NCC=$(calls | nnorm); stop; timeout 1 tail -f /dev/null; calls >/dev/null   # (what it ran itself is not the helpers')
+hreset; start "$T/rudolf-rootd $T/rudolfd"; B=$(probe); CB=$(calls | nosync); HB=$(hprobe); calls >/dev/null; NB=$(nprobe); NCB=$(calls | nnorm)
 RPID=$(pgrep -f "^$T/rudolfd" | head -1); RFD=$(tr '\0' '\n' < /proc/$RPID/environ | sed -n 's/^RUDOLF_ROOTD_FD=//p'); FDS="fd $RFD: $(cat /proc/$RPID/fdinfo/$RFD 2>&1 | grep flags) $(readlink /proc/$RPID/fd/$RFD)"
 grep -q 'through rudolf-rootd' $T/rd.log; d2=$?; stop
 ok "19. rudolfd says how it runs the helpers (by itself as root; through rudolf-rootd)" "$([ $d1 = 0 ] && [ $d2 = 0 ] && echo 1)" "$(cat $T/rd.log | head -5)"
@@ -317,5 +440,10 @@ ok "22. the accounts' folders (sign-in with the session, the binds, a second acc
 ok "...and they are 1.6.0's: made, the folder the account's user's (0700), its Oracle folder the desktop's, the binds, the session's home, unlocked, another's key 403, the link 500 with /etc untouched, the guest 400, locked: the binds gone, the folder before them back" "$(echo "$HA" | sed -n 1p | grep -q '"message":"made"' && echo "$HA" | grep -q '^/persist/accounts/uABCdef12 47103:47103 700' && echo "$HA" | grep -q '^/persist/oracle/uABCdef12 1000:1000 700' && echo "$HA" | grep -q '^/home/rudolf/Documents /accounts/uABCdef12/Documents' && echo "$HA" | grep -q '^/home/acct47103 /accounts/uABCdef12' && echo "$HA" | grep -q '^HOME=/home/acct47103' && echo "$HA" | grep -q 'that key does not open' && echo "$HA" | grep -q 'bad account' && echo "$HA" | grep -q '"message":"locked"' && echo "$HA" | grep -q '^before.txt' && echo "$HA" | tail -2 | head -1 | grep -qx l && [ "$(echo "$HA" | tail -1)" = 2 ] && echo 1)" "$HA"
 ok "23. a removed account (in the account list as removed): refused through the helper (the one change: rudolfd alone made its folder)" "$(hreset; start $T/rudolfd; o=$(hpost 'home/unlock?acct=uGONE1234' "$K1"); stop; echo "$o" | grep -q 'bad account' && [ ! -e /persist/accounts/uGONE1234 ] && echo 1)" ""
 ok "24. power through the helper: the settings, the desktop's priority, the cache, the clock (set, and from the internet), brightness's step, restart with the desktop's times: rudolfd's answers as before, the same with and without rudolf-rootd" "$(echo "$A" | grep -q '^{"ok":true,"s":1}$' && echo "$A" | grep -q '"set":"set mode=quiet charge_limit=80"' && echo "$A" | grep -q '"text":"the desktop first' && echo "$A" | grep -q '"freed":N' && echo "$A" | grep -q '^1700000000.123000$' && echo "$A" | grep -q 'clock set from the internet' && echo "$A" | grep -q '^ok N$' && echo "$A" | grep -q '"brightness":40' && echo "$A" | grep -q '"message":"reboot"' && echo "$A" | grep -q '^reboot$' && echo "$CA" | grep -q '^shutdown reboot a=1,b=2|' && echo "$CA" | grep -q '^umount -a -r$' && ! grep -q '(test) no' $T/rd.log && echo 1)" "$(echo "$A" | tail -14) $(grep '(test)' $T/rd.log)"
+ok "25. the network through the helper (Wi-Fi's actions, a join (a job) and a forget with the request on standard input, the service's reconnect, DHCP, a fixed address and the name server, the firewall, the hotspot, metered connections): the same answers, byte for byte, with and without rudolf-rootd, and as rudolfd doing it itself" "$([ -n "$NA" ] && [ "$NA" = "$NB" ] && [ "$NA" = "$NC" ] && echo 1)" "$(printf '%s\n---\n%s\n---\n%s' "$NA" "$NB" "$NC" | head -90)"
+ok "...the scripts and commands asked the same things (the requests' files root's 0600, removed by wifi.sh as before)" "$([ -n "$NCA" ] && [ "$NCA" = "$NCB" ] && [ "$NCA" = "$NCC" ] && echo "$NCA" | grep -q '^wifi.sh connect rtest0 /run/rudolf/wifi.req|req=[0-9a-f]* 600:0 wifi.req|leak=$' && echo "$NCA" | grep -q '^udhcpc -i rtest0 -n -q -t 5 -O 43 -s /usr/lib/rudolf/udhcpc.sh|' && echo 1)" "$(printf '%s\n---\n%s\n---\n%s' "$NCA" "$NCB" "$NCC" | head -90)"
+ok "...and they are 1.6.0's answers: the status's raw text, the radio and band turned off, the adapter refused, connecting then the job ended 0, forgotten, connected, no DHCP answer 500, applied, the address refused 500 with the name server written, the firewall's count, its refusal's words, sharing, the hotspot off, metered refused" "$(echo "$NA" | grep -q '"raw":"adapter=rtest0' && echo "$NA" | grep -q 'Radio aa:bb:cc:dd:ee:ff turned off' && echo "$NA" | grep -q "5 GHz radio turned off" && echo "$NA" | grep -q 'No such adapter: wlan9' && echo "$NA" | grep -q '"message":"connecting"' && echo "$NA" | grep -q '"message":"Forgotten"' && echo "$NA" | grep -q '"message":"connected"' && echo "$NA" | grep -q 'no DHCP answer' && echo "$NA" | grep -q '"message":"applied"' && echo "$NA" | grep -q 'could not apply the address' && echo "$NA" | grep -q '^nameserver 8.8.4.4$' && echo "$NA" | grep -q '"blocked":7' && echo "$NA" | grep -q 'nft: no such table' && echo "$NA" | grep -q 'Sharing Phone Net' && echo "$NA" | grep -q 'The hotspot is off' && echo "$NA" | grep -q 'no such adapter' && ! grep -q 'network helper did not start' $T/rd.log && echo 1)" "$NA"
+ok "26. Bluetooth and Thunderbolt through the devices helper (in check 25's comparison): 1.6.0's answers: the status, answered, already answered 409, paired, disconnected, removed (the device still there: 409 as before), a lower-case address 400, the devices, approved, not approved, forgotten, no such device 500" "$(echo "$NA" | grep -q '"adapter":"hci0"' && echo "$NA" | grep -q '"message":"answered"' && echo "$NA" | grep -q 'already answered' && echo "$NA" | grep -q '"ok":true,"message":"Pairing successful"' && echo "$NA" | grep -q '"ok":true,"message":"Successful disconnected"' && echo "$NA" | grep -q '"ok":false,"message":"Device has been removed"' && echo "$NA" | grep -q 'bad device' && echo "$NA" | grep -q '"present":true' && echo "$NA" | grep -q '"message":"approved"' && echo "$NA" | grep -q '"message":"not approved"' && echo "$NA" | grep -q '"message":"forgotten"' && echo "$NA" | grep -q '"error":"no such device"' && echo "$NCA" | grep -q '^bluetooth scan 5|' && echo "$NCA" | grep -q '^thunderbolt forget 00ab-cd12|' && ! grep -q 'devices helper did not start' $T/rd.log && echo 1)" "$(echo "$NA" | tail -16)"
+ok "27. Task Manager's End process and End process tree through the procs helper, the kernel's messages through the logs helper (in check 25's comparison): 1.6.0's answers: ended, the tree's five, rudolfd itself 403, one that is gone 404, the log, the crash, a job's last crash line" "$(echo "$NA" | grep -q '"ok":true,"message":"timeout"}' && echo "$NA" | grep -q '"message":"sh","ended":5,"kept":0' && ! echo "$NA" | grep -q '^alive' && echo "$NA" | grep -q 'needs this process' && echo "$NA" | grep -q 'already ended' && echo "$NA" | grep -q '"log":"\[    1.0\] usb' && echo "$NA" | grep -q '"crashes":\[{' && echo "$NA" | grep -q '^\[    2.5\] rudolf-apps\[99\]: segfault' && ! grep -q 'helper did not start' $T/rd.log && echo 1)" "$(echo "$NA" | tail -9)"
 ok "21. rudolfd keeps rudolf-rootd's descriptor close-on-exec (nothing it starts has it)" "$(echo "$FDS" | python3 -c 'import sys,re; t=sys.stdin.read(); m=re.search(r"flags:\s*([0-7]+)", t); print(1 if m and int(m.group(1), 8) & 0o2000000 and "socket:" in t else 0)')" "$FDS"
 echo "$((N-F))/$N passed"; [ $F = 0 ]
