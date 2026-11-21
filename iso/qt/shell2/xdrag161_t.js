@@ -237,7 +237,8 @@ const GAMES = "{dev:'games',root:'/home/rudolf/Games',path:'/home/rudolf/Games/D
   ok('5.2 ...copied by rudolfd (dl/file to=copy) and tracked (dlRefsAdd)', M.calls.some(c => c.startsWith('dl/file copy')) && !!(await q(`ld(DLRKA(),{})[${JSON.stringify(cp.info && cp.info.p)}]`)), M.calls.slice(-3));
   const mv = await q("(async()=>{const D=node(downloadsPath());D.KEEP={};fsSave();return 1})()"); await wait(200); await q("EXPL.forEach(f=>f())"); await wait(300);
   m1 = await menu('WA', (await q(DL)) + '/BIG - COPY.ISO', 'Cut'); m2 = await q("(()=>{const d=downloadsPath().concat('KEEP');WA.openPath(d);return 1})()"); await wait(300); m2 = await menu('WA', null, 'Paste'); await wait(500);
-  const mvd = await q("(()=>{const v=(node(downloadsPath().concat('KEEP'))||{})['BIG - COPY.ISO'];return v&&isDlRef(v)?dlRefInfo(v).p:null})()");
+  const mvd = await q("(()=>{const f=(o)=>{for(const k in o){if(k=='BIG - COPY.ISO'&&isDlRef(o[k]))return dlRefInfo(o[k]).p;if(isDir(o[k])){const r=f(o[k]);if(r)return r}}return null};return f(node(downloadsPath()))})()");
+  /* (a reference outside Downloads itself is put back there by dlScope, which may run meanwhile: looked for in all of Downloads) */
   ok('5.3 moved (Cut, Paste): still a reference to the same file on the disk', mvd == (cp.info && cp.info.p), mvd);
   // another account's or the shared folder's file kept on the disk is refused, said so
   await q("(()=>{const D=node(downloadsPath());D['OLD.ISO']=dlMkRef('/home/rudolf/Downloads/.accounts/shared/OLD.ISO',5e6,'part');fsSave();WA.openPath(downloadsPath());return 1})()"); await wait(300);

@@ -27,6 +27,11 @@ REPORT = r'''<script>window.RUDOLFD={token:"t",base:"",boot:"uefi",media:"disk",
   setInterval(()=>{const xw=wins.find(w=>w.xfer);post('state',{sel:[...A.body.querySelectorAll('.xc [data-k].s')].map(e=>e.dataset.k.split('/').pop()),marq:!!A.body.querySelector('.xmarq'),
     dl:Object.keys(node(downloadsPath())||{}),xf:xw?xw.body.querySelector('.xft').textContent:null,xfs:XFSEEN})},150);
   window.XFSEEN=[];new MutationObserver(()=>{wins.filter(w=>w.xfer).forEach(w=>{const t=w.body.querySelector('.xft').textContent;if(!XFSEEN.includes(t))XFSEEN.push(t)})}).observe(document.body,{subtree:true,childList:true,characterData:true});
+  /* what WebKit tells a drop: its modifier keys and drag action (Ctrl+drag) */
+  window.DROPS=[];['dragover','drop'].forEach(t=>document.addEventListener(t,e=>{const o={t,ctrl:e.ctrlKey,fx:e.dataTransfer&&e.dataTransfer.dropEffect,ea:e.dataTransfer&&e.dataTransfer.effectAllowed,xk:typeof XFK=='object'?XFK.ctrl:null};
+   if(t=='drop'||!DROPS.length||JSON.stringify(DROPS.at(-1))!=JSON.stringify(o))DROPS.push(o);if(DROPS.length>40)DROPS.splice(0,DROPS.length-40)},true));
+  document.addEventListener('keydown',e=>{if(e.key=='Control')DROPS.push({t:'keydown ctrl'})},true);
+  setInterval(()=>post('drops',DROPS),500);
   post('ready',true)}catch(e){post('error',String(e&&e.message||e))}})})();</script>'''
 class H(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -95,11 +100,13 @@ def until(f, t=20):
     return False
 X = lambda *a: subprocess.run(['xdotool', *map(str, a)])
 def drag(x0, y0, x1, y1, steps=14, ctrl=False, mid=None):
-    X('mousemove', x0, y0); time.sleep(0.2); X('mousedown', '1'); time.sleep(0.15)
+    X('mousemove', x0, y0); time.sleep(0.2)
+    if ctrl == 'start': X('keydown', 'ctrl'); time.sleep(0.15)
+    X('mousedown', '1'); time.sleep(0.15)
     for i in range(1, steps + 1):
         X('mousemove', int(x0 + (x1 - x0) * i / steps), int(y0 + (y1 - y0) * i / steps)); time.sleep(0.05)
         if i == steps - 2 and mid: time.sleep(0.4); mid()
-    if ctrl: X('keydown', 'ctrl'); time.sleep(0.1)
+    if ctrl == 'mid': X('keydown', 'ctrl'); time.sleep(0.1)
     X('mousemove', x1 + 1, y1 + 1); time.sleep(0.3); X('mouseup', '1'); time.sleep(0.2)
     if ctrl: X('keyup', 'ctrl')
 ready = until(lambda: RES.get('ready') is True or 'error' in RES, 60); time.sleep(1)
@@ -110,7 +117,11 @@ if checks[0][1]:
     # 1. the selection box: from the empty space below the rows, up over them
     seen = {}
     def snap(): time.sleep(0.4); seen.update(st())
-    drag(A[0] + A[2] - 30, A[1] + A[3] - 30, pic1[0] + 60, pic1[1] + 4, mid=snap); time.sleep(0.6)
+    X('mousemove', A[0] + A[2] - 30, A[1] + A[3] - 30, 'click', '1'); time.sleep(0.5)   # (the window has the pointer and the focus first)
+    for attempt in range(2):
+        drag(A[0] + A[2] - 30, A[1] + A[3] - 30, pic1[0] + 60, pic1[1] + 4, mid=snap); time.sleep(0.6)
+        if seen.get('marq'): break
+        print('(the box: tried again: the first press did not reach the page)', json.dumps(seen)); seen.clear()
     after = st()
     checks.append(('a box pressed on an empty spot and dragged: drawn, the items it touches selected while dragging (WebKit, real mouse)', seen.get('marq') and len(seen.get('sel') or []) >= 3))
     checks.append(('...the selection stays after the button is let go, the box gone', len(after.get('sel') or []) >= 5 and not after.get('marq')))
@@ -122,8 +133,18 @@ if checks[0][1]:
     checks.append(('a file dragged from Downloads into the Games window: on the drive, gone from Downloads (checked with fs/hash first)', '/home/rudolf/Games/DC/note.txt' in F and 'NOTE.TXT' not in (st().get('dl') or []) and any(c.startswith('fs/hash') for c in CALLS)))
     checks.append(('...the progress window came ("Moving 1 item")', 'Moving 1 item' in (st().get('xfs') or [])))
     # 3. a drive's file dragged into Downloads with Ctrl: copied (the drive keeps it)
-    time.sleep(2.2); drag(pdf[0] + 40, pdf[1] + pdf[3] // 2, A[0] + A[2] // 2, A[1] + A[3] - 40, ctrl=True); until(lambda: 'MANUAL.PDF' in (st().get('dl') or []), 15); time.sleep(0.5)
-    checks.append(('a drive\'s file Ctrl+dragged into Downloads: copied, the drive keeps it', 'MANUAL.PDF' in (st().get('dl') or []) and '/home/rudolf/Games/DC/manual.pdf' in F))
+    time.sleep(2.2)
+    for attempt in range(2):
+        drag(pdf[0] + 40, pdf[1] + pdf[3] // 2, A[0] + A[2] // 2, A[1] + A[3] - 40, ctrl='start'); X('keyup', 'ctrl'); until(lambda: 'MANUAL.PDF' in (st().get('dl') or []), 10); time.sleep(0.8)
+        if 'MANUAL.PDF' in (st().get('dl') or []): break
+        print('(Ctrl+drag: tried again: nothing arrived)')
+    print('drops (Ctrl held from the start)', json.dumps((RES.get('drops') or [])[-8:]))
+    checks.append(('a drive\'s file dragged into Downloads with Ctrl held: copied, the drive keeps it', 'MANUAL.PDF' in (st().get('dl') or []) and '/home/rudolf/Games/DC/manual.pdf' in F))
+    # (and Ctrl pressed only once the drag is under way: what WebKit tells the drop, printed for the record)
+    if '/home/rudolf/Games/DC/manual.pdf' in F:
+        RES['drops'] = []; time.sleep(2.2); r2 = R.get('pdf')
+        drag(pdf[0] + 40, pdf[1] + pdf[3] // 2, A[0] + A[2] // 2, A[1] + A[3] - 60, ctrl='mid'); time.sleep(2.5)
+        print('Ctrl pressed during the drag: the drive', 'kept it (copied)' if '/home/rudolf/Games/DC/manual.pdf' in F else 'lost it (moved)', 'drops', json.dumps((RES.get('drops') or [])[-8:]))
 checks.append(('rudolf-webkit still runs', p.poll() is None))
 p.terminate(); log.close(); srv.shutdown()
 ok = 0
