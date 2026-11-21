@@ -462,6 +462,35 @@ before. For its own bar to work, rudolf-native does what such apps ask:
   `_NET_SUPPORTED`. GTK's own windows (the app windows of Rudolf's pages) keep moving themselves as now: they ask for
   decorations, so they are framed as before.
 Games and Wine's borderless windows (the same hint, a window the size of the screen) stay as they are: full screen.
+**Item 2 built on 2026-11-21 (unattended; PR "one title bar for apps that draw their own: the window manager's part").**
+rudolf-native (its window manager, "1.6.1 Part 15" in rudolf-native.c): a window of another program asking for no
+decorations (`_MOTIF_WM_HINTS`) gets the edge alone (a fourth resize handle along its top); `_NET_WM_MOVERESIZE` (move, the
+eight edges and corners, the keyboard's move and size: arrows 10 px a step, Enter or a click ends, Escape puts it back,
+cancel), `_NET_WM_STATE_MAXIMIZED_VERT`/`_HORZ` (Rudolf's maximize and restore with the transition, and the state written
+back: maximized, full screen, hidden), `_NET_FRAME_EXTENTS` and `_NET_REQUEST_FRAME_EXTENTS`, `_GTK_FRAME_EXTENTS` (cut
+away by the clip window), `_GTK_SHOW_WINDOW_MENU` (the window's menu), all in `_NET_SUPPORTED`; a window changing its hints
+while open (Chromium's "Use system title bar and borders") is framed again; a borderless window the screen's size is full
+screen at once, as rudolf-display takes it. As written above, with these differences: a maximized window is not moved by
+its own bar (Rudolf's title bar does not move one either; no "drag to restore" on Standard); `_NET_FRAME_EXTENTS` and the
+maximized state are not put on Rudolf's own app windows nor Oracle's (they are cut as their pages have it; GTK in the
+shell's own process would read them); there is no snapping on either engine ("The page has no snap left or right"), so
+the moves have the title bar's limits alone. **Standard:** rudolf-display already shows these apps with their own bar
+alone (it fits every Linux app's window to the screen above the taskbar, no title bar of Rudolf's), so it is unchanged.
+**Found:** Chromium (and so the Chromium-based browsers) leaves its own frame off under a window manager it does not know
+(`custom_chrome_frame` defaults to false for rudolf-native), so on Native those browsers already use Rudolf's title bar
+unless the person turned their own on: item 1's Chromium entry only keeps that choice.
+**Tests:** `iso/qt/host/csd161_t.sh` (host, 53 checks; in the Lite engine check workflow): a stand-in app
+(`fixtures/xwmclient.c csd`) with its own bar: no title bar of Rudolf's, the extents, the screen (its own bar under the 1 px
+edge), the shadow, moving by its bar, a resize from each of the 8 edges and corners, the keyboard's move, size and Escape,
+maximize/restore (the transition, the state), minimize, full screen, the three workspaces, `_GTK_SHOW_WINDOW_MENU`, GTK's
+margins, a window switching both ways, a screen-sized one; Rudolf's title bar on the others as before; Standard
+(rudolf-display) given the same app; then real apps on this host: GTK 3.24.41 (gtk3-widget-factory), GTK 4.14.5
+(gtk4-widget-factory) and Chromium 153 with its own frame (as Electron's `frame: false`): no title bar of Rudolf's, moved by
+their own bar, maximized and restored by a double-click on it. `native59_t.sh` 79/79 and `native160_t.sh` as before. Not run
+on the release in QEMU (no KVM here): **the owner's checks on the Vivobook (Native)**: Discord, Steam, a GTK 4 app (GNOME's
+Text Editor or Calculator from Flathub) and a Flatpak Electron app: one title bar each; drag each by its bar; resize each
+from every edge and corner; their maximize (and a double-click on the bar), restore, minimize and close; full screen in a
+video; moving one to another workspace.
 
 **3. Rudolf's title bar instead, by choice, per app.** The title bar's menu (right-click) on such a window has "Title
 bar: the app's own / Rudolf's". With Rudolf's, the app's own bar is cut away as Oracle's Chromium bar is (the clip

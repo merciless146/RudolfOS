@@ -5,6 +5,13 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Native: one title bar for apps that draw their own. Discord, Steam, Claude, VS Code and other Electron and Chromium apps,
+  and GTK 3 and 4 apps with a header bar, no longer get Rudolf's title bar above their own: their window keeps Rudolf's edge,
+  round corners and resize edges, and their own bar does the rest, as on Standard. Moving them by their bar, resizing them
+  from any edge or corner, their maximize, restore and minimize buttons, a double-click on their bar, the keyboard's Move
+  and Size from their window menu, and a right-click on a GTK header bar (the window's menu) all work, with the same limits
+  and transitions as Rudolf's own title bar. GTK's invisible shadow margins are cut away. Every other window keeps Rudolf's
+  title bar as before.
 - New (docs/plan-1.6.1.md Part 19): game mode does more, on Standard and Native alike. While a game is full screen the
   processor is asked for its full speed (AMD's amd_pstate and Intel's intel_pstate; not with battery saver), and behind a
   Linux game the desktop's own work waits (its processor time lowered, its animations stopped); notifications are held and
