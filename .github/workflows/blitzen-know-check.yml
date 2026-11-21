@@ -5,10 +5,15 @@
 #   page: the desktop's side with a stand-in rudolfd and model (iso/qt/shell2/blitzknow60_t.js; 1.6.0 Part 19: blzdev60_t.js,
 #         Blitzen as a developer's agent), and Blitzen's earlier page
 #         tests (blz_t.js, blitzdiag57_t.js, bzwhy57_t.js), in the newest beta's own Chromium
+#   1.6.1 (docs/plan-1.6.1.md Part 26), Blitzen hardened against giving away secrets: the detector (secrets161_t.py), the
+#         red-team suite against rudolfd's own guards with a stand-in model (blzguard161_t.py), ai/run's sandbox
+#         (blzrun161_t.sh, with sudo for its namespaces) and the page's side on Standard and Native (blzguard161_t.js)
 name: Blitzen knows check
 on:
   push:
     paths: ['iso/sys/rudolf-know.c', 'iso/sys/rudolfd-know.inc', 'desktop/blitzknow60.js', 'desktop/blzdev60.js', 'iso/sys/rudolfd-dev.inc', 'iso/qt/shell2/blzdev60_t.js', 'desktop/blitzen26.js', 'iso/qt/host/aiindex60_t.sh',
+      'iso/sys/rudolf-secrets.h', 'iso/sys/rudolfd-guard.inc', 'iso/sys/rudolf-dev.c', 'iso/sys/rudolf-debian.c', 'iso/sys/rudolf-portal.c', 'iso/sys/rudolfd.c', 'desktop/blzguard61.js', 'desktop/blitzpacks26.js',
+      'iso/qt/host/secrets161_t.py', 'iso/qt/host/sdtool161.c', 'iso/qt/host/guardtool161.py', 'iso/qt/host/blzguard161_t.py', 'iso/qt/host/blzrun161_t.sh', 'iso/qt/shell2/blzguard161_t.js',
       'iso/qt/shell2/blitzknow60_t.js', 'iso/systools/make_release.py', '.github/workflows/blitzen-know-check.yml']
   workflow_dispatch:
 permissions: {contents: read}
@@ -26,6 +31,10 @@ jobs:
           sudo npx playwright-core install-deps chromium >/dev/null 2>&1 || true
       - name: rudolf-know (the index, the activity, the source, the web)
         run: sh iso/qt/host/aiindex60_t.sh | tee host.txt; grep -q ' passed$' host.txt && ! grep -q '^FAIL' host.txt
+      - name: Blitzen's guards (the detector, the red-team suite, ai/run's sandbox)
+        run: |
+          python3 iso/qt/host/secrets161_t.py | tee guard.txt; python3 iso/qt/host/blzguard161_t.py | tee -a guard.txt; sh iso/qt/host/blzrun161_t.sh | tee -a guard.txt
+          [ "$(grep -c ' passed$' guard.txt)" = 3 ] && ! grep -q '^FAIL' guard.txt
       - name: rudolfd builds with ai/know
         run: cd iso && gcc -O2 -Wall -Werror=implicit-function-declaration -o /tmp/rudolfd sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
       - name: The newest beta's Chromium
@@ -38,9 +47,9 @@ jobs:
       - name: The desktop's side (this tree's page)
         run: |
           cd iso/qt/shell2; : > $GITHUB_WORKSPACE/page.txt
-          for t in blitzknow60_t.js blzdev60_t.js blz_t.js blitzdiag57_t.js bzwhy57_t.js; do echo "== $t" | tee -a $GITHUB_WORKSPACE/page.txt
+          for t in blitzknow60_t.js blzdev60_t.js blz_t.js blitzdiag57_t.js bzwhy57_t.js blzguard161_t.js; do echo "== $t" | tee -a $GITHUB_WORKSPACE/page.txt
             NODE_PATH=$GITHUB_WORKSPACE/pw/node_modules node $t /opt/chromium/chrome 2>&1 | tee -a $GITHUB_WORKSPACE/page.txt; done
-          [ "$(grep -c ' passed$' $GITHUB_WORKSPACE/page.txt)" = 5 ] && ! grep -q '^FAIL' $GITHUB_WORKSPACE/page.txt
+          [ "$(grep -c ' passed$' $GITHUB_WORKSPACE/page.txt)" = 6 ] && ! grep -q '^FAIL' $GITHUB_WORKSPACE/page.txt
       - if: always()
         uses: actions/upload-artifact@v4
-        with: {name: blitzen-know, retention-days: 7, path: "host.txt\npage.txt"}
+        with: {name: blitzen-know, retention-days: 7, path: "host.txt\nguard.txt\npage.txt"}

@@ -7,6 +7,9 @@ W=$(mktemp -d); trap 'rm -rf "$W"' EXIT; P=0; F=0
 ok() { if [ "$2" = 1 ]; then P=$((P+1)); echo "PASS $1"; else F=$((F+1)); echo "FAIL $1 - $3"; fi; }
 { printf '#include <%s>\n' stdio.h stdlib.h string.h stdarg.h ctype.h fcntl.h unistd.h
   sed -n '/^typedef struct { char \*b; size_t n, cap; } str;/,/^static int run(/p' "$C" | sed '$d'
+  # (1.6.1 Part 26: the detector rudolfd adds to it, without this computer's own secrets)
+  printf '#include "%s"\n' "$HERE/../../sys/rudolf-secrets.h"
+  printf '%s\n' 'static char *guard_text(const char *s, size_t n, int *k, size_t *on) { return sd_redact_n(s, n, SD_SHOWN, k, on); }' 'static void guard_note(const char *g, int k, int r) { (void)g; (void)k; (void)r; }'
   sed -n '/^static int facts_secret_line/,/^static void api_ai_facts/p' "$C" | sed '$d'
   printf '%s\n' 'int main(int c,char**v){str s={0};sadd(&s,"{\"x\":0");facts_add(&s,"log",v[1],atoi(v[2]));sadd(&s,"}");puts(s.b);return 0;}'; } > $W/t.c
 grep -q facts_tail $W/t.c && gcc -w -o $W/t $W/t.c || { echo "FAIL facts_tail not found or not built"; exit 1; }

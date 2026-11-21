@@ -31,11 +31,11 @@ async function blzKnowFor(W,text,stEl){
   try{const j=await blzkApi('search?q='+encodeURIComponent(text.slice(0,900))+'&n=8');let words=0,k=0;const got=[];
    for(const it of j.items||[]){const t=blzkWords(it.text,450),n=t.split(/\s+/).length;if(words+n>1600&&got.length)break;words+=n;k++;
     got.push(`[${k}] ${blzkWhere(it)}${it.kind=='source'?' (Rudolf OS\'s source)':''}\n${t}`);out.sources.push({n:k,kind:it.kind,src:it.src,where:it.where,text:it.text,label:blzkWhere(it)})}
-   if(got.length)parts.push('What this computer\'s own records say (Rudolf OS\'s source and documents, its logs'+(j.items.some(x=>x.kind=='activity')?', what the person did':'')+'). Use them when they fit the question and name each one you use as [1], [2]; when they do not answer it, say so and do not guess:\n\n'+got.join('\n\n'))}
+   if(got.length)parts.push('What this computer\'s own records say (Rudolf OS\'s source and documents, its logs'+(j.items.some(x=>x.kind=='activity')?', what the person did':'')+'). Use them when they fit the question and name each one you use as [1], [2]; when they do not answer it, say so and do not guess:\n\n'+(typeof blzUntrusted=='function'?blzUntrusted('this computer\'s records',got.join('\n\n')):got.join('\n\n')))}
   catch(e){console.warn('Blitzen look-up',e)}}
  if(web&&RD){if(stEl)stEl.textContent=tor?'Searching the web through Tor…':'Searching the web…';
   try{const j=await blzkApi('web?q='+encodeURIComponent(text.slice(0,380))+(tor?'&tor=1':''));const pages=(j.items||[]).slice(0,3);
-   if(pages.length){parts.push('Web pages read for this question. Answer from them where they fit, naming each one you use as [W1], [W2]:\n\n'+pages.map((p,i)=>`[W${i+1}] ${p.title||p.url}\n${blzkWords(p.text,400)}`).join('\n\n'));
+   if(pages.length){const wt=pages.map((p,i)=>`[W${i+1}] ${p.title||p.url}\n${blzkWords(p.text,400)}`).join('\n\n');parts.push('Web pages read for this question. Answer from them where they fit, naming each one you use as [W1], [W2]:\n\n'+(typeof blzUntrusted=='function'?blzUntrusted('web pages',wt):wt));
     pages.forEach((p,i)=>out.sources.push({n:'W'+(i+1),kind:'web',url:p.url,label:p.title||p.url}))}
    else out.webNote='The web search found nothing to read.'}
   catch(e){out.webNote='The web search did not work: '+e.message}}

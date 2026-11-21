@@ -5,6 +5,13 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Security: Blitzen never shows or sends a private key, a token or one of this computer's secrets, whoever asks or
+  however (social engineering, a page, file, mail or log that tells it to, a key split up, spelled out, encoded or in a code
+  block). rudolfd hides them in what Blitzen is given and in what it writes, before any of it is shown, spoken, kept or
+  copied ("[hidden: a private key]"), refuses an action that would send one even after Allow, and keeps Developer mode
+  from reading key files. A password or a code is sent only after you allow it in the desktop's own prompt, which only
+  your own click can answer. A program Blitzen runs sees only its own folder, with no network. Each attempt is in System
+  health › Security.
 - Fixed: Find printers finds network printers with the firewall on (found on a Vivobook: it listed none). It now asks
   the network as other computers do (multicast DNS from its own port, 5353), and the firewall lets in only those
   answers, from the local network and never on a cellular connection; nothing else is opened. Printers that answer

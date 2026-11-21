@@ -16,12 +16,14 @@ async function blzStream(messages,opt,onText,signal){
  const r=await fetch((window.BLZ_API||'/api/')+'ai/chat',{method:'POST',headers:{'X-Rudolf-Token':RD.token,'Content-Type':'application/json'},body:JSON.stringify(body),signal});
  const ct=r.headers.get('content-type')||'';
  if(!ct.includes('event-stream')){let m='Blitzen did not answer (HTTP '+r.status+')';try{const j=await r.json();m=typeof j.error=='string'?j.error:(j.error&&j.error.message)||j.message||m}catch(e){}throw new Error(m)}
- const rdr=r.body.getReader(),dec=new TextDecoder();let buf='',text='',n=0,first=0;const t0=performance.now();
+ const rdr=r.body.getReader(),dec=new TextDecoder();let buf='',text='',n=0,first=0,fin=null;const t0=performance.now();
  for(;;){const {done,value}=await rdr.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;
   while((i=buf.indexOf('\n'))>=0){const l=buf.slice(0,i).trim();buf=buf.slice(i+1);if(!l.startsWith('data:'))continue;const d=l.slice(5).trim();if(d=='[DONE]')continue;
    let j;try{j=JSON.parse(d)}catch(e){continue}if(j.error)throw new Error(j.error.message||'Blitzen stopped');
+   /* 1.6.1 (plan Part 26): rudolfd's last event: the whole answer redacted once more, and what was hidden */
+   if(j.rudolf){fin=j.rudolf;if(typeof fin.text=='string'){text=fin.text;onText(text)}continue}
    const c=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;if(c){if(!first)first=performance.now();text+=c;n++;onText(text)}}}
- const ms=performance.now()-t0;return{text,tokens:n,ms,first:first?first-t0:ms,tps:n>1&&first?(n-1)/((performance.now()-first)/1000):0}}
+ const ms=performance.now()-t0;return{text,tokens:n,ms,first:first?first-t0:ms,tps:n>1&&first?(n-1)/((performance.now()-first)/1000):0,hidden:fin&&fin.hidden||[],inputHidden:fin&&fin.inputHidden||[]}}
 
 /* ---------- answers: text and code blocks ---------- */
 function blzLang(l){l=(l||'').toLowerCase();return /^(lua|blocklua|lua5\.?3)$/.test(l)?'lua':/^(luau|roblox|rbx|rbxlua)$/.test(l)?'luau':/^(pilot|pilotlua|pilot\.lua|pilot-lua|wos)$/.test(l)?'pilot':/^(js|javascript|mjs|node)$/.test(l)?'js':/^(cpp|c\+\+|cc|cxx|hpp|c)$/.test(l)?'cpp':/^(py|python|python3)$/.test(l)?'python':/^html?$/.test(l)?'html':l||'text'}
@@ -44,9 +46,19 @@ async function blzRunLua(code){const out=[];const P={cwd:['C:'],write(s){out.pus
  try{err=KRUN(String(code),'BLITZEN',{w:s=>P.write(s)},makeSys(P))}catch(e){err=String(e&&e.message||e)}finally{try{lua.lua_sethook(L,null,0,0)}catch(e){}}
  if(P.__dirty){P.__dirty=0;fsSave();EXPL.forEach(f=>f())}
  return{ok:true,code:err?1:0,timeout:/time limit/.test(err||''),out:out.join('')+(err?String(err)+'\n':'')}}
+/* 1.6.1 (plan Part 26): the program has no way out: every network and storage API of the worker taken away for good (not
+   only set to undefined), and code that would load more (import(), through eval, Function, a timer's string) refused */
 function blzRunJS(code){return new Promise(res=>{const src=`const __o=[];const __s=v=>typeof v=='string'?v:(()=>{try{return JSON.stringify(v)}catch(e){return String(v)}})();
- console.log=console.info=console.warn=console.error=(...a)=>__o.push(a.map(__s).join(' '));self.fetch=undefined;self.XMLHttpRequest=undefined;self.WebSocket=undefined;self.importScripts=undefined;
- onmessage=async e=>{let err=null;try{await (0,eval)('(async()=>{'+e.data+'\\n})()')}catch(x){err=(x&&x.name?x.name+': ':'')+(x&&x.message||x)}postMessage({out:__o.join('\\n'),err})}`;
+ console.log=console.info=console.warn=console.error=(...a)=>__o.push(a.map(__s).join(' '));
+ const __E=(0,eval),__F=Function,__NO=/\\bimport\\s*\\(|\\bimport\\s*\\.\\s*meta|\\bimportScripts\\b/;const __chk=t=>{if(__NO.test(String(t)))throw new Error('Blitzen\\'s programs run with no network: import is not allowed here')};
+ for(const k of ['fetch','XMLHttpRequest','WebSocket','EventSource','WebTransport','importScripts','indexedDB','caches','BroadcastChannel','Worker','SharedWorker','RTCPeerConnection','Request','Response','CookieStore','cookieStore','FileSystemHandle','storage'])try{Object.defineProperty(self,k,{value:undefined,writable:false,configurable:false})}catch(e){}
+ try{Object.defineProperty(navigator,'storage',{value:undefined})}catch(e){}
+ const __wrapF=F=>{const W=function(...a){__chk(a.join(','));return F(...a)};W.prototype=F.prototype;try{Object.defineProperty(F.prototype,'constructor',{value:W,writable:false,configurable:false})}catch(e){}return W};
+ Object.defineProperty(self,'Function',{value:__wrapF(__F),writable:false,configurable:false});
+ for(const f of [async function(){},function*(){},async function*(){}]){const F=Object.getPrototypeOf(f).constructor;__wrapF(F)}
+ Object.defineProperty(self,'eval',{value:t=>{__chk(t);return __E(t)},writable:false,configurable:false});
+ for(const t of ['setTimeout','setInterval']){const o=self[t];Object.defineProperty(self,t,{value:(f,...a)=>{if(typeof f!='function')throw new Error('a timer needs a function here');return o(f,...a)},writable:false,configurable:false})}
+ onmessage=async e=>{let err=null;try{__chk(e.data);await __E('(async()=>{'+e.data+'\\n})()')}catch(x){err=(x&&x.name?x.name+': ':'')+(x&&x.message||x)}postMessage({out:__o.join('\\n'),err})}`;
  const w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));const tm=setTimeout(()=>{w.terminate();res({ok:true,code:124,timeout:true,out:'time limit: the program ran for more than 10 seconds\n'})},10000);
  w.onmessage=e=>{clearTimeout(tm);w.terminate();const o=e.data.out+(e.data.out?'\n':'');res({ok:true,code:e.data.err?1:0,out:o+(e.data.err?e.data.err+'\n':'')})};
  w.onerror=e=>{clearTimeout(tm);w.terminate();res({ok:true,code:1,out:(e.message||'error')+'\n'})};w.postMessage(code)})}
@@ -60,7 +72,7 @@ async function blzRun(lang,code){
 
 /* ---------- saving chats (Documents › Blitzen, plain text) ---------- */
 function blzChatDir(make){if(!USER)return null;const d=node(homePath('DOCUMENTS'));if(!isDir(d))return null;if(!isDir(d.BLITZEN)){if(!make)return null;d.BLITZEN={}}return d.BLITZEN}
-function blzSaveChat(c){if(!c.msgs.length||!ld('bd95blzkeep',true))return;const d=blzChatDir(true);if(!d)return;
+function blzSaveChat(c){if(!c.msgs.length||!ld('bd95blzkeep',true))return;if(typeof blzScrub=='function')c={...c,msgs:c.msgs.map(m=>({...m,content:blzScrub(m.content)}))};const d=blzChatDir(true);if(!d)return;
  if(!c.file){const t=new Date(),p=n=>String(n).padStart(2,'0');c.file=`CHAT ${t.getFullYear()}-${p(t.getMonth()+1)}-${p(t.getDate())} ${p(t.getHours())}${p(t.getMinutes())}${p(t.getSeconds())}.TXT`}
  d[c.file]='Blitzen chat\n'+c.msgs.map(m=>`### ${m.role=='user'?'You':'Blitzen'}\n${m.content}`).join('\n')+'\n';fsSave();EXPL.forEach(f=>f())}
 function blzLoadChat(name){const d=blzChatDir(false);const t=d&&d[name];if(typeof t!='string')return null;const msgs=[];
@@ -111,12 +123,12 @@ function blzChatUI(W){
   <div class='blzsugg'>${['Make blocks that count down from 10 and beep','Write a Python script that lists the files in Documents','Explain what a C++ vector is with a short example','Write JavaScript that sorts a list of names'].map(s=>`<button>${lxEsc(s)}</button>`).join('')}</div></div>`;
   log.querySelectorAll('.blzsugg button').forEach(b=>b.onclick=()=>{ta.value=b.textContent;ta.focus()})};
  /* draw an answer: text, and each code block with its buttons */
- const drawAnswer=(el,text,opts={})=>{const body=el.querySelector('.blzbody');const parts=opts.raw?[{t:'code',lang:'lua',s:text,done:!opts.streaming}]:blzParts(text,langSel.value);body.innerHTML='';
+ const drawAnswer=(el,text,opts={})=>{if(typeof blzScrub=='function')text=blzScrub(text);const body=el.querySelector('.blzbody');const parts=opts.raw?[{t:'code',lang:'lua',s:text,done:!opts.streaming}]:blzParts(text,langSel.value);body.innerHTML='';
   parts.forEach((p,i)=>{if(p.t=='text'){const d=document.createElement('div');d.className='blztxt';d.innerHTML=blzMd(p.s);body.appendChild(d);return}
    const c=document.createElement('div');c.className='blzcode';c.dataset.lang=p.lang;c.innerHTML=`<div class='blzch'><span class='blzcl'>${lxEsc(BLZ_LNAME[p.lang]||p.lang)}</span><span class='blzbadge'></span><span style='flex:1'></span>${p.done?`<button class='bcr' title='Run it'>▶ Run</button>${p.lang=='lua'?"<button class='bcb' title='Open as blocks in BlockLua Builder'>🧱 Blocks</button>":''}<button class='bci' title='Open in Code Editor'>Insert</button><button class='bcc' title='Copy'>Copy</button>`:''}</div><pre class='blzpre'></pre><div class='blzout' hidden></div>`;
    c.querySelector('pre').textContent=p.s;c.code=p.s;body.appendChild(c);
-   if(p.done){c.querySelector('.bcr').onclick=()=>runBlock(c,p.lang,p.s,false);c.querySelector('.bcc').onclick=()=>{navigator.clipboard.writeText(p.s).then(()=>notify('Copied','',{quiet:true})).catch(()=>{})};
-    c.querySelector('.bci').onclick=()=>blzInsert(p.lang,p.s);const bb=c.querySelector('.bcb');if(bb)bb.onclick=()=>blzToBlocks(p.s)}});
+   if(p.done){c.querySelector('.bcr').onclick=()=>runBlock(c,p.lang,p.s,false);c.querySelector('.bcc').onclick=()=>{navigator.clipboard.writeText(typeof blzScrub=='function'?blzScrub(p.s):p.s).then(()=>notify('Copied','',{quiet:true})).catch(()=>{})};
+    c.querySelector('.bci').onclick=()=>blzInsert(p.lang,typeof blzScrub=='function'?blzScrub(p.s):p.s);const bb=c.querySelector('.bcb');if(bb)bb.onclick=()=>blzToBlocks(p.s)}});
   scroll()};
  const setBadge=(c,kind,txt)=>{const b=c.querySelector('.blzbadge');b.className='blzbadge '+kind;b.textContent=txt};
  const showOut=(c,res)=>{const o=c.querySelector('.blzout');o.hidden=false;o.innerHTML='';
@@ -149,7 +161,7 @@ function blzChatUI(W){
   catch(e){setBusy(false);if(e.name=='AbortError'){stEl.textContent='Stopped.';const t=el.querySelector('.blzbody').textContent;if(t&&t!='…')chat.msgs.push({role:'assistant',content:el.dataset.text||t});else el.remove();return null}
    el.querySelector('.blzbody').innerHTML=`<div class='msg blzerr'>${lxEsc(e.message)}</div>`;stEl.textContent='';return null}
   setBusy(false);const text=o.blocks?'```lua\n'+res.text.trim()+'\n```':res.text;
-  chat.msgs.push({role:'assistant',content:text});drawAnswer(el,text);if(o.know&&typeof blzKnowDraw=='function')blzKnowDraw(el,o.know);if(typeof blzDevDraw=='function')blzDevDraw(el);blzSaveChat(chat);
+  chat.msgs.push({role:'assistant',content:text});drawAnswer(el,text);if(typeof blzHiddenNote=='function')blzHiddenNote(el,res);if(o.know&&typeof blzKnowDraw=='function')blzKnowDraw(el,o.know);if(typeof blzDevDraw=='function')blzDevDraw(el);blzSaveChat(chat);
   stEl.textContent=res.tokens?`${res.tokens} tokens in ${(res.ms/1000).toFixed(1)} s · ${res.tps?res.tps.toFixed(1):'–'} tokens per second · first word after ${(res.first/1000).toFixed(1)} s`:'';
   BLZ.lastSpeed=res.tps;svj('bd95blzspeed',{tps:res.tps,at:Date.now()});return el}
  /* check the answer's first runnable block; on failure ask for a fix, at most BLZ.retries times */
@@ -164,8 +176,13 @@ function blzChatUI(W){
   if(!o.context&&typeof bzWifiQ=='function'&&bzWifiQ(text)){ta.value='';bzWhy(text,{wifi:true});return}
   if(blzGameRunning()){stEl.textContent='Close the game first: Blitzen needs the memory a game is using.';return}
   if(o.lang!==undefined){langSel.value=o.lang;warm()}
-  if(!chat.msgs.length)log.innerHTML='';chat.msgs.push({role:'user',content:text+(o.context?'\n\n'+o.context:'')});
+  /* 1.6.1 (plan Part 26): a key, token or password pasted into the question, or in what another app adds, is hidden
+     from the chat, its history and Blitzen (rudolfd's detector); what another app adds is marked as data, not instructions */
+  let gh=[];if(typeof blzGuard=='function'){ta.value='';setBusy(true);try{const g=await blzGuard(text);text=g.text;gh=g.hidden;if(o.context){const c=await blzGuard(o.context);o={...o,context:c.text};gh=[...new Set([...gh,...c.hidden])]}}finally{setBusy(false)}}
+  const ctx=o.context?(typeof blzUntrusted=='function'?blzUntrusted(o.contextName||'what was added',o.context):o.context):'';
+  if(!chat.msgs.length)log.innerHTML='';chat.msgs.push({role:'user',content:text+(ctx?'\n\n'+ctx:'')});
   const u=bubble('user');u.querySelector('.blzbody').innerHTML=blzMd(text)+(o.context?`<details class='blzctx'><summary>with ${lxEsc(o.contextName||'context')}</summary><pre></pre></details>`:'');if(o.context)u.querySelector('.blzctx pre').textContent=o.context;
+  if(gh.length&&typeof blzHiddenNote=='function')blzHiddenNote(u,{inputHidden:gh});
   ta.value='';
   /* 1.6.0 (plan Part 18): what fits the question looked up first (the source, the logs, the notes; the web when asked) */
   let know=null;if(!o.blocks&&typeof blzKnowFor=='function'){setBusy(true);try{know=await blzKnowFor(W,text,stEl)}catch(e){console.warn(e)}setBusy(false);if(W.blzk)W.blzk.done()}
@@ -178,7 +195,7 @@ function blzChatUI(W){
  q('.blznew').onclick=()=>{if(busy)return;chat.msgs=[];chat.file=null;empty();stEl.textContent=''};
  q('.blzhist').onclick=()=>{const h=q('.blzhl');if(!h.hidden){h.hidden=true;return}const d=blzChatDir(false);const names=d?Object.keys(d).filter(k=>/^CHAT .*\.TXT$/.test(k)).sort().reverse():[];
   h.innerHTML=names.length?names.slice(0,30).map(n=>`<button data-n='${lxEsc(n)}'>${lxEsc(n.replace(/^CHAT |\.TXT$/g,''))}</button>`).join(''):"<div class='msg'>No saved chats yet. Chats are kept in Documents › Blitzen.</div>";h.hidden=false;
-  h.querySelectorAll('button').forEach(b=>b.onclick=()=>{const c=blzLoadChat(b.dataset.n);if(!c)return;chat.msgs=c.msgs;chat.file=c.file;log.innerHTML='';c.msgs.forEach(m=>{const el=bubble(m.role);if(m.role=='user')el.querySelector('.blzbody').innerHTML=blzMd(m.content);else drawAnswer(el,m.content)});h.hidden=true})};
+  h.querySelectorAll('button').forEach(b=>b.onclick=()=>{const c=blzLoadChat(b.dataset.n);if(!c)return;chat.msgs=c.msgs;chat.file=c.file;log.innerHTML='';c.msgs.forEach(m=>{const el=bubble(m.role);if(m.role=='user')el.querySelector('.blzbody').innerHTML=blzMd(typeof blzScrub=='function'?blzScrub(m.content):m.content);else drawAnswer(el,m.content)});h.hidden=true})};
  empty();setTimeout(()=>ta.focus(),50);
  W.blz={ask,chat,busy:()=>busy,stop:()=>W.abort&&W.abort.abort(),log};return W}
 async function blzInstall(what,btn,box){if(!isAdmin()&&!await elevate(what=='python'?'Install Python in Debian':'Install the C++ compiler in Debian'))return;btn.disabled=true;

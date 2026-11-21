@@ -9,7 +9,12 @@
  *   ai/dev/dispatch?wf=W&ref=B     ai/dev/push?branch=B&message=M (body: PATH<tab>BASE64 a line)    ai/dev/pr?branch=B&title=T (body)
  *   ai/dev/dl-send (body: a command's JSON)   ai/dev/dl-wait?id=N&secs=S   ai/dev/dl-file?id=N&name=F   the devlink
  * The token is read from the keyring for each request and given to rudolf-dev (run as nobody) on its standard input:
- * never in an argument, a log or a reply. */
+ * never in an argument, a log or a reply.
+ * 1.6.1 (docs/plan-1.6.1.md Part 26, rudolfd-guard.inc): key files are refused whole (file?path=, a devlink command's get
+ * or a script that names one, a push of one); what is read is redacted before the page (and Blitzen) has it; a push, a
+ * pull request, a workflow started or a devlink command that carries a private key, a token or one of this computer's
+ * secrets is refused, whatever was allowed, and one that carries a password, a code or personal details needs the
+ * person's authorization from the desktop's own prompt (ai/authorize), bound to exactly what is sent. */
 #ifndef DEV_BIN
 #define DEV_BIN "/usr/bin/rudolf-dev"
 #endif
@@ -79,6 +84,10 @@ static int dev_token(const char *acct, const char *key, char *tok, size_t n)
 static void dev_reply(struct req *r, char *o, int st, const char *err, int kind)
 {
 	/* kind 0: rudolf-dev's JSON as "data"; 1: text as "text"; 2: bytes as "base64" */
+	/* 1.6.1 (plan Part 26): redacted first; bytes that are text too (a file sent with a devlink result) */
+	if (st == 0 && o) { int k = 0, txt = kind != 2 || !memchr(o, 0, dev_len); size_t on;
+		char *x = kind == 0 ? (guard_load(), sd_json_redact(o, dev_len, SD_SHOWN, &k, &on)) : txt ? guard_text(o, kind == 2 ? dev_len : strlen(o), &k, &on) : NULL;
+		if (x) { explicit_bzero(o, dev_len); free(o); o = x; dev_len = on; } guard_note("what Blitzen read in Developer mode", k, 0); }
 	if (st == 0 && o) {
 		str s = {0};
 		if (kind == 0) { sadd(&s, "{\"ok\":true,\"data\":"); sadd(&s, "%s", *o ? o : "null"); sadd(&s, "}"); }
@@ -145,14 +154,32 @@ static void api_ai_dev(struct req *r, const char *what)
 	if (!strcmp(what, "repo") || !strcmp(what, "runs") || !strcmp(what, "workflows")) ;
 	else if (!strcmp(what, "jobs") && (q1 = qparam(r->query, "run")) && strspn(q1, "0123456789") == strlen(q1) && *q1) a[3] = q1;
 	else if (!strcmp(what, "joblog") && (q1 = qparam(r->query, "job")) && strspn(q1, "0123456789") == strlen(q1) && *q1) { a[3] = q1; kind = 1; }
-	else if (!strcmp(what, "file") && (q1 = qparam(r->query, "path"))) { a[3] = q1; a[4] = qparam(r->query, "ref"); kind = 1; }
+	else if (!strcmp(what, "file") && (q1 = qparam(r->query, "path"))) { a[3] = q1; a[4] = qparam(r->query, "ref"); kind = 1;
+		if (sd_keypath(q1)) { explicit_bzero(in.b, in.n); free(in.b); guard_note("a key file Developer mode was asked to read", SD_PRIVKEY, 1);
+			reply_err(r->fd, 403, "Blitzen does not read key files (keys, .pem, .key, .ssh, .gnupg and the like): they are never shown, whoever asks."); return; } }
 	else if (!strcmp(what, "dispatch") && (q1 = qparam(r->query, "wf"))) { a[3] = q1; a[4] = qparam(r->query, "ref") ? qparam(r->query, "ref") : base; }
 	else if (!strcmp(what, "push") && (q1 = qparam(r->query, "branch")) && qparam(r->query, "message")) { a[3] = base; a[4] = q1; a[5] = qparam(r->query, "message"); secs = 300; }
 	else if (!strcmp(what, "pr") && (q1 = qparam(r->query, "branch")) && qparam(r->query, "title")) { a[3] = q1; a[4] = base; a[5] = qparam(r->query, "title"); }
 	else if (!strcmp(what, "dl-send") && r->body && r->blen && r->blen < 60000) ;
 	else if (!strcmp(what, "dl-wait") && (q1 = qparam(r->query, "id"))) { a[3] = q1; snprintf(n1, sizeof n1, "%d", qparam(r->query, "secs") && atoi(qparam(r->query, "secs")) > 0 && atoi(qparam(r->query, "secs")) <= 50 ? atoi(qparam(r->query, "secs")) : 25); a[4] = n1; }
-	else if (!strcmp(what, "dl-file") && (q1 = qparam(r->query, "id")) && qparam(r->query, "name")) { a[3] = q1; a[4] = qparam(r->query, "name"); kind = 2; }
+	else if (!strcmp(what, "dl-file") && (q1 = qparam(r->query, "id")) && qparam(r->query, "name")) { a[3] = q1; a[4] = qparam(r->query, "name"); kind = 2;
+		if (sd_keypath(a[4])) { explicit_bzero(in.b, in.n); free(in.b); reply_err(r->fd, 403, "Blitzen does not read key files."); return; } }
 	else { explicit_bzero(in.b, in.n); free(in.b); reply_err(r->fd, 400, "no such request, or something it needs is missing"); return; }
+	/* 1.6.1 (plan Part 26): what a change sends, checked before anything is asked of GitHub */
+	if (!strcmp(what, "push") || !strcmp(what, "pr") || !strcmp(what, "dispatch") || !strcmp(what, "dl-send")) {
+		str pay = {0}; char bad[300] = ""; int ok = 1; sadd(&pay, "%s", "");
+		for (int i = 3; i < 6 && a[i]; i++) sadd(&pay, "%s\n", a[i]);
+		if (!strcmp(what, "push")) ok = guard_push_files(r->body ? r->body : "", r->body ? r->blen : 0, &pay, bad, sizeof bad);
+		else if (!strcmp(what, "dl-send")) { ok = guard_dl_cmd(r->body ? r->body : "", r->body ? r->blen : 0, bad, sizeof bad); if (r->body) { if (pay.n + r->blen + 1 > pay.cap) { pay.cap = pay.n + r->blen + 1; pay.b = realloc(pay.b, pay.cap); } memcpy(pay.b + pay.n, r->body, r->blen); pay.n += r->blen; pay.b[pay.n] = 0; } }
+		else if (r->body && r->blen) { if (pay.n + r->blen + 1 > pay.cap) { pay.cap = pay.n + r->blen + 1; pay.b = realloc(pay.b, pay.cap); } memcpy(pay.b + pay.n, r->body, r->blen); pay.n += r->blen; pay.b[pay.n] = 0; }
+		if (!ok) { explicit_bzero(pay.b, pay.n); free(pay.b); explicit_bzero(in.b, in.n); free(in.b); guard_note(!strcmp(what, "push") ? "a push of a key file" : "a devlink command for a key file", SD_PRIVKEY, 1);
+			char m[500]; snprintf(m, sizeof m, "Refused: %s is a key file. Blitzen never sends or fetches key files, whatever is allowed.", bad); reply_err(r->fd, 403, m); return; }
+		char full[40]; snprintf(full, sizeof full, "ai/dev/%s", what);
+		char dest[220]; snprintf(dest, sizeof dest, dl ? "the test computer (devlink %s)" : "GitHub (%s)", R);
+		int stop = guard_action(r, full, !strcmp(what, "push") ? "a push" : !strcmp(what, "pr") ? "a pull request" : !strcmp(what, "dispatch") ? "a workflow started" : "a devlink command", pay.b, pay.n, dest);
+		explicit_bzero(pay.b, pay.n); free(pay.b);
+		if (stop) { explicit_bzero(in.b, in.n); free(in.b); return; }
+	}
 	if (r->body && r->blen && (!strcmp(what, "push") || !strcmp(what, "pr") || !strcmp(what, "dl-send"))) {
 		size_t at = in.n; if (in.n + r->blen + 2 > in.cap) { in.cap = in.n + r->blen + 2; in.b = realloc(in.b, in.cap); }
 		memcpy(in.b + at, r->body, r->blen); in.n = at + r->blen; in.b[in.n++] = '\n'; in.b[in.n] = 0;

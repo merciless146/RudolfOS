@@ -40,6 +40,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <openssl/evp.h>
+#include "rudolf-secrets.h"   /* 1.6.1 (plan-1.6.1 Part 26): the secret detector */
 
 static char KD[256] = "/persist/os/know";
 static const char *KEYF = "/etc/rudolf/rpk-keys", *SYSD = "/persist/os/system";
@@ -91,13 +92,15 @@ static char *scrub(const char *s, size_t n)
 		for (const char *p = l; p < l + L; ) {
 			const char *q = p; while (q < l + L && (isalnum((unsigned char)*q) || *q == '+' || *q == '=' || *q == '_' || *q == '-')) q++;
 			size_t k = q - p; int dig = 0; for (const char *c = p; c < q; c++) if (isdigit((unsigned char)*c)) dig = 1;
-			if (k >= 32 && dig) { memcpy(w, "[hidden]", 8); w += 8; p = q; continue; }
+			if (k >= 32 && dig && !sd_is_public(p, 0, k)) { memcpy(w, "[hidden]", 8); w += 8; p = q; continue; }
 			if (k) { memcpy(w, p, k); w += k; p = q; continue; }
 			*w++ = *p++;
 		}
 		*w++ = '\n'; l += L + 1;
 	}
-	*w = 0; return o;
+	*w = 0;
+	/* 1.6.1 (plan-1.6.1 Part 26): and the detector's rules (a key over several lines, a token, a password in its context) */
+	size_t rn; char *r = sd_redact_n(o, w - o, SD_SHOWN, NULL, &rn); free(o); return r;
 }
 
 /* ---------------- chunks */
@@ -435,6 +438,7 @@ static int web(const char *q, int tor)
 		size_t tn = 1 << 16; char *t = malloc(tn), title[300]; html_text(pg.b, pg.n, t, tn, title, sizeof title); free(pg.b);
 		/* at most about 1,200 words */
 		int w = 0, inw = 0; size_t cut = strlen(t); for (size_t j = 0; t[j]; j++) { int c = !isspace((unsigned char)t[j]); if (c && !inw && ++w > 1200) { cut = j; break; } inw = c; } t[cut] = 0;
+		{ char *r = sd_redact(t, SD_SHOWN, NULL); free(t); t = r; }   /* (1.6.1 Part 26: what a page says is redacted too) */
 		char ttl[300]; html_text(title, strlen(title), ttl, sizeof ttl, NULL, 0);
 		printf("%s{\"url\":", out++ ? "," : ""); js(stdout, urls[i], strlen(urls[i])); printf(",\"title\":"); js(stdout, ttl, strlen(ttl)); printf(",\"text\":"); js(stdout, t, strlen(t)); printf("}");
 		free(t); fflush(stdout);
