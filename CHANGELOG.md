@@ -5,6 +5,12 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Security: rudolfd can be confined (off by default until a beta has run with it: /persist/etc/rudolf-confine, or
+  rudolf.confine= at the start-up, off, log or on). All of rudolfd loses the system calls and capabilities nothing it
+  starts needs; each request that starts no program is put in a narrow confinement of its own (only rudolfd's own
+  system calls, writing only in rudolfd's folders through Landlock, which the kernel now has, fewer capabilities);
+  each of rudolf-rootd's helpers gets only its own capabilities; and the API answers each window only what its code
+  asks for (the native shell, the page). Refusals are said in System health.
 - New: Oracle's status line (bottom left, where it says "Done") shows where a link goes while the mouse is over it:
   "Goes To: <address>". It covers links, image-map areas, a form's submit button and links in ads and other frames, on
   websites and Oracle's own pages; then the status line goes back to what it said. On Standard, Native and Lite.

@@ -13,6 +13,9 @@ cp $X/rudolf-rootd /usr/bin/rudolf-rootd; chmod 755 /usr/bin/rudolf-rootd
 mkdir -p /usr/lib/rudolf/root; chmod 755 /usr/lib/rudolf/root
 for h in /tmp/fx/root/*; do n=${h##*/}; cp $h /usr/lib/rudolf/root/$n; chown 0:0 /usr/lib/rudolf/root/$n; chmod 700 /usr/lib/rudolf/root/$n; done
 ls -la /usr/lib/rudolf/root
+# 1.6.1 (plan Part 20): the confinement's switch for this run (the disk's file "confine": off, log or on), read by
+# rudolf-rootd and rudolfd at their start below
+[ -f /tmp/fx/confine ] && { mkdir -p /persist/etc; cp /tmp/fx/confine /persist/etc/rudolf-confine; echo "confine=$(cat /persist/etc/rudolf-confine)"; }
 # (the running one ended: rudolf-rootd if there is one, which passes it on to its rudolfd; the first rudolfd, the main one)
 R=$(pidof rudolf-rootd); [ -n "$R" ] && kill $R
 P=$(pidof rudolfd | tr ' ' '\n' | sort -n | head -1); [ -n "$P" ] && kill $P 2>/dev/null
