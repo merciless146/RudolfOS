@@ -11,21 +11,32 @@
    - the web, only for a question with "Search the web" on: only the question goes out (DuckDuckGo, as Oracle's search;
      through Tor when asked), the first pages read as text, their links numbered and opened in Oracle.
    blzKnowFor (called by blitzen26.js's ask) gathers what fits a question; blzKnowDraw puts its sources under the answer. */
-const BLZK={look:true,web:false,tor:false,last:0};
-const blzkMemKey=()=>'bd95blzmem:'+uid();
-function blzkNotes(){const v=ld(blzkMemKey(),[]);return Array.isArray(v)?v.filter(x=>typeof x=='string'&&x.trim()):[]}
-function blzkSetNotes(a){svj(blzkMemKey(),a.slice(0,50).map(x=>String(x).slice(0,300)))}
-async function blzkApi(path){return lxApi('ai/know/'+path)}
+const BLZK={look:true,web:false,tor:false,last:0,notes:null,notesU:null};
+const blzkMemKey=()=>'bd95blzmem:'+uid();   /* (1.6.0's place for the notes: the page's storage, shared; moved, below) */
+async function blzkApi(path,body){return lxApi('ai/know/'+path,body)}
+/* 1.6.1 (docs/plan-1.6.1.md Part 27 item 4): the notes are kept in the account's own encrypted folder (rudolfd's ai/know/notes,
+   .rudolf/blitzen/notes.txt), never in the page's storage; 1.6.0's copy there is moved in the first time and removed. Without the
+   account's folder (not on the disk, or locked) there are none (BLZK.notesOk false: "Remember that" says it cannot keep it). */
+function blzkNotes(){return USER&&BLZK.notesU===uid()&&Array.isArray(BLZK.notes)?BLZK.notes.slice():[]}
+async function blzkNotesLoad(fresh){if(!RD||!USER){BLZK.notesOk=false;return []}if(!fresh&&BLZK.notesU===uid()&&BLZK.notes)return blzkNotes();
+ let a=null;try{a=((await blzkApi('notes')).items||[]).filter(x=>typeof x=='string')}catch(e){a=null}
+ const old=ld(blzkMemKey(),null);
+ if(a!==null&&Array.isArray(old)){const m=a.concat(old.filter(x=>typeof x=='string'&&x.trim()&&!a.includes(x))).slice(0,50);
+  try{if(m.length!=a.length)await blzkApi('notes?set=1',m.map(x=>String(x).replace(/[\r\n]+/g,' ').slice(0,300)).join('\n')+'\n');a=m;try{localStorage.removeItem(blzkMemKey())}catch(e){}}catch(e){}}
+ BLZK.notes=a||[];BLZK.notesU=uid();BLZK.notesOk=a!==null;return blzkNotes()}
+async function blzkSetNotes(a){a=a.slice(0,50).map(x=>String(x).replace(/[\r\n]+/g,' ').slice(0,300));
+ await blzkApi('notes?set=1',a.join('\n')+'\n');BLZK.notes=a;BLZK.notesU=uid();return a}
 const blzkWords=(s,n)=>{const w=String(s||'').split(/\s+/).filter(Boolean);return w.length>n?w.slice(0,n).join(' ')+' …':w.join(' ')};
 function blzkWhere(it){if(it.kind=='activity'){const t=new Date((+it.where||0)*1000);return 'what you did, '+t.toLocaleString([], {dateStyle:'medium',timeStyle:'short'})}
  return it.kind=='source'?`${it.src}, ${it.where}`:`${it.src}, ${it.where}`}
 /* "Remember that ..." in a question: kept as a note (and answered as usual: the note goes with it) */
-function blzkRemember(text){const m=/^\s*(?:please\s+)?remember(?:\s+that)?[\s,:]+(.{3,300})$/i.exec(String(text||''));if(!m||!USER)return null;
- const n=m[1].trim().replace(/[.!]+$/,'');const a=blzkNotes();if(!a.includes(n)){a.push(n);blzkSetNotes(a)}return n}
+async function blzkRemember(text){const m=/^\s*(?:please\s+)?remember(?:\s+that)?[\s,:]+(.{3,300})$/i.exec(String(text||''));if(!m||!USER)return null;
+ const n=m[1].trim().replace(/[.!]+$/,'');await blzkNotesLoad();if(!BLZK.notesOk)return{not:n};const a=blzkNotes();
+ if(!a.includes(n)){a.push(n);try{await blzkSetNotes(a)}catch(e){return{not:n,why:e.message}}}return n}
 /* what fits a question: {prompt, sources:[{kind,label,...}], web:[...]}; null when nothing is to be added */
 async function blzKnowFor(W,text,stEl){
  const out={prompt:'',sources:[]},parts=[];const look=W&&W.blzk?W.blzk.look():BLZK.look,web=W&&W.blzk?W.blzk.web():false,tor=W&&W.blzk?W.blzk.tor():false;
- const kept=blzkRemember(text);const notes=USER?blzkNotes():[];
+ const kept=await blzkRemember(text);const notes=USER?await blzkNotesLoad():[];
  if(notes.length)parts.push('Notes the person asked you to remember (use them when they matter):\n'+notes.map(n=>'- '+n).join('\n'));
  if(look&&RD){if(stEl)stEl.textContent='Looking it up on this computer…';
   try{const j=await blzkApi('search?q='+encodeURIComponent(text.slice(0,900))+'&n=8');let words=0,k=0;const got=[];
@@ -45,7 +56,7 @@ async function blzKnowFor(W,text,stEl){
 /* the sources under an answer: each opens where it came from */
 function blzKnowDraw(el,k){if(!el||!k)return;const body=el.querySelector('.blzbody');if(!body)return;
  const d=document.createElement('div');d.className='blzsrc';
- if(k.kept){const m=document.createElement('div');m.className='msg';m.textContent='📝 Kept as a note: '+k.kept+' (Settings › Apps › Blitzen › Memory)';d.appendChild(m)}
+ if(k.kept){const m=document.createElement('div');m.className='msg';m.textContent=typeof k.kept=='string'?'📝 Kept as a note: '+k.kept+' (Settings › Apps › Blitzen › Memory)':'📝 Not kept as a note: '+(k.kept.why||'notes are kept only in your account’s own folder on this computer’s disk, which is not open here');d.appendChild(m)}
  if(k.webNote){const m=document.createElement('div');m.className='msg';m.textContent=k.webNote;d.appendChild(m)}
  if(k.sources.length){const h=document.createElement('div');h.className='blzsrch';h.textContent='Looked up:';d.appendChild(h);
   k.sources.forEach(s=>{const b=document.createElement('button');b.className='blzsrcb';b.title=s.kind=='web'?s.url:'Open it';
@@ -91,7 +102,7 @@ function blzkSeeWin(){const W=win('What Blitzen knows','⚡',620,480);W.body.inn
   b.innerHTML=`<table class='tmt'><tbody><tr><td>Rudolf OS's source and documents</td><td>${st.source?'release '+lxEsc(st.serial)+' ('+fmtB(st.source_bytes)+')':'not yet (fetched once, while the computer is idle on mains power)'}</td></tr>
    <tr><td>The system's logs</td><td>${st.logs?'read '+new Date(st.built*1000).toLocaleString()+' ('+fmtB(st.logs_bytes)+'), passwords, tokens and keys left out':'not yet'}</td></tr>
    <tr><td>What you do on this computer</td><td>${!st.account?'not for this account (sign in)':st.learn?items.length+' things kept':'not kept (off)'}</td></tr>
-   <tr><td>Your notes</td><td>${blzkNotes().length}</td></tr></tbody></table>
+   <tr><td>Your notes</td><td>${(await blzkNotesLoad(true)).length}</td></tr></tbody></table>
    ${st.account&&st.learn?`<div class='rmrow' style='justify-content:flex-start'>${days.length?`<select class='bkday'>${days.map(d=>`<option>${d}</option>`).join('')}</select><button class='bkfd'>Forget that day</button>`:''}<button class='bkfa'>Forget everything</button></div>
    <div class='blzseel'>${items.length?items.slice(0,300).map(x=>`<div class='blzsee1'><span>${lxEsc(new Date(x.t*1000).toLocaleString())}</span><span>${lxEsc(x.text)}</span><button data-i='${x.item}' title='Forget this'>✕</button></div>`).join(''):"<div class='msg'>Nothing kept yet.</div>"}</div>`:''}<div class='msg bkm'></div>`;
   const m=b.querySelector('.bkm'),go=async(q,what)=>{if(!await blzkConfirm('Forget '+what+'?','Blitzen will no longer know it. This cannot be undone.'))return;try{await blzkApi('forget?'+q);draw()}catch(e){m.textContent=e.message}};
@@ -107,9 +118,9 @@ function blzkConfirm(title,text,yes){return new Promise(res=>{const o=document.c
 /* ---------- Settings › Apps › Blitzen: what it knows */
 {appsPanel=__after(appsPanel,function(c,W){if(!RD)return;
  const d=sp(c,`<h4 class='sh4'>Blitzen: what it knows</h4><div class='bkset'></div>`);const b=d.querySelector('.bkset');
- const draw=async()=>{const on=USER?await blzkLearnOn():false,notes=USER?blzkNotes():[];
+ const draw=async()=>{const on=USER?await blzkLearnOn():false,notes=USER?await blzkNotesLoad(true):[];
   b.innerHTML=`<div class='msg'>Before answering, Blitzen looks in Rudolf OS's own source and documents and the system's logs (with passwords, tokens and keys left out), and in what you ask it to remember. It does not learn by changing its model: what it uses can always be seen and forgotten here. It is a small model: good at “where in the system is …” and “what does this log line mean”, less so at weighing several web pages against each other; an answer that reads the web takes about a minute.</div>
-   ${USER?`<label class='chk'><input type='checkbox' class='bklearn'${on?' checked':''}> Learn from what I do on this computer</label><div class='msg'>The apps and files you open (names and folders, not what is in them), the settings you change and the errors you meet. Kept on this computer for this account only; never sent anywhere.</div>
+   ${USER?`<label class='chk'><input type='checkbox' class='bklearn'${on?' checked':''}> Learn from what I do on this computer</label><div class='msg'>The apps and files you open (names and folders, not what is in them), the settings you change and the errors you meet. Kept on this computer, in your account’s own encrypted folder only (as your notes are); never sent anywhere, never seen by another account.</div>
    <b>Memory</b><div class='bkmem'>${notes.length?notes.map((n,i)=>`<div class='blzsee1'><span>📝</span><span>${lxEsc(n)}</span><button data-i='${i}' title='Forget this note'>✕</button></div>`).join(''):"<div class='msg'>No notes. Say “Remember that …” to Blitzen, or add one here.</div>"}</div>
    <div class='rmrow' style='justify-content:flex-start'><input class='bknew sunk' maxlength='300' placeholder='Something Blitzen should know about you' style='flex:1'><button class='bkadd'>Add</button></div>`:"<div class='msg'>Sign in to an account to have Blitzen learn what you do and keep notes.</div>"}
    <div class='rmrow' style='justify-content:flex-start'><button class='bksee'>See what Blitzen knows…</button></div><div class='msg bkm'></div>`;
@@ -117,6 +128,6 @@ function blzkConfirm(title,text,yes){return new Promise(res=>{const o=document.c
   const l=b.querySelector('.bklearn');if(l)l.onchange=async()=>{try{const j=await blzkApi('learn?on='+(l.checked?1:0));blzkLearn={u:uid(),t:Date.now(),on:!!j.learn};
     if(!l.checked&&await blzkConfirm('Forget what Blitzen kept too?','Learning is off. What it already kept of what you did can be forgotten now, or later in See what Blitzen knows.'))await blzkApi('forget?all=1');m.textContent=l.checked?'Blitzen will learn from what you do from now on.':'Blitzen no longer learns from what you do.'}
    catch(e){l.checked=!l.checked;m.textContent=e.message}};
-  b.querySelectorAll('.bkmem button').forEach(x=>x.onclick=()=>{const a=blzkNotes();a.splice(+x.dataset.i,1);blzkSetNotes(a);draw()});
-  const add=b.querySelector('.bkadd');if(add)add.onclick=()=>{const v=b.querySelector('.bknew').value.trim();if(!v)return;const a=blzkNotes();if(!a.includes(v))a.push(v);blzkSetNotes(a);draw()}};
+  b.querySelectorAll('.bkmem button').forEach(x=>x.onclick=async()=>{const a=blzkNotes();a.splice(+x.dataset.i,1);try{await blzkSetNotes(a)}catch(e){m.textContent=e.message;return}draw()});
+  const add=b.querySelector('.bkadd');if(add)add.onclick=async()=>{const v=b.querySelector('.bknew').value.trim();if(!v)return;if(!BLZK.notesOk){m.textContent='Notes are kept only in your account’s own folder on this computer’s disk, which is not open here.';return}const a=blzkNotes();if(!a.includes(v))a.push(v);try{await blzkSetNotes(a)}catch(e){m.textContent=e.message;return}draw()}};
  draw()},"blitzknow60.js");}

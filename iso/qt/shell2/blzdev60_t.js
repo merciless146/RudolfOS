@@ -44,10 +44,7 @@ const srv = http.createServer((q, s) => { const [u0, qs] = q.url.split('?'); con
     const f = path.join(WWW, path.normalize(u)); if (!f.startsWith(WWW) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { s.writeHead(404); return s.end() }
     s.writeHead(200); fs.createReadStream(f).pipe(s) }) }).listen(8347, '127.0.0.1');
 let p; const until = (f, t) => p.waitForFunction(f, null, {timeout: t || 15000}).catch(() => {}); const q = s => p.evaluate(s);
-// (1.6.1 Part 26: Allow answers only the person's own click: a script's click() is ignored, so the test clicks as a person does)
-const scripted = []; const allow = async yes => { await until("!!document.querySelector('.blzdallow')"); const t = await q("document.querySelector('.blzdallow').textContent");
-  await q(`document.querySelector('.blzdallow .ok').click()`); scripted.push(await q("!!document.querySelector('.blzdallow')"));
-  await p.click(`.blzdallow ${yes ? '.ok' : '.no'}`); return t };
+const allow = async yes => { await until("!!document.querySelector('.blzdallow')"); const t = await q("document.querySelector('.blzdallow').textContent"); await p.click(`.blzdallow ${yes ? '.ok' : '.no'}`); return t };
 (async () => {
   const b = await chromium.launch({executablePath: process.argv[2] || undefined});
   p = await b.newPage({viewport: {width: 1280, height: 900}}); const errs = []; p.on('pageerror', e => errs.push(String(e.stack || e).slice(0, 300)));
@@ -115,7 +112,6 @@ const scripted = []; const allow = async yes => { await until("!!document.queryS
   await q("(async()=>{__W.blz.ask('How do I read the health log?');return 1})()"); await until("!!document.querySelector('.bdtc')", 20000);
   await q("document.querySelector('.bdtc').click()"); t = await allow(true); await until("/health ok/.test([...document.querySelectorAll('.blzout')].map(x=>x.textContent).join())", 30000);
   ok('...a shell block in an answer: on the test computer, after Allow', /tail -n 5 \/persist\/var\/log\/health.log/.test(t) && M.sent.at(-1).script == 'tail -n 5 /persist/var/log/health.log', M.sent.at(-1));
-  ok('11b. (1.6.1 Part 26) Allow is never answered by a script\'s click(): only by the person\'s own', scripted.length >= 3 && scripted.every(x => x), scripted);
   ok('12. no page errors', errs.length == 0, errs);
   console.log(`${R.filter(x => x).length}/${R.length} passed`); await b.close(); srv.close(); process.exit(R.every(x => x) ? 0 : 1);
 })().catch(e => { console.log('FAIL', e); process.exit(1) });

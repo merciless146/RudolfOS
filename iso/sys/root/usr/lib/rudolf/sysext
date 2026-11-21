@@ -62,17 +62,23 @@ assemble() {
 		USED="$USED $n"; st $n in-use ""
 	done
 	[ -n "$USED" ] || return 0
-	# the overlays: read-only, the extensions (in name order) over the base, which stays where it is under them
+	# the overlays: read-only, the extensions (in name order) over the base, which stays where it is under them.
+	# (1.6.1, plan-1.6.1 Part 19) the base's own folders are all taken (bound) before any overlay is made: on Rudolf OS /lib
+	# is /usr/lib, so /lib/firmware and /lib/modules taken after the /usr overlay were that overlay, and an overlay over it
+	# is one level of overlays too many for the kernel (the root is one already): the QEMU check found NVIDIA's modules and
+	# firmware never laid over (only extensions with usr/ files alone, as usbprint, had been used before)
+	for t in usr lib/firmware lib/modules/$KVER; do lo=; for n in $USED; do [ -d $RUNE/$n/$t ] && lo=1; done
+		[ -n "$lo" ] && [ -d "$TOP/$t" ] && { mkdir -p $RUNE/.base/$t && mount --bind "$TOP/$t" $RUNE/.base/$t || health "/$t could not be taken for the extensions"; }; done
 	for t in usr lib/firmware; do lo=
 		for n in $USED; do [ -d $RUNE/$n/$t ] && lo="$lo:$RUNE/$n/$t"; done
 		[ -n "$lo" ] || continue
 		[ -d "$TOP/$t" ] || { health "the system has no /$t: the extensions' files there are not used"; continue; }
-		mkdir -p $RUNE/.base/$t && mount --bind "$TOP/$t" $RUNE/.base/$t && mount -t overlay -o ro,lowerdir=${lo#:}:$RUNE/.base/$t sysext "$TOP/$t" || health "the overlay for /$t could not be made"
+		mountpoint -q $RUNE/.base/$t && mount -t overlay -o ro,lowerdir=${lo#:}:$RUNE/.base/$t sysext "$TOP/$t" || health "the overlay for /$t could not be made"
 	done
 	t=lib/modules/$KVER; lo=; for n in $USED; do [ -d $RUNE/$n/$t ] && lo="$lo:$RUNE/$n/$t"; done
 	if [ -n "$lo" ] && [ -d "$TOP/$t" ]; then
-		mkdir -p $RUNE/.base/$t $RUNE/.mod/u $RUNE/.mod/w
-		if mount --bind "$TOP/$t" $RUNE/.base/$t && mount -t overlay -o lowerdir=${lo#:}:$RUNE/.base/$t,upperdir=$RUNE/.mod/u,workdir=$RUNE/.mod/w sysext "$TOP/$t"; then
+		mkdir -p $RUNE/.mod/u $RUNE/.mod/w
+		if mountpoint -q $RUNE/.base/$t && mount -t overlay -o lowerdir=${lo#:}:$RUNE/.base/$t,upperdir=$RUNE/.mod/u,workdir=$RUNE/.mod/w sysext "$TOP/$t"; then
 			depmod -a ${TOP:+-b "$TOP"} $KVER 2>>$RUNE/sysext.log || health "depmod could not list the extensions' kernel modules"
 		else health "the overlay for /$t could not be made"; fi
 	fi

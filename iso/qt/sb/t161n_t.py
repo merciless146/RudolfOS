@@ -147,14 +147,16 @@ try:
         ok('...the extension nvidia-driver installs (TEST system key), in use after a restart', 'rc=0' in o, o)
         stop(vm, g)
         vm, g, up = boot('open')
-        o = run(g, INFO + f"; {G} set nvidia; echo; grep -h 'nvidia' /proc/mounts | head -3", 60)
-        ok('2. the extension in use; the open driver keeps its modules from loading (covered); set nvidia refused (no card)',
-           up and re.search(r'^nvidia-driver\t[^\t]*\tin-use', o, re.M) and nomods(o) and '"error":"this computer has no NVIDIA graphics card"' in o and 'nvidia' in o.split('grep -h')[-1], o)
+        o = run(g, INFO + f"; {G} set nvidia; echo; echo KO=$(ls /lib/modules/$(uname -r)/extra/nvidia/ | tr '\\n' ' '); echo FW=$(ls /lib/firmware/nvidia/*/ 2>/dev/null | head -3 | tr '\\n' ' '); "
+                   "echo COVERED=$(grep -c 'extra/nvidia/nvidia' /proc/mounts); grep -h ' sysext \\|sysext ' /proc/mounts | cut -d' ' -f2-3; tail -5 /run/rudolf/sysext.log; "
+                   "grep -h '\"k\":\"extension\"' /persist/var/log/health.log | tail -3", 60)
+        ok('2. the extension in use, its modules and GSP firmware laid over the base; the open driver keeps the modules from loading (covered); set nvidia refused (no card)',
+           up and re.search(r'^nvidia-driver\t[^\t]*\tin-use', o, re.M) and nomods(o) and '"error":"this computer has no NVIDIA graphics card"' in o and re.search(r'^KO=.*nvidia\.ko', o, re.M) and re.search(r'^FW=\S', o, re.M) and re.search(r'^COVERED=[1-9]', o, re.M), o)
         up2, o2 = desktop_up(g)
         run(g, "echo nvidia > /persist/etc/gpu-driver; sync", 20)   # (as Settings would, had the card been offered)
         stop(vm, g)
         vm, g, up = boot('fail', 'rudolf.gputest=10de:2684')
-        o = run(g, INFO + "; dmesg | grep -iE 'nvidia|module verification|Key was rejected|Loading of unsigned' | tail -5; grep -h 'graphics\|open driver' /persist/var/log/health.log | tail -3", 90)
+        o = run(g, INFO + "; dmesg | grep -iE 'nvidia|module verification|Key was rejected|Loading of unsigned' | tail -5; grep -h 'graphics\\|open driver' /persist/var/log/health.log | tail -3", 90)
         ok('3. the stand-in card with NVIDIA\'s driver chosen: offered, tried, its module refused by the kernel (not signed by a trusted key)',
            up and '"offered":true' in o and re.search(r'did not load: (Key was rejected by service|Required key not available|Operation not permitted|Invalid module format)', o), o)
         ok('4. ...back to the open driver by itself: the choice reset, the note with the reason (the desktop\'s notification)', 'CHOICE=open' in o and 'NOTE=' in o and '"fellBack"' in o and re.search(r'NOTE=\S', o), o)

@@ -31,7 +31,7 @@ def build(out, run, persist):
     a = D.index('typedef struct { char *b; size_t n, cap; } str;'); b = D.index('static int run(const char *cmd)')
     c = ['#define _GNU_SOURCE', *[f'#include <{h}>' for h in ('stdio.h', 'stdlib.h', 'string.h', 'stdarg.h', 'ctype.h', 'fcntl.h', 'unistd.h', 'errno.h', 'poll.h', 'signal.h', 'time.h', 'strings.h', 'sys/stat.h', 'sys/wait.h', 'sys/types.h')],
          f'#define RUN "{run}"', f'#define PERSIST "{persist}"', '#define DEV_DIR PERSIST "/os/dev"', '#define OFFICIAL_REPO "merciless146/RudolfOS"', '#define DL_DEVKEYS "/nonexistent"',
-         '#define AU_PORTAL "/nonexistent/rudolf-portal"']
+         '#define AU_PORTAL "/nonexistent/rudolf-portal"', '#define DEV_WAITF RUN "/dev-waiting"']
     c.append('static char token[33] = "0123456789abcdef0123456789abcdef";')
     c.append(D[a:b])
     for n in ('slurp', 'trim', 'write_str', 'urldecode', 'qparam'): c.append(fn(D, n))
@@ -49,7 +49,7 @@ def build(out, run, persist):
     c.append('static size_t dev_len;')
     c.append(dr)
     c.append('#include "%s"' % os.path.join(SYS, 'rudolfd-guard.inc'))
-    for n in ('dev_name_ok', 'dev_conf', 'dev_keyring', 'dev_token', 'dev_reply', 'api_ai_dev'): c.append(fn(DEV, n))
+    for n in ('dev_name_ok', 'dev_conf', 'dev_keyring', 'dev_token', 'dev_secretish', 'dev_waiting', 'dev_reply', 'api_ai_dev'): c.append(fn(DEV, n))
     c.append(r'''
 static char *gt_in(size_t *n) { size_t cap = 1 << 16, k = 0; char *b = malloc(cap + 1); ssize_t g; while ((g = read(0, b + k, cap - k)) > 0) { k += g; if (k == cap) { cap *= 2; b = realloc(b, cap + 1); } } b[k] = 0; *n = k; return b; }
 int main(int argc, char **argv)

@@ -51,6 +51,7 @@ for _g,(_fs,_fn,_nm) in LAZY.items():
     _lz+=f"async function {_fn}(...a){{const me={_fn};try{{await lazyApp('{_g}')}}catch(e){{lazyFail('{_nm}','{_g}',()=>{_fn}(...a));return null}}if({_fn}===me)throw new Error('{_nm}: not loaded');return {_fn}(...a)}}\n"
     _lz+=LAZY_REG[_g]+'\n'
 mods.append('orablock61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's ad and tracker blocking; its list (desktop/orablock61.json, iso/systools/blocklist.py) put in below
+mods.append('blzbox61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 27): Blitzen's code runs, links and actions sandboxed (after blitzen26.js, blitzknow60.js, blzdev60.js)
 changes=open(os.path.join(here,'../CHANGELOG.md')).read()   # "What's new" and the notice after an update
 # 1.5.9: Search in Settings: the pages' sections and settings (made by iso/qt/shell2/setsearch59_t.js --write)
 _six=os.path.join(here,'settings-index.json');setidx=open(_six).read() if os.path.exists(_six) else '{}'

@@ -8,18 +8,25 @@
  *   rudolf-know build [--source]             the system's logs again (scrubbed); with --source, Rudolf OS's own source and
  *                                            docs for the running release (its signed list's S row: downloaded once,
  *                                            checked against its SHA-256, taken apart into chunks)
- *   rudolf-know search --acct ID [--n N] Q   the chunks that fit Q best (BM25 by words), from the source, the logs and
- *                                            that account's activity: JSON [{"src","where","kind","text","score"}]
+ *   rudolf-know search [--home DIR] [--n N] Q   the chunks that fit Q best (BM25 by words), from the source, the logs and
+ *                                            the activity kept in that account's folder: JSON [{"src","where","kind","text","score"}]
  *   rudolf-know show SRC LINE                about 60 lines of a source file around LINE, from the chunks (plain text)
- *   rudolf-know activity --acct ID           one line on standard input ("KIND<tab>TEXT") kept in that account's activity
- *   rudolf-know list --acct ID               that account's activity, newest first (JSON)
- *   rudolf-know forget --acct ID --all | --day YYYY-MM-DD | --item N   (N: as list numbers them)
+ *   rudolf-know activity --home DIR          one line on standard input ("KIND<tab>TEXT") kept in that account's activity
+ *   rudolf-know list --home DIR              that account's activity, newest first (JSON)
+ *   rudolf-know forget --home DIR [--acct ID] --all | --day YYYY-MM-DD | --item N   (N: as list numbers them)
+ *   rudolf-know learn --home DIR [on|off]    "Learn from what I do" for that account: on or off (said back)
+ *   rudolf-know notes --home DIR [--set]     the account's notes for Blitzen (JSON); --set: new ones, a line each, on standard input
+ *   rudolf-know migrate --acct ID --home DIR  1.6.0's copy outside the folder (KD/acct/ID.log, .on) moved into it, and removed
+ *   rudolf-know gone --acct ID               an account removed: anything of it outside its folder removed
  *   rudolf-know web [--tor] Q                a web search for Q (DuckDuckGo's plain page) and the text of its first 5 results
  *                                            (JSON [{"title","url","text"}]); as nobody, through Oracle's proxy or Tor
  *
- * Files: KD = /persist/os/know (RUDOLF_KNOW_DIR for the tests): source.chunks + source.serial, logs.chunks, acct/ID.log
- * (lines "EPOCH<tab>KIND<tab>TEXT", at most 2 MB each, the oldest dropped first), status.  A chunk is "\x1e" SRC "\t"
- * WHERE "\n" then its text.
+ * Files: KD = /persist/os/know (RUDOLF_KNOW_DIR for the tests): source.chunks + source.serial, logs.chunks, status: the
+ * system's, the same for every account. What is the person's (1.6.1, docs/plan-1.6.1.md Part 27 item 4) is in the account's own
+ * encrypted home folder DIR (rudolfd gives it only while it is open: the account signed in), DIR/.rudolf/blitzen/ (0700, the
+ * account's Linux user's: the folder's owner): activity.log (lines "EPOCH<tab>KIND<tab>TEXT", at most 2 MB, the oldest dropped
+ * first; 0600), notes.txt (a note a line; 0600) and learn (there: "Learn from what I do" is on). 1.6.0 kept the activity in
+ * KD/acct/ID.log, outside the folder: migrate moves it in.  A chunk is "\x1e" SRC "\t" WHERE "\n" then its text.
  * The source archive: every system release (r SERIAL) carries rudolf-os-SERIAL-source.tar.xz, the repository's desktop, iso, libs
  * and docs at that release, and its signed list a row "S<tab>source<tab>SIZE<tab>SHA-256<tab>ADDRESS" (iso/systools/make_release.py
  * --source); older rudolf-update reads past rows it does not know. */
@@ -55,7 +62,7 @@ static char *slurp(const char *p, size_t *n)
 }
 static int write_file(const char *p, const char *s, size_t n)
 {
-	char t[400]; snprintf(t, sizeof t, "%s.tmp", p);
+	char t[420]; snprintf(t, sizeof t, "%s.tmp", p);
 	FILE *f = fopen(t, "wb"); if (!f) return -1;
 	int ok = fwrite(s, 1, n, f) == n; ok = !fclose(f) && ok;
 	return ok ? rename(t, p) : (unlink(t), -1);
@@ -120,9 +127,10 @@ static void st_load(store *s, const char *path, char kind)
 		st_add(s, kind, src, tab - src, tab + 1, nl - tab - 1, nl + 1, end - nl - 1); p = end;
 	}
 }
-static void st_activity(store *s, const char *acct)
+static void act_path(char *p, size_t n, const char *home);
+static void st_activity(store *s, const char *home)
 {
-	char p[400]; snprintf(p, sizeof p, "%s/acct/%s.log", KD, acct); size_t n; char *b = slurp(p, &n); if (!b) return; if (s->nb < 8) s->buf[s->nb++] = b;
+	char p[600]; act_path(p, sizeof p, home); size_t n; char *b = slurp(p, &n); if (!b) return; if (s->nb < 8) s->buf[s->nb++] = b;
 	for (char *l = b; l < b + n; ) { char *e = memchr(l, '\n', n - (l - b)); if (!e) e = b + n;
 		char *t1 = memchr(l, '\t', e - l), *t2 = t1 ? memchr(t1 + 1, '\t', e - t1 - 1) : NULL;
 		if (t2) st_add(s, 'a', "activity", 8, l, t1 - l, t2 + 1, e - t2 - 1);   /* (where: its time; the kind is in the text) */
@@ -176,7 +184,7 @@ static int count_tf(const char *t, size_t n, qterm *q, int nq, int *tf)
 	return len;
 }
 static int cmp_score(const void *a, const void *b) { double x = ((const double *)a)[0], y = ((const double *)b)[0]; return x < y ? 1 : x > y ? -1 : 0; }
-static int search(const char *acct, int nmax, const char *query)
+static int search(const char *home, int nmax, const char *query)
 {
 	qterm q[QN]; int nq = 0; char qc[1024]; snprintf(qc, sizeof qc, "%s", query);
 	for (char *p = qc; *p; p++) *p = isalnum((unsigned char)*p) || *p == '_' ? tolower((unsigned char)*p) : ' ';
@@ -188,7 +196,7 @@ static int search(const char *acct, int nmax, const char *query)
 	store s = {0}; char p[400];
 	snprintf(p, sizeof p, "%s/source.chunks", KD); st_load(&s, p, 's');
 	snprintf(p, sizeof p, "%s/logs.chunks", KD); st_load(&s, p, 'l');
-	if (acct && acct_ok(acct)) st_activity(&s, acct);
+	if (home) st_activity(&s, home);
 	if (!nq || !s.n) { puts("[]"); return 0; }
 	int (*tf)[QN] = calloc(s.n, sizeof *tf); int *dl = calloc(s.n, sizeof *dl); if (!tf || !dl) die("out of memory");
 	double avg = 0;
@@ -340,9 +348,46 @@ static int build_source(void)
 	printf("source %s: %d files\n", serial, files); return 0;
 }
 
-/* ---------------- an account's activity */
-static void act_path(char *p, size_t n, const char *acct) { snprintf(p, n, "%s/acct/%s.log", KD, acct); }
-static int activity(const char *acct)
+/* ---------------- an account's activity and notes: in its own folder, its own user's */
+static int home_ok(const char *h)
+{
+	struct stat st; if (!h || h[0] != '/' || strstr(h, "/../") || strlen(h) > 300 || lstat(h, &st) || !S_ISDIR(st.st_mode)) return 0;
+	return 1;
+}
+static void act_dir(char *p, size_t n, const char *home) { snprintf(p, n, "%s/.rudolf/blitzen", home); }
+static void act_path(char *p, size_t n, const char *home) { snprintf(p, n, "%s/.rudolf/blitzen/activity.log", home); }
+/* the folder .rudolf/blitzen made (0700), and both it and .rudolf the home folder owner's (never a link: refused) */
+static int act_mkdir(const char *home)
+{
+	struct stat hs; if (lstat(home, &hs) || !S_ISDIR(hs.st_mode)) return -1;
+	char p[600]; snprintf(p, sizeof p, "%s/.rudolf", home); struct stat st;
+	if (lstat(p, &st)) { if (mkdir(p, 0755)) return -1; if (lchown(p, hs.st_uid, hs.st_gid)) {} } else if (!S_ISDIR(st.st_mode)) return -1;
+	act_dir(p, sizeof p, home);
+	if (lstat(p, &st)) { if (mkdir(p, 0700)) return -1; } else if (!S_ISDIR(st.st_mode)) return -1;
+	if (lchown(p, hs.st_uid, hs.st_gid)) {} chmod(p, 0700); return 0;
+}
+/* a file there written whole (0600, the folder owner's) */
+static int act_write(const char *home, const char *name, const char *s, size_t n)
+{
+	if (act_mkdir(home)) return -1;
+	struct stat hs; if (lstat(home, &hs)) return -1;
+	char d[600], t[700], p[700]; act_dir(d, sizeof d, home); snprintf(p, sizeof p, "%s/%s", d, name); snprintf(t, sizeof t, "%s/.%s.new", d, name);
+	unlink(t); int f = open(t, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600); if (f < 0) return -1;
+	int ok = write(f, s, n) == (ssize_t)n; if (fchown(f, hs.st_uid, hs.st_gid)) {} fchmod(f, 0600); ok = !close(f) && ok;
+	if (!ok || rename(t, p)) { unlink(t); return -1; } return 0;
+}
+static int act_append(const char *home, const char *line)
+{
+	if (act_mkdir(home)) return -1;
+	struct stat hs; if (lstat(home, &hs)) return -1;
+	char p[600]; act_path(p, sizeof p, home); struct stat st;
+	if (!lstat(p, &st) && st.st_size > 2000000) {   /* (at most 2 MB: the oldest quarter dropped) */
+		size_t n; char *b = slurp(p, &n); if (b) { char *cut = memchr(b + n / 4, '\n', n - n / 4); if (cut) act_write(home, "activity.log", cut + 1, n - (cut + 1 - b)); free(b); } }
+	int f = open(p, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW | O_CLOEXEC, 0600); if (f < 0) return -1;
+	if (fchown(f, hs.st_uid, hs.st_gid)) {} fchmod(f, 0600); size_t L = strlen(line); int ok = write(f, line, L) == (ssize_t)L; close(f); return ok ? 0 : -1;
+}
+static void legacy_path(char *p, size_t n, const char *acct, const char *ext) { snprintf(p, n, "%s/acct/%s.%s", KD, acct, ext); }
+static int activity(const char *home)
 {
 	char in[2100]; if (!fgets(in, sizeof in, stdin)) return 1; in[strcspn(in, "\n")] = 0;
 	char *t = strchr(in, '\t'); if (!t || t == in || t - in > 20 || !t[1]) die("give KIND<tab>TEXT");
@@ -350,16 +395,13 @@ static int activity(const char *acct)
 	for (char *p = t + 1; *p; p++) if ((unsigned char)*p < 0x20) *p = ' ';
 	if (secret_line(t + 1, strlen(t + 1))) { puts("not kept: it carried a password, token or key"); return 0; }
 	{ char *c = scrub(t + 1, strlen(t + 1)); c[strcspn(c, "\n")] = 0; snprintf(t + 1, sizeof in - (t + 1 - in), "%s", c); free(c); }
-	char d[400]; snprintf(d, sizeof d, "%s/acct", KD); mkdirs(d);
-	char p[400]; act_path(p, sizeof p, acct); struct stat st;
-	if (!stat(p, &st) && st.st_size > 2000000) {   /* (at most 2 MB: the oldest quarter dropped) */
-		size_t n; char *b = slurp(p, &n); if (b) { char *cut = memchr(b + n / 4, '\n', n - n / 4); if (cut) write_file(p, cut + 1, n - (cut + 1 - b)); free(b); } }
-	FILE *f = fopen(p, "a"); if (!f) die("cannot keep it"); fprintf(f, "%ld\t%.*s\t%s\n", (long)time(NULL), (int)(t - in), in, t + 1); fclose(f); chmod(p, 0600);
+	char line[2200]; snprintf(line, sizeof line, "%ld\t%.*s\t%s\n", (long)time(NULL), (int)(t - in), in, t + 1);
+	if (act_append(home, line)) die("cannot keep it");
 	return 0;
 }
-static int list(const char *acct)
+static int list(const char *home)
 {
-	char p[400]; act_path(p, sizeof p, acct); size_t n; char *b = slurp(p, &n); printf("[");
+	char p[600]; act_path(p, sizeof p, home); size_t n; char *b = slurp(p, &n); printf("[");
 	if (b) { /* newest first: the line numbers stay those of the file (forget --item N) */
 		int total = 0; for (size_t i = 0; i < n; i++) if (b[i] == '\n') total++;
 		char **ls = calloc(total + 1, sizeof *ls); int k = 0; for (char *l = b; k < total && l < b + n; ) { ls[k++] = l; char *e = memchr(l, '\n', n - (l - b)); if (!e) break; *e = 0; l = e + 1; }
@@ -368,10 +410,10 @@ static int list(const char *acct)
 		free(ls); free(b); }
 	printf("]\n"); return 0;
 }
-static int forget(const char *acct, const char *how, const char *arg)
+static int forget(const char *home, const char *acct, const char *how, const char *arg)
 {
-	char p[400]; act_path(p, sizeof p, acct);
-	if (!strcmp(how, "--all")) { unlink(p); puts("forgotten"); return 0; }
+	char p[600]; act_path(p, sizeof p, home);
+	if (!strcmp(how, "--all")) { unlink(p); if (acct && acct_ok(acct)) { char l[400]; legacy_path(l, sizeof l, acct, "log"); unlink(l); } puts("forgotten"); return 0; }
 	size_t n; char *b = slurp(p, &n); if (!b) { puts("forgotten"); return 0; }
 	char *o = malloc(n + 1); size_t on = 0; int ln = 0, gone = 0;
 	for (char *l = b; l < b + n; ) { char *e = memchr(l, '\n', n - (l - b)); if (!e) e = b + n; ln++; int drop = 0;
@@ -379,7 +421,49 @@ static int forget(const char *acct, const char *how, const char *arg)
 		else if (!strcmp(how, "--day")) { time_t t = atol(l); struct tm tm; char day[16]; localtime_r(&t, &tm); strftime(day, sizeof day, "%Y-%m-%d", &tm); drop = !strcmp(day, arg); }
 		if (drop) gone++; else { memcpy(o + on, l, e - l); on += e - l; o[on++] = '\n'; }
 		l = e + 1; }
-	write_file(p, o, on); free(o); free(b); printf("forgotten %d\n", gone); return 0;
+	act_write(home, "activity.log", o, on); free(o); free(b); printf("forgotten %d\n", gone); return 0;
+}
+/* the notes: at most 50 of at most 300 characters; one with a password, token or key is not kept */
+static int notes(const char *home, int set)
+{
+	char p[600]; act_dir(p, sizeof p, home); strcat(p, "/notes.txt");
+	if (set) { char *o = malloc(50 * 302 + 1); size_t on = 0; int k = 0, left = 0; char l[2048];
+		while (fgets(l, sizeof l, stdin)) { l[strcspn(l, "\r\n")] = 0; size_t L = strlen(l); if (!L) continue; if (k >= 50) break;
+			if (L > 300) { L = 300; while (L && ((unsigned char)l[L] & 0xc0) == 0x80) L--; l[L] = 0; }
+			for (char *c = l; *c; c++) if ((unsigned char)*c < 0x20) *c = ' ';
+			if (secret_line(l, L)) { left++; continue; }
+			char *c = scrub(l, L); c[strcspn(c, "\n")] = 0; size_t cl = strlen(c); if (cl > 300) cl = 300; memcpy(o + on, c, cl); on += cl; o[on++] = '\n'; free(c); k++; }
+		if (!on) { unlink(p); } else if (act_write(home, "notes.txt", o, on)) die("cannot keep them");
+		free(o); printf("kept %d%s\n", k, left ? " (a note with a password, token or key was not kept)" : ""); return 0; }
+	size_t n; char *b = slurp(p, &n); printf("[");
+	int k = 0; if (b) for (char *sv, *l = strtok_r(b, "\n", &sv); l; l = strtok_r(NULL, "\n", &sv)) { printf("%s", k++ ? "," : ""); js(stdout, l, strlen(l)); }
+	printf("]\n"); free(b); return 0;
+}
+/* 1.6.0's copy of an account's activity, outside its folder: into the folder (before what is there), then removed */
+static int migrate(const char *acct, const char *home)
+{
+	char l[400], on[400]; legacy_path(l, sizeof l, acct, "log"); legacy_path(on, sizeof on, acct, "on");
+	size_t n = 0, m = 0; char *old = slurp(l, &n); int moved = 0;
+	if (old && n) { char p[600]; act_path(p, sizeof p, home); char *cur = slurp(p, &m);
+		char *all = malloc(n + m + 2); memcpy(all, old, n); if (n && old[n - 1] != '\n') all[n++] = '\n'; if (cur) memcpy(all + n, cur, m);
+		if (act_write(home, "activity.log", all, n + m)) die("cannot move it");
+		free(all); free(cur); moved = 1; }
+	free(old);
+	if (!access(on, F_OK)) { if (act_write(home, "learn", "1\n", 2)) die("cannot move it"); moved = 1; }
+	unlink(l); unlink(on); printf("%s\n", moved ? "moved" : "nothing"); return 0;
+}
+/* "Learn from what I do": the file learn in the account's folder (there: on) */
+static int learn(const char *home, const char *v)
+{
+	char p[600]; act_dir(p, sizeof p, home); strcat(p, "/learn");
+	if (v && !strcmp(v, "on")) { if (act_write(home, "learn", "1\n", 2)) die("cannot keep it"); }
+	else if (v && !strcmp(v, "off")) unlink(p);
+	else if (v && *v) die("on or off");
+	puts(access(p, F_OK) ? "off" : "on"); return 0;
+}
+static int gone(const char *acct)
+{
+	char p[400]; legacy_path(p, sizeof p, acct, "log"); unlink(p); legacy_path(p, sizeof p, acct, "on"); unlink(p); puts("removed"); return 0;
 }
 
 /* ---------------- the web: a search's results and their pages' text (as nobody) */
@@ -460,22 +544,29 @@ static int status(void)
 int main(int argc, char **argv)
 {
 	if (getenv("RUDOLF_KNOW_DIR") && *getenv("RUDOLF_KNOW_DIR")) snprintf(KD, sizeof KD, "%s", getenv("RUDOLF_KNOW_DIR"));
-	if (argc < 2) die("usage: status | build [--source] | search --acct ID [--n N] Q | show SRC LINE | activity --acct ID | list --acct ID | forget --acct ID --all|--day D|--item N | web [--tor] Q");
+	if (argc < 2) die("usage: status | build [--source] | search [--home DIR] [--n N] Q | show SRC LINE | activity --home DIR | list --home DIR | forget --home DIR [--acct ID] --all|--day D|--item N | notes --home DIR [--set] | learn --home DIR [on|off] | migrate --acct ID --home DIR | gone --acct ID | web [--tor] Q");
 	umask(077);
-	const char *cmd = argv[1], *acct = NULL; int n = 6, tor = 0, src = 0; int i = 2;
-	for (; i < argc; i++) { if (!strcmp(argv[i], "--acct") && i + 1 < argc) acct = argv[++i]; else if (!strcmp(argv[i], "--n") && i + 1 < argc) n = atoi(argv[++i]);
-		else if (!strcmp(argv[i], "--tor")) tor = 1; else if (!strcmp(argv[i], "--source")) src = 1;
+	const char *cmd = argv[1], *acct = NULL, *home = NULL; int n = 6, tor = 0, src = 0, set = 0; int i = 2;
+	for (; i < argc; i++) { if (!strcmp(argv[i], "--acct") && i + 1 < argc) acct = argv[++i]; else if (!strcmp(argv[i], "--home") && i + 1 < argc) home = argv[++i];
+		else if (!strcmp(argv[i], "--n") && i + 1 < argc) n = atoi(argv[++i]);
+		else if (!strcmp(argv[i], "--tor")) tor = 1; else if (!strcmp(argv[i], "--source")) src = 1; else if (!strcmp(argv[i], "--set")) set = 1;
 		else if (!strcmp(argv[i], "--")) { i++; break; } else break; }   /* (after --: what was asked, even if it starts with --) */
 	if (n < 1 || n > 20) n = 6;
+	if (home && !home_ok(home)) die("that is not an account's folder");
+	if (acct && !acct_ok(acct)) die("which account? (--acct ID)");
 	if (!strcmp(cmd, "web")) { if (i >= argc || !*argv[i] || strlen(argv[i]) > 400) die("search for what?"); return web(argv[i], tor); }
 	mkdirs(KD);
 	if (!strcmp(cmd, "status")) return status();
 	if (!strcmp(cmd, "build")) { int l = build_logs(); if (l < 0) die("could not write the logs' index"); printf("logs: %d\n", l); return src ? build_source() : 0; }
-	if (!strcmp(cmd, "search")) { if (i >= argc) die("search for what?"); if (acct && !acct_ok(acct)) die("bad account"); return search(acct, n, argv[i]); }
+	if (!strcmp(cmd, "search")) { if (i >= argc) die("search for what?"); return search(home, n, argv[i]); }
 	if (!strcmp(cmd, "show")) { if (i + 1 >= argc) die("show SRC LINE"); return show(argv[i], atoi(argv[i + 1])); }
-	if (!acct_ok(acct)) die("which account? (--acct ID)");
-	if (!strcmp(cmd, "activity")) return activity(acct);
-	if (!strcmp(cmd, "list")) return list(acct);
-	if (!strcmp(cmd, "forget")) { if (i >= argc) die("forget what?"); return forget(acct, argv[i], i + 1 < argc ? argv[i + 1] : ""); }
+	if (!strcmp(cmd, "gone")) { if (!acct) die("which account? (--acct ID)"); return gone(acct); }
+	if (!home) die("which account's folder? (--home DIR)");
+	if (!strcmp(cmd, "activity")) return activity(home);
+	if (!strcmp(cmd, "list")) return list(home);
+	if (!strcmp(cmd, "notes")) return notes(home, set);
+	if (!strcmp(cmd, "learn")) return learn(home, i < argc ? argv[i] : NULL);
+	if (!strcmp(cmd, "migrate")) { if (!acct) die("which account? (--acct ID)"); return migrate(acct, home); }
+	if (!strcmp(cmd, "forget")) { if (i >= argc) die("forget what?"); return forget(home, acct, argv[i], i + 1 < argc ? argv[i + 1] : ""); }
 	die("unknown command %s", cmd);
 }
