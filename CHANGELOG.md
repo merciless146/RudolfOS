@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Changed: Native uses less memory: each window's page frees its caches and collects garbage sooner (a limit that
+  follows the computer's memory, checked every 5 s instead of 15), and the pages the desktop opens by itself at
+  start-up wait until the others have started, so their memory peaks no longer come all at once.
 - Fixed: Emu's "Open a file…" refused a ZIP or disc over 512 MB ("copy it in Files instead"). A ZIP or a disc image
   (.chd, .cdi, .gdi, .cue, .pbp, N64) chosen there is now added to the game library (a ZIP is unpacked) and the game
   added starts; nothing that large is read into the page. A 7-Zip file is refused with a reason.
