@@ -992,6 +992,79 @@ From the comparison with other distributions on 2026-11-19: the weak points name
   of Chromium's built-in key, so a drive taken out cannot read the shared profile's cookies; written up with what it
   does not cover (the computer itself taken, signed-in use). From 1.6.0 Part 22's "could come later".
 
+#### 20.1 Status: rudolfd confined (2026-11-21, branch rudolfd-confine; confine-check.yml)
+- **What the release kernel has** (read from release 2026112014's own vmlinuz and modules layer): seccomp and its BPF
+  filters (on for Flatpak), Yama, lockdown, the audit log; **no Landlock** ("landlock" was in the LSM list since 1.5.9,
+  but SECURITY_LANDLOCK itself was never on, so the kernel had none), no AppArmor, no TPM driver. Added:
+  SECURITY_LANDLOCK, with its line in iso/kconfig-required.txt (Part 12's check), x86-64 and ARM64. Why Landlock and not
+  AppArmor: a program puts Landlock on itself, so the rules live beside the code Part 11 keeps changing, nothing is
+  loaded at the start (AppArmor needs its profiles compiled and loaded by the start-up, a parser or a compiled policy in
+  the image, and a new LSM with a profile per program to keep in step with every script), and it works the same for
+  rudolfd as root today and as uid 1000 after Part 11's drop. About 30 KB of kernel.
+- **The switch:** off by default (the build's RUDOLFD_CONFINE); /persist/etc/rudolf-confine (one word: off, log, on);
+  rudolf.confine= at the start-up; RUDOLFD_CONFINE in the environment (host tests). Read by rudolfd and rudolf-rootd at
+  their start. "log": the system calls are only logged, Landlock and the capabilities' cut left out, the windows' refusals
+  answered and noted: for a beta's first run. Each call refused or logged reaches the health log once per start
+  (Security: "the confinement refused system call N of PROGRAM"), read from the kernel's audit lines.
+- **Why two layers:** everything seccomp, Landlock and the capabilities do is inherited by every program the process
+  starts, and rudolfd still starts many (shell commands, the accounts' apps, Chromium's windows, the Debian container,
+  Wine). A filter of only rudolfd's own calls on all of rudolfd would confine every app it starts. So:
+  1. **All of rudolfd, from its start** (before it starts anything): a deny list of what nothing it starts needs (kexec,
+     BPF, performance counters, file handles by number, I/O ports, process accounting, quotas, writing another
+     process's memory, uselib, nfsservctl; the same in the 32-bit table for Wine's programs; x32 refused), and the
+     capabilities no Rudolf OS program uses dropped from the bounding set (audit, MAC, process accounting, BPF,
+     performance counters, checkpoint/restore). Modules, swap, mounts, the clock, ptrace, keyctl stay: the camera's
+     driver, zram, the binds and the Debian container, time sync, debuggers in Debian need them.
+  2. **Each request that starts nothing:** each connection is its own process, so once its path is read (before its
+     body or JSON), a request that runs no program, mounts nothing and signals no other process is narrowly confined for
+     the rest of its life: seccomp allowing only rudolfd's own calls (143: those traced in every host test that builds
+     rudolfd or a fixture of it with strace -f, plus the C library's on paths the tests do not reach, each with why:
+     iso/sys/rudolfd-confine-narrow.h; never exec, mount, kill, ptrace, setns, unshare, chroot, reboot, keyctl, io_uring,
+     userfaultfd, 32-bit calls); Landlock: read anywhere (as root reads today), write, make and remove only in
+     rudolfd's folders (/run/rudolf, /run/user/1000, /persist/etc, /persist/var/log, /persist/accounts, /home, /media,
+     /tmp, /proc/sys/vm/drop_caches, /dev/null), run nothing, no TCP of its own, no signals or abstract sockets outside;
+     capabilities cut to owners and modes, reading the accounts' folders, the peer check's /proc, the dropped file's
+     child becoming the account's user; no_new_privs. Which requests: iso/systools/confinepure.py reads every function
+     of rudolfd and its .inc files and what each reaches (iso/sys/rudolfd-confine-pure.h): today 28 requests and the
+     page with all its files, and 9 more that reach root only through rudolf-rootd's helpers (while rudolf-rootd is
+     there); the other 97 still start programs. As Part 11 moves an area, its requests join (the host test says which,
+     so the list never lags the code). Five that start nothing are kept out by hand, as they write where the narrow
+     folders do not reach: display (/etc), bootmenu (the firmware's variables), brightness (the backlight under
+     /sys/devices), factory-reset (/persist itself), desktop/keys (the security keys' /dev/hidraw).
+     Found in QEMU (r161, on): a job through rudolf-rootd (install, sticks, boot files) also runs a shell command
+     (root_job), so the narrow confinement refused its exec: those are no longer narrow, and the reader follows
+     root_job's body. Found on the way: the peer check reads the desktop's /proc/PID/fd and exe, which a Landlock domain may not (as
+     ptrace): it is made before the narrow confinement and kept for the connection.
+- **Part 11's helpers, each narrower** (rudolf-rootd.c, rudolf-rootd-confine.h): in the helper's own process just
+  before it starts: its capabilities only (drives: mount, files' owners and modes, the firmware's boot entries' flag,
+  loop devices, su; updates: mount, files' owners and modes) in every set, the bounding set included, and a deny list:
+  rudolfd's, plus ptrace, modules, reboot, the clock, swap, and every 32-bit call. No Landlock: both helpers mount.
+  A helper without its line is never run with "on".
+- **The windows' lists:** the process holding the connection (found by the peer check, never from the request) is the
+  native shell (rudolf-native) or the page (Standard's Chromium; WebKit's network process for the native desktop's app
+  windows and Lite). iso/systools/winapi.py reads what each asks for (iso/sys/rudolfd-winapi.h: 352 paths for the page,
+  every literal given to its API helpers and each string that is one of rudolfd's request names; 35 for the shell);
+  anything else is refused (403 "this window does not use that part of the API") and said in the health log. The
+  shell, for instance, is refused the files API; the page is refused desktop/login, desktop/accounts and the shell's
+  other requests. Root is not checked.
+- **Tests:** iso/qt/host/confine161_t.sh (21): the lists current; every call number 0-511 of each table (x86-64,
+  32-bit, x32) through each filter by a BPF interpreter (fixtures/confineprobe.c); each layer for real with every
+  allowed and refused folder and call; the real rudolfd and rudolf-rootd off, log and on (the filters on the right
+  processes, the answers as before, a window's request refused or noted, a helper's capabilities). Every rudolfd host
+  test passes the same with the switch off and on. .github/workflows/confine-check.yml: the same on GitHub's runner,
+  a kernel built from this tree's kconfig.sh (with Landlock; not published), and in QEMU on the newest beta with this
+  tree's programs (fix161.sh): t160's checks unchanged off, on (the release's kernel), on and log (the kernel built
+  here), r161's on; the health log's confinement lines read from the test drive afterwards.
+- **Not covered:** the requests that still start programs (most of the API until Part 11 moves them) are only in layer
+  1; a narrow request may still ask rudolf-rootd's helpers for what they do (their own checks hold); reading is not
+  narrowed (rudolfd as root reads the accounts' folders and every process's information); a missed system call in a
+  narrow request on a path the tests did not reach fails that request with "on" (hence log first); Lite's WebKit
+  windows and the native desktop's share WebKit's network process, so the page's list is the same for both.
+- **For the owner (Vivobook):** a beta with this, then `echo log > /persist/etc/rudolf-confine` (from a root shell) and a
+  day's use; System health › Security then lists each call "on" would refuse (none expected). Then `on` for a day:
+  sign-in, files, Settings, Oracle, apps, the Debian container, a USB stick, an update check, sleep. Default on only
+  after that.
+
 ### 21. The checks that cannot run, and the checks with the owner (added on 2026-11-20)
 - **CI:** the Oracle file check, the Tor window keys check and "same (beta)" fail on GitHub's runners because the beta's
   Chromium (chromium.sfs) does not start there ("required file not found", exit 127). Each moved to Playwright's

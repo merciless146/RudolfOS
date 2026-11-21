@@ -8,6 +8,12 @@ desktop's own processes (its memory group, /sys/fs/cgroup/desktop) and root: any
 and an `"error"` to show, with an HTTP status (400 a bad request, 403 refused, 404 not there, 409 not possible now,
 423 locked, 429 wait, 500 failed).
 
+(1.6.1, docs/plan-1.6.1.md Part 20) With rudolfd's confinement on (/persist/etc/rudolf-confine; off by default), each
+window gets only what its own code asks for: the page (Standard's, Lite's and the native desktop's app windows) the
+paths in iso/sys/rudolfd-winapi.h's page list, the native shell (rudolf-native) its own; anything else is 403 "this
+window does not use that part of the API" and a line in the health log. A request rudolfd could not confine as it
+should is 503. A new request the page or the shell asks for needs `python3 iso/systools/winapi.py --update`.
+
 Plan 1.5.9, 11.4: what new features need keeps its logic and state in rudolfd and the services, so that what draws the
 desktop (the page today; the native desktop engine being prototyped, plan Part 12) only shows state and sends choices.
 Each part's API is written down here with its first use. (Older endpoints are described where they are made, in
