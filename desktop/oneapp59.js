@@ -547,11 +547,13 @@ function oaDesk(q=ONEAPP.q,fin=oaFin){const on=q.get('on')||'',item=(q.get('item
  if(on&&!el)return fin({err:'There is no “'+on+'” on the desktop.'});
  if(el&&el.dataset.fn&&/^open with/i.test(item)){const p=homePath('DESKTOP').concat(el.dataset.fn),L=openersFor(p);
   return fin({ask:'openwith',file:p.join('\\'),ext:ext(p.at(-1))||'',apps:JSON.stringify((L.length?L:OPENERS.slice(0,2)).map(x=>[x[0],x[1],x[2]]))})}
- (el||D).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:20,clientY:20}));
+ /* (1.6.1 Part 28: Paste at the cell the shell's menu was opened over, in the shell's grid: &cell=C,R&nc=&nr=; &cell=-: Ctrl+V's, none) */
+ const cq=/^(\d+),(\d+)$/.exec(q.get('cell')||'');if(typeof DKX=='object'){DKX.q=cq?{cell:[+cq[1],+cq[2]],nc:+q.get('nc')||0,nr:+q.get('nr')||0}:q.get('cell')=='-'?{cell:null}:null;DKX.busy=null}
+ try{(el||D).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:20,clientY:20}))}finally{if(typeof DKX=='object')DKX.q=null}
  const it=[...document.querySelectorAll('.ctx .cmi')].find(e=>((e.querySelector('span')||e).textContent||'').trim()==item);
  if(!it){document.querySelectorAll('.ctx').forEach(c=>c.remove());return fin({err:'There is no “'+item+'” in that menu.'})}
  const had=new Set(document.querySelectorAll('.rmodal'));it.click();
- setTimeout(()=>{if(OA.main)return;const m=[...document.querySelectorAll('.rmodal')].find(x=>!had.has(x));let r={};
+ setTimeout(async()=>{try{if(typeof DKX=='object'&&DKX.busy)await DKX.busy}catch(e){}if(OA.main)return;const m=[...document.querySelectorAll('.rmodal')].find(x=>!had.has(x));let r={};
   if(m){const rn=m.querySelector('input.rn');const fn=(deskFiles()&&Object.keys(deskFiles()).find(n=>rn&&n==rn.value))||(rn&&rn.value)||'';
    if(rn)r={ask:'rename',file:homePath('DESKTOP').concat(fn).join('\\'),name:fn};m.remove()}
   fin(r)},500)}
@@ -685,7 +687,9 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
   /* (1.6.0, the owner's report 2) the desktop's own sounds' styles (Settings › Volume Controls: each sound's tones, base_v24.html SPRE and PAT),
      which the native shell plays itself at its sign-in and shut-down screens */
   const sndp={};try{if(typeof SNDS=='object'&&typeof PAT=='object')for(const [k] of SNDS)sndp[k]=(typeof SPRE=='object'&&SPRE[k]?SPRE[k].map(x=>x[1]||PAT[k]):[PAT[k]]).map(p=>(p||[]).map(oaTone))}catch(e){}
-  await rdPost('desktop/apps',JSON.stringify({apps,bg,fx,hide,icons,desk,cells,menu,jumps,sndp,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}));OA_CSIG=sig
+  /* (1.6.1 Part 28) the places of icons just dropped or pasted (bd95place), which the shell takes over its own */
+  const place=typeof dkPlaceFresh=='function'?dkPlaceFresh():null;
+  await rdPost('desktop/apps',JSON.stringify({apps,bg,fx,hide,icons,desk,cells,place,menu,jumps,sndp,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}));OA_CSIG=sig
   /* (2026-11-17, the owner's Vivobook: icons minutes late on Native) the native log says when giving the catalogue took long on this computer */
   {const ms=Math.round(performance.now()-t0);if(ms>3000)console.warn('desktop/apps given after '+ms+' ms')}}catch(e){console.warn('desktop/apps',e)}}
 /* (N12) the statue changes with the accent colour, its glow's rule and light or dark: given again, and the native shell told */

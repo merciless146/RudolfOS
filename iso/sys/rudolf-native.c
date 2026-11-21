@@ -600,6 +600,7 @@ static void open_with(const char *file, const char *key);
 static void kbcap_msg(AppWin *a, int on);
 static void hfs_msg(AppWin *a, JSCValue *v);   /* (folders on this device: test finding N7) */
 static void ctx_msg(AppWin *a, JSCValue *v);
+static int FC_N;   /* (1.6.1 Part 28: what File Explorer's clipboard holds, as the pages say: op "fc") */
 static void tbp_app(AppWin *a, const char *v);   /* (1.6.1 Part 25: a window's work in progress, for its minimized taskbar button) */   /* (an app's right-click menu, over the screen: test finding N21) */
 /* (1.5.9, 12.3c) Oracle's Chromium and the WebKit windows: the files one (rudolfd's mirror), the indicator of the keys the native
    desktop's, Oracle's new windows at an address or private */
@@ -629,6 +630,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 			g_free(u); frame_redraw_app(a); } if (pv) g_object_unref(pv);
 		bar_redraw(); }
 	else if (!strcmp(op, "drop")) { jsstr(v, "in", x, sizeof x); jsstr(v, "file", f, sizeof f); drop_in(f, x); }
+	else if (!strcmp(op, "fc")) { jsstr(v, "n", x, sizeof x); FC_N = atoi(x); state_write(); }   /* (1.6.1 Part 28: File Explorer's clipboard holds N items: the desktop's Paste) */
 	else if (!strcmp(op, "openwith")) { jsstr(v, "key", x, sizeof x); jsstr(v, "file", f, sizeof f); open_with(f, x); }   /* (Open with: the app's own window) */
 	else if (!strcmp(op, "toast")) toast_add(a, v);   /* (a notification's pop-up, drawn by the shell: item 3) */
 	else if (!strcmp(op, "note")) nt_note(v);   /* (a notification kept: in the centre at once, before the page's storage reaches rudolfd) */
@@ -4126,6 +4128,27 @@ static void page_done(JSCValue *v)
 typedef struct { char *ex; GdkDragContext *ctx; guint32 t; } XdJob;   /* (ctx: on a drop's last part only) */
 static GQueue XD_Q = G_QUEUE_INIT; static XdJob *XD_CUR; static guint XD_TO; static int XD_N; static char XD_LAST[24] = "-";
 static int xd_can(void) { return USER_ID[0] && !LOCKED && strcmp(USER_R, "guest") && strcmp(USER_ID, "guest"); }
+/* (1.6.1, docs/plan-1.6.1.md Part 28: File Explorer to the desktop) a drag from one of the shell's own windows (an Explorer window's
+   items: its page's FC.drag or FC.dragR) dropped on the desktop is done by that page, as Standard's page does it (deskxfer61.js
+   __deskDrop): into the Desktop folder at the cell under the pointer, a desktop folder's icon (into it) or the Trash; a move, or a copy
+   with Ctrl. The page writes the files and gives the shell the new icons' cell with its list (oaCatalog's "place", di_load). */
+static int DI_HOV = -1, DXD_N; static char DXD_LAST[40] = "-";
+static AppWin *xd_ours(GdkDragContext *c)
+{
+	GtkWidget *s = gtk_drag_get_source_widget(c); if (!s) return NULL;
+	for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (a->view && !a->closing && (a->view == s || gtk_widget_is_ancestor(s, a->view))) return a; }
+	return NULL;
+}
+static int xd_ctrl(GtkWidget *w, GdkDragContext *c)
+{
+	GdkModifierType m = 0; GdkWindow *gw = gtk_widget_get_window(w); GdkDevice *dv = gdk_drag_context_get_device(c);
+	if (gw && dv) gdk_window_get_device_position(gw, dv, NULL, NULL, &m);
+	return (m & GDK_CONTROL_MASK) || (gdk_drag_context_get_suggested_action(c) == GDK_ACTION_COPY && !(gdk_drag_context_get_actions(c) & GDK_ACTION_MOVE));
+}
+static int di_at(double x, double y); static void di_grid(int *nc, int *nr); static int di_w(void); static int di_h(void);
+static const char *di_kind(int i); static const char *di_name(int i);
+static void xd_hover(int t) { if (t != DI_HOV) { DI_HOV = t; if (DESKAREA) desk_dirty(); } }
+static void xd_leave(GtkWidget *w, GdkDragContext *c, guint t, gpointer d) { (void)w; (void)c; (void)t; (void)d; xd_hover(-1); }
 static int xd_files(GdkDragContext *c) { for (GList *l = gdk_drag_context_list_targets(c); l; l = l->next) { char *n = gdk_atom_name(GDK_POINTER_TO_ATOM(l->data)); int y = n && !strcmp(n, "text/uri-list"); g_free(n); if (y) return 1; } return 0; }
 static void xd_next(void);
 static void xd_end(int ok)
@@ -4144,12 +4167,29 @@ static void xd_next(void)
 static void xd_done(JSCValue *v) { char err[64] = ""; jsstr(v, "err", err, sizeof err); if (XD_CUR) xd_end(!err[0]); }
 static gboolean xd_motion(GtkWidget *w, GdkDragContext *c, gint x, gint y, guint t, gpointer d)
 {
-	(void)w; (void)x; (void)y; (void)d; int ok = xd_can() && xd_files(c);
+	(void)d; AppWin *src = xd_ours(c);
+	if (src) {   /* (an Explorer window's items: move, or copy with Ctrl; a folder's icon and the Trash highlighted while over them) */
+		int ok = xd_can() && !strcmp(src->k, "explorer"), i = ok ? di_at(x, y) : -1;
+		xd_hover(i >= 0 && (!strcmp(di_kind(i), "dir") || !strcmp(di_kind(i), "trash")) ? i : -1);
+		gdk_drag_status(c, ok ? (xd_ctrl(w, c) ? GDK_ACTION_COPY : GDK_ACTION_MOVE) : 0, t); return TRUE; }
+	int ok = xd_can() && xd_files(c);
 	gdk_drag_status(c, ok ? GDK_ACTION_COPY : 0, t); return TRUE;   /* (XdndStatus: copy, or refused) */
 }
 static gboolean xd_drop(GtkWidget *w, GdkDragContext *c, gint x, gint y, guint t, gpointer d)
 {
-	(void)x; (void)y; (void)d;
+	(void)d; AppWin *src = xd_ours(c); xd_hover(-1);
+	if (src) {
+		if (!xd_can() || strcmp(src->k, "explorer") || !src->view) { gtk_drag_finish(c, FALSE, FALSE, t); snprintf(DXD_LAST, sizeof DXD_LAST, "refused"); state_write(); return TRUE; }
+		int i = di_at(x, y), nc, nr; di_grid(&nc, &nr); GString *js = g_string_new("window.__deskDrop?__deskDrop({");
+		if (i >= 0 && !strcmp(di_kind(i), "dir")) { g_string_append(js, "on:"); json_esc(js, di_name(i)); snprintf(DXD_LAST, sizeof DXD_LAST, "folder"); }
+		else if (i >= 0 && !strcmp(di_kind(i), "trash")) { g_string_append(js, "trash:1"); snprintf(DXD_LAST, sizeof DXD_LAST, "trash"); }
+		else {   /* (the cell under the pointer, in the page's grid as di_xy draws it) */
+			int c0 = (int)floor((x - desk_left() - 8 * Z) / di_w()), r0 = (int)floor((y - work_top() - ((!strcmp(S.tb, "top") ? 2 : 0) + 8) * Z) / di_h());
+			if (c0 < 0) c0 = 0; if (r0 < 0) r0 = 0; if (c0 >= nc) c0 = nc - 1; if (r0 >= nr) r0 = nr - 1;
+			g_string_append_printf(js, "c:%d,r:%d,nc:%d,nr:%d", c0, r0, nc, nr); snprintf(DXD_LAST, sizeof DXD_LAST, "desk %d,%d", c0, r0); }
+		g_string_append_printf(js, ",copy:%d}):0", xd_ctrl(w, c));
+		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(src->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE);
+		gtk_drag_finish(c, TRUE, FALSE, t); DXD_N++; state_write(); return TRUE; }
 	if (!xd_can() || !xd_files(c)) { gtk_drag_finish(c, FALSE, FALSE, t); snprintf(XD_LAST, sizeof XD_LAST, "refused"); state_write(); return TRUE; }
 	gtk_drag_get_data(w, c, gdk_atom_intern_static_string("text/uri-list"), t); return TRUE;
 }
@@ -4175,7 +4215,8 @@ static void xd_received(GtkWidget *w, GdkDragContext *c, gint x, gint y, GtkSele
 static void xd_init(GtkWidget *area)
 {
 	static const GtkTargetEntry T[] = { { (gchar *)"text/uri-list", GTK_TARGET_OTHER_APP, 0 } };
-	gtk_drag_dest_set(area, 0, T, G_N_ELEMENTS(T), GDK_ACTION_COPY);
+	gtk_drag_dest_set(area, 0, T, G_N_ELEMENTS(T), GDK_ACTION_COPY | GDK_ACTION_MOVE);
+	g_signal_connect(area, "drag-leave", G_CALLBACK(xd_leave), NULL);
 	g_signal_connect(area, "drag-motion", G_CALLBACK(xd_motion), NULL); g_signal_connect(area, "drag-drop", G_CALLBACK(xd_drop), NULL);
 	g_signal_connect(area, "drag-data-received", G_CALLBACK(xd_received), NULL);
 }
@@ -4196,6 +4237,8 @@ static int di_w(void) { return (int)lround(84 * DI_IS / 100.0 * Z); }
 static int di_h(void) { return (int)lround(86 * DI_IS / 100.0 * Z); }
 static int di_shown(void) { return USER_ID[0] && !LOCKED && NDI && !strcmp(DI_ACCT, USER_ID); }
 static int di_n(void) { return NDI; }
+static const char *di_kind(int i) { return i >= 0 && i < NDI ? DI[i].kind : ""; }
+static const char *di_name(int i) { return i >= 0 && i < NDI ? DI[i].n : ""; }
 static void di_grid(int *nc, int *nr) { *nc = (desk_w() - 8) / di_w(); *nr = (work_h() - 8) / di_h(); if (*nc < 1) *nc = 1; if (*nr < 1) *nr = 1; }
 static void di_xy(const DIcon *d, int *x, int *y) { *x = desk_left() + (int)lround(8 * Z) + d->c * di_w(); *y = work_top() + (int)lround(((!strcmp(S.tb, "top") ? 2 : 0) + 8) * Z) + d->r * di_h(); }   /* (the page's #desk: 2 px below a taskbar at the top) */
 static int di_used(int c, int r, int skip) { for (int i = 0; i < NDI; i++) if (i != skip && DI[i].c == c && DI[i].r == r) return 1; return 0; }
@@ -4251,6 +4294,17 @@ static void di_load(JV *cat)
 		jfree(mine);
 	}
 	di_layout();
+	/* (1.6.1 Part 28) icons just dropped or pasted on the desktop: the first at the cell the page was given (the pointer's, the menu's),
+	   the others the nearest free ones, as the page's dkPlace (freeCell), here among the shell's own places; kept as the shell's */
+	static double DI_PLT; JV *pl = jprop(cat, "place"), *pat = jprop(pl, "at"), *pn = jprop(pl, "n"); double pt = jnum(pl, "t", 0);
+	if (pt > DI_PLT && jat(pat, 1) && jat(pat, 0)->t == 2 && jat(pat, 1)->t == 2 && pn && pn->t == 4) {
+		DI_PLT = pt; int nc, nr, c0 = (int)jat(pat, 0)->n, r0 = (int)jat(pat, 1)->n, idx[96], k = 0; di_grid(&nc, &nr);
+		if (c0 < 0) c0 = 0; if (r0 < 0) r0 = 0; if (c0 >= nc) c0 = nc - 1; if (r0 >= nr) r0 = nr - 1;
+		for (int j = 0; j < pn->len && k < 96; j++) { JV *nv = pn->v[j]; if (!nv || nv->t != 3) continue; char cell[96]; snprintf(cell, sizeof cell, "file:%s", nv->s);
+			for (int i = 0; i < NDI; i++) if (!strcmp(DI[i].cell, cell)) { DI[i].c = DI[i].r = -100; idx[k++] = i; break; } }
+		for (int j = 0; j < k; j++) { int fc, fr; di_free(c0, r0, idx[j], &fc, &fr); DI[idx[j]].c = fc; DI[idx[j]].r = fr; }
+		if (k) di_save();
+	}
 }
 /* the desktop's icons as the page draws them (base_v24.html .ic, styles25.css): 76 px wide (the icon size's share),
    the picture 40 px in a line of the 34 px font (vertical-align: middle) with its drop shadow, the name below in the
@@ -4289,7 +4343,7 @@ static void di_draw(cairo_t *cr)
 			} while (pango_layout_iter_next_line(it));
 			pango_layout_iter_free(it); }
 		if (nl > 8) nl = 8;
-		if (d->sel) for (int l = 0; l < nl; l++) {   /* (.ic.sel span: the accent colour behind each line, 3 px corners) */
+		if (d->sel || i == DI_HOV) for (int l = 0; l < nl; l++) {   /* (.ic.sel span: the accent colour behind each line, 3 px corners) */
 			double x0 = lx[l] - (l == 0 ? 2 : 0), w0 = lw[l] + (l == 0 ? 2 : 0) + (l == nl - 1 ? 2 : 0);
 			Box sb; memset(&sb, 0, sizeof sb); sb.bg = ca(accent(), 1); sb.rad = 3; box_paint(cr, x0, ty + l * (fa + fd) - 1, w0, fa + fd + 2, &sb); }
 		/* the text shadow (0 1px 2px rgba(0,0,0,.6)), then the name */
@@ -4486,10 +4540,18 @@ static void di_arrange(void)
 /* what the desktop's menus' items do: the shell's own (Arrange, Refresh, the apps), else the page's (#app=do-desk:
    unseen when the page's item opens no window: New folder, New text document, Move to Trash, Remove from desktop) */
 static int di_sel(void) { for (int i = 0; i < NDI; i++) if (DI[i].sel) return i; return -1; }
-static void di_page(const char *on, const char *item, int hidden)
+/* (cell: 1.6.1 Part 28, Paste's: "C,R&nc=..&nr=.." the cell the menu was opened over, in the shell's grid; "-": none, as Ctrl+V) */
+static void di_page_at(const char *on, const char *item, int hidden, const char *cell)
 {
-	char *o = qesc(on ? on : ""), *t = qesc(item), *ex = g_strdup_printf("%s%s&item=%s", on && *on ? "&on=" : "", on && *on ? o : "", t);
+	char *o = qesc(on ? on : ""), *t = qesc(item), *ex = g_strdup_printf("%s%s&item=%s%s%s", on && *on ? "&on=" : "", on && *on ? o : "", t, cell ? "&cell=" : "", cell ? cell : "");
 	app_open_ex("do-desk", NULL, ex, hidden); g_free(o); g_free(t); g_free(ex);
+}
+static void di_page(const char *on, const char *item, int hidden) { di_page_at(on, item, hidden, NULL); }
+static char DI_MCELL[48] = "-";   /* (the cell under the desktop's menu) */
+static void di_mcell(double x, double y)
+{
+	int nc, nr; di_grid(&nc, &nr); int c0 = (int)floor((x - desk_left() - 8 * Z) / di_w()), r0 = (int)floor((y - work_top() - ((!strcmp(S.tb, "top") ? 2 : 0) + 8) * Z) / di_h());
+	if (c0 < 0) c0 = 0; if (r0 < 0) r0 = 0; if (c0 >= nc) c0 = nc - 1; if (r0 >= nr) r0 = nr - 1; snprintf(DI_MCELL, sizeof DI_MCELL, "%d,%d&nc=%d&nr=%d", c0, r0, nc, nr);
 }
 static void di_arrange(void);
 /* (the owner's Vivobook, 2026-11-16: a new folder or text document showed in File Explorer long before it was on the desktop) done by the
@@ -4511,6 +4573,10 @@ static void on_di_act(const char *a)
 	else if (!strcmp(a, "open") && d) di_open(i);
 	else if (!strcmp(a, "rename") && d && d->fp[0]) rename_ask(d->fp, d->n);
 	else if (!strncmp(a, "page:", 5)) di_page(NULL, a + 5, 0);
+	/* (1.6.1 Part 28: Paste, at the menu's cell; it and Paste into folder by the shell's hidden page, as New folder (its files reach the other
+	   windows at once; a page of its own that closes again did not pass them on); a long one from a drive ends with a
+	   notification, as on Standard; the progress window Standard also shows is not drawn by the hidden page) */
+	else if (!strcmp(a, "pageh:Paste")) di_page_at(NULL, "Paste", 1, DI_MCELL);
 	else if (!strncmp(a, "pageh:", 6) && (!strcmp(a + 6, "New folder") || !strcmp(a + 6, "New text document")) && svc_desk_new(!strcmp(a + 6, "New folder"))) {}
 	else if (!strncmp(a, "pageh:", 6)) di_page(NULL, a + 6, 1);
 	else if (!strncmp(a, "icon:", 5) && d) di_page(d->n, a + 5, 0);
@@ -4522,25 +4588,37 @@ static void di_menu(GdkEventButton *e, int icon)
 {
 	/* the page's menus, item by item (base_v24.html deskMenu, iconMenu; shell25.js's for files and the Trash) */
 	static const CMI DESKM[] = { CM("New folder", "📁", "", "pageh:New folder"), CM("New text document", "📄", "", "pageh:New text document"), CM("Add a widget…", "🧩", "", "wgpick"), CMS,
-		CM("Arrange icons by name", "", "", "arrange"), CM("Desktop icons…", "🖥️", "", "page:Desktop icons…"), CM("Refresh", "", "F5", "refresh"), CMS,
+		CM("Paste", "", "Ctrl+V", "pageh:Paste"), CM("Arrange icons by name", "", "", "arrange"), CM("Desktop icons…", "🖥️", "", "page:Desktop icons…"), CM("Refresh", "", "F5", "refresh"), CMS,
 		CM("Open File Explorer", "", "", "app:explorer"), CM("Open Command Prompt", "", "", "app:prompt"), CM("Show all windows", "", "Super+Tab", "overview"), CM("Task Manager", "📊", "Ctrl+Shift+Esc", "app:taskmgr"), CMS,
 		CM("Open settings…", "", "", "app:settings") };
-	static const CMI FILEM[] = { CM("Open", "↗", "", "icon:Open"), CM("Open with…", "", "", "iconh:Open with…"), CMS, CM("Rename", "", "F2", "rename"), CM("Move to Trash", "", "Del", "iconh:Move to Trash"), CMS,
+	static const CMI FILEM[] = { CM("Open", "↗", "", "icon:Open"), CM("Open with…", "", "", "iconh:Open with…"), CMS, CM("Cut", "", "Ctrl+X", "iconh:Cut"), CM("Copy", "", "Ctrl+C", "iconh:Copy"),
+		CM("Paste into folder", "", "", "iconh:Paste into folder"), CMS, CM("Rename", "", "F2", "rename"), CM("Move to Trash", "", "Del", "iconh:Move to Trash"), CMS,
 		CM("Properties", "", "", "icon:Properties") };
 	static const CMI TRASHM[] = { CM("Open", "↗", "Enter", "open"), CM("Empty trash…", "", "", "icon:Empty trash…"), CMS, CM("Arrange icons by name", "", "", "arrange"), CMS, CM("Properties", "", "", "icon:Properties") };
 	static const CMI APPM[] = { CM("Open", "↗", "Enter", "open"), CM("Remove from desktop", "➖", "Del", "iconh:Remove from desktop"), CMS, CM("Arrange icons by name", "", "", "arrange"),
 		CM("Desktop icons…", "", "", "icon:Desktop icons…"), CMS, CM("Properties", "", "", "icon:Properties") };
 	int i = di_sel(); DIcon *d = icon && i >= 0 ? &DI[i] : NULL; CMI m[24]; int n = 0; const char *title = "Desktop";
-	if (!d) { n = G_N_ELEMENTS(DESKM); memcpy(m, DESKM, sizeof DESKM); }
-	else if (d->fp[0]) { n = G_N_ELEMENTS(FILEM); memcpy(m, FILEM, sizeof FILEM); title = d->n; }
+	if (!d) { n = G_N_ELEMENTS(DESKM); memcpy(m, DESKM, sizeof DESKM); for (int j = 0; j < n; j++) if (!strcmp(m[j].act, "pageh:Paste")) m[j].dis = !FC_N;   /* (greyed while nothing is cut or copied) */
+		di_mcell(e->x, e->y); }
+	else if (d->fp[0]) { n = G_N_ELEMENTS(FILEM); memcpy(m, FILEM, sizeof FILEM); title = d->n;   /* (Paste into folder: a folder's only, greyed while nothing is cut or copied) */
+		for (int j = 0; j < n; j++) if (!strcmp(m[j].act, "iconh:Paste into folder")) { if (strcmp(d->kind, "dir")) { memmove(&m[j], &m[j + 1], (n - j - 1) * sizeof m[0]); n--; } else m[j].dis = !FC_N; break; } }
 	else if (!strcmp(d->kind, "trash")) { n = G_N_ELEMENTS(TRASHM); memcpy(m, TRASHM, sizeof TRASHM); m[1].dis = !d->full; title = d->n; }
 	else { n = G_N_ELEMENTS(APPM); memcpy(m, APPM, sizeof APPM); title = d->n; }
 	CM_RING = !d; cm_open(e->x_root, e->y_root, title, m, n, on_di_act);
 	snprintf(DI_MENU, sizeof DI_MENU, "%s", d ? (d->fp[0] ? "file" : "icon") : "desk"); state_write();
 }
+/* (1.6.1 Part 28) a click on the desktop gives it the keys, as the page's desktop takes them on Standard (Ctrl+V, Delete, F2 there, not in
+   the window in front); the window keeps looking in use, as on Standard, and a click into it gives them back (its clicks watched again) */
+static void desk_keys(void)
+{
+	if (!DESK || !gtk_widget_get_window(DESK) || !USER_ID[0] || LOCKED || (MENU && gtk_widget_get_visible(MENU)) || (SIGN && gtk_widget_get_visible(SIGN))) return;
+	if (WM_OK && FOCUS && g_list_find(CLIENTS, FOCUS)) grab_clicks(FOCUS, 1);
+	XSetInputFocus(DPY, GDK_WINDOW_XID(gtk_widget_get_window(DESK)), RevertToPointerRoot, CurrentTime); if (DESKAREA) gtk_widget_grab_focus(DESKAREA);
+}
 static gboolean desk_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
 	(void)w; (void)d; menu_hide(); if (fl_outside()) return TRUE; if (wg_press(e)) return TRUE;   /* (a widget: item 2) */
+	if (e->type == GDK_BUTTON_PRESS && e->button == 1) desk_keys();
 	int i = di_at(e->x, e->y);
 	if (e->type == GDK_2BUTTON_PRESS && e->button == 1) { if (i >= 0) di_open(i); return TRUE; }
 	if (e->type != GDK_BUTTON_PRESS) return TRUE;
@@ -4586,7 +4664,11 @@ static gboolean desk_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	(void)w; (void)d; if (NF >= 0 && note_key(e)) return TRUE;   /* (typing in a note) */
 	if (e->keyval == GDK_KEY_Return || e->keyval == GDK_KEY_KP_Enter) { for (int i = 0; i < NDI; i++) if (DI[i].sel) { di_open(i); return TRUE; } }
 	if (e->keyval == GDK_KEY_F5) { apps_load(); return TRUE; }
+	/* (1.6.1 Part 28) Ctrl+V: Paste on the desktop (the icons where the desktop puts new ones); Ctrl+C, Ctrl+X: a chosen file's Copy, Cut */
+	int ctl = (e->state & GDK_CONTROL_MASK) && !(e->state & (GDK_MOD1_MASK | GDK_SHIFT_MASK)); guint kv = gdk_keyval_to_lower(e->keyval);
+	if (ctl && kv == GDK_KEY_v && USER_ID[0] && !LOCKED) { if (FC_N > 0) di_page_at(NULL, "Paste", 1, "-"); return TRUE; }
 	int i = di_sel(); if (i < 0) return FALSE; DIcon *di = &DI[i];
+	if (ctl && (kv == GDK_KEY_c || kv == GDK_KEY_x) && di->fp[0]) { di_page(di->n, kv == GDK_KEY_x ? "Cut" : "Copy", 1); return TRUE; }
 	if (e->keyval == GDK_KEY_F2 && di->fp[0]) { rename_ask(di->fp, di->n); return TRUE; }
 	if (e->keyval == GDK_KEY_Delete) { if (di->fp[0]) di_page(di->n, "Move to Trash", 1); else if (strcmp(di->kind, "trash")) di_page(di->n, "Remove from desktop", 1); return TRUE; }
 	return FALSE;
@@ -7878,6 +7960,7 @@ static void state_write(void)
 	g_string_append_printf(s, "wm %d\nicons %u %s\n", WM_OK, ICONS ? g_hash_table_size(ICONS) : 0, VER[0] ? VER : "-");
 	for (int i = 0; di_shown() && i < NDI; i++) { int x, y; di_xy(&DI[i], &x, &y); g_string_append_printf(s, "dicon %d %d %d %d %d %d %s|%s|%s\n", DI[i].c, DI[i].r, x, y, di_w(), DI[i].sel, DI[i].k, DI[i].kind, DI[i].n); g_string_append_printf(s, "dicpic %d %s\n", DI[i].ic[0] && ICONS && g_hash_table_lookup(ICONS, DI[i].ic) ? 1 : DI[i].icon[0] ? 2 : 0, DI[i].n);   /* (its picture: 1 the page's, 2 its emoji, 0 none: blank) */ if (strchr(DI[i].k, ':')) g_string_append_printf(s, "diconic %s %s %d\n", DI[i].k, DI[i].ic[0] ? DI[i].ic : "-", DI[i].ic[0] && ICONS && g_hash_table_lookup(ICONS, DI[i].ic) ? 1 : 0); }
 	g_string_append_printf(s, "dmenu %s\n", DI_MENU);
+	g_string_append_printf(s, "deskxfer %d %d %s\n", FC_N, DXD_N, DXD_LAST);   /* (1.6.1 Part 28: the clipboard's items, Explorer drops on the desktop, the last one's target) */
 	/* (item 2) the widgets on the screen: widget N TYPE X Y W H (the screen's pixels) PAGE-X PAGE-Y|TEXT; the note typed in; the weather */
 	for (int i = 0; wg_shown() && i < NWG; i++) { double X, Y, W, H; wg_rect(&WG[i], &X, &Y, &W, &H); char *t = g_strescape(WG[i].txt ? WG[i].txt : "", NULL);
 		g_string_append_printf(s, "widget %d %s %d %d %d %d %g %g|%s\n", i, WG[i].t, (int)lround(X * Z), (int)lround(Y * Z), (int)lround(W * Z), (int)lround(H * Z), WG[i].x, WG[i].y, t); g_free(t); }

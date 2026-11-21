@@ -5,12 +5,15 @@
 #   page:   the page in Playwright's Chromium with a stand-in rudolfd (iso/qt/shell2/xdrag161_t.js, and File Explorer's earlier
 #           checks unchanged)
 #   webkit: the same in WebKitGTK (rudolf-webkit, the engine of Lite and Native) with real mouse input (iso/qt/webkit/xdrag61_ci.py)
+#   1.6.1 Part 28, File Explorer to the desktop: the page (iso/qt/shell2/explorer-desk161_t.js), Lite (xdrag61_ci.py), and the native
+#           desktop (rudolf-native, iso/qt/host/xdesk161_t.sh, compared with Standard's page: iso/qt/native/explorer-desk161_std.js)
 name: File Explorer transfers check
 on:
   workflow_dispatch:
   pull_request:
     paths: ['desktop/files25.js', 'desktop/xfer61.js', 'desktop/oneapp59.js', 'desktop/dl27.js', 'desktop/drivecopy60.js', 'iso/sys/rudolfd.c', 'iso/www/index.html',
-      'iso/qt/host/fsxfer161_t.sh', 'iso/qt/host/fixtures/fsxfer.c', 'iso/qt/shell2/xdrag161_t.js', 'iso/qt/webkit/xdrag61_ci.py', '.github/workflows/xfer-check.yml']
+      'iso/qt/host/fsxfer161_t.sh', 'iso/qt/host/fixtures/fsxfer.c', 'iso/qt/shell2/xdrag161_t.js', 'iso/qt/webkit/xdrag61_ci.py', '.github/workflows/xfer-check.yml',
+      'desktop/deskxfer61.js', 'desktop/shell25.js', 'iso/sys/rudolf-native.c', 'iso/qt/shell2/explorer-desk161_t.js', 'iso/qt/host/xdesk161_t.sh', 'iso/qt/native/explorer-desk161_std.js']
 permissions: {contents: read}
 jobs:
   host:
@@ -29,8 +32,10 @@ jobs:
         run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
       - name: The selection box, dragging between windows and drives, the progress window, Native's pages
         run: node iso/qt/shell2/xdrag161_t.js
+      - name: File Explorer to the desktop (dragging, Paste), Native's pages (1.6.1 Part 28)
+        run: node iso/qt/shell2/explorer-desk161_t.js
       - name: File Explorer's earlier checks
-        run: for t in files_t fe56_t drives60_t drivecopy60_t rename56_t deskicons_t; do echo "== $t"; node iso/qt/shell2/$t.js | tail -3 || exit 1; done
+        run: for t in files_t fe56_t drives60_t drivecopy60_t rename56_t deskicons_t deskmenu57_t lxdesk_t; do echo "== $t"; node iso/qt/shell2/$t.js | tail -3 || exit 1; done
   webkit:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -46,3 +51,17 @@ jobs:
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
           python3 iso/qt/webkit/xdrag61_ci.py ./rudolf-webkit | tee xdrag-result.txt; r=${PIPESTATUS[0]}
           echo "::notice title=File Explorer in WebKit::$(tail -1 xdrag-result.txt) — $(grep -E '^FAIL' xdrag-result.txt | tr '\n' '|' | sed 's/::/: /g')"; exit $r
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 glib-networking xvfb xdotool >/dev/null
+      - name: Chromium (Playwright's), for Standard's side of the comparison
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: File Explorer to the native desktop (1.6.1 Part 28), real mouse input, compared with Standard
+        run: |
+          sh iso/qt/host/xdesk161_t.sh | tee xdesk-result.txt
+          echo "::notice title=File Explorer to the native desktop::$(tail -1 xdesk-result.txt) — $(grep -E '^FAIL' xdesk-result.txt | tr '\n' '|' | sed 's/::/: /g')"
+          grep -q ' passed$' xdesk-result.txt && ! grep -q '^FAIL' xdesk-result.txt

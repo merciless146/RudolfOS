@@ -1,6 +1,7 @@
 # 1.6.1 (docs/plan-1.6.1.md Part 22): File Explorer's selection box and files dragged between two windows in WebKitGTK (the
 # engine of Lite and Native), with real mouse input (xdotool) on a virtual screen, as xdrag161_t.js checks them in Chromium.
 # A stand-in rudolfd serves the real page (iso/www) with a small reporter added, and keeps a made-up Games folder in memory.
+# 1.6.1 Part 28: and files dragged from a window onto the desktop (Lite: the one page), Ctrl+drag, the desktop's Paste.
 # Port 8612.   python3 xdrag61_ci.py ./rudolf-webkit   (DISPLAY set)
 import hashlib, http.server, json, os, subprocess, sys, threading, time, urllib.parse
 BIN = sys.argv[1]; WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../www'); PORT = 8612
@@ -22,10 +23,10 @@ REPORT = r'''<script>window.RUDOLFD={token:"t",base:"",boot:"uefi",media:"disk",
   const B=explorer(downloadsPath());B.el.style.cssText='left:640px;top:0;width:620px;height:520px';B.openRemote({dev:'games',root:'/home/rudolf/Games',path:'/home/rudolf/Games/DC',label:'Games'});
   window.WA=A;window.WB=B;await new Promise(r=>setTimeout(r,1500));
   const dk=downloadsPath().join('/'),q=(w,k)=>w.body.querySelector('[data-k="'+k+'"]');
-  post('rects',{A:rc(A.body.querySelector('.xc')),B:rc(B.body.querySelector('.xc')),pic1:rc(q(A,dk+'/PIC-1.TXT')),pic5:rc(q(A,dk+'/PIC-5.TXT')),note:rc(q(A,dk+'/NOTE.TXT')),pdf:rc(q(B,'R:manual.pdf'))});
+  post('rects',{desk:rc(DESK),pic2:rc(q(A,dk+'/PIC-2.TXT')),pic3:rc(q(A,dk+'/PIC-3.TXT')),pic4:rc(q(A,dk+'/PIC-4.TXT')),A:rc(A.body.querySelector('.xc')),B:rc(B.body.querySelector('.xc')),pic1:rc(q(A,dk+'/PIC-1.TXT')),pic5:rc(q(A,dk+'/PIC-5.TXT')),note:rc(q(A,dk+'/NOTE.TXT')),pdf:rc(q(B,'R:manual.pdf'))});
   /* what is selected, what Downloads holds, a progress window, every 150 ms */
   setInterval(()=>{const xw=wins.find(w=>w.xfer);post('state',{sel:[...A.body.querySelectorAll('.xc [data-k].s')].map(e=>e.dataset.k.split('/').pop()),marq:!!A.body.querySelector('.xmarq'),
-    dl:Object.keys(node(downloadsPath())||{}),xf:xw?xw.body.querySelector('.xft').textContent:null,xfs:XFSEEN})},150);
+    dl:Object.keys(node(downloadsPath())||{}),desk:Object.keys(deskFiles()||{}),rows:Object.fromEntries([...A.body.querySelectorAll('.xc [data-k]')].map(e=>[e.dataset.k.split('/').pop(),rc(e)])),menu:[...document.querySelectorAll('.ctx .cmi')].map(x=>x.textContent).join('|'),cells:Object.fromEntries(Object.keys(deskFiles()||{}).map(n=>[n,cells['file:'+n]||null])),paste:(()=>{const m=[...document.querySelectorAll('.ctx .cmi')].find(x=>x.querySelector('span').textContent=='Paste');return m?rc(m).concat([m.classList.contains('dis')?1:0]):null})(),xf:xw?xw.body.querySelector('.xft').textContent:null,xfs:XFSEEN})},150);
   window.XFSEEN=[];new MutationObserver(()=>{wins.filter(w=>w.xfer).forEach(w=>{const t=w.body.querySelector('.xft').textContent;if(!XFSEEN.includes(t))XFSEEN.push(t)})}).observe(document.body,{subtree:true,childList:true,characterData:true});
   /* what WebKit tells a drop: its modifier keys and drag action (Ctrl+drag) */
   window.DROPS=[];['dragover','drop'].forEach(t=>document.addEventListener(t,e=>{const o={t,ctrl:e.ctrlKey,fx:e.dataTransfer&&e.dataTransfer.dropEffect,ea:e.dataTransfer&&e.dataTransfer.effectAllowed,xk:typeof XFK=='object'?XFK.ctrl:null};
@@ -145,6 +146,25 @@ if checks[0][1]:
         RES['drops'] = []; time.sleep(2.2); r2 = R.get('pdf')
         drag(pdf[0] + 40, pdf[1] + pdf[3] // 2, A[0] + A[2] // 2, A[1] + A[3] - 60, ctrl='mid'); time.sleep(2.5)
         print('Ctrl pressed during the drag: the drive', 'kept it (copied)' if '/home/rudolf/Games/DC/manual.pdf' in F else 'lost it (moved)', 'drops', json.dumps((RES.get('drops') or [])[-8:]))
+    # 4. (Part 28) a file dragged from the window onto the desktop's empty area (below the windows): moved, its icon in that cell
+    dk = R.get('desk'); rw = lambda n: (st().get('rows') or {}).get(n); pic2 = rw('PIC-2.TXT')
+    if dk and pic2:
+        cell = lambda x, y: [min((x - dk[0] - 8) // 84, (dk[2] - 8) // 84 - 1), min((y - dk[1] - 8) // 86, (dk[3] - 8) // 86 - 1)]   # (gridInfo: the last row and column take the rest)
+        time.sleep(2.2); X('mousemove', pic2[0] + 40, pic2[1] + pic2[3] // 2, 'click', '1'); time.sleep(0.4)
+        drag(pic2[0] + 40, pic2[1] + pic2[3] // 2, 1000, 640); until(lambda: 'PIC-2.TXT' in (st().get('desk') or []), 10); time.sleep(0.8)
+        checks.append(('Lite: a file dragged from the window onto the desktop: in the Desktop folder, gone from Downloads, its icon in the cell under the pointer',
+                       'PIC-2.TXT' in (st().get('desk') or []) and 'PIC-2.TXT' not in (st().get('dl') or []) and (st().get('cells') or {}).get('PIC-2.TXT') == cell(1000, 640)))
+        time.sleep(2.2)
+        for attempt in range(2):
+            pic3 = rw('PIC-3.TXT'); drag(pic3[0] + 40, pic3[1] + pic3[3] // 2, 1160, 640, ctrl='start'); X('keyup', 'ctrl'); until(lambda: 'PIC-3.TXT' in (st().get('desk') or []), 10); time.sleep(0.8)
+            if 'PIC-3.TXT' in (st().get('desk') or []): break
+            print('(Ctrl+drag onto the desktop: tried again)')
+        checks.append(('Lite: Ctrl+drag onto the desktop: copied (Downloads keeps it)', 'PIC-3.TXT' in (st().get('desk') or []) and 'PIC-3.TXT' in (st().get('dl') or [])))
+        # 5. Copy (Ctrl+C in the list), the desktop's right-click menu: Paste
+        time.sleep(2.2); pic4 = rw('PIC-4.TXT'); X('mousemove', pic4[0] + 40, pic4[1] + pic4[3] // 2, 'click', '1'); time.sleep(0.4); X('key', 'ctrl+c'); time.sleep(0.5)
+        X('mousemove', 840, 700, 'click', '3'); until(lambda: st().get('paste'), 5); pm = st().get('paste')
+        if pm and not pm[4]: time.sleep(0.5); X('mousemove', pm[0] + 20, pm[1] + pm[3] // 2); time.sleep(0.3); X('click', '1'); until(lambda: 'PIC-4.TXT' in (st().get('desk') or []), 8); time.sleep(0.6)
+        checks.append(('Lite: Copy in File Explorer, the desktop\'s Paste: copied onto the desktop, its icon where the menu was opened', bool(pm) and not pm[4] and 'PIC-4.TXT' in (st().get('desk') or []) and 'PIC-4.TXT' in (st().get('dl') or []) and (st().get('cells') or {}).get('PIC-4.TXT') == cell(840, 700)))
 checks.append(('rudolf-webkit still runs', p.poll() is None))
 p.terminate(); log.close(); srv.shutdown()
 ok = 0
