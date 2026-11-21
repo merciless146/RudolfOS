@@ -432,7 +432,7 @@ static void wall_make(void)
 static gboolean desk_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (WALL) { cairo_set_source_surface(cr, WALL, 0, 0); cairo_paint(cr); } return TRUE; }
 
 /* ------------------------------------------------------------------ app windows (WebKit, one-app mode) */
-typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready, sready, s2s; gint64 close_t; GdkPixbuf *pix; guint wait_t; } AppWin;   /* (wait_t: its window's upper bound before it is shown anyway, the owner's Vivobook report 1 of 2026-11-16) */   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
+typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready, sready, s2s; gint64 close_t, born; GdkPixbuf *pix; guint wait_t; } AppWin;   /* (wait_t: its window's upper bound before it is shown anyway, the owner's Vivobook report 1 of 2026-11-16) */   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
 static void ev_flush(AppWin *a);   /* (1.6.0: rudolfd's events that waited for a page) */
 static GList *WINS;   /* AppWin*, oldest first */
 static AppWin *ACTIVE;
@@ -472,8 +472,16 @@ static void ctx_make(void)
 #endif
 		NULL);
 	WebKitMemoryPressureSettings *mps = webkit_memory_pressure_settings_new();   /* as rudolf-webkit (1.5.8) */
-	webkit_memory_pressure_settings_set_memory_limit(mps, 768); webkit_memory_pressure_settings_set_conservative_threshold(mps, 0.33);
-	webkit_memory_pressure_settings_set_strict_threshold(mps, 0.5); webkit_memory_pressure_settings_set_kill_threshold(mps, 0); webkit_memory_pressure_settings_set_poll_interval(mps, 15);
+	/* 1.6.1 (the owner's Vivobook, 2026-11-20: six web processes of 250-380 MB, 400-470 MB at their start): each window's page
+	   frees its caches and collects its garbage sooner: the limit follows the computer's memory (a sixth of it, 384 to 768 MB; the
+	   Vivobook's 3.3 GB: 569 MB, so from about 190 MB it tidies and from about 285 MB it does so hard), looked at every 5 s, not 15
+	   (a page's start, where its peak is, takes a few seconds) */
+	{ unsigned lim = 768; FILE *mi = fopen("/proc/meminfo", "r"); char ln[128]; long long kb = 0;
+	  while (mi && fgets(ln, sizeof ln, mi)) if (sscanf(ln, "MemTotal: %lld kB", &kb) == 1) break; if (mi) fclose(mi);
+	  if (kb > 0) { long long m = kb / 1024 / 6; lim = (unsigned)(m < 384 ? 384 : m > 768 ? 768 : m); }
+	  webkit_memory_pressure_settings_set_memory_limit(mps, lim); }
+	webkit_memory_pressure_settings_set_conservative_threshold(mps, 0.33);
+	webkit_memory_pressure_settings_set_strict_threshold(mps, 0.5); webkit_memory_pressure_settings_set_kill_threshold(mps, 0); webkit_memory_pressure_settings_set_poll_interval(mps, 5);
 	CTX = WEBKIT_WEB_CONTEXT(g_object_new(WEBKIT_TYPE_WEB_CONTEXT, "website-data-manager", m, "memory-pressure-settings", mps, NULL));
 	webkit_memory_pressure_settings_free(mps); webkit_web_context_set_cache_model(CTX, WEBKIT_CACHE_MODEL_DOCUMENT_VIEWER);
 	g_free(home); g_free(data); g_free(cache); g_object_unref(m);
@@ -677,7 +685,7 @@ static GtkWidget *on_create(WebKitWebView *v, WebKitNavigationAction *na, gpoint
    within the last 3 s (File Explorer opening a file: corner to corner, as from the desktop): LP_S2S_T */
 static AppWin *appwin_new(const char *k, WebKitWebView *rel, int id)
 {
-	AppWin *a = g_new0(AppWin, 1); snprintf(a->k, sizeof a->k, "%s", k); a->id = id;
+	AppWin *a = g_new0(AppWin, 1); snprintf(a->k, sizeof a->k, "%s", k); a->id = id; a->born = g_get_monotonic_time();
 	if (LP_S2S_T && g_get_monotonic_time() - LP_S2S_T < 3000000) { a->s2s = 1; LP_S2S_T = 0; }
 	const App *ap = app_find(k); snprintf(a->title, sizeof a->title, "%s", ap ? ap->name : k); snprintf(a->icon, sizeof a->icon, "%s", ap ? ap->icon : "");
 	a->view = rel ? GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW, "related-view", rel, "user-content-manager", UCM, NULL))
@@ -6137,6 +6145,15 @@ static gpointer ev_thread(gpointer d)
 static GHashTable *PT_GIVEN;   /* the requests handed out: id -> 1 (the portal's page) or 2 (a page of its own) */
 static char *PT_IDS;           /* the requests rudolfd listed last: id,id,... */
 static gint64 PT_OPEN_T;       /* when the portal's page was asked for */
+/* 1.6.1 (the owner's Vivobook, 2026-11-20: the memory rose at the start, every page loading the whole desktop at once, 400-470 MB
+   each at its peak): a page still loading, or opened in the last 4 s (its scripts still starting after the load), keeps the
+   hidden pages the shell opens by itself (the portal's, the desktop's service page) waiting, so their peaks do not come together */
+static int page_starting(gint64 now)
+{
+	for (GList *l = WINS; l; l = l->next) { AppWin *w = l->data; if (!w->view || w->closing) continue;
+		if (webkit_web_view_is_loading(WEBKIT_WEB_VIEW(w->view)) || now - w->born < 4 * G_USEC_PER_SEC) return 1; }
+	return 0;
+}
 static int pt_id_ok(const char *s) { size_t n = strlen(s); return n && n <= 40 && strspn(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == n; }
 static AppWin *pt_page(void) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!strcmp(a->k, "do-portal") && !a->closing) return a; } return NULL; }
 static void pt_tick(void)
@@ -6150,7 +6167,7 @@ static void pt_tick(void)
 	AppWin *p = pt_page(); gint64 now = g_get_monotonic_time();
 	/* (opened through a window whose page is ready: one still loading, as the start-up page just after signing in, may not open it;
 	   waited for up to 10 s) */
-	static int waited; int busy = 0; for (GList *l = WINS; l; l = l->next) { AppWin *w = l->data; if (w->view && !w->closing && webkit_web_view_is_loading(WEBKIT_WEB_VIEW(w->view))) busy = 1; }
+	static int waited; int busy = page_starting(now);
 	if (!busy || p) waited = 0; else if (waited < 20) waited++;
 	if (!p) { if ((!PT_OPEN_T || now - PT_OPEN_T > 20 * G_USEC_PER_SEC) && (!busy || waited >= 20)) { waited = 0; PT_OPEN_T = now; fprintf(stderr, "rudolf-native: the portal's page is opened\n"); app_open_ex("do-portal", NULL, NULL, 2); } }
 	else if (!p->pready) { if (now - PT_OPEN_T > 90 * G_USEC_PER_SEC) { fprintf(stderr, "rudolf-native: the portal's page did not start: again\n"); appwin_close_now(p); PT_OPEN_T = 0; } }
@@ -6219,9 +6236,9 @@ static gboolean svc_tick(gpointer d)
 	(void)d; if (!USER_ID[0] || LOCKED) return G_SOURCE_CONTINUE;
 	AppWin *p = svc_page(); gint64 now = g_get_monotonic_time();
 	/* (opened through a window whose page is ready, as the portal's: one still loading may not open it; waited for up to 10 s) */
-	static int waited; int busy = 0; for (GList *l = WINS; l; l = l->next) { AppWin *w = l->data; if (w->view && !w->closing && webkit_web_view_is_loading(WEBKIT_WEB_VIEW(w->view))) busy = 1; }
-	if (!busy || p) waited = 0; else if (waited < 5) waited++;
-	if (!p) { if ((!SVC_OPEN_T || now - SVC_OPEN_T > 10 * G_USEC_PER_SEC) && (!busy || waited >= 5)) { waited = 0; SVC_OPEN_T = now; SVC_N++;
+	static int waited; int busy = page_starting(now);
+	if (!busy || p) waited = 0; else if (waited < 8) waited++;
+	if (!p) { if ((!SVC_OPEN_T || now - SVC_OPEN_T > 10 * G_USEC_PER_SEC) && (!busy || waited >= 8)) { waited = 0; SVC_OPEN_T = now; SVC_N++;
 			char ex[64]; snprintf(ex, sizeof ex, "&since=%lld", (long long)SVC_SIGNIN); fprintf(stderr, "rudolf-native: the desktop's service page is opened\n"); app_open_ex("do-svc", NULL, ex, 2); state_write(); } }
 	else if (!p->sready && now - SVC_OPEN_T > 90 * G_USEC_PER_SEC) { fprintf(stderr, "rudolf-native: the desktop's service page did not start: again\n"); appwin_close_now(p); SVC_OPEN_T = 0; }
 	return G_SOURCE_CONTINUE;
