@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools python3-cryptography binutils >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools python3-cryptography binutils bc flex bison libelf-dev libssl-dev kmod >/dev/null
       - name: Signing key
         env: {KEY: '${{ secrets.RPK_SIGNING_KEY }}'}
         run: |
@@ -29,6 +29,20 @@ jobs:
           printf '%s\n' "$KEY" > "$RUNNER_TEMP/rpk.key" && chmod 600 "$RUNNER_TEMP/rpk.key"
           # the tools read the raw 32-byte key in base64; a PEM file is converted here, and it must match iso/trusted-keys.txt
           python3 iso/systools/keycheck.py "$RUNNER_TEMP/rpk.key" iso/trusted-keys.txt
+      # 1.6.1 (docs/plan-1.6.1.md Part 19): an extension with kernel modules built here (NVIDIA's driver: "modsign" in its
+      # recipe) has them signed with the Rudolf OS Secure Boot key, whose certificate every Rudolf OS kernel has built in as
+      # trusted (iso/kconfig.sh, SYSTEM_TRUSTED_KEYS): the kernel checks them as it checks its own modules (MODULE_SIG_FORCE),
+      # and under Secure Boot's lockdown nothing else loads. Only when such an extension is built; the key is deleted after.
+      - name: Secure Boot key (for kernel modules built here)
+        env: {KEY: '${{ secrets.RUDOLF_SB_KEY }}', NAMES: '${{ inputs.names }}'}
+        run: |
+          L=$NAMES; [ -n "$L" ] || L=$(ls iso/ext); need=
+          for n in $L; do python3 -c 'import json,sys;sys.exit(0 if json.load(open(sys.argv[1])).get("modsign") else 1)' "iso/ext/$n/recipe.json" 2>/dev/null && need=1; done
+          [ -n "$need" ] || { echo "no extension with kernel modules to sign"; exit 0; }
+          test -n "$KEY" || { echo "::error title=Missing secret::Add RUDOLF_SB_KEY (the whole rudolf-sb.key) under Settings > Secrets and variables > Actions"; exit 1; }
+          umask 077; printf '%s\n' "$KEY" > "$RUNNER_TEMP/sb.key"
+          python3 iso/systools/sbkeycheck.py "$RUNNER_TEMP/sb.key" iso/boot/sb/rudolf-sb.crt
+          echo "MODSIGN_KEY=$RUNNER_TEMP/sb.key" >> $GITHUB_ENV; echo "MODSIGN_CERT=$GITHUB_WORKSPACE/iso/boot/sb/rudolf-sb.crt" >> $GITHUB_ENV
       - name: The release's base and kernel
         env: {GH_TOKEN: '${{ github.token }}', S: '${{ inputs.release }}'}
         run: |
@@ -50,7 +64,9 @@ jobs:
             [ -f "iso/ext/$n/recipe.json" ] || { echo "::error::no recipe iso/ext/$n/recipe.json"; exit 1; }
             # (an extension with kernel modules is built for this release's kernel: "kernel": true in its recipe)
             K=; python3 -c 'import json,sys;sys.exit(0 if json.load(open(sys.argv[1])).get("kernel") else 1)' "iso/ext/$n/recipe.json" && K=$KV
-            KVER=$K sh iso/systools/mkext.sh "$n" base "$KEYFILE" out debs
+            # (its modules' vermagic checked against the release's own modules; signed only with "modsign")
+            MS=; python3 -c 'import json,sys;sys.exit(0 if json.load(open(sys.argv[1])).get("modsign") else 1)' "iso/ext/$n/recipe.json" && MS=1
+            KVER=$K MODULES_SFS=$PWD/rel/modules.sfs MODSIGN_KEY=${MS:+$MODSIGN_KEY} MODSIGN_CERT=${MS:+$MODSIGN_CERT} sh iso/systools/mkext.sh "$n" base "$KEYFILE" out debs
           done
           python3 iso/pkgtools/rpk-tool.py index out --key "$KEYFILE" --serial "$(date -u +%Y%m%d%H)"
           ls -l out/*.rpk
@@ -61,4 +77,4 @@ jobs:
           gh release upload "$TAG" out/*.rpk out/index.txt out/index.sig --clobber
       - name: Forget the key
         if: always()
-        run: rm -f "$RUNNER_TEMP/rpk.key"
+        run: rm -f "$RUNNER_TEMP/rpk.key" "$RUNNER_TEMP/sb.key"
