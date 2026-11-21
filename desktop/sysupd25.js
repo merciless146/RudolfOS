@@ -65,7 +65,7 @@ ${s.recoveryVersion?`<p class='msg'>Recovery mode (in the start-up menu) starts 
      address is an administrator's (rudolfd checks the name and password) */
   const uAsk=t=>new Promise(res=>{const o=document.createElement('div');o.className='rmodal';o.innerHTML="<div class='rmbox' role='dialog' aria-modal='true' style='max-width:520px'><p class='msg'></p><div class='rmrow'><button class='n'>Cancel</button><button class='pri y'>Save it</button></div></div>";
    o.querySelector('p').textContent=t;const done=v=>{o.remove();res(v)};o.querySelector('.n').onclick=()=>done(false);o.querySelector('.y').onclick=()=>done(true);document.body.appendChild(o);o.querySelector('.n').focus()});
-  const uck=async v=>{const box=q('.uck');box.textContent='Checking '+v+' …';try{const r=await rd('sys/urlcheck?url='+encodeURIComponent(v));
+  const uck=async v=>{const box=q('.uck');box.textContent='Checking '+v+' …';try{const r=await rdPost('sys/urlcheck?url='+encodeURIComponent(v));
     box.textContent='';for(const [lv,t] of r.lines||[]){const d=document.createElement('div');d.className='msg';d.textContent=(lv=='ok'?'✅ ':lv=='warn'?'⚠️ ':'❌ ')+t;box.appendChild(d)}
     if(r.fpr){const d=document.createElement('div');d.className='msg';d.textContent='Key: '+r.fpr+(r.key=='official'?' (the official Rudolf OS key)':r.key=='developer'?' (Developer mode)':' (another build)');box.appendChild(d)}return r}
    catch(e){box.textContent='❌ '+e.message;return null}};
