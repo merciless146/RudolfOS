@@ -978,13 +978,15 @@ From the comparison with other distributions on 2026-11-19: the weak points name
      /tmp, /proc/sys/vm/drop_caches, /dev/null), run nothing, no TCP of its own, no signals or abstract sockets outside;
      capabilities cut to owners and modes, reading the accounts' folders, the peer check's /proc, the dropped file's
      child becoming the account's user; no_new_privs. Which requests: iso/systools/confinepure.py reads every function
-     of rudolfd and its .inc files and what each reaches (iso/sys/rudolfd-confine-pure.h): today 27 requests and the
-     page with all its files, and 12 more that reach root only through rudolf-rootd's helpers (while rudolf-rootd is
-     there); the other 95 still start programs. As Part 11 moves an area, its requests join (the host test says which,
+     of rudolfd and its .inc files and what each reaches (iso/sys/rudolfd-confine-pure.h): today 28 requests and the
+     page with all its files, and 9 more that reach root only through rudolf-rootd's helpers (while rudolf-rootd is
+     there); the other 97 still start programs. As Part 11 moves an area, its requests join (the host test says which,
      so the list never lags the code). Five that start nothing are kept out by hand, as they write where the narrow
      folders do not reach: display (/etc), bootmenu (the firmware's variables), brightness (the backlight under
      /sys/devices), factory-reset (/persist itself), desktop/keys (the security keys' /dev/hidraw).
-     Found on the way: the peer check reads the desktop's /proc/PID/fd and exe, which a Landlock domain may not (as
+     Found in QEMU (r161, on): a job through rudolf-rootd (install, sticks, boot files) also runs a shell command
+     (root_job), so the narrow confinement refused its exec: those are no longer narrow, and the reader follows
+     root_job's body. Found on the way: the peer check reads the desktop's /proc/PID/fd and exe, which a Landlock domain may not (as
      ptrace): it is made before the narrow confinement and kept for the connection.
 - **Part 11's helpers, each narrower** (rudolf-rootd.c, rudolf-rootd-confine.h): in the helper's own process just
   before it starts: its capabilities only (drives: mount, files' owners and modes, the firmware's boot entries' flag,

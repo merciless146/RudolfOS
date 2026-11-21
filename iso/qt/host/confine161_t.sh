@@ -17,6 +17,8 @@ trap 'for p in $RDP; do kill $p 2>/dev/null; done; umount -l /usr/share/rudolf/w
 
 # ---- the lists read from the source
 o=$(python3 $ISO/systools/confinepure.py 2>&1); ok "1. the requests that start nothing: rudolfd-confine-pure.h is current" "$(echo "$o" | grep -q '^confinepure: current' && echo 1)" "$o"
+o=$(sed -n '/CONFINE_PURE\[\]/,/CONFINE_START\[\]/p' $SYS/rudolfd-confine-pure.h | grep -E '"(install|bootfiles|mkstick|keepfiles)",')
+ok "...a job through rudolf-rootd (root_job also runs a shell command, found in QEMU) is not narrow" "$([ -z "$o" ] && echo 1)" "$o"
 o=$(python3 $ISO/systools/winapi.py 2>&1); ok "2. what each window asks for: rudolfd-winapi.h is current" "$(echo "$o" | grep -q '^winapi: current' && echo 1)" "$o"
 o=$(grep -c 'traced (' $SYS/rudolfd-confine-narrow.h); ok "3. the narrow system calls: most of them traced, each added one with why" "$([ "$o" -ge 60 ] && ! grep -E '^\s*SYS_' $SYS/rudolfd-confine-narrow.h | grep -vq 'traced (\|added: ' && echo 1)" "$o"
 

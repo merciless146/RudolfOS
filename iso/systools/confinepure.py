@@ -5,8 +5,10 @@
 #   - every function of rudolfd.c and its .inc files, and what it calls;
 #   - a function "starts" something when it calls system, popen, fork, the exec family, posix_spawn, run, run_out,
 #     start_job (the shell), mount or umount, kill, or one that does (followed through every call);
-#     root_call/root_run/root_out/root_job (rudolf-rootd's helpers: a message on a socket, the helper is rudolf-rootd's
-#     child, not this process's) are kept apart: such a request is narrow only when rudolf-rootd is there;
+#     root_call (rudolf-rootd's helpers: a message on a socket, the helper is rudolf-rootd's child, not this process's;
+#     without rudolf-rootd it runs the helper itself) is kept apart: such a request is narrow only when rudolf-rootd is
+#     there. root_run and root_out are read as any function (root_out forks a process that only calls root_call;
+#     root_job runs a shell command too: found in QEMU, where the narrow confinement refused its exec);
 #   - each request api() hands on (its `if (!strcmp(p, ...))` or `strncmp` line and the block it runs).
 # Writes iso/sys/rudolfd-confine-pure.h with --update; without it, says what differs (the host test, confine161_t.sh,
 # runs it, so a request that starts to run a program is never left in the narrow list, and one that no longer does
@@ -17,10 +19,10 @@ OUT = os.path.join(SYS, 'rudolfd-confine-pure.h')
 SPAWN = {'system', 'popen', 'fork', 'vfork', 'execv', 'execvp', 'execve', 'execl', 'execlp', 'execle', 'execvpe', 'posix_spawn',
          'posix_spawnp', 'run', 'run_out', 'start_job', 'mount', 'umount', 'umount2', 'kill', 'killpg', 'pkill', 'clone',
          'reboot', 'daemon', 'setuid', 'setgid', 'setresuid', 'setresgid', 'chroot', 'unshare', 'setns'}
-ROOT = {'root_call', 'root_run', 'root_out', 'root_job'}
+ROOT = {'root_call'}
 # (functions that fork without running a program and set a user: rudolfd-drop.inc's child opens the file as the
 # account's user; it is allowed in the narrow confinement: no program, no mount, a child of this process only)
-FORK_ONLY_OK = {'drop_open_as'}
+FORK_ONLY_OK = {'drop_open', 'root_out'}   # (their fork is read past: what the child does is still followed)
 # requests that start nothing but write where the narrow confinement's folders do not reach, kept out of it by hand
 # (rudolfd-confine.inc's CONFINE_WRITE has the folders; a narrow rule for one file elsewhere would have to name the
 # file's folder, which would open the whole folder)
@@ -82,12 +84,11 @@ def classify():
     memo = {}
     def kind(n, stack=()):
         if n in memo: return memo[n]
-        if n in FORK_ONLY_OK: return 0
         if n in SPAWN: return 2
         if n in ROOT: return 1
         if n not in cg or n in stack: return 0
         k = 0
-        for c in cg[n]:
+        for c in cg[n] - ({'fork', 'setuid', 'setgid', 'setresuid', 'setresgid'} if n in FORK_ONLY_OK else set()):
             k = max(k, kind(c, stack + (n,)))
             if k == 2: break
         memo[n] = k; return k
