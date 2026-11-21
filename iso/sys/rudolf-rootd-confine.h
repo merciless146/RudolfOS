@@ -36,6 +36,13 @@ static const struct { const char *name; uint64_t keep; } HELPER_CAPS[] = {
 	{ "procs", CB(CAP_KILL) },
 	/* the kernel's messages (1.6.1 Part 11): dmesg where kernel.dmesg_restrict is 1, nothing else */
 	{ "logs", CB(CAP_SYSLOG) },
+	/* the display's settings (1.6.1 Part 11): /etc/rudolf-display, /etc/rudolf-shell and their /persist/etc copies,
+	   screenctl (X as root, its settings kept), setxkbmap, rudolf-display and the desktop's browser stopped (CAP_KILL) */
+	{ "screen", CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH) | CB(CAP_FOWNER) | CB(CAP_KILL) },
+	/* sound (1.6.1 Part 11): hotkey and the sound script reach the desktop user's sound server as that user (su:
+	   CAP_SETUID, CAP_SETGID), PulseAudio stopped and started again (CAP_KILL), /etc/asound.conf and the user's
+	   runtime folder (the DAC capabilities, CAP_FOWNER, CAP_CHOWN) */
+	{ "sound", CB(CAP_SETUID) | CB(CAP_SETGID) | CB(CAP_KILL) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH) | CB(CAP_FOWNER) | CB(CAP_CHOWN) },
 	{ NULL, 0 }
 };
 /* the system calls of CF_HELPER_DENY a helper may still make, by name: the power helper restarts and sets the clock */

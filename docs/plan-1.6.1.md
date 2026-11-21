@@ -263,6 +263,34 @@ workflow dlzip-check.yml. Left: a ZIP in a home folder kept on the disk (1.5.6 a
 whose large downloads home56.js moves into the home) is not listed yet: it keeps the old message; BusyBox's unzip drops ".."
 and a leading "/" from names itself, so with it such entries land inside the folder rather than refusing the ZIP.
 
+**Built (2026-11-21, branch oracle-reader): item 7, reader mode** (desktop/orareader61.js, libs/readability). A 📖 button after the
+address box when the page has an article; it, F9 (in Oracle or inside a website) or ☰ › Reader mode shows the article alone, in the
+tab's own frame, the address unchanged; ✕ Exit reader or F9 gives the page back as it was (a website's tab is only hidden meanwhile:
+nothing is loaded again, what was typed in it is still there); a link clicked opens in the tab and leaves reader mode.
+- **Whether a page has an article:** when it has loaded the tab checks itself (the shell's READABLE_JS, rudolf-webkit's the same:
+  Readability's isProbablyReaderable rewritten small, run in the page's isolated world) and says so (tabev `readable`); an .HTM
+  file on C: is checked by the desktop. The page is read only when the person asks: op `readhtml` gives its HTML as it is now
+  (at most 4 MB), its address and title.
+- **Reading it:** Mozilla's Readability 0.6.0 (libs/readability, unchanged from npm's @mozilla/readability, Apache License 2.0:
+  credited in About Oracle and in libs/readability/README.md) runs in Oracle's page on an inert copy (DOMParser: nothing in it runs
+  or loads); it is a file beside the page (iso/www/a/, by build19.py), loaded the first time reader mode is used, so the page is
+  not larger for windows that never use it. Its HTML goes through safeHtml (sanitize59.js), forms, fields, styles, audio, video and
+  canvases are left out, links and pictures made whole, then safeHtml again (htmlsinks reviewed).
+- **Showing it:** an Oracle page of its own in the tab's frame (srcdoc, sandboxed: scripts only, no origin of its own) with a
+  Content-Security-Policy: only Oracle's own script (a nonce per page) runs, pictures load from the site as the page loaded them,
+  nothing else (no fonts but the one given, no frames, no forms). Styles: A− A+, Narrow / Medium / Wide, Serif / Sans / OpenDyslexic
+  (the desktop's own font, handed in as data), Light / Sepia / Dark (dark when Rudolf's dark theme is on), kept in the account's
+  settings (S.oreader: the look only, never a page). Read aloud: sentence by sentence with ttsSpeak (tts25.js), the sentence
+  highlighted (CSS highlights), Stop. Print: the article alone through print25.js's dialog (Rudolf OS's print service).
+- Private and Tor windows: available; nothing is kept. A website in a plain frame (no shell): no button (its page cannot be read).
+- Tests: iso/qt/shell2/orareader61_t.js (32: the check, the article, nothing of the page runs (a script, onerror, javascript:, a
+  form), the CSP, styles, read aloud, print, a link, exit, F9, dark, About, a file, a plain frame), iso/qt/webkit/reader61_ci.py (6:
+  rudolf-webkit), iso/qt/native/orareader61_t.sh (12: the real shell on Standard and Native: F9 in a website, the article, back as
+  it was); oracle58, private59, orahover61, oraacct60, tor59, bmadd59, oraclefile60 unchanged. Workflow oracle-reader-check.yml.
+- **The owner's checks (Vivobook):** on Standard, Native and Lite: a long news article (the BBC, The Guardian, a Wikipedia article):
+  📖, the article, A+, Sepia and Dark, OpenDyslexic, Read aloud (the highlight follows), Print to a PDF, a link, ✕ Exit reader and
+  F9; a page with no article (a search page): no 📖.
+
 ### 11. rudolfd's root work split into helpers (added on 2026-11-16; from docs/plan-1.5.9.md 15.5)
 
 **Shipped in 1.6.0 (owner, 2026-11-17: "I do want to keep 446 and 447 in 1.6.0"):** rudolf-rootd with the drives' and
@@ -333,10 +361,10 @@ rudolfd runs as root today (they keep running as root, from the helper).
 | Packages | sysext/* (`api_sysext`) | rpk sysext (signed system extensions mounted over /usr) | packages |
 | Packages | debian/* (`api_debian`, `spawn_debian`: setup, update, wine, deb, run --root), ai/* python and C++ | rudolf-debian (a container: namespaces, mounts) as root | packages (rudolf-debian is already a program: through the helper) |
 | Packages | games/* (games-import), ai/* (`api_ai`: rudolf-ai, the model's folder), print/* (`api_print`: rudolf-print, usbprint) | folders chowned to 1000; rudolf-ai and rudolf-print as root | packages (most need no root: they run as the desktop's user after the drop) |
-| Display | display (POST: /etc/rudolf-display), screen/* (screenctl), layout, pointer | /etc writes, xrandr through screenctl, setxkbmap through layout.sh | display |
+| Display | display (POST: /etc/rudolf-display), screen/* (screenctl), layout, pointer | /etc writes, xrandr through screenctl, setxkbmap through layout.sh | **screen** (moved: display, shell, screen/*, keyboard); pointer is RUN's (the drop) |
 | Display | screenshot (`grab_x`, `grab_fb`), clipboard (`api_clipboard`: su rudolf) | /dev/fb0; su to the desktop's user | none after the drop (video group; rudolfd is that user) |
 | Display | native/*, web/*, shell (POST shell: /etc/rudolf-shell), restart-browser, desktop/engine | the native desktop, Chromium windows started as the desktop's user (su/setuid), pkill of the kiosk browser, /etc and /persist/etc writes | display |
-| Sound | audio (/etc/asound.conf), audio/mics, mic, volume, media, sound restart, echo | /usr/lib/rudolf/sound, hotkey (PulseAudio and ALSA as the desktop's user, through su) | display (devices) |
+| Sound | audio (/etc/asound.conf), audio/mics, mic, volume, media, sound restart, echo | /usr/lib/rudolf/sound, hotkey (PulseAudio and ALSA as the desktop's user, through su) | **sound** (moved) |
 | Other | processes, proc/end (`api_proc_end`, `proc_tree_end`) | kill(2) of other users' processes (the accounts' apps), /proc of every process | other: **procs** (moved) |
 | Other | service (restart sound, Wi-Fi, display), selftest, starts, system (`api_system`: dmesg, modules), log, crash_list, health_tick's dmesg | the self-test, dmesg (kernel.dmesg_restrict), /proc/modules | other: **logs** (moved: dmesg read by a helper); the self-test and service next |
 | Other | devlink/* (`dl_start`, `dl_stop`) | rudolf-devlink started with its own user and environment | other |
@@ -574,8 +602,37 @@ rudolfd runs as root today (they keep running as root, from the helper).
   25's comparison: End process, a tree of five, rudolfd itself 403, a process gone 404, the log, the crashes, a job's
   last crash line; the same with and without rudolf-rootd and as rudolfd itself); proctree57_t.sh unchanged;
   r161_t.py 29-31 in QEMU.
-- Next: the modem, Tor and remote access; packages; display and sound; the rest of other (the self-test, the service
-  restarts, devlink, the camera, the portal, the terminals); then the drop (with the accounts' file service of 11.2).
+- **Display and sound (2026-11-21, branch root-helpers-display, after root-helpers-procs):** two helpers
+  (rudolfd-rootscreen.inc). The screen helper (iso/sys/rudolf-screen.c, /usr/lib/rudolf/root/screen; not "display":
+  sys/rudolf-display.c is the window manager): `screen mode soft|games|full` and `screen shell on|off` (/etc's file, and
+  /persist/etc's on an installed Rudolf OS, which the helper reads itself from /run/rudolf/persistent), `screen ctl
+  status|keep|revert`, `ctl set RES FPS` (screenctl), `screen keyboard LAYOUT [VARIANT]` (setxkbmap on :0),
+  `screen restart-display` (System health's restart of rudolf-display) and `screen restart-browser` (the desktop's own
+  browser, either engine: the proxy, the sound card and POST restart-browser). The sound helper
+  (iso/sys/rudolf-sound.c): `sound volume get|up|down|mute|set N|muted 0|1`, `sound playing`, `sound mic
+  users|get|muted 0|1` (hotkey), `sound echo on|off|status`, `sound mics`, `sound mic-default NAME`, `sound default N`,
+  `sound restart` (the sound script; echo, the microphone chosen and the restart still into RUN/sound.log), `sound card
+  N` (/etc/asound.conf, and /persist/etc's on an installed one). Part 20: HELPER_CAPS "screen" (the DAC capabilities,
+  CAP_FOWNER, CAP_KILL) and "sound" (CAP_SETUID and CAP_SETGID for su to the desktop's user, CAP_KILL, the DAC
+  capabilities, CAP_FOWNER, CAP_CHOWN), both with no_new_privs. Not moved: GET display's and the shell's reads (any
+  user's), pointer (RUN/pointer, rudolfd's own: the drop), desktop/engine (/persist/etc's files: the drop), the native
+  desktop's and web windows' starts as the desktop's user (none needed after the drop: rudolfd is that user; Tor
+  windows' cgroup write with Tor). Found and kept as it was: GET audio/mics never answers (a "use POST" for every GET
+  further up api() comes first; Settings' microphone test falls back to the browser's list): for the owner. Tests:
+  roothelpers161_t.sh S1-S2 and check 28 (in check 25's comparison: every display and sound request with and without
+  rudolf-rootd and as rudolfd itself, the files written in /etc and /persist/etc too); r161_t.py 32-33 in QEMU.
+- **Where 11.1 stands (2026-11-21, after the display and sound branch; PRs #561-#564, stacked in that order):** moved:
+  drives, updates (but the EFI boot entries), accounts, power and the clock, network (Wi-Fi, addresses, the firewall,
+  the hotspot, metered), devices (Bluetooth, Thunderbolt), procs, logs, screen, sound. Stay in rudolfd by design:
+  `addpart` (rudolfd --addpart is run by root's own scripts, not a request), every read any user may make (GET net's
+  ip and /sys reads, /proc/asound, the display's and shell's files), and what is rudolfd's own (RUN's files, pointer,
+  /persist/etc's settings such as desktop/engine and vault.json, the health log): those become the rudolf user's at
+  the drop instead. Not moved yet (each still run as root by rudolfd, with no change from 1.6.0): the modem
+  (mobile/*: its PIN and SMS request files), Tor and remote access (long-running services started as their own user
+  or as root), packages (rpk, Flatpak's system parts, system extensions, rudolf-debian, Blitzen's and printing's
+  folders), the EFI variables (bootmenu, secureboot), dl_acct_dir, and the rest of other (the self-test, devlink, the
+  camera, the portal's files, Debian's terminals); then the drop with the accounts' file service of 11.2.
+- Next: the modem, Tor and remote access; packages; the EFI variables; the rest of other; then the drop.
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
 **Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
