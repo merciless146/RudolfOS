@@ -48,7 +48,9 @@ if [ -n "$LINUX_SRC" ]; then K=$LINUX_SRC; else
 		[ "$(awk -v f="$T" '$2==f{print $1}' "$W/sums")" = "$(sha256sum "$W/$T" | cut -c1-64)" ] || { echo "nvidia: $T does not match kernel.org's checksum"; exit 1; }
 		mkdir -p "$K" && tar -xJf "$W/$T" -C "$K" --strip-components=1 && rm -f "$W/$T"; fi
 	# (the configuration as the release's: kconfig.sh with the Secure Boot certificate the kernel trusts; no initramfs is built)
-	SB_CERT=${SB_CERT:-$I/boot/sb/rudolf-sb.crt} sh "$I/kconfig.sh" "$K" "$W/none" >/dev/null
+	# (an empty start-up image: this kernel is only built for its Module.symvers, never started)
+	echo 'dir /dev 0755 0 0' > "$W/initramfs.list"
+	SB_CERT=${SB_CERT:-$I/boot/sb/rudolf-sb.crt} sh "$I/kconfig.sh" "$K" "$W/initramfs.list" >/dev/null
 	# (the whole kernel and its modules are built, for Module.symvers: the open modules' build needs it, and so does a
 	#  dependency on one of the kernel's own modules; the release's kernel itself is not replaced, only compared)
 	make -C "$K" -s olddefconfig >/dev/null; make -C "$K" -s -j"$(nproc)" vmlinux modules >/dev/null 2>"$W/kernel.log" || { tail -30 "$W/kernel.log"; exit 1; }
