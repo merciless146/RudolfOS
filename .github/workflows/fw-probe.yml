@@ -1,0 +1,14 @@
+name: fw probe (temporary)
+on: {push: {branches: [fw-fix], paths: ['.github/workflows/fw-probe.yml']}}
+permissions: {contents: read}
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          cd /tmp && git clone -q --filter=blob:none --no-checkout --shallow-since=2026-10-01 https://gitlab.com/kernel-firmware/linux-firmware.git lf && cd lf
+          git log --format='%H %cI %s' -8 -- qca/QCC2072
+          git log --format='%H %cI %s' -3
+          for c in $(git log --format=%H -4 -- qca/QCC2072) ; do echo "== $c"; P=$(git rev-parse $c^ 2>/dev/null) || continue; echo "parent $P"; git show $P:qca/QCC2072/nvm_usb_00200101_0022.bin | sha256sum; git show $P:qca/QCC2072/nvm_usb_00200101_0013.bin | sha256sum; done
+          git tag --sort=-creatordate | head -5
