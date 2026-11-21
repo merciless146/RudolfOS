@@ -190,6 +190,14 @@ closed tab, restore the session) and item 7 (reader mode); item 5 (ad and tracke
 (website passwords) and item 6 (extensions from the Library) are suggested for 2.0 (docs/plan-2.0.md); item 6's
 stage 1 could start here. The owner decides.
 
+**Built (the owner, 2026-11-20): "Goes To:" in the status line.** "Mousing over a hyperlink or an executable
+button/ad/clickable item ... should show the target URL at the bottom left of the screen where 'Done' shows. The displayed
+phrase should be 'Goes To: (insert URL here)'." Standard and Native: iso/shell/shell.js HOVER_JS in every frame (links,
+image-map areas, SVG links, a form's submit button; keyboard focus too; javascript: links not shown) sends tabev `hover`;
+Lite: rudolf-webkit's `mouse-target-changed` (WebKit's own hit test); Oracle's own pages: ORACLE_HOVER_JS posts to the
+window. The status line goes back to what it said, unless something new came meanwhile. Not possible to know before a
+click: where a script-only button (no link, no form) will go. Test orahover61_t.js; workflow oracle-hover-check.yml.
+
 **Built (the owner, 2026-11-20): the Downloads page's progress bar and Remove** (desktop/dlrm61.js). A file arriving: how
 much so far and how fast, and with a size known the percentage and time left (Chromium's own downloads do not tell their
 size: the bar then moves without a percentage); being checked: a bar. Remove beside Open: in Downloads → the Trash;

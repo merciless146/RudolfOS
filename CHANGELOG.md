@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- New: Oracle's status line (bottom left, where it says "Done") shows where a link goes while the mouse is over it:
+  "Goes To: <address>". It covers links, image-map areas, a form's submit button and links in ads and other frames, on
+  websites and Oracle's own pages; then the status line goes back to what it said. On Standard, Native and Lite.
 - New: Oracle's Downloads page shows a progress bar for a file that is arriving (how much so far and how fast, and with
   a known size the percentage and the time left) and one being checked. Each download has Remove beside Open: a file in
   Downloads goes to the Trash with it; otherwise the notification "File removed from list: Not in Downloads. Ask Blitzen
