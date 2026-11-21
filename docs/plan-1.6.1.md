@@ -685,7 +685,9 @@ the owner's decision of 2026-11-16 ("Keep it in 1.6.0"): it ships with 1.6.0, no
   user (a child process that becomes it), every step opened without following a link; Flatpak's document portal is mapped
   to the real file through the portal's `user.document-portal.host-path`, which must itself be one of those. Refusals come
   back to the page as words the page shows ("Blocked: … was not copied: your account may not open it."). No shell.
-- **Not done:** Rudolf as a drag source (a desktop icon dragged into a Linux app), optional; the guest's drops (rudolfd has
+- **Not done:** Rudolf as a drag source (a desktop icon dragged into a Linux app), optional (looked at on 2026-11-21, with
+  Part 15: Standard's page gives its desktop icons' drags no `text/uri-list` or file of its own either, so under the owner's rule
+  it waits until Standard can do it too: both together, a decision for the owner); the guest's drops (rudolfd has
   no Linux user for the guest); a folder dropped (skipped; on Standard Chromium's reader fails on it); a link inside the
   home is refused (Chromium follows it). Files dropped on an app's window are WebKit's own (as Chromium's on Standard).
   When rudolfd drops root (Part 11), desktop/dropped's change of user moves into a root helper.
