@@ -101,6 +101,10 @@ c "nvidia-application-profiles-$V-rc" opt "$OUT/usr/share/nvidia"; c "nvidia-app
 for f in "$X"/firmware/*.bin; do cp -p "$f" "$OUT/lib/firmware/nvidia/$V/"; done
 ls "$OUT/lib/firmware/nvidia/$V/"gsp_*.bin >/dev/null 2>&1 || { echo "nvidia: no GSP firmware in $V (the open modules need it)"; exit 1; }
 c nvidia-smi '' "$OUT/usr/bin"
+# (NVIDIA's libraries still ask for librt.so.1, which glibc 2.34 folded into libc and the base leaves out: the build machine's
+#  stub, Ubuntu 24.04's libc6 as the base's own C library, LGPL-2.1-or-later; mkext.sh leaves it out if a base has it)
+MA=$(gcc -print-multiarch 2>/dev/null || echo x86_64-linux-gnu)
+[ -f "/usr/lib/$MA/librt.so.1" ] && cp -L "/usr/lib/$MA/librt.so.1" "$LB/librt.so.1" && echo "librt.so.1 is glibc's (Ubuntu's libc6, LGPL-2.1-or-later): the C library's own stub, for NVIDIA's libraries" > "$OUT/licenses/librt"
 # (not shipped: nvidia-modprobe and nvidia-persistenced, setuid or daemons; nvidia-settings; the 32-bit libraries: 32-bit
 #  games run in Steam's Flatpak, which installs NVIDIA's matching libraries itself; Wayland's EGL platform: Rudolf OS is X11)
 cp -p "$L" "$OUT/licenses/NVIDIA-LICENSE"; cp -p "$X/kernel-open/COPYING" "$OUT/licenses/NVIDIA-open-kernel-modules-COPYING" 2>/dev/null || true
@@ -113,11 +117,14 @@ for c in j.get('chips', []):
     if 'kernelopen' not in c.get('features', []): continue
     n = c.get('name', ''); i = c.get('devid', '').lower().replace('0x', '')
     if not i or not any(w in n for w in ('GeForce', 'TITAN')): continue
+    # (Turing and newer, the GTX 16 and RTX 20 series on: device IDs from 0x1e00; 595's list also marks older chips, which
+    #  the open modules cannot start: they have no GSP)
+    if int(i, 16) < 0x1e00: continue
     seen.setdefault(i, n)
 import os; os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
 with open(sys.argv[2], 'w') as f:
-    f.write(f'# GeForce 16 and newer, by PCI ID: the cards NVIDIA {sys.argv[3]}\'s open kernel modules support ("kernelopen" in its\n# supported-gpus.json), GeForce and TITAN names only. Made by iso/ext/nvidia-driver/build.sh. ID<TAB>name\n')
+    f.write(f'# GeForce 16 and newer, by PCI ID: NVIDIA {sys.argv[3]}\'s supported-gpus.json ("kernelopen"), GeForce and TITAN\n# names, Turing and newer (from 10de:1e00). Made by iso/ext/nvidia-driver/build.sh. ID<TAB>name\n')
     for i in sorted(seen): f.write(f'10de:{i}\t{seen[i]}\n')
-print(f'nvidia: {len(seen)} cards offered')
+print(f'nvidia: {len(seen)} cards offered'); print(open(sys.argv[2]).read(), end='')
 EOF
 echo "nvidia: $(du -sm "$OUT" | cut -f1) MB of files for $KVER"
