@@ -163,13 +163,14 @@ try:
     st = signin(); ok('N1. signed in on the native sign-in screen', st_get(st, 'user') == 'boss', st[:500]); time.sleep(15)
     def hit(st, k):
         m = re.search(rf'^hit {k} (\d+) (\d+) (\d+) (\d+)$', st, re.M); return (int(m.group(1)) + int(m.group(3)) / 2, int(m.group(2)) + int(m.group(4)) / 2) if m else None
-    def open_app(k, q, wait=60):
-        st = state(); h = hit(st, 'start \\S+')
-        if h: g.q.at(*h, 'left', SW, SH); time.sleep(1.5); g.q.type(q); time.sleep(1.5); g.q.key('ret')
-        for _ in range(wait):
-            time.sleep(1)
-            if re.search(rf'^client .* app={k} ', state(), re.M): return True
-        return False
+    def open_app(k, q, wait=60, tries=3):
+      for _ in range(tries):   # (the start menu's search is slow without KVM: tried again, Escape first)
+          g.q.key('esc'); time.sleep(1); st = state(); h = hit(st, 'start \\S+')
+          if h: g.q.at(*h, 'left', SW, SH); time.sleep(1.5); g.q.type(q); time.sleep(1.5); g.q.key('ret')
+          for _ in range(wait):
+              time.sleep(1)
+              if re.search(rf'^client .* app={k} ', state(), re.M): return True
+      return False
     my = SH // 3
     swipe(g.q, SW * 0.8, my, SW * 0.2, my, SW, SH); st = state()
     ok('N2. Native, the desktop build (no flag): a swipe on the desktop switches nothing', st_get(st, 'ws') == '1', st_get(st, 'ws'))
