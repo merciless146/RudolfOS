@@ -11,6 +11,7 @@ Summary: In progress.
   system calls, writing only in rudolfd's folders through Landlock, which the kernel now has, fewer capabilities);
   each of rudolf-rootd's helpers gets only its own capabilities; and the API answers each window only what its code
   asks for (the native shell, the page). Refusals are said in System health.
+- Fixed: the release build no longer stops when linux-firmware updates a file: it takes linux-firmware at the commit the firmware list was made from (the list's new "R" line), and a check runs that fetch on every change to the list.
 - Changed: Native uses less memory: each window's page frees its caches and collects garbage sooner (a limit that
   follows the computer's memory, checked every 5 s instead of 15), and the pages the desktop opens by itself at
   start-up wait until the others have started, so their memory peaks no longer come all at once.

@@ -51,8 +51,7 @@ jobs:
         run: |
           git fetch -q --depth 1 origin gh-pages
           KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); export KERNEL_VERSION=${KV%-rudolf}
-          # (no firmware in this test kernel: QEMU needs none, and linux-firmware's tip no longer matches every pinned
-          # file of iso/firmware-extra.txt, which stops testkernel.sh: found here, 2026-11-21)
+          # (no firmware in this test kernel: QEMU needs none, and the build is shorter)
           sed -e 's#^python3 systools/fwextra.py copy firmware-extra.txt .*$#mkdir -p "$W/fw"#' -e 's#^python3 systools/fwextra.py copy firmware-sof.txt .*$#true#' iso/systools/testkernel.sh > iso/systools/testkernel-ci.sh
           OUT=$PWD/kout EXTRA="" bash iso/systools/testkernel-ci.sh
           grep -E '^CONFIG_SECURITY_LANDLOCK=|^CONFIG_LSM=' kout/config.txt 2>/dev/null || true
