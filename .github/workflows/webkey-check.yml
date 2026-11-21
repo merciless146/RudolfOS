@@ -1,0 +1,92 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 20; docs/website-data-key.md): Standard's website data under a key sealed in the TPM.
+# The host tests (webkey161_t.sh against swtpm with tpm2-tools beside it, and the release's own Chromium from its chromium
+# layer; webkey161_t.js, Settings' words), a kernel built from this tree's kconfig.sh (the TPM's driver in it: the
+# release's kernel has none; not published), and in QEMU on the newest beta with swtpm as a CRB TPM (wk161_t.py: this
+# tree's rudolf-webkey and the session's own webkey_start; a restart; the firmware's Secure Boot keys changed; no TPM).
+# Run by a push that changes .github/webkey-run.txt (serial=SERIAL picks a release; empty: the newest beta). Nothing is
+# published.
+name: Website data key check
+on:
+  push:
+    paths: ['.github/webkey-run.txt']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: The release's Chromium
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S=$(sed -n 's/^serial=//p' .github/webkey-run.txt | head -1); [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p 'chromium.sfs'
+          sudo apt-get update -qq; sudo apt-get install -y -qq squashfs-tools swtpm swtpm-tools tpm2-tools libglib2.0-dev libssl-dev dbus >/dev/null
+          sudo unsquashfs -q -d /opt-chr rel/chromium.sfs >/dev/null; sudo ln -sfn /opt-chr/opt/chromium /opt/chromium; ls /opt/chromium/chrome
+      - name: webkey161_t.sh
+        run: sudo sh iso/qt/host/webkey161_t.sh | tee o.txt; ! grep -q '^SKIP' o.txt
+      - name: Settings' words
+        run: |
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          node iso/qt/shell2/webkey161_t.js && node iso/qt/shell2/oraacct60_t.js
+  kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools bc flex bison libelf-dev libssl-dev kmod >/dev/null
+      - name: The kernel, from this tree's kconfig.sh (not published)
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); export KERNEL_VERSION=${KV%-rudolf}
+          # (no firmware in this test kernel: QEMU needs none, and the build is shorter)
+          sed -e 's#^python3 systools/fwextra.py copy firmware-extra.txt .*$#mkdir -p "$W/fw"#' -e 's#^python3 systools/fwextra.py copy firmware-sof.txt .*$#true#' iso/systools/testkernel.sh > iso/systools/testkernel-ci.sh
+          OUT=$PWD/kout EXTRA="" bash iso/systools/testkernel-ci.sh
+          grep -E '^CONFIG_TCG_(TPM|CRB|TIS)=|^# CONFIG_TCG_TPM2_HMAC' kout/config.txt
+      - uses: actions/upload-artifact@v4
+        with: {name: kernel, retention-days: 3, path: "kout/vmlinuz\nkout/modules.sfs\nkout/config.txt"}
+  qemu:
+    needs: kernel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography libssl-dev libglib2.0-dev zlib1g-dev bzip2 swtpm swtpm-tools >/dev/null
+          sudo pip install -q --break-system-packages virt-firmware >/dev/null 2>&1 || pip install -q --user virt-firmware || true
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S=$(sed -n 's/^serial=//p' .github/webkey-run.txt | head -1); [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          echo "::notice title=Website data key check::release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
+      - uses: actions/download-artifact@v4
+        with: {name: kernel, path: kout}
+      - name: This tree's rudolf-webkey (as the release builds it) and the test's tool
+        run: |
+          . iso/systools/hardflags.sh; mkdir -p wkfix
+          gcc -O2 $HARD -o wkfix/rudolf-webkey iso/sys/rudolf-webkey.c $(pkg-config --cflags --libs gio-2.0) -lcrypto -ldl
+          gcc -O2 $HARD -o wkfix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          gcc -O2 -static -o wkfix/tpmext iso/qt/sb/tpmext.c; ls -la wkfix
+      - name: wk161
+        run: |
+          mkdir -p run && cd run
+          sudo -E env PATH=$PATH SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} KERNEL=$PWD/../kout WK_FIX=$PWD/../wkfix python3 ../iso/qt/sb/wk161_t.py ../rel
+      - if: always()
+        run: sudo chmod -R a+rX run
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: wk161, retention-days: 7, path: "run/wk161.txt\nrun/wk161*/qemu.log\nrun/w161wk/swtpm.log"}

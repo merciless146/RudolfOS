@@ -116,6 +116,11 @@ Summary: In progress.
   "Require a security key": then a copy of your disk opens nothing without your password and one of your keys together.
   Old security keys checked by the sign-in screen only are moved over when you add your keys again. What to do if keys
   are lost: docs/security-keys.md.
+- Security: Standard's websites (and Native's Oracle) in the shared browser profile, with "Keep my websites encrypted
+  with my account" off, are now encrypted with a key kept in the computer's security chip (TPM 2.0) and tied to its
+  Secure Boot, in place of the browser's built-in key: the drive taken out of the computer, or another system started on
+  it, cannot read the sign-ins, saved site passwords and cards. Without a TPM, as before. Turning Secure Boot off or on
+  makes a new key once: websites ask you to sign in again. Settings › Oracle › Website data says which way it is kept.
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.
