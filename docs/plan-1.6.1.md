@@ -23,6 +23,8 @@ work." Built after the 1.6.0 beta.
   › Display lists the displays and which workspace each shows.
 - **Tests:** Xvfb with several screens (or Xephyr / RandR's virtual outputs) for both engines, compared with same_t.sh;
   on the Vivobook with an HDMI monitor (owner).
+- **Status (2026-11-21):** the system's part built (rudolf-display arranges the monitors and lists them; screenctl and rudolfd keep the
+  arrangement per set of monitors; iso/qt/host/monitors161_t.sh on Xorg's dummy driver); the desktop's part follows.
 
 ### The phone, split in two (owner, 2026-11-15)
 Decided on 2026-11-15, after asking whether the first real phone would be easier in 2.0 than in 1.6: "Make the sensible
@@ -54,6 +56,20 @@ Desktop engine as a compatibility option, "to be worked on and refined later". L
 - Oracle's WebKit tabs: YouTube, Google sign-in with FedCM, a download, full screen, memory with 5 tabs;
 - the lock and sign-in screen settings and the shutting-down screen;
 - the dynamic backgrounds' moving parts.
+
+**Status (2026-11-21, the unattended session for Part 3; one PR each, in this order):**
+- *Done:* the desktop's menus and windows behind Oracle's tab pages. While the desktop covers part of a tab (a menu,
+  another window), rudolf-webkit sends a still picture of the page (tabev `still`, a JPEG), which tabs26.js shows in the
+  tab's place under the desktop's menus and windows; the live page is moved out of sight (moved, not hidden, so it stays a
+  visible page for WebKit and keeps running), its picture taken again every 2 s; uncovered, the live page is back. Cutting
+  the page on the screen (its window's shape, a clip, a native window) never worked in GTK 3 (branch litetabs, 1.5.8):
+  the Lite engine check showed the page staying on top in all three drawing modes, and it still did on main. Tests:
+  iso/qt/webkit/tabs58_ci.py (what is on the screen, in the three drawing modes), iso/qt/shell2/litestill61_t.js (the
+  desktop's side: the Start menu over a tab), iso/qt/sb/lt161_t.py (the release in QEMU with Lite: the release's own X
+  server, WebKitGTK and session; this tree's rudolf-webkit beside its desktop; workflow lite-qemu-check.yml). Owner's
+  check on the Vivobook (Lite): the Start menu, a taskbar menu and another window over an Oracle tab; a video in a tab
+  half covered by another window (its picture every 2 s; full speed once uncovered).
+- The others: in the PRs that follow (this list is brought up to date by each).
 
 ### 4. The first phone, stage 1: the hardware (from 1.6.0 "Not in 1.6.0", and docs/plan-1.5.8.md 8.3)
 **Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
@@ -127,6 +143,34 @@ size: the bar then moves without a percentage); being checked: a bar. Remove bes
 otherwise "File removed from list" with "⚡ Ask Blitzen" (the notification's own Blitzen button, kept in the centre; drawn
 by rudolf-native too). Test dlpage61_t.js; workflow downloads-page-check.yml. Left: the size of Chromium's downloads
 (rudolf-webkit's WebKitDownload knows it: Lite could send it).
+
+**Built (2026-11-21, branch oracle-closed): item 2, reopen a closed tab** (desktop/oraclosed61.js). Ctrl+Shift+T (in Oracle, or inside
+a website) or ☰ › Reopen closed tab: the last closed tab at its place, with Oracle's back and forward list for it (Oracle's own pages'
+whole list; a website's tab its address, title and zoom: Chromium's own back list for a real tab goes with the tab) and the next press
+the one before; ☰ › Recently closed… lists them (the last 25), newest first. A closed window is one entry that comes back as a window of
+its own with its tabs (their addresses); a window's only tab closing closes the window and is kept as a tab.
+- **Where it is kept (the encrypted Oracle folder and sign-out):** in memory only, in the page that has Oracle's windows: never written
+  to the page's storage, rudolfd, the profile or the account's folder (the test checks the storage), so nothing of it can be outside
+  the account's folder or outlive the session. It is forgotten when Oracle's last window closes (as on Native and with "Keep my websites
+  encrypted", where Oracle's Chromium closes with its last window: so all three behave the same), at sign-out (Standard's userLogout;
+  Native's window.__oaLogout, which rudolf-launch calls before Oracle's Chromium closes), and each entry is the account's that closed
+  it. Private and Tor windows keep a list of their own that goes with the window; nothing of theirs enters the shared one.
+- **Native and the encrypted Oracle** (a page per window): a closed tab stays in its window's page; every entry also goes to the other
+  Oracle windows' pages on a BroadcastChannel (in memory, inside Oracle's Chromium; a new window asks the others for theirs), so
+  Ctrl+Shift+T in any window reopens what another closed. A closed window comes back through the native desktop (op `untor`: a normal
+  Oracle window with those tabs, as a Tor window's tabs go back) or, with the encrypted Oracle, rudolfd's `orawin/open`.
+- **The keys:** the shell's PAGE_JS and rudolf-webkit's page script (a listener of their own) send `cst` for Ctrl+Shift+T and for
+  Ctrl+Shift+F21, which is how rudolf-display (Standard) and rudolf-native's grab (Native) hand Ctrl+Shift+T over; in Oracle's own
+  window the page reads it (shell26.js turns Ctrl+Shift+F21 back into Ctrl+Shift+T). No change in rudolf-display or rudolf-native.
+- **Left for later (docs/plan-oracle.md item 2's second half):** "Continue where you left off" with sleeping tabs and "Restore your
+  tabs?" after a crash. 1.6.0's ☰ › Reopen my tabs next time does the start; it keeps its addresses in the account's settings in the
+  page's storage (bd95set:ID), which is not in the encrypted Oracle folder: for the owner to decide before it grows.
+- Tests: iso/qt/shell2/oraclosed61_t.js (25), iso/qt/webkit/closed61_ci.py (4: rudolf-webkit), iso/qt/native/oraclosed61_t.sh (14: the
+  real shell on Standard and Native: Ctrl+Shift+T typed inside a website; a closed window from another window); oracle58, private59,
+  orahover61, oraacct60, tor59, bmadd59 unchanged. Workflow oracle-closed-check.yml.
+- **The owner's checks (Vivobook):** on Standard, Native and Lite: close a tab, Ctrl+Shift+T (in Oracle's toolbar and inside a website);
+  three tabs closed and back in order; ☰ › Recently closed…; two Oracle windows, close one, Ctrl+Shift+T in the other; a private
+  window's tabs not offered in a normal window; sign out and in: nothing offered; Standard with "Keep my websites encrypted" on.
 
 **Built (the owner, 2026-11-20): large ZIPs in Downloads, listed and extracted** (desktop/dlzip61.js, iso/sys/rudolfd-dlzip.inc,
 /usr/lib/rudolf/dlzip.sh). "Archive Manager would list what's inside a large ZIP without loading it into memory, and Extract

@@ -87,7 +87,7 @@ finish)
 	cp -a /home/rudolf/. /mnt/keepfiles/home/rudolf/ 2>/dev/null
 	chown 1000:1000 /mnt/keepfiles/home/rudolf
 	# the settings rudolf-init restores from RUDOLFDATA, and saved Wi-Fi networks
-	for f in asound.conf rudolf-display rudolf-screen rudolf-shell machine-id; do [ -f /etc/$f ] && cp /etc/$f /mnt/keepfiles/etc/; done
+	for f in asound.conf rudolf-display rudolf-screen rudolf-monitors rudolf-shell machine-id; do [ -f /etc/$f ] && cp /etc/$f /mnt/keepfiles/etc/; done
 	[ -f /run/rudolf/wifi.conf ] && cp /run/rudolf/wifi.conf /mnt/keepfiles/etc/wifi.conf && chmod 600 /mnt/keepfiles/etc/wifi.conf
 	sync; umount /mnt/keepfiles; rm -f $PEND
 	;;
