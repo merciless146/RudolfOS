@@ -1,0 +1,24 @@
+# 1.6.1 (the owner, 2026-11-20): Oracle's status line says where a link goes ("Goes To: <address>"): the page script of
+# Standard and Native (iso/shell/shell.js HOVER_JS), real tabs' hover events (tabs26.js), Oracle's own pages; and
+# Oracle's real-tab tests that share those files. Nothing published.
+name: Oracle Goes To check
+on:
+  push:
+    paths: ['iso/shell/shell.js', 'desktop/tabs26.js', 'desktop/base_v24.html', 'desktop/build19.py', 'iso/sys/rudolf-webkit.c', 'iso/qt/shell2/orahover61_t.js', '.github/workflows/oracle-hover-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: The page's side
+        run: |
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          (cd desktop && python3 build19.py ../iso/www/index.html >/dev/null)
+          for t in orahover61_t.js oracle58_t.js private59_t.js; do echo "== $t"; node iso/qt/shell2/$t || exit 1; done
+      - name: rudolf-webkit builds (Lite's hover from WebKit's hit test)
+        run: |
+          sudo apt-get update -qq; sudo apt-get install -y -qq libwebkit2gtk-4.1-dev >/dev/null
+          gcc -fsyntax-only $(pkg-config --cflags webkit2gtk-4.1) iso/sys/rudolf-webkit.c
