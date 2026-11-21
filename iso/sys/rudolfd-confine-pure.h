@@ -78,6 +78,7 @@ static const char *const CONFINE_START[] = {
 	"firewall",
 	"fs/*",
 	"fs/xcopy",
+	"game/*",
 	"games/*",
 	"gpu/driver",
 	"gpu/driver/*",

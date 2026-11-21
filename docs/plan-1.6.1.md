@@ -807,6 +807,37 @@ behind a full-screen game. (The newest-kernel track and Wayland, for HDR and var
   desktop's own work paused (Standard's page throttled, the background jobs and Oracle's tabs held), notifications held;
   everything back as it was when the game leaves full screen. GameMode's requests from games honoured. gamescope comes
   with Wayland (2.0).
+  **Done (2026-11-21, branch game-mode; gamemode-check.yml).** Game mode is kept by root now, `/usr/lib/rudolf/gamemode`
+  (rudolfd's `game/on`, `game/off`, `game/status`, `game/set`, rudolfd-game.inc). Its sources: a full screen Standard's page
+  sees (a page, a Linux window in front) or the native desktop's window manager sees (rudolf-native's `gm61_tick`: a window
+  full screen, its kind and `_NET_WM_PID`), each said again every 2 s and counted 6 s at most, so a page, a native desktop or
+  rudolfd that stops or crashes leaves nothing behind; a game's process gone (killed, crashed, a zombie) ends it at once; a
+  watcher started with game mode puts everything back by itself. While on: the power settings' `game=1` (Part 12's code,
+  `game_epp`): performance for every processor with an energy preference, amd-pstate-epp and intel_pstate, with "As in 1.6.0"
+  and "Tuned" alike (not "The kernel's own", not with battery saver; elsewhere a clean no-op); and, behind a Linux game only
+  (not a page's own full screen, not a game whose process is in the desktop's group, as Oracle's Chromium on Native), the
+  desktop's group slowed: the cpu controller turned on for it and `cpu.weight` 20, both put back as they were (the controller
+  is turned on only for the game: on all the time it would change how the desktop shares the processor with everything).
+  The page (gamemode61.js): Standard's page says its own full screens; every page asks rudolfd, so a full screen only the
+  native desktop sees holds its notifications and background work (1.5.x's `gameMode()` checks: the update check, the Linux
+  and Debian updates, Oracle's tabs put to sleep, Blitzen's model); the page's own animations and the dynamic backgrounds stop
+  behind a Linux game (html.gm61); the native desktop holds its own pop-ups the same way and says how many came after.
+  **GameMode's D-Bus API** (rudolf-portal): com.feralinteractive.GameMode (RegisterGame, UnregisterGame, QueryStatus, their
+  ByPID forms, ClientCount) and the portal's org.freedesktop.portal.GameMode (pids inside a Flatpak sandbox mapped through
+  NSpid, the PIDFd forms): each game a request file in /run/rudolf/game-req (1733, as inhibit's), counted by root while that
+  game runs, is the request's owner's and its portal runs. A request gets the processor's preference only: no notifications
+  held, no desktop slowed, no renice, no governor, no GPU clocks, no scripts (Feral's gamemoded runs those; none here); another
+  user's process, one that does not run, a game twice or more than 16 are refused (-1, as gamemoded answers).
+  Settings › System health › Memory › Game mode: the switch (on by default; off turns all of it off, also for D-Bus
+  requests), for the measurements. Part 12's page code that set `game=` itself is gone (root does it).
+  Tests: host gamemode161_t.sh 25 (stand-in /proc, cgroups and power: the state before and after, crashes, expiry, D-Bus
+  requests, the setting, the watcher), gamemodeportal161_t.sh 14 (a private session bus, as a normal user in CI),
+  power_t.sh 52; gamemode161_native_t.sh (rudolf-native under Xvfb with a stand-in full-screen game, fixtures/fsgame.c: said,
+  left, crashed); the page gamemode61_t.js 15, game51_t.js, gamesleep59_t.js, ovpause58_t.js, dynps59_t.js as before;
+  QEMU t161g_t.py on the newest beta (the cpu controller and weight on a real kernel, the power settings, a stand-in game
+  killed). **Not covered:** a real game, real processor frequencies (QEMU has no frequency driver), Native's Oracle tabs
+  (they are held by processor time, not put to sleep), the measurements (the checklist below).
+
 - **Measured:** Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").
 ### 20. Security hardening (added on 2026-11-20)
 From the comparison with other distributions on 2026-11-19: the weak points named then.
