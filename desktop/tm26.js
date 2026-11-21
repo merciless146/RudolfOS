@@ -118,7 +118,7 @@ function taskmgr26() {
     const tb = t.querySelector('tbody');
     tmWins().forEach(o => {
       const w = o.oaFake ? {mb: o.oaMb} : domWeight(o.el), tr = tb.insertRow();
-      tr.innerHTML = `<td></td><td></td><td>${o.min ? 'Minimized' : o.el.classList.contains('act') ? 'Active' : 'Running'}</td><td>${o.ws || 1}</td><td style='text-align:right' title='estimated from the window'>${w.mb == null ? '—' : w.mb.toFixed(1) + ' MB'}</td><td><button class='sw'>Switch to</button> <button class='et'>End task</button></td>`;
+      tr.innerHTML = `<td></td><td></td><td>${o.rest ? 'Resting (no memory used)' : o.min ? 'Minimized' : o.el.classList.contains('act') ? 'Active' : 'Running'}</td><td>${o.ws || 1}</td><td style='text-align:right' title='estimated from the window'>${w.mb == null ? '—' : w.mb.toFixed(1) + ' MB'}</td><td><button class='sw'>Switch to</button> <button class='et'>End task</button></td>`;
       tr.children[0].textContent = (o.icon || '') + ' ' + (o.app && APPS[o.app] ? APPS[o.app].name : '—'); tr.children[1].textContent = o.el.querySelector('.t').textContent;
       tr.querySelector('.sw').onclick = () => o.focus();
       tr.querySelector('.et').onclick = () => { if (o === W) return; try { o.onclose = null } catch (e) {} o.close(); if (wins.includes(o)) { o.el.remove(); o.tb.remove(); wins.splice(wins.indexOf(o), 1) } notify('Task ended', o.el.querySelector('.t').textContent, {quiet: true}); draw() };

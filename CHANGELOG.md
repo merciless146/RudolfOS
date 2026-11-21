@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Native: idle windows give their memory back. Notepad or File Explorer minimized, or hidden behind another window, for a
+  while (Settings › System › Idle windows: on by default on computers with under 6 GB of memory, after 10 minutes) is closed
+  behind the scenes and comes back where it was when you show it: its files, tabs, folder, the scroll and the window's size
+  and place. Never with unsaved changes, a dialog, sound or video playing, a call, a download or a transfer; Oracle and Linux,
+  Debian, Flatpak and Wine apps are never touched. Task Manager shows such a window as "Resting (no memory used)".
 - The desktop page is 870 KB smaller: the Quake engine and the Galaxy Map's universe are files of their own, read only when
   Quake or the Galaxy Map opens (every window of the native desktop, and Standard's page, parsed them before). Each window
   of the native desktop uses about 5 MB less memory.

@@ -1084,11 +1084,28 @@ Three parts, one PR each, in this order:
   menu, the widgets: about 16 MB before the modules and 24 MB with them at Lite's sign-in screen) left out where the window does
   not show it. The bigger saving on the Vivobook is the number of processes (one shared on this host; six there) and Part C.
 - **C. Idle windows give their memory back** (the owner: "if it won't cause any issues with Oracle or other Rudolf/Debian/
-  Flatpak/Wine apps, then add it"). Planned: a Rudolf app's window minimized or covered for a while (10 minutes; Settings ›
-  System, on by default under 6 GB) has its web process ended and is loaded again where it was when shown; only apps that
-  declare it (oneapp59.js), never Oracle, Linux/Debian/Flatpak/Wine apps, the desktop, the taskbar, the hidden page, or a
-  window that is playing, recording, in a call, transferring, running a game or a job, showing a dialog, full screen or with
-  unsaved changes.
+  Flatpak/Wine apps, then add it"). **Done (2026-11-21, PR "Native: idle windows give their memory back").** rudolf-native.c
+  rest_tick (every 2 s): a Rudolf app's window minimized, or covered by one other window (or a full-screen one), for the time
+  set (Settings › System › Idle windows: on by default under 6 GB of memory, after 10 minutes; 5 to 60) asks its page
+  (rest61.js __oaRest) for where it is; when the page says it can rest, its view is closed (its page goes, and its web process
+  if it has one of its own: WebKit keeps no process without a page) and a view never loaded (no process) stands in it, the
+  app's colour over it. Shown again (focused, its taskbar button, no longer covered, its workspace), its page comes back as every
+  window's does (window.open from another window's page, into the same window: on_create's into), its address with &rest=
+  (its state) instead of &file=; the window's size and place never change. The apps that can (REST_APPS, the opt-in list):
+  Notepad (its tabs' files, the current one, the caret and the scroll; only with every tab saved) and File Explorer (its folder
+  on C:, one tab, one pane; nothing cut or copied); every scrolled box of the window comes back too. Never: an app not on the
+  list (Settings, the Terminal, the office apps, the games and emulators: they cannot say yet whether something would be lost),
+  Oracle ("browser", its WebKit window too), a program rudolfd runs (Linux, Debian, Flatpak, Wine, the Library's: X windows of
+  their own, their pages unseen, keys with ":"), the shell's hidden page and every do- page, the desktop and the taskbar (no
+  page); and never while the window is full screen, always on top or in a dialog over the screen (the shell), WebKit says it is
+  playing sound or using the camera, microphone or screen, or its page has unsaved changes, a dialog, a media element playing, an
+  AudioContext running, a live camera or microphone track, a call (RTCPeerConnection), a request still going (a download, an
+  upload), a transfer (xfer61.js xfRun), a job polled in the last 20 s (rudolfd's job: installs, the Debian apps, a stick, a
+  drive's copy; an update being installed). Task Manager shows the window as "Resting (no memory used)"; closing it closes at
+  once. Measured on the host: each window in a process of its own (as on the Vivobook) Notepad and File Explorer 90 + 90 MB PSS
+  (about 210 MB RSS each), their processes ended when resting (260 MB PSS for the three processes before, 98 MB for the one left);
+  with the processes shared (this host's) 258 MB before, 229 MB with two resting. Not on Lite (its windows are tabs of one
+  window: kept as they are). Test: iso/qt/host/rest161_t.sh.
 
 ## Not moved here
 - **Oracle's website data encrypted:** written here on 2026-11-19, moved to 1.6.0 the same day (the owner: "Put it in

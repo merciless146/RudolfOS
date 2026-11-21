@@ -786,7 +786,7 @@ if(ONEAPP&&oaNative()){let OW=null,waitL=[];
  window.oaWinsAsk=()=>new Promise(r=>{waitL.push(r);oaPost({op:'wins'});setTimeout(r,1000)});
  window.oaWins=()=>!OW?wins:OW.map(o=>{if(o.w&&o.w==ONEAPP.w&&OA.main)return OA.main;
   const el=document.createElement('div');el.className='win'+(o.act?' act':'');const t=document.createElement('span');t.className='t';t.textContent=String(o.title||'');el.appendChild(t);
-  return{oaFake:1,app:String(o.app||''),icon:String(o.icon||''),min:!!o.min,ws:+o.ws||1,el,tb:{remove(){}},oaMb:o.me&&typeof o.me.mb=='number'?o.me.mb:null,
+  return{oaFake:1,app:String(o.app||''),icon:String(o.icon||''),min:!!o.min,rest:!!o.rest,ws:+o.ws||1,el,tb:{remove(){}},oaMb:o.me&&typeof o.me.mb=='number'?o.me.mb:null,
    focus(){oaPost({op:'winop',id:String(o.id),do:'focus'})},close(){oaPost({op:'winop',id:String(o.id),do:'end'})}}})}
 /* (1.6.0 Part 12, item 2) the desktop's widgets are the native shell's to draw: an app's own page draws none (no clock, monitor or
    weather timers in every window), and takes the shell's list into the page's storage (bd95widgets:ID), where Standard and the

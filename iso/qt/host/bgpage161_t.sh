@@ -25,7 +25,7 @@ python3 $HERE/fixtures/native_rd.py $PORT $D > $T/rd.log 2>&1 & RDP=$!
 Xvfb $DSP -screen 0 1280x800x24 -nolisten tcp >/dev/null 2>&1 & XV=$!
 export DISPLAY=$DSP LIBGL_ALWAYS_SOFTWARE=1
 mkfifo $T/ev
-trap 'kill $NP $RDP $XV 2>/dev/null; pkill -f "$T/" 2>/dev/null; rm -rf $T' EXIT
+trap 'kill $NP $RDP $XV 2>/dev/null; pkill -f "$T/" 2>/dev/null; [ -n "$KEEP" ] && cp $T/native.log $KEEP; rm -rf $T' EXIT
 w8() { i=0; while [ $i -lt ${2:-80} ]; do eval "$1" && return 0; timeout 0.25 tail -f /dev/null; i=$((i+1)); done; return 1; }
 w8 'xdotool getmouselocation >/dev/null 2>&1' 40
 (cd $D && HOME=$D RUDOLF_NATIVE_STATE=$D/state RUDOLF_NATIVE_TEST_EVAL=$T/ev exec $BIN --size=1280x800 --draw=soft --base=http://127.0.0.1:$PORT > $T/native.log 2>&1) & NP=$!
