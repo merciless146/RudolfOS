@@ -474,7 +474,7 @@ rudolfd runs as root today (they keep running as root, from the helper).
   (`network wifi status|scan|disconnect|reconnect|radios|bands IF`, `country IF CC`, `adapter IF`, `radio IF BSSID
   on|off`, `band IF 2.4|5|6 on|off`, and `connect|forget IF` with the request on the helper's standard input, at most
   600 bytes, which the helper writes to the same root-only file wifi.sh reads and removes; the join is still a job),
-  System health's wifiNow and Settings' service restart (reconnect), `wifi-link IF` (GET net's network name and signal:
+  System health's wifiNow and Settings' service restart (reconnect, with no adapter at all, as before), `wifi-link IF` (GET net's network name and signal:
   wpa_cli status and signal_poll on wpa_supplicant's sockets, root's), `dhcp IF` (ip link up, udhcpc with udhcpc.sh),
   `static IF ADDR GW DNS` (flush, add, up, the default route; DNS into /etc/resolv.conf, written even when ip failed,
   as before), `firewall on|off|status`, `firewall remote on|off` (remote access's port), the health log's hourly count,

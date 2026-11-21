@@ -3,7 +3,7 @@
  * /usr/lib/rudolf/root/network, run by rudolf-rootd for rudolfd (or by rudolfd itself while it is root and was not
  * started by rudolf-rootd).
  *
- *   network wifi status|scan|disconnect|reconnect|radios|bands IF   /usr/lib/rudolf/wifi.sh ACTION IF
+ *   network wifi status|scan|disconnect|reconnect|radios|bands [IF]   /usr/lib/rudolf/wifi.sh ACTION [IF]
  *   network wifi country IF CC          wifi.sh country IF CC (CC: two capital letters, or 00)
  *   network wifi adapter IF             wifi.sh adapter IF (the adapter to use from now on)
  *   network wifi radio IF BSSID on|off  wifi.sh radio IF BSSID on|off (one radio of the network in use)
@@ -139,6 +139,8 @@ static void line_val(const char *text, const char *key, char *out, size_t on)
 
 static int wifi(int n, char **a)
 {
+	/* (with no adapter at all, as Settings' service restart runs wifi.sh reconnect) */
+	if (n == 1 && (!strcmp(a[0], "status") || !strcmp(a[0], "scan") || !strcmp(a[0], "disconnect") || !strcmp(a[0], "reconnect") || !strcmp(a[0], "radios") || !strcmp(a[0], "bands"))) { char *s[] = { a[0], NULL }; return exec_lib("wifi.sh", s); }
 	if (n < 2) return refuse("a Wi-Fi request without its adapter", n ? a[0] : "");
 	const char *w = a[0], *ifn = a[1];
 	if (*ifn && !if_ok(ifn, 16)) return refuse("a Wi-Fi adapter's name that is not one", ifn);
