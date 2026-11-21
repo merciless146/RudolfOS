@@ -85,7 +85,10 @@ int main(int argc, char **argv)
 		char *av[80]; int n = 0;
 		av[n++] = (char *)chrome; av[n++] = ud; av[n++] = "--remote-debugging-pipe"; av[n++] = "--no-first-run"; av[n++] = "--no-default-browser-check";
 		av[n++] = "--enable-features=IsolatedWebApps,IsolatedWebAppDevMode"; av[n++] = "--window-position=-4000,-4000"; av[n++] = "--window-size=200,200";
-		av[n++] = "--class=RudolfShellFix"; av[n++] = "--disable-session-crashed-bubble"; av[n++] = "--password-store=basic";
+		av[n++] = "--class=RudolfShellFix"; av[n++] = "--disable-session-crashed-bubble";
+		/* 1.6.1 (docs/plan-1.6.1.md Part 20): the profile's own key store (the session's RUDOLF_PASSWORD_STORE: kwallet6 when
+		   its website data is under the TPM's key, rudolf-webkey); with another, Chromium drops what it cannot read */
+		{ const char *ps = getenv("RUDOLF_PASSWORD_STORE"); av[n++] = ps && !strcmp(ps, "kwallet6") ? "--password-store=kwallet6" : "--password-store=basic"; }
 		/* as a test browser runs (Playwright's switches): no prompts, no throttling of a window kept out of sight; without
 		   them the removal waited for an answer that never came (Chromium 157) */
 		av[n++] = "--enable-automation"; av[n++] = "--disable-backgrounding-occluded-windows"; av[n++] = "--disable-renderer-backgrounding";

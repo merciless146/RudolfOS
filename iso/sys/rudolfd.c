@@ -4352,6 +4352,7 @@ static void api_vault(struct req *r, const char *what, int post)
 static int au_session_start(const char *id);   /* rudolfd-users.inc (1.5.9, plan 15.3) */
 static void au_session_stop(const char *id);
 static unsigned au_uid(const char *id);
+#include "rudolfd-webkey.inc"    /* 1.6.1: the website data's key in the TPM (plan-1.6.1 Part 20) */
 #include "rudolfd-home.inc"
 #include "rudolfd-desktop.inc"   /* 1.5.9: the native desktop's API (plan Part 12) */
 #include "rudolfd-fido.inc"      /* 1.6.1: security keys that unlock the files (plan-1.6.1 Part 18) */
@@ -4536,6 +4537,7 @@ static void api(struct req *r)
 	int post = !strcmp(r->method, "POST");
 	if (!strcmp(p, "ping")) { reply_ok(r->fd, "rudolfd"); return; }
 	if (!strcmp(p, "info")) { api_info(r); return; }
+	if (!strcmp(p, "webkey")) { api_webkey(r); return; }   /* (1.6.1 Part 20: rudolfd-webkey.inc) */
 	if (!strcmp(p, "sleep")) { api_sleep(r); return; }   /* (1.6.0: what the last sleep did, the hardware check) */
 	if (!strcmp(p, "stats")) { api_stats(r); return; }
 	if (!strcmp(p, "system")) { api_system(r); return; }

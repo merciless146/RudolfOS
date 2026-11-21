@@ -170,6 +170,7 @@ XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | 
 # (1.5.9: and this script itself: a program it adds to the base layer, such as iw, rebuilds the layer)
 BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-know.inc sys/rudolfd-dev.inc sys/rudolfd-mobile.inc sys/rudolfd-smartcard.inc sys/rudolfd-drop.inc sys/rudolfd-dlzip.inc sys/rudolfd-root.inc sys/rudolfd-roothome.inc sys/rudolfd-rootpower.inc sys/rudolfd-boottime.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-drives-home.c sys/rudolf-accounts.c sys/rudolf-power.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/origin.h systools/origin.sh sys/rudolf-know.c sys/rudolf-dev.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h sys/rsynth.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; echo "${GITHUB_REPOSITORY:-}"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
+BSRC=$( (echo "$BSRC"; cat sys/rudolf-webkey.c sys/rudolfd-webkey.inc) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the website data's key)
 BSRC=$( (echo "$BSRC"; cat sys/rudolfd-confine.inc sys/rudolf-confine.h sys/rudolfd-confine-tables.h sys/rudolfd-confine-narrow.h sys/rudolfd-confine-pure.h sys/rudolfd-winapi.h sys/rudolf-rootd-confine.h) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the confinement)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -198,6 +199,8 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -o "$B/rudolf-fscheck" sys/rudolf-fscheck.c
 	# 1.2.9: the desktop portal and the app catalogue reader for Linux apps (never rebuilt here before either)
 	gcc -O2 $HARD -o "$B/rudolf-portal" sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto
+	# 1.6.1 (docs/plan-1.6.1.md Part 20): the website data's key in the TPM, and Chromium's key store
+	gcc -O2 $HARD -o "$B/rudolf-webkey" sys/rudolf-webkey.c $(pkg-config --cflags --libs gio-2.0) -lcrypto -ldl
 	gcc -O2 $HARD -o "$B/rudolf-apps" sys/rudolf-apps.c -lz
 	# 1.6.0: xdg-open and the browser commands inside Debian (static: Debian's C library is its own), in usr/lib/rudolf
 	gcc -O2 $HARD_STATIC -o "$B/rudolf-open" sys/rudolf-open.c
@@ -209,11 +212,13 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -o "$B/rudolf-print" sys/rudolf-print.c -ldl
 	# 1.4.0: the development link
 	gcc -O2 $HARD -o "$B/rudolf-devlink" sys/rudolf-devlink.c -lcrypto -ldl
-	python3 systools/hardcheck.py "$B/rudolf-display" "$B/rudolfd" "$B/rudolf-update" "$B/rudolf-launch" "$B/rudolf-memguard" "$B/rudolf-shellfix" "$B/rudolf-remote" "$B/cdp-eval" "$B/rudolf-debian" "$B/rudolf-fscheck" "$B/rudolf-portal" "$B/rudolf-open" "$B/rudolf-apps" "$B/rpk" "$B/rudolf-ai" "$B/rudolf-know" "$B/rudolf-dev" "$B/rudolf-print" "$B/rudolf-devlink" "$B/rudolf-rootd" $(for h in $RHELP $RINNER; do echo "$B/root-$h"; done) || { echo "a system program was built without the hardening flags (plan 15.5)"; exit 1; }
-	for b in rudolf-display rudolfd rudolf-update rudolf-launch rudolf-memguard rudolf-shellfix rudolf-remote cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-apps rpk rudolf-ai rudolf-know rudolf-dev rudolf-print rudolf-devlink rudolf-rootd; do
+	python3 systools/hardcheck.py "$B/rudolf-display" "$B/rudolfd" "$B/rudolf-update" "$B/rudolf-launch" "$B/rudolf-memguard" "$B/rudolf-shellfix" "$B/rudolf-remote" "$B/cdp-eval" "$B/rudolf-debian" "$B/rudolf-fscheck" "$B/rudolf-portal" "$B/rudolf-webkey" "$B/rudolf-open" "$B/rudolf-apps" "$B/rpk" "$B/rudolf-ai" "$B/rudolf-know" "$B/rudolf-dev" "$B/rudolf-print" "$B/rudolf-devlink" "$B/rudolf-rootd" $(for h in $RHELP $RINNER; do echo "$B/root-$h"; done) || { echo "a system program was built without the hardening flags (plan 15.5)"; exit 1; }
+	for b in rudolf-display rudolfd rudolf-update rudolf-launch rudolf-memguard rudolf-shellfix rudolf-remote cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-webkey rudolf-apps rpk rudolf-ai rudolf-know rudolf-dev rudolf-print rudolf-devlink rudolf-rootd; do
 		for l in $(ldd "$B/$b" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$b needs $l, which the base layer does not have"; exit 1; }; done
 		sudo install -m 0755 "$B/$b" "$W/broot/usr/bin/$b"
 	done
+	# (1.6.1: rudolf-webkey opens SQLite itself when it moves a profile's values over, so ldd does not see it)
+	[ -e "$W/broot/usr/lib/$MA/libsqlite3.so.0" ] || { echo "rudolf-webkey opens libsqlite3.so.0, which the base layer does not have"; exit 1; }
 	sudo ln -sf rudolf-dev "$W/broot/usr/bin/devlink"   # (1.6.0, plan Part 19: one Rudolf OS computer drives another's development link)
 	sudo mkdir -p "$W/broot/usr/lib/rudolf"; sudo install -m 0755 "$B/rudolf-open" "$W/broot/usr/lib/rudolf/rudolf-open"
 	# (1.6.1: the root helpers, root:root 0700 in a folder of root's; checked, as the base layer keeps owners and modes:

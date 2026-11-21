@@ -145,6 +145,8 @@ gcc -O2 $HARD -o usr/bin/rudolf-dev "$SYS/rudolf-dev.c" -lcrypto -ldl; ln -sf ru
 # Blitzen's model engine (systools/mkllama.sh: llama.cpp's llama-server, static); the model is downloaded later
 mkdir -p usr/lib/rudolf; [ -x "$SRC/llama-build/bin/llama-server" ] && cp "$SRC/llama-build/bin/llama-server" usr/lib/rudolf/
 gcc -O2 $HARD -o usr/bin/rudolf-portal "$SYS/rudolf-portal.c" $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto
+# 1.6.1 (docs/plan-1.6.1.md Part 20): the website data's key in the TPM, and Chromium's key store
+gcc -O2 $HARD -o usr/bin/rudolf-webkey "$SYS/rudolf-webkey.c" $(pkg-config --cflags --libs gio-2.0) -lcrypto -ldl
 # 1.6.0: xdg-open, xdg-email and the browser commands for Debian's programs (rudolf-debian binds it there; static)
 gcc -O2 $HARD_STATIC -o usr/lib/rudolf/rudolf-open "$SYS/rudolf-open.c"
 # speech: eSpeak NG 1.52.0 (built from src/espeak-ng, see BUILD.TXT) with the nine desktop languages only
@@ -160,7 +162,7 @@ mkdir -p etc/rudolf; printf "%s\n" "${UPDATE_URL:-}" > etc/rudolf/update-url
 sh "$HERE/systools/origin.sh" > etc/rudolf/origin
 gcc -O2 $HARD_STATIC -o usr/bin/cdp-eval "$SYS/cdp-eval.c"
 cp -L /usr/lib/$MA/libXtst.so.6 usr/lib/$MA/
-copy_deps usr/bin/rudolf-display usr/bin/rudolf-remote usr/bin/rudolfd usr/bin/rpk usr/bin/rudolf-update usr/bin/rudolf-apps usr/bin/rudolf-portal usr/bin/rudolf-debian usr/bin/rudolf-ai
+copy_deps usr/bin/rudolf-display usr/bin/rudolf-remote usr/bin/rudolfd usr/bin/rpk usr/bin/rudolf-update usr/bin/rudolf-apps usr/bin/rudolf-portal usr/bin/rudolf-webkey usr/bin/rudolf-debian usr/bin/rudolf-ai
 cp -a "$SYS/root/." .
 # 1.5.7 (plan Part 4): the Lite desktop engine (WebKitGTK), when this machine has it (the release workflow always does)
 if pkg-config --exists webkit2gtk-4.1 gtk+-3.0 2>/dev/null; then
