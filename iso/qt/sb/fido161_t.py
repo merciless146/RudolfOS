@@ -191,7 +191,10 @@ try:
     # 2. A1 plugged in, added in Settings
     MUX.plug(0, True); time.sleep(4)
     o = sh("ls -la /dev/hidraw*; cat /sys/class/hidraw/hidraw*/device/uevent 2>/dev/null | grep -E 'HID_NAME|HID_ID'; tail -3 /tmp/vfido.log", 30)
-    st = jparse(api(sh, f'desktop/keys?acct={ID}'))
+    st = js(f"(async()=>JSON.stringify(await fidoReq('desktop/keys?acct={ID}')))()", 60)
+    try: st = json.loads(st)
+    except Exception: st = {'raw': st}
+    out('desktop/keys:', st, '| wget:', api(sh, f'desktop/keys?acct={ID}'), sh("printf 'GET /api/desktop/keys?acct=uX HTTP/1.0\\r\\n\\r\\n' | busybox nc 127.0.0.1 8080 | tail -3; tail -20 /run/rudolf/rudolfd.log", 30, False))
     ok('2a. A1 plugged in: a FIDO HID device (/dev/hidraw), rudolfd (libfido2) sees one key', 'hidraw' in o and 'Rudolf OS test security key 1' in o and st.get('devs') == 1 and st.get('lib'), (o, st))
     js("settings('usr')"); time.sleep(5); js(ADD + "('Blue key')")
     r = wait_for(js, "!!(USER.fido&&USER.fido.n==1&&USER.fks)", 120); vm.shot('added-1')
