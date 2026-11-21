@@ -5,6 +5,21 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- New: File Explorer moves files by dragging them from one window to another, between Rudolf OS's own folders, a
+  plugged-in drive and the Games (Emu library) folder, either way: dropped on a window's list they go into the folder it
+  shows, dropped on a folder into that folder, and what will take them is highlighted. A drag moves; Ctrl+drag copies
+  (the pointer shows which). Cut, Copy and Paste in the right-click menu work the same between windows and drives. A
+  move between Rudolf OS and a drive is a copy that is checked first; the originals go only once everything arrived, and
+  one that is cancelled or fails leaves them where they were.
+- New: a selection box in File Explorer: press on an empty spot of the list and drag over the files to select them
+  (Ctrl or Shift adds to what is selected); then drag them, or right-click them. A drive's files can now be selected
+  with Shift+click too, and have a right-click menu (Cut, Copy, Paste, Delete, Copy into Rudolf OS, Properties).
+- New: a window shows a transfer's progress: the file, how many of how many, the bytes, the time left, and Cancel. It
+  closes by itself when done and stays to say what went wrong if something did.
+- Fixed: copying a large download kept on the disk (Copy and Paste in Downloads) made a 99-byte "- COPY" that did not
+  open. The copy is now a file of its own on the disk; copies made like that before are mended when Downloads is opened
+  (kept, never deleted).
+- Fixed: File Explorer's Properties window showed only an icon.
 - Fixed: Make a Rudolf OS USB stick on an older Rudolf OS stick said "/dev/sdb is in use (mounted at
   /run/rudolf/stkinfo-sdb/i). Unmount it first." Settings' look at what such a stick holds left its image mounted
   when the stick had no third partition. It now always unmounts, never looks while a stick is being made, and Make the
